@@ -1,0 +1,12 @@
+[doctest]
+  url=git@github.com:motis-project/doctest.git
+  branch=master
+  commit=be2e8545eb0b33227b4e7bd0361f1cc89549262c
+[cista]
+  url=git@github.com:felixguendling/cista.git
+  branch=master
+  commit=fca4066533ef287740eca445acc7003e6def6f02
+[geo]
+  url=git@github.com:motis-project/geo.git
+  branch=master
+  commit=01e63436e63f38b763f47cd8cbc2475f07245e08
