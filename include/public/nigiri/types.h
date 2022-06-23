@@ -6,6 +6,7 @@
 #include "cista/containers/bitset.h"
 #include "cista/containers/fws_multimap.h"
 #include "cista/containers/hash_map.h"
+#include "cista/containers/mutable_fws_multimap.h"
 #include "cista/containers/string.h"
 #include "cista/containers/tuple.h"
 #include "cista/containers/variant.h"
@@ -32,18 +33,25 @@ template <typename K, typename V>
 using fws_multimap = cista::offset::fws_multimap<K, V>;
 
 template <typename K, typename V>
+using mutable_fws_multimap = cista::offset::mutable_fws_multimap<K, V>;
+
+template <typename K, typename V>
 using hash_map = cista::offset::hash_map<K, V>;
 
 using string = cista::offset::string;
 using bitfield_idx_t = cista::strong<std::uint32_t, struct _bitfield_idx>;
 using location_idx_t = cista::strong<std::uint32_t, struct _location_idx>;
+using osm_node_id_t = cista::strong<std::int64_t, struct _osm_node_idx>;
 using route_idx_t = cista::strong<std::uint32_t, struct _location_idx>;
 using section_idx_t = cista::strong<std::uint32_t, struct _section_idx>;
 using section_db_idx_t = cista::strong<std::uint32_t, struct _section_db_idx>;
 using external_trip_idx_t = cista::strong<std::uint32_t, struct _trip_idx>;
 using trip_idx_t = cista::strong<std::uint32_t, struct _trip_idx>;
+using rt_trip_idx_t = cista::strong<std::uint32_t, struct _rt_trip_idx>;
 using external_trip_id_t = cista::strong<string, struct _trip_id>;
 using location_id_t = cista::strong<string, struct _station_id>;
+using merged_trips_idx_t =
+    cista::strong<std::uint32_t, struct _merged_trips_idx>;
 
 using duration_t = std::chrono::duration<std::uint16_t, std::ratio<60>>;
 using unixtime_t = std::chrono::time_point<

@@ -9,9 +9,9 @@ add_library(nigiri ${nigiri-files})
 target_include_directories(
   nigiri
   PUBLIC include/public
-  PRIVATE include/private
+  PUBLIC include/private
 )
-target_link_libraries(nigiri PUBLIC cista geo)
+target_link_libraries(nigiri PUBLIC cista geo utl lmdb fmt)
 target_compile_features(nigiri PUBLIC cxx_std_20)
 
 # --- TEST ---
