@@ -80,7 +80,7 @@ private:
     auto serialization_buf = cista::buf{};
     auto dbi = t.dbi_open(cista::canonical_type_str<Type>().c_str());
     for (auto const& el : buf) {
-      cista::serialize(serialization_buf, el);
+//      cista::serialize(serialization_buf, el);
       t.put(dbi, next_handle_to_write_[Idx]++,
             std::string_view{
                 reinterpret_cast<char const*>(serialization_buf.buf_.data()),

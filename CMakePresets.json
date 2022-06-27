@@ -1,0 +1,303 @@
+{
+  "version": 2,
+  "cmakeMinimumRequired": {
+    "major": 3,
+    "minor": 23,
+    "patch": 0
+  },
+  "configurePresets": [
+    {
+      "name": "base-preset",
+      "hidden": true,
+      "generator": "Ninja",
+      "binaryDir": "${sourceDir}/build/${presetName}"
+    },
+    {
+      "name": "msvc-preset",
+      "hidden": true,
+      "cacheVariables": {
+        "BUILD_SHARED_LIBS": "Off"
+      }
+    },
+    {
+      "name": "clang-preset",
+      "hidden": true,
+      "cacheVariables": {
+        "CMAKE_CXX_FLAGS": "-stdlib=libc++"
+      }
+    },
+    {
+      "name": "msvc-release",
+      "displayName": "MSVC Release",
+      "inherits": [
+        "base-preset",
+        "msvc-preset"
+      ],
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "Release"
+      }
+    },
+    {
+      "name": "msvc-debug",
+      "displayName": "MSVC Debug",
+      "inherits": [
+        "base-preset",
+        "msvc-preset"
+      ],
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "Debug"
+      }
+    },
+    {
+      "name": "clang-release",
+      "displayName": "Linux AMD64 clang-14 Release",
+      "inherits": [
+        "base-preset",
+        "clang-preset"
+      ],
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "Release",
+        "CMAKE_C_COMPILER": "clang-14",
+        "CMAKE_CXX_COMPILER": "clang++-14"
+      }
+    },
+    {
+      "name": "clang-debug",
+      "displayName": "Linux AMD64 clang-14 Debug",
+      "inherits": [
+        "base-preset",
+        "clang-preset"
+      ],
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "Debug",
+        "CMAKE_C_COMPILER": "clang-14",
+        "CMAKE_CXX_COMPILER": "clang++-14"
+      }
+    },
+    {
+      "name": "clang-relwithdebinfo",
+      "displayName": "Linux AMD64 clang-14 RelWithDebInfo",
+      "inherits": [
+        "base-preset",
+        "clang-preset"
+      ],
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "RelWithDebInfo",
+        "CMAKE_C_COMPILER": "clang-14",
+        "CMAKE_CXX_COMPILER": "clang++-14"
+      }
+    },
+    {
+      "name": "clang-13-release",
+      "displayName": "Linux AMD64 clang-13 Release",
+      "inherits": [
+        "base-preset",
+        "clang-preset"
+      ],
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "Release",
+        "CMAKE_C_COMPILER": "clang-13",
+        "CMAKE_CXX_COMPILER": "clang++-13"
+      }
+    },
+    {
+      "name": "clang-13-debug",
+      "displayName": "Linux AMD64 clang-13 Debug",
+      "inherits": [
+        "base-preset",
+        "clang-preset"
+      ],
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "Debug",
+        "CMAKE_C_COMPILER": "clang-13",
+        "CMAKE_CXX_COMPILER": "clang++-13"
+      }
+    },
+    {
+      "name": "clang-12-release",
+      "displayName": "Linux AMD64 clang-12 Release",
+      "inherits": [
+        "base-preset",
+        "clang-preset"
+      ],
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "Release",
+        "CMAKE_C_COMPILER": "clang-12",
+        "CMAKE_CXX_COMPILER": "clang++-12"
+      }
+    },
+    {
+      "name": "clang-11-release",
+      "displayName": "Linux AMD64 clang-11 Release",
+      "inherits": [
+        "base-preset",
+        "clang-preset"
+      ],
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "Release",
+        "CMAKE_C_COMPILER": "clang-11",
+        "CMAKE_CXX_COMPILER": "clang++-11"
+      }
+    },
+    {
+      "name": "gcc-release",
+      "displayName": "Linux AMD64 GCC Release",
+      "inherits": [
+        "base-preset"
+      ],
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "Release",
+        "CMAKE_C_COMPILER": "gcc-10",
+        "CMAKE_CXX_COMPILER": "g++-10"
+      }
+    },
+    {
+      "name": "gcc-debug",
+      "displayName": "Linux AMD64 GCC Debug",
+      "inherits": [
+        "base-preset"
+      ],
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "Debug",
+        "CMAKE_C_COMPILER": "gcc-10",
+        "CMAKE_CXX_COMPILER": "g++-10"
+      }
+    },
+    {
+      "name": "gcc-relwithdebinfo",
+      "displayName": "Linux AMD64 GCC RelWithDebInfo",
+      "inherits": [
+        "base-preset"
+      ],
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "RelWithDebInfo",
+        "CMAKE_C_COMPILER": "gcc-10",
+        "CMAKE_CXX_COMPILER": "g++-10"
+      }
+    },
+    {
+      "name": "gcc-9-release",
+      "displayName": "Linux AMD64 GCC-9 Release",
+      "inherits": [
+        "base-preset"
+      ],
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "Release",
+        "CMAKE_C_COMPILER": "gcc-9",
+        "CMAKE_CXX_COMPILER": "g++-9"
+      }
+    },
+    {
+      "name": "clang-sanitizer",
+      "displayName": "Clang Sanitizer",
+      "inherits": [
+        "base-preset",
+        "clang-preset"
+      ],
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "Debug",
+        "CMAKE_C_COMPILER": "clang-14",
+        "CMAKE_CXX_COMPILER": "clang++-14",
+        "NIGIRI_SAN": "ON"
+      }
+    },
+    {
+      "name": "clang-tidy",
+      "displayName": "Clang Tidy",
+      "inherits": [
+        "base-preset",
+        "clang-preset"
+      ],
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "Debug",
+        "CMAKE_C_COMPILER": "clang-14",
+        "CMAKE_CXX_COMPILER": "clang++-14",
+        "NIGIRI_LINT": "ON"
+      }
+    },
+    {
+      "name": "gcc-cuda-release",
+      "displayName": "Linux AMD64 GCC CUDA Release",
+      "inherits": [
+        "base-preset"
+      ],
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "Release",
+        "CMAKE_C_COMPILER": "gcc-10",
+        "CMAKE_CXX_COMPILER": "g++-10",
+        "NIGIRI_CUDA": "On"
+      }
+    },
+    {
+      "name": "gcc-cuda-debug",
+      "displayName": "Linux AMD64 GCC CUDA Debug",
+      "inherits": [
+        "base-preset"
+      ],
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "Debug",
+        "CMAKE_C_COMPILER": "gcc-10",
+        "CMAKE_CXX_COMPILER": "g++-10",
+        "NIGIRI_CUDA": "On"
+      }
+    }
+  ],
+  "buildPresets": [
+    {
+      "name": "clang-release",
+      "configurePreset": "clang-release"
+    },
+    {
+      "name": "clang-debug",
+      "configurePreset": "clang-debug"
+    },
+    {
+      "name": "clang-relwithdebinfo",
+      "configurePreset": "clang-relwithdebinfo"
+    },
+    {
+      "name": "clang-13-release",
+      "configurePreset": "clang-13-release"
+    },
+    {
+      "name": "clang-12-release",
+      "configurePreset": "clang-12-release"
+    },
+    {
+      "name": "clang-11-release",
+      "configurePreset": "clang-11-release"
+    },
+    {
+      "name": "gcc-release",
+      "configurePreset": "gcc-release"
+    },
+    {
+      "name": "gcc-debug",
+      "configurePreset": "gcc-debug"
+    },
+    {
+      "name": "gcc-relwithdebinfo",
+      "configurePreset": "gcc-relwithdebinfo"
+    },
+    {
+      "name": "gcc-9-release",
+      "configurePreset": "gcc-9-release"
+    },
+    {
+      "name": "clang-sanitizer",
+      "configurePreset": "clang-sanitizer"
+    },
+    {
+      "name": "clang-tidy",
+      "configurePreset": "clang-tidy"
+    },
+    {
+      "name": "gcc-cuda-release",
+      "configurePreset": "gcc-cuda-release"
+    },
+    {
+      "name": "gcc-cuda-debug",
+      "configurePreset": "gcc-cuda-debug"
+    }
+  ]
+}
