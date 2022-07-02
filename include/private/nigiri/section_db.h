@@ -1,9 +1,15 @@
 #pragma once
 
+#include <chrono>
 #include <cstdio>
+#include <limits>
+
+#include "date/tz.h"
 
 #include "cista/reflection/comparable.h"
 #include "cista/reflection/printable.h"
+
+#include "utl/overloaded.h"
 
 #include "geo/latlng.h"
 
@@ -12,9 +18,25 @@
 
 namespace nigiri {
 
+using year_month_day = tuple<std::int32_t, std::uint32_t, std::uint32_t>;
+
+struct tz_offsets {
+  struct season {
+    duration_t offset_{0};
+    unixtime_t begin_{unixtime_t::min()}, end_{unixtime_t::max()};
+    duration_t season_begin_mam_{0};
+    duration_t season_end_mam_{0};
+  };
+  std::optional<season> season_{std::nullopt};
+  duration_t offset_{0};
+};
+
+using timezone = variant<string, tz_offsets>;
+
 struct location {
   string name_;
   geo::latlng pos_;
+  std::int32_t tz_;
 };
 
 struct section_info {
@@ -30,13 +52,15 @@ struct section_info {
 };
 
 struct category {
-  CISTA_COMPARABLE()
-  string long_name_, short_name_;
+  CISTA_PRINTABLE(category)
+  friend bool operator==(category const&, category const&) = default;
+  string short_name_, long_name_;
+  output_rule_t output_rule_;
 };
 
 struct attribute {
   CISTA_PRINTABLE(attribute)
-  CISTA_COMPARABLE()
+  friend bool operator==(attribute const&, attribute const&) = default;
   string code_, text_;
 };
 
@@ -49,7 +73,7 @@ using line_id_t = string;
 
 using direction_t = cista::variant<location_idx_t, string>;
 
-using info_db = database<location, category, attribute, provider, line_id_t,
-                         direction_t, section_info>;
+using info_db = database<bitfield, location, category, attribute, provider,
+                         line_id_t, direction_t, section_info>;
 
 }  // namespace nigiri

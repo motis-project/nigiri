@@ -29,14 +29,17 @@ using vector_map = cista::offset::vector_map<K, V>;
 template <typename T>
 using vector = cista::offset::vector<T>;
 
+template <typename... Ts>
+using variant = cista::variant<Ts...>;
+
 template <typename K, typename V>
 using fws_multimap = cista::offset::fws_multimap<K, V>;
 
 template <typename K, typename V>
 using mutable_fws_multimap = cista::offset::mutable_fws_multimap<K, V>;
 
-template <typename K, typename V>
-using hash_map = cista::offset::hash_map<K, V>;
+template <typename K, typename V, typename Hash = cista::hashing<K>>
+using hash_map = cista::offset::hash_map<K, V, Hash>;
 
 using string = cista::offset::string;
 using bitfield_idx_t = cista::strong<std::uint32_t, struct _bitfield_idx>;
@@ -52,6 +55,7 @@ using external_trip_id_t = cista::strong<string, struct _trip_id>;
 using location_id_t = cista::strong<string, struct _station_id>;
 using merged_trips_idx_t =
     cista::strong<std::uint32_t, struct _merged_trips_idx>;
+using output_rule_t = cista::strong<std::uint8_t, struct _output_rule>;
 
 using duration_t = std::chrono::duration<std::uint16_t, std::ratio<60>>;
 using unixtime_t = std::chrono::time_point<
@@ -60,4 +64,35 @@ using unixtime_t = std::chrono::time_point<
 
 using minutes_after_midnight_t = duration_t;
 
+enum class event_type { ARR, DEP };
+
 }  // namespace nigiri
+
+namespace std::chrono {
+
+inline std::ostream& operator<<(std::ostream& out,
+                                nigiri::duration_t const& t) {
+  auto const days = t.count() / 1440;
+  auto const hours = (t.count() % 1440) / 60;
+  auto const minutes = ((t.count() % 1440) % 60);
+  return out << std::setw(2) << std::setfill('0') << hours << ':'  //
+             << std::setw(2) << std::setfill('0') << minutes << '.' << days;
+}
+
+inline std::ostream& operator<<(std::ostream& out,
+                                nigiri::unixtime_t const& t) {
+  auto const time = std::chrono::system_clock::to_time_t(t);
+  auto const* tm = std::localtime(&time);
+  char buffer[25];
+  std::strftime(buffer, sizeof(buffer), "%Y-%m-%d %H:%M:%S", tm);
+  return out << buffer;
+}
+
+inline std::ostream& operator<<(std::ostream& out, sys_days const& t) {
+  auto const ymd = std::chrono::year_month_day{t};
+  return out << static_cast<int>(ymd.year()) << '/' << std::setw(2)
+             << std::setfill('0') << static_cast<unsigned>(ymd.month()) << '/'
+             << std::setw(2) << static_cast<unsigned>(ymd.day());
+}
+
+}  // namespace std::chrono

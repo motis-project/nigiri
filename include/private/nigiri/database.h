@@ -20,22 +20,26 @@ struct database {
 
   static constexpr auto const kBufMaxSize = 10'000;
 
+  enum class init_type { KEEP, CLEAR };
+
   explicit database(std::filesystem::path const& path,
-                    std::size_t const max_size) {
+                    std::size_t const max_size,
+                    init_type const init = init_type::KEEP) {
     env_.set_maxdbs(sizeof...(Ts));
     env_.set_mapsize(max_size);
     env_.open(path.c_str(),
               lmdb::env_open_flags::NOSUBDIR | lmdb::env_open_flags::NOTLS);
 
     lmdb::txn t{env_};
-    (open_dbi<Ts>(t), ...);
+    (open_dbi<Ts>(t, init), ...);
     t.commit();
   }
 
-  template <typename T>
-  handle_t add(T&& el) {
-    constexpr auto const idx = cista::index_of_type<T, Ts...>();
-    std::get<idx>(insert_buf_).emplace_back(std::forward<T>(el));
+  template <typename T1>
+  handle_t add(T1&& el) {
+    constexpr auto const idx = cista::index_of_type<std::decay_t<T1>, Ts...>();
+    static_assert(idx != cista::TYPE_NOT_FOUND);
+    std::get<idx>(insert_buf_).emplace_back(std::forward<T1>(el));
     flush_if_full<idx>();
     return next_handle_[idx]++;
   }
@@ -54,11 +58,22 @@ struct database {
 
   void flush() { (flush<cista::index_of_type<Ts, Ts...>()>(), ...); }
 
+  template <typename T>
+  size_t size() {
+    return lmdb::txn{env_}
+        .dbi_open(cista::canonical_type_str<std::decay_t<T>>().c_str())
+        .stat()
+        .ms_entries;
+  }
+
 private:
   template <typename T>
-  void open_dbi(lmdb::txn& t) {
-    t.dbi_open(cista::canonical_type_str<std::decay_t<T>>().c_str(),
-               lmdb::dbi_flags::CREATE | lmdb::dbi_flags::INTEGERKEY);
+  void open_dbi(lmdb::txn& t, init_type const init) {
+    auto d = t.dbi_open(cista::canonical_type_str<std::decay_t<T>>().c_str(),
+                        lmdb::dbi_flags::CREATE | lmdb::dbi_flags::INTEGERKEY);
+    if (init == init_type::CLEAR) {
+      d.clear();
+    }
   }
 
   template <handle_t Idx>
