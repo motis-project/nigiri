@@ -5,7 +5,7 @@
 [cista]
   url=git@github.com:felixguendling/cista.git
   branch=master
-  commit=46ff9dd891afb05cde5d412418228afeec6979a3
+  commit=c5ccd2431a9f92f3ac558c3c7cfbc056cac4b5d6
 [geo]
   url=git@github.com:motis-project/geo.git
   branch=master
@@ -21,7 +21,7 @@
 [lmdb]
   url=git@github.com:motis-project/lmdb.git
   branch=master
-  commit=9bd01f14f549d8202413c4cd5f49b066b0a22b66
+  commit=5be96596cb38c8a7919c5f543097429061c16fb6
 [fmt]
   url=git@github.com:motis-project/fmt.git
   branch=master
