@@ -1,29 +1,29 @@
 [doctest]
-  url=git@github.com:nigiri-project/doctest.git
+  url=git@github.com:motis-project/doctest.git
   branch=master
-  commit=be2e8545eb0b33227b4e7bd0361f1cc89549262c
+  commit=70e8f76437b76dd5e9c0a2eb9b907df190ab71a0
 [cista]
   url=git@github.com:felixguendling/cista.git
   branch=master
   commit=46ff9dd891afb05cde5d412418228afeec6979a3
 [geo]
-  url=git@github.com:nigiri-project/geo.git
+  url=git@github.com:motis-project/geo.git
   branch=master
-  commit=01e63436e63f38b763f47cd8cbc2475f07245e08
+  commit=fa97943bc7ad5270a74d504ea587dab79f9ade61
 [utl]
-  url=git@github.com:nigiri-project/utl.git
+  url=git@github.com:motis-project/utl.git
   branch=master
   commit=67524961674da10379ad82be71f29a0a003dd209
 [miniz]
-  url=git@github.com:nigiri-project/miniz.git
+  url=git@github.com:motis-project/miniz.git
   branch=master
   commit=1edbdece9d71dc65c6ff405572ee37cbdcef7af4
 [lmdb]
-  url=git@github.com:nigiri-project/lmdb.git
+  url=git@github.com:motis-project/lmdb.git
   branch=master
   commit=9bd01f14f549d8202413c4cd5f49b066b0a22b66
 [fmt]
-  url=git@github.com:nigiri-project/fmt.git
+  url=git@github.com:motis-project/fmt.git
   branch=master
   commit=c68ab4be8f3cb0e5c6eb181b3f419622e15e02bd
 [date]
