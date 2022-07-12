@@ -24,7 +24,16 @@ unixtime_t parse_date(utl::cstr s) {
 tz_offsets const& get_tz(std::map<int, tz_offsets> const& tz, int eva_number) {
   utl::verify(!tz.empty(), "no timezones");
   auto const it = tz.upper_bound(eva_number);
-  utl::verify(it != end(tz) || it->first <= eva_number,
+  if (!(it != end(tz) || std::prev(it)->first <= eva_number)) {
+    std::cout << "timezone for eva=" << eva_number << " not found:\n";
+    for (auto const& [k, v] : tz) {
+      std::cout << "  " << k << " " << v.offset_ << "\n";
+    }
+    std::cout << "it != end(tz): " << std::boolalpha << (it != end(tz)) << "\n";
+    std::cout << "it->first <= eva_number: " << (it->first <= eva_number)
+              << "\n";
+  }
+  utl::verify(it != end(tz) || std::prev(it)->first <= eva_number,
               "no timezone for eva number {}", eva_number);
   return std::prev(it)->second;
 }
