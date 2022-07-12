@@ -14,8 +14,7 @@
       "cacheVariables": {
         "CMAKE_OSX_ARCHITECTURES": "x86_64",
         "CMAKE_CXX_FLAGS": "-stdlib=libc++",
-        "CMAKE_BUILD_TYPE": "Release",
-        "MOTIS_WITH_WEBUI": "ON"
+        "CMAKE_BUILD_TYPE": "Release"
       }
     },
     {
@@ -26,9 +25,7 @@
       "cacheVariables": {
         "CMAKE_OSX_ARCHITECTURES": "x86_64",
         "CMAKE_CXX_FLAGS": "-stdlib=libc++",
-        "CMAKE_BUILD_TYPE": "Release",
-        "MOTIS_WITH_WEBUI": "ON",
-        "MOTIS_AVX2": "OFF"
+        "CMAKE_BUILD_TYPE": "Release"
       }
     },
     {
@@ -42,10 +39,7 @@
         "BOOST_CONTEXT_ARCHITECTURE": "arm64",
         "BOOST_CONTEXT_ABI": "aapcs",
         "ENABLE_ASM": "OFF",
-        "CMAKE_BUILD_TYPE": "Release",
-        "MOTIS_WITH_WEBUI": "ON",
-        "MOTIS_AVX": "OFF",
-        "MOTIS_AVX2": "OFF"
+        "CMAKE_BUILD_TYPE": "Release"
       }
     },
     {
@@ -56,9 +50,7 @@
       "toolchainFile": "/opt/x86_64-multilib-linux-musl/toolchain-amd64.cmake",
       "cacheVariables": {
         "CMAKE_EXE_LINKER_FLAGS": "-B/opt/mold",
-        "CMAKE_BUILD_TYPE": "Release",
-        "MOTIS_MIMALLOC": "ON",
-        "MOTIS_WITH_WEBUI": "ON"
+        "CMAKE_BUILD_TYPE": "Release"
       },
       "environment": {
         "PATH": "/opt:/opt/cmake-3.23.0-rc3-linux-x86_64/bin:/opt/buildcache/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"
@@ -72,10 +64,7 @@
       "toolchainFile": "/opt/x86_64-multilib-linux-musl/toolchain-amd64.cmake",
       "cacheVariables": {
         "CMAKE_EXE_LINKER_FLAGS": "-B/opt/mold",
-        "CMAKE_BUILD_TYPE": "Release",
-        "MOTIS_WITH_WEBUI": "ON",
-        "MOTIS_AVX": "OFF",
-        "MOTIS_AVX2": "OFF"
+        "CMAKE_BUILD_TYPE": "Release"
       },
       "environment": {
         "PATH": "/opt:/opt/cmake-3.23.0-rc3-linux-x86_64/bin:/opt/buildcache/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"
@@ -89,10 +78,7 @@
       "toolchainFile": "/opt/x86_64-multilib-linux-musl/toolchain-x86.cmake",
       "cacheVariables": {
         "CMAKE_EXE_LINKER_FLAGS": "-B/opt/mold",
-        "CMAKE_BUILD_TYPE": "Release",
-        "MOTIS_WITH_WEBUI": "ON",
-        "MOTIS_AVX": "OFF",
-        "MOTIS_AVX2": "OFF"
+        "CMAKE_BUILD_TYPE": "Release"
       },
       "environment": {
         "PATH": "/opt:/opt/cmake-3.23.0-rc3-linux-x86_64/bin:/opt/buildcache/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"
@@ -107,10 +93,7 @@
       "cacheVariables": {
         "CMAKE_CROSSCOMPILING_EMULATOR": "qemu-arm-static",
         "CMAKE_EXE_LINKER_FLAGS": "-B/opt/mold",
-        "CMAKE_BUILD_TYPE": "Release",
-        "MOTIS_WITH_WEBUI": "ON",
-        "MOTIS_AVX": "OFF",
-        "MOTIS_AVX2": "OFF"
+        "CMAKE_BUILD_TYPE": "Release"
       },
       "environment": {
         "PATH": "/opt:/opt/cmake-3.23.0-rc3-linux-x86_64/bin:/opt/buildcache/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"
@@ -125,10 +108,7 @@
       "cacheVariables": {
         "CMAKE_CROSSCOMPILING_EMULATOR": "qemu-aarch64-static",
         "CMAKE_EXE_LINKER_FLAGS": "-B/opt/mold",
-        "CMAKE_BUILD_TYPE": "Release",
-        "MOTIS_WITH_WEBUI": "ON",
-        "MOTIS_AVX": "OFF",
-        "MOTIS_AVX2": "OFF"
+        "CMAKE_BUILD_TYPE": "Release"
       },
       "environment": {
         "PATH": "/opt:/opt/cmake-3.23.0-rc3-linux-x86_64/bin:/opt/buildcache/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"
@@ -193,7 +173,6 @@
         "CMAKE_CXX_COMPILER": "clang++-14",
         "CMAKE_CXX_FLAGS": "-stdlib=libc++",
         "CMAKE_EXE_LINKER_FLAGS": "-lc++abi",
-        "MOTIS_LINT": "ON",
         "CMAKE_BUILD_TYPE": "Release"
       },
       "environment": {
