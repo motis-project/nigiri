@@ -1,6 +1,6 @@
 #pragma once
 
-#include "nigiri/loader/hrd/parse_config.h"
+#include "nigiri/loader/hrd/parser_config.h"
 #include "nigiri/section_db.h"
 #include "nigiri/types.h"
 
