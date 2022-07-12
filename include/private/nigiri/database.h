@@ -27,7 +27,7 @@ struct database {
                     init_type const init = init_type::KEEP) {
     env_.set_maxdbs(sizeof...(Ts));
     env_.set_mapsize(max_size);
-    env_.open(path.c_str(),
+    env_.open(path.string().c_str(),
               lmdb::env_open_flags::NOSUBDIR | lmdb::env_open_flags::NOTLS);
 
     lmdb::txn t{env_};

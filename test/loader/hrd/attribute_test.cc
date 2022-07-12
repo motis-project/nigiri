@@ -1,7 +1,7 @@
 #include "doctest/doctest.h"
 
 #include "nigiri/loader/hrd/attribute.h"
-#include "nigiri/loader/hrd/parse_config.h"
+#include "nigiri/loader/hrd/parser_config.h"
 #include "nigiri/byte_sizes.h"
 
 using namespace nigiri;
