@@ -33,7 +33,6 @@ struct timetable {
   static_assert(sizeof(stop) == sizeof(location_idx_t));
 
   enum class location_type : std::uint8_t {
-    track_section,
     track,
     platform,
     station,
@@ -51,6 +50,7 @@ struct timetable {
 
     // Location hierarchy
     vector_map<location_idx_t, location_type> types_;
+    vector_map<location_idx_t, osm_node_id_t> osm_ids_;
     fws_multimap<location_idx_t, location_idx_t> children_;
     fws_multimap<location_idx_t, location_idx_t> parents_;
 
@@ -62,17 +62,17 @@ struct timetable {
   // Trip access: external trip id -> internal trip index
   hash_map<external_trip_id_t, external_trip_idx_t> trip_id_to_idx_;
 
-  // Trip index -> list of external trip ids
-  fws_multimap<trip_idx_t, external_trip_id_t> trip_ids_;
+  // External trip index -> list of external trip ids (HRD + RI Basis)
+  mutable_fws_multimap<external_trip_idx_t, external_trip_id_t> trip_ids_;
 
   // Route -> From (inclusive) and to index (exclusive) of expanded trips
   fws_multimap<route_idx_t, index_range<trip_idx_t>> route_trip_ranges_;
 
-  // Route -> list of locations
+  // Route -> list of stops
   fws_multimap<route_idx_t, stop> route_location_seq_;
 
   // Location -> list of routes
-  fws_multimap<location_idx_t, route_idx_t> location_routes_;
+  mutable_fws_multimap<location_idx_t, route_idx_t> location_routes_;
 
   // Trip index -> sequence of stop times
   fws_multimap<trip_idx_t, minutes_after_midnight_t> trip_stop_times_;
@@ -81,20 +81,25 @@ struct timetable {
   vector_map<trip_idx_t, bitfield_idx_t> expanded_trip_traffic_days_;
 
   // Trip index -> sequence of stop times
-  fws_multimap<trip_idx_t, unixtime_t> rt_trip_stop_times_;
+  fws_multimap<rt_trip_idx_t, unixtime_t> rt_trip_stop_times_;
 
   // Unique bitfields
   vector_map<bitfield_idx_t, bitfield> bitfields_;
 
-  // Trip index -> trip section meta data db index
-  fws_multimap<trip_idx_t, section_db_idx_t> expanded_trip_section_meta_data_;
+  // For each trip the corresponding route
+  vector_map<trip_idx_t, route_idx_t> trip_route_;
 
-  // Trip index -> (external trip index + section index)
-  fws_multimap<trip_idx_t, external_trip_section>
-      trip_to_external_trip_section_;
+  // Trip index -> trip section meta data db index
+  fws_multimap<trip_idx_t, section_db_idx_t> trip_section_meta_data_;
+
+  // Trip index -> merged trips
+  fws_multimap<trip_idx_t, merged_trips_idx_t> trip_to_external_trip_section_;
+
+  // Merged trips info
+  fws_multimap<merged_trips_idx_t, external_trip_idx_t> merged_trips_;
 
   // External trip index -> list of section ranges where this trip was expanded
-  fws_multimap<trip_idx_t, expanded_trip_section>
+  mutable_fws_multimap<external_trip_idx_t, expanded_trip_section>
       external_trip_idx_to_expanded_trip_idx_;
 
   // External trip -> debug info
