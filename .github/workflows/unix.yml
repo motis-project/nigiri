@@ -86,8 +86,8 @@ jobs:
     container:
       image: ghcr.io/motis-project/docker-cpp-build
       volumes:
-        - ${{ github.repository }}-${{ matrix.config.preset }}-deps:/deps
-        - ${{ github.repository }}-${{ matrix.config.preset }}-buildcache:/buildcache
+        - ${{ github.event.repository.name }}-${{ matrix.config.preset }}-deps:/deps
+        - ${{ github.event.repository.name }}-${{ matrix.config.preset }}-buildcache:/buildcache
     strategy:
       fail-fast: false
       matrix:
