@@ -28,6 +28,65 @@ jobs:
           git status --porcelain
           git status --porcelain | xargs -I {} -0 test -z \"{}\"
 
+  msvc:
+    runs-on: windows-latest
+
+    strategy:
+      fail-fast: false
+      matrix:
+        config:
+          - mode: Debug
+          - mode: Release
+
+    env:
+      CXX: cl.exe
+      CC: cl.exe
+      BUILDCACHE_COMPRESS: true
+      BUILDCACHE_DIRECT_MODE: true
+      BUILDCACHE_ACCURACY: SLOPPY # not suitable for coverage/debugging
+      BUILDCACHE_DIR: ${{ github.workspace }}/.buildcache
+      BUILDCACHE_LUA_PATH: ${{ github.workspace }}/tools
+
+    steps:
+      - uses: actions/checkout@v3
+      - uses: seanmiddleditch/gha-setup-ninja@master
+
+      - name: buildcache Cache
+        uses: actions/cache@v2
+        with:
+          path: ${{ github.workspace }}/.buildcache
+          key: buildcache-wnds-${{ matrix.config.mode }}-${{ hashFiles('.pkg') }}-${{ hashFiles('**/*.h') }}-${{ hashFiles('**/*.cc') }}
+          restore-keys: |
+            buildcache-wnds-${{ matrix.config.mode }}-${{ hashFiles('.pkg') }}-${{ hashFiles('**/*.h') }}
+            buildcache-wnds-${{ matrix.config.mode }}-${{ hashFiles('.pkg') }}-
+            buildcache-wnds-${{ matrix.config.mode }}-
+
+      - name: Dependencies Cache
+        uses: actions/cache@v2
+        with:
+          path: ${{ github.workspace }}/deps
+          key: deps-${{ hashFiles('.pkg') }}
+          restore-keys: deps-
+
+      - name: Build
+        run: |
+          $devShell = &"${env:ProgramFiles(x86)}\Microsoft Visual Studio\Installer\vswhere.exe" -latest -find **\Microsoft.VisualStudio.DevShell.dll
+          $installPath = &"${env:ProgramFiles(x86)}\Microsoft Visual Studio\Installer\vswhere.exe" -latest -property installationpath
+          Import-Module $devShell
+          Enter-VsDevShell -VsInstallPath $installPath -SkipAutomaticLocation -DevCmdArguments "-arch=amd64"
+          cmake `
+            -GNinja -S . -B build `
+            -DCMAKE_BUILD_TYPE=${{ matrix.config.mode }}
+          .\build\buildcache\bin\buildcache.exe -z
+          cmake --build build --target nigiri-test
+          $CompilerExitCode = $LastExitCode
+          .\build\buildcache\bin\buildcache.exe -s
+          exit $CompilerExitCode
+
+      # ==== TESTS ====
+      - name: Run Tests
+        run: .\build\nigiri-test.exe
+
   macos:
     runs-on: macos-latest
     strategy:
