@@ -310,7 +310,7 @@ void to_local_time(
   }
 }
 
-template <typename Fn, typename ProgressFn>
+template <typename ConsumerFn, typename ProgressFn>
 void parse_services(
     config const& c,
     char const* filename,
@@ -319,7 +319,7 @@ void parse_services(
     timezone_map_t const& timezones,
     std::string_view file_content,
     ProgressFn&& bytes_consumed,
-    Fn&& consumer) {
+    ConsumerFn&& consumer) {
   auto const expand_service = [&](service const& s) {
     expand_traffic_days(s, bitfields, [&](service&& s) {
       expand_repetitions(s, [&](service&& s) {
@@ -381,6 +381,7 @@ void write_services(
     std::pair<std::chrono::sys_days, std::chrono::sys_days> const& interval,
     bitfield_map_t const& bitfields,
     hash_map<eva_number, tz_offsets> const& timezones,
+    hash_map<eva_number, location_idx_t> const& locations,
     std::string_view file_content,
     timetable& tt,
     ProgressFn&& bytes_consumed) {

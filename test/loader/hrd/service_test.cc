@@ -101,9 +101,10 @@ TEST_CASE("loader_hrd_service, parse multiple") {
   for (auto const& c : configs) {
     std::vector<service> services;
     info_db db{"./test_db", 512_kB, info_db::init_type::CLEAR};
+    timetable tt;
     auto const locations =
-        parse_stations(c, stations_file_content, station_geo_file_content,
-                       station_metabhf_content);
+        parse_stations(c, source_idx_t{0U}, tt, stations_file_content,
+                       station_geo_file_content, station_metabhf_content);
     auto const bitfields = parse_bitfields(c, db, bitfields_file_content);
     auto const timezones = parse_timezones(c, timezones_file_content);
     auto const interval = parse_interval(basic_info_file_content);

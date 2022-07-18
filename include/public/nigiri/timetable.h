@@ -44,8 +44,9 @@ struct timetable {
     // Location hierarchy
     vector_map<location_idx_t, location_type> types_;
     vector_map<location_idx_t, osm_node_id_t> osm_ids_;
-    fws_multimap<location_idx_t, location_idx_t> children_;
-    fws_multimap<location_idx_t, location_idx_t> parents_;
+    vector_map<location_idx_t, location_idx_t> parents_;
+    mutable_fws_multimap<location_idx_t, location_idx_t> equivalences_;
+    mutable_fws_multimap<location_idx_t, location_idx_t> children_;
 
     // Footpaths
     fws_multimap<location_idx_t, footpath> footpaths_out_;

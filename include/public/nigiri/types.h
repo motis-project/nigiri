@@ -6,6 +6,7 @@
 #include "cista/containers/bitset.h"
 #include "cista/containers/fws_multimap.h"
 #include "cista/containers/hash_map.h"
+#include "cista/containers/hash_set.h"
 #include "cista/containers/mutable_fws_multimap.h"
 #include "cista/containers/string.h"
 #include "cista/containers/tuple.h"
@@ -42,6 +43,9 @@ using mutable_fws_multimap = cista::offset::mutable_fws_multimap<K, V>;
 template <typename K, typename V, typename Hash = cista::hashing<K>>
 using hash_map = cista::offset::hash_map<K, V, Hash>;
 
+template <typename K, typename Hash = cista::hashing<K>>
+using hash_set = cista::offset::hash_set<K, Hash>;
+
 using string = cista::offset::string;
 
 using bitfield_idx_t = cista::strong<std::uint32_t, struct _bitfield_idx>;
@@ -53,7 +57,9 @@ using section_db_idx_t = cista::strong<std::uint32_t, struct _section_db_idx>;
 using external_trip_idx_t = cista::strong<std::uint32_t, struct _trip_idx>;
 using trip_idx_t = cista::strong<std::uint32_t, struct _trip_idx>;
 using rt_trip_idx_t = cista::strong<std::uint32_t, struct _rt_trip_idx>;
-using source_idx_t = cista::strong<uint8_t, struct _source_idx>;
+using source_idx_t = cista::strong<std::uint8_t, struct _source_idx>;
+using equivalence_set_idx_t =
+    cista::strong<std::uint32_t, struct _equivalence_set_idx>;
 using merged_trips_idx_t =
     cista::strong<std::uint32_t, struct _merged_trips_idx>;
 using output_rule_t = cista::strong<std::uint8_t, struct _output_rule>;
