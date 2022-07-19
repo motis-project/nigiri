@@ -80,6 +80,16 @@ void parse_equivilant_stations(config const& c,
 void parse_footpaths(config const& c,
                      hash_map<eva_number, hrd_location>& stations,
                      std::string_view file_content) {
+  auto const add_footpath = [](hrd_location& l, eva_number const to,
+                               duration_t const d) {
+    if (auto const it = l.footpaths_out_.find(to);
+        it != end(l.footpaths_out_)) {
+      it->second = std::min(it->second, d);
+    } else {
+      l.footpaths_out_.emplace(to, d);
+    }
+  };
+
   utl::for_each_line(file_content, [&](utl::cstr line) {
     if (line.length() < 16 || line[0] == '%' || line[0] == '*') {
       return;
@@ -96,12 +106,7 @@ void parse_footpaths(config const& c,
       auto const duration =
           duration_t{parse<int>(line.substr(c.meta_.footpaths_.duration_))};
 
-      from.footpaths_out_.emplace_back(to.id_, duration);
-      to.footpaths_in_.emplace_back(from.id_, duration);
-
-      // make footpaths symmetric
-      to.footpaths_out_.emplace_back(from.id_, duration);
-      from.footpaths_in_.emplace_back(to.id_, duration);
+      add_footpath(from, to.id_, duration);
 
       if (f_equal) {
         from.equivalent_.erase(to.id_);
@@ -123,11 +128,27 @@ hash_map<eva_number, hrd_location> parse_stations(
   parse_equivilant_stations(c, stations, station_metabhf_file);
   parse_footpaths(c, stations, station_metabhf_file);
 
-  for (auto const& [eva, s] : stations) {
+  for (auto& [eva, s] : stations) {
+    s.idx_ = location_idx_t{tt.locations_.types_.size()};
     tt.locations_.location_id_to_idx_.emplace(
-        location_id{.id_ = std::to_string(to_idx(s.id_)), .src_ = src},
-        location_idx_t{tt.locations_.types_.size()});
+        location_id{.id_ = std::to_string(to_idx(s.id_)), .src_ = src}, s.idx_);
+    tt.locations_.src_.emplace_back(src);
     tt.locations_.types_.emplace_back(location_type::station);
+    tt.locations_.transfer_time_.emplace_back(2);  // TODO(felix)
+    tt.locations_.osm_ids_.emplace_back(0);  // TODO(felix)
+    tt.locations_.parents_.emplace_back(0);  // TODO(felix)
+  }
+
+  for (auto& [eva, s] : stations) {
+    for (auto const& e : s.equivalent_) {
+      tt.locations_.equivalences_[s.idx_].emplace_back(stations.at(e).idx_);
+    }
+
+    for (auto const& [target_eva, duration] : s.footpaths_out_) {
+      auto const target_idx = stations.at(target_eva).idx_;
+      tt.locations_.footpaths_out_[s.idx_].emplace_back(target_idx, duration);
+      tt.locations_.footpaths_in_[target_idx].emplace_back(s.idx_, duration);
+    }
   }
 
   return stations;

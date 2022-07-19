@@ -4,6 +4,7 @@
 #include <cinttypes>
 
 #include "cista/containers/bitset.h"
+#include "cista/containers/flat_matrix.h"
 #include "cista/containers/fws_multimap.h"
 #include "cista/containers/hash_map.h"
 #include "cista/containers/hash_set.h"
@@ -19,6 +20,11 @@ namespace nigiri {
 
 using bitfield = cista::bitset<512>;
 
+template <typename T>
+using flat_matrix = cista::offset::flat_matrix<T>;
+
+using cista::offset::make_flat_matrix;
+
 template <typename... Args>
 using tuple = cista::tuple<Args...>;
 
@@ -31,8 +37,12 @@ using vector_map = cista::offset::vector_map<K, V>;
 template <typename T>
 using vector = cista::offset::vector<T>;
 
+using cista::offset::to_vec;
+
 template <typename... Ts>
 using variant = cista::variant<Ts...>;
+using cista::get;
+using cista::holds_alternative;
 
 template <typename K, typename V>
 using fws_multimap = cista::offset::fws_multimap<K, V>;
@@ -94,9 +104,29 @@ enum class location_type : std::uint8_t {
 
 enum class event_type { ARR, DEP };
 
+constexpr auto const kNoSource = source_idx_t{0};
+
 }  // namespace nigiri
 
+#include <iomanip>
+#include <ostream>
+
+#include "cista/serialization.h"
+
 namespace std::chrono {
+
+template <typename Ctx>
+inline void serialize(Ctx& c,
+                      nigiri::duration_t const* origin,
+                      cista::offset_t pos) {
+  c.write(pos, cista::convert_endian<Ctx::MODE>(origin->count()));
+}
+
+template <typename Ctx>
+void deserialize(Ctx const& c, nigiri::duration_t* el) {
+  c.convert_endian(*reinterpret_cast<nigiri::duration_t::rep*>(el));
+  *el = nigiri::duration_t{*reinterpret_cast<nigiri::duration_t::rep*>(el)};
+}
 
 inline std::ostream& operator<<(std::ostream& out,
                                 nigiri::duration_t const& t) {

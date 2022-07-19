@@ -12,14 +12,14 @@
 namespace nigiri::loader::hrd {
 
 struct hrd_location {
+  location_idx_t idx_;
   eva_number id_;
   string name_;
   geo::latlng pos_;
   location_type type_;
   vector<eva_number> children_;
   hash_set<eva_number> equivalent_;
-  vector<pair<eva_number, duration_t>> footpaths_in_;
-  vector<pair<eva_number, duration_t>> footpaths_out_;
+  hash_map<eva_number, duration_t> footpaths_out_;
 };
 
 hash_map<eva_number, hrd_location> parse_stations(

@@ -2,9 +2,12 @@
 
 #include "nigiri/types.h"
 
+#include "cista/reflection/printable.h"
+
 namespace nigiri {
 
 struct footpath {
+  CISTA_PRINTABLE(footpath, "target", "duration")
   location_idx_t target_;
   duration_t duration_;
 };
@@ -40,17 +43,15 @@ struct timetable {
   struct locations {
     // Station access: external station id -> internal station idx
     hash_map<location_id, location_idx_t> location_id_to_idx_;
-
-    // Location hierarchy
+    vector_map<location_idx_t, source_idx_t> src_;
+    vector_map<location_idx_t, duration_t> transfer_time_;
     vector_map<location_idx_t, location_type> types_;
     vector_map<location_idx_t, osm_node_id_t> osm_ids_;
     vector_map<location_idx_t, location_idx_t> parents_;
     mutable_fws_multimap<location_idx_t, location_idx_t> equivalences_;
     mutable_fws_multimap<location_idx_t, location_idx_t> children_;
-
-    // Footpaths
-    fws_multimap<location_idx_t, footpath> footpaths_out_;
-    fws_multimap<location_idx_t, footpath> footpaths_in_;
+    mutable_fws_multimap<location_idx_t, footpath> footpaths_out_;
+    mutable_fws_multimap<location_idx_t, footpath> footpaths_in_;
   } locations_;
 
   // Trip access: external trip id -> internal trip index
