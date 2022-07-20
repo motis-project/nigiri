@@ -35,8 +35,8 @@ struct timetable {
 
   private:
     location_idx_t::value_t location_ : 30;
-    bool in_allowed_ : 1;
-    bool out_allowed_ : 1;
+    location_idx_t::value_t in_allowed_ : 1;
+    location_idx_t::value_t out_allowed_ : 1;
   };
   static_assert(sizeof(stop) == sizeof(location_idx_t));
 
