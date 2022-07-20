@@ -14,6 +14,7 @@
 #include "geo/latlng.h"
 
 #include "nigiri/database.h"
+#include "nigiri/timetable.h"
 #include "nigiri/types.h"
 
 namespace nigiri {
@@ -36,19 +37,8 @@ using timezone = variant<string, tz_offsets>;
 struct location {
   string name_;
   geo::latlng pos_;
-  std::int32_t tz_;
-};
-
-struct section_info {
-  CISTA_COMPARABLE()
-  std::uint32_t category_idx_{0U};
-  std::uint32_t attribute_idx_{0U};
-  std::uint32_t provider_idx_{0U};
-  std::uint32_t direction_idx_{0U};
-  std::uint32_t line_idx_{0U};
-
-  std::uint32_t train_nr_{0U};
-  std::uint32_t clasz_{0U};
+  source_idx_t src_;
+  std::uint32_t tz_;
 };
 
 struct category {
@@ -72,6 +62,18 @@ struct provider {
 using line_id_t = string;
 
 using direction_t = cista::variant<location_idx_t, string>;
+
+struct section_info {
+  CISTA_COMPARABLE()
+  db_index_t<category> category_idx_{0U};
+  db_index_t<attribute> attribute_idx_{0U};
+  db_index_t<provider> provider_idx_{0U};
+  db_index_t<direction_t> direction_idx_{0U};
+  db_index_t<line_id_t> line_idx_{0U};
+
+  std::uint32_t train_nr_{0U};
+  std::uint32_t clasz_{0U};
+};
 
 using info_db = database<bitfield,
                          location,

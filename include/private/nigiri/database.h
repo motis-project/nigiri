@@ -12,7 +12,12 @@
 #include "cista/serialization.h"
 #include "cista/type_hash/type_name.h"
 
+#include "nigiri/types.h"
+
 namespace nigiri {
+
+template <typename Tag>
+using db_index_t = cista::strong<std::uint32_t, Tag>;
 
 template <typename... Ts>
 struct database {
@@ -21,6 +26,77 @@ struct database {
   static constexpr auto const kBufMaxSize = 10'000;
 
   enum class init_type { KEEP, CLEAR };
+
+  template <typename T>
+  struct iterator {
+    explicit iterator(database& db)
+        : t_{db.env_},
+          dbi_{t_.dbi_open(
+              cista::canonical_type_str<std::decay_t<T>>().c_str())},
+          c_{t_, dbi_} {
+      c_.get(lmdb::cursor_op::FIRST);
+    }
+
+    iterator& operator++() {
+      c_.get(lmdb::cursor_op::NEXT);
+      return *this;
+    }
+
+    T operator*() {
+      auto const entry = c_.get(lmdb::cursor_op::GET_CURRENT);
+      utl::verify(entry.has_value(), "invalid iterator access to {}",
+                  cista::type_str<T>());
+      return cista::copy_from_potentially_unaligned<T>(entry->second);
+    }
+
+    bool is_finished() {
+      return c_.get(lmdb::cursor_op::GET_CURRENT) == std::nullopt;
+    }
+
+    lmdb::txn t_;
+    lmdb::txn::dbi dbi_;
+    lmdb::cursor c_;
+  };
+
+  template <typename T>
+  struct iterator_wrapper {
+    iterator_wrapper() : data_{end_t{}} {}
+    explicit iterator_wrapper(database& db) : data_{iterator<T>{db}} {}
+
+    iterator_wrapper& operator++() {
+      utl::verify(!is_end(), "database {} increment end iterator",
+                  cista::type_str<T>());
+      cista::get<iterator<T>>(data_).operator++();
+      return *this;
+    }
+
+    T operator*() {
+      utl::verify(!is_end(), "database {} dereference end iterator",
+                  cista::type_str<T>());
+      return cista::get<iterator<T>>(data_).operator*();
+    }
+
+    bool operator==(iterator_wrapper const& o) {
+      return o.is_end() &&
+             (is_end() || cista::get<iterator<T>>(data_).is_finished());
+    }
+
+    bool operator!=(iterator_wrapper const& o) { return !operator==(o); }
+
+    bool is_end() const { return cista::holds_alternative<end_t>(data_); }
+
+    struct end_t {};
+    variant<iterator<T>, end_t> data_;
+  };
+
+  template <typename T>
+  struct range {
+    explicit range(database& db) : db_{db} {}
+    iterator_wrapper<T> begin() { return iterator_wrapper<T>{db_}; }
+    iterator_wrapper<T> end() { return {}; }
+    size_t size() const { return iterator<T>{db_}.dbi_.stat().ms_entries; }
+    database& db_;
+  };
 
   explicit database(std::filesystem::path const& path,
                     std::size_t const max_size,
@@ -56,6 +132,34 @@ struct database {
     return cista::copy_from_potentially_unaligned<T>(*entry);
   }
 
+  template <typename T>
+  struct writer {
+    using Type = std::decay_t<T>;
+
+    explicit writer(lmdb::env& env)
+        : t_{env},
+          dbi_{t_.dbi_open(cista::canonical_type_str<Type>().c_str())} {}
+
+    ~writer() { t_.commit(); }
+
+    void write(handle_t const key, T const& el) {
+      cista::serialize(buf_, el);
+      t_.put(dbi_, key,
+             std::string_view{reinterpret_cast<char const*>(buf_.buf_.data()),
+                              buf_.buf_.size()});
+      buf_.buf_.clear();
+    }
+
+    lmdb::txn t_;
+    lmdb::txn::dbi dbi_;
+    cista::buf<> buf_{};
+  };
+
+  template <typename T>
+  writer<T> get_writer() {
+    return writer<T>{env_};
+  }
+
   void flush() { (flush<cista::index_of_type<Ts, Ts...>()>(), ...); }
 
   template <typename T>
@@ -64,6 +168,11 @@ struct database {
         .dbi_open(cista::canonical_type_str<std::decay_t<T>>().c_str())
         .stat()
         .ms_entries;
+  }
+
+  template <typename T>
+  range<T> iterate() {
+    return range<T>{*this};
   }
 
 private:
