@@ -76,14 +76,12 @@ using output_rule_t = cista::strong<std::uint8_t, struct _output_rule>;
 
 struct trip_id {
   CISTA_PRINTABLE(trip_id, "id", "src")
-  friend auto operator<=>(trip_id const&, trip_id const&) = default;
   string id_;
   source_idx_t src_;
 };
 
 struct location_id {
   CISTA_PRINTABLE(location_id, "id", "src")
-  friend auto operator<=>(location_id const&, location_id const&) = default;
   string id_;
   source_idx_t src_;
 };

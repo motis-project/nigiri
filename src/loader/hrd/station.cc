@@ -28,7 +28,9 @@ void parse_station_names(config const& c,
         }
 
         auto const eva_num = parse_eva_number(line.substr(c.st_.names_.eva_));
-        stations[eva_num].name_ = name.to_str();
+        auto& s = stations[eva_num];
+        s.name_ = name.to_str();
+        s.id_ = eva_num;
       });
 }
 
@@ -122,6 +124,9 @@ hash_map<eva_number, hrd_location> parse_stations(
     std::string_view station_names_file,
     std::string_view station_coordinates_file,
     std::string_view station_metabhf_file) {
+  auto empty_idx_vec = vector<location_idx_t>{};
+  auto empty_footpath_vec = vector<footpath>{};
+
   hash_map<eva_number, hrd_location> stations;
   parse_station_names(c, stations, station_names_file);
   parse_station_coordinates(c, stations, station_coordinates_file);
@@ -129,14 +134,18 @@ hash_map<eva_number, hrd_location> parse_stations(
   parse_footpaths(c, stations, station_metabhf_file);
 
   for (auto& [eva, s] : stations) {
-    s.idx_ = location_idx_t{tt.locations_.types_.size()};
-    tt.locations_.location_id_to_idx_.emplace(
-        location_id{.id_ = std::to_string(to_idx(s.id_)), .src_ = src}, s.idx_);
-    tt.locations_.src_.emplace_back(src);
-    tt.locations_.types_.emplace_back(location_type::station);
-    tt.locations_.transfer_time_.emplace_back(2);  // TODO(felix)
-    tt.locations_.osm_ids_.emplace_back(0);  // TODO(felix)
-    tt.locations_.parents_.emplace_back(0);  // TODO(felix)
+    auto const id =
+        location_id{.id_ = fmt::format("{:07}", to_idx(eva)), .src_ = src};
+    auto const idx = tt.locations_.add(
+        timetable::location{.id_ = id.id_,
+                            .src_ = src,
+                            .type_ = location_type::station,
+                            .osm_id_ = osm_node_id_t::invalid(),
+                            .parent_ = location_idx_t::invalid(),
+                            .equivalences_ = it_range{empty_idx_vec},
+                            .footpaths_out_ = it_range{empty_footpath_vec},
+                            .footpaths_in_ = it_range{empty_footpath_vec}});
+    s.idx_ = idx;
   }
 
   for (auto& [eva, s] : stations) {
