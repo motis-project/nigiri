@@ -138,6 +138,8 @@ hash_map<eva_number, hrd_location> parse_stations(
         location_id{.id_ = fmt::format("{:07}", to_idx(eva)), .src_ = src};
     auto const idx = tt.locations_.add(
         timetable::location{.id_ = id.id_,
+                            .name_ = s.name_,
+                            .pos_ = s.pos_,
                             .src_ = src,
                             .type_ = location_type::station,
                             .osm_id_ = osm_node_id_t::invalid(),

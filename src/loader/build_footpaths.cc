@@ -4,18 +4,16 @@
 #include <stack>
 
 #include "geo/latlng.h"
+#include "geo/point_rtree.h"
 
 #include "utl/enumerate.h"
 #include "utl/equal_ranges_linear.h"
-#include "utl/erase_duplicates.h"
 #include "utl/parallel_for.h"
 #include "utl/verify.h"
 
 #include "nigiri/loader/floyd_warshall.h"
 #include "nigiri/logging.h"
 #include "nigiri/section_db.h"
-#include "geo/point_rtree.h"
-#include "utl/to_vec.h"
 
 namespace nigiri::loader {
 
@@ -32,17 +30,16 @@ using component_vec = std::vector<std::pair<uint32_t, uint32_t>>;
 using component_it = component_vec::iterator;
 using component_range = std::pair<component_it, component_it>;
 
-void link_nearby_stations(info_db& db, timetable& tt) {
+void link_nearby_stations(timetable& tt) {
   constexpr auto const kLinkNearbyMaxDistance = 300;  // [m];
 
-  auto const positions =
-      to_vec(db.iterate<location>(), [](location const& l) { return l.pos_; });
-  auto const locations_rtree = geo::make_point_rtree(positions);
+  auto const locations_rtree =
+      geo::make_point_rtree(tt.locations_.coordinates_);
 
   for (auto from_idx = location_idx_t{0}; from_idx != tt.locations_.src_.size();
        ++from_idx) {
     auto const from_src = tt.locations_.src_[from_idx];
-    auto const from_pos = positions[to_idx(from_idx)];
+    auto const from_pos = tt.locations_.coordinates_[from_idx];
 
     if (from_src == kNoSource) {
       continue;  // no dummy stations
@@ -56,7 +53,7 @@ void link_nearby_stations(info_db& db, timetable& tt) {
 
       auto const to_l_idx = location_idx_t{static_cast<unsigned>(to_idx)};
       auto const to_src = tt.locations_.src_[to_l_idx];
-      auto const to_pos = positions[cista::to_idx(to_idx)];
+      auto const to_pos = tt.locations_.coordinates_[to_l_idx];
       if (to_src == kNoSource /* no dummy stations */
           || from_src == to_src /* don't short-circuit */) {
         continue;
@@ -228,8 +225,8 @@ void transitivize_footpaths(timetable& tt) {
   }
 }
 
-void build_footpaths(info_db& db, timetable& tt) {
-  link_nearby_stations(db, tt);
+void build_footpaths(timetable& tt) {
+  link_nearby_stations(tt);
   transitivize_footpaths(tt);
 }
 

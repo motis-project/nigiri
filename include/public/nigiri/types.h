@@ -5,7 +5,6 @@
 
 #include "cista/containers/bitset.h"
 #include "cista/containers/flat_matrix.h"
-#include "cista/containers/fws_multimap.h"
 #include "cista/containers/hash_map.h"
 #include "cista/containers/hash_set.h"
 #include "cista/containers/mutable_fws_multimap.h"
@@ -13,6 +12,7 @@
 #include "cista/containers/tuple.h"
 #include "cista/containers/variant.h"
 #include "cista/containers/vector.h"
+#include "cista/containers/vecvec.h"
 #include "cista/reflection/printable.h"
 #include "cista/strong.h"
 
@@ -45,7 +45,7 @@ using cista::get;
 using cista::holds_alternative;
 
 template <typename K, typename V>
-using fws_multimap = cista::offset::fws_multimap<K, V>;
+using vecvec = cista::offset::vecvec<K, V>;
 
 template <typename K, typename V>
 using mutable_fws_multimap = cista::offset::mutable_fws_multimap<K, V>;
@@ -68,8 +68,6 @@ using external_trip_idx_t = cista::strong<std::uint32_t, struct _trip_idx>;
 using trip_idx_t = cista::strong<std::uint32_t, struct _trip_idx>;
 using rt_trip_idx_t = cista::strong<std::uint32_t, struct _rt_trip_idx>;
 using source_idx_t = cista::strong<std::uint8_t, struct _source_idx>;
-using equivalence_set_idx_t =
-    cista::strong<std::uint32_t, struct _equivalence_set_idx>;
 using merged_trips_idx_t =
     cista::strong<std::uint32_t, struct _merged_trips_idx>;
 using output_rule_t = cista::strong<std::uint8_t, struct _output_rule>;

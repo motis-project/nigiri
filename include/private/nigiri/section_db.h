@@ -34,13 +34,6 @@ struct tz_offsets {
 
 using timezone = variant<string, tz_offsets>;
 
-struct location {
-  string name_;
-  geo::latlng pos_;
-  source_idx_t src_;
-  std::uint32_t tz_;
-};
-
 struct category {
   CISTA_PRINTABLE(category)
   friend bool operator==(category const&, category const&) = default;
@@ -76,7 +69,6 @@ struct section_info {
 };
 
 using info_db = database<bitfield,
-                         location,
                          category,
                          attribute,
                          provider,

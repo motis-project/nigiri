@@ -387,9 +387,7 @@ void write_services(
     ProgressFn&& bytes_consumed) {
   parse_services(c, filename, interval, bitfields, timezones, file_content,
                  std::forward<ProgressFn>(bytes_consumed),
-                 [](service const& s) {
-
-                 });
+                 [](service const& s) {});
 }
 
 }  // namespace nigiri::loader::hrd
