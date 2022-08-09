@@ -9,7 +9,7 @@ using provider_map_t = hash_map<string, provider>;
 
 void verify_line_format(utl::cstr line, char const* filename, int line_number) {
   // Verify that the provider number has 5 digits.
-  auto provider_number = line.substr(0, utl::size(5));
+  auto const provider_number = line.substr(0, utl::size(5));
   utl::verify(std::all_of(begin(provider_number), end(provider_number),
                           [](char c) { return std::isdigit(c); }),
               "provider line format mismatch in {}:{}", filename, line_number);
@@ -37,7 +37,7 @@ provider read_provider_names(utl::cstr line, int line_number) {
   utl::verify(short_name != -1 && long_name != -1 && full_name != -1,
               "provider line format mismatch in line {}", line_number);
 
-  return provider{.short_name_ = parse_name(line.substr(short_name + 3)),
+  return provider{.short_name_ = parse_name(line.substr(long_name + 3)),
                   .long_name_ = parse_name(line.substr(full_name + 3))};
 }
 
@@ -51,10 +51,10 @@ provider_map_t parse_providers(config const& c, std::string_view file_content) {
   utl::for_each_line_numbered(
       file_content, [&](utl::cstr line, int line_number) {
         auto provider_number = utl::parse<int>(line.substr(c.track_.prov_nr_));
-        if (line[6] == 'K') {
+        if (line.length() > 6 && line[6] == 'K') {
           current_info = read_provider_names(line, line_number);
           previous_provider_number = provider_number;
-        } else {
+        } else if (line.length() > 8) {
           utl::verify(previous_provider_number == provider_number,
                       "provider line format mismatch in line {}", line_number);
           for_each_token(line.substr(8), ' ', [&](utl::cstr token) {

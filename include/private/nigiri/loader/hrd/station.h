@@ -22,12 +22,13 @@ struct hrd_location {
   hash_map<eva_number, duration_t> footpaths_out_;
 };
 
-hash_map<eva_number, hrd_location> parse_stations(
-    config const& c,
-    source_idx_t,
-    timetable& tt,
-    std::string_view station_names_file,
-    std::string_view station_coordinates_file,
-    std::string_view station_metabhf_file);
+using location_map_t = hash_map<eva_number, hrd_location>;
+
+location_map_t parse_stations(config const& c,
+                              source_idx_t,
+                              timetable& tt,
+                              std::string_view station_names_file,
+                              std::string_view station_coordinates_file,
+                              std::string_view station_metabhf_file);
 
 }  // namespace nigiri::loader::hrd

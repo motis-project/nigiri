@@ -7,6 +7,7 @@
 #include "geo/latlng.h"
 
 #include "nigiri/logging.h"
+#include "nigiri/section_db.h"
 #include "nigiri/types.h"
 #include "utl/zip.h"
 
@@ -62,6 +63,12 @@ struct timetable {
     bool in_allowed() const { return in_allowed_ != 0U; }
     bool out_allowed() const { return out_allowed_ != 0U; }
 
+    cista::hash_t hash() const {
+      return cista::hash_combine(
+          cista::BASE_HASH,
+          *reinterpret_cast<location_idx_t::value_t const*>(this));
+    }
+
     friend bool operator<=>(stop const&, stop const&) = default;
 
   private:
@@ -93,8 +100,6 @@ struct timetable {
           location_id{.id_ = l.id_, .src_ = l.src_}, next_id());
 
       if (is_new) {
-        log(log_lvl::info, "nigiri.timetable.location.add", "adding {}",
-            location_id{.id_ = l.id_, .src_ = l.src_});
         names_.emplace_back(l.name_);
         coordinates_.emplace_back(l.pos_);
         ids_.emplace_back(l.id_);
@@ -191,6 +196,9 @@ struct timetable {
         std::move(t.external_trip_ids_));
     trip_debug_.emplace_back(t.debug_);
   }
+
+  // Start date.
+  unixtime_t begin_;
 
   // Trip access: external trip id -> internal trip index
   hash_map<trip_id, external_trip_idx_t> trip_id_to_idx_;

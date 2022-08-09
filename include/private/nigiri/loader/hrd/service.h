@@ -7,6 +7,7 @@
 
 #include "cista/reflection/comparable.h"
 
+#include "utl/get_or_create.h"
 #include "utl/pairwise.h"
 #include "utl/parser/cstr.h"
 #include "utl/to_vec.h"
@@ -14,15 +15,15 @@
 
 #include "nigiri/loader/hrd/basic_info.h"
 #include "nigiri/loader/hrd/bitfield.h"
+#include "nigiri/loader/hrd/category.h"
 #include "nigiri/loader/hrd/eva_number.h"
 #include "nigiri/loader/hrd/parser_config.h"
+#include "nigiri/loader/hrd/provider.h"
+#include "nigiri/loader/hrd/station.h"
 #include "nigiri/loader/hrd/timezone.h"
 #include "nigiri/logging.h"
 #include "nigiri/timetable.h"
 #include "nigiri/types.h"
-#include "category.h"
-#include "provider.h"
-#include "utl/get_or_create.h"
 
 namespace nigiri::loader::hrd {
 
@@ -146,7 +147,10 @@ struct service {
       return "";
     } else {
       auto const train_nr = initial_train_num_;
-      auto const line_id = sections_.front().line_information_.front().to_str();
+      auto const line_id =
+          sections_.front().line_information_.empty()
+              ? ""
+              : sections_.front().line_information_.front().to_str();
       auto const first =
           is(kOnlyTrainNr)
               ? string{""}
@@ -421,7 +425,7 @@ void write_services(
     std::pair<std::chrono::sys_days, std::chrono::sys_days> const& interval,
     bitfield_map_t const& bitfields,
     timezone_map_t const& timezones,
-    hash_map<eva_number, location_idx_t> const& locations,
+    location_map_t const& locations,
     category_map_t const& categories,
     provider_map_t const& providers,
     std::string_view file_content,
@@ -432,7 +436,7 @@ void write_services(
       c, filename, interval, bitfields, timezones, file_content,
       std::forward<ProgressFn>(bytes_consumed), [&](service const& s) {
         auto const route = to_vec(s.stops_, [&](service::stop const& s) {
-          return timetable::stop(locations.at(s.eva_num_),
+          return timetable::stop(locations.at(s.eva_num_).idx_,
                                  s.dep_.in_out_allowed_,
                                  s.arr_.in_out_allowed_);
         });
@@ -445,8 +449,9 @@ void write_services(
     for (auto const& s : services) {
       auto const id = tt.register_trip_id(
           trip_id{.id_ = fmt::format(
-                      "{}/{}/{}/{}", s.initial_admin_, s.initial_train_num_,
-                      s.stops_.front().eva_num_, s.stops_.front().dep_.time_),
+                      "{}/{}/{}/{:07}/{}", src, s.initial_admin_.view(),
+                      s.initial_train_num_, to_idx(s.stops_.front().eva_num_),
+                      s.stops_.front().dep_.time_),
                   .src_ = src},
           s.display_name(categories, providers));
       auto const merged_trip = tt.register_merged_trip({id});

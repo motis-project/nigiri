@@ -117,7 +117,7 @@ void parse_footpaths(config const& c,
   });
 }
 
-hash_map<eva_number, hrd_location> parse_stations(
+location_map_t parse_stations(
     config const& c,
     source_idx_t const src,
     timetable& tt,
@@ -127,7 +127,7 @@ hash_map<eva_number, hrd_location> parse_stations(
   auto empty_idx_vec = vector<location_idx_t>{};
   auto empty_footpath_vec = vector<footpath>{};
 
-  hash_map<eva_number, hrd_location> stations;
+  location_map_t stations;
   parse_station_names(c, stations, station_names_file);
   parse_station_coordinates(c, stations, station_coordinates_file);
   parse_equivilant_stations(c, stations, station_metabhf_file);
