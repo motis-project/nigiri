@@ -34,13 +34,6 @@ struct tz_offsets {
 
 using timezone = variant<string, tz_offsets>;
 
-struct category {
-  CISTA_PRINTABLE(category)
-  friend bool operator==(category const&, category const&) = default;
-  string short_name_, long_name_;
-  output_rule_t output_rule_;
-};
-
 struct attribute {
   CISTA_PRINTABLE(attribute)
   friend bool operator==(attribute const&, attribute const&) = default;
@@ -58,7 +51,6 @@ using direction_t = cista::variant<location_idx_t, string>;
 
 struct section_info {
   CISTA_COMPARABLE()
-  db_index_t<category> category_idx_{0U};
   db_index_t<attribute> attribute_idx_{0U};
   db_index_t<provider> provider_idx_{0U};
   db_index_t<direction_t> direction_idx_{0U};
@@ -69,7 +61,6 @@ struct section_info {
 };
 
 using info_db = database<bitfield,
-                         category,
                          attribute,
                          provider,
                          line_id_t,

@@ -20,11 +20,15 @@
 #include "nigiri/logging.h"
 #include "nigiri/timetable.h"
 #include "nigiri/types.h"
+#include "category.h"
+#include "provider.h"
+#include "utl/get_or_create.h"
 
 namespace nigiri::loader::hrd {
 
 struct parser_info {
   friend std::ostream& operator<<(std::ostream& out, parser_info const& pi);
+  string str() const;
   char const* filename_;
   int line_number_from_;
   int line_number_to_;
@@ -101,6 +105,7 @@ struct service {
           std::vector<stop> stops,
           std::vector<section> sections,
           bitfield traffic_days,
+          utl::cstr initial_admin,
           int initial_train_num);
 
   service(config const&, specification const&);
@@ -123,12 +128,44 @@ struct service {
   void set_stop_times(vector<duration_t> const&);
   vector<tz_offsets> get_stop_timezones(timezone_map_t const&) const;
 
+  string display_name(category_map_t const& categories,
+                      provider_map_t const& providers) const {
+    constexpr auto const kOnlyCategory = std::uint8_t{0b0001};
+    constexpr auto const kOnlyTrainNr = std::uint8_t{0b0010};
+    constexpr auto const kNoOutput = std::uint8_t{0b0011};
+    constexpr auto const kUseProvider = std::uint8_t{0b1000};
+
+    auto const& cat = categories.at(sections_.front().category_.front());
+    auto const& provider = providers.at(initial_admin_.view());
+
+    auto const is = [&](auto const flag) {
+      return (cat.output_rule_ & flag) == flag;
+    };
+
+    if (is(kNoOutput)) {
+      return "";
+    } else {
+      auto const train_nr = initial_train_num_;
+      auto const line_id = sections_.front().line_information_.front().to_str();
+      auto const first =
+          is(kOnlyTrainNr)
+              ? string{""}
+              : (is(kUseProvider) ? provider.short_name_ : cat.name_);
+      auto const second =
+          is(kOnlyCategory)
+              ? string{""}
+              : (train_nr == 0U ? line_id : fmt::to_string(train_nr));
+      return fmt::format("{}{}{}", first, first.empty() ? "" : " ", second);
+    }
+  }
+
   parser_info origin_{};
   int num_repetitions_{0};
   int interval_{0};
   std::vector<stop> stops_;
   std::vector<section> sections_;
   bitfield traffic_days_;
+  utl::cstr initial_admin_;
   int initial_train_num_{0};
 };
 
@@ -185,6 +222,7 @@ void expand_traffic_days(service const& s,
                    stops,
                    sections,
                    split.traffic_days_,
+                   origin.initial_admin_,
                    origin.initial_train_num_};
   };
 
@@ -246,7 +284,8 @@ void expand_repetitions(service const& s, Fn&& consumer) {
                                 update_event(stop.arr_, s.interval_, rep),
                                 update_event(stop.dep_, s.interval_, rep)};
                           }),
-              s.sections_, s.traffic_days_, s.initial_train_num_});
+              s.sections_, s.traffic_days_, s.initial_admin_,
+              s.initial_train_num_});
   }
 }
 
@@ -377,17 +416,52 @@ void parse_services(
 template <typename ProgressFn>
 void write_services(
     config const& c,
+    source_idx_t const src,
     char const* filename,
     std::pair<std::chrono::sys_days, std::chrono::sys_days> const& interval,
     bitfield_map_t const& bitfields,
-    hash_map<eva_number, tz_offsets> const& timezones,
+    timezone_map_t const& timezones,
     hash_map<eva_number, location_idx_t> const& locations,
+    category_map_t const& categories,
+    provider_map_t const& providers,
     std::string_view file_content,
     timetable& tt,
     ProgressFn&& bytes_consumed) {
-  parse_services(c, filename, interval, bitfields, timezones, file_content,
-                 std::forward<ProgressFn>(bytes_consumed),
-                 [](service const& s) {});
+  hash_map<vector<timetable::stop>, vector<service>> route_services;
+  parse_services(
+      c, filename, interval, bitfields, timezones, file_content,
+      std::forward<ProgressFn>(bytes_consumed), [&](service const& s) {
+        auto const route = to_vec(s.stops_, [&](service::stop const& s) {
+          return timetable::stop(locations.at(s.eva_num_),
+                                 s.dep_.in_out_allowed_,
+                                 s.arr_.in_out_allowed_);
+        });
+        route_services[route].emplace_back(s);
+      });
+
+  hash_map<bitfield, bitfield_idx_t> bitfield_indices;
+  for (auto const& [stop_seq, services] : route_services) {
+    auto const route_idx = tt.register_route(stop_seq);
+    for (auto const& s : services) {
+      auto const id = tt.register_trip_id(
+          trip_id{.id_ = fmt::format(
+                      "{}/{}/{}/{}", s.initial_admin_, s.initial_train_num_,
+                      s.stops_.front().eva_num_, s.stops_.front().dep_.time_),
+                  .src_ = src},
+          s.display_name(categories, providers));
+      auto const merged_trip = tt.register_merged_trip({id});
+      tt.add_trip(timetable::trip{
+          .bitfield_idx_ = utl::get_or_create(
+              bitfield_indices, s.traffic_days_,
+              [&]() { return tt.register_bitfield(s.traffic_days_); }),
+          .route_idx_ = route_idx,
+          .stop_times_ = s.get_stop_times(),
+          .meta_data_ = vector<section_db_idx_t>(stop_seq.size() - 1),
+          .external_trip_ids_ =
+              vector<merged_trips_idx_t>(stop_seq.size() - 1, merged_trip),
+          .debug_ = s.origin_.str()});
+    }
+  }
 }
 
 }  // namespace nigiri::loader::hrd

@@ -70,7 +70,6 @@ using rt_trip_idx_t = cista::strong<std::uint32_t, struct _rt_trip_idx>;
 using source_idx_t = cista::strong<std::uint8_t, struct _source_idx>;
 using merged_trips_idx_t =
     cista::strong<std::uint32_t, struct _merged_trips_idx>;
-using output_rule_t = cista::strong<std::uint8_t, struct _output_rule>;
 
 struct trip_id {
   CISTA_PRINTABLE(trip_id, "id", "src")
@@ -91,12 +90,24 @@ using unixtime_t = std::chrono::time_point<
 
 using minutes_after_midnight_t = duration_t;
 
-enum class location_type : std::uint8_t {
-  track,
-  platform,
-  station,
-  meta_station
+enum class clasz : std::uint8_t {
+  kAir = 0,
+  kHighSpeed = 1,
+  kLongDistance = 2,
+  kCoach = 3,
+  kNight = 4,
+  kRegionalFast = 5,
+  kRegional = 6,
+  kMetro = 7,
+  kSubway = 8,
+  kTram = 9,
+  kBus = 10,
+  kShip = 11,
+  kOther = 12,
+  kNumClasses
 };
+
+enum class location_type : std::uint8_t { kTrack, kPlatform, kStation };
 
 enum class event_type { ARR, DEP };
 

@@ -141,7 +141,7 @@ hash_map<eva_number, hrd_location> parse_stations(
                             .name_ = s.name_,
                             .pos_ = s.pos_,
                             .src_ = src,
-                            .type_ = location_type::station,
+                            .type_ = location_type::kStation,
                             .osm_id_ = osm_node_id_t::invalid(),
                             .parent_ = location_idx_t::invalid(),
                             .equivalences_ = it_range{empty_idx_vec},

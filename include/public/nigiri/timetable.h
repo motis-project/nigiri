@@ -51,6 +51,13 @@ struct timetable {
   };
 
   struct stop {
+    stop(location_idx_t const location,
+         bool const in_allowed,
+         bool const out_allowed)
+        : location_{location},
+          in_allowed_{in_allowed},
+          out_allowed_{out_allowed} {}
+
     location_idx_t location_idx() const { return location_idx_t{location_}; }
     bool in_allowed() const { return in_allowed_; }
     bool out_allowed() const { return out_allowed_; }
@@ -92,7 +99,7 @@ struct timetable {
         coordinates_.emplace_back(l.pos_);
         ids_.emplace_back(l.id_);
         src_.emplace_back(l.src_);
-        types_.emplace_back(location_type::station);
+        types_.emplace_back(location_type::kStation);
         transfer_time_.emplace_back(2);  // TODO(felix)
         osm_ids_.emplace_back(0);  // TODO(felix)
         parents_.emplace_back(0);  // TODO(felix)
@@ -119,7 +126,7 @@ struct timetable {
 
     location_idx_t next_id() const {
       return location_idx_t{
-          static_cast<location_idx_t::value_t>(location_id_to_idx_.size())};
+          static_cast<location_idx_t::value_t>(names_.size())};
     }
 
     // Station access: external station id -> internal station idx
@@ -139,6 +146,7 @@ struct timetable {
   } locations_;
 
   struct trip {
+    string display_name_;
     bitfield_idx_t bitfield_idx_;
     route_idx_t route_idx_;
     vector<minutes_after_midnight_t> stop_times_;
@@ -147,10 +155,11 @@ struct timetable {
     string debug_;
   };
 
-  external_trip_idx_t register_trip_id(trip_id const& id) {
+  external_trip_idx_t register_trip_id(trip_id const& id, string display_name) {
     auto const idx = external_trip_idx_t{trip_ids_.index_size()};
     auto const [_, inserted] = trip_id_to_idx_.emplace(id, idx);
     utl::verify(inserted, "trip id {} already exists");
+    trip_display_names_.emplace_back(std::move(display_name));
     return idx;
   }
 
@@ -160,10 +169,17 @@ struct timetable {
     return idx;
   }
 
-  route_idx_t register_route(vector<stop>&& stop_seq) {
+  route_idx_t register_route(vector<stop> stop_seq) {
     auto const idx = route_location_seq_.size();
     route_location_seq_.emplace_back(std::move(stop_seq));
     return route_idx_t{static_cast<route_idx_t::value_t>(idx)};
+  }
+
+  merged_trips_idx_t register_merged_trip(
+      vector<external_trip_idx_t> trip_ids) {
+    auto const id = merged_trips_.size();
+    merged_trips_.emplace_back(std::move(trip_ids));
+    return merged_trips_idx_t{id};
   }
 
   void add_trip(trip&& t) {
@@ -181,6 +197,9 @@ struct timetable {
 
   // External trip index -> list of external trip ids (HRD + RI Basis)
   mutable_fws_multimap<external_trip_idx_t, trip_id> trip_ids_;
+
+  // External trip index -> display name
+  vector_map<external_trip_idx_t, string> trip_display_names_;
 
   // Route -> From (inclusive) and to index (exclusive) of expanded trips
   vector_map<route_idx_t, index_range<trip_idx_t>> route_trip_ranges_;
