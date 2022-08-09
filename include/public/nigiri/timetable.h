@@ -55,12 +55,12 @@ struct timetable {
          bool const in_allowed,
          bool const out_allowed)
         : location_{location},
-          in_allowed_{in_allowed},
-          out_allowed_{out_allowed} {}
+          in_allowed_{in_allowed ? 1U : 0U},
+          out_allowed_{out_allowed ? 1U : 0U} {}
 
     location_idx_t location_idx() const { return location_idx_t{location_}; }
-    bool in_allowed() const { return in_allowed_; }
-    bool out_allowed() const { return out_allowed_; }
+    bool in_allowed() const { return in_allowed_ != 0U; }
+    bool out_allowed() const { return out_allowed_ != 0U; }
 
     friend bool operator<=>(stop const&, stop const&) = default;
 
