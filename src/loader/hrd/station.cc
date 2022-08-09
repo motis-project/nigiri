@@ -117,13 +117,12 @@ void parse_footpaths(config const& c,
   });
 }
 
-location_map_t parse_stations(
-    config const& c,
-    source_idx_t const src,
-    timetable& tt,
-    std::string_view station_names_file,
-    std::string_view station_coordinates_file,
-    std::string_view station_metabhf_file) {
+location_map_t parse_stations(config const& c,
+                              source_idx_t const src,
+                              timetable& tt,
+                              std::string_view station_names_file,
+                              std::string_view station_coordinates_file,
+                              std::string_view station_metabhf_file) {
   auto empty_idx_vec = vector<location_idx_t>{};
   auto empty_footpath_vec = vector<footpath>{};
 
