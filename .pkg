@@ -5,15 +5,15 @@
 [cista]
   url=git@github.com:felixguendling/cista.git
   branch=master
-  commit=4898678475463bb18d833d7ec2f47ca839b5a429
+  commit=8783e1aa71d9fd7d146aeb90ff3291d54a7d3e0c
 [geo]
   url=git@github.com:motis-project/geo.git
   branch=master
-  commit=fa97943bc7ad5270a74d504ea587dab79f9ade61
+  commit=5bf5179faf5f21d543866cca85fe090fe3664cc5
 [utl]
   url=git@github.com:motis-project/utl.git
   branch=master
-  commit=931b8271896612ad8d8dc364f4cf419d6ef06307
+  commit=042baa02575ef85ffaee97768eb3543beda0adb3
 [miniz]
   url=git@github.com:motis-project/miniz.git
   branch=master
