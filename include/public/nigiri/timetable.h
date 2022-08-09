@@ -62,7 +62,7 @@ struct timetable {
     bool in_allowed() const { return in_allowed_ != 0U; }
     bool out_allowed() const { return out_allowed_ != 0U; }
 
-    friend bool operator<=>(stop const&, stop const&) = default;
+    friend auto operator<=>(stop const&, stop const&) = default;
 
   private:
     location_idx_t::value_t location_ : 30;
