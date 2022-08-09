@@ -94,7 +94,6 @@ jobs:
       matrix:
         config:
           - preset: macos-x86_64
-          - preset: macos-x86_64-noavx2
           - preset: macos-arm64
     env:
       BUILDCACHE_COMPRESS: true
@@ -151,10 +150,8 @@ jobs:
       fail-fast: false
       matrix:
         config:
-          - preset: linux-amd64-avx2-release
+          - preset: linux-amd64-release
             artifact: linux-amd64
-          - preset: linux-amd64-noavx-release
-            artifact: linux-amd64-noavx
           - preset: linux-x86-release
             artifact: linux-x86
           - preset: linux-arm-release
