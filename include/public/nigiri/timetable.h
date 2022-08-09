@@ -179,7 +179,7 @@ struct timetable {
       vector<external_trip_idx_t> trip_ids) {
     auto const id = merged_trips_.size();
     merged_trips_.emplace_back(std::move(trip_ids));
-    return merged_trips_idx_t{id};
+    return merged_trips_idx_t{static_cast<merged_trips_idx_t::value_t>(id)};
   }
 
   void add_trip(trip&& t) {
