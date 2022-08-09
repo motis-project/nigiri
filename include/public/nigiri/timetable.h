@@ -1,5 +1,7 @@
 #pragma once
 
+#include <compare>
+
 #include "cista/reflection/printable.h"
 
 #include "utl/verify.h"
@@ -69,7 +71,7 @@ struct timetable {
           *reinterpret_cast<location_idx_t::value_t const*>(this));
     }
 
-    friend bool operator<=>(stop const&, stop const&) = default;
+    friend auto operator<=>(stop const&, stop const&) = default;
 
   private:
     location_idx_t::value_t location_ : 30;
@@ -106,8 +108,8 @@ struct timetable {
         src_.emplace_back(l.src_);
         types_.emplace_back(location_type::kStation);
         transfer_time_.emplace_back(2);  // TODO(felix)
-        osm_ids_.emplace_back(0);  // TODO(felix)
-        parents_.emplace_back(0);  // TODO(felix)
+        osm_ids_.emplace_back(osm_node_id_t::invalid());  // TODO(felix)
+        parents_.emplace_back(location_idx_t::invalid());  // TODO(felix)
       }
 
       return it->second;
