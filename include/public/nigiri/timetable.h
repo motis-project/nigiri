@@ -1,5 +1,7 @@
 #pragma once
 
+#include <compare>
+
 #include "cista/reflection/printable.h"
 
 #include "utl/verify.h"
