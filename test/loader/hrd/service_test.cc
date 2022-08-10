@@ -4,7 +4,6 @@
 #include "nigiri/loader/hrd/service.h"
 #include "nigiri/loader/hrd/station.h"
 #include "nigiri/loader/hrd/timezone.h"
-#include "nigiri/loader/hrd/util.h"
 #include "nigiri/byte_sizes.h"
 #include "nigiri/print_transport.h"
 #include "nigiri/section_db.h"
@@ -131,16 +130,25 @@ TEST_CASE("loader_hrd_service, parse multiple") {
   write_services(c, source_idx_t{0}, "services.txt", interval, bitfields,
                  timezones, locations, categories, providers,
                  service_file_content, tt, [](std::size_t) {});
+
+  auto const num_days = (tt.end_ - tt.begin_ + 1_days) / 1_days;
+  std::cout << "TIMETABLE_LENGTH=" << num_days << " DAYS\n\n";
   for (auto i = 0U; i != tt.transport_stop_times_.size(); ++i) {
     auto const transport_idx = transport_idx_t{i};
     auto const traffic_days =
         tt.bitfields_.at(tt.transport_traffic_days_.at(transport_idx));
-    for (auto day = tt.begin_; day != tt.end_; day += 1_days) {
+    std::cout << "TRANSPORT=" << transport_idx << ", TRAFFIC_DAYS="
+              << traffic_days.to_string().substr(traffic_days.size() - num_days)
+              << "\n";
+    for (auto day = tt.begin_; day <= tt.end_; day += 1_days) {
       auto const day_idx = (day - tt.begin_) / 1_days;
       if (traffic_days.test(day_idx)) {
-        print_transport(tt, std::cout, transport_idx, day_idx_t{0});
+        date::to_stream(std::cout, "%F", day);
+        std::cout << " (day_idx=" << day_idx << ")\n";
+        print_transport(tt, std::cout, transport_idx, day_idx_t{day_idx});
         std::cout << "\n";
       }
     }
+    std::cout << "---\n\n";
   }
 }

@@ -19,6 +19,6 @@ s    4 C 0  S         0 N S-Bahn)";
     auto const it = categories.find("s  ");
     CHECK(it != end(categories));
     CHECK((it->second ==
-           category{.name_ = "s  ", .long_name_ = "S", .output_rule_ = 0}));
+           category{.name_ = "s", .long_name_ = "S", .output_rule_ = 0}));
   }
 }

@@ -49,7 +49,7 @@ timezone_map_t parse_timezones(config const& c, std::string_view file_content) {
       auto const eva_num = eva_number(line.substr(c.tz_.type2_eva_));
       tz_offsets t;
       t.offset_ = duration_t{
-          distance_to_midnight(line.substr(c.tz_.type3_dst_to_midnight1_))};
+          distance_to_midnight(line.substr(c.tz_.type2_dst_to_midnight_))};
       if (!line.substr(14, utl::size(33)).trim().empty()) {
         t.season_ = tz_offsets::season{
             .offset_ = distance_to_midnight(
@@ -61,6 +61,7 @@ timezone_map_t parse_timezones(config const& c, std::string_view file_content) {
             .season_end_mam_ = distance_to_midnight(
                 line.substr(c.tz_.type3_dst_to_midnight3_))};
       }
+      std::cout << t << "\n";
       tz[eva_num] = t;
     }
   });

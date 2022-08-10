@@ -42,8 +42,6 @@ provider read_provider_names(utl::cstr line, int line_number) {
 }
 
 provider_map_t parse_providers(config const& c, std::string_view file_content) {
-  scoped_timer timer("parsing providers");
-
   provider_map_t providers;
   provider current_info;
   int previous_provider_number = 0;

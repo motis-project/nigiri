@@ -28,6 +28,7 @@ struct tz_offsets {
     duration_t season_begin_mam_{0};
     duration_t season_end_mam_{0};
   };
+  friend std::ostream& operator<<(std::ostream&, tz_offsets const&);
   std::optional<season> season_{std::nullopt};
   duration_t offset_{0};
 };

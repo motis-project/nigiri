@@ -23,8 +23,9 @@ void print_transport(timetable const& tt,
     auto const& stop_name = tt.locations_.names_.at(location_idx);
     auto const& stop_id = tt.locations_.ids_.at(location_idx);
     auto const stop_name_len = utf8_conv.from_bytes(stop_name.str()).size();
-    std::cout << std::right << std::setw(2) << stop_idx << ": " << std::left
-              << std::setw(7) << stop_id << " " << std::left
+    std::cout << std::right << std::setw(2) << std::setfill(' ') << stop_idx
+              << ": " << std::left << std::setw(7) << stop_id << " "
+              << std::left
               << std::setw(std::max(0, 50 - static_cast<int>(stop_name_len +
                                                              stop_name.size())))
               << std::setfill('.') << stop_name << std::setfill(' ');
