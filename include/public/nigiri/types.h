@@ -64,8 +64,8 @@ using osm_node_id_t = cista::strong<std::int64_t, struct _osm_node_idx>;
 using route_idx_t = cista::strong<std::uint32_t, struct _location_idx>;
 using section_idx_t = cista::strong<std::uint32_t, struct _section_idx>;
 using section_db_idx_t = cista::strong<std::uint32_t, struct _section_db_idx>;
-using external_trip_idx_t = cista::strong<std::uint32_t, struct _trip_idx>;
 using trip_idx_t = cista::strong<std::uint32_t, struct _trip_idx>;
+using transport_idx_t = cista::strong<std::uint32_t, struct _transport_idx>;
 using rt_trip_idx_t = cista::strong<std::uint32_t, struct _rt_trip_idx>;
 using source_idx_t = cista::strong<std::uint8_t, struct _source_idx>;
 using day_idx_t = cista::strong<std::uint16_t, struct _day_idx>;
@@ -89,6 +89,18 @@ using unixtime_t = std::chrono::time_point<
     std::chrono::system_clock,
     std::chrono::duration<std::uint32_t, std::ratio<60>>>;
 
+constexpr duration_t operator"" _minutes(unsigned long long n) {
+  return duration_t{n};
+}
+
+constexpr duration_t operator"" _hours(unsigned long long n) {
+  return duration_t{n * 60U};
+}
+
+constexpr duration_t operator"" _days(unsigned long long n) {
+  return duration_t{n * 1440U};
+}
+
 using minutes_after_midnight_t = duration_t;
 
 enum class clasz : std::uint8_t {
@@ -111,8 +123,6 @@ enum class clasz : std::uint8_t {
 enum class location_type : std::uint8_t { kTrack, kPlatform, kStation };
 
 enum class event_type { ARR, DEP };
-
-constexpr auto const kNoSource = source_idx_t{0};
 
 }  // namespace nigiri
 

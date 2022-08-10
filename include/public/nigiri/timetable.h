@@ -39,12 +39,12 @@ struct footpath {
 
 struct timetable {
   struct expanded_trip_section {
-    trip_idx_t trip_idx_{};
+    transport_idx_t trip_idx_{};
     section_idx_t from_section_idx_{}, to_section_idx_{};
   };
 
   struct external_trip_section {
-    external_trip_idx_t trip_idx_{};
+    trip_idx_t trip_idx_{};
     section_idx_t section_idx_{};
   };
 
@@ -152,7 +152,7 @@ struct timetable {
     mutable_fws_multimap<location_idx_t, footpath> footpaths_in_;
   } locations_;
 
-  struct trip {
+  struct transport {
     string display_name_;
     bitfield_idx_t bitfield_idx_;
     route_idx_t route_idx_;
@@ -162,11 +162,15 @@ struct timetable {
     string debug_;
   };
 
-  external_trip_idx_t register_trip_id(trip_id const& id, string display_name) {
-    auto const idx = external_trip_idx_t{trip_ids_.index_size()};
+  trip_idx_t register_trip_id(trip_id const& id,
+                              string display_name,
+                              string debug) {
+    auto const idx = trip_idx_t{trip_ids_.index_size()};
     auto const [_, inserted] = trip_id_to_idx_.emplace(id, idx);
     utl::verify(inserted, "trip id {} already exists");
     trip_display_names_.emplace_back(std::move(display_name));
+    trip_debug_.emplace_back().emplace_back(std::move(debug));
+    trip_ids_.emplace_back().emplace_back(id);
     return idx;
   }
 
@@ -182,37 +186,46 @@ struct timetable {
     return route_idx_t{static_cast<route_idx_t::value_t>(idx)};
   }
 
-  merged_trips_idx_t register_merged_trip(
-      vector<external_trip_idx_t> trip_ids) {
-    auto const id = merged_trips_.size();
+  merged_trips_idx_t register_merged_trip(vector<trip_idx_t> trip_ids) {
+    auto const idx = merged_trips_.size();
     merged_trips_.emplace_back(std::move(trip_ids));
-    return merged_trips_idx_t{static_cast<merged_trips_idx_t::value_t>(id)};
+    return merged_trips_idx_t{static_cast<merged_trips_idx_t::value_t>(idx)};
   }
 
-  void add_trip(trip&& t) {
-    trip_traffic_days_.emplace_back(t.bitfield_idx_);
-    trip_route_.emplace_back(t.route_idx_);
-    trip_stop_times_.emplace_back(std::move(t.stop_times_));
-    trip_section_meta_data_.emplace_back(std::move(t.meta_data_));
-    trip_to_external_trip_section_.emplace_back(
-        std::move(t.external_trip_ids_));
-    trip_debug_.emplace_back(t.debug_);
+  void add_transport(transport&& t) {
+    transport_traffic_days_.emplace_back(t.bitfield_idx_);
+    transport_route_.emplace_back(t.route_idx_);
+    transport_stop_times_.emplace_back(std::move(t.stop_times_));
+    transport_section_meta_data_.emplace_back(std::move(t.meta_data_));
+    transport_to_trip_section_.emplace_back(std::move(t.external_trip_ids_));
+
+    assert(transport_traffic_days_.size() == transport_route_.size());
+    assert(transport_traffic_days_.size() == transport_stop_times_.size());
+    assert(transport_traffic_days_.size() ==
+           transport_section_meta_data_.size());
+    assert(transport_traffic_days_.size() == transport_to_trip_section_.size());
+    assert(t.stop_times_.size() ==
+           route_location_seq_.at(t.route_idx_).size() * 2 - 2);
+    assert(t.external_trip_ids_.size() == t.stop_times_.size() / 2);
   }
 
   // Start date.
-  unixtime_t begin_;
+  unixtime_t begin_, end_;
 
   // Trip access: external trip id -> internal trip index
-  hash_map<trip_id, external_trip_idx_t> trip_id_to_idx_;
+  hash_map<trip_id, trip_idx_t> trip_id_to_idx_;
 
   // External trip index -> list of external trip ids (HRD + RI Basis)
-  mutable_fws_multimap<external_trip_idx_t, trip_id> trip_ids_;
+  mutable_fws_multimap<trip_idx_t, trip_id> trip_ids_;
+
+  // External trip -> debug info
+  mutable_fws_multimap<trip_idx_t, string> trip_debug_;
 
   // External trip index -> display name
-  vector_map<external_trip_idx_t, string> trip_display_names_;
+  vector_map<trip_idx_t, string> trip_display_names_;
 
   // Route -> From (inclusive) and to index (exclusive) of expanded trips
-  vector_map<route_idx_t, index_range<trip_idx_t>> route_trip_ranges_;
+  vector_map<route_idx_t, index_range<transport_idx_t>> route_transport_ranges_;
 
   // Route -> list of stops
   vecvec<route_idx_t, stop> route_location_seq_;
@@ -221,36 +234,33 @@ struct timetable {
   mutable_fws_multimap<location_idx_t, route_idx_t> location_routes_;
 
   // Trip index -> sequence of stop times
-  vecvec<trip_idx_t, minutes_after_midnight_t> trip_stop_times_;
+  vecvec<transport_idx_t, minutes_after_midnight_t> transport_stop_times_;
 
   // Trip index -> traffic day bitfield
-  vector_map<trip_idx_t, bitfield_idx_t> trip_traffic_days_;
+  vector_map<transport_idx_t, bitfield_idx_t> transport_traffic_days_;
 
   // Trip index -> sequence of stop times
-  vecvec<rt_trip_idx_t, unixtime_t> rt_trip_stop_times_;
+  vecvec<rt_trip_idx_t, unixtime_t> rt_transport_stop_times_;
 
   // Unique bitfields
   vector_map<bitfield_idx_t, bitfield> bitfields_;
 
   // For each trip the corresponding route
-  vector_map<trip_idx_t, route_idx_t> trip_route_;
+  vector_map<transport_idx_t, route_idx_t> transport_route_;
 
   // Trip index -> trip section meta data db index
-  vecvec<trip_idx_t, section_db_idx_t> trip_section_meta_data_;
+  vecvec<transport_idx_t, section_db_idx_t> transport_section_meta_data_;
 
   // Trip index -> merged trips
-  vecvec<trip_idx_t, merged_trips_idx_t> trip_to_external_trip_section_;
+  vecvec<transport_idx_t, merged_trips_idx_t> transport_to_trip_section_;
 
   // Merged trips info
-  vecvec<merged_trips_idx_t, external_trip_idx_t> merged_trips_;
+  vecvec<merged_trips_idx_t, trip_idx_t> merged_trips_;
 
   // External trip index -> list of section ranges where this trip was
   // expanded
-  mutable_fws_multimap<external_trip_idx_t, expanded_trip_section>
-      external_trip_idx_to_trip_idx_;
-
-  // External trip -> debug info
-  vector_map<trip_idx_t, string> trip_debug_;
+  mutable_fws_multimap<trip_idx_t, expanded_trip_section>
+      trip_idx_to_transport_idx_;
 };
 
 }  // namespace nigiri

@@ -6,6 +6,9 @@
 
 namespace nigiri {
 
-void print_transport(timetable const&, std::ostream&, trip_idx_t, day_idx_t);
+void print_transport(timetable const&,
+                     std::ostream&,
+                     transport_idx_t,
+                     day_idx_t);
 
 }  // namespace nigiri

@@ -41,7 +41,7 @@ void link_nearby_stations(timetable& tt) {
     auto const from_src = tt.locations_.src_[from_idx];
     auto const from_pos = tt.locations_.coordinates_[from_idx];
 
-    if (from_src == kNoSource) {
+    if (from_src == source_idx_t::invalid()) {
       continue;  // no dummy stations
     }
 
@@ -54,7 +54,7 @@ void link_nearby_stations(timetable& tt) {
       auto const to_l_idx = location_idx_t{static_cast<unsigned>(to_idx)};
       auto const to_src = tt.locations_.src_[to_l_idx];
       auto const to_pos = tt.locations_.coordinates_[to_l_idx];
-      if (to_src == kNoSource /* no dummy stations */
+      if (to_src == source_idx_t::invalid() /* no dummy stations */
           || from_src == to_src /* don't short-circuit */) {
         continue;
       }

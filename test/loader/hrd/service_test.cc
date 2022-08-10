@@ -116,21 +116,31 @@ constexpr auto const providers_file_content = R"(
 )";
 
 TEST_CASE("loader_hrd_service, parse multiple") {
-  for (auto const& c : configs) {
-    info_db db{"./test_db", 512_kB, info_db::init_type::CLEAR};
-    timetable tt;
-    auto const locations =
-        parse_stations(c, source_idx_t{0U}, tt, stations_file_content,
-                       station_geo_file_content, station_metabhf_content);
-    auto const bitfields = parse_bitfields(c, tt, bitfields_file_content);
-    auto const categories = parse_categories(c, categories_file_content);
-    auto const providers = parse_providers(c, providers_file_content);
-    auto const timezones = parse_timezones(c, timezones_file_content);
-    auto const interval = parse_interval(basic_info_file_content);
-    tt.begin_ = std::chrono::sys_days{interval.first};
-    write_services(c, source_idx_t{0}, "services.txt", interval, bitfields,
-                   timezones, locations, categories, providers,
-                   service_file_content, tt, [](std::size_t) {});
-    print_transport(tt, std::cout, trip_idx_t{0}, day_idx_t{0});
+  auto const& c = configs[0];
+  timetable tt;
+  auto const locations =
+      parse_stations(c, source_idx_t{0U}, tt, stations_file_content,
+                     station_geo_file_content, station_metabhf_content);
+  auto const bitfields = parse_bitfields(c, tt, bitfields_file_content);
+  auto const categories = parse_categories(c, categories_file_content);
+  auto const providers = parse_providers(c, providers_file_content);
+  auto const timezones = parse_timezones(c, timezones_file_content);
+  auto const interval = parse_interval(basic_info_file_content);
+  tt.begin_ = std::chrono::sys_days{interval.first};
+  tt.end_ = std::chrono::sys_days{interval.second};
+  write_services(c, source_idx_t{0}, "services.txt", interval, bitfields,
+                 timezones, locations, categories, providers,
+                 service_file_content, tt, [](std::size_t) {});
+  for (auto i = 0U; i != tt.transport_stop_times_.size(); ++i) {
+    auto const transport_idx = transport_idx_t{i};
+    auto const traffic_days =
+        tt.bitfields_.at(tt.transport_traffic_days_.at(transport_idx));
+    for (auto day = tt.begin_; day != tt.end_; day += 1_days) {
+      auto const day_idx = (day - tt.begin_) / 1_days;
+      if (traffic_days.test(day_idx)) {
+        print_transport(tt, std::cout, transport_idx, day_idx_t{0});
+        std::cout << "\n";
+      }
+    }
   }
 }
