@@ -3,6 +3,9 @@
 #include <chrono>
 #include <cinttypes>
 
+#include "date/date.h"
+#include "date/tz.h"
+
 #include "cista/containers/bitset.h"
 #include "cista/containers/flat_matrix.h"
 #include "cista/containers/hash_map.h"
@@ -89,6 +92,8 @@ using duration_t = std::chrono::duration<std::uint16_t, std::ratio<60>>;
 using unixtime_t = std::chrono::time_point<
     std::chrono::system_clock,
     std::chrono::duration<std::uint32_t, std::ratio<60>>>;
+using local_time =
+    date::local_time<std::chrono::duration<std::uint32_t, std::ratio<60>>>;
 
 constexpr duration_t operator"" _minutes(unsigned long long n) {
   return duration_t{n};
@@ -116,7 +121,29 @@ struct tz_offsets {
   duration_t offset_{0};
 };
 
-using timezone = variant<string, tz_offsets>;
+inline local_time to_local_time(tz_offsets const& offsets, unixtime_t const t) {
+  if (!offsets.season_.has_value()) {
+    return local_time{(t + offsets.offset_).time_since_epoch()};
+  }
+
+  auto const season_begin = offsets.season_->begin_ +
+                            offsets.season_->season_begin_mam_ +
+                            offsets.offset_;
+  auto const season_end = offsets.season_->end_ +
+                          offsets.season_->season_end_mam_ +
+                          offsets.season_->offset_;
+  auto const active_offset = (t >= season_begin && t <= season_end)
+                                 ? offsets.season_->offset_
+                                 : offsets.offset_;
+  return local_time{(t + active_offset).time_since_epoch()};
+}
+
+inline local_time to_local_time(date::time_zone* tz, unixtime_t const t) {
+  return local_time{std::chrono::duration_cast<duration_t>(
+      tz->to_local(t).time_since_epoch())};
+}
+
+using timezone = variant<date::time_zone*, tz_offsets>;
 
 enum class clasz : std::uint8_t {
   kAir = 0,
