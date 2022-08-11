@@ -12,7 +12,7 @@ target_include_directories(
   PUBLIC include/public
   PUBLIC include/private
 )
-target_link_libraries(nigiri PUBLIC cista geo utl lmdb fmt date)
+target_link_libraries(nigiri PUBLIC cista geo utl lmdb fmt date date-tz)
 target_compile_features(nigiri PUBLIC cxx_std_20)
 
 # --- TEST ---

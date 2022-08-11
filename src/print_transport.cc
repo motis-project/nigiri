@@ -22,6 +22,8 @@ void print_transport(timetable const& tt,
     auto const location_idx = stop_seq.at(stop_idx).location_idx();
     auto const& stop_name = tt.locations_.names_.at(location_idx);
     auto const& stop_id = tt.locations_.ids_.at(location_idx);
+    auto const& tz = tt.locations_.timezones_.at(
+        tt.locations_.location_timezones_.at(location_idx));
     auto const stop_name_len = utf8_conv.from_bytes(stop_name.str()).size();
     std::cout << std::right << std::setw(2) << std::setfill(' ') << stop_idx
               << ": " << std::left << std::setw(7) << stop_id << " "
@@ -34,14 +36,17 @@ void print_transport(timetable const& tt,
       auto const t = tt.begin_ + to_idx(day_idx) * 1_days +
                      stop_times.at(2 * stop_idx - 1);
       date::to_stream(out, " a: %d.%m %R", t);
+      date::to_stream(out, " [%d.%m %R]", to_local_time(tz, t));
     } else {
       out << "               ";
+      out << "              ";
     }
 
     if (stop_idx != stop_seq.size() - 1U) {
       auto const t =
           tt.begin_ + to_idx(day_idx) * 1_days + stop_times.at(2 * stop_idx);
       date::to_stream(out, "  d: %d.%m %R", t);
+      date::to_stream(out, " [%d.%m %R]", to_local_time(tz, t));
 
       auto const& merged_trips =
           tt.merged_trips_.at(tt.transport_to_trip_section_.at(i).at(stop_idx));

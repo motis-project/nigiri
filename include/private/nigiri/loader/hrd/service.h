@@ -325,8 +325,8 @@ void to_local_time(
         local_mam_to_utc_mam(stop_timezones.front(), day, local_times.front());
     if (!valid) {
       log(log_lvl::error, "nigiri.loader.hrd.service",
-          "first departure local to utc failed, ignoring: {}, day={}",
-          s.origin_, day);
+          "first departure local to utc failed, ignoring: {}, time={}, day={}",
+          s.origin_, local_times.front(), day);
       continue;
     }
 
@@ -338,9 +338,9 @@ void to_local_time(
           local_mam_to_utc_mam(tz, day, local_time, first_dep_day_offset);
       if (day_shift != 0 || pred > utc_mam || !valid) {
         log(log_lvl::error, "nigiri.loader.hrd.service",
-            "local to utc failed, ignoring: {}, day={}, day_shift={}, pred={}, "
-            "utc_mam={}",
-            s.origin_, day, day_shift, pred, utc_mam);
+            "local to utc failed, ignoring: {}, day={}, time={}, day_shift={}, "
+            "pred={}, utc_mam={}",
+            s.origin_, day, local_time, day_shift, pred, utc_mam);
         fail = true;
         break;
       }

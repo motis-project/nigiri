@@ -411,8 +411,8 @@ vector<tz_offsets> service::get_stop_timezones(timezone_map_t const& tz) const {
   auto i = 0U;
   auto stop_times = vector<tz_offsets>(stops_.size() * 2 - 2);
   for (auto const& [from, to] : utl::pairwise(stops_)) {
-    stop_times[i++] = get_tz(tz, from.eva_num_);
-    stop_times[i++] = get_tz(tz, to.eva_num_);
+    stop_times[i++] = get_tz(tz, from.eva_num_).second;
+    stop_times[i++] = get_tz(tz, to.eva_num_).second;
   }
   return stop_times;
 }

@@ -3,6 +3,7 @@
 #include "utl/parser/arg_parser.h"
 #include "utl/pipes.h"
 
+#include "nigiri/loader/hrd/timezone.h"
 #include "nigiri/logging.h"
 
 namespace nigiri::loader::hrd {
@@ -119,6 +120,7 @@ void parse_footpaths(config const& c,
 
 location_map_t parse_stations(config const& c,
                               source_idx_t const src,
+                              timezone_map_t const& timezones,
                               timetable& tt,
                               std::string_view station_names_file,
                               std::string_view station_coordinates_file,
@@ -135,7 +137,7 @@ location_map_t parse_stations(config const& c,
   for (auto& [eva, s] : stations) {
     auto const id =
         location_id{.id_ = fmt::format("{:07}", to_idx(eva)), .src_ = src};
-    auto const idx = tt.locations_.add(
+    auto const idx = tt.locations_.register_location(
         timetable::location{.id_ = id.id_,
                             .name_ = s.name_,
                             .pos_ = s.pos_,
@@ -143,6 +145,7 @@ location_map_t parse_stations(config const& c,
                             .type_ = location_type::kStation,
                             .osm_id_ = osm_node_id_t::invalid(),
                             .parent_ = location_idx_t::invalid(),
+                            .timezone_idx_ = get_tz(timezones, s.id_).first,
                             .equivalences_ = it_range{empty_idx_vec},
                             .footpaths_out_ = it_range{empty_footpath_vec},
                             .footpaths_in_ = it_range{empty_footpath_vec}});

@@ -121,6 +121,8 @@ struct tz_offsets {
   duration_t offset_{0};
 };
 
+using timezone = variant<date::time_zone*, tz_offsets>;
+
 inline local_time to_local_time(tz_offsets const& offsets, unixtime_t const t) {
   if (!offsets.season_.has_value()) {
     return local_time{(t + offsets.offset_).time_since_epoch()};
@@ -143,7 +145,9 @@ inline local_time to_local_time(date::time_zone* tz, unixtime_t const t) {
       tz->to_local(t).time_since_epoch())};
 }
 
-using timezone = variant<date::time_zone*, tz_offsets>;
+inline local_time to_local_time(timezone const& tz, unixtime_t const t) {
+  return tz.apply([t](auto&& x) { return to_local_time(x, t); });
+}
 
 enum class clasz : std::uint8_t {
   kAir = 0,
@@ -199,11 +203,8 @@ inline std::ostream& operator<<(std::ostream& out,
 
 inline std::ostream& operator<<(std::ostream& out,
                                 nigiri::unixtime_t const& t) {
-  auto const time = std::chrono::system_clock::to_time_t(t);
-  auto const* tm = std::localtime(&time);
-  char buffer[25];
-  std::strftime(buffer, sizeof(buffer), "%Y-%m-%d %H:%M:%S", tm);
-  return out << buffer;
+  date::to_stream(out, "%F %R", t);
+  return out;
 }
 
 inline std::ostream& operator<<(std::ostream& out, sys_days const& t) {

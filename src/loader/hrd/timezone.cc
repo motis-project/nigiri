@@ -20,8 +20,8 @@ unixtime_t parse_date(utl::cstr s) {
   return unixtime_t{std::chrono::sys_days{date}};
 }
 
-tz_offsets const& get_tz(timezone_map_t const& tz,
-                         eva_number const eva_number) {
+std::pair<timezone_idx_t, tz_offsets> const& get_tz(
+    timezone_map_t const& tz, eva_number const eva_number) {
   utl::verify(!tz.empty(), "no timezones");
   auto const it = tz.upper_bound(eva_number);
   utl::verify(it != end(tz) || std::prev(it)->first <= eva_number,
@@ -29,7 +29,9 @@ tz_offsets const& get_tz(timezone_map_t const& tz,
   return std::prev(it)->second;
 }
 
-timezone_map_t parse_timezones(config const& c, std::string_view file_content) {
+timezone_map_t parse_timezones(config const& c,
+                               timetable& tt,
+                               std::string_view file_content) {
   timezone_map_t tz;
   utl::for_each_line(file_content, [&](utl::cstr line) {
     if (line.length() == 15) {
@@ -61,8 +63,8 @@ timezone_map_t parse_timezones(config const& c, std::string_view file_content) {
             .season_end_mam_ = distance_to_midnight(
                 line.substr(c.tz_.type3_dst_to_midnight3_))};
       }
-      std::cout << t << "\n";
-      tz[eva_num] = t;
+      tz.emplace(eva_num,
+                 std::pair{tt.locations_.register_timezone(timezone{t}), t});
     }
   });
 

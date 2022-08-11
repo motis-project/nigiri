@@ -10,11 +10,11 @@ std::ostream& operator<<(std::ostream& out, tz_offsets const& offsets) {
     out << "offset=" << offsets.season_->offset_ << ", ";
 
     out << "begin=";
-    date::to_stream(out, "%F", offsets.season_->begin_);
+    date::to_stream(out, "%F %R", offsets.season_->begin_);
     out << " " << offsets.season_->season_begin_mam_;
 
     out << ", end=";
-    date::to_stream(out, "%F", offsets.season_->end_);
+    date::to_stream(out, "%F %R", offsets.season_->end_);
     out << " " << offsets.season_->season_end_mam_;
   } else {
     out << "none";

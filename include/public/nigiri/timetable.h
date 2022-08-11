@@ -88,6 +88,7 @@ struct timetable {
     location_type type_;
     osm_node_id_t osm_id_;
     location_idx_t parent_;
+    timezone_idx_t timezone_idx_;
     it_range<vector<location_idx_t>::iterator> equivalences_;
     it_range<vector<footpath>::iterator> footpaths_out_, footpaths_in_;
   };
@@ -97,7 +98,14 @@ struct timetable {
         mutable_fws_multimap<location_idx_t, location_idx_t>;
     using footpath_multimap = mutable_fws_multimap<location_idx_t, footpath>;
 
-    location_idx_t add(location&& l) {
+    timezone_idx_t register_timezone(timezone tz) {
+      auto const idx = timezone_idx_t{
+          static_cast<timezone_idx_t::value_t>(timezones_.size())};
+      timezones_.emplace_back(std::move(tz));
+      return idx;
+    }
+
+    location_idx_t register_location(location&& l) {
       auto const [it, is_new] = location_id_to_idx_.emplace(
           location_id{.id_ = l.id_, .src_ = l.src_}, next_id());
 
@@ -107,6 +115,7 @@ struct timetable {
         ids_.emplace_back(l.id_);
         src_.emplace_back(l.src_);
         types_.emplace_back(location_type::kStation);
+        location_timezones_.emplace_back(l.timezone_idx_);
         transfer_time_.emplace_back(2);  // TODO(felix)
         osm_ids_.emplace_back(osm_node_id_t::invalid());  // TODO(felix)
         parents_.emplace_back(location_idx_t::invalid());  // TODO(felix)
@@ -146,12 +155,12 @@ struct timetable {
     vector_map<location_idx_t, location_type> types_;
     vector_map<location_idx_t, osm_node_id_t> osm_ids_;
     vector_map<location_idx_t, location_idx_t> parents_;
-    vector_map<location_idx_t, timezone_idx_t> timezones_;
+    vector_map<location_idx_t, timezone_idx_t> location_timezones_;
     mutable_fws_multimap<location_idx_t, location_idx_t> equivalences_;
     mutable_fws_multimap<location_idx_t, location_idx_t> children_;
     mutable_fws_multimap<location_idx_t, footpath> footpaths_out_;
     mutable_fws_multimap<location_idx_t, footpath> footpaths_in_;
-    vector_map<timezone_idx_t, timezone> timezone_info_;
+    vector_map<timezone_idx_t, timezone> timezones_;
   } locations_;
 
   struct transport {

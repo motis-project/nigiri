@@ -117,13 +117,13 @@ constexpr auto const providers_file_content = R"(
 TEST_CASE("loader_hrd_service, parse multiple") {
   auto const& c = configs[0];
   timetable tt;
+  auto const timezones = parse_timezones(c, tt, timezones_file_content);
   auto const locations =
-      parse_stations(c, source_idx_t{0U}, tt, stations_file_content,
+      parse_stations(c, source_idx_t{0U}, timezones, tt, stations_file_content,
                      station_geo_file_content, station_metabhf_content);
   auto const bitfields = parse_bitfields(c, tt, bitfields_file_content);
   auto const categories = parse_categories(c, categories_file_content);
   auto const providers = parse_providers(c, providers_file_content);
-  auto const timezones = parse_timezones(c, timezones_file_content);
   auto const interval = parse_interval(basic_info_file_content);
   tt.begin_ = std::chrono::sys_days{interval.first};
   tt.end_ = std::chrono::sys_days{interval.second};
