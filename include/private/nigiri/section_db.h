@@ -21,20 +21,6 @@ namespace nigiri {
 
 using year_month_day = tuple<std::int32_t, std::uint32_t, std::uint32_t>;
 
-struct tz_offsets {
-  struct season {
-    duration_t offset_{0};
-    unixtime_t begin_{unixtime_t::min()}, end_{unixtime_t::max()};
-    duration_t season_begin_mam_{0};
-    duration_t season_end_mam_{0};
-  };
-  friend std::ostream& operator<<(std::ostream&, tz_offsets const&);
-  std::optional<season> season_{std::nullopt};
-  duration_t offset_{0};
-};
-
-using timezone = variant<string, tz_offsets>;
-
 struct attribute {
   CISTA_PRINTABLE(attribute)
   friend bool operator==(attribute const&, attribute const&) = default;

@@ -69,6 +69,7 @@ using transport_idx_t = cista::strong<std::uint32_t, struct _transport_idx>;
 using rt_trip_idx_t = cista::strong<std::uint32_t, struct _rt_trip_idx>;
 using source_idx_t = cista::strong<std::uint8_t, struct _source_idx>;
 using day_idx_t = cista::strong<std::uint16_t, struct _day_idx>;
+using timezone_idx_t = cista::strong<std::uint8_t, struct _timezone_idx>;
 using merged_trips_idx_t =
     cista::strong<std::uint32_t, struct _merged_trips_idx>;
 
@@ -102,6 +103,20 @@ constexpr duration_t operator"" _days(unsigned long long n) {
 }
 
 using minutes_after_midnight_t = duration_t;
+
+struct tz_offsets {
+  struct season {
+    duration_t offset_{0};
+    unixtime_t begin_{unixtime_t::min()}, end_{unixtime_t::max()};
+    duration_t season_begin_mam_{0};
+    duration_t season_end_mam_{0};
+  };
+  friend std::ostream& operator<<(std::ostream&, tz_offsets const&);
+  std::optional<season> season_{std::nullopt};
+  duration_t offset_{0};
+};
+
+using timezone = variant<string, tz_offsets>;
 
 enum class clasz : std::uint8_t {
   kAir = 0,
