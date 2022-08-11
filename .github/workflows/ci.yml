@@ -161,7 +161,7 @@ jobs:
           - preset: clang-tidy
           - preset: linux-sanitizer
           - preset: linux-debug
-            emulator: valgrind
+            emulator: valgrind --error-exitcode=1
     env:
       BUILDCACHE_DIR: /buildcache
       BUILDCACHE_DIRECT_MODE: true
