@@ -18,7 +18,7 @@ void verify_line_format(utl::cstr line, char const* filename, int line_number) {
               "provider line format mismatch in {}:{}", filename, line_number);
 }
 
-std::string parse_name(utl::cstr s) {
+string parse_name(utl::cstr s) {
   auto const start_is_quote = (s[0] == '\'' || s[0] == '\"');
   auto const end = start_is_quote ? s[0] : ' ';
   auto i = start_is_quote ? 1 : 0;
@@ -26,7 +26,7 @@ std::string parse_name(utl::cstr s) {
     ++i;
   }
   auto region = s.substr(start_is_quote ? 1 : 0, utl::size(i - 1));
-  return {region.str, region.len};
+  return {region.str, static_cast<unsigned>(region.len)};
 }
 
 provider read_provider_names(utl::cstr line, int line_number) {
@@ -56,7 +56,7 @@ provider_map_t parse_providers(config const& c, std::string_view file_content) {
           utl::verify(previous_provider_number == provider_number,
                       "provider line format mismatch in line {}", line_number);
           for_each_token(line.substr(8), ' ', [&](utl::cstr token) {
-            providers[token.to_str()] = current_info;
+            providers[token.to_str()] = std::move(current_info);
           });
         }
       });
