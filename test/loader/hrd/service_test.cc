@@ -141,11 +141,12 @@ TEST_CASE("loader_hrd_service, parse multiple") {
               << traffic_days.to_string().substr(traffic_days.size() - num_days)
               << "\n";
     for (auto day = tt.begin_; day <= tt.end_; day += 1_days) {
-      auto const day_idx = (day - tt.begin_) / 1_days;
-      if (traffic_days.test(day_idx)) {
+      auto const day_idx = day_idx_t{
+          static_cast<day_idx_t ::value_t>((day - tt.begin_) / 1_days)};
+      if (traffic_days.test(to_idx(day_idx))) {
         date::to_stream(std::cout, "%F", day);
         std::cout << " (day_idx=" << day_idx << ")\n";
-        print_transport(tt, std::cout, transport_idx, day_idx_t{day_idx});
+        print_transport(tt, std::cout, transport_idx, day_idx);
         std::cout << "\n";
       }
     }
