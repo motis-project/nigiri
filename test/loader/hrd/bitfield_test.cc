@@ -25,21 +25,19 @@ TEST_CASE("loader_hrd_bitfields.parse_file") {
       R"(000001 C0200C
 000002 C0100C)";
 
-  nigiri::info_db db{"./test_db", 512_kB, info_db::init_type::CLEAR};
-  CHECK(db.size<bitfield>() == 0U);
+  timetable tt;
   auto const map =
-      parse_bitfields(nigiri::loader::hrd::hrd_5_00_8, db, file_content);
-  CHECK(db.size<bitfield>() == 2U);
+      parse_bitfields(nigiri::loader::hrd::hrd_5_00_8, tt, file_content);
   {
     auto const it = map.find(1);
     REQUIRE(it != end(map));
     CHECK_EQ(it->second.first, bitfield{"100000000"});
-    CHECK_EQ(db.get<bitfield>(it->second.second), bitfield{"100000000"});
+    CHECK_EQ(tt.bitfields_.at(it->second.second), bitfield{"100000000"});
   }
   {
     auto const it = map.find(2);
     REQUIRE(it != end(map));
     CHECK_EQ(it->second.first, bitfield{"1000000000"});
-    CHECK_EQ(db.get<bitfield>(it->second.second), bitfield{"1000000000"});
+    CHECK_EQ(tt.bitfields_.at(it->second.second), bitfield{"1000000000"});
   }
 }

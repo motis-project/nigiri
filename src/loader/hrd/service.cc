@@ -4,6 +4,8 @@
 #include <numeric>
 #include <tuple>
 
+#include "fmt/format.h"
+
 #include "utl/parser/arg_parser.h"
 #include "utl/to_vec.h"
 #include "utl/verify.h"
@@ -17,6 +19,10 @@ namespace nigiri::loader::hrd {
 std::ostream& operator<<(std::ostream& out, parser_info const& pi) {
   return out << pi.filename_ << ":" << pi.line_number_from_ << ":"
              << pi.line_number_to_;
+}
+
+string parser_info::str() const {
+  return fmt::format("{}:{}:{}", filename_, line_number_from_, line_number_to_);
 }
 
 template <typename It, typename Predicate>
@@ -143,6 +149,10 @@ int initial_train_num(specification const& spec) {
   return parse_verify<int>(spec.internal_service_.substr(3, utl::size(5)));
 }
 
+utl::cstr initial_admin(specification const& spec) {
+  return spec.internal_service_.substr(9, utl::size(6));
+}
+
 utl::cstr stop_train_num(utl::cstr const& stop) {
   return stop.substr(43, utl::size(5)).trim();
 }
@@ -254,6 +264,7 @@ service::service(parser_info origin,
                  std::vector<stop> stops,
                  std::vector<section> sections,
                  bitfield traffic_days,
+                 utl::cstr initial_admin,
                  int initial_train_num)
     : origin_{origin},
       num_repetitions_{num_repetitions},
@@ -261,6 +272,7 @@ service::service(parser_info origin,
       stops_{std::move(stops)},
       sections_{std::move(sections)},
       traffic_days_{traffic_days},
+      initial_admin_{initial_admin},
       initial_train_num_{initial_train_num} {}
 
 service::service(config const& c, specification const& spec)
@@ -275,6 +287,7 @@ service::service(config const& c, specification const& spec)
                           std::next(begin(spec.stops_), spec.stops_.size() - 1),
                           std::vector<section>({parse_initial_section(spec)}),
                           parse_section)},
+      initial_admin_{initial_admin(spec)},
       initial_train_num_{initial_train_num(spec)} {
   parse_range(spec.attributes_, c.attribute_parse_info_, stops_, sections_,
               &section::attributes_, [&c](utl::cstr line, range const&) {
@@ -398,8 +411,8 @@ vector<tz_offsets> service::get_stop_timezones(timezone_map_t const& tz) const {
   auto i = 0U;
   auto stop_times = vector<tz_offsets>(stops_.size() * 2 - 2);
   for (auto const& [from, to] : utl::pairwise(stops_)) {
-    stop_times[i++] = get_tz(tz, from.eva_num_);
-    stop_times[i++] = get_tz(tz, to.eva_num_);
+    stop_times[i++] = get_tz(tz, from.eva_num_).second;
+    stop_times[i++] = get_tz(tz, to.eva_num_).second;
   }
   return stop_times;
 }
@@ -411,6 +424,7 @@ vector<duration_t> service::get_stop_times() const {
     stop_times[i++] = duration_t{from.dep_.time_};
     stop_times[i++] = duration_t{to.arr_.time_};
   }
+  assert(i == stop_times.size());
   return stop_times;
 }
 
@@ -422,6 +436,7 @@ void service::set_stop_times(vector<duration_t> const& stop_times) {
     from.dep_.time_ = stop_times[i++].count();
     to.arr_.time_ = stop_times[i++].count();
   }
+  assert(i == stop_times.size());
 }
 
 }  // namespace nigiri::loader::hrd

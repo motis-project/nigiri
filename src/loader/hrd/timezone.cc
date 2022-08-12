@@ -20,8 +20,8 @@ unixtime_t parse_date(utl::cstr s) {
   return unixtime_t{std::chrono::sys_days{date}};
 }
 
-tz_offsets const& get_tz(timezone_map_t const& tz,
-                         eva_number const eva_number) {
+std::pair<timezone_idx_t, tz_offsets> const& get_tz(
+    timezone_map_t const& tz, eva_number const eva_number) {
   utl::verify(!tz.empty(), "no timezones");
   auto const it = tz.upper_bound(eva_number);
   utl::verify(it != end(tz) || std::prev(it)->first <= eva_number,
@@ -29,7 +29,9 @@ tz_offsets const& get_tz(timezone_map_t const& tz,
   return std::prev(it)->second;
 }
 
-timezone_map_t parse_timezones(config const& c, std::string_view file_content) {
+timezone_map_t parse_timezones(config const& c,
+                               timetable& tt,
+                               std::string_view file_content) {
   timezone_map_t tz;
   utl::for_each_line(file_content, [&](utl::cstr line) {
     if (line.length() == 15) {
@@ -37,7 +39,7 @@ timezone_map_t parse_timezones(config const& c, std::string_view file_content) {
           parse_eva_number(line.substr(c.tz_.type1_first_valid_eva_));
       auto const it = tz.find(first_valid_eva_number);
       if (it != end(tz)) {
-        tz[eva_number(line.substr(c.tz_.type1_eva_))] = it->second;
+        tz[parse_eva_number(line.substr(c.tz_.type1_eva_))] = it->second;
       } else {
         log(log_lvl::error, "nigiri.loader.hrd.timezone",
             "no timezone for eva number: {}", first_valid_eva_number);
@@ -46,10 +48,10 @@ timezone_map_t parse_timezones(config const& c, std::string_view file_content) {
     }
 
     if ((isdigit(line[0]) != 0) && line.length() >= 47) {
-      auto const eva_num = eva_number(line.substr(c.tz_.type2_eva_));
+      auto const eva_num = parse_eva_number(line.substr(c.tz_.type2_eva_));
       tz_offsets t;
       t.offset_ = duration_t{
-          distance_to_midnight(line.substr(c.tz_.type3_dst_to_midnight1_))};
+          distance_to_midnight(line.substr(c.tz_.type2_dst_to_midnight_))};
       if (!line.substr(14, utl::size(33)).trim().empty()) {
         t.season_ = tz_offsets::season{
             .offset_ = distance_to_midnight(
@@ -61,7 +63,8 @@ timezone_map_t parse_timezones(config const& c, std::string_view file_content) {
             .season_end_mam_ = distance_to_midnight(
                 line.substr(c.tz_.type3_dst_to_midnight3_))};
       }
-      tz[eva_num] = t;
+      tz.emplace(eva_num,
+                 std::pair{tt.locations_.register_timezone(timezone{t}), t});
     }
   });
 

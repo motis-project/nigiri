@@ -3,6 +3,7 @@
 #include "utl/parser/arg_parser.h"
 #include "utl/pipes.h"
 
+#include "nigiri/loader/hrd/timezone.h"
 #include "nigiri/logging.h"
 
 namespace nigiri::loader::hrd {
@@ -28,7 +29,9 @@ void parse_station_names(config const& c,
         }
 
         auto const eva_num = parse_eva_number(line.substr(c.st_.names_.eva_));
-        stations[eva_num].name_ = name.to_str();
+        auto& s = stations[eva_num];
+        s.name_ = name.to_str();
+        s.id_ = eva_num;
       });
 }
 
@@ -80,6 +83,16 @@ void parse_equivilant_stations(config const& c,
 void parse_footpaths(config const& c,
                      hash_map<eva_number, hrd_location>& stations,
                      std::string_view file_content) {
+  auto const add_footpath = [](hrd_location& l, eva_number const to,
+                               duration_t const d) {
+    if (auto const it = l.footpaths_out_.find(to);
+        it != end(l.footpaths_out_)) {
+      it->second = std::min(it->second, d);
+    } else {
+      l.footpaths_out_.emplace(to, d);
+    }
+  };
+
   utl::for_each_line(file_content, [&](utl::cstr line) {
     if (line.length() < 16 || line[0] == '%' || line[0] == '*') {
       return;
@@ -96,12 +109,7 @@ void parse_footpaths(config const& c,
       auto const duration =
           duration_t{parse<int>(line.substr(c.meta_.footpaths_.duration_))};
 
-      from.footpaths_out_.emplace_back(to.id_, duration);
-      to.footpaths_in_.emplace_back(from.id_, duration);
-
-      // make footpaths symmetric
-      to.footpaths_out_.emplace_back(from.id_, duration);
-      from.footpaths_in_.emplace_back(to.id_, duration);
+      add_footpath(from, to.id_, duration);
 
       if (f_equal) {
         from.equivalent_.erase(to.id_);
@@ -110,24 +118,50 @@ void parse_footpaths(config const& c,
   });
 }
 
-hash_map<eva_number, hrd_location> parse_stations(
-    config const& c,
-    source_idx_t const src,
-    timetable& tt,
-    std::string_view station_names_file,
-    std::string_view station_coordinates_file,
-    std::string_view station_metabhf_file) {
-  hash_map<eva_number, hrd_location> stations;
+location_map_t parse_stations(config const& c,
+                              source_idx_t const src,
+                              timezone_map_t const& timezones,
+                              timetable& tt,
+                              std::string_view station_names_file,
+                              std::string_view station_coordinates_file,
+                              std::string_view station_metabhf_file) {
+  auto empty_idx_vec = vector<location_idx_t>{};
+  auto empty_footpath_vec = vector<footpath>{};
+
+  location_map_t stations;
   parse_station_names(c, stations, station_names_file);
   parse_station_coordinates(c, stations, station_coordinates_file);
   parse_equivilant_stations(c, stations, station_metabhf_file);
   parse_footpaths(c, stations, station_metabhf_file);
 
-  for (auto const& [eva, s] : stations) {
-    tt.locations_.location_id_to_idx_.emplace(
-        location_id{.id_ = std::to_string(to_idx(s.id_)), .src_ = src},
-        location_idx_t{tt.locations_.types_.size()});
-    tt.locations_.types_.emplace_back(location_type::station);
+  for (auto& [eva, s] : stations) {
+    auto const id =
+        location_id{.id_ = fmt::format("{:07}", to_idx(eva)), .src_ = src};
+    auto const idx = tt.locations_.register_location(
+        timetable::location{.id_ = id.id_,
+                            .name_ = s.name_,
+                            .pos_ = s.pos_,
+                            .src_ = src,
+                            .type_ = location_type::kStation,
+                            .osm_id_ = osm_node_id_t::invalid(),
+                            .parent_ = location_idx_t::invalid(),
+                            .timezone_idx_ = get_tz(timezones, s.id_).first,
+                            .equivalences_ = it_range{empty_idx_vec},
+                            .footpaths_out_ = it_range{empty_footpath_vec},
+                            .footpaths_in_ = it_range{empty_footpath_vec}});
+    s.idx_ = idx;
+  }
+
+  for (auto& [eva, s] : stations) {
+    for (auto const& e : s.equivalent_) {
+      tt.locations_.equivalences_[s.idx_].emplace_back(stations.at(e).idx_);
+    }
+
+    for (auto const& [target_eva, duration] : s.footpaths_out_) {
+      auto const target_idx = stations.at(target_eva).idx_;
+      tt.locations_.footpaths_out_[s.idx_].emplace_back(target_idx, duration);
+      tt.locations_.footpaths_in_[target_idx].emplace_back(s.idx_, duration);
+    }
   }
 
   return stations;

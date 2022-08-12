@@ -1,7 +1,10 @@
 #include "doctest/doctest.h"
 
+#include "date/date.h"
+
 #include "nigiri/loader/hrd/basic_info.h"
 #include "nigiri/loader/hrd/parser_config.h"
+#include "nigiri/types.h"
 
 using namespace nigiri::loader::hrd;
 
@@ -11,13 +14,11 @@ constexpr auto const file_content =
     "JF064 EVA_ABN~RIS Server~RIS OEV IMM~~J15~064_001 000000 END\n";
 
 TEST_CASE("loader_hrd_basic_info, simple_interval") {
+  using namespace date;
+
   auto const [a, b] = parse_interval(file_content);
-  CHECK_EQ(1418515200, std::chrono::duration_cast<std::chrono::seconds>(
-                           std::chrono::sys_days{a}.time_since_epoch())
-                           .count());
-  CHECK_EQ(1449878400, std::chrono::duration_cast<std::chrono::seconds>(
-                           std::chrono::sys_days{b}.time_since_epoch())
-                           .count());
+  CHECK_EQ(date::sys_days{2014_y / December / 13}, std::chrono::sys_days{a});
+  CHECK_EQ(date::sys_days{2015_y / December / 13}, std::chrono::sys_days{b});
 }
 
 TEST_CASE("loader_hrd_basic_info, schedule_name") {

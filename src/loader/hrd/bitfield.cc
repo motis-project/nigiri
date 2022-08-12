@@ -61,7 +61,7 @@ bitfield hex_str_to_bitset(utl::cstr hex, int line_number) {
 }
 
 bitfield_map_t parse_bitfields(config const& c,
-                               info_db& db,
+                               timetable& tt,
                                std::string_view file_content) {
   bitfield_map_t bitfields;
   utl::for_each_line_numbered(
@@ -75,15 +75,13 @@ bitfield_map_t parse_bitfields(config const& c,
 
         auto const index = parse_verify<int>(line.substr(c.bf_.index_));
         auto b = hex_str_to_bitset(line.substr(c.bf_.value_), line_number);
-        bitfields[index] = std::pair{b, db.add(b)};
+        bitfields[index] = std::pair{b, tt.register_bitfield(b)};
       });
 
   // traffic day bitfield 0 = operates every day
   for (auto i = 0; i != bitfields[0].first.size(); ++i) {
     bitfields[0].first.set(i, true);
   }
-
-  db.flush();
 
   return bitfields;
 }
