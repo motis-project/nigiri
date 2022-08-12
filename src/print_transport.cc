@@ -16,8 +16,10 @@ void print_transport(timetable const& tt,
                      day_idx_t const day_idx) {
   std::wstring_convert<std::codecvt_utf8<wchar_t>, wchar_t> utf8_conv;
 
-  auto const& stop_seq = tt.route_location_seq_.at(tt.transport_route_.at(i));
+  auto const& route_idx = tt.transport_route_.at(i);
+  auto const& stop_seq = tt.route_location_seq_.at(route_idx);
   auto const& stop_times = tt.transport_stop_times_.at(i);
+  out << "ROUTE=" << route_idx << "\n";
   for (auto stop_idx = 0U; stop_idx != stop_seq.size(); ++stop_idx) {
     auto const location_idx = stop_seq.at(stop_idx).location_idx();
     auto const& stop_name = tt.locations_.names_.at(location_idx);

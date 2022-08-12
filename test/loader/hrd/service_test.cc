@@ -37,9 +37,9 @@ constexpr auto const stations_file_content = R"(
 0000004     D
 0000005     E
 0000006     F
-0000007     E
-0000008     F
-0000009     G
+0000007     G
+0000008     H
+0000009     I
 0000010     F_META
 )";
 
