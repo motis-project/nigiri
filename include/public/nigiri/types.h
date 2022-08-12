@@ -21,6 +21,13 @@
 
 namespace nigiri {
 
+// Extend interval by one day. This is required due to the departure/arrival
+// times being given in local time. After converting local times to UTC, this
+// can result in times before the specified first day and after the specified
+// last day (e.g. 00:30 CET is 23:30 UTC the day before, 22:30 PT is 05:30 UTC
+// the next day). To be able to support this, the internal nigiri timetable
+// range needs to start one day early and be one day longer than specified.
+constexpr auto const kBaseDayOffset = std::chrono::days{1};
 using bitfield = cista::bitset<512>;
 
 template <typename T>
@@ -88,12 +95,12 @@ struct location_id {
   source_idx_t src_;
 };
 
-using duration_t = std::chrono::duration<std::uint16_t, std::ratio<60>>;
+using duration_t = std::chrono::duration<std::int16_t, std::ratio<60>>;
 using unixtime_t = std::chrono::time_point<
     std::chrono::system_clock,
-    std::chrono::duration<std::uint32_t, std::ratio<60>>>;
+    std::chrono::duration<std::int32_t, std::ratio<60>>>;
 using local_time =
-    date::local_time<std::chrono::duration<std::uint32_t, std::ratio<60>>>;
+    date::local_time<std::chrono::duration<std::int32_t, std::ratio<60>>>;
 
 constexpr duration_t operator"" _minutes(unsigned long long n) {
   return duration_t{n};
@@ -122,32 +129,6 @@ struct tz_offsets {
 };
 
 using timezone = variant<date::time_zone*, tz_offsets>;
-
-inline local_time to_local_time(tz_offsets const& offsets, unixtime_t const t) {
-  if (!offsets.season_.has_value()) {
-    return local_time{(t + offsets.offset_).time_since_epoch()};
-  }
-
-  auto const season_begin = offsets.season_->begin_ +
-                            offsets.season_->season_begin_mam_ +
-                            offsets.offset_;
-  auto const season_end = offsets.season_->end_ +
-                          offsets.season_->season_end_mam_ +
-                          offsets.season_->offset_;
-  auto const active_offset = (t >= season_begin && t <= season_end)
-                                 ? offsets.season_->offset_
-                                 : offsets.offset_;
-  return local_time{(t + active_offset).time_since_epoch()};
-}
-
-inline local_time to_local_time(date::time_zone* tz, unixtime_t const t) {
-  return local_time{std::chrono::duration_cast<duration_t>(
-      tz->to_local(t).time_since_epoch())};
-}
-
-inline local_time to_local_time(timezone const& tz, unixtime_t const t) {
-  return tz.apply([t](auto&& x) { return to_local_time(x, t); });
-}
 
 enum class clasz : std::uint8_t {
   kAir = 0,
@@ -215,3 +196,34 @@ inline std::ostream& operator<<(std::ostream& out, sys_days const& t) {
 }
 
 }  // namespace std::chrono
+
+#include <iostream>
+namespace nigiri {
+
+inline local_time to_local_time(tz_offsets const& offsets, unixtime_t const t) {
+  if (!offsets.season_.has_value()) {
+    return local_time{(t + offsets.offset_).time_since_epoch()};
+  }
+
+  auto const season_begin = offsets.season_->begin_ +
+                            offsets.season_->season_begin_mam_ -
+                            offsets.offset_;
+  auto const season_end = offsets.season_->end_ +
+                          offsets.season_->season_end_mam_ -
+                          offsets.season_->offset_;
+  auto const is_in_season = t >= season_begin && t < season_end;
+  auto const active_offset =
+      is_in_season ? offsets.season_->offset_ : offsets.offset_;
+  return local_time{(t + active_offset).time_since_epoch()};
+}
+
+inline local_time to_local_time(date::time_zone* tz, unixtime_t const t) {
+  return local_time{std::chrono::duration_cast<duration_t>(
+      tz->to_local(t).time_since_epoch())};
+}
+
+inline local_time to_local_time(timezone const& tz, unixtime_t const t) {
+  return tz.apply([t](auto&& x) { return to_local_time(x, t); });
+}
+
+}  // namespace nigiri

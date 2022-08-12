@@ -177,8 +177,8 @@ struct timetable {
                               string display_name,
                               string debug) {
     auto const idx = trip_idx_t{trip_ids_.index_size()};
-    auto const [_, inserted] = trip_id_to_idx_.emplace(id, idx);
-    utl::verify(inserted, "trip id {} already exists");
+    auto& trips = trip_id_to_idx_[id];
+    trips.emplace_back(idx);
     trip_display_names_.emplace_back(std::move(display_name));
     trip_debug_.emplace_back().emplace_back(std::move(debug));
     trip_ids_.emplace_back().emplace_back(id);
@@ -224,7 +224,7 @@ struct timetable {
   unixtime_t begin_, end_;
 
   // Trip access: external trip id -> internal trip index
-  hash_map<trip_id, trip_idx_t> trip_id_to_idx_;
+  hash_map<trip_id, vector<trip_idx_t>> trip_id_to_idx_;
 
   // External trip index -> list of external trip ids (HRD + RI Basis)
   mutable_fws_multimap<trip_idx_t, trip_id> trip_ids_;

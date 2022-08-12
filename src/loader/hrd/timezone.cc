@@ -39,7 +39,7 @@ timezone_map_t parse_timezones(config const& c,
           parse_eva_number(line.substr(c.tz_.type1_first_valid_eva_));
       auto const it = tz.find(first_valid_eva_number);
       if (it != end(tz)) {
-        tz[eva_number(line.substr(c.tz_.type1_eva_))] = it->second;
+        tz[parse_eva_number(line.substr(c.tz_.type1_eva_))] = it->second;
       } else {
         log(log_lvl::error, "nigiri.loader.hrd.timezone",
             "no timezone for eva number: {}", first_valid_eva_number);
@@ -48,7 +48,7 @@ timezone_map_t parse_timezones(config const& c,
     }
 
     if ((isdigit(line[0]) != 0) && line.length() >= 47) {
-      auto const eva_num = eva_number(line.substr(c.tz_.type2_eva_));
+      auto const eva_num = parse_eva_number(line.substr(c.tz_.type2_eva_));
       tz_offsets t;
       t.offset_ = duration_t{
           distance_to_midnight(line.substr(c.tz_.type2_dst_to_midnight_))};

@@ -424,6 +424,7 @@ vector<duration_t> service::get_stop_times() const {
     stop_times[i++] = duration_t{from.dep_.time_};
     stop_times[i++] = duration_t{to.arr_.time_};
   }
+  assert(i == stop_times.size());
   return stop_times;
 }
 
@@ -435,6 +436,7 @@ void service::set_stop_times(vector<duration_t> const& stop_times) {
     from.dep_.time_ = stop_times[i++].count();
     to.arr_.time_ = stop_times[i++].count();
   }
+  assert(i == stop_times.size());
 }
 
 }  // namespace nigiri::loader::hrd

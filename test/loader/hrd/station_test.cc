@@ -4,9 +4,6 @@
 #include "nigiri/loader/hrd/service.h"
 #include "nigiri/loader/hrd/station.h"
 #include "nigiri/loader/hrd/timezone.h"
-#include "nigiri/loader/hrd/util.h"
-#include "nigiri/byte_sizes.h"
-#include "nigiri/section_db.h"
 
 using namespace nigiri;
 using namespace nigiri::loader::hrd;
@@ -47,7 +44,6 @@ constexpr auto const timezones_file_content = R"(
 TEST_CASE("loader_hrd_station, parse") {
   for (auto const& c : configs) {
     std::vector<service> services;
-    info_db db{"./test_db", 512_kB, info_db::init_type::CLEAR};
     timetable tt;
     auto const src = source_idx_t{0U};
     auto const timezones = parse_timezones(c, tt, timezones_file_content);

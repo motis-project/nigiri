@@ -321,9 +321,13 @@ void to_local_time(
       continue;
     }
 
-    auto [_, first_dep_day_offset, valid] =
+    auto const [first_utc, first_offset, first_valid] =
         local_mam_to_utc_mam(stop_timezones.front(), day, local_times.front());
-    if (!valid) {
+    std::cout << "first_utc=" << first_utc
+              << ", first_offset=" << (first_offset / 1_days)
+              << ", first_valid=" << first_valid << "\n";
+
+    if (!first_valid) {
       log(log_lvl::error, "nigiri.loader.hrd.service",
           "first departure local to utc failed, ignoring: {}, time={}, day={}",
           s.origin_, local_times.front(), day);
@@ -334,13 +338,15 @@ void to_local_time(
     auto pred = duration_t{0};
     auto fail = false;
     for (auto const& [local_time, tz] : utl::zip(local_times, stop_timezones)) {
-      auto const [utc_mam, day_shift, valid] =
-          local_mam_to_utc_mam(tz, day, local_time, first_dep_day_offset);
-      if (day_shift != 0 || pred > utc_mam || !valid) {
+      auto const [utc_mam, offset, valid] = local_mam_to_utc_mam(
+          tz, day + first_offset, local_time - first_offset);
+      std::cout << "|  " << utc_mam << " " << offset << " valid=" << valid
+                << "\n";
+      if (offset != 0_days || pred > utc_mam || !valid) {
         log(log_lvl::error, "nigiri.loader.hrd.service",
-            "local to utc failed, ignoring: {}, day={}, time={}, day_shift={}, "
-            "pred={}, utc_mam={}",
-            s.origin_, day, local_time, day_shift, pred, utc_mam);
+            "local to utc failed, ignoring: {}, day={}, time={}, offset={}, "
+            "pred={}, utc_mam={}, valid={}",
+            s.origin_, day, local_time, offset, pred, utc_mam, valid);
         fail = true;
         break;
       }
@@ -350,7 +356,8 @@ void to_local_time(
     }
 
     if (!fail) {
-      utc_time_traffic_days[utc_service_times].set(day_idx);
+      utc_time_traffic_days[utc_service_times].set(
+          kBaseDayOffset.count() + day_idx + (first_offset / 1_days));
     }
   }
 
