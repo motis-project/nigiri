@@ -27,12 +27,11 @@ void print_transport(timetable const& tt,
     auto const& tz = tt.locations_.timezones_.at(
         tt.locations_.location_timezones_.at(location_idx));
     auto const stop_name_len = utf8_conv.from_bytes(stop_name.str()).size();
-    std::cout << std::right << std::setw(2) << std::setfill(' ') << stop_idx
-              << ": " << std::left << std::setw(7) << stop_id << " "
-              << std::left
-              << std::setw(std::max(0, 50 - static_cast<int>(stop_name_len +
-                                                             stop_name.size())))
-              << std::setfill('.') << stop_name << std::setfill(' ');
+    out << std::right << std::setw(2) << std::setfill(' ') << stop_idx << ": "
+        << std::left << std::setw(7) << stop_id << " " << std::left
+        << std::setw(std::max(
+               0, 50 - static_cast<int>(stop_name_len + stop_name.size())))
+        << std::setfill('.') << stop_name << std::setfill(' ');
 
     if (stop_idx != 0U) {
       auto const t = tt.begin_ + to_idx(day_idx) * 1_days +
@@ -55,6 +54,7 @@ void print_transport(timetable const& tt,
       out << "  [";
       for (auto const& trip_idx : merged_trips) {
         auto j = 0U;
+
         for (auto const& [dbg, id] :
              utl::zip(tt.trip_debug_.at(trip_idx), tt.trip_ids_.at(trip_idx))) {
           if (j++ != 0) {

@@ -313,7 +313,8 @@ void to_local_time(
       hash_map<vector<duration_t>, bitfield, duration_hash>{};
   auto const local_times = s.get_stop_times();
   auto const stop_timezones = s.get_stop_timezones(timezones);
-  auto const& [first_day, last_day] = interval;
+  auto const first_day = interval.first + kBaseDayOffset;
+  auto const last_day = interval.second - kBaseDayOffset;
   auto utc_service_times = vector<duration_t>(s.stops_.size() * 2 - 2);
   for (auto day = first_day; day <= last_day; day += std::chrono::days{1}) {
     auto const day_idx = (day - first_day).count();
@@ -321,11 +322,8 @@ void to_local_time(
       continue;
     }
 
-    auto const [first_utc, first_offset, first_valid] =
-        local_mam_to_utc_mam(stop_timezones.front(), day, local_times.front());
-    std::cout << "first_utc=" << first_utc
-              << ", first_offset=" << (first_offset / 1_days)
-              << ", first_valid=" << first_valid << "\n";
+    auto const [first_utc, first_offset, first_valid] = local_mam_to_utc_mam(
+        stop_timezones.front(), day, local_times.front(), true);
 
     if (!first_valid) {
       log(log_lvl::error, "nigiri.loader.hrd.service",
@@ -340,8 +338,6 @@ void to_local_time(
     for (auto const& [local_time, tz] : utl::zip(local_times, stop_timezones)) {
       auto const [utc_mam, offset, valid] = local_mam_to_utc_mam(
           tz, day + first_offset, local_time - first_offset);
-      std::cout << "|  " << utc_mam << " " << offset << " valid=" << valid
-                << "\n";
       if (offset != 0_days || pred > utc_mam || !valid) {
         log(log_lvl::error, "nigiri.loader.hrd.service",
             "local to utc failed, ignoring: {}, day={}, time={}, offset={}, "
