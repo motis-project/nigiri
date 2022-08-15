@@ -10,7 +10,6 @@
 
 using namespace nigiri;
 using namespace nigiri::loader::hrd;
-using std::operator""sv;
 
 //  0     1     2     3     4     5
 //  A  -  B  -  C  -  D  -  E  -  F
@@ -210,7 +209,7 @@ ROUTE=8
 
 ---
 
-)"sv;
+)";
 
 TEST_CASE("loader_hrd_service, parse multiple") {
   auto const& c = configs[0];

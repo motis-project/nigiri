@@ -5,13 +5,13 @@
 #include "cista/reflection/printable.h"
 
 #include "utl/verify.h"
+#include "utl/zip.h"
 
 #include "geo/latlng.h"
 
 #include "nigiri/logging.h"
 #include "nigiri/section_db.h"
 #include "nigiri/types.h"
-#include "utl/zip.h"
 
 namespace nigiri {
 

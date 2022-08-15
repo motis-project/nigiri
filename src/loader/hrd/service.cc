@@ -394,8 +394,8 @@ int service::get_first_stop_index_at(eva_number const eva_num) const {
 }
 
 int service::event_time(int stop_index, event_type evt) const {
-  return evt == event_type::DEP ? stops_[stop_index].dep_.time_
-                                : stops_[stop_index].arr_.time_;
+  return evt == event_type::kDep ? stops_[stop_index].dep_.time_
+                                 : stops_[stop_index].arr_.time_;
 }
 
 unsigned service::traffic_days_offset_at_stop(int stop_index,
