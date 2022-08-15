@@ -40,7 +40,7 @@ struct section_info {
   CISTA_COMPARABLE()
   db_index_t<attribute> attribute_idx_{0U};
   db_index_t<provider> provider_idx_{0U};
-  db_index_t<direction_t> direction_idx_{0U};
+  db_index_t<trip_direction_t> direction_idx_{0U};
   db_index_t<line_id_t> line_idx_{0U};
 
   std::uint32_t train_nr_{0U};

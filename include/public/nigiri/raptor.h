@@ -1,24 +1,17 @@
 #pragma once
 
-#include "utl/enumerate.h"
-
+#include "nigiri/routing/start_times.h"
 #include "nigiri/timetable.h"
 
-namespace nigiri {
+namespace nigiri::routing {
 
 struct query {
-  struct edge {
-    location_idx_t location_;
-    duration_t offset_;
-    std::uint8_t type_;
-  };
-
   direction search_dir_;
   unixtime_t interval_begin_;
   unixtime_t interval_end_;
-  vector<edge> start_;
-  vector<vector<edge>> destinations_;
-  vector<vector<edge>> via_destinations_;
+  vector<offset> start_;
+  vector<vector<offset>> destinations_;
+  vector<vector<offset>> via_destinations_;
   cista::bitset<kNumClasses> allowed_classes_;
   std::uint8_t max_transfers_;
   std::uint8_t min_connection_count_;
@@ -86,31 +79,11 @@ struct raptor {
   void rounds() {}
 
   void init() {
-    std::vector<raptor_time_t> start_times;
-    auto const add_start_times = [&](query::edge const& e) {
-      for (auto const& r : tt_.location_routes_.at(e.location_)) {
-        for (auto const& [i, s] :
-             utl::enumerate(tt_.route_location_seq_.at(r))) {
-          if (s.location_idx() == e.location_) {
-          }
-        }
-      }
-    };
-
-    for (auto const& start : q_.start_) {
-      add_start_times(start);
-    }
+    get_starts<SearchDir>(tt_, first_day_, q_.interval_begin_, q_.interval_end_,
+                          q_.start_);
   }
 
   vector<journey> reconstruct_journeys() { return {}; }
-
-  raptor_time_t to_raptor_time(unixtime_t const t) {
-    return (t - first_day_).count();
-  }
-
-  unixtime_t to_unixtime(raptor_time_t const t) {
-    return first_day_ + t * 1_minutes;
-  }
 
   std::chrono::sys_days first_day_;
   query q_;
@@ -121,4 +94,4 @@ struct raptor {
   timetable const& tt_;
 };
 
-}  // namespace nigiri
+}  // namespace nigiri::routing
