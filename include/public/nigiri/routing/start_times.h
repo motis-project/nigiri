@@ -2,6 +2,9 @@
 
 #include <chrono>
 
+#include "cista/reflection/comparable.h"
+#include "cista/reflection/printable.h"
+
 #include "utl/enumerate.h"
 
 #include "nigiri/timetable.h"
@@ -10,6 +13,7 @@
 namespace nigiri::routing {
 
 struct start {
+  CISTA_PRINTABLE(start, "time_at_start", "time_at_stop", "stop")
   CISTA_COMPARABLE()
   unixtime_t time_at_start_;
   unixtime_t time_at_stop_;

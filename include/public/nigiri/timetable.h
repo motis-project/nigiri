@@ -54,6 +54,12 @@ struct interval {
     return {from_ - x, to_ - x};
   }
 
+  template <typename X>
+    requires std::convertible_to<T, X>
+  operator interval<X>() {
+    return {from_, to_};
+  }
+
   bool contains(unixtime_t const t) const { return t >= from_ && t < to_; }
 
   T from_{}, to_{};

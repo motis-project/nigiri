@@ -108,7 +108,7 @@ constexpr auto const providers_file_content = R"(
 00001 : 80____
 )";
 
-nigiri::loader::file_list files() {
+inline nigiri::loader::file_list files() {
   using namespace loader::hrd;
   nigiri::loader::file_list files;
   files.resize(NUM_FILES);

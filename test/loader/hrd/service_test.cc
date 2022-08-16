@@ -107,10 +107,8 @@ ROUTE=8
 )";
 
 TEST_CASE("loader_hrd_service, parse multiple") {
-  auto const& c = configs[0];
-
   auto const tt =
-      load_timetable(c, nigiri::test_data::hrd_timetable::files(),
+      load_timetable(hrd_5_20_26, nigiri::test_data::hrd_timetable::files(),
                      {nigiri::test_data::hrd_timetable::service_file_content});
 
   std::stringstream out;
