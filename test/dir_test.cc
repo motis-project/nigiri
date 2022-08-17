@@ -7,7 +7,7 @@
 
 using namespace nigiri::loader;
 
-constexpr auto const data = R"(0000001     A
+constexpr auto const data = std::string_view{R"(0000001     A
 0000002     B
 0000003     C
 0000004     D
@@ -23,7 +23,7 @@ constexpr auto const data = R"(0000001     A
 0000014     N
 0000015     O
 0000016     P
-)";
+)"};
 
 TEST_CASE("dir test - file contents") {
   auto const fs = fs_dir{"test/test_data/mss-dayshift3"};
