@@ -258,7 +258,8 @@ struct timetable {
   std::pair<day_idx_t, minutes_after_midnight_t> day_idx_mam(
       unixtime_t const t) const {
     auto const minutes_since_timetable_begin = (t - begin_).count();
-    auto const d = minutes_since_timetable_begin / 1440;
+    auto const d =
+        static_cast<day_idx_t::value_t>(minutes_since_timetable_begin / 1440);
     auto const m = minutes_since_timetable_begin % 1440;
     return {day_idx_t{d}, minutes_after_midnight_t{m}};
   }
