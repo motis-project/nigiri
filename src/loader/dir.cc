@@ -39,7 +39,7 @@ file fs_dir::get_file(std::filesystem::path const& p) const {
     std::string_view get() const final { return mmap_.view(); }
     cista::mmap mmap_;
   };
-  return file{path_ / p, std::make_unique<mmap_content>(path_ / p)};
+  return file{(path_ / p).string(), std::make_unique<mmap_content>(path_ / p)};
 }
 
 // --- ZIP directory implementation ---
@@ -156,7 +156,7 @@ file mem_dir::get_file(std::filesystem::path const& p) const {
     std::string_view get() const final { return buf_; }
     std::string const& buf_;
   };
-  return file{p, std::make_unique<mem_file_content>(dir_.at(p))};
+  return file{p.string(), std::make_unique<mem_file_content>(dir_.at(p))};
 }
 
 }  // namespace nigiri::loader
