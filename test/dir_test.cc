@@ -2,8 +2,8 @@
 
 #include "nigiri/loader/dir.h"
 
-#include "fmt/core.h"
-#include "fmt/ranges.h"
+#include "utl/parser/cstr.h"
+#include "utl/zip.h"
 
 using namespace nigiri::loader;
 
@@ -32,9 +32,14 @@ TEST_CASE("dir test - file contents") {
   auto const fs_stamm = fs.get_file("stamm/bahnhof.101");
   auto const zip_stamm = zip.get_file("stamm/bahnhof.101");
   auto const mem_stamm = mem.get_file("stamm/bahnhof.101");
-  CHECK_EQ(fs_stamm.data(), data);
-  CHECK_EQ(zip_stamm.data(), data);
-  CHECK_EQ(mem_stamm.data(), data);
+
+  for (auto const [ref, a, b, c] : utl::czip_no_size_check(
+           utl::lines(data), utl::lines(fs_stamm.data()),
+           utl::lines(zip_stamm.data()), utl::lines(mem_stamm.data()))) {
+    CHECK_EQ(ref.view(), a.view());
+    CHECK_EQ(ref.view(), b.view());
+    CHECK_EQ(ref.view(), c.view());
+  }
 }
 
 TEST_CASE("dir test - directory listing") {
