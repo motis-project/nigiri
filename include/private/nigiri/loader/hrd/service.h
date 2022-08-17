@@ -426,111 +426,120 @@ void parse_services(
   }
 }
 
-template <typename ProgressFn>
-void write_services(
-    config const& c,
-    source_idx_t const src,
-    char const* filename,
-    std::pair<std::chrono::sys_days, std::chrono::sys_days> const& interval,
-    bitfield_map_t const& bitfields,
-    timezone_map_t const& timezones,
-    location_map_t const& locations,
-    category_map_t const& categories,
-    provider_map_t const& providers,
-    std::string_view file_content,
-    timetable& tt,
-    ProgressFn&& bytes_consumed) {
-  hash_map<vector<timetable::stop>, vector<vector<service>>> route_services;
+struct service_builder {
+  template <typename ProgressFn>
+  void add_services(
+      config const& c,
+      char const* filename,
+      std::pair<std::chrono::sys_days, std::chrono::sys_days> const& interval,
+      bitfield_map_t const& bitfields,
+      timezone_map_t const& timezones,
+      location_map_t const& locations,
+      category_map_t const& categories,
+      provider_map_t const& providers,
+      std::string_view file_content,
+      timetable& tt,
+      ProgressFn&& bytes_consumed) {
+    auto const get_index = [&](vector<service> const& route_services,
+                               service const& s) -> std::optional<size_t> {
+      auto const index = std::distance(
+          begin(route_services),
+          std::lower_bound(begin(route_services), end(route_services), s,
+                           [](service const& a, service const& b) {
+                             return a.stops_.front().dep_.time_ <
+                                    b.stops_.front().dep_.time_;
+                           }));
 
-  auto const get_index = [&](vector<service> const& route_services,
-                             service const& s) -> std::optional<size_t> {
-    auto const index = std::distance(
-        begin(route_services),
-        std::lower_bound(begin(route_services), end(route_services), s,
-                         [](service const& a, service const& b) {
-                           return a.stops_.front().dep_.time_ <
-                                  b.stops_.front().dep_.time_;
-                         }));
+      for (auto stop_idx = 0U; stop_idx != s.stops_.size(); ++stop_idx) {
+        auto const& lc = s.stops_.at(stop_idx);
 
-    for (auto stop_idx = 0U; stop_idx != s.stops_.size(); ++stop_idx) {
-      auto const& lc = s.stops_.at(stop_idx);
+        // Check if departures stay sorted.
+        auto const is_earlier_eq_dep =
+            index > 0 &&
+            lc.dep_.time_ <=
+                route_services[index - 1].stops_.at(stop_idx).dep_.time_;
+        auto const is_later_eq_dep =
+            index < route_services.size() &&
+            lc.dep_.time_ >=
+                route_services[index].stops_.at(stop_idx).dep_.time_;
 
-      // Check if departures stay sorted.
-      auto const is_earlier_eq_dep =
-          index > 0 &&
-          lc.dep_.time_ <=
-              route_services[index - 1].stops_.at(stop_idx).dep_.time_;
-      auto const is_later_eq_dep =
-          index < route_services.size() &&
-          lc.dep_.time_ >= route_services[index].stops_.at(stop_idx).dep_.time_;
+        // Check if arrivals stay sorted.
+        auto const is_earlier_eq_arr =
+            index > 0 &&
+            lc.arr_.time_ <=
+                route_services[index - 1].stops_.at(stop_idx).arr_.time_;
+        auto const is_later_eq_arr =
+            index < route_services.size() &&
+            lc.arr_.time_ >=
+                route_services[index].stops_.at(stop_idx).arr_.time_;
 
-      // Check if arrivals stay sorted.
-      auto const is_earlier_eq_arr =
-          index > 0 &&
-          lc.arr_.time_ <=
-              route_services[index - 1].stops_.at(stop_idx).arr_.time_;
-      auto const is_later_eq_arr =
-          index < route_services.size() &&
-          lc.arr_.time_ >= route_services[index].stops_.at(stop_idx).arr_.time_;
-
-      if (is_earlier_eq_dep || is_later_eq_dep || is_earlier_eq_arr ||
-          is_later_eq_arr) {
-        return std::nullopt;
+        if (is_earlier_eq_dep || is_later_eq_dep || is_earlier_eq_arr ||
+            is_later_eq_arr) {
+          return std::nullopt;
+        }
       }
-    }
 
-    return index;
-  };
+      return index;
+    };
 
-  auto const add_service = [&](service const& s) {
-    auto const stop_seq = to_vec(s.stops_, [&](service::stop const& s) {
-      return timetable::stop(locations.at(s.eva_num_).idx_,
-                             s.dep_.in_out_allowed_, s.arr_.in_out_allowed_);
-    });
+    auto const add_service = [&](service const& s) {
+      auto const stop_seq = to_vec(s.stops_, [&](service::stop const& s) {
+        return timetable::stop(locations.at(s.eva_num_).idx_,
+                               s.dep_.in_out_allowed_, s.arr_.in_out_allowed_);
+      });
 
-    auto& routes = route_services[stop_seq];
-    for (auto& r : routes) {
-      auto const idx = get_index(r, s);
-      if (idx.has_value()) {
-        r.insert(begin(r) + *idx, s);
-        return;
+      auto& routes = route_services_[stop_seq];
+      for (auto& r : routes) {
+        auto const idx = get_index(r, s);
+        if (idx.has_value()) {
+          r.insert(begin(r) + *idx, s);
+          return;
+        }
       }
-    }
 
-    // No matching route found - create new one.
-    routes.emplace_back(vector<service>({s}));
-  };
+      // No matching route found - create new one.
+      routes.emplace_back(vector<service>({s}));
+    };
 
-  parse_services(c, filename, interval, bitfields, timezones, file_content,
-                 std::forward<ProgressFn>(bytes_consumed), add_service);
+    parse_services(c, filename, interval, bitfields, timezones, file_content,
+                   std::forward<ProgressFn>(bytes_consumed), add_service);
+  }
 
-  hash_map<bitfield, bitfield_idx_t> bitfield_indices;
-  for (auto const& [stop_seq, sub_routes] : route_services) {
-    for (auto const& services : sub_routes) {
-      auto const route_idx = tt.register_route(stop_seq);
-      for (auto const& s : services) {
-        auto const id = tt.register_trip_id(
-            trip_id{.id_ = fmt::format(
-                        "{}/{}/{:07}/{:02}:{:02}", s.initial_admin_.view(),
-                        s.initial_train_num_, to_idx(s.stops_.front().eva_num_),
-                        s.stops_.front().dep_.time_ / 60,
-                        s.stops_.front().dep_.time_ % 60),
-                    .src_ = src},
-            s.display_name(categories, providers), s.origin_.str());
+  void write_services(source_idx_t const src,
+                      category_map_t const& categories,
+                      provider_map_t const& providers) {
+    hash_map<bitfield, bitfield_idx_t> bitfield_indices;
+    for (auto const& [stop_seq, sub_routes] : route_services_) {
+      for (auto const& services : sub_routes) {
+        auto const route_idx = tt_.register_route(stop_seq);
+        for (auto const& s : services) {
+          auto const id = tt_.register_trip_id(
+              trip_id{.id_ = fmt::format("{}/{}/{:07}/{:02}:{:02}",
+                                         s.initial_admin_.view(),
+                                         s.initial_train_num_,
+                                         to_idx(s.stops_.front().eva_num_),
+                                         s.stops_.front().dep_.time_ / 60,
+                                         s.stops_.front().dep_.time_ % 60),
+                      .src_ = src},
+              s.display_name(categories, providers), s.origin_.str());
 
-        auto const merged_trip = tt.register_merged_trip({id});
-        tt.add_transport(timetable::transport{
-            .bitfield_idx_ = utl::get_or_create(
-                bitfield_indices, s.traffic_days_,
-                [&]() { return tt.register_bitfield(s.traffic_days_); }),
-            .route_idx_ = route_idx,
-            .stop_times_ = s.get_stop_times(),
-            .meta_data_ = vector<section_db_idx_t>(stop_seq.size() - 1),
-            .external_trip_ids_ =
-                vector<merged_trips_idx_t>(stop_seq.size() - 1, merged_trip)});
+          auto const merged_trip = tt_.register_merged_trip({id});
+          tt_.add_transport(timetable::transport{
+              .bitfield_idx_ = utl::get_or_create(
+                  bitfield_indices, s.traffic_days_,
+                  [&]() { return tt_.register_bitfield(s.traffic_days_); }),
+              .route_idx_ = route_idx,
+              .stop_times_ = s.get_stop_times(),
+              .meta_data_ = vector<section_db_idx_t>(stop_seq.size() - 1),
+              .external_trip_ids_ = vector<merged_trips_idx_t>(
+                  stop_seq.size() - 1, merged_trip)});
+        }
       }
     }
   }
-}
+
+  timetable& tt_;
+  hash_map<vector<timetable::stop>, vector<vector<service>>> route_services_;
+};
 
 }  // namespace nigiri::loader::hrd

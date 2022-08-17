@@ -7,9 +7,9 @@
 #include "date/tz.h"
 
 #include "cista/containers/bitset.h"
-#include "cista/containers/flat_matrix.h"
 #include "cista/containers/hash_map.h"
 #include "cista/containers/hash_set.h"
+#include "cista/containers/matrix.h"
 #include "cista/containers/mutable_fws_multimap.h"
 #include "cista/containers/string.h"
 #include "cista/containers/tuple.h"
@@ -28,12 +28,11 @@ namespace nigiri {
 // the next day). To be able to support this, the internal nigiri timetable
 // range needs to start one day early and be one day longer than specified.
 constexpr auto const kBaseDayOffset = std::chrono::days{1};
-using bitfield = cista::bitset<512>;
 
-template <typename T>
-using flat_matrix = cista::offset::flat_matrix<T>;
+template <size_t Size>
+using bitset = cista::bitset<Size>;
 
-using cista::offset::make_flat_matrix;
+using bitfield = bitset<512>;
 
 template <typename... Args>
 using tuple = cista::tuple<Args...>;
@@ -46,6 +45,10 @@ using vector_map = cista::offset::vector_map<K, V>;
 
 template <typename T>
 using vector = cista::offset::vector<T>;
+
+template <typename T>
+using matrix = cista::raw::matrix<T>;
+using cista::raw::make_matrix;
 
 using cista::offset::to_vec;
 
@@ -82,6 +85,7 @@ using day_idx_t = cista::strong<std::uint16_t, struct _day_idx>;
 using timezone_idx_t = cista::strong<std::uint8_t, struct _timezone_idx>;
 using merged_trips_idx_t =
     cista::strong<std::uint32_t, struct _merged_trips_idx>;
+using footpath_idx_t = cista::strong<std::uint32_t, struct _footpath_idx>;
 
 struct trip_id {
   CISTA_PRINTABLE(trip_id, "id", "src")
@@ -95,12 +99,11 @@ struct location_id {
   source_idx_t src_;
 };
 
-using duration_t = std::chrono::duration<std::int16_t, std::ratio<60>>;
-using unixtime_t = std::chrono::time_point<
-    std::chrono::system_clock,
-    std::chrono::duration<std::int32_t, std::ratio<60>>>;
-using local_time =
-    date::local_time<std::chrono::duration<std::int32_t, std::ratio<60>>>;
+using i32_minutes = std::chrono::duration<std::int32_t, std::ratio<60>>;
+using i16_minutes = std::chrono::duration<std::int16_t, std::ratio<60>>;
+using duration_t = i16_minutes;
+using unixtime_t = std::chrono::sys_time<i32_minutes>;
+using local_time = date::local_time<i32_minutes>;
 
 constexpr duration_t operator"" _minutes(unsigned long long n) {
   return duration_t{n};
@@ -147,9 +150,13 @@ enum class clasz : std::uint8_t {
   kNumClasses
 };
 
+constexpr auto const kNumClasses =
+    static_cast<std::underlying_type_t<clasz>>(clasz::kNumClasses);
+
 enum class location_type : std::uint8_t { kTrack, kPlatform, kStation };
 
-enum class event_type { ARR, DEP };
+enum class event_type { kArr, kDep };
+enum class direction { kForward, kBackward };
 
 }  // namespace nigiri
 

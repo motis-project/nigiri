@@ -34,13 +34,13 @@ struct provider {
 
 using line_id_t = string;
 
-using direction_t = cista::variant<location_idx_t, string>;
+using trip_direction_t = cista::variant<location_idx_t, string>;
 
 struct section_info {
   CISTA_COMPARABLE()
   db_index_t<attribute> attribute_idx_{0U};
   db_index_t<provider> provider_idx_{0U};
-  db_index_t<direction_t> direction_idx_{0U};
+  db_index_t<trip_direction_t> direction_idx_{0U};
   db_index_t<line_id_t> line_idx_{0U};
 
   std::uint32_t train_nr_{0U};
@@ -51,7 +51,7 @@ using info_db = database<bitfield,
                          attribute,
                          provider,
                          line_id_t,
-                         direction_t,
+                         trip_direction_t,
                          section_info>;
 
 }  // namespace nigiri

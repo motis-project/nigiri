@@ -160,7 +160,7 @@ void process_component(timetable& tt,
   utl::verify(size > 2, "invalid size");
 
   constexpr auto const kInvalidTime = std::numeric_limits<duration_t>::max();
-  auto mat = make_flat_matrix<duration_t>(size, kInvalidTime);
+  auto mat = make_matrix(size, size, kInvalidTime);
   for (auto i = 0; i < size; ++i) {
     auto it = lb;
     for (auto const& edge : fgraph[(lb + i)->second]) {  // precond.: sorted!

@@ -1,17 +1,18 @@
 #pragma once
 
 #include <compare>
+#include <type_traits>
 
 #include "cista/reflection/printable.h"
 
 #include "utl/verify.h"
+#include "utl/zip.h"
 
 #include "geo/latlng.h"
 
 #include "nigiri/logging.h"
 #include "nigiri/section_db.h"
 #include "nigiri/types.h"
-#include "utl/zip.h"
 
 namespace nigiri {
 
@@ -20,6 +21,8 @@ struct it_range {
   template <typename Collection>
   explicit it_range(Collection&& c)
       : begin_{std::begin(c)}, end_{std::end(c)} {}
+  explicit it_range(BeginIt begin, EndIt end)
+      : begin_{std::move(begin)}, end_{std::move(end)} {}
   BeginIt begin() const { return begin_; }
   EndIt end() const { return end_; }
   friend BeginIt begin(it_range const& r) { return r.begin(); }
@@ -31,11 +34,38 @@ struct it_range {
 template <typename Collection>
 it_range(Collection const&) -> it_range<typename Collection::iterator>;
 
+template <typename BeginIt, typename EndIt>
+it_range(BeginIt, EndIt) -> it_range<BeginIt, EndIt>;
+
 struct footpath {
   CISTA_PRINTABLE(footpath, "target", "duration")
   location_idx_t target_;
   duration_t duration_;
 };
+
+template <typename T>
+struct interval {
+  template <typename X>
+  interval operator+(X const& x) const {
+    return {from_ + x, to_ + x};
+  }
+
+  template <typename X>
+  interval operator-(X const& x) const {
+    return {from_ - x, to_ - x};
+  }
+
+  template <typename X>
+  requires std::is_convertible_v<T, X>
+  operator interval<X>() { return {from_, to_}; }
+
+  bool contains(unixtime_t const t) const { return t >= from_ && t < to_; }
+
+  T from_{}, to_{};
+};
+
+template <typename T>
+interval(T, T) -> interval<T>;
 
 struct timetable {
   struct expanded_trip_section {
@@ -46,11 +76,6 @@ struct timetable {
   struct external_trip_section {
     trip_idx_t trip_idx_{};
     section_idx_t section_idx_{};
-  };
-
-  template <typename T>
-  struct index_range {
-    T from_{}, to_{};
   };
 
   struct stop {
@@ -220,6 +245,28 @@ struct timetable {
     assert(t.external_trip_ids_.size() == t.stop_times_.size() / 2);
   }
 
+  minutes_after_midnight_t event_mam(transport_idx_t const transport_idx,
+                                     size_t const stop_idx,
+                                     event_type const ev_type) {
+    return transport_stop_times_[transport_idx]
+                                [stop_idx * 2 -
+                                 (ev_type == event_type::kArr ? 1 : 0)];
+  }
+
+  std::pair<day_idx_t, minutes_after_midnight_t> day_idx_mam(
+      unixtime_t const t) const {
+    auto const minutes_since_timetable_begin = (t - begin_).count();
+    auto const d =
+        static_cast<day_idx_t::value_t>(minutes_since_timetable_begin / 1440);
+    auto const m = minutes_since_timetable_begin % 1440;
+    return {day_idx_t{d}, minutes_after_midnight_t{m}};
+  }
+
+  unixtime_t to_unixtime(day_idx_t const d,
+                         minutes_after_midnight_t const m) const {
+    return begin_ + to_idx(d) * 1_days + m;
+  }
+
   // Start date.
   unixtime_t begin_, end_;
 
@@ -236,7 +283,7 @@ struct timetable {
   vector_map<trip_idx_t, string> trip_display_names_;
 
   // Route -> From (inclusive) and to index (exclusive) of expanded trips
-  vector_map<route_idx_t, index_range<transport_idx_t>> route_transport_ranges_;
+  vector_map<route_idx_t, interval<transport_idx_t>> route_transport_ranges_;
 
   // Route -> list of stops
   vecvec<route_idx_t, stop> route_location_seq_;

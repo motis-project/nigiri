@@ -38,7 +38,8 @@ enum filename_key {
   TIMEZONES,
   FOOTPATHS,
   FOOTPATHS_EXT,
-  MIN_CT_FILE
+  MIN_CT_FILE,
+  NUM_FILES
 };
 
 static constexpr auto const ENCODING = "ISO8859-1";

@@ -7,14 +7,14 @@
 namespace nigiri {
 
 template <typename T>
-void floyd_warshall(flat_matrix<T>& mat) {
-  utl::verify(mat.entries_.size() == mat.column_count_ * mat.column_count_,
+void floyd_warshall(matrix<T>& mat) {
+  utl::verify(mat.entries_.size() == mat.n_columns_ * mat.n_columns_,
               "floyd_warshall: input is not a square matrix.");
   constexpr auto const kMaxDistance = std::numeric_limits<T>::max();
 
-  for (auto k = 0UL; k < mat.column_count_; ++k) {
-    for (auto i = 0UL; i < mat.column_count_; ++i) {
-      for (auto j = 0UL; j < mat.column_count_; ++j) {
+  for (auto k = 0UL; k < mat.n_columns_; ++k) {
+    for (auto i = 0UL; i < mat.n_columns_; ++i) {
+      for (auto j = 0UL; j < mat.n_columns_; ++j) {
         auto const distance =
             static_cast<T>(std::min(kMaxDistance, mat(i, k) + mat(k, j)));
         if (mat(i, j) > distance) {

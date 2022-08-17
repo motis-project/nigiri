@@ -13,7 +13,8 @@ namespace nigiri {
 void print_transport(timetable const& tt,
                      std::ostream& out,
                      transport_idx_t const i,
-                     day_idx_t const day_idx) {
+                     day_idx_t const day_idx,
+                     bool with_debug) {
   std::wstring_convert<std::codecvt_utf8<wchar_t>, wchar_t> utf8_conv;
 
   auto const& route_idx = tt.transport_route_.at(i);
@@ -63,8 +64,11 @@ void print_transport(timetable const& tt,
           out << "{name=" << tt.trip_display_names_.at(trip_idx) << ", day=";
           date::to_stream(out, "%F", tt.begin_ + to_idx(day_idx) * 1_days);
           out << ", id=" << id.id_
-              << ", src=" << static_cast<int>(to_idx(id.src_))
-              << ", debug=" << dbg << "}";
+              << ", src=" << static_cast<int>(to_idx(id.src_));
+          if (with_debug) {
+            out << ", debug=" << dbg;
+          }
+          out << "}";
         }
       }
       out << "]";
