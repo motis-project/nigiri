@@ -1,6 +1,7 @@
 #pragma once
 
 #include <compare>
+#include <concepts>
 
 #include "cista/reflection/printable.h"
 

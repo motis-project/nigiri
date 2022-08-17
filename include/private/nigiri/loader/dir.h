@@ -1,40 +1,61 @@
 #pragma once
 
 #include <filesystem>
+#include <map>
 #include <memory>
 #include <string_view>
+#include <vector>
 
 namespace nigiri::loader {
 
 struct file {
   struct content {
     virtual ~content() = default;
-    virtual std::string_view get() = 0;
+    virtual std::string_view get() const = 0;
   };
+
+  std::string_view data() const { return content_->get(); }
+  char const* filename() const { return name_.c_str(); }
 
   std::string name_;
   std::unique_ptr<content> content_;
 };
 
 struct dir {
-  virtual ~dir();
-  virtual file get_file(std::string_view path) = 0;
+  virtual ~dir() = 0;
+  virtual std::vector<std::filesystem::path> list_files(
+      std::filesystem::path const&) const = 0;
+  virtual file get_file(std::filesystem::path const&) const = 0;
 };
 
 struct fs_dir final : public dir {
-  ~fs_dir() override;
-  file get_file(std::string_view path) override;
+  explicit fs_dir(std::filesystem::path);
+  ~fs_dir() final;
+  std::vector<std::filesystem::path> list_files(
+      std::filesystem::path const&) const final;
+  file get_file(std::filesystem::path const&) const final;
   std::filesystem::path path_;
 };
 
 struct zip_dir final : public dir {
-  ~zip_dir() override;
-  file get_file(std::string_view path) override;
+  ~zip_dir() final;
+  explicit zip_dir(std::filesystem::path const&);
+  explicit zip_dir(std::vector<std::uint8_t>);
+  std::vector<std::filesystem::path> list_files(
+      std::filesystem::path const&) const final;
+  file get_file(std::filesystem::path const&) const final;
+  struct impl;
+  std::unique_ptr<impl> impl_;
 };
 
 struct mem_dir final : public dir {
-  ~mem_dir() override;
-  file get_file(std::string_view path) override;
+  using dir_t = std::map<std::filesystem::path, std::string>;
+  mem_dir(dir_t);
+  ~mem_dir() final;
+  std::vector<std::filesystem::path> list_files(
+      std::filesystem::path const&) const final;
+  file get_file(std::filesystem::path const&) const final;
+  dir_t dir_;
 };
 
 }  // namespace nigiri::loader

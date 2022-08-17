@@ -1,0 +1,3 @@
+#pragma once
+
+#define NIGIRI_TEST_EXECUTION_DIR "@CMAKE_CURRENT_SOURCE_DIR@"

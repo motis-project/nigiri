@@ -1,6 +1,5 @@
 #pragma once
 
-#include "nigiri/loader/file_list.h"
 #include "nigiri/loader/hrd/parser_config.h"
 
 namespace nigiri::test_data::hrd_timetable {
@@ -108,19 +107,27 @@ constexpr auto const providers_file_content = R"(
 00001 : 80____
 )";
 
-inline nigiri::loader::file_list files() {
+inline loader::mem_dir files() {
   using namespace loader::hrd;
-  nigiri::loader::file_list files;
-  files.resize(NUM_FILES);
-  files[STATIONS] = stations_file_content;
-  files[COORDINATES] = station_geo_file_content;
-  files[BITFIELDS] = bitfields_file_content;
-  files[BASIC_DATA] = basic_info_file_content;
-  files[CATEGORIES] = categories_file_content;
-  files[PROVIDERS] = providers_file_content;
-  files[TIMEZONES] = timezones_file_content;
-  files[FOOTPATHS] = station_metabhf_content;
-  return files;
+  auto const& b = hrd_5_20_26.core_data_;
+  auto const& r = hrd_5_20_26.required_files_;
+  auto const& f = hrd_5_20_26.fplan_;
+  return {{{(b / r[ATTRIBUTES][0]), ""},
+           {(b / r[STATIONS][0]), stations_file_content},
+           {(b / r[COORDINATES][0]), station_geo_file_content},
+           {(b / r[BITFIELDS][0]), bitfields_file_content},
+           {(b / r[TRACKS][0]), ""},
+           {(b / r[INFOTEXT][0]), ""},
+           {(b / r[BASIC_DATA][0]), basic_info_file_content},
+           {(b / r[CATEGORIES][0]), categories_file_content},
+           {(b / r[DIRECTIONS][0]), ""},
+           {(b / r[PROVIDERS][0]), providers_file_content},
+           {(b / r[THROUGH_SERVICES][0]), ""},
+           {(b / r[MERGE_SPLIT_SERVICES][0]), ""},
+           {(b / r[TIMEZONES][0]), timezones_file_content},
+           {(b / r[FOOTPATHS][0]), station_metabhf_content},
+           {(b / r[MIN_CT_FILE][0]), ""},
+           {(f / "services.101"), service_file_content}}};
 }
 
 }  // namespace nigiri::test_data::hrd_timetable
