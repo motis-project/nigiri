@@ -1,7 +1,7 @@
 #pragma once
 
 #include <compare>
-#include <concepts>
+#include <type_traits>
 
 #include "cista/reflection/printable.h"
 
@@ -56,7 +56,7 @@ struct interval {
   }
 
   template <typename X>
-    requires std::convertible_to<T, X>
+    requires std::is_convertible_v<T, X>
   operator interval<X>() {
     return {from_, to_};
   }
