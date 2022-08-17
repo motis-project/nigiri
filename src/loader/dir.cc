@@ -34,19 +34,19 @@ std::vector<std::filesystem::path> fs_dir::list_files(
 file fs_dir::get_file(std::filesystem::path const& p) const {
   struct mmap_content final : public file::content {
     explicit mmap_content(std::filesystem::path const& p)
-        : mmap_{p.c_str(), cista::mmap::protection::READ} {}
+        : mmap_{p.string().c_str(), cista::mmap::protection::READ} {}
     ~mmap_content() final = default;
     std::string_view get() const final { return mmap_.view(); }
     cista::mmap mmap_;
   };
-  return {path_ / p, std::make_unique<mmap_content>(path_ / p)};
+  return file{path_ / p, std::make_unique<mmap_content>(path_ / p)};
 }
 
 // --- ZIP directory implementation ---
 mz_uint32 get_file_idx(mz_zip_archive* ar, std::filesystem::path const& p) {
   mz_uint32 file_idx;
-  auto const r =
-      mz_zip_reader_locate_file_v2(ar, p.c_str(), nullptr, 0, &file_idx);
+  auto const r = mz_zip_reader_locate_file_v2(ar, p.string().c_str(), nullptr,
+                                              0, &file_idx);
   utl::verify(r, "cannot locate file {} in zip", p);
   return file_idx;
 }
@@ -83,7 +83,8 @@ struct zip_dir::impl {
     open("inmemory");
   }
   explicit impl(std::filesystem::path const& p)
-      : memory_{cista::mmap{p.c_str(), cista::mmap::protection::READ}} {
+      : memory_{
+            cista::mmap{p.string().c_str(), cista::mmap::protection::READ}} {
     open(p);
   }
   ~impl() { mz_zip_reader_end(&ar_); }
@@ -155,7 +156,7 @@ file mem_dir::get_file(std::filesystem::path const& p) const {
     std::string_view get() const final { return buf_; }
     std::string const& buf_;
   };
-  return {p, std::make_unique<mem_file_content>(dir_.at(p))};
+  return file{p, std::make_unique<mem_file_content>(dir_.at(p))};
 }
 
 }  // namespace nigiri::loader
