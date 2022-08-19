@@ -19,6 +19,7 @@ constexpr char const* to_str(log_lvl const lvl) {
     case log_lvl::info: return "info";
     case log_lvl::error: return "error";
   }
+  return "";
 }
 
 static log_lvl s_verbosity;

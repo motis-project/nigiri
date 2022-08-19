@@ -35,8 +35,8 @@ void link_nearby_stations(timetable& tt) {
   auto const locations_rtree =
       geo::make_point_rtree(tt.locations_.coordinates_);
 
-  for (auto from_idx = location_idx_t{0}; from_idx != tt.locations_.src_.size();
-       ++from_idx) {
+  for (auto from_idx = location_idx_t{0U};
+       from_idx != tt.locations_.src_.size(); ++from_idx) {
     auto const from_src = tt.locations_.src_[from_idx];
     auto const from_pos = tt.locations_.coordinates_[from_idx];
 
