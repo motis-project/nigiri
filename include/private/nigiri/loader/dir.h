@@ -10,7 +10,7 @@ namespace nigiri::loader {
 
 struct file {
   struct content {
-    virtual ~content() = default;
+    virtual ~content();
     virtual std::string_view get() const = 0;
   };
 
@@ -22,7 +22,7 @@ struct file {
 };
 
 struct dir {
-  virtual ~dir() = 0;
+  virtual ~dir();
   virtual std::vector<std::filesystem::path> list_files(
       std::filesystem::path const&) const = 0;
   virtual file get_file(std::filesystem::path const&) const = 0;

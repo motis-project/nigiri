@@ -32,9 +32,10 @@ constexpr int const ascii_hex_to_int[] = {
 };
 
 std::string hex_to_string(char c) {
-  auto const i = static_cast<unsigned long long>(ascii_hex_to_int[c]);
-  utl::verify(i != -1, "invalid bitfield char {}", static_cast<int>(c));
-  return std::bitset<4>{i}.to_string();
+  auto const idx = static_cast<int>(c);
+  auto const i = ascii_hex_to_int[idx];
+  utl::verify(i >= 0, "invalid bitfield char {}", idx);
+  return std::bitset<4>{static_cast<unsigned long long>(i)}.to_string();
 }
 
 template <typename T>
@@ -46,7 +47,7 @@ std::string hex_to_string(T const& char_collection) {
   return bit_str;
 }
 
-bitfield hex_str_to_bitset(utl::cstr hex, int line_number) {
+bitfield hex_str_to_bitset(utl::cstr hex, unsigned const line_number) {
   auto const bit_str = hex_to_string(hex);
   auto const period_begin = bit_str.find("11");
   auto const period_end = bit_str.rfind("11");
@@ -54,8 +55,9 @@ bitfield hex_str_to_bitset(utl::cstr hex, int line_number) {
       period_begin == period_end || period_end - period_begin <= 2) {
     throw utl::fail("invalid bitfield at line={}", line_number);
   }
-  std::string bitstring(std::next(begin(bit_str), period_begin + 2),
-                        std::next(begin(bit_str), period_end));
+  std::string bitstring(
+      std::next(begin(bit_str), static_cast<long>(period_begin + 2U)),
+      std::next(begin(bit_str), static_cast<long>(period_end)));
   std::reverse(begin(bitstring), end(bitstring));
   return bitfield{bitstring};
 }
@@ -65,7 +67,7 @@ bitfield_map_t parse_bitfields(config const& c,
                                std::string_view file_content) {
   bitfield_map_t bitfields;
   utl::for_each_line_numbered(
-      file_content, [&](utl::cstr line, int line_number) {
+      file_content, [&](utl::cstr line, unsigned const line_number) {
         if (line.len == 0 || line.str[0] == '%') {
           return;
         } else if (line.len < 9) {
@@ -79,7 +81,7 @@ bitfield_map_t parse_bitfields(config const& c,
       });
 
   // traffic day bitfield 0 = operates every day
-  for (auto i = 0; i != bitfields[0].first.size(); ++i) {
+  for (auto i = 0U; i != bitfields[0].first.size(); ++i) {
     bitfields[0].first.set(i, true);
   }
 

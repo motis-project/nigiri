@@ -151,7 +151,7 @@ struct config {
 
   bool convert_utf8_;
 
-  const char* files(filename_key k, int index = 0) const {
+  const char* files(filename_key k, unsigned index = 0) const {
     return required_files_[k][index].c_str();
   }
 

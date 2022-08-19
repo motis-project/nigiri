@@ -1,7 +1,6 @@
 #include "doctest/doctest.h"
 
 #include "nigiri/loader/hrd/category.h"
-#include "nigiri/byte_sizes.h"
 
 using namespace nigiri;
 using namespace nigiri::loader::hrd;
@@ -18,7 +17,9 @@ s    4 C 0  S         0 N S-Bahn)";
 
     auto const it = categories.find("s  ");
     CHECK(it != end(categories));
-    CHECK((it->second ==
-           category{.name_ = "s", .long_name_ = "S", .output_rule_ = 0}));
+    CHECK((it->second == category{.name_ = "s",
+                                  .long_name_ = "S",
+                                  .output_rule_ = 0,
+                                  .clasz_ = clasz::kAir}));
   }
 }

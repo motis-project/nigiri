@@ -43,11 +43,11 @@ std::shared_ptr<timetable> load_timetable(config const& c, dir const& d) {
   tt->end_ = std::chrono::sys_days{interval.second};
 
   std::vector<file> service_files;
-  service_builder sb{*tt};
+  service_builder sb{*tt, {}};
   for (auto const& s : d.list_files(c.fplan_)) {
     auto const& f = service_files.emplace_back(d.get_file(s));
     sb.add_services(c, f.filename(), interval, bitfields, timezones, locations,
-                    categories, providers, f.data(), *tt, [](std::size_t) {});
+                    f.data(), [](std::size_t) {});
   }
   sb.write_services(src, categories, providers);
 

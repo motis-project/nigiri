@@ -56,7 +56,7 @@ void print_transport(timetable const& tt,
       for (auto const& trip_idx : merged_trips) {
         auto j = 0U;
 
-        for (auto const& [dbg, id] :
+        for (auto const [dbg, id] :
              utl::zip(tt.trip_debug_.at(trip_idx), tt.trip_ids_.at(trip_idx))) {
           if (j++ != 0) {
             out << ", ";

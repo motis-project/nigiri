@@ -12,6 +12,8 @@
 
 namespace nigiri::loader {
 
+file::content::~content() = default;
+
 dir::~dir() = default;
 
 // --- File directory implementation ---
@@ -58,6 +60,7 @@ std::filesystem::path get_file_path(mz_zip_archive* ar,
   return file_stat.m_filename;
 }
 struct zip_file_content final : public file::content {
+  ~zip_file_content() final;
   zip_file_content(mz_zip_archive* ar,
                    std::filesystem::path const& p,
                    mz_uint32 const file_idx) {
@@ -78,6 +81,7 @@ struct zip_file_content final : public file::content {
   }
   std::vector<std::uint8_t> buf_;
 };
+zip_file_content::~zip_file_content() = default;
 struct zip_dir::impl {
   explicit impl(std::vector<std::uint8_t> b) : memory_{std::move(b)} {
     open("inmemory");
@@ -111,9 +115,9 @@ struct zip_dir::impl {
     std::vector<std::filesystem::path> files;
     auto const num_files = mz_zip_reader_get_num_files(&ar_);
     for (auto i = mz_uint32{0U}; i != num_files; ++i) {
-      auto const path = get_file_path(&ar_, i);
-      auto const p = path.string();
-      if (p.starts_with(parent) && p != parent) {
+      auto path = get_file_path(&ar_, i);
+      auto const p_str = path.string();
+      if (p_str.starts_with(parent) && p_str != parent) {
         files.emplace_back(std::move(path));
       }
     }

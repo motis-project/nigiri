@@ -31,8 +31,8 @@ struct parser_info {
   friend std::ostream& operator<<(std::ostream& out, parser_info const& pi);
   string str() const;
   char const* filename_;
-  int line_number_from_;
-  int line_number_to_;
+  size_t line_number_from_;
+  size_t line_number_to_;
 };
 
 struct specification {
@@ -40,11 +40,13 @@ struct specification {
   bool valid() const;
   bool ignore() const;
   void reset();
-  bool read_line(utl::cstr line, char const* filename, int line_number);
+  bool read_line(utl::cstr line,
+                 char const* filename,
+                 unsigned const line_number);
 
   char const* filename_{"unknown file"};
-  int line_number_from_{-1};
-  int line_number_to_{-1};
+  size_t line_number_from_{0U};
+  size_t line_number_to_{0U};
   utl::cstr internal_service_;
   std::vector<utl::cstr> traffic_days_;
   std::vector<utl::cstr> categories_;
@@ -119,11 +121,11 @@ struct service {
 
   int get_first_stop_index_at(eva_number) const;
 
-  int event_time(int stop_index, event_type evt) const;
+  int event_time(unsigned stop_index, event_type evt) const;
 
-  unsigned traffic_days_offset_at_stop(int stop_index, event_type) const;
+  unsigned traffic_days_offset_at_stop(unsigned stop_index, event_type) const;
 
-  bitfield traffic_days_at_stop(int stop_index, event_type) const;
+  bitfield traffic_days_at_stop(unsigned stop_index, event_type) const;
 
   vector<duration_t> get_stop_times() const;
   void set_stop_times(vector<duration_t> const&);
@@ -193,14 +195,14 @@ void expand_traffic_days(service const& s,
 
   // Checks that all section bitfields are disjunctive and calls consumer.
   bitfield consumed_traffic_days;
-  auto const check_and_consume = [&](service&& s) {
-    utl::verify((s.traffic_days_ & consumed_traffic_days).none(),
+  auto const check_and_consume = [&](service&& x) {
+    utl::verify((x.traffic_days_ & consumed_traffic_days).none(),
                 "traffic days of service {} are not disjunctive:\n"
                 "    sub-sections: {}\n"
                 "already consumed: {}",
-                s.origin_, s.traffic_days_, consumed_traffic_days);
-    consumed_traffic_days |= s.traffic_days_;
-    consumer(std::move(s));
+                x.origin_, x.traffic_days_, consumed_traffic_days);
+    consumed_traffic_days |= x.traffic_days_;
+    consumer(std::move(x));
   };
 
   // Creates a service containing only the specified sections.
@@ -247,7 +249,7 @@ void expand_traffic_days(service const& s,
 
   // Recursive function splitting services with uniform traffic day bitfields.
   auto const split = [&](unsigned const start, unsigned const pos,
-                         bitfield const& current, auto&& split) {
+                         bitfield const& current, auto&& self_split_fn) {
     if (pos == section_bitfields.size()) {
       consume_and_remove(start, pos, current);
       return;
@@ -259,12 +261,12 @@ void expand_traffic_days(service const& s,
       return;
     }
 
-    split(start, pos + 1, intersection, split);
+    self_split_fn(start, pos + 1, intersection, self_split_fn);
     auto const diff = current & (~intersection);
     consume_and_remove(start, pos, diff);
   };
 
-  for (auto i = size_t{0U}; i < section_bitfields.size(); ++i) {
+  for (auto i = 0U; i < section_bitfields.size(); ++i) {
     split(i, i, section_bitfields[i], split);
   }
 }
@@ -313,9 +315,11 @@ void to_local_time(
   auto const stop_timezones = s.get_stop_timezones(timezones);
   auto const first_day = interval.first + kBaseDayOffset;
   auto const last_day = interval.second - kBaseDayOffset;
-  auto utc_service_times = vector<duration_t>(s.stops_.size() * 2 - 2);
+  auto utc_service_times = vector<duration_t>{};
+  utc_service_times.resize(
+      static_cast<vector<duration_t>::size_type>(s.stops_.size() * 2U - 2U));
   for (auto day = first_day; day <= last_day; day += std::chrono::days{1}) {
-    auto const day_idx = (day - first_day).count();
+    auto const day_idx = static_cast<size_t>((day - first_day).count());
     if (!s.traffic_days_.test(day_idx)) {
       continue;
     }
@@ -332,10 +336,10 @@ void to_local_time(
       continue;
     }
 
-    auto i = 0;
+    auto i = 0U;
     auto pred = duration_t{0};
     auto fail = false;
-    for (auto const& [local_time, tz] : utl::zip(local_times, stop_timezones)) {
+    for (auto const [local_time, tz] : utl::zip(local_times, stop_timezones)) {
       auto const [utc_mam, offset, valid] = local_mam_to_utc_mam(
           tz, day + first_offset, local_time - first_offset);
       if (offset != 0_days || pred > utc_mam || !valid) {
@@ -353,7 +357,8 @@ void to_local_time(
 
     if (!fail) {
       utc_time_traffic_days[utc_service_times].set(
-          kBaseDayOffset.count() + day_idx + (first_offset / 1_days));
+          kBaseDayOffset.count() + day_idx +
+          static_cast<size_t>(first_offset / 1_days));
     }
   }
 
@@ -373,21 +378,21 @@ void parse_services(
     ProgressFn&& bytes_consumed,
     ConsumerFn&& consumer) {
   auto const expand_service = [&](service const& s) {
-    expand_traffic_days(s, bitfields, [&](service&& s) {
-      expand_repetitions(s, [&](service&& s) {
-        to_local_time(timezones, interval, s, consumer);
+    expand_traffic_days(s, bitfields, [&](service&& s2) {
+      expand_repetitions(s2, [&](service&& s3) {
+        to_local_time(timezones, interval, s3, consumer);
       });
     });
   };
 
   specification spec;
-  auto last_line = 0;
+  auto last_line = 0U;
   utl::for_each_line_numbered(
-      file_content, [&](utl::cstr line, int line_number) {
+      file_content, [&](utl::cstr line, unsigned const line_number) {
         last_line = line_number;
 
         if (line_number % 1000 == 0) {
-          bytes_consumed(line.c_str() - &file_content[0]);
+          bytes_consumed(static_cast<size_t>(line.c_str() - &file_content[0]));
         }
 
         if (line.len == 0 || line[0] == '%') {
@@ -435,20 +440,17 @@ struct service_builder {
       bitfield_map_t const& bitfields,
       timezone_map_t const& timezones,
       location_map_t const& locations,
-      category_map_t const& categories,
-      provider_map_t const& providers,
       std::string_view file_content,
-      timetable& tt,
       ProgressFn&& bytes_consumed) {
     auto const get_index = [&](vector<service> const& route_services,
                                service const& s) -> std::optional<size_t> {
-      auto const index = std::distance(
+      auto const index = static_cast<unsigned>(std::distance(
           begin(route_services),
           std::lower_bound(begin(route_services), end(route_services), s,
                            [](service const& a, service const& b) {
                              return a.stops_.front().dep_.time_ <
                                     b.stops_.front().dep_.time_;
-                           }));
+                           })));
 
       for (auto stop_idx = 0U; stop_idx != s.stops_.size(); ++stop_idx) {
         auto const& stop = s.stops_.at(stop_idx);
@@ -485,9 +487,9 @@ struct service_builder {
     };
 
     auto const add_service = [&](service const& s) {
-      auto const stop_seq = to_vec(s.stops_, [&](service::stop const& s) {
-        return timetable::stop(locations.at(s.eva_num_).idx_,
-                               s.dep_.in_out_allowed_, s.arr_.in_out_allowed_);
+      auto const stop_seq = to_vec(s.stops_, [&](service::stop const& x) {
+        return timetable::stop(locations.at(x.eva_num_).idx_,
+                               x.dep_.in_out_allowed_, x.arr_.in_out_allowed_);
       });
 
       auto& routes = route_services_[stop_seq];
@@ -534,7 +536,7 @@ struct service_builder {
               .stop_times_ = s.get_stop_times(),
               .meta_data_ = vector<section_db_idx_t>(stop_seq.size() - 1),
               .external_trip_ids_ = vector<merged_trips_idx_t>(
-                  stop_seq.size() - 1, merged_trip)});
+                  stop_seq.size() - 1U, merged_trip)});
         }
         tt_.finish_route();
       }

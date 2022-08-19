@@ -9,11 +9,11 @@
 namespace nigiri::loader::hrd {
 
 struct category {
-  CISTA_PRINTABLE(category, "name", "long_name", "output_rule", "clasz");
+  CISTA_PRINTABLE(category, "name", "long_name", "output_rule", "clasz")
   friend bool operator==(category const&, category const&) = default;
   string name_, long_name_;
   std::uint8_t output_rule_;
-  clasz clasz_;
+  clasz clasz_{clasz::kAir};
 };
 
 using category_map_t = hash_map<std::string, category>;

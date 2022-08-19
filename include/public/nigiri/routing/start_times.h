@@ -29,9 +29,8 @@ struct offset {
 template <direction SearchDir>
 std::vector<start> get_starts(timetable& tt,
                               interval<unixtime_t> const& start_interval,
-                              vector<offset> const& station_offsets) {
-  std::vector<start> starts;
-
+                              vector<offset> const& station_offsets,
+                              std::vector<start>& starts) {
   auto const add_start_times_at_stop =
       [&](route_idx_t const route_idx, size_t const stop_idx,
           location_idx_t const location_idx,
@@ -69,7 +68,7 @@ std::vector<start> get_starts(timetable& tt,
   auto const add_start_times = [&](offset const& o) {
     for (auto const& r : tt.location_routes_.at(o.location_)) {
       auto const location_seq = tt.route_location_seq_.at(r);
-      for (auto const& [i, s] : utl::enumerate(location_seq)) {
+      for (auto const [i, s] : utl::enumerate(location_seq)) {
         if (s.location_idx() != o.location_) {
           continue;
         }
@@ -95,11 +94,14 @@ std::vector<start> get_starts(timetable& tt,
     }
   };
 
+  starts.clear();
   for (auto const& offset : station_offsets) {
     add_start_times(offset);
   }
 
-  std::sort(begin(starts), end(starts));
+  std::sort(begin(starts), end(starts), [](start const& a, start const& b) {
+    return SearchDir == direction::kForward ? a < b : b < a;
+  });
 
   return starts;
 }

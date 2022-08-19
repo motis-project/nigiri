@@ -49,8 +49,8 @@ struct range {
         utl::cstr to_hhmm_or_idx) {
     if (from_eva_or_idx.trim().empty() && to_eva_or_idx.trim().empty() &&
         from_hhmm_or_idx.trim().empty() && to_hhmm_or_idx.trim().empty()) {
-      from_idx_ = 0;
-      to_idx_ = stops.size() - 1;
+      from_idx_ = 0U;
+      to_idx_ = stops.size() - 1U;
     } else {
       from_idx_ = get_index(stops, from_eva_or_idx, from_hhmm_or_idx, true);
       to_idx_ = get_index(stops, to_eva_or_idx, to_hhmm_or_idx, false);
@@ -63,12 +63,12 @@ struct range {
 private:
   bool is_index(utl::cstr s) { return s[0] == '#'; }
 
-  int parse_index(utl::cstr s) { return parse_verify<int>(s.substr(1)); }
+  size_t parse_index(utl::cstr s) { return parse_verify<size_t>(s.substr(1)); }
 
-  int get_index(std::vector<service::stop> const& stops,
-                utl::cstr eva_or_idx,
-                utl::cstr hhmm_or_idx,
-                bool is_departure_event) {
+  size_t get_index(std::vector<service::stop> const& stops,
+                   utl::cstr eva_or_idx,
+                   utl::cstr hhmm_or_idx,
+                   bool is_departure_event) {
     assert(!eva_or_idx.empty() && !hhmm_or_idx.empty());
     if (is_index(eva_or_idx)) {
       // eva_or_idx is an index which is already definite
@@ -77,19 +77,19 @@ private:
       // eva_or_idx is not an index -> eva_or_idx is an eva number
       // hhmm_or_idx is empty -> search for first occurrence
       // hhmm_or_idx is an index -> search for nth occurrence
-      const auto eva_num = parse_verify<int>(eva_or_idx);
+      const auto eva_num = parse<unsigned>(eva_or_idx);
       const auto n = is_index(hhmm_or_idx) ? parse_index(hhmm_or_idx) + 1 : 1;
       const auto it = find_nth(
           begin(stops), end(stops), n,
           [&](service::stop const& s) { return s.eva_num_ == eva_num; });
       utl::verify(it != end(stops),
                   "{}th occurrence of eva number {} not found", n, eva_num);
-      return static_cast<int>(std::distance(begin(stops), it));
+      return static_cast<size_t>(std::distance(begin(stops), it));
     } else {
       // hhmm_or_idx must be a time
       // -> return stop where eva number and time matches
-      const auto eva_num = parse_verify<int>(eva_or_idx);
-      const auto time = hhmm_to_min(parse_verify<int>(hhmm_or_idx.substr(1)));
+      const auto eva_num = parse<unsigned>(eva_or_idx);
+      const auto time = hhmm_to_min(parse<int>(hhmm_or_idx.substr(1)));
       const auto it =
           std::find_if(begin(stops), end(stops), [&](service::stop const& s) {
             return s.eva_num_ == eva_num &&
@@ -98,11 +98,11 @@ private:
       utl::verify(it != end(stops),
                   "event with time {} at eva number {} not found", time,
                   eva_num);
-      return static_cast<int>(std::distance(begin(stops), it));
+      return static_cast<size_t>(std::distance(begin(stops), it));
     }
   }
 
-  int from_idx_{}, to_idx_{};
+  size_t from_idx_{}, to_idx_{};
 };
 
 std::vector<std::pair<utl::cstr, range>> compute_ranges(
@@ -130,7 +130,7 @@ void parse_range(std::vector<utl::cstr> const& spec_lines,
                  TargetInformationParserFun parse_target_info) {
   for (auto const& r : compute_ranges(spec_lines, stops, parse_info)) {
     TargetInformationType target_info = parse_target_info(r.first, r.second);
-    for (int i = r.second.from_idx(); i < r.second.to_idx(); ++i) {
+    for (auto i = r.second.from_idx(); i < r.second.to_idx(); ++i) {
       (sections[i].*member).push_back(target_info);
     }
   }
@@ -182,7 +182,7 @@ std::vector<service::section> parse_section(
                                           : parse_verify<int>(train_num),
                         admin.empty() ? last_section.admin_ : admin);
 
-  return sections;
+  return std::move(sections);
 }
 
 bool specification::is_empty() const { return !internal_service_; }
@@ -208,7 +208,7 @@ void specification::reset() {
 
 bool specification::read_line(utl::cstr line,
                               char const* filename,
-                              int line_number) {
+                              unsigned const line_number) {
   if (line.len == 0) {
     return false;
   }
@@ -226,9 +226,8 @@ bool specification::read_line(utl::cstr line,
   // ignore *I, *GR, *SH, *T, *KW, *KWZ
   bool potential_kurswagen = false;
   switch (line[1]) {
-    case 'K': potential_kurswagen = true;
-    /* no break */
-    case 'Z':
+    case 'K': potential_kurswagen = true; [[fallthrough]];
+    case 'Z': [[fallthrough]];
     case 'T':
       if (potential_kurswagen && line.len > 3 && line[3] == 'Z') {
         // ignore KWZ line
@@ -285,7 +284,8 @@ service::service(config const& c, specification const& spec)
       stops_{utl::to_vec(spec.stops_, parse_stop)},
       sections_{
           std::accumulate(std::next(begin(spec.stops_)),
-                          std::next(begin(spec.stops_), spec.stops_.size() - 1),
+                          std::next(begin(spec.stops_),
+                                    static_cast<long>(spec.stops_.size() - 1)),
                           std::vector<section>({parse_initial_section(spec)}),
                           parse_section)},
       initial_admin_{initial_admin(spec)},
@@ -394,24 +394,26 @@ int service::get_first_stop_index_at(eva_number const eva_num) const {
   return idx;
 }
 
-int service::event_time(int stop_index, event_type evt) const {
+int service::event_time(unsigned stop_index, event_type evt) const {
   return evt == event_type::kDep ? stops_[stop_index].dep_.time_
                                  : stops_[stop_index].arr_.time_;
 }
 
-unsigned service::traffic_days_offset_at_stop(int stop_index,
+unsigned service::traffic_days_offset_at_stop(unsigned stop_index,
                                               event_type evt) const {
   return static_cast<unsigned>(event_time(stop_index, evt) / 1440);
 }
 
-bitfield service::traffic_days_at_stop(int stop_index, event_type evt) const {
+bitfield service::traffic_days_at_stop(unsigned stop_index,
+                                       event_type evt) const {
   return traffic_days_ << traffic_days_offset_at_stop(stop_index, evt);
 }
 
 vector<tz_offsets> service::get_stop_timezones(timezone_map_t const& tz) const {
   auto i = 0U;
-  auto stop_times = vector<tz_offsets>(stops_.size() * 2 - 2);
-  for (auto const& [from, to] : utl::pairwise(stops_)) {
+  auto stop_times =
+      vector<tz_offsets>(static_cast<std::uint32_t>(stops_.size() * 2U - 2U));
+  for (auto const [from, to] : utl::pairwise(stops_)) {
     stop_times[i++] = get_tz(tz, from.eva_num_).second;
     stop_times[i++] = get_tz(tz, to.eva_num_).second;
   }
@@ -420,8 +422,9 @@ vector<tz_offsets> service::get_stop_timezones(timezone_map_t const& tz) const {
 
 vector<duration_t> service::get_stop_times() const {
   auto i = 0U;
-  auto stop_times = vector<duration_t>(stops_.size() * 2 - 2);
-  for (auto const& [from, to] : utl::pairwise(stops_)) {
+  auto stop_times =
+      vector<duration_t>(static_cast<std::uint32_t>(stops_.size() * 2 - 2));
+  for (auto const [from, to] : utl::pairwise(stops_)) {
     stop_times[i++] = duration_t{from.dep_.time_};
     stop_times[i++] = duration_t{to.arr_.time_};
   }
@@ -433,7 +436,7 @@ void service::set_stop_times(vector<duration_t> const& stop_times) {
   utl::verify(stop_times.size() == stops_.size() * 2 - 2,
               "service::set_stop_times: invalid stop_times size");
   auto i = 0U;
-  for (auto const& [from, to] : utl::pairwise(stops_)) {
+  for (auto const [from, to] : utl::pairwise(stops_)) {
     from.dep_.time_ = stop_times[i++].count();
     to.arr_.time_ = stop_times[i++].count();
   }

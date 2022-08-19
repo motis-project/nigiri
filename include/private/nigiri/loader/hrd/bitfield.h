@@ -8,7 +8,7 @@ namespace nigiri::loader::hrd {
 
 using bitfield_map_t = hash_map<unsigned, std::pair<bitfield, bitfield_idx_t>>;
 
-bitfield hex_str_to_bitset(utl::cstr hex, int line_number);
+bitfield hex_str_to_bitset(utl::cstr hex, unsigned const line_number);
 
 bitfield_map_t parse_bitfields(config const&,
                                timetable&,

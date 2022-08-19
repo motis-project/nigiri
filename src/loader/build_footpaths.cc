@@ -18,7 +18,6 @@
 namespace nigiri::loader {
 
 constexpr const auto kWalkSpeed = 1.5;  // m/s
-constexpr auto const kAdjustedMaxDuration = 15;  // [minutes]
 
 constexpr auto kNoComponent = std::numeric_limits<uint32_t>::max();
 
@@ -36,8 +35,8 @@ void link_nearby_stations(timetable& tt) {
   auto const locations_rtree =
       geo::make_point_rtree(tt.locations_.coordinates_);
 
-  for (auto from_idx = location_idx_t{0}; from_idx != tt.locations_.src_.size();
-       ++from_idx) {
+  for (auto from_idx = location_idx_t{0U};
+       from_idx != tt.locations_.src_.size(); ++from_idx) {
     auto const from_src = tt.locations_.src_[from_idx];
     auto const from_pos = tt.locations_.coordinates_[from_idx];
 
@@ -47,11 +46,11 @@ void link_nearby_stations(timetable& tt) {
 
     for (auto const& to_idx :
          locations_rtree.in_radius(from_pos, kLinkNearbyMaxDistance)) {
-      if (from_idx == to_idx) {
+      auto const to_l_idx = location_idx_t{static_cast<unsigned>(to_idx)};
+      if (from_idx == to_l_idx) {
         continue;
       }
 
-      auto const to_l_idx = location_idx_t{static_cast<unsigned>(to_idx)};
       auto const to_src = tt.locations_.src_[to_l_idx];
       auto const to_pos = tt.locations_.coordinates_[to_l_idx];
       if (to_src == source_idx_t::invalid() /* no dummy stations */
@@ -78,7 +77,7 @@ void link_nearby_stations(timetable& tt) {
 
 footgraph get_footpath_graph(timetable& tt) {
   footgraph g;
-  g.resize(to_idx(tt.locations_.src_.size()));
+  g.resize(tt.locations_.src_.size());
   for (auto i = 0U; i != tt.locations_.src_.size(); ++i) {
     auto const idx = location_idx_t{static_cast<unsigned>(i)};
     g[i].emplace_back(idx, tt.locations_.transfer_time_[idx]);
@@ -96,7 +95,7 @@ static std::vector<std::pair<uint32_t, uint32_t>> find_components(
   });
 
   std::stack<uint32_t> stack;  // invariant: stack is empty
-  for (auto i = 0UL; i < fgraph.size(); ++i) {
+  for (auto i = 0U; i < fgraph.size(); ++i) {
     if (components[i].first != kNoComponent || fgraph[i].empty()) {
       continue;
     }
@@ -130,7 +129,7 @@ void process_component(timetable& tt,
     return;
   }
 
-  auto const size = std::distance(lb, ub);
+  auto const size = static_cast<std::uint32_t>(std::distance(lb, ub));
   if (size == 2) {
     auto const idx_a = lb->second;
     auto const idx_b = std::next(lb)->second;
@@ -161,7 +160,7 @@ void process_component(timetable& tt,
 
   constexpr auto const kInvalidTime = std::numeric_limits<duration_t>::max();
   auto mat = make_matrix(size, size, kInvalidTime);
-  for (auto i = 0; i < size; ++i) {
+  for (auto i = 0U; i < size; ++i) {
     auto it = lb;
     for (auto const& edge : fgraph[(lb + i)->second]) {  // precond.: sorted!
       while (it != ub && edge.target_ != it->second) {
@@ -175,8 +174,8 @@ void process_component(timetable& tt,
 
   floyd_warshall(mat);
 
-  for (auto i = 0; i < size; ++i) {
-    for (auto j = 0; j < size; ++j) {
+  for (auto i = 0U; i < size; ++i) {
+    for (auto j = 0U; j < size; ++j) {
       if (mat(i, j) == kInvalidTime || i == j) {
         continue;
       }

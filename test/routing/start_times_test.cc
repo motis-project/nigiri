@@ -265,10 +265,12 @@ TEST_CASE("routing start times") {
       location_id{.id_ = "0000001", .src_ = source_idx_t{0}});
   auto const B = tt->locations_.location_id_to_idx_.at(
       location_id{.id_ = "0000002", .src_ = source_idx_t{0}});
-  auto const starts = get_starts<nigiri::direction::kForward>(
+  auto starts = std::vector<start>{};
+  get_starts<nigiri::direction::kForward>(
       *tt, {sys_days{2020_y / March / 30}, sys_days{2020_y / March / 31}},
       {offset{.location_ = A, .offset_ = 15_minutes, .type_ = 0},
-       offset{.location_ = B, .offset_ = 30_minutes, .type_ = 0}});
+       offset{.location_ = B, .offset_ = 30_minutes, .type_ = 0}},
+      starts);
 
   std::stringstream ss;
   ss << "\n";
