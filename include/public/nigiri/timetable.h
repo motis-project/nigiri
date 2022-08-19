@@ -194,7 +194,6 @@ struct timetable {
   } locations_;
 
   struct transport {
-    string display_name_;
     bitfield_idx_t bitfield_idx_;
     route_idx_t route_idx_;
     vector<minutes_after_midnight_t> stop_times_;
