@@ -27,7 +27,8 @@ category_map_t parse_categories(config const& c,
 
         handle_map[code.to_str()] = category{.name_ = code.trim().to_str(),
                                              .long_name_ = name,
-                                             .output_rule_ = output_rule};
+                                             .output_rule_ = output_rule,
+                                             .clasz_ = clasz::kAir};
       });
   return handle_map;
 }
