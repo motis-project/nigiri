@@ -12,7 +12,7 @@ void parse_station_names(config const& c,
                          hash_map<eva_number, hrd_location>& stations,
                          std::string_view file_content) {
   utl::for_each_line_numbered(
-      file_content, [&](utl::cstr line, int line_number) {
+      file_content, [&](utl::cstr line, unsigned const line_number) {
         if (line.len == 0 || line[0] == '%') {
           return;
         } else if (line.len < 13) {
@@ -25,7 +25,7 @@ void parse_station_names(config const& c,
         auto name = line.substr(c.st_.names_.name_);
         auto const it = std::find(begin(name), end(name), '$');
         if (it != end(name)) {
-          name.len = std::distance(begin(name), it);
+          name.len = static_cast<size_t>(std::distance(begin(name), it));
         }
 
         auto const eva_num = parse_eva_number(line.substr(c.st_.names_.eva_));
@@ -39,7 +39,7 @@ void parse_station_coordinates(config const& c,
                                hash_map<eva_number, hrd_location>& stations,
                                std::string_view file_content) {
   utl::for_each_line_numbered(file_content, [&](utl::cstr line,
-                                                int line_number) {
+                                                unsigned const line_number) {
     if (line.len == 0 || line[0] == '%') {
       return;
     } else if (line.len < 30) {
@@ -68,7 +68,7 @@ void parse_equivilant_stations(config const& c,
           parse_eva_number(line.substr(c.meta_.meta_stations_.eva_)));
       utl::for_each_token(line.substr(8), ' ', [&](utl::cstr token) {
         if (token.empty() ||
-            c.version_ == "hrd_5_20_26" && token.starts_with("F")) {
+            (c.version_ == "hrd_5_20_26" && token.starts_with("F"))) {
           return;
         }
         if (auto const eva = parse_eva_number(token); eva != 0) {

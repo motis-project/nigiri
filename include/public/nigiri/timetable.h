@@ -204,7 +204,7 @@ struct timetable {
   trip_idx_t register_trip_id(trip_id const& id,
                               string display_name,
                               string debug) {
-    auto const idx = trip_idx_t{trip_ids_.index_size()};
+    auto const idx = trip_idx_t{trip_ids_.size()};
     auto& trips = trip_id_to_idx_[id];
     trips.emplace_back(idx);
     trip_display_names_.emplace_back(std::move(display_name));
@@ -225,14 +225,15 @@ struct timetable {
       location_routes_[s.location_idx()].emplace_back(idx);
     }
     route_transport_ranges_.emplace_back(
-        interval<transport_idx_t>{.from_ = transport_traffic_days_.size(),
-                                  .to_ = transport_idx_t::invalid()});
+        transport_idx_t{transport_traffic_days_.size()},
+        transport_idx_t::invalid());
     route_location_seq_.emplace_back(std::move(stop_seq));
-    return route_idx_t{static_cast<route_idx_t::value_t>(idx)};
+    return route_idx_t{idx};
   }
 
   void finish_route() {
-    route_transport_ranges_.back().to_ = transport_traffic_days_.size();
+    route_transport_ranges_.back().to_ =
+        transport_idx_t{transport_traffic_days_.size()};
   }
 
   merged_trips_idx_t register_merged_trip(vector<trip_idx_t> trip_ids) {
@@ -280,8 +281,13 @@ struct timetable {
     return begin_ + to_idx(d) * 1_days + m;
   }
 
-  size_t n_locations() const { return to_idx(locations_.names_.size()); }
-  size_t n_routes() const { return route_location_seq_.size(); }
+  cista::base_t<location_idx_t> n_locations() const {
+    return locations_.names_.size();
+  }
+
+  cista::base_t<route_idx_t> n_routes() const {
+    return route_location_seq_.size();
+  }
 
   friend std::ostream& operator<<(std::ostream&, timetable const&);
 

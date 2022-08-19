@@ -10,8 +10,4 @@ constexpr int hhmm_to_min(int const hhmm) {
   }
 }
 
-constexpr duration_t operator""_hhmm(unsigned long long hhmm) {
-  return duration_t{hhmm_to_min(hhmm)};
-}
-
 }  // namespace nigiri::loader::hrd

@@ -8,11 +8,6 @@
 using namespace nigiri;
 using namespace nigiri::loader::hrd;
 
-constexpr auto const basic_info_file_content = R"(28.03.2020
-31.03.2020
-Fahrplan 2020$29.03.2020 03:15:02$5.20.39$INFO+
-)";
-
 constexpr auto const stations_file_content = R"(
 0000001     A
 0000002     B

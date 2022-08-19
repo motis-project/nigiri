@@ -68,7 +68,7 @@ std::vector<start> get_starts(timetable& tt,
   auto const add_start_times = [&](offset const& o) {
     for (auto const& r : tt.location_routes_.at(o.location_)) {
       auto const location_seq = tt.route_location_seq_.at(r);
-      for (auto const& [i, s] : utl::enumerate(location_seq)) {
+      for (auto const [i, s] : utl::enumerate(location_seq)) {
         if (s.location_idx() != o.location_) {
           continue;
         }

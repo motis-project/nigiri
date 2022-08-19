@@ -5,7 +5,8 @@
 namespace nigiri {
 
 std::ostream& operator<<(std::ostream& out, timetable const& tt) {
-  auto const num_days = (tt.end_ - tt.begin_ + 1_days) / 1_days;
+  auto const num_days =
+      static_cast<size_t>((tt.end_ - tt.begin_ + 1_days) / 1_days);
   for (auto i = 0U; i != tt.transport_stop_times_.size(); ++i) {
     auto const transport_idx = transport_idx_t{i};
     auto const traffic_days =

@@ -18,7 +18,6 @@ constexpr char const* to_str(log_lvl const lvl) {
     case log_lvl::debug: return "debug";
     case log_lvl::info: return "info";
     case log_lvl::error: return "error";
-    default: return "?";
   }
 }
 

@@ -75,14 +75,17 @@ struct raptor {
         state_{std::move(state)},
         q_{std::move(q)} {}
 
-  routing_result route(query const& q) {
+  routing_result route(query const&) {
     init();
     rounds();
     return routing_result{reconstruct_journeys(), begin_, end_};
   }
 
-  void update_route(unsigned const k, route_idx_t const r_idx) {}
-  void update_footpaths(unsigned const k) {}
+  void update_route(unsigned const k, route_idx_t const r_idx) {
+    (void)k;
+    (void)r_idx;
+  }
+  void update_footpaths(unsigned const k) { (void)k; }
 
   void rounds() {
     for (auto k = 1; k <= kMaxTransfers; ++k) {
