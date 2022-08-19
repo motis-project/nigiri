@@ -205,6 +205,7 @@ inline std::ostream& operator<<(std::ostream& out, sys_days const& t) {
 }  // namespace std::chrono
 
 #include <iostream>
+
 namespace nigiri {
 
 inline local_time to_local_time(tz_offsets const& offsets, unixtime_t const t) {

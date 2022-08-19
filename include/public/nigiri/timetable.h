@@ -280,6 +280,9 @@ struct timetable {
     return begin_ + to_idx(d) * 1_days + m;
   }
 
+  size_t n_locations() const { return to_idx(locations_.names_.size()); }
+  size_t n_routes() const { return route_location_seq_.size(); }
+
   friend std::ostream& operator<<(std::ostream&, timetable const&);
 
   // Start date.
