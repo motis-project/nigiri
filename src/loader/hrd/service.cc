@@ -182,7 +182,7 @@ std::vector<service::section> parse_section(
                                           : parse_verify<int>(train_num),
                         admin.empty() ? last_section.admin_ : admin);
 
-  return sections;
+  return std::move(sections);
 }
 
 bool specification::is_empty() const { return !internal_service_; }

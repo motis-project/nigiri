@@ -56,8 +56,10 @@ struct interval {
   }
 
   template <typename X>
-  requires std::is_convertible_v<T, X>
-  operator interval<X>() { return {from_, to_}; }
+    requires std::is_convertible_v<T, X>
+  operator interval<X>() {
+    return {from_, to_};
+  }
 
   bool contains(unixtime_t const t) const { return t >= from_ && t < to_; }
 
@@ -158,10 +160,12 @@ struct timetable {
     location get(location_idx_t const idx) {
       return location{.id_ = ids_[idx],
                       .name_ = names_[idx],
+                      .pos_ = coordinates_[idx],
                       .src_ = src_[idx],
                       .type_ = types_[idx],
                       .osm_id_ = osm_ids_[idx],
                       .parent_ = parents_[idx],
+                      .timezone_idx_ = location_timezones_[idx],
                       .equivalences_ = it_range{equivalences_[idx]},
                       .footpaths_out_ = it_range{footpaths_out_[idx]},
                       .footpaths_in_ = it_range{footpaths_in_[idx]}};
@@ -196,7 +200,6 @@ struct timetable {
     vector<minutes_after_midnight_t> stop_times_;
     vector<section_db_idx_t> meta_data_;
     vector<merged_trips_idx_t> external_trip_ids_;
-    string debug_;
   };
 
   trip_idx_t register_trip_id(trip_id const& id,
