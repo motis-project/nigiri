@@ -56,8 +56,10 @@ struct interval {
   }
 
   template <typename X>
-  requires std::is_convertible_v<T, X>
-  operator interval<X>() { return {from_, to_}; }
+    requires std::is_convertible_v<T, X>
+  operator interval<X>() {
+    return {from_, to_};
+  }
 
   bool contains(unixtime_t const t) const { return t >= from_ && t < to_; }
 
@@ -131,8 +133,10 @@ struct timetable {
     }
 
     location_idx_t register_location(location&& l) {
+      auto const next_idx =
+          location_idx_t{static_cast<location_idx_t::value_t>(names_.size())};
       auto const [it, is_new] = location_id_to_idx_.emplace(
-          location_id{.id_ = l.id_, .src_ = l.src_}, next_id());
+          location_id{.id_ = l.id_, .src_ = l.src_}, next_idx);
 
       if (is_new) {
         names_.emplace_back(l.name_);
@@ -141,6 +145,10 @@ struct timetable {
         src_.emplace_back(l.src_);
         types_.emplace_back(location_type::kStation);
         location_timezones_.emplace_back(l.timezone_idx_);
+        equivalences_.emplace_back();
+        children_.emplace_back();
+        footpaths_out_.emplace_back();
+        footpaths_in_.emplace_back();
         transfer_time_.emplace_back(2);  // TODO(felix)
         osm_ids_.emplace_back(osm_node_id_t::invalid());  // TODO(felix)
         parents_.emplace_back(location_idx_t::invalid());  // TODO(felix)
@@ -163,11 +171,6 @@ struct timetable {
 
     location get(location_id const& id) {
       return get(location_id_to_idx_.at(id));
-    }
-
-    location_idx_t next_id() const {
-      return location_idx_t{
-          static_cast<location_idx_t::value_t>(names_.size())};
     }
 
     // Station access: external station id -> internal station idx
@@ -218,8 +221,18 @@ struct timetable {
 
   route_idx_t register_route(vector<stop> stop_seq) {
     auto const idx = route_location_seq_.size();
+    for (auto const& s : stop_seq) {
+      location_routes_[s.location_idx()].emplace_back(idx);
+    }
+    route_transport_ranges_.emplace_back(
+        interval<transport_idx_t>{.from_ = transport_traffic_days_.size(),
+                                  .to_ = transport_idx_t::invalid()});
     route_location_seq_.emplace_back(std::move(stop_seq));
     return route_idx_t{static_cast<route_idx_t::value_t>(idx)};
+  }
+
+  void finish_route() {
+    route_transport_ranges_.back().to_ = transport_traffic_days_.size();
   }
 
   merged_trips_idx_t register_merged_trip(vector<trip_idx_t> trip_ids) {
@@ -266,6 +279,8 @@ struct timetable {
                          minutes_after_midnight_t const m) const {
     return begin_ + to_idx(d) * 1_days + m;
   }
+
+  friend std::ostream& operator<<(std::ostream&, timetable const&);
 
   // Start date.
   unixtime_t begin_, end_;

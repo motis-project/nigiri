@@ -137,12 +137,13 @@ void parse_range(std::vector<utl::cstr> const& spec_lines,
 }
 
 service::stop parse_stop(utl::cstr stop) {
-  return {
-      eva_number{parse_verify<unsigned>(stop.substr(0, utl::size(7)))},
-      {hhmm_to_min(parse<int>(stop.substr(30, utl::size(5)), service::NOT_SET)),
-       stop[29] != '-'},
-      {hhmm_to_min(parse<int>(stop.substr(37, utl::size(5)), service::NOT_SET)),
-       stop[36] != '-'}};
+  return {eva_number{parse_verify<unsigned>(stop.substr(0, utl::size(7)))},
+          {hhmm_to_min(
+               parse<int>(stop.substr(30, utl::size(5)), service::kTimeNotSet)),
+           stop[29] != '-'},
+          {hhmm_to_min(
+               parse<int>(stop.substr(37, utl::size(5)), service::kTimeNotSet)),
+           stop[36] != '-'}};
 }
 
 int initial_train_num(specification const& spec) {
@@ -384,12 +385,12 @@ int service::find_first_stop_at(eva_number const eva_num) const {
       return static_cast<int>(i);
     }
   }
-  return NOT_SET;
+  return kTimeNotSet;
 }
 
 int service::get_first_stop_index_at(eva_number const eva_num) const {
   auto const idx = find_first_stop_at(eva_num);
-  utl::verify(idx != NOT_SET, "stop eva number {} not found", eva_num);
+  utl::verify(idx != kTimeNotSet, "stop eva number {} not found", eva_num);
   return idx;
 }
 

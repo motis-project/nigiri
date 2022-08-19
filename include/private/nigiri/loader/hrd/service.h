@@ -55,7 +55,7 @@ struct specification {
 };
 
 struct service {
-  static const constexpr auto NOT_SET = -1;  // NOLINT
+  static const constexpr auto kTimeNotSet = -1;  // NOLINT
 
   struct event {
     int time_;
@@ -271,22 +271,20 @@ void expand_traffic_days(service const& s,
 
 template <typename Fn>
 void expand_repetitions(service const& s, Fn&& consumer) {
-  auto const update_event = [&](service::event const& origin, int interval,
-                                int repetition) {
-    auto const new_time = origin.time_ != service::NOT_SET
-                              ? origin.time_ + (interval * repetition)
-                              : service::NOT_SET;
+  auto const update_event = [&](service::event const& origin, int repetition) {
+    auto const new_time = origin.time_ != service::kTimeNotSet
+                              ? origin.time_ + (s.interval_ * repetition)
+                              : service::kTimeNotSet;
     return service::event{new_time, origin.in_out_allowed_};
   };
 
-  for (int rep = 1; rep <= std::max(1, s.num_repetitions_); ++rep) {
+  for (int rep = 0; rep <= s.num_repetitions_; ++rep) {
     consumer({s.origin_, 0, 0,
               utl::to_vec(begin(s.stops_), end(s.stops_),
                           [&](service::stop const& stop) {
-                            return service::stop{
-                                stop.eva_num_,
-                                update_event(stop.arr_, s.interval_, rep),
-                                update_event(stop.dep_, s.interval_, rep)};
+                            return service::stop{stop.eva_num_,
+                                                 update_event(stop.arr_, rep),
+                                                 update_event(stop.dep_, rep)};
                           }),
               s.sections_, s.traffic_days_, s.initial_admin_,
               s.initial_train_num_});
@@ -327,8 +325,10 @@ void to_local_time(
 
     if (!first_valid) {
       log(log_lvl::error, "nigiri.loader.hrd.service",
-          "first departure local to utc failed, ignoring: {}, time={}, day={}",
-          s.origin_, local_times.front(), day);
+          "first departure local to utc failed, ignoring: {}, local_time={}, "
+          "stop={:07}, day={}",
+          s.origin_, local_times.front(), to_idx(s.stops_.front().eva_num_),
+          day);
       continue;
     }
 
@@ -451,26 +451,26 @@ struct service_builder {
                            }));
 
       for (auto stop_idx = 0U; stop_idx != s.stops_.size(); ++stop_idx) {
-        auto const& lc = s.stops_.at(stop_idx);
+        auto const& stop = s.stops_.at(stop_idx);
 
         // Check if departures stay sorted.
         auto const is_earlier_eq_dep =
             index > 0 &&
-            lc.dep_.time_ <=
+            stop.dep_.time_ <
                 route_services[index - 1].stops_.at(stop_idx).dep_.time_;
         auto const is_later_eq_dep =
             index < route_services.size() &&
-            lc.dep_.time_ >=
+            stop.dep_.time_ >
                 route_services[index].stops_.at(stop_idx).dep_.time_;
 
         // Check if arrivals stay sorted.
         auto const is_earlier_eq_arr =
             index > 0 &&
-            lc.arr_.time_ <=
+            stop.arr_.time_ <
                 route_services[index - 1].stops_.at(stop_idx).arr_.time_;
         auto const is_later_eq_arr =
             index < route_services.size() &&
-            lc.arr_.time_ >=
+            stop.arr_.time_ >
                 route_services[index].stops_.at(stop_idx).arr_.time_;
 
         if (is_earlier_eq_dep || is_later_eq_dep || is_earlier_eq_arr ||
@@ -478,6 +478,8 @@ struct service_builder {
           return std::nullopt;
         }
       }
+
+      std::cout << "\n";
 
       return index;
     };
@@ -534,6 +536,7 @@ struct service_builder {
               .external_trip_ids_ = vector<merged_trips_idx_t>(
                   stop_seq.size() - 1, merged_trip)});
         }
+        tt_.finish_route();
       }
     }
   }

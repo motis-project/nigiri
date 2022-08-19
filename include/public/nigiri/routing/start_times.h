@@ -51,7 +51,7 @@ std::vector<start> get_starts(timetable& tt,
               transport_idx, stop_idx,
               (SearchDir == direction::kForward ? event_type::kDep
                                                 : event_type::kArr));
-          for (auto day = first_day_idx; day != last_day_idx; ++day) {
+          for (auto day = first_day_idx; day <= last_day_idx; ++day) {
             if (traffic_days.test(to_idx(day)) &&
                 interval_with_offset.contains(tt.to_unixtime(day, stop_time))) {
               auto const ev_time = tt.to_unixtime(day, stop_time);
