@@ -448,8 +448,8 @@ struct service_builder {
           begin(route_services),
           std::lower_bound(begin(route_services), end(route_services), s,
                            [](service const& a, service const& b) {
-                             return a.stops_.front().dep_.time_ <
-                                    b.stops_.front().dep_.time_;
+                             return a.stops_.front().dep_.time_ % 1440 <
+                                    b.stops_.front().dep_.time_ % 1440;
                            })));
 
       for (auto stop_idx = 0U; stop_idx != s.stops_.size(); ++stop_idx) {
@@ -458,22 +458,22 @@ struct service_builder {
         // Check if departures stay sorted.
         auto const is_earlier_eq_dep =
             index > 0 &&
-            stop.dep_.time_ <
-                route_services[index - 1].stops_.at(stop_idx).dep_.time_;
+            stop.dep_.time_ % 1440 <
+                route_services[index - 1].stops_.at(stop_idx).dep_.time_ % 1440;
         auto const is_later_eq_dep =
             index < route_services.size() &&
-            stop.dep_.time_ >
-                route_services[index].stops_.at(stop_idx).dep_.time_;
+            stop.dep_.time_ % 1440 >
+                route_services[index].stops_.at(stop_idx).dep_.time_ % 1440;
 
         // Check if arrivals stay sorted.
         auto const is_earlier_eq_arr =
             index > 0 &&
-            stop.arr_.time_ <
-                route_services[index - 1].stops_.at(stop_idx).arr_.time_;
+            stop.arr_.time_ % 1440 <
+                route_services[index - 1].stops_.at(stop_idx).arr_.time_ % 1440;
         auto const is_later_eq_arr =
             index < route_services.size() &&
-            stop.arr_.time_ >
-                route_services[index].stops_.at(stop_idx).arr_.time_;
+            stop.arr_.time_ % 1440 >
+                route_services[index].stops_.at(stop_idx).arr_.time_ % 1440;
 
         if (is_earlier_eq_dep || is_later_eq_dep || is_earlier_eq_arr ||
             is_later_eq_arr) {

@@ -6,6 +6,6 @@
 
 namespace nigiri::loader::hrd {
 
-std::shared_ptr<timetable> load_timetable(config const&, dir const&);
+void load_timetable(source_idx_t, config const&, dir const&, timetable&);
 
 }  // namespace nigiri::loader::hrd

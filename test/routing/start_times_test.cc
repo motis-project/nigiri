@@ -259,15 +259,16 @@ start_time=2020-03-31 00:01
 )";
 
 TEST_CASE("routing start times") {
-  auto const tt = nigiri::loader::hrd::load_timetable(
-      nigiri::loader::hrd::hrd_5_20_26,
-      nigiri::test_data::hrd_timetable::files_simple());
+  auto const src = source_idx_t{0U};
+  auto tt = std::make_shared<timetable>();
+  load_timetable(src, loader::hrd::hrd_5_20_26,
+                 nigiri::test_data::hrd_timetable::files_simple(), *tt);
 
   using namespace date;
   auto const A = tt->locations_.location_id_to_idx_.at(
-      location_id{.id_ = "0000001", .src_ = source_idx_t{0}});
+      location_id{.id_ = "0000001", .src_ = src});
   auto const B = tt->locations_.location_id_to_idx_.at(
-      location_id{.id_ = "0000002", .src_ = source_idx_t{0}});
+      location_id{.id_ = "0000002", .src_ = src});
   auto starts = std::vector<start>{};
   get_starts<nigiri::direction::kForward>(
       *tt, {sys_days{2020_y / March / 30}, sys_days{2020_y / March / 31}},

@@ -27,7 +27,7 @@ struct offset {
 };
 
 template <direction SearchDir>
-void get_starts(timetable& tt,
+void get_starts(timetable const& tt,
                 interval<unixtime_t> const& start_interval,
                 vector<offset> const& station_offsets,
                 std::vector<start>& starts) {

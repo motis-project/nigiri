@@ -262,9 +262,15 @@ struct timetable {
   minutes_after_midnight_t event_mam(transport_idx_t const transport_idx,
                                      size_t const stop_idx,
                                      event_type const ev_type) const {
-    return transport_stop_times_[transport_idx]
-                                [stop_idx * 2 -
-                                 (ev_type == event_type::kArr ? 1 : 0)];
+    // Event times are stored alternatingly:
+    // departure (D), arrival (A), ..., arrival (A)
+    // event type: D A D A D A D A
+    // stop index: 0 1 1 2 2 3 3 4
+    // event time: 0 1 2 3 4 5 6 7
+    // --> A at stop i = i x 2 - 1
+    // --> D at stop i = i x 2
+    auto const idx = stop_idx * 2 - (ev_type == event_type::kArr ? 1 : 0);
+    return transport_stop_times_[transport_idx][idx];
   }
 
   std::pair<day_idx_t, minutes_after_midnight_t> day_idx_mam(
@@ -291,8 +297,9 @@ struct timetable {
 
   friend std::ostream& operator<<(std::ostream&, timetable const&);
 
-  // Start date.
+  // Schedule range.
   unixtime_t begin_, end_;
+  std::uint16_t n_days_;
 
   // Trip access: external trip id -> internal trip index
   hash_map<trip_id, vector<trip_idx_t>> trip_id_to_idx_;
