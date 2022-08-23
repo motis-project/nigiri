@@ -253,6 +253,9 @@ start_time=2020-03-30 23:15
 |  {time_at_start=2020-03-30 23:15, time_at_stop=2020-03-30 23:30, stop=A}
 start_time=2020-03-30 23:45
 |  {time_at_start=2020-03-30 23:45, time_at_stop=2020-03-31 00:00, stop=A}
+start_time=2020-03-31 00:01
+|  {time_at_start=2020-03-31 00:01, time_at_stop=2020-03-31 00:16, stop=A}
+|  {time_at_start=2020-03-31 00:01, time_at_stop=2020-03-31 00:31, stop=B}
 )";
 
 TEST_CASE("routing start times") {

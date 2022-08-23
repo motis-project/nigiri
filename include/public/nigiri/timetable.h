@@ -56,8 +56,10 @@ struct interval {
   }
 
   template <typename X>
-  requires std::is_convertible_v<T, X>
-  operator interval<X>() { return {from_, to_}; }
+    requires std::is_convertible_v<T, X>
+  operator interval<X>() {
+    return {from_, to_};
+  }
 
   bool contains(unixtime_t const t) const { return t >= from_ && t < to_; }
 
@@ -259,7 +261,7 @@ struct timetable {
 
   minutes_after_midnight_t event_mam(transport_idx_t const transport_idx,
                                      size_t const stop_idx,
-                                     event_type const ev_type) {
+                                     event_type const ev_type) const {
     return transport_stop_times_[transport_idx]
                                 [stop_idx * 2 -
                                  (ev_type == event_type::kArr ? 1 : 0)];
