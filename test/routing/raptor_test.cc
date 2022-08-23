@@ -38,6 +38,7 @@ TEST_CASE("raptor, simple_search") {
   r.route();
   std::cerr << "num results: " << r.state_.results_.size() << "\n";
   for (auto const& x : r.state_.results_) {
-    std::cerr << x.transfers_ << " " << x.dest_time_ << "\n";
+    std::cerr << static_cast<int>(x.transfers_) << " " << x.dest_time_ << "\n";
   }
+  std::cerr << "\n\n";
 };

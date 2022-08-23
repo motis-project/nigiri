@@ -481,8 +481,6 @@ struct service_builder {
         }
       }
 
-      std::cout << "\n";
-
       return index;
     };
 

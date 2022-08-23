@@ -118,7 +118,7 @@ void get_starts(timetable const& tt,
   }
 
   std::sort(begin(starts), end(starts), [](start const& a, start const& b) {
-    return SearchDir == direction::kForward ? a < b : b < a;
+    return SearchDir == direction::kForward ? b < a : a < b;
   });
 }
 
