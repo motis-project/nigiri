@@ -4,6 +4,10 @@
 
 #include "utl/equal_ranges_linear.h"
 
+#include "nigiri/routing/journey.h"
+#include "nigiri/routing/reconstruct.h"
+#include "nigiri/routing/routing_time.h"
+#include "nigiri/routing/search_state.h"
 #include "nigiri/routing/start_times.h"
 #include "nigiri/timetable.h"
 
@@ -18,93 +22,11 @@ void trace(char const* fmt_str, Args... args) {
   }
 }
 
-using routing_time_t = std::uint32_t;
-
-template <typename T>
-struct pareto_set {
-  size_t size() const { return els_.size(); }
-
-  bool add(T&& el) {
-    auto n_removed = std::size_t{0};
-    for (auto i = 0U; i < els_.size(); ++i) {
-      if (els_[i].dominates(el)) {
-        return false;
-      }
-      if (el.dominates(els_[i])) {
-        n_removed++;
-        continue;
-      }
-      els_[i - n_removed] = els_[i];
-    }
-    els_.resize(els_.size() - n_removed + 1);
-    els_.back() = std::move(el);
-    return true;
-  }
-
-  typename std::vector<T>::iterator begin() { return els_.begin(); }
-  typename std::vector<T>::iterator end() { return els_.end(); }
-  typename std::vector<T>::const_iterator begin() const { return els_.begin(); }
-  typename std::vector<T>::const_iterator end() const { return els_.end(); }
-
-  std::vector<T> els_;
-};
-
-struct query {
-  direction search_dir_;
-  interval<unixtime_t> interval_;
-  vector<offset> start_;
-  vector<vector<offset>> destinations_;
-  vector<vector<offset>> via_destinations_;
-  cista::bitset<kNumClasses> allowed_classes_;
-  std::uint8_t max_transfers_;
-  std::uint8_t min_connection_count_;
-  bool extend_interval_earlier_;
-  bool extend_interval_later_;
-};
-
-struct journey {
-  struct leg {
-    location_idx_t from_, to_;
-    unixtime_t dep_time_, arr_time_;
-    variant<route_idx_t, footpath_idx_t> uses_;
-  };
-
-  bool dominates(journey const& o) {
-    return transfers_ <= o.transfers_ && start_time_ >= o.start_time_ &&
-           dest_time_ <= o.dest_time_;
-  }
-
-  std::vector<leg> legs_;
-  unixtime_t start_time_;
-  unixtime_t dest_time_;
-  std::uint8_t transfers_{0U};
-};
-
-struct routing_result {
-  pareto_set<journey> journeys_;
-  unixtime_t interval_begin_;
-  unixtime_t interval_end_;
-};
-
-struct search_state {
-  std::vector<routing_time_t> best_;
-  matrix<routing_time_t> round_times_;
-  std::vector<bool> station_mark_;
-  std::vector<bool> route_mark_;
-  std::vector<start> starts_;
-  pareto_set<journey> results_;
-  std::size_t current_start_index_{0U};
-};
-
-static constexpr auto const kMaxTransfers = std::uint8_t{7U};
-
 template <direction SearchDir>
 struct raptor {
   static constexpr auto const kFwd = SearchDir == direction::kForward;
   static constexpr auto const kInvalidTime =
-      SearchDir == direction::kForward
-          ? std::numeric_limits<routing_time_t>::max()
-          : std::numeric_limits<routing_time_t>::min();
+      kFwd ? routing_time::max() : routing_time::min();
 
   raptor(std::shared_ptr<timetable const> tt, search_state state, query q)
       : tt_mem_{std::move(tt)},
@@ -114,61 +36,42 @@ struct raptor {
 
   void reset() {
     state_.station_mark_.resize(tt_.n_locations());
-    state_.route_mark_.resize(tt_.n_routes());
     std::fill(begin(state_.station_mark_), end(state_.station_mark_), false);
+
+    state_.route_mark_.resize(tt_.n_routes());
     std::fill(begin(state_.route_mark_), end(state_.route_mark_), false);
 
     state_.best_.resize(tt_.n_locations());
     std::fill(begin(state_.best_), end(state_.best_), kInvalidTime);
 
-    state_.round_times_.resize(tt_.n_locations(), kMaxTransfers + 1U);
+    state_.round_times_.resize(kMaxTransfers + 1U, tt_.n_locations());
     state_.round_times_.reset(kInvalidTime);
-
-    state_.current_start_index_ = 0U;
   }
 
-  static constexpr event_type ev_type() {
-    return kFwd ? event_type::kDep : event_type::kArr;
-  }
-  static constexpr bool is_better(auto const a, auto const b) {
-    return kFwd ? a < b : a > b;
-  }
-  static constexpr bool is_better_or_equal(auto const a, auto const b) {
-    return kFwd ? a <= b : a >= b;
-  }
-  static constexpr auto get_best(auto const a, auto const b) {
-    return is_better(a, b) ? a : b;
-  }
-  routing_time_t time_at_stop(transport_idx_t const t_idx,
-                              day_idx_t const day_idx,
-                              unsigned const stop_idx,
-                              event_type const ev_type) {
-    auto const mam = tt_.event_mam(t_idx, stop_idx, ev_type);
-    return to_idx(day_idx) * 1440U + static_cast<routing_time_t>(mam.count());
-  }
+  bool is_better(auto a, auto b) { return kFwd ? a < b : a > b; }
+  bool is_better_or_eq(auto a, auto b) { return kFwd ? a <= b : a >= b; }
+  auto get_best(auto a, auto b) { return is_better(a, b) ? a : b; }
 
-  static constexpr std::pair<day_idx_t, routing_time_t> day_idx_mam(
-      routing_time_t const t) {
-    return {day_idx_t{t / 1440U}, t % 1440U};
+  routing_time time_at_stop(transport const& t,
+                            unsigned const stop_idx,
+                            event_type const ev_type) {
+    return routing_time{t.day_, tt_.event_mam(t.t_idx_, stop_idx, ev_type)};
   }
 
   void update_route(unsigned const k, route_idx_t const r) {
-    constexpr auto const kInvalid = std::int32_t{-1};
-
     auto const& stop_seq = tt_.route_location_seq_[r];
 
-    auto const get_earliest_transport = [&](unsigned const stop_idx,
-                                            location_idx_t const l_idx)
-        -> std::pair<std::int32_t, std::int32_t> {
+    auto const get_earliest_transport =
+        [&](unsigned const stop_idx, location_idx_t const l_idx) -> transport {
       auto const time = state_.round_times_[k - 1][to_idx(l_idx)];
       if (time == kInvalidTime) {
         trace("┊ │    et: location=(name={}, id={}, idx={}) => NOT REACHABLE\n",
               tt_.locations_.names_[l_idx], tt_.locations_.ids_[l_idx], l_idx);
-        return {kInvalid, kInvalid};
+        return {transport_idx_t::invalid(), day_idx_t::invalid()};
       }
 
       auto const transport_range = tt_.route_transport_ranges_[r];
-      auto const [day_at_stop, mam_at_stop] = day_idx_mam(time);
+      auto const [day_at_stop, mam_at_stop] = time.day_idx_mam();
 
       auto const n_days_to_iterate =
           kFwd ? tt_.n_days_ - to_idx(day_at_stop) : to_idx(day_at_stop) + 1U;
@@ -182,9 +85,10 @@ struct raptor {
       for (auto i = std::uint16_t{0U}; i != n_days_to_iterate; ++i) {
         auto const day = kFwd ? day_at_stop + i : day_at_stop - i;
         for (auto t = transport_range.from_; t != transport_range.to_; ++t) {
-          auto const ev = tt_.event_mam(t, stop_idx, ev_type());
-          auto const ev_mam = static_cast<routing_time_t>(ev.count() % 1440);
-          if (day == day_at_stop && !is_better_or_equal(ev_mam, mam_at_stop)) {
+          auto const ev = tt_.event_mam(
+              t, stop_idx, kFwd ? event_type::kDep : event_type::kArr);
+          auto const ev_mam = ev.count() % 1440;
+          if (day == day_at_stop && !is_better_or_eq(mam_at_stop, ev_mam)) {
             continue;
           }
 
@@ -195,15 +99,18 @@ struct raptor {
             continue;
           }
 
-          return {to_idx(t), to_idx(day - ev_day_offset)};
+          trace(
+              "┊ │    => transport_idx={} at day {} (day_offset={}) - ev={}\n",
+              t, day, ev_day_offset,
+              routing_time{day_idx_t{day - ev_day_offset},
+                           minutes_after_midnight_t{ev_mam}});
+          return {t, day - ev_day_offset};
         }
       }
-      return {kInvalid, kInvalid};
+      return {transport_idx_t::invalid(), day_idx_t::invalid()};
     };
 
-    auto earliest_transport = kInvalid;
-    auto earliest_day = kInvalid;
-
+    auto et = transport{};
     for (auto i = 0U; i != stop_seq.size(); ++i) {
       auto const stop_idx =
           static_cast<unsigned>(kFwd ? i : stop_seq.size() - i - 1U);
@@ -216,17 +123,19 @@ struct raptor {
           stop_idx, tt_.locations_.names_[location_idx_t{l_idx}],
           tt_.locations_.ids_[location_idx_t{l_idx}], l_idx, current_best);
 
-      if (earliest_transport != kInvalid) {
+      if (et.is_valid()) {
         auto const by_transport_time = time_at_stop(
-            transport_idx_t{earliest_transport}, day_idx_t{earliest_day},
-            stop_idx, kFwd ? event_type::kArr : event_type::kDep);
+            et, stop_idx, kFwd ? event_type::kArr : event_type::kDep);
         if (is_better(by_transport_time, current_best)) {
           trace(
-              "┊ │    by_transport={} BETTER THAN current_best={} => "
-              "update, marking station {}!\n",
-              by_transport_time, current_best, l_idx);
+              "┊ │    transport={}, time_by_transport={} BETTER THAN "
+              "current_best={} => update, marking station {}!\n",
+              et, by_transport_time, current_best, l_idx);
           state_.best_[l_idx] = by_transport_time;
-          state_.round_times_[k][l_idx] = by_transport_time;
+          state_.round_times_[k][l_idx] =
+              by_transport_time +
+              (kFwd ? 1 : -1) *
+                  tt_.locations_.transfer_time_[location_idx_t{l_idx}];
           state_.station_mark_[l_idx] = true;
         } else {
           trace(
@@ -237,15 +146,12 @@ struct raptor {
       }
 
       if (i != stop_seq.size() - 1 &&
-          (earliest_transport == kInvalid ||
-           is_better_or_equal(
+          (!et.is_valid() ||
+           is_better_or_eq(
                state_.round_times_[k - 1][l_idx],
-               time_at_stop(transport_idx_t{earliest_transport},
-                            day_idx_t{earliest_day},
-                            static_cast<unsigned>(stop_idx),
+               time_at_stop(et, stop_idx,
                             kFwd ? event_type::kDep : event_type::kArr)))) {
-        std::tie(earliest_transport, earliest_day) =
-            get_earliest_transport(i, location_idx_t{l_idx});
+        et = get_earliest_transport(i, location_idx_t{l_idx});
       }
     }
   }
@@ -259,11 +165,10 @@ struct raptor {
       auto const& fps = kFwd ? tt_.locations_.footpaths_out_[l_idx]
                              : tt_.locations_.footpaths_in_[l_idx];
       for (auto const& fp : fps) {
+        trace("┊ footpath: {}->{} {}\n", l_idx, fp.target_, fp.duration_);
         auto& time_at_fp_target = state_.round_times_[k][to_idx(fp.target_)];
-        auto const arrival =
-            state_.round_times_[k][to_idx(l_idx)] +
-            static_cast<routing_time_t>(kFwd ? fp.duration_.count()
-                                             : -fp.duration_.count());
+        auto const arrival = state_.round_times_[k][to_idx(l_idx)] +
+                             (kFwd ? fp.duration_ : -fp.duration_);
         if (is_better(arrival, time_at_fp_target)) {
           time_at_fp_target = arrival;
           state_.best_[to_idx(fp.target_)] = arrival;
@@ -273,24 +178,25 @@ struct raptor {
     }
   }
 
-  void print_state() {
+  void print_state(char const* comment = "") {
     if constexpr (kTracing) {
+      fmt::print(std::cerr, "INFO: {}\n", comment);
       for (auto l = 0U; l != tt_.n_locations(); ++l) {
         fmt::print(std::cerr, "{:8} [name={:20}, id={:12}]: ", l,
                    tt_.locations_.names_[location_idx_t{l}],
                    tt_.locations_.ids_[location_idx_t{l}]);
         auto const b = state_.best_[l];
         if (b == kInvalidTime) {
-          fmt::print(std::cerr, "best=_____, round_times: ");
+          fmt::print(std::cerr, "best=_________, round_times: ");
         } else {
-          fmt::print(std::cerr, "best={:5}, round_times: ", b);
+          fmt::print(std::cerr, "best={:9}, round_times: ", b);
         }
         for (auto i = 0U; i != kMaxTransfers + 1U; ++i) {
           auto const t = state_.round_times_[i][l];
           if (t != kInvalidTime) {
-            fmt::print(std::cerr, "{:5} ", t);
+            fmt::print(std::cerr, "{:9} ", t);
           } else {
-            fmt::print(std::cerr, "_____ ");
+            fmt::print(std::cerr, "_________ ");
           }
         }
         fmt::print(std::cerr, "\n");
@@ -312,10 +218,7 @@ struct raptor {
            ++l_idx) {
         if (state_.station_mark_[to_idx(l_idx)]) {
           any_marked = true;
-          trace("┊  routes at stop={} [{}]:\n", to_idx(l_idx),
-                tt_.locations_.names_[l_idx], tt_.locations_.ids_[l_idx]);
           for (auto const& r : tt_.location_routes_[l_idx]) {
-            trace("┊    marking route={}\n", to_idx(r));
             state_.route_mark_[to_idx(r)] = true;
           }
         }
@@ -340,7 +243,8 @@ struct raptor {
 
       update_footpaths(k);
 
-      trace("┊ ╰ done\n\n");
+      trace("┊ ╰ round {} done\n", k);
+      print_state();
     }
   }
 
@@ -358,17 +262,17 @@ struct raptor {
             trace("init [idx={}, id={}, name={}, id={}]\n", s.stop_,
                   tt_.locations_.names_[s.stop_], tt_.locations_.ids_[s.stop_],
                   s.time_at_stop_);
-            state_.round_times_[0U][to_idx(s.stop_)] =
-                to_routing_time(s.time_at_stop_);
-            state_.best_[to_idx(s.stop_)] = to_routing_time(s.time_at_stop_);
+            state_.round_times_[0U][to_idx(s.stop_)] = {tt_, s.time_at_stop_};
+            state_.best_[to_idx(s.stop_)] = {tt_, s.time_at_stop_};
             state_.station_mark_[to_idx(s.stop_)] = true;
           }
           rounds();
-          reconstruct_journeys(from_it->time_at_start_);
+          save_journeys_for_reconstruction(from_it->time_at_start_);
         });
+    reconstruct<SearchDir>(tt_, q_, state_);
   }
 
-  void reconstruct_journeys(unixtime_t const start_at_start) {
+  void save_journeys_for_reconstruction(unixtime_t const start_at_start) {
     for (auto const& t : q_.destinations_) {
       auto const dest = t.front().location_;
       for (auto k = 1U; k != kMaxTransfers + 1; ++k) {
@@ -377,18 +281,11 @@ struct raptor {
         }
         state_.results_.add(journey{
             .start_time_ = start_at_start,
-            .dest_time_ = to_unixtime(state_.round_times_[k][to_idx(dest)]),
+            .dest_time_ = state_.round_times_[k][to_idx(dest)].to_unixtime(tt_),
+            .dest_ = dest,
             .transfers_ = static_cast<std::uint8_t>(k - 1)});
       }
     }
-  }
-
-  routing_time_t to_routing_time(unixtime_t const t) {
-    return static_cast<routing_time_t>((t - tt_.begin_).count());
-  }
-
-  unixtime_t to_unixtime(routing_time_t const t) {
-    return tt_.begin_ + t * 1_minutes;
   }
 
   std::shared_ptr<timetable const> tt_mem_;

@@ -10,64 +10,19 @@
 
 #include "geo/latlng.h"
 
+#include "nigiri/common/interval.h"
+#include "nigiri/common/it_range.h"
 #include "nigiri/logging.h"
 #include "nigiri/section_db.h"
 #include "nigiri/types.h"
 
 namespace nigiri {
 
-template <typename BeginIt, typename EndIt = BeginIt>
-struct it_range {
-  template <typename Collection>
-  explicit it_range(Collection&& c)
-      : begin_{std::begin(c)}, end_{std::end(c)} {}
-  explicit it_range(BeginIt begin, EndIt end)
-      : begin_{std::move(begin)}, end_{std::move(end)} {}
-  BeginIt begin() const { return begin_; }
-  EndIt end() const { return end_; }
-  friend BeginIt begin(it_range const& r) { return r.begin(); }
-  friend EndIt end(it_range const& r) { return r.end(); }
-  BeginIt begin_;
-  EndIt end_;
-};
-
-template <typename Collection>
-it_range(Collection const&) -> it_range<typename Collection::iterator>;
-
-template <typename BeginIt, typename EndIt>
-it_range(BeginIt, EndIt) -> it_range<BeginIt, EndIt>;
-
 struct footpath {
   CISTA_PRINTABLE(footpath, "target", "duration")
   location_idx_t target_;
   duration_t duration_;
 };
-
-template <typename T>
-struct interval {
-  template <typename X>
-  interval operator+(X const& x) const {
-    return {from_ + x, to_ + x};
-  }
-
-  template <typename X>
-  interval operator-(X const& x) const {
-    return {from_ - x, to_ - x};
-  }
-
-  template <typename X>
-    requires std::is_convertible_v<T, X>
-  operator interval<X>() {
-    return {from_, to_};
-  }
-
-  bool contains(unixtime_t const t) const { return t >= from_ && t < to_; }
-
-  T from_{}, to_{};
-};
-
-template <typename T>
-interval(T, T) -> interval<T>;
 
 struct timetable {
   struct expanded_trip_section {

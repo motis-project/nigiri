@@ -7,6 +7,7 @@
 
 #include "utl/enumerate.h"
 
+#include "nigiri/routing/query.h"
 #include "nigiri/timetable.h"
 #include "nigiri/types.h"
 
@@ -18,12 +19,6 @@ struct start {
   unixtime_t time_at_start_;
   unixtime_t time_at_stop_;
   location_idx_t stop_;
-};
-
-struct offset {
-  location_idx_t location_;
-  duration_t offset_;
-  std::uint8_t type_;
 };
 
 template <direction SearchDir>

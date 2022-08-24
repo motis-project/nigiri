@@ -22,6 +22,11 @@ struct file {
 };
 
 struct dir {
+  dir();
+  dir(dir const&);
+  dir(dir&&);
+  dir& operator=(dir const&);
+  dir& operator=(dir&&);
   virtual ~dir();
   virtual std::vector<std::filesystem::path> list_files(
       std::filesystem::path const&) const = 0;
@@ -52,6 +57,11 @@ struct mem_dir final : public dir {
   using dir_t = std::map<std::filesystem::path, std::string>;
   mem_dir(dir_t);
   ~mem_dir() final;
+  mem_dir(mem_dir const&);
+  mem_dir(mem_dir&&);
+  mem_dir& operator=(mem_dir const&);
+  mem_dir& operator=(mem_dir&&);
+  mem_dir& add(std::pair<std::filesystem::path, std::string>);
   std::vector<std::filesystem::path> list_files(
       std::filesystem::path const&) const final;
   file get_file(std::filesystem::path const&) const final;

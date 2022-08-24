@@ -99,6 +99,13 @@ struct location_id {
   source_idx_t src_;
 };
 
+struct transport {
+  CISTA_PRINTABLE(transport, "idx", "day")
+  constexpr bool is_valid() const { return day_ != day_idx_t::invalid(); }
+  transport_idx_t t_idx_{transport_idx_t::invalid()};
+  day_idx_t day_{day_idx_t::invalid()};
+};
+
 using i32_minutes = std::chrono::duration<std::int32_t, std::ratio<60>>;
 using i16_minutes = std::chrono::duration<std::int16_t, std::ratio<60>>;
 using duration_t = i16_minutes;

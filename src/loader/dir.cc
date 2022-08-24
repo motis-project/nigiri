@@ -15,6 +15,11 @@ namespace nigiri::loader {
 file::content::~content() = default;
 
 dir::~dir() = default;
+dir::dir() = default;
+dir::dir(dir const&) = default;
+dir::dir(dir&&) = default;
+dir& dir::operator=(dir const&) = default;
+dir& dir::operator=(dir&&) = default;
 
 // --- File directory implementation ---
 fs_dir::fs_dir(std::filesystem::path p) : path_{std::move(p)} {}
@@ -144,6 +149,14 @@ file zip_dir::get_file(std::filesystem::path const& p) const {
 // --- In-memory directory implementation ---
 mem_dir::mem_dir(dir_t d) : dir_{std::move(d)} {}
 mem_dir::~mem_dir() = default;
+mem_dir::mem_dir(mem_dir const&) = default;
+mem_dir::mem_dir(mem_dir&&) = default;
+mem_dir& mem_dir::operator=(mem_dir const&) = default;
+mem_dir& mem_dir::operator=(mem_dir&&) = default;
+mem_dir& mem_dir::add(std::pair<std::filesystem::path, std::string> f) {
+  dir_.emplace(f);
+  return *this;
+}
 std::vector<std::filesystem::path> mem_dir::list_files(
     std::filesystem::path const& dir) const {
   std::vector<std::filesystem::path> paths;
