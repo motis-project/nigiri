@@ -103,8 +103,8 @@ void get_starts(timetable const& tt,
     // interval will be filtered out before returning the result.
     starts.emplace_back(
         start{.time_at_start_ = SearchDir == direction::kForward
-                                    ? start_interval.to_ + 1_minutes
-                                    : start_interval.from_ - 1_minutes,
+                                    ? start_interval.to_
+                                    : start_interval.from_,
               .time_at_stop_ =
                   SearchDir == direction::kForward
                       ? start_interval.to_ + 1_minutes + offset.offset_

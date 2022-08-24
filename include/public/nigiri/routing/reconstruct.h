@@ -10,32 +10,70 @@ void reconstruct(timetable const& tt,
                  query const& q,
                  search_state const& s,
                  journey& j) {
-  constexpr auto const kIsFwd = SearchDir == direction::kForward;
-
-  auto curr_location = location_idx_t{j.dest_};
-  auto curr_time = j.dest_time_;
-
   (void)q;
-  (void)s;
-  (void)curr_time;
+  constexpr auto const kFwd = SearchDir == direction::kForward;
 
-  // auto const get_transport = [&]() { return journey::leg{}; };
+  auto const get_route_transport =
+      [&](location_idx_t const l, routing_time const event_time,
+          route_idx_t const r,
+          unsigned const stop_idx) -> std::optional<transport> {
+    for (auto const t : tt.route_transport_ranges_[r]) {
+      auto const event_mam =
+          tt.event_mam(t, stop_idx, kFwd ? event_type::kArr : event_type::kDep);
+      if (event_mam.count() % 1440 != event_time.mam().count()) {
+        continue;
+      }
+    }
+    return std::nullopt;
+  };
+
+  auto const get_transport =
+      [&](location_idx_t const l,
+          routing_time const event_time) -> std::optional<journey::leg> {
+    for (auto const& r : tt.location_routes_[l]) {
+      for (auto const [i, stop] : utl::enumerate(tt.route_location_seq_[r])) {
+        if (stop.location_idx() != l) {
+          continue;
+        }
+
+        auto const transport = get_route_transport(l, event_time, r, i);
+        if (transport.has_value()) {
+          return journey::leg{};
+        }
+      }
+    }
+  };
+
   auto const get_legs =
-      [&](unsigned const) -> std::pair<journey::leg, journey::leg> {
-    auto const& fps = kIsFwd ? tt.locations_.footpaths_in_[curr_location]
-                             : tt.locations_.footpaths_out_[curr_location];
-
+      [&](unsigned const k,
+          location_idx_t const l) -> std::pair<journey::leg, journey::leg> {
+    auto const curr_time = s.round_times_[k][to_idx(l)];
+    auto const& fps =
+        kFwd ? tt.locations_.footpaths_in_[l] : tt.locations_.footpaths_out_[l];
     for (auto const& fp : fps) {
-      (void)fp;
+      auto const fp_start = curr_time - (kFwd ? fp.duration_ : -fp.duration_);
+      auto const t = get_transport(fp_start);
+      if (t.has_value()) {
+        return {journey::leg{
+                    .from_ = kFwd ? fp.target_ : l,
+                    .to_ = kFwd ? l : fp.target_,
+                    .dep_time_ = (kFwd ? fp_start : curr_time).to_unixtime(tt),
+                    .arr_time_ = (kFwd ? curr_time : fp_start).to_unixtime(tt),
+                    .uses_ = footpath_idx_t::invalid()},
+                *t};
+      }
     }
 
     return {};
   };
 
-  for (auto k = 0U; k != kMaxTransfers + 1; ++k) {
-    auto [fp_leg, transport_leg] = get_legs(k);
+  auto l = j.dest_;
+  for (auto i = 0U; i <= j.transfers_; ++i) {
+    auto const k = j.transfers_ - i;
+    auto [fp_leg, transport_leg, next_l] = get_legs(k, l);
     j.add(std::move(fp_leg));
     j.add(std::move(transport_leg));
+    l = next_l;
   }
 }
 

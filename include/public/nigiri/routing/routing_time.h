@@ -31,8 +31,11 @@ struct routing_time {
   friend bool operator>(routing_time const&, routing_time const&) = default;
   constexpr inline std::int32_t t() const { return offset_; }
   constexpr inline day_idx_t day() const { return day_idx_t{offset_ / 1440}; }
-  constexpr inline std::int32_t mam() const { return offset_ % 1440; }
-  constexpr inline std::pair<day_idx_t, std::int32_t> day_idx_mam() const {
+  constexpr inline minutes_after_midnight_t mam() const {
+    return minutes_after_midnight_t{offset_ % 1440};
+  }
+  constexpr inline std::pair<day_idx_t, minutes_after_midnight_t> day_idx_mam()
+      const {
     return {day(), mam()};
   }
   constexpr routing_time operator+(duration_t const& rt) const {
