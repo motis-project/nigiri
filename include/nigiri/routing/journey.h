@@ -42,7 +42,7 @@ struct journey {
     variant<transport_enter_exit, footpath_idx_t, std::uint8_t> uses_;
   };
 
-  bool dominates(journey const& o) {
+  bool dominates(journey const& o) const {
     return transfers_ <= o.transfers_ && start_time_ >= o.start_time_ &&
            dest_time_ <= o.dest_time_;
   }

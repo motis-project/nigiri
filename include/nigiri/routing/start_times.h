@@ -107,7 +107,7 @@ void get_starts(timetable const& tt,
                                     : start_interval.from_,
               .time_at_stop_ =
                   SearchDir == direction::kForward
-                      ? start_interval.to_ + 1_minutes + offset.offset_
+                      ? start_interval.to_ + offset.offset_
                       : start_interval.from_ - 1_minutes - offset.offset_,
               .stop_ = offset.location_});
   }

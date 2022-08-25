@@ -11,7 +11,6 @@ struct offset {
 };
 
 struct query {
-  direction search_dir_;
   interval<unixtime_t> interval_;
   vector<offset> start_;
   vector<vector<offset>> destinations_;
