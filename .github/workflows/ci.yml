@@ -92,6 +92,7 @@ jobs:
       matrix:
         config:
           - preset: macos-x86_64
+            tests: On
           - preset: macos-arm64
     env:
       BUILDCACHE_COMPRESS: true

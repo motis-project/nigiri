@@ -10,10 +10,11 @@ namespace nigiri::routing {
 
 void journey::leg::print(std::ostream& out,
                          nigiri::timetable const& tt,
-                         unsigned const n) const {
+                         unsigned const n,
+                         bool const debug) const {
   uses_.apply(utl::overloaded{[&](transport_enter_exit const& t) {
                                 print_transport(tt, out, t.t_, t.stop_range_, n,
-                                                true);
+                                                debug);
                               },
                               [&](footpath_idx_t const) {
                                 indent(out, 1);
@@ -25,7 +26,9 @@ void journey::leg::print(std::ostream& out,
                               }});
 }
 
-void journey::print(std::ostream& out, nigiri::timetable const& tt) const {
+void journey::print(std::ostream& out,
+                    nigiri::timetable const& tt,
+                    bool const debug) const {
   if (legs_.empty()) {
     out << "no legs\n";
     return;
@@ -40,7 +43,7 @@ void journey::print(std::ostream& out, nigiri::timetable const& tt) const {
   for (auto const [i, l] : utl::enumerate(legs_)) {
     out << "leg " << i << ": " << location{tt, l.from_} << " [" << l.dep_time_
         << "] -> " << location{tt, l.to_} << " [" << l.arr_time_ << "]\n";
-    l.print(out, tt, 1);
+    l.print(out, tt, 1, debug);
   }
 }
 

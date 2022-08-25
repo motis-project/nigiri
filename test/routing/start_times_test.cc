@@ -18,8 +18,8 @@ using namespace nigiri::routing;
 // B: [0-30], [15-45], [30-60], [45-75], [60-90], [75-115], ...
 constexpr auto const expected = R"(
 start_time=2020-03-31 00:00
-|  {time_at_start=2020-03-31 00:00, time_at_stop=2020-03-31 00:31, stop=B}
-|  {time_at_start=2020-03-31 00:00, time_at_stop=2020-03-31 00:16, stop=A}
+|  {time_at_start=2020-03-31 00:00, time_at_stop=2020-03-31 00:30, stop=B}
+|  {time_at_start=2020-03-31 00:00, time_at_stop=2020-03-31 00:15, stop=A}
 start_time=2020-03-30 23:45
 |  {time_at_start=2020-03-30 23:45, time_at_stop=2020-03-31 00:00, stop=A}
 start_time=2020-03-30 23:15

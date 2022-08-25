@@ -12,7 +12,6 @@ bool is_multiple_spaces(utl::cstr line) {
 
 hash_map<std::string, info_db::handle_t> parse_attributes(
     config const& c, info_db& db, utl::cstr const& file_content) {
-  scoped_timer timer("nigiri.loader.hrd.attribute");
   hash_map<std::string, info_db::handle_t> handle_map;
   for_each_line_numbered(file_content, [&](utl::cstr line,
                                            unsigned const line_number) {
