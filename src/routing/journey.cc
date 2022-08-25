@@ -11,7 +11,6 @@ namespace nigiri::routing {
 void journey::leg::print(std::ostream& out,
                          nigiri::timetable const& tt,
                          unsigned const n) const {
-  indent(out, n);
   uses_.apply(utl::overloaded{[&](transport_enter_exit const& t) {
                                 print_transport(tt, out, t.t_, t.stop_range_, n,
                                                 true);

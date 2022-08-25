@@ -16,8 +16,8 @@ void print_transport(timetable const& tt,
                      std::ostream& out,
                      transport x,
                      interval<unsigned> stop_range,
-                     unsigned indent_width,
-                     bool with_debug) {
+                     unsigned const indent_width,
+                     bool const with_debug) {
   std::wstring_convert<std::codecvt_utf8<wchar_t>, wchar_t> utf8_conv;
 
   auto const i = x.t_idx_;
@@ -41,7 +41,7 @@ void print_transport(timetable const& tt,
     auto const stop_name_len = utf8_conv.from_bytes(stop_name.str()).size();
 
     indent(out, indent_width);
-    out << std::right << std::setw(2) << std::setfill(' ') << stop_idx << ": "
+    out << std::right << std::setw(2) << std::setfill('_') << stop_idx << ": "
         << std::left << std::setw(7) << stop_id << " " << std::left
         << std::setw(std::max(
                0, 50 - static_cast<int>(stop_name_len + stop_name.size())))

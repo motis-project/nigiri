@@ -38,6 +38,9 @@ struct pareto_set {
   const_iterator begin() const { return els_.begin(); }
   const_iterator end() const { return els_.end(); }
   iterator erase(iterator const& it) { return els_.erase(it); }
+  iterator erase(iterator const& from, iterator const& to) {
+    return els_.erase(from, to);
+  }
 
 private:
   std::vector<T> els_;

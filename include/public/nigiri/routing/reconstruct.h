@@ -147,20 +147,4 @@ void reconstruct(timetable const& tt,
   }
 }
 
-template <direction SearchDir>
-void reconstruct(timetable const& tt, query const& q, search_state& s) {
-  auto const starts_in_interval = [&](journey const& j) {
-    return q.interval_.contains(j.start_time_);
-  };
-
-  for (auto it = begin(s.results_); it != end(s.results_);) {
-    if (starts_in_interval(*it)) {
-      reconstruct<SearchDir>(tt, q, s, *it);
-      ++it;
-    } else {
-      it = s.results_.erase(it);
-    }
-  }
-}
-
 }  // namespace nigiri::routing

@@ -3,6 +3,7 @@
 #include "fmt/core.h"
 
 #include "utl/equal_ranges_linear.h"
+#include "utl/erase_if.h"
 
 #include "nigiri/routing/journey.h"
 #include "nigiri/routing/reconstruct.h"
@@ -269,6 +270,10 @@ struct raptor {
           rounds();
           reconstruct(from_it->time_at_start_);
         });
+
+    utl::erase_if(state_.results_, [&](journey const& j) {
+      return !q_.interval_.contains(j.start_time_);
+    });
   }
 
   void reconstruct(unixtime_t const start_at_start) {
