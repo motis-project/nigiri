@@ -35,11 +35,7 @@ endif()
 # --- LIB ---
 file(GLOB_RECURSE nigiri-files src/*.cc)
 add_library(nigiri ${nigiri-files})
-target_include_directories(
-  nigiri
-  PUBLIC include/public
-  PUBLIC include/private
-)
+target_include_directories(nigiri PUBLIC include)
 target_link_libraries(nigiri PUBLIC cista geo utl lmdb fmt date miniz date-tz)
 target_compile_features(nigiri PUBLIC cxx_std_20)
 target_compile_options(nigiri PRIVATE ${nigiri-compile-options})
