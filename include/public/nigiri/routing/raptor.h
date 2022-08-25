@@ -14,7 +14,7 @@
 
 namespace nigiri::routing {
 
-constexpr auto const kTracing = true;
+constexpr auto const kTracing = false;
 
 template <typename... Args>
 void trace(char const* fmt_str, Args... args) {
@@ -284,12 +284,13 @@ struct raptor {
           continue;
         }
         auto const [optimal, it] = state_.results_.add(journey{
+            .legs_ = {},
             .start_time_ = start_at_start,
             .dest_time_ = state_.round_times_[k][to_idx(dest)].to_unixtime(tt_),
             .dest_ = dest,
             .transfers_ = static_cast<std::uint8_t>(k - 1)});
         if (optimal) {
-          reconstruct<SearchDir>(tt_, q_, state_, *it);
+          reconstruct_journey<SearchDir>(tt_, q_, state_, *it);
         }
       }
     }

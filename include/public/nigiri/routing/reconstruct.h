@@ -6,11 +6,12 @@
 namespace nigiri::routing {
 
 template <direction SearchDir>
-void reconstruct(timetable const& tt,
-                 query const& q,
-                 search_state const& s,
-                 journey& j) {
-  (void)q;
+void reconstruct_journey(timetable const& tt,
+                         query const& q,
+                         search_state const& s,
+                         journey& j) {
+  (void)q;  // TODO(felix) support intermodal start
+
   constexpr auto const kFwd = SearchDir == direction::kForward;
   auto const is_better_or_eq = [](auto a, auto b) {
     return kFwd ? a <= b : a >= b;
