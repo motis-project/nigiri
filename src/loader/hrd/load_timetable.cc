@@ -25,33 +25,34 @@ std::vector<file> load_files(config const& c, dir const& d) {
                      });
 }
 
-std::shared_ptr<timetable> load_timetable(config const& c, dir const& d) {
-  auto tt = std::make_shared<timetable>();
-
-  auto const src = source_idx_t{0U};
+void load_timetable(source_idx_t const src,
+                    config const& c,
+                    dir const& d,
+                    timetable& tt) {
   auto const files = load_files(c, d);
-  auto const timezones = parse_timezones(c, *tt, files.at(TIMEZONES).data());
+  auto const timezones = parse_timezones(c, tt, files.at(TIMEZONES).data());
   auto const locations = parse_stations(
-      c, source_idx_t{0U}, timezones, *tt, files.at(STATIONS).data(),
+      c, source_idx_t{0U}, timezones, tt, files.at(STATIONS).data(),
       files.at(COORDINATES).data(), files.at(FOOTPATHS).data());
-  auto const bitfields = parse_bitfields(c, *tt, files.at(BITFIELDS).data());
+  auto const bitfields = parse_bitfields(c, tt, files.at(BITFIELDS).data());
   auto const categories = parse_categories(c, files.at(CATEGORIES).data());
   auto const providers = parse_providers(c, files.at(PROVIDERS).data());
   auto const interval = parse_interval(files.at(BASIC_DATA).data());
 
-  tt->begin_ = std::chrono::sys_days{interval.first};
-  tt->end_ = std::chrono::sys_days{interval.second};
+  tt.begin_ = std::chrono::sys_days{interval.first};
+  tt.end_ = std::chrono::sys_days{interval.second};
+  tt.n_days_ = static_cast<std::uint16_t>(
+      std::chrono::duration_cast<std::chrono::days>(tt.end_ - tt.begin_)
+          .count());
 
   std::vector<file> service_files;
-  service_builder sb{*tt, {}};
+  service_builder sb{tt, {}};
   for (auto const& s : d.list_files(c.fplan_)) {
     auto const& f = service_files.emplace_back(d.get_file(s));
     sb.add_services(c, f.filename(), interval, bitfields, timezones, locations,
                     f.data(), [](std::size_t) {});
   }
   sb.write_services(src, categories, providers);
-
-  return tt;
 }
 
 }  // namespace nigiri::loader::hrd

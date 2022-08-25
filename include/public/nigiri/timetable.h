@@ -10,62 +10,14 @@
 
 #include "geo/latlng.h"
 
+#include "nigiri/common/interval.h"
+#include "nigiri/footpath.h"
+#include "nigiri/location.h"
 #include "nigiri/logging.h"
 #include "nigiri/section_db.h"
 #include "nigiri/types.h"
 
 namespace nigiri {
-
-template <typename BeginIt, typename EndIt = BeginIt>
-struct it_range {
-  template <typename Collection>
-  explicit it_range(Collection&& c)
-      : begin_{std::begin(c)}, end_{std::end(c)} {}
-  explicit it_range(BeginIt begin, EndIt end)
-      : begin_{std::move(begin)}, end_{std::move(end)} {}
-  BeginIt begin() const { return begin_; }
-  EndIt end() const { return end_; }
-  friend BeginIt begin(it_range const& r) { return r.begin(); }
-  friend EndIt end(it_range const& r) { return r.end(); }
-  BeginIt begin_;
-  EndIt end_;
-};
-
-template <typename Collection>
-it_range(Collection const&) -> it_range<typename Collection::iterator>;
-
-template <typename BeginIt, typename EndIt>
-it_range(BeginIt, EndIt) -> it_range<BeginIt, EndIt>;
-
-struct footpath {
-  CISTA_PRINTABLE(footpath, "target", "duration")
-  location_idx_t target_;
-  duration_t duration_;
-};
-
-template <typename T>
-struct interval {
-  template <typename X>
-  interval operator+(X const& x) const {
-    return {from_ + x, to_ + x};
-  }
-
-  template <typename X>
-  interval operator-(X const& x) const {
-    return {from_ - x, to_ - x};
-  }
-
-  template <typename X>
-  requires std::is_convertible_v<T, X>
-  operator interval<X>() { return {from_, to_}; }
-
-  bool contains(unixtime_t const t) const { return t >= from_ && t < to_; }
-
-  T from_{}, to_{};
-};
-
-template <typename T>
-interval(T, T) -> interval<T>;
 
 struct timetable {
   struct expanded_trip_section {
@@ -105,19 +57,6 @@ struct timetable {
   };
   static_assert(sizeof(stop) == sizeof(location_idx_t));
 
-  struct location {
-    string const& id_;
-    string const& name_;
-    geo::latlng pos_;
-    source_idx_t src_;
-    location_type type_;
-    osm_node_id_t osm_id_;
-    location_idx_t parent_;
-    timezone_idx_t timezone_idx_;
-    it_range<vector<location_idx_t>::iterator> equivalences_;
-    it_range<vector<footpath>::iterator> footpaths_out_, footpaths_in_;
-  };
-
   struct locations {
     using location_multimap =
         mutable_fws_multimap<location_idx_t, location_idx_t>;
@@ -156,17 +95,17 @@ struct timetable {
     }
 
     location get(location_idx_t const idx) {
-      return location{.id_ = ids_[idx],
-                      .name_ = names_[idx],
-                      .pos_ = coordinates_[idx],
-                      .src_ = src_[idx],
-                      .type_ = types_[idx],
-                      .osm_id_ = osm_ids_[idx],
-                      .parent_ = parents_[idx],
-                      .timezone_idx_ = location_timezones_[idx],
-                      .equivalences_ = it_range{equivalences_[idx]},
-                      .footpaths_out_ = it_range{footpaths_out_[idx]},
-                      .footpaths_in_ = it_range{footpaths_in_[idx]}};
+      return {ids_[idx],
+              names_[idx],
+              coordinates_[idx],
+              src_[idx],
+              types_[idx],
+              osm_ids_[idx],
+              parents_[idx],
+              location_timezones_[idx],
+              it_range{equivalences_[idx]},
+              it_range{footpaths_out_[idx]},
+              it_range{footpaths_in_[idx]}};
     }
 
     location get(location_id const& id) {
@@ -259,10 +198,20 @@ struct timetable {
 
   minutes_after_midnight_t event_mam(transport_idx_t const transport_idx,
                                      size_t const stop_idx,
-                                     event_type const ev_type) {
-    return transport_stop_times_[transport_idx]
-                                [stop_idx * 2 -
-                                 (ev_type == event_type::kArr ? 1 : 0)];
+                                     event_type const ev_type) const {
+    // Event times are stored alternatingly:
+    // departure (D), arrival (A), ..., arrival (A)
+    // event type: D A D A D A D A
+    // stop index: 0 1 1 2 2 3 3 4
+    // event time: 0 1 2 3 4 5 6 7
+    // --> A at stop i = i x 2 - 1
+    // --> D at stop i = i x 2
+    // There's no arrival at the first stop and no departure at the last stop.
+    assert(!(stop_idx == 0 && ev_type == event_type::kArr));
+    assert(!(stop_idx == transport_stop_times_[transport_idx].size() - 1 &&
+             ev_type == event_type::kDep));
+    auto const idx = stop_idx * 2 - (ev_type == event_type::kArr ? 1 : 0);
+    return transport_stop_times_[transport_idx][idx];
   }
 
   std::pair<day_idx_t, minutes_after_midnight_t> day_idx_mam(
@@ -289,8 +238,9 @@ struct timetable {
 
   friend std::ostream& operator<<(std::ostream&, timetable const&);
 
-  // Start date.
+  // Schedule range.
   unixtime_t begin_, end_;
+  std::uint16_t n_days_;
 
   // Trip access: external trip id -> internal trip index
   hash_map<trip_id, vector<trip_idx_t>> trip_id_to_idx_;

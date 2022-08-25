@@ -7,6 +7,7 @@
 
 #include "utl/enumerate.h"
 
+#include "nigiri/routing/query.h"
 #include "nigiri/timetable.h"
 #include "nigiri/types.h"
 
@@ -20,17 +21,11 @@ struct start {
   location_idx_t stop_;
 };
 
-struct offset {
-  location_idx_t location_;
-  duration_t offset_;
-  std::uint8_t type_;
-};
-
 template <direction SearchDir>
-std::vector<start> get_starts(timetable& tt,
-                              interval<unixtime_t> const& start_interval,
-                              vector<offset> const& station_offsets,
-                              std::vector<start>& starts) {
+void get_starts(timetable const& tt,
+                interval<unixtime_t> const& start_interval,
+                vector<offset> const& station_offsets,
+                std::vector<start>& starts) {
   auto const add_start_times_at_stop =
       [&](route_idx_t const route_idx, size_t const stop_idx,
           location_idx_t const location_idx,
@@ -66,7 +61,10 @@ std::vector<start> get_starts(timetable& tt,
       };
 
   auto const add_start_times = [&](offset const& o) {
+    // Iterate routes visiting the location.
     for (auto const& r : tt.location_routes_.at(o.location_)) {
+
+      // Iterate the location sequence, searching the given location.
       auto const location_seq = tt.route_location_seq_.at(r);
       for (auto const [i, s] : utl::enumerate(location_seq)) {
         if (s.location_idx() != o.location_) {
@@ -97,13 +95,26 @@ std::vector<start> get_starts(timetable& tt,
   starts.clear();
   for (auto const& offset : station_offsets) {
     add_start_times(offset);
+
+    // Add one earliest arrival query at the end of the interval. This is only
+    // used to dominate journeys from the interval that are suboptimal
+    // considering a journey from outside the interval (i.e. outside journey
+    // departs later and arrives at the same time). These journeys outside the
+    // interval will be filtered out before returning the result.
+    starts.emplace_back(
+        start{.time_at_start_ = SearchDir == direction::kForward
+                                    ? start_interval.to_
+                                    : start_interval.from_,
+              .time_at_stop_ =
+                  SearchDir == direction::kForward
+                      ? start_interval.to_ + 1_minutes + offset.offset_
+                      : start_interval.from_ - 1_minutes - offset.offset_,
+              .stop_ = offset.location_});
   }
 
   std::sort(begin(starts), end(starts), [](start const& a, start const& b) {
-    return SearchDir == direction::kForward ? a < b : b < a;
+    return SearchDir == direction::kForward ? b < a : a < b;
   });
-
-  return starts;
 }
 
 }  // namespace nigiri::routing

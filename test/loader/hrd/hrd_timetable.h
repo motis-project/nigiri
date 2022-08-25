@@ -113,18 +113,17 @@ constexpr auto const services_simple = R"(
 *G RE  0000001 0000002                                    %
 0000001 A                            00230                %
 0000002 B                     00330                       %
-*Z 07331 80____       92 015                             %
+*Z 07331 80____       092 015                             %
 *A VE 0000002 0000001 000005                              %
 *G RE  0000002 0000001                                    %
 0000002 B                            00230                %
 0000001 A                     00330                       %
 )";
 
-inline loader::mem_dir files() {
+inline loader::mem_dir base() {
   using namespace loader::hrd;
   auto const& b = hrd_5_20_26.core_data_;
   auto const& r = hrd_5_20_26.required_files_;
-  auto const& f = hrd_5_20_26.fplan_;
   return {{{(b / r[ATTRIBUTES][0]), ""},
            {(b / r[STATIONS][0]), stations_file_content},
            {(b / r[COORDINATES][0]), station_geo_file_content},
@@ -139,31 +138,17 @@ inline loader::mem_dir files() {
            {(b / r[MERGE_SPLIT_SERVICES][0]), ""},
            {(b / r[TIMEZONES][0]), timezones_file_content},
            {(b / r[FOOTPATHS][0]), station_metabhf_content},
-           {(b / r[MIN_CT_FILE][0]), ""},
-           {(f / "services.101"), service_file_content}}};
+           {(b / r[MIN_CT_FILE][0]), ""}}};
+}
+
+inline loader::mem_dir files() {
+  auto const& f = loader::hrd::hrd_5_20_26.fplan_;
+  return base().add({(f / "services.101"), service_file_content});
 }
 
 inline loader::mem_dir files_simple() {
-  using namespace loader::hrd;
-  auto const& b = hrd_5_20_26.core_data_;
-  auto const& r = hrd_5_20_26.required_files_;
-  auto const& f = hrd_5_20_26.fplan_;
-  return {{{(b / r[ATTRIBUTES][0]), ""},
-           {(b / r[STATIONS][0]), stations_file_content},
-           {(b / r[COORDINATES][0]), station_geo_file_content},
-           {(b / r[BITFIELDS][0]), bitfields_file_content},
-           {(b / r[TRACKS][0]), ""},
-           {(b / r[INFOTEXT][0]), ""},
-           {(b / r[BASIC_DATA][0]), basic_info_file_content},
-           {(b / r[CATEGORIES][0]), categories_file_content},
-           {(b / r[DIRECTIONS][0]), ""},
-           {(b / r[PROVIDERS][0]), providers_file_content},
-           {(b / r[THROUGH_SERVICES][0]), ""},
-           {(b / r[MERGE_SPLIT_SERVICES][0]), ""},
-           {(b / r[TIMEZONES][0]), timezones_file_content},
-           {(b / r[FOOTPATHS][0]), station_metabhf_content},
-           {(b / r[MIN_CT_FILE][0]), ""},
-           {(f / "services.101"), services_simple}}};
+  auto const& f = loader::hrd::hrd_5_20_26.fplan_;
+  return base().add({(f / "services.101"), services_simple});
 }
 
 }  // namespace nigiri::test_data::hrd_timetable

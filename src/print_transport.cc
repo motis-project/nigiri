@@ -8,26 +8,39 @@
 
 #include "date/date.h"
 
+#include "nigiri/common/indent.h"
+
 namespace nigiri {
 
 void print_transport(timetable const& tt,
                      std::ostream& out,
-                     transport_idx_t const i,
-                     day_idx_t const day_idx,
-                     bool with_debug) {
+                     transport x,
+                     interval<unsigned> stop_range,
+                     unsigned const indent_width,
+                     bool const with_debug) {
   std::wstring_convert<std::codecvt_utf8<wchar_t>, wchar_t> utf8_conv;
 
+  auto const i = x.t_idx_;
+  auto const day_idx = x.day_;
   auto const& route_idx = tt.transport_route_.at(i);
   auto const& stop_seq = tt.route_location_seq_.at(route_idx);
   auto const& stop_times = tt.transport_stop_times_.at(i);
+
+  indent(out, indent_width);
   out << "ROUTE=" << route_idx << "\n";
-  for (auto stop_idx = 0U; stop_idx != stop_seq.size(); ++stop_idx) {
+  auto const from =
+      std::min(static_cast<unsigned>(stop_seq.size()), stop_range.from_);
+  auto const to =
+      std::min(static_cast<unsigned>(stop_seq.size()), stop_range.to_);
+  for (auto stop_idx = from; stop_idx != to; ++stop_idx) {
     auto const location_idx = stop_seq.at(stop_idx).location_idx();
     auto const& stop_name = tt.locations_.names_.at(location_idx);
     auto const& stop_id = tt.locations_.ids_.at(location_idx);
     auto const& tz = tt.locations_.timezones_.at(
         tt.locations_.location_timezones_.at(location_idx));
     auto const stop_name_len = utf8_conv.from_bytes(stop_name.str()).size();
+
+    indent(out, indent_width);
     out << std::right << std::setw(2) << std::setfill(' ') << stop_idx << ": "
         << std::left << std::setw(7) << stop_id << " " << std::left
         << std::setw(std::max(
@@ -76,6 +89,15 @@ void print_transport(timetable const& tt,
 
     out << "\n";
   }
+}
+
+void print_transport(timetable const& tt,
+                     std::ostream& out,
+                     transport x,
+                     bool with_debug) {
+  print_transport(tt, out, x,
+                  interval{0U, std::numeric_limits<unsigned>::max()},
+                  with_debug);
 }
 
 }  // namespace nigiri
