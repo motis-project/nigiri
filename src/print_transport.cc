@@ -41,7 +41,7 @@ void print_transport(timetable const& tt,
     auto const stop_name_len = utf8_conv.from_bytes(stop_name.str()).size();
 
     indent(out, indent_width);
-    out << std::right << std::setw(2) << std::setfill('_') << stop_idx << ": "
+    out << std::right << std::setw(2) << std::setfill(' ') << stop_idx << ": "
         << std::left << std::setw(7) << stop_id << " " << std::left
         << std::setw(std::max(
                0, 50 - static_cast<int>(stop_name_len + stop_name.size())))
