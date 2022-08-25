@@ -35,7 +35,10 @@ struct journey {
           arr_time_{d == direction::kForward ? arr_time : dep_time},
           uses_{std::forward<T>(uses)} {}
 
-    void print(std::ostream&, timetable const&, unsigned indent) const;
+    void print(std::ostream&,
+               timetable const&,
+               unsigned indent = 0U,
+               bool debug = false) const;
 
     location_idx_t from_, to_;
     unixtime_t dep_time_, arr_time_;
@@ -49,7 +52,7 @@ struct journey {
 
   void add(leg&& l) { legs_.emplace_back(l); }
 
-  void print(std::ostream&, timetable const&) const;
+  void print(std::ostream&, timetable const&, bool debug = false) const;
 
   std::vector<leg> legs_;
   unixtime_t start_time_;
