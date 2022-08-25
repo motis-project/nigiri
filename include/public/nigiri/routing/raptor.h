@@ -87,7 +87,7 @@ struct raptor {
         for (auto t = transport_range.from_; t != transport_range.to_; ++t) {
           auto const ev = tt_.event_mam(
               t, stop_idx, kFwd ? event_type::kDep : event_type::kArr);
-          auto const ev_mam = ev.count() % 1440;
+          auto const ev_mam = minutes_after_midnight_t{ev.count() % 1440};
           if (day == day_at_stop && !is_better_or_eq(mam_at_stop, ev_mam)) {
             continue;
           }
@@ -267,23 +267,25 @@ struct raptor {
             state_.station_mark_[to_idx(s.stop_)] = true;
           }
           rounds();
-          save_journeys_for_reconstruction(from_it->time_at_start_);
+          reconstruct(from_it->time_at_start_);
         });
-    reconstruct<SearchDir>(tt_, q_, state_);
   }
 
-  void save_journeys_for_reconstruction(unixtime_t const start_at_start) {
+  void reconstruct(unixtime_t const start_at_start) {
     for (auto const& t : q_.destinations_) {
       auto const dest = t.front().location_;
       for (auto k = 1U; k != kMaxTransfers + 1; ++k) {
         if (state_.round_times_[k][to_idx(dest)] == kInvalidTime) {
           continue;
         }
-        state_.results_.add(journey{
+        auto const [optimal, it] = state_.results_.add(journey{
             .start_time_ = start_at_start,
             .dest_time_ = state_.round_times_[k][to_idx(dest)].to_unixtime(tt_),
             .dest_ = dest,
             .transfers_ = static_cast<std::uint8_t>(k - 1)});
+        if (optimal) {
+          reconstruct<SearchDir>(tt_, q_, state_, *it);
+        }
       }
     }
   }

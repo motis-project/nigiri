@@ -12,11 +12,11 @@ struct pareto_set {
 
   size_t size() const { return els_.size(); }
 
-  bool add(T&& el) {
+  std::pair<bool, iterator> add(T&& el) {
     auto n_removed = std::size_t{0};
     for (auto i = 0U; i < els_.size(); ++i) {
       if (els_[i].dominates(el)) {
-        return false;
+        return {false, end()};
       }
       if (el.dominates(els_[i])) {
         n_removed++;
@@ -26,7 +26,7 @@ struct pareto_set {
     }
     els_.resize(els_.size() - n_removed + 1);
     els_.back() = std::move(el);
-    return true;
+    return {true, std::next(begin(), static_cast<unsigned>(els_.size() - 1))};
   }
 
   friend const_iterator begin(pareto_set const& s) { return s.begin(); }

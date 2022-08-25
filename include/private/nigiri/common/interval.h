@@ -38,8 +38,8 @@ struct interval {
 
   bool contains(T const t) const { return t >= from_ && t < to_; }
 
-  iterator begin() const { return from_; }
-  iterator end() const { return to_; }
+  iterator begin() const { return {from_}; }
+  iterator end() const { return {to_}; }
   friend iterator begin(interval const& r) { return r.begin(); }
   friend iterator end(interval const& r) { return r.end(); }
 

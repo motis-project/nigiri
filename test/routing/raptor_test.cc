@@ -41,7 +41,7 @@ TEST_CASE("raptor, simple_search") {
           .type_ = 0U}},
       .destinations_ = {{nigiri::routing::offset{
           .location_ = tt->locations_.location_id_to_idx_.at(
-              {.id_ = "0000002", .src_ = src}),
+              {.id_ = "0000003", .src_ = src}),
           .offset_ = 0_minutes,
           .type_ = 0U}}},
       .via_destinations_ = {},
@@ -53,10 +53,9 @@ TEST_CASE("raptor, simple_search") {
   auto r = routing::raptor<direction::kForward>{tt, state, q};
   r.route();
 
-  std::cerr << "num results: " << r.state_.results_.size() << "\n";
   for (auto const& x : r.state_.results_) {
-    std::cerr << "transfers=" << static_cast<int>(x.transfers_) << ", "
-              << x.start_time_ << " -> " << x.dest_time_ << "\n";
+    x.print(std::cerr, *tt);
+    std::cerr << "\n\n";
   }
   std::cerr << "\n\n";
 };
