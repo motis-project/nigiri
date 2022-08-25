@@ -104,7 +104,7 @@ void get_starts(timetable const& tt,
     starts.emplace_back(
         start{.time_at_start_ = SearchDir == direction::kForward
                                     ? start_interval.to_
-                                    : start_interval.from_,
+                                    : start_interval.from_ - 1_minutes,
               .time_at_stop_ =
                   SearchDir == direction::kForward
                       ? start_interval.to_ + offset.offset_
