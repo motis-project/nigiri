@@ -138,15 +138,19 @@ struct timetable {
     vector<merged_trips_idx_t> external_trip_ids_;
   };
 
-  trip_idx_t register_trip_id(trip_id const& id,
-                              string display_name,
-                              string debug) {
+  trip_idx_t register_trip_id(
+      trip_id const& id,
+      string display_name,
+      string debug,
+      transport_idx_t const ref_transport,
+      interval<std::uint32_t> ref_transport_stop_range) {
     auto const idx = trip_idx_t{trip_ids_.size()};
     auto& trips = trip_id_to_idx_[id];
     trips.emplace_back(idx);
     trip_display_names_.emplace_back(std::move(display_name));
     trip_debug_.emplace_back().emplace_back(std::move(debug));
     trip_ids_.emplace_back().emplace_back(id);
+    trip_ref_transport_.emplace_back(ref_transport, ref_transport_stop_range);
     return idx;
   }
 
@@ -156,7 +160,8 @@ struct timetable {
     return idx;
   }
 
-  route_idx_t register_route(vector<stop> stop_seq) {
+  route_idx_t register_route(vector<stop> stop_seq,
+                             vector<clasz> clasz_sections) {
     auto const idx = route_location_seq_.size();
     for (auto const& s : stop_seq) {
       location_routes_[s.location_idx()].emplace_back(idx);
@@ -165,6 +170,7 @@ struct timetable {
         transport_idx_t{transport_traffic_days_.size()},
         transport_idx_t::invalid());
     route_location_seq_.emplace_back(std::move(stop_seq));
+    route_section_clasz_.emplace_back(std::move(clasz_sections));
     return route_idx_t{idx};
   }
 
@@ -194,6 +200,10 @@ struct timetable {
     assert(t.stop_times_.size() ==
            route_location_seq_.at(t.route_idx_).size() * 2 - 2);
     assert(t.external_trip_ids_.size() == t.stop_times_.size() / 2);
+  }
+
+  transport_idx_t next_transport_idx() const {
+    return transport_idx_t{transport_traffic_days_.size()};
   }
 
   minutes_after_midnight_t event_mam(transport_idx_t const transport_idx,
@@ -265,6 +275,10 @@ struct timetable {
   // External trip index -> list of external trip ids (HRD + RI Basis)
   mutable_fws_multimap<trip_idx_t, trip_id> trip_ids_;
 
+  // External trip index -> reference transport + stop range
+  vector_map<trip_idx_t, pair<transport_idx_t, interval<std::uint32_t>>>
+      trip_ref_transport_;
+
   // External trip -> debug info
   mutable_fws_multimap<trip_idx_t, string> trip_debug_;
 
@@ -276,6 +290,9 @@ struct timetable {
 
   // Route -> list of stops
   vecvec<route_idx_t, stop> route_location_seq_;
+
+  // Route -> clasz per section
+  vecvec<route_idx_t, clasz> route_section_clasz_;
 
   // Location -> list of routes
   mutable_fws_multimap<location_idx_t, route_idx_t> location_routes_;

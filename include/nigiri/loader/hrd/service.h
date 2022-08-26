@@ -94,6 +94,7 @@ struct service {
     std::vector<utl::cstr> line_information_;
     std::vector<direction_info> directions_;
     std::vector<int> traffic_days_;
+    clasz clasz_{clasz::kAir};
   };
 
   service(service const& s, vector<duration_t> const& times, bitfield const& b)
@@ -164,6 +165,8 @@ struct service {
       return fmt::format("{}{}{}", first, first.empty() ? "" : " ", second);
     }
   }
+
+  void set_sections_clasz();
 
   parser_info origin_{};
   int num_repetitions_{0};
@@ -486,8 +489,10 @@ struct service_builder {
         return timetable::stop(locations.at(x.eva_num_).idx_,
                                x.dep_.in_out_allowed_, x.arr_.in_out_allowed_);
       });
+      auto const sections_clasz = to_vec(
+          s.sections_, [](service::section const& s) { return s.clasz_; });
 
-      auto& routes = route_services_[stop_seq];
+      auto& routes = route_services_[{stop_seq, sections_clasz}];
       for (auto& r : routes) {
         auto const idx = get_index(r, s);
         if (idx.has_value()) {
@@ -508,9 +513,10 @@ struct service_builder {
                       category_map_t const& categories,
                       provider_map_t const& providers) {
     hash_map<bitfield, bitfield_idx_t> bitfield_indices;
-    for (auto const& [stop_seq, sub_routes] : route_services_) {
+    for (auto const& [key, sub_routes] : route_services_) {
       for (auto const& services : sub_routes) {
-        auto const route_idx = tt_.register_route(stop_seq);
+        auto const& [stop_seq, sections_clasz] = key;
+        auto const route_idx = tt_.register_route(stop_seq, sections_clasz);
         for (auto const& s : services) {
           auto const id = tt_.register_trip_id(
               trip_id{.id_ = fmt::format("{}/{}/{:07}/{:02}:{:02}",
@@ -520,7 +526,8 @@ struct service_builder {
                                          s.stops_.front().dep_.time_ / 60,
                                          s.stops_.front().dep_.time_ % 60),
                       .src_ = src},
-              s.display_name(categories, providers), s.origin_.str());
+              s.display_name(categories, providers), s.origin_.str(),
+              tt_.next_transport_idx(), {0U, stop_seq.size()});
 
           auto const merged_trip = tt_.register_merged_trip({id});
           tt_.add_transport(timetable::transport{
@@ -539,7 +546,9 @@ struct service_builder {
   }
 
   timetable& tt_;
-  hash_map<vector<timetable::stop>, vector<vector<service>>> route_services_;
+  hash_map<pair<vector<timetable::stop>, vector<clasz>>,
+           vector<vector<service>>>
+      route_services_;
 };
 
 }  // namespace nigiri::loader::hrd

@@ -12,6 +12,7 @@
 
 #include "nigiri/loader/hrd/timezone.h"
 #include "nigiri/loader/hrd/util.h"
+#include "nigiri/clasz.h"
 #include "nigiri/logging.h"
 
 namespace nigiri::loader::hrd {
@@ -323,7 +324,16 @@ service::service(config const& c, specification const& spec)
                 }
               });
 
+  set_sections_clasz();
+
   verify_service();
+}
+
+void service::set_sections_clasz() {
+  for (auto& s : sections_) {
+    s.clasz_ =
+        s.category_.empty() ? clasz::kOther : get_clasz(s.category_.at(0));
+  }
 }
 
 void service::verify_service() {
