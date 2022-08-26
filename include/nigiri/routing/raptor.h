@@ -30,11 +30,11 @@ struct raptor {
   static constexpr auto const kInvalidTime =
       kFwd ? routing_time::max() : routing_time::min();
 
-  raptor(std::shared_ptr<timetable const> tt, search_state state, query q)
+  raptor(std::shared_ptr<timetable const> tt, search_state& state, query q)
       : tt_mem_{std::move(tt)},
         tt_{*tt_mem_},
         q_{std::move(q)},
-        state_{std::move(state)} {}
+        state_{state} {}
 
   bool is_better(auto a, auto b) { return kFwd ? a < b : a > b; }
   bool is_better_or_eq(auto a, auto b) { return kFwd ? a <= b : a >= b; }
@@ -295,7 +295,7 @@ struct raptor {
   query q_;
   unixtime_t curr_begin_;
   unixtime_t begin_, end_;
-  search_state state_;
+  search_state& state_;
 };
 
 }  // namespace nigiri::routing

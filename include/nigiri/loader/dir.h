@@ -31,6 +31,7 @@ struct dir {
   virtual std::vector<std::filesystem::path> list_files(
       std::filesystem::path const&) const = 0;
   virtual file get_file(std::filesystem::path const&) const = 0;
+  virtual bool exists(std::filesystem::path const&) const = 0;
 };
 
 struct fs_dir final : public dir {
@@ -39,6 +40,7 @@ struct fs_dir final : public dir {
   std::vector<std::filesystem::path> list_files(
       std::filesystem::path const&) const final;
   file get_file(std::filesystem::path const&) const final;
+  bool exists(std::filesystem::path const&) const final;
   std::filesystem::path path_;
 };
 
@@ -49,6 +51,7 @@ struct zip_dir final : public dir {
   std::vector<std::filesystem::path> list_files(
       std::filesystem::path const&) const final;
   file get_file(std::filesystem::path const&) const final;
+  bool exists(std::filesystem::path const&) const final;
   struct impl;
   std::unique_ptr<impl> impl_;
 };
@@ -65,7 +68,10 @@ struct mem_dir final : public dir {
   std::vector<std::filesystem::path> list_files(
       std::filesystem::path const&) const final;
   file get_file(std::filesystem::path const&) const final;
+  bool exists(std::filesystem::path const&) const final;
   dir_t dir_;
 };
+
+std::unique_ptr<dir> make_dir(std::filesystem::path const& p);
 
 }  // namespace nigiri::loader

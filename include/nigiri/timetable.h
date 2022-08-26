@@ -214,6 +214,13 @@ struct timetable {
     return transport_stop_times_[transport_idx][idx];
   }
 
+  unixtime_t event_time(nigiri::transport t,
+                        size_t const stop_idx,
+                        event_type const ev_type) const {
+    return unixtime_t{begin_ + to_idx(t.day_) * 1_days +
+                      event_mam(t.t_idx_, stop_idx, ev_type)};
+  }
+
   std::pair<day_idx_t, minutes_after_midnight_t> day_idx_mam(
       unixtime_t const t) const {
     auto const minutes_since_timetable_begin = (t - begin_).count();

@@ -2,6 +2,8 @@
 
 #include "fmt/ranges.h"
 
+#include "utl/helpers/algorithm.h"
+
 #include "nigiri/loader/hrd/bitfield.h"
 #include "nigiri/loader/hrd/service.h"
 #include "nigiri/loader/hrd/station.h"
@@ -23,6 +25,15 @@ std::vector<file> load_files(config const& c, dir const& d) {
                        }
                        throw utl::fail("no file available: {}", alt);
                      });
+}
+
+bool applicable(config const& c, dir const& d) {
+  return utl::all_of(
+      c.required_files_, [&](std::vector<std::string> const& alt) {
+        return alt.empty() || utl::any_of(alt, [&](std::string const& file) {
+                 return d.exists(file);
+               });
+      });
 }
 
 void load_timetable(source_idx_t const src,

@@ -31,8 +31,10 @@ struct interval {
   }
 
   template <typename X>
-  requires std::is_convertible_v<T, X>
-  operator interval<X>() { return {from_, to_}; }
+    requires std::is_convertible_v<T, X>
+  operator interval<X>() {
+    return {from_, to_};
+  }
 
   bool contains(T const t) const { return t >= from_ && t < to_; }
 
@@ -40,6 +42,8 @@ struct interval {
   iterator end() const { return {to_}; }
   friend iterator begin(interval const& r) { return r.begin(); }
   friend iterator end(interval const& r) { return r.end(); }
+
+  size_t size() const { return to_ - from_; }
 
   T from_{}, to_{};
 };

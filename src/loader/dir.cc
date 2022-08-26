@@ -1,5 +1,6 @@
 #include "nigiri/loader/dir.h"
 
+#include <optional>
 #include <variant>
 #include <vector>
 
@@ -48,14 +49,22 @@ file fs_dir::get_file(std::filesystem::path const& p) const {
   };
   return file{(path_ / p).string(), std::make_unique<mmap_content>(path_ / p)};
 }
+bool fs_dir::exists(std::filesystem::path const& p) const {
+  return std::filesystem::is_regular_file(path_ / p);
+}
 
 // --- ZIP directory implementation ---
-mz_uint32 get_file_idx(mz_zip_archive* ar, std::filesystem::path const& p) {
+std::optional<mz_uint32> find_file_idx(mz_zip_archive* ar,
+                                       std::filesystem::path const& p) {
   mz_uint32 file_idx;
   auto const r = mz_zip_reader_locate_file_v2(ar, p.string().c_str(), nullptr,
                                               0, &file_idx);
-  utl::verify(r, "cannot locate file {} in zip", p);
-  return file_idx;
+  return r ? std::make_optional<mz_uint32>(file_idx) : std::nullopt;
+}
+mz_uint32 get_file_idx(mz_zip_archive* ar, std::filesystem::path const& p) {
+  auto const file_idx = find_file_idx(ar, p);
+  utl::verify(file_idx.has_value(), "cannot locate file {} in zip", p);
+  return *file_idx;
 }
 std::filesystem::path get_file_path(mz_zip_archive* ar,
                                     mz_uint32 const file_idx) {
@@ -106,7 +115,6 @@ struct zip_dir::impl {
         },
         memory_);
   }
-
   std::vector<std::filesystem::path> list_files(
       std::filesystem::path const& p) {
     auto const parent = p.string();
@@ -129,6 +137,9 @@ struct zip_dir::impl {
     std::sort(begin(files), end(files));
     return files;
   }
+  bool exists(std::filesystem::path const& p) {
+    return find_file_idx(&ar_, p).has_value();
+  }
 
   mz_zip_archive ar_;
   std::variant<std::vector<std::uint8_t>, cista::mmap> memory_;
@@ -144,6 +155,9 @@ std::vector<std::filesystem::path> zip_dir::list_files(
 }
 file zip_dir::get_file(std::filesystem::path const& p) const {
   return file{p.string(), std::make_unique<zip_file_content>(&impl_->ar_, p)};
+}
+bool zip_dir::exists(std::filesystem::path const& p) const {
+  return impl_->exists(p);
 }
 
 // --- In-memory directory implementation ---
@@ -174,6 +188,19 @@ file mem_dir::get_file(std::filesystem::path const& p) const {
     std::string const& buf_;
   };
   return file{p.string(), std::make_unique<mem_file_content>(dir_.at(p))};
+}
+bool mem_dir::exists(std::filesystem::path const& p) const {
+  return dir_.contains(p);
+}
+
+std::unique_ptr<dir> make_dir(std::filesystem::path const& p) {
+  if (std::filesystem::is_regular_file(p) && p.extension() == ".zip") {
+    return std::make_unique<zip_dir>(p);
+  } else if (std::filesystem::is_directory(p)) {
+    return std::make_unique<fs_dir>(p);
+  } else {
+    throw utl::fail("path {} is neither a zip file nor a directory");
+  }
 }
 
 }  // namespace nigiri::loader

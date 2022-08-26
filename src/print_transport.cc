@@ -47,7 +47,7 @@ void print_transport(timetable const& tt,
                0, 50 - static_cast<int>(stop_name_len + stop_name.size())))
         << std::setfill('.') << stop_name << std::setfill(' ');
 
-    if (stop_idx != 0U) {
+    if (stop_idx != from) {
       auto const t = tt.begin_ + to_idx(day_idx) * 1_days +
                      stop_times.at(2 * stop_idx - 1);
       date::to_stream(out, " a: %d.%m %R", t);
@@ -57,7 +57,7 @@ void print_transport(timetable const& tt,
       out << "              ";
     }
 
-    if (stop_idx != stop_seq.size() - 1U) {
+    if (stop_idx != to - 1) {
       auto const t =
           tt.begin_ + to_idx(day_idx) * 1_days + stop_times.at(2 * stop_idx);
       date::to_stream(out, "  d: %d.%m %R", t);
