@@ -490,7 +490,8 @@ struct service_builder {
                                x.dep_.in_out_allowed_, x.arr_.in_out_allowed_);
       });
       auto const sections_clasz = to_vec(
-          s.sections_, [](service::section const& s) { return s.clasz_; });
+          s.sections_,
+          [](service::section const& section) { return section.clasz_; });
 
       auto& routes = route_services_[{stop_seq, sections_clasz}];
       for (auto& r : routes) {
