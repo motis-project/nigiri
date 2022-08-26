@@ -294,11 +294,10 @@ void expand_repetitions(service const& s, Fn&& consumer) {
 }
 
 template <typename Fn>
-void to_local_time(
-    timezone_map_t const& timezones,
-    std::pair<std::chrono::sys_days, std::chrono::sys_days> const& interval,
-    service const& s,
-    Fn&& consumer) {
+void to_local_time(timezone_map_t const& timezones,
+                   interval<std::chrono::sys_days> const& interval,
+                   service const& s,
+                   Fn&& consumer) {
   struct duration_hash {
     cista::hash_t operator()(vector<duration_t> const& v) {
       auto h = cista::BASE_HASH;
@@ -313,8 +312,8 @@ void to_local_time(
       hash_map<vector<duration_t>, bitfield, duration_hash>{};
   auto const local_times = s.get_stop_times();
   auto const stop_timezones = s.get_stop_timezones(timezones);
-  auto const first_day = interval.first + kBaseDayOffset;
-  auto const last_day = interval.second - kBaseDayOffset;
+  auto const first_day = interval.from_ + kBaseDayOffset;
+  auto const last_day = interval.to_ - kBaseDayOffset;
   auto utc_service_times = vector<duration_t>{};
   utc_service_times.resize(
       static_cast<vector<duration_t>::size_type>(s.stops_.size() * 2U - 2U));
@@ -368,15 +367,14 @@ void to_local_time(
 }
 
 template <typename ConsumerFn, typename ProgressFn>
-void parse_services(
-    config const& c,
-    char const* filename,
-    std::pair<std::chrono::sys_days, std::chrono::sys_days> const& interval,
-    bitfield_map_t const& bitfields,
-    timezone_map_t const& timezones,
-    std::string_view file_content,
-    ProgressFn&& bytes_consumed,
-    ConsumerFn&& consumer) {
+void parse_services(config const& c,
+                    char const* filename,
+                    interval<std::chrono::sys_days> const& interval,
+                    bitfield_map_t const& bitfields,
+                    timezone_map_t const& timezones,
+                    std::string_view file_content,
+                    ProgressFn&& bytes_consumed,
+                    ConsumerFn&& consumer) {
   auto const expand_service = [&](service const& s) {
     expand_traffic_days(s, bitfields, [&](service&& s2) {
       expand_repetitions(s2, [&](service&& s3) {
@@ -433,15 +431,14 @@ void parse_services(
 
 struct service_builder {
   template <typename ProgressFn>
-  void add_services(
-      config const& c,
-      char const* filename,
-      std::pair<std::chrono::sys_days, std::chrono::sys_days> const& interval,
-      bitfield_map_t const& bitfields,
-      timezone_map_t const& timezones,
-      location_map_t const& locations,
-      std::string_view file_content,
-      ProgressFn&& bytes_consumed) {
+  void add_services(config const& c,
+                    char const* filename,
+                    interval<std::chrono::sys_days> const& interval,
+                    bitfield_map_t const& bitfields,
+                    timezone_map_t const& timezones,
+                    location_map_t const& locations,
+                    std::string_view file_content,
+                    ProgressFn&& bytes_consumed) {
     auto const get_index = [&](vector<service> const& route_services,
                                service const& s) -> std::optional<size_t> {
       auto const index = static_cast<unsigned>(std::distance(

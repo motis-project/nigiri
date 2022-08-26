@@ -50,11 +50,8 @@ void load_timetable(source_idx_t const src,
   auto const providers = parse_providers(c, files.at(PROVIDERS).data());
   auto const interval = parse_interval(files.at(BASIC_DATA).data());
 
-  tt.begin_ = std::chrono::sys_days{interval.first};
-  tt.end_ = std::chrono::sys_days{interval.second};
-  tt.n_days_ = static_cast<std::uint16_t>(
-      std::chrono::duration_cast<std::chrono::days>(tt.end_ - tt.begin_)
-          .count());
+  tt.date_range_ = interval;
+  tt.n_days_ = static_cast<std::uint16_t>(tt.date_range_.size().count());
 
   std::vector<file> service_files;
   service_builder sb{tt, {}};

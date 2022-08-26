@@ -48,7 +48,7 @@ void print_transport(timetable const& tt,
         << std::setfill('.') << stop_name << std::setfill(' ');
 
     if (stop_idx != from) {
-      auto const t = tt.begin_ + to_idx(day_idx) * 1_days +
+      auto const t = tt.date_range_.from_ + to_idx(day_idx) * 1_days +
                      stop_times.at(2 * stop_idx - 1);
       date::to_stream(out, " a: %d.%m %R", t);
       date::to_stream(out, " [%d.%m %R]", to_local_time(tz, t));
@@ -58,8 +58,8 @@ void print_transport(timetable const& tt,
     }
 
     if (stop_idx != to - 1) {
-      auto const t =
-          tt.begin_ + to_idx(day_idx) * 1_days + stop_times.at(2 * stop_idx);
+      auto const t = tt.date_range_.from_ + to_idx(day_idx) * 1_days +
+                     stop_times.at(2 * stop_idx);
       date::to_stream(out, "  d: %d.%m %R", t);
       date::to_stream(out, " [%d.%m %R]", to_local_time(tz, t));
 
@@ -75,7 +75,8 @@ void print_transport(timetable const& tt,
             out << ", ";
           }
           out << "{name=" << tt.trip_display_names_.at(trip_idx) << ", day=";
-          date::to_stream(out, "%F", tt.begin_ + to_idx(day_idx) * 1_days);
+          date::to_stream(out, "%F",
+                          tt.date_range_.from_ + to_idx(day_idx) * 1_days);
           out << ", id=" << id.id_
               << ", src=" << static_cast<int>(to_idx(id.src_));
           if (with_debug) {

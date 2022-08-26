@@ -11,10 +11,10 @@ struct routing_time {
       : offset_{to_idx(d) * 1440 + mam.count()} {}
   constexpr explicit routing_time(std::int32_t const offset)
       : offset_{offset} {}
-  constexpr routing_time(timetable const& tt, unixtime_t const t)
-      : offset_{(t - tt.begin_).count()} {}
+  routing_time(timetable const& tt, unixtime_t const t)
+      : offset_{(t - tt.begin()).count()} {}
   constexpr unixtime_t to_unixtime(timetable const& tt) const {
-    return tt.begin_ + offset_ * 1_minutes;
+    return tt.date_range_.from_ + offset_ * 1_minutes;
   }
   constexpr static routing_time max() {
     return routing_time{std::numeric_limits<std::int32_t>::max()};

@@ -31,12 +31,12 @@ std::pair<utl::cstr, utl::cstr> mask_dates(utl::cstr str) {
   return {from_line, to_line};
 }
 
-std::pair<std::chrono::year_month_day, std::chrono::year_month_day>
-parse_interval(std::string_view file_content) {
+interval<std::chrono::sys_days> parse_interval(std::string_view file_content) {
   using std::chrono::sys_days;
   auto const [first_date, last_date] = mask_dates(file_content);
-  return {sys_days{yyyymmdd(first_date)} - kBaseDayOffset,
-          sys_days{yyyymmdd(last_date)} + kBaseDayOffset};
+  return {
+      sys_days{yyyymmdd(first_date)} - kBaseDayOffset,
+      sys_days{yyyymmdd(last_date)} + kBaseDayOffset + std::chrono::days{1}};
 }
 
 std::string parse_schedule_name(std::string_view file_content) {

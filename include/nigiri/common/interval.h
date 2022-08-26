@@ -41,7 +41,7 @@ struct interval {
   friend iterator begin(interval const& r) { return r.begin(); }
   friend iterator end(interval const& r) { return r.end(); }
 
-  size_t size() const { return to_ - from_; }
+  auto size() const { return to_ - from_; }
 
   T from_{}, to_{};
 };
