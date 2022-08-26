@@ -20,7 +20,8 @@ std::ostream& operator<<(std::ostream& out, timetable const& tt) {
         << reverse(
                traffic_days.to_string().substr(traffic_days.size() - num_days))
         << "\n";
-    for (auto const& d : tt.date_range_) {
+    for (auto d = tt.date_range_.from_; d != tt.date_range_.to_;
+         d += std::chrono::days{1}) {
       auto const day_idx = day_idx_t{
           static_cast<day_idx_t::value_t>((d - tt.date_range_.from_) / 1_days)};
       if (traffic_days.test(to_idx(day_idx))) {
