@@ -42,10 +42,10 @@ target_compile_options(nigiri PRIVATE ${nigiri-compile-options})
 
 # --- TEST ---
 add_library(nigiri-generated INTERFACE)
-target_include_directories(nigiri-generated INTERFACE ${CMAKE_BINARY_DIR}/generated)
+target_include_directories(nigiri-generated INTERFACE ${CMAKE_CURRENT_BINARY_DIR}/generated)
 configure_file (
   ${CMAKE_CURRENT_SOURCE_DIR}/test/test_dir.h.in
-  ${CMAKE_BINARY_DIR}/generated/test_dir.h
+  ${CMAKE_CURRENT_BINARY_DIR}/generated/test_dir.h
 )
 file(GLOB_RECURSE nigiri-test-files test/*.cc)
 add_executable(nigiri-test ${nigiri-test-files})
