@@ -520,13 +520,19 @@ struct service_builder {
         auto const route_idx = tt_.register_route(stop_seq, sections_clasz);
         for (auto const& s : services) {
           auto const id = tt_.register_trip_id(
-              trip_id{.id_ = fmt::format("{}/{}/{:07}/{:02}:{:02}",
-                                         s.initial_admin_.view(),
-                                         s.initial_train_num_,
-                                         to_idx(s.stops_.front().eva_num_),
-                                         s.stops_.front().dep_.time_ / 60,
-                                         s.stops_.front().dep_.time_ % 60),
-                      .src_ = src},
+              trip_id{
+                  .id_ = fmt::format(
+                      "{}/{}/{:07}/{}/{:07}/{}/{}", s.initial_admin_.view(),
+                      s.initial_train_num_, to_idx(s.stops_.front().eva_num_),
+                      s.stops_.front().dep_.time_,
+                      to_idx(s.stops_.back().eva_num_),
+                      s.stops_.back().arr_.time_,
+                      s.sections_.front().line_information_.empty()
+                          ? ""
+                          : s.sections_.front()
+                                .line_information_.front()
+                                .view()),
+                  .src_ = src},
               s.display_name(categories, providers), s.origin_.str(),
               tt_.next_transport_idx(), {0U, stop_seq.size()});
 
