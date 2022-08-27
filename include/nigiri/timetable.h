@@ -20,16 +20,6 @@
 namespace nigiri {
 
 struct timetable {
-  struct expanded_trip_section {
-    transport_idx_t trip_idx_{};
-    section_idx_t from_section_idx_{}, to_section_idx_{};
-  };
-
-  struct external_trip_section {
-    trip_idx_t trip_idx_{};
-    section_idx_t section_idx_{};
-  };
-
   struct stop {
     stop(location_idx_t const location,
          bool const in_allowed,
@@ -58,10 +48,6 @@ struct timetable {
   static_assert(sizeof(stop) == sizeof(location_idx_t));
 
   struct locations {
-    using location_multimap =
-        mutable_fws_multimap<location_idx_t, location_idx_t>;
-    using footpath_multimap = mutable_fws_multimap<location_idx_t, footpath>;
-
     timezone_idx_t register_timezone(timezone tz) {
       auto const idx = timezone_idx_t{
           static_cast<timezone_idx_t::value_t>(timezones_.size())};
@@ -272,17 +258,17 @@ struct timetable {
   // Trip access: external trip id -> internal trip index
   hash_map<trip_id, vector<trip_idx_t>> trip_id_to_idx_;
 
-  // External trip index -> list of external trip ids (HRD + RI Basis)
+  // Trip index -> list of external trip ids (HRD + RI Basis)
   mutable_fws_multimap<trip_idx_t, trip_id> trip_ids_;
 
-  // External trip index -> reference transport + stop range
+  // Trip index -> reference transport + stop range
   vector_map<trip_idx_t, pair<transport_idx_t, interval<std::uint32_t>>>
       trip_ref_transport_;
 
-  // External trip -> debug info
+  // Trip -> debug info
   mutable_fws_multimap<trip_idx_t, string> trip_debug_;
 
-  // External trip index -> display name
+  // Trip index -> display name
   vector_map<trip_idx_t, string> trip_display_names_;
 
   // Route -> From (inclusive) and to index (exclusive) of expanded trips
@@ -321,9 +307,9 @@ struct timetable {
   // Merged trips info
   vecvec<merged_trips_idx_t, trip_idx_t> merged_trips_;
 
-  // External trip index -> list of section ranges where this trip was
-  // expanded
-  mutable_fws_multimap<trip_idx_t, expanded_trip_section>
+  // Trip index -> list of section ranges where this trip was expanded
+  mutable_fws_multimap<trip_idx_t,
+                       pair<transport_idx_t, interval<std::uint32_t>>>
       trip_idx_to_transport_idx_;
 };
 
