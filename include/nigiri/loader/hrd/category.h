@@ -3,7 +3,6 @@
 #include "fmt/format.h"
 
 #include "nigiri/loader/hrd/parser_config.h"
-#include "nigiri/section_db.h"
 #include "nigiri/types.h"
 
 namespace nigiri::loader::hrd {

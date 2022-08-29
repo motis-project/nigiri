@@ -5,7 +5,7 @@
 
 #include "nigiri/loader/hrd/eva_number.h"
 #include "nigiri/loader/hrd/parser_config.h"
-#include "nigiri/section_db.h"
+#include "nigiri/timetable.h"
 #include "nigiri/types.h"
 
 namespace nigiri::loader::hrd {

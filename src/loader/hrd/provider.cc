@@ -5,8 +5,6 @@
 
 namespace nigiri::loader::hrd {
 
-using provider_map_t = hash_map<string, provider>;
-
 void verify_line_format(utl::cstr line,
                         char const* filename,
                         unsigned const line_number) {
@@ -38,7 +36,9 @@ provider read_provider_names(utl::cstr line) {
                   .long_name_ = parse_name(line.substr(full_name + 3U))};
 }
 
-provider_map_t parse_providers(config const& c, std::string_view file_content) {
+provider_map_t parse_providers(config const& c,
+                               timetable& tt,
+                               std::string_view file_content) {
   provider_map_t providers;
   provider current_info;
   int previous_provider_number = 0;
@@ -53,7 +53,9 @@ provider_map_t parse_providers(config const& c, std::string_view file_content) {
           utl::verify(previous_provider_number == provider_number,
                       "provider line format mismatch in line {}", line_number);
           for_each_token(line.substr(8), ' ', [&](utl::cstr token) {
-            providers[token.to_str()] = std::move(current_info);
+            auto const idx = tt.providers_.size();
+            tt.providers_.emplace_back(std::move(current_info));
+            providers[token.to_str()] = provider_idx_t{idx};
           });
         }
       });

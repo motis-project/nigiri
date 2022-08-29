@@ -14,7 +14,6 @@
 #include "nigiri/footpath.h"
 #include "nigiri/location.h"
 #include "nigiri/logging.h"
-#include "nigiri/section_db.h"
 #include "nigiri/types.h"
 
 namespace nigiri {
@@ -122,6 +121,10 @@ struct timetable {
     vector<minutes_after_midnight_t> stop_times_;
     vector<section_db_idx_t> meta_data_;
     vector<merged_trips_idx_t> external_trip_ids_;
+    vector<attribute_combination_idx_t> section_attributes_;
+    vector<provider_idx_t> section_providers_;
+    vector<trip_direction_idx_t> section_directions_;
+    vector<line_idx_t> section_lines_;
   };
 
   trip_idx_t register_trip_id(
@@ -311,6 +314,20 @@ struct timetable {
   mutable_fws_multimap<trip_idx_t,
                        pair<transport_idx_t, interval<std::uint32_t>>>
       trip_idx_to_transport_idx_;
+
+  // Section meta infos:
+  vector_map<attribute_idx_t, attribute> attributes_;
+  vecvec<attribute_combination_idx_t, attribute_idx_t> attribute_combinations_;
+  vector_map<provider_idx_t, provider> providers_;
+  vecvec<trip_direction_string_idx_t, char> trip_direction_strings_;
+  vector_map<trip_direction_idx_t, trip_direction_t> trip_directions_;
+  vecvec<line_idx_t, char> lines_;
+
+  vecvec<transport_idx_t, attribute_combination_idx_t>
+      transport_section_attributes_;
+  vecvec<transport_idx_t, provider_idx_t> transport_section_providers_;
+  vecvec<transport_idx_t, trip_direction_idx_t> transport_section_directions_;
+  vecvec<transport_idx_t, line_idx_t> transport_section_lines_;
 };
 
 }  // namespace nigiri

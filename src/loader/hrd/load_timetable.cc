@@ -47,20 +47,23 @@ void load_timetable(source_idx_t const src,
       files.at(COORDINATES).data(), files.at(FOOTPATHS).data());
   auto const bitfields = parse_bitfields(c, tt, files.at(BITFIELDS).data());
   auto const categories = parse_categories(c, files.at(CATEGORIES).data());
-  auto const providers = parse_providers(c, files.at(PROVIDERS).data());
+  auto const providers = parse_providers(c, tt, files.at(PROVIDERS).data());
+  auto const attributes = parse_attributes(c, tt, files.at(ATTRIBUTES).data());
+  auto const directions = parse_directions(c, files.at(DIRECTIONS).data());
   auto const interval = parse_interval(files.at(BASIC_DATA).data());
 
   tt.date_range_ = interval;
   tt.n_days_ = static_cast<std::uint16_t>(tt.date_range_.size().count());
 
   std::vector<file> service_files;
-  service_builder sb{tt, {}};
+  service_builder sb{tt};
   for (auto const& s : d.list_files(c.fplan_)) {
     auto const& f = service_files.emplace_back(d.get_file(s));
     sb.add_services(c, f.filename(), interval, bitfields, timezones, locations,
                     f.data(), [](std::size_t) {});
   }
-  sb.write_services(src, categories, providers);
+  sb.write_services(src, locations, categories, providers, attributes,
+                    directions);
 }
 
 }  // namespace nigiri::loader::hrd

@@ -3,7 +3,6 @@
 
 #include "nigiri/byte_sizes.h"
 #include "nigiri/database.h"
-#include "nigiri/section_db.h"
 
 using namespace nigiri;
 

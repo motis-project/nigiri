@@ -10,9 +10,10 @@ bool is_multiple_spaces(utl::cstr line) {
   return line.substr(2, utl::size(3)).trim().empty();
 }
 
-hash_map<std::string, info_db::handle_t> parse_attributes(
-    config const& c, info_db& db, utl::cstr const& file_content) {
-  hash_map<std::string, info_db::handle_t> handle_map;
+attribute_map_t parse_attributes(config const& c,
+                                 timetable& tt,
+                                 utl::cstr const& file_content) {
+  attribute_map_t handle_map;
   for_each_line_numbered(file_content, [&](utl::cstr line,
                                            unsigned const line_number) {
     if (line.len == 0 || line.str[0] == '#') {
@@ -32,10 +33,12 @@ hash_map<std::string, info_db::handle_t> parse_attributes(
     auto const text = is_multiple_spaces(line)
                           ? line.substr(c.att_.text_mul_spaces_)
                           : line.substr(c.att_.text_normal_);
-    handle_map[code.to_str()] =
-        db.add(attribute{.code_ = code.view(), .text_ = text.view()});
+
+    auto const idx = attribute_idx_t{tt.attributes_.size()};
+    tt.attributes_.emplace_back(
+        attribute{.code_ = code.view(), .text_ = text.view()});
+    handle_map[code.to_str()] = idx;
   });
-  db.flush();
   return handle_map;
 }
 

@@ -4,7 +4,6 @@
 
 #include "nigiri/loader/hrd/load_timetable.h"
 #include "nigiri/print_transport.h"
-#include "nigiri/section_db.h"
 
 #include "./hrd_timetable.h"
 

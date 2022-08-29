@@ -13,7 +13,6 @@
 
 #include "nigiri/loader/floyd_warshall.h"
 #include "nigiri/logging.h"
-#include "nigiri/section_db.h"
 
 namespace nigiri::loader {
 

@@ -1,12 +1,15 @@
 #pragma once
 
 #include "nigiri/loader/hrd/parser_config.h"
-#include "nigiri/section_db.h"
+#include "nigiri/timetable.h"
 #include "nigiri/types.h"
 
 namespace nigiri::loader::hrd {
 
-hash_map<std::string, info_db::handle_t> parse_attributes(
-    config const&, info_db&, utl::cstr const& file_content);
+using attribute_map_t = hash_map<string, attribute_idx_t>;
+
+attribute_map_t parse_attributes(config const&,
+                                 timetable&,
+                                 utl::cstr const& file_content);
 
 }  // namespace nigiri::loader::hrd

@@ -24,6 +24,9 @@
 #include "nigiri/logging.h"
 #include "nigiri/timetable.h"
 #include "nigiri/types.h"
+#include "attribute.h"
+#include "direction.h"
+#include "utl/overloaded.h"
 
 namespace nigiri::loader::hrd {
 
@@ -80,7 +83,7 @@ struct service {
   };
 
   using direction_info =
-      std::variant<utl::cstr /* custom string */, eva_number /* eva number */>;
+      variant<utl::cstr /* custom string */, eva_number /* eva number */>;
 
   struct section {
     section() = default;
@@ -132,7 +135,8 @@ struct service {
   void set_stop_times(vector<duration_t> const&);
   vector<tz_offsets> get_stop_timezones(timezone_map_t const&) const;
 
-  string display_name(category_map_t const& categories,
+  string display_name(timetable& tt,
+                      category_map_t const& categories,
                       provider_map_t const& providers) const {
     constexpr auto const kOnlyCategory = std::uint8_t{0b0001};
     constexpr auto const kOnlyTrainNr = std::uint8_t{0b0010};
@@ -140,7 +144,8 @@ struct service {
     constexpr auto const kUseProvider = std::uint8_t{0b1000};
 
     auto const& cat = categories.at(sections_.front().category_.front());
-    auto const& provider = providers.at(initial_admin_.view());
+    auto const& provider =
+        tt.providers_.at(providers.at(initial_admin_.view()));
 
     auto const is = [&](auto const flag) {
       return (cat.output_rule_ & flag) == flag;
@@ -433,6 +438,8 @@ void parse_services(config const& c,
 }
 
 struct service_builder {
+  explicit service_builder(timetable& tt) : tt_{tt} {}
+
   template <typename ProgressFn>
   void add_services(config const& c,
                     char const* filename,
@@ -511,8 +518,11 @@ struct service_builder {
   }
 
   void write_services(source_idx_t const src,
+                      location_map_t const& locations,
                       category_map_t const& categories,
-                      provider_map_t const& providers) {
+                      provider_map_t const& providers,
+                      attribute_map_t const& attributes,
+                      direction_map_t const& directions) {
     hash_map<bitfield, bitfield_idx_t> bitfield_indices;
     for (auto const& [key, sub_routes] : route_services_) {
       for (auto const& services : sub_routes) {
@@ -533,8 +543,82 @@ struct service_builder {
                                 .line_information_.front()
                                 .view()),
                   .src_ = src},
-              s.display_name(categories, providers), s.origin_.str(),
+              s.display_name(tt_, categories, providers), s.origin_.str(),
               tt_.next_transport_idx(), {0U, stop_seq.size()});
+
+          auto const section_attributes =
+              // Warning! This currently ignores the traffic days.
+              // TODO(felix) consider traffic day bitfields of attributes:
+              // - watch out: attribute bitfields probably reference local time!
+              // - attributes that are relevant for routing: split service
+              // - not routing relevant attributes: store in database
+              to_vec(s.sections_, [&](service::section const& s) {
+                auto attribute_idx_combination =
+                    to_vec(s.attributes_, [&](service::attribute const& attr) {
+                      return attributes.at(attr.code_.view());
+                    });
+
+                return utl::get_or_create(
+                    attribute_combinations_, attribute_idx_combination, [&]() {
+                      auto const combination_idx = attribute_combination_idx_t{
+                          tt_.attribute_combinations_.size()};
+                      tt_.attribute_combinations_.emplace_back(
+                          std::move(attribute_idx_combination));
+                      return combination_idx;
+                    });
+              });
+
+          auto const section_providers =
+              to_vec(s.sections_, [&](service::section const& s) {
+                return providers.at(s.admin_.view());
+              });
+
+          auto const section_directions =
+              to_vec(s.sections_, [&](service::section const& s) {
+                if (s.directions_.empty()) {
+                  return trip_direction_idx_t::invalid();
+                }
+                return s.directions_[0].apply(utl::overloaded{
+                    [&](utl::cstr const& s) {
+                      return utl::get_or_create(
+                          string_directions_, s.view(), [&]() {
+                            auto const str_idx = trip_direction_string_idx_t{
+                                tt_.trip_directions_.size()};
+                            tt_.trip_direction_strings_.emplace_back(
+                                directions.at(s.view()));
+
+                            auto const dir_idx = trip_direction_idx_t{
+                                tt_.trip_directions_.size()};
+                            tt_.trip_directions_.emplace_back(str_idx);
+
+                            return dir_idx;
+                          });
+                    },
+                    [&](eva_number const eva) {
+                      return utl::get_or_create(eva_directions_, eva, [&]() {
+                        auto const l_idx = locations.at(eva).idx_;
+
+                        auto const dir_idx =
+                            trip_direction_idx_t{tt_.trip_directions_.size()};
+                        tt_.trip_directions_.emplace_back(l_idx);
+
+                        return dir_idx;
+                      });
+                    }});
+              });
+
+          auto const section_lines =
+              to_vec(s.sections_, [&](service::section const& s) {
+                if (s.line_information_.empty()) {
+                  return line_idx_t::invalid();
+                }
+                return utl::get_or_create(
+                    lines_, s.line_information_[0].view(), [&]() {
+                      auto const idx = line_idx_t{tt_.lines_.size()};
+                      tt_.lines_.emplace_back(s.line_information_[0].view());
+                      return idx;
+                    });
+              });
 
           auto const merged_trip = tt_.register_merged_trip({id});
           tt_.add_transport(timetable::transport{
@@ -544,8 +628,12 @@ struct service_builder {
               .route_idx_ = route_idx,
               .stop_times_ = s.get_stop_times(),
               .meta_data_ = vector<section_db_idx_t>(stop_seq.size() - 1),
-              .external_trip_ids_ = vector<merged_trips_idx_t>(
-                  stop_seq.size() - 1U, merged_trip)});
+              .external_trip_ids_ =
+                  vector<merged_trips_idx_t>(stop_seq.size() - 1U, merged_trip),
+              .section_attributes_ = section_attributes,
+              .section_providers_ = section_providers,
+              .section_directions_ = section_directions,
+              .section_lines_ = section_lines});
         }
         tt_.finish_route();
       }
@@ -556,6 +644,11 @@ struct service_builder {
   hash_map<pair<vector<timetable::stop>, vector<clasz>>,
            vector<vector<service>>>
       route_services_;
+  hash_map<vector<attribute_idx_t>, attribute_combination_idx_t>
+      attribute_combinations_;
+  hash_map<string, line_idx_t> lines_;
+  hash_map<string, trip_direction_idx_t> string_directions_;
+  hash_map<eva_number, trip_direction_idx_t> eva_directions_;
 };
 
 }  // namespace nigiri::loader::hrd

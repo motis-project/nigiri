@@ -87,6 +87,32 @@ using merged_trips_idx_t =
     cista::strong<std::uint32_t, struct _merged_trips_idx>;
 using footpath_idx_t = cista::strong<std::uint32_t, struct _footpath_idx>;
 
+using line_id_t = string;
+
+using trip_direction_string_idx_t =
+    cista::strong<std::uint32_t, struct _trip_direction_string>;
+using trip_direction_t =
+    cista::variant<location_idx_t, trip_direction_string_idx_t>;
+using trip_direction_idx_t =
+    cista::strong<std::uint32_t, struct _trip_direction_idx>;
+using attribute_idx_t = cista::strong<std::uint32_t, struct _attribute_idx>;
+using attribute_combination_idx_t =
+    cista::strong<std::uint32_t, struct _attribute_combination>;
+using provider_idx_t = cista::strong<std::uint32_t, struct _provider_idx>;
+using line_idx_t = cista::strong<std::uint32_t, struct _line_idx>;
+
+struct attribute {
+  CISTA_PRINTABLE(attribute, "code", "text")
+  CISTA_COMPARABLE()
+  string code_, text_;
+};
+
+struct provider {
+  CISTA_PRINTABLE(provider, "short_name", "long_name")
+  CISTA_COMPARABLE()
+  string short_name_, long_name_;
+};
+
 struct trip_id {
   CISTA_PRINTABLE(trip_id, "id", "src")
   string id_;
