@@ -9,7 +9,7 @@ direction_map_t parse_directions(config const& c,
                                  std::string_view file_content) {
   direction_map_t directions;
   utl::for_each_line_numbered(
-      file_content, [&](utl::cstr line, int line_number) {
+      file_content, [&](utl::cstr line, unsigned const line_number) {
         if (line.length() < 9 && line[7] == ' ') {
           throw utl::fail("parse_directions: invalid line format in line {}",
                           line_number);

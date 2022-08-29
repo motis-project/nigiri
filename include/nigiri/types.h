@@ -103,7 +103,7 @@ using line_idx_t = cista::strong<std::uint32_t, struct _line_idx>;
 
 struct attribute {
   CISTA_PRINTABLE(attribute, "code", "text")
-  CISTA_COMPARABLE()
+  friend bool operator==(attribute const&, attribute const&) = default;
   string code_, text_;
 };
 

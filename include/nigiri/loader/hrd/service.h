@@ -552,9 +552,9 @@ struct service_builder {
               // - watch out: attribute bitfields probably reference local time!
               // - attributes that are relevant for routing: split service
               // - not routing relevant attributes: store in database
-              to_vec(s.sections_, [&](service::section const& s) {
-                auto attribute_idx_combination =
-                    to_vec(s.attributes_, [&](service::attribute const& attr) {
+              to_vec(s.sections_, [&](service::section const& sec) {
+                auto attribute_idx_combination = to_vec(
+                    sec.attributes_, [&](service::attribute const& attr) {
                       return attributes.at(attr.code_.view());
                     });
 
@@ -569,23 +569,23 @@ struct service_builder {
               });
 
           auto const section_providers =
-              to_vec(s.sections_, [&](service::section const& s) {
-                return providers.at(s.admin_.view());
+              to_vec(s.sections_, [&](service::section const& sec) {
+                return providers.at(sec.admin_.view());
               });
 
           auto const section_directions =
-              to_vec(s.sections_, [&](service::section const& s) {
-                if (s.directions_.empty()) {
+              to_vec(s.sections_, [&](service::section const& sec) {
+                if (sec.directions_.empty()) {
                   return trip_direction_idx_t::invalid();
                 }
-                return s.directions_[0].apply(utl::overloaded{
-                    [&](utl::cstr const& s) {
+                return sec.directions_[0].apply(utl::overloaded{
+                    [&](utl::cstr const& str) {
                       return utl::get_or_create(
-                          string_directions_, s.view(), [&]() {
+                          string_directions_, str.view(), [&]() {
                             auto const str_idx = trip_direction_string_idx_t{
                                 tt_.trip_directions_.size()};
                             tt_.trip_direction_strings_.emplace_back(
-                                directions.at(s.view()));
+                                directions.at(str.view()));
 
                             auto const dir_idx = trip_direction_idx_t{
                                 tt_.trip_directions_.size()};
@@ -608,14 +608,14 @@ struct service_builder {
               });
 
           auto const section_lines =
-              to_vec(s.sections_, [&](service::section const& s) {
-                if (s.line_information_.empty()) {
+              to_vec(s.sections_, [&](service::section const& sec) {
+                if (sec.line_information_.empty()) {
                   return line_idx_t::invalid();
                 }
                 return utl::get_or_create(
-                    lines_, s.line_information_[0].view(), [&]() {
+                    lines_, sec.line_information_[0].view(), [&]() {
                       auto const idx = line_idx_t{tt_.lines_.size()};
-                      tt_.lines_.emplace_back(s.line_information_[0].view());
+                      tt_.lines_.emplace_back(sec.line_information_[0].view());
                       return idx;
                     });
               });

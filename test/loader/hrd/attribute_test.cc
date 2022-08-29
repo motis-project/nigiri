@@ -15,8 +15,8 @@ TEST_CASE("loader_hrd_attributes, parse_line") {
     auto const attributes = parse_attributes(c, tt, file_content);
     auto const it = attributes.find(", ");
     CHECK(it != end(attributes));
-    CHECK(tt.attributes_.at(it->second) ==
-          attribute{.code_ = ", ", .text_ = "Bus mit Fahrradanhänger"});
+    CHECK_EQ(tt.attributes_.at(it->second),
+             attribute{.code_ = ", ", .text_ = "Bus mit Fahrradanhänger"});
   }
 }
 
