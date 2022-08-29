@@ -268,6 +268,7 @@ struct raptor {
     utl::erase_if(state_.results_, [&](journey const& j) {
       return !q_.interval_.contains(j.start_time_);
     });
+    state_.search_interval_ = q_.interval_;
   }
 
   void reconstruct(unixtime_t const start_at_start) {
