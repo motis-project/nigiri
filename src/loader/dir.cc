@@ -11,6 +11,8 @@
 #include "utl/to_vec.h"
 #include "utl/verify.h"
 
+#include "nigiri/logging.h"
+
 namespace nigiri::loader {
 
 file::content::~content() = default;
@@ -42,7 +44,10 @@ std::vector<std::filesystem::path> fs_dir::list_files(
 file fs_dir::get_file(std::filesystem::path const& p) const {
   struct mmap_content final : public file::content {
     explicit mmap_content(std::filesystem::path const& p)
-        : mmap_{p.string().c_str(), cista::mmap::protection::READ} {}
+        : mmap_{p.string().c_str(), cista::mmap::protection::READ} {
+      log(log_lvl::info, "nigiri.loader.fs_dir", "loaded {}: {} bytes", p,
+          mmap_.size());
+    }
     ~mmap_content() final = default;
     std::string_view get() const final { return mmap_.view(); }
     cista::mmap mmap_;

@@ -128,7 +128,6 @@ struct config {
     utl::field bitfield_;
   } track_rul_;
   struct {
-    utl::field att_eva_;
     utl::field att_code_;
     utl::field cat_;
     utl::field line_;
@@ -252,7 +251,6 @@ const config hrd_5_00_8 = {
          }),
     INIT(.s_info_,
          {
-             INIT(.att_eva_, {22, 6}),
              INIT(.att_code_, {3, 2}),
              INIT(.cat_, {3, 3}),
              INIT(.line_, {3, 5}),
@@ -410,7 +408,6 @@ const config hrd_5_20_26 = {
          }),
     INIT(.s_info_,
          {
-             INIT(.att_eva_, {22, 6}),
              INIT(.att_code_, {3, 2}),
              INIT(.cat_, {3, 3}),
              INIT(.line_, {3, 8}),
@@ -568,7 +565,6 @@ const config hrd_5_20_39 = {
          }),
     INIT(.s_info_,
          {
-             INIT(.att_eva_, {22, 6}),
              INIT(.att_code_, {3, 2}),
              INIT(.cat_, {3, 3}),
              INIT(.line_, {3, 8}),
@@ -726,7 +722,6 @@ const config hrd_5_20_avv = {
          }),
     INIT(.s_info_,
          {
-             INIT(.att_eva_, {22, 6}),
              INIT(.att_code_, {3, 2}),
              INIT(.cat_, {3, 3}),
              INIT(.line_, {3, 8}),

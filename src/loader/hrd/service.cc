@@ -293,9 +293,8 @@ service::service(config const& c, specification const& spec)
       initial_train_num_{initial_train_num(spec)} {
   parse_range(spec.attributes_, c.attribute_parse_info_, stops_, sections_,
               &section::attributes_, [&c](utl::cstr line, range const&) {
-                return attribute{
-                    parse_verify<int>(line.substr(c.s_info_.att_eva_)),
-                    line.substr(c.s_info_.att_code_)};
+                return attribute{parse<int>(line.substr(c.s_info_.traff_days_)),
+                                 line.substr(c.s_info_.att_code_)};
               });
 
   parse_range(spec.categories_, c.category_parse_info_, stops_, sections_,

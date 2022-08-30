@@ -12,26 +12,34 @@
 namespace nigiri::loader::hrd {
 
 std::vector<file> load_files(config const& c, dir const& d) {
-  return utl::to_vec(c.required_files_,
-                     [&](std::vector<std::string> const& alt) {
-                       if (alt.empty()) {
-                         return file{};
-                       }
-                       for (auto const& file : alt) {
-                         try {
-                           return d.get_file(c.core_data_ / file);
-                         } catch (...) {
-                         }
-                       }
-                       throw utl::fail("no file available: {}", alt);
-                     });
+  return utl::to_vec(
+      c.required_files_, [&](std::vector<std::string> const& alt) {
+        if (alt.empty()) {
+          return file{};
+        }
+        for (auto const& file : alt) {
+          try {
+            auto f = d.get_file(c.core_data_ / file);
+            log(log_lvl::info, "nigiri.loader.hrd.load_files",
+                "loaded {}: {} bytes", c.core_data_ / file, f.data().size());
+            return f;
+          } catch (...) {
+          }
+        }
+        throw utl::fail("no file available: {}", alt);
+      });
 }
 
 bool applicable(config const& c, dir const& d) {
   return utl::all_of(
       c.required_files_, [&](std::vector<std::string> const& alt) {
         return alt.empty() || utl::any_of(alt, [&](std::string const& file) {
-                 return d.exists(file);
+                 auto const exists = d.exists(c.core_data_ / file);
+                 if (!exists) {
+                   std::clog << "missing file for config " << c.version_.view()
+                             << ": " << (c.core_data_ / file) << "\n";
+                 }
+                 return exists;
                });
       });
 }
