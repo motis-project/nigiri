@@ -10,6 +10,7 @@
 #include "utl/get_or_create.h"
 #include "utl/pairwise.h"
 #include "utl/parser/cstr.h"
+#include "utl/progress_tracker.h"
 #include "utl/to_vec.h"
 #include "utl/zip.h"
 
@@ -96,7 +97,7 @@ struct service {
     std::vector<utl::cstr> category_;
     std::vector<utl::cstr> line_information_;
     std::vector<direction_info> directions_;
-    std::vector<int> traffic_days_;
+    std::vector<unsigned> traffic_days_;
     clasz clasz_{clasz::kAir};
   };
 
@@ -143,9 +144,10 @@ struct service {
     constexpr auto const kNoOutput = std::uint8_t{0b0011};
     constexpr auto const kUseProvider = std::uint8_t{0b1000};
 
-    auto const& cat = categories.at(sections_.front().category_.front());
+    auto const& cat =
+        categories.at(sections_.front().category_.front().to_str());
     auto const& provider =
-        tt.providers_.at(providers.at(initial_admin_.view()));
+        tt.providers_.at(providers.at(initial_admin_.to_str()));
 
     auto const is = [&](auto const flag) {
       return (cat.output_rule_ & flag) == flag;
@@ -307,7 +309,7 @@ void to_local_time(timezone_map_t const& timezones,
                    service const& s,
                    Fn&& consumer) {
   struct duration_hash {
-    cista::hash_t operator()(vector<duration_t> const& v) {
+    cista::hash_t operator()(vector<duration_t> const& v) const {
       auto h = cista::BASE_HASH;
       for (auto const& el : v) {
         h = cista::hash_combine(h, el.count());
@@ -638,6 +640,7 @@ struct service_builder {
         tt_.finish_route();
       }
     }
+    utl::get_active_progress_tracker()->increment();
   }
 
   timetable& tt_;

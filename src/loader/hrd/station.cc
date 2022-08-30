@@ -5,6 +5,7 @@
 
 #include "nigiri/loader/hrd/timezone.h"
 #include "nigiri/logging.h"
+#include "utl/progress_tracker.h"
 
 namespace nigiri::loader::hrd {
 
@@ -58,26 +59,39 @@ void parse_station_coordinates(config const& c,
 void parse_equivilant_stations(config const& c,
                                hash_map<eva_number, hrd_location>& stations,
                                std::string_view file_content) {
-  utl::for_each_line(file_content, [&](utl::cstr line) {
-    if (line.length() < 16 || line[0] == '%' || line[0] == '*') {
-      return;
-    }
-
-    if (line[7] == ':') {  // equivalent stations
-      auto& station = stations.at(
-          parse_eva_number(line.substr(c.meta_.meta_stations_.eva_)));
-      utl::for_each_token(line.substr(8), ' ', [&](utl::cstr token) {
-        if (token.empty() ||
-            (c.version_ == "hrd_5_20_26" && token.starts_with("F"))) {
+  utl::for_each_line_numbered(
+      file_content, [&](utl::cstr line, unsigned const line_number) {
+        if (line.length() < 16 || line[0] == '%' || line[0] == '*') {
           return;
         }
-        if (auto const eva = parse_eva_number(token); eva != 0) {
-          station.equivalent_.emplace(eva);
+
+        if (line[7] == ':') {  // equivalent stations
+          try {
+            auto& station = stations.at(
+                parse_eva_number(line.substr(c.meta_.meta_stations_.eva_)));
+            utl::for_each_token(line.substr(8), ' ', [&](utl::cstr token) {
+              if (token.empty() ||
+                  (c.version_ == "hrd_5_20_26" && token.starts_with("F"))) {
+                return;
+              }
+              if (token.starts_with("H")  // Hauptmast
+                  || token.starts_with("B")  // Bahnhofstafel
+                  || token.starts_with("V")  // Virtueller Umstieg
+                  || token.starts_with("S")  // Start-Ziel-Aequivalenz
+              ) {
+                ++token;
+              }
+              if (auto const eva = parse_eva_number(token); eva != 0) {
+                station.equivalent_.emplace(eva);
+              }
+            });
+          } catch (std::exception const& e) {
+            log(log_lvl::error, "nigiri.loader.hrd.equivalent",
+                "could not parse line {}: {}", line_number, e.what());
+          }
+        } else {  // footpaths
         }
       });
-    } else {  // footpaths
-    }
-  });
 }
 
 void parse_footpaths(config const& c,
@@ -118,6 +132,12 @@ void parse_footpaths(config const& c,
   });
 }
 
+struct hash {
+  size_t operator()(location_id const& id) const {
+    return cista::build_hash(id);
+  }
+};
+
 location_map_t parse_stations(config const& c,
                               source_idx_t const src,
                               timezone_map_t const& timezones,
@@ -125,6 +145,8 @@ location_map_t parse_stations(config const& c,
                               std::string_view station_names_file,
                               std::string_view station_coordinates_file,
                               std::string_view station_metabhf_file) {
+  scoped_timer timer{"parse stations"};
+
   auto empty_idx_vec = vector<location_idx_t>{};
   auto empty_footpath_vec = vector<footpath>{};
 
@@ -134,6 +156,13 @@ location_map_t parse_stations(config const& c,
   parse_equivilant_stations(c, stations, station_metabhf_file);
   parse_footpaths(c, stations, station_metabhf_file);
 
+  auto const progress_tracker =
+      utl::get_global_progress_trackers().get_tracker("stations");
+  progress_tracker->out_bounds(0, 100)
+      .in_high(stations.size())
+      .show_progress(true);
+
+  std::unordered_map<location_id, location_idx_t, hash> map;
   for (auto& [eva, s] : stations) {
     auto const id =
         location_id{.id_ = fmt::format("{:07}", to_idx(eva)), .src_ = src};

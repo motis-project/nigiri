@@ -65,6 +65,7 @@ using mutable_fws_multimap = cista::offset::mutable_fws_multimap<K, V>;
 
 template <typename K, typename V, typename Hash = cista::hashing<K>>
 using hash_map = cista::offset::hash_map<K, V, Hash>;
+// using hash_map = std::unordered_map<K, V, Hash>;
 
 template <typename K, typename Hash = cista::hashing<K>>
 using hash_set = cista::offset::hash_set<K, Hash>;
@@ -108,18 +109,20 @@ struct attribute {
 };
 
 struct provider {
-  CISTA_PRINTABLE(provider, "short_name", "long_name")
   CISTA_COMPARABLE()
+  CISTA_PRINTABLE(provider, "short_name", "long_name")
   string short_name_, long_name_;
 };
 
 struct trip_id {
+  CISTA_COMPARABLE()
   CISTA_PRINTABLE(trip_id, "id", "src")
   string id_;
   source_idx_t src_;
 };
 
 struct location_id {
+  CISTA_COMPARABLE()
   CISTA_PRINTABLE(location_id, "id", "src")
   string id_;
   source_idx_t src_;

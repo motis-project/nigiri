@@ -2,10 +2,14 @@
 
 #include "utl/parser/arg_parser.h"
 
+#include "nigiri/logging.h"
+
 namespace nigiri::loader::hrd {
 
 category_map_t parse_categories(config const& c,
                                 std::string_view file_content) {
+  scoped_timer timer{"parse categories"};
+
   bool ignore = false;
   category_map_t handle_map;
   utl::for_each_line_numbered(
@@ -26,7 +30,7 @@ category_map_t parse_categories(config const& c,
         auto const name = line.substr(c.cat_.name_).trim().view();
 
         handle_map[code.to_str()] = category{.name_ = code.trim().to_str(),
-                                             .long_name_ = name,
+                                             .long_name_ = string{name},
                                              .output_rule_ = output_rule,
                                              .clasz_ = clasz::kAir};
       });

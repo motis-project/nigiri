@@ -1,5 +1,6 @@
 #include "nigiri/loader/hrd/basic_info.h"
 
+#include "nigiri/logging.h"
 #include "nigiri/types.h"
 #include "utl/parser/arg_parser.h"
 
@@ -32,6 +33,8 @@ std::pair<utl::cstr, utl::cstr> mask_dates(utl::cstr str) {
 }
 
 interval<std::chrono::sys_days> parse_interval(std::string_view file_content) {
+  scoped_timer timer{"parse interval"};
+
   using std::chrono::sys_days;
   auto const [first_date, last_date] = mask_dates(file_content);
   return {

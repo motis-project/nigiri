@@ -13,6 +13,8 @@ bool is_multiple_spaces(utl::cstr line) {
 attribute_map_t parse_attributes(config const& c,
                                  timetable& tt,
                                  utl::cstr const& file_content) {
+  scoped_timer timer{"parse attributes"};
+
   attribute_map_t handle_map;
   for_each_line_numbered(file_content, [&](utl::cstr line,
                                            unsigned const line_number) {
@@ -22,11 +24,6 @@ attribute_map_t parse_attributes(config const& c,
       log(log_lvl::error, "nigiri.loader.hrd.attribute",
           "invalid attribute line - skipping {}", line_number);
       return;
-    }
-
-    if (auto const comment_start_pos = line.view().find('#');
-        comment_start_pos != std::string_view::npos) {
-      line = line.substr(0, comment_start_pos);
     }
 
     auto const code = line.substr(c.att_.code_);

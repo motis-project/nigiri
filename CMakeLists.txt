@@ -40,6 +40,12 @@ target_link_libraries(nigiri PUBLIC cista geo utl lmdb fmt date miniz date-tz)
 target_compile_features(nigiri PUBLIC cxx_std_20)
 target_compile_options(nigiri PRIVATE ${nigiri-compile-options})
 
+# --- MAIN ---
+file(GLOB_RECURSE nigiri-server-files server/main.cc)
+add_executable(nigiri-server ${nigiri-server-files})
+target_link_libraries(nigiri-server PRIVATE nigiri)
+target_compile_features(nigiri-server PUBLIC cxx_std_20)
+
 # --- TEST ---
 add_library(nigiri-generated INTERFACE)
 target_include_directories(nigiri-generated INTERFACE ${CMAKE_CURRENT_BINARY_DIR}/generated)

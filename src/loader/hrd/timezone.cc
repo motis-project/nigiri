@@ -32,6 +32,8 @@ std::pair<timezone_idx_t, tz_offsets> const& get_tz(
 timezone_map_t parse_timezones(config const& c,
                                timetable& tt,
                                std::string_view file_content) {
+  scoped_timer timer{"parse timezones"};
+
   timezone_map_t tz;
   utl::for_each_line(file_content, [&](utl::cstr line) {
     if (line.length() == 15) {

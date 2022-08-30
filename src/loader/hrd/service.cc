@@ -307,10 +307,11 @@ service::service(config const& c, specification const& spec)
                 return line.substr(c.s_info_.line_).trim();
               });
 
-  parse_range(spec.traffic_days_, c.traffic_days_parse_info_, stops_, sections_,
-              &section::traffic_days_, [&c](utl::cstr line, range const&) {
-                return parse_verify<int>(line.substr(c.s_info_.traff_days_));
-              });
+  parse_range(
+      spec.traffic_days_, c.traffic_days_parse_info_, stops_, sections_,
+      &section::traffic_days_, [&c](utl::cstr line, range const&) {
+        return parse_verify<unsigned>(line.substr(c.s_info_.traff_days_));
+      });
 
   parse_range(spec.directions_, c.direction_parse_info_, stops_, sections_,
               &section::directions_, [&](utl::cstr line, range const& r) {
@@ -362,8 +363,9 @@ void service::verify_service() {
                   origin_.line_number_to_, section_index,
                   section.directions_.size());
     } catch (std::runtime_error const&) {
-      log(log_lvl::error, "quick fixing direction info: {}:{}",
-          origin_.filename_, origin_.line_number_from_);
+      log(log_lvl::error, "nigiri.loader.hrd.direction",
+          "quick fixing direction info: {}:{}", origin_.filename_,
+          origin_.line_number_from_);
       section.directions_.resize(1);
     }
     ++section_index;

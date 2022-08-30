@@ -26,8 +26,6 @@ void print_transport(timetable const& tt,
   auto const& stop_seq = tt.route_location_seq_.at(route_idx);
   auto const& stop_times = tt.transport_stop_times_.at(i);
 
-  indent(out, indent_width);
-  out << "ROUTE=" << route_idx << "\n";
   auto const from =
       std::min(static_cast<unsigned>(stop_seq.size()), stop_range.from_);
   auto const to =

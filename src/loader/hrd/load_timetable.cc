@@ -3,31 +3,30 @@
 #include "fmt/ranges.h"
 
 #include "utl/helpers/algorithm.h"
+#include "utl/pipes.h"
 
 #include "nigiri/loader/hrd/bitfield.h"
 #include "nigiri/loader/hrd/service.h"
 #include "nigiri/loader/hrd/station.h"
 #include "nigiri/loader/hrd/timezone.h"
+#include "utl/progress_tracker.h"
 
 namespace nigiri::loader::hrd {
 
 std::vector<file> load_files(config const& c, dir const& d) {
-  return utl::to_vec(
-      c.required_files_, [&](std::vector<std::string> const& alt) {
-        if (alt.empty()) {
-          return file{};
-        }
-        for (auto const& file : alt) {
-          try {
-            auto f = d.get_file(c.core_data_ / file);
-            log(log_lvl::info, "nigiri.loader.hrd.load_files",
-                "loaded {}: {} bytes", c.core_data_ / file, f.data().size());
-            return f;
-          } catch (...) {
-          }
-        }
-        throw utl::fail("no file available: {}", alt);
-      });
+  return utl::to_vec(c.required_files_,
+                     [&](std::vector<std::string> const& alt) {
+                       if (alt.empty()) {
+                         return file{};
+                       }
+                       for (auto const& file : alt) {
+                         try {
+                           return d.get_file(c.core_data_ / file);
+                         } catch (...) {
+                         }
+                       }
+                       throw utl::fail("no file available: {}", alt);
+                     });
 }
 
 bool applicable(config const& c, dir const& d) {
@@ -48,6 +47,8 @@ void load_timetable(source_idx_t const src,
                     config const& c,
                     dir const& d,
                     timetable& tt) {
+  auto bars = utl::global_progress_bars{false};
+
   auto const files = load_files(c, d);
   auto const timezones = parse_timezones(c, tt, files.at(TIMEZONES).data());
   auto const locations = parse_stations(
@@ -63,13 +64,30 @@ void load_timetable(source_idx_t const src,
   tt.date_range_ = interval;
   tt.n_days_ = static_cast<std::uint16_t>(tt.date_range_.size().count());
 
-  std::vector<file> service_files;
   service_builder sb{tt};
-  for (auto const& s : d.list_files(c.fplan_)) {
-    auto const& f = service_files.emplace_back(d.get_file(s));
+
+  auto const service_files = utl::to_vec(
+      d.list_files(c.fplan_),
+      [&](std::filesystem::path const& p) { return d.get_file(p); });
+  auto const byte_sum =
+      utl::all(service_files) |
+      utl::transform([](file const& s) { return s.data().size(); }) |
+      utl::sum();
+
+  utl::activate_progress_tracker("services");
+  auto progress_tracker = utl::get_active_progress_tracker();
+  progress_tracker->status("READ").out_bounds(0, 50).in_high(byte_sum);
+
+  auto processed = std::uint64_t{0U};
+  for (auto const& f : service_files) {
     sb.add_services(c, f.filename(), interval, bitfields, timezones, locations,
-                    f.data(), [](std::size_t) {});
+                    f.data(), [&](std::size_t const bytes_processed) {
+                      progress_tracker->update(processed + bytes_processed);
+                    });
+    processed += f.data().size();
   }
+  progress_tracker->status("WRITE").out_bounds(51, 100).in_high(
+      sb.route_services_.size());
   sb.write_services(src, locations, categories, providers, attributes,
                     directions);
 }
