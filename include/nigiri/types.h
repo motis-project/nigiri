@@ -65,7 +65,6 @@ using mutable_fws_multimap = cista::offset::mutable_fws_multimap<K, V>;
 
 template <typename K, typename V, typename Hash = cista::hashing<K>>
 using hash_map = cista::offset::hash_map<K, V, Hash>;
-// using hash_map = std::unordered_map<K, V, Hash>;
 
 template <typename K, typename Hash = cista::hashing<K>>
 using hash_set = cista::offset::hash_set<K, Hash>;

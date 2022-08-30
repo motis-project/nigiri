@@ -162,7 +162,6 @@ location_map_t parse_stations(config const& c,
       .in_high(stations.size())
       .show_progress(true);
 
-  std::unordered_map<location_id, location_idx_t, hash> map;
   for (auto& [eva, s] : stations) {
     auto const id =
         location_id{.id_ = fmt::format("{:07}", to_idx(eva)), .src_ = src};
