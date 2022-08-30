@@ -27,9 +27,12 @@ attribute_map_t parse_attributes(config const& c,
     }
 
     auto const code = line.substr(c.att_.code_);
-    auto const text = is_multiple_spaces(line)
-                          ? line.substr(c.att_.text_mul_spaces_)
-                          : line.substr(c.att_.text_normal_);
+    auto text = is_multiple_spaces(line) ? line.substr(c.att_.text_mul_spaces_)
+                                         : line.substr(c.att_.text_normal_);
+
+    if (!text.empty() && text[text.length() - 1]) {
+      text = text.substr(0, text.length() - 1);
+    }
 
     auto const idx = attribute_idx_t{tt.attributes_.size()};
     tt.attributes_.emplace_back(
