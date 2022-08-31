@@ -18,6 +18,13 @@
 
 namespace nigiri::loader::hrd {
 
+category service::unknown_catergoy = category{.name_ = "UKN",
+                                              .long_name_ = "UNKNOWN",
+                                              .output_rule_ = 0U,
+                                              .clasz_ = clasz::kOther};
+provider service::unknown_provider =
+    provider{.short_name_ = "UKN", .long_name_ = "UNKOWN"};
+
 std::ostream& operator<<(std::ostream& out, parser_info const& pi) {
   return out << pi.filename_ << ":" << pi.line_number_from_ << ":"
              << pi.line_number_to_;

@@ -5,7 +5,6 @@
 
 #include "nigiri/loader/hrd/timezone.h"
 #include "nigiri/logging.h"
-#include "utl/progress_tracker.h"
 
 namespace nigiri::loader::hrd {
 
@@ -155,12 +154,6 @@ location_map_t parse_stations(config const& c,
   parse_station_coordinates(c, stations, station_coordinates_file);
   parse_equivilant_stations(c, stations, station_metabhf_file);
   parse_footpaths(c, stations, station_metabhf_file);
-
-  auto const progress_tracker =
-      utl::get_global_progress_trackers().get_tracker("stations");
-  progress_tracker->out_bounds(0, 100)
-      .in_high(stations.size())
-      .show_progress(true);
 
   for (auto& [eva, s] : stations) {
     auto const id =

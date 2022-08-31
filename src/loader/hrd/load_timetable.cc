@@ -32,22 +32,23 @@ void load_timetable(source_idx_t const src,
   auto const st = stamm{c, tt, d};
   service_builder sb{st, tt};
 
-  utl::activate_progress_tracker("services");
-  auto progress_tracker = utl::get_active_progress_tracker();
+  auto progress_tracker = utl::activate_progress_tracker("nigiri");
+  progress_tracker->status("Read Services")
+      .in_high(utl::all(d.list_files(c.fplan_))  //
+               | utl::transform([&](auto&& f) { return d.file_size(f); })  //
+               | utl::sum());
+  auto total_bytes_processed = std::uint64_t{0U};
 
-  //  progress_tracker->status("READ").in_high(byte_sum);
-  //  auto total_bytes_processed = std::uint64_t{0U};
   for (auto const& path : d.list_files(c.fplan_)) {
     log(log_lvl::info, "loader.hrd.services", "loading {}", path);
     auto const file = d.get_file(path);
-    sb.add_services(c, file.filename(), file.data(),
-                    [&](std::size_t const bytes_processed) {
-                      (void)bytes_processed;
-                      //          progress_tracker->update(total_bytes_processed
-                      //          + bytes_processed);
-                    });
+    sb.add_services(
+        c, file.filename(), file.data(),
+        [&](std::size_t const bytes_processed) {
+          progress_tracker->update(total_bytes_processed + bytes_processed);
+        });
     sb.write_services(src);
-    //    total_bytes_processed += f.data().size();
+    total_bytes_processed += file.data().size();
   }
 }
 

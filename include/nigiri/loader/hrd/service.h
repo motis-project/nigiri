@@ -54,6 +54,8 @@ struct specification {
 
 struct service {
   static const constexpr auto kTimeNotSet = -1;  // NOLINT
+  static category unknown_catergoy;
+  static provider unknown_provider;
 
   struct event {
     int time_;
@@ -131,37 +133,63 @@ struct service {
   string display_name(timetable& tt,
                       category_map_t const& categories,
                       provider_map_t const& providers) const {
-    constexpr auto const kOnlyCategory = std::uint8_t{0b0001};
-    constexpr auto const kOnlyTrainNr = std::uint8_t{0b0010};
-    constexpr auto const kNoOutput = std::uint8_t{0b0011};
-    constexpr auto const kUseProvider = std::uint8_t{0b1000};
+    try {
+      constexpr auto const kOnlyCategory = std::uint8_t{0b0001};
+      constexpr auto const kOnlyTrainNr = std::uint8_t{0b0010};
+      constexpr auto const kNoOutput = std::uint8_t{0b0011};
+      constexpr auto const kUseProvider = std::uint8_t{0b1000};
 
-    auto const& cat =
-        categories.at(sections_.front().category_.front().to_str());
-    auto const& provider =
-        tt.providers_.at(providers.at(initial_admin_.to_str()));
+      auto const& cat = [&]() {
+        auto const it =
+            categories.find(sections_.front().category_.front().to_str());
+        if (it != end(categories)) {
+          return it->second;
+        } else {
+          log(log_lvl::error, "loader.hrd.service.name",
+              "service {}: invalid category \"{}\"", origin_,
+              sections_.front().category_.front().view());
+          return unknown_catergoy;
+        }
+      }();
 
-    auto const is = [&](auto const flag) {
-      return (cat.output_rule_ & flag) == flag;
-    };
+      auto const& provider = [&]() {
+        auto const it = providers.find(initial_admin_.view());
+        if (it != end(providers)) {
+          return tt.providers_.at(it->second);
+        } else {
+          log(log_lvl::error, "loader.hrd.service.name",
+              "service {}: invalid provider {}", origin_,
+              initial_admin_.view());
+          return unknown_provider;
+        }
+      }();
 
-    if (is(kNoOutput)) {
+      auto const is = [&](auto const flag) {
+        return (cat.output_rule_ & flag) == flag;
+      };
+
+      if (is(kNoOutput)) {
+        return "";
+      } else {
+        auto const train_nr = initial_train_num_;
+        auto const line_id =
+            sections_.front().line_information_.empty()
+                ? ""
+                : sections_.front().line_information_.front().to_str();
+        auto const first =
+            is(kOnlyTrainNr)
+                ? string{""}
+                : (is(kUseProvider) ? provider.short_name_ : cat.name_);
+        auto const second =
+            is(kOnlyCategory)
+                ? string{""}
+                : (train_nr == 0U ? line_id : fmt::to_string(train_nr));
+        return fmt::format("{}{}{}", first, first.empty() ? "" : " ", second);
+      }
+    } catch (std::exception const& e) {
+      log(log_lvl::error, "nigiri.loader.hrd.service.name",
+          "unable to build service display name for {}: {}", origin_, e.what());
       return "";
-    } else {
-      auto const train_nr = initial_train_num_;
-      auto const line_id =
-          sections_.front().line_information_.empty()
-              ? ""
-              : sections_.front().line_information_.front().to_str();
-      auto const first =
-          is(kOnlyTrainNr)
-              ? string{""}
-              : (is(kUseProvider) ? provider.short_name_ : cat.name_);
-      auto const second =
-          is(kOnlyCategory)
-              ? string{""}
-              : (train_nr == 0U ? line_id : fmt::to_string(train_nr));
-      return fmt::format("{}{}{}", first, first.empty() ? "" : " ", second);
     }
   }
 
@@ -434,6 +462,8 @@ struct service_builder {
                     char const* filename,
                     std::string_view file_content,
                     ProgressFn&& bytes_consumed) {
+    scoped_timer write{"reading services"};
+
     auto const get_index = [&](vector<service> const& route_services,
                                service const& s) -> std::optional<size_t> {
       auto const index = static_cast<unsigned>(std::distance(
@@ -504,6 +534,8 @@ struct service_builder {
   }
 
   void write_services(source_idx_t const src) {
+    scoped_timer write{"writing services"};
+
     hash_map<bitfield, bitfield_idx_t> bitfield_indices;
     for (auto const& [key, sub_routes] : route_services_) {
       for (auto const& services : sub_routes) {
@@ -556,7 +588,8 @@ struct service_builder {
 
             auto const section_providers =
                 to_vec(s.sections_, [&](service::section const& sec) {
-                  return stamm_.providers_.at(sec.admin_.view());
+                  return stamm_.providers_.get(sec.admin_.view())
+                      .value_or(provider_idx_t::invalid());
                 });
 
             auto const section_directions =
