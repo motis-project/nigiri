@@ -37,11 +37,7 @@ void load_timetable(source_idx_t const src,
 
   //  progress_tracker->status("READ").in_high(byte_sum);
   //  auto total_bytes_processed = std::uint64_t{0U};
-  auto i = 0U;
   for (auto const& path : d.list_files(c.fplan_)) {
-    if (i++ > 10) {
-      break;
-    }
     log(log_lvl::info, "loader.hrd.services", "loading {}", path);
     auto const file = d.get_file(path);
     sb.add_services(c, file.filename(), file.data(),
