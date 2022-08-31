@@ -510,111 +510,122 @@ struct service_builder {
         auto const& [stop_seq, sections_clasz] = key;
         auto const route_idx = tt_.register_route(stop_seq, sections_clasz);
         for (auto const& s : services) {
-          auto const id = tt_.register_trip_id(
-              trip_id{
-                  .id_ = fmt::format(
-                      "{}/{}/{:07}/{}/{:07}/{}/{}", s.initial_admin_.view(),
-                      s.initial_train_num_, to_idx(s.stops_.front().eva_num_),
-                      s.stops_.front().dep_.time_,
-                      to_idx(s.stops_.back().eva_num_),
-                      s.stops_.back().arr_.time_,
-                      s.sections_.front().line_information_.empty()
-                          ? ""
-                          : s.sections_.front()
-                                .line_information_.front()
-                                .view()),
-                  .src_ = src},
-              s.display_name(tt_, stamm_.categories_, stamm_.providers_),
-              s.origin_.str(), tt_.next_transport_idx(), {0U, stop_seq.size()});
+          try {
+            auto const id = tt_.register_trip_id(
+                trip_id{
+                    .id_ = fmt::format(
+                        "{}/{}/{:07}/{}/{:07}/{}/{}", s.initial_admin_.view(),
+                        s.initial_train_num_, to_idx(s.stops_.front().eva_num_),
+                        s.stops_.front().dep_.time_,
+                        to_idx(s.stops_.back().eva_num_),
+                        s.stops_.back().arr_.time_,
+                        s.sections_.front().line_information_.empty()
+                            ? ""
+                            : s.sections_.front()
+                                  .line_information_.front()
+                                  .view()),
+                    .src_ = src},
+                s.display_name(tt_, stamm_.categories_, stamm_.providers_),
+                s.origin_.str(), tt_.next_transport_idx(),
+                {0U, stop_seq.size()});
 
-          auto const section_attributes =
-              // Warning! This currently ignores the traffic days.
-              // TODO(felix) consider traffic day bitfields of attributes:
-              // - watch out: attribute bitfields probably reference local time!
-              // - attributes that are relevant for routing: split service
-              // - not routing relevant attributes: store in database
-              to_vec(s.sections_, [&](service::section const& sec) {
-                auto attribute_idx_combination = to_vec(
-                    sec.attributes_, [&](service::attribute const& attr) {
-                      return stamm_.attributes_.at(attr.code_.view());
-                    });
-
-                return utl::get_or_create(
-                    attribute_combinations_, attribute_idx_combination, [&]() {
-                      auto const combination_idx = attribute_combination_idx_t{
-                          tt_.attribute_combinations_.size()};
-                      tt_.attribute_combinations_.emplace_back(
-                          std::move(attribute_idx_combination));
-                      return combination_idx;
-                    });
-              });
-
-          auto const section_providers =
-              to_vec(s.sections_, [&](service::section const& sec) {
-                return stamm_.providers_.at(sec.admin_.view());
-              });
-
-          auto const section_directions =
-              to_vec(s.sections_, [&](service::section const& sec) {
-                if (sec.directions_.empty()) {
-                  return trip_direction_idx_t::invalid();
-                }
-                return sec.directions_[0].apply(utl::overloaded{
-                    [&](utl::cstr const& str) {
-                      return utl::get_or_create(
-                          string_directions_, str.view(), [&]() {
-                            auto const dir_idx = trip_direction_idx_t{
-                                tt_.trip_directions_.size()};
-                            tt_.trip_directions_.emplace_back(
-                                stamm_.directions_.at(str.view()));
-                            return dir_idx;
-                          });
-                    },
-                    [&](eva_number const eva) {
-                      return utl::get_or_create(eva_directions_, eva, [&]() {
-                        auto const l_idx = stamm_.locations_.at(eva).idx_;
-
-                        auto const dir_idx =
-                            trip_direction_idx_t{tt_.trip_directions_.size()};
-                        tt_.trip_directions_.emplace_back(l_idx);
-
-                        return dir_idx;
+            auto const section_attributes =
+                // Warning! This currently ignores the traffic days.
+                // TODO(felix) consider traffic day bitfields of attributes:
+                // - watch out: attribute bitfields probably reference local
+                // time!
+                // - attributes that are relevant for routing: split service
+                // - not routing relevant attributes: store in database
+                to_vec(s.sections_, [&](service::section const& sec) {
+                  auto attribute_idx_combination = to_vec(
+                      sec.attributes_, [&](service::attribute const& attr) {
+                        return stamm_.attributes_.at(attr.code_.view());
                       });
-                    }});
-              });
 
-          auto const section_lines =
-              to_vec(s.sections_, [&](service::section const& sec) {
-                if (sec.line_information_.empty()) {
-                  return line_idx_t::invalid();
-                }
-                return utl::get_or_create(
-                    lines_, sec.line_information_[0].view(), [&]() {
-                      auto const idx = line_idx_t{tt_.lines_.size()};
-                      tt_.lines_.emplace_back(sec.line_information_[0].view());
-                      return idx;
-                    });
-              });
+                  return utl::get_or_create(
+                      attribute_combinations_, attribute_idx_combination,
+                      [&]() {
+                        auto const combination_idx =
+                            attribute_combination_idx_t{
+                                tt_.attribute_combinations_.size()};
+                        tt_.attribute_combinations_.emplace_back(
+                            std::move(attribute_idx_combination));
+                        return combination_idx;
+                      });
+                });
 
-          auto const merged_trip = tt_.register_merged_trip({id});
-          tt_.add_transport(timetable::transport{
-              .bitfield_idx_ = utl::get_or_create(
-                  bitfield_indices, s.traffic_days_,
-                  [&]() { return tt_.register_bitfield(s.traffic_days_); }),
-              .route_idx_ = route_idx,
-              .stop_times_ = s.get_stop_times(),
-              .meta_data_ = vector<section_db_idx_t>(stop_seq.size() - 1),
-              .external_trip_ids_ =
-                  vector<merged_trips_idx_t>(stop_seq.size() - 1U, merged_trip),
-              .section_attributes_ = section_attributes,
-              .section_providers_ = section_providers,
-              .section_directions_ = section_directions,
-              .section_lines_ = section_lines});
+            auto const section_providers =
+                to_vec(s.sections_, [&](service::section const& sec) {
+                  return stamm_.providers_.at(sec.admin_.view());
+                });
+
+            auto const section_directions =
+                to_vec(s.sections_, [&](service::section const& sec) {
+                  if (sec.directions_.empty()) {
+                    return trip_direction_idx_t::invalid();
+                  }
+                  return sec.directions_[0].apply(utl::overloaded{
+                      [&](utl::cstr const& str) {
+                        return utl::get_or_create(
+                            string_directions_, str.view(), [&]() {
+                              auto const dir_idx = trip_direction_idx_t{
+                                  tt_.trip_directions_.size()};
+                              tt_.trip_directions_.emplace_back(
+                                  stamm_.directions_.at(str.view()));
+                              return dir_idx;
+                            });
+                      },
+                      [&](eva_number const eva) {
+                        return utl::get_or_create(eva_directions_, eva, [&]() {
+                          auto const l_idx = stamm_.locations_.at(eva).idx_;
+
+                          auto const dir_idx =
+                              trip_direction_idx_t{tt_.trip_directions_.size()};
+                          tt_.trip_directions_.emplace_back(l_idx);
+
+                          return dir_idx;
+                        });
+                      }});
+                });
+
+            auto const section_lines =
+                to_vec(s.sections_, [&](service::section const& sec) {
+                  if (sec.line_information_.empty()) {
+                    return line_idx_t::invalid();
+                  }
+                  return utl::get_or_create(
+                      lines_, sec.line_information_[0].view(), [&]() {
+                        auto const idx = line_idx_t{tt_.lines_.size()};
+                        tt_.lines_.emplace_back(
+                            sec.line_information_[0].view());
+                        return idx;
+                      });
+                });
+
+            auto const merged_trip = tt_.register_merged_trip({id});
+            tt_.add_transport(timetable::transport{
+                .bitfield_idx_ = utl::get_or_create(
+                    bitfield_indices, s.traffic_days_,
+                    [&]() { return tt_.register_bitfield(s.traffic_days_); }),
+                .route_idx_ = route_idx,
+                .stop_times_ = s.get_stop_times(),
+                .meta_data_ = vector<section_db_idx_t>(stop_seq.size() - 1),
+                .external_trip_ids_ = vector<merged_trips_idx_t>(
+                    stop_seq.size() - 1U, merged_trip),
+                .section_attributes_ = section_attributes,
+                .section_providers_ = section_providers,
+                .section_directions_ = section_directions,
+                .section_lines_ = section_lines});
+          } catch (std::exception const& e) {
+            log(log_lvl::error, "loader.hrd.service",
+                "unable to load service {}: {}", s.origin_, e.what());
+            continue;
+          }
         }
         tt_.finish_route();
       }
     }
-    utl::get_active_progress_tracker()->increment();
+    route_services_.clear();
   }
 
   stamm const& stamm_;

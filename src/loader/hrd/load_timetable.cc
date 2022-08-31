@@ -32,29 +32,27 @@ void load_timetable(source_idx_t const src,
   auto const st = stamm{c, tt, d};
   service_builder sb{st, tt};
 
-  auto const service_files = utl::to_vec(
-      d.list_files(c.fplan_), [&](auto&& path) { return d.get_file(path); });
-  auto const byte_sum =
-      utl::all(service_files) |
-      utl::transform([](file const& s) { return s.data().size(); }) |
-      utl::sum();
-
   utl::activate_progress_tracker("services");
   auto progress_tracker = utl::get_active_progress_tracker();
 
-  progress_tracker->status("READ").out_bounds(0, 50).in_high(byte_sum);
-  auto total_bytes_processed = std::uint64_t{0U};
-  for (auto const& f : service_files) {
-    log(log_lvl::info, "loader.hrd.services", "loading {}", f.filename());
-    sb.add_services(
-        c, f.filename(), f.data(), [&](std::size_t const bytes_processed) {
-          progress_tracker->update(total_bytes_processed + bytes_processed);
-        });
-    total_bytes_processed += f.data().size();
+  //  progress_tracker->status("READ").in_high(byte_sum);
+  //  auto total_bytes_processed = std::uint64_t{0U};
+  auto i = 0U;
+  for (auto const& path : d.list_files(c.fplan_)) {
+    if (i++ > 10) {
+      break;
+    }
+    log(log_lvl::info, "loader.hrd.services", "loading {}", path);
+    auto const file = d.get_file(path);
+    sb.add_services(c, file.filename(), file.data(),
+                    [&](std::size_t const bytes_processed) {
+                      (void)bytes_processed;
+                      //          progress_tracker->update(total_bytes_processed
+                      //          + bytes_processed);
+                    });
+    sb.write_services(src);
+    //    total_bytes_processed += f.data().size();
   }
-  progress_tracker->status("WRITE").out_bounds(51, 100).in_high(
-      sb.route_services_.size());
-  sb.write_services(src);
 }
 
 }  // namespace nigiri::loader::hrd
