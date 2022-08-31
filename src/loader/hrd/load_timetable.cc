@@ -80,6 +80,8 @@ void load_timetable(source_idx_t const src,
 
   auto processed = std::uint64_t{0U};
   for (auto const& f : service_files) {
+    log(log_lvl::info, "nigiri.loader.hrd.services", "loading services from {}",
+        f.filename());
     sb.add_services(c, f.filename(), interval, bitfields, timezones, locations,
                     f.data(), [&](std::size_t const bytes_processed) {
                       progress_tracker->update(processed + bytes_processed);
