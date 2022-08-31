@@ -8,26 +8,18 @@
 #include "cista/reflection/comparable.h"
 
 #include "utl/get_or_create.h"
-#include "utl/pairwise.h"
+#include "utl/overloaded.h"
 #include "utl/parser/cstr.h"
 #include "utl/progress_tracker.h"
 #include "utl/to_vec.h"
 #include "utl/zip.h"
 
-#include "nigiri/loader/hrd/basic_info.h"
-#include "nigiri/loader/hrd/bitfield.h"
-#include "nigiri/loader/hrd/category.h"
 #include "nigiri/loader/hrd/eva_number.h"
 #include "nigiri/loader/hrd/parser_config.h"
-#include "nigiri/loader/hrd/provider.h"
-#include "nigiri/loader/hrd/station.h"
-#include "nigiri/loader/hrd/timezone.h"
+#include "nigiri/loader/hrd/stamm.h"
 #include "nigiri/logging.h"
 #include "nigiri/timetable.h"
 #include "nigiri/types.h"
-#include "attribute.h"
-#include "direction.h"
-#include "utl/overloaded.h"
 
 namespace nigiri::loader::hrd {
 
@@ -191,7 +183,7 @@ void expand_traffic_days(service const& s,
                          Fn&& consumer) {
   struct split_info {
     bitfield traffic_days_;
-    unsigned from_section_idx_, to_section_idx_;
+    interval<unsigned> sections_;
   };
 
   // Transform section bitfield indices into concrete bitfields.
@@ -218,18 +210,14 @@ void expand_traffic_days(service const& s,
   // Creates a service containing only the specified sections.
   auto const create_service_from_split = [](split_info const& split,
                                             service const& origin) -> service {
-    auto const number_of_stops =
-        split.to_section_idx_ - split.from_section_idx_ + 2;
-    std::vector<service::stop> stops(number_of_stops);
-    std::copy(std::next(begin(origin.stops_), split.from_section_idx_),
-              std::next(begin(origin.stops_), split.to_section_idx_ + 2),
+    std::vector<service::stop> stops(split.sections_.size() + 1);
+    std::copy(std::next(begin(origin.stops_), split.sections_.from_),
+              std::next(begin(origin.stops_), split.sections_.to_ + 1),
               begin(stops));
 
-    auto const number_of_sections =
-        split.to_section_idx_ - split.from_section_idx_ + 1;
-    std::vector<service::section> sections(number_of_sections);
-    std::copy(std::next(begin(origin.sections_), split.from_section_idx_),
-              std::next(begin(origin.sections_), split.to_section_idx_ + 1),
+    std::vector<service::section> sections(split.sections_.size());
+    std::copy(std::next(begin(origin.sections_), split.sections_.from_),
+              std::next(begin(origin.sections_), split.sections_.to_),
               begin(sections));
 
     return service{origin.origin_,
@@ -246,38 +234,36 @@ void expand_traffic_days(service const& s,
   // and writes a new services containing the specified sections [start, pos[.
   auto const consume_and_remove = [&](unsigned const start, unsigned const pos,
                                       bitfield const& current) {
-    if (current.any()) {
+    if (current.any() && start < pos) {
       auto const not_current = ~current;
       for (unsigned i = start; i < pos; ++i) {
         section_bitfields[i] &= not_current;
       }
       assert(pos >= 1);
       check_and_consume(
-          create_service_from_split(split_info{current, start, pos - 1}, s));
+          create_service_from_split(split_info{current, {start, pos}}, s));
     }
   };
 
-  // Recursive function splitting services with uniform traffic day bitfields.
-  auto const split = [&](unsigned const start, unsigned const pos,
-                         bitfield const& current, auto&& self_split_fn) {
-    if (pos == section_bitfields.size()) {
-      consume_and_remove(start, pos, current);
-      return;
+  // Function splitting services with uniform traffic day bitfields.
+  auto const split = [&](unsigned const start) {
+    auto b = section_bitfields[start];
+    for (auto i = start + 1; i != section_bitfields.size(); ++i) {
+      auto const next_b = b & section_bitfields[i];
+      if (next_b.none()) {
+        consume_and_remove(start, i, b);
+        return;
+      }
+      b = next_b;
     }
-
-    auto const intersection = current & section_bitfields[pos];
-    if (intersection.none()) {
-      consume_and_remove(start, pos, current);
-      return;
-    }
-
-    self_split_fn(start, pos + 1, intersection, self_split_fn);
-    auto const diff = current & (~intersection);
-    consume_and_remove(start, pos, diff);
+    consume_and_remove(start, section_bitfields.size(), b);
   };
 
   for (auto i = 0U; i < section_bitfields.size(); ++i) {
-    split(i, i, section_bitfields[i], split);
+    if (section_bitfields[i].none()) {
+      return;
+    }
+    split(i);
   }
 }
 
@@ -337,7 +323,7 @@ void to_local_time(timezone_map_t const& timezones,
         stop_timezones.front(), day, local_times.front(), true);
 
     if (!first_valid) {
-      log(log_lvl::error, "nigiri.loader.hrd.service",
+      log(log_lvl::error, "loader.hrd.service",
           "first departure local to utc failed, ignoring: {}, local_time={}, "
           "stop={:07}, day={}",
           s.origin_, local_times.front(), to_idx(s.stops_.front().eva_num_),
@@ -352,7 +338,7 @@ void to_local_time(timezone_map_t const& timezones,
       auto const [utc_mam, offset, valid] = local_mam_to_utc_mam(
           tz, day + first_offset, local_time - first_offset);
       if (offset != 0_days || pred > utc_mam || !valid) {
-        log(log_lvl::error, "nigiri.loader.hrd.service",
+        log(log_lvl::error, "loader.hrd.service",
             "local to utc failed, ignoring: {}, day={}, time={}, offset={}, "
             "pred={}, utc_mam={}, valid={}",
             s.origin_, day, local_time, offset, pred, utc_mam, valid);
@@ -416,7 +402,7 @@ void parse_services(config const& c,
         }
 
         if (!spec.valid()) {
-          log(log_lvl::error, "nigiri.loader.hrd.service",
+          log(log_lvl::error, "loader.hrd.service",
               "skipping invalid service at {}:{}", filename, line_number);
         } else if (!spec.ignore()) {
           // Store if relevant.
@@ -440,15 +426,12 @@ void parse_services(config const& c,
 }
 
 struct service_builder {
-  explicit service_builder(timetable& tt) : tt_{tt} {}
+  explicit service_builder(stamm const& s, timetable& tt)
+      : stamm_{s}, tt_{tt} {}
 
   template <typename ProgressFn>
   void add_services(config const& c,
                     char const* filename,
-                    interval<std::chrono::sys_days> const& interval,
-                    bitfield_map_t const& bitfields,
-                    timezone_map_t const& timezones,
-                    location_map_t const& locations,
                     std::string_view file_content,
                     ProgressFn&& bytes_consumed) {
     auto const get_index = [&](vector<service> const& route_services,
@@ -495,7 +478,7 @@ struct service_builder {
 
     auto const add_service = [&](service const& s) {
       auto const stop_seq = to_vec(s.stops_, [&](service::stop const& x) {
-        return timetable::stop(locations.at(x.eva_num_).idx_,
+        return timetable::stop(stamm_.locations_.at(x.eva_num_).idx_,
                                x.dep_.in_out_allowed_, x.arr_.in_out_allowed_);
       });
       auto const sections_clasz = to_vec(
@@ -515,16 +498,12 @@ struct service_builder {
       routes.emplace_back(vector<service>({s}));
     };
 
-    parse_services(c, filename, interval, bitfields, timezones, file_content,
+    parse_services(c, filename, tt_.date_range_, stamm_.bitfields_,
+                   stamm_.timezones_, file_content,
                    std::forward<ProgressFn>(bytes_consumed), add_service);
   }
 
-  void write_services(source_idx_t const src,
-                      location_map_t const& locations,
-                      category_map_t const& categories,
-                      provider_map_t const& providers,
-                      attribute_map_t const& attributes,
-                      direction_map_t const& directions) {
+  void write_services(source_idx_t const src) {
     hash_map<bitfield, bitfield_idx_t> bitfield_indices;
     for (auto const& [key, sub_routes] : route_services_) {
       for (auto const& services : sub_routes) {
@@ -545,8 +524,8 @@ struct service_builder {
                                 .line_information_.front()
                                 .view()),
                   .src_ = src},
-              s.display_name(tt_, categories, providers), s.origin_.str(),
-              tt_.next_transport_idx(), {0U, stop_seq.size()});
+              s.display_name(tt_, stamm_.categories_, stamm_.providers_),
+              s.origin_.str(), tt_.next_transport_idx(), {0U, stop_seq.size()});
 
           auto const section_attributes =
               // Warning! This currently ignores the traffic days.
@@ -557,7 +536,7 @@ struct service_builder {
               to_vec(s.sections_, [&](service::section const& sec) {
                 auto attribute_idx_combination = to_vec(
                     sec.attributes_, [&](service::attribute const& attr) {
-                      return attributes.at(attr.code_.view());
+                      return stamm_.attributes_.at(attr.code_.view());
                     });
 
                 return utl::get_or_create(
@@ -572,7 +551,7 @@ struct service_builder {
 
           auto const section_providers =
               to_vec(s.sections_, [&](service::section const& sec) {
-                return providers.at(sec.admin_.view());
+                return stamm_.providers_.at(sec.admin_.view());
               });
 
           auto const section_directions =
@@ -584,21 +563,16 @@ struct service_builder {
                     [&](utl::cstr const& str) {
                       return utl::get_or_create(
                           string_directions_, str.view(), [&]() {
-                            auto const str_idx = trip_direction_string_idx_t{
-                                tt_.trip_directions_.size()};
-                            tt_.trip_direction_strings_.emplace_back(
-                                directions.at(str.view()));
-
                             auto const dir_idx = trip_direction_idx_t{
                                 tt_.trip_directions_.size()};
-                            tt_.trip_directions_.emplace_back(str_idx);
-
+                            tt_.trip_directions_.emplace_back(
+                                stamm_.directions_.at(str.view()));
                             return dir_idx;
                           });
                     },
                     [&](eva_number const eva) {
                       return utl::get_or_create(eva_directions_, eva, [&]() {
-                        auto const l_idx = locations.at(eva).idx_;
+                        auto const l_idx = stamm_.locations_.at(eva).idx_;
 
                         auto const dir_idx =
                             trip_direction_idx_t{tt_.trip_directions_.size()};
@@ -643,6 +617,7 @@ struct service_builder {
     utl::get_active_progress_tracker()->increment();
   }
 
+  stamm const& stamm_;
   timetable& tt_;
   hash_map<pair<vector<timetable::stop>, vector<clasz>>,
            vector<vector<service>>>

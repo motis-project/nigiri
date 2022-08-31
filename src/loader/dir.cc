@@ -45,7 +45,7 @@ file fs_dir::get_file(std::filesystem::path const& p) const {
   struct mmap_content final : public file::content {
     explicit mmap_content(std::filesystem::path const& p)
         : mmap_{p.string().c_str(), cista::mmap::protection::READ} {
-      log(log_lvl::info, "nigiri.loader.fs_dir", "loaded {}: {} bytes", p,
+      log(log_lvl::info, "loader.fs_dir", "loaded {}: {} bytes", p,
           mmap_.size());
     }
     ~mmap_content() final = default;

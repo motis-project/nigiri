@@ -8,20 +8,20 @@
 namespace nigiri::loader::hrd {
 
 direction_map_t parse_directions(config const& c,
+                                 timetable& tt,
                                  std::string_view file_content) {
   scoped_timer timer{"parse directions"};
-
   direction_map_t directions;
-  utl::for_each_line_numbered(
-      file_content, [&](utl::cstr line, unsigned const line_number) {
-        if (line.length() < 9 && line[7] == ' ') {
-          throw utl::fail("parse_directions: invalid line format in line {}",
-                          line_number);
-        } else {
-          directions[line.substr(c.dir_.eva_).to_str()] =
-              line.substr(c.dir_.text_).to_str();
-        }
-      });
+  utl::for_each_line_numbered(file_content, [&](utl::cstr line,
+                                                unsigned const line_number) {
+    if (line.length() < 9 && line[7] == ' ') {
+      throw utl::fail("parse_directions: invalid line format in line {}",
+                      line_number);
+    } else {
+      directions[line.substr(c.dir_.eva_).to_str()] =
+          tt.register_trip_direction_string(line.substr(c.dir_.text_).to_str());
+    }
+  });
   return directions;
 }
 

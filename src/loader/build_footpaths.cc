@@ -216,8 +216,8 @@ void transitivize_footpaths(timetable& tt) {
       try {
         std::rethrow_exception(ex);
       } catch (std::exception const& e) {
-        log(log_lvl::error, "nigiri.loader.footpaths",
-            "footpath error: {} ({})", idx, e.what());
+        log(log_lvl::error, "loader.footpaths", "footpath error: {} ({})", idx,
+            e.what());
       }
     }
   }

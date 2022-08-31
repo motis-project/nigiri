@@ -20,7 +20,7 @@ int main(int ac, char** av) {
   auto const c =
       utl::find_if(configs, [&](auto&& c) { return applicable(c, *d); });
   utl::verify(c != end(configs), "no loader applicable to {}", tt_path);
-  log(log_lvl::info, "nigiri.main",
+  log(log_lvl::info, "main",
       "loading nigiri timetable with configuration {}", c->version_.view());
 
   auto tt = std::make_shared<timetable>();

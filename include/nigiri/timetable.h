@@ -149,6 +149,12 @@ struct timetable {
     return idx;
   }
 
+  trip_direction_string_idx_t register_trip_direction_string(string&& s) {
+    auto const idx = trip_direction_string_idx_t{bitfields_.size()};
+    trip_direction_strings_.emplace_back(std::move(s));
+    return idx;
+  }
+
   route_idx_t register_route(vector<stop> stop_seq,
                              vector<clasz> clasz_sections) {
     auto const idx = route_location_seq_.size();
@@ -256,7 +262,6 @@ struct timetable {
 
   // Schedule range.
   interval<std::chrono::sys_days> date_range_;
-  std::uint16_t n_days_;
 
   // Trip access: external trip id -> internal trip index
   hash_map<trip_id, vector<trip_idx_t>> trip_id_to_idx_;

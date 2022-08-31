@@ -6,6 +6,7 @@
 
 #include "fmt/format.h"
 
+#include "utl/pairwise.h"
 #include "utl/parser/arg_parser.h"
 #include "utl/to_vec.h"
 #include "utl/verify.h"
@@ -363,7 +364,7 @@ void service::verify_service() {
                   origin_.line_number_to_, section_index,
                   section.directions_.size());
     } catch (std::runtime_error const&) {
-      log(log_lvl::error, "nigiri.loader.hrd.direction",
+      log(log_lvl::error, "loader.hrd.direction",
           "quick fixing direction info: {}:{}", origin_.filename_,
           origin_.line_number_from_);
       section.directions_.resize(1);

@@ -124,7 +124,7 @@ TRANSPORT=11, TRAFFIC_DAYS=0010000
 
 )";
 
-TEST_CASE("loader_hrd_service, parse multiple") {
+TEST_CASE("a") {
   auto tt = std::make_shared<timetable>();
   load_timetable(source_idx_t{0U}, hrd_5_20_26,
                  nigiri::test_data::hrd_timetable::files(), *tt);

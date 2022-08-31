@@ -17,7 +17,7 @@ void parse_station_names(config const& c,
         if (line.len == 0 || line[0] == '%') {
           return;
         } else if (line.len < 13) {
-          log(log_lvl::error, "nigiri.loader.hrd.station.coordinates",
+          log(log_lvl::error, "loader.hrd.station.coordinates",
               "station name file unknown line format line={} content=\"{}\"",
               line_number, line.view());
           return;
@@ -44,7 +44,7 @@ void parse_station_coordinates(config const& c,
     if (line.len == 0 || line[0] == '%') {
       return;
     } else if (line.len < 30) {
-      log(log_lvl::error, "nigiri.loader.hrd.station.coordinates",
+      log(log_lvl::error, "loader.hrd.station.coordinates",
           "station coordinate file unknown line format line={} content=\"{}\"",
           line_number, line.view());
       return;
@@ -86,7 +86,7 @@ void parse_equivilant_stations(config const& c,
               }
             });
           } catch (std::exception const& e) {
-            log(log_lvl::error, "nigiri.loader.hrd.equivalent",
+            log(log_lvl::error, "loader.hrd.equivalent",
                 "could not parse line {}: {}", line_number, e.what());
           }
         } else {  // footpaths

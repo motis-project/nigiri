@@ -31,13 +31,6 @@ constexpr int const ascii_hex_to_int[] = {
     // clang-format on
 };
 
-std::string hex_to_string(char c) {
-  auto const idx = static_cast<int>(c);
-  auto const i = ascii_hex_to_int[idx];
-  utl::verify(i >= 0, "invalid bitfield char {}", idx);
-  return std::bitset<4>{static_cast<unsigned long long>(i)}.to_string();
-}
-
 bitfield hex_str_to_bitset(utl::cstr char_collection) {
   bitfield b;
 

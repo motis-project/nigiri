@@ -61,14 +61,14 @@ struct raptor {
     auto const [day_at_stop, mam_at_stop] = time.day_idx_mam();
 
     auto const n_days_to_iterate =
-        kFwd ? tt_.n_days_ - to_idx(day_at_stop) : to_idx(day_at_stop) + 1U;
+        kFwd ? n_days_ - to_idx(day_at_stop) : to_idx(day_at_stop) + 1U;
 
     trace(
         "┊ │    et: time={}, stop_idx={}, "
         "location=(name={}, id={}, idx={}), n_days_to_iterate={}, tt_day={}, "
         "day_at_stop={}, mam_at_stop={}\n",
         time, stop_idx, tt_.locations_.names_[l_idx],
-        tt_.locations_.ids_[l_idx], l_idx, n_days_to_iterate, tt_.n_days_,
+        tt_.locations_.ids_[l_idx], l_idx, n_days_to_iterate, n_days_,
         to_idx(day_at_stop), mam_at_stop);
 
     for (auto i = std::uint16_t{0U}; i != n_days_to_iterate; ++i) {
@@ -293,6 +293,8 @@ struct raptor {
 
   std::shared_ptr<timetable const> tt_mem_;
   timetable const& tt_;
+  std::uint16_t n_days_{
+      static_cast<std::uint16_t>(tt_.date_range_.size().count())};
   query q_;
   unixtime_t curr_begin_;
   unixtime_t begin_, end_;
