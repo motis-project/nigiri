@@ -88,13 +88,15 @@ bitfield stamm::resolve_bitfield(unsigned i) const {
     return bitfield ::max();
   } else {
     auto const it = bitfields_.find(i);
-    return it == end(bitfields_) ? bitfield ::max() : it->second;
+    return it == end(bitfields_) ? bitfield::max() : it->second;
   }
 }
 
 provider_idx_t stamm::resolve_provider(utl::cstr s) {
   auto const it = providers_.find(s.view());
   if (it == end(providers_)) {
+    log(log_lvl::error, "nigiri.loader.hrd.provider",
+        "creating new provider for missing {}", s.view());
     auto const idx = provider_idx_t{tt_.providers_.size()};
     tt_.providers_.emplace_back(
         provider{.short_name_ = s.view(), .long_name_ = s.view()});

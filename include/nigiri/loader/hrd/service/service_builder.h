@@ -127,6 +127,9 @@ struct service_builder {
                         return combination_idx;
                       });
                 });
+            if (utl::is_uniform(section_attributes)) {
+              section_attributes.resize(1U);
+            }
 
             auto section_providers =
                 to_vec(sections,
@@ -139,7 +142,7 @@ struct service_builder {
                 sections,
                 [&](service::section const& sec) { return sec.direction_; });
             if (utl::is_uniform(section_directions)) {
-              section_providers.resize(1U);
+              section_directions.resize(1U);
             }
 
             auto const merged_trip = tt_.register_merged_trip({id});
