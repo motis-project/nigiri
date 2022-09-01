@@ -101,6 +101,11 @@ struct service_builder {
                 ref.display_name(tt_), ref.origin_.dbg_,
                 tt_.next_transport_idx(), {0U, stop_seq.size()});
 
+            auto const uniform_attributes = utl::is_uniform(
+                sections,
+                [&](service::section const& a, service::section const& b) {
+                  return a.attributes_ == b.attributes_;
+                });
             auto section_attributes =
                 // Warning! This currently ignores the traffic days.
                 // TODO(felix) consider traffic day bitfields of attributes:
