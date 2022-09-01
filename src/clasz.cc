@@ -204,6 +204,7 @@ clasz get_clasz(std::string_view s) {
     case hash("Elevator"): return clasz::kOther;
     case hash("ASC"): return clasz::kOther;
   }
+  std::cerr << "cannot assign " << s << "\n";
   return clasz::kOther;
 }
 

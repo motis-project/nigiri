@@ -3,6 +3,7 @@
 #include "utl/parser/arg_parser.h"
 #include "utl/pipes.h"
 
+#include "nigiri/loader/hrd/stamm/stamm.h"
 #include "nigiri/loader/hrd/stamm/timezone.h"
 #include "nigiri/logging.h"
 
@@ -139,8 +140,8 @@ struct hash {
 
 location_map_t parse_stations(config const& c,
                               source_idx_t const src,
-                              timezone_map_t const& timezones,
                               timetable& tt,
+                              stamm& st,
                               std::string_view station_names_file,
                               std::string_view station_coordinates_file,
                               std::string_view station_metabhf_file) {
@@ -161,7 +162,7 @@ location_map_t parse_stations(config const& c,
     auto const idx = tt.locations_.register_location(
         location{id.id_, s.name_, s.pos_, src, location_type::kStation,
                  osm_node_id_t::invalid(), location_idx_t::invalid(),
-                 get_tz(timezones, s.id_).first, it_range{empty_idx_vec},
+                 st.get_tz(s.id_).first, it_range{empty_idx_vec},
                  it_range{empty_footpath_vec}, it_range{empty_footpath_vec}});
     s.idx_ = idx;
   }

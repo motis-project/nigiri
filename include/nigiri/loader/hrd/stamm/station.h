@@ -12,6 +12,8 @@
 
 namespace nigiri::loader::hrd {
 
+struct stamm;
+
 struct hrd_location {
   location_idx_t idx_;
   eva_number id_;
@@ -25,10 +27,10 @@ struct hrd_location {
 
 using location_map_t = hash_map<eva_number, hrd_location>;
 
-location_map_t parse_stations(config const& c,
+location_map_t parse_stations(config const&,
                               source_idx_t,
-                              timezone_map_t const&,
-                              timetable& tt,
+                              timetable&,
+                              stamm&,
                               std::string_view station_names_file,
                               std::string_view station_coordinates_file,
                               std::string_view station_metabhf_file);

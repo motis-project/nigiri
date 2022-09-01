@@ -20,15 +20,6 @@ unixtime_t parse_date(utl::cstr s) {
   return unixtime_t{std::chrono::sys_days{date}};
 }
 
-std::pair<timezone_idx_t, tz_offsets> const& get_tz(
-    timezone_map_t const& tz, eva_number const eva_number) {
-  utl::verify(!tz.empty(), "no timezones");
-  auto const it = tz.upper_bound(eva_number);
-  utl::verify(it != end(tz) || std::prev(it)->first <= eva_number,
-              "no timezone for eva number {}", eva_number);
-  return std::prev(it)->second;
-}
-
 timezone_map_t parse_timezones(config const& c,
                                timetable& tt,
                                std::string_view file_content) {

@@ -56,14 +56,14 @@ struct ref_service {
   }
 
   vector<tz_offsets> get_stop_timezones(service_store const& store,
-                                        timezone_map_t const& tz) const {
+                                        stamm const& tz) const {
     auto const& ref = store.get(ref_);
 
     auto i = 0U;
     vector<tz_offsets> stop_tzs{split_info_.stop_range().size() * 2U - 2U};
     for (auto const [from, to] : utl::pairwise(split_info_.stop_range())) {
-      stop_tzs[i++] = get_tz(tz, ref.stops_.at(from).eva_num_).second;
-      stop_tzs[i++] = get_tz(tz, ref.stops_.at(to).eva_num_).second;
+      stop_tzs[i++] = tz.get_tz(ref.stops_.at(from).eva_num_).second;
+      stop_tzs[i++] = tz.get_tz(ref.stops_.at(to).eva_num_).second;
     }
     return stop_tzs;
   }

@@ -119,25 +119,23 @@ struct timetable {
     bitfield_idx_t bitfield_idx_;
     route_idx_t route_idx_;
     vector<minutes_after_midnight_t> stop_times_;
-    vector<section_db_idx_t> meta_data_;
     vector<merged_trips_idx_t> external_trip_ids_;
     vector<attribute_combination_idx_t> section_attributes_;
     vector<provider_idx_t> section_providers_;
     vector<trip_direction_idx_t> section_directions_;
-    vector<line_idx_t> section_lines_;
   };
 
   trip_idx_t register_trip_id(
       trip_id const& id,
       string display_name,
-      string debug,
+      trip_debug const dbg,
       transport_idx_t const ref_transport,
       interval<std::uint32_t> ref_transport_stop_range) {
     auto const idx = trip_idx_t{trip_ids_.size()};
     auto& trips = trip_id_to_idx_[id];
     trips.emplace_back(idx);
     trip_display_names_.emplace_back(std::move(display_name));
-    trip_debug_.emplace_back().emplace_back(std::move(debug));
+    trip_debug_.emplace_back().emplace_back(dbg);
     trip_ids_.emplace_back().emplace_back(id);
     trip_ref_transport_.emplace_back(ref_transport, ref_transport_stop_range);
     return idx;
@@ -180,21 +178,36 @@ struct timetable {
     return merged_trips_idx_t{static_cast<merged_trips_idx_t::value_t>(idx)};
   }
 
+  source_file_idx_t register_source_file(char const* path) {
+    auto const idx = source_file_idx_t{source_file_names_.size()};
+    source_file_names_.emplace_back(path);
+    return idx;
+  }
+
   void add_transport(transport&& t) {
     transport_traffic_days_.emplace_back(t.bitfield_idx_);
     transport_route_.emplace_back(t.route_idx_);
     transport_stop_times_.emplace_back(std::move(t.stop_times_));
-    transport_section_meta_data_.emplace_back(std::move(t.meta_data_));
     transport_to_trip_section_.emplace_back(std::move(t.external_trip_ids_));
+    transport_section_attributes_.emplace_back(
+        std::move(t.section_attributes_));
+    transport_section_providers_.emplace_back(std::move(t.section_providers_));
+    transport_section_directions_.emplace_back(
+        std::move(t.section_directions_));
 
     assert(transport_traffic_days_.size() == transport_route_.size());
     assert(transport_traffic_days_.size() == transport_stop_times_.size());
-    assert(transport_traffic_days_.size() ==
-           transport_section_meta_data_.size());
     assert(transport_traffic_days_.size() == transport_to_trip_section_.size());
     assert(t.stop_times_.size() ==
            route_location_seq_.at(t.route_idx_).size() * 2 - 2);
-    assert(t.external_trip_ids_.size() == t.stop_times_.size() / 2);
+    assert(t.external_trip_ids_.size() == 1U ||
+           t.external_trip_ids_.size() == t.stop_times_.size() / 2);
+    assert(t.transport_section_attributes_.size() == 1U ||
+           t.transport_section_attributes_.size() == t.stop_times_.size() / 2);
+    assert(t.transport_section_providers_.size() == 1U ||
+           t.transport_section_providers_.size() == t.stop_times_.size() / 2);
+    assert(t.transport_section_directions_.size() == 1U ||
+           t.transport_section_directions_.size() == t.stop_times_.size() / 2);
   }
 
   transport_idx_t next_transport_idx() const {
@@ -274,7 +287,8 @@ struct timetable {
       trip_ref_transport_;
 
   // Trip -> debug info
-  mutable_fws_multimap<trip_idx_t, string> trip_debug_;
+  mutable_fws_multimap<trip_idx_t, trip_debug> trip_debug_;
+  vecvec<source_file_idx_t, char> source_file_names_;
 
   // Trip index -> display name
   vector_map<trip_idx_t, string> trip_display_names_;
@@ -305,9 +319,6 @@ struct timetable {
 
   // For each trip the corresponding route
   vector_map<transport_idx_t, route_idx_t> transport_route_;
-
-  // Trip index -> trip section meta data db index
-  vecvec<transport_idx_t, section_db_idx_t> transport_section_meta_data_;
 
   // Trip index -> merged trips
   vecvec<transport_idx_t, merged_trips_idx_t> transport_to_trip_section_;

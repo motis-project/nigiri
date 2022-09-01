@@ -9,7 +9,7 @@ namespace nigiri::loader::hrd {
 
 template <typename Fn>
 void to_local_time(service_store const& store,
-                   timezone_map_t const& timezones,
+                   stamm const& st,
                    interval<std::chrono::sys_days> const& tt_interval,
                    ref_service const& s,
                    Fn&& consumer) {
@@ -26,7 +26,7 @@ void to_local_time(service_store const& store,
   auto utc_time_traffic_days =
       hash_map<vector<duration_t>, bitfield, duration_hash>{};
   auto const local_times = s.local_times(store);
-  auto const stop_timezones = s.get_stop_timezones(store, timezones);
+  auto const stop_timezones = s.get_stop_timezones(store, st);
   auto const first_day = tt_interval.from_ + kBaseDayOffset;
   auto const last_day = tt_interval.to_ - kBaseDayOffset;
   auto utc_service_times = vector<duration_t>{};

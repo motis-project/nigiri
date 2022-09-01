@@ -8,7 +8,11 @@
 namespace nigiri::loader::hrd {
 
 struct category {
-  CISTA_PRINTABLE(category, "name", "long_name", "output_rule", "clasz")
+  friend std::ostream& operator<<(std::ostream& out, category const& c) {
+    return out << "(name=" << c.name_ << ", long_name=" << c.long_name_
+               << ", output_rule=" << static_cast<int>(c.output_rule_)
+               << ", clasz=" << static_cast<int>(c.clasz_) << ")";
+  }
   friend bool operator==(category const&, category const&) = default;
   string name_, long_name_;
   std::uint8_t output_rule_;

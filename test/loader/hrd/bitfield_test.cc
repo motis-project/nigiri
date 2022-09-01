@@ -27,17 +27,15 @@ TEST_CASE("loader_hrd_bitfields.parse_file") {
 
   timetable tt;
   auto const map =
-      parse_bitfields(nigiri::loader::hrd::hrd_5_00_8, tt, file_content);
+      parse_bitfields(nigiri::loader::hrd::hrd_5_00_8, file_content);
   {
     auto const it = map.find(1);
     REQUIRE(it != end(map));
-    CHECK_EQ(it->second.first, bitfield{"100000000"});
-    CHECK_EQ(tt.bitfields_.at(it->second.second), bitfield{"100000000"});
+    CHECK_EQ(it->second, bitfield{"100000000"});
   }
   {
     auto const it = map.find(2);
     REQUIRE(it != end(map));
-    CHECK_EQ(it->second.first, bitfield{"1000000000"});
-    CHECK_EQ(tt.bitfields_.at(it->second.second), bitfield{"1000000000"});
+    CHECK_EQ(it->second, bitfield{"1000000000"});
   }
 }

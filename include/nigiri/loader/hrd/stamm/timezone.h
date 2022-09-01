@@ -13,9 +13,6 @@ namespace nigiri::loader::hrd {
 using timezone_map_t =
     std::map<eva_number, std::pair<timezone_idx_t, tz_offsets>>;
 
-std::pair<timezone_idx_t, tz_offsets> const& get_tz(timezone_map_t const&,
-                                                    eva_number);
-
 inline bool is_local_time_in_season(
     tz_offsets const& tz,
     unixtime_t const day,

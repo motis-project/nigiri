@@ -84,9 +84,7 @@ bitfield hex_str_to_bitset(utl::cstr char_collection) {
                   char_collection.view());
 }
 
-bitfield_map_t parse_bitfields(config const& c,
-                               timetable& tt,
-                               std::string_view file_content) {
+bitfield_map_t parse_bitfields(config const& c, std::string_view file_content) {
   scoped_timer timer{"parse bitfields"};
 
   bitfield_map_t bitfields;
@@ -101,13 +99,8 @@ bitfield_map_t parse_bitfields(config const& c,
 
         auto const index = parse_verify<unsigned>(line.substr(c.bf_.index_));
         auto b = hex_str_to_bitset(line.substr(c.bf_.value_));
-        bitfields[index] = std::pair{b, tt.register_bitfield(b)};
+        bitfields[index] = b;
       });
-
-  // traffic day bitfield 0 = operates every day
-  for (auto i = 0U; i != bitfields[0].first.size(); ++i) {
-    bitfields[0].first.set(i, true);
-  }
 
   return bitfields;
 }

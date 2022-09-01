@@ -8,17 +8,14 @@ namespace nigiri::loader::hrd {
 template <typename Fn>
 void expand_traffic_days(service_store const& store,
                          service_idx_t const s_idx,
-                         bitfield_map_t const& bitfields,
+                         stamm& st,
                          Fn&& consumer) {
   auto const& s = store.get(s_idx);
 
   // Transform section bitfield indices into concrete bitfields.
   auto section_bitfields =
       utl::to_vec(s.sections_, [&](service::section const& section) {
-        auto const it = bitfields.find(section.traffic_days_.at(0));
-        utl::verify(it != end(bitfields), "bitfield {} not found",
-                    section.traffic_days_.at(0));
-        return it->second.first;
+        return st.resolve_bitfield(section.traffic_days_);
       });
 
   // Checks that all section bitfields are disjunctive and calls consumer.

@@ -86,6 +86,7 @@ using timezone_idx_t = cista::strong<std::uint8_t, struct _timezone_idx>;
 using merged_trips_idx_t =
     cista::strong<std::uint32_t, struct _merged_trips_idx>;
 using footpath_idx_t = cista::strong<std::uint32_t, struct _footpath_idx>;
+using source_file_idx_t = cista::strong<std::uint16_t, struct _source_file_idx>;
 
 using line_id_t = string;
 
@@ -100,6 +101,11 @@ using attribute_combination_idx_t =
     cista::strong<std::uint32_t, struct _attribute_combination>;
 using provider_idx_t = cista::strong<std::uint32_t, struct _provider_idx>;
 using line_idx_t = cista::strong<std::uint32_t, struct _line_idx>;
+
+struct trip_debug {
+  source_file_idx_t source_file_idx_;
+  std::uint32_t line_number_;
+};
 
 struct attribute {
   CISTA_PRINTABLE(attribute, "code", "text")

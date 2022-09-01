@@ -61,8 +61,10 @@ void print_transport(timetable const& tt,
       date::to_stream(out, "  d: %d.%m %R", t);
       date::to_stream(out, " [%d.%m %R]", to_local_time(tz, t));
 
-      auto const& merged_trips =
-          tt.merged_trips_.at(tt.transport_to_trip_section_.at(i).at(stop_idx));
+      auto const& trip_section = tt.transport_to_trip_section_.at(i);
+      auto const& merged_trips = tt.merged_trips_.at(
+          trip_section.size() == 1U ? trip_section[0]
+                                    : trip_section.at(stop_idx));
       out << "  [";
       for (auto const& trip_idx : merged_trips) {
         auto j = 0U;
@@ -78,7 +80,9 @@ void print_transport(timetable const& tt,
           out << ", id=" << id.id_
               << ", src=" << static_cast<int>(to_idx(id.src_));
           if (with_debug) {
-            out << ", debug=" << dbg;
+            out << ", debug="
+                << tt.source_file_names_.at(dbg.source_file_idx_).view() << ":"
+                << dbg.line_number_;
           }
           out << "}";
         }

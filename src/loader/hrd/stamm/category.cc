@@ -2,6 +2,7 @@
 
 #include "utl/parser/arg_parser.h"
 
+#include "nigiri/clasz.h"
 #include "nigiri/logging.h"
 
 namespace nigiri::loader::hrd {
@@ -32,7 +33,7 @@ category_map_t parse_categories(config const& c,
         handle_map[code.to_str()] = category{.name_ = code.trim().to_str(),
                                              .long_name_ = name,
                                              .output_rule_ = output_rule,
-                                             .clasz_ = clasz::kAir};
+                                             .clasz_ = get_clasz(name)};
       });
   return handle_map;
 }

@@ -15,17 +15,17 @@ namespace nigiri::loader::hrd {
 template <typename ConsumerFn, typename ProgressFn>
 void parse_services(config const& c,
                     char const* filename,
+                    source_file_idx_t const source_file_idx,
                     interval<std::chrono::sys_days> const& interval,
                     service_store& store,
-                    bitfield_map_t const& bitfields,
-                    timezone_map_t const& timezones,
+                    stamm& st,
                     std::string_view file_content,
                     ProgressFn&& bytes_consumed,
                     ConsumerFn&& consumer) {
   auto const expand_service = [&](service_idx_t const s_idx) {
-    expand_traffic_days(store, s_idx, bitfields, [&](ref_service const& a) {
+    expand_traffic_days(store, s_idx, st, [&](ref_service const& a) {
       expand_repetitions(store, a, [&](ref_service const& b) {
-        to_local_time(store, timezones, interval, b, consumer);
+        to_local_time(store, st, interval, b, consumer);
       });
     });
   };
@@ -58,7 +58,7 @@ void parse_services(config const& c,
         } else if (!spec.ignore()) {
           // Store if relevant.
           try {
-            expand_service(store.add(service{c, spec}));
+            expand_service(store.add(service{c, st, source_file_idx, spec}));
           } catch (std::exception const& e) {
             log(log_lvl::error, "loader.hrd.service.expand",
                 "unable to build service at {}:{}: {}", filename, line_number,
@@ -73,7 +73,7 @@ void parse_services(config const& c,
 
   if (!spec.is_empty() && spec.valid() && !spec.ignore()) {
     spec.line_number_to_ = last_line;
-    expand_service(store.add(service{c, spec}));
+    expand_service(store.add(service{c, st, source_file_idx, spec}));
   }
 }
 

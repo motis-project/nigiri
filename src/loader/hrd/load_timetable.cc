@@ -29,7 +29,7 @@ void load_timetable(source_idx_t const src,
                     timetable& tt) {
   auto bars = utl::global_progress_bars{false};
 
-  auto const st = stamm{c, tt, d};
+  auto st = stamm{c, tt, d};
   service_builder sb{st, tt};
 
   auto progress_tracker = utl::activate_progress_tracker("nigiri");
