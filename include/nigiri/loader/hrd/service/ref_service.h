@@ -11,7 +11,7 @@
 namespace nigiri::loader::hrd {
 
 struct split_info {
-  interval<unsigned> stop_range() const {
+  interval<std::size_t> stop_range() const {
     // Example:
     // Stops:    0 --- 1 --- 2 --- 3
     // Sections:    0     1     2
@@ -22,7 +22,7 @@ struct split_info {
   }
 
   bitfield traffic_days_;
-  interval<unsigned> sections_;
+  interval<std::size_t> sections_;
 };
 
 struct ref_service {
@@ -41,26 +41,29 @@ struct ref_service {
     utc_times_ = std::move(utc_times);
   }
 
-  vector<duration_t> local_times(service_store const& store) const {
+  std::vector<duration_t> local_times(service_store const& store) const {
     auto const& ref = store.get(ref_);
 
     auto i = 0U;
-    vector<duration_t> stop_times{split_info_.stop_range().size() * 2U - 2U};
+    std::vector<duration_t> stop_times(split_info_.stop_range().size() * 2U -
+                                       2U);
     for (auto const [from, to] : utl::pairwise(split_info_.stop_range())) {
-      stop_times[i++] = duration_t{ref.stops_.at(from).dep_.time_ +
-                                   repetition_ * ref.interval_};
-      stop_times[i++] = duration_t{ref.stops_.at(to).arr_.time_ +
-                                   repetition_ * ref.interval_};
+      stop_times[i++] =
+          duration_t{ref.stops_.at(from).dep_.time_ +
+                     static_cast<int>(repetition_ * ref.interval_)};
+      stop_times[i++] =
+          duration_t{ref.stops_.at(to).arr_.time_ +
+                     static_cast<int>(repetition_ * ref.interval_)};
     }
     return stop_times;
   }
 
-  vector<tz_offsets> get_stop_timezones(service_store const& store,
-                                        stamm const& tz) const {
+  std::vector<tz_offsets> get_stop_timezones(service_store const& store,
+                                             stamm const& tz) const {
     auto const& ref = store.get(ref_);
 
     auto i = 0U;
-    vector<tz_offsets> stop_tzs{split_info_.stop_range().size() * 2U - 2U};
+    std::vector<tz_offsets> stop_tzs(split_info_.stop_range().size() * 2U - 2U);
     for (auto const [from, to] : utl::pairwise(split_info_.stop_range())) {
       stop_tzs[i++] = tz.get_tz(ref.stops_.at(from).eva_num_).second;
       stop_tzs[i++] = tz.get_tz(ref.stops_.at(to).eva_num_).second;

@@ -21,8 +21,12 @@ struct it_range {
   friend BeginIt begin(it_range const& r) { return r.begin(); }
   friend EndIt end(it_range const& r) { return r.end(); }
   reference_type front() const { return *begin_; }
-  reference_type back() const { return *std::next(begin_, size() - 1U); }
-  std::size_t size() const { return std::distance(begin_, end_); }
+  reference_type back() const {
+    return *std::next(begin_, static_cast<long>(size() - 1U));
+  }
+  std::size_t size() const {
+    return static_cast<std::size_t>(std::distance(begin_, end_));
+  }
   BeginIt begin_;
   EndIt end_;
 };
@@ -36,8 +40,8 @@ it_range(BeginIt, EndIt) -> it_range<BeginIt, EndIt>;
 template <typename Collection, typename T>
 it_range<typename Collection::const_iterator> make_it_range(
     Collection const& c, interval<T> const& i) {
-  return it_range{std::next(std::begin(c), i.from_),
-                  std::next(std::begin(c), i.to_)};
+  return it_range{std::next(std::begin(c), static_cast<long>(i.from_)),
+                  std::next(std::begin(c), static_cast<long>(i.to_))};
 }
 
 }  // namespace nigiri

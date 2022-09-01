@@ -32,10 +32,6 @@ constexpr auto const station_geo_file_content = R"(
 0000007  41.579799  59.076849 F_META
 )";
 
-constexpr auto const timezones_file_content = R"(
-0000000 +0100 +0200 29032020 0200 25102020 0300 +0200 28032021 0200 31102021 0300
-)";
-
 TEST_CASE("loader_hrd_station, parse") {
   for (auto const& c : configs) {
     std::vector<service> services;

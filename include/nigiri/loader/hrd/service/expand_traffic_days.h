@@ -33,11 +33,12 @@ void expand_traffic_days(service_store const& store,
 
   // Removes the set bits from the section bitfields (for further iterations)
   // and writes a new services containing the specified sections [start, pos[.
-  auto const consume_and_remove = [&](unsigned const start, unsigned const pos,
+  auto const consume_and_remove = [&](std::size_t const start,
+                                      std::size_t const pos,
                                       bitfield const& current) {
     if (current.any() && start < pos) {
       auto const not_current = ~current;
-      for (unsigned i = start; i < pos; ++i) {
+      for (auto i = start; i < pos; ++i) {
         section_bitfields[i] &= not_current;
       }
       assert(pos >= 1);
@@ -46,7 +47,7 @@ void expand_traffic_days(service_store const& store,
   };
 
   // Function splitting services with uniform traffic day bitfields.
-  auto const split = [&](unsigned const start) {
+  auto const split = [&](std::size_t const start) {
     auto b = section_bitfields[start];
     for (auto i = start + 1; i != section_bitfields.size(); ++i) {
       auto const next_b = b & section_bitfields[i];
