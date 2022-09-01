@@ -1,9 +1,9 @@
 #include "doctest/doctest.h"
 
-#include "nigiri/loader/hrd/bitfield.h"
-#include "nigiri/loader/hrd/service.h"
-#include "nigiri/loader/hrd/station.h"
-#include "nigiri/loader/hrd/timezone.h"
+#include "nigiri/loader/hrd/service/service.h"
+#include "nigiri/loader/hrd/stamm/bitfield.h"
+#include "nigiri/loader/hrd/stamm/station.h"
+#include "nigiri/loader/hrd/stamm/timezone.h"
 
 using namespace nigiri;
 using namespace nigiri::loader::hrd;

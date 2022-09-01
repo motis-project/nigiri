@@ -1,6 +1,6 @@
 #include "doctest/doctest.h"
 
-#include "nigiri/loader/hrd/category.h"
+#include "nigiri/loader/hrd/stamm/category.h"
 
 using namespace nigiri;
 using namespace nigiri::loader::hrd;

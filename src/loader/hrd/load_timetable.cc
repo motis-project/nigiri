@@ -4,8 +4,8 @@
 #include "utl/pipes.h"
 #include "utl/progress_tracker.h"
 
-#include "nigiri/loader/hrd/service.h"
-#include "nigiri/loader/hrd/stamm.h"
+#include "nigiri/loader/hrd/service/service_builder.h"
+#include "nigiri/loader/hrd/stamm/stamm.h"
 
 namespace nigiri::loader::hrd {
 

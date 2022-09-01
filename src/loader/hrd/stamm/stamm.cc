@@ -1,10 +1,10 @@
-#include "nigiri/loader/hrd/stamm.h"
+#include "nigiri/loader/hrd/stamm/stamm.h"
 
 #include "fmt/ranges.h"
 
 #include "utl/to_vec.h"
 
-#include "nigiri/loader/hrd/basic_info.h"
+#include "nigiri/loader/hrd/stamm/basic_info.h"
 
 namespace nigiri::loader::hrd {
 

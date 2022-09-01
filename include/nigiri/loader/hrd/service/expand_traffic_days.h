@@ -1,15 +1,17 @@
 #pragma once
 
-#include "nigiri/loader/hrd/bitfield.h"
-#include "nigiri/loader/hrd/service.h"
-#include "nigiri/loader/hrd/service_expansion/ref_service.h"
+#include "nigiri/loader/hrd/service/ref_service.h"
+#include "nigiri/loader/hrd/stamm/bitfield.h"
 
 namespace nigiri::loader::hrd {
 
 template <typename Fn>
-void expand_traffic_days(service const& s,
+void expand_traffic_days(service_store const& store,
+                         service_idx_t const s_idx,
                          bitfield_map_t const& bitfields,
                          Fn&& consumer) {
+  auto const& s = store.get(s_idx);
+
   // Transform section bitfield indices into concrete bitfields.
   auto section_bitfields =
       utl::to_vec(s.sections_, [&](service::section const& section) {
@@ -26,7 +28,7 @@ void expand_traffic_days(service const& s,
                 "traffic days of service {} are not disjunctive:\n"
                 "    sub-sections: {}\n"
                 "already consumed: {}",
-                x.ref_.origin_, x.split_info_.traffic_days_,
+                x.origin(store), x.split_info_.traffic_days_,
                 consumed_traffic_days);
     consumed_traffic_days |= x.split_info_.traffic_days_;
     consumer(std::move(x));
@@ -42,7 +44,7 @@ void expand_traffic_days(service const& s,
         section_bitfields[i] &= not_current;
       }
       assert(pos >= 1);
-      check_and_consume(ref_service{s, split_info{current, {start, pos}}});
+      check_and_consume(ref_service{s_idx, split_info{current, {start, pos}}});
     }
   };
 

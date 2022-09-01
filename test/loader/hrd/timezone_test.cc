@@ -1,6 +1,6 @@
 #include "doctest/doctest.h"
 
-#include "nigiri/loader/hrd/timezone.h"
+#include "nigiri/loader/hrd/stamm/timezone.h"
 
 using namespace nigiri;
 using namespace nigiri::loader::hrd;

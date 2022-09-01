@@ -1,4 +1,4 @@
-#include "nigiri/loader/hrd/category.h"
+#include "nigiri/loader/hrd/stamm/category.h"
 
 #include "utl/parser/arg_parser.h"
 

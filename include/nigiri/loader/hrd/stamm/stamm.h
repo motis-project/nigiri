@@ -1,14 +1,14 @@
 #pragma once
 
 #include "nigiri/loader/dir.h"
-#include "nigiri/loader/hrd/attribute.h"
-#include "nigiri/loader/hrd/bitfield.h"
-#include "nigiri/loader/hrd/category.h"
-#include "nigiri/loader/hrd/direction.h"
 #include "nigiri/loader/hrd/parser_config.h"
-#include "nigiri/loader/hrd/provider.h"
-#include "nigiri/loader/hrd/station.h"
-#include "nigiri/loader/hrd/timezone.h"
+#include "nigiri/loader/hrd/stamm/attribute.h"
+#include "nigiri/loader/hrd/stamm/bitfield.h"
+#include "nigiri/loader/hrd/stamm/category.h"
+#include "nigiri/loader/hrd/stamm/direction.h"
+#include "nigiri/loader/hrd/stamm/provider.h"
+#include "nigiri/loader/hrd/stamm/station.h"
+#include "nigiri/loader/hrd/stamm/timezone.h"
 #include "nigiri/timetable.h"
 
 namespace nigiri::loader::hrd {

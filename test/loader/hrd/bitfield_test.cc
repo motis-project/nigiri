@@ -1,6 +1,6 @@
 #include "doctest/doctest.h"
 
-#include "nigiri/loader/hrd/bitfield.h"
+#include "nigiri/loader/hrd/stamm/bitfield.h"
 #include "nigiri/byte_sizes.h"
 
 using namespace nigiri;

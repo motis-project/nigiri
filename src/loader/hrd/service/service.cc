@@ -1,4 +1,4 @@
-#include "nigiri/loader/hrd/service.h"
+#include "nigiri/loader/hrd/service/service.h"
 
 #include <algorithm>
 #include <numeric>
@@ -11,7 +11,7 @@
 #include "utl/to_vec.h"
 #include "utl/verify.h"
 
-#include "nigiri/loader/hrd/timezone.h"
+#include "nigiri/loader/hrd/stamm/timezone.h"
 #include "nigiri/loader/hrd/util.h"
 #include "nigiri/clasz.h"
 #include "nigiri/logging.h"
@@ -268,8 +268,8 @@ bool specification::read_line(utl::cstr line,
 }
 
 service::service(parser_info origin,
-                 int num_repetitions,
-                 int interval,
+                 unsigned num_repetitions,
+                 unsigned interval,
                  std::vector<stop> stops,
                  std::vector<section> sections,
                  bitfield traffic_days,
@@ -288,8 +288,9 @@ service::service(config const& c, specification const& spec)
     : origin_{parser_info{spec.filename_, spec.line_number_from_,
                           spec.line_number_to_}},
       num_repetitions_{
-          parse<int>(spec.internal_service_.substr(22, utl::size(3)))},
-      interval_{parse<int>(spec.internal_service_.substr(26, utl::size(3)))},
+          parse<unsigned>(spec.internal_service_.substr(22, utl::size(3)))},
+      interval_{
+          parse<unsigned>(spec.internal_service_.substr(26, utl::size(3)))},
       stops_{utl::to_vec(spec.stops_, parse_stop)},
       sections_{
           std::accumulate(std::next(begin(spec.stops_)),
@@ -411,55 +412,6 @@ int service::get_first_stop_index_at(eva_number const eva_num) const {
   auto const idx = find_first_stop_at(eva_num);
   utl::verify(idx != kTimeNotSet, "stop eva number {} not found", eva_num);
   return idx;
-}
-
-int service::event_time(unsigned stop_index, event_type evt) const {
-  return evt == event_type::kDep ? stops_[stop_index].dep_.time_
-                                 : stops_[stop_index].arr_.time_;
-}
-
-unsigned service::traffic_days_offset_at_stop(unsigned stop_index,
-                                              event_type evt) const {
-  return static_cast<unsigned>(event_time(stop_index, evt) / 1440);
-}
-
-bitfield service::traffic_days_at_stop(unsigned stop_index,
-                                       event_type evt) const {
-  return traffic_days_ << traffic_days_offset_at_stop(stop_index, evt);
-}
-
-vector<tz_offsets> service::get_stop_timezones(timezone_map_t const& tz) const {
-  auto i = 0U;
-  auto stop_times =
-      vector<tz_offsets>(static_cast<std::uint32_t>(stops_.size() * 2U - 2U));
-  for (auto const [from, to] : utl::pairwise(stops_)) {
-    stop_times[i++] = get_tz(tz, from.eva_num_).second;
-    stop_times[i++] = get_tz(tz, to.eva_num_).second;
-  }
-  return stop_times;
-}
-
-vector<duration_t> service::get_stop_times() const {
-  auto i = 0U;
-  auto stop_times =
-      vector<duration_t>(static_cast<std::uint32_t>(stops_.size() * 2 - 2));
-  for (auto const [from, to] : utl::pairwise(stops_)) {
-    stop_times[i++] = duration_t{from.dep_.time_};
-    stop_times[i++] = duration_t{to.arr_.time_};
-  }
-  assert(i == stop_times.size());
-  return stop_times;
-}
-
-void service::set_stop_times(vector<duration_t> const& stop_times) {
-  utl::verify(stop_times.size() == stops_.size() * 2 - 2,
-              "service::set_stop_times: invalid stop_times size");
-  auto i = 0U;
-  for (auto const [from, to] : utl::pairwise(stops_)) {
-    from.dep_.time_ = stop_times[i++].count();
-    to.arr_.time_ = stop_times[i++].count();
-  }
-  assert(i == stop_times.size());
 }
 
 }  // namespace nigiri::loader::hrd

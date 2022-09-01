@@ -1,4 +1,4 @@
-#include "nigiri/loader/hrd/provider.h"
+#include "nigiri/loader/hrd/stamm/provider.h"
 
 #include "utl/parser/arg_parser.h"
 #include "utl/verify.h"

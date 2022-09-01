@@ -1,7 +1,7 @@
 #include "doctest/doctest.h"
 
 #include "nigiri/loader/hrd/parser_config.h"
-#include "nigiri/loader/hrd/provider.h"
+#include "nigiri/loader/hrd/stamm/provider.h"
 
 using namespace nigiri;
 using namespace nigiri::loader::hrd;

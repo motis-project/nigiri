@@ -16,7 +16,7 @@
 
 #include "nigiri/loader/hrd/eva_number.h"
 #include "nigiri/loader/hrd/parser_config.h"
-#include "nigiri/loader/hrd/stamm.h"
+#include "nigiri/loader/hrd/stamm/stamm.h"
 #include "nigiri/logging.h"
 #include "nigiri/timetable.h"
 #include "nigiri/types.h"
@@ -102,8 +102,8 @@ struct service {
   }
 
   service(parser_info origin,
-          int num_repetitions,
-          int interval,
+          unsigned num_repetitions,
+          unsigned interval,
           std::vector<stop> stops,
           std::vector<section> sections,
           bitfield traffic_days,
@@ -157,9 +157,6 @@ struct service {
         if (it != end(providers)) {
           return tt.providers_.at(it->second);
         } else {
-          log(log_lvl::error, "loader.hrd.service.name",
-              "service {}: invalid provider {}", origin_,
-              initial_admin_.view());
           return unknown_provider;
         }
       }();
@@ -196,76 +193,13 @@ struct service {
   void set_sections_clasz();
 
   parser_info origin_{};
-  int num_repetitions_{0};
-  int interval_{0};
+  unsigned num_repetitions_{0U};
+  unsigned interval_{0U};
   std::vector<stop> stops_;
   std::vector<section> sections_;
   bitfield traffic_days_;
   utl::cstr initial_admin_;
   int initial_train_num_{0};
 };
-
-template <typename ConsumerFn, typename ProgressFn>
-void parse_services(config const& c,
-                    char const* filename,
-                    interval<std::chrono::sys_days> const& interval,
-                    bitfield_map_t const& bitfields,
-                    timezone_map_t const& timezones,
-                    std::string_view file_content,
-                    ProgressFn&& bytes_consumed,
-                    ConsumerFn&& consumer) {
-  auto const expand_service = [&](service const& s) {
-    expand_traffic_days(s, bitfields, [&](service&& s2) {
-      expand_repetitions(s2, [&](service&& s3) {
-        to_local_time(timezones, interval, s3, consumer);
-      });
-    });
-  };
-
-  specification spec;
-  auto last_line = 0U;
-  utl::for_each_line_numbered(
-      file_content, [&](utl::cstr line, unsigned const line_number) {
-        last_line = line_number;
-
-        if (line_number % 1000 == 0) {
-          bytes_consumed(static_cast<size_t>(line.c_str() - &file_content[0]));
-        }
-
-        if (line.len == 0 || line[0] == '%') {
-          return;
-        }
-
-        auto const is_finished = spec.read_line(line, filename, line_number);
-
-        if (!is_finished) {
-          return;
-        } else {
-          spec.line_number_to_ = line_number - 1;
-        }
-
-        if (!spec.valid()) {
-          log(log_lvl::error, "loader.hrd.service",
-              "skipping invalid service at {}:{}", filename, line_number);
-        } else if (!spec.ignore()) {
-          // Store if relevant.
-          try {
-            expand_service(service{c, spec});
-          } catch (std::runtime_error const& e) {
-            log(log_lvl::error, "unable to build service at {}:{}: {}",
-                filename, line_number, e.what());
-          }
-        }
-
-        // Next try! Re-read first line of next service.
-        spec.reset();
-        spec.read_line(line, filename, line_number);
-      });
-
-  if (!spec.is_empty() && spec.valid() && !spec.ignore()) {
-    spec.line_number_to_ = last_line;
-    expand_service(service{c, spec});
-  }
-}
 
 }  // namespace nigiri::loader::hrd

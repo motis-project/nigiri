@@ -80,17 +80,17 @@ struct timetable {
     }
 
     location get(location_idx_t const idx) {
-      return {ids_[idx],
-              names_[idx],
-              coordinates_[idx],
-              src_[idx],
-              types_[idx],
-              osm_ids_[idx],
-              parents_[idx],
-              location_timezones_[idx],
-              it_range{equivalences_[idx]},
-              it_range{footpaths_out_[idx]},
-              it_range{footpaths_in_[idx]}};
+      return location{ids_[idx],
+                      names_[idx],
+                      coordinates_[idx],
+                      src_[idx],
+                      types_[idx],
+                      osm_ids_[idx],
+                      parents_[idx],
+                      location_timezones_[idx],
+                      it_range{equivalences_[idx]},
+                      it_range{footpaths_out_[idx]},
+                      it_range{footpaths_in_[idx]}};
     }
 
     location get(location_id const& id) {

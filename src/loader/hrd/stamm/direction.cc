@@ -1,4 +1,4 @@
-#include "nigiri/loader/hrd/direction.h"
+#include "nigiri/loader/hrd/stamm/direction.h"
 
 #include "utl/parser/cstr.h"
 #include "utl/verify.h"

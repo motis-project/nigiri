@@ -1,4 +1,4 @@
-#include "nigiri/loader/hrd/bitfield.h"
+#include "nigiri/loader/hrd/stamm/bitfield.h"
 
 #include <bitset>
 

@@ -1,9 +1,9 @@
-#include "nigiri/loader/hrd/station.h"
+#include "nigiri/loader/hrd/stamm/station.h"
 
 #include "utl/parser/arg_parser.h"
 #include "utl/pipes.h"
 
-#include "nigiri/loader/hrd/timezone.h"
+#include "nigiri/loader/hrd/stamm/timezone.h"
 #include "nigiri/logging.h"
 
 namespace nigiri::loader::hrd {

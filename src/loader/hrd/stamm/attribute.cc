@@ -1,4 +1,4 @@
-#include "nigiri/loader/hrd/attribute.h"
+#include "nigiri/loader/hrd/stamm/attribute.h"
 
 #include "nigiri/logging.h"
 

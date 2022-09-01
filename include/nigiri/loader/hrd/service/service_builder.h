@@ -1,6 +1,8 @@
 #pragma once
 
 #include "nigiri/loader/hrd/parser_config.h"
+#include "nigiri/loader/hrd/service/read_services.h"
+#include "nigiri/loader/hrd/service/ref_service.h"
 #include "nigiri/loader/hrd/stamm/stamm.h"
 #include "nigiri/timetable.h"
 
@@ -17,41 +19,25 @@ struct service_builder {
                     ProgressFn&& bytes_consumed) {
     scoped_timer write{"reading services"};
 
-    auto const get_index = [&](vector<service> const& route_services,
-                               service const& s) -> std::optional<size_t> {
+    auto const get_index = [&](vector<ref_service> const& route_services,
+                               ref_service const& s) -> std::optional<size_t> {
       auto const index = static_cast<unsigned>(std::distance(
           begin(route_services),
           std::lower_bound(begin(route_services), end(route_services), s,
-                           [](service const& a, service const& b) {
-                             return a.stops_.front().dep_.time_ % 1440 <
-                                    b.stops_.front().dep_.time_ % 1440;
+                           [&](ref_service const& a, ref_service const& b) {
+                             return a.stops(store_).front().dep_.time_ % 1440 <
+                                    b.stops(store_).front().dep_.time_ % 1440;
                            })));
 
-      for (auto stop_idx = 0U; stop_idx != s.stops_.size(); ++stop_idx) {
-        auto const& stop = s.stops_.at(stop_idx);
-
-        // Check if departures stay sorted.
-        auto const is_earlier_eq_dep =
-            index > 0 &&
-            stop.dep_.time_ % 1440 <
-                route_services[index - 1].stops_.at(stop_idx).dep_.time_ % 1440;
-        auto const is_later_eq_dep =
+      for (auto i = 0U; i != s.utc_times_.size(); ++i) {
+        auto const is_earlier_eq =
+            index > 0 && s.utc_times_[i] % 1440 <
+                             route_services[index - 1].utc_times_.at(i) % 1440;
+        auto const is_later_eq =
             index < route_services.size() &&
-            stop.dep_.time_ % 1440 >
-                route_services[index].stops_.at(stop_idx).dep_.time_ % 1440;
-
-        // Check if arrivals stay sorted.
-        auto const is_earlier_eq_arr =
-            index > 0 &&
-            stop.arr_.time_ % 1440 <
-                route_services[index - 1].stops_.at(stop_idx).arr_.time_ % 1440;
-        auto const is_later_eq_arr =
-            index < route_services.size() &&
-            stop.arr_.time_ % 1440 >
-                route_services[index].stops_.at(stop_idx).arr_.time_ % 1440;
-
-        if (is_earlier_eq_dep || is_later_eq_dep || is_earlier_eq_arr ||
-            is_later_eq_arr) {
+            s.utc_times_[i] % 1440 >
+                route_services[index].utc_times_.at(i) % 1440;
+        if (is_earlier_eq || is_later_eq) {
           return std::nullopt;
         }
       }
@@ -59,13 +45,15 @@ struct service_builder {
       return index;
     };
 
-    auto const add_service = [&](service const& s) {
-      auto const stop_seq = to_vec(s.stops_, [&](service::stop const& x) {
-        return timetable::stop(stamm_.locations_.at(x.eva_num_).idx_,
-                               x.dep_.in_out_allowed_, x.arr_.in_out_allowed_);
-      });
+    auto const add_service = [&](ref_service const& s) {
+      auto const stop_seq =
+          to_vec(s.stops(store_), [&](service::stop const& x) {
+            return timetable::stop(stamm_.locations_.at(x.eva_num_).idx_,
+                                   x.dep_.in_out_allowed_,
+                                   x.arr_.in_out_allowed_);
+          });
       auto const sections_clasz = to_vec(
-          s.sections_,
+          s.sections(store_),
           [](service::section const& section) { return section.clasz_; });
 
       auto& routes = route_services_[{stop_seq, sections_clasz}];
@@ -78,10 +66,10 @@ struct service_builder {
       }
 
       // No matching route found - create new one.
-      routes.emplace_back(vector<service>({s}));
+      routes.emplace_back(vector<ref_service>({s}));
     };
 
-    parse_services(c, filename, tt_.date_range_, stamm_.bitfields_,
+    parse_services(c, filename, tt_.date_range_, store_, stamm_.bitfields_,
                    stamm_.timezones_, file_content,
                    std::forward<ProgressFn>(bytes_consumed), add_service);
   }
@@ -95,23 +83,26 @@ struct service_builder {
         auto const& [stop_seq, sections_clasz] = key;
         auto const route_idx = tt_.register_route(stop_seq, sections_clasz);
         for (auto const& s : services) {
+          auto const ref = store_.get(s.ref_);
           try {
+            auto const stops = s.stops(store_);
+            auto const sections = s.sections(store_);
             auto const id = tt_.register_trip_id(
                 trip_id{
                     .id_ = fmt::format(
-                        "{}/{}/{:07}/{}/{:07}/{}/{}", s.initial_admin_.view(),
-                        s.initial_train_num_, to_idx(s.stops_.front().eva_num_),
-                        s.stops_.front().dep_.time_,
-                        to_idx(s.stops_.back().eva_num_),
-                        s.stops_.back().arr_.time_,
-                        s.sections_.front().line_information_.empty()
+                        "{}/{}/{:07}/{}/{:07}/{}/{}", ref.initial_admin_.view(),
+                        ref.initial_train_num_, to_idx(stops.front().eva_num_),
+                        s.utc_times_.front().count(),
+                        to_idx(stops.back().eva_num_),
+                        s.utc_times_.back().count(),
+                        sections.front().line_information_.empty()
                             ? ""
-                            : s.sections_.front()
+                            : sections.front()
                                   .line_information_.front()
                                   .view()),
                     .src_ = src},
-                s.display_name(tt_, stamm_.categories_, stamm_.providers_),
-                s.origin_.str(), tt_.next_transport_idx(),
+                ref.display_name(tt_, stamm_.categories_, stamm_.providers_),
+                ref.origin_.str(), tt_.next_transport_idx(),
                 {0U, stop_seq.size()});
 
             auto const section_attributes =
@@ -121,7 +112,7 @@ struct service_builder {
                 // time!
                 // - attributes that are relevant for routing: split service
                 // - not routing relevant attributes: store in database
-                to_vec(s.sections_, [&](service::section const& sec) {
+                to_vec(sections, [&](service::section const& sec) {
                   auto attribute_idx_combination = to_vec(
                       sec.attributes_, [&](service::attribute const& attr) {
                         return stamm_.attributes_.at(attr.code_.view());
@@ -140,13 +131,13 @@ struct service_builder {
                 });
 
             auto const section_providers =
-                to_vec(s.sections_, [&](service::section const& sec) {
+                to_vec(sections, [&](service::section const& sec) {
                   return stamm_.providers_.get(sec.admin_.view())
                       .value_or(provider_idx_t::invalid());
                 });
 
             auto const section_directions =
-                to_vec(s.sections_, [&](service::section const& sec) {
+                to_vec(sections, [&](service::section const& sec) {
                   if (sec.directions_.empty()) {
                     return trip_direction_idx_t::invalid();
                   }
@@ -154,28 +145,35 @@ struct service_builder {
                       [&](utl::cstr const& str) {
                         return utl::get_or_create(
                             string_directions_, str.view(), [&]() {
-                              auto const dir_idx = trip_direction_idx_t{
-                                  tt_.trip_directions_.size()};
-                              tt_.trip_directions_.emplace_back(
-                                  stamm_.directions_.at(str.view()));
-                              return dir_idx;
+                              auto const it =
+                                  stamm_.directions_.find(str.view());
+                              if (it == end(stamm_.directions_)) {
+                                return trip_direction_idx_t::invalid();
+                              } else {
+                                auto const dir_idx = trip_direction_idx_t{
+                                    tt_.trip_directions_.size()};
+                                tt_.trip_directions_.emplace_back(it->second);
+                                return dir_idx;
+                              }
                             });
                       },
                       [&](eva_number const eva) {
                         return utl::get_or_create(eva_directions_, eva, [&]() {
-                          auto const l_idx = stamm_.locations_.at(eva).idx_;
-
-                          auto const dir_idx =
-                              trip_direction_idx_t{tt_.trip_directions_.size()};
-                          tt_.trip_directions_.emplace_back(l_idx);
-
-                          return dir_idx;
+                          auto const it = stamm_.locations_.find(eva);
+                          if (it == end(stamm_.locations_)) {
+                            return trip_direction_idx_t::invalid();
+                          } else {
+                            auto const dir_idx = trip_direction_idx_t{
+                                tt_.trip_directions_.size()};
+                            tt_.trip_directions_.emplace_back(it->second.idx_);
+                            return dir_idx;
+                          }
                         });
                       }});
                 });
 
             auto const section_lines =
-                to_vec(s.sections_, [&](service::section const& sec) {
+                to_vec(sections, [&](service::section const& sec) {
                   if (sec.line_information_.empty()) {
                     return line_idx_t::invalid();
                   }
@@ -191,10 +189,12 @@ struct service_builder {
             auto const merged_trip = tt_.register_merged_trip({id});
             tt_.add_transport(timetable::transport{
                 .bitfield_idx_ = utl::get_or_create(
-                    bitfield_indices, s.traffic_days_,
-                    [&]() { return tt_.register_bitfield(s.traffic_days_); }),
+                    bitfield_indices, s.utc_traffic_days_,
+                    [&]() {
+                      return tt_.register_bitfield(s.utc_traffic_days_);
+                    }),
                 .route_idx_ = route_idx,
-                .stop_times_ = s.get_stop_times(),
+                .stop_times_ = s.utc_times_,
                 .meta_data_ = vector<section_db_idx_t>(stop_seq.size() - 1),
                 .external_trip_ids_ = vector<merged_trips_idx_t>(
                     stop_seq.size() - 1U, merged_trip),
@@ -204,7 +204,7 @@ struct service_builder {
                 .section_lines_ = section_lines});
           } catch (std::exception const& e) {
             log(log_lvl::error, "loader.hrd.service",
-                "unable to load service {}: {}", s.origin_, e.what());
+                "unable to load service {}: {}", ref.origin_, e.what());
             continue;
           }
         }
@@ -212,14 +212,15 @@ struct service_builder {
       }
     }
     route_services_.clear();
+    store_.clear();
   }
 
   stamm const& stamm_;
   timetable& tt_;
   hash_map<pair<vector<timetable::stop>, vector<clasz>>,
-           vector<vector<service>>>
+           vector<vector<ref_service>>>
       route_services_;
-  std::vector<service> orig_services_;
+  service_store store_;
   hash_map<vector<attribute_idx_t>, attribute_combination_idx_t>
       attribute_combinations_;
   hash_map<string, line_idx_t> lines_;

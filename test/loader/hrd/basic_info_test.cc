@@ -2,7 +2,7 @@
 
 #include "date/date.h"
 
-#include "nigiri/loader/hrd/basic_info.h"
+#include "nigiri/loader/hrd/stamm/basic_info.h"
 #include "nigiri/types.h"
 
 using namespace nigiri::loader::hrd;

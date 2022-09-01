@@ -6,7 +6,7 @@
 
 #include "nigiri/loader/hrd/eva_number.h"
 #include "nigiri/loader/hrd/parser_config.h"
-#include "nigiri/loader/hrd/timezone.h"
+#include "nigiri/loader/hrd/stamm/timezone.h"
 #include "nigiri/timetable.h"
 #include "nigiri/types.h"
 
