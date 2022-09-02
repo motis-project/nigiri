@@ -1,5 +1,7 @@
 #pragma once
 
+#include "utl/to_vec.h"
+
 #include "nigiri/loader/hrd/service/ref_service.h"
 #include "nigiri/loader/hrd/stamm/bitfield.h"
 
@@ -14,9 +16,15 @@ void expand_traffic_days(service_store const& store,
 
   // Transform section bitfield indices into concrete bitfields.
   auto section_bitfields =
-      utl::to_vec(s.sections_, [&](service::section const& section) {
-        return st.resolve_bitfield(section.traffic_days_);
-      });
+      s.begin_to_end_info_.traffic_days_.has_value()
+          ? std::vector<bitfield>{s.stops_.size() - 1U,
+                                  st.resolve_bitfield(
+                                      s.begin_to_end_info_.traffic_days_
+                                          .value())}
+          : utl::to_vec(s.sections_, [&](service::section const& section) {
+              assert(section.traffic_days_.has_value());
+              return st.resolve_bitfield(section.traffic_days_.value());
+            });
 
   // Checks that all section bitfields are disjunctive and calls consumer.
   bitfield consumed_traffic_days;

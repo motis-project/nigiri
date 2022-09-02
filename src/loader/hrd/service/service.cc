@@ -15,6 +15,8 @@
 #include "nigiri/loader/hrd/util.h"
 #include "nigiri/clasz.h"
 #include "nigiri/logging.h"
+#include "utl/enumerate.h"
+#include "utl/helpers/algorithm.h"
 
 namespace nigiri::loader::hrd {
 
@@ -123,27 +125,48 @@ void parse_range(std::vector<utl::cstr> const& spec_lines,
                  range_parse_information const& parse_info,
                  std::vector<service::stop> const& stops,
                  std::vector<service::section>& sections,
+                 service::section& begin_to_end,
                  TargetInformationType service::section::*member,
                  TargetInformationParserFun parse_target_info) {
   for (auto const& r : compute_ranges(spec_lines, stops, parse_info)) {
     TargetInformationType target_info = parse_target_info(r.first, r.second);
-    for (auto i = r.second.from_idx(); i < r.second.to_idx(); ++i) {
-      (sections[i].*member) = target_info;
+
+    if (r.second.from_idx() == 0U && r.second.to_idx() == sections.size()) {
+      (begin_to_end.*member) = std::move(target_info);
+    } else {
+      sections.resize(stops.size() - 1);
+      for (auto i = r.second.from_idx(); i < r.second.to_idx(); ++i) {
+        (sections[i].*member) = target_info;
+      }
     }
   }
 }
 
 template <typename TargetInformationType, typename TargetInformationParserFun>
-void parse_range(std::vector<utl::cstr> const& spec_lines,
-                 range_parse_information const& parse_info,
-                 std::vector<service::stop> const& stops,
-                 std::vector<service::section>& sections,
-                 std::vector<TargetInformationType> service::section::*member,
-                 TargetInformationParserFun parse_target_info) {
+void parse_range(
+    std::vector<utl::cstr> const& spec_lines,
+    range_parse_information const& parse_info,
+    std::vector<service::stop> const& stops,
+    std::vector<service::section>& sections,
+    service::section& begin_to_end,
+    std::optional<std::vector<TargetInformationType>> service::section::*member,
+    TargetInformationParserFun parse_target_info) {
   for (auto const& r : compute_ranges(spec_lines, stops, parse_info)) {
     TargetInformationType target_info = parse_target_info(r.first, r.second);
-    for (auto i = r.second.from_idx(); i < r.second.to_idx(); ++i) {
-      (sections[i].*member).push_back(target_info);
+
+    if (r.second.from_idx() == 0U && r.second.to_idx() == sections.size()) {
+      if (!(begin_to_end.*member).has_value()) {
+        (begin_to_end.*member) = std::vector<TargetInformationType>{};
+      }
+      (begin_to_end.*member)->push_back(std::move(target_info));
+    } else {
+      sections.resize(stops.size() - 1);
+      for (auto i = r.second.from_idx(); i < r.second.to_idx(); ++i) {
+        if (!(sections[i].*member).has_value()) {
+          (sections[i].*member) = std::vector<TargetInformationType>{};
+        }
+        (sections[i].*member)->push_back(target_info);
+      }
     }
   }
 }
@@ -172,31 +195,6 @@ utl::cstr stop_train_num(utl::cstr const& stop) {
 
 utl::cstr stop_admin(utl::cstr const& stop) {
   return stop.substr(49, utl::size(6)).trim();
-}
-
-service::section parse_initial_section(stamm& st, specification const& spec) {
-  auto const first_stop = spec.stops_.front();
-  auto const train_num = stop_train_num(first_stop);
-  auto const admin = stop_admin(first_stop);
-  return {train_num.empty() ? initial_train_num(spec)
-                            : parse_verify<int>(train_num),
-          st.resolve_provider(
-              admin.empty() ? spec.internal_service_.substr(9, utl::size(6))
-                            : admin)};
-}
-
-std::vector<service::section> parse_section(
-    stamm& st, std::vector<service::section>&& sections, utl::cstr stop) {
-  auto const train_num = stop_train_num(stop);
-  auto const admin = stop_admin(stop);
-
-  auto last_section = sections.back();
-  sections.emplace_back(
-      train_num.empty() ? last_section.train_num_
-                        : parse_verify<int>(train_num),
-      admin.empty() ? last_section.admin_ : st.resolve_provider(admin));
-
-  return std::move(sections);
 }
 
 bool specification::is_empty() const { return !internal_service_; }
@@ -272,6 +270,36 @@ bool specification::read_line(utl::cstr line,
   return false;
 }
 
+void parse_sections(stamm& st,
+                    specification const& spec,
+                    std::vector<service::section>& sections,
+                    service::section& start_to_end) {
+  auto const start_admin =
+      st.resolve_provider(spec.internal_service_.substr(9, utl::size(6)));
+  auto const start_train_num = initial_train_num(spec);
+
+  auto const has_extra_info = [](utl::cstr const stop_str) {
+    return stop_train_num(stop_str).empty() && stop_admin(stop_str).empty();
+  };
+
+  if (utl::none_of(spec.stops_, has_extra_info)) {
+    start_to_end.admin_ = start_admin;
+    start_to_end.train_num_ = start_train_num;
+  } else {
+    auto pred_admin = start_admin;
+    auto pred_train_nr = start_train_num;
+    for (auto i = 0U; i != spec.stops_.size() - 1; ++i) {
+      auto const train_nr = stop_train_num(spec.stops_[i]);
+      auto const admin = stop_admin(spec.stops_[i]);
+      auto const& sec = sections.emplace_back(service::section{
+          train_nr.empty() ? pred_train_nr : utl::parse_verify<int>(train_nr),
+          admin.empty() ? pred_admin : st.resolve_provider(admin)});
+      pred_admin = sec.admin_.value();
+      pred_train_nr = sec.train_num_.value();
+    }
+  }
+}
+
 service::service(config const& c,
                  stamm& st,
                  source_file_idx_t const source_file_idx,
@@ -283,42 +311,42 @@ service::service(config const& c,
       interval_{
           parse<unsigned>(spec.internal_service_.substr(26, utl::size(3)))},
       stops_{utl::to_vec(spec.stops_, parse_stop)},
-      sections_{std::accumulate(
-          std::next(begin(spec.stops_)),
-          std::next(begin(spec.stops_),
-                    static_cast<long>(spec.stops_.size() - 1)),
-          std::vector<section>({parse_initial_section(st, spec)}),
-          [&](auto&& a, auto&& b) {
-            return parse_section(st, std::forward<decltype(a)>(a),
-                                 std::forward<decltype(b)>(b));
-          })},
       initial_admin_{st.resolve_provider(initial_admin(spec))},
       initial_train_num_{initial_train_num(spec)} {
+  utl::verify(stops_.size() >= 2, "service with less than 2 stops");
+
+  parse_sections(st, spec, sections_, begin_to_end_info_);
+
   parse_range(spec.attributes_, c.attribute_parse_info_, stops_, sections_,
-              &section::attributes_, [&](utl::cstr line, range const&) {
+              begin_to_end_info_, &section::attributes_,
+              [&](utl::cstr line, range const&) {
                 return attribute{
                     parse<unsigned>(line.substr(c.s_info_.traff_days_)),
                     st.resolve_attribute(line.substr(c.s_info_.att_code_))};
               });
 
   parse_range(spec.categories_, c.category_parse_info_, stops_, sections_,
-              &section::category_, [&](utl::cstr line, range const&) {
+              begin_to_end_info_, &section::category_,
+              [&](utl::cstr line, range const&) {
                 return st.resolve_category(line.substr(c.s_info_.cat_));
               });
 
   parse_range(spec.line_information_, c.line_parse_info_, stops_, sections_,
-              &section::line_information_, [&](utl::cstr line, range const&) {
+              begin_to_end_info_, &section::line_information_,
+              [&](utl::cstr line, range const&) {
                 return line.substr(c.s_info_.line_).trim();
               });
 
   parse_range(
       spec.traffic_days_, c.traffic_days_parse_info_, stops_, sections_,
-      &section::traffic_days_, [&](utl::cstr line, range const&) {
+      begin_to_end_info_, &section::traffic_days_,
+      [&](utl::cstr line, range const&) {
         return parse_verify<unsigned>(line.substr(c.s_info_.traff_days_));
       });
 
   parse_range(spec.directions_, c.direction_parse_info_, stops_, sections_,
-              &section::direction_, [&](utl::cstr line, range const& r) {
+              begin_to_end_info_, &section::direction_,
+              [&](utl::cstr line, range const& r) {
                 if (isdigit(line[5]) != 0) {
                   return st.resolve_direction({line.substr(c.s_info_.dir_)});
                 } else if (line[5] == ' ') {
@@ -327,45 +355,47 @@ service::service(config const& c,
                   return st.resolve_direction({line.substr(c.s_info_.dir_)});
                 }
               });
-
-  verify_service();
 }
 
-void service::verify_service() {
-  utl::verify(stops_.size() >= 2, "service with less than 2 stops");
-}
+string service::display_name(nigiri::timetable& tt) const {
+  static auto const unknown_catergory = category{.name_ = "UKN",
+                                                 .long_name_ = "UNKNOWN",
+                                                 .output_rule_ = 0U,
+                                                 .clasz_ = clasz::kOther};
 
-std::vector<std::pair<int, provider_idx_t>> service::get_ids() const {
-  std::vector<std::pair<int, provider_idx_t>> ids;
+  constexpr auto const kOnlyCategory = std::uint8_t{0b0001};
+  constexpr auto const kOnlyTrainNr = std::uint8_t{0b0010};
+  constexpr auto const kNoOutput = std::uint8_t{0b0011};
+  constexpr auto const kUseProvider = std::uint8_t{0b1000};
 
-  // Add first service id.
-  auto const& first_section = sections_.front();
-  ids.emplace_back(first_section.train_num_, first_section.admin_);
+  auto const& cat = *begin_to_end_info_.category_.value_or(
+      sections_.front().category_.value_or(&unknown_catergory));
+  auto const& provider = tt.providers_.at(
+      begin_to_end_info_.admin_.value_or(sections_.front().admin_.value()));
+  auto const is = [&](auto const flag) {
+    return (cat.output_rule_ & flag) == flag;
+  };
 
-  // Add new service id if it changed.
-  for (auto i = size_t{1U}; i < sections_.size(); ++i) {
-    auto const id = std::pair{sections_[i].train_num_, sections_[i].admin_};
-    if (id != ids.back()) {
-      ids.emplace_back(id);
-    }
+  if (is(kNoOutput)) {
+    return "";
+  } else {
+    auto const train_nr = initial_train_num_;
+    auto const line_id =
+        begin_to_end_info_.line_information_
+            .value_or(sections_.empty()
+                          ? ""
+                          : sections_.front().line_information_.value_or(""))
+            .to_str();
+    auto const first =
+        is(kOnlyTrainNr)
+            ? string{""}
+            : (is(kUseProvider) ? provider.short_name_ : cat.name_);
+    auto const second =
+        is(kOnlyCategory)
+            ? string{""}
+            : (train_nr == 0U ? line_id : fmt::to_string(train_nr));
+    return fmt::format("{}{}{}", first, first.empty() ? "" : " ", second);
   }
-
-  return ids;
-}
-
-int service::find_first_stop_at(eva_number const eva_num) const {
-  for (auto i = size_t{0U}; i < stops_.size(); ++i) {
-    if (stops_[i].eva_num_ == eva_num) {
-      return static_cast<int>(i);
-    }
-  }
-  return kTimeNotSet;
-}
-
-int service::get_first_stop_index_at(eva_number const eva_num) const {
-  auto const idx = find_first_stop_at(eva_num);
-  utl::verify(idx != kTimeNotSet, "stop eva number {} not found", eva_num);
-  return idx;
 }
 
 }  // namespace nigiri::loader::hrd

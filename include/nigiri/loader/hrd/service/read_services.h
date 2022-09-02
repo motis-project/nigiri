@@ -5,6 +5,7 @@
 #include "nigiri/loader/hrd/service/expand_local_to_utc.h"
 #include "nigiri/loader/hrd/service/expand_repetitions.h"
 #include "nigiri/loader/hrd/service/expand_traffic_days.h"
+#include "nigiri/loader/hrd/service/progress_update_fn.h"
 #include "nigiri/loader/hrd/service/ref_service.h"
 #include "nigiri/loader/hrd/service/service.h"
 #include "nigiri/loader/hrd/service/service_store.h"
@@ -12,7 +13,7 @@
 
 namespace nigiri::loader::hrd {
 
-template <typename ConsumerFn, typename ProgressFn>
+template <typename ConsumerFn>
 void parse_services(config const& c,
                     char const* filename,
                     source_file_idx_t const source_file_idx,
@@ -20,7 +21,7 @@ void parse_services(config const& c,
                     service_store& store,
                     stamm& st,
                     std::string_view file_content,
-                    ProgressFn&& bytes_consumed,
+                    progress_update_fn const& progress_update,
                     ConsumerFn&& consumer) {
   auto const expand_service = [&](service_idx_t const s_idx) {
     expand_traffic_days(store, s_idx, st, [&](ref_service const& a) {
@@ -37,7 +38,7 @@ void parse_services(config const& c,
         last_line = line_number;
 
         if (line_number % 1000 == 0) {
-          bytes_consumed(static_cast<size_t>(line.c_str() - &file_content[0]));
+          progress_update(static_cast<size_t>(line.c_str() - &file_content[0]));
         }
 
         if (line.len == 0 || line[0] == '%') {
