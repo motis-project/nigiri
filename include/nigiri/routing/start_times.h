@@ -67,7 +67,7 @@ void get_starts(timetable const& tt,
       // Iterate the location sequence, searching the given location.
       auto const location_seq = tt.route_location_seq_.at(r);
       for (auto const [i, s] : utl::enumerate(location_seq)) {
-        if (s.location_idx() != o.location_) {
+        if (timetable::stop{s}.location_idx() != o.location_) {
           continue;
         }
 
@@ -77,13 +77,14 @@ void get_starts(timetable const& tt,
         // - entering at last stop for forward search
         // - exiting at first stop for backward search
         if ((SearchDir == direction::kBackward &&
-             (i == 0U || !s.out_allowed())) ||
+             (i == 0U || !timetable::stop{s}.out_allowed())) ||
             (SearchDir == direction::kForward &&
-             (i == location_seq.size() - 1 || !s.in_allowed()))) {
+             (i == location_seq.size() - 1 ||
+              !timetable::stop{s}.in_allowed()))) {
           continue;
         }
 
-        add_start_times_at_stop(r, i, s.location_idx(),
+        add_start_times_at_stop(r, i, timetable::stop{s}.location_idx(),
                                 SearchDir == direction::kForward
                                     ? start_interval + o.offset_
                                     : start_interval - o.offset_,

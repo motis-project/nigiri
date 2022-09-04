@@ -20,6 +20,12 @@ namespace nigiri {
 
 struct timetable {
   struct stop {
+    using value_type = location_idx_t::value_t;
+
+    stop(location_idx_t::value_t const val) {
+      *reinterpret_cast<location_idx_t::value_t*>(this) = val;
+    }
+    
     stop(location_idx_t const location,
          bool const in_allowed,
          bool const out_allowed)
@@ -32,14 +38,15 @@ struct timetable {
     bool out_allowed() const { return out_allowed_ != 0U; }
 
     cista::hash_t hash() const {
-      return cista::hash_combine(
-          cista::BASE_HASH,
-          *reinterpret_cast<location_idx_t::value_t const*>(this));
+      return cista::hash_combine(cista::BASE_HASH, value());
+    }
+
+    location_idx_t::value_t value() const {
+      return *reinterpret_cast<location_idx_t::value_t const*>(this);
     }
 
     friend auto operator<=>(stop const&, stop const&) = default;
 
-  private:
     location_idx_t::value_t location_ : 30;
     location_idx_t::value_t in_allowed_ : 1;
     location_idx_t::value_t out_allowed_ : 1;
@@ -118,11 +125,11 @@ struct timetable {
   struct transport {
     bitfield_idx_t bitfield_idx_;
     route_idx_t route_idx_;
-    vector<minutes_after_midnight_t> stop_times_;
-    vector<merged_trips_idx_t> external_trip_ids_;
-    vector<attribute_combination_idx_t> section_attributes_;
-    vector<provider_idx_t> section_providers_;
-    vector<trip_direction_idx_t> section_directions_;
+    std::basic_string<minutes_after_midnight_t> stop_times_;
+    std::basic_string<merged_trips_idx_t> external_trip_ids_;
+    std::basic_string<attribute_combination_idx_t> section_attributes_;
+    std::basic_string<provider_idx_t> section_providers_;
+    std::basic_string<trip_direction_idx_t> section_directions_;
   };
 
   trip_idx_t register_trip_id(
@@ -153,11 +160,11 @@ struct timetable {
     return idx;
   }
 
-  route_idx_t register_route(vector<stop> stop_seq,
-                             vector<clasz> clasz_sections) {
+  route_idx_t register_route(std::basic_string<stop::value_type> stop_seq,
+                             std::basic_string<clasz> clasz_sections) {
     auto const idx = route_location_seq_.size();
     for (auto const& s : stop_seq) {
-      location_routes_[s.location_idx()].emplace_back(idx);
+      location_routes_[timetable::stop{s}.location_idx()].emplace_back(idx);
     }
     route_transport_ranges_.emplace_back(
         transport_idx_t{transport_traffic_days_.size()},
@@ -172,7 +179,8 @@ struct timetable {
         transport_idx_t{transport_traffic_days_.size()};
   }
 
-  merged_trips_idx_t register_merged_trip(vector<trip_idx_t> trip_ids) {
+  merged_trips_idx_t register_merged_trip(
+      std::basic_string<trip_idx_t> trip_ids) {
     auto const idx = merged_trips_.size();
     merged_trips_.emplace_back(std::move(trip_ids));
     return merged_trips_idx_t{static_cast<merged_trips_idx_t::value_t>(idx)};
@@ -202,11 +210,11 @@ struct timetable {
            route_location_seq_.at(t.route_idx_).size() * 2 - 2);
     assert(t.external_trip_ids_.size() == 1U ||
            t.external_trip_ids_.size() == t.stop_times_.size() / 2);
-    assert(t.section_attributes_.size() == 1U ||
+    assert(t.section_attributes_.size() <= 1U ||
            t.section_attributes_.size() == t.stop_times_.size() / 2);
     assert(t.section_providers_.size() == 1U ||
            t.section_providers_.size() == t.stop_times_.size() / 2);
-    assert(t.section_directions_.size() == 1U ||
+    assert(t.section_directions_.size() <= 1U ||
            t.section_directions_.size() == t.stop_times_.size() / 2);
   }
 
@@ -297,7 +305,7 @@ struct timetable {
   vector_map<route_idx_t, interval<transport_idx_t>> route_transport_ranges_;
 
   // Route -> list of stops
-  vecvec<route_idx_t, stop> route_location_seq_;
+  vecvec<route_idx_t, stop::value_type> route_location_seq_;
 
   // Route -> clasz per section
   vecvec<route_idx_t, clasz> route_section_clasz_;

@@ -85,8 +85,8 @@ struct service {
   parser_info origin_{};
   unsigned num_repetitions_{0U};
   unsigned interval_{0U};
-  std::vector<stop> stops_;
-  std::vector<section> sections_;
+  std::basic_string<duration_t> local_times_;
+  std::basic_string<timetable::stop::value_type> stops_;
   section begin_to_end_info_;
   bitfield traffic_days_;
   provider_idx_t initial_admin_;

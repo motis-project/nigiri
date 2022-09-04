@@ -40,23 +40,28 @@ void service_builder::add_services(config const& c,
   };
 
   auto const add_service = [&](ref_service const& s) {
-    auto const stop_seq = to_vec(s.stops(store_), [&](service::stop const& x) {
-      return timetable::stop(stamm_.resolve_location(x.eva_num_),
-                             x.dep_.in_out_allowed_, x.arr_.in_out_allowed_);
-    });
+    auto const stop_seq =
+        utl::to<std::basic_string<timetable::stop::value_type>>(
+            s.stops(store_), [&](service::stop const& x) {
+              return timetable::stop(stamm_.resolve_location(x.eva_num_),
+                                     x.dep_.in_out_allowed_,
+                                     x.arr_.in_out_allowed_)
+                  .value();
+            });
     auto const& ref = store_.get(s.ref_);
     auto const begin_to_end_cat = ref.begin_to_end_info_.category_;
     auto const sections_clasz =
         begin_to_end_cat.has_value()
-            ? vector<clasz>{begin_to_end_cat.value() == nullptr
-                                ? clasz::kOther
-                                : begin_to_end_cat.value()->clasz_}
-            : to_vec(s.sections(store_), [&](service::section const& sec) {
-                assert(sec.category_.has_value());
-                return sec.category_.value() == nullptr
-                           ? clasz::kOther
-                           : sec.category_.value()->clasz_;
-              });
+            ? std::basic_string<clasz>{begin_to_end_cat.value() == nullptr
+                                           ? clasz::kOther
+                                           : begin_to_end_cat.value()->clasz_}
+            : utl::to<std::basic_string<clasz>>(
+                  s.sections(store_), [&](service::section const& sec) {
+                    assert(sec.category_.has_value());
+                    return sec.category_.value() == nullptr
+                               ? clasz::kOther
+                               : sec.category_.value()->clasz_;
+                  });
 
     auto& routes = route_services_[{stop_seq, sections_clasz}];
     for (auto& r : routes) {
@@ -96,9 +101,9 @@ void service_builder::write_services(const nigiri::source_idx_t src) {
                           s.utc_times_.back().count(), s.line_info(store_)),
                       .src_ = src},
               ref.display_name(tt_), ref.origin_.dbg_, tt_.next_transport_idx(),
-              {0U, stop_seq.size()});
+              {0U, static_cast<unsigned>(stop_seq.size())});
 
-          vector<attribute_combination_idx_t> section_attributes{
+          std::basic_string<attribute_combination_idx_t> section_attributes{
               attribute_combination_idx_t::invalid()};
           auto const get_attribute_combination_idx =
               [&](std::vector<service::attribute> const& a,
@@ -127,44 +132,48 @@ void service_builder::write_services(const nigiri::source_idx_t src) {
           auto const has_no_attributes = [](service::section const& sec) {
             return !sec.attributes_.has_value();
           };
-          if (utl::all_of(ref.sections_, has_no_attributes)) {
+          if (!ref.sections_.empty() &&
+              utl::all_of(ref.sections_, has_no_attributes)) {
             if (ref.begin_to_end_info_.attributes_.has_value()) {
               section_attributes = {get_attribute_combination_idx(
                   ref.begin_to_end_info_.attributes_.value(), {})};
             }
-          } else {
+          } else if (!ref.sections_.empty()) {
             section_attributes =
-                to_vec(s.sections(store_), [&](service::section const& sec) {
-                  return get_attribute_combination_idx(
-                      ref.begin_to_end_info_.attributes_.value_or(
-                          std::vector<service::attribute>{}),
-                      sec.attributes_.value_or(
-                          std::vector<service::attribute>{}));
-                });
+                utl::to<std::basic_string<attribute_combination_idx_t>>(
+                    s.sections(store_), [&](service::section const& sec) {
+                      return get_attribute_combination_idx(
+                          ref.begin_to_end_info_.attributes_.value_or(
+                              std::vector<service::attribute>{}),
+                          sec.attributes_.value_or(
+                              std::vector<service::attribute>{}));
+                    });
           }
 
-          auto section_providers = vector<provider_idx_t>{};
+          auto section_providers = std::basic_string<provider_idx_t>{};
           if (ref.begin_to_end_info_.admin_.has_value()) {
             section_providers = {ref.begin_to_end_info_.admin_.value()};
-          } else {
-            section_providers =
-                to_vec(s.sections(store_), [&](service::section const& sec) {
+          } else if (!ref.sections_.empty()) {
+            section_providers = utl::to<std::basic_string<provider_idx_t>>(
+                s.sections(store_), [&](service::section const& sec) {
                   return sec.admin_.value();
                 });
           }
 
-          auto section_directions = vector<trip_direction_idx_t>{};
+          auto section_directions = std::basic_string<trip_direction_idx_t>{};
           if (ref.begin_to_end_info_.direction_.has_value()) {
             section_directions = {ref.begin_to_end_info_.direction_.value()};
-          } else if (utl::any_of(s.sections(store_),
+          } else if (!ref.sections_.empty() &&
+                     utl::any_of(s.sections(store_),
                                  [](service::section const& sec) {
                                    return sec.direction_.has_value();
                                  })) {
             section_directions =
-                to_vec(s.sections(store_), [&](service::section const& sec) {
-                  return sec.direction_.value_or(
-                      trip_direction_idx_t::invalid());
-                });
+                utl::to<std::basic_string<trip_direction_idx_t>>(
+                    s.sections(store_), [&](service::section const& sec) {
+                      return sec.direction_.value_or(
+                          trip_direction_idx_t::invalid());
+                    });
           }
 
           auto const merged_trip = tt_.register_merged_trip({id});

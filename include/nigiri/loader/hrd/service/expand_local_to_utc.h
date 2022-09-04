@@ -14,7 +14,7 @@ void to_local_time(service_store const& store,
                    ref_service const& s,
                    Fn&& consumer) {
   struct duration_hash {
-    cista::hash_t operator()(vector<duration_t> const& v) const {
+    cista::hash_t operator()(std::basic_string<duration_t> const& v) const {
       auto h = cista::BASE_HASH;
       for (auto const& el : v) {
         h = cista::hash_combine(h, el.count());
@@ -24,12 +24,12 @@ void to_local_time(service_store const& store,
   };
 
   auto utc_time_traffic_days =
-      hash_map<vector<duration_t>, bitfield, duration_hash>{};
+      hash_map<std::basic_string<duration_t>, bitfield, duration_hash>{};
   auto const local_times = s.local_times(store);
   auto const stop_timezones = s.get_stop_timezones(store, st);
   auto const first_day = tt_interval.from_ + kBaseDayOffset;
   auto const last_day = tt_interval.to_ - kBaseDayOffset;
-  auto utc_service_times = vector<duration_t>{};
+  auto utc_service_times = std::basic_string<duration_t>{};
   utc_service_times.resize(static_cast<vector<duration_t>::size_type>(
       s.split_info_.stop_range().size() * 2U - 2U));
   for (auto day = first_day; day <= last_day; day += std::chrono::days{1}) {

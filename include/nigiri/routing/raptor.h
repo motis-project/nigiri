@@ -107,7 +107,8 @@ struct raptor {
     for (auto i = 0U; i != stop_seq.size(); ++i) {
       auto const stop_idx =
           static_cast<unsigned>(kFwd ? i : stop_seq.size() - i - 1U);
-      auto const l_idx = cista::to_idx(stop_seq[stop_idx].location_idx());
+      auto const l_idx =
+          cista::to_idx(timetable::stop{stop_seq[stop_idx]}.location_idx());
       auto const current_best =
           get_best(state_.best_[l_idx], state_.round_times_[k - 1][l_idx]);
 

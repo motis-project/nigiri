@@ -22,7 +22,8 @@ struct service_builder {
 
   stamm& stamm_;
   timetable& tt_;
-  hash_map<pair<vector<timetable::stop>, vector<clasz>>,
+  hash_map<pair<std::basic_string<timetable::stop::value_type>,
+                std::basic_string<clasz>>,
            vector<vector<ref_service>>>
       route_services_;
   service_store store_;

@@ -104,20 +104,18 @@ private:
   size_t from_idx_{}, to_idx_{};
 };
 
-std::vector<std::pair<utl::cstr, range>> compute_ranges(
-    std::vector<utl::cstr> const& spec_lines,
-    std::vector<service::stop> const& stops,
-    range_parse_information const& parse_info) {
-  std::vector<std::pair<utl::cstr, range>> parsed(spec_lines.size());
-  std::transform(
-      begin(spec_lines), end(spec_lines), begin(parsed), [&](utl::cstr spec) {
-        return std::make_pair(
-            spec, range(stops, spec.substr(parse_info.from_eva_or_idx_),
-                        spec.substr(parse_info.to_eva_or_idx_),
-                        spec.substr(parse_info.from_hhmm_or_idx_),
-                        spec.substr(parse_info.to_hhmm_or_idx_)));
-      });
-  return parsed;
+template <typename Fn>
+void compute_ranges(std::vector<utl::cstr> const& spec_lines,
+                    std::vector<service::stop> const& stops,
+                    range_parse_information const& parse_info,
+                    Fn&& fn) {
+  for (auto const& spec : spec_lines) {
+    fn(std::make_pair(spec,
+                      range(stops, spec.substr(parse_info.from_eva_or_idx_),
+                            spec.substr(parse_info.to_eva_or_idx_),
+                            spec.substr(parse_info.from_hhmm_or_idx_),
+                            spec.substr(parse_info.to_hhmm_or_idx_))));
+  }
 }
 
 template <typename TargetInformationType, typename TargetInformationParserFun>
@@ -128,10 +126,10 @@ void parse_range(std::vector<utl::cstr> const& spec_lines,
                  service::section& begin_to_end,
                  TargetInformationType service::section::*member,
                  TargetInformationParserFun parse_target_info) {
-  for (auto const& r : compute_ranges(spec_lines, stops, parse_info)) {
+  compute_ranges(spec_lines, stops, parse_info, [&](auto const& r) {
     TargetInformationType target_info = parse_target_info(r.first, r.second);
 
-    if (r.second.from_idx() == 0U && r.second.to_idx() == sections.size()) {
+    if (r.second.from_idx() == 0U && r.second.to_idx() == stops.size() - 1U) {
       (begin_to_end.*member) = std::move(target_info);
     } else {
       sections.resize(stops.size() - 1);
@@ -139,7 +137,7 @@ void parse_range(std::vector<utl::cstr> const& spec_lines,
         (sections[i].*member) = target_info;
       }
     }
-  }
+  });
 }
 
 template <typename TargetInformationType, typename TargetInformationParserFun>
@@ -151,10 +149,10 @@ void parse_range(
     service::section& begin_to_end,
     std::optional<std::vector<TargetInformationType>> service::section::*member,
     TargetInformationParserFun parse_target_info) {
-  for (auto const& r : compute_ranges(spec_lines, stops, parse_info)) {
+  compute_ranges(spec_lines, stops, parse_info, [&](auto const& r) {
     TargetInformationType target_info = parse_target_info(r.first, r.second);
 
-    if (r.second.from_idx() == 0U && r.second.to_idx() == sections.size()) {
+    if (r.second.from_idx() == 0U && r.second.to_idx() == stops.size() - 1U) {
       if (!(begin_to_end.*member).has_value()) {
         (begin_to_end.*member) = std::vector<TargetInformationType>{};
       }
@@ -168,7 +166,7 @@ void parse_range(
         (sections[i].*member)->push_back(target_info);
       }
     }
-  }
+  });
 }
 
 service::stop parse_stop(utl::cstr stop) {
@@ -180,6 +178,20 @@ service::stop parse_stop(utl::cstr stop) {
                parse<int>(stop.substr(37, utl::size(5)), service::kTimeNotSet)),
            stop[36] != '-'}};
 }
+
+std::basic_string<duration_t> parse_local_times(
+    std::vector<utl::cstr> const& stops) {
+  std::basic_string<duration_t> ret{};
+  auto i = 0U;
+  for (auto const& [from, to] : utl::pairwise(stops)) {
+    ret[i++] = hhmm_to_min(
+        parse<int>(from.substr(37, utl::size(5)), service::kTimeNotSet));
+  }
+  return ret;
+}
+
+std::basic_string<timetable::stop::value_type> parse_stops(
+    std::vector<utl::cstr> const& stops) {}
 
 int initial_train_num(specification const& spec) {
   return parse_verify<int>(spec.internal_service_.substr(3, utl::size(5)));
@@ -279,7 +291,7 @@ void parse_sections(stamm& st,
   auto const start_train_num = initial_train_num(spec);
 
   auto const has_extra_info = [](utl::cstr const stop_str) {
-    return stop_train_num(stop_str).empty() && stop_admin(stop_str).empty();
+    return !stop_train_num(stop_str).empty() || !stop_admin(stop_str).empty();
   };
 
   if (utl::none_of(spec.stops_, has_extra_info)) {
@@ -310,7 +322,8 @@ service::service(config const& c,
           parse<unsigned>(spec.internal_service_.substr(22, utl::size(3)))},
       interval_{
           parse<unsigned>(spec.internal_service_.substr(26, utl::size(3)))},
-      stops_{utl::to_vec(spec.stops_, parse_stop)},
+      local_times_{parse_local_times(spec.stops_)},
+      stops_{parse_stops(spec.stops_)},
       initial_admin_{st.resolve_provider(initial_admin(spec))},
       initial_train_num_{initial_train_num(spec)} {
   utl::verify(stops_.size() >= 2, "service with less than 2 stops");
@@ -368,10 +381,13 @@ string service::display_name(nigiri::timetable& tt) const {
   constexpr auto const kNoOutput = std::uint8_t{0b0011};
   constexpr auto const kUseProvider = std::uint8_t{0b1000};
 
-  auto const& cat = *begin_to_end_info_.category_.value_or(
-      sections_.front().category_.value_or(&unknown_catergory));
+  auto const& cat =
+      *(begin_to_end_info_.category_.has_value()
+            ? begin_to_end_info_.category_.value()
+            : sections_.front().category_.value_or(&unknown_catergory));
   auto const& provider = tt.providers_.at(
-      begin_to_end_info_.admin_.value_or(sections_.front().admin_.value()));
+      begin_to_end_info_.admin_.has_value() ? begin_to_end_info_.admin_.value()
+                                            : sections_.front().admin_.value());
   auto const is = [&](auto const flag) {
     return (cat.output_rule_ & flag) == flag;
   };
