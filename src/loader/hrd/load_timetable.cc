@@ -1,5 +1,7 @@
 #include "nigiri/loader/hrd/load_timetable.h"
 
+#include <execution>
+
 #include "utl/helpers/algorithm.h"
 #include "utl/pipes.h"
 #include "utl/progress_tracker.h"
@@ -50,6 +52,15 @@ void load_timetable(source_idx_t const src,
     sb.write_services(src);
     total_bytes_processed += file.data().size();
   }
+
+  scoped_timer sort_timer{"sorting trip ids"};
+  std::sort(std::execution::par_unseq, begin(tt.trip_id_to_idx_),
+            end(tt.trip_id_to_idx_),
+            [&](pair<trip_id_idx_t, trip_idx_t> const& a,
+                pair<trip_id_idx_t, trip_idx_t> const& b) {
+              return tt.trip_id_strings_[a.first].view() <
+                     tt.trip_id_strings_[b.first].view();
+            });
 }
 
 }  // namespace nigiri::loader::hrd

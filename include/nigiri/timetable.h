@@ -133,7 +133,8 @@ struct timetable {
   };
 
   trip_idx_t register_trip_id(
-      trip_id const& id,
+      fmt::memory_buffer const& trip_id_str,
+      source_idx_t const src,
       std::string const& display_name,
       trip_debug const dbg,
       transport_idx_t const ref_transport,
@@ -141,8 +142,8 @@ struct timetable {
     auto const trip_idx = trip_idx_t{trip_ids_.size()};
 
     auto const trip_id_idx = trip_id_idx_t{trip_id_strings_.size()};
-    trip_id_strings_.emplace_back(id.id_);
-    trip_id_src_.emplace_back(id.src_);
+    trip_id_strings_.emplace_back(trip_id_str);
+    trip_id_src_.emplace_back(src);
 
     trip_id_to_idx_.emplace_back(trip_id_idx, trip_idx);
     trip_display_names_.emplace_back(display_name);

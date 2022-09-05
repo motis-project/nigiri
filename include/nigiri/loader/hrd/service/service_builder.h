@@ -20,7 +20,7 @@ struct service_builder {
   void write_services(source_idx_t const src);
 
 private:
-  void add_service(ref_service const&);
+  void add_service(ref_service&&);
 
   stamm& stamm_;
   timetable& tt_;
@@ -39,6 +39,7 @@ private:
   std::basic_string<provider_idx_t> section_providers_;
   std::basic_string<attribute_combination_idx_t> section_attributes_;
   std::basic_string<trip_direction_idx_t> section_directions_;
+  fmt::memory_buffer trip_id_buf_;
 };
 
 }  // namespace nigiri::loader::hrd

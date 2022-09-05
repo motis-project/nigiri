@@ -32,7 +32,7 @@ std::optional<size_t> get_index(vector<ref_service> const& route_services,
   return index;
 }
 
-void service_builder::add_service(ref_service const& s) {
+void service_builder::add_service(ref_service&& s) {
   route_key_.first.clear();
   utl::transform_to(
       s.stops(store_), route_key_.first, [&](service::stop const& x) {
@@ -42,18 +42,21 @@ void service_builder::add_service(ref_service const& s) {
       });
 
   auto const begin_to_end_cat = store_.get(s.ref_).begin_to_end_info_.category_;
-  route_key_.second =
-      begin_to_end_cat.has_value()
-          ? std::basic_string<clasz>{begin_to_end_cat.value() == nullptr
-                                         ? clasz::kOther
-                                         : begin_to_end_cat.value()->clasz_}
-          : utl::transform_to<std::basic_string<clasz>>(
-                s.sections(store_), [&](service::section const& sec) {
-                  assert(sec.category_.has_value());
-                  return sec.category_.value() == nullptr
-                             ? clasz::kOther
-                             : sec.category_.value()->clasz_;
-                });
+  if (begin_to_end_cat.has_value()) {
+    route_key_.second.resize(1U);
+    route_key_.second[0] = begin_to_end_cat.value() == nullptr
+                               ? clasz::kOther
+                               : begin_to_end_cat.value()->clasz_;
+  } else {
+    route_key_.second.clear();
+    utl::transform_to(s.sections(store_), route_key_.second,
+                      [&](service::section const& sec) {
+                        assert(sec.category_.has_value());
+                        return sec.category_.value() == nullptr
+                                   ? clasz::kOther
+                                   : sec.category_.value()->clasz_;
+                      });
+  }
 
   if (auto const it = route_services_.find(route_key_);
       it != end(route_services_)) {
@@ -64,10 +67,11 @@ void service_builder::add_service(ref_service const& s) {
         return;
       }
     }
-    it->second.emplace_back(vector<ref_service>{s});
+    it->second.emplace_back(vector<ref_service>{std::move(s)});
+  } else {
+    route_services_.emplace(route_key_,
+                            vector<vector<ref_service>>{{std::move(s)}});
   }
-
-  route_services_.emplace(route_key_, vector<vector<ref_service>>{{s}});
 }
 
 void service_builder::add_services(config const& c,
@@ -79,7 +83,7 @@ void service_builder::add_services(config const& c,
   auto const source_file_idx = tt_.register_source_file(filename);
   parse_services(c, filename, source_file_idx, tt_.date_range_, store_, stamm_,
                  file_content, progress_update,
-                 [&](ref_service const& s) { add_service(s); });
+                 [&](ref_service&& s) { add_service(std::move(s)); });
 }
 
 void service_builder::write_services(const nigiri::source_idx_t src) {
@@ -90,18 +94,20 @@ void service_builder::write_services(const nigiri::source_idx_t src) {
       auto const& [stop_seq, sections_clasz] = key;
       auto const route_idx = tt_.register_route(stop_seq, sections_clasz);
       for (auto const& s : services) {
-        auto const ref = store_.get(s.ref_);
+        auto const& ref = store_.get(s.ref_);
         try {
           auto const stops = s.stops(store_);
+
+          trip_id_buf_.clear();
+          fmt::format_to(trip_id_buf_, "{}/{:07}/{}/{:07}/{}/{}",
+                         ref.initial_train_num_, to_idx(stops.front().eva_num_),
+                         s.utc_times_.front().count(),
+                         to_idx(stops.back().eva_num_),
+                         s.utc_times_.back().count(), s.line_info(store_));
+
           auto const id = tt_.register_trip_id(
-              trip_id{.id_ = fmt::format(
-                          "{}/{:07}/{}/{:07}/{}/{}", ref.initial_train_num_,
-                          to_idx(stops.front().eva_num_),
-                          s.utc_times_.front().count(),
-                          to_idx(stops.back().eva_num_),
-                          s.utc_times_.back().count(), s.line_info(store_)),
-                      .src_ = src},
-              ref.display_name(tt_), ref.origin_.dbg_, tt_.next_transport_idx(),
+              trip_id_buf_, src, ref.display_name(tt_), ref.origin_.dbg_,
+              tt_.next_transport_idx(),
               {0U, static_cast<unsigned>(stop_seq.size())});
 
           auto const get_attribute_combination_idx =
