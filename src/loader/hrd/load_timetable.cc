@@ -54,13 +54,17 @@ void load_timetable(source_idx_t const src,
   }
 
   scoped_timer sort_timer{"sorting trip ids"};
-  std::sort(std::execution::par_unseq, begin(tt.trip_id_to_idx_),
-            end(tt.trip_id_to_idx_),
-            [&](pair<trip_id_idx_t, trip_idx_t> const& a,
-                pair<trip_id_idx_t, trip_idx_t> const& b) {
-              return tt.trip_id_strings_[a.first].view() <
-                     tt.trip_id_strings_[b.first].view();
-            });
+
+  std::sort(
+#if __cpp_lib_execution
+      std::execution::par_unseq,
+#endif
+      begin(tt.trip_id_to_idx_), end(tt.trip_id_to_idx_),
+      [&](pair<trip_id_idx_t, trip_idx_t> const& a,
+          pair<trip_id_idx_t, trip_idx_t> const& b) {
+        return tt.trip_id_strings_[a.first].view() <
+               tt.trip_id_strings_[b.first].view();
+      });
 }
 
 }  // namespace nigiri::loader::hrd
