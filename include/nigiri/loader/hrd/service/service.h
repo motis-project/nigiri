@@ -58,10 +58,10 @@ struct service {
     CISTA_COMPARABLE()
 
     attribute(unsigned bitfield_num, attribute_idx_t const code)
-        : bitfield_num_{bitfield_num}, code_{code} {}
+        : bitfield_num_{bitfield_num}, idx_{code} {}
 
     unsigned bitfield_num_;
-    attribute_idx_t code_;
+    attribute_idx_t idx_;
   };
 
   struct section {

@@ -5,6 +5,8 @@
 #include "utl/get_or_create.h"
 #include "utl/helpers/algorithm.h"
 
+#include "nigiri/loader/hrd/service/read_services.h"
+
 namespace nigiri::loader::hrd {
 
 std::optional<size_t> get_index(vector<ref_service> const& route_services,
@@ -74,6 +76,9 @@ void service_builder::add_service(ref_service&& s) {
   }
 }
 
+service_builder::service_builder(stamm& s, timetable& tt)
+    : stamm_{s}, tt_{tt} {}
+
 void service_builder::add_services(config const& c,
                                    const char* filename,
                                    std::string_view file_content,
@@ -119,12 +124,12 @@ void service_builder::write_services(const nigiri::source_idx_t src) {
                 auto i = 0U;
                 if (a.has_value()) {
                   for (auto const& attr : a.value()) {
-                    attribute_combination_[i++] = attr.code_;
+                    attribute_combination_[i++] = attr.idx_;
                   }
                 }
                 if (b.has_value()) {
                   for (auto const& attr : b.value()) {
-                    attribute_combination_[i++] = attr.code_;
+                    attribute_combination_[i++] = attr.idx_;
                   }
                 }
                 utl::erase_duplicates(attribute_combination_);
@@ -138,11 +143,10 @@ void service_builder::write_services(const nigiri::source_idx_t src) {
                       return combination_idx;
                     });
               };
-          auto const has_no_attributes = [](service::section const& sec) {
-            return !sec.attributes_.has_value();
-          };
           if (!ref.sections_.empty() &&
-              utl::all_of(ref.sections_, has_no_attributes)) {
+              utl::all_of(ref.sections_, [](service::section const& sec) {
+                return !sec.attributes_.has_value();
+              })) {
             if (ref.begin_to_end_info_.attributes_.has_value()) {
               section_attributes_.resize(1U);
               section_attributes_[0] = get_attribute_combination_idx(
