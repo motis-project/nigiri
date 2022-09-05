@@ -7,78 +7,79 @@
 
 namespace nigiri::loader::hrd {
 
+std::optional<size_t> get_index(service_store const& st,
+                                vector<ref_service> const& route_services,
+                                ref_service const& s) {
+  auto const index = static_cast<unsigned>(std::distance(
+      begin(route_services),
+      std::lower_bound(begin(route_services), end(route_services), s,
+                       [&](ref_service const& a, ref_service const& b) {
+                         return a.stops(st).front().dep_.time_ % 1440 <
+                                b.stops(st).front().dep_.time_ % 1440;
+                       })));
+
+  for (auto i = 0U; i != s.utc_times_.size(); ++i) {
+    auto const is_earlier_eq =
+        index > 0 && s.utc_times_[i] % 1440 <
+                         route_services[index - 1].utc_times_.at(i) % 1440;
+    auto const is_later_eq =
+        index < route_services.size() &&
+        s.utc_times_[i] % 1440 > route_services[index].utc_times_.at(i) % 1440;
+    if (is_earlier_eq || is_later_eq) {
+      return std::nullopt;
+    }
+  }
+
+  return index;
+}
+
+void service_builder::add_service(ref_service const& s) {
+  route_key_.first.clear();
+  utl::transform_to<std::basic_string<timetable::stop::value_type>>(
+      s.stops(store_), route_key_.first, [&](service::stop const& x) {
+        return timetable::stop(stamm_.resolve_location(x.eva_num_),
+                               x.dep_.in_out_allowed_, x.arr_.in_out_allowed_)
+            .value();
+      });
+  auto const& ref = store_.get(s.ref_);
+  auto const begin_to_end_cat = ref.begin_to_end_info_.category_;
+  route_key_.second =
+      begin_to_end_cat.has_value()
+          ? std::basic_string<clasz>{begin_to_end_cat.value() == nullptr
+                                         ? clasz::kOther
+                                         : begin_to_end_cat.value()->clasz_}
+          : utl::transform_to<std::basic_string<clasz>>(
+                s.sections(store_), [&](service::section const& sec) {
+                  assert(sec.category_.has_value());
+                  return sec.category_.value() == nullptr
+                             ? clasz::kOther
+                             : sec.category_.value()->clasz_;
+                });
+
+  if (auto const it = route_services_.find(route_key_);
+      it != end(route_services_)) {
+    for (auto& r : it->second) {
+      auto const idx = get_index(store_, r, s);
+      if (idx.has_value()) {
+        r.insert(begin(r) + *idx, s);
+        return;
+      }
+    }
+  } else {
+    route_services_.emplace(route_key_, vector<vector<ref_service>>{{s}});
+  }
+}
+
 void service_builder::add_services(config const& c,
                                    const char* filename,
                                    std::string_view file_content,
                                    progress_update_fn const& progress_update) {
   scoped_timer write{"reading services"};
 
-  auto const get_index = [&](vector<ref_service> const& route_services,
-                             ref_service const& s) -> std::optional<size_t> {
-    auto const index = static_cast<unsigned>(std::distance(
-        begin(route_services),
-        std::lower_bound(begin(route_services), end(route_services), s,
-                         [&](ref_service const& a, ref_service const& b) {
-                           return a.stops(store_).front().dep_.time_ % 1440 <
-                                  b.stops(store_).front().dep_.time_ % 1440;
-                         })));
-
-    for (auto i = 0U; i != s.utc_times_.size(); ++i) {
-      auto const is_earlier_eq =
-          index > 0 && s.utc_times_[i] % 1440 <
-                           route_services[index - 1].utc_times_.at(i) % 1440;
-      auto const is_later_eq =
-          index < route_services.size() &&
-          s.utc_times_[i] % 1440 >
-              route_services[index].utc_times_.at(i) % 1440;
-      if (is_earlier_eq || is_later_eq) {
-        return std::nullopt;
-      }
-    }
-
-    return index;
-  };
-
-  auto const add_service = [&](ref_service const& s) {
-    auto const stop_seq =
-        utl::to<std::basic_string<timetable::stop::value_type>>(
-            s.stops(store_), [&](service::stop const& x) {
-              return timetable::stop(stamm_.resolve_location(x.eva_num_),
-                                     x.dep_.in_out_allowed_,
-                                     x.arr_.in_out_allowed_)
-                  .value();
-            });
-    auto const& ref = store_.get(s.ref_);
-    auto const begin_to_end_cat = ref.begin_to_end_info_.category_;
-    auto const sections_clasz =
-        begin_to_end_cat.has_value()
-            ? std::basic_string<clasz>{begin_to_end_cat.value() == nullptr
-                                           ? clasz::kOther
-                                           : begin_to_end_cat.value()->clasz_}
-            : utl::to<std::basic_string<clasz>>(
-                  s.sections(store_), [&](service::section const& sec) {
-                    assert(sec.category_.has_value());
-                    return sec.category_.value() == nullptr
-                               ? clasz::kOther
-                               : sec.category_.value()->clasz_;
-                  });
-
-    auto& routes = route_services_[{stop_seq, sections_clasz}];
-    for (auto& r : routes) {
-      auto const idx = get_index(r, s);
-      if (idx.has_value()) {
-        r.insert(begin(r) + *idx, s);
-        return;
-      }
-    }
-
-    // No matching route found - create new one.
-    routes.emplace_back(vector<ref_service>({s}));
-  };
-
   auto const source_file_idx = tt_.register_source_file(filename);
   parse_services(c, filename, source_file_idx, tt_.date_range_, store_, stamm_,
-                 file_content, progress_update, add_service);
+                 file_content, progress_update,
+                 [&](ref_service const& s) { add_service(s); });
 }
 
 void service_builder::write_services(const nigiri::source_idx_t src) {
@@ -103,29 +104,31 @@ void service_builder::write_services(const nigiri::source_idx_t src) {
               ref.display_name(tt_), ref.origin_.dbg_, tt_.next_transport_idx(),
               {0U, static_cast<unsigned>(stop_seq.size())});
 
-          std::basic_string<attribute_combination_idx_t> section_attributes{
-              attribute_combination_idx_t::invalid()};
           auto const get_attribute_combination_idx =
-              [&](std::vector<service::attribute> const& a,
-                  std::vector<service::attribute> const& b) {
-                vector<attribute_idx_t> combination;
-                combination.resize(a.size() + b.size());
+              [&](std::optional<std::vector<service::attribute>> const& a,
+                  std::optional<std::vector<service::attribute>> const& b) {
+                attribute_combination_.resize((a.has_value() ? a->size() : 0U) +
+                                              (b.has_value() ? b->size() : 0U));
 
-                auto i = 0;
-                for (auto const& attr : a) {
-                  combination[i++] = attr.code_;
+                auto i = 0U;
+                if (a.has_value()) {
+                  for (auto const& attr : a.value()) {
+                    attribute_combination_[i++] = attr.code_;
+                  }
                 }
-                for (auto const& attr : b) {
-                  combination[i++] = attr.code_;
+                if (b.has_value()) {
+                  for (auto const& attr : b.value()) {
+                    attribute_combination_[i++] = attr.code_;
+                  }
                 }
-                utl::erase_duplicates(combination);
+                utl::erase_duplicates(attribute_combination_);
 
                 return utl::get_or_create(
-                    attribute_combinations_, combination, [&]() {
+                    attribute_combinations_, attribute_combination_, [&]() {
                       auto const combination_idx = attribute_combination_idx_t{
                           tt_.attribute_combinations_.size()};
                       tt_.attribute_combinations_.emplace_back(
-                          std::move(combination));
+                          attribute_combination_);
                       return combination_idx;
                     });
               };
@@ -135,45 +138,53 @@ void service_builder::write_services(const nigiri::source_idx_t src) {
           if (!ref.sections_.empty() &&
               utl::all_of(ref.sections_, has_no_attributes)) {
             if (ref.begin_to_end_info_.attributes_.has_value()) {
-              section_attributes = {get_attribute_combination_idx(
-                  ref.begin_to_end_info_.attributes_.value(), {})};
+              section_attributes_.resize(1U);
+              section_attributes_[0] = get_attribute_combination_idx(
+                  ref.begin_to_end_info_.attributes_, std::nullopt);
+            } else {
+              section_attributes_.clear();
             }
           } else if (!ref.sections_.empty()) {
-            section_attributes =
-                utl::to<std::basic_string<attribute_combination_idx_t>>(
-                    s.sections(store_), [&](service::section const& sec) {
-                      return get_attribute_combination_idx(
-                          ref.begin_to_end_info_.attributes_.value_or(
-                              std::vector<service::attribute>{}),
-                          sec.attributes_.value_or(
-                              std::vector<service::attribute>{}));
-                    });
+            section_attributes_.clear();
+            utl::transform_to(s.sections(store_), section_attributes_,
+                              [&](service::section const& sec) {
+                                return get_attribute_combination_idx(
+                                    ref.begin_to_end_info_.attributes_,
+                                    sec.attributes_);
+                              });
+          } else {
+            section_attributes_.clear();
           }
 
-          auto section_providers = std::basic_string<provider_idx_t>{};
           if (ref.begin_to_end_info_.admin_.has_value()) {
-            section_providers = {ref.begin_to_end_info_.admin_.value()};
+            section_providers_.resize(1U);
+            section_providers_[0] = {ref.begin_to_end_info_.admin_.value()};
           } else if (!ref.sections_.empty()) {
-            section_providers = utl::to<std::basic_string<provider_idx_t>>(
-                s.sections(store_), [&](service::section const& sec) {
-                  return sec.admin_.value();
-                });
+            section_providers_.clear();
+            utl::transform_to(s.sections(store_), section_providers_,
+                              [&](service::section const& sec) {
+                                return sec.admin_.value();
+                              });
+          } else {
+            section_providers_.clear();
           }
 
-          auto section_directions = std::basic_string<trip_direction_idx_t>{};
           if (ref.begin_to_end_info_.direction_.has_value()) {
-            section_directions = {ref.begin_to_end_info_.direction_.value()};
+            section_directions_.resize(1U);
+            section_directions_ = ref.begin_to_end_info_.direction_.value();
           } else if (!ref.sections_.empty() &&
                      utl::any_of(s.sections(store_),
                                  [](service::section const& sec) {
                                    return sec.direction_.has_value();
                                  })) {
-            section_directions =
-                utl::to<std::basic_string<trip_direction_idx_t>>(
-                    s.sections(store_), [&](service::section const& sec) {
-                      return sec.direction_.value_or(
-                          trip_direction_idx_t::invalid());
-                    });
+            section_directions_.clear();
+            utl::transform_to(s.sections(store_), section_directions_,
+                              [&](service::section const& sec) {
+                                return sec.direction_.value_or(
+                                    trip_direction_idx_t::invalid());
+                              });
+          } else {
+            section_directions_.clear();
           }
 
           auto const merged_trip = tt_.register_merged_trip({id});
@@ -184,9 +195,9 @@ void service_builder::write_services(const nigiri::source_idx_t src) {
               .route_idx_ = route_idx,
               .stop_times_ = s.utc_times_,
               .external_trip_ids_ = {merged_trip},
-              .section_attributes_ = section_attributes,
-              .section_providers_ = section_providers,
-              .section_directions_ = section_directions});
+              .section_attributes_ = section_attributes_,
+              .section_providers_ = section_providers_,
+              .section_directions_ = section_directions_});
         } catch (std::exception const& e) {
           log(log_lvl::error, "loader.hrd.service",
               "unable to load service {}: {}", ref.origin_, e.what());

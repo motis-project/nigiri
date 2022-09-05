@@ -147,7 +147,7 @@ TEST_CASE("a") {
   std::cout << "\n\n\nEXPECTED:\n";
   std::cout << "constexpr auto const expected = std::set<std::string>{";
   for (auto const& ss : expected) {
-    std::cout << "R\"(" << ss << ")\"\n";
+    std::cout << "R\"(" << ss << ")\",\n";
   }
   std::cout << "};\n";
 

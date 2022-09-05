@@ -78,6 +78,7 @@ using route_idx_t = cista::strong<std::uint32_t, struct _location_idx>;
 using section_idx_t = cista::strong<std::uint32_t, struct _section_idx>;
 using section_db_idx_t = cista::strong<std::uint32_t, struct _section_db_idx>;
 using trip_idx_t = cista::strong<std::uint32_t, struct _trip_idx>;
+using trip_id_idx_t = cista::strong<std::uint32_t, struct _trip_id_str_idx>;
 using transport_idx_t = cista::strong<std::uint32_t, struct _transport_idx>;
 using rt_trip_idx_t = cista::strong<std::uint32_t, struct _rt_trip_idx>;
 using source_idx_t = cista::strong<std::uint8_t, struct _source_idx>;

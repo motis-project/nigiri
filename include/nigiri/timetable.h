@@ -25,7 +25,7 @@ struct timetable {
     stop(location_idx_t::value_t const val) {
       *reinterpret_cast<location_idx_t::value_t*>(this) = val;
     }
-    
+
     stop(location_idx_t const location,
          bool const in_allowed,
          bool const out_allowed)
@@ -125,27 +125,32 @@ struct timetable {
   struct transport {
     bitfield_idx_t bitfield_idx_;
     route_idx_t route_idx_;
-    std::basic_string<minutes_after_midnight_t> stop_times_;
-    std::basic_string<merged_trips_idx_t> external_trip_ids_;
-    std::basic_string<attribute_combination_idx_t> section_attributes_;
-    std::basic_string<provider_idx_t> section_providers_;
-    std::basic_string<trip_direction_idx_t> section_directions_;
+    std::basic_string<minutes_after_midnight_t> const& stop_times_;
+    std::basic_string<merged_trips_idx_t> const& external_trip_ids_;
+    std::basic_string<attribute_combination_idx_t> const& section_attributes_;
+    std::basic_string<provider_idx_t> const& section_providers_;
+    std::basic_string<trip_direction_idx_t> const& section_directions_;
   };
 
   trip_idx_t register_trip_id(
       trip_id const& id,
-      string display_name,
+      std::string const& display_name,
       trip_debug const dbg,
       transport_idx_t const ref_transport,
       interval<std::uint32_t> ref_transport_stop_range) {
-    auto const idx = trip_idx_t{trip_ids_.size()};
-    auto& trips = trip_id_to_idx_[id];
-    trips.emplace_back(idx);
-    trip_display_names_.emplace_back(std::move(display_name));
+    auto const trip_idx = trip_idx_t{trip_ids_.size()};
+
+    auto const trip_id_idx = trip_id_idx_t{trip_id_strings_.size()};
+    trip_id_strings_.emplace_back(id.id_);
+    trip_id_src_.emplace_back(id.src_);
+
+    trip_id_to_idx_.emplace_back(trip_id_idx, trip_idx);
+    trip_display_names_.emplace_back(display_name);
     trip_debug_.emplace_back().emplace_back(dbg);
-    trip_ids_.emplace_back().emplace_back(id);
+    trip_ids_.emplace_back().emplace_back(trip_id_idx);
     trip_ref_transport_.emplace_back(ref_transport, ref_transport_stop_range);
-    return idx;
+
+    return trip_idx;
   }
 
   bitfield_idx_t register_bitfield(bitfield const& b) {
@@ -154,14 +159,16 @@ struct timetable {
     return idx;
   }
 
-  trip_direction_string_idx_t register_trip_direction_string(string&& s) {
+  template <typename T>
+  trip_direction_string_idx_t register_trip_direction_string(T&& s) {
     auto const idx = trip_direction_string_idx_t{bitfields_.size()};
-    trip_direction_strings_.emplace_back(std::move(s));
+    trip_direction_strings_.emplace_back(s);
     return idx;
   }
 
-  route_idx_t register_route(std::basic_string<stop::value_type> stop_seq,
-                             std::basic_string<clasz> clasz_sections) {
+  route_idx_t register_route(
+      std::basic_string<stop::value_type> const& stop_seq,
+      std::basic_string<clasz> const& clasz_sections) {
     auto const idx = route_location_seq_.size();
     for (auto const& s : stop_seq) {
       location_routes_[timetable::stop{s}.location_idx()].emplace_back(idx);
@@ -169,8 +176,8 @@ struct timetable {
     route_transport_ranges_.emplace_back(
         transport_idx_t{transport_traffic_days_.size()},
         transport_idx_t::invalid());
-    route_location_seq_.emplace_back(std::move(stop_seq));
-    route_section_clasz_.emplace_back(std::move(clasz_sections));
+    route_location_seq_.emplace_back(stop_seq);
+    route_section_clasz_.emplace_back(clasz_sections);
     return route_idx_t{idx};
   }
 
@@ -180,9 +187,9 @@ struct timetable {
   }
 
   merged_trips_idx_t register_merged_trip(
-      std::basic_string<trip_idx_t> trip_ids) {
+      std::basic_string<trip_idx_t> const& trip_ids) {
     auto const idx = merged_trips_.size();
-    merged_trips_.emplace_back(std::move(trip_ids));
+    merged_trips_.emplace_back(trip_ids);
     return merged_trips_idx_t{static_cast<merged_trips_idx_t::value_t>(idx)};
   }
 
@@ -195,13 +202,11 @@ struct timetable {
   void add_transport(transport&& t) {
     transport_traffic_days_.emplace_back(t.bitfield_idx_);
     transport_route_.emplace_back(t.route_idx_);
-    transport_stop_times_.emplace_back(std::move(t.stop_times_));
-    transport_to_trip_section_.emplace_back(std::move(t.external_trip_ids_));
-    transport_section_attributes_.emplace_back(
-        std::move(t.section_attributes_));
-    transport_section_providers_.emplace_back(std::move(t.section_providers_));
-    transport_section_directions_.emplace_back(
-        std::move(t.section_directions_));
+    transport_stop_times_.emplace_back(t.stop_times_);
+    transport_to_trip_section_.emplace_back(t.external_trip_ids_);
+    transport_section_attributes_.emplace_back(t.section_attributes_);
+    transport_section_providers_.emplace_back(t.section_providers_);
+    transport_section_directions_.emplace_back(t.section_directions_);
 
     assert(transport_traffic_days_.size() == transport_route_.size());
     assert(transport_traffic_days_.size() == transport_stop_times_.size());
@@ -285,10 +290,14 @@ struct timetable {
   interval<std::chrono::sys_days> date_range_;
 
   // Trip access: external trip id -> internal trip index
-  hash_map<trip_id, vector<trip_idx_t>> trip_id_to_idx_;
+  vector<pair<trip_id_idx_t, trip_idx_t>> trip_id_to_idx_;
 
-  // Trip index -> list of external trip ids (HRD + RI Basis)
-  mutable_fws_multimap<trip_idx_t, trip_id> trip_ids_;
+  // Trip index -> list of external trip ids
+  mutable_fws_multimap<trip_idx_t, trip_id_idx_t> trip_ids_;
+
+  // Storage for trip id strings + source
+  vecvec<trip_id_idx_t, char> trip_id_strings_;
+  vector_map<trip_id_idx_t, source_idx_t> trip_id_src_;
 
   // Trip index -> reference transport + stop range
   vector_map<trip_idx_t, pair<transport_idx_t, interval<std::uint32_t>>>
@@ -299,7 +308,7 @@ struct timetable {
   vecvec<source_file_idx_t, char> source_file_names_;
 
   // Trip index -> display name
-  vector_map<trip_idx_t, string> trip_display_names_;
+  vecvec<trip_idx_t, char> trip_display_names_;
 
   // Route -> From (inclusive) and to index (exclusive) of expanded trips
   vector_map<route_idx_t, interval<transport_idx_t>> route_transport_ranges_;

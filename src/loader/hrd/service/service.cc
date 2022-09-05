@@ -179,20 +179,6 @@ service::stop parse_stop(utl::cstr stop) {
            stop[36] != '-'}};
 }
 
-std::basic_string<duration_t> parse_local_times(
-    std::vector<utl::cstr> const& stops) {
-  std::basic_string<duration_t> ret{};
-  auto i = 0U;
-  for (auto const& [from, to] : utl::pairwise(stops)) {
-    ret[i++] = hhmm_to_min(
-        parse<int>(from.substr(37, utl::size(5)), service::kTimeNotSet));
-  }
-  return ret;
-}
-
-std::basic_string<timetable::stop::value_type> parse_stops(
-    std::vector<utl::cstr> const& stops) {}
-
 int initial_train_num(specification const& spec) {
   return parse_verify<int>(spec.internal_service_.substr(3, utl::size(5)));
 }
@@ -322,8 +308,7 @@ service::service(config const& c,
           parse<unsigned>(spec.internal_service_.substr(22, utl::size(3)))},
       interval_{
           parse<unsigned>(spec.internal_service_.substr(26, utl::size(3)))},
-      local_times_{parse_local_times(spec.stops_)},
-      stops_{parse_stops(spec.stops_)},
+      stops_{utl::to_vec(spec.stops_, parse_stop)},
       initial_admin_{st.resolve_provider(initial_admin(spec))},
       initial_train_num_{initial_train_num(spec)} {
   utl::verify(stops_.size() >= 2, "service with less than 2 stops");
@@ -370,7 +355,7 @@ service::service(config const& c,
               });
 }
 
-string service::display_name(nigiri::timetable& tt) const {
+std::string service::display_name(nigiri::timetable& tt) const {
   static auto const unknown_catergory = category{.name_ = "UKN",
                                                  .long_name_ = "UNKNOWN",
                                                  .output_rule_ = 0U,

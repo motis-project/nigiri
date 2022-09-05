@@ -19,7 +19,7 @@ direction_map_t parse_directions(config const& c,
                       line_number);
     } else {
       directions[line.substr(c.dir_.eva_).to_str()] =
-          tt.register_trip_direction_string(line.substr(c.dir_.text_).to_str());
+          tt.register_trip_direction_string(line.substr(c.dir_.text_).view());
     }
   });
   return directions;

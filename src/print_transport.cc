@@ -75,11 +75,12 @@ void print_transport(timetable const& tt,
           if (j++ != 0) {
             out << ", ";
           }
-          out << "{name=" << tt.trip_display_names_.at(trip_idx) << ", day=";
+          out << "{name=" << tt.trip_display_names_.at(trip_idx).view()
+              << ", day=";
           date::to_stream(out, "%F",
                           tt.date_range_.from_ + to_idx(day_idx) * 1_days);
-          out << ", id=" << id.id_
-              << ", src=" << static_cast<int>(to_idx(id.src_));
+          out << ", id=" << tt.trip_id_strings_.at(id).view()
+              << ", src=" << static_cast<int>(to_idx(tt.trip_id_src_.at(id)));
           if (with_debug) {
             out << ", debug="
                 << tt.source_file_names_.at(dbg.source_file_idx_).view() << ":"

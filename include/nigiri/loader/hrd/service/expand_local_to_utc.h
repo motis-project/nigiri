@@ -67,10 +67,18 @@ void to_local_time(service_store const& store,
       pred = utc_mam;
     }
 
-    if (!fail) {
-      utc_time_traffic_days[utc_service_times].set(
-          kBaseDayOffset.count() + day_idx +
-          static_cast<size_t>(first_day_offset / 1_days));
+    if (fail) {
+      continue;
+    }
+
+    auto const traffic_day = kBaseDayOffset.count() + day_idx +
+                             static_cast<size_t>(first_day_offset / 1_days);
+    auto const it = utc_time_traffic_days.find(utc_service_times);
+    if (it == end(utc_time_traffic_days)) {
+      utc_time_traffic_days.emplace(utc_service_times, bitfield{})
+          .first->second.set(traffic_day);
+    } else {
+      it->second.set(traffic_day);
     }
   }
 
