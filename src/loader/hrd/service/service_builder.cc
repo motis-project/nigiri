@@ -7,15 +7,14 @@
 
 namespace nigiri::loader::hrd {
 
-std::optional<size_t> get_index(service_store const& st,
-                                vector<ref_service> const& route_services,
+std::optional<size_t> get_index(vector<ref_service> const& route_services,
                                 ref_service const& s) {
   auto const index = static_cast<unsigned>(std::distance(
       begin(route_services),
       std::lower_bound(begin(route_services), end(route_services), s,
                        [&](ref_service const& a, ref_service const& b) {
-                         return a.stops(st).front().dep_.time_ % 1440 <
-                                b.stops(st).front().dep_.time_ % 1440;
+                         return a.utc_times_.front() % 1440 <
+                                b.utc_times_.front() % 1440;
                        })));
 
   for (auto i = 0U; i != s.utc_times_.size(); ++i) {
@@ -35,14 +34,14 @@ std::optional<size_t> get_index(service_store const& st,
 
 void service_builder::add_service(ref_service const& s) {
   route_key_.first.clear();
-  utl::transform_to<std::basic_string<timetable::stop::value_type>>(
+  utl::transform_to(
       s.stops(store_), route_key_.first, [&](service::stop const& x) {
         return timetable::stop(stamm_.resolve_location(x.eva_num_),
                                x.dep_.in_out_allowed_, x.arr_.in_out_allowed_)
             .value();
       });
-  auto const& ref = store_.get(s.ref_);
-  auto const begin_to_end_cat = ref.begin_to_end_info_.category_;
+
+  auto const begin_to_end_cat = store_.get(s.ref_).begin_to_end_info_.category_;
   route_key_.second =
       begin_to_end_cat.has_value()
           ? std::basic_string<clasz>{begin_to_end_cat.value() == nullptr
@@ -59,15 +58,16 @@ void service_builder::add_service(ref_service const& s) {
   if (auto const it = route_services_.find(route_key_);
       it != end(route_services_)) {
     for (auto& r : it->second) {
-      auto const idx = get_index(store_, r, s);
+      auto const idx = get_index(r, s);
       if (idx.has_value()) {
         r.insert(begin(r) + *idx, s);
         return;
       }
     }
-  } else {
-    route_services_.emplace(route_key_, vector<vector<ref_service>>{{s}});
+    it->second.emplace_back(vector<ref_service>{s});
   }
+
+  route_services_.emplace(route_key_, vector<vector<ref_service>>{{s}});
 }
 
 void service_builder::add_services(config const& c,

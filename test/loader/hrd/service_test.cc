@@ -137,19 +137,19 @@ TEST_CASE("a") {
   load_timetable(source_idx_t{0U}, hrd_5_20_26,
                  nigiri::test_data::hrd_timetable::files(), *tt);
 
-  std::cout << "OUTPUT:\n";
-  std::cout << "constexpr auto const expected = std::set<std::string>{";
+  std::cerr << "OUTPUT:\n";
+  std::cerr << "constexpr auto const expected = std::set<std::string>{";
   for (auto const& ss : service_strings(*tt)) {
-    std::cout << "R\"(" << ss << ")\",\n";
+    std::cerr << "R\"(" << ss << ")\",\n";
   }
-  std::cout << "};\n";
+  std::cerr << "};\n";
 
-  std::cout << "\n\n\nEXPECTED:\n";
-  std::cout << "constexpr auto const expected = std::set<std::string>{";
+  std::cerr << "\n\n\nEXPECTED:\n";
+  std::cerr << "constexpr auto const expected = std::set<std::string>{";
   for (auto const& ss : expected) {
-    std::cout << "R\"(" << ss << ")\",\n";
+    std::cerr << "R\"(" << ss << ")\",\n";
   }
-  std::cout << "};\n";
+  std::cerr << "};\n";
 
   CHECK(expected == service_strings(*tt));
 }
