@@ -14,7 +14,7 @@ struct category {
                << ", clasz=" << static_cast<int>(c.clasz_) << ")";
   }
   friend bool operator==(category const&, category const&) = default;
-  string name_, long_name_;
+  std::string name_, long_name_;
   std::uint8_t output_rule_;
   clasz clasz_{clasz::kAir};
 };

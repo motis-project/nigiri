@@ -5,6 +5,7 @@
 
 #include "nigiri/loader/hrd/stamm/stamm.h"
 #include "nigiri/loader/hrd/stamm/timezone.h"
+#include "nigiri/loader/hrd/util.h"
 #include "nigiri/logging.h"
 
 namespace nigiri::loader::hrd {
@@ -31,7 +32,7 @@ void parse_station_names(config const& c,
 
         auto const eva_num = parse_eva_number(line.substr(c.st_.names_.eva_));
         auto& s = stations[eva_num];
-        s.name_ = name.to_str();
+        s.name_ = iso_8859_1_to_utf8(name.to_str());
         s.id_ = eva_num;
       });
 }

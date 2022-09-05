@@ -251,7 +251,7 @@ struct raptor {
 
   void route() {
     state_.reset(tt_, kInvalidTime);
-    get_starts<SearchDir>(tt_, q_.interval_, q_.start_, state_.starts_);
+    get_starts<SearchDir>(tt_, q_.start_time_, q_.start_, state_.starts_);
     utl::equal_ranges_linear(
         state_.starts_,
         [](start const& a, start const& b) {
@@ -266,10 +266,19 @@ struct raptor {
           rounds();
           reconstruct(from_it->time_at_start_);
         });
-    utl::erase_if(state_.results_, [&](journey const& j) {
-      return !q_.interval_.contains(j.start_time_);
-    });
-    state_.search_interval_ = q_.interval_;
+    if (holds_alternative<interval<unixtime_t>>(q_.start_time_)) {
+      utl::erase_if(state_.results_, [&](journey const& j) {
+        return !q_.start_time_.as<interval<unixtime_t>>().contains(
+            j.start_time_);
+      });
+    }
+    state_.search_interval_ = q_.start_time_.apply(
+        utl::overloaded{[](interval<unixtime_t> const& start_interval) {
+                          return start_interval;
+                        },
+                        [](unixtime_t const start_time) {
+                          return interval<unixtime_t>{start_time, start_time};
+                        }});
   }
 
   void reconstruct(unixtime_t const start_at_start) {

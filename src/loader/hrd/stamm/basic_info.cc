@@ -1,5 +1,6 @@
 #include "nigiri/loader/hrd/stamm/basic_info.h"
 
+#include "nigiri/loader/hrd/util.h"
 #include "nigiri/logging.h"
 #include "nigiri/types.h"
 #include "utl/parser/arg_parser.h"
@@ -46,7 +47,7 @@ std::string parse_schedule_name(std::string_view file_content) {
   auto basic_info_file = utl::cstr{file_content};
   utl::skip_line(basic_info_file);  // from
   utl::skip_line(basic_info_file);  // to
-  return get_line(basic_info_file).to_str();  // schedule name
+  return iso_8859_1_to_utf8(get_line(basic_info_file).view());  // schedule name
 }
 
 }  // namespace nigiri::loader::hrd

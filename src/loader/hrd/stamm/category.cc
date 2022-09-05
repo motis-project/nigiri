@@ -2,6 +2,7 @@
 
 #include "utl/parser/arg_parser.h"
 
+#include "nigiri/loader/hrd/util.h"
 #include "nigiri/clasz.h"
 #include "nigiri/logging.h"
 
@@ -28,12 +29,14 @@ category_map_t parse_categories(config const& c,
         auto const code = line.substr(c.cat_.code_);
         auto const output_rule = utl::parse_verify<std::uint8_t>(
             line.substr(c.cat_.output_rule_).trim());
-        auto const name = line.substr(c.cat_.name_).trim().view();
+        auto const name =
+            iso_8859_1_to_utf8(line.substr(c.cat_.name_).trim().view());
+        auto const clasz = get_clasz(name);
 
         handle_map[code.to_str()] = category{.name_ = code.trim().to_str(),
-                                             .long_name_ = name,
+                                             .long_name_ = std::move(name),
                                              .output_rule_ = output_rule,
-                                             .clasz_ = get_clasz(name)};
+                                             .clasz_ = clasz};
       });
   return handle_map;
 }

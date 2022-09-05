@@ -1,5 +1,6 @@
 #include "nigiri/clasz.h"
 
+#include "nigiri/logging.h"
 #include "cista/hash.h"
 
 namespace nigiri {
@@ -204,7 +205,7 @@ clasz get_clasz(std::string_view s) {
     case hash("Elevator"): return clasz::kOther;
     case hash("ASC"): return clasz::kOther;
   }
-  std::cerr << "cannot assign " << s << "\n";
+  log(log_lvl::error, "loader.hrd.clasz", "cannot assign {}", s);
   return clasz::kOther;
 }
 
