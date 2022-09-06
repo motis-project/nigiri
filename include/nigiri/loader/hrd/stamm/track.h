@@ -15,7 +15,7 @@ struct track_rule_key {
   CISTA_COMPARABLE()
   static constexpr minutes_after_midnight_t kTimeNotSet = -1_minutes;
   location_idx_t location_{0U};
-  unsigned train_num_{0U};
+  int train_num_{0U};
   provider_idx_t admin_{provider_idx_t::invalid()};
   minutes_after_midnight_t time_{-1_minutes};
 };

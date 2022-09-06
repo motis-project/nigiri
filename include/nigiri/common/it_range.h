@@ -20,6 +20,9 @@ struct it_range {
       : begin_{std::move(begin)}, end_{std::move(end)} {}
   BeginIt begin() const { return begin_; }
   EndIt end() const { return end_; }
+  reference_type operator[](std::size_t const i) const {
+    return *std::next(begin_, i);
+  }
   friend BeginIt begin(it_range const& r) { return r.begin(); }
   friend EndIt end(it_range const& r) { return r.end(); }
   reference_type front() const { return *begin_; }
