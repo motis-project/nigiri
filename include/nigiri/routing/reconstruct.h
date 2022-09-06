@@ -28,7 +28,7 @@ void reconstruct_journey(timetable const& tt,
     for (auto i = 1U; i != n_stops; ++i) {
       auto const stop_idx =
           static_cast<unsigned>(kFwd ? from_stop_idx - i : from_stop_idx + i);
-      auto const l = stop_seq[stop_idx].location_idx();
+      auto const l = timetable::stop{stop_seq[stop_idx]}.location_idx();
 
       auto const event_time = routing_time{
           t.day_, tt.event_mam(t.t_idx_, stop_idx,
@@ -36,8 +36,8 @@ void reconstruct_journey(timetable const& tt,
       if (is_better_or_eq(s.round_times_[k - 1][to_idx(l)], event_time)) {
         return journey::leg{
             SearchDir,
-            stop_seq[stop_idx].location_idx(),
-            stop_seq[from_stop_idx].location_idx(),
+            timetable::stop{stop_seq[stop_idx]}.location_idx(),
+            timetable::stop{stop_seq[from_stop_idx]}.location_idx(),
             event_time.to_unixtime(tt),
             time.to_unixtime(tt),
             journey::transport_enter_exit{
@@ -80,9 +80,10 @@ void reconstruct_journey(timetable const& tt,
     for (auto const& r : tt.location_routes_[l]) {
       auto const location_seq = tt.route_location_seq_[r];
       for (auto const [i, stop] : utl::enumerate(location_seq)) {
-        if (stop.location_idx() != l ||
-            (kFwd && (i == 0U || !stop.out_allowed())) ||
-            (!kFwd && (i == location_seq.size() - 1 || !stop.in_allowed()))) {
+        if (timetable::stop{stop}.location_idx() != l ||
+            (kFwd && (i == 0U || !timetable::stop{stop}.out_allowed())) ||
+            (!kFwd && (i == location_seq.size() - 1 ||
+                       !timetable::stop{stop}.in_allowed()))) {
           continue;
         }
 

@@ -1,5 +1,6 @@
 #include "nigiri/loader/dir.h"
 
+#include <optional>
 #include <variant>
 #include <vector>
 
@@ -9,6 +10,8 @@
 
 #include "utl/to_vec.h"
 #include "utl/verify.h"
+
+#include "nigiri/logging.h"
 
 namespace nigiri::loader {
 
@@ -41,42 +44,55 @@ std::vector<std::filesystem::path> fs_dir::list_files(
 file fs_dir::get_file(std::filesystem::path const& p) const {
   struct mmap_content final : public file::content {
     explicit mmap_content(std::filesystem::path const& p)
-        : mmap_{p.string().c_str(), cista::mmap::protection::READ} {}
+        : mmap_{p.string().c_str(), cista::mmap::protection::READ} {
+      log(log_lvl::info, "loader.fs_dir", "loaded {}: {} bytes", p,
+          mmap_.size());
+    }
     ~mmap_content() final = default;
     std::string_view get() const final { return mmap_.view(); }
     cista::mmap mmap_;
   };
   return file{(path_ / p).string(), std::make_unique<mmap_content>(path_ / p)};
 }
+bool fs_dir::exists(std::filesystem::path const& p) const {
+  return std::filesystem::is_regular_file(path_ / p);
+}
+std::size_t fs_dir::file_size(std::filesystem::path const& p) const {
+  return std::filesystem::file_size(path_ / p);
+}
 
 // --- ZIP directory implementation ---
-mz_uint32 get_file_idx(mz_zip_archive* ar, std::filesystem::path const& p) {
+std::optional<mz_uint32> find_file_idx(mz_zip_archive* ar,
+                                       std::filesystem::path const& p) {
   mz_uint32 file_idx;
   auto const r = mz_zip_reader_locate_file_v2(ar, p.string().c_str(), nullptr,
                                               0, &file_idx);
-  utl::verify(r, "cannot locate file {} in zip", p);
-  return file_idx;
+  return r ? std::make_optional<mz_uint32>(file_idx) : std::nullopt;
+}
+mz_uint32 get_file_idx(mz_zip_archive* ar, std::filesystem::path const& p) {
+  auto const file_idx = find_file_idx(ar, p);
+  utl::verify(file_idx.has_value(), "cannot locate file {} in zip", p);
+  return *file_idx;
+}
+mz_zip_archive_file_stat get_stat(mz_zip_archive* ar,
+                                  mz_uint32 const file_idx) {
+  auto file_stat = mz_zip_archive_file_stat{};
+  auto const r = mz_zip_reader_file_stat(ar, file_idx, &file_stat);
+  utl::verify(r, "zip: cannot stat file {}", file_idx);
+  return file_stat;
 }
 std::filesystem::path get_file_path(mz_zip_archive* ar,
                                     mz_uint32 const file_idx) {
-  auto file_stat = mz_zip_archive_file_stat{};
-  auto const r = mz_zip_reader_file_stat(ar, file_idx, &file_stat);
-  utl::verify(r, "zip: cannot determine file size of {}", file_idx);
-  return file_stat.m_filename;
+  return get_stat(ar, file_idx).m_filename;
 }
 struct zip_file_content final : public file::content {
   ~zip_file_content() final;
   zip_file_content(mz_zip_archive* ar,
                    std::filesystem::path const& p,
                    mz_uint32 const file_idx) {
-    mz_bool r;
-
-    mz_zip_archive_file_stat file_stat{};
-    r = mz_zip_reader_file_stat(ar, file_idx, &file_stat);
-    utl::verify(r, "cannot read file size of {} in zip", p);
-
-    buf_.resize(file_stat.m_uncomp_size);
-    r = mz_zip_reader_extract_to_mem(ar, file_idx, buf_.data(), buf_.size(), 0);
+    buf_.resize(get_stat(ar, file_idx).m_uncomp_size);
+    auto const r =
+        mz_zip_reader_extract_to_mem(ar, file_idx, buf_.data(), buf_.size(), 0);
     utl::verify(r, "cannot extract file {} from zip", p);
   }
   zip_file_content(mz_zip_archive* ar, std::filesystem::path const& p)
@@ -106,7 +122,6 @@ struct zip_dir::impl {
         },
         memory_);
   }
-
   std::vector<std::filesystem::path> list_files(
       std::filesystem::path const& p) {
     auto const parent = p.string();
@@ -129,6 +144,14 @@ struct zip_dir::impl {
     std::sort(begin(files), end(files));
     return files;
   }
+  bool exists(std::filesystem::path const& p) {
+    return find_file_idx(&ar_, p).has_value();
+  }
+  std::size_t file_size(std::filesystem::path const& p) {
+    auto const file_idx = find_file_idx(&ar_, p);
+    utl::verify(file_idx.has_value(), "zip_dir::file_size: not found: {}", p);
+    return get_stat(&ar_, file_idx.value()).m_uncomp_size;
+  }
 
   mz_zip_archive ar_;
   std::variant<std::vector<std::uint8_t>, cista::mmap> memory_;
@@ -144,6 +167,12 @@ std::vector<std::filesystem::path> zip_dir::list_files(
 }
 file zip_dir::get_file(std::filesystem::path const& p) const {
   return file{p.string(), std::make_unique<zip_file_content>(&impl_->ar_, p)};
+}
+bool zip_dir::exists(std::filesystem::path const& p) const {
+  return impl_->exists(p);
+}
+std::size_t zip_dir::file_size(std::filesystem::path const& p) const {
+  return impl_->file_size(p);
 }
 
 // --- In-memory directory implementation ---
@@ -174,6 +203,22 @@ file mem_dir::get_file(std::filesystem::path const& p) const {
     std::string const& buf_;
   };
   return file{p.string(), std::make_unique<mem_file_content>(dir_.at(p))};
+}
+bool mem_dir::exists(std::filesystem::path const& p) const {
+  return dir_.contains(p);
+}
+std::size_t mem_dir::file_size(std::filesystem::path const& p) const {
+  return dir_.at(p).size();
+}
+
+std::unique_ptr<dir> make_dir(std::filesystem::path const& p) {
+  if (std::filesystem::is_regular_file(p) && p.extension() == ".zip") {
+    return std::make_unique<zip_dir>(p);
+  } else if (std::filesystem::is_directory(p)) {
+    return std::make_unique<fs_dir>(p);
+  } else {
+    throw utl::fail("path {} is neither a zip file nor a directory");
+  }
 }
 
 }  // namespace nigiri::loader

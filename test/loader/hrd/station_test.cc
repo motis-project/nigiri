@@ -1,9 +1,9 @@
 #include "doctest/doctest.h"
 
-#include "nigiri/loader/hrd/bitfield.h"
-#include "nigiri/loader/hrd/service.h"
-#include "nigiri/loader/hrd/station.h"
-#include "nigiri/loader/hrd/timezone.h"
+#include "nigiri/loader/hrd/service/service.h"
+#include "nigiri/loader/hrd/stamm/bitfield.h"
+#include "nigiri/loader/hrd/stamm/station.h"
+#include "nigiri/loader/hrd/stamm/timezone.h"
 
 using namespace nigiri;
 using namespace nigiri::loader::hrd;
@@ -32,18 +32,17 @@ constexpr auto const station_geo_file_content = R"(
 0000007  41.579799  59.076849 F_META
 )";
 
-constexpr auto const timezones_file_content = R"(
-0000000 +0100 +0200 29032020 0200 25102020 0300 +0200 28032021 0200 31102021 0300
-)";
-
 TEST_CASE("loader_hrd_station, parse") {
   for (auto const& c : configs) {
     std::vector<service> services;
     timetable tt;
     auto const src = source_idx_t{0U};
-    auto const timezones = parse_timezones(c, tt, timezones_file_content);
+    auto st =
+        stamm{tt, timezone_map_t{{eva_number{0U},
+                                  std::pair<timezone_idx_t, tz_offsets>{
+                                      0U, tz_offsets{.offset_ = 0_minutes}}}}};
     auto const locations =
-        parse_stations(c, src, timezones, tt, stations_file_content,
+        parse_stations(c, src, tt, st, stations_file_content,
                        station_geo_file_content, station_metabhf_content);
 
     auto const l1 = tt.locations_.get(location_id{"0000001", src});

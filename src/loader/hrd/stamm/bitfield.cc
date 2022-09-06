@@ -1,4 +1,4 @@
-#include "nigiri/loader/hrd/bitfield.h"
+#include "nigiri/loader/hrd/stamm/bitfield.h"
 
 #include <bitset>
 
@@ -31,40 +31,62 @@ constexpr int const ascii_hex_to_int[] = {
     // clang-format on
 };
 
-std::string hex_to_string(char c) {
-  auto const idx = static_cast<int>(c);
-  auto const i = ascii_hex_to_int[idx];
-  utl::verify(i >= 0, "invalid bitfield char {}", idx);
-  return std::bitset<4>{static_cast<unsigned long long>(i)}.to_string();
-}
+bitfield hex_str_to_bitset(utl::cstr char_collection) {
+  bitfield b;
 
-template <typename T>
-std::string hex_to_string(T const& char_collection) {
-  std::string bit_str;
+  auto consumed = 0U;
+  bool started = false;
+  bool prev_was_set = false;
+  auto consume_bit = [&, i = 0U](std::bitset<4> const& in,
+                                 size_t const bit) mutable {
+    auto const current_bit_set = in.test(bit);
+    if (!started) {
+      if (prev_was_set && current_bit_set) {
+        started = true;
+      }
+      prev_was_set = current_bit_set;
+    } else {
+      if (current_bit_set) {
+        b.set(i, current_bit_set);
+      }
+      ++i;
+    }
+    ++consumed;
+  };
+
   for (auto const& c : char_collection) {
-    bit_str.append(hex_to_string(c));
+    auto const idx = static_cast<int>(c);
+    auto const i = ascii_hex_to_int[idx];
+    utl::verify(i >= 0, "invalid bitfield char {}", idx);
+    auto const tmp = std::bitset<4>{static_cast<unsigned long long>(i)};
+
+    consume_bit(tmp, 3U);
+    consume_bit(tmp, 2U);
+    consume_bit(tmp, 1U);
+    consume_bit(tmp, 0U);
   }
-  return bit_str;
+
+  utl::verify(started, "no start (11) found for traffic day bitfield {}",
+              char_collection.view());
+
+  bool prev_set = false;
+  for (auto i = 0U; i != b.size(); ++i) {
+    auto const j = b.size() - i - 1U;
+    auto const curr_set = b.test(j);
+    b.set(j, false);
+    if (prev_set && curr_set) {
+      return b;
+    }
+    prev_set = curr_set;
+  }
+
+  throw utl::fail("no end (11) found for traffic day bitfield {}",
+                  char_collection.view());
 }
 
-bitfield hex_str_to_bitset(utl::cstr hex, unsigned const line_number) {
-  auto const bit_str = hex_to_string(hex);
-  auto const period_begin = bit_str.find("11");
-  auto const period_end = bit_str.rfind("11");
-  if (period_begin == std::string::npos || period_end == std::string::npos ||
-      period_begin == period_end || period_end - period_begin <= 2) {
-    throw utl::fail("invalid bitfield at line={}", line_number);
-  }
-  std::string bitstring(
-      std::next(begin(bit_str), static_cast<long>(period_begin + 2U)),
-      std::next(begin(bit_str), static_cast<long>(period_end)));
-  std::reverse(begin(bitstring), end(bitstring));
-  return bitfield{bitstring};
-}
+bitfield_map_t parse_bitfields(config const& c, std::string_view file_content) {
+  scoped_timer timer{"parse bitfields"};
 
-bitfield_map_t parse_bitfields(config const& c,
-                               timetable& tt,
-                               std::string_view file_content) {
   bitfield_map_t bitfields;
   utl::for_each_line_numbered(
       file_content, [&](utl::cstr line, unsigned const line_number) {
@@ -75,15 +97,10 @@ bitfield_map_t parse_bitfields(config const& c,
                           line_number, line.len);
         }
 
-        auto const index = parse_verify<int>(line.substr(c.bf_.index_));
-        auto b = hex_str_to_bitset(line.substr(c.bf_.value_), line_number);
-        bitfields[index] = std::pair{b, tt.register_bitfield(b)};
+        auto const index = parse_verify<unsigned>(line.substr(c.bf_.index_));
+        auto b = hex_str_to_bitset(line.substr(c.bf_.value_));
+        bitfields[index] = b;
       });
-
-  // traffic day bitfield 0 = operates every day
-  for (auto i = 0U; i != bitfields[0].first.size(); ++i) {
-    bitfields[0].first.set(i, true);
-  }
 
   return bitfields;
 }

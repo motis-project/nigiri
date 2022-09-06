@@ -1,5 +1,7 @@
-#include "nigiri/loader/hrd/basic_info.h"
+#include "nigiri/loader/hrd/stamm/basic_info.h"
 
+#include "nigiri/loader/hrd/util.h"
+#include "nigiri/logging.h"
 #include "nigiri/types.h"
 #include "utl/parser/arg_parser.h"
 
@@ -31,19 +33,21 @@ std::pair<utl::cstr, utl::cstr> mask_dates(utl::cstr str) {
   return {from_line, to_line};
 }
 
-std::pair<std::chrono::year_month_day, std::chrono::year_month_day>
-parse_interval(std::string_view file_content) {
+interval<std::chrono::sys_days> parse_interval(std::string_view file_content) {
+  scoped_timer timer{"parse interval"};
+
   using std::chrono::sys_days;
   auto const [first_date, last_date] = mask_dates(file_content);
-  return {sys_days{yyyymmdd(first_date)} - kBaseDayOffset,
-          sys_days{yyyymmdd(last_date)} + kBaseDayOffset};
+  return {
+      sys_days{yyyymmdd(first_date)} - kBaseDayOffset,
+      sys_days{yyyymmdd(last_date)} + kBaseDayOffset + std::chrono::days{1}};
 }
 
 std::string parse_schedule_name(std::string_view file_content) {
   auto basic_info_file = utl::cstr{file_content};
   utl::skip_line(basic_info_file);  // from
   utl::skip_line(basic_info_file);  // to
-  return get_line(basic_info_file).to_str();  // schedule name
+  return iso_8859_1_to_utf8(get_line(basic_info_file).view());  // schedule name
 }
 
 }  // namespace nigiri::loader::hrd

@@ -21,17 +21,18 @@ location::location(timetable const& tt, location_idx_t idx)
       footpaths_out_{tt.locations_.footpaths_out_[idx]},
       footpaths_in_{tt.locations_.footpaths_in_[idx]} {}
 
-location::location(string const& id,
-                   string const& name,
-                   geo::latlng pos,
-                   source_idx_t src,
-                   location_type type,
-                   osm_node_id_t osm_id,
-                   location_idx_t parent,
-                   timezone_idx_t timezone,
-                   it_range<vector<location_idx_t>::iterator> equivalences,
-                   it_range<vector<footpath>::iterator> footpaths_in,
-                   it_range<vector<footpath>::iterator> footpaths_out)
+location::location(
+    string const& id,
+    string const& name,
+    geo::latlng pos,
+    source_idx_t src,
+    location_type type,
+    osm_node_id_t osm_id,
+    location_idx_t parent,
+    timezone_idx_t timezone,
+    it_range<vector<location_idx_t>::const_iterator> equivalences,
+    it_range<vector<footpath>::const_iterator> footpaths_in,
+    it_range<vector<footpath>::const_iterator> footpaths_out)
     : id_{id},
       name_{name},
       pos_{pos},

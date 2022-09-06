@@ -1,58 +1,70 @@
 #include "nigiri/loader/hrd/load_timetable.h"
 
-#include "fmt/ranges.h"
+#include <execution>
 
-#include "nigiri/loader/hrd/bitfield.h"
-#include "nigiri/loader/hrd/service.h"
-#include "nigiri/loader/hrd/station.h"
-#include "nigiri/loader/hrd/timezone.h"
+#include "utl/helpers/algorithm.h"
+#include "utl/pipes.h"
+#include "utl/progress_tracker.h"
+
+#include "nigiri/loader/hrd/service/service_builder.h"
+#include "nigiri/loader/hrd/stamm/stamm.h"
 
 namespace nigiri::loader::hrd {
 
-std::vector<file> load_files(config const& c, dir const& d) {
-  return utl::to_vec(c.required_files_,
-                     [&](std::vector<std::string> const& alt) {
-                       if (alt.empty()) {
-                         return file{};
-                       }
-                       for (auto const& file : alt) {
-                         try {
-                           return d.get_file(c.core_data_ / file);
-                         } catch (...) {
-                         }
-                       }
-                       throw utl::fail("no file available: {}", alt);
-                     });
+bool applicable(config const& c, dir const& d) {
+  return utl::all_of(
+      c.required_files_, [&](std::vector<std::string> const& alt) {
+        return alt.empty() || utl::any_of(alt, [&](std::string const& file) {
+                 auto const exists = d.exists(c.core_data_ / file);
+                 if (!exists) {
+                   std::clog << "missing file for config " << c.version_.view()
+                             << ": " << (c.core_data_ / file) << "\n";
+                 }
+                 return exists;
+               });
+      });
 }
 
 void load_timetable(source_idx_t const src,
                     config const& c,
                     dir const& d,
                     timetable& tt) {
-  auto const files = load_files(c, d);
-  auto const timezones = parse_timezones(c, tt, files.at(TIMEZONES).data());
-  auto const locations = parse_stations(
-      c, source_idx_t{0U}, timezones, tt, files.at(STATIONS).data(),
-      files.at(COORDINATES).data(), files.at(FOOTPATHS).data());
-  auto const bitfields = parse_bitfields(c, tt, files.at(BITFIELDS).data());
-  auto const categories = parse_categories(c, files.at(CATEGORIES).data());
-  auto const providers = parse_providers(c, files.at(PROVIDERS).data());
-  auto const interval = parse_interval(files.at(BASIC_DATA).data());
+  auto bars = utl::global_progress_bars{false};
 
-  tt.begin_ = std::chrono::sys_days{interval.first};
-  tt.end_ = std::chrono::sys_days{interval.second};
-  tt.n_days_ = static_cast<std::uint16_t>(
-      std::chrono::duration_cast<std::chrono::days>(tt.end_ - tt.begin_)
-          .count());
+  auto st = stamm{c, tt, d};
+  service_builder sb{st, tt};
 
-  std::vector<file> service_files;
-  service_builder sb{tt, {}};
-  for (auto const& s : d.list_files(c.fplan_)) {
-    auto const& f = service_files.emplace_back(d.get_file(s));
-    sb.add_services(c, f.filename(), interval, bitfields, timezones, locations,
-                    f.data(), [](std::size_t) {});
+  auto progress_tracker = utl::activate_progress_tracker("nigiri");
+  progress_tracker->status("Read Services")
+      .in_high(utl::all(d.list_files(c.fplan_))  //
+               | utl::transform([&](auto&& f) { return d.file_size(f); })  //
+               | utl::sum());
+  auto total_bytes_processed = std::uint64_t{0U};
+
+  for (auto const& path : d.list_files(c.fplan_)) {
+    log(log_lvl::info, "loader.hrd.services", "loading {}", path);
+    auto const file = d.get_file(path);
+    sb.add_services(
+        c, file.filename(), file.data(),
+        [&](std::size_t const bytes_processed) {
+          progress_tracker->update(total_bytes_processed + bytes_processed);
+        });
+    sb.write_services(src);
+    total_bytes_processed += file.data().size();
   }
-  sb.write_services(src, categories, providers);
+
+  scoped_timer sort_timer{"sorting trip ids"};
+
+  std::sort(
+#if __cpp_lib_execution
+      std::execution::par_unseq,
+#endif
+      begin(tt.trip_id_to_idx_), end(tt.trip_id_to_idx_),
+      [&](pair<trip_id_idx_t, trip_idx_t> const& a,
+          pair<trip_id_idx_t, trip_idx_t> const& b) {
+        return tt.trip_id_strings_[a.first].view() <
+               tt.trip_id_strings_[b.first].view();
+      });
 }
 
 }  // namespace nigiri::loader::hrd

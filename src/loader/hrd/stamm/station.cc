@@ -1,9 +1,11 @@
-#include "nigiri/loader/hrd/station.h"
+#include "nigiri/loader/hrd/stamm/station.h"
 
 #include "utl/parser/arg_parser.h"
 #include "utl/pipes.h"
 
-#include "nigiri/loader/hrd/timezone.h"
+#include "nigiri/loader/hrd/stamm/stamm.h"
+#include "nigiri/loader/hrd/stamm/timezone.h"
+#include "nigiri/loader/hrd/util.h"
 #include "nigiri/logging.h"
 
 namespace nigiri::loader::hrd {
@@ -16,7 +18,7 @@ void parse_station_names(config const& c,
         if (line.len == 0 || line[0] == '%') {
           return;
         } else if (line.len < 13) {
-          log(log_lvl::error, "nigiri.loader.hrd.station.coordinates",
+          log(log_lvl::error, "loader.hrd.station.coordinates",
               "station name file unknown line format line={} content=\"{}\"",
               line_number, line.view());
           return;
@@ -30,7 +32,7 @@ void parse_station_names(config const& c,
 
         auto const eva_num = parse_eva_number(line.substr(c.st_.names_.eva_));
         auto& s = stations[eva_num];
-        s.name_ = name.to_str();
+        s.name_ = iso_8859_1_to_utf8(name.to_str());
         s.id_ = eva_num;
       });
 }
@@ -43,7 +45,7 @@ void parse_station_coordinates(config const& c,
     if (line.len == 0 || line[0] == '%') {
       return;
     } else if (line.len < 30) {
-      log(log_lvl::error, "nigiri.loader.hrd.station.coordinates",
+      log(log_lvl::error, "loader.hrd.station.coordinates",
           "station coordinate file unknown line format line={} content=\"{}\"",
           line_number, line.view());
       return;
@@ -58,26 +60,39 @@ void parse_station_coordinates(config const& c,
 void parse_equivilant_stations(config const& c,
                                hash_map<eva_number, hrd_location>& stations,
                                std::string_view file_content) {
-  utl::for_each_line(file_content, [&](utl::cstr line) {
-    if (line.length() < 16 || line[0] == '%' || line[0] == '*') {
-      return;
-    }
-
-    if (line[7] == ':') {  // equivalent stations
-      auto& station = stations.at(
-          parse_eva_number(line.substr(c.meta_.meta_stations_.eva_)));
-      utl::for_each_token(line.substr(8), ' ', [&](utl::cstr token) {
-        if (token.empty() ||
-            (c.version_ == "hrd_5_20_26" && token.starts_with("F"))) {
+  utl::for_each_line_numbered(
+      file_content, [&](utl::cstr line, unsigned const line_number) {
+        if (line.length() < 16 || line[0] == '%' || line[0] == '*') {
           return;
         }
-        if (auto const eva = parse_eva_number(token); eva != 0) {
-          station.equivalent_.emplace(eva);
+
+        if (line[7] == ':') {  // equivalent stations
+          try {
+            auto& station = stations.at(
+                parse_eva_number(line.substr(c.meta_.meta_stations_.eva_)));
+            utl::for_each_token(line.substr(8), ' ', [&](utl::cstr token) {
+              if (token.empty() ||
+                  (c.version_ == "hrd_5_20_26" && token.starts_with("F"))) {
+                return;
+              }
+              if (token.starts_with("H")  // Hauptmast
+                  || token.starts_with("B")  // Bahnhofstafel
+                  || token.starts_with("V")  // Virtueller Umstieg
+                  || token.starts_with("S")  // Start-Ziel-Aequivalenz
+              ) {
+                ++token;
+              }
+              if (auto const eva = parse_eva_number(token); eva != 0) {
+                station.equivalent_.emplace(eva);
+              }
+            });
+          } catch (std::exception const& e) {
+            log(log_lvl::error, "loader.hrd.equivalent",
+                "could not parse line {}: {}", line_number, e.what());
+          }
+        } else {  // footpaths
         }
       });
-    } else {  // footpaths
-    }
-  });
 }
 
 void parse_footpaths(config const& c,
@@ -118,13 +133,21 @@ void parse_footpaths(config const& c,
   });
 }
 
+struct hash {
+  size_t operator()(location_id const& id) const {
+    return cista::build_hash(id);
+  }
+};
+
 location_map_t parse_stations(config const& c,
                               source_idx_t const src,
-                              timezone_map_t const& timezones,
                               timetable& tt,
+                              stamm& st,
                               std::string_view station_names_file,
                               std::string_view station_coordinates_file,
                               std::string_view station_metabhf_file) {
+  scoped_timer timer{"parse stations"};
+
   auto empty_idx_vec = vector<location_idx_t>{};
   auto empty_footpath_vec = vector<footpath>{};
 
@@ -140,7 +163,7 @@ location_map_t parse_stations(config const& c,
     auto const idx = tt.locations_.register_location(
         location{id.id_, s.name_, s.pos_, src, location_type::kStation,
                  osm_node_id_t::invalid(), location_idx_t::invalid(),
-                 get_tz(timezones, s.id_).first, it_range{empty_idx_vec},
+                 st.get_tz(s.id_).first, it_range{empty_idx_vec},
                  it_range{empty_footpath_vec}, it_range{empty_footpath_vec}});
     s.idx_ = idx;
   }

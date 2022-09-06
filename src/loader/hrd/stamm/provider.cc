@@ -1,11 +1,10 @@
-#include "nigiri/loader/hrd/provider.h"
+#include "nigiri/loader/hrd/stamm/provider.h"
 
+#include "nigiri/loader/hrd/util.h"
 #include "utl/parser/arg_parser.h"
 #include "utl/verify.h"
 
 namespace nigiri::loader::hrd {
-
-using provider_map_t = hash_map<string, provider>;
 
 void verify_line_format(utl::cstr line,
                         char const* filename,
@@ -20,7 +19,7 @@ void verify_line_format(utl::cstr line,
               "provider line format mismatch in {}:{}", filename, line_number);
 }
 
-string parse_name(utl::cstr s) {
+std::string_view parse_name(utl::cstr s) {
   auto const start_is_quote = (s[0] == '\'' || s[0] == '\"');
   auto const end = start_is_quote ? s[0] : ' ';
   auto i = start_is_quote ? 1U : 0U;
@@ -34,11 +33,18 @@ string parse_name(utl::cstr s) {
 provider read_provider_names(utl::cstr line) {
   auto const long_name = line.substr_offset(" L ");
   auto const full_name = line.substr_offset(" V ");
-  return provider{.short_name_ = parse_name(line.substr(long_name + 3U)),
-                  .long_name_ = parse_name(line.substr(full_name + 3U))};
+  return provider{
+      .short_name_ =
+          iso_8859_1_to_utf8(parse_name(line.substr(long_name + 3U))),
+      .long_name_ =
+          iso_8859_1_to_utf8(parse_name(line.substr(full_name + 3U)))};
 }
 
-provider_map_t parse_providers(config const& c, std::string_view file_content) {
+provider_map_t parse_providers(config const& c,
+                               timetable& tt,
+                               std::string_view file_content) {
+  scoped_timer timer{"parse providers"};
+
   provider_map_t providers;
   provider current_info;
   int previous_provider_number = 0;
@@ -53,7 +59,9 @@ provider_map_t parse_providers(config const& c, std::string_view file_content) {
           utl::verify(previous_provider_number == provider_number,
                       "provider line format mismatch in line {}", line_number);
           for_each_token(line.substr(8), ' ', [&](utl::cstr token) {
-            providers[token.to_str()] = std::move(current_info);
+            auto const idx = tt.providers_.size();
+            tt.providers_.emplace_back(std::move(current_info));
+            providers[token.to_str()] = provider_idx_t{idx};
           });
         }
       });

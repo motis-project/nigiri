@@ -5,16 +5,13 @@
 
 #include "nigiri/loader/hrd/eva_number.h"
 #include "nigiri/loader/hrd/parser_config.h"
-#include "nigiri/section_db.h"
+#include "nigiri/timetable.h"
 #include "nigiri/types.h"
 
 namespace nigiri::loader::hrd {
 
 using timezone_map_t =
     std::map<eva_number, std::pair<timezone_idx_t, tz_offsets>>;
-
-std::pair<timezone_idx_t, tz_offsets> const& get_tz(timezone_map_t const&,
-                                                    eva_number);
 
 inline bool is_local_time_in_season(
     tz_offsets const& tz,

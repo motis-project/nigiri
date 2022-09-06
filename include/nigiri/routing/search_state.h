@@ -20,6 +20,7 @@ struct search_state {
   std::vector<bool> route_mark_;
   std::vector<start> starts_;
   pareto_set<journey> results_;
+  interval<unixtime_t> search_interval_;
 };
 
 }  // namespace nigiri::routing

@@ -26,14 +26,13 @@ void print_transport(timetable const& tt,
   auto const& stop_seq = tt.route_location_seq_.at(route_idx);
   auto const& stop_times = tt.transport_stop_times_.at(i);
 
-  indent(out, indent_width);
-  out << "ROUTE=" << route_idx << "\n";
   auto const from =
       std::min(static_cast<unsigned>(stop_seq.size()), stop_range.from_);
   auto const to =
       std::min(static_cast<unsigned>(stop_seq.size()), stop_range.to_);
   for (auto stop_idx = from; stop_idx != to; ++stop_idx) {
-    auto const location_idx = stop_seq.at(stop_idx).location_idx();
+    auto const location_idx =
+        timetable::stop{stop_seq.at(stop_idx)}.location_idx();
     auto const& stop_name = tt.locations_.names_.at(location_idx);
     auto const& stop_id = tt.locations_.ids_.at(location_idx);
     auto const& tz = tt.locations_.timezones_.at(
@@ -47,8 +46,8 @@ void print_transport(timetable const& tt,
                0, 50 - static_cast<int>(stop_name_len + stop_name.size())))
         << std::setfill('.') << stop_name << std::setfill(' ');
 
-    if (stop_idx != 0U) {
-      auto const t = tt.begin_ + to_idx(day_idx) * 1_days +
+    if (stop_idx != from) {
+      auto const t = tt.date_range_.from_ + to_idx(day_idx) * 1_days +
                      stop_times.at(2 * stop_idx - 1);
       date::to_stream(out, " a: %d.%m %R", t);
       date::to_stream(out, " [%d.%m %R]", to_local_time(tz, t));
@@ -57,14 +56,16 @@ void print_transport(timetable const& tt,
       out << "              ";
     }
 
-    if (stop_idx != stop_seq.size() - 1U) {
-      auto const t =
-          tt.begin_ + to_idx(day_idx) * 1_days + stop_times.at(2 * stop_idx);
+    if (stop_idx != to - 1) {
+      auto const t = tt.date_range_.from_ + to_idx(day_idx) * 1_days +
+                     stop_times.at(2 * stop_idx);
       date::to_stream(out, "  d: %d.%m %R", t);
       date::to_stream(out, " [%d.%m %R]", to_local_time(tz, t));
 
-      auto const& merged_trips =
-          tt.merged_trips_.at(tt.transport_to_trip_section_.at(i).at(stop_idx));
+      auto const& trip_section = tt.transport_to_trip_section_.at(i);
+      auto const& merged_trips = tt.merged_trips_.at(
+          trip_section.size() == 1U ? trip_section[0]
+                                    : trip_section.at(stop_idx));
       out << "  [";
       for (auto const& trip_idx : merged_trips) {
         auto j = 0U;
@@ -74,12 +75,16 @@ void print_transport(timetable const& tt,
           if (j++ != 0) {
             out << ", ";
           }
-          out << "{name=" << tt.trip_display_names_.at(trip_idx) << ", day=";
-          date::to_stream(out, "%F", tt.begin_ + to_idx(day_idx) * 1_days);
-          out << ", id=" << id.id_
-              << ", src=" << static_cast<int>(to_idx(id.src_));
+          out << "{name=" << tt.trip_display_names_.at(trip_idx).view()
+              << ", day=";
+          date::to_stream(out, "%F",
+                          tt.date_range_.from_ + to_idx(day_idx) * 1_days);
+          out << ", id=" << tt.trip_id_strings_.at(id).view()
+              << ", src=" << static_cast<int>(to_idx(tt.trip_id_src_.at(id)));
           if (with_debug) {
-            out << ", debug=" << dbg;
+            out << ", debug="
+                << tt.source_file_names_.at(dbg.source_file_idx_).view() << ":"
+                << dbg.line_number_;
           }
           out << "}";
         }

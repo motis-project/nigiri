@@ -6,6 +6,7 @@
 
 namespace nigiri::loader::hrd {
 
+bool applicable(config const&, dir const&);
 void load_timetable(source_idx_t, config const&, dir const&, timetable&);
 
 }  // namespace nigiri::loader::hrd

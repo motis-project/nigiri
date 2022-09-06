@@ -23,9 +23,9 @@ struct location {
            osm_node_id_t,
            location_idx_t,
            timezone_idx_t,
-           it_range<vector<location_idx_t>::iterator> equivalences,
-           it_range<vector<footpath>::iterator> footpaths_in,
-           it_range<vector<footpath>::iterator> footpaths_out);
+           it_range<vector<location_idx_t>::const_iterator> equivalences,
+           it_range<vector<footpath>::const_iterator> footpaths_in,
+           it_range<vector<footpath>::const_iterator> footpaths_out);
   string const& id_;
   string const& name_;
   geo::latlng pos_;
@@ -34,8 +34,8 @@ struct location {
   osm_node_id_t osm_id_;
   location_idx_t parent_;
   timezone_idx_t timezone_idx_;
-  it_range<vector<location_idx_t>::iterator> equivalences_;
-  it_range<vector<footpath>::iterator> footpaths_out_, footpaths_in_;
+  it_range<vector<location_idx_t>::const_iterator> equivalences_;
+  it_range<vector<footpath>::const_iterator> footpaths_out_, footpaths_in_;
 };
 
 }  // namespace nigiri

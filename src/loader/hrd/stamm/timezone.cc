@@ -1,4 +1,4 @@
-#include "nigiri/loader/hrd/timezone.h"
+#include "nigiri/loader/hrd/stamm/timezone.h"
 
 #include "utl/parser/arg_parser.h"
 
@@ -20,18 +20,11 @@ unixtime_t parse_date(utl::cstr s) {
   return unixtime_t{std::chrono::sys_days{date}};
 }
 
-std::pair<timezone_idx_t, tz_offsets> const& get_tz(
-    timezone_map_t const& tz, eva_number const eva_number) {
-  utl::verify(!tz.empty(), "no timezones");
-  auto const it = tz.upper_bound(eva_number);
-  utl::verify(it != end(tz) || std::prev(it)->first <= eva_number,
-              "no timezone for eva number {}", eva_number);
-  return std::prev(it)->second;
-}
-
 timezone_map_t parse_timezones(config const& c,
                                timetable& tt,
                                std::string_view file_content) {
+  scoped_timer timer{"parse timezones"};
+
   timezone_map_t tz;
   utl::for_each_line(file_content, [&](utl::cstr line) {
     if (line.length() == 15) {
@@ -41,7 +34,7 @@ timezone_map_t parse_timezones(config const& c,
       if (it != end(tz)) {
         tz[parse_eva_number(line.substr(c.tz_.type1_eva_))] = it->second;
       } else {
-        log(log_lvl::error, "nigiri.loader.hrd.timezone",
+        log(log_lvl::error, "loader.hrd.timezone",
             "no timezone for eva number: {}", first_valid_eva_number);
       }
       return;

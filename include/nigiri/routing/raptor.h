@@ -30,11 +30,11 @@ struct raptor {
   static constexpr auto const kInvalidTime =
       kFwd ? routing_time::max() : routing_time::min();
 
-  raptor(std::shared_ptr<timetable const> tt, search_state state, query q)
+  raptor(std::shared_ptr<timetable const> tt, search_state& state, query q)
       : tt_mem_{std::move(tt)},
         tt_{*tt_mem_},
         q_{std::move(q)},
-        state_{std::move(state)} {}
+        state_{state} {}
 
   bool is_better(auto a, auto b) { return kFwd ? a < b : a > b; }
   bool is_better_or_eq(auto a, auto b) { return kFwd ? a <= b : a >= b; }
@@ -61,14 +61,14 @@ struct raptor {
     auto const [day_at_stop, mam_at_stop] = time.day_idx_mam();
 
     auto const n_days_to_iterate =
-        kFwd ? tt_.n_days_ - to_idx(day_at_stop) : to_idx(day_at_stop) + 1U;
+        kFwd ? n_days_ - to_idx(day_at_stop) : to_idx(day_at_stop) + 1U;
 
     trace(
         "┊ │    et: time={}, stop_idx={}, "
         "location=(name={}, id={}, idx={}), n_days_to_iterate={}, tt_day={}, "
         "day_at_stop={}, mam_at_stop={}\n",
         time, stop_idx, tt_.locations_.names_[l_idx],
-        tt_.locations_.ids_[l_idx], l_idx, n_days_to_iterate, tt_.n_days_,
+        tt_.locations_.ids_[l_idx], l_idx, n_days_to_iterate, n_days_,
         to_idx(day_at_stop), mam_at_stop);
 
     for (auto i = std::uint16_t{0U}; i != n_days_to_iterate; ++i) {
@@ -107,7 +107,8 @@ struct raptor {
     for (auto i = 0U; i != stop_seq.size(); ++i) {
       auto const stop_idx =
           static_cast<unsigned>(kFwd ? i : stop_seq.size() - i - 1U);
-      auto const l_idx = cista::to_idx(stop_seq[stop_idx].location_idx());
+      auto const l_idx =
+          cista::to_idx(timetable::stop{stop_seq[stop_idx]}.location_idx());
       auto const current_best =
           get_best(state_.best_[l_idx], state_.round_times_[k - 1][l_idx]);
 
@@ -250,7 +251,7 @@ struct raptor {
 
   void route() {
     state_.reset(tt_, kInvalidTime);
-    get_starts<SearchDir>(tt_, q_.interval_, q_.start_, state_.starts_);
+    get_starts<SearchDir>(tt_, q_.start_time_, q_.start_, state_.starts_);
     utl::equal_ranges_linear(
         state_.starts_,
         [](start const& a, start const& b) {
@@ -265,9 +266,19 @@ struct raptor {
           rounds();
           reconstruct(from_it->time_at_start_);
         });
-    utl::erase_if(state_.results_, [&](journey const& j) {
-      return !q_.interval_.contains(j.start_time_);
-    });
+    if (holds_alternative<interval<unixtime_t>>(q_.start_time_)) {
+      utl::erase_if(state_.results_, [&](journey const& j) {
+        return !q_.start_time_.as<interval<unixtime_t>>().contains(
+            j.start_time_);
+      });
+    }
+    state_.search_interval_ = q_.start_time_.apply(
+        utl::overloaded{[](interval<unixtime_t> const& start_interval) {
+                          return start_interval;
+                        },
+                        [](unixtime_t const start_time) {
+                          return interval<unixtime_t>{start_time, start_time};
+                        }});
   }
 
   void reconstruct(unixtime_t const start_at_start) {
@@ -292,10 +303,12 @@ struct raptor {
 
   std::shared_ptr<timetable const> tt_mem_;
   timetable const& tt_;
+  std::uint16_t n_days_{
+      static_cast<std::uint16_t>(tt_.date_range_.size().count())};
   query q_;
   unixtime_t curr_begin_;
   unixtime_t begin_, end_;
-  search_state state_;
+  search_state& state_;
 };
 
 }  // namespace nigiri::routing

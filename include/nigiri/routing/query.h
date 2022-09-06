@@ -10,8 +10,10 @@ struct offset {
   std::uint8_t type_;
 };
 
+using start_time_t = variant<unixtime_t, interval<unixtime_t>>;
+
 struct query {
-  interval<unixtime_t> interval_;
+  start_time_t start_time_;
   vector<offset> start_;
   vector<vector<offset>> destinations_;
   vector<vector<offset>> via_destinations_;
