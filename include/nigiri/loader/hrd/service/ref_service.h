@@ -35,10 +35,12 @@ struct ref_service {
 
   ref_service(ref_service const& s,
               std::basic_string<duration_t> utc_times,
+              std::basic_string<location_idx_t> stop_seq,
               bitfield utc_traffic_days)
       : ref_service{s} {
     utc_traffic_days_ = std::move(utc_traffic_days);
     utc_times_ = std::move(utc_times);
+    stop_seq_ = std::move(stop_seq);
   }
 
   std::vector<duration_t> local_times(service_store const& store) const {
@@ -109,6 +111,7 @@ struct ref_service {
   unsigned repetition_;
   bitfield utc_traffic_days_;
   std::basic_string<duration_t> utc_times_;
+  std::basic_string<location_idx_t> stop_seq_;
 };
 
 }  // namespace nigiri::loader::hrd

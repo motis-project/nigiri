@@ -349,6 +349,9 @@ struct timetable {
                        pair<transport_idx_t, interval<std::uint32_t>>>
       trip_idx_to_transport_idx_;
 
+  // Track names
+  vecvec<track_name_idx_t, char> track_names_;
+
   // Section meta infos:
   vector_map<attribute_idx_t, attribute> attributes_;
   vecvec<attribute_combination_idx_t, attribute_idx_t> attribute_combinations_;

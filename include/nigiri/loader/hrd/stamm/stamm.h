@@ -10,6 +10,7 @@
 #include "nigiri/loader/hrd/stamm/provider.h"
 #include "nigiri/loader/hrd/stamm/station.h"
 #include "nigiri/loader/hrd/stamm/timezone.h"
+#include "nigiri/loader/hrd/stamm/track.h"
 #include "nigiri/timetable.h"
 #include "nigiri/types.h"
 
@@ -29,6 +30,7 @@ struct stamm {
   provider_idx_t resolve_provider(utl::cstr);
   attribute_idx_t resolve_attribute(utl::cstr) const;
   std::pair<timezone_idx_t, tz_offsets> const& get_tz(eva_number) const;
+  location_idx_t resolve_track(track_rule_key const&, day_idx_t) const;
 
 private:
   location_map_t locations_;
@@ -37,6 +39,8 @@ private:
   attribute_map_t attributes_;
   direction_map_t directions_;
   bitfield_map_t bitfields_;
+  track_rule_map_t track_rules_;
+  track_location_map_t track_locations_;
   timezone_map_t timezones_;
   timetable& tt_;
 

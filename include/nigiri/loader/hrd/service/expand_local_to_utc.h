@@ -13,25 +13,22 @@ void to_local_time(service_store const& store,
                    interval<std::chrono::sys_days> const& tt_interval,
                    ref_service const& s,
                    Fn&& consumer) {
-  struct duration_hash {
-    cista::hash_t operator()(std::basic_string<duration_t> const& v) const {
-      auto h = cista::BASE_HASH;
-      for (auto const& el : v) {
-        h = cista::hash_combine(h, el.count());
-      }
-      return h;
-    }
-  };
+  using key_t = std::pair<std::basic_string<duration_t>,
+                          std::basic_string<location_idx_t>>;
+  auto utc_time_traffic_days = hash_map<key_t, bitfield>{};
 
-  auto utc_time_traffic_days =
-      hash_map<std::basic_string<duration_t>, bitfield, duration_hash>{};
   auto const local_times = s.local_times(store);
   auto const stop_timezones = s.get_stop_timezones(store, st);
   auto const first_day = tt_interval.from_ + kBaseDayOffset;
   auto const last_day = tt_interval.to_ - kBaseDayOffset;
-  auto utc_service_times = std::basic_string<duration_t>{};
+
+  key_t key;
+  auto& utc_service_times = key.first;
+  auto& stop_seq = key.second;
   utc_service_times.resize(static_cast<vector<duration_t>::size_type>(
       s.split_info_.stop_range().size() * 2U - 2U));
+  stop_seq.resize(s.stops(store).size());
+
   for (auto day = first_day; day <= last_day; day += std::chrono::days{1}) {
     auto const day_idx = static_cast<size_t>((day - first_day).count());
     if (!s.local_traffic_days().test(day_idx)) {
@@ -51,7 +48,7 @@ void to_local_time(service_store const& store,
     auto i = 0U;
     auto pred = duration_t{0};
     auto fail = false;
-    for (auto const [local_time, tz] : utl::zip(local_times, stop_timezones)) {
+    for (auto const& [local_time, tz] : utl::zip(local_times, stop_timezones)) {
       auto const [utc_mam, day_offset, valid] = local_mam_to_utc_mam(
           tz, day + first_day_offset, local_time - first_day_offset);
       if (day_offset != 0_days || pred > utc_mam || !valid) {
@@ -63,7 +60,19 @@ void to_local_time(service_store const& store,
         break;
       }
 
-      utc_service_times[i++] = utc_mam;
+      utc_service_times[i] = utc_mam;
+
+      auto const train_num = 0U;
+      auto const provider = provider_idx_t::invalid();
+      auto const local_mam = duration_t{local_time.count() % 1440};
+      auto const local_day = day_idx_t{day_idx + (local_time.count() / 1440)};
+      stop_seq[i] =
+          st.resolve_track(track_rule_key{st.resolve_location(stop.eva_num_),
+                                          train_num, provider, local_mam},
+                           local_day);
+
+      ++i;
+
       pred = utc_mam;
     }
 
@@ -83,7 +92,8 @@ void to_local_time(service_store const& store,
   }
 
   for (auto& [times, traffic_days] : utc_time_traffic_days) {
-    consumer(ref_service{s, std::move(times), traffic_days});
+    consumer(ref_service{s, std::move(times.first), std::move(times.second),
+                         traffic_days});
   }
 }
 

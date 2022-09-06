@@ -10,6 +10,8 @@ template <typename BeginIt, typename EndIt = BeginIt>
 struct it_range {
   using value_type = decltype(*BeginIt{});
   using reference_type = std::add_lvalue_reference_t<value_type>;
+  using const_iterator = BeginIt;
+  using iterator = BeginIt;
 
   template <typename Collection>
   explicit it_range(Collection const& c)
