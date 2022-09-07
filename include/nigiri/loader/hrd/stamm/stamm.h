@@ -30,7 +30,9 @@ struct stamm {
   provider_idx_t resolve_provider(utl::cstr);
   attribute_idx_t resolve_attribute(utl::cstr) const;
   std::pair<timezone_idx_t, tz_offsets> const& get_tz(eva_number) const;
-  location_idx_t resolve_track(track_rule_key const&, day_idx_t) const;
+  location_idx_t resolve_track(track_rule_key const&,
+                               minutes_after_midnight_t,
+                               day_idx_t) const;
 
 private:
   location_map_t locations_;

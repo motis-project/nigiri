@@ -57,9 +57,8 @@ void parse_track_rules(config const& c,
                        l.footpaths_in_, l.footpaths_out_});
         });
 
-    track_rules[track_rule_key{parent, train_num, admin,
-                               minutes_after_midnight_t{time}}]
-        .push_back(track_rule{bitfield, track_location});
+    track_rules[track_rule_key{parent, train_num, admin}].push_back(
+        track_rule{bitfield, track_location, minutes_after_midnight_t{time}});
   });
 }
 

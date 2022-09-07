@@ -33,8 +33,8 @@ void build_stop_seq(ref_service const& s,
     auto const mam = duration_t{local_times[time_idx].count() % 1440U};
     auto const l_idx = st.resolve_track(
         track_rule_key{st.resolve_location(ref.stops_[stop_idx].eva_num_),
-                       train_nr, admin, mam},
-        day_idx_t{static_cast<day_idx_t::value_t>(day_idx + day_offset)});
+                       train_nr, admin},
+        mam, day_idx_t{static_cast<day_idx_t::value_t>(day_idx + day_offset)});
 
     stop_seq[i] =
         timetable::stop{l_idx, ref.stops_[stop_idx].dep_.in_out_allowed_,

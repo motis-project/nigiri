@@ -13,16 +13,16 @@ struct stamm;
 
 struct track_rule_key {
   CISTA_COMPARABLE()
-  static constexpr minutes_after_midnight_t kTimeNotSet = -1_minutes;
   location_idx_t location_{0U};
   int train_num_{0U};
   provider_idx_t admin_{provider_idx_t::invalid()};
-  minutes_after_midnight_t time_{-1_minutes};
 };
 
 struct track_rule {
+  static constexpr minutes_after_midnight_t kTimeNotSet = -1_minutes;
   unsigned bitfield_num_{0};
   location_idx_t track_location_;
+  minutes_after_midnight_t mam_{-1_minutes};
 };
 
 struct track_at_station {
@@ -31,7 +31,8 @@ struct track_at_station {
   track_name_idx_t track_;
 };
 
-using track_rule_map_t = hash_map<track_rule_key, std::vector<track_rule>>;
+using track_rule_map_t =
+    hash_map<track_rule_key, std::basic_string<track_rule>>;
 using track_location_map_t = hash_map<track_at_station, location_idx_t>;
 
 void parse_track_rules(config const&,

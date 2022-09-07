@@ -125,20 +125,16 @@ attribute_idx_t stamm::resolve_attribute(utl::cstr s) const {
 }
 
 location_idx_t stamm::resolve_track(track_rule_key const& k,
+                                    minutes_after_midnight_t const mam,
                                     day_idx_t day_idx) const {
   auto it = track_rules_.find(k);
-
-  if (it == end(track_rules_)) {
-    it = track_rules_.find(track_rule_key{k.location_, k.train_num_, k.admin_,
-                                          track_rule_key::kTimeNotSet});
-  }
-
   if (it == end(track_rules_)) {
     return k.location_;
   } else {
     auto const track_rule_it =
         utl::find_if(it->second, [&](track_rule const& r) {
-          return resolve_bitfield(r.bitfield_num_).test(to_idx(day_idx));
+          return (r.mam_ == track_rule::kTimeNotSet || r.mam_ == mam) ||
+                 resolve_bitfield(r.bitfield_num_).test(to_idx(day_idx));
         });
     if (track_rule_it != end(it->second)) {
       return track_rule_it->track_location_;
