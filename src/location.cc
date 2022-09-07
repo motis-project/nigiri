@@ -9,8 +9,8 @@ std::ostream& operator<<(std::ostream& out, location const& l) {
 }
 
 location::location(timetable const& tt, location_idx_t idx)
-    : id_{tt.locations_.ids_[idx]},
-      name_{tt.locations_.names_[idx]},
+    : id_{tt.locations_.ids_[idx].view()},
+      name_{tt.locations_.names_[idx].view()},
       pos_{tt.locations_.coordinates_[idx]},
       src_{tt.locations_.src_[idx]},
       type_{tt.locations_.types_[idx]},
@@ -22,8 +22,8 @@ location::location(timetable const& tt, location_idx_t idx)
       footpaths_in_{tt.locations_.footpaths_in_[idx]} {}
 
 location::location(
-    string const& id,
-    string const& name,
+    std::string_view id,
+    std::string_view name,
     geo::latlng pos,
     source_idx_t src,
     location_type type,
@@ -41,8 +41,8 @@ location::location(
       osm_id_{osm_id},
       parent_{parent},
       timezone_idx_{timezone},
-      equivalences_{std::move(equivalences)},
-      footpaths_out_{std::move(footpaths_out)},
-      footpaths_in_{std::move(footpaths_in)} {}
+      equivalences_{equivalences},
+      footpaths_out_{footpaths_out},
+      footpaths_in_{footpaths_in} {}
 
 }  // namespace nigiri

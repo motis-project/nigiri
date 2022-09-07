@@ -12,7 +12,7 @@ void build_stop_seq(ref_service const& s,
                     stamm const& st,
                     std::size_t const day_idx,
                     std::vector<duration_t> const& local_times,
-                    std::basic_string<location_idx_t>& stop_seq) {
+                    std::basic_string<timetable::stop::value_type>& stop_seq) {
   auto const& ref = store.get(s.ref_);
   auto const n_stops = s.stops(store).size();
   for (auto i = 0U; i != n_stops; ++i) {
@@ -29,21 +29,26 @@ void build_stop_seq(ref_service const& s,
     auto const admin = ref.begin_to_end_info_.admin_.has_value()
                            ? ref.begin_to_end_info_.admin_.value()
                            : s.sections(store)[section_idx].admin_.value();
-    auto const day_offset = day_idx + local_times[time_idx].count() / 1440U;
+    auto const day_offset = local_times[time_idx].count() / 1440U;
     auto const mam = duration_t{local_times[time_idx].count() % 1440U};
-
-    stop_seq[i] = st.resolve_track(
+    auto const l_idx = st.resolve_track(
         track_rule_key{st.resolve_location(ref.stops_[stop_idx].eva_num_),
                        train_nr, admin, mam},
         day_idx_t{static_cast<day_idx_t::value_t>(day_idx + day_offset)});
+
+    stop_seq[i] =
+        timetable::stop{l_idx, ref.stops_[stop_idx].dep_.in_out_allowed_,
+                        ref.stops_[stop_idx].arr_.in_out_allowed_}
+            .value();
   }
 }
 
-duration_t build_utc_time_seq(parser_info const& origin,
-                              std::vector<duration_t> const& local_times,
-                              std::vector<tz_offsets> const& stop_timezones,
-                              std::chrono::sys_days const day,
-                              std::basic_string<duration_t>& utc_times) {
+std::optional<duration_t> build_utc_time_seq(
+    parser_info const& origin,
+    std::vector<duration_t> const& local_times,
+    std::vector<tz_offsets> const& stop_timezones,
+    std::chrono::sys_days const day,
+    std::basic_string<duration_t>& utc_times) {
   auto const [_, first_day_offset, first_valid] = local_mam_to_utc_mam(
       stop_timezones.front(), day, local_times.front(), true);
 
@@ -51,6 +56,7 @@ duration_t build_utc_time_seq(parser_info const& origin,
     log(log_lvl::error, "loader.hrd.service.utc",
         "first departure local to utc failed for {}: local_time={}, day={}",
         origin, local_times.front(), day);
+    return std::nullopt;
   }
 
   auto i = 0U;
@@ -63,6 +69,7 @@ duration_t build_utc_time_seq(parser_info const& origin,
           "local to utc failed, ignoring: {}, day={}, time={}, offset={}, "
           "pred={}, utc_mam={}, valid={}",
           origin, day, local_time, day_offset, pred, utc_mam, valid);
+      return std::nullopt;
     }
     utc_times[i++] = utc_mam;
     pred = utc_mam;
@@ -78,7 +85,7 @@ void to_local_time(service_store const& store,
                    ref_service const& s,
                    Fn&& consumer) {
   using key_t = std::pair<std::basic_string<duration_t>,
-                          std::basic_string<location_idx_t>>;
+                          std::basic_string<timetable::stop::value_type>>;
   auto utc_time_traffic_days = hash_map<key_t, bitfield>{};
 
   auto const local_times = s.local_times(store);
@@ -100,16 +107,19 @@ void to_local_time(service_store const& store,
       continue;
     }
 
-    build_stop_seq(s, store, st, day_idx, local_times, stop_seq);
     auto const first_day_offset = build_utc_time_seq(
         s.origin(store), local_times, stop_timezones, day, utc_service_times);
+    if (!first_day_offset.has_value()) {
+      continue;
+    }
+    build_stop_seq(s, store, st, day_idx, local_times, stop_seq);
 
     auto const traffic_day =
         kBaseDayOffset.count() + day_idx +
-        static_cast<std::size_t>(first_day_offset / 1_days);
-    auto const it = utc_time_traffic_days.find(utc_service_times);
+        static_cast<std::size_t>(first_day_offset.value() / 1_days);
+    auto const it = utc_time_traffic_days.find(key);
     if (it == end(utc_time_traffic_days)) {
-      utc_time_traffic_days.emplace(utc_service_times, bitfield{})
+      utc_time_traffic_days.emplace(key, bitfield{})
           .first->second.set(traffic_day);
     } else {
       it->second.set(traffic_day);

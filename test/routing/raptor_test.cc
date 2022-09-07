@@ -120,8 +120,10 @@ TEST_CASE("raptor, simple_search") {
   auto fwd_r = routing::raptor<direction::kForward>{
       tt, state,
       routing::query{
-          .interval_ = {unixtime_t{sys_days{2020_y / March / 30}} + 5_hours,
-                        unixtime_t{sys_days{2020_y / March / 30}} + 6_hours},
+          .start_time_ =
+              interval<unixtime_t>{
+                  unixtime_t{sys_days{2020_y / March / 30}} + 5_hours,
+                  unixtime_t{sys_days{2020_y / March / 30}} + 6_hours},
           .start_ = {nigiri::routing::offset{
               .location_ = tt->locations_.location_id_to_idx_.at(
                   {.id_ = "0000001", .src_ = src}),
@@ -151,8 +153,10 @@ TEST_CASE("raptor, simple_search") {
   auto bwd_r = routing::raptor<direction::kBackward>{
       tt, state,
       routing::query{
-          .interval_ = {unixtime_t{sys_days{2020_y / March / 30}} + 5_hours,
-                        unixtime_t{sys_days{2020_y / March / 30}} + 6_hours},
+          .start_time_ =
+              interval<unixtime_t>{
+                  unixtime_t{sys_days{2020_y / March / 30}} + 5_hours,
+                  unixtime_t{sys_days{2020_y / March / 30}} + 6_hours},
           .start_ = {nigiri::routing::offset{
               .location_ = tt->locations_.location_id_to_idx_.at(
                   {.id_ = "0000003", .src_ = src}),

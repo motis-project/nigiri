@@ -87,8 +87,8 @@ struct timetable {
     }
 
     location get(location_idx_t const idx) {
-      return location{ids_[idx],
-                      names_[idx],
+      return location{ids_[idx].view(),
+                      names_[idx].view(),
                       coordinates_[idx],
                       src_[idx],
                       types_[idx],
@@ -106,9 +106,9 @@ struct timetable {
 
     // Station access: external station id -> internal station idx
     hash_map<location_id, location_idx_t> location_id_to_idx_;
-    vector_map<location_idx_t, string> names_;
+    vecvec<location_idx_t, char> names_;
+    vecvec<location_idx_t, char> ids_;
     vector_map<location_idx_t, geo::latlng> coordinates_;
-    vector_map<location_idx_t, string> ids_;
     vector_map<location_idx_t, source_idx_t> src_;
     vector_map<location_idx_t, duration_t> transfer_time_;
     vector_map<location_idx_t, location_type> types_;

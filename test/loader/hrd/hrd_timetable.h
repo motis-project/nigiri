@@ -107,6 +107,11 @@ constexpr auto const providers_file_content = R"(
 00001 : 80____
 )";
 
+constexpr auto const tracks_file_content = R"(
+0000004 00815 80____ 1        2207 000001
+0000004 00815 80____ 2        2207 000004
+)";
+
 constexpr auto const services_simple = R"(
 *Z 01337 80____       048 030                             %
 *A VE 0000001 0000002 000005                              %
@@ -128,7 +133,7 @@ inline loader::mem_dir base() {
            {(b / r[STATIONS][0]), stations_file_content},
            {(b / r[COORDINATES][0]), station_geo_file_content},
            {(b / r[BITFIELDS][0]), bitfields_file_content},
-           {(b / r[TRACKS][0]), ""},
+           {(b / r[TRACKS][0]), tracks_file_content},
            {(b / r[INFOTEXT][0]), ""},
            {(b / r[BASIC_DATA][0]), basic_info_file_content},
            {(b / r[CATEGORIES][0]), categories_file_content},

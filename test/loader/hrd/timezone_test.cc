@@ -26,6 +26,9 @@ TEST_CASE("loader_hrd_timezone, roundtrip") {
     auto const local_mam = duration_t{local.time_since_epoch().count() % 1440};
     auto const [mam, offset, valid] =
         local_mam_to_utc_mam(tz, local_day, local_mam);
+    if (!valid) {
+      continue;
+    }
 
     // For times where local time jumps back (in this case 03:00 -> 02:00) the
     // conversion from local time to UTC time is ambiguous. Since

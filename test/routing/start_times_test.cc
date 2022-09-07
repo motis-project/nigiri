@@ -271,7 +271,9 @@ TEST_CASE("routing start times") {
       location_id{.id_ = "0000002", .src_ = src});
   auto starts = std::vector<start>{};
   get_starts<nigiri::direction::kForward>(
-      *tt, {sys_days{2020_y / March / 30}, sys_days{2020_y / March / 31}},
+      *tt,
+      interval<unixtime_t>{sys_days{2020_y / March / 30},
+                           sys_days{2020_y / March / 31}},
       {offset{.location_ = A, .offset_ = 15_minutes, .type_ = 0},
        offset{.location_ = B, .offset_ = 30_minutes, .type_ = 0}},
       starts);
@@ -289,7 +291,7 @@ TEST_CASE("routing start times") {
         for (auto const& s : it_range{from_it, to_it}) {
           ss << "|  {time_at_start=" << s.time_at_start_
              << ", time_at_stop=" << s.time_at_stop_
-             << ", stop=" << tt->locations_.names_[s.stop_] << "}\n";
+             << ", stop=" << tt->locations_.names_[s.stop_].view() << "}\n";
         }
       });
 

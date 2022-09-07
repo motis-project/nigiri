@@ -35,13 +35,7 @@ std::optional<size_t> get_index(vector<ref_service> const& route_services,
 }
 
 void service_builder::add_service(ref_service&& s) {
-  route_key_.first.clear();
-  utl::transform_to(
-      s.stops(store_), route_key_.first, [&](service::stop const& x) {
-        return timetable::stop(stamm_.resolve_location(x.eva_num_),
-                               x.dep_.in_out_allowed_, x.arr_.in_out_allowed_)
-            .value();
-      });
+  route_key_.first = std::move(s.stop_seq_);
 
   auto const begin_to_end_cat = store_.get(s.ref_).begin_to_end_info_.category_;
   if (begin_to_end_cat.has_value()) {
