@@ -5,7 +5,7 @@
 [cista]
   url=git@github.com:felixguendling/cista.git
   branch=nigiri
-  commit=94d4443ae2e5e5fa757b850dbb8cf7d3c3c97500
+  commit=bec6df2be830a94c4e17879d3d0bf1877ff51209
 [geo]
   url=git@github.com:motis-project/geo.git
   branch=master
@@ -13,7 +13,7 @@
 [utl]
   url=git@github.com:motis-project/utl.git
   branch=master
-  commit=ed2d4248f033e078a72310ab8cc650d3a0155107
+  commit=818761af8975323a146bb68218aeb56c685a6ebd
 [miniz]
   url=git@github.com:motis-project/miniz.git
   branch=master
