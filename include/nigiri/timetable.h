@@ -72,7 +72,7 @@ struct timetable {
         coordinates_.emplace_back(l.pos_);
         ids_.emplace_back(l.id_);
         src_.emplace_back(l.src_);
-        types_.emplace_back(location_type::kStation);
+        types_.emplace_back(l.type_);
         location_timezones_.emplace_back(l.timezone_idx_);
         equivalences_.emplace_back();
         children_.emplace_back();
@@ -80,7 +80,7 @@ struct timetable {
         footpaths_in_.emplace_back();
         transfer_time_.emplace_back(2);  // TODO(felix)
         osm_ids_.emplace_back(osm_node_id_t::invalid());  // TODO(felix)
-        parents_.emplace_back(location_idx_t::invalid());  // TODO(felix)
+        parents_.emplace_back(l.parent_);
       }
 
       assert(names_.size() == next_idx + 1);

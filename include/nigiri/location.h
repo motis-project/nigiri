@@ -21,7 +21,7 @@ struct location {
            source_idx_t,
            location_type,
            osm_node_id_t,
-           location_idx_t,
+           location_idx_t parent,
            timezone_idx_t,
            it_range<vector<location_idx_t>::const_iterator> equivalences,
            it_range<vector<footpath>::const_iterator> footpaths_in,
