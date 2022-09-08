@@ -83,6 +83,20 @@ struct timetable {
         parents_.emplace_back(location_idx_t::invalid());  // TODO(felix)
       }
 
+      assert(names_.size() == next_idx + 1);
+      assert(coordinates_.size() == next_idx + 1);
+      assert(ids_.size() == next_idx + 1);
+      assert(src_.size() == next_idx + 1);
+      assert(types_.size() == next_idx + 1);
+      assert(location_timezones_.size() == next_idx + 1);
+      assert(equivalences_.size() == next_idx + 1);
+      assert(children_.size() == next_idx + 1);
+      assert(footpaths_out_.size() == next_idx + 1);
+      assert(footpaths_in_.size() == next_idx + 1);
+      assert(transfer_time_.size() == next_idx + 1);
+      assert(osm_ids_.size() == next_idx + 1);
+      assert(parents_.size() == next_idx + 1);
+
       return it->second;
     }
 

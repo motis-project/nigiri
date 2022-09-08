@@ -6,6 +6,7 @@
 #include "utl/pipes.h"
 #include "utl/progress_tracker.h"
 
+#include "nigiri/loader/build_footpaths.h"
 #include "nigiri/loader/hrd/service/service_builder.h"
 #include "nigiri/loader/hrd/stamm/stamm.h"
 
@@ -65,6 +66,7 @@ void load_timetable(source_idx_t const src,
         return tt.trip_id_strings_[a.first].view() <
                tt.trip_id_strings_[b.first].view();
       });
+  build_footpaths(tt);
 }
 
 }  // namespace nigiri::loader::hrd

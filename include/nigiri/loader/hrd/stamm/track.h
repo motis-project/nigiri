@@ -31,8 +31,7 @@ struct track_at_station {
   track_name_idx_t track_;
 };
 
-using track_rule_map_t =
-    hash_map<track_rule_key, std::basic_string<track_rule>>;
+using track_rule_map_t = hash_map<track_rule_key, std::vector<track_rule>>;
 using track_location_map_t = hash_map<track_at_station, location_idx_t>;
 
 void parse_track_rules(config const&,

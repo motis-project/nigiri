@@ -29,8 +29,9 @@ void build_stop_seq(ref_service const& s,
     auto const admin = ref.begin_to_end_info_.admin_.has_value()
                            ? ref.begin_to_end_info_.admin_.value()
                            : s.sections(store)[section_idx].admin_.value();
-    auto const day_offset = local_times[time_idx].count() / 1440U;
-    auto const mam = duration_t{local_times[time_idx].count() % 1440U};
+    auto const day_offset = static_cast<cista::base_t<day_idx_t>>(
+        local_times[time_idx].count() / 1440);
+    auto const mam = duration_t{local_times[time_idx].count() % 1440};
     auto const l_idx = st.resolve_track(
         track_rule_key{st.resolve_location(ref.stops_[stop_idx].eva_num_),
                        train_nr, admin},
@@ -61,7 +62,7 @@ std::optional<duration_t> build_utc_time_seq(
 
   auto i = 0U;
   auto pred = duration_t{0};
-  for (auto const& [local_time, tz] : utl::zip(local_times, stop_timezones)) {
+  for (auto const [local_time, tz] : utl::zip(local_times, stop_timezones)) {
     auto const [utc_mam, day_offset, valid] = local_mam_to_utc_mam(
         tz, day + first_day_offset, local_time - first_day_offset);
     if (day_offset != 0_days || pred > utc_mam || !valid) {

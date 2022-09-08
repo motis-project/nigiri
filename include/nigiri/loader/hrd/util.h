@@ -28,7 +28,7 @@ std::string iso_8859_1_to_utf8(T const& s) {
       *out++ = static_cast<char>((*in++ & 0x3fU) + 0x80U);
     }
   }
-  utf8.resize(std::distance(out_begin, out));
+  utf8.resize(static_cast<std::size_t>(std::distance(out_begin, out)));
   return utf8;
 }
 

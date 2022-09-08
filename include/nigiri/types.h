@@ -224,7 +224,7 @@ void deserialize(Ctx const& c, nigiri::duration_t* el) {
 }
 
 inline std::ostream& operator<<(std::ostream& out,
-                                nigiri::duration_t const& t) {
+                                nigiri::i32_minutes const& t) {
   auto const days = t.count() / 1440;
   auto const hours = (t.count() % 1440) / 60;
   auto const minutes = ((t.count() % 1440) % 60);

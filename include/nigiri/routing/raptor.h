@@ -14,7 +14,7 @@
 
 namespace nigiri::routing {
 
-constexpr auto const kTracing = false;
+constexpr auto const kTracing = true;
 
 template <typename... Args>
 void trace(char const* fmt_str, Args... args) {
@@ -53,7 +53,8 @@ struct raptor {
     auto const time = state_.round_times_[k - 1][to_idx(l_idx)];
     if (time == kInvalidTime) {
       trace("┊ │    et: location=(name={}, id={}, idx={}) => NOT REACHABLE\n",
-            tt_.locations_.names_[l_idx], tt_.locations_.ids_[l_idx], l_idx);
+            tt_.locations_.names_[l_idx].view(),
+            tt_.locations_.ids_[l_idx].view(), l_idx);
       return {transport_idx_t::invalid(), day_idx_t::invalid()};
     }
 
@@ -67,8 +68,8 @@ struct raptor {
         "┊ │    et: time={}, stop_idx={}, "
         "location=(name={}, id={}, idx={}), n_days_to_iterate={}, tt_day={}, "
         "day_at_stop={}, mam_at_stop={}\n",
-        time, stop_idx, tt_.locations_.names_[l_idx],
-        tt_.locations_.ids_[l_idx], l_idx, n_days_to_iterate, n_days_,
+        time, stop_idx, tt_.locations_.names_[l_idx].view(),
+        tt_.locations_.ids_[l_idx].view(), l_idx, n_days_to_iterate, n_days_,
         to_idx(day_at_stop), mam_at_stop);
 
     for (auto i = std::uint16_t{0U}; i != n_days_to_iterate; ++i) {
@@ -115,23 +116,27 @@ struct raptor {
       trace(
           "┊ │  stop_idx={}, location=(name={}, id={}, idx={}): "
           "current_best={}\n",
-          stop_idx, tt_.locations_.names_[location_idx_t{l_idx}],
-          tt_.locations_.ids_[location_idx_t{l_idx}], l_idx, current_best);
+          stop_idx,
+          tt_.locations_.names_[location_idx_t{l_idx}].template view(),
+          tt_.locations_.ids_[location_idx_t{l_idx}].template view(), l_idx,
+          current_best);
 
       if (et.is_valid()) {
-        auto const by_transport_time = time_at_stop(
-            et, stop_idx, kFwd ? event_type::kArr : event_type::kDep);
+        auto const by_transport_time =
+            time_at_stop(et, stop_idx,
+                         kFwd ? event_type::kArr : event_type::kDep) +
+            (kFwd ? 1 : -1) *
+                tt_.locations_.transfer_time_[location_idx_t{l_idx}];
         if (is_better(by_transport_time, current_best)) {
           trace(
               "┊ │    transport={}, time_by_transport={} BETTER THAN "
-              "current_best={} => update, marking station {}!\n",
-              et, by_transport_time, current_best, l_idx);
+              "current_best={} => update, marking station (name={}, id={})!\n",
+              et, by_transport_time, current_best,
+              tt_.locations_.names_[location_idx_t{l_idx}].view(),
+              tt_.locations_.ids_[location_idx_t{l_idx}].view());
 
-          state_.best_[l_idx] = by_transport_time;
-          state_.round_times_[k][l_idx] =
-              by_transport_time +
-              (kFwd ? 1 : -1) *
-                  tt_.locations_.transfer_time_[location_idx_t{l_idx}];
+          state_.best_[l_idx] = state_.round_times_[k][l_idx] =
+              by_transport_time;
           state_.station_mark_[l_idx] = true;
         } else {
           trace(
@@ -162,13 +167,20 @@ struct raptor {
       auto const& fps = kFwd ? tt_.locations_.footpaths_out_[l_idx]
                              : tt_.locations_.footpaths_in_[l_idx];
       for (auto const& fp : fps) {
-        trace("┊ footpath: {}->{} {}\n", l_idx, fp.target_, fp.duration_);
+        trace("┊ ├ footpath: (name={}, id={}) --{}--> (name={}, id={})\n",
+              tt_.locations_.names_[l_idx].view(),
+              tt_.locations_.ids_[l_idx].view(), fp.duration_,
+              tt_.locations_.names_[fp.target_].view(),
+              tt_.locations_.ids_[fp.target_].view());
 
-        auto& time_at_fp_target = state_.round_times_[k][to_idx(fp.target_)];
-        auto const arrival = state_.round_times_[k][to_idx(l_idx)] +
-                             (kFwd ? fp.duration_ : -fp.duration_);
+        auto& time_at_fp_target = state_.best_[to_idx(fp.target_)];
+        auto const arrival =
+            state_.round_times_[k][to_idx(l_idx)] +
+            ((kFwd ? 1 : -1) * fp.duration_) -
+            ((kFwd ? 1 : -1) * tt_.locations_.transfer_time_[l_idx]);
         if (is_better(arrival, time_at_fp_target)) {
-          time_at_fp_target = arrival;
+          trace("┊ ├--> UPDATE {} -> {}\n", time_at_fp_target, arrival);
+          state_.round_times_[k][to_idx(fp.target_)] = arrival;
           state_.best_[to_idx(fp.target_)] = arrival;
           state_.station_mark_[to_idx(fp.target_)] = true;
         }
@@ -227,9 +239,11 @@ struct raptor {
     if constexpr (kTracing) {
       fmt::print(std::cerr, "INFO: {}\n", comment);
       for (auto l = 0U; l != tt_.n_locations(); ++l) {
-        fmt::print(std::cerr, "{:8} [name={:20}, id={:12}]: ", l,
-                   tt_.locations_.names_[location_idx_t{l}],
-                   tt_.locations_.ids_[location_idx_t{l}]);
+        auto const name = tt_.locations_.names_[location_idx_t{l}].view();
+        auto const id = tt_.locations_.ids_[location_idx_t{l}].view();
+        fmt::print(std::cerr, "{:8} [name={:22}, id={:16}]: ", l,
+                   name.substr(0, std::min(22UL, name.size())),
+                   id.substr(0, std::min(16UL, id.size())));
         auto const b = state_.best_[l];
         if (b == kInvalidTime) {
           fmt::print(std::cerr, "best=_________, round_times: ");
@@ -251,7 +265,12 @@ struct raptor {
 
   void route() {
     state_.reset(tt_, kInvalidTime);
-    get_starts<SearchDir>(tt_, q_.start_time_, q_.start_, state_.starts_);
+    collect_destinations(tt_, q_.destinations_, q_.dest_match_mode_,
+                         state_.destinations_);
+    state_.results_.resize(
+        std::max(state_.results_.size(), state_.destinations_.size()));
+    get_starts<SearchDir>(tt_, q_.start_time_, q_.start_, q_.start_match_mode_,
+                          state_.starts_);
     utl::equal_ranges_linear(
         state_.starts_,
         [](start const& a, start const& b) {
@@ -259,6 +278,10 @@ struct raptor {
         },
         [&](auto&& from_it, auto&& to_it) {
           for (auto const& s : it_range{from_it, to_it}) {
+            trace("init round: {} = {} at (name={} id={})\n", s.time_at_stop_,
+                  routing_time{tt_, s.time_at_stop_}.t(),
+                  tt_.locations_.names_.at(s.stop_).view(),
+                  tt_.locations_.ids_.at(s.stop_).view());
             state_.round_times_[0U][to_idx(s.stop_)] = {tt_, s.time_at_stop_};
             state_.best_[to_idx(s.stop_)] = {tt_, s.time_at_stop_};
             state_.station_mark_[to_idx(s.stop_)] = true;
@@ -267,10 +290,12 @@ struct raptor {
           reconstruct(from_it->time_at_start_);
         });
     if (holds_alternative<interval<unixtime_t>>(q_.start_time_)) {
-      utl::erase_if(state_.results_, [&](journey const& j) {
-        return !q_.start_time_.as<interval<unixtime_t>>().contains(
-            j.start_time_);
-      });
+      for (auto& r : state_.results_) {
+        utl::erase_if(r, [&](journey const& j) {
+          return !q_.start_time_.as<interval<unixtime_t>>().contains(
+              j.start_time_);
+        });
+      }
     }
     state_.search_interval_ = q_.start_time_.apply(
         utl::overloaded{[](interval<unixtime_t> const& start_interval) {
@@ -282,20 +307,22 @@ struct raptor {
   }
 
   void reconstruct(unixtime_t const start_at_start) {
-    for (auto const& t : q_.destinations_) {
-      auto const dest = t.front().location_;
-      for (auto k = 1U; k != end_k(); ++k) {
-        if (state_.round_times_[k][to_idx(dest)] == kInvalidTime) {
-          continue;
-        }
-        auto const [optimal, it] = state_.results_.add(journey{
-            .legs_ = {},
-            .start_time_ = start_at_start,
-            .dest_time_ = state_.round_times_[k][to_idx(dest)].to_unixtime(tt_),
-            .dest_ = dest,
-            .transfers_ = static_cast<std::uint8_t>(k - 1)});
-        if (optimal) {
-          reconstruct_journey<SearchDir>(tt_, q_, state_, *it);
+    for (auto const& [i, t] : utl::enumerate(q_.destinations_)) {
+      for (auto const dest : state_.destinations_[i]) {
+        for (auto k = 1U; k != end_k(); ++k) {
+          if (state_.round_times_[k][to_idx(dest)] == kInvalidTime) {
+            continue;
+          }
+          auto const [optimal, it] = state_.results_[i].add(
+              journey{.legs_ = {},
+                      .start_time_ = start_at_start,
+                      .dest_time_ =
+                          state_.round_times_[k][to_idx(dest)].to_unixtime(tt_),
+                      .dest_ = dest,
+                      .transfers_ = static_cast<std::uint8_t>(k - 1)});
+          if (optimal) {
+            reconstruct_journey<SearchDir>(tt_, q_, state_, *it);
+          }
         }
       }
     }

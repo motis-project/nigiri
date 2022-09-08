@@ -51,10 +51,13 @@ void parse_track_rules(config const& c,
           auto const id = fmt::format("{}-{}", l.id_,
                                       tt.track_names_[track_name_idx].view());
           auto const name = string{tt.track_names_[track_name_idx].view()};
-          return tt.locations_.register_location(
+          auto const child = tt.locations_.register_location(
               location{id, name, l.pos_, l.src_, location_type::kTrack,
                        l.osm_id_, parent, l.timezone_idx_, l.equivalences_,
                        l.footpaths_in_, l.footpaths_out_});
+          tt.locations_.children_[parent].emplace_back(child);
+          tt.locations_.equivalences_[parent].emplace_back(child);
+          return child;
         });
 
     track_rules[track_rule_key{parent, train_num, admin}].push_back(

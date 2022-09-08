@@ -7,6 +7,7 @@
 namespace nigiri {
 
 struct footpath {
+  CISTA_COMPARABLE()
   CISTA_PRINTABLE(footpath, "target", "duration")
   location_idx_t target_;
   duration_t duration_;
