@@ -1,8 +1,10 @@
 #pragma once
 
 #include <compare>
+#include <filesystem>
 #include <type_traits>
 
+#include "cista/memory_holder.h"
 #include "cista/reflection/printable.h"
 
 #include "utl/verify.h"
@@ -302,6 +304,9 @@ struct timetable {
   }
 
   friend std::ostream& operator<<(std::ostream&, timetable const&);
+
+  void write(std::filesystem::path const&);
+  static timetable* read(cista::memory_holder&);
 
   // Schedule range.
   interval<std::chrono::sys_days> date_range_;
