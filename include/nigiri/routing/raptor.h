@@ -243,8 +243,10 @@ struct raptor {
         auto const name = tt_.locations_.names_[location_idx_t{l}].view();
         auto const id = tt_.locations_.ids_[location_idx_t{l}].view();
         fmt::print(std::cerr, "{:8} [name={:22}, id={:16}]: ", l,
-                   name.substr(0, std::min(22UL, name.size())),
-                   id.substr(0, std::min(16UL, id.size())));
+                   name.substr(0, std::min(std::string_view::size_type{22U},
+                                           name.size())),
+                   id.substr(0, std::min(std::string_view ::size_type{16U},
+                                         id.size())));
         auto const b = state_.best_[l];
         if (b == kInvalidTime) {
           fmt::print(std::cerr, "best=_________, round_times: ");
