@@ -1,12 +1,9 @@
 #include "nigiri/loader/hrd/service/service.h"
 
 #include <algorithm>
-#include <numeric>
-#include <tuple>
 
 #include "fmt/format.h"
 
-#include "utl/pairwise.h"
 #include "utl/parser/arg_parser.h"
 #include "utl/to_vec.h"
 #include "utl/verify.h"
@@ -14,7 +11,6 @@
 #include "nigiri/loader/hrd/stamm/timezone.h"
 #include "nigiri/loader/hrd/util.h"
 #include "nigiri/clasz.h"
-#include "nigiri/logging.h"
 #include "utl/enumerate.h"
 #include "utl/helpers/algorithm.h"
 
@@ -330,7 +326,7 @@ service::service(config const& c,
               });
 
   parse_range(spec.line_information_, c.line_parse_info_, stops_, sections_,
-              begin_to_end_info_, &section::line_information_,
+              begin_to_end_info_, &section::line_,
               [&](utl::cstr line, range const&) {
                 return line.substr(c.s_info_.line_).trim();
               });
@@ -382,10 +378,9 @@ std::string service::display_name(nigiri::timetable& tt) const {
   } else {
     auto const train_nr = initial_train_num_;
     auto const line_id =
-        begin_to_end_info_.line_information_
-            .value_or(sections_.empty()
-                          ? ""
-                          : sections_.front().line_information_.value_or(""))
+        begin_to_end_info_.line_
+            .value_or(sections_.empty() ? ""
+                                        : sections_.front().line_.value_or(""))
             .to_str();
     auto const first =
         is(kOnlyTrainNr)

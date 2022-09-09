@@ -50,7 +50,7 @@ struct routing_time {
     } else if (t == max()) {
       return out << "MAX";
     } else {
-      return out << duration_t{t.t()};
+      return out << i32_minutes{t.t()};
     }
   }
   std::int32_t offset_;  // minutes since timetable begin

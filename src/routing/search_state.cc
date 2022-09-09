@@ -19,6 +19,7 @@ void search_state::reset(timetable const& tt, routing_time init) {
   round_times_.reset(init);
 
   starts_.clear();
+  destinations_.clear();
   results_.clear();
 }
 

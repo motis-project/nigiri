@@ -122,7 +122,7 @@ struct config {
     unsigned min_line_length_;
     utl::field eva_num_;
     utl::field train_num_;
-    utl::field train_admin_;
+    utl::field admin_;
     utl::field track_name_;
     utl::field time_;
     utl::field bitfield_;
@@ -244,7 +244,7 @@ const config hrd_5_00_8 = {
              INIT(.min_line_length_, 22),
              INIT(.eva_num_, {0, 7}),
              INIT(.train_num_, {8, 5}),
-             INIT(.train_admin_, {14, 6}),
+             INIT(.admin_, {14, 6}),
              INIT(.track_name_, {21, 8}),
              INIT(.time_, {30, 4}),
              INIT(.bitfield_, {35, 6}),
@@ -401,7 +401,7 @@ const config hrd_5_20_26 = {
              INIT(.min_line_length_, 22),
              INIT(.eva_num_, {0, 7}),
              INIT(.train_num_, {8, 5}),
-             INIT(.train_admin_, {14, 6}),
+             INIT(.admin_, {14, 6}),
              INIT(.track_name_, {21, 8}),
              INIT(.time_, {30, 4}),
              INIT(.bitfield_, {35, 6}),
@@ -558,7 +558,7 @@ const config hrd_5_20_39 = {
              INIT(.min_line_length_, 34),
              INIT(.eva_num_, {0, 7}),
              INIT(.train_num_, {8, 5}),
-             INIT(.train_admin_, {14, 6}),
+             INIT(.admin_, {14, 6}),
              INIT(.track_name_, {21, 8}),
              INIT(.time_, {30, 4}),
              INIT(.bitfield_, {35, 6}),
@@ -715,7 +715,7 @@ const config hrd_5_20_avv = {
              INIT(.min_line_length_, 22),
              INIT(.eva_num_, {0, 7}),
              INIT(.train_num_, {8, 5}),
-             INIT(.train_admin_, {14, 6}),
+             INIT(.admin_, {14, 6}),
              INIT(.track_name_, {21, 8}),
              INIT(.time_, {30, 4}),
              INIT(.bitfield_, {35, 6}),

@@ -120,8 +120,12 @@ TEST_CASE("raptor, simple_search") {
   auto fwd_r = routing::raptor<direction::kForward>{
       tt, state,
       routing::query{
-          .interval_ = {unixtime_t{sys_days{2020_y / March / 30}} + 5_hours,
-                        unixtime_t{sys_days{2020_y / March / 30}} + 6_hours},
+          .start_time_ =
+              interval<unixtime_t>{
+                  unixtime_t{sys_days{2020_y / March / 30}} + 5_hours,
+                  unixtime_t{sys_days{2020_y / March / 30}} + 6_hours},
+          .start_match_mode_ = nigiri::routing::location_match_mode::kExact,
+          .dest_match_mode_ = nigiri::routing::location_match_mode::kExact,
           .start_ = {nigiri::routing::offset{
               .location_ = tt->locations_.location_id_to_idx_.at(
                   {.id_ = "0000001", .src_ = src}),
@@ -142,7 +146,7 @@ TEST_CASE("raptor, simple_search") {
 
   std::stringstream fws_ss("\n");
   fws_ss << "\n";
-  for (auto const& x : fwd_r.state_.results_) {
+  for (auto const& x : fwd_r.state_.results_.at(0)) {
     x.print(fws_ss, *tt);
     fws_ss << "\n\n";
   }
@@ -151,8 +155,12 @@ TEST_CASE("raptor, simple_search") {
   auto bwd_r = routing::raptor<direction::kBackward>{
       tt, state,
       routing::query{
-          .interval_ = {unixtime_t{sys_days{2020_y / March / 30}} + 5_hours,
-                        unixtime_t{sys_days{2020_y / March / 30}} + 6_hours},
+          .start_time_ =
+              interval<unixtime_t>{
+                  unixtime_t{sys_days{2020_y / March / 30}} + 5_hours,
+                  unixtime_t{sys_days{2020_y / March / 30}} + 6_hours},
+          .start_match_mode_ = nigiri::routing::location_match_mode::kExact,
+          .dest_match_mode_ = nigiri::routing::location_match_mode::kExact,
           .start_ = {nigiri::routing::offset{
               .location_ = tt->locations_.location_id_to_idx_.at(
                   {.id_ = "0000003", .src_ = src}),
@@ -173,7 +181,7 @@ TEST_CASE("raptor, simple_search") {
 
   std::stringstream bwd_ss;
   bwd_ss << "\n";
-  for (auto const& x : bwd_r.state_.results_) {
+  for (auto const& x : bwd_r.state_.results_.at(0)) {
     x.print(bwd_ss, *tt);
     bwd_ss << "\n\n";
   }

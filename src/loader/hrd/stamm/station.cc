@@ -32,7 +32,7 @@ void parse_station_names(config const& c,
 
         auto const eva_num = parse_eva_number(line.substr(c.st_.names_.eva_));
         auto& s = stations[eva_num];
-        s.name_ = iso_8859_1_to_utf8(name.to_str());
+        s.name_ = iso_8859_1_to_utf8(name.view());
         s.id_ = eva_num;
       });
 }
@@ -52,8 +52,8 @@ void parse_station_coordinates(config const& c,
     }
 
     stations[parse_eva_number(line.substr(c.st_.coords_.eva_))].pos_ = {
-        utl::parse_verify<double>(line.substr(c.st_.coords_.lng_).trim()),
-        utl::parse_verify<double>(line.substr(c.st_.coords_.lat_).trim())};
+        utl::parse_verify<double>(line.substr(c.st_.coords_.lat_).trim()),
+        utl::parse_verify<double>(line.substr(c.st_.coords_.lng_).trim())};
   });
 }
 

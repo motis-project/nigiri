@@ -3,6 +3,7 @@
 #include "fmt/ranges.h"
 
 #include "utl/get_or_create.h"
+#include "utl/helpers/algorithm.h"
 #include "utl/overloaded.h"
 #include "utl/to_vec.h"
 
@@ -38,6 +39,8 @@ stamm::stamm(config const& c, timetable& tt, dir const& d) : tt_{tt} {
   attributes_ = parse_attributes(c, tt, files.at(ATTRIBUTES).data());
   directions_ = parse_directions(c, tt, files.at(DIRECTIONS).data());
   tt.date_range_ = parse_interval(files.at(BASIC_DATA).data());
+  parse_track_rules(c, *this, tt, files.at(TRACKS).data(), track_rules_,
+                    track_locations_);
 }
 
 stamm::stamm(timetable& tt, timezone_map_t&& m)
@@ -119,6 +122,33 @@ std::pair<timezone_idx_t, tz_offsets> const& stamm::get_tz(
 attribute_idx_t stamm::resolve_attribute(utl::cstr s) const {
   auto const it = attributes_.find(s.view());
   return it == end(attributes_) ? attribute_idx_t::invalid() : it->second;
+}
+
+location_idx_t stamm::resolve_track(track_rule_key const& k,
+                                    minutes_after_midnight_t const mam,
+                                    day_idx_t day_idx) const {
+  auto it = track_rules_.find(k);
+  if (it == end(track_rules_)) {
+    return k.location_;
+  } else {
+    auto const track_rule_it =
+        utl::find_if(it->second, [&](track_rule const& r) {
+          return (r.mam_ == track_rule::kTimeNotSet || r.mam_ == mam) &&
+                 resolve_bitfield(r.bitfield_num_).test(to_idx(day_idx));
+        });
+    if (track_rule_it != end(it->second)) {
+      return track_rule_it->track_location_;
+    }
+    return k.location_;
+  }
+}
+
+trip_line_idx_t stamm::resolve_line(std::string_view s) {
+  return utl::get_or_create(lines_, s, [&]() {
+    auto const idx = trip_line_idx_t{tt_.trip_lines_.size()};
+    tt_.trip_lines_.emplace_back(s);
+    return idx;
+  });
 }
 
 }  // namespace nigiri::loader::hrd

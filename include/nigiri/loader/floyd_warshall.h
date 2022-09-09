@@ -10,7 +10,9 @@ template <typename T>
 void floyd_warshall(matrix<T>& mat) {
   utl::verify(mat.entries_.size() == mat.n_columns_ * mat.n_columns_,
               "floyd_warshall: input is not a square matrix.");
-  constexpr auto const kMaxDistance = std::numeric_limits<T>::max();
+  constexpr auto const kMaxDistance =
+      static_cast<decltype(std::declval<T>() + std::declval<T>())>(
+          std::numeric_limits<T>::max());
 
   for (auto k = 0U; k < mat.n_columns_; ++k) {
     for (auto i = 0U; i < mat.n_columns_; ++i) {

@@ -88,6 +88,7 @@ using merged_trips_idx_t =
     cista::strong<std::uint32_t, struct _merged_trips_idx>;
 using footpath_idx_t = cista::strong<std::uint32_t, struct _footpath_idx>;
 using source_file_idx_t = cista::strong<std::uint16_t, struct _source_file_idx>;
+using track_name_idx_t = cista::strong<std::uint16_t, struct _track_name_idx>;
 
 using line_id_t = string;
 
@@ -97,11 +98,11 @@ using trip_direction_t =
     cista::variant<location_idx_t, trip_direction_string_idx_t>;
 using trip_direction_idx_t =
     cista::strong<std::uint32_t, struct _trip_direction_idx>;
+using trip_line_idx_t = cista::strong<std::uint32_t, struct _trip_line_idx>;
 using attribute_idx_t = cista::strong<std::uint32_t, struct _attribute_idx>;
 using attribute_combination_idx_t =
     cista::strong<std::uint32_t, struct _attribute_combination>;
 using provider_idx_t = cista::strong<std::uint32_t, struct _provider_idx>;
-using line_idx_t = cista::strong<std::uint32_t, struct _line_idx>;
 
 struct trip_debug {
   source_file_idx_t source_file_idx_;
@@ -223,7 +224,7 @@ void deserialize(Ctx const& c, nigiri::duration_t* el) {
 }
 
 inline std::ostream& operator<<(std::ostream& out,
-                                nigiri::duration_t const& t) {
+                                nigiri::i32_minutes const& t) {
   auto const days = t.count() / 1440;
   auto const hours = (t.count() % 1440) / 60;
   auto const minutes = ((t.count() % 1440) % 60);

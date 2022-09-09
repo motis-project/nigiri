@@ -1,5 +1,7 @@
 #pragma once
 
+#include "utl/enumerate.h"
+
 #include "nigiri/routing/limits.h"
 #include "nigiri/routing/search_state.h"
 
@@ -132,7 +134,10 @@ void reconstruct_journey(timetable const& tt,
       }
     }
 
-    throw utl::fail("no plausible path for round {} found", k);
+    throw utl::fail(
+        "reconstruction failed at k={}, stop=(name={}, id={}), time={}", k,
+        tt.locations_.names_[l].view(), tt.locations_.ids_[l].view(),
+        curr_time);
   };
 
   auto l = j.dest_;

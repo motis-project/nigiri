@@ -72,7 +72,7 @@ struct timetable {
         coordinates_.emplace_back(l.pos_);
         ids_.emplace_back(l.id_);
         src_.emplace_back(l.src_);
-        types_.emplace_back(location_type::kStation);
+        types_.emplace_back(l.type_);
         location_timezones_.emplace_back(l.timezone_idx_);
         equivalences_.emplace_back();
         children_.emplace_back();
@@ -80,15 +80,29 @@ struct timetable {
         footpaths_in_.emplace_back();
         transfer_time_.emplace_back(2);  // TODO(felix)
         osm_ids_.emplace_back(osm_node_id_t::invalid());  // TODO(felix)
-        parents_.emplace_back(location_idx_t::invalid());  // TODO(felix)
+        parents_.emplace_back(l.parent_);
       }
+
+      assert(names_.size() == next_idx + 1);
+      assert(coordinates_.size() == next_idx + 1);
+      assert(ids_.size() == next_idx + 1);
+      assert(src_.size() == next_idx + 1);
+      assert(types_.size() == next_idx + 1);
+      assert(location_timezones_.size() == next_idx + 1);
+      assert(equivalences_.size() == next_idx + 1);
+      assert(children_.size() == next_idx + 1);
+      assert(footpaths_out_.size() == next_idx + 1);
+      assert(footpaths_in_.size() == next_idx + 1);
+      assert(transfer_time_.size() == next_idx + 1);
+      assert(osm_ids_.size() == next_idx + 1);
+      assert(parents_.size() == next_idx + 1);
 
       return it->second;
     }
 
     location get(location_idx_t const idx) {
-      return location{ids_[idx],
-                      names_[idx],
+      return location{ids_[idx].view(),
+                      names_[idx].view(),
                       coordinates_[idx],
                       src_[idx],
                       types_[idx],
@@ -106,9 +120,9 @@ struct timetable {
 
     // Station access: external station id -> internal station idx
     hash_map<location_id, location_idx_t> location_id_to_idx_;
-    vector_map<location_idx_t, string> names_;
+    vecvec<location_idx_t, char> names_;
+    vecvec<location_idx_t, char> ids_;
     vector_map<location_idx_t, geo::latlng> coordinates_;
-    vector_map<location_idx_t, string> ids_;
     vector_map<location_idx_t, source_idx_t> src_;
     vector_map<location_idx_t, duration_t> transfer_time_;
     vector_map<location_idx_t, location_type> types_;
@@ -130,6 +144,7 @@ struct timetable {
     std::basic_string<attribute_combination_idx_t> const& section_attributes_;
     std::basic_string<provider_idx_t> const& section_providers_;
     std::basic_string<trip_direction_idx_t> const& section_directions_;
+    std::basic_string<trip_line_idx_t> const& section_lines_;
   };
 
   trip_idx_t register_trip_id(
@@ -208,6 +223,7 @@ struct timetable {
     transport_section_attributes_.emplace_back(t.section_attributes_);
     transport_section_providers_.emplace_back(t.section_providers_);
     transport_section_directions_.emplace_back(t.section_directions_);
+    transport_section_lines_.emplace_back(t.section_lines_);
 
     assert(transport_traffic_days_.size() == transport_route_.size());
     assert(transport_traffic_days_.size() == transport_stop_times_.size());
@@ -349,19 +365,22 @@ struct timetable {
                        pair<transport_idx_t, interval<std::uint32_t>>>
       trip_idx_to_transport_idx_;
 
+  // Track names
+  vecvec<track_name_idx_t, char> track_names_;
+
   // Section meta infos:
   vector_map<attribute_idx_t, attribute> attributes_;
   vecvec<attribute_combination_idx_t, attribute_idx_t> attribute_combinations_;
   vector_map<provider_idx_t, provider> providers_;
   vecvec<trip_direction_string_idx_t, char> trip_direction_strings_;
   vector_map<trip_direction_idx_t, trip_direction_t> trip_directions_;
-  vecvec<line_idx_t, char> lines_;
+  vecvec<trip_line_idx_t, char> trip_lines_;
 
   vecvec<transport_idx_t, attribute_combination_idx_t>
       transport_section_attributes_;
   vecvec<transport_idx_t, provider_idx_t> transport_section_providers_;
   vecvec<transport_idx_t, trip_direction_idx_t> transport_section_directions_;
-  vecvec<transport_idx_t, line_idx_t> transport_section_lines_;
+  vecvec<transport_idx_t, trip_line_idx_t> transport_section_lines_;
 };
 
 }  // namespace nigiri

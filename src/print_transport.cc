@@ -33,11 +33,12 @@ void print_transport(timetable const& tt,
   for (auto stop_idx = from; stop_idx != to; ++stop_idx) {
     auto const location_idx =
         timetable::stop{stop_seq.at(stop_idx)}.location_idx();
-    auto const& stop_name = tt.locations_.names_.at(location_idx);
-    auto const& stop_id = tt.locations_.ids_.at(location_idx);
+    auto const stop_name = tt.locations_.names_.at(location_idx).view();
+    auto const& stop_id = tt.locations_.ids_.at(location_idx).view();
     auto const& tz = tt.locations_.timezones_.at(
         tt.locations_.location_timezones_.at(location_idx));
-    auto const stop_name_len = utf8_conv.from_bytes(stop_name.str()).size();
+    auto const stop_name_len =
+        utf8_conv.from_bytes(std::string{stop_name}).size();
 
     indent(out, indent_width);
     out << std::right << std::setw(2) << std::setfill(' ') << stop_idx << ": "

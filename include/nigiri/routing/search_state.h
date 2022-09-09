@@ -1,5 +1,6 @@
 #pragma once
 
+#include <set>
 #include <vector>
 
 #include "cista/containers/matrix.h"
@@ -19,7 +20,8 @@ struct search_state {
   std::vector<bool> station_mark_;
   std::vector<bool> route_mark_;
   std::vector<start> starts_;
-  pareto_set<journey> results_;
+  std::vector<std::set<location_idx_t>> destinations_;
+  std::vector<pareto_set<journey>> results_;
   interval<unixtime_t> search_interval_;
 };
 

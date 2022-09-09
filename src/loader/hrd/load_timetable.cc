@@ -6,6 +6,7 @@
 #include "utl/pipes.h"
 #include "utl/progress_tracker.h"
 
+#include "nigiri/loader/build_footpaths.h"
 #include "nigiri/loader/hrd/service/service_builder.h"
 #include "nigiri/loader/hrd/stamm/stamm.h"
 
@@ -45,7 +46,7 @@ void load_timetable(source_idx_t const src,
     log(log_lvl::info, "loader.hrd.services", "loading {}", path);
     auto const file = d.get_file(path);
     sb.add_services(
-        c, file.filename(), file.data(),
+        c, relative(path, c.fplan_).string().c_str(), file.data(),
         [&](std::size_t const bytes_processed) {
           progress_tracker->update(total_bytes_processed + bytes_processed);
         });
@@ -65,6 +66,7 @@ void load_timetable(source_idx_t const src,
         return tt.trip_id_strings_[a.first].view() <
                tt.trip_id_strings_[b.first].view();
       });
+  build_footpaths(tt);
 }
 
 }  // namespace nigiri::loader::hrd

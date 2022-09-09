@@ -15,19 +15,19 @@ struct timetable;
 struct location {
   friend std::ostream& operator<<(std::ostream&, location const&);
   location(timetable const&, location_idx_t);
-  location(string const& id,
-           string const& name,
+  location(std::string_view id,
+           std::string_view name,
            geo::latlng pos,
            source_idx_t,
            location_type,
            osm_node_id_t,
-           location_idx_t,
+           location_idx_t parent,
            timezone_idx_t,
            it_range<vector<location_idx_t>::const_iterator> equivalences,
            it_range<vector<footpath>::const_iterator> footpaths_in,
            it_range<vector<footpath>::const_iterator> footpaths_out);
-  string const& id_;
-  string const& name_;
+  std::string_view id_;
+  std::string_view name_;
   geo::latlng pos_;
   source_idx_t src_;
   location_type type_;

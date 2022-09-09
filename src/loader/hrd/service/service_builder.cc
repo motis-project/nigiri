@@ -35,13 +35,7 @@ std::optional<size_t> get_index(vector<ref_service> const& route_services,
 }
 
 void service_builder::add_service(ref_service&& s) {
-  route_key_.first.clear();
-  utl::transform_to(
-      s.stops(store_), route_key_.first, [&](service::stop const& x) {
-        return timetable::stop(stamm_.resolve_location(x.eva_num_),
-                               x.dep_.in_out_allowed_, x.arr_.in_out_allowed_)
-            .value();
-      });
+  route_key_.first = std::move(s.stop_seq_);
 
   auto const begin_to_end_cat = store_.get(s.ref_).begin_to_end_info_.category_;
   if (begin_to_end_cat.has_value()) {
@@ -197,6 +191,27 @@ void service_builder::write_services(const nigiri::source_idx_t src) {
             section_directions_.clear();
           }
 
+          if (ref.begin_to_end_info_.line_.has_value()) {
+            section_lines_.resize(1U);
+            section_lines_ = stamm_.resolve_line(
+                ref.begin_to_end_info_.line_.value().view());
+          } else if (!ref.sections_.empty() &&
+                     utl::any_of(s.sections(store_),
+                                 [&](service::section const& sec) {
+                                   return sec.line_.has_value();
+                                 })) {
+            section_lines_.clear();
+            utl::transform_to(
+                s.sections(store_), section_lines_,
+                [&](service::section const& sec) {
+                  return sec.line_.has_value()
+                             ? stamm_.resolve_line(sec.line_.value().view())
+                             : trip_line_idx_t::invalid();
+                });
+          } else {
+            section_lines_.clear();
+          }
+
           auto const merged_trip = tt_.register_merged_trip({id});
           tt_.add_transport(timetable::transport{
               .bitfield_idx_ = utl::get_or_create(
@@ -207,7 +222,8 @@ void service_builder::write_services(const nigiri::source_idx_t src) {
               .external_trip_ids_ = {merged_trip},
               .section_attributes_ = section_attributes_,
               .section_providers_ = section_providers_,
-              .section_directions_ = section_directions_});
+              .section_directions_ = section_directions_,
+              .section_lines_ = section_lines_});
         } catch (std::exception const& e) {
           log(log_lvl::error, "loader.hrd.service",
               "unable to load service {}: {}", ref.origin_, e.what());
