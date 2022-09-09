@@ -98,11 +98,11 @@ using trip_direction_t =
     cista::variant<location_idx_t, trip_direction_string_idx_t>;
 using trip_direction_idx_t =
     cista::strong<std::uint32_t, struct _trip_direction_idx>;
+using trip_line_idx_t = cista::strong<std::uint32_t, struct _trip_line_idx>;
 using attribute_idx_t = cista::strong<std::uint32_t, struct _attribute_idx>;
 using attribute_combination_idx_t =
     cista::strong<std::uint32_t, struct _attribute_combination>;
 using provider_idx_t = cista::strong<std::uint32_t, struct _provider_idx>;
-using line_idx_t = cista::strong<std::uint32_t, struct _line_idx>;
 
 struct trip_debug {
   source_file_idx_t source_file_idx_;

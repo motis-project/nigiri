@@ -143,4 +143,12 @@ location_idx_t stamm::resolve_track(track_rule_key const& k,
   }
 }
 
+trip_line_idx_t stamm::resolve_line(std::string_view s) {
+  return utl::get_or_create(lines_, s, [&]() {
+    auto const idx = trip_line_idx_t{tt_.trip_lines_.size()};
+    tt_.trip_lines_.emplace_back(s);
+    return idx;
+  });
+}
+
 }  // namespace nigiri::loader::hrd

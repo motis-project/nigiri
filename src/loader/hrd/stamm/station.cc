@@ -52,8 +52,8 @@ void parse_station_coordinates(config const& c,
     }
 
     stations[parse_eva_number(line.substr(c.st_.coords_.eva_))].pos_ = {
-        utl::parse_verify<double>(line.substr(c.st_.coords_.lng_).trim()),
-        utl::parse_verify<double>(line.substr(c.st_.coords_.lat_).trim())};
+        utl::parse_verify<double>(line.substr(c.st_.coords_.lat_).trim()),
+        utl::parse_verify<double>(line.substr(c.st_.coords_.lng_).trim())};
   });
 }
 

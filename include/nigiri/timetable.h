@@ -144,6 +144,7 @@ struct timetable {
     std::basic_string<attribute_combination_idx_t> const& section_attributes_;
     std::basic_string<provider_idx_t> const& section_providers_;
     std::basic_string<trip_direction_idx_t> const& section_directions_;
+    std::basic_string<trip_line_idx_t> const& section_lines_;
   };
 
   trip_idx_t register_trip_id(
@@ -222,6 +223,7 @@ struct timetable {
     transport_section_attributes_.emplace_back(t.section_attributes_);
     transport_section_providers_.emplace_back(t.section_providers_);
     transport_section_directions_.emplace_back(t.section_directions_);
+    transport_section_lines_.emplace_back(t.section_lines_);
 
     assert(transport_traffic_days_.size() == transport_route_.size());
     assert(transport_traffic_days_.size() == transport_stop_times_.size());
@@ -372,13 +374,13 @@ struct timetable {
   vector_map<provider_idx_t, provider> providers_;
   vecvec<trip_direction_string_idx_t, char> trip_direction_strings_;
   vector_map<trip_direction_idx_t, trip_direction_t> trip_directions_;
-  vecvec<line_idx_t, char> lines_;
+  vecvec<trip_line_idx_t, char> trip_lines_;
 
   vecvec<transport_idx_t, attribute_combination_idx_t>
       transport_section_attributes_;
   vecvec<transport_idx_t, provider_idx_t> transport_section_providers_;
   vecvec<transport_idx_t, trip_direction_idx_t> transport_section_directions_;
-  vecvec<transport_idx_t, line_idx_t> transport_section_lines_;
+  vecvec<transport_idx_t, trip_line_idx_t> transport_section_lines_;
 };
 
 }  // namespace nigiri

@@ -33,6 +33,7 @@ struct stamm {
   location_idx_t resolve_track(track_rule_key const&,
                                minutes_after_midnight_t,
                                day_idx_t) const;
+  trip_line_idx_t resolve_line(std::string_view s);
 
 private:
   location_map_t locations_;
@@ -48,7 +49,7 @@ private:
 
   hash_map<string, trip_direction_idx_t> string_directions_;
   hash_map<eva_number, trip_direction_idx_t> eva_directions_;
-  hash_map<string, line_idx_t> lines_;
+  hash_map<string, trip_line_idx_t> lines_;
 };
 
 }  // namespace nigiri::loader::hrd

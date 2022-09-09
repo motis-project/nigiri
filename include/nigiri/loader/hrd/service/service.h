@@ -73,7 +73,7 @@ struct service {
     std::optional<provider_idx_t> admin_;
     std::optional<std::vector<attribute>> attributes_;
     std::optional<category const*> category_;
-    std::optional<utl::cstr> line_information_;
+    std::optional<utl::cstr> line_;
     std::optional<trip_direction_idx_t> direction_;
     std::optional<unsigned> traffic_days_;
   };

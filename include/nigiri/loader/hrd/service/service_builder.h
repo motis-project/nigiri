@@ -39,6 +39,7 @@ private:
   std::basic_string<provider_idx_t> section_providers_;
   std::basic_string<attribute_combination_idx_t> section_attributes_;
   std::basic_string<trip_direction_idx_t> section_directions_;
+  std::basic_string<trip_line_idx_t> section_lines_;
   fmt::memory_buffer trip_id_buf_;
 };
 

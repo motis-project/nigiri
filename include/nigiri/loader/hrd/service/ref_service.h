@@ -93,14 +93,12 @@ struct ref_service {
 
   std::string_view line_info(service_store const& store) const {
     auto const& ref = store.get(ref_);
-    if (ref.begin_to_end_info_.line_information_.has_value()) {
-      return ref.begin_to_end_info_.line_information_.value().view();
+    if (ref.begin_to_end_info_.line_.has_value()) {
+      return ref.begin_to_end_info_.line_.value().view();
     } else if (!ref.sections_.empty() &&
                ref.sections_.at(split_info_.sections_.from_)
-                   .line_information_.has_value()) {
-      return ref.sections_.at(split_info_.sections_.from_)
-          .line_information_.value()
-          .view();
+                   .line_.has_value()) {
+      return ref.sections_.at(split_info_.sections_.from_).line_.value().view();
     } else {
       return "";
     }
