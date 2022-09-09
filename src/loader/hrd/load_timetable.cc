@@ -46,7 +46,7 @@ void load_timetable(source_idx_t const src,
     log(log_lvl::info, "loader.hrd.services", "loading {}", path);
     auto const file = d.get_file(path);
     sb.add_services(
-        c, relative(path, c.fplan_).c_str(), file.data(),
+        c, relative(path, c.fplan_).string().c_str(), file.data(),
         [&](std::size_t const bytes_processed) {
           progress_tracker->update(total_bytes_processed + bytes_processed);
         });
