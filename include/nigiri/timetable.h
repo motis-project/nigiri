@@ -25,7 +25,7 @@ struct timetable {
     using value_type = location_idx_t::value_t;
 
     stop(location_idx_t::value_t const val) {
-      *reinterpret_cast<location_idx_t::value_t*>(this) = val;
+      std::memcpy(this, &val, sizeof(value_type));
     }
 
     stop(location_idx_t const location,
