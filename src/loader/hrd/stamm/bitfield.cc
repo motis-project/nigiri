@@ -55,10 +55,10 @@ bitfield hex_str_to_bitset(utl::cstr char_collection) {
   };
 
   for (auto const& c : char_collection) {
-    auto const idx = static_cast<int>(c);
+    auto const idx = static_cast<unsigned char>(c);
     auto const i = ascii_hex_to_int[idx];
     utl::verify(i >= 0, "invalid bitfield char {}", idx);
-    auto const tmp = std::bitset<4>{static_cast<unsigned long long>(i)};
+    auto const tmp = std::bitset<4>{static_cast<std::uint64_t>(i)};
 
     consume_bit(tmp, 3U);
     consume_bit(tmp, 2U);

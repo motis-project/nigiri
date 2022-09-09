@@ -56,14 +56,16 @@ struct range {
   size_t to_idx() const { return to_idx_; }
 
 private:
-  bool is_index(utl::cstr s) { return s[0] == '#'; }
+  static bool is_index(utl::cstr s) { return s[0] == '#'; }
 
-  size_t parse_index(utl::cstr s) { return parse_verify<size_t>(s.substr(1)); }
+  static size_t parse_index(utl::cstr s) {
+    return parse_verify<size_t>(s.substr(1));
+  }
 
-  size_t get_index(std::vector<service::stop> const& stops,
-                   utl::cstr eva_or_idx,
-                   utl::cstr hhmm_or_idx,
-                   bool is_departure_event) {
+  static size_t get_index(std::vector<service::stop> const& stops,
+                          utl::cstr eva_or_idx,
+                          utl::cstr hhmm_or_idx,
+                          bool is_departure_event) {
     assert(!eva_or_idx.empty() && !hhmm_or_idx.empty());
     if (is_index(eva_or_idx)) {
       // eva_or_idx is an index which is already definite
@@ -79,7 +81,7 @@ private:
           [&](service::stop const& s) { return s.eva_num_ == eva_num; });
       utl::verify(it != end(stops),
                   "{}th occurrence of eva number {} not found", n, eva_num);
-      return static_cast<size_t>(std::distance(begin(stops), it));
+      return static_cast<std::size_t>(std::distance(begin(stops), it));
     } else {
       // hhmm_or_idx must be a time
       // -> return stop where eva number and time matches
@@ -93,11 +95,11 @@ private:
       utl::verify(it != end(stops),
                   "event with time {} at eva number {} not found", time,
                   eva_num);
-      return static_cast<size_t>(std::distance(begin(stops), it));
+      return static_cast<std::size_t>(std::distance(begin(stops), it));
     }
   }
 
-  size_t from_idx_{}, to_idx_{};
+  std::size_t from_idx_{}, to_idx_{};
 };
 
 template <typename Fn>
@@ -341,9 +343,7 @@ service::service(config const& c,
   parse_range(spec.directions_, c.direction_parse_info_, stops_, sections_,
               begin_to_end_info_, &section::direction_,
               [&](utl::cstr line, range const& r) {
-                if (isdigit(line[5]) != 0) {
-                  return st.resolve_direction({line.substr(c.s_info_.dir_)});
-                } else if (line[5] == ' ') {
+                if (line[5] == ' ') {
                   return st.resolve_direction({stops_[r.to_idx()].eva_num_});
                 } else {
                   return st.resolve_direction({line.substr(c.s_info_.dir_)});

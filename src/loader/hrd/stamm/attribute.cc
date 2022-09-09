@@ -30,7 +30,7 @@ attribute_map_t parse_attributes(config const& c,
     auto text = is_multiple_spaces(line) ? line.substr(c.att_.text_mul_spaces_)
                                          : line.substr(c.att_.text_normal_);
 
-    if (!text.empty() && text[text.length() - 1]) {
+    if (!text.empty() && text[text.length() - 1] != '\0') {
       text = text.substr(0, text.length() - 1);
     }
 
