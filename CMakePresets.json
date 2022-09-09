@@ -146,7 +146,8 @@
         "CMAKE_CXX_COMPILER": "clang++-14",
         "CMAKE_CXX_FLAGS": "-stdlib=libc++",
         "CMAKE_EXE_LINKER_FLAGS": "-lc++abi",
-        "CMAKE_BUILD_TYPE": "Release"
+        "CMAKE_BUILD_TYPE": "Release",
+        "NIGIRI_LINT": "On"
       },
       "environment": {
         "BUILDCACHE_LUA_PATH": "/opt/buildcache/share/lua-examples",

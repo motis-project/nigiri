@@ -4,6 +4,12 @@ project(nigiri)
 include(cmake/buildcache.cmake)
 include(cmake/pkg.cmake)
 
+option(NIGIRI_LINT "Run clang-tidy with the compiler." OFF)
+if(NIGIRI_LINT)
+  # clang-tidy will be run on all targets defined hereafter
+  include(cmake/clang-tidy.cmake)
+endif()
+
 if ("${CMAKE_CXX_COMPILER_ID}" STREQUAL "Clang")
   set(nigiri-compile-options
         -Weverything
