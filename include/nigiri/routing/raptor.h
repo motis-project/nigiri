@@ -117,9 +117,8 @@ struct raptor {
       trace(
           "┊ │  stop_idx={}, location=(name={}, id={}, idx={}): "
           "current_best={}\n",
-          stop_idx,
-          tt_.locations_.names_[location_idx_t{l_idx}].template view(),
-          tt_.locations_.ids_[location_idx_t{l_idx}].template view(), l_idx,
+          stop_idx, tt_.locations_.names_[location_idx_t{l_idx}].view(),
+          tt_.locations_.ids_[location_idx_t{l_idx}].view(), l_idx,
           current_best);
 
       if (et.is_valid()) {
