@@ -151,12 +151,9 @@ void collect_destinations(timetable const& tt,
                           std::vector<std::set<location_idx_t>>& out) {
   out.resize(std::max(out.size(), destinations.size()));
   for (auto const [i, dest] : utl::enumerate(destinations)) {
-    if (match_mode == location_match_mode::kEquivalent) {
-      for (auto const& d : dest) {
-        for_each_meta(
-            tt, match_mode, d.location_,
-            [&, i = i](location_idx_t const l) { out[i].emplace(l); });
-      }
+    for (auto const& d : dest) {
+      for_each_meta(tt, match_mode, d.location_,
+                    [&, i = i](location_idx_t const l) { out[i].emplace(l); });
     }
   }
 }
@@ -165,14 +162,14 @@ template void get_starts<direction::kForward>(
     timetable const&,
     variant<unixtime_t, interval<unixtime_t>> const&,
     std::vector<offset> const&,
-    location_match_mode const,
+    location_match_mode,
     std::vector<start>&);
 
 template void get_starts<direction::kBackward>(
     timetable const&,
     variant<unixtime_t, interval<unixtime_t>> const&,
     std::vector<offset> const&,
-    location_match_mode const,
+    location_match_mode,
     std::vector<start>&);
 
 }  // namespace nigiri::routing

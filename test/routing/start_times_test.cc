@@ -276,7 +276,7 @@ TEST_CASE("routing start times") {
                            sys_days{2020_y / March / 31}},
       {offset{.location_ = A, .offset_ = 15_minutes, .type_ = 0},
        offset{.location_ = B, .offset_ = 30_minutes, .type_ = 0}},
-      starts);
+      nigiri::routing::location_match_mode::kExact, starts);
 
   std::stringstream ss;
   ss << "\n";

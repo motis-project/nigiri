@@ -1,5 +1,7 @@
 #pragma once
 
+#include "utl/enumerate.h"
+
 #include "nigiri/routing/limits.h"
 #include "nigiri/routing/search_state.h"
 

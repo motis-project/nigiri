@@ -133,7 +133,7 @@ location_idx_t stamm::resolve_track(track_rule_key const& k,
   } else {
     auto const track_rule_it =
         utl::find_if(it->second, [&](track_rule const& r) {
-          return (r.mam_ == track_rule::kTimeNotSet || r.mam_ == mam) ||
+          return (r.mam_ == track_rule::kTimeNotSet || r.mam_ == mam) &&
                  resolve_bitfield(r.bitfield_num_).test(to_idx(day_idx));
         });
     if (track_rule_it != end(it->second)) {

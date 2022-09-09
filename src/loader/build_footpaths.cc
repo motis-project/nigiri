@@ -170,23 +170,15 @@ void process_component(timetable& tt,
         ++it;
       }
       auto j = static_cast<unsigned>(std::distance(lb, it));
-      std::cerr << "adding entry " << i << " " << j << ": " << edge.duration_
-                << "\n";
       mat(i, j) = std::min(static_cast<std::uint8_t>(edge.duration_.count()),
                            mat(i, j));
       mat(j, i) = std::min(static_cast<std::uint8_t>(edge.duration_.count()),
                            mat(j, i));
-      std::cerr << "  " << static_cast<int>(mat(i, j)) << "\n";
     }
   }
 
-  std::cerr << mat << "\n";
-
   floyd_warshall(mat);
 
-  std::cerr << mat << "\n";
-
-  std::cerr << "WRITING FOOTPATHS:\n";
   for (auto i = 0U; i < size; ++i) {
     auto const idx_a = std::next(lb, i)->second;
     auto const l_idx_a = location_idx_t{static_cast<unsigned>(idx_a)};
@@ -203,10 +195,6 @@ void process_component(timetable& tt,
                                                          duration_t{mat(i, j)});
       tt.locations_.footpaths_in_[l_idx_b].emplace_back(l_idx_a,
                                                         duration_t{mat(i, j)});
-
-      std::cerr << i << "=" << tt.locations_.names_.at(l_idx_a).view() << " - "
-                << j << "=" << tt.locations_.names_.at(l_idx_b).view()
-                << ": duration=" << static_cast<int>(mat(i, j)) << "\n";
     }
   }
 }
@@ -219,18 +207,6 @@ void transitivize_footpaths(timetable& tt) {
   auto components = find_components(fgraph);
   std::sort(begin(components), end(components));
 
-  std::cerr << "FOOTPATHS\n";
-  for (auto i = 0U; i != tt.locations_.footpaths_out_.size(); ++i) {
-    auto const l = location_idx_t{i};
-    std::cerr << tt.locations_.names_[l].view() << " ["
-              << tt.locations_.ids_[l].view() << "]\n";
-    for (auto const& fp : tt.locations_.footpaths_out_[l]) {
-      std::cerr << "  " << tt.locations_.names_[fp.target_].view() << " ["
-                << tt.locations_.ids_[fp.target_].view() << "]\n";
-    }
-  }
-  std::cerr << "---\n";
-
   tt.locations_.footpaths_out_.clear();
   tt.locations_.footpaths_out_[location_idx_t{tt.locations_.src_.size() - 1}];
   tt.locations_.footpaths_in_.clear();
@@ -240,38 +216,7 @@ void transitivize_footpaths(timetable& tt) {
   utl::equal_ranges_linear(
       components,
       [](auto const& a, auto const& b) { return a.first == b.first; },
-      [&](auto lb, auto ub) {
-        std::cerr << "COMPONENT " << lb->second << "\n";
-        for (auto const& x : it_range{lb, ub}) {
-          std::cerr << "  i="
-                    << tt.locations_.names_.at(location_idx_t{x.second}).view()
-                    << " "
-                    << tt.locations_.ids_.at(location_idx_t{x.second}).view()
-                    << ", component_id=" << x.first << "\n";
-          for (auto const& fp :
-               tt.locations_.footpaths_out_.at(location_idx_t{x.second})) {
-            std::cerr
-                << "     " << fp.duration_ << " -> "
-                << tt.locations_.names_.at(location_idx_t{fp.target_}).view()
-                << " "
-                << tt.locations_.ids_.at(location_idx_t{fp.target_}).view()
-                << "\n";
-          }
-        }
-        process_component(tt, lb, ub, fgraph);
-      });
-
-  std::cerr << "TRANSITTIVE FOOTPATHS\n";
-  for (auto i = 0U; i != tt.locations_.footpaths_out_.size(); ++i) {
-    auto const l = location_idx_t{i};
-    std::cerr << tt.locations_.names_[l].view() << " ["
-              << tt.locations_.ids_[l].view() << "]\n";
-    for (auto const& fp : tt.locations_.footpaths_out_[l]) {
-      std::cerr << "  " << tt.locations_.names_[fp.target_].view() << " ["
-                << tt.locations_.ids_[fp.target_].view() << "]\n";
-    }
-  }
-  std::cerr << "---\n";
+      [&](auto lb, auto ub) { process_component(tt, lb, ub, fgraph); });
 }
 
 void add_links_to_and_between_children(timetable& tt) {

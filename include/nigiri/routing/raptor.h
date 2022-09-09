@@ -4,6 +4,7 @@
 
 #include "utl/equal_ranges_linear.h"
 #include "utl/erase_if.h"
+#include "utl/overloaded.h"
 
 #include "nigiri/routing/journey.h"
 #include "nigiri/routing/reconstruct.h"
@@ -14,7 +15,7 @@
 
 namespace nigiri::routing {
 
-constexpr auto const kTracing = true;
+constexpr auto const kTracing = false;
 
 template <typename... Args>
 void trace(char const* fmt_str, Args... args) {
@@ -307,7 +308,7 @@ struct raptor {
   }
 
   void reconstruct(unixtime_t const start_at_start) {
-    for (auto const& [i, t] : utl::enumerate(q_.destinations_)) {
+    for (auto const [i, t] : utl::enumerate(q_.destinations_)) {
       for (auto const dest : state_.destinations_[i]) {
         for (auto k = 1U; k != end_k(); ++k) {
           if (state_.round_times_[k][to_idx(dest)] == kInvalidTime) {
