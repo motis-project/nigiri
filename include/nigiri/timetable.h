@@ -1,8 +1,10 @@
 #pragma once
 
 #include <compare>
+#include <filesystem>
 #include <type_traits>
 
+#include "cista/memory_holder.h"
 #include "cista/reflection/printable.h"
 
 #include "utl/verify.h"
@@ -23,7 +25,7 @@ struct timetable {
     using value_type = location_idx_t::value_t;
 
     stop(location_idx_t::value_t const val) {
-      *reinterpret_cast<location_idx_t::value_t*>(this) = val;
+      std::memcpy(this, &val, sizeof(value_type));
     }
 
     stop(location_idx_t const location,
@@ -302,6 +304,9 @@ struct timetable {
   }
 
   friend std::ostream& operator<<(std::ostream&, timetable const&);
+
+  void write(std::filesystem::path const&);
+  static timetable* read(cista::memory_holder&);
 
   // Schedule range.
   interval<std::chrono::sys_days> date_range_;

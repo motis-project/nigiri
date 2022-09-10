@@ -100,9 +100,9 @@ void print_transport(timetable const& tt,
 void print_transport(timetable const& tt,
                      std::ostream& out,
                      transport x,
-                     bool with_debug) {
+                     bool const with_debug) {
   print_transport(tt, out, x,
-                  interval{0U, std::numeric_limits<unsigned>::max()},
+                  interval{0U, std::numeric_limits<unsigned>::max()}, 0U,
                   with_debug);
 }
 

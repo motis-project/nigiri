@@ -1,8 +1,16 @@
 #include "nigiri/timetable.h"
 
+#include "cista/mmap.h"
+#include "cista/serialization.h"
+
+#include "utl/overloaded.h"
+
 #include "nigiri/print_transport.h"
 
 namespace nigiri {
+
+constexpr auto const kMode =
+    cista::mode::WITH_INTEGRITY | cista::mode::WITH_VERSION;
 
 std::string reverse(std::string s) {
   std::reverse(s.begin(), s.end());
@@ -34,6 +42,31 @@ std::ostream& operator<<(std::ostream& out, timetable const& tt) {
     out << "---\n\n";
   }
   return out;
+}
+
+timetable* timetable::read(cista::memory_holder& mem) {
+  return std::visit(
+      utl::overloaded{[&](cista::buf<cista::mmap>& b) {
+                        return reinterpret_cast<timetable*>(
+                            &b[cista::data_start(kMode)]);
+                      },
+                      [&](cista::buffer& b) {
+                        return cista::deserialize<timetable, kMode>(b);
+                      },
+                      [&](cista::byte_buf& b) {
+                        return cista::deserialize<timetable, kMode>(b);
+                      }},
+      mem);
+}
+
+void timetable::write(std::filesystem::path const& p) {
+  auto mmap = cista::mmap{p.string().c_str(), cista::mmap::protection::WRITE};
+  auto writer = cista::buf<cista::mmap>(std::move(mmap));
+
+  {
+    scoped_timer t{"writing timetable"};
+    cista::serialize<kMode>(writer, *this);
+  }
 }
 
 }  // namespace nigiri

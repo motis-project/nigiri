@@ -37,7 +37,7 @@ struct journey {
 
     void print(std::ostream&,
                timetable const&,
-               unsigned indent = 0U,
+               unsigned n_indent = 0U,
                bool debug = false) const;
 
     location_idx_t from_, to_;

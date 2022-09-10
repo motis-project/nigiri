@@ -20,9 +20,9 @@ file::content::~content() = default;
 dir::~dir() = default;
 dir::dir() = default;
 dir::dir(dir const&) = default;
-dir::dir(dir&&) = default;
+dir::dir(dir&&) noexcept = default;
 dir& dir::operator=(dir const&) = default;
-dir& dir::operator=(dir&&) = default;
+dir& dir::operator=(dir&&) noexcept = default;
 
 // --- File directory implementation ---
 fs_dir::fs_dir(std::filesystem::path p) : path_{std::move(p)} {}
@@ -43,6 +43,11 @@ std::vector<std::filesystem::path> fs_dir::list_files(
 }
 file fs_dir::get_file(std::filesystem::path const& p) const {
   struct mmap_content final : public file::content {
+    mmap_content() = delete;
+    mmap_content(mmap_content const&) = delete;
+    mmap_content(mmap_content&&) = delete;
+    mmap_content& operator=(mmap_content&&) = delete;
+    mmap_content& operator=(mmap_content const&) = delete;
     explicit mmap_content(std::filesystem::path const& p)
         : mmap_{p.string().c_str(), cista::mmap::protection::READ} {
       log(log_lvl::info, "loader.fs_dir", "loaded {}: {} bytes", p,
@@ -64,10 +69,10 @@ std::size_t fs_dir::file_size(std::filesystem::path const& p) const {
 // --- ZIP directory implementation ---
 std::optional<mz_uint32> find_file_idx(mz_zip_archive* ar,
                                        std::filesystem::path const& p) {
-  mz_uint32 file_idx;
+  mz_uint32 file_idx = 0U;
   auto const r = mz_zip_reader_locate_file_v2(ar, p.string().c_str(), nullptr,
                                               0, &file_idx);
-  return r ? std::make_optional<mz_uint32>(file_idx) : std::nullopt;
+  return r == MZ_TRUE ? std::make_optional<mz_uint32>(file_idx) : std::nullopt;
 }
 mz_uint32 get_file_idx(mz_zip_archive* ar, std::filesystem::path const& p) {
   auto const file_idx = find_file_idx(ar, p);
@@ -78,7 +83,7 @@ mz_zip_archive_file_stat get_stat(mz_zip_archive* ar,
                                   mz_uint32 const file_idx) {
   auto file_stat = mz_zip_archive_file_stat{};
   auto const r = mz_zip_reader_file_stat(ar, file_idx, &file_stat);
-  utl::verify(r, "zip: cannot stat file {}", file_idx);
+  utl::verify(r == MZ_TRUE, "zip: cannot stat file {}", file_idx);
   return file_stat;
 }
 std::filesystem::path get_file_path(mz_zip_archive* ar,
@@ -86,6 +91,11 @@ std::filesystem::path get_file_path(mz_zip_archive* ar,
   return get_stat(ar, file_idx).m_filename;
 }
 struct zip_file_content final : public file::content {
+  zip_file_content() = delete;
+  zip_file_content(zip_file_content const&) = delete;
+  zip_file_content(zip_file_content&&) = delete;
+  zip_file_content& operator=(zip_file_content&&) = delete;
+  zip_file_content& operator=(zip_file_content const&) = delete;
   ~zip_file_content() final;
   zip_file_content(mz_zip_archive* ar,
                    std::filesystem::path const& p,
@@ -93,7 +103,7 @@ struct zip_file_content final : public file::content {
     buf_.resize(get_stat(ar, file_idx).m_uncomp_size);
     auto const r =
         mz_zip_reader_extract_to_mem(ar, file_idx, buf_.data(), buf_.size(), 0);
-    utl::verify(r, "cannot extract file {} from zip", p);
+    utl::verify(r == MZ_TRUE, "cannot extract file {} from zip", p);
   }
   zip_file_content(mz_zip_archive* ar, std::filesystem::path const& p)
       : zip_file_content{ar, p, get_file_idx(ar, p)} {}
@@ -104,6 +114,11 @@ struct zip_file_content final : public file::content {
 };
 zip_file_content::~zip_file_content() = default;
 struct zip_dir::impl {
+  impl() = delete;
+  impl(impl const&) = delete;
+  impl(impl&&) = delete;
+  impl& operator=(impl&&) = delete;
+  impl& operator=(impl const&) = delete;
   explicit impl(std::vector<std::uint8_t> b) : memory_{std::move(b)} {
     open("inmemory");
   }
@@ -128,7 +143,7 @@ struct zip_dir::impl {
 
     auto const file_idx = get_file_idx(&ar_, p);
     auto const is_dir = mz_zip_reader_is_file_a_directory(&ar_, file_idx);
-    if (!is_dir) {
+    if (is_dir != MZ_TRUE) {
       return {p};
     }
 
@@ -153,7 +168,7 @@ struct zip_dir::impl {
     return get_stat(&ar_, file_idx.value()).m_uncomp_size;
   }
 
-  mz_zip_archive ar_;
+  mz_zip_archive ar_{};
   std::variant<std::vector<std::uint8_t>, cista::mmap> memory_;
 };
 zip_dir::zip_dir(std::filesystem::path const& p)
@@ -179,9 +194,9 @@ std::size_t zip_dir::file_size(std::filesystem::path const& p) const {
 mem_dir::mem_dir(dir_t d) : dir_{std::move(d)} {}
 mem_dir::~mem_dir() = default;
 mem_dir::mem_dir(mem_dir const&) = default;
-mem_dir::mem_dir(mem_dir&&) = default;
+mem_dir::mem_dir(mem_dir&&) noexcept = default;
 mem_dir& mem_dir::operator=(mem_dir const&) = default;
-mem_dir& mem_dir::operator=(mem_dir&&) = default;
+mem_dir& mem_dir::operator=(mem_dir&&) noexcept = default;
 mem_dir& mem_dir::add(std::pair<std::filesystem::path, std::string> f) {
   dir_.emplace(f);
   return *this;

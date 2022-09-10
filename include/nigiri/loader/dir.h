@@ -24,9 +24,9 @@ struct file {
 struct dir {
   dir();
   dir(dir const&);
-  dir(dir&&);
+  dir(dir&&) noexcept;
   dir& operator=(dir const&);
-  dir& operator=(dir&&);
+  dir& operator=(dir&&) noexcept;
   virtual ~dir();
   virtual std::vector<std::filesystem::path> list_files(
       std::filesystem::path const&) const = 0;
@@ -64,9 +64,9 @@ struct mem_dir final : public dir {
   mem_dir(dir_t);
   ~mem_dir() final;
   mem_dir(mem_dir const&);
-  mem_dir(mem_dir&&);
+  mem_dir(mem_dir&&) noexcept;
   mem_dir& operator=(mem_dir const&);
-  mem_dir& operator=(mem_dir&&);
+  mem_dir& operator=(mem_dir&&) noexcept;
   mem_dir& add(std::pair<std::filesystem::path, std::string>);
   std::vector<std::filesystem::path> list_files(
       std::filesystem::path const&) const final;

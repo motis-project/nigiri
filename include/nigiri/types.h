@@ -11,6 +11,7 @@
 #include "cista/containers/hash_set.h"
 #include "cista/containers/matrix.h"
 #include "cista/containers/mutable_fws_multimap.h"
+#include "cista/containers/optional.h"
 #include "cista/containers/string.h"
 #include "cista/containers/tuple.h"
 #include "cista/containers/variant.h"
@@ -70,6 +71,9 @@ template <typename K, typename Hash = cista::hashing<K>>
 using hash_set = cista::offset::hash_set<K, Hash>;
 
 using string = cista::offset::string;
+
+template <typename T>
+using optional = cista::optional<T>;
 
 using bitfield_idx_t = cista::strong<std::uint32_t, struct _bitfield_idx>;
 using location_idx_t = cista::strong<std::uint32_t, struct _location_idx>;
@@ -170,11 +174,11 @@ struct tz_offsets {
     duration_t season_end_mam_{0};
   };
   friend std::ostream& operator<<(std::ostream&, tz_offsets const&);
-  std::optional<season> season_{std::nullopt};
+  optional<season> season_{std::nullopt};
   duration_t offset_{0};
 };
 
-using timezone = variant<date::time_zone*, tz_offsets>;
+using timezone = variant<void*, tz_offsets>;
 
 enum class clasz : std::uint8_t {
   kAir = 0,

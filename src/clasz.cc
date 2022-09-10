@@ -8,201 +8,199 @@ namespace nigiri {
 clasz get_clasz(std::string_view s) {
   using cista::hash;
   switch (hash(s)) {
-    case hash("Flug"): return clasz::kAir;
-    case hash("Air"): return clasz::kAir;
-    case hash("International Air"): return clasz::kAir;
-    case hash("Domestic Air"): return clasz::kAir;
-    case hash("Intercontinental Air"): return clasz::kAir;
-    case hash("Domestic Scheduled Air"): return clasz::kAir;
-    case hash("Shuttle Air"): return clasz::kAir;
-    case hash("Intercontinental Charter Air"): return clasz::kAir;
-    case hash("International Charter Air"): return clasz::kAir;
-    case hash("Round-Trip Charter Air"): return clasz::kAir;
-    case hash("Sightseeing Air"): return clasz::kAir;
-    case hash("Helicopter Air"): return clasz::kAir;
-    case hash("Domestic Charter Air"): return clasz::kAir;
-    case hash("Schengen-Area Air"): return clasz::kAir;
-    case hash("Airship"): return clasz::kAir;
+    case hash("Flug"):
+    case hash("Air"):
+    case hash("International Air"):
+    case hash("Domestic Air"):
+    case hash("Intercontinental Air"):
+    case hash("Domestic Scheduled Air"):
+    case hash("Shuttle Air"):
+    case hash("Intercontinental Charter Air"):
+    case hash("International Charter Air"):
+    case hash("Round-Trip Charter Air"):
+    case hash("Sightseeing Air"):
+    case hash("Helicopter Air"):
+    case hash("Domestic Charter Air"):
+    case hash("Schengen-Area Air"):
+    case hash("Airship"): [[fallthrough]];
     case hash("All Airs"): return clasz::kAir;
 
     // high speed
-    case hash("High Speed Rail"): return clasz::kHighSpeed;
-    case hash("ICE"): return clasz::kHighSpeed;
-    case hash("THA"): return clasz::kHighSpeed;
-    case hash("TGV"): return clasz::kHighSpeed;
-    case hash("RJ"): return clasz::kHighSpeed;
+    case hash("High Speed Rail"):
+    case hash("ICE"):
+    case hash("THA"):
+    case hash("TGV"):
+    case hash("RJ"): [[fallthrough]];
     case hash("RJX"): return clasz::kHighSpeed;
 
     // range rail
-    case hash("Long Distance Trains"): return clasz::kLongDistance;
-    case hash("Inter Regional Rail"): return clasz::kLongDistance;
-    case hash("Eurocity"): return clasz::kLongDistance;
-    case hash("EC"): return clasz::kLongDistance;
-    case hash("IC"): return clasz::kLongDistance;
-    case hash("EX"): return clasz::kLongDistance;
-    case hash("EXT"): return clasz::kLongDistance;
-    case hash("D"): return clasz::kLongDistance;
-    case hash("InterRegio"): return clasz::kLongDistance;
+    case hash("Long Distance Trains"):
+    case hash("Inter Regional Rail"):
+    case hash("Eurocity"):
+    case hash("EC"):
+    case hash("IC"):
+    case hash("EX"):
+    case hash("EXT"):
+    case hash("D"):
+    case hash("InterRegio"): [[fallthrough]];
     case hash("Intercity"): return clasz::kLongDistance;
 
     // long range bus
-    case hash("Coach"): return clasz::kCoach;
-    case hash("International Coach"): return clasz::kCoach;
-    case hash("National Coach"): return clasz::kCoach;
-    case hash("Shuttle Coach"): return clasz::kCoach;
-    case hash("Regional Coach"): return clasz::kCoach;
-    case hash("Special Coach"): return clasz::kCoach;
-    case hash("Sightseeing Coach"): return clasz::kCoach;
-    case hash("Tourist Coach"): return clasz::kCoach;
-    case hash("Commuter Coach"): return clasz::kCoach;
-    case hash("All Coachs"): return clasz::kCoach;
+    case hash("Coach"):
+    case hash("International Coach"):
+    case hash("National Coach"):
+    case hash("Shuttle Coach"):
+    case hash("Regional Coach"):
+    case hash("Special Coach"):
+    case hash("Sightseeing Coach"):
+    case hash("Tourist Coach"):
+    case hash("Commuter Coach"):
+    case hash("All Coachs"): [[fallthrough]];
     case hash("EXB"):
       return clasz::kCoach;  // long-distance bus
 
     // night trains
-    case hash("Sleeper Rail"): return clasz::kNight;
-    case hash("CNL"): return clasz::kNight;
-    case hash("EN"): return clasz::kNight;
-    case hash("Car Transport Rail"): return clasz::kNight;
-    case hash("Lorry Transport Rail"): return clasz::kNight;
-    case hash("Vehicle Transport Rail"): return clasz::kNight;
-    case hash("AZ"): return clasz::kNight;
+    case hash("Sleeper Rail"):
+    case hash("CNL"):
+    case hash("EN"):
+    case hash("Car Transport Rail"):
+    case hash("Lorry Transport Rail"):
+    case hash("Vehicle Transport Rail"):
+    case hash("AZ"): [[fallthrough]];
     case hash("NJ"): return clasz::kNight;
 
     // fast local trains
-    case hash("RE"): return clasz::kRegionalFast;
-    case hash("REX"): return clasz::kRegionalFast;
-    case hash("IR"): return clasz::kRegionalFast;
-    case hash("IRE"): return clasz::kRegionalFast;
-    case hash("X"): return clasz::kRegionalFast;
-    case hash("DPX"): return clasz::kRegionalFast;
-    case hash("E"): return clasz::kRegionalFast;
-    case hash("Sp"): return clasz::kRegionalFast;
-    case hash("RegioExpress"): return clasz::kRegionalFast;
-    case hash("TER"):
-      return clasz::kRegionalFast;  // Transport express regional
-    case hash("TE2"):
-      return clasz::kRegionalFast;  // Transport express regional
+    case hash("RE"):
+    case hash("REX"):
+    case hash("IR"):
+    case hash("IRE"):
+    case hash("X"):
+    case hash("DPX"):
+    case hash("E"):
+    case hash("Sp"):
+    case hash("RegioExpress"):
+    case hash("TER"):  // Transport express regional
+    case hash("TE2"): [[fallthrough]];  // Transport express regional
     case hash("Cross-Country Rail"): return clasz::kRegionalFast;
 
     // local trains
-    case hash("Railway Service"): return clasz::kRegional;
-    case hash("Regional Rail"): return clasz::kRegional;
-    case hash("Tourist Railway"): return clasz::kRegional;
-    case hash("Rail Shuttle (Within Complex)"): return clasz::kRegional;
-    case hash("Replacement Rail"): return clasz::kRegional;
-    case hash("Special Rail"): return clasz::kRegional;
-    case hash("Rack and Pinion Railway"): return clasz::kRegional;
-    case hash("Additional Rail"): return clasz::kRegional;
-    case hash("All Rails"): return clasz::kRegional;
-    case hash("DPN"): return clasz::kRegional;
-    case hash("R"): return clasz::kRegional;
-    case hash("DPF"): return clasz::kRegional;
-    case hash("RB"): return clasz::kRegional;
-    case hash("Os"): return clasz::kRegional;
-    case hash("Regionalzug"): return clasz::kRegional;
-    case hash("RZ"): return clasz::kRegional;
-    case hash("CC"): return clasz::kRegional;  // narrow-gauge mountain train
+    case hash("Railway Service"):
+    case hash("Regional Rail"):
+    case hash("Tourist Railway"):
+    case hash("Rail Shuttle (Within Complex)"):
+    case hash("Replacement Rail"):
+    case hash("Special Rail"):
+    case hash("Rack and Pinion Railway"):
+    case hash("Additional Rail"):
+    case hash("All Rails"):
+    case hash("DPN"):
+    case hash("R"):
+    case hash("DPF"):
+    case hash("RB"):
+    case hash("Os"):
+    case hash("Regionalzug"):
+    case hash("RZ"):
+    case hash("CC"): [[fallthrough]];  // narrow-gauge mountain train
     case hash("PE"):
       return clasz::kRegional;  // Panorama Express
 
     // metro
-    case hash("S"): return clasz::kMetro;
-    case hash("S-Bahn"): return clasz::kMetro;
-    case hash("SB"): return clasz::kMetro;
-    case hash("Metro"): return clasz::kMetro;
-    case hash("Schnelles Nachtnetz"): return clasz::kMetro;
+    case hash("S"):
+    case hash("S-Bahn"):
+    case hash("SB"):
+    case hash("Metro"):
+    case hash("Schnelles Nachtnetz"): [[fallthrough]];
     case hash("SN"):
       return clasz::kMetro;  // S-Bahn Nachtlinie
 
     // subway
-    case hash("U"): return clasz::kSubway;
-    case hash("STB"): return clasz::kSubway;
+    case hash("U"):
+    case hash("STB"): [[fallthrough]];
     case hash("M"): return clasz::kSubway;
 
     // street - car
-    case hash("Tram"): return clasz::kTram;
-    case hash("STR"): return clasz::kTram;
-    case hash("Str"): return clasz::kTram;
+    case hash("Tram"):
+    case hash("STR"):
+    case hash("Str"): [[fallthrough]];
     case hash("T"): return clasz::kTram;
 
     // bus
-    case hash("Bus"): return clasz::kBus;
-    case hash("B"): return clasz::kBus;
-    case hash("BN"): return clasz::kBus;
-    case hash("BP"): return clasz::kBus;
-    case hash("CAR"): return clasz::kBus;
+    case hash("Bus"):
+    case hash("B"):
+    case hash("BN"):
+    case hash("BP"):
+    case hash("CAR"): [[fallthrough]];
     case hash("KB"): return clasz::kBus;
 
     // ship
-    case hash("Schiff"): return clasz::kShip;
-    case hash("Fähre"): return clasz::kShip;
-    case hash("BAT"): return clasz::kShip;  // "bateau"
-    case hash("KAT"): return clasz::kShip;
-    case hash("Ferry"): return clasz::kShip;
-    case hash("Water Transport"): return clasz::kShip;
-    case hash("International Car Ferry"): return clasz::kShip;
-    case hash("National Car Ferry"): return clasz::kShip;
-    case hash("Regional Car Ferry"): return clasz::kShip;
-    case hash("Local Car Ferry"): return clasz::kShip;
-    case hash("International Passenger Ferry"): return clasz::kShip;
-    case hash("National Passenger Ferry"): return clasz::kShip;
-    case hash("Regional Passenger Ferry"): return clasz::kShip;
-    case hash("Local Passenger Ferry"): return clasz::kShip;
-    case hash("Post Boat"): return clasz::kShip;
-    case hash("Train Ferry"): return clasz::kShip;
-    case hash("Road-Link Ferry"): return clasz::kShip;
-    case hash("Airport-Link Ferry"): return clasz::kShip;
-    case hash("Car High-Speed Ferry"): return clasz::kShip;
-    case hash("Passenger High-Speed Ferry"): return clasz::kShip;
-    case hash("Sightseeing Boat"): return clasz::kShip;
-    case hash("School Boat"): return clasz::kShip;
-    case hash("Cable-Drawn Boat"): return clasz::kShip;
-    case hash("River Bus"): return clasz::kShip;
-    case hash("Scheduled Ferry"): return clasz::kShip;
-    case hash("Shuttle Ferry"): return clasz::kShip;
+    case hash("Schiff"):
+    case hash("Fähre"):
+    case hash("BAT"):  // "bateau"
+    case hash("KAT"):
+    case hash("Ferry"):
+    case hash("Water Transport"):
+    case hash("International Car Ferry"):
+    case hash("National Car Ferry"):
+    case hash("Regional Car Ferry"):
+    case hash("Local Car Ferry"):
+    case hash("International Passenger Ferry"):
+    case hash("National Passenger Ferry"):
+    case hash("Regional Passenger Ferry"):
+    case hash("Local Passenger Ferry"):
+    case hash("Post Boat"):
+    case hash("Train Ferry"):
+    case hash("Road-Link Ferry"):
+    case hash("Airport-Link Ferry"):
+    case hash("Car High-Speed Ferry"):
+    case hash("Passenger High-Speed Ferry"):
+    case hash("Sightseeing Boat"):
+    case hash("School Boat"):
+    case hash("Cable-Drawn Boat"):
+    case hash("River Bus"):
+    case hash("Scheduled Ferry"):
+    case hash("Shuttle Ferry"): [[fallthrough]];
     case hash("All Water Transports"): return clasz::kShip;
 
     // other
-    case hash("ZahnR"): return clasz::kOther;
-    case hash("Schw-B"): return clasz::kOther;
-    case hash("EZ"): return clasz::kOther;
-    case hash("Taxi"): return clasz::kOther;
-    case hash("ALT"): return clasz::kOther;  // "Anruflinientaxi"
-    case hash("AST"): return clasz::kOther;  // "Anrufsammeltaxi"
-    case hash("RFB"): return clasz::kOther;
-    case hash("RT"): return clasz::kOther;
-    case hash("Communal Taxi"): return clasz::kOther;
-    case hash("Water Taxi"): return clasz::kOther;
-    case hash("Rail Taxi"): return clasz::kOther;
-    case hash("Bike Taxi"): return clasz::kOther;
-    case hash("Licensed Taxi"): return clasz::kOther;
-    case hash("Private Hire Vehicle"): return clasz::kOther;
-    case hash("All Taxis"): return clasz::kOther;
-    case hash("Self Drive"): return clasz::kOther;
-    case hash("Hire Car"): return clasz::kOther;
-    case hash("Hire Van"): return clasz::kOther;
-    case hash("Hire Motorbike"): return clasz::kOther;
-    case hash("Hire Cycle"): return clasz::kOther;
-    case hash("All Self-Drive Vehicles"): return clasz::kOther;
-    case hash("Car train"): return clasz::kOther;
-    case hash("GB"): return clasz::kOther;  // ski lift / "funicular"?
-    case hash("PB"): return clasz::kOther;  // also a ski lift(?)
-    case hash("FUN"): return clasz::kOther;  // "funicular"
-    case hash("Funicular"): return clasz::kOther;
-    case hash("Telecabin"): return clasz::kOther;
-    case hash("Cable Car"): return clasz::kOther;
-    case hash("Chair Lift"): return clasz::kOther;
-    case hash("Drag Lift"): return clasz::kOther;
-    case hash("Small Telecabin"): return clasz::kOther;
-    case hash("All Telecabins"): return clasz::kOther;
-    case hash("All Funicular"): return clasz::kOther;
-    case hash("Drahtseilbahn"): return clasz::kOther;
-    case hash("Standseilbahn"): return clasz::kOther;
-    case hash("Sesselbahn"): return clasz::kOther;
-    case hash("Gondola): return claszle car"): return clasz::kOther;
-    case hash("Aufzug"): return clasz::kOther;
-    case hash("Elevator"): return clasz::kOther;
+    case hash("ZahnR"):
+    case hash("Schw-B"):
+    case hash("EZ"):
+    case hash("Taxi"):
+    case hash("ALT"):  // "Anruflinientaxi"
+    case hash("AST"):  // "Anrufsammeltaxi"
+    case hash("RFB"):
+    case hash("RT"):
+    case hash("Communal Taxi"):
+    case hash("Water Taxi"):
+    case hash("Rail Taxi"):
+    case hash("Bike Taxi"):
+    case hash("Licensed Taxi"):
+    case hash("Private Hire Vehicle"):
+    case hash("All Taxis"):
+    case hash("Self Drive"):
+    case hash("Hire Car"):
+    case hash("Hire Van"):
+    case hash("Hire Motorbike"):
+    case hash("Hire Cycle"):
+    case hash("All Self-Drive Vehicles"):
+    case hash("Car train"):
+    case hash("GB"):  // ski lift / "funicular"?
+    case hash("PB"):  // also a ski lift(?)
+    case hash("FUN"):  // "funicular"
+    case hash("Funicular"):
+    case hash("Telecabin"):
+    case hash("Cable Car"):
+    case hash("Chair Lift"):
+    case hash("Drag Lift"):
+    case hash("Small Telecabin"):
+    case hash("All Telecabins"):
+    case hash("All Funicular"):
+    case hash("Drahtseilbahn"):
+    case hash("Standseilbahn"):
+    case hash("Sesselbahn"):
+    case hash("Gondola): return claszle car"):
+    case hash("Aufzug"):
+    case hash("Elevator"): [[fallthrough]];
     case hash("ASC"): return clasz::kOther;
   }
   log(log_lvl::error, "loader.hrd.clasz", "cannot assign {}", s);
