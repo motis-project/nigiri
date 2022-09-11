@@ -308,6 +308,8 @@ struct timetable {
   void write(std::filesystem::path const&);
   static timetable* read(cista::memory_holder&);
 
+  // Hash of all files that were used to build this
+
   // Schedule range.
   interval<std::chrono::sys_days> date_range_;
 

@@ -18,10 +18,6 @@
   url=git@github.com:motis-project/miniz.git
   branch=master
   commit=1edbdece9d71dc65c6ff405572ee37cbdcef7af4
-[lmdb]
-  url=git@github.com:motis-project/lmdb.git
-  branch=master
-  commit=5be96596cb38c8a7919c5f543097429061c16fb6
 [fmt]
   url=git@github.com:motis-project/fmt.git
   branch=master
@@ -30,3 +26,7 @@
   url=git@github.com:motis-project/date.git
   branch=master
   commit=38d0b684c7fc3796b2c7f887c7dde8d6493b062f
+[wyhash]
+  url=git@github.com:motis-project/wyhash.git
+  branch=master
+  commit=e8a590461782cafd86354290c1563e1c7ef35c5e
