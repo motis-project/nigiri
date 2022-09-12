@@ -2,6 +2,8 @@
 
 #include <execution>
 
+#include "wyhash.h"
+
 #include "utl/helpers/algorithm.h"
 #include "utl/pipes.h"
 #include "utl/progress_tracker.h"

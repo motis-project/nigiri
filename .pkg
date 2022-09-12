@@ -5,7 +5,7 @@
 [cista]
   url=git@github.com:felixguendling/cista.git
   branch=nigiri
-  commit=41f7f3cec1c69049ba92f9aff8b313129fc2bb7a
+  commit=fedee985c47e68a95576247213ecbd8dad0c539a
 [geo]
   url=git@github.com:motis-project/geo.git
   branch=master
@@ -29,4 +29,4 @@
 [wyhash]
   url=git@github.com:motis-project/wyhash.git
   branch=master
-  commit=e8a590461782cafd86354290c1563e1c7ef35c5e
+  commit=1e012b57fc2227a9e583a57e2eacb3da99816d99
