@@ -134,10 +134,11 @@ void reconstruct_journey(timetable const& tt,
       }
     }
 
+    assert(false);
     throw utl::fail(
-        "reconstruction failed at k={}, stop=(name={}, id={}), time={}", k,
-        tt.locations_.names_[l].view(), tt.locations_.ids_[l].view(),
-        curr_time);
+        "reconstruction failed at k={}, t={}, stop=(name={}, id={}), time={}",
+        k, j.transfers_, tt.locations_.names_[l].view(),
+        tt.locations_.ids_[l].view(), curr_time);
   };
 
   auto l = j.dest_;

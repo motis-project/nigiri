@@ -23,6 +23,7 @@ struct stamm {
   stamm(config const&, timetable&, dir const&);
   stamm(timetable&, timezone_map_t&&);
 
+  static std::vector<file> load_files(config const&, dir const&);
   location_idx_t resolve_location(eva_number) const;
   category const* resolve_category(utl::cstr) const;
   trip_direction_idx_t resolve_direction(direction_info_t const&);

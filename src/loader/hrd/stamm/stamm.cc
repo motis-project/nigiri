@@ -11,7 +11,7 @@
 
 namespace nigiri::loader::hrd {
 
-std::vector<file> load_files(config const& c, dir const& d) {
+std::vector<file> stamm::load_files(config const& c, dir const& d) {
   return utl::to_vec(c.required_files_,
                      [&](std::vector<std::string> const& alt) {
                        if (alt.empty()) {

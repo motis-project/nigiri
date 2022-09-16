@@ -14,6 +14,7 @@ struct file {
     virtual std::string_view get() const = 0;
   };
 
+  bool has_value() const noexcept { return content_ != nullptr; }
   std::string_view data() const { return content_->get(); }
   char const* filename() const { return name_.c_str(); }
 

@@ -31,11 +31,8 @@ struct raptor {
   static constexpr auto const kInvalidTime =
       kFwd ? routing_time::max() : routing_time::min();
 
-  raptor(std::shared_ptr<timetable const> tt, search_state& state, query q)
-      : tt_mem_{std::move(tt)},
-        tt_{*tt_mem_},
-        q_{std::move(q)},
-        state_{state} {}
+  raptor(timetable& tt, search_state& state, query q)
+      : tt_{tt}, q_{std::move(q)}, state_{state} {}
 
   bool is_better(auto a, auto b) { return kFwd ? a < b : a > b; }
   bool is_better_or_eq(auto a, auto b) { return kFwd ? a <= b : a >= b; }
@@ -62,8 +59,9 @@ struct raptor {
     auto const transport_range = tt_.route_transport_ranges_[r];
     auto const [day_at_stop, mam_at_stop] = time.day_idx_mam();
 
-    auto const n_days_to_iterate =
-        kFwd ? n_days_ - to_idx(day_at_stop) : to_idx(day_at_stop) + 1U;
+    auto const n_days_to_iterate = std::min(
+        kMaxTravelTime / 1440U + 1,
+        kFwd ? n_days_ - to_idx(day_at_stop) : to_idx(day_at_stop) + 1U);
 
     trace(
         "┊ │    et: time={}, stop_idx={}, "
@@ -235,33 +233,41 @@ struct raptor {
     }
   }
 
+  void force_print_state(char const* comment = "") {
+    fmt::print(std::cerr, "INFO: {}\n", comment);
+    for (auto l = 0U; l != tt_.n_locations(); ++l) {
+      if (state_.best_[l] == kInvalidTime) {
+        continue;
+      }
+
+      auto const name = tt_.locations_.names_[location_idx_t{l}].view();
+      auto const id = tt_.locations_.ids_[location_idx_t{l}].view();
+      fmt::print(
+          std::cerr, "{:8} [name={:22}, id={:16}]: ", l,
+          name.substr(0,
+                      std::min(std::string_view::size_type{22U}, name.size())),
+          id.substr(0, std::min(std::string_view ::size_type{16U}, id.size())));
+      auto const b = state_.best_[l];
+      if (b == kInvalidTime) {
+        fmt::print(std::cerr, "best=_________, round_times: ");
+      } else {
+        fmt::print(std::cerr, "best={:9}, round_times: ", b);
+      }
+      for (auto i = 0U; i != kMaxTransfers + 1U; ++i) {
+        auto const t = state_.round_times_[i][l];
+        if (t != kInvalidTime) {
+          fmt::print(std::cerr, "{:9} ", t);
+        } else {
+          fmt::print(std::cerr, "_________ ");
+        }
+      }
+      fmt::print(std::cerr, "\n");
+    }
+  }
+
   void print_state(char const* comment = "") {
     if constexpr (kTracing) {
-      fmt::print(std::cerr, "INFO: {}\n", comment);
-      for (auto l = 0U; l != tt_.n_locations(); ++l) {
-        auto const name = tt_.locations_.names_[location_idx_t{l}].view();
-        auto const id = tt_.locations_.ids_[location_idx_t{l}].view();
-        fmt::print(std::cerr, "{:8} [name={:22}, id={:16}]: ", l,
-                   name.substr(0, std::min(std::string_view::size_type{22U},
-                                           name.size())),
-                   id.substr(0, std::min(std::string_view ::size_type{16U},
-                                         id.size())));
-        auto const b = state_.best_[l];
-        if (b == kInvalidTime) {
-          fmt::print(std::cerr, "best=_________, round_times: ");
-        } else {
-          fmt::print(std::cerr, "best={:9}, round_times: ", b);
-        }
-        for (auto i = 0U; i != kMaxTransfers + 1U; ++i) {
-          auto const t = state_.round_times_[i][l];
-          if (t != kInvalidTime) {
-            fmt::print(std::cerr, "{:9} ", t);
-          } else {
-            fmt::print(std::cerr, "_________ ");
-          }
-        }
-        fmt::print(std::cerr, "\n");
-      }
+      force_print_state(comment);
     }
   }
 
@@ -323,14 +329,20 @@ struct raptor {
                       .dest_ = dest,
                       .transfers_ = static_cast<std::uint8_t>(k - 1)});
           if (optimal) {
-            reconstruct_journey<SearchDir>(tt_, q_, state_, *it);
+            try {
+              reconstruct_journey<SearchDir>(tt_, q_, state_, *it);
+            } catch (std::exception const& e) {
+              state_.results_[i].erase(it);
+              log(log_lvl::error, "routing", "reconstruction failed: {}",
+                  e.what());
+              //              force_print_state("RECONSTRUCT FAILED");
+            }
           }
         }
       }
     }
   }
 
-  std::shared_ptr<timetable const> tt_mem_;
   timetable const& tt_;
   std::uint16_t n_days_{
       static_cast<std::uint16_t>(tt_.date_range_.size().count())};
