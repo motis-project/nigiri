@@ -145,16 +145,18 @@ void process_component(timetable& tt,
                          idx_a, fgraph[idx_a].size(), fgraph[idx_a], idx_b,
                          fgraph[idx_b].size(), fgraph[idx_b]);
 
-      tt.locations_.footpaths_out_[l_idx_a].push_back(fgraph[idx_a].front());
-      tt.locations_.footpaths_in_[l_idx_b].push_back(fgraph[idx_a].front());
+      tt.locations_.footpaths_out_[l_idx_a].emplace_back(fgraph[idx_a].front());
+      tt.locations_.footpaths_in_[l_idx_b].emplace_back(
+          l_idx_a, fgraph[idx_a].front().duration_);
     }
     if (!fgraph[idx_b].empty()) {
       utl::verify_silent(
           fgraph[idx_b].size() == 1,
           "invalid size (a): idx_a={}, size={}, idx_b={}, size={}", idx_a,
           fgraph[idx_a].size(), idx_b, fgraph[idx_b].size());
-      tt.locations_.footpaths_out_[l_idx_b].push_back(fgraph[idx_b].front());
-      tt.locations_.footpaths_in_[l_idx_a].push_back(fgraph[idx_b].front());
+      tt.locations_.footpaths_out_[l_idx_b].emplace_back(fgraph[idx_b].front());
+      tt.locations_.footpaths_in_[l_idx_a].emplace_back(
+          l_idx_b, fgraph[idx_b].front().duration_);
     }
     return;
   }
@@ -240,6 +242,28 @@ void build_footpaths(timetable& tt) {
   add_links_to_and_between_children(tt);
   link_nearby_stations(tt);
   transitivize_footpaths(tt);
+
+  std::cerr << "FOOTPATHS\n";
+  for (auto l = location_idx_t{0U};
+       to_idx(l) != tt.locations_.footpaths_out_.size(); ++l) {
+    if (!tt.locations_.footpaths_out_.at(l).empty()) {
+      std::cerr << tt.locations_.names_.at(l).view() << " OUT\n";
+      for (auto const& fp : tt.locations_.footpaths_out_.at(l)) {
+        std::cerr << "  " << fp.duration_ << " --> "
+                  << tt.locations_.names_.at(fp.target_).view() << "\n";
+      }
+    }
+  }
+  for (auto l = location_idx_t{0U};
+       to_idx(l) != tt.locations_.footpaths_out_.size(); ++l) {
+    if (!tt.locations_.footpaths_in_.at(l).empty()) {
+      std::cerr << tt.locations_.names_.at(l).view() << " IN\n";
+      for (auto const& fp : tt.locations_.footpaths_in_.at(l)) {
+        std::cerr << "  " << fp.duration_ << " --> "
+                  << tt.locations_.names_.at(fp.target_).view() << "\n";
+      }
+    }
+  }
 }
 
 }  // namespace nigiri::loader

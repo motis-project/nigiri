@@ -6,6 +6,9 @@
 namespace nigiri::routing {
 
 void search_state::reset(timetable const& tt, routing_time init) {
+  is_destination_.resize(tt.n_locations());
+  std::fill(begin(is_destination_), end(is_destination_), false);
+
   station_mark_.resize(tt.n_locations());
   std::fill(begin(station_mark_), end(station_mark_), false);
 

@@ -108,6 +108,9 @@ void for_each_meta(timetable const& tt,
     for (auto const& eq : tt.locations_.equivalences_.at(l)) {
       fn(eq);
     }
+    for (auto const& fp : tt.locations_.footpaths_out_.at(l)) {
+      fn(fp.target_);
+    }
   }
 }
 
@@ -148,12 +151,16 @@ void get_starts(timetable const& tt,
 void collect_destinations(timetable const& tt,
                           std::vector<std::vector<offset>> const& destinations,
                           location_match_mode const match_mode,
-                          std::vector<std::set<location_idx_t>>& out) {
+                          std::vector<std::set<location_idx_t>>& out,
+                          std::vector<bool>& is_destination) {
   out.resize(std::max(out.size(), destinations.size()));
   for (auto const [i, dest] : utl::enumerate(destinations)) {
     for (auto const& d : dest) {
       for_each_meta(tt, match_mode, d.location_,
-                    [&, i = i](location_idx_t const l) { out[i].emplace(l); });
+                    [&, i = i](location_idx_t const l) {
+                      out[i].emplace(l);
+                      is_destination[to_idx(l)] = true;
+                    });
     }
   }
 }

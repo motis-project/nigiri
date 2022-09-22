@@ -19,6 +19,7 @@ struct search_state {
   cista::raw::matrix<routing_time> round_times_;
   std::vector<bool> station_mark_;
   std::vector<bool> route_mark_;
+  std::vector<bool> is_destination_;
   std::vector<start> starts_;
   std::vector<std::set<location_idx_t>> destinations_;
   std::vector<pareto_set<journey>> results_;

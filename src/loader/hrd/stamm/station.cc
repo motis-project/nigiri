@@ -125,6 +125,7 @@ void parse_footpaths(config const& c,
           duration_t{parse<int>(line.substr(c.meta_.footpaths_.duration_))};
 
       add_footpath(from, to.id_, duration);
+      add_footpath(to, from.id_, duration);
 
       if (f_equal) {
         from.equivalent_.erase(to.id_);

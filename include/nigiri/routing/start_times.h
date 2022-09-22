@@ -29,6 +29,7 @@ void get_starts(timetable const&,
 void collect_destinations(timetable const&,
                           std::vector<std::vector<offset>> const& destinations,
                           location_match_mode const,
-                          std::vector<std::set<location_idx_t>>&);
+                          std::vector<std::set<location_idx_t>>&,
+                          std::vector<bool>& is_destination);
 
 }  // namespace nigiri::routing
