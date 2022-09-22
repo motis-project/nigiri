@@ -170,7 +170,11 @@ void reconstruct_journey(timetable const& tt,
     for (auto const& fp : fps) {
       std::cerr << "FP: " << fp.duration_.count() << " --> "
                 << tt.locations_.names_.at(fp.target_).view() << "\n";
-      auto const fp_legs = check_fp(k, l, curr_time, fp);
+      auto const adjusted_duration =
+          fp.duration_ -
+          (kFwd ? 1 : -1) * tt.locations_.transfer_time_[fp.target_];
+      auto const fp_legs =
+          check_fp(k, l, curr_time, footpath{fp.target_, adjusted_duration});
       if (fp_legs.has_value()) {
         return std::move(*fp_legs);
       }

@@ -16,7 +16,7 @@
 
 namespace nigiri::routing {
 
-constexpr auto const kTracing = true;
+constexpr auto const kTracing = false;
 
 template <typename... Args>
 void trace(char const* fmt_str, Args... args) {
@@ -199,20 +199,24 @@ void raptor<SearchDir>::update_footpaths(unsigned const k) {
     trace("┊ ├ updating footpaths of {}\n",
           tt_.locations_.names_[l_idx].view());
     for (auto const& fp : fps) {
-      trace("┊ ├ footpath: (name={}, id={}) --{}--> (name={}, id={})\n",
-            tt_.locations_.names_[l_idx].view(),
-            tt_.locations_.ids_[l_idx].view(), fp.duration_,
-            tt_.locations_.names_[fp.target_].view(),
-            tt_.locations_.ids_[fp.target_].view());
 
       auto& time_at_fp_target = state_.best_[to_idx(fp.target_)];
       auto const fp_target_time =
           state_.round_times_[k][to_idx(l_idx)] +
           ((kFwd ? 1 : -1) * fp.duration_) -
           ((kFwd ? 1 : -1) * tt_.locations_.transfer_time_[l_idx]);
+
       if (is_better(fp_target_time, time_at_fp_target) &&
           is_better(fp_target_time, time_at_destination_)) {
-        trace("┊ ├--> UPDATE {} -> {}\n", time_at_fp_target, fp_target_time);
+        trace(
+            "┊ ├ footpath: (name={}, id={}, best={}) --{}--> (name={}, id={}, "
+            "best={}) --> update => {}\n",
+            tt_.locations_.names_[l_idx].view(),
+            tt_.locations_.ids_[l_idx].view(),
+            state_.round_times_[k][to_idx(l_idx)], fp.duration_,
+            tt_.locations_.names_[fp.target_].view(),
+            tt_.locations_.ids_[fp.target_].view(),
+            state_.round_times_[k][to_idx(fp.target_)], fp_target_time);
         state_.round_times_[k][to_idx(fp.target_)] = fp_target_time;
         state_.best_[to_idx(fp.target_)] = fp_target_time;
         state_.station_mark_[to_idx(fp.target_)] = true;
