@@ -1,12 +1,14 @@
 #include "utl/enumerate.h"
 
+#include "utl/enumerate.h"
+
 #include "nigiri/routing/limits.h"
 #include "nigiri/routing/search_state.h"
 
 namespace nigiri::routing {
 
 constexpr auto const kTracing = true;
-constexpr auto const kTraceStart = false;
+constexpr auto const kTraceStart = true;
 
 template <typename... Args>
 void trace(char const* fmt_str, Args... args) {
@@ -30,7 +32,7 @@ std::optional<journey::leg> find_initial_footpath(timetable const& tt,
   constexpr auto const kFwd = SearchDir == direction::kForward;
 
   auto const is_journey_start = [&](location_idx_t const candidate_l) {
-    return std::ranges::any_of(q.start_, [&](offset const& o) {
+    return std::any_of(begin(q.start_), end(q.start_), [&](offset const& o) {
       if (o.location_ == candidate_l) {
         return true;
       }

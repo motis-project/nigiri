@@ -122,7 +122,7 @@ void load_timetable(source_idx_t const src,
       });
   build_footpaths(tt);
 
-  print_timetable(std::cout, tt);
+  //print_timetable(std::cout, tt);
 }
 
 }  // namespace nigiri::loader::hrd

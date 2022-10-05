@@ -5,7 +5,7 @@
 
 namespace nigiri::routing {
 
-constexpr auto const kTracing = false;
+constexpr auto const kTracing = true;
 
 template <typename... Args>
 void trace(char const* fmt_str, Args... args) {
