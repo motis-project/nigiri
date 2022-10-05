@@ -22,10 +22,12 @@ void add_start_times_at_stop(timetable const& tt,
                              interval<unixtime_t> const& interval_with_offset,
                              duration_t const offset,
                              std::vector<start>& starts) {
-  trace("    add_start_times_at_stop(interval={})", interval_with_offset);
-
   auto const first_day_idx = tt.day_idx_mam(interval_with_offset.from_).first;
   auto const last_day_idx = tt.day_idx_mam(interval_with_offset.to_).first;
+  trace(
+      "    add_start_times_at_stop(interval={}) - first_day_idx={}, "
+      "last_day_idx={}, date_range={}\n",
+      interval_with_offset, first_day_idx, last_day_idx, tt.date_range_);
 
   auto const& transport_range = tt.route_transport_ranges_[route_idx];
   for (auto transport_idx = transport_range.from_;
@@ -42,13 +44,20 @@ void add_start_times_at_stop(timetable const& tt,
     //      return s;
     //    };
 
-    trace("  INTERVAL WITH OFFSET: {} {}\n", interval_with_offset.from_,
-          interval_with_offset.to_);
-    trace("  STOP TIME: {}\n", stop_time);
     //    trace("  TRAFFIC DAYS: {}\n", reverse(traffic_days.to_string()));
 
     auto const day_offset = stop_time.count() / 1440;
     auto const stop_time_mam = duration_t{stop_time.count() % 1440};
+    trace(
+        "  interval=[{}, {}[, transport={}, name={}, stop_time={} "
+        "(day_offset={}, stop_time_mam={})\n",
+        interval_with_offset.from_, interval_with_offset.to_, transport_idx,
+        tt.trip_display_names_
+            [tt.merged_trips_[tt.transport_to_trip_section_[transport_idx]
+                                  .front()]
+                 .front()]
+                .view(),
+        stop_time, day_offset, stop_time_mam);
     for (auto day = first_day_idx; day <= last_day_idx; ++day) {
       if (traffic_days.test(to_idx(day - day_offset)) &&
           interval_with_offset.contains(tt.to_unixtime(day, stop_time_mam))) {
@@ -60,9 +69,13 @@ void add_start_times_at_stop(timetable const& tt,
                   .time_at_stop_ = ev_time,
                   .stop_ = location_idx});
       } else {
-        trace("    -> skip: traffic_day={}, active={}, in_interval={}\n",
-              to_idx(day), traffic_days.test(to_idx(day)),
-              interval_with_offset.contains(tt.to_unixtime(day, stop_time)));
+        trace(
+            "    -> skip: day={}, day_offset={}, date={}, active={}, "
+            "in_interval={}\n",
+            day, day_offset,
+            tt.date_range_.from_ + to_idx(day - day_offset) * 1_days,
+            traffic_days.test(to_idx(day)),
+            interval_with_offset.contains(tt.to_unixtime(day, stop_time)));
       }
     }
   }
