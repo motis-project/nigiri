@@ -1,5 +1,6 @@
 #pragma once
 
+#include <ostream>
 #include <type_traits>
 
 namespace nigiri {
@@ -31,8 +32,10 @@ struct interval {
   }
 
   template <typename X>
-  requires std::is_convertible_v<T, X>
-  operator interval<X>() { return {from_, to_}; }
+    requires std::is_convertible_v<T, X>
+  operator interval<X>() {
+    return {from_, to_};
+  }
 
   bool contains(T const t) const { return t >= from_ && t < to_; }
 
@@ -42,6 +45,10 @@ struct interval {
   friend iterator end(interval const& r) { return r.end(); }
 
   auto size() const { return to_ - from_; }
+
+  friend std::ostream& operator<<(std::ostream& out, interval const& i) {
+    return out << "[" << i.from_ << ", " << i.to_ << "[";
+  }
 
   T from_{}, to_{};
 };

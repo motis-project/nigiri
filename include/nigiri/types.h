@@ -110,7 +110,7 @@ using provider_idx_t = cista::strong<std::uint32_t, struct _provider_idx>;
 
 struct trip_debug {
   source_file_idx_t source_file_idx_;
-  std::uint32_t line_number_;
+  std::uint32_t line_number_from_, line_number_to_;
 };
 
 struct attribute {

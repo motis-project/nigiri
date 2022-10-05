@@ -44,6 +44,10 @@ struct routing_time {
   constexpr routing_time operator-(duration_t const& rt) const {
     return routing_time{static_cast<std::int32_t>(offset_ - rt.count())};
   }
+  friend constexpr duration_t operator-(routing_time const a,
+                                        routing_time const b) {
+    return duration_t{b.offset_ - a.offset_};
+  }
   friend std::ostream& operator<<(std::ostream& out, routing_time const t) {
     if (t == min()) {
       return out << "MIN";
@@ -55,5 +59,10 @@ struct routing_time {
   }
   std::int32_t offset_;  // minutes since timetable begin
 };
+
+template <direction SearchDir>
+inline constexpr auto const kInvalidTime =
+    SearchDir == direction::kForward ? routing_time::max()
+                                     : routing_time::min();
 
 }  // namespace nigiri::routing

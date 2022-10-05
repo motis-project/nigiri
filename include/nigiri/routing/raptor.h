@@ -17,15 +17,11 @@ template <direction SearchDir>
 struct raptor {
 public:
   raptor(timetable& tt, search_state& state, query q);
-
   void route();
-  void reconstruct(unixtime_t const start_at_start);
 
 private:
   static constexpr auto const kFwd = (SearchDir == direction::kForward);
   static constexpr auto const kBwd = (SearchDir == direction::kBackward);
-  static constexpr auto const kInvalidTime =
-      kFwd ? routing_time::max() : routing_time::min();
 
   bool is_better(auto a, auto b);
   bool is_better_or_eq(auto a, auto b);
@@ -38,7 +34,7 @@ private:
                                    route_idx_t const r,
                                    unsigned const stop_idx,
                                    location_idx_t const l_idx);
-  void update_route(unsigned const k, route_idx_t const r);
+  bool update_route(unsigned const k, route_idx_t const r);
   void update_footpaths(unsigned const k);
 
   unsigned end_k() const;
@@ -47,10 +43,12 @@ private:
   void force_print_state(char const* comment = "");
   void print_state(char const* comment = "");
 
+  void reconstruct(unixtime_t const start_at_start);
+
   timetable const& tt_;
   std::uint16_t n_days_;
   query q_;
-  routing_time time_at_destination_{kInvalidTime};
+  routing_time time_at_destination_{kInvalidTime<SearchDir>};
   search_state& state_;
 };
 

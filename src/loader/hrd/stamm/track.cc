@@ -43,6 +43,10 @@ void parse_track_rules(config const& c,
         });
 
     auto const parent = st.resolve_location(eva_num);
+    if (parent == location_idx_t::invalid()) {
+      return;
+    }
+
     auto const track_location = utl::get_or_create(
         track_locations,
         track_at_station{.parent_station_ = parent, .track_ = track_name_idx},
@@ -53,8 +57,8 @@ void parse_track_rules(config const& c,
           auto const name = string{tt.track_names_[track_name_idx].view()};
           auto const child = tt.locations_.register_location(
               location{id, name, l.pos_, l.src_, location_type::kTrack,
-                       l.osm_id_, parent, l.timezone_idx_, l.equivalences_,
-                       l.footpaths_in_, l.footpaths_out_});
+                       l.osm_id_, parent, l.timezone_idx_, l.transfer_time_,
+                       l.equivalences_, l.footpaths_in_, l.footpaths_out_});
           tt.locations_.children_[parent].emplace_back(child);
           tt.locations_.equivalences_[parent].emplace_back(child);
           return child;

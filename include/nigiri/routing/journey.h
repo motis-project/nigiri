@@ -26,13 +26,13 @@ struct journey {
     leg(direction const d,
         location_idx_t const a,
         location_idx_t const b,
-        unixtime_t const dep_time,
-        unixtime_t const arr_time,
+        unixtime_t const tima_at_a,
+        unixtime_t const time_at_b,
         T&& uses)
         : from_{d == direction::kForward ? a : b},
           to_{d == direction::kForward ? b : a},
-          dep_time_{d == direction::kForward ? dep_time : arr_time},
-          arr_time_{d == direction::kForward ? arr_time : dep_time},
+          dep_time_{d == direction::kForward ? tima_at_a : time_at_b},
+          arr_time_{d == direction::kForward ? time_at_b : tima_at_a},
           uses_{std::forward<T>(uses)} {}
 
     void print(std::ostream&,

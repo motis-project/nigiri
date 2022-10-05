@@ -26,6 +26,7 @@ struct query {
   start_time_t start_time_;
   location_match_mode start_match_mode_;
   location_match_mode dest_match_mode_;
+  bool use_start_footpaths_;
   std::vector<offset> start_;
   std::vector<std::vector<offset>> destinations_;
   std::vector<std::vector<offset>> via_destinations_;

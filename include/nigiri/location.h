@@ -23,6 +23,7 @@ struct location {
            osm_node_id_t,
            location_idx_t parent,
            timezone_idx_t,
+           duration_t transfer_time,
            it_range<vector<location_idx_t>::const_iterator> equivalences,
            it_range<vector<footpath>::const_iterator> footpaths_in,
            it_range<vector<footpath>::const_iterator> footpaths_out);
@@ -34,6 +35,7 @@ struct location {
   osm_node_id_t osm_id_;
   location_idx_t parent_;
   timezone_idx_t timezone_idx_;
+  duration_t transfer_time_;
   it_range<vector<location_idx_t>::const_iterator> equivalences_;
   it_range<vector<footpath>::const_iterator> footpaths_out_, footpaths_in_;
 };

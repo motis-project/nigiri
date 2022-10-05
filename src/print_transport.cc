@@ -44,7 +44,7 @@ void print_transport(timetable const& tt,
     out << std::right << std::setw(2) << std::setfill(' ') << stop_idx << ": "
         << std::left << std::setw(7) << stop_id << " " << std::left
         << std::setw(std::max(
-               0, 50 - static_cast<int>(stop_name_len + stop_name.size())))
+               0, 60 - static_cast<int>(stop_name_len + stop_name.size())))
         << std::setfill('.') << stop_name << std::setfill(' ');
 
     if (stop_idx != from) {
@@ -53,7 +53,7 @@ void print_transport(timetable const& tt,
       date::to_stream(out, " a: %d.%m %R", t);
       date::to_stream(out, " [%d.%m %R]", to_local_time(tz, t));
     } else {
-      out << "               ";
+      out << "                  ";
       out << "              ";
     }
 
@@ -85,7 +85,7 @@ void print_transport(timetable const& tt,
           if (with_debug) {
             out << ", debug="
                 << tt.source_file_names_.at(dbg.source_file_idx_).view() << ":"
-                << dbg.line_number_;
+                << dbg.line_number_from_ << ":" << dbg.line_number_to_;
           }
           out << "}";
         }

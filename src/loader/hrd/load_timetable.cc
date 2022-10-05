@@ -11,8 +11,38 @@
 #include "nigiri/loader/build_footpaths.h"
 #include "nigiri/loader/hrd/service/service_builder.h"
 #include "nigiri/loader/hrd/stamm/stamm.h"
+#include "nigiri/print_transport.h"
 
 namespace nigiri::loader::hrd {
+
+void print_timetable(std::ostream& out, timetable const& tt) {
+  auto const reverse = [](std::string s) {
+    std::reverse(s.begin(), s.end());
+    return s;
+  };
+  auto const num_days = static_cast<size_t>(
+      (tt.date_range_.to_ - tt.date_range_.from_ + 1_days) / 1_days);
+  auto ret = std::set<std::string>{};
+  for (auto i = 0U; i != tt.transport_stop_times_.size(); ++i) {
+    auto const transport_idx = transport_idx_t{i};
+    auto const traffic_days =
+        tt.bitfields_.at(tt.transport_traffic_days_.at(transport_idx));
+    out << "TRAFFIC_DAYS="
+        << reverse(
+               traffic_days.to_string().substr(traffic_days.size() - num_days))
+        << "\n";
+    for (auto d = tt.date_range_.from_; d != tt.date_range_.to_;
+         d += std::chrono::days{1}) {
+      auto const day_idx = day_idx_t{
+          static_cast<day_idx_t::value_t>((d - tt.date_range_.from_) / 1_days)};
+      if (traffic_days.test(to_idx(day_idx))) {
+        date::to_stream(out, "%F", d);
+        out << " (day_idx=" << day_idx << ")\n";
+        print_transport(tt, out, {transport_idx, day_idx});
+      }
+    }
+  }
+}
 
 bool applicable(config const& c, dir const& d) {
   return utl::all_of(
@@ -51,6 +81,7 @@ void load_timetable(source_idx_t const src,
                     config const& c,
                     dir const& d,
                     timetable& tt) {
+  (void)src;
   auto bars = utl::global_progress_bars{false};
 
   auto st = stamm{c, tt, d};
@@ -75,6 +106,8 @@ void load_timetable(source_idx_t const src,
     total_bytes_processed += file.data().size();
   }
 
+  tt.location_routes_[location_idx_t{tt.locations_.src_.size() - 1}];
+
   scoped_timer sort_timer{"sorting trip ids"};
 
   std::sort(
@@ -88,6 +121,8 @@ void load_timetable(source_idx_t const src,
                tt.trip_id_strings_[b.first].view();
       });
   build_footpaths(tt);
+
+  print_timetable(std::cout, tt);
 }
 
 }  // namespace nigiri::loader::hrd

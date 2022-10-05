@@ -222,8 +222,28 @@ void transitivize_footpaths(timetable& tt) {
 }
 
 void add_links_to_and_between_children(timetable& tt) {
+  for (auto l = location_idx_t{0U}; l != tt.locations_.footpaths_out_.size();
+       ++l) {
+    for (auto const& fp : tt.locations_.footpaths_out_[l]) {
+      //      std::cout << "ADDING " << location{tt, parent} << " TO CHILDREN OF
+      //      "
+      //                << location{tt, fp.target_} << "\n";
+      for (auto const& neighbor_child : tt.locations_.children_[fp.target_]) {
+        //        std::cout << "  " << location{tt, parent} << " -> "
+        //                  << location{tt, neighbor_child} << ": " <<
+        //                  fp.duration_
+        //                  << "\n";
+        tt.locations_.footpaths_out_[l].emplace_back(
+            footpath{neighbor_child, fp.duration_});
+        tt.locations_.footpaths_out_[neighbor_child].emplace_back(
+            footpath{l, fp.duration_});
+      }
+    }
+  }
+
   for (auto const [l, children] : utl::enumerate(tt.locations_.children_)) {
     auto const parent = location_idx_t{l};
+
     auto const t = tt.locations_.transfer_time_[parent];
     for (auto i = 0U; i != children.size(); ++i) {
       tt.locations_.footpaths_out_[parent].emplace_back(children[i], t);
@@ -243,27 +263,29 @@ void build_footpaths(timetable& tt) {
   link_nearby_stations(tt);
   transitivize_footpaths(tt);
 
-  std::cerr << "FOOTPATHS\n";
-  for (auto l = location_idx_t{0U};
-       to_idx(l) != tt.locations_.footpaths_out_.size(); ++l) {
-    if (!tt.locations_.footpaths_out_.at(l).empty()) {
-      std::cerr << tt.locations_.names_.at(l).view() << " OUT\n";
-      for (auto const& fp : tt.locations_.footpaths_out_.at(l)) {
-        std::cerr << "  " << fp.duration_ << " --> "
-                  << tt.locations_.names_.at(fp.target_).view() << "\n";
-      }
-    }
-  }
-  for (auto l = location_idx_t{0U};
-       to_idx(l) != tt.locations_.footpaths_out_.size(); ++l) {
-    if (!tt.locations_.footpaths_in_.at(l).empty()) {
-      std::cerr << tt.locations_.names_.at(l).view() << " IN\n";
-      for (auto const& fp : tt.locations_.footpaths_in_.at(l)) {
-        std::cerr << "  " << fp.duration_ << " --> "
-                  << tt.locations_.names_.at(fp.target_).view() << "\n";
-      }
-    }
-  }
+  //  std::cout << "FOOTPATHS\n";
+  //  for (auto l = location_idx_t{0U};
+  //       to_idx(l) != tt.locations_.footpaths_out_.size(); ++l) {
+  //    if (!tt.locations_.footpaths_out_.at(l).empty()) {
+  //      std::cout << location{tt, l} << " OUT\n";
+  //      for (auto const& fp : tt.locations_.footpaths_out_.at(l)) {
+  //        std::cout << "  " << fp.duration_ << " --> " << location{tt,
+  //        fp.target_}
+  //                  << "\n";
+  //      }
+  //    }
+  //  }
+  //  for (auto l = location_idx_t{0U};
+  //       to_idx(l) != tt.locations_.footpaths_out_.size(); ++l) {
+  //    if (!tt.locations_.footpaths_in_.at(l).empty()) {
+  //      std::cout << location{tt, l} << " IN\n";
+  //      for (auto const& fp : tt.locations_.footpaths_in_.at(l)) {
+  //        std::cout << "  " << fp.duration_ << " --> " << location{tt,
+  //        fp.target_}
+  //                  << "\n";
+  //      }
+  //    }
+  //  }
 }
 
 }  // namespace nigiri::loader

@@ -19,7 +19,6 @@ struct hrd_location {
   eva_number id_;
   string name_;
   geo::latlng pos_;
-  location_type type_;
   vector<eva_number> children_;
   hash_set<eva_number> equivalent_;
   hash_map<eva_number, duration_t> footpaths_out_;

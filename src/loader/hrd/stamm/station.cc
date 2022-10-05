@@ -68,8 +68,15 @@ void parse_equivilant_stations(config const& c,
 
         if (line[7] == ':') {  // equivalent stations
           try {
-            auto& station = stations.at(
-                parse_eva_number(line.substr(c.meta_.meta_stations_.eva_)));
+            auto const eva =
+                parse_eva_number(line.substr(c.meta_.meta_stations_.eva_));
+            auto const station_it = stations.find(eva);
+            if (station_it == end(stations)) {
+              log(log_lvl::error, "loader.hrd.meta", "line {}: {} not found",
+                  line_number, eva);
+              return;
+            }
+            auto& station = station_it->second;
             utl::for_each_token(line.substr(8), ' ', [&](utl::cstr token) {
               if (token.empty() ||
                   (c.version_ == "hrd_5_20_26" && token.starts_with("F"))) {
@@ -108,7 +115,8 @@ void parse_footpaths(config const& c,
     }
   };
 
-  utl::for_each_line(file_content, [&](utl::cstr line) {
+  utl::for_each_line_numbered(file_content, [&](utl::cstr line,
+                                                unsigned const line_number) {
     if (line.length() < 16 || line[0] == '%' || line[0] == '*') {
       return;
     }
@@ -117,10 +125,26 @@ void parse_footpaths(config const& c,
     } else {  // footpaths
       auto const f_equal = c.version_ == "hrd_5_00_8" && line.length() > 23 &&
                            line.substr(23, utl::size(1)) == "F";
-      auto& from =
-          stations.at(parse_eva_number(line.substr(c.meta_.footpaths_.from_)));
-      auto& to =
-          stations.at(parse_eva_number(line.substr(c.meta_.footpaths_.to_)));
+
+      auto const from_eva =
+          parse_eva_number(line.substr(c.meta_.footpaths_.from_));
+      auto const from_it = stations.find(from_eva);
+      if (from_it == end(stations)) {
+        log(log_lvl::error, "loader.hrd.footpath",
+            "footpath line={}: {} not found", line_number, to_idx(from_eva));
+        return;
+      }
+      auto& from = from_it->second;
+
+      auto const to_eva = parse_eva_number(line.substr(c.meta_.footpaths_.to_));
+      auto const to_it = stations.find(to_eva);
+      if (to_it == end(stations)) {
+        log(log_lvl::error, "loader.hrd.footpath",
+            "footpath line={}: {} not found", line_number, to_idx(to_eva));
+        return;
+      }
+      auto& to = to_it->second;
+
       auto const duration =
           duration_t{parse<int>(line.substr(c.meta_.footpaths_.duration_))};
 
@@ -159,25 +183,36 @@ location_map_t parse_stations(config const& c,
   parse_footpaths(c, stations, station_metabhf_file);
 
   for (auto& [eva, s] : stations) {
+    auto const eva_int = to_idx(eva);
     auto const id =
-        location_id{.id_ = fmt::format("{:07}", to_idx(eva)), .src_ = src};
+        location_id{.id_ = fmt::format("{:07}", eva_int), .src_ = src};
+    auto const transfer_time = duration_t{eva_int < 1000000 ? 2 : 5};
     auto const idx = tt.locations_.register_location(
         location{id.id_, s.name_, s.pos_, src, location_type::kStation,
                  osm_node_id_t::invalid(), location_idx_t::invalid(),
-                 st.get_tz(s.id_).first, it_range{empty_idx_vec},
+                 st.get_tz(s.id_).first, transfer_time, it_range{empty_idx_vec},
                  it_range{empty_footpath_vec}, it_range{empty_footpath_vec}});
     s.idx_ = idx;
   }
 
   for (auto& [eva, s] : stations) {
     for (auto const& e : s.equivalent_) {
-      tt.locations_.equivalences_[s.idx_].emplace_back(stations.at(e).idx_);
+      if (auto const it = stations.find(e); it != end(stations)) {
+        tt.locations_.equivalences_[s.idx_].emplace_back(it->second.idx_);
+      } else {
+        log(log_lvl::error, "loader.hrd.meta", "station {} not found", e);
+      }
     }
 
     for (auto const& [target_eva, duration] : s.footpaths_out_) {
       auto const target_idx = stations.at(target_eva).idx_;
-      tt.locations_.footpaths_out_[s.idx_].emplace_back(target_idx, duration);
-      tt.locations_.footpaths_in_[target_idx].emplace_back(s.idx_, duration);
+      auto const adjusted_duration =
+          std::max({tt.locations_.transfer_time_[s.idx_],
+                    tt.locations_.transfer_time_[target_idx], duration});
+      tt.locations_.footpaths_out_[s.idx_].emplace_back(target_idx,
+                                                        adjusted_duration);
+      tt.locations_.footpaths_in_[target_idx].emplace_back(s.idx_,
+                                                           adjusted_duration);
     }
   }
 

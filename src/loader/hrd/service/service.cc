@@ -17,7 +17,8 @@
 namespace nigiri::loader::hrd {
 
 std::ostream& operator<<(std::ostream& out, parser_info const& pi) {
-  return out << pi.filename_ << ":" << pi.dbg_.line_number_;
+  return out << pi.filename_ << ":" << pi.dbg_.line_number_from_ << ":"
+             << pi.dbg_.line_number_to_;
 }
 
 template <typename It, typename Predicate>
@@ -300,8 +301,9 @@ service::service(config const& c,
                  stamm& st,
                  source_file_idx_t const source_file_idx,
                  specification const& spec)
-    : origin_{parser_info{spec.filename_,
-                          {source_file_idx, spec.line_number_from_}}},
+    : origin_{parser_info{
+          spec.filename_,
+          {source_file_idx, spec.line_number_from_, spec.line_number_to_}}},
       num_repetitions_{
           parse<unsigned>(spec.internal_service_.substr(22, utl::size(3)))},
       interval_{
