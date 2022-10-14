@@ -15,36 +15,6 @@
 
 namespace nigiri::loader::hrd {
 
-void print_timetable(std::ostream& out, timetable const& tt) {
-  //  auto const reverse = [](std::string s) {
-  //    std::reverse(s.begin(), s.end());
-  //    return s;
-  //  };
-  //  auto const num_days = static_cast<size_t>(
-  //      (tt.date_range_.to_ - tt.date_range_.from_ + 1_days) / 1_days);
-  auto ret = std::set<std::string>{};
-  for (auto i = 0U; i != tt.transport_stop_times_.size(); ++i) {
-    auto const transport_idx = transport_idx_t{i};
-    auto const traffic_days =
-        tt.bitfields_.at(tt.transport_traffic_days_.at(transport_idx));
-    //    out << "TRAFFIC_DAYS="
-    //        << reverse(
-    //               traffic_days.to_string().substr(traffic_days.size() -
-    //               num_days))
-    //        << "\n";
-    for (auto d = tt.date_range_.from_; d != tt.date_range_.to_;
-         d += std::chrono::days{1}) {
-      auto const day_idx = day_idx_t{
-          static_cast<day_idx_t::value_t>((d - tt.date_range_.from_) / 1_days)};
-      if (traffic_days.test(to_idx(day_idx))) {
-        date::to_stream(out, "%F", d);
-        out << " (day_idx=" << day_idx << ")\n";
-        print_transport(tt, out, {transport_idx, day_idx}, true);
-      }
-    }
-  }
-}
-
 bool applicable(config const& c, dir const& d) {
   return utl::all_of(
       c.required_files_, [&](std::vector<std::string> const& alt) {
@@ -123,8 +93,6 @@ void load_timetable(source_idx_t const src,
                tt.trip_id_strings_[b.first].view();
       });
   build_footpaths(tt);
-
-  //  print_timetable(std::cout, tt);
 }
 
 }  // namespace nigiri::loader::hrd
