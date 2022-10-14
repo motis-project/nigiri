@@ -41,7 +41,7 @@ void print_transport(timetable const& tt,
     auto const& tz = tt.locations_.timezones_.at(
         tt.locations_.location_timezones_.at(location_idx));
     indent(out, indent_width);
-    fmt::print(out, "{:02} {:16} {:.<50} ", stop_idx, stop_id, stop_name);
+    fmt::print(out, "{:2}: {:7} {:.<48} ", stop_idx, stop_id, stop_name);
 
     if (stop_idx != from) {
       auto const t = tt.date_range_.from_ + to_idx(day_idx) * 1_days +
@@ -54,7 +54,7 @@ void print_transport(timetable const& tt,
       date::to_stream(out, "a: %d.%m %R", t);
       date::to_stream(out, " [%d.%m %R]", to_local_time(tz, t));
     } else {
-      out << "               ";
+      out << "              ";
       out << "              ";
     }
 
@@ -67,7 +67,7 @@ void print_transport(timetable const& tt,
         fmt::print("    ");
       }
 
-      date::to_stream(out, "d: %d.%m %R", t);
+      date::to_stream(out, "  d: %d.%m %R", t);
       date::to_stream(out, " [%d.%m %R]", to_local_time(tz, t));
 
       auto const& trip_section = tt.transport_to_trip_section_.at(i);
