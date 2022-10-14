@@ -22,7 +22,7 @@ constexpr auto const services = R"(
 )";
 
 constexpr auto const fwd_journeys = R"(
-[2020-03-30 05:30, 2020-03-30 07:47]
+[2020-03-30 05:30, 2020-03-30 07:45]
 TRANSFERS: 1
      FROM: (A, 0000001) [2020-03-30 05:30]
        TO: (C, 0000003) [2020-03-30 07:45]
@@ -38,7 +38,7 @@ leg 3: (C, 0000003) [2020-03-30 07:45] -> (C, 0000003) [2020-03-30 07:45]
   FOOTPATH
 
 
-[2020-03-30 05:00, 2020-03-30 07:17]
+[2020-03-30 05:00, 2020-03-30 07:15]
 TRANSFERS: 1
      FROM: (A, 0000001) [2020-03-30 05:00]
        TO: (C, 0000003) [2020-03-30 07:15]
@@ -94,6 +94,14 @@ TEST_CASE("raptor-forward") {
           .extend_interval_earlier_ = false,
           .extend_interval_later_ = false}};
   fwd_r.route();
+
+  std::stringstream ss;
+  ss << "\n";
+  for (auto const& x : state.results_.at(0)) {
+    x.print(ss, tt);
+    ss << "\n\n";
+  }
+  CHECK_EQ(std::string_view{fwd_journeys}, ss.str());
 };
 
 constexpr auto const bwd_journeys = R"(
@@ -186,11 +194,11 @@ TEST_CASE("raptor-backward") {
           .extend_interval_later_ = false}};
   bwd_r.route();
 
-  std::stringstream bwd_ss;
-  bwd_ss << "\n";
+  std::stringstream ss;
+  ss << "\n";
   for (auto const& x : state.results_.at(0)) {
-    x.print(bwd_ss, tt);
-    bwd_ss << "\n\n";
+    x.print(ss, tt);
+    ss << "\n\n";
   }
-  CHECK_EQ(std::string_view{bwd_journeys}, bwd_ss.str());
+  CHECK_EQ(std::string_view{bwd_journeys}, ss.str());
 }
