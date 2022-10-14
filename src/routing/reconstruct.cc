@@ -83,7 +83,7 @@ std::optional<journey::leg> find_initial_footpath(timetable const& tt,
 template <direction SearchDir>
 void reconstruct_journey(timetable const& tt,
                          query const& q,
-                         search_state const& s,
+                         search_state const& state,
                          journey& j) {
   (void)q;  // TODO(felix) support intermodal start
 
@@ -92,8 +92,8 @@ void reconstruct_journey(timetable const& tt,
     return kFwd ? a <= b : a >= b;
   };
 
-  auto const best = [&](size_t const k, location_idx_t const l) {
-    return std::min(s.best_[to_idx(l)], s.round_times_[k][to_idx(l)]);
+  auto const best = [&](std::uint32_t const k, location_idx_t const l) {
+    return std::min(state.best_[to_idx(l)], state.round_times_[k][to_idx(l)]);
   };
 
   auto const find_entry_in_prev_round =
@@ -117,7 +117,7 @@ void reconstruct_journey(timetable const& tt,
       auto const event_time = routing_time{
           t.day_, tt.event_mam(t.t_idx_, stop_idx,
                                kFwd ? event_type::kDep : event_type::kArr)};
-      if (is_better_or_eq(s.round_times_[k - 1][to_idx(l)], event_time)) {
+      if (is_better_or_eq(state.round_times_[k - 1][to_idx(l)], event_time)) {
         trace("      FOUND ENTRY AT {}: {} <= {}\n", location{tt, l},
               best(k - 1, l), event_time);
         return journey::leg{
@@ -132,14 +132,15 @@ void reconstruct_journey(timetable const& tt,
         trace(
             "      ENTRY NOT POSSIBLE AT {}: k={} k-1={}, best_at_stop=min({}, "
             "{})={} > event_time={}\n",
-            location{tt, l}, k, k - 1, s.best_[to_idx(l)],
-            s.round_times_[k - 1][to_idx(l)], best(k - 1, l), event_time);
+            location{tt, l}, k, k - 1, state.best_[to_idx(l)],
+            state.round_times_[k - 1][to_idx(l)], best(k - 1, l), event_time);
       }
 
       // special case: first stop with meta stations
       if (k == 1 && q.start_match_mode_ == location_match_mode::kEquivalent) {
         for (auto const& eq : tt.locations_.equivalences_[l]) {
-          if (is_better_or_eq(s.round_times_[k - 1][to_idx(eq)], event_time)) {
+          if (is_better_or_eq(state.round_times_[k - 1][to_idx(eq)],
+                              event_time)) {
             return journey::leg{
                 SearchDir,
                 timetable::stop{stop_seq[stop_idx]}.location_idx(),
@@ -255,7 +256,7 @@ void reconstruct_journey(timetable const& tt,
       [&](unsigned const k,
           location_idx_t const l) -> std::pair<journey::leg, journey::leg> {
     trace("CHECKING TRANSFER\n");
-    auto const curr_time = s.round_times_[k][to_idx(l)];
+    auto const curr_time = state.round_times_[k][to_idx(l)];
     auto transfer_at_same_stop =
         check_fp(k, l, curr_time,
                  footpath{l, (k == j.transfers_ + 1U)
@@ -295,7 +296,7 @@ void reconstruct_journey(timetable const& tt,
     j.add(std::move(transport_leg));
   }
 
-  if (auto init_fp = find_initial_footpath<SearchDir>(tt, q, j, s);
+  if (auto init_fp = find_initial_footpath<SearchDir>(tt, q, j, state);
       init_fp.has_value()) {
     j.add(std::move(*init_fp));
   }
@@ -305,14 +306,10 @@ void reconstruct_journey(timetable const& tt,
   }
 }
 
-template void reconstruct_journey<direction::kForward>(timetable const& tt,
-                                                       query const& q,
-                                                       search_state const& s,
-                                                       journey& j);
+template void reconstruct_journey<direction::kForward>(
+    timetable const& tt, query const& q, search_state const& state, journey& j);
 
-template void reconstruct_journey<direction::kBackward>(timetable const& tt,
-                                                        query const& q,
-                                                        search_state const& s,
-                                                        journey& j);
+template void reconstruct_journey<direction::kBackward>(
+    timetable const& tt, query const& q, search_state const& state, journey& j);
 
 }  // namespace nigiri::routing

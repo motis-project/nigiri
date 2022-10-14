@@ -47,7 +47,8 @@ void add_start_times_at_stop(timetable const& tt,
 
     //    trace("  TRAFFIC DAYS: {}\n", reverse(traffic_days.to_string()));
 
-    auto const day_offset = stop_time.count() / 1440;
+    auto const day_offset =
+        static_cast<std::uint16_t>(stop_time.count() / 1440);
     auto const stop_time_mam = duration_t{stop_time.count() % 1440};
     trace(
         "      interval=[{}, {}[, transport={}, name={}, stop_time={} "

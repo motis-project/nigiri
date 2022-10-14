@@ -348,7 +348,7 @@ void raptor<SearchDir>::rounds() {
 
 template <direction SearchDir>
 void raptor<SearchDir>::force_print_state(char const* comment) {
-  auto const empty_rounds = [&](size_t const l) {
+  auto const empty_rounds = [&](std::uint32_t const l) {
     for (auto k = 0U; k != end_k(); ++k) {
       if (state_.round_times_[k][l] != kInvalidTime<SearchDir>) {
         return false;

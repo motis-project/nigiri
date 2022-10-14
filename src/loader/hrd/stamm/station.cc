@@ -61,7 +61,6 @@ void parse_equivilant_stations(config const& c,
                                hash_map<eva_number, hrd_location>& stations,
                                std::string_view file_content) {
   auto const is_5_20_26 = c.version_ == "hrd_5_20_26";
-  //  fmt::print("is_5_20_26 = {}\n", is_5_20_26);
 
   utl::for_each_line_numbered(
       file_content, [&](utl::cstr line, unsigned const line_number) {
@@ -92,13 +91,8 @@ void parse_equivilant_stations(config const& c,
               ) {
                 return;
               }
-              if (auto const eva = parse_eva_number(token); eva != 0) {
-                //            fmt::print(
-                //                "-- META: {:07} - {:07} token=[{}], line=[{}],
-                //                parsing=[{}]\n", to_idx(station.id_),
-                //                to_idx(eva), token.view(), line.view(),
-                //                line.substr(8).view());
-                station.equivalent_.emplace(eva);
+              if (auto const meta = parse_eva_number(token); meta != 0) {
+                station.equivalent_.emplace(meta);
               }
             });
           } catch (std::exception const& e) {
@@ -119,11 +113,8 @@ void parse_footpaths(config const& c,
                                duration_t const d) {
     if (auto const it = l.footpaths_out_.find(to);
         it != end(l.footpaths_out_)) {
-      //      std::cout << " UPDATE: min(" << it->second << ", " << d
-      //                << ") = " << std::min(it->second, d);
       it->second = std::min(it->second, d);
     } else {
-      //      std::cout << " NEW " << d;
       l.footpaths_out_.emplace(to, d);
     }
   };
@@ -161,15 +152,10 @@ void parse_footpaths(config const& c,
       auto const duration =
           duration_t{parse<int>(line.substr(c.meta_.footpaths_.duration_))};
 
-      //      fmt::print("IN: {:07} --{}--> {:07} ", to_idx(from_eva), duration,
-      //                 to_idx(to.id_));
       add_footpath(from, to.id_, duration);
 
       if (f_equal) {
         from.equivalent_.erase(to.id_);
-        //        std::cout << "ERASE\n";
-      } else {
-        //        std::cout << "\n";
       }
     }
   });
