@@ -44,22 +44,26 @@ std::ostream& operator<<(std::ostream& out, timetable const& tt) {
   return out;
 }
 
-timetable* timetable::read(cista::memory_holder& mem) {
+cista::wrapped<timetable> timetable::read(cista::memory_holder mem) {
   return std::visit(
-      utl::overloaded{[&](cista::buf<cista::mmap>& b) {
-                        return reinterpret_cast<timetable*>(
-                            &b[cista::data_start(kMode)]);
-                      },
-                      [&](cista::buffer& b) {
-                        return cista::deserialize<timetable, kMode>(b);
-                      },
-                      [&](cista::byte_buf& b) {
-                        return cista::deserialize<timetable, kMode>(b);
-                      }},
+      utl::overloaded{
+          [&](cista::buf<cista::mmap>& b) {
+            auto const ptr =
+                reinterpret_cast<timetable*>(&b[cista::data_start(kMode)]);
+            return cista::wrapped{std::move(mem), ptr};
+          },
+          [&](cista::buffer& b) {
+            auto const ptr = cista::deserialize<timetable, kMode>(b);
+            return cista::wrapped{std::move(mem), ptr};
+          },
+          [&](cista::byte_buf& b) {
+            auto const ptr = cista::deserialize<timetable, kMode>(b);
+            return cista::wrapped{std::move(mem), ptr};
+          }},
       mem);
 }
 
-void timetable::write(std::filesystem::path const& p) {
+void timetable::write(std::filesystem::path const& p) const {
   auto mmap = cista::mmap{p.string().c_str(), cista::mmap::protection::WRITE};
   auto writer = cista::buf<cista::mmap>(std::move(mmap));
 

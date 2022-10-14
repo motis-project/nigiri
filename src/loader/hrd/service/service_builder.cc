@@ -70,8 +70,10 @@ void service_builder::add_service(ref_service&& s) {
   }
 }
 
-service_builder::service_builder(stamm& s, timetable& tt)
-    : stamm_{s}, tt_{tt} {}
+service_builder::service_builder(stamm& s,
+                                 timetable& tt,
+                                 interval<std::chrono::sys_days> selection)
+    : stamm_{s}, tt_{tt}, selection_{selection} {}
 
 void service_builder::add_services(config const& c,
                                    const char* filename,
@@ -80,8 +82,8 @@ void service_builder::add_services(config const& c,
   scoped_timer write{"reading services"};
 
   auto const source_file_idx = tt_.register_source_file(filename);
-  parse_services(c, filename, source_file_idx, tt_.date_range_, store_, stamm_,
-                 file_content, progress_update,
+  parse_services(c, filename, source_file_idx, tt_.date_range_, selection_,
+                 store_, stamm_, file_content, progress_update,
                  [&](ref_service&& s) { add_service(std::move(s)); });
 }
 

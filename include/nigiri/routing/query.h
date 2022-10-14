@@ -4,6 +4,7 @@
 #include <vector>
 
 #include "nigiri/common/interval.h"
+#include "nigiri/routing/location_match_mode.h"
 #include "nigiri/types.h"
 
 namespace nigiri::routing {
@@ -16,16 +17,11 @@ struct offset {
 
 using start_time_t = variant<unixtime_t, interval<unixtime_t>>;
 
-enum class location_match_mode {
-  kExact,  // only use exactly the specified location
-  kOnlyChildren,  // use also children (tracks at this location)
-  kEquivalent  // use equivalent locations (includes children)
-};
-
 struct query {
   start_time_t start_time_;
   location_match_mode start_match_mode_;
   location_match_mode dest_match_mode_;
+  bool use_start_footpaths_;
   std::vector<offset> start_;
   std::vector<std::vector<offset>> destinations_;
   std::vector<std::vector<offset>> via_destinations_;

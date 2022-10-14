@@ -17,6 +17,7 @@ location::location(timetable const& tt, location_idx_t idx)
       osm_id_{tt.locations_.osm_ids_[idx]},
       parent_{tt.locations_.parents_[idx]},
       timezone_idx_{tt.locations_.location_timezones_[idx]},
+      transfer_time_{tt.locations_.transfer_time_[idx]},
       equivalences_{tt.locations_.equivalences_[idx]},
       footpaths_out_{tt.locations_.footpaths_out_[idx]},
       footpaths_in_{tt.locations_.footpaths_in_[idx]} {}
@@ -30,6 +31,7 @@ location::location(
     osm_node_id_t osm_id,
     location_idx_t parent,
     timezone_idx_t timezone,
+    duration_t transfer_time,
     it_range<vector<location_idx_t>::const_iterator> equivalences,
     it_range<vector<footpath>::const_iterator> footpaths_in,
     it_range<vector<footpath>::const_iterator> footpaths_out)
@@ -41,6 +43,7 @@ location::location(
       osm_id_{osm_id},
       parent_{parent},
       timezone_idx_{timezone},
+      transfer_time_{transfer_time},
       equivalences_{equivalences},
       footpaths_out_{footpaths_out},
       footpaths_in_{footpaths_in} {}

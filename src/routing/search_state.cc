@@ -5,7 +5,21 @@
 
 namespace nigiri::routing {
 
+destination_comparator::destination_comparator(timetable const& tt) : tt_{tt} {}
+
+bool destination_comparator::operator()(location_idx_t const a,
+                                        location_idx_t const b) {
+  auto const a_is_child =
+      tt_.locations_.parents_[a] != location_idx_t::invalid() ? 1U : 0U;
+  auto const b_is_child =
+      tt_.locations_.parents_[b] != location_idx_t::invalid() ? 1U : 0U;
+  return a_is_child > b_is_child;
+}
+
 void search_state::reset(timetable const& tt, routing_time init) {
+  is_destination_.resize(tt.n_locations());
+  std::fill(begin(is_destination_), end(is_destination_), false);
+
   station_mark_.resize(tt.n_locations());
   std::fill(begin(station_mark_), end(station_mark_), false);
 

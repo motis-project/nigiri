@@ -24,11 +24,13 @@ void get_starts(timetable const&,
                 variant<unixtime_t, interval<unixtime_t>> const& start_time,
                 std::vector<offset> const& station_offsets,
                 location_match_mode,
+                bool use_start_footpaths,
                 std::vector<start>&);
 
 void collect_destinations(timetable const&,
                           std::vector<std::vector<offset>> const& destinations,
                           location_match_mode const,
-                          std::vector<std::set<location_idx_t>>&);
+                          std::vector<std::set<location_idx_t>>&,
+                          std::vector<bool>& is_destination);
 
 }  // namespace nigiri::routing

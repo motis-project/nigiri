@@ -43,7 +43,7 @@ auto const expected = std::set<std::string>{R"(TRAFFIC_DAYS=0000100
 2020-03-30 (day_idx=3)
  0: 0000007 G...............................................                               d: 30.03 00:30 [30.03 02:30]  [{name=RE 815, day=2020-03-30, id=815/0000007/30/0000006/1510/, src=0}]
  1: 0000003 C............................................... a: 30.03 01:20 [30.03 03:20]  d: 30.03 02:05 [30.03 04:05]  [{name=RE 815, day=2020-03-30, id=815/0000007/30/0000006/1510/, src=0}]
- 2: 0000004-2 2............................................... a: 30.03 19:06 [30.03 21:06]  d: 30.03 20:07 [30.03 22:07]  [{name=RE 815, day=2020-03-30, id=815/0000007/30/0000006/1510/, src=0}]
+ 2: 0000004-2 D............................................... a: 30.03 19:06 [30.03 21:06]  d: 30.03 20:07 [30.03 22:07]  [{name=RE 815, day=2020-03-30, id=815/0000007/30/0000006/1510/, src=0}]
  3: 0000005 E............................................... a: 31.03 00:08 [31.03 02:08]  d: 31.03 00:09 [31.03 02:09]  [{name=RE 815, day=2020-03-30, id=815/0000007/30/0000006/1510/, src=0}]
  4: 0000006 F............................................... a: 31.03 01:10 [31.03 03:10]
 )",
@@ -137,19 +137,21 @@ TEST_CASE("a") {
   load_timetable(source_idx_t{0U}, hrd_5_20_26,
                  nigiri::test_data::hrd_timetable::files(), *tt);
 
-  std::cerr << "OUTPUT:\n";
-  std::cerr << "constexpr auto const expected = std::set<std::string>{";
-  for (auto const& ss : service_strings(*tt)) {
-    std::cerr << "R\"(" << ss << ")\",\n";
-  }
-  std::cerr << "};\n";
+  if (expected != service_strings(*tt)) {
+    std::cerr << "OUTPUT:\n";
+    std::cerr << "constexpr auto const expected = std::set<std::string>{";
+    for (auto const& ss : service_strings(*tt)) {
+      std::cerr << "R\"(" << ss << ")\",\n";
+    }
+    std::cerr << "};\n";
 
-  std::cerr << "\n\n\nEXPECTED:\n";
-  std::cerr << "constexpr auto const expected = std::set<std::string>{";
-  for (auto const& ss : expected) {
-    std::cerr << "R\"(" << ss << ")\",\n";
+    std::cerr << "\n\n\nEXPECTED:\n";
+    std::cerr << "constexpr auto const expected = std::set<std::string>{";
+    for (auto const& ss : expected) {
+      std::cerr << "R\"(" << ss << ")\",\n";
+    }
+    std::cerr << "};\n";
   }
-  std::cerr << "};\n";
 
   CHECK(expected == service_strings(*tt));
 }

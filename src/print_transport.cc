@@ -31,35 +31,42 @@ void print_transport(timetable const& tt,
   auto const to =
       std::min(static_cast<unsigned>(stop_seq.size()), stop_range.to_);
   for (auto stop_idx = from; stop_idx != to; ++stop_idx) {
-    auto const location_idx =
-        timetable::stop{stop_seq.at(stop_idx)}.location_idx();
-    auto const stop_name = tt.locations_.names_.at(location_idx).view();
+    auto const s = timetable::stop{stop_seq.at(stop_idx)};
+    auto const location_idx = s.location_idx();
     auto const& stop_id = tt.locations_.ids_.at(location_idx).view();
+    auto const& parent = tt.locations_.parents_.at(location_idx);
+    auto const stop_name = parent == location_idx_t::invalid()
+                               ? tt.locations_.names_.at(location_idx).view()
+                               : tt.locations_.names_.at(parent).view();
     auto const& tz = tt.locations_.timezones_.at(
         tt.locations_.location_timezones_.at(location_idx));
-    auto const stop_name_len =
-        utf8_conv.from_bytes(std::string{stop_name}).size();
-
     indent(out, indent_width);
-    out << std::right << std::setw(2) << std::setfill(' ') << stop_idx << ": "
-        << std::left << std::setw(7) << stop_id << " " << std::left
-        << std::setw(std::max(
-               0, 50 - static_cast<int>(stop_name_len + stop_name.size())))
-        << std::setfill('.') << stop_name << std::setfill(' ');
+    fmt::print(out, "{:2}: {:7} {:.<48} ", stop_idx, stop_id, stop_name);
 
     if (stop_idx != from) {
       auto const t = tt.date_range_.from_ + to_idx(day_idx) * 1_days +
                      stop_times.at(2 * stop_idx - 1);
-      date::to_stream(out, " a: %d.%m %R", t);
+      if (!s.out_allowed()) {
+        fmt::print(" -");
+      } else {
+        fmt::print("  ");
+      }
+      date::to_stream(out, "a: %d.%m %R", t);
       date::to_stream(out, " [%d.%m %R]", to_local_time(tz, t));
     } else {
-      out << "               ";
+      out << "              ";
       out << "              ";
     }
 
     if (stop_idx != to - 1) {
       auto const t = tt.date_range_.from_ + to_idx(day_idx) * 1_days +
                      stop_times.at(2 * stop_idx);
+      if (!s.in_allowed()) {
+        fmt::print("   -");
+      } else {
+        fmt::print("    ");
+      }
+
       date::to_stream(out, "  d: %d.%m %R", t);
       date::to_stream(out, " [%d.%m %R]", to_local_time(tz, t));
 
@@ -85,7 +92,7 @@ void print_transport(timetable const& tt,
           if (with_debug) {
             out << ", debug="
                 << tt.source_file_names_.at(dbg.source_file_idx_).view() << ":"
-                << dbg.line_number_;
+                << dbg.line_number_from_ << ":" << dbg.line_number_to_;
           }
           out << "}";
         }

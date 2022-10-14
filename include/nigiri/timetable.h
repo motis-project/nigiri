@@ -80,7 +80,7 @@ struct timetable {
         children_.emplace_back();
         footpaths_out_.emplace_back();
         footpaths_in_.emplace_back();
-        transfer_time_.emplace_back(2);  // TODO(felix)
+        transfer_time_.emplace_back(l.transfer_time_);  // TODO(felix)
         osm_ids_.emplace_back(osm_node_id_t::invalid());  // TODO(felix)
         parents_.emplace_back(l.parent_);
       }
@@ -111,6 +111,7 @@ struct timetable {
                       osm_ids_[idx],
                       parents_[idx],
                       location_timezones_[idx],
+                      transfer_time_[idx],
                       it_range{equivalences_[idx]},
                       it_range{footpaths_out_[idx]},
                       it_range{footpaths_in_[idx]}};
@@ -305,8 +306,8 @@ struct timetable {
 
   friend std::ostream& operator<<(std::ostream&, timetable const&);
 
-  void write(std::filesystem::path const&);
-  static timetable* read(cista::memory_holder&);
+  void write(std::filesystem::path const&) const;
+  static cista::wrapped<timetable> read(cista::memory_holder);
 
   // Schedule range.
   interval<std::chrono::sys_days> date_range_;

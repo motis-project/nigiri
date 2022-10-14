@@ -5,7 +5,7 @@
 [cista]
   url=git@github.com:felixguendling/cista.git
   branch=nigiri
-  commit=010f4f61f865f6332d4a4b7febdae84a76582530
+  commit=8d01fecc2f7e1de4432149aca37e908a73d97794
 [geo]
   url=git@github.com:motis-project/geo.git
   branch=master
@@ -18,10 +18,6 @@
   url=git@github.com:motis-project/miniz.git
   branch=master
   commit=1edbdece9d71dc65c6ff405572ee37cbdcef7af4
-[lmdb]
-  url=git@github.com:motis-project/lmdb.git
-  branch=master
-  commit=5be96596cb38c8a7919c5f543097429061c16fb6
 [fmt]
   url=git@github.com:motis-project/fmt.git
   branch=master
@@ -30,3 +26,7 @@
   url=git@github.com:motis-project/date.git
   branch=master
   commit=38d0b684c7fc3796b2c7f887c7dde8d6493b062f
+[wyhash]
+  url=git@github.com:motis-project/wyhash.git
+  branch=master
+  commit=1e012b57fc2227a9e583a57e2eacb3da99816d99

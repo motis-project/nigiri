@@ -36,6 +36,11 @@ struct stamm {
   trip_line_idx_t resolve_line(std::string_view s);
 
 private:
+  friend std::uint64_t hash(config const&,
+                            dir const&,
+                            std::uint64_t const seed);
+  static std::vector<file> load_files(config const&, dir const&);
+
   location_map_t locations_;
   category_map_t categories_;
   provider_map_t providers_;
