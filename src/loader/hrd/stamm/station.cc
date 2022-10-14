@@ -80,7 +80,6 @@ void parse_equivilant_stations(config const& c,
             }
             auto& station = station_it->second;
             utl::for_each_token(line.substr(8), ' ', [&](utl::cstr token) {
-              //              fmt::print("token=[{}]\n", token.view());
               if (token.empty() || (is_5_20_26 && token.starts_with("F"))) {
                 return;
               }

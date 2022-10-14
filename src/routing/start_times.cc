@@ -40,13 +40,6 @@ void add_start_times_at_stop(timetable const& tt,
                      (SearchDir == direction::kForward ? event_type::kDep
                                                        : event_type::kArr));
 
-    //    auto const reverse = [](std::string s) {
-    //      std::reverse(s.begin(), s.end());
-    //      return s;
-    //    };
-
-    //    trace("  TRAFFIC DAYS: {}\n", reverse(traffic_days.to_string()));
-
     auto const day_offset =
         static_cast<std::uint16_t>(stop_time.count() / 1440);
     auto const stop_time_mam = duration_t{stop_time.count() % 1440};

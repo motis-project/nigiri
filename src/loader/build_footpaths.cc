@@ -350,30 +350,6 @@ void build_footpaths(timetable& tt) {
   add_links_to_and_between_children(tt);
   link_nearby_stations(tt);
   transitivize_footpaths(tt);
-
-  //  std::cout << "FOOTPATHS\n";
-  //  for (auto l = location_idx_t{0U};
-  //       to_idx(l) != tt.locations_.footpaths_out_.size(); ++l) {
-  //    if (!tt.locations_.footpaths_out_.at(l).empty()) {
-  //      std::cout << location{tt, l} << " OUT\n";
-  //      for (auto const& fp : tt.locations_.footpaths_out_.at(l)) {
-  //        std::cout << "  " << fp.duration_ << " --> " << location{tt,
-  //        fp.target_}
-  //                  << "\n";
-  //      }
-  //    }
-  //  }
-  //  for (auto l = location_idx_t{0U};
-  //       to_idx(l) != tt.locations_.footpaths_out_.size(); ++l) {
-  //    if (!tt.locations_.footpaths_in_.at(l).empty()) {
-  //      std::cout << location{tt, l} << " IN\n";
-  //      for (auto const& fp : tt.locations_.footpaths_in_.at(l)) {
-  //        std::cout << "  " << fp.duration_ << " --> " << location{tt,
-  //        fp.target_}
-  //                  << "\n";
-  //      }
-  //    }
-  //  }
 }
 
 }  // namespace nigiri::loader
