@@ -1,5 +1,9 @@
 #pragma once
 
+#include <chrono>
+#include <optional>
+#include <string>
+
 #include "nigiri/loader/hrd/parser_config.h"
 #include "nigiri/loader/hrd/service/progress_update_fn.h"
 #include "nigiri/loader/hrd/service/ref_service.h"
@@ -9,7 +13,7 @@
 namespace nigiri::loader::hrd {
 
 struct service_builder {
-  explicit service_builder(stamm&, timetable&);
+  explicit service_builder(stamm&, timetable&, interval<std::chrono::sys_days>);
 
   void add_services(config const& c,
                     char const* filename,
@@ -31,6 +35,7 @@ private:
   hash_map<std::basic_string<attribute_idx_t>, attribute_combination_idx_t>
       attribute_combinations_;
   hash_map<bitfield, bitfield_idx_t> bitfield_indices_;
+  interval<std::chrono::sys_days> selection_;
 
   // Reused memory buffers to prevent temporary allocations:
   pair<std::basic_string<timetable::stop::value_type>, std::basic_string<clasz>>

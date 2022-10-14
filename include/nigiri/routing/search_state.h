@@ -10,7 +10,17 @@
 #include "nigiri/routing/routing_time.h"
 #include "nigiri/routing/start_times.h"
 
+namespace nigiri {
+struct timetable;
+}
+
 namespace nigiri::routing {
+
+struct destination_comparator {
+  explicit destination_comparator(timetable const&);
+  bool operator()(location_idx_t, location_idx_t);
+  timetable const& tt_;
+};
 
 struct search_state {
   void reset(timetable const& tt, routing_time init);

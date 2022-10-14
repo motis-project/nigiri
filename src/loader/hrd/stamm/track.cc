@@ -60,7 +60,6 @@ void parse_track_rules(config const& c,
                        l.osm_id_, parent, l.timezone_idx_, l.transfer_time_,
                        l.equivalences_, l.footpaths_in_, l.footpaths_out_});
           tt.locations_.children_[parent].emplace_back(child);
-          tt.locations_.equivalences_[parent].emplace_back(child);
           return child;
         });
 

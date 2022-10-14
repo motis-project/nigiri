@@ -3,6 +3,7 @@
 #include "nigiri/loader/hrd/load_timetable.h"
 #include "nigiri/routing/raptor.h"
 
+#include "nigiri/routing/search_state.h"
 #include "../loader/hrd/hrd_timetable.h"
 
 using namespace nigiri;
@@ -55,6 +56,46 @@ leg 3: (C, 0000003) [2020-03-30 07:15] -> (C, 0000003) [2020-03-30 07:17]
 
 )";
 
+TEST_CASE("raptor-forward") {
+  using namespace date;
+  timetable tt;
+  auto const src = source_idx_t{0U};
+  load_timetable(
+      src, loader::hrd::hrd_5_20_26,
+      test_data::hrd_timetable::base().add(
+          {loader::hrd::hrd_5_20_26.fplan_ / "services.101", services}),
+      tt);
+  auto state = routing::search_state{};
+
+  auto fwd_r = routing::raptor<direction::kForward>{
+      tt, state,
+      routing::query{
+          .start_time_ =
+              interval<unixtime_t>{
+                  unixtime_t{sys_days{2020_y / March / 30}} + 5_hours,
+                  unixtime_t{sys_days{2020_y / March / 30}} + 6_hours},
+          .start_match_mode_ = nigiri::routing::location_match_mode::kExact,
+          .dest_match_mode_ = nigiri::routing::location_match_mode::kExact,
+          .use_start_footpaths_ = true,
+          .start_ = {nigiri::routing::offset{
+              .location_ = tt.locations_.location_id_to_idx_.at(
+                  {.id_ = "0000001", .src_ = src}),
+              .offset_ = 0_minutes,
+              .type_ = 0U}},
+          .destinations_ = {{nigiri::routing::offset{
+              .location_ = tt.locations_.location_id_to_idx_.at(
+                  {.id_ = "0000003", .src_ = src}),
+              .offset_ = 0_minutes,
+              .type_ = 0U}}},
+          .via_destinations_ = {},
+          .allowed_classes_ = bitset<kNumClasses>::max(),
+          .max_transfers_ = 6U,
+          .min_connection_count_ = 0U,
+          .extend_interval_earlier_ = false,
+          .extend_interval_later_ = false}};
+  fwd_r.route();
+};
+
 constexpr auto const bwd_journeys = R"(
 [2020-03-30 05:00, 2020-03-30 02:28]
 TRANSFERS: 1
@@ -106,51 +147,16 @@ leg 3: (B, 0000002) [2020-03-30 04:45] -> (C, 0000003) [2020-03-30 05:45]
 
 )";
 
-TEST_CASE("raptor, simple_search") {
+TEST_CASE("raptor-backward") {
   using namespace date;
-  auto tt = std::make_shared<timetable>();
+  timetable tt;
   auto const src = source_idx_t{0U};
   load_timetable(
       src, loader::hrd::hrd_5_20_26,
       test_data::hrd_timetable::base().add(
           {loader::hrd::hrd_5_20_26.fplan_ / "services.101", services}),
-      *tt);
+      tt);
   auto state = routing::search_state{};
-
-  auto fwd_r = routing::raptor<direction::kForward>{
-      tt, state,
-      routing::query{
-          .start_time_ =
-              interval<unixtime_t>{
-                  unixtime_t{sys_days{2020_y / March / 30}} + 5_hours,
-                  unixtime_t{sys_days{2020_y / March / 30}} + 6_hours},
-          .start_match_mode_ = nigiri::routing::location_match_mode::kExact,
-          .dest_match_mode_ = nigiri::routing::location_match_mode::kExact,
-          .start_ = {nigiri::routing::offset{
-              .location_ = tt->locations_.location_id_to_idx_.at(
-                  {.id_ = "0000001", .src_ = src}),
-              .offset_ = 0_minutes,
-              .type_ = 0U}},
-          .destinations_ = {{nigiri::routing::offset{
-              .location_ = tt->locations_.location_id_to_idx_.at(
-                  {.id_ = "0000003", .src_ = src}),
-              .offset_ = 0_minutes,
-              .type_ = 0U}}},
-          .via_destinations_ = {},
-          .allowed_classes_ = bitset<kNumClasses>::max(),
-          .max_transfers_ = nigiri::routing::kMaxTransfers,
-          .min_connection_count_ = 0U,
-          .extend_interval_earlier_ = false,
-          .extend_interval_later_ = false}};
-  fwd_r.route();
-
-  std::stringstream fws_ss("\n");
-  fws_ss << "\n";
-  for (auto const& x : fwd_r.state_.results_.at(0)) {
-    x.print(fws_ss, *tt);
-    fws_ss << "\n\n";
-  }
-  CHECK_EQ(std::string_view{fwd_journeys}, fws_ss.str());
 
   auto bwd_r = routing::raptor<direction::kBackward>{
       tt, state,
@@ -161,19 +167,20 @@ TEST_CASE("raptor, simple_search") {
                   unixtime_t{sys_days{2020_y / March / 30}} + 6_hours},
           .start_match_mode_ = nigiri::routing::location_match_mode::kExact,
           .dest_match_mode_ = nigiri::routing::location_match_mode::kExact,
+          .use_start_footpaths_ = true,
           .start_ = {nigiri::routing::offset{
-              .location_ = tt->locations_.location_id_to_idx_.at(
+              .location_ = tt.locations_.location_id_to_idx_.at(
                   {.id_ = "0000003", .src_ = src}),
               .offset_ = 0_minutes,
               .type_ = 0U}},
           .destinations_ = {{nigiri::routing::offset{
-              .location_ = tt->locations_.location_id_to_idx_.at(
+              .location_ = tt.locations_.location_id_to_idx_.at(
                   {.id_ = "0000001", .src_ = src}),
               .offset_ = 0_minutes,
               .type_ = 0U}}},
           .via_destinations_ = {},
           .allowed_classes_ = bitset<kNumClasses>::max(),
-          .max_transfers_ = nigiri::routing::kMaxTransfers,
+          .max_transfers_ = 6U,
           .min_connection_count_ = 0U,
           .extend_interval_earlier_ = false,
           .extend_interval_later_ = false}};
@@ -181,9 +188,9 @@ TEST_CASE("raptor, simple_search") {
 
   std::stringstream bwd_ss;
   bwd_ss << "\n";
-  for (auto const& x : bwd_r.state_.results_.at(0)) {
-    x.print(bwd_ss, *tt);
+  for (auto const& x : state.results_.at(0)) {
+    x.print(bwd_ss, tt);
     bwd_ss << "\n\n";
   }
   CHECK_EQ(std::string_view{bwd_journeys}, bwd_ss.str());
-};
+}

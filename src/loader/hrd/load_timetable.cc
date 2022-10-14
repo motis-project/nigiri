@@ -16,21 +16,22 @@
 namespace nigiri::loader::hrd {
 
 void print_timetable(std::ostream& out, timetable const& tt) {
-  auto const reverse = [](std::string s) {
-    std::reverse(s.begin(), s.end());
-    return s;
-  };
-  auto const num_days = static_cast<size_t>(
-      (tt.date_range_.to_ - tt.date_range_.from_ + 1_days) / 1_days);
+  //  auto const reverse = [](std::string s) {
+  //    std::reverse(s.begin(), s.end());
+  //    return s;
+  //  };
+  //  auto const num_days = static_cast<size_t>(
+  //      (tt.date_range_.to_ - tt.date_range_.from_ + 1_days) / 1_days);
   auto ret = std::set<std::string>{};
   for (auto i = 0U; i != tt.transport_stop_times_.size(); ++i) {
     auto const transport_idx = transport_idx_t{i};
     auto const traffic_days =
         tt.bitfields_.at(tt.transport_traffic_days_.at(transport_idx));
-    out << "TRAFFIC_DAYS="
-        << reverse(
-               traffic_days.to_string().substr(traffic_days.size() - num_days))
-        << "\n";
+    //    out << "TRAFFIC_DAYS="
+    //        << reverse(
+    //               traffic_days.to_string().substr(traffic_days.size() -
+    //               num_days))
+    //        << "\n";
     for (auto d = tt.date_range_.from_; d != tt.date_range_.to_;
          d += std::chrono::days{1}) {
       auto const day_idx = day_idx_t{
@@ -38,7 +39,7 @@ void print_timetable(std::ostream& out, timetable const& tt) {
       if (traffic_days.test(to_idx(day_idx))) {
         date::to_stream(out, "%F", d);
         out << " (day_idx=" << day_idx << ")\n";
-        print_transport(tt, out, {transport_idx, day_idx});
+        print_transport(tt, out, {transport_idx, day_idx}, true);
       }
     }
   }
@@ -80,12 +81,13 @@ std::uint64_t hash(config const& c, dir const& d, std::uint64_t const seed) {
 void load_timetable(source_idx_t const src,
                     config const& c,
                     dir const& d,
-                    timetable& tt) {
+                    timetable& tt,
+                    interval<std::chrono::sys_days> selection) {
   (void)src;
   auto bars = utl::global_progress_bars{false};
 
   auto st = stamm{c, tt, d};
-  service_builder sb{st, tt};
+  service_builder sb{st, tt, selection};
 
   auto progress_tracker = utl::activate_progress_tracker("nigiri");
   progress_tracker->status("Read Services")
@@ -122,7 +124,7 @@ void load_timetable(source_idx_t const src,
       });
   build_footpaths(tt);
 
-  //print_timetable(std::cout, tt);
+  //  print_timetable(std::cout, tt);
 }
 
 }  // namespace nigiri::loader::hrd

@@ -1,14 +1,14 @@
-#include "utl/enumerate.h"
+#include "nigiri/routing/reconstruct.h"
 
 #include "utl/enumerate.h"
 
-#include "nigiri/routing/limits.h"
+#include "nigiri/routing/for_each_meta.h"
 #include "nigiri/routing/search_state.h"
 
 namespace nigiri::routing {
 
-constexpr auto const kTracing = true;
-constexpr auto const kTraceStart = true;
+constexpr auto const kTracing = false;
+constexpr auto const kTraceStart = false;
 
 template <typename... Args>
 void trace(char const* fmt_str, Args... args) {
@@ -36,16 +36,11 @@ std::optional<journey::leg> find_initial_footpath(timetable const& tt,
       if (o.location_ == candidate_l) {
         return true;
       }
-
-      if (q.start_match_mode_ == location_match_mode::kEquivalent) {
-        auto const eq = tt.locations_.equivalences_[o.location_];
-        auto const eq_it = std::find(begin(eq), end(eq), candidate_l);
-        if (eq_it != end(eq)) {
-          return true;
-        }
-      }
-
-      return false;
+      auto match = false;
+      for_each_meta(
+          tt, q.start_match_mode_, o.location_,
+          [&](location_idx_t const l) { match |= (candidate_l == l); });
+      return match;
     });
   };
 
@@ -112,7 +107,12 @@ void reconstruct_journey(timetable const& tt,
     for (auto i = 1U; i != n_stops; ++i) {
       auto const stop_idx =
           static_cast<unsigned>(kFwd ? from_stop_idx - i : from_stop_idx + i);
-      auto const l = timetable::stop{stop_seq[stop_idx]}.location_idx();
+      auto const stop = timetable::stop{stop_seq[stop_idx]};
+      auto const l = stop.location_idx();
+
+      if ((kFwd && !stop.in_allowed()) || (!kFwd && !stop.out_allowed())) {
+        continue;
+      }
 
       auto const event_time = routing_time{
           t.day_, tt.event_mam(t.t_idx_, stop_idx,
@@ -200,10 +200,10 @@ void reconstruct_journey(timetable const& tt,
     for (auto const& r : tt.location_routes_[l]) {
       auto const location_seq = tt.route_location_seq_[r];
       for (auto const [i, stop] : utl::enumerate(location_seq)) {
-        if (timetable::stop{stop}.location_idx() != l ||
-            (kFwd && (i == 0U || !timetable::stop{stop}.out_allowed())) ||
-            (!kFwd && (i == location_seq.size() - 1 ||
-                       !timetable::stop{stop}.in_allowed()))) {
+        auto const s = timetable::stop{stop};
+        if (s.location_idx() != l ||  //
+            (kFwd && (i == 0U || !s.out_allowed())) ||
+            (!kFwd && (i == location_seq.size() - 1 || !s.in_allowed()))) {
           continue;
         }
 
@@ -234,7 +234,7 @@ void reconstruct_journey(timetable const& tt,
       if constexpr (kTracing) {
         transport_leg->print(std::cout, tt, 1, false);
       }
-      trace(" fp leg: {} {} --{}--> {} {}", location{tt, l},
+      trace(" fp leg: {} {} --{}--> {} {}\n", location{tt, l},
             fp_start.to_unixtime(tt), fp.duration_, location{tt, fp.target_},
             curr_time.to_unixtime(tt));
 
@@ -257,7 +257,10 @@ void reconstruct_journey(timetable const& tt,
     trace("CHECKING TRANSFER\n");
     auto const curr_time = s.round_times_[k][to_idx(l)];
     auto transfer_at_same_stop =
-        check_fp(k, l, curr_time, footpath{l, tt.locations_.transfer_time_[l]});
+        check_fp(k, l, curr_time,
+                 footpath{l, (k == j.transfers_ + 1U)
+                                 ? 0_minutes
+                                 : tt.locations_.transfer_time_[l]});
     if (transfer_at_same_stop.has_value()) {
       return std::move(*transfer_at_same_stop);
     }

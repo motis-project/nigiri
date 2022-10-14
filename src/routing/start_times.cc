@@ -1,11 +1,12 @@
 #include "nigiri/routing/start_times.h"
 
+#include "nigiri/routing/for_each_meta.h"
 #include "utl/enumerate.h"
 #include "utl/overloaded.h"
 
 namespace nigiri::routing {
 
-constexpr auto const kTracing = true;
+constexpr auto const kTracing = false;
 
 template <typename... Args>
 void trace(char const* fmt_str, Args... args) {
@@ -25,7 +26,7 @@ void add_start_times_at_stop(timetable const& tt,
   auto const first_day_idx = tt.day_idx_mam(interval_with_offset.from_).first;
   auto const last_day_idx = tt.day_idx_mam(interval_with_offset.to_).first;
   trace(
-      "    add_start_times_at_stop(interval={}) - first_day_idx={}, "
+      "      add_start_times_at_stop(interval={}) - first_day_idx={}, "
       "last_day_idx={}, date_range={}\n",
       interval_with_offset, first_day_idx, last_day_idx, tt.date_range_);
 
@@ -49,7 +50,7 @@ void add_start_times_at_stop(timetable const& tt,
     auto const day_offset = stop_time.count() / 1440;
     auto const stop_time_mam = duration_t{stop_time.count() % 1440};
     trace(
-        "  interval=[{}, {}[, transport={}, name={}, stop_time={} "
+        "      interval=[{}, {}[, transport={}, name={}, stop_time={} "
         "(day_offset={}, stop_time_mam={})\n",
         interval_with_offset.from_, interval_with_offset.to_, transport_idx,
         tt.trip_display_names_
@@ -68,9 +69,14 @@ void add_start_times_at_stop(timetable const& tt,
                                         : ev_time + offset,
                   .time_at_stop_ = ev_time,
                   .stop_ = location_idx});
+        trace(
+            "        => ADD START: time_at_start={}, time_at_stop={}, "
+            "stop={}\n",
+            starts.back().time_at_start_, starts.back().time_at_stop_,
+            location{tt, starts.back().stop_});
       } else {
         trace(
-            "    -> skip: day={}, day_offset={}, date={}, active={}, "
+            "        skip: day={}, day_offset={}, date={}, active={}, "
             "in_interval={}\n",
             day, day_offset,
             tt.date_range_.from_ + to_idx(day - day_offset) * 1_days,
@@ -116,6 +122,7 @@ void add_starts_in_interval(timetable const& tt,
         continue;
       }
 
+      trace("    -> no skip -> add_start_times_at_stop()\n");
       add_start_times_at_stop<SearchDir>(
           tt, r, i, timetable::stop{s}.location_idx(),
           SearchDir == direction::kForward ? interval + o.offset_
@@ -137,26 +144,6 @@ void add_starts_in_interval(timetable const& tt,
                                  ? interval.to_ + o.offset_
                                  : interval.from_ - 1_minutes - o.offset_,
             .stop_ = o.location_});
-}
-
-template <typename Fn>
-void for_each_meta(timetable const& tt,
-                   location_match_mode const mode,
-                   location_idx_t const l,
-                   Fn&& fn) {
-  if (mode == location_match_mode::kExact) {
-    fn(l);
-  } else if (mode == location_match_mode::kOnlyChildren) {
-    fn(l);
-    for (auto const& eq : tt.locations_.children_.at(l)) {
-      fn(eq);
-    }
-  } else {
-    fn(l);
-    for (auto const& eq : tt.locations_.equivalences_.at(l)) {
-      fn(eq);
-    }
-  }
 }
 
 template <direction SearchDir>

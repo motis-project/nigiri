@@ -16,6 +16,15 @@
 
 namespace nigiri::loader {
 
+constexpr auto const kTracing = false;
+
+template <typename... Args>
+void trace(char const* fmt_str, Args... args) {
+  if constexpr (kTracing) {
+    fmt::print(std::cout, fmt_str, std::forward<Args&&>(args)...);
+  }
+}
+
 constexpr const auto kWalkSpeed = 1.5;  // m/s
 
 constexpr auto kNoComponent = std::numeric_limits<uint32_t>::max();
@@ -82,8 +91,13 @@ footgraph get_footpath_graph(timetable& tt) {
     g[i].insert(end(g[i]), begin(tt.locations_.footpaths_out_[idx]),
                 end(tt.locations_.footpaths_out_[idx]));
     std::sort(begin(g[i]), end(g[i]));
-    //    for (auto const& fp : tt.locations_.footpaths_out_[idx]) {
-    //      g[to_idx(fp.target_)].emplace_back(idx, fp.duration_);
+
+    //    for (auto const& fp : g[i]) {
+    //      std::cout << "FP_GRAPH_IN: "
+    //                << tt.locations_.ids_[location_idx_t{i}].view() << " --"
+    //                << fp.duration_ << "-->"
+    //                << tt.locations_.ids_[location_idx_t{fp.target_}].view()
+    //                << "\n";
     //    }
   }
   return g;
@@ -163,7 +177,48 @@ void process_component(timetable& tt,
   utl::verify(size > 2, "invalid size [id={}], first={}", lb->first,
               tt.locations_.ids_.at(location_idx_t{lb->second}).view());
 
-  constexpr auto const kInvalidTime = std::numeric_limits<std::uint8_t>::max();
+  auto const id = std::string_view{"8000159"};
+  auto const needle =
+      std::find_if(begin(tt.locations_.ids_), end(tt.locations_.ids_),
+                   [&](auto&& x) { return x.view() == id; });
+
+  auto dbg = false;
+  if (needle != end(tt.locations_.ids_)) {
+    auto const needle_l =
+        location_idx_t{std::distance(begin(tt.locations_.ids_), needle)};
+    for (auto i = 0U; i != size; ++i) {
+      if ((lb + i)->second == needle_l) {
+        if constexpr (kTracing) {
+          std::cout << "FOUND\n";
+        }
+        dbg = true;
+        goto next;
+      }
+      for (auto const& edge : fgraph[(lb + i)->second]) {
+        if (edge.target_ == needle_l) {
+          if constexpr (kTracing) {
+            std::cout << "FOUND\n";
+          }
+          dbg = true;
+          goto next;
+        }
+      }
+    }
+  } else {
+    if constexpr (kTracing) {
+      std::cout << "NEEDLE NOT FOUND\n";
+    }
+  }
+
+next:
+  auto const print_dbg = [&](auto... args) {
+    if (dbg) {
+      trace(args...);
+    }
+  };
+
+  print_dbg("INPUT\n");
+  constexpr auto const kInvalidTime = std::numeric_limits<std::uint16_t>::max();
   auto mat = make_matrix(size, size, kInvalidTime);
   for (auto i = 0U; i != size; ++i) {
     auto it = lb;
@@ -172,15 +227,30 @@ void process_component(timetable& tt,
         ++it;
       }
       auto j = static_cast<unsigned>(std::distance(lb, it));
-      mat(i, j) = std::min(static_cast<std::uint8_t>(edge.duration_.count()),
+      mat(i, j) = std::min(static_cast<std::uint16_t>(edge.duration_.count()),
                            mat(i, j));
-      mat(j, i) = std::min(static_cast<std::uint8_t>(edge.duration_.count()),
-                           mat(j, i));
+      //      mat(j, i) =
+      //      std::min(static_cast<std::uint16_t>(edge.duration_.count()),
+      //                           mat(j, i));
+
+      print_dbg("{} --{}--> {}\n",
+                location{tt, location_idx_t{(lb + i)->second}}, edge.duration_,
+                location{tt, edge.target_});
     }
   }
 
+  print_dbg("STATIONS:\n");
+  for (auto i = 0U; i != size; ++i) {
+    print_dbg("{} = {} \n", i, location{tt, location_idx_t{(lb + i)->second}});
+  }
+
+  print_dbg("MAT BEFORE\n{}", mat);
+
   floyd_warshall(mat);
 
+  print_dbg("MAT AFTER\n{}", mat);
+
+  print_dbg("\n\nOUTPUT\n");
   for (auto i = 0U; i < size; ++i) {
     auto const idx_a = std::next(lb, i)->second;
     auto const l_idx_a = location_idx_t{static_cast<unsigned>(idx_a)};
@@ -193,6 +263,8 @@ void process_component(timetable& tt,
       auto const idx_b = std::next(lb, j)->second;
       auto const l_idx_b = location_idx_t{static_cast<unsigned>(idx_b)};
 
+      print_dbg("{} --{}--> {}\n", location{tt, l_idx_a}, duration_t{mat(i, j)},
+                location{tt, l_idx_b});
       tt.locations_.footpaths_out_[l_idx_a].emplace_back(l_idx_b,
                                                          duration_t{mat(i, j)});
       tt.locations_.footpaths_in_[l_idx_b].emplace_back(l_idx_a,
@@ -222,22 +294,38 @@ void transitivize_footpaths(timetable& tt) {
 }
 
 void add_links_to_and_between_children(timetable& tt) {
+  mutable_fws_multimap<location_idx_t, footpath> fp_out;
   for (auto l = location_idx_t{0U}; l != tt.locations_.footpaths_out_.size();
        ++l) {
     for (auto const& fp : tt.locations_.footpaths_out_[l]) {
-      //      std::cout << "ADDING " << location{tt, parent} << " TO CHILDREN OF
-      //      "
-      //                << location{tt, fp.target_} << "\n";
+      trace("ADDING {} TO CHILDREN OF {}:  {}\n", location{tt, l},
+            location{tt, fp.target_}, fp.duration_);
+
       for (auto const& neighbor_child : tt.locations_.children_[fp.target_]) {
-        //        std::cout << "  " << location{tt, parent} << " -> "
-        //                  << location{tt, neighbor_child} << ": " <<
-        //                  fp.duration_
-        //                  << "\n";
-        tt.locations_.footpaths_out_[l].emplace_back(
-            footpath{neighbor_child, fp.duration_});
-        tt.locations_.footpaths_out_[neighbor_child].emplace_back(
-            footpath{l, fp.duration_});
+        trace("  l -> neighbor child: {} -> {}: {}\n", location{tt, l},
+              location{tt, neighbor_child}, fp.duration_);
+        fp_out[l].emplace_back(footpath{neighbor_child, fp.duration_});
+
+        for (auto const& child : tt.locations_.children_[l]) {
+          trace("  child -> neighbor child: {} -> {}: {}\n",
+                location{tt, child}, location{tt, neighbor_child},
+                fp.duration_);
+          fp_out[child].emplace_back(footpath{neighbor_child, fp.duration_});
+        }
       }
+
+      for (auto const& child : tt.locations_.children_[l]) {
+        trace("  child -> neighbor child: {} -> {}: {}\n", location{tt, child},
+              location{tt, fp.target_}, fp.duration_);
+        fp_out[child].emplace_back(footpath{fp.target_, fp.duration_});
+      }
+    }
+  }
+
+  for (auto l = location_idx_t{0U}; l != tt.locations_.footpaths_out_.size();
+       ++l) {
+    for (auto const& fp : fp_out[l]) {
+      tt.locations_.footpaths_out_[l].emplace_back(fp);
     }
   }
 

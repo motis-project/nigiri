@@ -60,6 +60,9 @@ void parse_station_coordinates(config const& c,
 void parse_equivilant_stations(config const& c,
                                hash_map<eva_number, hrd_location>& stations,
                                std::string_view file_content) {
+  auto const is_5_20_26 = c.version_ == "hrd_5_20_26";
+  //  fmt::print("is_5_20_26 = {}\n", is_5_20_26);
+
   utl::for_each_line_numbered(
       file_content, [&](utl::cstr line, unsigned const line_number) {
         if (line.length() < 16 || line[0] == '%' || line[0] == '*') {
@@ -78,8 +81,8 @@ void parse_equivilant_stations(config const& c,
             }
             auto& station = station_it->second;
             utl::for_each_token(line.substr(8), ' ', [&](utl::cstr token) {
-              if (token.empty() ||
-                  (c.version_ == "hrd_5_20_26" && token.starts_with("F"))) {
+              //              fmt::print("token=[{}]\n", token.view());
+              if (token.empty() || (is_5_20_26 && token.starts_with("F"))) {
                 return;
               }
               if (token.starts_with("H")  // Hauptmast
@@ -87,9 +90,14 @@ void parse_equivilant_stations(config const& c,
                   || token.starts_with("V")  // Virtueller Umstieg
                   || token.starts_with("S")  // Start-Ziel-Aequivalenz
               ) {
-                ++token;
+                return;
               }
               if (auto const eva = parse_eva_number(token); eva != 0) {
+                //            fmt::print(
+                //                "-- META: {:07} - {:07} token=[{}], line=[{}],
+                //                parsing=[{}]\n", to_idx(station.id_),
+                //                to_idx(eva), token.view(), line.view(),
+                //                line.substr(8).view());
                 station.equivalent_.emplace(eva);
               }
             });
@@ -105,12 +113,17 @@ void parse_equivilant_stations(config const& c,
 void parse_footpaths(config const& c,
                      hash_map<eva_number, hrd_location>& stations,
                      std::string_view file_content) {
+  auto const is_5_20_26 = c.version_ == "hrd_5_20_26";
+
   auto const add_footpath = [](hrd_location& l, eva_number const to,
                                duration_t const d) {
     if (auto const it = l.footpaths_out_.find(to);
         it != end(l.footpaths_out_)) {
+      //      std::cout << " UPDATE: min(" << it->second << ", " << d
+      //                << ") = " << std::min(it->second, d);
       it->second = std::min(it->second, d);
     } else {
+      //      std::cout << " NEW " << d;
       l.footpaths_out_.emplace(to, d);
     }
   };
@@ -123,7 +136,7 @@ void parse_footpaths(config const& c,
 
     if (line[7] == ':') {  // equivalent stations
     } else {  // footpaths
-      auto const f_equal = c.version_ == "hrd_5_00_8" && line.length() > 23 &&
+      auto const f_equal = is_5_20_26 && line.length() > 23 &&
                            line.substr(23, utl::size(1)) == "F";
 
       auto const from_eva =
@@ -148,11 +161,15 @@ void parse_footpaths(config const& c,
       auto const duration =
           duration_t{parse<int>(line.substr(c.meta_.footpaths_.duration_))};
 
+      //      fmt::print("IN: {:07} --{}--> {:07} ", to_idx(from_eva), duration,
+      //                 to_idx(to.id_));
       add_footpath(from, to.id_, duration);
-      add_footpath(to, from.id_, duration);
 
       if (f_equal) {
         from.equivalent_.erase(to.id_);
+        //        std::cout << "ERASE\n";
+      } else {
+        //        std::cout << "\n";
       }
     }
   });

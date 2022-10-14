@@ -82,7 +82,8 @@ std::optional<duration_t> build_utc_time_seq(
 template <typename Fn>
 void to_local_time(service_store const& store,
                    stamm const& st,
-                   interval<std::chrono::sys_days> const& tt_interval,
+                   interval<std::chrono::sys_days> const& hrd_interval,
+                   interval<std::chrono::sys_days> const& selection,
                    ref_service const& s,
                    Fn&& consumer) {
   using key_t = std::pair<std::basic_string<duration_t>,
@@ -90,6 +91,8 @@ void to_local_time(service_store const& store,
   auto utc_time_traffic_days = hash_map<key_t, bitfield>{};
 
   auto const local_times = s.local_times(store);
+  auto const last_day_offset =
+      (1 + local_times.back() / 1_days) * std::chrono::days{1};
   auto const stop_timezones = s.get_stop_timezones(store, st);
 
   auto key = key_t{};
@@ -100,9 +103,14 @@ void to_local_time(service_store const& store,
   auto& stop_seq = key.second;
   stop_seq.resize(s.split_info_.stop_range().size());
 
-  auto const first_day = tt_interval.from_ + kBaseDayOffset;
-  auto const last_day = tt_interval.to_ - kBaseDayOffset;
-  for (auto day = first_day; day <= last_day; day += std::chrono::days{1}) {
+  auto const first_day = hrd_interval.from_ + kBaseDayOffset;
+  auto const last_day = hrd_interval.to_ - kBaseDayOffset;
+  for (auto day = first_day; day != last_day; day += std::chrono::days{1}) {
+    auto const service_days = interval{day, day + last_day_offset};
+    if (!selection.overlaps(service_days)) {
+      continue;
+    }
+
     auto const day_idx = static_cast<std::size_t>((day - first_day).count());
     if (!s.local_traffic_days().test(day_idx)) {
       continue;

@@ -1,11 +1,11 @@
 #include "doctest/doctest.h"
 
-#include <iostream>
+#include "utl/equal_ranges_linear.h"
 
 #include "nigiri/loader/hrd/load_timetable.h"
 #include "nigiri/routing/start_times.h"
+
 #include "../loader/hrd/hrd_timetable.h"
-#include "utl/equal_ranges_linear.h"
 
 using namespace nigiri;
 using namespace nigiri::routing;
@@ -276,7 +276,7 @@ TEST_CASE("routing start times") {
                            sys_days{2020_y / March / 31}},
       {offset{.location_ = A, .offset_ = 15_minutes, .type_ = 0},
        offset{.location_ = B, .offset_ = 30_minutes, .type_ = 0}},
-      nigiri::routing::location_match_mode::kExact, starts);
+      nigiri::routing::location_match_mode::kExact, false, starts);
 
   std::stringstream ss;
   ss << "\n";

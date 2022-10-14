@@ -16,8 +16,8 @@
 
 namespace nigiri::routing {
 
-constexpr auto const kTracing = true;
-constexpr auto const kOnlyUpdates = false;
+constexpr auto const kTracing = false;
+constexpr auto const kOnlyUpdates = true;
 
 template <typename... Args>
 void trace(char const* fmt_str, Args... args) {
@@ -175,10 +175,11 @@ bool raptor<SearchDir>::update_route(unsigned const k, route_idx_t const r) {
         tt_.locations_.ids_[location_idx_t{l_idx}].view(), l_idx, current_best);
 
     if (et.is_valid()) {
+      auto const is_destination = state_.is_destination_[l_idx];
       auto const by_transport_time =
           time_at_stop(et, stop_idx,
                        kFwd ? event_type::kArr : event_type::kDep) +
-          transfer_time_offset;
+          ((is_destination ? 0U : 1U) * transfer_time_offset);
       if ((kFwd ? stop.out_allowed() : stop.in_allowed()) &&
           is_better_or_eq(by_transport_time, current_best) &&
           is_better(by_transport_time, time_at_destination_)) {
@@ -201,7 +202,7 @@ bool raptor<SearchDir>::update_route(unsigned const k, route_idx_t const r) {
         state_.best_[l_idx] = by_transport_time;
         state_.round_times_[k][l_idx] = by_transport_time;
         state_.station_mark_[l_idx] = true;
-        if (state_.is_destination_[l_idx]) {
+        if (is_destination) {
           time_at_destination_ =
               std::min(by_transport_time, time_at_destination_);
         }
@@ -432,8 +433,8 @@ void raptor<SearchDir>::route() {
           state_.round_times_[0U][to_idx(s.stop_)] = {tt_, s.time_at_stop_};
           state_.best_[to_idx(s.stop_)] = {tt_, s.time_at_stop_};
           state_.station_mark_[to_idx(s.stop_)] = true;
-          time_at_destination_ =
-              routing_time{tt_, s.time_at_stop_} + duration_t{kMaxTravelTime};
+          time_at_destination_ = routing_time{tt_, s.time_at_stop_} +
+                                 (kFwd ? 1 : -1) * duration_t{kMaxTravelTime};
         }
         rounds();
         reconstruct(from_it->time_at_start_);
@@ -461,9 +462,10 @@ void raptor<SearchDir>::reconstruct(unixtime_t const start_at_start) {
         if (state_.round_times_[k][to_idx(dest)] == kInvalidTime<SearchDir>) {
           continue;
         }
-        trace_always("ADDING JOURNEY: start={}, dest={}, transfers={}",
-                     start_at_start, state_.round_times_[k][to_idx(dest)],
-                     k - 1);
+        trace_always("ADDING JOURNEY: start={}, dest={} @ {}, transfers={}",
+                     start_at_start,
+                     state_.round_times_[k][to_idx(dest)].to_unixtime(tt_),
+                     location{tt_, dest}, k - 1);
         auto const [optimal, it] = state_.results_[i].add(journey{
             .legs_ = {},
             .start_time_ = start_at_start,
