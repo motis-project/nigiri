@@ -14,31 +14,25 @@
 #include "nigiri/routing/start_times.h"
 #include "nigiri/timetable.h"
 
-namespace nigiri::routing {
-
-constexpr auto const kTracing = false;
+#ifdef TRACING
 constexpr auto const kOnlyUpdates = true;
 
-template <typename... Args>
-void trace(char const* fmt_str, Args... args) {
-  if constexpr (kTracing && !kOnlyUpdates) {
-    fmt::print(std::cout, fmt_str, std::forward<Args&&>(args)...);
+#define trace(fmt_str, ...)                      \
+  if constexpr (!kOnlyUpdates) {                 \
+    fmt::print(std::cout, fmt_str, __VA_ARGS__); \
   }
-}
+#define trace_always(fmt_str, ...) fmt::print(std::cout, fmt_str, __VA_ARGS__);
+#define trace_upd(fmt_str, ...) fmt::print(std::cout, fmt_str, __VA_ARGS__);
+#else
+template <typename... Ts>
+void unused(Ts...) {}
 
-template <typename... Args>
-void trace_always(char const* fmt_str, Args... args) {
-  if constexpr (kTracing) {
-    fmt::print(std::cout, fmt_str, std::forward<Args&&>(args)...);
-  }
-}
+#define trace(fmt_str, ...)
+#define trace_always(fmt_str, ...)
+#define trace_upd(fmt_str, ...)
+#endif
 
-template <typename... Args>
-void trace_upd(char const* fmt_str, Args... args) {
-  if constexpr (kTracing) {
-    fmt::print(std::cout, fmt_str, std::forward<Args&&>(args)...);
-  }
-}
+namespace nigiri::routing {
 
 template <direction SearchDir>
 raptor<SearchDir>::raptor(timetable& tt, search_state& state, query q)
@@ -181,8 +175,10 @@ bool raptor<SearchDir>::update_route(unsigned const k, route_idx_t const r) {
                        kFwd ? event_type::kArr : event_type::kDep) +
           ((is_destination ? 0U : 1U) * transfer_time_offset);
       if ((kFwd ? stop.out_allowed() : stop.in_allowed()) &&
-          is_better_or_eq(by_transport_time, current_best) &&
+          is_better(by_transport_time, current_best) &&
           is_better(by_transport_time, time_at_destination_)) {
+
+#ifdef TRACING
         auto const trip_idx =
             tt_.merged_trips_[tt_.transport_to_trip_section_[et.t_idx_].front()]
                 .front();
@@ -198,6 +194,7 @@ bool raptor<SearchDir>::update_route(unsigned const k, route_idx_t const r) {
             by_transport_time, current_best,
             tt_.locations_.names_[location_idx_t{l_idx}].view(),
             tt_.locations_.ids_[location_idx_t{l_idx}].view());
+#endif
 
         state_.best_[l_idx] = by_transport_time;
         state_.round_times_[k][l_idx] = by_transport_time;
@@ -270,7 +267,7 @@ void raptor<SearchDir>::update_footpaths(unsigned const k) {
           state_.best_[to_idx(l_idx)]  //
           + ((kFwd ? 1 : -1) * fp.duration_)  //
           - ((kFwd ? 1 : -1) * tt_.locations_.transfer_time_[l_idx]);
-      if (is_better_or_eq(fp_target_time, min) &&
+      if (is_better(fp_target_time, min) &&
           is_better(fp_target_time, time_at_destination_)) {
         trace_upd(
             "┊ ├ footpath: (name={}, id={}, best={}) --{}--> (name={}, id={}, "
@@ -400,12 +397,15 @@ void raptor<SearchDir>::force_print_state(char const* comment) {
   }
 }
 
+#ifdef TRACING
 template <direction SearchDir>
 void raptor<SearchDir>::print_state(char const* comment) {
-  if constexpr (kTracing) {
-    force_print_state(comment);
-  }
+  force_print_state(comment);
 }
+#else
+template <direction SearchDir>
+void raptor<SearchDir>::print_state(char const*) {}
+#endif
 
 template <direction SearchDir>
 void raptor<SearchDir>::route() {
