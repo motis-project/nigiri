@@ -23,6 +23,9 @@ void search_state::reset(timetable const& tt, routing_time init) {
   station_mark_.resize(tt.n_locations());
   std::fill(begin(station_mark_), end(station_mark_), false);
 
+  prev_station_mark_.resize(tt.n_locations());
+  std::fill(begin(prev_station_mark_), end(prev_station_mark_), false);
+
   route_mark_.resize(tt.n_routes());
   std::fill(begin(route_mark_), end(route_mark_), false);
 

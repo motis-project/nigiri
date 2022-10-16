@@ -213,6 +213,10 @@ bool raptor<SearchDir>::update_route(unsigned const k, route_idx_t const r) {
       }
     }
 
+    if (!state_.prev_station_mark_[l_idx]) {
+      continue;
+    }
+
     if (i != stop_seq.size() - 1U) {
       auto const et_time_at_stop =
           et.is_valid()
@@ -314,6 +318,7 @@ void raptor<SearchDir>::rounds() {
       }
     }
 
+    std::swap(state_.prev_station_mark_, state_.station_mark_);
     std::fill(begin(state_.station_mark_), end(state_.station_mark_), false);
 
     if (!any_marked) {
