@@ -34,6 +34,24 @@ void unused(Ts...) {}
 
 namespace nigiri::routing {
 
+template <direction SearchDir, typename T>
+auto get_begin_it(T const& t) {
+  if constexpr (SearchDir == direction::kForward) {
+    return t.begin();
+  } else {
+    return t.rbegin();
+  }
+}
+
+template <direction SearchDir, typename T>
+auto get_end_it(T const& t) {
+  if constexpr (SearchDir == direction::kForward) {
+    return t.end();
+  } else {
+    return t.rend();
+  }
+}
+
 template <direction SearchDir>
 raptor<SearchDir>::raptor(timetable& tt, search_state& state, query q)
     : tt_{tt},
@@ -90,15 +108,34 @@ transport raptor<SearchDir>::get_earliest_transport(
       time, stop_idx, tt_.locations_.names_[l_idx].view(),
       tt_.locations_.ids_[l_idx].view(), l_idx, n_days_to_iterate);
 
+  auto const seek_first_day = [&]() {
+    return *std::lower_bound(
+        get_begin_it<SearchDir>(transport_range),
+        get_end_it<SearchDir>(transport_range), mam_at_stop,
+        [&](transport_idx_t const t, minutes_after_midnight_t const mam) {
+          auto const ev = tt_.event_mam(
+              t, stop_idx, kFwd ? event_type::kDep : event_type::kArr);
+          auto const ev_mam = minutes_after_midnight_t{
+              ev.count() < 1440 ? ev.count() : ev.count() % 1440};
+          return is_better(ev_mam, mam);
+        });
+  };
+
   for (auto i = std::uint16_t{0U}; i != n_days_to_iterate; ++i) {
     auto const day = kFwd ? day_at_stop + i : day_at_stop - i;
-    for (auto t = kFwd ? transport_range.from_ : transport_range.to_ - 1;
+    for (auto t =
+             i == 0U ? seek_first_day()
+                     : (kFwd ? transport_range.from_ : transport_range.to_ - 1);
          t != (kFwd ? transport_range.to_ : transport_range.from_ - 1);
          kFwd ? ++t : --t) {
       auto const ev = tt_.event_mam(t, stop_idx,
                                     kFwd ? event_type::kDep : event_type::kArr);
       auto const ev_mam = minutes_after_midnight_t{
           ev.count() < 1440 ? ev.count() : ev.count() % 1440};
+      if (is_better_or_eq(time_at_destination_, routing_time{day, ev_mam})) {
+        return {transport_idx_t::invalid(), day_idx_t::invalid()};
+      }
+
       if (day == day_at_stop && !is_better_or_eq(mam_at_stop, ev_mam)) {
         trace(
             "┊ │      => transport={}, name={}, day={}/{}, best_mam={}, "
