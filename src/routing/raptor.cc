@@ -204,7 +204,7 @@ bool raptor<SearchDir>::update_route(unsigned const k, route_idx_t const r) {
         state_.station_mark_[l_idx] = true;
         if (is_destination) {
           time_at_destination_ =
-              std::min(by_transport_time, time_at_destination_);
+              get_best(by_transport_time, time_at_destination_);
         }
         current_best = by_transport_time;
         any_marked = true;
@@ -289,7 +289,7 @@ void raptor<SearchDir>::update_footpaths(unsigned const k) {
         state_.round_times_[k][to_idx(fp.target_)] = fp_target_time;
         state_.station_mark_[to_idx(fp.target_)] = true;
         if (state_.is_destination_[to_idx(fp.target_)]) {
-          time_at_destination_ = std::min(time_at_destination_, fp_target_time);
+          time_at_destination_ = get_best(time_at_destination_, fp_target_time);
         }
       }
     }
