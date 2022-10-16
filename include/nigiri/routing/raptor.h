@@ -45,6 +45,8 @@ private:
 
   void reconstruct(unixtime_t const start_at_start);
 
+  void set_time_at_destination(unsigned round_k);
+
   timetable const& tt_;
   std::uint16_t n_days_;
   query q_;

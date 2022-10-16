@@ -308,6 +308,8 @@ void raptor<SearchDir>::rounds() {
   for (auto k = 1U; k != end_k(); ++k) {
     trace_always("┊ round k={}\n", k);
 
+    set_time_at_destination(k);
+
     auto any_marked = false;
     for (auto l_idx = location_idx_t{0U};
          l_idx != static_cast<cista::base_t<location_idx_t>>(
@@ -416,6 +418,15 @@ void raptor<SearchDir>::print_state(char const*) {}
 #endif
 
 template <direction SearchDir>
+void raptor<SearchDir>::set_time_at_destination(unsigned const k) {
+  for (auto const dest : state_.destinations_.front()) {
+    time_at_destination_ =
+        get_best(state_.round_times_[k][to_idx(dest)],
+                 get_best(state_.best_[to_idx(dest)], time_at_destination_));
+  }
+}
+
+template <direction SearchDir>
 void raptor<SearchDir>::route() {
   state_.reset(tt_, kInvalidTime<SearchDir>);
   collect_destinations(tt_, q_.destinations_, q_.dest_match_mode_,
@@ -441,9 +452,9 @@ void raptor<SearchDir>::route() {
           state_.round_times_[0U][to_idx(s.stop_)] = {tt_, s.time_at_stop_};
           state_.best_[to_idx(s.stop_)] = {tt_, s.time_at_stop_};
           state_.station_mark_[to_idx(s.stop_)] = true;
-          time_at_destination_ = routing_time{tt_, s.time_at_stop_} +
-                                 (kFwd ? 1 : -1) * duration_t{kMaxTravelTime};
         }
+        time_at_destination_ = routing_time{tt_, from_it->time_at_stop_} +
+                               (kFwd ? 1 : -1) * duration_t{kMaxTravelTime};
         rounds();
         reconstruct(from_it->time_at_start_);
       });
