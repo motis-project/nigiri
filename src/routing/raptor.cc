@@ -97,7 +97,8 @@ transport raptor<SearchDir>::get_earliest_transport(
          kFwd ? ++t : --t) {
       auto const ev = tt_.event_mam(t, stop_idx,
                                     kFwd ? event_type::kDep : event_type::kArr);
-      auto const ev_mam = minutes_after_midnight_t{ev.count() % 1440};
+      auto const ev_mam = minutes_after_midnight_t{
+          ev.count() < 1440 ? ev.count() : ev.count() % 1440};
       if (day == day_at_stop && !is_better_or_eq(mam_at_stop, ev_mam)) {
         trace(
             "┊ │      => transport={}, name={}, day={}/{}, best_mam={}, "
@@ -112,7 +113,9 @@ transport raptor<SearchDir>::get_earliest_transport(
       }
 
       auto const ev_day_offset =
-          static_cast<cista::base_t<day_idx_t>>(ev.count() / 1440);
+          ev.count() < 1440
+              ? 0
+              : static_cast<cista::base_t<day_idx_t>>(ev.count() / 1440);
       if (!tt_.bitfields_[tt_.transport_traffic_days_[t]].test(to_idx(day) -
                                                                ev_day_offset)) {
         trace(
