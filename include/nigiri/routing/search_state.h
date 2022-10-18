@@ -25,6 +25,7 @@ struct destination_comparator {
 struct search_state {
   void reset(timetable const& tt, routing_time init);
 
+  std::vector<duration_t> travel_time_lower_bound_;
   std::vector<routing_time> best_;
   cista::raw::matrix<routing_time> round_times_;
   std::vector<bool> station_mark_;

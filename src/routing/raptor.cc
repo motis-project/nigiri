@@ -7,6 +7,7 @@
 #include "utl/erase_if.h"
 #include "utl/overloaded.h"
 
+#include "nigiri/routing/dijkstra.h"
 #include "nigiri/routing/journey.h"
 #include "nigiri/routing/limits.h"
 #include "nigiri/routing/reconstruct.h"
@@ -187,6 +188,12 @@ transport raptor<SearchDir>::get_earliest_transport(
 }
 
 template <direction SearchDir>
+location_idx_t raptor<SearchDir>::parent_of(location_idx_t const l) {
+  auto const parent = tt_.locations_.parents_[l];
+  return parent == location_idx_t::invalid() ? l : parent;
+}
+
+template <direction SearchDir>
 bool raptor<SearchDir>::update_route(unsigned const k, route_idx_t const r) {
   auto const& stop_seq = tt_.route_location_seq_[r];
   bool any_marked = false;
@@ -214,9 +221,14 @@ bool raptor<SearchDir>::update_route(unsigned const k, route_idx_t const r) {
           time_at_stop(et, stop_idx,
                        kFwd ? event_type::kArr : event_type::kDep) +
           ((is_destination ? 0U : 1U) * transfer_time_offset);
+      auto const parent = to_idx(parent_of(stop.location_idx()));
+      auto const lower_bound = state_.travel_time_lower_bound_[parent];
       if ((kFwd ? stop.out_allowed() : stop.in_allowed()) &&
           is_better(by_transport_time, current_best) &&
-          is_better(by_transport_time, time_at_destination_)) {
+          lower_bound !=
+              duration_t{std::numeric_limits<duration_t::rep>::max()} &&
+          is_better(by_transport_time + (kFwd ? 1 : -1) * lower_bound,
+                    time_at_destination_)) {
 
 #ifdef TRACING
         auto const trip_idx =
@@ -311,8 +323,13 @@ void raptor<SearchDir>::update_footpaths(unsigned const k) {
           state_.best_[to_idx(l_idx)]  //
           + ((kFwd ? 1 : -1) * fp.duration_)  //
           - ((kFwd ? 1 : -1) * tt_.locations_.transfer_time_[l_idx]);
+      auto const parent = to_idx(parent_of(fp.target_));
+      auto const lower_bound = state_.travel_time_lower_bound_[parent];
       if (is_better(fp_target_time, min) &&
-          is_better(fp_target_time, time_at_destination_)) {
+          lower_bound !=
+              duration_t{std::numeric_limits<duration_t::rep>::max()} &&
+          is_better(fp_target_time + (kFwd ? 1 : -1) * lower_bound,
+                    time_at_destination_)) {
         trace_upd(
             "┊ ├ footpath: (name={}, id={}, best={}) --{}--> (name={}, id={}, "
             "best={}) --> update => {}\n",
@@ -472,6 +489,8 @@ void raptor<SearchDir>::route() {
       std::max(state_.results_.size(), state_.destinations_.size()));
   get_starts<SearchDir>(tt_, q_.start_time_, q_.start_, q_.start_match_mode_,
                         q_.use_start_footpaths_, state_.starts_);
+  dijkstra(tt_.lb_graph_, state_.travel_time_lower_bound_,
+           q_.destinations_.front());
   utl::equal_ranges_linear(
       state_.starts_,
       [](start const& a, start const& b) {

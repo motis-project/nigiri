@@ -4,22 +4,11 @@
 #include "nigiri/routing/raptor.h"
 
 #include "nigiri/routing/search_state.h"
+
 #include "../loader/hrd/hrd_timetable.h"
 
 using namespace nigiri;
-
-constexpr auto const services = R"(
-*Z 01337 80____       048 030                             %
-*A VE 0000001 0000002 000005                              %
-*G RE  0000001 0000002                                    %
-0000001 A                            00230                %
-0000002 B                     00330                       %
-*Z 07331 80____       092 015                             %
-*A VE 0000002 0000003 000005                              %
-*G RE  0000002 0000003                                    %
-0000002 B                            00230                %
-0000003 C                     00330                       %
-)";
+using namespace nigiri::test_data::hrd_timetable;
 
 constexpr auto const fwd_journeys = R"(
 [2020-03-30 05:30, 2020-03-30 07:45]
@@ -60,11 +49,7 @@ TEST_CASE("raptor-forward") {
   using namespace date;
   timetable tt;
   auto const src = source_idx_t{0U};
-  load_timetable(
-      src, loader::hrd::hrd_5_20_26,
-      test_data::hrd_timetable::base().add(
-          {loader::hrd::hrd_5_20_26.fplan_ / "services.101", services}),
-      tt);
+  load_timetable(src, loader::hrd::hrd_5_20_26, files_abc(), tt);
   auto state = routing::search_state{};
 
   auto fwd_r = routing::raptor<direction::kForward>{
@@ -159,11 +144,7 @@ TEST_CASE("raptor-backward") {
   using namespace date;
   timetable tt;
   auto const src = source_idx_t{0U};
-  load_timetable(
-      src, loader::hrd::hrd_5_20_26,
-      test_data::hrd_timetable::base().add(
-          {loader::hrd::hrd_5_20_26.fplan_ / "services.101", services}),
-      tt);
+  load_timetable(src, loader::hrd::hrd_5_20_26, files_abc(), tt);
   auto state = routing::search_state{};
 
   auto bwd_r = routing::raptor<direction::kBackward>{

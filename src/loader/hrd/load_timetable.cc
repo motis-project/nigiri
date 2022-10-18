@@ -9,9 +9,9 @@
 #include "utl/progress_tracker.h"
 
 #include "nigiri/loader/build_footpaths.h"
+#include "nigiri/loader/build_lb_graph.h"
 #include "nigiri/loader/hrd/service/service_builder.h"
 #include "nigiri/loader/hrd/stamm/stamm.h"
-#include "nigiri/print_transport.h"
 
 namespace nigiri::loader::hrd {
 
@@ -93,6 +93,7 @@ void load_timetable(source_idx_t const src,
                tt.trip_id_strings_[b.first].view();
       });
   build_footpaths(tt);
+  build_lb_graph(tt);
 }
 
 }  // namespace nigiri::loader::hrd

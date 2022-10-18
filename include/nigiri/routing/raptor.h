@@ -27,6 +27,8 @@ private:
   bool is_better_or_eq(auto a, auto b);
   auto get_best(auto a, auto b);
 
+  location_idx_t parent_of(location_idx_t);
+
   routing_time time_at_stop(transport const& t,
                             unsigned const stop_idx,
                             event_type const ev_type);

@@ -387,6 +387,9 @@ struct timetable {
   vecvec<transport_idx_t, provider_idx_t> transport_section_providers_;
   vecvec<transport_idx_t, trip_direction_idx_t> transport_section_directions_;
   vecvec<transport_idx_t, trip_line_idx_t> transport_section_lines_;
+
+  // Lower bound graph.
+  vecvec<location_idx_t, footpath> lb_graph_;
 };
 
 }  // namespace nigiri
