@@ -6,6 +6,7 @@
 #include "utl/equal_ranges_linear.h"
 #include "utl/erase_if.h"
 #include "utl/overloaded.h"
+#include "utl/timing.h"
 
 #include "nigiri/routing/dijkstra.h"
 #include "nigiri/routing/journey.h"
@@ -560,7 +561,12 @@ void raptor<SearchDir>::route() {
       std::max(state_.results_.size(), state_.destinations_.size()));
   get_starts<SearchDir>(tt_, q_.start_time_, q_.start_, q_.start_match_mode_,
                         q_.use_start_footpaths_, state_.starts_);
+
 #ifdef NIGIRI_LOWER_BOUND
+
+#ifdef NIGIRI_RAPTOR_COUNTING
+  UTL_START_TIMING(lb);
+#endif
   dijkstra(tt_, q_, state_.travel_time_lower_bound_);
   for (auto l = location_idx_t{0U}; l != tt_.locations_.children_.size(); ++l) {
     auto const lb = state_.travel_time_lower_bound_[to_idx(l)];
@@ -568,6 +574,10 @@ void raptor<SearchDir>::route() {
       state_.travel_time_lower_bound_[to_idx(c)] = lb;
     }
   }
+#ifdef NIGIRI_RAPTOR_COUNTING
+  UTL_STOP_TIMING(lb);
+  stats_.lb_time_ = UTL_TIMING_MS(lb);
+#endif
 
 #ifdef NIGIRI_RAPTOR_TRACING
   for (auto const [l, lb] : utl::enumerate(state_.travel_time_lower_bound_)) {
