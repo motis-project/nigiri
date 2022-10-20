@@ -2,6 +2,7 @@
 
 #include "nigiri/common/dial.h"
 #include "nigiri/footpath.h"
+#include "nigiri/routing/for_each_meta.h"
 #include "nigiri/routing/limits.h"
 #include "nigiri/routing/query.h"
 #include "nigiri/types.h"
@@ -21,22 +22,29 @@ struct get_bucket {
   std::size_t operator()(label const& l) const { return l.d_.count(); }
 };
 
-void dijkstra(vecvec<location_idx_t, footpath> const& lb_graph,
-              std::vector<dist_t>& dists,
-              std::vector<offset> const& starts) {
+void dijkstra(timetable const& tt, query const& q, std::vector<dist_t>& dists) {
   assert(dists.size() == lb_graph.size());
   std::fill(begin(dists), end(dists),
             duration_t{std::numeric_limits<duration_t::rep>::max()});
 
   dial<label, kMaxTravelTime, get_bucket> pq;
-  for (auto const& start : starts) {
-    pq.push(label{start.location_, start.offset_});
+  for (auto const& start : q.destinations_.front()) {
+    for_each_meta(tt, q.dest_match_mode_, start.location_,
+                  [&](location_idx_t const meta) {
+                    pq.push(label{meta, start.offset_});
+                    dists[to_idx(meta)] = start.offset_;
+                  });
   }
+
   while (!pq.empty()) {
     auto l = pq.top();
     pq.pop();
 
-    for (auto const& e : lb_graph[l.l_]) {
+    if (dists[to_idx(l.l_)] < l.d_) {
+      continue;
+    }
+
+    for (auto const& e : tt.lb_graph_[l.l_]) {
       auto const new_dist = l.d_ + e.duration_;
       if (new_dist < dists[to_idx(e.target_)] &&
           new_dist <= duration_t{kMaxTravelTime}) {

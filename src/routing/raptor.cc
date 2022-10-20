@@ -15,15 +15,25 @@
 #include "nigiri/routing/start_times.h"
 #include "nigiri/timetable.h"
 
-#ifdef TRACING
+#define NIGIRI_LOWER_BOUND
+
+#define NIGIRI_RAPTOR_COUNTING
+#ifdef NIGIRI_RAPTOR_COUNTING
+#define NIGIRI_COUNT(s) ++stats_.s
+#else
+#define NIGIRI_COUNT(s)
+#endif
+
+// #define NIGIRI_RAPTOR_TRACING
+#ifdef NIGIRI_RAPTOR_TRACING
 constexpr auto const kOnlyUpdates = true;
 
-#define trace(fmt_str, ...)                      \
-  if constexpr (!kOnlyUpdates) {                 \
-    fmt::print(std::cout, fmt_str, __VA_ARGS__); \
+#define trace(...)                      \
+  if constexpr (!kOnlyUpdates) {        \
+    fmt::print(std::cout, __VA_ARGS__); \
   }
-#define trace_always(fmt_str, ...) fmt::print(std::cout, fmt_str, __VA_ARGS__);
-#define trace_upd(fmt_str, ...) fmt::print(std::cout, fmt_str, __VA_ARGS__);
+#define trace_always(...) fmt::print(std::cout, __VA_ARGS__);
+#define trace_upd(...) fmt::print(std::cout, __VA_ARGS__);
 #else
 template <typename... Ts>
 void unused(Ts...) {}
@@ -76,6 +86,11 @@ auto raptor<SearchDir>::get_best(auto a, auto b) {
 }
 
 template <direction SearchDir>
+stats const& raptor<SearchDir>::get_stats() const {
+  return stats_;
+}
+
+template <direction SearchDir>
 routing_time raptor<SearchDir>::time_at_stop(transport const& t,
                                              unsigned const stop_idx,
                                              event_type const ev_type) {
@@ -88,6 +103,8 @@ transport raptor<SearchDir>::get_earliest_transport(
     route_idx_t const r,
     unsigned const stop_idx,
     location_idx_t const l_idx) {
+  NIGIRI_COUNT(n_earliest_trip_calls_);
+
   auto const time = state_.round_times_[k - 1][to_idx(l_idx)];
   if (time == kInvalidTime<SearchDir>) {
     trace("┊ │    et: location=(name={}, id={}, idx={}) => NOT REACHABLE\n",
@@ -188,12 +205,6 @@ transport raptor<SearchDir>::get_earliest_transport(
 }
 
 template <direction SearchDir>
-location_idx_t raptor<SearchDir>::parent_of(location_idx_t const l) {
-  auto const parent = tt_.locations_.parents_[l];
-  return parent == location_idx_t::invalid() ? l : parent;
-}
-
-template <direction SearchDir>
 bool raptor<SearchDir>::update_route(unsigned const k, route_idx_t const r) {
   auto const& stop_seq = tt_.route_location_seq_[r];
   bool any_marked = false;
@@ -217,20 +228,52 @@ bool raptor<SearchDir>::update_route(unsigned const k, route_idx_t const r) {
 
     if (et.is_valid()) {
       auto const is_destination = state_.is_destination_[l_idx];
-      auto const by_transport_time =
-          time_at_stop(et, stop_idx,
-                       kFwd ? event_type::kArr : event_type::kDep) +
+      auto const by_transport_time = time_at_stop(
+          et, stop_idx, kFwd ? event_type::kArr : event_type::kDep);
+      auto const by_transport_time_with_transfer =
+          by_transport_time +
           ((is_destination ? 0U : 1U) * transfer_time_offset);
-      auto const parent = to_idx(parent_of(stop.location_idx()));
-      auto const lower_bound = state_.travel_time_lower_bound_[parent];
-      if ((kFwd ? stop.out_allowed() : stop.in_allowed()) &&
-          is_better(by_transport_time, current_best) &&
-          lower_bound !=
-              duration_t{std::numeric_limits<duration_t::rep>::max()} &&
-          is_better(by_transport_time + (kFwd ? 1 : -1) * lower_bound,
-                    time_at_destination_)) {
 
-#ifdef TRACING
+      if ((kFwd ? stop.out_allowed() : stop.in_allowed()) &&
+          is_better(by_transport_time_with_transfer, current_best) &&
+          is_better(by_transport_time_with_transfer, time_at_destination_)) {
+
+#ifdef NIGIRI_LOWER_BOUND
+        auto const lower_bound =
+            state_.travel_time_lower_bound_[to_idx(stop.location_idx())];
+        if (lower_bound.count() ==
+                std::numeric_limits<duration_t::rep>::max() ||
+            !is_better(by_transport_time + (kFwd ? 1 : -1) * lower_bound,
+                       time_at_destination_)) {
+
+#ifdef NIGIRI_RAPTOR_TRACING
+          auto const trip_idx =
+              tt_.merged_trips_[tt_.transport_to_trip_section_[et.t_idx_]
+                                    .front()]
+                  .front();
+          trace_upd(
+              "┊ │    *** LB NO UPD: transport={}, name={}, debug={}:{}, "
+              "time_by_transport={} "
+              "BETTER THAN "
+              "current_best={} => (name={}, id={}) - "
+              "LB={}, LB_AT_DEST={}!\n",
+              et, tt_.trip_display_names_[trip_idx].view(),
+              tt_.source_file_names_
+                  [tt_.trip_debug_[trip_idx].front().source_file_idx_]
+                      .view(),
+              tt_.trip_debug_[trip_idx].front().line_number_from_,
+              by_transport_time, current_best,
+              tt_.locations_.names_[location_idx_t{l_idx}].view(),
+              tt_.locations_.ids_[location_idx_t{l_idx}].view(), lower_bound,
+              by_transport_time + (kFwd ? 1 : -1) * lower_bound);
+#endif
+
+          NIGIRI_COUNT(route_update_prevented_by_lower_bound_);
+          continue;
+        }
+#endif
+
+#ifdef NIGIRI_RAPTOR_TRACING
         auto const trip_idx =
             tt_.merged_trips_[tt_.transport_to_trip_section_[et.t_idx_].front()]
                 .front();
@@ -248,20 +291,22 @@ bool raptor<SearchDir>::update_route(unsigned const k, route_idx_t const r) {
             tt_.locations_.ids_[location_idx_t{l_idx}].view());
 #endif
 
-        state_.best_[l_idx] = by_transport_time;
-        state_.round_times_[k][l_idx] = by_transport_time;
+        NIGIRI_COUNT(n_earliest_arrival_updated_by_route_);
+        state_.best_[l_idx] = by_transport_time_with_transfer;
+        state_.round_times_[k][l_idx] = by_transport_time_with_transfer;
         state_.station_mark_[l_idx] = true;
         if (is_destination) {
           time_at_destination_ =
-              get_best(by_transport_time, time_at_destination_);
+              get_best(by_transport_time_with_transfer, time_at_destination_);
         }
-        current_best = by_transport_time;
+        current_best = by_transport_time_with_transfer;
         any_marked = true;
       } else {
         trace(
             "┊ │    by_transport={} NOT better than time_at_destination={} OR "
             "current_best={} => no update\n",
-            by_transport_time, time_at_destination_, current_best);
+            by_transport_time_with_transfer, time_at_destination_,
+            current_best);
       }
     }
 
@@ -316,6 +361,8 @@ void raptor<SearchDir>::update_footpaths(unsigned const k) {
                           : tt_.locations_.footpaths_in_[l_idx];
     trace("┊ ├ updating footpaths of {}\n", location{tt_, l_idx});
     for (auto const& fp : fps) {
+      NIGIRI_COUNT(n_footpaths_visited_);
+
       auto const target = to_idx(fp.target_);
       auto const min =
           std::min(state_.best_[target], state_.round_times_[k][target]);
@@ -323,13 +370,34 @@ void raptor<SearchDir>::update_footpaths(unsigned const k) {
           state_.best_[to_idx(l_idx)]  //
           + ((kFwd ? 1 : -1) * fp.duration_)  //
           - ((kFwd ? 1 : -1) * tt_.locations_.transfer_time_[l_idx]);
-      auto const parent = to_idx(parent_of(fp.target_));
-      auto const lower_bound = state_.travel_time_lower_bound_[parent];
+
       if (is_better(fp_target_time, min) &&
-          lower_bound !=
-              duration_t{std::numeric_limits<duration_t::rep>::max()} &&
-          is_better(fp_target_time + (kFwd ? 1 : -1) * lower_bound,
-                    time_at_destination_)) {
+          is_better(fp_target_time, time_at_destination_)) {
+
+#ifdef NIGIRI_LOWER_BOUND
+        auto const lower_bound =
+            state_.travel_time_lower_bound_[to_idx(fp.target_)];
+        if (lower_bound.count() ==
+                std::numeric_limits<duration_t::rep>::max() ||
+            !is_better(fp_target_time + (kFwd ? 1 : -1) * lower_bound,
+                       time_at_destination_)) {
+
+          trace_upd(
+              "┊ ├ *** LB NO UPD: (name={}, id={}, best={}) --{}--> (name={}, "
+              "id={}, best={}) --> update => {}, LB={}, AT_DEST={}\n",
+              tt_.locations_.names_[l_idx].view(),
+              tt_.locations_.ids_[l_idx].view(),
+              state_.round_times_[k][to_idx(l_idx)], fp.duration_,
+              tt_.locations_.names_[fp.target_].view(),
+              tt_.locations_.ids_[fp.target_].view(),
+              state_.round_times_[k][to_idx(fp.target_)], fp_target_time,
+              lower_bound, fp_target_time + (kFwd ? 1 : -1) * lower_bound);
+
+          NIGIRI_COUNT(fp_update_prevented_by_lower_bound_);
+          continue;
+        }
+#endif
+
         trace_upd(
             "┊ ├ footpath: (name={}, id={}, best={}) --{}--> (name={}, id={}, "
             "best={}) --> update => {}\n",
@@ -340,6 +408,7 @@ void raptor<SearchDir>::update_footpaths(unsigned const k) {
             tt_.locations_.ids_[fp.target_].view(),
             state_.round_times_[k][to_idx(fp.target_)], fp_target_time);
 
+        NIGIRI_COUNT(n_earliest_arrival_updated_by_footpath_);
         state_.round_times_[k][to_idx(fp.target_)] = fp_target_time;
         state_.station_mark_[to_idx(fp.target_)] = true;
         if (state_.is_destination_[to_idx(fp.target_)]) {
@@ -391,6 +460,8 @@ void raptor<SearchDir>::rounds() {
         continue;
       }
       trace("┊ ├ updating route {}\n", r_id);
+
+      NIGIRI_COUNT(n_routes_visited_);
       any_marked |= update_route(k, route_idx_t{r_id});
     }
 
@@ -407,6 +478,7 @@ void raptor<SearchDir>::rounds() {
   }
 }
 
+#ifdef NIGIRI_RAPTOR_TRACING
 template <direction SearchDir>
 void raptor<SearchDir>::force_print_state(char const* comment) {
   auto const empty_rounds = [&](std::uint32_t const l) {
@@ -461,7 +533,6 @@ void raptor<SearchDir>::force_print_state(char const* comment) {
   }
 }
 
-#ifdef TRACING
 template <direction SearchDir>
 void raptor<SearchDir>::print_state(char const* comment) {
   force_print_state(comment);
@@ -489,8 +560,23 @@ void raptor<SearchDir>::route() {
       std::max(state_.results_.size(), state_.destinations_.size()));
   get_starts<SearchDir>(tt_, q_.start_time_, q_.start_, q_.start_match_mode_,
                         q_.use_start_footpaths_, state_.starts_);
-  dijkstra(tt_.lb_graph_, state_.travel_time_lower_bound_,
-           q_.destinations_.front());
+#ifdef NIGIRI_LOWER_BOUND
+  dijkstra(tt_, q_, state_.travel_time_lower_bound_);
+  for (auto l = location_idx_t{0U}; l != tt_.locations_.children_.size(); ++l) {
+    auto const lb = state_.travel_time_lower_bound_[to_idx(l)];
+    for (auto const c : tt_.locations_.children_[l]) {
+      state_.travel_time_lower_bound_[to_idx(c)] = lb;
+    }
+  }
+
+#ifdef NIGIRI_RAPTOR_TRACING
+  for (auto const [l, lb] : utl::enumerate(state_.travel_time_lower_bound_)) {
+    if (lb.count() != std::numeric_limits<duration_t::rep>::max()) {
+      trace_always("lb {}: {}\n", location{tt_, location_idx_t{l}}, lb.count());
+    }
+  }
+#endif
+#endif
   utl::equal_ranges_linear(
       state_.starts_,
       [](start const& a, start const& b) {
