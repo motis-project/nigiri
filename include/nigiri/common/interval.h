@@ -23,9 +23,15 @@ struct interval {
     friend bool operator<(iterator const&, iterator const&) = default;
     friend bool operator>=(iterator const&, iterator const&) = default;
     friend bool operator>(iterator const&, iterator const&) = default;
-    value_type operator*() { return t_; }
-    iterator operator++() { return iterator{++t_}; }
-    iterator operator--() { return iterator{--t_}; }
+    value_type operator*() const { return t_; }
+    iterator& operator++() {
+      ++t_;
+      return *this;
+    }
+    iterator& operator--() {
+      --t_;
+      return *this;
+    }
     iterator& operator+=(difference_type const x) {
       t_ += x;
       return *this;
