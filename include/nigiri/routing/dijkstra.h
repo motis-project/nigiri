@@ -22,8 +22,11 @@ struct get_bucket {
   std::size_t operator()(label const& l) const { return l.d_.count(); }
 };
 
-void dijkstra(timetable const& tt, query const& q, std::vector<dist_t>& dists) {
-  assert(dists.size() == lb_graph.size());
+void dijkstra(timetable const& tt,
+              query const& q,
+              vecvec<location_idx_t, footpath> const& lb_graph,
+              std::vector<dist_t>& dists) {
+  assert(dists.size() == tt.n_locations());
   std::fill(begin(dists), end(dists),
             duration_t{std::numeric_limits<duration_t::rep>::max()});
 
@@ -44,7 +47,7 @@ void dijkstra(timetable const& tt, query const& q, std::vector<dist_t>& dists) {
       continue;
     }
 
-    for (auto const& e : tt.lb_graph_[l.l_]) {
+    for (auto const& e : lb_graph[l.l_]) {
       auto const new_dist = l.d_ + e.duration_;
       if (new_dist < dists[to_idx(e.target_)] &&
           new_dist <= duration_t{kMaxTravelTime}) {

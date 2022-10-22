@@ -14,11 +14,11 @@ TEST_CASE("lb_graph") {
 
   std::stringstream ss;
   for (auto i = location_idx_t{0U}; i != tt.locations_.ids_.size(); ++i) {
-    if (tt.lb_graph_[i].empty()) {
+    if (tt.fwd_search_lb_graph_[i].empty()) {
       continue;
     }
     ss << location{tt, i} << "\n";
-    for (auto const& fp : tt.lb_graph_[i]) {
+    for (auto const& fp : tt.fwd_search_lb_graph_[i]) {
       ss << "  " << location{tt, fp.target_} << " " << fp.duration_ << "\n";
     }
   }

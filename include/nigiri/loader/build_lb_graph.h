@@ -6,6 +6,7 @@
 
 namespace nigiri::loader {
 
+template <direction SearchDir>
 void build_lb_graph(timetable& tt) {
   std::map<location_idx_t, duration_t> weights;
 
@@ -23,7 +24,10 @@ void build_lb_graph(timetable& tt) {
                               ? l
                               : tt.locations_.parents_[l];
 
-    for (auto const& fp : tt.locations_.footpaths_in_[l]) {
+    auto const& footpaths = SearchDir == direction::kForward
+                                ? tt.locations_.footpaths_in_[l]
+                                : tt.locations_.footpaths_out_[l];
+    for (auto const& fp : footpaths) {
       auto const parent = tt.locations_.parents_[fp.target_];
       auto const target =
           parent == location_idx_t::invalid() ? fp.target_ : parent;
@@ -38,15 +42,17 @@ void build_lb_graph(timetable& tt) {
            utl::pairwise(interval{0U, location_seq.size()})) {
         auto const from_l = timetable::stop{location_seq[from]}.location_idx();
         auto const to_l = timetable::stop{location_seq[to]}.location_idx();
-        if (to_l != l) {
-          // We only collect incoming edges.
-          // Inverted graph => incoming edges become outgoing edges.
+
+        if ((SearchDir == direction::kForward ? to_l : from_l) != l) {
           continue;
         }
 
-        auto const target_parent = tt.locations_.parents_[from_l];
-        auto const target =
-            target_parent == location_idx_t::invalid() ? from_l : target_parent;
+        auto const target_l =
+            (SearchDir == direction::kForward ? from_l : to_l);
+        auto const target_parent = tt.locations_.parents_[target_l];
+        auto const target = target_parent == location_idx_t::invalid()
+                                ? target_l
+                                : target_parent;
         if (target == parent_l) {
           continue;
         }
@@ -63,9 +69,11 @@ void build_lb_graph(timetable& tt) {
   };
 
   std::vector<footpath> footpaths;
+  auto& lb_graph = SearchDir == direction::kForward ? tt.fwd_search_lb_graph_
+                                                    : tt.bwd_search_lb_graph_;
   for (auto i = location_idx_t{0U}; i != tt.locations_.ids_.size(); ++i) {
     if (tt.locations_.parents_[i] != location_idx_t::invalid()) {
-      tt.lb_graph_.emplace_back(std::vector<footpath>{});
+      lb_graph.emplace_back(std::vector<footpath>{});
       continue;
     }
 
@@ -79,7 +87,7 @@ void build_lb_graph(timetable& tt) {
           footpath{.target_ = target, .duration_ = duration});
     }
 
-    tt.lb_graph_.emplace_back(footpaths);
+    lb_graph.emplace_back(footpaths);
 
     footpaths.clear();
     weights.clear();

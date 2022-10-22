@@ -567,7 +567,8 @@ void raptor<SearchDir>::route() {
 #ifdef NIGIRI_RAPTOR_COUNTING
   UTL_START_TIMING(lb);
 #endif
-  dijkstra(tt_, q_, state_.travel_time_lower_bound_);
+  dijkstra(tt_, q_, kFwd ? tt_.fwd_search_lb_graph_ : tt_.bwd_search_lb_graph_,
+           state_.travel_time_lower_bound_);
   for (auto l = location_idx_t{0U}; l != tt_.locations_.children_.size(); ++l) {
     auto const lb = state_.travel_time_lower_bound_[to_idx(l)];
     for (auto const c : tt_.locations_.children_[l]) {

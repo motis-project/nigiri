@@ -93,7 +93,8 @@ void load_timetable(source_idx_t const src,
                tt.trip_id_strings_[b.first].view();
       });
   build_footpaths(tt);
-  build_lb_graph(tt);
+  build_lb_graph<direction::kForward>(tt);
+  build_lb_graph<direction::kBackward>(tt);
 }
 
 }  // namespace nigiri::loader::hrd
