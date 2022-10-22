@@ -172,8 +172,8 @@ transport raptor<SearchDir>::get_earliest_transport(
           ev.count() < 1440
               ? 0
               : static_cast<cista::base_t<day_idx_t>>(ev.count() / 1440);
-      if (!tt_.bitfields_[tt_.transport_traffic_days_[t]].test(to_idx(day) -
-                                                               ev_day_offset)) {
+      if (!tt_.bitfields_[tt_.transport_traffic_days_[t]].test(
+              static_cast<std::size_t>(to_idx(day) - ev_day_offset))) {
         trace(
             "┊ │      => transport={}, name={}, day={}/{}, ev_day_offset={}, "
             "best_mam={}, "
@@ -198,7 +198,7 @@ transport raptor<SearchDir>::get_earliest_transport(
           day, ev_day_offset, ev_mam, ev,
           routing_time{day_idx_t{day - ev_day_offset},
                        minutes_after_midnight_t{ev_mam}});
-      return {t, day - ev_day_offset};
+      return {t, static_cast<day_idx_t>(day - ev_day_offset)};
     }
   }
   trace("┊ │    => et: NOT FOUND\n");
@@ -577,7 +577,7 @@ void raptor<SearchDir>::route() {
   }
 #ifdef NIGIRI_RAPTOR_COUNTING
   UTL_STOP_TIMING(lb);
-  stats_.lb_time_ = UTL_TIMING_MS(lb);
+  stats_.lb_time_ = static_cast<std::uint64_t>(UTL_TIMING_MS(lb));
 #endif
 
 #ifdef NIGIRI_RAPTOR_TRACING
