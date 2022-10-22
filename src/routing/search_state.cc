@@ -17,6 +17,13 @@ bool destination_comparator::operator()(location_idx_t const a,
 }
 
 void search_state::reset(timetable const& tt, routing_time init) {
+  travel_time_lower_bound_.resize(tt.n_locations());
+  std::fill(begin(travel_time_lower_bound_), end(travel_time_lower_bound_),
+            duration_t{0});
+
+  is_destination_.resize(tt.n_locations());
+  std::fill(begin(is_destination_), end(is_destination_), false);
+
   is_destination_.resize(tt.n_locations());
   std::fill(begin(is_destination_), end(is_destination_), false);
 
