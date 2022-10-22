@@ -15,7 +15,7 @@ struct interval {
     using difference_type = std::ptrdiff_t;
     using value_type = T;
     using pointer = std::add_pointer_t<value_type>;
-    using reference = std::add_lvalue_reference_t<value_type>;
+    using reference = value_type;
     friend auto operator<=>(iterator const&, iterator const&) = default;
     friend bool operator==(iterator const&, iterator const&) = default;
     friend bool operator!=(iterator const&, iterator const&) = default;
@@ -60,8 +60,10 @@ struct interval {
   }
 
   template <typename X>
-  requires std::is_convertible_v<T, X>
-  operator interval<X>() { return {from_, to_}; }
+    requires std::is_convertible_v<T, X>
+  operator interval<X>() {
+    return {from_, to_};
+  }
 
   bool contains(T const t) const { return t >= from_ && t < to_; }
 
