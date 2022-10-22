@@ -479,7 +479,6 @@ void raptor<SearchDir>::rounds() {
   }
 }
 
-#ifdef NIGIRI_RAPTOR_TRACING
 template <direction SearchDir>
 void raptor<SearchDir>::force_print_state(char const* comment) {
   auto const empty_rounds = [&](std::uint32_t const l) {
@@ -534,6 +533,7 @@ void raptor<SearchDir>::force_print_state(char const* comment) {
   }
 }
 
+#ifdef NIGIRI_RAPTOR_TRACING
 template <direction SearchDir>
 void raptor<SearchDir>::print_state(char const* comment) {
   force_print_state(comment);
