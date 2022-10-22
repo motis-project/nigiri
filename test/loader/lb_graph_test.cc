@@ -19,14 +19,15 @@ TEST_CASE("lb_graph") {
     }
     ss << location{tt, i} << "\n";
     for (auto const& fp : tt.fwd_search_lb_graph_[i]) {
-      ss << "  " << location{tt, fp.target_} << " " << fp.duration_ << "\n";
+      ss << "  " << location{tt, fp.target_} << " " << fp.duration_.count()
+         << "\n";
     }
   }
 
   constexpr auto const raw = R"((A, 0000001)
-  (B, 0000002) 01:00.0
+  (B, 0000002) 60
 (B, 0000002)
-  (A, 0000001) 01:00.0
+  (A, 0000001) 60
 )";
 
   CHECK(std::string_view{raw} == ss.str());
