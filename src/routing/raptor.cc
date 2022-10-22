@@ -127,7 +127,7 @@ transport raptor<SearchDir>::get_earliest_transport(
       time, stop_idx, tt_.locations_.names_[l_idx].view(),
       tt_.locations_.ids_[l_idx].view(), l_idx, n_days_to_iterate);
 
-  auto const seek_first_day = [&]() {
+  auto const seek_first_day = [&, mam_at_stop = mam_at_stop]() {
     return *std::lower_bound(
         get_begin_it<SearchDir>(transport_range),
         get_end_it<SearchDir>(transport_range), mam_at_stop,
