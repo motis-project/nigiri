@@ -140,7 +140,7 @@ transport raptor<SearchDir>::get_earliest_transport(
         });
   };
 
-  for (auto i = std::uint16_t{0U}; i != n_days_to_iterate; ++i) {
+  for (auto i = 0U; i != n_days_to_iterate; ++i) {
     auto const day = kFwd ? day_at_stop + i : day_at_stop - i;
     for (auto t =
              i == 0U ? seek_first_day()
