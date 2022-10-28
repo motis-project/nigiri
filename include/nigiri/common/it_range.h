@@ -34,6 +34,7 @@ struct it_range {
   std::size_t size() const {
     return static_cast<std::size_t>(std::distance(begin_, end_));
   }
+  bool empty() const { return begin_ == end_; }
   BeginIt begin_;
   EndIt end_;
 };

@@ -25,9 +25,9 @@
 #define NIGIRI_COUNT(s)
 #endif
 
-// #define NIGIRI_RAPTOR_TRACING
+//#define NIGIRI_RAPTOR_TRACING
 #ifdef NIGIRI_RAPTOR_TRACING
-constexpr auto const kOnlyUpdates = true;
+constexpr auto const kOnlyUpdates = false;
 
 #define trace(...)                      \
   if constexpr (!kOnlyUpdates) {        \
@@ -114,7 +114,6 @@ transport raptor<SearchDir>::get_earliest_transport(
     return {transport_idx_t::invalid(), day_idx_t::invalid()};
   }
 
-  auto const transport_range = tt_.route_transport_ranges_[r];
   auto const [day_at_stop, mam_at_stop] = time.day_idx_mam();
 
   auto const n_days_to_iterate =
@@ -127,34 +126,41 @@ transport raptor<SearchDir>::get_earliest_transport(
       time, stop_idx, tt_.locations_.names_[l_idx].view(),
       tt_.locations_.ids_[l_idx].view(), l_idx, n_days_to_iterate);
 
+  auto const event_times = tt_.transport_event_times_at_stop(
+      r, stop_idx, kFwd ? event_type::kDep : event_type::kArr);
+
+#ifdef NIGIRI_RAPTOR_TRACING
+  for (auto const& [t_offset, time] : utl::enumerate(event_times)) {
+    auto const t = tt_.route_transport_ranges_[r][t_offset];
+    trace("┊ │        event_times: transport={}: {} at {}: {}\n", t,
+          kFwd ? "dep" : "arr", location{tt_, l_idx}, time)
+  }
+#endif
+
   auto const seek_first_day = [&, mam_at_stop = mam_at_stop]() {
-    return *std::lower_bound(
-        get_begin_it<SearchDir>(transport_range),
-        get_end_it<SearchDir>(transport_range), mam_at_stop,
-        [&](transport_idx_t const t, minutes_after_midnight_t const mam) {
-          auto const ev = tt_.event_mam(
-              t, stop_idx, kFwd ? event_type::kDep : event_type::kArr);
-          auto const ev_mam = minutes_after_midnight_t{
-              ev.count() < 1440 ? ev.count() : ev.count() % 1440};
-          return is_better(ev_mam, mam);
-        });
+    return std::lower_bound(
+        get_begin_it<SearchDir>(event_times),
+        get_end_it<SearchDir>(event_times), mam_at_stop,
+        [&](auto&& a, auto&& b) { return is_better(a, b); });
   };
 
   for (auto i = 0U; i != n_days_to_iterate; ++i) {
     auto const day = kFwd ? day_at_stop + i : day_at_stop - i;
-    for (auto t =
-             i == 0U ? seek_first_day()
-                     : (kFwd ? transport_range.from_ : transport_range.to_ - 1);
-         t != (kFwd ? transport_range.to_ : transport_range.from_ - 1);
-         kFwd ? ++t : --t) {
-      auto const ev = tt_.event_mam(t, stop_idx,
-                                    kFwd ? event_type::kDep : event_type::kArr);
+    auto const ev_time_range = it_range{
+        i == 0U ? seek_first_day() : get_begin_it<SearchDir>(event_times),
+        get_end_it<SearchDir>(event_times)};
+    if (ev_time_range.empty()) {
+      continue;
+    }
+    auto const base = &*ev_time_range.begin_ - event_times.data();
+    for (auto const [t_offset, ev] : utl::enumerate(ev_time_range)) {
       auto const ev_mam = minutes_after_midnight_t{
           ev.count() < 1440 ? ev.count() : ev.count() % 1440};
       if (is_better_or_eq(time_at_destination_, routing_time{day, ev_mam})) {
         return {transport_idx_t::invalid(), day_idx_t::invalid()};
       }
 
+      auto const t = tt_.route_transport_ranges_[r][base + t_offset];
       if (day == day_at_stop && !is_better_or_eq(mam_at_stop, ev_mam)) {
         trace(
             "┊ │      => transport={}, name={}, day={}/{}, best_mam={}, "

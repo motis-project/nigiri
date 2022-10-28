@@ -1,5 +1,6 @@
 #pragma once
 
+#include <cassert>
 #include <iterator>
 #include <ostream>
 #include <type_traits>
@@ -88,6 +89,11 @@ struct interval {
   }
 
   auto size() const { return to_ - from_; }
+
+  T operator[](std::size_t const i) const {
+    assert(contains(from_ + i));
+    return from_ + i;
+  }
 
   friend std::ostream& operator<<(std::ostream& out, interval const& i) {
     return out << "[" << i.from_ << ", " << i.to_ << "[";

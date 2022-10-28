@@ -30,6 +30,28 @@ bool applicable(config const& c, dir const& d) {
       });
 }
 
+void build_route_stop_times(timetable& tt) {
+  for (auto i = route_idx_t{0U}; i != tt.route_transport_ranges_.size(); ++i) {
+    auto const transport_range = tt.route_transport_ranges_[i];
+    auto const stop_seq = tt.route_location_seq_[i];
+
+    auto const stop_times_begin = tt.route_stop_times_.size();
+    for (auto const [from, to] : utl::pairwise(interval{0U, stop_seq.size()})) {
+      for (auto const t : transport_range) {
+        tt.route_stop_times_.emplace_back(
+            tt.event_mam(t, from, event_type::kDep));
+      }
+      for (auto const t : transport_range) {
+        tt.route_stop_times_.emplace_back(
+            tt.event_mam(t, to, event_type::kArr));
+      }
+    }
+    auto const stop_times_end = tt.route_stop_times_.size();
+    tt.route_stop_time_ranges_.emplace_back(
+        interval{stop_times_begin, stop_times_end});
+  }
+}
+
 std::uint64_t hash(config const& c, dir const& d, std::uint64_t const seed) {
   auto h = seed;
   for (auto const& f : stamm::load_files(c, d)) {
@@ -95,6 +117,7 @@ void load_timetable(source_idx_t const src,
   build_footpaths(tt);
   build_lb_graph<direction::kForward>(tt);
   build_lb_graph<direction::kBackward>(tt);
+  build_route_stop_times(tt);
 }
 
 }  // namespace nigiri::loader::hrd

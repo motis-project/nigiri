@@ -2,6 +2,7 @@
 
 #include <compare>
 #include <filesystem>
+#include <span>
 #include <type_traits>
 
 #include "cista/memory_holder.h"
@@ -248,7 +249,7 @@ struct timetable {
   }
 
   minutes_after_midnight_t event_mam(transport_idx_t const transport_idx,
-                                     size_t const stop_idx,
+                                     std::size_t const stop_idx,
                                      event_type const ev_type) const {
     // Event times are stored alternatingly:
     // departure (D), arrival (A), ..., arrival (A)
@@ -263,6 +264,19 @@ struct timetable {
              ev_type == event_type::kDep));
     auto const idx = stop_idx * 2 - (ev_type == event_type::kArr ? 1 : 0);
     return transport_stop_times_[transport_idx][idx];
+  }
+
+  std::span<minutes_after_midnight_t const> transport_event_times_at_stop(
+      route_idx_t const r,
+      std::size_t const stop_idx,
+      event_type const ev_type) const {
+    auto const n_transports =
+        static_cast<unsigned>(route_transport_ranges_[r].size());
+    auto const idx =
+        route_stop_time_ranges_[r].from_ +
+        n_transports * (stop_idx * 2 - (ev_type == event_type::kArr ? 1 : 0));
+    return std::span<minutes_after_midnight_t const>{&route_stop_times_[idx],
+                                                     n_transports};
   }
 
   unixtime_t event_time(nigiri::transport t,
@@ -305,6 +319,7 @@ struct timetable {
   }
 
   friend std::ostream& operator<<(std::ostream&, timetable const&);
+  friend void print_1(std::ostream&, timetable const&);
 
   void write(std::filesystem::path const&) const;
   static cista::wrapped<timetable> read(cista::memory_holder);
@@ -347,6 +362,17 @@ struct timetable {
 
   // Trip index -> sequence of stop times
   vecvec<transport_idx_t, minutes_after_midnight_t> transport_stop_times_;
+
+  // Route 1:
+  //   stop-1-dep: [trip1, trip2, ..., tripN]
+  //   stop-2-arr: [trip1, trip2, ..., tripN]
+  //   ...
+  // Route 2:
+  //  stop-1-dep: [...]
+  // ...
+  // RouteN: ...
+  vector_map<route_idx_t, interval<unsigned>> route_stop_time_ranges_;
+  vector<minutes_after_midnight_t> route_stop_times_;
 
   // Trip index -> traffic day bitfield
   vector_map<transport_idx_t, bitfield_idx_t> transport_traffic_days_;
