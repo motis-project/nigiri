@@ -25,7 +25,7 @@
 #define NIGIRI_COUNT(s)
 #endif
 
-//#define NIGIRI_RAPTOR_TRACING
+// #define NIGIRI_RAPTOR_TRACING
 #ifdef NIGIRI_RAPTOR_TRACING
 constexpr auto const kOnlyUpdates = false;
 
@@ -92,10 +92,11 @@ stats const& raptor<SearchDir>::get_stats() const {
 }
 
 template <direction SearchDir>
-routing_time raptor<SearchDir>::time_at_stop(transport const& t,
+routing_time raptor<SearchDir>::time_at_stop(route_idx_t const r,
+                                             transport const t,
                                              unsigned const stop_idx,
                                              event_type const ev_type) {
-  return {t.day_, tt_.event_mam(t.t_idx_, stop_idx, ev_type)};
+  return {t.day_, tt_.event_mam(r, t.t_idx_, stop_idx, ev_type)};
 }
 
 template <direction SearchDir>
@@ -126,7 +127,7 @@ transport raptor<SearchDir>::get_earliest_transport(
       time, stop_idx, tt_.locations_.names_[l_idx].view(),
       tt_.locations_.ids_[l_idx].view(), l_idx, n_days_to_iterate);
 
-  auto const event_times = tt_.transport_event_times_at_stop(
+  auto const event_times = tt_.event_times_at_stop(
       r, stop_idx, kFwd ? event_type::kDep : event_type::kArr);
 
 #ifdef NIGIRI_RAPTOR_TRACING
@@ -144,7 +145,7 @@ transport raptor<SearchDir>::get_earliest_transport(
         [&](auto&& a, auto&& b) { return is_better(a, b); });
   };
 
-  for (auto i = 0U; i != n_days_to_iterate; ++i) {
+  for (auto i = day_idx_t::value_t{0U}; i != n_days_to_iterate; ++i) {
     auto const day = kFwd ? day_at_stop + i : day_at_stop - i;
     auto const ev_time_range = it_range{
         i == 0U ? seek_first_day() : get_begin_it<SearchDir>(event_times),
@@ -152,7 +153,8 @@ transport raptor<SearchDir>::get_earliest_transport(
     if (ev_time_range.empty()) {
       continue;
     }
-    auto const base = &*ev_time_range.begin_ - event_times.data();
+    auto const base =
+        static_cast<unsigned>(&*ev_time_range.begin_ - event_times.data());
     for (auto const [t_offset, ev] : utl::enumerate(ev_time_range)) {
       auto const ev_mam = minutes_after_midnight_t{
           ev.count() < 1440 ? ev.count() : ev.count() % 1440};
@@ -174,10 +176,10 @@ transport raptor<SearchDir>::get_earliest_transport(
         continue;
       }
 
-      auto const ev_day_offset =
+      auto const ev_day_offset = static_cast<day_idx_t::value_t>(
           ev.count() < 1440
               ? 0
-              : static_cast<cista::base_t<day_idx_t>>(ev.count() / 1440);
+              : static_cast<cista::base_t<day_idx_t>>(ev.count() / 1440));
       if (!tt_.bitfields_[tt_.transport_traffic_days_[t]].test(
               static_cast<std::size_t>(to_idx(day) - ev_day_offset))) {
         trace(
@@ -236,7 +238,7 @@ bool raptor<SearchDir>::update_route(unsigned const k, route_idx_t const r) {
     if (et.is_valid()) {
       auto const is_destination = state_.is_destination_[l_idx];
       auto const by_transport_time = time_at_stop(
-          et, stop_idx, kFwd ? event_type::kArr : event_type::kDep);
+          r, et, stop_idx, kFwd ? event_type::kArr : event_type::kDep);
       auto const by_transport_time_with_transfer =
           by_transport_time +
           ((is_destination ? 0U : 1U) * transfer_time_offset);
@@ -324,7 +326,7 @@ bool raptor<SearchDir>::update_route(unsigned const k, route_idx_t const r) {
     if (i != stop_seq.size() - 1U) {
       auto const et_time_at_stop =
           et.is_valid()
-              ? time_at_stop(et, stop_idx,
+              ? time_at_stop(r, et, stop_idx,
                              kFwd ? event_type::kDep : event_type::kArr)
               : kInvalidTime<SearchDir>;
       if (!(kFwd && (stop_idx == stop_seq.size() - 1 || !stop.in_allowed())) &&
@@ -343,7 +345,7 @@ bool raptor<SearchDir>::update_route(unsigned const k, route_idx_t const r) {
         if (new_et.is_valid() &&
             (current_best == kInvalidTime<SearchDir> ||
              is_better_or_eq(
-                 time_at_stop(new_et, stop_idx,
+                 time_at_stop(r, new_et, stop_idx,
                               kFwd ? event_type::kDep : event_type::kArr) +
                      transfer_time_offset,
                  et_time_at_stop))) {

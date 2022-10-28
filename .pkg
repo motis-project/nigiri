@@ -5,7 +5,7 @@
 [cista]
   url=git@github.com:felixguendling/cista.git
   branch=nigiri
-  commit=751c0213a2a560b87851b72c4876964cb329d3e5
+  commit=27d9e70bd41503953960f81a6b8d1307b69b0f96
 [geo]
   url=git@github.com:motis-project/geo.git
   branch=master

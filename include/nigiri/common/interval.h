@@ -92,7 +92,7 @@ struct interval {
 
   T operator[](std::size_t const i) const {
     assert(contains(from_ + i));
-    return from_ + i;
+    return from_ + static_cast<T>(i);
   }
 
   friend std::ostream& operator<<(std::ostream& out, interval const& i) {

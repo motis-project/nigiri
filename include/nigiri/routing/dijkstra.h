@@ -19,7 +19,9 @@ struct label {
 };
 
 struct get_bucket {
-  std::size_t operator()(label const& l) const { return l.d_.count(); }
+  std::size_t operator()(label const& l) const {
+    return static_cast<std::size_t>(l.d_.count());
+  }
 };
 
 void dijkstra(timetable const& tt,

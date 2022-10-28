@@ -136,8 +136,8 @@ void print_transport_1(timetable const& tt,
     if (stop_idx != from) {
       auto const t =
           tt.date_range_.from_ + to_idx(day_idx) * 1_days +
-          tt.transport_event_times_at_stop(
-              route_idx, stop_idx, event_type::kArr)[transport_idx_in_route];
+          tt.event_times_at_stop(route_idx, stop_idx,
+                                 event_type::kArr)[transport_idx_in_route];
       if (!s.out_allowed()) {
         fmt::print(" -");
       } else {
@@ -153,8 +153,8 @@ void print_transport_1(timetable const& tt,
     if (stop_idx != to - 1) {
       auto const t =
           tt.date_range_.from_ + to_idx(day_idx) * 1_days +
-          tt.transport_event_times_at_stop(
-              route_idx, stop_idx, event_type::kDep)[transport_idx_in_route];
+          tt.event_times_at_stop(route_idx, stop_idx,
+                                 event_type::kDep)[transport_idx_in_route];
       if (!s.in_allowed()) {
         fmt::print("   -");
       } else {
