@@ -18,7 +18,7 @@
 
 #define NIGIRI_LOWER_BOUND
 
-// #define NIGIRI_RAPTOR_COUNTING
+#define NIGIRI_RAPTOR_COUNTING
 #ifdef NIGIRI_RAPTOR_COUNTING
 #define NIGIRI_COUNT(s) ++stats_.s
 #else
