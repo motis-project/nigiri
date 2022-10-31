@@ -18,7 +18,7 @@
 
 #define NIGIRI_LOWER_BOUND
 
-#define NIGIRI_RAPTOR_COUNTING
+// #define NIGIRI_RAPTOR_COUNTING
 #ifdef NIGIRI_RAPTOR_COUNTING
 #define NIGIRI_COUNT(s) ++stats_.s
 #else
@@ -215,7 +215,7 @@ transport raptor<SearchDir>::get_earliest_transport(
 
 template <direction SearchDir>
 bool raptor<SearchDir>::update_route(unsigned const k, route_idx_t const r) {
-  auto const& stop_seq = tt_.route_location_seq_[r];
+  auto const stop_seq = tt_.route_location_seq_[r];
   bool any_marked = false;
 
   auto et = transport{};
@@ -224,6 +224,11 @@ bool raptor<SearchDir>::update_route(unsigned const k, route_idx_t const r) {
         static_cast<unsigned>(kFwd ? i : stop_seq.size() - i - 1U);
     auto const stop = timetable::stop{stop_seq[stop_idx]};
     auto const l_idx = cista::to_idx(stop.location_idx());
+
+    if (!et.is_valid() && !state_.prev_station_mark_[l_idx]) {
+      continue;
+    }
+
     auto current_best =
         get_best(state_.best_[l_idx], state_.round_times_[k - 1][l_idx]);
     auto const transfer_time_offset =

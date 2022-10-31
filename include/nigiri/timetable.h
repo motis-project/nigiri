@@ -396,6 +396,10 @@ struct timetable {
   // Unique bitfields
   vector_map<bitfield_idx_t, bitfield> bitfields_;
 
+  // bitfields_[1][day_1], bitfields_2[2][day_1], ...
+  // bitfields_[1][day_2], bitfields_2[2][day_2], ...
+  bitvec col_bitfields_;
+
   // For each trip the corresponding route
   vector_map<transport_idx_t, route_idx_t> transport_route_;
 

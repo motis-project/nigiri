@@ -12,6 +12,7 @@
 #include "nigiri/loader/build_lb_graph.h"
 #include "nigiri/loader/hrd/service/service_builder.h"
 #include "nigiri/loader/hrd/stamm/stamm.h"
+#include "utl/enumerate.h"
 
 namespace nigiri::loader::hrd {
 
@@ -49,6 +50,16 @@ void build_route_stop_times(timetable& tt) {
     auto const stop_times_end = tt.route_stop_times_.size();
     tt.route_stop_time_ranges_.emplace_back(
         interval{stop_times_begin, stop_times_end});
+  }
+}
+
+void build_route_traffic_days(timetable& tt) {
+  tt.col_bitfields_.resize(kMaxDays * tt.bitfields_.size());
+  for (auto day = 0U; day != kMaxDays; ++day) {
+    for (auto const [bf_idx, bitfield] : utl::enumerate(tt.bitfields_)) {
+      tt.col_bitfields_.set(tt.bitfields_.size() * day + bf_idx,
+                            bitfield.test(day));
+    }
   }
 }
 
@@ -118,6 +129,7 @@ void load_timetable(source_idx_t const src,
   build_lb_graph<direction::kForward>(tt);
   build_lb_graph<direction::kBackward>(tt);
   build_route_stop_times(tt);
+  build_route_traffic_days(tt);
 }
 
 }  // namespace nigiri::loader::hrd

@@ -7,6 +7,7 @@
 #include "date/tz.h"
 
 #include "cista/containers/bitset.h"
+#include "cista/containers/bitvec.h"
 #include "cista/containers/hash_map.h"
 #include "cista/containers/hash_set.h"
 #include "cista/containers/matrix.h"
@@ -33,7 +34,10 @@ constexpr auto const kBaseDayOffset = std::chrono::days{1};
 template <size_t Size>
 using bitset = cista::bitset<Size>;
 
-using bitfield = bitset<512>;
+constexpr auto const kMaxDays = 512;
+using bitfield = bitset<kMaxDays>;
+
+using bitvec = cista::offset::bitvec;
 
 template <typename... Args>
 using tuple = cista::tuple<Args...>;
