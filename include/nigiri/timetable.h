@@ -143,7 +143,6 @@ struct timetable {
   struct transport {
     bitfield_idx_t bitfield_idx_;
     route_idx_t route_idx_;
-    std::basic_string<minutes_after_midnight_t> const& stop_times_;
     std::basic_string<merged_trips_idx_t> const& external_trip_ids_;
     std::basic_string<attribute_combination_idx_t> const& section_attributes_;
     std::basic_string<provider_idx_t> const& section_providers_;
@@ -222,7 +221,6 @@ struct timetable {
   void add_transport(transport&& t) {
     transport_traffic_days_.emplace_back(t.bitfield_idx_);
     transport_route_.emplace_back(t.route_idx_);
-    transport_stop_times_.emplace_back(t.stop_times_);
     transport_to_trip_section_.emplace_back(t.external_trip_ids_);
     transport_section_attributes_.emplace_back(t.section_attributes_);
     transport_section_providers_.emplace_back(t.section_providers_);
@@ -246,24 +244,6 @@ struct timetable {
 
   transport_idx_t next_transport_idx() const {
     return transport_idx_t{transport_traffic_days_.size()};
-  }
-
-  minutes_after_midnight_t event_mam(transport_idx_t const transport_idx,
-                                     std::size_t const stop_idx,
-                                     event_type const ev_type) const {
-    // Event times are stored alternatingly:
-    // departure (D), arrival (A), ..., arrival (A)
-    // event type: D A D A D A D A
-    // stop index: 0 1 1 2 2 3 3 4
-    // event time: 0 1 2 3 4 5 6 7
-    // --> A at stop i = i x 2 - 1
-    // --> D at stop i = i x 2
-    // There's no arrival at the first stop and no departure at the last stop.
-    assert(!(stop_idx == 0 && ev_type == event_type::kArr));
-    assert(!(stop_idx == transport_stop_times_[transport_idx].size() - 1 &&
-             ev_type == event_type::kDep));
-    auto const idx = stop_idx * 2 - (ev_type == event_type::kArr ? 1 : 0);
-    return transport_stop_times_[transport_idx][idx];
   }
 
   std::span<minutes_after_midnight_t const> event_times_at_stop(
@@ -290,6 +270,12 @@ struct timetable {
         n_transports * (stop_idx * 2 - (ev_type == event_type::kArr ? 1 : 0)));
     auto const t_idx_in_route = to_idx(t) - to_idx(range.from_);
     return route_stop_times_[route_stop_begin + t_idx_in_route];
+  }
+
+  minutes_after_midnight_t event_mam(transport_idx_t t,
+                                     std::size_t const stop_idx,
+                                     event_type const ev_type) const {
+    return event_mam(transport_route_[t], t, stop_idx, ev_type);
   }
 
   unixtime_t event_time(nigiri::transport t,
@@ -372,9 +358,6 @@ struct timetable {
 
   // Location -> list of routes
   mutable_fws_multimap<location_idx_t, route_idx_t> location_routes_;
-
-  // Trip index -> sequence of stop times
-  vecvec<transport_idx_t, minutes_after_midnight_t> transport_stop_times_;
 
   // Route 1:
   //   stop-1-dep: [trip1, trip2, ..., tripN]

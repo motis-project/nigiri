@@ -92,11 +92,11 @@ stats const& raptor<SearchDir>::get_stats() const {
 }
 
 template <direction SearchDir>
-routing_time raptor<SearchDir>::time_at_stop(route_idx_t const r,
+routing_time raptor<SearchDir>::time_at_stop(route_idx_t const,
                                              transport const t,
                                              unsigned const stop_idx,
                                              event_type const ev_type) {
-  return {t.day_, tt_.event_mam(r, t.t_idx_, stop_idx, ev_type)};
+  return {t.day_, tt_.event_mam(t.t_idx_, stop_idx, ev_type)};
 }
 
 template <direction SearchDir>

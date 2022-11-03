@@ -220,7 +220,6 @@ void service_builder::write_services(const nigiri::source_idx_t src) {
                   bitfield_indices_, s.utc_traffic_days_,
                   [&]() { return tt_.register_bitfield(s.utc_traffic_days_); }),
               .route_idx_ = route_idx,
-              .stop_times_ = s.utc_times_,
               .external_trip_ids_ = {merged_trip},
               .section_attributes_ = section_attributes_,
               .section_providers_ = section_providers_,
@@ -232,7 +231,30 @@ void service_builder::write_services(const nigiri::source_idx_t src) {
           continue;
         }
       }
+
       tt_.finish_route();
+
+      // Event times are stored alternatingly:
+      // departure (D), arrival (A), ..., arrival (A)
+      // event type: D A D A D A D A
+      // stop index: 0 1 1 2 2 3 3 4
+      // event time: 0 1 2 3 4 5 6 7
+      // --> A at stop i = i x 2 - 1
+      // --> D at stop i = i x 2
+      // There's no arrival at the first stop and no departure at the last stop.
+      auto const stop_times_begin = tt_.route_stop_times_.size();
+      for (auto const [from, to] :
+           utl::pairwise(interval{std::size_t{0U}, stop_seq.size()})) {
+        for (auto const& s : services) {
+          tt_.route_stop_times_.emplace_back(s.utc_times_[from * 2]);
+        }
+        for (auto const& s : services) {
+          tt_.route_stop_times_.emplace_back(s.utc_times_[to * 2 - 1]);
+        }
+      }
+      auto const stop_times_end = tt_.route_stop_times_.size();
+      tt_.route_stop_time_ranges_.emplace_back(
+          interval{stop_times_begin, stop_times_end});
     }
   }
   route_services_.clear();

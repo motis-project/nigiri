@@ -20,7 +20,7 @@ std::string reverse(std::string s) {
 std::ostream& operator<<(std::ostream& out, timetable const& tt) {
   auto const num_days = static_cast<size_t>(
       (tt.date_range_.to_ - tt.date_range_.from_ + 1_days) / 1_days);
-  for (auto i = 0U; i != tt.transport_stop_times_.size(); ++i) {
+  for (auto i = 0U; i != tt.transport_traffic_days_.size(); ++i) {
     auto const transport_idx = transport_idx_t{i};
     auto const traffic_days =
         tt.bitfields_.at(tt.transport_traffic_days_.at(transport_idx));
@@ -42,32 +42,6 @@ std::ostream& operator<<(std::ostream& out, timetable const& tt) {
     out << "---\n\n";
   }
   return out;
-}
-
-void print_1(std::ostream& out, timetable const& tt) {
-  auto const num_days = static_cast<size_t>(
-      (tt.date_range_.to_ - tt.date_range_.from_ + 1_days) / 1_days);
-  for (auto i = 0U; i != tt.transport_stop_times_.size(); ++i) {
-    auto const transport_idx = transport_idx_t{i};
-    auto const traffic_days =
-        tt.bitfields_.at(tt.transport_traffic_days_.at(transport_idx));
-    out << "TRANSPORT=" << transport_idx << ", TRAFFIC_DAYS="
-        << reverse(
-               traffic_days.to_string().substr(traffic_days.size() - num_days))
-        << "\n";
-    for (auto d = tt.date_range_.from_; d != tt.date_range_.to_;
-         d += std::chrono::days{1}) {
-      auto const day_idx = day_idx_t{
-          static_cast<day_idx_t::value_t>((d - tt.date_range_.from_) / 1_days)};
-      if (traffic_days.test(to_idx(day_idx))) {
-        date::to_stream(out, "%F", d);
-        out << " (day_idx=" << day_idx << ")\n";
-        print_transport_1(tt, out, {transport_idx, day_idx});
-        out << "\n";
-      }
-    }
-    out << "---\n\n";
-  }
 }
 
 cista::wrapped<timetable> timetable::read(cista::memory_holder mem) {
