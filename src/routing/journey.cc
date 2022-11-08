@@ -22,7 +22,7 @@ void journey::leg::print(std::ostream& out,
                              },
                              [&](std::uint8_t const x) {
                                indent(out, n_indent);
-                               out << "MUMO ID " << x << "\n";
+                               out << "MUMO ID " << static_cast<int>(x) << "\n";
                              }},
              uses_);
 }

@@ -10,7 +10,8 @@ void for_each_meta(timetable const& tt,
                    location_match_mode const mode,
                    location_idx_t const l,
                    Fn&& fn) {
-  if (mode == location_match_mode::kExact) {
+  if (mode == location_match_mode::kExact ||
+      mode == location_match_mode::kIntermodal) {
     fn(l);
   } else if (mode == location_match_mode::kOnlyChildren) {
     fn(l);

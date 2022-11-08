@@ -189,11 +189,11 @@ location_map_t parse_stations(config const& c,
     auto const id =
         location_id{.id_ = fmt::format("{:07}", eva_int), .src_ = src};
     auto const transfer_time = duration_t{eva_int < 1000000 ? 2 : 5};
-    auto const idx = tt.locations_.register_location(
-        location{id.id_, s.name_, s.pos_, src, location_type::kStation,
-                 osm_node_id_t::invalid(), location_idx_t::invalid(),
-                 st.get_tz(s.id_).first, transfer_time, it_range{empty_idx_vec},
-                 it_range{empty_footpath_vec}, it_range{empty_footpath_vec}});
+    auto const idx = tt.locations_.register_location(location{
+        id.id_, s.name_, s.pos_, src, location_type::kStation,
+        osm_node_id_t::invalid(), location_idx_t::invalid(),
+        st.get_tz(s.id_).first, transfer_time, it_range{empty_idx_vec},
+        it_range{empty_footpath_vec}, it_range{empty_footpath_vec}});
     s.idx_ = idx;
   }
 

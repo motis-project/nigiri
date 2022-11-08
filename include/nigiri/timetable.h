@@ -228,18 +228,7 @@ struct timetable {
     transport_section_lines_.emplace_back(t.section_lines_);
 
     assert(transport_traffic_days_.size() == transport_route_.size());
-    assert(transport_traffic_days_.size() == transport_stop_times_.size());
     assert(transport_traffic_days_.size() == transport_to_trip_section_.size());
-    assert(t.stop_times_.size() ==
-           route_location_seq_.at(t.route_idx_).size() * 2 - 2);
-    assert(t.external_trip_ids_.size() == 1U ||
-           t.external_trip_ids_.size() == t.stop_times_.size() / 2);
-    assert(t.section_attributes_.size() <= 1U ||
-           t.section_attributes_.size() == t.stop_times_.size() / 2);
-    assert(t.section_providers_.size() == 1U ||
-           t.section_providers_.size() == t.stop_times_.size() / 2);
-    assert(t.section_directions_.size() <= 1U ||
-           t.section_directions_.size() == t.stop_times_.size() / 2);
   }
 
   transport_idx_t next_transport_idx() const {

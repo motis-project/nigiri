@@ -234,20 +234,38 @@ void service_builder::write_services(const nigiri::source_idx_t src) {
 
       tt_.finish_route();
 
-      // Event times are stored alternatingly:
+      // Event times are stored alternatingly in utc_times_:
       // departure (D), arrival (A), ..., arrival (A)
       // event type: D A D A D A D A
       // stop index: 0 1 1 2 2 3 3 4
       // event time: 0 1 2 3 4 5 6 7
       // --> A at stop i = i x 2 - 1
       // --> D at stop i = i x 2
-      // There's no arrival at the first stop and no departure at the last stop.
+      // Note: no arrival at the first stop and no departure at the last stop.
+      //
+      // Transform route from:
+      //   [[D(0, 0), A(0, 1), D(0, 1), A(0, 2), ...],
+      //    [D(1, 0), A(1, 1), D(1, 1), A(1, 2), ...],
+      //    ... ]
+      // to:
+      //   [D(0, 0), D(1, 0), D(2, 0), ..., D(N, 0),
+      //    A(0, 1), A(1, 1), A(2, 1), ..., A(N, 1),
+      //    D(0, 1), D(1, 1), D(2, 1), ..., D(N, 1),
+      //    A(0, 2), A(1, 2), A(2, 2), ..., A(N, 2),
+      //    ...]
+      //
+      // Where D(x, y) is departure of transport x at stop index y in the route
+      // location sequence and A(x, y) is the arrival.
+
       auto const stop_times_begin = tt_.route_stop_times_.size();
       for (auto const [from, to] :
            utl::pairwise(interval{std::size_t{0U}, stop_seq.size()})) {
+        // Write departure times of all route services at stop i.
         for (auto const& s : services) {
           tt_.route_stop_times_.emplace_back(s.utc_times_[from * 2]);
         }
+
+        // Write arrival times of all route services at stop i+1.
         for (auto const& s : services) {
           tt_.route_stop_times_.emplace_back(s.utc_times_[to * 2 - 1]);
         }
