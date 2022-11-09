@@ -11,6 +11,30 @@ namespace nigiri::routing {
 constexpr auto const kTracing = true;
 constexpr auto const kTraceStart = true;
 
+bool matches(timetable const& tt,
+             location_match_mode const mode,
+             location_idx_t const a,
+             location_idx_t const b) {
+  switch (mode) {
+    case location_match_mode::kExact: [[fallthrough]];
+    case location_match_mode::kIntermodal: return a == b;
+    case location_match_mode::kOnlyChildren: [[fallthrough]];
+    case location_match_mode::kEquivalent:
+      if (a == b) {
+        return true;
+      }
+
+      {
+        auto matches = false;
+        for_each_meta(tt, mode, a, [&](location_idx_t const candidate) {
+          matches = matches || (candidate == b);
+        });
+        return matches;
+      }
+    default: return true;
+  }
+}
+
 template <typename... Args>
 void trace(char const* fmt_str, Args... args) {
   if constexpr (kTracing) {
@@ -36,16 +60,7 @@ std::optional<journey::leg> find_initial_footpath(timetable const& tt,
 
   auto const is_journey_start = [&](location_idx_t const candidate_l) {
     return std::any_of(begin(q.start_), end(q.start_), [&](offset const& o) {
-      if (o.location_ == candidate_l) {
-        trace("  {} found\n", location{tt, o.location_});
-        return true;
-      }
-      auto match = false;
-      for_each_meta(
-          tt, q.start_match_mode_, o.location_,
-          [&](location_idx_t const l) { match |= (candidate_l == l); });
-      trace("  meta found\n");
-      return match;
+      return matches(tt, q.start_match_mode_, o.location_, candidate_l);
     });
   };
 
@@ -70,14 +85,13 @@ std::optional<journey::leg> find_initial_footpath(timetable const& tt,
           .type_ = 0U};
 
       for (auto const& o : q.start_) {
-        if (o.location_ != leg_start_location ||
-            std::abs((leg_start_time - j.start_time_).count()) !=
-                o.offset_.count()) {
+        if (!matches(tt, q.start_match_mode_, o.location_,
+                     leg_start_location)) {
           trace_start(
               "    location mismatch / time mismatch: {} vs {}, {} vs {} with "
-              "offset={}\n",
+              "offset={}, match_mode={}\n",
               location{tt, o.location_}, location{tt, leg_start_location},
-              j.start_time_, leg_start_time, o.offset_);
+              j.start_time_, leg_start_time, o.offset_, q.start_match_mode_);
           continue;
         }
 
@@ -92,13 +106,15 @@ std::optional<journey::leg> find_initial_footpath(timetable const& tt,
 
       utl::verify(min.location_ != location_idx_t::invalid(), "no start found");
 
-      return journey::leg{
-          SearchDir,
-          kFwd ? get_special_station(special_station::kStart) : min.location_,
-          kFwd ? min.location_ : get_special_station(special_station::kDest),
-          j.start_time_,
-          leg_start_time,
-          min.type_};
+      return q.start_match_mode_ == location_match_mode::kIntermodal
+                 ? std::make_optional<journey::leg>(
+                       SearchDir,
+                       kFwd ? get_special_station(special_station::kStart)
+                            : min.location_,
+                       kFwd ? min.location_
+                            : get_special_station(special_station::kDest),
+                       j.start_time_, leg_start_time, min.type_)
+                 : std::nullopt;
     }
   }
 

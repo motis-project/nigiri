@@ -25,7 +25,7 @@ struct stats {
   std::uint64_t lb_time_{0ULL};
 };
 
-template <direction SearchDir>
+template <direction SearchDir, bool IntermodalTarget>
 struct raptor {
   raptor(timetable& tt, search_state& state, query q);
   void route();

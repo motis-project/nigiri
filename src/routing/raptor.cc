@@ -64,43 +64,46 @@ auto get_end_it(T const& t) {
   }
 }
 
-template <direction SearchDir>
-raptor<SearchDir>::raptor(timetable& tt, search_state& state, query q)
+template <direction SearchDir, bool IntermodalTarget>
+raptor<SearchDir, IntermodalTarget>::raptor(timetable& tt,
+                                            search_state& state,
+                                            query q)
     : tt_{tt},
       n_days_{static_cast<std::uint16_t>(tt_.date_range_.size().count())},
       q_{std::move(q)},
       state_{state} {}
 
-template <direction SearchDir>
-bool raptor<SearchDir>::is_better(auto a, auto b) {
+template <direction SearchDir, bool IntermodalTarget>
+bool raptor<SearchDir, IntermodalTarget>::is_better(auto a, auto b) {
   return kFwd ? a < b : a > b;
 }
 
-template <direction SearchDir>
-bool raptor<SearchDir>::is_better_or_eq(auto a, auto b) {
+template <direction SearchDir, bool IntermodalTarget>
+bool raptor<SearchDir, IntermodalTarget>::is_better_or_eq(auto a, auto b) {
   return kFwd ? a <= b : a >= b;
 }
 
-template <direction SearchDir>
-auto raptor<SearchDir>::get_best(auto a, auto b) {
+template <direction SearchDir, bool IntermodalTarget>
+auto raptor<SearchDir, IntermodalTarget>::get_best(auto a, auto b) {
   return is_better(a, b) ? a : b;
 }
 
-template <direction SearchDir>
-stats const& raptor<SearchDir>::get_stats() const {
+template <direction SearchDir, bool IntermodalTarget>
+stats const& raptor<SearchDir, IntermodalTarget>::get_stats() const {
   return stats_;
 }
 
-template <direction SearchDir>
-routing_time raptor<SearchDir>::time_at_stop(route_idx_t const,
-                                             transport const t,
-                                             unsigned const stop_idx,
-                                             event_type const ev_type) {
+template <direction SearchDir, bool IntermodalTarget>
+routing_time raptor<SearchDir, IntermodalTarget>::time_at_stop(
+    route_idx_t const,
+    transport const t,
+    unsigned const stop_idx,
+    event_type const ev_type) {
   return {t.day_, tt_.event_mam(t.t_idx_, stop_idx, ev_type)};
 }
 
-template <direction SearchDir>
-transport raptor<SearchDir>::get_earliest_transport(
+template <direction SearchDir, bool IntermodalTarget>
+transport raptor<SearchDir, IntermodalTarget>::get_earliest_transport(
     unsigned const k,
     route_idx_t const r,
     unsigned const stop_idx,
@@ -213,8 +216,9 @@ transport raptor<SearchDir>::get_earliest_transport(
   return {transport_idx_t::invalid(), day_idx_t::invalid()};
 }
 
-template <direction SearchDir>
-bool raptor<SearchDir>::update_route(unsigned const k, route_idx_t const r) {
+template <direction SearchDir, bool IntermodalTarget>
+bool raptor<SearchDir, IntermodalTarget>::update_route(unsigned const k,
+                                                       route_idx_t const r) {
   auto const stop_seq = tt_.route_location_seq_[r];
   bool any_marked = false;
 
@@ -362,8 +366,8 @@ bool raptor<SearchDir>::update_route(unsigned const k, route_idx_t const r) {
   return any_marked;
 }
 
-template <direction SearchDir>
-void raptor<SearchDir>::update_footpaths(unsigned const k) {
+template <direction SearchDir, bool IntermodalTarget>
+void raptor<SearchDir, IntermodalTarget>::update_footpaths(unsigned const k) {
   trace_always("┊ ├ FOOTPATHS\n");
   for (auto l_idx = location_idx_t{0U}; l_idx != tt_.n_locations(); ++l_idx) {
     if (!state_.station_mark_[to_idx(l_idx)] ||
@@ -433,13 +437,13 @@ void raptor<SearchDir>::update_footpaths(unsigned const k) {
   }
 }
 
-template <direction SearchDir>
-unsigned raptor<SearchDir>::end_k() const {
+template <direction SearchDir, bool IntermodalTarget>
+unsigned raptor<SearchDir, IntermodalTarget>::end_k() const {
   return std::min(kMaxTransfers, q_.max_transfers_) + 1U;
 }
 
-template <direction SearchDir>
-void raptor<SearchDir>::rounds() {
+template <direction SearchDir, bool IntermodalTarget>
+void raptor<SearchDir, IntermodalTarget>::rounds() {
   print_state();
 
   for (auto k = 1U; k != end_k(); ++k) {
@@ -492,8 +496,9 @@ void raptor<SearchDir>::rounds() {
   }
 }
 
-template <direction SearchDir>
-void raptor<SearchDir>::force_print_state(char const* comment) {
+template <direction SearchDir, bool IntermodalTarget>
+void raptor<SearchDir, IntermodalTarget>::force_print_state(
+    char const* comment) {
   auto const empty_rounds = [&](std::uint32_t const l) {
     for (auto k = 0U; k != end_k(); ++k) {
       if (state_.round_times_[k][l] != kInvalidTime<SearchDir>) {
@@ -547,17 +552,18 @@ void raptor<SearchDir>::force_print_state(char const* comment) {
 }
 
 #ifdef NIGIRI_RAPTOR_TRACING
-template <direction SearchDir>
-void raptor<SearchDir>::print_state(char const* comment) {
+template <direction SearchDir, bool IntermodalTarget>
+void raptor<SearchDir, IntermodalTarget>::print_state(char const* comment) {
   force_print_state(comment);
 }
 #else
-template <direction SearchDir>
-void raptor<SearchDir>::print_state(char const*) {}
+template <direction SearchDir, bool IntermodalTarget>
+void raptor<SearchDir, IntermodalTarget>::print_state(char const*) {}
 #endif
 
-template <direction SearchDir>
-void raptor<SearchDir>::set_time_at_destination(unsigned const k) {
+template <direction SearchDir, bool IntermodalTarget>
+void raptor<SearchDir, IntermodalTarget>::set_time_at_destination(
+    unsigned const k) {
   for (auto const dest : state_.destinations_.front()) {
     time_at_destination_ =
         get_best(state_.round_times_[k][to_idx(dest)],
@@ -565,8 +571,8 @@ void raptor<SearchDir>::set_time_at_destination(unsigned const k) {
   }
 }
 
-template <direction SearchDir>
-void raptor<SearchDir>::route() {
+template <direction SearchDir, bool IntermodalTarget>
+void raptor<SearchDir, IntermodalTarget>::route() {
   state_.reset(tt_, kInvalidTime<SearchDir>);
   collect_destinations(tt_, q_.destinations_, q_.dest_match_mode_,
                        state_.destinations_, state_.is_destination_);
@@ -639,8 +645,9 @@ void raptor<SearchDir>::route() {
       }});
 }
 
-template <direction SearchDir>
-void raptor<SearchDir>::reconstruct(unixtime_t const start_at_start) {
+template <direction SearchDir, bool IntermodalTarget>
+void raptor<SearchDir, IntermodalTarget>::reconstruct(
+    unixtime_t const start_at_start) {
   for (auto const [i, t] : utl::enumerate(q_.destinations_)) {
     for (auto const dest : state_.destinations_[i]) {
       for (auto k = 1U; k != end_k(); ++k) {
@@ -679,7 +686,9 @@ void raptor<SearchDir>::reconstruct(unixtime_t const start_at_start) {
   }
 }
 
-template struct raptor<direction::kForward>;
-template struct raptor<direction::kBackward>;
+template struct raptor<direction::kForward, true>;
+template struct raptor<direction::kBackward, true>;
+template struct raptor<direction::kForward, false>;
+template struct raptor<direction::kBackward, false>;
 
 }  // namespace nigiri::routing
