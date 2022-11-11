@@ -17,6 +17,13 @@ enum class special_station : location_idx_t::value_t {
   kSpecialStationsSize
 };
 
+constexpr bool is_special(location_idx_t const l) {
+  constexpr auto const max =
+      static_cast<std::underlying_type_t<special_station>>(
+          special_station::kSpecialStationsSize);
+  return to_idx(l) < max;
+}
+
 constexpr auto const special_stations_names =
     cista::array<std::string_view,
                  static_cast<std::underlying_type_t<special_station>>(

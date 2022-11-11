@@ -44,6 +44,9 @@ private:
                             transport,
                             unsigned stop_idx,
                             event_type ev_type);
+
+  routing_time time_at_stop(transport, unsigned stop_idx, event_type ev_type);
+
   transport get_earliest_transport(unsigned const k,
                                    route_idx_t const r,
                                    unsigned const stop_idx,
