@@ -27,7 +27,7 @@ struct stats {
 
 template <direction SearchDir, bool IntermodalTarget>
 struct raptor {
-  raptor(timetable& tt, search_state& state, query q);
+  raptor(timetable const& tt, search_state& state, query q);
   void route();
 
   stats const& get_stats() const;

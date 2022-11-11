@@ -65,7 +65,7 @@ auto get_end_it(T const& t) {
 }
 
 template <direction SearchDir, bool IntermodalTarget>
-raptor<SearchDir, IntermodalTarget>::raptor(timetable& tt,
+raptor<SearchDir, IntermodalTarget>::raptor(timetable const& tt,
                                             search_state& state,
                                             query q)
     : tt_{tt},

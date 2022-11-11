@@ -112,7 +112,7 @@ std::optional<journey::leg> find_initial_footpath(timetable const& tt,
                        kFwd ? get_special_station(special_station::kStart)
                             : min.location_,
                        kFwd ? min.location_
-                            : get_special_station(special_station::kDest),
+                            : get_special_station(special_station::kEnd),
                        j.start_time_, leg_start_time, min.type_)
                  : std::nullopt;
     }
