@@ -260,8 +260,8 @@ bool raptor<SearchDir, IntermodalTarget>::update_route(unsigned const k,
       auto const by_transport_time = time_at_stop(
           r, et, stop_idx, kFwd ? event_type::kArr : event_type::kDep);
       auto const by_transport_time_with_transfer =
-          by_transport_time +
-          ((is_destination ? 0U : 1U) * transfer_time_offset);
+          by_transport_time + ((is_destination && !IntermodalTarget ? 0U : 1U) *
+                               transfer_time_offset);
 
       if ((kFwd ? stop.out_allowed() : stop.in_allowed()) &&
           is_better(by_transport_time_with_transfer, current_best) &&

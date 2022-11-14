@@ -91,7 +91,7 @@ std::optional<journey::leg> find_initial_footpath(timetable const& tt,
                             : min.target_,
                        kFwd ? min.target_
                             : get_special_station(special_station::kEnd),
-                       j.start_time_, leg_start_time, min.type_)
+                       j.start_time_, leg_start_time, min)
                  : std::nullopt;
     }
   }
@@ -122,7 +122,7 @@ std::optional<journey::leg> find_initial_footpath(timetable const& tt,
                             leg_start_location,
                             j.start_time_,
                             fp_target_time.to_unixtime(tt),
-                            o.type_};
+                            o};
       } else {
         trace_start(
             "  no start: START -> {}  matches={}, leg_start_location={}, "
@@ -147,7 +147,7 @@ std::optional<journey::leg> find_initial_footpath(timetable const& tt,
                             leg_start_location,
                             j.start_time_,
                             fp_target_time.to_unixtime(tt),
-                            footpath_idx_t{}};
+                            fp};
       } else {
         trace_start(
             "  no start: {} -> {}  is_journey_start(fp.target_)={} "
@@ -326,7 +326,7 @@ void reconstruct_journey(timetable const& tt,
                                        l,
                                        fp_start.to_unixtime(tt),
                                        curr_time.to_unixtime(tt),
-                                       footpath_idx_t::invalid()};
+                                       fp};
       return std::pair{fp_leg, *transport_leg};
     } else {
       trace("nothing found\n");
@@ -343,21 +343,30 @@ void reconstruct_journey(timetable const& tt,
       trace("  CHECKING INTERMODAL DEST\n");
       for (auto const& fp : q.destinations_[0]) {
         std::optional<std::pair<journey::leg, journey::leg>> ret;
-        for_each_meta(tt, location_match_mode::kIntermodal, fp.target_,
-                      [&](location_idx_t const eq) {
-                        auto intermodal_dest =
-                            check_fp(k, l, curr_time, {eq, fp.duration_});
-                        if (intermodal_dest.has_value()) {
-                          trace("  found offset END [{}] -> {}: {}\n",
-                                curr_time, location{tt, fp.target_},
-                                fp.duration_);
-                          intermodal_dest->first.uses_ = fp.type_;
-                          ret = std::move(intermodal_dest);
-                        } else {
-                          trace("  BAD offset: END [{}] -> {}: {}\n", curr_time,
-                                location{tt, fp.target_}, fp.duration_);
-                        }
-                      });
+        for_each_meta(
+            tt, location_match_mode::kIntermodal, fp.target_,
+            [&](location_idx_t const eq) {
+              auto const transfer_time = tt.locations_.transfer_time_[eq];
+              auto intermodal_dest =
+                  check_fp(k, l, curr_time, {eq, fp.duration_ + transfer_time});
+              if (intermodal_dest.has_value()) {
+                trace(
+                    "  found intermodal dest offset END [{}] -> {}: offset={}, "
+                    "transfer_time={}\n",
+                    curr_time, location{tt, fp.target_}, fp.duration_,
+                    transfer_time);
+                intermodal_dest->first.dep_time_ += transfer_time;
+                intermodal_dest->first.uses_ =
+                    offset{eq, fp.duration_, fp.type_};
+                ret = std::move(intermodal_dest);
+              } else {
+                trace(
+                    "  BAD intermodal dest offset: END [{}] -> {}: {}, "
+                    "transfer_time={}\n",
+                    curr_time, location{tt, fp.target_}, fp.duration_,
+                    transfer_time);
+              }
+            });
         if (ret.has_value()) {
           return std::move(*ret);
         }
