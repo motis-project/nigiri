@@ -60,6 +60,9 @@ private:
   void force_print_state(char const* comment = "");
   void print_state(char const* comment = "");
 
+  void reconstruct_for_destination(unixtime_t start_at_start,
+                                   std::size_t dest_index,
+                                   location_idx_t dest);
   void reconstruct(unixtime_t const start_at_start);
 
   void set_time_at_destination(unsigned round_k);

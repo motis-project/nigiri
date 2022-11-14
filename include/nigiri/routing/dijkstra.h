@@ -34,10 +34,10 @@ void dijkstra(timetable const& tt,
 
   dial<label, kMaxTravelTime, get_bucket> pq;
   for (auto const& start : q.destinations_.front()) {
-    for_each_meta(tt, q.dest_match_mode_, start.location_,
+    for_each_meta(tt, q.dest_match_mode_, start.target_,
                   [&](location_idx_t const meta) {
-                    pq.push(label{meta, start.offset_});
-                    dists[to_idx(meta)] = start.offset_;
+                    pq.push(label{meta, start.duration_});
+                    dists[to_idx(meta)] = start.duration_;
                   });
   }
 

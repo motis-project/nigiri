@@ -26,8 +26,8 @@
 #define NIGIRI_COUNT(s)
 #endif
 
-#define NIGIRI_RAPTOR_TRACING
-#define NIGIRI_RAPTOR_TRACING_ONLY_UPDATES
+// #define NIGIRI_RAPTOR_TRACING
+// #define NIGIRI_RAPTOR_TRACING_ONLY_UPDATES
 
 #ifdef NIGIRI_RAPTOR_TRACING
 
@@ -324,9 +324,11 @@ bool raptor<SearchDir, IntermodalTarget>::update_route(unsigned const k,
         state_.best_[l_idx] = by_transport_time_with_transfer;
         state_.round_times_[k][l_idx] = by_transport_time_with_transfer;
         state_.station_mark_[l_idx] = true;
-        if (is_destination) {
-          time_at_destination_ =
-              get_best(by_transport_time_with_transfer, time_at_destination_);
+        if constexpr (!IntermodalTarget) {
+          if (is_destination) {
+            time_at_destination_ =
+                get_best(by_transport_time_with_transfer, time_at_destination_);
+          }
         }
         current_best = by_transport_time_with_transfer;
         any_marked = true;
@@ -388,20 +390,24 @@ void raptor<SearchDir, IntermodalTarget>::update_footpaths(unsigned const k) {
 
     if constexpr (IntermodalTarget) {
       if (state_.is_destination_[to_idx(l_idx)]) {
+        trace_upd("┊ ├  INTERMODAL TARGET STATION {}\n", location{tt_, l_idx});
         for (auto const& o : q_.destinations_[0]) {
-          if (o.location_ != l_idx) {
+          if (!matches(tt_, location_match_mode::kIntermodal, o.target_,
+                       l_idx)) {
+            trace("┊ ├    {} != {}\n", location{tt_, o.target_},
+                  location{tt_, l_idx});
             continue;
           }
 
           auto const intermodal_target_time =
-              state_.best_[to_idx(l_idx)] + ((kFwd ? 1 : -1) * o.offset_);
+              state_.best_[to_idx(l_idx)] + ((kFwd ? 1 : -1) * o.duration_);
           if (is_better(intermodal_target_time, time_at_destination_)) {
             trace_upd(
-                "┊ ├ intermodal: (name={}, id={}, best={}) --{}--> (DEST, "
+                "┊ ├     intermodal: (name={}, id={}, best={}) --{}--> (DEST, "
                 "best={}) --> update => {}\n",
                 tt_.locations_.names_[l_idx].view(),
                 tt_.locations_.ids_[l_idx].view(),
-                state_.round_times_[k][to_idx(l_idx)], o.offset_,
+                state_.round_times_[k][to_idx(l_idx)], o.duration_,
                 time_at_destination_, intermodal_target_time);
 
             state_.round_times_[k][to_idx(get_special_station(
@@ -466,6 +472,7 @@ void raptor<SearchDir, IntermodalTarget>::update_footpaths(unsigned const k) {
         NIGIRI_COUNT(n_earliest_arrival_updated_by_footpath_);
         state_.round_times_[k][to_idx(fp.target_)] = fp_target_time;
         state_.station_mark_[to_idx(fp.target_)] = true;
+
         if (state_.is_destination_[to_idx(fp.target_)]) {
           time_at_destination_ = get_best(time_at_destination_, fp_target_time);
         }
@@ -683,41 +690,52 @@ void raptor<SearchDir, IntermodalTarget>::route() {
 }
 
 template <direction SearchDir, bool IntermodalTarget>
+void raptor<SearchDir, IntermodalTarget>::reconstruct_for_destination(
+    unixtime_t const start_at_start,
+    std::size_t const i,
+    location_idx_t const dest) {
+  for (auto k = 1U; k != end_k(); ++k) {
+    if (state_.round_times_[k][to_idx(dest)] == kInvalidTime<SearchDir>) {
+      continue;
+    }
+    trace_always("ADDING JOURNEY: start={}, dest={} @ {}, transfers={}",
+                 start_at_start,
+                 state_.round_times_[k][to_idx(dest)].to_unixtime(tt_),
+                 location{tt_, dest}, k - 1);
+    auto const [optimal, it] = state_.results_[i].add(journey{
+        .legs_ = {},
+        .start_time_ = start_at_start,
+        .dest_time_ = state_.round_times_[k][to_idx(dest)].to_unixtime(tt_),
+        .dest_ = dest,
+        .transfers_ = static_cast<std::uint8_t>(k - 1)});
+    trace_always(" -> {}\n", optimal ? "OPT" : "DISCARD");
+    if (optimal) {
+      auto const outside_interval =
+          holds_alternative<interval<unixtime_t>>(q_.start_time_) &&
+          !q_.start_time_.as<interval<unixtime_t>>().contains(it->start_time_);
+      if (!outside_interval) {
+        try {
+          reconstruct_journey<SearchDir>(tt_, q_, state_, *it);
+        } catch (std::exception const& e) {
+          state_.results_[i].erase(it);
+          log(log_lvl::error, "routing", "reconstruction failed: {}", e.what());
+          print_state("RECONSTRUCT FAILED");
+        }
+      }
+    }
+  }
+}
+
+template <direction SearchDir, bool IntermodalTarget>
 void raptor<SearchDir, IntermodalTarget>::reconstruct(
     unixtime_t const start_at_start) {
-  for (auto const [i, t] : utl::enumerate(q_.destinations_)) {
-    for (auto const dest : state_.destinations_[i]) {
-      for (auto k = 1U; k != end_k(); ++k) {
-        if (state_.round_times_[k][to_idx(dest)] == kInvalidTime<SearchDir>) {
-          continue;
-        }
-        trace_always("ADDING JOURNEY: start={}, dest={} @ {}, transfers={}",
-                     start_at_start,
-                     state_.round_times_[k][to_idx(dest)].to_unixtime(tt_),
-                     location{tt_, dest}, k - 1);
-        auto const [optimal, it] = state_.results_[i].add(journey{
-            .legs_ = {},
-            .start_time_ = start_at_start,
-            .dest_time_ = state_.round_times_[k][to_idx(dest)].to_unixtime(tt_),
-            .dest_ = dest,
-            .transfers_ = static_cast<std::uint8_t>(k - 1)});
-        trace_always(" -> {}\n", optimal ? "OPT" : "DISCARD");
-        if (optimal) {
-          auto const outside_interval =
-              holds_alternative<interval<unixtime_t>>(q_.start_time_) &&
-              !q_.start_time_.as<interval<unixtime_t>>().contains(
-                  it->start_time_);
-          if (!outside_interval) {
-            try {
-              reconstruct_journey<SearchDir>(tt_, q_, state_, *it);
-            } catch (std::exception const& e) {
-              state_.results_[i].erase(it);
-              log(log_lvl::error, "routing", "reconstruction failed: {}",
-                  e.what());
-              print_state("RECONSTRUCT FAILED");
-            }
-          }
-        }
+  if constexpr (IntermodalTarget) {
+    reconstruct_for_destination(start_at_start, 0U,
+                                get_special_station(special_station::kEnd));
+  } else {
+    for (auto const [i, t] : utl::enumerate(q_.destinations_)) {
+      for (auto const dest : state_.destinations_[i]) {
+        reconstruct_for_destination(start_at_start, i, dest);
       }
     }
   }

@@ -4,15 +4,16 @@
 #include <vector>
 
 #include "nigiri/common/interval.h"
+#include "nigiri/footpath.h"
 #include "nigiri/routing/limits.h"
 #include "nigiri/routing/location_match_mode.h"
 #include "nigiri/types.h"
 
 namespace nigiri::routing {
 
-struct offset {
-  location_idx_t location_;
-  duration_t offset_;
+struct offset : public footpath {
+  offset(location_idx_t const l, duration_t const d, std::uint8_t const t)
+      : footpath{l, d}, type_{t} {}
   std::uint8_t type_;
 };
 
