@@ -6,6 +6,7 @@
 #include <vector>
 
 #include "nigiri/common/interval.h"
+#include "nigiri/footpath.h"
 #include "nigiri/routing/query.h"
 #include "nigiri/types.h"
 

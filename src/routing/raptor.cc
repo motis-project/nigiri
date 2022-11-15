@@ -9,6 +9,7 @@
 #include "utl/timing.h"
 
 #include "nigiri/routing/dijkstra.h"
+#include "nigiri/routing/for_each_meta.h"
 #include "nigiri/routing/journey.h"
 #include "nigiri/routing/limits.h"
 #include "nigiri/routing/reconstruct.h"
@@ -26,26 +27,23 @@
 #define NIGIRI_COUNT(s)
 #endif
 
-// #define NIGIRI_RAPTOR_TRACING
-// #define NIGIRI_RAPTOR_TRACING_ONLY_UPDATES
+#define NIGIRI_RAPTOR_TRACING
+#define NIGIRI_RAPTOR_TRACING_ONLY_UPDATES
 
 #ifdef NIGIRI_RAPTOR_TRACING
 
 #ifdef NIGIRI_RAPTOR_TRACING_ONLY_UPDATES
 #define trace(...)
 #else
-#define trace(...) fmt::print(std::cout, __VA_ARGS__);
+#define trace(...) fmt::print(__VA_ARGS__);
 #endif
 
-#define trace_always(...) fmt::print(std::cout, __VA_ARGS__)
-#define trace_upd(...) fmt::print(std::cout, __VA_ARGS__)
+#define trace_always(...) fmt::print(__VA_ARGS__)
+#define trace_upd(...) fmt::print(__VA_ARGS__)
 #else
-template <typename... Ts>
-void unused(Ts...) {}
-
-#define trace(fmt_str, ...)
-#define trace_always(fmt_str, ...)
-#define trace_upd(fmt_str, ...)
+#define trace(...)
+#define trace_always(...)
+#define trace_upd(...)
 #endif
 
 namespace nigiri::routing {
@@ -285,7 +283,7 @@ bool raptor<SearchDir, IntermodalTarget>::update_route(unsigned const k,
               "time_by_transport={} "
               "BETTER THAN "
               "current_best={} => (name={}, id={}) - "
-              "LB={}, LB_AT_DEST={}!\n",
+              "LB={}, LB_AT_DEST={} (unreachable={})!\n",
               et, tt_.trip_display_names_[trip_idx].view(),
               tt_.source_file_names_
                   [tt_.trip_debug_[trip_idx].front().source_file_idx_]
@@ -294,7 +292,9 @@ bool raptor<SearchDir, IntermodalTarget>::update_route(unsigned const k,
               by_transport_time, current_best,
               tt_.locations_.names_[location_idx_t{l_idx}].view(),
               tt_.locations_.ids_[location_idx_t{l_idx}].view(), lower_bound,
-              by_transport_time + (kFwd ? 1 : -1) * lower_bound);
+              by_transport_time + (kFwd ? 1 : -1) * lower_bound,
+              lower_bound.count() ==
+                  std::numeric_limits<duration_t::rep>::max());
 #endif
 
           NIGIRI_COUNT(route_update_prevented_by_lower_bound_);
@@ -552,7 +552,7 @@ void raptor<SearchDir, IntermodalTarget>::force_print_state(
     return true;
   };
 
-  fmt::print(std::cout, "INFO: {}, time_at_destination={}\n", comment,
+  fmt::print("INFO: {}, time_at_destination={}\n", comment,
              time_at_destination_);
   for (auto l = 0U; l != tt_.n_locations(); ++l) {
     if (!is_special(location_idx_t{l}) && !state_.is_destination_[l] &&
@@ -574,24 +574,24 @@ void raptor<SearchDir, IntermodalTarget>::force_print_state(
     tt_.locations_.names_[location_idx_t{l}].view();
     auto const id = tt_.locations_.ids_[location_idx_t{l}].view();
     fmt::print(
-        std::cout, "[{}] {:8} [name={:48}, track={:10}, id={:16}]: ",
+        "[{}] {:8} [name={:48}, track={:10}, id={:16}]: ",
         state_.is_destination_[l] ? "X" : "_", l, name, track,
         id.substr(0, std::min(std::string_view ::size_type{16U}, id.size())));
     auto const b = state_.best_[l];
     if (b == kInvalidTime<SearchDir>) {
-      fmt::print(std::cout, "best=_________, round_times: ");
+      fmt::print("best=_________, round_times: ");
     } else {
-      fmt::print(std::cout, "best={:9}, round_times: ", b);
+      fmt::print("best={:9}, round_times: ", b);
     }
     for (auto i = 0U; i != kMaxTransfers + 1U; ++i) {
       auto const t = state_.round_times_[i][l];
       if (t != kInvalidTime<SearchDir>) {
-        fmt::print(std::cout, "{:9} ", t);
+        fmt::print("{:9} ", t);
       } else {
-        fmt::print(std::cout, "_________ ");
+        fmt::print("_________ ");
       }
     }
-    fmt::print(std::cout, "\n");
+    fmt::print("\n");
   }
 }
 
