@@ -52,7 +52,7 @@ TEST_CASE("raptor-forward") {
   load_timetable(src, loader::hrd::hrd_5_20_26, files_abc(), tt);
   auto state = routing::search_state{};
 
-  auto fwd_r = routing::raptor<direction::kForward>{
+  auto fwd_r = routing::raptor<direction::kForward, false>{
       tt, state,
       routing::query{
           .start_time_ =
@@ -63,15 +63,13 @@ TEST_CASE("raptor-forward") {
           .dest_match_mode_ = nigiri::routing::location_match_mode::kExact,
           .use_start_footpaths_ = true,
           .start_ = {nigiri::routing::offset{
-              .location_ = tt.locations_.location_id_to_idx_.at(
+              tt.locations_.location_id_to_idx_.at(
                   {.id_ = "0000001", .src_ = src}),
-              .offset_ = 0_minutes,
-              .type_ = 0U}},
+              0_minutes, 0U}},
           .destinations_ = {{nigiri::routing::offset{
-              .location_ = tt.locations_.location_id_to_idx_.at(
+              tt.locations_.location_id_to_idx_.at(
                   {.id_ = "0000003", .src_ = src}),
-              .offset_ = 0_minutes,
-              .type_ = 0U}}},
+              0_minutes, 0U}}},
           .via_destinations_ = {},
           .allowed_classes_ = bitset<kNumClasses>::max(),
           .max_transfers_ = 6U,
@@ -147,7 +145,7 @@ TEST_CASE("raptor-backward") {
   load_timetable(src, loader::hrd::hrd_5_20_26, files_abc(), tt);
   auto state = routing::search_state{};
 
-  auto bwd_r = routing::raptor<direction::kBackward>{
+  auto bwd_r = routing::raptor<direction::kBackward, false>{
       tt, state,
       routing::query{
           .start_time_ =
@@ -158,15 +156,13 @@ TEST_CASE("raptor-backward") {
           .dest_match_mode_ = nigiri::routing::location_match_mode::kExact,
           .use_start_footpaths_ = true,
           .start_ = {nigiri::routing::offset{
-              .location_ = tt.locations_.location_id_to_idx_.at(
+              tt.locations_.location_id_to_idx_.at(
                   {.id_ = "0000003", .src_ = src}),
-              .offset_ = 0_minutes,
-              .type_ = 0U}},
+              0_minutes, 0U}},
           .destinations_ = {{nigiri::routing::offset{
-              .location_ = tt.locations_.location_id_to_idx_.at(
+              tt.locations_.location_id_to_idx_.at(
                   {.id_ = "0000001", .src_ = src}),
-              .offset_ = 0_minutes,
-              .type_ = 0U}}},
+              0_minutes, 0U}}},
           .via_destinations_ = {},
           .allowed_classes_ = bitset<kNumClasses>::max(),
           .max_transfers_ = 6U,

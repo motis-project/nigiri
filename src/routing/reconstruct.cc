@@ -9,8 +9,8 @@
 
 namespace nigiri::routing {
 
-constexpr auto const kTracing = false;
-constexpr auto const kTraceStart = false;
+constexpr auto const kTracing = true;
+constexpr auto const kTraceStart = true;
 
 template <typename... Args>
 void trace(char const* fmt_str, Args... args) {
@@ -27,11 +27,11 @@ void trace_start(char const* fmt_str, Args... args) {
 }
 
 template <direction SearchDir>
-std::optional<journey::leg> find_initial_footpath(timetable const& tt,
-                                                  query const& q,
-                                                  journey const& j,
-                                                  search_state const& state) {
-  trace("find_initial_footpath()\n");
+std::optional<journey::leg> find_start_footpath(timetable const& tt,
+                                                query const& q,
+                                                journey const& j,
+                                                search_state const& state) {
+  trace("find_start_footpath()\n");
 
   constexpr auto const kFwd = SearchDir == direction::kForward;
 
@@ -48,7 +48,7 @@ std::optional<journey::leg> find_initial_footpath(timetable const& tt,
   auto const leg_start_location =
       kFwd ? j.legs_.back().from_ : j.legs_.back().to_;
   auto const leg_start_time =
-      kFwd ? j.legs_.back().dep_time_ : j.legs_.front().arr_time_;
+      kFwd ? j.legs_.back().dep_time_ : j.legs_.back().arr_time_;
   if (is_journey_start(leg_start_location)) {
     if (leg_start_time == j.start_time_) {
       trace_start(
@@ -87,10 +87,10 @@ std::optional<journey::leg> find_initial_footpath(timetable const& tt,
       return q.start_match_mode_ == location_match_mode::kIntermodal
                  ? std::make_optional<journey::leg>(
                        SearchDir,
+                       kFwd ? min.target_
+                            : get_special_station(special_station::kStart),
                        kFwd ? get_special_station(special_station::kStart)
                             : min.target_,
-                       kFwd ? min.target_
-                            : get_special_station(special_station::kEnd),
                        j.start_time_, leg_start_time, min)
                  : std::nullopt;
     }
@@ -355,7 +355,6 @@ void reconstruct_journey(timetable const& tt,
                     "transfer_time={}\n",
                     curr_time, location{tt, fp.target_}, fp.duration_,
                     transfer_time);
-                intermodal_dest->first.dep_time_ += transfer_time;
                 intermodal_dest->first.uses_ =
                     offset{eq, fp.duration_, fp.type_};
                 ret = std::move(intermodal_dest);
@@ -419,7 +418,7 @@ void reconstruct_journey(timetable const& tt,
     j.add(std::move(transport_leg));
   }
 
-  auto init_fp = find_initial_footpath<SearchDir>(tt, q, j, state);
+  auto init_fp = find_start_footpath<SearchDir>(tt, q, j, state);
   if (init_fp.has_value()) {
     j.add(std::move(*init_fp));
   }
