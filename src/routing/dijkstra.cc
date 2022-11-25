@@ -8,7 +8,7 @@
 #include "nigiri/routing/limits.h"
 #include "nigiri/routing/query.h"
 
-#define NIGIRI_DIJKSTRA_TRACING
+// #define NIGIRI_DIJKSTRA_TRACING
 
 #ifdef NIGIRI_DIJKSTRA_TRACING
 #define trace(...) fmt::print(__VA_ARGS__)

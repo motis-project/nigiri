@@ -9,8 +9,8 @@
 
 namespace nigiri::routing {
 
-constexpr auto const kTracing = true;
-constexpr auto const kTraceStart = true;
+constexpr auto const kTracing = false;
+constexpr auto const kTraceStart = false;
 
 template <typename... Args>
 void trace(char const* fmt_str, Args... args) {
@@ -84,14 +84,18 @@ std::optional<journey::leg> find_start_footpath(timetable const& tt,
 
       utl::verify(min.target_ != location_idx_t::invalid(), "no start found");
 
+      trace_start(
+          "initial leg found: {} -> {} ({} - {})\n",
+          location{tt, kFwd ? get_special_station(special_station::kStart)
+                            : min.target_},
+          location{tt, kFwd ? min.target_
+                            : get_special_station(special_station::kStart)},
+          j.start_time_, leg_start_time);
+
       return q.start_match_mode_ == location_match_mode::kIntermodal
                  ? std::make_optional<journey::leg>(
-                       SearchDir,
-                       kFwd ? min.target_
-                            : get_special_station(special_station::kStart),
-                       kFwd ? get_special_station(special_station::kStart)
-                            : min.target_,
-                       j.start_time_, leg_start_time, min)
+                       SearchDir, get_special_station(special_station::kStart),
+                       min.target_, j.start_time_, leg_start_time, min)
                  : std::nullopt;
     }
   }

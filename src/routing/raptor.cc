@@ -27,15 +27,15 @@
 #define NIGIRI_COUNT(s)
 #endif
 
-#define NIGIRI_RAPTOR_TRACING
-#define NIGIRI_RAPTOR_TRACING_ONLY_UPDATES
+// #define NIGIRI_RAPTOR_TRACING
+// #define NIGIRI_RAPTOR_TRACING_ONLY_UPDATES
 
 #ifdef NIGIRI_RAPTOR_TRACING
 
 #ifdef NIGIRI_RAPTOR_TRACING_ONLY_UPDATES
 #define trace(...)
 #else
-#define trace(...) fmt::print(__VA_ARGS__);
+#define trace(...) fmt::print(__VA_ARGS__)
 #endif
 
 #define trace_always(...) fmt::print(__VA_ARGS__)
@@ -122,8 +122,8 @@ transport raptor<SearchDir, IntermodalTarget>::get_earliest_transport(
   if (time == kInvalidTime<SearchDir>) {
     trace("┊ │    et: location=(name={}, id={}, idx={}) => NOT REACHABLE\n",
           tt_.locations_.names_[l_idx].view(),
-          tt_.locations_.ids_[l_idx].view(),
-          l_idx) return {transport_idx_t::invalid(), day_idx_t::invalid()};
+          tt_.locations_.ids_[l_idx].view(), l_idx);
+    return {transport_idx_t::invalid(), day_idx_t::invalid()};
   }
 
   auto const [day_at_stop, mam_at_stop] = time.day_idx_mam();
@@ -136,17 +136,17 @@ transport raptor<SearchDir, IntermodalTarget>::get_earliest_transport(
       "┊ │    et: current_best_at_stop={}, stop_idx={}, "
       "location=(name={}, id={}, idx={}), n_days_to_iterate={}\n",
       time, stop_idx, tt_.locations_.names_[l_idx].view(),
-      tt_.locations_.ids_[l_idx].view(), l_idx, n_days_to_iterate)
+      tt_.locations_.ids_[l_idx].view(), l_idx, n_days_to_iterate);
 
-      auto const event_times = tt_.event_times_at_stop(
-          r, stop_idx, kFwd ? event_type::kDep : event_type::kArr);
+  auto const event_times = tt_.event_times_at_stop(
+      r, stop_idx, kFwd ? event_type::kDep : event_type::kArr);
 
 #if defined(NIGIRI_RAPTOR_TRACING) && \
     !defined(NIGIRI_RAPTOR_TRACING_ONLY_UPDATES)
   for (auto const [t_offset, x] : utl::enumerate(event_times)) {
     auto const t = tt_.route_transport_ranges_[r][t_offset];
     trace("┊ │        event_times: transport={}: {} at {}: {}\n", t,
-          kFwd ? "dep" : "arr", location{tt_, l_idx}, x)
+          kFwd ? "dep" : "arr", location{tt_, l_idx}, x);
   }
 #endif
 
@@ -249,9 +249,10 @@ bool raptor<SearchDir, IntermodalTarget>::update_route(unsigned const k,
 
     trace(
         "┊ │  stop_idx={}, location=(name={}, id={}, idx={}): "
-        "current_best={}\n",
+        "current_best={}, search_dir={}\n",
         stop_idx, tt_.locations_.names_[location_idx_t{l_idx}].view(),
-        tt_.locations_.ids_[location_idx_t{l_idx}].view(), l_idx, current_best);
+        tt_.locations_.ids_[location_idx_t{l_idx}].view(), l_idx, current_best,
+        kFwd ? "FWD" : "BWD");
 
     if (et.is_valid()) {
       auto const is_destination = state_.is_destination_[l_idx];
