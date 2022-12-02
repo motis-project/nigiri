@@ -6,6 +6,7 @@
 #include "nigiri/loader/hrd/service/service_store.h"
 #include "nigiri/loader/hrd/stamm/timezone.h"
 #include "nigiri/common/interval.h"
+#include "nigiri/common/it_range.h"
 #include "nigiri/types.h"
 
 namespace nigiri::loader::hrd {

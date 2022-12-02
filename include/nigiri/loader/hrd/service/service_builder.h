@@ -8,6 +8,7 @@
 #include "nigiri/loader/hrd/service/progress_update_fn.h"
 #include "nigiri/loader/hrd/service/ref_service.h"
 #include "nigiri/loader/hrd/stamm/stamm.h"
+#include "nigiri/common/interval.h"
 #include "nigiri/timetable.h"
 
 namespace nigiri::loader::hrd {

@@ -2,6 +2,7 @@
 
 #include <compare>
 #include <filesystem>
+#include <span>
 #include <type_traits>
 
 #include "cista/memory_holder.h"
@@ -142,7 +143,6 @@ struct timetable {
   struct transport {
     bitfield_idx_t bitfield_idx_;
     route_idx_t route_idx_;
-    std::basic_string<minutes_after_midnight_t> const& stop_times_;
     std::basic_string<merged_trips_idx_t> const& external_trip_ids_;
     std::basic_string<attribute_combination_idx_t> const& section_attributes_;
     std::basic_string<provider_idx_t> const& section_providers_;
@@ -221,7 +221,6 @@ struct timetable {
   void add_transport(transport&& t) {
     transport_traffic_days_.emplace_back(t.bitfield_idx_);
     transport_route_.emplace_back(t.route_idx_);
-    transport_stop_times_.emplace_back(t.stop_times_);
     transport_to_trip_section_.emplace_back(t.external_trip_ids_);
     transport_section_attributes_.emplace_back(t.section_attributes_);
     transport_section_providers_.emplace_back(t.section_providers_);
@@ -229,40 +228,43 @@ struct timetable {
     transport_section_lines_.emplace_back(t.section_lines_);
 
     assert(transport_traffic_days_.size() == transport_route_.size());
-    assert(transport_traffic_days_.size() == transport_stop_times_.size());
     assert(transport_traffic_days_.size() == transport_to_trip_section_.size());
-    assert(t.stop_times_.size() ==
-           route_location_seq_.at(t.route_idx_).size() * 2 - 2);
-    assert(t.external_trip_ids_.size() == 1U ||
-           t.external_trip_ids_.size() == t.stop_times_.size() / 2);
-    assert(t.section_attributes_.size() <= 1U ||
-           t.section_attributes_.size() == t.stop_times_.size() / 2);
-    assert(t.section_providers_.size() == 1U ||
-           t.section_providers_.size() == t.stop_times_.size() / 2);
-    assert(t.section_directions_.size() <= 1U ||
-           t.section_directions_.size() == t.stop_times_.size() / 2);
   }
 
   transport_idx_t next_transport_idx() const {
     return transport_idx_t{transport_traffic_days_.size()};
   }
 
-  minutes_after_midnight_t event_mam(transport_idx_t const transport_idx,
-                                     size_t const stop_idx,
+  std::span<minutes_after_midnight_t const> event_times_at_stop(
+      route_idx_t const r,
+      std::size_t const stop_idx,
+      event_type const ev_type) const {
+    auto const n_transports =
+        static_cast<unsigned>(route_transport_ranges_[r].size());
+    auto const idx = static_cast<unsigned>(
+        route_stop_time_ranges_[r].from_ +
+        n_transports * (stop_idx * 2 - (ev_type == event_type::kArr ? 1 : 0)));
+    return std::span<minutes_after_midnight_t const>{&route_stop_times_[idx],
+                                                     n_transports};
+  }
+
+  minutes_after_midnight_t event_mam(route_idx_t const r,
+                                     transport_idx_t t,
+                                     std::size_t const stop_idx,
                                      event_type const ev_type) const {
-    // Event times are stored alternatingly:
-    // departure (D), arrival (A), ..., arrival (A)
-    // event type: D A D A D A D A
-    // stop index: 0 1 1 2 2 3 3 4
-    // event time: 0 1 2 3 4 5 6 7
-    // --> A at stop i = i x 2 - 1
-    // --> D at stop i = i x 2
-    // There's no arrival at the first stop and no departure at the last stop.
-    assert(!(stop_idx == 0 && ev_type == event_type::kArr));
-    assert(!(stop_idx == transport_stop_times_[transport_idx].size() - 1 &&
-             ev_type == event_type::kDep));
-    auto const idx = stop_idx * 2 - (ev_type == event_type::kArr ? 1 : 0);
-    return transport_stop_times_[transport_idx][idx];
+    auto const range = route_transport_ranges_[r];
+    auto const n_transports = static_cast<unsigned>(range.size());
+    auto const route_stop_begin = static_cast<unsigned>(
+        route_stop_time_ranges_[r].from_ +
+        n_transports * (stop_idx * 2 - (ev_type == event_type::kArr ? 1 : 0)));
+    auto const t_idx_in_route = to_idx(t) - to_idx(range.from_);
+    return route_stop_times_[route_stop_begin + t_idx_in_route];
+  }
+
+  minutes_after_midnight_t event_mam(transport_idx_t t,
+                                     std::size_t const stop_idx,
+                                     event_type const ev_type) const {
+    return event_mam(transport_route_[t], t, stop_idx, ev_type);
   }
 
   unixtime_t event_time(nigiri::transport t,
@@ -305,6 +307,7 @@ struct timetable {
   }
 
   friend std::ostream& operator<<(std::ostream&, timetable const&);
+  friend void print_1(std::ostream&, timetable const&);
 
   void write(std::filesystem::path const&) const;
   static cista::wrapped<timetable> read(cista::memory_holder);
@@ -345,8 +348,16 @@ struct timetable {
   // Location -> list of routes
   mutable_fws_multimap<location_idx_t, route_idx_t> location_routes_;
 
-  // Trip index -> sequence of stop times
-  vecvec<transport_idx_t, minutes_after_midnight_t> transport_stop_times_;
+  // Route 1:
+  //   stop-1-dep: [trip1, trip2, ..., tripN]
+  //   stop-2-arr: [trip1, trip2, ..., tripN]
+  //   ...
+  // Route 2:
+  //  stop-1-dep: [...]
+  // ...
+  // RouteN: ...
+  vector_map<route_idx_t, interval<unsigned>> route_stop_time_ranges_;
+  vector<minutes_after_midnight_t> route_stop_times_;
 
   // Trip index -> traffic day bitfield
   vector_map<transport_idx_t, bitfield_idx_t> transport_traffic_days_;
@@ -356,6 +367,10 @@ struct timetable {
 
   // Unique bitfields
   vector_map<bitfield_idx_t, bitfield> bitfields_;
+
+  // bitfields_[1][day_1], bitfields_2[2][day_1], ...
+  // bitfields_[1][day_2], bitfields_2[2][day_2], ...
+  bitvec col_bitfields_;
 
   // For each trip the corresponding route
   vector_map<transport_idx_t, route_idx_t> transport_route_;
@@ -387,6 +402,10 @@ struct timetable {
   vecvec<transport_idx_t, provider_idx_t> transport_section_providers_;
   vecvec<transport_idx_t, trip_direction_idx_t> transport_section_directions_;
   vecvec<transport_idx_t, trip_line_idx_t> transport_section_lines_;
+
+  // Lower bound graph.
+  vecvec<location_idx_t, footpath> fwd_search_lb_graph_;
+  vecvec<location_idx_t, footpath> bwd_search_lb_graph_;
 };
 
 }  // namespace nigiri

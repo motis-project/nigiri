@@ -1,7 +1,6 @@
 #include "nigiri/print_transport.h"
 
-#include <codecvt>
-#include <iomanip>
+#include <cassert>
 
 #include "utl/enumerate.h"
 #include "utl/zip.h"
@@ -18,13 +17,14 @@ void print_transport(timetable const& tt,
                      interval<unsigned> stop_range,
                      unsigned const indent_width,
                      bool const with_debug) {
-  std::wstring_convert<std::codecvt_utf8<wchar_t>, wchar_t> utf8_conv;
-
   auto const i = x.t_idx_;
   auto const day_idx = x.day_;
   auto const& route_idx = tt.transport_route_.at(i);
   auto const& stop_seq = tt.route_location_seq_.at(route_idx);
-  auto const& stop_times = tt.transport_stop_times_.at(i);
+  auto const transport_idx_in_route =
+      to_idx(x.t_idx_ - tt.route_transport_ranges_.at(route_idx).from_);
+
+  assert(tt.route_transport_ranges_.at(route_idx).contains(x.t_idx_));
 
   auto const from =
       std::min(static_cast<unsigned>(stop_seq.size()), stop_range.from_);
@@ -44,8 +44,10 @@ void print_transport(timetable const& tt,
     fmt::print(out, "{:2}: {:7} {:.<48} ", stop_idx, stop_id, stop_name);
 
     if (stop_idx != from) {
-      auto const t = tt.date_range_.from_ + to_idx(day_idx) * 1_days +
-                     stop_times.at(2 * stop_idx - 1);
+      auto const t =
+          tt.date_range_.from_ + to_idx(day_idx) * 1_days +
+          tt.event_times_at_stop(route_idx, stop_idx,
+                                 event_type::kArr)[transport_idx_in_route];
       if (!s.out_allowed()) {
         fmt::print(" -");
       } else {
@@ -59,8 +61,10 @@ void print_transport(timetable const& tt,
     }
 
     if (stop_idx != to - 1) {
-      auto const t = tt.date_range_.from_ + to_idx(day_idx) * 1_days +
-                     stop_times.at(2 * stop_idx);
+      auto const t =
+          tt.date_range_.from_ + to_idx(day_idx) * 1_days +
+          tt.event_times_at_stop(route_idx, stop_idx,
+                                 event_type::kDep)[transport_idx_in_route];
       if (!s.in_allowed()) {
         fmt::print("   -");
       } else {
@@ -102,6 +106,15 @@ void print_transport(timetable const& tt,
 
     out << "\n";
   }
+}
+
+void print_transport_1(timetable const& tt,
+                       std::ostream& out,
+                       transport x,
+                       bool const with_debug) {
+  print_transport(tt, out, x,
+                  interval{0U, std::numeric_limits<unsigned>::max()}, 0U,
+                  with_debug);
 }
 
 void print_transport(timetable const& tt,
