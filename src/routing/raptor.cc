@@ -714,7 +714,7 @@ void raptor<SearchDir, IntermodalTarget>::route() {
 template <direction SearchDir, bool IntermodalTarget>
 void raptor<SearchDir, IntermodalTarget>::reconstruct_for_destination(
     unixtime_t const start_at_start,
-    std::size_t const i,
+    std::size_t const dest_index,
     location_idx_t const dest) {
   for (auto k = 1U; k != end_k(); ++k) {
     if (state_.round_times_[k][to_idx(dest)] == kInvalidTime<SearchDir>) {
@@ -724,7 +724,7 @@ void raptor<SearchDir, IntermodalTarget>::reconstruct_for_destination(
                  start_at_start,
                  state_.round_times_[k][to_idx(dest)].to_unixtime(tt_),
                  location{tt_, dest}, k - 1);
-    auto const [optimal, it] = state_.results_[i].add(journey{
+    auto const [optimal, it] = state_.results_[dest_index].add(journey{
         .legs_ = {},
         .start_time_ = start_at_start,
         .dest_time_ = state_.round_times_[k][to_idx(dest)].to_unixtime(tt_),
@@ -739,7 +739,7 @@ void raptor<SearchDir, IntermodalTarget>::reconstruct_for_destination(
         try {
           reconstruct_journey<SearchDir>(tt_, q_, state_, *it);
         } catch (std::exception const& e) {
-          state_.results_[i].erase(it);
+          state_.results_[dest_index].erase(it);
           log(log_lvl::error, "routing", "reconstruction failed: {}", e.what());
           print_state("RECONSTRUCT FAILED");
         }
