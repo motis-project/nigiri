@@ -158,7 +158,13 @@ void get_starts(timetable const& tt,
       start_time.apply(utl::overloaded{
           [&](interval<unixtime_t> const interval) {
             add_starts_in_interval<SearchDir>(
-                tt, interval, offset{l, o.duration_, o.type_}, starts);
+                tt, interval,
+                offset{l,
+                       o.duration_ + (mode == location_match_mode::kIntermodal
+                                          ? tt.locations_.transfer_time_[l]
+                                          : 0_minutes),
+                       o.type_},
+                starts);
 
             if (use_start_footpaths) {
               auto const footpaths = SearchDir == direction::kForward
@@ -219,7 +225,8 @@ void collect_destinations(timetable const& tt,
                     [&, i = i](location_idx_t const l) {
                       out[i].emplace(l);
                       is_destination[to_idx(l)] = true;
-                      trace("  DEST META: {}\n", location{tt, l});
+                      trace("  DEST META: {}, duration={}\n", location{tt, l},
+                            d.duration_);
                     });
     }
   }

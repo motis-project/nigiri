@@ -86,7 +86,7 @@ void to_local_time(service_store const& store,
                    interval<std::chrono::sys_days> const& selection,
                    ref_service const& s,
                    Fn&& consumer) {
-  using key_t = std::pair<std::basic_string<duration_t>,
+  using key_t = std::pair<std::basic_string<minutes_after_midnight_t>,
                           std::basic_string<timetable::stop::value_type>>;
   auto utc_time_traffic_days = hash_map<key_t, bitfield>{};
 

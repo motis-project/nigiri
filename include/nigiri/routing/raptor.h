@@ -47,6 +47,14 @@ private:
 
   routing_time time_at_stop(transport, unsigned stop_idx, event_type ev_type);
 
+  std::string_view transport_name(transport_idx_t const t) const {
+    return tt_
+        .trip_display_names_
+            [tt_.merged_trips_[tt_.transport_to_trip_section_[t].front()]
+                 .front()]
+        .view();
+  }
+
   transport get_earliest_transport(unsigned const k,
                                    route_idx_t const r,
                                    unsigned const stop_idx,

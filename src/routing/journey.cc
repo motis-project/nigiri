@@ -16,14 +16,15 @@ void journey::leg::print(std::ostream& out,
                                print_transport(tt, out, t.t_, t.stop_range_,
                                                n_indent, debug);
                              },
-                             [&](footpath const) {
+                             [&](footpath const x) {
                                indent(out, n_indent);
-                               out << "FOOTPATH\n";
+                               out << "FOOTPATH (duration=" << x.duration_
+                                   << ")\n";
                              },
                              [&](offset const x) {
                                indent(out, n_indent);
-                               out << "MUMO ID " << static_cast<int>(x.type_)
-                                   << "\n";
+                               out << "MUMO (id=" << static_cast<int>(x.type_)
+                                   << ", duration=" << x.duration_ << ")\n";
                              }},
              uses_);
 }
