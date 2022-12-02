@@ -38,8 +38,7 @@ void build_route_stop_times(timetable& tt) {
     auto const stop_seq = tt.route_location_seq_[i];
 
     auto const stop_times_begin = tt.route_stop_times_.size();
-    for (auto const [from, to] :
-         utl::pairwise(interval{0U, stop_seq.size()})) {
+    for (auto const [from, to] : utl::pairwise(interval{0U, stop_seq.size()})) {
       for (auto const t : transport_range) {
         tt.route_stop_times_.emplace_back(
             tt.event_mam(t, from, event_type::kDep));
@@ -94,19 +93,18 @@ void load_timetable(source_idx_t const src,
   auto empty_idx_vec = vector<location_idx_t>{};
   auto empty_footpath_vec = vector<footpath>{};
   for (auto const& name : special_stations_names) {
-    tt.locations_.register_location(
-        location{name,
-                 name,
-                 {0.0, 0.0},
-                 source_idx_t{0U},
-                 location_type::kStation,
-                 osm_node_id_t::invalid(),
-                 location_idx_t ::invalid(),
-                 timezone_idx_t ::invalid(),
-                 0_minutes,
-                 it_range{empty_idx_vec},
-                 it_range{empty_footpath_vec},
-                 it_range{empty_footpath_vec}});
+    tt.locations_.register_location(location{name,
+                                             name,
+                                             {0.0, 0.0},
+                                             source_idx_t{0U},
+                                             location_type::kStation,
+                                             osm_node_id_t::invalid(),
+                                             location_idx_t ::invalid(),
+                                             timezone_idx_t ::invalid(),
+                                             0_minutes,
+                                             it_range{empty_idx_vec},
+                                             it_range{empty_footpath_vec},
+                                             it_range{empty_footpath_vec}});
   }
 
   auto st = stamm{c, tt, d};
