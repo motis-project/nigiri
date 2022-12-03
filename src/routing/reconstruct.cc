@@ -51,11 +51,19 @@ std::optional<journey::leg> find_start_footpath(timetable const& tt,
       kFwd ? j.legs_.back().dep_time_ : j.legs_.back().arr_time_;
 
   if (q.start_match_mode_ != location_match_mode::kIntermodal &&
-      is_journey_start(leg_start_location) && leg_start_time == j.start_time_) {
+      is_journey_start(leg_start_location) &&
+      is_better_or_eq(j.start_time_, leg_start_time)) {
     trace_start(
         "  leg_start_location={} is a start, time matches ({}) - done\n",
         location{tt, leg_start_location}, j.start_time_);
     return std::nullopt;
+  } else {
+    trace_start(
+        "  direct start excluded intermodal_start={}, is_journey_start({})={}, "
+        "leg_start_time={}, journey_start_time={}\n",
+        q.start_match_mode_ == location_match_mode::kIntermodal,
+        location{tt, leg_start_location}, is_journey_start(leg_start_location),
+        leg_start_time, j.start_time_);
   }
 
   trace_start(
