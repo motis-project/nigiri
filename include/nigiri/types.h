@@ -8,9 +8,9 @@
 
 #include "cista/containers/bitset.h"
 #include "cista/containers/bitvec.h"
+#include "cista/containers/flat_matrix.h"
 #include "cista/containers/hash_map.h"
 #include "cista/containers/hash_set.h"
-#include "cista/containers/matrix.h"
 #include "cista/containers/mutable_fws_multimap.h"
 #include "cista/containers/optional.h"
 #include "cista/containers/string.h"
@@ -52,8 +52,8 @@ template <typename T>
 using vector = cista::offset::vector<T>;
 
 template <typename T>
-using matrix = cista::raw::matrix<T>;
-using cista::raw::make_matrix;
+using matrix = cista::raw::flat_matrix<T>;
+using cista::raw::make_flat_matrix;
 
 using cista::offset::to_vec;
 

@@ -219,7 +219,7 @@ next:
 
   print_dbg("INPUT\n");
   constexpr auto const kInvalidTime = std::numeric_limits<std::uint16_t>::max();
-  auto mat = make_matrix(size, size, kInvalidTime);
+  auto mat = make_flat_matrix(size, size, kInvalidTime);
   for (auto i = 0U; i != size; ++i) {
     auto it = lb;
     for (auto const& edge : fgraph[(lb + i)->second]) {  // precond.: sorted!

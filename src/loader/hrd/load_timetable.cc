@@ -58,8 +58,9 @@ void build_route_traffic_days(timetable& tt) {
   tt.col_bitfields_.resize(kMaxDays * tt.bitfields_.size());
   for (auto day = 0U; day != kMaxDays; ++day) {
     for (auto const [bf_idx, bitfield] : utl::enumerate(tt.bitfields_)) {
-      tt.col_bitfields_.set(tt.bitfields_.size() * day + bf_idx,
-                            bitfield.test(day));
+      tt.col_bitfields_.set(
+          static_cast<unsigned>(tt.bitfields_.size() * day + bf_idx),
+          bitfield.test(day));
     }
   }
 }

@@ -3,7 +3,7 @@
 #include <set>
 #include <vector>
 
-#include "cista/containers/matrix.h"
+#include "cista/containers/flat_matrix.h"
 
 #include "nigiri/routing/journey.h"
 #include "nigiri/routing/pareto_set.h"
@@ -27,7 +27,7 @@ struct search_state {
 
   std::vector<duration_t> travel_time_lower_bound_;
   std::vector<routing_time> best_;
-  cista::raw::matrix<routing_time> round_times_;
+  cista::raw::flat_matrix<routing_time> round_times_;
   std::vector<bool> station_mark_;
   std::vector<bool> prev_station_mark_;
   std::vector<bool> route_mark_;
