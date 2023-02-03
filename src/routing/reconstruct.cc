@@ -304,10 +304,9 @@ void reconstruct_journey(timetable const& tt,
     auto const fp_start = curr_time - (kFwd ? fp.duration_ : -fp.duration_);
 
     trace(
-        "round {}: searching for transports at (name={}, id={}) with fp_start "
+        "round {}: searching for transports at ({}) with fp_start "
         "= {}\n ",
-        k, tt.locations_.names_.at(fp.target_).view(),
-        tt.locations_.ids_.at(fp.target_).view(), fp_start);
+        k, location{tt, fp.target_}, fp_start);
 
     auto const transport_leg = get_transport(k, fp.target_, fp_start);
 
@@ -410,7 +409,7 @@ void reconstruct_journey(timetable const& tt,
     auto transfer_at_same_stop =
         check_fp(k, l, curr_time,
                  footpath{l, (k == j.transfers_ + 1U)
-                                 ? 0_minutes
+                                 ? 0_i8_minutes
                                  : tt.locations_.transfer_time_[l]});
     if (transfer_at_same_stop.has_value()) {
       return std::move(*transfer_at_same_stop);

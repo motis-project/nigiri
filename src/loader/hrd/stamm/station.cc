@@ -109,7 +109,7 @@ void parse_footpaths(config const& c,
   auto const is_5_20_26 = c.version_ == "hrd_5_20_26";
 
   auto const add_footpath = [](hrd_location& l, eva_number const to,
-                               duration_t const d) {
+                               i8_minutes const d) {
     if (auto const it = l.footpaths_out_.find(to);
         it != end(l.footpaths_out_)) {
       it->second = std::min(it->second, d);

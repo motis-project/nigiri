@@ -163,7 +163,7 @@ void get_starts(timetable const& tt,
                 offset{l,
                        o.duration_ + (mode == location_match_mode::kIntermodal
                                           ? tt.locations_.transfer_time_[l]
-                                          : 0_minutes),
+                                          : 0_i8_minutes),
                        o.type_},
                 starts);
 

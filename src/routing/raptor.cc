@@ -28,7 +28,7 @@
 #endif
 
 // #define NIGIRI_RAPTOR_TRACING
-// #define NIGIRI_RAPTOR_TRACING_ONLY_UPDATES
+//  #define NIGIRI_RAPTOR_TRACING_ONLY_UPDATES
 
 #ifdef NIGIRI_RAPTOR_TRACING
 
@@ -239,7 +239,7 @@ bool raptor<SearchDir, IntermodalTarget>::update_route(unsigned const k,
     }
 
     auto current_best =
-        get_best(state_.best_[l_idx], state_.round_times_[k - 1][l_idx]);
+        get_best(state_.best_[l_idx], state_.round_times_[k][l_idx]);
     auto const transfer_time_offset =
         (kFwd ? 1 : -1) * tt_.locations_.transfer_time_[location_idx_t{l_idx}];
 
@@ -247,7 +247,8 @@ bool raptor<SearchDir, IntermodalTarget>::update_route(unsigned const k,
         "┊ │  stop_idx={}, location=(name={}, id={}, idx={}): "
         "current_best={}, search_dir={}\n",
         stop_idx, tt_.locations_.names_[location_idx_t{l_idx}].view(),
-        tt_.locations_.ids_[location_idx_t{l_idx}].view(), l_idx, current_best,
+        tt_.locations_.ids_[location_idx_t{l_idx}].view(), l_idx,
+        get_best(state_.best_[l_idx], state_.round_times_[k][l_idx]),
         kFwd ? "FWD" : "BWD");
 
     if (et.is_valid()) {
@@ -259,7 +260,7 @@ bool raptor<SearchDir, IntermodalTarget>::update_route(unsigned const k,
                                transfer_time_offset);
 
       if ((kFwd ? stop.out_allowed() : stop.in_allowed()) &&
-          is_better_or_eq(by_transport_time_with_transfer, current_best) &&
+          is_better(by_transport_time_with_transfer, state_.best_[l_idx]) &&
           is_better(by_transport_time_with_transfer, time_at_destination_)) {
 
 #ifdef NIGIRI_LOWER_BOUND
@@ -304,23 +305,28 @@ bool raptor<SearchDir, IntermodalTarget>::update_route(unsigned const k,
             tt_.merged_trips_[tt_.transport_to_trip_section_[et.t_idx_].front()]
                 .front();
         trace_upd(
-            "┊ │    transport={}, name={}, debug={}:{}, time_by_transport={} "
-            "BETTER THAN "
-            "current_best={} => update, marking station (name={}, id={})!\n",
+            "┊ │    transport={}, name={}, debug={}:{}, time_by_transport={}, "
+            "time_by_transport_with_transfer={} BETTER THAN "
+            "current_best={} => update, {} marking station {}!\n",
             et, tt_.trip_display_names_[trip_idx].view(),
             tt_.source_file_names_
                 [tt_.trip_debug_[trip_idx].front().source_file_idx_]
                     .view(),
             tt_.trip_debug_[trip_idx].front().line_number_from_,
-            by_transport_time, current_best,
-            tt_.locations_.names_[location_idx_t{l_idx}].view(),
-            tt_.locations_.ids_[location_idx_t{l_idx}].view());
+            by_transport_time, by_transport_time_with_transfer, current_best,
+            !is_better(by_transport_time_with_transfer, current_best) ? "NOT"
+                                                                      : "",
+            location{tt_, stop.location_idx()});
 #endif
 
         NIGIRI_COUNT(n_earliest_arrival_updated_by_route_);
         state_.best_[l_idx] = by_transport_time_with_transfer;
-        state_.round_times_[k][l_idx] = by_transport_time_with_transfer;
-        state_.station_mark_[l_idx] = true;
+        if (is_better(by_transport_time, current_best)) {
+          any_marked = true;
+          state_.station_mark_[l_idx] = true;
+          state_.round_times_[k][l_idx] = by_transport_time_with_transfer;
+        }
+
         if constexpr (!IntermodalTarget) {
           if (is_destination) {
             time_at_destination_ =
@@ -328,7 +334,6 @@ bool raptor<SearchDir, IntermodalTarget>::update_route(unsigned const k,
           }
         }
         current_best = by_transport_time_with_transfer;
-        any_marked = true;
       } else {
         trace(
             "┊ │    by_transport={} NOT better than time_at_destination={} OR "
@@ -339,6 +344,8 @@ bool raptor<SearchDir, IntermodalTarget>::update_route(unsigned const k,
     }
 
     if (!state_.prev_station_mark_[l_idx]) {
+      trace("┊ │    {} not marked, skipping et update\n",
+            location{tt_, location_idx_t{l_idx}});
       continue;
     }
 
@@ -350,7 +357,7 @@ bool raptor<SearchDir, IntermodalTarget>::update_route(unsigned const k,
               : kInvalidTime<SearchDir>;
       if (!(kFwd && (stop_idx == stop_seq.size() - 1 || !stop.in_allowed())) &&
           !(kBwd && (stop_idx == 0 || !stop.out_allowed())) &&
-          is_better_or_eq(current_best, et_time_at_stop)) {
+          is_better_or_eq(state_.round_times_[k - 1][l_idx], et_time_at_stop)) {
         trace(
             "┊ │    update et: stop_idx={}, et_valid={}, stop_time={}, "
             "transport_time={}\n",
@@ -370,7 +377,16 @@ bool raptor<SearchDir, IntermodalTarget>::update_route(unsigned const k,
                  et_time_at_stop))) {
           et = new_et;
         }
+      } else {
+        trace(
+            "┊ │    no et update at {}: in_allowed={}, out_allowed={}, "
+            "current_best={}, et_time_at_stop={}\n",
+            location{tt_, location_idx_t{l_idx}}, stop.in_allowed(),
+            stop.out_allowed(), current_best, et_time_at_stop);
       }
+    } else {
+      trace("┊ │    {} last stop, skipping et update\n",
+            location{tt_, location_idx_t{l_idx}});
     }
   }
   return any_marked;
@@ -379,6 +395,8 @@ bool raptor<SearchDir, IntermodalTarget>::update_route(unsigned const k,
 template <direction SearchDir, bool IntermodalTarget>
 void raptor<SearchDir, IntermodalTarget>::update_footpaths(unsigned const k) {
   trace_always("┊ ├ FOOTPATHS\n");
+
+  state_.transport_station_mark_ = state_.station_mark_;
 
   auto const update_intermodal_dest = [&](location_idx_t const l_idx,
                                           auto&& get_time) {
@@ -398,7 +416,7 @@ void raptor<SearchDir, IntermodalTarget>::update_footpaths(unsigned const k) {
           if (is_better(intermodal_target_time, time_at_destination_)) {
             trace_upd(
                 "┊ ├     intermodal: ({}, best={}) --{}--> (DEST, "
-                "best={}) --> update => {}\n",
+                "best={}) --> update => new_time_at_dest={}\n",
                 location{tt_, l_idx}, get_time(), o.duration_,
                 time_at_destination_, intermodal_target_time);
 
@@ -412,8 +430,7 @@ void raptor<SearchDir, IntermodalTarget>::update_footpaths(unsigned const k) {
   };
 
   for (auto l_idx = location_idx_t{0U}; l_idx != tt_.n_locations(); ++l_idx) {
-    if (!state_.station_mark_[to_idx(l_idx)] ||
-        state_.best_[to_idx(l_idx)] == kInvalidTime<SearchDir>) {
+    if (!state_.transport_station_mark_[to_idx(l_idx)]) {
       continue;
     }
 
@@ -428,7 +445,7 @@ void raptor<SearchDir, IntermodalTarget>::update_footpaths(unsigned const k) {
 
       auto const target = to_idx(fp.target_);
       auto const min =
-          std::min(state_.best_[target], state_.round_times_[k][target]);
+          get_best(state_.best_[target], state_.round_times_[k][target]);
       auto const fp_target_time =
           state_.best_[to_idx(l_idx)]  //
           + ((kFwd ? 1 : -1) * fp.duration_)  //
@@ -462,18 +479,26 @@ void raptor<SearchDir, IntermodalTarget>::update_footpaths(unsigned const k) {
 #endif
 
         trace_upd(
-            "┊ ├   footpath: (name={}, id={}, best={}) --{}--> (name={}, "
-            "id={}, best={}) --> update => {}\n",
-            tt_.locations_.names_[l_idx].view(),
-            tt_.locations_.ids_[l_idx].view(),
-            state_.round_times_[k][to_idx(l_idx)], fp.duration_,
-            tt_.locations_.names_[fp.target_].view(),
-            tt_.locations_.ids_[fp.target_].view(),
+            "┊ ├   footpath: ({}, best={}) --[{}-{}]--> ({}, best={}) --> "
+            "update => {}\n",
+            location{tt_, l_idx}, state_.round_times_[k][to_idx(l_idx)],
+            fp.duration_, tt_.locations_.transfer_time_[l_idx],
+            location{tt_, fp.target_},
             state_.round_times_[k][to_idx(fp.target_)], fp_target_time);
 
         NIGIRI_COUNT(n_earliest_arrival_updated_by_footpath_);
         state_.round_times_[k][to_idx(fp.target_)] = fp_target_time;
         state_.station_mark_[to_idx(fp.target_)] = true;
+
+        // Consequence of adding the transfer time at train arrival and
+        // subtracting it again from the footpaths:
+        //   - READ FROM: best[l_idx] + fp.duration
+        //   - WRITE TO: round_times[k]
+        //
+        // Do NOT update best[fp.target]. Otherwise, we read from where we
+        // write. This in combination with the fact that we subtract the
+        // transfer time from the footpath time leads to subtracting it 2x,
+        // which is wrong.
 
         update_intermodal_dest(fp.target_, [&]() { return fp_target_time; });
 
@@ -481,6 +506,8 @@ void raptor<SearchDir, IntermodalTarget>::update_footpaths(unsigned const k) {
           if (state_.is_destination_[to_idx(fp.target_)]) {
             time_at_destination_ =
                 get_best(time_at_destination_, fp_target_time);
+            trace_always("new_time_at_dest = min(old={}, new={})\n",
+                         time_at_destination_, fp_target_time);
           }
         }
       } else {
@@ -625,14 +652,26 @@ void raptor<SearchDir, IntermodalTarget>::set_time_at_destination(
   if (IntermodalTarget) {
     constexpr auto const kDestIdx =
         to_idx(get_special_station(special_station::kEnd));
+    trace_always("updating new_time_at_destination= min({}, {}, {})",
+                 state_.round_times_[k][kDestIdx], state_.best_[kDestIdx],
+                 time_at_destination_);
+
     time_at_destination_ =
         get_best(state_.round_times_[k][kDestIdx],
                  get_best(state_.best_[kDestIdx], time_at_destination_));
+
+    trace_always(" = {}\n", time_at_destination_);
   } else {
     for (auto const dest : state_.destinations_.front()) {
+      trace_always("updating new_time_at_destination= min({}, {}, {})",
+                   state_.round_times_[k][to_idx(dest)],
+                   state_.best_[to_idx(dest)], time_at_destination_);
+
       time_at_destination_ =
           get_best(state_.round_times_[k][to_idx(dest)],
                    get_best(state_.best_[to_idx(dest)], time_at_destination_));
+
+      trace_always(" = {}\n", time_at_destination_);
     }
   }
 }
@@ -691,8 +730,13 @@ void raptor<SearchDir, IntermodalTarget>::route() {
           state_.best_[to_idx(s.stop_)] = {tt_, s.time_at_stop_};
           state_.station_mark_[to_idx(s.stop_)] = true;
         }
+        // TODO get time at destination from previous starts for N transfers in
+        // round N
         time_at_destination_ = routing_time{tt_, from_it->time_at_stop_} +
                                (kFwd ? 1 : -1) * duration_t{kMaxTravelTime};
+        trace_always("new_time_at_destination={} + kMaxTravelTime = {}\n",
+                     routing_time{tt_, from_it->time_at_stop_},
+                     time_at_destination_);
         rounds();
         reconstruct(from_it->time_at_start_);
       });
@@ -724,12 +768,13 @@ void raptor<SearchDir, IntermodalTarget>::reconstruct_for_destination(
                  start_at_start,
                  state_.round_times_[k][to_idx(dest)].to_unixtime(tt_),
                  location{tt_, dest}, k - 1);
-    auto const [optimal, it] = state_.results_[dest_index].add(journey{
-        .legs_ = {},
-        .start_time_ = start_at_start,
-        .dest_time_ = state_.round_times_[k][to_idx(dest)].to_unixtime(tt_),
-        .dest_ = dest,
-        .transfers_ = static_cast<std::uint8_t>(k - 1)});
+    auto const [optimal, it, dominated_by] =
+        state_.results_[dest_index].add(journey{
+            .legs_ = {},
+            .start_time_ = start_at_start,
+            .dest_time_ = state_.round_times_[k][to_idx(dest)].to_unixtime(tt_),
+            .dest_ = dest,
+            .transfers_ = static_cast<std::uint8_t>(k - 1)});
     trace_always(" -> {}\n", optimal ? "OPT" : "DISCARD");
     if (optimal) {
       auto const outside_interval =
@@ -744,6 +789,11 @@ void raptor<SearchDir, IntermodalTarget>::reconstruct_for_destination(
           print_state("RECONSTRUCT FAILED");
         }
       }
+    } else {
+      trace_always("  DOMINATED BY: start={}, dest={} @ {}, transfers={}\n",
+                   dominated_by->start_time_, dominated_by->dest_time_,
+                   location{tt_, dominated_by->dest_},
+                   dominated_by->transfers_);
     }
   }
 }
