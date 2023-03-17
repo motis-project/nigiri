@@ -21,7 +21,7 @@ struct hrd_location {
   geo::latlng pos_;
   vector<eva_number> children_;
   hash_set<eva_number> equivalent_;
-  hash_map<eva_number, i8_minutes> footpaths_out_;
+  hash_map<eva_number, u8_minutes> footpaths_out_;
 };
 
 using location_map_t = hash_map<eva_number, hrd_location>;

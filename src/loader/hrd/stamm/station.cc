@@ -109,7 +109,7 @@ void parse_footpaths(config const& c,
   auto const is_5_20_26 = c.version_ == "hrd_5_20_26";
 
   auto const add_footpath = [](hrd_location& l, eva_number const to,
-                               i8_minutes const d) {
+                               u8_minutes const d) {
     if (auto const it = l.footpaths_out_.find(to);
         it != end(l.footpaths_out_)) {
       it->second = std::min(it->second, d);
@@ -148,10 +148,12 @@ void parse_footpaths(config const& c,
       }
       auto& to = to_it->second;
 
-      auto const duration =
-          duration_t{parse<int>(line.substr(c.meta_.footpaths_.duration_))};
-
-      add_footpath(from, to.id_, duration);
+      auto const duration_int =
+          parse<int>(line.substr(c.meta_.footpaths_.duration_));
+      utl::verify(duration_int <= std::numeric_limits<u8_minutes::rep>::max(),
+                  "footpath duration {} > {}",
+                  std::numeric_limits<u8_minutes::rep>::max());
+      add_footpath(from, to.id_, u8_minutes{duration_int});
 
       if (f_equal) {
         from.equivalent_.erase(to.id_);
