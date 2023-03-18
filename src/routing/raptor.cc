@@ -29,7 +29,7 @@
 #endif
 
 // #define NIGIRI_RAPTOR_TRACING
-//   #define NIGIRI_RAPTOR_TRACING_ONLY_UPDATES
+//  #define NIGIRI_RAPTOR_TRACING_ONLY_UPDATES
 
 #ifdef NIGIRI_RAPTOR_TRACING
 
@@ -388,7 +388,7 @@ bool raptor<SearchDir, IntermodalTarget>::update_route(unsigned const k,
                               kFwd ? event_type::kDep : event_type::kArr),
                  et_time_at_stop))) {
           et = new_et;
-        } else {
+        } else if (new_et.is_valid()) {
           trace(
               "┊ │k={}    update et: no update time_at_stop_with_transfer={}, "
               "et_time_at_stop={}\n",
@@ -751,7 +751,6 @@ void raptor<SearchDir, IntermodalTarget>::route() {
               tt_.locations_.names_.at(s.stop_).view(),
               tt_.locations_.ids_.at(s.stop_).view());
           state_.round_times_[0U][to_idx(s.stop_)] = {tt_, s.time_at_stop_};
-          state_.best_[to_idx(s.stop_)] = {tt_, s.time_at_stop_};
           state_.station_mark_[to_idx(s.stop_)] = true;
         }
         // TODO get time at destination from previous starts for N transfers in
