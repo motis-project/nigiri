@@ -753,8 +753,8 @@ void raptor<SearchDir, IntermodalTarget>::route() {
           state_.round_times_[0U][to_idx(s.stop_)] = {tt_, s.time_at_stop_};
           state_.station_mark_[to_idx(s.stop_)] = true;
         }
-        // TODO get time at destination from previous starts for N transfers in
-        // round N
+        // TODO(felix) get time at destination from previous starts for N
+        // transfers in round N
         time_at_destination_ =
             routing_time{tt_, from_it->time_at_start_} + duration_t{1} +
             (kFwd ? 1 : -1) *

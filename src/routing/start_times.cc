@@ -87,7 +87,9 @@ void add_starts_in_interval(timetable const& tt,
                             offset const& o,
                             std::vector<start>& starts) {
   trace("    add_starts_in_interval(interval={}, stop={}, duration={})\n",
-        interval, location{tt, o.target_}, o.duration_);
+        interval,
+        location{tt, o.target_},  // NOLINT(clang-analyzer-core.CallAndMessage)
+        o.duration_);
 
   // Iterate routes visiting the location.
   for (auto const& r : tt.location_routes_.at(o.target_)) {
