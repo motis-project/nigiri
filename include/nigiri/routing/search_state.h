@@ -29,6 +29,7 @@ struct search_state {
   std::vector<routing_time> best_;
   cista::raw::flat_matrix<routing_time> round_times_;
   std::vector<bool> station_mark_;
+  std::vector<bool> transport_station_mark_;
   std::vector<bool> prev_station_mark_;
   std::vector<bool> route_mark_;
   std::vector<bool> is_destination_;

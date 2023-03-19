@@ -152,9 +152,14 @@ struct transport {
 
 using i32_minutes = std::chrono::duration<std::int32_t, std::ratio<60>>;
 using i16_minutes = std::chrono::duration<std::int16_t, std::ratio<60>>;
+using u8_minutes = std::chrono::duration<std::uint8_t, std::ratio<60>>;
 using duration_t = i16_minutes;
 using unixtime_t = std::chrono::sys_time<i32_minutes>;
 using local_time = date::local_time<i32_minutes>;
+
+constexpr u8_minutes operator"" _i8_minutes(unsigned long long n) {
+  return duration_t{n};
+}
 
 constexpr duration_t operator"" _minutes(unsigned long long n) {
   return duration_t{n};
