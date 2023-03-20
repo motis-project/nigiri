@@ -25,7 +25,8 @@ void get_starts(timetable const&,
                 std::vector<offset> const& station_offsets,
                 location_match_mode,
                 bool use_start_footpaths,
-                std::vector<start>&);
+                std::vector<start>&,
+                bool const add_ontrip);
 
 void collect_destinations(timetable const&,
                           std::vector<std::vector<offset>> const& destinations,

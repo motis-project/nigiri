@@ -85,7 +85,8 @@ template <direction SearchDir>
 void add_starts_in_interval(timetable const& tt,
                             interval<unixtime_t> const& interval,
                             offset const& o,
-                            std::vector<start>& starts) {
+                            std::vector<start>& starts,
+                            bool const add_ontrip) {
   trace("    add_starts_in_interval(interval={}, stop={}, duration={})\n",
         interval,
         location{tt, o.target_},  // NOLINT(clang-analyzer-core.CallAndMessage)
@@ -132,14 +133,16 @@ void add_starts_in_interval(timetable const& tt,
   // considering a journey from outside the interval (i.e. outside journey
   // departs later and arrives at the same time). These journeys outside the
   // interval will be filtered out before returning the result.
-  starts.emplace_back(
-      start{.time_at_start_ = SearchDir == direction::kForward
-                                  ? interval.to_
-                                  : interval.from_ - 1_minutes,
-            .time_at_stop_ = SearchDir == direction::kForward
-                                 ? interval.to_ + o.duration_
-                                 : interval.from_ - 1_minutes - o.duration_,
-            .stop_ = o.target_});
+  if (add_ontrip) {
+    starts.emplace_back(
+        start{.time_at_start_ = SearchDir == direction::kForward
+                                    ? interval.to_
+                                    : interval.from_ - 1_minutes,
+              .time_at_stop_ = SearchDir == direction::kForward
+                                   ? interval.to_ + o.duration_
+                                   : interval.from_ - 1_minutes - o.duration_,
+              .stop_ = o.target_});
+  }
 }
 
 template <direction SearchDir>
@@ -148,7 +151,8 @@ void get_starts(timetable const& tt,
                 std::vector<offset> const& station_offsets,
                 location_match_mode const mode,
                 bool const use_start_footpaths,
-                std::vector<start>& starts) {
+                std::vector<start>& starts,
+                bool const add_ontrip) {
   std::set<location_idx_t> seen;
   for (auto const& o : station_offsets) {
     seen.clear();
@@ -166,7 +170,7 @@ void get_starts(timetable const& tt,
                                           ? tt.locations_.transfer_time_[l]
                                           : 0_i8_minutes),
                        o.type_},
-                starts);
+                starts, add_ontrip);
 
             if (use_start_footpaths) {
               auto const footpaths = SearchDir == direction::kForward
@@ -179,7 +183,7 @@ void get_starts(timetable const& tt,
                 add_starts_in_interval<SearchDir>(
                     tt, interval,
                     offset{fp.target_, o.duration_ + fp.duration_, o.type_},
-                    starts);
+                    starts, add_ontrip);
               }
             }
           },
@@ -240,7 +244,8 @@ template void get_starts<direction::kForward>(
     std::vector<offset> const&,
     location_match_mode,
     bool,
-    std::vector<start>&);
+    std::vector<start>&,
+    bool);
 
 template void get_starts<direction::kBackward>(
     timetable const&,
@@ -248,6 +253,7 @@ template void get_starts<direction::kBackward>(
     std::vector<offset> const&,
     location_match_mode,
     bool,
-    std::vector<start>&);
+    std::vector<start>&,
+    bool);
 
 }  // namespace nigiri::routing

@@ -23,6 +23,9 @@ struct stats {
   std::uint64_t fp_update_prevented_by_lower_bound_{0ULL};
   std::uint64_t route_update_prevented_by_lower_bound_{0ULL};
   std::uint64_t lb_time_{0ULL};
+  std::uint64_t fastest_direct_{0ULL};
+  std::uint64_t search_iterations_{0ULL};
+  std::uint64_t interval_extensions_{0ULL};
 };
 
 template <direction SearchDir, bool IntermodalTarget>
@@ -35,6 +38,8 @@ struct raptor {
 private:
   static constexpr auto const kFwd = (SearchDir == direction::kForward);
   static constexpr auto const kBwd = (SearchDir == direction::kBackward);
+
+  bool is_ontrip() const;
 
   bool is_better(auto a, auto b);
   bool is_better_or_eq(auto a, auto b);
