@@ -33,7 +33,8 @@ void journey::print(std::ostream& out,
                     nigiri::timetable const& tt,
                     bool const debug) const {
   if (legs_.empty()) {
-    out << "no legs\n";
+    out << "no legs [start_time=" << start_time_ << ", dest_time=" << dest_time_
+        << ", transfers=" << static_cast<int>(transfers_) << "\n";
     return;
   }
 

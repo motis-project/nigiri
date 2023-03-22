@@ -296,6 +296,8 @@ struct timetable {
     return route_location_seq_.size();
   }
 
+  interval<unixtime_t> valid_interval() const { return {begin(), end()}; }
+
   unixtime_t begin() const {
     return unixtime_t{std::chrono::duration_cast<i32_minutes>(
         date_range_.from_.time_since_epoch())};
