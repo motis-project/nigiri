@@ -15,8 +15,8 @@ void trace(char const* fmt_str, Args... args) {
   }
 }
 
-template <direction SearchDir>
-void add_start_times_at_stop(timetable const& tt,
+void add_start_times_at_stop(direction const search_dir,
+                             timetable const& tt,
                              route_idx_t const route_idx,
                              size_t const stop_idx,
                              location_idx_t const location_idx,
@@ -37,8 +37,8 @@ void add_start_times_at_stop(timetable const& tt,
         tt.bitfields_[tt.transport_traffic_days_[transport_idx]];
     auto const stop_time =
         tt.event_mam(transport_idx, stop_idx,
-                     (SearchDir == direction::kForward ? event_type::kDep
-                                                       : event_type::kArr));
+                     (search_dir == direction::kForward ? event_type::kDep
+                                                        : event_type::kArr));
 
     auto const day_offset =
         static_cast<std::uint16_t>(stop_time.count() / 1440);
@@ -58,7 +58,7 @@ void add_start_times_at_stop(timetable const& tt,
           interval_with_offset.contains(tt.to_unixtime(day, stop_time_mam))) {
         auto const ev_time = tt.to_unixtime(day, stop_time_mam);
         starts.emplace_back(
-            start{.time_at_start_ = SearchDir == direction::kForward
+            start{.time_at_start_ = search_dir == direction::kForward
                                         ? ev_time - offset
                                         : ev_time + offset,
                   .time_at_stop_ = ev_time,
@@ -81,8 +81,8 @@ void add_start_times_at_stop(timetable const& tt,
   }
 }
 
-template <direction SearchDir>
-void add_starts_in_interval(timetable const& tt,
+void add_starts_in_interval(direction const search_dir,
+                            timetable const& tt,
                             interval<unixtime_t> const& interval,
                             offset const& o,
                             std::vector<start>& starts,
@@ -108,9 +108,9 @@ void add_starts_in_interval(timetable const& tt,
       // - out-allowed=false for backward search
       // - entering at last stop for forward search
       // - exiting at first stop for backward search
-      if ((SearchDir == direction::kBackward &&
+      if ((search_dir == direction::kBackward &&
            (i == 0U || !timetable::stop{s}.out_allowed())) ||
-          (SearchDir == direction::kForward &&
+          (search_dir == direction::kForward &&
            (i == location_seq.size() - 1 ||
             !timetable::stop{s}.in_allowed()))) {
         trace("    skip: i={}, out_allowed={}, in_allowed={}\n", i,
@@ -120,10 +120,10 @@ void add_starts_in_interval(timetable const& tt,
       }
 
       trace("    -> no skip -> add_start_times_at_stop()\n");
-      add_start_times_at_stop<SearchDir>(
-          tt, r, i, timetable::stop{s}.location_idx(),
-          SearchDir == direction::kForward ? interval + o.duration_
-                                           : interval - o.duration_,
+      add_start_times_at_stop(
+          search_dir, tt, r, i, timetable::stop{s}.location_idx(),
+          search_dir == direction::kForward ? interval + o.duration_
+                                            : interval - o.duration_,
           o.duration_, starts);
     }
   }
@@ -135,18 +135,18 @@ void add_starts_in_interval(timetable const& tt,
   // interval will be filtered out before returning the result.
   if (add_ontrip) {
     starts.emplace_back(
-        start{.time_at_start_ = SearchDir == direction::kForward
+        start{.time_at_start_ = search_dir == direction::kForward
                                     ? interval.to_
                                     : interval.from_ - 1_minutes,
-              .time_at_stop_ = SearchDir == direction::kForward
+              .time_at_stop_ = search_dir == direction::kForward
                                    ? interval.to_ + o.duration_
                                    : interval.from_ - 1_minutes - o.duration_,
               .stop_ = o.target_});
   }
 }
 
-template <direction SearchDir>
-void get_starts(timetable const& tt,
+void get_starts(direction const search_dir,
+                timetable const& tt,
                 variant<unixtime_t, interval<unixtime_t>> const& start_time,
                 std::vector<offset> const& station_offsets,
                 location_match_mode const mode,
@@ -163,8 +163,8 @@ void get_starts(timetable const& tt,
       trace("META: {} - {}\n", location{tt, o.target_}, location{tt, l});
       start_time.apply(utl::overloaded{
           [&](interval<unixtime_t> const interval) {
-            add_starts_in_interval<SearchDir>(
-                tt, interval,
+            add_starts_in_interval(
+                search_dir, tt, interval,
                 offset{l,
                        o.duration_ + (mode == location_match_mode::kIntermodal
                                           ? tt.locations_.transfer_time_[l]
@@ -173,15 +173,15 @@ void get_starts(timetable const& tt,
                 starts, add_ontrip);
 
             if (use_start_footpaths) {
-              auto const footpaths = SearchDir == direction::kForward
+              auto const footpaths = search_dir == direction::kForward
                                          ? tt.locations_.footpaths_out_[l]
                                          : tt.locations_.footpaths_in_[l];
               for (auto const& fp : footpaths) {
                 trace("FOOTPATH START: {} --offset={},fp_duration={}--> {}\n",
                       location{tt, l}, o.duration_, fp.duration_,
                       location{tt, fp.target_});
-                add_starts_in_interval<SearchDir>(
-                    tt, interval,
+                add_starts_in_interval(
+                    search_dir, tt, interval,
                     offset{fp.target_, o.duration_ + fp.duration_, o.type_},
                     starts, add_ontrip);
               }
@@ -190,20 +190,20 @@ void get_starts(timetable const& tt,
           [&](unixtime_t const t) {
             starts.emplace_back(
                 start{.time_at_start_ = t,
-                      .time_at_stop_ = SearchDir == direction::kForward
+                      .time_at_stop_ = search_dir == direction::kForward
                                            ? t + o.duration_
                                            : t - o.duration_,
                       .stop_ = l});
 
             if (use_start_footpaths) {
               auto const footpaths =
-                  SearchDir == direction::kForward
+                  search_dir == direction::kForward
                       ? tt.locations_.footpaths_out_[o.target_]
                       : tt.locations_.footpaths_in_[o.target_];
               for (auto const& fp : footpaths) {
                 starts.emplace_back(
                     start{.time_at_start_ = t,
-                          .time_at_stop_ = SearchDir == direction::kForward
+                          .time_at_stop_ = search_dir == direction::kForward
                                                ? t + o.duration_ + fp.duration_
                                                : t - o.duration_ - fp.duration_,
                           .stop_ = l});
@@ -213,8 +213,8 @@ void get_starts(timetable const& tt,
     });
   }
 
-  std::sort(begin(starts), end(starts), [](start const& a, start const& b) {
-    return SearchDir == direction::kForward ? b < a : a < b;
+  std::sort(begin(starts), end(starts), [&](start const& a, start const& b) {
+    return search_dir == direction::kForward ? b < a : a < b;
   });
 }
 
@@ -237,23 +237,5 @@ void collect_destinations(timetable const& tt,
     }
   }
 }
-
-template void get_starts<direction::kForward>(
-    timetable const&,
-    variant<unixtime_t, interval<unixtime_t>> const&,
-    std::vector<offset> const&,
-    location_match_mode,
-    bool,
-    std::vector<start>&,
-    bool);
-
-template void get_starts<direction::kBackward>(
-    timetable const&,
-    variant<unixtime_t, interval<unixtime_t>> const&,
-    std::vector<offset> const&,
-    location_match_mode,
-    bool,
-    std::vector<start>&,
-    bool);
 
 }  // namespace nigiri::routing

@@ -789,8 +789,8 @@ void raptor<SearchDir, IntermodalTarget>::route() {
 
   auto add_start_labels = [&](start_time_t const start_interval,
                               bool const add_ontrip) {
-    get_starts<SearchDir>(tt_, start_interval, q_.start_, q_.start_match_mode_,
-                          q_.use_start_footpaths_, state_.starts_, add_ontrip);
+    get_starts(SearchDir, tt_, start_interval, q_.start_, q_.start_match_mode_,
+               q_.use_start_footpaths_, state_.starts_, add_ontrip);
   };
 
   auto const reset_arrivals = [&]() {
