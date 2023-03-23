@@ -10,7 +10,7 @@
 namespace nigiri {
 
 constexpr auto const kMode =
-    cista::mode::WITH_INTEGRITY | cista::mode::WITH_VERSION;
+    cista::mode::WITH_INTEGRITY | cista::mode::WITH_STATIC_VERSION;
 
 std::string reverse(std::string s) {
   std::reverse(s.begin(), s.end());
@@ -30,8 +30,8 @@ std::ostream& operator<<(std::ostream& out, timetable const& tt) {
         << "\n";
     for (auto d = tt.date_range_.from_; d != tt.date_range_.to_;
          d += std::chrono::days{1}) {
-      auto const day_idx = day_idx_t{
-          static_cast<day_idx_t::value_t>((d - tt.date_range_.from_) / 1_days)};
+      auto const day_idx = day_idx_t{static_cast<day_idx_t::value_t>(
+          (d - tt.internal_interval_days().from_) / 1_days)};
       if (traffic_days.test(to_idx(day_idx))) {
         date::to_stream(out, "%F", d);
         out << " (day_idx=" << day_idx << ")\n";

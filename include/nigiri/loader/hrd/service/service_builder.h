@@ -14,7 +14,7 @@
 namespace nigiri::loader::hrd {
 
 struct service_builder {
-  explicit service_builder(stamm&, timetable&, interval<std::chrono::sys_days>);
+  explicit service_builder(stamm&, timetable&);
 
   void add_services(config const& c,
                     char const* filename,

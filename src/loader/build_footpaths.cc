@@ -3,6 +3,8 @@
 #include <optional>
 #include <stack>
 
+#include "fmt/ostream.h"
+
 #include "geo/latlng.h"
 #include "geo/point_rtree.h"
 
@@ -177,7 +179,7 @@ void process_component(timetable& tt,
   utl::verify(size > 2, "invalid size [id={}], first={}", lb->first,
               tt.locations_.ids_.at(location_idx_t{lb->second}).view());
 
-  auto const id = std::string_view{"8000159"};
+  auto const id = std::string_view{"0590041"};
   auto const needle =
       std::find_if(begin(tt.locations_.ids_), end(tt.locations_.ids_),
                    [&](auto&& x) { return x.view() == id; });
@@ -244,7 +246,7 @@ next:
     print_dbg("{} = {} \n", i, location{tt, location_idx_t{(lb + i)->second}});
   }
 
-  print_dbg("MAT BEFORE\n{}", mat);
+  print_dbg("MAT BEFORE {}\n", mat);
 
   floyd_warshall(mat);
 

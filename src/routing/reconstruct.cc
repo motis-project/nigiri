@@ -166,8 +166,6 @@ void reconstruct_journey(timetable const& tt,
                          query const& q,
                          search_state const& state,
                          journey& j) {
-  (void)q;  // TODO(felix) support intermodal start
-
   constexpr auto const kFwd = SearchDir == direction::kForward;
   auto const is_better_or_eq = [](auto a, auto b) {
     return kFwd ? a <= b : a >= b;

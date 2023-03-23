@@ -12,9 +12,9 @@ struct routing_time {
   constexpr explicit routing_time(std::int32_t const offset)
       : offset_{offset} {}
   routing_time(timetable const& tt, unixtime_t const t)
-      : offset_{(t - tt.begin()).count()} {}
+      : offset_{(t - tt.internal_interval().from_).count()} {}
   constexpr unixtime_t to_unixtime(timetable const& tt) const {
-    return tt.date_range_.from_ + offset_ * 1_minutes;
+    return tt.internal_interval().from_ + offset_ * 1_minutes;
   }
   constexpr static routing_time max() {
     return routing_time{std::numeric_limits<std::int32_t>::max()};

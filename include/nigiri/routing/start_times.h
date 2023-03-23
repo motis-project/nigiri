@@ -19,13 +19,14 @@ struct start {
   location_idx_t stop_;
 };
 
-template <direction SearchDir>
-void get_starts(timetable const&,
+void get_starts(direction,
+                timetable const&,
                 variant<unixtime_t, interval<unixtime_t>> const& start_time,
                 std::vector<offset> const& station_offsets,
                 location_match_mode,
                 bool use_start_footpaths,
-                std::vector<start>&);
+                std::vector<start>&,
+                bool add_ontrip);
 
 void collect_destinations(timetable const&,
                           std::vector<std::vector<offset>> const& destinations,

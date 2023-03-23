@@ -1,6 +1,7 @@
 #pragma once
 
 #include <cassert>
+#include <algorithm>
 #include <iterator>
 #include <ostream>
 #include <type_traits>
@@ -63,6 +64,8 @@ struct interval {
   template <typename X>
   requires std::is_convertible_v<T, X>
   operator interval<X>() { return {from_, to_}; }
+
+  T clamp(T const x) const { return std::clamp(x, from_, to_); }
 
   bool contains(T const t) const { return t >= from_ && t < to_; }
 

@@ -270,13 +270,14 @@ struct timetable {
   unixtime_t event_time(nigiri::transport t,
                         size_t const stop_idx,
                         event_type const ev_type) const {
-    return unixtime_t{date_range_.from_ + to_idx(t.day_) * 1_days +
+    return unixtime_t{internal_interval_days().from_ + to_idx(t.day_) * 1_days +
                       event_mam(t.t_idx_, stop_idx, ev_type)};
   }
 
   std::pair<day_idx_t, minutes_after_midnight_t> day_idx_mam(
       unixtime_t const t) const {
-    auto const minutes_since_timetable_begin = (t - date_range_.from_).count();
+    auto const minutes_since_timetable_begin =
+        (t - internal_interval().from_).count();
     auto const d =
         static_cast<day_idx_t::value_t>(minutes_since_timetable_begin / 1440);
     auto const m = minutes_since_timetable_begin % 1440;
@@ -285,7 +286,7 @@ struct timetable {
 
   unixtime_t to_unixtime(day_idx_t const d,
                          minutes_after_midnight_t const m) const {
-    return date_range_.from_ + to_idx(d) * 1_days + m;
+    return internal_interval_days().from_ + to_idx(d) * 1_days + m;
   }
 
   cista::base_t<location_idx_t> n_locations() const {
@@ -296,14 +297,20 @@ struct timetable {
     return route_location_seq_.size();
   }
 
-  unixtime_t begin() const {
-    return unixtime_t{std::chrono::duration_cast<i32_minutes>(
-        date_range_.from_.time_since_epoch())};
+  interval<unixtime_t> external_interval() const {
+    return {std::chrono::time_point_cast<i32_minutes>(date_range_.from_),
+            std::chrono::time_point_cast<i32_minutes>(date_range_.to_)};
   }
 
-  unixtime_t end() const {
-    return unixtime_t{std::chrono::duration_cast<i32_minutes>(
-        date_range_.to_.time_since_epoch())};
+  interval<unixtime_t> internal_interval_days() const {
+    return {date_range_.from_ - kTimetableOffset, date_range_.to_ + 1_days};
+  }
+
+  constexpr interval<unixtime_t> internal_interval() const {
+    return {
+        std::chrono::time_point_cast<i32_minutes>(date_range_.from_ -
+                                                  kTimetableOffset),
+        std::chrono::time_point_cast<i32_minutes>(date_range_.to_ + 1_days)};
   }
 
   friend std::ostream& operator<<(std::ostream&, timetable const&);

@@ -34,13 +34,9 @@ std::pair<utl::cstr, utl::cstr> mask_dates(utl::cstr str) {
 }
 
 interval<std::chrono::sys_days> parse_interval(std::string_view file_content) {
-  scoped_timer timer{"parse interval"};
-
-  using std::chrono::sys_days;
   auto const [first_date, last_date] = mask_dates(file_content);
-  return {
-      sys_days{yyyymmdd(first_date)} - kBaseDayOffset,
-      sys_days{yyyymmdd(last_date)} + kBaseDayOffset + std::chrono::days{1}};
+  return {{std::chrono::sys_days{yyyymmdd(first_date)}},
+          {std::chrono::sys_days{yyyymmdd(last_date)}}};
 }
 
 std::string parse_schedule_name(std::string_view file_content) {
