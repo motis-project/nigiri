@@ -182,7 +182,7 @@ transport raptor<SearchDir, IntermodalTarget>::get_earliest_transport(
         k, i, day, ev_time_range.size(), tt_.route_transport_ranges_[r],
         *ev_time_range.begin(), *(ev_time_range.end() - 1));
     for (auto it = begin(ev_time_range); it != end(ev_time_range); ++it) {
-      auto const t_offset = &*it - event_times.data();
+      auto const t_offset = static_cast<std::size_t>(&*it - event_times.data());
       auto const ev = *it;
       trace("┊ │k={}      => t_offset={}\n", k, t_offset);
       auto const ev_mam = minutes_after_midnight_t{
@@ -760,7 +760,7 @@ void raptor<SearchDir, IntermodalTarget>::route() {
 #endif
 
   auto const fastest_direct = get_fastest_direct(tt_, q_, SearchDir);
-  stats_.fastest_direct_ = fastest_direct.count();
+  stats_.fastest_direct_ = static_cast<std::uint64_t>(fastest_direct.count());
 
   auto const number_of_results_in_interval = [&]() {
     if (holds_alternative<interval<unixtime_t>>(q_.start_time_)) {
@@ -787,7 +787,7 @@ void raptor<SearchDir, IntermodalTarget>::route() {
     return !can_search_earlier && !can_search_later;
   };
 
-  auto add_start_labels = [&](start_time_t const start_interval,
+  auto add_start_labels = [&](start_time_t const& start_interval,
                               bool const add_ontrip) {
     get_starts(SearchDir, tt_, start_interval, q_.start_, q_.start_match_mode_,
                q_.use_start_footpaths_, state_.starts_, add_ontrip);

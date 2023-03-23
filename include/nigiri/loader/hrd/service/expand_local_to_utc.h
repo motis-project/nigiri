@@ -115,9 +115,9 @@ void to_local_time(service_store const& store,
       continue;
     }
 
-    auto const hrd_local_day_idx =
-        static_cast<std::size_t>((day - hrd_interval.from_).count());
-    if (!s.local_traffic_days().test(hrd_local_day_idx)) {
+    auto const hrd_local_day_idx = (day - hrd_interval.from_).count();
+    if (!s.local_traffic_days().test(
+            static_cast<std::size_t>(hrd_local_day_idx))) {
       continue;
     }
 
@@ -126,18 +126,21 @@ void to_local_time(service_store const& store,
     if (!first_day_offset.has_value()) {
       continue;
     }
-    build_stop_seq(s, store, st, hrd_local_day_idx, local_times, stop_seq);
+    build_stop_seq(s, store, st, static_cast<std::size_t>(hrd_local_day_idx),
+                   local_times, stop_seq);
 
     auto const utc_traffic_day =
-        hrd_local_day_idx - offset +
-        static_cast<std::size_t>(first_day_offset.value() / 1_days);
+        hrd_local_day_idx - offset + first_day_offset.value() / 1_days;
+    if (utc_traffic_day < 0) {
+      continue;
+    }
 
     auto const it = utc_time_traffic_days.find(key);
     if (it == end(utc_time_traffic_days)) {
       utc_time_traffic_days.emplace(key, bitfield{})
-          .first->second.set(utc_traffic_day);
+          .first->second.set(static_cast<std::size_t>(utc_traffic_day));
     } else {
-      it->second.set(utc_traffic_day);
+      it->second.set(static_cast<std::size_t>(utc_traffic_day));
     }
   }
 
