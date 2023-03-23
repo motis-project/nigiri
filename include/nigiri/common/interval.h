@@ -1,6 +1,7 @@
 #pragma once
 
 #include <cassert>
+#include <algorithm>
 #include <iterator>
 #include <ostream>
 #include <type_traits>
