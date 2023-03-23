@@ -25,7 +25,6 @@ TEST_CASE("loader_hrd_bitfields.parse_file") {
       R"(000001 C0200C
 000002 C0100C)";
 
-  timetable tt;
   auto const map =
       parse_bitfields(nigiri::loader::hrd::hrd_5_00_8, file_content);
   {

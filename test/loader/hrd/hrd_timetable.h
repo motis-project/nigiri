@@ -8,12 +8,21 @@ namespace nigiri::test_data::hrd_timetable {
 //  A  -  B  -  C  -  D  -  E  -  F
 //    100 - 110 - 111 - 011 - 001
 
-// 100 [0, 3] A - B - C - D
-// 010 [1, 4]     B - C - D - E
-// 001 [2, 5]         C - D - E - F
+// 28.03.  100 [0, 3] A - B - C - D
+// 29.03.  010 [1, 4]     B - C - D - E
+// 30.03.  001 [2, 5]         C - D - E - F
 
-constexpr auto const basic_info_file_content = R"(28.03.2020
-31.03.2020
+constexpr interval<std::chrono::sys_days> full_period() {
+  using namespace date;
+  constexpr auto const from =
+      std::chrono::sys_days{(2020_y / March / 28).operator sys_days()};
+  constexpr auto const to =
+      std::chrono::sys_days{(2020_y / March / 31).operator sys_days()};
+  return {from, to};
+}
+
+constexpr auto const basic_info_file_content = R"(26.03.2020
+02.04.2020
 Fahrplan 2020$29.03.2020 03:15:02$5.20.39$INFO+
 )";
 
@@ -47,17 +56,17 @@ constexpr auto const station_geo_file_content = R"(
 0000007  41.579799  59.076849 F_META
 )";
 
-// 000001 = E6 = 11|10 0|110 = 28.03
-// 000002 = F6 = 11|11 0|110 = 28.03, 29.03
-// 000003 = FE = 11|11 1|110 = 28.03, 29.03, 30.03
-// 000004 = DE = 11|01 1|110 =        29.03, 30.03
-// 000005 = CE = 11|00 1|110 =               30.03
+// 000001 = C86 = 11|00 1000 0|110 = 28.03
+// 000002 = CC6 = 11|00 1100 0|110 = 28.03, 29.03
+// 000003 = CE6 = 11|00 1110 0|110 = 28.03, 29.03, 30.03
+// 000004 = C66 = 11|00 0110 0|110 =        29.03, 30.03
+// 000005 = C26 = 11|00 0010 0|110 =               30.03
 constexpr auto const bitfields_file_content = R"(
-000001 E6
-000002 F6
-000003 FE
-000004 DE
-000005 CE
+000001 C86
+000002 CC6
+000003 CE6
+000004 C66
+000005 C26
 )";
 
 constexpr auto const timezones_file_content = R"(

@@ -38,13 +38,17 @@ stamm::stamm(config const& c, timetable& tt, dir const& d) : tt_{tt} {
   providers_ = parse_providers(c, tt, files.at(PROVIDERS).data());
   attributes_ = parse_attributes(c, tt, files.at(ATTRIBUTES).data());
   directions_ = parse_directions(c, tt, files.at(DIRECTIONS).data());
-  tt.date_range_ = parse_interval(files.at(BASIC_DATA).data());
+  date_range_ = parse_interval(files.at(BASIC_DATA).data());
   parse_track_rules(c, *this, tt, files.at(TRACKS).data(), track_rules_,
                     track_locations_);
 }
 
 stamm::stamm(timetable& tt, timezone_map_t&& m)
     : timezones_{std::move(m)}, tt_{tt} {}
+
+interval<std::chrono::sys_days> stamm::get_date_range() const {
+  return date_range_;
+}
 
 location_idx_t stamm::resolve_location(eva_number eva) const {
   auto const it = locations_.find(eva);

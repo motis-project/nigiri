@@ -21,8 +21,6 @@ void print_transport(timetable const& tt,
   auto const day_idx = x.day_;
   auto const& route_idx = tt.transport_route_.at(i);
   auto const& stop_seq = tt.route_location_seq_.at(route_idx);
-  auto const transport_idx_in_route =
-      to_idx(x.t_idx_ - tt.route_transport_ranges_.at(route_idx).from_);
 
   assert(tt.route_transport_ranges_.at(route_idx).contains(x.t_idx_));
 
@@ -44,10 +42,7 @@ void print_transport(timetable const& tt,
     fmt::print(out, "{:2}: {:7} {:.<48} ", stop_idx, stop_id, stop_name);
 
     if (stop_idx != from) {
-      auto const t =
-          tt.date_range_.from_ + to_idx(day_idx) * 1_days +
-          tt.event_times_at_stop(route_idx, stop_idx,
-                                 event_type::kArr)[transport_idx_in_route];
+      auto const t = tt.event_time(x, stop_idx, event_type::kArr);
       if (!s.out_allowed()) {
         fmt::print(" -");
       } else {
@@ -61,10 +56,7 @@ void print_transport(timetable const& tt,
     }
 
     if (stop_idx != to - 1) {
-      auto const t =
-          tt.date_range_.from_ + to_idx(day_idx) * 1_days +
-          tt.event_times_at_stop(route_idx, stop_idx,
-                                 event_type::kDep)[transport_idx_in_route];
+      auto const t = tt.event_time(x, stop_idx, event_type::kDep);
       if (!s.in_allowed()) {
         fmt::print("   -");
       } else {
@@ -90,7 +82,8 @@ void print_transport(timetable const& tt,
           out << "{name=" << tt.trip_display_names_.at(trip_idx).view()
               << ", day=";
           date::to_stream(out, "%F",
-                          tt.date_range_.from_ + to_idx(day_idx) * 1_days);
+                          tt.date_range_.from_ - kTimetableOffset +
+                              to_idx(day_idx) * 1_days);
           out << ", id=" << tt.trip_id_strings_.at(id).view()
               << ", src=" << static_cast<int>(to_idx(tt.trip_id_src_.at(id)));
           if (with_debug) {

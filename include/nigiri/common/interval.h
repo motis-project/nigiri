@@ -64,6 +64,8 @@ struct interval {
   requires std::is_convertible_v<T, X>
   operator interval<X>() { return {from_, to_}; }
 
+  T clamp(T const x) const { return std::clamp(x, from_, to_); }
+
   bool contains(T const t) const { return t >= from_ && t < to_; }
 
   bool overlaps(interval const& o) const {

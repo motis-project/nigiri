@@ -86,9 +86,8 @@ std::uint64_t hash(config const& c, dir const& d, std::uint64_t const seed) {
 void load_timetable(source_idx_t const src,
                     config const& c,
                     dir const& d,
-                    timetable& tt,
-                    interval<std::chrono::sys_days> selection) {
-  (void)src;
+                    timetable& tt) {
+  (void)src;  // TODO(felix) Multi schedule
   auto bars = utl::global_progress_bars{false};
 
   auto empty_idx_vec = vector<location_idx_t>{};
@@ -100,8 +99,8 @@ void load_timetable(source_idx_t const src,
                                              source_idx_t{0U},
                                              location_type::kStation,
                                              osm_node_id_t::invalid(),
-                                             location_idx_t ::invalid(),
-                                             timezone_idx_t ::invalid(),
+                                             location_idx_t::invalid(),
+                                             timezone_idx_t::invalid(),
                                              0_minutes,
                                              it_range{empty_idx_vec},
                                              it_range{empty_footpath_vec},
@@ -109,7 +108,7 @@ void load_timetable(source_idx_t const src,
   }
 
   auto st = stamm{c, tt, d};
-  service_builder sb{st, tt, selection};
+  service_builder sb{st, tt};
 
   auto progress_tracker = utl::activate_progress_tracker("nigiri");
   progress_tracker->status("Read Services")

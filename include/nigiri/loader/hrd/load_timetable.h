@@ -15,11 +15,6 @@ bool applicable(config const&, dir const&);
 
 std::uint64_t hash(config const&, dir const&, std::uint64_t seed = {});
 
-void load_timetable(
-    source_idx_t,
-    config const&,
-    dir const&,
-    timetable&,
-    interval<std::chrono::sys_days> = kMaxInterval<std::chrono::sys_days>);
+void load_timetable(source_idx_t, config const&, dir const&, timetable&);
 
 }  // namespace nigiri::loader::hrd

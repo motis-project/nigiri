@@ -9,6 +9,7 @@
 
 using namespace nigiri;
 using namespace nigiri::routing;
+using namespace nigiri::test_data::hrd_timetable;
 
 //   +---15--- 30freq --> A
 //  /
@@ -261,8 +262,8 @@ start_time=2020-03-30 00:00
 TEST_CASE("routing start times") {
   auto const src = source_idx_t{0U};
   auto tt = std::make_shared<timetable>();
-  load_timetable(src, loader::hrd::hrd_5_20_26,
-                 nigiri::test_data::hrd_timetable::files_simple(), *tt);
+  tt->date_range_ = full_period();
+  load_timetable(src, loader::hrd::hrd_5_20_26, files_simple(), *tt);
 
   using namespace date;
   auto const A = tt->locations_.location_id_to_idx_.at(

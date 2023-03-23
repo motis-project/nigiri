@@ -12,12 +12,10 @@ constexpr auto const timezones_file_content = R"(
 TEST_CASE("loader_hrd_timezone, roundtrip") {
   using namespace date;
   auto const& c = configs[0];
-  timetable tt;
+  timetable tt{};
   auto const timezones = parse_timezones(c, tt, timezones_file_content);
   auto const tz = timezones.at(eva_number{0}).second;
   auto const start = unixtime_t{date::sys_days{2020_y / January / 1}};
-  //  auto const start =
-  //      unixtime_t{date::sys_days{2020_y / October / 25} + 90_minutes};
   auto const end = unixtime_t{date::sys_days{2021_y / January / 1}};
   for (auto t = start; t <= end; t += 30_minutes) {
     auto const local = to_local_time(tz, t);

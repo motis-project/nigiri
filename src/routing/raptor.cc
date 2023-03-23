@@ -32,8 +32,8 @@
 #endif
 
 // #define NIGIRI_RAPTOR_TRACING
-//   #define NIGIRI_RAPTOR_TRACING_ONLY_UPDATES
-#define NIGIRI_RAPTOR_INTERVAL_TRACING
+// #define NIGIRI_RAPTOR_TRACING_ONLY_UPDATES
+// #define NIGIRI_RAPTOR_INTERVAL_TRACING
 
 #ifdef NIGIRI_RAPTOR_INTERVAL_TRACING
 #define trace_interval(...) fmt::print(__VA_ARGS__)
@@ -82,7 +82,8 @@ raptor<SearchDir, IntermodalTarget>::raptor(timetable const& tt,
                                             search_state& state,
                                             query q)
     : tt_{tt},
-      n_days_{static_cast<std::uint16_t>(tt_.date_range_.size().count())},
+      n_days_{static_cast<std::uint16_t>(
+          tt_.internal_interval_days().size().count())},
       q_{std::move(q)},
       state_{state} {}
 
@@ -773,17 +774,16 @@ void raptor<SearchDir, IntermodalTarget>::route() {
   };
 
   auto const clamp_to_timetable = [&](unixtime_t const t) {
-    trace("clamp(a={}, b={}, x={}) = {}\n", tt_.begin(), tt_.end(), t,
-          std::clamp(tt_.begin(), tt_.end(), t));
-    return std::clamp(t, tt_.begin(), tt_.end());
+    return tt_.external_interval().clamp(t);
   };
 
   auto const max_interval_reached = [&]() {
     auto const can_search_earlier =
         q_.extend_interval_earlier_ &&
-        state_.search_interval_.from_ != tt_.begin();
+        state_.search_interval_.from_ != tt_.external_interval().from_;
     auto const can_search_later =
-        q_.extend_interval_later_ && state_.search_interval_.to_ != tt_.end();
+        q_.extend_interval_later_ &&
+        state_.search_interval_.to_ != tt_.external_interval().to_;
     return !can_search_earlier && !can_search_later;
   };
 
@@ -872,7 +872,7 @@ void raptor<SearchDir, IntermodalTarget>::route() {
               [](unixtime_t const start_time) {
                 return interval<unixtime_t>{start_time, start_time};
               }}),
-          state_.search_interval_, tt_.valid_interval(),
+          state_.search_interval_, tt_.external_interval(),
           number_of_results_in_interval());
       break;
     } else {
@@ -889,9 +889,11 @@ void raptor<SearchDir, IntermodalTarget>::route() {
               [](unixtime_t const start_time) {
                 return interval<unixtime_t>{start_time, start_time};
               }}),
-          state_.search_interval_, tt_.valid_interval(),
+          state_.search_interval_, tt_.external_interval(),
           number_of_results_in_interval());
     }
+
+    state_.starts_.clear();
 
     auto const new_interval = interval{
         q_.extend_interval_earlier_

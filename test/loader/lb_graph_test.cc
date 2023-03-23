@@ -6,11 +6,12 @@
 
 using namespace nigiri;
 using namespace nigiri::loader::hrd;
+using namespace nigiri::test_data::hrd_timetable;
 
 TEST_CASE("lb_graph") {
   auto tt = timetable{};
-  load_timetable(source_idx_t{0U}, hrd_5_20_26,
-                 nigiri::test_data::hrd_timetable::files_simple(), tt);
+  tt.date_range_ = full_period();
+  load_timetable(source_idx_t{0U}, hrd_5_20_26, files_simple(), tt);
 
   std::stringstream ss;
   for (auto i = location_idx_t{0U}; i != tt.locations_.ids_.size(); ++i) {
