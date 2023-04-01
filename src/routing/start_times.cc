@@ -163,14 +163,9 @@ void get_starts(direction const search_dir,
       trace("META: {} - {}\n", location{tt, o.target_}, location{tt, l});
       start_time.apply(utl::overloaded{
           [&](interval<unixtime_t> const interval) {
-            add_starts_in_interval(
-                search_dir, tt, interval,
-                offset{l,
-                       o.duration_ + (mode == location_match_mode::kIntermodal
-                                          ? tt.locations_.transfer_time_[l]
-                                          : 0_i8_minutes),
-                       o.type_},
-                starts, add_ontrip);
+            add_starts_in_interval(search_dir, tt, interval,
+                                   offset{l, o.duration_, o.type_}, starts,
+                                   add_ontrip);
 
             if (use_start_footpaths) {
               auto const footpaths = search_dir == direction::kForward

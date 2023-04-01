@@ -342,27 +342,21 @@ void reconstruct_journey(timetable const& tt,
         for_each_meta(
             tt, location_match_mode::kIntermodal, dest_offset.target_,
             [&](location_idx_t const eq) {
-              auto const transfer_time = tt.locations_.transfer_time_[eq];
-              auto intermodal_dest = check_fp(
-                  k, l, curr_time, {eq, dest_offset.duration_ + transfer_time});
+              auto intermodal_dest =
+                  check_fp(k, l, curr_time, {eq, dest_offset.duration_});
               if (intermodal_dest.has_value()) {
                 trace(
-                    "  found intermodal dest offset END [{}] -> {}: offset={}, "
-                    "transfer_time={}\n",
+                    "  found intermodal dest offset END [{}] -> {}: "
+                    "offset={}\n",
                     curr_time, location{tt, dest_offset.target_},
-                    dest_offset.duration_, transfer_time);
-                (kFwd ? intermodal_dest->first.dep_time_ += transfer_time
-                      : intermodal_dest->first.arr_time_ -= transfer_time);
+                    dest_offset.duration_);
                 intermodal_dest->first.uses_ =
-                    offset{eq, dest_offset.duration_ - transfer_time,
-                           dest_offset.type_};
+                    offset{eq, dest_offset.duration_, dest_offset.type_};
                 ret = std::move(intermodal_dest);
               } else {
-                trace(
-                    "  BAD intermodal dest offset: END [{}] -> {}: {}, "
-                    "transfer_time={}\n",
-                    curr_time, location{tt, dest_offset.target_},
-                    dest_offset.duration_, transfer_time);
+                trace("  BAD intermodal dest offset: END [{}] -> {}: {}\n",
+                      curr_time, location{tt, dest_offset.target_},
+                      dest_offset.duration_);
               }
 
               for (auto const& fp : kFwd ? tt.locations_.footpaths_in_[eq]
@@ -373,12 +367,10 @@ void reconstruct_journey(timetable const& tt,
                 if (fp_intermodal_dest.has_value()) {
                   trace(
                       "  found intermodal+footpath dest offset END [{}] -> {}: "
-                      "offset={}, "
-                      "transfer_time={}\n",
-                      curr_time, location{tt, fp.target_}, fp.duration_,
-                      transfer_time);
-                  fp_intermodal_dest->first.uses_ = offset{
-                      eq, fp.duration_ - transfer_time, dest_offset.type_};
+                      "offset={}\n",
+                      curr_time, location{tt, fp.target_}, fp.duration_);
+                  fp_intermodal_dest->first.uses_ =
+                      offset{eq, fp.duration_, dest_offset.type_};
                   ret = std::move(fp_intermodal_dest);
                 } else {
                   trace(

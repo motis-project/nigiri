@@ -170,12 +170,16 @@ transport raptor<SearchDir, IntermodalTarget>::get_earliest_transport(
 
   for (auto i = day_idx_t::value_t{0U}; i != n_days_to_iterate; ++i) {
     auto const day = kFwd ? day_at_stop + i : day_at_stop - i;
-    auto const ev_time_range = it_range{
-        i == 0U ? seek_first_day() : get_begin_it<SearchDir>(event_times),
-        get_end_it<SearchDir>(event_times)};
+    auto const ev_time_range =
+        it_range{kFwd /* TODO(felix) make it work for bwd */ && i == 0U
+                     ? seek_first_day()
+                     : get_begin_it<SearchDir>(event_times),
+                 get_end_it<SearchDir>(event_times)};
     if (ev_time_range.empty()) {
+      trace("┊ │k={}      day={}/{} -> nothing found -> continue\n", k, i, day);
       continue;
     }
+
     trace(
         "┊ │k={}      day={}/{}, ev_time_range.size() = {}, "
         "transport_range={}, first={}, last={}\n",
@@ -281,7 +285,7 @@ bool raptor<SearchDir, IntermodalTarget>::update_route(unsigned const k,
           is_better(
               k == 1 ? by_transport_time : by_transport_time_with_transfer,
               state_.best_[l_idx]) &&
-          is_better(by_transport_time_with_transfer, time_at_destination_)) {
+          is_better(by_transport_time, time_at_destination_)) {
 
 #ifdef NIGIRI_LOWER_BOUND
         auto const lower_bound =
@@ -372,8 +376,7 @@ bool raptor<SearchDir, IntermodalTarget>::update_route(unsigned const k,
         trace(
             "┊ │k={}    by_transport={} NOT better than time_at_destination={} "
             "OR current_best={} => no update\n",
-            k, by_transport_time_with_transfer, time_at_destination_,
-            current_best);
+            k, by_transport_time, time_at_destination_, current_best);
       }
     }
 
@@ -478,8 +481,10 @@ void raptor<SearchDir, IntermodalTarget>::update_footpaths(unsigned const k) {
       continue;
     }
 
-    update_intermodal_dest(l_idx,
-                           [&]() { return state_.best_[to_idx(l_idx)]; });
+    update_intermodal_dest(l_idx, [&]() {
+      return state_.best_[to_idx(l_idx)] -
+             (kFwd ? 1 : -1) * tt_.locations_.transfer_time_[l_idx];
+    });
 
     auto const fps = kFwd ? tt_.locations_.footpaths_out_[l_idx]
                           : tt_.locations_.footpaths_in_[l_idx];
