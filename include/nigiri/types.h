@@ -190,7 +190,7 @@ struct tz_offsets {
     duration_t season_end_mam_{0};
   };
   friend std::ostream& operator<<(std::ostream&, tz_offsets const&);
-  optional<season> season_{std::nullopt};
+  vector<season> seasons_;
   duration_t offset_{0};
 };
 
@@ -227,6 +227,7 @@ enum class direction { kForward, kBackward };
 #include <ostream>
 
 #include "cista/serialization.h"
+#include "utl/helpers/algorithm.h"
 
 namespace std::chrono {
 
@@ -272,19 +273,16 @@ inline std::ostream& operator<<(std::ostream& out, sys_days const& t) {
 namespace nigiri {
 
 inline local_time to_local_time(tz_offsets const& offsets, unixtime_t const t) {
-  if (!offsets.season_.has_value()) {
-    return local_time{(t + offsets.offset_).time_since_epoch()};
-  }
-
-  auto const season_begin = offsets.season_->begin_ +
-                            offsets.season_->season_begin_mam_ -
-                            offsets.offset_;
-  auto const season_end = offsets.season_->end_ +
-                          offsets.season_->season_end_mam_ -
-                          offsets.season_->offset_;
-  auto const is_in_season = t >= season_begin && t < season_end;
-  auto const active_offset =
-      is_in_season ? offsets.season_->offset_ : offsets.offset_;
+  auto const active_season_it =
+      utl::find_if(offsets.seasons_, [&](tz_offsets::season const& s) {
+        auto const season_begin =
+            s.begin_ + s.season_begin_mam_ - offsets.offset_;
+        auto const season_end = s.end_ + s.season_end_mam_ - s.offset_;
+        return t >= season_begin && t < season_end;
+      });
+  auto const active_offset = active_season_it == end(offsets.seasons_)
+                                 ? offsets.offset_
+                                 : active_season_it->offset_;
   return local_time{(t + active_offset).time_since_epoch()};
 }
 

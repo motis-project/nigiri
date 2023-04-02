@@ -7,7 +7,7 @@
 
 namespace nigiri::loader::hrd {
 
-duration_t distance_to_midnight(utl::cstr s) {
+duration_t parse_mam(utl::cstr s) {
   return duration_t{hhmm_to_min(parse<int>(s))};
 }
 
@@ -20,6 +20,34 @@ unixtime_t parse_date(utl::cstr s) {
   return unixtime_t{std::chrono::sys_days{date}};
 }
 
+vector<tz_offsets::season> parse_seasons(utl::cstr const line) {
+  enum state {
+    kSeasonOffset,
+    kSeasonBeginDate,
+    kSeasonBeginHour,
+    kSeasonEndDate,
+    kSeasonEndHour,
+    kNumStates
+  } s{kSeasonOffset};
+  vector<tz_offsets::season> seasons;
+  auto e = tz_offsets::season{};
+  for_each_token(line, ' ', [&](utl::cstr const t) {
+    switch (s) {
+      case kSeasonOffset: e.offset_ = parse_mam(t); break;
+      case kSeasonBeginDate: e.begin_ = parse_date(t); break;
+      case kSeasonBeginHour: e.season_begin_mam_ = parse_mam(t); break;
+      case kSeasonEndDate: e.end_ = parse_date(t); break;
+      case kSeasonEndHour:
+        e.season_end_mam_ = parse_mam(t);
+        seasons.push_back(e);
+        break;
+      default:;
+    }
+    s = static_cast<state>((s + 1) % kNumStates);
+  });
+  return seasons;
+}
+
 timezone_map_t parse_timezones(config const& c,
                                timetable& tt,
                                std::string_view file_content) {
@@ -27,6 +55,11 @@ timezone_map_t parse_timezones(config const& c,
 
   timezone_map_t tz;
   utl::for_each_line(file_content, [&](utl::cstr line) {
+    if (auto const comment_start = line.view().find('%');
+        comment_start != std::string::npos) {
+      line = line.substr(0, comment_start);
+    }
+
     if (line.length() == 15) {
       auto const first_valid_eva_number =
           parse_eva_number(line.substr(c.tz_.type1_first_valid_eva_));
@@ -41,23 +74,14 @@ timezone_map_t parse_timezones(config const& c,
     }
 
     if ((isdigit(line[0]) != 0) && line.length() >= 47) {
-      auto const eva_num = parse_eva_number(line.substr(c.tz_.type2_eva_));
-      tz_offsets t;
-      t.offset_ = duration_t{
-          distance_to_midnight(line.substr(c.tz_.type2_dst_to_midnight_))};
-      if (!line.substr(14, utl::size(33)).trim().empty()) {
-        t.season_ = tz_offsets::season{
-            .offset_ = distance_to_midnight(
-                line.substr(c.tz_.type3_dst_to_midnight1_)),
-            .begin_ = parse_date(line.substr(c.tz_.type3_bitfield_idx1_)),
-            .end_ = parse_date(line.substr(c.tz_.type3_bitfield_idx2_)),
-            .season_begin_mam_ = distance_to_midnight(
-                line.substr(c.tz_.type3_dst_to_midnight2_)),
-            .season_end_mam_ = distance_to_midnight(
-                line.substr(c.tz_.type3_dst_to_midnight3_))};
-      }
-      tz.emplace(eva_num,
-                 std::pair{tt.locations_.register_timezone(timezone{t}), t});
+      auto const t = tz_offsets{
+          .seasons_ = line.substr(14, utl::size(33)).trim().empty()
+                          ? vector<tz_offsets::season>{}
+                          : parse_seasons(line.substr(14)),
+          .offset_ =
+              duration_t{parse_mam(line.substr(c.tz_.type2_dst_to_midnight_))}};
+      tz.emplace(parse_eva_number(line.substr(c.tz_.type2_eva_)),
+                 std::pair{tt.locations_.register_timezone(t), t});
     }
   });
 
