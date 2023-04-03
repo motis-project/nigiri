@@ -218,6 +218,12 @@ struct timetable {
     return idx;
   }
 
+  provider_idx_t register_provider(provider&& p) {
+    auto const idx = providers_.size();
+    providers_.emplace_back(std::move(p));
+    return provider_idx_t{idx};
+  }
+
   void add_transport(transport&& t) {
     transport_traffic_days_.emplace_back(t.bitfield_idx_);
     transport_route_.emplace_back(t.route_idx_);
