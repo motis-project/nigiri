@@ -1,4 +1,4 @@
-#include "doctest/doctest.h"
+#include "gtest/gtest.h"
 
 #include <iostream>
 #include <set>
@@ -132,7 +132,7 @@ std::set<std::string> service_strings(timetable const& tt) {
   return ret;
 }
 
-TEST_CASE("service strings") {
+TEST(service, strings) {
   auto tt = timetable{};
   tt.date_range_ = full_period();
   load_timetable(source_idx_t{0U}, hrd_5_20_26, files(), tt);
@@ -153,5 +153,5 @@ TEST_CASE("service strings") {
     std::cerr << "};\n";
   }
 
-  CHECK(expected == service_strings(tt));
+  EXPECT_EQ(expected, service_strings(tt));
 }

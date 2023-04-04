@@ -2,7 +2,7 @@
 
 #include "nigiri/types.h"
 
-#include "doctest/doctest.h"
+#include "gtest/gtest.h"
 
 using namespace nigiri;
 
@@ -12,16 +12,16 @@ unixtime_t clamp(interval<unixtime_t> const& i, unixtime_t const t) {
   return std::clamp(i.from_, i.to_ - 1_minutes, t);
 }
 
-TEST_CASE("interval clamp") {
+TEST(interval, clamp) {
   auto const t = [](auto&& x) { return unixtime_t{duration_t{x}}; };
   auto const i = interval{t(10), t(15)};
 
-  CHECK(i.contains(t(10)));
-  CHECK(i.contains(t(11)));
-  CHECK(i.contains(t(12)));
-  CHECK(i.contains(t(13)));
-  CHECK(i.contains(t(14)));
-  CHECK(!i.contains(t(15)));
+  EXPECT_TRUE(i.contains(t(10)));
+  EXPECT_TRUE(i.contains(t(11)));
+  EXPECT_TRUE(i.contains(t(12)));
+  EXPECT_TRUE(i.contains(t(13)));
+  EXPECT_TRUE(i.contains(t(14)));
+  EXPECT_FALSE(i.contains(t(15)));
 
-  CHECK(clamp(i, t(20)) == t(14));
+  EXPECT_EQ(t(14), clamp(i, t(20)));
 }

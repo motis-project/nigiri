@@ -276,7 +276,7 @@ struct timetable {
 
   day_idx_t day_idx(date::year_month_day const day) {
     return day_idx_t{
-        (date::sys_days{day} - date_range_.from_ - kTimetableOffset).count()};
+        (date::sys_days{day} - (date_range_.from_ - kTimetableOffset)).count()};
   }
 
   std::pair<day_idx_t, minutes_after_midnight_t> day_idx_mam(

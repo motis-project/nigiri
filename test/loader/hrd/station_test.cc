@@ -1,4 +1,4 @@
-#include "doctest/doctest.h"
+#include "gtest/gtest.h"
 
 #include "nigiri/loader/hrd/service/service.h"
 #include "nigiri/loader/hrd/stamm/bitfield.h"
@@ -32,7 +32,7 @@ constexpr auto const station_geo_file_content = R"(
 0000007  41.579799  59.076849 F_META
 )";
 
-TEST_CASE("loader_hrd_station, parse") {
+TEST(loader_hrd_station, parse) {
   for (auto const& c : configs) {
     std::vector<service> services;
     timetable tt;
@@ -47,7 +47,7 @@ TEST_CASE("loader_hrd_station, parse") {
                        station_geo_file_content, station_metabhf_content);
 
     auto const l1 = tt.locations_.get(location_id{"0000001", src});
-    CHECK_EQ(l1.id_, "0000001");
-    CHECK_EQ(l1.src_, src);
+    EXPECT_EQ(l1.id_, "0000001");
+    EXPECT_EQ(l1.src_, src);
   }
 }

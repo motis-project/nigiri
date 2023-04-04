@@ -1,4 +1,4 @@
-#include "doctest/doctest.h"
+#include "gtest/gtest.h"
 
 #include "nigiri/loader/hrd/stamm/timezone.h"
 
@@ -9,7 +9,7 @@ constexpr auto const timezones_file_content = R"(
 0000000 +0100 +0200 29032020 0200 25102020 0300 +0200 28032021 0200 31102021 0300
 )";
 
-TEST_CASE("loader_hrd_timezone, roundtrip") {
+TEST(loader_hrd_timezone, roundtrip) {
   using namespace date;
   auto const& c = configs[0];
   timetable tt{};
@@ -34,7 +34,7 @@ TEST_CASE("loader_hrd_timezone, roundtrip") {
     // time exactly in both cases. We exclude these cases from the test case.
     if (t != unixtime_t{date::sys_days{2020_y / October / 25}} + 90_minutes &&
         t != unixtime_t{date::sys_days{2020_y / October / 25}} + 1_hours) {
-      CHECK(local_day + offset + mam == t);
+      EXPECT_EQ(local_day + offset + mam, t);
     }
   }
 }
