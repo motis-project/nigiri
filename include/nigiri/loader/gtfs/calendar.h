@@ -14,6 +14,6 @@ struct calendar {
   date::sys_days first_day_, last_day_;
 };
 
-hash_map<std::string, calendar> read_calendar(std::string_view e);
+hash_map<std::string, calendar> read_calendar(std::string_view file_content);
 
 }  // namespace nigiri::loader::gtfs
