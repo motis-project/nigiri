@@ -259,13 +259,6 @@ inline std::ostream& operator<<(std::ostream& out,
   return out;
 }
 
-inline std::ostream& operator<<(std::ostream& out, sys_days const& t) {
-  auto const ymd = std::chrono::year_month_day{t};
-  return out << static_cast<int>(ymd.year()) << '-' << std::setw(2)
-             << std::setfill('0') << static_cast<unsigned>(ymd.month()) << '-'
-             << std::setw(2) << static_cast<unsigned>(ymd.day());
-}
-
 }  // namespace std::chrono
 
 #include <iostream>
