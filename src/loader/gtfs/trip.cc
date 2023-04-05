@@ -281,6 +281,8 @@ std::pair<trip_map, block_map> read_trips(route_map_t const& routes,
       | utl::csv<csv_trip>()  //
       |
       utl::for_each([&](csv_trip const& t) {
+        ++i;
+
         auto const blk =
             t.block_id_->trim().empty()
                 ? nullptr
@@ -295,12 +297,11 @@ std::pair<trip_map, block_map> read_trips(route_map_t const& routes,
                         routes.at(t.route_id_->view()).get(),
                         services.traffic_days_.at(t.service_id_->view()).get(),
                         blk, t.trip_id_->to_str(), t.trip_headsign_->to_str(),
-                        t.trip_short_name_->to_str(), i + 1))
+                        t.trip_short_name_->to_str(), i))
                 .first->second.get();
         if (blk != nullptr) {
           blk->trips_.emplace_back(trp);
         }
-        ++i;
       });
   return ret;
 }

@@ -60,6 +60,21 @@ AWE1,06:30:00,20:30:00,180
 AWE1,20:30:00,28:00:00,420
 )"};
 
+constexpr auto const example_stop_times_content =
+    R"(trip_id,arrival_time,departure_time,stop_id,stop_sequence,pickup_type,drop_off_type
+AWE1,0:06:10,0:06:10,S1,1,0,0,0
+AWE1,,,S2,2,0,1,3
+AWE1,0:06:20,0:06:30,S3,3,0,0,0
+AWE1,,,S5,4,0,0,0
+AWE1,0:06:45,0:06:45,S6,5,0,0,0
+AWD1,0:06:10,0:06:10,S1,1,0,0,0
+AWD1,,,S2,2,0,0,0
+AWD1,0:06:20,0:06:20,S3,3,0,0,0
+AWD1,,,S4,4,0,0,0
+AWD1,,,S5,5,0,0,0
+AWD1,0:06:45,0:06:45,S6,6,0,0,0
+)";
+
 loader::mem_dir example_files() {
   using std::filesystem::path;
   return {
@@ -71,7 +86,8 @@ loader::mem_dir example_files() {
        {path{kTransfersFile}, std::string{example_transfers_file_content}},
        {path{kRoutesFile}, std::string{example_routes_file_content}},
        {path{kFrequenciesFile}, std::string{example_frequencies_file_content}},
-       {path{kTripsFile}, std::string{example_trips_file_content}}}};
+       {path{kTripsFile}, std::string{example_trips_file_content}},
+       {path{kStopTimesFile}, std::string{example_stop_times_content}}}};
 }
 
 constexpr auto const berlin_agencies_file_content = std::string_view{
