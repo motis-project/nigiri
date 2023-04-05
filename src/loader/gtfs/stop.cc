@@ -14,16 +14,7 @@
 
 #include "nigiri/logging.h"
 
-using namespace utl;
-using std::get;
-
 namespace nigiri::loader::gtfs {
-
-enum { stop_id, stop_name, stop_timezone, parent_station, stop_lat, stop_lon };
-using gtfs_stop = std::tuple<cstr, cstr, cstr, cstr, float, float>;
-static const column_mapping<gtfs_stop> columns = {
-    {"stop_id", "stop_name", "stop_timezone", "parent_station", "stop_lat",
-     "stop_lon"}};
 
 void stop::compute_close_stations(geo::point_rtree const& stop_rtree) {
   if (std::abs(coord_.lat_) < 2.0 && std::abs(coord_.lng_) < 2.0) {
