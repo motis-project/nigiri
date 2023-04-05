@@ -1,19 +1,17 @@
 #include "gtest/gtest.h"
 
 #include "nigiri/loader/gtfs/calendar_date.h"
+#include "nigiri/loader/gtfs/files.h"
+
+#include "./test_data.h"
 
 using namespace nigiri;
 using namespace nigiri::loader::gtfs;
 using namespace date;
 
-constexpr auto const file_content = R"(service_id,date,exception_type
-WD,20060703,2
-WE,20060703,1
-WD,20060704,2
-WE,20060704,1)";
-
 TEST(gtfs, calendar_date) {
-  auto const dates = read_calendar_date(file_content);
+  auto const dates =
+      read_calendar_date(example_files().get_file(kCalendarDatesFile).data());
 
   EXPECT_EQ(2, dates.size());
 

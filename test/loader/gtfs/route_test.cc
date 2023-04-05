@@ -1,27 +1,23 @@
 #include "gtest/gtest.h"
 
 #include "nigiri/loader/gtfs/agency.h"
+#include "nigiri/loader/gtfs/files.h"
 #include "nigiri/loader/gtfs/route.h"
 #include "nigiri/timetable.h"
+
+#include "./test_data.h"
 
 using namespace nigiri;
 using namespace nigiri::loader;
 using namespace nigiri::loader::gtfs;
 
-auto const example_agency_file_content = std::string_view{
-    R"(agency_id,agency_name,agency_url,agency_timezone,agency_phone,agency_lang
-FunBus,The Fun Bus,http://www.thefunbus.org,America/Los_Angeles,(310) 555-0222,en
-)"};
-
-auto const example_routes_file_content = std::string_view{
-    R"(route_id,route_short_name,route_long_name,route_desc,route_type
-A,17,Mission,"The ""A"" route travels from lower Mission to Downtown.",3)"};
-
 TEST(gtfs, read_routes_example_data) {
   timetable tt;
 
-  auto const agencies = parse_agencies(tt, example_agency_file_content);
-  auto const routes = read_routes(agencies, example_routes_file_content);
+  auto const agencies =
+      parse_agencies(tt, example_files().get_file(kAgencyFile).data());
+  auto const routes =
+      read_routes(agencies, example_files().get_file(kRoutesFile).data());
 
   EXPECT_EQ(1, routes.size());
   EXPECT_NE(end(routes), routes.find("A"));

@@ -2,8 +2,11 @@
 
 #include "nigiri/loader/gtfs/calendar.h"
 #include "nigiri/loader/gtfs/calendar_date.h"
+#include "nigiri/loader/gtfs/files.h"
 #include "nigiri/loader/gtfs/services.h"
 #include "nigiri/types.h"
+
+#include "./test_data.h"
 
 using namespace nigiri;
 using namespace nigiri::loader;
@@ -30,21 +33,10 @@ using namespace date;
  *      0                    1
  */
 
-constexpr auto const calendar_file_content = std::string_view{
-    R"(service_id,monday,tuesday,wednesday,thursday,friday,saturday,sunday,start_date,end_date
-WE,0,0,0,0,0,1,1,20060701,20060731
-WD,1,1,1,1,1,0,0,20060701,20060731)"};
-
-constexpr auto const calendar_dates_file_content =
-    R"(service_id,date,exception_type
-WD,20060703,2
-WE,20060703,1
-WD,20060704,2
-WE,20060704,1)";
-
 TEST(gtfs, service_dates) {
-  auto dates = read_calendar_date(calendar_dates_file_content);
-  auto calendar = read_calendar(calendar_file_content);
+  auto dates =
+      read_calendar_date(example_files().get_file(kCalendarDatesFile).data());
+  auto calendar = read_calendar(example_files().get_file(kCalenderFile).data());
   auto traffic_days = merge_traffic_days(calendar, dates);
 
   std::string we_bit_str = "1111000110000011000001100000110";
