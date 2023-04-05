@@ -2,8 +2,11 @@
 
 #include "nigiri/loader/hrd/load_timetable.h"
 #include "nigiri/routing/ontrip_train.h"
+#include "nigiri/routing/raptor.h"
+#include "nigiri/routing/search_state.h"
 #include "nigiri/timetable.h"
 
+#include "nigiri/print_transport.h"
 #include "../loader/hrd/hrd_timetable.h"
 
 using namespace nigiri;
@@ -28,6 +31,7 @@ TEST(routing, ontrip_train) {
         });
     if (lb == end(tt.trip_id_to_idx_) ||
         tt.trip_id_strings_[lb->first].view() != trip_idx) {
+      fmt::print("  no trip with id=\"{}\" found\n", trip_idx);
       return std::nullopt;
     }
 
@@ -38,6 +42,27 @@ TEST(routing, ontrip_train) {
       if (traffic_days.test(to_idx(day_idx))) {
         return transport{.t_idx_ = t, .day_ = day_idx};
       }
+      auto const reverse = [](std::string s) {
+        std::reverse(s.begin(), s.end());
+        return s;
+      };
+      fmt::print("  trip={} not active on day\n", t,
+                 tt.to_unixtime(day_idx, 0_minutes));
+      auto const range = tt.internal_interval_days();
+      std::cout << "TRAFFIC_DAYS="
+                << reverse(traffic_days.to_string().substr(
+                       traffic_days.size() -
+                       static_cast<size_t>((range.size() + 2_days) / 1_days)))
+                << "\n";
+      for (auto d = range.from_; d != range.to_; d += std::chrono::days{1}) {
+        auto const x = day_idx_t{
+            static_cast<day_idx_t::value_t>((d - range.from_) / 1_days)};
+        if (traffic_days.test(to_idx(x))) {
+          date::to_stream(std::cout, "%F", d);
+          std::cout << " (day_idx=" << x << ")\n";
+          print_transport(tt, std::cout, {t, x});
+        }
+      }
     }
     return std::nullopt;
   };
@@ -46,33 +71,35 @@ TEST(routing, ontrip_train) {
                tt.trip_id_strings_[trip_id].view(), trip_idx);
   }
 
-  auto const q = generate_ontrip_train_query(
-      tt,
-      get_transport("1337/0000001/1260/0000004/2586/", March / 28 / 2020)
-          .value(),
-      2,
-      routing::query{
-          .start_time_ = {},
-          .start_match_mode_ =
-              nigiri::routing::location_match_mode::kIntermodal,
-          .dest_match_mode_ = nigiri::routing::location_match_mode::kIntermodal,
-          .use_start_footpaths_ = true,
-          .start_ = {nigiri::routing::offset{
-              tt.locations_.location_id_to_idx_.at(
-                  {.id_ = "0000003", .src_ = src}),
-              15_minutes, 99U}},
-          .destinations_ = {{{tt.locations_.location_id_to_idx_.at(
-                                  {.id_ = "0000001", .src_ = src}),
-                              10_minutes, 77U}}},
-          .via_destinations_ = {},
-          .allowed_classes_ = bitset<kNumClasses>::max(),
-          .max_transfers_ = 6U,
-          .min_connection_count_ = 3U,
-          .extend_interval_earlier_ = true,
-          .extend_interval_later_ = true});
-  /*
+  auto q = routing::query{
+      .start_time_ = {},
+      .start_match_mode_ = nigiri::routing::location_match_mode::kIntermodal,
+      .dest_match_mode_ = nigiri::routing::location_match_mode::kIntermodal,
+      .use_start_footpaths_ = true,
+      .start_ = {/* filled in by generate_ontrip_train_query() */},
+      .destinations_ = {{{tt.locations_.location_id_to_idx_.at(
+                              {.id_ = "0000004", .src_ = src}),
+                          10_minutes, 77U}}},
+      .via_destinations_ = {},
+      .allowed_classes_ = bitset<kNumClasses>::max(),
+      .max_transfers_ = 6U,
+      .min_connection_count_ = 0,
+      .extend_interval_earlier_ = false,
+      .extend_interval_later_ = false};
+  auto const t =
+      get_transport("3374/0000008/1410/0000006/2950/", March / 30 / 2020);
+  ASSERT_TRUE(t.has_value());
+  generate_ontrip_train_query(tt, *t, 1, q);
   auto state = routing::search_state{};
   auto fwd_r = routing::raptor<direction::kForward, true>{tt, state, q};
   fwd_r.route();
-  */
+
+  std::stringstream ss;
+  ss << "\n";
+  for (auto const& x : state.results_.at(0)) {
+    std::cout << "result\n";
+    x.print(std::cout, tt);
+    ss << "\n\n";
+  }
+  std::cout << "results: " << state.results_.at(0).size() << "\n";
 }
