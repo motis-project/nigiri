@@ -100,7 +100,7 @@ void add_exception(std::string const& service_name,
         "date {} for service {} out of range", exception.day_, service_name);
     return;
   }
-  b.set(day_idx, exception.type_ == calendar_date::kAdd);
+  b.set(static_cast<unsigned>(day_idx), exception.type_ == calendar_date::kAdd);
 }
 
 traffic_days merge_traffic_days(
