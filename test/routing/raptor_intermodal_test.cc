@@ -1,4 +1,4 @@
-#include "doctest/doctest.h"
+#include "gtest/gtest.h"
 
 #include "nigiri/loader/hrd/load_timetable.h"
 #include "nigiri/routing/raptor.h"
@@ -49,7 +49,7 @@ leg 4: (C, 0000003) [2020-03-30 08:15] -> (END, END) [2020-03-30 08:30]
 
 )";
 
-TEST_CASE("raptor-intermodal-forward") {
+TEST(routing, raptor_intermodal_forward) {
   using namespace date;
 
   constexpr auto const src = source_idx_t{0U};
@@ -90,7 +90,7 @@ TEST_CASE("raptor-intermodal-forward") {
     x.print(ss, tt);
     ss << "\n\n";
   }
-  CHECK_EQ(std::string_view{fwd_journeys}, ss.str());
+  EXPECT_EQ(std::string_view{fwd_journeys}, ss.str());
 };
 
 constexpr auto const bwd_journeys = R"(
@@ -204,7 +204,7 @@ leg 4: (C, 0000003) [2020-03-30 06:15] -> (START, START) [2020-03-30 06:30]
 
 )";
 
-TEST_CASE("raptor-intermodal-backward") {
+TEST(routing, raptor_intermodal_backward) {
   using namespace date;
   timetable tt;
   tt.date_range_ = full_period();
@@ -245,5 +245,5 @@ TEST_CASE("raptor-intermodal-backward") {
     ss << "\n\n";
   }
   std::cout << "results: " << state.results_.at(0).size() << "\n";
-  CHECK_EQ(std::string_view{bwd_journeys}, ss.str());
+  EXPECT_EQ(std::string_view{bwd_journeys}, ss.str());
 }

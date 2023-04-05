@@ -1,4 +1,4 @@
-#include "doctest/doctest.h"
+#include "gtest/gtest.h"
 
 #include "nigiri/loader/hrd/load_timetable.h"
 #include "nigiri/routing/raptor.h"
@@ -45,7 +45,7 @@ leg 3: (C, 0000003) [2020-03-30 07:45] -> (C, 0000003) [2020-03-30 07:45]
 
 )";
 
-TEST_CASE("raptor-forward") {
+TEST(routing, raptor_forward) {
   using namespace date;
   constexpr auto const src = source_idx_t{0U};
 
@@ -86,7 +86,7 @@ TEST_CASE("raptor-forward") {
     x.print(ss, tt);
     ss << "\n\n";
   }
-  CHECK_EQ(std::string_view{fwd_journeys}, ss.str());
+  EXPECT_EQ(std::string_view{fwd_journeys}, ss.str());
 };
 
 constexpr auto const bwd_journeys = R"(
@@ -124,7 +124,7 @@ leg 3: (B, 0000002) [2020-03-30 04:45] -> (C, 0000003) [2020-03-30 05:45]
 
 )";
 
-TEST_CASE("raptor-backward") {
+TEST(routing, raptor_backward) {
   using namespace date;
   constexpr auto const src = source_idx_t{0U};
 
@@ -165,5 +165,5 @@ TEST_CASE("raptor-backward") {
     x.print(ss, tt);
     ss << "\n\n";
   }
-  CHECK_EQ(std::string_view{bwd_journeys}, ss.str());
+  EXPECT_EQ(std::string_view{bwd_journeys}, ss.str());
 }

@@ -1,4 +1,4 @@
-#include "doctest/doctest.h"
+#include "gtest/gtest.h"
 
 #include "nigiri/loader/hrd/parser_config.h"
 #include "nigiri/loader/hrd/stamm/attribute.h"
@@ -7,20 +7,20 @@
 using namespace nigiri;
 using namespace nigiri::loader::hrd;
 
-TEST_CASE("loader_hrd_attributes, parse_line") {
+TEST(loader_hrd_attributes, parse_line) {
   constexpr auto const file_content = ",  0 260 10 Bus mit Fahrradanh\xE4nger#";
 
   for (auto const& c : configs) {
     timetable tt{};
     auto const attributes = parse_attributes(c, tt, file_content);
     auto const it = attributes.find(", ");
-    CHECK(it != end(attributes));
-    CHECK_EQ(tt.attributes_.at(it->second),
-             attribute{.code_ = ", ", .text_ = "Bus mit Fahrradanhänger"});
+    ASSERT_NE(end(attributes), it);
+    EXPECT_EQ((attribute{.code_ = ", ", .text_ = "Bus mit Fahrradanhänger"}),
+              tt.attributes_.at(it->second));
   }
 }
 
-TEST_CASE("loader_hrd_attributes, parse_and_ignore_line") {
+TEST(loader_hrd_attributes, parse_and_ignore_line) {
   constexpr auto const file_content =
       "ZZ 0 060 10 zus\xE4tzlicher Zug#\n# ,  ,  ,";
 
@@ -28,16 +28,16 @@ TEST_CASE("loader_hrd_attributes, parse_and_ignore_line") {
     timetable tt{};
     auto attributes = parse_attributes(c, tt, file_content);
     auto const it = attributes.find("ZZ");
-    CHECK(it != end(attributes));
-    CHECK(tt.attributes_.at(it->second) ==
-          attribute{.code_ = "ZZ", .text_ = "zusätzlicher Zug"});
+    ASSERT_NE(end(attributes), it);
+    EXPECT_EQ((attribute{.code_ = "ZZ", .text_ = "zusätzlicher Zug"}),
+              tt.attributes_.at(it->second));
   }
 }
 
-TEST_CASE("loader_hrd_attributes, ignore_output_rules") {
+TEST(loader_hrd_attributes, ignore_output_rules) {
   constexpr auto const file_content = "# ,  ,  ,";
   for (auto const& c : configs) {
     timetable tt{};
-    CHECK(parse_attributes(c, tt, file_content).empty());
+    EXPECT_TRUE(parse_attributes(c, tt, file_content).empty());
   }
 }
