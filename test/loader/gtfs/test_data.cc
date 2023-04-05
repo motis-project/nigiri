@@ -7,14 +7,16 @@ namespace nigiri::loader::gtfs {
 constexpr auto const example_calendar_file_content = std::string_view{
     R"(service_id,monday,tuesday,wednesday,thursday,friday,saturday,sunday,start_date,end_date
 WE,0,0,0,0,0,1,1,20060701,20060731
-WD,1,1,1,1,1,0,0,20060701,20060731)"};
+WD,1,1,1,1,1,0,0,20060701,20060731
+)"};
 
 constexpr auto const example_calendar_dates_file_content =
     R"(service_id,date,exception_type
 WD,20060703,2
 WE,20060703,1
 WD,20060704,2
-WE,20060704,1)";
+WE,20060704,1
+)";
 
 constexpr auto const example_stops_file_content = std::string_view{
     R"(stop_id,stop_name,stop_desc,stop_lat,stop_lon,stop_url,location_type,parent_station
@@ -31,11 +33,13 @@ S8,24th St. Mission Station,,37.752240,-122.418450,http://www.bart.gov/stations/
 constexpr auto const example_agency_file_content = std::string_view{
     R"(agency_id,agency_name,agency_url,agency_timezone
 DTA,Demo Transit Authority,http://google.com,America/Los_Angeles
-"11","Schweizerische Bundesbahnen SBB","http://www.sbb.ch/","Europe/Berlin","DE","0900 300 300 ")"};
+"11","Schweizerische Bundesbahnen SBB","http://www.sbb.ch/","Europe/Berlin","DE","0900 300 300 "
+)"};
 
 auto const example_routes_file_content = std::string_view{
     R"(route_id,route_short_name,route_long_name,route_desc,route_type
-A,17,Mission,"The ""A"" route travels from lower Mission to Downtown.",3)"};
+A,17,Mission,"The ""A"" route travels from lower Mission to Downtown.",3
+)"};
 
 constexpr auto const example_transfers_file_content =
     std::string_view{R"(from_stop_id,to_stop_id,transfer_type,min_transfer_time
@@ -43,15 +47,98 @@ S6,S7,2,300
 S7,S6,3,
 )"};
 
+constexpr auto const example_trips_file_content =
+    R"(route_id,service_id,trip_id,trip_headsign,block_id
+A,WE,AWE1,Downtown,1
+A,WE,AWD1,Downtown,2
+)";
+
+constexpr auto const example_frequencies_file_content =
+    std::string_view{R"(trip_id,start_time,end_time,headway_secs
+AWE1,05:30:00,06:30:00,300
+AWE1,06:30:00,20:30:00,180
+AWE1,20:30:00,28:00:00,420
+)"};
+
 loader::mem_dir example_files() {
   using std::filesystem::path;
-  return {{{path{kAgencyFile}, std::string{example_agency_file_content}},
-           {path{kStopFile}, std::string{example_stops_file_content}},
-           {path{kCalenderFile}, std::string{example_calendar_file_content}},
+  return {
+      {{path{kAgencyFile}, std::string{example_agency_file_content}},
+       {path{kStopFile}, std::string{example_stops_file_content}},
+       {path{kCalenderFile}, std::string{example_calendar_file_content}},
+       {path{kCalendarDatesFile},
+        std::string{example_calendar_dates_file_content}},
+       {path{kTransfersFile}, std::string{example_transfers_file_content}},
+       {path{kRoutesFile}, std::string{example_routes_file_content}},
+       {path{kFrequenciesFile}, std::string{example_frequencies_file_content}},
+       {path{kTripsFile}, std::string{example_trips_file_content}}}};
+}
+
+constexpr auto const berlin_agencies_file_content = std::string_view{
+    R"(agency_id,agency_name,agency_url,agency_timezone,agency_lang,agency_phone
+ANG---,Günter Anger Güterverkehrs GmbH & Co. Omnibusvermietung KG,http://www.anger-busvermietung.de,Europe/Berlin,de,033208 22010
+BMO---,Busverkehr Märkisch-Oderland GmbH,http://www.busmol.de,Europe/Berlin,de,03341 478383
+N04---,DB Regio AG,http://www.bahn.de/brandenburg,Europe/Berlin,de,0331 2356881
+BON---,Busverkehr Oder-Spree GmbH,http://www.bos-fw.de,Europe/Berlin,de,03361 556133
+)"};
+
+constexpr auto const berlin_stops_file_content = std::string_view{
+    R"(stop_id,stop_code,stop_name,stop_desc,stop_lat,stop_lon,zone_id,stop_url,location_type,parent_station
+5100071,,Zbaszynek,,52.2425040,15.8180870,,,0,
+9230005,,S Potsdam Hauptbahnhof Nord,,52.3927320,13.0668480,,,0,
+9230006,,"Potsdam, Charlottenhof Bhf",,52.3930040,13.0362980,,,0,
+)"};
+
+constexpr auto const berlin_calendar_file_content = std::string_view{
+    R"(service_id,monday,tuesday,wednesday,thursday,friday,saturday,sunday,start_date,end_date
+000001,0,0,0,0,0,0,0,20150409,20151212
+000002,0,0,0,0,0,0,0,20150409,20151212
+000856,0,0,0,0,0,0,0,20150409,20151212
+000861,0,0,0,0,0,0,0,20150409,20151212
+)"};
+
+constexpr auto const berlin_calendar_dates_file_content =
+    std::string_view{R"(service_id,exception_type,date
+7,1,20211217
+)"};
+
+constexpr auto const berlin_transfers_file_content =
+    R"(from_stop_id,to_stop_id,transfer_type,min_transfer_time,from_transfer_id,to_transfer_id
+9003104,9003174,2,180,,
+9003104,9003175,2,240,,
+9003104,9003176,2,180,,
+9003174,9003104,2,180,,
+9003174,9003175,2,180,,)";
+
+constexpr auto const berlin_routes_file_content =
+    R"(route_id,agency_id,route_short_name,route_long_name,route_desc,route_type,route_url,route_color,route_text_color
+1,ANG---,SXF2,,,700,http://www.vbb.de,,
+10,BMO---,927,,,700,http://www.vbb.de,,
+2,BEH---,548,,,700,http://www.vbb.de,,
+809,N04---,,"Leisnig -- Leipzig, Hauptbahnhof",,100,http://www.vbb.de,,
+81,BON---,2/412,,,700,http://www.vbb.de,,
+810,N04---,,"S+U Lichtenberg Bhf (Berlin) -- Senftenberg, Bahnhof",,100,http://www.vbb.de,,
+811,N04---,,"S+U Lichtenberg Bhf (Berlin) -- Altdöbern, Bahnhof",,100,http://www.vbb.de,,
+812,N04---,RB14,,,100,http://www.vbb.de,,
+)";
+
+constexpr auto const berlin_trips_file_content =
+    R"(route_id,service_id,trip_id,trip_headsign,trip_short_name,direction_id,block_id,shape_id
+1,000856,1,Flughafen Schönefeld Terminal (Airport),,,1,
+1,000856,2,S Potsdam Hauptbahnhof,,,2,
+2,000861,3,"Golzow (PM), Schule",,,3,
+)";
+
+loader::mem_dir berlin_files() {
+  using std::filesystem::path;
+  return {{{path{kAgencyFile}, std::string{berlin_agencies_file_content}},
+           {path{kStopFile}, std::string{berlin_stops_file_content}},
+           {path{kCalenderFile}, std::string{berlin_calendar_file_content}},
            {path{kCalendarDatesFile},
-            std::string{example_calendar_dates_file_content}},
-           {path{kTransfersFile}, std::string{example_transfers_file_content}},
-           {path{kRoutesFile}, std::string{example_routes_file_content}}}};
+            std::string{berlin_calendar_dates_file_content}},
+           {path{kTransfersFile}, std::string{berlin_transfers_file_content}},
+           {path{kRoutesFile}, std::string{berlin_routes_file_content}},
+           {path{kTripsFile}, std::string{berlin_trips_file_content}}}};
 }
 
 }  // namespace nigiri::loader::gtfs

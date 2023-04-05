@@ -1,6 +1,7 @@
 #include "nigiri/loader/gtfs/transfer.h"
 
 #include <algorithm>
+#include <optional>
 #include <tuple>
 
 #include "utl/parser/buf_reader.h"
@@ -57,7 +58,7 @@ hash_map<stop_pair, transfer> read_transfers(stop_map const& stops,
                .minutes_ = u8_minutes{
                    static_cast<std::uint8_t>(*t.min_transfer_time_ / 60)}};
 
-           return std::make_optional<cista::pair<stop_pair, transfer>>(k, v);
+           return cista::pair<stop_pair, transfer>{k, v};
          })  //
          | utl::remove_if([](auto&& opt) { return !opt.has_value(); })  //
          | utl::transform([](auto&& opt) { return *opt; })  //

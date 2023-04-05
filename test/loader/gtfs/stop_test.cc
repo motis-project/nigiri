@@ -32,15 +32,8 @@ TEST(gtfs, read_stations_example_data) {
   EXPECT_FLOAT_EQ(-122.418450, s8_it->second->coord_.lng_);
 }
 
-constexpr auto const berlin_file_content = std::string_view(
-    R"(stop_id,stop_code,stop_name,stop_desc,stop_lat,stop_lon,zone_id,stop_url,location_type,parent_station
-5100071,,Zbaszynek,,52.2425040,15.8180870,,,0,
-9230005,,S Potsdam Hauptbahnhof Nord,,52.3927320,13.0668480,,,0,
-9230006,,"Potsdam, Charlottenhof Bhf",,52.3930040,13.0362980,,,0,
-)");
-
 TEST(gtfs, read_stations_berlin_data) {
-  auto stops = read_stops(berlin_file_content);
+  auto stops = read_stops(berlin_files().get_file(kStopFile).data());
 
   EXPECT_EQ(3, stops.size());
 
