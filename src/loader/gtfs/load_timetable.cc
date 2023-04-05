@@ -38,7 +38,6 @@
 #include "nigiri/timetable.h"
 
 namespace fs = std::filesystem;
-using std::get;
 
 namespace nigiri::loader::gtfs {
 
@@ -141,7 +140,7 @@ void fix_flixtrain_transfers(trip_map& trips,
   }
 }
 
-void load_timetable(source_idx_t src, dir const& d, timetable& tt) {
+void load_timetable(source_idx_t, dir const& d, timetable& tt) {
   nigiri::scoped_timer const global_timer{"gtfs parser"};
 
   auto const load = [&](std::string_view file_name) -> file {
