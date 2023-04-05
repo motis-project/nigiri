@@ -193,7 +193,6 @@ trip::stop_seq trip::stops() const {
 trip::stop_seq_numbers trip::seq_numbers() const {
   return utl::to_vec(stop_times_,
                      [](flat_map<stop_time>::entry_t const& e) -> unsigned {
-                       assert(e.first >= 0);
                        return static_cast<unsigned>(e.first);
                      });
 }
