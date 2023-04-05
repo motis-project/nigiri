@@ -10,7 +10,7 @@
 
 namespace nigiri::loader::gtfs {
 
-agency_map_t parse_agencies(timetable& tt, std::string_view file_content) {
+agency_map_t read_agencies(timetable& tt, std::string_view file_content) {
   struct agency {
     utl::csv_col<utl::cstr, UTL_NAME("agency_id")> id_;
     utl::csv_col<utl::cstr, UTL_NAME("agency_name")> name_;
