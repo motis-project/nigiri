@@ -280,6 +280,11 @@ struct timetable {
                       event_mam(t.t_idx_, stop_idx, ev_type)};
   }
 
+  day_idx_t day_idx(date::year_month_day const day) {
+    return day_idx_t{
+        (date::sys_days{day} - (date_range_.from_ - kTimetableOffset)).count()};
+  }
+
   std::pair<day_idx_t, minutes_after_midnight_t> day_idx_mam(
       unixtime_t const t) const {
     auto const minutes_since_timetable_begin =

@@ -1,4 +1,4 @@
-#include "doctest/doctest.h"
+#include "gtest/gtest.h"
 
 #include "nigiri/loader/hrd/load_timetable.h"
 
@@ -8,7 +8,7 @@ using namespace nigiri;
 using namespace nigiri::loader::hrd;
 using namespace nigiri::test_data::hrd_timetable;
 
-TEST_CASE("lb_graph") {
+TEST(lb_graph, distances_check) {
   auto tt = timetable{};
   tt.date_range_ = full_period();
   load_timetable(source_idx_t{0U}, hrd_5_20_26, files_simple(), tt);
@@ -31,5 +31,5 @@ TEST_CASE("lb_graph") {
   (A, 0000001) 60
 )";
 
-  CHECK(std::string_view{raw} == ss.str());
+  EXPECT_EQ(std::string_view{raw}, ss.str());
 }

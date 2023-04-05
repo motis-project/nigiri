@@ -47,7 +47,7 @@ void log(log_lvl const lvl,
          Args&&... args) {
   if (lvl >= ::nigiri::s_verbosity) {
     fmt::print(
-        std::clog, "{time} | [{lvl}][{ctx:30}] {msg}\n",
+        std::cout, "{time} | [{lvl}][{ctx:30}] {msg}\n",
         fmt::arg("time", now()), fmt::arg("lvl", to_str(lvl)),
         fmt::arg("ctx", ctx),
         fmt::arg("msg", fmt::format(fmt_str, std::forward<Args>(args)...)));

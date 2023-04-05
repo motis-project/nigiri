@@ -1,4 +1,4 @@
-#include "doctest/doctest.h"
+#include "gtest/gtest.h"
 
 #include "utl/equal_ranges_linear.h"
 
@@ -259,7 +259,7 @@ start_time=2020-03-30 00:00
 |  {time_at_start=2020-03-30 00:00, time_at_stop=2020-03-30 00:30, stop=B}
 )";
 
-TEST_CASE("routing start times") {
+TEST(routing, start_times) {
   auto const src = source_idx_t{0U};
   auto tt = std::make_shared<timetable>();
   tt->date_range_ = full_period();
@@ -294,5 +294,5 @@ TEST_CASE("routing start times") {
         }
       });
 
-  CHECK(std::string_view{expected} == ss.str());
+  EXPECT_EQ(std::string_view{expected}, ss.str());
 }
