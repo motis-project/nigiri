@@ -229,6 +229,7 @@ enum class direction { kForward, kBackward };
 
 #include "cista/serialization.h"
 #include "utl/helpers/algorithm.h"
+#include "utl/overloaded.h"
 
 namespace std::chrono {
 
@@ -266,7 +267,8 @@ inline std::ostream& operator<<(std::ostream& out,
 
 namespace nigiri {
 
-inline local_time to_local_time(tz_offsets const& offsets, unixtime_t const t) {
+inline local_time to_local_time_offsets(tz_offsets const& offsets,
+                                        unixtime_t const t) {
   auto const active_season_it =
       utl::find_if(offsets.seasons_, [&](tz_offsets::season const& s) {
         auto const season_begin =
@@ -280,13 +282,17 @@ inline local_time to_local_time(tz_offsets const& offsets, unixtime_t const t) {
   return local_time{(t + active_offset).time_since_epoch()};
 }
 
-inline local_time to_local_time(date::time_zone* tz, unixtime_t const t) {
-  return local_time{std::chrono::duration_cast<duration_t>(
-      tz->to_local(t).time_since_epoch())};
+inline local_time to_local_time_tz(date::time_zone const* tz,
+                                   unixtime_t const t) {
+  return std::chrono::time_point_cast<i32_minutes>(tz->to_local(t));
 }
 
 inline local_time to_local_time(timezone const& tz, unixtime_t const t) {
-  return tz.apply([t](auto&& x) { return to_local_time(x, t); });
+  return tz.apply(utl::overloaded{
+      [t](tz_offsets const& x) { return to_local_time_offsets(x, t); },
+      [t](void const* x) {
+        return to_local_time_tz(reinterpret_cast<date::time_zone const*>(x), t);
+      }});
 }
 
 }  // namespace nigiri

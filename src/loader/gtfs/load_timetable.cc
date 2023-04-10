@@ -116,7 +116,7 @@ void load_timetable(source_idx_t const src, dir const& d, timetable& tt) {
             for (auto& r : it->second) {
               auto const idx = get_index(r, s);
               if (idx.has_value()) {
-                r.insert(begin(r) + *idx, s);
+                r.insert(std::next(begin(r), static_cast<long>(*idx)), s);
                 return;
               }
             }
@@ -136,8 +136,7 @@ void load_timetable(source_idx_t const src, dir const& d, timetable& tt) {
   for (auto const& [key, sub_routes] : route_services) {
     for (auto const& services : sub_routes) {
       auto const& [stop_seq, sections_clasz] = key;
-      auto const route_idx = tt.register_route(
-          stop_seq, std::basic_string<clasz>({sections_clasz}));
+      auto const route_idx = tt.register_route(stop_seq, {sections_clasz});
       for (auto const& s : services) {
         auto const id = tt.register_trip_id(
             s.orig_->id_, src, s.orig_->short_name_,
@@ -169,6 +168,25 @@ void load_timetable(source_idx_t const src, dir const& d, timetable& tt) {
                   return idx;
                 })}});
       }
+
+      tt.finish_route();
+
+      auto const stop_times_begin = tt.route_stop_times_.size();
+      for (auto const [from, to] :
+           utl::pairwise(interval{std::size_t{0U}, stop_seq.size()})) {
+        // Write departure times of all route services at stop i.
+        for (auto const& s : services) {
+          tt.route_stop_times_.emplace_back(s.utc_times_[from * 2]);
+        }
+
+        // Write arrival times of all route services at stop i+1.
+        for (auto const& s : services) {
+          tt.route_stop_times_.emplace_back(s.utc_times_[to * 2 - 1]);
+        }
+      }
+      auto const stop_times_end = tt.route_stop_times_.size();
+      tt.route_stop_time_ranges_.emplace_back(
+          interval{stop_times_begin, stop_times_end});
     }
   }
 }

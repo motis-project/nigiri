@@ -13,14 +13,14 @@ using namespace date;
 
 TEST(gtfs, services) {
   timetable tt;
-  tt.date_range_.from_ = (2006_y / July / 1).operator sys_days();
-  tt.date_range_.to_ = (2006_y / July / 31).operator sys_days();
-  load_timetable(source_idx_t{0}, example_files(), tt);
+  tt.date_range_.from_ = (2019_y / March / 15).operator sys_days();
+  tt.date_range_.to_ = (2019_y / April / 15).operator sys_days();
+  load_timetable(source_idx_t{0}, test_files(), tt);
 
-  std::cerr << "OUTPUT:\n";
-  std::cerr << "constexpr auto const expected = std::set<std::string>{";
+  std::cout << "OUTPUT:\n";
+  std::cout << "constexpr auto const expected = std::set<std::string>{";
   for (auto const& ss : service_strings(tt)) {
-    std::cerr << "R\"(" << ss << ")\",\n";
+    std::cout << "R\"(" << ss << ")\",\n";
   }
-  std::cerr << "};\n";
+  std::cout << "};\n";
 }

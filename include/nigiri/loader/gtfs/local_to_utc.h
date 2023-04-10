@@ -81,7 +81,7 @@ void expand_local_to_utc(timetable const& tt,
     utl::verify(
         stop_tz_idx != timezone_idx_t::invalid() ||
             agency_tz_idx != timezone_idx_t::invalid(),
-        "no timezone given for trip \"{}\" (first_stop=\"{}\", agency=\"{}\")",
+        R"(no timezone given for trip "{}" (first_stop="{}", agency="{}"))",
         t->id_, location{tt, t->stop_times_.front().stop_},
         t->route_->agency_ == provider_idx_t::invalid()
             ? "NOT_FOUND"
@@ -112,6 +112,10 @@ void expand_local_to_utc(timetable const& tt,
       continue;
     }
 
+    std::cout << "gtfs_local_day_idx=" << gtfs_local_day_idx
+              << ", gtfs_to_selection_offset=" << gtfs_to_selection_offset
+              << ", first_day_offset=" << first_day_offset << " -> "
+              << utc_traffic_day << "\n";
     auto const it = utc_time_traffic_days.find(utc_times);
     if (it == end(utc_time_traffic_days)) {
       utc_time_traffic_days.emplace(utc_times, bitfield{})

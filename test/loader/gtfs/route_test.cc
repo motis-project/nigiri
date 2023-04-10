@@ -22,7 +22,7 @@ TEST(gtfs, read_routes_example_data) {
 
   EXPECT_EQ(1, routes.size());
   EXPECT_NE(end(routes), routes.find("A"));
-  EXPECT_EQ(provider_idx_t::invalid(), routes.at("A")->agency_);
+  EXPECT_EQ("DTA", tt.providers_.at(routes.at("A")->agency_).short_name_);
   EXPECT_EQ("17", routes.at("A")->short_name_);
   EXPECT_EQ("Mission", routes.at("A")->long_name_);
   EXPECT_EQ(clasz::kBus, routes.at("A")->clasz_);

@@ -4,7 +4,8 @@
 
 namespace nigiri::loader::gtfs {
 
-loader::mem_dir example_files();
-loader::mem_dir berlin_files();
+mem_dir test_files();
+mem_dir example_files();
+mem_dir berlin_files();
 
 }  // namespace nigiri::loader::gtfs
