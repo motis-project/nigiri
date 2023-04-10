@@ -37,8 +37,8 @@ DTA,Demo Transit Authority,http://google.com,America/Los_Angeles
 )"};
 
 auto const example_routes_file_content = std::string_view{
-    R"(route_id,route_short_name,route_long_name,route_desc,route_type
-A,17,Mission,"The ""A"" route travels from lower Mission to Downtown.",3
+    R"(route_id,agency_id,route_short_name,route_long_name,route_desc,route_type
+A,DTA,17,Mission,"The ""A"" route travels from lower Mission to Downtown.",3
 )"};
 
 constexpr auto const example_transfers_file_content =

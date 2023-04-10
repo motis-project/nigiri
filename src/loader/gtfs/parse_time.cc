@@ -2,9 +2,11 @@
 
 #include "utl/parser/arg_parser.h"
 
+#include "nigiri/types.h"
+
 namespace nigiri::loader::gtfs {
 
-int hhmm_to_min(utl::cstr s) {
+duration_t hhmm_to_min(utl::cstr s) {
   if (s.empty()) {
     return kInterpolate;
   } else {
@@ -13,13 +15,13 @@ int hhmm_to_min(utl::cstr s) {
     if (s) {
       ++s;
     } else {
-      return -1;
+      return kInterpolate;
     }
 
     int minutes = 0;
     parse_arg(s, minutes, 0);
 
-    return hours * 60 + minutes;
+    return duration_t{hours * 60 + minutes};
   }
 }
 

@@ -2,15 +2,15 @@
 
 #include "date/date.h"
 
-#include "nigiri/types.h"
-
 #include "nigiri/loader/gtfs/calendar.h"
 #include "nigiri/loader/gtfs/calendar_date.h"
+#include "nigiri/common/interval.h"
+#include "nigiri/types.h"
 
 namespace nigiri::loader::gtfs {
 
 struct traffic_days {
-  date::sys_days first_day_, last_day_;
+  interval<date::sys_days> interval_;
   hash_map<std::string, std::unique_ptr<bitfield>> traffic_days_;
 };
 

@@ -82,12 +82,12 @@ std::optional<duration_t> build_utc_time_seq(
 }
 
 template <typename Fn>
-void to_local_time(service_store const& store,
-                   stamm const& st,
-                   interval<std::chrono::sys_days> const& hrd_interval,
-                   interval<std::chrono::sys_days> const& selection,
-                   ref_service const& s,
-                   Fn&& consumer) {
+void to_utc(service_store const& store,
+            stamm const& st,
+            interval<std::chrono::sys_days> const& hrd_interval,
+            interval<std::chrono::sys_days> const& selection,
+            ref_service const& s,
+            Fn&& consumer) {
   using key_t = std::pair<std::basic_string<minutes_after_midnight_t>,
                           std::basic_string<timetable::stop::value_type>>;
   auto utc_time_traffic_days = hash_map<key_t, bitfield>{};

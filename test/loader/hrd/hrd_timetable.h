@@ -14,10 +14,8 @@ namespace nigiri::test_data::hrd_timetable {
 
 constexpr interval<std::chrono::sys_days> full_period() {
   using namespace date;
-  constexpr auto const from =
-      std::chrono::sys_days{(2020_y / March / 28).operator sys_days()};
-  constexpr auto const to =
-      std::chrono::sys_days{(2020_y / March / 31).operator sys_days()};
+  constexpr auto const from = (2020_y / March / 28).operator sys_days();
+  constexpr auto const to = (2020_y / March / 31).operator sys_days();
   return {from, to};
 }
 

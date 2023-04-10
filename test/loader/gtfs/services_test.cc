@@ -46,8 +46,8 @@ TEST(gtfs, service_dates) {
   bitfield we_traffic_days(we_bit_str);
   bitfield wd_traffic_days(wd_bit_str);
 
-  EXPECT_EQ(July / 1 / 2006, traffic_days.first_day_);
-  EXPECT_EQ(July / 31 / 2006, traffic_days.last_day_);
+  EXPECT_EQ(July / 1 / 2006, traffic_days.interval_.from_);
+  EXPECT_EQ(August / 1 / 2006, traffic_days.interval_.to_);
 
   EXPECT_EQ(we_traffic_days, *traffic_days.traffic_days_["WE"]);
   EXPECT_EQ(wd_traffic_days, *traffic_days.traffic_days_["WD"]);

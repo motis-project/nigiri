@@ -21,7 +21,7 @@
 namespace nigiri::loader::gtfs {
 
 void read_stop_times(trip_map& trips,
-                     stop_map const& stops,
+                     locations_map const& stops,
                      std::string_view file_content) {
   struct csv_stop_time {
     utl::csv_col<utl::cstr, UTL_NAME("trip_id")> trip_id_;
@@ -62,7 +62,7 @@ void read_stop_times(trip_map& trips,
              try {
                t->stop_times_.emplace(
                    static_cast<std::size_t>(*s.stop_sequence_),
-                   stops.at(s.stop_id_->view()).get(),
+                   stops.at(s.stop_id_->view()),
                    s.stop_headsign_->to_str(),  //
                    hhmm_to_min(*s.arrival_time_), *s.drop_off_type_ != 1,
                    hhmm_to_min(*s.departure_time_), *s.pickup_type_ != 1);

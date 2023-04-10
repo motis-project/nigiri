@@ -19,6 +19,7 @@
 
 #include "nigiri/loader/gtfs/parse_time.h"
 #include "nigiri/logging.h"
+#include "nigiri/timetable.h"
 #include "nigiri/types.h"
 
 namespace nigiri::loader::gtfs {
@@ -95,11 +96,11 @@ std::vector<std::pair<std::vector<trip*>, bitfield>> block::rule_services() {
 
 stop_time::stop_time() = default;
 
-stop_time::stop_time(stop* s,
+stop_time::stop_time(location_idx_t const s,
                      std::string headsign,
-                     int arr_time,
+                     minutes_after_midnight_t arr_time,
                      bool out_allowed,
-                     int dep_time,
+                     minutes_after_midnight_t dep_time,
                      bool in_allowed)
     : stop_{s},
       headsign_{std::move(headsign)},
@@ -112,7 +113,7 @@ trip::trip(route const* route,
            std::string id,
            std::string headsign,
            std::string short_name,
-           std::size_t line)
+           std::uint32_t line)
     : route_(route),
       service_(service),
       block_{blk},
@@ -123,13 +124,14 @@ trip::trip(route const* route,
 
 void trip::interpolate() {
   struct bound {
-    explicit bound(int t) : min_{t}, max_{t} {}
-    int interpolate(int const idx) const {
+    explicit bound(minutes_after_midnight_t t) : min_{t}, max_{t} {}
+    minutes_after_midnight_t interpolate(int const idx) const {
       auto const p =
           static_cast<double>(idx - min_idx_) / (max_idx_ - min_idx_);
-      return static_cast<int>(min_ + std::round((max_ - min_) * p));
+      return min_ + duration_t{static_cast<duration_t::rep>(
+                        std::round((max_ - min_).count() * p))};
     }
-    int min_, max_;
+    minutes_after_midnight_t min_, max_;
     int min_idx_{-1};
     int max_idx_{-1};
   };
@@ -140,10 +142,10 @@ void trip::interpolate() {
     bounds.emplace_back(x.second.dep_.time_);
   }
 
-  auto max = 0;
+  auto max = duration_t{0};
   auto max_idx = 0;
   for (auto it = bounds.rbegin(); it != bounds.rend(); ++it) {
-    if (it->max_ == stop_time::kInterpolate) {
+    if (it->max_ == kInterpolate) {
       it->max_ = max;
       it->max_idx_ = max_idx;
     } else {
@@ -151,13 +153,12 @@ void trip::interpolate() {
       max_idx = static_cast<unsigned>(&(*it) - &bounds.front()) / 2U;
     }
   }
-  utl::verify(max != stop_time::kInterpolate,
-              "last arrival cannot be interpolated");
+  utl::verify(max != kInterpolate, "last arrival cannot be interpolated");
 
-  auto min = 0;
+  auto min = duration_t{0};
   auto min_idx = 0;
   for (auto it = bounds.begin(); it != bounds.end(); ++it) {
-    if (it->min_ == stop_time::kInterpolate) {
+    if (it->min_ == kInterpolate) {
       it->min_ = min;
       it->min_idx_ = min_idx;
     } else {
@@ -165,28 +166,30 @@ void trip::interpolate() {
       min_idx = static_cast<unsigned>(&(*it) - &bounds.front()) / 2U;
     }
   }
-  utl::verify(min != stop_time::kInterpolate,
-              "first arrival cannot be interpolated");
+  utl::verify(min != kInterpolate, "first arrival cannot be interpolated");
 
   for (auto const [idx, entry] : utl::enumerate(stop_times_)) {
     auto& [_, stop_time] = entry;
     auto const& arr = bounds[2 * idx];
     auto const& dep = bounds[2 * idx + 1];
 
-    if (stop_time.arr_.time_ == stop_time::kInterpolate) {
+    if (stop_time.arr_.time_ == kInterpolate) {
       stop_time.arr_.time_ = arr.interpolate(static_cast<int>(idx));
     }
-    if (stop_time.dep_.time_ == stop_time::kInterpolate) {
+    if (stop_time.dep_.time_ == kInterpolate) {
       stop_time.dep_.time_ = dep.interpolate(static_cast<int>(idx));
     }
   }
 }
 
 trip::stop_seq trip::stops() const {
-  return utl::to_vec(
-      stop_times_, [](flat_map<stop_time>::entry_t const& e) -> stop_identity {
-        return {e.second.stop_, e.second.arr_.in_out_allowed_,
-                e.second.dep_.in_out_allowed_};
+  return utl::transform_to<trip::stop_seq>(
+      stop_times_,
+      [](flat_map<stop_time>::entry_t const& e) -> timetable::stop::value_type {
+        auto const& stop_time = e.second;
+        return timetable::stop{stop_time.stop_, stop_time.arr_.in_out_allowed_,
+                               stop_time.dep_.in_out_allowed_}
+            .value();
       });
 }
 
@@ -197,44 +200,16 @@ trip::stop_seq_numbers trip::seq_numbers() const {
                      });
 }
 
-int trip::avg_speed() const {
-  int travel_time = 0.;  // minutes
-  double travel_distance = 0.;  // meters
-
-  for (auto const [dep_entry, arr_entry] : utl::pairwise(stop_times_)) {
-    auto const& dep = dep_entry.second;
-    auto const& arr = arr_entry.second;
-    if (dep.stop_->timezone_ != arr.stop_->timezone_) {
-      continue;
-    }
-    if (arr.arr_.time_ < dep.dep_.time_) {
-      continue;
-    }
-
-    travel_time += arr.arr_.time_ - dep.dep_.time_;
-    travel_distance += geo::distance(dep.stop_->coord_, arr.stop_->coord_);
-  }
-
-  return travel_time > 0 ? (travel_distance / 1000.) / (travel_time / 60.) : 0;
-}
-
-int trip::distance() const {
-  geo::box box;
-  for (auto const& [_, stop_time] : stop_times_) {
-    box.extend(stop_time.stop_->coord_);
-  }
-  return geo::distance(box.min_, box.max_) / 1000;
-}
-
-void trip::print_stop_times(std::ostream& out, unsigned const indent) const {
+void trip::print_stop_times(std::ostream& out,
+                            timetable const& tt,
+                            unsigned const indent) const {
   for (auto const& t : stop_times_) {
     for (auto i = 0U; i != indent; ++i) {
       out << "  ";
     }
-    out << std::setw(60) << t.second.stop_->name_ << " [" << std::setw(5)
-        << t.second.stop_->id_
-        << "]: arr: " << (t.second.arr_.time_ * 1_minutes)
-        << ", dep: " << (t.second.dep_.time_ * 1_minutes) << "\n";
+    out << std::setw(60) << location{tt, t.second.stop_} << " [" << std::setw(5)
+        << location{tt, t.second.stop_} << "]: arr: " << t.second.arr_.time_
+        << ", dep: " << t.second.dep_.time_ << "\n";
   }
 }
 
@@ -354,7 +329,7 @@ void read_frequencies(trip_map& trips, std::string_view file_content) {
            frequencies->emplace_back(
                frequency{hhmm_to_min(freq.start_time_->view()),
                          hhmm_to_min(freq.end_time_->view()),
-                         (headway_secs / 60), schedule_relationship});
+                         duration_t{headway_secs / 60}, schedule_relationship});
          });
 }
 

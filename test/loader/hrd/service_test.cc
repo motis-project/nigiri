@@ -6,9 +6,11 @@
 #include "nigiri/loader/hrd/load_timetable.h"
 #include "nigiri/print_transport.h"
 
+#include "../service_strings.h"
 #include "./hrd_timetable.h"
 
 using namespace nigiri;
+using namespace nigiri::loader;
 using namespace nigiri::loader::hrd;
 using namespace nigiri::test_data::hrd_timetable;
 
@@ -100,37 +102,6 @@ auto const expected = std::set<std::string>{R"(TRAFFIC_DAYS=00000000100
  3: 0000005 E............................................... a: 29.03 00:55 [29.03 01:55]  d: 29.03 01:09 [29.03 03:09]  [{name=IC 3374, day=2020-03-27, id=3374/0000008/1410/0000006/2950/, src=0}]
  4: 0000006 F............................................... a: 29.03 01:10 [29.03 03:10]
 )"};
-
-std::set<std::string> service_strings(timetable const& tt) {
-  auto const reverse = [](std::string s) {
-    std::reverse(s.begin(), s.end());
-    return s;
-  };
-  auto const range = tt.internal_interval_days();
-  auto const num_days = static_cast<size_t>((range.size() + 2_days) / 1_days);
-  auto ret = std::set<std::string>{};
-  for (auto i = 0U; i != tt.transport_traffic_days_.size(); ++i) {
-    std::stringstream out;
-    auto const transport_idx = transport_idx_t{i};
-    auto const traffic_days =
-        tt.bitfields_.at(tt.transport_traffic_days_.at(transport_idx));
-    out << "TRAFFIC_DAYS="
-        << reverse(
-               traffic_days.to_string().substr(traffic_days.size() - num_days))
-        << "\n";
-    for (auto d = range.from_; d != range.to_; d += std::chrono::days{1}) {
-      auto const day_idx = day_idx_t{
-          static_cast<day_idx_t::value_t>((d - range.from_) / 1_days)};
-      if (traffic_days.test(to_idx(day_idx))) {
-        date::to_stream(out, "%F", d);
-        out << " (day_idx=" << day_idx << ")\n";
-        print_transport(tt, out, {transport_idx, day_idx});
-      }
-    }
-    ret.emplace(out.str());
-  }
-  return ret;
-}
 
 TEST(service, strings) {
   auto tt = timetable{};

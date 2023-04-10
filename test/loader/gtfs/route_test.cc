@@ -13,9 +13,10 @@ using namespace nigiri::loader::gtfs;
 
 TEST(gtfs, read_routes_example_data) {
   timetable tt;
+  tz_map timezones;
 
-  auto const agencies =
-      read_agencies(tt, example_files().get_file(kAgencyFile).data());
+  auto const agencies = read_agencies(
+      tt, timezones, example_files().get_file(kAgencyFile).data());
   auto const routes =
       read_routes(agencies, example_files().get_file(kRoutesFile).data());
 
@@ -29,9 +30,10 @@ TEST(gtfs, read_routes_example_data) {
 
 TEST(gtfs, read_routes_berlin_data) {
   timetable tt;
+  tz_map timezones;
 
   auto const agencies =
-      read_agencies(tt, berlin_files().get_file(kAgencyFile).data());
+      read_agencies(tt, timezones, berlin_files().get_file(kAgencyFile).data());
   auto const routes =
       read_routes(agencies, berlin_files().get_file(kRoutesFile).data());
 

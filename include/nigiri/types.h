@@ -134,6 +134,7 @@ struct provider {
   CISTA_COMPARABLE()
   CISTA_PRINTABLE(provider, "short_name", "long_name")
   string short_name_, long_name_;
+  timezone_idx_t tz_{timezone_idx_t::invalid()};
 };
 
 struct trip_id {
@@ -194,7 +195,7 @@ struct tz_offsets {
   duration_t offset_{0};
 };
 
-using timezone = variant<void*, tz_offsets>;
+using timezone = variant<void const*, tz_offsets>;
 
 enum class clasz : std::uint8_t {
   kAir = 0,

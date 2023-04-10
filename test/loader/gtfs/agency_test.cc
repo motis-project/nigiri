@@ -11,8 +11,9 @@ using namespace nigiri::loader::gtfs;
 
 TEST(gtfs, agency) {
   timetable tt;
-  auto const agencies =
-      read_agencies(tt, example_files().get_file(kAgencyFile).data());
+  tz_map timezones;
+  auto const agencies = read_agencies(
+      tt, timezones, example_files().get_file(kAgencyFile).data());
 
   auto const dta_it = agencies.find("DTA");
   ASSERT_NE(dta_it, end(agencies));

@@ -150,8 +150,9 @@ struct timetable {
     std::basic_string<trip_line_idx_t> const& section_lines_;
   };
 
+  template <typename TripId>
   trip_idx_t register_trip_id(
-      fmt::memory_buffer const& trip_id_str,
+      TripId const& trip_id_str,
       source_idx_t const src,
       std::string const& display_name,
       trip_debug const dbg,

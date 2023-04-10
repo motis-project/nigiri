@@ -27,7 +27,7 @@ void parse_services(config const& c,
   auto const expand_service = [&](service_idx_t const s_idx) {
     expand_traffic_days(store, s_idx, st, [&](ref_service const& a) {
       expand_repetitions(store, a, [&](ref_service const& b) {
-        to_local_time(store, st, hrd_interval, selection, b, consumer);
+        to_utc(store, st, hrd_interval, selection, b, consumer);
       });
     });
   };

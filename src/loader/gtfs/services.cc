@@ -109,17 +109,18 @@ traffic_days merge_traffic_days(
   nigiri::scoped_timer timer{"traffic days"};
 
   traffic_days s;
-  s.first_day_ = bound_date(base, exceptions, bound::kFirst);
-  s.last_day_ = bound_date(base, exceptions, bound::kLast);
+  s.interval_ = {
+      bound_date(base, exceptions, bound::kFirst),
+      bound_date(base, exceptions, bound::kLast) + std::chrono::days{1}};
 
   for (auto const& [service_name, calendar] : base) {
     s.traffic_days_[service_name] = std::make_unique<bitfield>(
-        calendar_to_bitfield(service_name, s.first_day_, calendar));
+        calendar_to_bitfield(service_name, s.interval_.from_, calendar));
   }
 
   for (auto const& [service_name, service_exceptions] : exceptions) {
     for (auto const& day : service_exceptions) {
-      add_exception(service_name, s.first_day_, day,
+      add_exception(service_name, s.interval_.from_, day,
                     *utl::get_or_create(s.traffic_days_, service_name, []() {
                       return std::make_unique<bitfield>();
                     }));
