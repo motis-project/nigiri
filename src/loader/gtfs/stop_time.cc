@@ -28,7 +28,7 @@ void read_stop_times(trip_map& trips,
     utl::csv_col<utl::cstr, UTL_NAME("arrival_time")> arrival_time_;
     utl::csv_col<utl::cstr, UTL_NAME("departure_time")> departure_time_;
     utl::csv_col<utl::cstr, UTL_NAME("stop_id")> stop_id_;
-    utl::csv_col<int, UTL_NAME("stop_sequence")> stop_sequence_;
+    utl::csv_col<std::uint16_t, UTL_NAME("stop_sequence")> stop_sequence_;
     utl::csv_col<utl::cstr, UTL_NAME("stop_headsign")> stop_headsign_;
     utl::csv_col<int, UTL_NAME("pickup_type")> pickup_type_;
     utl::csv_col<int, UTL_NAME("drop_off_type")> drop_off_type_;
@@ -60,12 +60,27 @@ void read_stop_times(trip_map& trips,
              }
 
              try {
-               t->stop_times_.emplace(
-                   static_cast<std::size_t>(*s.stop_sequence_),
-                   stops.at(s.stop_id_->view()),
-                   s.stop_headsign_->to_str(),  //
-                   hhmm_to_min(*s.arrival_time_), *s.drop_off_type_ != 1,
-                   hhmm_to_min(*s.departure_time_), *s.pickup_type_ != 1);
+               auto const arrival_time = hhmm_to_min(*s.arrival_time_);
+               auto const departure_time = hhmm_to_min(*s.departure_time_);
+
+               t->requires_interpolation_ |= arrival_time == kInterpolate;
+               t->requires_interpolation_ |= departure_time == kInterpolate;
+               t->requires_sorting_ |=
+                   (!t->seq_numbers_.empty() &&
+                    t->seq_numbers_.back() > *s.stop_sequence_);
+
+               t->seq_numbers_.emplace_back(*s.stop_sequence_);
+               t->stop_seq_.push_back(
+                   timetable::stop{stops.at(s.stop_id_->view()),
+                                   *s.pickup_type_ != 1, *s.drop_off_type_ != 1}
+                       .value());
+               t->event_times_.emplace_back(
+                   stop_events{.arr_ = arrival_time, .dep_ = departure_time});
+
+               if (!s.stop_headsign_->empty()) {
+                 t->stop_headsigns_.resize(t->seq_numbers_.size());
+                 t->stop_headsigns_.back() = s.stop_headsign_->to_str();
+               }
              } catch (...) {
                log(log_lvl::error, "loader.gtfs.stop_time",
                    "stop_times.txt:{}: unknown stop \"{}\"", i,

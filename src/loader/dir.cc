@@ -232,7 +232,7 @@ std::unique_ptr<dir> make_dir(std::filesystem::path const& p) {
   } else if (std::filesystem::is_directory(p)) {
     return std::make_unique<fs_dir>(p);
   } else {
-    throw utl::fail("path {} is neither a zip file nor a directory");
+    throw utl::fail("path {} is neither a zip file nor a directory", p);
   }
 }
 

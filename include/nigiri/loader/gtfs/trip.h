@@ -1,11 +1,12 @@
 #pragma once
 
-#include <functional>
 #include <map>
 #include <optional>
 #include <string>
 #include <tuple>
 #include <vector>
+
+#include "tsl/hopscotch_map.h"
 
 #include "cista/reflection/comparable.h"
 
@@ -18,6 +19,32 @@
 
 namespace nigiri::loader::gtfs {
 
+struct equal_str {
+  using is_transparent = void;
+
+  bool operator()(std::string const& a, std::string_view b) const {
+    return a == b;
+  }
+
+  bool operator()(std::string_view a, std::string const& b) const {
+    return a == b;
+  }
+
+  bool operator()(std::string const& a, std::string const& b) const {
+    return a == b;
+  }
+};
+
+struct hash_string {
+  std::size_t operator()(std::string const& x) const {
+    return std::hash<std::string_view>()(std::string_view{x});
+  }
+
+  std::size_t operator()(std::string_view x) const {
+    return std::hash<std::string_view>()(x);
+  }
+};
+
 struct trip;
 
 struct block {
@@ -25,26 +52,8 @@ struct block {
   std::vector<trip*> trips_;
 };
 
-using block_map = hash_map<std::string, std::unique_ptr<block>>;
-
-struct stop_time {
-  stop_time();
-  stop_time(location_idx_t,
-            std::string headsign,
-            minutes_after_midnight_t arr_time,
-            bool out_allowed,
-            minutes_after_midnight_t dep_time,
-            bool in_allowed);
-
-  struct ev {
-    minutes_after_midnight_t time_{kInterpolate};
-    bool in_out_allowed_{false};
-  };
-
-  location_idx_t stop_{location_idx_t::invalid()};
-  std::string headsign_;
-  ev arr_, dep_;
-};
+using block_map = tsl::
+    hopscotch_map<std::string, std::unique_ptr<block>, hash_string, equal_str>;
 
 struct frequency {
   minutes_after_midnight_t start_time_{0U};
@@ -56,10 +65,11 @@ struct frequency {
   } schedule_relationship_;
 };
 
-struct trip {
-  using stop_seq = std::basic_string<timetable::stop::value_type>;
-  using stop_seq_numbers = std::vector<unsigned>;
+struct stop_events {
+  minutes_after_midnight_t arr_{kInterpolate}, dep_{kInterpolate};
+};
 
+struct trip {
   trip(route const*,
        bitfield const*,
        block*,
@@ -70,29 +80,30 @@ struct trip {
 
   void interpolate();
 
-  stop_seq stops() const;
-  stop_seq_numbers seq_numbers() const;
-
-  void expand_frequencies(
-      std::function<void(trip const&, frequency::schedule_relationship)> const&)
-      const;
-
   void print_stop_times(std::ostream&,
                         timetable const&,
                         unsigned indent = 0) const;
 
-  route const* route_;
-  bitfield const* service_;
-  block* block_;
+  route const* route_{nullptr};
+  bitfield const* service_{nullptr};
+  block* block_{nullptr};
   std::string id_;
   std::string headsign_;
   std::string short_name_;
-  flat_map<stop_time> stop_times_;
-  std::uint32_t line_;
+
+  std::vector<std::uint8_t> seq_numbers_;
+  std::basic_string<timetable::stop::value_type> stop_seq_;
+  std::vector<stop_events> event_times_;
+  std::vector<std::string> stop_headsigns_;
+
   std::optional<std::vector<frequency>> frequency_;
+  bool requires_interpolation_{false};
+  bool requires_sorting_{false};
+  std::uint32_t line_;
 };
 
-using trip_map = hash_map<std::string, std::unique_ptr<trip>>;
+using trip_map = tsl::
+    hopscotch_map<std::string, std::unique_ptr<trip>, hash_string, equal_str>;
 
 std::pair<trip_map, block_map> read_trips(route_map_t const&,
                                           traffic_days const&,

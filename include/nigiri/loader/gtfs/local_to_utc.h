@@ -34,7 +34,7 @@ void expand_frequencies(trip const* t, Consumer&& consumer) {
     for (auto const& f : *t->frequency_) {
       for (auto i = f.start_time_; i < f.end_time_; i += f.headway_) {
         consumer(frequency_expanded_trip{
-            .orig_ = t, .offset_ = t->stop_times_.front().dep_.time_ - i});
+            .orig_ = t, .offset_ = t->event_times_.front().dep_ - i});
       }
     }
   } else {
@@ -48,16 +48,23 @@ void expand_local_to_utc(timetable const& tt,
                          interval<date::sys_days> const& gtfs_interval,
                          interval<date::sys_days> const& selection,
                          Consumer&& consumer) {
+  using utc_time_sequence = std::basic_string<minutes_after_midnight_t>;
+  struct hash_stop_times {
+    std::size_t operator()(utc_time_sequence const& x) const {
+      return cista::hashing<utc_time_sequence>{}(x);
+    }
+  };
+
   auto const* t = feq.orig_;
 
   auto utc_time_traffic_days =
-      hash_map<std::basic_string<minutes_after_midnight_t>, bitfield>{};
+      tsl::hopscotch_map<utc_time_sequence, bitfield, hash_stop_times>{};
 
   auto utc_times = std::basic_string<minutes_after_midnight_t>{};
-  utc_times.resize(t->stop_times_.size() * 2U - 2U);
+  utc_times.resize(t->event_times_.size() * 2U - 2U);
 
   auto const last_day_offset =
-      (1 + (t->stop_times_.back().arr_.time_ - feq.offset_) / 1_days) *
+      (1 + (t->event_times_.back().arr_ - feq.offset_) / 1_days) *
       date::days{1};
   for (auto day = gtfs_interval.from_; day != gtfs_interval.to_;
        day += std::chrono::days{1}) {
@@ -72,39 +79,25 @@ void expand_local_to_utc(timetable const& tt,
       continue;
     }
 
-    auto const stop_tz_idx =
-        tt.locations_.location_timezones_[t->stop_times_.front().stop_];
-    auto const agency_tz_idx = t->route_->agency_ == provider_idx_t::invalid()
-                                   ? timezone_idx_t::invalid()
-                                   : tt.providers_[t->route_->agency_].tz_;
     utl::verify(
-        stop_tz_idx != timezone_idx_t::invalid() ||
-            agency_tz_idx != timezone_idx_t::invalid(),
-        R"(no timezone given for trip "{}" (first_stop="{}", agency="{}"))",
-        t->id_, location{tt, t->stop_times_.front().stop_},
-        t->route_->agency_ == provider_idx_t::invalid()
-            ? "NOT_FOUND"
-            : tt.providers_[t->route_->agency_].short_name_);
-    auto const tz_idx =
-        stop_tz_idx == timezone_idx_t::invalid() ? agency_tz_idx : stop_tz_idx;
+        t->route_->agency_ != provider_idx_t::invalid() &&
+            tt.providers_[t->route_->agency_].tz_ != timezone_idx_t::invalid(),
+        "could not find timezone");
     auto const tz = reinterpret_cast<date::time_zone const*>(
-        tt.locations_.timezones_[tz_idx].as<void const*>());
+        tt.locations_.timezones_[tt.providers_[t->route_->agency_].tz_]
+            .as<void const*>());
     auto const tz_offset =
         get_noon_offset(date::local_days{date::year_month_day{day}}, tz);
 
     auto const first_dep_utc =
-        t->stop_times_.front().dep_.time_ - feq.offset_ - tz_offset;
+        t->event_times_.front().dep_ - feq.offset_ - tz_offset;
     auto const first_day_offset = date::days{static_cast<date::days::rep>(
         std::floor(static_cast<double>(first_dep_utc.count()) / 1440))};
 
     auto i = 0U;
-    for (auto const [from, to] : utl::pairwise(t->stop_times_)) {
-      auto const& [from_seq, from_stop] = from;
-      auto const& [to_seq, to_stop] = to;
-      utc_times[i++] =
-          from_stop.dep_.time_ - feq.offset_ - tz_offset - first_day_offset;
-      utc_times[i++] =
-          to_stop.arr_.time_ - feq.offset_ - tz_offset - first_day_offset;
+    for (auto const [from, to] : utl::pairwise(t->event_times_)) {
+      utc_times[i++] = from.dep_ - feq.offset_ - tz_offset - first_day_offset;
+      utc_times[i++] = to.arr_ - feq.offset_ - tz_offset - first_day_offset;
     }
 
     auto const utc_traffic_day =
@@ -116,15 +109,17 @@ void expand_local_to_utc(timetable const& tt,
     auto const it = utc_time_traffic_days.find(utc_times);
     if (it == end(utc_time_traffic_days)) {
       utc_time_traffic_days.emplace(utc_times, bitfield{})
-          .first->second.set(static_cast<std::size_t>(utc_traffic_day));
+          .first.value()
+          .set(static_cast<std::size_t>(utc_traffic_day));
     } else {
-      it->second.set(static_cast<std::size_t>(utc_traffic_day));
+      it.value().set(static_cast<std::size_t>(utc_traffic_day));
     }
   }
 
   for (auto& [times, traffic_days] : utc_time_traffic_days) {
-    consumer(utc_trip{
-        .orig_ = t, .utc_traffic_days_ = traffic_days, .utc_times_ = times});
+    consumer(utc_trip{.orig_ = t,
+                      .utc_traffic_days_ = traffic_days,
+                      .utc_times_ = std::move(times)});
   }
 }
 
