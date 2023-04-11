@@ -59,9 +59,8 @@ provider_map_t parse_providers(config const& c,
           utl::verify(previous_provider_number == provider_number,
                       "provider line format mismatch in line {}", line_number);
           for_each_token(line.substr(8), ' ', [&](utl::cstr token) {
-            auto const idx = tt.providers_.size();
-            tt.providers_.emplace_back(std::move(current_info));
-            providers[token.to_str()] = provider_idx_t{idx};
+            providers[token.to_str()] =
+                tt.register_provider(std::move(current_info));
           });
         }
       });

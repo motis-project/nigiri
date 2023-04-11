@@ -25,8 +25,7 @@ std::ostream& operator<<(std::ostream& out, timetable const& tt) {
     auto const traffic_days =
         tt.bitfields_.at(tt.transport_traffic_days_.at(transport_idx));
     out << "TRANSPORT=" << transport_idx << ", TRAFFIC_DAYS="
-        << reverse(
-               traffic_days.to_string().substr(traffic_days.size() - num_days))
+        << reverse(traffic_days.to_string().substr(kMaxDays - num_days))
         << "\n";
     for (auto d = tt.date_range_.from_; d != tt.date_range_.to_;
          d += std::chrono::days{1}) {

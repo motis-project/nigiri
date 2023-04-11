@@ -15,7 +15,9 @@ struct file {
   };
 
   bool has_value() const noexcept { return content_ != nullptr; }
-  std::string_view data() const { return content_->get(); }
+  std::string_view data() const {
+    return content_ == nullptr ? "" : content_->get();
+  }
   char const* filename() const { return name_.c_str(); }
 
   std::string name_;

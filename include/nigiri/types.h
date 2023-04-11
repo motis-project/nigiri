@@ -134,6 +134,7 @@ struct provider {
   CISTA_COMPARABLE()
   CISTA_PRINTABLE(provider, "short_name", "long_name")
   string short_name_, long_name_;
+  timezone_idx_t tz_{timezone_idx_t::invalid()};
 };
 
 struct trip_id {
@@ -194,7 +195,7 @@ struct tz_offsets {
   duration_t offset_{0};
 };
 
-using timezone = variant<void*, tz_offsets>;
+using timezone = variant<void const*, tz_offsets>;
 
 enum class clasz : std::uint8_t {
   kAir = 0,
@@ -228,6 +229,7 @@ enum class direction { kForward, kBackward };
 
 #include "cista/serialization.h"
 #include "utl/helpers/algorithm.h"
+#include "utl/overloaded.h"
 
 namespace std::chrono {
 
@@ -259,20 +261,14 @@ inline std::ostream& operator<<(std::ostream& out,
   return out;
 }
 
-inline std::ostream& operator<<(std::ostream& out, sys_days const& t) {
-  auto const ymd = std::chrono::year_month_day{t};
-  return out << static_cast<int>(ymd.year()) << '-' << std::setw(2)
-             << std::setfill('0') << static_cast<unsigned>(ymd.month()) << '-'
-             << std::setw(2) << static_cast<unsigned>(ymd.day());
-}
-
 }  // namespace std::chrono
 
 #include <iostream>
 
 namespace nigiri {
 
-inline local_time to_local_time(tz_offsets const& offsets, unixtime_t const t) {
+inline local_time to_local_time_offsets(tz_offsets const& offsets,
+                                        unixtime_t const t) {
   auto const active_season_it =
       utl::find_if(offsets.seasons_, [&](tz_offsets::season const& s) {
         auto const season_begin =
@@ -286,13 +282,17 @@ inline local_time to_local_time(tz_offsets const& offsets, unixtime_t const t) {
   return local_time{(t + active_offset).time_since_epoch()};
 }
 
-inline local_time to_local_time(date::time_zone* tz, unixtime_t const t) {
-  return local_time{std::chrono::duration_cast<duration_t>(
-      tz->to_local(t).time_since_epoch())};
+inline local_time to_local_time_tz(date::time_zone const* tz,
+                                   unixtime_t const t) {
+  return std::chrono::time_point_cast<i32_minutes>(tz->to_local(t));
 }
 
 inline local_time to_local_time(timezone const& tz, unixtime_t const t) {
-  return tz.apply([t](auto&& x) { return to_local_time(x, t); });
+  return tz.apply(utl::overloaded{
+      [t](tz_offsets const& x) { return to_local_time_offsets(x, t); },
+      [t](void const* x) {
+        return to_local_time_tz(reinterpret_cast<date::time_zone const*>(x), t);
+      }});
 }
 
 }  // namespace nigiri

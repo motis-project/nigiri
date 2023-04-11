@@ -150,8 +150,9 @@ struct timetable {
     std::basic_string<trip_line_idx_t> const& section_lines_;
   };
 
+  template <typename TripId>
   trip_idx_t register_trip_id(
-      fmt::memory_buffer const& trip_id_str,
+      TripId const& trip_id_str,
       source_idx_t const src,
       std::string const& display_name,
       trip_debug const dbg,
@@ -218,6 +219,12 @@ struct timetable {
     return idx;
   }
 
+  provider_idx_t register_provider(provider&& p) {
+    auto const idx = providers_.size();
+    providers_.emplace_back(std::move(p));
+    return provider_idx_t{idx};
+  }
+
   void add_transport(transport&& t) {
     transport_traffic_days_.emplace_back(t.bitfield_idx_);
     transport_route_.emplace_back(t.route_idx_);
@@ -274,7 +281,7 @@ struct timetable {
                       event_mam(t.t_idx_, stop_idx, ev_type)};
   }
 
-  day_idx_t day_idx(date::year_month_day const day) {
+  day_idx_t day_idx(date::year_month_day const day) const {
     return day_idx_t{
         (date::sys_days{day} - (date_range_.from_ - kTimetableOffset)).count()};
   }
@@ -307,8 +314,9 @@ struct timetable {
             std::chrono::time_point_cast<i32_minutes>(date_range_.to_)};
   }
 
-  interval<unixtime_t> internal_interval_days() const {
-    return {date_range_.from_ - kTimetableOffset, date_range_.to_ + 1_days};
+  interval<date::sys_days> internal_interval_days() const {
+    return {date_range_.from_ - kTimetableOffset,
+            date_range_.to_ + date::days{1}};
   }
 
   constexpr interval<unixtime_t> internal_interval() const {

@@ -8,6 +8,7 @@
 #include "date/date.h"
 
 #include "nigiri/common/indent.h"
+#include "nigiri/lookup/get_transport_stop_tz.h"
 
 namespace nigiri {
 
@@ -36,8 +37,9 @@ void print_transport(timetable const& tt,
     auto const stop_name = parent == location_idx_t::invalid()
                                ? tt.locations_.names_.at(location_idx).view()
                                : tt.locations_.names_.at(parent).view();
+
     auto const& tz = tt.locations_.timezones_.at(
-        tt.locations_.location_timezones_.at(location_idx));
+        get_transport_stop_tz(tt, i, s.location_idx()));
     indent(out, indent_width);
     fmt::print(out, "{:2}: {:7} {:.<48} ", stop_idx, stop_id, stop_name);
 

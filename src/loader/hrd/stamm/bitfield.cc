@@ -70,8 +70,8 @@ bitfield hex_str_to_bitset(utl::cstr char_collection) {
               char_collection.view());
 
   bool prev_set = false;
-  for (auto i = 0U; i != b.size(); ++i) {
-    auto const j = b.size() - i - 1U;
+  for (auto i = 0U; i != kMaxDays; ++i) {
+    auto const j = kMaxDays - i - 1U;
     auto const curr_set = b.test(j);
     b.set(j, false);
     if (prev_set && curr_set) {

@@ -5,34 +5,10 @@
 #include "utl/get_or_create.h"
 #include "utl/helpers/algorithm.h"
 
+#include "nigiri/loader/get_index.h"
 #include "nigiri/loader/hrd/service/read_services.h"
 
 namespace nigiri::loader::hrd {
-
-std::optional<size_t> get_index(vector<ref_service> const& route_services,
-                                ref_service const& s) {
-  auto const index = static_cast<unsigned>(std::distance(
-      begin(route_services),
-      std::lower_bound(begin(route_services), end(route_services), s,
-                       [&](ref_service const& a, ref_service const& b) {
-                         return a.utc_times_.front() % 1440 <
-                                b.utc_times_.front() % 1440;
-                       })));
-
-  for (auto i = 0U; i != s.utc_times_.size(); ++i) {
-    auto const is_earlier_eq =
-        index > 0 && s.utc_times_[i] % 1440 <
-                         route_services[index - 1].utc_times_.at(i) % 1440;
-    auto const is_later_eq =
-        index < route_services.size() &&
-        s.utc_times_[i] % 1440 > route_services[index].utc_times_.at(i) % 1440;
-    if (is_earlier_eq || is_later_eq) {
-      return std::nullopt;
-    }
-  }
-
-  return index;
-}
 
 void service_builder::add_service(ref_service&& s) {
   route_key_.first = std::move(s.stop_seq_);
