@@ -4,25 +4,10 @@
 #include <numeric>
 #include <string>
 
-#include "boost/algorithm/string.hpp"
-
-#include "utl/erase_if.h"
 #include "utl/get_or_create.h"
-#include "utl/pairwise.h"
-#include "utl/parallel_for.h"
-#include "utl/parser/cstr.h"
-#include "utl/pipes/accumulate.h"
-#include "utl/pipes/all.h"
-#include "utl/pipes/remove_if.h"
-#include "utl/pipes/transform.h"
-#include "utl/pipes/vec.h"
-#include "utl/progress_tracker.h"
 
 #include "cista/hash.h"
 #include "cista/mmap.h"
-
-#include "geo/latlng.h"
-#include "geo/point_rtree.h"
 
 #include "nigiri/loader/get_index.h"
 #include "nigiri/loader/gtfs/agency.h"
@@ -52,11 +37,7 @@ cista::hash_t hash(fs::path const& path) {
       return;
     }
     cista::mmap m{p.generic_string().c_str(), cista::mmap::protection::READ};
-    hash = cista::hash_combine(
-        cista::hash(std::string_view{
-            reinterpret_cast<char const*>(m.begin()),
-            std::min(static_cast<size_t>(50 * 1024 * 1024), m.size())}),
-        hash);
+    hash = cista::hash_combine(cista::hash(m), hash);
   };
 
   for (auto const& file_name : required_files) {
