@@ -39,36 +39,36 @@ TEST(loader_gtfs_route, read_stop_times_example_data) {
   auto& awe1_stops = awe1_it->second->stop_times_;
   auto& stop = awe1_stops[1];
   EXPECT_EQ("S1", tt.locations_.ids_[stop.stop_].view());
-  EXPECT_EQ(6_minutes, stop.arr_.time_);
-  EXPECT_EQ(6_minutes, stop.dep_.time_);
+  EXPECT_EQ(6_hours + 10_minutes, stop.arr_.time_);
+  EXPECT_EQ(6_hours + 10_minutes, stop.dep_.time_);
   EXPECT_TRUE(stop.arr_.in_out_allowed_);
   EXPECT_TRUE(stop.dep_.in_out_allowed_);
 
   stop = awe1_stops[2];
   EXPECT_EQ("S2", tt.locations_.ids_[stop.stop_].view());
-  EXPECT_EQ(6_minutes, stop.arr_.time_);
-  EXPECT_EQ(6_minutes, stop.dep_.time_);
+  EXPECT_EQ(6_hours + 15_minutes, stop.arr_.time_);
+  EXPECT_EQ(6_hours + 15_minutes, stop.dep_.time_);
   EXPECT_FALSE(stop.arr_.in_out_allowed_);
   EXPECT_TRUE(stop.dep_.in_out_allowed_);
 
   stop = awe1_stops[3];
   EXPECT_EQ("S3", tt.locations_.ids_[stop.stop_].view());
-  EXPECT_EQ(6_minutes, stop.arr_.time_);
-  EXPECT_EQ(6_minutes, stop.dep_.time_);
+  EXPECT_EQ(6_hours + 20_minutes, stop.arr_.time_);
+  EXPECT_EQ(6_hours + 30_minutes, stop.dep_.time_);
   EXPECT_TRUE(stop.arr_.in_out_allowed_);
   EXPECT_TRUE(stop.dep_.in_out_allowed_);
 
   stop = awe1_stops[4];
   EXPECT_EQ("S5", tt.locations_.ids_[stop.stop_].view());
-  EXPECT_EQ(6_minutes, stop.arr_.time_);
-  EXPECT_EQ(6_minutes, stop.dep_.time_);
+  EXPECT_EQ(6_hours + 38_minutes, stop.arr_.time_);
+  EXPECT_EQ(6_hours + 38_minutes, stop.dep_.time_);
   EXPECT_TRUE(stop.arr_.in_out_allowed_);
   EXPECT_TRUE(stop.dep_.in_out_allowed_);
 
   stop = awe1_stops[5];
   EXPECT_EQ("S6", tt.locations_.ids_[stop.stop_].view());
-  EXPECT_EQ(6_minutes, stop.arr_.time_);
-  EXPECT_EQ(6_minutes, stop.dep_.time_);
+  EXPECT_EQ(6_hours + 45_minutes, stop.arr_.time_);
+  EXPECT_EQ(6_hours + 45_minutes, stop.dep_.time_);
   EXPECT_TRUE(stop.arr_.in_out_allowed_);
   EXPECT_TRUE(stop.dep_.in_out_allowed_);
 

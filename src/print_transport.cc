@@ -8,23 +8,9 @@
 #include "date/date.h"
 
 #include "nigiri/common/indent.h"
+#include "nigiri/lookup/get_transport_stop_tz.h"
 
 namespace nigiri {
-
-timezone_idx_t get_tz(timetable const& tt,
-                      transport_idx_t const t,
-                      location_idx_t const l) {
-  auto const location_tz = tt.locations_.location_timezones_.at(l);
-  if (location_tz != timezone_idx_t::invalid()) {
-    return location_tz;
-  }
-
-  auto const provider_idx = tt.transport_section_providers_[t].front();
-  utl::verify(provider_idx != provider_idx_t::invalid(),
-              "provider of transport {} not set, no timezone at stop {}", t,
-              location{tt, l});
-  return tt.providers_[provider_idx].tz_;
-}
 
 void print_transport(timetable const& tt,
                      std::ostream& out,
@@ -52,8 +38,8 @@ void print_transport(timetable const& tt,
                                ? tt.locations_.names_.at(location_idx).view()
                                : tt.locations_.names_.at(parent).view();
 
-    auto const& tz =
-        tt.locations_.timezones_.at(get_tz(tt, i, s.location_idx()));
+    auto const& tz = tt.locations_.timezones_.at(
+        get_transport_stop_tz(tt, i, s.location_idx()));
     indent(out, indent_width);
     fmt::print(out, "{:2}: {:7} {:.<48} ", stop_idx, stop_id, stop_name);
 

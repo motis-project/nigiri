@@ -281,7 +281,7 @@ struct timetable {
                       event_mam(t.t_idx_, stop_idx, ev_type)};
   }
 
-  day_idx_t day_idx(date::year_month_day const day) {
+  day_idx_t day_idx(date::year_month_day const day) const {
     return day_idx_t{
         (date::sys_days{day} - (date_range_.from_ - kTimetableOffset)).count()};
   }
@@ -314,8 +314,9 @@ struct timetable {
             std::chrono::time_point_cast<i32_minutes>(date_range_.to_)};
   }
 
-  interval<unixtime_t> internal_interval_days() const {
-    return {date_range_.from_ - kTimetableOffset, date_range_.to_ + 1_days};
+  interval<date::sys_days> internal_interval_days() const {
+    return {date_range_.from_ - kTimetableOffset,
+            date_range_.to_ + date::days{1}};
   }
 
   constexpr interval<unixtime_t> internal_interval() const {

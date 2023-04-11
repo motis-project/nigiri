@@ -6,6 +6,7 @@
 
 #include "nigiri/loader/gtfs/trip.h"
 #include "nigiri/timetable.h"
+#include "utl/pairwise.h"
 
 namespace nigiri::loader::gtfs {
 
@@ -58,8 +59,6 @@ void expand_local_to_utc(timetable const& tt,
   auto const last_day_offset =
       (1 + (t->stop_times_.back().arr_.time_ - feq.offset_) / 1_days) *
       date::days{1};
-  auto const gtfs_to_selection_offset =
-      (selection.from_ - gtfs_interval.from_ - kTimetableOffset).count();
   for (auto day = gtfs_interval.from_; day != gtfs_interval.to_;
        day += std::chrono::days{1}) {
     auto const service_days = interval{day, day + last_day_offset};
@@ -95,27 +94,25 @@ void expand_local_to_utc(timetable const& tt,
 
     auto const first_dep_utc =
         t->stop_times_.front().dep_.time_ - feq.offset_ - tz_offset;
-    auto const first_day_offset = duration_t{static_cast<duration_t::rep>(
-        std::floor(static_cast<double>(first_dep_utc.count()) / 1440) * 1440)};
+    auto const first_day_offset = date::days{static_cast<date::days::rep>(
+        std::floor(static_cast<double>(first_dep_utc.count()) / 1440))};
 
     auto i = 0U;
-    for (auto const& [seq, stop_time] : t->stop_times_) {
+    for (auto const [from, to] : utl::pairwise(t->stop_times_)) {
+      auto const& [from_seq, from_stop] = from;
+      auto const& [to_seq, to_stop] = to;
       utc_times[i++] =
-          stop_time.dep_.time_ - feq.offset_ - tz_offset + first_day_offset;
+          from_stop.dep_.time_ - feq.offset_ - tz_offset - first_day_offset;
       utc_times[i++] =
-          stop_time.arr_.time_ - feq.offset_ - tz_offset + first_day_offset;
+          to_stop.arr_.time_ - feq.offset_ - tz_offset - first_day_offset;
     }
 
-    auto const utc_traffic_day = gtfs_local_day_idx - gtfs_to_selection_offset +
-                                 first_day_offset / 1_days;
-    if (utc_traffic_day < 0) {
+    auto const utc_traffic_day =
+        (day - tt.internal_interval_days().from_ + first_day_offset).count();
+    if (utc_traffic_day < 0 || utc_traffic_day > kMaxDays) {
       continue;
     }
 
-    std::cout << "gtfs_local_day_idx=" << gtfs_local_day_idx
-              << ", gtfs_to_selection_offset=" << gtfs_to_selection_offset
-              << ", first_day_offset=" << first_day_offset << " -> "
-              << utc_traffic_day << "\n";
     auto const it = utc_time_traffic_days.find(utc_times);
     if (it == end(utc_time_traffic_days)) {
       utc_time_traffic_days.emplace(utc_times, bitfield{})
