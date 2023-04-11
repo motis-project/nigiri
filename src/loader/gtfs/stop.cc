@@ -78,7 +78,7 @@ struct stop {
   std::set<stop*> same_name_, children_;
   stop* parent_{nullptr};
   std::vector<unsigned> close_;
-  location_idx_t location_;
+  location_idx_t location_{location_idx_t::invalid()};
   std::vector<footpath> footpaths_;
 };
 

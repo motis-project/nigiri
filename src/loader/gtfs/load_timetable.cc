@@ -107,8 +107,7 @@ void load_timetable(source_idx_t const src, dir const& d, timetable& tt) {
       route_services;
   for (auto const& [_, t] : trips) {
     expand_trip(
-        tt, t.get(), traffic_days.interval_, tt.date_range_,
-        [&](utc_trip const& s) {
+        tt, t.get(), traffic_days.interval_, tt.date_range_, [&](utc_trip&& s) {
           auto const route_key =
               std::pair{s.orig_->stops(), s.orig_->route_->clasz_};
           if (auto const it = route_services.find(route_key);
@@ -116,7 +115,7 @@ void load_timetable(source_idx_t const src, dir const& d, timetable& tt) {
             for (auto& r : it->second) {
               auto const idx = get_index(r, s);
               if (idx.has_value()) {
-                r.insert(std::next(begin(r), static_cast<long>(*idx)), s);
+                r.insert(std::next(begin(r), static_cast<int>(*idx)), s);
                 return;
               }
             }

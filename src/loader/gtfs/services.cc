@@ -78,7 +78,7 @@ bitfield calendar_to_bitfield(std::string const& service_name,
   bitfield traffic_days;
   auto bit = static_cast<std::size_t>((first - start).count());
   for (auto d = first; d != last; d = d + date::sys_days::duration{1}, ++bit) {
-    if (bit >= traffic_days.size()) {
+    if (bit >= kMaxDays) {
       log(log_lvl::error, "loader.gtfs.services",
           "date {} for servcie {} out of range", d, service_name);
       continue;
@@ -95,7 +95,7 @@ void add_exception(std::string const& service_name,
                    calendar_date const& exception,
                    bitfield& b) {
   auto const day_idx = (exception.day_ - start).count();
-  if (day_idx < 0 || day_idx >= static_cast<int>(b.size())) {
+  if (day_idx < 0 || day_idx >= kMaxDays) {
     log(log_lvl::error, "loader.gtfs.services",
         "date {} for service {} out of range", exception.day_, service_name);
     return;

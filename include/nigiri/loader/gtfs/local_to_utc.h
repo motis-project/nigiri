@@ -136,7 +136,7 @@ void expand_trip(timetable const& tt,
                  Consumer&& consumer) {
   expand_frequencies(t, [&](frequency_expanded_trip const& feq) {
     expand_local_to_utc(tt, feq, gtfs_interval, selection,
-                        [&](utc_trip const& ut) { consumer(ut); });
+                        [&](utc_trip&& ut) { consumer(std::move(ut)); });
   });
 }
 
