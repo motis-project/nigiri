@@ -28,7 +28,7 @@ std::vector<std::pair<std::vector<trip*>, bitfield>> block::rule_services() {
   utl::verify(!trips_.empty(), "empty block not allowed");
 
   utl::erase_if(trips_, [](trip const* t) {
-    auto const is_empty = t->stop_times_.empty();
+    auto const is_empty = t->stop_seq_.empty();
     if (is_empty) {
       log(log_lvl::error, "loader.gtfs.trip", "trip \"{}\": no stop times",
           t->id_);
@@ -37,8 +37,7 @@ std::vector<std::pair<std::vector<trip*>, bitfield>> block::rule_services() {
   });
 
   std::sort(begin(trips_), end(trips_), [](trip const* a, trip const* b) {
-    return a->stop_times_.front().dep_.time_ <
-           b->stop_times_.front().dep_.time_;
+    return a->event_times_.front().dep_ < b->event_times_.front().dep_;
   });
 
   struct rule_trip {
@@ -68,8 +67,8 @@ std::vector<std::pair<std::vector<trip*>, bitfield>> block::rule_services() {
       collected_trips.emplace_back(current_it);
       for (auto succ_it = std::next(current_it); succ_it != end(rule_trips);
            ++succ_it) {
-        if (current_it->trip_->stop_times_.back().stop_ !=
-            succ_it->trip_->stop_times_.front().stop_) {
+        if (timetable::stop{current_it->trip_->stop_seq_.back()}.location_ !=
+            timetable::stop{succ_it->trip_->stop_seq_.front()}.location_) {
           continue;  // prev last stop != next first stop
         }
 
@@ -94,19 +93,6 @@ std::vector<std::pair<std::vector<trip*>, bitfield>> block::rule_services() {
   return combinations;
 }
 
-stop_time::stop_time() = default;
-
-stop_time::stop_time(location_idx_t const s,
-                     std::string headsign,
-                     minutes_after_midnight_t arr_time,
-                     bool out_allowed,
-                     minutes_after_midnight_t dep_time,
-                     bool in_allowed)
-    : stop_{s},
-      headsign_{std::move(headsign)},
-      arr_{arr_time, out_allowed},
-      dep_{dep_time, in_allowed} {}
-
 trip::trip(route const* route,
            bitfield const* service,
            block* blk,
@@ -123,6 +109,10 @@ trip::trip(route const* route,
       line_(line) {}
 
 void trip::interpolate() {
+  if (!requires_interpolation_) {
+    return;
+  }
+
   struct bound {
     explicit bound(minutes_after_midnight_t t) : min_{t}, max_{t} {}
     minutes_after_midnight_t interpolate(int const idx) const {
@@ -136,10 +126,10 @@ void trip::interpolate() {
     int max_idx_{-1};
   };
   auto bounds = std::vector<bound>{};
-  bounds.reserve(stop_times_.size());
-  for (auto const [i, x] : utl::enumerate(stop_times_)) {
-    bounds.emplace_back(x.second.arr_.time_);
-    bounds.emplace_back(x.second.dep_.time_);
+  bounds.reserve(stop_seq_.size());
+  for (auto const [i, x] : utl::enumerate(event_times_)) {
+    bounds.emplace_back(x.arr_);
+    bounds.emplace_back(x.dep_);
   }
 
   auto max = duration_t{0};
@@ -168,67 +158,30 @@ void trip::interpolate() {
   }
   utl::verify(min != kInterpolate, "first arrival cannot be interpolated");
 
-  for (auto const [idx, entry] : utl::enumerate(stop_times_)) {
-    auto& [_, stop_time] = entry;
+  for (auto const [idx, entry] : utl::enumerate(event_times_)) {
     auto const& arr = bounds[2 * idx];
     auto const& dep = bounds[2 * idx + 1];
 
-    if (stop_time.arr_.time_ == kInterpolate) {
-      stop_time.arr_.time_ = arr.interpolate(static_cast<int>(idx));
+    if (entry.arr_ == kInterpolate) {
+      entry.arr_ = arr.interpolate(static_cast<int>(idx));
     }
-    if (stop_time.dep_.time_ == kInterpolate) {
-      stop_time.dep_.time_ = dep.interpolate(static_cast<int>(idx));
+    if (entry.dep_ == kInterpolate) {
+      entry.dep_ = dep.interpolate(static_cast<int>(idx));
     }
   }
-}
-
-trip::stop_seq trip::stops() const {
-  return utl::transform_to<trip::stop_seq>(
-      stop_times_,
-      [](flat_map<stop_time>::entry_t const& e) -> timetable::stop::value_type {
-        auto const& stop_time = e.second;
-        return timetable::stop{stop_time.stop_, stop_time.arr_.in_out_allowed_,
-                               stop_time.dep_.in_out_allowed_}
-            .value();
-      });
-}
-
-trip::stop_seq_numbers trip::seq_numbers() const {
-  return utl::to_vec(stop_times_,
-                     [](flat_map<stop_time>::entry_t const& e) -> unsigned {
-                       return static_cast<unsigned>(e.first);
-                     });
 }
 
 void trip::print_stop_times(std::ostream& out,
                             timetable const& tt,
                             unsigned const indent) const {
-  for (auto const& t : stop_times_) {
+  for (auto const [stop, ev_times, seq_numbers] :
+       utl::zip(stop_seq_, event_times_, seq_numbers_)) {
+    auto const s = timetable::stop{stop};
     for (auto i = 0U; i != indent; ++i) {
       out << "  ";
     }
-    out << std::setw(60) << location{tt, t.second.stop_} << " [" << std::setw(5)
-        << location{tt, t.second.stop_} << "]: arr: " << t.second.arr_.time_
-        << ", dep: " << t.second.dep_.time_ << "\n";
-  }
-}
-
-void trip::expand_frequencies(
-    std::function<void(trip const&, frequency::schedule_relationship)> const&
-        consumer) const {
-  utl::verify(frequency_.has_value(), "bad call to trip::expand_frequencies");
-
-  for (auto const& f : frequency_.value()) {
-    for (auto start = f.start_time_; start < f.end_time_; start += f.headway_) {
-      trip t{*this};
-
-      auto const delta = t.stop_times_.front().dep_.time_ - start;
-      for (auto& stop_time : t.stop_times_) {
-        stop_time.second.dep_.time_ -= delta;
-        stop_time.second.arr_.time_ -= delta;
-      }
-      consumer(t, f.schedule_relationship_);
-    }
+    out << std::setw(60) << location{tt, s.location_idx()}
+        << "]: arr: " << ev_times.arr_ << ", dep: " << ev_times.dep_ << "\n";
   }
 }
 
@@ -260,7 +213,7 @@ std::pair<trip_map, block_map> read_trips(route_map_t const& routes,
         auto const blk =
             t.block_id_->trim().empty()
                 ? nullptr
-                : utl::get_or_create(blocks, t.block_id_->trim().view(), []() {
+                : get_or_create(blocks, t.block_id_->trim().view(), []() {
                     return std::make_unique<block>();
                   }).get();
         auto const trp =
