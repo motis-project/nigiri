@@ -16,6 +16,7 @@
 #include "utl/parser/csv_range.h"
 #include "utl/parser/line_range.h"
 #include "utl/pipes/for_each.h"
+#include "utl/progress_tracker.h"
 #include "utl/to_vec.h"
 
 #include "nigiri/common/tsl_util.h"
@@ -116,7 +117,13 @@ void read_transfers(stop_map_t& stops, std::string_view file_content) {
     return;
   }
 
-  utl::line_range{utl::buf_reader{file_content}}  //
+  auto progress_tracker = utl::get_active_progress_tracker();
+  progress_tracker->status("Read Transfers")
+      .out_bounds(15.F, 17.F)
+      .in_high(file_content.size());
+
+  utl::line_range{
+      utl::make_buf_reader(file_content, progress_tracker->update_fn())}  //
       | utl::csv<csv_transfer>()  //
       |
       utl::for_each([&](csv_transfer const& t) {
@@ -152,6 +159,11 @@ locations_map read_stops(source_idx_t const src,
                          std::string_view transfers_file_content) {
   scoped_timer timer{"gtfs.loader.stops"};
 
+  auto progress_tracker = utl::get_active_progress_tracker();
+  progress_tracker->status("Parse Stops")
+      .out_bounds(0.F, 5.F)
+      .in_high(stops_file_content.size());
+
   struct csv_stop {
     utl::csv_col<utl::cstr, UTL_NAME("stop_id")> id_;
     utl::csv_col<utl::cstr, UTL_NAME("stop_name")> name_;
@@ -166,7 +178,8 @@ locations_map read_stops(source_idx_t const src,
   stop_map_t stops;
   tsl::hopscotch_map<std::string_view, std::vector<stop*>, hash_str, equal_str>
       equal_names;
-  utl::line_range{utl::buf_reader{stops_file_content}}  //
+  utl::line_range{utl::make_buf_reader(stops_file_content,
+                                       progress_tracker->update_fn())}  //
       | utl::csv<csv_stop>()  //
       | utl::for_each([&](csv_stop const& s) {
           auto const new_stop = get_or_create(stops, s.id_->view(), [&]() {
@@ -204,11 +217,15 @@ locations_map read_stops(source_idx_t const src,
 
   {
     auto const t = scoped_timer{"loader.gtfs.stop.rtree"};
+    progress_tracker->status("Stops R-Tree")
+        .out_bounds(5.F, 15.F)
+        .in_high(stops.size());
     auto const stop_rtree = geo::make_point_rtree(
         stops, [](auto const& s) { return s.second->coord_; });
-    utl::parallel_for(stops, [&](auto const& s) {
-      s.second->compute_close_stations(stop_rtree);
-    });
+    utl::parallel_for(
+        stops,
+        [&](auto const& s) { s.second->compute_close_stations(stop_rtree); },
+        progress_tracker->update_fn());
   }
 
   auto empty_idx_vec = vector<location_idx_t>{};
@@ -231,6 +248,9 @@ locations_map read_stops(source_idx_t const src,
 
   {
     auto const t = scoped_timer{"loader.gtfs.stop.metas"};
+    progress_tracker->status("Compute Metas")
+        .out_bounds(17.F, 20.F)
+        .in_high(stops.size());
     tsl::hopscotch_set<stop*> todo, done;
     for (auto const& [id, s] : stops) {
       if (s->parent_ != nullptr) {
@@ -246,6 +266,7 @@ locations_map read_stops(source_idx_t const src,
         tt.locations_.footpaths_in_[eq->location_].emplace_back(s->location_,
                                                                 2_minutes);
       }
+      progress_tracker->increment();
     }
   }
 

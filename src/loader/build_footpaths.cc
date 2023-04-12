@@ -93,14 +93,6 @@ footgraph get_footpath_graph(timetable& tt) {
     g[i].insert(end(g[i]), begin(tt.locations_.footpaths_out_[idx]),
                 end(tt.locations_.footpaths_out_[idx]));
     std::sort(begin(g[i]), end(g[i]));
-
-    //    for (auto const& fp : g[i]) {
-    //      std::cout << "FP_GRAPH_IN: "
-    //                << tt.locations_.ids_[location_idx_t{i}].view() << " --"
-    //                << fp.duration_ << "-->"
-    //                << tt.locations_.ids_[location_idx_t{fp.target_}].view()
-    //                << "\n";
-    //    }
   }
   return g;
 }
@@ -231,9 +223,6 @@ next:
       auto j = static_cast<unsigned>(std::distance(lb, it));
       mat(i, j) = std::min(static_cast<std::uint16_t>(edge.duration_.count()),
                            mat(i, j));
-      //      mat(j, i) =
-      //      std::min(static_cast<std::uint16_t>(edge.duration_.count()),
-      //                           mat(j, i));
 
       print_dbg("{} --{}--> {}\n",
                 location{tt, location_idx_t{(lb + i)->second}}, edge.duration_,

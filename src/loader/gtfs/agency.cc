@@ -2,14 +2,15 @@
 
 #include "date/tz.h"
 
+#include "utl/get_or_create.h"
 #include "utl/parser/buf_reader.h"
 #include "utl/parser/csv_range.h"
 #include "utl/parser/line_range.h"
 #include "utl/pipes/transform.h"
 #include "utl/pipes/vec.h"
+#include "utl/progress_tracker.h"
 
 #include "nigiri/timetable.h"
-#include "utl/get_or_create.h"
 
 namespace nigiri::loader::gtfs {
 
@@ -22,6 +23,10 @@ agency_map_t read_agencies(timetable& tt,
     utl::csv_col<utl::cstr, UTL_NAME("agency_timezone")> tz_name_;
   };
 
+  auto progress_tracker = utl::get_active_progress_tracker();
+  progress_tracker->status("Parse Stops")
+      .out_bounds(0.F, 1.F)
+      .in_high(file_content.size());
   return utl::line_range{utl::buf_reader{file_content}}  //
          | utl::csv<agency>()  //
          | utl::transform([&](agency const& a) {

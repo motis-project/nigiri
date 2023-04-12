@@ -5,6 +5,7 @@
 #include <string>
 
 #include "utl/get_or_create.h"
+#include "utl/progress_tracker.h"
 
 #include "tsl/hopscotch_map.h"
 
@@ -34,21 +35,20 @@ namespace nigiri::loader::gtfs {
 constexpr auto const required_files = {kAgencyFile, kStopFile, kRoutesFile,
                                        kTripsFile, kStopTimesFile};
 
-cista::hash_t hash(fs::path const& path) {
+cista::hash_t hash(dir const& d) {
   auto hash = cista::BASE_HASH;
   auto const hash_file = [&](fs::path const& p) {
-    if (!fs::is_regular_file(p)) {
+    if (!d.exists(p)) {
       return;
     }
-    cista::mmap m{p.generic_string().c_str(), cista::mmap::protection::READ};
-    hash = cista::hash_combine(cista::hash(m), hash);
+    hash = cista::hash_combine(cista::hash(d.get_file(p).data()), hash);
   };
 
   for (auto const& file_name : required_files) {
-    hash_file(path / file_name);
+    hash_file(file_name);
   }
-  hash_file(path / kCalenderFile);
-  hash_file(path / kCalendarDatesFile);
+  hash_file(kCalenderFile);
+  hash_file(kCalendarDatesFile);
 
   return hash;
 }
@@ -72,14 +72,16 @@ struct hash_route_key {
 };
 
 void load_timetable(source_idx_t const src, dir const& d, timetable& tt) {
+  auto bars = utl::global_progress_bars{false};
+
   nigiri::scoped_timer const global_timer{"gtfs parser"};
 
   auto const load = [&](std::string_view file_name) -> file {
     return d.exists(file_name) ? d.get_file(file_name) : file{};
   };
 
-  tz_map timezones;
-
+  auto progress_tracker = utl::activate_progress_tracker("nigiri");
+  auto timezones = tz_map{};
   auto const agencies = read_agencies(tt, timezones, load(kAgencyFile).data());
   auto const stops = read_stops(src, tt, timezones, load(kStopFile).data(),
                                 load(kTransfersFile).data());
