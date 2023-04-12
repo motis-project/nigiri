@@ -4,6 +4,7 @@
 #include <string>
 #include <tuple>
 
+#include "tsl/hopscotch_map.h"
 #include "tsl/hopscotch_set.h"
 
 #include "geo/point_rtree.h"
@@ -17,6 +18,7 @@
 #include "utl/pipes/for_each.h"
 #include "utl/to_vec.h"
 
+#include "nigiri/common/tsl_util.h"
 #include "nigiri/logging.h"
 #include "nigiri/timetable.h"
 
@@ -87,6 +89,9 @@ struct stop {
   std::vector<footpath> footpaths_;
 };
 
+using stop_map_t = tsl::
+    hopscotch_map<std::string_view, std::unique_ptr<stop>, hash_str, equal_str>;
+
 enum class transfer_type : std::uint8_t {
   kRecommended = 0U,
   kTimed = 1U,
@@ -97,8 +102,7 @@ enum class transfer_type : std::uint8_t {
   kGenerated = std::numeric_limits<std::uint8_t>::max()
 };
 
-void read_transfers(hash_map<std::string_view, std::unique_ptr<stop>>& stops,
-                    std::string_view file_content) {
+void read_transfers(stop_map_t& stops, std::string_view file_content) {
   nigiri::scoped_timer timer{"gtfs.loader.stops.transfers"};
 
   struct csv_transfer {
@@ -159,34 +163,34 @@ locations_map read_stops(source_idx_t const src,
   };
 
   locations_map locations;
-  hash_map<std::string_view, std::unique_ptr<stop>> stops;
-  hash_map<std::string_view, std::vector<stop*>> equal_names;
+  stop_map_t stops;
+  tsl::hopscotch_map<std::string_view, std::vector<stop*>, hash_str, equal_str>
+      equal_names;
   utl::line_range{utl::buf_reader{stops_file_content}}  //
       | utl::csv<csv_stop>()  //
-      |
-      utl::for_each([&](csv_stop const& s) {
-        auto const new_stop = utl::get_or_create(stops, s.id_->view(), [&]() {
-                                return std::make_unique<stop>();
-                              }).get();
+      | utl::for_each([&](csv_stop const& s) {
+          auto const new_stop = get_or_create(stops, s.id_->view(), [&]() {
+                                  return std::make_unique<stop>();
+                                }).get();
 
-        new_stop->id_ = s.id_->view();
-        new_stop->name_ = s.name_->view();
-        new_stop->coord_ = {*s.lat_, *s.lon_};
-        new_stop->platform_code_ = s.platform_code_->view();
-        new_stop->timezone_ = s.timezone_->trim().view();
+          new_stop->id_ = s.id_->view();
+          new_stop->name_ = s.name_->view();
+          new_stop->coord_ = {*s.lat_, *s.lon_};
+          new_stop->platform_code_ = s.platform_code_->view();
+          new_stop->timezone_ = s.timezone_->trim().view();
 
-        if (!s.parent_station_->trim().empty()) {
-          auto const parent =
-              utl::get_or_create(stops, s.parent_station_->trim().view(), []() {
-                return std::make_unique<stop>();
-              }).get();
-          parent->id_ = s.parent_station_->trim().to_str();
-          parent->children_.emplace(new_stop);
-          new_stop->parent_ = parent;
-        }
+          if (!s.parent_station_->trim().empty()) {
+            auto const parent =
+                get_or_create(stops, s.parent_station_->trim().view(), []() {
+                  return std::make_unique<stop>();
+                }).get();
+            parent->id_ = s.parent_station_->trim().to_str();
+            parent->children_.emplace(new_stop);
+            new_stop->parent_ = parent;
+          }
 
-        equal_names[s.name_->view()].emplace_back(new_stop);
-      });
+          equal_names[s.name_->view()].emplace_back(new_stop);
+        });
 
   auto const stop_vec =
       utl::to_vec(stops, [](auto const& s) { return s.second.get(); });
@@ -217,8 +221,9 @@ locations_map read_stops(source_idx_t const src,
             id, is_track ? s->platform_code_ : s->name_, s->coord_, src,
             is_track ? location_type::kTrack : location_type::kStation,
             osm_node_id_t::invalid(), location_idx_t::invalid(),
-            get_tz_idx(tt, timezones, s->timezone_), 2_minutes,
-            it_range{empty_idx_vec}, it_range{empty_footpath_vec},
+            s->timezone_.empty() ? timezone_idx_t::invalid()
+                                 : get_tz_idx(tt, timezones, s->timezone_),
+            2_minutes, it_range{empty_idx_vec}, it_range{empty_footpath_vec},
             it_range{empty_footpath_vec}}));
   }
 

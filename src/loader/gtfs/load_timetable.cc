@@ -17,11 +17,13 @@
 #include "nigiri/loader/gtfs/calendar_date.h"
 #include "nigiri/loader/gtfs/files.h"
 #include "nigiri/loader/gtfs/local_to_utc.h"
+#include "nigiri/loader/gtfs/noon_offsets.h"
 #include "nigiri/loader/gtfs/route.h"
 #include "nigiri/loader/gtfs/services.h"
 #include "nigiri/loader/gtfs/stop.h"
 #include "nigiri/loader/gtfs/stop_time.h"
 #include "nigiri/loader/gtfs/trip.h"
+#include "nigiri/common/sort_by.h"
 #include "nigiri/logging.h"
 #include "nigiri/timetable.h"
 
@@ -101,8 +103,11 @@ void load_timetable(source_idx_t const src, dir const& d, timetable& tt) {
     auto const timer = scoped_timer{"loader.gtfs.trips.sort"};
     for (auto& [_, t] : trips) {
       if (t->requires_sorting_) {
-        std::cout << "NOT SORTED\n";
-        // TODO(felix) sort
+        t->stop_headsigns_.resize(t->seq_numbers_.size());
+        std::tie(t->seq_numbers_, t->stop_seq_, t->event_times_,
+                 t->stop_headsigns_) =
+            sort_by(t->seq_numbers_, t->stop_seq_, t->event_times_,
+                    t->stop_headsigns_);
       }
     }
   }
@@ -113,10 +118,13 @@ void load_timetable(source_idx_t const src, dir const& d, timetable& tt) {
       route_services;
 
   {
-    auto const timer = scoped_timer{"loader.gtfs.routes.group"};
+    auto const timer = scoped_timer{"loader.gtfs.trips.expand"};
+
+    auto const noon_offsets =
+        precompute_noon_offsets(tt, traffic_days.interval_, agencies);
     for (auto const& [_, t] : trips) {
       expand_trip(
-          tt, t.get(), traffic_days.interval_, tt.date_range_,
+          noon_offsets, tt, t.get(), traffic_days.interval_, tt.date_range_,
           [&](utc_trip&& s) {
             auto const route_key =
                 std::pair{s.orig_->stop_seq_, s.orig_->route_->clasz_};

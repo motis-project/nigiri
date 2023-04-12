@@ -15,35 +15,10 @@
 #include "nigiri/loader/gtfs/route.h"
 #include "nigiri/loader/gtfs/services.h"
 #include "nigiri/loader/gtfs/stop.h"
+#include "nigiri/common/tsl_util.h"
 #include "nigiri/timetable.h"
 
 namespace nigiri::loader::gtfs {
-
-struct equal_str {
-  using is_transparent = void;
-
-  bool operator()(std::string const& a, std::string_view b) const {
-    return a == b;
-  }
-
-  bool operator()(std::string_view a, std::string const& b) const {
-    return a == b;
-  }
-
-  bool operator()(std::string const& a, std::string const& b) const {
-    return a == b;
-  }
-};
-
-struct hash_string {
-  std::size_t operator()(std::string const& x) const {
-    return std::hash<std::string_view>()(std::string_view{x});
-  }
-
-  std::size_t operator()(std::string_view x) const {
-    return std::hash<std::string_view>()(x);
-  }
-};
 
 struct trip;
 
@@ -53,7 +28,7 @@ struct block {
 };
 
 using block_map = tsl::
-    hopscotch_map<std::string, std::unique_ptr<block>, hash_string, equal_str>;
+    hopscotch_map<std::string, std::unique_ptr<block>, hash_str, equal_str>;
 
 struct frequency {
   minutes_after_midnight_t start_time_{0U};
@@ -102,8 +77,8 @@ struct trip {
   std::uint32_t line_;
 };
 
-using trip_map = tsl::
-    hopscotch_map<std::string, std::unique_ptr<trip>, hash_string, equal_str>;
+using trip_map =
+    tsl::hopscotch_map<std::string, std::unique_ptr<trip>, hash_str, equal_str>;
 
 std::pair<trip_map, block_map> read_trips(route_map_t const&,
                                           traffic_days const&,

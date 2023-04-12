@@ -24,35 +24,6 @@
 
 namespace nigiri::loader::gtfs {
 
-template <typename K,
-          typename Key,
-          typename T,
-          typename Hash,
-          typename KeyEqual,
-          typename Allocator,
-          unsigned NeighborhoodSize,
-          bool StoreHash,
-          typename GrowthPolicy,
-          typename CreateFun>
-auto& get_or_create(tsl::hopscotch_map<Key,
-                                       T,
-                                       Hash,
-                                       KeyEqual,
-                                       Allocator,
-                                       NeighborhoodSize,
-                                       StoreHash,
-                                       GrowthPolicy>& m,
-                    K&& key,
-                    CreateFun&& f) {
-  using Map = std::decay_t<decltype(m)>;
-  if (auto const it = m.find(key); it == end(m)) {
-    return m.emplace_hint(it, typename Map::key_type{std::forward<K>(key)}, f())
-        .value();
-  } else {
-    return it.value();
-  }
-}
-
 std::vector<std::pair<std::vector<trip*>, bitfield>> block::rule_services() {
   utl::verify(!trips_.empty(), "empty block not allowed");
 
