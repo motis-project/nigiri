@@ -8,9 +8,9 @@
 
 namespace nigiri::loader::gtfs {
 
-template <typename T>
+template <typename IndexType, typename T>
 struct flat_map {
-  using index_t = std::size_t;
+  using index_t = IndexType;
   using entry_t = std::pair<index_t, T>;
   using iterator = typename std::vector<entry_t>::iterator;
   using const_iterator = typename std::vector<entry_t>::const_iterator;
@@ -32,10 +32,10 @@ struct flat_map {
   }
 
   template <typename... Args>
-  void emplace(index_t idx, Args... args) {
+  T& emplace(index_t idx, Args... args) {
     auto s = std::make_pair(idx, T(std::forward<Args>(args)...));
     auto it = std::lower_bound(elements_.begin(), elements_.end(), s, cmp());
-    elements_.emplace(it, std::move(s));
+    return elements_.emplace(it, std::move(s))->second;
   }
 
   T& operator[](index_t idx) {

@@ -2,6 +2,7 @@
 
 #include "nigiri/loader/gtfs/files.h"
 #include "nigiri/loader/gtfs/stop_time.h"
+#include "nigiri/common/sort_by.h"
 #include "nigiri/timetable.h"
 
 #include "./test_data.h"
@@ -29,6 +30,16 @@ TEST(loader_gtfs_route, read_stop_times_example_data) {
 
   read_stop_times(trips, stops, files.get_file(kStopTimesFile).data());
 
+  for (auto& [_, t] : trips) {
+    if (t->requires_sorting_) {
+      t->stop_headsigns_.resize(t->seq_numbers_.size());
+      std::tie(t->seq_numbers_, t->stop_seq_, t->event_times_,
+               t->stop_headsigns_) =
+          sort_by(t->seq_numbers_, t->stop_seq_, t->event_times_,
+                  t->stop_headsigns_);
+    }
+  }
+
   for (auto& [_, trip] : trips) {
     trip->interpolate();
   }
@@ -36,54 +47,47 @@ TEST(loader_gtfs_route, read_stop_times_example_data) {
   auto awe1_it = trips.find("AWE1");
   ASSERT_NE(end(trips), awe1_it);
 
-  auto& awe1_stops = awe1_it->second->stop_times_;
-  auto& stop = awe1_stops[1];
-  EXPECT_EQ("S1", tt.locations_.ids_[stop.stop_].view());
-  EXPECT_EQ(6_hours + 10_minutes, stop.arr_.time_);
-  EXPECT_EQ(6_hours + 10_minutes, stop.dep_.time_);
-  EXPECT_TRUE(stop.arr_.in_out_allowed_);
-  EXPECT_TRUE(stop.dep_.in_out_allowed_);
+  auto& awe1_stop_times = awe1_it->second->event_times_[0];
+  auto stop = timetable::stop{awe1_it->second->stop_seq_[0]};
+  EXPECT_EQ("S1", tt.locations_.ids_[stop.location_idx()].view());
+  EXPECT_EQ(6_hours + 10_minutes, awe1_stop_times.arr_);
+  EXPECT_EQ(6_hours + 10_minutes, awe1_stop_times.dep_);
+  EXPECT_TRUE(stop.out_allowed());
+  EXPECT_TRUE(stop.in_allowed());
 
-  stop = awe1_stops[2];
-  EXPECT_EQ("S2", tt.locations_.ids_[stop.stop_].view());
-  EXPECT_EQ(6_hours + 15_minutes, stop.arr_.time_);
-  EXPECT_EQ(6_hours + 15_minutes, stop.dep_.time_);
-  EXPECT_FALSE(stop.arr_.in_out_allowed_);
-  EXPECT_TRUE(stop.dep_.in_out_allowed_);
+  awe1_stop_times = awe1_it->second->event_times_[1];
+  stop = timetable::stop{awe1_it->second->stop_seq_[1]};
+  EXPECT_EQ("S2", tt.locations_.ids_[stop.location_idx()].view());
+  EXPECT_EQ(6_hours + 15_minutes, awe1_stop_times.arr_);
+  EXPECT_EQ(6_hours + 15_minutes, awe1_stop_times.dep_);
+  EXPECT_FALSE(stop.out_allowed());
+  EXPECT_TRUE(stop.in_allowed());
 
-  stop = awe1_stops[3];
-  EXPECT_EQ("S3", tt.locations_.ids_[stop.stop_].view());
-  EXPECT_EQ(6_hours + 20_minutes, stop.arr_.time_);
-  EXPECT_EQ(6_hours + 30_minutes, stop.dep_.time_);
-  EXPECT_TRUE(stop.arr_.in_out_allowed_);
-  EXPECT_TRUE(stop.dep_.in_out_allowed_);
+  awe1_stop_times = awe1_it->second->event_times_[2];
+  stop = timetable::stop{awe1_it->second->stop_seq_[2]};
+  EXPECT_EQ("S3", tt.locations_.ids_[stop.location_idx()].view());
+  EXPECT_EQ(6_hours + 20_minutes, awe1_stop_times.arr_);
+  EXPECT_EQ(6_hours + 30_minutes, awe1_stop_times.dep_);
+  EXPECT_TRUE(stop.out_allowed());
+  EXPECT_TRUE(stop.in_allowed());
 
-  stop = awe1_stops[4];
-  EXPECT_EQ("S5", tt.locations_.ids_[stop.stop_].view());
-  EXPECT_EQ(6_hours + 38_minutes, stop.arr_.time_);
-  EXPECT_EQ(6_hours + 38_minutes, stop.dep_.time_);
-  EXPECT_TRUE(stop.arr_.in_out_allowed_);
-  EXPECT_TRUE(stop.dep_.in_out_allowed_);
+  awe1_stop_times = awe1_it->second->event_times_[3];
+  stop = timetable::stop{awe1_it->second->stop_seq_[3]};
+  EXPECT_EQ("S5", tt.locations_.ids_[stop.location_idx()].view());
+  EXPECT_EQ(6_hours + 38_minutes, awe1_stop_times.arr_);
+  EXPECT_EQ(6_hours + 38_minutes, awe1_stop_times.dep_);
+  EXPECT_TRUE(stop.out_allowed());
+  EXPECT_TRUE(stop.in_allowed());
 
-  stop = awe1_stops[5];
-  EXPECT_EQ("S6", tt.locations_.ids_[stop.stop_].view());
-  EXPECT_EQ(6_hours + 45_minutes, stop.arr_.time_);
-  EXPECT_EQ(6_hours + 45_minutes, stop.dep_.time_);
-  EXPECT_TRUE(stop.arr_.in_out_allowed_);
-  EXPECT_TRUE(stop.dep_.in_out_allowed_);
-
-  EXPECT_THROW(awe1_it->second->expand_frequencies(
-                   [](trip const&, frequency::schedule_relationship) {}),
-               std::runtime_error);
+  awe1_stop_times = awe1_it->second->event_times_[4];
+  stop = timetable::stop{awe1_it->second->stop_seq_[4]};
+  EXPECT_EQ("S6", tt.locations_.ids_[stop.location_idx()].view());
+  EXPECT_EQ(6_hours + 45_minutes, awe1_stop_times.arr_);
+  EXPECT_EQ(6_hours + 45_minutes, awe1_stop_times.dep_);
+  EXPECT_TRUE(stop.out_allowed());
+  EXPECT_TRUE(stop.in_allowed());
 
   read_frequencies(trips, files.get_file(kFrequenciesFile).data());
-  auto i = 0U;
-  awe1_it->second->expand_frequencies(
-      [&](trip const&, frequency::schedule_relationship s) {
-        EXPECT_EQ(frequency::schedule_relationship::kUnscheduled, s);
-        ++i;
-      });
-  EXPECT_EQ(357U, i);
 }
 
 }  // namespace nigiri::loader::gtfs

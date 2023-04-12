@@ -84,6 +84,9 @@ struct timetable {
         transfer_time_.emplace_back(l.transfer_time_);  // TODO(felix)
         osm_ids_.emplace_back(osm_node_id_t::invalid());  // TODO(felix)
         parents_.emplace_back(l.parent_);
+      } else {
+        log(log_lvl::error, "timetable.register_location",
+            "duplicate station {}", l.id_);
       }
 
       assert(names_.size() == next_idx + 1);
