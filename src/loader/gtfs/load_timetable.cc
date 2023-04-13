@@ -120,6 +120,10 @@ void load_timetable(source_idx_t const src, dir const& d, timetable& tt) {
       route_services;
 
   {
+    progress_tracker->status("Expand Trips")
+        .out_bounds(70.F, 85.F)
+        .in_high(trips.size());
+
     auto const timer = scoped_timer{"loader.gtfs.trips.expand"};
 
     auto const noon_offsets =
@@ -146,10 +150,15 @@ void load_timetable(source_idx_t const src, dir const& d, timetable& tt) {
                   std::vector<std::vector<utc_trip>>{{std::move(s)}});
             }
           });
+      progress_tracker->increment();
     }
   }
 
   {
+    progress_tracker->status("Write Trips")
+        .out_bounds(85.F, 100.F)
+        .in_high(route_services.size());
+
     auto const timer = scoped_timer{"loader.gtfs.routes.build"};
 
     auto const source_file_idx = tt.register_source_file("trips.txt");
@@ -212,6 +221,8 @@ void load_timetable(source_idx_t const src, dir const& d, timetable& tt) {
         tt.route_stop_time_ranges_.emplace_back(
             interval{stop_times_begin, stop_times_end});
       }
+
+      progress_tracker->increment();
     }
   }
 }

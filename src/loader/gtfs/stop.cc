@@ -9,10 +9,8 @@
 
 #include "geo/point_rtree.h"
 
-#include "utl/get_or_create.h"
 #include "utl/parallel_for.h"
 #include "utl/parser/buf_reader.h"
-#include "utl/parser/csv.h"
 #include "utl/parser/csv_range.h"
 #include "utl/parser/line_range.h"
 #include "utl/pipes/for_each.h"
@@ -159,9 +157,9 @@ locations_map read_stops(source_idx_t const src,
                          std::string_view transfers_file_content) {
   scoped_timer timer{"gtfs.loader.stops"};
 
-  auto progress_tracker = utl::get_active_progress_tracker();
+  auto const progress_tracker = utl::get_active_progress_tracker();
   progress_tracker->status("Parse Stops")
-      .out_bounds(0.F, 5.F)
+      .out_bounds(1.F, 5.F)
       .in_high(stops_file_content.size());
 
   struct csv_stop {

@@ -23,11 +23,12 @@ agency_map_t read_agencies(timetable& tt,
     utl::csv_col<utl::cstr, UTL_NAME("agency_timezone")> tz_name_;
   };
 
-  auto progress_tracker = utl::get_active_progress_tracker();
-  progress_tracker->status("Parse Stops")
+  auto const progress_tracker = utl::get_active_progress_tracker();
+  progress_tracker->status("Parse Agencies")
       .out_bounds(0.F, 1.F)
       .in_high(file_content.size());
-  return utl::line_range{utl::buf_reader{file_content}}  //
+  return utl::line_range{utl::make_buf_reader(
+             file_content, progress_tracker->update_fn())}  //
          | utl::csv<agency>()  //
          | utl::transform([&](agency const& a) {
              return cista::pair{

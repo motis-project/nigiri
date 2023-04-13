@@ -2,6 +2,7 @@
 
 #include "nigiri/logging.h"
 #include "utl/get_or_create.h"
+#include "utl/progress_tracker.h"
 
 namespace nigiri::loader::gtfs {
 
@@ -106,18 +107,25 @@ void add_exception(std::string const& service_name,
 traffic_days merge_traffic_days(
     hash_map<std::string, calendar> const& base,
     hash_map<std::string, std::vector<calendar_date>> const& exceptions) {
-  nigiri::scoped_timer timer{"traffic days"};
+  nigiri::scoped_timer timer{"loader.gtfs.services"};
 
   traffic_days s;
   s.interval_ = {
       bound_date(base, exceptions, bound::kFirst),
       bound_date(base, exceptions, bound::kLast) + std::chrono::days{1}};
 
+  auto const progress_tracker = utl::get_active_progress_tracker();
+  progress_tracker->status("Build Base Services")
+      .out_bounds(36.F, 38.F)
+      .in_high(base.size());
   for (auto const& [service_name, calendar] : base) {
     s.traffic_days_[service_name] = std::make_unique<bitfield>(
         calendar_to_bitfield(service_name, s.interval_.from_, calendar));
   }
 
+  progress_tracker->status("Add Service Exceptions")
+      .out_bounds(38.F, 40.F)
+      .in_high(base.size());
   for (auto const& [service_name, service_exceptions] : exceptions) {
     for (auto const& day : service_exceptions) {
       add_exception(service_name, s.interval_.from_, day,

@@ -38,7 +38,12 @@ void read_stop_times(trip_map& trips,
   std::string last_trip_id;
   trip* last_trip = nullptr;
   auto i = 0;
-  return utl::line_range{utl::buf_reader{file_content}}  //
+  auto const progress_tracker = utl::get_active_progress_tracker();
+  progress_tracker->status("Read Stop Times")
+      .out_bounds(45.F, 70.F)
+      .in_high(file_content.size());
+  return utl::line_range{utl::make_buf_reader(
+             file_content, progress_tracker->update_fn())}  //
          | utl::csv<csv_stop_time>()  //
          | utl::for_each([&](csv_stop_time const& s) {
              ++i;

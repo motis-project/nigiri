@@ -15,6 +15,8 @@
 
 #include "nigiri/loader/floyd_warshall.h"
 #include "nigiri/logging.h"
+#include "utl/erase_duplicates.h"
+#include "utl/erase_if.h"
 
 namespace nigiri::loader {
 
@@ -92,7 +94,9 @@ footgraph get_footpath_graph(timetable& tt) {
     auto const idx = location_idx_t{i};
     g[i].insert(end(g[i]), begin(tt.locations_.footpaths_out_[idx]),
                 end(tt.locations_.footpaths_out_[idx]));
-    std::sort(begin(g[i]), end(g[i]));
+    utl::erase_if(g[i],
+                  [&](auto&& fp) { return fp.target_ == location_idx_t{i}; });
+    utl::erase_duplicates(g[i]);  // also sorts
   }
   return g;
 }

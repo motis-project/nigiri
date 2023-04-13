@@ -7,13 +7,12 @@
 
 #include "utl/enumerate.h"
 #include "utl/erase_if.h"
-#include "utl/get_or_create.h"
-#include "utl/pairwise.h"
 #include "utl/parser/buf_reader.h"
 #include "utl/parser/csv.h"
 #include "utl/parser/csv_range.h"
 #include "utl/parser/line_range.h"
 #include "utl/pipes/for_each.h"
+#include "utl/progress_tracker.h"
 #include "utl/to_vec.h"
 #include "utl/verify.h"
 
@@ -204,7 +203,12 @@ std::pair<trip_map, block_map> read_trips(route_map_t const& routes,
   auto& blocks = ret.second;
 
   auto i = 0U;
-  utl::line_range{utl::buf_reader{file_content}}  //
+  auto const progress_tracker = utl::get_active_progress_tracker();
+  progress_tracker->status("Read Trips")
+      .out_bounds(40.F, 44.F)
+      .in_high(file_content.size());
+  utl::line_range{
+      utl::make_buf_reader(file_content, progress_tracker->update_fn())}  //
       | utl::csv<csv_trip>()  //
       |
       utl::for_each([&](csv_trip const& t) {
@@ -246,7 +250,12 @@ void read_frequencies(trip_map& trips, std::string_view file_content) {
     utl::csv_col<utl::cstr, UTL_NAME("exact_times")> exact_times_;
   };
 
-  return utl::line_range{utl::buf_reader{file_content}}  //
+  auto const progress_tracker = utl::get_active_progress_tracker();
+  progress_tracker->status("Read Frequencies")
+      .out_bounds(44.F, 45.F)
+      .in_high(file_content.size());
+  return utl::line_range{utl::make_buf_reader(
+             file_content, progress_tracker->update_fn())}  //
          | utl::csv<csv_frequency>()  //
          |
          utl::for_each([&](csv_frequency const& freq) {
