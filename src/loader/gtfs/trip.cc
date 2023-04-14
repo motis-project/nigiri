@@ -97,15 +97,13 @@ trip::trip(route const* route,
            block* blk,
            std::string id,
            std::string headsign,
-           std::string short_name,
-           std::uint32_t line)
+           std::string short_name)
     : route_(route),
       service_(service),
       block_{blk},
       id_{std::move(id)},
       headsign_(std::move(headsign)),
-      short_name_(std::move(short_name)),
-      line_(line) {}
+      short_name_(std::move(short_name)) {}
 
 void trip::interpolate() {
   if (!requires_interpolation_) {
@@ -170,18 +168,31 @@ void trip::interpolate() {
   }
 }
 
-void trip::print_stop_times(std::ostream& out,
-                            timetable const& tt,
-                            unsigned const indent) const {
-  for (auto const [stop, ev_times, seq_numbers] :
-       utl::zip(stop_seq_, event_times_, seq_numbers_)) {
-    auto const s = timetable::stop{stop};
-    for (auto i = 0U; i != indent; ++i) {
-      out << "  ";
-    }
-    out << std::setw(60) << location{tt, s.location_idx()}
-        << "]: arr: " << ev_times.arr_ << ", dep: " << ev_times.dep_ << "\n";
+std::string trip::display_name(timetable const& tt) const {
+  auto const is_digit = [](char const x) { return x >= '0' && x <= '9'; };
+  if (route_->clasz_ == clasz::kBus) {
+    return route_->short_name_.empty() ? "Bus " + short_name_
+                                       : "Bus " + route_->short_name_;
+  } else if (route_->clasz_ == clasz::kTram) {
+    return route_->short_name_.empty() ? "Tram " + short_name_
+                                       : "Tram " + route_->short_name_;
   }
+
+  auto const trip_name_is_number = utl::all_of(short_name_, is_digit);
+  if (route_->agency_ != provider_idx_t::invalid() &&
+      tt.providers_[route_->agency_].long_name_ == "DB Fernverkehr AG") {
+    if (route_->clasz_ == clasz::kHighSpeed) {
+      return trip_name_is_number
+                 ? fmt::format("ICE {}", utl::parse<int>(short_name_))
+                 : fmt::format("ICE {}", short_name_);
+    } else if (route_->clasz_ == clasz::kLongDistance) {
+      return trip_name_is_number
+                 ? fmt::format("IC {}", utl::parse<int>(short_name_))
+                 : fmt::format("IC {}", short_name_);
+    }
+  }
+
+  return route_->short_name_;
 }
 
 std::pair<trip_map, block_map> read_trips(route_map_t const& routes,
@@ -202,7 +213,6 @@ std::pair<trip_map, block_map> read_trips(route_map_t const& routes,
   auto& trips = ret.first;
   auto& blocks = ret.second;
 
-  auto i = 0U;
   auto const progress_tracker = utl::get_active_progress_tracker();
   progress_tracker->status("Read Trips")
       .out_bounds(40.F, 44.F)
@@ -212,8 +222,6 @@ std::pair<trip_map, block_map> read_trips(route_map_t const& routes,
       | utl::csv<csv_trip>()  //
       |
       utl::for_each([&](csv_trip const& t) {
-        ++i;
-
         auto const blk =
             t.block_id_->trim().empty()
                 ? nullptr
@@ -228,7 +236,7 @@ std::pair<trip_map, block_map> read_trips(route_map_t const& routes,
                         routes.at(t.route_id_->view()).get(),
                         services.traffic_days_.at(t.service_id_->view()).get(),
                         blk, t.trip_id_->to_str(), t.trip_headsign_->to_str(),
-                        t.trip_short_name_->to_str(), i))
+                        t.trip_short_name_->to_str()))
                 .first->second.get();
         if (blk != nullptr) {
           blk->trips_.emplace_back(trp);

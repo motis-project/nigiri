@@ -73,12 +73,9 @@ date::sys_days bound_date(
 bitfield calendar_to_bitfield(std::string const& service_name,
                               date::sys_days const& start,
                               calendar const& c) {
-  auto const first = std::min(start, c.first_day_);
-  auto const last = std::min(start + kMaxDays * 1_days, c.last_day_ + 1_days);
-
   bitfield traffic_days;
-  auto bit = static_cast<std::size_t>((first - start).count());
-  for (auto d = first; d != last; d = d + date::sys_days::duration{1}, ++bit) {
+  auto bit = static_cast<std::size_t>((c.first_day_ - start).count());
+  for (auto d = c.first_day_; d != c.last_day_; d = d + date::days{1}, ++bit) {
     if (bit >= kMaxDays) {
       log(log_lvl::error, "loader.gtfs.services",
           "date {} for servcie {} out of range", d, service_name);

@@ -50,14 +50,15 @@ struct trip {
        block*,
        std::string id,
        std::string headsign,
-       std::string short_name,
-       std::uint32_t line);
+       std::string short_name);
 
   void interpolate();
 
   void print_stop_times(std::ostream&,
                         timetable const&,
                         unsigned indent = 0) const;
+
+  std::string display_name(timetable const&) const;
 
   route const* route_{nullptr};
   bitfield const* service_{nullptr};
@@ -74,7 +75,7 @@ struct trip {
   std::optional<std::vector<frequency>> frequency_;
   bool requires_interpolation_{false};
   bool requires_sorting_{false};
-  std::uint32_t line_;
+  std::uint32_t from_line_{0U}, to_line_{0U};
 };
 
 using trip_map =

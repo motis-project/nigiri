@@ -184,7 +184,8 @@ struct timetable {
 
   template <typename T>
   trip_direction_string_idx_t register_trip_direction_string(T&& s) {
-    auto const idx = trip_direction_string_idx_t{bitfields_.size()};
+    auto const idx =
+        trip_direction_string_idx_t{trip_direction_strings_.size()};
     trip_direction_strings_.emplace_back(s);
     return idx;
   }

@@ -52,7 +52,7 @@ void parse_track_rules(config const& c,
         track_at_station{.parent_station_ = parent, .track_ = track_name_idx},
         [&]() {
           auto const l = location{tt, parent};
-          auto const id = fmt::format("{}-{}", l.id_,
+          auto const id = fmt::format("T:{}:{}", l.id_,
                                       tt.track_names_[track_name_idx].view());
           auto const name = string{tt.track_names_[track_name_idx].view()};
           auto const child = tt.locations_.register_location(

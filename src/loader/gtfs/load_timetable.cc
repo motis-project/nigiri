@@ -159,8 +159,14 @@ void load_timetable(source_idx_t const src, dir const& d, timetable& tt) {
         .out_bounds(85.F, 100.F)
         .in_high(route_services.size());
 
-    auto const timer = scoped_timer{"loader.gtfs.routes.build"};
+    auto const is_train_number = [](auto const& s) {
+      return !s.empty() && std::all_of(begin(s), end(s), [](auto&& c) -> bool {
+        return std::isdigit(c);
+      });
+    };
 
+    auto trip_id_buf = fmt::memory_buffer{};
+    auto const timer = scoped_timer{"loader.gtfs.routes.build"};
     auto const source_file_idx = tt.register_source_file("trips.txt");
     auto const attributes = std::basic_string<attribute_combination_idx_t>{};
     auto bitfield_indices = hash_map<bitfield, bitfield_idx_t>{};
@@ -171,9 +177,19 @@ void load_timetable(source_idx_t const src, dir const& d, timetable& tt) {
         auto const& [stop_seq, sections_clasz] = key;
         auto const route_idx = tt.register_route(stop_seq, {sections_clasz});
         for (auto const& s : services) {
+          int train_nr = 0;
+          if (is_train_number(s.orig_->short_name_)) {
+            train_nr = std::stoi(s.orig_->short_name_);
+          } else if (is_train_number(s.orig_->headsign_)) {
+            train_nr = std::stoi(s.orig_->headsign_);
+          }
+
+          trip_id_buf.clear();
+          fmt::format_to(trip_id_buf, "{}/{}", train_nr, s.orig_->id_);
+
           auto const id = tt.register_trip_id(
-              s.orig_->id_, src, s.orig_->short_name_,
-              {source_file_idx, s.orig_->line_, s.orig_->line_},
+              trip_id_buf, src, s.orig_->display_name(tt),
+              {source_file_idx, s.orig_->from_line_, s.orig_->to_line_},
               tt.next_transport_idx(),
               {0U, static_cast<unsigned>(stop_seq.size())});
           auto const merged_trip = tt.register_merged_trip({id});

@@ -37,61 +37,70 @@ void read_stop_times(trip_map& trips,
   scoped_timer timer{"read stop times"};
   std::string last_trip_id;
   trip* last_trip = nullptr;
-  auto i = 0;
+  auto i = 1;
   auto const progress_tracker = utl::get_active_progress_tracker();
   progress_tracker->status("Read Stop Times")
       .out_bounds(45.F, 70.F)
       .in_high(file_content.size());
-  return utl::line_range{utl::make_buf_reader(
-             file_content, progress_tracker->update_fn())}  //
-         | utl::csv<csv_stop_time>()  //
-         | utl::for_each([&](csv_stop_time const& s) {
-             ++i;
+  utl::line_range{
+      utl::make_buf_reader(file_content, progress_tracker->update_fn())}  //
+      | utl::csv<csv_stop_time>()  //
+      |
+      utl::for_each([&](csv_stop_time const& s) {
+        ++i;
 
-             trip* t = nullptr;
-             auto const t_id = s.trip_id_->view();
-             if (last_trip != nullptr && t_id == last_trip_id) {
-               t = last_trip;
-             } else {
-               auto const trip_it = trips.find(t_id);
-               if (trip_it == end(trips)) {
-                 log(log_lvl::error, "loader.gtfs.stop_time",
-                     "stop_times.txt:{} trip \"{}\" not found", i, t_id);
-                 return;
-               }
-               t = trip_it->second.get();
-               last_trip_id = t_id;
-               last_trip = t;
-             }
+        trip* t = nullptr;
+        auto const t_id = s.trip_id_->view();
+        if (last_trip != nullptr && t_id == last_trip_id) {
+          t = last_trip;
+        } else {
+          if (last_trip != nullptr) {
+            last_trip->to_line_ = i - 1;
+          }
 
-             try {
-               auto const arrival_time = hhmm_to_min(*s.arrival_time_);
-               auto const departure_time = hhmm_to_min(*s.departure_time_);
+          auto const trip_it = trips.find(t_id);
+          if (trip_it == end(trips)) {
+            log(log_lvl::error, "loader.gtfs.stop_time",
+                "stop_times.txt:{} trip \"{}\" not found", i, t_id);
+            return;
+          }
+          t = trip_it->second.get();
+          last_trip_id = t_id;
+          last_trip = t;
 
-               t->requires_interpolation_ |= arrival_time == kInterpolate;
-               t->requires_interpolation_ |= departure_time == kInterpolate;
-               t->requires_sorting_ |=
-                   (!t->seq_numbers_.empty() &&
-                    t->seq_numbers_.back() > *s.stop_sequence_);
+          t->from_line_ = i;
+        }
 
-               t->seq_numbers_.emplace_back(*s.stop_sequence_);
-               t->stop_seq_.push_back(
-                   timetable::stop{stops.at(s.stop_id_->view()),
-                                   *s.pickup_type_ != 1, *s.drop_off_type_ != 1}
-                       .value());
-               t->event_times_.emplace_back(
-                   stop_events{.arr_ = arrival_time, .dep_ = departure_time});
+        try {
+          auto const arrival_time = hhmm_to_min(*s.arrival_time_);
+          auto const departure_time = hhmm_to_min(*s.departure_time_);
 
-               if (!s.stop_headsign_->empty()) {
-                 t->stop_headsigns_.resize(t->seq_numbers_.size());
-                 t->stop_headsigns_.back() = s.stop_headsign_->to_str();
-               }
-             } catch (...) {
-               log(log_lvl::error, "loader.gtfs.stop_time",
-                   "stop_times.txt:{}: unknown stop \"{}\"", i,
-                   s.stop_id_->view());
-             }
-           });
+          t->requires_interpolation_ |= arrival_time == kInterpolate;
+          t->requires_interpolation_ |= departure_time == kInterpolate;
+          t->requires_sorting_ |= (!t->seq_numbers_.empty() &&
+                                   t->seq_numbers_.back() > *s.stop_sequence_);
+
+          t->seq_numbers_.emplace_back(*s.stop_sequence_);
+          t->stop_seq_.push_back(timetable::stop{stops.at(s.stop_id_->view()),
+                                                 *s.pickup_type_ != 1,
+                                                 *s.drop_off_type_ != 1}
+                                     .value());
+          t->event_times_.emplace_back(
+              stop_events{.arr_ = arrival_time, .dep_ = departure_time});
+
+          if (!s.stop_headsign_->empty()) {
+            t->stop_headsigns_.resize(t->seq_numbers_.size());
+            t->stop_headsigns_.back() = s.stop_headsign_->to_str();
+          }
+        } catch (...) {
+          log(log_lvl::error, "loader.gtfs.stop_time",
+              "stop_times.txt:{}: unknown stop \"{}\"", i, s.stop_id_->view());
+        }
+      });
+
+  if (last_trip != nullptr) {
+    last_trip->to_line_ = i;
+  }
 }
 
 }  // namespace nigiri::loader::gtfs
