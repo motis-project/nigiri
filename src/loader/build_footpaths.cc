@@ -3,6 +3,7 @@
 #include <optional>
 #include <stack>
 
+#include "fmt/format.h"
 #include "fmt/ostream.h"
 
 #include "geo/latlng.h"
@@ -18,9 +19,28 @@
 #include "utl/erase_duplicates.h"
 #include "utl/erase_if.h"
 
+template <typename T>
+struct fmt::formatter<nigiri::matrix<T>> {
+  constexpr auto parse(format_parse_context& ctx) -> decltype(ctx.begin()) {
+    return ctx.begin();
+  }
+
+  template <typename FormatContext>
+  auto format(nigiri::matrix<T> const& m, FormatContext& ctx) const
+      -> decltype(ctx.out()) {
+    for (auto i = 0U; i != m.n_rows_; ++i) {
+      for (auto j = 0U; j != m.n_columns_; ++j) {
+        fmt::format_to(ctx.out(), "{:2} ", m[i][j]);
+      }
+      fmt::format_to(ctx.out(), "\n");
+    }
+    return ctx.out();
+  }
+};
+
 namespace nigiri::loader {
 
-constexpr auto const kTracing = false;
+constexpr auto const kTracing = true;
 
 template <typename... Args>
 void trace(char const* fmt_str, Args... args) {
