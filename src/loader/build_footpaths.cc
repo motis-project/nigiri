@@ -116,7 +116,11 @@ footgraph get_footpath_graph(timetable& tt) {
                 end(tt.locations_.footpaths_out_[idx]));
     utl::erase_if(g[i],
                   [&](auto&& fp) { return fp.target_ == location_idx_t{i}; });
-    utl::erase_duplicates(g[i]);  // also sorts
+    utl::erase_duplicates(
+        g[i], [](auto&& a, auto&& b) { return a.target_ < b.target_; },
+        [](auto&& a, auto&& b) {
+          return a.target_ == b.target_;
+        });  // also sorts
   }
   return g;
 }
@@ -164,6 +168,50 @@ void process_component(timetable& tt,
   }
 
   auto const size = static_cast<std::uint32_t>(std::distance(lb, ub));
+  auto const id = std::string_view{"de:12054:900230999::4"};
+  auto const needle =
+      std::find_if(begin(tt.locations_.ids_), end(tt.locations_.ids_),
+                   [&](auto&& x) { return x.view() == id; });
+
+  auto dbg = false;
+  auto const print_dbg = [&](auto... args) {
+    if constexpr (kTracing) {
+      if (dbg) {
+        trace(args...);
+      }
+    }
+  };
+
+  if constexpr (kTracing) {
+    if (needle != end(tt.locations_.ids_)) {
+      auto const needle_l =
+          location_idx_t{std::distance(begin(tt.locations_.ids_), needle)};
+      for (auto i = 0U; i != size; ++i) {
+        if (location_idx_t{(lb + i)->second} == needle_l) {
+          if constexpr (kTracing) {
+            std::cout << "FOUND\n";
+          }
+          dbg = true;
+          goto next;
+        }
+        for (auto const& edge : fgraph[(lb + i)->second]) {
+          if (edge.target_ == needle_l) {
+            if constexpr (kTracing) {
+              std::cout << "FOUND\n";
+            }
+            dbg = true;
+            goto next;
+          }
+        }
+      }
+    } else {
+      if constexpr (kTracing) {
+        std::cout << "NEEDLE NOT FOUND\n";
+      }
+    }
+  }
+
+next:
   if (size == 2) {
     auto const idx_a = lb->second;
     auto const idx_b = std::next(lb)->second;
@@ -177,63 +225,38 @@ void process_component(timetable& tt,
                          idx_a, fgraph[idx_a].size(), fgraph[idx_a], idx_b,
                          fgraph[idx_b].size(), fgraph[idx_b]);
 
-      tt.locations_.footpaths_out_[l_idx_a].emplace_back(fgraph[idx_a].front());
-      tt.locations_.footpaths_in_[l_idx_b].emplace_back(
-          l_idx_a, fgraph[idx_a].front().duration_);
+      auto const duration =
+          std::max({u8_minutes{fgraph[idx_a].front().duration_},
+                    tt.locations_.transfer_time_[l_idx_a],
+                    tt.locations_.transfer_time_[l_idx_b]});
+
+      print_dbg("INPUT: {} --{}--> {}\n", location{tt, l_idx_a}, duration,
+                location{tt, l_idx_b});
+
+      tt.locations_.footpaths_out_[l_idx_a].emplace_back(l_idx_b, duration);
+      tt.locations_.footpaths_in_[l_idx_b].emplace_back(l_idx_a, duration);
     }
     if (!fgraph[idx_b].empty()) {
       utl::verify_silent(
           fgraph[idx_b].size() == 1,
           "invalid size (a): idx_a={}, size={}, idx_b={}, size={}", idx_a,
           fgraph[idx_a].size(), idx_b, fgraph[idx_b].size());
-      tt.locations_.footpaths_out_[l_idx_b].emplace_back(fgraph[idx_b].front());
-      tt.locations_.footpaths_in_[l_idx_a].emplace_back(
-          l_idx_b, fgraph[idx_b].front().duration_);
+
+      auto const duration =
+          std::max({u8_minutes{fgraph[idx_b].front().duration_},
+                    tt.locations_.transfer_time_[l_idx_a],
+                    tt.locations_.transfer_time_[l_idx_b]});
+
+      print_dbg("INPUT: {} --{}--> {}\n", location{tt, l_idx_b}, duration,
+                location{tt, l_idx_a});
+
+      tt.locations_.footpaths_out_[l_idx_b].emplace_back(l_idx_a, duration);
+      tt.locations_.footpaths_in_[l_idx_a].emplace_back(l_idx_b, duration);
     }
     return;
   }
   utl::verify(size > 2, "invalid size [id={}], first={}", lb->first,
               tt.locations_.ids_.at(location_idx_t{lb->second}).view());
-
-  auto const id = std::string_view{"0590041"};
-  auto const needle =
-      std::find_if(begin(tt.locations_.ids_), end(tt.locations_.ids_),
-                   [&](auto&& x) { return x.view() == id; });
-
-  auto dbg = false;
-  if (needle != end(tt.locations_.ids_)) {
-    auto const needle_l =
-        location_idx_t{std::distance(begin(tt.locations_.ids_), needle)};
-    for (auto i = 0U; i != size; ++i) {
-      if ((lb + i)->second == needle_l) {
-        if constexpr (kTracing) {
-          std::cout << "FOUND\n";
-        }
-        dbg = true;
-        goto next;
-      }
-      for (auto const& edge : fgraph[(lb + i)->second]) {
-        if (edge.target_ == needle_l) {
-          if constexpr (kTracing) {
-            std::cout << "FOUND\n";
-          }
-          dbg = true;
-          goto next;
-        }
-      }
-    }
-  } else {
-    if constexpr (kTracing) {
-      std::cout << "NEEDLE NOT FOUND\n";
-    }
-  }
-
-next:
-  auto const print_dbg = [&](auto... args) {
-    if (dbg) {
-      trace(args...);
-    }
-  };
 
   print_dbg("INPUT\n");
   constexpr auto const kInvalidTime = std::numeric_limits<std::uint16_t>::max();
@@ -245,10 +268,9 @@ next:
         ++it;
       }
       auto j = static_cast<unsigned>(std::distance(lb, it));
-      mat(i, j) = std::min(static_cast<std::uint16_t>(edge.duration_.count()),
-                           mat(i, j));
+      mat(i, j) = edge.duration_.count();
 
-      print_dbg("{} --{}--> {}\n",
+      print_dbg("INPUT: {} --{}--> {}\n",
                 location{tt, location_idx_t{(lb + i)->second}}, edge.duration_,
                 location{tt, edge.target_});
     }
@@ -278,12 +300,19 @@ next:
       auto const idx_b = std::next(lb, j)->second;
       auto const l_idx_b = location_idx_t{static_cast<unsigned>(idx_b)};
 
-      print_dbg("{} --{}--> {}\n", location{tt, l_idx_a}, duration_t{mat(i, j)},
-                location{tt, l_idx_b});
-      tt.locations_.footpaths_out_[l_idx_a].emplace_back(l_idx_b,
-                                                         duration_t{mat(i, j)});
-      tt.locations_.footpaths_in_[l_idx_b].emplace_back(l_idx_a,
-                                                        duration_t{mat(i, j)});
+      if (mat(i, j) > std::numeric_limits<u8_minutes::rep>::max()) {
+        std::cout << "ERROR: " << mat(i, j) << " > "
+                  << std::numeric_limits<u8_minutes::rep>::max() << "\n";
+        log(log_lvl::error, "loader.footpath", "footpath {}>256 too long",
+            mat(i, j));
+        continue;
+      }
+
+      auto const duration = std::max({u8_minutes{mat(i, j)},
+                                      tt.locations_.transfer_time_[l_idx_a],
+                                      tt.locations_.transfer_time_[l_idx_b]});
+      tt.locations_.footpaths_out_[l_idx_a].emplace_back(l_idx_b, duration);
+      tt.locations_.footpaths_in_[l_idx_b].emplace_back(l_idx_a, duration);
     }
   }
 }
@@ -362,7 +391,7 @@ void add_links_to_and_between_children(timetable& tt) {
 }
 
 void build_footpaths(timetable& tt) {
-  add_links_to_and_between_children(tt);
+  //  add_links_to_and_between_children(tt);
   link_nearby_stations(tt);
   transitivize_footpaths(tt);
 }
