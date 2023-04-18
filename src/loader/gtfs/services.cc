@@ -74,7 +74,7 @@ date::sys_days bound_date(
 bitfield calendar_to_bitfield(std::string const& service_name,
                               interval<date::sys_days> const& gtfs_interval,
                               calendar const& c) {
-  assert((c.interval_.from_ - gtfs_interval.from_).count() > 0);
+  assert((c.interval_.from_ - gtfs_interval.from_).count() >= 0);
 
   bitfield traffic_days;
   auto bit = static_cast<std::size_t>(

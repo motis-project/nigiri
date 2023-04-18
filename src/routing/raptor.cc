@@ -453,8 +453,6 @@ void raptor<SearchDir, IntermodalTarget>::update_footpaths(unsigned const k) {
         for (auto const& o : q_.destinations_[0]) {
           if (!matches(tt_, location_match_mode::kIntermodal, o.target_,
                        l_idx)) {
-            trace("┊ ├k={}      {} != {}\n", k, location{tt_, o.target_},
-                  location{tt_, l_idx});
             continue;
           }
 
@@ -747,7 +745,8 @@ void raptor<SearchDir, IntermodalTarget>::route() {
   for (auto l = location_idx_t{0U}; l != tt_.locations_.children_.size(); ++l) {
     auto const lb = state_.travel_time_lower_bound_[to_idx(l)];
     for (auto const c : tt_.locations_.children_[l]) {
-      state_.travel_time_lower_bound_[to_idx(c)] = lb;
+      state_.travel_time_lower_bound_[to_idx(c)] =
+          std::min(lb, state_.travel_time_lower_bound_[to_idx(c)]);
     }
   }
 #ifdef NIGIRI_RAPTOR_COUNTING
@@ -756,6 +755,12 @@ void raptor<SearchDir, IntermodalTarget>::route() {
 #endif
 
 #ifdef NIGIRI_RAPTOR_TRACING
+  for (auto const& o : q_.start_) {
+    trace_always("start {}: {}\n", location{tt_, o.target_}, o.duration_);
+  }
+  for (auto const& o : q_.destinations_.front()) {
+    trace_always("dest {}: {}\n", location{tt_, o.target_}, o.duration_);
+  }
   for (auto const [l, lb] : utl::enumerate(state_.travel_time_lower_bound_)) {
     if (lb.count() != std::numeric_limits<duration_t::rep>::max()) {
       trace_always("lb {}: {}\n", location{tt_, location_idx_t{l}}, lb.count());
@@ -776,10 +781,6 @@ void raptor<SearchDir, IntermodalTarget>::route() {
     } else {
       return state_.results_.front().size();
     }
-  };
-
-  auto const clamp_to_timetable = [&](unixtime_t const t) {
-    return tt_.external_interval().clamp(t);
   };
 
   auto const max_interval_reached = [&]() {
@@ -900,13 +901,15 @@ void raptor<SearchDir, IntermodalTarget>::route() {
 
     state_.starts_.clear();
 
-    auto const new_interval = interval{
-        q_.extend_interval_earlier_
-            ? clamp_to_timetable(state_.search_interval_.from_ - 60_minutes)
-            : state_.search_interval_.from_,
-        q_.extend_interval_later_
-            ? clamp_to_timetable(state_.search_interval_.to_ + 60_minutes)
-            : state_.search_interval_.to_};
+    auto const new_interval =
+        interval{q_.extend_interval_earlier_
+                     ? tt_.external_interval().clamp(
+                           state_.search_interval_.from_ - 60_minutes)
+                     : state_.search_interval_.from_,
+                 q_.extend_interval_later_
+                     ? tt_.external_interval().clamp(
+                           state_.search_interval_.to_ + 60_minutes)
+                     : state_.search_interval_.to_};
     trace_interval("interval adapted: {} -> {}\n", state_.search_interval_,
                    new_interval);
 

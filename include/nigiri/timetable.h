@@ -81,8 +81,8 @@ struct timetable {
         children_.emplace_back();
         footpaths_out_.emplace_back();
         footpaths_in_.emplace_back();
-        transfer_time_.emplace_back(l.transfer_time_);  // TODO(felix)
-        osm_ids_.emplace_back(osm_node_id_t::invalid());  // TODO(felix)
+        transfer_time_.emplace_back(l.transfer_time_);
+        osm_ids_.emplace_back(osm_node_id_t::invalid());
         parents_.emplace_back(l.parent_);
       } else {
         log(log_lvl::error, "timetable.register_location",
