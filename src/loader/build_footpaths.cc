@@ -40,7 +40,7 @@ struct fmt::formatter<nigiri::matrix<T>> {
 
 namespace nigiri::loader {
 
-constexpr auto const kTracing = true;
+constexpr auto const kTracing = false;
 
 template <typename... Args>
 void trace(char const* fmt_str, Args... args) {
