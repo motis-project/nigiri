@@ -189,7 +189,7 @@ void process_component(timetable& tt,
     auto const needle_l =
         location_idx_t{std::distance(begin(tt.locations_.ids_), needle)};
     for (auto i = 0U; i != size; ++i) {
-      if ((lb + i)->second == needle_l) {
+      if (location_idx_t{(lb + i)->second} == needle_l) {
         if constexpr (kTracing) {
           std::cout << "FOUND\n";
         }
