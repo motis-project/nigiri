@@ -144,9 +144,15 @@ void read_transfers(stop_map_t& stops, std::string_view file_content) {
           return;
         }
 
-        from_stop_it->second->footpaths_.emplace_back(
-            footpath{.target_ = to_stop_it->second->location_,
-                     .duration_ = duration_t{*t.min_transfer_time_ / 60}});
+        auto& footpaths = from_stop_it->second->footpaths_;
+        auto const it = std::find_if(
+            begin(footpaths), end(footpaths), [&](footpath const& fp) {
+              return fp.target_ == to_stop_it->second->location_;
+            });
+        if (it == end(footpaths)) {
+          footpaths.emplace_back(to_stop_it->second->location_,
+                                 duration_t{*t.min_transfer_time_ / 60});
+        }
       });
 }
 
