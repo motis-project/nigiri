@@ -37,8 +37,8 @@ TEST(gtfs, calendar) {
   EXPECT_TRUE(wd_it->second.week_days_.test(5));
   EXPECT_FALSE(wd_it->second.week_days_.test(6));
 
-  EXPECT_EQ(July / 1 / 2006, we_it->second.first_day_);
-  EXPECT_EQ(July / 31 / 2006, we_it->second.last_day_);
-  EXPECT_EQ(July / 1 / 2006, wd_it->second.first_day_);
-  EXPECT_EQ(July / 31 / 2006, wd_it->second.last_day_);
+  EXPECT_EQ(July / 1 / 2006, we_it->second.interval_.from_);
+  EXPECT_EQ(August / 1 / 2006, we_it->second.interval_.to_);
+  EXPECT_EQ(July / 1 / 2006, wd_it->second.interval_.from_);
+  EXPECT_EQ(August / 1 / 2006, wd_it->second.interval_.to_);
 }

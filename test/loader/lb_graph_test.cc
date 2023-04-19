@@ -15,7 +15,7 @@ TEST(lb_graph, distances_check) {
 
   std::stringstream ss;
   for (auto i = location_idx_t{0U}; i != tt.locations_.ids_.size(); ++i) {
-    if (tt.fwd_search_lb_graph_[i].empty()) {
+    if (tt.fwd_search_lb_graph_.at(i).empty()) {
       continue;
     }
     ss << location{tt, i} << "\n";
