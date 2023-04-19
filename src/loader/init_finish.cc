@@ -1,5 +1,7 @@
 #include "nigiri/loader/init_finish.h"
 
+#include <execution>
+
 #include "nigiri/loader/build_footpaths.h"
 #include "nigiri/loader/build_lb_graph.h"
 #include "nigiri/special_stations.h"
