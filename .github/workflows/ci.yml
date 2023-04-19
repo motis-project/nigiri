@@ -24,7 +24,7 @@ jobs:
         run: |
           find include src test \
             -type f -a \( -name "*.cc" -o -name "*.h" -o -name ".cuh" -o -name ".cu" \) \
-            -print0 | xargs -0 clang-format-14 -i
+            -print0 | xargs -0 clang-format-16 -i
 
       - name: Check for differences
         run: |
@@ -50,6 +50,7 @@ jobs:
       BUILDCACHE_ACCURACY: SLOPPY # not suitable for coverage/debugging
       BUILDCACHE_DIR: ${{ github.workspace }}/.buildcache
       BUILDCACHE_LUA_PATH: ${{ github.workspace }}/tools
+      CLICOLOR_FORCE: 1
 
     steps:
       - uses: actions/checkout@v3
