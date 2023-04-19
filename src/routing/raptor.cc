@@ -769,8 +769,8 @@ void raptor<SearchDir, IntermodalTarget>::route() {
 #endif
 #endif
 
-  auto const fastest_direct = get_fastest_direct(tt_, q_, SearchDir);
-  stats_.fastest_direct_ = static_cast<std::uint64_t>(fastest_direct.count());
+  fastest_direct_ = get_fastest_direct(tt_, q_, SearchDir);
+  stats_.fastest_direct_ = static_cast<std::uint64_t>(fastest_direct_.count());
 
   auto const number_of_results_in_interval = [&]() {
     if (holds_alternative<interval<unixtime_t>>(q_.start_time_)) {
@@ -846,12 +846,10 @@ void raptor<SearchDir, IntermodalTarget>::route() {
             state_.round_times_[0U][to_idx(s.stop_)] = {tt_, s.time_at_stop_};
             state_.station_mark_[to_idx(s.stop_)] = true;
           }
-          // TODO(felix) get time at destination from previous starts for N
-          // transfers in round N
           time_at_destination_ =
               routing_time{tt_, from_it->time_at_start_} + duration_t{1} +
               (kFwd ? 1 : -1) *
-                  std::min(fastest_direct, duration_t{kMaxTravelTime});
+                  std::min(fastest_direct_, duration_t{kMaxTravelTime});
           trace_always(
               "time_at_destination={} + kMaxTravelTime/fastest_direct={} = "
               "{}\n",
@@ -946,6 +944,11 @@ void raptor<SearchDir, IntermodalTarget>::route() {
   if (holds_alternative<interval<unixtime_t>>(q_.start_time_)) {
     remove_ontrip_results();
     for (auto& r : state_.results_) {
+      utl::erase_if(r, [&](journey const& j) {
+        return j.travel_time() > fastest_direct_;
+      });
+    }
+    for (auto& r : state_.results_) {
       std::sort(begin(r), end(r), [](journey const& a, journey const& b) {
         return a.start_time_ < b.start_time_;
       });
@@ -978,7 +981,7 @@ void raptor<SearchDir, IntermodalTarget>::reconstruct_for_destination(
       auto const outside_interval =
           holds_alternative<interval<unixtime_t>>(q_.start_time_) &&
           !state_.search_interval_.contains(it->start_time_);
-      if (!outside_interval) {
+      if (!outside_interval && it->travel_time() < fastest_direct_) {
         try {
           reconstruct_journey<SearchDir>(tt_, q_, state_, *it);
         } catch (std::exception const& e) {

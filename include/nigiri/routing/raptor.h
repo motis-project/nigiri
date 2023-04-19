@@ -86,6 +86,7 @@ private:
   routing_time time_at_destination_{kInvalidTime<SearchDir>};
   search_state& state_;
   stats stats_;
+  duration_t fastest_direct_;
 };
 
 }  // namespace nigiri::routing
