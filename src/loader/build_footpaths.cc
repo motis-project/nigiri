@@ -267,12 +267,14 @@ next:
       while (it != ub && edge.target_ != it->second) {
         ++it;
       }
-      auto j = static_cast<unsigned>(std::distance(lb, it));
-      mat(i, j) = edge.duration_.count();
-
-      print_dbg("INPUT: {} --{}--> {}\n",
-                location{tt, location_idx_t{(lb + i)->second}}, edge.duration_,
-                location{tt, edge.target_});
+      auto const j = static_cast<unsigned>(std::distance(lb, it));
+      auto const from_l = location_idx_t{(lb + i)->second};
+      auto const to_l = edge.target_;
+      mat(i, j) = std::max({tt.locations_.transfer_time_[from_l].count(),
+                            tt.locations_.transfer_time_[to_l].count(),
+                            u8_minutes{edge.duration_.count()}.count()});
+      print_dbg("INPUT: {} --{}={}--> {}\n", location{tt, from_l},
+                edge.duration_, mat(i, j), location{tt, to_l});
     }
   }
 

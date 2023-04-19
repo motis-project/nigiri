@@ -12,8 +12,14 @@ void for_each_meta(timetable const& tt,
                    Fn&& fn) {
   if (mode == location_match_mode::kExact) {
     fn(l);
-  } else if (mode == location_match_mode::kOnlyChildren ||
-             mode == location_match_mode::kIntermodal) {
+  } else if (mode == location_match_mode::kIntermodal) {
+    fn(l);
+    for (auto const& c : tt.locations_.children_.at(l)) {
+      if (tt.locations_.ids_.at(l).view().starts_with("T:")) {
+        fn(c);
+      }
+    }
+  } else if (mode == location_match_mode::kOnlyChildren) {
     fn(l);
     for (auto const& c : tt.locations_.children_.at(l)) {
       if (tt.locations_.ids_.at(l).view().starts_with("T:")) {

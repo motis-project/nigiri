@@ -662,7 +662,7 @@ void raptor<SearchDir, IntermodalTarget>::force_print_state(
     tt_.locations_.names_[location_idx_t{l}].view();
     auto const id = tt_.locations_.ids_[location_idx_t{l}].view();
     fmt::print(
-        "[{}] {:8} [name={:48}, track={:10}, id={:16}]: ",
+        "[{}] {:12} [name={:48}, track={:10}, id={:24}]: ",
         state_.is_destination_[l] ? "X" : "_", l, name, track,
         id.substr(0, std::min(std::string_view ::size_type{16U}, id.size())));
     auto const b = state_.best_[l];
