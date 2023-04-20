@@ -1,6 +1,7 @@
 #include "gtest/gtest.h"
 
 #include "nigiri/loader/hrd/load_timetable.h"
+#include "nigiri/loader/init_finish.h"
 #include "nigiri/routing/raptor.h"
 
 #include "nigiri/routing/search_state.h"
@@ -8,6 +9,7 @@
 #include "../loader/hrd/hrd_timetable.h"
 
 using namespace nigiri;
+using namespace nigiri::loader;
 using namespace nigiri::test_data::hrd_timetable;
 
 constexpr auto const fwd_journeys = R"(
@@ -52,6 +54,8 @@ TEST(routing, raptor_forward) {
   timetable tt;
   tt.date_range_ = full_period();
   load_timetable(src, loader::hrd::hrd_5_20_26, files_abc(), tt);
+  finalize(tt);
+
   auto state = routing::search_state{};
 
   auto fwd_r = routing::raptor<direction::kForward, false>{
@@ -131,6 +135,8 @@ TEST(routing, raptor_backward) {
   timetable tt;
   tt.date_range_ = full_period();
   load_timetable(src, loader::hrd::hrd_5_20_26, files_abc(), tt);
+  finalize(tt);
+
   auto state = routing::search_state{};
 
   auto bwd_r = routing::raptor<direction::kBackward, false>{

@@ -85,7 +85,7 @@ bitfield hex_str_to_bitset(utl::cstr char_collection) {
 }
 
 bitfield_map_t parse_bitfields(config const& c, std::string_view file_content) {
-  scoped_timer timer{"parse bitfields"};
+  auto const timer = scoped_timer{"parse bitfields"};
 
   bitfield_map_t bitfields;
   utl::for_each_line_numbered(

@@ -85,7 +85,8 @@ raptor<SearchDir, IntermodalTarget>::raptor(timetable const& tt,
       n_days_{static_cast<std::uint16_t>(
           tt_.internal_interval_days().size().count())},
       q_{std::move(q)},
-      state_{state} {}
+      state_{state},
+      fastest_direct_{get_fastest_direct(tt_, q_, SearchDir)} {}
 
 template <direction SearchDir, bool IntermodalTarget>
 bool raptor<SearchDir, IntermodalTarget>::is_better(auto a, auto b) {
@@ -769,7 +770,6 @@ void raptor<SearchDir, IntermodalTarget>::route() {
 #endif
 #endif
 
-  fastest_direct_ = get_fastest_direct(tt_, q_, SearchDir);
   stats_.fastest_direct_ = static_cast<std::uint64_t>(fastest_direct_.count());
 
   auto const number_of_results_in_interval = [&]() {

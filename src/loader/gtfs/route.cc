@@ -119,7 +119,7 @@ clasz to_clasz(int const route_type) {
 
 route_map_t read_routes(agency_map_t const& agencies,
                         std::string_view file_content) {
-  scoped_timer timer{"read routes"};
+  auto const timer = nigiri::scoped_timer{"read routes"};
 
   struct csv_route {
     utl::csv_col<utl::cstr, UTL_NAME("route_id")> route_id_;

@@ -51,10 +51,9 @@ void load_timetable(source_idx_t const src,
                     config const& c,
                     dir const& d,
                     timetable& tt) {
-  auto bars = utl::global_progress_bars{false};
   auto st = stamm{c, tt, d};
 
-  auto progress_tracker = utl::activate_progress_tracker("nigiri");
+  auto progress_tracker = utl::get_active_progress_tracker();
   progress_tracker->status("Read Services")
       .in_high(utl::all(d.list_files(c.fplan_))  //
                | utl::transform([&](auto&& f) { return d.file_size(f); })  //

@@ -102,7 +102,7 @@ enum class transfer_type : std::uint8_t {
 };
 
 void read_transfers(stop_map_t& stops, std::string_view file_content) {
-  nigiri::scoped_timer timer{"gtfs.loader.stops.transfers"};
+  auto const timer = scoped_timer{"gtfs.loader.stops.transfers"};
 
   struct csv_transfer {
     utl::csv_col<utl::cstr, UTL_NAME("from_stop_id")> from_stop_id_;
@@ -150,8 +150,9 @@ void read_transfers(stop_map_t& stops, std::string_view file_content) {
               return fp.target_ == to_stop_it->second->location_;
             });
         if (it == end(footpaths)) {
-          footpaths.emplace_back(to_stop_it->second->location_,
-                                 duration_t{*t.min_transfer_time_ / 60});
+          footpaths.emplace_back(
+              footpath{to_stop_it->second->location_,
+                       duration_t{*t.min_transfer_time_ / 60}});
         }
       });
 }
@@ -161,7 +162,7 @@ locations_map read_stops(source_idx_t const src,
                          tz_map& timezones,
                          std::string_view stops_file_content,
                          std::string_view transfers_file_content) {
-  scoped_timer timer{"gtfs.loader.stops"};
+  auto const timer = scoped_timer{"gtfs.loader.stops"};
 
   auto const progress_tracker = utl::get_active_progress_tracker();
   progress_tracker->status("Parse Stops")
@@ -262,7 +263,7 @@ locations_map read_stops(source_idx_t const src,
         return fp.target_ == x.target_;
       });
       if (it == end(bucket)) {
-        bucket.emplace_back(std::move(fp));
+        bucket.emplace_back(fp);
       }
     };
 

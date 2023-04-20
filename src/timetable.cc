@@ -67,7 +67,7 @@ void timetable::write(std::filesystem::path const& p) const {
   auto writer = cista::buf<cista::mmap>(std::move(mmap));
 
   {
-    scoped_timer t{"writing timetable"};
+    auto const timer = scoped_timer{"timetable.write"};
     cista::serialize<kMode>(writer, *this);
   }
 }

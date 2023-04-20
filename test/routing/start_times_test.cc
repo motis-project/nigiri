@@ -3,11 +3,13 @@
 #include "utl/equal_ranges_linear.h"
 
 #include "nigiri/loader/hrd/load_timetable.h"
+#include "nigiri/loader/init_finish.h"
 #include "nigiri/routing/start_times.h"
 
 #include "../loader/hrd/hrd_timetable.h"
 
 using namespace nigiri;
+using namespace nigiri::loader;
 using namespace nigiri::routing;
 using namespace nigiri::test_data::hrd_timetable;
 
@@ -261,17 +263,18 @@ start_time=2020-03-30 00:00
 
 TEST(routing, start_times) {
   auto const src = source_idx_t{0U};
-  auto tt = std::make_shared<timetable>();
-  tt->date_range_ = full_period();
-  load_timetable(src, loader::hrd::hrd_5_20_26, files_simple(), *tt);
+  auto tt = timetable{};
+  tt.date_range_ = full_period();
+  load_timetable(src, loader::hrd::hrd_5_20_26, files_simple(), tt);
+  finalize(tt);
 
   using namespace date;
-  auto const A = tt->locations_.location_id_to_idx_.at(
+  auto const A = tt.locations_.location_id_to_idx_.at(
       location_id{.id_ = "0000001", .src_ = src});
-  auto const B = tt->locations_.location_id_to_idx_.at(
+  auto const B = tt.locations_.location_id_to_idx_.at(
       location_id{.id_ = "0000002", .src_ = src});
   auto starts = std::vector<start>{};
-  get_starts(nigiri::direction::kForward, *tt,
+  get_starts(nigiri::direction::kForward, tt,
              interval<unixtime_t>{sys_days{2020_y / March / 30},
                                   sys_days{2020_y / March / 31}},
              {{A, 15_minutes, 0}, {B, 30_minutes, 0}},
@@ -290,7 +293,7 @@ TEST(routing, start_times) {
         for (auto const& s : it_range{from_it, to_it}) {
           ss << "|  {time_at_start=" << s.time_at_start_
              << ", time_at_stop=" << s.time_at_stop_
-             << ", stop=" << tt->locations_.names_[s.stop_].view() << "}\n";
+             << ", stop=" << tt.locations_.names_[s.stop_].view() << "}\n";
         }
       });
 

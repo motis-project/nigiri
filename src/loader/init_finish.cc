@@ -34,7 +34,7 @@ void finalize(timetable& tt) {
   tt.location_routes_[location_idx_t{tt.locations_.src_.size() - 1}];
 
   {
-    scoped_timer sort_timer{"loader.sort_trip_ids"};
+    auto const timer = scoped_timer{"loader.sort_trip_ids"};
     std::sort(
 #if __cpp_lib_execution
         std::execution::par_unseq,

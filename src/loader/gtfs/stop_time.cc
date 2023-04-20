@@ -34,10 +34,10 @@ void read_stop_times(trip_map& trips,
     utl::csv_col<int, UTL_NAME("drop_off_type")> drop_off_type_;
   };
 
-  scoped_timer timer{"read stop times"};
+  auto const timer = scoped_timer{"read stop times"};
   std::string last_trip_id;
   trip* last_trip = nullptr;
-  auto i = 1;
+  auto i = 1U;
   auto const progress_tracker = utl::get_active_progress_tracker();
   progress_tracker->status("Read Stop Times")
       .out_bounds(45.F, 70.F)

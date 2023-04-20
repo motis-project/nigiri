@@ -14,7 +14,7 @@ bool is_multiple_spaces(utl::cstr line) {
 attribute_map_t parse_attributes(config const& c,
                                  timetable& tt,
                                  std::string_view file_content) {
-  scoped_timer timer{"parse attributes"};
+  auto const timer = scoped_timer{"parse attributes"};
   attribute_map_t handle_map;
   utl::for_each_line_numbered(file_content, [&](utl::cstr line,
                                                 unsigned const line_number) {

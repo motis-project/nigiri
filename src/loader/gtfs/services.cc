@@ -109,7 +109,7 @@ void add_exception(std::string const& service_name,
 traffic_days merge_traffic_days(
     hash_map<std::string, calendar> const& base,
     hash_map<std::string, std::vector<calendar_date>> const& exceptions) {
-  nigiri::scoped_timer timer{"loader.gtfs.services"};
+  auto const timer = nigiri::scoped_timer{"loader.gtfs.services"};
 
   traffic_days s;
   s.interval_ = {bound_date(base, exceptions, bound::kFirst),

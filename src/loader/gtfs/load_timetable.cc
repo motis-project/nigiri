@@ -72,15 +72,13 @@ struct hash_route_key {
 };
 
 void load_timetable(source_idx_t const src, dir const& d, timetable& tt) {
-  auto bars = utl::global_progress_bars{false};
-
   nigiri::scoped_timer const global_timer{"gtfs parser"};
 
   auto const load = [&](std::string_view file_name) -> file {
     return d.exists(file_name) ? d.get_file(file_name) : file{};
   };
 
-  auto progress_tracker = utl::activate_progress_tracker("nigiri");
+  auto const progress_tracker = utl::get_active_progress_tracker();
   auto timezones = tz_map{};
   auto const agencies = read_agencies(tt, timezones, load(kAgencyFile).data());
   auto const stops = read_stops(src, tt, timezones, load(kStopFile).data(),

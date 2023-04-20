@@ -15,7 +15,7 @@ void parse_track_rules(config const& c,
                        std::string_view file_content,
                        track_rule_map_t& track_rules,
                        track_location_map_t& track_locations) {
-  scoped_timer timer("parsing track rules");
+  auto const timer = scoped_timer{"parsing track rules"};
   hash_map<std::string, track_name_idx_t> track_names;
   utl::for_each_line_numbered(file_content, [&](utl::cstr line,
                                                 unsigned line_number) {

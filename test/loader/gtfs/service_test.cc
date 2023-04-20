@@ -101,7 +101,7 @@ TEST(gtfs, services) {
         zoned_time{get_tz(t, stop_idx), tt.event_time(t, stop_idx, ev_type)});
   };
 
-  auto const t_oct = get_transport(tt, "X1", 2019_y / October / 26);
+  auto const t_oct = get_transport(tt, "0/X1", 2019_y / October / 26);
   ASSERT_TRUE(t_oct.has_value());
   EXPECT_EQ(1572130800, unixtime(*t_oct, 0, event_type::kDep));
   EXPECT_EQ(1572134340, unixtime(*t_oct, 1, event_type::kArr));
@@ -116,7 +116,7 @@ TEST(gtfs, services) {
   EXPECT_EQ("2019-10-27T02:59+01:00", iso(*t_oct, 3, event_type::kArr));
   EXPECT_EQ("2019-10-27T03:00+01:00", iso(*t_oct, 3, event_type::kDep));
 
-  auto const t_march = get_transport(tt, "X1", 2019_y / March / 30);
+  auto const t_march = get_transport(tt, "0/X1", 2019_y / March / 30);
   ASSERT_TRUE(t_march.has_value());
   EXPECT_EQ(1553990400, unixtime(*t_march, 2, event_type::kArr));
   EXPECT_EQ(1553993940, unixtime(*t_march, 3, event_type::kArr));

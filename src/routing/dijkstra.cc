@@ -54,6 +54,7 @@ void dijkstra(timetable const& tt,
   dial<label, kMaxTravelTime, get_bucket> pq;
   for (auto const& [l, duration] : min) {
     for_each_meta(tt, q.start_match_mode_, l, [&](location_idx_t const meta) {
+      // NOLINTNEXTLINE(clang-analyzer-core.CallAndMessage)
       pq.push(label{meta, duration});
       dists[to_idx(meta)] = std::min(duration, dists[to_idx(meta)]);
       trace("DIJKSTRA INIT @{}: {}\n", location{tt, meta}, duration);

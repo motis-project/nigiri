@@ -33,9 +33,8 @@ void generate_ontrip_train_query(timetable const& tt,
     auto const arrival_time_with_transfer =
         tt.event_time(t, i, event_type::kArr) +
         tt.locations_.transfer_time_[l_idx];
-    q.start_.emplace_back(offset{l_idx,
-                                 arrival_time_with_transfer - time_at_first,
-                                 static_cast<std::uint8_t>(i)});
+    q.start_.emplace_back(l_idx, arrival_time_with_transfer - time_at_first,
+                          static_cast<std::uint8_t>(i));
     trace(
         "first_arrival={}, stop={}, arrival={}, arrival_with_transfer={}, "
         "offset={}\n",

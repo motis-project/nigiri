@@ -1,6 +1,7 @@
 #include "gtest/gtest.h"
 
 #include "nigiri/loader/hrd/load_timetable.h"
+#include "nigiri/loader/init_finish.h"
 #include "nigiri/lookup/get_transport.h"
 #include "nigiri/print_transport.h"
 #include "nigiri/routing/ontrip_train.h"
@@ -11,6 +12,7 @@
 #include "../loader/hrd/hrd_timetable.h"
 
 using namespace nigiri;
+using namespace nigiri::loader;
 using namespace nigiri::routing;
 using namespace nigiri::test_data::hrd_timetable;
 using namespace date;
@@ -21,6 +23,7 @@ TEST(routing, ontrip_train) {
   tt.date_range_ = full_period();
   constexpr auto const src = source_idx_t{0U};
   load_timetable(src, loader::hrd::hrd_5_20_26, files(), tt);
+  finalize(tt);
 
   for (auto const& [trip_id, trip_idx] : tt.trip_id_to_idx_) {
     fmt::print("trip_id=\"{}\" -> trip_idx={}\n",

@@ -125,7 +125,7 @@ footgraph get_footpath_graph(timetable& tt) {
   return g;
 }
 
-static std::vector<std::pair<uint32_t, uint32_t>> find_components(
+std::vector<std::pair<uint32_t, uint32_t>> find_components(
     footgraph const& fgraph) {
   std::vector<std::pair<uint32_t, uint32_t>> components(fgraph.size());
   std::generate(begin(components), end(components), [i = 0UL]() mutable {
@@ -168,10 +168,6 @@ void process_component(timetable& tt,
   }
 
   auto const size = static_cast<std::uint32_t>(std::distance(lb, ub));
-  auto const id = std::string_view{"de:12054:900230999::4"};
-  auto const needle =
-      std::find_if(begin(tt.locations_.ids_), end(tt.locations_.ids_),
-                   [&](auto&& x) { return x.view() == id; });
 
   auto dbg = false;
   auto const print_dbg = [&](auto... args) {
@@ -183,6 +179,11 @@ void process_component(timetable& tt,
   };
 
   if constexpr (kTracing) {
+    auto const id = std::string_view{"de:12054:900230999::4"};
+    auto const needle =
+        std::find_if(begin(tt.locations_.ids_), end(tt.locations_.ids_),
+                     [&](auto&& x) { return x.view() == id; });
+
     if (needle != end(tt.locations_.ids_)) {
       auto const needle_l =
           location_idx_t{std::distance(begin(tt.locations_.ids_), needle)};
@@ -320,7 +321,7 @@ next:
 }
 
 void transitivize_footpaths(timetable& tt) {
-  scoped_timer timer("building transitively closed foot graph");
+  auto const timer = scoped_timer{"building transitively closed foot graph"};
 
   auto const fgraph = get_footpath_graph(tt);
 
@@ -332,7 +333,6 @@ void transitivize_footpaths(timetable& tt) {
   tt.locations_.footpaths_in_.clear();
   tt.locations_.footpaths_in_[location_idx_t{tt.locations_.src_.size() - 1}];
 
-  std::vector<component_range> ranges;
   utl::equal_ranges_linear(
       components,
       [](auto const& a, auto const& b) { return a.first == b.first; },

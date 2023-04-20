@@ -165,7 +165,7 @@ struct zip_dir::impl {
   std::size_t file_size(std::filesystem::path const& p) {
     auto const file_idx = find_file_idx(&ar_, p);
     utl::verify(file_idx.has_value(), "zip_dir::file_size: not found: {}", p);
-    return get_stat(&ar_, file_idx.value()).m_uncomp_size;
+    return get_stat(&ar_, *file_idx).m_uncomp_size;
   }
 
   mz_zip_archive ar_{};
