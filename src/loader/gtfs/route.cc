@@ -1,13 +1,11 @@
 #include "nigiri/loader/gtfs/route.h"
 
-#include <algorithm>
-#include <tuple>
-
 #include "utl/parser/buf_reader.h"
 #include "utl/parser/csv_range.h"
 #include "utl/parser/line_range.h"
 #include "utl/pipes/transform.h"
 #include "utl/pipes/vec.h"
+#include "utl/progress_tracker.h"
 
 #include "nigiri/logging.h"
 
@@ -121,7 +119,7 @@ clasz to_clasz(int const route_type) {
 
 route_map_t read_routes(agency_map_t const& agencies,
                         std::string_view file_content) {
-  scoped_timer timer{"read routes"};
+  auto const timer = nigiri::scoped_timer{"read routes"};
 
   struct csv_route {
     utl::csv_col<utl::cstr, UTL_NAME("route_id")> route_id_;
@@ -132,7 +130,12 @@ route_map_t read_routes(agency_map_t const& agencies,
     utl::csv_col<int, UTL_NAME("route_type")> route_type_;
   };
 
-  return utl::line_range{utl::buf_reader{file_content}}  //
+  auto const progress_tracker = utl::get_active_progress_tracker();
+  progress_tracker->status("Parse Routes")
+      .out_bounds(30.F, 32.F)
+      .in_high(file_content.size());
+  return utl::line_range{utl::make_buf_reader(
+             file_content, progress_tracker->update_fn())}  //
          | utl::csv<csv_route>()  //
          |
          utl::transform([&](csv_route const& r) {

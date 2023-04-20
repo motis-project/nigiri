@@ -51,7 +51,7 @@ vector<tz_offsets::season> parse_seasons(utl::cstr const line) {
 timezone_map_t parse_timezones(config const& c,
                                timetable& tt,
                                std::string_view file_content) {
-  scoped_timer timer{"parse timezones"};
+  auto const timer = scoped_timer{"parse timezones"};
 
   timezone_map_t tz;
   utl::for_each_line(file_content, [&](utl::cstr line) {

@@ -2,6 +2,8 @@
 
 #include "fmt/core.h"
 
+#include "utl/get_or_create.h"
+
 #include "nigiri/common/dial.h"
 #include "nigiri/footpath.h"
 #include "nigiri/routing/for_each_meta.h"
@@ -41,14 +43,22 @@ void dijkstra(timetable const& tt,
   std::fill(begin(dists), end(dists),
             duration_t{std::numeric_limits<duration_t::rep>::max()});
 
-  dial<label, kMaxTravelTime, get_bucket> pq;
+  std::map<location_idx_t, duration_t> min;
   for (auto const& start : q.destinations_.front()) {
-    for_each_meta(
-        tt, q.dest_match_mode_, start.target_, [&](location_idx_t const meta) {
-          pq.push(label{meta, start.duration_});
-          dists[to_idx(meta)] = start.duration_;
-          trace("DIJKSTRA INIT @{}: {}\n", location{tt, meta}, start.duration_);
-        });
+    auto const p = tt.locations_.parents_[start.target_];
+    auto const l = (p == location_idx_t::invalid()) ? start.target_ : p;
+    auto& m = utl::get_or_create(min, l, [&]() { return dists[to_idx(l)]; });
+    m = std::min(start.duration_, m);
+  }
+
+  dial<label, kMaxTravelTime, get_bucket> pq;
+  for (auto const& [l, duration] : min) {
+    auto const d = duration;
+    for_each_meta(tt, q.start_match_mode_, l, [&](location_idx_t const meta) {
+      pq.push(label{meta, d});
+      dists[to_idx(meta)] = std::min(d, dists[to_idx(meta)]);
+      trace("DIJKSTRA INIT @{}: {}\n", location{tt, meta}, duration);
+    });
   }
 
   while (!pq.empty()) {

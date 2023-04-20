@@ -29,10 +29,8 @@ if ("${CMAKE_CXX_COMPILER_ID}" STREQUAL "Clang")
         -Wno-zero-as-null-pointer-constant
         -Wno-missing-noreturn
         -Wno-undefined-func-template
+        -Wno-unsafe-buffer-usage
         -Werror)
-  if (CMAKE_CXX_COMPILER_VERSION VERSION_GREATER_EQUAL 16)
-    set(nigiri-compile-options ${nigiri-compile-options} -Wno-unsafe-buffer-usage)
-  endif()
 elseif(MSVC)
   set(nigiri-compile-options /WX)
 else()

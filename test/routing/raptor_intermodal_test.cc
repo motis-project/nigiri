@@ -1,6 +1,7 @@
 #include "gtest/gtest.h"
 
 #include "nigiri/loader/hrd/load_timetable.h"
+#include "nigiri/loader/init_finish.h"
 #include "nigiri/routing/raptor.h"
 
 #include "nigiri/routing/search_state.h"
@@ -8,6 +9,7 @@
 #include "../loader/hrd/hrd_timetable.h"
 
 using namespace nigiri;
+using namespace nigiri::loader;
 using namespace nigiri::test_data::hrd_timetable;
 
 constexpr auto const fwd_journeys = R"(
@@ -56,7 +58,10 @@ TEST(routing, raptor_intermodal_forward) {
 
   timetable tt;
   tt.date_range_ = full_period();
+  register_special_stations(tt);
   load_timetable(src, loader::hrd::hrd_5_20_26, files_abc(), tt);
+  finalize(tt);
+
   auto state = routing::search_state{};
 
   auto fwd_r = routing::raptor<direction::kForward, true>{
@@ -90,6 +95,7 @@ TEST(routing, raptor_intermodal_forward) {
     x.print(ss, tt);
     ss << "\n\n";
   }
+  std::cout << ss.str() << "\n";
   EXPECT_EQ(std::string_view{fwd_journeys}, ss.str());
 };
 
@@ -209,7 +215,10 @@ TEST(routing, raptor_intermodal_backward) {
   timetable tt;
   tt.date_range_ = full_period();
   constexpr auto const src = source_idx_t{0U};
+  register_special_stations(tt);
   load_timetable(src, loader::hrd::hrd_5_20_26, files_abc(), tt);
+  finalize(tt);
+
   auto state = routing::search_state{};
 
   auto bwd_r = routing::raptor<direction::kBackward, true>{

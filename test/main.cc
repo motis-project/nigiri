@@ -13,7 +13,8 @@
 namespace fs = std::filesystem;
 
 int main(int argc, char** argv) {
-  utl::get_active_progress_tracker_or_activate("test");
+  auto const progress_tracker = utl::activate_progress_tracker("test");
+  auto const silencer = utl::global_progress_bars{true};
   fs::current_path(NIGIRI_TEST_EXECUTION_DIR);
 
   ::testing::InitGoogleTest(&argc, argv);

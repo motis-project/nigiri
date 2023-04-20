@@ -51,6 +51,9 @@ void expand_local_to_utc(noon_offset_hours_t const& noon_offsets,
   };
 
   auto const* t = fet.orig_;
+  if (t->event_times_.size() <= 1) {
+    return;
+  }
 
   auto utc_time_traffic_days =
       tsl::hopscotch_map<utc_time_sequence, bitfield, hash_stop_times>{};

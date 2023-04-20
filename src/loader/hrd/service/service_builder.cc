@@ -53,8 +53,7 @@ void service_builder::add_services(config const& c,
                                    const char* filename,
                                    std::string_view file_content,
                                    progress_update_fn const& progress_update) {
-  scoped_timer write{"reading services"};
-
+  auto const timer = scoped_timer{"loader.hrd.services.read"};
   auto const source_file_idx = tt_.register_source_file(filename);
   parse_services(c, filename, source_file_idx, stamm_.get_date_range(),
                  tt_.date_range_, store_, stamm_, file_content, progress_update,
@@ -62,8 +61,7 @@ void service_builder::add_services(config const& c,
 }
 
 void service_builder::write_services(const nigiri::source_idx_t src) {
-  scoped_timer write{"writing services"};
-
+  auto const timer = scoped_timer{"loader.hrd.services.write"};
   for (auto const& [key, sub_routes] : route_services_) {
     for (auto const& services : sub_routes) {
       auto const& [stop_seq, sections_clasz] = key;

@@ -62,8 +62,10 @@ struct interval {
   }
 
   template <typename X>
-  requires std::is_convertible_v<T, X>
-  operator interval<X>() { return {from_, to_}; }
+    requires std::is_convertible_v<T, X>
+  operator interval<X>() {
+    return {from_, to_};
+  }
 
   T clamp(T const x) const { return std::clamp(x, from_, to_); }
 

@@ -61,8 +61,8 @@ struct routing_time {
 };
 
 template <direction SearchDir>
-inline constexpr auto const kInvalidTime = SearchDir == direction::kForward
-                                               ? routing_time::max()
-                                               : routing_time::min();
+inline constexpr auto const kInvalidTime =
+    SearchDir == direction::kForward ? routing_time::max()
+                                     : routing_time::min();
 
 }  // namespace nigiri::routing

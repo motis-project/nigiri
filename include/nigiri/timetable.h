@@ -81,8 +81,8 @@ struct timetable {
         children_.emplace_back();
         footpaths_out_.emplace_back();
         footpaths_in_.emplace_back();
-        transfer_time_.emplace_back(l.transfer_time_);  // TODO(felix)
-        osm_ids_.emplace_back(osm_node_id_t::invalid());  // TODO(felix)
+        transfer_time_.emplace_back(l.transfer_time_);
+        osm_ids_.emplace_back(osm_node_id_t::invalid());
         parents_.emplace_back(l.parent_);
       } else {
         log(log_lvl::error, "timetable.register_location",
@@ -184,7 +184,8 @@ struct timetable {
 
   template <typename T>
   trip_direction_string_idx_t register_trip_direction_string(T&& s) {
-    auto const idx = trip_direction_string_idx_t{bitfields_.size()};
+    auto const idx =
+        trip_direction_string_idx_t{trip_direction_strings_.size()};
     trip_direction_strings_.emplace_back(s);
     return idx;
   }
@@ -336,7 +337,7 @@ struct timetable {
   static cista::wrapped<timetable> read(cista::memory_holder);
 
   // Schedule range.
-  interval<std::chrono::sys_days> date_range_;
+  interval<date::sys_days> date_range_;
 
   // Trip access: external trip id -> internal trip index
   vector<pair<trip_id_idx_t, trip_idx_t>> trip_id_to_idx_;
@@ -390,10 +391,6 @@ struct timetable {
 
   // Unique bitfields
   vector_map<bitfield_idx_t, bitfield> bitfields_;
-
-  // bitfields_[1][day_1], bitfields_2[2][day_1], ...
-  // bitfields_[1][day_2], bitfields_2[2][day_2], ...
-  bitvec col_bitfields_;
 
   // For each trip the corresponding route
   vector_map<transport_idx_t, route_idx_t> transport_route_;

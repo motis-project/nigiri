@@ -288,9 +288,9 @@ void parse_sections(stamm& st,
     for (auto i = 0U; i != spec.stops_.size() - 1; ++i) {
       auto const train_nr = stop_train_num(spec.stops_[i]);
       auto const admin = stop_admin(spec.stops_[i]);
-      auto const& sec = sections.emplace_back(service::section{
+      auto const& sec = sections.emplace_back(
           train_nr.empty() ? pred_train_nr : utl::parse_verify<int>(train_nr),
-          admin.empty() ? pred_admin : st.resolve_provider(admin)});
+          admin.empty() ? pred_admin : st.resolve_provider(admin));
       pred_admin = sec.admin_.value();
       pred_train_nr = sec.train_num_.value();
     }

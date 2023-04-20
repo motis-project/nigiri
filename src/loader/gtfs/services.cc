@@ -2,6 +2,7 @@
 
 #include "nigiri/logging.h"
 #include "utl/get_or_create.h"
+#include "utl/progress_tracker.h"
 
 namespace nigiri::loader::gtfs {
 
@@ -19,19 +20,19 @@ date::sys_days bound_date(
   auto const min_base_day = [&]() {
     auto const it =
         std::min_element(begin(base), end(base), [](auto&& lhs, auto&& rhs) {
-          return lhs.second.first_day_ < rhs.second.first_day_;
+          return lhs.second.interval_.from_ < rhs.second.interval_.from_;
         });
     return it == end(base) ? std::pair{"", kMin}
-                           : std::pair{it->first, it->second.first_day_};
+                           : std::pair{it->first, it->second.interval_.from_};
   };
 
   auto const max_base_day = [&]() {
     auto const it =
         std::max_element(begin(base), end(base), [](auto&& lhs, auto&& rhs) {
-          return lhs.second.last_day_ < rhs.second.last_day_;
+          return lhs.second.interval_.to_ < rhs.second.interval_.to_;
         });
     return it == end(base) ? std::pair{"", kMax}
-                           : std::pair{it->first, it->second.last_day_};
+                           : std::pair{it->first, it->second.interval_.to_};
   };
 
   switch (b) {
@@ -53,8 +54,9 @@ date::sys_days bound_date(
       auto [max_id, max] = max_base_day();
       for (auto const& [id, dates] : exceptions) {
         for (auto const& date : dates) {
-          if (date.type_ == calendar_date::kAdd && date.day_ > max) {
-            max = date.day_;
+          if (date.type_ == calendar_date::kAdd &&
+              date.day_ + date::days{1} > max) {
+            max = date.day_ + date::days{1};
             max_id = id;
           }
         }
@@ -70,14 +72,15 @@ date::sys_days bound_date(
 }
 
 bitfield calendar_to_bitfield(std::string const& service_name,
-                              date::sys_days const& start,
+                              interval<date::sys_days> const& gtfs_interval,
                               calendar const& c) {
-  auto const first = std::min(start, c.first_day_);
-  auto const last = std::min(start + kMaxDays * 1_days, c.last_day_ + 1_days);
+  assert((c.interval_.from_ - gtfs_interval.from_).count() >= 0);
 
   bitfield traffic_days;
-  auto bit = static_cast<std::size_t>((first - start).count());
-  for (auto d = first; d != last; d = d + date::sys_days::duration{1}, ++bit) {
+  auto bit = static_cast<std::size_t>(
+      (c.interval_.from_ - gtfs_interval.from_).count());
+  for (auto d = c.interval_.from_; d != c.interval_.to_;
+       d = d + date::days{1}, ++bit) {
     if (bit >= kMaxDays) {
       log(log_lvl::error, "loader.gtfs.services",
           "date {} for servcie {} out of range", d, service_name);
@@ -106,18 +109,24 @@ void add_exception(std::string const& service_name,
 traffic_days merge_traffic_days(
     hash_map<std::string, calendar> const& base,
     hash_map<std::string, std::vector<calendar_date>> const& exceptions) {
-  nigiri::scoped_timer timer{"traffic days"};
+  auto const timer = nigiri::scoped_timer{"loader.gtfs.services"};
 
   traffic_days s;
-  s.interval_ = {
-      bound_date(base, exceptions, bound::kFirst),
-      bound_date(base, exceptions, bound::kLast) + std::chrono::days{1}};
+  s.interval_ = {bound_date(base, exceptions, bound::kFirst),
+                 bound_date(base, exceptions, bound::kLast)};
 
+  auto const progress_tracker = utl::get_active_progress_tracker();
+  progress_tracker->status("Build Base Services")
+      .out_bounds(36.F, 38.F)
+      .in_high(base.size());
   for (auto const& [service_name, calendar] : base) {
     s.traffic_days_[service_name] = std::make_unique<bitfield>(
-        calendar_to_bitfield(service_name, s.interval_.from_, calendar));
+        calendar_to_bitfield(service_name, s.interval_, calendar));
   }
 
+  progress_tracker->status("Add Service Exceptions")
+      .out_bounds(38.F, 40.F)
+      .in_high(base.size());
   for (auto const& [service_name, service_exceptions] : exceptions) {
     for (auto const& day : service_exceptions) {
       add_exception(service_name, s.interval_.from_, day,

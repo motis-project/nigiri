@@ -5,6 +5,7 @@
 #include <string>
 
 #include "utl/get_or_create.h"
+#include "utl/progress_tracker.h"
 
 #include "tsl/hopscotch_map.h"
 
@@ -34,21 +35,20 @@ namespace nigiri::loader::gtfs {
 constexpr auto const required_files = {kAgencyFile, kStopFile, kRoutesFile,
                                        kTripsFile, kStopTimesFile};
 
-cista::hash_t hash(fs::path const& path) {
+cista::hash_t hash(dir const& d) {
   auto hash = cista::BASE_HASH;
   auto const hash_file = [&](fs::path const& p) {
-    if (!fs::is_regular_file(p)) {
+    if (!d.exists(p)) {
       return;
     }
-    cista::mmap m{p.generic_string().c_str(), cista::mmap::protection::READ};
-    hash = cista::hash_combine(cista::hash(m), hash);
+    hash = cista::hash_combine(cista::hash(d.get_file(p).data()), hash);
   };
 
   for (auto const& file_name : required_files) {
-    hash_file(path / file_name);
+    hash_file(file_name);
   }
-  hash_file(path / kCalenderFile);
-  hash_file(path / kCalendarDatesFile);
+  hash_file(kCalenderFile);
+  hash_file(kCalendarDatesFile);
 
   return hash;
 }
@@ -78,8 +78,8 @@ void load_timetable(source_idx_t const src, dir const& d, timetable& tt) {
     return d.exists(file_name) ? d.get_file(file_name) : file{};
   };
 
-  tz_map timezones;
-
+  auto const progress_tracker = utl::get_active_progress_tracker();
+  auto timezones = tz_map{};
   auto const agencies = read_agencies(tt, timezones, load(kAgencyFile).data());
   auto const stops = read_stops(src, tt, timezones, load(kStopFile).data(),
                                 load(kTransfersFile).data());
@@ -118,6 +118,10 @@ void load_timetable(source_idx_t const src, dir const& d, timetable& tt) {
       route_services;
 
   {
+    progress_tracker->status("Expand Trips")
+        .out_bounds(70.F, 85.F)
+        .in_high(trips.size());
+
     auto const timer = scoped_timer{"loader.gtfs.trips.expand"};
 
     auto const noon_offsets =
@@ -144,12 +148,23 @@ void load_timetable(source_idx_t const src, dir const& d, timetable& tt) {
                   std::vector<std::vector<utc_trip>>{{std::move(s)}});
             }
           });
+      progress_tracker->increment();
     }
   }
 
   {
-    auto const timer = scoped_timer{"loader.gtfs.routes.build"};
+    progress_tracker->status("Write Trips")
+        .out_bounds(85.F, 100.F)
+        .in_high(route_services.size());
 
+    auto const is_train_number = [](auto const& s) {
+      return !s.empty() && std::all_of(begin(s), end(s), [](auto&& c) -> bool {
+        return std::isdigit(c);
+      });
+    };
+
+    auto trip_id_buf = fmt::memory_buffer{};
+    auto const timer = scoped_timer{"loader.gtfs.routes.build"};
     auto const source_file_idx = tt.register_source_file("trips.txt");
     auto const attributes = std::basic_string<attribute_combination_idx_t>{};
     auto bitfield_indices = hash_map<bitfield, bitfield_idx_t>{};
@@ -160,9 +175,19 @@ void load_timetable(source_idx_t const src, dir const& d, timetable& tt) {
         auto const& [stop_seq, sections_clasz] = key;
         auto const route_idx = tt.register_route(stop_seq, {sections_clasz});
         for (auto const& s : services) {
+          int train_nr = 0;
+          if (is_train_number(s.orig_->short_name_)) {
+            train_nr = std::stoi(s.orig_->short_name_);
+          } else if (is_train_number(s.orig_->headsign_)) {
+            train_nr = std::stoi(s.orig_->headsign_);
+          }
+
+          trip_id_buf.clear();
+          fmt::format_to(trip_id_buf, "{}/{}", train_nr, s.orig_->id_);
+
           auto const id = tt.register_trip_id(
-              s.orig_->id_, src, s.orig_->short_name_,
-              {source_file_idx, s.orig_->line_, s.orig_->line_},
+              trip_id_buf, src, s.orig_->display_name(tt),
+              {source_file_idx, s.orig_->from_line_, s.orig_->to_line_},
               tt.next_transport_idx(),
               {0U, static_cast<unsigned>(stop_seq.size())});
           auto const merged_trip = tt.register_merged_trip({id});
@@ -210,6 +235,8 @@ void load_timetable(source_idx_t const src, dir const& d, timetable& tt) {
         tt.route_stop_time_ranges_.emplace_back(
             interval{stop_times_begin, stop_times_end});
       }
+
+      progress_tracker->increment();
     }
   }
 }

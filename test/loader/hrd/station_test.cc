@@ -34,7 +34,6 @@ constexpr auto const station_geo_file_content = R"(
 
 TEST(loader_hrd_station, parse) {
   for (auto const& c : configs) {
-    std::vector<service> services;
     timetable tt;
     auto const src = source_idx_t{0U};
     auto st = stamm{

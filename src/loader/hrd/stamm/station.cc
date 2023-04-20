@@ -175,7 +175,7 @@ location_map_t parse_stations(config const& c,
                               std::string_view station_names_file,
                               std::string_view station_coordinates_file,
                               std::string_view station_metabhf_file) {
-  scoped_timer timer{"parse stations"};
+  auto const timer = scoped_timer{"parse stations"};
 
   auto empty_idx_vec = vector<location_idx_t>{};
   auto empty_footpath_vec = vector<footpath>{};

@@ -60,6 +60,8 @@ struct journey {
 
   void add(leg&& l) { legs_.emplace_back(l); }
 
+  duration_t travel_time() const { return dest_time_ - start_time_; }
+
   void print(std::ostream&, timetable const&, bool debug = false) const;
 
   std::vector<leg> legs_;

@@ -5,7 +5,6 @@
 
 #include "nigiri/loader/dir.h"
 #include "nigiri/loader/hrd/parser_config.h"
-#include "nigiri/common/chrono_max_interval.h"
 #include "nigiri/common/interval.h"
 #include "nigiri/timetable.h"
 
