@@ -16,23 +16,20 @@ TEST(lb_graph, distances_check) {
   load_timetable(source_idx_t{0U}, hrd_5_20_26, files_simple(), tt);
   finalize(tt);
 
-  std::stringstream ss;
+  using distance_table_t =
+      std::map<std::pair<std::string, std::string>, duration_t>;
+  auto distances = distance_table_t{};
   for (auto i = location_idx_t{0U}; i != tt.locations_.ids_.size(); ++i) {
     if (tt.fwd_search_lb_graph_.at(i).empty()) {
       continue;
     }
-    ss << location{tt, i} << "\n";
     for (auto const& fp : tt.fwd_search_lb_graph_[i]) {
-      ss << "  " << location{tt, fp.target_} << " " << fp.duration_.count()
-         << "\n";
+      distances[{location{tt, i}.name_, location{tt, fp.target_}.name_}] =
+          fp.duration_;
     }
   }
 
-  constexpr auto const raw = R"((A, 0000001)
-  (B, 0000002) 60
-(B, 0000002)
-  (A, 0000001) 60
-)";
-
-  EXPECT_EQ(std::string_view{raw}, ss.str());
+  EXPECT_EQ(
+      (distance_table_t{{{"A", "B"}, 60_minutes}, {{"B", "A"}, 60_minutes}}),
+      distances);
 }
