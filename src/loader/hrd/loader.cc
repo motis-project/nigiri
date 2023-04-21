@@ -23,13 +23,13 @@ cista::hash_t hrd_loader::hash(dir const& d) const {
 hrd_5_00_8_loader::hrd_5_00_8_loader() : hrd_loader{hrd_5_00_8} {}
 std::string_view hrd_5_00_8_loader::name() const { return "hrd_5_00_8"; }
 
-hrd_5_20_26_loader::hrd_5_20_26_loader() : hrd_loader{hrd_5_00_8} {}
+hrd_5_20_26_loader::hrd_5_20_26_loader() : hrd_loader{hrd_5_20_26} {}
 std::string_view hrd_5_20_26_loader::name() const { return "hrd_5_20_26"; }
 
-hrd_5_20_39_loader::hrd_5_20_39_loader() : hrd_loader{hrd_5_00_8} {}
+hrd_5_20_39_loader::hrd_5_20_39_loader() : hrd_loader{hrd_5_20_39} {}
 std::string_view hrd_5_20_39_loader::name() const { return "hrd_5_20_39"; }
 
-hrd_5_20_avv_loader::hrd_5_20_avv_loader() : hrd_loader{hrd_5_00_8} {}
+hrd_5_20_avv_loader::hrd_5_20_avv_loader() : hrd_loader{hrd_5_20_avv} {}
 std::string_view hrd_5_20_avv_loader::name() const { return "hrd_5_20_avv"; }
 
 }  // namespace nigiri::loader::hrd
