@@ -853,7 +853,7 @@ void raptor<SearchDir, IntermodalTarget>::route() {
           trace_always(
               "time_at_destination={} + kMaxTravelTime/fastest_direct={} = "
               "{}\n",
-              routing_time{tt_, from_it->time_at_start_}, fastest_direct,
+              routing_time{tt_, from_it->time_at_start_}, fastest_direct_,
               time_at_destination_);
           rounds();
           trace_always("reconstruct: time_at_start={}\n",
