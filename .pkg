@@ -33,4 +33,4 @@
 [unordered_dense]
   url=git@github.com:motis-project/unordered_dense.git
   branch=main
-  commit=082b8077e3c02dc5f74bba9763f006e4f01ce49c
+  commit=e08e48fdf0838da4011f5b5fe82e717d7f1de5fa
