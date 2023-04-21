@@ -4,8 +4,8 @@
   commit=34a46558609e05865c197f0260ab36daa7cbbb6e
 [cista]
   url=git@github.com:felixguendling/cista.git
-  branch=master
-  commit=b9b3a5408a835584e47ba05da5ecf10f07c5175e
+  branch=ankerl
+  commit=97bc607aa1515f27c7ad5b564e9dc9bc73fb0988
 [geo]
   url=git@github.com:motis-project/geo.git
   branch=master
@@ -30,7 +30,7 @@
   url=git@github.com:motis-project/wyhash.git
   branch=master
   commit=1e012b57fc2227a9e583a57e2eacb3da99816d99
-[hopscotch-map]
-  url=git@github.com:motis-project/hopscotch-map.git
-  branch=master
-  commit=4312e08a92fafa7a8d9316e076a742d69c7c8dfa
+[unordered_dense]
+  url=git@github.com:motis-project/unordered_dense.git
+  branch=main
+  commit=082b8077e3c02dc5f74bba9763f006e4f01ce49c

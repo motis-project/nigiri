@@ -44,19 +44,13 @@ void expand_local_to_utc(noon_offset_hours_t const& noon_offsets,
                          interval<date::sys_days> const& selection,
                          Consumer&& consumer) {
   using utc_time_sequence = std::basic_string<minutes_after_midnight_t>;
-  struct hash_stop_times {
-    std::size_t operator()(utc_time_sequence const& x) const {
-      return cista::hashing<utc_time_sequence>{}(x);
-    }
-  };
 
   auto const* t = fet.orig_;
   if (t->event_times_.size() <= 1) {
     return;
   }
 
-  auto utc_time_traffic_days =
-      tsl::hopscotch_map<utc_time_sequence, bitfield, hash_stop_times>{};
+  auto utc_time_traffic_days = hash_map<utc_time_sequence, bitfield>{};
 
   auto utc_times = std::basic_string<minutes_after_midnight_t>{};
   utc_times.resize(t->event_times_.size() * 2U - 2U);
@@ -112,16 +106,15 @@ void expand_local_to_utc(noon_offset_hours_t const& noon_offsets,
       auto it = utc_time_traffic_days.find(utc_times);
       if (it == end(utc_time_traffic_days)) {
         (it = utc_time_traffic_days.emplace(utc_times, bitfield{}).first)
-            .value()
-            .set(static_cast<std::size_t>(utc_traffic_day));
+            ->second.set(static_cast<std::size_t>(utc_traffic_day));
       } else {
-        it.value().set(static_cast<std::size_t>(utc_traffic_day));
+        it->second.set(static_cast<std::size_t>(utc_traffic_day));
       }
 
       prev_conversion_parameters = {tz_offset, first_day_offset};
       prev_it = it;
     } else {
-      prev_it.value().set(static_cast<std::size_t>(utc_traffic_day));
+      prev_it->second.set(static_cast<std::size_t>(utc_traffic_day));
     }
   }
 

@@ -2,8 +2,6 @@
 
 #include "utl/pairwise.h"
 
-#include "tsl/hopscotch_map.h"
-
 #include "nigiri/logging.h"
 #include "nigiri/timetable.h"
 
@@ -11,12 +9,12 @@ namespace nigiri::loader {
 
 template <direction SearchDir>
 void build_lb_graph(timetable& tt) {
-  tsl::hopscotch_map<location_idx_t, duration_t> weights;
+  hash_map<location_idx_t, duration_t> weights;
 
   auto const update_weight = [&](location_idx_t const target,
                                  duration_t const d) {
     if (auto const it = weights.find(target); it != end(weights)) {
-      it.value() = std::min(it->second, d);
+      it->second = std::min(it->second, d);
     } else {
       weights.emplace_hint(it, target, d);
     }
