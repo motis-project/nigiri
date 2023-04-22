@@ -4,8 +4,8 @@
   commit=34a46558609e05865c197f0260ab36daa7cbbb6e
 [cista]
   url=git@github.com:felixguendling/cista.git
-  branch=ankerl
-  commit=15f3d575e6bec6851c2c9a1a738bbbef674478e0
+  branch=master
+  commit=526f9da35d39db3b77b1360086f76a40e50d8476
 [geo]
   url=git@github.com:motis-project/geo.git
   branch=master
