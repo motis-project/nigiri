@@ -5,7 +5,7 @@
 [cista]
   url=git@github.com:felixguendling/cista.git
   branch=master
-  commit=526f9da35d39db3b77b1360086f76a40e50d8476
+  commit=6dc608abb1877af089c5a90a51b5400186e56a3a
 [geo]
   url=git@github.com:motis-project/geo.git
   branch=master
@@ -33,4 +33,4 @@
 [unordered_dense]
   url=git@github.com:motis-project/unordered_dense.git
   branch=main
-  commit=eb8f1f9fe5af26008b8f4347a0ff1f588b1f6bee
+  commit=b48a7414f0bade4dde4efcef431963bdc1a0defe
