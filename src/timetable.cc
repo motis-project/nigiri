@@ -43,7 +43,7 @@ std::ostream& operator<<(std::ostream& out, timetable const& tt) {
   return out;
 }
 
-cista::wrapped<timetable> timetable::read(cista::memory_holder mem) {
+cista::wrapped<timetable> timetable::read(cista::memory_holder&& mem) {
   return std::visit(
       utl::overloaded{
           [&](cista::buf<cista::mmap>& b) {
@@ -70,6 +70,21 @@ void timetable::write(std::filesystem::path const& p) const {
     auto const timer = scoped_timer{"timetable.write"};
     cista::serialize<kMode>(writer, *this);
   }
+}
+
+void timetable::write(cista::memory_holder& mem) const {
+  std::visit(utl::overloaded{[&](cista::buf<cista::mmap>& writer) {
+                               cista::serialize<kMode>(writer, *this);
+                             },
+                             [&](cista::buffer&) {
+                               throw std::runtime_error{"not supported"};
+                             },
+                             [&](cista::byte_buf& b) {
+                               auto writer = cista::buf{std::move(b)};
+                               cista::serialize<kMode>(writer, *this);
+                               b = std::move(writer.buf_);
+                             }},
+             mem);
 }
 
 }  // namespace nigiri

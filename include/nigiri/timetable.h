@@ -333,8 +333,9 @@ struct timetable {
   friend std::ostream& operator<<(std::ostream&, timetable const&);
   friend void print_1(std::ostream&, timetable const&);
 
+  void write(cista::memory_holder&) const;
   void write(std::filesystem::path const&) const;
-  static cista::wrapped<timetable> read(cista::memory_holder);
+  static cista::wrapped<timetable> read(cista::memory_holder&&);
 
   // Schedule range.
   interval<date::sys_days> date_range_;

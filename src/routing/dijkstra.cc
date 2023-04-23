@@ -51,7 +51,7 @@ void dijkstra(timetable const& tt,
     m = std::min(start.duration_, m);
   }
 
-  dial<label, kMaxTravelTime, get_bucket> pq;
+  dial<label, kMaxTravelTime.count(), get_bucket> pq;
   for (auto const& [l, duration] : min) {
     auto const d = duration;
     for_each_meta(tt, q.start_match_mode_, l, [&](location_idx_t const meta) {

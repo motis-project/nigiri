@@ -222,7 +222,15 @@ enum class clasz : std::uint8_t {
 constexpr auto const kNumClasses =
     static_cast<std::underlying_type_t<clasz>>(clasz::kNumClasses);
 
-enum class location_type : std::uint8_t { kTrack, kPlatform, kStation };
+enum class location_type : std::uint8_t {
+  kGeneratedTrack,  // track generated from track number (i.e. HRD), no separate
+                    // coordinate from parent. Has to be connected manually in
+                    // routing initialization (only links to parent are given).
+  kTrack,  // track from input data (i.e. GTFS) with separate coordinate from
+           // parent. No manual connection in routing initialization or
+           // additional links between parent<->child necessary.
+  kStation
+};
 
 enum class event_type { kArr, kDep };
 enum class direction { kForward, kBackward };
