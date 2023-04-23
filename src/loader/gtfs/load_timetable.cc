@@ -7,8 +7,6 @@
 #include "utl/get_or_create.h"
 #include "utl/progress_tracker.h"
 
-#include "tsl/hopscotch_map.h"
-
 #include "cista/hash.h"
 #include "cista/mmap.h"
 
@@ -112,9 +110,8 @@ void load_timetable(source_idx_t const src, dir const& d, timetable& tt) {
     }
   }
 
-  tsl::hopscotch_map<
-      std::pair<std::basic_string<timetable::stop::value_type>, clasz>,
-      std::vector<std::vector<utc_trip>>, hash_route_key>
+  hash_map<std::pair<std::basic_string<timetable::stop::value_type>, clasz>,
+           std::vector<std::vector<utc_trip>>>
       route_services;
 
   {
@@ -134,14 +131,14 @@ void load_timetable(source_idx_t const src, dir const& d, timetable& tt) {
                 std::pair{s.orig_->stop_seq_, s.orig_->route_->clasz_};
             auto const it = route_services.find(route_key);
             if (it != end(route_services)) {
-              for (auto& r : it.value()) {
+              for (auto& r : it->second) {
                 auto const idx = get_index(r, s);
                 if (idx.has_value()) {
                   r.insert(std::next(begin(r), static_cast<int>(*idx)), s);
                   return;
                 }
               }
-              it.value().emplace_back(std::vector<utc_trip>{std::move(s)});
+              it->second.emplace_back(std::vector<utc_trip>{std::move(s)});
             } else {
               route_services.emplace(
                   route_key,

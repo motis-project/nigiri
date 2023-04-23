@@ -65,10 +65,10 @@ struct timetable {
     }
 
     location_idx_t register_location(location&& l) {
-      auto const next_idx =
-          location_idx_t{static_cast<location_idx_t::value_t>(names_.size())};
+      auto const next_idx = static_cast<location_idx_t::value_t>(names_.size());
+      auto const l_idx = location_idx_t{next_idx};
       auto const [it, is_new] = location_id_to_idx_.emplace(
-          location_id{.id_ = l.id_, .src_ = l.src_}, next_idx);
+          location_id{.id_ = l.id_, .src_ = l.src_}, l_idx);
 
       if (is_new) {
         names_.emplace_back(l.name_);
@@ -333,8 +333,9 @@ struct timetable {
   friend std::ostream& operator<<(std::ostream&, timetable const&);
   friend void print_1(std::ostream&, timetable const&);
 
+  void write(cista::memory_holder&) const;
   void write(std::filesystem::path const&) const;
-  static cista::wrapped<timetable> read(cista::memory_holder);
+  static cista::wrapped<timetable> read(cista::memory_holder&&);
 
   // Schedule range.
   interval<date::sys_days> date_range_;

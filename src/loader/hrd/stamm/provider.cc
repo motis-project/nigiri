@@ -32,7 +32,11 @@ std::string_view parse_name(utl::cstr s) {
 
 provider read_provider_names(utl::cstr line) {
   auto const long_name = line.substr_offset(" L ");
+  utl::verify(long_name != std::numeric_limits<size_t>::max(),
+              "no long name found: {}", line.view());
   auto const full_name = line.substr_offset(" V ");
+  utl::verify(long_name != std::numeric_limits<size_t>::max(),
+              "no full name found: {}", line.view());
   return provider{
       .short_name_ =
           iso_8859_1_to_utf8(parse_name(line.substr(long_name + 3U))),
@@ -60,7 +64,7 @@ provider_map_t parse_providers(config const& c,
                       "provider line format mismatch in line {}", line_number);
           for_each_token(line.substr(8), ' ', [&](utl::cstr token) {
             providers[token.to_str()] =
-                tt.register_provider(std::move(current_info));
+                tt.register_provider(provider{current_info});
           });
         }
       });

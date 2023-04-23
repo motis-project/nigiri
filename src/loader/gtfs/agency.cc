@@ -31,7 +31,7 @@ agency_map_t read_agencies(timetable& tt,
              file_content, progress_tracker->update_fn())}  //
          | utl::csv<agency>()  //
          | utl::transform([&](agency const& a) {
-             return cista::pair{
+             return std::pair{
                  a.id_->to_str(),
                  tt.register_provider(
                      {a.id_->view(), a.name_->view(),

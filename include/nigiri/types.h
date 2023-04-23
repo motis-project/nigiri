@@ -6,11 +6,11 @@
 #include "date/date.h"
 #include "date/tz.h"
 
+#include "ankerl/cista_adapter.h"
+
 #include "cista/containers/bitset.h"
 #include "cista/containers/bitvec.h"
 #include "cista/containers/flat_matrix.h"
-#include "cista/containers/hash_map.h"
-#include "cista/containers/hash_set.h"
 #include "cista/containers/mutable_fws_multimap.h"
 #include "cista/containers/optional.h"
 #include "cista/containers/string.h"
@@ -75,11 +75,16 @@ using vecvec = cista::offset::vecvec<K, V>;
 template <typename K, typename V>
 using mutable_fws_multimap = cista::offset::mutable_fws_multimap<K, V>;
 
-template <typename K, typename V, typename Hash = cista::hashing<K>>
-using hash_map = cista::offset::hash_map<K, V, Hash>;
+template <typename K,
+          typename V,
+          typename Hash = cista::hash_all,
+          typename Equality = cista::equals_all>
+using hash_map = cista::offset::ankerl_map<K, V, Hash>;
 
-template <typename K, typename Hash = cista::hashing<K>>
-using hash_set = cista::offset::hash_set<K, Hash>;
+template <typename K,
+          typename Hash = cista::hash_all,
+          typename Equality = cista::equals_all>
+using hash_set = cista::offset::ankerl_set<K, Hash>;
 
 using string = cista::offset::string;
 
@@ -217,7 +222,15 @@ enum class clasz : std::uint8_t {
 constexpr auto const kNumClasses =
     static_cast<std::underlying_type_t<clasz>>(clasz::kNumClasses);
 
-enum class location_type : std::uint8_t { kTrack, kPlatform, kStation };
+enum class location_type : std::uint8_t {
+  kGeneratedTrack,  // track generated from track number (i.e. HRD), no separate
+                    // coordinate from parent. Has to be connected manually in
+                    // routing initialization (only links to parent are given).
+  kTrack,  // track from input data (i.e. GTFS) with separate coordinate from
+           // parent. No manual connection in routing initialization or
+           // additional links between parent<->child necessary.
+  kStation
+};
 
 enum class event_type { kArr, kDep };
 enum class direction { kForward, kBackward };

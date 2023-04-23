@@ -140,7 +140,7 @@ transport raptor<SearchDir, IntermodalTarget>::get_earliest_transport(
   auto const [day_at_stop, mam_at_stop] = time.day_idx_mam();
 
   auto const n_days_to_iterate =
-      std::min(kMaxTravelTime / 1440U + 1,
+      std::min(kMaxTravelTime.count() / 1440U + 1,
                kFwd ? n_days_ - to_idx(day_at_stop) : to_idx(day_at_stop) + 1U);
 
   trace(
@@ -651,7 +651,8 @@ void raptor<SearchDir, IntermodalTarget>::force_print_state(
 
     std::string_view name, track;
     auto const type = tt_.locations_.types_.at(location_idx_t{l});
-    if (type == location_type::kTrack) {
+    if (type == location_type::kTrack ||
+        type == location_type::kGeneratedTrack) {
       name =
           tt_.locations_.names_.at(tt_.locations_.parents_[location_idx_t{l}])
               .view();
@@ -853,7 +854,7 @@ void raptor<SearchDir, IntermodalTarget>::route() {
           trace_always(
               "time_at_destination={} + kMaxTravelTime/fastest_direct={} = "
               "{}\n",
-              routing_time{tt_, from_it->time_at_start_}, fastest_direct,
+              routing_time{tt_, from_it->time_at_start_}, fastest_direct_,
               time_at_destination_);
           rounds();
           trace_always("reconstruct: time_at_start={}\n",
@@ -945,7 +946,8 @@ void raptor<SearchDir, IntermodalTarget>::route() {
     remove_ontrip_results();
     for (auto& r : state_.results_) {
       utl::erase_if(r, [&](journey const& j) {
-        return j.travel_time() > fastest_direct_;
+        return j.travel_time() > fastest_direct_ ||
+               j.travel_time() > kMaxTravelTime;
       });
     }
     for (auto& r : state_.results_) {

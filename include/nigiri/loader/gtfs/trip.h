@@ -6,8 +6,6 @@
 #include <tuple>
 #include <vector>
 
-#include "tsl/hopscotch_map.h"
-
 #include "cista/reflection/comparable.h"
 
 #include "nigiri/loader/gtfs/flat_map.h"
@@ -15,7 +13,6 @@
 #include "nigiri/loader/gtfs/route.h"
 #include "nigiri/loader/gtfs/services.h"
 #include "nigiri/loader/gtfs/stop.h"
-#include "nigiri/common/tsl_util.h"
 #include "nigiri/timetable.h"
 
 namespace nigiri::loader::gtfs {
@@ -27,8 +24,7 @@ struct block {
   std::vector<trip*> trips_;
 };
 
-using block_map = tsl::
-    hopscotch_map<std::string, std::unique_ptr<block>, hash_str, equal_str>;
+using block_map = hash_map<std::string, std::unique_ptr<block>>;
 
 struct frequency {
   minutes_after_midnight_t start_time_{0U};
@@ -78,8 +74,7 @@ struct trip {
   std::uint32_t from_line_{0U}, to_line_{0U};
 };
 
-using trip_map =
-    tsl::hopscotch_map<std::string, std::unique_ptr<trip>, hash_str, equal_str>;
+using trip_map = hash_map<std::string, std::unique_ptr<trip>>;
 
 std::pair<trip_map, block_map> read_trips(route_map_t const&,
                                           traffic_days const&,

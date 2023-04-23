@@ -7,6 +7,7 @@
 
 #include "utl/enumerate.h"
 #include "utl/erase_if.h"
+#include "utl/get_or_create.h"
 #include "utl/parser/buf_reader.h"
 #include "utl/parser/csv.h"
 #include "utl/parser/csv_range.h"
@@ -225,7 +226,7 @@ std::pair<trip_map, block_map> read_trips(route_map_t const& routes,
         auto const blk =
             t.block_id_->trim().empty()
                 ? nullptr
-                : get_or_create(blocks, t.block_id_->trim().view(), []() {
+                : utl::get_or_create(blocks, t.block_id_->trim().view(), []() {
                     return std::make_unique<block>();
                   }).get();
         auto const trp =

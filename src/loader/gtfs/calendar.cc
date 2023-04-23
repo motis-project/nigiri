@@ -42,12 +42,11 @@ hash_map<std::string, calendar> read_calendar(std::string_view file_content) {
              days.set(5, *e.friday_ == 1);
              days.set(6, *e.saturday_ == 1);
 
-             return cista::pair{
-                 e.id_->to_str(),
-                 calendar{
-                     .week_days_ = days,
-                     .interval_ = {parse_date(*e.start_date_),
-                                   parse_date(*e.end_date_) + date::days{1}}}};
+             return std::pair{e.id_->to_str(),
+                              calendar{.week_days_ = days,
+                                       .interval_ = {parse_date(*e.start_date_),
+                                                     parse_date(*e.end_date_) +
+                                                         date::days{1}}}};
            })  //
          | utl::to<hash_map<std::string, calendar>>();
 }

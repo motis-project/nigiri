@@ -48,8 +48,10 @@ struct range {
       from_idx_ = 0U;
       to_idx_ = stops.size() - 1U;
     } else {
-      from_idx_ = get_index(stops, from_eva_or_idx, from_hhmm_or_idx, true);
-      to_idx_ = get_index(stops, to_eva_or_idx, to_hhmm_or_idx, false);
+      from_idx_ =
+          get_index(stops, from_eva_or_idx, from_hhmm_or_idx, event_type::kDep);
+      to_idx_ =
+          get_index(stops, to_eva_or_idx, to_hhmm_or_idx, event_type::kArr);
     }
   }
 
@@ -66,7 +68,7 @@ private:
   static size_t get_index(std::vector<service::stop> const& stops,
                           utl::cstr eva_or_idx,
                           utl::cstr hhmm_or_idx,
-                          bool is_departure_event) {
+                          event_type const ev_type) {
     assert(!eva_or_idx.empty() && !hhmm_or_idx.empty());
     if (is_index(eva_or_idx)) {
       // eva_or_idx is an index which is already definite
@@ -88,15 +90,29 @@ private:
       // -> return stop where eva number and time matches
       const auto eva_num = parse<unsigned>(eva_or_idx);
       const auto time = hhmm_to_min(parse<int>(hhmm_or_idx.substr(1)));
-      const auto it =
-          std::find_if(begin(stops), end(stops), [&](service::stop const& s) {
-            return s.eva_num_ == eva_num &&
-                   (is_departure_event ? s.dep_.time_ : s.arr_.time_) == time;
-          });
-      utl::verify(it != end(stops),
-                  "event with time {} at eva number {} not found", time,
-                  eva_num);
-      return static_cast<std::size_t>(std::distance(begin(stops), it));
+      if (ev_type == event_type::kDep) {
+        const auto it =
+            std::find_if(begin(stops), end(stops), [&](service::stop const& s) {
+              return s.eva_num_ == eva_num &&
+                     (ev_type == event_type::kDep ? s.dep_.time_
+                                                  : s.arr_.time_) == time;
+            });
+        utl::verify(it != end(stops),
+                    "event with time {} at eva number {} not found", time,
+                    eva_num);
+        return static_cast<std::size_t>(std::distance(begin(stops), it));
+      } else {
+        const auto it = std::find_if(
+            stops.rbegin(), stops.rend(), [&](service::stop const& s) {
+              return s.eva_num_ == eva_num &&
+                     (ev_type == event_type::kDep ? s.dep_.time_
+                                                  : s.arr_.time_) == time;
+            });
+        utl::verify(it != stops.rend(),
+                    "event with time {} at eva number {} not found", time,
+                    eva_num);
+        return static_cast<std::size_t>(&*it - stops.data());
+      }
     }
   }
 

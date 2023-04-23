@@ -25,7 +25,10 @@ hash_map<std::string, std::vector<calendar_date>> read_calendar_date(
                            auto&& key) mutable {
     if (!prev_it.has_value() || (*prev_it)->first != key) {
       if (auto const it = services.find(key); it == end(services)) {
-        prev_it = services.emplace(decltype(services)::key_type{key}).first;
+        prev_it = services
+                      .emplace(decltype(services)::key_type{key},
+                               std::vector<calendar_date>{})
+                      .first;
       } else {
         prev_it = it;
       }

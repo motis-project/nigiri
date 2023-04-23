@@ -353,17 +353,21 @@ void add_links_to_and_between_children(timetable& tt) {
         fp_out[l].emplace_back(footpath{neighbor_child, fp.duration_});
 
         for (auto const& child : tt.locations_.children_[l]) {
-          trace("  child -> neighbor child: {} -> {}: {}\n",
-                location{tt, child}, location{tt, neighbor_child},
-                fp.duration_);
-          fp_out[child].emplace_back(footpath{neighbor_child, fp.duration_});
+          if (tt.locations_.types_[child] == location_type::kGeneratedTrack) {
+            trace("  child -> neighbor child: {} -> {}: {}\n",
+                  location{tt, child}, location{tt, neighbor_child},
+                  fp.duration_);
+            fp_out[child].emplace_back(footpath{neighbor_child, fp.duration_});
+          }
         }
       }
 
       for (auto const& child : tt.locations_.children_[l]) {
-        trace("  child -> neighbor child: {} -> {}: {}\n", location{tt, child},
-              location{tt, fp.target_}, fp.duration_);
-        fp_out[child].emplace_back(footpath{fp.target_, fp.duration_});
+        if (tt.locations_.types_[child] == location_type::kGeneratedTrack) {
+          trace("  child -> neighbor child: {} -> {}: {}\n",
+                location{tt, child}, location{tt, fp.target_}, fp.duration_);
+          fp_out[child].emplace_back(footpath{fp.target_, fp.duration_});
+        }
       }
     }
   }
@@ -380,12 +384,15 @@ void add_links_to_and_between_children(timetable& tt) {
 
     auto const t = tt.locations_.transfer_time_[parent];
     for (auto i = 0U; i != children.size(); ++i) {
-      tt.locations_.footpaths_out_[parent].emplace_back(children[i], t);
-      tt.locations_.footpaths_out_[children[i]].emplace_back(parent, t);
+      auto const child_i = children[i];
+      if (tt.locations_.types_[child_i] != location_type::kGeneratedTrack) {
+        continue;
+      }
+      tt.locations_.footpaths_out_[parent].emplace_back(child_i, t);
+      tt.locations_.footpaths_out_[child_i].emplace_back(parent, t);
       for (auto j = 0U; j != children.size(); ++j) {
         if (i != j) {
-          tt.locations_.footpaths_out_[children[i]].emplace_back(children[j],
-                                                                 t);
+          tt.locations_.footpaths_out_[child_i].emplace_back(children[j], t);
         }
       }
     }
@@ -393,7 +400,7 @@ void add_links_to_and_between_children(timetable& tt) {
 }
 
 void build_footpaths(timetable& tt) {
-  //  add_links_to_and_between_children(tt);
+  add_links_to_and_between_children(tt);
   link_nearby_stations(tt);
   transitivize_footpaths(tt);
 }

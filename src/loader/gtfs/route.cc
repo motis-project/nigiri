@@ -137,14 +137,13 @@ route_map_t read_routes(agency_map_t const& agencies,
   return utl::line_range{utl::make_buf_reader(
              file_content, progress_tracker->update_fn())}  //
          | utl::csv<csv_route>()  //
-         |
-         utl::transform([&](csv_route const& r) {
-           auto const agency_it = agencies.find(r.agency_id_->view());
-           if (agency_it == end(agencies)) {
-             log(log_lvl::error, "gtfs.route", "agency {} not found",
-                 r.agency_id_->view());
-           }
-           return cista::pair{r.route_id_->to_str(),
+         | utl::transform([&](csv_route const& r) {
+             auto const agency_it = agencies.find(r.agency_id_->view());
+             if (agency_it == end(agencies)) {
+               log(log_lvl::error, "gtfs.route", "agency {} not found",
+                   r.agency_id_->view());
+             }
+             return std::pair{r.route_id_->to_str(),
                               std::make_unique<route>(route{
                                   .agency_ = (agency_it == end(agencies)
                                                   ? provider_idx_t::invalid()
@@ -154,7 +153,7 @@ route_map_t read_routes(agency_map_t const& agencies,
                                   .long_name_ = r.route_long_name_->to_str(),
                                   .desc_ = r.route_desc_->to_str(),
                                   .clasz_ = to_clasz(*r.route_type_)})};
-         })  //
+           })  //
          | utl::to<route_map_t>();
 }
 

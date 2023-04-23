@@ -15,16 +15,14 @@ void for_each_meta(timetable const& tt,
   } else if (mode == location_match_mode::kIntermodal) {
     fn(l);
     for (auto const& c : tt.locations_.children_.at(l)) {
-      if (tt.locations_.ids_.at(l).view().starts_with("T:")) {
+      if (tt.locations_.types_.at(c) == location_type::kGeneratedTrack) {
         fn(c);
       }
     }
   } else if (mode == location_match_mode::kOnlyChildren) {
     fn(l);
     for (auto const& c : tt.locations_.children_.at(l)) {
-      if (tt.locations_.ids_.at(l).view().starts_with("T:")) {
-        fn(c);
-      }
+      fn(c);
     }
   } else if (mode == location_match_mode::kEquivalent) {
     fn(l);
