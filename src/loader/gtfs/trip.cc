@@ -8,6 +8,7 @@
 #include "utl/enumerate.h"
 #include "utl/erase_if.h"
 #include "utl/get_or_create.h"
+#include "utl/helpers/algorithm.h"
 #include "utl/parser/buf_reader.h"
 #include "utl/parser/csv.h"
 #include "utl/parser/csv_range.h"
@@ -24,28 +25,32 @@
 
 namespace nigiri::loader::gtfs {
 
-std::vector<std::pair<std::vector<trip*>, bitfield>> block::rule_services() {
+std::vector<std::pair<std::basic_string<gtfs_trip_idx_t>, bitfield>>
+block::rule_services(trip_data& trips) {
   utl::verify(!trips_.empty(), "empty block not allowed");
 
-  utl::erase_if(trips_, [](trip const* t) {
-    auto const is_empty = t->stop_seq_.empty();
+  utl::erase_if(trips_, [&](gtfs_trip_idx_t const& t) {
+    auto const is_empty = trips.data_[t].stop_seq_.empty();
     if (is_empty) {
       log(log_lvl::error, "loader.gtfs.trip", "trip \"{}\": no stop times",
-          t->id_);
+          trips.data_[t].id_);
     }
     return is_empty;
   });
 
-  std::sort(begin(trips_), end(trips_), [](trip const* a, trip const* b) {
-    return a->event_times_.front().dep_ < b->event_times_.front().dep_;
-  });
+  std::sort(begin(trips_), end(trips_),
+            [&](gtfs_trip_idx_t const a_idx, gtfs_trip_idx_t const b_idx) {
+              auto const& a = trips.get(a_idx);
+              auto const& b = trips.get(b_idx);
+              return a.event_times_.front().dep_ < b.event_times_.front().dep_;
+            });
 
   struct rule_trip {
-    trip* trip_;
+    gtfs_trip_idx_t trip_;
     bitfield traffic_days_;
   };
-  auto rule_trips = utl::to_vec(trips_, [](auto&& t) {
-    return rule_trip{t, *t->service_};
+  auto rule_trips = utl::to_vec(trips_, [&](auto&& t) {
+    return rule_trip{t, *trips.data_[t].service_};
   });
 
   struct queue_entry {
@@ -54,7 +59,8 @@ std::vector<std::pair<std::vector<trip*>, bitfield>> block::rule_services() {
     bitfield traffic_days_;
   };
 
-  std::vector<std::pair<std::vector<trip*>, bitfield>> combinations;
+  std::vector<std::pair<std::basic_string<gtfs_trip_idx_t>, bitfield>>
+      combinations;
   for (auto start_it = begin(rule_trips); start_it != end(rule_trips);
        ++start_it) {
     std::stack<queue_entry> q;
@@ -67,8 +73,10 @@ std::vector<std::pair<std::vector<trip*>, bitfield>> block::rule_services() {
       collected_trips.emplace_back(current_it);
       for (auto succ_it = std::next(current_it); succ_it != end(rule_trips);
            ++succ_it) {
-        if (timetable::stop{current_it->trip_->stop_seq_.back()}.location_ !=
-            timetable::stop{succ_it->trip_->stop_seq_.front()}.location_) {
+        auto const& curr_trip = trips.data_[current_it->trip_];
+        auto const& succ_trip = trips.data_[succ_it->trip_];
+        if (timetable::stop{curr_trip.stop_seq_.back()}.location_ !=
+            timetable::stop{succ_trip.stop_seq_.front()}.location_) {
           continue;  // prev last stop != next first stop
         }
 
@@ -84,7 +92,8 @@ std::vector<std::pair<std::vector<trip*>, bitfield>> block::rule_services() {
           rt->traffic_days_ &= ~traffic_days;
         }
         combinations.emplace_back(
-            utl::to_vec(collected_trips, [](auto&& rt) { return rt->trip_; }),
+            utl::transform_to<std::basic_string<gtfs_trip_idx_t>>(
+                collected_trips, [](auto&& rt) { return rt->trip_; }),
             traffic_days);
       }
     }
@@ -193,12 +202,12 @@ std::string trip::display_name(timetable const& tt) const {
     }
   }
 
-  return route_->short_name_;
+  return route_->short_name_ + " " + short_name_;
 }
 
-std::pair<trip_map, block_map> read_trips(route_map_t const& routes,
-                                          traffic_days const& services,
-                                          std::string_view file_content) {
+trip_data read_trips(route_map_t const& routes,
+                     traffic_days const& services,
+                     std::string_view file_content) {
   struct csv_trip {
     utl::csv_col<utl::cstr, UTL_NAME("route_id")> route_id_;
     utl::csv_col<utl::cstr, UTL_NAME("service_id")> service_id_;
@@ -210,9 +219,7 @@ std::pair<trip_map, block_map> read_trips(route_map_t const& routes,
 
   nigiri::scoped_timer const timer{"read trips"};
 
-  std::pair<trip_map, block_map> ret;
-  auto& trips = ret.first;
-  auto& blocks = ret.second;
+  trip_data ret;
 
   auto const progress_tracker = utl::get_active_progress_tracker();
   progress_tracker->status("Read Trips")
@@ -221,32 +228,28 @@ std::pair<trip_map, block_map> read_trips(route_map_t const& routes,
   utl::line_range{
       utl::make_buf_reader(file_content, progress_tracker->update_fn())}  //
       | utl::csv<csv_trip>()  //
-      |
-      utl::for_each([&](csv_trip const& t) {
-        auto const blk =
-            t.block_id_->trim().empty()
-                ? nullptr
-                : utl::get_or_create(blocks, t.block_id_->trim().view(), []() {
-                    return std::make_unique<block>();
-                  }).get();
-        auto const trp =
-            trips
-                .emplace(
-                    t.trip_id_->to_str(),
-                    std::make_unique<trip>(
-                        routes.at(t.route_id_->view()).get(),
-                        services.traffic_days_.at(t.service_id_->view()).get(),
-                        blk, t.trip_id_->to_str(), t.trip_headsign_->to_str(),
-                        t.trip_short_name_->to_str()))
-                .first->second.get();
-        if (blk != nullptr) {
-          blk->trips_.emplace_back(trp);
-        }
-      });
+      | utl::for_each([&](csv_trip const& t) {
+          auto const blk = t.block_id_->trim().empty()
+                               ? nullptr
+                               : utl::get_or_create(
+                                     ret.blocks_, t.block_id_->trim().view(),
+                                     []() { return std::make_unique<block>(); })
+                                     .get();
+          auto const trp_idx = gtfs_trip_idx_t{ret.data_.size()};
+          ret.data_.emplace_back(
+              routes.at(t.route_id_->view()).get(),
+              services.traffic_days_.at(t.service_id_->view()).get(), blk,
+              t.trip_id_->to_str(), t.trip_headsign_->to_str(),
+              t.trip_short_name_->to_str());
+          ret.trips_.emplace(t.trip_id_->to_str(), trp_idx);
+          if (blk != nullptr) {
+            blk->trips_.emplace_back(trp_idx);
+          }
+        });
   return ret;
 }
 
-void read_frequencies(trip_map& trips, std::string_view file_content) {
+void read_frequencies(trip_data& trips, std::string_view file_content) {
   if (file_content.empty()) {
     return;
   }
@@ -269,8 +272,8 @@ void read_frequencies(trip_map& trips, std::string_view file_content) {
          |
          utl::for_each([&](csv_frequency const& freq) {
            auto const t = freq.trip_id_->trim().view();
-           auto const trip_it = trips.find(t);
-           if (trip_it == end(trips)) {
+           auto const trip_it = trips.trips_.find(t);
+           if (trip_it == end(trips.trips_)) {
              log(log_lvl::error, "loader.gtfs.frequencies",
                  "frequencies.txt:{}: skipping frequency (trip \"{}\" not "
                  "found)",
@@ -293,7 +296,7 @@ void read_frequencies(trip_map& trips, std::string_view file_content) {
                exact == "1" ? frequency::schedule_relationship::kScheduled
                             : frequency::schedule_relationship::kUnscheduled;
 
-           auto& frequencies = trip_it->second->frequency_;
+           auto& frequencies = trips.data_[trip_it->second].frequency_;
            if (!frequencies.has_value()) {
              frequencies = std::vector<frequency>{};
            }

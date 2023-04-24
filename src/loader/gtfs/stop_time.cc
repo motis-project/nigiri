@@ -20,7 +20,7 @@
 
 namespace nigiri::loader::gtfs {
 
-void read_stop_times(trip_map& trips,
+void read_stop_times(trip_data& trips,
                      locations_map const& stops,
                      std::string_view file_content) {
   struct csv_stop_time {
@@ -58,13 +58,13 @@ void read_stop_times(trip_map& trips,
             last_trip->to_line_ = i - 1;
           }
 
-          auto const trip_it = trips.find(t_id);
-          if (trip_it == end(trips)) {
+          auto const trip_it = trips.trips_.find(t_id);
+          if (trip_it == end(trips.trips_)) {
             log(log_lvl::error, "loader.gtfs.stop_time",
                 "stop_times.txt:{} trip \"{}\" not found", i, t_id);
             return;
           }
-          t = trip_it->second.get();
+          t = &trips.data_[trip_it->second];
           last_trip_id = t_id;
           last_trip = t;
 
