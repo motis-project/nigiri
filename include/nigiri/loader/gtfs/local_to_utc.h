@@ -131,11 +131,13 @@ void expand_local_to_utc(trip_data const& trip_data,
 
   auto utc_time_traffic_days = hash_map<utc_time_sequence, bitfield>{};
 
-  auto const n_stops =
-      std::accumulate(begin(fet.trips_), end(fet.trips_), 0U,
-                      [&](unsigned const acc, gtfs_trip_idx_t const t_idx) {
-                        return acc + trip_data.get(t_idx).event_times_.size();
-                      });
+  auto const n_stops = std::accumulate(
+      begin(fet.trips_), end(fet.trips_), 0U,
+      [&](unsigned const acc, gtfs_trip_idx_t const t_idx) {
+        auto const n_trip_stops =
+            static_cast<unsigned>(trip_data.get(t_idx).stop_seq_.size());
+        return acc + n_trip_stops;
+      });
 
   auto utc_times = std::basic_string<minutes_after_midnight_t>{};
   utc_times.resize(n_stops * 2U - 2U);
