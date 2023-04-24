@@ -166,30 +166,18 @@ void load_timetable(source_idx_t const src, dir const& d, timetable& tt) {
     }
   }
 
-  //  hash_map<std::pair<stop_seq_t, clasz>, std::vector<std::vector<utc_trip>>>
-  //      rule_services;
-  //  {
-  //    progress_tracker->status("Rule Services")
-  //        .out_bounds(85.F, 87.F)
-  //        .in_high(route_services.size());
-  //    auto const timer = scoped_timer{"loader.gtfs.trips.block_id"};
-  //
-  //    for (auto const& [_, blk] : blocks) {
-  //      for (auto const& [blk_trips, blk_traffic_days] :
-  //           blk->rule_services(trip_data)) {
-  //        if (blk_trips.size() == 1U) {
-  //          add_trip(trips_data[blk_trips.front()]);
-  //          continue;
-  //        }
-  //
-  //        //        auto stop_seq = stop_seq_t{};
-  //        for (auto const& t : blk_trips) {
-  //          stop_seq.insert(end(stop_seq), begin(trips_data[t].stop_seq_),
-  //                          end(trips_data[t].stop_seq_));
-  //        }
-  //      }
-  //    }
-  //  }
+  {
+    progress_tracker->status("Stay Seated")
+        .out_bounds(85.F, 87.F)
+        .in_high(route_services.size());
+    auto const timer = scoped_timer{"loader.gtfs.trips.block_id"};
+
+    for (auto const& [_, blk] : trip_data.blocks_) {
+      for (auto const& [trips, traffic_days] : blk->rule_services(trip_data)) {
+        add_trip(trips, &traffic_days);
+      }
+    }
+  }
 
   {
     progress_tracker->status("Write Trips")

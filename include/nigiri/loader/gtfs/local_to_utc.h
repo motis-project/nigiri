@@ -104,9 +104,10 @@ void expand_frequencies(trip_data const& trip_data,
       }
     }
   } else {
-    consumer(frequency_expanded_trip{.trips_ = trips,
-                                     .offsets_ = {0_minutes},
-                                     .traffic_days_ = traffic_days});
+    consumer(frequency_expanded_trip{
+        .trips_ = trips,
+        .offsets_ = std::basic_string<duration_t>{trips.size(), 0_minutes},
+        .traffic_days_ = traffic_days});
   }
 }
 
