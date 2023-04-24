@@ -84,6 +84,7 @@ void expand_frequencies(trip_data const& trip_data,
          headways_match(trip_data, trips) && stays_sorted(trip_data, trips))) {
       auto const& first = trip_data.get(trips.front());
       for (auto const [i, freq] : utl::enumerate(*first.frequency_)) {
+        auto const index = i;
         for (auto it = 0U; it < freq.number_of_iterations(); ++it) {
           consumer(frequency_expanded_trip{
               .trips_ = trips,
@@ -92,7 +93,7 @@ void expand_frequencies(trip_data const& trip_data,
                   [&](gtfs_trip_idx_t const t_idx) {
                     auto const& t = trip_data.get(t_idx);
                     auto const first_dep =
-                        (*t.frequency_)[i].get_iteration_start_time(it);
+                        (*t.frequency_)[index].get_iteration_start_time(it);
                     return t.event_times_.front().dep_ - first_dep;
                   }),
               .traffic_days_ = traffic_days});
