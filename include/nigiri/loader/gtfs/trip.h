@@ -19,14 +19,28 @@ namespace nigiri::loader::gtfs {
 
 struct trip;
 
+using gtfs_trip_idx_t = cista::strong<std::uint32_t, struct _gtfs_trip_idx>;
+
+struct trip_data;
+
 struct block {
-  std::vector<std::pair<std::vector<trip*>, bitfield>> rule_services();
-  std::vector<trip*> trips_;
+  std::vector<std::pair<std::basic_string<gtfs_trip_idx_t>, bitfield>>
+  rule_services(trip_data&);
+
+  std::vector<gtfs_trip_idx_t> trips_;
 };
 
-using block_map = hash_map<std::string, std::unique_ptr<block>>;
+using stop_seq_t = std::basic_string<timetable::stop::value_type>;
 
 struct frequency {
+  unsigned number_of_iterations() const {
+    return static_cast<unsigned>((end_time_ - start_time_) / headway_);
+  }
+  minutes_after_midnight_t get_iteration_start_time(
+      unsigned const iteration) const {
+    return start_time_ + iteration * headway_;
+  }
+  friend bool operator==(frequency const&, frequency const&) = default;
   minutes_after_midnight_t start_time_{0U};
   minutes_after_midnight_t end_time_{0U};
   duration_t headway_{0U};
@@ -48,6 +62,14 @@ struct trip {
        std::string headsign,
        std::string short_name);
 
+  trip(trip&&) = default;
+  trip& operator=(trip&&) = default;
+
+  trip(trip const&) = delete;
+  trip& operator=(trip const&) = delete;
+
+  ~trip() = default;
+
   void interpolate();
 
   void print_stop_times(std::ostream&,
@@ -63,8 +85,8 @@ struct trip {
   std::string headsign_;
   std::string short_name_;
 
+  stop_seq_t stop_seq_;
   std::vector<std::uint16_t> seq_numbers_;
-  std::basic_string<timetable::stop::value_type> stop_seq_;
   std::vector<stop_events> event_times_;
   std::vector<std::string> stop_headsigns_;
 
@@ -74,12 +96,20 @@ struct trip {
   std::uint32_t from_line_{0U}, to_line_{0U};
 };
 
-using trip_map = hash_map<std::string, std::unique_ptr<trip>>;
+struct trip_data {
+  trip const& get(gtfs_trip_idx_t const idx) const { return data_[idx]; }
+  trip& get(gtfs_trip_idx_t const idx) { return data_[idx]; }
+  trip const& get(std::string_view id) const { return data_[trips_.at(id)]; }
+  trip& get(std::string_view id) { return data_[trips_.at(id)]; }
+  hash_map<std::string, gtfs_trip_idx_t> trips_;
+  hash_map<std::string, std::unique_ptr<block>> blocks_;
+  vector_map<gtfs_trip_idx_t, trip> data_;
+};
 
-std::pair<trip_map, block_map> read_trips(route_map_t const&,
-                                          traffic_days const&,
-                                          std::string_view file_content);
+trip_data read_trips(route_map_t const&,
+                     traffic_days const&,
+                     std::string_view file_content);
 
-void read_frequencies(trip_map&, std::string_view);
+void read_frequencies(trip_data&, std::string_view);
 
 }  // namespace nigiri::loader::gtfs

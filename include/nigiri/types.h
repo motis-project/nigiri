@@ -79,12 +79,12 @@ template <typename K,
           typename V,
           typename Hash = cista::hash_all,
           typename Equality = cista::equals_all>
-using hash_map = cista::offset::ankerl_map<K, V, Hash>;
+using hash_map = cista::offset::ankerl_map<K, V, Hash, Equality>;
 
 template <typename K,
           typename Hash = cista::hash_all,
           typename Equality = cista::equals_all>
-using hash_set = cista::offset::ankerl_set<K, Hash>;
+using hash_set = cista::offset::ankerl_set<K, Hash, Equality>;
 
 using string = cista::offset::string;
 

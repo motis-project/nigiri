@@ -140,6 +140,8 @@ route_map_t read_routes(agency_map_t const& agencies,
          | utl::transform([&](csv_route const& r) {
              auto const agency_it = agencies.find(r.agency_id_->view());
              if (agency_it == end(agencies)) {
+               // TODO(felix) agency needs to be set to "no agency" object
+               //             "no agency" object needs to have default tz
                log(log_lvl::error, "gtfs.route", "agency {} not found",
                    r.agency_id_->view());
              }
