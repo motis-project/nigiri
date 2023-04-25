@@ -217,7 +217,7 @@ void load_timetable(source_idx_t const src, dir const& d, timetable& tt) {
           external_trip_ids.clear();
           section_directions.clear();
           auto prev_end = 0U;
-          for (auto const& [i, t] : utl::enumerate(s.trips_)) {
+          for (auto const [i, t] : utl::enumerate(s.trips_)) {
             auto const& trp = trip_data.get(t);
 
             trip_id_buf.clear();
@@ -245,7 +245,8 @@ void load_timetable(source_idx_t const src, dir const& d, timetable& tt) {
               external_trip_ids.push_back(merged_trip);
               section_directions.push_back(direction);
             } else {
-              for (auto i = 0U; i != trp.stop_seq_.size() - 1; ++i) {
+              for (auto section = 0U; section != trp.stop_seq_.size() - 1;
+                   ++section) {
                 external_trip_ids.push_back(merged_trip);
                 section_directions.push_back(direction);
               }
