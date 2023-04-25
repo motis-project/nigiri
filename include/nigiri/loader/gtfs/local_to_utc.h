@@ -79,11 +79,11 @@ void expand_frequencies(trip_data const& trip_data,
   };
 
   if (utl::any_of(trips, has_frequency)) {
-    if (trips.size() == 1U ||
+    if (trips.size() == 1U /* shortcut, no checks needed */ ||
         (utl::all_of(trips, has_frequency) &&
          headways_match(trip_data, trips) && stays_sorted(trip_data, trips))) {
-      auto const& first = trip_data.get(trips.front());
-      for (auto const [i, freq] : utl::enumerate(*first.frequency_)) {
+      auto const& first_trp = trip_data.get(trips.front());
+      for (auto const [i, freq] : utl::enumerate(*first_trp.frequency_)) {
         auto const index = i;
         for (auto it = 0U; it < freq.number_of_iterations(); ++it) {
           consumer(frequency_expanded_trip{
