@@ -5,7 +5,12 @@
 #include <string_view>
 
 #include "nigiri/loader/gtfs/agency.h"
+#include "nigiri/loader/gtfs/tz_map.h"
 #include "nigiri/types.h"
+
+namespace nigiri {
+struct timetable;
+}
 
 namespace nigiri::loader::gtfs {
 
@@ -20,6 +25,9 @@ struct route {
 
 using route_map_t = hash_map<std::string, std::unique_ptr<route>>;
 
-route_map_t read_routes(agency_map_t const&, std::string_view file_content);
+route_map_t read_routes(timetable&,
+                        tz_map&,
+                        agency_map_t&,
+                        std::string_view file_content);
 
 }  // namespace nigiri::loader::gtfs
