@@ -19,9 +19,10 @@ TEST(gtfs, read_trips_example_data) {
   timetable tt;
   tz_map timezones;
 
-  auto const agencies =
+  auto agencies =
       read_agencies(tt, timezones, files.get_file(kAgencyFile).data());
-  auto const routes = read_routes(agencies, files.get_file(kRoutesFile).data());
+  auto const routes =
+      read_routes(tt, timezones, agencies, files.get_file(kRoutesFile).data());
   auto const dates =
       read_calendar_date(files.get_file(kCalendarDatesFile).data());
   auto const calendar = read_calendar(files.get_file(kCalenderFile).data());
@@ -42,9 +43,10 @@ TEST(gtfs, read_trips_berlin_data) {
   timetable tt;
   tz_map timezones;
 
-  auto const agencies =
+  auto agencies =
       read_agencies(tt, timezones, files.get_file(kAgencyFile).data());
-  auto const routes = read_routes(agencies, files.get_file(kRoutesFile).data());
+  auto const routes =
+      read_routes(tt, timezones, agencies, files.get_file(kRoutesFile).data());
   auto const dates =
       read_calendar_date(files.get_file(kCalendarDatesFile).data());
   auto const calendar = read_calendar(files.get_file(kCalenderFile).data());

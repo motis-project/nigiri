@@ -53,8 +53,8 @@ void print_transport(timetable const& tt,
       date::to_stream(out, "a: %d.%m %R", t);
       date::to_stream(out, " [%d.%m %R]", to_local_time(tz, t));
     } else {
-      out << "               ";
-      out << "               ";
+      out << "              ";
+      out << "              ";
     }
 
     if (stop_idx != to - 1) {
