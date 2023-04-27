@@ -23,10 +23,6 @@ struct route_key_hash {
   cista::hash_t operator()(std::pair<stop_seq_t const*, clasz> const& x) const {
     return hash(*x.first, x.second);
   }
-
-  cista::hash_t operator()(std::pair<stop_seq_t*, clasz> const& x) const {
-    return hash(*x.first, x.second);
-  }
 };
 
 struct route_key_equals {
@@ -39,11 +35,6 @@ struct route_key_equals {
   cista::hash_t operator()(std::pair<stop_seq_t const*, clasz> const& a,
                            std::pair<stop_seq_t, clasz> const& b) const {
     return std::tie(*a.first, a.second) == std::tie(b.first, b.second);
-  }
-
-  cista::hash_t operator()(std::pair<stop_seq_t, clasz> const& a,
-                           std::pair<stop_seq_t const*, clasz> const& b) const {
-    return std::tie(a.first, a.second) == std::tie(*b.first, b.second);
   }
 };
 

@@ -140,7 +140,7 @@ void expand_local_to_utc(trip_data const& trip_data,
       });
 
   auto utc_times = std::basic_string<minutes_after_midnight_t>{};
-  utc_times.resize(n_stops * 2U - 2U);
+  utc_times.resize(n_stops * 2U - fet.trips_.size() * 2U);
 
   auto const first_dep_time =
       trip_data.get(fet.trips_.front()).event_times_.front().dep_ -

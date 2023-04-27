@@ -111,12 +111,12 @@ void load_timetable(source_idx_t const src, dir const& d, timetable& tt) {
 
   stop_seq_t stop_seq_cache;
   auto const get_route_key =
-      [&](std::basic_string<gtfs_trip_idx_t> const& trip_idxs) {
-        if (trip_idxs.size() == 1) {
-          return &trip_data.get(trip_idxs.front()).stop_seq_;
+      [&](std::basic_string<gtfs_trip_idx_t> const& trips) {
+        if (trips.size() == 1U) {
+          return &trip_data.get(trips.front()).stop_seq_;
         } else {
           stop_seq_cache.clear();
-          for (auto const [i, t_idx] : utl::enumerate(trip_idxs)) {
+          for (auto const [i, t_idx] : utl::enumerate(trips)) {
             auto const& trp = trip_data.get(t_idx);
             stop_seq_cache.insert(
                 end(stop_seq_cache),
