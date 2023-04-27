@@ -130,7 +130,7 @@ constexpr auto const berlin_routes_file_content =
     R"(route_id,agency_id,route_short_name,route_long_name,route_desc,route_type,route_url,route_color,route_text_color
 1,ANG---,SXF2,,,700,http://www.vbb.de,,
 10,BMO---,927,,,700,http://www.vbb.de,,
-2,BEH---,548,,,700,http://www.vbb.de,,
+2,BON---,548,,,700,http://www.vbb.de,,
 809,N04---,,"Leisnig -- Leipzig, Hauptbahnhof",,100,http://www.vbb.de,,
 81,BON---,2/412,,,700,http://www.vbb.de,,
 810,N04---,,"S+U Lichtenberg Bhf (Berlin) -- Senftenberg, Bahnhof",,100,http://www.vbb.de,,
