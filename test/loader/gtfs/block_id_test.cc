@@ -171,7 +171,7 @@ TEST(gtfs, block_id) {
 
     std::stringstream ss;
     res.begin()->print(ss, tt, true);
-    EXPECT_EQ(result, ss.view());
+    EXPECT_EQ(result, ss.str());
   }
 
   {
