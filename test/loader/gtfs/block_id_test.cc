@@ -95,6 +95,24 @@ unixtime_t parse_time(std::string_view s, char const* format) {
       date::make_zoned(tz, ls).get_sys_time());
 }
 
+constexpr auto const result =
+    std::string_view{R"([2006-07-02 21:00, 2006-07-03 04:00]
+TRANSFERS: 0
+     FROM: (STOP 1, S1) [2006-07-02 21:00]
+       TO: (STOP 8, S8) [2006-07-03 04:00]
+leg 0: (STOP 1, S1) [2006-07-02 21:00] -> (STOP 8, S8) [2006-07-03 04:00]
+   0: S1      STOP 1..........................................                               d: 02.07 21:00 [02.07 23:00]  [{name=17 T1, day=2006-07-02, id=0/T1, src=0, debug=trips.txt:2:3}]
+   1: S2      STOP 2.......................................... a: 02.07 21:55 [02.07 23:55]  d: 02.07 22:00 [03.07 00:00]  [{name=17 T3, day=2006-07-02, id=0/T3, src=0, debug=trips.txt:6:8}]
+   2: S3      STOP 3.......................................... a: 02.07 23:00 [03.07 01:00]  d: 02.07 23:00 [03.07 01:00]  [{name=17 T3, day=2006-07-02, id=0/T3, src=0, debug=trips.txt:6:8}]
+   3: S4      STOP 4.......................................... a: 03.07 00:00 [03.07 02:00]  d: 03.07 00:00 [03.07 02:00]  [{name=17 T6, day=2006-07-02, id=0/T6, src=0, debug=trips.txt:18:22}]
+   4: S5      STOP 5.......................................... a: 03.07 01:00 [03.07 03:00]  d: 03.07 01:00 [03.07 03:00]  [{name=17 T6, day=2006-07-02, id=0/T6, src=0, debug=trips.txt:18:22}]
+   5: S6      STOP 6.......................................... a: 03.07 02:00 [03.07 04:00]  d: 03.07 02:00 [03.07 04:00]  [{name=17 T6, day=2006-07-02, id=0/T6, src=0, debug=trips.txt:18:22}]
+   6: S7      STOP 7.......................................... a: 03.07 03:00 [03.07 05:00]  d: 03.07 03:00 [03.07 05:00]  [{name=17 T6, day=2006-07-02, id=0/T6, src=0, debug=trips.txt:18:22}]
+   7: S8      STOP 8.......................................... a: 03.07 04:00 [03.07 06:00]
+leg 1: (STOP 8, S8) [2006-07-03 04:00] -> (STOP 8, S8) [2006-07-03 04:00]
+  FOOTPATH (duration=0)
+)"};
+
 TEST(gtfs, block_id) {
   using std::filesystem::path;
   auto const files =
@@ -150,6 +168,10 @@ TEST(gtfs, block_id) {
         routing_query("S1", "S8", "2006-07-02 23:00 Europe/Berlin");
     ASSERT_EQ(1, res.size());
     expect_no_transfers(*res.begin());
+
+    std::stringstream ss;
+    res.begin()->print(ss, tt, true);
+    EXPECT_EQ(result, ss.str());
   }
 
   {

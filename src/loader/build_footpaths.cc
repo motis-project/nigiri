@@ -348,9 +348,12 @@ void add_links_to_and_between_children(timetable& tt) {
             location{tt, fp.target_}, fp.duration_);
 
       for (auto const& neighbor_child : tt.locations_.children_[fp.target_]) {
-        trace("  l -> neighbor child: {} -> {}: {}\n", location{tt, l},
-              location{tt, neighbor_child}, fp.duration_);
-        fp_out[l].emplace_back(footpath{neighbor_child, fp.duration_});
+        if (tt.locations_.types_[neighbor_child] ==
+            location_type::kGeneratedTrack) {
+          trace("  l -> neighbor child: {} -> {}: {}\n", location{tt, l},
+                location{tt, neighbor_child}, fp.duration_);
+          fp_out[l].emplace_back(footpath{neighbor_child, fp.duration_});
+        }
 
         for (auto const& child : tt.locations_.children_[l]) {
           if (tt.locations_.types_[child] == location_type::kGeneratedTrack) {

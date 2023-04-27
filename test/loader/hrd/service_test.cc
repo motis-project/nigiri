@@ -111,19 +111,19 @@ TEST(service, strings) {
   load_timetable(source_idx_t{0U}, hrd_5_20_26, files(), tt);
 
   if (expected != service_strings(tt)) {
-    std::cerr << "OUTPUT:\n";
-    std::cerr << "constexpr auto const expected = std::set<std::string>{";
+    std::cout << "OUTPUT:\n";
+    std::cout << "constexpr auto const expected = std::set<std::string>{";
     for (auto const& ss : service_strings(tt)) {
-      std::cerr << "R\"(" << ss << ")\",\n";
+      std::cout << "R\"(" << ss << ")\",\n";
     }
-    std::cerr << "};\n";
+    std::cout << "};\n";
 
-    std::cerr << "\n\n\nEXPECTED:\n";
-    std::cerr << "constexpr auto const expected = std::set<std::string>{";
+    std::cout << "\n\n\nEXPECTED:\n";
+    std::cout << "constexpr auto const expected = std::set<std::string>{";
     for (auto const& ss : expected) {
-      std::cerr << "R\"(" << ss << ")\",\n";
+      std::cout << "R\"(" << ss << ")\",\n";
     }
-    std::cerr << "};\n";
+    std::cout << "};\n";
   }
 
   EXPECT_EQ(expected, service_strings(tt));
