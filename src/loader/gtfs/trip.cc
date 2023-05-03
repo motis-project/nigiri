@@ -234,7 +234,7 @@ trip_data read_trips(route_map_t const& routes,
             services.traffic_days_.find(t.service_id_->view());
         if (traffic_days_it == end(services.traffic_days_)) {
           log(log_lvl::error, "loader.gtfs.trip",
-              "trip \"{}\": service_id \"{}\" not found", t.trip_id_->view(),
+              R"(trip "{}": service_id "{}" not found)", t.trip_id_->view(),
               t.service_id_->view());
           return;
         }
