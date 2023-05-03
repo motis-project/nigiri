@@ -40,8 +40,8 @@ hash_map<std::string, std::vector<calendar_date>> read_calendar_date(
   progress_tracker->status("Parse Calendar Date")
       .out_bounds(34.F, 36.F)
       .in_high(file_content.size());
-  utl::line_range{utl::buf_reader{
-      utl::make_buf_reader(file_content, progress_tracker->update_fn())}}  //
+  utl::line_range{
+      utl::make_buf_reader(file_content, progress_tracker->update_fn())}  //
       | utl::csv<entry>()  //
       | utl::for_each([&](entry const& e) {
           cached_lookup(e.id_->view())
