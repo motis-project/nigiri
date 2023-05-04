@@ -25,7 +25,7 @@ struct file {
 };
 
 struct dir {
-  dir();
+  dir(std::filesystem::path);
   dir(dir const&);
   dir(dir&&) noexcept;
   dir& operator=(dir const&);
@@ -36,6 +36,10 @@ struct dir {
   virtual file get_file(std::filesystem::path const&) const = 0;
   virtual bool exists(std::filesystem::path const&) const = 0;
   virtual std::size_t file_size(std::filesystem::path const&) const = 0;
+  std::filesystem::path path() const { return path_; }
+
+protected:
+  std::filesystem::path path_;
 };
 
 struct fs_dir final : public dir {
@@ -46,7 +50,6 @@ struct fs_dir final : public dir {
   file get_file(std::filesystem::path const&) const final;
   bool exists(std::filesystem::path const&) const final;
   std::size_t file_size(std::filesystem::path const&) const final;
-  std::filesystem::path path_;
 };
 
 struct zip_dir final : public dir {
