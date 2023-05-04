@@ -113,13 +113,15 @@ void expand_frequencies(trip_data const& trip_data,
 }
 
 template <typename Consumer>
-void expand_local_to_utc(trip_data const& trip_data,
-                         noon_offset_hours_t const& noon_offsets,
-                         timetable const& tt,
-                         frequency_expanded_trip&& fet,
-                         interval<date::sys_days> const& gtfs_interval,
-                         interval<date::sys_days> const& selection,
-                         Consumer&& consumer) {
+void expand_local_to_utc(
+    trip_data const& trip_data,
+    noon_offset_hours_t const& noon_offsets,
+    timetable const& tt,
+    frequency_expanded_trip&& fet,
+    interval<date::sys_days> const& gtfs_interval,
+    interval<date::sys_days> const& selection,
+    std::basic_string<minutes_after_midnight_t>& utc_time_mem,
+    Consumer&& consumer) {
   using utc_time_sequence = std::basic_string<minutes_after_midnight_t>;
 
   std::erase_if(fet.trips_, [&](gtfs_trip_idx_t const t_idx) {
@@ -139,8 +141,7 @@ void expand_local_to_utc(trip_data const& trip_data,
         return acc + n_trip_stops;
       });
 
-  auto utc_times = std::basic_string<minutes_after_midnight_t>{};
-  utc_times.resize(n_stops * 2U - fet.trips_.size() * 2U);
+  utc_time_mem.resize(n_stops * 2U - fet.trips_.size() * 2U);
 
   auto const first_dep_time =
       trip_data.get(fet.trips_.front()).event_times_.front().dep_ -
@@ -187,15 +188,16 @@ void expand_local_to_utc(trip_data const& trip_data,
       for (auto const [t, freq_offset] : utl::zip(fet.trips_, fet.offsets_)) {
         auto const& trp = trip_data.get(t);
         for (auto const [from, to] : utl::pairwise(trp.event_times_)) {
-          utc_times[i++] =
+          utc_time_mem[i++] =
               from.dep_ - freq_offset - tz_offset - first_day_offset;
-          utc_times[i++] = to.arr_ - freq_offset - tz_offset - first_day_offset;
+          utc_time_mem[i++] =
+              to.arr_ - freq_offset - tz_offset - first_day_offset;
         }
       }
 
-      auto it = utc_time_traffic_days.find(utc_times);
+      auto it = utc_time_traffic_days.find(utc_time_mem);
       if (it == end(utc_time_traffic_days)) {
-        (it = utc_time_traffic_days.emplace(utc_times, bitfield{}).first)
+        (it = utc_time_traffic_days.emplace(utc_time_mem, bitfield{}).first)
             ->second.set(static_cast<std::size_t>(utc_traffic_day));
       } else {
         it->second.set(static_cast<std::size_t>(utc_traffic_day));
@@ -223,11 +225,12 @@ void expand_trip(trip_data& trip_data,
                  bitfield const* traffic_days,
                  interval<date::sys_days> const& gtfs_interval,
                  interval<date::sys_days> const& selection,
+                 std::basic_string<minutes_after_midnight_t>& utc_time_mem,
                  Consumer&& consumer) {
   expand_frequencies(
       trip_data, trips, traffic_days, [&](frequency_expanded_trip&& fet) {
         expand_local_to_utc(trip_data, noon_offsets, tt, std::move(fet),
-                            gtfs_interval, selection,
+                            gtfs_interval, selection, utc_time_mem,
                             [&](utc_trip&& ut) { consumer(std::move(ut)); });
       });
 }

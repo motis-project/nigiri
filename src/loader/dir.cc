@@ -18,14 +18,14 @@ namespace nigiri::loader {
 file::content::~content() = default;
 
 dir::~dir() = default;
-dir::dir() = default;
+dir::dir(std::filesystem::path p) : path_{std::move(p)} {}
 dir::dir(dir const&) = default;
 dir::dir(dir&&) noexcept = default;
 dir& dir::operator=(dir const&) = default;
 dir& dir::operator=(dir&&) noexcept = default;
 
 // --- File directory implementation ---
-fs_dir::fs_dir(std::filesystem::path p) : path_{std::move(p)} {}
+fs_dir::fs_dir(std::filesystem::path p) : dir{std::move(p)} {}
 fs_dir::~fs_dir() = default;
 std::vector<std::filesystem::path> fs_dir::list_files(
     std::filesystem::path const& p) const {
@@ -172,9 +172,9 @@ struct zip_dir::impl {
   std::variant<std::vector<std::uint8_t>, cista::mmap> memory_;
 };
 zip_dir::zip_dir(std::filesystem::path const& p)
-    : impl_{std::make_unique<impl>(p)} {}
+    : dir{p}, impl_{std::make_unique<impl>(p)} {}
 zip_dir::zip_dir(std::vector<std::uint8_t> b)
-    : impl_{std::make_unique<impl>(std::move(b))} {}
+    : dir{"::memory::"}, impl_{std::make_unique<impl>(std::move(b))} {}
 zip_dir::~zip_dir() = default;
 std::vector<std::filesystem::path> zip_dir::list_files(
     std::filesystem::path const& p) const {
@@ -191,7 +191,7 @@ std::size_t zip_dir::file_size(std::filesystem::path const& p) const {
 }
 
 // --- In-memory directory implementation ---
-mem_dir::mem_dir(dir_t d) : dir_{std::move(d)} {}
+mem_dir::mem_dir(dir_t d) : dir{"::memory::"}, dir_{std::move(d)} {}
 mem_dir::~mem_dir() = default;
 mem_dir::mem_dir(mem_dir const&) = default;
 mem_dir::mem_dir(mem_dir&&) noexcept = default;
