@@ -12,8 +12,9 @@ timezone_idx_t get_tz_idx(timetable& tt,
                           std::string_view tz_name) {
   utl::verify(!tz_name.empty(), "timezone not set");
   return utl::get_or_create(timezones, tz_name, [&]() {
-    return tt.locations_.register_timezone(
-        timezone{static_cast<void const*>(date::locate_zone(tz_name))});
+    return tt.locations_.register_timezone(timezone{
+        cista::pair{string{tz_name},
+                    static_cast<void const*>(date::locate_zone(tz_name))}});
   });
 }
 

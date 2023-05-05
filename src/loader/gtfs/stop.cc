@@ -252,7 +252,6 @@ locations_map read_stops(source_idx_t const src,
     progress_tracker->status("Compute Metas")
         .out_bounds(17.F, 20.F)
         .in_high(stops.size());
-    hash_set<stop*> todo, done;
 
     auto const add_if_not_exists = [](auto bucket, footpath&& fp) {
       auto const it = std::find_if(begin(bucket), end(bucket), [&](auto&& x) {
@@ -290,6 +289,7 @@ locations_map read_stops(source_idx_t const src,
     }
 
     // Generate footpaths to connect stops in close proximity.
+    hash_set<stop*> todo, done;
     for (auto const& [id, s] : stops) {
       for (auto const& eq : s->get_metas(stop_vec, todo, done)) {
         tt.locations_.equivalences_[s->location_].emplace_back(eq->location_);

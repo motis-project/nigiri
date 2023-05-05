@@ -443,6 +443,10 @@ void reconstruct_journey(timetable const& tt,
   if constexpr (kFwd) {
     std::reverse(begin(j.legs_), end(j.legs_));
   }
+
+  if (kTracing) {
+    j.print(std::cout, tt, true);
+  }
 }
 
 template void reconstruct_journey<direction::kForward>(

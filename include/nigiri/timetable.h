@@ -125,6 +125,8 @@ struct timetable {
       return get(location_id_to_idx_.at(id));
     }
 
+    void resolve_timezones();
+
     // Station access: external station id -> internal station idx
     hash_map<location_id, location_idx_t> location_id_to_idx_;
     vecvec<location_idx_t, char> names_;

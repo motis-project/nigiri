@@ -72,6 +72,20 @@ void print_transport(timetable const& tt,
       auto const& merged_trips = tt.merged_trips_.at(
           trip_section.size() == 1U ? trip_section[0]
                                     : trip_section.at(stop_idx));
+
+      auto const transport_line = tt.transport_section_lines_.at(i);
+      auto const& line = transport_line.empty()
+                             ? ""
+                             : tt.trip_lines_
+                                   .at(transport_line.size() == 1U
+                                           ? transport_line.front()
+                                           : transport_line.at(stop_idx))
+                                   .view();
+
+      if (with_debug) {
+        out << "   line=\"" << line << "\"";
+      }
+
       out << "  [";
       for (auto const& trip_idx : merged_trips) {
         auto j = 0U;

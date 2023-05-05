@@ -200,7 +200,7 @@ struct tz_offsets {
   duration_t offset_{0};
 };
 
-using timezone = variant<void const*, tz_offsets>;
+using timezone = variant<pair<string, void const*>, tz_offsets>;
 
 enum class clasz : std::uint8_t {
   kAir = 0,
@@ -303,8 +303,9 @@ inline local_time to_local_time_tz(date::time_zone const* tz,
 inline local_time to_local_time(timezone const& tz, unixtime_t const t) {
   return tz.apply(utl::overloaded{
       [t](tz_offsets const& x) { return to_local_time_offsets(x, t); },
-      [t](void const* x) {
-        return to_local_time_tz(reinterpret_cast<date::time_zone const*>(x), t);
+      [t](pair<string, void const*> const& x) {
+        return to_local_time_tz(
+            reinterpret_cast<date::time_zone const*>(x.second), t);
       }});
 }
 
