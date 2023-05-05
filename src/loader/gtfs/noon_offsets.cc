@@ -30,7 +30,9 @@ noon_offset_hours_t precompute_noon_offsets(
 
     ret[tz_idx] = std::array<duration_t, kMaxDays>{};
     auto const tz = reinterpret_cast<date::time_zone const*>(
-        tt.locations_.timezones_[tz_idx].as<void const*>());
+        tt.locations_.timezones_[tz_idx]
+            .as<pair<string, void const*>>()
+            .second);
     for (auto day = gtfs_interval.from_; day != gtfs_interval.to_;
          day += std::chrono::days{1}) {
       if (!tt_range.contains(day)) {

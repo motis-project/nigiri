@@ -90,8 +90,9 @@ TEST(gtfs, services) {
     auto const tz_idx =
         get_transport_stop_tz(tt, t.t_idx_, timetable::stop{l}.location_idx());
     auto const tz = tt.locations_.timezones_[tz_idx];
-    utl::verify(holds_alternative<void const*>(tz), "bad tz");
-    return reinterpret_cast<date::time_zone const*>(tz.as<void const*>());
+    utl::verify(holds_alternative<pair<string, void const*>>(tz), "bad tz");
+    return reinterpret_cast<date::time_zone const*>(
+        tz.as<pair<string, void const*>>().second);
   };
 
   auto const iso = [&](transport const t, unsigned const stop_idx,

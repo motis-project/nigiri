@@ -201,6 +201,7 @@ void load_timetable(source_idx_t const src, dir const& d, timetable& tt) {
     auto lines = hash_map<std::string, trip_line_idx_t>{};
     auto directions = hash_map<std::string, trip_direction_idx_t>{};
     auto section_directions = std::basic_string<trip_direction_idx_t>{};
+    auto section_lines = std::basic_string<trip_line_idx_t>{};
     auto external_trip_ids = std::basic_string<merged_trips_idx_t>{};
     for (auto const& [key, sub_routes] : route_services) {
       for (auto const& services : sub_routes) {
@@ -218,6 +219,7 @@ void load_timetable(source_idx_t const src, dir const& d, timetable& tt) {
 
           external_trip_ids.clear();
           section_directions.clear();
+          section_lines.clear();
           auto prev_end = 0U;
           for (auto const [i, t] : utl::enumerate(s.trips_)) {
             auto const& trp = trip_data.get(t);
@@ -242,15 +244,24 @@ void load_timetable(source_idx_t const src, dir const& d, timetable& tt) {
                   return trip_direction_idx_t{idx};
                 });
 
+            auto const line =
+                utl::get_or_create(lines, trp.route_->short_name_, [&]() {
+                  auto const idx = trip_line_idx_t{tt.trip_lines_.size()};
+                  tt.trip_lines_.emplace_back(trp.route_->short_name_);
+                  return idx;
+                });
+
             auto const merged_trip = tt.register_merged_trip({id});
             if (s.trips_.size() == 1U) {
               external_trip_ids.push_back(merged_trip);
               section_directions.push_back(direction);
+              section_lines.push_back(line);
             } else {
               for (auto section = 0U; section != trp.stop_seq_.size() - 1;
                    ++section) {
                 external_trip_ids.push_back(merged_trip);
                 section_directions.push_back(direction);
+                section_lines.push_back(line);
               }
             }
           }
@@ -264,12 +275,7 @@ void load_timetable(source_idx_t const src, dir const& d, timetable& tt) {
               .section_attributes_ = attributes,
               .section_providers_ = {first.route_->agency_},
               .section_directions_ = section_directions,
-              .section_lines_ = {
-                  utl::get_or_create(lines, first.route_->short_name_, [&]() {
-                    auto const idx = trip_line_idx_t{tt.trip_lines_.size()};
-                    tt.trip_lines_.emplace_back(first.route_->short_name_);
-                    return idx;
-                  })}});
+              .section_lines_ = section_lines});
         }
 
         tt.finish_route();

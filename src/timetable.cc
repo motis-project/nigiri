@@ -17,6 +17,15 @@ std::string reverse(std::string s) {
   return s;
 }
 
+void timetable::locations::resolve_timezones() {
+  for (auto& tz : timezones_) {
+    if (holds_alternative<pair<string, void const*>>(tz)) {
+      auto& [name, ptr] = tz.as<pair<string, void const*>>();
+      ptr = date::locate_zone(name);
+    }
+  }
+}
+
 std::ostream& operator<<(std::ostream& out, timetable const& tt) {
   auto const internal = tt.internal_interval_days();
   auto const num_days =
