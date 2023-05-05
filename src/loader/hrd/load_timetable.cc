@@ -62,6 +62,10 @@ void load_timetable(source_idx_t const src,
 
   auto sb = service_builder{st, tt};
   for (auto const& path : d.list_files(c.fplan_)) {
+    if (path.filename().generic_string().starts_with(".")) {
+      continue;
+    }
+
     log(log_lvl::info, "loader.hrd.services", "loading {}", path);
     auto const file = d.get_file(path);
     sb.add_services(
