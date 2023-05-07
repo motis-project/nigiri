@@ -39,6 +39,8 @@ private:
   static constexpr auto const kFwd = (SearchDir == direction::kForward);
   static constexpr auto const kBwd = (SearchDir == direction::kBackward);
 
+  bool start_dest_overlap() const;
+
   bool is_ontrip() const;
 
   bool is_better(auto a, auto b);

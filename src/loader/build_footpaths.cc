@@ -30,7 +30,11 @@ struct fmt::formatter<nigiri::matrix<T>> {
       -> decltype(ctx.out()) {
     for (auto i = 0U; i != m.n_rows_; ++i) {
       for (auto j = 0U; j != m.n_columns_; ++j) {
-        fmt::format_to(ctx.out(), "{:2} ", m[i][j]);
+        if (m[i][j] == std::numeric_limits<T>::max()) {
+          fmt::format_to(ctx.out(), "** ");
+        } else {
+          fmt::format_to(ctx.out(), "{:2} ", m[i][j]);
+        }
       }
       fmt::format_to(ctx.out(), "\n");
     }
@@ -179,7 +183,7 @@ void process_component(timetable& tt,
   };
 
   if constexpr (kTracing) {
-    auto const id = std::string_view{"de:12054:900230999::4"};
+    auto const id = std::string_view{"de:11000:900160002:1:50"};
     auto const needle =
         std::find_if(begin(tt.locations_.ids_), end(tt.locations_.ids_),
                      [&](auto&& x) { return x.view() == id; });
@@ -279,16 +283,16 @@ next:
     }
   }
 
-  print_dbg("STATIONS:\n");
+  print_dbg("NIGIRI STATIONS:\n");
   for (auto i = 0U; i != size; ++i) {
     print_dbg("{} = {} \n", i, location{tt, location_idx_t{(lb + i)->second}});
   }
 
-  print_dbg("MAT BEFORE {}\n", mat);
+  print_dbg("NIGIRI MAT BEFORE\n{}\n", mat);
 
   floyd_warshall(mat);
 
-  print_dbg("MAT AFTER\n{}", mat);
+  print_dbg("NIGIRI MAT AFTER\n{}", mat);
 
   print_dbg("\n\nOUTPUT\n");
   for (auto i = 0U; i < size; ++i) {

@@ -70,6 +70,13 @@ struct stop {
         ++it;
       }
     }
+
+    for (auto const& d : done) {
+      for (auto const& c : d->children_) {
+        done.insert(c);
+      }
+    }
+
     return done;
   }
 

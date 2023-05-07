@@ -666,7 +666,7 @@ void raptor<SearchDir, IntermodalTarget>::force_print_state(
     fmt::print(
         "[{}] {:12} [name={:48}, track={:10}, id={:24}]: ",
         state_.is_destination_[l] ? "X" : "_", l, name, track,
-        id.substr(0, std::min(std::string_view ::size_type{16U}, id.size())));
+        id.substr(0, std::min(std::string_view ::size_type{24U}, id.size())));
     auto const b = state_.best_[l];
     if (b == kInvalidTime<SearchDir>) {
       fmt::print("best=_________, round_times: ");
@@ -730,12 +730,43 @@ void raptor<SearchDir, IntermodalTarget>::set_time_at_destination(
 }
 
 template <direction SearchDir, bool IntermodalTarget>
+bool raptor<SearchDir, IntermodalTarget>::start_dest_overlap() const {
+  if (q_.start_match_mode_ == location_match_mode::kIntermodal &&
+      q_.dest_match_mode_ == location_match_mode::kIntermodal) {
+    // Handled by fastest_direct
+    return false;
+  }
+
+  auto const overlaps_start = [&](location_idx_t const x) {
+    return utl::any_of(q_.start_, [&](offset const& o) {
+      bool overlaps = false;
+      for_each_meta(
+          tt_, q_.start_match_mode_, o.target_,
+          [&](location_idx_t const eq) { overlaps = overlaps || eq == x; });
+      return overlaps;
+    });
+  };
+
+  return utl::any_of(q_.destinations_.front(), [&](offset const& o) {
+    bool overlaps = false;
+    for_each_meta(tt_, q_.dest_match_mode_, o.target_,
+                  [&](location_idx_t const eq) {
+                    overlaps = overlaps || overlaps_start(eq);
+                  });
+    return overlaps;
+  });
+}
+
+template <direction SearchDir, bool IntermodalTarget>
 void raptor<SearchDir, IntermodalTarget>::route() {
   state_.reset(tt_, kInvalidTime<SearchDir>);
   collect_destinations(tt_, q_.destinations_, q_.dest_match_mode_,
                        state_.destinations_, state_.is_destination_);
   state_.results_.resize(
       std::max(state_.results_.size(), state_.destinations_.size()));
+  if (start_dest_overlap()) {
+    return;
+  }
 
 #ifdef NIGIRI_LOWER_BOUND
 
