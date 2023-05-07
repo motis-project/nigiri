@@ -149,14 +149,16 @@ void expand_local_to_utc(
   auto const last_arr_time =
       trip_data.get(fet.trips_.back()).event_times_.back().arr_ -
       fet.offsets_.back();
-  auto const last_day_offset = (1 + (last_arr_time) / 1_days) * date::days{1};
+  auto const first_day_offset = (first_dep_time / 1_days) * date::days{1};
+  auto const last_day_offset = (last_arr_time / 1_days) * date::days{1};
 
   auto prev_conversion_parameters =
       std::tuple<duration_t, date::days>{duration_t{-1}, date::days{2}};
   auto prev_it = utc_time_traffic_days.end();
   for (auto day = gtfs_interval.from_; day != gtfs_interval.to_;
        day += std::chrono::days{1}) {
-    auto const service_days = interval{day, day + last_day_offset};
+    auto const service_days =
+        interval{day + first_day_offset, day + last_day_offset + date::days{1}};
 
     if (!selection.overlaps(service_days)) {
       continue;
@@ -174,24 +176,26 @@ void expand_local_to_utc(
             .value()
             .at(gtfs_local_day_idx);
     auto const first_dep_utc = first_dep_time - tz_offset;
-    auto const first_day_offset = date::days{static_cast<date::days::rep>(
+    auto const first_dep_day_offset = date::days{static_cast<date::days::rep>(
         std::floor(static_cast<double>(first_dep_utc.count()) / 1440))};
     auto const utc_traffic_day =
-        (day - tt.internal_interval_days().from_ + first_day_offset).count();
+        (day - tt.internal_interval_days().from_ + first_dep_day_offset)
+            .count();
 
     if (utc_traffic_day < 0 || utc_traffic_day >= kMaxDays) {
       continue;
     }
 
-    if (std::tuple{tz_offset, first_day_offset} != prev_conversion_parameters) {
+    if (std::tuple{tz_offset, first_dep_day_offset} !=
+        prev_conversion_parameters) {
       auto i = 0U;
       for (auto const [t, freq_offset] : utl::zip(fet.trips_, fet.offsets_)) {
         auto const& trp = trip_data.get(t);
         for (auto const [from, to] : utl::pairwise(trp.event_times_)) {
           utc_time_mem[i++] =
-              from.dep_ - freq_offset - tz_offset - first_day_offset;
+              from.dep_ - freq_offset - tz_offset - first_dep_day_offset;
           utc_time_mem[i++] =
-              to.arr_ - freq_offset - tz_offset - first_day_offset;
+              to.arr_ - freq_offset - tz_offset - first_dep_day_offset;
         }
       }
 
@@ -203,7 +207,7 @@ void expand_local_to_utc(
         it->second.set(static_cast<std::size_t>(utc_traffic_day));
       }
 
-      prev_conversion_parameters = {tz_offset, first_day_offset};
+      prev_conversion_parameters = {tz_offset, first_dep_day_offset};
       prev_it = it;
     } else {
       prev_it->second.set(static_cast<std::size_t>(utc_traffic_day));

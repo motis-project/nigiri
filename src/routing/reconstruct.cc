@@ -26,6 +26,14 @@ void trace_start(char const* fmt_str, Args... args) {
   }
 }
 
+bool is_journey_start(timetable const& tt,
+                      query const& q,
+                      location_idx_t const candidate_l) {
+  return utl::any_of(q.start_, [&](offset const& o) {
+    return matches(tt, q.start_match_mode_, o.target_, candidate_l);
+  });
+}
+
 template <direction SearchDir>
 std::optional<journey::leg> find_start_footpath(timetable const& tt,
                                                 query const& q,
@@ -39,10 +47,9 @@ std::optional<journey::leg> find_start_footpath(timetable const& tt,
     return kFwd ? a <= b : a >= b;
   };
 
-  auto const is_journey_start = [&](location_idx_t const candidate_l) {
-    return utl::any_of(q.start_, [&](offset const& o) {
-      return matches(tt, q.start_match_mode_, o.target_, candidate_l);
-    });
+  auto const is_ontrip = holds_alternative<unixtime_t>(q.start_time_);
+  auto const start_matches = [&](routing_time const a, routing_time const b) {
+    return is_ontrip ? is_better_or_eq(a, b) : a == b;
   };
 
   auto const leg_start_location =
@@ -51,7 +58,7 @@ std::optional<journey::leg> find_start_footpath(timetable const& tt,
       kFwd ? j.legs_.back().dep_time_ : j.legs_.back().arr_time_;
 
   if (q.start_match_mode_ != location_match_mode::kIntermodal &&
-      is_journey_start(leg_start_location) &&
+      is_journey_start(tt, q, leg_start_location) &&
       is_better_or_eq(j.start_time_, leg_start_time)) {
     trace_start(
         "  leg_start_location={} is a start, time matches ({}) - done\n",
@@ -62,15 +69,16 @@ std::optional<journey::leg> find_start_footpath(timetable const& tt,
         "  direct start excluded intermodal_start={}, is_journey_start({})={}, "
         "leg_start_time={}, journey_start_time={}\n",
         q.start_match_mode_ == location_match_mode::kIntermodal,
-        location{tt, leg_start_location}, is_journey_start(leg_start_location),
-        leg_start_time, j.start_time_);
+        location{tt, leg_start_location},
+        is_journey_start(tt, q, leg_start_location), leg_start_time,
+        j.start_time_);
   }
 
   trace_start(
       "j_start={} is not a start meta={}, start={}, checking footpaths\n",
       location{tt, leg_start_location},
       q.start_match_mode_ == location_match_mode::kEquivalent,
-      is_journey_start(leg_start_location));
+      is_journey_start(tt, q, leg_start_location));
   auto const& footpaths =
       kFwd ? tt.locations_.footpaths_in_[leg_start_location]
            : tt.locations_.footpaths_out_[leg_start_location];
@@ -134,13 +142,15 @@ std::optional<journey::leg> find_start_footpath(timetable const& tt,
     }
   } else {
     for (auto const& fp : footpaths) {
-      if (is_journey_start(fp.target_) &&
+      if (is_journey_start(tt, q, fp.target_) &&
           fp_target_time != kInvalidTime<SearchDir> &&
-          std::abs((j_start_time - fp_target_time).count()) ==
-              fp.duration_.count()) {
-        trace("  -> from={}, j_start={}, leg_start={}, fp_start\n",
-              location{tt, fp.target_}, location{tt, leg_start_location},
-              j.start_time_, fp_target_time);
+          start_matches(j_start_time + (kFwd ? 1 : -1) * fp.duration_,
+                        fp_target_time)) {
+        trace(
+            "  -> from={}, j_start={}, journey_start={}, fp_target_time={}, "
+            "duration={}\n",
+            location{tt, fp.target_}, location{tt, leg_start_location},
+            j.start_time_, fp_target_time, fp.duration_);
         return journey::leg{SearchDir,
                             fp.target_,
                             leg_start_location,
@@ -152,7 +162,7 @@ std::optional<journey::leg> find_start_footpath(timetable const& tt,
             "  no start: {} -> {}  is_journey_start(fp.target_)={} "
             "fp_start_time={}, j_start_time={}, fp_duration={}\n",
             location{tt, fp.target_}, location{tt, leg_start_location},
-            is_journey_start(fp.target_), fp_target_time, j_start_time,
+            is_journey_start(tt, q, fp.target_), fp_target_time, j_start_time,
             fp.duration_.count());
       }
     }
@@ -169,6 +179,11 @@ void reconstruct_journey(timetable const& tt,
   constexpr auto const kFwd = SearchDir == direction::kForward;
   auto const is_better_or_eq = [](auto a, auto b) {
     return kFwd ? a <= b : a >= b;
+  };
+
+  auto const is_ontrip = holds_alternative<unixtime_t>(q.start_time_);
+  auto const start_matches = [&](routing_time const a, routing_time const b) {
+    return is_ontrip ? is_better_or_eq(a, b) : a == b;
   };
 
   auto const best = [&](std::uint32_t const k, location_idx_t const l) {
@@ -217,18 +232,23 @@ void reconstruct_journey(timetable const& tt,
 
       // special case: first stop with meta stations
       if (k == 1 && q.start_match_mode_ == location_match_mode::kEquivalent) {
-        for (auto const& eq : tt.locations_.equivalences_[l]) {
-          if (is_better_or_eq(state.round_times_[k - 1][to_idx(eq)],
-                              event_time)) {
-            return journey::leg{
-                SearchDir,
-                timetable::stop{stop_seq[stop_idx]}.location_idx(),
-                timetable::stop{stop_seq[from_stop_idx]}.location_idx(),
-                event_time.to_unixtime(tt),
-                time.to_unixtime(tt),
-                journey::transport_enter_exit{
-                    t, stop_idx, static_cast<unsigned>(from_stop_idx)}};
-          }
+        if (is_journey_start(tt, q, l) &&
+            start_matches(state.round_times_[k - 1][to_idx(l)], event_time)) {
+          trace(
+              "      ENTRY AT META={} ORIG={}: k={} k-1={}, "
+              "best_at_stop=min({}, "
+              "{})={} <= event_time={}\n",
+              location{tt, l}, location{tt, l}, k, k - 1,
+              state.best_[to_idx(l)], state.round_times_[k - 1][to_idx(l)],
+              best(k - 1, l), event_time);
+          return journey::leg{
+              SearchDir,
+              timetable::stop{stop_seq[stop_idx]}.location_idx(),
+              timetable::stop{stop_seq[from_stop_idx]}.location_idx(),
+              event_time.to_unixtime(tt),
+              time.to_unixtime(tt),
+              journey::transport_enter_exit{
+                  t, stop_idx, static_cast<unsigned>(from_stop_idx)}};
         }
       }
     }

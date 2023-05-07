@@ -45,10 +45,16 @@ void dijkstra(timetable const& tt,
 
   std::map<location_idx_t, duration_t> min;
   for (auto const& start : q.destinations_.front()) {
-    auto const p = tt.locations_.parents_[start.target_];
-    auto const l = (p == location_idx_t::invalid()) ? start.target_ : p;
-    auto& m = utl::get_or_create(min, l, [&]() { return dists[to_idx(l)]; });
-    m = std::min(start.duration_, m);
+    for_each_meta(
+        tt, q.dest_match_mode_, start.target_, [&](location_idx_t const x) {
+          // Map to parent
+          // because the lower bound graph operates only on parents.
+          auto const p = tt.locations_.parents_[x];
+          auto const l = (p == location_idx_t::invalid()) ? x : p;
+          auto& m =
+              utl::get_or_create(min, l, [&]() { return dists[to_idx(l)]; });
+          m = std::min(start.duration_, m);
+        });
   }
 
   dial<label, kMaxTravelTime.count(), get_bucket> pq;
