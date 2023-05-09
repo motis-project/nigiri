@@ -12,6 +12,7 @@
 #include "cista/containers/bitvec.h"
 #include "cista/containers/flat_matrix.h"
 #include "cista/containers/mutable_fws_multimap.h"
+#include "cista/containers/nvec.h"
 #include "cista/containers/optional.h"
 #include "cista/containers/string.h"
 #include "cista/containers/tuple.h"
@@ -90,6 +91,9 @@ using string = cista::offset::string;
 
 template <typename T>
 using optional = cista::optional<T>;
+
+template <typename Key, typename T, std::size_t N>
+using nvec = cista::offset::nvec<Key, T, N>;
 
 using bitfield_idx_t = cista::strong<std::uint32_t, struct _bitfield_idx>;
 using location_idx_t = cista::strong<std::uint32_t, struct _location_idx>;
