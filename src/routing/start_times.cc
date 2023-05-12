@@ -172,7 +172,7 @@ void get_starts(direction const search_dir,
                                          ? tt.locations_.footpaths_out_[l]
                                          : tt.locations_.footpaths_in_[l];
               for (auto const& fp : footpaths) {
-                trace("FOOTPATH START: {} --offset={},fp_duration={}--> {}\n",
+                trace("  FOOTPATH START: {} --offset={},fp_duration={}--> {}\n",
                       location{tt, l}, o.duration_, fp.duration_,
                       location{tt, fp.target_});
                 add_starts_in_interval(
@@ -196,12 +196,15 @@ void get_starts(direction const search_dir,
                       ? tt.locations_.footpaths_out_[o.target_]
                       : tt.locations_.footpaths_in_[o.target_];
               for (auto const& fp : footpaths) {
+                trace("  FOOTPATH START: {} --offset={},fp_duration={}--> {}\n",
+                      location{tt, l}, o.duration_, fp.duration_,
+                      location{tt, fp.target_});
                 starts.emplace_back(
                     start{.time_at_start_ = t,
                           .time_at_stop_ = search_dir == direction::kForward
                                                ? t + o.duration_ + fp.duration_
                                                : t - o.duration_ - fp.duration_,
-                          .stop_ = l});
+                          .stop_ = fp.target_});
               }
             }
           }});
