@@ -879,9 +879,10 @@ void raptor<SearchDir, IntermodalTarget>::route() {
             state_.station_mark_[to_idx(s.stop_)] = true;
           }
           time_at_destination_ =
-              routing_time{tt_, from_it->time_at_start_} + duration_t{1} +
+              routing_time{tt_, from_it->time_at_start_} +
               (kFwd ? 1 : -1) *
-                  std::min(fastest_direct_, duration_t{kMaxTravelTime});
+                  (std::min(fastest_direct_, duration_t{kMaxTravelTime}) +
+                   1_minutes);
           trace_always(
               "time_at_destination={} + kMaxTravelTime/fastest_direct={} = "
               "{}\n",
