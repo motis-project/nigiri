@@ -348,9 +348,6 @@ void add_links_to_and_between_children(timetable& tt) {
   for (auto l = location_idx_t{0U}; l != tt.locations_.footpaths_out_.size();
        ++l) {
     for (auto const& fp : tt.locations_.footpaths_out_[l]) {
-      trace("ADDING {} TO CHILDREN OF {}:  {}\n", location{tt, l},
-            location{tt, fp.target_}, fp.duration_);
-
       for (auto const& neighbor_child : tt.locations_.children_[fp.target_]) {
         if (tt.locations_.types_[neighbor_child] ==
             location_type::kGeneratedTrack) {

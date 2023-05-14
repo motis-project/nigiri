@@ -191,10 +191,9 @@ void get_starts(direction const search_dir,
                       .stop_ = l});
 
             if (use_start_footpaths) {
-              auto const footpaths =
-                  search_dir == direction::kForward
-                      ? tt.locations_.footpaths_out_[o.target_]
-                      : tt.locations_.footpaths_in_[o.target_];
+              auto const footpaths = search_dir == direction::kForward
+                                         ? tt.locations_.footpaths_out_[l]
+                                         : tt.locations_.footpaths_in_[l];
               for (auto const& fp : footpaths) {
                 trace("  FOOTPATH START: {} --offset={},fp_duration={}--> {}\n",
                       location{tt, l}, o.duration_, fp.duration_,
