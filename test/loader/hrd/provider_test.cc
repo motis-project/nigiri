@@ -6,7 +6,7 @@
 using namespace nigiri;
 using namespace nigiri::loader::hrd;
 
-TEST(loader_hrd_providers, simple) {
+TEST(hrd, parse_providers) {
   constexpr auto const input =
       "00001 K 'DPN' L 'ABR' V 'ABELLIO Rail Mitteldeutschland GmbH'\n"
       "00001 : AM____\n"

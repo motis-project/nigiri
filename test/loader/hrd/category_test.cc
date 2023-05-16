@@ -5,7 +5,7 @@
 using namespace nigiri;
 using namespace nigiri::loader::hrd;
 
-TEST(loader_hrd_categories, parse_line) {
+TEST(hrd, parse_categories) {
   constexpr auto const file_content = R"(Bsv  3 C 0  Bus       0 N Bus
 Bus  5 C 0  Bus       0 N Bus
 RB   3 C 0  RB        0 N Regionalbahn

@@ -7,7 +7,7 @@
 using namespace nigiri;
 using namespace nigiri::loader::hrd;
 
-TEST(loader_hrd_attributes, parse_line) {
+TEST(hrd, parse_attributes_line) {
   constexpr auto const file_content = ",  0 260 10 Bus mit Fahrradanh\xE4nger#";
 
   for (auto const& c : configs) {
@@ -20,7 +20,7 @@ TEST(loader_hrd_attributes, parse_line) {
   }
 }
 
-TEST(loader_hrd_attributes, parse_and_ignore_line) {
+TEST(hrd, parse_attributes_and_ignore_line) {
   constexpr auto const file_content =
       "ZZ 0 060 10 zus\xE4tzlicher Zug#\n# ,  ,  ,";
 
@@ -34,7 +34,7 @@ TEST(loader_hrd_attributes, parse_and_ignore_line) {
   }
 }
 
-TEST(loader_hrd_attributes, ignore_output_rules) {
+TEST(hrd, ignore_attributes_output_rules) {
   constexpr auto const file_content = "# ,  ,  ,";
   for (auto const& c : configs) {
     timetable tt{};

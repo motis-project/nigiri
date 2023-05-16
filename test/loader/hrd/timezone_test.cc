@@ -6,7 +6,7 @@ using namespace nigiri;
 using namespace nigiri::loader::hrd;
 using namespace date;
 
-TEST(loader_hrd_timezone, roundtrip) {
+TEST(hrd, timezone_roundtrip) {
   constexpr auto const timezones_file_content = R"(
 0000000 +0100 +0200 29032020 0200 25102020 0300 +0200 28032021 0200 31102021 0300
 )";
@@ -54,7 +54,7 @@ TEST(loader_hrd_timezone, roundtrip) {
   }
 }
 
-TEST(loader_hrd_timezone, avv) {
+TEST(hrd, timezone_avv) {
   constexpr auto const input = R"(0000800 +0100 % Europe/Berlin
 0000800 +0200 28032021 0200 31102021 0300)";
   auto tt = timetable{};
