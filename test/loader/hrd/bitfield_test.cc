@@ -6,7 +6,7 @@
 using namespace nigiri;
 using namespace nigiri::loader::hrd;
 
-TEST(loader_hrd_bitfields, hex_str_to_bitset) {
+TEST(hrd, bitfields_hex_str_to_bitset) {
   EXPECT_ANY_THROW(hex_str_to_bitset("0"));
   EXPECT_ANY_THROW(hex_str_to_bitset("1"));
   EXPECT_ANY_THROW(hex_str_to_bitset("3"));
@@ -20,7 +20,7 @@ TEST(loader_hrd_bitfields, hex_str_to_bitset) {
   EXPECT_EQ(bitfield("000010000"), hex_str_to_bitset("C218"));
 }
 
-TEST(loader_hrd_bitfields, parse_file) {
+TEST(hrd, parse_bitfields) {
   constexpr auto const file_content =
       R"(000001 C0200C
 000002 C0100C)";

@@ -6,7 +6,7 @@
 
 using namespace nigiri::loader::hrd;
 
-TEST(loader_hrd, hash) {
+TEST(hrd, hash) {
   EXPECT_TRUE(
       applicable(hrd_5_20_26, nigiri::test_data::hrd_timetable::files()));
 

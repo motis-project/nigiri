@@ -10,6 +10,8 @@
 #include "cista/hash.h"
 #include "cista/mmap.h"
 
+#include "wyhash.h"
+
 #include "nigiri/loader/get_index.h"
 #include "nigiri/loader/gtfs/agency.h"
 #include "nigiri/loader/gtfs/calendar.h"
@@ -35,21 +37,33 @@ constexpr auto const required_files = {kAgencyFile, kStopFile, kRoutesFile,
                                        kTripsFile, kStopTimesFile};
 
 cista::hash_t hash(dir const& d) {
-  auto hash = cista::BASE_HASH;
+  if (d.type() == dir_type::kZip) {
+    return d.hash();
+  }
+
+  auto h = std::uint64_t{0U};
   auto const hash_file = [&](fs::path const& p) {
     if (!d.exists(p)) {
-      return;
+      h = wyhash64(h, _wyp[0]);
+    } else {
+      auto const f = d.get_file(p);
+      auto const data = f.data();
+      h = wyhash(data.data(), data.size(), h, _wyp);
     }
-    hash = cista::hash_combine(cista::hash(d.get_file(p).data()), hash);
   };
 
-  for (auto const& file_name : required_files) {
-    hash_file(file_name);
-  }
+  hash_file(kAgencyFile);
+  hash_file(kStopFile);
+  hash_file(kRoutesFile);
+  hash_file(kTripsFile);
+  hash_file(kStopTimesFile);
   hash_file(kCalenderFile);
   hash_file(kCalendarDatesFile);
+  hash_file(kTransfersFile);
+  hash_file(kFeedInfoFile);
+  hash_file(kFrequenciesFile);
 
-  return hash;
+  return h;
 }
 
 bool applicable(dir const& d) {

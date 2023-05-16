@@ -87,6 +87,7 @@ void parse_equivilant_stations(config const& c,
                   || token.starts_with("B")  // Bahnhofstafel
                   || token.starts_with("V")  // Virtueller Umstieg
                   || token.starts_with("S")  // Start-Ziel-Aequivalenz
+                  || token.starts_with("F")  // Fußweg-Aequivalenz
               ) {
                 return;
               }

@@ -32,7 +32,7 @@ constexpr auto const station_geo_file_content = R"(
 0000007  41.579799  59.076849 F_META
 )";
 
-TEST(loader_hrd_station, parse) {
+TEST(hrd, parse_station) {
   for (auto const& c : configs) {
     timetable tt;
     auto const src = source_idx_t{0U};

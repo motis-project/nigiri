@@ -12,6 +12,7 @@
 #include "utl/verify.h"
 
 #include "nigiri/logging.h"
+#include "wyhash.h"
 
 namespace nigiri::loader {
 
@@ -23,6 +24,22 @@ dir::dir(dir const&) = default;
 dir::dir(dir&&) noexcept = default;
 dir& dir::operator=(dir const&) = default;
 dir& dir::operator=(dir&&) noexcept = default;
+
+std::string normalize(std::filesystem::path const& p) {
+  std::string s;
+  auto first = true;
+  for (auto const& el : p) {
+    if (el == ".") {
+      continue;
+    }
+    if (!first) {
+      s += "/";
+    }
+    first = false;
+    s += el.generic_string();
+  }
+  return s;
+}
 
 // --- File directory implementation ---
 fs_dir::fs_dir(std::filesystem::path p) : dir{std::move(p)} {}
@@ -64,6 +81,19 @@ bool fs_dir::exists(std::filesystem::path const& p) const {
 }
 std::size_t fs_dir::file_size(std::filesystem::path const& p) const {
   return std::filesystem::file_size(path_ / p);
+}
+dir_type fs_dir::type() const { return dir_type::kFilesystem; }
+std::uint64_t fs_dir::hash() const {
+  auto h = std::uint64_t{0U};
+  for (auto const& entry :
+       std::filesystem::recursive_directory_iterator(path_)) {
+    auto const data = cista::mmap{entry.path().generic_string().c_str(),
+                                  cista::mmap::protection::READ};
+    auto const name = entry.path().generic_string();
+    h = wyhash(name.data(), name.size(), h, _wyp);
+    h = wyhash(data.data(), data.size(), h, _wyp);
+  }
+  return h;
 }
 
 // --- ZIP directory implementation ---
@@ -139,12 +169,18 @@ struct zip_dir::impl {
   }
   std::vector<std::filesystem::path> list_files(
       std::filesystem::path const& p) {
-    auto const parent = p.string();
-
-    auto const file_idx = get_file_idx(&ar_, p);
-    auto const is_dir = mz_zip_reader_is_file_a_directory(&ar_, file_idx);
-    if (is_dir != MZ_TRUE) {
-      return {p};
+    auto parent = p.string();
+    if (!parent.ends_with('/') && !p.has_extension()) {
+      parent += '/';
+    }
+    if (parent == "./" || parent == "/") {
+      parent = "";
+    } else {
+      auto const file_idx = get_file_idx(&ar_, parent);
+      auto const is_dir = mz_zip_reader_is_file_a_directory(&ar_, file_idx);
+      if (is_dir != MZ_TRUE) {
+        return {p};
+      }
     }
 
     std::vector<std::filesystem::path> files;
@@ -178,16 +214,25 @@ zip_dir::zip_dir(std::vector<std::uint8_t> b)
 zip_dir::~zip_dir() = default;
 std::vector<std::filesystem::path> zip_dir::list_files(
     std::filesystem::path const& p) const {
-  return impl_->list_files(p);
+  return impl_->list_files(normalize(p));
 }
 file zip_dir::get_file(std::filesystem::path const& p) const {
-  return file{p.string(), std::make_unique<zip_file_content>(&impl_->ar_, p)};
+  return file{p.string(),
+              std::make_unique<zip_file_content>(&impl_->ar_, normalize(p))};
 }
 bool zip_dir::exists(std::filesystem::path const& p) const {
-  return impl_->exists(p);
+  return impl_->exists(normalize(p));
 }
 std::size_t zip_dir::file_size(std::filesystem::path const& p) const {
-  return impl_->file_size(p);
+  return impl_->file_size(normalize(p));
+}
+dir_type zip_dir::type() const { return dir_type::kZip; }
+std::uint64_t zip_dir::hash() const {
+  return std::visit(
+      [](auto const& data) {
+        return wyhash(data.data(), data.size(), 0, _wyp);
+      },
+      impl_->memory_);
 }
 
 // --- In-memory directory implementation ---
@@ -198,14 +243,18 @@ mem_dir::mem_dir(mem_dir&&) noexcept = default;
 mem_dir& mem_dir::operator=(mem_dir const&) = default;
 mem_dir& mem_dir::operator=(mem_dir&&) noexcept = default;
 mem_dir& mem_dir::add(std::pair<std::filesystem::path, std::string> f) {
-  dir_.emplace(f);
+  dir_.emplace(normalize(f.first), std::move(f.second));
   return *this;
 }
 std::vector<std::filesystem::path> mem_dir::list_files(
     std::filesystem::path const& dir) const {
+  auto normal_dir = normalize(dir);
+  if (normal_dir == ".") {
+    normal_dir = "";
+  }
   std::vector<std::filesystem::path> paths;
   for (auto const& [p, _] : dir_) {
-    if (p.string().starts_with(dir.string())) {
+    if (p.string().starts_with(normal_dir)) {
       paths.emplace_back(p);
     }
   }
@@ -217,13 +266,14 @@ file mem_dir::get_file(std::filesystem::path const& p) const {
     std::string_view get() const final { return buf_; }
     std::string const& buf_;
   };
-  return file{p.string(), std::make_unique<mem_file_content>(dir_.at(p))};
+  return file{p.string(),
+              std::make_unique<mem_file_content>(dir_.at(normalize(p)))};
 }
 bool mem_dir::exists(std::filesystem::path const& p) const {
-  return dir_.contains(p);
+  return dir_.contains(normalize(p));
 }
 std::size_t mem_dir::file_size(std::filesystem::path const& p) const {
-  return dir_.at(p).size();
+  return dir_.at(normalize(p)).size();
 }
 
 std::unique_ptr<dir> make_dir(std::filesystem::path const& p) {
@@ -234,6 +284,16 @@ std::unique_ptr<dir> make_dir(std::filesystem::path const& p) {
   } else {
     throw utl::fail("path {} is neither a zip file nor a directory", p);
   }
+}
+dir_type mem_dir::type() const { return dir_type::kInMemory; }
+std::uint64_t mem_dir::hash() const {
+  auto h = std::uint64_t{0U};
+  for (auto const& [path, data] : dir_) {
+    auto const name = path.generic_string();
+    h = wyhash(name.data(), name.size(), h, _wyp);
+    h = wyhash(data.data(), data.size(), h, _wyp);
+  }
+  return h;
 }
 
 }  // namespace nigiri::loader

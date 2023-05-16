@@ -73,17 +73,30 @@ timezone_map_t parse_timezones(config const& c,
       return;
     }
 
-    if ((isdigit(line[0]) != 0) && line.length() >= 47) {
-      auto const t = tz_offsets{
-          .seasons_ = line.substr(14, utl::size(33)).trim().empty()
-                          ? vector<tz_offsets::season>{}
-                          : parse_seasons(line.substr(14)),
-          .offset_ =
-              duration_t{parse_mam(line.substr(c.tz_.type2_dst_to_midnight_))}};
-      tz.emplace(parse_eva_number(line.substr(c.tz_.type2_eva_)),
-                 std::pair{tt.locations_.register_timezone(t), t});
+    if ((std::isdigit(line[0]) != 0)) {
+      auto const is_season =
+          !line.substr(14, 22).empty() &&
+          utl::all_of(line.substr(14, 22).view(),
+                      [](char const x) { return x >= '0' && x <= '9'; });
+      auto const eva = parse_eva_number(line.substr(c.tz_.type2_eva_));
+      auto& t = tz[eva].second;
+      if (is_season) {
+        t.seasons_ = parse_seasons(line.substr(8));
+        return;
+      } else {
+        t.offset_ =
+            duration_t{parse_mam(line.substr(c.tz_.type2_dst_to_midnight_))};
+        if (!line.substr(14, utl::size(33)).trim().empty()) {
+          t.seasons_ = parse_seasons(line.substr(14));
+        }
+      }
     }
   });
+
+  for (auto& [eva, t] : tz) {
+    auto& [tz_idx, offsets] = t;
+    tz_idx = tt.locations_.register_timezone(offsets);
+  }
 
   return tz;
 }

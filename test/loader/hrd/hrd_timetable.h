@@ -104,8 +104,7 @@ inline loader::mem_dir base() {
            {(b / r[THROUGH_SERVICES][0]), ""},
            {(b / r[MERGE_SPLIT_SERVICES][0]), ""},
            {(b / r[TIMEZONES][0]), timezones_file_content},
-           {(b / r[FOOTPATHS][0]), station_metabhf_content},
-           {(b / r[MIN_CT_FILE][0]), ""}}};
+           {(b / r[FOOTPATHS][0]), station_metabhf_content}}};
 }
 
 inline loader::mem_dir files() {
