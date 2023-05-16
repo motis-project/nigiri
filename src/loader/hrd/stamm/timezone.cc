@@ -77,7 +77,7 @@ timezone_map_t parse_timezones(config const& c,
       auto const is_season =
           !line.substr(14, 22).empty() &&
           utl::all_of(line.substr(14, 22).view(),
-                      [](char const c) { return c >= '0' && c <= '9'; });
+                      [](char const x) { return x >= '0' && x <= '9'; });
       auto const eva = parse_eva_number(line.substr(c.tz_.type2_eva_));
       auto& t = tz[eva].second;
       if (is_season) {
