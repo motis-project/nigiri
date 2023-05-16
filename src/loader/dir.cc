@@ -12,6 +12,7 @@
 #include "utl/verify.h"
 
 #include "nigiri/logging.h"
+#include "wyhash.h"
 
 namespace nigiri::loader {
 
@@ -82,6 +83,18 @@ std::size_t fs_dir::file_size(std::filesystem::path const& p) const {
   return std::filesystem::file_size(path_ / p);
 }
 dir_type fs_dir::type() const { return dir_type::kFilesystem; }
+std::uint64_t fs_dir::hash() const {
+  auto h = std::uint64_t{0U};
+  for (auto const& entry :
+       std::filesystem::recursive_directory_iterator(path_)) {
+    auto const data = cista::mmap{entry.path().generic_string().c_str(),
+                                  cista::mmap::protection::READ};
+    auto const name = entry.path().generic_string();
+    h = wyhash(name.data(), name.size(), h, _wyp);
+    h = wyhash(data.data(), data.size(), h, _wyp);
+  }
+  return h;
+}
 
 // --- ZIP directory implementation ---
 std::optional<mz_uint32> find_file_idx(mz_zip_archive* ar,
@@ -160,7 +173,7 @@ struct zip_dir::impl {
     if (!parent.ends_with('/') && !p.has_extension()) {
       parent += '/';
     }
-    if (parent == "./") {
+    if (parent == "./" || parent == "/") {
       parent = "";
     } else {
       auto const file_idx = get_file_idx(&ar_, parent);
@@ -214,6 +227,13 @@ std::size_t zip_dir::file_size(std::filesystem::path const& p) const {
   return impl_->file_size(normalize(p));
 }
 dir_type zip_dir::type() const { return dir_type::kZip; }
+std::uint64_t zip_dir::hash() const {
+  return std::visit(
+      [](auto const& data) {
+        return wyhash(data.data(), data.size(), 0, _wyp);
+      },
+      impl_->memory_);
+}
 
 // --- In-memory directory implementation ---
 mem_dir::mem_dir(dir_t d) : dir{"::memory::"}, dir_{std::move(d)} {}
@@ -266,5 +286,14 @@ std::unique_ptr<dir> make_dir(std::filesystem::path const& p) {
   }
 }
 dir_type mem_dir::type() const { return dir_type::kInMemory; }
+std::uint64_t mem_dir::hash() const {
+  auto h = std::uint64_t{0U};
+  for (auto const& [path, data] : dir_) {
+    auto const name = path.generic_string();
+    h = wyhash(name.data(), name.size(), h, _wyp);
+    h = wyhash(data.data(), data.size(), h, _wyp);
+  }
+  return h;
+}
 
 }  // namespace nigiri::loader

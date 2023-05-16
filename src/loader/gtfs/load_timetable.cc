@@ -38,9 +38,7 @@ constexpr auto const required_files = {kAgencyFile, kStopFile, kRoutesFile,
 
 cista::hash_t hash(dir const& d) {
   if (d.type() == dir_type::kZip) {
-    auto const data = cista::mmap{d.path().generic_string().c_str(),
-                                  cista::mmap::protection::READ};
-    return wyhash(data.data(), data.size(), 0, _wyp);
+    return d.hash();
   }
 
   auto h = std::uint64_t{0U};

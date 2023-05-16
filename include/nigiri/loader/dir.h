@@ -39,6 +39,7 @@ struct dir {
   virtual bool exists(std::filesystem::path const&) const = 0;
   virtual std::size_t file_size(std::filesystem::path const&) const = 0;
   virtual dir_type type() const = 0;
+  virtual std::uint64_t hash() const = 0;
   std::filesystem::path path() const { return path_; }
 
 protected:
@@ -54,6 +55,7 @@ struct fs_dir final : public dir {
   bool exists(std::filesystem::path const&) const final;
   std::size_t file_size(std::filesystem::path const&) const final;
   dir_type type() const final;
+  std::uint64_t hash() const final;
 };
 
 struct zip_dir final : public dir {
@@ -66,6 +68,7 @@ struct zip_dir final : public dir {
   bool exists(std::filesystem::path const&) const final;
   std::size_t file_size(std::filesystem::path const&) const final;
   dir_type type() const final;
+  std::uint64_t hash() const final;
   struct impl;
   std::unique_ptr<impl> impl_;
 };
@@ -85,6 +88,7 @@ struct mem_dir final : public dir {
   bool exists(std::filesystem::path const&) const final;
   std::size_t file_size(std::filesystem::path const&) const final;
   dir_type type() const final;
+  std::uint64_t hash() const final;
   dir_t dir_;
 };
 
