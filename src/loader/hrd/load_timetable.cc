@@ -36,9 +36,9 @@ bool applicable(config const& c, dir const& d) {
 
 std::uint64_t hash(config const& c, dir const& d, std::uint64_t const seed) {
   if (d.type() == dir_type::kZip) {
-    auto const data =
-        cista::mmap{d.path().c_str(), cista::mmap::protection::READ};
-    return wyhash(data.data(), data.size(), 0, _wyp);
+    auto const data = cista::mmap{d.path().generic_string().c_str(),
+                                  cista::mmap::protection::READ};
+    return wyhash(data.data(), data.size(), 0U, _wyp);
   }
 
   auto h = seed;
