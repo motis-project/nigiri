@@ -65,6 +65,7 @@ bool fs_dir::exists(std::filesystem::path const& p) const {
 std::size_t fs_dir::file_size(std::filesystem::path const& p) const {
   return std::filesystem::file_size(path_ / p);
 }
+dir_type fs_dir::type() const { return dir_type::kFilesystem; }
 
 // --- ZIP directory implementation ---
 std::optional<mz_uint32> find_file_idx(mz_zip_archive* ar,
@@ -139,12 +140,18 @@ struct zip_dir::impl {
   }
   std::vector<std::filesystem::path> list_files(
       std::filesystem::path const& p) {
-    auto const parent = p.string();
-
-    auto const file_idx = get_file_idx(&ar_, p);
-    auto const is_dir = mz_zip_reader_is_file_a_directory(&ar_, file_idx);
-    if (is_dir != MZ_TRUE) {
-      return {p};
+    auto parent = p.string();
+    if (!parent.ends_with('/') && !p.has_extension()) {
+      parent += '/';
+    }
+    if (parent == "./") {
+      parent = "";
+    } else {
+      auto const file_idx = get_file_idx(&ar_, parent);
+      auto const is_dir = mz_zip_reader_is_file_a_directory(&ar_, file_idx);
+      if (is_dir != MZ_TRUE) {
+        return {p};
+      }
     }
 
     std::vector<std::filesystem::path> files;
@@ -178,17 +185,19 @@ zip_dir::zip_dir(std::vector<std::uint8_t> b)
 zip_dir::~zip_dir() = default;
 std::vector<std::filesystem::path> zip_dir::list_files(
     std::filesystem::path const& p) const {
-  return impl_->list_files(p);
+  return impl_->list_files(p.lexically_normal());
 }
 file zip_dir::get_file(std::filesystem::path const& p) const {
-  return file{p.string(), std::make_unique<zip_file_content>(&impl_->ar_, p)};
+  return file{p.string(), std::make_unique<zip_file_content>(
+                              &impl_->ar_, p.lexically_normal())};
 }
 bool zip_dir::exists(std::filesystem::path const& p) const {
-  return impl_->exists(p);
+  return impl_->exists(p.lexically_normal());
 }
 std::size_t zip_dir::file_size(std::filesystem::path const& p) const {
-  return impl_->file_size(p);
+  return impl_->file_size(p.lexically_normal());
 }
+dir_type zip_dir::type() const { return dir_type::kZip; }
 
 // --- In-memory directory implementation ---
 mem_dir::mem_dir(dir_t d) : dir{"::memory::"}, dir_{std::move(d)} {}
@@ -198,14 +207,18 @@ mem_dir::mem_dir(mem_dir&&) noexcept = default;
 mem_dir& mem_dir::operator=(mem_dir const&) = default;
 mem_dir& mem_dir::operator=(mem_dir&&) noexcept = default;
 mem_dir& mem_dir::add(std::pair<std::filesystem::path, std::string> f) {
-  dir_.emplace(f);
+  dir_.emplace(f.first.lexically_normal(), std::move(f.second));
   return *this;
 }
 std::vector<std::filesystem::path> mem_dir::list_files(
     std::filesystem::path const& dir) const {
+  auto normal_dir = dir.lexically_normal();
+  if (normal_dir == ".") {
+    normal_dir = "";
+  }
   std::vector<std::filesystem::path> paths;
   for (auto const& [p, _] : dir_) {
-    if (p.string().starts_with(dir.string())) {
+    if (p.string().starts_with(normal_dir.string())) {
       paths.emplace_back(p);
     }
   }
@@ -217,13 +230,14 @@ file mem_dir::get_file(std::filesystem::path const& p) const {
     std::string_view get() const final { return buf_; }
     std::string const& buf_;
   };
-  return file{p.string(), std::make_unique<mem_file_content>(dir_.at(p))};
+  return file{p.string(), std::make_unique<mem_file_content>(
+                              dir_.at(p.lexically_normal()))};
 }
 bool mem_dir::exists(std::filesystem::path const& p) const {
-  return dir_.contains(p);
+  return dir_.contains(p.lexically_normal());
 }
 std::size_t mem_dir::file_size(std::filesystem::path const& p) const {
-  return dir_.at(p).size();
+  return dir_.at(p.lexically_normal()).size();
 }
 
 std::unique_ptr<dir> make_dir(std::filesystem::path const& p) {
@@ -235,5 +249,6 @@ std::unique_ptr<dir> make_dir(std::filesystem::path const& p) {
     throw utl::fail("path {} is neither a zip file nor a directory", p);
   }
 }
+dir_type mem_dir::type() const { return dir_type::kInMemory; }
 
 }  // namespace nigiri::loader

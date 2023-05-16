@@ -8,6 +8,8 @@
 
 namespace nigiri::loader {
 
+enum class dir_type { kFilesystem, kZip, kInMemory };
+
 struct file {
   struct content {
     virtual ~content();
@@ -36,6 +38,7 @@ struct dir {
   virtual file get_file(std::filesystem::path const&) const = 0;
   virtual bool exists(std::filesystem::path const&) const = 0;
   virtual std::size_t file_size(std::filesystem::path const&) const = 0;
+  virtual dir_type type() const = 0;
   std::filesystem::path path() const { return path_; }
 
 protected:
@@ -50,6 +53,7 @@ struct fs_dir final : public dir {
   file get_file(std::filesystem::path const&) const final;
   bool exists(std::filesystem::path const&) const final;
   std::size_t file_size(std::filesystem::path const&) const final;
+  dir_type type() const final;
 };
 
 struct zip_dir final : public dir {
@@ -61,6 +65,7 @@ struct zip_dir final : public dir {
   file get_file(std::filesystem::path const&) const final;
   bool exists(std::filesystem::path const&) const final;
   std::size_t file_size(std::filesystem::path const&) const final;
+  dir_type type() const final;
   struct impl;
   std::unique_ptr<impl> impl_;
 };
@@ -79,6 +84,7 @@ struct mem_dir final : public dir {
   file get_file(std::filesystem::path const&) const final;
   bool exists(std::filesystem::path const&) const final;
   std::size_t file_size(std::filesystem::path const&) const final;
+  dir_type type() const final;
   dir_t dir_;
 };
 

@@ -19,7 +19,7 @@ std::vector<file> stamm::load_files(config const& c, dir const& d) {
                        }
                        for (auto const& file : alt) {
                          try {
-                           return d.get_file(c.core_data_ / file);
+                           return d.get_file(c.prefix(d) / c.core_data_ / file);
                          } catch (...) {
                          }
                        }

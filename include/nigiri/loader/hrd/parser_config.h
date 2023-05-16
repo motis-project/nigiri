@@ -7,11 +7,9 @@
 
 #include "utl/parser/cstr.h"
 
-#ifdef HAVE_DESIGNATED_INITIALIZERS
+#include "nigiri/loader/dir.h"
+
 #define INIT(f, ...) f = __VA_ARGS__
-#else
-#define INIT(f, ...) __VA_ARGS__
-#endif
 
 namespace nigiri::loader::hrd {
 
@@ -38,7 +36,6 @@ enum filename_key {
   TIMEZONES,
   FOOTPATHS,
   FOOTPATHS_EXT,
-  MIN_CT_FILE,
   NUM_FILES
 };
 
@@ -146,6 +143,7 @@ struct config {
 
   std::filesystem::path core_data_;
   std::filesystem::path fplan_;
+  std::filesystem::path zip_prefix_;
   std::string fplan_file_extension_;
 
   bool convert_utf8_;
@@ -156,6 +154,10 @@ struct config {
 
   bool is_available(filename_key const k) const {
     return !required_files_[k].empty();
+  }
+
+  std::filesystem::path prefix(dir const& d) const {
+    return d.type() == dir_type::kZip ? zip_prefix_ : ".";
   }
 };
 
@@ -308,13 +310,12 @@ const config hrd_5_00_8 = {
           {"vereinig_vt.101"},
           {"zeitvs.101"},
           {"metabhf.101"},
-          {"metabhf_zusatz.101"},
-          {"minct.csv"}}),
+          {"metabhf_zusatz.101"}}),
     INIT(.core_data_, "stamm"),
     INIT(.fplan_, "fahrten"),
+    INIT(.zip_prefix_, "rohdaten"),
     INIT(.fplan_file_extension_, ""),
-    INIT(.convert_utf8_, false),
-};
+    INIT(.convert_utf8_, false)};
 
 const config hrd_5_20_26 = {
     INIT(.att_,
@@ -464,11 +465,10 @@ const config hrd_5_20_26 = {
           {"durchbi.txt"},
           {"vereinig_vt.txt"},
           {"zeitvs.txt"},
-          {"metabhf.txt"},
-          {},
-          {"minct.csv"}}),
+          {"metabhf.txt"}}),
     INIT(.core_data_, "stamm"),
     INIT(.fplan_, "fahrten"),
+    INIT(.zip_prefix_, "rohdaten"),
     INIT(.fplan_file_extension_, ""),
     INIT(.convert_utf8_, false),
 };
@@ -622,10 +622,10 @@ const config hrd_5_20_39 = {
           {/* vereinig */},
           {"ZEITVS"},
           {"METABHF"},
-          {/* meta bhf zusatz */},
-          {/* min ct csv */}}),
+          {/* meta bhf zusatz */}}),
     INIT(.core_data_, "."),
     INIT(.fplan_, "FPLAN"),
+    INIT(.zip_prefix_, "."),
     INIT(.fplan_file_extension_, ""),
     INIT(.convert_utf8_, true),
 };
@@ -778,11 +778,10 @@ const config hrd_5_20_avv = {
           {"durchbi"},
           {"vereinig"},
           {"zeitvs"},
-          {"metabf"},
-          {/* meta bhf zusatz */},
-          {/* min ct csv */}}),
+          {"metabf"}}),
     INIT(.core_data_, "."),
     INIT(.fplan_, "."),
+    INIT(.zip_prefix_, "."),
     INIT(.fplan_file_extension_, ".LIN"),
     INIT(.convert_utf8_, false),
 };
