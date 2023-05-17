@@ -4,7 +4,7 @@
 #include "nigiri/loader/init_finish.h"
 #include "nigiri/routing/raptor.h"
 
-#include "nigiri/routing/search_state.h"
+#include "nigiri/routing/raptor_state.h"
 
 #include "../loader/hrd/hrd_timetable.h"
 
@@ -56,10 +56,11 @@ TEST(routing, raptor_forward) {
   load_timetable(src, loader::hrd::hrd_5_20_26, files_abc(), tt);
   finalize(tt);
 
-  auto state = routing::search_state{};
+  auto search_state = routing::search_state{};
+  auto raptor_state = routing::raptor_state{};
 
   auto fwd_r = routing::raptor<direction::kForward, false>{
-      tt, state,
+      tt, search_state, raptor_state,
       routing::query{
           .start_time_ =
               interval<unixtime_t>{
@@ -86,7 +87,7 @@ TEST(routing, raptor_forward) {
 
   std::stringstream ss;
   ss << "\n";
-  for (auto const& x : state.results_.at(0)) {
+  for (auto const& x : search_state.results_.at(0)) {
     x.print(ss, tt);
     ss << "\n\n";
   }
@@ -137,10 +138,11 @@ TEST(routing, raptor_backward) {
   load_timetable(src, loader::hrd::hrd_5_20_26, files_abc(), tt);
   finalize(tt);
 
-  auto state = routing::search_state{};
+  auto search_state = routing::search_state{};
+  auto raptor_state = routing::raptor_state{};
 
   auto bwd_r = routing::raptor<direction::kBackward, false>{
-      tt, state,
+      tt, search_state, raptor_state,
       routing::query{
           .start_time_ =
               interval<unixtime_t>{
@@ -167,7 +169,7 @@ TEST(routing, raptor_backward) {
 
   std::stringstream ss;
   ss << "\n";
-  for (auto const& x : state.results_.at(0)) {
+  for (auto const& x : search_state.results_.at(0)) {
     x.print(ss, tt);
     ss << "\n\n";
   }

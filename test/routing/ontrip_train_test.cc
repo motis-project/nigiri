@@ -6,7 +6,7 @@
 #include "nigiri/print_transport.h"
 #include "nigiri/routing/ontrip_train.h"
 #include "nigiri/routing/raptor.h"
-#include "nigiri/routing/search_state.h"
+#include "nigiri/routing/raptor_state.h"
 #include "nigiri/timetable.h"
 
 #include "../loader/hrd/hrd_timetable.h"
@@ -49,16 +49,18 @@ TEST(routing, ontrip_train) {
       get_transport(tt, "3374/0000008/1410/0000006/2950/", March / 30 / 2020);
   ASSERT_TRUE(t.has_value());
   generate_ontrip_train_query(tt, *t, 1, q);
-  auto state = routing::search_state{};
-  auto fwd_r = routing::raptor<direction::kForward, true>{tt, state, q};
+  auto search_state = routing::search_state{};
+  auto raptor_state = routing::raptor_state{};
+  auto fwd_r = routing::raptor<direction::kForward, true>{tt, search_state,
+                                                          raptor_state, q};
   fwd_r.route();
 
   std::stringstream ss;
   ss << "\n";
-  for (auto const& x : state.results_.at(0)) {
+  for (auto const& x : search_state.results_.at(0)) {
     std::cout << "result\n";
     x.print(std::cout, tt);
     ss << "\n\n";
   }
-  std::cout << "results: " << state.results_.at(0).size() << "\n";
+  std::cout << "results: " << search_state.results_.at(0).size() << "\n";
 }

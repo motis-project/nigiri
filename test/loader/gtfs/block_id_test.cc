@@ -4,7 +4,7 @@
 #include "nigiri/loader/gtfs/load_timetable.h"
 #include "nigiri/loader/init_finish.h"
 #include "nigiri/routing/raptor.h"
-#include "nigiri/routing/search_state.h"
+#include "nigiri/routing/raptor_state.h"
 #include "nigiri/timetable.h"
 
 using namespace nigiri;
@@ -135,9 +135,10 @@ TEST(gtfs, block_id) {
   auto const routing_query = [&](std::string_view const& from,
                                  std::string_view const& to,
                                  std::string_view const& time) {
-    auto state = routing::search_state{};
+    auto search_state = routing::search_state{};
+    auto raptor_state = routing::raptor_state{};
     routing::raptor<direction::kForward, false>{
-        tt, state,
+        tt, search_state, raptor_state,
         routing::query{
             .start_time_ = parse_time(time, "%Y-%m-%d %H:%M %Z"),
             .start_match_mode_ = nigiri::routing::location_match_mode::kExact,
@@ -156,7 +157,7 @@ TEST(gtfs, block_id) {
             .extend_interval_earlier_ = false,
             .extend_interval_later_ = false}}
         .route();
-    return state.results_.front();
+    return search_state.results_.front();
   };
 
   auto const expect_no_transfers = [](routing::journey const& j) {

@@ -3,15 +3,15 @@
 #include <cinttypes>
 
 #include "nigiri/routing/query.h"
+#include "nigiri/routing/raptor_state.h"
 #include "nigiri/routing/routing_time.h"
+#include "nigiri/routing/search.h"
 
 namespace nigiri {
 struct timetable;
 }
 
 namespace nigiri::routing {
-
-struct search_state;
 
 struct stats {
   std::uint64_t n_routing_time_{0ULL};
@@ -29,8 +29,10 @@ struct stats {
 };
 
 template <direction SearchDir, bool IntermodalTarget>
-struct raptor {
-  raptor(timetable const& tt, search_state& state, query q);
+struct raptor : public search<raptor<SearchDir, IntermodalTarget>> {
+  using parent = search<raptor<SearchDir, IntermodalTarget>>;
+
+  raptor(timetable const&, search_state&, raptor_state&, query);
   void route();
 
   stats const& get_stats() const;
@@ -38,6 +40,8 @@ struct raptor {
 private:
   static constexpr auto const kFwd = (SearchDir == direction::kForward);
   static constexpr auto const kBwd = (SearchDir == direction::kBackward);
+
+  search<raptor<SearchDir, IntermodalTarget>>& get_search() { return *this; }
 
   bool start_dest_overlap() const;
 
@@ -86,7 +90,7 @@ private:
   std::uint16_t n_days_;
   query q_;
   routing_time time_at_destination_{kInvalidTime<SearchDir>};
-  search_state& state_;
+  raptor_state& state_;
   stats stats_;
   duration_t fastest_direct_;
 };

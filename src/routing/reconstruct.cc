@@ -4,7 +4,8 @@
 #include "utl/helpers/algorithm.h"
 
 #include "nigiri/routing/for_each_meta.h"
-#include "nigiri/routing/search_state.h"
+#include "nigiri/routing/journey.h"
+#include "nigiri/routing/raptor_state.h"
 #include "nigiri/special_stations.h"
 
 namespace nigiri::routing {
@@ -38,7 +39,7 @@ template <direction SearchDir>
 std::optional<journey::leg> find_start_footpath(timetable const& tt,
                                                 query const& q,
                                                 journey const& j,
-                                                search_state const& state) {
+                                                raptor_state const& state) {
   trace("find_start_footpath()\n");
 
   constexpr auto const kFwd = SearchDir == direction::kForward;
@@ -174,7 +175,7 @@ std::optional<journey::leg> find_start_footpath(timetable const& tt,
 template <direction SearchDir>
 void reconstruct_journey(timetable const& tt,
                          query const& q,
-                         search_state const& state,
+                         raptor_state const& raptor_state,
                          journey& j) {
   constexpr auto const kFwd = SearchDir == direction::kForward;
   auto const is_better_or_eq = [](auto a, auto b) {
@@ -187,7 +188,8 @@ void reconstruct_journey(timetable const& tt,
   };
 
   auto const best = [&](std::uint32_t const k, location_idx_t const l) {
-    return std::min(state.best_[to_idx(l)], state.round_times_[k][to_idx(l)]);
+    return std::min(raptor_state.best_[to_idx(l)],
+                    raptor_state.round_times_[k][to_idx(l)]);
   };
 
   auto const find_entry_in_prev_round =
@@ -211,7 +213,8 @@ void reconstruct_journey(timetable const& tt,
       auto const event_time = routing_time{
           t.day_, tt.event_mam(t.t_idx_, stop_idx,
                                kFwd ? event_type::kDep : event_type::kArr)};
-      if (is_better_or_eq(state.round_times_[k - 1][to_idx(l)], event_time)) {
+      if (is_better_or_eq(raptor_state.round_times_[k - 1][to_idx(l)],
+                          event_time)) {
         trace("      FOUND ENTRY AT {}: {} <= {}\n", location{tt, l},
               best(k - 1, l), event_time);
         return journey::leg{
@@ -226,21 +229,24 @@ void reconstruct_journey(timetable const& tt,
         trace(
             "      ENTRY NOT POSSIBLE AT {}: k={} k-1={}, best_at_stop=min({}, "
             "{})={} > event_time={}\n",
-            location{tt, l}, k, k - 1, state.best_[to_idx(l)],
-            state.round_times_[k - 1][to_idx(l)], best(k - 1, l), event_time);
+            location{tt, l}, k, k - 1, raptor_state.best_[to_idx(l)],
+            raptor_state.round_times_[k - 1][to_idx(l)], best(k - 1, l),
+            event_time);
       }
 
       // special case: first stop with meta stations
       if (k == 1 && q.start_match_mode_ == location_match_mode::kEquivalent) {
         if (is_journey_start(tt, q, l) &&
-            start_matches(state.round_times_[k - 1][to_idx(l)], event_time)) {
+            start_matches(raptor_state.round_times_[k - 1][to_idx(l)],
+                          event_time)) {
           trace(
               "      ENTRY AT META={} ORIG={}: k={} k-1={}, "
               "best_at_stop=min({}, "
               "{})={} <= event_time={}\n",
               location{tt, l}, location{tt, l}, k, k - 1,
-              state.best_[to_idx(l)], state.round_times_[k - 1][to_idx(l)],
-              best(k - 1, l), event_time);
+              raptor_state.best_[to_idx(l)],
+              raptor_state.round_times_[k - 1][to_idx(l)], best(k - 1, l),
+              event_time);
           return journey::leg{
               SearchDir,
               timetable::stop{stop_seq[stop_idx]}.location_idx(),
@@ -353,7 +359,7 @@ void reconstruct_journey(timetable const& tt,
   auto const get_legs =
       [&](unsigned const k,
           location_idx_t const l) -> std::pair<journey::leg, journey::leg> {
-    auto const curr_time = state.round_times_[k][to_idx(l)];
+    auto const curr_time = raptor_state.round_times_[k][to_idx(l)];
     if (q.dest_match_mode_ == location_match_mode::kIntermodal &&
         k == j.transfers_ + 1U) {
       trace("  CHECKING INTERMODAL DEST\n");
@@ -397,8 +403,9 @@ void reconstruct_journey(timetable const& tt,
                       "  BAD intermodal+footpath dest offset: {}@{} --{}--> "
                       "{}@{} --{}--> END@{} (type={})\n",
                       location{tt, fp.target_},
-                      state.round_times_[k][to_idx(fp.target_)], fp.duration_,
-                      location{tt, eq}, state.round_times_[k][to_idx(eq)],
+                      raptor_state.round_times_[k][to_idx(fp.target_)],
+                      fp.duration_, location{tt, eq},
+                      raptor_state.round_times_[k][to_idx(eq)],
                       dest_offset.duration_, curr_time, dest_offset.type_);
                 }
               }
@@ -455,7 +462,7 @@ void reconstruct_journey(timetable const& tt,
     j.add(std::move(transport_leg));
   }
 
-  auto init_fp = find_start_footpath<SearchDir>(tt, q, j, state);
+  auto init_fp = find_start_footpath<SearchDir>(tt, q, j, raptor_state);
   if (init_fp.has_value()) {
     j.add(std::move(*init_fp));
   }
@@ -469,10 +476,14 @@ void reconstruct_journey(timetable const& tt,
   }
 }
 
-template void reconstruct_journey<direction::kForward>(
-    timetable const& tt, query const& q, search_state const& state, journey& j);
+template void reconstruct_journey<direction::kForward>(timetable const&,
+                                                       query const&,
+                                                       raptor_state const&,
+                                                       journey& j);
 
-template void reconstruct_journey<direction::kBackward>(
-    timetable const& tt, query const& q, search_state const& state, journey& j);
+template void reconstruct_journey<direction::kBackward>(timetable const&,
+                                                        query const&,
+                                                        raptor_state const&,
+                                                        journey& j);
 
 }  // namespace nigiri::routing
