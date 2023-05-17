@@ -22,26 +22,48 @@ struct stats {
   std::uint64_t n_earliest_arrival_updated_by_footpath_{0ULL};
   std::uint64_t fp_update_prevented_by_lower_bound_{0ULL};
   std::uint64_t route_update_prevented_by_lower_bound_{0ULL};
-  std::uint64_t lb_time_{0ULL};
-  std::uint64_t fastest_direct_{0ULL};
-  std::uint64_t search_iterations_{0ULL};
-  std::uint64_t interval_extensions_{0ULL};
 };
 
 template <direction SearchDir, bool IntermodalTarget>
-struct raptor : public search<raptor<SearchDir, IntermodalTarget>> {
-  using parent = search<raptor<SearchDir, IntermodalTarget>>;
+struct raptor : public search<SearchDir, raptor<SearchDir, IntermodalTarget>> {
+  using parent = search<SearchDir, raptor<SearchDir, IntermodalTarget>>;
 
   raptor(timetable const&, search_state&, raptor_state&, query);
-  void route();
 
   stats const& get_stats() const;
 
-private:
+  void reset_state();
+  void reset_arrivals() {
+    utl::fill(state_.best_, kInvalidTime<SearchDir>);
+    state_.round_times_.resize(kMaxTransfers + 1U, tt().n_locations());
+    state_.round_times_.reset(kInvalidTime<SearchDir>);
+  }
+  void next_start_time(unixtime_t const /* time_at_start */) {
+    utl::fill(state_.best_, kInvalidTime<SearchDir>);
+  }
+  void init(location_idx_t const l, routing_time const t) {
+    state_.round_times_[0U][to_idx(l)] = t;
+    state_.station_mark_[to_idx(l)] = true;
+  }
+  void set_time_at_destination(routing_time const t) {
+    time_at_destination_ = t;
+  }
+
+  static constexpr bool use_lower_bounds = true;
+
   static constexpr auto const kFwd = (SearchDir == direction::kForward);
   static constexpr auto const kBwd = (SearchDir == direction::kBackward);
 
-  search<raptor<SearchDir, IntermodalTarget>>& get_search() { return *this; }
+  search<SearchDir, raptor<SearchDir, IntermodalTarget>>& get_search() {
+    return *this;
+  }
+
+  search<SearchDir, raptor<SearchDir, IntermodalTarget>> const& get_search()
+      const {
+    return *this;
+  }
+
+  timetable const& tt() const { return get_search().tt_; }
 
   bool start_dest_overlap() const;
 
@@ -59,9 +81,9 @@ private:
   routing_time time_at_stop(transport, unsigned stop_idx, event_type ev_type);
 
   std::string_view transport_name(transport_idx_t const t) const {
-    return tt_
+    return tt()
         .trip_display_names_
-            [tt_.merged_trips_[tt_.transport_to_trip_section_[t].front()]
+            [tt().merged_trips_[tt().transport_to_trip_section_[t].front()]
                  .front()]
         .view();
   }
@@ -86,13 +108,10 @@ private:
 
   void set_time_at_destination(unsigned round_k);
 
-  timetable const& tt_;
   std::uint16_t n_days_;
-  query q_;
   routing_time time_at_destination_{kInvalidTime<SearchDir>};
   raptor_state& state_;
   stats stats_;
-  duration_t fastest_direct_;
 };
 
 }  // namespace nigiri::routing

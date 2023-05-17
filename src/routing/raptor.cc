@@ -5,15 +5,10 @@
 #include "fmt/core.h"
 
 #include "utl/enumerate.h"
-#include "utl/equal_ranges_linear.h"
 #include "utl/erase_if.h"
 #include "utl/helpers/algorithm.h"
 #include "utl/overloaded.h"
-#include "utl/timing.h"
 
-#include "nigiri/routing/dijkstra.h"
-#include "nigiri/routing/for_each_meta.h"
-#include "nigiri/routing/get_fastest_direct.h"
 #include "nigiri/routing/journey.h"
 #include "nigiri/routing/limits.h"
 #include "nigiri/routing/raptor_state.h"
@@ -21,41 +16,6 @@
 #include "nigiri/routing/start_times.h"
 #include "nigiri/special_stations.h"
 #include "nigiri/timetable.h"
-
-#define NIGIRI_LOWER_BOUND
-
-#define NIGIRI_RAPTOR_COUNTING
-#ifdef NIGIRI_RAPTOR_COUNTING
-#define NIGIRI_COUNT(s) ++stats_.s
-#else
-#define NIGIRI_COUNT(s)
-#endif
-
-// #define NIGIRI_RAPTOR_TRACING
-// #define NIGIRI_RAPTOR_TRACING_ONLY_UPDATES
-// #define NIGIRI_RAPTOR_INTERVAL_TRACING
-
-#ifdef NIGIRI_RAPTOR_INTERVAL_TRACING
-#define trace_interval(...) fmt::print(__VA_ARGS__)
-#else
-#define trace_interval(...)
-#endif
-
-#ifdef NIGIRI_RAPTOR_TRACING
-
-#ifdef NIGIRI_RAPTOR_TRACING_ONLY_UPDATES
-#define trace(...)
-#else
-#define trace(...) fmt::print(__VA_ARGS__)
-#endif
-
-#define trace_always(...) fmt::print(__VA_ARGS__)
-#define trace_upd(...) fmt::print(__VA_ARGS__)
-#else
-#define trace(...)
-#define trace_always(...)
-#define trace_upd(...)
-#endif
 
 namespace nigiri::routing {
 
@@ -82,13 +42,10 @@ raptor<SearchDir, IntermodalTarget>::raptor(timetable const& tt,
                                             search_state& search_state,
                                             raptor_state& state,
                                             query q)
-    : parent{search_state},
-      tt_{tt},
-      n_days_{static_cast<std::uint16_t>(
-          tt_.internal_interval_days().size().count())},
-      q_{std::move(q)},
-      state_{state},
-      fastest_direct_{get_fastest_direct(tt_, q_, SearchDir)} {}
+    : parent{tt, search_state, q}, state_{state} {
+  n_days_ = static_cast<std::uint16_t>(
+      this->tt().internal_interval_days().size().count());
+}
 
 template <direction SearchDir, bool IntermodalTarget>
 bool raptor<SearchDir, IntermodalTarget>::is_better(auto a, auto b) {
@@ -111,23 +68,18 @@ stats const& raptor<SearchDir, IntermodalTarget>::get_stats() const {
 }
 
 template <direction SearchDir, bool IntermodalTarget>
-bool raptor<SearchDir, IntermodalTarget>::is_ontrip() const {
-  return holds_alternative<unixtime_t>(q_.start_time_);
-}
-
-template <direction SearchDir, bool IntermodalTarget>
 routing_time raptor<SearchDir, IntermodalTarget>::time_at_stop(
     route_idx_t const r,
     transport const t,
     unsigned const stop_idx,
     event_type const ev_type) {
-  return {t.day_, tt_.event_mam(r, t.t_idx_, stop_idx, ev_type)};
+  return {t.day_, tt().event_mam(r, t.t_idx_, stop_idx, ev_type)};
 }
 
 template <direction SearchDir, bool IntermodalTarget>
 routing_time raptor<SearchDir, IntermodalTarget>::time_at_stop(
     transport const t, unsigned const stop_idx, event_type const ev_type) {
-  return {t.day_, tt_.event_mam(t.t_idx_, stop_idx, ev_type)};
+  return {t.day_, tt().event_mam(t.t_idx_, stop_idx, ev_type)};
 }
 
 template <direction SearchDir, bool IntermodalTarget>
@@ -148,18 +100,18 @@ transport raptor<SearchDir, IntermodalTarget>::get_earliest_transport(
   trace(
       "┊ │k={}    et: current_best_at_stop={}, stop_idx={}, "
       "location=(name={}, id={}, idx={}), n_days_to_iterate={}\n",
-      k, time, stop_idx, tt_.locations_.names_[l_idx].view(),
-      tt_.locations_.ids_[l_idx].view(), l_idx, n_days_to_iterate);
+      k, time, stop_idx, tt().locations_.names_[l_idx].view(),
+      tt().locations_.ids_[l_idx].view(), l_idx, n_days_to_iterate);
 
-  auto const event_times = tt_.event_times_at_stop(
+  auto const event_times = tt().event_times_at_stop(
       r, stop_idx, kFwd ? event_type::kDep : event_type::kArr);
 
-#if defined(NIGIRI_RAPTOR_TRACING) && \
-    !defined(NIGIRI_RAPTOR_TRACING_ONLY_UPDATES)
+#if defined(NIGIRI_ROUTING_TRACING) && \
+    !defined(NIGIRI_ROUTING_TRACING_ONLY_UPDATES)
   for (auto const [t_offset, x] : utl::enumerate(event_times)) {
-    auto const t = tt_.route_transport_ranges_[r][t_offset];
+    auto const t = tt().route_transport_ranges_[r][t_offset];
     trace("┊ │k={}        event_times: transport={}, name={}: {} at {}: {}\n",
-          k, t, transport_name(t), kFwd ? "dep" : "arr", location{tt_, l_idx},
+          k, t, transport_name(t), kFwd ? "dep" : "arr", location{tt(), l_idx},
           x);
   }
 #endif
@@ -186,7 +138,7 @@ transport raptor<SearchDir, IntermodalTarget>::get_earliest_transport(
     trace(
         "┊ │k={}      day={}/{}, ev_time_range.size() = {}, "
         "transport_range={}, first={}, last={}\n",
-        k, i, day, ev_time_range.size(), tt_.route_transport_ranges_[r],
+        k, i, day, ev_time_range.size(), tt().route_transport_ranges_[r],
         *ev_time_range.begin(), *(ev_time_range.end() - 1));
     for (auto it = begin(ev_time_range); it != end(ev_time_range); ++it) {
       auto const t_offset = static_cast<std::size_t>(&*it - event_times.data());
@@ -199,14 +151,14 @@ transport raptor<SearchDir, IntermodalTarget>::get_earliest_transport(
             "┊ │k={}      => transport={}, name={}, day={}/{}, best_mam={}, "
             "transport_mam={}, transport_time={} => TIME AT DEST {} IS "
             "BETTER!\n",
-            k, tt_.route_transport_ranges_[r][t_offset],
-            transport_name(tt_.route_transport_ranges_[r][t_offset]), i, day,
+            k, tt().route_transport_ranges_[r][t_offset],
+            transport_name(tt().route_transport_ranges_[r][t_offset]), i, day,
             mam_at_stop, ev_mam, routing_time{day, ev_mam},
             time_at_destination_);
         return {transport_idx_t::invalid(), day_idx_t::invalid()};
       }
 
-      auto const t = tt_.route_transport_ranges_[r][t_offset];
+      auto const t = tt().route_transport_ranges_[r][t_offset];
       if (day == day_at_stop && !is_better_or_eq(mam_at_stop, ev_mam)) {
         trace(
             "┊ │k={}      => transport={}, name={}, day={}/{}, best_mam={}, "
@@ -219,7 +171,7 @@ transport raptor<SearchDir, IntermodalTarget>::get_earliest_transport(
           ev.count() < 1440
               ? 0
               : static_cast<cista::base_t<day_idx_t>>(ev.count() / 1440));
-      if (!tt_.bitfields_[tt_.transport_traffic_days_[t]].test(
+      if (!tt().bitfields_[tt().transport_traffic_days_[t]].test(
               static_cast<std::size_t>(to_idx(day) - ev_day_offset))) {
         trace(
             "┊ │k={}      => transport={}, name={}, day={}/{}, "
@@ -247,7 +199,7 @@ transport raptor<SearchDir, IntermodalTarget>::get_earliest_transport(
 template <direction SearchDir, bool IntermodalTarget>
 bool raptor<SearchDir, IntermodalTarget>::update_route(unsigned const k,
                                                        route_idx_t const r) {
-  auto const stop_seq = tt_.route_location_seq_[r];
+  auto const stop_seq = tt().route_location_seq_[r];
   bool any_marked = false;
 
   auto et = transport{};
@@ -259,20 +211,20 @@ bool raptor<SearchDir, IntermodalTarget>::update_route(unsigned const k,
 
     if (!et.is_valid() && !state_.prev_station_mark_[l_idx]) {
       trace("┊ │k={}  stop_idx={} ({}): not marked, no et - skip\n", k,
-            stop_idx, location{tt_, location_idx_t{l_idx}});
+            stop_idx, location{tt(), location_idx_t{l_idx}});
       continue;
     }
 
     auto current_best =
         get_best(state_.best_[l_idx], state_.round_times_[k][l_idx]);
     auto const transfer_time_offset =
-        (kFwd ? 1 : -1) * tt_.locations_.transfer_time_[location_idx_t{l_idx}];
+        (kFwd ? 1 : -1) * tt().locations_.transfer_time_[location_idx_t{l_idx}];
 
     trace(
         "┊ │k={}  stop_idx={}, location=(name={}, id={}, idx={}): "
         "current_best={}, search_dir={}\n",
-        k, stop_idx, tt_.locations_.names_[location_idx_t{l_idx}].view(),
-        tt_.locations_.ids_[location_idx_t{l_idx}].view(), l_idx,
+        k, stop_idx, tt().locations_.names_[location_idx_t{l_idx}].view(),
+        tt().locations_.ids_[location_idx_t{l_idx}].view(), l_idx,
         get_best(state_.best_[l_idx], state_.round_times_[k][l_idx]),
         kFwd ? "FWD" : "BWD");
 
@@ -301,23 +253,23 @@ bool raptor<SearchDir, IntermodalTarget>::update_route(unsigned const k,
                            (kFwd ? 1 : -1) * lower_bound,
                        time_at_destination_)) {
 
-#ifdef NIGIRI_RAPTOR_TRACING
+#ifdef NIGIRI_ROUTING_TRACING
           auto const trip_idx =
-              tt_.merged_trips_[tt_.transport_to_trip_section_[et.t_idx_]
-                                    .front()]
+              tt().merged_trips_[tt().transport_to_trip_section_[et.t_idx_]
+                                     .front()]
                   .front();
           trace_upd(
               "┊ │k={}    *** LB NO UPD: transport={}, name={}, debug={}:{}, "
               "time_by_transport={} BETTER THAN current_best={} => (name={}, "
               "id={}) - LB={}, LB_AT_DEST={} (unreachable={})!\n",
-              k, et, tt_.trip_display_names_[trip_idx].view(),
-              tt_.source_file_names_
-                  [tt_.trip_debug_[trip_idx].front().source_file_idx_]
+              k, et, tt().trip_display_names_[trip_idx].view(),
+              tt().source_file_names_
+                  [tt().trip_debug_[trip_idx].front().source_file_idx_]
                       .view(),
-              tt_.trip_debug_[trip_idx].front().line_number_from_,
+              tt().trip_debug_[trip_idx].front().line_number_from_,
               by_transport_time, current_best,
-              tt_.locations_.names_[location_idx_t{l_idx}].view(),
-              tt_.locations_.ids_[location_idx_t{l_idx}].view(), lower_bound,
+              tt().locations_.names_[location_idx_t{l_idx}].view(),
+              tt().locations_.ids_[location_idx_t{l_idx}].view(), lower_bound,
               by_transport_time + (kFwd ? 1 : -1) * lower_bound,
               lower_bound.count() ==
                   std::numeric_limits<duration_t::rep>::max());
@@ -332,23 +284,24 @@ bool raptor<SearchDir, IntermodalTarget>::update_route(unsigned const k,
         }
 #endif
 
-#ifdef NIGIRI_RAPTOR_TRACING
+#ifdef NIGIRI_ROUTING_TRACING
         auto const trip_idx =
-            tt_.merged_trips_[tt_.transport_to_trip_section_[et.t_idx_].front()]
+            tt().merged_trips_[tt().transport_to_trip_section_[et.t_idx_]
+                                   .front()]
                 .front();
         trace_upd(
             "┊ │k={}    transport={}, name={}, debug={}:{}, "
             "time_by_transport={}, time_by_transport_with_transfer={} BETTER "
             "THAN current_best={} => update, {} marking station {}!\n",
-            k, et, tt_.trip_display_names_[trip_idx].view(),
-            tt_.source_file_names_
-                [tt_.trip_debug_[trip_idx].front().source_file_idx_]
+            k, et, tt().trip_display_names_[trip_idx].view(),
+            tt().source_file_names_
+                [tt().trip_debug_[trip_idx].front().source_file_idx_]
                     .view(),
-            tt_.trip_debug_[trip_idx].front().line_number_from_,
+            tt().trip_debug_[trip_idx].front().line_number_from_,
             by_transport_time, by_transport_time_with_transfer, current_best,
             !is_better(by_transport_time_with_transfer, current_best) ? "NOT"
                                                                       : "",
-            location{tt_, stop.location_idx()});
+            location{tt(), stop.location_idx()});
 #endif
 
         NIGIRI_COUNT(n_earliest_arrival_updated_by_route_);
@@ -366,7 +319,7 @@ bool raptor<SearchDir, IntermodalTarget>::update_route(unsigned const k,
           state_.station_mark_[l_idx] = true;
           state_.round_times_[k][l_idx] = by_transport_time_with_transfer;
           trace_upd("┊ │k={}    TRANSPORT UPDATE: {} -> {}!\n", k,
-                    location{tt_, stop.location_idx()},
+                    location{tt(), stop.location_idx()},
                     by_transport_time_with_transfer);
         }
 
@@ -388,7 +341,7 @@ bool raptor<SearchDir, IntermodalTarget>::update_route(unsigned const k,
   update_et:
     if (!state_.prev_station_mark_[l_idx]) {
       trace("┊ │k={}    {} not marked, skipping et update\n", k,
-            location{tt_, location_idx_t{l_idx}});
+            location{tt(), location_idx_t{l_idx}});
       continue;
     }
 
@@ -432,12 +385,12 @@ bool raptor<SearchDir, IntermodalTarget>::update_route(unsigned const k,
         trace(
             "┊ │k={},    no et update at {}: in_allowed={}, out_allowed={}, "
             "current_best={}, et_time_at_stop={}\n",
-            k, location{tt_, location_idx_t{l_idx}}, stop.in_allowed(),
+            k, location{tt(), location_idx_t{l_idx}}, stop.in_allowed(),
             stop.out_allowed(), current_best, et_time_at_stop);
       }
     } else {
       trace("┊ │k={}    {} last stop, skipping et update\n", k,
-            location{tt_, location_idx_t{l_idx}});
+            location{tt(), location_idx_t{l_idx}});
     }
   }
   return any_marked;
@@ -454,9 +407,9 @@ void raptor<SearchDir, IntermodalTarget>::update_footpaths(unsigned const k) {
     if constexpr (IntermodalTarget) {
       if (get_search().search_state_.is_destination_[to_idx(l_idx)]) {
         trace_upd("┊ ├k={}    INTERMODAL TARGET STATION {}\n", k,
-                  location{tt_, l_idx});
-        for (auto const& o : q_.destinations_[0]) {
-          if (!matches(tt_, location_match_mode::kIntermodal, o.target_,
+                  location{tt(), l_idx});
+        for (auto const& o : get_search().q_.destinations_[0]) {
+          if (!matches(tt(), location_match_mode::kIntermodal, o.target_,
                        l_idx)) {
             continue;
           }
@@ -467,7 +420,7 @@ void raptor<SearchDir, IntermodalTarget>::update_footpaths(unsigned const k) {
             trace_upd(
                 "┊ ├k={}      intermodal: {}, best={} --{}--> DEST, best={} "
                 "--> update => new_time_at_dest={}\n",
-                k, location{tt_, l_idx}, get_time(), o.duration_,
+                k, location{tt(), l_idx}, get_time(), o.duration_,
                 time_at_destination_, intermodal_target_time);
 
             state_.round_times_[k][to_idx(get_special_station(
@@ -479,19 +432,19 @@ void raptor<SearchDir, IntermodalTarget>::update_footpaths(unsigned const k) {
     }
   };
 
-  for (auto l_idx = location_idx_t{0U}; l_idx != tt_.n_locations(); ++l_idx) {
+  for (auto l_idx = location_idx_t{0U}; l_idx != tt().n_locations(); ++l_idx) {
     if (!state_.transport_station_mark_[to_idx(l_idx)]) {
       continue;
     }
 
     update_intermodal_dest(l_idx, [&]() {
       return state_.best_[to_idx(l_idx)] -
-             (kFwd ? 1 : -1) * tt_.locations_.transfer_time_[l_idx];
+             (kFwd ? 1 : -1) * tt().locations_.transfer_time_[l_idx];
     });
 
-    auto const fps = kFwd ? tt_.locations_.footpaths_out_[l_idx]
-                          : tt_.locations_.footpaths_in_[l_idx];
-    trace("┊ ├k={} updating footpaths of {}\n", k, location{tt_, l_idx});
+    auto const fps = kFwd ? tt().locations_.footpaths_out_[l_idx]
+                          : tt().locations_.footpaths_in_[l_idx];
+    trace("┊ ├k={} updating footpaths of {}\n", k, location{tt(), l_idx});
     for (auto const& fp : fps) {
       NIGIRI_COUNT(n_footpaths_visited_);
 
@@ -501,7 +454,7 @@ void raptor<SearchDir, IntermodalTarget>::update_footpaths(unsigned const k) {
       auto const fp_target_time =
           state_.best_[to_idx(l_idx)]  //
           + ((kFwd ? 1 : -1) * fp.duration_)  //
-          - ((kFwd ? 1 : -1) * tt_.locations_.transfer_time_[l_idx]);
+          - ((kFwd ? 1 : -1) * tt().locations_.transfer_time_[l_idx]);
 
       if (is_better(fp_target_time, min) &&
           is_better(fp_target_time, time_at_destination_)) {
@@ -518,11 +471,11 @@ void raptor<SearchDir, IntermodalTarget>::update_footpaths(unsigned const k) {
           trace_upd(
               "┊ ├k={} *** LB NO UPD: (name={}, id={}, best={}) --{}--> "
               "(name={}, id={}, best={}) --> update => {}, LB={}, AT_DEST={}\n",
-              k, tt_.locations_.names_[l_idx].view(),
-              tt_.locations_.ids_[l_idx].view(),
+              k, tt().locations_.names_[l_idx].view(),
+              tt().locations_.ids_[l_idx].view(),
               state_.round_times_[k][to_idx(l_idx)], fp.duration_,
-              tt_.locations_.names_[fp.target_].view(),
-              tt_.locations_.ids_[fp.target_].view(),
+              tt().locations_.names_[fp.target_].view(),
+              tt().locations_.ids_[fp.target_].view(),
               state_.round_times_[k][to_idx(fp.target_)], fp_target_time,
               lower_bound, fp_target_time + (kFwd ? 1 : -1) * lower_bound);
 
@@ -534,9 +487,9 @@ void raptor<SearchDir, IntermodalTarget>::update_footpaths(unsigned const k) {
         trace_upd(
             "┊ ├k={}   footpath: ({}, best={}) --[{}-{}]--> ({}, best={}) --> "
             "update => {}\n",
-            k, location{tt_, l_idx}, state_.round_times_[k][to_idx(l_idx)],
-            fp.duration_, tt_.locations_.transfer_time_[l_idx],
-            location{tt_, fp.target_},
+            k, location{tt(), l_idx}, state_.round_times_[k][to_idx(l_idx)],
+            fp.duration_, tt().locations_.transfer_time_[l_idx],
+            location{tt(), fp.target_},
             state_.round_times_[k][to_idx(fp.target_)], fp_target_time);
 
         NIGIRI_COUNT(n_earliest_arrival_updated_by_footpath_);
@@ -567,8 +520,8 @@ void raptor<SearchDir, IntermodalTarget>::update_footpaths(unsigned const k) {
         trace(
             "┊ ├k={}   NO FP UPDATE: {} [best={}] --({} - {})--> {} [best={}, "
             "time_at_dest={}]\n",
-            k, location{tt_, l_idx}, state_.best_[to_idx(l_idx)], fp.duration_,
-            tt_.locations_.transfer_time_[l_idx], location{tt_, fp.target_},
+            k, location{tt(), l_idx}, state_.best_[to_idx(l_idx)], fp.duration_,
+            tt().locations_.transfer_time_[l_idx], location{tt(), fp.target_},
             min, time_at_destination_);
       }
     }
@@ -577,7 +530,7 @@ void raptor<SearchDir, IntermodalTarget>::update_footpaths(unsigned const k) {
 
 template <direction SearchDir, bool IntermodalTarget>
 unsigned raptor<SearchDir, IntermodalTarget>::end_k() const {
-  return std::min(kMaxTransfers, q_.max_transfers_) + 1U;
+  return std::min(kMaxTransfers, get_search().q_.max_transfers_) + 1U;
 }
 
 template <direction SearchDir, bool IntermodalTarget>
@@ -596,7 +549,7 @@ void raptor<SearchDir, IntermodalTarget>::rounds() {
          ++l_idx) {
       if (state_.station_mark_[to_idx(l_idx)]) {
         any_marked = true;
-        for (auto const& r : tt_.location_routes_[l_idx]) {
+        for (auto const& r : tt().location_routes_[l_idx]) {
           state_.route_mark_[to_idx(r)] = true;
         }
       }
@@ -611,7 +564,7 @@ void raptor<SearchDir, IntermodalTarget>::rounds() {
     }
 
     any_marked = false;
-    for (auto r_id = 0U; r_id != tt_.n_routes(); ++r_id) {
+    for (auto r_id = 0U; r_id != tt().n_routes(); ++r_id) {
       if (!state_.route_mark_[r_id]) {
         continue;
       }
@@ -648,7 +601,7 @@ void raptor<SearchDir, IntermodalTarget>::force_print_state(
 
   fmt::print("INFO: {}, time_at_destination={}\n", comment,
              time_at_destination_);
-  for (auto l = 0U; l != tt_.n_locations(); ++l) {
+  for (auto l = 0U; l != tt().n_locations(); ++l) {
     if (!is_special(location_idx_t{l}) &&
         !get_search().search_state_.is_destination_[l] &&
         state_.best_[l] == kInvalidTime<SearchDir> && empty_rounds(l)) {
@@ -656,19 +609,19 @@ void raptor<SearchDir, IntermodalTarget>::force_print_state(
     }
 
     std::string_view name, track;
-    auto const type = tt_.locations_.types_.at(location_idx_t{l});
+    auto const type = tt().locations_.types_.at(location_idx_t{l});
     if (type == location_type::kTrack ||
         type == location_type::kGeneratedTrack) {
       name =
-          tt_.locations_.names_.at(tt_.locations_.parents_[location_idx_t{l}])
+          tt().locations_.names_.at(tt().locations_.parents_[location_idx_t{l}])
               .view();
-      track = tt_.locations_.names_.at(location_idx_t{l}).view();
+      track = tt().locations_.names_.at(location_idx_t{l}).view();
     } else {
-      name = tt_.locations_.names_.at(location_idx_t{l}).view();
+      name = tt().locations_.names_.at(location_idx_t{l}).view();
       track = "---";
     }
-    tt_.locations_.names_[location_idx_t{l}].view();
-    auto const id = tt_.locations_.ids_[location_idx_t{l}].view();
+    tt().locations_.names_[location_idx_t{l}].view();
+    auto const id = tt().locations_.ids_[location_idx_t{l}].view();
     fmt::print(
         "[{}] {:12} [name={:48}, track={:10}, id={:24}]: ",
         get_search().search_state_.is_destination_[l] ? "X" : "_", l, name,
@@ -692,7 +645,7 @@ void raptor<SearchDir, IntermodalTarget>::force_print_state(
   }
 }
 
-#ifdef NIGIRI_RAPTOR_TRACING
+#ifdef NIGIRI_ROUTING_TRACING
 template <direction SearchDir, bool IntermodalTarget>
 void raptor<SearchDir, IntermodalTarget>::print_state(char const* comment) {
   force_print_state(comment);
@@ -735,282 +688,9 @@ void raptor<SearchDir, IntermodalTarget>::set_time_at_destination(
     }
   }
 }
-
 template <direction SearchDir, bool IntermodalTarget>
-bool raptor<SearchDir, IntermodalTarget>::start_dest_overlap() const {
-  if (q_.start_match_mode_ == location_match_mode::kIntermodal ||
-      q_.dest_match_mode_ == location_match_mode::kIntermodal) {
-    // Handled by fastest_direct
-    return false;
-  }
-
-  auto const overlaps_start = [&](location_idx_t const x) {
-    return utl::any_of(q_.start_, [&](offset const& o) {
-      bool overlaps = false;
-      for_each_meta(
-          tt_, q_.start_match_mode_, o.target_,
-          [&](location_idx_t const eq) { overlaps = overlaps || eq == x; });
-      return overlaps;
-    });
-  };
-
-  return utl::any_of(q_.destinations_.front(), [&](offset const& o) {
-    bool overlaps = false;
-    for_each_meta(tt_, q_.dest_match_mode_, o.target_,
-                  [&](location_idx_t const eq) {
-                    overlaps = overlaps || overlaps_start(eq);
-                  });
-    return overlaps;
-  });
-}
-
-template <direction SearchDir, bool IntermodalTarget>
-void raptor<SearchDir, IntermodalTarget>::route() {
-  state_.reset(tt_, kInvalidTime<SearchDir>);
-  get_search().search_state_.reset(tt_);
-  collect_destinations(tt_, q_.destinations_, q_.dest_match_mode_,
-                       get_search().search_state_.destinations_,
-                       get_search().search_state_.is_destination_);
-  get_search().search_state_.results_.resize(
-      std::max(get_search().search_state_.results_.size(),
-               get_search().search_state_.destinations_.size()));
-  if (start_dest_overlap()) {
-    trace_always("start/dest overlap - finished");
-    return;
-  }
-
-#ifdef NIGIRI_LOWER_BOUND
-
-#ifdef NIGIRI_RAPTOR_COUNTING
-  UTL_START_TIMING(lb);
-#endif
-  dijkstra(tt_, q_, kFwd ? tt_.fwd_search_lb_graph_ : tt_.bwd_search_lb_graph_,
-           get_search().search_state_.travel_time_lower_bound_);
-  for (auto l = location_idx_t{0U}; l != tt_.locations_.children_.size(); ++l) {
-    auto const lb =
-        get_search().search_state_.travel_time_lower_bound_[to_idx(l)];
-    for (auto const c : tt_.locations_.children_[l]) {
-      get_search().search_state_.travel_time_lower_bound_[to_idx(c)] = std::min(
-          lb, get_search().search_state_.travel_time_lower_bound_[to_idx(c)]);
-    }
-  }
-#ifdef NIGIRI_RAPTOR_COUNTING
-  UTL_STOP_TIMING(lb);
-  stats_.lb_time_ = static_cast<std::uint64_t>(UTL_TIMING_MS(lb));
-#endif
-
-#ifdef NIGIRI_RAPTOR_TRACING
-  for (auto const& o : q_.start_) {
-    trace_always("start {}: {}\n", location{tt_, o.target_}, o.duration_);
-  }
-  for (auto const& o : q_.destinations_.front()) {
-    trace_always("dest {}: {}\n", location{tt_, o.target_}, o.duration_);
-  }
-  for (auto const [l, lb] : utl::enumerate(state_.travel_time_lower_bound_)) {
-    if (lb.count() != std::numeric_limits<duration_t::rep>::max()) {
-      trace_always("lb {}: {}\n", location{tt_, location_idx_t{l}}, lb.count());
-    }
-  }
-#endif
-#endif
-
-  stats_.fastest_direct_ = static_cast<std::uint64_t>(fastest_direct_.count());
-  trace_always("fastest direct {}", stats_.fastest_direct_);
-
-  auto const number_of_results_in_interval = [&]() {
-    if (holds_alternative<interval<unixtime_t>>(q_.start_time_)) {
-      return static_cast<std::size_t>(utl::count_if(
-          get_search().search_state_.results_.front(), [&](journey const& j) {
-            return get_search().search_state_.search_interval_.contains(
-                j.start_time_);
-          }));
-    } else {
-      return get_search().search_state_.results_.front().size();
-    }
-  };
-
-  auto const max_interval_reached = [&]() {
-    auto const can_search_earlier =
-        q_.extend_interval_earlier_ &&
-        get_search().search_state_.search_interval_.from_ !=
-            tt_.external_interval().from_;
-    auto const can_search_later =
-        q_.extend_interval_later_ &&
-        get_search().search_state_.search_interval_.to_ !=
-            tt_.external_interval().to_;
-    return !can_search_earlier && !can_search_later;
-  };
-
-  auto add_start_labels = [&](start_time_t const& start_interval,
-                              bool const add_ontrip) {
-    get_starts(SearchDir, tt_, start_interval, q_.start_, q_.start_match_mode_,
-               q_.use_start_footpaths_, get_search().search_state_.starts_,
-               add_ontrip);
-  };
-
-  auto const reset_arrivals = [&]() {
-    utl::fill(state_.best_, kInvalidTime<SearchDir>);
-    state_.round_times_.resize(kMaxTransfers + 1U, tt_.n_locations());
-    state_.round_times_.reset(kInvalidTime<SearchDir>);
-  };
-
-  auto const remove_ontrip_results = [&]() {
-    for (auto& r : get_search().search_state_.results_) {
-      utl::erase_if(r, [&](journey const& j) {
-        return !get_search().search_state_.search_interval_.contains(
-            j.start_time_);
-      });
-    }
-  };
-
-  get_search().search_state_.search_interval_ = q_.start_time_.apply(
-      utl::overloaded{[](interval<unixtime_t> const& start_interval) {
-                        return start_interval;
-                      },
-                      [](unixtime_t const start_time) {
-                        return interval<unixtime_t>{start_time, start_time};
-                      }});
-  add_start_labels(q_.start_time_, true);
-  trace_interval("start_time={}",
-                 q_.start_time_.apply(utl::overloaded{
-                     [](interval<unixtime_t> const& start_interval) {
-                       return start_interval;
-                     },
-                     [](unixtime_t const start_time) {
-                       return interval<unixtime_t>{start_time, start_time};
-                     }}));
-
-  while (true) {
-    utl::equal_ranges_linear(
-        get_search().search_state_.starts_,
-        [](start const& a, start const& b) {
-          return a.time_at_start_ == b.time_at_start_;
-        },
-        [&](auto&& from_it, auto&& to_it) {
-          utl::fill(state_.best_, kInvalidTime<SearchDir>);
-          for (auto const& s : it_range{from_it, to_it}) {
-            trace_always(
-                "init: time_at_start={}, time_at_stop={} at (name={} id={})\n",
-                s.time_at_start_, s.time_at_stop_,
-                tt_.locations_.names_.at(s.stop_).view(),
-                tt_.locations_.ids_.at(s.stop_).view());
-            state_.round_times_[0U][to_idx(s.stop_)] = {tt_, s.time_at_stop_};
-            state_.station_mark_[to_idx(s.stop_)] = true;
-          }
-          time_at_destination_ =
-              routing_time{tt_, from_it->time_at_start_} +
-              (kFwd ? 1 : -1) *
-                  (std::min(fastest_direct_, duration_t{kMaxTravelTime}) +
-                   1_minutes);
-          trace_always(
-              "time_at_destination={} + kMaxTravelTime/fastest_direct={} = "
-              "{}\n",
-              routing_time{tt_, from_it->time_at_start_}, fastest_direct_,
-              time_at_destination_);
-          rounds();
-          trace_always("reconstruct: time_at_start={}\n",
-                       from_it->time_at_start_);
-          reconstruct(from_it->time_at_start_);
-        });
-
-    if (is_ontrip() || max_interval_reached() ||
-        number_of_results_in_interval() >= q_.min_connection_count_) {
-      trace_interval(
-          "  finished: is_ontrip={}, max_interval_reached={}, "
-          "extend_earlier={}, extend_later={}, initial={}, interval={}, "
-          "timetable={}, number_of_results_in_interval={}\n",
-          is_ontrip(), max_interval_reached(), q_.extend_interval_earlier_,
-          q_.extend_interval_later_,
-          q_.start_time_.apply(utl::overloaded{
-              [](interval<unixtime_t> const& start_interval) {
-                return start_interval;
-              },
-              [](unixtime_t const start_time) {
-                return interval<unixtime_t>{start_time, start_time};
-              }}),
-          state_.search_interval_, tt_.external_interval(),
-          number_of_results_in_interval());
-      break;
-    } else {
-      trace_interval(
-          "  continue: max_interval_reached={}, extend_earlier={}, "
-          "extend_later={}, initial={}, interval={}, timetable={}, "
-          "number_of_results_in_interval={}\n",
-          max_interval_reached(), q_.extend_interval_earlier_,
-          q_.extend_interval_later_,
-          q_.start_time_.apply(utl::overloaded{
-              [](interval<unixtime_t> const& start_interval) {
-                return start_interval;
-              },
-              [](unixtime_t const start_time) {
-                return interval<unixtime_t>{start_time, start_time};
-              }}),
-          state_.search_interval_, tt_.external_interval(),
-          number_of_results_in_interval());
-    }
-
-    get_search().search_state_.starts_.clear();
-
-    auto const new_interval = interval{
-        q_.extend_interval_earlier_
-            ? tt_.external_interval().clamp(
-                  get_search().search_state_.search_interval_.from_ -
-                  60_minutes)
-            : get_search().search_state_.search_interval_.from_,
-        q_.extend_interval_later_
-            ? tt_.external_interval().clamp(
-                  get_search().search_state_.search_interval_.to_ + 60_minutes)
-            : get_search().search_state_.search_interval_.to_};
-    trace_interval("interval adapted: {} -> {}\n", state_.search_interval_,
-                   new_interval);
-
-    if (new_interval.from_ !=
-        get_search().search_state_.search_interval_.from_) {
-      trace_interval("extend interval earlier - add_start_labels({}, {})\n",
-                     new_interval.from_, state_.search_interval_.from_);
-      add_start_labels(
-          interval{new_interval.from_,
-                   get_search().search_state_.search_interval_.from_},
-          SearchDir == direction::kBackward);
-      if constexpr (SearchDir == direction::kBackward) {
-        trace_interval("dir=BWD, interval extension earlier -> reset state\n");
-        reset_arrivals();
-        remove_ontrip_results();
-      }
-    }
-
-    if (new_interval.to_ != get_search().search_state_.search_interval_.to_) {
-      trace_interval("extend interval later - add_start_labels({}, {})\n",
-                     state_.search_interval_.to_, new_interval.to_);
-      add_start_labels(interval{get_search().search_state_.search_interval_.to_,
-                                new_interval.to_},
-                       SearchDir == direction::kForward);
-      if constexpr (SearchDir == direction::kForward) {
-        trace_interval("dir=BWD, interval extension later -> reset state\n");
-        reset_arrivals();
-        remove_ontrip_results();
-      }
-    }
-
-    get_search().search_state_.search_interval_ = new_interval;
-
-    ++stats_.search_iterations_;
-  }
-
-  if (holds_alternative<interval<unixtime_t>>(q_.start_time_)) {
-    remove_ontrip_results();
-    for (auto& r : get_search().search_state_.results_) {
-      utl::erase_if(r, [&](journey const& j) {
-        return j.travel_time() > fastest_direct_ ||
-               j.travel_time() > kMaxTravelTime;
-      });
-    }
-    for (auto& r : get_search().search_state_.results_) {
-      std::sort(begin(r), end(r), [](journey const& a, journey const& b) {
-        return a.start_time_ < b.start_time_;
-      });
-    }
-  }
+void raptor<SearchDir, IntermodalTarget>::reset_state() {
+  state_.reset(tt(), kInvalidTime<SearchDir>);
 }
 
 template <direction SearchDir, bool IntermodalTarget>
@@ -1024,24 +704,27 @@ void raptor<SearchDir, IntermodalTarget>::reconstruct_for_destination(
     }
     trace_always("ADDING JOURNEY: start={}, dest={} @ {}, transfers={}",
                  start_at_start,
-                 state_.round_times_[k][to_idx(dest)].to_unixtime(tt_),
-                 location{tt_, dest}, k - 1);
+                 state_.round_times_[k][to_idx(dest)].to_unixtime(tt()),
+                 location{tt(), dest}, k - 1);
     auto const [optimal, it, dominated_by] =
-        get_search().search_state_.results_[dest_index].add(journey{
-            .legs_ = {},
-            .start_time_ = start_at_start,
-            .dest_time_ = state_.round_times_[k][to_idx(dest)].to_unixtime(tt_),
-            .dest_ = dest,
-            .transfers_ = static_cast<std::uint8_t>(k - 1)});
+        get_search().search_state_.results_[dest_index].add(
+            journey{.legs_ = {},
+                    .start_time_ = start_at_start,
+                    .dest_time_ =
+                        state_.round_times_[k][to_idx(dest)].to_unixtime(tt()),
+                    .dest_ = dest,
+                    .transfers_ = static_cast<std::uint8_t>(k - 1)});
     trace_always(" -> {}\n", optimal ? "OPT" : "DISCARD");
     if (optimal) {
       auto const outside_interval =
-          holds_alternative<interval<unixtime_t>>(q_.start_time_) &&
+          holds_alternative<interval<unixtime_t>>(
+              get_search().q_.start_time_) &&
           !get_search().search_state_.search_interval_.contains(
               it->start_time_);
-      if (!outside_interval && it->travel_time() < fastest_direct_) {
+      if (!outside_interval &&
+          it->travel_time() < get_search().fastest_direct_) {
         try {
-          reconstruct_journey<SearchDir>(tt_, q_, state_, *it);
+          reconstruct_journey<SearchDir>(tt(), get_search().q_, state_, *it);
         } catch (std::exception const& e) {
           get_search().search_state_.results_[dest_index].erase(it);
           log(log_lvl::error, "routing", "reconstruction failed: {}", e.what());
@@ -1051,7 +734,7 @@ void raptor<SearchDir, IntermodalTarget>::reconstruct_for_destination(
     } else {
       trace_always("  DOMINATED BY: start={}, dest={} @ {}, transfers={}\n",
                    dominated_by->start_time_, dominated_by->dest_time_,
-                   location{tt_, dominated_by->dest_},
+                   location{tt(), dominated_by->dest_},
                    dominated_by->transfers_);
     }
   }
@@ -1064,7 +747,7 @@ void raptor<SearchDir, IntermodalTarget>::reconstruct(
     reconstruct_for_destination(start_at_start, 0U,
                                 get_special_station(special_station::kEnd));
   } else {
-    for (auto const [i, t] : utl::enumerate(q_.destinations_)) {
+    for (auto const [i, t] : utl::enumerate(get_search().q_.destinations_)) {
       for (auto const dest : get_search().search_state_.destinations_[i]) {
         reconstruct_for_destination(start_at_start, i, dest);
       }
