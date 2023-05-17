@@ -54,6 +54,13 @@ struct stop_events {
   minutes_after_midnight_t arr_{kInterpolate}, dep_{kInterpolate};
 };
 
+struct trip_seq_data {
+  vecvec<gtfs_trip_idx_t, timetable::stop::value_type> stops_seq_;
+  vecvec<gtfs_trip_idx_t, std::uint16_t> seq_numbers_;
+  vecvec<gtfs_trip_idx_t, stop_events> stop_events_;
+  vecvec<gtfs_trip_idx_t, trip_direction_idx_t> stop_headsigns_;
+};
+
 struct trip {
   trip(route const*,
        bitfield const*,
@@ -84,12 +91,6 @@ struct trip {
   std::string id_;
   std::string headsign_;
   std::string short_name_;
-
-  stop_seq_t stop_seq_;
-  std::vector<std::uint16_t> seq_numbers_;
-  std::vector<stop_events> event_times_;
-  std::vector<std::string> stop_headsigns_;
-
   std::optional<std::vector<frequency>> frequency_;
   bool requires_interpolation_{false};
   bool requires_sorting_{false};
