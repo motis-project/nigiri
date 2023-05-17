@@ -15,12 +15,14 @@
 
 #include "nigiri/loader/gtfs/parse_time.h"
 #include "nigiri/loader/gtfs/trip.h"
+#include "nigiri/common/cached_lookup.h"
 #include "nigiri/logging.h"
 #include "utl/pipes/for_each.h"
 
 namespace nigiri::loader::gtfs {
 
-void read_stop_times(trip_data& trips,
+void read_stop_times(timetable& tt,
+                     trip_data& trips,
                      locations_map const& stops,
                      std::string_view file_content) {
   struct csv_stop_time {
@@ -42,6 +44,7 @@ void read_stop_times(trip_data& trips,
   progress_tracker->status("Read Stop Times")
       .out_bounds(45.F, 70.F)
       .in_high(file_content.size());
+  auto lookup_direction = cached_lookup(trips.directions_);
   utl::line_range{
       utl::make_buf_reader(file_content, progress_tracker->update_fn())}  //
       | utl::csv<csv_stop_time>()  //
@@ -89,8 +92,13 @@ void read_stop_times(trip_data& trips,
               stop_events{.arr_ = arrival_time, .dep_ = departure_time});
 
           if (!s.stop_headsign_->empty()) {
-            t->stop_headsigns_.resize(t->seq_numbers_.size());
-            t->stop_headsigns_.back() = s.stop_headsign_->to_str();
+            t->stop_headsigns_.resize(t->seq_numbers_.size(),
+                                      trip_direction_idx_t::invalid());
+            t->stop_headsigns_.back() =
+                lookup_direction(s.stop_headsign_->view(), [&]() {
+                  return trips.get_or_create_direction(
+                      tt, s.stop_headsign_->view());
+                });
           }
         } catch (...) {
           log(log_lvl::error, "loader.gtfs.stop_time",

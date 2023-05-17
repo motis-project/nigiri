@@ -59,7 +59,7 @@ struct trip {
        bitfield const*,
        block*,
        std::string id,
-       std::string headsign,
+       trip_direction_idx_t headsign,
        std::string short_name);
 
   trip(trip&&) = default;
@@ -82,13 +82,13 @@ struct trip {
   bitfield const* service_{nullptr};
   block* block_{nullptr};
   std::string id_;
-  std::string headsign_;
+  trip_direction_idx_t headsign_;
   std::string short_name_;
 
   stop_seq_t stop_seq_;
   std::vector<std::uint16_t> seq_numbers_;
   std::vector<stop_events> event_times_;
-  std::vector<std::string> stop_headsigns_;
+  std::vector<trip_direction_idx_t> stop_headsigns_;
 
   std::optional<std::vector<frequency>> frequency_;
   bool requires_interpolation_{false};
@@ -101,12 +101,16 @@ struct trip_data {
   trip& get(gtfs_trip_idx_t const idx) { return data_[idx]; }
   trip const& get(std::string_view id) const { return data_[trips_.at(id)]; }
   trip& get(std::string_view id) { return data_[trips_.at(id)]; }
+  trip_direction_idx_t get_or_create_direction(timetable&, std::string_view);
+
   hash_map<std::string, gtfs_trip_idx_t> trips_;
   hash_map<std::string, std::unique_ptr<block>> blocks_;
+  hash_map<std::string, trip_direction_idx_t> directions_;
   vector_map<gtfs_trip_idx_t, trip> data_;
 };
 
-trip_data read_trips(route_map_t const&,
+trip_data read_trips(timetable&,
+                     route_map_t const&,
                      traffic_days const&,
                      std::string_view file_content);
 

@@ -1,5 +1,6 @@
 #include "nigiri/loader/gtfs/load_timetable.h"
 
+#include <charconv>
 #include <filesystem>
 #include <numeric>
 #include <string>
@@ -92,9 +93,9 @@ void load_timetable(source_idx_t const src, dir const& d, timetable& tt) {
   auto const calendar = read_calendar(load(kCalenderFile).data());
   auto const dates = read_calendar_date(load(kCalendarDatesFile).data());
   auto const service = merge_traffic_days(calendar, dates);
-  auto trip_data = read_trips(routes, service, load(kTripsFile).data());
+  auto trip_data = read_trips(tt, routes, service, load(kTripsFile).data());
   read_frequencies(trip_data, load(kFrequenciesFile).data());
-  read_stop_times(trip_data, stops, load(kStopTimesFile).data());
+  read_stop_times(tt, trip_data, stops, load(kStopTimesFile).data());
 
   {
     auto const timer = scoped_timer{"loader.gtfs.trips.sort"};
@@ -213,7 +214,6 @@ void load_timetable(source_idx_t const src, dir const& d, timetable& tt) {
     auto const attributes = std::basic_string<attribute_combination_idx_t>{};
     auto bitfield_indices = hash_map<bitfield, bitfield_idx_t>{};
     auto lines = hash_map<std::string, trip_line_idx_t>{};
-    auto directions = hash_map<std::string, trip_direction_idx_t>{};
     auto section_directions = std::basic_string<trip_direction_idx_t>{};
     auto section_lines = std::basic_string<trip_line_idx_t>{};
     auto external_trip_ids = std::basic_string<merged_trips_idx_t>{};
@@ -227,8 +227,10 @@ void load_timetable(source_idx_t const src, dir const& d, timetable& tt) {
           int train_nr = 0;
           if (is_train_number(first.short_name_)) {
             train_nr = std::stoi(first.short_name_);
-          } else if (is_train_number(first.headsign_)) {
-            train_nr = std::stoi(first.headsign_);
+          } else if (auto const headsign = tt.trip_direction(first.headsign_);
+                     is_train_number(headsign)) {
+            std::from_chars(headsign.data(), headsign.data() + headsign.size(),
+                            train_nr);
           }
 
           external_trip_ids.clear();
@@ -249,15 +251,6 @@ void load_timetable(source_idx_t const src, dir const& d, timetable& tt) {
                 tt.next_transport_idx(), {prev_end, end});
             prev_end = end - 1;
 
-            auto const direction =
-                utl::get_or_create(directions, trp.headsign_, [&]() {
-                  auto const trip_dir_str =
-                      tt.register_trip_direction_string(trp.headsign_);
-                  auto const idx = tt.trip_directions_.size();
-                  tt.trip_directions_.emplace_back(trip_dir_str);
-                  return trip_direction_idx_t{idx};
-                });
-
             auto const line =
                 utl::get_or_create(lines, trp.route_->short_name_, [&]() {
                   auto const idx = trip_line_idx_t{tt.trip_lines_.size()};
@@ -268,13 +261,13 @@ void load_timetable(source_idx_t const src, dir const& d, timetable& tt) {
             auto const merged_trip = tt.register_merged_trip({id});
             if (s.trips_.size() == 1U) {
               external_trip_ids.push_back(merged_trip);
-              section_directions.push_back(direction);
+              section_directions.push_back(trp.headsign_);
               section_lines.push_back(line);
             } else {
               for (auto section = 0U; section != trp.stop_seq_.size() - 1;
                    ++section) {
                 external_trip_ids.push_back(merged_trip);
-                section_directions.push_back(direction);
+                section_directions.push_back(trp.headsign_);
                 section_lines.push_back(line);
               }
             }

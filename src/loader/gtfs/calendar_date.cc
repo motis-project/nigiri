@@ -8,6 +8,7 @@
 #include "utl/progress_tracker.h"
 
 #include "nigiri/loader/gtfs/parse_date.h"
+#include "nigiri/common/cached_lookup.h"
 
 namespace nigiri::loader::gtfs {
 
@@ -20,21 +21,7 @@ hash_map<std::string, std::vector<calendar_date>> read_calendar_date(
   };
 
   auto services = hash_map<std::string, std::vector<calendar_date>>{};
-  auto cached_lookup = [&, prev_it =
-                               std::optional<decltype(services)::iterator>{}](
-                           auto&& key) mutable {
-    if (!prev_it.has_value() || (*prev_it)->first != key) {
-      if (auto const it = services.find(key); it == end(services)) {
-        prev_it = services
-                      .emplace(decltype(services)::key_type{key},
-                               std::vector<calendar_date>{})
-                      .first;
-      } else {
-        prev_it = it;
-      }
-    }
-    return *prev_it;
-  };
+  auto lookup_service = cached_lookup{services};
 
   auto const progress_tracker = utl::get_active_progress_tracker();
   progress_tracker->status("Parse Calendar Date")
@@ -44,8 +31,8 @@ hash_map<std::string, std::vector<calendar_date>> read_calendar_date(
       utl::make_buf_reader(file_content, progress_tracker->update_fn())}  //
       | utl::csv<entry>()  //
       | utl::for_each([&](entry const& e) {
-          cached_lookup(e.id_->view())
-              ->second.emplace_back(calendar_date{
+          lookup_service(e.id_->view())
+              .emplace_back(calendar_date{
                   .type_ = (*e.exception_type_ == 1 ? calendar_date::kAdd
                                                     : calendar_date::kRemove),
                   .day_ = parse_date(*e.date_)});
