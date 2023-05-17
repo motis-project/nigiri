@@ -11,7 +11,7 @@ struct cached_lookup {
   using value_t = typename Map::mapped_type;
   using opt_iterator_t = std::optional<iterator_t>;
 
-  cached_lookup(Map& map) : map_{map} {}
+  explicit cached_lookup(Map& map) : map_{map} {}
 
   template <typename Key, typename CreateFn>
   value_t& operator()(Key&& key, CreateFn&& create_fn) {
