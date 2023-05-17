@@ -19,6 +19,8 @@
 #include "utl/erase_duplicates.h"
 #include "utl/erase_if.h"
 
+// #define NIGIRI_BUILD_FOOTPATHS_DEBUG
+#if defined(NIGIRI_BUILD_FOOTPATHS_DEBUG)
 template <typename T>
 struct fmt::formatter<nigiri::matrix<T>> {
   constexpr auto parse(format_parse_context& ctx) -> decltype(ctx.begin()) {
@@ -42,16 +44,16 @@ struct fmt::formatter<nigiri::matrix<T>> {
   }
 };
 
-namespace nigiri::loader {
-
-constexpr auto const kTracing = false;
-
 template <typename... Args>
 void trace(char const* fmt_str, Args... args) {
-  if constexpr (kTracing) {
-    fmt::print(std::cout, fmt_str, std::forward<Args&&>(args)...);
-  }
+  fmt::print(std::cout, fmt_str, std::forward<Args&&>(args)...);
 }
+#else
+#define print_dbg(...)
+#define trace(...)
+#endif
+
+namespace nigiri::loader {
 
 constexpr const auto kWalkSpeed = 1.5;  // m/s
 
@@ -166,57 +168,50 @@ std::vector<std::pair<uint32_t, uint32_t>> find_components(
 void process_component(timetable& tt,
                        component_it const lb,
                        component_it const ub,
-                       footgraph const& fgraph) {
+                       footgraph const& fgraph,
+                       matrix<std::uint16_t>& matrix_memory) {
   if (lb->first == kNoComponent) {
     return;
   }
 
   auto const size = static_cast<std::uint32_t>(std::distance(lb, ub));
 
+#if defined(NIGIRI_BUILD_FOOTPATHS_DEBUG)
   auto dbg = false;
   auto const print_dbg = [&](auto... args) {
-    if constexpr (kTracing) {
-      if (dbg) {
-        trace(args...);
-      }
+    if (dbg) {
+      trace(args...);
     }
   };
 
-  if constexpr (kTracing) {
-    auto const id = std::string_view{"de:11000:900160002:1:50"};
-    auto const needle =
-        std::find_if(begin(tt.locations_.ids_), end(tt.locations_.ids_),
-                     [&](auto&& x) { return x.view() == id; });
+  auto const id = std::string_view{"de:11000:900160002:1:50"};
+  auto const needle =
+      std::find_if(begin(tt.locations_.ids_), end(tt.locations_.ids_),
+                   [&](auto&& x) { return x.view() == id; });
 
-    if (needle != end(tt.locations_.ids_)) {
-      auto const needle_l =
-          location_idx_t{std::distance(begin(tt.locations_.ids_), needle)};
-      for (auto i = 0U; i != size; ++i) {
-        if (location_idx_t{(lb + i)->second} == needle_l) {
-          if constexpr (kTracing) {
-            std::cout << "FOUND\n";
-          }
+  if (needle != end(tt.locations_.ids_)) {
+    auto const needle_l =
+        location_idx_t{std::distance(begin(tt.locations_.ids_), needle)};
+    for (auto i = 0U; i != size; ++i) {
+      if (location_idx_t{(lb + i)->second} == needle_l) {
+        trace("FOUND\n");
+        dbg = true;
+        goto next;
+      }
+      for (auto const& edge : fgraph[(lb + i)->second]) {
+        if (edge.target_ == needle_l) {
+          trace("FOUND\n");
           dbg = true;
           goto next;
         }
-        for (auto const& edge : fgraph[(lb + i)->second]) {
-          if (edge.target_ == needle_l) {
-            if constexpr (kTracing) {
-              std::cout << "FOUND\n";
-            }
-            dbg = true;
-            goto next;
-          }
-        }
-      }
-    } else {
-      if constexpr (kTracing) {
-        std::cout << "NEEDLE NOT FOUND\n";
       }
     }
+  } else {
+    trace("NEEDLE NOT FOUND\n");
   }
-
 next:
+#endif
+
   if (size == 2) {
     auto const idx_a = lb->second;
     auto const idx_b = std::next(lb)->second;
@@ -224,11 +219,11 @@ next:
     auto const l_idx_b = location_idx_t{static_cast<unsigned>(idx_b)};
 
     if (!fgraph[idx_a].empty()) {
-      utl::verify_silent(fgraph[idx_a].size() == 1,
-                         "invalid size (a): idx_a={}, size={}, data=[{}], "
-                         "idx_b={}, size = {} ",
-                         idx_a, fgraph[idx_a].size(), fgraph[idx_a], idx_b,
-                         fgraph[idx_b].size(), fgraph[idx_b]);
+      utl_verify(fgraph[idx_a].size() == 1,
+                 "invalid size (a): idx_a={}, size={}, data=[{}], "
+                 "idx_b={}, size = {} ",
+                 idx_a, fgraph[idx_a].size(), fgraph[idx_a], idx_b,
+                 fgraph[idx_b].size(), fgraph[idx_b]);
 
       auto const duration =
           std::max({u8_minutes{fgraph[idx_a].front().duration_},
@@ -265,7 +260,9 @@ next:
 
   print_dbg("INPUT\n");
   constexpr auto const kInvalidTime = std::numeric_limits<std::uint16_t>::max();
-  auto mat = make_flat_matrix(size, size, kInvalidTime);
+  auto& mat = matrix_memory;
+  mat.resize(size, size);
+  mat.reset(kInvalidTime);
   for (auto i = 0U; i != size; ++i) {
     auto it = lb;
     for (auto const& edge : fgraph[(lb + i)->second]) {  // precond.: sorted!
@@ -337,10 +334,13 @@ void transitivize_footpaths(timetable& tt) {
   tt.locations_.footpaths_in_.clear();
   tt.locations_.footpaths_in_[location_idx_t{tt.locations_.src_.size() - 1}];
 
+  auto matrix_memory = make_flat_matrix(0, 0, std::uint16_t{0});
   utl::equal_ranges_linear(
       components,
       [](auto const& a, auto const& b) { return a.first == b.first; },
-      [&](auto lb, auto ub) { process_component(tt, lb, ub, fgraph); });
+      [&](auto lb, auto ub) {
+        process_component(tt, lb, ub, fgraph, matrix_memory);
+      });
 }
 
 void add_links_to_and_between_children(timetable& tt) {

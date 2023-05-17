@@ -335,6 +335,16 @@ struct timetable {
         std::chrono::time_point_cast<i32_minutes>(date_range_.to_ + 1_days)};
   }
 
+  std::string_view trip_direction(trip_direction_idx_t const i) const {
+    return trip_directions_.at(i).apply(
+        utl::overloaded{[&](trip_direction_string_idx_t s_idx) {
+                          return trip_direction_strings_.at(s_idx).view();
+                        },
+                        [&](location_idx_t const l) {
+                          return locations_.names_.at(l).view();
+                        }});
+  }
+
   friend std::ostream& operator<<(std::ostream&, timetable const&);
   friend void print_1(std::ostream&, timetable const&);
 
