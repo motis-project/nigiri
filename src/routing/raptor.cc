@@ -603,7 +603,7 @@ void raptor<SearchDir, IntermodalTarget>::rounds() {
     }
 
     std::swap(state_.prev_station_mark_, state_.station_mark_);
-    std::fill(begin(state_.station_mark_), end(state_.station_mark_), false);
+    utl::fill(state_.station_mark_, false);
 
     if (!any_marked) {
       trace_always("┊ ╰ k={}, no routes marked, exit\n\n", k);
@@ -621,7 +621,7 @@ void raptor<SearchDir, IntermodalTarget>::rounds() {
       any_marked |= update_route(k, route_idx_t{r_id});
     }
 
-    std::fill(begin(state_.route_mark_), end(state_.route_mark_), false);
+    utl::fill(state_.route_mark_, false);
     if (!any_marked) {
       trace_always("┊ ╰ k={}, no stations marked, exit\n\n", k);
       return;
@@ -887,8 +887,7 @@ void raptor<SearchDir, IntermodalTarget>::route() {
           return a.time_at_start_ == b.time_at_start_;
         },
         [&](auto&& from_it, auto&& to_it) {
-          std::fill(begin(state_.best_), end(state_.best_),
-                    kInvalidTime<SearchDir>);
+          utl::fill(state_.best_, kInvalidTime<SearchDir>);
           for (auto const& s : it_range{from_it, to_it}) {
             trace_always(
                 "init: time_at_start={}, time_at_stop={} at (name={} id={})\n",
