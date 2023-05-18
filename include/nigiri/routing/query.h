@@ -29,7 +29,7 @@ struct query {
   std::vector<offset> start_;
   std::vector<offset> destination_;
   std::uint8_t max_transfers_{kMaxTransfers};
-  std::uint8_t min_connection_count_{0U};
+  unsigned min_connection_count_{0U};
   bool extend_interval_earlier_{false};
   bool extend_interval_later_{false};
 };

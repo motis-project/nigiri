@@ -12,8 +12,16 @@ inline constexpr auto const kInvalidDelta =
     SearchDir == direction::kForward ? std::numeric_limits<delta_t>::max()
                                      : std::numeric_limits<delta_t>::min();
 
+template <typename T>
+inline delta_t clamp(T t) {
+  return static_cast<delta_t>(
+      std::clamp(t, static_cast<int>(std::numeric_limits<delta_t>::min()),
+                 static_cast<int>(std::numeric_limits<delta_t>::max())));
+}
+
 inline delta_t unix_to_delta(date::sys_days const base, unixtime_t const t) {
-  return (t - std::chrono::time_point_cast<unixtime_t::duration>(base)).count();
+  return clamp(
+      (t - std::chrono::time_point_cast<unixtime_t::duration>(base)).count());
 }
 
 inline delta_t tt_to_delta(day_idx_t const base,
@@ -21,7 +29,7 @@ inline delta_t tt_to_delta(day_idx_t const base,
                            minutes_after_midnight_t const mam) {
   auto const rel_day =
       (static_cast<int>(to_idx(day)) - static_cast<int>(to_idx(base)));
-  return rel_day * 1440 + mam.count();
+  return clamp(rel_day * 1440 + mam.count());
 }
 
 inline unixtime_t delta_to_unix(date::sys_days const base, delta_t const d) {

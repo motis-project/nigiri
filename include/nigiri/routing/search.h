@@ -230,13 +230,14 @@ private:
     });
   }
 
-  std::size_t n_results_in_interval() const {
+  unsigned n_results_in_interval() const {
     if (holds_alternative<interval<unixtime_t>>(q_.start_time_)) {
-      return utl::count_if(state_.results_, [&](journey const& j) {
+      auto count = utl::count_if(state_.results_, [&](journey const& j) {
         return search_interval_.contains(j.start_time_);
       });
+      return static_cast<unsigned>(count);
     } else {
-      return state_.results_.size();
+      return static_cast<unsigned>(state_.results_.size());
     }
   }
 
@@ -248,13 +249,13 @@ private:
         q_.extend_interval_later_ &&
         search_interval_.to_ != tt_.external_interval().to_;
     return !can_search_earlier && !can_search_later;
-  };
+  }
 
   void add_start_labels(start_time_t const& start_interval,
                         bool const add_ontrip) {
     get_starts(SearchDir, tt_, start_interval, q_.start_, q_.start_match_mode_,
                q_.use_start_footpaths_, state_.starts_, add_ontrip);
-  };
+  }
 
   void remove_ontrip_results() {
     utl::erase_if(state_.results_, [&](journey const& j) {

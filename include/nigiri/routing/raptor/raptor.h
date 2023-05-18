@@ -141,7 +141,8 @@ struct raptor {
       trace_print_state_after_round();
     }
 
-    for (auto const [i, is_dest] : utl::enumerate(is_dest_)) {
+    for (auto i = 0U; i != tt_.n_locations(); ++i) {
+      auto const is_dest = is_dest_[i];
       if (!is_dest) {
         continue;
       }
@@ -178,8 +179,8 @@ private:
   }
 
   void set_time_at_destination(unsigned const k) {
-    for (auto const [i, is_dest] : utl::enumerate(is_dest_)) {
-      if (is_dest) {
+    for (auto i = 0U; i != tt_.n_locations(); ++i) {
+      if (is_dest_[i]) {
         time_at_dest_ =
             get_best(time_at_dest_, state_.round_times_[k][i], state_.best_[i]);
       }
@@ -196,7 +197,8 @@ private:
           (!is_intermodal_dest() && is_dest)
               ? 0
               : dir(tt_.locations_.transfer_time_[location_idx_t{i}]).count();
-      auto const fp_target_time = state_.tmp_[i] + transfer_time;
+      auto const fp_target_time =
+          static_cast<delta_t>(state_.tmp_[i] + transfer_time);
       if (is_better(fp_target_time, state_.best_[i]) &&
           is_better(fp_target_time, time_at_dest_)) {
         if (lb_[i] == kUnreachable ||
@@ -229,7 +231,8 @@ private:
         ++stats_.n_footpaths_visited_;
 
         auto const target = to_idx(fp.target_);
-        auto const fp_target_time = state_.tmp_[i] + dir(fp.duration_).count();
+        auto const fp_target_time =
+            clamp(state_.tmp_[i] + dir(fp.duration_).count());
 
         if (is_better(fp_target_time, state_.best_[target]) &&
             is_better(fp_target_time, time_at_dest_)) {
@@ -243,7 +246,7 @@ private:
                 k, location{tt_, l_idx}, to_unix(state_.tmp_[to_idx(l_idx)]),
                 fp.duration_, location{tt_, fp.target_},
                 state_.best_[to_idx(fp.target_)], fp_target_time, lower_bound,
-                to_unix(fp_target_time + dir(lower_bound)),
+                to_unix(clamp(fp_target_time + dir(lower_bound))),
                 to_unix(time_at_dest_));
             continue;
           }
@@ -275,8 +278,8 @@ private:
     for (auto i = 0U; i != tt_.n_locations(); ++i) {
       if ((state_.prev_station_mark_[i] || state_.station_mark_[i]) &&
           dist_to_end_[i] != kUnreachable) {
-        auto const end_time =
-            get_best(state_.best_[i], state_.tmp_[i]) + dir(dist_to_end_[i]);
+        auto const end_time = clamp(get_best(state_.best_[i], state_.tmp_[i]) +
+                                    dir(dist_to_end_[i]));
         state_.round_times_[k][kIntermodalTarget] = end_time;
         state_.best_[kIntermodalTarget] = end_time;
         time_at_dest_ = end_time;
@@ -348,15 +351,16 @@ private:
               to_unix(current_best), to_unix(state_.round_times_[k - 1][l_idx]),
               to_unix(state_.best_[l_idx]), to_unix(state_.tmp_[l_idx]),
               location{tt_, location_idx_t{l_idx}}, lb_[l_idx],
-              to_unix(time_at_dest_), to_unix(by_transport + dir(lb_[l_idx])),
-              by_transport, to_unix(by_transport), current_best,
-              to_unix(current_best), is_better(by_transport, current_best),
-              by_transport, to_unix(by_transport), time_at_dest_,
-              to_unix(time_at_dest_), is_better(by_transport, time_at_dest_),
+              to_unix(time_at_dest_),
+              to_unix(clamp(by_transport + dir(lb_[l_idx]))), by_transport,
+              to_unix(by_transport), current_best, to_unix(current_best),
+              is_better(by_transport, current_best), by_transport,
+              to_unix(by_transport), time_at_dest_, to_unix(time_at_dest_),
+              is_better(by_transport, time_at_dest_),
               lb_[l_idx] != kUnreachable, by_transport + dir(lb_[l_idx]),
-              to_unix(by_transport + dir(lb_[l_idx])), time_at_dest_,
+              to_unix(clamp(by_transport + dir(lb_[l_idx]))), time_at_dest_,
               to_unix(time_at_dest_), to_unix(time_at_dest_),
-              is_better(by_transport + dir(lb_[l_idx]), time_at_dest_));
+              is_better(clamp(by_transport + dir(lb_[l_idx])), time_at_dest_));
         }
       }
 
@@ -398,9 +402,10 @@ private:
                                    minutes_after_midnight_t const mam_at_stop) {
     ++stats_.n_earliest_trip_calls_;
 
-    auto const n_days_to_iterate = std::min(
-        kMaxTravelTime.count() / 1440U + 1,
-        kFwd ? n_days_ - to_idx(day_at_stop) : to_idx(day_at_stop) + 1U);
+    auto const n_days_to_iterate =
+        std::min(kMaxTravelTime.count() / 1440U + 1,
+                 kFwd ? static_cast<unsigned>(n_days_) - to_idx(day_at_stop)
+                      : to_idx(day_at_stop) + 1U);
 
     auto const event_times = tt_.event_times_at_stop(
         r, stop_idx, kFwd ? event_type::kDep : event_type::kArr);
@@ -492,16 +497,21 @@ private:
   }
 
   delta_t to_delta(day_idx_t const day, minutes_after_midnight_t const mam) {
-    auto const d = to_idx(day - base_) * 1440 + mam.count();
-    return static_cast<delta_t>(
-        std::clamp(d, static_cast<int>(std::numeric_limits<delta_t>::min()),
-                   static_cast<int>(std::numeric_limits<delta_t>::max())));
+    return clamp(to_idx(day - base_) * 1440 + mam.count());
   }
 
   unixtime_t to_unix(delta_t const t) { return delta_to_unix(base(), t); }
 
-  std::pair<day_idx_t, minutes_after_midnight_t> split(delta_t const d) {
-    return {base_ + d / 1440, minutes_after_midnight_t{d % 1440}};
+  std::pair<day_idx_t, minutes_after_midnight_t> split(delta_t const x) {
+    if (x < 0) {
+      auto const t = -x / 1440 + 1;
+      auto const min = x + (t * 1440);
+      return {static_cast<day_idx_t>(to_idx(base_) - t),
+              minutes_after_midnight_t{min}};
+    } else {
+      return {static_cast<day_idx_t>(to_idx(base_) + x / 1440),
+              minutes_after_midnight_t{x % 1440}};
+    }
   }
 
   bool is_intermodal_dest() const { return !dist_to_end_.empty(); }

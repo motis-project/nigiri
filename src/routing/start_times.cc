@@ -239,7 +239,8 @@ void collect_destinations(timetable const& tt,
     trace("DEST METAS OF {}\n", location{tt, d.target_});
     for_each_meta(tt, match_mode, d.target_, [&](location_idx_t const l) {
       if (match_mode == location_match_mode::kIntermodal) {
-        dist_to_dest[to_idx(l)] = d.duration_.count();
+        dist_to_dest[to_idx(l)] =
+            static_cast<std::uint16_t>(d.duration_.count());
       } else {
         is_destination[to_idx(l)] = true;
       }

@@ -76,8 +76,8 @@ void dijkstra(timetable const& tt,
       auto const new_dist = l.d_ + e.duration_.count();
       if (new_dist < dists[to_idx(e.target_)] &&
           new_dist <= kMaxTravelTime.count()) {
-        dists[to_idx(e.target_)] = new_dist;
-        pq.push(label(e.target_, new_dist));
+        dists[to_idx(e.target_)] = static_cast<dist_t>(new_dist);
+        pq.push(label(e.target_, static_cast<dist_t>(new_dist)));
       }
     }
   }

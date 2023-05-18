@@ -286,9 +286,9 @@ void reconstruct_journey(timetable const& tt,
         continue;
       }
 
-      auto const day_offset =
+      auto const day =
+          base_day_idx + static_cast<cista::base_t<day_idx_t>>(time / 1440) -
           static_cast<cista::base_t<day_idx_t>>(event_mam.count() / 1440);
-      auto const day = base_day_idx + time / 1440 - day_offset;
       if (!tt.bitfields_[tt.transport_traffic_days_[t]].test(to_idx(day))) {
         trace("    -> no traffic on day {}\n ", to_idx(day));
         continue;
@@ -330,8 +330,8 @@ void reconstruct_journey(timetable const& tt,
   auto const check_fp = [&](unsigned const k, location_idx_t const l,
                             delta_t const curr_time, footpath const fp)
       -> std::optional<std::pair<journey::leg, journey::leg>> {
-    auto const fp_start =
-        curr_time - (kFwd ? fp.duration_ : -fp.duration_).count();
+    auto const fp_start = static_cast<delta_t>(
+        curr_time - (kFwd ? fp.duration_ : -fp.duration_).count());
 
     trace(
         "round {}: searching for transports at {} with curr_time={} --{}--> "

@@ -35,7 +35,6 @@ void raptor_state::print(timetable const& tt,
                          date::sys_days const base,
                          delta_t const invalid) {
   auto const has_empty_rounds = [&](std::uint32_t const l) {
-    return false;
     for (auto k = 0U; k != kMaxTransfers + 1U; ++k) {
       if (round_times_[k][l] != invalid) {
         return false;

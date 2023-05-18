@@ -49,8 +49,8 @@ pareto_set<routing::journey> raptor_search(timetable const& tt,
                                            routing::start_time_t time,
                                            direction const search_dir) {
   auto const src = source_idx_t{0};
-  auto const q = routing::query{
-      .start_time_ = time,
+  auto q = routing::query{
+      .start_time_ = std::move(time),
       .start_ = {{tt.locations_.location_id_to_idx_.at({from, src}), 0_minutes,
                   0U}},
       .destination_ = {
@@ -76,7 +76,7 @@ pareto_set<routing::journey> raptor_intermodal_search(
     std::uint8_t const min_connection_count,
     bool const extend_interval_earlier,
     bool const extend_interval_later) {
-  auto const q = routing::query{
+  auto q = routing::query{
       .start_time_ = interval,
       .start_match_mode_ = routing::location_match_mode::kIntermodal,
       .dest_match_mode_ = routing::location_match_mode::kIntermodal,
