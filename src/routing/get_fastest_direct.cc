@@ -12,7 +12,7 @@ duration_t get_fastest_direct_with_foot(timetable const& tt,
         (dir == direction::kForward ? tt.locations_.footpaths_out_
                                     : tt.locations_.footpaths_in_);
     for (auto const& fp : footpaths[start.target_]) {
-      for (auto const& dest : q.destinations_.front()) {
+      for (auto const& dest : q.destination_) {
         if (dest.target_ == fp.target_) {
           min = std::min(min, start.duration_ + fp.duration_ + dest.duration_);
         }
@@ -23,12 +23,11 @@ duration_t get_fastest_direct_with_foot(timetable const& tt,
 }
 
 duration_t get_fastest_start_dest_overlap(timetable const& tt, query const& q) {
-  utl::verify(!q.destinations_.empty(), "no destination");
   auto min = duration_t{std::numeric_limits<duration_t::rep>::max()};
   for (auto const& s : q.start_) {
     for_each_meta(tt, q.start_match_mode_, s.target_,
                   [&](location_idx_t const start) {
-                    for (auto const& dest : q.destinations_.front()) {
+                    for (auto const& dest : q.destination_) {
                       if (start == dest.target_) {
                         min = std::min(min, s.duration_ + dest.duration_);
                       }

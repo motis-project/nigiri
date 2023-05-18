@@ -1,6 +1,7 @@
 #include "nigiri/routing/start_times.h"
 
 #include "nigiri/routing/for_each_meta.h"
+#include "nigiri/special_stations.h"
 #include "utl/enumerate.h"
 #include "utl/overloaded.h"
 
@@ -216,22 +217,34 @@ void get_starts(direction const search_dir,
 }
 
 void collect_destinations(timetable const& tt,
-                          std::vector<std::vector<offset>> const& destinations,
+                          std::vector<offset> const& destinations,
                           location_match_mode const match_mode,
-                          std::vector<std::set<location_idx_t>>& out,
-                          std::vector<bool>& is_destination) {
-  out.resize(std::max(out.size(), destinations.size()));
-  for (auto const [i, dest] : utl::enumerate(destinations)) {
-    for (auto const& d : dest) {
-      trace("DEST METAS OF {}\n", location{tt, d.target_});
-      for_each_meta(tt, match_mode, d.target_,
-                    [&, i = i](location_idx_t const l) {
-                      out[i].emplace(l);
-                      is_destination[to_idx(l)] = true;
-                      trace("  DEST META: {}, duration={}\n", location{tt, l},
-                            d.duration_);
-                    });
-    }
+                          std::vector<bool>& is_destination,
+                          std::vector<std::uint16_t>& dist_to_dest) {
+  is_destination.resize(tt.n_locations());
+  utl::fill(is_destination, false);
+
+  static constexpr auto const kIntermodalTarget =
+      to_idx(get_special_station(special_station::kEnd));
+
+  if (match_mode == location_match_mode::kIntermodal) {
+    is_destination[kIntermodalTarget] = true;
+    dist_to_dest.resize(tt.n_locations());
+    utl::fill(dist_to_dest, std::numeric_limits<std::uint16_t>::max());
+  } else {
+    dist_to_dest.clear();
+  }
+
+  for (auto const& d : destinations) {
+    trace("DEST METAS OF {}\n", location{tt, d.target_});
+    for_each_meta(tt, match_mode, d.target_, [&](location_idx_t const l) {
+      if (match_mode == location_match_mode::kIntermodal) {
+        dist_to_dest[to_idx(l)] = d.duration_.count();
+      } else {
+        is_destination[to_idx(l)] = true;
+      }
+      trace("  DEST META: {}, duration={}\n", location{tt, l}, d.duration_);
+    });
   }
 }
 

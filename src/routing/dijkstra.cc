@@ -20,10 +20,10 @@
 
 namespace nigiri::routing {
 
-using dist_t = duration_t;
+using dist_t = std::uint16_t;
 
 struct label {
-  label(location_idx_t const l, duration_t const d) : l_{l}, d_{d} {}
+  label(location_idx_t const l, dist_t const d) : l_{l}, d_{d} {}
   friend bool operator>(label const& a, label const& b) { return a.d_ > b.d_; }
   location_idx_t l_;
   dist_t d_;
@@ -31,7 +31,7 @@ struct label {
 
 struct get_bucket {
   std::size_t operator()(label const& l) const {
-    return static_cast<std::size_t>(l.d_.count());
+    return static_cast<std::size_t>(l.d_);
   }
 };
 
@@ -39,21 +39,18 @@ void dijkstra(timetable const& tt,
               query const& q,
               vecvec<location_idx_t, footpath> const& lb_graph,
               std::vector<dist_t>& dists) {
-  assert(dists.size() == tt.n_locations());
-  std::fill(begin(dists), end(dists),
-            duration_t{std::numeric_limits<duration_t::rep>::max()});
+  dists.resize(tt.n_locations());
+  utl::fill(dists, std::numeric_limits<dist_t>::max());
 
-  std::map<location_idx_t, duration_t> min;
-  for (auto const& start : q.destinations_.front()) {
+  std::map<location_idx_t, dist_t> min;
+  for (auto const& start : q.destination_) {
     for_each_meta(
         tt, q.dest_match_mode_, start.target_, [&](location_idx_t const x) {
-          // Map to parent
-          // because the lower bound graph operates only on parents.
           auto const p = tt.locations_.parents_[x];
           auto const l = (p == location_idx_t::invalid()) ? x : p;
           auto& m =
               utl::get_or_create(min, l, [&]() { return dists[to_idx(l)]; });
-          m = std::min(start.duration_, m);
+          m = std::min(static_cast<dist_t>(start.duration_.count()), m);
         });
   }
 
@@ -76,9 +73,9 @@ void dijkstra(timetable const& tt,
     }
 
     for (auto const& e : lb_graph[l.l_]) {
-      auto const new_dist = l.d_ + e.duration_;
+      auto const new_dist = l.d_ + e.duration_.count();
       if (new_dist < dists[to_idx(e.target_)] &&
-          new_dist <= duration_t{kMaxTravelTime}) {
+          new_dist <= kMaxTravelTime.count()) {
         dists[to_idx(e.target_)] = new_dist;
         pq.push(label(e.target_, new_dist));
       }

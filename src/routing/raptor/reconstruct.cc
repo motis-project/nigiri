@@ -1,17 +1,18 @@
-#include "nigiri/routing/reconstruct.h"
+#include "nigiri/routing/raptor/reconstruct.h"
 
 #include "utl/enumerate.h"
 #include "utl/helpers/algorithm.h"
 
 #include "nigiri/routing/for_each_meta.h"
 #include "nigiri/routing/journey.h"
-#include "nigiri/routing/raptor_state.h"
+#include "nigiri/routing/raptor/delta_t.h"
+#include "nigiri/routing/raptor/raptor_state.h"
 #include "nigiri/special_stations.h"
 
 namespace nigiri::routing {
 
-constexpr auto const kTracing = false;
-constexpr auto const kTraceStart = false;
+constexpr auto const kTracing = true;
+constexpr auto const kTraceStart = true;
 
 template <typename... Args>
 void trace(char const* fmt_str, Args... args) {
@@ -39,7 +40,8 @@ template <direction SearchDir>
 std::optional<journey::leg> find_start_footpath(timetable const& tt,
                                                 query const& q,
                                                 journey const& j,
-                                                raptor_state const& state) {
+                                                raptor_state const& state,
+                                                date::sys_days const base) {
   trace("find_start_footpath()\n");
 
   constexpr auto const kFwd = SearchDir == direction::kForward;
@@ -49,7 +51,7 @@ std::optional<journey::leg> find_start_footpath(timetable const& tt,
   };
 
   auto const is_ontrip = holds_alternative<unixtime_t>(q.start_time_);
-  auto const start_matches = [&](routing_time const a, routing_time const b) {
+  auto const start_matches = [&](delta_t const a, delta_t const b) {
     return is_ontrip ? is_better_or_eq(a, b) : a == b;
   };
 
@@ -83,7 +85,7 @@ std::optional<journey::leg> find_start_footpath(timetable const& tt,
   auto const& footpaths =
       kFwd ? tt.locations_.footpaths_in_[leg_start_location]
            : tt.locations_.footpaths_out_[leg_start_location];
-  auto const j_start_time = routing_time{tt, j.start_time_};
+  auto const j_start_time = unix_to_delta(base, j.start_time_);
   auto const fp_target_time = state.round_times_[0][to_idx(leg_start_location)];
 
   if (q.start_match_mode_ == location_match_mode::kIntermodal) {
@@ -144,8 +146,8 @@ std::optional<journey::leg> find_start_footpath(timetable const& tt,
   } else {
     for (auto const& fp : footpaths) {
       if (is_journey_start(tt, q, fp.target_) &&
-          fp_target_time != kInvalidTime<SearchDir> &&
-          start_matches(j_start_time + (kFwd ? 1 : -1) * fp.duration_,
+          fp_target_time != kInvalidDelta<SearchDir> &&
+          start_matches(j_start_time + (kFwd ? 1 : -1) * fp.duration_.count(),
                         fp_target_time)) {
         trace(
             "  -> from={}, j_start={}, journey_start={}, fp_target_time={}, "
@@ -156,7 +158,7 @@ std::optional<journey::leg> find_start_footpath(timetable const& tt,
                             fp.target_,
                             leg_start_location,
                             j.start_time_,
-                            fp_target_time.to_unixtime(tt),
+                            delta_to_unix(base, fp_target_time),
                             fp};
       } else {
         trace_start(
@@ -176,14 +178,16 @@ template <direction SearchDir>
 void reconstruct_journey(timetable const& tt,
                          query const& q,
                          raptor_state const& raptor_state,
-                         journey& j) {
+                         journey& j,
+                         date::sys_days const base,
+                         day_idx_t const base_day_idx) {
   constexpr auto const kFwd = SearchDir == direction::kForward;
   auto const is_better_or_eq = [](auto a, auto b) {
     return kFwd ? a <= b : a >= b;
   };
 
   auto const is_ontrip = holds_alternative<unixtime_t>(q.start_time_);
-  auto const start_matches = [&](routing_time const a, routing_time const b) {
+  auto const start_matches = [&](delta_t const a, delta_t const b) {
     return is_ontrip ? is_better_or_eq(a, b) : a == b;
   };
 
@@ -195,7 +199,7 @@ void reconstruct_journey(timetable const& tt,
   auto const find_entry_in_prev_round =
       [&](unsigned const k, transport const& t, route_idx_t const r,
           std::size_t const from_stop_idx,
-          routing_time const time) -> std::optional<journey::leg> {
+          delta_t const time) -> std::optional<journey::leg> {
     auto const& stop_seq = tt.route_location_seq_[r];
 
     auto const n_stops =
@@ -210,9 +214,10 @@ void reconstruct_journey(timetable const& tt,
         continue;
       }
 
-      auto const event_time = routing_time{
-          t.day_, tt.event_mam(t.t_idx_, stop_idx,
-                               kFwd ? event_type::kDep : event_type::kArr)};
+      auto const event_time =
+          tt_to_delta(base_day_idx, t.day_,
+                      tt.event_mam(t.t_idx_, stop_idx,
+                                   kFwd ? event_type::kDep : event_type::kArr));
       if (is_better_or_eq(raptor_state.round_times_[k - 1][to_idx(l)],
                           event_time)) {
         trace("      FOUND ENTRY AT {}: {} <= {}\n", location{tt, l},
@@ -221,8 +226,8 @@ void reconstruct_journey(timetable const& tt,
             SearchDir,
             timetable::stop{stop_seq[stop_idx]}.location_idx(),
             timetable::stop{stop_seq[from_stop_idx]}.location_idx(),
-            event_time.to_unixtime(tt),
-            time.to_unixtime(tt),
+            delta_to_unix(base, event_time),
+            delta_to_unix(base, time),
             journey::transport_enter_exit{
                 t, stop_idx, static_cast<unsigned>(from_stop_idx)}};
       } else {
@@ -251,8 +256,8 @@ void reconstruct_journey(timetable const& tt,
               SearchDir,
               timetable::stop{stop_seq[stop_idx]}.location_idx(),
               timetable::stop{stop_seq[from_stop_idx]}.location_idx(),
-              event_time.to_unixtime(tt),
-              time.to_unixtime(tt),
+              delta_to_unix(base, event_time),
+              delta_to_unix(base, time),
               journey::transport_enter_exit{
                   t, stop_idx, static_cast<unsigned>(from_stop_idx)}};
         }
@@ -263,7 +268,7 @@ void reconstruct_journey(timetable const& tt,
   };
 
   auto const get_route_transport =
-      [&](unsigned const k, routing_time const time, route_idx_t const r,
+      [&](unsigned const k, delta_t const time, route_idx_t const r,
           std::size_t const stop_idx) -> std::optional<journey::leg> {
     for (auto const t : tt.route_transport_ranges_[r]) {
       auto const event_mam =
@@ -275,15 +280,15 @@ void reconstruct_journey(timetable const& tt,
                     .view(),
             location{tt, timetable::stop{tt.route_location_seq_[r][stop_idx]}
                              .location_idx()});
-      if (event_mam.count() % 1440 != time.mam().count()) {
+      if (event_mam.count() % 1440 != time % 1440) {
         trace("    -> ev_mam mismatch: transport_ev={} vs footpath = {}\n ",
-              duration_t{event_mam.count()}, duration_t{time.mam().count()});
+              duration_t{event_mam.count()}, duration_t{time % 1440});
         continue;
       }
 
       auto const day_offset =
           static_cast<cista::base_t<day_idx_t>>(event_mam.count() / 1440);
-      auto const day = time.day() - day_offset;
+      auto const day = base_day_idx + time / 1440 - day_offset;
       if (!tt.bitfields_[tt.transport_traffic_days_[t]].test(to_idx(day))) {
         trace("    -> no traffic on day {}\n ", to_idx(day));
         continue;
@@ -301,8 +306,8 @@ void reconstruct_journey(timetable const& tt,
 
   auto const get_transport =
       [&](unsigned const k, location_idx_t const l,
-          routing_time const time) -> std::optional<journey::leg> {
-    trace(" time={}\n", time);
+          delta_t const time) -> std::optional<journey::leg> {
+    trace(" time={}\n", delta_to_unix(base, time));
     for (auto const& r : tt.location_routes_[l]) {
       auto const location_seq = tt.route_location_seq_[r];
       for (auto const [i, stop] : utl::enumerate(location_seq)) {
@@ -323,14 +328,16 @@ void reconstruct_journey(timetable const& tt,
   };
 
   auto const check_fp = [&](unsigned const k, location_idx_t const l,
-                            routing_time const curr_time, footpath const fp)
+                            delta_t const curr_time, footpath const fp)
       -> std::optional<std::pair<journey::leg, journey::leg>> {
-    auto const fp_start = curr_time - (kFwd ? fp.duration_ : -fp.duration_);
+    auto const fp_start =
+        curr_time - (kFwd ? fp.duration_ : -fp.duration_).count();
 
     trace(
-        "round {}: searching for transports at ({}) with fp_start "
-        "= {}\n ",
-        k, location{tt, fp.target_}, fp_start);
+        "round {}: searching for transports at {} with curr_time={} --{}--> "
+        "fp_start={}\n ",
+        k, location{tt, fp.target_}, delta_to_unix(base, fp_start),
+        fp.duration_, delta_to_unix(base, fp_start));
 
     auto const transport_leg = get_transport(k, fp.target_, fp_start);
 
@@ -340,14 +347,14 @@ void reconstruct_journey(timetable const& tt,
         transport_leg->print(std::cout, tt, 1, false);
       }
       trace(" fp leg: {} {} --{}--> {} {}\n", location{tt, l},
-            fp_start.to_unixtime(tt), fp.duration_, location{tt, fp.target_},
-            curr_time.to_unixtime(tt));
+            delta_to_unix(base, fp_start), fp.duration_,
+            location{tt, fp.target_}, delta_to_unix(base, curr_time));
 
       auto const fp_leg = journey::leg{SearchDir,
                                        fp.target_,
                                        l,
-                                       fp_start.to_unixtime(tt),
-                                       curr_time.to_unixtime(tt),
+                                       delta_to_unix(base, fp_start),
+                                       delta_to_unix(base, curr_time),
                                        fp};
       return std::pair{fp_leg, *transport_leg};
     } else {
@@ -363,7 +370,7 @@ void reconstruct_journey(timetable const& tt,
     if (q.dest_match_mode_ == location_match_mode::kIntermodal &&
         k == j.transfers_ + 1U) {
       trace("  CHECKING INTERMODAL DEST\n");
-      for (auto const& dest_offset : q.destinations_[0]) {
+      for (auto const& dest_offset : q.destination_) {
         std::optional<std::pair<journey::leg, journey::leg>> ret;
         for_each_meta(
             tt, location_match_mode::kIntermodal, dest_offset.target_,
@@ -462,7 +469,7 @@ void reconstruct_journey(timetable const& tt,
     j.add(std::move(transport_leg));
   }
 
-  auto init_fp = find_start_footpath<SearchDir>(tt, q, j, raptor_state);
+  auto init_fp = find_start_footpath<SearchDir>(tt, q, j, raptor_state, base);
   if (init_fp.has_value()) {
     j.add(std::move(*init_fp));
   }
@@ -479,11 +486,15 @@ void reconstruct_journey(timetable const& tt,
 template void reconstruct_journey<direction::kForward>(timetable const&,
                                                        query const&,
                                                        raptor_state const&,
-                                                       journey& j);
+                                                       journey&,
+                                                       date::sys_days const,
+                                                       day_idx_t const);
 
 template void reconstruct_journey<direction::kBackward>(timetable const&,
                                                         query const&,
                                                         raptor_state const&,
-                                                        journey& j);
+                                                        journey&,
+                                                        date::sys_days const,
+                                                        day_idx_t const);
 
 }  // namespace nigiri::routing

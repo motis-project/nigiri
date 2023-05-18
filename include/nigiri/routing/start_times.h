@@ -29,9 +29,9 @@ void get_starts(direction,
                 bool add_ontrip);
 
 void collect_destinations(timetable const&,
-                          std::vector<std::vector<offset>> const& destinations,
+                          std::vector<offset> const& destinations,
                           location_match_mode const,
-                          std::vector<std::set<location_idx_t>>&,
-                          std::vector<bool>& is_destination);
+                          std::vector<bool>& is_destination,
+                          std::vector<std::uint16_t>& dist_to_dest);
 
 }  // namespace nigiri::routing

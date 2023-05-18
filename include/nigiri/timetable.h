@@ -345,6 +345,12 @@ struct timetable {
                         }});
   }
 
+  std::string_view transport_name(transport_idx_t const t) const {
+    return trip_display_names_
+        [merged_trips_[transport_to_trip_section_[t].front()].front()]
+            .view();
+  }
+
   friend std::ostream& operator<<(std::ostream&, timetable const&);
   friend void print_1(std::ostream&, timetable const&);
 
