@@ -11,8 +11,8 @@
 
 namespace nigiri::routing {
 
-constexpr auto const kTracing = true;
-constexpr auto const kTraceStart = true;
+constexpr auto const kTracing = false;
+constexpr auto const kTraceStart = false;
 
 template <typename... Args>
 void trace(char const* fmt_str, Args... args) {

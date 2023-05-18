@@ -1,6 +1,6 @@
 #pragma once
 
-#define NIGIRI_TRACING
+// #define NIGIRI_TRACING
 #if defined(NIGIRI_TRACING)
 
 // #define NIGIRI_RAPTOR_TRACING_ONLY_UPDATES
@@ -29,5 +29,6 @@
 #else
 #define trace_print_state_after_round()
 #define trace_print_init_state()
+#define trace_upd(...)
 #define trace(...)
 #endif
