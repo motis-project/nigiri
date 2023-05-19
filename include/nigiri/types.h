@@ -106,7 +106,7 @@ using trip_id_idx_t = cista::strong<std::uint32_t, struct _trip_id_str_idx>;
 using transport_idx_t = cista::strong<std::uint32_t, struct _transport_idx>;
 using rt_trip_idx_t = cista::strong<std::uint32_t, struct _rt_trip_idx>;
 using source_idx_t = cista::strong<std::uint8_t, struct _source_idx>;
-using day_idx_t = cista::strong<std::uint16_t, struct _day_idx>;
+using day_idx_t = cista::strong<std::int16_t, struct _day_idx>;
 using timezone_idx_t = cista::strong<std::uint8_t, struct _timezone_idx>;
 using merged_trips_idx_t =
     cista::strong<std::uint32_t, struct _merged_trips_idx>;
@@ -160,6 +160,14 @@ struct location_id {
   source_idx_t src_;
 };
 
+struct debug {
+  inline friend std::ostream& operator<<(std::ostream& out, debug const dbg) {
+    return out << dbg.path_ << ":" << dbg.line_from_ << ":" << dbg.line_to_;
+  }
+  std::string_view path_;
+  unsigned line_from_, line_to_;
+};
+
 struct transport {
   CISTA_PRINTABLE(transport, "idx", "day")
   constexpr bool is_valid() const { return day_ != day_idx_t::invalid(); }
@@ -199,7 +207,6 @@ struct tz_offsets {
     duration_t season_begin_mam_{0};
     duration_t season_end_mam_{0};
   };
-  friend std::ostream& operator<<(std::ostream&, tz_offsets const&);
   vector<season> seasons_;
   duration_t offset_{0};
 };

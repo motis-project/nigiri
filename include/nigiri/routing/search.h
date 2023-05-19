@@ -3,6 +3,7 @@
 #include "utl/equal_ranges_linear.h"
 #include "utl/erase_if.h"
 #include "utl/timing.h"
+#include "utl/to_vec.h"
 
 #include "nigiri/routing/dijkstra.h"
 #include "nigiri/routing/for_each_meta.h"
@@ -32,7 +33,6 @@ struct search_state {
 };
 
 struct search_stats {
-  std::uint64_t n_routing_time_{0ULL};
   std::uint64_t lb_time_{0ULL};
   std::uint64_t fastest_direct_{0ULL};
   std::uint64_t search_iterations_{0ULL};
@@ -42,8 +42,16 @@ struct search_stats {
 template <direction SearchDir, typename Algo>
 struct search {
   using algo_state_t = typename Algo::algo_state_t;
+  using algo_stats_t = typename Algo::algo_stats_t;
   static constexpr auto const kFwd = (SearchDir == direction::kForward);
   static constexpr auto const kBwd = (SearchDir == direction::kBackward);
+
+  struct routing_result {
+    pareto_set<journey> const* journeys_{nullptr};
+    interval<unixtime_t> interval_;
+    search_stats search_stats_;
+    algo_stats_t algo_stats_;
+  };
 
   Algo init(algo_state_t& algo_state) {
     stats_.fastest_direct_ =
@@ -66,9 +74,24 @@ struct search {
       }
       UTL_STOP_TIMING(lb);
       stats_.lb_time_ = static_cast<std::uint64_t>(UTL_TIMING_MS(lb));
+
+#if defined(NIGIRI_TRACING)
+      for (auto const& o : q_.start_) {
+        trace_upd("start {}: {}\n", location{tt_, o.target_}, o.duration_);
+      }
+      for (auto const& o : q_.destination_) {
+        trace_upd("dest {}: {}\n", location{tt_, o.target_}, o.duration_);
+      }
+      for (auto const [l, lb] :
+           utl::enumerate(state_.travel_time_lower_bound_)) {
+        if (lb != std::numeric_limits<duration_t::rep>::max()) {
+          trace_upd("lb {}: {}\n", location{tt_, location_idx_t{l}}, lb);
+        }
+      }
+#endif
     }
 
-    auto algo = Algo{
+    return Algo{
         tt_,
         algo_state,
         state_.is_destination_,
@@ -77,8 +100,6 @@ struct search {
         day_idx_t{std::chrono::duration_cast<date::days>(
                       search_interval_.from_ - tt_.internal_interval().from_)
                       .count()}};
-    algo.reset_state();
-    return algo;
   }
 
   search(timetable const& tt,
@@ -98,11 +119,11 @@ struct search {
         fastest_direct_{get_fastest_direct(tt_, q_, SearchDir)},
         algo_{init(algo_state)} {}
 
-  std::pair<pareto_set<journey>, interval<unixtime_t>> execute() {
+  routing_result execute() {
     state_.results_.clear();
 
     if (start_dest_overlap()) {
-      return {state_.results_, search_interval_};
+      return {&state_.results_, search_interval_, stats_, algo_.get_stats()};
     }
 
     state_.starts_.clear();
@@ -194,7 +215,10 @@ struct search {
       });
     }
 
-    return {state_.results_, search_interval_};
+    return {.journeys_ = &state_.results_,
+            .interval_ = search_interval_,
+            .search_stats_ = stats_,
+            .algo_stats_ = algo_.get_stats()};
   }
 
 private:
@@ -279,8 +303,7 @@ private:
 
           auto const worst_time_at_dest =
               start_time +
-              (kFwd ? 1 : -1) *
-                  (std::min(fastest_direct_, kMaxTravelTime) + 1_minutes);
+              (kFwd ? 1 : -1) * std::min(fastest_direct_, kMaxTravelTime);
           algo_.execute(start_time, q_.max_transfers_, worst_time_at_dest,
                         state_.results_);
 

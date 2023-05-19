@@ -27,6 +27,9 @@ void raptor_state::reset(unsigned const n_locations,
   best_.resize(n_locations);
   utl::fill(best_, invalid);
 
+  best_k_.resize(n_locations);
+  utl::fill(best_, std::numeric_limits<std::uint8_t>::max());
+
   round_times_.resize(kMaxTransfers + 1U, n_locations);
   round_times_.reset(invalid);
 }
@@ -56,7 +59,7 @@ void raptor_state::print(timetable const& tt,
       continue;
     }
 
-    fmt::print("{:40}  ", location{tt, location_idx_t{l}});
+    fmt::print("{:80}  ", location{tt, location_idx_t{l}});
 
     auto const b = best_[l];
     fmt::print("best=");

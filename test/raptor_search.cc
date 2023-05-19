@@ -27,10 +27,10 @@ pareto_set<routing::journey> raptor_search(timetable const& tt,
   static auto search_state = routing::search_state{};
   static auto algo_state = algo_state_t{};
 
-  return routing::search<SearchDir, algo_t>{tt, search_state, algo_state,
-                                            std::move(q)}
-      .execute()
-      .first;
+  return *(routing::search<SearchDir, algo_t>{tt, search_state, algo_state,
+                                              std::move(q)}
+               .execute()
+               .journeys_);
 }
 
 pareto_set<routing::journey> raptor_search(timetable const& tt,
