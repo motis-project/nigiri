@@ -299,7 +299,7 @@ private:
           for (auto const& s : it_range{from_it, to_it}) {
             trace("init: time_at_start={}, time_at_stop={} at {}\n",
                   s.time_at_start_, s.time_at_stop_, location_idx_t{s.stop_});
-            algo_.init(s.stop_, s.time_at_stop_);
+            algo_.add_start(s.stop_, s.time_at_stop_);
           }
 
           auto const worst_time_at_dest =

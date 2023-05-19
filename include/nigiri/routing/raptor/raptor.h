@@ -61,15 +61,12 @@ struct raptor {
         lb_{lb},
         base_{base},
         n_days_{tt_.internal_interval_days().size().count()} {
-    reset_state();
+    state_.reset(tt_.n_locations(), tt_.n_routes());
+    utl::fill(time_at_dest_, kInvalid);
+    state_.round_times_.reset(kInvalid);
   }
 
   algo_stats_t get_stats() const { return stats_; }
-
-  void reset_state() {
-    state_.reset(tt_.n_locations(), tt_.n_routes(), kInvalid);
-    utl::fill(time_at_dest_, kInvalid);
-  }
 
   void reset_arrivals() {
     utl::fill(time_at_dest_, kInvalid);
@@ -84,7 +81,7 @@ struct raptor {
     utl::fill(state_.route_mark_, false);
   }
 
-  void init(location_idx_t const l, unixtime_t const t) {
+  void add_start(location_idx_t const l, unixtime_t const t) {
     state_.round_times_[0U][to_idx(l)] = unix_to_delta(base(), t);
     state_.station_mark_[to_idx(l)] = true;
   }
@@ -335,6 +332,8 @@ private:
             r, et, stop_idx, kFwd ? event_type::kArr : event_type::kDep);
         current_best = get_best(state_.round_times_[k - 1][l_idx],
                                 state_.tmp_[l_idx], state_.best_[l_idx]);
+        assert(by_transport != std::numeric_limits<delta_t>::min() &&
+               by_transport != std::numeric_limits<delta_t>::max());
         if (is_better(by_transport, current_best) &&
             is_better(by_transport, time_at_dest_[k]) &&
             lb_[l_idx] != kUnreachable &&
@@ -353,7 +352,7 @@ private:
           current_best = by_transport;
           any_marked = true;
         } else {
-          trace_upd(
+          trace(
               "┊ │k={}    *** NO UPD: at={}, name={}, dbg={}, "
               "time_by_transport={}, current_best=min({}, {}, {})={} => {} - "
               "LB={}, LB_AT_DEST={}, TIME_AT_DEST={} "
@@ -392,6 +391,7 @@ private:
                              kFwd ? event_type::kDep : event_type::kArr)
               : kInvalid;
       auto const prev_round_time = state_.round_times_[k - 1][l_idx];
+      assert(prev_round_time != kInvalid);
       if (is_better_or_eq(prev_round_time, et_time_at_stop)) {
         auto const [day, mam] = split(prev_round_time);
         auto const new_et = get_earliest_transport(k, r, stop_idx, day, mam);
@@ -519,11 +519,11 @@ private:
   }
 
   delta_t to_delta(day_idx_t const day, minutes_after_midnight_t const mam) {
-    trace("to delta: day={}, base={}={}, mam={}, {}={} = {}\n", day_idx,
-          base_idx, base(), mam.count(),
-          (as_int(day) - as_int(base_idx)) * 1440 + mam.count(),
+    trace("to delta: day={}, base={}={}, mam={}, {}={} = {}\n", as_int(day),
+          as_int(base_), base(), mam.count(),
+          (as_int(day) - as_int(base_)) * 1440 + mam.count(),
           tt_.to_unixtime(day, mam),
-          clamp((as_int(day) - as_int(base_idx)) * 1440 + mam.count()));
+          clamp((as_int(day) - as_int(base_)) * 1440 + mam.count()));
     return clamp((as_int(day) - as_int(base_)) * 1440 + mam.count());
   }
 

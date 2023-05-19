@@ -9,26 +9,13 @@
 
 namespace nigiri::routing {
 
-void raptor_state::reset(unsigned const n_locations,
-                         unsigned const n_routes,
-                         delta_t invalid) {
+void raptor_state::reset(unsigned const n_locations, unsigned const n_routes) {
   tmp_.resize(n_locations);
-  utl::fill(tmp_, invalid);
-
   station_mark_.resize(n_locations);
-  utl::fill(station_mark_, false);
-
   prev_station_mark_.resize(n_locations);
-  utl::fill(prev_station_mark_, false);
-
   route_mark_.resize(n_routes);
-  utl::fill(route_mark_, false);
-
   best_.resize(n_locations);
-  utl::fill(best_, invalid);
-
   round_times_.resize(kMaxTransfers + 1U, n_locations);
-  round_times_.reset(invalid);
 }
 
 void raptor_state::print(timetable const& tt,
