@@ -183,7 +183,7 @@ struct raptor {
 
 private:
   date::sys_days base() const {
-    return tt_.internal_interval_days().from_ + to_idx(base_) * date::days{1};
+    return tt_.internal_interval_days().from_ + as_int(base_) * date::days{1};
   }
 
   void update_transfers(unsigned const k) {
@@ -415,10 +415,9 @@ private:
                                    minutes_after_midnight_t const mam_at_stop) {
     ++stats_.n_earliest_trip_calls_;
 
-    auto const n_days_to_iterate =
-        std::min(kMaxTravelTime.count() / 1440U + 1,
-                 kFwd ? static_cast<unsigned>(n_days_) - to_idx(day_at_stop)
-                      : to_idx(day_at_stop) + 1U);
+    auto const n_days_to_iterate = std::min(
+        kMaxTravelTime.count() / 1440 + 1,
+        kFwd ? n_days_ - as_int(day_at_stop) : as_int(day_at_stop) + 1);
 
     auto const event_times = tt_.event_times_at_stop(
         r, stop_idx, kFwd ? event_type::kDep : event_type::kArr);
@@ -481,7 +480,7 @@ private:
         auto const ev_day_offset =
             static_cast<day_idx_t::value_t>(ev.count() / 1440);
         auto const start_day =
-            static_cast<std::size_t>(to_idx(day) - ev_day_offset);
+            static_cast<std::size_t>(as_int(day) - ev_day_offset);
         if (!tt_.bitfields_[tt_.transport_traffic_days_[t]].test(start_day)) {
           trace(
               "┊ │k={}      => transport={}, name={}, dbg={}, day={}/{}, "
@@ -515,15 +514,12 @@ private:
   }
 
   delta_t to_delta(day_idx_t const day, minutes_after_midnight_t const mam) {
-    auto const day_idx = static_cast<int>(to_idx(day));
-    auto const base_idx = static_cast<int>(to_idx(base_));
-
     trace("to delta: day={}, base={}={}, mam={}, {}={} = {}\n", day_idx,
           base_idx, base(), mam.count(),
-          (day_idx - base_idx) * 1440 + mam.count(), tt_.to_unixtime(day, mam),
-          clamp((day_idx - base_idx) * 1440 + mam.count()));
-
-    return clamp((day_idx - base_idx) * 1440 + mam.count());
+          (as_int(day) - as_int(base_idx)) * 1440 + mam.count(),
+          tt_.to_unixtime(day, mam),
+          clamp((as_int(day) - as_int(base_idx)) * 1440 + mam.count()));
+    return clamp((as_int(day) - as_int(base_)) * 1440 + mam.count());
   }
 
   unixtime_t to_unix(delta_t const t) { return delta_to_unix(base(), t); }
@@ -539,6 +535,8 @@ private:
       time_at_dest_[i] = get_best(time_at_dest_[i], t);
     }
   }
+
+  int as_int(day_idx_t const d) const { return static_cast<int>(d.v_); }
 
   template <typename T>
   auto get_begin_it(T const& t) {
