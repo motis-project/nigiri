@@ -72,11 +72,8 @@ struct raptor {
   }
 
   void reset_arrivals() {
-    utl::fill(state_.best_, kInvalid);
-    utl::fill(state_.tmp_, kInvalid);
     utl::fill(time_at_dest_, kInvalid);
     state_.round_times_.reset(kInvalid);
-    time_at_dest_ = kInvalid;
   }
 
   void init(location_idx_t const l, unixtime_t const t) {
@@ -88,26 +85,25 @@ struct raptor {
                std::uint8_t const max_transfers,
                unixtime_t const worst_time_at_dest,
                pareto_set<journey>& results) {
-    utl::fill(state_.best_, kInvalid);  // TODO(felix) eval
+    utl::fill(state_.best_, kInvalid);
     utl::fill(state_.tmp_, kInvalid);
 
     auto const end_k = std::min(max_transfers, kMaxTransfers) + 1U;
 
-    trace("worst_time_at_dest={} -> time_at_dest=best({}, {})={}={}\n",
-          worst_time_at_dest, to_unix(time_at_dest_),
-          get_best(unix_to_delta(base(), worst_time_at_dest), time_at_dest_),
-          delta_to_unix(base(),
-                        get_best(unix_to_delta(base(), worst_time_at_dest),
-                                 time_at_dest_)),
-          get_best(unix_to_delta(base(), worst_time_at_dest), time_at_dest_));
-
-    time_at_dest_ =
-        get_best(unix_to_delta(base(), worst_time_at_dest), time_at_dest_);
+    for (auto& time_at_dest : time_at_dest_) {
+      time_at_dest =
+          get_best(unix_to_delta(base(), worst_time_at_dest), time_at_dest);
+    }
 
     trace_print_init_state();
 
     for (auto k = 1U; k != end_k; ++k) {
-      set_time_at_destination(k);
+      for (auto i = 0U; i != tt_.n_locations(); ++i) {
+        state_.best_[i] = get_best(state_.round_times_[k][i], state_.best_[i]);
+        if (is_dest_[i]) {
+          update_time_at_dest(k, state_.best_[i]);
+        }
+      }
 
       auto any_marked = false;
       for (auto i = 0U; i != tt_.n_locations(); ++i) {
@@ -190,15 +186,6 @@ private:
     return tt_.internal_interval_days().from_ + to_idx(base_) * date::days{1};
   }
 
-  void set_time_at_destination(unsigned const k) {
-    for (auto i = 0U; i != tt_.n_locations(); ++i) {
-      if (is_dest_[i]) {
-        time_at_dest_ =
-            get_best(time_at_dest_, state_.round_times_[k][i], state_.best_[i]);
-      }
-    }
-  }
-
   void update_transfers(unsigned const k) {
     for (auto i = 0U; i != tt_.n_locations(); ++i) {
       if (!state_.prev_station_mark_[i]) {
@@ -213,10 +200,10 @@ private:
           static_cast<delta_t>(state_.tmp_[i] + transfer_time);
       if (is_better(fp_target_time,
                     state_.best_[i]) && /* TODO _or_eq?? pretrip */
-          is_better_or_eq(fp_target_time, time_at_dest_)) {
+          is_better(fp_target_time, time_at_dest_[k])) {
         if (lb_[i] == kUnreachable ||
-            !is_better_or_eq(fp_target_time + dir(lb_[i]),
-                             time_at_dest_) /*  TODO _or_eq?? pretrip*/) {
+            !is_better(fp_target_time + dir(lb_[i]),
+                       time_at_dest_[k]) /*  TODO _or_eq?? pretrip*/) {
           ++stats_.fp_update_prevented_by_lower_bound_;
           continue;
         }
@@ -226,7 +213,7 @@ private:
         state_.best_[i] = fp_target_time;
         state_.station_mark_[i] = true;
         if (is_dest) {
-          time_at_dest_ = fp_target_time;
+          update_time_at_dest(k, fp_target_time);
         }
       }
     }
@@ -249,12 +236,12 @@ private:
             clamp(state_.tmp_[i] + dir(fp.duration_).count());
 
         if (is_better(fp_target_time, state_.best_[target]) &&
-            is_better_or_eq(fp_target_time,
-                            time_at_dest_) /* TODO _or_eq pretrip?? */) {
+            is_better(fp_target_time,
+                      time_at_dest_[k]) /* TODO _or_eq pretrip?? */) {
           auto const lower_bound = lb_[to_idx(fp.target_)];
           if (lower_bound == kUnreachable ||
-              !is_better_or_eq(fp_target_time + dir(lower_bound),
-                               time_at_dest_) /* TODO _or_eq pretrip?? */) {
+              !is_better(fp_target_time + dir(lower_bound),
+                         time_at_dest_[k]) /* TODO _or_eq pretrip?? */) {
             ++stats_.fp_update_prevented_by_lower_bound_;
             trace_upd(
                 "┊ ├k={} *** LB NO UPD: (from={}, tmp={}) --{}--> (to={}, "
@@ -263,7 +250,7 @@ private:
                 fp.duration_, location{tt_, fp.target_},
                 state_.best_[to_idx(fp.target_)], fp_target_time, lower_bound,
                 to_unix(clamp(fp_target_time + dir(lower_bound))),
-                to_unix(time_at_dest_));
+                to_unix(time_at_dest_[k]));
             continue;
           }
 
@@ -279,7 +266,7 @@ private:
           state_.best_[to_idx(fp.target_)] = fp_target_time;
           state_.station_mark_[to_idx(fp.target_)] = true;
           if (is_dest_[to_idx(fp.target_)]) {
-            time_at_dest_ = fp_target_time;
+            update_time_at_dest(k, fp_target_time);
           }
         } else {
           trace(
@@ -287,7 +274,7 @@ private:
               "[best={}, time_at_dest={}]\n",
               k, location{tt_, l_idx}, state_.best_[to_idx(l_idx)],
               fp.duration_, location{tt_, fp.target_},
-              state_.best_[to_idx(fp.target_)], to_unix(time_at_dest_));
+              state_.best_[to_idx(fp.target_)], to_unix(time_at_dest_[k]));
         }
       }
     }
@@ -307,7 +294,7 @@ private:
         if (is_better(end_time, state_.best_[kIntermodalTarget])) {
           state_.round_times_[k][kIntermodalTarget] = end_time;
           state_.best_[kIntermodalTarget] = end_time;
-          time_at_dest_ = end_time;
+          update_time_at_dest(k, end_time);
         }
 
         trace("┊ │k={}  INTERMODAL FOOTPATH: location={}, dist_to_end={}\n", k,
@@ -347,17 +334,10 @@ private:
             r, et, stop_idx, kFwd ? event_type::kArr : event_type::kDep);
         current_best = get_best(state_.round_times_[k - 1][l_idx],
                                 state_.tmp_[l_idx], state_.best_[l_idx]);
-        /* TODO(felix) check
-        if (state_.best_k_[l_idx] <= k) {
-          current_best = get_best(current_best, );
-        }
-        */
         if (is_better(by_transport, current_best) &&
-            is_better_or_eq(by_transport,
-                            time_at_dest_) &&  // TODO _or_eq?? pretrip
+            is_better(by_transport, time_at_dest_[k]) &&
             lb_[l_idx] != kUnreachable &&
-            is_better_or_eq(by_transport + dir(lb_[l_idx]),
-                            time_at_dest_) /* TODO _or_eq?? pretrip */) {
+            is_better(by_transport + dir(lb_[l_idx]), time_at_dest_[k])) {
           trace_upd(
               "┊ │k={}    name={}, dbg={}, time_by_transport={}, BETTER THAN "
               "current_best={} => update, {} marking station {}!\n",
@@ -385,16 +365,18 @@ private:
               to_unix(by_transport), to_unix(state_.round_times_[k - 1][l_idx]),
               to_unix(state_.best_[l_idx]), to_unix(state_.tmp_[l_idx]),
               to_unix(current_best), location{tt_, location_idx_t{l_idx}},
-              lb_[l_idx], to_unix(time_at_dest_),
+              lb_[l_idx], to_unix(time_at_dest_[k]),
               to_unix(clamp(by_transport + dir(lb_[l_idx]))), by_transport,
               to_unix(by_transport), current_best, to_unix(current_best),
               is_better(by_transport, current_best), by_transport,
-              to_unix(by_transport), time_at_dest_, to_unix(time_at_dest_),
-              is_better(by_transport, time_at_dest_),
+              to_unix(by_transport), time_at_dest_[k],
+              to_unix(time_at_dest_[k]),
+              is_better(by_transport, time_at_dest_[k]),
               lb_[l_idx] != kUnreachable, by_transport + dir(lb_[l_idx]),
-              to_unix(clamp(by_transport + dir(lb_[l_idx]))), time_at_dest_,
-              to_unix(time_at_dest_), to_unix(time_at_dest_),
-              is_better(clamp(by_transport + dir(lb_[l_idx])), time_at_dest_));
+              to_unix(clamp(by_transport + dir(lb_[l_idx]))), time_at_dest_[k],
+              to_unix(time_at_dest_[k]), to_unix(time_at_dest_[k]),
+              is_better(clamp(by_transport + dir(lb_[l_idx])),
+                        time_at_dest_[k]));
         }
       }
 
@@ -411,7 +393,7 @@ private:
       auto const prev_round_time = state_.round_times_[k - 1][l_idx];
       if (is_better_or_eq(prev_round_time, et_time_at_stop)) {
         auto const [day, mam] = split(prev_round_time);
-        auto const new_et = get_earliest_transport(r, stop_idx, day, mam);
+        auto const new_et = get_earliest_transport(k, r, stop_idx, day, mam);
         current_best =
             get_best(current_best, state_.best_[l_idx], state_.tmp_[l_idx]);
         if (new_et.is_valid() &&
@@ -430,7 +412,8 @@ private:
     return any_marked;
   }
 
-  transport get_earliest_transport(route_idx_t const r,
+  transport get_earliest_transport(unsigned const k,
+                                   route_idx_t const r,
                                    unsigned const stop_idx,
                                    day_idx_t const day_at_stop,
                                    minutes_after_midnight_t const mam_at_stop) {
@@ -457,7 +440,7 @@ private:
     trace(
         "┊ │k={}    et: current_best_at_stop={}, stop_idx={}, location={}, "
         "n_days_to_iterate={}\n",
-        '_', tt_.to_unixtime(day_at_stop, mam_at_stop), stop_idx,
+        k, tt_.to_unixtime(day_at_stop, mam_at_stop), stop_idx,
         location{tt_, l_idx}, n_days_to_iterate);
 #endif
 
@@ -476,15 +459,15 @@ private:
         auto const ev = *it;
         auto const ev_mam = minutes_after_midnight_t{ev.count() % 1440};
 
-        if (is_better_or_eq(time_at_dest_, to_delta(day, ev_mam))) {
+        if (is_better_or_eq(time_at_dest_[k], to_delta(day, ev_mam))) {
           trace(
               "┊ │k={}      => name={}, dbg={}, day={}={}, best_mam={}, "
               "transport_mam={}, transport_time={} => TIME AT DEST {} IS "
               "BETTER!\n",
-              '_', tt_.transport_name(tt_.route_transport_ranges_[r][t_offset]),
+              k, tt_.transport_name(tt_.route_transport_ranges_[r][t_offset]),
               tt_.dbg(tt_.route_transport_ranges_[r][t_offset]), day,
               tt_.to_unixtime(day, 0_minutes), mam_at_stop, ev_mam,
-              tt_.to_unixtime(day, ev_mam), to_unix(time_at_dest_));
+              tt_.to_unixtime(day, ev_mam), to_unix(time_at_dest_[k]));
           return {transport_idx_t::invalid(), day_idx_t::invalid()};
         }
 
@@ -494,7 +477,7 @@ private:
               "┊ │k={}      => transport={}, name={}, dbg={}, day={}/{}, "
               "best_mam={}, "
               "transport_mam={}, transport_time={} => NO REACH!\n",
-              '_', t, tt_.transport_name(t), tt_.dbg(t), i, day, mam_at_stop,
+              k, t, tt_.transport_name(t), tt_.dbg(t), i, day, mam_at_stop,
               ev_mam, ev);
           continue;
         }
@@ -509,7 +492,7 @@ private:
               "ev_day_offset={}, "
               "best_mam={}, "
               "transport_mam={}, transport_time={} => NO TRAFFIC!\n",
-              '_', t, tt_.transport_name(t), tt_.dbg(t), i, day, ev_day_offset,
+              k, t, tt_.transport_name(t), tt_.dbg(t), i, day, ev_day_offset,
               mam_at_stop, ev_mam, ev);
           continue;
         }
@@ -517,7 +500,7 @@ private:
         trace(
             "┊ │k={}      => ET FOUND: name={}, dbg={}, at day {} "
             "(day_offset={}) - ev_mam={}, ev_time={}, ev={}\n",
-            '_', tt_.transport_name(t), tt_.dbg(t), day, ev_day_offset, ev_mam,
+            k, tt_.transport_name(t), tt_.dbg(t), day, ev_day_offset, ev_mam,
             ev, tt_.to_unixtime(day, ev_mam));
         return {t, static_cast<day_idx_t>(day - ev_day_offset)};
       }

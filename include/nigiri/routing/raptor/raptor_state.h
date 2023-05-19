@@ -28,7 +28,6 @@ struct raptor_state {
 
   std::vector<delta_t> tmp_;
   std::vector<delta_t> best_;
-  std::vector<std::uint8_t> best_k_;
   cista::raw::flat_matrix<delta_t> round_times_;
   std::vector<bool> station_mark_;
   std::vector<bool> prev_station_mark_;

@@ -24,9 +24,7 @@
 #define trace_print_state_after_round() \
   trace_print_state("STATE AFTER ROUND {}\n", k)
 
-#define trace_print_init_state(...)                                      \
-  fmt::print("time_at_dest={}\n", delta_to_unix(base(), time_at_dest_)); \
-  trace_print_state("INIT\n")
+#define trace_print_init_state(...) trace_print_state("INIT\n")
 
 #else
 #define trace_print_state_after_round()
