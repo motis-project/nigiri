@@ -49,7 +49,6 @@ inline unixtime_t delta_to_unix(date::sys_days const base, delta_t const d) {
 
 inline std::pair<day_idx_t, minutes_after_midnight_t> split_day_mam(
     day_idx_t const base, delta_t const x) {
-  assert(x != kInvalid);
   assert(x != std::numeric_limits<delta_t>::min());
   assert(x != std::numeric_limits<delta_t>::max());
   if (x < 0) {

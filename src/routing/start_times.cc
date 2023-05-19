@@ -191,7 +191,8 @@ void get_starts(direction const search_dir,
   auto const cmp = [&](start const& a, start const& b) {
     return fwd ? b < a : a < b;
   };
-  for (auto const& [l, o] : shortest_start) {
+  for (auto const& s : shortest_start) {
+    auto const [l, o] = s;
     start_time.apply(utl::overloaded{
         [&](interval<unixtime_t> const interval) {
           add_starts_in_interval(search_dir, tt, interval, l, o, starts,
