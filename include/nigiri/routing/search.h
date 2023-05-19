@@ -207,7 +207,7 @@ struct search {
     if (is_pretrip()) {
       utl::erase_if(state_.results_, [&](journey const& j) {
         return !search_interval_.contains(j.start_time_) ||
-               j.travel_time() > fastest_direct_ ||
+               j.travel_time() >= fastest_direct_ ||
                j.travel_time() > kMaxTravelTime;
       });
       utl::sort(state_.results_, [](journey const& a, journey const& b) {
@@ -294,6 +294,7 @@ private:
           return a.time_at_start_ == b.time_at_start_;
         },
         [&](auto&& from_it, auto&& to_it) {
+          algo_.next_start_time();
           auto const start_time = from_it->time_at_start_;
           for (auto const& s : it_range{from_it, to_it}) {
             trace("init: time_at_start={}, time_at_stop={} at {}\n",

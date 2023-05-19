@@ -76,6 +76,14 @@ struct raptor {
     state_.round_times_.reset(kInvalid);
   }
 
+  void next_start_time() {
+    utl::fill(state_.best_, kInvalid);
+    utl::fill(state_.tmp_, kInvalid);
+    utl::fill(state_.prev_station_mark_, false);
+    utl::fill(state_.station_mark_, false);
+    utl::fill(state_.route_mark_, false);
+  }
+
   void init(location_idx_t const l, unixtime_t const t) {
     state_.round_times_[0U][to_idx(l)] = unix_to_delta(base(), t);
     state_.station_mark_[to_idx(l)] = true;
@@ -85,14 +93,11 @@ struct raptor {
                std::uint8_t const max_transfers,
                unixtime_t const worst_time_at_dest,
                pareto_set<journey>& results) {
-    utl::fill(state_.best_, kInvalid);
-    utl::fill(state_.tmp_, kInvalid);
-
     auto const end_k = std::min(max_transfers, kMaxTransfers) + 1U;
 
+    auto const d_worst_at_dest = unix_to_delta(base(), worst_time_at_dest);
     for (auto& time_at_dest : time_at_dest_) {
-      time_at_dest =
-          get_best(unix_to_delta(base(), worst_time_at_dest), time_at_dest);
+      time_at_dest = get_best(d_worst_at_dest, time_at_dest);
     }
 
     trace_print_init_state();
@@ -115,13 +120,13 @@ struct raptor {
         }
       }
 
-      std::swap(state_.prev_station_mark_, state_.station_mark_);
-      utl::fill(state_.station_mark_, false);
-
       if (!any_marked) {
         trace_print_state_after_round();
         break;
       }
+
+      std::swap(state_.prev_station_mark_, state_.station_mark_);
+      utl::fill(state_.station_mark_, false);
 
       any_marked = false;
       for (auto r_id = 0U; r_id != tt_.n_routes(); ++r_id) {
@@ -132,12 +137,12 @@ struct raptor {
         }
       }
 
-      utl::fill(state_.route_mark_, false);
-
       if (!any_marked) {
         trace_print_state_after_round();
         break;
       }
+
+      utl::fill(state_.route_mark_, false);
 
       std::swap(state_.prev_station_mark_, state_.station_mark_);
       utl::fill(state_.station_mark_, false);

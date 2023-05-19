@@ -60,7 +60,9 @@ struct journey {
 
   void add(leg&& l) { legs_.emplace_back(l); }
 
-  duration_t travel_time() const { return dest_time_ - start_time_; }
+  duration_t travel_time() const {
+    return duration_t{std::abs((dest_time_ - start_time_).count())};
+  }
 
   void print(std::ostream&, timetable const&, bool debug = false) const;
 
