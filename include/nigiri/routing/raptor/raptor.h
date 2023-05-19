@@ -198,12 +198,10 @@ private:
               : dir(tt_.locations_.transfer_time_[location_idx_t{i}]).count();
       auto const fp_target_time =
           static_cast<delta_t>(state_.tmp_[i] + transfer_time);
-      if (is_better(fp_target_time,
-                    state_.best_[i]) && /* TODO _or_eq?? pretrip */
+      if (is_better(fp_target_time, state_.best_[i]) &&
           is_better(fp_target_time, time_at_dest_[k])) {
         if (lb_[i] == kUnreachable ||
-            !is_better(fp_target_time + dir(lb_[i]),
-                       time_at_dest_[k]) /*  TODO _or_eq?? pretrip*/) {
+            !is_better(fp_target_time + dir(lb_[i]), time_at_dest_[k])) {
           ++stats_.fp_update_prevented_by_lower_bound_;
           continue;
         }
@@ -236,12 +234,10 @@ private:
             clamp(state_.tmp_[i] + dir(fp.duration_).count());
 
         if (is_better(fp_target_time, state_.best_[target]) &&
-            is_better(fp_target_time,
-                      time_at_dest_[k]) /* TODO _or_eq pretrip?? */) {
+            is_better(fp_target_time, time_at_dest_[k])) {
           auto const lower_bound = lb_[to_idx(fp.target_)];
           if (lower_bound == kUnreachable ||
-              !is_better(fp_target_time + dir(lower_bound),
-                         time_at_dest_[k]) /* TODO _or_eq pretrip?? */) {
+              !is_better(fp_target_time + dir(lower_bound), time_at_dest_[k])) {
             ++stats_.fp_update_prevented_by_lower_bound_;
             trace_upd(
                 "┊ ├k={} *** LB NO UPD: (from={}, tmp={}) --{}--> (to={}, "
