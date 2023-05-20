@@ -2,6 +2,7 @@
 
 #include "utl/enumerate.h"
 
+#include "nigiri/common/linear_lower_bound.h"
 #include "nigiri/routing/journey.h"
 #include "nigiri/routing/limits.h"
 #include "nigiri/routing/pareto_set.h"
@@ -434,7 +435,7 @@ private:
         r, stop_idx, kFwd ? event_type::kDep : event_type::kArr);
 
     auto const seek_first_day = [&, mam_at_stop = mam_at_stop]() {
-      return std::lower_bound(
+      return linear_lb(
           get_begin_it(event_times), get_end_it(event_times), mam_at_stop,
           [&](auto&& a, auto&& b) { return is_better(a % 1440, b % 1440); });
     };
@@ -451,7 +452,6 @@ private:
 #endif
 
     for (auto i = day_idx_t::value_t{0U}; i != n_days_to_iterate; ++i) {
-      auto const day = kFwd ? day_at_stop + i : day_at_stop - i;
       auto const ev_time_range =
           it_range{i == 0U ? seek_first_day() : get_begin_it(event_times),
                    get_end_it(event_times)};
@@ -459,6 +459,7 @@ private:
         continue;
       }
 
+      auto const day = kFwd ? day_at_stop + i : day_at_stop - i;
       for (auto it = begin(ev_time_range); it != end(ev_time_range); ++it) {
         auto const t_offset =
             static_cast<std::size_t>(&*it - event_times.data());
@@ -478,7 +479,7 @@ private:
         }
 
         auto const t = tt_.route_transport_ranges_[r][t_offset];
-        if (day == day_at_stop && !is_better_or_eq(mam_at_stop, ev_mam)) {
+        if (i == 0U && !is_better_or_eq(mam_at_stop, ev_mam)) {
           trace(
               "┊ │k={}      => transport={}, name={}, dbg={}, day={}/{}, "
               "best_mam={}, "

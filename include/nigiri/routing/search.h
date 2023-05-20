@@ -144,13 +144,15 @@ struct search {
             "timetable={}, number_of_results_in_interval={}\n",
             is_ontrip(), max_interval_reached(), q_.extend_interval_earlier_,
             q_.extend_interval_later_,
-            q_.start_time_.apply(utl::overloaded{
-                [](interval<unixtime_t> const& start_interval) {
-                  return start_interval;
-                },
-                [](unixtime_t const start_time) {
-                  return interval<unixtime_t>{start_time, start_time};
-                }}),
+            std::visit(
+                utl::overloaded{
+                    [](interval<unixtime_t> const& start_interval) {
+                      return start_interval;
+                    },
+                    [](unixtime_t const start_time) {
+                      return interval<unixtime_t>{start_time, start_time};
+                    }},
+                q_.start_time_),
             search_interval_, tt_.external_interval(), n_results_in_interval());
         break;
       } else {
@@ -160,13 +162,15 @@ struct search {
             "number_of_results_in_interval={}\n",
             max_interval_reached(), q_.extend_interval_earlier_,
             q_.extend_interval_later_,
-            q_.start_time_.apply(utl::overloaded{
-                [](interval<unixtime_t> const& start_interval) {
-                  return start_interval;
-                },
-                [](unixtime_t const start_time) {
-                  return interval<unixtime_t>{start_time, start_time};
-                }}),
+            std::visit(
+                utl::overloaded{
+                    [](interval<unixtime_t> const& start_interval) {
+                      return start_interval;
+                    },
+                    [](unixtime_t const start_time) {
+                      return interval<unixtime_t>{start_time, start_time};
+                    }},
+                q_.start_time_),
             search_interval_, tt_.external_interval(), n_results_in_interval());
       }
 
