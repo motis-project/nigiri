@@ -83,6 +83,7 @@ struct raptor {
   }
 
   void add_start(location_idx_t const l, unixtime_t const t) {
+    state_.best_[to_idx(l)] = unix_to_delta(base(), t);
     state_.round_times_[0U][to_idx(l)] = unix_to_delta(base(), t);
     state_.station_mark_[to_idx(l)] = true;
   }
@@ -392,6 +393,10 @@ private:
         continue;
       }
 
+      if (lb_[l_idx] == kUnreachable) {
+        break;
+      }
+
       auto const et_time_at_stop =
           et.is_valid()
               ? time_at_stop(r, et, stop_idx,
@@ -401,7 +406,8 @@ private:
       assert(prev_round_time != kInvalid);
       if (is_better_or_eq(prev_round_time, et_time_at_stop)) {
         auto const [day, mam] = split(prev_round_time);
-        auto const new_et = get_earliest_transport(k, r, stop_idx, day, mam);
+        auto const new_et = get_earliest_transport(k, r, stop_idx, day, mam,
+                                                   stop.location_idx());
         current_best =
             get_best(current_best, state_.best_[l_idx], state_.tmp_[l_idx]);
         if (new_et.is_valid() &&
@@ -424,7 +430,8 @@ private:
                                    route_idx_t const r,
                                    unsigned const stop_idx,
                                    day_idx_t const day_at_stop,
-                                   minutes_after_midnight_t const mam_at_stop) {
+                                   minutes_after_midnight_t const mam_at_stop,
+                                   location_idx_t const l) {
     ++stats_.n_earliest_trip_calls_;
 
     auto const n_days_to_iterate = std::min(
@@ -466,7 +473,8 @@ private:
         auto const ev = *it;
         auto const ev_mam = minutes_after_midnight_t{ev.count() % 1440};
 
-        if (is_better_or_eq(time_at_dest_[k], to_delta(day, ev_mam))) {
+        if (is_better_or_eq(time_at_dest_[k],
+                            to_delta(day, ev_mam) + dir(lb_[to_idx(l)]))) {
           trace(
               "┊ │k={}      => name={}, dbg={}, day={}={}, best_mam={}, "
               "transport_mam={}, transport_time={} => TIME AT DEST {} IS "
