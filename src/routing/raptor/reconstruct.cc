@@ -293,8 +293,8 @@ void reconstruct_journey(timetable const& tt,
         continue;
       }
 
-      auto const traffic_day =
-          static_cast<int>(to_idx(day)) - event_mam.count() / 1440;
+      auto const traffic_day = static_cast<std::size_t>(
+          static_cast<int>(to_idx(day)) - event_mam.count() / 1440);
       if (!tt.bitfields_[tt.transport_traffic_days_[t]].test(traffic_day)) {
         trace_rc("    -> no traffic on day {}\n ", traffic_day);
         continue;

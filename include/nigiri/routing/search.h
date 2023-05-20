@@ -109,13 +109,15 @@ struct search {
       : tt_{tt},
         state_{s},
         q_{std::move(q)},
-        search_interval_{q_.start_time_.apply(utl::overloaded{
-            [](interval<unixtime_t> const start_interval) {
-              return start_interval;
-            },
-            [](unixtime_t const start_time) {
-              return interval<unixtime_t>{start_time, start_time};
-            }})},
+        search_interval_{std::visit(
+            utl::overloaded{
+                [](interval<unixtime_t> const start_interval) {
+                  return start_interval;
+                },
+                [](unixtime_t const start_time) {
+                  return interval<unixtime_t>{start_time, start_time};
+                }},
+            q_.start_time_)},
         fastest_direct_{get_fastest_direct(tt_, q_, SearchDir)},
         algo_{init(algo_state)} {}
 

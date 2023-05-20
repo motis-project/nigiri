@@ -1,6 +1,7 @@
 #pragma once
 
 #include <cinttypes>
+#include <variant>
 #include <vector>
 
 #include "nigiri/common/interval.h"
@@ -17,7 +18,7 @@ struct offset : public footpath {
   std::uint8_t type_;
 };
 
-using start_time_t = variant<unixtime_t, interval<unixtime_t>>;
+using start_time_t = std::variant<unixtime_t, interval<unixtime_t>>;
 
 struct query {
   start_time_t start_time_;

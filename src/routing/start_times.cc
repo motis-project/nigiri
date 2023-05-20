@@ -161,7 +161,7 @@ void add_starts_in_interval(direction const search_dir,
 
 void get_starts(direction const search_dir,
                 timetable const& tt,
-                variant<unixtime_t, interval<unixtime_t>> const& start_time,
+                start_time_t const& start_time,
                 std::vector<offset> const& station_offsets,
                 location_match_mode const mode,
                 bool const use_start_footpaths,
@@ -193,18 +193,19 @@ void get_starts(direction const search_dir,
   };
   for (auto const& s : shortest_start) {
     auto const [l, o] = s;
-    start_time.apply(utl::overloaded{
-        [&](interval<unixtime_t> const interval) {
-          add_starts_in_interval(search_dir, tt, interval, l, o, starts,
-                                 add_ontrip, cmp);
-        },
-        [&](unixtime_t const t) {
-          insert_sorted(starts,
-                        start{.time_at_start_ = t,
-                              .time_at_stop_ = fwd ? t + o : t - o,
-                              .stop_ = l},
-                        cmp);
-        }});
+    std::visit(utl::overloaded{
+                   [&](interval<unixtime_t> const interval) {
+                     add_starts_in_interval(search_dir, tt, interval, l, o,
+                                            starts, add_ontrip, cmp);
+                   },
+                   [&](unixtime_t const t) {
+                     insert_sorted(starts,
+                                   start{.time_at_start_ = t,
+                                         .time_at_stop_ = fwd ? t + o : t - o,
+                                         .stop_ = l},
+                                   cmp);
+                   }},
+               start_time);
   }
 }
 
