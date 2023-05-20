@@ -133,6 +133,14 @@ void load_timetable(source_idx_t const src, dir const& d, timetable& tt) {
           stop_seq_cache.clear();
           for (auto const [i, t_idx] : utl::enumerate(trips)) {
             auto const& trp = trip_data.get(t_idx);
+            if (i != 0) {
+              auto const prev_last = timetable::stop{stop_seq_cache.back()};
+              auto const curr_first = timetable::stop{trp.stop_seq_.front()};
+              stop_seq_cache.back() = timetable::stop{prev_last.location_idx(),
+                                                      curr_first.in_allowed(),
+                                                      prev_last.out_allowed()}
+                                          .value();
+            }
             stop_seq_cache.insert(
                 end(stop_seq_cache),
                 i == 0 ? begin(trp.stop_seq_) : std::next(begin(trp.stop_seq_)),

@@ -220,8 +220,10 @@ void reconstruct_journey(timetable const& tt,
                                    kFwd ? event_type::kDep : event_type::kArr));
       if (is_better_or_eq(raptor_state.round_times_[k - 1][to_idx(l)],
                           event_time)) {
-        trace_rc("      FOUND ENTRY AT {}: {} <= {}\n", location{tt, l},
-                 best(k - 1, l), event_time);
+        trace_rc(
+            "      FOUND ENTRY AT name={}, dbg={}, location={}: {} <= {}\n",
+            tt.transport_name(t.t_idx_), tt.dbg(t.t_idx_), location{tt, l},
+            best(k - 1, l), event_time);
         return journey::leg{
             SearchDir,
             timetable::stop{stop_seq[stop_idx]}.location_idx(),
@@ -247,11 +249,10 @@ void reconstruct_journey(timetable const& tt,
             start_matches(raptor_state.round_times_[k - 1][to_idx(l)],
                           event_time)) {
           trace_rc(
-              "      ENTRY AT META={} ORIG={}: k={} k-1={}, "
-              "best_at_stop=min({}, "
-              "{})={} <= event_time={}\n",
-              location{tt, l}, location{tt, l}, k, k - 1,
-              raptor_state.best_[to_idx(l)],
+              "      ENTRY AT META={}, ORIG={}, name={}, dbg={}: k={} k-1={}, "
+              "best_at_stop=min({}, {})={} <= event_time={}\n",
+              location{tt, l}, location{tt, l}, tt.transport_name(t.t_idx_),
+              tt.dbg(t.t_idx_), k, k - 1, raptor_state.best_[to_idx(l)],
               raptor_state.round_times_[k - 1][to_idx(l)], best(k - 1, l),
               event_time);
           return journey::leg{
@@ -277,10 +278,15 @@ void reconstruct_journey(timetable const& tt,
     for (auto const t : tt.route_transport_ranges_[r]) {
       auto const event_mam =
           tt.event_mam(t, stop_idx, kFwd ? event_type::kArr : event_type::kDep);
-      trace_rc("  CHECKING TRANSPORT name={}, dbg={}, stop={}\n", t,
-               tt.transport_name(t), tt.dbg(t),
-               location{tt, timetable::stop{tt.route_location_seq_[r][stop_idx]}
-                                .location_idx()});
+      trace_rc(
+          "  CHECKING TRANSPORT name={}, dbg={}, stop={}, time={} (day={}, "
+          "mam={}), traffic_day={}, event_mam={}\n",
+          tt.transport_name(t), tt.dbg(t),
+          location{tt, timetable::stop{tt.route_location_seq_[r][stop_idx]}
+                           .location_idx()},
+          delta_to_unix(base, time), day, mam,
+          static_cast<int>(to_idx(day)) - event_mam.count() / 1440, event_mam);
+
       if (minutes_after_midnight_t{event_mam.count() % 1440} != mam) {
         trace_rc("    -> ev_mam mismatch: transport_ev={} vs footpath = {}\n ",
                  duration_t{event_mam.count()}, duration_t{mam});
@@ -288,19 +294,18 @@ void reconstruct_journey(timetable const& tt,
       }
 
       auto const traffic_day =
-          day - static_cast<cista::base_t<day_idx_t>>(event_mam.count() / 1440);
-      if (!tt.bitfields_[tt.transport_traffic_days_[t]].test(
-              to_idx(traffic_day))) {
-        trace_rc("    -> no traffic on day {}\n ", to_idx(traffic_day));
+          static_cast<int>(to_idx(day)) - event_mam.count() / 1440;
+      if (!tt.bitfields_[tt.transport_traffic_days_[t]].test(traffic_day)) {
+        trace_rc("    -> no traffic on day {}\n ", traffic_day);
         continue;
       }
 
-      auto leg = find_entry_in_prev_round(k, transport{t, traffic_day}, r,
-                                          stop_idx, time);
+      auto leg = find_entry_in_prev_round(
+          k, transport{t, day_idx_t{traffic_day}}, r, stop_idx, time);
       if (leg.has_value()) {
         return leg;
       }
-      trace_rc("    -> no entry found\n ", to_idx(traffic_day));
+      trace_rc("    -> no entry found\n ", traffic_day);
     }
     return std::nullopt;
   };
@@ -345,7 +350,7 @@ void reconstruct_journey(timetable const& tt,
     if (transport_leg.has_value()) {
       trace_rc("found:\n");
       if constexpr (kTracing) {
-        transport_leg->print(std::cout, tt, 1, false);
+        transport_leg->print(std::cout, tt, 1, true);
       }
       trace_rc(" fp leg: {} {} --{}--> {} {}\n", location{tt, l},
                delta_to_unix(base, fp_start), fp.duration_,

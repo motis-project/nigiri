@@ -378,6 +378,12 @@ private:
               is_better(clamp(by_transport + dir(lb_[l_idx])),
                         time_at_dest_[k]));
         }
+      } else {
+        trace(
+            "┊ │k={}    *** NO UPD: no_trip={}, in_allowed={}, "
+            "out_allowed={}, label_allowed={}\n",
+            k, !et.is_valid(), stop.in_allowed(), stop.out_allowed(),
+            (kFwd ? stop.out_allowed() : stop.in_allowed()));
       }
 
       if (is_last || !(kFwd ? stop.in_allowed() : stop.out_allowed()) ||
