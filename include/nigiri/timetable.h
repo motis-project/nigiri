@@ -345,8 +345,23 @@ struct timetable {
                         }});
   }
 
+  std::string_view transport_name(transport_idx_t const t) const {
+    return trip_display_names_
+        [merged_trips_[transport_to_trip_section_[t].front()].front()]
+            .view();
+  }
+
+  debug dbg(transport_idx_t const t) const {
+    auto const trip_idx =
+        merged_trips_[transport_to_trip_section_[t].front()].front();
+    return debug{
+        source_file_names_[trip_debug_[trip_idx].front().source_file_idx_]
+            .view(),
+        trip_debug_[trip_idx].front().line_number_from_,
+        trip_debug_[trip_idx].front().line_number_to_};
+  }
+
   friend std::ostream& operator<<(std::ostream&, timetable const&);
-  friend void print_1(std::ostream&, timetable const&);
 
   void write(cista::memory_holder&) const;
   void write(std::filesystem::path const&) const;

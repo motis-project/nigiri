@@ -1,6 +1,7 @@
 #pragma once
 
 #include <cinttypes>
+#include <variant>
 #include <vector>
 
 #include "nigiri/common/interval.h"
@@ -17,20 +18,19 @@ struct offset : public footpath {
   std::uint8_t type_;
 };
 
-using start_time_t = variant<unixtime_t, interval<unixtime_t>>;
+using start_time_t = std::variant<unixtime_t, interval<unixtime_t>>;
 
 struct query {
   start_time_t start_time_;
-  location_match_mode start_match_mode_;
-  location_match_mode dest_match_mode_;
+  location_match_mode start_match_mode_{
+      nigiri::routing::location_match_mode::kExact};
+  location_match_mode dest_match_mode_{
+      nigiri::routing::location_match_mode::kExact};
   bool use_start_footpaths_{true};
   std::vector<offset> start_;
-  std::vector<std::vector<offset>> destinations_;
-  std::vector<std::vector<offset>> via_destinations_;
-  cista::bitset<kNumClasses> allowed_classes_{
-      cista::bitset<kNumClasses>::max()};
+  std::vector<offset> destination_;
   std::uint8_t max_transfers_{kMaxTransfers};
-  std::uint8_t min_connection_count_{0U};
+  unsigned min_connection_count_{0U};
   bool extend_interval_earlier_{false};
   bool extend_interval_later_{false};
 };

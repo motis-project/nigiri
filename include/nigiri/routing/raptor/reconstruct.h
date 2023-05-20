@@ -10,12 +10,15 @@ namespace nigiri::routing {
 
 struct query;
 struct search_state;
+struct raptor_state;
 struct journey;
 
 template <direction SearchDir>
 void reconstruct_journey(timetable const&,
                          query const&,
-                         search_state const&,
-                         journey&);
+                         raptor_state const&,
+                         journey&,
+                         date::sys_days const base,
+                         day_idx_t const base_day_idx);
 
 }  // namespace nigiri::routing

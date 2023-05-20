@@ -2,15 +2,16 @@
 
 #include "nigiri/loader/hrd/load_timetable.h"
 #include "nigiri/loader/init_finish.h"
-#include "nigiri/routing/raptor.h"
-
-#include "nigiri/routing/search_state.h"
 
 #include "../loader/hrd/hrd_timetable.h"
 
+#include "../raptor_search.h"
+
+using namespace date;
 using namespace nigiri;
 using namespace nigiri::loader;
 using namespace nigiri::test_data::hrd_timetable;
+using nigiri::test::raptor_search;
 
 constexpr auto const fwd_journeys = R"(
 [2020-03-30 05:00, 2020-03-30 07:15]
@@ -48,7 +49,6 @@ leg 3: (C, 0000003) [2020-03-30 07:45] -> (C, 0000003) [2020-03-30 07:45]
 )";
 
 TEST(routing, raptor_forward) {
-  using namespace date;
   constexpr auto const src = source_idx_t{0U};
 
   timetable tt;
@@ -56,42 +56,19 @@ TEST(routing, raptor_forward) {
   load_timetable(src, loader::hrd::hrd_5_20_26, files_abc(), tt);
   finalize(tt);
 
-  auto state = routing::search_state{};
-
-  auto fwd_r = routing::raptor<direction::kForward, false>{
-      tt, state,
-      routing::query{
-          .start_time_ =
-              interval<unixtime_t>{
-                  unixtime_t{sys_days{2020_y / March / 30}} + 5_hours,
-                  unixtime_t{sys_days{2020_y / March / 30}} + 6_hours},
-          .start_match_mode_ = nigiri::routing::location_match_mode::kExact,
-          .dest_match_mode_ = nigiri::routing::location_match_mode::kExact,
-          .use_start_footpaths_ = true,
-          .start_ = {nigiri::routing::offset{
-              tt.locations_.location_id_to_idx_.at(
-                  {.id_ = "0000001", .src_ = src}),
-              0_minutes, 0U}},
-          .destinations_ = {{nigiri::routing::offset{
-              tt.locations_.location_id_to_idx_.at(
-                  {.id_ = "0000003", .src_ = src}),
-              0_minutes, 0U}}},
-          .via_destinations_ = {},
-          .allowed_classes_ = bitset<kNumClasses>::max(),
-          .max_transfers_ = 6U,
-          .min_connection_count_ = 0U,
-          .extend_interval_earlier_ = false,
-          .extend_interval_later_ = false}};
-  fwd_r.route();
+  auto const results = raptor_search(
+      tt, "0000001", "0000003",
+      interval{unixtime_t{sys_days{2020_y / March / 30}} + 5_hours,
+               unixtime_t{sys_days{2020_y / March / 30}} + 6_hours});
 
   std::stringstream ss;
   ss << "\n";
-  for (auto const& x : state.results_.at(0)) {
+  for (auto const& x : results) {
     x.print(ss, tt);
     ss << "\n\n";
   }
   EXPECT_EQ(std::string_view{fwd_journeys}, ss.str());
-};
+}
 
 constexpr auto const bwd_journeys = R"(
 [2020-03-30 05:15, 2020-03-30 03:00]
@@ -137,37 +114,17 @@ TEST(routing, raptor_backward) {
   load_timetable(src, loader::hrd::hrd_5_20_26, files_abc(), tt);
   finalize(tt);
 
-  auto state = routing::search_state{};
+  auto const results = raptor_search(
+      tt, "0000003", "0000001",
+      interval{unixtime_t{sys_days{2020_y / March / 30}} + 5_hours,
+               unixtime_t{sys_days{2020_y / March / 30}} + 6_hours},
+      direction::kBackward);
 
-  auto bwd_r = routing::raptor<direction::kBackward, false>{
-      tt, state,
-      routing::query{
-          .start_time_ =
-              interval<unixtime_t>{
-                  unixtime_t{sys_days{2020_y / March / 30}} + 5_hours,
-                  unixtime_t{sys_days{2020_y / March / 30}} + 6_hours},
-          .start_match_mode_ = nigiri::routing::location_match_mode::kExact,
-          .dest_match_mode_ = nigiri::routing::location_match_mode::kExact,
-          .use_start_footpaths_ = true,
-          .start_ = {nigiri::routing::offset{
-              tt.locations_.location_id_to_idx_.at(
-                  {.id_ = "0000003", .src_ = src}),
-              0_minutes, 0U}},
-          .destinations_ = {{nigiri::routing::offset{
-              tt.locations_.location_id_to_idx_.at(
-                  {.id_ = "0000001", .src_ = src}),
-              0_minutes, 0U}}},
-          .via_destinations_ = {},
-          .allowed_classes_ = bitset<kNumClasses>::max(),
-          .max_transfers_ = 6U,
-          .min_connection_count_ = 0U,
-          .extend_interval_earlier_ = false,
-          .extend_interval_later_ = false}};
-  bwd_r.route();
+  ASSERT_EQ(2U, results.size());
 
   std::stringstream ss;
   ss << "\n";
-  for (auto const& x : state.results_.at(0)) {
+  for (auto const& x : results) {
     x.print(ss, tt);
     ss << "\n\n";
   }

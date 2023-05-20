@@ -97,9 +97,9 @@ void print_transport(timetable const& tt,
           }
           out << "{name=" << tt.trip_display_names_.at(trip_idx).view()
               << ", day=";
-          date::to_stream(out, "%F",
-                          tt.date_range_.from_ - kTimetableOffset +
-                              to_idx(day_idx) * 1_days);
+          date::to_stream(
+              out, "%F",
+              tt.internal_interval_days().from_ + to_idx(day_idx) * 1_days);
           out << ", id=" << tt.trip_id_strings_.at(id).view()
               << ", src=" << static_cast<int>(to_idx(tt.trip_id_src_.at(id)));
           if (with_debug) {

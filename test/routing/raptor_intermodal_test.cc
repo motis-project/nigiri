@@ -2,15 +2,15 @@
 
 #include "nigiri/loader/hrd/load_timetable.h"
 #include "nigiri/loader/init_finish.h"
-#include "nigiri/routing/raptor.h"
-
-#include "nigiri/routing/search_state.h"
 
 #include "../loader/hrd/hrd_timetable.h"
+#include "../raptor_search.h"
 
+using namespace date;
 using namespace nigiri;
 using namespace nigiri::loader;
 using namespace nigiri::test_data::hrd_timetable;
+using nigiri::test::raptor_intermodal_search;
 
 constexpr auto const fwd_journeys = R"(
 [2020-03-30 05:20, 2020-03-30 08:00]
@@ -52,8 +52,6 @@ leg 4: (C, 0000003) [2020-03-30 08:15] -> (END, END) [2020-03-30 08:30]
 )";
 
 TEST(routing, raptor_intermodal_forward) {
-  using namespace date;
-
   constexpr auto const src = source_idx_t{0U};
 
   timetable tt;
@@ -62,36 +60,19 @@ TEST(routing, raptor_intermodal_forward) {
   load_timetable(src, loader::hrd::hrd_5_20_26, files_abc(), tt);
   finalize(tt);
 
-  auto state = routing::search_state{};
-
-  auto fwd_r = routing::raptor<direction::kForward, true>{
-      tt, state,
-      routing::query{
-          .start_time_ =
-              interval<unixtime_t>{
-                  unixtime_t{sys_days{2020_y / March / 30}} + 5_hours,
-                  unixtime_t{sys_days{2020_y / March / 30}} + 6_hours},
-          .start_match_mode_ =
-              nigiri::routing::location_match_mode::kIntermodal,
-          .dest_match_mode_ = nigiri::routing::location_match_mode::kIntermodal,
-          .use_start_footpaths_ = true,
-          .start_ = {{tt.locations_.location_id_to_idx_.at(
-                          {.id_ = "0000001", .src_ = src}),
-                      10_minutes, 99U}},
-          .destinations_ = {{{tt.locations_.location_id_to_idx_.at(
-                                  {.id_ = "0000003", .src_ = src}),
-                              15_minutes, 77U}}},
-          .via_destinations_ = {},
-          .allowed_classes_ = bitset<kNumClasses>::max(),
-          .max_transfers_ = 6U,
-          .min_connection_count_ = 0U,
-          .extend_interval_earlier_ = false,
-          .extend_interval_later_ = false}};
-  fwd_r.route();
+  auto const results = raptor_intermodal_search(
+      tt,
+      {{tt.locations_.location_id_to_idx_.at({.id_ = "0000001", .src_ = src}),
+        10_minutes, 99U}},
+      {{tt.locations_.location_id_to_idx_.at({.id_ = "0000003", .src_ = src}),
+        15_minutes, 77U}},
+      interval{unixtime_t{sys_days{2020_y / March / 30}} + 5_hours,
+               unixtime_t{sys_days{2020_y / March / 30}} + 6_hours},
+      nigiri::direction::kForward);
 
   std::stringstream ss;
   ss << "\n";
-  for (auto const& x : state.results_.at(0)) {
+  for (auto const& x : results) {
     x.print(ss, tt);
     ss << "\n\n";
   }
@@ -211,7 +192,6 @@ leg 4: (C, 0000003) [2020-03-30 06:15] -> (START, START) [2020-03-30 06:30]
 )";
 
 TEST(routing, raptor_intermodal_backward) {
-  using namespace date;
   timetable tt;
   tt.date_range_ = full_period();
   constexpr auto const src = source_idx_t{0U};
@@ -219,40 +199,22 @@ TEST(routing, raptor_intermodal_backward) {
   load_timetable(src, loader::hrd::hrd_5_20_26, files_abc(), tt);
   finalize(tt);
 
-  auto state = routing::search_state{};
-
-  auto bwd_r = routing::raptor<direction::kBackward, true>{
-      tt, state,
-      routing::query{
-          .start_time_ =
-              interval<unixtime_t>{
-                  unixtime_t{sys_days{2020_y / March / 30}} + 5_hours,
-                  unixtime_t{sys_days{2020_y / March / 30}} + 6_hours},
-          .start_match_mode_ =
-              nigiri::routing::location_match_mode::kIntermodal,
-          .dest_match_mode_ = nigiri::routing::location_match_mode::kIntermodal,
-          .use_start_footpaths_ = true,
-          .start_ = {nigiri::routing::offset{
-              tt.locations_.location_id_to_idx_.at(
-                  {.id_ = "0000003", .src_ = src}),
-              15_minutes, 99U}},
-          .destinations_ = {{{tt.locations_.location_id_to_idx_.at(
-                                  {.id_ = "0000001", .src_ = src}),
-                              10_minutes, 77U}}},
-          .via_destinations_ = {},
-          .allowed_classes_ = bitset<kNumClasses>::max(),
-          .max_transfers_ = 6U,
-          .min_connection_count_ = 3U,
-          .extend_interval_earlier_ = true,
-          .extend_interval_later_ = true}};
-  bwd_r.route();
+  auto const results = raptor_intermodal_search(
+      tt,
+      {nigiri::routing::offset{
+          tt.locations_.location_id_to_idx_.at({.id_ = "0000003", .src_ = src}),
+          15_minutes, 99U}},
+      {{tt.locations_.location_id_to_idx_.at({.id_ = "0000001", .src_ = src}),
+        10_minutes, 77U}},
+      interval<unixtime_t>{unixtime_t{sys_days{2020_y / March / 30}} + 5_hours,
+                           unixtime_t{sys_days{2020_y / March / 30}} + 6_hours},
+      nigiri::direction::kBackward, 3U, true, true);
 
   std::stringstream ss;
   ss << "\n";
-  for (auto const& x : state.results_.at(0)) {
+  for (auto const& x : results) {
     x.print(ss, tt);
     ss << "\n\n";
   }
-  std::cout << "results: " << state.results_.at(0).size() << "\n";
   EXPECT_EQ(std::string_view{bwd_journeys}, ss.str());
 }

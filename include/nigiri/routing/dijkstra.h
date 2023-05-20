@@ -14,6 +14,6 @@ struct query;
 void dijkstra(timetable const&,
               query const&,
               vecvec<location_idx_t, footpath> const& lb_graph,
-              std::vector<duration_t>& dists);
+              std::vector<std::uint16_t>& dists);
 
 }  // namespace nigiri::routing
