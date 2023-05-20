@@ -436,7 +436,7 @@ private:
     auto const seek_first_day = [&, mam_at_stop = mam_at_stop]() {
       return std::lower_bound(
           get_begin_it(event_times), get_end_it(event_times), mam_at_stop,
-          [&](auto&& a, auto&& b) { return is_better(a, b); });
+          [&](auto&& a, auto&& b) { return is_better(a % 1440, b % 1440); });
     };
 
 #if defined(NIGIRI_TRACING)
@@ -452,9 +452,9 @@ private:
 
     for (auto i = day_idx_t::value_t{0U}; i != n_days_to_iterate; ++i) {
       auto const day = kFwd ? day_at_stop + i : day_at_stop - i;
-      auto const ev_time_range = it_range{
-          i == 0U && kFwd ? seek_first_day() : get_begin_it(event_times),
-          get_end_it(event_times)};
+      auto const ev_time_range =
+          it_range{i == 0U ? seek_first_day() : get_begin_it(event_times),
+                   get_end_it(event_times)};
       if (ev_time_range.empty()) {
         continue;
       }
