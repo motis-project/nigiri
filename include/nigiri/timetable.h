@@ -362,7 +362,6 @@ struct timetable {
   }
 
   friend std::ostream& operator<<(std::ostream&, timetable const&);
-  friend void print_1(std::ostream&, timetable const&);
 
   void write(cista::memory_holder&) const;
   void write(std::filesystem::path const&) const;

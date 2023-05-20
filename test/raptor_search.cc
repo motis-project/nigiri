@@ -50,7 +50,7 @@ pareto_set<routing::journey> raptor_search(timetable const& tt,
                                            direction const search_dir) {
   auto const src = source_idx_t{0};
   auto q = routing::query{
-      .start_time_ = std::move(time),
+      .start_time_ = time,
       .start_ = {{tt.locations_.location_id_to_idx_.at({from, src}), 0_minutes,
                   0U}},
       .destination_ = {
