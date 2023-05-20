@@ -192,7 +192,8 @@ void get_starts(direction const search_dir,
     return fwd ? b < a : a < b;
   };
   for (auto const& s : shortest_start) {
-    auto const [l, o] = s;
+    auto const l = s.first;
+    auto const o = s.second;
     std::visit(utl::overloaded{
                    [&](interval<unixtime_t> const interval) {
                      add_starts_in_interval(search_dir, tt, interval, l, o,
