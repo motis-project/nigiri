@@ -112,6 +112,14 @@ using merged_trips_idx_t =
 using footpath_idx_t = cista::strong<std::uint32_t, struct _footpath_idx>;
 using source_file_idx_t = cista::strong<std::uint16_t, struct _source_file_idx>;
 
+using rt_trip_idx_t = cista::strong<std::uint32_t, struct _trip_idx>;
+using rt_trip_id_idx_t = cista::strong<std::uint32_t, struct _trip_id_str_idx>;
+using rt_route_idx_t = cista::strong<std::uint32_t, struct _rt_route_idx>;
+using rt_transport_idx_t =
+    cista::strong<std::uint32_t, struct _rt_transport_idx>;
+using rt_merged_trips_idx_t =
+    cista::strong<std::uint32_t, struct _merged_trips_idx>;
+
 using line_id_t = string;
 
 using trip_direction_string_idx_t =
