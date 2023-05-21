@@ -22,15 +22,15 @@ struct updater {
 
     if (upd.is_rerouting_) {
       cancel_trip(trp);
-      add_trip(trp);
+      add_trip(upd.id_, upd.info_);
       return;
     }
 
-    if (route_stays_sorted(trp)) {
-      update_event_times(trp);
+    if (route_stays_sorted(trp, upd.info_)) {
+      update_event_times(trp, upd.info_);
     } else {
       cancel_trip(trp);
-      add_trip(trp);
+      add_trip(upd.id_, upd.info_);
     }
   }
 
@@ -44,15 +44,15 @@ private:
     CISTA_UNUSED_PARAM(tt_)
     CISTA_UNUSED_PARAM(rtt_)
   }
-  void add_trip(trip const&) {
+  void add_trip(trip_id const&, trip_info const&) {
     CISTA_UNUSED_PARAM(tt_)
     CISTA_UNUSED_PARAM(rtt_)
   }
-  void update_event_times(trip const&) {
+  void update_event_times(trip const&, trip_info const&) {
     CISTA_UNUSED_PARAM(tt_)
     CISTA_UNUSED_PARAM(rtt_)
   }
-  bool route_stays_sorted(trip const&) {
+  bool route_stays_sorted(trip const&, trip_info const&) {
     CISTA_UNUSED_PARAM(tt_)
     CISTA_UNUSED_PARAM(rtt_)
     return true;
