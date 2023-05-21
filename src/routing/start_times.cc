@@ -114,28 +114,28 @@ void add_starts_in_interval(direction const search_dir,
     auto const location_seq = tt.route_location_seq_.at(r);
     trace("  location_seq: {}\n", r);
     for (auto const [i, s] : utl::enumerate(location_seq)) {
-      auto const stop = timetable::stop{s};
-      if (stop.location_idx() != l) {
+      auto const stp = stop{s};
+      if (stp.location_idx() != l) {
         continue;
       }
 
       // Ignore:
       // - in-allowed=false for forward search
       // - out-allowed=false for backward search
-      // - entering at last stop for forward search
-      // - exiting at first stop for backward search
+      // - entering at last stp for forward search
+      // - exiting at first stp for backward search
       if ((search_dir == direction::kBackward &&
-           (i == 0U || !stop.out_allowed())) ||
+           (i == 0U || !stp.out_allowed())) ||
           (search_dir == direction::kForward &&
-           (i == location_seq.size() - 1 || !stop.in_allowed()))) {
+           (i == location_seq.size() - 1 || !stp.in_allowed()))) {
         trace("    skip: i={}, out_allowed={}, in_allowed={}\n", i,
-              stop.out_allowed(), stop.in_allowed());
+              stp.out_allowed(), stp.in_allowed());
         continue;
       }
 
       trace("    -> no skip -> add_start_times_at_stop()\n");
       add_start_times_at_stop(
-          search_dir, tt, r, i, timetable::stop{s}.location_idx(),
+          search_dir, tt, r, i, stop{s}.location_idx(),
           search_dir == direction::kForward ? interval + d : interval - d, d,
           starts, std::forward<Less>(cmp));
     }

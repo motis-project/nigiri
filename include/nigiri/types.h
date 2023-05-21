@@ -104,7 +104,6 @@ using section_db_idx_t = cista::strong<std::uint32_t, struct _section_db_idx>;
 using trip_idx_t = cista::strong<std::uint32_t, struct _trip_idx>;
 using trip_id_idx_t = cista::strong<std::uint32_t, struct _trip_id_str_idx>;
 using transport_idx_t = cista::strong<std::uint32_t, struct _transport_idx>;
-using rt_trip_idx_t = cista::strong<std::uint32_t, struct _rt_trip_idx>;
 using source_idx_t = cista::strong<std::uint8_t, struct _source_idx>;
 using day_idx_t = cista::strong<std::uint16_t, struct _day_idx>;
 using timezone_idx_t = cista::strong<std::uint8_t, struct _timezone_idx>;
@@ -112,7 +111,6 @@ using merged_trips_idx_t =
     cista::strong<std::uint32_t, struct _merged_trips_idx>;
 using footpath_idx_t = cista::strong<std::uint32_t, struct _footpath_idx>;
 using source_file_idx_t = cista::strong<std::uint16_t, struct _source_file_idx>;
-using track_name_idx_t = cista::strong<std::uint16_t, struct _track_name_idx>;
 
 using line_id_t = string;
 

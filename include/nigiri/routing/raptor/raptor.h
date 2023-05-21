@@ -2,11 +2,11 @@
 
 #include "utl/enumerate.h"
 
+#include "nigiri/common/delta_t.h"
 #include "nigiri/common/linear_lower_bound.h"
 #include "nigiri/routing/journey.h"
 #include "nigiri/routing/limits.h"
 #include "nigiri/routing/pareto_set.h"
-#include "nigiri/routing/raptor/delta_t.h"
 #include "nigiri/routing/raptor/raptor_state.h"
 #include "nigiri/routing/raptor/reconstruct.h"
 #include "nigiri/special_stations.h"
@@ -311,8 +311,8 @@ private:
     for (auto i = 0U; i != stop_seq.size(); ++i) {
       auto const stop_idx =
           static_cast<unsigned>(kFwd ? i : stop_seq.size() - i - 1U);
-      auto const stop = timetable::stop{stop_seq[stop_idx]};
-      auto const l_idx = cista::to_idx(stop.location_idx());
+      auto const stp = stop{stop_seq[stop_idx]};
+      auto const l_idx = cista::to_idx(stp.location_idx());
       auto const is_last = i == stop_seq.size() - 1U;
 
       if (!et.is_valid() && !state_.prev_station_mark_[l_idx]) {
@@ -324,12 +324,12 @@ private:
       trace(
           "┊ │k={}  stop_idx={}, location={}, round_times={}, best={}, "
           "tmp={}\n",
-          k, stop_idx, location{tt_, stop.location_idx()},
+          k, stop_idx, location{tt_, stp.location_idx()},
           to_unix(state_.round_times_[k - 1][l_idx]),
           to_unix(state_.best_[l_idx]), to_unix(state_.tmp_[l_idx]));
 
       auto current_best = kInvalid;
-      if (et.is_valid() && (kFwd ? stop.out_allowed() : stop.in_allowed())) {
+      if (et.is_valid() && (kFwd ? stp.out_allowed() : stp.in_allowed())) {
         auto const by_transport = time_at_stop(
             r, et, stop_idx, kFwd ? event_type::kArr : event_type::kDep);
         current_best = get_best(state_.round_times_[k - 1][l_idx],
@@ -346,7 +346,7 @@ private:
               k, tt_.transport_name(et.t_idx_), tt_.dbg(et.t_idx_),
               by_transport, current_best,
               !is_better(by_transport, current_best) ? "NOT" : "",
-              location{tt_, stop.location_idx()});
+              location{tt_, stp.location_idx()});
 
           ++stats_.n_earliest_arrival_updated_by_route_;
           state_.tmp_[l_idx] = get_best(by_transport, state_.tmp_[l_idx]);
@@ -384,11 +384,11 @@ private:
         trace(
             "┊ │k={}    *** NO UPD: no_trip={}, in_allowed={}, "
             "out_allowed={}, label_allowed={}\n",
-            k, !et.is_valid(), stop.in_allowed(), stop.out_allowed(),
-            (kFwd ? stop.out_allowed() : stop.in_allowed()));
+            k, !et.is_valid(), stp.in_allowed(), stp.out_allowed(),
+            (kFwd ? stp.out_allowed() : stp.in_allowed()));
       }
 
-      if (is_last || !(kFwd ? stop.in_allowed() : stop.out_allowed()) ||
+      if (is_last || !(kFwd ? stp.in_allowed() : stp.out_allowed()) ||
           !state_.prev_station_mark_[l_idx]) {
         continue;
       }
@@ -407,7 +407,7 @@ private:
       if (is_better_or_eq(prev_round_time, et_time_at_stop)) {
         auto const [day, mam] = split(prev_round_time);
         auto const new_et = get_earliest_transport(k, r, stop_idx, day, mam,
-                                                   stop.location_idx());
+                                                   stp.location_idx());
         current_best =
             get_best(current_best, state_.best_[l_idx], state_.tmp_[l_idx]);
         if (new_et.is_valid() &&
@@ -449,7 +449,7 @@ private:
 
 #if defined(NIGIRI_TRACING)
     auto const l_idx =
-        timetable::stop{tt_.route_location_seq_[r][stop_idx]}.location_idx();
+        stop{tt_.route_location_seq_[r][stop_idx]}.location_idx();
 
     trace(
         "┊ │k={}    et: current_best_at_stop={}, stop_idx={}, location={}, "

@@ -1,8 +1,7 @@
-#include "nigiri/common/interval.h"
-
-#include "nigiri/types.h"
-
 #include "gtest/gtest.h"
+
+#include "nigiri/common/interval.h"
+#include "nigiri/types.h"
 
 using namespace nigiri;
 

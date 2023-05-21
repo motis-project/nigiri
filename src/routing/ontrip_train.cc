@@ -29,7 +29,7 @@ void generate_ontrip_train_query(timetable const& tt,
               location_seq.size());
   auto const time_at_first = tt.event_time(t, stop_idx, event_type::kArr);
   for (auto i = stop_idx; i != location_seq.size(); ++i) {
-    auto const l_idx = timetable::stop{location_seq[i]}.location_idx();
+    auto const l_idx = stop{location_seq[i]}.location_idx();
     auto const arrival_time_with_transfer =
         tt.event_time(t, i, event_type::kArr) +
         tt.locations_.transfer_time_[l_idx];

@@ -30,7 +30,7 @@ void print_transport(timetable const& tt,
   auto const to =
       std::min(static_cast<unsigned>(stop_seq.size()), stop_range.to_);
   for (auto stop_idx = from; stop_idx != to; ++stop_idx) {
-    auto const s = timetable::stop{stop_seq.at(stop_idx)};
+    auto const s = stop{stop_seq.at(stop_idx)};
     auto const location_idx = s.location_idx();
     auto const& stop_id = tt.locations_.ids_.at(location_idx).view();
     auto const& parent = tt.locations_.parents_.at(location_idx);

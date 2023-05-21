@@ -30,7 +30,7 @@ struct block {
   std::vector<gtfs_trip_idx_t> trips_;
 };
 
-using stop_seq_t = std::basic_string<timetable::stop::value_type>;
+using stop_seq_t = std::basic_string<stop::value_type>;
 
 struct frequency {
   unsigned number_of_iterations() const {

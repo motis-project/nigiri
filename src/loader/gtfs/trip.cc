@@ -80,8 +80,8 @@ block::rule_services(trip_data& trips) {
            ++succ_it) {
         auto const& curr_trip = trips.data_[current_it->trip_];
         auto const& succ_trip = trips.data_[succ_it->trip_];
-        if (timetable::stop{curr_trip.stop_seq_.back()}.location_ !=
-            timetable::stop{succ_trip.stop_seq_.front()}.location_) {
+        if (stop{curr_trip.stop_seq_.back()}.location_ !=
+            stop{succ_trip.stop_seq_.front()}.location_) {
           continue;  // prev last stop != next first stop
         }
 

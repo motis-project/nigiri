@@ -41,8 +41,8 @@ void build_lb_graph(timetable& tt) {
       auto const location_seq = tt.route_location_seq_[r];
       for (auto const [from, to] :
            utl::pairwise(interval{0U, location_seq.size()})) {
-        auto const from_l = timetable::stop{location_seq[from]}.location_idx();
-        auto const to_l = timetable::stop{location_seq[to]}.location_idx();
+        auto const from_l = stop{location_seq[from]}.location_idx();
+        auto const to_l = stop{location_seq[to]}.location_idx();
 
         if ((SearchDir == direction::kForward ? to_l : from_l) != l) {
           continue;

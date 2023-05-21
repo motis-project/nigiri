@@ -39,8 +39,7 @@ stamm::stamm(config const& c, timetable& tt, dir const& d) : tt_{tt} {
   attributes_ = parse_attributes(c, tt, files.at(ATTRIBUTES).data());
   directions_ = parse_directions(c, tt, files.at(DIRECTIONS).data());
   date_range_ = parse_interval(files.at(BASIC_DATA).data());
-  parse_track_rules(c, *this, tt, files.at(TRACKS).data(), track_rules_,
-                    track_locations_);
+  tracks_ = parse_track_rules(c, *this, tt, files.at(TRACKS).data());
 }
 
 stamm::stamm(timetable& tt, timezone_map_t&& m)
@@ -131,8 +130,8 @@ attribute_idx_t stamm::resolve_attribute(utl::cstr s) const {
 location_idx_t stamm::resolve_track(track_rule_key const& k,
                                     minutes_after_midnight_t const mam,
                                     day_idx_t day_idx) const {
-  auto it = track_rules_.find(k);
-  if (it == end(track_rules_)) {
+  auto it = tracks_.track_rules_.find(k);
+  if (it == end(tracks_.track_rules_)) {
     return k.location_;
   } else {
     auto const track_rule_it =
