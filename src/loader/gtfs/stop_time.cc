@@ -84,9 +84,9 @@ void read_stop_times(timetable& tt,
                                    t->seq_numbers_.back() > *s.stop_sequence_);
 
           t->seq_numbers_.emplace_back(*s.stop_sequence_);
-          t->stop_seq_.push_back(timetable::stop{stops.at(s.stop_id_->view()),
-                                                 *s.pickup_type_ != 1,
-                                                 *s.drop_off_type_ != 1}
+          t->stop_seq_.push_back(stop{stops.at(s.stop_id_->view()),
+                                      *s.pickup_type_ != 1,
+                                      *s.drop_off_type_ != 1}
                                      .value());
           t->event_times_.emplace_back(
               stop_events{.arr_ = arrival_time, .dep_ = departure_time});

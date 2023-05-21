@@ -28,8 +28,7 @@ private:
 
   stamm& stamm_;
   timetable& tt_;
-  hash_map<pair<std::basic_string<timetable::stop::value_type>,
-                std::basic_string<clasz>>,
+  hash_map<pair<std::basic_string<stop::value_type>, std::basic_string<clasz>>,
            vector<vector<ref_service>>>
       route_services_;
   service_store store_;
@@ -39,7 +38,7 @@ private:
   interval<std::chrono::sys_days> selection_;
 
   // Reused memory buffers to prevent temporary allocations:
-  pair<std::basic_string<timetable::stop::value_type>, std::basic_string<clasz>>
+  pair<std::basic_string<stop::value_type>, std::basic_string<clasz>>
       route_key_;
   std::basic_string<attribute_idx_t> attribute_combination_;
   std::basic_string<provider_idx_t> section_providers_;

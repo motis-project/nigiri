@@ -3,7 +3,7 @@
 #include "nigiri/routing/raptor/debug.h"
 #include "nigiri/types.h"
 
-namespace nigiri::routing {
+namespace nigiri {
 
 using delta_t = std::int16_t;
 static_assert(sizeof(delta_t) == 2);
@@ -62,4 +62,4 @@ inline std::pair<day_idx_t, minutes_after_midnight_t> split_day_mam(
   }
 }
 
-}  // namespace nigiri::routing
+}  // namespace nigiri

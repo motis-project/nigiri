@@ -88,7 +88,7 @@ TEST(gtfs, services) {
     auto const r = tt.transport_route_[t.t_idx_];
     auto const l = tt.route_location_seq_[r][stop_idx];
     auto const tz_idx =
-        get_transport_stop_tz(tt, t.t_idx_, timetable::stop{l}.location_idx());
+        get_transport_stop_tz(tt, t.t_idx_, stop{l}.location_idx());
     auto const tz = tt.locations_.timezones_[tz_idx];
     utl::verify(holds_alternative<pair<string, void const*>>(tz), "bad tz");
     return reinterpret_cast<date::time_zone const*>(

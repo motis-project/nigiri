@@ -3,9 +3,9 @@
 #include "utl/enumerate.h"
 #include "utl/helpers/algorithm.h"
 
+#include "nigiri/common/delta_t.h"
 #include "nigiri/routing/for_each_meta.h"
 #include "nigiri/routing/journey.h"
-#include "nigiri/routing/raptor/delta_t.h"
 #include "nigiri/routing/raptor/raptor_state.h"
 #include "nigiri/special_stations.h"
 
@@ -207,10 +207,10 @@ void reconstruct_journey(timetable const& tt,
     for (auto i = 1U; i != n_stops; ++i) {
       auto const stop_idx =
           static_cast<unsigned>(kFwd ? from_stop_idx - i : from_stop_idx + i);
-      auto const stop = timetable::stop{stop_seq[stop_idx]};
-      auto const l = stop.location_idx();
+      auto const stp = stop{stop_seq[stop_idx]};
+      auto const l = stp.location_idx();
 
-      if ((kFwd && !stop.in_allowed()) || (!kFwd && !stop.out_allowed())) {
+      if ((kFwd && !stp.in_allowed()) || (!kFwd && !stp.out_allowed())) {
         continue;
       }
 
@@ -226,8 +226,8 @@ void reconstruct_journey(timetable const& tt,
             best(k - 1, l), event_time);
         return journey::leg{
             SearchDir,
-            timetable::stop{stop_seq[stop_idx]}.location_idx(),
-            timetable::stop{stop_seq[from_stop_idx]}.location_idx(),
+            stop{stop_seq[stop_idx]}.location_idx(),
+            stop{stop_seq[from_stop_idx]}.location_idx(),
             delta_to_unix(base, event_time),
             delta_to_unix(base, time),
             journey::transport_enter_exit{
@@ -257,8 +257,8 @@ void reconstruct_journey(timetable const& tt,
               event_time);
           return journey::leg{
               SearchDir,
-              timetable::stop{stop_seq[stop_idx]}.location_idx(),
-              timetable::stop{stop_seq[from_stop_idx]}.location_idx(),
+              stop{stop_seq[stop_idx]}.location_idx(),
+              stop{stop_seq[from_stop_idx]}.location_idx(),
               delta_to_unix(base, event_time),
               delta_to_unix(base, time),
               journey::transport_enter_exit{
@@ -282,8 +282,8 @@ void reconstruct_journey(timetable const& tt,
           "  CHECKING TRANSPORT name={}, dbg={}, stop={}, time={} (day={}, "
           "mam={}), traffic_day={}, event_mam={}\n",
           tt.transport_name(t), tt.dbg(t),
-          location{tt, timetable::stop{tt.route_location_seq_[r][stop_idx]}
-                           .location_idx()},
+          location{tt,
+                   stop{tt.route_location_seq_[r][stop_idx]}.location_idx()},
           delta_to_unix(base, time), day, mam,
           static_cast<int>(to_idx(day)) - event_mam.count() / 1440, event_mam);
 
@@ -316,11 +316,11 @@ void reconstruct_journey(timetable const& tt,
     trace_rc(" time={}\n", delta_to_unix(base, time));
     for (auto const& r : tt.location_routes_[l]) {
       auto const location_seq = tt.route_location_seq_[r];
-      for (auto const [i, stop] : utl::enumerate(location_seq)) {
-        auto const s = timetable::stop{stop};
-        if (s.location_idx() != l ||  //
-            (kFwd && (i == 0U || !s.out_allowed())) ||
-            (!kFwd && (i == location_seq.size() - 1 || !s.in_allowed()))) {
+      for (auto const [i, s] : utl::enumerate(location_seq)) {
+        auto const stp = stop{s};
+        if (stp.location_idx() != l ||  //
+            (kFwd && (i == 0U || !stp.out_allowed())) ||
+            (!kFwd && (i == location_seq.size() - 1 || !stp.in_allowed()))) {
           continue;
         }
 

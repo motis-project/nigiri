@@ -17,45 +17,12 @@
 #include "nigiri/footpath.h"
 #include "nigiri/location.h"
 #include "nigiri/logging.h"
+#include "nigiri/stop.h"
 #include "nigiri/types.h"
 
 namespace nigiri {
 
 struct timetable {
-  struct stop {
-    using value_type = location_idx_t::value_t;
-
-    stop(location_idx_t::value_t const val) {
-      std::memcpy(this, &val, sizeof(value_type));
-    }
-
-    stop(location_idx_t const location,
-         bool const in_allowed,
-         bool const out_allowed)
-        : location_{location},
-          in_allowed_{in_allowed ? 1U : 0U},
-          out_allowed_{out_allowed ? 1U : 0U} {}
-
-    location_idx_t location_idx() const { return location_idx_t{location_}; }
-    bool in_allowed() const { return in_allowed_ != 0U; }
-    bool out_allowed() const { return out_allowed_ != 0U; }
-
-    cista::hash_t hash() const {
-      return cista::hash_combine(cista::BASE_HASH, value());
-    }
-
-    location_idx_t::value_t value() const {
-      return *reinterpret_cast<location_idx_t::value_t const*>(this);
-    }
-
-    friend auto operator<=>(stop const&, stop const&) = default;
-
-    location_idx_t::value_t location_ : 30;
-    location_idx_t::value_t in_allowed_ : 1;
-    location_idx_t::value_t out_allowed_ : 1;
-  };
-  static_assert(sizeof(stop) == sizeof(location_idx_t));
-
   struct locations {
     timezone_idx_t register_timezone(timezone tz) {
       auto const idx = timezone_idx_t{
@@ -197,7 +164,7 @@ struct timetable {
       std::basic_string<clasz> const& clasz_sections) {
     auto const idx = route_location_seq_.size();
     for (auto const& s : stop_seq) {
-      auto routes = location_routes_[timetable::stop{s}.location_idx()];
+      auto routes = location_routes_[stop{s}.location_idx()];
       if (routes.empty() || routes.back() != idx) {
         routes.emplace_back(idx);
       }
@@ -411,14 +378,11 @@ struct timetable {
   //  stop-1-dep: [...]
   // ...
   // RouteN: ...
-  vector_map<route_idx_t, interval<unsigned>> route_stop_time_ranges_;
+  vector_map<route_idx_t, interval<std::uint32_t>> route_stop_time_ranges_;
   vector<minutes_after_midnight_t> route_stop_times_;
 
   // Trip index -> traffic day bitfield
   vector_map<transport_idx_t, bitfield_idx_t> transport_traffic_days_;
-
-  // Trip index -> sequence of stop times
-  vecvec<rt_trip_idx_t, unixtime_t> rt_transport_stop_times_;
 
   // Unique bitfields
   vector_map<bitfield_idx_t, bitfield> bitfields_;
@@ -436,9 +400,6 @@ struct timetable {
   mutable_fws_multimap<trip_idx_t,
                        pair<transport_idx_t, interval<std::uint32_t>>>
       trip_idx_to_transport_idx_;
-
-  // Track names
-  vecvec<track_name_idx_t, char> track_names_;
 
   // Section meta infos:
   vector_map<attribute_idx_t, attribute> attributes_;

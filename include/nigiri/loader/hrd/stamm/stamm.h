@@ -48,8 +48,7 @@ private:
   attribute_map_t attributes_;
   direction_map_t directions_;
   bitfield_map_t bitfields_;
-  track_rule_map_t track_rules_;
-  track_location_map_t track_locations_;
+  tracks tracks_;
   timezone_map_t timezones_;
   interval<std::chrono::sys_days> date_range_;
   timetable& tt_;

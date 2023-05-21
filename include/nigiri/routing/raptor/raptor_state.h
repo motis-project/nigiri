@@ -6,7 +6,7 @@
 
 #include "cista/containers/flat_matrix.h"
 
-#include "nigiri/routing/raptor/delta_t.h"
+#include "nigiri/common/delta_t.h"
 
 namespace nigiri {
 struct timetable;
