@@ -15,9 +15,9 @@ TEST(gtfs, read_stations_example_data) {
   tz_map timezones;
 
   auto const files = example_files();
-  auto const stops = read_stops(source_idx_t{0}, tt, timezones,
-                                files.get_file(kStopFile).data(),
-                                files.get_file(kTransfersFile).data());
+  auto const [stops, seated_transfers] = read_stops(
+      source_idx_t{0}, tt, timezones, files.get_file(kStopFile).data(),
+      files.get_file(kTransfersFile).data());
 
   EXPECT_EQ(8, stops.size());
 
@@ -51,9 +51,9 @@ TEST(gtfs, read_stations_berlin_data) {
   tz_map timezones;
 
   auto const files = berlin_files();
-  auto const stops = read_stops(source_idx_t{0}, tt, timezones,
-                                files.get_file(kStopFile).data(),
-                                files.get_file(kTransfersFile).data());
+  auto const [stops, seated_transfers] = read_stops(
+      source_idx_t{0}, tt, timezones, files.get_file(kStopFile).data(),
+      files.get_file(kTransfersFile).data());
 
   EXPECT_EQ(3, stops.size());
 

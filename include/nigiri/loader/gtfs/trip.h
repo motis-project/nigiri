@@ -23,13 +23,6 @@ using gtfs_trip_idx_t = cista::strong<std::uint32_t, struct _gtfs_trip_idx>;
 
 struct trip_data;
 
-struct block {
-  std::vector<std::pair<std::basic_string<gtfs_trip_idx_t>, bitfield>>
-  rule_services(trip_data&);
-
-  std::vector<gtfs_trip_idx_t> trips_;
-};
-
 using stop_seq_t = std::basic_string<stop::value_type>;
 
 struct frequency {
@@ -57,7 +50,7 @@ struct stop_events {
 struct trip {
   trip(route const*,
        bitfield const*,
-       block*,
+       std::basic_string<gtfs_trip_idx_t>*,
        std::string id,
        trip_direction_idx_t headsign,
        std::string short_name);
@@ -80,7 +73,7 @@ struct trip {
 
   route const* route_{nullptr};
   bitfield const* service_{nullptr};
-  block* block_{nullptr};
+  std::basic_string<gtfs_trip_idx_t>* block_{nullptr};
   std::string id_;
   trip_direction_idx_t headsign_;
   std::string short_name_;
@@ -94,6 +87,8 @@ struct trip {
   bool requires_interpolation_{false};
   bool requires_sorting_{false};
   std::uint32_t from_line_{0U}, to_line_{0U};
+
+  std::basic_string<transport_idx_t> transports_;
 };
 
 struct trip_data {
@@ -104,7 +99,8 @@ struct trip_data {
   trip_direction_idx_t get_or_create_direction(timetable&, std::string_view);
 
   hash_map<std::string, gtfs_trip_idx_t> trips_;
-  hash_map<std::string, std::unique_ptr<block>> blocks_;
+  hash_map<std::string, std::unique_ptr<std::basic_string<gtfs_trip_idx_t>>>
+      blocks_;
   hash_map<std::string, trip_direction_idx_t> directions_;
   vector_map<gtfs_trip_idx_t, trip> data_;
 };

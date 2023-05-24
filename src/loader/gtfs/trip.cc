@@ -25,92 +25,9 @@
 
 namespace nigiri::loader::gtfs {
 
-std::vector<std::pair<std::basic_string<gtfs_trip_idx_t>, bitfield>>
-block::rule_services(trip_data& trips) {
-  utl::verify(!trips_.empty(), "empty block not allowed");
-
-  utl::erase_if(trips_, [&](gtfs_trip_idx_t const& t) {
-    auto const is_empty = trips.data_[t].stop_seq_.empty();
-    if (is_empty) {
-      log(log_lvl::error, "loader.gtfs.trip", "trip \"{}\": no stop times",
-          trips.data_[t].id_);
-    }
-    return is_empty;
-  });
-
-  if (trips_.size() == 1) {
-    return {{std::pair{std::basic_string<gtfs_trip_idx_t>{trips_.front()},
-                       *trips.get(trips_.front()).service_}}};
-  }
-
-  std::sort(begin(trips_), end(trips_),
-            [&](gtfs_trip_idx_t const a_idx, gtfs_trip_idx_t const b_idx) {
-              auto const& a = trips.get(a_idx);
-              auto const& b = trips.get(b_idx);
-              return a.event_times_.front().dep_ < b.event_times_.front().dep_;
-            });
-
-  struct rule_trip {
-    gtfs_trip_idx_t trip_;
-    bitfield traffic_days_;
-  };
-  auto rule_trips = utl::to_vec(trips_, [&](auto&& t) {
-    return rule_trip{t, *trips.get(t).service_};
-  });
-
-  struct queue_entry {
-    std::vector<rule_trip>::iterator current_it_;
-    std::vector<std::vector<rule_trip>::iterator> collected_trips_;
-    bitfield traffic_days_;
-  };
-
-  std::vector<std::pair<std::basic_string<gtfs_trip_idx_t>, bitfield>>
-      combinations;
-  for (auto start_it = begin(rule_trips); start_it != end(rule_trips);
-       ++start_it) {
-    std::stack<queue_entry> q;
-    q.emplace(queue_entry{start_it, {}, start_it->traffic_days_});
-    while (!q.empty()) {
-      auto next = q.top();
-      q.pop();
-
-      auto& [current_it, collected_trips, traffic_days] = next;
-      collected_trips.emplace_back(current_it);
-      for (auto succ_it = std::next(current_it); succ_it != end(rule_trips);
-           ++succ_it) {
-        auto const& curr_trip = trips.data_[current_it->trip_];
-        auto const& succ_trip = trips.data_[succ_it->trip_];
-        if (stop{curr_trip.stop_seq_.back()}.location_ !=
-            stop{succ_trip.stop_seq_.front()}.location_) {
-          continue;  // prev last stop != next first stop
-        }
-
-        auto const new_intersection = traffic_days & succ_it->traffic_days_;
-        traffic_days &= ~succ_it->traffic_days_;
-        if (new_intersection.any()) {
-          q.emplace(queue_entry{succ_it, collected_trips, new_intersection});
-        }
-      }
-
-      if (traffic_days.any()) {
-        for (auto& rt : collected_trips) {
-          rt->traffic_days_ &= ~traffic_days;
-        }
-
-        combinations.emplace_back(
-            utl::transform_to<std::basic_string<gtfs_trip_idx_t>>(
-                collected_trips, [](auto&& rt) { return rt->trip_; }),
-            traffic_days);
-      }
-    }
-  }
-
-  return combinations;
-}
-
 trip::trip(route const* route,
            bitfield const* service,
-           block* blk,
+           std::basic_string<gtfs_trip_idx_t>* blk,
            std::string id,
            trip_direction_idx_t const headsign,
            std::string short_name)
@@ -245,33 +162,37 @@ trip_data read_trips(timetable& tt,
   utl::line_range{
       utl::make_buf_reader(file_content, progress_tracker->update_fn())}  //
       | utl::csv<csv_trip>()  //
-      | utl::for_each([&](csv_trip const& t) {
-          auto const traffic_days_it =
-              services.traffic_days_.find(t.service_id_->view());
-          if (traffic_days_it == end(services.traffic_days_)) {
-            log(log_lvl::error, "loader.gtfs.trip",
-                R"(trip "{}": service_id "{}" not found)", t.trip_id_->view(),
-                t.service_id_->view());
-            return;
-          }
+      |
+      utl::for_each([&](csv_trip const& t) {
+        auto const traffic_days_it =
+            services.traffic_days_.find(t.service_id_->view());
+        if (traffic_days_it == end(services.traffic_days_)) {
+          log(log_lvl::error, "loader.gtfs.trip",
+              R"(trip "{}": service_id "{}" not found)", t.trip_id_->view(),
+              t.service_id_->view());
+          return;
+        }
 
-          auto const blk = t.block_id_->trim().empty()
-                               ? nullptr
-                               : utl::get_or_create(
-                                     ret.blocks_, t.block_id_->trim().view(),
-                                     []() { return std::make_unique<block>(); })
-                                     .get();
-          auto const trp_idx = gtfs_trip_idx_t{ret.data_.size()};
-          ret.data_.emplace_back(
-              routes.at(t.route_id_->view()).get(),
-              traffic_days_it->second.get(), blk, t.trip_id_->to_str(),
-              ret.get_or_create_direction(tt, t.trip_headsign_->view()),
-              t.trip_short_name_->to_str());
-          ret.trips_.emplace(t.trip_id_->to_str(), trp_idx);
-          if (blk != nullptr) {
-            blk->trips_.emplace_back(trp_idx);
-          }
-        });
+        auto const blk = t.block_id_->trim().empty()
+                             ? nullptr
+                             : utl::get_or_create(
+                                   ret.blocks_, t.block_id_->trim().view(),
+                                   []() {
+                                     return std::make_unique<
+                                         std::basic_string<gtfs_trip_idx_t>>();
+                                   })
+                                   .get();
+        auto const trp_idx = gtfs_trip_idx_t{ret.data_.size()};
+        ret.data_.emplace_back(
+            routes.at(t.route_id_->view()).get(), traffic_days_it->second.get(),
+            blk, t.trip_id_->to_str(),
+            ret.get_or_create_direction(tt, t.trip_headsign_->view()),
+            t.trip_short_name_->to_str());
+        ret.trips_.emplace(t.trip_id_->to_str(), trp_idx);
+        if (blk != nullptr) {
+          blk->push_back(trp_idx);
+        }
+      });
   return ret;
 }
 

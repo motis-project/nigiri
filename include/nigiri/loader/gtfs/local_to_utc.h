@@ -15,13 +15,12 @@
 namespace nigiri::loader::gtfs {
 
 struct frequency_expanded_trip {
-  std::basic_string<gtfs_trip_idx_t> trips_;
-  std::basic_string<duration_t> offsets_;
-  bitfield const* traffic_days_;
+  gtfs_trip_idx_t trip_;
+  duration_t offset_;
 };
 
 struct utc_trip {
-  std::basic_string<gtfs_trip_idx_t> trips_;
+  gtfs_trip_idx_t trip_;
   std::basic_string<duration_t> utc_times_;
   bitfield utc_traffic_days_;
 };
@@ -71,44 +70,20 @@ inline bool stays_sorted(trip_data const& trip_data,
 
 template <typename Consumer>
 void expand_frequencies(trip_data const& trip_data,
-                        std::basic_string<gtfs_trip_idx_t> const& trips,
-                        bitfield const* traffic_days,
+                        gtfs_trip_idx_t trip_idx,
                         Consumer&& consumer) {
-  auto const has_frequency = [&](gtfs_trip_idx_t const i) {
-    return trip_data.get(i).frequency_.has_value();
-  };
-
-  if (utl::any_of(trips, has_frequency)) {
-    if (trips.size() == 1U /* shortcut, no checks needed */ ||
-        (utl::all_of(trips, has_frequency) &&
-         headways_match(trip_data, trips) && stays_sorted(trip_data, trips))) {
-      auto const& first_trp = trip_data.get(trips.front());
-      for (auto const [i, freq] : utl::enumerate(*first_trp.frequency_)) {
-        auto const index = i;
-        for (auto it = 0U; it < freq.number_of_iterations(); ++it) {
-          consumer(frequency_expanded_trip{
-              .trips_ = trips,
-              .offsets_ = utl::transform_to<std::basic_string<duration_t>>(
-                  trips,
-                  [&](gtfs_trip_idx_t const t_idx) {
-                    auto const& t = trip_data.get(t_idx);
-                    auto const first_dep =
-                        (*t.frequency_)[index].get_iteration_start_time(it);
-                    return t.event_times_.front().dep_ - first_dep;
-                  }),
-              .traffic_days_ = traffic_days});
-        }
-      }
-    } else {
-      for (auto const& t : trips) {
-        expand_frequencies(trip_data, {t}, traffic_days, consumer);
+  auto const& t = trip_data.get(trip_idx);
+  if (t.frequency_.has_value()) {
+    for (auto const [i, freq] : utl::enumerate(*t.frequency_)) {
+      for (auto it = 0U; it < freq.number_of_iterations(); ++it) {
+        consumer(frequency_expanded_trip{
+            .trip_ = trip_idx,
+            .offset_ = t.event_times_.front().dep_ -
+                       (*t.frequency_)[i].get_iteration_start_time(it)});
       }
     }
   } else {
-    consumer(frequency_expanded_trip{
-        .trips_ = trips,
-        .offsets_ = std::basic_string<duration_t>{trips.size(), 0_minutes},
-        .traffic_days_ = traffic_days});
+    consumer(frequency_expanded_trip{.trip_ = trip_idx, .offset_ = 0_minutes});
   }
 }
 
@@ -124,36 +99,22 @@ void expand_local_to_utc(
     Consumer&& consumer) {
   using utc_time_sequence = std::basic_string<minutes_after_midnight_t>;
 
-  std::erase_if(fet.trips_, [&](gtfs_trip_idx_t const t_idx) {
-    return trip_data.get(t_idx).event_times_.size() <= 1U;
-  });
-  if (fet.trips_.empty()) {
+  auto const& trp = trip_data.get(fet.trip_);
+  if (trp.event_times_.size() <= 1U) {
     return;
   }
 
   auto utc_time_traffic_days = hash_map<utc_time_sequence, bitfield>{};
 
-  auto const n_stops = std::accumulate(
-      begin(fet.trips_), end(fet.trips_), 0U,
-      [&](unsigned const acc, gtfs_trip_idx_t const t_idx) {
-        auto const n_trip_stops =
-            static_cast<unsigned>(trip_data.get(t_idx).stop_seq_.size());
-        return acc + n_trip_stops;
-      });
+  utc_time_mem.resize(trp.stop_seq_.size() * 2U - 2U);
 
-  utc_time_mem.resize(n_stops * 2U - fet.trips_.size() * 2U);
-
-  auto const first_dep_time =
-      trip_data.get(fet.trips_.front()).event_times_.front().dep_ -
-      fet.offsets_.back();
-  auto const last_arr_time =
-      trip_data.get(fet.trips_.back()).event_times_.back().arr_ -
-      fet.offsets_.back();
+  auto const first_dep_time = trp.event_times_.front().dep_ - fet.offset_;
+  auto const last_arr_time = trp.event_times_.back().arr_ - fet.offset_;
   auto const first_day_offset = (first_dep_time / 1_days) * date::days{1};
   auto const last_day_offset = (last_arr_time / 1_days) * date::days{1};
 
   auto prev_conversion_parameters =
-      std::tuple<duration_t, date::days>{duration_t{-1}, date::days{2}};
+      std::pair<duration_t, date::days>{duration_t{-1}, date::days{2}};
   auto prev_it = utc_time_traffic_days.end();
   for (auto day = gtfs_interval.from_; day != gtfs_interval.to_;
        day += std::chrono::days{1}) {
@@ -166,13 +127,12 @@ void expand_local_to_utc(
 
     auto const gtfs_local_day_idx =
         static_cast<std::size_t>((day - gtfs_interval.from_).count());
-    if (!fet.traffic_days_->test(gtfs_local_day_idx)) {
+    if (!trp.service_->test(gtfs_local_day_idx)) {
       continue;
     }
 
-    auto const& first_trp = trip_data.get(fet.trips_.front());
     auto const tz_offset =
-        noon_offsets.at(tt.providers_[first_trp.route_->agency_].tz_)
+        noon_offsets.at(tt.providers_[trp.route_->agency_].tz_)
             .value()
             .at(gtfs_local_day_idx);
     auto const first_dep_utc = first_dep_time - tz_offset;
@@ -186,17 +146,14 @@ void expand_local_to_utc(
       continue;
     }
 
-    if (std::tuple{tz_offset, first_dep_day_offset} !=
+    if (std::pair{tz_offset, first_dep_day_offset} !=
         prev_conversion_parameters) {
       auto i = 0U;
-      for (auto const [t, freq_offset] : utl::zip(fet.trips_, fet.offsets_)) {
-        auto const& trp = trip_data.get(t);
-        for (auto const [from, to] : utl::pairwise(trp.event_times_)) {
-          utc_time_mem[i++] =
-              from.dep_ - freq_offset - tz_offset - first_dep_day_offset;
-          utc_time_mem[i++] =
-              to.arr_ - freq_offset - tz_offset - first_dep_day_offset;
-        }
+      for (auto const [from, to] : utl::pairwise(trp.event_times_)) {
+        utc_time_mem[i++] =
+            from.dep_ - fet.offset_ - tz_offset - first_dep_day_offset;
+        utc_time_mem[i++] =
+            to.arr_ - fet.offset_ - tz_offset - first_dep_day_offset;
       }
 
       auto it = utc_time_traffic_days.find(utc_time_mem);
@@ -215,7 +172,7 @@ void expand_local_to_utc(
   }
 
   for (auto& [times, traffic_days] : utc_time_traffic_days) {
-    consumer(utc_trip{.trips_ = fet.trips_,
+    consumer(utc_trip{.trip_ = fet.trip_,
                       .utc_times_ = std::move(times),
                       .utc_traffic_days_ = traffic_days});
   }
@@ -225,18 +182,16 @@ template <typename Consumer>
 void expand_trip(trip_data& trip_data,
                  noon_offset_hours_t const& noon_offsets,
                  timetable const& tt,
-                 std::basic_string<gtfs_trip_idx_t> const& trips,
-                 bitfield const* traffic_days,
+                 gtfs_trip_idx_t const& trip_idx,
                  interval<date::sys_days> const& gtfs_interval,
                  interval<date::sys_days> const& selection,
                  std::basic_string<minutes_after_midnight_t>& utc_time_mem,
                  Consumer&& consumer) {
-  expand_frequencies(
-      trip_data, trips, traffic_days, [&](frequency_expanded_trip&& fet) {
-        expand_local_to_utc(trip_data, noon_offsets, tt, std::move(fet),
-                            gtfs_interval, selection, utc_time_mem,
-                            [&](utc_trip&& ut) { consumer(std::move(ut)); });
-      });
+  expand_frequencies(trip_data, trip_idx, [&](frequency_expanded_trip&& fet) {
+    expand_local_to_utc(trip_data, noon_offsets, tt, std::move(fet),
+                        gtfs_interval, selection, utc_time_mem,
+                        [&](utc_trip&& ut) { consumer(std::move(ut)); });
+  });
 }
 
 }  // namespace nigiri::loader::gtfs

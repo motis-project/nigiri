@@ -40,7 +40,7 @@ void build_stop_seq(ref_service const& s,
             static_cast<day_idx_t::value_t>(hrd_local_day_idx + day_offset)});
 
     stop_seq[i] = stop{l_idx, ref.stops_[stop_idx].dep_.in_out_allowed_,
-                       ref.stops_[stop_idx].arr_.in_out_allowed_}
+                       ref.stops_[stop_idx].arr_.in_out_allowed_, false, false}
                       .value();
   }
 }

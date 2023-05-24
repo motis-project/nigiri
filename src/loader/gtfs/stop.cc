@@ -104,7 +104,8 @@ enum class transfer_type : std::uint8_t {
   kGenerated = std::numeric_limits<std::uint8_t>::max()
 };
 
-void read_transfers(stop_map_t& stops, std::string_view file_content) {
+seated_transfers_map read_transfers(stop_map_t& stops,
+                                    std::string_view file_content) {
   auto const timer = scoped_timer{"gtfs.loader.stops.transfers"};
 
   struct csv_transfer {
@@ -112,10 +113,12 @@ void read_transfers(stop_map_t& stops, std::string_view file_content) {
     utl::csv_col<utl::cstr, UTL_NAME("to_stop_id")> to_stop_id_;
     utl::csv_col<int, UTL_NAME("transfer_type")> transfer_type_;
     utl::csv_col<int, UTL_NAME("min_transfer_time")> min_transfer_time_;
+    utl::csv_col<utl::cstr, UTL_NAME("from_trip_id")> from_trip_id_;
+    utl::csv_col<utl::cstr, UTL_NAME("to_trip_id")> to_trip_id_;
   };
 
   if (file_content.empty()) {
-    return;
+    return {};
   }
 
   auto progress_tracker = utl::get_active_progress_tracker();
@@ -123,6 +126,7 @@ void read_transfers(stop_map_t& stops, std::string_view file_content) {
       .out_bounds(15.F, 17.F)
       .in_high(file_content.size());
 
+  auto seated_transfers = seated_transfers_map{};
   utl::line_range{
       utl::make_buf_reader(file_content, progress_tracker->update_fn())}  //
       | utl::csv<csv_transfer>()  //
@@ -147,6 +151,14 @@ void read_transfers(stop_map_t& stops, std::string_view file_content) {
           return;
         }
 
+        if (type == transfer_type::kStaySeated && !t.from_trip_id_->empty() &&
+            !t.to_trip_id_->empty()) {
+          seated_transfers[t.from_trip_id_->to_str()].emplace_back(
+              gtfs_seated_transfer{.from_ = from_stop_it->second->location_,
+                                   .to_ = to_stop_it->second->location_,
+                                   .to_trip_id_ = t.to_trip_id_->to_str()});
+        }
+
         auto& footpaths = from_stop_it->second->footpaths_;
         auto const it = std::find_if(
             begin(footpaths), end(footpaths), [&](footpath const& fp) {
@@ -158,13 +170,16 @@ void read_transfers(stop_map_t& stops, std::string_view file_content) {
                        duration_t{*t.min_transfer_time_ / 60}});
         }
       });
+
+  return seated_transfers;
 }
 
-locations_map read_stops(source_idx_t const src,
-                         timetable& tt,
-                         tz_map& timezones,
-                         std::string_view stops_file_content,
-                         std::string_view transfers_file_content) {
+std::pair<locations_map, seated_transfers_map> read_stops(
+    source_idx_t const src,
+    timetable& tt,
+    tz_map& timezones,
+    std::string_view stops_file_content,
+    std::string_view transfers_file_content) {
   auto const timer = scoped_timer{"gtfs.loader.stops"};
 
   auto const progress_tracker = utl::get_active_progress_tracker();
@@ -252,7 +267,7 @@ locations_map read_stops(source_idx_t const src,
             it_range{empty_footpath_vec}}));
   }
 
-  read_transfers(stops, transfers_file_content);
+  auto const seated_transfers = read_transfers(stops, transfers_file_content);
 
   {
     auto const t = scoped_timer{"loader.gtfs.stop.metas"};
@@ -313,7 +328,7 @@ locations_map read_stops(source_idx_t const src,
     }
   }
 
-  return locations;
+  return {locations, seated_transfers};
 }
 
 }  // namespace nigiri::loader::gtfs

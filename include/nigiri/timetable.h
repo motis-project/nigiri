@@ -17,6 +17,7 @@
 #include "nigiri/footpath.h"
 #include "nigiri/location.h"
 #include "nigiri/logging.h"
+#include "nigiri/seated_transfer.h"
 #include "nigiri/stop.h"
 #include "nigiri/types.h"
 
@@ -201,7 +202,9 @@ struct timetable {
     return provider_idx_t{idx};
   }
 
-  void add_transport(transport&& t) {
+  transport_idx_t add_transport(transport&& t) {
+    auto const idx = transport_traffic_days_.size();
+
     transport_traffic_days_.emplace_back(t.bitfield_idx_);
     transport_route_.emplace_back(t.route_idx_);
     transport_to_trip_section_.emplace_back(t.external_trip_ids_);
@@ -212,6 +215,8 @@ struct timetable {
 
     assert(transport_traffic_days_.size() == transport_route_.size());
     assert(transport_traffic_days_.size() == transport_to_trip_section_.size());
+
+    return transport_idx_t{idx};
   }
 
   transport_idx_t next_transport_idx() const {
@@ -389,6 +394,10 @@ struct timetable {
 
   // For each trip the corresponding route
   vector_map<transport_idx_t, route_idx_t> transport_route_;
+
+  // In-seat transfers
+  vecvec<transport_idx_t, seated_transfer::value_t> fwd_seated_transfers_;
+  vecvec<transport_idx_t, seated_transfer::value_t> bwd_seated_transfers_;
 
   // Trip index -> merged trips
   vecvec<transport_idx_t, merged_trips_idx_t> transport_to_trip_section_;

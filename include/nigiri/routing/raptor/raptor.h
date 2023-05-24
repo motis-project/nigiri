@@ -303,11 +303,12 @@ private:
     }
   }
 
-  bool update_route(unsigned const k, route_idx_t const r) {
+  bool update_route(unsigned const k,
+                    route_idx_t const r,
+                    transport et = transport{}) {
     auto const stop_seq = tt_.route_location_seq_[r];
     bool any_marked = false;
 
-    auto et = transport{};
     for (auto i = 0U; i != stop_seq.size(); ++i) {
       auto const stop_idx =
           static_cast<unsigned>(kFwd ? i : stop_seq.size() - i - 1U);
@@ -423,6 +424,21 @@ private:
         }
       }
     }
+
+    if (et.is_valid() && stop{stop_seq.back()}.out_seated_transfer()) {
+      for (auto const& transfer :
+           (kFwd ? tt_.fwd_seated_transfers_
+                 : tt_.bwd_seated_transfers_)[et.t_idx_]) {
+        auto const st = seated_transfer{transfer};
+        auto const target_traffic_day = et.day_ + dir(st.day_offset());
+        if (tt_.bitfields_[tt_.transport_traffic_days_[st.target()]].test(
+                target_traffic_day)) {
+          update_route(k, tt_.transport_route_[st.target()],
+                       transport{st.target(), et.day_ + dir(st.day_offset())});
+        }
+      }
+    }
+
     return any_marked;
   }
 
