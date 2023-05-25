@@ -123,13 +123,11 @@ struct timetable {
   };
 
   template <typename TripId>
-  trip_idx_t register_trip_id(
-      TripId const& trip_id_str,
-      source_idx_t const src,
-      std::string const& display_name,
-      trip_debug const dbg,
-      transport_idx_t const ref_transport,
-      interval<std::uint32_t> ref_transport_stop_range) {
+  trip_idx_t register_trip_id(TripId const& trip_id_str,
+                              source_idx_t const src,
+                              std::string const& display_name,
+                              trip_debug const dbg,
+                              std::uint32_t const train_nr) {
     auto const trip_idx = trip_idx_t{trip_ids_.size()};
 
     auto const trip_id_idx = trip_id_idx_t{trip_id_strings_.size()};
@@ -140,7 +138,7 @@ struct timetable {
     trip_display_names_.emplace_back(display_name);
     trip_debug_.emplace_back().emplace_back(dbg);
     trip_ids_.emplace_back().emplace_back(trip_id_idx);
-    trip_ref_transport_.emplace_back(ref_transport, ref_transport_stop_range);
+    trip_train_nr_.emplace_back(train_nr);
 
     return trip_idx;
   }
@@ -258,8 +256,11 @@ struct timetable {
   }
 
   day_idx_t day_idx(date::year_month_day const day) const {
-    return day_idx_t{
-        (date::sys_days{day} - (date_range_.from_ - kTimetableOffset)).count()};
+    return day_idx(date::sys_days{day});
+  }
+
+  day_idx_t day_idx(date::sys_days const day) const {
+    return day_idx_t{(day - (date_range_.from_ - kTimetableOffset)).count()};
   }
 
   std::pair<day_idx_t, minutes_after_midnight_t> day_idx_mam(
@@ -346,10 +347,10 @@ struct timetable {
   // Storage for trip id strings + source
   vecvec<trip_id_idx_t, char> trip_id_strings_;
   vector_map<trip_id_idx_t, source_idx_t> trip_id_src_;
+  vector_map<trip_id_idx_t, std::uint32_t> trip_train_nr_;
 
   // Trip index -> reference transport + stop range
-  vector_map<trip_idx_t, pair<transport_idx_t, interval<std::uint32_t>>>
-      trip_ref_transport_;
+  vecvec<trip_idx_t, transport_range_t> trip_transport_ranges_;
 
   // Trip -> debug info
   mutable_fws_multimap<trip_idx_t, trip_debug> trip_debug_;

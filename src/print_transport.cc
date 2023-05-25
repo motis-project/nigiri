@@ -105,7 +105,8 @@ void print_transport(timetable const& tt,
           if (with_debug) {
             out << ", debug="
                 << tt.source_file_names_.at(dbg.source_file_idx_).view() << ":"
-                << dbg.line_number_from_ << ":" << dbg.line_number_to_;
+                << dbg.line_number_from_ << ":" << dbg.line_number_to_
+                << ", train_nr=" << tt.trip_train_nr_.at(id);
           }
           out << "}";
         }

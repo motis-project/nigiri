@@ -9,13 +9,12 @@
 namespace nigiri {
 
 struct rt_timetable {
-  vector<pair<rt_trip_id_idx_t, rt_trip_idx_t>> trip_id_to_idx_;
+  vector<tuple<rt_trip_id_idx_t, day_idx_t, rt_trip_idx_t>> trip_id_to_idx_;
   mutable_fws_multimap<rt_trip_idx_t, rt_trip_id_idx_t> trip_ids_;
   vecvec<rt_trip_id_idx_t, char> trip_id_strings_;
   vecvec<rt_trip_idx_t, char> trip_display_names_;
   vector_map<rt_trip_id_idx_t, source_idx_t> trip_id_src_;
-  vector_map<rt_trip_idx_t, pair<transport_idx_t, interval<std::uint32_t>>>
-      trip_ref_transport_;
+  vector_map<rt_trip_idx_t, rt_transport_range_t> trip_transport_ranges_;
   vector_map<rt_route_idx_t, interval<rt_transport_idx_t>>
       route_transport_ranges_;
   vector_map<rt_route_idx_t, interval<unsigned>> route_stop_time_ranges_;

@@ -102,27 +102,29 @@ TEST(gtfs, services) {
         zoned_time{get_tz(t, stop_idx), tt.event_time(t, stop_idx, ev_type)});
   };
 
-  auto const t_oct = get_transport(tt, "0/X1", 2019_y / October / 26);
+  auto const t_oct = get_ref_transport(tt, trip_id{"X1", source_idx_t{0}},
+                                       2019_y / October / 27, true);
   ASSERT_TRUE(t_oct.has_value());
-  EXPECT_EQ(1572130800, unixtime(*t_oct, 0, event_type::kDep));
-  EXPECT_EQ(1572134340, unixtime(*t_oct, 1, event_type::kArr));
-  EXPECT_EQ(1572137940, unixtime(*t_oct, 1, event_type::kDep));
-  EXPECT_EQ(1572138000, unixtime(*t_oct, 2, event_type::kArr));
-  EXPECT_EQ(1572141540, unixtime(*t_oct, 3, event_type::kArr));
-  EXPECT_EQ(1572141600, unixtime(*t_oct, 3, event_type::kDep));
-  EXPECT_EQ("2019-10-27T01:00+02:00", iso(*t_oct, 0, event_type::kDep));
-  EXPECT_EQ("2019-10-27T01:59+02:00", iso(*t_oct, 1, event_type::kArr));
-  EXPECT_EQ("2019-10-27T02:59+02:00", iso(*t_oct, 1, event_type::kDep));
-  EXPECT_EQ("2019-10-27T02:00+01:00", iso(*t_oct, 2, event_type::kArr));
-  EXPECT_EQ("2019-10-27T02:59+01:00", iso(*t_oct, 3, event_type::kArr));
-  EXPECT_EQ("2019-10-27T03:00+01:00", iso(*t_oct, 3, event_type::kDep));
+  EXPECT_EQ(1572130800, unixtime(t_oct->first, 0, event_type::kDep));
+  EXPECT_EQ(1572134340, unixtime(t_oct->first, 1, event_type::kArr));
+  EXPECT_EQ(1572137940, unixtime(t_oct->first, 1, event_type::kDep));
+  EXPECT_EQ(1572138000, unixtime(t_oct->first, 2, event_type::kArr));
+  EXPECT_EQ(1572141540, unixtime(t_oct->first, 3, event_type::kArr));
+  EXPECT_EQ(1572141600, unixtime(t_oct->first, 3, event_type::kDep));
+  EXPECT_EQ("2019-10-27T01:00+02:00", iso(t_oct->first, 0, event_type::kDep));
+  EXPECT_EQ("2019-10-27T01:59+02:00", iso(t_oct->first, 1, event_type::kArr));
+  EXPECT_EQ("2019-10-27T02:59+02:00", iso(t_oct->first, 1, event_type::kDep));
+  EXPECT_EQ("2019-10-27T02:00+01:00", iso(t_oct->first, 2, event_type::kArr));
+  EXPECT_EQ("2019-10-27T02:59+01:00", iso(t_oct->first, 3, event_type::kArr));
+  EXPECT_EQ("2019-10-27T03:00+01:00", iso(t_oct->first, 3, event_type::kDep));
 
-  auto const t_march = get_transport(tt, "0/X1", 2019_y / March / 30);
+  auto const t_march = get_ref_transport(tt, trip_id{"X1", source_idx_t{0}},
+                                         2019_y / March / 30, true);
   ASSERT_TRUE(t_march.has_value());
-  EXPECT_EQ(1553990400, unixtime(*t_march, 2, event_type::kArr));
-  EXPECT_EQ(1553993940, unixtime(*t_march, 3, event_type::kArr));
-  EXPECT_EQ(1553994000, unixtime(*t_march, 3, event_type::kDep));
-  EXPECT_EQ("2019-03-31T01:00+01:00", iso(*t_march, 2, event_type::kArr));
-  EXPECT_EQ("2019-03-31T01:59+01:00", iso(*t_march, 3, event_type::kArr));
-  EXPECT_EQ("2019-03-31T03:00+02:00", iso(*t_march, 3, event_type::kDep));
+  EXPECT_EQ(1553990400, unixtime(t_march->first, 2, event_type::kArr));
+  EXPECT_EQ(1553993940, unixtime(t_march->first, 3, event_type::kArr));
+  EXPECT_EQ(1553994000, unixtime(t_march->first, 3, event_type::kDep));
+  EXPECT_EQ("2019-03-31T01:00+01:00", iso(t_march->first, 2, event_type::kArr));
+  EXPECT_EQ("2019-03-31T01:59+01:00", iso(t_march->first, 3, event_type::kArr));
+  EXPECT_EQ("2019-03-31T03:00+02:00", iso(t_march->first, 3, event_type::kDep));
 }
