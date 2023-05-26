@@ -22,6 +22,8 @@
 #include "cista/reflection/printable.h"
 #include "cista/strong.h"
 
+#include "nigiri/common/interval.h"
+
 namespace nigiri {
 
 // Extend interval by one day. This is required due to the departure/arrival
@@ -44,6 +46,27 @@ using bitset = cista::bitset<Size>;
 
 constexpr auto const kMaxDays = 512;
 using bitfield = bitset<kMaxDays>;
+
+struct day_list {
+  day_list(bitfield const& bf, date::sys_days base) : bf_{bf}, base_{base} {}
+  friend std::ostream& operator<<(std::ostream& out, day_list const& l) {
+    out << "{";
+    auto first = true;
+    for (auto i = 0U; i != kMaxDays; ++i) {
+      if (l.bf_.test(i)) {
+        if (!first) {
+          out << ", ";
+        }
+        date::to_stream(out, "%F", l.base_ + i * date::days{1});
+        first = false;
+      }
+    }
+    out << "}";
+    return out;
+  }
+  bitfield const bf_;
+  date::sys_days base_;
+};
 
 using bitvec = cista::offset::bitvec;
 
@@ -133,6 +156,9 @@ using attribute_idx_t = cista::strong<std::uint32_t, struct _attribute_idx>;
 using attribute_combination_idx_t =
     cista::strong<std::uint32_t, struct _attribute_combination>;
 using provider_idx_t = cista::strong<std::uint32_t, struct _provider_idx>;
+
+using transport_range_t = pair<transport_idx_t, interval<std::uint16_t>>;
+using rt_transport_range_t = pair<rt_transport_idx_t, interval<std::uint16_t>>;
 
 struct trip_debug {
   source_file_idx_t source_file_idx_;

@@ -78,10 +78,13 @@ void service_builder::write_services(const nigiri::source_idx_t src) {
                          to_idx(stops.back().eva_num_),
                          s.utc_times_.back().count(), s.line_info(store_));
 
-          auto const id = tt_.register_trip_id(
-              trip_id_buf_, src, ref.display_name(tt_), ref.origin_.dbg_,
+          auto const id =
+              tt_.register_trip_id(trip_id_buf_, src, ref.display_name(tt_),
+                                   ref.origin_.dbg_, ref.initial_train_num_);
+          tt_.trip_transport_ranges_.emplace_back({transport_range_t{
               tt_.next_transport_idx(),
-              {0U, static_cast<unsigned>(stop_seq.size())});
+              interval<std::uint16_t>{
+                  0U, static_cast<std::uint16_t>(stop_seq.size())}}});
 
           auto const get_attribute_combination_idx =
               [&](std::optional<std::vector<service::attribute>> const& a,
