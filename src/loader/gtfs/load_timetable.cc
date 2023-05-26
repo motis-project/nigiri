@@ -291,6 +291,7 @@ void load_timetable(source_idx_t const src, dir const& d, timetable& tt) {
                   bitfield_indices, s.utc_traffic_days_,
                   [&]() { return tt.register_bitfield(s.utc_traffic_days_); }),
               .route_idx_ = route_idx,
+              .first_day_offset_ = s.first_day_offset_,
               .external_trip_ids_ = external_trip_ids,
               .section_attributes_ = attributes,
               .section_providers_ = {first.route_->agency_},

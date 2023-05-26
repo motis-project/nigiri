@@ -115,6 +115,7 @@ struct timetable {
   struct transport {
     bitfield_idx_t bitfield_idx_;
     route_idx_t route_idx_;
+    std::uint8_t first_day_offset_;
     std::basic_string<merged_trips_idx_t> const& external_trip_ids_;
     std::basic_string<attribute_combination_idx_t> const& section_attributes_;
     std::basic_string<provider_idx_t> const& section_providers_;
@@ -381,6 +382,13 @@ struct timetable {
   // RouteN: ...
   vector_map<route_idx_t, interval<std::uint32_t>> route_stop_time_ranges_;
   vector<minutes_after_midnight_t> route_stop_times_;
+
+  // Services in GTFS can start with a first departure time > 24:00:00
+  // The loader transforms this into a time <24:00:00 and shifts the bits in the
+  // bitset accordingly. To still be able to match the traffic day from the
+  // corresponding service_id, it's necessary to store the number of days which
+  // is floor(stop_times.txt:departure_time/1440)
+  vector_map<transport_idx_t, std::uint8_t> initial_day_offset_;
 
   // Trip index -> traffic day bitfield
   vector_map<transport_idx_t, bitfield_idx_t> transport_traffic_days_;

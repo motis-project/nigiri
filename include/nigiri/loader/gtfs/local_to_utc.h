@@ -21,6 +21,7 @@ struct frequency_expanded_trip {
 };
 
 struct utc_trip {
+  std::uint8_t first_day_offset_;
   std::basic_string<gtfs_trip_idx_t> trips_;
   std::basic_string<duration_t> utc_times_;
   bitfield utc_traffic_days_;
@@ -215,7 +216,9 @@ void expand_local_to_utc(
   }
 
   for (auto& [times, traffic_days] : utc_time_traffic_days) {
-    consumer(utc_trip{.trips_ = fet.trips_,
+    consumer(utc_trip{.first_day_offset_ = static_cast<std::uint8_t>(
+                          first_day_offset.count() / 1440),
+                      .trips_ = fet.trips_,
                       .utc_times_ = std::move(times),
                       .utc_traffic_days_ = traffic_days});
   }
