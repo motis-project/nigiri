@@ -2,6 +2,7 @@
 
 #include "nigiri/loader/gtfs/noon_offsets.h"
 
+#include "nigiri/common/day_list.h"
 #include "nigiri/timetable.h"
 
 namespace nigiri {

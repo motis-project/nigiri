@@ -47,27 +47,6 @@ using bitset = cista::bitset<Size>;
 constexpr auto const kMaxDays = 512;
 using bitfield = bitset<kMaxDays>;
 
-struct day_list {
-  day_list(bitfield const& bf, date::sys_days base) : bf_{bf}, base_{base} {}
-  friend std::ostream& operator<<(std::ostream& out, day_list const& l) {
-    out << "{";
-    auto first = true;
-    for (auto i = 0U; i != kMaxDays; ++i) {
-      if (l.bf_.test(i)) {
-        if (!first) {
-          out << ", ";
-        }
-        date::to_stream(out, "%F", l.base_ + i * date::days{1});
-        first = false;
-      }
-    }
-    out << "}";
-    return out;
-  }
-  bitfield const bf_;
-  date::sys_days base_;
-};
-
 using bitvec = cista::offset::bitvec;
 
 template <typename... Args>

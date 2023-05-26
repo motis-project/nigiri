@@ -6,12 +6,13 @@
 
 #include "nigiri/lookup/get_transport.h"
 #include "nigiri/lookup/get_transport_stop_tz.h"
-#include "../service_strings.h"
 
 using namespace nigiri;
 using namespace nigiri::loader;
 using namespace nigiri::loader::gtfs;
 using namespace date;
+
+namespace {
 
 mem_dir test_files() {
   using std::filesystem::path;
@@ -34,26 +35,14 @@ G,G,,12.0,13.0,,
 H,H,,14.0,15.0,,
 I,I,,16.0,17.0,,
 )"}},
-       {path{kCalenderFile},
-        std::string{
-            R"(service_id,monday,tuesday,wednesday,thursday,friday,saturday,sunday,start_date,end_date
-X,0,0,0,0,0,0,0,20190315,20191115
-)"}},
        {path{kCalendarDatesFile}, std::string{R"(service_id,date,exception_type
 X,20190331,1
 X,20191027,1
-)"}},
-       {path{kTransfersFile},
-        std::string{
-            R"(from_stop_id,to_stop_id,transfer_type,min_transfer_time
 )"}},
        {path{kRoutesFile},
         std::string{
             R"(route_id,agency_id,route_short_name,route_long_name,route_desc,route_type
 A,DB,1337,Long Name,Route Description,3
-)"}},
-       {path{kFrequenciesFile},
-        std::string{R"(trip_id,start_time,end_time,headway_secs
 )"}},
        {path{kTripsFile},
         std::string{R"(route_id,service_id,trip_id,trip_headsign,block_id
@@ -69,6 +58,8 @@ X1,02:59:00,03:00:00,D,4,0,0
 X1,03:30:00,03:30:00,E,5,0,0
 )"}}}};
 }
+
+}  // namespace
 
 TEST(gtfs, services) {
   timetable tt;
