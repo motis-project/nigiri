@@ -217,7 +217,8 @@ void reconstruct_journey(timetable const& tt,
       auto const event_time =
           tt_to_delta(base_day_idx, t.day_,
                       tt.event_mam(t.t_idx_, stop_idx,
-                                   kFwd ? event_type::kDep : event_type::kArr));
+                                   kFwd ? event_type::kDep : event_type::kArr)
+                          .as_duration());
       if (is_better_or_eq(raptor_state.round_times_[k - 1][to_idx(l)],
                           event_time)) {
         trace_rc(

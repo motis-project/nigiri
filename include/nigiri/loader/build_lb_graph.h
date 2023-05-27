@@ -62,7 +62,7 @@ void build_lb_graph(timetable& tt) {
         for (auto const t : tt.route_transport_ranges_[r]) {
           auto const from_time = tt.event_mam(t, from, event_type::kDep);
           auto const to_time = tt.event_mam(t, to, event_type::kArr);
-          min = std::min(to_time - from_time, min);
+          min = std::min((to_time - from_time).as_duration(), min);
         }
         update_weight(target, min);
       }

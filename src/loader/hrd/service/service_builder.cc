@@ -66,6 +66,14 @@ void service_builder::write_services(const nigiri::source_idx_t src) {
     for (auto const& services : sub_routes) {
       auto const& [stop_seq, sections_clasz] = key;
       auto const route_idx = tt_.register_route(stop_seq, sections_clasz);
+
+      for (auto const& s : stop_seq) {
+        auto s_routes = location_routes_[stop{s}.location_idx()];
+        if (s_routes.empty() || s_routes.back() != route_idx) {
+          s_routes.emplace_back(route_idx);
+        }
+      }
+
       for (auto const& s : services) {
         auto const& ref = store_.get(s.ref_);
         try {
@@ -249,6 +257,13 @@ void service_builder::write_services(const nigiri::source_idx_t src) {
   }
   route_services_.clear();
   store_.clear();
+}
+
+void service_builder::write_location_routes() {
+  for (auto const routes_bucket : location_routes_) {
+    tt_.location_routes_.emplace_back(routes_bucket);
+  }
+  tt_.location_routes_.resize(tt_.locations_.src_.size());
 }
 
 }  // namespace nigiri::loader::hrd

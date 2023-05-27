@@ -225,10 +225,19 @@ void load_timetable(source_idx_t const src, dir const& d, timetable& tt) {
     auto section_directions = std::basic_string<trip_direction_idx_t>{};
     auto section_lines = std::basic_string<trip_line_idx_t>{};
     auto external_trip_ids = std::basic_string<merged_trips_idx_t>{};
+    auto location_routes = mutable_fws_multimap<location_idx_t, route_idx_t>{};
     for (auto const& [key, sub_routes] : route_services) {
       for (auto const& services : sub_routes) {
         auto const& [sections_clasz, stop_seq] = key;
         auto const route_idx = tt.register_route(stop_seq, {sections_clasz});
+
+        for (auto const& s : stop_seq) {
+          auto s_routes = location_routes[stop{s}.location_idx()];
+          if (s_routes.empty() || s_routes.back() != route_idx) {
+            s_routes.emplace_back(route_idx);
+          }
+        }
+
         for (auto const& s : services) {
           auto const& first = trip_data.get(s.trips_.front());
 
@@ -315,6 +324,12 @@ void load_timetable(source_idx_t const src, dir const& d, timetable& tt) {
 
       progress_tracker->increment();
     }
+
+    // Build location_routes map
+    for (auto const routes_bucket : location_routes) {
+      tt.location_routes_.emplace_back(routes_bucket);
+    }
+    tt.location_routes_.resize(tt.locations_.src_.size());
   }
 }
 

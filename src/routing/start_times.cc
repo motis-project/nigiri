@@ -87,7 +87,8 @@ void add_start_times_at_stop(direction const search_dir,
             day, day_offset,
             tt.date_range_.from_ + to_idx(day - day_offset) * 1_days,
             traffic_days.test(to_idx(day)),
-            interval_with_offset.contains(tt.to_unixtime(day, stop_time)));
+            interval_with_offset.contains(
+                tt.to_unixtime(day, stop_time.as_duration())));
       }
     }
   }

@@ -163,12 +163,6 @@ struct timetable {
       std::basic_string<stop::value_type> const& stop_seq,
       std::basic_string<clasz> const& clasz_sections) {
     auto const idx = route_location_seq_.size();
-    for (auto const& s : stop_seq) {
-      auto routes = location_routes_[stop{s}.location_idx()];
-      if (routes.empty() || routes.back() != idx) {
-        routes.emplace_back(idx);
-      }
-    }
     route_transport_ranges_.emplace_back(
         transport_idx_t{transport_traffic_days_.size()},
         transport_idx_t::invalid());
@@ -218,23 +212,21 @@ struct timetable {
     return transport_idx_t{transport_traffic_days_.size()};
   }
 
-  std::span<minutes_after_midnight_t const> event_times_at_stop(
-      route_idx_t const r,
-      std::size_t const stop_idx,
-      event_type const ev_type) const {
+  std::span<delta const> event_times_at_stop(route_idx_t const r,
+                                             std::size_t const stop_idx,
+                                             event_type const ev_type) const {
     auto const n_transports =
         static_cast<unsigned>(route_transport_ranges_[r].size());
     auto const idx = static_cast<unsigned>(
         route_stop_time_ranges_[r].from_ +
         n_transports * (stop_idx * 2 - (ev_type == event_type::kArr ? 1 : 0)));
-    return std::span<minutes_after_midnight_t const>{&route_stop_times_[idx],
-                                                     n_transports};
+    return std::span<delta const>{&route_stop_times_[idx], n_transports};
   }
 
-  minutes_after_midnight_t event_mam(route_idx_t const r,
-                                     transport_idx_t t,
-                                     std::size_t const stop_idx,
-                                     event_type const ev_type) const {
+  delta event_mam(route_idx_t const r,
+                  transport_idx_t t,
+                  std::size_t const stop_idx,
+                  event_type const ev_type) const {
     auto const range = route_transport_ranges_[r];
     auto const n_transports = static_cast<unsigned>(range.size());
     auto const route_stop_begin = static_cast<unsigned>(
@@ -244,9 +236,9 @@ struct timetable {
     return route_stop_times_[route_stop_begin + t_idx_in_route];
   }
 
-  minutes_after_midnight_t event_mam(transport_idx_t t,
-                                     std::size_t const stop_idx,
-                                     event_type const ev_type) const {
+  delta event_mam(transport_idx_t t,
+                  std::size_t const stop_idx,
+                  event_type const ev_type) const {
     return event_mam(transport_route_[t], t, stop_idx, ev_type);
   }
 
@@ -254,7 +246,7 @@ struct timetable {
                         size_t const stop_idx,
                         event_type const ev_type) const {
     return unixtime_t{internal_interval_days().from_ + to_idx(t.day_) * 1_days +
-                      event_mam(t.t_idx_, stop_idx, ev_type)};
+                      event_mam(t.t_idx_, stop_idx, ev_type).as_duration()};
   }
 
   day_idx_t day_idx(date::year_month_day const day) const {
@@ -368,7 +360,7 @@ struct timetable {
   vecvec<route_idx_t, clasz> route_section_clasz_;
 
   // Location -> list of routes
-  mutable_fws_multimap<location_idx_t, route_idx_t> location_routes_;
+  vecvec<location_idx_t, route_idx_t> location_routes_;
 
   // Route 1:
   //   stop-1-dep: [trip1, trip2, ..., tripN]
@@ -379,7 +371,7 @@ struct timetable {
   // ...
   // RouteN: ...
   vector_map<route_idx_t, interval<std::uint32_t>> route_stop_time_ranges_;
-  vector<minutes_after_midnight_t> route_stop_times_;
+  vector<delta> route_stop_times_;
 
   // Trip index -> traffic day bitfield
   vector_map<transport_idx_t, bitfield_idx_t> transport_traffic_days_;
