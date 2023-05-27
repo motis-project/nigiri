@@ -291,8 +291,10 @@ namespace nigiri {
 
 struct delta {
   explicit delta(duration_t const d)
-      : days_{static_cast<std::uint16_t>(d.count() / 1440U)},
-        mam_{static_cast<std::uint16_t>(d.count() % 1440U)} {}
+      : days_{static_cast<std::uint16_t>(d.count() / 1440)},
+        mam_{static_cast<std::uint16_t>(d.count() % 1440)} {
+    assert(d.count() > 0);
+  }
 
   explicit delta(std::uint16_t const minutes)
       : days_{static_cast<std::uint16_t>(minutes / 1440U)},
@@ -302,11 +304,11 @@ struct delta {
       : days_{day}, mam_{mam} {}
 
   std::uint16_t value() const {
-    return *reinterpret_cast<location_idx_t::value_t const*>(this);
+    return *reinterpret_cast<std::uint16_t const*>(this);
   }
 
-  std::int16_t days() const { return days_; }
-  std::int16_t mam() const { return mam_; }
+  std::uint16_t days() const { return days_; }
+  std::uint16_t mam() const { return mam_; }
 
   friend std::ostream& operator<<(std::ostream& out, delta const& d) {
     return out << duration_t{static_cast<duration_t::rep>(d.mam_)} << "."
