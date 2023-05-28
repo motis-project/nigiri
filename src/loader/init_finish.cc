@@ -26,6 +26,7 @@ void register_special_stations(timetable& tt) {
                                              it_range{empty_footpath_vec},
                                              it_range{empty_footpath_vec}});
   }
+  tt.location_routes_.resize(tt.n_locations());
 }
 
 void finalize(timetable& tt) {

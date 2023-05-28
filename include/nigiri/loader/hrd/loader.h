@@ -8,7 +8,10 @@ namespace nigiri::loader::hrd {
 struct hrd_loader : public loader_interface {
   explicit hrd_loader(nigiri::loader::hrd::config c);
   bool applicable(dir const& d) const override;
-  void load(source_idx_t const src, dir const& d, timetable& tt) const override;
+  void load(loader_config const&,
+            source_idx_t const src,
+            dir const& d,
+            timetable& tt) const override;
   cista::hash_t hash(dir const&) const override;
   nigiri::loader::hrd::config config_;
 };

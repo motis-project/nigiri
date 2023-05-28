@@ -21,12 +21,13 @@
 namespace nigiri::loader::gtfs {
 
 struct stop {
-  void compute_close_stations(geo::point_rtree const& stop_rtree) {
+  void compute_close_stations(geo::point_rtree const& stop_rtree,
+                              unsigned const link_stop_distance) {
     if (std::abs(coord_.lat_) < 2.0 && std::abs(coord_.lng_) < 2.0) {
       return;
     }
     close_ = utl::to_vec(
-        stop_rtree.in_radius(coord_, 100),
+        stop_rtree.in_radius(coord_, link_stop_distance),
         [](std::size_t const idx) { return static_cast<unsigned>(idx); });
   }
 
@@ -164,7 +165,8 @@ locations_map read_stops(source_idx_t const src,
                          timetable& tt,
                          tz_map& timezones,
                          std::string_view stops_file_content,
-                         std::string_view transfers_file_content) {
+                         std::string_view transfers_file_content,
+                         unsigned link_stop_distance) {
   auto const timer = scoped_timer{"gtfs.loader.stops"};
 
   auto const progress_tracker = utl::get_active_progress_tracker();
@@ -223,7 +225,7 @@ locations_map read_stops(source_idx_t const src,
     }
   }
 
-  {
+  if (link_stop_distance != 0U) {
     auto const t = scoped_timer{"loader.gtfs.stop.rtree"};
     progress_tracker->status("Stops R-Tree")
         .out_bounds(5.F, 15.F)
@@ -232,7 +234,9 @@ locations_map read_stops(source_idx_t const src,
         stops, [](auto const& s) { return s.second->coord_; });
     utl::parallel_for(
         stops,
-        [&](auto const& s) { s.second->compute_close_stations(stop_rtree); },
+        [&](auto const& s) {
+          s.second->compute_close_stations(stop_rtree, link_stop_distance);
+        },
         progress_tracker->update_fn());
   }
 

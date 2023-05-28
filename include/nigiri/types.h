@@ -307,8 +307,8 @@ struct delta {
     return *reinterpret_cast<std::uint16_t const*>(this);
   }
 
-  std::uint16_t days() const { return days_; }
-  std::uint16_t mam() const { return mam_; }
+  std::int16_t days() const { return days_; }
+  std::int16_t mam() const { return mam_; }
 
   friend std::ostream& operator<<(std::ostream& out, delta const& d) {
     return out << duration_t{static_cast<duration_t::rep>(d.mam_)} << "."
@@ -326,7 +326,7 @@ struct delta {
 
   duration_t as_duration() const { return days() * 1_days + mam() * 1_minutes; }
 
-  std::uint16_t count() const { return days() * 1440 + mam(); }
+  std::int16_t count() const { return days_ * 1440U + mam_; }
 
   std::uint16_t days_ : 5;
   std::uint16_t mam_ : 11;

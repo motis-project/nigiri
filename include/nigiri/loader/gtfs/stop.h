@@ -17,6 +17,7 @@ locations_map read_stops(source_idx_t,
                          timetable&,
                          tz_map&,
                          std::string_view stops_file_content,
-                         std::string_view transfers_file_content);
+                         std::string_view transfers_file_content,
+                         unsigned link_stop_distance);
 
 }  // namespace nigiri::loader::gtfs

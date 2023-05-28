@@ -103,10 +103,11 @@ void add_starts_in_interval(direction const search_dir,
                             std::vector<start>& starts,
                             bool const add_ontrip,
                             Less&& cmp) {
-  trace("    add_starts_in_interval(interval={}, stop={}, duration={})\n",
-        interval,
-        location{tt, l},  // NOLINT(clang-analyzer-core.CallAndMessage)
-        d);
+  trace(
+      "    add_starts_in_interval(interval={}, stop={}, duration={}): {} "
+      "routes\n",
+      interval, location{tt, l},  // NOLINT(clang-analyzer-core.CallAndMessage)
+      d, tt.location_routes_.at(l).size());
 
   // Iterate routes visiting the location.
   for (auto const& r : tt.location_routes_.at(l)) {
