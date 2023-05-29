@@ -60,6 +60,9 @@ void load_timetable(source_idx_t const src,
                     config const& c,
                     dir const& d,
                     timetable& tt) {
+  auto const n_locations_before = tt.n_locations();
+  assert(tt.location_routes_.size() == n_locations_before);
+
   auto st = stamm{c, tt, d};
 
   auto progress_tracker = utl::get_active_progress_tracker();
@@ -93,7 +96,7 @@ void load_timetable(source_idx_t const src,
     total_bytes_processed += file.data().size();
   }
 
-  sb.write_location_routes();
+  sb.write_location_routes(n_locations_before);
 }
 
 }  // namespace nigiri::loader::hrd

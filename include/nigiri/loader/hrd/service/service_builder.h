@@ -23,7 +23,7 @@ struct service_builder {
 
   void write_services(source_idx_t);
 
-  void write_location_routes();
+  void write_location_routes(unsigned n_locations_before);
 
 private:
   void add_service(ref_service&&);
@@ -38,6 +38,7 @@ private:
       attribute_combinations_;
   hash_map<bitfield, bitfield_idx_t> bitfield_indices_;
   interval<std::chrono::sys_days> selection_;
+
   mutable_fws_multimap<location_idx_t, route_idx_t> location_routes_;
 
   // Reused memory buffers to prevent temporary allocations:
