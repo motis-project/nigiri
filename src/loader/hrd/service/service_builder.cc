@@ -259,8 +259,8 @@ void service_builder::write_services(const nigiri::source_idx_t src) {
   store_.clear();
 }
 
-void service_builder::write_location_routes(unsigned const n_locations_before) {
-  for (auto l = n_locations_before; l != tt_.n_locations(); ++l) {
+void service_builder::write_location_routes() {
+  for (auto l = tt_.location_routes_.size(); l != tt_.n_locations(); ++l) {
     tt_.location_routes_.emplace_back(location_routes_[location_idx_t{l}]);
     assert(tt_.location_routes_.size() == l + 1U);
   }

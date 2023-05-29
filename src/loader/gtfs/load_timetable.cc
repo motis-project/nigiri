@@ -81,9 +81,6 @@ void load_timetable(loader_config const& config,
                     source_idx_t const src,
                     dir const& d,
                     timetable& tt) {
-  auto const n_locations_before = tt.n_locations();
-  assert(tt.location_routes_.size() == n_locations_before);
-
   nigiri::scoped_timer const global_timer{"gtfs parser"};
 
   auto const load = [&](std::string_view file_name) -> file {
@@ -334,7 +331,7 @@ void load_timetable(loader_config const& config,
     }
 
     // Build location_routes map
-    for (auto l = n_locations_before; l != tt.n_locations(); ++l) {
+    for (auto l = tt.location_routes_.size(); l != tt.n_locations(); ++l) {
       tt.location_routes_.emplace_back(location_routes[location_idx_t{l}]);
       assert(tt.location_routes_.size() == l + 1U);
     }

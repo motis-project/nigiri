@@ -23,7 +23,7 @@ struct service_builder {
 
   void write_services(source_idx_t);
 
-  void write_location_routes(unsigned n_locations_before);
+  void write_location_routes();
 
 private:
   void add_service(ref_service&&);
