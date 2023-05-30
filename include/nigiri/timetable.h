@@ -64,8 +64,8 @@ struct timetable {
       assert(location_timezones_.size() == next_idx + 1);
       assert(equivalences_.size() == next_idx + 1);
       assert(children_.size() == next_idx + 1);
-      assert(footpaths_out_.size() == next_idx + 1);
-      assert(footpaths_in_.size() == next_idx + 1);
+      assert(preprocessing_footpaths_out_.size() == next_idx + 1);
+      assert(preprocessing_footpaths_in_.size() == next_idx + 1);
       assert(transfer_time_.size() == next_idx + 1);
       assert(osm_ids_.size() == next_idx + 1);
       assert(parents_.size() == next_idx + 1);

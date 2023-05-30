@@ -16,9 +16,7 @@ struct footpath {
   }
 
   footpath(location_idx_t const target, u8_minutes const duration)
-      : target_{target}, duration_{duration.count()} {
-    assert(target < kMaxLocations);
-  }
+      : target_{target}, duration_{duration.count()} {}
 
   location_idx_t target() const { return location_idx_t{target_}; }
   std::uint8_t duration_uint() const { return duration_; }

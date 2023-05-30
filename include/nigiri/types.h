@@ -293,7 +293,7 @@ struct delta {
   explicit delta(duration_t const d)
       : days_{static_cast<std::uint16_t>(d.count() / 1440)},
         mam_{static_cast<std::uint16_t>(d.count() % 1440)} {
-    assert(d.count() > 0);
+    assert(d.count() >= 0);
   }
 
   explicit delta(std::uint16_t const minutes)

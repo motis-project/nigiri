@@ -116,7 +116,7 @@ TEST(gtfs, block_id) {
 
   auto tt = timetable{};
   tt.date_range_ = {2006_y / 7 / 1, 2006_y / 8 / 1};
-  load_timetable(source_idx_t{0U}, files, tt);
+  load_timetable({}, source_idx_t{0U}, files, tt);
   finalize(tt);
 
   auto const expect_no_transfers = [](routing::journey const& j) {
