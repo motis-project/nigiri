@@ -46,8 +46,8 @@ struct timetable {
         location_timezones_.emplace_back(l.timezone_idx_);
         equivalences_.emplace_back();
         children_.emplace_back();
-        footpaths_out_.emplace_back();
-        footpaths_in_.emplace_back();
+        preprocessing_footpaths_out_.emplace_back();
+        preprocessing_footpaths_in_.emplace_back();
         transfer_time_.emplace_back(l.transfer_time_);
         osm_ids_.emplace_back(osm_node_id_t::invalid());
         parents_.emplace_back(l.parent_);
@@ -107,8 +107,9 @@ struct timetable {
     vector_map<location_idx_t, timezone_idx_t> location_timezones_;
     mutable_fws_multimap<location_idx_t, location_idx_t> equivalences_;
     mutable_fws_multimap<location_idx_t, location_idx_t> children_;
-    mutable_fws_multimap<location_idx_t, footpath> footpaths_out_;
-    mutable_fws_multimap<location_idx_t, footpath> footpaths_in_;
+    mutable_fws_multimap<location_idx_t, footpath> preprocessing_footpaths_out_;
+    mutable_fws_multimap<location_idx_t, footpath> preprocessing_footpaths_in_;
+    vecvec<location_idx_t, footpath> footpaths_out_, footpaths_in_;
     vector_map<timezone_idx_t, timezone> timezones_;
   } locations_;
 

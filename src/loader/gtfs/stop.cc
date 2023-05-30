@@ -283,19 +283,22 @@ locations_map read_stops(source_idx_t const src,
 
       // GTFS footpaths
       for (auto const& fp : s->footpaths_) {
-        tt.locations_.footpaths_out_[s->location_].emplace_back(fp);
-        tt.locations_.footpaths_in_[fp.target()].emplace_back(s->location_,
-                                                              fp.duration());
+        tt.locations_.preprocessing_footpaths_out_[s->location_].emplace_back(
+            fp);
+        tt.locations_.preprocessing_footpaths_in_[fp.target()].emplace_back(
+            s->location_, fp.duration());
       }
     }
 
     // Make GTFS footpaths symmetric (if not already).
     for (auto const& [id, s] : stops) {
       for (auto const& fp : s->footpaths_) {
-        add_if_not_exists(tt.locations_.footpaths_out_[fp.target()],
-                          {s->location_, fp.duration()});
-        add_if_not_exists(tt.locations_.footpaths_in_[s->location_],
-                          {fp.target(), fp.duration()});
+        add_if_not_exists(
+            tt.locations_.preprocessing_footpaths_out_[fp.target()],
+            {s->location_, fp.duration()});
+        add_if_not_exists(
+            tt.locations_.preprocessing_footpaths_in_[s->location_],
+            {fp.target(), fp.duration()});
       }
     }
 
@@ -304,14 +307,18 @@ locations_map read_stops(source_idx_t const src,
     for (auto const& [id, s] : stops) {
       for (auto const& eq : s->get_metas(stop_vec, todo, done)) {
         tt.locations_.equivalences_[s->location_].emplace_back(eq->location_);
-        add_if_not_exists(tt.locations_.footpaths_out_[s->location_],
-                          {eq->location_, 2_minutes});
-        add_if_not_exists(tt.locations_.footpaths_in_[eq->location_],
-                          {s->location_, 2_minutes});
-        add_if_not_exists(tt.locations_.footpaths_out_[eq->location_],
-                          {s->location_, 2_minutes});
-        add_if_not_exists(tt.locations_.footpaths_in_[s->location_],
-                          {eq->location_, 2_minutes});
+        add_if_not_exists(
+            tt.locations_.preprocessing_footpaths_out_[s->location_],
+            {eq->location_, 2_minutes});
+        add_if_not_exists(
+            tt.locations_.preprocessing_footpaths_in_[eq->location_],
+            {s->location_, 2_minutes});
+        add_if_not_exists(
+            tt.locations_.preprocessing_footpaths_out_[eq->location_],
+            {s->location_, 2_minutes});
+        add_if_not_exists(
+            tt.locations_.preprocessing_footpaths_in_[s->location_],
+            {eq->location_, 2_minutes});
       }
       progress_tracker->increment();
     }
