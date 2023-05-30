@@ -1,5 +1,7 @@
 #pragma once
 
+#include "utl/verify.h"
+
 #include "cista/reflection/printable.h"
 
 #include "nigiri/types.h"
@@ -8,6 +10,11 @@ namespace nigiri {
 
 struct footpath {
   using value_type = location_idx_t::value_t;
+  static constexpr auto const kTotalBits = 8 * sizeof(value_type);
+  static constexpr auto const kTargetBits = 22U;
+  static constexpr auto const kDurationBits = kTotalBits - kTargetBits;
+  static constexpr auto const kMaxDuration = duration_t{
+      std::numeric_limits<location_idx_t::value_t>::max() >> kTargetBits};
 
   footpath() = default;
 
@@ -15,12 +22,20 @@ struct footpath {
     std::memcpy(this, &val, sizeof(value_type));
   }
 
-  footpath(location_idx_t const target, u8_minutes const duration)
-      : target_{target}, duration_{duration.count()} {}
+  footpath(location_idx_t const target, duration_t const duration)
+      : target_{target},
+        duration_{static_cast<value_type>(
+            (duration > kMaxDuration ? kMaxDuration : duration).count())} {
+    utl::verify(to_idx(target) <
+                    std::numeric_limits<location_idx_t::value_t>::max() >>
+                    kDurationBits,
+                "station index overflow");
+    utl::verify(duration < kMaxDuration, "footpath duration overflow {}",
+                duration);
+  }
 
   location_idx_t target() const { return location_idx_t{target_}; }
-  std::uint8_t duration_uint() const { return duration_; }
-  duration_t duration() const { return duration_t{duration_uint()}; }
+  duration_t duration() const { return duration_t{duration_}; }
 
   location_idx_t::value_t value() const {
     return *reinterpret_cast<location_idx_t::value_t const*>(this);
@@ -30,8 +45,8 @@ struct footpath {
     return out << "(" << fp.target() << ", " << fp.duration() << ")";
   }
 
-  location_idx_t::value_t target_ : 24;
-  location_idx_t::value_t duration_ : 8;
+  location_idx_t::value_t target_ : kTargetBits;
+  location_idx_t::value_t duration_ : kDurationBits;
 };
 
 template <std::size_t NMaxTypes>
