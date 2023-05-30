@@ -121,7 +121,7 @@ footgraph get_footpath_graph(timetable& tt) {
     g[i].insert(end(g[i]), begin(tt.locations_.footpaths_out_[idx]),
                 end(tt.locations_.footpaths_out_[idx]));
     utl::erase_if(g[i],
-                  [&](auto&& fp) { return fp.target_ == location_idx_t{i}; });
+                  [&](auto&& fp) { return fp.target() == location_idx_t{i}; });
     utl::erase_duplicates(
         g[i], [](auto&& a, auto&& b) { return a.target_ < b.target_; },
         [](auto&& a, auto&& b) {
@@ -155,8 +155,8 @@ std::vector<std::pair<uint32_t, uint32_t>> find_components(
 
       components[j].first = i;
       for (auto const& f : fgraph[j]) {
-        if (components[to_idx(f.target_)].first != i) {
-          stack.push(to_idx(f.target_));
+        if (components[to_idx(f.target())].first != i) {
+          stack.push(to_idx(f.target()));
         }
       }
     }
@@ -266,17 +266,17 @@ next:
   for (auto i = 0U; i != size; ++i) {
     auto it = lb;
     for (auto const& edge : fgraph[(lb + i)->second]) {  // precond.: sorted!
-      while (it != ub && edge.target_ != it->second) {
+      while (it != ub && edge.target() != it->second) {
         ++it;
       }
       auto const j = static_cast<unsigned>(std::distance(lb, it));
       auto const from_l = location_idx_t{(lb + i)->second};
-      auto const to_l = edge.target_;
+      auto const to_l = edge.target();
       mat(i, j) = std::max({tt.locations_.transfer_time_[from_l].count(),
                             tt.locations_.transfer_time_[to_l].count(),
-                            u8_minutes{edge.duration_.count()}.count()});
+                            u8_minutes{edge.duration()}.count()});
       print_dbg("INPUT: {} --{}={}--> {}\n", location{tt, from_l},
-                edge.duration_, mat(i, j), location{tt, to_l});
+                edge.duration(), mat(i, j), location{tt, to_l});
     }
   }
 
@@ -348,20 +348,20 @@ void add_links_to_and_between_children(timetable& tt) {
   for (auto l = location_idx_t{0U}; l != tt.locations_.footpaths_out_.size();
        ++l) {
     for (auto const& fp : tt.locations_.footpaths_out_[l]) {
-      for (auto const& neighbor_child : tt.locations_.children_[fp.target_]) {
+      for (auto const& neighbor_child : tt.locations_.children_[fp.target()]) {
         if (tt.locations_.types_[neighbor_child] ==
             location_type::kGeneratedTrack) {
           trace("  l -> neighbor child: {} -> {}: {}\n", location{tt, l},
-                location{tt, neighbor_child}, fp.duration_);
-          fp_out[l].emplace_back(footpath{neighbor_child, fp.duration_});
+                location{tt, neighbor_child}, fp.duration());
+          fp_out[l].emplace_back(footpath{neighbor_child, fp.duration()});
         }
 
         for (auto const& child : tt.locations_.children_[l]) {
           if (tt.locations_.types_[child] == location_type::kGeneratedTrack) {
             trace("  child -> neighbor child: {} -> {}: {}\n",
                   location{tt, child}, location{tt, neighbor_child},
-                  fp.duration_);
-            fp_out[child].emplace_back(footpath{neighbor_child, fp.duration_});
+                  fp.duration());
+            fp_out[child].emplace_back(footpath{neighbor_child, fp.duration()});
           }
         }
       }
@@ -369,8 +369,8 @@ void add_links_to_and_between_children(timetable& tt) {
       for (auto const& child : tt.locations_.children_[l]) {
         if (tt.locations_.types_[child] == location_type::kGeneratedTrack) {
           trace("  child -> neighbor child: {} -> {}: {}\n",
-                location{tt, child}, location{tt, fp.target_}, fp.duration_);
-          fp_out[child].emplace_back(footpath{fp.target_, fp.duration_});
+                location{tt, child}, location{tt, fp.target()}, fp.duration());
+          fp_out[child].emplace_back(footpath{fp.target(), fp.duration()});
         }
       }
     }

@@ -151,7 +151,7 @@ void read_transfers(stop_map_t& stops, std::string_view file_content) {
         auto& footpaths = from_stop_it->second->footpaths_;
         auto const it = std::find_if(
             begin(footpaths), end(footpaths), [&](footpath const& fp) {
-              return fp.target_ == to_stop_it->second->location_;
+              return fp.target() == to_stop_it->second->location_;
             });
         if (it == end(footpaths)) {
           footpaths.emplace_back(
@@ -266,7 +266,7 @@ locations_map read_stops(source_idx_t const src,
 
     auto const add_if_not_exists = [](auto bucket, footpath&& fp) {
       auto const it = std::find_if(begin(bucket), end(bucket), [&](auto&& x) {
-        return fp.target_ == x.target_;
+        return fp.target() == x.target_;
       });
       if (it == end(bucket)) {
         bucket.emplace_back(fp);
@@ -284,18 +284,18 @@ locations_map read_stops(source_idx_t const src,
       // GTFS footpaths
       for (auto const& fp : s->footpaths_) {
         tt.locations_.footpaths_out_[s->location_].emplace_back(fp);
-        tt.locations_.footpaths_in_[fp.target_].emplace_back(s->location_,
-                                                             fp.duration_);
+        tt.locations_.footpaths_in_[fp.target()].emplace_back(s->location_,
+                                                              fp.duration());
       }
     }
 
     // Make GTFS footpaths symmetric (if not already).
     for (auto const& [id, s] : stops) {
       for (auto const& fp : s->footpaths_) {
-        add_if_not_exists(tt.locations_.footpaths_out_[fp.target_],
-                          {s->location_, fp.duration_});
+        add_if_not_exists(tt.locations_.footpaths_out_[fp.target()],
+                          {s->location_, fp.duration()});
         add_if_not_exists(tt.locations_.footpaths_in_[s->location_],
-                          {fp.target_, fp.duration_});
+                          {fp.target(), fp.duration()});
       }
     }
 

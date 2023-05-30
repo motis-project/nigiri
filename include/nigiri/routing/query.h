@@ -12,9 +12,16 @@
 
 namespace nigiri::routing {
 
-struct offset : public footpath {
+struct offset {
   offset(location_idx_t const l, duration_t const d, std::uint8_t const t)
-      : footpath{l, d}, type_{t} {}
+      : target_{l}, duration_{d}, type_{t} {}
+
+  location_idx_t target() const noexcept { return target_; }
+  duration_t duration() const noexcept { return duration_; }
+  std::uint8_t type() const noexcept { return type_; }
+
+  location_idx_t target_;
+  duration_t duration_;
   std::uint8_t type_;
 };
 

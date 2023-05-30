@@ -234,13 +234,13 @@ private:
       for (auto const& fp : fps) {
         ++stats_.n_footpaths_visited_;
 
-        auto const target = to_idx(fp.target_);
+        auto const target = to_idx(fp.target());
         auto const fp_target_time =
-            clamp(state_.tmp_[i] + dir(fp.duration_).count());
+            clamp(state_.tmp_[i] + dir(fp.duration()).count());
 
         if (is_better(fp_target_time, state_.best_[target]) &&
             is_better(fp_target_time, time_at_dest_[k])) {
-          auto const lower_bound = lb_[to_idx(fp.target_)];
+          auto const lower_bound = lb_[to_idx(fp.target())];
           if (lower_bound == kUnreachable ||
               !is_better(fp_target_time + dir(lower_bound), time_at_dest_[k])) {
             ++stats_.fp_update_prevented_by_lower_bound_;
@@ -248,8 +248,8 @@ private:
                 "┊ ├k={} *** LB NO UPD: (from={}, tmp={}) --{}--> (to={}, "
                 "best={}) --> update => {}, LB={}, LB_AT_DEST={}, DEST={}\n",
                 k, location{tt_, l_idx}, to_unix(state_.tmp_[to_idx(l_idx)]),
-                fp.duration_, location{tt_, fp.target_},
-                state_.best_[to_idx(fp.target_)], fp_target_time, lower_bound,
+                fp.duration(), location{tt_, fp.target()},
+                state_.best_[to_idx(fp.target())], fp_target_time, lower_bound,
                 to_unix(clamp(fp_target_time + dir(lower_bound))),
                 to_unix(time_at_dest_[k]));
             continue;
@@ -259,14 +259,14 @@ private:
               "┊ ├k={}   footpath: ({}, tmp={}) --{}--> ({}, best={}) --> "
               "update => {}\n",
               k, location{tt_, l_idx}, to_unix(state_.tmp_[to_idx(l_idx)]),
-              fp.duration_, location{tt_, fp.target_},
-              to_unix(state_.best_[to_idx(fp.target_)]), fp_target_time);
+              fp.duration(), location{tt_, fp.target()},
+              to_unix(state_.best_[to_idx(fp.target())]), fp_target_time);
 
           ++stats_.n_earliest_arrival_updated_by_footpath_;
-          state_.round_times_[k][to_idx(fp.target_)] = fp_target_time;
-          state_.best_[to_idx(fp.target_)] = fp_target_time;
-          state_.station_mark_[to_idx(fp.target_)] = true;
-          if (is_dest_[to_idx(fp.target_)]) {
+          state_.round_times_[k][to_idx(fp.target())] = fp_target_time;
+          state_.best_[to_idx(fp.target())] = fp_target_time;
+          state_.station_mark_[to_idx(fp.target())] = true;
+          if (is_dest_[to_idx(fp.target())]) {
             update_time_at_dest(k, fp_target_time);
           }
         } else {
@@ -274,8 +274,8 @@ private:
               "┊ ├k={}   NO FP UPDATE: {} [best={}] --{}--> {} "
               "[best={}, time_at_dest={}]\n",
               k, location{tt_, l_idx}, state_.best_[to_idx(l_idx)],
-              fp.duration_, location{tt_, fp.target_},
-              state_.best_[to_idx(fp.target_)], to_unix(time_at_dest_[k]));
+              fp.duration(), location{tt_, fp.target()},
+              state_.best_[to_idx(fp.target())], to_unix(time_at_dest_[k]));
         }
       }
     }

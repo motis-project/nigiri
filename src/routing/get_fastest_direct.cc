@@ -13,8 +13,8 @@ duration_t get_fastest_direct_with_foot(timetable const& tt,
                                     : tt.locations_.footpaths_in_);
     for (auto const& fp : footpaths[start.target_]) {
       for (auto const& dest : q.destination_) {
-        if (dest.target_ == fp.target_) {
-          min = std::min(min, start.duration_ + fp.duration_ + dest.duration_);
+        if (dest.target_ == fp.target()) {
+          min = std::min(min, start.duration_ + fp.duration() + dest.duration_);
         }
       }
     }

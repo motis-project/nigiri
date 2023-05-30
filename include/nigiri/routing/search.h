@@ -77,10 +77,10 @@ struct search {
 
 #if defined(NIGIRI_TRACING)
       for (auto const& o : q_.start_) {
-        trace_upd("start {}: {}\n", location{tt_, o.target_}, o.duration_);
+        trace_upd("start {}: {}\n", location{tt_, o.target()}, o.duration());
       }
       for (auto const& o : q_.destination_) {
-        trace_upd("dest {}: {}\n", location{tt_, o.target_}, o.duration_);
+        trace_upd("dest {}: {}\n", location{tt_, o.target()}, o.duration());
       }
       for (auto const [l, lb] :
            utl::enumerate(state_.travel_time_lower_bound_)) {
@@ -244,7 +244,7 @@ private:
       return utl::any_of(q_.start_, [&](offset const& o) {
         bool overlaps = false;
         for_each_meta(
-            tt_, q_.start_match_mode_, o.target_,
+            tt_, q_.start_match_mode_, o.target(),
             [&](location_idx_t const eq) { overlaps = overlaps || eq == x; });
         return overlaps;
       });
@@ -252,7 +252,7 @@ private:
 
     return utl::any_of(q_.destination_, [&](offset const& o) {
       auto overlaps = false;
-      for_each_meta(tt_, q_.dest_match_mode_, o.target_,
+      for_each_meta(tt_, q_.dest_match_mode_, o.target(),
                     [&](location_idx_t const eq) {
                       overlaps = overlaps || overlaps_start(eq);
                     });

@@ -50,7 +50,7 @@ void dijkstra(timetable const& tt,
           auto const l = (p == location_idx_t::invalid()) ? x : p;
           auto& m =
               utl::get_or_create(min, l, [&]() { return dists[to_idx(l)]; });
-          m = std::min(static_cast<dist_t>(start.duration_.count()), m);
+          m = std::min(static_cast<dist_t>(start.duration().count()), m);
         });
   }
 
@@ -73,11 +73,11 @@ void dijkstra(timetable const& tt,
     }
 
     for (auto const& e : lb_graph[l.l_]) {
-      auto const new_dist = l.d_ + e.duration_.count();
-      if (new_dist < dists[to_idx(e.target_)] &&
+      auto const new_dist = l.d_ + e.duration().count();
+      if (new_dist < dists[to_idx(e.target())] &&
           new_dist <= kMaxTravelTime.count()) {
-        dists[to_idx(e.target_)] = static_cast<dist_t>(new_dist);
-        pq.push(label(e.target_, static_cast<dist_t>(new_dist)));
+        dists[to_idx(e.target())] = static_cast<dist_t>(new_dist);
+        pq.push(label(e.target(), static_cast<dist_t>(new_dist)));
       }
     }
   }
