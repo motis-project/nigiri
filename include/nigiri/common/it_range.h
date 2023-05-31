@@ -25,6 +25,7 @@ struct it_range {
   reference_type operator[](std::size_t const i) const {
     return *std::next(begin_, static_cast<difference_type>(i));
   }
+  value_type* data() const { return &front(); }
   friend BeginIt begin(it_range const& r) { return r.begin(); }
   friend EndIt end(it_range const& r) { return r.end(); }
   reference_type front() const { return *begin_; }
