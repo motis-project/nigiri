@@ -84,8 +84,8 @@ struct timetable {
                       location_timezones_[idx],
                       transfer_time_[idx],
                       it_range{equivalences_[idx]},
-                      it_range{footpaths_out_[idx]},
-                      it_range{footpaths_in_[idx]}};
+                      std::span<footpath const>{footpaths_out_[idx]},
+                      std::span<footpath const>{footpaths_in_[idx]}};
     }
 
     location get(location_id const& id) {

@@ -4,6 +4,7 @@
 
 #include "cista/reflection/printable.h"
 
+#include "nigiri/logging.h"
 #include "nigiri/types.h"
 
 namespace nigiri {
@@ -30,8 +31,11 @@ struct footpath {
                     std::numeric_limits<location_idx_t::value_t>::max() >>
                     kDurationBits,
                 "station index overflow");
-    utl::verify(duration < kMaxDuration, "footpath duration overflow {}",
-                duration);
+    if (duration > kMaxDuration) {
+      [[unlikely]] nigiri::log(log_lvl::error, "footpath",
+                               "footpath overflow: {} > {} adjusted to {}",
+                               duration, kMaxDuration, this->duration());
+    }
   }
 
   location_idx_t target() const { return location_idx_t{target_}; }
