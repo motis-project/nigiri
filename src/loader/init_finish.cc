@@ -23,8 +23,8 @@ void register_special_stations(timetable& tt) {
                                              timezone_idx_t::invalid(),
                                              0_minutes,
                                              it_range{empty_idx_vec},
-                                             it_range{empty_footpath_vec},
-                                             it_range{empty_footpath_vec}});
+                                             std::span{empty_footpath_vec},
+                                             std::span{empty_footpath_vec}});
   }
   tt.location_routes_.resize(tt.n_locations());
 }
