@@ -87,7 +87,8 @@ void add_start_times_at_stop(direction const search_dir,
             day, day_offset,
             tt.date_range_.from_ + to_idx(day - day_offset) * 1_days,
             traffic_days.test(to_idx(day)),
-            interval_with_offset.contains(tt.to_unixtime(day, stop_time)));
+            interval_with_offset.contains(
+                tt.to_unixtime(day, stop_time.as_duration())));
       }
     }
   }
@@ -102,10 +103,11 @@ void add_starts_in_interval(direction const search_dir,
                             std::vector<start>& starts,
                             bool const add_ontrip,
                             Less&& cmp) {
-  trace("    add_starts_in_interval(interval={}, stop={}, duration={})\n",
-        interval,
-        location{tt, l},  // NOLINT(clang-analyzer-core.CallAndMessage)
-        d);
+  trace(
+      "    add_starts_in_interval(interval={}, stop={}, duration={}): {} "
+      "routes\n",
+      interval, location{tt, l},  // NOLINT(clang-analyzer-core.CallAndMessage)
+      d, tt.location_routes_.at(l).size());
 
   // Iterate routes visiting the location.
   for (auto const& r : tt.location_routes_.at(l)) {
@@ -176,13 +178,13 @@ void get_starts(direction const search_dir,
 
   auto const fwd = search_dir == direction::kForward;
   for (auto const& o : station_offsets) {
-    for_each_meta(tt, mode, o.target_, [&](location_idx_t const l) {
-      update(l, o.duration_);
+    for_each_meta(tt, mode, o.target(), [&](location_idx_t const l) {
+      update(l, o.duration());
       if (use_start_footpaths) {
         auto const footpaths = fwd ? tt.locations_.footpaths_out_[l]
                                    : tt.locations_.footpaths_in_[l];
         for (auto const& fp : footpaths) {
-          update(fp.target_, o.duration_ + fp.duration_);
+          update(fp.target(), o.duration() + fp.duration());
         }
       }
     });

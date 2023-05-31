@@ -26,6 +26,7 @@
 #include "nigiri/loader/gtfs/stop.h"
 #include "nigiri/loader/gtfs/stop_time.h"
 #include "nigiri/loader/gtfs/trip.h"
+#include "nigiri/loader/loader_interface.h"
 #include "nigiri/common/sort_by.h"
 #include "nigiri/logging.h"
 #include "nigiri/timetable.h"
@@ -76,7 +77,10 @@ bool applicable(dir const& d) {
   return d.exists(kCalenderFile) || d.exists(kCalendarDatesFile);
 }
 
-void load_timetable(source_idx_t const src, dir const& d, timetable& tt) {
+void load_timetable(loader_config const& config,
+                    source_idx_t const src,
+                    dir const& d,
+                    timetable& tt) {
   nigiri::scoped_timer const global_timer{"gtfs parser"};
 
   auto const load = [&](std::string_view file_name) -> file {
@@ -86,8 +90,9 @@ void load_timetable(source_idx_t const src, dir const& d, timetable& tt) {
   auto const progress_tracker = utl::get_active_progress_tracker();
   auto timezones = tz_map{};
   auto agencies = read_agencies(tt, timezones, load(kAgencyFile).data());
-  auto const stops = read_stops(src, tt, timezones, load(kStopFile).data(),
-                                load(kTransfersFile).data());
+  auto const stops =
+      read_stops(src, tt, timezones, load(kStopFile).data(),
+                 load(kTransfersFile).data(), config.link_stop_distance_);
   auto const routes =
       read_routes(tt, timezones, agencies, load(kRoutesFile).data());
   auto const calendar = read_calendar(load(kCalenderFile).data());
@@ -225,10 +230,19 @@ void load_timetable(source_idx_t const src, dir const& d, timetable& tt) {
     auto section_directions = std::basic_string<trip_direction_idx_t>{};
     auto section_lines = std::basic_string<trip_line_idx_t>{};
     auto external_trip_ids = std::basic_string<merged_trips_idx_t>{};
+    auto location_routes = mutable_fws_multimap<location_idx_t, route_idx_t>{};
     for (auto const& [key, sub_routes] : route_services) {
       for (auto const& services : sub_routes) {
         auto const& [sections_clasz, stop_seq] = key;
         auto const route_idx = tt.register_route(stop_seq, {sections_clasz});
+
+        for (auto const& s : stop_seq) {
+          auto s_routes = location_routes[stop{s}.location_idx()];
+          if (s_routes.empty() || s_routes.back() != route_idx) {
+            s_routes.emplace_back(route_idx);
+          }
+        }
+
         for (auto const& s : services) {
           auto const& first = trip_data.get(s.trips_.front());
 
@@ -314,6 +328,12 @@ void load_timetable(source_idx_t const src, dir const& d, timetable& tt) {
       }
 
       progress_tracker->increment();
+    }
+
+    // Build location_routes map
+    for (auto l = tt.location_routes_.size(); l != tt.n_locations(); ++l) {
+      tt.location_routes_.emplace_back(location_routes[location_idx_t{l}]);
+      assert(tt.location_routes_.size() == l + 1U);
     }
   }
 }

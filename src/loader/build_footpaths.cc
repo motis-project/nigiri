@@ -106,8 +106,10 @@ void link_nearby_stations(timetable& tt) {
       auto const l_from_idx = location_idx_t{static_cast<unsigned>(from_idx)};
       auto const l_to_idx = location_idx_t{static_cast<unsigned>(to_idx)};
 
-      tt.locations_.footpaths_out_[l_from_idx].emplace_back(l_to_idx, duration);
-      tt.locations_.footpaths_in_[l_to_idx].emplace_back(l_from_idx, duration);
+      tt.locations_.preprocessing_footpaths_out_[l_from_idx].emplace_back(
+          l_to_idx, duration);
+      tt.locations_.preprocessing_footpaths_in_[l_to_idx].emplace_back(
+          l_from_idx, duration);
       tt.locations_.equivalences_[l_from_idx].emplace_back(l_to_idx);
     }
   }
@@ -118,10 +120,11 @@ footgraph get_footpath_graph(timetable& tt) {
   g.resize(tt.locations_.src_.size());
   for (auto i = 0U; i != tt.locations_.src_.size(); ++i) {
     auto const idx = location_idx_t{i};
-    g[i].insert(end(g[i]), begin(tt.locations_.footpaths_out_[idx]),
-                end(tt.locations_.footpaths_out_[idx]));
+    g[i].insert(end(g[i]),
+                begin(tt.locations_.preprocessing_footpaths_out_[idx]),
+                end(tt.locations_.preprocessing_footpaths_out_[idx]));
     utl::erase_if(g[i],
-                  [&](auto&& fp) { return fp.target_ == location_idx_t{i}; });
+                  [&](auto&& fp) { return fp.target() == location_idx_t{i}; });
     utl::erase_duplicates(
         g[i], [](auto&& a, auto&& b) { return a.target_ < b.target_; },
         [](auto&& a, auto&& b) {
@@ -155,8 +158,8 @@ std::vector<std::pair<uint32_t, uint32_t>> find_components(
 
       components[j].first = i;
       for (auto const& f : fgraph[j]) {
-        if (components[to_idx(f.target_)].first != i) {
-          stack.push(to_idx(f.target_));
+        if (components[to_idx(f.target())].first != i) {
+          stack.push(to_idx(f.target()));
         }
       }
     }
@@ -233,8 +236,10 @@ next:
       print_dbg("INPUT: {} --{}--> {}\n", location{tt, l_idx_a}, duration,
                 location{tt, l_idx_b});
 
-      tt.locations_.footpaths_out_[l_idx_a].emplace_back(l_idx_b, duration);
-      tt.locations_.footpaths_in_[l_idx_b].emplace_back(l_idx_a, duration);
+      tt.locations_.preprocessing_footpaths_out_[l_idx_a].emplace_back(
+          l_idx_b, duration);
+      tt.locations_.preprocessing_footpaths_in_[l_idx_b].emplace_back(l_idx_a,
+                                                                      duration);
     }
     if (!fgraph[idx_b].empty()) {
       utl::verify_silent(
@@ -250,8 +255,10 @@ next:
       print_dbg("INPUT: {} --{}--> {}\n", location{tt, l_idx_b}, duration,
                 location{tt, l_idx_a});
 
-      tt.locations_.footpaths_out_[l_idx_b].emplace_back(l_idx_a, duration);
-      tt.locations_.footpaths_in_[l_idx_a].emplace_back(l_idx_b, duration);
+      tt.locations_.preprocessing_footpaths_out_[l_idx_b].emplace_back(
+          l_idx_a, duration);
+      tt.locations_.preprocessing_footpaths_in_[l_idx_a].emplace_back(l_idx_b,
+                                                                      duration);
     }
     return;
   }
@@ -266,17 +273,17 @@ next:
   for (auto i = 0U; i != size; ++i) {
     auto it = lb;
     for (auto const& edge : fgraph[(lb + i)->second]) {  // precond.: sorted!
-      while (it != ub && edge.target_ != it->second) {
+      while (it != ub && edge.target() != it->second) {
         ++it;
       }
       auto const j = static_cast<unsigned>(std::distance(lb, it));
       auto const from_l = location_idx_t{(lb + i)->second};
-      auto const to_l = edge.target_;
+      auto const to_l = edge.target();
       mat(i, j) = std::max({tt.locations_.transfer_time_[from_l].count(),
                             tt.locations_.transfer_time_[to_l].count(),
-                            u8_minutes{edge.duration_.count()}.count()});
+                            u8_minutes{edge.duration()}.count()});
       print_dbg("INPUT: {} --{}={}--> {}\n", location{tt, from_l},
-                edge.duration_, mat(i, j), location{tt, to_l});
+                edge.duration(), mat(i, j), location{tt, to_l});
     }
   }
 
@@ -315,8 +322,10 @@ next:
       auto const duration = std::max({u8_minutes{mat(i, j)},
                                       tt.locations_.transfer_time_[l_idx_a],
                                       tt.locations_.transfer_time_[l_idx_b]});
-      tt.locations_.footpaths_out_[l_idx_a].emplace_back(l_idx_b, duration);
-      tt.locations_.footpaths_in_[l_idx_b].emplace_back(l_idx_a, duration);
+      tt.locations_.preprocessing_footpaths_out_[l_idx_a].emplace_back(
+          l_idx_b, duration);
+      tt.locations_.preprocessing_footpaths_in_[l_idx_b].emplace_back(l_idx_a,
+                                                                      duration);
     }
   }
 }
@@ -329,10 +338,12 @@ void transitivize_footpaths(timetable& tt) {
   auto components = find_components(fgraph);
   std::sort(begin(components), end(components));
 
-  tt.locations_.footpaths_out_.clear();
-  tt.locations_.footpaths_out_[location_idx_t{tt.locations_.src_.size() - 1}];
-  tt.locations_.footpaths_in_.clear();
-  tt.locations_.footpaths_in_[location_idx_t{tt.locations_.src_.size() - 1}];
+  tt.locations_.preprocessing_footpaths_out_.clear();
+  tt.locations_.preprocessing_footpaths_out_[location_idx_t{
+      tt.locations_.src_.size() - 1}];
+  tt.locations_.preprocessing_footpaths_in_.clear();
+  tt.locations_.preprocessing_footpaths_in_[location_idx_t{
+      tt.locations_.src_.size() - 1}];
 
   auto matrix_memory = make_flat_matrix(0, 0, std::uint16_t{0});
   utl::equal_ranges_linear(
@@ -345,23 +356,23 @@ void transitivize_footpaths(timetable& tt) {
 
 void add_links_to_and_between_children(timetable& tt) {
   mutable_fws_multimap<location_idx_t, footpath> fp_out;
-  for (auto l = location_idx_t{0U}; l != tt.locations_.footpaths_out_.size();
-       ++l) {
-    for (auto const& fp : tt.locations_.footpaths_out_[l]) {
-      for (auto const& neighbor_child : tt.locations_.children_[fp.target_]) {
+  for (auto l = location_idx_t{0U};
+       l != tt.locations_.preprocessing_footpaths_out_.size(); ++l) {
+    for (auto const& fp : tt.locations_.preprocessing_footpaths_out_[l]) {
+      for (auto const& neighbor_child : tt.locations_.children_[fp.target()]) {
         if (tt.locations_.types_[neighbor_child] ==
             location_type::kGeneratedTrack) {
           trace("  l -> neighbor child: {} -> {}: {}\n", location{tt, l},
-                location{tt, neighbor_child}, fp.duration_);
-          fp_out[l].emplace_back(footpath{neighbor_child, fp.duration_});
+                location{tt, neighbor_child}, fp.duration());
+          fp_out[l].emplace_back(footpath{neighbor_child, fp.duration()});
         }
 
         for (auto const& child : tt.locations_.children_[l]) {
           if (tt.locations_.types_[child] == location_type::kGeneratedTrack) {
             trace("  child -> neighbor child: {} -> {}: {}\n",
                   location{tt, child}, location{tt, neighbor_child},
-                  fp.duration_);
-            fp_out[child].emplace_back(footpath{neighbor_child, fp.duration_});
+                  fp.duration());
+            fp_out[child].emplace_back(footpath{neighbor_child, fp.duration()});
           }
         }
       }
@@ -369,17 +380,17 @@ void add_links_to_and_between_children(timetable& tt) {
       for (auto const& child : tt.locations_.children_[l]) {
         if (tt.locations_.types_[child] == location_type::kGeneratedTrack) {
           trace("  child -> neighbor child: {} -> {}: {}\n",
-                location{tt, child}, location{tt, fp.target_}, fp.duration_);
-          fp_out[child].emplace_back(footpath{fp.target_, fp.duration_});
+                location{tt, child}, location{tt, fp.target()}, fp.duration());
+          fp_out[child].emplace_back(footpath{fp.target(), fp.duration()});
         }
       }
     }
   }
 
-  for (auto l = location_idx_t{0U}; l != tt.locations_.footpaths_out_.size();
-       ++l) {
+  for (auto l = location_idx_t{0U};
+       l != tt.locations_.preprocessing_footpaths_out_.size(); ++l) {
     for (auto const& fp : fp_out[l]) {
-      tt.locations_.footpaths_out_[l].emplace_back(fp);
+      tt.locations_.preprocessing_footpaths_out_[l].emplace_back(fp);
     }
   }
 
@@ -392,21 +403,45 @@ void add_links_to_and_between_children(timetable& tt) {
       if (tt.locations_.types_[child_i] != location_type::kGeneratedTrack) {
         continue;
       }
-      tt.locations_.footpaths_out_[parent].emplace_back(child_i, t);
-      tt.locations_.footpaths_out_[child_i].emplace_back(parent, t);
+      tt.locations_.preprocessing_footpaths_out_[parent].emplace_back(child_i,
+                                                                      t);
+      tt.locations_.preprocessing_footpaths_out_[child_i].emplace_back(parent,
+                                                                       t);
       for (auto j = 0U; j != children.size(); ++j) {
         if (i != j) {
-          tt.locations_.footpaths_out_[child_i].emplace_back(children[j], t);
+          tt.locations_.preprocessing_footpaths_out_[child_i].emplace_back(
+              children[j], t);
         }
       }
     }
   }
 }
 
+void write_footpaths(timetable& tt) {
+  assert(tt.locations_.footpaths_out_.empty());
+  assert(tt.locations_.footpaths_in_.empty());
+  assert(tt.locations_.preprocessing_footpaths_out_.size() == tt.n_locations());
+  assert(tt.locations_.preprocessing_footpaths_in_.size() == tt.n_locations());
+
+  for (auto i = location_idx_t{0U}; i != tt.n_locations(); ++i) {
+    tt.locations_.footpaths_out_.emplace_back(
+        tt.locations_.preprocessing_footpaths_out_[i]);
+  }
+
+  for (auto i = location_idx_t{0U}; i != tt.n_locations(); ++i) {
+    tt.locations_.footpaths_in_.emplace_back(
+        tt.locations_.preprocessing_footpaths_in_[i]);
+  }
+
+  tt.locations_.preprocessing_footpaths_in_.clear();
+  tt.locations_.preprocessing_footpaths_out_.clear();
+}
+
 void build_footpaths(timetable& tt) {
   add_links_to_and_between_children(tt);
   link_nearby_stations(tt);
   transitivize_footpaths(tt);
+  write_footpaths(tt);
 }
 
 }  // namespace nigiri::loader

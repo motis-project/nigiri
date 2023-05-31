@@ -17,7 +17,7 @@ TEST(gtfs, read_stations_example_data) {
   auto const files = example_files();
   auto const stops = read_stops(source_idx_t{0}, tt, timezones,
                                 files.get_file(kStopFile).data(),
-                                files.get_file(kTransfersFile).data());
+                                files.get_file(kTransfersFile).data(), 0U);
 
   EXPECT_EQ(8, stops.size());
 
@@ -53,7 +53,7 @@ TEST(gtfs, read_stations_berlin_data) {
   auto const files = berlin_files();
   auto const stops = read_stops(source_idx_t{0}, tt, timezones,
                                 files.get_file(kStopFile).data(),
-                                files.get_file(kTransfersFile).data());
+                                files.get_file(kTransfersFile).data(), 0U);
 
   EXPECT_EQ(3, stops.size());
 

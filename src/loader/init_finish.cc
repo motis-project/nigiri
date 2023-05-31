@@ -23,15 +23,14 @@ void register_special_stations(timetable& tt) {
                                              timezone_idx_t::invalid(),
                                              0_minutes,
                                              it_range{empty_idx_vec},
-                                             it_range{empty_footpath_vec},
-                                             it_range{empty_footpath_vec}});
+                                             std::span{empty_footpath_vec},
+                                             std::span{empty_footpath_vec}});
   }
+  tt.location_routes_.resize(tt.n_locations());
 }
 
 void finalize(timetable& tt) {
-  // Resizes location_routes_ so even if the last station does not have a route
-  // serving it, accessing it yields an empty list, not a crash.
-  tt.location_routes_[location_idx_t{tt.locations_.src_.size() - 1}];
+  tt.location_routes_.resize(tt.n_locations());
 
   {
     auto const timer = scoped_timer{"loader.sort_trip_ids"};

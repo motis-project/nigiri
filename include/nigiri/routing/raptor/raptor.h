@@ -61,8 +61,9 @@ struct raptor {
         dist_to_end_{dist_to_dest},
         lb_{lb},
         base_{base},
-        n_days_{tt_.internal_interval_days().size().count()} {
-    state_.reset(tt_.n_locations(), tt_.n_routes());
+        n_days_{tt_.internal_interval_days().size().count()},
+        n_locations_{tt_.n_locations()} {
+    state_.reset(n_locations_, tt_.n_routes());
     utl::fill(time_at_dest_, kInvalid);
     state_.round_times_.reset(kInvalid);
   }
@@ -102,7 +103,7 @@ struct raptor {
     trace_print_init_state();
 
     for (auto k = 1U; k != end_k; ++k) {
-      for (auto i = 0U; i != tt_.n_locations(); ++i) {
+      for (auto i = 0U; i != n_locations_; ++i) {
         state_.best_[i] = get_best(state_.round_times_[k][i], state_.best_[i]);
         if (is_dest_[i]) {
           update_time_at_dest(k, state_.best_[i]);
@@ -110,7 +111,7 @@ struct raptor {
       }
 
       auto any_marked = false;
-      for (auto i = 0U; i != tt_.n_locations(); ++i) {
+      for (auto i = 0U; i != n_locations_; ++i) {
         if (state_.station_mark_[i]) {
           any_marked = true;
           for (auto const& r : tt_.location_routes_[location_idx_t{i}]) {
@@ -153,7 +154,7 @@ struct raptor {
       trace_print_state_after_round();
     }
 
-    for (auto i = 0U; i != tt_.n_locations(); ++i) {
+    for (auto i = 0U; i != n_locations_; ++i) {
       auto const is_dest = is_dest_[i];
       if (!is_dest) {
         continue;
@@ -191,7 +192,7 @@ private:
   }
 
   void update_transfers(unsigned const k) {
-    for (auto i = 0U; i != tt_.n_locations(); ++i) {
+    for (auto i = 0U; i != n_locations_; ++i) {
       if (!state_.prev_station_mark_[i]) {
         continue;
       }
@@ -222,7 +223,7 @@ private:
   }
 
   void update_footpaths(unsigned const k) {
-    for (auto i = 0U; i != tt_.n_locations(); ++i) {
+    for (auto i = 0U; i != n_locations_; ++i) {
       if (!state_.prev_station_mark_[i]) {
         continue;
       }
@@ -233,13 +234,13 @@ private:
       for (auto const& fp : fps) {
         ++stats_.n_footpaths_visited_;
 
-        auto const target = to_idx(fp.target_);
+        auto const target = to_idx(fp.target());
         auto const fp_target_time =
-            clamp(state_.tmp_[i] + dir(fp.duration_).count());
+            clamp(state_.tmp_[i] + dir(fp.duration()).count());
 
         if (is_better(fp_target_time, state_.best_[target]) &&
             is_better(fp_target_time, time_at_dest_[k])) {
-          auto const lower_bound = lb_[to_idx(fp.target_)];
+          auto const lower_bound = lb_[to_idx(fp.target())];
           if (lower_bound == kUnreachable ||
               !is_better(fp_target_time + dir(lower_bound), time_at_dest_[k])) {
             ++stats_.fp_update_prevented_by_lower_bound_;
@@ -247,8 +248,8 @@ private:
                 "┊ ├k={} *** LB NO UPD: (from={}, tmp={}) --{}--> (to={}, "
                 "best={}) --> update => {}, LB={}, LB_AT_DEST={}, DEST={}\n",
                 k, location{tt_, l_idx}, to_unix(state_.tmp_[to_idx(l_idx)]),
-                fp.duration_, location{tt_, fp.target_},
-                state_.best_[to_idx(fp.target_)], fp_target_time, lower_bound,
+                fp.duration(), location{tt_, fp.target()},
+                state_.best_[to_idx(fp.target())], fp_target_time, lower_bound,
                 to_unix(clamp(fp_target_time + dir(lower_bound))),
                 to_unix(time_at_dest_[k]));
             continue;
@@ -258,14 +259,14 @@ private:
               "┊ ├k={}   footpath: ({}, tmp={}) --{}--> ({}, best={}) --> "
               "update => {}\n",
               k, location{tt_, l_idx}, to_unix(state_.tmp_[to_idx(l_idx)]),
-              fp.duration_, location{tt_, fp.target_},
-              to_unix(state_.best_[to_idx(fp.target_)]), fp_target_time);
+              fp.duration(), location{tt_, fp.target()},
+              to_unix(state_.best_[to_idx(fp.target())]), fp_target_time);
 
           ++stats_.n_earliest_arrival_updated_by_footpath_;
-          state_.round_times_[k][to_idx(fp.target_)] = fp_target_time;
-          state_.best_[to_idx(fp.target_)] = fp_target_time;
-          state_.station_mark_[to_idx(fp.target_)] = true;
-          if (is_dest_[to_idx(fp.target_)]) {
+          state_.round_times_[k][to_idx(fp.target())] = fp_target_time;
+          state_.best_[to_idx(fp.target())] = fp_target_time;
+          state_.station_mark_[to_idx(fp.target())] = true;
+          if (is_dest_[to_idx(fp.target())]) {
             update_time_at_dest(k, fp_target_time);
           }
         } else {
@@ -273,8 +274,8 @@ private:
               "┊ ├k={}   NO FP UPDATE: {} [best={}] --{}--> {} "
               "[best={}, time_at_dest={}]\n",
               k, location{tt_, l_idx}, state_.best_[to_idx(l_idx)],
-              fp.duration_, location{tt_, fp.target_},
-              state_.best_[to_idx(fp.target_)], to_unix(time_at_dest_[k]));
+              fp.duration(), location{tt_, fp.target()},
+              state_.best_[to_idx(fp.target())], to_unix(time_at_dest_[k]));
         }
       }
     }
@@ -285,7 +286,7 @@ private:
       return;
     }
 
-    for (auto i = 0U; i != tt_.n_locations(); ++i) {
+    for (auto i = 0U; i != n_locations_; ++i) {
       if ((state_.prev_station_mark_[i] || state_.station_mark_[i]) &&
           dist_to_end_[i] != kUnreachable) {
         auto const end_time = clamp(get_best(state_.best_[i], state_.tmp_[i]) +
@@ -441,10 +442,12 @@ private:
     auto const event_times = tt_.event_times_at_stop(
         r, stop_idx, kFwd ? event_type::kDep : event_type::kArr);
 
-    auto const seek_first_day = [&, mam_at_stop = mam_at_stop]() {
-      return linear_lb(
-          get_begin_it(event_times), get_end_it(event_times), mam_at_stop,
-          [&](auto&& a, auto&& b) { return is_better(a % 1440, b % 1440); });
+    auto const seek_first_day = [&]() {
+      return linear_lb(get_begin_it(event_times), get_end_it(event_times),
+                       mam_at_stop,
+                       [&](delta const a, minutes_after_midnight_t const b) {
+                         return is_better(a.mam(), b.count());
+                       });
     };
 
 #if defined(NIGIRI_TRACING)
@@ -471,7 +474,7 @@ private:
         auto const t_offset =
             static_cast<std::size_t>(&*it - event_times.data());
         auto const ev = *it;
-        auto const ev_mam = minutes_after_midnight_t{ev.count() % 1440};
+        auto const ev_mam = ev.mam();
 
         if (is_better_or_eq(time_at_dest_[k],
                             to_delta(day, ev_mam) + dir(lb_[to_idx(l)]))) {
@@ -482,12 +485,13 @@ private:
               k, tt_.transport_name(tt_.route_transport_ranges_[r][t_offset]),
               tt_.dbg(tt_.route_transport_ranges_[r][t_offset]), day,
               tt_.to_unixtime(day, 0_minutes), mam_at_stop, ev_mam,
-              tt_.to_unixtime(day, ev_mam), to_unix(time_at_dest_[k]));
+              tt_.to_unixtime(day, duration_t{ev_mam}),
+              to_unix(time_at_dest_[k]));
           return {transport_idx_t::invalid(), day_idx_t::invalid()};
         }
 
         auto const t = tt_.route_transport_ranges_[r][t_offset];
-        if (i == 0U && !is_better_or_eq(mam_at_stop, ev_mam)) {
+        if (i == 0U && !is_better_or_eq(mam_at_stop.count(), ev_mam)) {
           trace(
               "┊ │k={}      => transport={}, name={}, dbg={}, day={}/{}, "
               "best_mam={}, "
@@ -497,8 +501,7 @@ private:
           continue;
         }
 
-        auto const ev_day_offset =
-            static_cast<day_idx_t::value_t>(ev.count() / 1440);
+        auto const ev_day_offset = ev.days();
         auto const start_day =
             static_cast<std::size_t>(as_int(day) - ev_day_offset);
         if (!tt_.bitfields_[tt_.transport_traffic_days_[t]].test(start_day)) {
@@ -516,8 +519,8 @@ private:
             "┊ │k={}      => ET FOUND: name={}, dbg={}, at day {} "
             "(day_offset={}) - ev_mam={}, ev_time={}, ev={}\n",
             k, tt_.transport_name(t), tt_.dbg(t), day, ev_day_offset, ev_mam,
-            ev, tt_.to_unixtime(day, ev_mam));
-        return {t, static_cast<day_idx_t>(day - ev_day_offset)};
+            ev, tt_.to_unixtime(day, duration_t{ev_mam}));
+        return {t, static_cast<day_idx_t>(as_int(day) - ev_day_offset)};
       }
     }
     return {};
@@ -527,19 +530,21 @@ private:
                        transport const t,
                        unsigned const stop_idx,
                        event_type const ev_type) {
-    trace(
-        "time at stop: {}\n",
-        tt_.to_unixtime(t.day_, tt_.event_mam(r, t.t_idx_, stop_idx, ev_type)));
-    return to_delta(t.day_, tt_.event_mam(r, t.t_idx_, stop_idx, ev_type));
+    trace("time at stop: {}\n",
+          tt_.to_unixtime(
+              t.day_,
+              tt_.event_mam(r, t.t_idx_, stop_idx, ev_type).as_duration()));
+    return to_delta(t.day_,
+                    tt_.event_mam(r, t.t_idx_, stop_idx, ev_type).count());
   }
 
-  delta_t to_delta(day_idx_t const day, minutes_after_midnight_t const mam) {
+  delta_t to_delta(day_idx_t const day, std::int16_t const mam) {
     trace("to delta: day={}, base={}={}, mam={}, {}={} = {}\n", as_int(day),
-          as_int(base_), base(), mam.count(),
-          (as_int(day) - as_int(base_)) * 1440 + mam.count(),
-          tt_.to_unixtime(day, mam),
-          clamp((as_int(day) - as_int(base_)) * 1440 + mam.count()));
-    return clamp((as_int(day) - as_int(base_)) * 1440 + mam.count());
+          as_int(base_), base(), mam,
+          (as_int(day) - as_int(base_)) * 1440 + mam,
+          tt_.to_unixtime(day, duration_t{mam}),
+          clamp((as_int(day) - as_int(base_)) * 1440 + mam));
+    return clamp((as_int(day) - as_int(base_)) * 1440 + mam);
   }
 
   unixtime_t to_unix(delta_t const t) { return delta_to_unix(base(), t); }
@@ -585,6 +590,7 @@ private:
   day_idx_t base_;
   int n_days_;
   raptor_stats stats_;
+  std::uint32_t n_locations_;
 };
 
 }  // namespace nigiri::routing

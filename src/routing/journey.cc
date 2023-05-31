@@ -12,21 +12,21 @@ void journey::leg::print(std::ostream& out,
                          nigiri::timetable const& tt,
                          unsigned const n_indent,
                          bool const debug) const {
-  std::visit(utl::overloaded{
-                 [&](transport_enter_exit const& t) {
-                   print_transport(tt, out, t.t_, t.stop_range_, n_indent,
-                                   debug);
-                 },
-                 [&](footpath const x) {
-                   indent(out, n_indent);
-                   out << "FOOTPATH (duration=" << x.duration_.count() << ")\n";
-                 },
-                 [&](offset const x) {
-                   indent(out, n_indent);
-                   out << "MUMO (id=" << static_cast<int>(x.type_)
-                       << ", duration=" << x.duration_.count() << ")\n";
-                 }},
-             uses_);
+  std::visit(
+      utl::overloaded{
+          [&](transport_enter_exit const& t) {
+            print_transport(tt, out, t.t_, t.stop_range_, n_indent, debug);
+          },
+          [&](footpath const x) {
+            indent(out, n_indent);
+            out << "FOOTPATH (duration=" << x.duration().count() << ")\n";
+          },
+          [&](offset const x) {
+            indent(out, n_indent);
+            out << "MUMO (id=" << static_cast<int>(x.type_)
+                << ", duration=" << x.duration().count() << ")\n";
+          }},
+      uses_);
 }
 
 void journey::print(std::ostream& out,

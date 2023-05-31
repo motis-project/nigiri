@@ -10,7 +10,8 @@ bool hrd_loader::applicable(dir const& d) const {
   return nigiri::loader::hrd::applicable(config_, d);
 }
 
-void hrd_loader::load(source_idx_t const src,
+void hrd_loader::load(loader_config const&,
+                      source_idx_t const src,
                       dir const& d,
                       timetable& tt) const {
   return nigiri::loader::hrd::load_timetable(src, config_, d, tt);
