@@ -31,7 +31,7 @@ struct timetable {
       return idx;
     }
 
-    location_idx_t register_location(location&& l) {
+    location_idx_t register_location(location const& l) {
       auto const next_idx = static_cast<location_idx_t::value_t>(names_.size());
       auto const l_idx = location_idx_t{next_idx};
       auto const [it, is_new] = location_id_to_idx_.emplace(
