@@ -44,7 +44,8 @@ tracks parse_track_rules(config const& c,
                          .track_name_ = track_name_str},
         [&]() {
           auto l = location{tt, parent};
-          l.id_ = fmt::format("T:{}:{}", l.id_, track_name_str);
+          auto const id = fmt::format("T:{}:{}", l.id_, track_name_str);
+          l.id_ = id;
           l.name_ = track_name_str;
           l.type_ = location_type::kGeneratedTrack;
           l.parent_ = parent;
