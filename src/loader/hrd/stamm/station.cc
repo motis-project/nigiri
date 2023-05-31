@@ -196,7 +196,7 @@ location_map_t parse_stations(config const& c,
         location{id.id_, s.name_, s.pos_, src, location_type::kStation,
                  osm_node_id_t::invalid(), location_idx_t::invalid(),
                  st.get_tz(s.id_).first, transfer_time, it_range{empty_idx_vec},
-                 it_range{empty_footpath_vec}, it_range{empty_footpath_vec}});
+                 std::span{empty_footpath_vec}, std::span{empty_footpath_vec}});
     s.idx_ = idx;
   }
 
