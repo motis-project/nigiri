@@ -273,7 +273,7 @@ struct timetable {
   }
 
   cista::base_t<location_idx_t> n_locations() const {
-    return locations_.names_.size();
+    return locations_.src_.size();
   }
 
   cista::base_t<route_idx_t> n_routes() const {

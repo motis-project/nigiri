@@ -25,8 +25,7 @@ struct search_state {
   search_state& operator=(search_state&&) = default;
   ~search_state() = default;
 
-  std::vector<std::uint16_t> travel_time_lower_bound_;
-  std::vector<std::uint8_t> transfers_lower_bound_;
+  std::vector<lower_bound> lb_;
   std::vector<bool> is_destination_;
   std::vector<std::uint16_t> dist_to_dest_;
   std::vector<start> starts_;
@@ -73,7 +72,7 @@ struct search {
 
     if constexpr (Algo::kUseTransfersLowerBounds) {
       UTL_START_TIMING(lb);
-      dijkstra(tt_, q_, tt_.transfers_lb_graph_, state_.transfers_lower_bound_);
+      dijkstra(tt_, q_, tt_.transfers_lb_graph_, state_.lb_);
       UTL_STOP_TIMING(lb);
       stats_.transfers_lb_time_ = static_cast<std::uint64_t>(UTL_TIMING_MS(lb));
 
@@ -93,12 +92,12 @@ struct search {
       UTL_START_TIMING(lb);
       dijkstra(tt_, q_,
                kFwd ? tt_.fwd_search_lb_graph_ : tt_.bwd_search_lb_graph_,
-               state_.travel_time_lower_bound_);
+               state_.lb_);
       for (auto i = 0U; i != tt_.n_locations(); ++i) {
-        auto const lb = state_.travel_time_lower_bound_[i];
+        auto const lb = state_.lb_[i].travel_time_;
         for (auto const c : tt_.locations_.children_[location_idx_t{i}]) {
-          state_.travel_time_lower_bound_[to_idx(c)] =
-              std::min(lb, state_.travel_time_lower_bound_[to_idx(c)]);
+          state_.lb_[to_idx(c)].travel_time_ =
+              std::min(lb, state_.lb_[to_idx(c)].travel_time_);
         }
       }
       UTL_STOP_TIMING(lb);
@@ -120,8 +119,7 @@ struct search {
         algo_state,
         state_.is_destination_,
         state_.dist_to_dest_,
-        state_.travel_time_lower_bound_,
-        state_.transfers_lower_bound_,
+        state_.lb_,
         day_idx_t{std::chrono::duration_cast<date::days>(
                       search_interval_.from_ - tt_.internal_interval().from_)
                       .count()}};

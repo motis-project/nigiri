@@ -135,6 +135,8 @@ footgraph get_footpath_graph(timetable& tt) {
 }
 
 component_vec find_components(timetable& tt, footgraph const& fgraph) {
+  tt.locations_.components_.resize(tt.n_locations());
+
   auto components = component_vec(fgraph.size());
   std::generate(
       begin(components), end(components),
