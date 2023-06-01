@@ -4,6 +4,8 @@
 
 #include "nigiri/logging.h"
 #include "nigiri/timetable.h"
+#include "utl/enumerate.h"
+#include "utl/insert_sorted.h"
 
 namespace nigiri::loader {
 
@@ -92,6 +94,24 @@ void build_lb_graph(timetable& tt) {
 
     footpaths.clear();
     weights.clear();
+  }
+}
+
+template <direction SearchDir>
+void build_transfers_lb_graph(timetable& tt) {
+  auto map = mutable_fws_multimap<component_idx_t, component_idx_t>{};
+  for (auto l = location_idx_t{0U}; l != tt.n_locations(); ++l) {
+    for (auto const& r : tt.location_routes_[l]) {
+      auto const route_component =
+          tt.locations_.next_component_idx_ + to_idx(r);
+      auto const location_component = tt.locations_.components_[l];
+      utl::insert_sorted(map[route_component], location_component);
+      utl::insert_sorted(map[location_component], route_component);
+    }
+  }
+
+  for (auto const bucket : map) {
+    tt.transfers_lb_graph_.emplace_back(bucket);
   }
 }
 

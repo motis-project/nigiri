@@ -48,6 +48,8 @@ void finalize(timetable& tt) {
   build_footpaths(tt);
   build_lb_graph<direction::kForward>(tt);
   build_lb_graph<direction::kBackward>(tt);
+  build_transfers_lb_graph<direction::kForward>(tt);
+  build_transfers_lb_graph<direction::kBackward>(tt);
 }
 
 }  // namespace nigiri::loader

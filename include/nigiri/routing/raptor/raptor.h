@@ -32,6 +32,7 @@ struct raptor {
   using algo_stats_t = raptor_stats;
 
   static constexpr bool kUseLowerBounds = true;
+  static constexpr bool kUseTransfersLowerBounds = true;
   static constexpr auto const kFwd = (SearchDir == direction::kForward);
   static constexpr auto const kBwd = (SearchDir == direction::kBackward);
   static constexpr auto const kInvalid = kInvalidDelta<SearchDir>;

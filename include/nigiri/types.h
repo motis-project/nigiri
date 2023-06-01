@@ -97,6 +97,7 @@ using nvec = cista::raw::nvec<Key, T, N>;
 
 using bitfield_idx_t = cista::strong<std::uint32_t, struct _bitfield_idx>;
 using location_idx_t = cista::strong<std::uint32_t, struct _location_idx>;
+using component_idx_t = cista::strong<std::uint32_t, struct _component_idx>;
 using osm_node_id_t = cista::strong<std::int64_t, struct _osm_node_idx>;
 using route_idx_t = cista::strong<std::uint32_t, struct _location_idx>;
 using section_idx_t = cista::strong<std::uint32_t, struct _section_idx>;

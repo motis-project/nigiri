@@ -26,6 +26,7 @@ struct search_state {
   ~search_state() = default;
 
   std::vector<std::uint16_t> travel_time_lower_bound_;
+  std::vector<std::uint8_t> transfers_lower_bound_;
   std::vector<bool> is_destination_;
   std::vector<std::uint16_t> dist_to_dest_;
   std::vector<start> starts_;
@@ -33,7 +34,8 @@ struct search_state {
 };
 
 struct search_stats {
-  std::uint64_t lb_time_{0ULL};
+  std::uint64_t travel_time_lb_time_{0ULL};
+  std::uint64_t transfers_lb_time_{0ULL};
   std::uint64_t fastest_direct_{0ULL};
   std::uint64_t search_iterations_{0ULL};
   std::uint64_t interval_extensions_{0ULL};
@@ -60,6 +62,33 @@ struct search {
     collect_destinations(tt_, q_.destination_, q_.dest_match_mode_,
                          state_.is_destination_, state_.dist_to_dest_);
 
+#if defined(NIGIRI_TRACING)
+    for (auto const& o : q_.start_) {
+      trace_upd("start {}: {}\n", location{tt_, o.target()}, o.duration());
+    }
+    for (auto const& o : q_.destination_) {
+      trace_upd("dest {}: {}\n", location{tt_, o.target()}, o.duration());
+    }
+#endif
+
+    if constexpr (Algo::kUseTransfersLowerBounds) {
+      UTL_START_TIMING(lb);
+      dijkstra(tt_, q_, tt_.transfers_lb_graph_, state_.transfers_lower_bound_);
+      UTL_STOP_TIMING(lb);
+      stats_.transfers_lb_time_ = static_cast<std::uint64_t>(UTL_TIMING_MS(lb));
+
+#if defined(NIGIRI_TRACING)
+      for (auto l = location_idx_t{0U}; l != tt_.n_locations(); ++l) {
+        auto const lb =
+            state_
+                .transfers_lower_bound_[to_idx(tt_.locations_.components_[l])];
+        if (lb != std::numeric_limits<std::decay_t<decltype(lb)>>::max()) {
+          trace_upd("ic {}: {}\n", location{tt_, location_idx_t{l}}, lb);
+        }
+      }
+#endif
+    }
+
     if constexpr (Algo::kUseLowerBounds) {
       UTL_START_TIMING(lb);
       dijkstra(tt_, q_,
@@ -73,15 +102,10 @@ struct search {
         }
       }
       UTL_STOP_TIMING(lb);
-      stats_.lb_time_ = static_cast<std::uint64_t>(UTL_TIMING_MS(lb));
+      stats_.travel_time_lb_time_ =
+          static_cast<std::uint64_t>(UTL_TIMING_MS(lb));
 
 #if defined(NIGIRI_TRACING)
-      for (auto const& o : q_.start_) {
-        trace_upd("start {}: {}\n", location{tt_, o.target()}, o.duration());
-      }
-      for (auto const& o : q_.destination_) {
-        trace_upd("dest {}: {}\n", location{tt_, o.target()}, o.duration());
-      }
       for (auto const [l, lb] :
            utl::enumerate(state_.travel_time_lower_bound_)) {
         if (lb != std::numeric_limits<std::decay_t<decltype(lb)>>::max()) {
@@ -97,6 +121,7 @@ struct search {
         state_.is_destination_,
         state_.dist_to_dest_,
         state_.travel_time_lower_bound_,
+        state_.transfers_lower_bound_,
         day_idx_t{std::chrono::duration_cast<date::days>(
                       search_interval_.from_ - tt_.internal_interval().from_)
                       .count()}};
