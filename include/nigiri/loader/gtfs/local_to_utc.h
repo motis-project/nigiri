@@ -25,49 +25,6 @@ struct utc_trip {
   bitfield utc_traffic_days_;
 };
 
-inline bool headways_match(trip_data const& trip_data,
-                           std::basic_string<gtfs_trip_idx_t> const& trips) {
-  if (trips.size() <= 1) {
-    return true;
-  }
-
-  assert(!trips.empty());
-  auto const& first = trip_data.data_[trips.front()];
-  return utl::all_of(trips, [&](gtfs_trip_idx_t const idx) {
-    auto const& t = trip_data.get(idx);
-    if (!t.frequency_.has_value() ||
-        t.frequency_->size() != first.frequency_->size()) {
-      return false;
-    }
-    for (auto const [a, b] : utl::zip(*first.frequency_, *t.frequency_)) {
-      return a.headway_ != b.headway_;
-    }
-    return true;
-  });
-};
-
-inline bool stays_sorted(trip_data const& trip_data,
-                         std::basic_string<gtfs_trip_idx_t> const& trips) {
-  if (trips.size() <= 1) {
-    return true;
-  }
-
-  assert(!trips.empty());
-  auto const& first = trip_data.data_[trips.front()];
-  for (auto i = 0U; i != first.frequency_->size(); ++i) {
-    auto const sorted = utl::is_sorted(
-        trips, [&](gtfs_trip_idx_t const a_idx, gtfs_trip_idx_t const b_idx) {
-          auto const& a_freq = *trip_data.get(a_idx).frequency_;
-          auto const& b_freq = *trip_data.get(b_idx).frequency_;
-          return a_freq[i].start_time_ < b_freq[i].start_time_;
-        });
-    if (!sorted) {
-      return false;
-    }
-  }
-  return true;
-};
-
 template <typename Consumer>
 void expand_frequencies(trip_data const& trip_data,
                         gtfs_trip_idx_t trip_idx,

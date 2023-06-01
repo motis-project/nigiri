@@ -25,6 +25,89 @@
 
 namespace nigiri::loader::gtfs {
 
+std::vector<std::pair<std::basic_string<gtfs_trip_idx_t>, bitfield>>
+rule_services(std::basic_string<gtfs_trip_idx_t>& trips, trip_data& trip_data) {
+  utl::verify(!trips.empty(), "empty block not allowed");
+
+  utl::erase_if(trips, [&](gtfs_trip_idx_t const& t) {
+    auto const is_empty = trip_data.get(t).stop_seq_.empty();
+    if (is_empty) {
+      log(log_lvl::error, "loader.gtfs.trip", "trip \"{}\": no stop times",
+          trip_data.get(t).id_);
+    }
+    return is_empty;
+  });
+
+  if (trips.size() == 1) {
+    return {{std::pair{std::basic_string<gtfs_trip_idx_t>{trips.front()},
+                       *trip_data.get(trips.front()).service_}}};
+  }
+
+  std::sort(begin(trips), end(trips),
+            [&](gtfs_trip_idx_t const a_idx, gtfs_trip_idx_t const b_idx) {
+              auto const& a = trip_data.get(a_idx);
+              auto const& b = trip_data.get(b_idx);
+              return a.event_times_.front().dep_ < b.event_times_.front().dep_;
+            });
+
+  struct rule_trip {
+    gtfs_trip_idx_t trip_;
+    bitfield traffic_days_;
+  };
+  auto rule_trips = utl::to_vec(trips, [&](auto&& t) {
+    return rule_trip{t, *trip_data.get(t).service_};
+  });
+
+  struct queue_entry {
+    std::vector<rule_trip>::iterator current_it_;
+    std::vector<std::vector<rule_trip>::iterator> collected_trips_;
+    bitfield traffic_days_;
+  };
+
+  std::vector<std::pair<std::basic_string<gtfs_trip_idx_t>, bitfield>>
+      combinations;
+  for (auto start_it = begin(rule_trips); start_it != end(rule_trips);
+       ++start_it) {
+    std::stack<queue_entry> q;
+    q.emplace(queue_entry{start_it, {}, start_it->traffic_days_});
+    while (!q.empty()) {
+      auto next = q.top();
+      q.pop();
+
+      auto& [current_it, collected_trips, traffic_days] = next;
+      collected_trips.emplace_back(current_it);
+      for (auto succ_it = std::next(current_it); succ_it != end(rule_trips);
+           ++succ_it) {
+        auto const& curr_trip = trip_data.get(current_it->trip_);
+        auto const& succ_trip = trip_data.get(succ_it->trip_);
+        if (stop{curr_trip.stop_seq_.back()}.location_ !=
+            stop{succ_trip.stop_seq_.front()}.location_) {
+          continue;  // prev last stop != next first stop
+        }
+
+        auto const new_intersection = traffic_days & succ_it->traffic_days_;
+        traffic_days &= ~succ_it->traffic_days_;
+        if (new_intersection.any()) {
+          q.emplace(queue_entry{succ_it, collected_trips, new_intersection});
+        }
+      }
+
+      if (traffic_days.any()) {
+        for (auto& rt : collected_trips) {
+          rt->traffic_days_ &= ~traffic_days;
+        }
+
+        combinations.emplace_back(
+            utl::transform_to<std::basic_string<gtfs_trip_idx_t>>(
+                collected_trips, [](auto&& rt) { return rt->trip_; }),
+            traffic_days);
+      }
+    }
+  }
+
+  return combinations;
+}
+
 trip::trip(route const* route,
            bitfield const* service,
            std::basic_string<gtfs_trip_idx_t>* blk,
