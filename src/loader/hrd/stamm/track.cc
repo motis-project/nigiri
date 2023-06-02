@@ -43,13 +43,13 @@ tracks parse_track_rules(config const& c,
         track_at_station{.parent_station_ = parent,
                          .track_name_ = track_name_str},
         [&]() {
-          auto const l = location{tt, parent};
+          auto l = location{tt, parent};
           auto const id = fmt::format("T:{}:{}", l.id_, track_name_str);
-          auto const child = tt.locations_.register_location(
-              location{id, track_name_str, l.pos_, l.src_,
-                       location_type::kGeneratedTrack, l.osm_id_, parent,
-                       l.timezone_idx_, l.transfer_time_, l.equivalences_,
-                       l.footpaths_in_, l.footpaths_out_});
+          l.id_ = id;
+          l.name_ = track_name_str;
+          l.type_ = location_type::kGeneratedTrack;
+          l.parent_ = parent;
+          auto const child = tt.locations_.register_location(l);
           tt.locations_.children_[parent].emplace_back(child);
           return child;
         });

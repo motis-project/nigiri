@@ -47,7 +47,7 @@ using bitset = cista::bitset<Size>;
 constexpr auto const kMaxDays = 512;
 using bitfield = bitset<kMaxDays>;
 
-using bitvec = cista::offset::bitvec;
+using bitvec = cista::raw::bitvec;
 
 template <typename... Args>
 using tuple = cista::tuple<Args...>;
@@ -56,16 +56,16 @@ template <typename A, typename B>
 using pair = cista::pair<A, B>;
 
 template <typename K, typename V>
-using vector_map = cista::offset::vector_map<K, V>;
+using vector_map = cista::raw::vector_map<K, V>;
 
 template <typename T>
-using vector = cista::offset::vector<T>;
+using vector = cista::raw::vector<T>;
 
 template <typename T>
 using matrix = cista::raw::flat_matrix<T>;
 using cista::raw::make_flat_matrix;
 
-using cista::offset::to_vec;
+using cista::raw::to_vec;
 
 template <typename... Ts>
 using variant = cista::variant<Ts...>;
@@ -73,29 +73,29 @@ using cista::get;
 using cista::holds_alternative;
 
 template <typename K, typename V>
-using vecvec = cista::offset::vecvec<K, V>;
+using vecvec = cista::raw::vecvec<K, V>;
 
 template <typename K, typename V>
-using mutable_fws_multimap = cista::offset::mutable_fws_multimap<K, V>;
+using mutable_fws_multimap = cista::raw::mutable_fws_multimap<K, V>;
 
 template <typename K,
           typename V,
           typename Hash = cista::hash_all,
           typename Equality = cista::equals_all>
-using hash_map = cista::offset::ankerl_map<K, V, Hash, Equality>;
+using hash_map = cista::raw::ankerl_map<K, V, Hash, Equality>;
 
 template <typename K,
           typename Hash = cista::hash_all,
           typename Equality = cista::equals_all>
-using hash_set = cista::offset::ankerl_set<K, Hash, Equality>;
+using hash_set = cista::raw::ankerl_set<K, Hash, Equality>;
 
-using string = cista::offset::string;
+using string = cista::raw::string;
 
 template <typename T>
 using optional = cista::optional<T>;
 
 template <typename Key, typename T, std::size_t N>
-using nvec = cista::offset::nvec<Key, T, N>;
+using nvec = cista::raw::nvec<Key, T, N>;
 
 using bitfield_idx_t = cista::strong<std::uint32_t, struct _bitfield_idx>;
 using location_idx_t = cista::strong<std::uint32_t, struct _location_idx>;
@@ -301,6 +301,61 @@ inline std::ostream& operator<<(std::ostream& out,
 #include <iostream>
 
 namespace nigiri {
+
+struct delta {
+  explicit delta(duration_t const d)
+      : days_{static_cast<std::uint16_t>(d.count() / 1440)},
+        mam_{static_cast<std::uint16_t>(d.count() % 1440)} {
+    assert(d.count() >= 0);
+  }
+
+  explicit delta(std::uint16_t const minutes)
+      : days_{static_cast<std::uint16_t>(minutes / 1440U)},
+        mam_{static_cast<std::uint16_t>(minutes % 1440U)} {}
+
+  delta(std::uint16_t const day, std::uint16_t const mam)
+      : days_{day}, mam_{mam} {}
+
+  std::uint16_t value() const {
+    return *reinterpret_cast<std::uint16_t const*>(this);
+  }
+
+  std::int16_t days() const { return days_; }
+  std::int16_t mam() const { return mam_; }
+
+  friend std::ostream& operator<<(std::ostream& out, delta const& d) {
+    return out << duration_t{static_cast<duration_t::rep>(d.mam_)} << "."
+               << d.days_;
+  }
+
+  friend delta operator-(delta const a, delta const b) {
+    return delta{static_cast<std::uint16_t>((a.days_ - b.days_) * 1440U +
+                                            (a.mam_ - b.mam_))};
+  }
+
+  cista::hash_t hash() const {
+    return cista::hash_combine(cista::BASE_HASH, value());
+  }
+
+  duration_t as_duration() const { return days() * 1_days + mam() * 1_minutes; }
+
+  std::int16_t count() const { return days_ * 1440U + mam_; }
+
+  std::uint16_t days_ : 5;
+  std::uint16_t mam_ : 11;
+};
+
+template <std::size_t NMaxTypes>
+constexpr auto static_type_hash(delta const*,
+                                cista::hash_data<NMaxTypes> h) noexcept {
+  return h.combine(cista::hash("nigiri::delta"));
+}
+
+template <typename Ctx>
+inline void serialize(Ctx&, delta const*, cista::offset_t const) {}
+
+template <typename Ctx>
+inline void deserialize(Ctx const&, delta*) {}
 
 inline local_time to_local_time_offsets(tz_offsets const& offsets,
                                         unixtime_t const t) {

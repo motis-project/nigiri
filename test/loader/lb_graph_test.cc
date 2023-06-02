@@ -25,7 +25,7 @@ TEST(lb_graph, distances_check) {
     }
     for (auto const& fp : tt.fwd_search_lb_graph_[i]) {
       distances[{std::string{location{tt, i}.name_},
-                 std::string{location{tt, fp.target_}.name_}}] = fp.duration_;
+                 std::string{location{tt, fp.target()}.name_}}] = fp.duration();
     }
   }
 

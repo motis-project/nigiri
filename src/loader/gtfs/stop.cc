@@ -21,12 +21,13 @@
 namespace nigiri::loader::gtfs {
 
 struct stop {
-  void compute_close_stations(geo::point_rtree const& stop_rtree) {
+  void compute_close_stations(geo::point_rtree const& stop_rtree,
+                              unsigned const link_stop_distance) {
     if (std::abs(coord_.lat_) < 2.0 && std::abs(coord_.lng_) < 2.0) {
       return;
     }
     close_ = utl::to_vec(
-        stop_rtree.in_radius(coord_, 100),
+        stop_rtree.in_radius(coord_, link_stop_distance),
         [](std::size_t const idx) { return static_cast<unsigned>(idx); });
   }
 
@@ -150,7 +151,7 @@ void read_transfers(stop_map_t& stops, std::string_view file_content) {
         auto& footpaths = from_stop_it->second->footpaths_;
         auto const it = std::find_if(
             begin(footpaths), end(footpaths), [&](footpath const& fp) {
-              return fp.target_ == to_stop_it->second->location_;
+              return fp.target() == to_stop_it->second->location_;
             });
         if (it == end(footpaths)) {
           footpaths.emplace_back(
@@ -164,7 +165,8 @@ locations_map read_stops(source_idx_t const src,
                          timetable& tt,
                          tz_map& timezones,
                          std::string_view stops_file_content,
-                         std::string_view transfers_file_content) {
+                         std::string_view transfers_file_content,
+                         unsigned link_stop_distance) {
   auto const timer = scoped_timer{"gtfs.loader.stops"};
 
   auto const progress_tracker = utl::get_active_progress_tracker();
@@ -223,7 +225,7 @@ locations_map read_stops(source_idx_t const src,
     }
   }
 
-  {
+  if (link_stop_distance != 0U) {
     auto const t = scoped_timer{"loader.gtfs.stop.rtree"};
     progress_tracker->status("Stops R-Tree")
         .out_bounds(5.F, 15.F)
@@ -232,7 +234,9 @@ locations_map read_stops(source_idx_t const src,
         stops, [](auto const& s) { return s.second->coord_; });
     utl::parallel_for(
         stops,
-        [&](auto const& s) { s.second->compute_close_stations(stop_rtree); },
+        [&](auto const& s) {
+          s.second->compute_close_stations(stop_rtree, link_stop_distance);
+        },
         progress_tracker->update_fn());
   }
 
@@ -248,8 +252,8 @@ locations_map read_stops(source_idx_t const src,
             osm_node_id_t::invalid(), location_idx_t::invalid(),
             s->timezone_.empty() ? timezone_idx_t::invalid()
                                  : get_tz_idx(tt, timezones, s->timezone_),
-            2_minutes, it_range{empty_idx_vec}, it_range{empty_footpath_vec},
-            it_range{empty_footpath_vec}}));
+            2_minutes, it_range{empty_idx_vec}, std::span{empty_footpath_vec},
+            std::span{empty_footpath_vec}}));
   }
 
   read_transfers(stops, transfers_file_content);
@@ -262,7 +266,7 @@ locations_map read_stops(source_idx_t const src,
 
     auto const add_if_not_exists = [](auto bucket, footpath&& fp) {
       auto const it = std::find_if(begin(bucket), end(bucket), [&](auto&& x) {
-        return fp.target_ == x.target_;
+        return fp.target() == x.target_;
       });
       if (it == end(bucket)) {
         bucket.emplace_back(fp);
@@ -279,19 +283,22 @@ locations_map read_stops(source_idx_t const src,
 
       // GTFS footpaths
       for (auto const& fp : s->footpaths_) {
-        tt.locations_.footpaths_out_[s->location_].emplace_back(fp);
-        tt.locations_.footpaths_in_[fp.target_].emplace_back(s->location_,
-                                                             fp.duration_);
+        tt.locations_.preprocessing_footpaths_out_[s->location_].emplace_back(
+            fp);
+        tt.locations_.preprocessing_footpaths_in_[fp.target()].emplace_back(
+            s->location_, fp.duration());
       }
     }
 
     // Make GTFS footpaths symmetric (if not already).
     for (auto const& [id, s] : stops) {
       for (auto const& fp : s->footpaths_) {
-        add_if_not_exists(tt.locations_.footpaths_out_[fp.target_],
-                          {s->location_, fp.duration_});
-        add_if_not_exists(tt.locations_.footpaths_in_[s->location_],
-                          {fp.target_, fp.duration_});
+        add_if_not_exists(
+            tt.locations_.preprocessing_footpaths_out_[fp.target()],
+            {s->location_, fp.duration()});
+        add_if_not_exists(
+            tt.locations_.preprocessing_footpaths_in_[s->location_],
+            {fp.target(), fp.duration()});
       }
     }
 
@@ -300,14 +307,18 @@ locations_map read_stops(source_idx_t const src,
     for (auto const& [id, s] : stops) {
       for (auto const& eq : s->get_metas(stop_vec, todo, done)) {
         tt.locations_.equivalences_[s->location_].emplace_back(eq->location_);
-        add_if_not_exists(tt.locations_.footpaths_out_[s->location_],
-                          {eq->location_, 2_minutes});
-        add_if_not_exists(tt.locations_.footpaths_in_[eq->location_],
-                          {s->location_, 2_minutes});
-        add_if_not_exists(tt.locations_.footpaths_out_[eq->location_],
-                          {s->location_, 2_minutes});
-        add_if_not_exists(tt.locations_.footpaths_in_[s->location_],
-                          {eq->location_, 2_minutes});
+        add_if_not_exists(
+            tt.locations_.preprocessing_footpaths_out_[s->location_],
+            {eq->location_, 2_minutes});
+        add_if_not_exists(
+            tt.locations_.preprocessing_footpaths_in_[eq->location_],
+            {s->location_, 2_minutes});
+        add_if_not_exists(
+            tt.locations_.preprocessing_footpaths_out_[eq->location_],
+            {s->location_, 2_minutes});
+        add_if_not_exists(
+            tt.locations_.preprocessing_footpaths_in_[s->location_],
+            {eq->location_, 2_minutes});
       }
       progress_tracker->increment();
     }

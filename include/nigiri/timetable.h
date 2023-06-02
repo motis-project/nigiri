@@ -31,7 +31,7 @@ struct timetable {
       return idx;
     }
 
-    location_idx_t register_location(location&& l) {
+    location_idx_t register_location(location const& l) {
       auto const next_idx = static_cast<location_idx_t::value_t>(names_.size());
       auto const l_idx = location_idx_t{next_idx};
       auto const [it, is_new] = location_id_to_idx_.emplace(
@@ -46,8 +46,8 @@ struct timetable {
         location_timezones_.emplace_back(l.timezone_idx_);
         equivalences_.emplace_back();
         children_.emplace_back();
-        footpaths_out_.emplace_back();
-        footpaths_in_.emplace_back();
+        preprocessing_footpaths_out_.emplace_back();
+        preprocessing_footpaths_in_.emplace_back();
         transfer_time_.emplace_back(l.transfer_time_);
         osm_ids_.emplace_back(osm_node_id_t::invalid());
         parents_.emplace_back(l.parent_);
@@ -64,8 +64,8 @@ struct timetable {
       assert(location_timezones_.size() == next_idx + 1);
       assert(equivalences_.size() == next_idx + 1);
       assert(children_.size() == next_idx + 1);
-      assert(footpaths_out_.size() == next_idx + 1);
-      assert(footpaths_in_.size() == next_idx + 1);
+      assert(preprocessing_footpaths_out_.size() == next_idx + 1);
+      assert(preprocessing_footpaths_in_.size() == next_idx + 1);
       assert(transfer_time_.size() == next_idx + 1);
       assert(osm_ids_.size() == next_idx + 1);
       assert(parents_.size() == next_idx + 1);
@@ -84,8 +84,8 @@ struct timetable {
                       location_timezones_[idx],
                       transfer_time_[idx],
                       it_range{equivalences_[idx]},
-                      it_range{footpaths_out_[idx]},
-                      it_range{footpaths_in_[idx]}};
+                      std::span<footpath const>{footpaths_out_[idx]},
+                      std::span<footpath const>{footpaths_in_[idx]}};
     }
 
     location get(location_id const& id) {
@@ -107,8 +107,9 @@ struct timetable {
     vector_map<location_idx_t, timezone_idx_t> location_timezones_;
     mutable_fws_multimap<location_idx_t, location_idx_t> equivalences_;
     mutable_fws_multimap<location_idx_t, location_idx_t> children_;
-    mutable_fws_multimap<location_idx_t, footpath> footpaths_out_;
-    mutable_fws_multimap<location_idx_t, footpath> footpaths_in_;
+    mutable_fws_multimap<location_idx_t, footpath> preprocessing_footpaths_out_;
+    mutable_fws_multimap<location_idx_t, footpath> preprocessing_footpaths_in_;
+    vecvec<location_idx_t, footpath> footpaths_out_, footpaths_in_;
     vector_map<timezone_idx_t, timezone> timezones_;
   } locations_;
 
@@ -162,12 +163,6 @@ struct timetable {
       std::basic_string<stop::value_type> const& stop_seq,
       std::basic_string<clasz> const& clasz_sections) {
     auto const idx = route_location_seq_.size();
-    for (auto const& s : stop_seq) {
-      auto routes = location_routes_[stop{s}.location_idx()];
-      if (routes.empty() || routes.back() != idx) {
-        routes.emplace_back(idx);
-      }
-    }
     route_transport_ranges_.emplace_back(
         transport_idx_t{transport_traffic_days_.size()},
         transport_idx_t::invalid());
@@ -217,23 +212,21 @@ struct timetable {
     return transport_idx_t{transport_traffic_days_.size()};
   }
 
-  std::span<minutes_after_midnight_t const> event_times_at_stop(
-      route_idx_t const r,
-      std::size_t const stop_idx,
-      event_type const ev_type) const {
+  std::span<delta const> event_times_at_stop(route_idx_t const r,
+                                             std::size_t const stop_idx,
+                                             event_type const ev_type) const {
     auto const n_transports =
         static_cast<unsigned>(route_transport_ranges_[r].size());
     auto const idx = static_cast<unsigned>(
         route_stop_time_ranges_[r].from_ +
         n_transports * (stop_idx * 2 - (ev_type == event_type::kArr ? 1 : 0)));
-    return std::span<minutes_after_midnight_t const>{&route_stop_times_[idx],
-                                                     n_transports};
+    return std::span<delta const>{&route_stop_times_[idx], n_transports};
   }
 
-  minutes_after_midnight_t event_mam(route_idx_t const r,
-                                     transport_idx_t t,
-                                     std::size_t const stop_idx,
-                                     event_type const ev_type) const {
+  delta event_mam(route_idx_t const r,
+                  transport_idx_t t,
+                  std::size_t const stop_idx,
+                  event_type const ev_type) const {
     auto const range = route_transport_ranges_[r];
     auto const n_transports = static_cast<unsigned>(range.size());
     auto const route_stop_begin = static_cast<unsigned>(
@@ -243,9 +236,9 @@ struct timetable {
     return route_stop_times_[route_stop_begin + t_idx_in_route];
   }
 
-  minutes_after_midnight_t event_mam(transport_idx_t t,
-                                     std::size_t const stop_idx,
-                                     event_type const ev_type) const {
+  delta event_mam(transport_idx_t t,
+                  std::size_t const stop_idx,
+                  event_type const ev_type) const {
     return event_mam(transport_route_[t], t, stop_idx, ev_type);
   }
 
@@ -253,7 +246,7 @@ struct timetable {
                         size_t const stop_idx,
                         event_type const ev_type) const {
     return unixtime_t{internal_interval_days().from_ + to_idx(t.day_) * 1_days +
-                      event_mam(t.t_idx_, stop_idx, ev_type)};
+                      event_mam(t.t_idx_, stop_idx, ev_type).as_duration()};
   }
 
   day_idx_t day_idx(date::year_month_day const day) const {
@@ -370,7 +363,7 @@ struct timetable {
   vecvec<route_idx_t, clasz> route_section_clasz_;
 
   // Location -> list of routes
-  mutable_fws_multimap<location_idx_t, route_idx_t> location_routes_;
+  vecvec<location_idx_t, route_idx_t> location_routes_;
 
   // Route 1:
   //   stop-1-dep: [trip1, trip2, ..., tripN]
@@ -381,7 +374,7 @@ struct timetable {
   // ...
   // RouteN: ...
   vector_map<route_idx_t, interval<std::uint32_t>> route_stop_time_ranges_;
-  vector<minutes_after_midnight_t> route_stop_times_;
+  vector<delta> route_stop_times_;
 
   // Services in GTFS can start with a first departure time > 24:00:00
   // The loader transforms this into a time <24:00:00 and shifts the bits in the

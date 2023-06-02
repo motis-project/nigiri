@@ -65,7 +65,7 @@ TEST(gtfs, services) {
   timetable tt;
   tt.date_range_ = {date::sys_days{2019_y / March / 25},
                     date::sys_days{2019_y / November / 1}};
-  load_timetable(source_idx_t{0}, test_files(), tt);
+  load_timetable({}, source_idx_t{0}, test_files(), tt);
 
   auto const unixtime = [&](transport const t, unsigned const stop_idx,
                             event_type const ev_type) {

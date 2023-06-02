@@ -92,6 +92,8 @@ void load_timetable(source_idx_t const src,
     sb.write_services(src);
     total_bytes_processed += file.data().size();
   }
+
+  sb.write_location_routes();
 }
 
 }  // namespace nigiri::loader::hrd
