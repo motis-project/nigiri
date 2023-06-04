@@ -11,18 +11,6 @@ namespace nigiri {
 struct timetable;
 struct rt_timetable;
 
-struct trip {
-  trip(timetable const& tt,
-       rt_timetable&,
-       trip_id const& id,
-       date::year_month_day const day);
-
-  std::vector<std::pair<transport, interval<std::uint16_t>>>
-      schedule_transports_;
-  std::vector<std::pair<rt_transport_idx_t, interval<std::uint16_t>>>
-      rt_transports_;
-};
-
 struct trip_info {
   std::basic_string<stop::value_type> stop_seq_;
   std::vector<unixtime_t> event_times_;

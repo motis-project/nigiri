@@ -40,11 +40,24 @@ else()
         -Werror)
 endif()
 
+# --- GTFS-RT PROTOBUF ---
+add_custom_command(
+  OUTPUT ${CMAKE_CURRENT_BINARY_DIR}/gtfsrt/gtfs-realtime.pb.h
+  OUTPUT ${CMAKE_CURRENT_BINARY_DIR}/gtfsrt/gtfs-realtime.pb.cc
+  COMMAND ${CMAKE_CROSSCOMPILING_EMULATOR} $<TARGET_FILE:protoc>
+    --cpp_out=${CMAKE_CURRENT_BINARY_DIR}/gtfsrt
+    --proto_path=${CMAKE_CURRENT_SOURCE_DIR}
+    ${CMAKE_CURRENT_SOURCE_DIR}/gtfs-realtime.proto
+  DEPENDS protoc
+  DEPENDS ${CMAKE_CURRENT_SOURCE_DIR}/gtfs-realtime.proto
+  COMMENT "Generating GTFS RT protocol buffers C++ code"
+)
+
 # --- LIB ---
 file(GLOB_RECURSE nigiri-files src/*.cc)
-add_library(nigiri ${nigiri-files})
-target_include_directories(nigiri PUBLIC include)
-target_link_libraries(nigiri PUBLIC cista geo utl fmt date miniz date-tz wyhash unordered_dense)
+add_library(nigiri ${nigiri-files} ${CMAKE_CURRENT_BINARY_DIR}/gtfsrt/gtfs-realtime.pb.cc)
+target_include_directories(nigiri PUBLIC include ${CMAKE_CURRENT_BINARY_DIR}/gtfsrt)
+target_link_libraries(nigiri PUBLIC cista geo utl fmt date miniz date-tz wyhash unordered_dense protobuf::libprotobuf-lite)
 target_compile_features(nigiri PUBLIC cxx_std_20)
 target_compile_options(nigiri PRIVATE ${nigiri-compile-options})
 
