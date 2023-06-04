@@ -203,6 +203,7 @@ void service_builder::write_services(const nigiri::source_idx_t src) {
                   bitfield_indices_, s.utc_traffic_days_,
                   [&]() { return tt_.register_bitfield(s.utc_traffic_days_); }),
               .route_idx_ = route_idx,
+              .first_dep_offset_ = 0_minutes,
               .external_trip_ids_ = {merged_trip},
               .section_attributes_ = section_attributes_,
               .section_providers_ = section_providers_,

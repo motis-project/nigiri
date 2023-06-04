@@ -155,12 +155,11 @@ void load_timetable(loader_config const& config,
         }
       };
 
-  std::basic_string<minutes_after_midnight_t> utc_time_mem;
   auto const add_trip = [&](std::basic_string<gtfs_trip_idx_t> const& trips,
                             bitfield const* traffic_days) {
     expand_trip(
         trip_data, noon_offsets, tt, trips, traffic_days, service.interval_,
-        tt.date_range_, utc_time_mem, [&](utc_trip&& s) {
+        tt.date_range_, [&](utc_trip&& s) {
           auto const* stop_seq = get_route_key(s.trips_);
           auto const clasz = trip_data.get(s.trips_.front()).route_->clasz_;
           auto const it = route_services.find(std::pair{clasz, stop_seq});
@@ -305,7 +304,7 @@ void load_timetable(loader_config const& config,
                   bitfield_indices, s.utc_traffic_days_,
                   [&]() { return tt.register_bitfield(s.utc_traffic_days_); }),
               .route_idx_ = route_idx,
-              .first_day_offset_ = s.first_day_offset_,
+              .first_dep_offset_ = s.first_dep_offset_,
               .external_trip_ids_ = external_trip_ids,
               .section_attributes_ = attributes,
               .section_providers_ = {first.route_->agency_},
@@ -340,6 +339,11 @@ void load_timetable(loader_config const& config,
     for (auto l = tt.location_routes_.size(); l != tt.n_locations(); ++l) {
       tt.location_routes_.emplace_back(location_routes[location_idx_t{l}]);
       assert(tt.location_routes_.size() == l + 1U);
+    }
+
+    // Build transport ranges.
+    for (auto const& t : trip_data.data_) {
+      tt.trip_transport_ranges_.emplace_back(t.transport_ranges_);
     }
   }
 }
