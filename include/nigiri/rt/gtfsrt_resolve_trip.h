@@ -9,9 +9,11 @@ namespace nigiri::rt {
 
 struct trip {};
 
-trip gtfsrt_resolve_trip(timetable const& tt,
-                         rt_timetable& rtt,
-                         source_idx_t const src,
-                         transit_realtime::TripDescriptor const& td);
+std::optional<transport> gtfsrt_resolve_trip(
+    date::sys_days const today,
+    timetable const&,
+    rt_timetable&,
+    source_idx_t,
+    transit_realtime::TripDescriptor const&);
 
 }  // namespace nigiri::rt

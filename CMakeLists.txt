@@ -57,7 +57,7 @@ add_custom_command(
 file(GLOB_RECURSE nigiri-files src/*.cc)
 add_library(nigiri ${nigiri-files} ${CMAKE_CURRENT_BINARY_DIR}/gtfsrt/gtfs-realtime.pb.cc)
 target_include_directories(nigiri PUBLIC include ${CMAKE_CURRENT_BINARY_DIR}/gtfsrt)
-target_link_libraries(nigiri PUBLIC cista geo utl fmt date miniz date-tz wyhash unordered_dense protobuf::libprotobuf-lite)
+target_link_libraries(nigiri PUBLIC cista geo utl fmt date miniz date-tz wyhash unordered_dense protobuf::libprotobuf)
 target_compile_features(nigiri PUBLIC cxx_std_20)
 target_compile_options(nigiri PRIVATE ${nigiri-compile-options})
 

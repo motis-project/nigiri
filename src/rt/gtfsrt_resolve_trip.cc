@@ -4,6 +4,7 @@
 
 #include "nigiri/loader/gtfs/parse_date.h"
 #include "nigiri/loader/gtfs/parse_time.h"
+#include "nigiri/common/day_list.h"
 #include "nigiri/rt/rt_timetable.h"
 #include "nigiri/rt/trip_update.h"
 #include "nigiri/timetable.h"
@@ -11,10 +12,12 @@
 
 namespace nigiri::rt {
 
-trip gtfsrt_resolve_trip(timetable const& tt,
-                         rt_timetable&,
-                         source_idx_t const src,
-                         transit_realtime::TripDescriptor const& td) {
+std::optional<transport> gtfsrt_resolve_trip(
+    date::sys_days const today,
+    timetable const& tt,
+    rt_timetable&,
+    source_idx_t const src,
+    transit_realtime::TripDescriptor const& td) {
   using loader::gtfs::hhmm_to_min;
   using loader::gtfs::parse_date;
 
@@ -27,13 +30,13 @@ trip gtfsrt_resolve_trip(timetable const& tt,
                std::tuple(src, std::string_view{b});
       });
 
-  auto const date = td.has_start_date()
-                        ? std::make_optional(
-                              parse_date(utl::parse<unsigned>(td.start_date())))
-                        : std::nullopt;
-  auto const time = td.has_start_time()
-                        ? std::make_optional(hhmm_to_min(td.start_date()))
-                        : std::nullopt;
+  auto const start_date = td.has_start_date()
+                              ? std::make_optional(parse_date(
+                                    utl::parse<unsigned>(td.start_date())))
+                              : std::nullopt;
+  auto const start_time = td.has_start_time()
+                              ? std::make_optional(hhmm_to_min(td.start_time()))
+                              : std::nullopt;
 
   auto const id_matches = [&](trip_id_idx_t const t_id_idx) {
     return tt.trip_id_src_[t_id_idx] == src &&
@@ -45,17 +48,27 @@ trip gtfsrt_resolve_trip(timetable const& tt,
       auto const gtfs_static_dep =
           tt.event_mam(t, interval.from_, event_type::kDep).as_duration() +
           tt.transport_first_dep_offset_[t];
-      std::cout << gtfs_static_dep << "\n";
+
+      if (start_time.has_value() && gtfs_static_dep != start_time) {
+        continue;
+      }
+
+      auto const day_offset = date::days{static_cast<int>(std::floor(
+          static_cast<float>(tt.transport_first_dep_offset_[t].count()) /
+          1440U))};
+      auto const day_idx = ((start_date.has_value() ? *start_date + day_offset
+                                                    : today - day_offset) -
+                            tt.internal_interval_days().from_)
+                               .count();
+
       auto const& traffic_days = tt.bitfields_[tt.transport_traffic_days_[t]];
-      (void)date;
-      (void)time;
-      (void)id_matches;
-      if (traffic_days.test(0U)) {
+      if (traffic_days.test(day_idx)) {
+        return transport{t, day_idx_t{day_idx}};
       }
     }
   }
 
-  return {};
+  return std::nullopt;
 }
 
 }  // namespace nigiri::rt

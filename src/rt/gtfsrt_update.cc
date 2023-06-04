@@ -34,6 +34,8 @@ statistics update_gtfsrt(timetable const& tt,
   auto stats = statistics{.total_entities_ = feed_message.entity_size()};
   auto const message_time = date::sys_seconds{
       std::chrono::seconds{feed_message.header().timestamp()}};
+  auto const today =
+      std::chrono::time_point_cast<date::sys_days::duration>(message_time);
   for (auto const& entity : feed_message.entity()) {
     if (entity.is_deleted()) {
       ++stats.unsupported_deleted_;
@@ -60,7 +62,7 @@ statistics update_gtfsrt(timetable const& tt,
           entity.has_trip_update(),
           "exactly one of [trip_update, vehicle, alert] must be present");
       auto const trp =
-          gtfsrt_resolve_trip(tt, rtt, src, entity.trip_update().trip());
+          gtfsrt_resolve_trip(today, tt, rtt, src, entity.trip_update().trip());
       (void)trp;
       ++stats.total_entities_success_;
     } catch (const std::exception& e) {
