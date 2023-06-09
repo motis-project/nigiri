@@ -413,7 +413,7 @@ struct timetable {
   // - only one '1' entry = one-based sequence 1,2,3,...
   // - only one '10' entry = 10-based sequence 10,20,30,...
   // - more than one entry: exact sequence number for each stop
-  vecvec<transport_idx_t, std::uint16_t> transport_stop_seq_numbers_;
+  vecvec<transport_idx_t, stop_idx_t> transport_stop_seq_numbers_;
 
   // Section meta infos:
   vector_map<attribute_idx_t, attribute> attributes_;

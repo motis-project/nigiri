@@ -7,11 +7,7 @@
 namespace nigiri::rt {
 
 struct run {
-  bool is_rt() const noexcept {
-    assert(valid());
-    return rt_.has_value();
-  }
-
+  bool is_rt() const noexcept { return rt_.has_value(); }
   bool valid() const noexcept { return t_.has_value() || rt_.has_value(); }
 
   // from static timetable, not set for additional services

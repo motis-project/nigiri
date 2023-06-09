@@ -30,6 +30,7 @@ DB,Deutsche Bahn,https://deutschebahn.com,Europe/Berlin
 A,A,,0.0,1.0,,
 B,B,,2.0,3.0,,
 C,C,,4.0,5.0,,
+D,D,,6.0,7.0,,
 )"}},
        {path{kCalendarDatesFile}, std::string{R"(service_id,date,exception_type
 S_RE1,20190503,1
@@ -52,7 +53,8 @@ R_RE2,S_RE2,T_RE2,RE 2,
 T_RE1,49:00:00,49:00:00,A,1,0,0
 T_RE1,50:00:00,50:00:00,B,2,0,0
 T_RE2,00:30:00,00:30:00,B,1,0,0
-T_RE2,00:30:00,00:30:00,C,2,0,0
+T_RE2,00:45:00,00:45:00,C,2,0,0
+T_RE2,01:00:00,01:00:00,D,3,0,0
 )"}}}};
 }
 
@@ -129,11 +131,20 @@ TEST(rt, gtfsrt_resolve_rt_trip) {
   td->set_start_date("20190504");
   td->set_trip_id("T_RE2");
 
-  auto const stop_update =
-      entity->mutable_trip_update()->add_stop_time_update();
-  stop_update->set_stop_sequence(1);
-  stop_update->mutable_arrival()->set_time(
-      to_unix(date::sys_days{2019_y / May / 4} + 35min));
+  auto const new_dep_time = date::sys_days{2019_y / May / 4} + 35min;
+  {
+    auto const stop_update =
+        entity->mutable_trip_update()->add_stop_time_update();
+    stop_update->set_stop_sequence(1);
+    stop_update->mutable_departure()->set_time(to_unix(new_dep_time));
+  }
+
+  {
+    auto const stop_update =
+        entity->mutable_trip_update()->add_stop_time_update();
+    stop_update->set_stop_id("D");
+    stop_update->mutable_arrival()->set_delay(600);
+  }
 
   auto rtt = rt_timetable{};
   rtt.transport_traffic_days_ = tt.transport_traffic_days_;
@@ -144,4 +155,13 @@ TEST(rt, gtfsrt_resolve_rt_trip) {
   auto const stats =
       rt::gtfsrt_update_msg(tt, rtt, source_idx_t{0}, "tag", msg);
   EXPECT_EQ(1U, stats.total_entities_success_);
+
+  auto const r = rt::gtfsrt_resolve_run(date::sys_days{2019_y / May / 4}, tt,
+                                        rtt, source_idx_t{0}, *td);
+  ASSERT_TRUE(r.valid());
+  ASSERT_TRUE(r.rt_.has_value());
+  ASSERT_TRUE(r.t_.has_value());
+  EXPECT_EQ(new_dep_time, rtt.event_time(*r.rt_, 0U, event_type::kDep));
+  EXPECT_EQ(date::sys_days{2019_y / May / 3} + 23h + 10min,
+            rtt.event_time(*r.rt_, 2U, event_type::kArr));
 }

@@ -31,6 +31,25 @@ struct rt_timetable {
     return clamp(d);
   }
 
+  void update_time(rt_transport_idx_t const rt_t,
+                   stop_idx_t const stop_idx,
+                   event_type const ev_type,
+                   unixtime_t const new_time) {
+    rt_transport_stop_times_[rt_t][stop_idx * 2 -
+                                   (ev_type == event_type::kArr ? 1 : 0)] =
+        unix_to_delta(new_time);
+  }
+
+  unixtime_t event_time(rt_transport_idx_t const rt_t,
+                        stop_idx_t const stop_idx,
+                        event_type const ev_type) {
+    return base_day_ +
+           std::chrono::minutes{
+               rt_transport_stop_times_[rt_t]
+                                       [stop_idx * 2 -
+                                        (ev_type == event_type::kArr ? 1 : 0)]};
+  }
+
   // Updated transport traffic days from the static timetable.
   // Initial: 100% copy from static, then adapted according to real-time
   // updates

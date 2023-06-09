@@ -30,7 +30,7 @@ struct stop_seq_number_range {
                std::tuple(o.idx_, o.seq_.data(), seq_.size());
       }
       stop_idx_t idx_;
-      std::span<stop_idx_t> seq_;
+      std::span<stop_idx_t const> seq_;
     };
 
     using difference_type = stop_idx_t;
@@ -39,7 +39,8 @@ struct stop_seq_number_range {
     using reference = const stop_idx_t&;
     using iterator_category = std::forward_iterator_tag;
 
-    iterator(stop_idx_t const idx, std::span<stop_idx_t> const seq_numbers)
+    iterator(stop_idx_t const idx,
+             std::span<stop_idx_t const> const seq_numbers)
         : seq_numbers_{fully_specified{idx, seq_numbers}} {}
 
     iterator(stop_idx_t const curr,
@@ -90,7 +91,7 @@ struct stop_seq_number_range {
     std::variant<compact, fully_specified> seq_numbers_;
   };
 
-  stop_seq_number_range(std::span<stop_idx_t> seq_numbers,
+  stop_seq_number_range(std::span<stop_idx_t const> seq_numbers,
                         stop_idx_t const location_seq_size)
       : seq_numbers_{seq_numbers}, location_seq_size_{location_seq_size} {}
 
@@ -126,6 +127,9 @@ struct stop_seq_number_range {
     throw std::runtime_error{"invalid seq"};
   }
 
+  friend iterator begin(stop_seq_number_range const& r) { return r.begin(); }
+  friend iterator end(stop_seq_number_range const& r) { return r.end(); }
+
   number_seq_type type() const {
     if (seq_numbers_.empty()) {
       return number_seq_type::kZeroBased;
@@ -140,7 +144,7 @@ struct stop_seq_number_range {
     }
   }
 
-  std::span<stop_idx_t> seq_numbers_;
+  std::span<stop_idx_t const> seq_numbers_;
   stop_idx_t location_seq_size_;
 };
 
