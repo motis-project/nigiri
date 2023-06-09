@@ -3,7 +3,7 @@
 #include "nigiri/rt/rt_timetable.h"
 #include "nigiri/timetable.h"
 
-#include "gtfs-realtime.pb.h"
+#include "gtfsrt/gtfs-realtime.pb.h"
 
 namespace nigiri::rt {
 

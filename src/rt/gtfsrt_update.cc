@@ -8,8 +8,6 @@
 #include "nigiri/rt/gtfsrt_resolve_trip.h"
 #include "nigiri/rt/run.h"
 
-#include "gtfs-realtime.pb.h"
-
 namespace gtfsrt = transit_realtime;
 namespace pb = google::protobuf;
 
