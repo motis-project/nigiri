@@ -24,6 +24,7 @@
 #include "nigiri/loader/gtfs/route_key.h"
 #include "nigiri/loader/gtfs/services.h"
 #include "nigiri/loader/gtfs/stop.h"
+#include "nigiri/loader/gtfs/stop_seq_number_encoding.h"
 #include "nigiri/loader/gtfs/stop_time.h"
 #include "nigiri/loader/gtfs/trip.h"
 #include "nigiri/loader/loader_interface.h"
@@ -247,6 +248,7 @@ void load_timetable(loader_config const& config,
     auto section_directions = std::basic_string<trip_direction_idx_t>{};
     auto section_lines = std::basic_string<trip_line_idx_t>{};
     auto external_trip_ids = std::basic_string<merged_trips_idx_t>{};
+    auto stop_seq_numbers = std::basic_string<stop_idx_t>{};
     auto location_routes = mutable_fws_multimap<location_idx_t, route_idx_t>{};
     for (auto const& [key, sub_routes] : route_services) {
       for (auto const& services : sub_routes) {
@@ -289,6 +291,7 @@ void load_timetable(loader_config const& config,
               external_trip_ids.push_back(merged_trip);
               section_directions.push_back(trp.headsign_);
               section_lines.push_back(line);
+              encode_seq_numbers(trp.seq_numbers_, stop_seq_numbers);
             } else {
               for (auto section = 0U; section != trp.stop_seq_.size() - 1;
                    ++section) {
@@ -309,7 +312,8 @@ void load_timetable(loader_config const& config,
               .section_attributes_ = attributes,
               .section_providers_ = {first.route_->agency_},
               .section_directions_ = section_directions,
-              .section_lines_ = section_lines});
+              .section_lines_ = section_lines,
+              .stop_seq_numbers_ = stop_seq_numbers});
         }
 
         tt.finish_route();

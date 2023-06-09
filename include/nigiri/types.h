@@ -183,6 +183,7 @@ struct debug {
 };
 
 struct transport {
+  CISTA_FRIEND_COMPARABLE(transport)
   CISTA_PRINTABLE(transport, "idx", "day")
   constexpr bool is_valid() const { return day_ != day_idx_t::invalid(); }
   transport_idx_t t_idx_{transport_idx_t::invalid()};

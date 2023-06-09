@@ -208,7 +208,8 @@ void service_builder::write_services(const nigiri::source_idx_t src) {
               .section_attributes_ = section_attributes_,
               .section_providers_ = section_providers_,
               .section_directions_ = section_directions_,
-              .section_lines_ = section_lines_});
+              .section_lines_ = section_lines_,
+              .stop_seq_numbers_ = stop_seq_numbers_});
         } catch (std::exception const& e) {
           log(log_lvl::error, "loader.hrd.service",
               "unable to load service {}: {}", ref.origin_, e.what());

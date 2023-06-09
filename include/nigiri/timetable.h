@@ -122,6 +122,7 @@ struct timetable {
     std::basic_string<provider_idx_t> const& section_providers_;
     std::basic_string<trip_direction_idx_t> const& section_directions_;
     std::basic_string<trip_line_idx_t> const& section_lines_;
+    std::basic_string<stop_idx_t> const& stop_seq_numbers_;
   };
 
   template <typename TripId>
@@ -204,6 +205,7 @@ struct timetable {
     transport_section_providers_.emplace_back(t.section_providers_);
     transport_section_directions_.emplace_back(t.section_directions_);
     transport_section_lines_.emplace_back(t.section_lines_);
+    transport_stop_seq_numbers_.emplace_back(t.stop_seq_numbers_);
 
     assert(transport_traffic_days_.size() == transport_route_.size());
     assert(transport_traffic_days_.size() == transport_to_trip_section_.size());
@@ -405,9 +407,13 @@ struct timetable {
   // Merged trips info
   vecvec<merged_trips_idx_t, trip_idx_t> merged_trips_;
 
-  // Trip index -> list of section ranges where this trip was expanded
-  vecvec<trip_idx_t, pair<transport_idx_t, interval<std::uint32_t>>>
-      trip_idx_to_transport_idx_;
+  // Transport -> stop sequence numbers (relevant for GTFS-RT stop matching)
+  // Compaction:
+  // - empty = zero-based sequence 0,1,2,...
+  // - only one '1' entry = one-based sequence 1,2,3,...
+  // - only one '10' entry = 10-based sequence 10,20,30,...
+  // - more than one entry: exact sequence number for each stop
+  vecvec<transport_idx_t, std::uint16_t> transport_stop_seq_numbers_;
 
   // Section meta infos:
   vector_map<attribute_idx_t, attribute> attributes_;
@@ -417,6 +423,9 @@ struct timetable {
   vector_map<trip_direction_idx_t, trip_direction_t> trip_directions_;
   vecvec<trip_line_idx_t, char> trip_lines_;
 
+  // Transport to section meta infos; Compaction:
+  // - only one value = value is valid for the whole run
+  // - multiple values = one value for each section
   vecvec<transport_idx_t, attribute_combination_idx_t>
       transport_section_attributes_;
   vecvec<transport_idx_t, provider_idx_t> transport_section_providers_;
