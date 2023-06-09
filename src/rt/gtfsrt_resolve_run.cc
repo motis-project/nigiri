@@ -71,22 +71,10 @@ void resolve_static(date::sys_days const today,
   }
 }
 
-void resolve_rt(rt_timetable const& rtt,
-                transit_realtime::TripDescriptor const& td,
-                run& output) {
-  using namespace transit_realtime;
-  switch (td.schedule_relationship()) {
-      // SCHEDULED and CANCELED are known from the static timetable.
-      // -> Check if there's already a real-time instance.
-    case TripDescriptor_ScheduleRelationship_SCHEDULED:
-    case TripDescriptor_ScheduleRelationship_CANCELED: {
-      auto const it = rtt.static_trip_lookup_.find(*output.t_);
-      output.rt_ = it == end(rtt.static_trip_lookup_)
-                       ? std::nullopt
-                       : std::optional{it->second};
-    } break;
-    default: return;
-  }
+void resolve_rt(rt_timetable const& rtt, run& output) {
+  auto const it = rtt.static_trip_lookup_.find(*output.t_);
+  output.rt_ = it == end(rtt.static_trip_lookup_) ? std::nullopt
+                                                  : std::optional{it->second};
 }
 
 run gtfsrt_resolve_run(date::sys_days const today,
@@ -96,7 +84,7 @@ run gtfsrt_resolve_run(date::sys_days const today,
                        transit_realtime::TripDescriptor const& td) {
   auto r = run{};
   resolve_static(today, tt, src, td, r);
-  resolve_rt(rtt, td, r);
+  resolve_rt(rtt, r);
   return r;
 }
 
