@@ -20,6 +20,7 @@ struct statistics {
   int no_trip_update_{0};
   int trip_update_without_trip_{0};
   int trip_resolve_error_{0};
+  int unsupported_schedule_relationship_{0};
 };
 
 statistics gtfsrt_update_msg(timetable const&,

@@ -5,7 +5,7 @@
 #include "utl/pairwise.h"
 
 #include "nigiri/logging.h"
-#include "nigiri/rt/gtfsrt_resolve_trip.h"
+#include "nigiri/rt/gtfsrt_resolve_run.h"
 #include "nigiri/rt/run.h"
 
 namespace gtfsrt = transit_realtime;
@@ -111,11 +111,17 @@ statistics gtfsrt_update_msg(timetable const& tt,
     } else if (!entity.trip_update().trip().has_trip_id()) {
       ++stats.unsupported_no_trip_id_;
       continue;
+    } else if (entity.trip_update().trip().schedule_relationship() !=
+                   gtfsrt::TripDescriptor_ScheduleRelationship_SCHEDULED &&
+               entity.trip_update().trip().schedule_relationship() !=
+                   gtfsrt::TripDescriptor_ScheduleRelationship_CANCELED) {
+      ++stats.unsupported_schedule_relationship_;
+      continue;
     }
 
     try {
       auto const td = entity.trip_update().trip();
-      auto const r = gtfsrt_resolve_trip(today, tt, rtt, src, td);
+      auto const r = gtfsrt_resolve_run(today, tt, rtt, src, td);
 
       if (!r.valid()) {
         log(log_lvl::error, "rt.gtfs.resolve", "could not resolve {}",

@@ -4,7 +4,7 @@
 #include "nigiri/loader/gtfs/load_timetable.h"
 #include "nigiri/timetable.h"
 
-#include "nigiri/rt/gtfsrt_resolve_trip.h"
+#include "nigiri/rt/gtfsrt_resolve_run.h"
 #include "nigiri/rt/gtfsrt_update.h"
 
 using namespace nigiri;
@@ -71,8 +71,8 @@ TEST(rt, gtfsrt_resolve_static_trip) {
     *td.mutable_start_date() = "20190503";
     *td.mutable_trip_id() = "T_RE1";
 
-    auto const t = rt::gtfsrt_resolve_trip(date::sys_days{2019_y / May / 3}, tt,
-                                           rtt, source_idx_t{0}, td);
+    auto const t = rt::gtfsrt_resolve_run(date::sys_days{2019_y / May / 3}, tt,
+                                          rtt, source_idx_t{0}, td);
     ASSERT_TRUE(t.valid());
   }
 
@@ -82,8 +82,8 @@ TEST(rt, gtfsrt_resolve_static_trip) {
     *td.mutable_start_date() = "20190504";
     *td.mutable_trip_id() = "T_RE2";
 
-    auto const t = rt::gtfsrt_resolve_trip(date::sys_days{2019_y / May / 4}, tt,
-                                           rtt, source_idx_t{0}, td);
+    auto const t = rt::gtfsrt_resolve_run(date::sys_days{2019_y / May / 4}, tt,
+                                          rtt, source_idx_t{0}, td);
     ASSERT_TRUE(t.valid());
   }
 
@@ -94,8 +94,8 @@ TEST(rt, gtfsrt_resolve_static_trip) {
     // 2019-05-03 00:30 CEST is
     // 2019-05-02 21:30 UTC
     // -> we give "today" in UTC (start_day would be local days)
-    auto const t = rt::gtfsrt_resolve_trip(date::sys_days{2019_y / May / 2}, tt,
-                                           rtt, source_idx_t{0}, td);
+    auto const t = rt::gtfsrt_resolve_run(date::sys_days{2019_y / May / 2}, tt,
+                                          rtt, source_idx_t{0}, td);
     ASSERT_TRUE(t.valid());
   }
 }

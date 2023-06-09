@@ -1,4 +1,4 @@
-#include "nigiri/rt/gtfsrt_resolve_trip.h"
+#include "nigiri/rt/gtfsrt_resolve_run.h"
 
 #include "utl/parser/arg_parser.h"
 
@@ -89,11 +89,11 @@ void resolve_rt(rt_timetable const& rtt,
   }
 }
 
-run gtfsrt_resolve_trip(date::sys_days const today,
-                        timetable const& tt,
-                        rt_timetable& rtt,
-                        source_idx_t const src,
-                        transit_realtime::TripDescriptor const& td) {
+run gtfsrt_resolve_run(date::sys_days const today,
+                       timetable const& tt,
+                       rt_timetable& rtt,
+                       source_idx_t const src,
+                       transit_realtime::TripDescriptor const& td) {
   auto r = run{};
   resolve_static(today, tt, src, td, r);
   resolve_rt(rtt, td, r);
