@@ -5,11 +5,14 @@
 #include "nigiri/timetable.h"
 
 #include "nigiri/rt/gtfsrt_resolve_trip.h"
+#include "nigiri/rt/gtfsrt_update.h"
 
 using namespace nigiri;
 using namespace nigiri::loader;
 using namespace nigiri::loader::gtfs;
 using namespace date;
+using std::chrono::operator""h;
+using std::chrono::operator""min;
 
 namespace {
 
@@ -55,7 +58,7 @@ T_RE2,00:30:00,00:30:00,C,2,0,0
 
 }  // namespace
 
-TEST(rt, gtfsrt_resolve_trip) {
+TEST(rt, gtfsrt_resolve_static_trip) {
   timetable tt;
   rt_timetable rtt;
   tt.date_range_ = {date::sys_days{2019_y / March / 25},
@@ -70,7 +73,7 @@ TEST(rt, gtfsrt_resolve_trip) {
 
     auto const t = rt::gtfsrt_resolve_trip(date::sys_days{2019_y / May / 3}, tt,
                                            rtt, source_idx_t{0}, td);
-    ASSERT_TRUE(t.has_value());
+    ASSERT_TRUE(t.valid());
   }
 
   {  // test start time that's on the prev. day in UTC
@@ -81,7 +84,7 @@ TEST(rt, gtfsrt_resolve_trip) {
 
     auto const t = rt::gtfsrt_resolve_trip(date::sys_days{2019_y / May / 4}, tt,
                                            rtt, source_idx_t{0}, td);
-    ASSERT_TRUE(t.has_value());
+    ASSERT_TRUE(t.valid());
   }
 
   {  // test without start_time and start_date (assuming "today" as date)
@@ -93,6 +96,52 @@ TEST(rt, gtfsrt_resolve_trip) {
     // -> we give "today" in UTC (start_day would be local days)
     auto const t = rt::gtfsrt_resolve_trip(date::sys_days{2019_y / May / 2}, tt,
                                            rtt, source_idx_t{0}, td);
-    ASSERT_TRUE(t.has_value());
+    ASSERT_TRUE(t.valid());
   }
+}
+
+TEST(rt, gtfsrt_resolve_rt_trip) {
+  auto const to_unix = [](auto&& x) {
+    return std::chrono::time_point_cast<std::chrono::seconds>(x)
+        .time_since_epoch()
+        .count();
+  };
+
+  timetable tt;
+  tt.date_range_ = {date::sys_days{2019_y / March / 25},
+                    date::sys_days{2019_y / November / 1}};
+  load_timetable({}, source_idx_t{0}, test_files(), tt);
+
+  transit_realtime::FeedMessage msg;
+
+  auto const hdr = msg.mutable_header();
+  hdr->set_gtfs_realtime_version("2.0");
+  hdr->set_incrementality(
+      transit_realtime::FeedHeader_Incrementality_FULL_DATASET);
+  hdr->set_timestamp(to_unix(date::sys_days{2019_y / May / 4} + 9h));
+
+  auto const entity = msg.add_entity();
+  entity->set_id("1");
+  entity->set_is_deleted(false);
+
+  auto const td = entity->mutable_trip_update()->mutable_trip();
+  td->set_start_time("00:30:00");
+  td->set_start_date("20190504");
+  td->set_trip_id("T_RE2");
+
+  auto const stop_update =
+      entity->mutable_trip_update()->add_stop_time_update();
+  stop_update->set_stop_sequence(1);
+  stop_update->mutable_arrival()->set_time(
+      to_unix(date::sys_days{2019_y / May / 4} + 35min));
+
+  auto rtt = rt_timetable{};
+  rtt.transport_traffic_days_ = tt.transport_traffic_days_;
+  rtt.bitfields_ = tt.bitfields_;
+  rtt.base_day_ = date::sys_days{2019_y / May / 3};
+  rtt.base_day_idx_ = tt.day_idx(rtt.base_day_);
+
+  auto const stats =
+      rt::gtfsrt_update_msg(tt, rtt, source_idx_t{0}, "tag", msg);
+  EXPECT_EQ(1U, stats.total_entities_success_);
 }

@@ -1,5 +1,9 @@
+#pragma once
+
 #include "nigiri/rt/rt_timetable.h"
 #include "nigiri/timetable.h"
+
+#include "gtfs-realtime.pb.h"
 
 namespace nigiri::rt {
 
@@ -15,12 +19,19 @@ struct statistics {
   int unsupported_no_trip_id_{0};
   int no_trip_update_{0};
   int trip_update_without_trip_{0};
+  int trip_resolve_error_{0};
 };
 
-statistics gtfsrt_update(timetable const&,
-                         rt_timetable&,
-                         source_idx_t const,
-                         std::string_view tag,
-                         std::string_view protobuf);
+statistics gtfsrt_update_msg(timetable const&,
+                             rt_timetable&,
+                             source_idx_t const,
+                             std::string_view tag,
+                             transit_realtime::FeedMessage const&);
+
+statistics gtfsrt_update_buf(timetable const&,
+                             rt_timetable&,
+                             source_idx_t const,
+                             std::string_view tag,
+                             std::string_view protobuf);
 
 }  // namespace nigiri::rt

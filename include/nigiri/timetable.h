@@ -214,7 +214,7 @@ struct timetable {
   }
 
   std::span<delta const> event_times_at_stop(route_idx_t const r,
-                                             std::size_t const stop_idx,
+                                             stop_idx_t const stop_idx,
                                              event_type const ev_type) const {
     auto const n_transports =
         static_cast<unsigned>(route_transport_ranges_[r].size());
@@ -226,7 +226,7 @@ struct timetable {
 
   delta event_mam(route_idx_t const r,
                   transport_idx_t t,
-                  std::size_t const stop_idx,
+                  stop_idx_t const stop_idx,
                   event_type const ev_type) const {
     auto const range = route_transport_ranges_[r];
     auto const n_transports = static_cast<unsigned>(range.size());
@@ -238,13 +238,13 @@ struct timetable {
   }
 
   delta event_mam(transport_idx_t t,
-                  std::size_t const stop_idx,
+                  stop_idx_t const stop_idx,
                   event_type const ev_type) const {
     return event_mam(transport_route_[t], t, stop_idx, ev_type);
   }
 
   unixtime_t event_time(nigiri::transport t,
-                        size_t const stop_idx,
+                        stop_idx_t const stop_idx,
                         event_type const ev_type) const {
     return unixtime_t{internal_interval_days().from_ + to_idx(t.day_) * 1_days +
                       event_mam(t.t_idx_, stop_idx, ev_type).as_duration()};
@@ -342,9 +342,11 @@ struct timetable {
   // Storage for trip id strings + source
   vecvec<trip_id_idx_t, char> trip_id_strings_;
   vector_map<trip_id_idx_t, source_idx_t> trip_id_src_;
+
+  // Trip train number, if available (otherwise 0)
   vector_map<trip_id_idx_t, std::uint32_t> trip_train_nr_;
 
-  // Trip index -> reference transport + stop range
+  // Trip index -> all transports with a stop interval
   vecvec<trip_idx_t, transport_range_t> trip_transport_ranges_;
 
   // Trip -> debug info
@@ -354,7 +356,7 @@ struct timetable {
   // Trip index -> display name
   vecvec<trip_idx_t, char> trip_display_names_;
 
-  // Route -> From (inclusive) and to index (exclusive) of expanded trips
+  // Route -> range of transports in this route (from/to transport_idx_t)
   vector_map<route_idx_t, interval<transport_idx_t>> route_transport_ranges_;
 
   // Route -> list of stops
@@ -404,8 +406,7 @@ struct timetable {
   vecvec<merged_trips_idx_t, trip_idx_t> merged_trips_;
 
   // Trip index -> list of section ranges where this trip was expanded
-  mutable_fws_multimap<trip_idx_t,
-                       pair<transport_idx_t, interval<std::uint32_t>>>
+  vecvec<trip_idx_t, pair<transport_idx_t, interval<std::uint32_t>>>
       trip_idx_to_transport_idx_;
 
   // Section meta infos:

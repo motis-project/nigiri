@@ -12,12 +12,11 @@
 
 namespace nigiri::rt {
 
-std::optional<transport> gtfsrt_resolve_trip(
-    date::sys_days const today,
-    timetable const& tt,
-    rt_timetable&,
-    source_idx_t const src,
-    transit_realtime::TripDescriptor const& td) {
+void resolve_static(date::sys_days const today,
+                    timetable const& tt,
+                    source_idx_t const src,
+                    transit_realtime::TripDescriptor const& td,
+                    run& output) {
   using loader::gtfs::hhmm_to_min;
   using loader::gtfs::parse_date;
 
@@ -63,12 +62,48 @@ std::optional<transport> gtfsrt_resolve_trip(
 
       auto const& traffic_days = tt.bitfields_[tt.transport_traffic_days_[t]];
       if (traffic_days.test(day_idx)) {
-        return transport{t, day_idx_t{day_idx}};
+        output.t_ = transport{t, day_idx_t{day_idx}};
       }
     }
   }
+}
 
-  return std::nullopt;
+void resolve_rt(rt_timetable const& rtt,
+                transit_realtime::TripDescriptor const& td,
+                run& output) {
+  using namespace transit_realtime;
+  switch (td.schedule_relationship()) {
+      // SCHEDULED and CANCELED are known from the static timetable.
+      // -> Check if there's already a real-time instance.
+    case TripDescriptor_ScheduleRelationship_SCHEDULED: [[fallthrough]];
+    case TripDescriptor_ScheduleRelationship_CANCELED: {
+      auto const it = rtt.static_trip_lookup_.find(*output.t_);
+      output.rt_ = it == end(rtt.static_trip_lookup_)
+                       ? std::nullopt
+                       : std::optional{it->second};
+    } break;
+
+    // ADDED and UNSCHEDULED cannot be known from the static timetable.
+    // -> We can only look up the real-time instance.
+    case TripDescriptor_ScheduleRelationship_ADDED: [[fallthrough]];
+    case TripDescriptor_ScheduleRelationship_UNSCHEDULED: {
+      auto const it = rtt.additional_trips_lookup_.find(td.trip_id());
+      output.rt_ = it == end(rtt.additional_trips_lookup_)
+                       ? std::nullopt
+                       : std::optional{it->second};
+    } break;
+  }
+}
+
+run gtfsrt_resolve_trip(date::sys_days const today,
+                        timetable const& tt,
+                        rt_timetable& rtt,
+                        source_idx_t const src,
+                        transit_realtime::TripDescriptor const& td) {
+  auto r = run{};
+  resolve_static(today, tt, src, td, r);
+  resolve_rt(rtt, td, r);
+  return r;
 }
 
 }  // namespace nigiri::rt
