@@ -23,12 +23,17 @@ namespace nigiri {
 //   up with their trip_id in the RT timetable.
 struct rt_timetable {
   delta_t unix_to_delta(unixtime_t const t) const {
-    return (t - std::chrono::time_point_cast<unixtime_t::duration>(base_day_))
-        .count();
+    auto const d =
+        (t - std::chrono::time_point_cast<unixtime_t::duration>(base_day_))
+            .count();
+    assert(d >= std::numeric_limits<delta_t>::min());
+    assert(d <= std::numeric_limits<delta_t>::max());
+    return clamp(d);
   }
 
   // Updated transport traffic days from the static timetable.
-  // Initial: 100% copy from static, then adapted according to real-time updates
+  // Initial: 100% copy from static, then adapted according to real-time
+  // updates
   vector_map<transport_idx_t, bitfield_idx_t> transport_traffic_days_;
   vector_map<bitfield_idx_t, bitfield> bitfields_;
 

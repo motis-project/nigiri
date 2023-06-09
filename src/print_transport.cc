@@ -15,7 +15,7 @@ namespace nigiri {
 void print_transport(timetable const& tt,
                      std::ostream& out,
                      transport x,
-                     interval<unsigned> stop_range,
+                     interval<stop_idx_t> stop_range,
                      unsigned const indent_width,
                      bool const with_debug) {
   auto const i = x.t_idx_;
@@ -26,9 +26,9 @@ void print_transport(timetable const& tt,
   assert(tt.route_transport_ranges_.at(route_idx).contains(x.t_idx_));
 
   auto const from =
-      std::min(static_cast<unsigned>(stop_seq.size()), stop_range.from_);
+      std::min(static_cast<stop_idx_t>(stop_seq.size()), stop_range.from_);
   auto const to =
-      std::min(static_cast<unsigned>(stop_seq.size()), stop_range.to_);
+      std::min(static_cast<stop_idx_t>(stop_seq.size()), stop_range.to_);
   for (auto stop_idx = from; stop_idx != to; ++stop_idx) {
     auto const s = stop{stop_seq.at(stop_idx)};
     auto const location_idx = s.location_idx();
@@ -122,18 +122,20 @@ void print_transport_1(timetable const& tt,
                        std::ostream& out,
                        transport x,
                        bool const with_debug) {
-  print_transport(tt, out, x,
-                  interval{0U, std::numeric_limits<unsigned>::max()}, 0U,
-                  with_debug);
+  print_transport(
+      tt, out, x,
+      interval{stop_idx_t{0U}, std::numeric_limits<stop_idx_t>::max()}, 0U,
+      with_debug);
 }
 
 void print_transport(timetable const& tt,
                      std::ostream& out,
                      transport x,
                      bool const with_debug) {
-  print_transport(tt, out, x,
-                  interval{0U, std::numeric_limits<unsigned>::max()}, 0U,
-                  with_debug);
+  print_transport(
+      tt, out, x,
+      interval{stop_idx_t{0U}, std::numeric_limits<stop_idx_t>::max()}, 0U,
+      with_debug);
 }
 
 }  // namespace nigiri

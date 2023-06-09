@@ -67,7 +67,7 @@ TEST(gtfs, services) {
                     date::sys_days{2019_y / November / 1}};
   load_timetable({}, source_idx_t{0}, test_files(), tt);
 
-  auto const unixtime = [&](transport const t, unsigned const stop_idx,
+  auto const unixtime = [&](transport const t, stop_idx_t const stop_idx,
                             event_type const ev_type) {
     return std::chrono::time_point_cast<std::chrono::seconds>(
                tt.event_time(t, stop_idx, ev_type))
@@ -75,7 +75,7 @@ TEST(gtfs, services) {
         .count();
   };
 
-  auto const get_tz = [&](transport const t, unsigned const stop_idx) {
+  auto const get_tz = [&](transport const t, stop_idx_t const stop_idx) {
     auto const r = tt.transport_route_[t.t_idx_];
     auto const l = tt.route_location_seq_[r][stop_idx];
     auto const tz_idx =
@@ -86,7 +86,7 @@ TEST(gtfs, services) {
         tz.as<pair<string, void const*>>().second);
   };
 
-  auto const iso = [&](transport const t, unsigned const stop_idx,
+  auto const iso = [&](transport const t, stop_idx_t const stop_idx,
                        event_type const ev_type) {
     return date::format(
         "%FT%R%Ez",

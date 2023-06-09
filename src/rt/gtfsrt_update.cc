@@ -46,7 +46,7 @@ void create_rt_run(source_idx_t const src,
     auto times =
         rtt.rt_transport_stop_times_.add_back_sized(location_seq.size() * 2U);
     auto i = 0U;
-    auto stop_idx = 0U;
+    auto stop_idx = stop_idx_t{0U};
     for (auto const [a, b] : utl::pairwise(location_seq)) {
       CISTA_UNUSED_PARAM(a)
       CISTA_UNUSED_PARAM(b)
@@ -77,11 +77,8 @@ void create_rt_run(source_idx_t const src,
 }
 
 void update_run(
-    run const& r,
-    pb::RepeatedPtrField<gtfsrt::TripUpdate_StopTimeUpdate> const& upd) {
-  for (auto i = 0U; i != r.) {
-  }
-}
+    run const&,
+    pb::RepeatedPtrField<gtfsrt::TripUpdate_StopTimeUpdate> const&) {}
 
 statistics gtfsrt_update_msg(timetable const& tt,
                              rt_timetable& rtt,
@@ -147,15 +144,16 @@ statistics gtfsrt_update_buf(timetable const& tt,
                              rt_timetable& rtt,
                              source_idx_t const src,
                              std::string_view tag,
-                             std::string_view s) {
+                             std::string_view protobuf) {
   gtfsrt::FeedMessage msg;
 
   auto const success =
-      msg.ParseFromArray(reinterpret_cast<void const*>(s.data()), s.size());
+      msg.ParseFromArray(reinterpret_cast<void const*>(protobuf.data()),
+                         static_cast<int>(protobuf.size()));
   if (!success) {
     log(log_lvl::error, "rt.gtfs",
         "GTFS-RT error (tag={}): unable to parse protobuf message: {}", tag,
-        s.substr(0, std::min(s.size(), size_t{1000U})));
+        protobuf.substr(0, std::min(protobuf.size(), size_t{1000U})));
     return {.parser_error_ = true};
   }
 

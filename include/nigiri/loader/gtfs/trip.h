@@ -95,7 +95,7 @@ struct trip {
   bool requires_sorting_{false};
   std::uint32_t from_line_{0U}, to_line_{0U};
 
-  trip_idx_t trip_idx_;
+  trip_idx_t trip_idx_{trip_idx_t::invalid()};
   std::vector<transport_range_t> transport_ranges_;
 };
 

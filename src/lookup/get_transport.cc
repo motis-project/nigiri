@@ -45,7 +45,7 @@ void for_each_schedule_transport(timetable const& tt,
       }
       auto const first_dep = tt.event_mam(t, interval.from_, event_type::kDep);
       auto const day_offset =
-          (first_dep.as_duration() + tz_offset).count() / 1440U;
+          (first_dep.as_duration() + tz_offset).count() / 1440;
       auto const t_day =
           tt.day_idx(date::sys_days{day} - day_offset * date::days{1});
       auto const& traffic_days = tt.bitfields_[tt.transport_traffic_days_[t]];

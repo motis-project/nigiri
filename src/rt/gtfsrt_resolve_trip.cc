@@ -20,7 +20,7 @@ void resolve_static(date::sys_days const today,
   using loader::gtfs::hhmm_to_min;
   using loader::gtfs::parse_date;
 
-  auto const trip_id = td.trip_id();
+  auto const& trip_id = td.trip_id();
   auto const lb = std::lower_bound(
       begin(tt.trip_id_to_idx_), end(tt.trip_id_to_idx_), trip_id,
       [&](pair<trip_id_idx_t, trip_idx_t> const& a, string const& b) {
@@ -59,9 +59,12 @@ void resolve_static(date::sys_days const today,
                                                     : today - day_offset) -
                             tt.internal_interval_days().from_)
                                .count();
+      if (day_idx > kMaxDays || day_idx < 0) {
+        continue;
+      }
 
       auto const& traffic_days = tt.bitfields_[tt.transport_traffic_days_[t]];
-      if (traffic_days.test(day_idx)) {
+      if (traffic_days.test(static_cast<std::size_t>(day_idx))) {
         output.t_ = transport{t, day_idx_t{day_idx}};
       }
     }
@@ -75,23 +78,14 @@ void resolve_rt(rt_timetable const& rtt,
   switch (td.schedule_relationship()) {
       // SCHEDULED and CANCELED are known from the static timetable.
       // -> Check if there's already a real-time instance.
-    case TripDescriptor_ScheduleRelationship_SCHEDULED: [[fallthrough]];
+    case TripDescriptor_ScheduleRelationship_SCHEDULED:
     case TripDescriptor_ScheduleRelationship_CANCELED: {
       auto const it = rtt.static_trip_lookup_.find(*output.t_);
       output.rt_ = it == end(rtt.static_trip_lookup_)
                        ? std::nullopt
                        : std::optional{it->second};
     } break;
-
-    // ADDED and UNSCHEDULED cannot be known from the static timetable.
-    // -> We can only look up the real-time instance.
-    case TripDescriptor_ScheduleRelationship_ADDED: [[fallthrough]];
-    case TripDescriptor_ScheduleRelationship_UNSCHEDULED: {
-      auto const it = rtt.additional_trips_lookup_.find(td.trip_id());
-      output.rt_ = it == end(rtt.additional_trips_lookup_)
-                       ? std::nullopt
-                       : std::optional{it->second};
-    } break;
+    default: return;
   }
 }
 

@@ -223,9 +223,9 @@ void load_timetable(loader_config const& config,
         tt.register_source_file((d.path() / kStopTimesFile).generic_string());
     auto trip_id_buf = fmt::memory_buffer{};
     for (auto& trp : trip_data.data_) {
-      int train_nr = 0;
+      std::uint32_t train_nr = 0U;
       if (is_train_number(trp.short_name_)) {
-        train_nr = std::stoi(trp.short_name_);
+        train_nr = static_cast<std::uint32_t>(std::stoul(trp.short_name_));
       } else if (auto const headsign = tt.trip_direction(trp.headsign_);
                  is_train_number(headsign)) {
         std::from_chars(headsign.data(), headsign.data() + headsign.size(),

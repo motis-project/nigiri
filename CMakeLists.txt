@@ -30,6 +30,9 @@ if ("${CMAKE_CXX_COMPILER_ID}" STREQUAL "Clang")
         -Wno-missing-noreturn
         -Wno-undefined-func-template
         -Wno-unsafe-buffer-usage
+        -Wno-reserved-macro-identifier
+        -Wno-reserved-identifier
+        -Wno-c++20-compat
         -Werror)
 elseif(MSVC)
   set(nigiri-compile-options /WX)
@@ -56,7 +59,8 @@ add_custom_command(
 # --- LIB ---
 file(GLOB_RECURSE nigiri-files src/*.cc)
 add_library(nigiri ${nigiri-files} ${CMAKE_CURRENT_BINARY_DIR}/gtfsrt/gtfs-realtime.pb.cc)
-target_include_directories(nigiri PUBLIC include ${CMAKE_CURRENT_BINARY_DIR}/gtfsrt)
+target_include_directories(nigiri PUBLIC include)
+target_include_directories(nigiri SYSTEM PUBLIC ${CMAKE_CURRENT_BINARY_DIR}/gtfsrt)
 target_link_libraries(nigiri PUBLIC cista geo utl fmt date miniz date-tz wyhash unordered_dense protobuf::libprotobuf)
 target_compile_features(nigiri PUBLIC cxx_std_20)
 target_compile_options(nigiri PRIVATE ${nigiri-compile-options})

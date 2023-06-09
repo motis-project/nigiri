@@ -311,7 +311,7 @@ private:
     auto et = transport{};
     for (auto i = 0U; i != stop_seq.size(); ++i) {
       auto const stop_idx =
-          static_cast<unsigned>(kFwd ? i : stop_seq.size() - i - 1U);
+          static_cast<stop_idx_t>(kFwd ? i : stop_seq.size() - i - 1U);
       auto const stp = stop{stop_seq[stop_idx]};
       auto const l_idx = cista::to_idx(stp.location_idx());
       auto const is_last = i == stop_seq.size() - 1U;
@@ -429,7 +429,7 @@ private:
 
   transport get_earliest_transport(unsigned const k,
                                    route_idx_t const r,
-                                   unsigned const stop_idx,
+                                   stop_idx_t const stop_idx,
                                    day_idx_t const day_at_stop,
                                    minutes_after_midnight_t const mam_at_stop,
                                    location_idx_t const l) {
@@ -528,7 +528,7 @@ private:
 
   delta_t time_at_stop(route_idx_t const r,
                        transport const t,
-                       unsigned const stop_idx,
+                       stop_idx_t const stop_idx,
                        event_type const ev_type) {
     trace("time at stop: {}\n",
           tt_.to_unixtime(

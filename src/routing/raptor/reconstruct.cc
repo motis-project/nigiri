@@ -198,7 +198,7 @@ void reconstruct_journey(timetable const& tt,
 
   auto const find_entry_in_prev_round =
       [&](unsigned const k, transport const& t, route_idx_t const r,
-          std::size_t const from_stop_idx,
+          stop_idx_t const from_stop_idx,
           delta_t const time) -> std::optional<journey::leg> {
     auto const& stop_seq = tt.route_location_seq_[r];
 
@@ -206,7 +206,7 @@ void reconstruct_journey(timetable const& tt,
         kFwd ? from_stop_idx + 1 : stop_seq.size() - from_stop_idx;
     for (auto i = 1U; i != n_stops; ++i) {
       auto const stop_idx =
-          static_cast<unsigned>(kFwd ? from_stop_idx - i : from_stop_idx + i);
+          static_cast<stop_idx_t>(kFwd ? from_stop_idx - i : from_stop_idx + i);
       auto const stp = stop{stop_seq[stop_idx]};
       auto const l = stp.location_idx();
 
@@ -232,7 +232,7 @@ void reconstruct_journey(timetable const& tt,
             delta_to_unix(base, event_time),
             delta_to_unix(base, time),
             journey::transport_enter_exit{
-                t, stop_idx, static_cast<unsigned>(from_stop_idx)}};
+                t, stop_idx, static_cast<stop_idx_t>(from_stop_idx)}};
       } else {
         trace_rc(
             "      ENTRY NOT POSSIBLE AT {}: k={} k-1={}, best_at_stop=min({}, "
@@ -263,7 +263,7 @@ void reconstruct_journey(timetable const& tt,
               delta_to_unix(base, event_time),
               delta_to_unix(base, time),
               journey::transport_enter_exit{
-                  t, stop_idx, static_cast<unsigned>(from_stop_idx)}};
+                  t, stop_idx, static_cast<stop_idx_t>(from_stop_idx)}};
         }
       }
     }
@@ -273,7 +273,7 @@ void reconstruct_journey(timetable const& tt,
 
   auto const get_route_transport =
       [&](unsigned const k, delta_t const time, route_idx_t const r,
-          std::size_t const stop_idx) -> std::optional<journey::leg> {
+          stop_idx_t const stop_idx) -> std::optional<journey::leg> {
     auto const [day, mam] = split_day_mam(base_day_idx, time);
 
     for (auto const t : tt.route_transport_ranges_[r]) {
@@ -325,7 +325,7 @@ void reconstruct_journey(timetable const& tt,
           continue;
         }
 
-        auto leg = get_route_transport(k, time, r, i);
+        auto leg = get_route_transport(k, time, r, static_cast<stop_idx_t>(i));
         if (leg.has_value()) {
           return leg;
         }

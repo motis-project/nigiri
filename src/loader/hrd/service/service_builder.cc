@@ -91,8 +91,8 @@ void service_builder::write_services(const nigiri::source_idx_t src) {
                                    ref.origin_.dbg_, ref.initial_train_num_);
           tt_.trip_transport_ranges_.emplace_back({transport_range_t{
               tt_.next_transport_idx(),
-              interval<std::uint16_t>{
-                  0U, static_cast<std::uint16_t>(stop_seq.size())}}});
+              interval<stop_idx_t>{0U,
+                                   static_cast<stop_idx_t>(stop_seq.size())}}});
 
           auto const get_attribute_combination_idx =
               [&](std::optional<std::vector<service::attribute>> const& a,
