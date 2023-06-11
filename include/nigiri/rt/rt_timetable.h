@@ -113,7 +113,7 @@ struct rt_timetable {
                      stop_idx_t const stop_idx,
                      event_type const ev_type) {
     auto const ev_idx = stop_idx * 2 - (ev_type == event_type::kArr ? 1 : 0);
-    return rt_transport_stop_times_[rt_t][ev_idx];
+    return rt_transport_stop_times_[rt_t][static_cast<unsigned>(ev_idx)];
   }
 
   // Updated transport traffic days from the static timetable.
