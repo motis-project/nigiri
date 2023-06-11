@@ -121,6 +121,7 @@ TEST(rt, gtfsrt_resolve_rt_trip) {
   rtt.bitfields_ = tt.bitfields_;
   rtt.base_day_ = date::sys_days{2019_y / May / 3};
   rtt.base_day_idx_ = tt.day_idx(rtt.base_day_);
+  rtt.location_rt_transports_.resize(tt.n_locations());
 
   // Create basic update message.
   transit_realtime::FeedMessage msg;

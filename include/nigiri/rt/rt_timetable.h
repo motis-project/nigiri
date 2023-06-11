@@ -33,11 +33,12 @@ struct rt_timetable {
     auto const [t_idx, day] = t;
 
     auto const rt_t_idx = rt_transport_src_.size();
+    auto const rt_t = rt_transport_idx_t{rt_t_idx};
     static_trip_lookup_.emplace(t, rt_t_idx);
     rt_transport_static_transport_.emplace_back(t);
 
-    bitfields_.emplace_back(bitfields_[transport_traffic_days_[t_idx]])
-        .set(to_idx(day), false);
+    auto const static_bf = bitfields_[transport_traffic_days_[t_idx]];
+    bitfields_.emplace_back(static_bf).set(to_idx(day), false);
     transport_traffic_days_[t_idx] = bitfield_idx_t{bitfields_.size() - 1U};
 
     auto const location_seq =
@@ -47,6 +48,13 @@ struct rt_timetable {
     rt_transport_location_seq_.emplace_back(location_seq);
     rt_transport_src_.emplace_back(src);
     rt_transport_train_nr_.emplace_back(0U);
+
+    for (auto const s : location_seq) {
+      auto rt_transports = location_rt_transports_[stop{s}.location_idx()];
+      if (rt_transports.empty() || rt_transports.back() != rt_t) {
+        rt_transports.push_back(rt_t);
+      }
+    }
 
     if (time_seq.empty()) {
       auto times =
@@ -117,6 +125,9 @@ struct rt_timetable {
   // updates
   vector_map<transport_idx_t, bitfield_idx_t> transport_traffic_days_;
   vector_map<bitfield_idx_t, bitfield> bitfields_;
+
+  // Location -> RT transports that stop at this location
+  vecvec<location_idx_t, rt_transport_idx_t> location_rt_transports_;
 
   // Base-day: all real-time timestamps (departures + arrivals in
   // rt_transport_stop_times_) are given relative to this base day.

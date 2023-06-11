@@ -5,8 +5,8 @@ namespace nigiri::loader::gtfs {
 bool is_based(std::span<stop_idx_t> in,
               stop_idx_t const start,
               stop_idx_t const inc) {
-  for (auto i = start; i != in.size(); i += inc) {
-    if (in[i] != i) {
+  for (auto x = start, i = stop_idx_t{0U}; i != in.size(); x += inc, ++i) {
+    if (in[i] != x) {
       return false;
     }
   }
