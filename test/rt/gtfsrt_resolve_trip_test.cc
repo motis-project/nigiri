@@ -11,8 +11,7 @@ using namespace nigiri;
 using namespace nigiri::loader;
 using namespace nigiri::loader::gtfs;
 using namespace date;
-using std::chrono::operator""h;
-using std::chrono::operator""min;
+using namespace std::chrono_literals;
 
 namespace {
 
