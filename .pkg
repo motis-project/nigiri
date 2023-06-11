@@ -37,4 +37,4 @@
 [protobuf]
   url=git@github.com:motis-project/protobuf.git
   branch=master
-  commit=2479470513a45d7451108fa0d15578231a409deb
+  commit=da5c745508c9000d58da77c685b295faa55025bb
