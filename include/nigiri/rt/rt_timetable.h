@@ -40,14 +40,18 @@ struct rt_timetable {
         unix_to_delta(new_time);
   }
 
-  unixtime_t event_time(rt_transport_idx_t const rt_t,
-                        stop_idx_t const stop_idx,
-                        event_type const ev_type) {
+  unixtime_t unix_event_time(rt_transport_idx_t const rt_t,
+                             stop_idx_t const stop_idx,
+                             event_type const ev_type) {
     return base_day_ +
-           std::chrono::minutes{
-               rt_transport_stop_times_[rt_t]
-                                       [stop_idx * 2 -
-                                        (ev_type == event_type::kArr ? 1 : 0)]};
+           std::chrono::minutes{event_time(rt_t, stop_idx, ev_type)};
+  }
+
+  delta_t event_time(rt_transport_idx_t const rt_t,
+                     stop_idx_t const stop_idx,
+                     event_type const ev_type) {
+    auto const ev_idx = stop_idx * 2 - (ev_type == event_type::kArr ? 1 : 0);
+    return rt_transport_stop_times_[rt_t][ev_idx];
   }
 
   // Updated transport traffic days from the static timetable.

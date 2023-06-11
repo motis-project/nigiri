@@ -75,12 +75,13 @@ rt_transport_idx_t create_rt_run(
   return rt_t_idx;
 }
 
-void update_time(timetable const& tt,
-                 rt_timetable& rtt,
-                 run const& r,
-                 stop_idx_t const stop_idx,
-                 event_type const ev_type,
-                 gtfsrt::TripUpdate_StopTimeEvent const& ev) {
+delta_t update_time(timetable const& tt,
+                    rt_timetable& rtt,
+                    run const& r,
+                    stop_idx_t const stop_idx,
+                    event_type const ev_type,
+                    gtfsrt::TripUpdate_StopTimeEvent const& ev,
+                    delta_t const min) {
   if (ev.has_time()) {
     rtt.update_time(*r.rt_, stop_idx, ev_type,
                     unixtime_t{std::chrono::duration_cast<unixtime_t::duration>(
@@ -92,6 +93,7 @@ void update_time(timetable const& tt,
         static_time + std::chrono::duration_cast<unixtime_t::duration>(
                           std::chrono::seconds{ev.delay()}));
   }
+  return rtt.event_time(*r.rt_, stop_idx, ev_type);
 }
 
 void update_run(
@@ -113,26 +115,37 @@ void update_run(
       std::span{tt.transport_stop_seq_numbers_[r.t_->t_idx_]},
       static_cast<stop_idx_t>(location_seq.size())};
 
+  auto min = delta_t{0U};
+  auto prev_delay = std::optional<duration_t>{};
   auto stop_idx = stop_idx_t{0U};
   auto seq_it = begin(seq_numbers);
   auto upd_it = begin(stops);
   for (; upd_it != end(stops) && seq_it != end(seq_numbers) &&
          stop_idx != location_seq.size();
        ++stop_idx, ++seq_it) {
-    // TODO(felix) propagation / consistency check
     if ((upd_it->has_stop_sequence() && upd_it->stop_sequence() == *seq_it) ||
         (upd_it->has_stop_id() &&
          upd_it->stop_id() ==
              tt.locations_.ids_[stop{location_seq[stop_idx]}.location_idx()]
                  .view())) {
       if (stop_idx != 0U && upd_it->has_arrival()) {
-        update_time(tt, rtt, r, stop_idx, event_type::kArr, upd_it->arrival());
+        min = update_time(tt, rtt, r, stop_idx, event_type::kArr,
+                          upd_it->arrival());
       }
       if (stop_idx != location_seq.size() - 1U && upd_it->has_departure()) {
-        update_time(tt, rtt, r, stop_idx, event_type::kDep,
-                    upd_it->departure());
+        min = update_time(tt, rtt, r, stop_idx, event_type::kDep,
+                          upd_it->departure());
       }
       ++upd_it;
+    } else {
+      if (stop_idx != 0U) {
+        min = update_time(tt, rtt, r, stop_idx, event_type::kArr, prev_delay,
+                          min);
+      }
+      if (stop_idx != location_seq.size() - 1U) {
+        min = update_time(tt, rtt, r, stop_idx, event_type::kDep, prev_delay,
+                          min);
+      }
     }
   }
 }
@@ -141,7 +154,7 @@ statistics gtfsrt_update_msg(timetable const& tt,
                              rt_timetable& rtt,
                              source_idx_t const src,
                              std::string_view tag,
-                             transit_realtime::FeedMessage const& msg) {
+                             gtfsrt::FeedMessage const& msg) {
   if (!msg.has_header()) {
     return {.no_header_ = true};
   }
