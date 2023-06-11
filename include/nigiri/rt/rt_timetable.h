@@ -32,7 +32,7 @@ struct rt_timetable {
       std::span<delta_t> const& time_seq = {}) {
     auto const [t_idx, day] = t;
 
-    auto const rt_t_idx = next_rt_transport_idx_++;
+    auto const rt_t_idx = rt_transport_src_.size();
     static_trip_lookup_.emplace(t, rt_t_idx);
     rt_transport_static_transport_.emplace_back(t);
 
@@ -67,21 +67,18 @@ struct rt_timetable {
 
     rt_transport_display_names_.add_back_sized(0U);
     rt_transport_section_clasz_.add_back_sized(0U);
-    rt_transport_to_trip_section_.emplace_back(
-        std::initializer_list<rt_merged_trips_idx_t>{
-            rt_merged_trips_idx_t::invalid()});  // TODO(felix)
 
     assert(static_trip_lookup_.contains(t));
     assert(rt_transport_static_transport_[rt_t_idx] == t);
-    assert(rt_transport_static_transport_.size() == to_idx(rt_t_idx) + 1U);
-    assert(rt_transport_src_.size() == to_idx(rt_t_idx) + 1U);
-    assert(rt_transport_stop_times_.size() == to_idx(rt_t_idx) + 1U);
-    assert(rt_transport_location_seq_.size() == to_idx(rt_t_idx) + 1U);
-    assert(rt_transport_display_names_.size() == to_idx(rt_t_idx) + 1U);
-    assert(rt_transport_section_clasz_.size() == to_idx(rt_t_idx) + 1U);
-    assert(rt_transport_to_trip_section_.size() == to_idx(rt_t_idx) + 1U);
+    assert(rt_transport_static_transport_.size() == rt_t_idx + 1U);
+    assert(rt_transport_src_.size() == rt_t_idx + 1U);
+    assert(rt_transport_stop_times_.size() == rt_t_idx + 1U);
+    assert(rt_transport_location_seq_.size() == rt_t_idx + 1U);
+    assert(rt_transport_display_names_.size() == rt_t_idx + 1U);
+    assert(rt_transport_section_clasz_.size() == rt_t_idx + 1U);
+    assert(rt_transport_to_trip_section_.size() == rt_t_idx + 1U);
 
-    return rt_t_idx;
+    return rt_transport_idx_t{rt_t_idx};
   }
 
   delta_t unix_to_delta(unixtime_t const t) const {
@@ -154,14 +151,6 @@ struct rt_timetable {
 
   // RT transport -> vehicle clasz for each section
   vecvec<rt_transport_idx_t, clasz> rt_transport_section_clasz_;
-
-  vecvec<rt_transport_idx_t, rt_merged_trips_idx_t>
-      rt_transport_to_trip_section_;
-
-  vecvec<rt_merged_trips_idx_t, variant<transport, rt_add_trip_id_idx_t>>
-      merged_trips_;
-
-  rt_transport_idx_t next_rt_transport_idx_{0U};
 };
 
 }  // namespace nigiri
