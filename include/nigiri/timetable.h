@@ -73,7 +73,7 @@ struct timetable {
       return it->second;
     }
 
-    location get(location_idx_t const idx) {
+    location get(location_idx_t const idx) const {
       return location{ids_[idx].view(),
                       names_[idx].view(),
                       coordinates_[idx],
@@ -88,7 +88,7 @@ struct timetable {
                       std::span<footpath const>{footpaths_in_[idx]}};
     }
 
-    location get(location_id const& id) {
+    location get(location_id const& id) const {
       return get(location_id_to_idx_.at(id));
     }
 

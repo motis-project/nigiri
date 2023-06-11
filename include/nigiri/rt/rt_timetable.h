@@ -69,14 +69,13 @@ struct rt_timetable {
     rt_transport_section_clasz_.add_back_sized(0U);
 
     assert(static_trip_lookup_.contains(t));
-    assert(rt_transport_static_transport_[rt_t_idx] == t);
+    assert(rt_transport_static_transport_[rt_transport_idx_t{rt_t_idx}] == t);
     assert(rt_transport_static_transport_.size() == rt_t_idx + 1U);
     assert(rt_transport_src_.size() == rt_t_idx + 1U);
     assert(rt_transport_stop_times_.size() == rt_t_idx + 1U);
     assert(rt_transport_location_seq_.size() == rt_t_idx + 1U);
     assert(rt_transport_display_names_.size() == rt_t_idx + 1U);
     assert(rt_transport_section_clasz_.size() == rt_t_idx + 1U);
-    assert(rt_transport_to_trip_section_.size() == rt_t_idx + 1U);
 
     return rt_transport_idx_t{rt_t_idx};
   }
