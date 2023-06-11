@@ -22,6 +22,7 @@ target_include_directories(gtfsrt SYSTEM PUBLIC ${CMAKE_CURRENT_BINARY_DIR}/gene
 target_link_libraries(gtfsrt protobuf::libprotobuf)
 
 
+# --- LINT ---
 option(NIGIRI_LINT "Run clang-tidy with the compiler." OFF)
 if(NIGIRI_LINT)
   # clang-tidy will be run on all targets defined hereafter
@@ -59,6 +60,7 @@ else()
         -Werror)
 endif()
 
+
 # --- LIB ---
 file(GLOB_RECURSE nigiri-files src/*.cc)
 add_library(nigiri ${nigiri-files})
@@ -67,11 +69,13 @@ target_link_libraries(nigiri PUBLIC cista geo utl fmt date miniz date-tz wyhash 
 target_compile_features(nigiri PUBLIC cxx_std_20)
 target_compile_options(nigiri PRIVATE ${nigiri-compile-options})
 
+
 # --- MAIN ---
 file(GLOB_RECURSE nigiri-server-files server/main.cc)
 add_executable(nigiri-server ${nigiri-server-files})
 target_link_libraries(nigiri-server PRIVATE nigiri)
 target_compile_features(nigiri-server PUBLIC cxx_std_20)
+
 
 # --- TEST ---
 add_library(nigiri-generated INTERFACE)
