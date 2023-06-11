@@ -18,10 +18,14 @@ namespace nigiri::routing {
 
 struct journey {
   struct transport_enter_exit {
-    transport_enter_exit(transport const t, unsigned const a, unsigned const b)
-        : t_{t}, stop_range_{std::min(a, b), std::max(a, b) + 1} {}
+    transport_enter_exit(transport const t,
+                         stop_idx_t const a,
+                         stop_idx_t const b)
+        : t_{t},
+          stop_range_{static_cast<stop_idx_t>(std::min(a, b)),
+                      static_cast<stop_idx_t>(std::max(a, b) + 1U)} {}
     transport t_;
-    interval<unsigned> stop_range_;
+    interval<stop_idx_t> stop_range_;
   };
 
   struct leg {

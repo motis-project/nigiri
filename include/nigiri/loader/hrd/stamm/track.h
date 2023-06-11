@@ -14,7 +14,7 @@ struct stamm;
 struct track_rule_key {
   CISTA_COMPARABLE()
   location_idx_t location_{0U};
-  int train_num_{0U};
+  std::uint32_t train_num_{0U};
   provider_idx_t admin_{provider_idx_t::invalid()};
 };
 

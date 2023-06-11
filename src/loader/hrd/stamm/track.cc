@@ -24,7 +24,8 @@ tracks parse_track_rules(config const& c,
     }
 
     auto const eva_num = parse_eva_number(line.substr(c.track_rul_.eva_num_));
-    auto const train_num = parse<int>(line.substr(c.track_rul_.train_num_));
+    auto const train_num =
+        parse<std::uint32_t>(line.substr(c.track_rul_.train_num_));
     auto const admin = st.resolve_provider(line.substr(c.track_rul_.admin_));
     auto const time =
         hhmm_to_min(parse<int>(line.substr(c.track_rul_.time_).trim(), -1));

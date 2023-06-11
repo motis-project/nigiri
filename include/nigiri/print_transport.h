@@ -14,7 +14,7 @@ void print_transport(timetable const&,
 void print_transport(timetable const&,
                      std::ostream&,
                      transport,
-                     interval<unsigned> stop_range,
+                     interval<stop_idx_t> stop_range,
                      unsigned indent = 0U,
                      bool with_debug = false);
 
@@ -26,7 +26,7 @@ void print_transport_1(timetable const&,
 void print_transport_1(timetable const&,
                        std::ostream&,
                        transport,
-                       interval<unsigned> stop_range,
+                       interval<stop_idx_t> stop_range,
                        unsigned indent = 0U,
                        bool with_debug = false);
 

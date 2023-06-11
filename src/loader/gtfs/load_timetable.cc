@@ -24,6 +24,7 @@
 #include "nigiri/loader/gtfs/route_key.h"
 #include "nigiri/loader/gtfs/services.h"
 #include "nigiri/loader/gtfs/stop.h"
+#include "nigiri/loader/gtfs/stop_seq_number_encoding.h"
 #include "nigiri/loader/gtfs/stop_time.h"
 #include "nigiri/loader/gtfs/trip.h"
 #include "nigiri/loader/loader_interface.h"
@@ -155,12 +156,11 @@ void load_timetable(loader_config const& config,
         }
       };
 
-  std::basic_string<minutes_after_midnight_t> utc_time_mem;
   auto const add_trip = [&](std::basic_string<gtfs_trip_idx_t> const& trips,
                             bitfield const* traffic_days) {
     expand_trip(
         trip_data, noon_offsets, tt, trips, traffic_days, service.interval_,
-        tt.date_range_, utc_time_mem, [&](utc_trip&& s) {
+        tt.date_range_, [&](utc_trip&& s) {
           auto const* stop_seq = get_route_key(s.trips_);
           auto const clasz = trip_data.get(s.trips_.front()).route_->clasz_;
           auto const it = route_services.find(std::pair{clasz, stop_seq});
@@ -220,16 +220,35 @@ void load_timetable(loader_config const& config,
       });
     };
 
-    auto trip_id_buf = fmt::memory_buffer{};
-    auto const timer = scoped_timer{"loader.gtfs.routes.build"};
     auto const source_file_idx =
         tt.register_source_file((d.path() / kStopTimesFile).generic_string());
+    auto trip_id_buf = fmt::memory_buffer{};
+    for (auto& trp : trip_data.data_) {
+      std::uint32_t train_nr = 0U;
+      if (is_train_number(trp.short_name_)) {
+        train_nr = static_cast<std::uint32_t>(std::stoul(trp.short_name_));
+      } else if (auto const headsign = tt.trip_direction(trp.headsign_);
+                 is_train_number(headsign)) {
+        std::from_chars(headsign.data(), headsign.data() + headsign.size(),
+                        train_nr);
+      }
+
+      trip_id_buf.clear();
+      fmt::format_to(trip_id_buf, "{}", trp.id_);
+
+      trp.trip_idx_ = tt.register_trip_id(
+          trip_id_buf, src, trp.display_name(tt),
+          {source_file_idx, trp.from_line_, trp.to_line_}, train_nr);
+    }
+
+    auto const timer = scoped_timer{"loader.gtfs.routes.build"};
     auto const attributes = std::basic_string<attribute_combination_idx_t>{};
     auto bitfield_indices = hash_map<bitfield, bitfield_idx_t>{};
     auto lines = hash_map<std::string, trip_line_idx_t>{};
     auto section_directions = std::basic_string<trip_direction_idx_t>{};
     auto section_lines = std::basic_string<trip_line_idx_t>{};
     auto external_trip_ids = std::basic_string<merged_trips_idx_t>{};
+    auto stop_seq_numbers = std::basic_string<stop_idx_t>{};
     auto location_routes = mutable_fws_multimap<location_idx_t, route_idx_t>{};
     for (auto const& [key, sub_routes] : route_services) {
       for (auto const& services : sub_routes) {
@@ -246,31 +265,18 @@ void load_timetable(loader_config const& config,
         for (auto const& s : services) {
           auto const& first = trip_data.get(s.trips_.front());
 
-          int train_nr = 0;
-          if (is_train_number(first.short_name_)) {
-            train_nr = std::stoi(first.short_name_);
-          } else if (auto const headsign = tt.trip_direction(first.headsign_);
-                     is_train_number(headsign)) {
-            std::from_chars(headsign.data(), headsign.data() + headsign.size(),
-                            train_nr);
-          }
-
           external_trip_ids.clear();
           section_directions.clear();
           section_lines.clear();
-          auto prev_end = 0U;
+          auto prev_end = std::uint16_t{0U};
           for (auto const [i, t] : utl::enumerate(s.trips_)) {
-            auto const& trp = trip_data.get(t);
-
-            trip_id_buf.clear();
-            fmt::format_to(trip_id_buf, "{}/{}", train_nr, trp.id_);
+            auto& trp = trip_data.get(t);
 
             auto const end =
-                static_cast<unsigned>(prev_end + trp.stop_seq_.size());
-            auto const id = tt.register_trip_id(
-                trip_id_buf, src, trp.display_name(tt),
-                {source_file_idx, trp.from_line_, trp.to_line_},
-                tt.next_transport_idx(), {prev_end, end});
+                static_cast<std::uint16_t>(prev_end + trp.stop_seq_.size());
+
+            trp.transport_ranges_.emplace_back(
+                transport_range_t{tt.next_transport_idx(), {prev_end, end}});
             prev_end = end - 1;
 
             auto const line =
@@ -280,11 +286,12 @@ void load_timetable(loader_config const& config,
                   return idx;
                 });
 
-            auto const merged_trip = tt.register_merged_trip({id});
+            auto const merged_trip = tt.register_merged_trip({trp.trip_idx_});
             if (s.trips_.size() == 1U) {
               external_trip_ids.push_back(merged_trip);
               section_directions.push_back(trp.headsign_);
               section_lines.push_back(line);
+              encode_seq_numbers(trp.seq_numbers_, stop_seq_numbers);
             } else {
               for (auto section = 0U; section != trp.stop_seq_.size() - 1;
                    ++section) {
@@ -300,11 +307,13 @@ void load_timetable(loader_config const& config,
                   bitfield_indices, s.utc_traffic_days_,
                   [&]() { return tt.register_bitfield(s.utc_traffic_days_); }),
               .route_idx_ = route_idx,
+              .first_dep_offset_ = s.first_dep_offset_,
               .external_trip_ids_ = external_trip_ids,
               .section_attributes_ = attributes,
               .section_providers_ = {first.route_->agency_},
               .section_directions_ = section_directions,
-              .section_lines_ = section_lines});
+              .section_lines_ = section_lines,
+              .stop_seq_numbers_ = stop_seq_numbers});
         }
 
         tt.finish_route();
@@ -334,6 +343,11 @@ void load_timetable(loader_config const& config,
     for (auto l = tt.location_routes_.size(); l != tt.n_locations(); ++l) {
       tt.location_routes_.emplace_back(location_routes[location_idx_t{l}]);
       assert(tt.location_routes_.size() == l + 1U);
+    }
+
+    // Build transport ranges.
+    for (auto const& t : trip_data.data_) {
+      tt.trip_transport_ranges_.emplace_back(t.transport_ranges_);
     }
   }
 }

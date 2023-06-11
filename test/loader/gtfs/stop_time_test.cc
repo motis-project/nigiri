@@ -9,7 +9,7 @@
 
 namespace nigiri::loader::gtfs {
 
-TEST(loader_gtfs_route, read_stop_times_example_data) {
+TEST(gtfs, read_stop_times_example_data) {
   auto const files = example_files();
 
   timetable tt;

@@ -34,7 +34,7 @@ template <typename Less>
 void add_start_times_at_stop(direction const search_dir,
                              timetable const& tt,
                              route_idx_t const route_idx,
-                             size_t const stop_idx,
+                             stop_idx_t const stop_idx,
                              location_idx_t const location_idx,
                              interval<unixtime_t> const& interval_with_offset,
                              duration_t const offset,
@@ -137,7 +137,7 @@ void add_starts_in_interval(direction const search_dir,
 
       trace("    -> no skip -> add_start_times_at_stop()\n");
       add_start_times_at_stop(
-          search_dir, tt, r, i, stop{s}.location_idx(),
+          search_dir, tt, r, static_cast<stop_idx_t>(i), stop{s}.location_idx(),
           search_dir == direction::kForward ? interval + d : interval - d, d,
           starts, std::forward<Less>(cmp));
     }

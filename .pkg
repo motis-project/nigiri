@@ -5,7 +5,7 @@
 [cista]
   url=git@github.com:felixguendling/cista.git
   branch=master
-  commit=fa29a089c90b77ad088874e0c0c339654ab5833d
+  commit=ee3b11eb4392584e60f4864383f7b4c92902440b
 [geo]
   url=git@github.com:motis-project/geo.git
   branch=master
@@ -13,7 +13,7 @@
 [utl]
   url=git@github.com:motis-project/utl.git
   branch=master
-  commit=da06838586af739a716ec67094392c4b133d1a05
+  commit=dcd11d86c34d7f45c78915d4c72ea2ed072377ab
 [miniz]
   url=git@github.com:motis-project/miniz.git
   branch=master
@@ -34,3 +34,7 @@
   url=git@github.com:motis-project/unordered_dense.git
   branch=main
   commit=77e91016354e6d8cba24a86c5abb807de2534c02
+[protobuf]
+  url=git@github.com:motis-project/protobuf.git
+  branch=master
+  commit=297171ade5e9bd01d823ffe8b203a5443ec03f15

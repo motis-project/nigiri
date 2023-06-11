@@ -25,7 +25,7 @@ constexpr auto const data = std::string_view{R"(0000001     A
 0000016     P
 )"};
 
-TEST(dir_test, file_contents) {
+TEST(dir, file_contents) {
   auto const fs = fs_dir{"test/test_data/mss-dayshift3"};
   auto const zip = zip_dir{"test/test_data/mss-dayshift3.zip"};
   auto const mem = mem_dir{{{"stamm/bahnhof.101", std::string{data}}}};
@@ -42,7 +42,7 @@ TEST(dir_test, file_contents) {
   }
 }
 
-TEST(dir_test, directory_listing) {
+TEST(dir, directory_listing) {
   auto const zip = zip_dir{"test/test_data/mss-dayshift3.zip"};
   auto const fs = fs_dir{"test/test_data/mss-dayshift3"};
   auto const mem = mem_dir{mem_dir::dir_t{{"stamm/attributd_int.101", ""},

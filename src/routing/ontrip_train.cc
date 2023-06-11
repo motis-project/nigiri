@@ -18,7 +18,7 @@ void trace(char const* fmt_str, Args... args) {
 
 void generate_ontrip_train_query(timetable const& tt,
                                  transport const& t,
-                                 unsigned const stop_idx,
+                                 stop_idx_t const stop_idx,
                                  query& q) {
   utl::verify(stop_idx != 0U, "first arrival time not defined");
 

@@ -194,8 +194,9 @@ service::stop parse_stop(utl::cstr stop) {
            stop[36] != '-'}};
 }
 
-int initial_train_num(specification const& spec) {
-  return parse_verify<int>(spec.internal_service_.substr(3, utl::size(5)));
+std::uint32_t initial_train_num(specification const& spec) {
+  return parse_verify<std::uint32_t>(
+      spec.internal_service_.substr(3, utl::size(5)));
 }
 
 utl::cstr initial_admin(specification const& spec) {
@@ -305,7 +306,8 @@ void parse_sections(stamm& st,
       auto const train_nr = stop_train_num(spec.stops_[i]);
       auto const admin = stop_admin(spec.stops_[i]);
       auto const& sec = sections.emplace_back(
-          train_nr.empty() ? pred_train_nr : utl::parse_verify<int>(train_nr),
+          train_nr.empty() ? pred_train_nr
+                           : utl::parse_verify<std::uint32_t>(train_nr),
           admin.empty() ? pred_admin : st.resolve_provider(admin));
       pred_admin = sec.admin_.value();
       pred_train_nr = sec.train_num_.value();

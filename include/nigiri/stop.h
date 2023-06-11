@@ -1,5 +1,7 @@
 #pragma once
 
+#include <compare>
+
 #include "nigiri/types.h"
 
 namespace nigiri {

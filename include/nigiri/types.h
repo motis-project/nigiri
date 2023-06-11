@@ -2,6 +2,7 @@
 
 #include <chrono>
 #include <cinttypes>
+#include <variant>
 
 #include "date/date.h"
 #include "date/tz.h"
@@ -21,6 +22,8 @@
 #include "cista/containers/vecvec.h"
 #include "cista/reflection/printable.h"
 #include "cista/strong.h"
+
+#include "nigiri/common/interval.h"
 
 namespace nigiri {
 
@@ -87,6 +90,8 @@ template <typename K,
           typename Equality = cista::equals_all>
 using hash_set = cista::raw::ankerl_set<K, Hash, Equality>;
 
+using stop_idx_t = std::uint16_t;
+
 using string = cista::raw::string;
 
 template <typename T>
@@ -112,6 +117,15 @@ using merged_trips_idx_t =
 using footpath_idx_t = cista::strong<std::uint32_t, struct _footpath_idx>;
 using source_file_idx_t = cista::strong<std::uint16_t, struct _source_file_idx>;
 
+using rt_trip_idx_t = cista::strong<std::uint32_t, struct _trip_idx>;
+using rt_add_trip_id_idx_t =
+    cista::strong<std::uint32_t, struct _trip_id_str_idx>;
+using rt_route_idx_t = cista::strong<std::uint32_t, struct _rt_route_idx>;
+using rt_transport_idx_t =
+    cista::strong<std::uint32_t, struct _rt_transport_idx>;
+using rt_merged_trips_idx_t =
+    cista::strong<std::uint32_t, struct _merged_trips_idx>;
+
 using line_id_t = string;
 
 using trip_direction_string_idx_t =
@@ -125,6 +139,8 @@ using attribute_idx_t = cista::strong<std::uint32_t, struct _attribute_idx>;
 using attribute_combination_idx_t =
     cista::strong<std::uint32_t, struct _attribute_combination>;
 using provider_idx_t = cista::strong<std::uint32_t, struct _provider_idx>;
+
+using transport_range_t = pair<transport_idx_t, interval<stop_idx_t>>;
 
 struct trip_debug {
   source_file_idx_t source_file_idx_;
@@ -167,6 +183,7 @@ struct debug {
 };
 
 struct transport {
+  CISTA_FRIEND_COMPARABLE(transport)
   CISTA_PRINTABLE(transport, "idx", "day")
   constexpr bool is_valid() const { return day_ != day_idx_t::invalid(); }
   transport_idx_t t_idx_{transport_idx_t::invalid()};

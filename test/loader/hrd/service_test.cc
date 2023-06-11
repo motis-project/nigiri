@@ -105,7 +105,7 @@ auto const expected = std::set<std::string>{
 )",
 };
 
-TEST(service, strings) {
+TEST(hrd, services_to_string_test) {
   auto tt = timetable{};
   tt.date_range_ = full_period();
   load_timetable(source_idx_t{0U}, hrd_5_20_26, files(), tt);

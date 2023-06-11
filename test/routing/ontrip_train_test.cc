@@ -25,8 +25,9 @@ TEST(routing, ontrip_train) {
   load_timetable(src, loader::hrd::hrd_5_20_26, files(), tt);
   finalize(tt);
 
-  auto const t =
-      get_transport(tt, "3374/0000008/1410/0000006/2950/", March / 30 / 2020);
+  auto const t = get_ref_transport(
+      tt, {"3374/0000008/1350/0000006/2950/", source_idx_t{0}},
+      March / 29 / 2020, false);
   ASSERT_TRUE(t.has_value());
 
   auto q = routing::query{
@@ -37,7 +38,7 @@ TEST(routing, ontrip_train) {
       .destination_ = {{tt.locations_.location_id_to_idx_.at(
                             {.id_ = "0000004", .src_ = src}),
                         10_minutes, 77U}}};
-  generate_ontrip_train_query(tt, *t, 1, q);
+  generate_ontrip_train_query(tt, t->first, 1, q);
 
   auto const results = raptor_search(tt, std::move(q));
 
