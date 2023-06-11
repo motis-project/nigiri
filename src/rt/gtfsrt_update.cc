@@ -12,88 +12,44 @@ namespace pb = google::protobuf;
 
 namespace nigiri::rt {
 
-rt_transport_idx_t create_rt_run(
-    source_idx_t const src,
-    timetable const& tt,
-    rt_timetable& rtt,
-    transport const t,
-    std::span<stop::value_type> const& stop_seq = {},
-    std::span<delta_t> const& time_seq = {}) {
-  auto const [t_idx, day] = t;
+struct delay_propagation {
+  unixtime_t pred_time_;
+  duration_t pred_delay_;
+};
 
-  auto const rt_t_idx = rtt.next_rt_transport_idx_++;
-  rtt.static_trip_lookup_.emplace(t, rt_t_idx);
-  rtt.rt_transport_static_transport_.emplace_back(t);
-
-  rtt.bitfields_
-      .emplace_back(rtt.bitfields_[rtt.transport_traffic_days_[t_idx]])
-      .set(to_idx(day), false);
-  rtt.transport_traffic_days_[t_idx] =
-      bitfield_idx_t{rtt.bitfields_.size() - 1U};
-
-  auto const location_seq =
-      stop_seq.empty()
-          ? std::span{tt.route_location_seq_[tt.transport_route_[t_idx]]}
-          : stop_seq;
-  rtt.rt_transport_location_seq_.emplace_back(location_seq);
-  rtt.rt_transport_src_.emplace_back(src);
-  rtt.rt_transport_train_nr_.emplace_back(0U);
-
-  if (time_seq.empty()) {
-    auto times =
-        rtt.rt_transport_stop_times_.add_back_sized(location_seq.size() * 2U);
-    auto i = 0U;
-    auto stop_idx = stop_idx_t{0U};
-    for (auto const [a, b] : utl::pairwise(location_seq)) {
-      CISTA_UNUSED_PARAM(a)
-      CISTA_UNUSED_PARAM(b)
-      times[i++] =
-          rtt.unix_to_delta(tt.event_time(t, stop_idx, event_type::kDep));
-      times[i++] =
-          rtt.unix_to_delta(tt.event_time(t, ++stop_idx, event_type::kArr));
-    }
-  } else {
-    rtt.rt_transport_stop_times_.emplace_back(time_seq);
-  }
-
-  rtt.rt_transport_display_names_.add_back_sized(0U);
-  rtt.rt_transport_section_clasz_.add_back_sized(0U);
-  rtt.rt_transport_to_trip_section_.emplace_back(
-      std::initializer_list<rt_merged_trips_idx_t>{
-          rt_merged_trips_idx_t::invalid()});  // TODO(felix)
-
-  assert(rtt.static_trip_lookup_.contains(t));
-  assert(rtt.rt_transport_static_transport_[rt_t_idx] == t);
-  assert(rtt.rt_transport_static_transport_.size() == to_idx(rt_t_idx) + 1U);
-  assert(rtt.rt_transport_src_.size() == to_idx(rt_t_idx) + 1U);
-  assert(rtt.rt_transport_stop_times_.size() == to_idx(rt_t_idx) + 1U);
-  assert(rtt.rt_transport_location_seq_.size() == to_idx(rt_t_idx) + 1U);
-  assert(rtt.rt_transport_display_names_.size() == to_idx(rt_t_idx) + 1U);
-  assert(rtt.rt_transport_section_clasz_.size() == to_idx(rt_t_idx) + 1U);
-  assert(rtt.rt_transport_to_trip_section_.size() == to_idx(rt_t_idx) + 1U);
-
-  return rt_t_idx;
+delay_propagation update_delay(timetable const& tt,
+                               rt_timetable& rtt,
+                               run const& r,
+                               stop_idx_t const stop_idx,
+                               event_type const ev_type,
+                               duration_t const delay,
+                               unixtime_t const min) {
+  auto const static_time = tt.event_time(*r.t_, stop_idx, ev_type);
+  rtt.update_time(*r.rt_, stop_idx, ev_type,
+                  std::max(min, static_time + delay));
+  return {rtt.unix_event_time(*r.rt_, stop_idx, ev_type), delay};
 }
 
-delta_t update_time(timetable const& tt,
-                    rt_timetable& rtt,
-                    run const& r,
-                    stop_idx_t const stop_idx,
-                    event_type const ev_type,
-                    gtfsrt::TripUpdate_StopTimeEvent const& ev,
-                    delta_t const min) {
+delay_propagation update_event(timetable const& tt,
+                               rt_timetable& rtt,
+                               run const& r,
+                               stop_idx_t const stop_idx,
+                               event_type const ev_type,
+                               gtfsrt::TripUpdate_StopTimeEvent const& ev,
+                               unixtime_t const pred_time) {
   if (ev.has_time()) {
-    rtt.update_time(*r.rt_, stop_idx, ev_type,
-                    unixtime_t{std::chrono::duration_cast<unixtime_t::duration>(
-                        std::chrono::seconds{ev.time()})});
-  } else if (ev.has_delay()) {
     auto const static_time = tt.event_time(*r.t_, stop_idx, ev_type);
-    rtt.update_time(
-        *r.rt_, stop_idx, ev_type,
-        static_time + std::chrono::duration_cast<unixtime_t::duration>(
-                          std::chrono::seconds{ev.delay()}));
+    auto const new_time =
+        unixtime_t{std::chrono::duration_cast<unixtime_t::duration>(
+            std::chrono::seconds{ev.time()})};
+    rtt.update_time(*r.rt_, stop_idx, ev_type, std::max(pred_time, new_time));
+    return {new_time, new_time - static_time};
+  } else /* if (ev.has_delay()) */ {
+    return update_delay(tt, rtt, r, stop_idx, ev_type,
+                        std::chrono::duration_cast<unixtime_t::duration>(
+                            std::chrono::seconds{ev.delay()}),
+                        pred_time);
   }
-  return rtt.event_time(*r.rt_, stop_idx, ev_type);
 }
 
 void update_run(
@@ -106,7 +62,7 @@ void update_run(
   using std::end;
 
   if (!r.is_rt()) {
-    r.rt_ = create_rt_run(src, tt, rtt, *r.t_);
+    r.rt_ = rtt.add_rt_transport(src, tt, *r.t_);
   }
 
   auto const location_seq =
@@ -115,37 +71,57 @@ void update_run(
       std::span{tt.transport_stop_seq_numbers_[r.t_->t_idx_]},
       static_cast<stop_idx_t>(location_seq.size())};
 
-  auto min = delta_t{0U};
-  auto prev_delay = std::optional<duration_t>{};
+  auto pred = std::optional<delay_propagation>{};
   auto stop_idx = stop_idx_t{0U};
   auto seq_it = begin(seq_numbers);
   auto upd_it = begin(stops);
-  for (; upd_it != end(stops) && seq_it != end(seq_numbers) &&
-         stop_idx != location_seq.size();
+  for (; seq_it != end(seq_numbers) && stop_idx != location_seq.size();
        ++stop_idx, ++seq_it) {
-    if ((upd_it->has_stop_sequence() && upd_it->stop_sequence() == *seq_it) ||
-        (upd_it->has_stop_id() &&
-         upd_it->stop_id() ==
-             tt.locations_.ids_[stop{location_seq[stop_idx]}.location_idx()]
-                 .view())) {
-      if (stop_idx != 0U && upd_it->has_arrival()) {
-        min = update_time(tt, rtt, r, stop_idx, event_type::kArr,
-                          upd_it->arrival());
+    auto const matches =
+        upd_it != end(stops) &&
+        ((upd_it->has_stop_sequence() && upd_it->stop_sequence() == *seq_it) ||
+         (upd_it->has_stop_id() &&
+          upd_it->stop_id() ==
+              tt.locations_.ids_[stop{location_seq[stop_idx]}.location_idx()]
+                  .view()));
+
+    if (stop_idx != 0U) {
+      if (matches && upd_it->has_arrival() &&
+          (upd_it->arrival().has_delay() || upd_it->arrival().has_time())) {
+        pred = update_event(
+            tt, rtt, r, stop_idx, event_type::kArr, upd_it->arrival(),
+            pred.has_value() ? pred->pred_time_ : unixtime_t{0_minutes});
+      } else {
+        pred = update_delay(
+            tt, rtt, r, stop_idx, event_type::kArr, pred->pred_delay_,
+            pred.has_value() ? pred->pred_time_ : unixtime_t{0_minutes});
       }
-      if (stop_idx != location_seq.size() - 1U && upd_it->has_departure()) {
-        min = update_time(tt, rtt, r, stop_idx, event_type::kDep,
-                          upd_it->departure());
+    }
+
+    if (stop_idx == 0U && matches && upd_it->has_arrival() &&
+        !upd_it->has_departure() &&
+        (upd_it->arrival().has_delay() || upd_it->arrival().has_time())) {
+      // First arrival has update, but first departure doesn't. Update departure
+      // with arrival info (assuming they have the same static timetable,
+      // because we don't store the static first arrival) to enable delay
+      // propagation.
+      pred = update_event(tt, rtt, r, stop_idx, event_type::kDep,
+                          upd_it->arrival(), unixtime_t{0_minutes});
+    } else if (stop_idx != location_seq.size() - 1U) {
+      if (matches && upd_it->has_departure() &&
+          (upd_it->departure().has_time() || upd_it->departure().has_delay())) {
+        pred = update_event(
+            tt, rtt, r, stop_idx, event_type::kDep, upd_it->departure(),
+            pred.has_value() ? pred->pred_time_ : unixtime_t{0_minutes});
+      } else {
+        pred = update_delay(
+            tt, rtt, r, stop_idx, event_type::kDep, pred->pred_delay_,
+            pred.has_value() ? pred->pred_time_ : unixtime_t{0_minutes});
       }
+    }
+
+    if (matches) {
       ++upd_it;
-    } else {
-      if (stop_idx != 0U) {
-        min = update_time(tt, rtt, r, stop_idx, event_type::kArr, prev_delay,
-                          min);
-      }
-      if (stop_idx != location_seq.size() - 1U) {
-        min = update_time(tt, rtt, r, stop_idx, event_type::kDep, prev_delay,
-                          min);
-      }
     }
   }
 }

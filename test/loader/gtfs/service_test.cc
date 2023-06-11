@@ -61,7 +61,7 @@ X1,03:30:00,03:30:00,E,5,0,0
 
 }  // namespace
 
-TEST(gtfs, services) {
+TEST(gtfs, local_to_unix_trip_test) {
   timetable tt;
   tt.date_range_ = {date::sys_days{2019_y / March / 25},
                     date::sys_days{2019_y / November / 1}};

@@ -109,11 +109,20 @@ TEST(rt, gtfsrt_resolve_rt_trip) {
         .count();
   };
 
+  // Load static timetable.
   timetable tt;
   tt.date_range_ = {date::sys_days{2019_y / March / 25},
                     date::sys_days{2019_y / November / 1}};
   load_timetable({}, source_idx_t{0}, test_files(), tt);
 
+  // Create empty RT timetable.
+  auto rtt = rt_timetable{};
+  rtt.transport_traffic_days_ = tt.transport_traffic_days_;
+  rtt.bitfields_ = tt.bitfields_;
+  rtt.base_day_ = date::sys_days{2019_y / May / 3};
+  rtt.base_day_idx_ = tt.day_idx(rtt.base_day_);
+
+  // Create basic update message.
   transit_realtime::FeedMessage msg;
 
   auto const hdr = msg.mutable_header();
@@ -131,12 +140,44 @@ TEST(rt, gtfsrt_resolve_rt_trip) {
   td->set_start_date("20190504");
   td->set_trip_id("T_RE2");
 
-  auto const new_dep_time = date::sys_days{2019_y / May / 4} + 35min;
+  // ** UPDATE 0: update first arrival, check propagation **
+  transit_realtime::FeedMessage msg0;
+  msg0.mutable_header()->CopyFrom(msg.header());
+  auto const e0 = msg0.add_entity();
+  e0->mutable_trip_update()->mutable_trip()->CopyFrom(*td);
+  {
+    auto const stop_update = e0->mutable_trip_update()->add_stop_time_update();
+    stop_update->set_stop_sequence(1U);
+    stop_update->mutable_arrival()->set_delay(900);
+  }
+
+  auto stats = rt::gtfsrt_update_msg(tt, rtt, source_idx_t{0}, "tag", msg0);
+  auto r = rt::gtfsrt_resolve_run(date::sys_days{2019_y / May / 4}, tt, rtt,
+                                  source_idx_t{0}, *td);
+  EXPECT_EQ(1U, stats.total_entities_success_);
+  if (stats.total_entities_success_ != 1U) {
+    std::cout << stats << "\n";
+  }
+
+  ASSERT_TRUE(r.valid());
+  ASSERT_TRUE(r.rt_.has_value());
+  ASSERT_TRUE(r.t_.has_value());
+  EXPECT_EQ(date::sys_days{2019_y / May / 3} + 22h + 45min,  // assumed +15
+            rtt.unix_event_time(*r.rt_, 0U, event_type::kDep));
+  EXPECT_EQ(date::sys_days{2019_y / May / 3} + 23h + 00min,  // propagated +15
+            rtt.unix_event_time(*r.rt_, 1U, event_type::kArr));
+  EXPECT_EQ(date::sys_days{2019_y / May / 3} + 23h + 00min,  // propagated +15
+            rtt.unix_event_time(*r.rt_, 1U, event_type::kDep));
+  EXPECT_EQ(date::sys_days{2019_y / May / 3} + 23h + 15min,  // propagated +15
+            rtt.unix_event_time(*r.rt_, 2U, event_type::kArr));
+
+  // ** UPDATE 1: reduce delay, check time/delay update and propagation **
   {
     auto const stop_update =
         entity->mutable_trip_update()->add_stop_time_update();
     stop_update->set_stop_sequence(1);
-    stop_update->mutable_departure()->set_time(to_unix(new_dep_time));
+    stop_update->mutable_departure()->set_time(
+        to_unix(date::sys_days{2019_y / May / 3} + 22h + 35min));
   }
 
   {
@@ -146,22 +187,20 @@ TEST(rt, gtfsrt_resolve_rt_trip) {
     stop_update->mutable_arrival()->set_delay(600);
   }
 
-  auto rtt = rt_timetable{};
-  rtt.transport_traffic_days_ = tt.transport_traffic_days_;
-  rtt.bitfields_ = tt.bitfields_;
-  rtt.base_day_ = date::sys_days{2019_y / May / 3};
-  rtt.base_day_idx_ = tt.day_idx(rtt.base_day_);
-
-  auto const stats =
-      rt::gtfsrt_update_msg(tt, rtt, source_idx_t{0}, "tag", msg);
+  stats = rt::gtfsrt_update_msg(tt, rtt, source_idx_t{0}, "tag", msg);
   EXPECT_EQ(1U, stats.total_entities_success_);
 
-  auto const r = rt::gtfsrt_resolve_run(date::sys_days{2019_y / May / 4}, tt,
-                                        rtt, source_idx_t{0}, *td);
+  r = rt::gtfsrt_resolve_run(date::sys_days{2019_y / May / 4}, tt, rtt,
+                             source_idx_t{0}, *td);
   ASSERT_TRUE(r.valid());
   ASSERT_TRUE(r.rt_.has_value());
   ASSERT_TRUE(r.t_.has_value());
-  EXPECT_EQ(new_dep_time, rtt.event_time(*r.rt_, 0U, event_type::kDep));
-  EXPECT_EQ(date::sys_days{2019_y / May / 3} + 23h + 10min,
-            rtt.event_time(*r.rt_, 2U, event_type::kArr));
+  EXPECT_EQ(date::sys_days{2019_y / May / 3} + 22h + 35min,  // absolute update
+            rtt.unix_event_time(*r.rt_, 0U, event_type::kDep));
+  EXPECT_EQ(date::sys_days{2019_y / May / 3} + 22h + 50min,  // propagated +5
+            rtt.unix_event_time(*r.rt_, 1U, event_type::kArr));
+  EXPECT_EQ(date::sys_days{2019_y / May / 3} + 22h + 50min,  // propagated +5
+            rtt.unix_event_time(*r.rt_, 1U, event_type::kDep));
+  EXPECT_EQ(date::sys_days{2019_y / May / 3} + 23h + 10min,  // rel. update +10
+            rtt.unix_event_time(*r.rt_, 2U, event_type::kArr));
 }
