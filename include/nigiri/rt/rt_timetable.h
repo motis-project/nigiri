@@ -57,8 +57,8 @@ struct rt_timetable {
     }
 
     if (time_seq.empty()) {
-      auto times =
-          rt_transport_stop_times_.add_back_sized(location_seq.size() * 2U);
+      auto times = rt_transport_stop_times_.add_back_sized(
+          location_seq.size() * 2U - 2U);
       auto i = 0U;
       auto stop_idx = stop_idx_t{0U};
       for (auto const [a, b] : utl::pairwise(location_seq)) {
@@ -108,16 +108,33 @@ struct rt_timetable {
 
   unixtime_t unix_event_time(rt_transport_idx_t const rt_t,
                              stop_idx_t const stop_idx,
-                             event_type const ev_type) {
+                             event_type const ev_type) const {
     return base_day_ +
            std::chrono::minutes{event_time(rt_t, stop_idx, ev_type)};
   }
 
   delta_t event_time(rt_transport_idx_t const rt_t,
                      stop_idx_t const stop_idx,
-                     event_type const ev_type) {
+                     event_type const ev_type) const {
     auto const ev_idx = stop_idx * 2 - (ev_type == event_type::kArr ? 1 : 0);
     return rt_transport_stop_times_[rt_t][static_cast<unsigned>(ev_idx)];
+  }
+
+  std::string_view transport_name(timetable const& tt,
+                                  rt_transport_idx_t const t) const {
+    if (rt_transport_display_names_[t].empty()) {
+      return rt_transport_static_transport_[t].apply(utl::overloaded{
+          [&](transport const t) { return tt.transport_name(t.t_idx_); },
+          [&](rt_add_trip_id_idx_t) { return std::string_view{"?"}; }});
+    } else {
+      return rt_transport_display_names_[t].view();
+    }
+  }
+
+  debug dbg(timetable const& tt, rt_transport_idx_t const t) const {
+    return rt_transport_static_transport_[t].apply(
+        utl::overloaded{[&](transport const t) { return tt.dbg(t.t_idx_); },
+                        [&](rt_add_trip_id_idx_t) { return debug{"RT"}; }});
   }
 
   // Updated transport traffic days from the static timetable.

@@ -130,7 +130,7 @@ TEST(gtfs, block_id) {
     expect_no_transfers(*res.begin());
 
     std::stringstream ss;
-    res.begin()->print(ss, tt, false);
+    res.begin()->print(ss, tt, nullptr, false);
     EXPECT_EQ(result, ss.str());
   }
 

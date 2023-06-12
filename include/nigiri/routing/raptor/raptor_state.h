@@ -32,6 +32,7 @@ struct raptor_state {
   std::vector<bool> station_mark_;
   std::vector<bool> prev_station_mark_;
   std::vector<bool> route_mark_;
+  std::vector<bool> rt_transport_mark_;
 };
 
 }  // namespace nigiri::routing

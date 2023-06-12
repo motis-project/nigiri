@@ -44,7 +44,7 @@ std::ostream& operator<<(std::ostream& out, timetable const& tt) {
       if (traffic_days.test(to_idx(day_idx))) {
         date::to_stream(out, "%F", d);
         out << " (day_idx=" << day_idx << ")\n";
-        print_transport(tt, out, {transport_idx, day_idx});
+        print_transport(tt, nullptr, out, {transport_idx, day_idx});
         out << "\n";
       }
     }

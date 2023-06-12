@@ -1,5 +1,6 @@
 #pragma once
 
+#include "utl/enumerate.h"
 #include "utl/equal_ranges_linear.h"
 #include "utl/erase_if.h"
 #include "utl/timing.h"
@@ -93,6 +94,7 @@ struct search {
 
     return Algo{
         tt_,
+        nullptr,
         algo_state,
         state_.is_destination_,
         state_.dist_to_dest_,

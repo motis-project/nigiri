@@ -12,19 +12,19 @@
 
 namespace nigiri {
 struct timetable;
-}
+struct rt_timetable;
+}  // namespace nigiri
 
 namespace nigiri::routing {
 
 struct journey {
   struct transport_enter_exit {
-    transport_enter_exit(transport const t,
-                         stop_idx_t const a,
-                         stop_idx_t const b)
+    template <typename T>
+    transport_enter_exit(T&& t, stop_idx_t const a, stop_idx_t const b)
         : t_{t},
           stop_range_{static_cast<stop_idx_t>(std::min(a, b)),
                       static_cast<stop_idx_t>(std::max(a, b) + 1U)} {}
-    transport t_;
+    std::variant<transport, rt_transport_idx_t> t_;
     interval<stop_idx_t> stop_range_;
   };
 
@@ -44,6 +44,7 @@ struct journey {
 
     void print(std::ostream&,
                timetable const&,
+               rt_timetable const* = nullptr,
                unsigned n_indent = 0U,
                bool debug = false) const;
 
@@ -68,7 +69,10 @@ struct journey {
     return duration_t{std::abs((dest_time_ - start_time_).count())};
   }
 
-  void print(std::ostream&, timetable const&, bool debug = false) const;
+  void print(std::ostream&,
+             timetable const&,
+             rt_timetable const* = nullptr,
+             bool debug = false) const;
 
   std::vector<leg> legs_;
   unixtime_t start_time_;

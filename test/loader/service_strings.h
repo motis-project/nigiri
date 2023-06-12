@@ -29,7 +29,7 @@ inline std::set<std::string> service_strings(timetable const& tt) {
       if (traffic_days.test(to_idx(day_idx))) {
         date::to_stream(out, "%F", d);
         out << " (day_idx=" << day_idx << ")\n";
-        print_transport(tt, out, {transport_idx, day_idx});
+        print_transport(tt, nullptr, out, {transport_idx, day_idx});
       }
     }
     ret.emplace(out.str());

@@ -179,7 +179,7 @@ struct debug {
     return out << dbg.path_ << ":" << dbg.line_from_ << ":" << dbg.line_to_;
   }
   std::string_view path_;
-  unsigned line_from_, line_to_;
+  unsigned line_from_{0U}, line_to_{0U};
 };
 
 struct transport {

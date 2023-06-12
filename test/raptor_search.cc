@@ -21,7 +21,7 @@ unixtime_t parse_time(std::string_view s, char const* format) {
 template <direction SearchDir>
 pareto_set<routing::journey> raptor_search(timetable const& tt,
                                            routing::query q) {
-  using algo_t = routing::raptor<SearchDir>;
+  using algo_t = routing::raptor<SearchDir, false>;
   using algo_state_t = routing::raptor_state;
 
   static auto search_state = routing::search_state{};
