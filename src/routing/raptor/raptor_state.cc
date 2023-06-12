@@ -9,7 +9,7 @@
 
 namespace nigiri::routing {
 
-void raptor_state::reset(unsigned const n_locations, unsigned const n_routes) {
+void raptor_state::resize(unsigned const n_locations, unsigned const n_routes) {
   tmp_.resize(n_locations);
   station_mark_.resize(n_locations);
   prev_station_mark_.resize(n_locations);

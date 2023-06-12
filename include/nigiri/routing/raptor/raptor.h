@@ -1,17 +1,16 @@
 #pragma once
 
-#include "utl/enumerate.h"
-
 #include "nigiri/common/delta_t.h"
 #include "nigiri/common/linear_lower_bound.h"
 #include "nigiri/routing/journey.h"
 #include "nigiri/routing/limits.h"
 #include "nigiri/routing/pareto_set.h"
+#include "nigiri/routing/raptor/debug.h"
 #include "nigiri/routing/raptor/raptor_state.h"
 #include "nigiri/routing/raptor/reconstruct.h"
+#include "nigiri/rt/rt_timetable.h"
 #include "nigiri/special_stations.h"
 #include "nigiri/timetable.h"
-#include "debug.h"
 
 namespace nigiri::routing {
 
@@ -26,7 +25,7 @@ struct raptor_stats {
   std::uint64_t route_update_prevented_by_lower_bound_{0ULL};
 };
 
-template <direction SearchDir>
+template <direction SearchDir, bool Rt>
 struct raptor {
   using algo_state_t = raptor_state;
   using algo_stats_t = raptor_stats;
@@ -50,6 +49,7 @@ struct raptor {
   static auto dir(auto a) { return (kFwd ? 1 : -1) * a; }
 
   raptor(timetable const& tt,
+         rt_timetable const& rtt,
          raptor_state& state,
          std::vector<bool>& is_dest,
          std::vector<std::uint16_t>& dist_to_dest,
@@ -63,7 +63,7 @@ struct raptor {
         base_{base},
         n_days_{tt_.internal_interval_days().size().count()},
         n_locations_{tt_.n_locations()} {
-    state_.reset(n_locations_, tt_.n_routes());
+    state_.resize(n_locations_, tt_.n_routes());
     utl::fill(time_at_dest_, kInvalid);
     state_.round_times_.reset(kInvalid);
   }
