@@ -72,9 +72,10 @@ void resolve_static(date::sys_days const today,
 }
 
 void resolve_rt(rt_timetable const& rtt, run& output) {
-  auto const it = rtt.static_trip_lookup_.find(*output.t_);
-  output.rt_ = it == end(rtt.static_trip_lookup_) ? std::nullopt
-                                                  : std::optional{it->second};
+  auto const it = rtt.static_trip_lookup_.find(output.t_);
+  if (it != end(rtt.static_trip_lookup_)) {
+    output.rt_ = it->second;
+  }
 }
 
 run gtfsrt_resolve_run(date::sys_days const today,

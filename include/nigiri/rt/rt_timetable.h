@@ -137,6 +137,17 @@ struct rt_timetable {
                         [&](rt_add_trip_id_idx_t) { return debug{"RT"}; }});
   }
 
+  transport resolve_static(rt_transport_idx_t const rt_t) const noexcept {
+    auto const t = rt_transport_static_transport_[rt_t];
+    return holds_alternative<transport>(t) ? t.as<transport>() : transport{};
+  }
+
+  rt_transport_idx_t resolve_rt(transport const t) const noexcept {
+    auto const it = static_trip_lookup_.find(t);
+    return it == end(static_trip_lookup_) ? rt_transport_idx_t::invalid()
+                                          : it->second;
+  }
+
   // Updated transport traffic days from the static timetable.
   // Initial: 100% copy from static, then adapted according to real-time
   // updates

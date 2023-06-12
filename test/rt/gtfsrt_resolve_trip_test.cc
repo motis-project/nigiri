@@ -166,16 +166,16 @@ TEST(rt, gtfsrt_resolve_rt_trip) {
   }
 
   ASSERT_TRUE(r.valid());
-  ASSERT_TRUE(r.rt_.has_value());
-  ASSERT_TRUE(r.t_.has_value());
+  ASSERT_TRUE(r.is_rt());
+  ASSERT_TRUE(r.t_.is_valid());
   EXPECT_EQ(date::sys_days{2019_y / May / 3} + 22h + 45min,  // assumed +15
-            rtt.unix_event_time(*r.rt_, 0U, event_type::kDep));
+            rtt.unix_event_time(r.rt_, 0U, event_type::kDep));
   EXPECT_EQ(date::sys_days{2019_y / May / 3} + 23h + 00min,  // propagated +15
-            rtt.unix_event_time(*r.rt_, 1U, event_type::kArr));
+            rtt.unix_event_time(r.rt_, 1U, event_type::kArr));
   EXPECT_EQ(date::sys_days{2019_y / May / 3} + 23h + 00min,  // propagated +15
-            rtt.unix_event_time(*r.rt_, 1U, event_type::kDep));
+            rtt.unix_event_time(r.rt_, 1U, event_type::kDep));
   EXPECT_EQ(date::sys_days{2019_y / May / 3} + 23h + 15min,  // propagated +15
-            rtt.unix_event_time(*r.rt_, 2U, event_type::kArr));
+            rtt.unix_event_time(r.rt_, 2U, event_type::kArr));
 
   // ** UPDATE 1: reduce delay, check time/delay update and propagation **
   {
@@ -199,18 +199,18 @@ TEST(rt, gtfsrt_resolve_rt_trip) {
   r = rt::gtfsrt_resolve_run(date::sys_days{2019_y / May / 4}, tt, rtt,
                              source_idx_t{0}, *td);
   ASSERT_TRUE(r.valid());
-  ASSERT_TRUE(r.rt_.has_value());
-  ASSERT_TRUE(r.t_.has_value());
+  ASSERT_TRUE(r.is_rt());
+  ASSERT_TRUE(r.t_.is_valid());
   EXPECT_EQ(date::sys_days{2019_y / May / 3} + 22h + 35min,  // absolute update
-            rtt.unix_event_time(*r.rt_, 0U, event_type::kDep));
+            rtt.unix_event_time(r.rt_, 0U, event_type::kDep));
   EXPECT_EQ(date::sys_days{2019_y / May / 3} + 22h + 50min,  // propagated +5
-            rtt.unix_event_time(*r.rt_, 1U, event_type::kArr));
+            rtt.unix_event_time(r.rt_, 1U, event_type::kArr));
   EXPECT_EQ(date::sys_days{2019_y / May / 3} + 22h + 50min,  // propagated +5
-            rtt.unix_event_time(*r.rt_, 1U, event_type::kDep));
+            rtt.unix_event_time(r.rt_, 1U, event_type::kDep));
   EXPECT_EQ(date::sys_days{2019_y / May / 3} + 23h + 10min,  // rel. update +10
-            rtt.unix_event_time(*r.rt_, 2U, event_type::kArr));
+            rtt.unix_event_time(r.rt_, 2U, event_type::kArr));
 
   std::stringstream ss;
-  print_transport(tt, &rtt, ss, *r.t_);
+  print_transport(tt, &rtt, ss, r.t_);
   EXPECT_EQ(ss.str(), kTransportAfterUpdate);
 }

@@ -83,6 +83,9 @@ struct raptor {
     utl::fill(state_.prev_station_mark_, false);
     utl::fill(state_.station_mark_, false);
     utl::fill(state_.route_mark_, false);
+    if constexpr (Rt) {
+      utl::fill(state_.rt_transport_mark_, false);
+    }
   }
 
   void add_start(location_idx_t const l, unixtime_t const t) {
@@ -145,12 +148,11 @@ struct raptor {
           any_marked |= update_route(k, route_idx_t{r_id});
         }
       }
-
       if constexpr (Rt) {
         for (auto rt_t = 0U; rt_t != n_rt_transports_; ++rt_t) {
           if (state_.rt_transport_mark_[rt_t]) {
             ++stats_.n_routes_visited_;
-            trace("┊ ├k={} updating rt route {}\n", k, rt_t);
+            trace("┊ ├k={} updating rt transport {}\n", k, rt_t);
             any_marked |= update_rt_transport(k, rt_transport_idx_t{rt_t});
           }
         }
@@ -202,7 +204,7 @@ struct raptor {
   }
 
   void reconstruct(query const& q, journey& j) {
-    reconstruct_journey<SearchDir>(tt_, q, state_, j, base(), base_);
+    reconstruct_journey<SearchDir>(tt_, rtt_, q, state_, j, base(), base_);
   }
 
 private:
@@ -358,20 +360,20 @@ private:
           current_best = by_transport;
           any_marked = true;
         }
+      }
 
-        if (lb_[l_idx] == kUnreachable) {
-          break;
-        }
+      if (lb_[l_idx] == kUnreachable) {
+        break;
+      }
 
-        if (is_last || !(kFwd ? stp.in_allowed() : stp.out_allowed()) ||
-            !state_.prev_station_mark_[l_idx]) {
-          continue;
-        }
+      if (is_last || !(kFwd ? stp.in_allowed() : stp.out_allowed()) ||
+          !state_.prev_station_mark_[l_idx]) {
+        continue;
+      }
 
-        auto const prev_round_time = state_.round_times_[k - 1][l_idx];
-        if (is_better_or_eq(prev_round_time, by_transport)) {
-          et = true;
-        }
+      auto const prev_round_time = state_.round_times_[k - 1][l_idx];
+      if (is_better_or_eq(prev_round_time, by_transport)) {
+        et = true;
       }
     }
     return any_marked;

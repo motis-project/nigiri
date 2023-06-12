@@ -24,10 +24,9 @@ delay_propagation update_delay(timetable const& tt,
                                event_type const ev_type,
                                duration_t const delay,
                                unixtime_t const min) {
-  auto const static_time = tt.event_time(*r.t_, stop_idx, ev_type);
-  rtt.update_time(*r.rt_, stop_idx, ev_type,
-                  std::max(min, static_time + delay));
-  return {rtt.unix_event_time(*r.rt_, stop_idx, ev_type), delay};
+  auto const static_time = tt.event_time(r.t_, stop_idx, ev_type);
+  rtt.update_time(r.rt_, stop_idx, ev_type, std::max(min, static_time + delay));
+  return {rtt.unix_event_time(r.rt_, stop_idx, ev_type), delay};
 }
 
 delay_propagation update_event(timetable const& tt,
@@ -38,11 +37,11 @@ delay_propagation update_event(timetable const& tt,
                                gtfsrt::TripUpdate_StopTimeEvent const& ev,
                                unixtime_t const pred_time) {
   if (ev.has_time()) {
-    auto const static_time = tt.event_time(*r.t_, stop_idx, ev_type);
+    auto const static_time = tt.event_time(r.t_, stop_idx, ev_type);
     auto const new_time =
         unixtime_t{std::chrono::duration_cast<unixtime_t::duration>(
             std::chrono::seconds{ev.time()})};
-    rtt.update_time(*r.rt_, stop_idx, ev_type, std::max(pred_time, new_time));
+    rtt.update_time(r.rt_, stop_idx, ev_type, std::max(pred_time, new_time));
     return {new_time, new_time - static_time};
   } else /* if (ev.has_delay()) */ {
     return update_delay(tt, rtt, r, stop_idx, ev_type,
@@ -62,13 +61,13 @@ void update_run(
   using std::end;
 
   if (!r.is_rt()) {
-    r.rt_ = rtt.add_rt_transport(src, tt, *r.t_);
+    r.rt_ = rtt.add_rt_transport(src, tt, r.t_);
   }
 
   auto const location_seq =
-      tt.route_location_seq_[tt.transport_route_[r.t_->t_idx_]];
+      tt.route_location_seq_[tt.transport_route_[r.t_.t_idx_]];
   auto const seq_numbers = ::nigiri::loader::gtfs::stop_seq_number_range{
-      std::span{tt.transport_stop_seq_numbers_[r.t_->t_idx_]},
+      std::span{tt.transport_stop_seq_numbers_[r.t_.t_idx_]},
       static_cast<stop_idx_t>(location_seq.size())};
 
   auto pred = std::optional<delay_propagation>{};

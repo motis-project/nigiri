@@ -28,6 +28,7 @@ struct location {
            it_range<vector<location_idx_t>::const_iterator> equivalences,
            std::span<footpath const> footpaths_in,
            std::span<footpath const> footpaths_out);
+  location_idx_t l_{location_idx_t::invalid()};
   std::string_view id_;
   std::string_view name_;
   geo::latlng pos_;

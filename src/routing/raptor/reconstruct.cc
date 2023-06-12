@@ -117,6 +117,7 @@ std::optional<journey::leg> find_start_footpath(timetable const& tt,
 
 template <direction SearchDir>
 void reconstruct_journey(timetable const& tt,
+                         rt_timetable const*,
                          query const& q,
                          raptor_state const& raptor_state,
                          journey& j,
@@ -372,6 +373,7 @@ void reconstruct_journey(timetable const& tt,
 }
 
 template void reconstruct_journey<direction::kForward>(timetable const&,
+                                                       rt_timetable const*,
                                                        query const&,
                                                        raptor_state const&,
                                                        journey&,
@@ -379,6 +381,7 @@ template void reconstruct_journey<direction::kForward>(timetable const&,
                                                        day_idx_t const);
 
 template void reconstruct_journey<direction::kBackward>(timetable const&,
+                                                        rt_timetable const*,
                                                         query const&,
                                                         raptor_state const&,
                                                         journey&,
