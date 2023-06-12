@@ -43,6 +43,6 @@ int main(int ac, char** av) {
   tt.date_range_ = {date::sys_days{April / 1 / 2023},
                     date::sys_days{December / 1 / 2023}};
   register_special_stations(tt);
-  (*c)->load(src, *d, tt);
+  (*c)->load({}, src, *d, tt);
   finalize(tt);
 }

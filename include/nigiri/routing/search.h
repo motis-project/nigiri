@@ -311,8 +311,8 @@ private:
           auto const worst_time_at_dest =
               start_time +
               (kFwd ? 1 : -1) * std::min(fastest_direct_, kMaxTravelTime);
-          algo_.execute(start_time, q_.max_transfers_, q_.prf_,
-                        worst_time_at_dest, state_.results_);
+          algo_.execute(start_time, q_.max_transfers_, worst_time_at_dest,
+                        q_.prf_, state_.results_);
 
           for (auto& j : state_.results_) {
             if (j.legs_.empty() &&
