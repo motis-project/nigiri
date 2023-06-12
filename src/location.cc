@@ -8,7 +8,7 @@ std::ostream& operator<<(std::ostream& out, location const& l) {
   return out << '(' << l.name_ << ", " << l.id_ << ')';
 }
 
-location::location(timetable const& tt, location_idx_t idx)
+location::location(timetable const& tt, location_idx_t idx, profile prf)
     : id_{tt.locations_.ids_[idx].view()},
       name_{tt.locations_.names_[idx].view()},
       pos_{tt.locations_.coordinates_[idx]},
@@ -21,18 +21,19 @@ location::location(timetable const& tt, location_idx_t idx)
       equivalences_{tt.locations_.equivalences_[idx]},
       footpaths_out_{
           !tt.locations_.footpaths_out_.empty()
-              ? &(*tt.locations_.footpaths_out_[idx].begin())
-              : &(*tt.locations_.preprocessing_footpaths_out_[idx].begin()),
+              ? &(*tt.locations_.footpaths_out_[prf][idx].begin())
+              : &(*tt.locations_.preprocessing_footpaths_out_[prf][idx]
+                       .begin()),
           !tt.locations_.footpaths_out_.empty()
-              ? tt.locations_.footpaths_out_[idx].size()
-              : tt.locations_.preprocessing_footpaths_out_[idx].size()},
+              ? tt.locations_.footpaths_out_[prf][idx].size()
+              : tt.locations_.preprocessing_footpaths_out_[prf][idx].size()},
       footpaths_in_{
           !tt.locations_.footpaths_in_.empty()
-              ? &(*tt.locations_.footpaths_in_[idx].begin())
-              : &(*tt.locations_.preprocessing_footpaths_in_[idx].begin()),
+              ? &(*tt.locations_.footpaths_in_[prf][idx].begin())
+              : &(*tt.locations_.preprocessing_footpaths_in_[prf][idx].begin()),
           !tt.locations_.footpaths_in_.empty()
-              ? tt.locations_.footpaths_in_[idx].size()
-              : tt.locations_.preprocessing_footpaths_in_[idx].size()} {}
+              ? tt.locations_.footpaths_in_[prf][idx].size()
+              : tt.locations_.preprocessing_footpaths_in_[prf][idx].size()} {}
 
 location::location(
     std::string_view id,

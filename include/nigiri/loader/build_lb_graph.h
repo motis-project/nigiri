@@ -3,12 +3,13 @@
 #include "utl/pairwise.h"
 
 #include "nigiri/logging.h"
+#include "nigiri/profiles.h"
 #include "nigiri/timetable.h"
 
 namespace nigiri::loader {
 
 template <direction SearchDir>
-void build_lb_graph(timetable& tt) {
+void build_lb_graph(timetable& tt, const profile prf = profile::DEFAULT) {
   hash_map<location_idx_t, duration_t> weights;
 
   auto const update_weight = [&](location_idx_t const target,
@@ -26,8 +27,8 @@ void build_lb_graph(timetable& tt) {
                               : tt.locations_.parents_[l];
 
     auto const& footpaths = SearchDir == direction::kForward
-                                ? tt.locations_.footpaths_in_[l]
-                                : tt.locations_.footpaths_out_[l];
+                                ? tt.locations_.footpaths_in_[prf][l]
+                                : tt.locations_.footpaths_out_[prf][l];
     for (auto const& fp : footpaths) {
       auto const parent = tt.locations_.parents_[fp.target()];
       auto const target =

@@ -244,6 +244,8 @@ enum class location_type : std::uint8_t {
 enum class event_type { kArr, kDep };
 enum class direction { kForward, kBackward };
 
+enum class osm_type { NODE, WAY, RELATION };
+
 }  // namespace nigiri
 
 #include <iomanip>

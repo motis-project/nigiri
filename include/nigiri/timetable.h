@@ -17,6 +17,7 @@
 #include "nigiri/footpath.h"
 #include "nigiri/location.h"
 #include "nigiri/logging.h"
+#include "nigiri/profiles.h"
 #include "nigiri/stop.h"
 #include "nigiri/types.h"
 
@@ -46,10 +47,18 @@ struct timetable {
         location_timezones_.emplace_back(l.timezone_idx_);
         equivalences_.emplace_back();
         children_.emplace_back();
-        preprocessing_footpaths_out_.emplace_back();
-        preprocessing_footpaths_in_.emplace_back();
+
+        for (auto prf_idx = 0; prf_idx < profile::SIZE; ++prf_idx) {
+          preprocessing_footpaths_in_.emplace_back();
+          preprocessing_footpaths_out_.emplace_back();
+
+          preprocessing_footpaths_in_[prf_idx].emplace_back();
+          preprocessing_footpaths_out_[prf_idx].emplace_back();
+        }
+
         transfer_time_.emplace_back(l.transfer_time_);
         osm_ids_.emplace_back(osm_node_id_t::invalid());
+        osm_type_.emplace_back();
         parents_.emplace_back(l.parent_);
       } else {
         log(log_lvl::error, "timetable.register_location",
@@ -64,28 +73,37 @@ struct timetable {
       assert(location_timezones_.size() == next_idx + 1);
       assert(equivalences_.size() == next_idx + 1);
       assert(children_.size() == next_idx + 1);
+
+      // TODO (Carsten) - UPDATE: preprocessing to default only;
+      for (auto i = 0; i < profile::SIZE; ++i) {
+        assert(preprocessing_footpaths_out_[i].size() == next_idx + 1);
+        assert(preprocessing_footpaths_in_[i].size() == next_idx + 1);
+      }
+
       assert(preprocessing_footpaths_out_.size() == next_idx + 1);
       assert(preprocessing_footpaths_in_.size() == next_idx + 1);
       assert(transfer_time_.size() == next_idx + 1);
       assert(osm_ids_.size() == next_idx + 1);
+      assert(osm_type_.size() == next_idx + 1);
       assert(parents_.size() == next_idx + 1);
 
       return it->second;
     }
 
     location get(location_idx_t const idx) {
-      return location{ids_[idx].view(),
-                      names_[idx].view(),
-                      coordinates_[idx],
-                      src_[idx],
-                      types_[idx],
-                      osm_ids_[idx],
-                      parents_[idx],
-                      location_timezones_[idx],
-                      transfer_time_[idx],
-                      it_range{equivalences_[idx]},
-                      std::span<footpath const>{footpaths_out_[idx]},
-                      std::span<footpath const>{footpaths_in_[idx]}};
+      return location{
+          ids_[idx].view(),
+          names_[idx].view(),
+          coordinates_[idx],
+          src_[idx],
+          types_[idx],
+          osm_ids_[idx],
+          parents_[idx],
+          location_timezones_[idx],
+          transfer_time_[idx],
+          it_range{equivalences_[idx]},
+          std::span<footpath const>{footpaths_out_[profile::DEFAULT][idx]},
+          std::span<footpath const>{footpaths_in_[profile::DEFAULT][idx]}};
     }
 
     location get(location_id const& id) {
@@ -103,13 +121,18 @@ struct timetable {
     vector_map<location_idx_t, u8_minutes> transfer_time_;
     vector_map<location_idx_t, location_type> types_;
     vector_map<location_idx_t, osm_node_id_t> osm_ids_;
+    vector_map<location_idx_t, osm_type> osm_type_;
     vector_map<location_idx_t, location_idx_t> parents_;
     vector_map<location_idx_t, timezone_idx_t> location_timezones_;
     mutable_fws_multimap<location_idx_t, location_idx_t> equivalences_;
     mutable_fws_multimap<location_idx_t, location_idx_t> children_;
-    mutable_fws_multimap<location_idx_t, footpath> preprocessing_footpaths_out_;
-    mutable_fws_multimap<location_idx_t, footpath> preprocessing_footpaths_in_;
-    vecvec<location_idx_t, footpath> footpaths_out_, footpaths_in_;
+    vector<mutable_fws_multimap<location_idx_t, footpath>>
+        preprocessing_footpaths_out_{
+            mutable_fws_multimap<location_idx_t, footpath>()};
+    vector<mutable_fws_multimap<location_idx_t, footpath>>
+        preprocessing_footpaths_in_{
+            mutable_fws_multimap<location_idx_t, footpath>()};
+    vector<vecvec<location_idx_t, footpath>> footpaths_out_, footpaths_in_;
     vector_map<timezone_idx_t, timezone> timezones_;
   } locations_;
 

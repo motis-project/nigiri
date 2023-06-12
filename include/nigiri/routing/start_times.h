@@ -6,6 +6,7 @@
 
 #include "cista/reflection/comparable.h"
 
+#include "nigiri/profiles.h"
 #include "nigiri/routing/query.h"
 #include "nigiri/timetable.h"
 #include "nigiri/types.h"
@@ -26,7 +27,8 @@ void get_starts(direction,
                 location_match_mode,
                 bool use_start_footpaths,
                 std::vector<start>&,
-                bool add_ontrip);
+                bool add_ontrip,
+                profile const prf = profile::DEFAULT);
 
 void collect_destinations(timetable const&,
                           std::vector<offset> const& destinations,
