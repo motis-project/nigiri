@@ -6,6 +6,7 @@
 
 #include "nigiri/common/interval.h"
 #include "nigiri/footpath.h"
+#include "nigiri/profiles.h"
 #include "nigiri/routing/limits.h"
 #include "nigiri/routing/location_match_mode.h"
 #include "nigiri/types.h"

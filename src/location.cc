@@ -22,18 +22,17 @@ location::location(timetable const& tt, location_idx_t idx, profile prf)
       footpaths_out_{
           !tt.locations_.footpaths_out_.empty()
               ? &(*tt.locations_.footpaths_out_[prf][idx].begin())
-              : &(*tt.locations_.preprocessing_footpaths_out_[prf][idx]
-                       .begin()),
+              : &(*tt.locations_.preprocessing_footpaths_out_[idx].begin()),
           !tt.locations_.footpaths_out_.empty()
               ? tt.locations_.footpaths_out_[prf][idx].size()
-              : tt.locations_.preprocessing_footpaths_out_[prf][idx].size()},
+              : tt.locations_.preprocessing_footpaths_out_[idx].size()},
       footpaths_in_{
           !tt.locations_.footpaths_in_.empty()
               ? &(*tt.locations_.footpaths_in_[prf][idx].begin())
-              : &(*tt.locations_.preprocessing_footpaths_in_[prf][idx].begin()),
+              : &(*tt.locations_.preprocessing_footpaths_in_[idx].begin()),
           !tt.locations_.footpaths_in_.empty()
               ? tt.locations_.footpaths_in_[prf][idx].size()
-              : tt.locations_.preprocessing_footpaths_in_[prf][idx].size()} {}
+              : tt.locations_.preprocessing_footpaths_in_[idx].size()} {}
 
 location::location(
     std::string_view id,

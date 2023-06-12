@@ -37,13 +37,11 @@ bool is_journey_start(timetable const& tt,
 }
 
 template <direction SearchDir>
-std::optional<journey::leg> find_start_footpath(
-    timetable const& tt,
-    query const& q,
-    journey const& j,
-    raptor_state const& state,
-    date::sys_days const base,
-    profile prf = profile::DEFAULT) {
+std::optional<journey::leg> find_start_footpath(timetable const& tt,
+                                                query const& q,
+                                                journey const& j,
+                                                raptor_state const& state,
+                                                date::sys_days const base) {
   trace_rc("find_start_footpath()\n");
 
   constexpr auto const kFwd = SearchDir == direction::kForward;
@@ -85,8 +83,8 @@ std::optional<journey::leg> find_start_footpath(
       q.start_match_mode_ == location_match_mode::kEquivalent,
       is_journey_start(tt, q, leg_start_location));
   auto const& footpaths =
-      kFwd ? tt.locations_.footpaths_in_[prf][leg_start_location]
-           : tt.locations_.footpaths_out_[prf][leg_start_location];
+      kFwd ? tt.locations_.footpaths_in_[q.prf_][leg_start_location]
+           : tt.locations_.footpaths_out_[q.prf_][leg_start_location];
   auto const j_start_time = unix_to_delta(base, j.start_time_);
   auto const fp_target_time = state.round_times_[0][to_idx(leg_start_location)];
 

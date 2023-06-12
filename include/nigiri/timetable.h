@@ -47,15 +47,8 @@ struct timetable {
         location_timezones_.emplace_back(l.timezone_idx_);
         equivalences_.emplace_back();
         children_.emplace_back();
-
-        for (auto prf_idx = 0; prf_idx < profile::SIZE; ++prf_idx) {
-          preprocessing_footpaths_in_.emplace_back();
-          preprocessing_footpaths_out_.emplace_back();
-
-          preprocessing_footpaths_in_[prf_idx].emplace_back();
-          preprocessing_footpaths_out_[prf_idx].emplace_back();
-        }
-
+        preprocessing_footpaths_in_.emplace_back();
+        preprocessing_footpaths_out_.emplace_back();
         transfer_time_.emplace_back(l.transfer_time_);
         osm_ids_.emplace_back(osm_node_id_t::invalid());
         osm_type_.emplace_back();
@@ -74,11 +67,8 @@ struct timetable {
       assert(equivalences_.size() == next_idx + 1);
       assert(children_.size() == next_idx + 1);
 
-      // TODO (Carsten) - UPDATE: preprocessing to default only;
-      for (auto i = 0; i < profile::SIZE; ++i) {
-        assert(preprocessing_footpaths_out_[i].size() == next_idx + 1);
-        assert(preprocessing_footpaths_in_[i].size() == next_idx + 1);
-      }
+      assert(preprocessing_footpaths_out_.size() == next_idx + 1);
+      assert(preprocessing_footpaths_in_.size() == next_idx + 1);
 
       assert(preprocessing_footpaths_out_.size() == next_idx + 1);
       assert(preprocessing_footpaths_in_.size() == next_idx + 1);
@@ -126,12 +116,8 @@ struct timetable {
     vector_map<location_idx_t, timezone_idx_t> location_timezones_;
     mutable_fws_multimap<location_idx_t, location_idx_t> equivalences_;
     mutable_fws_multimap<location_idx_t, location_idx_t> children_;
-    vector<mutable_fws_multimap<location_idx_t, footpath>>
-        preprocessing_footpaths_out_{
-            mutable_fws_multimap<location_idx_t, footpath>()};
-    vector<mutable_fws_multimap<location_idx_t, footpath>>
-        preprocessing_footpaths_in_{
-            mutable_fws_multimap<location_idx_t, footpath>()};
+    mutable_fws_multimap<location_idx_t, footpath> preprocessing_footpaths_out_;
+    mutable_fws_multimap<location_idx_t, footpath> preprocessing_footpaths_in_;
     vector<vecvec<location_idx_t, footpath>> footpaths_out_, footpaths_in_;
     vector_map<timezone_idx_t, timezone> timezones_;
   } locations_;

@@ -3,7 +3,7 @@
 namespace nigiri {
 
 // Used for array indexes! Don't change the numbers!
-enum profile {
+enum profile : unsigned int {
   DEFAULT = 0,
   // Insert new profiles here!
   SIZE
