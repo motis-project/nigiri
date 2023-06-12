@@ -142,8 +142,8 @@
       "generator": "Ninja",
       "binaryDir": "${sourceDir}/build/clang-tidy",
       "cacheVariables": {
-        "CMAKE_C_COMPILER": "clang-16",
-        "CMAKE_CXX_COMPILER": "clang++-16",
+        "CMAKE_C_COMPILER": "clang-15",
+        "CMAKE_CXX_COMPILER": "clang++-15",
         "CMAKE_CXX_FLAGS": "-stdlib=libc++",
         "CMAKE_EXE_LINKER_FLAGS": "-lc++abi",
         "CMAKE_BUILD_TYPE": "Release",
