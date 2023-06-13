@@ -45,12 +45,11 @@ struct frun : public run {
     location get_location() const noexcept {
       return location{
           fr_->tt_,
-          fr_->is_rt()
-              ? stop{fr_->rtt_->rt_transport_location_seq_[fr_->rt_][stop_idx_]}
-                    .location_idx()
-              : stop{fr_->tt_.route_location_seq_
+          stop{fr_->is_rt()
+                   ? fr_->rtt_->rt_transport_location_seq_[fr_->rt_][stop_idx_]
+                   : fr_->tt_.route_location_seq_
                          [fr_->tt_.transport_route_[fr_->t_.t_idx_]][stop_idx_]}
-                    .location_idx()};
+              .location_idx()};
     }
 
     unixtime_t get_scheduled_arr_time() const noexcept {
