@@ -124,7 +124,7 @@ struct rt_timetable {
                                   rt_transport_idx_t const t) const {
     if (rt_transport_display_names_[t].empty()) {
       return rt_transport_static_transport_[t].apply(utl::overloaded{
-          [&](transport const t) { return tt.transport_name(t.t_idx_); },
+          [&](transport const x) { return tt.transport_name(x.t_idx_); },
           [&](rt_add_trip_id_idx_t) { return std::string_view{"?"}; }});
     } else {
       return rt_transport_display_names_[t].view();
@@ -133,7 +133,7 @@ struct rt_timetable {
 
   debug dbg(timetable const& tt, rt_transport_idx_t const t) const {
     return rt_transport_static_transport_[t].apply(
-        utl::overloaded{[&](transport const t) { return tt.dbg(t.t_idx_); },
+        utl::overloaded{[&](transport const x) { return tt.dbg(x.t_idx_); },
                         [&](rt_add_trip_id_idx_t) { return debug{"RT"}; }});
   }
 

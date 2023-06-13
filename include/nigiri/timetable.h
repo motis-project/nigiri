@@ -74,18 +74,20 @@ struct timetable {
     }
 
     location get(location_idx_t const idx) const {
-      return location{ids_[idx].view(),
-                      names_[idx].view(),
-                      coordinates_[idx],
-                      src_[idx],
-                      types_[idx],
-                      osm_ids_[idx],
-                      parents_[idx],
-                      location_timezones_[idx],
-                      transfer_time_[idx],
-                      it_range{equivalences_[idx]},
-                      std::span<footpath const>{footpaths_out_[idx]},
-                      std::span<footpath const>{footpaths_in_[idx]}};
+      auto l = location{ids_[idx].view(),
+                        names_[idx].view(),
+                        coordinates_[idx],
+                        src_[idx],
+                        types_[idx],
+                        osm_ids_[idx],
+                        parents_[idx],
+                        location_timezones_[idx],
+                        transfer_time_[idx],
+                        it_range{equivalences_[idx]},
+                        std::span<footpath const>{footpaths_out_[idx]},
+                        std::span<footpath const>{footpaths_in_[idx]}};
+      l.l_ = idx;
+      return l;
     }
 
     location get(location_id const& id) const {

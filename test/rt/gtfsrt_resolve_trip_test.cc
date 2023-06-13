@@ -2,7 +2,9 @@
 
 #include "nigiri/loader/gtfs/files.h"
 #include "nigiri/loader/gtfs/load_timetable.h"
+#include "nigiri/loader/init_finish.h"
 #include "nigiri/print_transport.h"
+#include "nigiri/rt/frun.h"
 #include "nigiri/rt/gtfsrt_resolve_run.h"
 #include "nigiri/rt/gtfsrt_update.h"
 #include "nigiri/timetable.h"
@@ -10,6 +12,7 @@
 using namespace nigiri;
 using namespace nigiri::loader;
 using namespace nigiri::loader::gtfs;
+using namespace nigiri::rt;
 using namespace date;
 using namespace std::chrono_literals;
 
@@ -116,9 +119,11 @@ TEST(rt, gtfsrt_resolve_rt_trip) {
 
   // Load static timetable.
   timetable tt;
+  register_special_stations(tt);
   tt.date_range_ = {date::sys_days{2019_y / March / 25},
                     date::sys_days{2019_y / November / 1}};
   load_timetable({}, source_idx_t{0}, test_files(), tt);
+  finalize(tt);
 
   // Create empty RT timetable.
   auto rtt = rt_timetable{};
@@ -145,6 +150,44 @@ TEST(rt, gtfsrt_resolve_rt_trip) {
   td->set_start_time("00:30:00");
   td->set_start_date("20190504");
   td->set_trip_id("T_RE2");
+
+  // Basic checks with rt_timetable=nullptr.
+  auto const scheduled =
+      std::array<unixtime_t, 4>{date::sys_days{2019_y / May / 3} + 22h + 30min,
+                                date::sys_days{2019_y / May / 3} + 22h + 45min,
+                                date::sys_days{2019_y / May / 3} + 22h + 45min,
+                                date::sys_days{2019_y / May / 3} + 23h + 0min};
+  auto const stop_ids = {"B", "C", "D"};
+  auto i = 0U, j = 0U;
+  auto fr = frun{tt, nullptr,
+                 rt::gtfsrt_resolve_run(date::sys_days{2019_y / May / 4}, tt,
+                                        rtt, source_idx_t{0}, *td)};
+  for (auto const [from, to] : utl::pairwise(fr)) {
+    EXPECT_EQ(scheduled[i++], from.scheduled_time(nigiri::event_type::kDep));
+    EXPECT_EQ(scheduled[i++], to.scheduled_time(nigiri::event_type::kArr));
+    EXPECT_EQ(scheduled[j++], from.real_time(nigiri::event_type::kDep));
+    EXPECT_EQ(scheduled[j++], to.real_time(nigiri::event_type::kArr));
+  }
+  for (auto const [id, stop] : utl::zip(stop_ids, fr)) {
+    EXPECT_EQ(tt.locations_.get({id, source_idx_t{0U}}).l_,
+              stop.get_location().l_);
+  }
+
+  // Basic checks with rt_timetable!=nullptr.
+  fr = frun{tt, &rtt,
+            rt::gtfsrt_resolve_run(date::sys_days{2019_y / May / 4}, tt, rtt,
+                                   source_idx_t{0}, *td)};
+  i = j = 0U;
+  for (auto const [from, to] : utl::pairwise(fr)) {
+    EXPECT_EQ(scheduled[i++], from.scheduled_time(nigiri::event_type::kDep));
+    EXPECT_EQ(scheduled[i++], to.scheduled_time(nigiri::event_type::kArr));
+    EXPECT_EQ(scheduled[j++], from.real_time(nigiri::event_type::kDep));
+    EXPECT_EQ(scheduled[j++], to.real_time(nigiri::event_type::kArr));
+  }
+  for (auto const [id, stop] : utl::zip(stop_ids, fr)) {
+    EXPECT_EQ(tt.locations_.get({id, source_idx_t{0U}}).l_,
+              stop.get_location().l_);
+  }
 
   // ** UPDATE 0: update first arrival, check propagation **
   transit_realtime::FeedMessage msg0;
@@ -201,14 +244,27 @@ TEST(rt, gtfsrt_resolve_rt_trip) {
   ASSERT_TRUE(r.valid());
   ASSERT_TRUE(r.is_rt());
   ASSERT_TRUE(r.t_.is_valid());
-  EXPECT_EQ(date::sys_days{2019_y / May / 3} + 22h + 35min,  // absolute update
-            rtt.unix_event_time(r.rt_, 0U, event_type::kDep));
-  EXPECT_EQ(date::sys_days{2019_y / May / 3} + 22h + 50min,  // propagated +5
-            rtt.unix_event_time(r.rt_, 1U, event_type::kArr));
-  EXPECT_EQ(date::sys_days{2019_y / May / 3} + 22h + 50min,  // propagated +5
-            rtt.unix_event_time(r.rt_, 1U, event_type::kDep));
-  EXPECT_EQ(date::sys_days{2019_y / May / 3} + 23h + 10min,  // rel. update +10
-            rtt.unix_event_time(r.rt_, 2U, event_type::kArr));
+
+  auto const expected_rt = std::array<unixtime_t, 4>{
+      date::sys_days{2019_y / May / 3} + 22h + 35min,  // absolute update +5
+      date::sys_days{2019_y / May / 3} + 22h + 50min,  // propagated +5
+      date::sys_days{2019_y / May / 3} + 22h + 50min,  // propagated +5
+      date::sys_days{2019_y / May / 3} + 23h + 10min  // rel. update +10
+  };
+
+  i = j = 0U;
+  fr = frun{tt, &rtt, r};
+  for (auto const [from, to] : utl::pairwise(fr)) {
+    EXPECT_EQ(scheduled[i++], from.scheduled_time(nigiri::event_type::kDep));
+    EXPECT_EQ(scheduled[i++], to.scheduled_time(nigiri::event_type::kArr));
+    EXPECT_EQ(expected_rt[j++], from.real_time(nigiri::event_type::kDep));
+    EXPECT_EQ(expected_rt[j++], to.real_time(nigiri::event_type::kArr));
+  }
+
+  for (auto const [id, stop] : utl::zip(stop_ids, fr)) {
+    EXPECT_EQ(tt.locations_.get({id, source_idx_t{0U}}).l_,
+              stop.get_location().l_);
+  }
 
   std::stringstream ss;
   print_transport(tt, &rtt, ss, r.t_);

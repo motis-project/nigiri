@@ -9,7 +9,8 @@ std::ostream& operator<<(std::ostream& out, location const& l) {
 }
 
 location::location(timetable const& tt, location_idx_t idx)
-    : id_{tt.locations_.ids_[idx].view()},
+    : l_{idx},
+      id_{tt.locations_.ids_[idx].view()},
       name_{tt.locations_.names_[idx].view()},
       pos_{tt.locations_.coordinates_[idx]},
       src_{tt.locations_.src_[idx]},
@@ -47,7 +48,8 @@ location::location(
     it_range<vector<location_idx_t>::const_iterator> equivalences,
     std::span<footpath const> footpaths_in,
     std::span<footpath const> footpaths_out)
-    : id_{id},
+    : l_{location_idx_t::invalid()},
+      id_{id},
       name_{name},
       pos_{pos},
       src_{src},
