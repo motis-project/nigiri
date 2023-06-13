@@ -49,7 +49,7 @@ bool frun::iterator::operator!=(iterator o) const noexcept {
   return !(*this == o);
 }
 
-frun::run_stop frun::iterator::operator*() { return rs_; }
+frun::run_stop frun::iterator::operator*() const noexcept { return rs_; }
 
 frun::frun(timetable const& tt, rt_timetable const* rtt, run r)
     : run{r}, tt_{&tt}, rtt_{rtt} {}

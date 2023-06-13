@@ -36,7 +36,7 @@ struct frun : public run {
     bool operator==(iterator const o) const noexcept;
     bool operator!=(iterator o) const noexcept;
 
-    run_stop operator*();
+    run_stop operator*() const noexcept;
 
     run_stop rs_;
   };
