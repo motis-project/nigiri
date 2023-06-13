@@ -324,7 +324,7 @@ void reconstruct_journey(timetable const& tt,
           k, j.transfers_, location{tt, l}, curr_time);
     }
 
-    trace_reconstruct("CHECKING TRANSFER\n");
+    trace_reconstruct("CHECKING TRANSFER AT {}\n", location{tt, l});
     auto transfer_at_same_stop =
         check_fp(k, l, curr_time,
                  footpath{l, (k == j.transfers_ + 1U)

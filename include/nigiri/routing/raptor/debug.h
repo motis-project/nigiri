@@ -123,7 +123,7 @@
   trace_reconstruct("    -> no traffic on day {}\n ", traffic_day);
 
 #define trace_rc_transport_not_found \
-  trace_reconstruct("    -> no entry found\n ", traffic_day)
+  trace_reconstruct("    -> no entry found\n")
 
 #define trace_rc_meta_start_found                                       \
   trace_reconstruct(                                                    \
