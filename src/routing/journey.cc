@@ -15,13 +15,14 @@ void journey::leg::print(std::ostream& out,
                          unsigned const n_indent,
                          bool const debug) const {
   std::visit(
-      utl::overloaded{[&](transport_enter_exit const& t) {
-                        std::visit(
-                            [&](auto&& x) {
-                              print_transport(tt, rtt, out, x, t.stop_range_,
-                                              n_indent, debug);
-                            },
-                            t.t_);
+      utl::overloaded{[&](run_enter_exit const& t) {
+                        if (t.t_.is_rt() && rtt != nullptr) {
+                          print_transport(tt, rtt, out, t.t_.rt_, t.stop_range_,
+                                          n_indent, debug);
+                        } else {
+                          print_transport(tt, rtt, out, t.t_.t_, t.stop_range_,
+                                          n_indent, debug);
+                        }
                       },
                       [&](footpath const x) {
                         indent(out, n_indent);

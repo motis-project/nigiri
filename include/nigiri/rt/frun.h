@@ -2,6 +2,7 @@
 
 #include "nigiri/location.h"
 #include "nigiri/rt/run.h"
+#include "nigiri/stop.h"
 
 namespace nigiri {
 struct rt_timetable;
@@ -14,9 +15,12 @@ namespace nigiri::rt {
 // rt_timetable to be able to look up additional info.
 struct frun : public run {
   struct run_stop {
+    stop get_stop() const noexcept;
     location get_location() const noexcept;
     unixtime_t scheduled_time(event_type const ev_type) const noexcept;
     unixtime_t real_time(event_type const ev_type) const noexcept;
+    bool in_allowed() const noexcept;
+    bool out_allowed() const noexcept;
     bool operator==(run_stop const&) const = default;
 
     frun const* fr_{nullptr};
@@ -42,6 +46,9 @@ struct frun : public run {
   };
   using const_iterator = iterator;
 
+  std::string_view name() const noexcept;
+  debug dbg() const noexcept;
+
   frun(timetable const&, rt_timetable const*, run);
   frun(timetable const&, rt_timetable const&, rt_transport_idx_t const);
   frun(timetable const&, rt_timetable const*, transport const);
@@ -51,6 +58,8 @@ struct frun : public run {
 
   friend iterator begin(frun const& fr) noexcept;
   friend iterator end(frun const& fr) noexcept;
+
+  run_stop operator[](stop_idx_t) const noexcept;
 
   stop_idx_t size() const noexcept;
 

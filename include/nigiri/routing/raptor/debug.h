@@ -2,7 +2,7 @@
 
 #include "fmt/core.h"
 
-// #define NIGIRI_TRACING
+#define NIGIRI_TRACING
 #if defined(NIGIRI_TRACING)
 
 // #define NIGIRI_RAPTOR_TRACING_ONLY_UPDATES
@@ -97,7 +97,7 @@
       location{tt, fp.target()}, location{tt, leg_start_location},         \
       j.start_time_, fp_target_time, fp.duration())
 
-#define trace_fp_start_no_match                                           \
+#define trace_rc_fp_start_no_match                                        \
   trace_reconstruct(                                                      \
       "    no start: {} -> {}  is_journey_start(fp.target())={}, "        \
       "fp_start_time={}, j_start_time={}, fp_duration={}\n",              \
@@ -125,15 +125,6 @@
 #define trace_rc_transport_not_found \
   trace_reconstruct("    -> no entry found\n")
 
-#define trace_rc_meta_start_found                                       \
-  trace_reconstruct(                                                    \
-      "      ENTRY AT META={}, ORIG={}, name={}, dbg={}: k={} k-1={}, " \
-      "best_at_stop=min({}, {})={} <= event_time={}\n",                 \
-      location{tt, l}, location{tt, l}, tt.transport_name(t.t_idx_),    \
-      tt.dbg(t.t_idx_), k, k - 1, raptor_state.best_[to_idx(l)],        \
-      raptor_state.round_times_[k - 1][to_idx(l)], best(k - 1, l),      \
-      event_time);
-
 #define trace_rc_transport_entry_not_possible                              \
   trace_reconstruct(                                                       \
       "      ENTRY NOT POSSIBLE AT {}: k={} k-1={}, best_at_stop=min({}, " \
@@ -141,16 +132,15 @@
       location{tt, l}, k, k - 1, raptor_state.best_[to_idx(l)],            \
       raptor_state.round_times_[k - 1][to_idx(l)], best(k - 1, l),         \
       delta_to_unix(base, best(k - 1, l)), event_time,                     \
-      tt.event_time(t, stop_idx, kFwd ? event_type::kDep : event_type::kArr));
+      fr[stop_idx].real_time(kFwd ? event_type::kDep : event_type::kArr));
 
 #define trace_rc_transport_entry_found                                 \
   trace_reconstruct(                                                   \
       "      FOUND ENTRY AT name={}, dbg={}, location={}: {} <= {}\n", \
-      tt.transport_name(t.t_idx_), tt.dbg(t.t_idx_), location{tt, l},  \
-      best(k - 1, l), event_time)
+      fr.name(), fr.dbg(), location{tt, l}, best(k - 1, l), event_time)
 
 #define trace_rc_fp_intermodal_dest_mismatch                            \
-  trace_rc(                                                             \
+  trace_reconstruct(                                                    \
       "  BAD intermodal+footpath dest offset: {}@{} --{}--> "           \
       "{}@{} --{}--> END@{} (type={})\n",                               \
       location{tt, fp.target()},                                        \
@@ -159,7 +149,7 @@
       dest_offset.duration_, curr_time, dest_offset.type_)
 
 #define trace_rc_fp_intermodal_dest_match                        \
-  trace_rc(                                                      \
+  trace_reconstruct(                                             \
       "  found intermodal+footpath dest offset END [{}] -> {}: " \
       "offset={}\n",                                             \
       curr_time, location{tt, fp.target()}, fp.duration())
@@ -175,14 +165,13 @@
       "offset={}\n",                                    \
       curr_time, location{tt, dest_offset.target_}, dest_offset.duration_)
 
-#define trace_rc_legs_found                                   \
-  trace_rc("found:\n");                                       \
-  if constexpr (kTracing) {                                   \
-    transport_leg->print(std::cout, tt, 1, true);             \
-  }                                                           \
-  trace_rc(" fp leg: {} {} --{}--> {} {}\n", location{tt, l}, \
-           delta_to_unix(base, fp_start), fp.duration(),      \
-           location{tt, fp.target()}, delta_to_unix(base, curr_time));
+#define trace_rc_legs_found                                            \
+  trace_reconstruct("found:\n");                                       \
+  transport_leg->print(std::cout, tt, rtt, 1, true);                   \
+  trace_reconstruct(" fp leg: {} {} --{}--> {} {}\n", location{tt, l}, \
+                    delta_to_unix(base, fp_start), fp.duration(),      \
+                    location{tt, fp.target()},                         \
+                    delta_to_unix(base, curr_time));
 
 #define trace_rc_check_fp                                                   \
   trace_reconstruct(                                                        \
@@ -207,7 +196,6 @@
 #define trace_rc_transport_mam_mismatch
 #define trace_rc_transport_no_traffic
 #define trace_rc_transport_not_found
-#define trace_rc_meta_start_found
 #define trace_rc_transport_entry_not_possible
 #define trace_rc_transport_entry_found
 #define trace_rc_fp_intermodal_dest_mismatch

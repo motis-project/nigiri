@@ -64,8 +64,9 @@ struct raptor {
         base_{base},
         n_days_{tt_.internal_interval_days().size().count()},
         n_locations_{tt_.n_locations()},
-        n_routes_{tt.n_routes()} {
-    state_.resize(n_locations_, n_routes_);
+        n_routes_{tt.n_routes()},
+        n_rt_transports_{Rt ? rtt->n_rt_transports() : 0U} {
+    state_.resize(n_locations_, n_routes_, n_rt_transports_);
     utl::fill(time_at_dest_, kInvalid);
     state_.round_times_.reset(kInvalid);
   }
@@ -336,29 +337,31 @@ private:
       auto const l_idx = cista::to_idx(stp.location_idx());
       auto const is_last = i == stop_seq.size() - 1U;
 
-      auto current_best = kInvalid;
-      auto const by_transport = rt_time_at_stop(
-          rt_t, stop_idx, kFwd ? event_type::kArr : event_type::kDep);
-      if (et && (kFwd ? stp.out_allowed() : stp.in_allowed())) {
-        current_best = get_best(state_.round_times_[k - 1][l_idx],
-                                state_.tmp_[l_idx], state_.best_[l_idx]);
-        if (is_better(by_transport, current_best) &&
-            is_better(by_transport, time_at_dest_[k]) &&
-            lb_[l_idx] != kUnreachable &&
-            is_better(by_transport + dir(lb_[l_idx]), time_at_dest_[k])) {
-          trace_upd(
-              "┊ │k={}    RT | name={}, dbg={}, time_by_transport={}, BETTER "
-              "THAN current_best={} => update, {} marking station {}!\n",
-              k, rtt_->transport_name(tt_, rt_t), rtt_->dbg(tt_, rt_t),
-              by_transport, current_best,
-              !is_better(by_transport, current_best) ? "NOT" : "",
-              location{tt_, stp.location_idx()});
+      if ((kFwd && i != 0U) || (kBwd && i != stop_seq.size())) {
+        auto current_best = kInvalid;
+        auto const by_transport = rt_time_at_stop(
+            rt_t, stop_idx, kFwd ? event_type::kArr : event_type::kDep);
+        if (et && (kFwd ? stp.out_allowed() : stp.in_allowed())) {
+          current_best = get_best(state_.round_times_[k - 1][l_idx],
+                                  state_.tmp_[l_idx], state_.best_[l_idx]);
+          if (is_better(by_transport, current_best) &&
+              is_better(by_transport, time_at_dest_[k]) &&
+              lb_[l_idx] != kUnreachable &&
+              is_better(by_transport + dir(lb_[l_idx]), time_at_dest_[k])) {
+            trace_upd(
+                "┊ │k={}    RT | name={}, dbg={}, time_by_transport={}, BETTER "
+                "THAN current_best={} => update, {} marking station {}!\n",
+                k, rtt_->transport_name(tt_, rt_t), rtt_->dbg(tt_, rt_t),
+                by_transport, current_best,
+                !is_better(by_transport, current_best) ? "NOT" : "",
+                location{tt_, stp.location_idx()});
 
-          ++stats_.n_earliest_arrival_updated_by_route_;
-          state_.tmp_[l_idx] = get_best(by_transport, state_.tmp_[l_idx]);
-          state_.station_mark_[l_idx] = true;
-          current_best = by_transport;
-          any_marked = true;
+            ++stats_.n_earliest_arrival_updated_by_route_;
+            state_.tmp_[l_idx] = get_best(by_transport, state_.tmp_[l_idx]);
+            state_.station_mark_[l_idx] = true;
+            current_best = by_transport;
+            any_marked = true;
+          }
         }
       }
 

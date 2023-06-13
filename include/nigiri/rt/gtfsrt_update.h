@@ -1,9 +1,13 @@
 #pragma once
 
-#include "nigiri/rt/rt_timetable.h"
-#include "nigiri/timetable.h"
-
 #include "gtfsrt/gtfs-realtime.pb.h"
+
+#include "nigiri/types.h"
+
+namespace nigiri {
+struct rt_timetable;
+struct timetable;
+}  // namespace nigiri
 
 namespace nigiri::rt {
 

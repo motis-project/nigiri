@@ -5,15 +5,17 @@
 
 namespace nigiri::rt {
 
+stop frun::run_stop::get_stop() const noexcept {
+  return stop{
+      (fr_->is_rt() && fr_->rtt_ != nullptr)
+          ? fr_->rtt_->rt_transport_location_seq_[fr_->rt_][stop_idx_]
+          : fr_->tt_->route_location_seq_
+                [fr_->tt_->transport_route_[fr_->t_.t_idx_]][stop_idx_]};
+}
+
 location frun::run_stop::get_location() const noexcept {
   assert(fr_->size() >= stop_idx_);
-  return location{
-      *fr_->tt_,
-      stop{(fr_->is_rt() && fr_->rtt_ != nullptr)
-               ? fr_->rtt_->rt_transport_location_seq_[fr_->rt_][stop_idx_]
-               : fr_->tt_->route_location_seq_
-                     [fr_->tt_->transport_route_[fr_->t_.t_idx_]][stop_idx_]}
-          .location_idx()};
+  return location{*fr_->tt_, get_stop().location_idx()};
 }
 
 unixtime_t frun::run_stop::scheduled_time(
@@ -29,6 +31,14 @@ unixtime_t frun::run_stop::real_time(event_type const ev_type) const noexcept {
   return (fr_->is_rt() && fr_->rtt_ != nullptr)
              ? fr_->rtt_->unix_event_time(fr_->rt_, stop_idx_, ev_type)
              : fr_->tt_->event_time(fr_->t_, stop_idx_, ev_type);
+}
+
+bool frun::run_stop::in_allowed() const noexcept {
+  return get_stop().in_allowed();
+}
+
+bool frun::run_stop::out_allowed() const noexcept {
+  return get_stop().out_allowed();
 }
 
 frun::iterator& frun::iterator::operator++() noexcept {
@@ -67,6 +77,12 @@ frun::frun(timetable const& tt, rt_timetable const* rtt, transport const t)
       tt_{&tt},
       rtt_{rtt} {}
 
+std::string_view frun::name() const noexcept {
+  return rtt_->transport_name(*tt_, rt_);
+}
+
+debug frun::dbg() const noexcept { return rtt_->dbg(*tt_, rt_); }
+
 frun::iterator frun::begin() const noexcept {
   return iterator{run_stop{.fr_ = this, .stop_idx_ = 0U}};
 }
@@ -77,6 +93,10 @@ frun::iterator frun::end() const noexcept {
 
 frun::iterator begin(frun const& fr) noexcept { return fr.begin(); }
 frun::iterator end(frun const& fr) noexcept { return fr.end(); }
+
+frun::run_stop frun::operator[](stop_idx_t const i) const noexcept {
+  return run_stop{this, i};
+}
 
 stop_idx_t frun::size() const noexcept {
   return static_cast<stop_idx_t>(

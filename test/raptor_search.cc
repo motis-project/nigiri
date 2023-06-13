@@ -20,30 +20,40 @@ unixtime_t parse_time(std::string_view s, char const* format) {
 
 template <direction SearchDir>
 pareto_set<routing::journey> raptor_search(timetable const& tt,
+                                           rt_timetable const* rtt,
                                            routing::query q) {
-  using algo_t = routing::raptor<SearchDir, false>;
   using algo_state_t = routing::raptor_state;
-
   static auto search_state = routing::search_state{};
   static auto algo_state = algo_state_t{};
 
-  return *(routing::search<SearchDir, algo_t>{tt, search_state, algo_state,
-                                              std::move(q)}
-               .execute()
-               .journeys_);
-}
-
-pareto_set<routing::journey> raptor_search(timetable const& tt,
-                                           routing::query q,
-                                           direction const search_dir) {
-  if (search_dir == direction::kForward) {
-    return raptor_search<direction::kForward>(tt, std::move(q));
+  if (rtt == nullptr) {
+    using algo_t = routing::raptor<SearchDir, false>;
+    return *(routing::search<SearchDir, algo_t>{tt, rtt, search_state,
+                                                algo_state, std::move(q)}
+                 .execute()
+                 .journeys_);
   } else {
-    return raptor_search<direction::kBackward>(tt, std::move(q));
+    using algo_t = routing::raptor<SearchDir, true>;
+    return *(routing::search<SearchDir, algo_t>{tt, rtt, search_state,
+                                                algo_state, std::move(q)}
+                 .execute()
+                 .journeys_);
   }
 }
 
 pareto_set<routing::journey> raptor_search(timetable const& tt,
+                                           rt_timetable const* rtt,
+                                           routing::query q,
+                                           direction const search_dir) {
+  if (search_dir == direction::kForward) {
+    return raptor_search<direction::kForward>(tt, rtt, std::move(q));
+  } else {
+    return raptor_search<direction::kBackward>(tt, rtt, std::move(q));
+  }
+}
+
+pareto_set<routing::journey> raptor_search(timetable const& tt,
+                                           rt_timetable const* rtt,
                                            std::string_view from,
                                            std::string_view to,
                                            routing::start_time_t time,
@@ -55,23 +65,25 @@ pareto_set<routing::journey> raptor_search(timetable const& tt,
                   0U}},
       .destination_ = {
           {tt.locations_.location_id_to_idx_.at({to, src}), 0_minutes, 0U}}};
-  return raptor_search(tt, std::move(q), search_dir);
+  return raptor_search(tt, rtt, std::move(q), search_dir);
 }
 
 pareto_set<routing::journey> raptor_search(timetable const& tt,
+                                           rt_timetable const* rtt,
                                            std::string_view from,
                                            std::string_view to,
                                            std::string_view time,
                                            direction const search_dir) {
-  return raptor_search(tt, from, to, parse_time(time, "%Y-%m-%d %H:%M %Z"),
+  return raptor_search(tt, rtt, from, to, parse_time(time, "%Y-%m-%d %H:%M %Z"),
                        search_dir);
 }
 
 pareto_set<routing::journey> raptor_intermodal_search(
     timetable const& tt,
+    rt_timetable const* rtt,
     std::vector<routing::offset> start,
     std::vector<routing::offset> destination,
-    interval<unixtime_t> interval,
+    routing::start_time_t const interval,
     direction const search_dir,
     std::uint8_t const min_connection_count,
     bool const extend_interval_earlier,
@@ -85,7 +97,7 @@ pareto_set<routing::journey> raptor_intermodal_search(
       .min_connection_count_ = min_connection_count,
       .extend_interval_earlier_ = extend_interval_earlier,
       .extend_interval_later_ = extend_interval_later};
-  return raptor_search(tt, std::move(q), search_dir);
+  return raptor_search(tt, rtt, std::move(q), search_dir);
 }
 
 }  // namespace nigiri::test

@@ -9,13 +9,16 @@
 
 namespace nigiri::routing {
 
-void raptor_state::resize(unsigned const n_locations, unsigned const n_routes) {
+void raptor_state::resize(unsigned const n_locations,
+                          unsigned const n_routes,
+                          unsigned const n_rt_transports) {
   tmp_.resize(n_locations);
   station_mark_.resize(n_locations);
   prev_station_mark_.resize(n_locations);
   route_mark_.resize(n_routes);
   best_.resize(n_locations);
   round_times_.resize(kMaxTransfers + 1U, n_locations);
+  rt_transport_mark_.resize(n_rt_transports);
 }
 
 void raptor_state::print(timetable const& tt,

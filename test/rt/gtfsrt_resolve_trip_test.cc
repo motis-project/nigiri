@@ -110,7 +110,7 @@ TEST(rt, gtfsrt_resolve_static_trip) {
   }
 }
 
-TEST(rt, gtfsrt_resolve_rt_trip) {
+TEST(rt, gtfs_rt_update) {
   auto const to_unix = [](auto&& x) {
     return std::chrono::time_point_cast<std::chrono::seconds>(x)
         .time_since_epoch()
@@ -153,10 +153,10 @@ TEST(rt, gtfsrt_resolve_rt_trip) {
 
   // Basic checks with rt_timetable=nullptr.
   auto const scheduled =
-      std::array<unixtime_t, 4>{date::sys_days{2019_y / May / 3} + 22h + 30min,
-                                date::sys_days{2019_y / May / 3} + 22h + 45min,
-                                date::sys_days{2019_y / May / 3} + 22h + 45min,
-                                date::sys_days{2019_y / May / 3} + 23h + 0min};
+      std::array<unixtime_t, 4>{sys_days{2019_y / May / 3} + 22h + 30min,
+                                sys_days{2019_y / May / 3} + 22h + 45min,
+                                sys_days{2019_y / May / 3} + 22h + 45min,
+                                sys_days{2019_y / May / 3} + 23h + 0min};
   auto const stop_ids = {"B", "C", "D"};
   auto i = 0U, j = 0U;
   auto fr = frun{tt, nullptr,
@@ -246,10 +246,10 @@ TEST(rt, gtfsrt_resolve_rt_trip) {
   ASSERT_TRUE(r.t_.is_valid());
 
   auto const expected_rt = std::array<unixtime_t, 4>{
-      date::sys_days{2019_y / May / 3} + 22h + 35min,  // absolute update +5
-      date::sys_days{2019_y / May / 3} + 22h + 50min,  // propagated +5
-      date::sys_days{2019_y / May / 3} + 22h + 50min,  // propagated +5
-      date::sys_days{2019_y / May / 3} + 23h + 10min  // rel. update +10
+      sys_days{2019_y / May / 3} + 22h + 35min,  // absolute update +5
+      sys_days{2019_y / May / 3} + 22h + 50min,  // propagated +5
+      sys_days{2019_y / May / 3} + 22h + 50min,  // propagated +5
+      sys_days{2019_y / May / 3} + 23h + 10min  // rel. update +10
   };
 
   i = j = 0U;

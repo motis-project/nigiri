@@ -22,7 +22,9 @@ struct raptor_state {
   raptor_state& operator=(raptor_state&&) = default;
   ~raptor_state() = default;
 
-  void resize(unsigned n_locations, unsigned n_routes);
+  void resize(unsigned n_locations,
+              unsigned n_routes,
+              unsigned n_rt_transports);
 
   void print(timetable const& tt, date::sys_days, delta_t invalid);
 

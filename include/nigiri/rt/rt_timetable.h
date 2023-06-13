@@ -148,6 +148,10 @@ struct rt_timetable {
                                           : it->second;
   }
 
+  std::uint32_t n_rt_transports() const noexcept {
+    return rt_transport_src_.size();
+  }
+
   // Updated transport traffic days from the static timetable.
   // Initial: 100% copy from static, then adapted according to real-time
   // updates

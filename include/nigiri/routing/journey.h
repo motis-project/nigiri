@@ -8,6 +8,7 @@
 #include "nigiri/common/interval.h"
 #include "nigiri/footpath.h"
 #include "nigiri/routing/query.h"
+#include "nigiri/rt/run.h"
 #include "nigiri/types.h"
 
 namespace nigiri {
@@ -18,13 +19,13 @@ struct rt_timetable;
 namespace nigiri::routing {
 
 struct journey {
-  struct transport_enter_exit {
+  struct run_enter_exit {
     template <typename T>
-    transport_enter_exit(T&& t, stop_idx_t const a, stop_idx_t const b)
+    run_enter_exit(T&& t, stop_idx_t const a, stop_idx_t const b)
         : t_{t},
           stop_range_{static_cast<stop_idx_t>(std::min(a, b)),
                       static_cast<stop_idx_t>(std::max(a, b) + 1U)} {}
-    std::variant<transport, rt_transport_idx_t> t_;
+    rt::run t_;
     interval<stop_idx_t> stop_range_;
   };
 
@@ -50,7 +51,7 @@ struct journey {
 
     location_idx_t from_, to_;
     unixtime_t dep_time_, arr_time_;
-    std::variant<transport_enter_exit, footpath, offset> uses_;
+    std::variant<run_enter_exit, footpath, offset> uses_;
   };
 
   bool dominates(journey const& o) const {

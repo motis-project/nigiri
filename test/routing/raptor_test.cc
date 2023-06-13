@@ -57,7 +57,7 @@ TEST(routing, raptor_forward) {
   finalize(tt);
 
   auto const results = raptor_search(
-      tt, "0000001", "0000003",
+      tt, nullptr, "0000001", "0000003",
       interval{unixtime_t{sys_days{2020_y / March / 30}} + 5_hours,
                unixtime_t{sys_days{2020_y / March / 30}} + 6_hours});
 
@@ -115,7 +115,7 @@ TEST(routing, raptor_backward) {
   finalize(tt);
 
   auto const results = raptor_search(
-      tt, "0000003", "0000001",
+      tt, nullptr, "0000003", "0000001",
       interval{unixtime_t{sys_days{2020_y / March / 30}} + 5_hours,
                unixtime_t{sys_days{2020_y / March / 30}} + 6_hours},
       direction::kBackward);
