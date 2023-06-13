@@ -266,6 +266,16 @@ TEST(rt, gtfsrt_resolve_rt_trip) {
               stop.get_location().l_);
   }
 
+  // Ignore delays.
+  fr = frun{tt, nullptr, r};
+  i = j = 0U;
+  for (auto const [from, to] : utl::pairwise(fr)) {
+    EXPECT_EQ(scheduled[i++], from.scheduled_time(nigiri::event_type::kDep));
+    EXPECT_EQ(scheduled[i++], to.scheduled_time(nigiri::event_type::kArr));
+    EXPECT_EQ(scheduled[j++], from.real_time(nigiri::event_type::kDep));
+    EXPECT_EQ(scheduled[j++], to.real_time(nigiri::event_type::kArr));
+  }
+
   std::stringstream ss;
   print_transport(tt, &rtt, ss, r.t_);
   EXPECT_EQ(ss.str(), kTransportAfterUpdate);

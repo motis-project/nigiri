@@ -9,7 +9,7 @@ location frun::run_stop::get_location() const noexcept {
   assert(fr_->size() >= stop_idx_);
   return location{
       *fr_->tt_,
-      stop{fr_->is_rt()
+      stop{(fr_->is_rt() && fr_->rtt_ != nullptr)
                ? fr_->rtt_->rt_transport_location_seq_[fr_->rt_][stop_idx_]
                : fr_->tt_->route_location_seq_
                      [fr_->tt_->transport_route_[fr_->t_.t_idx_]][stop_idx_]}
@@ -26,8 +26,9 @@ unixtime_t frun::run_stop::scheduled_time(
 
 unixtime_t frun::run_stop::real_time(event_type const ev_type) const noexcept {
   assert(fr_->size() >= stop_idx_);
-  return fr_->is_rt() ? fr_->rtt_->unix_event_time(fr_->rt_, stop_idx_, ev_type)
-                      : fr_->tt_->event_time(fr_->t_, stop_idx_, ev_type);
+  return (fr_->is_rt() && fr_->rtt_ != nullptr)
+             ? fr_->rtt_->unix_event_time(fr_->rt_, stop_idx_, ev_type)
+             : fr_->tt_->event_time(fr_->t_, stop_idx_, ev_type);
 }
 
 frun::iterator& frun::iterator::operator++() noexcept {
@@ -79,7 +80,7 @@ frun::iterator end(frun const& fr) noexcept { return fr.end(); }
 
 stop_idx_t frun::size() const noexcept {
   return static_cast<stop_idx_t>(
-      is_rt()
+      (is_rt() && rtt_ != nullptr)
           ? rtt_->rt_transport_location_seq_[rt_].size()
           : tt_->route_location_seq_[tt_->transport_route_[t_.t_idx_]].size());
 }
