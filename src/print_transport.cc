@@ -28,14 +28,17 @@ void print_transport(timetable const& tt,
 
   auto rt_t = rt_transport_idx_t::invalid();
   if (rtt != nullptr) {
-    rt_t = rtt->static_trip_lookup_.at(x);
-    auto const rt_stop_seq = rtt->rt_transport_location_seq_[rt_t];
-    auto const rt_times = rtt->rt_transport_stop_times_[rt_t];
-    utl::verify(utl::equal(rt_stop_seq, stop_seq),
-                "print_transport: rerouting not supported");
-    utl::verify(rt_times.size() == rt_stop_seq.size() * 2U - 2U,
-                "print_transport: bad rt times {} vs {}", rt_times.size(),
-                rt_stop_seq.size());
+    auto const it = rtt->static_trip_lookup_.find(x);
+    if (it != end(rtt->static_trip_lookup_)) {
+      rt_t = it->second;
+      auto const rt_stop_seq = rtt->rt_transport_location_seq_[rt_t];
+      auto const rt_times = rtt->rt_transport_stop_times_[rt_t];
+      utl::verify(utl::equal(rt_stop_seq, stop_seq),
+                  "print_transport: rerouting not supported");
+      utl::verify(rt_times.size() == rt_stop_seq.size() * 2U - 2U,
+                  "print_transport: bad rt times {} vs {}", rt_times.size(),
+                  rt_stop_seq.size());
+    }
   }
 
   assert(tt.route_transport_ranges_.at(route_idx).contains(x.t_idx_));
@@ -67,7 +70,7 @@ void print_transport(timetable const& tt,
       auto const t = tt.event_time(x, stop_idx, event_type::kArr);
       date::to_stream(out, "a: %d.%m %R", t);
       date::to_stream(out, " [%d.%m %R]", to_local_time(tz, t));
-      if (rtt != nullptr) {
+      if (rt_t != rt_transport_idx_t::invalid()) {
         auto const rt = rtt->unix_event_time(rt_t, stop_idx, event_type::kArr);
         date::to_stream(out, " RT %d.%m %R", rt);
         date::to_stream(out, " [%d.%m %R]", to_local_time(tz, rt));
@@ -91,7 +94,7 @@ void print_transport(timetable const& tt,
       auto const t = tt.event_time(x, stop_idx, event_type::kDep);
       date::to_stream(out, "  d: %d.%m %R", t);
       date::to_stream(out, " [%d.%m %R]", to_local_time(tz, t));
-      if (rtt != nullptr) {
+      if (rt_t != rt_transport_idx_t::invalid()) {
         auto const rt = rtt->unix_event_time(rt_t, stop_idx, event_type::kDep);
         date::to_stream(out, " RT %d.%m %R", rt);
         date::to_stream(out, " [%d.%m %R]", to_local_time(tz, rt));

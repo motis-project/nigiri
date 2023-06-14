@@ -1,5 +1,7 @@
 #pragma once
 
+#include <iosfwd>
+
 #include "nigiri/location.h"
 #include "nigiri/rt/run.h"
 #include "nigiri/stop.h"
@@ -22,6 +24,7 @@ struct frun : public run {
     bool in_allowed() const noexcept;
     bool out_allowed() const noexcept;
     bool operator==(run_stop const&) const = default;
+    friend std::ostream& operator<<(std::ostream&, run_stop const&);
 
     frun const* fr_{nullptr};
     stop_idx_t stop_idx_{0U};
@@ -59,9 +62,12 @@ struct frun : public run {
   friend iterator begin(frun const& fr) noexcept;
   friend iterator end(frun const& fr) noexcept;
 
+  stop_idx_t size() const noexcept;
+
   run_stop operator[](stop_idx_t) const noexcept;
 
-  stop_idx_t size() const noexcept;
+  void print(std::ostream&, interval<stop_idx_t> stop_range);
+  friend std::ostream& operator<<(std::ostream&, frun const&);
 
   timetable const* tt_;
   rt_timetable const* rtt_;

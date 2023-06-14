@@ -1,5 +1,6 @@
 #include "nigiri/rt/frun.h"
 
+#include "nigiri/lookup/get_transport_stop_tz.h"
 #include "nigiri/rt/rt_timetable.h"
 #include "nigiri/timetable.h"
 
@@ -78,10 +79,14 @@ frun::frun(timetable const& tt, rt_timetable const* rtt, transport const t)
       rtt_{rtt} {}
 
 std::string_view frun::name() const noexcept {
-  return rtt_->transport_name(*tt_, rt_);
+  return (is_rt() && rtt_ != nullptr) ? rtt_->transport_name(*tt_, rt_)
+                                      : tt_->transport_name(t_.t_idx_);
 }
 
-debug frun::dbg() const noexcept { return rtt_->dbg(*tt_, rt_); }
+debug frun::dbg() const noexcept {
+  return (is_rt() && rtt_ != nullptr) ? rtt_->dbg(*tt_, rt_)
+                                      : tt_->dbg(t_.t_idx_);
+}
 
 frun::iterator frun::begin() const noexcept {
   return iterator{run_stop{.fr_ = this, .stop_idx_ = 0U}};
@@ -94,15 +99,35 @@ frun::iterator frun::end() const noexcept {
 frun::iterator begin(frun const& fr) noexcept { return fr.begin(); }
 frun::iterator end(frun const& fr) noexcept { return fr.end(); }
 
-frun::run_stop frun::operator[](stop_idx_t const i) const noexcept {
-  return run_stop{this, i};
-}
-
 stop_idx_t frun::size() const noexcept {
   return static_cast<stop_idx_t>(
       (is_rt() && rtt_ != nullptr)
           ? rtt_->rt_transport_location_seq_[rt_].size()
           : tt_->route_location_seq_[tt_->transport_route_[t_.t_idx_]].size());
+}
+
+frun::run_stop frun::operator[](stop_idx_t const i) const noexcept {
+  return run_stop{this, i};
+}
+
+std::ostream& operator<<(std::ostream& out, frun::run_stop const& stp) {
+  auto const& tz = stp.fr_->tt_->locations_.timezones_.at(get_transport_stop_tz(
+      *stp.fr_->tt_, stp.fr_->t_.t_idx_, stp.get_location().l_));
+  fmt::print(out, "{:2}: {:7} {:.<48} ", stp.stop_idx_, stp.get_location().id_,
+             stp.get_location().name_);
+  if (stp.stop_idx_ != 0U) {
+    date::to_stream(out, "a: %d.%m %R", stp.scheduled_time(event_type::kArr));
+    date::to_stream(out, " [%d.%m %R]",
+                    to_local_time(tz, stp.scheduled_time(event_type::kArr)));
+  }
+  return out;
+}
+
+std::ostream& operator<<(std::ostream& out, frun const& fr) {
+  for (auto const& stp : fr) {
+    out << stp;
+  }
+  return out;
 }
 
 }  // namespace nigiri::rt

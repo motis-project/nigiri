@@ -374,6 +374,8 @@ private:
         continue;
       }
 
+      auto const by_transport = rt_time_at_stop(
+          rt_t, stop_idx, kFwd ? event_type::kDep : event_type::kArr);
       auto const prev_round_time = state_.round_times_[k - 1][l_idx];
       if (is_better_or_eq(prev_round_time, by_transport)) {
         et = true;
