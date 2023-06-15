@@ -19,6 +19,11 @@ location frun::run_stop::get_location() const noexcept {
   return location{*fr_->tt_, get_stop().location_idx()};
 }
 
+location_idx_t frun::run_stop::get_location_idx() const noexcept {
+  assert(fr_->size() >= stop_idx_);
+  return get_stop().location_idx();
+}
+
 unixtime_t frun::run_stop::scheduled_time(
     event_type const ev_type) const noexcept {
   assert(fr_->size() >= stop_idx_);
@@ -113,19 +118,38 @@ frun::run_stop frun::operator[](stop_idx_t const i) const noexcept {
 std::ostream& operator<<(std::ostream& out, frun::run_stop const& stp) {
   auto const& tz = stp.fr_->tt_->locations_.timezones_.at(get_transport_stop_tz(
       *stp.fr_->tt_, stp.fr_->t_.t_idx_, stp.get_location().l_));
-  fmt::print(out, "{:2}: {:7} {:.<48} ", stp.stop_idx_, stp.get_location().id_,
+  fmt::print(out, "{:2}: {:7} {:.<48}  ", stp.stop_idx_, stp.get_location().id_,
              stp.get_location().name_);
   if (stp.stop_idx_ != 0U) {
-    date::to_stream(out, "a: %d.%m %R", stp.scheduled_time(event_type::kArr));
-    date::to_stream(out, " [%d.%m %R]",
-                    to_local_time(tz, stp.scheduled_time(event_type::kArr)));
+    auto const st = stp.scheduled_time(event_type::kArr);
+    auto const rt = stp.real_time(event_type::kArr);
+    fmt::print(out, "{}a: {} [{}]  RT{} {} [{}]",
+               (stp.out_allowed() ? ' ' : '-'), date::format("%d.%m %R", st),
+               date::format("%d.%m %R", to_local_time(tz, st)),
+               (stp.fr_->is_rt() && stp.fr_->rtt_ != nullptr) ? '*' : '_',
+               date::format("%d.%m %R", rt),
+               date::format("%d.%m %R", to_local_time(tz, rt)));
+  } else {
+    fmt::print(out,
+               "                                                            ");
+  }
+  if (stp.stop_idx_ != stp.fr_->size() - 1U) {
+    fmt::print(out, "      ");
+    auto const st = stp.scheduled_time(event_type::kDep);
+    auto const rt = stp.real_time(event_type::kDep);
+    fmt::print(out, "{}d: {} [{}]  RT{} {} [{}]",
+               (stp.in_allowed() ? ' ' : '-'), date::format("%d.%m %R", st),
+               date::format("%d.%m %R", to_local_time(tz, st)),
+               (stp.fr_->is_rt() && stp.fr_->rtt_ != nullptr) ? '*' : '_',
+               date::format("%d.%m %R", rt),
+               date::format("%d.%m %R", to_local_time(tz, rt)));
   }
   return out;
 }
 
 std::ostream& operator<<(std::ostream& out, frun const& fr) {
   for (auto const& stp : fr) {
-    out << stp;
+    out << stp << "\n";
   }
   return out;
 }

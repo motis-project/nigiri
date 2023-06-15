@@ -20,12 +20,11 @@ namespace nigiri::routing {
 
 struct journey {
   struct run_enter_exit {
-    template <typename T>
-    run_enter_exit(T&& t, stop_idx_t const a, stop_idx_t const b)
-        : t_{t},
-          stop_range_{static_cast<stop_idx_t>(std::min(a, b)),
+    run_enter_exit(rt::run r, stop_idx_t const a, stop_idx_t const b)
+        : r_{std::move(r)},
+          stop_range_{std::min(a, b),
                       static_cast<stop_idx_t>(std::max(a, b) + 1U)} {}
-    rt::run t_;
+    rt::run r_;
     interval<stop_idx_t> stop_range_;
   };
 

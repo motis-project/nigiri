@@ -149,7 +149,7 @@ void reconstruct_journey(timetable const& tt,
       auto const stop_idx =
           static_cast<stop_idx_t>(kFwd ? from_stop_idx - i : from_stop_idx + i);
       auto const stp = fr[stop_idx];
-      auto const l = stp.get_location().l_;
+      auto const l = stp.get_location_idx();
 
       if ((kFwd && !stp.in_allowed()) || (!kFwd && !stp.out_allowed())) {
         continue;
@@ -167,8 +167,8 @@ void reconstruct_journey(timetable const& tt,
         trace_rc_transport_entry_found;
         return journey::leg{
             SearchDir,
-            fr[stop_idx].get_location().l_,
-            fr[from_stop_idx].get_location().l_,
+            fr[stop_idx].get_location_idx(),
+            fr[from_stop_idx].get_location_idx(),
             delta_to_unix(base, event_time),
             delta_to_unix(base, time),
             journey::run_enter_exit{fr, stop_idx, from_stop_idx}};
@@ -178,6 +178,15 @@ void reconstruct_journey(timetable const& tt,
     }
 
     return std::nullopt;
+  };
+
+  auto const is_transport_active = [&](transport_idx_t const t,
+                                       std::size_t const day) {
+    if (rtt != nullptr) {
+      return rtt->bitfields_[rtt->transport_traffic_days_[t]].test(day);
+    } else {
+      return tt.bitfields_[tt.transport_traffic_days_[t]].test(day);
+    }
   };
 
   auto const get_route_transport =
@@ -197,7 +206,7 @@ void reconstruct_journey(timetable const& tt,
 
       auto const traffic_day = static_cast<std::size_t>(
           static_cast<int>(to_idx(day)) - event_mam.count() / 1440);
-      if (!tt.bitfields_[tt.transport_traffic_days_[t]].test(traffic_day)) {
+      if (!is_transport_active(t, traffic_day)) {
         trace_rc_transport_no_traffic;
         continue;
       }

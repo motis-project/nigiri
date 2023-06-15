@@ -71,7 +71,22 @@ T_RE2,01:00:00,01:00:00,D,3,0,0
 )"}}}};
 }
 
-constexpr auto const fwd_journeys = R"(
+constexpr auto const fwd_journeys = R"([2019-05-02 23:00, 2019-05-03 01:00]
+TRANSFERS: 1
+     FROM: (A, A) [2019-05-02 23:00]
+       TO: (D, D) [2019-05-03 01:00]
+leg 0: (A, A) [2019-05-02 23:00] -> (B, B) [2019-05-03 00:00]
+ 0: A       A...............................................                                                                     d: 02.05 23:00 [03.05 01:00]  RT_ 02.05 23:00 [03.05 01:00]
+ 1: B       B...............................................   a: 03.05 00:00 [03.05 02:00]  RT_ 03.05 00:00 [03.05 02:00]
+leg 1: (B, B) [2019-05-03 00:00] -> (B, B) [2019-05-03 00:02]
+  FOOTPATH (duration=2)
+leg 2: (B, B) [2019-05-03 00:30] -> (D, D) [2019-05-03 01:00]
+ 0: B       B...............................................                                                                     d: 02.05 22:30 [03.05 00:30]  RT* 03.05 00:30 [03.05 02:30]
+ 1: C       C...............................................   a: 02.05 22:45 [03.05 00:45]  RT* 03.05 00:45 [03.05 02:45]       d: 02.05 22:45 [03.05 00:45]  RT* 03.05 00:45 [03.05 02:45]
+ 2: D       D...............................................   a: 02.05 23:00 [03.05 01:00]  RT* 03.05 01:00 [03.05 03:00]
+leg 3: (D, D) [2019-05-03 01:00] -> (D, D) [2019-05-03 01:00]
+  FOOTPATH (duration=0)
+
 )";
 
 TEST(routing, rt_raptor_forward) {
@@ -111,8 +126,6 @@ TEST(routing, rt_raptor_forward) {
   td->set_start_time("00:30:00");
   td->set_start_date("20190503");
   td->set_trip_id("T_RE2");
-
-  e->mutable_trip_update()->mutable_trip()->CopyFrom(*td);
   {
     auto const stop_update = e->mutable_trip_update()->add_stop_time_update();
     stop_update->set_stop_sequence(1U);
@@ -126,38 +139,85 @@ TEST(routing, rt_raptor_forward) {
   auto const results =
       raptor_search(tt, &rtt, "A", "D", sys_days{May / 2 / 2019} + 23h);
   std::stringstream ss;
-  ss << "\n";
   for (auto const& x : results) {
-    x.print(ss, tt);
-    ss << "\n\n";
+    x.print(ss, tt, &rtt);
+    ss << "\n";
   }
   EXPECT_EQ(std::string_view{fwd_journeys}, ss.str());
 }
 
-constexpr auto const bwd_journeys = R"(
+constexpr auto const bwd_journeys = R"([2019-05-03 02:00, 2019-05-02 23:00]
+TRANSFERS: 1
+     FROM: (A, A) [2019-05-02 23:00]
+       TO: (D, D) [2019-05-03 01:00]
+leg 0: (A, A) [2019-05-02 23:00] -> (A, A) [2019-05-02 23:00]
+  FOOTPATH (duration=0)
+leg 1: (A, A) [2019-05-02 23:00] -> (B, B) [2019-05-03 00:00]
+ 0: A       A...............................................                                                                     d: 02.05 23:00 [03.05 01:00]  RT_ 02.05 23:00 [03.05 01:00]
+ 1: B       B...............................................   a: 03.05 00:00 [03.05 02:00]  RT_ 03.05 00:00 [03.05 02:00]
+leg 2: (B, B) [2019-05-03 00:28] -> (B, B) [2019-05-03 00:30]
+  FOOTPATH (duration=2)
+leg 3: (B, B) [2019-05-03 00:30] -> (D, D) [2019-05-03 01:00]
+ 0: B       B...............................................                                                                     d: 02.05 22:30 [03.05 00:30]  RT* 03.05 00:30 [03.05 02:30]
+ 1: C       C...............................................   a: 02.05 22:45 [03.05 00:45]  RT* 03.05 00:45 [03.05 02:45]       d: 02.05 22:45 [03.05 00:45]  RT* 03.05 00:45 [03.05 02:45]
+ 2: D       D...............................................   a: 02.05 23:00 [03.05 01:00]  RT* 03.05 01:00 [03.05 03:00]
+
 )";
 
 TEST(routing, rt_raptor_backward) {
+  auto const to_unix = [](auto&& x) {
+    return std::chrono::time_point_cast<std::chrono::seconds>(x)
+        .time_since_epoch()
+        .count();
+  };
+
   timetable tt;
-  rt_timetable rtt;
   tt.date_range_ = {date::sys_days{2019_y / March / 25},
                     date::sys_days{2019_y / November / 1}};
   load_timetable({}, source_idx_t{0}, test_files(), tt);
   finalize(tt);
 
-  auto const results = raptor_search(
-      tt, &rtt, "0000003", "0000001",
-      interval{unixtime_t{sys_days{2020_y / March / 30}} + 5_hours,
-               unixtime_t{sys_days{2020_y / March / 30}} + 6_hours},
-      direction::kBackward);
+  // Create empty RT timetable.
+  auto rtt = rt_timetable{};
+  rtt.transport_traffic_days_ = tt.transport_traffic_days_;
+  rtt.bitfields_ = tt.bitfields_;
+  rtt.base_day_ = date::sys_days{2019_y / May / 3};
+  rtt.base_day_idx_ = tt.day_idx(rtt.base_day_);
+  rtt.location_rt_transports_.resize(tt.n_locations());
 
-  ASSERT_EQ(2U, results.size());
+  transit_realtime::FeedMessage msg;
 
+  auto const hdr = msg.mutable_header();
+  hdr->set_gtfs_realtime_version("2.0");
+  hdr->set_incrementality(
+      transit_realtime::FeedHeader_Incrementality_FULL_DATASET);
+  hdr->set_timestamp(to_unix(date::sys_days{2019_y / May / 4} + 9h));
+
+  auto const e = msg.add_entity();
+  e->set_id("1");
+  e->set_is_deleted(false);
+
+  auto const td = e->mutable_trip_update()->mutable_trip();
+  td->set_start_time("00:30:00");
+  td->set_start_date("20190503");
+  td->set_trip_id("T_RE2");
+  {
+    auto const stop_update = e->mutable_trip_update()->add_stop_time_update();
+    stop_update->set_stop_sequence(1U);
+    stop_update->mutable_departure()->set_delay(2 * 60 * 60 /* 2h */);
+  }
+
+  auto const stats =
+      rt::gtfsrt_update_msg(tt, rtt, source_idx_t{0}, "tag", msg);
+  EXPECT_EQ(stats.total_entities_success_, 1U);
+
+  auto const results =
+      raptor_search(tt, &rtt, "D", "A", sys_days{May / 3 / 2019} + 2h,
+                    nigiri::direction::kBackward);
   std::stringstream ss;
-  ss << "\n";
   for (auto const& x : results) {
-    x.print(ss, tt);
-    ss << "\n\n";
+    x.print(ss, tt, &rtt);
+    ss << "\n";
   }
   EXPECT_EQ(std::string_view{bwd_journeys}, ss.str());
 }

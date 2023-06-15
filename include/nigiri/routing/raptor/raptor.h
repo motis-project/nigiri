@@ -337,7 +337,8 @@ private:
       auto const l_idx = cista::to_idx(stp.location_idx());
       auto const is_last = i == stop_seq.size() - 1U;
 
-      if ((kFwd && i != 0U) || (kBwd && i != stop_seq.size())) {
+      if ((kFwd && stop_idx != 0U) ||
+          (kBwd && stop_idx != stop_seq.size() - 1U)) {
         auto current_best = kInvalid;
         auto const by_transport = rt_time_at_stop(
             rt_t, stop_idx, kFwd ? event_type::kArr : event_type::kDep);

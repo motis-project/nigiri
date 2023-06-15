@@ -19,6 +19,7 @@ struct frun : public run {
   struct run_stop {
     stop get_stop() const noexcept;
     location get_location() const noexcept;
+    location_idx_t get_location_idx() const noexcept;
     unixtime_t scheduled_time(event_type const ev_type) const noexcept;
     unixtime_t real_time(event_type const ev_type) const noexcept;
     bool in_allowed() const noexcept;

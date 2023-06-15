@@ -2,7 +2,7 @@
 
 #include "fmt/core.h"
 
-#define NIGIRI_TRACING
+// #define NIGIRI_TRACING
 #if defined(NIGIRI_TRACING)
 
 // #define NIGIRI_RAPTOR_TRACING_ONLY_UPDATES
