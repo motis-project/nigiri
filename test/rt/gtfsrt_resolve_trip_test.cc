@@ -2,14 +2,16 @@
 
 #include "nigiri/loader/gtfs/files.h"
 #include "nigiri/loader/gtfs/load_timetable.h"
-#include "nigiri/timetable.h"
-
+#include "nigiri/loader/init_finish.h"
+#include "nigiri/rt/frun.h"
 #include "nigiri/rt/gtfsrt_resolve_run.h"
 #include "nigiri/rt/gtfsrt_update.h"
+#include "nigiri/timetable.h"
 
 using namespace nigiri;
 using namespace nigiri::loader;
 using namespace nigiri::loader::gtfs;
+using namespace nigiri::rt;
 using namespace date;
 using namespace std::chrono_literals;
 
@@ -57,6 +59,12 @@ T_RE2,01:00:00,01:00:00,D,3,0,0
 )"}}}};
 }
 
+constexpr auto const kTransportAfterUpdate = std::string_view{
+    R"(   0: B       B...............................................                                                             d: 03.05 22:30 [04.05 00:30]  RT 03.05 22:35 [04.05 00:35]  [{name=Bus RE 2, day=2019-05-03, id=T_RE2, src=0}]
+   1: C       C............................................... a: 03.05 22:45 [04.05 00:45]  RT 03.05 22:50 [04.05 00:50]  d: 03.05 22:45 [04.05 00:45]  RT 03.05 22:50 [04.05 00:50]  [{name=Bus RE 2, day=2019-05-03, id=T_RE2, src=0}]
+   2: D       D............................................... a: 03.05 23:00 [04.05 01:00]  RT 03.05 23:10 [04.05 01:10]
+)"};
+
 }  // namespace
 
 TEST(rt, gtfsrt_resolve_static_trip) {
@@ -101,7 +109,7 @@ TEST(rt, gtfsrt_resolve_static_trip) {
   }
 }
 
-TEST(rt, gtfsrt_resolve_rt_trip) {
+TEST(rt, gtfs_rt_update) {
   auto const to_unix = [](auto&& x) {
     return std::chrono::time_point_cast<std::chrono::seconds>(x)
         .time_since_epoch()
@@ -110,9 +118,11 @@ TEST(rt, gtfsrt_resolve_rt_trip) {
 
   // Load static timetable.
   timetable tt;
+  register_special_stations(tt);
   tt.date_range_ = {date::sys_days{2019_y / March / 25},
                     date::sys_days{2019_y / November / 1}};
   load_timetable({}, source_idx_t{0}, test_files(), tt);
+  finalize(tt);
 
   // Create empty RT timetable.
   auto rtt = rt_timetable{};
@@ -140,6 +150,44 @@ TEST(rt, gtfsrt_resolve_rt_trip) {
   td->set_start_date("20190504");
   td->set_trip_id("T_RE2");
 
+  // Basic checks with rt_timetable=nullptr.
+  auto const scheduled =
+      std::array<unixtime_t, 4>{sys_days{2019_y / May / 3} + 22h + 30min,
+                                sys_days{2019_y / May / 3} + 22h + 45min,
+                                sys_days{2019_y / May / 3} + 22h + 45min,
+                                sys_days{2019_y / May / 3} + 23h + 0min};
+  auto const stop_ids = {"B", "C", "D"};
+  auto i = 0U, j = 0U;
+  auto fr = frun{tt, nullptr,
+                 rt::gtfsrt_resolve_run(date::sys_days{2019_y / May / 4}, tt,
+                                        rtt, source_idx_t{0}, *td)};
+  for (auto const [from, to] : utl::pairwise(fr)) {
+    EXPECT_EQ(scheduled[i++], from.scheduled_time(nigiri::event_type::kDep));
+    EXPECT_EQ(scheduled[i++], to.scheduled_time(nigiri::event_type::kArr));
+    EXPECT_EQ(scheduled[j++], from.time(nigiri::event_type::kDep));
+    EXPECT_EQ(scheduled[j++], to.time(nigiri::event_type::kArr));
+  }
+  for (auto const [id, stop] : utl::zip(stop_ids, fr)) {
+    EXPECT_EQ(tt.locations_.get({id, source_idx_t{0U}}).l_,
+              stop.get_location().l_);
+  }
+
+  // Basic checks with rt_timetable!=nullptr.
+  fr = frun{tt, &rtt,
+            rt::gtfsrt_resolve_run(date::sys_days{2019_y / May / 4}, tt, rtt,
+                                   source_idx_t{0}, *td)};
+  i = j = 0U;
+  for (auto const [from, to] : utl::pairwise(fr)) {
+    EXPECT_EQ(scheduled[i++], from.scheduled_time(nigiri::event_type::kDep));
+    EXPECT_EQ(scheduled[i++], to.scheduled_time(nigiri::event_type::kArr));
+    EXPECT_EQ(scheduled[j++], from.time(nigiri::event_type::kDep));
+    EXPECT_EQ(scheduled[j++], to.time(nigiri::event_type::kArr));
+  }
+  for (auto const [id, stop] : utl::zip(stop_ids, fr)) {
+    EXPECT_EQ(tt.locations_.get({id, source_idx_t{0U}}).l_,
+              stop.get_location().l_);
+  }
+
   // ** UPDATE 0: update first arrival, check propagation **
   transit_realtime::FeedMessage msg0;
   msg0.mutable_header()->CopyFrom(msg.header());
@@ -160,16 +208,16 @@ TEST(rt, gtfsrt_resolve_rt_trip) {
   }
 
   ASSERT_TRUE(r.valid());
-  ASSERT_TRUE(r.rt_.has_value());
-  ASSERT_TRUE(r.t_.has_value());
+  ASSERT_TRUE(r.is_rt());
+  ASSERT_TRUE(r.t_.is_valid());
   EXPECT_EQ(date::sys_days{2019_y / May / 3} + 22h + 45min,  // assumed +15
-            rtt.unix_event_time(*r.rt_, 0U, event_type::kDep));
+            rtt.unix_event_time(r.rt_, 0U, event_type::kDep));
   EXPECT_EQ(date::sys_days{2019_y / May / 3} + 23h + 00min,  // propagated +15
-            rtt.unix_event_time(*r.rt_, 1U, event_type::kArr));
+            rtt.unix_event_time(r.rt_, 1U, event_type::kArr));
   EXPECT_EQ(date::sys_days{2019_y / May / 3} + 23h + 00min,  // propagated +15
-            rtt.unix_event_time(*r.rt_, 1U, event_type::kDep));
+            rtt.unix_event_time(r.rt_, 1U, event_type::kDep));
   EXPECT_EQ(date::sys_days{2019_y / May / 3} + 23h + 15min,  // propagated +15
-            rtt.unix_event_time(*r.rt_, 2U, event_type::kArr));
+            rtt.unix_event_time(r.rt_, 2U, event_type::kArr));
 
   // ** UPDATE 1: reduce delay, check time/delay update and propagation **
   {
@@ -193,14 +241,42 @@ TEST(rt, gtfsrt_resolve_rt_trip) {
   r = rt::gtfsrt_resolve_run(date::sys_days{2019_y / May / 4}, tt, rtt,
                              source_idx_t{0}, *td);
   ASSERT_TRUE(r.valid());
-  ASSERT_TRUE(r.rt_.has_value());
-  ASSERT_TRUE(r.t_.has_value());
-  EXPECT_EQ(date::sys_days{2019_y / May / 3} + 22h + 35min,  // absolute update
-            rtt.unix_event_time(*r.rt_, 0U, event_type::kDep));
-  EXPECT_EQ(date::sys_days{2019_y / May / 3} + 22h + 50min,  // propagated +5
-            rtt.unix_event_time(*r.rt_, 1U, event_type::kArr));
-  EXPECT_EQ(date::sys_days{2019_y / May / 3} + 22h + 50min,  // propagated +5
-            rtt.unix_event_time(*r.rt_, 1U, event_type::kDep));
-  EXPECT_EQ(date::sys_days{2019_y / May / 3} + 23h + 10min,  // rel. update +10
-            rtt.unix_event_time(*r.rt_, 2U, event_type::kArr));
+  ASSERT_TRUE(r.is_rt());
+  ASSERT_TRUE(r.t_.is_valid());
+
+  auto const expected_rt = std::array<unixtime_t, 4>{
+      sys_days{2019_y / May / 3} + 22h + 35min,  // absolute update +5
+      sys_days{2019_y / May / 3} + 22h + 50min,  // propagated +5
+      sys_days{2019_y / May / 3} + 22h + 50min,  // propagated +5
+      sys_days{2019_y / May / 3} + 23h + 10min  // rel. update +10
+  };
+
+  i = j = 0U;
+  fr = frun{tt, &rtt, r};
+  for (auto const [from, to] : utl::pairwise(fr)) {
+    EXPECT_EQ(scheduled[i++], from.scheduled_time(nigiri::event_type::kDep));
+    EXPECT_EQ(scheduled[i++], to.scheduled_time(nigiri::event_type::kArr));
+    EXPECT_EQ(expected_rt[j++], from.time(nigiri::event_type::kDep));
+    EXPECT_EQ(expected_rt[j++], to.time(nigiri::event_type::kArr));
+  }
+
+  for (auto const [id, stop] : utl::zip(stop_ids, fr)) {
+    EXPECT_EQ(tt.locations_.get({id, source_idx_t{0U}}).l_,
+              stop.get_location().l_);
+  }
+
+  // Ignore delays.
+  fr = frun{tt, nullptr, r};
+  i = j = 0U;
+  for (auto const [from, to] : utl::pairwise(fr)) {
+    EXPECT_EQ(scheduled[i++], from.scheduled_time(nigiri::event_type::kDep));
+    EXPECT_EQ(scheduled[i++], to.scheduled_time(nigiri::event_type::kArr));
+    EXPECT_EQ(scheduled[j++], from.time(nigiri::event_type::kDep));
+    EXPECT_EQ(scheduled[j++], to.time(nigiri::event_type::kArr));
+  }
+
+  std::stringstream ss;
+  ss << frun{tt, &rtt, r};
+  EXPECT_EQ(ss.str(), kTransportAfterUpdate);
+  std::cout << ss.str() << "\n";
 }

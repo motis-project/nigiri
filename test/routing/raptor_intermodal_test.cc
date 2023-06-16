@@ -61,7 +61,7 @@ TEST(routing, raptor_intermodal_forward) {
   finalize(tt);
 
   auto const results = raptor_intermodal_search(
-      tt,
+      tt, nullptr,
       {{tt.locations_.location_id_to_idx_.at({.id_ = "0000001", .src_ = src}),
         10_minutes, 99U}},
       {{tt.locations_.location_id_to_idx_.at({.id_ = "0000003", .src_ = src}),
@@ -200,7 +200,7 @@ TEST(routing, raptor_intermodal_backward) {
   finalize(tt);
 
   auto const results = raptor_intermodal_search(
-      tt,
+      tt, nullptr,
       {nigiri::routing::offset{
           tt.locations_.location_id_to_idx_.at({.id_ = "0000003", .src_ = src}),
           15_minutes, 99U}},

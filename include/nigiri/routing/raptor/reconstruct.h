@@ -4,7 +4,8 @@
 
 namespace nigiri {
 struct timetable;
-}
+struct rt_timetable;
+}  // namespace nigiri
 
 namespace nigiri::routing {
 
@@ -15,6 +16,7 @@ struct journey;
 
 template <direction SearchDir>
 void reconstruct_journey(timetable const&,
+                         rt_timetable const*,
                          query const&,
                          raptor_state const&,
                          journey&,

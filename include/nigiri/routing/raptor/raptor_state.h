@@ -22,7 +22,9 @@ struct raptor_state {
   raptor_state& operator=(raptor_state&&) = default;
   ~raptor_state() = default;
 
-  void reset(unsigned n_locations, unsigned n_routes);
+  void resize(unsigned n_locations,
+              unsigned n_routes,
+              unsigned n_rt_transports);
 
   void print(timetable const& tt, date::sys_days, delta_t invalid);
 
@@ -32,6 +34,7 @@ struct raptor_state {
   std::vector<bool> station_mark_;
   std::vector<bool> prev_station_mark_;
   std::vector<bool> route_mark_;
+  std::vector<bool> rt_transport_mark_;
 };
 
 }  // namespace nigiri::routing

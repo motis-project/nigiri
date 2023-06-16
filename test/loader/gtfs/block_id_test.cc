@@ -124,53 +124,53 @@ TEST(gtfs, block_id) {
   };
 
   {
-    auto const res =
-        raptor_search(tt, "S1", "S8", "2006-07-02 23:00 Europe/Berlin");
+    auto const res = raptor_search(tt, nullptr, "S1", "S8",
+                                   "2006-07-02 23:00 Europe/Berlin");
     ASSERT_EQ(1, res.size());
     expect_no_transfers(*res.begin());
 
     std::stringstream ss;
-    res.begin()->print(ss, tt, false);
+    res.begin()->print(ss, tt, nullptr, false);
     EXPECT_EQ(result, ss.str());
   }
 
   {
-    auto const res =
-        raptor_search(tt, "S2", "S1", "2006-07-02 23:00 Europe/Berlin");
+    auto const res = raptor_search(tt, nullptr, "S2", "S1",
+                                   "2006-07-02 23:00 Europe/Berlin");
     ASSERT_EQ(0, res.size());
   }
 
   {
-    auto const res =
-        raptor_search(tt, "S2", "S3", "2006-07-09 00:00 Europe/Berlin");
+    auto const res = raptor_search(tt, nullptr, "S2", "S3",
+                                   "2006-07-09 00:00 Europe/Berlin");
     ASSERT_EQ(1, res.size());
     expect_no_transfers(*res.begin());
   }
 
   {
-    auto const res =
-        raptor_search(tt, "S2", "S7", "2006-07-09 00:00 Europe/Berlin");
+    auto const res = raptor_search(tt, nullptr, "S2", "S7",
+                                   "2006-07-09 00:00 Europe/Berlin");
     ASSERT_EQ(1, res.size());
     expect_no_transfers(*res.begin());
   }
 
   {
-    auto const res =
-        raptor_search(tt, "S1", "S4", "2006-07-05 23:00 Europe/Berlin");
+    auto const res = raptor_search(tt, nullptr, "S1", "S4",
+                                   "2006-07-05 23:00 Europe/Berlin");
     ASSERT_EQ(1, res.size());
     expect_no_transfers(*res.begin());
   }
 
   {
-    auto const res =
-        raptor_search(tt, "S1", "S5", "2006-07-06 23:00 Europe/Berlin");
+    auto const res = raptor_search(tt, nullptr, "S1", "S5",
+                                   "2006-07-06 23:00 Europe/Berlin");
     ASSERT_EQ(1, res.size());
     expect_no_transfers(*res.begin());
   }
 
   {
-    auto const res =
-        raptor_search(tt, "S1", "S7", "2006-07-07 23:00 Europe/Berlin");
+    auto const res = raptor_search(tt, nullptr, "S1", "S7",
+                                   "2006-07-07 23:00 Europe/Berlin");
     ASSERT_EQ(1, res.size());
     expect_no_transfers(*res.begin());
   }

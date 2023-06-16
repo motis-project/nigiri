@@ -35,8 +35,8 @@ struct stop_seq_number_range {
 
     using difference_type = stop_idx_t;
     using value_type = stop_idx_t;
-    using pointer = const stop_idx_t*;
-    using reference = const stop_idx_t&;
+    using pointer = stop_idx_t const*;
+    using reference = stop_idx_t const&;
     using iterator_category = std::forward_iterator_tag;
 
     iterator(stop_idx_t const idx,
@@ -65,8 +65,8 @@ struct stop_seq_number_range {
       return *this;
     }
 
-    iterator operator++(int) {
-      iterator r = *this;
+    iterator operator++(int) noexcept {
+      auto r = *this;
       ++(*this);
       return r;
     }
@@ -86,7 +86,7 @@ struct stop_seq_number_range {
           seq_numbers_);
     }
 
-    bool operator!=(iterator other) const { return !(*this == other); }
+    bool operator!=(iterator o) const { return !(*this == o); }
 
     std::variant<compact, fully_specified> seq_numbers_;
   };
