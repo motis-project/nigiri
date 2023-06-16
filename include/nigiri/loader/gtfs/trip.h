@@ -78,6 +78,8 @@ struct trip {
 
   std::string display_name(timetable const&) const;
 
+  clasz get_clasz(timetable const&) const;
+
   route const* route_{nullptr};
   bitfield const* service_{nullptr};
   block* block_{nullptr};

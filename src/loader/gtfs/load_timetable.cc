@@ -162,7 +162,7 @@ void load_timetable(loader_config const& config,
         trip_data, noon_offsets, tt, trips, traffic_days, service.interval_,
         tt.date_range_, [&](utc_trip&& s) {
           auto const* stop_seq = get_route_key(s.trips_);
-          auto const clasz = trip_data.get(s.trips_.front()).route_->clasz_;
+          auto const clasz = trip_data.get(s.trips_.front()).get_clasz(tt);
           auto const it = route_services.find(std::pair{clasz, stop_seq});
           if (it != end(route_services)) {
             for (auto& r : it->second) {
