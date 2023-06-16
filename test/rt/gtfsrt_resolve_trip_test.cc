@@ -165,8 +165,8 @@ TEST(rt, gtfs_rt_update) {
   for (auto const [from, to] : utl::pairwise(fr)) {
     EXPECT_EQ(scheduled[i++], from.scheduled_time(nigiri::event_type::kDep));
     EXPECT_EQ(scheduled[i++], to.scheduled_time(nigiri::event_type::kArr));
-    EXPECT_EQ(scheduled[j++], from.real_time(nigiri::event_type::kDep));
-    EXPECT_EQ(scheduled[j++], to.real_time(nigiri::event_type::kArr));
+    EXPECT_EQ(scheduled[j++], from.time(nigiri::event_type::kDep));
+    EXPECT_EQ(scheduled[j++], to.time(nigiri::event_type::kArr));
   }
   for (auto const [id, stop] : utl::zip(stop_ids, fr)) {
     EXPECT_EQ(tt.locations_.get({id, source_idx_t{0U}}).l_,
@@ -181,8 +181,8 @@ TEST(rt, gtfs_rt_update) {
   for (auto const [from, to] : utl::pairwise(fr)) {
     EXPECT_EQ(scheduled[i++], from.scheduled_time(nigiri::event_type::kDep));
     EXPECT_EQ(scheduled[i++], to.scheduled_time(nigiri::event_type::kArr));
-    EXPECT_EQ(scheduled[j++], from.real_time(nigiri::event_type::kDep));
-    EXPECT_EQ(scheduled[j++], to.real_time(nigiri::event_type::kArr));
+    EXPECT_EQ(scheduled[j++], from.time(nigiri::event_type::kDep));
+    EXPECT_EQ(scheduled[j++], to.time(nigiri::event_type::kArr));
   }
   for (auto const [id, stop] : utl::zip(stop_ids, fr)) {
     EXPECT_EQ(tt.locations_.get({id, source_idx_t{0U}}).l_,
@@ -257,8 +257,8 @@ TEST(rt, gtfs_rt_update) {
   for (auto const [from, to] : utl::pairwise(fr)) {
     EXPECT_EQ(scheduled[i++], from.scheduled_time(nigiri::event_type::kDep));
     EXPECT_EQ(scheduled[i++], to.scheduled_time(nigiri::event_type::kArr));
-    EXPECT_EQ(expected_rt[j++], from.real_time(nigiri::event_type::kDep));
-    EXPECT_EQ(expected_rt[j++], to.real_time(nigiri::event_type::kArr));
+    EXPECT_EQ(expected_rt[j++], from.time(nigiri::event_type::kDep));
+    EXPECT_EQ(expected_rt[j++], to.time(nigiri::event_type::kArr));
   }
 
   for (auto const [id, stop] : utl::zip(stop_ids, fr)) {
@@ -272,8 +272,8 @@ TEST(rt, gtfs_rt_update) {
   for (auto const [from, to] : utl::pairwise(fr)) {
     EXPECT_EQ(scheduled[i++], from.scheduled_time(nigiri::event_type::kDep));
     EXPECT_EQ(scheduled[i++], to.scheduled_time(nigiri::event_type::kArr));
-    EXPECT_EQ(scheduled[j++], from.real_time(nigiri::event_type::kDep));
-    EXPECT_EQ(scheduled[j++], to.real_time(nigiri::event_type::kArr));
+    EXPECT_EQ(scheduled[j++], from.time(nigiri::event_type::kDep));
+    EXPECT_EQ(scheduled[j++], to.time(nigiri::event_type::kArr));
   }
 
   std::stringstream ss;

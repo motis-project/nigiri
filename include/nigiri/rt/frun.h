@@ -21,7 +21,9 @@ struct frun : public run {
     location get_location() const noexcept;
     location_idx_t get_location_idx() const noexcept;
     unixtime_t scheduled_time(event_type const ev_type) const noexcept;
-    unixtime_t real_time(event_type const ev_type) const noexcept;
+    unixtime_t time(event_type const ev_type) const noexcept;
+    std::string_view line() const noexcept;
+    std::string_view scheduled_line() const noexcept;
     bool in_allowed() const noexcept;
     bool out_allowed() const noexcept;
     bool operator==(run_stop const&) const = default;

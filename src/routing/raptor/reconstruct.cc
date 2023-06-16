@@ -156,7 +156,7 @@ void reconstruct_journey(timetable const& tt,
       }
 
       auto const event_time = unix_to_delta(
-          base, stp.real_time(kFwd ? event_type::kDep : event_type::kArr));
+          base, stp.time(kFwd ? event_type::kDep : event_type::kArr));
       if (is_better_or_eq(raptor_state.round_times_[k - 1][to_idx(l)],
                           event_time) ||
           // special case: first stop with meta stations
