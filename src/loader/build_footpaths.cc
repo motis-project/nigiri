@@ -75,9 +75,12 @@ void link_nearby_stations(timetable& tt) {
 
   for (auto from_idx = location_idx_t{0U};
        from_idx != tt.locations_.src_.size(); ++from_idx) {
-    auto const from_src = tt.locations_.src_[from_idx];
     auto const from_pos = tt.locations_.coordinates_[from_idx];
+    if (std::abs(from_pos.lat_) < 2.0 && std::abs(from_pos.lng_) < 2.0) {
+      continue;
+    }
 
+    auto const from_src = tt.locations_.src_[from_idx];
     if (from_src == source_idx_t::invalid()) {
       continue;  // no dummy stations
     }
@@ -96,9 +99,11 @@ void link_nearby_stations(timetable& tt) {
         continue;
       }
 
-      auto const from_transfer_time = tt.locations_.transfer_time_[from_idx];
-      auto const to_transfer_time = tt.locations_.transfer_time_[to_l_idx];
-      auto const walk_duration = u8_minutes{static_cast<unsigned>(
+      auto const from_transfer_time =
+          duration_t{tt.locations_.transfer_time_[from_idx]};
+      auto const to_transfer_time =
+          duration_t{tt.locations_.transfer_time_[to_l_idx]};
+      auto const walk_duration = duration_t{static_cast<unsigned>(
           std::round(geo::distance(from_pos, to_pos) / (60 * kWalkSpeed)))};
       auto const duration =
           std::max({from_transfer_time, to_transfer_time, walk_duration});
@@ -187,7 +192,7 @@ void process_component(timetable& tt,
     }
   };
 
-  auto const id = std::string_view{"de:11000:900160002:1:50"};
+  auto const id = std::string_view{"000000011301_G_G_G_G"};
   auto const needle =
       std::find_if(begin(tt.locations_.ids_), end(tt.locations_.ids_),
                    [&](auto&& x) { return x.view() == id; });
@@ -202,7 +207,7 @@ void process_component(timetable& tt,
         goto next;
       }
       for (auto const& edge : fgraph[(lb + i)->second]) {
-        if (edge.target_ == needle_l) {
+        if (edge.target() == needle_l) {
           trace("FOUND\n");
           dbg = true;
           goto next;

@@ -180,8 +180,8 @@ locations_map read_stops(source_idx_t const src,
     utl::csv_col<utl::cstr, UTL_NAME("stop_timezone")> timezone_;
     utl::csv_col<utl::cstr, UTL_NAME("parent_station")> parent_station_;
     utl::csv_col<utl::cstr, UTL_NAME("platform_code")> platform_code_;
-    utl::csv_col<float, UTL_NAME("stop_lat")> lat_;
-    utl::csv_col<float, UTL_NAME("stop_lon")> lon_;
+    utl::csv_col<utl::cstr, UTL_NAME("stop_lat")> lat_;
+    utl::csv_col<utl::cstr, UTL_NAME("stop_lon")> lon_;
   };
 
   locations_map locations;
@@ -198,7 +198,8 @@ locations_map read_stops(source_idx_t const src,
 
         new_stop->id_ = s.id_->view();
         new_stop->name_ = s.name_->view();
-        new_stop->coord_ = {*s.lat_, *s.lon_};
+        new_stop->coord_ = {utl::parse<double>(s.lat_->trim()),
+                            utl::parse<double>(s.lon_->trim())};
         new_stop->platform_code_ = s.platform_code_->view();
         new_stop->timezone_ = s.timezone_->trim().view();
 

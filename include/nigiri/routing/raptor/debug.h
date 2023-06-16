@@ -132,7 +132,7 @@
       location{tt, l}, k, k - 1, raptor_state.best_[to_idx(l)],            \
       raptor_state.round_times_[k - 1][to_idx(l)], best(k - 1, l),         \
       delta_to_unix(base, best(k - 1, l)), event_time,                     \
-      fr[stop_idx].real_time(kFwd ? event_type::kDep : event_type::kArr));
+      fr[stop_idx].time(kFwd ? event_type::kDep : event_type::kArr));
 
 #define trace_rc_transport_entry_found                                 \
   trace_reconstruct(                                                   \

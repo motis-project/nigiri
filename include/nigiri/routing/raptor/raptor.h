@@ -90,6 +90,7 @@ struct raptor {
   }
 
   void add_start(location_idx_t const l, unixtime_t const t) {
+    trace_upd("adding start {}: {}\n", location{tt_, l}, t);
     state_.best_[to_idx(l)] = unix_to_delta(base(), t);
     state_.round_times_[0U][to_idx(l)] = unix_to_delta(base(), t);
     state_.station_mark_[to_idx(l)] = true;
