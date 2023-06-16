@@ -424,13 +424,11 @@ void write_footpaths(timetable& tt) {
   assert(tt.locations_.preprocessing_footpaths_in_.size() == tt.n_locations());
 
   for (auto prf_idx = 0U; prf_idx < profile::SIZE; ++prf_idx) {
-    tt.locations_.footpaths_in_.emplace_back();
     for (auto i = location_idx_t{0U}; i != tt.n_locations(); ++i) {
       tt.locations_.footpaths_in_[prf_idx].emplace_back(
           tt.locations_.preprocessing_footpaths_in_[i]);
     }
 
-    tt.locations_.footpaths_out_.emplace_back();
     for (auto i = location_idx_t{0U}; i != tt.n_locations(); ++i) {
       tt.locations_.footpaths_out_[prf_idx].emplace_back(
           tt.locations_.preprocessing_footpaths_out_[i]);

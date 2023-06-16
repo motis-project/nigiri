@@ -118,7 +118,7 @@ struct timetable {
     mutable_fws_multimap<location_idx_t, location_idx_t> children_;
     mutable_fws_multimap<location_idx_t, footpath> preprocessing_footpaths_out_;
     mutable_fws_multimap<location_idx_t, footpath> preprocessing_footpaths_in_;
-    vector<vecvec<location_idx_t, footpath>> footpaths_out_, footpaths_in_;
+    cista::array<vecvec<location_idx_t, footpath>, profile::SIZE> footpaths_out_, footpaths_in_;
     vector_map<timezone_idx_t, timezone> timezones_;
   } locations_;
 
