@@ -222,7 +222,6 @@ void load_timetable(loader_config const& config,
 
     auto const source_file_idx =
         tt.register_source_file((d.path() / kStopTimesFile).generic_string());
-    auto trip_id_buf = fmt::memory_buffer{};
     for (auto& trp : trip_data.data_) {
       std::uint32_t train_nr = 0U;
       if (is_train_number(trp.short_name_)) {
@@ -232,12 +231,8 @@ void load_timetable(loader_config const& config,
         std::from_chars(headsign.data(), headsign.data() + headsign.size(),
                         train_nr);
       }
-
-      trip_id_buf.clear();
-      fmt::format_to(trip_id_buf, "{}", trp.id_);
-
       trp.trip_idx_ = tt.register_trip_id(
-          trip_id_buf, src, trp.display_name(tt),
+          trp.id_, src, trp.display_name(tt),
           {source_file_idx, trp.from_line_, trp.to_line_}, train_nr);
     }
 
