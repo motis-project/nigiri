@@ -3,7 +3,6 @@
 #include "nigiri/loader/gtfs/files.h"
 #include "nigiri/loader/gtfs/load_timetable.h"
 #include "nigiri/loader/init_finish.h"
-#include "nigiri/print_transport.h"
 #include "nigiri/rt/frun.h"
 #include "nigiri/rt/gtfsrt_resolve_run.h"
 #include "nigiri/rt/gtfsrt_update.h"
@@ -61,9 +60,9 @@ T_RE2,01:00:00,01:00:00,D,3,0,0
 }
 
 constexpr auto const kTransportAfterUpdate = std::string_view{
-    R"( 0: B       B...............................................                                                              d: 03.05 22:30 [04.05 00:30] RT 03.05 22:35 [04.05 00:35]  [{name=Bus RE 2, day=2019-05-03, id=T_RE2, src=0}]
- 1: C       C............................................... a: 03.05 22:45 [04.05 00:45] RT 03.05 22:50 [04.05 00:50]  d: 03.05 22:45 [04.05 00:45] RT 03.05 22:50 [04.05 00:50]  [{name=Bus RE 2, day=2019-05-03, id=T_RE2, src=0}]
- 2: D       D............................................... a: 03.05 23:00 [04.05 01:00] RT 03.05 23:10 [04.05 01:10]
+    R"(   0: B       B...............................................                                                             d: 03.05 22:30 [04.05 00:30]  RT 03.05 22:35 [04.05 00:35]  [{name=Bus RE 2, day=2019-05-03, id=T_RE2, src=0}]
+   1: C       C............................................... a: 03.05 22:45 [04.05 00:45]  RT 03.05 22:50 [04.05 00:50]  d: 03.05 22:45 [04.05 00:45]  RT 03.05 22:50 [04.05 00:50]  [{name=Bus RE 2, day=2019-05-03, id=T_RE2, src=0}]
+   2: D       D............................................... a: 03.05 23:00 [04.05 01:00]  RT 03.05 23:10 [04.05 01:10]
 )"};
 
 }  // namespace
@@ -277,6 +276,7 @@ TEST(rt, gtfs_rt_update) {
   }
 
   std::stringstream ss;
-  print_transport(tt, &rtt, ss, r.t_);
+  ss << frun{tt, &rtt, r};
   EXPECT_EQ(ss.str(), kTransportAfterUpdate);
+  std::cout << ss.str() << "\n";
 }

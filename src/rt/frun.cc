@@ -14,6 +14,23 @@ stop frun::run_stop::get_stop() const noexcept {
                 [fr_->tt_->transport_route_[fr_->t_.t_idx_]][stop_idx_]};
 }
 
+std::string_view frun::run_stop::get_location_name() const noexcept {
+  auto const l_idx = get_location_idx();
+  auto const& parent = fr_->tt_->locations_.parents_.at(l_idx);
+  return (parent == location_idx_t::invalid()
+              ? fr_->tt_->locations_.names_.at(l_idx)
+              : fr_->tt_->locations_.names_.at(parent))
+      .view();
+}
+
+std::string_view frun::run_stop::get_location_track() const noexcept {
+  auto const l_idx = get_location_idx();
+  auto const& parent = fr_->tt_->locations_.parents_.at(l_idx);
+  return parent != location_idx_t::invalid()
+             ? fr_->tt_->locations_.names_.at(l_idx).view()
+             : "";
+}
+
 location frun::run_stop::get_location() const noexcept {
   assert(fr_->size() >= stop_idx_);
   return location{*fr_->tt_, get_stop().location_idx()};
@@ -147,7 +164,7 @@ std::ostream& operator<<(std::ostream& out, frun::run_stop const& stp) {
 
   // Print stop index, location name.
   fmt::print(out, "  {:2}: {:7} {:.<48}", stp.stop_idx_, stp.get_location().id_,
-             stp.get_location().name_);
+             stp.get_location_name());
 
   // Print arrival (or whitespace if there's none).
   if (stp.stop_idx_ != 0U) {
@@ -178,7 +195,7 @@ std::ostream& operator<<(std::ostream& out, frun::run_stop const& stp) {
                date::format("%d.%m %R", scheduled),
                date::format("%d.%m %R", to_local_time(tz, scheduled)));
     if (stp.fr_->is_rt() && stp.fr_->rtt_ != nullptr) {  // RT if available.
-      fmt::print(out, "RT {} [{}]", date::format("%d.%m %R", rt),
+      fmt::print(out, "  RT {} [{}]", date::format("%d.%m %R", rt),
                  date::format("%d.%m %R", to_local_time(tz, rt)));
     }
   }
@@ -218,7 +235,7 @@ std::ostream& operator<<(std::ostream& out, frun::run_stop const& stp) {
 }
 
 std::ostream& operator<<(std::ostream& out, frun const& fr) {
-  for (auto const& stp : fr) {
+  for (auto const stp : fr) {
     out << stp << "\n";
   }
   return out;

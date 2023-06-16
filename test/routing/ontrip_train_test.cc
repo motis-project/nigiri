@@ -3,7 +3,6 @@
 #include "nigiri/loader/hrd/load_timetable.h"
 #include "nigiri/loader/init_finish.h"
 #include "nigiri/lookup/get_transport.h"
-#include "nigiri/print_transport.h"
 #include "nigiri/routing/ontrip_train.h"
 #include "nigiri/timetable.h"
 

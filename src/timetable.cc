@@ -5,7 +5,7 @@
 
 #include "utl/overloaded.h"
 
-#include "nigiri/print_transport.h"
+#include "nigiri/rt/frun.h"
 
 namespace nigiri {
 
@@ -44,7 +44,7 @@ std::ostream& operator<<(std::ostream& out, timetable const& tt) {
       if (traffic_days.test(to_idx(day_idx))) {
         date::to_stream(out, "%F", d);
         out << " (day_idx=" << day_idx << ")\n";
-        print_transport(tt, nullptr, out, {transport_idx, day_idx});
+        out << rt::frun{tt, nullptr, transport{transport_idx, day_idx}};
         out << "\n";
       }
     }

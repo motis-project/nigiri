@@ -142,8 +142,9 @@ void reconstruct_journey(timetable const& tt,
 #endif
 
   auto const find_entry_in_prev_round =
-      [&](unsigned const k, rt::frun const& fr, stop_idx_t const from_stop_idx,
+      [&](unsigned const k, rt::run const& r, stop_idx_t const from_stop_idx,
           delta_t const time) -> std::optional<journey::leg> {
+    auto const fr = rt::frun{tt, rtt, r};
     auto const n_stops = kFwd ? from_stop_idx + 1U : fr.size() - from_stop_idx;
     for (auto i = 1U; i != n_stops; ++i) {
       auto const stop_idx =
@@ -171,7 +172,7 @@ void reconstruct_journey(timetable const& tt,
             fr[from_stop_idx].get_location_idx(),
             delta_to_unix(base, event_time),
             delta_to_unix(base, time),
-            journey::run_enter_exit{fr, stop_idx, from_stop_idx}};
+            journey::run_enter_exit{r, stop_idx, from_stop_idx}};
       } else {
         trace_rc_transport_entry_not_possible;
       }
@@ -212,8 +213,7 @@ void reconstruct_journey(timetable const& tt,
       }
 
       auto leg = find_entry_in_prev_round(
-          k, rt::frun{tt, rtt, transport{t, day_idx_t{traffic_day}}}, stop_idx,
-          time);
+          k, rt::run{transport{t, day_idx_t{traffic_day}}}, stop_idx, time);
       if (leg.has_value()) {
         return leg;
       }
