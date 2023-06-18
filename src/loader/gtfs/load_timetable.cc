@@ -93,8 +93,8 @@ void load_timetable(loader_config const& config,
   auto const stops =
       read_stops(src, tt, timezones, load(kStopFile).data(),
                  load(kTransfersFile).data(), config.link_stop_distance_);
-  auto const routes =
-      read_routes(tt, timezones, agencies, load(kRoutesFile).data());
+  auto const routes = read_routes(tt, timezones, agencies,
+                                  load(kRoutesFile).data(), config.default_tz_);
   auto const calendar = read_calendar(load(kCalenderFile).data());
   auto const dates = read_calendar_date(load(kCalendarDatesFile).data());
   auto const service = merge_traffic_days(calendar, dates);

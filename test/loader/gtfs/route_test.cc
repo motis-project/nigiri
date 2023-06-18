@@ -17,8 +17,9 @@ TEST(gtfs, read_routes_example_data) {
 
   auto agencies = read_agencies(tt, timezones,
                                 example_files().get_file(kAgencyFile).data());
-  auto const routes = read_routes(tt, timezones, agencies,
-                                  example_files().get_file(kRoutesFile).data());
+  auto const routes =
+      read_routes(tt, timezones, agencies,
+                  example_files().get_file(kRoutesFile).data(), "CET");
 
   EXPECT_EQ(1, routes.size());
   EXPECT_NE(end(routes), routes.find("A"));
@@ -34,8 +35,9 @@ TEST(gtfs, read_routes_berlin_data) {
 
   auto agencies =
       read_agencies(tt, timezones, berlin_files().get_file(kAgencyFile).data());
-  auto const routes = read_routes(tt, timezones, agencies,
-                                  berlin_files().get_file(kRoutesFile).data());
+  auto const routes =
+      read_routes(tt, timezones, agencies,
+                  berlin_files().get_file(kRoutesFile).data(), "CET");
 
   EXPECT_EQ(8, routes.size());
 
