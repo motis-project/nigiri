@@ -270,6 +270,14 @@ trip_data read_trips(timetable& tt,
             return;
           }
 
+          auto const route_it = routes.find(t.route_id_->view());
+          if (route_it == end(routes)) {
+            log(log_lvl::error, "loader.gtfs.trip",
+                R"(trip "{}": route_id "{}" not found)", t.trip_id_->view(),
+                t.route_id_->view());
+            return;
+          }
+
           auto const blk = t.block_id_->trim().empty()
                                ? nullptr
                                : utl::get_or_create(
@@ -278,8 +286,8 @@ trip_data read_trips(timetable& tt,
                                      .get();
           auto const trp_idx = gtfs_trip_idx_t{ret.data_.size()};
           ret.data_.emplace_back(
-              routes.at(t.route_id_->view()).get(),
-              traffic_days_it->second.get(), blk, t.trip_id_->to_str(),
+              route_it->second.get(), traffic_days_it->second.get(), blk,
+              t.trip_id_->to_str(),
               ret.get_or_create_direction(tt, t.trip_headsign_->view()),
               t.trip_short_name_->to_str());
           ret.trips_.emplace(t.trip_id_->to_str(), trp_idx);
