@@ -69,7 +69,7 @@ struct service {
     section(int train_num, provider_idx_t admin)
         : train_num_{train_num}, admin_{admin} {}
 
-    std::optional<int> train_num_;
+    std::optional<std::uint32_t> train_num_;
     std::optional<provider_idx_t> admin_;
     std::optional<std::vector<attribute>> attributes_;
     std::optional<category const*> category_;
@@ -90,7 +90,7 @@ struct service {
   section begin_to_end_info_;
   bitfield traffic_days_;
   provider_idx_t initial_admin_;
-  int initial_train_num_{0};
+  std::uint32_t initial_train_num_{0U};
 };
 
 }  // namespace nigiri::loader::hrd

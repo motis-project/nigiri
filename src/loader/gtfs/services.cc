@@ -83,8 +83,8 @@ bitfield calendar_to_bitfield(std::string const& service_name,
        d = d + date::days{1}, ++bit) {
     if (bit >= kMaxDays) {
       log(log_lvl::error, "loader.gtfs.services",
-          "date {} for servcie {} out of range", d, service_name);
-      continue;
+          "date {} for service {} out of range", d, service_name);
+      break;
     }
     auto const weekday_index =
         date::year_month_weekday{d}.weekday().c_encoding();

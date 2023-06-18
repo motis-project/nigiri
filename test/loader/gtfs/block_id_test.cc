@@ -90,13 +90,13 @@ TRANSFERS: 0
      FROM: (STOP 1, S1) [2006-07-02 21:00]
        TO: (STOP 8, S8) [2006-07-03 04:00]
 leg 0: (STOP 1, S1) [2006-07-02 21:00] -> (STOP 8, S8) [2006-07-03 04:00]
-   0: S1      STOP 1..........................................                               d: 02.07 21:00 [02.07 23:00]  [{name=17 T1, day=2006-07-02, id=0/T1, src=0}]
-   1: S2      STOP 2.......................................... a: 02.07 21:55 [02.07 23:55]  d: 02.07 22:00 [03.07 00:00]  [{name=17 T3, day=2006-07-02, id=0/T3, src=0}]
-   2: S3      STOP 3.......................................... a: 02.07 23:00 [03.07 01:00]  d: 02.07 23:00 [03.07 01:00]  [{name=17 T3, day=2006-07-02, id=0/T3, src=0}]
-   3: S4      STOP 4.......................................... a: 03.07 00:00 [03.07 02:00]  d: 03.07 00:00 [03.07 02:00]  [{name=17 T6, day=2006-07-02, id=0/T6, src=0}]
-   4: S5      STOP 5.......................................... a: 03.07 01:00 [03.07 03:00]  d: 03.07 01:00 [03.07 03:00]  [{name=17 T6, day=2006-07-02, id=0/T6, src=0}]
-   5: S6      STOP 6.......................................... a: 03.07 02:00 [03.07 04:00]  d: 03.07 02:00 [03.07 04:00]  [{name=17 T6, day=2006-07-02, id=0/T6, src=0}]
-   6: S7      STOP 7.......................................... a: 03.07 03:00 [03.07 05:00]  d: 03.07 03:00 [03.07 05:00]  [{name=17 T6, day=2006-07-02, id=0/T6, src=0}]
+   0: S1      STOP 1..........................................                               d: 02.07 21:00 [02.07 23:00]  [{name=17 T1, day=2006-07-02, id=T1, src=0}]
+   1: S2      STOP 2.......................................... a: 02.07 21:55 [02.07 23:55]  d: 02.07 22:00 [03.07 00:00]  [{name=17 T3, day=2006-07-02, id=T3, src=0}]
+   2: S3      STOP 3.......................................... a: 02.07 23:00 [03.07 01:00]  d: 02.07 23:00 [03.07 01:00]  [{name=17 T3, day=2006-07-02, id=T3, src=0}]
+   3: S4      STOP 4.......................................... a: 03.07 00:00 [03.07 02:00]  d: 03.07 00:00 [03.07 02:00]  [{name=17 T6, day=2006-07-02, id=T6, src=0}]
+   4: S5      STOP 5.......................................... a: 03.07 01:00 [03.07 03:00]  d: 03.07 01:00 [03.07 03:00]  [{name=17 T6, day=2006-07-02, id=T6, src=0}]
+   5: S6      STOP 6.......................................... a: 03.07 02:00 [03.07 04:00]  d: 03.07 02:00 [03.07 04:00]  [{name=17 T6, day=2006-07-02, id=T6, src=0}]
+   6: S7      STOP 7.......................................... a: 03.07 03:00 [03.07 05:00]  d: 03.07 03:00 [03.07 05:00]  [{name=17 T6, day=2006-07-02, id=T6, src=0}]
    7: S8      STOP 8.......................................... a: 03.07 04:00 [03.07 06:00]
 leg 1: (STOP 8, S8) [2006-07-03 04:00] -> (STOP 8, S8) [2006-07-03 04:00]
   FOOTPATH (duration=0)
@@ -124,53 +124,53 @@ TEST(gtfs, block_id) {
   };
 
   {
-    auto const res =
-        raptor_search(tt, "S1", "S8", "2006-07-02 23:00 Europe/Berlin");
+    auto const res = raptor_search(tt, nullptr, "S1", "S8",
+                                   "2006-07-02 23:00 Europe/Berlin");
     ASSERT_EQ(1, res.size());
     expect_no_transfers(*res.begin());
 
     std::stringstream ss;
-    res.begin()->print(ss, tt, false);
+    res.begin()->print(ss, tt, nullptr, false);
     EXPECT_EQ(result, ss.str());
   }
 
   {
-    auto const res =
-        raptor_search(tt, "S2", "S1", "2006-07-02 23:00 Europe/Berlin");
+    auto const res = raptor_search(tt, nullptr, "S2", "S1",
+                                   "2006-07-02 23:00 Europe/Berlin");
     ASSERT_EQ(0, res.size());
   }
 
   {
-    auto const res =
-        raptor_search(tt, "S2", "S3", "2006-07-09 00:00 Europe/Berlin");
+    auto const res = raptor_search(tt, nullptr, "S2", "S3",
+                                   "2006-07-09 00:00 Europe/Berlin");
     ASSERT_EQ(1, res.size());
     expect_no_transfers(*res.begin());
   }
 
   {
-    auto const res =
-        raptor_search(tt, "S2", "S7", "2006-07-09 00:00 Europe/Berlin");
+    auto const res = raptor_search(tt, nullptr, "S2", "S7",
+                                   "2006-07-09 00:00 Europe/Berlin");
     ASSERT_EQ(1, res.size());
     expect_no_transfers(*res.begin());
   }
 
   {
-    auto const res =
-        raptor_search(tt, "S1", "S4", "2006-07-05 23:00 Europe/Berlin");
+    auto const res = raptor_search(tt, nullptr, "S1", "S4",
+                                   "2006-07-05 23:00 Europe/Berlin");
     ASSERT_EQ(1, res.size());
     expect_no_transfers(*res.begin());
   }
 
   {
-    auto const res =
-        raptor_search(tt, "S1", "S5", "2006-07-06 23:00 Europe/Berlin");
+    auto const res = raptor_search(tt, nullptr, "S1", "S5",
+                                   "2006-07-06 23:00 Europe/Berlin");
     ASSERT_EQ(1, res.size());
     expect_no_transfers(*res.begin());
   }
 
   {
-    auto const res =
-        raptor_search(tt, "S1", "S7", "2006-07-07 23:00 Europe/Berlin");
+    auto const res = raptor_search(tt, nullptr, "S1", "S7",
+                                   "2006-07-07 23:00 Europe/Berlin");
     ASSERT_EQ(1, res.size());
     expect_no_transfers(*res.begin());
   }

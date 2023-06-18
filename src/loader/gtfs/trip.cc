@@ -5,6 +5,8 @@
 #include <stack>
 #include <tuple>
 
+#include "geo/box.h"
+
 #include "utl/enumerate.h"
 #include "utl/erase_if.h"
 #include "utl/get_or_create.h"
@@ -209,6 +211,19 @@ std::string trip::display_name(timetable const& tt) const {
   }
 
   return route_->short_name_ + " " + short_name_;
+}
+
+clasz trip::get_clasz(timetable const& tt) const {
+  if (route_->clasz_ != clasz::kBus) {
+    return route_->clasz_;
+  } else {
+    geo::box box;
+    for (auto const& stp : stop_seq_) {
+      box.extend(tt.locations_.coordinates_[stop{stp}.location_idx()]);
+    }
+    return (geo::distance(box.min_, box.max_) / 1000) > 100 ? clasz::kCoach
+                                                            : clasz::kBus;
+  }
 }
 
 trip_direction_idx_t trip_data::get_or_create_direction(

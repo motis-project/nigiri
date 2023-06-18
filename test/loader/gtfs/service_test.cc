@@ -6,12 +6,13 @@
 
 #include "nigiri/lookup/get_transport.h"
 #include "nigiri/lookup/get_transport_stop_tz.h"
-#include "../service_strings.h"
 
 using namespace nigiri;
 using namespace nigiri::loader;
 using namespace nigiri::loader::gtfs;
 using namespace date;
+
+namespace {
 
 mem_dir test_files() {
   using std::filesystem::path;
@@ -34,26 +35,14 @@ G,G,,12.0,13.0,,
 H,H,,14.0,15.0,,
 I,I,,16.0,17.0,,
 )"}},
-       {path{kCalenderFile},
-        std::string{
-            R"(service_id,monday,tuesday,wednesday,thursday,friday,saturday,sunday,start_date,end_date
-X,0,0,0,0,0,0,0,20190315,20191115
-)"}},
        {path{kCalendarDatesFile}, std::string{R"(service_id,date,exception_type
 X,20190331,1
 X,20191027,1
-)"}},
-       {path{kTransfersFile},
-        std::string{
-            R"(from_stop_id,to_stop_id,transfer_type,min_transfer_time
 )"}},
        {path{kRoutesFile},
         std::string{
             R"(route_id,agency_id,route_short_name,route_long_name,route_desc,route_type
 A,DB,1337,Long Name,Route Description,3
-)"}},
-       {path{kFrequenciesFile},
-        std::string{R"(trip_id,start_time,end_time,headway_secs
 )"}},
        {path{kTripsFile},
         std::string{R"(route_id,service_id,trip_id,trip_headsign,block_id
@@ -70,13 +59,15 @@ X1,03:30:00,03:30:00,E,5,0,0
 )"}}}};
 }
 
-TEST(gtfs, services) {
+}  // namespace
+
+TEST(gtfs, local_to_unix_trip_test) {
   timetable tt;
   tt.date_range_ = {date::sys_days{2019_y / March / 25},
                     date::sys_days{2019_y / November / 1}};
   load_timetable({}, source_idx_t{0}, test_files(), tt);
 
-  auto const unixtime = [&](transport const t, unsigned const stop_idx,
+  auto const unixtime = [&](transport const t, stop_idx_t const stop_idx,
                             event_type const ev_type) {
     return std::chrono::time_point_cast<std::chrono::seconds>(
                tt.event_time(t, stop_idx, ev_type))
@@ -84,7 +75,7 @@ TEST(gtfs, services) {
         .count();
   };
 
-  auto const get_tz = [&](transport const t, unsigned const stop_idx) {
+  auto const get_tz = [&](transport const t, stop_idx_t const stop_idx) {
     auto const r = tt.transport_route_[t.t_idx_];
     auto const l = tt.route_location_seq_[r][stop_idx];
     auto const tz_idx =
@@ -95,34 +86,36 @@ TEST(gtfs, services) {
         tz.as<pair<string, void const*>>().second);
   };
 
-  auto const iso = [&](transport const t, unsigned const stop_idx,
+  auto const iso = [&](transport const t, stop_idx_t const stop_idx,
                        event_type const ev_type) {
     return date::format(
         "%FT%R%Ez",
         zoned_time{get_tz(t, stop_idx), tt.event_time(t, stop_idx, ev_type)});
   };
 
-  auto const t_oct = get_transport(tt, "0/X1", 2019_y / October / 26);
+  auto const t_oct = get_ref_transport(tt, trip_id{"X1", source_idx_t{0}},
+                                       2019_y / October / 27, true);
   ASSERT_TRUE(t_oct.has_value());
-  EXPECT_EQ(1572130800, unixtime(*t_oct, 0, event_type::kDep));
-  EXPECT_EQ(1572134340, unixtime(*t_oct, 1, event_type::kArr));
-  EXPECT_EQ(1572137940, unixtime(*t_oct, 1, event_type::kDep));
-  EXPECT_EQ(1572138000, unixtime(*t_oct, 2, event_type::kArr));
-  EXPECT_EQ(1572141540, unixtime(*t_oct, 3, event_type::kArr));
-  EXPECT_EQ(1572141600, unixtime(*t_oct, 3, event_type::kDep));
-  EXPECT_EQ("2019-10-27T01:00+02:00", iso(*t_oct, 0, event_type::kDep));
-  EXPECT_EQ("2019-10-27T01:59+02:00", iso(*t_oct, 1, event_type::kArr));
-  EXPECT_EQ("2019-10-27T02:59+02:00", iso(*t_oct, 1, event_type::kDep));
-  EXPECT_EQ("2019-10-27T02:00+01:00", iso(*t_oct, 2, event_type::kArr));
-  EXPECT_EQ("2019-10-27T02:59+01:00", iso(*t_oct, 3, event_type::kArr));
-  EXPECT_EQ("2019-10-27T03:00+01:00", iso(*t_oct, 3, event_type::kDep));
+  EXPECT_EQ(1572130800, unixtime(t_oct->first, 0, event_type::kDep));
+  EXPECT_EQ(1572134340, unixtime(t_oct->first, 1, event_type::kArr));
+  EXPECT_EQ(1572137940, unixtime(t_oct->first, 1, event_type::kDep));
+  EXPECT_EQ(1572138000, unixtime(t_oct->first, 2, event_type::kArr));
+  EXPECT_EQ(1572141540, unixtime(t_oct->first, 3, event_type::kArr));
+  EXPECT_EQ(1572141600, unixtime(t_oct->first, 3, event_type::kDep));
+  EXPECT_EQ("2019-10-27T01:00+02:00", iso(t_oct->first, 0, event_type::kDep));
+  EXPECT_EQ("2019-10-27T01:59+02:00", iso(t_oct->first, 1, event_type::kArr));
+  EXPECT_EQ("2019-10-27T02:59+02:00", iso(t_oct->first, 1, event_type::kDep));
+  EXPECT_EQ("2019-10-27T02:00+01:00", iso(t_oct->first, 2, event_type::kArr));
+  EXPECT_EQ("2019-10-27T02:59+01:00", iso(t_oct->first, 3, event_type::kArr));
+  EXPECT_EQ("2019-10-27T03:00+01:00", iso(t_oct->first, 3, event_type::kDep));
 
-  auto const t_march = get_transport(tt, "0/X1", 2019_y / March / 30);
+  auto const t_march = get_ref_transport(tt, trip_id{"X1", source_idx_t{0}},
+                                         2019_y / March / 30, true);
   ASSERT_TRUE(t_march.has_value());
-  EXPECT_EQ(1553990400, unixtime(*t_march, 2, event_type::kArr));
-  EXPECT_EQ(1553993940, unixtime(*t_march, 3, event_type::kArr));
-  EXPECT_EQ(1553994000, unixtime(*t_march, 3, event_type::kDep));
-  EXPECT_EQ("2019-03-31T01:00+01:00", iso(*t_march, 2, event_type::kArr));
-  EXPECT_EQ("2019-03-31T01:59+01:00", iso(*t_march, 3, event_type::kArr));
-  EXPECT_EQ("2019-03-31T03:00+02:00", iso(*t_march, 3, event_type::kDep));
+  EXPECT_EQ(1553990400, unixtime(t_march->first, 2, event_type::kArr));
+  EXPECT_EQ(1553993940, unixtime(t_march->first, 3, event_type::kArr));
+  EXPECT_EQ(1553994000, unixtime(t_march->first, 3, event_type::kDep));
+  EXPECT_EQ("2019-03-31T01:00+01:00", iso(t_march->first, 2, event_type::kArr));
+  EXPECT_EQ("2019-03-31T01:59+01:00", iso(t_march->first, 3, event_type::kArr));
+  EXPECT_EQ("2019-03-31T03:00+02:00", iso(t_march->first, 3, event_type::kDep));
 }

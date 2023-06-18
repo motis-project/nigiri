@@ -10,7 +10,7 @@ using namespace nigiri::loader;
 using namespace nigiri::loader::hrd;
 using namespace nigiri::test_data::hrd_timetable;
 
-TEST(lb_graph, distances_check) {
+TEST(routing, lb_graph_distances_check) {
   auto tt = timetable{};
   tt.date_range_ = full_period();
   load_timetable(source_idx_t{0U}, hrd_5_20_26, files_simple(), tt);

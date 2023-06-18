@@ -86,10 +86,13 @@ void service_builder::write_services(const nigiri::source_idx_t src) {
                          to_idx(stops.back().eva_num_),
                          s.utc_times_.back().count(), s.line_info(store_));
 
-          auto const id = tt_.register_trip_id(
-              trip_id_buf_, src, ref.display_name(tt_), ref.origin_.dbg_,
+          auto const id =
+              tt_.register_trip_id(trip_id_buf_, src, ref.display_name(tt_),
+                                   ref.origin_.dbg_, ref.initial_train_num_);
+          tt_.trip_transport_ranges_.emplace_back({transport_range_t{
               tt_.next_transport_idx(),
-              {0U, static_cast<unsigned>(stop_seq.size())});
+              interval<stop_idx_t>{0U,
+                                   static_cast<stop_idx_t>(stop_seq.size())}}});
 
           auto const get_attribute_combination_idx =
               [&](std::optional<std::vector<service::attribute>> const& a,
@@ -200,11 +203,13 @@ void service_builder::write_services(const nigiri::source_idx_t src) {
                   bitfield_indices_, s.utc_traffic_days_,
                   [&]() { return tt_.register_bitfield(s.utc_traffic_days_); }),
               .route_idx_ = route_idx,
+              .first_dep_offset_ = 0_minutes,
               .external_trip_ids_ = {merged_trip},
               .section_attributes_ = section_attributes_,
               .section_providers_ = section_providers_,
               .section_directions_ = section_directions_,
-              .section_lines_ = section_lines_});
+              .section_lines_ = section_lines_,
+              .stop_seq_numbers_ = stop_seq_numbers_});
         } catch (std::exception const& e) {
           log(log_lvl::error, "loader.hrd.service",
               "unable to load service {}: {}", ref.origin_, e.what());

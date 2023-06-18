@@ -58,8 +58,9 @@ jobs:
       - name: Install ninja
         run: choco install ninja
 
-      - name: buildcache Cache
-        uses: actions/cache@v3
+      - name: Restore buildcache Cache
+        uses: actions/cache/restore@v3
+        id: restore-buildcache
         with:
           path: ${{ github.workspace }}/.buildcache
           key: buildcache-wnds-${{ matrix.config.mode }}-${{ hashFiles('.pkg') }}-${{ hashFiles('**/*.h') }}-${{ hashFiles('**/*.cc') }}
@@ -92,6 +93,14 @@ jobs:
       - name: Run Tests
         run: .\build\nigiri-test.exe
 
+      # ==== SAVE CACHE ====
+      - name: Save buildcache Cache
+        if: always()
+        uses: actions/cache/save@v3
+        with:
+          path: ${{ github.workspace }}/.buildcache
+          key: ${{ steps.restore-buildcache.outputs.cache-primary-key }}
+
   macos:
     runs-on: macos-latest
     strategy:
@@ -115,9 +124,10 @@ jobs:
       - name: Install ninja
         run: brew install ninja
 
-      # ==== CACHE ====
-      - name: buildcache Cache
-        uses: actions/cache@v3
+      # ==== RESTORE CACHE ====
+      - name: Restore buildcache Cache
+        uses: actions/cache/restore@v3
+        id: restore-buildcache
         with:
           path: ${{ github.workspace }}/.buildcache
           key: buildcache-${{ matrix.config.preset }}-${{ hashFiles('.pkg') }}-${{ hashFiles('**/*.h') }}-${{ hashFiles('**/*.cc') }}
@@ -125,6 +135,7 @@ jobs:
             buildcache-${{ matrix.config.preset }}-${{ hashFiles('.pkg') }}-${{ hashFiles('**/*.h') }}-
             buildcache-${{ matrix.config.preset }}-${{ hashFiles('.pkg') }}-
             buildcache-${{ matrix.config.preset }}-
+
       - name: Dependencies Cache
         uses: actions/cache@v3
         with:
@@ -146,6 +157,14 @@ jobs:
       - name: Run Tests
         if: matrix.config.tests == 'On'
         run: build/nigiri-test
+
+      # ==== SAVE CACHE ====
+      - name: Save buildcache cache
+        if: always()
+        uses: actions/cache/save@v3
+        with:
+          path: ${{ github.workspace }}/.buildcache
+          key: ${{ steps.restore-buildcache.outputs.cache-primary-key }}
 
   linux:
     runs-on: [ self-hosted, linux, x64, '${{ matrix.config.preset }}' ]
