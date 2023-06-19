@@ -17,7 +17,6 @@
 #include "nigiri/footpath.h"
 #include "nigiri/location.h"
 #include "nigiri/logging.h"
-#include "nigiri/profiles.h"
 #include "nigiri/stop.h"
 #include "nigiri/types.h"
 

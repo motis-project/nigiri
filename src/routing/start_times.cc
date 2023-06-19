@@ -169,7 +169,7 @@ void get_starts(direction const search_dir,
                 bool const use_start_footpaths,
                 std::vector<start>& starts,
                 bool const add_ontrip,
-                int const& profile) {
+                uint8_t const& profile) {
   hash_map<location_idx_t, duration_t> shortest_start;
 
   auto const update = [&](location_idx_t const l, duration_t const d) {

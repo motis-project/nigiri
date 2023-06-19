@@ -3,13 +3,12 @@
 #include "utl/pairwise.h"
 
 #include "nigiri/logging.h"
-#include "nigiri/profiles.h"
 #include "nigiri/timetable.h"
 
 namespace nigiri::loader {
 
 template <direction SearchDir>
-void build_lb_graph(timetable& tt, int const profile = 0) {
+void build_lb_graph(timetable& tt, uint8_t const profile = 0) {
   hash_map<location_idx_t, duration_t> weights;
 
   auto const update_weight = [&](location_idx_t const target,

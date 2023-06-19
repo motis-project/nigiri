@@ -7,7 +7,6 @@
 
 #include "nigiri/common/it_range.h"
 #include "nigiri/footpath.h"
-#include "nigiri/profiles.h"
 #include "nigiri/types.h"
 
 namespace nigiri {
@@ -16,7 +15,7 @@ struct timetable;
 
 struct location {
   friend std::ostream& operator<<(std::ostream&, location const&);
-  location(timetable const&, location_idx_t, int const& profile = 0);
+  location(timetable const&, location_idx_t, uint8_t const& profile = 0);
   location(std::string_view id,
            std::string_view name,
            geo::latlng pos,
