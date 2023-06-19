@@ -4,6 +4,6 @@
 
 namespace nigiri::loader {
 
-void build_footpaths(timetable& tt);
+void build_footpaths(timetable& tt, int const& no_profiles);
 
 }  // namespace nigiri::loader

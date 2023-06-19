@@ -284,7 +284,8 @@ private:
   void add_start_labels(start_time_t const& start_interval,
                         bool const add_ontrip) {
     get_starts(SearchDir, tt_, start_interval, q_.start_, q_.start_match_mode_,
-               q_.use_start_footpaths_, state_.starts_, add_ontrip);
+               q_.use_start_footpaths_, state_.starts_, add_ontrip,
+               q_.profile_);
   }
 
   void remove_ontrip_results() {
@@ -312,7 +313,7 @@ private:
               start_time +
               (kFwd ? 1 : -1) * std::min(fastest_direct_, kMaxTravelTime);
           algo_.execute(start_time, q_.max_transfers_, worst_time_at_dest,
-                        q_.prf_, state_.results_);
+                        q_.profile_, state_.results_);
 
           for (auto& j : state_.results_) {
             if (j.legs_.empty() &&

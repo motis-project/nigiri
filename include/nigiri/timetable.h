@@ -81,19 +81,19 @@ struct timetable {
     }
 
     location get(location_idx_t const idx) {
-      return location{
-          ids_[idx].view(),
-          names_[idx].view(),
-          coordinates_[idx],
-          src_[idx],
-          types_[idx],
-          osm_ids_[idx],
-          parents_[idx],
-          location_timezones_[idx],
-          transfer_time_[idx],
-          it_range{equivalences_[idx]},
-          std::span<footpath const>{footpaths_out_[profile::DEFAULT][idx]},
-          std::span<footpath const>{footpaths_in_[profile::DEFAULT][idx]}};
+      // TODO (Carsten) hard-coded default profile...
+      return location{ids_[idx].view(),
+                      names_[idx].view(),
+                      coordinates_[idx],
+                      src_[idx],
+                      types_[idx],
+                      osm_ids_[idx],
+                      parents_[idx],
+                      location_timezones_[idx],
+                      transfer_time_[idx],
+                      it_range{equivalences_[idx]},
+                      std::span<footpath const>{footpaths_out_[0][idx]},
+                      std::span<footpath const>{footpaths_in_[0][idx]}};
     }
 
     location get(location_id const& id) {
@@ -118,7 +118,7 @@ struct timetable {
     mutable_fws_multimap<location_idx_t, location_idx_t> children_;
     mutable_fws_multimap<location_idx_t, footpath> preprocessing_footpaths_out_;
     mutable_fws_multimap<location_idx_t, footpath> preprocessing_footpaths_in_;
-    cista::array<vecvec<location_idx_t, footpath>, profile::SIZE> footpaths_out_, footpaths_in_;
+    vector<vecvec<location_idx_t, footpath>> footpaths_out_, footpaths_in_;
     vector_map<timezone_idx_t, timezone> timezones_;
   } locations_;
 

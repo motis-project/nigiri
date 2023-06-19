@@ -83,8 +83,8 @@ std::optional<journey::leg> find_start_footpath(timetable const& tt,
       q.start_match_mode_ == location_match_mode::kEquivalent,
       is_journey_start(tt, q, leg_start_location));
   auto const& footpaths =
-      kFwd ? tt.locations_.footpaths_in_[q.prf_][leg_start_location]
-           : tt.locations_.footpaths_out_[q.prf_][leg_start_location];
+      kFwd ? tt.locations_.footpaths_in_[q.profile_][leg_start_location]
+           : tt.locations_.footpaths_out_[q.profile_][leg_start_location];
   auto const j_start_time = unix_to_delta(base, j.start_time_);
   auto const fp_target_time = state.round_times_[0][to_idx(leg_start_location)];
 
@@ -400,8 +400,8 @@ void reconstruct_journey(timetable const& tt,
               }
 
               for (auto const& fp :
-                   kFwd ? tt.locations_.footpaths_in_[q.prf_][eq]
-                        : tt.locations_.footpaths_out_[q.prf_][eq]) {
+                   kFwd ? tt.locations_.footpaths_in_[q.profile_][eq]
+                        : tt.locations_.footpaths_out_[q.profile_][eq]) {
                 auto fp_intermodal_dest = check_fp(
                     k, l, curr_time,
                     {fp.target(), dest_offset.duration_ + fp.duration()});
@@ -447,8 +447,8 @@ void reconstruct_journey(timetable const& tt,
     }
 
     trace_rc("CHECKING FOOTPATHS OF {}\n", tt.locations_.names_.at(l).view());
-    auto const fps = kFwd ? tt.locations_.footpaths_in_[q.prf_][l]
-                          : tt.locations_.footpaths_out_[q.prf_][l];
+    auto const fps = kFwd ? tt.locations_.footpaths_in_[q.profile_][l]
+                          : tt.locations_.footpaths_out_[q.profile_][l];
     for (auto const& fp : fps) {
       trace_rc("FP: (name={}, id={}) --{}--> (name={}, id={})\n",
                tt.locations_.names_.at(l).view(),

@@ -20,7 +20,6 @@ void reconstruct_journey(timetable const&,
                          raptor_state const&,
                          journey&,
                          date::sys_days const base,
-                         day_idx_t const base_day_idx,
-                         profile const prf = profile::DEFAULT);
+                         day_idx_t const base_day_idx);
 
 }  // namespace nigiri::routing

@@ -169,7 +169,7 @@ void get_starts(direction const search_dir,
                 bool const use_start_footpaths,
                 std::vector<start>& starts,
                 bool const add_ontrip,
-                profile prf) {
+                int const& profile) {
   hash_map<location_idx_t, duration_t> shortest_start;
 
   auto const update = [&](location_idx_t const l, duration_t const d) {
@@ -182,8 +182,8 @@ void get_starts(direction const search_dir,
     for_each_meta(tt, mode, o.target(), [&](location_idx_t const l) {
       update(l, o.duration());
       if (use_start_footpaths) {
-        auto const footpaths = fwd ? tt.locations_.footpaths_out_[prf][l]
-                                   : tt.locations_.footpaths_in_[prf][l];
+        auto const footpaths = fwd ? tt.locations_.footpaths_out_[profile][l]
+                                   : tt.locations_.footpaths_in_[profile][l];
         for (auto const& fp : footpaths) {
           update(fp.target(), o.duration() + fp.duration());
         }

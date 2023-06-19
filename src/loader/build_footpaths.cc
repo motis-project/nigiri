@@ -417,19 +417,22 @@ void add_links_to_and_between_children(timetable& tt) {
   }
 }
 
-void write_footpaths(timetable& tt) {
+void write_footpaths(timetable& tt, int const& no_profiles = 1) {
   assert(tt.locations_.footpaths_out_.empty());
   assert(tt.locations_.footpaths_in_.empty());
   assert(tt.locations_.preprocessing_footpaths_out_.size() == tt.n_locations());
   assert(tt.locations_.preprocessing_footpaths_in_.size() == tt.n_locations());
 
-  for (auto prf_idx = 0U; prf_idx < profile::SIZE; ++prf_idx) {
-    for (auto i = location_idx_t{0U}; i != tt.n_locations(); ++i) {
+  for (auto prf_idx = 0; prf_idx < no_profiles; ++prf_idx) {
+    tt.locations_.footpaths_in_.emplace_back();
+    tt.locations_.footpaths_out_.emplace_back();
+
+    for (auto i = location_idx_t{0}; i != tt.n_locations(); ++i) {
       tt.locations_.footpaths_in_[prf_idx].emplace_back(
           tt.locations_.preprocessing_footpaths_in_[i]);
     }
 
-    for (auto i = location_idx_t{0U}; i != tt.n_locations(); ++i) {
+    for (auto i = location_idx_t{0}; i != tt.n_locations(); ++i) {
       tt.locations_.footpaths_out_[prf_idx].emplace_back(
           tt.locations_.preprocessing_footpaths_out_[i]);
     }
@@ -442,11 +445,11 @@ void write_footpaths(timetable& tt) {
   tt.locations_.preprocessing_footpaths_out_.clear();
 }
 
-void build_footpaths(timetable& tt) {
+void build_footpaths(timetable& tt, int const& no_profiles) {
   add_links_to_and_between_children(tt);
   link_nearby_stations(tt);
   transitivize_footpaths(tt);
-  write_footpaths(tt);
+  write_footpaths(tt, no_profiles);
 }
 
 }  // namespace nigiri::loader

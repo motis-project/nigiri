@@ -48,13 +48,15 @@ pareto_set<routing::journey> raptor_search(timetable const& tt,
                                            std::string_view to,
                                            routing::start_time_t time,
                                            direction const search_dir) {
+  // TODO (Carsten) make profile a param
   auto const src = source_idx_t{0};
   auto q = routing::query{
       .start_time_ = time,
       .start_ = {{tt.locations_.location_id_to_idx_.at({from, src}), 0_minutes,
                   0U}},
-      .destination_ = {
-          {tt.locations_.location_id_to_idx_.at({to, src}), 0_minutes, 0U}}};
+      .destination_ = {{tt.locations_.location_id_to_idx_.at({to, src}),
+                        0_minutes, 0U}},
+      .profile_ = 0U};
   return raptor_search(tt, std::move(q), search_dir);
 }
 
@@ -76,6 +78,7 @@ pareto_set<routing::journey> raptor_intermodal_search(
     std::uint8_t const min_connection_count,
     bool const extend_interval_earlier,
     bool const extend_interval_later) {
+  // TODO (Carsten) make profile a param
   auto q = routing::query{
       .start_time_ = interval,
       .start_match_mode_ = routing::location_match_mode::kIntermodal,
@@ -84,7 +87,8 @@ pareto_set<routing::journey> raptor_intermodal_search(
       .destination_ = std::move(destination),
       .min_connection_count_ = min_connection_count,
       .extend_interval_earlier_ = extend_interval_earlier,
-      .extend_interval_later_ = extend_interval_later};
+      .extend_interval_later_ = extend_interval_later,
+      .profile_ = 0U};
   return raptor_search(tt, std::move(q), search_dir);
 }
 

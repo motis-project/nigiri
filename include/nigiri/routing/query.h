@@ -6,7 +6,6 @@
 
 #include "nigiri/common/interval.h"
 #include "nigiri/footpath.h"
-#include "nigiri/profiles.h"
 #include "nigiri/routing/limits.h"
 #include "nigiri/routing/location_match_mode.h"
 #include "nigiri/types.h"
@@ -41,7 +40,7 @@ struct query {
   unsigned min_connection_count_{0U};
   bool extend_interval_earlier_{false};
   bool extend_interval_later_{false};
-  profile prf_;
+  int profile_{0};
 };
 
 }  // namespace nigiri::routing

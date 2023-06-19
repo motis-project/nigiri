@@ -9,8 +9,8 @@ duration_t get_fastest_direct_with_foot(timetable const& tt,
   auto min = duration_t{std::numeric_limits<duration_t::rep>::max()};
   for (auto const& start : q.start_) {
     auto const& footpaths =
-        (dir == direction::kForward ? tt.locations_.footpaths_out_[q.prf_]
-                                    : tt.locations_.footpaths_in_[q.prf_]);
+        (dir == direction::kForward ? tt.locations_.footpaths_out_[q.profile_]
+                                    : tt.locations_.footpaths_in_[q.profile_]);
     for (auto const& fp : footpaths[start.target_]) {
       for (auto const& dest : q.destination_) {
         if (dest.target_ == fp.target()) {

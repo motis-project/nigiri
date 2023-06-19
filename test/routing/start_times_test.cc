@@ -278,7 +278,8 @@ TEST(routing, start_times) {
              interval<unixtime_t>{sys_days{2020_y / March / 30},
                                   sys_days{2020_y / March / 31}},
              {{A, 15_minutes, 0}, {B, 30_minutes, 0}},
-             nigiri::routing::location_match_mode::kExact, false, starts, true);
+             nigiri::routing::location_match_mode::kExact, false, starts, true,
+             0);
 
   std::stringstream ss;
   ss << "\n";
