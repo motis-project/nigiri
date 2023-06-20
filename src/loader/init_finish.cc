@@ -52,8 +52,8 @@ void finalize(timetable& tt, uint16_t const& no_profiles) {
 
 void reinitialize_footpaths(timetable& tt, uint16_t const& no_profiles) {
   // reset footpaths to default footpaths
-  tt.locations_.footpaths_out_ = {tt.locations_.footpaths_out_.front()};
-  tt.locations_.footpaths_in_ = {tt.locations_.footpaths_in_.front()};
+  tt.locations_.footpaths_out_.resize(1);
+  tt.locations_.footpaths_in_.resize(1);
 
   {
     // create profile-based footpaths
