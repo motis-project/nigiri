@@ -50,4 +50,29 @@ void finalize(timetable& tt, uint16_t const& no_profiles) {
   build_lb_graph<direction::kBackward>(tt);
 }
 
+void reinitialize(timetable& tt, uint8_t const& no_profiles) {
+  // reset footpaths to default footpaths
+  tt.locations_.footpaths_out_ = {tt.locations_.footpaths_out_.front()};
+  tt.locations_.footpaths_in_ = {tt.locations_.footpaths_in_.front()};
+
+  {
+    // create profile-based footpaths
+    auto const timer =
+        scoped_timer{"loader.reinitialize profile-based footpaths."};
+
+    // create no_profiles - 1 additional footpath entries (-1: default)
+    for (auto prf_idx = 1; prf_idx < no_profiles; ++prf_idx) {
+      tt.locations_.footpaths_out_.emplace_back();
+      tt.locations_.footpaths_in_.emplace_back();
+
+      for (auto i = location_idx_t{0}; i != tt.n_locations(); ++i) {
+        tt.locations_.footpaths_in_[prf_idx].emplace_back(
+            tt.locations_.footpaths_in_[0][i]);
+        tt.locations_.footpaths_out_[prf_idx].emplace_back(
+            tt.locations_.footpaths_out_[0][i]);
+      }
+    }
+  }
+}
+
 }  // namespace nigiri::loader
