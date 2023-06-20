@@ -430,15 +430,9 @@ void write_footpaths(timetable& tt, uint8_t const& no_profiles = 1) {
     for (auto i = location_idx_t{0}; i != tt.n_locations(); ++i) {
       tt.locations_.footpaths_in_[prf_idx].emplace_back(
           tt.locations_.preprocessing_footpaths_in_[i]);
-    }
-
-    for (auto i = location_idx_t{0}; i != tt.n_locations(); ++i) {
       tt.locations_.footpaths_out_[prf_idx].emplace_back(
           tt.locations_.preprocessing_footpaths_out_[i]);
     }
-
-    tt.locations_.preprocessing_footpaths_in_.clear();
-    tt.locations_.preprocessing_footpaths_out_.clear();
   }
 
   tt.locations_.preprocessing_footpaths_in_.clear();
