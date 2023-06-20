@@ -9,7 +9,7 @@ struct timetable;
 namespace nigiri::loader {
 
 void register_special_stations(timetable&);
-void finalize(timetable&, uint16_t const& no_profiles);
+void finalize(timetable&, uint16_t const& no_profiles = 1);
 
 /**
  * Reinitialization of the profile-based footpaths. A separate footpath_out_
