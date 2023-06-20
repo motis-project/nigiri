@@ -8,7 +8,9 @@ std::ostream& operator<<(std::ostream& out, location const& l) {
   return out << '(' << l.name_ << ", " << l.id_ << ')';
 }
 
-location::location(timetable const& tt, location_idx_t idx, uint8_t const& profile)
+location::location(timetable const& tt,
+                   location_idx_t idx,
+                   uint16_t const& profile)
     : id_{tt.locations_.ids_[idx].view()},
       name_{tt.locations_.names_[idx].view()},
       pos_{tt.locations_.coordinates_[idx]},

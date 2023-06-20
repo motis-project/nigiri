@@ -92,7 +92,7 @@ struct raptor {
   void execute(unixtime_t const start_time,
                std::uint8_t const max_transfers,
                unixtime_t const worst_time_at_dest,
-               uint8_t const& profile,
+               uint16_t const& profile,
                pareto_set<journey>& results) {
     auto const end_k = std::min(max_transfers, kMaxTransfers) + 1U;
 
@@ -223,7 +223,7 @@ private:
     }
   }
 
-  void update_footpaths(unsigned const k, uint8_t const& profile) {
+  void update_footpaths(unsigned const k, uint16_t const& profile) {
     for (auto i = 0U; i != n_locations_; ++i) {
       if (!state_.prev_station_mark_[i]) {
         continue;

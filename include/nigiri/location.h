@@ -15,7 +15,7 @@ struct timetable;
 
 struct location {
   friend std::ostream& operator<<(std::ostream&, location const&);
-  location(timetable const&, location_idx_t, uint8_t const& profile = 0);
+  location(timetable const&, location_idx_t, uint16_t const& profile = 0);
   location(std::string_view id,
            std::string_view name,
            geo::latlng pos,

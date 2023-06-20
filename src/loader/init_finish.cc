@@ -29,7 +29,7 @@ void register_special_stations(timetable& tt) {
   tt.location_routes_.resize(tt.n_locations());
 }
 
-void finalize(timetable& tt, uint8_t const& no_profiles) {
+void finalize(timetable& tt, uint16_t const& no_profiles) {
   tt.location_routes_.resize(tt.n_locations());
 
   {

@@ -417,7 +417,7 @@ void add_links_to_and_between_children(timetable& tt) {
   }
 }
 
-void write_footpaths(timetable& tt, uint8_t const& no_profiles = 1) {
+void write_footpaths(timetable& tt, uint16_t const& no_profiles) {
   assert(tt.locations_.footpaths_out_.empty());
   assert(tt.locations_.footpaths_in_.empty());
   assert(tt.locations_.preprocessing_footpaths_out_.size() == tt.n_locations());
