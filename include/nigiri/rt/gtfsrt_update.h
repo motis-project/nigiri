@@ -1,5 +1,8 @@
 #pragma once
 
+#ifdef NO_DATA
+#undef NO_DATA
+#endif
 #include "gtfsrt/gtfs-realtime.pb.h"
 
 #include "nigiri/types.h"
