@@ -35,6 +35,7 @@ struct frun : public run {
     bool in_allowed() const noexcept;
     bool out_allowed() const noexcept;
 
+    void print(std::ostream&, bool first = false, bool last = false) const;
     bool operator==(run_stop const&) const = default;
     friend std::ostream& operator<<(std::ostream&, run_stop const&);
 

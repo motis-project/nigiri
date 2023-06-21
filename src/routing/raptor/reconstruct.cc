@@ -233,14 +233,18 @@ void reconstruct_journey(timetable const& tt,
         auto const location_seq = rtt->rt_transport_location_seq_[rt_t];
         for (auto const [i, s] : utl::enumerate(location_seq)) {
           auto const stp = stop{s};
+          auto const stop_idx = static_cast<stop_idx_t>(i);
+          auto const fr = rt::frun{tt, *rtt, rt_t};
           if (stp.location_idx() != l ||  //
               (kFwd && (i == 0U || !stp.out_allowed())) ||
-              (!kFwd && (i == location_seq.size() - 1 || !stp.in_allowed()))) {
+              (!kFwd && (i == location_seq.size() - 1 || !stp.in_allowed())) ||
+              delta_to_unix(base, time) !=
+                  fr[stop_idx].time(kFwd ? event_type::kArr
+                                         : event_type::kDep)) {
             continue;
           }
 
-          auto leg = find_entry_in_prev_round(k, rt::frun{tt, *rtt, rt_t},
-                                              static_cast<stop_idx_t>(i), time);
+          auto leg = find_entry_in_prev_round(k, fr, stop_idx, time);
           if (leg.has_value()) {
             return leg;
           }

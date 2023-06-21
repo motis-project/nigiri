@@ -169,26 +169,28 @@ frun::run_stop frun::operator[](stop_idx_t const i) const noexcept {
   return run_stop{this, i};
 }
 
-std::ostream& operator<<(std::ostream& out, frun::run_stop const& stp) {
-  auto const& tz = stp.fr_->tt_->locations_.timezones_.at(get_transport_stop_tz(
-      *stp.fr_->tt_, stp.fr_->t_.t_idx_, stp.get_location().l_));
+void frun::run_stop::print(std::ostream& out,
+                           bool const first,
+                           bool const last) const {
+  auto const& tz = fr_->tt_->locations_.timezones_.at(
+      get_transport_stop_tz(*fr_->tt_, fr_->t_.t_idx_, get_location().l_));
 
   // Print stop index, location name.
-  fmt::print(out, "  {:2}: {:7} {:.<48}", stp.stop_idx_, stp.get_location().id_,
-             stp.name());
+  fmt::print(out, "  {:2}: {:7} {:.<48}", stop_idx_, get_location().id_,
+             name());
 
   // Print arrival (or whitespace if there's none).
-  if (stp.stop_idx_ != 0U) {
-    auto const scheduled = stp.scheduled_time(event_type::kArr);
-    auto const rt = stp.time(event_type::kArr);
-    fmt::print(out, "{}a: {} [{}]", (stp.out_allowed() ? ' ' : '-'),
+  if (!first && stop_idx_ != 0U) {
+    auto const scheduled = scheduled_time(event_type::kArr);
+    auto const rt = time(event_type::kArr);
+    fmt::print(out, "{}a: {} [{}]", (out_allowed() ? ' ' : '-'),
                date::format("%d.%m %R", scheduled),
                date::format("%d.%m %R", to_local_time(tz, scheduled)));
-    if (stp.fr_->is_rt() && stp.fr_->rtt_ != nullptr) {  // RT if available.
+    if (fr_->is_rt() && fr_->rtt_ != nullptr) {  // RT if available.
       fmt::print(out, "  RT {} [{}]", date::format("%d.%m %R", rt),
                  date::format("%d.%m %R", to_local_time(tz, rt)));
     }
-  } else if (stp.fr_->is_rt() && stp.fr_->rtt_ != nullptr) {
+  } else if (fr_->is_rt() && fr_->rtt_ != nullptr) {
     // Skipped w/ RT info.
     fmt::print(out, "                            ");
     fmt::print(out, "                               ");
@@ -198,27 +200,26 @@ std::ostream& operator<<(std::ostream& out, frun::run_stop const& stp) {
   }
 
   // Print departure (or whitespace if there's none).
-  if (stp.stop_idx_ != stp.fr_->size() - 1U) {
+  if (!last && stop_idx_ != fr_->size() - 1U) {
     fmt::print(out, " ");
-    auto const scheduled = stp.scheduled_time(event_type::kDep);
-    auto const rt = stp.time(event_type::kDep);
-    fmt::print(out, "{}d: {} [{}]", (stp.in_allowed() ? ' ' : '-'),
+    auto const scheduled = scheduled_time(event_type::kDep);
+    auto const rt = time(event_type::kDep);
+    fmt::print(out, "{}d: {} [{}]", (in_allowed() ? ' ' : '-'),
                date::format("%d.%m %R", scheduled),
                date::format("%d.%m %R", to_local_time(tz, scheduled)));
-    if (stp.fr_->is_rt() && stp.fr_->rtt_ != nullptr) {  // RT if available.
+    if (fr_->is_rt() && fr_->rtt_ != nullptr) {  // RT if available.
       fmt::print(out, "  RT {} [{}]", date::format("%d.%m %R", rt),
                  date::format("%d.%m %R", to_local_time(tz, rt)));
     }
   }
 
   // Print trip info.
-  if (stp.fr_->is_scheduled() && stp.stop_idx_ != stp.fr_->size() - 1U) {
-    auto const& tt = *stp.fr_->tt_;
-    auto const& trip_section =
-        tt.transport_to_trip_section_.at(stp.fr_->t_.t_idx_);
+  if (fr_->is_scheduled() && !last && stop_idx_ != fr_->size() - 1U) {
+    auto const& tt = *fr_->tt_;
+    auto const& trip_section = tt.transport_to_trip_section_.at(fr_->t_.t_idx_);
     auto const& merged_trips = tt.merged_trips_.at(
         trip_section.size() == 1U ? trip_section[0]
-                                  : trip_section.at(stp.stop_idx_));
+                                  : trip_section.at(stop_idx_));
 
     out << "  [";
     for (auto const& trip_idx : merged_trips) {
@@ -231,9 +232,9 @@ std::ostream& operator<<(std::ostream& out, frun::run_stop const& stp) {
         }
         out << "{name=" << tt.trip_display_names_.at(trip_idx).view()
             << ", day=";
-        date::to_stream(out, "%F",
-                        tt.internal_interval_days().from_ +
-                            to_idx(stp.fr_->t_.day_) * 1_days);
+        date::to_stream(
+            out, "%F",
+            tt.internal_interval_days().from_ + to_idx(fr_->t_.day_) * 1_days);
         out << ", id=" << tt.trip_id_strings_.at(id).view()
             << ", src=" << static_cast<int>(to_idx(tt.trip_id_src_.at(id)));
         out << "}";
@@ -241,7 +242,10 @@ std::ostream& operator<<(std::ostream& out, frun::run_stop const& stp) {
     }
     out << "]";
   }
+}
 
+std::ostream& operator<<(std::ostream& out, frun::run_stop const& stp) {
+  stp.print(out);
   return out;
 }
 
