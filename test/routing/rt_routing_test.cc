@@ -4,6 +4,7 @@
 #include "nigiri/loader/gtfs/load_timetable.h"
 #include "nigiri/loader/hrd/load_timetable.h"
 #include "nigiri/loader/init_finish.h"
+#include "nigiri/rt/create_rt_timetable.h"
 #include "nigiri/rt/gtfsrt_update.h"
 #include "nigiri/rt/rt_timetable.h"
 
@@ -179,12 +180,7 @@ TEST(routing, rt_raptor_backward) {
   finalize(tt);
 
   // Create empty RT timetable.
-  auto rtt = rt_timetable{};
-  rtt.transport_traffic_days_ = tt.transport_traffic_days_;
-  rtt.bitfields_ = tt.bitfields_;
-  rtt.base_day_ = date::sys_days{2019_y / May / 3};
-  rtt.base_day_idx_ = tt.day_idx(rtt.base_day_);
-  rtt.location_rt_transports_.resize(tt.n_locations());
+  auto rtt = rt::create_rt_timetable(tt, date::sys_days{2019_y / May / 3});
 
   transit_realtime::FeedMessage msg;
 

@@ -20,14 +20,21 @@ struct frun : public run {
     stop get_stop() const noexcept;
     location get_location() const noexcept;
     location_idx_t get_location_idx() const noexcept;
-    std::string_view get_location_name() const noexcept;
-    std::string_view get_location_track() const noexcept;
+    std::string_view name() const noexcept;
+    std::string_view track() const noexcept;
+    std::string_view id() const noexcept;
+
+    provider const& get_provider() const noexcept;
+
     unixtime_t scheduled_time(event_type const ev_type) const noexcept;
     unixtime_t time(event_type const ev_type) const noexcept;
+
     std::string_view line() const noexcept;
     std::string_view scheduled_line() const noexcept;
+
     bool in_allowed() const noexcept;
     bool out_allowed() const noexcept;
+
     bool operator==(run_stop const&) const = default;
     friend std::ostream& operator<<(std::ostream&, run_stop const&);
 

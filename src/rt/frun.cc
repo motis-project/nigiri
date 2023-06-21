@@ -14,20 +14,31 @@ stop frun::run_stop::get_stop() const noexcept {
                 [fr_->tt_->transport_route_[fr_->t_.t_idx_]][stop_idx_]};
 }
 
-std::string_view frun::run_stop::get_location_name() const noexcept {
-  auto const l_idx = get_location_idx();
-  auto const& parent = fr_->tt_->locations_.parents_.at(l_idx);
-  return (parent == location_idx_t::invalid()
-              ? fr_->tt_->locations_.names_.at(l_idx)
-              : fr_->tt_->locations_.names_.at(parent))
+std::string_view frun::run_stop::name() const noexcept {
+  auto const l = get_location_idx();
+  auto const type = fr_->tt_->locations_.types_.at(l);
+  auto const p =
+      (type == location_type::kGeneratedTrack || type == location_type::kTrack)
+          ? fr_->tt_->locations_.parents_.at(l)
+          : l;
+  return fr_->tt_->locations_.names_.at(p).view();
+}
+
+std::string_view frun::run_stop::id() const noexcept {
+  auto const l = get_location_idx();
+  auto const type = fr_->tt_->locations_.types_.at(l);
+  return fr_->tt_->locations_.ids_
+      .at(type == location_type::kGeneratedTrack
+              ? fr_->tt_->locations_.parents_.at(l)
+              : l)
       .view();
 }
 
-std::string_view frun::run_stop::get_location_track() const noexcept {
-  auto const l_idx = get_location_idx();
-  auto const& parent = fr_->tt_->locations_.parents_.at(l_idx);
-  return parent != location_idx_t::invalid()
-             ? fr_->tt_->locations_.names_.at(l_idx).view()
+std::string_view frun::run_stop::track() const noexcept {
+  auto const l = get_location_idx();
+  return (fr_->tt_->locations_.types_.at(l) == location_type::kTrack ||
+          fr_->tt_->locations_.types_.at(l) == location_type::kGeneratedTrack)
+             ? fr_->tt_->locations_.names_.at(l).view()
              : "";
 }
 
@@ -164,7 +175,7 @@ std::ostream& operator<<(std::ostream& out, frun::run_stop const& stp) {
 
   // Print stop index, location name.
   fmt::print(out, "  {:2}: {:7} {:.<48}", stp.stop_idx_, stp.get_location().id_,
-             stp.get_location_name());
+             stp.name());
 
   // Print arrival (or whitespace if there's none).
   if (stp.stop_idx_ != 0U) {
