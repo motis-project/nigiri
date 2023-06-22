@@ -38,7 +38,8 @@ if(NIGIRI_LINT)
   include(cmake/clang-tidy.cmake)
 endif()
 
-if ("${CMAKE_CXX_COMPILER_ID}" STREQUAL "Clang")
+if ("${CMAKE_CXX_COMPILER_ID}" STREQUAL "Clang" OR
+    "${CMAKE_CXX_COMPILER_ID}" STREQUAL "AppleClang")
   set(nigiri-compile-options
         -Weverything
         -Wno-c++98-compat
