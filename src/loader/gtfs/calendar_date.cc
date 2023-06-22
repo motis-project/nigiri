@@ -12,8 +12,6 @@
 
 namespace nigiri::loader::gtfs {
 
-#pragma GCC diagnostic push
-#pragma GCC diagnostic ignored "-Wmaybe-uninitialized"
 hash_map<std::string, std::vector<calendar_date>> read_calendar_date(
     std::string_view file_content) {
   struct entry {
@@ -41,6 +39,5 @@ hash_map<std::string, std::vector<calendar_date>> read_calendar_date(
         });
   return services;
 }
-#pragma GCC diagnostic pop
 
 }  // namespace nigiri::loader::gtfs
