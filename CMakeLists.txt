@@ -38,8 +38,7 @@ if(NIGIRI_LINT)
   include(cmake/clang-tidy.cmake)
 endif()
 
-if ("${CMAKE_CXX_COMPILER_ID}" STREQUAL "Clang" OR
-    "${CMAKE_CXX_COMPILER_ID}" STREQUAL "AppleClang")
+if ("${CMAKE_CXX_COMPILER_ID}" STREQUAL "Clang")
   set(nigiri-compile-options
         -Weverything
         -Wno-c++98-compat
@@ -61,10 +60,12 @@ if ("${CMAKE_CXX_COMPILER_ID}" STREQUAL "Clang" OR
         -Wno-unsafe-buffer-usage
         -Wno-c++20-compat
         -Werror)
+elseif("${CMAKE_CXX_COMPILER_ID}" STREQUAL "AppleClang")
+  set(nigiri-compile-options -Wall -Wextra -Werror)
 elseif(MSVC)
   set(nigiri-compile-options /WX)
 else()
-  set(nigiri-compile-options ${SORO_COMPILE_OPTIONS}
+  set(nigiri-compile-options
         -Wall
         -Wextra
         -Werror
