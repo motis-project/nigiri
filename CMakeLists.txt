@@ -66,7 +66,8 @@ else()
   set(nigiri-compile-options ${SORO_COMPILE_OPTIONS}
         -Wall
         -Wextra
-        -Werror)
+        -Werror
+        -Wno-maybe-uninitialized)
 endif()
 
 
