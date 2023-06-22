@@ -15,7 +15,8 @@ struct cached_lookup {
 
   template <typename Key, typename CreateFn>
   value_t& operator()(Key&& key, CreateFn&& create_fn) {
-    if (!prev_it_.has_value() || (*prev_it_)->first != key) {
+    if (!prev_it_.has_value() ||
+        (prev_it_.has_value() && (*prev_it_)->first != key)) {
       if (auto const it = map_.find(key); it == end(map_)) {
         prev_it_ = map_.emplace(key_t{key}, create_fn()).first;
       } else {
@@ -27,7 +28,7 @@ struct cached_lookup {
 
   template <typename Key>
   value_t& operator()(Key&& key) {
-    return this->operator()(key, []() { return value_t{}; });
+    return this->operator()(std::forward<Key>(key), []() { return value_t{}; });
   }
 
   Map& map_;

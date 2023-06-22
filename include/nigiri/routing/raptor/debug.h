@@ -117,10 +117,10 @@
 #define trace_rc_transport_mam_mismatch                              \
   trace_reconstruct(                                                 \
       "    -> ev_mam mismatch: transport_ev={} vs footpath = {}\n ", \
-      duration_t{event_mam.count()}, duration_t{mam});
+      duration_t{event_mam.count()}, duration_t{mam})
 
 #define trace_rc_transport_no_traffic \
-  trace_reconstruct("    -> no traffic on day {}\n ", traffic_day);
+  trace_reconstruct("    -> no traffic on day {}\n ", traffic_day)
 
 #define trace_rc_transport_not_found \
   trace_reconstruct("    -> no entry found\n")
@@ -132,12 +132,13 @@
       location{tt, l}, k, k - 1, raptor_state.best_[to_idx(l)],            \
       raptor_state.round_times_[k - 1][to_idx(l)], best(k - 1, l),         \
       delta_to_unix(base, best(k - 1, l)), event_time,                     \
-      fr[stop_idx].time(kFwd ? event_type::kDep : event_type::kArr));
+      fr[stop_idx].time(kFwd ? event_type::kDep : event_type::kArr))
 
 #define trace_rc_transport_entry_found                                 \
   trace_reconstruct(                                                   \
       "      FOUND ENTRY AT name={}, dbg={}, location={}: {} <= {}\n", \
-      fr.name(), fr.dbg(), location{tt, l}, best(k - 1, l), event_time)
+      fr.name(), fr.dbg(), location{tt, l},                            \
+      delta_to_unix(base, best(k - 1, l)), delta_to_unix(base, event_time))
 
 #define trace_rc_fp_intermodal_dest_mismatch                            \
   trace_reconstruct(                                                    \
@@ -170,15 +171,14 @@
   transport_leg->print(std::cout, tt, rtt, 1, true);                   \
   trace_reconstruct(" fp leg: {} {} --{}--> {} {}\n", location{tt, l}, \
                     delta_to_unix(base, fp_start), fp.duration(),      \
-                    location{tt, fp.target()},                         \
-                    delta_to_unix(base, curr_time));
+                    location{tt, fp.target()}, delta_to_unix(base, curr_time))
 
 #define trace_rc_check_fp                                                   \
   trace_reconstruct(                                                        \
       "round {}: searching for transports at {} with curr_time={} --{}--> " \
       "fp_start={}\n ",                                                     \
       k, location{tt, fp.target()}, delta_to_unix(base, curr_time),         \
-      fp.duration(), delta_to_unix(base, fp_start));
+      fp.duration(), delta_to_unix(base, fp_start))
 
 #else
 #define trace_reconstruct(...)

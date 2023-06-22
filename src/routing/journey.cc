@@ -19,7 +19,9 @@ void journey::leg::print(std::ostream& out,
           [&](run_enter_exit const& t) {
             auto const fr = rt::frun{tt, rtt, t.r_};
             for (auto i = t.stop_range_.from_; i != t.stop_range_.to_; ++i) {
-              out << fr[i] << "\n";
+              fr[i].print(out, i == t.stop_range_.from_,
+                          i == t.stop_range_.to_ - 1U);
+              out << "\n";
             }
           },
           [&](footpath const x) {

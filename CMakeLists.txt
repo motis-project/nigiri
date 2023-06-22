@@ -60,13 +60,18 @@ if ("${CMAKE_CXX_COMPILER_ID}" STREQUAL "Clang")
         -Wno-unsafe-buffer-usage
         -Wno-c++20-compat
         -Werror)
+elseif("${CMAKE_CXX_COMPILER_ID}" STREQUAL "AppleClang")
+  set(nigiri-compile-options -Wall -Wextra -Werror)
 elseif(MSVC)
   set(nigiri-compile-options /WX)
 else()
-  set(nigiri-compile-options ${SORO_COMPILE_OPTIONS}
+  set(nigiri-compile-options
         -Wall
         -Wextra
-        -Werror)
+        -Wno-maybe-uninitialized)
+  if (NOT CMAKE_CROSSCOMPILING)
+    set(nigiri-compile-options ${nigiri-compile-options} -Werror)
+  endif()
 endif()
 
 
