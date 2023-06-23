@@ -125,6 +125,11 @@ void update_run(
   }
 }
 
+std::string remove_nl(std::string s) {
+  s.erase(std::remove(begin(s), end(s), '\n'), end(s));
+  return s;
+}
+
 statistics gtfsrt_update_msg(timetable const& tt,
                              rt_timetable& rtt,
                              source_idx_t const src,
@@ -171,8 +176,8 @@ statistics gtfsrt_update_msg(timetable const& tt,
       auto r = gtfsrt_resolve_run(today, tt, rtt, src, td);
 
       if (!r.valid()) {
-        log(log_lvl::error, "rt.gtfs.resolve", "could not resolve {}",
-            entity.trip_update().trip().DebugString());
+        log(log_lvl::error, "rt.gtfs.resolve", "could not resolve (tag={}) {}",
+            tag, remove_nl(entity.trip_update().trip().DebugString()));
         ++stats.trip_resolve_error_;
         continue;
       }
@@ -184,7 +189,7 @@ statistics gtfsrt_update_msg(timetable const& tt,
       log(log_lvl::error, "rt.gtfs",
           "GTFS-RT error (tag={}): time={}, entitiy={}, message={}, error={}",
           tag, date::format("%T", message_time), entity.id(),
-          entity.DebugString(), e.what());
+          remove_nl(entity.DebugString()), e.what());
     }
   }
 
