@@ -169,6 +169,25 @@ frun::run_stop frun::operator[](stop_idx_t const i) const noexcept {
   return run_stop{this, i};
 }
 
+trip_id frun::id() const noexcept {
+  if (is_scheduled()) {
+    auto const trip_idx =
+        tt_->merged_trips_[tt_->transport_to_trip_section_.at(t_.t_idx_).at(0)]
+            .at(0);
+    auto const trip_id_idx = tt_->trip_ids_[trip_idx].at(0);
+    return {tt_->trip_id_strings_[trip_id_idx].view(),
+            tt_->trip_id_src_[trip_id_idx]};
+  } else if (holds_alternative<rt_add_trip_id_idx_t>(
+                 rtt_->rt_transport_static_transport_[rt_])) {
+    auto const add_idx =
+        rtt_->rt_transport_static_transport_[rt_].as<rt_add_trip_id_idx_t>();
+    return {rtt_->trip_id_strings_[add_idx].view(),
+            rtt_->rt_transport_src_[rt_]};
+  } else {
+    return {};
+  }
+}
+
 void frun::run_stop::print(std::ostream& out,
                            bool const first,
                            bool const last) const {

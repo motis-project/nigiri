@@ -79,6 +79,8 @@ struct frun : public run {
 
   run_stop operator[](stop_idx_t) const noexcept;
 
+  trip_id id() const noexcept;
+
   void print(std::ostream&, interval<stop_idx_t> stop_range);
   friend std::ostream& operator<<(std::ostream&, frun const&);
 

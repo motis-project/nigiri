@@ -4,6 +4,7 @@
 
 #include "nigiri/loader/gtfs/stop_seq_number_encoding.h"
 #include "nigiri/logging.h"
+#include "nigiri/rt/frun.h"
 #include "nigiri/rt/gtfsrt_resolve_run.h"
 #include "nigiri/rt/run.h"
 
@@ -23,9 +24,21 @@ delay_propagation update_delay(timetable const& tt,
                                stop_idx_t const stop_idx,
                                event_type const ev_type,
                                duration_t const delay,
-                               unixtime_t const min) {
+                               std::optional<unixtime_t> const min) {
   auto const static_time = tt.event_time(r.t_, stop_idx, ev_type);
-  rtt.update_time(r.rt_, stop_idx, ev_type, std::max(min, static_time + delay));
+  if (delay > 60_minutes) {
+    std::cout << "STOP_IDX: " << stop_idx
+              << ", EV_TYPE=" << (ev_type == event_type::kDep ? "DEP" : "ARR")
+              << ", STATIC TIME: " << static_time << ", NEW TIME: "
+              << (min.has_value() ? std::max(*min, static_time + delay)
+                                  : static_time + delay)
+              << ", DELAY: " << delay << "\n";
+    std::cout << frun{tt, &rtt, r} << "\n";
+    throw std::runtime_error{"delay >= 15_minutes"};
+  }
+  rtt.update_time(r.rt_, stop_idx, ev_type,
+                  min.has_value() ? std::max(*min, static_time + delay)
+                                  : static_time + delay);
   return {rtt.unix_event_time(r.rt_, stop_idx, ev_type), delay};
 }
 
@@ -35,13 +48,26 @@ delay_propagation update_event(timetable const& tt,
                                stop_idx_t const stop_idx,
                                event_type const ev_type,
                                gtfsrt::TripUpdate_StopTimeEvent const& ev,
-                               unixtime_t const pred_time) {
+                               std::optional<unixtime_t> const pred_time) {
   if (ev.has_time()) {
     auto const static_time = tt.event_time(r.t_, stop_idx, ev_type);
     auto const new_time =
         unixtime_t{std::chrono::duration_cast<unixtime_t::duration>(
             std::chrono::seconds{ev.time()})};
-    rtt.update_time(r.rt_, stop_idx, ev_type, std::max(pred_time, new_time));
+    if ((new_time - static_time) > 60_minutes) {
+      std::cout << "STOP_IDX: " << stop_idx << ", STATIC TIME: " << static_time
+                << ", EV_TYPE=" << (ev_type == event_type::kDep ? "DEP" : "ARR")
+                << ", NEW TIME: " << new_time
+                << ", DELAY: " << (new_time - static_time)
+                << ", ID=" << frun{tt, &rtt, r}.id() << "\n";
+
+      std::cout << frun{tt, &rtt, r} << "\n";
+
+      throw std::runtime_error{"delay >= 15_minutes"};
+    }
+    rtt.update_time(
+        r.rt_, stop_idx, ev_type,
+        pred_time.has_value() ? std::max(*pred_time, new_time) : new_time);
     return {new_time, new_time - static_time};
   } else /* if (ev.has_delay()) */ {
     return update_delay(tt, rtt, r, stop_idx, ev_type,
@@ -126,7 +152,7 @@ void update_run(
 }
 
 std::string remove_nl(std::string s) {
-  s.erase(std::remove(begin(s), end(s), '\n'), end(s));
+  //  s.erase(std::remove(begin(s), end(s), '\n'), end(s));
   return s;
 }
 
