@@ -50,7 +50,7 @@ struct timetable {
         preprocessing_footpaths_out_.emplace_back();
         transfer_time_.emplace_back(l.transfer_time_);
         osm_ids_.emplace_back(osm_node_id_t::invalid());
-        osm_type_.emplace_back();
+        osm_types_.emplace_back();
         parents_.emplace_back(l.parent_);
       } else {
         log(log_lvl::error, "timetable.register_location",
@@ -73,7 +73,7 @@ struct timetable {
       assert(preprocessing_footpaths_in_.size() == next_idx + 1);
       assert(transfer_time_.size() == next_idx + 1);
       assert(osm_ids_.size() == next_idx + 1);
-      assert(osm_type_.size() == next_idx + 1);
+      assert(osm_types_.size() == next_idx + 1);
       assert(parents_.size() == next_idx + 1);
 
       return it->second;
@@ -110,7 +110,7 @@ struct timetable {
     vector_map<location_idx_t, u8_minutes> transfer_time_;
     vector_map<location_idx_t, location_type> types_;
     vector_map<location_idx_t, osm_node_id_t> osm_ids_;
-    vector_map<location_idx_t, osm_type> osm_type_;
+    vector_map<location_idx_t, osm_type> osm_types_;
     vector_map<location_idx_t, location_idx_t> parents_;
     vector_map<location_idx_t, timezone_idx_t> location_timezones_;
     mutable_fws_multimap<location_idx_t, location_idx_t> equivalences_;

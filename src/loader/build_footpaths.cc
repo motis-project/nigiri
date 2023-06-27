@@ -423,14 +423,14 @@ void write_footpaths(timetable& tt, uint16_t const& no_profiles) {
   assert(tt.locations_.preprocessing_footpaths_out_.size() == tt.n_locations());
   assert(tt.locations_.preprocessing_footpaths_in_.size() == tt.n_locations());
 
-  for (auto prf_idx = 0; prf_idx < no_profiles; ++prf_idx) {
+  for (auto prf_idx = 0U; prf_idx < no_profiles; ++prf_idx) {
     tt.locations_.footpaths_in_.emplace_back();
     tt.locations_.footpaths_out_.emplace_back();
 
     for (auto i = location_idx_t{0}; i != tt.n_locations(); ++i) {
-      tt.locations_.footpaths_in_[prf_idx].emplace_back(
+      tt.locations_.footpaths_in_.at(prf_idx).emplace_back(
           tt.locations_.preprocessing_footpaths_in_[i]);
-      tt.locations_.footpaths_out_[prf_idx].emplace_back(
+      tt.locations_.footpaths_out_.at(prf_idx).emplace_back(
           tt.locations_.preprocessing_footpaths_out_[i]);
     }
   }
