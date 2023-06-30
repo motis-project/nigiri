@@ -12,7 +12,6 @@
 
 #include "../loader/hrd/hrd_timetable.h"
 
-#include "../raptor_search.h"
 #include "./util.h"
 
 using namespace date;
@@ -83,8 +82,6 @@ constexpr auto const expected =
 
 )";
 }  // namespace
-
-constexpr auto const fwd_journeys = R"()";
 
 TEST(rt, rt_block_id_test) {
   auto tt = timetable{};
