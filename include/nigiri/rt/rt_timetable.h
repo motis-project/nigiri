@@ -47,7 +47,8 @@ struct rt_timetable {
     auto const ev_idx = stop_idx * 2 - (ev_type == event_type::kArr ? 1 : 0);
     assert(ev_idx >= 0 && static_cast<stop_idx_t>(ev_idx) <
                               rt_transport_stop_times_[rt_t].size());
-    rt_transport_stop_times_[rt_t][ev_idx] = unix_to_delta(new_time);
+    rt_transport_stop_times_[rt_t][static_cast<std::size_t>(ev_idx)] =
+        unix_to_delta(new_time);
   }
 
   unixtime_t unix_event_time(rt_transport_idx_t const rt_t,
