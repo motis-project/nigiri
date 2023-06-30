@@ -136,7 +136,7 @@ void update_run(
 }
 
 std::string remove_nl(std::string s) {
-  //  s.erase(std::remove(begin(s), end(s), '\n'), end(s));
+  s.erase(std::remove(begin(s), end(s), '\n'), end(s));
   return s;
 }
 
