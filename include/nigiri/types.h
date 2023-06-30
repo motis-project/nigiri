@@ -73,8 +73,8 @@ using variant = cista::variant<Ts...>;
 using cista::get;
 using cista::holds_alternative;
 
-template <typename K, typename V>
-using vecvec = cista::raw::vecvec<K, V>;
+template <typename K, typename V, typename SizeType = cista::base_t<K>>
+using vecvec = cista::raw::vecvec<K, V, SizeType>;
 
 template <typename K, typename V>
 using mutable_fws_multimap = cista::raw::mutable_fws_multimap<K, V>;
