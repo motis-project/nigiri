@@ -123,19 +123,14 @@ bool frun::iterator::operator!=(iterator o) const noexcept {
 frun::run_stop frun::iterator::operator*() const noexcept { return rs_; }
 
 frun::frun(timetable const& tt, rt_timetable const* rtt, run r)
-    : run{r}, tt_{&tt}, rtt_{rtt} {}
-
-frun::frun(timetable const& tt,
-           rt_timetable const& rtt,
-           rt_transport_idx_t const rt_t)
-    : run{.t_ = rtt.resolve_static(rt_t), .rt_ = rt_t}, tt_{&tt}, rtt_{&rtt} {}
-
-frun::frun(timetable const& tt, rt_timetable const* rtt, transport const t)
-    : run{.t_ = t,
-          .rt_ = rtt == nullptr ? rt_transport_idx_t::invalid()
-                                : rtt->resolve_rt(t)},
-      tt_{&tt},
-      rtt_{rtt} {}
+    : run{r}, tt_{&tt}, rtt_{rtt} {
+  if (!is_rt() && rtt != nullptr) {
+    rt_ = rtt->resolve_rt(r.t_);
+  }
+  if (!is_scheduled() && rtt != nullptr) {
+    t_ = rtt->resolve_static(r.rt_);
+  }
+}
 
 std::string_view frun::name() const noexcept {
   return (is_rt() && rtt_ != nullptr) ? rtt_->transport_name(*tt_, rt_)
@@ -148,11 +143,11 @@ debug frun::dbg() const noexcept {
 }
 
 frun::iterator frun::begin() const noexcept {
-  return iterator{run_stop{.fr_ = this, .stop_idx_ = 0U}};
+  return iterator{run_stop{.fr_ = this, .stop_idx_ = stop_range_.from_}};
 }
 
 frun::iterator frun::end() const noexcept {
-  return iterator{run_stop{.fr_ = this, .stop_idx_ = size()}};
+  return iterator{run_stop{.fr_ = this, .stop_idx_ = stop_range_.to_}};
 }
 
 frun::iterator begin(frun const& fr) noexcept { return fr.begin(); }
@@ -199,7 +194,7 @@ void frun::run_stop::print(std::ostream& out,
              name());
 
   // Print arrival (or whitespace if there's none).
-  if (!first && stop_idx_ != 0U) {
+  if (!first && stop_idx_ != fr_->stop_range_.from_) {
     auto const scheduled = scheduled_time(event_type::kArr);
     auto const rt = time(event_type::kArr);
     fmt::print(out, "{}a: {} [{}]", (out_allowed() ? ' ' : '-'),
@@ -219,7 +214,7 @@ void frun::run_stop::print(std::ostream& out,
   }
 
   // Print departure (or whitespace if there's none).
-  if (!last && stop_idx_ != fr_->size() - 1U) {
+  if (!last && stop_idx_ != fr_->stop_range_.to_ - 1U) {
     fmt::print(out, " ");
     auto const scheduled = scheduled_time(event_type::kDep);
     auto const rt = time(event_type::kDep);
@@ -233,7 +228,7 @@ void frun::run_stop::print(std::ostream& out,
   }
 
   // Print trip info.
-  if (fr_->is_scheduled() && !last && stop_idx_ != fr_->size() - 1U) {
+  if (fr_->is_scheduled() && !last && stop_idx_ != fr_->stop_range_.to_ - 1U) {
     auto const& tt = *fr_->tt_;
     auto const& trip_section = tt.transport_to_trip_section_.at(fr_->t_.t_idx_);
     auto const& merged_trips = tt.merged_trips_.at(

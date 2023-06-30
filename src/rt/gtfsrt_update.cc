@@ -26,16 +26,6 @@ delay_propagation update_delay(timetable const& tt,
                                duration_t const delay,
                                std::optional<unixtime_t> const min) {
   auto const static_time = tt.event_time(r.t_, stop_idx, ev_type);
-  if (delay > 60_minutes) {
-    std::cout << "STOP_IDX: " << stop_idx
-              << ", EV_TYPE=" << (ev_type == event_type::kDep ? "DEP" : "ARR")
-              << ", STATIC TIME: " << static_time << ", NEW TIME: "
-              << (min.has_value() ? std::max(*min, static_time + delay)
-                                  : static_time + delay)
-              << ", DELAY: " << delay << "\n";
-    std::cout << frun{tt, &rtt, r} << "\n";
-    throw std::runtime_error{"delay >= 15_minutes"};
-  }
   rtt.update_time(r.rt_, stop_idx, ev_type,
                   min.has_value() ? std::max(*min, static_time + delay)
                                   : static_time + delay);
@@ -54,17 +44,6 @@ delay_propagation update_event(timetable const& tt,
     auto const new_time =
         unixtime_t{std::chrono::duration_cast<unixtime_t::duration>(
             std::chrono::seconds{ev.time()})};
-    if ((new_time - static_time) > 60_minutes) {
-      std::cout << "STOP_IDX: " << stop_idx << ", STATIC TIME: " << static_time
-                << ", EV_TYPE=" << (ev_type == event_type::kDep ? "DEP" : "ARR")
-                << ", NEW TIME: " << new_time
-                << ", DELAY: " << (new_time - static_time)
-                << ", ID=" << frun{tt, &rtt, r}.id() << "\n";
-
-      std::cout << frun{tt, &rtt, r} << "\n";
-
-      throw std::runtime_error{"delay >= 15_minutes"};
-    }
     rtt.update_time(
         r.rt_, stop_idx, ev_type,
         pred_time.has_value() ? std::max(*pred_time, new_time) : new_time);
@@ -92,16 +71,23 @@ void update_run(
 
   auto const location_seq =
       tt.route_location_seq_[tt.transport_route_[r.t_.t_idx_]];
-  auto const seq_numbers = ::nigiri::loader::gtfs::stop_seq_number_range{
+  auto const all_seq_numbers = ::nigiri::loader::gtfs::stop_seq_number_range{
       std::span{tt.transport_stop_seq_numbers_[r.t_.t_idx_]},
       static_cast<stop_idx_t>(location_seq.size())};
+  auto const seq_numbers =
+      it_range{std::next(begin(all_seq_numbers), r.stop_range_.from_),
+               end(all_seq_numbers)};
 
-  auto pred = std::optional<delay_propagation>{};
-  auto stop_idx = stop_idx_t{0U};
+  auto pred = r.stop_range_.from_ > 0U
+                  ? std::make_optional<delay_propagation>(delay_propagation{
+                        .pred_time_ = rtt.unix_event_time(
+                            r.rt_, r.stop_range_.from_, event_type::kArr),
+                        .pred_delay_ = 0_minutes})
+                  : std::optional<delay_propagation>{};
+  auto stop_idx = r.stop_range_.from_;
   auto seq_it = begin(seq_numbers);
   auto upd_it = begin(stops);
-  for (; seq_it != end(seq_numbers) && stop_idx != location_seq.size();
-       ++stop_idx, ++seq_it) {
+  for (; seq_it != end(seq_numbers); ++stop_idx, ++seq_it) {
     auto const matches =
         upd_it != end(stops) &&
         ((upd_it->has_stop_sequence() && upd_it->stop_sequence() == *seq_it) ||
@@ -110,7 +96,7 @@ void update_run(
               tt.locations_.ids_[stop{location_seq[stop_idx]}.location_idx()]
                   .view()));
 
-    if (stop_idx != 0U) {
+    if (stop_idx != r.stop_range_.from_) {
       if (matches && upd_it->has_arrival() &&
           (upd_it->arrival().has_delay() || upd_it->arrival().has_time())) {
         pred = update_event(

@@ -32,6 +32,8 @@ std::ostream& operator<<(std::ostream& out, timetable const& tt) {
       static_cast<size_t>((internal.to_ - internal.from_ + 1_days) / 1_days);
   for (auto i = 0U; i != tt.transport_traffic_days_.size(); ++i) {
     auto const transport_idx = transport_idx_t{i};
+    auto const num_stops =
+        tt.route_location_seq_[tt.transport_route_[transport_idx]].size();
     auto const traffic_days =
         tt.bitfields_.at(tt.transport_traffic_days_.at(transport_idx));
     out << "TRANSPORT=" << transport_idx << ", TRAFFIC_DAYS="
@@ -44,7 +46,11 @@ std::ostream& operator<<(std::ostream& out, timetable const& tt) {
       if (traffic_days.test(to_idx(day_idx))) {
         date::to_stream(out, "%F", d);
         out << " (day_idx=" << day_idx << ")\n";
-        out << rt::frun{tt, nullptr, transport{transport_idx, day_idx}};
+        out << rt::frun{
+            tt,
+            nullptr,
+            {.t_ = transport{transport_idx, day_idx},
+             .stop_range_ = {0U, static_cast<stop_idx_t>(num_stops)}}};
         out << "\n";
       }
     }

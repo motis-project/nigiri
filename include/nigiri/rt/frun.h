@@ -66,8 +66,6 @@ struct frun : public run {
   debug dbg() const noexcept;
 
   frun(timetable const&, rt_timetable const*, run);
-  frun(timetable const&, rt_timetable const&, rt_transport_idx_t const);
-  frun(timetable const&, rt_timetable const*, transport const);
 
   iterator begin() const noexcept;
   iterator end() const noexcept;

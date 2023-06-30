@@ -212,8 +212,11 @@ void reconstruct_journey(timetable const& tt,
         continue;
       }
 
-      auto leg = find_entry_in_prev_round(
-          k, rt::run{transport{t, day_idx_t{traffic_day}}}, stop_idx, time);
+      auto leg =
+          find_entry_in_prev_round(k,
+                                   {.t_ = transport{t, day_idx_t{traffic_day}},
+                                    .stop_range_ = interval<stop_idx_t>{0, 0}},
+                                   stop_idx, time);
       if (leg.has_value()) {
         return leg;
       }
@@ -234,7 +237,9 @@ void reconstruct_journey(timetable const& tt,
         for (auto const [i, s] : utl::enumerate(location_seq)) {
           auto const stp = stop{s};
           auto const stop_idx = static_cast<stop_idx_t>(i);
-          auto const fr = rt::frun{tt, *rtt, rt_t};
+          auto const fr = rt::frun{
+              tt, rtt,
+              rt::run{.stop_range_ = interval<stop_idx_t>{0, 0}, .rt_ = rt_t}};
           if (stp.location_idx() != l ||  //
               (kFwd && (i == 0U || !stp.out_allowed())) ||
               (!kFwd && (i == location_seq.size() - 1 || !stp.in_allowed())) ||

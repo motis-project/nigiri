@@ -1,6 +1,6 @@
 #include "./util.h"
 
-namespace nigiri::rt::test {
+namespace nigiri::test {
 
 transit_realtime::FeedMessage to_feed_msg(std::vector<trip> const& trip_delays,
                                           date::sys_seconds const msg_time) {
@@ -23,7 +23,12 @@ transit_realtime::FeedMessage to_feed_msg(std::vector<trip> const& trip_delays,
 
     for (auto const& stop_delay : trip.delays_) {
       auto* const upd = e->mutable_trip_update()->add_stop_time_update();
-      *upd->mutable_stop_id() = stop_delay.stop_id_;
+      if (stop_delay.stop_id_.has_value()) {
+        *upd->mutable_stop_id() = *stop_delay.stop_id_;
+      }
+      if (stop_delay.seq_.has_value()) {
+        upd->set_stop_sequence(*stop_delay.seq_);
+      }
       stop_delay.ev_type_ == nigiri::event_type::kDep
           ? upd->mutable_departure()->set_delay(stop_delay.delay_minutes_ * 60)
           : upd->mutable_arrival()->set_delay(stop_delay.delay_minutes_ * 60);
@@ -33,4 +38,4 @@ transit_realtime::FeedMessage to_feed_msg(std::vector<trip> const& trip_delays,
   return msg;
 }
 
-}  // namespace nigiri::rt::test
+}  // namespace nigiri::test

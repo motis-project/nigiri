@@ -10,11 +10,12 @@
 
 #include "nigiri/types.h"
 
-namespace nigiri::rt::test {
+namespace nigiri::test {
 
 struct trip {
   struct delay {
-    std::string stop_id_;
+    std::optional<std::string> stop_id_{};
+    std::optional<unsigned> seq_{};
     event_type ev_type_;
     unsigned delay_minutes_{0U};
   };
@@ -32,4 +33,4 @@ std::int64_t to_unix(T&& x) {
 transit_realtime::FeedMessage to_feed_msg(std::vector<trip> const& trip_delays,
                                           date::sys_seconds const msg_time);
 
-}  // namespace nigiri::rt::test
+}  // namespace nigiri::test
