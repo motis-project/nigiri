@@ -107,7 +107,7 @@ TEST(rt, rt_block_id_test) {
             .delays_ = {{.seq_ = 1,
                          .ev_type_ = event_type::kDep,
                          .delay_minutes_ = 0U}}}},
-      date::sys_days(May / 1 / 2019) + 22h);
+      date::sys_days{May / 1 / 2019} + 22h);
 
   auto const stats =
       rt::gtfsrt_update_msg(tt, rtt, source_idx_t{0}, "tag", msg1);
