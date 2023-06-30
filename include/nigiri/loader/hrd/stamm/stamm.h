@@ -23,6 +23,7 @@ struct stamm {
   stamm(config const&, timetable&, dir const&);
   stamm(timetable&, timezone_map_t&&);
 
+  interval<std::chrono::sys_days> get_date_range() const;
   location_idx_t resolve_location(eva_number) const;
   category const* resolve_category(utl::cstr) const;
   trip_direction_idx_t resolve_direction(direction_info_t const&);
@@ -47,9 +48,9 @@ private:
   attribute_map_t attributes_;
   direction_map_t directions_;
   bitfield_map_t bitfields_;
-  track_rule_map_t track_rules_;
-  track_location_map_t track_locations_;
+  tracks tracks_;
   timezone_map_t timezones_;
+  interval<std::chrono::sys_days> date_range_;
   timetable& tt_;
 
   hash_map<string, trip_direction_idx_t> string_directions_;

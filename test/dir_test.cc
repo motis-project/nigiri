@@ -1,4 +1,4 @@
-#include "doctest/doctest.h"
+#include "gtest/gtest.h"
 
 #include "nigiri/loader/dir.h"
 
@@ -25,7 +25,7 @@ constexpr auto const data = std::string_view{R"(0000001     A
 0000016     P
 )"};
 
-TEST_CASE("dir test - file contents") {
+TEST(dir, file_contents) {
   auto const fs = fs_dir{"test/test_data/mss-dayshift3"};
   auto const zip = zip_dir{"test/test_data/mss-dayshift3.zip"};
   auto const mem = mem_dir{{{"stamm/bahnhof.101", std::string{data}}}};
@@ -36,13 +36,13 @@ TEST_CASE("dir test - file contents") {
   for (auto const [ref, a, b, c] : utl::czip_no_size_check(
            utl::lines(data), utl::lines(fs_stamm.data()),
            utl::lines(zip_stamm.data()), utl::lines(mem_stamm.data()))) {
-    CHECK_EQ(ref.view(), a.view());
-    CHECK_EQ(ref.view(), b.view());
-    CHECK_EQ(ref.view(), c.view());
+    EXPECT_EQ(ref.view(), a.view());
+    EXPECT_EQ(ref.view(), b.view());
+    EXPECT_EQ(ref.view(), c.view());
   }
 }
 
-TEST_CASE("dir test - directory listing") {
+TEST(dir, directory_listing) {
   auto const zip = zip_dir{"test/test_data/mss-dayshift3.zip"};
   auto const fs = fs_dir{"test/test_data/mss-dayshift3"};
   auto const mem = mem_dir{mem_dir::dir_t{{"stamm/attributd_int.101", ""},
@@ -62,11 +62,11 @@ TEST_CASE("dir test - directory listing") {
                                           {"stamm/zeitvs.101", ""},
                                           {"stamm/zugart_int.101", ""}}};
 
-  CHECK_EQ(zip.list_files("stamm/"), fs.list_files("stamm/"));
-  CHECK_EQ(mem.list_files("stamm/"), fs.list_files("stamm/"));
+  EXPECT_EQ(zip.list_files("stamm/"), fs.list_files("stamm/"));
+  EXPECT_EQ(mem.list_files("stamm/"), fs.list_files("stamm/"));
 
-  CHECK_EQ(zip.list_files("stamm/bahnhof.101"),
-           fs.list_files("stamm/bahnhof.101"));
-  CHECK_EQ(mem.list_files("stamm/bahnhof.101"),
-           fs.list_files("stamm/bahnhof.101"));
+  EXPECT_EQ(zip.list_files("stamm/bahnhof.101"),
+            fs.list_files("stamm/bahnhof.101"));
+  EXPECT_EQ(mem.list_files("stamm/bahnhof.101"),
+            fs.list_files("stamm/bahnhof.101"));
 }

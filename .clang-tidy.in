@@ -70,7 +70,16 @@ Checks: "*,\
 -google-readability-avoid-underscore-in-googletest-name,\
 -readability-function-cognitive-complexity,\
 -readability-avoid-const-params-in-decls,\
--altera-struct-pack-align"
+-altera-struct-pack-align,\
+-hicpp-uppercase-literal-suffix,\
+-bugprone-unchecked-optional-access,\
+-readability-uppercase-literal-suffix,\
+-cppcoreguidelines-avoid-const-or-ref-data-members,\
+-readability-identifier-naming,\
+-cert-dcl37-c,\
+-bugprone-reserved-identifier,\
+-cert-dcl51-cpp,\
+-misc-confusable-identifiers"
 WarningsAsErrors: '*'
 HeaderFilterRegex: '^${RELATIVE_SOURCE_DIR}(base|modules|test)/'
 AnalyzeTemporaryDtors: false

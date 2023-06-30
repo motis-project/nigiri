@@ -2,16 +2,18 @@
 
 #include <chrono>
 #include <cinttypes>
+#include <variant>
 
 #include "date/date.h"
 #include "date/tz.h"
 
+#include "ankerl/cista_adapter.h"
+
 #include "cista/containers/bitset.h"
 #include "cista/containers/bitvec.h"
 #include "cista/containers/flat_matrix.h"
-#include "cista/containers/hash_map.h"
-#include "cista/containers/hash_set.h"
 #include "cista/containers/mutable_fws_multimap.h"
+#include "cista/containers/nvec.h"
 #include "cista/containers/optional.h"
 #include "cista/containers/string.h"
 #include "cista/containers/tuple.h"
@@ -21,6 +23,8 @@
 #include "cista/reflection/printable.h"
 #include "cista/strong.h"
 
+#include "nigiri/common/interval.h"
+
 namespace nigiri {
 
 // Extend interval by one day. This is required due to the departure/arrival
@@ -28,8 +32,15 @@ namespace nigiri {
 // can result in times before the specified first day and after the specified
 // last day (e.g. 00:30 CET is 23:30 UTC the day before, 22:30 PT is 05:30 UTC
 // the next day). To be able to support this, the internal nigiri timetable
-// range needs to start one day early and be one day longer than specified.
-constexpr auto const kBaseDayOffset = std::chrono::days{1};
+// range needs to start one day early and end one day longer than specified.
+//
+// There are trains that travel up to 4 days. Therefore, they are contained in
+// the timetable even if their first departure is 4 days before the first day of
+// the selected timetable period. To be able to fit those trains into the
+// traffic day bitset, we prepend 4 in front of the timetable (in addition
+// to the base day offset due to timezone conversion - see above).
+constexpr auto const kTimetableOffset =
+    std::chrono::days{1} + std::chrono::days{4};
 
 template <size_t Size>
 using bitset = cista::bitset<Size>;
@@ -37,7 +48,7 @@ using bitset = cista::bitset<Size>;
 constexpr auto const kMaxDays = 512;
 using bitfield = bitset<kMaxDays>;
 
-using bitvec = cista::offset::bitvec;
+using bitvec = cista::raw::bitvec;
 
 template <typename... Args>
 using tuple = cista::tuple<Args...>;
@@ -46,38 +57,48 @@ template <typename A, typename B>
 using pair = cista::pair<A, B>;
 
 template <typename K, typename V>
-using vector_map = cista::offset::vector_map<K, V>;
+using vector_map = cista::raw::vector_map<K, V>;
 
 template <typename T>
-using vector = cista::offset::vector<T>;
+using vector = cista::raw::vector<T>;
 
 template <typename T>
 using matrix = cista::raw::flat_matrix<T>;
 using cista::raw::make_flat_matrix;
 
-using cista::offset::to_vec;
+using cista::raw::to_vec;
 
 template <typename... Ts>
 using variant = cista::variant<Ts...>;
 using cista::get;
 using cista::holds_alternative;
 
-template <typename K, typename V>
-using vecvec = cista::offset::vecvec<K, V>;
+template <typename K, typename V, typename SizeType = cista::base_t<K>>
+using vecvec = cista::raw::vecvec<K, V, SizeType>;
 
 template <typename K, typename V>
-using mutable_fws_multimap = cista::offset::mutable_fws_multimap<K, V>;
+using mutable_fws_multimap = cista::raw::mutable_fws_multimap<K, V>;
 
-template <typename K, typename V, typename Hash = cista::hashing<K>>
-using hash_map = cista::offset::hash_map<K, V, Hash>;
+template <typename K,
+          typename V,
+          typename Hash = cista::hash_all,
+          typename Equality = cista::equals_all>
+using hash_map = cista::raw::ankerl_map<K, V, Hash, Equality>;
 
-template <typename K, typename Hash = cista::hashing<K>>
-using hash_set = cista::offset::hash_set<K, Hash>;
+template <typename K,
+          typename Hash = cista::hash_all,
+          typename Equality = cista::equals_all>
+using hash_set = cista::raw::ankerl_set<K, Hash, Equality>;
 
-using string = cista::offset::string;
+using stop_idx_t = std::uint16_t;
+
+using string = cista::raw::string;
 
 template <typename T>
 using optional = cista::optional<T>;
+
+template <typename Key, typename T, std::size_t N>
+using nvec = cista::raw::nvec<Key, T, N>;
 
 using bitfield_idx_t = cista::strong<std::uint32_t, struct _bitfield_idx>;
 using location_idx_t = cista::strong<std::uint32_t, struct _location_idx>;
@@ -88,7 +109,6 @@ using section_db_idx_t = cista::strong<std::uint32_t, struct _section_db_idx>;
 using trip_idx_t = cista::strong<std::uint32_t, struct _trip_idx>;
 using trip_id_idx_t = cista::strong<std::uint32_t, struct _trip_id_str_idx>;
 using transport_idx_t = cista::strong<std::uint32_t, struct _transport_idx>;
-using rt_trip_idx_t = cista::strong<std::uint32_t, struct _rt_trip_idx>;
 using source_idx_t = cista::strong<std::uint8_t, struct _source_idx>;
 using day_idx_t = cista::strong<std::uint16_t, struct _day_idx>;
 using timezone_idx_t = cista::strong<std::uint8_t, struct _timezone_idx>;
@@ -96,7 +116,15 @@ using merged_trips_idx_t =
     cista::strong<std::uint32_t, struct _merged_trips_idx>;
 using footpath_idx_t = cista::strong<std::uint32_t, struct _footpath_idx>;
 using source_file_idx_t = cista::strong<std::uint16_t, struct _source_file_idx>;
-using track_name_idx_t = cista::strong<std::uint16_t, struct _track_name_idx>;
+
+using rt_trip_idx_t = cista::strong<std::uint32_t, struct _trip_idx>;
+using rt_add_trip_id_idx_t =
+    cista::strong<std::uint32_t, struct _trip_id_str_idx>;
+using rt_route_idx_t = cista::strong<std::uint32_t, struct _rt_route_idx>;
+using rt_transport_idx_t =
+    cista::strong<std::uint32_t, struct _rt_transport_idx>;
+using rt_merged_trips_idx_t =
+    cista::strong<std::uint32_t, struct _merged_trips_idx>;
 
 using line_id_t = string;
 
@@ -111,6 +139,8 @@ using attribute_idx_t = cista::strong<std::uint32_t, struct _attribute_idx>;
 using attribute_combination_idx_t =
     cista::strong<std::uint32_t, struct _attribute_combination>;
 using provider_idx_t = cista::strong<std::uint32_t, struct _provider_idx>;
+
+using transport_range_t = pair<transport_idx_t, interval<stop_idx_t>>;
 
 struct trip_debug {
   source_file_idx_t source_file_idx_;
@@ -127,12 +157,13 @@ struct provider {
   CISTA_COMPARABLE()
   CISTA_PRINTABLE(provider, "short_name", "long_name")
   string short_name_, long_name_;
+  timezone_idx_t tz_{timezone_idx_t::invalid()};
 };
 
 struct trip_id {
   CISTA_COMPARABLE()
   CISTA_PRINTABLE(trip_id, "id", "src")
-  std::string id_;
+  std::string_view id_;
   source_idx_t src_;
 };
 
@@ -143,8 +174,18 @@ struct location_id {
   source_idx_t src_;
 };
 
+struct debug {
+  inline friend std::ostream& operator<<(std::ostream& out, debug const dbg) {
+    return out << dbg.path_ << ":" << dbg.line_from_ << ":" << dbg.line_to_;
+  }
+  std::string_view path_;
+  unsigned line_from_{0U}, line_to_{0U};
+};
+
 struct transport {
+  CISTA_FRIEND_COMPARABLE(transport)
   CISTA_PRINTABLE(transport, "idx", "day")
+  static transport invalid() noexcept { return transport{}; }
   constexpr bool is_valid() const { return day_ != day_idx_t::invalid(); }
   transport_idx_t t_idx_{transport_idx_t::invalid()};
   day_idx_t day_{day_idx_t::invalid()};
@@ -182,12 +223,11 @@ struct tz_offsets {
     duration_t season_begin_mam_{0};
     duration_t season_end_mam_{0};
   };
-  friend std::ostream& operator<<(std::ostream&, tz_offsets const&);
-  optional<season> season_{std::nullopt};
+  vector<season> seasons_;
   duration_t offset_{0};
 };
 
-using timezone = variant<void*, tz_offsets>;
+using timezone = variant<pair<string, void const*>, tz_offsets>;
 
 enum class clasz : std::uint8_t {
   kAir = 0,
@@ -209,7 +249,15 @@ enum class clasz : std::uint8_t {
 constexpr auto const kNumClasses =
     static_cast<std::underlying_type_t<clasz>>(clasz::kNumClasses);
 
-enum class location_type : std::uint8_t { kTrack, kPlatform, kStation };
+enum class location_type : std::uint8_t {
+  kGeneratedTrack,  // track generated from track number (i.e. HRD), no separate
+                    // coordinate from parent. Has to be connected manually in
+                    // routing initialization (only links to parent are given).
+  kTrack,  // track from input data (i.e. GTFS) with separate coordinate from
+           // parent. No manual connection in routing initialization or
+           // additional links between parent<->child necessary.
+  kStation
+};
 
 enum class event_type { kArr, kDep };
 enum class direction { kForward, kBackward };
@@ -220,6 +268,8 @@ enum class direction { kForward, kBackward };
 #include <ostream>
 
 #include "cista/serialization.h"
+#include "utl/helpers/algorithm.h"
+#include "utl/overloaded.h"
 
 namespace std::chrono {
 
@@ -251,43 +301,94 @@ inline std::ostream& operator<<(std::ostream& out,
   return out;
 }
 
-inline std::ostream& operator<<(std::ostream& out, sys_days const& t) {
-  auto const ymd = std::chrono::year_month_day{t};
-  return out << static_cast<int>(ymd.year()) << '-' << std::setw(2)
-             << std::setfill('0') << static_cast<unsigned>(ymd.month()) << '-'
-             << std::setw(2) << static_cast<unsigned>(ymd.day());
-}
-
 }  // namespace std::chrono
 
 #include <iostream>
 
 namespace nigiri {
 
-inline local_time to_local_time(tz_offsets const& offsets, unixtime_t const t) {
-  if (!offsets.season_.has_value()) {
-    return local_time{(t + offsets.offset_).time_since_epoch()};
+struct delta {
+  explicit delta(duration_t const d)
+      : days_{static_cast<std::uint16_t>(d.count() / 1440)},
+        mam_{static_cast<std::uint16_t>(d.count() % 1440)} {
+    assert(d.count() >= 0);
   }
 
-  auto const season_begin = offsets.season_->begin_ +
-                            offsets.season_->season_begin_mam_ -
-                            offsets.offset_;
-  auto const season_end = offsets.season_->end_ +
-                          offsets.season_->season_end_mam_ -
-                          offsets.season_->offset_;
-  auto const is_in_season = t >= season_begin && t < season_end;
-  auto const active_offset =
-      is_in_season ? offsets.season_->offset_ : offsets.offset_;
+  explicit delta(std::uint16_t const minutes)
+      : days_{static_cast<std::uint16_t>(minutes / 1440U)},
+        mam_{static_cast<std::uint16_t>(minutes % 1440U)} {}
+
+  delta(std::uint16_t const day, std::uint16_t const mam)
+      : days_{day}, mam_{mam} {}
+
+  std::uint16_t value() const {
+    return *reinterpret_cast<std::uint16_t const*>(this);
+  }
+
+  std::int16_t days() const { return days_; }
+  std::int16_t mam() const { return mam_; }
+
+  friend std::ostream& operator<<(std::ostream& out, delta const& d) {
+    return out << duration_t{static_cast<duration_t::rep>(d.mam_)} << "."
+               << d.days_;
+  }
+
+  friend delta operator-(delta const a, delta const b) {
+    return delta{static_cast<std::uint16_t>((a.days_ - b.days_) * 1440U +
+                                            (a.mam_ - b.mam_))};
+  }
+
+  cista::hash_t hash() const {
+    return cista::hash_combine(cista::BASE_HASH, value());
+  }
+
+  duration_t as_duration() const { return days() * 1_days + mam() * 1_minutes; }
+
+  std::int16_t count() const { return days_ * 1440U + mam_; }
+
+  std::uint16_t days_ : 5;
+  std::uint16_t mam_ : 11;
+};
+
+template <std::size_t NMaxTypes>
+constexpr auto static_type_hash(delta const*,
+                                cista::hash_data<NMaxTypes> h) noexcept {
+  return h.combine(cista::hash("nigiri::delta"));
+}
+
+template <typename Ctx>
+inline void serialize(Ctx&, delta const*, cista::offset_t const) {}
+
+template <typename Ctx>
+inline void deserialize(Ctx const&, delta*) {}
+
+inline local_time to_local_time_offsets(tz_offsets const& offsets,
+                                        unixtime_t const t) {
+  auto const active_season_it =
+      utl::find_if(offsets.seasons_, [&](tz_offsets::season const& s) {
+        auto const season_begin =
+            s.begin_ + s.season_begin_mam_ - offsets.offset_;
+        auto const season_end = s.end_ + s.season_end_mam_ - s.offset_;
+        return t >= season_begin && t < season_end;
+      });
+  auto const active_offset = active_season_it == end(offsets.seasons_)
+                                 ? offsets.offset_
+                                 : active_season_it->offset_;
   return local_time{(t + active_offset).time_since_epoch()};
 }
 
-inline local_time to_local_time(date::time_zone* tz, unixtime_t const t) {
-  return local_time{std::chrono::duration_cast<duration_t>(
-      tz->to_local(t).time_since_epoch())};
+inline local_time to_local_time_tz(date::time_zone const* tz,
+                                   unixtime_t const t) {
+  return std::chrono::time_point_cast<i32_minutes>(tz->to_local(t));
 }
 
 inline local_time to_local_time(timezone const& tz, unixtime_t const t) {
-  return tz.apply([t](auto&& x) { return to_local_time(x, t); });
+  return tz.apply(utl::overloaded{
+      [t](tz_offsets const& x) { return to_local_time_offsets(x, t); },
+      [t](pair<string, void const*> const& x) {
+        return to_local_time_tz(
+            reinterpret_cast<date::time_zone const*>(x.second), t);
+      }});
 }
 
 }  // namespace nigiri

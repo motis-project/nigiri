@@ -8,7 +8,8 @@ namespace nigiri {
 
 template <typename BeginIt, typename EndIt = BeginIt>
 struct it_range {
-  using value_type = decltype(*BeginIt{});
+  using value_type =
+      std::remove_reference_t<decltype(*std::declval<BeginIt>())>;
   using reference_type = std::add_lvalue_reference_t<value_type>;
   using const_iterator = BeginIt;
   using iterator = BeginIt;
@@ -25,6 +26,7 @@ struct it_range {
   reference_type operator[](std::size_t const i) const {
     return *std::next(begin_, static_cast<difference_type>(i));
   }
+  value_type const* data() const { return begin_; }
   friend BeginIt begin(it_range const& r) { return r.begin(); }
   friend EndIt end(it_range const& r) { return r.end(); }
   reference_type front() const { return *begin_; }

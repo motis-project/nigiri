@@ -10,9 +10,9 @@ namespace nigiri::loader::hrd {
 void build_stop_seq(ref_service const& s,
                     service_store const& store,
                     stamm const& st,
-                    std::size_t const day_idx,
+                    std::size_t const hrd_local_day_idx,
                     std::vector<duration_t> const& local_times,
-                    std::basic_string<timetable::stop::value_type>& stop_seq) {
+                    std::basic_string<stop::value_type>& stop_seq) {
   auto const& ref = store.get(s.ref_);
   auto const n_stops = s.stops(store).size();
   for (auto i = 0U; i != n_stops; ++i) {
@@ -35,12 +35,13 @@ void build_stop_seq(ref_service const& s,
     auto const l_idx = st.resolve_track(
         track_rule_key{st.resolve_location(ref.stops_[stop_idx].eva_num_),
                        train_nr, admin},
-        mam, day_idx_t{static_cast<day_idx_t::value_t>(day_idx + day_offset)});
+        mam,
+        day_idx_t{
+            static_cast<day_idx_t::value_t>(hrd_local_day_idx + day_offset)});
 
-    stop_seq[i] =
-        timetable::stop{l_idx, ref.stops_[stop_idx].dep_.in_out_allowed_,
-                        ref.stops_[stop_idx].arr_.in_out_allowed_}
-            .value();
+    stop_seq[i] = stop{l_idx, ref.stops_[stop_idx].dep_.in_out_allowed_,
+                       ref.stops_[stop_idx].arr_.in_out_allowed_}
+                      .value();
   }
 }
 
@@ -80,14 +81,14 @@ std::optional<duration_t> build_utc_time_seq(
 }
 
 template <typename Fn>
-void to_local_time(service_store const& store,
-                   stamm const& st,
-                   interval<std::chrono::sys_days> const& hrd_interval,
-                   interval<std::chrono::sys_days> const& selection,
-                   ref_service const& s,
-                   Fn&& consumer) {
+void to_utc(service_store const& store,
+            stamm const& st,
+            interval<std::chrono::sys_days> const& hrd_interval,
+            interval<std::chrono::sys_days> const& selection,
+            ref_service const& s,
+            Fn&& consumer) {
   using key_t = std::pair<std::basic_string<minutes_after_midnight_t>,
-                          std::basic_string<timetable::stop::value_type>>;
+                          std::basic_string<stop::value_type>>;
   auto utc_time_traffic_days = hash_map<key_t, bitfield>{};
 
   auto const local_times = s.local_times(store);
@@ -103,16 +104,19 @@ void to_local_time(service_store const& store,
   auto& stop_seq = key.second;
   stop_seq.resize(s.split_info_.stop_range().size());
 
-  auto const first_day = hrd_interval.from_ + kBaseDayOffset;
-  auto const last_day = hrd_interval.to_ - kBaseDayOffset;
-  for (auto day = first_day; day != last_day; day += std::chrono::days{1}) {
+  auto const offset =
+      (selection.from_ - hrd_interval.from_ - kTimetableOffset).count();
+  for (auto day = hrd_interval.from_; day != hrd_interval.to_;
+       day += std::chrono::days{1}) {
     auto const service_days = interval{day, day + last_day_offset};
+
     if (!selection.overlaps(service_days)) {
       continue;
     }
 
-    auto const day_idx = static_cast<std::size_t>((day - first_day).count());
-    if (!s.local_traffic_days().test(day_idx)) {
+    auto const hrd_local_day_idx = (day - hrd_interval.from_).count();
+    if (!s.local_traffic_days().test(
+            static_cast<std::size_t>(hrd_local_day_idx))) {
       continue;
     }
 
@@ -121,17 +125,21 @@ void to_local_time(service_store const& store,
     if (!first_day_offset.has_value()) {
       continue;
     }
-    build_stop_seq(s, store, st, day_idx, local_times, stop_seq);
+    build_stop_seq(s, store, st, static_cast<std::size_t>(hrd_local_day_idx),
+                   local_times, stop_seq);
 
-    auto const traffic_day =
-        kBaseDayOffset.count() + day_idx +
-        static_cast<std::size_t>(first_day_offset.value() / 1_days);
+    auto const utc_traffic_day =
+        hrd_local_day_idx - offset + first_day_offset.value() / 1_days;
+    if (utc_traffic_day < 0) {
+      continue;
+    }
+
     auto const it = utc_time_traffic_days.find(key);
     if (it == end(utc_time_traffic_days)) {
       utc_time_traffic_days.emplace(key, bitfield{})
-          .first->second.set(traffic_day);
+          .first->second.set(static_cast<std::size_t>(utc_traffic_day));
     } else {
-      it->second.set(traffic_day);
+      it->second.set(static_cast<std::size_t>(utc_traffic_day));
     }
   }
 

@@ -1,6 +1,8 @@
 #pragma once
 
 #include <cassert>
+#include <concepts>
+#include <algorithm>
 #include <iterator>
 #include <ostream>
 #include <type_traits>
@@ -61,8 +63,12 @@ struct interval {
   }
 
   template <typename X>
-  requires std::is_convertible_v<T, X>
-  operator interval<X>() { return {from_, to_}; }
+    requires std::is_convertible_v<T, X>
+  operator interval<X>() {
+    return {from_, to_};
+  }
+
+  T clamp(T const x) const { return std::clamp(x, from_, to_); }
 
   bool contains(T const t) const { return t >= from_ && t < to_; }
 
@@ -91,7 +97,7 @@ struct interval {
   auto size() const { return to_ - from_; }
 
   T operator[](std::size_t const i) const {
-    assert(contains(from_ + i));
+    assert(contains(from_ + static_cast<T>(i)));
     return from_ + static_cast<T>(i);
   }
 
@@ -102,7 +108,7 @@ struct interval {
   T from_{}, to_{};
 };
 
-template <typename T>
-interval(T, T) -> interval<T>;
+template <typename T, typename T1, typename = std::common_type_t<T1, T>>
+interval(T, T1) -> interval<std::common_type_t<T, T1>>;
 
 }  // namespace nigiri

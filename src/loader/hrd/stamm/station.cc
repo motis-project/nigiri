@@ -87,6 +87,7 @@ void parse_equivilant_stations(config const& c,
                   || token.starts_with("B")  // Bahnhofstafel
                   || token.starts_with("V")  // Virtueller Umstieg
                   || token.starts_with("S")  // Start-Ziel-Aequivalenz
+                  || token.starts_with("F")  // Fußweg-Aequivalenz
               ) {
                 return;
               }
@@ -175,7 +176,7 @@ location_map_t parse_stations(config const& c,
                               std::string_view station_names_file,
                               std::string_view station_coordinates_file,
                               std::string_view station_metabhf_file) {
-  scoped_timer timer{"parse stations"};
+  auto const timer = scoped_timer{"parse stations"};
 
   auto empty_idx_vec = vector<location_idx_t>{};
   auto empty_footpath_vec = vector<footpath>{};
@@ -195,7 +196,7 @@ location_map_t parse_stations(config const& c,
         location{id.id_, s.name_, s.pos_, src, location_type::kStation,
                  osm_node_id_t::invalid(), location_idx_t::invalid(),
                  st.get_tz(s.id_).first, transfer_time, it_range{empty_idx_vec},
-                 it_range{empty_footpath_vec}, it_range{empty_footpath_vec}});
+                 std::span{empty_footpath_vec}, std::span{empty_footpath_vec}});
     s.idx_ = idx;
   }
 
@@ -213,10 +214,10 @@ location_map_t parse_stations(config const& c,
       auto const adjusted_duration =
           std::max({tt.locations_.transfer_time_[s.idx_],
                     tt.locations_.transfer_time_[target_idx], duration});
-      tt.locations_.footpaths_out_[s.idx_].emplace_back(target_idx,
-                                                        adjusted_duration);
-      tt.locations_.footpaths_in_[target_idx].emplace_back(s.idx_,
-                                                           adjusted_duration);
+      tt.locations_.preprocessing_footpaths_out_[s.idx_].emplace_back(
+          target_idx, adjusted_duration);
+      tt.locations_.preprocessing_footpaths_in_[target_idx].emplace_back(
+          s.idx_, adjusted_duration);
     }
   }
 

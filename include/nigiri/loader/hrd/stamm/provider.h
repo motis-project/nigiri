@@ -8,6 +8,8 @@ namespace nigiri::loader::hrd {
 
 using provider_map_t = hash_map<string, provider_idx_t>;
 
-provider_map_t parse_providers(config const&, timetable&, std::string_view);
+provider_map_t parse_providers(config const&,
+                               timetable&,
+                               std::string_view file_content);
 
 }  // namespace nigiri::loader::hrd

@@ -19,7 +19,7 @@ std::vector<file> stamm::load_files(config const& c, dir const& d) {
                        }
                        for (auto const& file : alt) {
                          try {
-                           return d.get_file(c.core_data_ / file);
+                           return d.get_file(c.prefix(d) / c.core_data_ / file);
                          } catch (...) {
                          }
                        }
@@ -38,13 +38,16 @@ stamm::stamm(config const& c, timetable& tt, dir const& d) : tt_{tt} {
   providers_ = parse_providers(c, tt, files.at(PROVIDERS).data());
   attributes_ = parse_attributes(c, tt, files.at(ATTRIBUTES).data());
   directions_ = parse_directions(c, tt, files.at(DIRECTIONS).data());
-  tt.date_range_ = parse_interval(files.at(BASIC_DATA).data());
-  parse_track_rules(c, *this, tt, files.at(TRACKS).data(), track_rules_,
-                    track_locations_);
+  date_range_ = parse_interval(files.at(BASIC_DATA).data());
+  tracks_ = parse_track_rules(c, *this, tt, files.at(TRACKS).data());
 }
 
 stamm::stamm(timetable& tt, timezone_map_t&& m)
     : timezones_{std::move(m)}, tt_{tt} {}
+
+interval<std::chrono::sys_days> stamm::get_date_range() const {
+  return date_range_;
+}
 
 location_idx_t stamm::resolve_location(eva_number eva) const {
   auto const it = locations_.find(eva);
@@ -127,8 +130,8 @@ attribute_idx_t stamm::resolve_attribute(utl::cstr s) const {
 location_idx_t stamm::resolve_track(track_rule_key const& k,
                                     minutes_after_midnight_t const mam,
                                     day_idx_t day_idx) const {
-  auto it = track_rules_.find(k);
-  if (it == end(track_rules_)) {
+  auto it = tracks_.track_rules_.find(k);
+  if (it == end(tracks_.track_rules_)) {
     return k.location_;
   } else {
     auto const track_rule_it =

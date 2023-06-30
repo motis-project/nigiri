@@ -70,8 +70,8 @@ bitfield hex_str_to_bitset(utl::cstr char_collection) {
               char_collection.view());
 
   bool prev_set = false;
-  for (auto i = 0U; i != b.size(); ++i) {
-    auto const j = b.size() - i - 1U;
+  for (auto i = 0U; i != kMaxDays; ++i) {
+    auto const j = kMaxDays - i - 1U;
     auto const curr_set = b.test(j);
     b.set(j, false);
     if (prev_set && curr_set) {
@@ -85,7 +85,7 @@ bitfield hex_str_to_bitset(utl::cstr char_collection) {
 }
 
 bitfield_map_t parse_bitfields(config const& c, std::string_view file_content) {
-  scoped_timer timer{"parse bitfields"};
+  auto const timer = scoped_timer{"parse bitfields"};
 
   bitfield_map_t bitfields;
   utl::for_each_line_numbered(

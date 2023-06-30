@@ -11,7 +11,7 @@ namespace nigiri::loader::hrd {
 direction_map_t parse_directions(config const& c,
                                  timetable& tt,
                                  std::string_view file_content) {
-  scoped_timer timer{"parse directions"};
+  auto const timer = nigiri::scoped_timer{"parse directions"};
   direction_map_t directions;
   utl::for_each_line_numbered(
       file_content, [&](utl::cstr line, unsigned const line_number) {

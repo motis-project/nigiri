@@ -1,4 +1,4 @@
-#include "doctest/doctest.h"
+#include "gtest/gtest.h"
 
 #include "nigiri/loader/hrd/load_timetable.h"
 
@@ -6,11 +6,12 @@
 
 using namespace nigiri::loader::hrd;
 
-TEST_CASE("loader.hrd.hash") {
-  REQUIRE(applicable(hrd_5_20_26, nigiri::test_data::hrd_timetable::files()));
+TEST(hrd, hash) {
+  EXPECT_TRUE(
+      applicable(hrd_5_20_26, nigiri::test_data::hrd_timetable::files()));
 
   auto h = std::uint64_t{};
-  CHECK_NOTHROW(
+  EXPECT_NO_THROW(
       h = hash(hrd_5_20_26, nigiri::test_data::hrd_timetable::files()));
-  CHECK(h != 0U);
+  EXPECT_NE(0U, h);
 }
