@@ -11,4 +11,4 @@ namespace nigiri::rt {
 
 rt_timetable create_rt_timetable(timetable const& tt, date::sys_days);
 
-}
+}  // namespace nigiri::rt

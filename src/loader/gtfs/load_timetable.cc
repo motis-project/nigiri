@@ -220,6 +220,7 @@ void load_timetable(loader_config const& config,
       });
     };
 
+    auto stop_seq_numbers = std::basic_string<stop_idx_t>{};
     auto const source_file_idx =
         tt.register_source_file((d.path() / kStopTimesFile).generic_string());
     for (auto& trp : trip_data.data_) {
@@ -231,9 +232,11 @@ void load_timetable(loader_config const& config,
         std::from_chars(headsign.data(), headsign.data() + headsign.size(),
                         train_nr);
       }
-      trp.trip_idx_ = tt.register_trip_id(
-          trp.id_, src, trp.display_name(tt),
-          {source_file_idx, trp.from_line_, trp.to_line_}, train_nr);
+      encode_seq_numbers(trp.seq_numbers_, stop_seq_numbers);
+      trp.trip_idx_ =
+          tt.register_trip_id(trp.id_, src, trp.display_name(tt),
+                              {source_file_idx, trp.from_line_, trp.to_line_},
+                              train_nr, stop_seq_numbers);
     }
 
     auto const timer = scoped_timer{"loader.gtfs.routes.build"};
@@ -243,7 +246,6 @@ void load_timetable(loader_config const& config,
     auto section_directions = std::basic_string<trip_direction_idx_t>{};
     auto section_lines = std::basic_string<trip_line_idx_t>{};
     auto external_trip_ids = std::basic_string<merged_trips_idx_t>{};
-    auto stop_seq_numbers = std::basic_string<stop_idx_t>{};
     auto location_routes = mutable_fws_multimap<location_idx_t, route_idx_t>{};
     for (auto const& [key, sub_routes] : route_services) {
       for (auto const& services : sub_routes) {
@@ -286,7 +288,6 @@ void load_timetable(loader_config const& config,
               external_trip_ids.push_back(merged_trip);
               section_directions.push_back(trp.headsign_);
               section_lines.push_back(line);
-              encode_seq_numbers(trp.seq_numbers_, stop_seq_numbers);
             } else {
               for (auto section = 0U; section != trp.stop_seq_.size() - 1;
                    ++section) {

@@ -4,6 +4,7 @@
 
 #include "nigiri/loader/gtfs/stop_seq_number_encoding.h"
 #include "nigiri/logging.h"
+#include "nigiri/rt/frun.h"
 #include "nigiri/rt/gtfsrt_resolve_run.h"
 #include "nigiri/rt/run.h"
 
@@ -23,9 +24,11 @@ delay_propagation update_delay(timetable const& tt,
                                stop_idx_t const stop_idx,
                                event_type const ev_type,
                                duration_t const delay,
-                               unixtime_t const min) {
+                               std::optional<unixtime_t> const min) {
   auto const static_time = tt.event_time(r.t_, stop_idx, ev_type);
-  rtt.update_time(r.rt_, stop_idx, ev_type, std::max(min, static_time + delay));
+  rtt.update_time(r.rt_, stop_idx, ev_type,
+                  min.has_value() ? std::max(*min, static_time + delay)
+                                  : static_time + delay);
   return {rtt.unix_event_time(r.rt_, stop_idx, ev_type), delay};
 }
 
@@ -35,13 +38,15 @@ delay_propagation update_event(timetable const& tt,
                                stop_idx_t const stop_idx,
                                event_type const ev_type,
                                gtfsrt::TripUpdate_StopTimeEvent const& ev,
-                               unixtime_t const pred_time) {
+                               std::optional<unixtime_t> const pred_time) {
   if (ev.has_time()) {
     auto const static_time = tt.event_time(r.t_, stop_idx, ev_type);
     auto const new_time =
         unixtime_t{std::chrono::duration_cast<unixtime_t::duration>(
             std::chrono::seconds{ev.time()})};
-    rtt.update_time(r.rt_, stop_idx, ev_type, std::max(pred_time, new_time));
+    rtt.update_time(
+        r.rt_, stop_idx, ev_type,
+        pred_time.has_value() ? std::max(*pred_time, new_time) : new_time);
     return {new_time, new_time - static_time};
   } else /* if (ev.has_delay()) */ {
     return update_delay(tt, rtt, r, stop_idx, ev_type,
@@ -55,6 +60,7 @@ void update_run(
     source_idx_t const src,
     timetable const& tt,
     rt_timetable& rtt,
+    trip_idx_t const trip,
     run& r,
     pb::RepeatedPtrField<gtfsrt::TripUpdate_StopTimeUpdate> const& stops) {
   using std::begin;
@@ -66,16 +72,20 @@ void update_run(
 
   auto const location_seq =
       tt.route_location_seq_[tt.transport_route_[r.t_.t_idx_]];
-  auto const seq_numbers = ::nigiri::loader::gtfs::stop_seq_number_range{
-      std::span{tt.transport_stop_seq_numbers_[r.t_.t_idx_]},
-      static_cast<stop_idx_t>(location_seq.size())};
+  auto const seq_numbers = loader::gtfs::stop_seq_number_range{
+      {tt.trip_stop_seq_numbers_[trip]},
+      static_cast<stop_idx_t>(r.stop_range_.size())};
 
-  auto pred = std::optional<delay_propagation>{};
-  auto stop_idx = stop_idx_t{0U};
+  auto pred = r.stop_range_.from_ > 0U
+                  ? std::make_optional<delay_propagation>(delay_propagation{
+                        .pred_time_ = rtt.unix_event_time(
+                            r.rt_, r.stop_range_.from_, event_type::kArr),
+                        .pred_delay_ = 0_minutes})
+                  : std::optional<delay_propagation>{};
+  auto stop_idx = r.stop_range_.from_;
   auto seq_it = begin(seq_numbers);
   auto upd_it = begin(stops);
-  for (; seq_it != end(seq_numbers) && stop_idx != location_seq.size();
-       ++stop_idx, ++seq_it) {
+  for (; seq_it != end(seq_numbers); ++stop_idx, ++seq_it) {
     auto const matches =
         upd_it != end(stops) &&
         ((upd_it->has_stop_sequence() && upd_it->stop_sequence() == *seq_it) ||
@@ -84,7 +94,7 @@ void update_run(
               tt.locations_.ids_[stop{location_seq[stop_idx]}.location_idx()]
                   .view()));
 
-    if (stop_idx != 0U) {
+    if (stop_idx != r.stop_range_.from_) {
       if (matches && upd_it->has_arrival() &&
           (upd_it->arrival().has_delay() || upd_it->arrival().has_time())) {
         pred = update_event(
@@ -173,7 +183,7 @@ statistics gtfsrt_update_msg(timetable const& tt,
 
     try {
       auto const td = entity.trip_update().trip();
-      auto r = gtfsrt_resolve_run(today, tt, rtt, src, td);
+      auto [r, trip] = gtfsrt_resolve_run(today, tt, rtt, src, td);
 
       if (!r.valid()) {
         log(log_lvl::error, "rt.gtfs.resolve", "could not resolve (tag={}) {}",
@@ -182,7 +192,8 @@ statistics gtfsrt_update_msg(timetable const& tt,
         continue;
       }
 
-      update_run(src, tt, rtt, r, entity.trip_update().stop_time_update());
+      update_run(src, tt, rtt, trip, r,
+                 entity.trip_update().stop_time_update());
       ++stats.total_entities_success_;
     } catch (const std::exception& e) {
       ++stats.total_entities_fail_;

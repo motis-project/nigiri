@@ -2,6 +2,8 @@
 
 #include <span>
 
+#include "utl/verify.h"
+
 #include "nigiri/types.h"
 
 namespace nigiri::loader::gtfs {
@@ -57,10 +59,14 @@ struct stop_seq_number_range {
 
     iterator& operator++() {
       std::visit(utl::overloaded{[](compact& c) {
+                                   utl::verify(c.num_stops_ >= 1U, "");
                                    c.curr_ += c.inc_;
                                    c.num_stops_ -= 1U;
                                  },
-                                 [](fully_specified& f) { ++f.idx_; }},
+                                 [](fully_specified& f) {
+                                   utl::verify(f.idx_ < f.seq_.size(), "");
+                                   ++f.idx_;
+                                 }},
                  seq_numbers_);
       return *this;
     }

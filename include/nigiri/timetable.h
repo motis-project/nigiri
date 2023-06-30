@@ -132,7 +132,8 @@ struct timetable {
                               source_idx_t const src,
                               std::string const& display_name,
                               trip_debug const dbg,
-                              std::uint32_t const train_nr) {
+                              std::uint32_t const train_nr,
+                              std::span<stop_idx_t> seq_numbers) {
     auto const trip_idx = trip_idx_t{trip_ids_.size()};
 
     auto const trip_id_idx = trip_id_idx_t{trip_id_strings_.size()};
@@ -144,6 +145,7 @@ struct timetable {
     trip_debug_.emplace_back().emplace_back(dbg);
     trip_ids_.emplace_back().emplace_back(trip_id_idx);
     trip_train_nr_.emplace_back(train_nr);
+    trip_stop_seq_numbers_.emplace_back(seq_numbers);
 
     return trip_idx;
   }
@@ -207,7 +209,6 @@ struct timetable {
     transport_section_providers_.emplace_back(t.section_providers_);
     transport_section_directions_.emplace_back(t.section_directions_);
     transport_section_lines_.emplace_back(t.section_lines_);
-    transport_stop_seq_numbers_.emplace_back(t.stop_seq_numbers_);
 
     assert(transport_traffic_days_.size() == transport_route_.size());
     assert(transport_traffic_days_.size() == transport_to_trip_section_.size());
@@ -353,6 +354,14 @@ struct timetable {
   // Trip index -> all transports with a stop interval
   vecvec<trip_idx_t, transport_range_t> trip_transport_ranges_;
 
+  // Transport -> stop sequence numbers (relevant for GTFS-RT stop matching)
+  // Compaction:
+  // - empty = zero-based sequence 0,1,2,...
+  // - only one '1' entry = one-based sequence 1,2,3,...
+  // - only one '10' entry = 10-based sequence 10,20,30,...
+  // - more than one entry: exact sequence number for each stop
+  vecvec<trip_idx_t, stop_idx_t> trip_stop_seq_numbers_;
+
   // Trip -> debug info
   mutable_fws_multimap<trip_idx_t, trip_debug> trip_debug_;
   vecvec<source_file_idx_t, char> source_file_names_;
@@ -408,14 +417,6 @@ struct timetable {
 
   // Merged trips info
   vecvec<merged_trips_idx_t, trip_idx_t> merged_trips_;
-
-  // Transport -> stop sequence numbers (relevant for GTFS-RT stop matching)
-  // Compaction:
-  // - empty = zero-based sequence 0,1,2,...
-  // - only one '1' entry = one-based sequence 1,2,3,...
-  // - only one '10' entry = 10-based sequence 10,20,30,...
-  // - more than one entry: exact sequence number for each stop
-  vecvec<transport_idx_t, stop_idx_t> transport_stop_seq_numbers_;
 
   // Section meta infos:
   vector_map<attribute_idx_t, attribute> attributes_;

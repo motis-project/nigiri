@@ -163,7 +163,7 @@ struct provider {
 struct trip_id {
   CISTA_COMPARABLE()
   CISTA_PRINTABLE(trip_id, "id", "src")
-  std::string id_;
+  std::string_view id_;
   source_idx_t src_;
 };
 

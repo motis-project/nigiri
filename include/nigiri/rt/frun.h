@@ -66,8 +66,6 @@ struct frun : public run {
   debug dbg() const noexcept;
 
   frun(timetable const&, rt_timetable const*, run);
-  frun(timetable const&, rt_timetable const&, rt_transport_idx_t const);
-  frun(timetable const&, rt_timetable const*, transport const);
 
   iterator begin() const noexcept;
   iterator end() const noexcept;
@@ -78,6 +76,8 @@ struct frun : public run {
   stop_idx_t size() const noexcept;
 
   run_stop operator[](stop_idx_t) const noexcept;
+
+  trip_id id() const noexcept;
 
   void print(std::ostream&, interval<stop_idx_t> stop_range);
   friend std::ostream& operator<<(std::ostream&, frun const&);

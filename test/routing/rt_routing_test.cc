@@ -19,6 +19,8 @@ using namespace nigiri::loader::gtfs;
 using namespace std::chrono_literals;
 using nigiri::test::raptor_search;
 
+namespace {
+
 // T_RE1
 // A | 01.05.  49:00 = 03.05. 01:00
 // B | 01.05.  50:00 = 03.05. 02:00
@@ -89,6 +91,8 @@ leg 3: (D, D) [2019-05-03 01:00] -> (D, D) [2019-05-03 01:00]
   FOOTPATH (duration=0)
 
 )";
+
+}  // namespace
 
 TEST(routing, rt_raptor_forward) {
   auto const to_unix = [](auto&& x) {
