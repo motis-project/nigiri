@@ -80,9 +80,9 @@ TEST(rt, gtfsrt_resolve_static_trip) {
     *td.mutable_start_date() = "20190503";
     *td.mutable_trip_id() = "T_RE1";
 
-    auto const t = rt::gtfsrt_resolve_run(date::sys_days{2019_y / May / 3}, tt,
-                                          rtt, source_idx_t{0}, td);
-    ASSERT_TRUE(t.valid());
+    auto const [r, t] = rt::gtfsrt_resolve_run(date::sys_days{2019_y / May / 3},
+                                               tt, rtt, source_idx_t{0}, td);
+    ASSERT_TRUE(r.valid());
   }
 
   {  // test start time that's on the prev. day in UTC
@@ -91,9 +91,9 @@ TEST(rt, gtfsrt_resolve_static_trip) {
     *td.mutable_start_date() = "20190504";
     *td.mutable_trip_id() = "T_RE2";
 
-    auto const t = rt::gtfsrt_resolve_run(date::sys_days{2019_y / May / 4}, tt,
-                                          rtt, source_idx_t{0}, td);
-    ASSERT_TRUE(t.valid());
+    auto const [r, t] = rt::gtfsrt_resolve_run(date::sys_days{2019_y / May / 4},
+                                               tt, rtt, source_idx_t{0}, td);
+    ASSERT_TRUE(r.valid());
   }
 
   {  // test without start_time and start_date (assuming "today" as date)
@@ -103,9 +103,9 @@ TEST(rt, gtfsrt_resolve_static_trip) {
     // 2019-05-03 00:30 CEST is
     // 2019-05-02 21:30 UTC
     // -> we give "today" in UTC (start_day would be local days)
-    auto const t = rt::gtfsrt_resolve_run(date::sys_days{2019_y / May / 2}, tt,
-                                          rtt, source_idx_t{0}, td);
-    ASSERT_TRUE(t.valid());
+    auto const [r, t] = rt::gtfsrt_resolve_run(date::sys_days{2019_y / May / 4},
+                                               tt, rtt, source_idx_t{0}, td);
+    ASSERT_TRUE(r.valid());
   }
 }
 
@@ -160,7 +160,8 @@ TEST(rt, gtfs_rt_update) {
   auto i = 0U, j = 0U;
   auto fr = frun{tt, nullptr,
                  rt::gtfsrt_resolve_run(date::sys_days{2019_y / May / 4}, tt,
-                                        rtt, source_idx_t{0}, *td)};
+                                        rtt, source_idx_t{0}, *td)
+                     .first};
   for (auto const [from, to] : utl::pairwise(fr)) {
     EXPECT_EQ(scheduled[i++], from.scheduled_time(nigiri::event_type::kDep));
     EXPECT_EQ(scheduled[i++], to.scheduled_time(nigiri::event_type::kArr));
@@ -175,7 +176,8 @@ TEST(rt, gtfs_rt_update) {
   // Basic checks with rt_timetable!=nullptr.
   fr = frun{tt, &rtt,
             rt::gtfsrt_resolve_run(date::sys_days{2019_y / May / 4}, tt, rtt,
-                                   source_idx_t{0}, *td)};
+                                   source_idx_t{0}, *td)
+                .first};
   i = j = 0U;
   for (auto const [from, to] : utl::pairwise(fr)) {
     EXPECT_EQ(scheduled[i++], from.scheduled_time(nigiri::event_type::kDep));
@@ -200,8 +202,8 @@ TEST(rt, gtfs_rt_update) {
   }
 
   auto stats = rt::gtfsrt_update_msg(tt, rtt, source_idx_t{0}, "tag", msg0);
-  auto r = rt::gtfsrt_resolve_run(date::sys_days{2019_y / May / 4}, tt, rtt,
-                                  source_idx_t{0}, *td);
+  auto [r, t] = rt::gtfsrt_resolve_run(date::sys_days{2019_y / May / 4}, tt,
+                                       rtt, source_idx_t{0}, *td);
   EXPECT_EQ(1U, stats.total_entities_success_);
   if (stats.total_entities_success_ != 1U) {
     std::cout << stats << "\n";
@@ -238,8 +240,8 @@ TEST(rt, gtfs_rt_update) {
   stats = rt::gtfsrt_update_msg(tt, rtt, source_idx_t{0}, "tag", msg);
   EXPECT_EQ(1U, stats.total_entities_success_);
 
-  r = rt::gtfsrt_resolve_run(date::sys_days{2019_y / May / 4}, tt, rtt,
-                             source_idx_t{0}, *td);
+  std::tie(r, t) = rt::gtfsrt_resolve_run(date::sys_days{2019_y / May / 4}, tt,
+                                          rtt, source_idx_t{0}, *td);
   ASSERT_TRUE(r.valid());
   ASSERT_TRUE(r.is_rt());
   ASSERT_TRUE(r.t_.is_valid());

@@ -8,10 +8,11 @@
 
 namespace nigiri::rt {
 
-run gtfsrt_resolve_run(date::sys_days const today,
-                       timetable const&,
-                       rt_timetable&,
-                       source_idx_t,
-                       transit_realtime::TripDescriptor const&);
+std::pair<run, trip_idx_t> gtfsrt_resolve_run(
+    date::sys_days const today,
+    timetable const&,
+    rt_timetable&,
+    source_idx_t,
+    transit_realtime::TripDescriptor const&);
 
 }  // namespace nigiri::rt

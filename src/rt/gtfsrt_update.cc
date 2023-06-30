@@ -60,6 +60,7 @@ void update_run(
     source_idx_t const src,
     timetable const& tt,
     rt_timetable& rtt,
+    trip_idx_t const trip,
     run& r,
     pb::RepeatedPtrField<gtfsrt::TripUpdate_StopTimeUpdate> const& stops) {
   using std::begin;
@@ -71,12 +72,9 @@ void update_run(
 
   auto const location_seq =
       tt.route_location_seq_[tt.transport_route_[r.t_.t_idx_]];
-  auto const all_seq_numbers = ::nigiri::loader::gtfs::stop_seq_number_range{
-      std::span{tt.transport_stop_seq_numbers_[r.t_.t_idx_]},
-      static_cast<stop_idx_t>(location_seq.size())};
-  auto const seq_numbers =
-      it_range{std::next(begin(all_seq_numbers), r.stop_range_.from_),
-               end(all_seq_numbers)};
+  auto const seq_numbers = loader::gtfs::stop_seq_number_range{
+      {tt.trip_stop_seq_numbers_[trip]},
+      static_cast<stop_idx_t>(r.stop_range_.size())};
 
   auto pred = r.stop_range_.from_ > 0U
                   ? std::make_optional<delay_propagation>(delay_propagation{
@@ -185,7 +183,7 @@ statistics gtfsrt_update_msg(timetable const& tt,
 
     try {
       auto const td = entity.trip_update().trip();
-      auto r = gtfsrt_resolve_run(today, tt, rtt, src, td);
+      auto [r, trip] = gtfsrt_resolve_run(today, tt, rtt, src, td);
 
       if (!r.valid()) {
         log(log_lvl::error, "rt.gtfs.resolve", "could not resolve (tag={}) {}",
@@ -194,7 +192,8 @@ statistics gtfsrt_update_msg(timetable const& tt,
         continue;
       }
 
-      update_run(src, tt, rtt, r, entity.trip_update().stop_time_update());
+      update_run(src, tt, rtt, trip, r,
+                 entity.trip_update().stop_time_update());
       ++stats.total_entities_success_;
     } catch (const std::exception& e) {
       ++stats.total_entities_fail_;

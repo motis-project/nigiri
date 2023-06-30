@@ -16,7 +16,8 @@ void resolve_static(date::sys_days const today,
                     timetable const& tt,
                     source_idx_t const src,
                     transit_realtime::TripDescriptor const& td,
-                    run& output) {
+                    run& r,
+                    trip_idx_t& trip) {
   using loader::gtfs::hhmm_to_min;
   using loader::gtfs::parse_date;
 
@@ -64,8 +65,9 @@ void resolve_static(date::sys_days const today,
 
       auto const& traffic_days = tt.bitfields_[tt.transport_traffic_days_[t]];
       if (traffic_days.test(static_cast<std::size_t>(day_idx))) {
-        output.t_ = transport{t, day_idx_t{day_idx}};
-        output.stop_range_ = stop_range;
+        r.t_ = transport{t, day_idx_t{day_idx}};
+        r.stop_range_ = stop_range;
+        trip = i->second;
       }
     }
   }
@@ -78,15 +80,17 @@ void resolve_rt(rt_timetable const& rtt, run& output) {
   }
 }
 
-run gtfsrt_resolve_run(date::sys_days const today,
-                       timetable const& tt,
-                       rt_timetable& rtt,
-                       source_idx_t const src,
-                       transit_realtime::TripDescriptor const& td) {
+std::pair<run, trip_idx_t> gtfsrt_resolve_run(
+    date::sys_days const today,
+    timetable const& tt,
+    rt_timetable& rtt,
+    source_idx_t const src,
+    transit_realtime::TripDescriptor const& td) {
   auto r = run{};
-  resolve_static(today, tt, src, td, r);
+  trip_idx_t trip;
+  resolve_static(today, tt, src, td, r, trip);
   resolve_rt(rtt, r);
-  return r;
+  return {r, trip};
 }
 
 }  // namespace nigiri::rt
