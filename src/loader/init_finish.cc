@@ -63,7 +63,7 @@ void reinitialize_footpaths(timetable& tt, uint16_t const& no_profiles) {
         scoped_timer{"loader.reinitialize profile-based footpaths."};
 
     // create no_profiles - 1 additional footpath entries (-1: default)
-    for (auto prf_idx = 1; prf_idx < no_profiles; ++prf_idx) {
+    for (auto prf_idx = uint16_t{1U}; prf_idx < no_profiles; ++prf_idx) {
       tt.locations_.footpaths_out_.emplace_back();
       tt.locations_.footpaths_in_.emplace_back();
 
