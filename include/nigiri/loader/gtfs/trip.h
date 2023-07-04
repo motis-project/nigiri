@@ -78,6 +78,8 @@ struct trip {
 
   std::string display_name(timetable const&) const;
 
+  clasz get_clasz(timetable const&) const;
+
   route const* route_{nullptr};
   bitfield const* service_{nullptr};
   block* block_{nullptr};
@@ -94,6 +96,9 @@ struct trip {
   bool requires_interpolation_{false};
   bool requires_sorting_{false};
   std::uint32_t from_line_{0U}, to_line_{0U};
+
+  trip_idx_t trip_idx_{trip_idx_t::invalid()};
+  std::vector<transport_range_t> transport_ranges_;
 };
 
 struct trip_data {

@@ -1,5 +1,6 @@
 #pragma once
 
+#include "utl/enumerate.h"
 #include "utl/equal_ranges_linear.h"
 #include "utl/erase_if.h"
 #include "utl/timing.h"
@@ -39,19 +40,20 @@ struct search_stats {
   std::uint64_t interval_extensions_{0ULL};
 };
 
+template <typename AlgoStats>
+struct routing_result {
+  pareto_set<journey> const* journeys_{nullptr};
+  interval<unixtime_t> interval_;
+  search_stats search_stats_;
+  AlgoStats algo_stats_;
+};
+
 template <direction SearchDir, typename Algo>
 struct search {
   using algo_state_t = typename Algo::algo_state_t;
   using algo_stats_t = typename Algo::algo_stats_t;
   static constexpr auto const kFwd = (SearchDir == direction::kForward);
   static constexpr auto const kBwd = (SearchDir == direction::kBackward);
-
-  struct routing_result {
-    pareto_set<journey> const* journeys_{nullptr};
-    interval<unixtime_t> interval_;
-    search_stats search_stats_;
-    algo_stats_t algo_stats_;
-  };
 
   Algo init(algo_state_t& algo_state) {
     stats_.fastest_direct_ =
@@ -93,6 +95,7 @@ struct search {
 
     return Algo{
         tt_,
+        rtt_,
         algo_state,
         state_.is_destination_,
         state_.dist_to_dest_,
@@ -103,10 +106,12 @@ struct search {
   }
 
   search(timetable const& tt,
+         rt_timetable const* rtt,
          search_state& s,
          algo_state_t& algo_state,
          query q)
       : tt_{tt},
+        rtt_{rtt},
         state_{s},
         q_{std::move(q)},
         search_interval_{std::visit(
@@ -121,7 +126,7 @@ struct search {
         fastest_direct_{get_fastest_direct(tt_, q_, SearchDir)},
         algo_{init(algo_state)} {}
 
-  routing_result execute() {
+  routing_result<algo_stats_t> execute() {
     state_.results_.clear();
 
     if (start_dest_overlap()) {
@@ -283,9 +288,9 @@ private:
 
   void add_start_labels(start_time_t const& start_interval,
                         bool const add_ontrip) {
-    get_starts(SearchDir, tt_, start_interval, q_.start_, q_.start_match_mode_,
-               q_.use_start_footpaths_, state_.starts_, add_ontrip,
-               q_.profile_);
+    get_starts(SearchDir, tt_, rtt_, start_interval, q_.start_,
+               q_.start_match_mode_, q_.use_start_footpaths_, state_.starts_,
+               add_ontrip, q_.profile_);
   }
 
   void remove_ontrip_results() {
@@ -326,6 +331,7 @@ private:
   }
 
   timetable const& tt_;
+  rt_timetable const* rtt_;
   search_state& state_;
   query q_;
   interval<unixtime_t> search_interval_;

@@ -7,8 +7,12 @@
 #include "cista/reflection/comparable.h"
 
 #include "nigiri/routing/query.h"
-#include "nigiri/timetable.h"
 #include "nigiri/types.h"
+
+namespace nigiri {
+struct timetable;
+struct rt_timetable;
+}  // namespace nigiri
 
 namespace nigiri::routing {
 
@@ -21,6 +25,7 @@ struct start {
 
 void get_starts(direction,
                 timetable const&,
+                rt_timetable const*,
                 start_time_t const& start_time,
                 std::vector<offset> const& station_offsets,
                 location_match_mode,

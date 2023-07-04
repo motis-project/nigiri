@@ -8,7 +8,8 @@ namespace nigiri {
 
 template <typename BeginIt, typename EndIt = BeginIt>
 struct it_range {
-  using value_type = std::remove_reference_t<decltype(*BeginIt{})>;
+  using value_type =
+      std::remove_reference_t<decltype(*std::declval<BeginIt>())>;
   using reference_type = std::add_lvalue_reference_t<value_type>;
   using const_iterator = BeginIt;
   using iterator = BeginIt;

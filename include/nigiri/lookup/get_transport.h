@@ -11,8 +11,10 @@ namespace nigiri {
 
 struct timetable;
 
-std::optional<transport> get_transport(timetable const&,
-                                       std::string_view trip_idx,
-                                       date::year_month_day const day);
+std::optional<std::pair<transport, interval<std::uint16_t>>> get_ref_transport(
+    timetable const& tt,
+    trip_id const& id,
+    date::year_month_day const day,
+    bool const gtfs_local_day);
 
 }  // namespace nigiri

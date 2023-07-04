@@ -2,6 +2,7 @@
 
 #include <chrono>
 #include <cinttypes>
+#include <variant>
 
 #include "date/date.h"
 #include "date/tz.h"
@@ -21,6 +22,8 @@
 #include "cista/containers/vecvec.h"
 #include "cista/reflection/printable.h"
 #include "cista/strong.h"
+
+#include "nigiri/common/interval.h"
 
 namespace nigiri {
 
@@ -70,8 +73,8 @@ using variant = cista::variant<Ts...>;
 using cista::get;
 using cista::holds_alternative;
 
-template <typename K, typename V>
-using vecvec = cista::raw::vecvec<K, V>;
+template <typename K, typename V, typename SizeType = cista::base_t<K>>
+using vecvec = cista::raw::vecvec<K, V, SizeType>;
 
 template <typename K, typename V>
 using mutable_fws_multimap = cista::raw::mutable_fws_multimap<K, V>;
@@ -86,6 +89,8 @@ template <typename K,
           typename Hash = cista::hash_all,
           typename Equality = cista::equals_all>
 using hash_set = cista::raw::ankerl_set<K, Hash, Equality>;
+
+using stop_idx_t = std::uint16_t;
 
 using string = cista::raw::string;
 
@@ -112,6 +117,15 @@ using merged_trips_idx_t =
 using footpath_idx_t = cista::strong<std::uint32_t, struct _footpath_idx>;
 using source_file_idx_t = cista::strong<std::uint16_t, struct _source_file_idx>;
 
+using rt_trip_idx_t = cista::strong<std::uint32_t, struct _trip_idx>;
+using rt_add_trip_id_idx_t =
+    cista::strong<std::uint32_t, struct _trip_id_str_idx>;
+using rt_route_idx_t = cista::strong<std::uint32_t, struct _rt_route_idx>;
+using rt_transport_idx_t =
+    cista::strong<std::uint32_t, struct _rt_transport_idx>;
+using rt_merged_trips_idx_t =
+    cista::strong<std::uint32_t, struct _merged_trips_idx>;
+
 using line_id_t = string;
 
 using trip_direction_string_idx_t =
@@ -125,6 +139,8 @@ using attribute_idx_t = cista::strong<std::uint32_t, struct _attribute_idx>;
 using attribute_combination_idx_t =
     cista::strong<std::uint32_t, struct _attribute_combination>;
 using provider_idx_t = cista::strong<std::uint32_t, struct _provider_idx>;
+
+using transport_range_t = pair<transport_idx_t, interval<stop_idx_t>>;
 
 struct trip_debug {
   source_file_idx_t source_file_idx_;
@@ -147,7 +163,7 @@ struct provider {
 struct trip_id {
   CISTA_COMPARABLE()
   CISTA_PRINTABLE(trip_id, "id", "src")
-  std::string id_;
+  std::string_view id_;
   source_idx_t src_;
 };
 
@@ -163,11 +179,13 @@ struct debug {
     return out << dbg.path_ << ":" << dbg.line_from_ << ":" << dbg.line_to_;
   }
   std::string_view path_;
-  unsigned line_from_, line_to_;
+  unsigned line_from_{0U}, line_to_{0U};
 };
 
 struct transport {
+  CISTA_FRIEND_COMPARABLE(transport)
   CISTA_PRINTABLE(transport, "idx", "day")
+  static transport invalid() noexcept { return transport{}; }
   constexpr bool is_valid() const { return day_ != day_idx_t::invalid(); }
   transport_idx_t t_idx_{transport_idx_t::invalid()};
   day_idx_t day_{day_idx_t::invalid()};

@@ -14,7 +14,7 @@ namespace nigiri::routing {
 // the train's stop sequence starting with the given stop_idx.
 void generate_ontrip_train_query(timetable const&,
                                  transport const&,
-                                 unsigned const stop_idx,
+                                 stop_idx_t,
                                  query&);
 
 }  // namespace nigiri::routing

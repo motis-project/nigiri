@@ -1,7 +1,7 @@
 #include <set>
 #include <string>
 
-#include "nigiri/print_transport.h"
+#include "nigiri/rt/frun.h"
 #include "nigiri/timetable.h"
 
 namespace nigiri::loader {
@@ -17,6 +17,8 @@ inline std::set<std::string> service_strings(timetable const& tt) {
   for (auto i = 0U; i != tt.transport_traffic_days_.size(); ++i) {
     std::stringstream out;
     auto const transport_idx = transport_idx_t{i};
+    auto const num_stops =
+        tt.route_location_seq_[tt.transport_route_[transport_idx]].size();
     auto const traffic_days =
         tt.bitfields_.at(tt.transport_traffic_days_.at(transport_idx));
     out << "TRAFFIC_DAYS="
@@ -29,7 +31,11 @@ inline std::set<std::string> service_strings(timetable const& tt) {
       if (traffic_days.test(to_idx(day_idx))) {
         date::to_stream(out, "%F", d);
         out << " (day_idx=" << day_idx << ")\n";
-        print_transport(tt, out, {transport_idx, day_idx});
+        out << rt::frun{
+            tt,
+            nullptr,
+            {.t_ = transport{transport_idx, day_idx},
+             .stop_range_ = {0U, static_cast<stop_idx_t>(num_stops)}}};
       }
     }
     ret.emplace(out.str());

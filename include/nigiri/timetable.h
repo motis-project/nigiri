@@ -79,23 +79,25 @@ struct timetable {
       return it->second;
     }
 
-    location get(location_idx_t const idx) {
+    location get(location_idx_t const idx) const {
       // TODO (Carsten) hard-coded default profile...
-      return location{ids_[idx].view(),
-                      names_[idx].view(),
-                      coordinates_[idx],
-                      src_[idx],
-                      types_[idx],
-                      osm_ids_[idx],
-                      parents_[idx],
-                      location_timezones_[idx],
-                      transfer_time_[idx],
-                      it_range{equivalences_[idx]},
-                      std::span<footpath const>{footpaths_out_[0][idx]},
-                      std::span<footpath const>{footpaths_in_[0][idx]}};
+      auto l = location{ids_[idx].view(),
+                        names_[idx].view(),
+                        coordinates_[idx],
+                        src_[idx],
+                        types_[idx],
+                        osm_ids_[idx],
+                        parents_[idx],
+                        location_timezones_[idx],
+                        transfer_time_[idx],
+                        it_range{equivalences_[idx]},
+                        std::span<footpath const>{footpaths_out_[0][idx]},
+                        std::span<footpath const>{footpaths_in_[0][idx]}};
+      l.l_ = idx;
+      return l;
     }
 
-    location get(location_id const& id) {
+    location get(location_id const& id) const {
       return get(location_id_to_idx_.at(id));
     }
 
@@ -125,21 +127,22 @@ struct timetable {
   struct transport {
     bitfield_idx_t bitfield_idx_;
     route_idx_t route_idx_;
+    duration_t first_dep_offset_;
     std::basic_string<merged_trips_idx_t> const& external_trip_ids_;
     std::basic_string<attribute_combination_idx_t> const& section_attributes_;
     std::basic_string<provider_idx_t> const& section_providers_;
     std::basic_string<trip_direction_idx_t> const& section_directions_;
     std::basic_string<trip_line_idx_t> const& section_lines_;
+    std::basic_string<stop_idx_t> const& stop_seq_numbers_;
   };
 
   template <typename TripId>
-  trip_idx_t register_trip_id(
-      TripId const& trip_id_str,
-      source_idx_t const src,
-      std::string const& display_name,
-      trip_debug const dbg,
-      transport_idx_t const ref_transport,
-      interval<std::uint32_t> ref_transport_stop_range) {
+  trip_idx_t register_trip_id(TripId const& trip_id_str,
+                              source_idx_t const src,
+                              std::string const& display_name,
+                              trip_debug const dbg,
+                              std::uint32_t const train_nr,
+                              std::span<stop_idx_t> seq_numbers) {
     auto const trip_idx = trip_idx_t{trip_ids_.size()};
 
     auto const trip_id_idx = trip_id_idx_t{trip_id_strings_.size()};
@@ -150,7 +153,8 @@ struct timetable {
     trip_display_names_.emplace_back(display_name);
     trip_debug_.emplace_back().emplace_back(dbg);
     trip_ids_.emplace_back().emplace_back(trip_id_idx);
-    trip_ref_transport_.emplace_back(ref_transport, ref_transport_stop_range);
+    trip_train_nr_.emplace_back(train_nr);
+    trip_stop_seq_numbers_.emplace_back(seq_numbers);
 
     return trip_idx;
   }
@@ -206,6 +210,7 @@ struct timetable {
   }
 
   void add_transport(transport&& t) {
+    transport_first_dep_offset_.emplace_back(t.first_dep_offset_);
     transport_traffic_days_.emplace_back(t.bitfield_idx_);
     transport_route_.emplace_back(t.route_idx_);
     transport_to_trip_section_.emplace_back(t.external_trip_ids_);
@@ -223,7 +228,7 @@ struct timetable {
   }
 
   std::span<delta const> event_times_at_stop(route_idx_t const r,
-                                             std::size_t const stop_idx,
+                                             stop_idx_t const stop_idx,
                                              event_type const ev_type) const {
     auto const n_transports =
         static_cast<unsigned>(route_transport_ranges_[r].size());
@@ -235,7 +240,7 @@ struct timetable {
 
   delta event_mam(route_idx_t const r,
                   transport_idx_t t,
-                  std::size_t const stop_idx,
+                  stop_idx_t const stop_idx,
                   event_type const ev_type) const {
     auto const range = route_transport_ranges_[r];
     auto const n_transports = static_cast<unsigned>(range.size());
@@ -247,21 +252,24 @@ struct timetable {
   }
 
   delta event_mam(transport_idx_t t,
-                  std::size_t const stop_idx,
+                  stop_idx_t const stop_idx,
                   event_type const ev_type) const {
     return event_mam(transport_route_[t], t, stop_idx, ev_type);
   }
 
   unixtime_t event_time(nigiri::transport t,
-                        size_t const stop_idx,
+                        stop_idx_t const stop_idx,
                         event_type const ev_type) const {
     return unixtime_t{internal_interval_days().from_ + to_idx(t.day_) * 1_days +
                       event_mam(t.t_idx_, stop_idx, ev_type).as_duration()};
   }
 
   day_idx_t day_idx(date::year_month_day const day) const {
-    return day_idx_t{
-        (date::sys_days{day} - (date_range_.from_ - kTimetableOffset)).count()};
+    return day_idx(date::sys_days{day});
+  }
+
+  day_idx_t day_idx(date::sys_days const day) const {
+    return day_idx_t{(day - (date_range_.from_ - kTimetableOffset)).count()};
   }
 
   std::pair<day_idx_t, minutes_after_midnight_t> day_idx_mam(
@@ -349,9 +357,19 @@ struct timetable {
   vecvec<trip_id_idx_t, char> trip_id_strings_;
   vector_map<trip_id_idx_t, source_idx_t> trip_id_src_;
 
-  // Trip index -> reference transport + stop range
-  vector_map<trip_idx_t, pair<transport_idx_t, interval<std::uint32_t>>>
-      trip_ref_transport_;
+  // Trip train number, if available (otherwise 0)
+  vector_map<trip_id_idx_t, std::uint32_t> trip_train_nr_;
+
+  // Trip index -> all transports with a stop interval
+  vecvec<trip_idx_t, transport_range_t> trip_transport_ranges_;
+
+  // Transport -> stop sequence numbers (relevant for GTFS-RT stop matching)
+  // Compaction:
+  // - empty = zero-based sequence 0,1,2,...
+  // - only one '1' entry = one-based sequence 1,2,3,...
+  // - only one '10' entry = 10-based sequence 10,20,30,...
+  // - more than one entry: exact sequence number for each stop
+  vecvec<trip_idx_t, stop_idx_t> trip_stop_seq_numbers_;
 
   // Trip -> debug info
   mutable_fws_multimap<trip_idx_t, trip_debug> trip_debug_;
@@ -360,7 +378,7 @@ struct timetable {
   // Trip index -> display name
   vecvec<trip_idx_t, char> trip_display_names_;
 
-  // Route -> From (inclusive) and to index (exclusive) of expanded trips
+  // Route -> range of transports in this route (from/to transport_idx_t)
   vector_map<route_idx_t, interval<transport_idx_t>> route_transport_ranges_;
 
   // Route -> list of stops
@@ -383,6 +401,17 @@ struct timetable {
   vector_map<route_idx_t, interval<std::uint32_t>> route_stop_time_ranges_;
   vector<delta> route_stop_times_;
 
+  // Offset between the stored time and the time given in the GTFS timetable.
+  // Required to match GTFS-RT with GTFS-static trips.
+  vector_map<transport_idx_t, duration_t> transport_first_dep_offset_;
+
+  // Services in GTFS can start with a first departure time > 24:00:00
+  // The loader transforms this into a time <24:00:00 and shifts the bits in the
+  // bitset accordingly. To still be able to match the traffic day from the
+  // corresponding service_id, it's necessary to store the number of days which
+  // is floor(stop_times.txt:departure_time/1440)
+  vector_map<transport_idx_t, std::uint8_t> initial_day_offset_;
+
   // Trip index -> traffic day bitfield
   vector_map<transport_idx_t, bitfield_idx_t> transport_traffic_days_;
 
@@ -398,11 +427,6 @@ struct timetable {
   // Merged trips info
   vecvec<merged_trips_idx_t, trip_idx_t> merged_trips_;
 
-  // Trip index -> list of section ranges where this trip was expanded
-  mutable_fws_multimap<trip_idx_t,
-                       pair<transport_idx_t, interval<std::uint32_t>>>
-      trip_idx_to_transport_idx_;
-
   // Section meta infos:
   vector_map<attribute_idx_t, attribute> attributes_;
   vecvec<attribute_combination_idx_t, attribute_idx_t> attribute_combinations_;
@@ -411,6 +435,9 @@ struct timetable {
   vector_map<trip_direction_idx_t, trip_direction_t> trip_directions_;
   vecvec<trip_line_idx_t, char> trip_lines_;
 
+  // Transport to section meta infos; Compaction:
+  // - only one value = value is valid for the whole run
+  // - multiple values = one value for each section
   vecvec<transport_idx_t, attribute_combination_idx_t>
       transport_section_attributes_;
   vecvec<transport_idx_t, provider_idx_t> transport_section_providers_;
