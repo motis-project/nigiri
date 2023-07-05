@@ -226,10 +226,13 @@ private:
               : dir(tt_.locations_.transfer_time_[location_idx_t{i}]).count();
       auto const fp_target_time =
           static_cast<delta_t>(state_.tmp_[i] + transfer_time);
-      if (is_better(fp_target_time, state_.best_[i]) &&
-          is_better(fp_target_time, time_at_dest_[k])) {
+      auto const fp_target_time_with_penalty =
+          fp_target_time + k * transfer_penalty_;
+      if (is_better(fp_target_time_with_penalty, state_.best_[i]) &&
+          is_better(fp_target_time_with_penalty, time_at_dest_[k])) {
         if (lb_[i] == kUnreachable ||
-            !is_better(fp_target_time + dir(lb_[i]), time_at_dest_[k])) {
+            !is_better(fp_target_time_with_penalty + dir(lb_[i]),
+                       time_at_dest_[k])) {
           ++stats_.fp_update_prevented_by_lower_bound_;
           continue;
         }
@@ -260,12 +263,15 @@ private:
         auto const target = to_idx(fp.target());
         auto const fp_target_time =
             clamp(state_.tmp_[i] + dir(fp.duration()).count());
+        auto const fp_target_time_with_penalty =
+            fp_target_time + k * transfer_penalty_;
 
-        if (is_better(fp_target_time, state_.best_[target]) &&
-            is_better(fp_target_time, time_at_dest_[k])) {
+        if (is_better(fp_target_time_with_penalty, state_.best_[target]) &&
+            is_better(fp_target_time_with_penalty, time_at_dest_[k])) {
           auto const lower_bound = lb_[to_idx(fp.target())];
           if (lower_bound == kUnreachable ||
-              !is_better(fp_target_time + dir(lower_bound), time_at_dest_[k])) {
+              !is_better(fp_target_time_with_penalty + dir(lower_bound),
+                         time_at_dest_[k])) {
             ++stats_.fp_update_prevented_by_lower_bound_;
             trace_upd(
                 "┊ ├k={} *** LB NO UPD: (from={}, tmp={}) --{}--> (to={}, "
@@ -315,7 +321,8 @@ private:
         auto const end_time = clamp(get_best(state_.best_[i], state_.tmp_[i]) +
                                     dir(dist_to_end_[i]));
 
-        if (is_better(end_time, state_.best_[kIntermodalTarget])) {
+        if (is_better(end_time + k * transfer_penalty_,
+                      state_.best_[kIntermodalTarget])) {
           state_.round_times_[k][kIntermodalTarget] = end_time;
           state_.best_[kIntermodalTarget] = end_time;
           update_time_at_dest(k, end_time);
@@ -690,6 +697,7 @@ private:
   int n_days_;
   raptor_stats stats_;
   std::uint32_t n_locations_, n_routes_, n_rt_transports_;
+  delta_t transfer_penalty_{30};
 };
 
 }  // namespace nigiri::routing
