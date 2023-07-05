@@ -697,7 +697,7 @@ private:
   int n_days_;
   raptor_stats stats_;
   std::uint32_t n_locations_, n_routes_, n_rt_transports_;
-  delta_t transfer_penalty_{30};
+  delta_t transfer_penalty_{0};
 };
 
 }  // namespace nigiri::routing
