@@ -656,8 +656,8 @@ private:
   void update_time_at_dest(unsigned const k,
                            delta_t const t,
                            bool const at_best) {
-    for (auto i = k; i != time_at_dest_.size(); ++i) {
-      if (at_best) {
+    if (at_best) {  // two loops to reduce if-calls
+      for (auto i = k; i != time_at_dest_.size(); ++i) {
         // consider transfer penalty
         if (is_better(t, time_at_dest_[i])) {
           // penalize additional transfers;
@@ -669,7 +669,9 @@ private:
           // penalize only current transfers;
           // time_at_dest_[i] = t - k * transfer_penalty_;
         }
-      } else {
+      }
+    } else {
+      for (auto i = k; i != time_at_dest_.size(); ++i) {
         time_at_dest_[i] = get_best(time_at_dest_[i], t);
       }
     }
