@@ -96,7 +96,7 @@ clasz to_clasz(int const route_type) {
     case 1000 /* Water Transport Service */: return clasz::kShip;
     case 1100 /* Air Service */: return clasz::kAir;
     case 1200 /* Ferry Service */: return clasz::kShip;
-    case 1300 /* Aerial Lift Service */: return clasz::kAir;
+    case 1300 /* Aerial Lift Service */: return clasz::kOther;
     case 1301 /* Telecabin Service */:
     case 1302 /* Cable Car Service */:
     case 1303 /* Elevator Service */:
