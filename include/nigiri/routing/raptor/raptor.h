@@ -113,7 +113,7 @@ struct raptor {
       for (auto i = 0U; i != n_locations_; ++i) {
         state_.best_[i] = get_best(state_.round_times_[k][i], state_.best_[i]);
         if (is_dest_[i]) {
-          update_time_at_dest(k, state_.best_[i]);
+          update_time_at_dest(k, state_.best_[i], true);
         }
       }
 
@@ -226,13 +226,10 @@ private:
               : dir(tt_.locations_.transfer_time_[location_idx_t{i}]).count();
       auto const fp_target_time =
           static_cast<delta_t>(state_.tmp_[i] + transfer_time);
-      auto const fp_target_time_with_penalty =
-          fp_target_time + k * transfer_penalty_;
-      if (is_better(fp_target_time_with_penalty, state_.best_[i]) &&
-          is_better(fp_target_time_with_penalty, time_at_dest_[k])) {
+      if (is_better(fp_target_time, state_.best_[i]) &&
+          is_better(fp_target_time, time_at_dest_[k])) {
         if (lb_[i] == kUnreachable ||
-            !is_better(fp_target_time_with_penalty + dir(lb_[i]),
-                       time_at_dest_[k])) {
+            !is_better(fp_target_time + dir(lb_[i]), time_at_dest_[k])) {
           ++stats_.fp_update_prevented_by_lower_bound_;
           continue;
         }
@@ -242,7 +239,7 @@ private:
         state_.best_[i] = fp_target_time;
         state_.station_mark_[i] = true;
         if (is_dest) {
-          update_time_at_dest(k, fp_target_time);
+          update_time_at_dest(k, fp_target_time, true);
         }
       }
     }
@@ -263,15 +260,12 @@ private:
         auto const target = to_idx(fp.target());
         auto const fp_target_time =
             clamp(state_.tmp_[i] + dir(fp.duration()).count());
-        auto const fp_target_time_with_penalty =
-            fp_target_time + k * transfer_penalty_;
 
-        if (is_better(fp_target_time_with_penalty, state_.best_[target]) &&
-            is_better(fp_target_time_with_penalty, time_at_dest_[k])) {
+        if (is_better(fp_target_time, state_.best_[target]) &&
+            is_better(fp_target_time, time_at_dest_[k])) {
           auto const lower_bound = lb_[to_idx(fp.target())];
           if (lower_bound == kUnreachable ||
-              !is_better(fp_target_time_with_penalty + dir(lower_bound),
-                         time_at_dest_[k])) {
+              !is_better(fp_target_time + dir(lower_bound), time_at_dest_[k])) {
             ++stats_.fp_update_prevented_by_lower_bound_;
             trace_upd(
                 "┊ ├k={} *** LB NO UPD: (from={}, tmp={}) --{}--> (to={}, "
@@ -296,7 +290,7 @@ private:
           state_.best_[to_idx(fp.target())] = fp_target_time;
           state_.station_mark_[to_idx(fp.target())] = true;
           if (is_dest_[to_idx(fp.target())]) {
-            update_time_at_dest(k, fp_target_time);
+            update_time_at_dest(k, fp_target_time, true);
           }
         } else {
           trace(
@@ -321,11 +315,10 @@ private:
         auto const end_time = clamp(get_best(state_.best_[i], state_.tmp_[i]) +
                                     dir(dist_to_end_[i]));
 
-        if (is_better(end_time + k * transfer_penalty_,
-                      state_.best_[kIntermodalTarget])) {
+        if (is_better(end_time, state_.best_[kIntermodalTarget])) {
           state_.round_times_[k][kIntermodalTarget] = end_time;
           state_.best_[kIntermodalTarget] = end_time;
-          update_time_at_dest(k, end_time);
+          update_time_at_dest(k, end_time, false);
         }
 
         trace("┊ │k={}  INTERMODAL FOOTPATH: location={}, dist_to_end={}\n", k,
@@ -660,9 +653,25 @@ private:
 
   bool is_intermodal_dest() const { return !dist_to_end_.empty(); }
 
-  void update_time_at_dest(unsigned const k, delta_t const t) {
+  void update_time_at_dest(unsigned const k,
+                           delta_t const t,
+                           bool const at_best) {
     for (auto i = k; i != time_at_dest_.size(); ++i) {
-      time_at_dest_[i] = get_best(time_at_dest_[i], t);
+      if (at_best) {
+        // consider transfer penalty
+        if (is_better(t, time_at_dest_[i])) {
+          // penalize additional transfers;
+          // time_at_dest_[i] = t - (i - k) * transfer_penalty_;
+
+          // penalize number of transfers;
+          time_at_dest_[i] = t - i * transfer_penalty_;
+
+          // penalize only current transfers;
+          // time_at_dest_[i] = t - k * transfer_penalty_;
+        }
+      } else {
+        time_at_dest_[i] = get_best(time_at_dest_[i], t);
+      }
     }
   }
 
