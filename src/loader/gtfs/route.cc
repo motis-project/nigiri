@@ -62,7 +62,7 @@ clasz to_clasz(int const route_type) {
     case 207 /* Tourist Coach Service */:
     case 208 /* Commuter Coach Service */:
     case 209 /* All Coach Services */: return clasz::kCoach;
-    case 400 /* Urban Railway Service */:
+    case 400 /* Urban Railway Service */: return clasz::kSubway;
     case 401 /* Metro Service */: return clasz::kMetro;
     case 402 /* Underground Service */: return clasz::kSubway;
     case 403 /* Urban Railway Service */:
