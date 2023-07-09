@@ -19,10 +19,9 @@ rt_transport_idx_t rt_timetable::add_rt_transport(
   bitfields_.emplace_back(static_bf).set(to_idx(day), false);
   transport_traffic_days_[t_idx] = bitfield_idx_t{bitfields_.size() - 1U};
 
+  auto const r = tt.transport_route_[t_idx];
   auto const location_seq =
-      stop_seq.empty()
-          ? std::span{tt.route_location_seq_[tt.transport_route_[t_idx]]}
-          : stop_seq;
+      stop_seq.empty() ? std::span{tt.route_location_seq_[r]} : stop_seq;
   rt_transport_location_seq_.emplace_back(location_seq);
   rt_transport_src_.emplace_back(src);
   rt_transport_train_nr_.emplace_back(0U);
@@ -51,7 +50,7 @@ rt_transport_idx_t rt_timetable::add_rt_transport(
   }
 
   rt_transport_display_names_.add_back_sized(0U);
-  rt_transport_section_clasz_.add_back_sized(0U);
+  rt_transport_section_clasz_.emplace_back(tt.route_section_clasz_[r]);
   rt_transport_line_.add_back_sized(0U);
 
   assert(static_trip_lookup_.contains(t));
