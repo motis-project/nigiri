@@ -161,7 +161,15 @@ stop_idx_t frun::size() const noexcept {
 }
 
 frun::run_stop frun::operator[](stop_idx_t const i) const noexcept {
-  return run_stop{this, i};
+  return run_stop{this, static_cast<stop_idx_t>(stop_range_.from_ + i)};
+}
+
+clasz frun::get_clasz() const noexcept {
+  if (is_scheduled()) {
+    return tt_->route_section_clasz_[tt_->transport_route_[t_.t_idx_]].at(0);
+  } else {
+    return rtt_->rt_transport_section_clasz_[rt_].at(0);
+  }
 }
 
 trip_id frun::id() const noexcept {
@@ -181,6 +189,15 @@ trip_id frun::id() const noexcept {
   } else {
     return {};
   }
+}
+
+trip_idx_t frun::trip_idx() const {
+  if (is_scheduled()) {
+    return tt_
+        ->merged_trips_[tt_->transport_to_trip_section_.at(t_.t_idx_).at(0)]
+        .at(0);
+  }
+  throw utl::fail("trip idx only for scheduled trip");
 }
 
 void frun::run_stop::print(std::ostream& out,
