@@ -39,7 +39,12 @@ delay_propagation update_event(timetable const& tt,
                                event_type const ev_type,
                                gtfsrt::TripUpdate_StopTimeEvent const& ev,
                                std::optional<unixtime_t> const pred_time) {
-  if (ev.has_time()) {
+  if (ev.has_delay()) {
+    return update_delay(tt, rtt, r, stop_idx, ev_type,
+                        std::chrono::duration_cast<unixtime_t::duration>(
+                            std::chrono::seconds{ev.delay()}),
+                        pred_time);
+  } else /* if (ev.has_time()) */ {
     auto const static_time = tt.event_time(r.t_, stop_idx, ev_type);
     auto const new_time =
         unixtime_t{std::chrono::duration_cast<unixtime_t::duration>(
@@ -48,11 +53,6 @@ delay_propagation update_event(timetable const& tt,
         r.rt_, stop_idx, ev_type,
         pred_time.has_value() ? std::max(*pred_time, new_time) : new_time);
     return {new_time, new_time - static_time};
-  } else /* if (ev.has_delay()) */ {
-    return update_delay(tt, rtt, r, stop_idx, ev_type,
-                        std::chrono::duration_cast<unixtime_t::duration>(
-                            std::chrono::seconds{ev.delay()}),
-                        pred_time);
   }
 }
 
