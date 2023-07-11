@@ -31,9 +31,17 @@ struct frun : public run {
 
     std::string_view line() const noexcept;
     std::string_view scheduled_line() const noexcept;
+    transport_display_info display_info() const noexcept;
+    std::string_view direction() const noexcept;
+
+    clasz get_clasz() const noexcept;
+    clasz get_scheduled_clasz() const noexcept;
 
     bool in_allowed() const noexcept;
     bool out_allowed() const noexcept;
+
+    timetable const& tt() const noexcept;
+    rt_timetable const* rtt() const noexcept;
 
     void print(std::ostream&, bool first = false, bool last = false) const;
     bool operator==(run_stop const&) const = default;
