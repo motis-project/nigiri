@@ -31,7 +31,6 @@ struct frun : public run {
 
     std::string_view line() const noexcept;
     std::string_view scheduled_line() const noexcept;
-    transport_display_info display_info() const noexcept;
     std::string_view direction() const noexcept;
 
     clasz get_clasz() const noexcept;

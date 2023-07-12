@@ -77,6 +77,14 @@ std::string_view frun::run_stop::line() const noexcept {
   }
 }
 
+provider const& frun::run_stop::get_provider() const noexcept {
+  auto const provider_sections =
+      tt().transport_section_providers_.at(fr_->t_.t_idx_);
+  auto const provider_idx =
+      provider_sections.at(provider_sections.size() == 1U ? 0U : stop_idx_);
+  return tt().providers_.at(provider_idx);
+}
+
 std::string_view frun::run_stop::direction() const noexcept {
   if (!fr_->is_scheduled()) {
     return "";
