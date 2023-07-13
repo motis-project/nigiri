@@ -68,6 +68,13 @@ unixtime_t frun::run_stop::time(event_type const ev_type) const noexcept {
              : tt().event_time(fr_->t_, stop_idx_, ev_type);
 }
 
+trip_idx_t frun::run_stop::get_trip_idx() const noexcept {
+  auto const sections = tt().transport_to_trip_section_.at(fr_->t_.t_idx_);
+  return tt()
+      .merged_trips_[sections.at(sections.size() == 1U ? 0U : stop_idx_)]
+      .at(0);
+}
+
 std::string_view frun::run_stop::line() const noexcept {
   if (fr_->is_rt() && rtt() != nullptr) {
     auto const rt_line = rtt()->rt_transport_line_.at(fr_->rt_);

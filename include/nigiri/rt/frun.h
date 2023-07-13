@@ -25,6 +25,7 @@ struct frun : public run {
     std::string_view id() const noexcept;
 
     provider const& get_provider() const noexcept;
+    trip_idx_t get_trip_idx() const noexcept;
 
     unixtime_t scheduled_time(event_type const ev_type) const noexcept;
     unixtime_t time(event_type const ev_type) const noexcept;
