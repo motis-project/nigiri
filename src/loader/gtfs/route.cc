@@ -62,7 +62,7 @@ clasz to_clasz(int const route_type) {
     case 207 /* Tourist Coach Service */:
     case 208 /* Commuter Coach Service */:
     case 209 /* All Coach Services */: return clasz::kCoach;
-    case 400 /* Urban Railway Service */:
+    case 400 /* Urban Railway Service */: return clasz::kSubway;
     case 401 /* Metro Service */: return clasz::kMetro;
     case 402 /* Underground Service */: return clasz::kSubway;
     case 403 /* Urban Railway Service */:
@@ -96,7 +96,7 @@ clasz to_clasz(int const route_type) {
     case 1000 /* Water Transport Service */: return clasz::kShip;
     case 1100 /* Air Service */: return clasz::kAir;
     case 1200 /* Ferry Service */: return clasz::kShip;
-    case 1300 /* Aerial Lift Service */: return clasz::kAir;
+    case 1300 /* Aerial Lift Service */:
     case 1301 /* Telecabin Service */:
     case 1302 /* Cable Car Service */:
     case 1303 /* Elevator Service */:

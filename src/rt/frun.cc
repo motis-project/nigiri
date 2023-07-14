@@ -8,37 +8,38 @@ namespace nigiri::rt {
 
 stop frun::run_stop::get_stop() const noexcept {
   return stop{
-      (fr_->is_rt() && fr_->rtt_ != nullptr)
-          ? fr_->rtt_->rt_transport_location_seq_[fr_->rt_][stop_idx_]
-          : fr_->tt_->route_location_seq_
-                [fr_->tt_->transport_route_[fr_->t_.t_idx_]][stop_idx_]};
+      (fr_->is_rt() && rtt() != nullptr)
+          ? rtt()->rt_transport_location_seq_[fr_->rt_][stop_idx_]
+          : tt().route_location_seq_[tt().transport_route_[fr_->t_.t_idx_]]
+                                    [stop_idx_]};
 }
 
 std::string_view frun::run_stop::name() const noexcept {
   auto const l = get_location_idx();
-  auto const type = fr_->tt_->locations_.types_.at(l);
+  auto const type = tt().locations_.types_.at(l);
   auto const p =
       (type == location_type::kGeneratedTrack || type == location_type::kTrack)
-          ? fr_->tt_->locations_.parents_.at(l)
+          ? tt().locations_.parents_.at(l)
           : l;
-  return fr_->tt_->locations_.names_.at(p).view();
+  return tt().locations_.names_.at(p).view();
 }
 
 std::string_view frun::run_stop::id() const noexcept {
   auto const l = get_location_idx();
-  auto const type = fr_->tt_->locations_.types_.at(l);
-  return fr_->tt_->locations_.ids_
+  auto const type = tt().locations_.types_.at(l);
+  return tt()
+      .locations_.ids_
       .at(type == location_type::kGeneratedTrack
-              ? fr_->tt_->locations_.parents_.at(l)
+              ? tt().locations_.parents_.at(l)
               : l)
       .view();
 }
 
 std::string_view frun::run_stop::track() const noexcept {
   auto const l = get_location_idx();
-  return (fr_->tt_->locations_.types_.at(l) == location_type::kTrack ||
-          fr_->tt_->locations_.types_.at(l) == location_type::kGeneratedTrack)
-             ? fr_->tt_->locations_.names_.at(l).view()
+  return (tt().locations_.types_.at(l) == location_type::kTrack ||
+          tt().locations_.types_.at(l) == location_type::kGeneratedTrack)
+             ? tt().locations_.names_.at(l).view()
              : "";
 }
 
@@ -56,24 +57,65 @@ unixtime_t frun::run_stop::scheduled_time(
     event_type const ev_type) const noexcept {
   assert(fr_->size() >= stop_idx_);
   return fr_->is_scheduled()
-             ? fr_->tt_->event_time(fr_->t_, stop_idx_, ev_type)
-             : fr_->rtt_->unix_event_time(fr_->rt_, stop_idx_, ev_type);
+             ? tt().event_time(fr_->t_, stop_idx_, ev_type)
+             : rtt()->unix_event_time(fr_->rt_, stop_idx_, ev_type);
 }
 
 unixtime_t frun::run_stop::time(event_type const ev_type) const noexcept {
   assert(fr_->size() >= stop_idx_);
-  return (fr_->is_rt() && fr_->rtt_ != nullptr)
-             ? fr_->rtt_->unix_event_time(fr_->rt_, stop_idx_, ev_type)
-             : fr_->tt_->event_time(fr_->t_, stop_idx_, ev_type);
+  return (fr_->is_rt() && rtt() != nullptr)
+             ? rtt()->unix_event_time(fr_->rt_, stop_idx_, ev_type)
+             : tt().event_time(fr_->t_, stop_idx_, ev_type);
+}
+
+trip_idx_t frun::run_stop::get_trip_idx() const noexcept {
+  auto const sections = tt().transport_to_trip_section_.at(fr_->t_.t_idx_);
+  return tt()
+      .merged_trips_[sections.at(sections.size() == 1U ? 0U : stop_idx_)]
+      .at(0);
 }
 
 std::string_view frun::run_stop::line() const noexcept {
-  if (fr_->is_rt() && fr_->rtt_ != nullptr) {
-    auto const rt_line = fr_->rtt_->rt_transport_line_.at(fr_->rt_);
+  if (fr_->is_rt() && rtt() != nullptr) {
+    auto const rt_line = rtt()->rt_transport_line_.at(fr_->rt_);
     return rt_line.empty() ? scheduled_line() : rt_line.view();
   } else {
     return scheduled_line();
   }
+}
+
+provider const& frun::run_stop::get_provider() const noexcept {
+  auto const provider_sections =
+      tt().transport_section_providers_.at(fr_->t_.t_idx_);
+  auto const provider_idx =
+      provider_sections.at(provider_sections.size() == 1U ? 0U : stop_idx_);
+  return tt().providers_.at(provider_idx);
+}
+
+std::string_view frun::run_stop::direction() const noexcept {
+  if (!fr_->is_scheduled()) {
+    return "";
+  }
+
+  auto const direction_sections =
+      tt().transport_section_directions_.at(fr_->t_.t_idx_);
+  auto direction = std::string_view{};
+  if (!direction_sections.empty()) {
+    auto const direction_idx = direction_sections.size() == 1U
+                                   ? direction_sections.at(0)
+                                   : direction_sections.at(stop_idx_);
+    if (direction_idx != trip_direction_idx_t::invalid()) {
+      direction = tt().trip_directions_.at(direction_idx)
+                      .apply(utl::overloaded{
+                          [&](trip_direction_string_idx_t const i) {
+                            return tt().trip_direction_strings_.at(i).view();
+                          },
+                          [&](location_idx_t const i) {
+                            return tt().locations_.names_.at(i).view();
+                          }});
+    }
+  }
+  return direction;
 }
 
 std::string_view frun::run_stop::scheduled_line() const noexcept {
@@ -81,16 +123,35 @@ std::string_view frun::run_stop::scheduled_line() const noexcept {
     return "";
   }
 
-  auto const section_lines =
-      fr_->tt_->transport_section_lines_.at(fr_->t_.t_idx_);
+  auto const section_lines = tt().transport_section_lines_.at(fr_->t_.t_idx_);
   if (section_lines.empty()) {
     return "";
   } else {
     auto const line_idx = section_lines.size() == 1U
                               ? section_lines[0]
                               : section_lines.at(stop_idx_);
-    return fr_->tt_->trip_lines_.at(line_idx).view();
+    return tt().trip_lines_.at(line_idx).view();
   }
+}
+
+clasz frun::run_stop::get_clasz() const noexcept {
+  if (fr_->is_rt() && rtt() != nullptr) {
+    auto const clasz_sections = rtt()->rt_transport_section_clasz_.at(fr_->rt_);
+    return clasz_sections.at(clasz_sections.size() == 1U ? 0U : stop_idx_);
+  } else {
+    auto const clasz_sections =
+        tt().route_section_clasz_.at(tt().transport_route_.at(fr_->t_.t_idx_));
+    return clasz_sections.at(clasz_sections.size() == 1U ? 0U : stop_idx_);
+  }
+}
+
+clasz frun::run_stop::get_scheduled_clasz() const noexcept {
+  if (!fr_->is_scheduled()) {
+    return clasz();
+  }
+  auto const clasz_sections =
+      tt().route_section_clasz_.at(tt().transport_route_.at(fr_->t_.t_idx_));
+  return clasz_sections.at(clasz_sections.size() == 1U ? 0U : stop_idx_);
 }
 
 bool frun::run_stop::in_allowed() const noexcept {
@@ -100,6 +161,9 @@ bool frun::run_stop::in_allowed() const noexcept {
 bool frun::run_stop::out_allowed() const noexcept {
   return get_stop().out_allowed();
 }
+
+timetable const& frun::run_stop::tt() const noexcept { return *fr_->tt_; }
+rt_timetable const* frun::run_stop::rtt() const noexcept { return fr_->rtt_; }
 
 frun::iterator& frun::iterator::operator++() noexcept {
   ++rs_.stop_idx_;
@@ -161,7 +225,15 @@ stop_idx_t frun::size() const noexcept {
 }
 
 frun::run_stop frun::operator[](stop_idx_t const i) const noexcept {
-  return run_stop{this, i};
+  return run_stop{this, static_cast<stop_idx_t>(stop_range_.from_ + i)};
+}
+
+clasz frun::get_clasz() const noexcept {
+  if (is_scheduled()) {
+    return tt_->route_section_clasz_[tt_->transport_route_[t_.t_idx_]].at(0);
+  } else {
+    return rtt_->rt_transport_section_clasz_[rt_].at(0);
+  }
 }
 
 trip_id frun::id() const noexcept {
@@ -183,10 +255,19 @@ trip_id frun::id() const noexcept {
   }
 }
 
+trip_idx_t frun::trip_idx() const {
+  if (is_scheduled()) {
+    return tt_
+        ->merged_trips_[tt_->transport_to_trip_section_.at(t_.t_idx_).at(0)]
+        .at(0);
+  }
+  throw utl::fail("trip idx only for scheduled trip");
+}
+
 void frun::run_stop::print(std::ostream& out,
                            bool const first,
                            bool const last) const {
-  auto const& tz = fr_->tt_->locations_.timezones_.at(
+  auto const& tz = tt().locations_.timezones_.at(
       get_transport_stop_tz(*fr_->tt_, fr_->t_.t_idx_, get_location().l_));
 
   // Print stop index, location name.
@@ -200,11 +281,11 @@ void frun::run_stop::print(std::ostream& out,
     fmt::print(out, "{}a: {} [{}]", (out_allowed() ? ' ' : '-'),
                date::format("%d.%m %R", scheduled),
                date::format("%d.%m %R", to_local_time(tz, scheduled)));
-    if (fr_->is_rt() && fr_->rtt_ != nullptr) {  // RT if available.
+    if (fr_->is_rt() && rtt() != nullptr) {  // RT if available.
       fmt::print(out, "  RT {} [{}]", date::format("%d.%m %R", rt),
                  date::format("%d.%m %R", to_local_time(tz, rt)));
     }
-  } else if (fr_->is_rt() && fr_->rtt_ != nullptr) {
+  } else if (fr_->is_rt() && rtt() != nullptr) {
     // Skipped w/ RT info.
     fmt::print(out, "                            ");
     fmt::print(out, "                               ");
@@ -221,7 +302,7 @@ void frun::run_stop::print(std::ostream& out,
     fmt::print(out, "{}d: {} [{}]", (in_allowed() ? ' ' : '-'),
                date::format("%d.%m %R", scheduled),
                date::format("%d.%m %R", to_local_time(tz, scheduled)));
-    if (fr_->is_rt() && fr_->rtt_ != nullptr) {  // RT if available.
+    if (fr_->is_rt() && rtt() != nullptr) {  // RT if available.
       fmt::print(out, "  RT {} [{}]", date::format("%d.%m %R", rt),
                  date::format("%d.%m %R", to_local_time(tz, rt)));
     }

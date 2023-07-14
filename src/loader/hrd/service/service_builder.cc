@@ -60,7 +60,7 @@ void service_builder::add_services(config const& c,
                  [&](ref_service&& s) { add_service(std::move(s)); });
 }
 
-void service_builder::write_services(const nigiri::source_idx_t src) {
+void service_builder::write_services(source_idx_t const src) {
   auto const timer = scoped_timer{"loader.hrd.services.write"};
   for (auto const& [key, sub_routes] : route_services_) {
     for (auto const& services : sub_routes) {
