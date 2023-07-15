@@ -86,7 +86,7 @@ stop_idx_t frun::run_stop::section_idx(
 std::string_view frun::run_stop::line(event_type const ev_type) const noexcept {
   if (fr_->is_rt() && rtt() != nullptr) {
     auto const rt_line = rtt()->rt_transport_line_.at(fr_->rt_);
-    return rt_line.empty() ? scheduled_line() : rt_line.view();
+    return rt_line.empty() ? scheduled_line(ev_type) : rt_line.view();
   } else {
     return scheduled_line(ev_type);
   }

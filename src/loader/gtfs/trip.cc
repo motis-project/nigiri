@@ -210,10 +210,20 @@ std::string trip::display_name(timetable const& tt) const {
     }
   }
 
-  return trip_name_is_number
-             ? fmt::format("{} {}", route_->short_name_,
-                           utl::parse<int>(short_name_))
-             : fmt::format("{} {}", route_->short_name_, short_name_);
+  auto const starts_with_letter_and_ends_with_number =
+      [](std::string_view line_id) {
+        return !(line_id.front() >= '0' && line_id.front() <= '9') &&
+               (line_id.back() >= '0' && line_id.back() <= '9');
+      };
+
+  if (starts_with_letter_and_ends_with_number(route_->short_name_)) {
+    return route_->short_name_;
+  } else if (trip_name_is_number) {
+    return fmt::format("{} {}", route_->short_name_,
+                       utl::parse<int>(short_name_));
+  } else {
+    return fmt::format("{} {}", route_->short_name_, short_name_);
+  }
 }
 
 clasz trip::get_clasz(timetable const& tt) const {
