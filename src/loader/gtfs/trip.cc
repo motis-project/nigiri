@@ -210,7 +210,10 @@ std::string trip::display_name(timetable const& tt) const {
     }
   }
 
-  return route_->short_name_ + " " + short_name_;
+  return trip_name_is_number
+             ? fmt::format("{} {}", route_->short_name_,
+                           utl::parse<int>(short_name_))
+             : fmt::format("{} {}", route_->short_name_, short_name_);
 }
 
 clasz trip::get_clasz(timetable const& tt) const {

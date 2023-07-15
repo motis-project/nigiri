@@ -212,6 +212,10 @@ struct timetable {
 
     assert(transport_traffic_days_.size() == transport_route_.size());
     assert(transport_traffic_days_.size() == transport_to_trip_section_.size());
+    assert(transport_section_directions_.back().size() == 0U ||
+           transport_section_directions_.back().size() == 1U ||
+           transport_section_directions_.back().size() ==
+               route_location_seq_.at(transport_route_.back()).size() - 1U);
   }
 
   transport_idx_t next_transport_idx() const {

@@ -68,31 +68,41 @@ unixtime_t frun::run_stop::time(event_type const ev_type) const noexcept {
              : tt().event_time(fr_->t_, stop_idx_, ev_type);
 }
 
-trip_idx_t frun::run_stop::get_trip_idx() const noexcept {
+trip_idx_t frun::run_stop::get_trip_idx(
+    event_type const ev_type) const noexcept {
   auto const sections = tt().transport_to_trip_section_.at(fr_->t_.t_idx_);
   return tt()
-      .merged_trips_[sections.at(sections.size() == 1U ? 0U : stop_idx_)]
+      .merged_trips_[sections.at(sections.size() == 1U ? 0U
+                                                       : section_idx(ev_type))]
       .at(0);
 }
 
-std::string_view frun::run_stop::line() const noexcept {
+stop_idx_t frun::run_stop::section_idx(
+    event_type const ev_type) const noexcept {
+  return static_cast<stop_idx_t>(ev_type == event_type::kDep ? stop_idx_
+                                                             : stop_idx_ - 1);
+}
+
+std::string_view frun::run_stop::line(event_type const ev_type) const noexcept {
   if (fr_->is_rt() && rtt() != nullptr) {
     auto const rt_line = rtt()->rt_transport_line_.at(fr_->rt_);
     return rt_line.empty() ? scheduled_line() : rt_line.view();
   } else {
-    return scheduled_line();
+    return scheduled_line(ev_type);
   }
 }
 
-provider const& frun::run_stop::get_provider() const noexcept {
+provider const& frun::run_stop::get_provider(
+    event_type const ev_type) const noexcept {
   auto const provider_sections =
       tt().transport_section_providers_.at(fr_->t_.t_idx_);
-  auto const provider_idx =
-      provider_sections.at(provider_sections.size() == 1U ? 0U : stop_idx_);
+  auto const provider_idx = provider_sections.at(
+      provider_sections.size() == 1U ? 0U : section_idx(ev_type));
   return tt().providers_.at(provider_idx);
 }
 
-std::string_view frun::run_stop::direction() const noexcept {
+std::string_view frun::run_stop::direction(
+    event_type const ev_type) const noexcept {
   if (!fr_->is_scheduled()) {
     return "";
   }
@@ -101,9 +111,10 @@ std::string_view frun::run_stop::direction() const noexcept {
       tt().transport_section_directions_.at(fr_->t_.t_idx_);
   auto direction = std::string_view{};
   if (!direction_sections.empty()) {
-    auto const direction_idx = direction_sections.size() == 1U
-                                   ? direction_sections.at(0)
-                                   : direction_sections.at(stop_idx_);
+    auto const direction_idx =
+        direction_sections.size() == 1U
+            ? direction_sections.at(0)
+            : direction_sections.at(section_idx(ev_type));
     if (direction_idx != trip_direction_idx_t::invalid()) {
       direction = tt().trip_directions_.at(direction_idx)
                       .apply(utl::overloaded{
@@ -118,7 +129,8 @@ std::string_view frun::run_stop::direction() const noexcept {
   return direction;
 }
 
-std::string_view frun::run_stop::scheduled_line() const noexcept {
+std::string_view frun::run_stop::scheduled_line(
+    event_type const ev_type) const noexcept {
   if (!fr_->is_scheduled()) {
     return "";
   }
@@ -129,29 +141,33 @@ std::string_view frun::run_stop::scheduled_line() const noexcept {
   } else {
     auto const line_idx = section_lines.size() == 1U
                               ? section_lines[0]
-                              : section_lines.at(stop_idx_);
+                              : section_lines.at(section_idx(ev_type));
     return tt().trip_lines_.at(line_idx).view();
   }
 }
 
-clasz frun::run_stop::get_clasz() const noexcept {
+clasz frun::run_stop::get_clasz(event_type const ev_type) const noexcept {
   if (fr_->is_rt() && rtt() != nullptr) {
     auto const clasz_sections = rtt()->rt_transport_section_clasz_.at(fr_->rt_);
-    return clasz_sections.at(clasz_sections.size() == 1U ? 0U : stop_idx_);
+    return clasz_sections.at(
+        clasz_sections.size() == 1U ? 0U : section_idx(ev_type));
   } else {
     auto const clasz_sections =
         tt().route_section_clasz_.at(tt().transport_route_.at(fr_->t_.t_idx_));
-    return clasz_sections.at(clasz_sections.size() == 1U ? 0U : stop_idx_);
+    return clasz_sections.at(
+        clasz_sections.size() == 1U ? 0U : section_idx(ev_type));
   }
 }
 
-clasz frun::run_stop::get_scheduled_clasz() const noexcept {
+clasz frun::run_stop::get_scheduled_clasz(
+    event_type const ev_type) const noexcept {
   if (!fr_->is_scheduled()) {
     return clasz();
   }
   auto const clasz_sections =
       tt().route_section_clasz_.at(tt().transport_route_.at(fr_->t_.t_idx_));
-  return clasz_sections.at(clasz_sections.size() == 1U ? 0U : stop_idx_);
+  return clasz_sections.at(clasz_sections.size() == 1U ? 0U
+                                                       : section_idx(ev_type));
 }
 
 bool frun::run_stop::in_allowed() const noexcept {
