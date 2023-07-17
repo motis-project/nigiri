@@ -56,6 +56,18 @@ delay_propagation update_event(timetable const& tt,
   }
 }
 
+void cancel_run(rt_timetable& rtt, run& r) {
+  if (r.is_rt()) {
+    rtt.rt_transport_is_cancelled_.set(to_idx(r.rt_), true);
+  }
+  if (r.is_scheduled()) {
+    auto const& bf = rtt.bitfields_[rtt.transport_traffic_days_[r.t_.t_idx_]];
+    rtt.bitfields_.emplace_back(bf).set(to_idx(r.t_.day_), false);
+    rtt.transport_traffic_days_[r.t_.t_idx_] =
+        bitfield_idx_t{rtt.bitfields_.size() - 1U};
+  }
+}
+
 void update_run(
     source_idx_t const src,
     timetable const& tt,
@@ -68,6 +80,8 @@ void update_run(
 
   if (!r.is_rt()) {
     r.rt_ = rtt.add_rt_transport(src, tt, r.t_);
+  } else {
+    rtt.rt_transport_is_cancelled_.set(to_idx(r.rt_), false);
   }
 
   auto const location_seq =
@@ -94,6 +108,29 @@ void update_run(
               tt.locations_.ids_[stop{location_seq[stop_idx]}.location_idx()]
                   .view()));
 
+    if (matches) {
+      auto& stp = rtt.rt_transport_location_seq_[r.rt_][stop_idx];
+      if (upd_it->schedule_relationship() ==
+          gtfsrt::TripUpdate_StopTimeUpdate_ScheduleRelationship_SKIPPED) {
+        // Cancel skipped stops (in_allowed = out_allowed = false).
+        stp = stop{stop{stp}.location_idx(), false, false}.value();
+      } else if (upd_it->stop_time_properties().has_assigned_stop_id()) {
+        // Handle track change.
+        auto const l_it = tt.locations_.location_id_to_idx_.find(
+            {.id_ = upd_it->stop_time_properties().assigned_stop_id(),
+             .src_ = src});
+        if (l_it != end(tt.locations_.location_id_to_idx_)) {
+          stp = stop{l_it->second, stop{stp}.in_allowed(),
+                     stop{stp}.out_allowed()}
+                    .value();
+        }
+      } else {
+        // Just reset in case a track change / skipped stop got reversed.
+        stp = location_seq[stop_idx];
+      }
+    }
+
+    // Update arrival, propagate delay.
     if (stop_idx != r.stop_range_.from_) {
       if (matches && upd_it->has_arrival() &&
           (upd_it->arrival().has_delay() || upd_it->arrival().has_time())) {
@@ -106,6 +143,7 @@ void update_run(
       }
     }
 
+    // Update departure, propagate delay.
     if (stop_idx == 0U && matches && upd_it->has_arrival() &&
         !upd_it->has_departure() &&
         (upd_it->arrival().has_delay() || upd_it->arrival().has_time())) {
@@ -190,8 +228,13 @@ statistics gtfsrt_update_msg(timetable const& tt,
         continue;
       }
 
-      update_run(src, tt, rtt, trip, r,
-                 entity.trip_update().stop_time_update());
+      if (entity.trip_update().trip().schedule_relationship() ==
+          gtfsrt::TripDescriptor_ScheduleRelationship_CANCELED) {
+        cancel_run(rtt, r);
+      } else {
+        update_run(src, tt, rtt, trip, r,
+                   entity.trip_update().stop_time_update());
+      }
       ++stats.total_entities_success_;
     } catch (const std::exception& e) {
       ++stats.total_entities_fail_;

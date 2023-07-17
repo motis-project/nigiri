@@ -19,7 +19,7 @@
 #include "utl/erase_duplicates.h"
 #include "utl/erase_if.h"
 
-// #define NIGIRI_BUILD_FOOTPATHS_DEBUG
+#define NIGIRI_BUILD_FOOTPATHS_DEBUG
 #if defined(NIGIRI_BUILD_FOOTPATHS_DEBUG)
 template <typename T>
 struct fmt::formatter<nigiri::matrix<T>> {
@@ -192,7 +192,7 @@ void process_component(timetable& tt,
     }
   };
 
-  auto const id = std::string_view{"000000011301_G_G_G_G"};
+  auto const id = std::string_view{"de:08317:14414:1:2"};
   auto const needle =
       std::find_if(begin(tt.locations_.ids_), end(tt.locations_.ids_),
                    [&](auto&& x) { return x.view() == id; });

@@ -70,3 +70,38 @@ TEST(dir, directory_listing) {
   EXPECT_EQ(mem.list_files("stamm/bahnhof.101"),
             fs.list_files("stamm/bahnhof.101"));
 }
+
+TEST(nigiri, to_dir) {
+  using namespace std::string_view_literals;
+  constexpr auto const gtfs = R"(
+# agency.txt
+agency_id,agency_name,agency_url,agency_timezone,agency_lang,agency_phone
+"11","Schweizerische Bundesbahnen SBB","http://www.sbb.ch/","Europe/Berlin","DE","0848 44 66 88"
+
+# calendar.txt
+"TA+xce80","1","1","1","1","1","0","0","20221211","20231209"
+
+# calendar_dates.txt
+service_id,date,exception_type
+"TA+xce80","20231028","1"
+"TA+xce80","20231029","1"
+"TA+xce80","20231030","2"
+"TA+xce80","20231031","2"
+"TA+xce80","20231101","2"
+)"sv;
+
+  auto const dir = mem_dir::read(gtfs);
+  EXPECT_EQ(
+      dir.get_file("agency.txt").data(),
+      R"(agency_id,agency_name,agency_url,agency_timezone,agency_lang,agency_phone
+"11","Schweizerische Bundesbahnen SBB","http://www.sbb.ch/","Europe/Berlin","DE","0848 44 66 88"
+)"sv);
+  EXPECT_EQ(dir.get_file("calendar_dates.txt").data(),
+            R"(service_id,date,exception_type
+"TA+xce80","20231028","1"
+"TA+xce80","20231029","1"
+"TA+xce80","20231030","2"
+"TA+xce80","20231031","2"
+"TA+xce80","20231101","2"
+)"sv);
+}

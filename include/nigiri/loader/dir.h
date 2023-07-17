@@ -75,6 +75,7 @@ struct zip_dir final : public dir {
 
 struct mem_dir final : public dir {
   using dir_t = std::map<std::filesystem::path, std::string>;
+  static mem_dir read(std::string_view);
   mem_dir(dir_t);
   ~mem_dir() final;
   mem_dir(mem_dir const&);
