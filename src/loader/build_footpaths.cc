@@ -139,6 +139,26 @@ footgraph get_footpath_graph(timetable& tt) {
   return g;
 }
 
+// TODO
+std::optional<int> adjust_footpath_duration(int duration, int const distance) {
+  constexpr auto const kAdjustedMaxDuration = 15;  // [minutes]
+
+  auto const max_distance_adjust = duration * 60 * kWalkSpeed;
+  auto const max_distance = 2 * duration * 60 * kWalkSpeed;
+
+  if (distance > max_distance) {
+    return {};
+  } else if (distance > max_distance_adjust) {
+    duration = std::round(distance / (60 * kWalkSpeed));
+  }
+
+  if (duration > kAdjustedMaxDuration) {
+    return std::nullopt;
+  }
+
+  return {duration};
+}
+
 std::vector<std::pair<uint32_t, uint32_t>> find_components(
     footgraph const& fgraph) {
   std::vector<std::pair<uint32_t, uint32_t>> components(fgraph.size());
