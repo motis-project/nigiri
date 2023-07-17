@@ -5,6 +5,7 @@
 
 #include "utl/overloaded.h"
 
+#include "nigiri/common/day_list.h"
 #include "nigiri/rt/frun.h"
 
 namespace nigiri {
@@ -27,6 +28,17 @@ void timetable::locations::resolve_timezones() {
 }
 
 std::ostream& operator<<(std::ostream& out, timetable const& tt) {
+  for (auto const [id, idx] : tt.trip_id_to_idx_) {
+    auto const str = tt.trip_id_strings_[id].view();
+    out << str << ":\n";
+    for (auto const& t : tt.trip_transport_ranges_.at(idx)) {
+      out << "  " << t.first << ": " << t.second << " active="
+          << day_list{tt.bitfields_[tt.transport_traffic_days_[t.first]],
+                      tt.internal_interval_days().from_}
+          << "\n";
+    }
+  }
+
   auto const internal = tt.internal_interval_days();
   auto const num_days =
       static_cast<size_t>((internal.to_ - internal.from_ + 1_days) / 1_days);

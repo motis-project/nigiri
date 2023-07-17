@@ -81,7 +81,7 @@ void update_run(
                         .pred_time_ = rtt.unix_event_time(
                             r.rt_, r.stop_range_.from_, event_type::kArr),
                         .pred_delay_ = 0_minutes})
-                  : std::optional<delay_propagation>{};
+                  : std::nullopt;
   auto stop_idx = r.stop_range_.from_;
   auto seq_it = begin(seq_numbers);
   auto upd_it = begin(stops);
@@ -100,10 +100,9 @@ void update_run(
         pred = update_event(
             tt, rtt, r, stop_idx, event_type::kArr, upd_it->arrival(),
             pred.has_value() ? pred->pred_time_ : unixtime_t{0_minutes});
-      } else {
-        pred = update_delay(
-            tt, rtt, r, stop_idx, event_type::kArr, pred->pred_delay_,
-            pred.has_value() ? pred->pred_time_ : unixtime_t{0_minutes});
+      } else if (pred.has_value()) {
+        pred = update_delay(tt, rtt, r, stop_idx, event_type::kArr,
+                            pred->pred_delay_, pred->pred_time_);
       }
     }
 
@@ -122,10 +121,9 @@ void update_run(
         pred = update_event(
             tt, rtt, r, stop_idx, event_type::kDep, upd_it->departure(),
             pred.has_value() ? pred->pred_time_ : unixtime_t{0_minutes});
-      } else {
-        pred = update_delay(
-            tt, rtt, r, stop_idx, event_type::kDep, pred->pred_delay_,
-            pred.has_value() ? pred->pred_time_ : unixtime_t{0_minutes});
+      } else if (pred.has_value()) {
+        pred = update_delay(tt, rtt, r, stop_idx, event_type::kDep,
+                            pred->pred_delay_, pred->pred_time_);
       }
     }
 
@@ -136,7 +134,7 @@ void update_run(
 }
 
 std::string remove_nl(std::string s) {
-  s.erase(std::remove(begin(s), end(s), '\n'), end(s));
+  std::replace(begin(s), end(s), '\n', ' ');
   return s;
 }
 
