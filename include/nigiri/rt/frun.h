@@ -40,6 +40,7 @@ struct frun : public run {
 
     bool in_allowed() const noexcept;
     bool out_allowed() const noexcept;
+    bool is_canceled() const noexcept;
 
     stop_idx_t section_idx(event_type) const noexcept;
 

@@ -52,6 +52,7 @@ rt_transport_idx_t rt_timetable::add_rt_transport(
   rt_transport_display_names_.add_back_sized(0U);
   rt_transport_section_clasz_.emplace_back(tt.route_section_clasz_[r]);
   rt_transport_line_.add_back_sized(0U);
+  rt_transport_is_cancelled_.resize(rt_transport_is_cancelled_.size() + 1U);
 
   assert(static_trip_lookup_.contains(t));
   assert(rt_transport_static_transport_[rt_transport_idx_t{rt_t_idx}] == t);

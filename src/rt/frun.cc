@@ -170,6 +170,10 @@ clasz frun::run_stop::get_scheduled_clasz(
                                                        : section_idx(ev_type));
 }
 
+bool frun::run_stop::is_canceled() const noexcept {
+  return !get_stop().in_allowed() && !get_stop().out_allowed();
+}
+
 bool frun::run_stop::in_allowed() const noexcept {
   return get_stop().in_allowed();
 }
@@ -362,7 +366,9 @@ std::ostream& operator<<(std::ostream& out, frun::run_stop const& stp) {
 
 std::ostream& operator<<(std::ostream& out, frun const& fr) {
   for (auto const stp : fr) {
-    out << stp << "\n";
+    if (!stp.is_canceled()) {
+      out << stp << "\n";
+    }
   }
   return out;
 }

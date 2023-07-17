@@ -8,6 +8,7 @@
 
 #include "cista/mmap.h"
 
+#include "utl/parser/cstr.h"
 #include "utl/to_vec.h"
 #include "utl/verify.h"
 
@@ -294,6 +295,29 @@ std::uint64_t mem_dir::hash() const {
     h = wyhash(data.data(), data.size(), h, _wyp);
   }
   return h;
+}
+
+mem_dir mem_dir::read(std::string_view s) {
+  std::string_view file_name;
+  char const* file_content_begin = nullptr;
+  auto dir = mem_dir::dir_t{};
+  utl::for_each_line(s, [&](utl::cstr const line) {
+    if (line.starts_with("#")) {
+      if (file_content_begin != nullptr) {
+        auto const length =
+            static_cast<std::size_t>(line.begin() - file_content_begin - 1);
+        dir.emplace(file_name, std::string{file_content_begin, length});
+      }
+      file_name = line.substr(1).trim();
+      file_content_begin = line.end() + 1;
+    }
+  });
+  if (file_content_begin != nullptr) {
+    auto const length =
+        static_cast<std::size_t>(s.data() + s.size() - file_content_begin);
+    dir.emplace(file_name, std::string{file_content_begin, length});
+  }
+  return {dir};
 }
 
 }  // namespace nigiri::loader
