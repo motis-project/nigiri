@@ -32,7 +32,7 @@ void get_starts(direction,
                 bool use_start_footpaths,
                 std::vector<start>&,
                 bool add_ontrip,
-                uint16_t const& profile);
+                uint const profile);
 
 void collect_destinations(timetable const&,
                           std::vector<offset> const& destinations,

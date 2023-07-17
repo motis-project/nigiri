@@ -44,7 +44,7 @@ struct query {
   unsigned min_connection_count_{0U};
   bool extend_interval_earlier_{false};
   bool extend_interval_later_{false};
-  std::size_t profile_{0};
+  uint profile_{0};
 };
 
 }  // namespace nigiri::routing
