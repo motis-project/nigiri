@@ -177,7 +177,8 @@ void process_component(timetable& tt,
                        component_it const lb,
                        component_it const ub,
                        footgraph const& fgraph,
-                       matrix<std::uint16_t>& matrix_memory) {
+                       matrix<std::uint16_t>& matrix_memory,
+                       bool const adjust_footpaths) {
   if (lb->first == kNoComponent) {
     return;
   }
@@ -317,8 +318,6 @@ next:
       auto const l_idx_b = location_idx_t{static_cast<unsigned>(idx_b)};
 
       if (mat(i, j) > std::numeric_limits<u8_minutes::rep>::max()) {
-        std::cout << "ERROR: " << mat(i, j) << " > "
-                  << std::numeric_limits<u8_minutes::rep>::max() << "\n";
         log(log_lvl::error, "loader.footpath", "footpath {}>256 too long",
             mat(i, j));
         continue;
@@ -327,15 +326,31 @@ next:
       auto const duration = std::max({u8_minutes{mat(i, j)},
                                       tt.locations_.transfer_time_[l_idx_a],
                                       tt.locations_.transfer_time_[l_idx_b]});
+
+      auto adjusted = duration;
+      if (adjust_footpaths) {
+        auto const distance =
+            geo::distance(tt.locations_.coordinates_[l_idx_a],
+                          tt.locations_.coordinates_[l_idx_b]);
+        auto const adjusted_int =
+            std::max(static_cast<duration_t::rep>(duration.count()),
+                     static_cast<duration_t::rep>(distance / kWalkSpeed / 60));
+        if (adjusted_int > std::numeric_limits<u8_minutes::rep>::max()) {
+          log(log_lvl::error, "loader.footpath.adjust",
+              "too long after adjust: {}>256", adjusted_int);
+        }
+        adjusted = u8_minutes{adjusted_int};
+      }
+
       tt.locations_.preprocessing_footpaths_out_[l_idx_a].emplace_back(
-          l_idx_b, duration);
+          l_idx_b, adjusted);
       tt.locations_.preprocessing_footpaths_in_[l_idx_b].emplace_back(l_idx_a,
-                                                                      duration);
+                                                                      adjusted);
     }
   }
 }
 
-void transitivize_footpaths(timetable& tt) {
+void transitivize_footpaths(timetable& tt, bool const adjust_footpaths) {
   auto const timer = scoped_timer{"building transitively closed foot graph"};
 
   auto const fgraph = get_footpath_graph(tt);
@@ -355,7 +370,7 @@ void transitivize_footpaths(timetable& tt) {
       components,
       [](auto const& a, auto const& b) { return a.first == b.first; },
       [&](auto lb, auto ub) {
-        process_component(tt, lb, ub, fgraph, matrix_memory);
+        process_component(tt, lb, ub, fgraph, matrix_memory, adjust_footpaths);
       });
 }
 
@@ -442,10 +457,10 @@ void write_footpaths(timetable& tt) {
   tt.locations_.preprocessing_footpaths_out_.clear();
 }
 
-void build_footpaths(timetable& tt) {
+void build_footpaths(timetable& tt, bool const adjust_footpaths) {
   add_links_to_and_between_children(tt);
   link_nearby_stations(tt);
-  transitivize_footpaths(tt);
+  transitivize_footpaths(tt, adjust_footpaths);
   write_footpaths(tt);
 }
 
