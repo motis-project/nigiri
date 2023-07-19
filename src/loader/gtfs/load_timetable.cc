@@ -342,7 +342,8 @@ void load_timetable(loader_config const& config,
       tt.location_routes_.emplace_back(location_routes[location_idx_t{l}]);
       assert(tt.location_routes_.size() == l + 1U);
       if(tt.use_station_filter_) {
-        timetable::filter_data::set_depature_count(location_idx_t{l}, location_routes[location_idx_t{l}].size());
+        tt.depature_count_.emplace_back(location_routes[location_idx_t{l}].size());
+        assert(tt.depature_count_.size() == l + 1U);
         int local = 0;
         int slow = 0;
         int fast = 0;
@@ -362,12 +363,13 @@ void load_timetable(loader_config const& config,
             away++;
           }
         }
-        std::map<timetable::group, size_t> classcount;
-        classcount[timetable::group::klocal] = local;
-        classcount[timetable::group::kslow] = slow;
-        classcount[timetable::group::kfast] = fast;
-        classcount[timetable::group::kaway] = away;
-        timetable::filter_data::set_groupclass_count(location_idx_t{l}, classcount);
+        vector<pair<group, int>> classcount;
+        classcount.emplace_back(group::klocal, local);
+        classcount.emplace_back(group::kslow, slow);
+        classcount.emplace_back(group::kfast, fast);
+        classcount.emplace_back(group::kaway, away);
+        tt.classgroups_on_loc_.emplace_back(classcount);
+        assert(tt.classgroups_on_loc_.size() == l + 1U);
       }
     }
 

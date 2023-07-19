@@ -13,6 +13,7 @@ namespace nigiri::loader {
 
 struct loader_config {
   unsigned link_stop_distance_;
+  bool use_stationfilter_;
   std::string_view default_tz_;
 };
 
