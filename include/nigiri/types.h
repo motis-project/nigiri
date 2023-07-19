@@ -346,6 +346,13 @@ struct delta {
 
   std::int16_t count() const { return days_ * 1440U + mam_; }
 
+  friend bool operator<(delta const a, delta const b) {
+    return a.value() < b.value();
+  }
+  friend bool operator==(delta const a, delta const b) {
+    return a.value() == b.value();
+  }
+
   std::uint16_t days_ : 5;
   std::uint16_t mam_ : 11;
 };

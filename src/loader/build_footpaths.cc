@@ -18,6 +18,8 @@
 #include "nigiri/logging.h"
 #include "utl/erase_duplicates.h"
 #include "utl/erase_if.h"
+#include "utl/pairwise.h"
+#include "utl/progress_tracker.h"
 
 // #define NIGIRI_BUILD_FOOTPATHS_DEBUG
 #if defined(NIGIRI_BUILD_FOOTPATHS_DEBUG)
@@ -66,6 +68,90 @@ using footgraph = vector<vector<footpath>>;
 using component_vec = std::vector<std::pair<uint32_t, uint32_t>>;
 using component_it = component_vec::iterator;
 using component_range = std::pair<component_it, component_it>;
+using match_set_t = hash_set<pair<location_idx_t, location_idx_t>>;
+
+pair<location_idx_t, location_idx_t> make_match_pair(location_idx_t const a,
+                                                     location_idx_t const b) {
+  return {std::min(a, b), std::max(a, b)};
+}
+
+bool is_match(timetable const& tt,
+              match_set_t const& matches,
+              route_idx_t const a_route,
+              route_idx_t const b_route,
+              transport_idx_t const a,
+              transport_idx_t const b) {
+  auto const a_loc_seq = tt.route_location_seq_[a_route];
+  auto const b_loc_seq = tt.route_location_seq_[b_route];
+  assert(a_loc_seq.size() == b_loc_seq.size());
+
+  for (auto const [x, y] : utl::zip(a_loc_seq, b_loc_seq)) {
+    if (!matches.contains(
+            make_match_pair(stop{x}.location_idx(), stop{y}.location_idx()))) {
+      return false;
+    }
+  }
+
+  for (auto i = stop_idx_t{0U}; i != a_loc_seq.size(); ++i) {
+    if (i != 0U && tt.event_mam(a_route, a, i, event_type::kArr) ==
+                       tt.event_mam(b_route, b, i, event_type::kArr)) {
+      return false;
+    }
+    if (i != a_loc_seq.size() - 1U &&
+        tt.event_mam(a_route, a, i, event_type::kDep) !=
+            tt.event_mam(b_route, b, i, event_type::kDep)) {
+      return false;
+    }
+  }
+
+  return true;
+}
+
+void find_duplicates(timetable& tt,
+                     match_set_t const& matches,
+                     location_idx_t const a,
+                     location_idx_t const b) {
+  for (auto const a_route : tt.location_routes_[a]) {
+    auto const first_stop_a_route =
+        stop{tt.route_location_seq_[a_route].front()}.location_idx();
+    if (first_stop_a_route != a) {
+      continue;
+    }
+
+    auto const a_loc_seq = tt.route_location_seq_[a_route];
+    for (auto const& b_route : tt.location_routes_[b]) {
+      auto const first_stop_b_route =
+          stop{tt.route_location_seq_[b_route].front()}.location_idx();
+      if (first_stop_b_route != b) {
+        continue;
+      }
+
+      auto const b_loc_seq = tt.route_location_seq_[b_route];
+      if (a_loc_seq.size() != b_loc_seq.size()) {
+        continue;
+      }
+
+      auto const a_transport_range = tt.route_transport_ranges_[a_route];
+      auto const b_transport_range = tt.route_transport_ranges_[b_route];
+      auto a_t = begin(a_transport_range), b_t = begin(b_transport_range);
+      while (a_t != end(a_transport_range) && b_t != end(b_transport_range)) {
+        auto const time_a = tt.event_mam(a_route, *a_t, 0U, event_type::kDep);
+        auto const time_b = tt.event_mam(b_route, *b_t, 0U, event_type::kDep);
+
+        if (time_a == time_b &&
+            is_match(tt, matches, a_route, b_route, *a_t, *b_t)) {
+          log(log_lvl::info, "loader.matches", "{} vs {} matches", *a_t, *b_t);
+          ++a_t;
+          ++b_t;
+        } else if (time_a < time_b) {
+          ++a_t;
+        } else /* time_a > time_b */ {
+          ++b_t;
+        }
+      }
+    }
+  }
+}
 
 void link_nearby_stations(timetable& tt) {
   constexpr auto const kLinkNearbyMaxDistance = 300;  // [m];
@@ -73,50 +159,57 @@ void link_nearby_stations(timetable& tt) {
   auto const locations_rtree =
       geo::make_point_rtree(tt.locations_.coordinates_);
 
-  for (auto from_idx = location_idx_t{0U};
-       from_idx != tt.locations_.src_.size(); ++from_idx) {
-    auto const from_pos = tt.locations_.coordinates_[from_idx];
+  auto matches = match_set_t{};
+  for (auto l_from_idx = location_idx_t{0U};
+       l_from_idx != tt.locations_.src_.size(); ++l_from_idx) {
+    auto const from_pos = tt.locations_.coordinates_[l_from_idx];
     if (std::abs(from_pos.lat_) < 2.0 && std::abs(from_pos.lng_) < 2.0) {
       continue;
     }
 
-    auto const from_src = tt.locations_.src_[from_idx];
+    auto const from_src = tt.locations_.src_[l_from_idx];
     if (from_src == source_idx_t::invalid()) {
       continue;  // no dummy stations
     }
 
     for (auto const& to_idx :
          locations_rtree.in_radius(from_pos, kLinkNearbyMaxDistance)) {
-      auto const to_l_idx = location_idx_t{static_cast<unsigned>(to_idx)};
-      if (from_idx == to_l_idx) {
+      auto const l_to_idx = location_idx_t{static_cast<unsigned>(to_idx)};
+      if (l_from_idx == l_to_idx) {
         continue;
       }
 
-      auto const to_src = tt.locations_.src_[to_l_idx];
-      auto const to_pos = tt.locations_.coordinates_[to_l_idx];
+      auto const to_src = tt.locations_.src_[l_to_idx];
+      auto const to_pos = tt.locations_.coordinates_[l_to_idx];
       if (to_src == source_idx_t::invalid() /* no dummy stations */
           || from_src == to_src /* don't short-circuit */) {
         continue;
       }
 
       auto const from_transfer_time =
-          duration_t{tt.locations_.transfer_time_[from_idx]};
+          duration_t{tt.locations_.transfer_time_[l_from_idx]};
       auto const to_transfer_time =
-          duration_t{tt.locations_.transfer_time_[to_l_idx]};
+          duration_t{tt.locations_.transfer_time_[l_to_idx]};
       auto const walk_duration = duration_t{static_cast<unsigned>(
           std::round(geo::distance(from_pos, to_pos) / (60 * kWalkSpeed)))};
       auto const duration =
           std::max({from_transfer_time, to_transfer_time, walk_duration});
-
-      auto const l_from_idx = location_idx_t{static_cast<unsigned>(from_idx)};
-      auto const l_to_idx = location_idx_t{static_cast<unsigned>(to_idx)};
 
       tt.locations_.preprocessing_footpaths_out_[l_from_idx].emplace_back(
           l_to_idx, duration);
       tt.locations_.preprocessing_footpaths_in_[l_to_idx].emplace_back(
           l_from_idx, duration);
       tt.locations_.equivalences_[l_from_idx].emplace_back(l_to_idx);
+
+      matches.emplace(make_match_pair(l_from_idx, l_to_idx));
     }
+  }
+
+  auto const tracker = utl::get_active_progress_tracker();
+  tracker->status("Find Duplicates").in_high(matches.size());
+  for (auto const& [a, b] : matches) {
+    find_duplicates(tt, matches, a, b);
+    tracker->increment();
   }
 }
 
