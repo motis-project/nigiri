@@ -239,6 +239,7 @@ private:
 
   bool is_pretrip() const { return !is_ontrip(); }
 
+  // 1
   bool start_dest_overlap() const {
     if (q_.start_match_mode_ == location_match_mode::kIntermodal ||
         q_.dest_match_mode_ == location_match_mode::kIntermodal) {
@@ -265,6 +266,7 @@ private:
     });
   }
 
+  // 4
   unsigned n_results_in_interval() const {
     if (holds_alternative<interval<unixtime_t>>(q_.start_time_)) {
       auto count = utl::count_if(state_.results_, [&](journey const& j) {
@@ -276,6 +278,7 @@ private:
     }
   }
 
+  // 4
   bool max_interval_reached() const {
     auto const can_search_earlier =
         q_.extend_interval_earlier_ &&
@@ -286,6 +289,7 @@ private:
     return !can_search_earlier && !can_search_later;
   }
 
+  // 2 und 5 --> verbindung zu start_times.cc
   void add_start_labels(start_time_t const& start_interval,
                         bool const add_ontrip) {
     get_starts(SearchDir, tt_, rtt_, start_interval, q_.start_,
@@ -293,12 +297,15 @@ private:
                add_ontrip);
   }
 
+  // 5
   void remove_ontrip_results() {
     utl::erase_if(state_.results_, [&](journey const& j) {
       return !search_interval_.contains(j.start_time_);
     });
   }
 
+  // hier ist der aufruf des Algo, den ich gering halten soll-----------------
+  // in while(true) 3
   void search_interval() {
     utl::equal_ranges_linear(
         state_.starts_,

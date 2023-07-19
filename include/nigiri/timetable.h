@@ -127,6 +127,41 @@ struct timetable {
     std::basic_string<stop_idx_t> const& stop_seq_numbers_;
   };
 
+  // Group of clasz for filter, to add weight
+  // local: kMetro, kSubway, kTram, kBus
+  // slow: kLongDistance, kRegional, kNight
+  // fast: kHighSpeed, kRegionalFast
+  // away: kAir, kCoach, kShip, kOther
+  enum class group : std::uint8_t {
+    klocal = 0,
+    kslow = 1,
+    kfast = 2,
+    kaway = 3
+  };
+
+  struct filter_data {
+    static void set_depature_count(location_idx_t ix, size_t count) {
+      depature_count_.at(ix) = count;
+    }
+
+    // how many depatures are at location l
+    static size_t get_depature_count_for_l(location_idx_t ix) {
+      return depature_count_.at(ix);
+    }
+
+    static void set_groupclass_count(location_idx_t ix, std::map<group, size_t> classcount) {
+      classgroups_on_loc_.at(ix) = std::move(classcount);
+    }
+
+    // how many departures are at l with classgroup x
+    static size_t get_groupclass_count(location_idx_t ix, group classgroup) {
+      return classgroups_on_loc_.at(ix).at(classgroup);
+    }
+
+    static std::map<location_idx_t, size_t> depature_count_;
+    static std::map<location_idx_t, std::map<group, size_t>> classgroups_on_loc_;
+  };
+
   template <typename TripId>
   trip_idx_t register_trip_id(TripId const& trip_id_str,
                               source_idx_t const src,
@@ -338,6 +373,9 @@ struct timetable {
   void write(cista::memory_holder&) const;
   void write(std::filesystem::path const&) const;
   static cista::wrapped<timetable> read(cista::memory_holder&&);
+
+  //Filter on/off
+  bool use_station_filter_;
 
   // Schedule range.
   interval<date::sys_days> date_range_;

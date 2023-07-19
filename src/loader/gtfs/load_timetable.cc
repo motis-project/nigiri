@@ -84,6 +84,8 @@ void load_timetable(loader_config const& config,
                     timetable& tt) {
   nigiri::scoped_timer const global_timer{"gtfs parser"};
 
+  tt.use_station_filter_ = config.use_stationfilter_;
+
   auto const load = [&](std::string_view file_name) -> file {
     return d.exists(file_name) ? d.get_file(file_name) : file{};
   };
@@ -335,16 +337,45 @@ void load_timetable(loader_config const& config,
       progress_tracker->increment();
     }
 
-    // Build location_routes map
+    // Build location_routes map and filter data for station filter
     for (auto l = tt.location_routes_.size(); l != tt.n_locations(); ++l) {
       tt.location_routes_.emplace_back(location_routes[location_idx_t{l}]);
       assert(tt.location_routes_.size() == l + 1U);
+      if(tt.use_station_filter_) {
+        timetable::filter_data::set_depature_count(location_idx_t{l}, location_routes[location_idx_t{l}].size());
+        int local = 0;
+        int slow = 0;
+        int fast = 0;
+        int away = 0;
+        for(auto const r : location_routes[location_idx_t{l}]) {
+          clasz klasse = tt.route_section_clasz_.at(route_idx_t{r}).at(0);
+          if(klasse == clasz::kMetro || klasse == clasz::kBus || klasse == clasz::kTram || klasse == clasz::kSubway) {
+            local++;
+          }
+          else if(klasse == clasz::kLongDistance || klasse == clasz::kRegional || klasse == clasz::kNight) {
+            slow++;
+          }
+          else if(klasse == clasz::kHighSpeed || klasse == clasz::kRegionalFast) {
+            fast++;
+          }
+          else if(klasse == clasz::kAir || klasse == clasz::kCoach || klasse == clasz::kShip || klasse == clasz::kOther) {
+            away++;
+          }
+        }
+        std::map<timetable::group, size_t> classcount;
+        classcount[timetable::group::klocal] = local;
+        classcount[timetable::group::kslow] = slow;
+        classcount[timetable::group::kfast] = fast;
+        classcount[timetable::group::kaway] = away;
+        timetable::filter_data::set_groupclass_count(location_idx_t{l}, classcount);
+      }
     }
 
     // Build transport ranges.
     for (auto const& t : trip_data.data_) {
       tt.trip_transport_ranges_.emplace_back(t.transport_ranges_);
     }
+
   }
 }
 
