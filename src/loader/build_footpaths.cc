@@ -15,7 +15,9 @@
 #include "utl/verify.h"
 
 #include "nigiri/loader/floyd_warshall.h"
+#include "nigiri/common/day_list.h"
 #include "nigiri/logging.h"
+#include "nigiri/rt/frun.h"
 #include "utl/erase_duplicates.h"
 #include "utl/erase_if.h"
 #include "utl/pairwise.h"
@@ -75,42 +77,71 @@ pair<location_idx_t, location_idx_t> make_match_pair(location_idx_t const a,
   return {std::min(a, b), std::max(a, b)};
 }
 
-bool is_match(timetable const& tt,
-              match_set_t const& matches,
-              route_idx_t const a_route,
-              route_idx_t const b_route,
-              transport_idx_t const a,
-              transport_idx_t const b) {
-  auto const a_loc_seq = tt.route_location_seq_[a_route];
-  auto const b_loc_seq = tt.route_location_seq_[b_route];
-  assert(a_loc_seq.size() == b_loc_seq.size());
+unsigned get_delta(timetable const& tt,
+                   route_idx_t const a_route,
+                   route_idx_t const b_route,
+                   transport_idx_t const a,
+                   transport_idx_t const b) {
+  auto const size = tt.route_location_seq_[a_route].size();
 
-  for (auto const [x, y] : utl::zip(a_loc_seq, b_loc_seq)) {
-    if (!matches.contains(
-            make_match_pair(stop{x}.location_idx(), stop{y}.location_idx()))) {
-      return false;
+  auto delta = 0U;
+  for (auto i = stop_idx_t{0U}; i != size; ++i) {
+    if (i != 0U) {
+      delta += std::abs(tt.event_mam(a_route, a, i, event_type::kArr).count() -
+                        tt.event_mam(b_route, b, i, event_type::kArr).count());
+    }
+    if (i != size - 1U) {
+      delta += std::abs(tt.event_mam(a_route, a, i, event_type::kDep).count() -
+                        tt.event_mam(b_route, b, i, event_type::kDep).count());
     }
   }
 
-  for (auto i = stop_idx_t{0U}; i != a_loc_seq.size(); ++i) {
-    if (i != 0U && tt.event_mam(a_route, a, i, event_type::kArr) ==
-                       tt.event_mam(b_route, b, i, event_type::kArr)) {
-      return false;
-    }
-    if (i != a_loc_seq.size() - 1U &&
-        tt.event_mam(a_route, a, i, event_type::kDep) !=
-            tt.event_mam(b_route, b, i, event_type::kDep)) {
-      return false;
+  return delta;
+}
+
+bool merge(timetable& tt, transport_idx_t const a, transport_idx_t const b) {
+  auto const bf_a = tt.bitfields_[tt.transport_traffic_days_[a]];
+  auto const bf_b = tt.bitfields_[tt.transport_traffic_days_[b]];
+  if (bf_a != bf_b) {
+    auto const id_a =
+        rt::frun{tt, nullptr, {.t_ = {a, day_idx_t{0}}, .stop_range_ = {}}}
+            .id();
+    auto const id_b =
+        rt::frun{tt, nullptr, {.t_ = {b, day_idx_t{0}}, .stop_range_ = {}}}
+            .id();
+    std::clog << "DIFFERENT DAYS " << (bf_a ^ bf_b).count() << " " << id_a
+              << " vs " << id_b << ":\n";
+    std::clog << tt.transport_traffic_days_[a] << ": "
+              << day_list{bf_a, tt.internal_interval_days().from_} << "\n";
+    std::clog << tt.transport_traffic_days_[b] << ": "
+              << day_list{bf_b, tt.internal_interval_days().from_} << "\n";
+    return false;
+  }
+  tt.transport_traffic_days_[b] = bitfield_idx_t{0U};  // disable trip 'b'
+  // TODO b = b - a
+  // TODO a = a + b
+
+  // TODO trip_transport_ranges
+  // if b == 00..0: replace b with a
+  // else:
+  for (auto const merged_trips_idx_b : tt.transport_to_trip_section_[b]) {
+    for (auto const b_trp : tt.merged_trips_[merged_trips_idx_b]) {
+      for (auto& [t, range] : tt.trip_transport_ranges_[b_trp]) {
+        if (t == b) {
+          t = a;  // replace b with a in b's trip transport ranges
+        }
+      }
     }
   }
 
   return true;
 }
 
-void find_duplicates(timetable& tt,
-                     match_set_t const& matches,
-                     location_idx_t const a,
-                     location_idx_t const b) {
+unsigned find_duplicates(timetable& tt,
+                         match_set_t const& matches,
+                         location_idx_t const a,
+                         location_idx_t const b) {
+  auto merged = 0U;
   for (auto const a_route : tt.location_routes_[a]) {
     auto const first_stop_a_route =
         stop{tt.route_location_seq_[a_route].front()}.location_idx();
@@ -131,16 +162,25 @@ void find_duplicates(timetable& tt,
         continue;
       }
 
+      for (auto const [x, y] : utl::zip(a_loc_seq, b_loc_seq)) {
+        if (!matches.contains(make_match_pair(stop{x}.location_idx(),
+                                              stop{y}.location_idx()))) {
+          continue;
+        }
+      }
+
       auto const a_transport_range = tt.route_transport_ranges_[a_route];
       auto const b_transport_range = tt.route_transport_ranges_[b_route];
       auto a_t = begin(a_transport_range), b_t = begin(b_transport_range);
+
       while (a_t != end(a_transport_range) && b_t != end(b_transport_range)) {
         auto const time_a = tt.event_mam(a_route, *a_t, 0U, event_type::kDep);
         auto const time_b = tt.event_mam(b_route, *b_t, 0U, event_type::kDep);
 
-        if (time_a == time_b &&
-            is_match(tt, matches, a_route, b_route, *a_t, *b_t)) {
-          log(log_lvl::info, "loader.matches", "{} vs {} matches", *a_t, *b_t);
+        if (time_a == time_b) {
+          if (get_delta(tt, a_route, b_route, *a_t, *b_t) < a_loc_seq.size()) {
+            merged += merge(tt, *a_t, *b_t) ? 1U : 0U;
+          }
           ++a_t;
           ++b_t;
         } else if (time_a < time_b) {
@@ -149,8 +189,10 @@ void find_duplicates(timetable& tt,
           ++b_t;
         }
       }
+      std::clog << "\n";
     }
   }
+  return merged;
 }
 
 void link_nearby_stations(timetable& tt) {
@@ -207,10 +249,12 @@ void link_nearby_stations(timetable& tt) {
 
   auto const tracker = utl::get_active_progress_tracker();
   tracker->status("Find Duplicates").in_high(matches.size());
+  auto merged = 0U;
   for (auto const& [a, b] : matches) {
-    find_duplicates(tt, matches, a, b);
+    merged += find_duplicates(tt, matches, a, b);
     tracker->increment();
   }
+  std::clog << "#merged=" << merged << "\n";
 }
 
 footgraph get_footpath_graph(timetable& tt) {
