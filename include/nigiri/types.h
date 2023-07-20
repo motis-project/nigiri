@@ -162,7 +162,10 @@ struct provider {
 
 struct trip_id {
   CISTA_COMPARABLE()
-  CISTA_PRINTABLE(trip_id, "id", "src")
+  inline friend std::ostream& operator<<(std::ostream& out, trip_id const tid) {
+    return out << "{id=" << tid.id_
+               << ", src=" << static_cast<int>(to_idx(tid.src_)) << "}";
+  }
   std::string_view id_;
   source_idx_t src_;
 };

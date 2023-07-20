@@ -87,50 +87,60 @@ unsigned get_delta(timetable const& tt,
   auto delta = 0U;
   for (auto i = stop_idx_t{0U}; i != size; ++i) {
     if (i != 0U) {
-      delta += std::abs(tt.event_mam(a_route, a, i, event_type::kArr).count() -
-                        tt.event_mam(b_route, b, i, event_type::kArr).count());
+      delta += static_cast<unsigned>(
+          std::abs(tt.event_mam(a_route, a, i, event_type::kArr).count() -
+                   tt.event_mam(b_route, b, i, event_type::kArr).count()));
     }
     if (i != size - 1U) {
-      delta += std::abs(tt.event_mam(a_route, a, i, event_type::kDep).count() -
-                        tt.event_mam(b_route, b, i, event_type::kDep).count());
+      delta += static_cast<unsigned>(
+          std::abs(tt.event_mam(a_route, a, i, event_type::kDep).count() -
+                   tt.event_mam(b_route, b, i, event_type::kDep).count()));
     }
   }
 
   return delta;
 }
 
-bool merge(timetable& tt, transport_idx_t const a, transport_idx_t const b) {
+bool merge(timetable& tt,
+           stop_idx_t const size,
+           transport_idx_t const a,
+           transport_idx_t const b) {
   auto const bf_a = tt.bitfields_[tt.transport_traffic_days_[a]];
   auto const bf_b = tt.bitfields_[tt.transport_traffic_days_[b]];
-  if (bf_a != bf_b) {
-    auto const id_a =
-        rt::frun{tt, nullptr, {.t_ = {a, day_idx_t{0}}, .stop_range_ = {}}}
-            .id();
-    auto const id_b =
-        rt::frun{tt, nullptr, {.t_ = {b, day_idx_t{0}}, .stop_range_ = {}}}
-            .id();
-    std::clog << "DIFFERENT DAYS " << (bf_a ^ bf_b).count() << " " << id_a
-              << " vs " << id_b << ":\n";
-    std::clog << tt.transport_traffic_days_[a] << ": "
-              << day_list{bf_a, tt.internal_interval_days().from_} << "\n";
-    std::clog << tt.transport_traffic_days_[b] << ": "
-              << day_list{bf_b, tt.internal_interval_days().from_} << "\n";
+  if ((bf_a & bf_b).none()) {
     return false;
   }
-  tt.transport_traffic_days_[b] = bitfield_idx_t{0U};  // disable trip 'b'
-  // TODO b = b - a
-  // TODO a = a + b
 
-  // TODO trip_transport_ranges
-  // if b == 00..0: replace b with a
-  // else:
-  for (auto const merged_trips_idx_b : tt.transport_to_trip_section_[b]) {
-    for (auto const b_trp : tt.merged_trips_[merged_trips_idx_b]) {
-      for (auto& [t, range] : tt.trip_transport_ranges_[b_trp]) {
-        if (t == b) {
-          t = a;  // replace b with a in b's trip transport ranges
+  if ((bf_a & bf_b) == bf_a) {
+    tt.transport_traffic_days_[b] = bitfield_idx_t{0U};  // disable trip 'b'
+
+    for (auto const merged_trips_idx_b : tt.transport_to_trip_section_[b]) {
+      for (auto const b_trp : tt.merged_trips_[merged_trips_idx_b]) {
+        for (auto& [t, range] : tt.trip_transport_ranges_[b_trp]) {
+          if (t == b) {
+            t = a;  // replace b with a in b's trip transport ranges
+          }
         }
       }
+    }
+  } else {
+    tt.transport_traffic_days_[a] = tt.register_bitfield(bf_a | bf_b);
+    tt.transport_traffic_days_[b] = tt.register_bitfield(bf_b & ~bf_a);
+
+    hash_set<trip_idx_t> b_trips;
+    for (auto const merged_trips_idx_b : tt.transport_to_trip_section_[b]) {
+      for (auto const b_trp : tt.merged_trips_[merged_trips_idx_b]) {
+        for (auto& [t, range] : tt.trip_transport_ranges_[b_trp]) {
+          if (t == b) {
+            b_trips.emplace(b_trp);
+          }
+        }
+      }
+    }
+
+    for (auto const b_trp : b_trips) {
+      tt.trip_transport_ranges_[b_trp].push_back(
+          transport_range_t{a, {0U, size}});
     }
   }
 
@@ -179,7 +189,10 @@ unsigned find_duplicates(timetable& tt,
 
         if (time_a == time_b) {
           if (get_delta(tt, a_route, b_route, *a_t, *b_t) < a_loc_seq.size()) {
-            merged += merge(tt, *a_t, *b_t) ? 1U : 0U;
+            if (merge(tt, static_cast<stop_idx_t>(a_loc_seq.size()), *a_t,
+                      *b_t)) {
+              ++merged;
+            }
           }
           ++a_t;
           ++b_t;
@@ -189,13 +202,12 @@ unsigned find_duplicates(timetable& tt,
           ++b_t;
         }
       }
-      std::clog << "\n";
     }
   }
   return merged;
 }
 
-void link_nearby_stations(timetable& tt) {
+void link_nearby_stations(timetable& tt, bool const merge_duplicates) {
   constexpr auto const kLinkNearbyMaxDistance = 300;  // [m];
 
   auto const locations_rtree =
@@ -243,18 +255,17 @@ void link_nearby_stations(timetable& tt) {
           l_from_idx, duration);
       tt.locations_.equivalences_[l_from_idx].emplace_back(l_to_idx);
 
-      matches.emplace(make_match_pair(l_from_idx, l_to_idx));
+      if (merge_duplicates) {
+        matches.emplace(make_match_pair(l_from_idx, l_to_idx));
+      }
     }
   }
 
-  auto const tracker = utl::get_active_progress_tracker();
-  tracker->status("Find Duplicates").in_high(matches.size());
-  auto merged = 0U;
-  for (auto const& [a, b] : matches) {
-    merged += find_duplicates(tt, matches, a, b);
-    tracker->increment();
+  if (merge_duplicates) {
+    for (auto const& [a, b] : matches) {
+      find_duplicates(tt, matches, a, b);
+    }
   }
-  std::clog << "#merged=" << merged << "\n";
 }
 
 footgraph get_footpath_graph(timetable& tt) {
@@ -594,9 +605,11 @@ void write_footpaths(timetable& tt) {
   tt.locations_.preprocessing_footpaths_out_.clear();
 }
 
-void build_footpaths(timetable& tt, bool const adjust_footpaths) {
+void build_footpaths(timetable& tt,
+                     bool const adjust_footpaths,
+                     bool const merge_duplicates) {
   add_links_to_and_between_children(tt);
-  link_nearby_stations(tt);
+  link_nearby_stations(tt, merge_duplicates);
   transitivize_footpaths(tt, adjust_footpaths);
   write_footpaths(tt);
 }
