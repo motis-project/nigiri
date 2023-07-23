@@ -124,7 +124,8 @@ void reconstruct_journey(timetable const& tt,
                          raptor_state const& raptor_state,
                          journey& j,
                          date::sys_days const base,
-                         day_idx_t const base_day_idx) {
+                         day_idx_t const base_day_idx,
+                         bool const one_to_all) {
   constexpr auto const kFwd = SearchDir == direction::kForward;
   auto const is_better_or_eq = [](auto a, auto b) {
     return kFwd ? a <= b : a >= b;
@@ -351,7 +352,7 @@ void reconstruct_journey(timetable const& tt,
     trace_reconstruct("CHECKING TRANSFER AT {}\n", location{tt, l});
     auto transfer_at_same_stop =
         check_fp(k, l, curr_time,
-                 footpath{l, (k == j.transfers_ + 1U)
+                 footpath{l, (k == j.transfers_ + 1U && !one_to_all)
                                  ? 0_i8_minutes
                                  : tt.locations_.transfer_time_[l]});
     if (transfer_at_same_stop.has_value()) {
@@ -402,7 +403,8 @@ template void reconstruct_journey<direction::kForward>(timetable const&,
                                                        raptor_state const&,
                                                        journey&,
                                                        date::sys_days const,
-                                                       day_idx_t const);
+                                                       day_idx_t const,
+                                                       bool);
 
 template void reconstruct_journey<direction::kBackward>(timetable const&,
                                                         rt_timetable const*,
@@ -410,6 +412,7 @@ template void reconstruct_journey<direction::kBackward>(timetable const&,
                                                         raptor_state const&,
                                                         journey&,
                                                         date::sys_days const,
-                                                        day_idx_t const);
+                                                        day_idx_t const,
+                                                        bool);
 
 }  // namespace nigiri::routing

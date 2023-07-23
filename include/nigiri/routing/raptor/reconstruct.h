@@ -20,7 +20,8 @@ void reconstruct_journey(timetable const&,
                          query const&,
                          raptor_state const&,
                          journey&,
-                         date::sys_days const base,
-                         day_idx_t const base_day_idx);
+                         date::sys_days base,
+                         day_idx_t base_day_idx,
+                         bool one_to_all = false);
 
 }  // namespace nigiri::routing

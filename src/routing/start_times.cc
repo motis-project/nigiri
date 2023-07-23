@@ -1,11 +1,13 @@
 #include "nigiri/routing/start_times.h"
 
+#include "utl/enumerate.h"
+#include "utl/get_or_create.h"
+#include "utl/insert_sorted.h"
+#include "utl/overloaded.h"
+
 #include "nigiri/routing/for_each_meta.h"
 #include "nigiri/rt/rt_timetable.h"
 #include "nigiri/special_stations.h"
-#include "utl/enumerate.h"
-#include "utl/get_or_create.h"
-#include "utl/overloaded.h"
 
 namespace nigiri::routing {
 
@@ -172,7 +174,7 @@ void add_starts_in_interval(direction const search_dir,
             rt_t, static_cast<stop_idx_t>(i),
             (search_dir == direction::kForward ? event_type::kDep
                                                : event_type::kArr));
-        auto const [it, inserted] = insert_sorted(
+        auto const [it, inserted] = utl::insert_sorted(
             starts,
             start{.time_at_start_ = search_dir == direction::kForward
                                         ? ev_time - d

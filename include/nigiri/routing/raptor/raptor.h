@@ -25,7 +25,7 @@ struct raptor_stats {
   std::uint64_t route_update_prevented_by_lower_bound_{0ULL};
 };
 
-template <direction SearchDir, bool Rt>
+template <direction SearchDir, bool Rt, bool OneToAll = false>
 struct raptor {
   using algo_state_t = raptor_state;
   using algo_stats_t = raptor_stats;
@@ -177,6 +177,10 @@ struct raptor {
       trace_print_state_after_round();
     }
 
+    if constexpr (OneToAll) {
+      return;
+    }
+
     for (auto i = 0U; i != n_locations_; ++i) {
       auto const is_dest = is_dest_[i];
       if (!is_dest) {
@@ -206,14 +210,15 @@ struct raptor {
   }
 
   void reconstruct(query const& q, journey& j) {
-    reconstruct_journey<SearchDir>(tt_, rtt_, q, state_, j, base(), base_);
+    reconstruct_journey<SearchDir>(tt_, rtt_, q, state_, j, base(), base_,
+                                   OneToAll);
   }
 
-private:
   date::sys_days base() const {
     return tt_.internal_interval_days().from_ + as_int(base_) * date::days{1};
   }
 
+private:
   void update_transfers(unsigned const k) {
     for (auto i = 0U; i != n_locations_; ++i) {
       if (!state_.prev_station_mark_[i]) {
@@ -649,6 +654,9 @@ private:
   bool is_intermodal_dest() const { return !dist_to_end_.empty(); }
 
   void update_time_at_dest(unsigned const k, delta_t const t) {
+    if constexpr (OneToAll) {
+      return;
+    }
     for (auto i = k; i != time_at_dest_.size(); ++i) {
       time_at_dest_[i] = get_best(time_at_dest_[i], t);
     }
