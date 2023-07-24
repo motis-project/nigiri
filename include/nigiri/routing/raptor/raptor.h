@@ -1,5 +1,6 @@
 #pragma once
 
+#include "nigiri/common/day_list.h"
 #include "nigiri/common/delta_t.h"
 #include "nigiri/common/linear_lower_bound.h"
 #include "nigiri/routing/journey.h"
@@ -596,9 +597,12 @@ private:
               "┊ │k={}      => transport={}, name={}, dbg={}, day={}/{}, "
               "ev_day_offset={}, "
               "best_mam={}, "
-              "transport_mam={}, transport_time={} => NO TRAFFIC!\n",
+              "transport_mam={}, transport_time={} => NO TRAFFIC! "
+              "(active_days={})\n",
               k, t, tt_.transport_name(t), tt_.dbg(t), i, day, ev_day_offset,
-              mam_at_stop, ev_mam, ev);
+              mam_at_stop, ev_mam, ev,
+              day_list{tt_.bitfields_[tt_.transport_traffic_days_[t]],
+                       tt_.internal_interval_days().from_});
           continue;
         }
 
