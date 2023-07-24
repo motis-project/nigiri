@@ -326,4 +326,8 @@ TEST(routing, reach_test) {
     std::cout << reach << " " << geo::distance(b.max_, b.min_) << " "
               << name.view() << "\n";
   }
+
+  // clang-format off
+  // PLOT WITH
+  // gnuplot  -persist -e "plot 'routes.dat' using 1:2:3 with labels point pt 7" out.png
 }
