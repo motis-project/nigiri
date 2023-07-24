@@ -14,13 +14,15 @@ struct reach_info {
     return start_end_ != location_idx_t::invalid();
   }
 
-  double reach_{0.0};
+  double reach_{-1.0};
   routing::journey j_;
   location_idx_t start_end_{location_idx_t::invalid()};
   location_idx_t stop_in_route_{location_idx_t::invalid()};
 };
 
 vector_map<route_idx_t, reach_info> get_reach_values(
-    timetable const& tt, std::vector<location_idx_t> const& source_locations);
+    timetable const& tt,
+    std::vector<location_idx_t> const& source_locations,
+    interval<unixtime_t>);
 
 }  // namespace nigiri::routing
