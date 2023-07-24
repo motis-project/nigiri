@@ -310,7 +310,11 @@ TEST(routing, reach_test) {
 
   for (auto const [route, reach_tuple] : utl::enumerate(route_reachs)) {
     auto const [j, reach, stp, x] = reach_tuple;
+    auto const t = tt.route_transport_ranges_[route_idx_t{route}][0];
+    auto const [type, name] =
+        utl::split<' ', utl::cstr, utl::cstr>(tt.transport_name(t));
     if (stp == location_idx_t::invalid()) {
+      std::cout << route << " " << name.view() << " INVALID\n";
       continue;
     }
 
@@ -320,9 +324,6 @@ TEST(routing, reach_test) {
       auto const l = stop{location_seq[i]}.location_idx();
       b.extend(tt.locations_.coordinates_[l]);
     }
-    auto const t = tt.route_transport_ranges_[route_idx_t{route}][0];
-    auto const [type, name] =
-        utl::split<' ', utl::cstr, utl::cstr>(tt.transport_name(t));
     std::cout << reach << " " << geo::distance(b.max_, b.min_) << " "
               << name.view() << "\n";
   }
