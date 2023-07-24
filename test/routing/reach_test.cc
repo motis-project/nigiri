@@ -146,8 +146,7 @@ TEST(routing, reach_test) {
 
   auto const route_reachs = routing::get_reach_values(
       tt, all_locations,
-      interval{unixtime_t{sys_days{2019_y / May / 1}},
-               unixtime_t{sys_days{2019_y / May / 2}}});
+      interval{sys_days{2019_y / May / 1}, sys_days{2019_y / May / 2}});
 
   std::cout << "#routes=" << route_reachs.size() << "\n";
   for (auto const [route, r] : utl::enumerate(route_reachs)) {
