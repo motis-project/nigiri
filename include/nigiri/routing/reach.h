@@ -21,6 +21,8 @@ struct reach_info {
 };
 
 vector_map<route_idx_t, reach_info> get_reach_values(
-    timetable const& tt, std::vector<location_idx_t> const& source_locations);
+    timetable const& tt,
+    std::vector<location_idx_t> const& source_locations,
+    interval<unixtime_t>);
 
 }  // namespace nigiri::routing
