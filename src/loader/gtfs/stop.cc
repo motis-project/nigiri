@@ -238,7 +238,7 @@ locations_map read_stops(source_idx_t const src,
         [&](auto const& s) {
           s.second->compute_close_stations(stop_rtree, link_stop_distance);
         },
-        progress_tracker->update_fn());
+        progress_tracker->increment_fn());
   }
 
   auto empty_idx_vec = vector<location_idx_t>{};

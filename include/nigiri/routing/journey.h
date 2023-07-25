@@ -69,6 +69,14 @@ struct journey {
     return duration_t{std::abs((dest_time_ - start_time_).count())};
   }
 
+  void copy_from(journey const& j) {
+    start_time_ = j.start_time_;
+    dest_time_ = j.dest_time_;
+    dest_ = j.dest_;
+    transfers_ = j.transfers_;
+    legs_.clear();
+  }
+
   void print(std::ostream&,
              timetable const&,
              rt_timetable const* = nullptr,
@@ -79,6 +87,7 @@ struct journey {
   unixtime_t dest_time_;
   location_idx_t dest_;
   std::uint8_t transfers_{0U};
+  bool reconstructed_{false};
 };
 
 }  // namespace nigiri::routing

@@ -22,8 +22,9 @@ struct state {
         dist_to_dest_(tt.n_locations(), kInvalidDelta<direction::kForward>) {}
 
   void reset() {
-    results_.clear();
-    results_.resize(tt_.n_locations());
+    for (auto& r : results_) {
+      r.clear();
+    }
 
     raptor_.reset_arrivals();
     starts_.clear();
@@ -39,21 +40,22 @@ struct state {
   std::vector<bool> is_dest_;
   std::vector<std::uint16_t> dist_to_dest_;
   raptor_state raptor_state_;
+  journey reconstruct_journey_;
   raptor<direction::kForward, false, true> raptor_{
       tt_, nullptr, raptor_state_, is_dest_, dist_to_dest_, lb_, base_day_};
 };
 
-boost::thread_specific_ptr<state> search_state;
+static boost::thread_specific_ptr<state> search_state;
 
 reach_info::reach_info() = default;
 
 void reach_info::update(double const new_reach,
-                        routing::journey const& j,
+                        routing::journey const&,
                         location_idx_t const start_end,
                         location_idx_t const stop_in_route) {
   auto const lck = std::scoped_lock{mutex_};
   if (new_reach > reach_) {
-    j_ = j;
+    //    j_ = j;
     reach_ = new_reach;
     stop_in_route_ = stop_in_route;
     start_end_ = start_end;
@@ -152,12 +154,14 @@ void reach_values_for_source(timetable const& tt,
 
           // Reconstruct journeys and update reach values.
           for (auto& j : state.results_[to_idx(t)]) {
-            if (!j.legs_.empty()) {
+            if (j.reconstructed_) {
               continue;
             }
             q.destination_ = {{t, 0_minutes, 0U}};
-            state.raptor_.reconstruct(q, j);
-            update_route_reachs(tt, j, route_reachs);
+            state.reconstruct_journey_.copy_from(j);
+            state.raptor_.reconstruct(q, state.reconstruct_journey_);
+            update_route_reachs(tt, state.reconstruct_journey_, route_reachs);
+            j.reconstructed_ = true;
           }
         }
       });
@@ -178,7 +182,7 @@ std::vector<reach_info> get_reach_values(
         reach_values_for_source(tt, search_interval.from_, search_interval, l,
                                 route_reachs);
       },
-      progress_tracker->update_fn());
+      progress_tracker->increment_fn());
   return route_reachs;
 }
 
