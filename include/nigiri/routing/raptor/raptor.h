@@ -638,11 +638,6 @@ private:
   }
 
   delta_t to_delta(day_idx_t const day, std::int16_t const mam) {
-    trace("to delta: day={}, base={}={}, mam={}, {}={} = {}\n", as_int(day),
-          as_int(base_), base(), mam,
-          (as_int(day) - as_int(base_)) * 1440 + mam,
-          tt_.to_unixtime(day, duration_t{mam}),
-          clamp((as_int(day) - as_int(base_)) * 1440 + mam));
     return clamp((as_int(day) - as_int(base_)) * 1440 + mam);
   }
 

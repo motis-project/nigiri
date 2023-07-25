@@ -139,6 +139,9 @@ struct rt_timetable {
 
   // RT transport -> vehicle clasz for each section
   vecvec<rt_transport_idx_t, clasz> rt_transport_section_clasz_;
+
+  // RT transport -> canceled flag
+  bitvec rt_transport_is_cancelled_;
 };
 
 }  // namespace nigiri

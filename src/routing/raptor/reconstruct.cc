@@ -281,9 +281,8 @@ void reconstruct_journey(timetable const& tt,
       -> std::optional<std::pair<journey::leg, journey::leg>> {
     auto const fp_start = static_cast<delta_t>(
         curr_time - (kFwd ? fp.duration() : -fp.duration()).count());
-    auto const transport_leg = get_transport(k, fp.target(), fp_start);
-
     trace_rc_check_fp;
+    auto const transport_leg = get_transport(k, fp.target(), fp_start);
 
     if (transport_leg.has_value()) {
       trace_rc_legs_found;
