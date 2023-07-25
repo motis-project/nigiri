@@ -6,6 +6,7 @@
 #include "nigiri/loader/build_lb_graph.h"
 #include "nigiri/special_stations.h"
 #include "nigiri/timetable.h"
+#include "geo/box.h"
 
 namespace nigiri::loader {
 
@@ -28,6 +29,20 @@ void register_special_stations(timetable& tt) {
   }
   tt.location_routes_.resize(tt.n_locations());
   tt.bitfields_.emplace_back(bitfield{});  // bitfield_idx 0 = 000...00 bitfield
+}
+
+void compute_route_bboxes(timetable& tt) {
+  tt.route_bbox_diagonal_.resize(tt.n_routes());
+  for (auto r = route_idx_t{0U}; r != tt.n_routes(); ++r) {
+    auto b = geo::box{};
+    auto const location_seq = tt.route_location_seq_[r];
+    for (auto i = 0U; i != location_seq.size(); ++i) {
+      auto const l = stop{location_seq[i]}.location_idx();
+      b.extend(tt.locations_.coordinates_[l]);
+    }
+    tt.route_bbox_diagonal_[r] =
+        static_cast<float>(geo::distance(b.max_, b.min_));
+  }
 }
 
 void finalize(timetable& tt,
@@ -53,6 +68,7 @@ void finalize(timetable& tt,
   build_footpaths(tt, adjust_footpaths, merge_duplicates);
   build_lb_graph<direction::kForward>(tt);
   build_lb_graph<direction::kBackward>(tt);
+  compute_route_bboxes(tt);
 }
 
 }  // namespace nigiri::loader

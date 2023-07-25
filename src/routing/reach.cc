@@ -1,16 +1,31 @@
 #include "nigiri/routing/reach.h"
 
+#include <filesystem>
+
 #include "boost/thread/tss.hpp"
+
+#include "geo/box.h"
+
+#include "utl/equal_ranges_linear.h"
+#include "utl/erase_if.h"
+#include "utl/parallel_for.h"
+#include "utl/parser/split.h"
+#include "utl/progress_tracker.h"
+
+#include "cista/mmap.h"
+#include "cista/serialization.h"
 
 #include "nigiri/routing/raptor/raptor.h"
 #include "nigiri/routing/start_times.h"
 #include "nigiri/rt/frun.h"
 #include "nigiri/timetable.h"
-#include "utl/equal_ranges_linear.h"
-#include "utl/parallel_for.h"
-#include "utl/progress_tracker.h"
+
+namespace fs = std::filesystem;
 
 namespace nigiri::routing {
+
+constexpr auto const kMode =
+    cista::mode::WITH_INTEGRITY | cista::mode::WITH_STATIC_VERSION;
 
 struct state {
   explicit state(timetable const& tt, date::sys_days const base_day)
@@ -49,7 +64,7 @@ static boost::thread_specific_ptr<state> search_state;
 
 reach_info::reach_info() = default;
 
-void reach_info::update(double const new_reach,
+void reach_info::update(float const new_reach,
                         routing::journey const&,
                         location_idx_t const start_end,
                         location_idx_t const stop_in_route) {
@@ -81,8 +96,8 @@ void update_route_reachs(timetable const& tt,
     auto& reach = route_reachs[to_idx(r)];
     for (auto i = ree.stop_range_.from_; i != ree.stop_range_.to_; ++i) {
       auto const stp = tt.locations_.coordinates_[fr[i].get_location_idx()];
-      auto const new_reach =
-          std::min(geo::distance(start, stp), geo::distance(stp, dest));
+      auto const new_reach = static_cast<float>(
+          std::min(geo::distance(start, stp), geo::distance(stp, dest)));
       auto const stop_in_route = fr[i].get_location_idx();
       auto const start_end =
           geo::distance(start, stp) < geo::distance(stp, dest)
@@ -184,6 +199,88 @@ std::vector<reach_info> get_reach_values(
       },
       progress_tracker->increment_fn());
   return route_reachs;
+}
+
+std::pair<std::vector<unsigned>, float> get_separation_fn(
+    timetable const& tt,
+    std::vector<reach_info> const& route_reachs,
+    double const reach_factor,
+    double const outlier_percent) {
+  auto perm = std::vector<unsigned>{};
+  perm.resize(route_reachs.size());
+  std::generate(begin(perm), end(perm), [i = 0U]() mutable { return i++; });
+
+  utl::erase_if(perm, [&](unsigned i) { return !route_reachs[i].valid(); });
+
+  utl::sort(perm, [&](unsigned const a, unsigned const b) {
+    return tt.route_bbox_diagonal_[route_idx_t{a}] -
+               reach_factor * route_reachs[a].reach_ <
+           tt.route_bbox_diagonal_[route_idx_t{b}] -
+               reach_factor * route_reachs[b].reach_;
+  });
+
+  for (auto const idx : perm) {
+    auto const t = tt.route_transport_ranges_[route_idx_t{idx}][0];
+    auto const [type, name] =
+        utl::split<' ', utl::cstr, utl::cstr>(tt.transport_name(t));
+    std::cout << "  reach=" << route_reachs[idx].reach_
+              << ", bbox_diagonal=" << tt.route_bbox_diagonal_[route_idx_t{idx}]
+              << ", sum="
+              << (tt.route_bbox_diagonal_[route_idx_t{idx}] -
+                  reach_factor * route_reachs[idx].reach_)
+              << ", name=" << name.view() << "\n";
+  }
+
+  auto const last_idx = static_cast<std::size_t>(
+      std::round(static_cast<double>(route_reachs.size()) * outlier_percent));
+  auto const fn = tt.route_bbox_diagonal_[route_idx_t{perm[last_idx]}] -
+                  (route_reachs[perm[last_idx]].reach_ * reach_factor);
+
+  perm.resize(last_idx);
+
+  return {perm, fn};
+}
+
+using reach_values_vec_t = vector_map<route_idx_t, unsigned>;
+
+void write_reach_values(timetable const& tt,
+                        float const y,
+                        float const x_slope,
+                        std::vector<reach_info> const& route_reachs,
+                        fs::path const& path) {
+  auto reach_values = vector_map<route_idx_t, unsigned>{};
+  reach_values.resize(tt.n_routes());
+  for (auto r = 0U; r != tt.n_routes(); ++r) {
+    reach_values[route_idx_t{r}] = std::max(
+        route_reachs[r].reach_,
+        std::ceil(y + x_slope * tt.route_bbox_diagonal_[route_idx_t{r}]));
+  }
+
+  auto mmap =
+      cista::mmap{path.string().c_str(), cista::mmap::protection::WRITE};
+  auto writer = cista::buf<cista::mmap>(std::move(mmap));
+  cista::serialize<kMode>(writer, reach_values);
+}
+
+cista::wrapped<reach_values_vec_t> read_reach_values(
+    cista::memory_holder&& mem) {
+  return std::visit(
+      utl::overloaded{[&](cista::buf<cista::mmap>& b) {
+                        auto const ptr = reinterpret_cast<reach_values_vec_t*>(
+                            &b[cista::data_start(kMode)]);
+                        return cista::wrapped{std::move(mem), ptr};
+                      },
+                      [&](cista::buffer& b) {
+                        auto const ptr =
+                            cista::deserialize<reach_values_vec_t, kMode>(b);
+                        return cista::wrapped{std::move(mem), ptr};
+                      },
+                      [&](cista::byte_buf& b) {
+                        auto const ptr =
+                            cista::deserialize<reach_values_vec_t, kMode>(b);
+                        return cista::wrapped{std::move(mem), ptr};
+                      }},
+      mem);
 }
 
 }  // namespace nigiri::routing

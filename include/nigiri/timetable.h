@@ -442,6 +442,9 @@ struct timetable {
   // Lower bound graph.
   vecvec<location_idx_t, footpath> fwd_search_lb_graph_;
   vecvec<location_idx_t, footpath> bwd_search_lb_graph_;
+
+  // Route bounding box diagonal distance in meters.
+  vector_map<route_idx_t, float> route_bbox_diagonal_;
 };
 
 }  // namespace nigiri

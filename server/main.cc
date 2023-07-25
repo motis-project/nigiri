@@ -11,7 +11,10 @@
 
 #include "cista/hash.h"
 
+#include "geo/box.h"
+
 #include "utl/enumerate.h"
+#include "utl/erase_if.h"
 #include "utl/helpers/algorithm.h"
 #include "utl/progress_tracker.h"
 #include "utl/to_vec.h"
@@ -23,8 +26,6 @@
 #include "nigiri/logging.h"
 #include "nigiri/routing/reach.h"
 #include "nigiri/timetable.h"
-#include "geo/box.h"
-#include "utl/erase_if.h"
 
 using namespace date;
 using namespace nigiri;
@@ -111,50 +112,22 @@ int reach(interval<date::sys_days> const date_range) {
       routing::get_reach_values(tt, source_locations, date_range);
   std::cout << " done" << std::endl;
 
-  std::vector<double> route_bbox{};
-  route_bbox.resize(tt.n_routes());
-  for (auto r = route_idx_t{0U}; r != tt.n_routes(); ++r) {
-    auto b = geo::box{};
-    auto const location_seq = tt.route_location_seq_[route_idx_t{r}];
-    for (auto i = 0U; i != location_seq.size(); ++i) {
-      auto const l = stop{location_seq[i]}.location_idx();
-      b.extend(tt.locations_.coordinates_[l]);
-    }
-    route_bbox[to_idx(r)] = geo::distance(b.max_, b.min_);
-  }
+  auto const x_slope = 0.01;
+  auto const [outliers, y] =
+      routing::get_separation_fn(tt, route_reachs, .6, x_slope);
 
   auto f = std::ofstream{"reach.txt"};
   for (auto const& [r, reach] : utl::enumerate(route_reachs)) {
     if (reach.valid()) {
-      f << reach.reach_ << " " << route_bbox[r] << "\n";
+      f << reach.reach_ << " " << tt.route_bbox_diagonal_[route_idx_t{r}]
+        << "\n";
     }
   }
-  auto perm = std::vector<unsigned>{};
-  perm.resize(route_reachs.size());
-  std::generate(begin(perm), end(perm), [i = 0U]() mutable { return i++; });
 
-  utl::erase_if(perm, [&](unsigned const r) { return route_bbox[r] > 30'000; });
-  utl::sort(perm, [&](unsigned const a, unsigned const b) {
-    return route_reachs[a].reach_ > route_reachs[b].reach_;
-  });
-
-  for (auto i = 0U; i != std::min(static_cast<std::size_t>(10U), perm.size());
-       ++i) {
-    if (i == route_reachs.size()) {
-      break;
-    }
-    auto const r = perm[i];
-    auto const& info = route_reachs[r];
-
-    auto const stop_seq = tt.route_location_seq_[route_idx_t{r}];
-    for (auto const s : stop_seq) {
-      std::cout << location{tt, stop{s}.location_idx()} << " ";
-    }
-    std::cout << "\n";
-
-    std::cout << "reach: " << info.reach_ << "\n";
-    info.j_.print(std::cout, tt);
-    std::cout << "\n\n";
+  auto outliers_file = std::ofstream{"outliers.txt"};
+  for (auto const x : outliers) {
+    outliers_file << route_reachs[x].reach_ << " "
+                  << tt.route_bbox_diagonal_[route_idx_t{x}] << "\n";
   }
 
   return 0;
@@ -187,7 +160,6 @@ int main(int ac, char** av) {
 
     case cista::hash("reach"):
       return reach({parse_date(av[2]), parse_date(av[3])});
-      break;
 
     default: fmt::print("unknown command {}\n", cmd); return 1;
   }
