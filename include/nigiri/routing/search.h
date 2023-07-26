@@ -137,6 +137,7 @@ struct search {
         tt_,
         rtt_,
         algo_state,
+        route_filtered,
         state_.is_destination_,
         state_.dist_to_dest_,
         state_.travel_time_lower_bound_,

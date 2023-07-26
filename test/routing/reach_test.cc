@@ -11,6 +11,7 @@
 #include "nigiri/routing/limits.h"
 #include "nigiri/routing/raptor/raptor.h"
 #include "nigiri/routing/reach.h"
+#include "nigiri/routing/search.h"
 #include "nigiri/routing/start_times.h"
 #include "nigiri/rt/frun.h"
 #include "nigiri/timetable.h"
@@ -19,6 +20,7 @@ using namespace date;
 using namespace nigiri;
 using namespace nigiri::loader;
 using namespace std::string_view_literals;
+using namespace std::chrono_literals;
 
 constexpr auto const test_files = R"(
 # agency.txt
@@ -186,10 +188,11 @@ TEST(routing, reach_test) {
 
   routing::write_reach_values(tt, y, x_slope, route_reachs, "reach_values.bin");
 
-  std::cout << "REACH VALUES\n";
   auto reach_values_wrapped = routing::read_reach_values(
       cista::memory_holder{cista::file{"reach_values.bin", "r"}.content()});
   auto const& reach_values = *reach_values_wrapped;
+  std::cout << "REACH VALUES [n_reach_values=" << reach_values.size()
+            << ", n_routes=" << tt.n_routes() << "]\n";
   for (auto const [r, reach] : utl::enumerate(reach_values)) {
     auto const t = tt.route_transport_ranges_[route_idx_t{r}][0];
     auto const [type, name] =
@@ -199,6 +202,53 @@ TEST(routing, reach_test) {
               << ", reach_before=" << route_reachs[r].reach_ << "\n";
   }
   std::cout << "\n";
+
+  {
+    auto raptor_state = routing::raptor_state{};
+    auto search_state = routing::search_state{};
+    auto const q = routing::query{
+        .start_time_ = date::sys_days{2019_y / May / 1} + 5h,
+        .start_ = {{tt.locations_.location_id_to_idx_.at({"L11", src}),
+                    0_minutes, 0U}},
+        .destination_ = {{tt.locations_.location_id_to_idx_.at({"L31", src}),
+                          0_minutes, 0U}}};
+
+    std::cout << "NO REACH\n";
+    raptor_state = routing::raptor_state{};
+    search_state = routing::search_state{};
+    using no_reach_raptor_algo_t =
+        routing::raptor<direction::kForward, false, false, false>;
+    auto const no_reach_results =
+        routing::search<direction::kForward, no_reach_raptor_algo_t>{
+            tt, nullptr, {}, search_state, raptor_state, std::move(q)}
+            .execute();
+    std::cout << no_reach_results.algo_stats_ << "\n";
+    for (auto const& j : *no_reach_results.journeys_) {
+      j.print(std::cout, tt);
+    }
+  }
+  {
+    std::cout << "\n\n\nREACH\n";
+    auto raptor_state = routing::raptor_state{};
+    auto search_state = routing::search_state{};
+    auto const q = routing::query{
+        .start_time_ = date::sys_days{2019_y / May / 1} + 5h,
+        .start_ = {{tt.locations_.location_id_to_idx_.at({"L11", src}),
+                    0_minutes, 0U}},
+        .destination_ = {{tt.locations_.location_id_to_idx_.at({"L31", src}),
+                          0_minutes, 0U}}};
+
+    using reach_raptor_t =
+        routing::raptor<direction::kForward, false, false, true>;
+    auto const reach_results =
+        routing::search<direction::kForward, reach_raptor_t>{
+            tt, nullptr, reach_values, search_state, raptor_state, std::move(q)}
+            .execute();
+    std::cout << reach_results.algo_stats_ << "\n";
+    for (auto const& j : *reach_results.journeys_) {
+      j.print(std::cout, tt);
+    }
+  }
 
   // clang-format off
   // PLOT WITH

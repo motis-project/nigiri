@@ -16,6 +16,22 @@
 namespace nigiri::routing {
 
 struct raptor_stats {
+  friend std::ostream& operator<<(std::ostream& out, raptor_stats const& s) {
+    return out << "n_routing_time=" << s.n_routing_time_ << "\n"
+               << "n_footpaths_visited=" << s.n_footpaths_visited_ << "\n"
+               << "n_routes_visited=" << s.n_routes_visited_ << "\n"
+               << "n_earliest_trip_calls=" << s.n_earliest_trip_calls_ << "\n"
+               << "n_earliest_arrival_updated_by_route="
+               << s.n_earliest_arrival_updated_by_route_ << "\n"
+               << "n_earliest_arrival_updated_by_footpath="
+               << s.n_earliest_arrival_updated_by_footpath_ << "\n"
+               << "fp_update_prevented_by_lower_bound="
+               << s.fp_update_prevented_by_lower_bound_ << "\n"
+               << "route_update_prevented_by_lower_bound="
+               << s.route_update_prevented_by_lower_bound_ << "\n"
+               << "reach_filtered=" << s.reach_filtered_ << "\n";
+  }
+
   std::uint64_t n_routing_time_{0ULL};
   std::uint64_t n_footpaths_visited_{0ULL};
   std::uint64_t n_routes_visited_{0ULL};
