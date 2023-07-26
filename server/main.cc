@@ -109,7 +109,7 @@ int reach(interval<date::sys_days> const date_range) {
 
   std::cout << "Compute route reachs..." << std::flush;
   auto const route_reachs =
-      routing::get_reach_values(tt, source_locations, date_range);
+      routing::compute_reach_values(tt, source_locations, date_range);
   std::cout << " done" << std::endl;
 
   auto const x_slope = 0.01;

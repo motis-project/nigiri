@@ -24,14 +24,19 @@ struct raptor_stats {
   std::uint64_t n_earliest_arrival_updated_by_footpath_{0ULL};
   std::uint64_t fp_update_prevented_by_lower_bound_{0ULL};
   std::uint64_t route_update_prevented_by_lower_bound_{0ULL};
+  std::uint64_t reach_filtered_{0ULL};
 };
 
-template <direction SearchDir, bool Rt, bool OneToAll = false>
+template <direction SearchDir,
+          bool Rt,
+          bool OneToAll = false,
+          bool Reach = false>
 struct raptor {
   using algo_state_t = raptor_state;
   using algo_stats_t = raptor_stats;
 
   static constexpr bool kUseLowerBounds = true;
+  static constexpr bool kReach = Reach;
   static constexpr auto const kFwd = (SearchDir == direction::kForward);
   static constexpr auto const kBwd = (SearchDir == direction::kBackward);
   static constexpr auto const kInvalid = kInvalidDelta<SearchDir>;
@@ -52,6 +57,7 @@ struct raptor {
   raptor(timetable const& tt,
          rt_timetable const* rtt,
          raptor_state& state,
+         std::vector<bool> const& route_filtered,
          std::vector<bool>& is_dest,
          std::vector<std::uint16_t>& dist_to_dest,
          std::vector<std::uint16_t>& lb,
@@ -59,6 +65,7 @@ struct raptor {
       : tt_{tt},
         rtt_{rtt},
         state_{state},
+        route_filtered_{route_filtered},
         is_dest_{is_dest},
         dist_to_end_{dist_to_dest},
         lb_{lb},
@@ -146,6 +153,13 @@ struct raptor {
       any_marked = false;
       for (auto r_id = 0U; r_id != n_routes_; ++r_id) {
         if (state_.route_mark_[r_id]) {
+          if constexpr (Reach) {
+            if (route_filtered_[r_id]) {
+              ++stats_.reach_filtered_;
+              continue;
+            }
+          }
+
           ++stats_.n_routes_visited_;
           trace("┊ ├k={} updating route {}\n", k, r_id);
           any_marked |= update_route(k, route_idx_t{r_id});
@@ -689,9 +703,10 @@ private:
   timetable const& tt_;
   rt_timetable const* rtt_{nullptr};
   raptor_state& state_;
-  std::vector<bool>& is_dest_;
-  std::vector<std::uint16_t>& dist_to_end_;
-  std::vector<std::uint16_t>& lb_;
+  std::vector<bool> const& route_filtered_;
+  std::vector<bool> const& is_dest_;
+  std::vector<std::uint16_t> const& dist_to_end_;
+  std::vector<std::uint16_t> const& lb_;
   std::array<delta_t, kMaxTransfers + 1> time_at_dest_;
   day_idx_t base_;
   int n_days_;

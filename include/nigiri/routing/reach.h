@@ -33,7 +33,7 @@ struct reach_info {
   location_idx_t stop_in_route_{location_idx_t::invalid()};
 };
 
-std::vector<reach_info> get_reach_values(
+std::vector<reach_info> compute_reach_values(
     timetable const& tt,
     std::vector<location_idx_t> const& source_locations,
     interval<date::sys_days> const search_interval);

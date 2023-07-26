@@ -15,6 +15,7 @@
 #include "nigiri/routing/start_times.h"
 #include "nigiri/timetable.h"
 #include "nigiri/types.h"
+#include "geo/box.h"
 
 namespace nigiri::routing {
 
@@ -35,6 +36,7 @@ struct search_state {
 
 struct search_stats {
   std::uint64_t lb_time_{0ULL};
+  std::uint64_t reach_time_{0ULL};
   std::uint64_t fastest_direct_{0ULL};
   std::uint64_t search_iterations_{0ULL};
   std::uint64_t interval_extensions_{0ULL};
@@ -55,7 +57,8 @@ struct search {
   static constexpr auto const kFwd = (SearchDir == direction::kForward);
   static constexpr auto const kBwd = (SearchDir == direction::kBackward);
 
-  Algo init(algo_state_t& algo_state) {
+  Algo init(algo_state_t& algo_state,
+            vector_map<route_idx_t, unsigned> const& reachs) {
     stats_.fastest_direct_ =
         static_cast<std::uint64_t>(fastest_direct_.count());
 
@@ -93,6 +96,43 @@ struct search {
 #endif
     }
 
+    auto route_filtered = std::vector<bool>{};
+    if constexpr (Algo::kReach) {
+      UTL_START_TIMING(reach);
+
+      route_filtered.resize(tt_.n_routes(), true);  // default = filtered
+
+      // Computes bounding box around all stations.
+      // -> returns (center of bounding box, half diagonal as buffer)
+      auto const get_start_end = [&](std::vector<offset> const& offsets) {
+        auto bbox = geo::box{};
+        for (auto const offset : offsets) {
+          bbox.extend(tt_.locations_.coordinates_[offset.target()]);
+        }
+        return std::pair{geo::midpoint(bbox.min_, bbox.max_),
+                         geo::distance(bbox.min_, bbox.max_) / 2.0};
+      };
+
+      auto const [start_pos, start_buffer] = get_start_end(q_.start_);
+      auto const [end_pos, end_buffer] = get_start_end(q_.destination_);
+
+      for (auto const [r, stop_seq] : utl::enumerate(tt_.route_location_seq_)) {
+        for (auto const s : stop_seq) {
+          auto const sp = tt_.locations_.coordinates_[stop{s}.location_idx()];
+          auto const dist =
+              std::min(geo::distance(start_pos, sp) - start_buffer,
+                       geo::distance(sp, end_pos) - end_buffer);
+          if (reachs[route_idx_t{r}] > dist) {
+            route_filtered[r] = false;  // reach > dist -> not filtered!
+            break;
+          }
+        }
+      }
+
+      UTL_STOP_TIMING(reach);
+      stats_.reach_time_ = static_cast<std::uint64_t>(UTL_TIMING_MS(reach));
+    }
+
     return Algo{
         tt_,
         rtt_,
@@ -107,6 +147,7 @@ struct search {
 
   search(timetable const& tt,
          rt_timetable const* rtt,
+         vector_map<route_idx_t, unsigned> const& reachs,
          search_state& s,
          algo_state_t& algo_state,
          query q)
@@ -124,7 +165,7 @@ struct search {
                 }},
             q_.start_time_)},
         fastest_direct_{get_fastest_direct(tt_, q_, SearchDir)},
-        algo_{init(algo_state)} {}
+        algo_{init(algo_state, reachs)} {}
 
   routing_result<algo_stats_t> execute() {
     state_.results_.clear();

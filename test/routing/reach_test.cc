@@ -144,7 +144,7 @@ TEST(routing, reach_test) {
   std::generate(begin(all_locations), end(all_locations),
                 [i = location_idx_t{0U}]() mutable { return i++; });
 
-  auto const route_reachs = routing::get_reach_values(
+  auto const route_reachs = routing::compute_reach_values(
       tt, all_locations,
       interval{sys_days{2019_y / May / 1}, sys_days{2019_y / May / 2}});
 

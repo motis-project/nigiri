@@ -51,13 +51,15 @@ struct state {
   std::vector<pareto_set<journey>> results_{tt_.n_locations()};
 
   day_idx_t base_day_;
+  std::vector<bool> route_filtered_;
   std::vector<std::uint16_t> lb_;
   std::vector<bool> is_dest_;
   std::vector<std::uint16_t> dist_to_dest_;
   raptor_state raptor_state_;
   journey reconstruct_journey_;
-  raptor<direction::kForward, false, true> raptor_{
-      tt_, nullptr, raptor_state_, is_dest_, dist_to_dest_, lb_, base_day_};
+  raptor<direction::kForward, /* Rt= */ false, /* OneToAll= */ true> raptor_{
+      tt_,      nullptr,       raptor_state_, route_filtered_,
+      is_dest_, dist_to_dest_, lb_,           base_day_};
 };
 
 static boost::thread_specific_ptr<state> search_state;
@@ -182,7 +184,7 @@ void reach_values_for_source(timetable const& tt,
       });
 }
 
-std::vector<reach_info> get_reach_values(
+std::vector<reach_info> compute_reach_values(
     timetable const& tt,
     std::vector<location_idx_t> const& source_locations,
     interval<date::sys_days> const search_interval) {
