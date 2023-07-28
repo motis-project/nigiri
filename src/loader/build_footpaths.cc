@@ -249,10 +249,10 @@ void link_nearby_stations(timetable& tt, bool const merge_duplicates) {
       auto const duration =
           std::max({from_transfer_time, to_transfer_time, walk_duration});
 
-      tt.locations_.preprocessing_footpaths_out_[l_to_idx].emplace_back(
-          l_from_idx, duration);
-      tt.locations_.preprocessing_footpaths_in_[l_from_idx].emplace_back(
+      tt.locations_.preprocessing_footpaths_out_[l_from_idx].emplace_back(
           l_to_idx, duration);
+      tt.locations_.preprocessing_footpaths_in_[l_to_idx].emplace_back(
+          l_from_idx, duration);
       tt.locations_.equivalences_[l_from_idx].emplace_back(l_to_idx);
 
       if (merge_duplicates) {
@@ -585,22 +585,22 @@ void add_links_to_and_between_children(timetable& tt) {
   }
 }
 
-void write_footpaths(timetable& tt, uint16_t const& no_profiles) {
+void write_footpaths(timetable& tt) {
   assert(tt.locations_.footpaths_out_.empty());
   assert(tt.locations_.footpaths_in_.empty());
   assert(tt.locations_.preprocessing_footpaths_out_.size() == tt.n_locations());
   assert(tt.locations_.preprocessing_footpaths_in_.size() == tt.n_locations());
 
-  for (auto prf_idx = 0U; prf_idx < no_profiles; ++prf_idx) {
-    tt.locations_.footpaths_in_.emplace_back();
-    tt.locations_.footpaths_out_.emplace_back();
+  profile_idx_t const prf_idx{0};
 
-    for (auto i = location_idx_t{0}; i != tt.n_locations(); ++i) {
-      tt.locations_.footpaths_in_.at(prf_idx).emplace_back(
-          tt.locations_.preprocessing_footpaths_in_[i]);
-      tt.locations_.footpaths_out_.at(prf_idx).emplace_back(
-          tt.locations_.preprocessing_footpaths_out_[i]);
-    }
+  for (auto i = location_idx_t{0U}; i != tt.n_locations(); ++i) {
+    tt.locations_.footpaths_out_[prf_idx].emplace_back(
+        tt.locations_.preprocessing_footpaths_out_[i]);
+  }
+
+  for (auto i = location_idx_t{0U}; i != tt.n_locations(); ++i) {
+    tt.locations_.footpaths_in_[prf_idx].emplace_back(
+        tt.locations_.preprocessing_footpaths_in_[i]);
   }
 
   tt.locations_.preprocessing_footpaths_in_.clear();
@@ -608,13 +608,12 @@ void write_footpaths(timetable& tt, uint16_t const& no_profiles) {
 }
 
 void build_footpaths(timetable& tt,
-                     uint16_t const& no_profiles,
                      bool const adjust_footpaths,
                      bool const merge_duplicates) {
   add_links_to_and_between_children(tt);
   link_nearby_stations(tt, merge_duplicates);
   transitivize_footpaths(tt, adjust_footpaths);
-  write_footpaths(tt, no_profiles);
+  write_footpaths(tt);
 }
 
 }  // namespace nigiri::loader

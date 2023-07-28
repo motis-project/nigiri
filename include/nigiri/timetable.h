@@ -46,11 +46,9 @@ struct timetable {
         location_timezones_.emplace_back(l.timezone_idx_);
         equivalences_.emplace_back();
         children_.emplace_back();
-        preprocessing_footpaths_in_.emplace_back();
         preprocessing_footpaths_out_.emplace_back();
+        preprocessing_footpaths_in_.emplace_back();
         transfer_time_.emplace_back(l.transfer_time_);
-        osm_ids_.emplace_back(osm_node_id_t::invalid());
-        osm_types_.emplace_back();
         parents_.emplace_back(l.parent_);
       } else {
         log(log_lvl::error, "timetable.register_location",
@@ -65,15 +63,9 @@ struct timetable {
       assert(location_timezones_.size() == next_idx + 1);
       assert(equivalences_.size() == next_idx + 1);
       assert(children_.size() == next_idx + 1);
-
-      assert(preprocessing_footpaths_out_.size() == next_idx + 1);
-      assert(preprocessing_footpaths_in_.size() == next_idx + 1);
-
       assert(preprocessing_footpaths_out_.size() == next_idx + 1);
       assert(preprocessing_footpaths_in_.size() == next_idx + 1);
       assert(transfer_time_.size() == next_idx + 1);
-      assert(osm_ids_.size() == next_idx + 1);
-      assert(osm_types_.size() == next_idx + 1);
       assert(parents_.size() == next_idx + 1);
 
       return it->second;
@@ -86,7 +78,6 @@ struct timetable {
                         coordinates_[idx],
                         src_[idx],
                         types_[idx],
-                        osm_ids_[idx],
                         parents_[idx],
                         location_timezones_[idx],
                         transfer_time_[idx],
@@ -111,8 +102,6 @@ struct timetable {
     vector_map<location_idx_t, source_idx_t> src_;
     vector_map<location_idx_t, u8_minutes> transfer_time_;
     vector_map<location_idx_t, location_type> types_;
-    vector_map<location_idx_t, osm_node_id_t> osm_ids_;
-    vector_map<location_idx_t, osm_type> osm_types_;
     vector_map<location_idx_t, location_idx_t> parents_;
     vector_map<location_idx_t, timezone_idx_t> location_timezones_;
     hash_map<string, size_t> profile_idx_;
@@ -120,7 +109,8 @@ struct timetable {
     mutable_fws_multimap<location_idx_t, location_idx_t> children_;
     mutable_fws_multimap<location_idx_t, footpath> preprocessing_footpaths_out_;
     mutable_fws_multimap<location_idx_t, footpath> preprocessing_footpaths_in_;
-    vector<vecvec<location_idx_t, footpath>> footpaths_out_, footpaths_in_;
+    array<vecvec<location_idx_t, footpath>, kMaxProfiles> footpaths_out_,
+        footpaths_in_;
     vector_map<timezone_idx_t, timezone> timezones_;
   } locations_;
 

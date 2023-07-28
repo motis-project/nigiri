@@ -15,13 +15,12 @@ struct timetable;
 
 struct location {
   friend std::ostream& operator<<(std::ostream&, location const&);
-  location(timetable const&, location_idx_t, uint16_t const& profile = 0);
+  location(timetable const&, location_idx_t, profile_idx_t const = 0);
   location(std::string_view id,
            std::string_view name,
            geo::latlng pos,
            source_idx_t,
            location_type,
-           osm_node_id_t,
            location_idx_t parent,
            timezone_idx_t,
            duration_t transfer_time,
@@ -34,7 +33,6 @@ struct location {
   geo::latlng pos_;
   source_idx_t src_;
   location_type type_;
-  osm_node_id_t osm_id_;
   location_idx_t parent_;
   timezone_idx_t timezone_idx_;
   duration_t transfer_time_;

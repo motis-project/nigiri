@@ -9,6 +9,7 @@
 
 #include "ankerl/cista_adapter.h"
 
+#include "cista/containers/array.h"
 #include "cista/containers/bitset.h"
 #include "cista/containers/bitvec.h"
 #include "cista/containers/flat_matrix.h"
@@ -59,6 +60,9 @@ using pair = cista::pair<A, B>;
 template <typename K, typename V>
 using vector_map = cista::raw::vector_map<K, V>;
 
+template <typename V, std::size_t SIZE>
+using array = cista::raw::array<V, SIZE>;
+
 template <typename T>
 using vector = cista::raw::vector<T>;
 
@@ -102,7 +106,6 @@ using nvec = cista::raw::nvec<Key, T, N>;
 
 using bitfield_idx_t = cista::strong<std::uint32_t, struct _bitfield_idx>;
 using location_idx_t = cista::strong<std::uint32_t, struct _location_idx>;
-using osm_node_id_t = cista::strong<std::int64_t, struct _osm_node_idx>;
 using route_idx_t = cista::strong<std::uint32_t, struct _location_idx>;
 using section_idx_t = cista::strong<std::uint32_t, struct _section_idx>;
 using section_db_idx_t = cista::strong<std::uint32_t, struct _section_db_idx>;
@@ -116,6 +119,9 @@ using merged_trips_idx_t =
     cista::strong<std::uint32_t, struct _merged_trips_idx>;
 using footpath_idx_t = cista::strong<std::uint32_t, struct _footpath_idx>;
 using source_file_idx_t = cista::strong<std::uint16_t, struct _source_file_idx>;
+
+typedef std::uint8_t profile_idx_t;
+static constexpr auto const kMaxProfiles = profile_idx_t{8};
 
 using rt_trip_idx_t = cista::strong<std::uint32_t, struct _trip_idx>;
 using rt_add_trip_id_idx_t =
@@ -264,8 +270,6 @@ enum class location_type : std::uint8_t {
 
 enum class event_type { kArr, kDep };
 enum class direction { kForward, kBackward };
-
-enum class osm_type { NODE, WAY, RELATION };
 
 }  // namespace nigiri
 

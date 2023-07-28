@@ -18,7 +18,6 @@ void register_special_stations(timetable& tt) {
                                              {0.0, 0.0},
                                              source_idx_t::invalid(),
                                              location_type::kStation,
-                                             osm_node_id_t::invalid(),
                                              location_idx_t::invalid(),
                                              timezone_idx_t::invalid(),
                                              0_minutes,
@@ -31,7 +30,6 @@ void register_special_stations(timetable& tt) {
 }
 
 void finalize(timetable& tt,
-              uint16_t const& no_profiles,
               bool const adjust_footpaths,
               bool const merge_duplicates) {
   tt.location_routes_.resize(tt.n_locations());
@@ -51,34 +49,9 @@ void finalize(timetable& tt,
                             tt.trip_id_strings_[b.first].view());
         });
   }
-  build_footpaths(tt, no_profiles, adjust_footpaths, merge_duplicates);
+  build_footpaths(tt, adjust_footpaths, merge_duplicates);
   build_lb_graph<direction::kForward>(tt);
   build_lb_graph<direction::kBackward>(tt);
-}
-
-void reinitialize_footpaths(timetable& tt, uint16_t const& no_profiles) {
-  // reset footpaths to default footpaths
-  tt.locations_.footpaths_out_.resize(1);
-  tt.locations_.footpaths_in_.resize(1);
-
-  {
-    // create profile-based footpaths
-    auto const timer =
-        scoped_timer{"loader.reinitialize profile-based footpaths."};
-
-    // create no_profiles - 1 additional footpath entries (-1: default)
-    for (auto prf_idx = uint16_t{1U}; prf_idx < no_profiles; ++prf_idx) {
-      tt.locations_.footpaths_out_.emplace_back();
-      tt.locations_.footpaths_in_.emplace_back();
-
-      for (auto i = location_idx_t{0}; i != tt.n_locations(); ++i) {
-        tt.locations_.footpaths_in_[prf_idx].emplace_back(
-            tt.locations_.footpaths_in_[0][i]);
-        tt.locations_.footpaths_out_[prf_idx].emplace_back(
-            tt.locations_.footpaths_out_[0][i]);
-      }
-    }
-  }
 }
 
 }  // namespace nigiri::loader

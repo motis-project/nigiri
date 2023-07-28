@@ -11,6 +11,7 @@
 #include "nigiri/rt/rt_timetable.h"
 #include "nigiri/special_stations.h"
 #include "nigiri/timetable.h"
+#include "nigiri/types.h"
 
 namespace nigiri::routing {
 
@@ -99,7 +100,7 @@ struct raptor {
   void execute(unixtime_t const start_time,
                std::uint8_t const max_transfers,
                unixtime_t const worst_time_at_dest,
-               uint const profile,
+               profile_idx_t const prf_idx,
                pareto_set<journey>& results) {
     auto const end_k = std::min(max_transfers, kMaxTransfers) + 1U;
 
@@ -172,7 +173,7 @@ struct raptor {
       utl::fill(state_.station_mark_, false);
 
       update_transfers(k);
-      update_footpaths(k, profile);
+      update_footpaths(k, prf_idx);
       update_intermodal_footpaths(k);
 
       trace_print_state_after_round();
@@ -246,15 +247,15 @@ private:
     }
   }
 
-  void update_footpaths(unsigned const k, uint const& profile) {
+  void update_footpaths(unsigned const k, profile_idx_t const prf_idx) {
     for (auto i = 0U; i != n_locations_; ++i) {
       if (!state_.prev_station_mark_[i]) {
         continue;
       }
 
       auto const l_idx = location_idx_t{i};
-      auto const& fps = kFwd ? tt_.locations_.footpaths_out_[profile][l_idx]
-                             : tt_.locations_.footpaths_in_[profile][l_idx];
+      auto const& fps = kFwd ? tt_.locations_.footpaths_out_[prf_idx][l_idx]
+                             : tt_.locations_.footpaths_in_[prf_idx][l_idx];
       for (auto const& fp : fps) {
         ++stats_.n_footpaths_visited_;
 
