@@ -334,11 +334,6 @@ struct timetable {
   }
 
   // ---  Filter Data  ---
-  // how many depatures are at location l
-  size_t get_depature_count_for_l(location_idx_t const ix) const {
-    return depature_count_.at(ix);
-  }
-
   // how many departures are at l with classgroup x
   int get_groupclass_count(location_idx_t const ix, group classgroup) const {
     vector<pair<group, int>> classgroups = classgroups_on_loc_.at(ix);
@@ -350,18 +345,13 @@ struct timetable {
     return 0;
   }
 
-  // get all classgroup pairs at l
-  vector<pair<group, int>> get_classgroup_at_l(location_idx_t const ix) const {
-    return classgroups_on_loc_.at(ix);
-  }
-
   friend std::ostream& operator<<(std::ostream&, timetable const&);
 
   void write(cista::memory_holder&) const;
   void write(std::filesystem::path const&) const;
   static cista::wrapped<timetable> read(cista::memory_holder&&);
 
-  //Filter on/off
+  // Filter
   bool use_station_filter_;
   vector_map<location_idx_t, size_t> depature_count_;
   vector_map<location_idx_t, vector<pair<group, int>>> classgroups_on_loc_;

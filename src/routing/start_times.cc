@@ -1,6 +1,7 @@
 #include "nigiri/routing/start_times.h"
 
 #include "nigiri/routing/for_each_meta.h"
+#include "nigiri/routing/station_filter.h"
 #include "nigiri/rt/rt_timetable.h"
 #include "nigiri/special_stations.h"
 #include "utl/enumerate.h"
@@ -20,6 +21,7 @@ void trace_start(char const* fmt_str, Args... args) {
 
 template <typename Collection, typename Less>
 std::pair<typename Collection::iterator, bool> insert_sorted(
+    // starts                               new_start      compare
     Collection& v, typename Collection::value_type el, Less&& less) {
   using std::begin;
   using std::end;
@@ -243,6 +245,7 @@ void get_starts(direction const search_dir,
   for (auto const& s : shortest_start) {
     auto const l = s.first;
     auto const o = s.second;
+    // entweder interval oder t, je nach dem was start_time ist
     std::visit(utl::overloaded{
                    [&](interval<unixtime_t> const interval) {
                      add_starts_in_interval(search_dir, tt, rtt, interval, l, o,
@@ -256,6 +259,10 @@ void get_starts(direction const search_dir,
                                    cmp);
                    }},
                start_time);
+  }
+  // Filteraufruf
+  if(tt.use_station_filter_) {
+    station_filter::filter_stations(starts, tt);
   }
 }
 
