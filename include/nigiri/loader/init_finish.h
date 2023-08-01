@@ -11,5 +11,4 @@ void finalize(timetable&,
               bool adjust_footpaths = false,
               bool merge_duplicates = false);
 
-
 }  // namespace nigiri::loader

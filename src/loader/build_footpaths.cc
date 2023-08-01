@@ -18,6 +18,7 @@
 #include "nigiri/common/day_list.h"
 #include "nigiri/logging.h"
 #include "nigiri/rt/frun.h"
+#include "nigiri/types.h"
 #include "utl/erase_duplicates.h"
 #include "utl/erase_if.h"
 #include "utl/pairwise.h"
@@ -586,8 +587,8 @@ void add_links_to_and_between_children(timetable& tt) {
 }
 
 void write_footpaths(timetable& tt) {
-  assert(tt.locations_.footpaths_out_.empty());
-  assert(tt.locations_.footpaths_in_.empty());
+  assert(tt.locations_.footpaths_out_.size() == kMaxProfiles);
+  assert(tt.locations_.footpaths_in_.size() == kMaxProfiles);
   assert(tt.locations_.preprocessing_footpaths_out_.size() == tt.n_locations());
   assert(tt.locations_.preprocessing_footpaths_in_.size() == tt.n_locations());
 
