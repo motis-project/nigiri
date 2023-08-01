@@ -61,13 +61,13 @@ namespace nigiri::loader {
 
 constexpr const auto kWalkSpeed = 1.5;  // m/s
 
-constexpr auto kNoComponent = std::numeric_limits<uint32_t>::max();
+constexpr auto kNoComponent = component_idx_t::invalid();
 
 // station_idx -> [footpath, ...]
-using footgraph = vector<vector<footpath>>;
+using footgraph = vector_map<location_idx_t, vector<footpath>>;
 
 // (component, original station_idx)
-using component_vec = std::vector<std::pair<uint32_t, uint32_t>>;
+using component_vec = std::vector<std::pair<component_idx_t, location_idx_t>>;
 using component_it = component_vec::iterator;
 using component_range = std::pair<component_it, component_it>;
 using match_set_t = hash_set<pair<location_idx_t, location_idx_t>>;
@@ -271,15 +271,15 @@ void link_nearby_stations(timetable& tt, bool const merge_duplicates) {
 footgraph get_footpath_graph(timetable& tt) {
   footgraph g;
   g.resize(tt.locations_.src_.size());
-  for (auto i = 0U; i != tt.locations_.src_.size(); ++i) {
+  for (auto i = 0U; i != tt.n_locations(); ++i) {
     auto const idx = location_idx_t{i};
-    g[i].insert(end(g[i]),
-                begin(tt.locations_.preprocessing_footpaths_out_[idx]),
-                end(tt.locations_.preprocessing_footpaths_out_[idx]));
-    utl::erase_if(g[i],
+    g[idx].insert(end(g[idx]),
+                  begin(tt.locations_.preprocessing_footpaths_out_[idx]),
+                  end(tt.locations_.preprocessing_footpaths_out_[idx]));
+    utl::erase_if(g[idx],
                   [&](auto&& fp) { return fp.target() == location_idx_t{i}; });
     utl::erase_duplicates(
-        g[i], [](auto&& a, auto&& b) { return a.target_ < b.target_; },
+        g[idx], [](auto&& a, auto&& b) { return a.target_ < b.target_; },
         [](auto&& a, auto&& b) {
           return a.target_ == b.target_;
         });  // also sorts
@@ -287,31 +287,43 @@ footgraph get_footpath_graph(timetable& tt) {
   return g;
 }
 
-std::vector<std::pair<uint32_t, uint32_t>> find_components(
-    footgraph const& fgraph) {
-  std::vector<std::pair<uint32_t, uint32_t>> components(fgraph.size());
-  std::generate(begin(components), end(components), [i = 0UL]() mutable {
-    return std::pair<uint32_t, uint32_t>{kNoComponent, i++};
-  });
+component_vec find_components(timetable& tt, footgraph const& fgraph) {
+  tt.locations_.components_.resize(tt.n_locations());
 
-  std::stack<uint32_t> stack;  // invariant: stack is empty
-  for (auto i = 0U; i < fgraph.size(); ++i) {
-    if (components[i].first != kNoComponent || fgraph[i].empty()) {
+  auto components = component_vec(fgraph.size());
+  std::generate(
+      begin(components), end(components),
+      [i = 0U]() mutable -> std::pair<component_idx_t, location_idx_t> {
+        return {kNoComponent, location_idx_t{i++}};
+      });
+
+  std::stack<uint32_t> stack;
+  for (auto i = location_idx_t{0U}; i < fgraph.size();
+       ++i) {  // loop invariant: empty stack
+    if (fgraph[i].empty()) {
+      components[to_idx(i)].first = tt.locations_.next_component_idx_++;
+      continue;
+    }
+
+    if (components[to_idx(i)].first != kNoComponent) {
       continue;
     }
 
     stack.emplace(i);
+    auto const current_component_idx = tt.locations_.next_component_idx_++;
     while (!stack.empty()) {
       auto j = stack.top();
       stack.pop();
 
-      if (components[j].first == i) {
+      if (to_idx(components[j].first) == to_idx(i)) {
         continue;
       }
 
-      components[j].first = i;
-      for (auto const& f : fgraph[j]) {
-        if (components[to_idx(f.target())].first != i) {
+      components[j].first = current_component_idx;
+      tt.locations_.components_[location_idx_t{j}] = current_component_idx;
+
+      for (auto const& f : fgraph[location_idx_t{j}]) {
+        if (components[to_idx(f.target())].first != current_component_idx) {
           stack.push(to_idx(f.target()));
         }
       }
@@ -327,7 +339,7 @@ void process_component(timetable& tt,
                        footgraph const& fgraph,
                        matrix<std::uint16_t>& matrix_memory,
                        bool const adjust_footpaths) {
-  if (lb->first == kNoComponent) {
+  if (lb->first == kNoComponent || fgraph[lb->second].empty()) {
     return;
   }
 
@@ -503,7 +515,7 @@ void transitivize_footpaths(timetable& tt, bool const adjust_footpaths) {
 
   auto const fgraph = get_footpath_graph(tt);
 
-  auto components = find_components(fgraph);
+  auto components = find_components(tt, fgraph);
   std::sort(begin(components), end(components));
 
   tt.locations_.preprocessing_footpaths_out_.clear();

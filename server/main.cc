@@ -25,7 +25,9 @@
 #include "nigiri/loader/init_finish.h"
 #include "nigiri/logging.h"
 #include "nigiri/routing/hmetis.h"
+#include "nigiri/routing/raptor/raptor.h"
 #include "nigiri/routing/reach.h"
+#include "nigiri/routing/search.h"
 #include "nigiri/timetable.h"
 
 using namespace date;
@@ -46,6 +48,8 @@ date::sys_days parse_date(std::string_view s) {
 int load(interval<date::sys_days> const date_range,
          std::vector<std::string_view> const& paths) {
   fmt::print("range={}, paths={}", date_range, paths);
+
+  utl::activate_progress_tracker("import");
 
   auto loaders = std::vector<std::unique_ptr<loader_interface>>{};
   loaders.emplace_back(std::make_unique<gtfs::gtfs_loader>());
@@ -71,12 +75,14 @@ int load(interval<date::sys_days> const date_range,
   timetable tt;
   tt.date_range_ = date_range;
   register_special_stations(tt);
+
   for (auto const [src, dataset] : utl::enumerate(datasets)) {
     auto progress_tracker =
         utl::activate_progress_tracker(fmt::format("{}", paths[src]));
     auto const& [loader_idx, dir] = dataset;
     loaders[loader_idx]->load({}, source_idx_t{src}, *dir, tt);
   }
+
   finalize(tt);
 
   tt.write(kTimetablePath);

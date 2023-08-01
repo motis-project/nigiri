@@ -32,7 +32,7 @@ struct state {
       : tt_{tt},
         results_(tt.n_locations()),
         base_day_{tt.day_idx(base_day)},
-        lb_(tt.n_locations(), 0U),
+        lb_(tt.n_locations(), lower_bound{}),
         is_dest_(tt.n_locations(), false),
         dist_to_dest_(tt.n_locations(), kInvalidDelta<direction::kForward>) {}
 
@@ -52,7 +52,7 @@ struct state {
 
   day_idx_t base_day_;
   std::vector<bool> route_filtered_;
-  std::vector<std::uint16_t> lb_;
+  std::vector<lower_bound> lb_;
   std::vector<bool> is_dest_;
   std::vector<std::uint16_t> dist_to_dest_;
   raptor_state raptor_state_;

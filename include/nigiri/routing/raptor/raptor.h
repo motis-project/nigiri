@@ -3,6 +3,7 @@
 #include "nigiri/common/day_list.h"
 #include "nigiri/common/delta_t.h"
 #include "nigiri/common/linear_lower_bound.h"
+#include "nigiri/routing/dijkstra.h"
 #include "nigiri/routing/journey.h"
 #include "nigiri/routing/limits.h"
 #include "nigiri/routing/pareto_set.h"
@@ -53,6 +54,7 @@ struct raptor {
 
   static constexpr bool kUseLowerBounds = true;
   static constexpr bool kReach = Reach;
+  static constexpr bool kUseTransfersLowerBounds = true;
   static constexpr auto const kFwd = (SearchDir == direction::kForward);
   static constexpr auto const kBwd = (SearchDir == direction::kBackward);
   static constexpr auto const kInvalid = kInvalidDelta<SearchDir>;
@@ -76,7 +78,7 @@ struct raptor {
          std::vector<bool> const& route_filtered,
          std::vector<bool>& is_dest,
          std::vector<std::uint16_t>& dist_to_dest,
-         std::vector<std::uint16_t>& lb,
+         std::vector<lower_bound>& lb,
          day_idx_t const base)
       : tt_{tt},
         rtt_{rtt},
@@ -264,8 +266,8 @@ private:
           static_cast<delta_t>(state_.tmp_[i] + transfer_time);
       if (is_better(fp_target_time, state_.best_[i]) &&
           is_better(fp_target_time, time_at_dest_[k])) {
-        if (lb_[i] == kUnreachable ||
-            !is_better(fp_target_time + dir(lb_[i]), time_at_dest_[k])) {
+        if (lb_[i].unreachable() ||
+            is_lb_optimal(k, location_idx_t{i}, fp_target_time)) {
           ++stats_.fp_update_prevented_by_lower_bound_;
           continue;
         }
@@ -299,17 +301,16 @@ private:
 
         if (is_better(fp_target_time, state_.best_[target]) &&
             is_better(fp_target_time, time_at_dest_[k])) {
-          auto const lower_bound = lb_[to_idx(fp.target())];
-          if (lower_bound == kUnreachable ||
-              !is_better(fp_target_time + dir(lower_bound), time_at_dest_[k])) {
+          if (!is_lb_optimal(k, fp.target(), fp_target_time)) {
             ++stats_.fp_update_prevented_by_lower_bound_;
             trace_upd(
                 "┊ ├k={} *** LB NO UPD: (from={}, tmp={}) --{}--> (to={}, "
                 "best={}) --> update => {}, LB={}, LB_AT_DEST={}, DEST={}\n",
                 k, location{tt_, l_idx}, to_unix(state_.tmp_[to_idx(l_idx)]),
                 fp.duration(), location{tt_, fp.target()},
-                state_.best_[to_idx(fp.target())], fp_target_time, lower_bound,
-                to_unix(clamp(fp_target_time + dir(lower_bound))),
+                state_.best_[to_idx(fp.target())], fp_target_time,
+                lb_[to_idx(fp.target())],
+                to_unix(clamp(fp_target_time + dir(lb_[to_idx(fp.target())]))),
                 to_unix(time_at_dest_[k]));
             continue;
           }
@@ -384,7 +385,7 @@ private:
                                   state_.tmp_[l_idx], state_.best_[l_idx]);
           if (is_better(by_transport, current_best) &&
               is_better(by_transport, time_at_dest_[k]) &&
-              lb_[l_idx] != kUnreachable &&
+              !lb_[l_idx].unreachable() &&
               is_better(by_transport + dir(lb_[l_idx]), time_at_dest_[k])) {
             trace_upd(
                 "┊ │k={}    RT | name={}, dbg={}, time_by_transport={}, BETTER "
@@ -403,7 +404,7 @@ private:
         }
       }
 
-      if (lb_[l_idx] == kUnreachable) {
+      if (lb_[l_idx].unreachable()) {
         break;
       }
 
@@ -431,7 +432,8 @@ private:
       auto const stop_idx =
           static_cast<stop_idx_t>(kFwd ? i : stop_seq.size() - i - 1U);
       auto const stp = stop{stop_seq[stop_idx]};
-      auto const l_idx = cista::to_idx(stp.location_idx());
+      auto const l = stp.location_idx();
+      auto const l_idx = cista::to_idx(l);
       auto const is_last = i == stop_seq.size() - 1U;
 
       if (!et.is_valid() && !state_.prev_station_mark_[l_idx]) {
@@ -457,8 +459,7 @@ private:
                by_transport != std::numeric_limits<delta_t>::max());
         if (is_better(by_transport, current_best) &&
             is_better(by_transport, time_at_dest_[k]) &&
-            lb_[l_idx] != kUnreachable &&
-            is_better(by_transport + dir(lb_[l_idx]), time_at_dest_[k])) {
+            is_lb_optimal(k, l, by_transport)) {
           trace_upd(
               "┊ │k={}    name={}, dbg={}, time_by_transport={}, BETTER THAN "
               "current_best={} => update, {} marking station {}!\n",
@@ -512,7 +513,7 @@ private:
         continue;
       }
 
-      if (lb_[l_idx] == kUnreachable) {
+      if (lb_[l_idx].unreachable()) {
         break;
       }
 
@@ -543,6 +544,29 @@ private:
       }
     }
     return any_marked;
+  }
+
+  bool is_lb_optimal(unsigned const k,
+                     location_idx_t const l,
+                     delta_t const t) const {
+    auto const l_idx = to_idx(l);
+
+    if (lb_[l_idx].unreachable()) {
+      return false;
+    }
+
+    if (k + lb_[l_idx].transfers_ > kMaxTransfers) {
+      return false;
+    }
+
+#if defined(NIGIRI_DEBGUG)
+    if (!is_better(t + dir(lb_[l_idx]), time_at_dest_[k + transfers_lb])) {
+      trace_upd("┊ │k={}    LB CHECK FAILED: t={}\n", k, tt_.)
+    }
+#endif
+
+    return is_better(t + dir(lb_[l_idx].travel_time_),
+                     time_at_dest_[k + lb_[l_idx].transfers_]);
   }
 
   transport get_earliest_transport(unsigned const k,
@@ -594,8 +618,9 @@ private:
         auto const ev = *it;
         auto const ev_mam = ev.mam();
 
-        if (is_better_or_eq(time_at_dest_[k],
-                            to_delta(day, ev_mam) + dir(lb_[to_idx(l)]))) {
+        if (is_better_or_eq(
+                time_at_dest_[k],  // TODO try lb optimal
+                to_delta(day, ev_mam) + dir(lb_[to_idx(l)].travel_time_))) {
           trace(
               "┊ │k={}      => name={}, dbg={}, day={}={}, best_mam={}, "
               "transport_mam={}, transport_time={} => TIME AT DEST {} IS "
@@ -722,7 +747,7 @@ private:
   std::vector<bool> const& route_filtered_;
   std::vector<bool> const& is_dest_;
   std::vector<std::uint16_t> const& dist_to_end_;
-  std::vector<std::uint16_t> const& lb_;
+  std::vector<lower_bound>& lb_;
   std::array<delta_t, kMaxTransfers + 1> time_at_dest_;
   day_idx_t base_;
   int n_days_;

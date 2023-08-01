@@ -107,12 +107,14 @@ struct timetable {
     vector_map<location_idx_t, osm_node_id_t> osm_ids_;
     vector_map<location_idx_t, location_idx_t> parents_;
     vector_map<location_idx_t, timezone_idx_t> location_timezones_;
+    vector_map<location_idx_t, component_idx_t> components_;
     mutable_fws_multimap<location_idx_t, location_idx_t> equivalences_;
     mutable_fws_multimap<location_idx_t, location_idx_t> children_;
     mutable_fws_multimap<location_idx_t, footpath> preprocessing_footpaths_out_;
     mutable_fws_multimap<location_idx_t, footpath> preprocessing_footpaths_in_;
     vecvec<location_idx_t, footpath> footpaths_out_, footpaths_in_;
     vector_map<timezone_idx_t, timezone> timezones_;
+    component_idx_t next_component_idx_ = component_idx_t{0U};
   } locations_;
 
   struct transport {
@@ -283,7 +285,7 @@ struct timetable {
   }
 
   cista::base_t<location_idx_t> n_locations() const {
-    return locations_.names_.size();
+    return locations_.src_.size();
   }
 
   cista::base_t<route_idx_t> n_routes() const {
@@ -439,9 +441,12 @@ struct timetable {
   vecvec<transport_idx_t, trip_direction_idx_t> transport_section_directions_;
   vecvec<transport_idx_t, trip_line_idx_t> transport_section_lines_;
 
-  // Lower bound graph.
+  // Lower bound graph for travel times.
   vecvec<location_idx_t, footpath> fwd_search_lb_graph_;
   vecvec<location_idx_t, footpath> bwd_search_lb_graph_;
+
+  // Lower bound graph for transfers.
+  vecvec<component_idx_t, component_idx_t> transfers_lb_graph_;
 
   // Route bounding box diagonal distance in meters.
   vector_map<route_idx_t, float> route_bbox_diagonal_;
