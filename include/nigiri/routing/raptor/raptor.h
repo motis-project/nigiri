@@ -385,8 +385,7 @@ private:
                                   state_.tmp_[l_idx], state_.best_[l_idx]);
           if (is_better(by_transport, current_best) &&
               is_better(by_transport, time_at_dest_[k]) &&
-              !lb_[l_idx].unreachable() &&
-              is_better(by_transport + dir(lb_[l_idx]), time_at_dest_[k])) {
+              is_lb_optimal(k, stp.location_idx(), by_transport)) {
             trace_upd(
                 "┊ │k={}    RT | name={}, dbg={}, time_by_transport={}, BETTER "
                 "THAN current_best={} => update, {} marking station {}!\n",
