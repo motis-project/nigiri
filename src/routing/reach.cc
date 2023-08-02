@@ -2,15 +2,18 @@
 
 #include <filesystem>
 
+#include "boost/iterator/function_output_iterator.hpp"
 #include "boost/thread/tss.hpp"
 
 #include "geo/box.h"
+#include "geo/point_rtree.h"
 
 #include "utl/equal_ranges_linear.h"
 #include "utl/erase_if.h"
 #include "utl/parallel_for.h"
 #include "utl/parser/split.h"
 #include "utl/progress_tracker.h"
+#include "utl/to_vec.h"
 
 #include "cista/mmap.h"
 #include "cista/serialization.h"
@@ -120,6 +123,7 @@ void reach_values_for_source(timetable const& tt,
   }
 
   auto& state = *search_state;
+  state.reset();
 
   auto q = query{};
   q.start_match_mode_ = location_match_mode::kEquivalent;
@@ -176,7 +180,14 @@ void reach_values_for_source(timetable const& tt,
             }
             q.destination_ = {{t, 0_minutes, 0U}};
             state.reconstruct_journey_.copy_from(j);
-            state.raptor_.reconstruct(q, state.reconstruct_journey_);
+            try {
+              state.raptor_.reconstruct(q, state.reconstruct_journey_);
+            } catch (std::exception const& e) {
+              log(log_lvl::info, "routing.reach",
+                  "reconsturct {}@{} to {}@{}: {}", location{tt, l},
+                  j.start_time_, location{tt, t}, j.dest_time_, e.what());
+              continue;
+            }
             update_route_reachs(tt, state.reconstruct_journey_, route_reachs);
             j.reconstructed_ = true;
           }
@@ -243,19 +254,26 @@ std::pair<std::vector<unsigned>, float> get_separation_fn(
   return {perm, fn};
 }
 
-using reach_values_vec_t = vector_map<route_idx_t, unsigned>;
+using reach_values_vec_t = vector_map<route_idx_t, std::uint32_t>;
 
 void write_reach_values(timetable const& tt,
                         float const y,
                         float const x_slope,
                         std::vector<reach_info> const& route_reachs,
                         fs::path const& path) {
-  auto reach_values = vector_map<route_idx_t, unsigned>{};
+  auto reach_values = vector_map<route_idx_t, std::uint32_t>{};
   reach_values.resize(tt.n_routes());
   for (auto r = 0U; r != tt.n_routes(); ++r) {
-    reach_values[route_idx_t{r}] = std::max(
-        route_reachs[r].reach_,
-        std::ceil(y + x_slope * tt.route_bbox_diagonal_[route_idx_t{r}]));
+    if (route_reachs[r].valid()) {
+      reach_values[route_idx_t{r}] = route_reachs[r].reach_ * 1.1;
+    } else {
+      reach_values[route_idx_t{r}] =
+          std::ceil(y + x_slope * tt.route_bbox_diagonal_[route_idx_t{r}]) *
+          1.1;
+    }
+    //    reach_values[route_idx_t{r}] = std::max(
+    //        route_reachs[r].reach_,
+    //        std::ceil(y + x_slope * tt.route_bbox_diagonal_[route_idx_t{r}]));
   }
 
   auto mmap =
@@ -283,6 +301,55 @@ cista::wrapped<reach_values_vec_t> read_reach_values(
                         return cista::wrapped{std::move(mem), ptr};
                       }},
       mem);
+}
+
+std::vector<route_idx_t> get_big_station_connection_routes(
+    timetable const& tt) {
+  auto perm = std::vector<unsigned>{};
+  perm.resize(tt.n_routes());
+
+  std::generate(begin(perm), end(perm), [i = 0U]() mutable { return i++; });
+
+  utl::sort(perm, [&](unsigned const a, unsigned const b) {
+    return tt.route_bbox_diagonal_[route_idx_t{a}] <
+           tt.route_bbox_diagonal_[route_idx_t{b}];
+  });
+
+  perm.resize(0.05 * tt.n_routes());
+
+  auto locations = hash_set<location_idx_t>{};
+  for (auto const r : perm) {
+    for (auto const stp : tt.route_location_seq_[route_idx_t{r}]) {
+      locations.emplace(stop{stp}.location_idx());
+    }
+  }
+
+  auto const& locations_ordered = locations.values();
+  auto const rtree = geo::make_point_rtree(utl::to_vec(
+      locations_ordered,
+      [&](location_idx_t const l) { return tt.locations_.coordinates_[l]; }));
+
+  auto connecting_routes = hash_set<route_idx_t>{};
+  for (auto const l : locations_ordered) {
+    for (auto const close_l_idx :
+         rtree.in_radius(tt.locations_.coordinates_[l], 10'000)) {
+      auto const close_l = locations_ordered[close_l_idx];
+      if (close_l == l) {
+        continue;
+      }
+
+      auto const routes_a = tt.location_routes_[l];
+      auto const routes_b = tt.location_routes_[close_l];
+
+      std::set_intersection(
+          begin(routes_a), end(routes_a), begin(routes_b), end(routes_b),
+          boost::make_function_output_iterator(
+              [&](route_idx_t const cr) { connecting_routes.emplace(cr); }));
+    }
+  }
+
+  return utl::to_vec(connecting_routes.values(),
+                     [](route_idx_t const r) { return r; });
 }
 
 }  // namespace nigiri::routing

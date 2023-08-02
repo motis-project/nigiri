@@ -107,12 +107,14 @@ struct timetable {
     vector_map<location_idx_t, osm_node_id_t> osm_ids_;
     vector_map<location_idx_t, location_idx_t> parents_;
     vector_map<location_idx_t, timezone_idx_t> location_timezones_;
+    vector_map<location_idx_t, component_idx_t> components_;
     mutable_fws_multimap<location_idx_t, location_idx_t> equivalences_;
     mutable_fws_multimap<location_idx_t, location_idx_t> children_;
     mutable_fws_multimap<location_idx_t, footpath> preprocessing_footpaths_out_;
     mutable_fws_multimap<location_idx_t, footpath> preprocessing_footpaths_in_;
     vecvec<location_idx_t, footpath> footpaths_out_, footpaths_in_;
     vector_map<timezone_idx_t, timezone> timezones_;
+    component_idx_t next_component_idx_ = component_idx_t{0U};
   } locations_;
 
   struct transport {

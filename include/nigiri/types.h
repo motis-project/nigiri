@@ -100,6 +100,7 @@ using optional = cista::optional<T>;
 template <typename Key, typename T, std::size_t N>
 using nvec = cista::raw::nvec<Key, T, N>;
 
+using component_idx_t = cista::strong<std::uint32_t, struct _component_idx>;
 using bitfield_idx_t = cista::strong<std::uint32_t, struct _bitfield_idx>;
 using location_idx_t = cista::strong<std::uint32_t, struct _location_idx>;
 using osm_node_id_t = cista::strong<std::int64_t, struct _osm_node_idx>;
