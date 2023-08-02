@@ -11,19 +11,26 @@ using namespace std::string_view_literals;
 namespace nigiri::routing {
 
 void write_hmetis_file(std::ostream& out, timetable const& tt) {
-  auto const n_non_empty_locations =
-      std::count_if(begin(tt.location_routes_), end(tt.location_routes_),
-                    [](auto const& routes) { return !routes.empty(); });
+  auto const n_non_empty_locations = std::count_if(
+      begin(tt.locations_.component_locations_),
+      end(tt.locations_.component_locations_), [&](auto const& locations) {
+        return std::any_of(begin(locations), end(locations),
+                           [&](location_idx_t const l) {
+                             return !tt.location_routes_[l].empty();
+                           });
+      });
 
   out << n_non_empty_locations << " " << tt.n_routes() << "\n";
-  for (auto const& [l, routes] : utl::enumerate(tt.location_routes_)) {
-    if (routes.empty()) {
+
+  for (auto const& c_locations : tt.locations_.component_locations_) {
+    if (c_locations.empty()) {
       continue;
     }
-    for (auto const r : routes) {
-      out << (r + 1) << " ";
+    for (auto const l : c_locations) {
+      for (auto const r : tt.location_routes_[l]) {
+        out << (r + 1) << " ";
+      }
     }
-    out << " % " << tt.locations_.names_[location_idx_t{l}].view();
     out << "\n";
   }
 }

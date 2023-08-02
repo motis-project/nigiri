@@ -1,6 +1,7 @@
 #include "nigiri/loader/build_footpaths.h"
 
 #include <optional>
+#include <ranges>
 #include <stack>
 
 #include "fmt/format.h"
@@ -299,14 +300,14 @@ component_vec find_components(timetable& tt, footgraph const& fgraph) {
 
   std::stack<uint32_t> stack;  // invariant: stack is empty
   for (auto i = location_idx_t{0U}; i < fgraph.size(); ++i) {
+    if (components[to_idx(i)].first != kNoComponent) {
+      continue;
+    }
+
     auto const current_component_idx = tt.locations_.next_component_idx_++;
     if (fgraph[i].empty()) {
       components[to_idx(i)].first = current_component_idx;
       tt.locations_.components_[location_idx_t{i}] = current_component_idx;
-      continue;
-    }
-
-    if (components[to_idx(i)].first != kNoComponent) {
       continue;
     }
 
@@ -525,12 +526,18 @@ void transitivize_footpaths(timetable& tt, bool const adjust_footpaths) {
   tt.locations_.preprocessing_footpaths_in_[location_idx_t{
       tt.locations_.src_.size() - 1}];
 
+  auto c = component_idx_t{0U};
   auto matrix_memory = make_flat_matrix(0, 0, std::uint16_t{0});
   utl::equal_ranges_linear(
       components,
       [](auto const& a, auto const& b) { return a.first == b.first; },
-      [&](auto lb, auto ub) {
+      [&](component_it const lb, component_it const ub) {
+        assert(c == lb->first);
+        tt.locations_.component_locations_.emplace_back(
+            it_range{lb, ub} | std::ranges::views::transform(
+                                   [](auto const& el) { return el.second; }));
         process_component(tt, lb, ub, fgraph, matrix_memory, adjust_footpaths);
+        ++c;
       });
 }
 

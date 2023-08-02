@@ -58,9 +58,9 @@ struct raptor {
          rt_timetable const* rtt,
          raptor_state& state,
          std::vector<bool> const& route_filtered,
-         std::vector<bool>& is_dest,
-         std::vector<std::uint16_t>& dist_to_dest,
-         std::vector<std::uint16_t>& lb,
+         std::vector<bool> const& is_dest,
+         std::vector<std::uint16_t> const& dist_to_dest,
+         std::vector<std::uint16_t> const& lb,
          day_idx_t const base)
       : tt_{tt},
         rtt_{rtt},

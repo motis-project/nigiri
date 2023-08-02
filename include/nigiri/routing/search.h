@@ -28,6 +28,7 @@ struct search_state {
   ~search_state() = default;
 
   std::vector<std::uint16_t> travel_time_lower_bound_;
+  std::vector<bool> route_filtered_;
   std::vector<bool> is_destination_;
   std::vector<std::uint16_t> dist_to_dest_;
   std::vector<start> starts_;
@@ -96,11 +97,11 @@ struct search {
 #endif
     }
 
-    auto route_filtered = std::vector<bool>{};
     if constexpr (Algo::kReach) {
       UTL_START_TIMING(reach);
 
-      route_filtered.resize(tt_.n_routes(), true);  // default = filtered
+      state_.route_filtered_.resize(tt_.n_routes(),
+                                    true);  // default = filtered
 
       // Computes bounding box around all stations.
       // -> returns (center of bounding box, half diagonal as buffer)
@@ -123,7 +124,7 @@ struct search {
               std::min(geo::distance(start_pos, sp) - start_buffer,
                        geo::distance(sp, end_pos) - end_buffer);
           if (reachs[route_idx_t{r}] > dist) {
-            route_filtered[r] = false;  // reach > dist -> not filtered!
+            state_.route_filtered_[r] = false;  // reach > dist -> not filtered!
             break;
           }
         }
@@ -137,6 +138,7 @@ struct search {
         tt_,
         rtt_,
         algo_state,
+        state_.route_filtered_,
         state_.is_destination_,
         state_.dist_to_dest_,
         state_.travel_time_lower_bound_,
