@@ -21,7 +21,6 @@ void trace_start(char const* fmt_str, Args... args) {
 
 template <typename Collection, typename Less>
 std::pair<typename Collection::iterator, bool> insert_sorted(
-    // starts                               new_start      compare
     Collection& v, typename Collection::value_type el, Less&& less) {
   using std::begin;
   using std::end;

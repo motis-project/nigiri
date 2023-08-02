@@ -68,17 +68,48 @@ struct station_filter {
     utl::erase_if(starts, weighted);
   }
 
+
   static void line_filter(std::vector<start>& starts, timetable const& tt) {
+    vector<location_idx_t> visited;
+    vector<location_idx_t> dismiss;
+    for(auto const& s : starts) {
+      location_idx_t l = s.stop_;
+      auto const vr = tt.location_routes_.at(l);
+      for(auto const ri : vr) {
+        vector<pair<transport_idx_t, std::string_view>> names;
+        auto const& transport_range = tt.route_transport_ranges_[route_idx_t{ri}];
+        for(auto t = transport_range.from_; t != transport_range.to_; ++t) {
+          // tname = super viel aber
+          // tname.at(0) = nur R von RE1377 bla
+          std::string_view tname = tt.transport_name(t);
+          printf("t-name: %s\n", tname.data());
+          pair<transport_idx_t, std::string_view> ptn = {transport_idx_t{t}, tname};
+          names.emplace_back(ptn);
+        }
+      }
+    }
+
+    // TODO: Jeweils Namensliste von starts machen
+    // TODO: vergleichen der namenslisten, um stationen zu finden die gleiche transports haben
+    // TODO: schauen, welche station schneller erreichbar ist, von denen mit gleichen transports in der namensliste
+    // TODO: den stationen ein extra bonus geben
+    // vielleicht das mit dem weighted verbinden, eine liste mit boni für jede location
+    // zurück geben und das dann noch auf die weights draufrechnen.
+
+    // einzeln ergibt lineFilter keinen sinn, weil die Station noch andere Routen/Transports
+    // haben kann, die von da abfahren, also das dann komplett rauswerfen wäre doof.
 
   }
 
   static void filter_stations(std::vector<start>& starts, timetable const& tt) {
+    //printf("Anzahl starts vorher: %llu \n", starts.size());
     // entweder percentage filter (einfachster)
-    percentage_filter(starts, 0.2);
+    //percentage_filter(starts, 0.2);
     // oder weighted -> da ist percentage ein element von
-    weighted_filter(starts, tt);
+    //weighted_filter(starts, tt);
     //
     line_filter(starts, tt);
+    //printf("nachher: %llu \n", starts.size());
   }
 
 
