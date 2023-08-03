@@ -1,16 +1,229 @@
 #include "nigiri/routing/hmetis.h"
 
+#include <fstream>
+
 #include "geo/box.h"
 
+#include "boost/thread/tss.hpp"
+
 #include "utl/enumerate.h"
+#include "utl/equal_ranges_linear.h"
+#include "utl/insert_sorted.h"
+#include "utl/parallel_for.h"
 #include "utl/parser/arg_parser.h"
 #include "utl/parser/cstr.h"
+#include "utl/pipes/all.h"
+#include "utl/pipes/remove_if.h"
+#include "utl/pipes/transform.h"
+#include "utl/pipes/vec.h"
+#include "utl/progress_tracker.h"
+#include "utl/to_vec.h"
 
+#include "nigiri/routing/raptor/raptor.h"
+#include "nigiri/routing/start_times.h"
+#include "nigiri/rt/frun.h"
 #include "nigiri/timetable.h"
 
 using namespace std::string_view_literals;
 
 namespace nigiri::routing {
+
+struct state {
+  explicit state(timetable const& tt, date::sys_days const base_day)
+      : tt_{tt},
+        results_(tt.n_locations()),
+        base_day_{tt.day_idx(base_day)},
+        lb_(tt.n_locations(), 0U),
+        is_dest_(tt.n_locations(), false),
+        dist_to_dest_(tt.n_locations(), kInvalidDelta<direction::kForward>) {}
+
+  void reset() {
+    for (auto& r : results_) {
+      r.clear();
+    }
+
+    raptor_.reset_arrivals();
+    starts_.clear();
+  }
+
+  timetable const& tt_;
+
+  std::vector<start> starts_;
+  std::vector<pareto_set<journey>> results_{tt_.n_locations()};
+
+  day_idx_t base_day_;
+  std::vector<bool> route_filtered_;
+  std::vector<std::uint16_t> lb_;
+  std::vector<bool> is_dest_;
+  std::vector<std::uint16_t> dist_to_dest_;
+  raptor_state raptor_state_;
+  journey reconstruct_journey_;
+  raptor<direction::kForward, /* Rt= */ false, /* OneToAll= */ true> raptor_{
+      tt_,      nullptr,       raptor_state_, route_filtered_,
+      is_dest_, dist_to_dest_, lb_,           base_day_};
+};
+
+static boost::thread_specific_ptr<state> search_state;
+
+template <typename Partitions>
+void update_route_arc_flags(timetable& tt,
+                            Partitions&& partitions,
+                            journey const& j) {
+  for (auto const& l : j.legs_) {
+    if (!std::holds_alternative<journey::run_enter_exit>(l.uses_)) {
+      continue;
+    }
+
+    auto const ree = std::get<journey::run_enter_exit>(l.uses_);
+    auto const r = tt.transport_route_[ree.r_.t_.t_idx_];
+
+    for (auto const p : partitions) {
+      tt.arc_flags_[r].set(to_idx(p), true);
+    }
+  }
+}
+
+void arc_flags_search(timetable& tt, component_idx_t const c) {
+  if (search_state.get() == nullptr) {
+    search_state.reset(new state{tt, tt.internal_interval_days().from_});
+  }
+
+  auto& state = *search_state;
+  state.reset();
+
+  auto q = query{};
+  q.start_match_mode_ = location_match_mode::kEquivalent;
+  q.dest_match_mode_ = location_match_mode::kEquivalent;
+  q.start_ = utl::to_vec(tt.locations_.component_locations_[c],
+                         [](location_idx_t const l) {
+                           return offset{l, 0_minutes, 0U};
+                         });
+
+  get_starts(direction::kForward, tt, nullptr, tt.external_interval(), q.start_,
+             location_match_mode::kEquivalent, true, state.starts_, false);
+
+  utl::equal_ranges_linear(
+      state.starts_,
+      [](start const& a, start const& b) {
+        return a.time_at_start_ == b.time_at_start_;
+      },
+      [&](auto&& from_it, auto&& to_it) {
+        state.raptor_.next_start_time();
+        auto const start_time = from_it->time_at_start_;
+
+        q.start_time_ = start_time;
+
+        for (auto const& st : it_range{from_it, to_it}) {
+          state.raptor_.add_start(st.stop_, st.time_at_stop_);
+        }
+
+        auto const worst_time_at_dest = start_time - kMaxTravelTime;
+        auto dummy = pareto_set<journey>{};
+        state.raptor_.execute(start_time, kMaxTransfers, worst_time_at_dest,
+                              dummy);
+
+        // Reconstruct for each target.
+        for (auto t = location_idx_t{0U}; t != tt.n_locations(); ++t) {
+          if (tt.locations_.components_[t] == c) {
+            continue;
+          }
+
+          // Collect journeys for each number of transfers.
+          for (auto k = 1U; k != kMaxTransfers + 1U; ++k) {
+            auto const dest_time =
+                state.raptor_state_.round_times_[k][to_idx(t)];
+            if (dest_time == kInvalidDelta<direction::kBackward>) {
+              continue;
+            }
+            state.results_[to_idx(t)].add(journey{
+                .legs_ = {},
+                .start_time_ = start_time,
+                .dest_time_ = delta_to_unix(state.raptor_.base(), dest_time),
+                .dest_ = t,
+                .transfers_ = static_cast<std::uint8_t>(k - 1)});
+          }
+
+          // Reconstruct journeys and update reach values.
+          for (auto& j : state.results_[to_idx(t)]) {
+            if (j.reconstructed_) {
+              continue;
+            }
+            q.destination_ = {{t, 0_minutes, 0U}};
+            state.reconstruct_journey_.copy_from(j);
+            try {
+              state.raptor_.reconstruct(q, state.reconstruct_journey_);
+            } catch (std::exception const& e) {
+              log(log_lvl::info, "routing.reach",
+                  "reconstruct {}@{} to {}@{}: {}", c, j.start_time_,
+                  location{tt, t}, j.dest_time_, e.what());
+              continue;
+            }
+            update_route_arc_flags(tt, tt.component_partitions_[c],
+                                   state.reconstruct_journey_);
+            j.reconstructed_ = true;
+          }
+        }
+      });
+}
+
+void compute_arc_flags(timetable& tt) {
+  auto progress_tracker = utl::activate_progress_tracker("arcflags");
+
+  // Write file for hMETIS
+  progress_tracker->status("Write hMETIS");
+  auto of = std::ofstream{"hmetis.txt"};
+  write_hmetis_file(of, tt);
+
+  // Compute partition with hMETIS
+  progress_tracker->status("Exec hMETIS");
+  auto const ret = system(
+      R"(/home/felix/Downloads/hmetis-1.5-linux/hmetis hmetis.txt 8 15 50 1 1 1 1 0)");
+  log(log_lvl::info, "routing.arcflags", "hmetis returned {}", ret);
+
+  // Read partitions.
+  progress_tracker->status("Read hMETIS result");
+  auto const file =
+      cista::mmap{"hmetis.txt.part.8", cista::mmap::protection::READ};
+  utl::for_each_line(file.view(), [&](utl::cstr line) {
+    tt.route_partitions_.emplace_back(utl::parse<unsigned>(line));
+  });
+
+  // Write location partitions.
+  auto component_partitions =
+      mutable_fws_multimap<component_idx_t, partition_idx_t>{};
+  for (auto const& [c, locations] :
+       utl::enumerate(tt.locations_.component_locations_)) {
+    for (auto const l : locations) {
+      for (auto const r : tt.location_routes_[l]) {
+        utl::insert_sorted(component_partitions[component_idx_t{c}],
+                           tt.route_partitions_[r]);
+      }
+    }
+  }
+  for (auto const& el : component_partitions) {
+    tt.component_partitions_.emplace_back(el);
+  }
+
+  auto c_idx = component_idx_t{0U};
+  auto const cut_components =
+      utl::all(tt.component_partitions_)  //
+      | utl::transform([&](auto const& p) {
+          return std::pair{c_idx++, p};
+        })  //
+      | utl::remove_if([](auto const& partitions) {
+          return partitions.second.size() <= 1;
+        })  //
+      | utl::transform([&](auto const& p) { return p.first; })  //
+      | utl::vec();
+
+  progress_tracker->status("Compute arc-flags");
+  progress_tracker->out_bounds(0, 100);
+  progress_tracker->in_high(cut_components.size());
+
+  utl::parallel_for(
+      cut_components, [&](component_idx_t const c) { arc_flags_search(tt, c); },
+      progress_tracker->increment_fn());
+}
 
 void write_hmetis_file(std::ostream& out, timetable const& tt) {
   auto const location_has_routes = [&](auto const& locations) {
@@ -110,7 +323,7 @@ void hmetis_out_to_geojson(std::string_view in,
 
   // Print line strings for route sequences.
   for (auto const [r, partition] : utl::enumerate(route_partitions)) {
-    out << fmt::format(marker_fmt_str_start, kColors[partition]);
+    out << fmt::format(marker_fmt_str_start, kColors[to_idx(partition)]);
     auto first = true;
     for (auto const& stp : tt.route_location_seq_[route_idx_t{r}]) {
       if (!first) {

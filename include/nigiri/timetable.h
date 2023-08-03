@@ -450,7 +450,8 @@ struct timetable {
   vector_map<route_idx_t, float> route_bbox_diagonal_;
 
   // Arc flags
-  vecvec<location_idx_t, partition_idx_t> location_partitions_;
+  vector_map<route_idx_t, partition_idx_t> route_partitions_;
+  vecvec<component_idx_t, partition_idx_t> component_partitions_;
   vector_map<route_idx_t, arc_flags> arc_flags_;
 };
 
