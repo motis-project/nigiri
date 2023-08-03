@@ -337,13 +337,14 @@ void load_timetable(loader_config const& config,
       progress_tracker->increment();
     }
 
+    // TODO: schauen ob die vector_maps richtig gefüllt werden, denke nicht...
+    // mutable_fws_multimap<location_idx_t, route_idx_t>{}; für location_routes
     // Build location_routes map and filter data for station filter
     for (auto l = tt.location_routes_.size(); l != tt.n_locations(); ++l) {
       tt.location_routes_.emplace_back(location_routes[location_idx_t{l}]);
       assert(tt.location_routes_.size() == l + 1U);
       if(tt.use_station_filter_) {
         tt.depature_count_.emplace_back(location_routes[location_idx_t{l}].size());
-        assert(tt.depature_count_.size() == l + 1U);
         int local = 0;
         int slow = 0;
         int fast = 0;
@@ -369,7 +370,6 @@ void load_timetable(loader_config const& config,
         classcount.emplace_back(group::kfast, fast);
         classcount.emplace_back(group::kaway, away);
         tt.classgroups_on_loc_.emplace_back(classcount);
-        assert(tt.classgroups_on_loc_.size() == l + 1U);
       }
     }
 

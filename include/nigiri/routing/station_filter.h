@@ -8,10 +8,29 @@
 
 namespace nigiri::routing {
 struct station_filter {
+
   struct weight_info {
     location_idx_t l_;
     int weight_;
   };
+
+static void create_names_lists(std::vector<start>& starts, timetable const& tt) {
+  for(auto const& s : starts) {
+    vector<std::string_view> names;
+    location_idx_t l = s.stop_;
+    auto const vr = tt.location_routes_.at(l);
+    for(auto const ri : vr) {
+      auto const& transport_range = tt.route_transport_ranges_[route_idx_t{ri}];
+      for(auto t = transport_range.from_; t != transport_range.to_; ++t) {
+        // tname richtig ?
+        std::string_view tname = tt.transport_name(t);
+        names.emplace_back(tname);
+      }
+    }
+    //starts_all_names_.emplace_back(names);
+    starts_all_names_.at(l) = names;
+  }
+}
 
   static void percentage_filter(std::vector<start>& starts, double percent) {
     auto const min = [&](start const& a, start const& b) {
@@ -60,7 +79,8 @@ struct station_filter {
       if(o.count() >= 5 && o.count() < 7) weight += 4;
       if(o.count() >= 3 && o.count() < 5) weight += 5;
       if(o.count() >= 0 && o.count() < 3) weight += 6;
-      weight_info wi = {l, weight};
+      int extra_weight = line_filter(starts, tt, s);
+      weight_info wi = {l, (weight+extra_weight)};
       v_weights.emplace_back(wi);
       most = weight > most ? weight : most;
     }
@@ -68,50 +88,59 @@ struct station_filter {
     utl::erase_if(starts, weighted);
   }
 
-
-  static void line_filter(std::vector<start>& starts, timetable const& tt) {
-    vector<location_idx_t> visited;
-    vector<location_idx_t> dismiss;
-    for(auto const& s : starts) {
-      location_idx_t l = s.stop_;
-      auto const vr = tt.location_routes_.at(l);
-      for(auto const ri : vr) {
-        vector<pair<transport_idx_t, std::string_view>> names;
-        auto const& transport_range = tt.route_transport_ranges_[route_idx_t{ri}];
-        for(auto t = transport_range.from_; t != transport_range.to_; ++t) {
-          // tname = super viel aber
-          // tname.at(0) = nur R von RE1377 bla
-          std::string_view tname = tt.transport_name(t);
-          printf("t-name: %s\n", tname.data());
-          pair<transport_idx_t, std::string_view> ptn = {transport_idx_t{t}, tname};
-          names.emplace_back(ptn);
+  static vector<location_idx_t> find_name(std::string_view find,
+                                          vector_map<location_idx_t, vector<std::string_view>> in) {
+    vector<location_idx_t> found_at;
+    for(auto lidx = location_idx_t{0}; lidx < in.size(); lidx++) {
+      for(auto const p : in.at(lidx)) {
+        if(find == p) {
+          found_at.emplace_back(lidx);
         }
       }
     }
+    return found_at;
+  }
 
-    // TODO: Jeweils Namensliste von starts machen
-    // TODO: vergleichen der namenslisten, um stationen zu finden die gleiche transports haben
-    // TODO: schauen, welche station schneller erreichbar ist, von denen mit gleichen transports in der namensliste
-    // TODO: den stationen ein extra bonus geben
-    // vielleicht das mit dem weighted verbinden, eine liste mit boni für jede location
-    // zurück geben und das dann noch auf die weights draufrechnen.
+  static start find_start_from_locidx(std::vector<start>& starts, location_idx_t locidx) {
+    for(start s : starts) {
+      if(s.stop_ == locidx) return s;
+    }
+    return start();
+  }
 
+  static int line_filter(std::vector<start>& starts, timetable const& tt, start this_start) {
+    duration_t o = this_start.time_at_stop_ - this_start.time_at_start_;
+    auto const l = this_start.stop_;
+    int weight_count = 0;
+    duration_t dur_off;
+    vector<std::string_view> this_start_names = starts_all_names_.at(l);
+    vector<location_idx_t> v_li;
+    for(auto const name : this_start_names) {
+      v_li = find_name(name, starts_all_names_);
+    }
+    for(auto const a : v_li) {
+      start s = find_start_from_locidx(starts, a);
+      dur_off = s.time_at_stop_ - s.time_at_start_;
+      if(o < dur_off) {
+        weight_count++;
+      }
+    }
     // einzeln ergibt lineFilter keinen sinn, weil die Station noch andere Routen/Transports
     // haben kann, die von da abfahren, also das dann komplett rauswerfen wäre doof.
-
+    return weight_count;
   }
 
   static void filter_stations(std::vector<start>& starts, timetable const& tt) {
+    create_names_lists(starts, tt);
     //printf("Anzahl starts vorher: %llu \n", starts.size());
     // entweder percentage filter (einfachster)
     //percentage_filter(starts, 0.2);
     // oder weighted -> da ist percentage ein element von
     //weighted_filter(starts, tt);
-    //
-    line_filter(starts, tt);
     //printf("nachher: %llu \n", starts.size());
   }
 
-
+  // Linking error!
+  static vector_map<location_idx_t, vector<std::string_view>> starts_all_names_;
 };
 } // namespace nigiri::routing

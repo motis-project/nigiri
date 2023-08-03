@@ -351,6 +351,7 @@ struct timetable {
   void write(std::filesystem::path const&) const;
   static cista::wrapped<timetable> read(cista::memory_holder&&);
 
+  // TODO: schauen, ob das die richtigen Typen sind.
   // Filter
   bool use_station_filter_;
   vector_map<location_idx_t, size_t> depature_count_;
