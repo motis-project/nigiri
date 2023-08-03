@@ -448,6 +448,10 @@ struct timetable {
 
   // Route bounding box diagonal distance in meters.
   vector_map<route_idx_t, float> route_bbox_diagonal_;
+
+  // Arc flags
+  vecvec<location_idx_t, partition_idx_t> location_partitions_;
+  vector_map<route_idx_t, arc_flags> arc_flags_;
 };
 
 }  // namespace nigiri

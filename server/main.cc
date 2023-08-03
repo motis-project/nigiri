@@ -24,7 +24,10 @@
 #include "nigiri/loader/hrd/loader.h"
 #include "nigiri/loader/init_finish.h"
 #include "nigiri/logging.h"
+#include "nigiri/routing/hmetis.h"
+#include "nigiri/routing/raptor/raptor.h"
 #include "nigiri/routing/reach.h"
+#include "nigiri/routing/search.h"
 #include "nigiri/timetable.h"
 
 using namespace date;
@@ -45,6 +48,8 @@ date::sys_days parse_date(std::string_view s) {
 int load(interval<date::sys_days> const date_range,
          std::vector<std::string_view> const& paths) {
   fmt::print("range={}, paths={}", date_range, paths);
+
+  utl::activate_progress_tracker("import");
 
   auto loaders = std::vector<std::unique_ptr<loader_interface>>{};
   loaders.emplace_back(std::make_unique<gtfs::gtfs_loader>());
@@ -70,12 +75,14 @@ int load(interval<date::sys_days> const date_range,
   timetable tt;
   tt.date_range_ = date_range;
   register_special_stations(tt);
+
   for (auto const [src, dataset] : utl::enumerate(datasets)) {
     auto progress_tracker =
         utl::activate_progress_tracker(fmt::format("{}", paths[src]));
     auto const& [loader_idx, dir] = dataset;
     loaders[loader_idx]->load({}, source_idx_t{src}, *dir, tt);
   }
+
   finalize(tt);
 
   tt.write(kTimetablePath);
@@ -160,6 +167,42 @@ int main(int ac, char** av) {
 
     case cista::hash("reach"):
       return reach({parse_date(av[2]), parse_date(av[3])});
+
+    case cista::hash("partition"): {
+      std::cout << "Loading timetable..." << std::flush;
+      auto tt_wrapped = cista::wrapped<timetable>{timetable::read(
+          cista::memory_holder{cista::file{kTimetablePath, "r"}.content()})};
+      auto& tt = *tt_wrapped;
+      tt_wrapped->locations_.resolve_timezones();
+      std::cout << " done" << std::endl;
+
+      auto of = std::ofstream{"hmetis_out.txt"};
+      routing::write_hmetis_file(of, tt);
+
+      return 0;
+    }
+
+    case cista::hash("write_geojson"): {
+      if (ac < 3) {
+        print_usage();
+        return 1;
+      }
+
+      std::cout << "Reading " << av[2] << "\n";
+      auto const file = cista::mmap{av[2], cista::mmap::protection::READ};
+
+      std::cout << "Loading timetable..." << std::flush;
+      auto tt_wrapped = cista::wrapped<timetable>{timetable::read(
+          cista::memory_holder{cista::file{kTimetablePath, "r"}.content()})};
+      auto& tt = *tt_wrapped;
+      tt_wrapped->locations_.resolve_timezones();
+      std::cout << " done" << std::endl;
+
+      auto of = std::ofstream{"partition_geo_json.txt"};
+      routing::hmetis_out_to_geojson(file.view(), of, tt);
+
+      return 0;
+    }
 
     default: fmt::print("unknown command {}\n", cmd); return 1;
   }

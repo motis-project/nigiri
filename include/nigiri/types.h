@@ -48,6 +48,9 @@ using bitset = cista::bitset<Size>;
 constexpr auto const kMaxDays = 512;
 using bitfield = bitset<kMaxDays>;
 
+constexpr auto const kMaxPartitions = 8U;
+using arc_flags = bitset<kMaxPartitions>;
+
 using bitvec = cista::raw::bitvec;
 
 template <typename... Args>
@@ -117,6 +120,7 @@ using merged_trips_idx_t =
     cista::strong<std::uint32_t, struct _merged_trips_idx>;
 using footpath_idx_t = cista::strong<std::uint32_t, struct _footpath_idx>;
 using source_file_idx_t = cista::strong<std::uint16_t, struct _source_file_idx>;
+using partition_idx_t = cista::strong<std::uint8_t, struct _partition_idx>;
 
 using rt_trip_idx_t = cista::strong<std::uint32_t, struct _trip_idx>;
 using rt_add_trip_id_idx_t =
