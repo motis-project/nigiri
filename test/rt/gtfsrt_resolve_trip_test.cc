@@ -3,6 +3,7 @@
 #include "nigiri/loader/gtfs/files.h"
 #include "nigiri/loader/gtfs/load_timetable.h"
 #include "nigiri/loader/init_finish.h"
+#include "nigiri/rt/create_rt_timetable.h"
 #include "nigiri/rt/frun.h"
 #include "nigiri/rt/gtfsrt_resolve_run.h"
 #include "nigiri/rt/gtfsrt_update.h"
@@ -109,6 +110,64 @@ TEST(rt, gtfsrt_resolve_static_trip) {
   }
 }
 
+mem_dir miami_test_files() {
+  return mem_dir::read(R"(
+# agency.txt
+agency_id,agency_name,agency_url,agency_timezone,agency_lang
+Miami-Dade Transit,Miami-Dade Transit,http://www.miamidade.gov/transit,America/New_York,en
+
+# stops.txt
+stop_id,stop_name,stop_lat,stop_lon,stop_code,stop_desc
+1,Quail Roost Dr & SW 115 Ave,25.592450,-80.377950,115AQRSN,SW 107TH AVE & SW 112TH ST
+3614,SW 107TH AVE @ SW 128TH ST,25.591810,-80.379840,QRSD17A3,
+3213,SW 117 AV @ QUAIL ROOST DR,25.590330,-80.380730,C117QUA4,
+
+# routes.txt
+agency_id,route_id,route_short_name,route_long_name,route_type,route_color,route_text_color,eligibility_restricted
+Miami-Dade Transit,27757,1,SO.MIAMI HTS-PERRINE VIA SOUTHLAND,3,FF00FF,FFFFFF,-999
+
+# trips.txt
+route_id,trip_id,service_id,trip_headsign,direction_id,block_id,shape_id,drt_advance_book_min,peak_offpeak
+27757,5456914,1,1 - SW 168 St,0,1484970,196385,0.0,0
+
+# stop_times.txt
+trip_id,stop_id,arrival_time,departure_time,timepoint,stop_sequence,shape_dist_traveled,continuous_pickup,continuous_drop_off,start_service_area_radius,end_service_area_radius,departure_buffer
+5456914,1,15:15:00,15:15:00,1,1,,-999,-999,-999.0,-999.0,0
+5456914,3614,15:15:35,15:15:35,0,2,0.1548,-999,-999,-999.0,-999.0,0
+5456914,3213,15:16:20,15:16:20,0,3,0.354,-999,-999,-999.0,-999.0,0
+
+# calendar_dates.txt
+service_id,date,exception_type
+1,20230904,2
+
+# calendar.txt
+service_id,monday,tuesday,wednesday,thursday,friday,saturday,sunday,start_date,end_date
+1,1,1,1,1,1,0,0,20230724,20231112
+)");
+}
+
+TEST(rt, resolve_tz) {
+  auto tt = timetable{};
+
+  tt.date_range_ = {date::sys_days{2023_y / August / 3},
+                    date::sys_days{2023_y / August / 4}};
+  loader::register_special_stations(tt);
+  loader::gtfs::load_timetable({}, source_idx_t{0}, miami_test_files(), tt);
+  loader::finalize(tt);
+
+  auto rtt = rt::create_rt_timetable(tt, date::sys_days{2023_y / August / 3});
+
+  transit_realtime::FeedMessage msg;
+  auto const entity = msg.add_entity();
+  auto const td = entity->mutable_trip_update()->mutable_trip();
+  td->set_start_date("20230803");
+  td->set_trip_id("5456914");
+
+  auto const r = gtfsrt_resolve_run(date::sys_days{2023_y / August / 3}, tt,
+                                    rtt, source_idx_t{0U}, *td);
+  EXPECT_TRUE(r.first.valid());
+}
+
 TEST(rt, gtfs_rt_update) {
   auto const to_unix = [](auto&& x) {
     return std::chrono::time_point_cast<std::chrono::seconds>(x)
@@ -162,6 +221,7 @@ TEST(rt, gtfs_rt_update) {
                  rt::gtfsrt_resolve_run(date::sys_days{2019_y / May / 4}, tt,
                                         rtt, source_idx_t{0}, *td)
                      .first};
+  ASSERT_TRUE(fr.valid());
   for (auto const [from, to] : utl::pairwise(fr)) {
     EXPECT_EQ(scheduled[i++], from.scheduled_time(nigiri::event_type::kDep));
     EXPECT_EQ(scheduled[i++], to.scheduled_time(nigiri::event_type::kArr));
