@@ -61,10 +61,10 @@ void resolve_static(date::sys_days const today,
 
       auto const utc_dep =
           tt.event_mam(t, stop_range.from_, event_type::kDep).as_duration();
-      auto const [tz_offset_days, tz_offset_minutes] =
+      auto const [day_offset, tz_offset_minutes] =
           split(gtfs_static_dep - utc_dep);
       auto const day_idx = ((start_date.has_value() ? *start_date : today) +
-                            tz_offset_days - tt.internal_interval_days().from_)
+                            day_offset - tt.internal_interval_days().from_)
                                .count();
       if (day_idx > kMaxDays || day_idx < 0) {
         continue;
@@ -75,7 +75,6 @@ void resolve_static(date::sys_days const today,
         r.t_ = transport{t, day_idx_t{day_idx}};
         r.stop_range_ = stop_range;
         trip = i->second;
-        return;
       }
     }
   }
