@@ -12,11 +12,6 @@
 
 namespace nigiri::rt {
 
-template <typename T>
-T mod(T const a, T const b) {
-  return (b + (a % b)) % b;
-}
-
 std::pair<date::days, duration_t> split(duration_t const i) {
   auto const a = static_cast<int>(std::round(i.count() / 1440.));
   auto const b = i.count() - a * 1440;
