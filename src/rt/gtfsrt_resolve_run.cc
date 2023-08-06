@@ -49,10 +49,6 @@ void resolve_static(date::sys_days const today,
            tt.trip_id_strings_[t_id_idx].view() == trip_id;
   };
 
-  if (lb == end(tt.trip_id_to_idx_) || !id_matches(lb->first)) {
-    return;
-  }
-
   for (auto i = lb; i != end(tt.trip_id_to_idx_) && id_matches(i->first); ++i) {
     for (auto const [t, stop_range] : tt.trip_transport_ranges_[i->second]) {
       auto const o = tt.transport_first_dep_offset_[t];
