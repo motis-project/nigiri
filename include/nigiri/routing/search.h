@@ -1,5 +1,7 @@
 #pragma once
 
+#include "geo/box.h"
+
 #include "utl/enumerate.h"
 #include "utl/equal_ranges_linear.h"
 #include "utl/erase_if.h"
@@ -15,7 +17,8 @@
 #include "nigiri/routing/start_times.h"
 #include "nigiri/timetable.h"
 #include "nigiri/types.h"
-#include "geo/box.h"
+
+#define NIGIRI_ARC_FLAGS
 
 namespace nigiri::routing {
 
@@ -53,13 +56,13 @@ struct routing_result {
 
 template <direction SearchDir, typename Algo>
 struct search {
+  using algo_filter_t = typename Algo::algo_filter_t;
   using algo_state_t = typename Algo::algo_state_t;
   using algo_stats_t = typename Algo::algo_stats_t;
   static constexpr auto const kFwd = (SearchDir == direction::kForward);
   static constexpr auto const kBwd = (SearchDir == direction::kBackward);
 
-  Algo init(algo_state_t& algo_state,
-            vector_map<route_idx_t, unsigned> const& reachs) {
+  Algo init(algo_state_t& algo_state, algo_filter_t const& filter) {
     stats_.fastest_direct_ =
         static_cast<std::uint64_t>(fastest_direct_.count());
 
@@ -98,47 +101,16 @@ struct search {
     }
 
     if constexpr (Algo::kReach) {
-      UTL_START_TIMING(reach);
-
-      state_.route_filtered_.resize(tt_.n_routes(),
-                                    true);  // default = filtered
-
-      // Computes bounding box around all stations.
-      // -> returns (center of bounding box, half diagonal as buffer)
-      auto const get_start_end = [&](std::vector<offset> const& offsets) {
-        auto bbox = geo::box{};
-        for (auto const offset : offsets) {
-          bbox.extend(tt_.locations_.coordinates_[offset.target()]);
-        }
-        return std::pair{geo::midpoint(bbox.min_, bbox.max_),
-                         geo::distance(bbox.min_, bbox.max_) / 2.0};
-      };
-
-      auto const [start_pos, start_buffer] = get_start_end(q_.start_);
-      auto const [end_pos, end_buffer] = get_start_end(q_.destination_);
-
-      for (auto const [r, stop_seq] : utl::enumerate(tt_.route_location_seq_)) {
-        for (auto const s : stop_seq) {
-          auto const sp = tt_.locations_.coordinates_[stop{s}.location_idx()];
-          auto const dist =
-              std::min(geo::distance(start_pos, sp) - start_buffer,
-                       geo::distance(sp, end_pos) - end_buffer);
-          if (reachs[route_idx_t{r}] > dist) {
-            state_.route_filtered_[r] = false;  // reach > dist -> not filtered!
-            break;
-          }
-        }
-      }
-
-      UTL_STOP_TIMING(reach);
-      stats_.reach_time_ = static_cast<std::uint64_t>(UTL_TIMING_MS(reach));
+#if defined(NIGIRI_REACH)
+#elif defined(NIGIRI_ARC_FLAGS)
+#endif
     }
 
     return Algo{
+        filter,
         tt_,
         rtt_,
         algo_state,
-        state_.route_filtered_,
         state_.is_destination_,
         state_.dist_to_dest_,
         state_.travel_time_lower_bound_,
@@ -149,9 +121,9 @@ struct search {
 
   search(timetable const& tt,
          rt_timetable const* rtt,
-         vector_map<route_idx_t, unsigned> const& reachs,
          search_state& s,
          algo_state_t& algo_state,
+         algo_filter_t const& filter,
          query q)
       : tt_{tt},
         rtt_{rtt},
@@ -167,7 +139,7 @@ struct search {
                 }},
             q_.start_time_)},
         fastest_direct_{get_fastest_direct(tt_, q_, SearchDir)},
-        algo_{init(algo_state, reachs)} {}
+        algo_{init(algo_state, filter)} {}
 
   routing_result<algo_stats_t> execute() {
     state_.results_.clear();

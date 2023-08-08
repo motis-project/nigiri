@@ -25,17 +25,18 @@ pareto_set<routing::journey> raptor_search(timetable const& tt,
   using algo_state_t = routing::raptor_state;
   static auto search_state = routing::search_state{};
   static auto algo_state = algo_state_t{};
+  static auto route_reachs = vector_map<route_idx_t, unsigned>{};
 
   if (rtt == nullptr) {
     using algo_t = routing::raptor<SearchDir, false>;
-    return *(routing::search<SearchDir, algo_t>{tt, rtt, search_state,
-                                                algo_state, std::move(q)}
+    return *(routing::search<SearchDir, algo_t>{
+        tt, rtt, route_reachs, search_state, algo_state, std::move(q)}
                  .execute()
                  .journeys_);
   } else {
     using algo_t = routing::raptor<SearchDir, true>;
-    return *(routing::search<SearchDir, algo_t>{tt, rtt, search_state,
-                                                algo_state, std::move(q)}
+    return *(routing::search<SearchDir, algo_t>{
+        tt, rtt, route_reachs, search_state, algo_state, std::move(q)}
                  .execute()
                  .journeys_);
   }

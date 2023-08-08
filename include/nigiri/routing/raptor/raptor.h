@@ -27,16 +27,13 @@ struct raptor_stats {
   std::uint64_t reach_filtered_{0ULL};
 };
 
-template <direction SearchDir,
-          bool Rt,
-          bool OneToAll = false,
-          bool Reach = false>
+template <typename Filter, direction SearchDir, bool Rt, bool OneToAll = false>
 struct raptor {
+  using algo_filter_t = Filter;
   using algo_state_t = raptor_state;
   using algo_stats_t = raptor_stats;
 
   static constexpr bool kUseLowerBounds = true;
-  static constexpr bool kReach = Reach;
   static constexpr auto const kFwd = (SearchDir == direction::kForward);
   static constexpr auto const kBwd = (SearchDir == direction::kBackward);
   static constexpr auto const kInvalid = kInvalidDelta<SearchDir>;
@@ -54,7 +51,8 @@ struct raptor {
   }
   static auto dir(auto a) { return (kFwd ? 1 : -1) * a; }
 
-  raptor(timetable const& tt,
+  raptor(Filter const& filter,
+         timetable const& tt,
          rt_timetable const* rtt,
          raptor_state& state,
          std::vector<bool> const& route_filtered,
@@ -62,7 +60,8 @@ struct raptor {
          std::vector<std::uint16_t> const& dist_to_dest,
          std::vector<std::uint16_t> const& lb,
          day_idx_t const base)
-      : tt_{tt},
+      : filter_{std::forward<Filter>(filter)},
+        tt_{tt},
         rtt_{rtt},
         state_{state},
         route_filtered_{route_filtered},
@@ -153,11 +152,9 @@ struct raptor {
       any_marked = false;
       for (auto r_id = 0U; r_id != n_routes_; ++r_id) {
         if (state_.route_mark_[r_id]) {
-          if constexpr (Reach) {
-            if (route_filtered_[r_id]) {
-              ++stats_.reach_filtered_;
-              continue;
-            }
+          if (filter_.is_filtered(route_idx_t{r_id})) {
+            ++stats_.reach_filtered_;
+            continue;
           }
 
           ++stats_.n_routes_visited_;
@@ -644,10 +641,6 @@ private:
                        transport const t,
                        stop_idx_t const stop_idx,
                        event_type const ev_type) {
-    trace("time at stop: {}\n",
-          tt_.to_unixtime(
-              t.day_,
-              tt_.event_mam(r, t.t_idx_, stop_idx, ev_type).as_duration()));
     return to_delta(t.day_,
                     tt_.event_mam(r, t.t_idx_, stop_idx, ev_type).count());
   }
@@ -700,6 +693,7 @@ private:
     }
   }
 
+  Filter const& filter_;
   timetable const& tt_;
   rt_timetable const* rtt_{nullptr};
   raptor_state& state_;

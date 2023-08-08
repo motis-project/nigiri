@@ -346,7 +346,7 @@ void reconstruct_journey(timetable const& tt,
       throw utl::fail(
           "intermodal destination reconstruction failed at k={}, t={}, "
           "stop={}, time={}",
-          k, j.transfers_, location{tt, l}, curr_time);
+          k, j.transfers_, location{tt, l}, delta_to_unix(base, curr_time));
     }
 
     trace_reconstruct("CHECKING TRANSFER AT {}\n", location{tt, l});
@@ -370,7 +370,8 @@ void reconstruct_journey(timetable const& tt,
     }
 
     throw utl::fail("reconstruction failed at k={}, t={}, stop={}, time={}", k,
-                    j.transfers_, location{tt, l}, curr_time);
+                    j.transfers_, location{tt, l},
+                    delta_to_unix(base, curr_time));
   };
 
   auto l = j.dest_;

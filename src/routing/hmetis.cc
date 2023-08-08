@@ -35,7 +35,8 @@ struct state {
         base_day_{tt.day_idx(base_day)},
         lb_(tt.n_locations(), 0U),
         is_dest_(tt.n_locations(), false),
-        dist_to_dest_(tt.n_locations(), kInvalidDelta<direction::kForward>) {}
+        dist_to_dest_(tt.n_locations(),
+                      std::numeric_limits<std::uint16_t>::max()) {}
 
   void reset() {
     for (auto& r : results_) {
@@ -58,7 +59,7 @@ struct state {
   std::vector<std::uint16_t> dist_to_dest_;
   raptor_state raptor_state_;
   journey reconstruct_journey_;
-  raptor<direction::kForward, /* Rt= */ false, /* OneToAll= */ true> raptor_{
+  raptor<direction::kBackward, /* Rt= */ false, /* OneToAll= */ true> raptor_{
       tt_,      nullptr,       raptor_state_, route_filtered_,
       is_dest_, dist_to_dest_, lb_,           base_day_};
 };
@@ -99,8 +100,9 @@ void arc_flags_search(timetable& tt, component_idx_t const c) {
                            return offset{l, 0_minutes, 0U};
                          });
 
-  get_starts(direction::kForward, tt, nullptr, tt.external_interval(), q.start_,
-             location_match_mode::kEquivalent, true, state.starts_, false);
+  get_starts(direction::kBackward, tt, nullptr, tt.external_interval(),
+             q.start_, location_match_mode::kEquivalent, true, state.starts_,
+             false);
 
   utl::equal_ranges_linear(
       state.starts_,
@@ -156,7 +158,8 @@ void arc_flags_search(timetable& tt, component_idx_t const c) {
               log(log_lvl::info, "routing.reach",
                   "reconstruct {}@{} to {}@{}: {}", c, j.start_time_,
                   location{tt, t}, j.dest_time_, e.what());
-              continue;
+              //                          continue;
+              throw;
             }
             update_route_arc_flags(tt, tt.component_partitions_[c],
                                    state.reconstruct_journey_);
@@ -164,6 +167,19 @@ void arc_flags_search(timetable& tt, component_idx_t const c) {
           }
         }
       });
+}
+
+std::string exec(const char* cmd) {
+  std::array<char, 128> buffer;
+  std::string result;
+  std::unique_ptr<FILE, decltype(&pclose)> pipe(popen(cmd, "r"), pclose);
+  if (!pipe) {
+    throw std::runtime_error("popen() failed!");
+  }
+  while (fgets(buffer.data(), buffer.size(), pipe.get()) != nullptr) {
+    result += buffer.data();
+  }
+  return result;
 }
 
 void compute_arc_flags(timetable& tt) {
@@ -176,14 +192,14 @@ void compute_arc_flags(timetable& tt) {
 
   // Compute partition with hMETIS
   progress_tracker->status("Exec hMETIS");
-  auto const ret = system(
-      R"(/home/felix/Downloads/hmetis-1.5-linux/hmetis hmetis.txt 8 15 50 1 1 1 1 0)");
-  log(log_lvl::info, "routing.arcflags", "hmetis returned {}", ret);
+  auto const ret = exec(
+      R"(/home/felix/Downloads/hmetis-1.5-linux/hmetis hmetis.txt 4 15 50 1 1 1 1 0)");
+  log(log_lvl::info, "routing.arcflags", "hmetis returned \"{}\"", ret);
 
   // Read partitions.
   progress_tracker->status("Read hMETIS result");
   auto const file =
-      cista::mmap{"hmetis.txt.part.8", cista::mmap::protection::READ};
+      cista::mmap{"hmetis.txt.part.4", cista::mmap::protection::READ};
   utl::for_each_line(file.view(), [&](utl::cstr line) {
     tt.route_partitions_.emplace_back(utl::parse<unsigned>(line));
   });
@@ -204,25 +220,26 @@ void compute_arc_flags(timetable& tt) {
     tt.component_partitions_.emplace_back(el);
   }
 
-  auto c_idx = component_idx_t{0U};
-  auto const cut_components =
-      utl::all(tt.component_partitions_)  //
-      | utl::transform([&](auto const& p) {
-          return std::pair{c_idx++, p};
-        })  //
-      | utl::remove_if([](auto const& partitions) {
-          return partitions.second.size() <= 1;
-        })  //
-      | utl::transform([&](auto const& p) { return p.first; })  //
-      | utl::vec();
+  std::vector<component_idx_t> cut_components;
+  for (auto const& [c, cp] : utl::enumerate(tt.component_partitions_)) {
+    if (cp.size() > 1U) {
+      cut_components.emplace_back(component_idx_t{c});
+    }
+  }
 
   progress_tracker->status("Compute arc-flags");
   progress_tracker->out_bounds(0, 100);
   progress_tracker->in_high(cut_components.size());
 
-  utl::parallel_for(
-      cut_components, [&](component_idx_t const c) { arc_flags_search(tt, c); },
-      progress_tracker->increment_fn());
+  tt.arc_flags_.resize(tt.n_routes());
+
+  //  utl::parallel_for(
+  //      cut_components, [&](component_idx_t const c) { arc_flags_search(tt,
+  //      c); }, progress_tracker->increment_fn());
+
+  for (auto const& c : cut_components) {
+    arc_flags_search(tt, c);
+  }
 }
 
 void write_hmetis_file(std::ostream& out, timetable const& tt) {
@@ -292,7 +309,6 @@ constexpr std::array<std::string_view, 8> kColors = {
 void hmetis_out_to_geojson(std::string_view in,
                            std::ostream& out,
                            timetable const& tt) {
-
   auto const print_pos = [&](geo::latlng const p) {
     out << "[" << p.lng_ << ", " << p.lat_ << "]";
   };
@@ -352,7 +368,6 @@ void hmetis_out_to_geojson(std::string_view in,
     }
   next:;
   }
-  std::cout << "n_cut_components: " << n_cut_components << "\n";
 
   // Print bounding boxes of location components.
   for (auto const& locations : tt.locations_.component_locations_) {
