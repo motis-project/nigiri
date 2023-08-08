@@ -16,21 +16,42 @@ namespace nigiri::rt {
 
 struct statistics {
   friend std::ostream& operator<<(std::ostream& out, statistics const& s) {
-    return out << "parser_error=" << s.parser_error_ << "\n"
-               << "no_header=" << s.no_header_ << "\n"
-               << "total_entities=" << s.total_entities_ << "\n"
-               << "total_entities_success=" << s.total_entities_success_ << "\n"
-               << "total_entities_fail=" << s.total_entities_fail_ << "\n"
-               << "unsupported_deleted=" << s.unsupported_deleted_ << "\n"
-               << "unsupported_vehicle=" << s.unsupported_vehicle_ << "\n"
-               << "unsupported_alert=" << s.unsupported_alert_ << "\n"
-               << "unsupported_no_trip_id=" << s.unsupported_no_trip_id_ << "\n"
-               << "unsupported_no_trip_update=" << s.no_trip_update_ << "\n"
-               << "trip_update_without_trip=" << s.trip_update_without_trip_
-               << "\n"
-               << "trip_resolve_error=" << s.trip_resolve_error_ << "\n"
-               << "unsupported_schedule_relationship="
-               << s.unsupported_schedule_relationship_ << "\n";
+    auto first = true;
+    auto const print_if_no_empty = [&](char const* name, auto const& value,
+                                       bool print_percent = false) {
+      if (!value) {
+        return;
+      }
+      if (!first) {
+        out << ", ";
+      }
+      first = false;
+      out << name << "=" << value;
+      if (print_percent && value) {
+        out << " (" << value / static_cast<float>(s.total_entities_) * 100
+            << "%)";
+      }
+    };
+
+    print_if_no_empty("parser_error", s.parser_error_);
+    print_if_no_empty("no_header", s.no_header_);
+    print_if_no_empty("total_entities", s.total_entities_);
+    print_if_no_empty("total_entities_success", s.total_entities_success_,
+                      true);
+    print_if_no_empty("total_entities_fail", s.total_entities_fail_, true);
+    print_if_no_empty("unsupported_deleted", s.unsupported_deleted_, true);
+    print_if_no_empty("unsupported_vehicle", s.unsupported_vehicle_, true);
+    print_if_no_empty("unsupported_alert", s.unsupported_alert_, true);
+    print_if_no_empty("unsupported_no_trip_id", s.unsupported_no_trip_id_,
+                      true);
+    print_if_no_empty("no_trip_update", s.no_trip_update_, true);
+    print_if_no_empty("trip_update_without_trip", s.trip_update_without_trip_,
+                      true);
+    print_if_no_empty("trip_resolve_error", s.trip_resolve_error_, true);
+    print_if_no_empty("unsupported_schedule_relationship",
+                      s.unsupported_schedule_relationship_, true);
+
+    return out;
   }
 
   bool parser_error_{false};
