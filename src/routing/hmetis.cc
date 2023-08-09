@@ -19,6 +19,7 @@
 #include "utl/progress_tracker.h"
 #include "utl/to_vec.h"
 
+#include "nigiri/routing/no_route_filter.h"
 #include "nigiri/routing/raptor/raptor.h"
 #include "nigiri/routing/start_times.h"
 #include "nigiri/rt/frun.h"
@@ -53,15 +54,18 @@ struct state {
   std::vector<pareto_set<journey>> results_{tt_.n_locations()};
 
   day_idx_t base_day_;
-  std::vector<bool> route_filtered_;
   std::vector<std::uint16_t> lb_;
   std::vector<bool> is_dest_;
   std::vector<std::uint16_t> dist_to_dest_;
   raptor_state raptor_state_;
   journey reconstruct_journey_;
-  raptor<direction::kBackward, /* Rt= */ false, /* OneToAll= */ true> raptor_{
-      tt_,      nullptr,       raptor_state_, route_filtered_,
-      is_dest_, dist_to_dest_, lb_,           base_day_};
+  no_route_filter no_route_filter_;
+  raptor<no_route_filter,
+         direction::kBackward,
+         /* Rt= */ false,
+         /* OneToAll= */ true>
+      raptor_{no_route_filter_, tt_,           nullptr, raptor_state_,
+              is_dest_,         dist_to_dest_, lb_,     base_day_};
 };
 
 static boost::thread_specific_ptr<state> search_state;
@@ -193,13 +197,13 @@ void compute_arc_flags(timetable& tt) {
   // Compute partition with hMETIS
   progress_tracker->status("Exec hMETIS");
   auto const ret = exec(
-      R"(/home/felix/Downloads/hmetis-1.5-linux/hmetis hmetis.txt 4 15 50 1 1 1 1 0)");
+      R"(/home/felix/Downloads/hmetis-1.5-linux/hmetis hmetis.txt 8 15 50 1 1 1 1 0)");
   log(log_lvl::info, "routing.arcflags", "hmetis returned \"{}\"", ret);
 
   // Read partitions.
   progress_tracker->status("Read hMETIS result");
   auto const file =
-      cista::mmap{"hmetis.txt.part.4", cista::mmap::protection::READ};
+      cista::mmap{"hmetis.txt.part.8", cista::mmap::protection::READ};
   utl::for_each_line(file.view(), [&](utl::cstr line) {
     tt.route_partitions_.emplace_back(utl::parse<unsigned>(line));
   });
@@ -233,13 +237,9 @@ void compute_arc_flags(timetable& tt) {
 
   tt.arc_flags_.resize(tt.n_routes());
 
-  //  utl::parallel_for(
-  //      cut_components, [&](component_idx_t const c) { arc_flags_search(tt,
-  //      c); }, progress_tracker->increment_fn());
-
-  for (auto const& c : cut_components) {
-    arc_flags_search(tt, c);
-  }
+  utl::parallel_for(
+      cut_components, [&](component_idx_t const c) { arc_flags_search(tt, c); },
+      progress_tracker->increment_fn());
 }
 
 void write_hmetis_file(std::ostream& out, timetable const& tt) {

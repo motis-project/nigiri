@@ -449,6 +449,9 @@ struct timetable {
   // Route bounding box diagonal distance in meters.
   vector_map<route_idx_t, float> route_bbox_diagonal_;
 
+  // Reach values
+  vector_map<route_idx_t, std::uint32_t> route_reachs_;
+
   // Arc flags
   vector_map<route_idx_t, partition_idx_t> route_partitions_;
   vecvec<component_idx_t, partition_idx_t> component_partitions_;

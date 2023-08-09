@@ -100,12 +100,6 @@ struct search {
 #endif
     }
 
-    if constexpr (Algo::kReach) {
-#if defined(NIGIRI_REACH)
-#elif defined(NIGIRI_ARC_FLAGS)
-#endif
-    }
-
     return Algo{
         filter,
         tt_,

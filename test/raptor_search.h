@@ -1,6 +1,8 @@
 #include "nigiri/routing/journey.h"
 
 #include "nigiri/routing/pareto_set.h"
+#include "nigiri/routing/raptor/raptor.h"
+#include "nigiri/routing/search.h"
 
 namespace nigiri {
 struct timetable;
@@ -38,5 +40,9 @@ pareto_set<routing::journey> raptor_intermodal_search(
     std::uint8_t min_connection_count = 0U,
     bool extend_interval_earlier = false,
     bool extend_interval_later = false);
+
+template <direction SearchDir>
+routing::routing_result<routing::raptor_stats> run_search(
+    timetable const& tt, rt_timetable const* rtt, routing::query&& q);
 
 }  // namespace nigiri::test

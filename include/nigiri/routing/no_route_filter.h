@@ -4,7 +4,7 @@
 
 namespace nigiri::routing {
 
-struct no_filter {
+struct no_route_filter {
   bool is_filtered(route_idx_t) const { return false; }
 };
 

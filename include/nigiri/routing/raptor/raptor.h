@@ -16,6 +16,23 @@
 namespace nigiri::routing {
 
 struct raptor_stats {
+  friend std::ostream& operator<<(std::ostream& out, raptor_stats const& s) {
+    out << "n_routing_time=" << s.n_routing_time_ << "\n";
+    out << "n_footpaths_visited=" << s.n_footpaths_visited_ << "\n";
+    out << "n_routes_visited=" << s.n_routes_visited_ << "\n";
+    out << "n_earliest_trip_calls=" << s.n_earliest_trip_calls_ << "\n";
+    out << "n_earliest_arrival_updated_by_route="
+        << s.n_earliest_arrival_updated_by_route_ << "\n";
+    out << "n_earliest_arrival_updated_by_footpath="
+        << s.n_earliest_arrival_updated_by_footpath_ << "\n";
+    out << "fp_update_prevented_by_lower_bound="
+        << s.fp_update_prevented_by_lower_bound_ << "\n";
+    out << "route_update_prevented_by_lower_bound="
+        << s.route_update_prevented_by_lower_bound_ << "\n";
+    out << "routes_filtered=" << s.routes_filtered_ << "\n";
+    return out;
+  }
+
   std::uint64_t n_routing_time_{0ULL};
   std::uint64_t n_footpaths_visited_{0ULL};
   std::uint64_t n_routes_visited_{0ULL};
@@ -24,7 +41,7 @@ struct raptor_stats {
   std::uint64_t n_earliest_arrival_updated_by_footpath_{0ULL};
   std::uint64_t fp_update_prevented_by_lower_bound_{0ULL};
   std::uint64_t route_update_prevented_by_lower_bound_{0ULL};
-  std::uint64_t reach_filtered_{0ULL};
+  std::uint64_t routes_filtered_{0ULL};
 };
 
 template <typename Filter, direction SearchDir, bool Rt, bool OneToAll = false>
@@ -55,16 +72,14 @@ struct raptor {
          timetable const& tt,
          rt_timetable const* rtt,
          raptor_state& state,
-         std::vector<bool> const& route_filtered,
          std::vector<bool> const& is_dest,
          std::vector<std::uint16_t> const& dist_to_dest,
          std::vector<std::uint16_t> const& lb,
          day_idx_t const base)
-      : filter_{std::forward<Filter>(filter)},
+      : filter_{filter},
         tt_{tt},
         rtt_{rtt},
         state_{state},
-        route_filtered_{route_filtered},
         is_dest_{is_dest},
         dist_to_end_{dist_to_dest},
         lb_{lb},
@@ -153,7 +168,10 @@ struct raptor {
       for (auto r_id = 0U; r_id != n_routes_; ++r_id) {
         if (state_.route_mark_[r_id]) {
           if (filter_.is_filtered(route_idx_t{r_id})) {
-            ++stats_.reach_filtered_;
+            trace("┊ ├k={} route filtered {}: {}\n", k, r_id,
+                  tt_.transport_name(
+                      tt_.route_transport_ranges_[route_idx_t{r_id}].from_));
+            ++stats_.routes_filtered_;
             continue;
           }
 
@@ -697,7 +715,6 @@ private:
   timetable const& tt_;
   rt_timetable const* rtt_{nullptr};
   raptor_state& state_;
-  std::vector<bool> const& route_filtered_;
   std::vector<bool> const& is_dest_;
   std::vector<std::uint16_t> const& dist_to_end_;
   std::vector<std::uint16_t> const& lb_;

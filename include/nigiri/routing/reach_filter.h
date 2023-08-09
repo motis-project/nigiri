@@ -12,10 +12,8 @@
 namespace nigiri::routing {
 
 struct reach_filter {
-  reach_filter(timetable const& tt,
-               query const& q,
-               vector_map<route_idx_t, unsigned> const& reachs) {
-    route_filtered_.resize(tt.n_routes(), true);  // default = filtered
+  void init(timetable const& tt, query const& q) {
+    route_filtered_.resize(tt.n_routes(), true);
 
     // Computes bounding box around all stations.
     // -> returns (center of bounding box, half diagonal as buffer)
@@ -36,7 +34,7 @@ struct reach_filter {
         auto const sp = tt.locations_.coordinates_[stop{s}.location_idx()];
         auto const dist = std::min(geo::distance(start_pos, sp) - start_buffer,
                                    geo::distance(sp, end_pos) - end_buffer);
-        if (reachs[route_idx_t{r}] > dist) {
+        if (tt.route_reachs_[route_idx_t{r}] > dist) {
           route_filtered_[r] = false;  // reach > dist -> not filtered!
           break;
         }

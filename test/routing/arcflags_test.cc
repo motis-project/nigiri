@@ -17,11 +17,14 @@
 #include "nigiri/rt/frun.h"
 #include "nigiri/timetable.h"
 
+#include "../raptor_search.h"
+
 using namespace date;
 using namespace nigiri;
 using namespace nigiri::loader;
 using namespace std::string_view_literals;
 using namespace std::chrono_literals;
+using nigiri::test::run_search;
 
 constexpr auto const test_files = R"(
 # agency.txt
@@ -136,6 +139,7 @@ C1,D,0,2
 TEST(routing, arcflags_test) {
   constexpr auto const src = source_idx_t{0U};
 
+  /*
   timetable tt;
   tt.date_range_ = {sys_days{2019_y / April / 30}, sys_days{2019_y / May / 3}};
   gtfs::load_timetable(
@@ -145,21 +149,29 @@ TEST(routing, arcflags_test) {
 
   routing::compute_arc_flags(tt);
 
+  tt.write("/tmp/arcflag_tt");
+  */
+
+  auto tt_wrapped = cista::wrapped<timetable>{timetable::read(
+      cista::memory_holder{cista::file{"/tmp/arcflag_tt", "r"}.content()})};
+  tt_wrapped->locations_.resolve_timezones();
+  auto& tt = *tt_wrapped;
+
   for (auto const [r, flags] : utl::enumerate(tt.arc_flags_)) {
     std::cout << "name=" << std::setw(22)
               << tt.transport_name(
                      tt.route_transport_ranges_[route_idx_t{r}].from_)
               << "  -->   ";
-    for (auto i = 0U; i != 4U; ++i) {
+    for (auto i = 0U; i != 8U; ++i) {
       std::cout << std::boolalpha << std::setw(6) << flags[i] << "  ";
     }
     std::cout << "\n";
   }
 
   auto const file =
-      cista::mmap{"hmetis.txt.part.4", cista::mmap::protection::READ};
+      cista::mmap{"hmetis.txt.part.8", cista::mmap::protection::READ};
 
-  routing::hmetis_out_to_geojson(file.view(), std::cout, tt);
+  //  routing::hmetis_out_to_geojson(file.view(), std::cout, tt);
 
   for (auto l = location_idx_t{0}; l != tt.n_locations(); ++l) {
     std::cout << location{tt, l} << ": " << tt.locations_.components_[l]
@@ -169,5 +181,21 @@ TEST(routing, arcflags_test) {
       std::cout << static_cast<int>(to_idx(p)) << " ";
     }
     std::cout << "\n";
+  }
+
+  auto const result = run_search<direction::kForward>(
+      tt, nullptr,
+      routing::query{
+          .start_time_ = unixtime_t{date::sys_days{2019_y / May / 1} + 8h},
+          .start_match_mode_ = routing::location_match_mode::kEquivalent,
+          .dest_match_mode_ = routing::location_match_mode::kEquivalent,
+          .start_ = {{tt.locations_.location_id_to_idx_.at({"L22", src}),
+                      0_minutes, 0U}},
+          .destination_ = {{tt.locations_.location_id_to_idx_.at({"L32", src}),
+                            0_minutes, 0U}}});
+  std::cout << "stats:\n" << result.algo_stats_ << "\n";
+  std::cout << "journeys\n";
+  for (auto const& j : *result.journeys_) {
+    j.print(std::cout, tt);
   }
 }

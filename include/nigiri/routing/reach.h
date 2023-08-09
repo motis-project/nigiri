@@ -44,14 +44,7 @@ std::pair<std::vector<unsigned>, float> get_separation_fn(
     double const reach_factor,
     double const outlier_percent);
 
-void write_reach_values(timetable const&,
-                        float y,
-                        float x_slope,
-                        std::vector<reach_info> const& route_reachs,
-                        std::filesystem::path const&);
-
-cista::wrapped<vector_map<route_idx_t, std::uint32_t>> read_reach_values(
-    cista::memory_holder&&);
+void compute_reach_values(timetable& tt, unsigned n_reach_queries);
 
 std::vector<route_idx_t> get_big_station_connection_routes(timetable const&);
 

@@ -1,6 +1,7 @@
 #include "nigiri/routing/reach.h"
 
 #include <filesystem>
+#include <random>
 
 #include "boost/iterator/function_output_iterator.hpp"
 #include "boost/thread/tss.hpp"
@@ -18,6 +19,7 @@
 #include "cista/mmap.h"
 #include "cista/serialization.h"
 
+#include "nigiri/routing/no_route_filter.h"
 #include "nigiri/routing/raptor/raptor.h"
 #include "nigiri/routing/start_times.h"
 #include "nigiri/rt/frun.h"
@@ -54,15 +56,18 @@ struct state {
   std::vector<pareto_set<journey>> results_{tt_.n_locations()};
 
   day_idx_t base_day_;
-  std::vector<bool> route_filtered_;
   std::vector<std::uint16_t> lb_;
   std::vector<bool> is_dest_;
   std::vector<std::uint16_t> dist_to_dest_;
   raptor_state raptor_state_;
   journey reconstruct_journey_;
-  raptor<direction::kForward, /* Rt= */ false, /* OneToAll= */ true> raptor_{
-      tt_,      nullptr,       raptor_state_, route_filtered_,
-      is_dest_, dist_to_dest_, lb_,           base_day_};
+  no_route_filter no_route_filter_;
+  raptor<no_route_filter,
+         direction::kForward,
+         /* Rt= */ false,
+         /* OneToAll= */ true>
+      raptor_{no_route_filter_, tt_,           nullptr, raptor_state_,
+              is_dest_,         dist_to_dest_, lb_,     base_day_};
 };
 
 static boost::thread_specific_ptr<state> search_state;
@@ -256,18 +261,29 @@ std::pair<std::vector<unsigned>, float> get_separation_fn(
 
 using reach_values_vec_t = vector_map<route_idx_t, std::uint32_t>;
 
-void write_reach_values(timetable const& tt,
-                        float const y,
-                        float const x_slope,
-                        std::vector<reach_info> const& route_reachs,
-                        fs::path const& path) {
-  auto reach_values = vector_map<route_idx_t, std::uint32_t>{};
-  reach_values.resize(tt.n_routes());
+void compute_reach_values(timetable& tt, unsigned n_reach_queries) {
+  auto source_locations = std::vector<location_idx_t>{};
+  source_locations.resize(tt.n_locations());
+  std::generate(begin(source_locations), end(source_locations),
+                [i = location_idx_t{0U}]() mutable { return i++; });
+
+  auto rd = std::random_device{};
+  auto g = std::mt19937{rd()};
+  std::shuffle(begin(source_locations), end(source_locations), g);
+  source_locations.resize(n_reach_queries);
+
+  auto const x_slope = .8F;
+  auto const route_reachs = routing::compute_reach_values(
+      tt, source_locations, tt.internal_interval_days());
+  auto const [perm, y] =
+      routing::get_separation_fn(tt, route_reachs, x_slope, 0.08);
+
+  tt.route_reachs_.resize(tt.n_routes());
   for (auto r = 0U; r != tt.n_routes(); ++r) {
     if (route_reachs[r].valid()) {
-      reach_values[route_idx_t{r}] = route_reachs[r].reach_ * 1.1;
+      tt.route_reachs_[route_idx_t{r}] = route_reachs[r].reach_ * 1.1;
     } else {
-      reach_values[route_idx_t{r}] =
+      tt.route_reachs_[route_idx_t{r}] =
           std::ceil(y + x_slope * tt.route_bbox_diagonal_[route_idx_t{r}]) *
           1.1;
     }
@@ -276,31 +292,10 @@ void write_reach_values(timetable const& tt,
     //        std::ceil(y + x_slope * tt.route_bbox_diagonal_[route_idx_t{r}]));
   }
 
-  auto mmap =
-      cista::mmap{path.string().c_str(), cista::mmap::protection::WRITE};
-  auto writer = cista::buf<cista::mmap>(std::move(mmap));
-  cista::serialize<kMode>(writer, reach_values);
-}
-
-cista::wrapped<reach_values_vec_t> read_reach_values(
-    cista::memory_holder&& mem) {
-  return std::visit(
-      utl::overloaded{[&](cista::buf<cista::mmap>& b) {
-                        auto const ptr = reinterpret_cast<reach_values_vec_t*>(
-                            &b[cista::data_start(kMode)]);
-                        return cista::wrapped{std::move(mem), ptr};
-                      },
-                      [&](cista::buffer& b) {
-                        auto const ptr =
-                            cista::deserialize<reach_values_vec_t, kMode>(b);
-                        return cista::wrapped{std::move(mem), ptr};
-                      },
-                      [&](cista::byte_buf& b) {
-                        auto const ptr =
-                            cista::deserialize<reach_values_vec_t, kMode>(b);
-                        return cista::wrapped{std::move(mem), ptr};
-                      }},
-      mem);
+  auto const connecting_routes = routing::get_big_station_connection_routes(tt);
+  for (auto const r : connecting_routes) {
+    tt.route_reachs_[r] = 1'000'000;
+  }
 }
 
 std::vector<route_idx_t> get_big_station_connection_routes(

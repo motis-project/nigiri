@@ -169,37 +169,6 @@ TEST(routing, reach_test) {
               << name.view() << "\n";
   }
 
-  auto const x_slope = .8F;
-  auto const [perm, y] =
-      routing::get_separation_fn(tt, route_reachs, x_slope, 0.08);
-
-  std::cout << "outliers:\n";
-  for (auto const idx : perm) {
-    auto const t = tt.route_transport_ranges_[route_idx_t{idx}][0];
-    auto const [type, name] =
-        utl::split<' ', utl::cstr, utl::cstr>(tt.transport_name(t));
-    std::cout << "  " << route_reachs[idx].reach_ << " "
-              << tt.route_bbox_diagonal_[route_idx_t{idx}] << " " << name.view()
-              << "\n";
-  }
-  std::cout << "y=" << y << "\n";
-
-  routing::write_reach_values(tt, y, x_slope, route_reachs, "reach_values.bin");
-
-  std::cout << "REACH VALUES\n";
-  auto reach_values_wrapped = routing::read_reach_values(
-      cista::memory_holder{cista::file{"reach_values.bin", "r"}.content()});
-  auto const& reach_values = *reach_values_wrapped;
-  for (auto const [r, reach] : utl::enumerate(reach_values)) {
-    auto const t = tt.route_transport_ranges_[route_idx_t{r}][0];
-    auto const [type, name] =
-        utl::split<' ', utl::cstr, utl::cstr>(tt.transport_name(t));
-    std::cout << "  route=" << r << ", reach=" << reach
-              << ", name=" << name.view()
-              << ", reach_before=" << route_reachs[r].reach_ << "\n";
-  }
-  std::cout << "\n";
-
   // clang-format off
   // PLOT WITH
   // gnuplot  -persist -e "plot 'routes.dat' using 1:2:3 with labels point pt 7" out.png
