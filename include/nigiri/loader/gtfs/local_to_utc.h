@@ -156,7 +156,7 @@ void expand_local_to_utc(trip_data const& trip_data,
   auto prev_key = conversion_key{date::days{2}, duration_t{-1}};
   auto prev_it = utc_time_traffic_days.end();
   for (auto day = gtfs_interval.from_; day != gtfs_interval.to_;
-       day += std::chrono::days{1}) {
+       day += date::days{1}) {
     auto const service_days =
         interval{day + first_day_offset, day + last_day_offset + date::days{1}};
     if (!selection.overlaps(service_days)) {
