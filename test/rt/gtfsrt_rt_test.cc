@@ -148,7 +148,7 @@ trip_id,arrival_time,departure_time,stop_id,stop_sequence,pickup_type,drop_off_t
 )");
 }
 
-static auto const kTripUpdate =
+auto const kTripUpdate =
     R"({
  "header": {
   "gtfsRealtimeVersion": "2.0",
