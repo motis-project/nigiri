@@ -305,6 +305,11 @@ inline std::ostream& operator<<(std::ostream& out,
 }
 
 inline std::ostream& operator<<(std::ostream& out,
+                                nigiri::duration_t const& t) {
+  return out << std::chrono::duration_cast<nigiri::i32_minutes>(t);
+}
+
+inline std::ostream& operator<<(std::ostream& out,
                                 nigiri::unixtime_t const& t) {
   date::to_stream(out, "%F %R", t);
   return out;

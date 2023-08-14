@@ -211,7 +211,8 @@ frun::frun(timetable const& tt, rt_timetable const* rtt, run r)
   if (!is_rt() && rtt != nullptr) {
     rt_ = rtt->resolve_rt(r.t_);
   }
-  if (!is_scheduled() && rtt != nullptr) {
+  if (!is_scheduled() && rtt != nullptr &&
+      r.rt_ != rt_transport_idx_t::invalid()) {
     t_ = rtt->resolve_static(r.rt_);
   }
 }

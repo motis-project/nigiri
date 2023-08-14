@@ -15,23 +15,7 @@ struct timetable;
 namespace nigiri::rt {
 
 struct statistics {
-  friend std::ostream& operator<<(std::ostream& out, statistics const& s) {
-    return out << "parser_error=" << s.parser_error_ << "\n"
-               << "no_header=" << s.no_header_ << "\n"
-               << "total_entities=" << s.total_entities_ << "\n"
-               << "total_entities_success=" << s.total_entities_success_ << "\n"
-               << "total_entities_fail=" << s.total_entities_fail_ << "\n"
-               << "unsupported_deleted=" << s.unsupported_deleted_ << "\n"
-               << "unsupported_vehicle=" << s.unsupported_vehicle_ << "\n"
-               << "unsupported_alert=" << s.unsupported_alert_ << "\n"
-               << "unsupported_no_trip_id=" << s.unsupported_no_trip_id_ << "\n"
-               << "unsupported_no_trip_update=" << s.no_trip_update_ << "\n"
-               << "trip_update_without_trip=" << s.trip_update_without_trip_
-               << "\n"
-               << "trip_resolve_error=" << s.trip_resolve_error_ << "\n"
-               << "unsupported_schedule_relationship="
-               << s.unsupported_schedule_relationship_ << "\n";
-  }
+  friend std::ostream& operator<<(std::ostream& out, statistics const& s);
 
   bool parser_error_{false};
   bool no_header_{false};

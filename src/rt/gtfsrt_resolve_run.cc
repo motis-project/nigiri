@@ -12,6 +12,12 @@
 
 namespace nigiri::rt {
 
+std::pair<date::days, duration_t> split(duration_t const i) {
+  auto const a = static_cast<int>(std::round(i.count() / 1440.));
+  auto const b = i.count() - a * 1440;
+  return {date::days{a}, duration_t{b}};
+}
+
 void resolve_static(date::sys_days const today,
                     timetable const& tt,
                     source_idx_t const src,
@@ -45,17 +51,18 @@ void resolve_static(date::sys_days const today,
 
   for (auto i = lb; i != end(tt.trip_id_to_idx_) && id_matches(i->first); ++i) {
     for (auto const [t, stop_range] : tt.trip_transport_ranges_[i->second]) {
+      auto const o = tt.transport_first_dep_offset_[t];
       auto const gtfs_static_dep =
-          tt.event_mam(t, stop_range.from_, event_type::kDep).as_duration() +
-          tt.transport_first_dep_offset_[t];
+          tt.event_mam(t, stop_range.from_, event_type::kDep).as_duration() + o;
 
-      if (start_time.has_value() && gtfs_static_dep != start_time) {
+      if (start_time.has_value() && gtfs_static_dep != *start_time) {
         continue;
       }
 
-      auto const day_offset = date::days{static_cast<int>(std::floor(
-          static_cast<float>(tt.transport_first_dep_offset_[t].count()) /
-          1440U))};
+      auto const utc_dep =
+          tt.event_mam(t, stop_range.from_, event_type::kDep).as_duration();
+      auto const [day_offset, tz_offset_minutes] =
+          split(gtfs_static_dep - utc_dep);
       auto const day_idx = ((start_date.has_value() ? *start_date : today) +
                             day_offset - tt.internal_interval_days().from_)
                                .count();
