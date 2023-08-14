@@ -15,6 +15,7 @@
 
 #include "nigiri/common/interval.h"
 #include "nigiri/footpath.h"
+#include "nigiri/keys.h"
 #include "nigiri/location.h"
 #include "nigiri/logging.h"
 #include "nigiri/stop.h"
@@ -36,6 +37,7 @@ struct timetable {
       auto const l_idx = location_idx_t{next_idx};
       auto const [it, is_new] = location_id_to_idx_.emplace(
           location_id{.id_ = l.id_, .src_ = l.src_}, l_idx);
+      location_key_to_idx_.emplace(to_location_key(l.pos_), l_idx);
 
       if (is_new) {
         names_.emplace_back(l.name_);
@@ -95,6 +97,7 @@ struct timetable {
     void resolve_timezones();
 
     // Station access: external station id -> internal station idx
+    hash_map<string, location_idx_t> location_key_to_idx_;
     hash_map<location_id, location_idx_t> location_id_to_idx_;
     vecvec<location_idx_t, char> names_;
     vecvec<location_idx_t, char> ids_;
