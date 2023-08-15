@@ -97,8 +97,9 @@ struct timetable {
     void resolve_timezones();
 
     // Station access: external station id -> internal station idx
-    hash_map<string, location_idx_t> location_key_to_idx_;
     hash_map<location_id, location_idx_t> location_id_to_idx_;
+    // Station access: external station key -> internal station idx
+    hash_map<string, location_idx_t> location_key_to_idx_;
     vecvec<location_idx_t, char> names_;
     vecvec<location_idx_t, char> ids_;
     vector_map<location_idx_t, geo::latlng> coordinates_;
