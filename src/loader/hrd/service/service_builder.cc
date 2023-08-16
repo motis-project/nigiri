@@ -268,6 +268,42 @@ void service_builder::write_location_routes() {
   for (auto l = tt_.location_routes_.size(); l != tt_.n_locations(); ++l) {
     tt_.location_routes_.emplace_back(location_routes_[location_idx_t{l}]);
     assert(tt_.location_routes_.size() == l + 1U);
+    if(tt_.use_station_filter_) {
+      tt_.depature_count_.emplace_back(location_routes_[location_idx_t{l}].size());
+      int local = 0;
+      int slow = 0;
+      int fast = 0;
+      int away = 0;
+      vector<vector<char>> names;
+      for(auto const r : location_routes_[location_idx_t{l}]) {
+        clasz klasse = tt_.route_section_clasz_.at(route_idx_t{r}).at(0);
+        if(klasse == clasz::kMetro || klasse == clasz::kBus || klasse == clasz::kTram || klasse == clasz::kSubway) {
+          local++;
+        }
+        else if(klasse == clasz::kLongDistance || klasse == clasz::kRegional || klasse == clasz::kNight) {
+          slow++;
+        }
+        else if(klasse == clasz::kHighSpeed || klasse == clasz::kRegionalFast) {
+          fast++;
+        }
+        else if(klasse == clasz::kAir || klasse == clasz::kCoach || klasse == clasz::kShip || klasse == clasz::kOther) {
+          away++;
+        }
+
+        auto const& transport_range = tt_.route_transport_ranges_[route_idx_t{r}];
+        std::string_view sv_tname = tt_.transport_name(transport_range.from_);
+        vector<char> charname = {sv_tname.begin(), sv_tname.end()};
+        names.emplace_back(charname);
+      }
+      tt_.names_lists_.emplace_back(names);
+
+      vector<pair<group, int>> classcount;
+      classcount.emplace_back(group::klocal, local);
+      classcount.emplace_back(group::kslow, slow);
+      classcount.emplace_back(group::kfast, fast);
+      classcount.emplace_back(group::kaway, away);
+      tt_.classgroups_on_loc_.emplace_back(classcount);
+    }
   }
 }
 

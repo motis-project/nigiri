@@ -12,7 +12,8 @@ struct station_filter {
     int weight_;
   };
 
-static vector_map<location_idx_t, vector<std::string>> create_names_lists(std::vector<start>& starts, timetable const& tt) {
+/*static vector_map<location_idx_t, vector<std::string>> create_names_lists(std::vector<start>& starts, timetable const& tt) {
+  printf("in create names\n");
   vector_map<location_idx_t, vector<std::string>> names_lists;
   for(auto const& s : starts) {
     vector<std::string> names;
@@ -22,7 +23,7 @@ static vector_map<location_idx_t, vector<std::string>> create_names_lists(std::v
       auto const& transport_range = tt.route_transport_ranges_[route_idx_t{ri}];
       std::string_view sv_tname = tt.transport_name(transport_range.from_);
       std::string tname = {sv_tname.begin(), sv_tname.end()};
-      // tname = "Bus RE 2"
+      // tname = "Bus RE 2" od "ICE 1337" --> dann wäre aufteilen falsch
       while(tname.contains(" ")) {
         int indexleer = tname.find(" ");
         std::string safename = tname.substr(0, indexleer);
@@ -36,11 +37,12 @@ static vector_map<location_idx_t, vector<std::string>> create_names_lists(std::v
   }
   printf("names_list: %u\n", names_lists.size()); // 1
   return names_lists;
-}
+}*/
 
   static void percentage_filter(std::vector<start>& starts, double percent) {
+    printf("in percentage_filter\n");
     auto const min = [&](start const& a, start const& b) {
-      return a.time_at_stop_ <= b.time_at_stop_;
+      return a.time_at_stop_ < b.time_at_stop_;
     };
     std::sort(starts.begin(), starts.end(), min);
     size_t percent_to_dismiss = static_cast<size_t>(starts.size() * percent);
@@ -49,17 +51,19 @@ static vector_map<location_idx_t, vector<std::string>> create_names_lists(std::v
       return;
     }
     starts.resize(new_size);
+    starts.shrink_to_fit();
   }
 
   static void weighted_filter(std::vector<start>& starts, timetable const& tt, bool linefilter) {
+    printf("in weighted_filter\n");
     vector<weight_info> v_weights;
-    int most = 0;
+    int most = 1;
     auto const weighted = [&](start const& a) {
       location_idx_t l = a.stop_;
       for(auto const w : v_weights) {
         if(l == w.l_) {
           double percent = w.weight_ * 100.0 / most;
-          if(percent > 20.0) {
+          if(percent > 22.0) {
             return false;
           }
           else return true;
@@ -93,14 +97,17 @@ static vector_map<location_idx_t, vector<std::string>> create_names_lists(std::v
       v_weights.emplace_back(wi);
       most = weight > most ? weight : most;
     }
+    if(most == 1) {
+      return;
+    }
     utl::erase_if(starts, weighted);
   }
 
-  static vector<location_idx_t> find_name(std::string_view find,
-                                          vector_map<location_idx_t, vector<std::string>> in) {
+  static vector<location_idx_t> find_name(const vector<char>& find, timetable const& tt) {//,
+                                          //vector_map<location_idx_t, vector<std::string>> in) {
     vector<location_idx_t> found_at;
-    for(auto lidx = location_idx_t{0}; lidx < in.size(); lidx++) {
-      for(const std::string& p : in.at(lidx)) {
+    for(auto lidx = location_idx_t{0}; lidx < tt.names_lists_.size(); lidx++) {
+      for(auto const p : tt.names_lists_.at(lidx)) {
         if(find == p) {
           found_at.emplace_back(lidx);
         }
@@ -116,16 +123,20 @@ static vector_map<location_idx_t, vector<std::string>> create_names_lists(std::v
     return start();
   }
 
+  // TODO: überprüfen, ob die Namen richtig verwendet werden.
   static int line_filter(std::vector<start>& starts, timetable const& tt, start this_start) {
-    vector_map<location_idx_t, vector<std::string>> starts_all_names = create_names_lists(starts, tt); // größe ist 1, also 1 l idx zu dem es 3 transports gibt
+    //vector_map<location_idx_t, vector<std::string>> starts_all_names = create_names_lists(starts, tt);
+    printf("in line_filter\n");
     duration_t o = this_start.time_at_stop_ - this_start.time_at_start_;
     auto const l = this_start.stop_;
     int weight_count = 0;
     duration_t dur_off;
-    vector<std::string> this_start_names = starts_all_names.at(l); // hier gehts schief
+    //vector<std::string> this_start_names = starts_all_names.at(l); // hier gehts schief
+    vector<vector<char>> this_start_names = tt.names_lists_.at(l);
     vector<location_idx_t> v_li;
-    for(const std::string& name : this_start_names) {
-      v_li = find_name(name, starts_all_names);
+    for(auto const name : this_start_names) {
+      printf("\t\t\t\t\t name: %s \n", name.data());
+      v_li = find_name(name, tt); //starts_all_names
     }
     for(auto const a : v_li) {
       start s = find_start_from_locidx(starts, a);

@@ -352,13 +352,14 @@ struct timetable {
   static cista::wrapped<timetable> read(cista::memory_holder&&);
 
   // Filter
-  bool use_station_filter_;
-  bool weighted_filter_;
-  double percent_for_filter_;
-  bool percentage_filter_;
-  bool line_filter_;
+  bool use_station_filter_ = true;
+  bool weighted_filter_ = true;
+  double percent_for_filter_ = 0.2;
+  bool percentage_filter_ = false;
+  bool line_filter_ = true;
   vector_map<location_idx_t, size_t> depature_count_;
   vector_map<location_idx_t, vector<pair<group, int>>> classgroups_on_loc_;
+  vector_map<location_idx_t, vector<vector<char>>> names_lists_;
 
   // Schedule range.
   interval<date::sys_days> date_range_;
