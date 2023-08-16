@@ -4,8 +4,6 @@
 #include "nigiri/types.h"
 #include "utl/erase_if.h"
 
-// bool is_timepoint = std::holds_alternative<unixtime_t>(start_time);
-
 namespace nigiri::routing {
 struct station_filter {
 
@@ -14,22 +12,30 @@ struct station_filter {
     int weight_;
   };
 
-static void create_names_lists(std::vector<start>& starts, timetable const& tt) {
+static vector_map<location_idx_t, vector<std::string>> create_names_lists(std::vector<start>& starts, timetable const& tt) {
+  vector_map<location_idx_t, vector<std::string>> names_lists;
   for(auto const& s : starts) {
-    vector<std::string_view> names;
+    vector<std::string> names;
     location_idx_t l = s.stop_;
     auto const vr = tt.location_routes_.at(l);
     for(auto const ri : vr) {
       auto const& transport_range = tt.route_transport_ranges_[route_idx_t{ri}];
-      for(auto t = transport_range.from_; t != transport_range.to_; ++t) {
-        // tname richtig ?
-        std::string_view tname = tt.transport_name(t);
-        names.emplace_back(tname);
+      std::string_view sv_tname = tt.transport_name(transport_range.from_);
+      std::string tname = {sv_tname.begin(), sv_tname.end()};
+      // tname = "Bus RE 2"
+      while(tname.contains(" ")) {
+        int indexleer = tname.find(" ");
+        std::string safename = tname.substr(0, indexleer);
+        tname = tname.substr(indexleer+1);
+        names.emplace_back(safename);
       }
+      names.emplace_back(tname); // checked
     }
-    //starts_all_names_.emplace_back(names);
-    starts_all_names_.at(l) = names;
+    names_lists.emplace_back(names); // hier stimmt was nicht
+    //names_lists.at(l) = names;
   }
+  printf("names_list: %u\n", names_lists.size()); // 1
+  return names_lists;
 }
 
   static void percentage_filter(std::vector<start>& starts, double percent) {
@@ -37,7 +43,7 @@ static void create_names_lists(std::vector<start>& starts, timetable const& tt) 
       return a.time_at_stop_ <= b.time_at_stop_;
     };
     std::sort(starts.begin(), starts.end(), min);
-    size_t percent_to_dismiss = static_cast<size_t>(starts.size() * percent); // percent 0.2
+    size_t percent_to_dismiss = static_cast<size_t>(starts.size() * percent);
     size_t new_size = starts.size() - percent_to_dismiss;
     if(starts.at(starts.size()-1).time_at_stop_ == starts.at(0).time_at_stop_) {
       return;
@@ -45,7 +51,7 @@ static void create_names_lists(std::vector<start>& starts, timetable const& tt) 
     starts.resize(new_size);
   }
 
-  static void weighted_filter(std::vector<start>& starts, timetable const& tt) {
+  static void weighted_filter(std::vector<start>& starts, timetable const& tt, bool linefilter) {
     vector<weight_info> v_weights;
     int most = 0;
     auto const weighted = [&](start const& a) {
@@ -64,7 +70,7 @@ static void create_names_lists(std::vector<start>& starts, timetable const& tt) 
     // Example:
     // dep_count = 3, local_count=2, slow_count=1*2=2,    o = 5   -> weight = 8,3
     // dep_count = 2, slow_count=1*2=2, fast_count=1*3=3, o = 10  -> weight = 7,2
-    // 6 = 0-3min; 5 = 3-5min; 4 = 5-7min; 3 = 7-10min; 2 = 10-15min; 1 = 15-20min; 0 = > 20
+    // 6 = 0-3min; 5 = 3-5min; 4 = 5-7min; 3 = 7-10min; 2 = 10-15min; 1 = 15-20min; 0 = > 20min
     for (auto const& s : starts) {
       auto const l = s.stop_;
       auto const o = s.time_at_stop_ - s.time_at_start_;
@@ -79,20 +85,22 @@ static void create_names_lists(std::vector<start>& starts, timetable const& tt) 
       if(o.count() >= 5 && o.count() < 7) weight += 4;
       if(o.count() >= 3 && o.count() < 5) weight += 5;
       if(o.count() >= 0 && o.count() < 3) weight += 6;
-      int extra_weight = line_filter(starts, tt, s);
+      int extra_weight = 0;
+      if(linefilter) {
+        extra_weight = line_filter(starts, tt, s);
+      }
       weight_info wi = {l, (weight+extra_weight)};
       v_weights.emplace_back(wi);
       most = weight > most ? weight : most;
     }
-    //auto it = std::remove_if(starts.begin(), starts.end(), weighted);
     utl::erase_if(starts, weighted);
   }
 
   static vector<location_idx_t> find_name(std::string_view find,
-                                          vector_map<location_idx_t, vector<std::string_view>> in) {
+                                          vector_map<location_idx_t, vector<std::string>> in) {
     vector<location_idx_t> found_at;
     for(auto lidx = location_idx_t{0}; lidx < in.size(); lidx++) {
-      for(auto const p : in.at(lidx)) {
+      for(const std::string& p : in.at(lidx)) {
         if(find == p) {
           found_at.emplace_back(lidx);
         }
@@ -109,14 +117,15 @@ static void create_names_lists(std::vector<start>& starts, timetable const& tt) 
   }
 
   static int line_filter(std::vector<start>& starts, timetable const& tt, start this_start) {
+    vector_map<location_idx_t, vector<std::string>> starts_all_names = create_names_lists(starts, tt); // größe ist 1, also 1 l idx zu dem es 3 transports gibt
     duration_t o = this_start.time_at_stop_ - this_start.time_at_start_;
     auto const l = this_start.stop_;
     int weight_count = 0;
     duration_t dur_off;
-    vector<std::string_view> this_start_names = starts_all_names_.at(l);
+    vector<std::string> this_start_names = starts_all_names.at(l); // hier gehts schief
     vector<location_idx_t> v_li;
-    for(auto const name : this_start_names) {
-      v_li = find_name(name, starts_all_names_);
+    for(const std::string& name : this_start_names) {
+      v_li = find_name(name, starts_all_names);
     }
     for(auto const a : v_li) {
       start s = find_start_from_locidx(starts, a);
@@ -131,16 +140,15 @@ static void create_names_lists(std::vector<start>& starts, timetable const& tt) 
   }
 
   static void filter_stations(std::vector<start>& starts, timetable const& tt) {
-    create_names_lists(starts, tt);
-    //printf("Anzahl starts vorher: %llu \n", starts.size());
-    // entweder percentage filter (einfachster)
-    //percentage_filter(starts, 0.2);
-    // oder weighted -> da ist percentage ein element von
-    //weighted_filter(starts, tt);
-    //printf("nachher: %llu \n", starts.size());
+    printf("1 Anzahl starts vorher: %llu \n", starts.size());
+    if(tt.percentage_filter_) {
+      percentage_filter(starts, tt.percent_for_filter_);
+    }
+    if(tt.weighted_filter_) {
+      weighted_filter(starts, tt, tt.line_filter_);
+    }
+    printf("nachher: %llu \n", starts.size());
   }
 
-  // Linking error!
-  static vector_map<location_idx_t, vector<std::string_view>> starts_all_names_;
 };
 } // namespace nigiri::routing

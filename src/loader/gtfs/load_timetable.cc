@@ -85,6 +85,10 @@ void load_timetable(loader_config const& config,
   nigiri::scoped_timer const global_timer{"gtfs parser"};
 
   tt.use_station_filter_ = config.use_stationfilter_;
+  tt.weighted_filter_ = config.weighted_filter_;
+  tt.percent_for_filter_ = config.percent_for_filter_;
+  tt.line_filter_ = config.line_filter_;
+  tt.percentage_filter_ = config.percentage_filter_;
 
   auto const load = [&](std::string_view file_name) -> file {
     return d.exists(file_name) ? d.get_file(file_name) : file{};
@@ -282,6 +286,7 @@ void load_timetable(loader_config const& config,
                 utl::get_or_create(lines, trp.route_->short_name_, [&]() {
                   auto const idx = trip_line_idx_t{tt.trip_lines_.size()};
                   tt.trip_lines_.emplace_back(trp.route_->short_name_);
+                  printf("trip_lines: %s\n", trp.route_->short_name_.c_str());
                   return idx;
                 });
 
@@ -299,7 +304,7 @@ void load_timetable(loader_config const& config,
               }
             }
           }
-
+          // TODO: schauen, wie ich an die namen komme, über die transports.
           tt.add_transport(timetable::transport{
               .bitfield_idx_ = utl::get_or_create(
                   bitfield_indices, s.utc_traffic_days_,
@@ -337,8 +342,6 @@ void load_timetable(loader_config const& config,
       progress_tracker->increment();
     }
 
-    // TODO: schauen ob die vector_maps richtig gefüllt werden, denke nicht...
-    // mutable_fws_multimap<location_idx_t, route_idx_t>{}; für location_routes
     // Build location_routes map and filter data for station filter
     for (auto l = tt.location_routes_.size(); l != tt.n_locations(); ++l) {
       tt.location_routes_.emplace_back(location_routes[location_idx_t{l}]);

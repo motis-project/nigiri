@@ -208,7 +208,7 @@ struct timetable {
     transport_section_attributes_.emplace_back(t.section_attributes_);
     transport_section_providers_.emplace_back(t.section_providers_);
     transport_section_directions_.emplace_back(t.section_directions_);
-    transport_section_lines_.emplace_back(t.section_lines_);
+    transport_section_lines_.emplace_back(t.section_lines_); // sind das die richtigen namen die ich suche?
 
     assert(transport_traffic_days_.size() == transport_route_.size());
     assert(transport_traffic_days_.size() == transport_to_trip_section_.size());
@@ -351,9 +351,12 @@ struct timetable {
   void write(std::filesystem::path const&) const;
   static cista::wrapped<timetable> read(cista::memory_holder&&);
 
-  // TODO: schauen, ob das die richtigen Typen sind.
   // Filter
   bool use_station_filter_;
+  bool weighted_filter_;
+  double percent_for_filter_;
+  bool percentage_filter_;
+  bool line_filter_;
   vector_map<location_idx_t, size_t> depature_count_;
   vector_map<location_idx_t, vector<pair<group, int>>> classgroups_on_loc_;
 

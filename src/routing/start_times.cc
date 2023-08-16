@@ -261,7 +261,9 @@ void get_starts(direction const search_dir,
   }
   // Filteraufruf
   if(tt.use_station_filter_) {
-    station_filter::filter_stations(starts, tt);
+    if(!tt.depature_count_.empty()) {
+      station_filter::filter_stations(starts, tt);
+    }
   }
 }
 
