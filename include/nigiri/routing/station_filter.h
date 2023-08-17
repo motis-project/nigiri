@@ -1,5 +1,7 @@
 #pragma once
 
+#include <cstring>
+
 #include "nigiri/timetable.h"
 #include "nigiri/types.h"
 #include "utl/erase_if.h"
@@ -11,33 +13,6 @@ struct station_filter {
     location_idx_t l_;
     int weight_;
   };
-
-/*static vector_map<location_idx_t, vector<std::string>> create_names_lists(std::vector<start>& starts, timetable const& tt) {
-  printf("in create names\n");
-  vector_map<location_idx_t, vector<std::string>> names_lists;
-  for(auto const& s : starts) {
-    vector<std::string> names;
-    location_idx_t l = s.stop_;
-    auto const vr = tt.location_routes_.at(l);
-    for(auto const ri : vr) {
-      auto const& transport_range = tt.route_transport_ranges_[route_idx_t{ri}];
-      std::string_view sv_tname = tt.transport_name(transport_range.from_);
-      std::string tname = {sv_tname.begin(), sv_tname.end()};
-      // tname = "Bus RE 2" od "ICE 1337" --> dann wäre aufteilen falsch
-      while(tname.contains(" ")) {
-        int indexleer = tname.find(" ");
-        std::string safename = tname.substr(0, indexleer);
-        tname = tname.substr(indexleer+1);
-        names.emplace_back(safename);
-      }
-      names.emplace_back(tname); // checked
-    }
-    names_lists.emplace_back(names); // hier stimmt was nicht
-    //names_lists.at(l) = names;
-  }
-  printf("names_list: %u\n", names_lists.size()); // 1
-  return names_lists;
-}*/
 
   static void percentage_filter(std::vector<start>& starts, double percent) {
     printf("in percentage_filter\n");
@@ -93,7 +68,8 @@ struct station_filter {
       if(linefilter) {
         extra_weight = line_filter(starts, tt, s);
       }
-      weight_info wi = {l, (weight+extra_weight)};
+      weight += extra_weight;
+      weight_info wi = {l, weight};
       v_weights.emplace_back(wi);
       most = weight > most ? weight : most;
     }
@@ -103,12 +79,12 @@ struct station_filter {
     utl::erase_if(starts, weighted);
   }
 
-  static vector<location_idx_t> find_name(const vector<char>& find, timetable const& tt) {//,
-                                          //vector_map<location_idx_t, vector<std::string>> in) {
+  static vector<location_idx_t> find_name(const std::string& find, timetable const& tt) {
     vector<location_idx_t> found_at;
     for(auto lidx = location_idx_t{0}; lidx < tt.names_lists_.size(); lidx++) {
-      for(auto const p : tt.names_lists_.at(lidx)) {
-        if(find == p) {
+      for(vector<char> p : tt.names_lists_.at(lidx)) {
+        std::string sp = {p.begin(), p.end()};
+        if(find == sp) {
           found_at.emplace_back(lidx);
         }
       }
@@ -123,23 +99,24 @@ struct station_filter {
     return start();
   }
 
-  // TODO: überprüfen, ob die Namen richtig verwendet werden.
   static int line_filter(std::vector<start>& starts, timetable const& tt, start this_start) {
-    //vector_map<location_idx_t, vector<std::string>> starts_all_names = create_names_lists(starts, tt);
     printf("in line_filter\n");
     duration_t o = this_start.time_at_stop_ - this_start.time_at_start_;
     auto const l = this_start.stop_;
     int weight_count = 0;
     duration_t dur_off;
-    //vector<std::string> this_start_names = starts_all_names.at(l); // hier gehts schief
+    unixtime_t null{};
     vector<vector<char>> this_start_names = tt.names_lists_.at(l);
     vector<location_idx_t> v_li;
-    for(auto const name : this_start_names) {
-      printf("\t\t\t\t\t name: %s \n", name.data());
-      v_li = find_name(name, tt); //starts_all_names
+    for(vector<char> name : this_start_names) {
+      std::string sname = {name.begin(), name.end()};
+      v_li = find_name(sname, tt);
     }
     for(auto const a : v_li) {
       start s = find_start_from_locidx(starts, a);
+      if(s.time_at_stop_ == null && s.time_at_start_ == null && s.stop_ == 0) {
+        continue;
+      }
       dur_off = s.time_at_stop_ - s.time_at_start_;
       if(o < dur_off) {
         weight_count++;

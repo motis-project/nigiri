@@ -286,7 +286,6 @@ void load_timetable(loader_config const& config,
                 utl::get_or_create(lines, trp.route_->short_name_, [&]() {
                   auto const idx = trip_line_idx_t{tt.trip_lines_.size()};
                   tt.trip_lines_.emplace_back(trp.route_->short_name_);
-                  printf("trip_lines: %s\n", trp.route_->short_name_.c_str());
                   return idx;
                 });
 
