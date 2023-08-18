@@ -128,9 +128,17 @@ void expand_local_to_utc(trip_data const& trip_data,
                          interval<date::sys_days> const& gtfs_interval,
                          interval<date::sys_days> const& selection,
                          Consumer&& consumer) {
-  std::erase_if(fet.trips_, [&](gtfs_trip_idx_t const t_idx) {
-    return trip_data.get(t_idx).event_times_.size() <= 1U;
-  });
+  auto trip_it = begin(fet.trips_);
+  auto offsets_it = begin(fet.offsets_);
+  while (trip_it != end(fet.trips_)) {
+    if (trip_data.get(*trip_it).event_times_.size() <= 1U) {
+      trip_it = fet.trips_.erase(trip_it);
+      offsets_it = fet.offsets_.erase(offsets_it);
+    } else {
+      ++trip_it;
+      ++offsets_it;
+    }
+  }
   if (fet.trips_.empty()) {
     return;
   }
