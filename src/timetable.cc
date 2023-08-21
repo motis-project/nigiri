@@ -3,8 +3,6 @@
 #include "cista/mmap.h"
 #include "cista/serialization.h"
 
-#include "fmt/core.h"
-
 #include "utl/overloaded.h"
 
 #include "nigiri/common/day_list.h"
