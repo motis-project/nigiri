@@ -120,7 +120,7 @@ using merged_trips_idx_t =
 using footpath_idx_t = cista::strong<std::uint32_t, struct _footpath_idx>;
 using source_file_idx_t = cista::strong<std::uint16_t, struct _source_file_idx>;
 
-typedef std::uint8_t profile_idx_t;
+using profile_idx_t = std::uint8_t;
 static constexpr auto const kMaxProfiles = profile_idx_t{8};
 
 using rt_trip_idx_t = cista::strong<std::uint32_t, struct _trip_idx>;
