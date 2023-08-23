@@ -274,7 +274,6 @@ void service_builder::write_location_routes() {
       int slow = 0;
       int fast = 0;
       int away = 0;
-      vector<vector<char>> names;
       for(auto const r : location_routes_[location_idx_t{l}]) {
         clasz klasse = tt_.route_section_clasz_.at(route_idx_t{r}).at(0);
         if(klasse == clasz::kMetro || klasse == clasz::kBus || klasse == clasz::kTram || klasse == clasz::kSubway) {
@@ -289,14 +288,7 @@ void service_builder::write_location_routes() {
         else if(klasse == clasz::kAir || klasse == clasz::kCoach || klasse == clasz::kShip || klasse == clasz::kOther) {
           away++;
         }
-
-        auto const& transport_range = tt_.route_transport_ranges_[route_idx_t{r}];
-        std::string_view sv_tname = tt_.transport_name(transport_range.from_);
-        vector<char> charname = {sv_tname.begin(), sv_tname.end()};
-        names.emplace_back(charname);
       }
-      tt_.names_lists_.emplace_back(names);
-
       vector<pair<group, int>> classcount;
       classcount.emplace_back(group::klocal, local);
       classcount.emplace_back(group::kslow, slow);

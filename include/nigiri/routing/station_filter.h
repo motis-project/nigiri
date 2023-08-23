@@ -29,7 +29,7 @@ struct station_filter {
     starts.shrink_to_fit();
   }
 
-  static void weighted_filter(std::vector<start>& starts, timetable const& tt, bool linefilter) {
+  static void weighted_filter(std::vector<start>& starts, timetable const& tt, bool linefilter, bool fwd) {
     printf("in weighted_filter\n");
     vector<weight_info> v_weights;
     int most = 1;
@@ -52,7 +52,8 @@ struct station_filter {
     // 6 = 0-3min; 5 = 3-5min; 4 = 5-7min; 3 = 7-10min; 2 = 10-15min; 1 = 15-20min; 0 = > 20min
     for (auto const& s : starts) {
       auto const l = s.stop_;
-      auto const o = s.time_at_stop_ - s.time_at_start_;
+      auto const o = fwd ? s.time_at_stop_ - s.time_at_start_ :
+                           s.time_at_start_ - s.time_at_stop_;
       size_t dep_count = tt.depature_count_.at(l);
       int local_count = tt.get_groupclass_count(l, group::klocal);
       int slow_count = tt.get_groupclass_count(l, group::kslow) * 2;
@@ -66,7 +67,7 @@ struct station_filter {
       if(o.count() >= 0 && o.count() < 3) weight += 6;
       int extra_weight = 0;
       if(linefilter) {
-        extra_weight = line_filter(starts, tt, s);
+        extra_weight = line_filter(starts, tt, s, fwd);
       }
       weight += extra_weight;
       weight_info wi = {l, weight};
@@ -79,12 +80,11 @@ struct station_filter {
     utl::erase_if(starts, weighted);
   }
 
-  static vector<location_idx_t> find_name(const std::string& find, timetable const& tt) {
+  static vector<location_idx_t> find_lines(route_idx_t find, timetable const& tt) {
     vector<location_idx_t> found_at;
-    for(auto lidx = location_idx_t{0}; lidx < tt.names_lists_.size(); lidx++) {
-      for(vector<char> p : tt.names_lists_.at(lidx)) {
-        std::string sp = {p.begin(), p.end()};
-        if(find == sp) {
+    for(auto lidx = location_idx_t{0}; lidx < tt.location_routes_.size(); lidx++) {
+      for(route_idx_t rix : tt.location_routes_.at(lidx)) {
+        if(find == rix) {
           found_at.emplace_back(lidx);
         }
       }
@@ -99,41 +99,41 @@ struct station_filter {
     return start();
   }
 
-  static int line_filter(std::vector<start>& starts, timetable const& tt, start this_start) {
+  static int line_filter(std::vector<start>& starts, timetable const& tt, start this_start, bool fwd) {
     printf("in line_filter\n");
-    duration_t o = this_start.time_at_stop_ - this_start.time_at_start_;
-    auto const l = this_start.stop_;
+    duration_t o = fwd ? this_start.time_at_stop_ - this_start.time_at_start_ :
+                         this_start.time_at_start_ - this_start.time_at_stop_;
+    location_idx_t l = this_start.stop_;
     int weight_count = 0;
     duration_t dur_off;
     unixtime_t null{};
-    vector<vector<char>> this_start_names = tt.names_lists_.at(l);
+    auto const this_start_lines = tt.location_routes_.at(l);
     vector<location_idx_t> v_li;
-    for(vector<char> name : this_start_names) {
-      std::string sname = {name.begin(), name.end()};
-      v_li = find_name(sname, tt);
-    }
-    for(auto const a : v_li) {
-      start s = find_start_from_locidx(starts, a);
-      if(s.time_at_stop_ == null && s.time_at_start_ == null && s.stop_ == 0) {
-        continue;
+    for(route_idx_t line : this_start_lines) {
+      v_li = find_lines(line, tt);
+      for (auto const a : v_li) {
+        start s = find_start_from_locidx(starts, a);
+        if (s.time_at_stop_ == null && s.time_at_start_ == null &&
+            s.stop_ == 0) {
+          continue;
+        }
+        dur_off = fwd ? s.time_at_stop_ - s.time_at_start_ :
+                        s.time_at_start_ - s.time_at_stop_;
+        if (o < dur_off) {
+          weight_count++;
+        }
       }
-      dur_off = s.time_at_stop_ - s.time_at_start_;
-      if(o < dur_off) {
-        weight_count++;
-      }
     }
-    // einzeln ergibt lineFilter keinen sinn, weil die Station noch andere Routen/Transports
-    // haben kann, die von da abfahren, also das dann komplett rauswerfen wäre doof.
     return weight_count;
   }
 
-  static void filter_stations(std::vector<start>& starts, timetable const& tt) {
+  static void filter_stations(std::vector<start>& starts, timetable const& tt, bool fwd) {
     printf("1 Anzahl starts vorher: %llu \n", starts.size());
     if(tt.percentage_filter_) {
       percentage_filter(starts, tt.percent_for_filter_);
     }
     if(tt.weighted_filter_) {
-      weighted_filter(starts, tt, tt.line_filter_);
+      weighted_filter(starts, tt, tt.line_filter_, fwd);
     }
     printf("nachher: %llu \n", starts.size());
   }

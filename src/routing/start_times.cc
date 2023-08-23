@@ -258,10 +258,9 @@ void get_starts(direction const search_dir,
                    }},
                start_time);
   }
-
   if(tt.use_station_filter_) {
     if(!tt.depature_count_.empty()) {
-      station_filter::filter_stations(starts, tt);
+      station_filter::filter_stations(starts, tt, fwd);
     }
   }
 }
