@@ -71,8 +71,7 @@ struct timetable {
       return it->second;
     }
 
-    location get(location_idx_t const idx,
-                 profile_idx_t const prf_idx = 0) const {
+    location get(location_idx_t const idx) const {
       auto l = location{ids_[idx].view(),
                         names_[idx].view(),
                         coordinates_[idx],
@@ -81,15 +80,13 @@ struct timetable {
                         parents_[idx],
                         location_timezones_[idx],
                         transfer_time_[idx],
-                        it_range{equivalences_[idx]},
-                        std::span<footpath const>{footpaths_out_[prf_idx][idx]},
-                        std::span<footpath const>{footpaths_in_[prf_idx][idx]}};
+                        it_range{equivalences_[idx]}};
       l.l_ = idx;
       return l;
     }
 
-    location get(location_id const& id, profile_idx_t const prf_idx = 0) const {
-      return get(location_id_to_idx_.at(id), prf_idx);
+    location get(location_id const& id) const {
+      return get(location_id_to_idx_.at(id));
     }
 
     void resolve_timezones();
