@@ -6,7 +6,6 @@
 #include "geo/latlng.h"
 
 #include "nigiri/common/it_range.h"
-#include "nigiri/footpath.h"
 #include "nigiri/types.h"
 
 namespace nigiri {
