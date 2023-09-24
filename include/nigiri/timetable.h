@@ -353,6 +353,7 @@ struct timetable {
 
   // Filter
   bool use_station_filter_;
+  bool time_consistency_;
   bool weighted_filter_;
   double percent_for_filter_;
   bool percentage_filter_;

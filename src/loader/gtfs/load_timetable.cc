@@ -85,6 +85,7 @@ void load_timetable(loader_config const& config,
   nigiri::scoped_timer const global_timer{"gtfs parser"};
 
   tt.use_station_filter_ = config.use_stationfilter_;
+  tt.time_consistency_ = config.time_consistency_;
   tt.weighted_filter_ = config.weighted_filter_;
   tt.percent_for_filter_ = config.percent_for_filter_;
   tt.line_filter_ = config.line_filter_;

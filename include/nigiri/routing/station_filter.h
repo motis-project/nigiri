@@ -14,23 +14,35 @@ struct station_filter {
     int weight_;
   };
 
-  static void percentage_filter(std::vector<start>& starts, double percent) {
-    printf("in percentage_filter\n");
+  static void percentage_filter(std::vector<start>& starts, double percent, bool fwd) {
     auto const min = [&](start const& a, start const& b) {
       return a.time_at_stop_ < b.time_at_stop_;
+    };
+    auto const cmp = [&](start const& a, start const& b) {
+      return fwd ? b < a : a < b;
     };
     std::sort(starts.begin(), starts.end(), min);
     size_t percent_to_dismiss = static_cast<size_t>(starts.size() * percent);
     size_t new_size = starts.size() - percent_to_dismiss;
-    if(starts.at(starts.size()-1).time_at_stop_ == starts.at(0).time_at_stop_) {
+    if(starts.at(starts.size()-1).time_at_stop_ == starts.at(0).time_at_stop_ || percent_to_dismiss == 0) {
       return;
     }
     starts.resize(new_size);
-    starts.shrink_to_fit();
+    //starts.shrink_to_fit();
+    std::sort(starts.begin(), starts.end(), cmp);
   }
 
   static void weighted_filter(std::vector<start>& starts, timetable const& tt, bool linefilter, bool fwd) {
-    printf("in weighted_filter\n");
+    double threshold = 20.0;
+    if(starts.size() > 80 && starts.size() < 400) {
+      threshold = 18.0;
+    }
+    if(starts.size() > 1000) {
+      threshold = 15.0;
+    }
+    if(starts.size() > 2000) {
+      threshold = 10.0;
+    }
     vector<weight_info> v_weights;
     int most = 1;
     auto const weighted = [&](start const& a) {
@@ -38,27 +50,28 @@ struct station_filter {
       for(auto const w : v_weights) {
         if(l == w.l_) {
           double percent = w.weight_ * 100.0 / most;
-          if(percent > 22.0) {
-            return false;
-          }
-          else return true;
+          return percent > threshold ? false : true;
         }
       }
       return true;
     };
     // Example:
-    // dep_count = 3, local_count=2, slow_count=1*2=2,    o = 5   -> weight = 8,3
-    // dep_count = 2, slow_count=1*2=2, fast_count=1*3=3, o = 10  -> weight = 7,2
-    // 6 = 0-3min; 5 = 3-5min; 4 = 5-7min; 3 = 7-10min; 2 = 10-15min; 1 = 15-20min; 0 = > 20min
+    // dep_count = 3, local_count=2 *2=4, slow_count=1 *3=3, o=5 +4
+    //      -> weight = 14
+    // dep_count = 2, slow_count=1 *3=3, fast_count=1 *4=4,  o=10 +2
+    //      -> weight = 11
+    // Offset Weights:
+    // 0-3min = 6; 3-5min = 5; 5-7min = 4; 7-10min = 3
+    // 10-15min = 2; 15-20min = 1; >20min = 0
     for (auto const& s : starts) {
       auto const l = s.stop_;
       auto const o = fwd ? s.time_at_stop_ - s.time_at_start_ :
                            s.time_at_start_ - s.time_at_stop_;
-      size_t dep_count = tt.depature_count_.at(l);
-      int local_count = tt.get_groupclass_count(l, group::klocal);
-      int slow_count = tt.get_groupclass_count(l, group::kslow) * 2;
-      int fast_count = tt.get_groupclass_count(l, group::kfast) * 3;
-      int weight = local_count + slow_count + fast_count + (dep_count/10);
+      auto dep_count = tt.depature_count_.at(l);
+      int local_count = tt.get_groupclass_count(l, group::klocal) * 2;
+      int slow_count = tt.get_groupclass_count(l, group::kslow) * 3;
+      int fast_count = tt.get_groupclass_count(l, group::kfast) * 4;
+      int weight = local_count + slow_count + fast_count + dep_count;
       if(o.count() >= 15 && o.count() < 20) weight += 1;
       if(o.count() >= 10 && o.count() < 15) weight += 2;
       if(o.count() >= 7 && o.count() < 10) weight += 3;
@@ -100,7 +113,6 @@ struct station_filter {
   }
 
   static int line_filter(std::vector<start>& starts, timetable const& tt, start this_start, bool fwd) {
-    printf("in line_filter\n");
     duration_t o = fwd ? this_start.time_at_stop_ - this_start.time_at_start_ :
                          this_start.time_at_start_ - this_start.time_at_stop_;
     location_idx_t l = this_start.stop_;
@@ -119,7 +131,7 @@ struct station_filter {
         }
         dur_off = fwd ? s.time_at_stop_ - s.time_at_start_ :
                         s.time_at_start_ - s.time_at_stop_;
-        if (o < dur_off) {
+        if (o < dur_off || this_start.time_at_stop_ < s.time_at_stop_) {
           weight_count++;
         }
       }
@@ -128,14 +140,12 @@ struct station_filter {
   }
 
   static void filter_stations(std::vector<start>& starts, timetable const& tt, bool fwd) {
-    printf("1 Anzahl starts vorher: %llu \n", starts.size());
     if(tt.percentage_filter_) {
-      percentage_filter(starts, tt.percent_for_filter_);
+      percentage_filter(starts, tt.percent_for_filter_, fwd);
     }
     if(tt.weighted_filter_) {
       weighted_filter(starts, tt, tt.line_filter_, fwd);
     }
-    printf("nachher: %llu \n", starts.size());
   }
 
 };
