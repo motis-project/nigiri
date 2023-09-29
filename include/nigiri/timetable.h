@@ -208,7 +208,7 @@ struct timetable {
     transport_section_attributes_.emplace_back(t.section_attributes_);
     transport_section_providers_.emplace_back(t.section_providers_);
     transport_section_directions_.emplace_back(t.section_directions_);
-    transport_section_lines_.emplace_back(t.section_lines_); // sind das die richtigen namen die ich suche?
+    transport_section_lines_.emplace_back(t.section_lines_);
 
     assert(transport_traffic_days_.size() == transport_route_.size());
     assert(transport_traffic_days_.size() == transport_to_trip_section_.size());

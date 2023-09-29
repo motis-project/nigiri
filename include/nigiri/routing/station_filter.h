@@ -83,12 +83,12 @@ struct station_filter {
       int slow_count = tt.get_groupclass_count(l, group::kslow) * 3;
       int fast_count = tt.get_groupclass_count(l, group::kfast) * 4;
       int weight = local_count + slow_count + fast_count + dep_count;
-      //if(o.count() >= 15 && o.count() < 20) weight += 1;
-      //if(o.count() >= 10 && o.count() < 15) weight += 2;
-      //if(o.count() >= 7 && o.count() < 10) weight += 3;
-      //if(o.count() >= 5 && o.count() < 7) weight += 4;
-      //if(o.count() >= 3 && o.count() < 5) weight += 5;
-      //if(o.count() >= 0 && o.count() < 3) weight += 6;
+      if(o.count() >= 15 && o.count() < 20) weight += 1;
+      if(o.count() >= 10 && o.count() < 15) weight += 2;
+      if(o.count() >= 7 && o.count() < 10) weight += 3;
+      if(o.count() >= 5 && o.count() < 7) weight += 4;
+      if(o.count() >= 3 && o.count() < 5) weight += 5;
+      if(o.count() >= 0 && o.count() < 3) weight += 6;
       int extra_weight = 0;
       if(linefilter) {
         extra_weight = line_filter(starts, tt, s, fwd);
