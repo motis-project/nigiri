@@ -347,7 +347,9 @@ void load_timetable(loader_config const& config,
       tt.location_routes_.emplace_back(location_routes[location_idx_t{l}]);
       assert(tt.location_routes_.size() == l + 1U);
       if(tt.use_station_filter_) {
-        tt.depature_count_.emplace_back(location_routes[location_idx_t{l}].size());
+        pair<location_idx_t, size_t> temp =
+            {location_idx_t{l}, location_routes[location_idx_t{l}].size()};
+        tt.depature_count_.emplace_back(temp);
         int local = 0;
         int slow = 0;
         int fast = 0;
@@ -367,11 +369,8 @@ void load_timetable(loader_config const& config,
             away++;
           }
         }
-        vector<pair<group, int>> classcount;
-        classcount.emplace_back(group::klocal, local);
-        classcount.emplace_back(group::kslow, slow);
-        classcount.emplace_back(group::kfast, fast);
-        classcount.emplace_back(group::kaway, away);
+        vector<int> groups = {local, slow, fast, away};
+        pair<location_idx_t, vector<int>> classcount = {location_idx_t{l}, groups};
         tt.classgroups_on_loc_.emplace_back(classcount);
       }
     }

@@ -336,10 +336,15 @@ struct timetable {
   // ---  Filter Data  ---
   // how many departures are at l with classgroup x
   int get_groupclass_count(location_idx_t const ix, group classgroup) const {
-    vector<pair<group, int>> classgroups = classgroups_on_loc_.at(ix);
-    for(auto const p : classgroups) {
-      if(p.first == classgroup) {
-        return p.second;
+    for(const auto& col : classgroups_on_loc_) {
+      if(col.first == ix) {
+        switch (classgroup) {
+          case group::klocal: return col.second.at(0);
+          case group::kslow: return col.second.at(1);
+          case group::kfast: return col.second.at(2);
+          case group::kaway: return col.second.at(3);
+          default: return 0;
+        }
       }
     }
     return 0;
@@ -358,8 +363,8 @@ struct timetable {
   double percent_for_filter_;
   bool percentage_filter_;
   bool line_filter_;
-  vector_map<location_idx_t, size_t> depature_count_;
-  vector_map<location_idx_t, vector<pair<group, int>>> classgroups_on_loc_;
+  vector<pair<location_idx_t, size_t>> depature_count_;
+  vector<pair<location_idx_t, vector<int>>> classgroups_on_loc_;
 
   // Schedule range.
   interval<date::sys_days> date_range_;

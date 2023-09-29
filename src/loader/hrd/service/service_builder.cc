@@ -269,7 +269,9 @@ void service_builder::write_location_routes() {
     tt_.location_routes_.emplace_back(location_routes_[location_idx_t{l}]);
     assert(tt_.location_routes_.size() == l + 1U);
     if(tt_.use_station_filter_) {
-      tt_.depature_count_.emplace_back(location_routes_[location_idx_t{l}].size());
+      pair<location_idx_t, size_t> temp =
+          {location_idx_t{l}, location_routes_[location_idx_t{l}].size()};
+      tt_.depature_count_.emplace_back(temp);
       int local = 0;
       int slow = 0;
       int fast = 0;
@@ -289,11 +291,8 @@ void service_builder::write_location_routes() {
           away++;
         }
       }
-      vector<pair<group, int>> classcount;
-      classcount.emplace_back(group::klocal, local);
-      classcount.emplace_back(group::kslow, slow);
-      classcount.emplace_back(group::kfast, fast);
-      classcount.emplace_back(group::kaway, away);
+      vector<int> groups = {local, slow, fast, away};
+      pair<location_idx_t, vector<int>> classcount = {location_idx_t{l}, groups};
       tt_.classgroups_on_loc_.emplace_back(classcount);
     }
   }

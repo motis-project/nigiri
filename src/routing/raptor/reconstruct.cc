@@ -34,6 +34,12 @@ std::optional<journey::leg> find_start_footpath(timetable const& tt,
   auto const is_better_or_eq = [](auto a, auto b) {
     return kFwd ? a <= b : a >= b;
   };
+  auto const is_better = [](auto a, auto b) {
+    return kFwd ? a < b : a > b;
+  };
+  auto const is_eq = [](auto a, auto b) {
+    return a == b;
+  };
   auto const is_ontrip = holds_alternative<unixtime_t>(q.start_time_);
   auto const start_matches = [&](delta_t const a, delta_t const b) {
     return is_ontrip ? is_better_or_eq(a, b) : a == b;
@@ -63,27 +69,64 @@ std::optional<journey::leg> find_start_footpath(timetable const& tt,
 
   if (q.start_match_mode_ == location_match_mode::kIntermodal) {
     for (auto const& o : q.start_) {
-      if (matches(tt, q.start_match_mode_, o.target(), leg_start_location) &&
-          is_better_or_eq(j.start_time_,
-                          leg_start_time - (kFwd ? 1 : -1) * o.duration())) {
-        trace_rc_intermodal_start_found;
-        return journey::leg{SearchDir,
-                            get_special_station(special_station::kStart),
-                            leg_start_location,
-                            j.start_time_,
-                            j.start_time_ + (kFwd ? 1 : -1) * o.duration(),
-                            o};
-      } else {
-        trace_rc_intermodal_no_match;
-      }
+      if(tt.time_consistency_) {
+        if (matches(tt, q.start_match_mode_, o.target(), leg_start_location) &&
+            is_eq(j.start_time_,
+                  leg_start_time - (kFwd ? 1 : -1) * o.duration())) {
+          trace_rc_intermodal_start_found;
+          return journey::leg{SearchDir,
+                              get_special_station(special_station::kStart),
+                              leg_start_location,
+                              j.start_time_,
+                              j.start_time_ + (kFwd ? 1 : -1) * o.duration(),
+                              o};
+        } else if(matches(tt, q.start_match_mode_, o.target(), leg_start_location) &&
+                   is_better(j.start_time_,
+                             leg_start_time - (kFwd ? 1 : -1) * o.duration())) {
+          trace_rc_intermodal_start_found;
+          return journey::leg{SearchDir,
+                              get_special_station(special_station::kStart),
+                              leg_start_location,
+                              j.start_time_ + 1_minutes,
+                              j.start_time_ + 1_minutes + (kFwd ? 1 : -1) * o.duration(),
+                              o};
+        } else {
+          trace_rc_intermodal_no_match;
+        }
 
-      for (auto const& fp : footpaths) {
-        if (matches(tt, q.start_match_mode_, o.target(), fp.target()) &&
-            is_better_or_eq(
-                j.start_time_,
-                leg_start_time -
-                    (kFwd ? 1 : -1) * (o.duration() + fp.duration()))) {
-          trace_rc_intermodal_fp_start_found;
+        for (auto const& fp : footpaths) {
+          if (matches(tt, q.start_match_mode_, o.target(), fp.target()) &&
+              is_eq(j.start_time_,
+                    leg_start_time -
+                        (kFwd ? 1 : -1) * (o.duration() + fp.duration()))) {
+            trace_rc_intermodal_fp_start_found;
+            return journey::leg{SearchDir,
+                                get_special_station(special_station::kStart),
+                                leg_start_location,
+                                j.start_time_,
+                                j.start_time_ + (kFwd ? 1 : -1) * o.duration(),
+                                o};
+          } else if(matches(tt, q.start_match_mode_, o.target(), fp.target()) &&
+                     is_better(j.start_time_,
+                               leg_start_time -
+                                   (kFwd ? 1 : -1) * (o.duration() + fp.duration()))) {
+            trace_rc_intermodal_start_found;
+            return journey::leg{SearchDir,
+                                get_special_station(special_station::kStart),
+                                leg_start_location,
+                                j.start_time_ + 1_minutes,
+                                j.start_time_ + 1_minutes + (kFwd ? 1 : -1) * o.duration(),
+                                o};
+          } else {
+            trace_rc_intermodal_fp_no_match;
+          }
+        }
+
+      } else {
+        if (matches(tt, q.start_match_mode_, o.target(), leg_start_location) &&
+            is_better_or_eq(j.start_time_,
+                            leg_start_time - (kFwd ? 1 : -1) * o.duration())) {
+          trace_rc_intermodal_start_found;
           return journey::leg{SearchDir,
                               get_special_station(special_station::kStart),
                               leg_start_location,
@@ -91,7 +134,24 @@ std::optional<journey::leg> find_start_footpath(timetable const& tt,
                               j.start_time_ + (kFwd ? 1 : -1) * o.duration(),
                               o};
         } else {
-          trace_rc_intermodal_fp_no_match;
+          trace_rc_intermodal_no_match;
+        }
+
+        for (auto const& fp : footpaths) {
+          if (matches(tt, q.start_match_mode_, o.target(), fp.target()) &&
+              is_better_or_eq(j.start_time_,
+                              leg_start_time -
+                                  (kFwd ? 1 : -1) * (o.duration() + fp.duration()))) {
+            trace_rc_intermodal_fp_start_found;
+            return journey::leg{SearchDir,
+                                get_special_station(special_station::kStart),
+                                leg_start_location,
+                                j.start_time_,
+                                j.start_time_ + (kFwd ? 1 : -1) * o.duration(),
+                                o};
+          } else {
+            trace_rc_intermodal_fp_no_match;
+          }
         }
       }
     }

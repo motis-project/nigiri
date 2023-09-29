@@ -67,17 +67,28 @@ struct station_filter {
       auto const l = s.stop_;
       auto const o = fwd ? s.time_at_stop_ - s.time_at_start_ :
                            s.time_at_start_ - s.time_at_stop_;
-      auto dep_count = tt.depature_count_.at(l);
+      auto dep_count = 0;
+      bool not_found = true;
+      for(auto dc : tt.depature_count_) {
+        if(dc.first == l) {
+          not_found = false;
+          dep_count = dc.second;
+          break;
+        }
+      }
+      if(not_found) {
+        continue;
+      }
       int local_count = tt.get_groupclass_count(l, group::klocal) * 2;
       int slow_count = tt.get_groupclass_count(l, group::kslow) * 3;
       int fast_count = tt.get_groupclass_count(l, group::kfast) * 4;
       int weight = local_count + slow_count + fast_count + dep_count;
-      if(o.count() >= 15 && o.count() < 20) weight += 1;
-      if(o.count() >= 10 && o.count() < 15) weight += 2;
-      if(o.count() >= 7 && o.count() < 10) weight += 3;
-      if(o.count() >= 5 && o.count() < 7) weight += 4;
-      if(o.count() >= 3 && o.count() < 5) weight += 5;
-      if(o.count() >= 0 && o.count() < 3) weight += 6;
+      //if(o.count() >= 15 && o.count() < 20) weight += 1;
+      //if(o.count() >= 10 && o.count() < 15) weight += 2;
+      //if(o.count() >= 7 && o.count() < 10) weight += 3;
+      //if(o.count() >= 5 && o.count() < 7) weight += 4;
+      //if(o.count() >= 3 && o.count() < 5) weight += 5;
+      //if(o.count() >= 0 && o.count() < 3) weight += 6;
       int extra_weight = 0;
       if(linefilter) {
         extra_weight = line_filter(starts, tt, s, fwd);
