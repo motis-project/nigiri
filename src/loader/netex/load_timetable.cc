@@ -8,7 +8,7 @@
 #include "nigiri/loader/netex/load_timetable.h"
 #include "pugixml.hpp"
 #include "resource_frame_handler.h"
-#include "service_calendar_frame_handler.h"
+// #include "service_calendar_frame_handler.h"
 #include "service_frame_handler.h"
 
 #include <filesystem>
@@ -34,7 +34,7 @@ void handle_xml_parse_result(timetable& t,
   processResourceFrame(t, frames.child("ResourceFrame"), timezones, agencyMap);
 
   // 2. ServiceCalendarFrame -> Defines the days when a connection is valid
-  processServiceCalendarFrame(frames.child("ServiceCalendarFrame"));
+  //  processServiceCalendarFrame(frames.child("ServiceCalendarFrame"));
 
   // 3. ServiceFrame -> Contains all the logic about stops, routes, journeys
   processServiceFrame(t, frames.child("ServiceFrame"));
