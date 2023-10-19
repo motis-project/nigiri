@@ -9,6 +9,7 @@
 
 #include "./test_data.h"
 
+using namespace date;
 using namespace nigiri::loader;
 
 namespace nigiri::loader::gtfs {
@@ -17,6 +18,8 @@ TEST(gtfs, read_trips_example_data) {
   auto const files = example_files();
 
   timetable tt;
+  tt.date_range_ = interval{date::sys_days{July / 1 / 2006},
+                            date::sys_days{August / 1 / 2006}};
   tz_map timezones;
 
   auto agencies =
@@ -26,7 +29,8 @@ TEST(gtfs, read_trips_example_data) {
   auto const dates =
       read_calendar_date(files.get_file(kCalendarDatesFile).data());
   auto const calendar = read_calendar(files.get_file(kCalenderFile).data());
-  auto const services = merge_traffic_days(calendar, dates);
+  auto const services =
+      merge_traffic_days(tt.internal_interval_days(), calendar, dates);
   auto const trip_data =
       read_trips(tt, routes, services, files.get_file(kTripsFile).data());
 
@@ -43,6 +47,8 @@ TEST(gtfs, read_trips_berlin_data) {
   auto const files = berlin_files();
 
   timetable tt;
+  tt.date_range_ = interval{date::sys_days{July / 1 / 2006},
+                            date::sys_days{August / 1 / 2006}};
   tz_map timezones;
 
   auto agencies =
@@ -52,7 +58,8 @@ TEST(gtfs, read_trips_berlin_data) {
   auto const dates =
       read_calendar_date(files.get_file(kCalendarDatesFile).data());
   auto const calendar = read_calendar(files.get_file(kCalenderFile).data());
-  auto const services = merge_traffic_days(calendar, dates);
+  auto const services =
+      merge_traffic_days(tt.internal_interval_days(), calendar, dates);
   auto const trip_data =
       read_trips(tt, routes, services, files.get_file(kTripsFile).data());
 
