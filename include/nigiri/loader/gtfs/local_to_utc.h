@@ -125,9 +125,9 @@ void expand_local_to_utc(trip_data const& trip_data,
                          noon_offset_hours_t const& noon_offsets,
                          timetable const& tt,
                          frequency_expanded_trip&& fet,
-                         interval<date::sys_days> const& gtfs_interval,
                          interval<date::sys_days> const& selection,
                          Consumer&& consumer) {
+  auto const tt_interval = tt.internal_interval_days();
   auto trip_it = begin(fet.trips_);
   auto offsets_it = begin(fet.offsets_);
   while (trip_it != end(fet.trips_)) {
@@ -163,7 +163,7 @@ void expand_local_to_utc(trip_data const& trip_data,
   auto utc_time_traffic_days = hash_map<conversion_key, bitfield>{};
   auto prev_key = conversion_key{date::days{2}, duration_t{-1}};
   auto prev_it = utc_time_traffic_days.end();
-  for (auto day = gtfs_interval.from_; day != gtfs_interval.to_;
+  for (auto day = tt_interval.from_; day != tt_interval.to_;
        day += date::days{1}) {
     auto const service_days =
         interval{day + first_day_offset, day + last_day_offset + date::days{1}};
@@ -172,7 +172,7 @@ void expand_local_to_utc(trip_data const& trip_data,
     }
 
     auto const gtfs_local_day_idx =
-        static_cast<std::size_t>((day - gtfs_interval.from_).count());
+        static_cast<std::size_t>((day - tt_interval.from_).count());
     if (!fet.traffic_days_->test(gtfs_local_day_idx)) {
       continue;
     }
@@ -186,8 +186,7 @@ void expand_local_to_utc(trip_data const& trip_data,
     auto const first_dep_day_offset = date::days{static_cast<date::days::rep>(
         std::floor(static_cast<double>(first_dep_utc.count()) / 1440))};
     auto const utc_traffic_day =
-        (day - tt.internal_interval_days().from_ + first_dep_day_offset)
-            .count();
+        (day - tt_interval.from_ + first_dep_day_offset).count();
 
     if (utc_traffic_day < 0 || utc_traffic_day >= kMaxDays) {
       continue;
@@ -237,13 +236,12 @@ void expand_trip(trip_data& trip_data,
                  timetable const& tt,
                  std::basic_string<gtfs_trip_idx_t> const& trips,
                  bitfield const* traffic_days,
-                 interval<date::sys_days> const& gtfs_interval,
                  interval<date::sys_days> const& selection,
                  Consumer&& consumer) {
   expand_frequencies(
       trip_data, trips, traffic_days, [&](frequency_expanded_trip&& fet) {
         expand_local_to_utc(trip_data, noon_offsets, tt, std::move(fet),
-                            gtfs_interval, selection,
+                            selection,
                             [&](utc_trip&& ut) { consumer(std::move(ut)); });
       });
 }

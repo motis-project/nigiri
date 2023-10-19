@@ -116,7 +116,7 @@ struct trip_data {
 
 trip_data read_trips(timetable&,
                      route_map_t const&,
-                     traffic_days const&,
+                     traffic_days_t const&,
                      std::string_view file_content);
 
 void read_frequencies(trip_data&, std::string_view);

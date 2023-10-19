@@ -20,9 +20,7 @@ using noon_offset_hours_t =
 duration_t get_noon_offset(date::local_days const days,
                            date::time_zone const* tz);
 
-noon_offset_hours_t precompute_noon_offsets(
-    timetable const& tt,
-    interval<date::sys_days> gtfs_interval,
-    agency_map_t const& agencies);
+noon_offset_hours_t precompute_noon_offsets(timetable const& tt,
+                                            agency_map_t const& agencies);
 
 }  // namespace nigiri::loader::gtfs
