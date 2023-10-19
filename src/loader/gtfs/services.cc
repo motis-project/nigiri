@@ -28,7 +28,8 @@ bitfield calendar_to_bitfield(interval<date::sys_days> const& tt_interval,
     }
     auto const weekday_index =
         date::year_month_weekday{d}.weekday().c_encoding();
-    traffic_days.set(bit, c.week_days_.test(weekday_index));
+    traffic_days.set(static_cast<std::size_t>(bit),
+                     c.week_days_.test(weekday_index));
   }
   return traffic_days;
 }
