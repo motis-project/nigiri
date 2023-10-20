@@ -12,8 +12,6 @@ enum class bound { kFirst, kLast };
 bitfield calendar_to_bitfield(interval<date::sys_days> const& tt_interval,
                               std::string const& service_name,
                               calendar const& c) {
-  assert((c.interval_.from_ - gtfs_interval.from_).count() >= 0);
-
   auto const from = std::max(c.interval_.from_, tt_interval.from_);
   auto const to = std::min(c.interval_.to_, tt_interval.to_);
   auto bit = (from - tt_interval.from_).count();
