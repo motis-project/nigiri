@@ -251,7 +251,7 @@ trip_direction_idx_t trip_data::get_or_create_direction(
 
 trip_data read_trips(timetable& tt,
                      route_map_t const& routes,
-                     traffic_days const& services,
+                     traffic_days_t const& services,
                      std::string_view file_content) {
   struct csv_trip {
     utl::csv_col<utl::cstr, UTL_NAME("route_id")> route_id_;
@@ -274,9 +274,8 @@ trip_data read_trips(timetable& tt,
       utl::make_buf_reader(file_content, progress_tracker->update_fn())}  //
       | utl::csv<csv_trip>()  //
       | utl::for_each([&](csv_trip const& t) {
-          auto const traffic_days_it =
-              services.traffic_days_.find(t.service_id_->view());
-          if (traffic_days_it == end(services.traffic_days_)) {
+          auto const traffic_days_it = services.find(t.service_id_->view());
+          if (traffic_days_it == end(services)) {
             log(log_lvl::error, "loader.gtfs.trip",
                 R"(trip "{}": service_id "{}" not found)", t.trip_id_->view(),
                 t.service_id_->view());

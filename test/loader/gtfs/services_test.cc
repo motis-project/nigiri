@@ -4,6 +4,7 @@
 #include "nigiri/loader/gtfs/calendar_date.h"
 #include "nigiri/loader/gtfs/files.h"
 #include "nigiri/loader/gtfs/services.h"
+#include "nigiri/common/interval.h"
 #include "nigiri/types.h"
 
 #include "./test_data.h"
@@ -34,10 +35,12 @@ using namespace date;
  */
 
 TEST(gtfs, service_dates) {
+  auto const i = interval{date::sys_days{July / 1 / 2006},
+                          date::sys_days{August / 1 / 2006}};
   auto dates =
       read_calendar_date(example_files().get_file(kCalendarDatesFile).data());
   auto calendar = read_calendar(example_files().get_file(kCalenderFile).data());
-  auto traffic_days = merge_traffic_days(calendar, dates);
+  auto traffic_days = merge_traffic_days(i, calendar, dates);
 
   auto we_bit_str = std::string{"1111000110000011000001100000110"};
   auto wd_bit_str = std::string{"0000111001111100111110011111001"};
@@ -46,9 +49,6 @@ TEST(gtfs, service_dates) {
   auto const we_traffic_days = bitfield{we_bit_str};
   auto const wd_traffic_days = bitfield{wd_bit_str};
 
-  EXPECT_EQ(July / 1 / 2006, traffic_days.interval_.from_);
-  EXPECT_EQ(August / 1 / 2006, traffic_days.interval_.to_);
-
-  EXPECT_EQ(we_traffic_days, *traffic_days.traffic_days_["WE"]);
-  EXPECT_EQ(wd_traffic_days, *traffic_days.traffic_days_["WD"]);
+  EXPECT_EQ(we_traffic_days, *traffic_days["WE"]);
+  EXPECT_EQ(wd_traffic_days, *traffic_days["WD"]);
 }

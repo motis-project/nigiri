@@ -11,11 +11,9 @@ duration_t get_noon_offset(date::local_days const days,
   return duration_t{abs_zoned_time.get_info().offset.count() / 60};
 }
 
-noon_offset_hours_t precompute_noon_offsets(
-    timetable const& tt,
-    interval<date::sys_days> gtfs_interval,
-    agency_map_t const& agencies) {
-  auto const tt_range = tt.internal_interval_days();
+noon_offset_hours_t precompute_noon_offsets(timetable const& tt,
+                                            agency_map_t const& agencies) {
+  auto const tt_interval = tt.internal_interval_days();
   auto ret = noon_offset_hours_t{};
 
   for (auto const& [id, provider_idx] : agencies) {
@@ -33,14 +31,14 @@ noon_offset_hours_t precompute_noon_offsets(
         tt.locations_.timezones_[tz_idx]
             .as<pair<string, void const*>>()
             .second);
-    for (auto day = gtfs_interval.from_; day != gtfs_interval.to_;
+    for (auto day = tt_interval.from_; day != tt_interval.to_;
          day += std::chrono::days{1}) {
-      if (!tt_range.contains(day)) {
+      if (!tt_interval.contains(day)) {
         continue;
       }
 
       auto const day_idx =
-          static_cast<std::size_t>((day - gtfs_interval.from_).count());
+          static_cast<std::size_t>((day - tt_interval.from_).count());
       assert(day_idx < kMaxDays);
       (*ret[tz_idx])[day_idx] =
           get_noon_offset(date::local_days{date::year_month_day{day}}, tz);

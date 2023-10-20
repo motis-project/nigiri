@@ -98,7 +98,8 @@ void load_timetable(loader_config const& config,
                                   load(kRoutesFile).data(), config.default_tz_);
   auto const calendar = read_calendar(load(kCalenderFile).data());
   auto const dates = read_calendar_date(load(kCalendarDatesFile).data());
-  auto const service = merge_traffic_days(calendar, dates);
+  auto const service =
+      merge_traffic_days(tt.internal_interval_days(), calendar, dates);
   auto trip_data = read_trips(tt, routes, service, load(kTripsFile).data());
   read_frequencies(trip_data, load(kFrequenciesFile).data());
   read_stop_times(tt, trip_data, stops, load(kStopTimesFile).data());
@@ -127,8 +128,7 @@ void load_timetable(loader_config const& config,
            route_key_equals>
       route_services;
 
-  auto const noon_offsets =
-      precompute_noon_offsets(tt, service.interval_, agencies);
+  auto const noon_offsets = precompute_noon_offsets(tt, agencies);
 
   stop_seq_t stop_seq_cache;
   auto const get_route_key =
@@ -159,8 +159,8 @@ void load_timetable(loader_config const& config,
   auto const add_trip = [&](std::basic_string<gtfs_trip_idx_t> const& trips,
                             bitfield const* traffic_days) {
     expand_trip(
-        trip_data, noon_offsets, tt, trips, traffic_days, service.interval_,
-        tt.date_range_, [&](utc_trip&& s) {
+        trip_data, noon_offsets, tt, trips, traffic_days, tt.date_range_,
+        [&](utc_trip&& s) {
           auto const* stop_seq = get_route_key(s.trips_);
           auto const clasz = trip_data.get(s.trips_.front()).get_clasz(tt);
           auto const it = route_services.find(std::pair{clasz, stop_seq});
