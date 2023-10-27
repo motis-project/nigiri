@@ -1,10 +1,16 @@
 #pragma once
 
 #include <cinttypes>
+#include <concepts>
 #include <tuple>
 #include <vector>
 
 namespace nigiri {
+
+template <typename T>
+concept HasDominates = requires(T x) {
+  { x.dominates(x) } -> std::convertible_to<bool>;
+};
 
 template <typename T>
 struct pareto_set {
@@ -13,13 +19,23 @@ struct pareto_set {
 
   size_t size() const { return els_.size(); }
 
-  std::tuple<bool, iterator, iterator> add(T&& el) {
+  std::tuple<bool, iterator, iterator> add(T&& el)
+    requires HasDominates<T>
+  {
+    return add(std::move(el),
+               [](auto&& a, auto&& b) { return a.dominates(b); });
+  }
+
+  template <typename Fn>
+  std::tuple<bool, iterator, iterator> add(T&& el, Fn&& dominates)
+    requires(!HasDominates<T>)
+  {
     auto n_removed = std::size_t{0};
     for (auto i = 0U; i < els_.size(); ++i) {
-      if (els_[i].dominates(el)) {
+      if (dominates(els_[i], el)) {
         return {false, end(), std::next(begin(), i)};
       }
-      if (el.dominates(els_[i])) {
+      if (dominates(el, els_[i])) {
         n_removed++;
         continue;
       }
