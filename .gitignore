@@ -2,3 +2,4 @@
 /deps
 /.idea
 /.clang-tidy
+/.vscode
