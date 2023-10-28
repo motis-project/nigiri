@@ -11,6 +11,7 @@
 #include "nigiri/rt/rt_timetable.h"
 #include "nigiri/special_stations.h"
 #include "nigiri/timetable.h"
+#include "printable_transport.h"
 
 namespace nigiri::routing {
 
@@ -426,19 +427,34 @@ private:
             is_better(by_transport, time_at_dest_[k]) &&
             lb_[l_idx] != kUnreachable &&
             is_better(by_transport + dir(lb_[l_idx]), time_at_dest_[k])) {
-          trace_upd(
-              "┊ │k={}    name={}, dbg={}, time_by_transport={}, BETTER THAN "
-              "current_best={} => update, {} marking station {}!\n",
-              k, tt_.transport_name(et.t_idx_), tt_.dbg(et.t_idx_),
-              by_transport, current_best,
-              !is_better(by_transport, current_best) ? "NOT" : "",
-              location{tt_, stp.location_idx()});
 
-          ++stats_.n_earliest_arrival_updated_by_route_;
-          state_.tmp_[l_idx] = get_best(by_transport, state_.tmp_[l_idx]);
-          state_.station_mark_[l_idx] = true;
-          current_best = by_transport;
-          any_marked = true;
+          auto const st = sorted_transport{base_, et};
+          auto const [added, inserted_it, dominated_by_it] =
+              state_.r_.add<SearchDir>(r, st, stop_idx, k);
+          if (added) {
+            trace_upd(
+                "┊ │k={}    name={}, dbg={}, time_by_transport={}, BETTER THAN "
+                "current_best={} => update, {} marking station {}!\n",
+                k, tt_.transport_name(et.t_idx_), tt_.dbg(et.t_idx_),
+                by_transport, current_best,
+                !is_better(by_transport, current_best) ? "NOT" : "",
+                location{tt_, stp.location_idx()});
+
+            ++stats_.n_earliest_arrival_updated_by_route_;
+            state_.tmp_[l_idx] = get_best(by_transport, state_.tmp_[l_idx]);
+            state_.station_mark_[l_idx] = true;
+            current_best = by_transport;
+            any_marked = true;
+          } else {
+            trace(
+                "┊ │k={}    *** NO REACH: "
+                "      INSERT=(stop_idx={}, k={}, t={}), "
+                "DOMINATED_BY=(stop_idx={}, k={}, t={})!\n",
+                k,  //
+                stop_idx, k, pt{tt_, et},  //
+                dominated_by_it->stop_idx_, dominated_by_it->k_,
+                pt{tt_, dominated_by_it->t_.get_transport(base_)});
+          }
         } else {
           trace(
               "┊ │k={}    *** NO UPD: at={}, name={}, dbg={}, "
@@ -509,6 +525,11 @@ private:
         }
       }
     }
+
+    if (any_marked) {
+      state_.r_.activate(r);
+    }
+
     return any_marked;
   }
 
