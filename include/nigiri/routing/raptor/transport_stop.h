@@ -2,6 +2,7 @@
 
 #include <cstdint>
 
+#include "nigiri/routing/pareto_set.h"
 #include "nigiri/types.h"
 
 namespace nigiri::routing {
@@ -82,7 +83,7 @@ struct reached {
         transport_stop{.t_ = sorted_transport{base, t},
                        .stop_idx_ = stop_idx,
                        .n_transfers_ = n_transfers},
-        [](auto&& a, auto&& b) { return a.dominates<SearchDir>(b); });
+        [](auto&& a, auto&& b) { return a.template dominates<SearchDir>(b); });
   }
 
   vector_map<route_idx_t, pareto_set<transport_stop>> route_transport_stops_;

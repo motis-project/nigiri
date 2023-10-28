@@ -69,7 +69,7 @@ struct raptor {
     state_.resize(n_locations_, n_routes_, n_rt_transports_);
     utl::fill(time_at_dest_, kInvalid);
     state_.round_times_.reset(kInvalid);
-    for (auto& r : state_.route_transport_stops_) {
+    for (auto& r : state_.r_.route_transport_stops_) {
       r.clear();
     }
   }
