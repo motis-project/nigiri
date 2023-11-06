@@ -242,7 +242,6 @@ locations_map read_stops(source_idx_t const src,
   }
 
   auto empty_idx_vec = vector<location_idx_t>{};
-  auto empty_footpath_vec = vector<footpath>{};
   for (auto const& [id, s] : stops) {
     auto const is_track = s->parent_ != nullptr && !s->platform_code_.empty();
     locations.emplace(
@@ -250,11 +249,10 @@ locations_map read_stops(source_idx_t const src,
         s->location_ = tt.locations_.register_location(location{
             id, is_track ? s->platform_code_ : s->name_, s->coord_, src,
             is_track ? location_type::kTrack : location_type::kStation,
-            osm_node_id_t::invalid(), location_idx_t::invalid(),
+            location_idx_t::invalid(),
             s->timezone_.empty() ? timezone_idx_t::invalid()
                                  : get_tz_idx(tt, timezones, s->timezone_),
-            2_minutes, it_range{empty_idx_vec}, std::span{empty_footpath_vec},
-            std::span{empty_footpath_vec}}));
+            2_minutes, it_range{empty_idx_vec}}));
   }
 
   read_transfers(stops, transfers_file_content);

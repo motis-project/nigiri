@@ -18,6 +18,7 @@
 #include "nigiri/common/day_list.h"
 #include "nigiri/logging.h"
 #include "nigiri/rt/frun.h"
+#include "nigiri/types.h"
 #include "utl/erase_duplicates.h"
 #include "utl/erase_if.h"
 #include "utl/pairwise.h"
@@ -586,18 +587,20 @@ void add_links_to_and_between_children(timetable& tt) {
 }
 
 void write_footpaths(timetable& tt) {
-  assert(tt.locations_.footpaths_out_.empty());
-  assert(tt.locations_.footpaths_in_.empty());
+  assert(tt.locations_.footpaths_out_.size() == kMaxProfiles);
+  assert(tt.locations_.footpaths_in_.size() == kMaxProfiles);
   assert(tt.locations_.preprocessing_footpaths_out_.size() == tt.n_locations());
   assert(tt.locations_.preprocessing_footpaths_in_.size() == tt.n_locations());
 
+  profile_idx_t const prf_idx{0};
+
   for (auto i = location_idx_t{0U}; i != tt.n_locations(); ++i) {
-    tt.locations_.footpaths_out_.emplace_back(
+    tt.locations_.footpaths_out_[prf_idx].emplace_back(
         tt.locations_.preprocessing_footpaths_out_[i]);
   }
 
   for (auto i = location_idx_t{0U}; i != tt.n_locations(); ++i) {
-    tt.locations_.footpaths_in_.emplace_back(
+    tt.locations_.footpaths_in_[prf_idx].emplace_back(
         tt.locations_.preprocessing_footpaths_in_[i]);
   }
 
