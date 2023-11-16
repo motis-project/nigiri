@@ -196,17 +196,17 @@ std::string trip::display_name(timetable const& tt) const {
                                        : "Tram " + route_->short_name_;
   }
 
-  auto const trip_name_is_number = utl::all_of(short_name_, is_digit);
-  if (route_->agency_ != provider_idx_t::invalid() &&
+  auto const trip_name_is_number =
+      !short_name_.empty() && utl::all_of(short_name_, is_digit);
+  if (!route_->short_name_.starts_with("IC") &&
+      route_->agency_ != provider_idx_t::invalid() &&
       tt.providers_[route_->agency_].long_name_ == "DB Fernverkehr AG") {
     if (route_->clasz_ == clasz::kHighSpeed) {
-      return trip_name_is_number
-                 ? fmt::format("ICE {}", utl::parse<int>(short_name_))
-                 : fmt::format("ICE {}", short_name_);
+      return trip_name_is_number ? fmt::format("ICE {}", short_name_)
+                                 : fmt::format("ICE {}", route_->short_name_);
     } else if (route_->clasz_ == clasz::kLongDistance) {
-      return trip_name_is_number
-                 ? fmt::format("IC {}", utl::parse<int>(short_name_))
-                 : fmt::format("IC {}", short_name_);
+      return trip_name_is_number ? fmt::format("IC {}", short_name_)
+                                 : fmt::format("IC {}", route_->short_name_);
     }
   }
 
