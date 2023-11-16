@@ -249,6 +249,18 @@ enum class clasz : std::uint8_t {
   kNumClasses
 };
 
+// Group of clasz for filter, to add weight
+// local: kMetro, kSubway, kTram, kBus
+// slow: kLongDistance, kRegional, kNight
+// fast: kHighSpeed, kRegionalFast
+// away: kAir, kCoach, kShip, kOther
+enum class group : std::uint8_t {
+  klocal = 0,
+  kslow = 1,
+  kfast = 2,
+  kaway = 3
+};
+
 constexpr auto const kNumClasses =
     static_cast<std::underlying_type_t<clasz>>(clasz::kNumClasses);
 

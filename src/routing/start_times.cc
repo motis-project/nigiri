@@ -1,6 +1,7 @@
 #include "nigiri/routing/start_times.h"
 
 #include "nigiri/routing/for_each_meta.h"
+#include "nigiri/routing/station_filter.h"
 #include "nigiri/rt/rt_timetable.h"
 #include "nigiri/special_stations.h"
 #include "utl/enumerate.h"
@@ -29,6 +30,19 @@ std::pair<typename Collection::iterator, bool> insert_sorted(
     return {v.insert(it, std::move(el)), true};
   }
   return {it, false};
+}
+
+auto timeconsistency(unixtime_t time, bool filter) {
+  if(!filter) {
+    return time;
+  } else {
+    int nt = time.time_since_epoch().count() >> 1 << 1;
+    std::chrono::duration<int, std::ratio<60, 1>> dur{nt};
+    std::chrono::time_point<std::chrono::system_clock,
+                            std::chrono::duration<int, std::ratio<60, 1>>>
+        consistent_time{dur};
+    return consistent_time;
+  }
 }
 
 template <typename Less>
@@ -71,11 +85,12 @@ void add_start_times_at_stop(direction const search_dir,
       if (traffic_days.test(to_idx(day - day_offset)) &&
           interval_with_offset.contains(tt.to_unixtime(day, stop_time_mam))) {
         auto const ev_time = tt.to_unixtime(day, stop_time_mam);
+        auto const start_time = search_dir == direction::kForward
+                                    ? ev_time - offset
+                                    : ev_time + offset;
         auto const [it, inserted] = insert_sorted(
             starts,
-            start{.time_at_start_ = search_dir == direction::kForward
-                                        ? ev_time - offset
-                                        : ev_time + offset,
+            start{.time_at_start_ = timeconsistency(start_time, tt.time_consistency_),
                   .time_at_stop_ = ev_time,
                   .stop_ = location_idx},
             std::forward<Less>(less));
@@ -172,11 +187,12 @@ void add_starts_in_interval(direction const search_dir,
             rt_t, static_cast<stop_idx_t>(i),
             (search_dir == direction::kForward ? event_type::kDep
                                                : event_type::kArr));
+        auto const start_time = search_dir == direction::kForward
+                                    ? ev_time - d
+                                    : ev_time + d;
         auto const [it, inserted] = insert_sorted(
             starts,
-            start{.time_at_start_ = search_dir == direction::kForward
-                                        ? ev_time - d
-                                        : ev_time + d,
+            start{.time_at_start_ = timeconsistency(start_time, tt.time_consistency_),
                   .time_at_stop_ = ev_time,
                   .stop_ = l},
             std::forward<Less>(cmp));
@@ -195,10 +211,11 @@ void add_starts_in_interval(direction const search_dir,
   // departs later and arrives at the same time). These journeys outside the
   // interval will be filtered out before returning the result.
   if (add_ontrip) {
+    auto start_time = search_dir == direction::kForward
+                          ? interval.to_
+                          : interval.from_ - 1_minutes;
     insert_sorted(starts,
-                  start{.time_at_start_ = search_dir == direction::kForward
-                                              ? interval.to_
-                                              : interval.from_ - 1_minutes,
+                  start{.time_at_start_ = timeconsistency(start_time, tt.time_consistency_),
                         .time_at_stop_ = search_dir == direction::kForward
                                              ? interval.to_ + d
                                              : interval.from_ - 1_minutes - d,
@@ -250,12 +267,17 @@ void get_starts(direction const search_dir,
                    },
                    [&](unixtime_t const t) {
                      insert_sorted(starts,
-                                   start{.time_at_start_ = t,
+                                   start{.time_at_start_ = timeconsistency(t, tt.time_consistency_),
                                          .time_at_stop_ = fwd ? t + o : t - o,
                                          .stop_ = l},
                                    cmp);
                    }},
                start_time);
+  }
+  if(tt.use_station_filter_) {
+    if(!tt.depature_count_.empty()) {
+      station_filter::filter_stations(starts, tt, fwd);
+    }
   }
 }
 

@@ -268,6 +268,33 @@ void service_builder::write_location_routes() {
   for (auto l = tt_.location_routes_.size(); l != tt_.n_locations(); ++l) {
     tt_.location_routes_.emplace_back(location_routes_[location_idx_t{l}]);
     assert(tt_.location_routes_.size() == l + 1U);
+    if(tt_.use_station_filter_) {
+      pair<location_idx_t, size_t> temp =
+          {location_idx_t{l}, location_routes_[location_idx_t{l}].size()};
+      tt_.depature_count_.emplace_back(temp);
+      int local = 0;
+      int slow = 0;
+      int fast = 0;
+      int away = 0;
+      for(auto const r : location_routes_[location_idx_t{l}]) {
+        clasz klasse = tt_.route_section_clasz_.at(route_idx_t{r}).at(0);
+        if(klasse == clasz::kMetro || klasse == clasz::kBus || klasse == clasz::kTram || klasse == clasz::kSubway) {
+          local++;
+        }
+        else if(klasse == clasz::kLongDistance || klasse == clasz::kRegional || klasse == clasz::kNight) {
+          slow++;
+        }
+        else if(klasse == clasz::kHighSpeed || klasse == clasz::kRegionalFast) {
+          fast++;
+        }
+        else if(klasse == clasz::kAir || klasse == clasz::kCoach || klasse == clasz::kShip || klasse == clasz::kOther) {
+          away++;
+        }
+      }
+      vector<int> groups = {local, slow, fast, away};
+      pair<location_idx_t, vector<int>> classcount = {location_idx_t{l}, groups};
+      tt_.classgroups_on_loc_.emplace_back(classcount);
+    }
   }
 }
 

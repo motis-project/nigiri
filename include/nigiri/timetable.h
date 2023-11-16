@@ -333,11 +333,38 @@ struct timetable {
         trip_debug_[trip_idx].front().line_number_to_};
   }
 
+  // ---  Filter Data  ---
+  // how many departures are at l with classgroup x
+  int get_groupclass_count(location_idx_t const ix, group classgroup) const {
+    for(const auto& col : classgroups_on_loc_) {
+      if(col.first == ix) {
+        switch (classgroup) {
+          case group::klocal: return col.second.at(0);
+          case group::kslow: return col.second.at(1);
+          case group::kfast: return col.second.at(2);
+          case group::kaway: return col.second.at(3);
+          default: return 0;
+        }
+      }
+    }
+    return 0;
+  }
+
   friend std::ostream& operator<<(std::ostream&, timetable const&);
 
   void write(cista::memory_holder&) const;
   void write(std::filesystem::path const&) const;
   static cista::wrapped<timetable> read(cista::memory_holder&&);
+
+  // Filter
+  bool use_station_filter_;
+  bool time_consistency_;
+  bool weighted_filter_;
+  double percent_for_filter_;
+  bool percentage_filter_;
+  bool line_filter_;
+  vector<pair<location_idx_t, size_t>> depature_count_;
+  vector<pair<location_idx_t, vector<int>>> classgroups_on_loc_;
 
   // Schedule range.
   interval<date::sys_days> date_range_;

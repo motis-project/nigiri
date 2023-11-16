@@ -13,6 +13,12 @@ namespace nigiri::loader {
 
 struct loader_config {
   unsigned link_stop_distance_;
+  bool use_stationfilter_;
+  bool time_consistency_;
+  bool weighted_filter_;
+  double percent_for_filter_;
+  bool percentage_filter_;
+  bool line_filter_;
   std::string_view default_tz_;
 };
 

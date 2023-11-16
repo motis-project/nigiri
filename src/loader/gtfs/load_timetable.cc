@@ -84,6 +84,13 @@ void load_timetable(loader_config const& config,
                     timetable& tt) {
   nigiri::scoped_timer const global_timer{"gtfs parser"};
 
+  tt.use_station_filter_ = config.use_stationfilter_;
+  tt.time_consistency_ = config.time_consistency_;
+  tt.weighted_filter_ = config.weighted_filter_;
+  tt.percent_for_filter_ = config.percent_for_filter_;
+  tt.line_filter_ = config.line_filter_;
+  tt.percentage_filter_ = config.percentage_filter_;
+
   auto const load = [&](std::string_view file_name) -> file {
     return d.exists(file_name) ? d.get_file(file_name) : file{};
   };
@@ -335,16 +342,44 @@ void load_timetable(loader_config const& config,
       progress_tracker->increment();
     }
 
-    // Build location_routes map
+    // Build location_routes map and filter data for station filter
     for (auto l = tt.location_routes_.size(); l != tt.n_locations(); ++l) {
       tt.location_routes_.emplace_back(location_routes[location_idx_t{l}]);
       assert(tt.location_routes_.size() == l + 1U);
+      if(tt.use_station_filter_) {
+        pair<location_idx_t, size_t> temp =
+            {location_idx_t{l}, location_routes[location_idx_t{l}].size()};
+        tt.depature_count_.emplace_back(temp);
+        int local = 0;
+        int slow = 0;
+        int fast = 0;
+        int away = 0;
+        for(auto const r : location_routes[location_idx_t{l}]) {
+          clasz klasse = tt.route_section_clasz_.at(route_idx_t{r}).at(0);
+          if(klasse == clasz::kMetro || klasse == clasz::kBus || klasse == clasz::kTram || klasse == clasz::kSubway) {
+            local++;
+          }
+          else if(klasse == clasz::kLongDistance || klasse == clasz::kRegional || klasse == clasz::kNight) {
+            slow++;
+          }
+          else if(klasse == clasz::kHighSpeed || klasse == clasz::kRegionalFast) {
+            fast++;
+          }
+          else if(klasse == clasz::kAir || klasse == clasz::kCoach || klasse == clasz::kShip || klasse == clasz::kOther) {
+            away++;
+          }
+        }
+        vector<int> groups = {local, slow, fast, away};
+        pair<location_idx_t, vector<int>> classcount = {location_idx_t{l}, groups};
+        tt.classgroups_on_loc_.emplace_back(classcount);
+      }
     }
 
     // Build transport ranges.
     for (auto const& t : trip_data.data_) {
       tt.trip_transport_ranges_.emplace_back(t.transport_ranges_);
     }
+
   }
 }
 

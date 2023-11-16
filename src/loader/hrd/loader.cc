@@ -10,12 +10,19 @@ bool hrd_loader::applicable(dir const& d) const {
   return nigiri::loader::hrd::applicable(config_, d);
 }
 
-void hrd_loader::load(loader_config const&,
+void hrd_loader::load(loader_config const& config,
                       source_idx_t const src,
                       dir const& d,
                       timetable& tt) const {
+  tt.use_station_filter_ = config.use_stationfilter_;
+  tt.time_consistency_ = config.time_consistency_;
+  tt.weighted_filter_ = config.weighted_filter_;
+  tt.percent_for_filter_ = config.percent_for_filter_;
+  tt.line_filter_ = config.line_filter_;
+  tt.percentage_filter_ = config.percentage_filter_;
   return nigiri::loader::hrd::load_timetable(src, config_, d, tt);
 }
+
 
 cista::hash_t hrd_loader::hash(dir const& d) const {
   return nigiri::loader::hrd::hash(config_, d);

@@ -217,7 +217,9 @@ struct search {
 
     if (is_pretrip()) {
       utl::erase_if(state_.results_, [&](journey const& j) {
-        return !search_interval_.contains(j.start_time_) ||
+        bool consistency = search_interval_.from_ - 1_minutes == j.start_time_
+                           || search_interval_.to_ == j.start_time_;
+        return (!search_interval_.contains(j.start_time_) && !consistency) ||
                j.travel_time() >= fastest_direct_ ||
                j.travel_time() > kMaxTravelTime;
       });
@@ -321,8 +323,10 @@ private:
                         state_.results_);
 
           for (auto& j : state_.results_) {
+            bool consistency = search_interval_.from_ - 1_minutes == j.start_time_
+                               || search_interval_.to_ == j.start_time_;
             if (j.legs_.empty() &&
-                (is_ontrip() || search_interval_.contains(j.start_time_)) &&
+                (is_ontrip() || search_interval_.contains(j.start_time_) || consistency) &&
                 j.travel_time() < fastest_direct_) {
               algo_.reconstruct(q_, j);
             }
