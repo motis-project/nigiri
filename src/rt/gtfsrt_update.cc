@@ -9,7 +9,7 @@
 #include "nigiri/rt/run.h"
 
 namespace gtfsrt = transit_realtime;
-namespace pb = google::protobuf;
+namespace protob = google::protobuf;
 
 namespace nigiri::rt {
 
@@ -118,7 +118,7 @@ void update_run(
     rt_timetable& rtt,
     trip_idx_t const trip,
     run& r,
-    pb::RepeatedPtrField<gtfsrt::TripUpdate_StopTimeUpdate> const& stops) {
+    protob::RepeatedPtrField<gtfsrt::TripUpdate_StopTimeUpdate> const& stops) {
   using std::begin;
   using std::end;
 
