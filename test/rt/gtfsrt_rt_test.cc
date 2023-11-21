@@ -362,7 +362,8 @@ constexpr auto const expected = R"(
 
 std::string json_to_protobuf(std::string const& json) {
   transit_realtime::FeedMessage msg;
-  google::protobuf::util::JsonStringToMessage(json, &msg);
+  auto const status = google::protobuf::util::JsonStringToMessage(json, &msg);
+  utl::verify(status.ok(), "json_to_protobuf: {}", status.message());
   return msg.SerializeAsString();
 }
 
