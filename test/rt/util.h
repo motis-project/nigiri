@@ -34,4 +34,6 @@ std::uint64_t to_unix(T&& x) {
 transit_realtime::FeedMessage to_feed_msg(std::vector<trip> const& trip_delays,
                                           date::sys_seconds const msg_time);
 
+std::string json_to_protobuf(std::string const& json);
+
 }  // namespace nigiri::test

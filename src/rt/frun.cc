@@ -44,25 +44,30 @@ std::string_view frun::run_stop::track() const noexcept {
 }
 
 location frun::run_stop::get_location() const noexcept {
-  assert(fr_->size() >= stop_idx_);
+  assert(fr_->size() > stop_idx_);
   return location{*fr_->tt_, get_stop().location_idx()};
 }
 
+geo::latlng frun::run_stop::pos() const noexcept {
+  assert(fr_->size() > stop_idx_);
+  return fr_->tt_->locations_.coordinates_[get_stop().location_idx()];
+}
+
 location_idx_t frun::run_stop::get_location_idx() const noexcept {
-  assert(fr_->size() >= stop_idx_);
+  assert(fr_->size() > stop_idx_);
   return get_stop().location_idx();
 }
 
 unixtime_t frun::run_stop::scheduled_time(
     event_type const ev_type) const noexcept {
-  assert(fr_->size() >= stop_idx_);
+  assert(fr_->size() > stop_idx_);
   return fr_->is_scheduled()
              ? tt().event_time(fr_->t_, stop_idx_, ev_type)
              : rtt()->unix_event_time(fr_->rt_, stop_idx_, ev_type);
 }
 
 unixtime_t frun::run_stop::time(event_type const ev_type) const noexcept {
-  assert(fr_->size() >= stop_idx_);
+  assert(fr_->size() > stop_idx_);
   return (fr_->is_rt() && rtt() != nullptr)
              ? rtt()->unix_event_time(fr_->rt_, stop_idx_, ev_type)
              : tt().event_time(fr_->t_, stop_idx_, ev_type);
@@ -186,7 +191,9 @@ timetable const& frun::run_stop::tt() const noexcept { return *fr_->tt_; }
 rt_timetable const* frun::run_stop::rtt() const noexcept { return fr_->rtt_; }
 
 frun::iterator& frun::iterator::operator++() noexcept {
-  ++rs_.stop_idx_;
+  do {
+    ++rs_.stop_idx_;
+  } while (rs_.stop_idx_ != rs_.fr_->stop_range_.to_ && rs_.is_canceled());
   return *this;
 }
 
@@ -227,8 +234,29 @@ debug frun::dbg() const noexcept {
                                       : tt_->dbg(t_.t_idx_);
 }
 
+stop_idx_t frun::first_valid(stop_idx_t const from) const {
+  auto n = stop_range_.size();
+  for (auto i = from; i != n; ++i) {
+    if (operator[](i).in_allowed() || operator[](i).out_allowed()) {
+      return i;
+    }
+  }
+  throw utl::fail("no first valid found: {} (dbg={})", name(), dbg());
+}
+
+stop_idx_t frun::last_valid() const {
+  auto n = stop_range_.size();
+  for (auto r = 0; r != n; ++r) {
+    auto const i = n - r - 1U;
+    if (operator[](i).in_allowed() || operator[](i).out_allowed()) {
+      return i;
+    }
+  }
+  throw utl::fail("no last valid found: {} (dbg={})", name(), dbg());
+}
+
 frun::iterator frun::begin() const noexcept {
-  return iterator{run_stop{.fr_ = this, .stop_idx_ = stop_range_.from_}};
+  return iterator{run_stop{.fr_ = this, .stop_idx_ = first_valid()}};
 }
 
 frun::iterator frun::end() const noexcept {
@@ -372,6 +400,22 @@ std::ostream& operator<<(std::ostream& out, frun const& fr) {
     }
   }
   return out;
+}
+
+frun frun::from_rt(timetable const& tt,
+                   rt_timetable const* rtt,
+                   rt_transport_idx_t const rt_t) noexcept {
+  auto const to =
+      static_cast<stop_idx_t>(rtt->rt_transport_location_seq_[rt_t].size());
+  return {tt, rtt, {.stop_range_ = {stop_idx_t{0U}, to}, .rt_ = rt_t}};
+}
+
+frun frun::from_t(timetable const& tt,
+                  rt_timetable const* rtt,
+                  transport const t) noexcept {
+  auto const to = static_cast<stop_idx_t>(
+      tt.route_location_seq_[tt.transport_route_[t.t_idx_]].size());
+  return {tt, rtt, {.t_ = t, .stop_range_ = {stop_idx_t{0U}, to}}};
 }
 
 }  // namespace nigiri::rt
