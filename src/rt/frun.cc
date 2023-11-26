@@ -235,9 +235,9 @@ debug frun::dbg() const noexcept {
 }
 
 stop_idx_t frun::first_valid(stop_idx_t const from) const {
-  auto n = stop_range_.size();
-  for (auto i = from; i != n; ++i) {
-    if (operator[](i).in_allowed() || operator[](i).out_allowed()) {
+  for (auto i = from; i != stop_range_.to_; ++i) {
+    if (operator[](i - stop_range_.from_).in_allowed() ||
+        operator[](i - stop_range_.from_).out_allowed()) {
       return i;
     }
   }
@@ -256,7 +256,8 @@ stop_idx_t frun::last_valid() const {
 }
 
 frun::iterator frun::begin() const noexcept {
-  return iterator{run_stop{.fr_ = this, .stop_idx_ = first_valid()}};
+  return iterator{
+      run_stop{.fr_ = this, .stop_idx_ = first_valid(stop_range_.from_)}};
 }
 
 frun::iterator frun::end() const noexcept {
@@ -395,9 +396,7 @@ std::ostream& operator<<(std::ostream& out, frun::run_stop const& stp) {
 
 std::ostream& operator<<(std::ostream& out, frun const& fr) {
   for (auto const stp : fr) {
-    if (!stp.is_canceled()) {
-      out << stp << "\n";
-    }
+    out << stp << "\n";
   }
   return out;
 }
