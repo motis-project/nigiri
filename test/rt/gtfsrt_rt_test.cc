@@ -1,7 +1,5 @@
 #include "gtest/gtest.h"
 
-#include "google/protobuf/util/json_util.h"
-
 #include "nigiri/loader/gtfs/files.h"
 #include "nigiri/loader/gtfs/load_timetable.h"
 #include "nigiri/loader/init_finish.h"
@@ -10,6 +8,8 @@
 #include "nigiri/rt/gtfsrt_resolve_run.h"
 #include "nigiri/rt/gtfsrt_update.h"
 #include "nigiri/timetable.h"
+
+#include "./util.h"
 
 using namespace nigiri;
 using namespace nigiri::loader;
@@ -360,13 +360,6 @@ constexpr auto const expected = R"(
 
 }  // namespace
 
-std::string json_to_protobuf(std::string const& json) {
-  transit_realtime::FeedMessage msg;
-  auto const status = google::protobuf::util::JsonStringToMessage(json, &msg);
-  utl::verify(status.ok(), "json_to_protobuf: {}", status.message());
-  return msg.SerializeAsString();
-}
-
 TEST(rt, gtfs_rt_update_1) {
   // Load static timetable.
   timetable tt;
@@ -380,7 +373,7 @@ TEST(rt, gtfs_rt_update_1) {
   auto rtt = rt::create_rt_timetable(tt, date::sys_days{2023_y / August / 10});
 
   // Update.
-  auto const msg = json_to_protobuf(kTripUpdate);
+  auto const msg = test::json_to_protobuf(kTripUpdate);
   gtfsrt_update_buf(tt, rtt, source_idx_t{0}, "", msg);
 
   // Print trip.

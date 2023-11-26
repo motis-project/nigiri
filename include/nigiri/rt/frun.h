@@ -19,6 +19,7 @@ struct frun : public run {
   struct run_stop {
     stop get_stop() const noexcept;
     location get_location() const noexcept;
+    geo::latlng pos() const noexcept;
     location_idx_t get_location_idx() const noexcept;
     std::string_view name() const noexcept;
     std::string_view track() const noexcept;
@@ -85,6 +86,9 @@ struct frun : public run {
   friend iterator begin(frun const& fr) noexcept;
   friend iterator end(frun const& fr) noexcept;
 
+  stop_idx_t first_valid(stop_idx_t from = 0U) const;
+  stop_idx_t last_valid() const;
+
   stop_idx_t size() const noexcept;
 
   run_stop operator[](stop_idx_t) const noexcept;
@@ -95,6 +99,14 @@ struct frun : public run {
 
   void print(std::ostream&, interval<stop_idx_t> stop_range);
   friend std::ostream& operator<<(std::ostream&, frun const&);
+
+  static frun from_rt(timetable const&,
+                      rt_timetable const*,
+                      rt_transport_idx_t const) noexcept;
+
+  static frun from_t(timetable const&,
+                     rt_timetable const*,
+                     transport const) noexcept;
 
   timetable const* tt_;
   rt_timetable const* rtt_;
