@@ -247,8 +247,9 @@ stop_idx_t frun::first_valid(stop_idx_t const from) const {
 stop_idx_t frun::last_valid() const {
   auto n = stop_range_.size();
   for (auto r = 0; r != n; ++r) {
-    auto const i = n - r - 1U;
-    if (operator[](i).in_allowed() || operator[](i).out_allowed()) {
+    auto const i = static_cast<stop_idx_t>(stop_range_.to_ - r - 1);
+    if (operator[](i - stop_range_.from_).in_allowed() ||
+        operator[](i - stop_range_.from_).out_allowed()) {
       return i;
     }
   }
