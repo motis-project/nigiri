@@ -1,9 +1,5 @@
 #include "./util.h"
 
-#include "google/protobuf/util/json_util.h"
-
-#include "utl/verify.h"
-
 namespace nigiri::test {
 
 transit_realtime::FeedMessage to_feed_msg(std::vector<trip> const& trip_delays,
@@ -40,13 +36,6 @@ transit_realtime::FeedMessage to_feed_msg(std::vector<trip> const& trip_delays,
   }
 
   return msg;
-}
-
-std::string json_to_protobuf(std::string const& json) {
-  transit_realtime::FeedMessage msg;
-  auto const status = google::protobuf::util::JsonStringToMessage(json, &msg);
-  utl::verify(status.ok(), "json_to_protobuf: {}", status.message());
-  return msg.SerializeAsString();
 }
 
 }  // namespace nigiri::test

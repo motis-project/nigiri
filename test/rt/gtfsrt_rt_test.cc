@@ -7,6 +7,7 @@
 #include "nigiri/rt/frun.h"
 #include "nigiri/rt/gtfsrt_resolve_run.h"
 #include "nigiri/rt/gtfsrt_update.h"
+#include "nigiri/rt/util.h"
 #include "nigiri/timetable.h"
 
 #include "./util.h"
@@ -373,7 +374,7 @@ TEST(rt, gtfs_rt_update_1) {
   auto rtt = rt::create_rt_timetable(tt, date::sys_days{2023_y / August / 10});
 
   // Update.
-  auto const msg = test::json_to_protobuf(kTripUpdate);
+  auto const msg = rt::json_to_protobuf(kTripUpdate);
   gtfsrt_update_buf(tt, rtt, source_idx_t{0}, "", msg);
 
   // Print trip.
