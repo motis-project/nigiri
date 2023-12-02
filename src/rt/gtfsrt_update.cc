@@ -246,27 +246,45 @@ statistics gtfsrt_update_msg(timetable const& tt,
       std::chrono::time_point_cast<date::sys_days::duration>(message_time);
   for (auto const& entity : msg.entity()) {
     if (entity.is_deleted()) {
+      log(log_lvl::error, "rt.gtfs.unsupported",
+          "unsupported deleted (tag={}, id={})", tag, entity.id());
       ++stats.unsupported_deleted_;
       continue;
     } else if (entity.has_alert()) {
+      log(log_lvl::error, "rt.gtfs.unsupported",
+          "unsupported alert (tag={}, id={})", tag, entity.id());
       ++stats.unsupported_alert_;
       continue;
     } else if (entity.has_vehicle()) {
+      log(log_lvl::error, "rt.gtfs.unsupported",
+          "unsupported vehicle (tag={}, id={})", tag, entity.id());
       ++stats.unsupported_vehicle_;
       continue;
     } else if (!entity.has_trip_update()) {
+      log(log_lvl::error, "rt.gtfs.unsupported",
+          "unsupported no trip update (tag={}, id={})", tag, entity.id());
       ++stats.no_trip_update_;
       continue;
     } else if (!entity.trip_update().has_trip()) {
+      log(log_lvl::error, "rt.gtfs.unsupported",
+          "unsupported no trip in trip update (tag={}, id={})", tag,
+          entity.id());
       ++stats.trip_update_without_trip_;
       continue;
     } else if (!entity.trip_update().trip().has_trip_id()) {
+      log(log_lvl::error, "rt.gtfs.unsupported",
+          "unsupported trip without trip_id (tag={}, id={})", tag, entity.id());
       ++stats.unsupported_no_trip_id_;
       continue;
     } else if (entity.trip_update().trip().schedule_relationship() !=
                    gtfsrt::TripDescriptor_ScheduleRelationship_SCHEDULED &&
                entity.trip_update().trip().schedule_relationship() !=
                    gtfsrt::TripDescriptor_ScheduleRelationship_CANCELED) {
+      log(log_lvl::error, "rt.gtfs.unsupported",
+          "unsupported schedule relationship {} (tag={}, id={})",
+          TripDescriptor_ScheduleRelationship_Name(
+              entity.trip_update().trip().schedule_relationship()),
+          tag, entity.id());
       ++stats.unsupported_schedule_relationship_;
       continue;
     }
