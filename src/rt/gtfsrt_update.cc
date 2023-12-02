@@ -245,7 +245,7 @@ statistics gtfsrt_update_msg(timetable const& tt,
   auto const today =
       std::chrono::time_point_cast<date::sys_days::duration>(message_time);
   for (auto const& entity : msg.entity()) {
-    if (entity.is_deleted()) {
+    if (entity.has_is_deleted() && entity.is_deleted()) {
       log(log_lvl::error, "rt.gtfs.unsupported",
           "unsupported deleted (tag={}, id={})", tag, entity.id());
       ++stats.unsupported_deleted_;
