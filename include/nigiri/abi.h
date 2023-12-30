@@ -41,6 +41,7 @@ nigiri_transport_t *nigiri_get_transport(const nigiri_timetable_t *t, uint32_t i
 void nigiri_destroy_transport(const nigiri_transport_t *transport);
 nigiri_route_t *nigiri_get_route(const nigiri_timetable_t *t, uint32_t idx);
 void nigiri_destroy_route(const nigiri_route_t *route);
+uint32_t nigiri_get_stop_count(const nigiri_timetable_t *t);
 nigiri_stop_t *nigiri_get_stop(const nigiri_timetable_t *t, uint32_t idx);
 void nigiri_destroy_stop(const nigiri_stop_t *stop);
 

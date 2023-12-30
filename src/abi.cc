@@ -114,21 +114,32 @@ void nigiri_destroy_transport(const nigiri_transport_t *transport) {
 
 nigiri_route_t *nigiri_get_route(const nigiri_timetable_t *t, uint32_t idx) {
     auto ridx = nigiri::route_idx_t{idx};
-    auto stops = t->tt->route_location_seq_[ridx]; 
+    auto stops = t->tt->route_location_seq_[ridx];
     auto n_stops = stops.size();
+    auto stops_idx = new uint32_t[n_stops];
+    size_t i;
+    for(i=0; i<n_stops; i++) {
+        stops_idx[i] = static_cast<nigiri::location_idx_t::value_t>(nigiri::stop{stops[i]}.location_idx()); 
+    }
     auto route = new nigiri_route_t;
-    route->stops = &stops.front();
+
+    route->stops = stops_idx;
     route->n_stops = n_stops;
     route->clasz = (uint32_t)t->tt->route_section_clasz_[ridx].front();
     return route;
 }
 
 void nigiri_destroy_route(const nigiri_route_t *route) {
+    delete[] route->stops;
     delete route;
 }
 
+uint32_t nigiri_get_stop_count(const nigiri_timetable_t *t) {
+    return t->tt->n_locations();
+}
+
 nigiri_stop_t *nigiri_get_stop(const nigiri_timetable_t *t, uint32_t idx) {
-    auto lidx = nigiri::stop{idx}.location_idx();
+    auto lidx = nigiri::location_idx_t{idx};
     auto stop = new nigiri_stop_t;
     auto l = t->tt->locations_.get(lidx);
     stop->name = create_new_cstring(l.name_);
