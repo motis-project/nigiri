@@ -3,6 +3,7 @@
 #include "date/date.h"
 
 #include "utl/helpers/algorithm.h"
+#include "utl/progress_tracker.h"
 #include "utl/verify.h"
 
 #include "nigiri/loader/gtfs/loader.h"
@@ -16,6 +17,9 @@ using namespace nigiri;
 using namespace nigiri::loader;
 
 int main(int ac, char** av) {
+  auto const progress_tracker = utl::activate_progress_tracker("server");
+  auto const silencer = utl::global_progress_bars{true};
+
   if (ac != 2) {
     fmt::print("usage: {} [TIMETABLE_PATH]\n",
                ac == 0U ? "nigiri-server" : av[0]);
