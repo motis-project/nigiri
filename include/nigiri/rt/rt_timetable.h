@@ -10,7 +10,11 @@
 
 namespace nigiri {
 
-using change_callback_t = std::function<void(transport const t, stop_idx_t const stop_idx, event_type const ev_type, duration_t const delay, bool const cancelled)>;
+using change_callback_t = std::function<void(transport const t,
+                                             stop_idx_t const stop_idx,
+                                             event_type const ev_type,
+                                             duration_t const delay,
+                                             bool const cancelled)>;
 
 // General note:
 // - The real-time timetable does not use bitfields. It requires an initial copy
@@ -57,11 +61,13 @@ struct rt_timetable {
     change_callback_ = callback;
   }
 
-  void reset_change_callback() {
-    change_callback_ = nullptr;
-  }
+  void reset_change_callback() { change_callback_ = nullptr; }
 
-  void dispatch_event_change(transport const t, stop_idx_t const stop_idx, event_type const ev_type, duration_t const delay, bool const cancelled) {
+  void dispatch_event_change(transport const t,
+                             stop_idx_t const stop_idx,
+                             event_type const ev_type,
+                             duration_t const delay,
+                             bool const cancelled) {
     if (change_callback_) {
       change_callback_(t, stop_idx, ev_type, delay, cancelled);
     }
@@ -158,7 +164,6 @@ struct rt_timetable {
 
   // RT transport -> canceled flag
   bitvec rt_transport_is_cancelled_;
-
 
   change_callback_t change_callback_;
 };

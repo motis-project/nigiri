@@ -97,7 +97,8 @@ delay_propagation update_event(timetable const& tt,
     rtt.update_time(
         r.rt_, stop_idx, ev_type,
         pred_time.has_value() ? std::max(*pred_time, new_time) : new_time);
-    rtt.dispatch_event_change(r.t_, stop_idx, ev_type, new_time - static_time, false);
+    rtt.dispatch_event_change(r.t_, stop_idx, ev_type, new_time - static_time,
+                              false);
     return {new_time, new_time - static_time};
   }
 }
