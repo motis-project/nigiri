@@ -1,3 +1,4 @@
+#include <memory>
 #include <vector>
 #include <filesystem>
 #include <cstring>
@@ -17,6 +18,9 @@
 #include "nigiri/logging.h"
 #include "nigiri/timetable.h"
 #include "nigiri/rt/rt_timetable.h"
+#include "nigiri/rt/create_rt_timetable.h"
+#include "nigiri/rt/gtfsrt_update.h"
+
 #include "nigiri/common/interval.h"
 #include "cista/memory_holder.h"
 
@@ -25,7 +29,7 @@ using namespace date;
 
 struct nigiri_timetable {
     std::shared_ptr<nigiri::timetable> tt;
-    nigiri::rt_timetable rtt;
+    std::shared_ptr<nigiri::rt_timetable> rtt;
 };
 
 nigiri_timetable_t *nigiri_load(const char* path, int64_t start_ts, int64_t end_ts) {
@@ -66,6 +70,7 @@ nigiri_timetable_t *nigiri_load(const char* path, int64_t start_ts, int64_t end_
     );
     nigiri::loader::finalize(*t->tt);
 
+    t->rtt = std::make_shared<nigiri::rt_timetable>(nigiri::rt::create_rt_timetable(*t->tt, t->tt->date_range_.from_));
 	return t;
 }
 
@@ -155,4 +160,32 @@ void nigiri_destroy_stop(const nigiri_stop_t *stop) {
     delete[] stop->name;
     delete[] stop->id;
     delete stop;
+}
+
+void nigiri_update_with_rt(const nigiri_timetable_t *t, const char* gtfsrt_pb_path, void (*callback)(nigiri_event_change)) {
+    auto const src = nigiri::source_idx_t{0U};
+    auto const tag = "";
+
+    auto const rtt_callback = [&](nigiri::transport const t, nigiri::stop_idx_t const stop_idx, nigiri::event_type const ev_type, nigiri::duration_t const delay, bool const cancelled) {
+        nigiri_event_change_t const c = {
+            .transport_idx = static_cast<nigiri::transport_idx_t::value_t>(t.t_idx_),
+            .day = static_cast<nigiri::day_idx_t::value_t>(t.day_),
+            .stop_idx = stop_idx,
+            .is_departure = ev_type != nigiri::event_type::kArr,
+            .delay = delay.count(),
+            .cancelled = cancelled
+        };
+        callback(c);
+    };
+
+    t->rtt->set_change_callback(rtt_callback);
+    try {
+        auto const file = cista::mmap{gtfsrt_pb_path, cista::mmap::protection::READ};
+        nigiri::rt::gtfsrt_update_buf(*t->tt, *t->rtt, src, tag, file.view());
+    } catch (std::exception const& e) {
+        nigiri::log(nigiri::log_lvl::error, "main", "GTFS-RT update error (tag={}) {}", tag, e.what());
+    } catch (...) {
+        nigiri::log(nigiri::log_lvl::error, "main", "Unknown GTFS-RT update error (tag={})", tag);
+    }
+    t->rtt->reset_change_callback();
 }
