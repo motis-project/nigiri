@@ -79,6 +79,14 @@ void nigiri_destroy(const nigiri_timetable_t *t) {
     delete t;
 }
 
+int64_t nigiri_get_start_day_ts(const nigiri_timetable_t *t) {
+    return std::chrono::system_clock::to_time_t(t->tt->internal_interval_days().from_);
+}
+
+uint16_t nigiri_get_day_count(const nigiri_timetable_t *t) {
+    return t->tt->internal_interval_days().size().count();
+}
+
 char *create_new_cstring(std::string_view s) {
     auto cstring = new char[s.length()+1];
     s.copy(cstring, s.length());
@@ -115,6 +123,11 @@ void nigiri_destroy_transport(const nigiri_transport_t *transport) {
     delete[] transport->event_mams;
     delete[] transport->name;
     delete transport;
+}
+
+bool nigiri_is_transport_active(const nigiri_timetable_t *t, const uint32_t transport_idx, uint16_t day_idx) {
+    auto tidx = nigiri::transport_idx_t{transport_idx};
+    return t->tt->bitfields_[t->tt->transport_traffic_days_[tidx]].test(day_idx);
 }
 
 nigiri_route_t *nigiri_get_route(const nigiri_timetable_t *t, uint32_t idx) {
@@ -169,7 +182,7 @@ void nigiri_update_with_rt(const nigiri_timetable_t *t, const char* gtfsrt_pb_pa
     auto const rtt_callback = [&](nigiri::transport const t, nigiri::stop_idx_t const stop_idx, nigiri::event_type const ev_type, nigiri::duration_t const delay, bool const cancelled) {
         nigiri_event_change_t const c = {
             .transport_idx = static_cast<nigiri::transport_idx_t::value_t>(t.t_idx_),
-            .day = static_cast<nigiri::day_idx_t::value_t>(t.day_),
+            .day_idx = static_cast<nigiri::day_idx_t::value_t>(t.day_),
             .stop_idx = stop_idx,
             .is_departure = ev_type != nigiri::event_type::kArr,
             .delay = delay.count(),
