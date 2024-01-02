@@ -1,3 +1,4 @@
+#include <cstdint>
 #include <cstring>
 #include <filesystem>
 #include <memory>
@@ -32,8 +33,8 @@ struct nigiri_timetable {
 };
 
 nigiri_timetable_t* nigiri_load(const char* path,
-                                int64_t start_ts,
-                                int64_t end_ts) {
+                                int64_t from_ts,
+                                int64_t to_ts) {
   auto const progress_tracker = utl::activate_progress_tracker("libnigiri");
   auto const silencer = utl::global_progress_bars{true};
 
@@ -59,14 +60,15 @@ nigiri_timetable_t* nigiri_load(const char* path,
   nigiri::log(nigiri::log_lvl::info, "main",
               "loading nigiri timetable with configuration {}", (*c)->name());
 
-  nigiri_timetable_t* t = new nigiri_timetable_t;
+  auto t = new nigiri_timetable_t;
   t->tt = std::make_unique<nigiri::timetable>();
 
-  std::string_view default_timezone_{"Europe/Berlin"};
+  const std::string_view default_timezone_{"Europe/Berlin"};
 
-  t->tt->date_range_ = {
-      floor<days>(std::chrono::system_clock::from_time_t((time_t)start_ts)),
-      floor<days>(std::chrono::system_clock::from_time_t((time_t)end_ts))};
+  t->tt->date_range_ = {floor<days>(std::chrono::system_clock::from_time_t(
+                            static_cast<time_t>(from_ts))),
+                        floor<days>(std::chrono::system_clock::from_time_t(
+                            static_cast<time_t>(to_ts)))};
 
   nigiri::loader::register_special_stations(*t->tt);
   (*c)->load({.link_stop_distance_ = 0, .default_tz_ = default_timezone_}, src,
@@ -89,7 +91,7 @@ int64_t nigiri_get_start_day_ts(const nigiri_timetable_t* t) {
 }
 
 uint16_t nigiri_get_day_count(const nigiri_timetable_t* t) {
-  return t->tt->internal_interval_days().size().count();
+  return static_cast<uint16_t>(t->tt->internal_interval_days().size().count());
 }
 
 char* create_new_cstring(std::string_view s) {
@@ -113,17 +115,24 @@ nigiri_transport_t* nigiri_get_transport(const nigiri_timetable_t* t,
   auto n_stops = t->tt->route_location_seq_[route_idx].size();
 
   auto event_mams = new int16_t[(n_stops - 1) * 2];
-  size_t i;
-  for (i = 0; i < n_stops; i++) {
-    if (i != 0)
+  for (size_t i = 0; i < n_stops; i++) {
+    if (i != 0) {
       event_mams[i * 2 - 1] =
-          t->tt->event_mam(tidx, i, nigiri::event_type::kArr).count();
-    if (i != n_stops - 1)
+          t->tt
+              ->event_mam(tidx, static_cast<nigiri::stop_idx_t>(i),
+                          nigiri::event_type::kArr)
+              .count();
+    }
+    if (i != n_stops - 1) {
       event_mams[i * 2] =
-          t->tt->event_mam(tidx, i, nigiri::event_type::kDep).count();
+          t->tt
+              ->event_mam(tidx, static_cast<nigiri::stop_idx_t>(i),
+                          nigiri::event_type::kDep)
+              .count();
+    }
   }
   transport->route_idx = static_cast<nigiri::route_idx_t::value_t>(route_idx);
-  transport->n_event_mams = (n_stops - 1) * 2;
+  transport->n_event_mams = (static_cast<uint16_t>(n_stops) - 1) * 2;
   transport->event_mams = event_mams;
   transport->name = create_new_cstring(t->tt->transport_name(tidx));
   return transport;
@@ -147,16 +156,16 @@ nigiri_route_t* nigiri_get_route(const nigiri_timetable_t* t, uint32_t idx) {
   auto stops = t->tt->route_location_seq_[ridx];
   auto n_stops = stops.size();
   auto stops_idx = new uint32_t[n_stops];
-  size_t i;
-  for (i = 0; i < n_stops; i++) {
+  for (size_t i = 0; i < n_stops; i++) {
     stops_idx[i] = static_cast<nigiri::location_idx_t::value_t>(
         nigiri::stop{stops[i]}.location_idx());
   }
   auto route = new nigiri_route_t;
 
   route->stops = stops_idx;
-  route->n_stops = n_stops;
-  route->clasz = (uint32_t)t->tt->route_section_clasz_[ridx].front();
+  route->n_stops = static_cast<uint16_t>(n_stops);
+  route->clasz =
+      static_cast<uint16_t>(t->tt->route_section_clasz_[ridx].front());
   return route;
 }
 
@@ -177,7 +186,7 @@ nigiri_stop_t* nigiri_get_stop(const nigiri_timetable_t* t, uint32_t idx) {
   stop->id = create_new_cstring(l.id_);
   stop->lat = l.pos_.lat_;
   stop->lon = l.pos_.lng_;
-  stop->transfer_time = l.transfer_time_.count();
+  stop->transfer_time = static_cast<uint16_t>(l.transfer_time_.count());
   stop->parent = static_cast<nigiri::location_idx_t::value_t>(l.parent_);
   return stop;
 }

@@ -11,7 +11,7 @@ typedef struct nigiri_timetable nigiri_timetable_t;
 struct nigiri_transport {
   // bitfield_idx_t bitfield_idx_;
   uint32_t route_idx;
-  uint32_t n_event_mams;
+  uint16_t n_event_mams;
   int16_t* event_mams;
   const char* name;
 };
@@ -22,15 +22,15 @@ struct nigiri_stop {
   char* name;
   double lon;
   double lat;
-  uint32_t transfer_time;
-  int32_t parent;
+  uint16_t transfer_time;
+  uint32_t parent;
 };
 typedef struct nigiri_stop nigiri_stop_t;
 
 struct nigiri_route {
-  uint32_t n_stops;
+  uint16_t n_stops;
   uint32_t* stops;
-  uint32_t clasz;
+  uint16_t clasz;
 };
 typedef struct nigiri_route nigiri_route_t;
 
