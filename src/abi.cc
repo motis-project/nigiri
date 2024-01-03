@@ -94,13 +94,6 @@ uint16_t nigiri_get_day_count(const nigiri_timetable_t* t) {
   return static_cast<uint16_t>(t->tt->internal_interval_days().size().count());
 }
 
-char* create_new_cstring(std::string_view s) {
-  auto cstring = new char[s.length() + 1];
-  s.copy(cstring, s.length());
-  cstring[s.length()] = '\0';
-  return cstring;
-}
-
 uint32_t nigiri_get_transport_count(const nigiri_timetable_t* t) {
   return t->tt->transport_route_.size();
 }
@@ -134,13 +127,13 @@ nigiri_transport_t* nigiri_get_transport(const nigiri_timetable_t* t,
   transport->route_idx = static_cast<nigiri::route_idx_t::value_t>(route_idx);
   transport->n_event_mams = (static_cast<uint16_t>(n_stops) - 1) * 2;
   transport->event_mams = event_mams;
-  transport->name = create_new_cstring(t->tt->transport_name(tidx));
+  transport->name = t->tt->transport_name(tidx).data();
+  transport->name_len = t->tt->transport_name(tidx).length();
   return transport;
 }
 
 void nigiri_destroy_transport(const nigiri_transport_t* transport) {
   delete[] transport->event_mams;
-  delete[] transport->name;
   delete transport;
 }
 
@@ -164,20 +157,21 @@ nigiri_route_t* nigiri_get_route(const nigiri_timetable_t* t, uint32_t idx) {
   return route;
 }
 
-void nigiri_destroy_route(const nigiri_route_t* route) {
-  delete route;
-}
+void nigiri_destroy_route(const nigiri_route_t* route) { delete route; }
 
 uint32_t nigiri_get_location_count(const nigiri_timetable_t* t) {
   return t->tt->n_locations();
 }
 
-nigiri_location_t* nigiri_get_location(const nigiri_timetable_t* t, uint32_t idx) {
+nigiri_location_t* nigiri_get_location(const nigiri_timetable_t* t,
+                                       uint32_t idx) {
   auto lidx = nigiri::location_idx_t{idx};
   auto location = new nigiri_location_t;
   auto l = t->tt->locations_.get(lidx);
-  location->name = create_new_cstring(l.name_);
-  location->id = create_new_cstring(l.id_);
+  location->name = l.name_.data();
+  location->name_len = l.name_.length();
+  location->id = l.id_.data();
+  location->id_len = l.id_.length();
   location->lat = l.pos_.lat_;
   location->lon = l.pos_.lng_;
   location->transfer_time = static_cast<uint16_t>(l.transfer_time_.count());
@@ -186,8 +180,6 @@ nigiri_location_t* nigiri_get_location(const nigiri_timetable_t* t, uint32_t idx
 }
 
 void nigiri_destroy_location(const nigiri_location_t* location) {
-  delete[] location->name;
-  delete[] location->id;
   delete location;
 }
 
