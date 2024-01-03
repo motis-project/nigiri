@@ -32,12 +32,9 @@ struct nigiri_timetable {
   std::shared_ptr<nigiri::rt_timetable> rtt;
 };
 
-nigiri_timetable_t* nigiri_load(const char* path,
-                                int64_t from_ts,
-                                int64_t to_ts) {
-  auto const progress_tracker = utl::activate_progress_tracker("libnigiri");
-  auto const silencer = utl::global_progress_bars{true};
-
+nigiri_timetable_t* nigiri_load_from_dir(nigiri::loader::dir const& d,
+                                         int64_t from_ts,
+                                         int64_t to_ts) {
   auto loaders =
       std::vector<std::unique_ptr<nigiri::loader::loader_interface>>{};
   loaders.emplace_back(std::make_unique<nigiri::loader::gtfs::gtfs_loader>());
@@ -51,19 +48,15 @@ nigiri_timetable_t* nigiri_load(const char* path,
       std::make_unique<nigiri::loader::hrd::hrd_5_20_avv_loader>());
 
   auto const src = nigiri::source_idx_t{0U};
-  auto const tt_path = std::filesystem::path{path};
-  auto const d = nigiri::loader::make_dir(tt_path);
 
   auto const c =
-      utl::find_if(loaders, [&](auto&& l) { return l->applicable(*d); });
-  utl::verify(c != end(loaders), "no loader applicable to {}", tt_path);
+      utl::find_if(loaders, [&](auto&& l) { return l->applicable(d); });
+  utl::verify(c != end(loaders), "no loader applicable to the given file(s)");
   nigiri::log(nigiri::log_lvl::info, "main",
               "loading nigiri timetable with configuration {}", (*c)->name());
 
   auto t = new nigiri_timetable_t;
   t->tt = std::make_unique<nigiri::timetable>();
-
-  const std::string_view default_timezone_{"Europe/Berlin"};
 
   t->tt->date_range_ = {floor<days>(std::chrono::system_clock::from_time_t(
                             static_cast<time_t>(from_ts))),
@@ -71,13 +64,23 @@ nigiri_timetable_t* nigiri_load(const char* path,
                             static_cast<time_t>(to_ts)))};
 
   nigiri::loader::register_special_stations(*t->tt);
-  (*c)->load({.link_stop_distance_ = 0, .default_tz_ = default_timezone_}, src,
-             *d, *t->tt);
+  (*c)->load({}, src, d, *t->tt);
   nigiri::loader::finalize(*t->tt);
 
   t->rtt = std::make_shared<nigiri::rt_timetable>(
       nigiri::rt::create_rt_timetable(*t->tt, t->tt->date_range_.from_));
   return t;
+}
+
+nigiri_timetable_t* nigiri_load(const char* path,
+                                int64_t from_ts,
+                                int64_t to_ts) {
+  auto const progress_tracker = utl::activate_progress_tracker("libnigiri");
+  auto const silencer = utl::global_progress_bars{true};
+
+  auto const tt_path = std::filesystem::path{path};
+  auto const d = nigiri::loader::make_dir(tt_path);
+  return nigiri_load_from_dir(*d, from_ts, to_ts);
 }
 
 void nigiri_destroy(const nigiri_timetable_t* t) {
@@ -175,7 +178,10 @@ nigiri_location_t* nigiri_get_location(const nigiri_timetable_t* t,
   location->lat = l.pos_.lat_;
   location->lon = l.pos_.lng_;
   location->transfer_time = static_cast<uint16_t>(l.transfer_time_.count());
-  location->parent = static_cast<nigiri::location_idx_t::value_t>(l.parent_);
+  location->parent =
+      l.parent_ == nigiri::location_idx_t::invalid()
+          ? 0
+          : static_cast<nigiri::location_idx_t::value_t>(l.parent_);
   return location;
 }
 
@@ -183,9 +189,9 @@ void nigiri_destroy_location(const nigiri_location_t* location) {
   delete location;
 }
 
-void nigiri_update_with_rt(const nigiri_timetable_t* t,
-                           const char* gtfsrt_pb_path,
-                           void (*callback)(nigiri_event_change)) {
+void nigiri_update_with_rt_from_buf(const nigiri_timetable_t* t,
+                                    std::string_view protobuf,
+                                    void (*callback)(nigiri_event_change)) {
   auto const src = nigiri::source_idx_t{0U};
   auto const tag = "";
 
@@ -206,9 +212,7 @@ void nigiri_update_with_rt(const nigiri_timetable_t* t,
 
   t->rtt->set_change_callback(rtt_callback);
   try {
-    auto const file =
-        cista::mmap{gtfsrt_pb_path, cista::mmap::protection::READ};
-    nigiri::rt::gtfsrt_update_buf(*t->tt, *t->rtt, src, tag, file.view());
+    nigiri::rt::gtfsrt_update_buf(*t->tt, *t->rtt, src, tag, protobuf);
   } catch (std::exception const& e) {
     nigiri::log(nigiri::log_lvl::error, "main",
                 "GTFS-RT update error (tag={}) {}", tag, e.what());
@@ -217,4 +221,11 @@ void nigiri_update_with_rt(const nigiri_timetable_t* t,
                 "Unknown GTFS-RT update error (tag={})", tag);
   }
   t->rtt->reset_change_callback();
+}
+
+void nigiri_update_with_rt(const nigiri_timetable_t* t,
+                           const char* gtfsrt_pb_path,
+                           void (*callback)(nigiri_event_change)) {
+  auto const file = cista::mmap{gtfsrt_pb_path, cista::mmap::protection::READ};
+  return nigiri_update_with_rt_from_buf(t, file.view(), callback);
 }
