@@ -155,14 +155,9 @@ nigiri_route_t* nigiri_get_route(const nigiri_timetable_t* t, uint32_t idx) {
   auto ridx = nigiri::route_idx_t{idx};
   auto stops = t->tt->route_location_seq_[ridx];
   auto n_stops = stops.size();
-  auto stops_idx = new uint32_t[n_stops];
-  for (size_t i = 0; i < n_stops; i++) {
-    stops_idx[i] = static_cast<nigiri::location_idx_t::value_t>(
-        nigiri::stop{stops[i]}.location_idx());
-  }
   auto route = new nigiri_route_t;
 
-  route->stops = stops_idx;
+  route->stops = reinterpret_cast<nigiri_route_stop_t*>(&stops.front());
   route->n_stops = static_cast<uint16_t>(n_stops);
   route->clasz =
       static_cast<uint16_t>(t->tt->route_section_clasz_[ridx].front());
@@ -170,31 +165,30 @@ nigiri_route_t* nigiri_get_route(const nigiri_timetable_t* t, uint32_t idx) {
 }
 
 void nigiri_destroy_route(const nigiri_route_t* route) {
-  delete[] route->stops;
   delete route;
 }
 
-uint32_t nigiri_get_stop_count(const nigiri_timetable_t* t) {
+uint32_t nigiri_get_location_count(const nigiri_timetable_t* t) {
   return t->tt->n_locations();
 }
 
-nigiri_stop_t* nigiri_get_stop(const nigiri_timetable_t* t, uint32_t idx) {
+nigiri_location_t* nigiri_get_location(const nigiri_timetable_t* t, uint32_t idx) {
   auto lidx = nigiri::location_idx_t{idx};
-  auto stop = new nigiri_stop_t;
+  auto location = new nigiri_location_t;
   auto l = t->tt->locations_.get(lidx);
-  stop->name = create_new_cstring(l.name_);
-  stop->id = create_new_cstring(l.id_);
-  stop->lat = l.pos_.lat_;
-  stop->lon = l.pos_.lng_;
-  stop->transfer_time = static_cast<uint16_t>(l.transfer_time_.count());
-  stop->parent = static_cast<nigiri::location_idx_t::value_t>(l.parent_);
-  return stop;
+  location->name = create_new_cstring(l.name_);
+  location->id = create_new_cstring(l.id_);
+  location->lat = l.pos_.lat_;
+  location->lon = l.pos_.lng_;
+  location->transfer_time = static_cast<uint16_t>(l.transfer_time_.count());
+  location->parent = static_cast<nigiri::location_idx_t::value_t>(l.parent_);
+  return location;
 }
 
-void nigiri_destroy_stop(const nigiri_stop_t* stop) {
-  delete[] stop->name;
-  delete[] stop->id;
-  delete stop;
+void nigiri_destroy_location(const nigiri_location_t* location) {
+  delete[] location->name;
+  delete[] location->id;
+  delete location;
 }
 
 void nigiri_update_with_rt(const nigiri_timetable_t* t,

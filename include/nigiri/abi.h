@@ -17,7 +17,7 @@ struct nigiri_transport {
 };
 typedef struct nigiri_transport nigiri_transport_t;
 
-struct nigiri_stop {
+struct nigiri_location {
   char* id;
   char* name;
   double lon;
@@ -25,11 +25,18 @@ struct nigiri_stop {
   uint16_t transfer_time;
   uint32_t parent;
 };
-typedef struct nigiri_stop nigiri_stop_t;
+typedef struct nigiri_location nigiri_location_t;
+
+struct nigiri_route_stop {
+    uint32_t location_idx: 30;
+    bool in_allowed: 1;
+    bool out_allowed: 1;
+};
+typedef struct nigiri_route_stop nigiri_route_stop_t;
 
 struct nigiri_route {
   uint16_t n_stops;
-  uint32_t* stops;
+  nigiri_route_stop_t* stops;
   uint16_t clasz;
 };
 typedef struct nigiri_route nigiri_route_t;
@@ -59,9 +66,9 @@ bool nigiri_is_transport_active(const nigiri_timetable_t* t,
                                 uint16_t day_idx);
 nigiri_route_t* nigiri_get_route(const nigiri_timetable_t* t, uint32_t idx);
 void nigiri_destroy_route(const nigiri_route_t* route);
-uint32_t nigiri_get_stop_count(const nigiri_timetable_t* t);
-nigiri_stop_t* nigiri_get_stop(const nigiri_timetable_t* t, uint32_t idx);
-void nigiri_destroy_stop(const nigiri_stop_t* stop);
+uint32_t nigiri_get_location_count(const nigiri_timetable_t* t);
+nigiri_location_t* nigiri_get_location(const nigiri_timetable_t* t, uint32_t idx);
+void nigiri_destroy_location(const nigiri_location_t* location);
 
 void nigiri_update_with_rt(const nigiri_timetable_t* t,
                            const char* gtfsrt_pb_path,
