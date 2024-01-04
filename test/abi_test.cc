@@ -328,9 +328,7 @@ auto const kTripUpdate =
  ]
 })"s;
 
-}  // namespace
-
-static int test_event_change_counter = 0;
+auto test_event_change_counter = 0;  // NOLINT
 
 void my_test_callback(nigiri_event_change_t evt) {
   EXPECT_EQ(0, evt.transport_idx);
@@ -375,29 +373,31 @@ void my_test_callback(nigiri_event_change_t evt) {
   test_event_change_counter++;
 }
 
+}  // namespace
+
 TEST(rt, abi_1) {
 
-  auto t = nigiri_load_from_dir(
+  auto const t = nigiri_load_from_dir(
       test_files(),
       std::chrono::system_clock::to_time_t(date::sys_days{2023_y / August / 9}),
       std::chrono::system_clock::to_time_t(
           date::sys_days{2023_y / August / 12}));
 
-  auto transport_count = nigiri_get_transport_count(t);
+  auto const transport_count = nigiri_get_transport_count(t);
   EXPECT_EQ(1, transport_count);
 
-  auto location_count = nigiri_get_location_count(t);
+  auto const location_count = nigiri_get_location_count(t);
   EXPECT_EQ(37, location_count);
 
-  auto l0 = nigiri_get_location(t, 0);
-  std::string l0_name(l0->name, l0->name_len);
+  auto const l0 = nigiri_get_location(t, 0);
+  auto const l0_name = std::string{l0->name, l0->name_len};
   EXPECT_EQ("START", l0_name);
   nigiri_destroy_location(l0);
 
-  auto l9 = nigiri_get_location(t, 9);
-  std::string l9_name(l9->name, l9->name_len);
+  auto const l9 = nigiri_get_location(t, 9);
+  auto const l9_name = std::string{l9->name, l9->name_len};
   EXPECT_EQ("Block Line Station", l9_name);
-  std::string l9_id(l9->id, l9->id_len);
+  auto const l9_id = std::string{l9->id, l9->id_len};
   EXPECT_EQ("2351", l9_id);
   EXPECT_FLOAT_EQ(43.422095, l9->lat);
   EXPECT_FLOAT_EQ(-80.462740, l9->lon);
@@ -405,10 +405,10 @@ TEST(rt, abi_1) {
   EXPECT_EQ(0, l9->parent);
   nigiri_destroy_location(l9);
 
-  auto l35 = nigiri_get_location(t, 35);
-  std::string l35_name(l35->name, l35->name_len);
+  auto const l35 = nigiri_get_location(t, 35);
+  auto const l35_name = std::string{l35->name, l35->name_len};
   EXPECT_EQ("King / Manulife", l35_name);
-  std::string l35_id(l35->id, l35->id_len);
+  auto const l35_id = std::string{l35->id, l35->id_len};
   EXPECT_EQ("1918", l35_id);
   EXPECT_FLOAT_EQ(43.491207, l35->lat);
   EXPECT_FLOAT_EQ(-80.528026, l35->lon);
@@ -416,10 +416,10 @@ TEST(rt, abi_1) {
   EXPECT_EQ(33, l35->parent);
   nigiri_destroy_location(l35);
 
-  auto l36 = nigiri_get_location(t, location_count - 1);
-  std::string l36_name(l36->name, l36->name_len);
+  auto const l36 = nigiri_get_location(t, location_count - 1);
+  auto const l36_name = std::string{l36->name, l36->name_len};
   EXPECT_EQ("Conestoga Station", l36_name);
-  std::string l36_id(l36->id, l36->id_len);
+  auto const l36_id = std::string{l36->id, l36->id_len};
   EXPECT_EQ("1127", l36_id);
   EXPECT_FLOAT_EQ(43.498036, l36->lat);
   EXPECT_FLOAT_EQ(-80.528999, l36->lon);
@@ -432,7 +432,7 @@ TEST(rt, abi_1) {
       nigiri_get_start_day_ts(t));
   EXPECT_EQ(9, nigiri_get_day_count(t));
 
-  auto transport = nigiri_get_transport(t, 0);
+  auto const transport = nigiri_get_transport(t, 0);
   EXPECT_EQ(0, transport->route_idx);
   EXPECT_EQ(54, transport->n_event_mams);
   EXPECT_EQ(555, transport->event_mams[0]);
@@ -440,10 +440,10 @@ TEST(rt, abi_1) {
   EXPECT_EQ(556, transport->event_mams[2]);
   EXPECT_EQ(596, transport->event_mams[transport->n_event_mams - 2]);
   EXPECT_EQ(598, transport->event_mams[transport->n_event_mams - 1]);
-  std::string t_name(transport->name, transport->name_len);
+  auto const t_name = std::string{transport->name, transport->name_len};
   EXPECT_EQ("Tram iXpress Fischer-Hallman", t_name);
 
-  auto route = nigiri_get_route(t, transport->route_idx);
+  auto const route = nigiri_get_route(t, transport->route_idx);
   EXPECT_EQ(28, route->n_stops);
   EXPECT_EQ(9, route->clasz);
   EXPECT_EQ(9, route->stops[0].location_idx);

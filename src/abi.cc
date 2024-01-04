@@ -100,7 +100,7 @@ uint32_t nigiri_get_transport_count(const nigiri_timetable_t* t) {
 
 nigiri_transport_t* nigiri_get_transport(const nigiri_timetable_t* t,
                                          uint32_t idx) {
-  auto tidx = nigiri::transport_idx_t{idx};
+  auto const tidx = nigiri::transport_idx_t{idx};
   auto transport = new nigiri_transport_t;
 
   auto route_idx = t->tt->transport_route_[tidx];
@@ -141,18 +141,17 @@ void nigiri_destroy_transport(const nigiri_transport_t* transport) {
 bool nigiri_is_transport_active(const nigiri_timetable_t* t,
                                 const uint32_t transport_idx,
                                 uint16_t day_idx) {
-  auto tidx = nigiri::transport_idx_t{transport_idx};
+  auto const tidx = nigiri::transport_idx_t{transport_idx};
   return t->tt->bitfields_[t->tt->transport_traffic_days_[tidx]].test(day_idx);
 }
 
 nigiri_route_t* nigiri_get_route(const nigiri_timetable_t* t, uint32_t idx) {
-  auto ridx = nigiri::route_idx_t{idx};
+  auto const ridx = nigiri::route_idx_t{idx};
   auto stops = t->tt->route_location_seq_[ridx];
-  auto n_stops = stops.size();
+  auto const n_stops = stops.size();
   auto route_stops = new nigiri_route_stop_t[n_stops];
-  for (size_t i = 0; i < n_stops; i++) {
-    route_stops[i] = std::bit_cast<nigiri_route_stop_t>(stops[i]);
-  }
+  std::memcpy(route_stops, &stops.front(),
+              sizeof(nigiri_route_stop_t) * n_stops);
 
   auto route = new nigiri_route_t;
 
@@ -174,7 +173,7 @@ uint32_t nigiri_get_location_count(const nigiri_timetable_t* t) {
 
 nigiri_location_t* nigiri_get_location(const nigiri_timetable_t* t,
                                        uint32_t idx) {
-  auto lidx = nigiri::location_idx_t{idx};
+  auto const lidx = nigiri::location_idx_t{idx};
   auto location = new nigiri_location_t;
   auto l = t->tt->locations_.get(lidx);
   location->name = l.name_.data();
