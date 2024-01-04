@@ -83,10 +83,7 @@ nigiri_timetable_t* nigiri_load(const char* path,
   return nigiri_load_from_dir(*d, from_ts, to_ts);
 }
 
-void nigiri_destroy(const nigiri_timetable_t* t) {
-  t->~nigiri_timetable_t();
-  delete t;
-}
+void nigiri_destroy(const nigiri_timetable_t* t) { delete t; }
 
 int64_t nigiri_get_start_day_ts(const nigiri_timetable_t* t) {
   return std::chrono::system_clock::to_time_t(
@@ -131,7 +128,8 @@ nigiri_transport_t* nigiri_get_transport(const nigiri_timetable_t* t,
   transport->n_event_mams = (static_cast<uint16_t>(n_stops) - 1) * 2;
   transport->event_mams = event_mams;
   transport->name = t->tt->transport_name(tidx).data();
-  transport->name_len = t->tt->transport_name(tidx).length();
+  transport->name_len =
+      static_cast<uint32_t>(t->tt->transport_name(tidx).length());
   return transport;
 }
 
@@ -151,16 +149,24 @@ nigiri_route_t* nigiri_get_route(const nigiri_timetable_t* t, uint32_t idx) {
   auto ridx = nigiri::route_idx_t{idx};
   auto stops = t->tt->route_location_seq_[ridx];
   auto n_stops = stops.size();
+  auto route_stops = new nigiri_route_stop_t[n_stops];
+  for (size_t i = 0; i < n_stops; i++) {
+    route_stops[i] = std::bit_cast<nigiri_route_stop_t>(stops[i]);
+  }
+
   auto route = new nigiri_route_t;
 
-  route->stops = reinterpret_cast<nigiri_route_stop_t*>(&stops.front());
+  route->stops = route_stops;
   route->n_stops = static_cast<uint16_t>(n_stops);
   route->clasz =
       static_cast<uint16_t>(t->tt->route_section_clasz_[ridx].front());
   return route;
 }
 
-void nigiri_destroy_route(const nigiri_route_t* route) { delete route; }
+void nigiri_destroy_route(const nigiri_route_t* route) {
+  delete[] route->stops;
+  delete route;
+}
 
 uint32_t nigiri_get_location_count(const nigiri_timetable_t* t) {
   return t->tt->n_locations();
@@ -172,9 +178,9 @@ nigiri_location_t* nigiri_get_location(const nigiri_timetable_t* t,
   auto location = new nigiri_location_t;
   auto l = t->tt->locations_.get(lidx);
   location->name = l.name_.data();
-  location->name_len = l.name_.length();
+  location->name_len = static_cast<uint32_t>(l.name_.length());
   location->id = l.id_.data();
-  location->id_len = l.id_.length();
+  location->id_len = static_cast<uint32_t>(l.id_.length());
   location->lat = l.pos_.lat_;
   location->lon = l.pos_.lng_;
   location->transfer_time = static_cast<uint16_t>(l.transfer_time_.count());
@@ -196,13 +202,13 @@ void nigiri_update_with_rt_from_buf(const nigiri_timetable_t* t,
   auto const tag = "";
 
   auto const rtt_callback =
-      [&](nigiri::transport const t, nigiri::stop_idx_t const stop_idx,
+      [&](nigiri::transport const transport, nigiri::stop_idx_t const stop_idx,
           nigiri::event_type const ev_type, nigiri::duration_t const delay,
           bool const cancelled) {
         nigiri_event_change_t const c = {
             .transport_idx =
-                static_cast<nigiri::transport_idx_t::value_t>(t.t_idx_),
-            .day_idx = static_cast<nigiri::day_idx_t::value_t>(t.day_),
+                static_cast<nigiri::transport_idx_t::value_t>(transport.t_idx_),
+            .day_idx = static_cast<nigiri::day_idx_t::value_t>(transport.day_),
             .stop_idx = stop_idx,
             .is_departure = ev_type != nigiri::event_type::kArr,
             .delay = delay.count(),

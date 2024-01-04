@@ -10,7 +10,7 @@
 
 namespace nigiri {
 
-using change_callback_t = std::function<void(transport const t,
+using change_callback_t = std::function<void(transport const transport,
                                              stop_idx_t const stop_idx,
                                              event_type const ev_type,
                                              duration_t const delay,
