@@ -196,7 +196,9 @@ void nigiri_destroy_location(const nigiri_location_t* location) {
 
 void nigiri_update_with_rt_from_buf(const nigiri_timetable_t* t,
                                     std::string_view protobuf,
-                                    void (*callback)(nigiri_event_change)) {
+                                    void (*callback)(nigiri_event_change_t,
+                                                     void* context),
+                                    void* context) {
   auto const src = nigiri::source_idx_t{0U};
   auto const tag = "";
 
@@ -212,7 +214,7 @@ void nigiri_update_with_rt_from_buf(const nigiri_timetable_t* t,
             .is_departure = ev_type != nigiri::event_type::kArr,
             .delay = delay.count(),
             .cancelled = cancelled};
-        callback(c);
+        callback(c, context);
       };
 
   t->rtt->set_change_callback(rtt_callback);
@@ -230,7 +232,9 @@ void nigiri_update_with_rt_from_buf(const nigiri_timetable_t* t,
 
 void nigiri_update_with_rt(const nigiri_timetable_t* t,
                            const char* gtfsrt_pb_path,
-                           void (*callback)(nigiri_event_change)) {
+                           void (*callback)(nigiri_event_change_t,
+                                            void* context),
+                           void* context) {
   auto const file = cista::mmap{gtfsrt_pb_path, cista::mmap::protection::READ};
-  return nigiri_update_with_rt_from_buf(t, file.view(), callback);
+  return nigiri_update_with_rt_from_buf(t, file.view(), callback, context);
 }

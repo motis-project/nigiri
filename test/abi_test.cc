@@ -11,7 +11,9 @@ nigiri_timetable_t* nigiri_load_from_dir(nigiri::loader::dir const& d,
                                          int64_t to_ts);
 void nigiri_update_with_rt_from_buf(const nigiri_timetable_t* t,
                                     std::string_view protobuf,
-                                    void (*callback)(nigiri_event_change));
+                                    void (*callback)(nigiri_event_change_t,
+                                                     void* context),
+                                    void* context);
 
 using namespace nigiri;
 using namespace nigiri::loader;
@@ -328,51 +330,6 @@ auto const kTripUpdate =
  ]
 })"s;
 
-auto test_event_change_counter = 0;  // NOLINT
-
-void my_test_callback(nigiri_event_change_t evt) {
-  EXPECT_EQ(0, evt.transport_idx);
-  EXPECT_EQ(6, evt.day_idx);
-  EXPECT_EQ(false, evt.cancelled);
-
-  if (test_event_change_counter == 0) {
-    EXPECT_EQ(14, evt.stop_idx);
-    EXPECT_EQ(false, evt.is_departure);
-    EXPECT_EQ(1, evt.delay);
-  }
-  if (test_event_change_counter == 1) {
-    EXPECT_EQ(14, evt.stop_idx);
-    EXPECT_EQ(true, evt.is_departure);
-    EXPECT_EQ(1, evt.delay);
-  }
-  if (test_event_change_counter == 8) {
-    EXPECT_EQ(18, evt.stop_idx);
-    EXPECT_EQ(false, evt.is_departure);
-    EXPECT_EQ(2, evt.delay);
-  }
-  if (test_event_change_counter == 9) {
-    EXPECT_EQ(18, evt.stop_idx);
-    EXPECT_EQ(true, evt.is_departure);
-    EXPECT_EQ(2, evt.delay);
-  }
-  if (test_event_change_counter == 22) {
-    EXPECT_EQ(25, evt.stop_idx);
-    EXPECT_EQ(false, evt.is_departure);
-    EXPECT_EQ(-1, evt.delay);
-  }
-  if (test_event_change_counter == 23) {
-    EXPECT_EQ(25, evt.stop_idx);
-    EXPECT_EQ(true, evt.is_departure);
-    EXPECT_EQ(-1, evt.delay);
-  }
-  if (test_event_change_counter == 26) {
-    EXPECT_EQ(27, evt.stop_idx);
-    EXPECT_EQ(false, evt.is_departure);
-    EXPECT_EQ(0, evt.delay);
-  }
-  test_event_change_counter++;
-}
-
 }  // namespace
 
 TEST(rt, abi_1) {
@@ -447,11 +404,11 @@ TEST(rt, abi_1) {
   EXPECT_EQ(28, route->n_stops);
   EXPECT_EQ(9, route->clasz);
   EXPECT_EQ(9, route->stops[0].location_idx);
-  EXPECT_EQ(true, route->stops[0].in_allowed);
-  EXPECT_EQ(true, route->stops[0].out_allowed);
+  EXPECT_EQ(1, route->stops[0].in_allowed);
+  EXPECT_EQ(1, route->stops[0].out_allowed);
   EXPECT_EQ(36, route->stops[route->n_stops - 1].location_idx);
-  EXPECT_EQ(false, route->stops[route->n_stops - 1].in_allowed);
-  EXPECT_EQ(true, route->stops[route->n_stops - 1].out_allowed);
+  EXPECT_EQ(0, route->stops[route->n_stops - 1].in_allowed);
+  EXPECT_EQ(1, route->stops[route->n_stops - 1].out_allowed);
 
   EXPECT_EQ(false, nigiri_is_transport_active(t, 0, 0));
   EXPECT_EQ(false, nigiri_is_transport_active(t, 0, 1));
@@ -467,7 +424,56 @@ TEST(rt, abi_1) {
   nigiri_destroy_transport(transport);
 
   auto const msg = rt::json_to_protobuf(kTripUpdate);
-  nigiri_update_with_rt_from_buf(t, msg, &my_test_callback);
+
+  int test_event_change_counter = 0;
+
+  auto const my_test_callback = [](nigiri_event_change_t evt, void* context) {
+    auto test_event_change_counter_ptr = static_cast<int*>(context);
+
+    EXPECT_EQ(0, evt.transport_idx);
+    EXPECT_EQ(6, evt.day_idx);
+    EXPECT_EQ(false, evt.cancelled);
+
+    if (*test_event_change_counter_ptr == 0) {
+      EXPECT_EQ(14, evt.stop_idx);
+      EXPECT_EQ(false, evt.is_departure);
+      EXPECT_EQ(1, evt.delay);
+    }
+    if (*test_event_change_counter_ptr == 1) {
+      EXPECT_EQ(14, evt.stop_idx);
+      EXPECT_EQ(true, evt.is_departure);
+      EXPECT_EQ(1, evt.delay);
+    }
+    if (*test_event_change_counter_ptr == 8) {
+      EXPECT_EQ(18, evt.stop_idx);
+      EXPECT_EQ(false, evt.is_departure);
+      EXPECT_EQ(2, evt.delay);
+    }
+    if (*test_event_change_counter_ptr == 9) {
+      EXPECT_EQ(18, evt.stop_idx);
+      EXPECT_EQ(true, evt.is_departure);
+      EXPECT_EQ(2, evt.delay);
+    }
+    if (*test_event_change_counter_ptr == 22) {
+      EXPECT_EQ(25, evt.stop_idx);
+      EXPECT_EQ(false, evt.is_departure);
+      EXPECT_EQ(-1, evt.delay);
+    }
+    if (*test_event_change_counter_ptr == 23) {
+      EXPECT_EQ(25, evt.stop_idx);
+      EXPECT_EQ(true, evt.is_departure);
+      EXPECT_EQ(-1, evt.delay);
+    }
+    if (*test_event_change_counter_ptr == 26) {
+      EXPECT_EQ(27, evt.stop_idx);
+      EXPECT_EQ(false, evt.is_departure);
+      EXPECT_EQ(0, evt.delay);
+    }
+    (*test_event_change_counter_ptr)++;
+  };
+
+  nigiri_update_with_rt_from_buf(t, msg, my_test_callback,
+                                 &test_event_change_counter);
   EXPECT_EQ(27, test_event_change_counter);
 
   nigiri_destroy(t);

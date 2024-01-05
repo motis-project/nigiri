@@ -30,9 +30,9 @@ struct nigiri_location {
 typedef struct nigiri_location nigiri_location_t;
 
 struct nigiri_route_stop {
-  uint32_t location_idx : 30;
-  bool in_allowed : 1;
-  bool out_allowed : 1;
+  unsigned int location_idx : 30;
+  unsigned int in_allowed : 1;
+  unsigned int out_allowed : 1;
 };
 typedef struct nigiri_route_stop nigiri_route_stop_t;
 
@@ -75,7 +75,9 @@ void nigiri_destroy_location(const nigiri_location_t* location);
 
 void nigiri_update_with_rt(const nigiri_timetable_t* t,
                            const char* gtfsrt_pb_path,
-                           void (*callback)(nigiri_event_change_t));
+                           void (*callback)(nigiri_event_change_t,
+                                            void* context),
+                           void* context);
 
 #ifdef __cplusplus
 }
