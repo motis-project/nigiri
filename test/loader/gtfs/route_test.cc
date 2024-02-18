@@ -46,6 +46,8 @@ TEST(gtfs, read_routes_berlin_data) {
   EXPECT_EQ("SXF2", routes.at("1")->short_name_);
   EXPECT_EQ("", routes.at("1")->long_name_);
   EXPECT_EQ(clasz::kBus, routes.at("1")->clasz_);
+  EXPECT_EQ(color_t{0}, routes.at("1")->color_);
+  EXPECT_EQ(color_t{0}, routes.at("1")->text_color_);
 
   ASSERT_NE(end(routes), routes.find("809"));
   EXPECT_EQ("N04---", tt.providers_[routes.at("809")->agency_].short_name_);
@@ -58,4 +60,6 @@ TEST(gtfs, read_routes_berlin_data) {
   EXPECT_EQ("RB14", routes.at("812")->short_name_);
   EXPECT_EQ("", routes.at("812")->long_name_);
   EXPECT_EQ(clasz::kRegional, routes.at("812")->clasz_);
+  EXPECT_EQ(color_t{0xFFB10093}, routes.at("812")->color_);
+  EXPECT_EQ(color_t{0xFFFFFFFF}, routes.at("812")->text_color_);
 }

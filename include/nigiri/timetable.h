@@ -120,6 +120,7 @@ struct timetable {
     std::basic_string<trip_direction_idx_t> const& section_directions_;
     std::basic_string<trip_line_idx_t> const& section_lines_;
     std::basic_string<stop_idx_t> const& stop_seq_numbers_;
+    std::basic_string<route_color> const& route_colors_;
   };
 
   template <typename TripId>
@@ -204,6 +205,7 @@ struct timetable {
     transport_section_providers_.emplace_back(t.section_providers_);
     transport_section_directions_.emplace_back(t.section_directions_);
     transport_section_lines_.emplace_back(t.section_lines_);
+    transport_section_route_colors_.emplace_back(t.route_colors_);
 
     assert(transport_traffic_days_.size() == transport_route_.size());
     assert(transport_traffic_days_.size() == transport_to_trip_section_.size());
@@ -433,6 +435,7 @@ struct timetable {
   vecvec<transport_idx_t, provider_idx_t> transport_section_providers_;
   vecvec<transport_idx_t, trip_direction_idx_t> transport_section_directions_;
   vecvec<transport_idx_t, trip_line_idx_t> transport_section_lines_;
+  vecvec<transport_idx_t, route_color> transport_section_route_colors_;
 
   // Lower bound graph.
   vecvec<location_idx_t, footpath> fwd_search_lb_graph_;

@@ -175,6 +175,13 @@ clasz frun::run_stop::get_scheduled_clasz(
                                                        : section_idx(ev_type));
 }
 
+route_color frun::run_stop::get_route_color(event_type ev_type) const noexcept {
+  auto const color_sections =
+      tt().transport_section_route_colors_.at(fr_->t_.t_idx_);
+  return color_sections.at(color_sections.size() == 1U ? 0U
+                                                       : section_idx(ev_type));
+}
+
 bool frun::run_stop::is_canceled() const noexcept {
   return !get_stop().in_allowed() && !get_stop().out_allowed();
 }
