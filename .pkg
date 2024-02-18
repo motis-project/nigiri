@@ -38,3 +38,7 @@
   url=git@github.com:motis-project/protobuf.git
   branch=main
   commit=690e03babf0963d3da9615a2dae0891777842719
+[corrosion]
+  url=git@github.com:corrosion-rs/corrosion.git
+  branch=master
+  commit=0a3bdf452995803c334d79dc9a2affbfad51b720

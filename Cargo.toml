@@ -1,0 +1,10 @@
+[package]
+name = "srv"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+cxx = "1.0.116"
+
+[build-dependencies]
+cxx-build = "1.0"
