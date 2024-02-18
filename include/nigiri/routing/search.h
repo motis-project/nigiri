@@ -109,7 +109,8 @@ struct search {
          rt_timetable const* rtt,
          search_state& s,
          algo_state_t& algo_state,
-         query q)
+         query q,
+         std::optional<std::chrono::seconds> timeout = std::nullopt)
       : tt_{tt},
         rtt_{rtt},
         state_{s},
@@ -124,7 +125,8 @@ struct search {
                 }},
             q_.start_time_)},
         fastest_direct_{get_fastest_direct(tt_, q_, SearchDir)},
-        algo_{init(algo_state)} {}
+        algo_{init(algo_state)},
+        timeout_(timeout) {}
 
   routing_result<algo_stats_t> execute() {
     state_.results_.clear();
@@ -136,17 +138,29 @@ struct search {
     state_.starts_.clear();
     add_start_labels(q_.start_time_, true);
 
+    auto const processing_start_time = std::chrono::system_clock::now();
+    auto const is_timeout_reached = [&]() {
+      if (timeout_) {
+        return (std::chrono::system_clock::now() - processing_start_time) >=
+               *timeout_;
+      }
+
+      return false;
+    };
+
     while (true) {
       trace("start_time={}\n", search_interval_);
 
       search_interval();
 
       if (is_ontrip() || max_interval_reached() ||
-          n_results_in_interval() >= q_.min_connection_count_) {
+          n_results_in_interval() >= q_.min_connection_count_ ||
+          is_timeout_reached()) {
         trace(
             "  finished: is_ontrip={}, max_interval_reached={}, "
             "extend_earlier={}, extend_later={}, initial={}, interval={}, "
-            "timetable={}, number_of_results_in_interval={}\n",
+            "timetable={}, number_of_results_in_interval={}, "
+            "timeout_reached={}\n",
             is_ontrip(), max_interval_reached(), q_.extend_interval_earlier_,
             q_.extend_interval_later_,
             std::visit(
@@ -158,7 +172,8 @@ struct search {
                       return interval<unixtime_t>{start_time, start_time};
                     }},
                 q_.start_time_),
-            search_interval_, tt_.external_interval(), n_results_in_interval());
+            search_interval_, tt_.external_interval(), n_results_in_interval(),
+            is_timeout_reached());
         break;
       } else {
         trace(
@@ -338,6 +353,7 @@ private:
   search_stats stats_;
   duration_t fastest_direct_;
   Algo algo_;
+  std::optional<std::chrono::seconds> timeout_;
 };
 
 }  // namespace nigiri::routing
