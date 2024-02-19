@@ -4,6 +4,9 @@ version = "0.1.0"
 edition = "2021"
 
 [dependencies]
+anyhow = "1.0.80"
+chrono = "0.4.34"
+clap = { version = "4.5.1", features = ["env", "cargo", "derive"] }
 cxx = "1.0"
 
 [build-dependencies]

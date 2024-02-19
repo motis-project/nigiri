@@ -1,29 +1,47 @@
 #include "nigiri/rust.h"
 
+#include "utl/progress_tracker.h"
 #include "utl/to_vec.h"
 
-#include "nigiri/loader/dir.h"
+#include "nigiri/loader/load.h"
+#include "nigiri/timetable.h"
 
 namespace fs = std::filesystem;
+using namespace nigiri;
 using namespace nigiri::loader;
 
 std::string_view to_sv(rust::String const& s) { return {s.data(), s.size()}; }
+std::string_view to_sv(rust::Str const& s) { return {s.data(), s.size()}; }
 
-std::unique_ptr<Timetable> new_timetable(rust::Vec<rust::String> const& paths) {
-  auto loaders =
-      std::vector<std::unique_ptr<nigiri::loader::loader_interface>>{};
-  loaders.emplace_back(std::make_unique<nigiri::loader::gtfs::gtfs_loader>());
-  loaders.emplace_back(
-      std::make_unique<nigiri::loader::hrd::hrd_5_00_8_loader>());
-  loaders.emplace_back(
-      std::make_unique<nigiri::loader::hrd::hrd_5_20_26_loader>());
-  loaders.emplace_back(
-      std::make_unique<nigiri::loader::hrd::hrd_5_20_39_loader>());
-  loaders.emplace_back(
-      std::make_unique<nigiri::loader::hrd::hrd_5_20_avv_loader>());
+date::sys_days parse_date(std::string_view s) {
+  auto sys_days = date::sys_days{};
 
-  auto const dirs =
-      utl::to_vec(paths, [](auto&& p) { return make_dir(fs::path{to_sv(p)}); });
+  std::stringstream ss;
+  ss << s;
+  ss >> date::parse("%F", sys_days);
 
-  return std::make_unique<Timetable>();
+  return sys_days;
+}
+
+std::unique_ptr<timetable> load_timetable(rust::Vec<rust::String> const& paths,
+                                          LoaderConfig const& config,
+                                          rust::Str start_date,
+                                          std::uint32_t const num_days) {
+  std::cerr << "CREATNIG PROGRESS TRACKER\n";
+  auto const progress_tracker = utl::activate_progress_tracker("nigiri");
+  auto const silencer = utl::global_progress_bars{true};
+
+  auto const start = parse_date(to_sv(start_date));
+  auto const tt =
+      load(utl::to_vec(paths, [](auto&& p) { return fs::path{to_sv(p)}; }),
+           loader_config{.link_stop_distance_ = config.link_stop_distance,
+                         .default_tz_ = to_sv(config.default_tz)},
+           interval{start, start + std::chrono::days{num_days + 1}});
+
+  std::cerr << "DELETING PROGRESS TRACKER\n";
+  return std::make_unique<timetable>(tt);
+}
+
+void dump_timetable(timetable const& tt, rust::Str path) {
+  tt.write(fs::path{to_sv(path)});
 }
