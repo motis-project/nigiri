@@ -1,8 +1,6 @@
-use anyhow::{anyhow, Result};
-use chrono::Days;
+use anyhow::Result;
 use chrono::NaiveDate;
 use chrono::Utc;
-use clap::builder::OsStr;
 use clap::{Args, Parser, Subcommand};
 use std::{net::IpAddr, path::PathBuf};
 
@@ -48,10 +46,10 @@ enum Command {
 struct PrepareArgs {
     input: Vec<String>,
 
-    #[clap(long, short = 'o', default_value_t = ("tt.bin".to_string()))]
+    #[clap(long, short = 'o', default_value_t = String::from("tt.bin"))]
     output: String,
 
-    #[clap(long, short = 's', default_value_t = ("TODAY".to_string()))]
+    #[clap(long, short = 's', default_value_t = String::from("TODAY"))]
     start_date: String,
 
     #[clap(long, short = 'n', default_value_t = 256)]
@@ -60,7 +58,7 @@ struct PrepareArgs {
     #[clap(long, short = 'l', default_value_t = 100)]
     link_stop_distance: u32,
 
-    #[clap(long, short = 't', default_value_t = ("Europe/Berlin").to_string())]
+    #[clap(long, short = 't', default_value_t = String::from("Europe/Berlin"))]
     default_tz: String,
 }
 
@@ -73,7 +71,6 @@ impl PrepareArgs {
         }?;
         let start_date = format!("{}", NaiveDate::format(&start_date, "%Y-%m-%d"));
 
-        println!("Loading timetable {start_date:?}, {:?}", self.input);
         let tt = nigiri::load_timetable(
             &self.input,
             &nigiri::LoaderConfig {
@@ -101,20 +98,19 @@ struct ServeArgs {
 }
 
 impl ServeArgs {
-    fn exec(&self) {
+    fn exec(&self) -> Result<()> {
         println!("Hello, world!");
+        Ok(())
     }
 }
 
-fn main() {
+fn main() -> Result<()> {
     let cli = Cli::parse();
 
     match cli.command {
-        Command::Prepare(p) => {
-            p.exec();
-        }
-        Command::Serve(r) => {
-            r.exec();
-        }
-    }
+        Command::Prepare(p) => p.exec(),
+        Command::Serve(r) => r.exec(),
+    }?;
+
+    Ok(())
 }

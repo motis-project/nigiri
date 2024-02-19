@@ -27,7 +27,6 @@ std::unique_ptr<timetable> load_timetable(rust::Vec<rust::String> const& paths,
                                           LoaderConfig const& config,
                                           rust::Str start_date,
                                           std::uint32_t const num_days) {
-  std::cerr << "CREATNIG PROGRESS TRACKER\n";
   auto const progress_tracker = utl::activate_progress_tracker("nigiri");
   auto const silencer = utl::global_progress_bars{true};
 
@@ -37,8 +36,6 @@ std::unique_ptr<timetable> load_timetable(rust::Vec<rust::String> const& paths,
            loader_config{.link_stop_distance_ = config.link_stop_distance,
                          .default_tz_ = to_sv(config.default_tz)},
            interval{start, start + std::chrono::days{num_days + 1}});
-
-  std::cerr << "DELETING PROGRESS TRACKER\n";
   return std::make_unique<timetable>(tt);
 }
 

@@ -31,10 +31,6 @@ timetable load(std::vector<std::filesystem::path> const& paths,
   tt.date_range_ = date_range;
   register_special_stations(tt);
 
-  std::cout << "PATHS: " << paths.size() << "\n";
-  for (auto const& p : paths) {
-    std::cout << p << "\n";
-  }
   for (auto const [idx, p] : utl::enumerate(paths)) {
     auto const src = source_idx_t{idx};
     auto const dir = make_dir(p);
