@@ -166,6 +166,13 @@ struct provider {
   timezone_idx_t tz_{timezone_idx_t::invalid()};
 };
 
+// colors in ARGB layout, 0 thus indicates no color specified
+using color_t = cista::strong<std::uint32_t, struct _color>;
+struct route_color {
+  color_t color_;
+  color_t text_color_;
+};
+
 struct trip_id {
   CISTA_COMPARABLE()
   inline friend std::ostream& operator<<(std::ostream& out, trip_id const tid) {

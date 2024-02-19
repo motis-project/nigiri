@@ -21,6 +21,8 @@ struct route {
   std::string long_name_;
   std::string desc_;
   clasz clasz_;
+  color_t color_;
+  color_t text_color_;
 };
 
 using route_map_t = hash_map<std::string, std::unique_ptr<route>>;

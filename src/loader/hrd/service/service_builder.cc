@@ -209,7 +209,8 @@ void service_builder::write_services(source_idx_t const src) {
               .section_providers_ = section_providers_,
               .section_directions_ = section_directions_,
               .section_lines_ = section_lines_,
-              .stop_seq_numbers_ = stop_seq_numbers_});
+              .stop_seq_numbers_ = stop_seq_numbers_,
+              .route_colors_ = route_colors_});
         } catch (std::exception const& e) {
           log(log_lvl::error, "loader.hrd.service",
               "unable to load service {}: {}", ref.origin_, e.what());

@@ -245,6 +245,7 @@ void load_timetable(loader_config const& config,
     auto lines = hash_map<std::string, trip_line_idx_t>{};
     auto section_directions = std::basic_string<trip_direction_idx_t>{};
     auto section_lines = std::basic_string<trip_line_idx_t>{};
+    auto route_colors = std::basic_string<route_color>{};
     auto external_trip_ids = std::basic_string<merged_trips_idx_t>{};
     auto location_routes = mutable_fws_multimap<location_idx_t, route_idx_t>{};
     for (auto const& [key, sub_routes] : route_services) {
@@ -265,6 +266,7 @@ void load_timetable(loader_config const& config,
           external_trip_ids.clear();
           section_directions.clear();
           section_lines.clear();
+          route_colors.clear();
           auto prev_end = std::uint16_t{0U};
           for (auto const [i, t] : utl::enumerate(s.trips_)) {
             auto& trp = trip_data.get(t);
@@ -288,12 +290,16 @@ void load_timetable(loader_config const& config,
               external_trip_ids.push_back(merged_trip);
               section_directions.push_back(trp.headsign_);
               section_lines.push_back(line);
+              route_colors.push_back(
+                  {trp.route_->color_, trp.route_->text_color_});
             } else {
               for (auto section = 0U; section != trp.stop_seq_.size() - 1;
                    ++section) {
                 external_trip_ids.push_back(merged_trip);
                 section_directions.push_back(trp.headsign_);
                 section_lines.push_back(line);
+                route_colors.push_back(
+                    {trp.route_->color_, trp.route_->text_color_});
               }
             }
           }
@@ -309,7 +315,8 @@ void load_timetable(loader_config const& config,
               .section_providers_ = {first.route_->agency_},
               .section_directions_ = section_directions,
               .section_lines_ = section_lines,
-              .stop_seq_numbers_ = stop_seq_numbers});
+              .stop_seq_numbers_ = stop_seq_numbers,
+              .route_colors_ = route_colors});
         }
 
         tt.finish_route();

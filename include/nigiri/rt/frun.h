@@ -39,6 +39,8 @@ struct frun : public run {
     clasz get_clasz(event_type = event_type::kDep) const noexcept;
     clasz get_scheduled_clasz(event_type = event_type::kDep) const noexcept;
 
+    route_color get_route_color(event_type = event_type::kDep) const noexcept;
+
     bool in_allowed() const noexcept;
     bool out_allowed() const noexcept;
     bool is_canceled() const noexcept;
