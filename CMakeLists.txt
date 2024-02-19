@@ -103,16 +103,5 @@ add_executable(nigiri-test ${nigiri-test-files})
 target_link_libraries(nigiri-test nigiri gtest ianatzdb-res nigiri-generated)
 target_compile_options(nigiri-test PRIVATE ${nigiri-compile-options})
 
-add_library(nigiri-rust rust/src/rust.cc)
-target_include_directories(nigiri-rust PUBLIC rust/include)
-target_link_libraries(nigiri-rust nigiri)
 
-
-corrosion_import_crate(MANIFEST_PATH Cargo.toml)
-corrosion_add_cxxbridge(
-  nigiri-cxx
-  CRATE srv
-  FILES main.rs
-)
-target_link_libraries(nigiri-cxx nigiri-rust)
-corrosion_link_libraries(srv nigiri-cxx nigiri-rust)
+add_subdirectory(rust)

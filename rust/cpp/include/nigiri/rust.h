@@ -1,5 +1,5 @@
 #include "nigiri/timetable.h"
-#include "./cxx.h"
+#include "rust/cxx.h"
 
 using Timetable = nigiri::timetable;
 
