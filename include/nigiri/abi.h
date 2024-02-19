@@ -17,6 +17,14 @@ struct nigiri_transport {
 };
 typedef struct nigiri_transport nigiri_transport_t;
 
+static const uint32_t kTargetBits = 22U;
+static const uint32_t kDurationBits = 8 * sizeof(uint32_t) - kTargetBits;
+struct nigiri_footpath {
+  unsigned int target_location_idx : kTargetBits;
+  unsigned int duration : kDurationBits;
+};
+typedef struct nigiri_footpath nigiri_footpath_t;
+
 struct nigiri_location {
   const char* id;
   uint32_t id_len;
@@ -25,6 +33,8 @@ struct nigiri_location {
   double lon;
   double lat;
   uint16_t transfer_time;
+  nigiri_footpath_t* footpaths;
+  uint32_t n_footpaths;
   uint32_t parent;
 };
 typedef struct nigiri_location nigiri_location_t;
@@ -48,16 +58,48 @@ typedef struct nigiri_route nigiri_route_t;
 struct nigiri_event_change {
   uint32_t transport_idx;
   uint16_t day_idx;
-  uint32_t stop_idx;
+  uint16_t stop_idx;
   bool is_departure;
+  uint32_t location_idx;  // 0 if unset
+  int16_t in_out_allowed;  // -1 if unset
   int16_t delay;
-  bool cancelled;
 };
 typedef struct nigiri_event_change nigiri_event_change_t;
+
+struct nigiri_leg {
+  bool is_footpath;
+  uint32_t transport_idx;
+  uint16_t day_idx;
+  uint16_t from_stop_idx;
+  uint32_t from_location_idx;
+  uint16_t to_stop_idx;
+  uint32_t to_location_idx;
+  uint32_t duration;
+};
+typedef struct nigiri_leg nigiri_leg_t;
+
+struct nigiri_journey {
+  uint16_t n_legs;
+  nigiri_leg_t* legs;
+  int64_t start_time;
+  int64_t dest_time;
+};
+typedef struct nigiri_journey nigiri_journey_t;
+
+struct nigiri_pareto_set {
+  uint16_t n_journeys;
+  nigiri_journey_t* journeys;
+};
+typedef struct nigiri_pareto_set nigiri_pareto_set_t;
 
 nigiri_timetable_t* nigiri_load(const char* path,
                                 int64_t from_ts,
                                 int64_t to_ts);
+nigiri_timetable_t* nigiri_load_linking_stops(const char* path,
+                                              int64_t from_ts,
+                                              int64_t to_ts,
+                                              unsigned link_stop_distance);
+
 void nigiri_destroy(const nigiri_timetable_t* t);
 int64_t nigiri_get_start_day_ts(const nigiri_timetable_t* t);
 uint16_t nigiri_get_day_count(const nigiri_timetable_t* t);
@@ -73,6 +115,8 @@ void nigiri_destroy_route(const nigiri_route_t* route);
 uint32_t nigiri_get_location_count(const nigiri_timetable_t* t);
 nigiri_location_t* nigiri_get_location(const nigiri_timetable_t* t,
                                        uint32_t idx);
+nigiri_location_t* nigiri_get_location_with_footpaths(
+    const nigiri_timetable_t* t, uint32_t idx, bool incoming_footpaths);
 void nigiri_destroy_location(const nigiri_location_t* location);
 
 void nigiri_update_with_rt(const nigiri_timetable_t* t,
@@ -80,6 +124,14 @@ void nigiri_update_with_rt(const nigiri_timetable_t* t,
                            void (*callback)(nigiri_event_change_t,
                                             void* context),
                            void* context);
+
+nigiri_pareto_set_t* nigiri_get_journeys(const nigiri_timetable_t* t,
+                                         uint32_t start_location_idx,
+                                         uint32_t destination_location_idx,
+                                         int64_t time,
+                                         bool backward_search);
+
+void nigiri_destroy_journeys(const nigiri_pareto_set_t* journeys);
 
 #ifdef __cplusplus
 }

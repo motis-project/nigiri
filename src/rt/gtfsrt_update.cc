@@ -63,6 +63,20 @@ std::string remove_nl(std::string s) {
   return s;
 }
 
+void dispatch_event_change(rt_timetable& rtt,
+                           run const& r,
+                           stop_idx_t const stop_idx,
+                           event_type const ev_type,
+                           location_idx_t const location_idx,
+                           int16_t const in_out_allowed,
+                           duration_t const delay) {
+  if ((ev_type == event_type::kArr && stop_idx != r.stop_range_.from_) ||
+      (ev_type == event_type::kDep && stop_idx != r.stop_range_.to_ - 1)) {
+    rtt.dispatch_event_change(r.t_, stop_idx, ev_type, location_idx,
+                              in_out_allowed, delay);
+  }
+}
+
 delay_propagation update_delay(timetable const& tt,
                                rt_timetable& rtt,
                                run const& r,
@@ -74,7 +88,8 @@ delay_propagation update_delay(timetable const& tt,
   rtt.update_time(r.rt_, stop_idx, ev_type,
                   min.has_value() ? std::max(*min, static_time + delay)
                                   : static_time + delay);
-  rtt.dispatch_event_change(r.t_, stop_idx, ev_type, delay, false);
+  dispatch_event_change(rtt, r, stop_idx, ev_type, location_idx_t{0}, -1,
+                        delay);
   return {rtt.unix_event_time(r.rt_, stop_idx, ev_type), delay};
 }
 
@@ -98,8 +113,8 @@ delay_propagation update_event(timetable const& tt,
     rtt.update_time(
         r.rt_, stop_idx, ev_type,
         pred_time.has_value() ? std::max(*pred_time, new_time) : new_time);
-    rtt.dispatch_event_change(r.t_, stop_idx, ev_type, new_time - static_time,
-                              false);
+    dispatch_event_change(rtt, r, stop_idx, ev_type, location_idx_t{0}, -1,
+                          new_time - static_time);
     return {new_time, new_time - static_time};
   }
 }
@@ -113,6 +128,13 @@ void cancel_run(timetable const&, rt_timetable& rtt, run& r) {
     rtt.bitfields_.emplace_back(bf).set(to_idx(r.t_.day_), false);
     rtt.transport_traffic_days_[r.t_.t_idx_] =
         bitfield_idx_t{rtt.bitfields_.size() - 1U};
+
+    for (auto i = r.stop_range_.from_; i != r.stop_range_.to_; ++i) {
+      dispatch_event_change(rtt, r, i, event_type::kArr, location_idx_t{0}, 0,
+                            duration_t{0});
+      dispatch_event_change(rtt, r, i, event_type::kDep, location_idx_t{0}, 0,
+                            duration_t{0});
+    }
   }
 }
 
@@ -163,6 +185,10 @@ void update_run(
         // Cancel skipped stops (in_allowed = out_allowed = false).
         stp =
             stop{stop{stp}.location_idx(), false, false, false, false}.value();
+        dispatch_event_change(rtt, r, stop_idx, event_type::kArr,
+                              location_idx_t{0}, 0, duration_t{0});
+        dispatch_event_change(rtt, r, stop_idx, event_type::kDep,
+                              location_idx_t{0}, 0, duration_t{0});
       } else if (upd_it->stop_time_properties().has_assigned_stop_id() ||
                  (upd_it->has_stop_id() &&
                   upd_it->stop_id() !=
@@ -185,13 +211,26 @@ void update_run(
           if (utl::find(transports, r.rt_) == end(transports)) {
             transports.push_back(r.rt_);
           }
+          dispatch_event_change(rtt, r, stop_idx, event_type::kArr,
+                                l_it->second, -1, duration_t{0});
+          dispatch_event_change(rtt, r, stop_idx, event_type::kDep,
+                                l_it->second, -1, duration_t{0});
         } else {
           log(log_lvl::error, "gtfsrt.stop_assignment",
               "stop assignment: src={}, stop_id=\"{}\" not found", src, new_id);
         }
       } else {
         // Just reset in case a track change / skipped stop got reversed.
-        stp = location_seq[stop_idx];
+        if (location_seq[stop_idx] != stp) {
+          stp = location_seq[stop_idx];
+          auto reset_stop = stop{stp};
+          dispatch_event_change(
+              rtt, r, stop_idx, event_type::kArr, reset_stop.location_idx(),
+              reset_stop.out_allowed() ? 1 : 0, duration_t{0});
+          dispatch_event_change(rtt, r, stop_idx, event_type::kDep,
+                                reset_stop.location_idx(),
+                                reset_stop.in_allowed() ? 1 : 0, duration_t{0});
+        }
       }
     }
 
