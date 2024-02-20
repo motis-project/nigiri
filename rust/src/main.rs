@@ -1,8 +1,17 @@
 use anyhow::Result;
+use axum::extract::Query;
+use axum::routing::get;
+use axum::{debug_handler, extract::State, Router};
 use chrono::NaiveDate;
 use chrono::Utc;
 use clap::{Args, Parser, Subcommand};
-use std::{net::IpAddr, path::PathBuf};
+use cxx::UniquePtr;
+use hyper::StatusCode;
+use serde::Deserialize;
+use std::collections::HashMap;
+use std::net::IpAddr;
+use std::net::Ipv4Addr;
+use std::sync::Arc;
 
 #[cxx::bridge]
 mod nigiri {
@@ -11,12 +20,19 @@ mod nigiri {
         default_tz: &'a str,
     }
 
+    struct RoutingQuery {
+        // start interval for range query if both values are != i64::MIN_VALUE
+        // start timestamp for earliest arrival / latest departure query if end_time == i64::MIN_VALUE
+        start_time: i64, // unixtime in seconds
+        end_time: i64,   // unixtime in seconds, MIN_VALUE = earliest arrival query
+    }
+
     unsafe extern "C++" {
         include!("nigiri/rust.h");
 
         type Timetable;
 
-        fn load_timetable(
+        fn parse_timetables(
             paths: &Vec<String>,
             config: &LoaderConfig,
             start_date: &str,
@@ -27,8 +43,13 @@ mod nigiri {
             tt: &Timetable,
             path: &str,
         ) -> Result<()>;
+
+        fn load_timetable(path: &str) -> Result<UniquePtr<Timetable>>;
     }
 }
+
+unsafe impl Send for nigiri::Timetable {}
+unsafe impl Sync for nigiri::Timetable {}
 
 #[derive(Parser)]
 struct Cli {
@@ -71,7 +92,7 @@ impl PrepareArgs {
         }?;
         let start_date = format!("{}", NaiveDate::format(&start_date, "%Y-%m-%d"));
 
-        let tt = nigiri::load_timetable(
+        let tt = nigiri::parse_timetables(
             &self.input,
             &nigiri::LoaderConfig {
                 link_stop_distance: self.link_stop_distance,
@@ -88,28 +109,71 @@ impl PrepareArgs {
 
 #[derive(Args)]
 struct ServeArgs {
-    timetable: PathBuf,
+    #[clap(default_value_t = String::from("tt.bin"))]
+    timetable: String,
 
-    #[clap(long, short = 'h')]
+    #[clap(long, short = 'h', default_value_t = IpAddr::V4(Ipv4Addr::new(0, 0, 0, 0)))]
     host: IpAddr,
 
-    #[clap(long, short = 'p')]
+    #[clap(long, short = 'p', default_value_t = 8080)]
     port: u16,
 }
 
+#[derive(Clone)]
+struct Tags {
+    tag_to_idx: HashMap<String, u32>,
+    idx_to_tag: Vec<String>,
+}
+
+#[derive(Clone)]
+struct TimetableInfo {
+    tt: Arc<UniquePtr<nigiri::Timetable>>,
+    tags: Tags,
+}
+
+#[derive(Deserialize)]
+struct RoutingQuery {
+    from: String,
+    to: String,
+}
+
+#[debug_handler]
+async fn route(
+    query: Query<RoutingQuery>,
+    State(_tt_info): State<TimetableInfo>,
+) -> (StatusCode, String) {
+    (StatusCode::OK, "<h1>It works!</h1>".to_string())
+}
+
 impl ServeArgs {
-    fn exec(&self) -> Result<()> {
-        println!("Hello, world!");
+    async fn exec(&self) -> Result<()> {
+        let tt_info = TimetableInfo {
+            tt: Arc::new(nigiri::load_timetable(&self.timetable)?),
+            tags: Tags {
+                tag_to_idx: HashMap::new(),
+                idx_to_tag: Vec::new(),
+            },
+        };
+        let app = Router::new()
+            .route("/v1/route", get(route))
+            .with_state(tt_info);
+
+        let listener = tokio::net::TcpListener::bind(format!("{}:{}", self.host, self.port))
+            .await
+            .unwrap();
+        axum::serve(listener, app).await.unwrap();
+
         Ok(())
     }
 }
 
-fn main() -> Result<()> {
+#[tokio::main]
+async fn main() -> Result<()> {
     let cli = Cli::parse();
 
     match cli.command {
         Command::Prepare(p) => p.exec(),
-        Command::Serve(r) => r.exec(),
+        Command::Serve(r) => r.exec().await,
     }?;
 
     Ok(())

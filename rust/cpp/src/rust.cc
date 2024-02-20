@@ -1,5 +1,7 @@
 #include "nigiri/rust.h"
 
+#include "cista/memory_holder.h"
+
 #include "utl/progress_tracker.h"
 #include "utl/to_vec.h"
 
@@ -23,10 +25,11 @@ date::sys_days parse_date(std::string_view s) {
   return sys_days;
 }
 
-std::unique_ptr<timetable> load_timetable(rust::Vec<rust::String> const& paths,
-                                          LoaderConfig const& config,
-                                          rust::Str start_date,
-                                          std::uint32_t const num_days) {
+std::unique_ptr<Timetable> parse_timetables(
+    rust::Vec<rust::String> const& paths,
+    LoaderConfig const& config,
+    rust::Str start_date,
+    std::uint32_t const num_days) {
   auto const progress_tracker = utl::activate_progress_tracker("nigiri");
   auto const silencer = utl::global_progress_bars{true};
 
@@ -36,9 +39,16 @@ std::unique_ptr<timetable> load_timetable(rust::Vec<rust::String> const& paths,
            loader_config{.link_stop_distance_ = config.link_stop_distance,
                          .default_tz_ = to_sv(config.default_tz)},
            interval{start, start + std::chrono::days{num_days + 1}});
-  return std::make_unique<timetable>(tt);
+  return std::make_unique<Timetable>(
+      cista::wrapped{cista::raw::make_unique<timetable>(tt)});
 }
 
-void dump_timetable(timetable const& tt, rust::Str path) {
-  tt.write(fs::path{to_sv(path)});
+void dump_timetable(Timetable const& tt, rust::Str path) {
+  tt->write(fs::path{to_sv(path)});
+}
+
+std::unique_ptr<Timetable> load_timetable(rust::Str path) {
+  auto const c_path = std::string{to_sv(path)};
+  return std::make_unique<Timetable>(timetable::read(
+      cista::memory_holder{cista::file{c_path.c_str(), "r"}.content()}));
 }
