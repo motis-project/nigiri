@@ -207,19 +207,19 @@ using duration_t = i16_minutes;
 using unixtime_t = std::chrono::sys_time<i32_minutes>;
 using local_time = date::local_time<i32_minutes>;
 
-constexpr u8_minutes operator"" _i8_minutes(unsigned long long n) {
+constexpr u8_minutes operator""_i8_minutes(unsigned long long n) {
   return duration_t{n};
 }
 
-constexpr duration_t operator"" _minutes(unsigned long long n) {
+constexpr duration_t operator""_minutes(unsigned long long n) {
   return duration_t{n};
 }
 
-constexpr duration_t operator"" _hours(unsigned long long n) {
+constexpr duration_t operator""_hours(unsigned long long n) {
   return duration_t{n * 60U};
 }
 
-constexpr duration_t operator"" _days(unsigned long long n) {
+constexpr duration_t operator""_days(unsigned long long n) {
   return duration_t{n * 1440U};
 }
 
