@@ -13,22 +13,88 @@ use std::net::IpAddr;
 use std::net::Ipv4Addr;
 use std::sync::Arc;
 
-#[cxx::bridge]
+#[cxx::bridge(namespace = "nigiri::rust")]
 mod nigiri {
     struct LoaderConfig<'a> {
         link_stop_distance: u32,
         default_tz: &'a str,
     }
 
-    struct RoutingQuery {
-        // start interval for range query if both values are != i64::MIN_VALUE
-        // start timestamp for earliest arrival / latest departure query if end_time == i64::MIN_VALUE
+    enum LocationMatchMode {
+        Exact,
+        OnlyChildren,
+        Equivalent,
+        Intermodal,
+    }
+
+    enum Direction {
+        Forward,
+        Backward,
+    }
+
+    struct Offset {
+        target: u32,
+        duration: i16,
+        idx: i32,
+    }
+
+    struct Query {
+        search_direction: Direction,
         start_time: i64, // unixtime in seconds
-        end_time: i64,   // unixtime in seconds, MIN_VALUE = earliest arrival query
+        end_time: i64,   // unixtime in seconds, i64::MIN = earliest arrival query
+        start_match_mode: LocationMatchMode,
+        dest_match_mode: LocationMatchMode,
+        use_start_footpaths: bool,
+        start: Vec<Offset>,
+        dest: Vec<Offset>,
+        max_transfers: u8,
+        min_connection_count: u32,
+        extend_interval_earlier: bool,
+        extend_interval_later: bool,
+        profile_idx: u8,
+    }
+
+    struct Run {
+        transport_idx: u32,
+        rt_transport_idx: u32,
+        from: u16,
+        to: u16,
+    }
+
+    enum LegType {
+        RunEnterExit,
+        Footpath,
+        Offset,
+    }
+
+    struct Leg {
+        from: u32,
+        to: u32,
+        dep_time: i64,
+        arr_time: i64,
+        t: LegType,
+        run: Run,
+        enter: u16,
+        exit: u16,
+        offset: Offset,
+    }
+
+    struct Journey {
+        legs: Vec<Leg>,
+    }
+
+    struct Station {
+        id: String,
+        name: String,
+    }
+
+    struct Transport<'a> {
+        //
+        id: str,
     }
 
     unsafe extern "C++" {
-        include!("nigiri/rust.h");
+        include!("nigiri/rust/timetable.h");
 
         type Timetable;
 
@@ -45,10 +111,18 @@ mod nigiri {
         ) -> Result<()>;
 
         fn load_timetable(path: &str) -> Result<UniquePtr<Timetable>>;
+
+        fn stations(tt: &Timetable) -> Vec<Station>;
+
+        fn<'a> transport(
+            tt: &'a Timetable,
+            transport_idx: u32,
+        ) -> Transport<'a>;
     }
 }
 
 unsafe impl Send for nigiri::Timetable {}
+
 unsafe impl Sync for nigiri::Timetable {}
 
 #[derive(Parser)]

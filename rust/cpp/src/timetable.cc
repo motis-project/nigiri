@@ -1,19 +1,27 @@
-#include "nigiri/rust.h"
+#include "nigiri/rust/timetable.h"
 
 #include "cista/memory_holder.h"
+
+#include "rust/cxx.h"
 
 #include "utl/progress_tracker.h"
 #include "utl/to_vec.h"
 
 #include "nigiri/loader/load.h"
+#include "nigiri/loader/loader_interface.h"
+#include "nigiri/rust/timetable.h"
 #include "nigiri/timetable.h"
+
+#include "nigiri-cxx/main.h"
 
 namespace fs = std::filesystem;
 using namespace nigiri;
 using namespace nigiri::loader;
 
-std::string_view to_sv(rust::String const& s) { return {s.data(), s.size()}; }
-std::string_view to_sv(rust::Str const& s) { return {s.data(), s.size()}; }
+namespace {
+
+std::string_view to_sv(::rust::String const& s) { return {s.data(), s.size()}; }
+std::string_view to_sv(::rust::Str const& s) { return {s.data(), s.size()}; }
 
 date::sys_days parse_date(std::string_view s) {
   auto sys_days = date::sys_days{};
@@ -25,10 +33,14 @@ date::sys_days parse_date(std::string_view s) {
   return sys_days;
 }
 
+}  // namespace
+
+namespace nigiri::rust {
+
 std::unique_ptr<Timetable> parse_timetables(
-    rust::Vec<rust::String> const& paths,
+    ::rust::Vec<::rust::String> const& paths,
     LoaderConfig const& config,
-    rust::Str start_date,
+    ::rust::Str start_date,
     std::uint32_t const num_days) {
   auto const progress_tracker = utl::activate_progress_tracker("nigiri");
   auto const silencer = utl::global_progress_bars{true};
@@ -43,12 +55,14 @@ std::unique_ptr<Timetable> parse_timetables(
       cista::wrapped{cista::raw::make_unique<timetable>(tt)});
 }
 
-void dump_timetable(Timetable const& tt, rust::Str path) {
+void dump_timetable(Timetable const& tt, ::rust::Str path) {
   tt->write(fs::path{to_sv(path)});
 }
 
-std::unique_ptr<Timetable> load_timetable(rust::Str path) {
+std::unique_ptr<Timetable> load_timetable(::rust::Str path) {
   auto const c_path = std::string{to_sv(path)};
   return std::make_unique<Timetable>(timetable::read(
       cista::memory_holder{cista::file{c_path.c_str(), "r"}.content()}));
 }
+
+}  // namespace nigiri::rust
