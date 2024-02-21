@@ -7,6 +7,8 @@
 #include <ostream>
 #include <type_traits>
 
+#include "fmt/ostream.h"
+
 #include "cista/strong.h"
 
 namespace nigiri {
@@ -112,3 +114,6 @@ template <typename T, typename T1, typename = std::common_type_t<T1, T>>
 interval(T, T1) -> interval<std::common_type_t<T, T1>>;
 
 }  // namespace nigiri
+
+template <typename T>
+struct fmt::formatter<nigiri::interval<T>> : ostream_formatter {};

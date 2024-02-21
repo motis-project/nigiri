@@ -336,8 +336,7 @@ void read_frequencies(trip_data& trips, std::string_view file_content) {
            auto const trip_it = trips.trips_.find(t);
            if (trip_it == end(trips.trips_)) {
              log(log_lvl::error, "loader.gtfs.frequencies",
-                 "frequencies.txt:{}: skipping frequency (trip \"{}\" not "
-                 "found)",
+                 "frequencies.txt: skipping frequency (trip \"{}\" not found)",
                  t);
              return;
            }
@@ -346,8 +345,7 @@ void read_frequencies(trip_data& trips, std::string_view file_content) {
            auto const headway_secs = parse<int>(headway_secs_str, -1);
            if (headway_secs == -1) {
              log(log_lvl::error, "loader.gtfs.frequencies",
-                 "frequencies.txt:{}: skipping frequency (invalid headway secs "
-                 "\"{}\")",
+                 R"(frequencies.txt: skipping frequency (invalid headway secs "{}"))",
                  headway_secs_str.view());
              return;
            }

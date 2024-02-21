@@ -10,7 +10,7 @@ namespace nigiri::routing {
 constexpr auto const kTracing = true;
 
 template <typename... Args>
-void trace(char const* fmt_str, Args... args) {
+void trace(fmt::format_string<Args...> fmt_str, Args... args) {
   if constexpr (kTracing) {
     fmt::print(std::cout, fmt_str, std::forward<Args&&>(args)...);
   }

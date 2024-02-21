@@ -11,7 +11,11 @@
 
 #include "utl/enumerate.h"
 #include "utl/equal_ranges_linear.h"
+#include "utl/erase_duplicates.h"
+#include "utl/erase_if.h"
+#include "utl/pairwise.h"
 #include "utl/parallel_for.h"
+#include "utl/progress_tracker.h"
 #include "utl/verify.h"
 
 #include "nigiri/loader/floyd_warshall.h"
@@ -19,10 +23,15 @@
 #include "nigiri/logging.h"
 #include "nigiri/rt/frun.h"
 #include "nigiri/types.h"
-#include "utl/erase_duplicates.h"
-#include "utl/erase_if.h"
-#include "utl/pairwise.h"
-#include "utl/progress_tracker.h"
+template <typename T,
+          template <typename>
+          typename Ptr,
+          bool IndexPointers,
+          typename TemplateSizeType,
+          class Allocator>
+struct fmt::formatter<
+    cista::basic_vector<T, Ptr, IndexPointers, TemplateSizeType, Allocator>>
+    : ostream_formatter {};
 
 // #define NIGIRI_BUILD_FOOTPATHS_DEBUG
 #if defined(NIGIRI_BUILD_FOOTPATHS_DEBUG)
@@ -378,8 +387,7 @@ next:
 
     if (!fgraph[idx_a].empty()) {
       utl_verify(fgraph[idx_a].size() == 1,
-                 "invalid size (a): idx_a={}, size={}, data=[{}], "
-                 "idx_b={}, size = {} ",
+                 "invalid size (a): idx_a={}, size={}, data=[{}], idx_b={}",
                  idx_a, fgraph[idx_a].size(), fgraph[idx_a], idx_b,
                  fgraph[idx_b].size(), fgraph[idx_b]);
 

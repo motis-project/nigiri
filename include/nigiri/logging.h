@@ -43,7 +43,7 @@ inline std::string now() {
 template <typename... Args>
 void log(log_lvl const lvl,
          char const* ctx,
-         char const* fmt_str,
+         fmt::format_string<Args...> fmt_str,
          Args&&... args) {
   if (lvl >= ::nigiri::s_verbosity) {
     fmt::print(
