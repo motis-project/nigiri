@@ -4,6 +4,8 @@
 #include <cinttypes>
 #include <variant>
 
+#include "fmt/ostream.h"
+
 #include "date/date.h"
 #include "date/tz.h"
 
@@ -323,6 +325,15 @@ inline std::ostream& operator<<(std::ostream& out,
 }
 
 }  // namespace std::chrono
+
+template <>
+struct fmt::formatter<nigiri::duration_t> : ostream_formatter {};
+
+template <>
+struct fmt::formatter<nigiri::unixtime_t> : ostream_formatter {};
+
+template <>
+struct fmt::formatter<nigiri::debug> : ostream_formatter {};
 
 #include <iostream>
 

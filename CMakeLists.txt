@@ -59,6 +59,9 @@ if ("${CMAKE_CXX_COMPILER_ID}" STREQUAL "Clang")
         -Wno-undefined-func-template
         -Wno-unsafe-buffer-usage
         -Wno-c++20-compat
+        -Wno-reserved-macro-identifier
+        -Wno-documentation-unknown-command
+        -Wno-duplicate-enum
         -Werror)
 elseif("${CMAKE_CXX_COMPILER_ID}" STREQUAL "AppleClang")
   set(nigiri-compile-options -Wall -Wextra -Werror)

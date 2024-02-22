@@ -92,3 +92,6 @@ struct service {
 };
 
 }  // namespace nigiri::loader::hrd
+
+template <>
+struct fmt::formatter<nigiri::loader::hrd::parser_info> : ostream_formatter {};

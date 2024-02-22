@@ -1,5 +1,7 @@
 #pragma once
 
+#include "fmt/ostream.h"
+
 #include "utl/verify.h"
 
 #include "cista/reflection/printable.h"
@@ -66,3 +68,6 @@ template <typename Ctx>
 inline void deserialize(Ctx const&, footpath*) {}
 
 }  // namespace nigiri
+
+template <>
+struct fmt::formatter<nigiri::footpath> : ostream_formatter {};

@@ -152,7 +152,7 @@ void parse_footpaths(config const& c,
       auto const duration_int =
           parse<int>(line.substr(c.meta_.footpaths_.duration_));
       utl::verify(duration_int <= std::numeric_limits<u8_minutes::rep>::max(),
-                  "footpath duration {} > {}",
+                  "footpath duration {} > {}", duration_int,
                   std::numeric_limits<u8_minutes::rep>::max());
       add_footpath(from, to.id_, u8_minutes{duration_int});
 

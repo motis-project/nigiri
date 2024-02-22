@@ -3,6 +3,8 @@
 #include <iosfwd>
 #include <span>
 
+#include "fmt/ostream.h"
+
 #include "geo/latlng.h"
 
 #include "nigiri/common/it_range.h"
@@ -37,3 +39,6 @@ struct location {
 };
 
 }  // namespace nigiri
+
+template <>
+struct fmt::formatter<nigiri::location> : ostream_formatter {};
