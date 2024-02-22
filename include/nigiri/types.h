@@ -335,15 +335,6 @@ struct fmt::formatter<nigiri::unixtime_t> : ostream_formatter {};
 template <>
 struct fmt::formatter<nigiri::debug> : ostream_formatter {};
 
-template <typename T, typename Tag>
-struct fmt::formatter<cista::strong<T, Tag>> : ostream_formatter {};
-
-template <typename Ptr>
-struct fmt::formatter<cista::basic_string<Ptr>> : ostream_formatter {};
-
-template <std::size_t Size>
-struct fmt::formatter<nigiri::bitset<Size>> : ostream_formatter {};
-
 #include <iostream>
 
 namespace nigiri {
