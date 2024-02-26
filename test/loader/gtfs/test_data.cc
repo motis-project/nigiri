@@ -136,6 +136,7 @@ constexpr auto const berlin_routes_file_content =
 810,N04---,,"S+U Lichtenberg Bhf (Berlin) -- Senftenberg, Bahnhof",,100,http://www.vbb.de,,
 811,N04---,,"S+U Lichtenberg Bhf (Berlin) -- Altdöbern, Bahnhof",,100,http://www.vbb.de,,
 812,N04---,RB14,,,100,http://www.vbb.de,B10093,FFFFFF
+F11,F04---,,,,1203,,,
 )";
 
 constexpr auto const berlin_trips_file_content =

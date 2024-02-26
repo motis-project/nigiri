@@ -39,7 +39,7 @@ TEST(gtfs, read_routes_berlin_data) {
       read_routes(tt, timezones, agencies,
                   berlin_files().get_file(kRoutesFile).data(), "CET");
 
-  EXPECT_EQ(8, routes.size());
+  EXPECT_EQ(9, routes.size());
 
   ASSERT_NE(end(routes), routes.find("1"));
   EXPECT_EQ("ANG---", tt.providers_[routes.at("1")->agency_].short_name_);
@@ -62,4 +62,7 @@ TEST(gtfs, read_routes_berlin_data) {
   EXPECT_EQ(clasz::kRegional, routes.at("812")->clasz_);
   EXPECT_EQ(color_t{0xFFB10093}, routes.at("812")->color_);
   EXPECT_EQ(color_t{0xFFFFFFFF}, routes.at("812")->text_color_);
+
+  ASSERT_NE(end(routes), routes.find("F11"));
+  EXPECT_EQ(clasz::kShip, routes.at("F11")->clasz_);
 }
