@@ -55,7 +55,7 @@ struct search {
   static constexpr auto const kFwd = (SearchDir == direction::kForward);
   static constexpr auto const kBwd = (SearchDir == direction::kBackward);
 
-  Algo init(algo_state_t& algo_state) {
+  Algo init(clasz_mask_t const allowed_claszes, algo_state_t& algo_state) {
     stats_.fastest_direct_ =
         static_cast<std::uint64_t>(fastest_direct_.count());
 
@@ -102,7 +102,8 @@ struct search {
         state_.travel_time_lower_bound_,
         day_idx_t{std::chrono::duration_cast<date::days>(
                       search_interval_.from_ - tt_.internal_interval().from_)
-                      .count()}};
+                      .count()},
+        allowed_claszes};
   }
 
   search(timetable const& tt,
@@ -125,7 +126,7 @@ struct search {
                 }},
             q_.start_time_)},
         fastest_direct_{get_fastest_direct(tt_, q_, SearchDir)},
-        algo_{init(algo_state)},
+        algo_{init(q_.allowed_claszes_, algo_state)},
         timeout_(timeout) {}
 
   routing_result<algo_stats_t> execute() {

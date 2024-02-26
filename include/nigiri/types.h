@@ -326,15 +326,6 @@ inline std::ostream& operator<<(std::ostream& out,
 
 }  // namespace std::chrono
 
-template <>
-struct fmt::formatter<nigiri::duration_t> : ostream_formatter {};
-
-template <>
-struct fmt::formatter<nigiri::unixtime_t> : ostream_formatter {};
-
-template <>
-struct fmt::formatter<nigiri::debug> : ostream_formatter {};
-
 #include <iostream>
 
 namespace nigiri {
@@ -431,3 +422,15 @@ inline local_time to_local_time(timezone const& tz, unixtime_t const t) {
 }
 
 }  // namespace nigiri
+
+template <>
+struct fmt::formatter<nigiri::duration_t> : ostream_formatter {};
+
+template <>
+struct fmt::formatter<nigiri::unixtime_t> : ostream_formatter {};
+
+template <>
+struct fmt::formatter<nigiri::debug> : ostream_formatter {};
+
+template <>
+struct fmt::formatter<nigiri::delta> : ostream_formatter {};

@@ -1,11 +1,13 @@
 #pragma once
 
 #include <cinttypes>
+#include <limits>
 #include <variant>
 #include <vector>
 
 #include "nigiri/common/interval.h"
 #include "nigiri/footpath.h"
+#include "nigiri/routing/clasz_mask.h"
 #include "nigiri/routing/limits.h"
 #include "nigiri/routing/location_match_mode.h"
 #include "nigiri/types.h"
@@ -45,6 +47,7 @@ struct query {
   bool extend_interval_earlier_{false};
   bool extend_interval_later_{false};
   profile_idx_t prf_idx_{0};
+  clasz_mask_t allowed_claszes_{all_clasz_allowed()};
 };
 
 }  // namespace nigiri::routing

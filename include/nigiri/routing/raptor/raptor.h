@@ -55,7 +55,8 @@ struct raptor {
          std::vector<bool>& is_dest,
          std::vector<std::uint16_t>& dist_to_dest,
          std::vector<std::uint16_t>& lb,
-         day_idx_t const base)
+         day_idx_t const base,
+         clasz_mask_t const allowed_claszes)
       : tt_{tt},
         rtt_{rtt},
         state_{state},
@@ -66,7 +67,8 @@ struct raptor {
         n_days_{tt_.internal_interval_days().size().count()},
         n_locations_{tt_.n_locations()},
         n_routes_{tt.n_routes()},
-        n_rt_transports_{Rt ? rtt->n_rt_transports() : 0U} {
+        n_rt_transports_{Rt ? rtt->n_rt_transports() : 0U},
+        allowed_claszes_{allowed_claszes} {
     state_.resize(n_locations_, n_routes_, n_rt_transports_);
     utl::fill(time_at_dest_, kInvalid);
     state_.round_times_.reset(kInvalid);
@@ -144,22 +146,13 @@ struct raptor {
       std::swap(state_.prev_station_mark_, state_.station_mark_);
       utl::fill(state_.station_mark_, false);
 
-      any_marked = false;
-      for (auto r_id = 0U; r_id != n_routes_; ++r_id) {
-        if (state_.route_mark_[r_id]) {
-          ++stats_.n_routes_visited_;
-          trace("┊ ├k={} updating route {}\n", k, r_id);
-          any_marked |= update_route(k, route_idx_t{r_id});
-        }
-      }
+      any_marked = (allowed_claszes_ == all_clasz_allowed())
+                       ? loop_routes<false>(k)
+                       : loop_routes<true>(k);
       if constexpr (Rt) {
-        for (auto rt_t = 0U; rt_t != n_rt_transports_; ++rt_t) {
-          if (state_.rt_transport_mark_[rt_t]) {
-            ++stats_.n_routes_visited_;
-            trace("┊ ├k={} updating rt transport {}\n", k, rt_t);
-            any_marked |= update_rt_transport(k, rt_transport_idx_t{rt_t});
-          }
-        }
+        any_marked |= (allowed_claszes_ == all_clasz_allowed())
+                          ? loop_rt_routes<false>(k)
+                          : loop_rt_routes<true>(k);
       }
 
       if (!any_marked) {
@@ -214,6 +207,49 @@ struct raptor {
 private:
   date::sys_days base() const {
     return tt_.internal_interval_days().from_ + as_int(base_) * date::days{1};
+  }
+
+  template <bool WithClaszFilter>
+  bool loop_routes(unsigned const k) {
+    auto any_marked = false;
+    for (auto r_idx = 0U; r_idx != n_routes_; ++r_idx) {
+      auto const r = route_idx_t{r_idx};
+
+      if (state_.route_mark_[r_idx]) {
+        if constexpr (WithClaszFilter) {
+          if (!is_allowed(allowed_claszes_, tt_.route_clasz_[r])) {
+            continue;
+          }
+        }
+
+        ++stats_.n_routes_visited_;
+        trace("┊ ├k={} updating route {}\n", k, r);
+        any_marked |= update_route(k, r);
+      }
+    }
+    return any_marked;
+  }
+
+  template <bool WithClaszFilter>
+  bool loop_rt_routes(unsigned const k) {
+    auto any_marked = false;
+    for (auto rt_t_idx = 0U; rt_t_idx != n_rt_transports_; ++rt_t_idx) {
+      if (state_.rt_transport_mark_[rt_t_idx]) {
+        auto const rt_t = rt_transport_idx_t{rt_t_idx};
+
+        if constexpr (WithClaszFilter) {
+          if (!is_allowed(allowed_claszes_,
+                          rtt_->rt_transport_section_clasz_[rt_t][0])) {
+            continue;
+          }
+        }
+
+        ++stats_.n_routes_visited_;
+        trace("┊ ├k={} updating rt transport {}\n", k, rt_t);
+        any_marked |= update_rt_transport(k, rt_t);
+      }
+    }
+    return any_marked;
   }
 
   void update_transfers(unsigned const k) {
@@ -687,6 +723,7 @@ private:
   int n_days_;
   raptor_stats stats_;
   std::uint32_t n_locations_, n_routes_, n_rt_transports_;
+  clasz_mask_t allowed_claszes_;
 };
 
 }  // namespace nigiri::routing
