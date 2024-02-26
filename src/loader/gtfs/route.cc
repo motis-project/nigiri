@@ -114,9 +114,21 @@ clasz to_clasz(int const route_type) {
     case 1506 /* Private Hire Service Vehicle */:
     case 1507 /* All Taxi Services */:
     case 1700 /* Miscellaneous Service */:
-    case 1702 /* Horse-drawn Carriage */:
-    default: return clasz::kOther;
+    case 1702 /* Horse-drawn Carriage */: return clasz::kOther;
   }
+
+  // types not in the above table but within category type ranges
+  if (route_type >= 1000 && route_type < 1100) {
+    return clasz::kShip;
+  }
+  if (route_type >= 1100 && route_type < 1200) {
+    return clasz::kAir;
+  }
+  if (route_type >= 1200 && route_type < 1300) {
+    return clasz::kShip;
+  }
+
+  return clasz::kOther;
 }
 
 color_t to_color(std::string_view const color_str) {
