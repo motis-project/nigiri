@@ -163,12 +163,16 @@ struct timetable {
   route_idx_t register_route(
       std::basic_string<stop::value_type> const& stop_seq,
       std::basic_string<clasz> const& clasz_sections) {
+    assert(!stop_seq.empty() && stop_seq.size() > 1U);
+    assert(!clasz_sections.empty());
+
     auto const idx = route_location_seq_.size();
     route_transport_ranges_.emplace_back(
         transport_idx_t{transport_traffic_days_.size()},
         transport_idx_t::invalid());
     route_location_seq_.emplace_back(stop_seq);
     route_section_clasz_.emplace_back(clasz_sections);
+    route_clasz_.emplace_back(clasz_sections[0]);
     return route_idx_t{idx};
   }
 
@@ -375,6 +379,9 @@ struct timetable {
 
   // Route -> list of stops
   vecvec<route_idx_t, stop::value_type> route_location_seq_;
+
+  // Route -> clasz
+  vector_map<route_idx_t, clasz> route_clasz_;
 
   // Route -> clasz per section
   vecvec<route_idx_t, clasz> route_section_clasz_;

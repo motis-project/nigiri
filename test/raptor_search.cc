@@ -57,7 +57,8 @@ pareto_set<routing::journey> raptor_search(timetable const& tt,
                                            std::string_view from,
                                            std::string_view to,
                                            routing::start_time_t time,
-                                           direction const search_dir) {
+                                           direction const search_dir,
+                                           routing::clasz_mask_t const mask) {
   auto const src = source_idx_t{0};
   auto q = routing::query{
       .start_time_ = time,
@@ -65,7 +66,8 @@ pareto_set<routing::journey> raptor_search(timetable const& tt,
                   0U}},
       .destination_ = {{tt.locations_.location_id_to_idx_.at({to, src}),
                         0_minutes, 0U}},
-      .prf_idx_ = 0};
+      .prf_idx_ = 0,
+      .allowed_claszes_ = mask};
   return raptor_search(tt, rtt, std::move(q), search_dir);
 }
 
@@ -74,9 +76,10 @@ pareto_set<routing::journey> raptor_search(timetable const& tt,
                                            std::string_view from,
                                            std::string_view to,
                                            std::string_view time,
-                                           direction const search_dir) {
+                                           direction const search_dir,
+                                           routing::clasz_mask_t mask) {
   return raptor_search(tt, rtt, from, to, parse_time(time, "%Y-%m-%d %H:%M %Z"),
-                       search_dir);
+                       search_dir, mask);
 }
 
 pareto_set<routing::journey> raptor_intermodal_search(
