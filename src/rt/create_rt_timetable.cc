@@ -12,7 +12,8 @@ rt_timetable create_rt_timetable(timetable const& tt,
   rtt.bitfields_ = tt.bitfields_;
   rtt.base_day_ = base_day;
   rtt.base_day_idx_ = tt.day_idx(rtt.base_day_);
-  rtt.location_rt_transports_.resize(tt.n_locations());
+  // resize for later memory accesses
+  rtt.location_rt_transports_[location_idx_t{tt.n_locations() - 1U}];
   return rtt;
 }
 
