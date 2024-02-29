@@ -126,7 +126,8 @@ struct rt_timetable {
   vector_map<bitfield_idx_t, bitfield> bitfields_;
 
   // Location -> RT transports that stop at this location
-  vecvec<location_idx_t, rt_transport_idx_t> location_rt_transports_;
+  mutable_fws_multimap<location_idx_t, rt_transport_idx_t>
+      location_rt_transports_;
 
   // Base-day: all real-time timestamps (departures + arrivals in
   // rt_transport_stop_times_) are given relative to this base day.
