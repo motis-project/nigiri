@@ -85,11 +85,12 @@ delay_propagation update_delay(timetable const& tt,
                                duration_t const delay,
                                std::optional<unixtime_t> const min) {
   auto const static_time = tt.event_time(r.t_, stop_idx, ev_type);
-  rtt.update_time(r.rt_, stop_idx, ev_type,
-                  min.has_value() ? std::max(*min, static_time + delay)
-                                  : static_time + delay);
+  auto const lower_bounded_new_time = min.has_value()
+                                          ? std::max(*min, static_time + delay)
+                                          : static_time + delay;
+  rtt.update_time(r.rt_, stop_idx, ev_type, lower_bounded_new_time);
   dispatch_event_change(rtt, r, stop_idx, ev_type, location_idx_t{0}, -1,
-                        delay);
+                        lower_bounded_new_time - static_time);
   return {rtt.unix_event_time(r.rt_, stop_idx, ev_type), delay};
 }
 
@@ -110,12 +111,12 @@ delay_propagation update_event(timetable const& tt,
     auto const new_time =
         unixtime_t{std::chrono::duration_cast<unixtime_t::duration>(
             std::chrono::seconds{ev.time()})};
-    rtt.update_time(
-        r.rt_, stop_idx, ev_type,
-        pred_time.has_value() ? std::max(*pred_time, new_time) : new_time);
+    auto const lower_bounded_new_time =
+        pred_time.has_value() ? std::max(*pred_time, new_time) : new_time;
+    rtt.update_time(r.rt_, stop_idx, ev_type, lower_bounded_new_time);
     dispatch_event_change(rtt, r, stop_idx, ev_type, location_idx_t{0}, -1,
-                          new_time - static_time);
-    return {new_time, new_time - static_time};
+                          lower_bounded_new_time - static_time);
+    return {lower_bounded_new_time, new_time - static_time};
   }
 }
 
