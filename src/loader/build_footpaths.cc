@@ -40,14 +40,18 @@ using component_vec = std::vector<assignment>;
 using component_it = component_vec::iterator;
 
 struct component {
-  component(component_it from, component_it to)
-      : from_{std::move(from)}, to_{std::move(to)} {}
+  component(component_it from, component_it to) : from_{from}, to_{to} {}
   component_idx_t idx() const { return from_->c_; }
   bool invalid() const { return from_->c_ == component_idx_t::invalid(); }
-  std::size_t size() const { return std::distance(from_, to_); };
+  std::size_t size() const {
+    return static_cast<std::size_t>(std::distance(from_, to_));
+  }
+  location_idx_t location_idx(std::size_t const i) const {
+    return std::next(from_, static_cast<component_it::difference_type>(i))->l_;
+  }
 
   component_it from_, to_;
-  vecvec<unsigned, footpath> graph_;
+  vecvec<location_idx_t, footpath> graph_;
 };
 
 footgraph get_footpath_graph(timetable& tt) {
@@ -157,10 +161,8 @@ void build_component_graph(timetable& tt,
       auto const fp_duration = std::max({tt.locations_.transfer_time_[from_l],
                                          tt.locations_.transfer_time_[to_l],
                                          u8_minutes{edge.duration()}});
-      c.graph_[c.graph_.size() - 1U].push_back(footpath{
-          // j is not a location_idx_t, but we're abusing the footpath
-          // data structure here to store the component graph
-          location_idx_t{j}, fp_duration});
+      c.graph_[location_idx_t{c.graph_.size() - 1U}].push_back(
+          footpath{location_idx_t{j} /* TODO */, fp_duration});
     }
     c.graph_.resize(c.graph_.size() + 1U);
   }
@@ -200,17 +202,23 @@ std::vector<component> get_components(timetable& tt) {
   return components;
 }
 
-void connect_components(std::vector<component> const& components,
-                        unsigned const max_footpath_length) {
+void connect_components(timetable& tt,
+                        std::vector<component> const& components,
+                        std::uint16_t const max_footpath_length,
+                        bool adjust_footpaths) {
   struct task {
     component const* c_;
     std::size_t idx_;
+    std::vector<footpath> results_;
   };
 
   struct dijkstra_data {
     std::vector<routing::label::dist_t> dists_;
     dial<routing::label, routing::get_bucket> pq_;
   };
+
+  constexpr auto const kUnreachable =
+      std::numeric_limits<routing::label::dist_t>::max();
 
   auto tasks = std::vector<task>{};
   for (auto const& c : components) {
@@ -220,7 +228,7 @@ void connect_components(std::vector<component> const& components,
   }
 
   utl::parallel_for_run_threadlocal<dijkstra_data>(
-      tasks.size(), [&](std::size_t const idx, dijkstra_data& dd) {
+      tasks.size(), [&](dijkstra_data& dd, std::size_t const idx) {
         auto const& c = *tasks[idx].c_;
         auto const& node_idx = tasks[idx].idx_;
 
@@ -228,7 +236,47 @@ void connect_components(std::vector<component> const& components,
         dd.pq_.push(routing::label{location_idx_t{node_idx}, 0U});
 
         routing::dijkstra(c.graph_, dd.pq_, dd.dists_, max_footpath_length);
+
+        for (auto const [target, duration] : utl::enumerate(dd.dists_)) {
+          if (duration != kUnreachable) {
+            tasks[idx].results_.emplace_back(
+                footpath{c.location_idx(target), duration_t{duration}});
+          }
+        }
       });
+
+  for (auto const& t : tasks) {
+    auto const& c = *t.c_;
+    auto const from_l = c.location_idx(t.idx_);
+
+    for (auto const& fp : t.results_) {
+      auto const to_l = fp.target();
+
+      auto const duration =
+          std::max({std::chrono::duration_cast<u8_minutes>(fp.duration()),
+                    tt.locations_.transfer_time_[from_l],
+                    tt.locations_.transfer_time_[to_l]});
+
+      auto adjusted = duration;
+      if (adjust_footpaths) {
+        auto const distance = geo::distance(tt.locations_.coordinates_[from_l],
+                                            tt.locations_.coordinates_[to_l]);
+        auto const adjusted_int =
+            std::max(static_cast<duration_t::rep>(duration.count()),
+                     static_cast<duration_t::rep>(distance / kWalkSpeed / 60));
+        if (adjusted_int > std::numeric_limits<u8_minutes::rep>::max()) {
+          log(log_lvl::error, "loader.footpath.adjust",
+              "too long after adjust: {}>256", adjusted_int);
+        }
+        adjusted = u8_minutes{adjusted_int};
+      }
+
+      tt.locations_.preprocessing_footpaths_out_[from_l].emplace_back(to_l,
+                                                                      adjusted);
+      tt.locations_.preprocessing_footpaths_in_[to_l].emplace_back(from_l,
+                                                                   adjusted);
+    }
+  }
 }
 
 void add_links_to_and_between_children(timetable& tt) {
@@ -310,8 +358,9 @@ void write_footpaths(timetable& tt) {
 }
 
 void build_footpaths(timetable& tt,
-                     bool const adjust_footpaths,
-                     bool const merge_duplicates) {
+                     bool const /* adjust_footpaths */,
+                     bool const merge_duplicates,
+                     std::uint16_t const max_footpath_length) {
   add_links_to_and_between_children(tt);
   auto const matches = link_nearby_stations(tt, merge_duplicates);
   if (merge_duplicates) {
@@ -319,7 +368,7 @@ void build_footpaths(timetable& tt,
       find_duplicates(tt, matches, a, b);
     }
   }
-  connect_components(get_components(tt));
+  connect_components(tt, get_components(tt), max_footpath_length);
   write_footpaths(tt);
 }
 

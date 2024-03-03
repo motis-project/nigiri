@@ -12,6 +12,8 @@ struct dial {
   using dist_t =
       std::decay_t<decltype(std::declval<GetBucketFn>()(std::declval<T>()))>;
 
+  dial() = default;
+
   explicit dial(std::size_t const max_bucket,
                 GetBucketFn get_bucket = GetBucketFn())
       : get_bucket_(std::forward<GetBucketFn>(get_bucket)),
@@ -58,7 +60,7 @@ struct dial {
   dist_t max_bucket() const { return static_cast<dist_t>(buckets_.size()); }
 
 private:
-  std::size_t get_next_bucket() const {
+  dist_t get_next_bucket() const {
     assert(size_ != 0);
     auto bucket = current_bucket_;
     while (bucket < buckets_.size() && buckets_[bucket].empty()) {

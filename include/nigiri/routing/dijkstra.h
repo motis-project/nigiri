@@ -36,7 +36,7 @@ void dijkstra(vecvec<NodeIdx, Edge> const& graph,
     auto l = pq.top();
     pq.pop();
 
-    if (dists[to_idx(l.l_)] < l.d_) {
+    if (dists[cista::to_idx(l.l_)] < l.d_) {
       continue;
     }
 
