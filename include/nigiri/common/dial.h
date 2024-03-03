@@ -7,19 +7,22 @@
 namespace nigiri {
 
 template <typename T,
-          std::size_t MaxBucket,
           typename GetBucketFn /* GetBucketFn(T) -> size_t <= MaxBucket */>
 struct dial {
-  explicit dial(GetBucketFn get_bucket = GetBucketFn())
+  using dist_t =
+      std::decay_t<decltype(std::declval<GetBucketFn>()(std::declval<T>()))>;
+
+  explicit dial(std::size_t const max_bucket,
+                GetBucketFn get_bucket = GetBucketFn())
       : get_bucket_(std::forward<GetBucketFn>(get_bucket)),
         current_bucket_(0),
         size_(0),
-        buckets_(MaxBucket + 1) {}
+        buckets_(max_bucket + 1) {}
 
   template <typename El>
   void push(El&& el) {
     auto const dist = get_bucket_(el);
-    assert(dist <= MaxBucket);
+    assert(dist < buckets_.size());
 
     buckets_[dist].emplace_back(std::forward<El>(el));
     current_bucket_ = std::min(current_bucket_, dist);
@@ -44,6 +47,16 @@ struct dial {
 
   bool empty() const { return size_ == 0; }
 
+  void clear() {
+    current_bucket_ = 0U;
+    size_ = 0U;
+    for (auto& b : buckets_) {
+      b.clear();
+    }
+  }
+
+  dist_t max_bucket() const { return static_cast<dist_t>(buckets_.size()); }
+
 private:
   std::size_t get_next_bucket() const {
     assert(size_ != 0);
@@ -55,7 +68,7 @@ private:
   }
 
   GetBucketFn get_bucket_;
-  std::size_t current_bucket_;
+  dist_t current_bucket_;
   std::size_t size_;
   std::vector<std::vector<T>> buckets_;
 };

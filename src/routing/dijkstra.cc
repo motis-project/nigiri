@@ -20,29 +20,14 @@
 
 namespace nigiri::routing {
 
-using dist_t = std::uint16_t;
-
-struct label {
-  label(location_idx_t const l, dist_t const d) : l_{l}, d_{d} {}
-  friend bool operator>(label const& a, label const& b) { return a.d_ > b.d_; }
-  location_idx_t l_;
-  dist_t d_;
-};
-
-struct get_bucket {
-  std::size_t operator()(label const& l) const {
-    return static_cast<std::size_t>(l.d_);
-  }
-};
-
 void dijkstra(timetable const& tt,
               query const& q,
               vecvec<location_idx_t, footpath> const& lb_graph,
-              std::vector<dist_t>& dists) {
+              std::vector<label::dist_t>& dists) {
   dists.resize(tt.n_locations());
-  utl::fill(dists, std::numeric_limits<dist_t>::max());
+  utl::fill(dists, std::numeric_limits<label::dist_t>::max());
 
-  std::map<location_idx_t, dist_t> min;
+  std::map<location_idx_t, label::dist_t> min;
   for (auto const& start : q.destination_) {
     for_each_meta(
         tt, q.dest_match_mode_, start.target_, [&](location_idx_t const x) {
@@ -50,11 +35,11 @@ void dijkstra(timetable const& tt,
           auto const l = (p == location_idx_t::invalid()) ? x : p;
           auto& m =
               utl::get_or_create(min, l, [&]() { return dists[to_idx(l)]; });
-          m = std::min(static_cast<dist_t>(start.duration().count()), m);
+          m = std::min(static_cast<label::dist_t>(start.duration().count()), m);
         });
   }
 
-  dial<label, kMaxTravelTime.count(), get_bucket> pq;
+  auto pq = dial<label, get_bucket>{kMaxTravelTime.count()};
   for (auto const& [l, duration] : min) {
     auto const d = duration;
     for_each_meta(tt, q.start_match_mode_, l, [&](location_idx_t const meta) {
@@ -64,23 +49,7 @@ void dijkstra(timetable const& tt,
     });
   }
 
-  while (!pq.empty()) {
-    auto l = pq.top();
-    pq.pop();
-
-    if (dists[to_idx(l.l_)] < l.d_) {
-      continue;
-    }
-
-    for (auto const& e : lb_graph[l.l_]) {
-      auto const new_dist = l.d_ + e.duration().count();
-      if (new_dist < dists[to_idx(e.target())] &&
-          new_dist <= kMaxTravelTime.count()) {
-        dists[to_idx(e.target())] = static_cast<dist_t>(new_dist);
-        pq.push(label(e.target(), static_cast<dist_t>(new_dist)));
-      }
-    }
-  }
+  dijkstra(lb_graph, pq, dists);
 }
 
 }  // namespace nigiri::routing
