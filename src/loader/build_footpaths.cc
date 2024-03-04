@@ -358,7 +358,7 @@ void write_footpaths(timetable& tt) {
 }
 
 void build_footpaths(timetable& tt,
-                     bool const /* adjust_footpaths */,
+                     bool const adjust_footpaths,
                      bool const merge_duplicates,
                      std::uint16_t const max_footpath_length) {
   add_links_to_and_between_children(tt);
@@ -368,7 +368,8 @@ void build_footpaths(timetable& tt,
       find_duplicates(tt, matches, a, b);
     }
   }
-  connect_components(tt, get_components(tt), max_footpath_length);
+  connect_components(tt, get_components(tt), max_footpath_length,
+                     adjust_footpaths);
   write_footpaths(tt);
 }
 
