@@ -57,7 +57,9 @@ struct dial {
     }
   }
 
-  dist_t max_bucket() const { return static_cast<dist_t>(buckets_.size()); }
+  void n_buckets(dist_t const n) { buckets_.resize(n); }
+
+  dist_t n_buckets() const { return static_cast<dist_t>(buckets_.size()); }
 
 private:
   dist_t get_next_bucket() const {

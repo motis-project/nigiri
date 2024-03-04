@@ -1,10 +1,12 @@
 #include "nigiri/loader/build_footpaths.h"
 
+#include <mutex>
 #include <optional>
 #include <stack>
 
 #include "fmt/format.h"
 #include "fmt/ostream.h"
+#include "fmt/ranges.h"
 
 #include "utl/enumerate.h"
 #include "utl/equal_ranges_linear.h"
@@ -150,13 +152,19 @@ void build_component_graph(timetable& tt,
               tt.locations_.ids_.at(c.from_->l_).view());
 
   for (auto i = 0U; i != size; ++i) {
+    c.graph_.resize(c.graph_.size() + 1U);
+
     auto it = c.from_;
     auto const from_l = (c.from_ + i)->l_;
     for (auto const& edge : fgraph[to_idx(from_l)]) {
       while (it != c.to_ && edge.target() != it->l_) {
         ++it;  // precond.: sorted!
       }
+      if (it == c.to_) {
+        continue;
+      }
       auto const j = static_cast<unsigned>(std::distance(c.from_, it));
+      assert(j < c.size());
       auto const to_l = edge.target();
       auto const fp_duration = std::max({tt.locations_.transfer_time_[from_l],
                                          tt.locations_.transfer_time_[to_l],
@@ -164,11 +172,15 @@ void build_component_graph(timetable& tt,
       c.graph_[location_idx_t{c.graph_.size() - 1U}].push_back(
           footpath{location_idx_t{j} /* TODO */, fp_duration});
     }
-    c.graph_.resize(c.graph_.size() + 1U);
   }
 }
 
-std::vector<component> get_components(timetable& tt) {
+void connect_components(timetable& tt,
+                        std::uint16_t const max_footpath_length,
+                        bool adjust_footpaths) {
+  // ==========================
+  // Find Connected Components
+  // --------------------------
   auto const timer = scoped_timer{"building transitively closed foot graph"};
 
   auto const fgraph = get_footpath_graph(tt);
@@ -199,13 +211,10 @@ std::vector<component> get_components(timetable& tt) {
           components.emplace_back(std::move(c));
         }
       });
-  return components;
-}
 
-void connect_components(timetable& tt,
-                        std::vector<component> const& components,
-                        std::uint16_t const max_footpath_length,
-                        bool adjust_footpaths) {
+  // =====================
+  // Shortest Path Search
+  // ---------------------
   struct task {
     component const* c_;
     std::size_t idx_;
@@ -233,18 +242,27 @@ void connect_components(timetable& tt,
         auto const& node_idx = tasks[idx].idx_;
 
         dd.pq_.clear();
+        dd.pq_.n_buckets(max_footpath_length);
         dd.pq_.push(routing::label{location_idx_t{node_idx}, 0U});
+
+        dd.dists_.resize(c.size());
+        utl::fill(dd.dists_,
+                  std::numeric_limits<routing::label::dist_t>::max());
+        dd.dists_[node_idx] = 0U;
 
         routing::dijkstra(c.graph_, dd.pq_, dd.dists_, max_footpath_length);
 
         for (auto const [target, duration] : utl::enumerate(dd.dists_)) {
-          if (duration != kUnreachable) {
+          if (duration != kUnreachable && target != node_idx) {
             tasks[idx].results_.emplace_back(
                 footpath{c.location_idx(target), duration_t{duration}});
           }
         }
       });
 
+  // ================
+  // Write Footpaths
+  // ----------------
   for (auto const& t : tasks) {
     auto const& c = *t.c_;
     auto const from_l = c.location_idx(t.idx_);
@@ -368,8 +386,7 @@ void build_footpaths(timetable& tt,
       find_duplicates(tt, matches, a, b);
     }
   }
-  connect_components(tt, get_components(tt), max_footpath_length,
-                     adjust_footpaths);
+  connect_components(tt, max_footpath_length, adjust_footpaths);
   write_footpaths(tt);
 }
 

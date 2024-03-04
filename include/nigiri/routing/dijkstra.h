@@ -1,5 +1,7 @@
 #pragma once
 
+#include "fmt/ranges.h"
+
 #include "nigiri/common/dial.h"
 #include "nigiri/footpath.h"
 #include "nigiri/types.h"
@@ -17,6 +19,8 @@ struct label {
   location_idx_t l_;
   dist_t d_;
 };
+
+inline auto format_as(label const& l) { return std::tuple{l.l_, l.d_}; }
 
 struct get_bucket {
   label::dist_t operator()(label const& l) const { return l.d_; }
@@ -43,7 +47,7 @@ void dijkstra(vecvec<NodeIdx, Edge> const& graph,
     for (auto const& e : graph[l.l_]) {
       auto const edge_target = cista::to_idx(e.target());
       auto const new_dist = l.d_ + e.duration().count();
-      if (new_dist < dists[edge_target] && new_dist < pq.max_bucket() &&
+      if (new_dist < dists[edge_target] && new_dist < pq.n_buckets() &&
           new_dist < max_dist) {
         dists[edge_target] = static_cast<dist_t>(new_dist);
         pq.push(Label{e.target(), static_cast<dist_t>(new_dist)});
