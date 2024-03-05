@@ -4,10 +4,6 @@
 #include <optional>
 #include <stack>
 
-#include "fmt/format.h"
-#include "fmt/ostream.h"
-#include "fmt/ranges.h"
-
 #include "utl/enumerate.h"
 #include "utl/equal_ranges_linear.h"
 #include "utl/erase_duplicates.h"
@@ -17,15 +13,13 @@
 #include "utl/progress_tracker.h"
 #include "utl/verify.h"
 
-#include "nigiri/loader/floyd_warshall.h"
 #include "nigiri/loader/link_nearby_stations.h"
 #include "nigiri/loader/merge_duplicates.h"
 #include "nigiri/common/day_list.h"
 #include "nigiri/constants.h"
 #include "nigiri/logging.h"
 #include "nigiri/routing/dijkstra.h"
-#include "nigiri/rt/frun.h"
-#include "nigiri/types.h"
+#include "nigiri/timetable.h"
 
 namespace nigiri::loader {
 
@@ -139,9 +133,11 @@ void process_2_node_component(timetable& tt,
   }
 }
 
-void build_component_graph(timetable& tt,
-                           component& c,
-                           footgraph const& fgraph) {
+void build_component_graph(
+    timetable& tt,
+    component& c,
+    footgraph const& fgraph,
+    cista::raw::mutable_fws_multimap<location_idx_t, footpath>& tmp_graph) {
   if (c.invalid()) {
     return;
   }
@@ -151,9 +147,8 @@ void build_component_graph(timetable& tt,
   utl::verify(size > 2, "invalid size [component={}], first={}", c.idx(),
               tt.locations_.ids_.at(c.from_->l_).view());
 
+  tmp_graph.clear();
   for (auto i = 0U; i != size; ++i) {
-    c.graph_.resize(c.graph_.size() + 1U);
-
     auto it = c.from_;
     auto const from_l = (c.from_ + i)->l_;
     for (auto const& edge : fgraph[to_idx(from_l)]) {
@@ -169,9 +164,16 @@ void build_component_graph(timetable& tt,
       auto const fp_duration = std::max({tt.locations_.transfer_time_[from_l],
                                          tt.locations_.transfer_time_[to_l],
                                          u8_minutes{edge.duration()}});
-      c.graph_[location_idx_t{c.graph_.size() - 1U}].push_back(
-          footpath{location_idx_t{j} /* TODO */, fp_duration});
+      tmp_graph[location_idx_t{i}].push_back(
+          footpath{location_idx_t{j}, fp_duration});
+      tmp_graph[location_idx_t{j}].push_back(
+          footpath{location_idx_t{i}, fp_duration});
     }
+  }
+
+  for (auto n : tmp_graph) {
+    utl::erase_duplicates(n);
+    c.graph_.emplace_back(n);
   }
 }
 
@@ -196,6 +198,7 @@ void connect_components(timetable& tt,
   tt.locations_.preprocessing_footpaths_in_[location_idx_t{
       tt.locations_.src_.size() - 1}];
 
+  auto tmp_graph = cista::raw::mutable_fws_multimap<location_idx_t, footpath>{};
   auto components = std::vector<component>{};
   utl::equal_ranges_linear(
       assignments,
@@ -207,7 +210,7 @@ void connect_components(timetable& tt,
         } else if (c.size() == 2U) {
           process_2_node_component(tt, c, fgraph);
         } else {
-          build_component_graph(tt, c, fgraph);
+          build_component_graph(tt, c, fgraph, tmp_graph);
           components.emplace_back(std::move(c));
         }
       });
