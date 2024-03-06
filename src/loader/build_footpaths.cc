@@ -19,7 +19,8 @@
 #include "nigiri/constants.h"
 #include "nigiri/logging.h"
 #include "nigiri/routing/dijkstra.h"
-#include "nigiri/timetable.h"
+#include "nigiri/rt/frun.h"
+#include "nigiri/types.h"
 
 namespace nigiri::loader {
 
@@ -29,6 +30,8 @@ using component_idx_t = cista::strong<std::uint32_t, struct component_idx_>;
 using footgraph = vector<vector<footpath>>;
 
 struct assignment {
+  CISTA_FRIEND_COMPARABLE(assignment)
+
   component_idx_t c_;
   location_idx_t l_;
 };
@@ -43,6 +46,7 @@ struct component {
     return static_cast<std::size_t>(std::distance(from_, to_));
   }
   location_idx_t location_idx(std::size_t const i) const {
+    assert(i < size());
     return std::next(from_, static_cast<component_it::difference_type>(i))->l_;
   }
 
@@ -151,19 +155,19 @@ void build_component_graph(
   for (auto i = 0U; i != size; ++i) {
     auto it = c.from_;
     auto const from_l = (c.from_ + i)->l_;
+
     for (auto const& edge : fgraph[to_idx(from_l)]) {
       while (it != c.to_ && edge.target() != it->l_) {
-        ++it;  // precond.: sorted!
-      }
-      if (it == c.to_) {
-        continue;
+        ++it;  // precond.: component and fgraph are sorted!
       }
       auto const j = static_cast<unsigned>(std::distance(c.from_, it));
-      assert(j < c.size());
+      assert(it != c.to_);
+
       auto const to_l = edge.target();
       auto const fp_duration = std::max({tt.locations_.transfer_time_[from_l],
                                          tt.locations_.transfer_time_[to_l],
                                          u8_minutes{edge.duration()}});
+
       tmp_graph[location_idx_t{i}].push_back(
           footpath{location_idx_t{j}, fp_duration});
       tmp_graph[location_idx_t{j}].push_back(
@@ -187,9 +191,7 @@ void connect_components(timetable& tt,
 
   auto const fgraph = get_footpath_graph(tt);
   auto assignments = find_components(fgraph);
-  std::sort(
-      begin(assignments), end(assignments),
-      [](assignment const& a, assignment const& b) { return a.c_ < b.c_; });
+  utl::sort(assignments);
 
   tt.locations_.preprocessing_footpaths_out_.clear();
   tt.locations_.preprocessing_footpaths_out_[location_idx_t{
@@ -254,12 +256,12 @@ void connect_components(timetable& tt,
         dd.dists_[node_idx] = 0U;
 
         routing::dijkstra(c.graph_, dd.pq_, dd.dists_, max_footpath_length);
-
         for (auto const [target, duration] : utl::enumerate(dd.dists_)) {
-          if (duration != kUnreachable && target != node_idx) {
-            tasks[idx].results_.emplace_back(
-                footpath{c.location_idx(target), duration_t{duration}});
+          if (duration == kUnreachable || target == node_idx) {
+            continue;
           }
+          tasks[idx].results_.emplace_back(
+              footpath{c.location_idx(target), duration_t{duration}});
         }
       });
 
