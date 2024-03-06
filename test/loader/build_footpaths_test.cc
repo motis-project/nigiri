@@ -14,10 +14,7 @@ using namespace std::string_view_literals;
 
 namespace {
 
-// ROUTING CONNECTIONS:
-// 10:00 - 11:00 A-C    airplane direct
-// 10:00 - 12:00 A-B-C  train, one transfer
-constexpr auto const test_files = R"(
+constexpr auto const timetable_fr2 = R"(
 # agency.txt
 agency_id,agency_name,agency_url,agency_timezone
 
@@ -34,108 +31,67 @@ trip_id,arrival_time,departure_time,stop_id,stop_sequence,pickup_type,drop_off_t
 service_id,date,exception_type
 
 # stops.txt
-stop_id,stop_name,stop_desc,stop_lat,stop_lon,stop_url,location_type,parent_station
-A,A,,0.0,1.0,,
-B,B,,2.0,3.0,,
-C,C,,4.0,5.0,,
+stop_name,parent_station,zone_id,stop_id,stop_lat,stop_lon,location_type,stop_timezone,wheelchair_boarding
+Chemin de Refectoire,IDFM:69671,,IDFM:StopPlaceEntrance:50170260,48.7449,2.438695,2,,
+Chemin de Refectoire,IDFM:69671,,IDFM:StopPlaceEntrance:50170261,48.74471,2.438792,2,,
+Mairie Annexe,,,IDFM:69687,48.748676,2.4352267,1,,
+Mairie Annexe,IDFM:69687,4,IDFM:17252,48.748886,2.4351294,,Europe/Paris,1
+Mairie Annexe,IDFM:69687,4,IDFM:17253,48.74847,2.4353242,,Europe/Paris,1
+Parc en Seine,,,IDFM:74101,48.742958,2.4356422,1,,
+Parc en Seine,IDFM:74101,4,IDFM:35844,48.742977,2.435465,,Europe/Paris,2
+Parc en Seine,IDFM:74101,4,IDFM:35845,48.742943,2.4358191,,Europe/Paris,2
+Villeneuve - Triage RER,IDFM:69671,4,IDFM:23365,48.74714,2.437093,,Europe/Paris,1
+Villeneuve Triage,,,IDFM:69671,48.745823,2.4379368,1,,
+Villeneuve Triage,IDFM:69671,4,IDFM:17234,48.745544,2.4378583,,Europe/Paris,
+Villeneuve Triage,IDFM:69671,4,IDFM:472431,48.745068,2.4380267,,Europe/Paris,
+Villeneuve Triage,IDFM:69671,4,IDFM:monomodalStopPlace:46304,48.74461,2.4386978,,,
+av. de Choisy (accès principal),IDFM:69671,,IDFM:StopPlaceEntrance:50170077,48.745247,2.4380655,2,,
+av. de Choisy (accès secondaire),IDFM:69671,,IDFM:StopPlaceEntrance:50170078,48.744896,2.4383004,2,,
 
 # transfers.txt
 from_stop_id,to_stop_id,transfer_type,min_transfer_time
-A,B,2,180
-B,C,2,180
-)"sv;
+IDFM:17234,IDFM:23365,2,194
+IDFM:17234,IDFM:472431,2,60
+IDFM:17234,IDFM:monomodalStopPlace:46304,2,218
+IDFM:17252,IDFM:17253,2,60
+IDFM:17252,IDFM:23365,2,307
+IDFM:17253,IDFM:17252,2,60
+IDFM:17253,IDFM:23365,2,250
+IDFM:23365,IDFM:17234,2,194
+IDFM:23365,IDFM:17252,2,307
+IDFM:23365,IDFM:17253,2,250
+IDFM:23365,IDFM:472431,2,251
+IDFM:23365,IDFM:monomodalStopPlace:46304,2,412
+IDFM:35844,IDFM:35845,2,60
+IDFM:35844,IDFM:472431,2,5376
+IDFM:35844,IDFM:monomodalStopPlace:46304,2,3060
+IDFM:35845,IDFM:35844,2,60
+IDFM:35845,IDFM:472431,2,5376
+IDFM:35845,IDFM:monomodalStopPlace:46304,2,3060
+IDFM:472431,IDFM:17234,2,60
+IDFM:472431,IDFM:23365,2,251
+IDFM:472431,IDFM:35844,2,5387
+IDFM:472431,IDFM:35845,2,5387
+IDFM:472431,IDFM:monomodalStopPlace:46304,2,201
+IDFM:monomodalStopPlace:46304,IDFM:17234,2,218
+IDFM:monomodalStopPlace:46304,IDFM:23365,2,412
+IDFM:monomodalStopPlace:46304,IDFM:35844,2,3595
+IDFM:monomodalStopPlace:46304,IDFM:35845,2,3595
+IDFM:monomodalStopPlace:46304,IDFM:472431,2,201
 
-}  // namespace
-
-TEST(loader, build_footpaths) {
-  auto tt = timetable{};
-
-  tt.date_range_ = {date::sys_days{2024_y / March / 1},
-                    date::sys_days{2024_y / March / 2}};
-  loader::register_special_stations(tt);
-  loader::gtfs::load_timetable({}, source_idx_t{0},
-                               loader::mem_dir::read(test_files), tt);
-  loader::finalize(tt);
-
-  auto ss = std::stringstream{};
-  for (auto const [i, x] : utl::enumerate(tt.locations_.footpaths_out_[0])) {
-    if (!x.empty()) {
-      ss << location{tt, location_idx_t{i}} << "\n";
-      for (auto const y : x) {
-        ss << "  " << y.duration() << "->" << location{tt, y.target()} << "\n";
-      }
-    }
-  }
-
-  EXPECT_EQ(R"((A, A)
-  00:03.0->(B, B)
-  00:06.0->(C, C)
-(B, B)
-  00:03.0->(A, A)
-  00:03.0->(C, C)
-(C, C)
-  00:06.0->(A, A)
-  00:03.0->(B, B)
-)"sv,
-            ss.str());
-}
-
-namespace {
-
-constexpr auto const timetable_fr = R"(
-# agency.txt
-agency_id,agency_name,agency_url,agency_timezone
-
-# routes.txt
-route_id,agency_id,route_short_name,route_long_name,route_desc,route_type
-
-# trips.txt
-route_id,service_id,trip_id,trip_headsign,block_id
-
-# stop_times.txt
-trip_id,arrival_time,departure_time,stop_id,stop_sequence,pickup_type,drop_off_type
-
-# calendar_dates.txt
-service_id,date,exception_type
-
-# stops.txt
-stop_id,stop_code,stop_name,stop_desc,stop_lon,stop_lat,zone_id,stop_url,location_type,parent_station,stop_timezone,level_id,wheelchair_boarding,platform_code
-IDFM:2921,,Gare de Breuillet Village,,2.171831602352254,48.56476273942137,4,,0,IDFM:59940,Europe/Paris,,1,
-IDFM:18740,,Gare de Breuillet Village,,2.1718863797167716,48.56472713695579,4,,0,IDFM:59940,Europe/Paris,,1,
-IDFM:3646,,Gare de Breuillet Village,,2.1723438872522034,48.5649372275467,4,,0,IDFM:59940,Europe/Paris,,1,
-IDFM:monomodalStopPlace:43099,,Breuillet Village,,2.170354257290333,48.56433413404574,5,,0,IDFM:59940,,,0,
-IDFM:StopPlaceEntrance:50170822,,r. de la Gare (bâtiment voyageur),,2.171354288391762,48.56494833051335,,,2,IDFM:59940,,,0,
-IDFM:StopPlaceEntrance:50170823,,r. de la Gare (bus),,2.1717500047925014,48.56478016324463,,,2,IDFM:59940,,,0,
-IDFM:StopPlaceEntrance:50170827,,r. de la Gare (parking),,2.171571124479157,48.56494984068485,,,2,IDFM:59940,,,0,
-IDFM:StopPlaceEntrance:50170828,,r. de la Gare (passage à niveau),,2.170238281207967,48.56438280290591,,,2,IDFM:59940,,,0,
-
-# transfers.txt
-from_stop_id,to_stop_id,transfer_type,min_transfer_time
-IDFM:18740,IDFM:2921,2,60
-IDFM:18740,IDFM:3646,2,60
-IDFM:18740,IDFM:monomodalStopPlace:43099,2,192
-IDFM:2921,IDFM:18740,2,60
-IDFM:2921,IDFM:3646,2,60
-IDFM:2921,IDFM:monomodalStopPlace:43099,2,187
-IDFM:3646,IDFM:18740,2,60
-IDFM:3646,IDFM:2921,2,60
-IDFM:3646,IDFM:monomodalStopPlace:43099,2,229
-IDFM:monomodalStopPlace:43099,IDFM:18740,2,192
-IDFM:monomodalStopPlace:43099,IDFM:2921,2,187
-IDFM:monomodalStopPlace:43099,IDFM:3646,2,229
 
 )";
 
 }  // namespace
 
-TEST(loader, build_footpaths_fr) {
+TEST(loader, build_footpaths_fr2) {
   auto tt = timetable{};
 
   tt.date_range_ = {date::sys_days{2024_y / March / 1},
                     date::sys_days{2024_y / March / 2}};
   loader::register_special_stations(tt);
   loader::gtfs::load_timetable({}, source_idx_t{0},
-                               loader::mem_dir::read(timetable_fr), tt);
+                               loader::mem_dir::read(timetable_fr2), tt);
   loader::finalize(tt);
 
   auto ss = std::stringstream{};
@@ -153,7 +109,7 @@ TEST(loader, build_footpaths_fr) {
 
 namespace {
 
-constexpr auto const timetable_fr1 = R"(
+constexpr auto const timetable_fr3 = R"(
 # agency.txt
 agency_id,agency_name,agency_url,agency_timezone
 
@@ -170,150 +126,184 @@ trip_id,arrival_time,departure_time,stop_id,stop_sequence,pickup_type,drop_off_t
 service_id,date,exception_type
 
 # stops.txt
-stop_id,stop_code,stop_name,stop_desc,stop_lon,stop_lat,zone_id,stop_url,location_type,parent_station,stop_timezone,level_id,wheelchair_boarding,platform_code
-IDFM:19713,,Square de Camargue,,2.0002342111935607,48.822929128447626,5,,0,IDFM:64127,Europe/Paris,,2,
-IDFM:5902,,Docteur Vaillant,,1.9961640981383888,48.826330811496575,5,,0,IDFM:64161,Europe/Paris,,2,
-IDFM:5676,,Docteur Vaillant,,1.995917245354705,48.8263764801907,5,,0,IDFM:64161,Europe/Paris,,2,
-IDFM:14077,,Crozatier,,2.0007860710164294,48.82967037692149,5,,0,IDFM:480612,Europe/Paris,,2,
-IDFM:5921,,Saintonge,,1.9982696635974295,48.830179980351666,5,,0,IDFM:64191,Europe/Paris,,2,
-IDFM:5919,,Pyrénées,,1.999958021659294,48.82454577404645,5,,0,IDFM:64142,Europe/Paris,,1,
-IDFM:5912,,Mairie-Gymnase Mimoun,,2.00355266723001,48.830323049842235,5,,0,IDFM:73729,Europe/Paris,,2,
-IDFM:5910,,Le Square,,2.001367926461794,48.82703095511505,5,,0,IDFM:64166,Europe/Paris,,2,
-IDFM:412344,,Square de Camargue,,2.000371090478694,48.82289429599083,5,,0,IDFM:64127,Europe/Paris,,2,
-IDFM:5908,,Haie Bergerie,,1.9986680517130775,48.82717027393197,5,,0,IDFM:64169,Europe/Paris,,2,
-IDFM:19714,,Collège Léon Blum,,1.9987567083963635,48.83106548473595,5,,0,IDFM:64191,Europe/Paris,,1,
-IDFM:14078,,Crozatier,,2.00060107015779,48.82937202420584,5,,0,IDFM:480612,Europe/Paris,,2,
-IDFM:5922,,Saintonge,,1.9983938063113618,48.83010007279966,5,,0,IDFM:64191,Europe/Paris,,2,
-IDFM:5920,,Pyrénées,,1.9996368506861923,48.82424627942685,5,,0,IDFM:64142,Europe/Paris,,1,
-IDFM:19716,,Jean de la Fontaine,,2.003281818560587,48.82738870023968,5,,0,IDFM:64168,Europe/Paris,,2,
-IDFM:5911,,Mairie-Gymnase Mimoun,,2.003020592266038,48.83036358617962,5,,0,IDFM:73729,Europe/Paris,,2,
-IDFM:5909,,Le Square,,2.001663261992572,48.827258275128976,5,,0,IDFM:64166,Europe/Paris,,2,
-IDFM:5907,,Haie Bergerie,,1.9993233520042182,48.827805350718045,5,,0,IDFM:64169,Europe/Paris,,2,
-IDFM:480612,,Crozatier,,2.000693570322423,48.82952120060935,,,1,,,,0,
-IDFM:64142,,Pyrénées,,1.9997974357115234,48.82439602685445,,,1,,,,0,
-IDFM:64169,,Haie Bergerie,,1.9989956998630334,48.82748781281877,,,1,,,,0,
-IDFM:73729,,Mairie-Gymnase Mimoun,,2.003286629851455,48.830343318306994,,,1,,,,0,
-IDFM:64127,,Square de Camargue,,2.000302650858988,48.82291171223894,,,1,,,,0,
-IDFM:64168,,Jean de la Fontaine,,2.003281818560587,48.82738870023968,,,1,,,,0,
-IDFM:64161,,Docteur Vaillant,,1.9960410866355103,48.82635226428657,,,1,,,,0,
-IDFM:64166,,Le Square,,2.0015155939052542,48.82714461521893,,,1,,,,0,
-IDFM:64191,,Collège Léon Blum / Saintonge,,1.9985139613705365,48.83058226575039,,,1,,,,0,
+stop_name,parent_station,stop_code,zone_id,stop_id,stop_lat,stop_lon,location_type,stop_timezone,wheelchair_boarding
+Carrefour de la Résistance,,,,IDFM:70609,48.820324,2.467492,1,,
+Carrefour de la Résistance,IDFM:70609,,3,IDFM:39400,48.820053,2.4679987,,Europe/Paris,1
+Carrefour de la Résistance,IDFM:70609,,3,IDFM:39407,48.820595,2.4669855,,Europe/Paris,1
+Carrefour de la Résistance,IDFM:70609,,3,IDFM:7763,48.82022,2.4677927,,Europe/Paris,1
+Jean Jaurès - Chapsal,,,,IDFM:421277,48.823063,2.4655845,1,,
+Jean Jaurès - Chapsal,IDFM:421277,,3,IDFM:39547,48.823063,2.4655845,,Europe/Paris,1
+Joinville-le-Pont,,,,IDFM:70640,48.820507,2.463847,1,,
+Joinville-le-Pont,IDFM:70640,,3,IDFM:monomodalStopPlace:43135,48.821198,2.4638739,,,1
+Joinville-le-Pont RER,IDFM:70640,,,IDFM:39406,48.820168,2.4639935,,Europe/Paris,1
+Joinville-le-Pont RER,IDFM:70640,,3,IDFM:21252,48.821484,2.4642386,,Europe/Paris,1
+Joinville-le-Pont RER,IDFM:70640,,3,IDFM:22452,48.820583,2.4639757,,Europe/Paris,1
+Joinville-le-Pont RER,IDFM:70640,,3,IDFM:28032,48.820347,2.4639235,,Europe/Paris,1
+Joinville-le-Pont RER,IDFM:70640,,3,IDFM:28033,48.821304,2.4642134,,Europe/Paris,1
+Joinville-le-Pont RER,IDFM:70640,,3,IDFM:28065,48.81953,2.4643133,,Europe/Paris,1
+Joinville-le-Pont RER,IDFM:70640,,3,IDFM:39402,48.820156,2.4633944,,Europe/Paris,1
+Joinville-le-Pont-RER,IDFM:70640,,3,IDFM:27560,48.821125,2.464147,,Europe/Paris,1
+av. Jean Jaurès,IDFM:70640,3,,IDFM:StopPlaceEntrance:50148574,48.82097,2.4640534,2,,
+av. des Canadiens,IDFM:70640,2,,IDFM:StopPlaceEntrance:50148575,48.82038,2.4634602,2,,
+r. J. Mermoz,IDFM:70640,1,,IDFM:StopPlaceEntrance:50148576,48.81999,2.4639273,2,,
+
 
 # transfers.txt
 from_stop_id,to_stop_id,transfer_type,min_transfer_time
-IDFM:14077,IDFM:14078,2,60
-IDFM:14077,IDFM:19714,2,273
-IDFM:14077,IDFM:5907,2,297
-IDFM:14077,IDFM:5909,2,351
-IDFM:14077,IDFM:5910,2,377
-IDFM:14077,IDFM:5911,2,230
-IDFM:14077,IDFM:5912,2,274
-IDFM:14077,IDFM:5921,2,245
-IDFM:14077,IDFM:5922,2,231
-IDFM:14078,IDFM:14077,2,60
-IDFM:14078,IDFM:19714,2,295
-IDFM:14078,IDFM:19716,2,376
-IDFM:14078,IDFM:5907,2,251
-IDFM:14078,IDFM:5908,2,360
-IDFM:14078,IDFM:5909,2,315
-IDFM:14078,IDFM:5910,2,339
-IDFM:14078,IDFM:5911,2,265
-IDFM:14078,IDFM:5912,2,306
-IDFM:14078,IDFM:5921,2,245
-IDFM:14078,IDFM:5922,2,230
-IDFM:19713,IDFM:412344,2,60
-IDFM:19713,IDFM:5919,2,230
-IDFM:19713,IDFM:5920,2,194
-IDFM:19714,IDFM:14077,2,273
-IDFM:19714,IDFM:14078,2,295
-IDFM:19714,IDFM:5921,2,109
-IDFM:19714,IDFM:5922,2,115
-IDFM:19716,IDFM:14078,2,376
-IDFM:19716,IDFM:5907,2,373
-IDFM:19716,IDFM:5909,2,152
-IDFM:19716,IDFM:5910,2,185
-IDFM:412344,IDFM:19713,2,60
-IDFM:412344,IDFM:5919,2,237
-IDFM:412344,IDFM:5920,2,203
-IDFM:5676,IDFM:5902,2,60
-IDFM:5676,IDFM:5907,2,376
-IDFM:5676,IDFM:5908,2,280
-IDFM:5902,IDFM:5676,2,60
-IDFM:5902,IDFM:5907,2,361
-IDFM:5902,IDFM:5908,2,262
-IDFM:5907,IDFM:14077,2,297
-IDFM:5907,IDFM:14078,2,251
-IDFM:5907,IDFM:19716,2,373
-IDFM:5907,IDFM:5676,2,376
-IDFM:5907,IDFM:5902,2,361
-IDFM:5907,IDFM:5908,2,89
-IDFM:5907,IDFM:5909,2,231
-IDFM:5907,IDFM:5910,2,219
-IDFM:5907,IDFM:5921,2,350
-IDFM:5907,IDFM:5922,2,336
-IDFM:5908,IDFM:14078,2,360
-IDFM:5908,IDFM:5676,2,280
-IDFM:5908,IDFM:5902,2,262
-IDFM:5908,IDFM:5907,2,89
-IDFM:5908,IDFM:5909,2,279
-IDFM:5908,IDFM:5910,2,252
-IDFM:5909,IDFM:14077,2,351
-IDFM:5909,IDFM:14078,2,315
-IDFM:5909,IDFM:19716,2,152
-IDFM:5909,IDFM:5907,2,231
-IDFM:5909,IDFM:5908,2,279
-IDFM:5909,IDFM:5910,2,60
-IDFM:5910,IDFM:14077,2,377
-IDFM:5910,IDFM:14078,2,339
-IDFM:5910,IDFM:19716,2,185
-IDFM:5910,IDFM:5907,2,219
-IDFM:5910,IDFM:5908,2,252
-IDFM:5910,IDFM:5909,2,60
-IDFM:5910,IDFM:5919,2,375
-IDFM:5911,IDFM:14077,2,230
-IDFM:5911,IDFM:14078,2,265
-IDFM:5911,IDFM:5912,2,60
-IDFM:5912,IDFM:14077,2,274
-IDFM:5912,IDFM:14078,2,306
-IDFM:5912,IDFM:5911,2,60
-IDFM:5919,IDFM:19713,2,230
-IDFM:5919,IDFM:412344,2,237
-IDFM:5919,IDFM:5910,2,375
-IDFM:5919,IDFM:5920,2,60
-IDFM:5920,IDFM:19713,2,194
-IDFM:5920,IDFM:412344,2,203
-IDFM:5920,IDFM:5919,2,60
-IDFM:5921,IDFM:14077,2,245
-IDFM:5921,IDFM:14078,2,245
-IDFM:5921,IDFM:19714,2,109
-IDFM:5921,IDFM:5907,2,350
-IDFM:5921,IDFM:5922,2,60
-IDFM:5922,IDFM:14077,2,231
-IDFM:5922,IDFM:14078,2,230
-IDFM:5922,IDFM:19714,2,115
-IDFM:5922,IDFM:5907,2,336
-IDFM:5922,IDFM:5921,2,60
+IDFM:21252,IDFM:22452,2,106
+IDFM:21252,IDFM:27560,2,60
+IDFM:21252,IDFM:28032,2,134
+IDFM:21252,IDFM:28033,2,60
+IDFM:21252,IDFM:28065,2,226
+IDFM:21252,IDFM:39402,2,167
+IDFM:21252,IDFM:39406,2,154
+IDFM:21252,IDFM:39407,2,285
+IDFM:21252,IDFM:39547,2,256
+IDFM:21252,IDFM:7763,2,376
+IDFM:21252,IDFM:monomodalStopPlace:43135,2,321
+IDFM:22452,IDFM:21252,2,106
+IDFM:22452,IDFM:27560,2,64
+IDFM:22452,IDFM:28032,2,60
+IDFM:22452,IDFM:28033,2,86
+IDFM:22452,IDFM:28065,2,125
+IDFM:22452,IDFM:39402,2,66
+IDFM:22452,IDFM:39406,2,60
+IDFM:22452,IDFM:39407,2,280
+IDFM:22452,IDFM:39547,2,382
+IDFM:22452,IDFM:7763,2,359
+IDFM:22452,IDFM:monomodalStopPlace:43135,2,226
+IDFM:27560,IDFM:21252,2,60
+IDFM:27560,IDFM:22452,2,64
+IDFM:27560,IDFM:28032,2,91
+IDFM:27560,IDFM:28033,2,60
+IDFM:27560,IDFM:28065,2,185
+IDFM:27560,IDFM:39402,2,126
+IDFM:27560,IDFM:39406,2,111
+IDFM:27560,IDFM:39407,2,275
+IDFM:27560,IDFM:39547,2,305
+IDFM:27560,IDFM:7763,2,363
+IDFM:27560,IDFM:monomodalStopPlace:43135,2,281
+IDFM:28032,IDFM:21252,2,134
+IDFM:28032,IDFM:22452,2,60
+IDFM:28032,IDFM:27560,2,91
+IDFM:28032,IDFM:28033,2,113
+IDFM:28032,IDFM:28065,2,99
+IDFM:28032,IDFM:39402,2,60
+IDFM:28032,IDFM:39406,2,60
+IDFM:28032,IDFM:39407,2,287
+IDFM:28032,IDFM:7763,2,361
+IDFM:28032,IDFM:monomodalStopPlace:43135,2,216
+IDFM:28033,IDFM:21252,2,60
+IDFM:28033,IDFM:22452,2,86
+IDFM:28033,IDFM:27560,2,60
+IDFM:28033,IDFM:28032,2,113
+IDFM:28033,IDFM:28065,2,206
+IDFM:28033,IDFM:39402,2,147
+IDFM:28033,IDFM:39406,2,133
+IDFM:28033,IDFM:39407,2,277
+IDFM:28033,IDFM:39547,2,280
+IDFM:28033,IDFM:7763,2,367
+IDFM:28033,IDFM:monomodalStopPlace:43135,2,301
+IDFM:28065,IDFM:21252,2,226
+IDFM:28065,IDFM:22452,2,125
+IDFM:28065,IDFM:27560,2,185
+IDFM:28065,IDFM:28032,2,99
+IDFM:28065,IDFM:28033,2,206
+IDFM:28065,IDFM:39400,2,351
+IDFM:28065,IDFM:39402,2,101
+IDFM:28065,IDFM:39406,2,78
+IDFM:28065,IDFM:39407,2,291
+IDFM:28065,IDFM:7763,2,338
+IDFM:28065,IDFM:monomodalStopPlace:43135,2,298
+IDFM:39400,IDFM:28065,2,351
+IDFM:39400,IDFM:39406,2,373
+IDFM:39400,IDFM:39407,2,100
+IDFM:39400,IDFM:7763,2,60
+IDFM:39402,IDFM:21252,2,167
+IDFM:39402,IDFM:22452,2,66
+IDFM:39402,IDFM:27560,2,126
+IDFM:39402,IDFM:28032,2,60
+IDFM:39402,IDFM:28033,2,147
+IDFM:39402,IDFM:28065,2,101
+IDFM:39402,IDFM:39406,2,60
+IDFM:39402,IDFM:39407,2,340
+IDFM:39402,IDFM:monomodalStopPlace:43135,2,207
+IDFM:39406,IDFM:21252,2,154
+IDFM:39406,IDFM:22452,2,60
+IDFM:39406,IDFM:27560,2,111
+IDFM:39406,IDFM:28032,2,60
+IDFM:39406,IDFM:28033,2,133
+IDFM:39406,IDFM:28065,2,78
+IDFM:39406,IDFM:39400,2,373
+IDFM:39406,IDFM:39402,2,60
+IDFM:39406,IDFM:39407,2,285
+IDFM:39406,IDFM:7763,2,354
+IDFM:39406,IDFM:monomodalStopPlace:43135,2,228
+IDFM:39407,IDFM:21252,2,285
+IDFM:39407,IDFM:22452,2,280
+IDFM:39407,IDFM:27560,2,275
+IDFM:39407,IDFM:28032,2,287
+IDFM:39407,IDFM:28033,2,277
+IDFM:39407,IDFM:28065,2,291
+IDFM:39407,IDFM:39400,2,100
+IDFM:39407,IDFM:39402,2,340
+IDFM:39407,IDFM:39406,2,285
+IDFM:39407,IDFM:39547,2,373
+IDFM:39407,IDFM:7763,2,76
+IDFM:39407,IDFM:monomodalStopPlace:43135,2,302
+IDFM:39547,IDFM:21252,2,256
+IDFM:39547,IDFM:22452,2,382
+IDFM:39547,IDFM:27560,2,305
+IDFM:39547,IDFM:28033,2,280
+IDFM:39547,IDFM:39407,2,373
+IDFM:39547,IDFM:monomodalStopPlace:43135,2,308
+IDFM:7763,IDFM:21252,2,376
+IDFM:7763,IDFM:22452,2,359
+IDFM:7763,IDFM:27560,2,363
+IDFM:7763,IDFM:28032,2,361
+IDFM:7763,IDFM:28033,2,367
+IDFM:7763,IDFM:28065,2,338
+IDFM:7763,IDFM:39400,2,60
+IDFM:7763,IDFM:39406,2,354
+IDFM:7763,IDFM:39407,2,76
+IDFM:monomodalStopPlace:43135,IDFM:21252,2,241
+IDFM:monomodalStopPlace:43135,IDFM:22452,2,225
+IDFM:monomodalStopPlace:43135,IDFM:27560,2,199
+IDFM:monomodalStopPlace:43135,IDFM:28032,2,216
+IDFM:monomodalStopPlace:43135,IDFM:28033,2,221
+IDFM:monomodalStopPlace:43135,IDFM:28065,2,241
+IDFM:monomodalStopPlace:43135,IDFM:39402,2,207
+IDFM:monomodalStopPlace:43135,IDFM:39406,2,202
+IDFM:monomodalStopPlace:43135,IDFM:39407,2,302
+IDFM:monomodalStopPlace:43135,IDFM:39547,2,308
+
+
 
 )";
 
 }  // namespace
 
-TEST(loader, build_footpaths_fr1) {
+TEST(loader, build_footpaths_fr3) {
   auto tt = timetable{};
 
   tt.date_range_ = {date::sys_days{2024_y / March / 1},
                     date::sys_days{2024_y / March / 2}};
   loader::register_special_stations(tt);
   loader::gtfs::load_timetable({}, source_idx_t{0},
-                               loader::mem_dir::read(timetable_fr1), tt);
+                               loader::mem_dir::read(timetable_fr3), tt);
   loader::finalize(tt);
 
+  constexpr auto const from = "IDFM:28033";
+  constexpr auto const to = "IDFM:monomodalStopPlace:43135";
   auto ss = std::stringstream{};
   for (auto const [i, x] : utl::enumerate(tt.locations_.footpaths_out_[0])) {
     if (!x.empty()) {
-      ss << location{tt, location_idx_t{i}} << "\n";
       for (auto const y : x) {
-        ss << "  " << y.duration() << "->" << location{tt, y.target()} << "\n";
+        if (location{tt, location_idx_t{i}}.id_ == from &&
+            location{tt, y.target()}.id_ == to) {
+          ss << location{tt, location_idx_t{i}} << " --" << y.duration()
+             << "--> " << location{tt, y.target()} << "\n";
+        }
       }
     }
   }
