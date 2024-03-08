@@ -51,6 +51,14 @@ struct footpath {
     return out << "(" << fp.target() << ", " << fp.duration() << ")";
   }
 
+  friend bool operator==(footpath const& a, footpath const& b) {
+    return a.value() == b.value();
+  }
+
+  friend bool operator<(footpath const& a, footpath const& b) {
+    return a.value() < b.value();
+  }
+
   location_idx_t::value_t target_ : kTargetBits;
   location_idx_t::value_t duration_ : kDurationBits;
 };

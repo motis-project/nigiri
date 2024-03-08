@@ -46,11 +46,11 @@ void log(log_lvl const lvl,
          fmt::format_string<Args...> fmt_str,
          Args&&... args) {
   if (lvl >= ::nigiri::s_verbosity) {
-    fmt::print(
-        std::clog, "{time} | [{lvl}][{ctx:30}] {msg}\n",
-        fmt::arg("time", now()), fmt::arg("lvl", to_str(lvl)),
-        fmt::arg("ctx", ctx),
-        fmt::arg("msg", fmt::format(fmt_str, std::forward<Args>(args)...)));
+    fmt::print(std::clog, "{time} | [{lvl}][{ctx:30}] {msg}\n",
+               fmt::arg("time", now()), fmt::arg("lvl", to_str(lvl)),
+               fmt::arg("ctx", ctx),
+               fmt::arg("msg", fmt::format(fmt::runtime(fmt_str),
+                                           std::forward<Args>(args)...)));
   }
 }
 #else
