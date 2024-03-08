@@ -231,6 +231,13 @@ void update_run(
       ++upd_it;
     }
   }
+
+  auto const n_not_cancelled_stops = utl::count_if(
+      rtt.rt_transport_location_seq_[r.rt_],
+      [](stop::value_type const s) { return !stop{s}.is_cancelled(); });
+  if (n_not_cancelled_stops <= 1U) {
+    cancel_run(tt, rtt, r);
+  }
 }
 
 statistics gtfsrt_update_msg(timetable const& tt,
