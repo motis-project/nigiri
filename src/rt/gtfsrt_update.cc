@@ -231,6 +231,12 @@ void update_run(
       ++upd_it;
     }
   }
+
+  if (utl::all_of(
+          rtt.rt_transport_location_seq_[r.rt_],
+          [](stop::value_type const s) { return stop{s}.is_cancelled(); })) {
+    cancel_run(tt, rtt, r);
+  }
 }
 
 statistics gtfsrt_update_msg(timetable const& tt,

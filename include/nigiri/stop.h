@@ -23,6 +23,7 @@ struct stop {
   location_idx_t location_idx() const { return location_idx_t{location_}; }
   bool in_allowed() const { return in_allowed_ != 0U; }
   bool out_allowed() const { return out_allowed_ != 0U; }
+  bool is_cancelled() const { return !in_allowed() && !out_allowed(); }
 
   cista::hash_t hash() const {
     return cista::hash_combine(cista::BASE_HASH, value());
