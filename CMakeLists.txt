@@ -9,8 +9,20 @@ if(NOT DEFINED CMAKE_MSVC_RUNTIME_LIBRARY)
   endif()
 endif()
 
+option(NIGIRI_CUDA "enable CUDA functions" OFF)
+
 include(cmake/buildcache.cmake)
 include(cmake/pkg.cmake)
+
+
+if (NIGIRI_CUDA)
+  if (MSVC)
+    set(CMAKE_CUDA_FLAGS "${CMAKE_CUDA_FLAGS} -lcudadevrt")
+  else()
+    set(CMAKE_CUDA_FLAGS "${CMAKE_CUDA_FLAGS} --compiler-options -static")
+  endif()
+  enable_language(CUDA)
+endif()
 
 
 # --- GTFS-RT PROTOBUF ---
@@ -77,7 +89,6 @@ else()
   endif()
 endif()
 
-
 # --- LIB ---
 file(GLOB_RECURSE nigiri-files src/*.cc)
 add_library(nigiri ${nigiri-files})
@@ -85,6 +96,24 @@ target_include_directories(nigiri PUBLIC include)
 target_link_libraries(nigiri PUBLIC cista geo utl fmt date miniz date-tz wyhash unordered_dense gtfsrt)
 target_compile_features(nigiri PUBLIC cxx_std_23)
 target_compile_options(nigiri PRIVATE ${nigiri-compile-options})
+
+if (NIGIRI_CUDA)
+  add_library(gpuraptor SHARED src/routing/gpu.cu)
+  set_target_properties(gpuraptor PROPERTIES
+      WINDOWS_EXPORT_ALL_SYMBOLS ON
+      CUDA_SEPARABLE_COMPILATION ON
+      CUDA_STANDARD 17
+      RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}
+      LIBRARY_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}
+      INSTALL_RPATH "$ORIGIN/../lib:$ORIGIN/")
+  target_include_directories(gpuraptor PUBLIC include)
+  set_property(TARGET gpuraptor PROPERTY CUDA_ARCHITECTURES native)
+  set_target_properties(gpuraptor PROPERTIES LINKER_LANGUAGE CUDA)
+  target_link_libraries(gpuraptor PRIVATE cista fmt date unordered_dense geo utl)
+  target_compile_definitions(gpuraptor PRIVATE NIGIRI_CUDA=1)
+  set_property(TARGET gpuraptor PROPERTY CUDA_STANDARD 23)
+  target_link_libraries(nigiri PRIVATE gpuraptor)
+endif ()
 
 
 # --- MAIN ---

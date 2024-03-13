@@ -9,6 +9,7 @@
 
 #include "fmt/ostream.h"
 
+#include "cista/reflection/comparable.h"
 #include "cista/strong.h"
 
 namespace nigiri {
@@ -21,13 +22,7 @@ struct interval {
     using value_type = T;
     using pointer = std::add_pointer_t<value_type>;
     using reference = value_type;
-    friend auto operator<=>(iterator const&, iterator const&) = default;
-    friend bool operator==(iterator const&, iterator const&) = default;
-    friend bool operator!=(iterator const&, iterator const&) = default;
-    friend bool operator<=(iterator const&, iterator const&) = default;
-    friend bool operator<(iterator const&, iterator const&) = default;
-    friend bool operator>=(iterator const&, iterator const&) = default;
-    friend bool operator>(iterator const&, iterator const&) = default;
+    CISTA_FRIEND_COMPARABLE(iterator);
     value_type operator*() const { return t_; }
     iterator& operator++() {
       ++t_;
