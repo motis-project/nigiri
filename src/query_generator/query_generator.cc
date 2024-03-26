@@ -68,8 +68,9 @@ transport_idx_t query_generator::random_transport_idx() {
 
 stop_idx_t query_generator::random_stop(transport_idx_t const tr_idx) {
   std::uniform_int_distribution<stop_idx_t> stop_d{
-      1U, static_cast<stop_idx_t>(
-              tt_.route_location_seq_[tt_.transport_route_[tr_idx]].size())};
+      1U,
+      static_cast<stop_idx_t>(
+          tt_.route_location_seq_[tt_.transport_route_[tr_idx]].size() - 1)};
   return stop_idx_t{stop_d(rng_)};
 }
 
@@ -150,7 +151,7 @@ void query_generator::add_dests(routing::query& q) {
   if (dest_match_mode_ == routing::location_match_mode::kIntermodal) {
     add_offsets_for_pos(q.destination_, random_dest_pos(), dest_mode_);
   } else {
-    q.start_.emplace_back(random_location(), 0_minutes, 0U);
+    q.destination_.emplace_back(random_location(), 0_minutes, 0U);
   }
 }
 
