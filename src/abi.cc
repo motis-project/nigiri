@@ -164,6 +164,10 @@ bool nigiri_is_transport_active(const nigiri_timetable_t* t,
   return t->tt->bitfields_[t->tt->transport_traffic_days_[tidx]].test(day_idx);
 }
 
+uint32_t nigiri_get_route_count(const nigiri_timetable_t* t) {
+  return t->tt->n_routes();
+}
+
 nigiri_route_t* nigiri_get_route(const nigiri_timetable_t* t, uint32_t idx) {
   auto const ridx = nigiri::route_idx_t{idx};
   auto stops = t->tt->route_location_seq_[ridx];

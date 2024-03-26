@@ -110,6 +110,7 @@ void nigiri_destroy_transport(const nigiri_transport_t* transport);
 bool nigiri_is_transport_active(const nigiri_timetable_t* t,
                                 const uint32_t transport_idx,
                                 uint16_t day_idx);
+uint32_t nigiri_get_route_count(const nigiri_timetable_t* t);
 nigiri_route_t* nigiri_get_route(const nigiri_timetable_t* t, uint32_t idx);
 void nigiri_destroy_route(const nigiri_route_t* route);
 uint32_t nigiri_get_location_count(const nigiri_timetable_t* t);
