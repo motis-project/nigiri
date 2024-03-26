@@ -2,18 +2,50 @@
 
 #include <cmath>
 
+#include "nigiri/routing/ontrip_train.h"
 #include "nigiri/routing/query.h"
 #include "nigiri/types.h"
 
 #include "geo/constants.h"
 #include "geo/latlng.h"
 
-namespace nigiri::query_generator {
+namespace nigiri::query_generation {
 
-void add_locs_from_vec(std::vector<routing::offset> const& o_vec,
-                       std::vector<size_t> l_vec) {
-  for (auto const l : l_vec) {
+void query_generator::init_rng() {
+  location_d_ = std::uniform_int_distribution<std::uint32_t>{
+      static_cast<std::uint32_t>(special_station::kSpecialStationsSize),
+      tt_.n_locations() - 1};
+  time_d_ = std::uniform_int_distribution<std::int32_t>{
+      tt_.external_interval().from_.time_since_epoch().count(),
+      tt_.external_interval().to_.time_since_epoch().count() - 1};
+  transport_d_ = std::uniform_int_distribution<std::uint32_t>{
+      0U, tt_.transport_traffic_days_.size() - 1};
+  day_d_ = std::uniform_int_distribution<std::uint16_t>{
+      kTimetableOffset.count(),
+      static_cast<std::uint16_t>(kTimetableOffset.count() + tt_n_days() - 1)};
+  start_mode_range_d_ =
+      std::uniform_int_distribution<std::uint32_t>{10, start_mode_.range()};
+  dest_mode_range_d_ =
+      std::uniform_int_distribution<std::uint32_t>{10, dest_mode_.range()};
+  if (start_match_mode_ == routing::location_match_mode::kIntermodal ||
+      dest_match_mode_ == routing::location_match_mode::kIntermodal) {
+    locations_rtree_ = geo::make_point_rtree(tt_.locations_.coordinates_);
   }
+  if (!rng_initialized) {
+    rng_ = std::mt19937(rd_());
+    rng_.seed(static_cast<unsigned long>(std::time(nullptr)));
+    rng_initialized = true;
+  }
+}
+
+geo::latlng query_generator::random_start_pos() {
+  return random_point_in_range(tt_.locations_.coordinates_[random_location()],
+                               start_mode_range_d_);
+}
+
+geo::latlng query_generator::random_dest_pos() {
+  return random_point_in_range(tt_.locations_.coordinates_[random_location()],
+                               dest_mode_range_d_);
 }
 
 geo::latlng query_generator::random_point_in_range(
@@ -30,8 +62,61 @@ unixtime_t query_generator::random_time() {
   return unixtime_t{duration_t{time_d_(rng_)}};
 }
 
-routing::query query_generator::random_query() {
-  routing::query q;
+transport_idx_t query_generator::random_transport_idx() {
+  return transport_idx_t{transport_d_(rng_)};
+}
+
+stop_idx_t query_generator::random_stop(transport_idx_t const tr_idx) {
+  std::uniform_int_distribution<stop_idx_t> stop_d{
+      1U, static_cast<stop_idx_t>(
+              tt_.route_location_seq_[tt_.transport_route_[tr_idx]].size())};
+  return stop_idx_t{stop_d(rng_)};
+}
+
+std::int32_t query_generator::tt_n_days() {
+  return tt_.date_range_.size().count();
+}
+
+day_idx_t query_generator::random_day() { return day_idx_t{day_d_(rng_)}; }
+
+std::optional<day_idx_t> query_generator::random_active_day(
+    nigiri::transport_idx_t const tr_idx) {
+  // try randomize
+  auto const& bf = tt_.bitfields_[tt_.transport_traffic_days_[tr_idx]];
+  for (auto i = 0U; i < 100U; ++i) {
+    auto const d_idx = random_day();
+    if (bf.test(d_idx.v_)) {
+      return d_idx;
+    }
+  }
+  // look from beginning
+  for (auto d = static_cast<std::uint16_t>(kTimetableOffset.count());
+       d < tt_n_days(); ++d) {
+    if (bf.test(d)) {
+      return day_idx_t{d};
+    }
+  }
+  // no active day found
+  return std::nullopt;
+}
+
+void query_generator::add_offsets_for_pos(
+    std::vector<routing::offset>& o,
+    geo::latlng const& pos,
+    query_generation::transport_mode const& mode) {
+  auto const locs_in_range = locations_rtree_.in_radius(pos, mode.range());
+  for (auto const loc : locs_in_range) {
+    auto const duration = duration_t{
+        static_cast<std::int16_t>(
+            geo::distance(pos,
+                          tt_.locations_.coordinates_[location_idx_t{loc}]) /
+            (mode.speed_ * 60)) +
+        1};
+    o.emplace_back(location_idx_t{loc}, duration, mode.mode_id_);
+  }
+}
+
+void query_generator::init_query(routing::query& q) {
   q.start_match_mode_ = start_match_mode_;
   q.dest_match_mode_ = dest_match_mode_;
   q.use_start_footpaths_ = use_start_footpaths_;
@@ -41,8 +126,9 @@ routing::query query_generator::random_query() {
   q.extend_interval_later_ = extend_interval_later_;
   q.prf_idx_ = prf_idx_;
   q.allowed_claszes_ = allowed_claszes_;
+}
 
-  // start time or interval
+void query_generator::add_time(routing::query& q) {
   auto const start_time = random_time();
   if (interval_size_.count() == 0) {
     q.start_time_ = start_time;
@@ -50,27 +136,53 @@ routing::query query_generator::random_query() {
     q.start_time_ =
         interval<unixtime_t>{start_time, start_time + interval_size_};
   }
+}
 
-  // randomize source
-  auto source = random_location();
+void query_generator::add_starts(routing::query& q) {
   if (start_match_mode_ == routing::location_match_mode::kIntermodal) {
-    auto const random_start_pos = random_point_in_range(
-        tt_.locations_.coordinates_[source], start_mode_range_d_);
-    auto const l_in_range =
-        locations_rtree_.in_radius(random_start_pos, start_mode_range_d_.max());
+    add_offsets_for_pos(q.start_, random_start_pos(), start_mode_);
+  } else {
+    q.start_.emplace_back(random_location(), 0_minutes, 0U);
   }
+}
 
-  // randomize destination
-  auto destination = random_location();
+void query_generator::add_dests(routing::query& q) {
   if (dest_match_mode_ == routing::location_match_mode::kIntermodal) {
-    auto const random_dest_pos = random_point_in_range(
-        tt_.locations_.coordinates_[destination], dest_mode_range_d_);
+    add_offsets_for_pos(q.destination_, random_dest_pos(), dest_mode_);
+  } else {
+    q.start_.emplace_back(random_location(), 0_minutes, 0U);
   }
-  // draw circle around source/destination if
-  // start_match_mode/destination_match_mode is intermodal find random
-  // coordinates within range
+}
+
+routing::query query_generator::random_pretrip_query() {
+
+  routing::query q;
+  init_query(q);
+  add_time(q);
+  add_starts(q);
+  add_dests(q);
 
   return q;
 }
 
-}  // namespace nigiri::query_generator
+routing::query query_generator::random_ontrip_query() {
+
+  routing::query q;
+  init_query(q);
+
+  auto const tr_idx = random_transport_idx();
+  auto const d_idx = random_active_day(tr_idx);
+  if (d_idx.has_value()) {
+    transport const tr{tr_idx, d_idx.value()};
+    auto const s = random_stop(tr_idx);
+    routing::generate_ontrip_train_query(tt_, tr, s, q);
+  } else {
+    std::cout << "WARNING: Could not find active day for transport\n";
+  }
+
+  add_dests(q);
+
+  return q;
+}
+
+}  // namespace nigiri::query_generation
