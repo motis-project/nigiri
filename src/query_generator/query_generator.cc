@@ -59,7 +59,7 @@ location_idx_t query_generator::random_location() {
 }
 
 unixtime_t query_generator::random_time() {
-  return unixtime_t{duration_t{time_d_(rng_)}};
+  return unixtime_t{std::chrono::minutes{time_d_(rng_)}};
 }
 
 transport_idx_t query_generator::random_transport_idx() {

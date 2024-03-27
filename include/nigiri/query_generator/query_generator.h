@@ -32,6 +32,7 @@ struct query_generator {
 
   geo::latlng random_dest_pos();
 
+  // returns a time point within the timetable [unixtime in minutes]
   unixtime_t random_time();
 
   routing::query random_pretrip_query();
