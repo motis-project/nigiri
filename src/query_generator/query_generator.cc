@@ -48,6 +48,11 @@ geo::latlng query_generator::random_dest_pos() {
                                dest_mode_range_d_);
 }
 
+std::string query_generator::random_stop_id() {
+  auto const& random_location_id = tt_.locations_.ids_[random_location()];
+  return {random_location_id.begin(), random_location_id.end()};
+}
+
 geo::latlng query_generator::random_point_in_range(
     geo::latlng const& c, std::uniform_int_distribution<std::uint32_t>& d) {
   return geo::destination_point(c, static_cast<double>(d(rng_)),
