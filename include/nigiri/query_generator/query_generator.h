@@ -21,8 +21,6 @@ struct query;
 
 namespace nigiri::query_generation {
 
-static bool rng_initialized = false;
-
 struct query_generator {
   query_generator(timetable const& tt) : tt_(tt) { init_rng(); }
 
@@ -90,16 +88,46 @@ private:
 
   // Distributions
   std::uniform_int_distribution<std::uint32_t> location_d_;
-  std::uniform_int_distribution<std::int32_t> time_d_;
+  std::uniform_int_distribution<std::uint32_t> date_d_;
   std::uniform_int_distribution<std::uint32_t> transport_d_;
   std::uniform_int_distribution<std::uint16_t> day_d_;
   std::uniform_int_distribution<std::uint32_t> start_mode_range_d_;
   std::uniform_int_distribution<std::uint32_t> dest_mode_range_d_;
 
   // Static
+  inline static bool rng_initialized_ = false;
   inline static std::random_device rd_;
   inline static std::mt19937 rng_;
   inline static std::uniform_int_distribution<std::uint32_t> bearing_d_{0, 359};
+  constexpr static int time_of_day_weights_[] = {
+      1,  // 01: 00:00 - 01:00
+      1,  // 02: 01:00 - 02:00
+      1,  // 03: 02:00 - 03:00
+      1,  // 04: 03:00 - 04:00
+      1,  // 05: 04:00 - 05:00
+      2,  // 06: 05:00 - 06:00
+      3,  // 07: 06:00 - 07:00
+      4,  // 08: 07:00 - 08:00
+      4,  // 09: 08:00 - 09:00
+      3,  // 10: 09:00 - 10:00
+      2,  // 11: 10:00 - 11:00
+      2,  // 12: 11:00 - 12:00
+      2,  // 13: 12:00 - 13:00
+      2,  // 14: 13:00 - 14:00
+      3,  // 15: 14:00 - 15:00
+      4,  // 16: 15:00 - 16:00
+      4,  // 17: 16:00 - 17:00
+      4,  // 18: 17:00 - 18:00
+      4,  // 19: 18:00 - 19:00
+      3,  // 20: 19:00 - 20:00
+      2,  // 21: 20:00 - 21:00
+      1,  // 22: 21:00 - 22:00
+      1,  // 23: 22:00 - 23:00
+      1  // 24: 23:00 - 24:00
+  };
+  inline static std::discrete_distribution<std::uint32_t> hours_d_{
+      std::begin(time_of_day_weights_), std::end(time_of_day_weights_)};
+  inline static std::uniform_int_distribution<std::uint32_t> minutes_d_{0, 59};
 };
 
 }  // namespace nigiri::query_generation

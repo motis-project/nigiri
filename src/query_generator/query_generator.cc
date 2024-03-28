@@ -15,9 +15,12 @@ void query_generator::init_rng() {
   location_d_ = std::uniform_int_distribution<std::uint32_t>{
       static_cast<std::uint32_t>(special_station::kSpecialStationsSize),
       tt_.n_locations() - 1};
-  time_d_ = std::uniform_int_distribution<std::int32_t>{
-      tt_.external_interval().from_.time_since_epoch().count(),
-      tt_.external_interval().to_.time_since_epoch().count() - 1};
+  date_d_ = std::uniform_int_distribution<std::uint32_t>{
+      static_cast<std::uint32_t>(
+          tt_.date_range_.from_.time_since_epoch().count()),
+      static_cast<std::uint32_t>(
+          tt_.date_range_.to_.time_since_epoch().count()) -
+          1U};
   transport_d_ = std::uniform_int_distribution<std::uint32_t>{
       0U, tt_.transport_traffic_days_.size() - 1};
   day_d_ = std::uniform_int_distribution<std::uint16_t>{
@@ -31,10 +34,10 @@ void query_generator::init_rng() {
       dest_match_mode_ == routing::location_match_mode::kIntermodal) {
     locations_rtree_ = geo::make_point_rtree(tt_.locations_.coordinates_);
   }
-  if (!rng_initialized) {
+  if (!rng_initialized_) {
     rng_ = std::mt19937(rd_());
     rng_.seed(static_cast<unsigned long>(std::time(nullptr)));
-    rng_initialized = true;
+    rng_initialized_ = true;
   }
 }
 
@@ -64,7 +67,8 @@ location_idx_t query_generator::random_location() {
 }
 
 unixtime_t query_generator::random_time() {
-  return unixtime_t{std::chrono::minutes{time_d_(rng_)}};
+  return unixtime_t{std::chrono::minutes{
+      date_d_(rng_) * 1440U + hours_d_(rng_) * 60U + minutes_d_(rng_)}};
 }
 
 transport_idx_t query_generator::random_transport_idx() {
