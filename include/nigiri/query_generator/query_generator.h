@@ -21,24 +21,32 @@ struct query;
 
 namespace nigiri::query_generation {
 
-struct query_generator {
-  query_generator(timetable const& tt) : tt_(tt) { init_rng(); }
+struct on_trip_export {
+  trip_idx_t trip_idx_;
+  transport transport_;
+  std::string trip_stop_id_;  // the intermediate stop along the trip
+  unixtime_t unixtime_arr_stop_;  // the arrival time at the intermediate stop
+};
 
+struct query_generator {
+  explicit query_generator(timetable const& tt) : tt_(tt) { init_rng(); }
+
+  // initializes the RNG as well as some distributions, should
+  // be called after adjusting public options
   void init_rng();
 
+  // Public interface
   geo::latlng random_start_pos();
-
   geo::latlng random_dest_pos();
-
   std::string random_stop_id();
-
-  // returns a time point within the timetable [unixtime in minutes]
   unixtime_t random_time();
+  on_trip_export random_on_trip();
 
+  // Generate queries from within nigiri
   routing::query random_pretrip_query();
-
   routing::query random_ontrip_query();
 
+  // Public options
   timetable const& tt_;
   duration_t interval_size_{60U};
   routing::location_match_mode start_match_mode_{
@@ -56,6 +64,8 @@ struct query_generator {
   routing::clasz_mask_t allowed_claszes_{routing::all_clasz_allowed()};
 
 private:
+  std::pair<transport, stop_idx_t> random_transport_and_stop_idx();
+
   geo::latlng random_point_in_range(
       geo::latlng const&, std::uniform_int_distribution<std::uint32_t>&);
 
@@ -67,9 +77,9 @@ private:
 
   day_idx_t random_day();
 
-  std::optional<day_idx_t> random_active_day(transport_idx_t const);
+  std::optional<day_idx_t> random_active_day(transport_idx_t);
 
-  stop_idx_t random_stop(transport_idx_t const);
+  stop_idx_t random_stop(transport_idx_t);
 
   void add_offsets_for_pos(std::vector<routing::offset>&,
                            geo::latlng const&,

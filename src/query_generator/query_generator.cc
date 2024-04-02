@@ -71,6 +71,35 @@ unixtime_t query_generator::random_time() {
       date_d_(rng_) * 1440U + hours_d_(rng_) * 60U + minutes_d_(rng_)}};
 }
 
+query_generator::on_trip_export query_generator::random_on_trip() {
+  auto const [tr, stop_idx] = random_transport_and_stop_idx();
+  auto const merged_trips_idx =
+      tt_.transport_to_trip_section_[tr.t_idx_][0];  // randomize instead of 0?
+  auto const trip_idx =
+      tt_.merged_trips_[merged_trips_idx][0];  // randomize instead of 0?
+  auto const trip_stop =
+      stop{tt_.route_location_seq_[tt_.transport_route_[tr.t_idx_]][stop_idx]};
+  auto const trip_stop_id = tt_.locations_.ids_[trip_stop.location_idx()];
+  auto const unixtime_arr_stop = tt_.event_time(tr, stop_idx, event_type::kArr);
+  return {.trip_idx_ = trip_idx,
+          .transport_ = tr,
+          .trip_stop_id_ = {trip_stop_id.begin(), trip_stop_id.end()},
+          .unixtime_arr_stop_ = unixtime_arr_stop};
+}
+
+std::pair<transport, stop_idx_t>
+query_generator::random_transport_and_stop_idx() {
+  transport tr;
+  auto const tr_idx = random_transport_idx();
+  auto const day_idx = random_active_day(tr_idx);
+  if (day_idx.has_value()) {
+    tr.t_idx_ = tr_idx;
+    tr.day_ = day_idx.value();
+  }
+  auto const stop = random_stop(tr_idx);
+  return {tr, stop};
+}
+
 transport_idx_t query_generator::random_transport_idx() {
   return transport_idx_t{transport_d_(rng_)};
 }
@@ -80,7 +109,12 @@ stop_idx_t query_generator::random_stop(transport_idx_t const tr_idx) {
       1U,
       static_cast<stop_idx_t>(
           tt_.route_location_seq_[tt_.transport_route_[tr_idx]].size() - 1)};
-  return stop_idx_t{stop_d(rng_)};
+  auto stop_idx = stop_idx_t{stop_d(rng_)};
+  while (!stop{tt_.route_location_seq_[tt_.transport_route_[tr_idx]][stop_idx]}
+              .out_allowed()) {
+    stop_idx = stop_idx_t{stop_d(rng_)};
+  }
+  return stop_idx;
 }
 
 std::int32_t query_generator::tt_n_days() {
