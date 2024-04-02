@@ -71,7 +71,7 @@ unixtime_t query_generator::random_time() {
       date_d_(rng_) * 1440U + hours_d_(rng_) * 60U + minutes_d_(rng_)}};
 }
 
-query_generator::on_trip_export query_generator::random_on_trip() {
+on_trip_export query_generator::random_on_trip() {
   auto const [tr, stop_idx] = random_transport_and_stop_idx();
   auto const merged_trips_idx =
       tt_.transport_to_trip_section_[tr.t_idx_][0];  // randomize instead of 0?
