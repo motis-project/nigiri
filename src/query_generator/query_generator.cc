@@ -41,13 +41,6 @@ void query_generator::init_rng() {
   }
 }
 
-geo::latlng query_generator::random_active_pos(
-    interval<unixtime_t> const& unix_iv, event_type const et) {
-  return random_point_in_range(
-      tt_.locations_.coordinates_[random_active_location(unix_iv, et)],
-      et == event_type::kDep ? start_mode_range_d_ : dest_mode_range_d_);
-}
-
 geo::latlng query_generator::random_point_in_range(
     geo::latlng const& c, std::uniform_int_distribution<std::uint32_t>& d) {
   return geo::destination_point(c, static_cast<double>(d(rng_)),
@@ -64,7 +57,7 @@ geo::latlng query_generator::pos_near_dest(location_idx_t const loc_idx) {
   return random_point_in_range(loc_pos, dest_mode_range_d_);
 }
 
-location_idx_t query_generator::random_active_location(
+std::optional<location_idx_t> query_generator::random_active_location(
     interval<unixtime_t> const& unix_iv, event_type const et) {
 
   // find relevent day_idx of the interval, may be multiple days
@@ -73,10 +66,16 @@ location_idx_t query_generator::random_active_location(
   auto const to_tod = unix_iv.to_.time_since_epoch() % 1440;
 
   std::optional<location_idx_t> active_location = std::nullopt;
-  while (!active_location.has_value()) {
+  auto i = 0;
+  while (!active_location.has_value() && i < 10000) {
+
     auto const transport_idx = random_transport_idx();
     auto const stop_idx = random_active_stop(transport_idx, et);
-    auto const event_delta = tt_.event_mam(transport_idx, stop_idx, et);
+    if (!stop_idx.has_value()) {
+      continue;
+    }
+
+    auto const event_delta = tt_.event_mam(transport_idx, stop_idx.value(), et);
 
     // check if event happens during the interval
     for (auto day_idx : day_idx_iv) {
@@ -93,13 +92,14 @@ location_idx_t query_generator::random_active_location(
       // transport is active and event time of day lies within the interval
       active_location =
           stop{tt_.route_location_seq_[tt_.transport_route_[transport_idx]]
-                                      [stop_idx]}
+                                      [stop_idx.value()]}
               .location_idx();
       break;
     }
+    ++i;
   }
 
-  return active_location.value();
+  return active_location;
 }
 
 interval<day_idx_t> query_generator::unix_to_day_interval(
@@ -139,39 +139,54 @@ on_trip_export query_generator::random_on_trip() {
 std::pair<transport, stop_idx_t> query_generator::random_transport_active_stop(
     event_type const et) {
   transport tr;
-  auto const tr_idx = random_transport_idx();
-  auto const day_idx = random_active_day(tr_idx);
-  if (day_idx.has_value()) {
+  std::optional<stop_idx_t> stop_idx = std::nullopt;
+  while (!stop_idx.has_value()) {
+    auto const tr_idx = random_transport_idx();
+    auto const day_idx = random_active_day(tr_idx);
+    if (!day_idx.has_value()) {
+      continue;
+    }
     tr.t_idx_ = tr_idx;
     tr.day_ = day_idx.value();
+
+    stop_idx = random_active_stop(tr_idx, et);
   }
-  auto const stop = random_active_stop(tr_idx, et);
-  return {tr, stop};
+  return {tr, stop_idx.value()};
 }
 
 transport_idx_t query_generator::random_transport_idx() {
   return transport_idx_t{transport_d_(rng_)};
 }
 
-stop_idx_t query_generator::random_active_stop(transport_idx_t const tr_idx,
-                                               event_type const et) {
+std::optional<stop_idx_t> query_generator::random_active_stop(
+    transport_idx_t const tr_idx, event_type const et) {
   std::uniform_int_distribution<stop_idx_t> stop_d{
       static_cast<stop_idx_t>(et == event_type::kDep ? 0U : 1U),
       static_cast<stop_idx_t>(
-          tt_.route_location_seq_[tt_.transport_route_[tr_idx]].size() - 1)};
-  while (true) {
+          tt_.route_location_seq_[tt_.transport_route_[tr_idx]].size() -
+          (et == event_type::kDep ? 2U : 1U))};
+  for (auto i = 0; i < 1000; ++i) {
     auto const stop_idx = stop_idx_t{stop_d(rng_)};
-    if (et == event_type::kDep &&
-        stop{tt_.route_location_seq_[tt_.transport_route_[tr_idx]][stop_idx]}
-            .in_allowed()) {
-      return stop_idx;
-    } else if (et == event_type::kArr &&
-               stop{tt_.route_location_seq_[tt_.transport_route_[tr_idx]]
-                                           [stop_idx]}
-                   .out_allowed()) {
-      return stop_idx;
+    switch (et) {
+      case event_type::kDep: {
+        if (stop{
+                tt_.route_location_seq_[tt_.transport_route_[tr_idx]][stop_idx]}
+                .in_allowed()) {
+          return stop_idx;
+        }
+        break;
+      }
+      case event_type::kArr: {
+        if (stop{
+                tt_.route_location_seq_[tt_.transport_route_[tr_idx]][stop_idx]}
+                .out_allowed()) {
+          return stop_idx;
+        }
+        break;
+      }
     }
   }
+  return std::nullopt;
 }
 
 std::int32_t query_generator::tt_n_days() {
@@ -217,7 +232,8 @@ void query_generator::add_offsets_for_pos(
   }
 }
 
-void query_generator::init_query(routing::query& q) {
+routing::query query_generator::new_query() {
+  routing::query q;
   q.start_match_mode_ = start_match_mode_;
   q.dest_match_mode_ = dest_match_mode_;
   q.use_start_footpaths_ = use_start_footpaths_;
@@ -227,65 +243,75 @@ void query_generator::init_query(routing::query& q) {
   q.extend_interval_later_ = extend_interval_later_;
   q.prf_idx_ = prf_idx_;
   q.allowed_claszes_ = allowed_claszes_;
+  return q;
 }
 
-routing::query query_generator::random_pretrip_query() {
+std::optional<routing::query> query_generator::random_pretrip_query() {
 
-  routing::query q;
-  init_query(q);
+  std::optional<routing::query> q = std::nullopt;
+  for (auto i = 0; i < 1000; ++i) {
+    q = new_query();
 
-  auto const start_time = random_time();
-  auto const start_interval =
-      interval<unixtime_t>{start_time, start_time + interval_size_};
-  auto const dest_interval =
-      interval<unixtime_t>{start_time, start_time + duration_t{1440U}};
-  if (interval_size_.count() == 0) {
-    q.start_time_ = start_time;
-  } else {
-    q.start_time_ = start_interval;
-  }
+    auto const start_time = random_time();
+    auto const start_interval =
+        interval<unixtime_t>{start_time, start_time + interval_size_};
+    auto const dest_interval =
+        interval<unixtime_t>{start_time, start_time + duration_t{1440U}};
+    if (interval_size_.count() == 0) {
+      q.value().start_time_ = start_time;
+    } else {
+      q.value().start_time_ = start_interval;
+    }
 
-  if (start_match_mode_ == routing::location_match_mode::kIntermodal) {
-    add_offsets_for_pos(q.start_,
-                        random_active_pos(start_interval, event_type::kDep),
-                        start_mode_);
-  } else {
-    q.start_.emplace_back(
-        random_active_location(start_interval, event_type::kDep), 0_minutes,
-        0U);
-  }
+    if (start_match_mode_ == routing::location_match_mode::kIntermodal) {
+      add_offsets_for_pos(q.start_,
+                          random_active_pos(start_interval, event_type::kDep),
+                          start_mode_);
+    } else {
+      q.start_.emplace_back(
+          random_active_location(start_interval, event_type::kDep), 0_minutes,
+          0U);
+    }
 
-  if (dest_match_mode_ == routing::location_match_mode::kIntermodal) {
-    add_offsets_for_pos(q.destination_,
-                        random_active_pos(dest_interval, event_type::kArr),
-                        dest_mode_);
-  } else {
-    q.destination_.emplace_back(
-        random_active_location(dest_interval, event_type::kArr), 0_minutes, 0U);
+    if (dest_match_mode_ == routing::location_match_mode::kIntermodal) {
+      add_offsets_for_pos(q.destination_,
+                          random_active_pos(dest_interval, event_type::kArr),
+                          dest_mode_);
+    } else {
+      q.destination_.emplace_back(
+          random_active_location(dest_interval, event_type::kArr), 0_minutes,
+          0U);
+    }
   }
 
   return q;
 }
 
-routing::query query_generator::random_ontrip_query() {
+std::optional<routing::query> query_generator::random_ontrip_query() {
 
-  routing::query q;
-  init_query(q);
+  std::optional<routing::query> q = std::nullopt;
+  for (auto i = 0; i < 1000; ++i) {
+    q = new_query();
 
-  auto const [tr, stop_idx] = random_transport_active_stop(event_type::kArr);
-  routing::generate_ontrip_train_query(tt_, tr, stop_idx, q);
+    auto const [tr, stop_idx] = random_transport_active_stop(event_type::kArr);
+    routing::generate_ontrip_train_query(tt_, tr, stop_idx, q.value());
 
-  auto const dest_interval = interval<unixtime_t>{
-      std::get<unixtime_t>(q.start_time_),
-      std::get<unixtime_t>(q.start_time_) + duration_t{1440U}};
+    auto const dest_interval = interval<unixtime_t>{
+        std::get<unixtime_t>(q.value().start_time_),
+        std::get<unixtime_t>(q.value().start_time_) + duration_t{1440U}};
 
-  if (dest_match_mode_ == routing::location_match_mode::kIntermodal) {
-    add_offsets_for_pos(q.destination_,
-                        random_active_pos(dest_interval, event_type::kArr),
-                        dest_mode_);
-  } else {
-    q.destination_.emplace_back(
-        random_active_location(dest_interval, event_type::kArr), 0_minutes, 0U);
+    auto const dest_loc_idx =
+        random_active_location(dest_interval, event_type::kArr);
+    if (!dest_loc_idx.has_value()) {
+      continue;  // could not find a location with arrivals in the dest interval
+    }
+
+    if (dest_match_mode_ == routing::location_match_mode::kIntermodal) {
+      add_offsets_for_pos(q.value().destination_,
+                          pos_near_dest(dest_loc_idx.value()), dest_mode_);
+    } else {
+      q.value().destination_.emplace_back(dest_loc_idx.value(), 0_minutes, 0U);
+    }
   }
 
   return q;

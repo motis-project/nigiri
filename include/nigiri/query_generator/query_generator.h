@@ -37,19 +37,19 @@ struct query_generator {
 
   // Public interface
   unixtime_t random_time();
-  location_idx_t random_active_location(interval<unixtime_t> const&,
-                                        event_type const);
+  std::optional<location_idx_t> random_active_location(
+      interval<unixtime_t> const&, event_type);
   // uses start transport mode
-  geo::latlng pos_near_start(location_idx_t const);
+  geo::latlng pos_near_start(location_idx_t);
 
   // uses dest transport mode
-  geo::latlng pos_near_dest(location_idx_t const);
+  geo::latlng pos_near_dest(location_idx_t);
 
   on_trip_export random_on_trip();
 
   // Generate queries from within nigiri
-  routing::query random_pretrip_query();
-  routing::query random_ontrip_query();
+  std::optional<routing::query> random_pretrip_query();
+  std::optional<routing::query> random_ontrip_query();
 
   // Public options
   timetable const& tt_;
@@ -69,8 +69,7 @@ struct query_generator {
   routing::clasz_mask_t allowed_claszes_{routing::all_clasz_allowed()};
 
 private:
-  std::pair<transport, stop_idx_t> random_transport_active_stop(
-      event_type const et);
+  std::pair<transport, stop_idx_t> random_transport_active_stop(event_type et);
 
   geo::latlng random_point_in_range(
       geo::latlng const&, std::uniform_int_distribution<std::uint32_t>&);
@@ -85,15 +84,13 @@ private:
 
   std::optional<day_idx_t> random_active_day(transport_idx_t);
 
-  stop_idx_t random_active_stop(transport_idx_t const, event_type const);
-
-  geo::latlng random_active_pos(interval<unixtime_t> const&, event_type const);
+  std::optional<stop_idx_t> random_active_stop(transport_idx_t, event_type);
 
   void add_offsets_for_pos(std::vector<routing::offset>&,
                            geo::latlng const&,
                            query_generation::transport_mode const&);
 
-  void init_query(routing::query&);
+  routing::query new_query();
 
   // R-tree
   geo::point_rtree locations_rtree_;
