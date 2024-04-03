@@ -54,8 +54,14 @@ geo::latlng query_generator::random_point_in_range(
                                 static_cast<double>(bearing_d_(rng_)));
 }
 
-location_idx_t query_generator::random_location() {
-  return location_idx_t{location_d_(rng_)};
+geo::latlng query_generator::pos_near_start(location_idx_t const loc_idx) {
+  auto const loc_pos = tt_.locations_.coordinates_[loc_idx];
+  return random_point_in_range(loc_pos, start_mode_range_d_);
+}
+
+geo::latlng query_generator::pos_near_dest(location_idx_t const loc_idx) {
+  auto const loc_pos = tt_.locations_.coordinates_[loc_idx];
+  return random_point_in_range(loc_pos, dest_mode_range_d_);
 }
 
 location_idx_t query_generator::random_active_location(

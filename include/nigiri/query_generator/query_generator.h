@@ -36,10 +36,15 @@ struct query_generator {
   void init_rng();
 
   // Public interface
-  geo::latlng random_active_pos(interval<unixtime_t> const&, event_type const);
+  unixtime_t random_time();
   location_idx_t random_active_location(interval<unixtime_t> const&,
                                         event_type const);
-  unixtime_t random_time();
+  // uses start transport mode
+  geo::latlng pos_near_start(location_idx_t const);
+
+  // uses dest transport mode
+  geo::latlng pos_near_dest(location_idx_t const);
+
   on_trip_export random_on_trip();
 
   // Generate queries from within nigiri
@@ -72,8 +77,6 @@ private:
 
   transport_idx_t random_transport_idx();
 
-  location_idx_t random_location();
-
   interval<day_idx_t> unix_to_day_interval(interval<unixtime_t> const&);
 
   std::int32_t tt_n_days();
@@ -83,6 +86,8 @@ private:
   std::optional<day_idx_t> random_active_day(transport_idx_t);
 
   stop_idx_t random_active_stop(transport_idx_t const, event_type const);
+
+  geo::latlng random_active_pos(interval<unixtime_t> const&, event_type const);
 
   void add_offsets_for_pos(std::vector<routing::offset>&,
                            geo::latlng const&,
