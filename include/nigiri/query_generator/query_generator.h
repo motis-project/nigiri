@@ -24,7 +24,7 @@ namespace nigiri::query_generation {
 struct on_trip_export {
   trip_idx_t trip_idx_;
   transport transport_;
-  std::string trip_stop_id_;  // the intermediate stop along the trip
+  location_idx_t trip_stop_;  // the intermediate stop along the trip
   unixtime_t unixtime_arr_stop_;  // the arrival time at the intermediate stop
 };
 
@@ -36,9 +36,9 @@ struct query_generator {
   void init_rng();
 
   // Public interface
-  geo::latlng random_start_pos();
-  geo::latlng random_dest_pos();
-  std::string random_stop_id();
+  geo::latlng random_active_pos(interval<unixtime_t> const&, event_type const);
+  location_idx_t random_active_location(interval<unixtime_t> const&,
+                                        event_type const);
   unixtime_t random_time();
   on_trip_export random_on_trip();
 
@@ -64,14 +64,17 @@ struct query_generator {
   routing::clasz_mask_t allowed_claszes_{routing::all_clasz_allowed()};
 
 private:
-  std::pair<transport, stop_idx_t> random_transport_and_stop_idx();
+  std::pair<transport, stop_idx_t> random_transport_active_stop(
+      event_type const et);
 
   geo::latlng random_point_in_range(
       geo::latlng const&, std::uniform_int_distribution<std::uint32_t>&);
 
+  transport_idx_t random_transport_idx();
+
   location_idx_t random_location();
 
-  transport_idx_t random_transport_idx();
+  interval<day_idx_t> unix_to_day_interval(interval<unixtime_t> const&);
 
   std::int32_t tt_n_days();
 
@@ -79,19 +82,13 @@ private:
 
   std::optional<day_idx_t> random_active_day(transport_idx_t);
 
-  stop_idx_t random_stop(transport_idx_t);
+  stop_idx_t random_active_stop(transport_idx_t const, event_type const);
 
   void add_offsets_for_pos(std::vector<routing::offset>&,
                            geo::latlng const&,
                            query_generation::transport_mode const&);
 
   void init_query(routing::query&);
-
-  void add_time(routing::query&);
-
-  void add_starts(routing::query&);
-
-  void add_dests(routing::query&);
 
   // R-tree
   geo::point_rtree locations_rtree_;
