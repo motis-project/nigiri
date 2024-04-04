@@ -2,7 +2,7 @@
 
 #include "nigiri/loader/hrd/load_timetable.h"
 #include "nigiri/loader/init_finish.h"
-#include "nigiri/query_generator/query_generator.h"
+#include "nigiri/query_generator/nigiri_generator.h"
 #include "nigiri/query_generator/transport_mode.h"
 
 #include "../loader/hrd/hrd_timetable.h"
@@ -21,17 +21,21 @@ TEST(query_generation, pretrip_station) {
   load_timetable(src, loader::hrd::hrd_5_20_26, files_abc(), tt);
   finalize(tt);
 
-  query_generator qg{tt};
-  qg.start_match_mode_ = routing::location_match_mode::kEquivalent;
-  qg.dest_match_mode_ = routing::location_match_mode::kEquivalent;
+  generator_settings gs;
+  gs.start_match_mode_ = routing::location_match_mode::kEquivalent;
+  gs.dest_match_mode_ = routing::location_match_mode::kEquivalent;
+
+  nigiri_generator qg{tt, gs};
 
   auto q = qg.random_pretrip_query();
-  for (auto const& s : q.start_) {
+  ASSERT_TRUE(q.has_value());
+
+  for (auto const& s : q.value().start_) {
     std::cout << "(start_location: " << s.target_
               << ", duration: " << s.duration_ << ", start_type: " << s.type_
               << ")\n";
   }
-  for (auto const& d : q.destination_) {
+  for (auto const& d : q.value().destination_) {
     std::cout << "(destination_location: " << d.target_
               << ", duration: " << d.duration_
               << ", destination_type: " << d.type_ << ")\n";
@@ -46,17 +50,20 @@ TEST(query_generation, pretrip_intermodal) {
   load_timetable(src, loader::hrd::hrd_5_20_26, files_abc(), tt);
   finalize(tt);
 
-  query_generator qg{tt};
-  qg.start_mode_ = kCar;
-  qg.init_rng();
+  generator_settings gs;
+  gs.start_mode_ = kCar;
+
+  nigiri_generator qg{tt, gs};
 
   auto q = qg.random_pretrip_query();
-  for (auto const& s : q.start_) {
+  ASSERT_TRUE(q.has_value());
+
+  for (auto const& s : q.value().start_) {
     std::cout << "(start_location: " << s.target_
               << ", duration: " << s.duration_ << ", start_type: " << s.type_
               << ")\n";
   }
-  for (auto const& d : q.destination_) {
+  for (auto const& d : q.value().destination_) {
     std::cout << "(destination_location: " << d.target_
               << ", duration: " << d.duration_
               << ", destination_type: " << d.type_ << ")\n";
@@ -71,15 +78,18 @@ TEST(query_generation, ontrip_intermodal) {
   load_timetable(src, loader::hrd::hrd_5_20_26, files_abc(), tt);
   finalize(tt);
 
-  query_generator qg{tt};
+  generator_settings gs;
+  nigiri_generator qg{tt, gs};
 
   auto q = qg.random_ontrip_query();
-  for (auto const& s : q.start_) {
+  ASSERT_TRUE(q.has_value());
+
+  for (auto const& s : q.value().start_) {
     std::cout << "(start_location: " << s.target_
               << ", duration: " << s.duration_ << ", start_type: " << s.type_
               << ")\n";
   }
-  for (auto const& d : q.destination_) {
+  for (auto const& d : q.value().destination_) {
     std::cout << "(destination_location: " << d.target_
               << ", duration: " << d.duration_
               << ", destination_type: " << d.type_ << ")\n";

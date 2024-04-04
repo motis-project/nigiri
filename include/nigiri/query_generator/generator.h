@@ -1,6 +1,9 @@
 #pragma once
 
 #include <ctime>
+#include <random>
+
+#include "nigiri/query_generator/generator_settings.h"
 #include "nigiri/query_generator/transport_mode.h"
 #include "nigiri/routing/clasz_mask.h"
 #include "nigiri/routing/limits.h"
@@ -8,92 +11,45 @@
 #include "nigiri/routing/query.h"
 #include "nigiri/special_stations.h"
 #include "nigiri/timetable.h"
-#include <random>
-#include "geo/point_rtree.h"
-
-namespace nigiri {
-struct timetable;
-}  // namespace nigiri
-
-namespace nigiri::routing {
-struct query;
-}  // namespace nigiri::routing
 
 namespace nigiri::query_generation {
 
-struct on_trip_export {
-  trip_idx_t trip_idx_;
-  transport transport_;
-  location_idx_t trip_stop_;  // the intermediate stop along the trip
-  unixtime_t unixtime_arr_stop_;  // the arrival time at the intermediate stop
-};
+struct generator {
+  explicit generator(timetable const&, generator_settings const&);
 
-struct query_generator {
-  explicit query_generator(timetable const& tt) : tt_(tt) { init_rng(); }
-
-  // initializes the RNG as well as some distributions, should
-  // be called after adjusting public options
-  void init_rng();
-
-  // Public interface
+  // randomize a point in time within the timetable
   unixtime_t random_time();
+
+  // randomize a location that is active during the interval
+  // for the given event type
   std::optional<location_idx_t> random_active_location(
       interval<unixtime_t> const&, event_type);
-  // uses start transport mode
+
+  // use start transport mode to randomize coordinates near a location
   geo::latlng pos_near_start(location_idx_t);
 
-  // uses dest transport mode
+  // uses dest transport mode to randomize coordinates near a location
   geo::latlng pos_near_dest(location_idx_t);
 
-  on_trip_export random_on_trip();
-
-  // Generate queries from within nigiri
-  std::optional<routing::query> random_pretrip_query();
-  std::optional<routing::query> random_ontrip_query();
-
-  // Public options
-  timetable const& tt_;
-  duration_t interval_size_{60U};
-  routing::location_match_mode start_match_mode_{
-      routing::location_match_mode::kIntermodal};
-  routing::location_match_mode dest_match_mode_{
-      routing::location_match_mode::kIntermodal};
-  transport_mode start_mode_{kWalk};
-  transport_mode dest_mode_{kWalk};
-  bool use_start_footpaths_{true};
-  std::uint8_t max_transfers_{routing::kMaxTransfers};
-  unsigned min_connection_count_{0U};
-  bool extend_interval_earlier_{false};
-  bool extend_interval_later_{false};
-  profile_idx_t prf_idx_{0};
-  routing::clasz_mask_t allowed_claszes_{routing::all_clasz_allowed()};
-
-private:
+  // randomize a transport and one of its stops that allows the given event type
   std::pair<transport, stop_idx_t> random_transport_active_stop(event_type et);
 
-  geo::latlng random_point_in_range(
-      geo::latlng const&, std::uniform_int_distribution<std::uint32_t>&);
+  timetable const& tt_;
+  generator_settings const s_;
+  std::uint32_t const max_gen_attempts_{100U};
 
+private:
   transport_idx_t random_transport_idx();
-
-  interval<day_idx_t> unix_to_day_interval(interval<unixtime_t> const&);
-
-  std::int32_t tt_n_days();
-
   day_idx_t random_day();
 
   std::optional<day_idx_t> random_active_day(transport_idx_t);
-
   std::optional<stop_idx_t> random_active_stop(transport_idx_t, event_type);
 
-  void add_offsets_for_pos(std::vector<routing::offset>&,
-                           geo::latlng const&,
-                           query_generation::transport_mode const&);
+  static geo::latlng random_point_in_range(
+      geo::latlng const&, std::uniform_int_distribution<std::uint32_t>&);
 
-  routing::query new_query();
-
-  // R-tree
-  geo::point_rtree locations_rtree_;
+  interval<day_idx_t> unix_to_day_interval(interval<unixtime_t> const&);
+  std::int32_t tt_n_days();
 
   // Distributions
   std::uniform_int_distribution<std::uint32_t> location_d_;
