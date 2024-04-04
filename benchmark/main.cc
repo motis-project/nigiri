@@ -1,13 +1,13 @@
 #include <iostream>
 
-int main(int argc, char* argv[]) {
-  std::cout << "You have entered " << argc << " arguments:" << std::endl;
+#include "utl/progress_tracker.h"
 
-  // Using a while loop to iterate through arguments
-  int i = 0;
-  while (i < argc) {
-    std::cout << "Argument " << i + 1 << ": " << argv[i] << std::endl;
-    i++;
+int main(int argc, char* argv[]) {
+  auto const progress_tracker = utl::activate_progress_tracker("server");
+  auto const silencer = utl::global_progress_bars{true};
+
+  if (argc != 2) {
+    std::cout << "usage: nigiri"
   }
 
   return 0;
