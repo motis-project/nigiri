@@ -78,7 +78,7 @@ TEST(query_generation, ontrip_intermodal) {
   load_timetable(src, loader::hrd::hrd_5_20_26, files_abc(), tt);
   finalize(tt);
 
-  generator_settings gs;
+  generator_settings const gs;
   nigiri_generator qg{tt, gs};
 
   auto q = qg.random_ontrip_query();
