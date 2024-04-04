@@ -49,7 +49,7 @@ private:
       geo::latlng const&, std::uniform_int_distribution<std::uint32_t>&);
 
   interval<day_idx_t> unix_to_day_interval(interval<unixtime_t> const&);
-  std::int32_t tt_n_days();
+  std::uint16_t tt_n_days();
 
   // Distributions
   std::uniform_int_distribution<std::uint32_t> location_d_;

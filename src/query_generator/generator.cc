@@ -1,11 +1,7 @@
 #include "nigiri/query_generator/generator.h"
 
-#include <cmath>
-
-#include "nigiri/routing/query.h"
 #include "nigiri/types.h"
 
-#include "geo/constants.h"
 #include "geo/latlng.h"
 
 namespace nigiri::query_generation {
@@ -43,7 +39,7 @@ unixtime_t generator::random_time() {
 std::optional<location_idx_t> generator::random_active_location(
     interval<unixtime_t> const& unix_iv, event_type const et) {
 
-  // find relevent day_idx of the interval, may be multiple days
+  // find relevant day_idx of the interval, may be multiple days
   auto const day_idx_iv = unix_to_day_interval(unix_iv);
   auto const from_tod = unix_iv.from_.time_since_epoch() % 1440;
   auto const to_tod = unix_iv.to_.time_since_epoch() % 1440;
@@ -193,6 +189,8 @@ interval<day_idx_t> generator::unix_to_day_interval(
   return {start_day_idx, end_day_idx};
 }
 
-std::int32_t generator::tt_n_days() { return tt_.date_range_.size().count(); }
+std::uint16_t generator::tt_n_days() {
+  return static_cast<std::uint16_t>(tt_.date_range_.size().count());
+}
 
 }  // namespace nigiri::query_generation
