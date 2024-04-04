@@ -25,7 +25,7 @@ generator::generator(timetable const& tt, generator_settings const& settings)
       dest_mode_range_d_{10, s_.dest_mode_.range()} {
   if (!rng_initialized_) {
     rng_ = std::mt19937(rd_());
-    rng_.seed(static_cast<unsigned long>(
+    rng_.seed(static_cast<std::uint64_t>(
         std::chrono::high_resolution_clock::now().time_since_epoch().count()));
     rng_initialized_ = true;
   }
