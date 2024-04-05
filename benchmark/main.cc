@@ -4,7 +4,6 @@
 #include "utl/progress_tracker.h"
 
 #include "nigiri/loader/gtfs/loader.h"
-#include "nigiri/loader/hrd/loader.h"
 #include "nigiri/loader/init_finish.h"
 #include "nigiri/logging.h"
 #include "nigiri/timetable.h"
@@ -50,7 +49,7 @@ int main(int argc, char* argv[]) {
 
   gtfs::gtfs_loader l;
   auto src_idx_counter = 0U;
-  for (auto const zip_file : input_files) {
+  for (auto const& zip_file : input_files) {
     auto const dir = make_dir(zip_file);
     if (l.applicable(*dir)) {
       log(log_lvl::info, "main", "loading GTFS timetable in {}",
