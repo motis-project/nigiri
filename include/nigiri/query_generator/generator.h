@@ -105,9 +105,9 @@ private:
   std::uniform_int_distribution<day_idx_t::value_t> day_d_;
   std::uniform_int_distribution<std::uint32_t> start_mode_range_d_;
   std::uniform_int_distribution<std::uint32_t> dest_mode_range_d_;
-  std::discrete_distribution<std::uint8_t> hours_d_{
+  std::discrete_distribution<std::uint16_t> hours_d_{
       std::begin(kTimeOfDayWeights), std::end(kTimeOfDayWeights)};
-  std::uniform_int_distribution<std::uint8_t> minutes_d_{0, 59};
+  std::uniform_int_distribution<std::uint16_t> minutes_d_{0, 59};
   std::uniform_int_distribution<std::uint16_t> bearing_d_{0, 359};
 };
 
