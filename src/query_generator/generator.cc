@@ -44,7 +44,6 @@ std::optional<location_idx_t> generator::random_active_location(
   auto const to_tod = unix_iv.to_.time_since_epoch() % 1440;
 
   for (auto i = 0U; i < kMaxGenAttempts; ++i) {
-
     auto const transport_idx = random_transport_idx();
     auto const stop_idx = random_active_stop(transport_idx, et);
     if (!stop_idx.has_value()) {
@@ -215,7 +214,6 @@ void generator::add_offsets_for_pos(
 }
 
 std::optional<routing::query> generator::random_pretrip_query() {
-
   for (auto i = 0U; i < kMaxGenAttempts; ++i) {
     // start with a new query
     auto q = make_query();
@@ -276,7 +274,6 @@ std::optional<routing::query> generator::random_pretrip_query() {
 }
 
 std::optional<routing::query> generator::random_ontrip_query() {
-
   for (auto i = 0U; i < kMaxGenAttempts; ++i) {
     // start with a new query
     auto q = make_query();
