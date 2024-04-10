@@ -10,16 +10,16 @@ struct transport_mode {
     return speed_ * max_duration_;
   }  // [m]
 
-  std::int32_t mode_id_;
+  transport_mode_id_t mode_id_;
   std::uint16_t speed_;  // [m/minute]
   std::uint16_t max_duration_;  // [minutes]
 };
 
 constexpr static transport_mode kWalk{
-    .mode_id_ = 1, .speed_ = 50U, .max_duration_ = 15};
+    .mode_id_ = 1, .speed_ = 50U, .max_duration_ = 15U};
 constexpr static transport_mode kBicycle{
-    .mode_id_ = 2, .speed_ = 200U, .max_duration_ = 15};
+    .mode_id_ = 2, .speed_ = 200U, .max_duration_ = 15U};
 constexpr static transport_mode kCar{
-    .mode_id_ = 3, .speed_ = 800U, .max_duration_ = 15};
+    .mode_id_ = 3, .speed_ = 800U, .max_duration_ = 15U};
 
 }  // namespace nigiri::query_generation

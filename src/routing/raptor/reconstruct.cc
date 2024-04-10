@@ -315,8 +315,8 @@ void reconstruct_journey(timetable const& tt,
                   check_fp(k, l, curr_time, {eq, dest_offset.duration_});
               if (intermodal_dest.has_value()) {
                 trace_rc_intermodal_dest_match;
-                intermodal_dest->first.uses_ =
-                    offset{eq, dest_offset.duration_, dest_offset.type_};
+                intermodal_dest->first.uses_ = offset{
+                    eq, dest_offset.duration_, dest_offset.transport_mode_id_};
                 ret = std::move(intermodal_dest);
               } else {
                 trace_rc_intermodal_dest_mismatch;
@@ -331,7 +331,7 @@ void reconstruct_journey(timetable const& tt,
                 if (fp_intermodal_dest.has_value()) {
                   trace_rc_fp_intermodal_dest_match;
                   fp_intermodal_dest->first.uses_ =
-                      offset{eq, fp.duration(), dest_offset.type_};
+                      offset{eq, fp.duration(), dest_offset.transport_mode_id_};
                   ret = std::move(fp_intermodal_dest);
                 } else {
                   trace_rc_fp_intermodal_dest_mismatch;
