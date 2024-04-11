@@ -19,16 +19,18 @@ namespace nigiri::routing {
 using start_type_t = std::int32_t;
 
 struct offset {
-  offset(location_idx_t const l, duration_t const d, start_type_t const t)
-      : target_{l}, duration_{d}, type_{t} {}
+  offset(location_idx_t const l,
+         duration_t const d,
+         transport_mode_id_t const t)
+      : target_{l}, duration_{d}, transport_mode_id_{t} {}
 
   location_idx_t target() const noexcept { return target_; }
   duration_t duration() const noexcept { return duration_; }
-  start_type_t type() const noexcept { return type_; }
+  transport_mode_id_t type() const noexcept { return transport_mode_id_; }
 
   location_idx_t target_;
   duration_t duration_;
-  start_type_t type_;
+  transport_mode_id_t transport_mode_id_;
 };
 
 using start_time_t = std::variant<unixtime_t, interval<unixtime_t>>;
