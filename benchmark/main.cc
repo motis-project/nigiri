@@ -41,6 +41,8 @@ nigiri::pareto_set<nigiri::routing::journey> raptor_search(
 
 std::unique_ptr<cista::wrapped<nigiri::timetable>> load_timetable(
     std::filesystem::path const& input_path) {
+  auto load_timetable_timer = nigiri::scoped_timer("loading timetable");
+
   // gather paths of input files in target folder
   std::vector<std::filesystem::path> input_files;
   if (std::filesystem::is_regular_file(input_path) &&
@@ -129,43 +131,50 @@ int main(int argc, char* argv[]) {
 
   auto tt = load_timetable({argv[1]});
 
-  // generate queries
-  log(log_lvl::info, "benchmark.query_generation", "generating queries");
-  auto const gs = query_generation::generator_settings{};
-  auto qg = query_generation::generator{**tt, gs};
-  auto queries = std::vector<query>{};
-  progress_tracker->status("generating queries").in_high(queries.size());
   std::mutex queries_mutex;
-  utl::parallel_for_run(
-      10000U,
-      [&](auto const i) {
-        auto const q = qg.random_pretrip_query();
-        if (q.has_value()) {
-          std::lock_guard<std::mutex> guard(queries_mutex);
-          queries.emplace_back(q.value());
-        }
-      },
-      progress_tracker->update_fn());
 
+  // generate queries
+  auto queries = std::vector<query>{};
+  {
+    auto const num_queries = 10000U;
+    auto query_generation_timer =
+        scoped_timer(fmt::format("generation of {} queries", num_queries));
+    auto const gs = query_generation::generator_settings{};
+    auto qg = query_generation::generator{**tt, gs};
+    progress_tracker->status("generating queries").in_high(queries.size());
+    utl::parallel_for_run(
+        num_queries,
+        [&](auto const i) {
+          auto const q = qg.random_pretrip_query();
+          if (q.has_value()) {
+            std::lock_guard<std::mutex> guard(queries_mutex);
+            queries.emplace_back(q.value());
+          }
+        },
+        progress_tracker->update_fn());
+  }
   // process queries
   auto results =
       std::vector<pair<std::uint64_t, routing_result<raptor_stats>>>{};
-  progress_tracker->status("processing queries").in_high(queries.size());
-  utl::parallel_for_run(
-      queries.size(),
-      [&](auto const q_idx) {
-        auto ss = search_state{};
-        auto rs = raptor_state{};
+  {
+    auto query_processing_timer =
+        scoped_timer(fmt::format("processing of {} queries", queries.size()));
+    progress_tracker->status("processing queries").in_high(queries.size());
+    utl::parallel_for_run(
+        queries.size(),
+        [&](auto const q_idx) {
+          auto ss = search_state{};
+          auto rs = raptor_state{};
 
-        auto const result =
-            routing::search<direction::kForward,
-                            routing::raptor<direction::kForward, false>>{
-                **tt, nullptr, ss, rs, queries[q_idx]}
-                .execute();
-        std::lock_guard<std::mutex> guard(queries_mutex);
-        results.emplace_back(q_idx, result);
-      },
-      progress_tracker->update_fn());
-
+          auto const result =
+              routing::search<direction::kForward,
+                              routing::raptor<direction::kForward, false>>{
+                  **tt, nullptr, ss, rs, queries[q_idx]}
+                  .execute();
+          std::lock_guard<std::mutex> guard(queries_mutex);
+          results.emplace_back(q_idx, result);
+        },
+        progress_tracker->update_fn());
+  }
   return 0;
 }
