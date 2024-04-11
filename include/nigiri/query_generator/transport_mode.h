@@ -15,11 +15,11 @@ struct transport_mode {
   std::uint16_t max_duration_;  // [minutes]
 };
 
-constexpr static transport_mode kWalk{
-    .mode_id_ = 1, .speed_ = 50U, .max_duration_ = 15U};
-constexpr static transport_mode kBicycle{
-    .mode_id_ = 2, .speed_ = 200U, .max_duration_ = 15U};
-constexpr static transport_mode kCar{
-    .mode_id_ = 3, .speed_ = 800U, .max_duration_ = 15U};
+constexpr auto const kWalk =
+    transport_mode{.mode_id_ = 1, .speed_ = 50U, .max_duration_ = 15U};
+constexpr auto const kBicycle =
+    transport_mode{.mode_id_ = 2, .speed_ = 200U, .max_duration_ = 15U};
+constexpr auto const kCar =
+    transport_mode{.mode_id_ = 3, .speed_ = 800U, .max_duration_ = 15U};
 
 }  // namespace nigiri::query_generation

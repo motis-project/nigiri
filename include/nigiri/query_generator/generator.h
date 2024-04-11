@@ -15,9 +15,9 @@ struct timetable;
 
 namespace nigiri::query_generation {
 
-constexpr static std::uint32_t const kMaxGenAttempts = 10000U;
+constexpr auto const kMaxGenAttempts = 10000U;
 
-constexpr static int const kTimeOfDayWeights[] = {
+constexpr auto const kTimeOfDayWeights = std::array<int, 24>{
     1,  // 01: 00:00 - 01:00
     1,  // 02: 01:00 - 02:00
     1,  // 03: 02:00 - 03:00
@@ -104,8 +104,8 @@ private:
   std::uniform_int_distribution<day_idx_t::value_t> day_d_;
   std::uniform_int_distribution<std::uint32_t> start_mode_range_d_;
   std::uniform_int_distribution<std::uint32_t> dest_mode_range_d_;
-  std::discrete_distribution<std::uint16_t> hours_d_{
-      std::begin(kTimeOfDayWeights), std::end(kTimeOfDayWeights)};
+  std::discrete_distribution<std::uint16_t> hours_d_{begin(kTimeOfDayWeights),
+                                                     end(kTimeOfDayWeights)};
   std::uniform_int_distribution<std::uint16_t> minutes_d_{0, 59};
   std::uniform_int_distribution<std::uint16_t> bearing_d_{0, 359};
 };
