@@ -1,12 +1,43 @@
 #include <filesystem>
 #include <iostream>
 
+#include "utl/parallel_for.h"
 #include "utl/progress_tracker.h"
 
 #include "nigiri/loader/load.h"
 #include "nigiri/loader/loader_interface.h"
 #include "nigiri/logging.h"
+#include "nigiri/query_generator/generator.h"
+#include "nigiri/routing/raptor/raptor.h"
+#include "nigiri/routing/search.h"
 #include "nigiri/timetable.h"
+
+template <nigiri::direction SearchDir>
+nigiri::pareto_set<nigiri::routing::journey> raptor_search(
+    nigiri::timetable const& tt, nigiri::routing::query q) {
+  using namespace nigiri;
+  using algo_state_t = routing::raptor_state;
+  static auto search_state = routing::search_state{};
+  static auto algo_state = algo_state_t{};
+
+  using algo_t = routing::raptor<SearchDir, false>;
+  return *(routing::search<SearchDir, algo_t>{tt, nullptr, search_state,
+                                              algo_state, std::move(q)}
+               .execute()
+               .journeys_);
+}
+
+nigiri::pareto_set<nigiri::routing::journey> raptor_search(
+    nigiri::timetable const& tt,
+    nigiri::routing::query q,
+    nigiri::direction const search_dir) {
+  using namespace nigiri;
+  if (search_dir == direction::kForward) {
+    return raptor_search<direction::kForward>(tt, std::move(q));
+  } else {
+    return raptor_search<direction::kBackward>(tt, std::move(q));
+  }
+}
 
 std::unique_ptr<cista::wrapped<nigiri::timetable>> load_timetable(
     std::filesystem::path const& input_path) {
@@ -82,8 +113,10 @@ std::unique_ptr<cista::wrapped<nigiri::timetable>> load_timetable(
 }
 
 int main(int argc, char* argv[]) {
+  using namespace nigiri;
+  using namespace nigiri::routing;
   auto const progress_tracker = utl::activate_progress_tracker("benchmark");
-  auto const silencer = utl::global_progress_bars{true};
+  utl::get_global_progress_trackers().silent_ = false;
 
   if (argc != 2) {
     std::cout << "usage: nigiri-benchmark "
@@ -95,6 +128,44 @@ int main(int argc, char* argv[]) {
   }
 
   auto tt = load_timetable({argv[1]});
+
+  // generate queries
+  log(log_lvl::info, "benchmark.query_generation", "generating queries");
+  auto const gs = query_generation::generator_settings{};
+  auto qg = query_generation::generator{**tt, gs};
+  auto queries = std::vector<query>{};
+  progress_tracker->status("generating queries").in_high(queries.size());
+  std::mutex queries_mutex;
+  utl::parallel_for_run(
+      10000U,
+      [&](auto const i) {
+        auto const q = qg.random_pretrip_query();
+        if (q.has_value()) {
+          std::lock_guard<std::mutex> guard(queries_mutex);
+          queries.emplace_back(q.value());
+        }
+      },
+      progress_tracker->update_fn());
+
+  // process queries
+  auto results =
+      std::vector<pair<std::uint64_t, routing_result<raptor_stats>>>{};
+  progress_tracker->status("processing queries").in_high(queries.size());
+  utl::parallel_for_run(
+      queries.size(),
+      [&](auto const q_idx) {
+        auto ss = search_state{};
+        auto rs = raptor_state{};
+
+        auto const result =
+            routing::search<direction::kForward,
+                            routing::raptor<direction::kForward, false>>{
+                **tt, nullptr, ss, rs, queries[q_idx]}
+                .execute();
+        std::lock_guard<std::mutex> guard(queries_mutex);
+        results.emplace_back(q_idx, result);
+      },
+      progress_tracker->update_fn());
 
   return 0;
 }
