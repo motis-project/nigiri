@@ -15,7 +15,7 @@ struct timetable;
 
 namespace nigiri::query_generation {
 
-constexpr auto const kMaxGenAttempts = 10000U;
+constexpr auto const kMaxGenAttempts = 100U;
 
 constexpr auto const kTimeOfDayWeights = std::array<int, 24>{
     1,  // 01: 00:00 - 01:00

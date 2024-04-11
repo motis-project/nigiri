@@ -38,6 +38,7 @@ struct search_stats {
   std::uint64_t fastest_direct_{0ULL};
   std::uint64_t search_iterations_{0ULL};
   std::uint64_t interval_extensions_{0ULL};
+  std::uint64_t execute_time_{0ULL};  // [ms]
 };
 
 template <typename AlgoStats>
@@ -117,13 +118,13 @@ struct search {
         state_{s},
         q_{std::move(q)},
         search_interval_{std::visit(
-            utl::overloaded{
-                [](interval<unixtime_t> const start_interval) {
-                  return start_interval;
-                },
-                [](unixtime_t const start_time) {
-                  return interval<unixtime_t>{start_time, start_time};
-                }},
+            utl::overloaded{[](interval<unixtime_t> const start_interval) {
+                              return start_interval;
+                            },
+                            [](unixtime_t const start_time) {
+                              return interval<unixtime_t>{start_time,
+                                                          start_time};
+                            }},
             q_.start_time_)},
         fastest_direct_{get_fastest_direct(tt_, q_, SearchDir)},
         algo_{init(q_.allowed_claszes_, algo_state)},
@@ -139,10 +140,10 @@ struct search {
     state_.starts_.clear();
     add_start_labels(q_.start_time_, true);
 
-    auto const processing_start_time = std::chrono::system_clock::now();
+    auto const processing_start_time = std::chrono::steady_clock::now();
     auto const is_timeout_reached = [&]() {
       if (timeout_) {
-        return (std::chrono::system_clock::now() - processing_start_time) >=
+        return (std::chrono::steady_clock::now() - processing_start_time) >=
                *timeout_;
       }
 
@@ -165,13 +166,13 @@ struct search {
             is_ontrip(), max_interval_reached(), q_.extend_interval_earlier_,
             q_.extend_interval_later_,
             std::visit(
-                utl::overloaded{
-                    [](interval<unixtime_t> const& start_interval) {
-                      return start_interval;
-                    },
-                    [](unixtime_t const start_time) {
-                      return interval<unixtime_t>{start_time, start_time};
-                    }},
+                utl::overloaded{[](interval<unixtime_t> const& start_interval) {
+                                  return start_interval;
+                                },
+                                [](unixtime_t const start_time) {
+                                  return interval<unixtime_t>{start_time,
+                                                              start_time};
+                                }},
                 q_.start_time_),
             search_interval_, tt_.external_interval(), n_results_in_interval(),
             is_timeout_reached());
@@ -184,13 +185,13 @@ struct search {
             max_interval_reached(), q_.extend_interval_earlier_,
             q_.extend_interval_later_,
             std::visit(
-                utl::overloaded{
-                    [](interval<unixtime_t> const& start_interval) {
-                      return start_interval;
-                    },
-                    [](unixtime_t const start_time) {
-                      return interval<unixtime_t>{start_time, start_time};
-                    }},
+                utl::overloaded{[](interval<unixtime_t> const& start_interval) {
+                                  return start_interval;
+                                },
+                                [](unixtime_t const start_time) {
+                                  return interval<unixtime_t>{start_time,
+                                                              start_time};
+                                }},
                 q_.start_time_),
             search_interval_, tt_.external_interval(), n_results_in_interval());
       }
@@ -242,6 +243,10 @@ struct search {
       });
     }
 
+    stats_.execute_time_ =
+        std::chrono::duration_cast<std::chrono::milliseconds>(
+            (std::chrono::steady_clock::now() - processing_start_time))
+            .count();
     return {.journeys_ = &state_.results_,
             .interval_ = search_interval_,
             .search_stats_ = stats_,

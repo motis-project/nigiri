@@ -1,3 +1,4 @@
+#include <algorithm>
 #include <filesystem>
 #include <iostream>
 
@@ -114,6 +115,41 @@ std::unique_ptr<cista::wrapped<nigiri::timetable>> load_timetable(
   return tt;
 }
 
+template <typename T>
+T mean(std::vector<T> const& v) {
+  T sum = 0;
+  for (auto const e : v) {
+    sum += e;
+  }
+  return sum / v.size();
+}
+
+// needs sorted vector
+template <typename T>
+T quantile(std::vector<T> const& v, double q) {
+  if (v.empty()) {
+    return 0;
+  }
+  q = q < 0.0 ? 0.0 : q;
+  q = 1.0 < q ? 1.0 : q;
+  if (q == 1.0) {
+    return v.back();
+  }
+  return v[static_cast<std::size_t>(v.size() * q)];
+}
+
+template <typename T>
+void print_stats(std::vector<T> const& var, std::string var_name) {
+  std::cout << var_name << " statistics:\nn: " << var.size()
+            << "\nmean: " << mean(var) << "\n25%: " << quantile(var, 0.25)
+            << "\n50%: " << quantile(var, 0.5)
+            << "\n75%: " << quantile(var, 0.75)
+            << "\n90%: " << quantile(var, 0.9)
+            << "\n99%: " << quantile(var, 0.99)
+            << "\n99.9%: " << quantile(var, 0.999) << "\nmax:" << var.back()
+            << "\n";
+}
+
 int main(int argc, char* argv[]) {
   using namespace nigiri;
   using namespace nigiri::routing;
@@ -176,5 +212,13 @@ int main(int argc, char* argv[]) {
         },
         progress_tracker->update_fn());
   }
+
+  auto routing_times = std::vector<std::uint64_t>{};
+  for (auto const& result : results) {
+    routing_times.emplace_back(result.second.search_stats_.execute_time_);
+  }
+  std::sort(routing_times.begin(), routing_times.end());
+  print_stats(routing_times, "routing times [ms]");
+
   return 0;
 }

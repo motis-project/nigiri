@@ -8,6 +8,18 @@
 
 namespace nigiri::query_generation {
 
+struct cyclic_index {
+  constexpr void next() {
+    ++i_;
+    if (i_ == size_) {
+      i_ = 0;
+    }
+  }
+
+  std::size_t i_;
+  std::size_t size_;
+};
+
 generator::generator(timetable const& tt, generator_settings const& settings)
     : tt_{tt},
       s_{settings},
@@ -116,10 +128,19 @@ std::optional<day_idx_t> generator::random_active_day(
     nigiri::transport_idx_t const tr_idx) {
   // try randomize
   auto const& bf = tt_.bitfields_[tt_.transport_traffic_days_[tr_idx]];
-  for (auto i = 0U; i < kMaxGenAttempts; ++i) {
+  for (auto i = 0U; i < 10; ++i) {
     auto const d_idx = random_day();
     if (bf.test(d_idx.v_)) {
       return d_idx;
+    }
+  }
+
+  // iterate cyclic after randomization
+  auto const d_idx = random_day();
+  auto cyclic = cyclic_index{d_idx.v_, bf.size()};
+  for (cyclic.next(); cyclic.i_ != d_idx.v_; cyclic.next()) {
+    if (bf.test(cyclic.i_)) {
+      return day_idx_t{cyclic.i_};
     }
   }
   // no active day found
@@ -138,30 +159,29 @@ std::optional<stop_idx_t> generator::random_active_stop(
           tt_.route_location_seq_[tt_.transport_route_[tr_idx]].size() -
           (et == event_type::kArr ? 1U : 2U))};
 
-  for (auto i = 0U; i < kMaxGenAttempts; ++i) {
-
-    // randomize stop index
-    auto const stop_idx = stop_idx_t{stop_d(rng_)};
-
+  auto check_stop = [&](stop const& s) {
     switch (et) {
       case event_type::kDep: {
-        if (stop{
-                tt_.route_location_seq_[tt_.transport_route_[tr_idx]][stop_idx]}
-                .in_allowed()) {
-          return stop_idx;
-        }
-        break;
+        return s.in_allowed();
       }
       case event_type::kArr: {
-        if (stop{
-                tt_.route_location_seq_[tt_.transport_route_[tr_idx]][stop_idx]}
-                .out_allowed()) {
-          return stop_idx;
-        }
-        break;
+        return s.out_allowed();
       }
     }
+  };
+
+  // try randomize
+  for (auto i = 0U; i < 10; ++i) {
+    auto const stop_idx = stop_idx_t{stop_d(rng_)};
+
+    if (check_stop(stop{
+            tt_.route_location_seq_[tt_.transport_route_[tr_idx]][stop_idx]})) {
+      return stop_idx;
+    }
   }
+
+  // iterate cyclic after randomization
+
   return std::nullopt;
 }
 
