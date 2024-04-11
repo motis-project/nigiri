@@ -3,8 +3,8 @@
 
 #include "utl/progress_tracker.h"
 
-#include "nigiri/loader/gtfs/loader.h"
-#include "nigiri/loader/init_finish.h"
+#include "nigiri/loader/load.h"
+#include "nigiri/loader/loader_interface.h"
 #include "nigiri/logging.h"
 #include "nigiri/timetable.h"
 
@@ -25,6 +25,7 @@ int main(int argc, char* argv[]) {
     return 1;
   }
 
+  // gather paths of input files in target folder
   std::vector<std::filesystem::path> input_files;
   std::filesystem::path input_path{argv[1]};
   if (std::filesystem::is_regular_file(input_path)) {
@@ -42,23 +43,9 @@ int main(int argc, char* argv[]) {
     std::cout << "path provided is invalid\n";
   }
 
-  timetable tt;
-  tt.date_range_ = {date::sys_days{January / 1 / 2024},
-                    date::sys_days{December / 31 / 2024}};
-  register_special_stations(tt);
-
-  gtfs::gtfs_loader l;
-  auto src_idx_counter = 0U;
-  for (auto const& zip_file : input_files) {
-    auto const dir = make_dir(zip_file);
-    if (l.applicable(*dir)) {
-      log(log_lvl::info, "main", "loading GTFS timetable in {}",
-          zip_file.filename().string());
-      l.load({}, source_idx_t{src_idx_counter++}, *dir, tt);
-    }
-  }
-
-  finalize(tt);
+  auto const tt = load(input_files, {100U, "Europe/Berlin"},
+                       {date::sys_days{January / 1 / 2024},
+                        date::sys_days{December / 31 / 2024}});
 
   return 0;
 }
