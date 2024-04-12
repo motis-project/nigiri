@@ -115,15 +115,6 @@ std::unique_ptr<cista::wrapped<nigiri::timetable>> load_timetable(
   return tt;
 }
 
-template <typename T>
-T mean(std::vector<T> const& v) {
-  T sum = 0;
-  for (auto const e : v) {
-    sum += e;
-  }
-  return sum / v.size();
-}
-
 // needs sorted vector
 template <typename T>
 T quantile(std::vector<T> const& v, double q) {
@@ -140,14 +131,15 @@ T quantile(std::vector<T> const& v, double q) {
 
 template <typename T>
 void print_stats(std::vector<T> const& var, std::string var_name) {
-  std::cout << var_name << " statistics:\nn: " << var.size()
-            << "\nmean: " << mean(var) << "\n25%: " << quantile(var, 0.25)
-            << "\n50%: " << quantile(var, 0.5)
-            << "\n75%: " << quantile(var, 0.75)
-            << "\n90%: " << quantile(var, 0.9)
-            << "\n99%: " << quantile(var, 0.99)
-            << "\n99.9%: " << quantile(var, 0.999) << "\nmax:" << var.back()
-            << "\n";
+  std::cout << "\n--- " << var_name << " --- (n = " << var.size() << ")"
+            << "\n  25%: " << std::setw(12) << quantile(var, 0.25)
+            << "\n  50%: " << std::setw(12) << quantile(var, 0.5)
+            << "\n  75%: " << std::setw(12) << quantile(var, 0.75)
+            << "\n  90%: " << std::setw(12) << quantile(var, 0.9)
+            << "\n  99%: " << std::setw(12) << quantile(var, 0.99)
+            << "\n99.9%: " << std::setw(12) << quantile(var, 0.999)
+            << "\n  max: " << std::setw(12) << var.back()
+            << "\n----------------------------------\n";
 }
 
 int main(int argc, char* argv[]) {
@@ -156,16 +148,24 @@ int main(int argc, char* argv[]) {
   auto const progress_tracker = utl::activate_progress_tracker("benchmark");
   utl::get_global_progress_trackers().silent_ = false;
 
-  if (argc != 2) {
-    std::cout << "usage: nigiri-benchmark "
-              << "[GTFS_ZIP_FILE] | [DIRECTORY]\nloads a zip file "
-                 "containing a timetable in GTFS format, or attempts to load "
-                 "all zip files within a given directory\n";
+  if (argc != 2 && argc != 3) {
+    std::cout
+        << "usage: nigiri-benchmark "
+        << "\e[4mGTFS-ZIP-FILE\e[0m | \e[4mDIRECTORY\e[0m [seed]\n"
+           "Loads a zip file containing a timetable"
+           " in GTFS format, or attempts to load "
+           "all zip files within a given directory.\nIf a seed is provided, "
+           "it will be used to seed the random number generator\n";
 
     return 1;
   }
 
   auto tt = load_timetable({argv[1]});
+
+  std::optional<std::uint32_t> seed;
+  if (argc == 3) {
+    seed = static_cast<std::uint32_t>(std::stol(argv[2]));
+  }
 
   std::mutex queries_mutex;
 
@@ -173,10 +173,24 @@ int main(int argc, char* argv[]) {
   auto queries = std::vector<query>{};
   {
     auto const num_queries = 10000U;
-    auto query_generation_timer =
-        scoped_timer(fmt::format("generation of {} queries", num_queries));
-    auto const gs = query_generation::generator_settings{};
-    auto qg = query_generation::generator{**tt, gs};
+    auto const gs = query_generation::generator_settings{
+        .interval_size_ = duration_t{60U},
+        .start_match_mode_ = nigiri::routing::location_match_mode::kIntermodal,
+        .dest_match_mode_ = nigiri::routing::location_match_mode::kIntermodal,
+        .start_mode_ = query_generation::kWalk,
+        .dest_mode_ = query_generation::kWalk,
+        .use_start_footpaths_ = true,
+        .max_transfers_ = routing::kMaxTransfers,
+        .min_connection_count_ = 3U,
+        .extend_interval_earlier_ = true,
+        .extend_interval_later_ = true,
+        .prf_idx_ = profile_idx_t{0},
+        .allowed_claszes_ = clasz_mask_t{routing::all_clasz_allowed()}};
+    auto qg = seed.has_value()
+                  ? query_generation::generator{**tt, gs, seed.value()}
+                  : query_generation::generator{**tt, gs};
+    auto query_generation_timer = scoped_timer(fmt::format(
+        "generation of {} queries using seed {}", num_queries, qg.seed_));
     progress_tracker->status("generating queries").in_high(queries.size());
     utl::parallel_for_run(
         num_queries,
@@ -215,12 +229,18 @@ int main(int argc, char* argv[]) {
 
   auto routing_times = std::vector<std::chrono::milliseconds::rep>{};
   routing_times.reserve(results.size());
+  auto search_iterations = std::vector<std::uint64_t>{};
+  search_iterations.reserve(results.size());
   for (auto const& result : results) {
     routing_times.emplace_back(
         result.second.search_stats_.execute_time_.count());
+    search_iterations.emplace_back(
+        result.second.search_stats_.search_iterations_);
   }
-  std::sort(routing_times.begin(), routing_times.end());
+  std::sort(begin(routing_times), end(routing_times));
   print_stats(routing_times, "routing times [ms]");
+  std::sort(begin(search_iterations), end(search_iterations));
+  print_stats(search_iterations, "search iterations");
 
   return 0;
 }
