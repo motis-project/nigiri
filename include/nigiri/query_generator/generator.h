@@ -19,6 +19,9 @@ constexpr auto const kMaxGenAttempts = 1000U;
 
 struct generator {
   explicit generator(timetable const&, generator_settings const&);
+  explicit generator(timetable const&,
+                     generator_settings const&,
+                     std::uint32_t seed);
 
   // randomize a point in time within the timetable
   unixtime_t random_time();
@@ -43,6 +46,7 @@ struct generator {
 
   timetable const& tt_;
   generator_settings const& s_;
+  std::uint32_t seed_;
 
 private:
   transport_idx_t random_transport_idx();
@@ -67,8 +71,7 @@ private:
   geo::point_rtree locations_rtree_;
 
   // RNG
-  std::random_device rd_;
-  std::mt19937 rng_{rd_()};
+  std::mt19937 rng_;
 
   // Distributions
   std::uniform_int_distribution<location_idx_t::value_t> location_d_;

@@ -1,5 +1,6 @@
 #include "nigiri/query_generator/generator.h"
 
+#include "nigiri/logging.h"
 #include "nigiri/routing/location_match_mode.h"
 #include "nigiri/routing/ontrip_train.h"
 #include "nigiri/special_stations.h"
@@ -11,6 +12,32 @@ namespace nigiri::query_generation {
 generator::generator(timetable const& tt, generator_settings const& settings)
     : tt_{tt},
       s_{settings},
+      seed_{std::random_device{}()},
+      rng_{seed_},
+      location_d_{
+          static_cast<std::uint32_t>(special_station::kSpecialStationsSize),
+          tt_.n_locations() - 1},
+      time_d_{tt_.external_interval().from_.time_since_epoch().count(),
+              tt_.external_interval().to_.time_since_epoch().count() - 1},
+      transport_d_{0U, tt_.transport_traffic_days_.size() - 1U},
+      day_d_{kTimetableOffset.count(),
+             static_cast<day_idx_t::value_t>(kTimetableOffset.count() +
+                                             tt_n_days() - 1)},
+      start_mode_range_d_{10, s_.start_mode_.range()},
+      dest_mode_range_d_{10, s_.dest_mode_.range()} {
+  if (settings.start_match_mode_ == routing::location_match_mode::kIntermodal ||
+      settings.dest_match_mode_ == routing::location_match_mode::kIntermodal) {
+    locations_rtree_ = geo::make_point_rtree(tt_.locations_.coordinates_);
+  }
+}
+
+generator::generator(timetable const& tt,
+                     generator_settings const& settings,
+                     std::uint32_t seed)
+    : tt_{tt},
+      s_{settings},
+      seed_{seed},
+      rng_{seed_},
       location_d_{
           static_cast<std::uint32_t>(special_station::kSpecialStationsSize),
           tt_.n_locations() - 1},
@@ -123,8 +150,6 @@ std::optional<day_idx_t> generator::random_active_day(
     }
   }
 
-  std::cout << "day randomization failed\n";
-
   // fallback: linear search from random day
   auto const day_idx = random_day();
   // search days after randomized day
@@ -181,8 +206,6 @@ std::optional<stop_idx_t> generator::random_active_stop(
       return stop_idx;
     }
   }
-
-  std::cout << "stop randomization failed\n";
 
   // fallback: linear search from random stop
   auto stop_idx = random_stop();
@@ -308,8 +331,9 @@ std::optional<routing::query> generator::random_pretrip_query() {
     return q;
   }
 
-  std::cout << "WARNING: failed to generate a valid query after "
-            << kMaxGenAttempts << " attempts\n";
+  log(log_lvl::info, "query_generator.random_pretrip",
+      "WARNING: failed to generate a valid query after {} attempts",
+      kMaxGenAttempts);
 
   return std::nullopt;
 }
@@ -355,8 +379,9 @@ std::optional<routing::query> generator::random_ontrip_query() {
     return q;
   }
 
-  std::cout << "WARNING: failed to generate a valid query after "
-            << kMaxGenAttempts << " attempts\n";
+  log(log_lvl::info, "query_generator.random_ontrip",
+      "WARNING: failed to generate a valid query after {} attempts",
+      kMaxGenAttempts);
 
   return std::nullopt;
 }
