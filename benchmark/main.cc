@@ -213,9 +213,11 @@ int main(int argc, char* argv[]) {
         progress_tracker->update_fn());
   }
 
-  auto routing_times = std::vector<std::uint64_t>{};
+  auto routing_times = std::vector<std::chrono::milliseconds::rep>{};
+  routing_times.reserve(results.size());
   for (auto const& result : results) {
-    routing_times.emplace_back(result.second.search_stats_.execute_time_);
+    routing_times.emplace_back(
+        result.second.search_stats_.execute_time_.count());
   }
   std::sort(routing_times.begin(), routing_times.end());
   print_stats(routing_times, "routing times [ms]");

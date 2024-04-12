@@ -38,7 +38,7 @@ struct search_stats {
   std::uint64_t fastest_direct_{0ULL};
   std::uint64_t search_iterations_{0ULL};
   std::uint64_t interval_extensions_{0ULL};
-  std::uint64_t execute_time_{0ULL};  // [ms]
+  std::chrono::milliseconds execute_time_{0LL};  // [ms]
 };
 
 template <typename AlgoStats>
@@ -245,8 +245,7 @@ struct search {
 
     stats_.execute_time_ =
         std::chrono::duration_cast<std::chrono::milliseconds>(
-            (std::chrono::steady_clock::now() - processing_start_time))
-            .count();
+            (std::chrono::steady_clock::now() - processing_start_time));
     return {.journeys_ = &state_.results_,
             .interval_ = search_interval_,
             .search_stats_ = stats_,
