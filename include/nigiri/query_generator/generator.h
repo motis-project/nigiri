@@ -58,7 +58,7 @@ private:
   geo::latlng random_point_in_range(
       geo::latlng const&, std::uniform_int_distribution<std::uint32_t>&);
 
-  interval<day_idx_t> unix_to_day_itv(interval<unixtime_t> const& iv);
+  interval<day_idx_t> unix_to_day_itv(interval<unixtime_t> const&);
   std::uint16_t tt_n_days();
 
   routing::query make_query() const;
