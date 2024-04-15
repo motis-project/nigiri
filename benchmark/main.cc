@@ -13,7 +13,6 @@
 #include "nigiri/routing/search.h"
 #include "nigiri/timetable.h"
 
-template <nigiri::direction SearchDir>
 nigiri::pareto_set<nigiri::routing::journey> raptor_search(
     nigiri::timetable const& tt, nigiri::routing::query q) {
   using namespace nigiri;
@@ -21,23 +20,11 @@ nigiri::pareto_set<nigiri::routing::journey> raptor_search(
   static auto search_state = routing::search_state{};
   static auto algo_state = algo_state_t{};
 
-  using algo_t = routing::raptor<SearchDir, false>;
-  return *(routing::search<SearchDir, algo_t>{tt, nullptr, search_state,
-                                              algo_state, std::move(q)}
+  using algo_t = routing::raptor<nigiri::direction::kForward, false>;
+  return *(routing::search<nigiri::direction::kForward, algo_t>{
+      tt, nullptr, search_state, algo_state, std::move(q)}
                .execute()
                .journeys_);
-}
-
-nigiri::pareto_set<nigiri::routing::journey> raptor_search(
-    nigiri::timetable const& tt,
-    nigiri::routing::query q,
-    nigiri::direction const search_dir) {
-  using namespace nigiri;
-  if (search_dir == direction::kForward) {
-    return raptor_search<direction::kForward>(tt, std::move(q));
-  } else {
-    return raptor_search<direction::kBackward>(tt, std::move(q));
-  }
 }
 
 std::unique_ptr<cista::wrapped<nigiri::timetable>> load_timetable(
@@ -151,12 +138,10 @@ int main(int argc, char* argv[]) {
   if (argc != 2 && argc != 3) {
     std::cout
         << "usage: nigiri-benchmark "
-        << "\e[4mGTFS-ZIP-FILE\e[0m | \e[4mDIRECTORY\e[0m [seed]\n"
-           "Loads a zip file containing a timetable"
-           " in GTFS format, or attempts to load "
-           "all zip files within a given directory.\nIf a seed is provided, "
-           "it will be used to seed the random number generator\n";
-
+        << "\e[4mGTFS-ZIP-FILE\e[0m | \e[4mDIRECTORY\e[0m [seed]\nLoads a zip "
+           "file containing a timetable in GTFS format, or attempts to load "
+           "all zip files within a given directory.\nIf a seed is provided, it "
+           "will be used to seed the random number generator\n";
     return 1;
   }
 
