@@ -188,6 +188,7 @@ int main(int argc, char* argv[]) {
         },
         progress_tracker->update_fn());
   }
+
   // process queries
   auto results =
       std::vector<pair<std::uint64_t, routing_result<raptor_stats>>>{};
@@ -212,6 +213,7 @@ int main(int argc, char* argv[]) {
         progress_tracker->update_fn());
   }
 
+  // print results
   auto routing_times = std::vector<std::chrono::milliseconds::rep>{};
   routing_times.reserve(results.size());
   auto search_iterations = std::vector<std::uint64_t>{};
