@@ -236,11 +236,12 @@ geo::latlng generator::random_point_in_range(
                                 static_cast<double>(bearing_d_(rng_)));
 }
 
-interval<day_idx_t> generator::unix_to_day_itv(interval<unixtime_t> const& iv) {
+interval<day_idx_t> generator::unix_to_day_itv(
+    interval<unixtime_t> const& itv) {
   auto const start_day_idx =
-      tt_.day_idx(std::chrono::floor<std::chrono::days>(iv.from_));
+      tt_.day_idx(std::chrono::floor<std::chrono::days>(itv.from_));
   auto const end_day_idx = tt_.day_idx(
-      std::chrono::floor<std::chrono::days>(iv.to_) + std::chrono::days(1));
+      std::chrono::floor<std::chrono::days>(itv.to_) + std::chrono::days(1));
   return {start_day_idx, end_day_idx};
 }
 
