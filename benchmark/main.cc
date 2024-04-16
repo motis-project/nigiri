@@ -38,7 +38,7 @@ std::unique_ptr<cista::wrapped<nigiri::timetable>> load_timetable(
     // input path directly to GTFS zip file
     input_files.emplace_back(input_path);
   } else if (std::filesystem::is_directory(input_path)) {
-    // input path to directoy
+    // input path to directory
     for (auto const& dir_entry :
          std::filesystem::directory_iterator(input_path)) {
       std::filesystem::path file_path(dir_entry);
@@ -117,7 +117,7 @@ T quantile(std::vector<T> const& v, double q) {
 }
 
 template <typename T>
-void print_stats(std::vector<T> const& var, std::string var_name) {
+void print_stats(std::vector<T> const& var, std::string const& var_name) {
   std::cout << "\n--- " << var_name << " --- (n = " << var.size() << ")"
             << "\n  25%: " << std::setw(12) << quantile(var, 0.25)
             << "\n  50%: " << std::setw(12) << quantile(var, 0.5)
@@ -137,11 +137,10 @@ int main(int argc, char* argv[]) {
 
   if (argc != 2 && argc != 3) {
     std::cout
-        << "usage: nigiri-benchmark "
-        << "\e[4mGTFS-ZIP-FILE\e[0m | \e[4mDIRECTORY\e[0m [seed]\nLoads a zip "
-           "file containing a timetable in GTFS format, or attempts to load "
-           "all zip files within a given directory.\nIf a seed is provided, it "
-           "will be used to seed the random number generator\n";
+        << "usage: nigiri-benchmark GTFS-ZIP-FILE | DIRECTORY [seed]\nLoads a "
+           "zip file containing a timetable in GTFS format, or attempts to "
+           "load all zip files within a given directory.\nIf a seed is "
+           "provided, it will be used to seed the random number generator\n";
     return 1;
   }
 
