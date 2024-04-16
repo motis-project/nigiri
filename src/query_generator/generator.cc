@@ -197,6 +197,7 @@ std::optional<stop_idx_t> generator::random_active_stop(
         return s.out_allowed();
       }
     }
+    return false;
   };
 
   // try randomize
