@@ -2,6 +2,8 @@
 #include <filesystem>
 #include <iostream>
 
+#include "boost/program_options.hpp"
+
 #include "utl/parallel_for.h"
 #include "utl/progress_tracker.h"
 
@@ -132,8 +134,46 @@ void print_stats(std::vector<T> const& var, std::string const& var_name) {
 int main(int argc, char* argv[]) {
   using namespace nigiri;
   using namespace nigiri::routing;
+  namespace bpo = boost::program_options;
   auto const progress_tracker = utl::activate_progress_tracker("benchmark");
   utl::get_global_progress_trackers().silent_ = false;
+
+  auto num_queries = 10000U;
+  auto gs = query_generation::generator_settings{
+      .interval_size_ = duration_t{60U},
+      .start_match_mode_ = nigiri::routing::location_match_mode::kIntermodal,
+      .dest_match_mode_ = nigiri::routing::location_match_mode::kIntermodal,
+      .start_mode_ = query_generation::kWalk,
+      .dest_mode_ = query_generation::kWalk,
+      .use_start_footpaths_ = true,
+      .max_transfers_ = routing::kMaxTransfers,
+      .min_connection_count_ = 3U,
+      .extend_interval_earlier_ = true,
+      .extend_interval_later_ = true,
+      .prf_idx_ = profile_idx_t{0},
+      .allowed_claszes_ = clasz_mask_t{routing::all_clasz_allowed()}};
+
+  bpo::options_description desc("Allowed options");
+  // clang-format off
+  desc.add_options()
+    ("help", "produce help message")
+    ("tt_path", bpo::value<std::string>(),"path to a GTFS zip file or a directory containing GTFS zip files")
+    ("seed", bpo::value<std::uint32_t>(),"a value to seed the initial ")
+    ("num_queries", bpo::value<std::uint32_t>(), "number of queries to generate/process (default: 10000)")
+    ("interval_size", bpo::value<std::uint32_t>(), "the initial size of the search interval in minutes (default: 60)")
+    ("start_match_mode", bpo::value<std::string>(), "intermodal | station (default: intermodal)")
+    ("dest_match_mode", bpo::value<std::string>(), "intermodal | station (default: intermodal)")
+    ("intermodal_start_mode", bpo::value<std::string>(), "walk | bicycle | car (default: walk)")
+    ("intermodal_dest_mode", bpo::value<std::string>(), "walk | bicycle | car (default: walk)")
+    ("use_start_footpaths", bpo::value<bool>(), "default: true")
+    ("max_transfers", bpo::value<std::uint8_t>(), "maximum number of transfers during routing (default: 7)")
+    ("min_connection_count", bpo::value<std::uint8_t>(), "the minimum number of connections to find with each query (default: 3)")
+    ("extend_interval_earlier", bpo::value<bool>(), "allows extension of the search interval into the past (default: true)")
+    ("extend_interval_later", bpo::value<bool>(), "allows extension of the search interval into the future (default: true)")
+    ("prf_idx", bpo::value<std::uint8_t>(), "")
+    ("allowed_claszes", bpo::value<std::uint8_t>(), "")
+  ;
+  // clang-format on
 
   if (argc != 2 && argc != 3) {
     std::cout
@@ -156,20 +196,6 @@ int main(int argc, char* argv[]) {
   // generate queries
   auto queries = std::vector<query>{};
   {
-    auto const num_queries = 10000U;
-    auto const gs = query_generation::generator_settings{
-        .interval_size_ = duration_t{60U},
-        .start_match_mode_ = nigiri::routing::location_match_mode::kIntermodal,
-        .dest_match_mode_ = nigiri::routing::location_match_mode::kIntermodal,
-        .start_mode_ = query_generation::kWalk,
-        .dest_mode_ = query_generation::kWalk,
-        .use_start_footpaths_ = true,
-        .max_transfers_ = routing::kMaxTransfers,
-        .min_connection_count_ = 3U,
-        .extend_interval_earlier_ = true,
-        .extend_interval_later_ = true,
-        .prf_idx_ = profile_idx_t{0},
-        .allowed_claszes_ = clasz_mask_t{routing::all_clasz_allowed()}};
     auto qg = seed.has_value()
                   ? query_generation::generator{**tt, gs, seed.value()}
                   : query_generation::generator{**tt, gs};
