@@ -138,57 +138,89 @@ int main(int argc, char* argv[]) {
   auto const progress_tracker = utl::activate_progress_tracker("benchmark");
   utl::get_global_progress_trackers().silent_ = false;
 
-  auto num_queries = 10000U;
-  auto gs = query_generation::generator_settings{
-      .interval_size_ = duration_t{60U},
-      .start_match_mode_ = nigiri::routing::location_match_mode::kIntermodal,
-      .dest_match_mode_ = nigiri::routing::location_match_mode::kIntermodal,
-      .start_mode_ = query_generation::kWalk,
-      .dest_mode_ = query_generation::kWalk,
-      .use_start_footpaths_ = true,
-      .max_transfers_ = routing::kMaxTransfers,
-      .min_connection_count_ = 3U,
-      .extend_interval_earlier_ = true,
-      .extend_interval_later_ = true,
-      .prf_idx_ = profile_idx_t{0},
-      .allowed_claszes_ = clasz_mask_t{routing::all_clasz_allowed()}};
+  std::uint32_t num_queries;
+  auto gs = query_generation::generator_settings{};
 
   bpo::options_description desc("Allowed options");
   // clang-format off
   desc.add_options()
-    ("help", "produce help message")
-    ("tt_path", bpo::value<std::string>(),"path to a GTFS zip file or a directory containing GTFS zip files")
-    ("seed", bpo::value<std::uint32_t>(),"a value to seed the initial ")
-    ("num_queries", bpo::value<std::uint32_t>(), "number of queries to generate/process (default: 10000)")
-    ("interval_size", bpo::value<std::uint32_t>(), "the initial size of the search interval in minutes (default: 60)")
-    ("start_match_mode", bpo::value<std::string>(), "intermodal | station (default: intermodal)")
-    ("dest_match_mode", bpo::value<std::string>(), "intermodal | station (default: intermodal)")
-    ("intermodal_start_mode", bpo::value<std::string>(), "walk | bicycle | car (default: walk)")
-    ("intermodal_dest_mode", bpo::value<std::string>(), "walk | bicycle | car (default: walk)")
-    ("use_start_footpaths", bpo::value<bool>(), "default: true")
-    ("max_transfers", bpo::value<std::uint8_t>(), "maximum number of transfers during routing (default: 7)")
-    ("min_connection_count", bpo::value<std::uint8_t>(), "the minimum number of connections to find with each query (default: 3)")
-    ("extend_interval_earlier", bpo::value<bool>(), "allows extension of the search interval into the past (default: true)")
-    ("extend_interval_later", bpo::value<bool>(), "allows extension of the search interval into the future (default: true)")
-    ("prf_idx", bpo::value<std::uint8_t>(), "")
-    ("allowed_claszes", bpo::value<std::uint8_t>(), "")
+    ("help,h", "produce this help message")
+    ("tt_path,p", bpo::value<std::string>(),"path to a GTFS zip file or a directory containing GTFS zip files")
+    ("seed,s", bpo::value<std::uint32_t>(),"value to seed the RNG of the query generator with, omit for random seed")
+    ("num_queries,n", bpo::value<std::uint32_t>(&num_queries)->default_value(10000U), "number of queries to generate/process")
+    ("interval_size,i", bpo::value<std::uint32_t>()->default_value(60U), "the initial size of the search interval in minutes")
+    ("start_mode", bpo::value<std::string>()->default_value("intermodal"), "intermodal | station")
+    ("dest_mode", bpo::value<std::string>()->default_value("intermodal"), "intermodal | station")
+    ("intermodal_start", bpo::value<std::string>()->default_value("walk"), "walk | bicycle | car")
+    ("intermodal_dest", bpo::value<std::string>()->default_value("walk"), "walk | bicycle | car")
+    ("use_start_footpaths", bpo::value<bool>(&gs.use_start_footpaths_)->default_value(true), "")
+    ("max_transfers,t", bpo::value<std::uint8_t>(&gs.max_transfers_)->default_value(7U), "maximum number of transfers during routing")
+    ("min_connection_count,m", bpo::value<std::uint32_t>(&gs.min_connection_count_)->default_value(3U), "the minimum number of connections to find with each query")
+    ("extend_interval_earlier,e", bpo::value<bool>(&gs.extend_interval_earlier_)->default_value(true), "allows extension of the search interval into the past")
+    ("extend_interval_later,l", bpo::value<bool>(&gs.extend_interval_later_)->default_value(true), "allows extension of the search interval into the future")
+    ("prf_idx", bpo::value<profile_idx_t>(&gs.prf_idx_)->default_value(0U), "")
+    ("allowed_claszes", bpo::value<clasz_mask_t>(&gs.allowed_claszes_)->default_value(routing::all_clasz_allowed()), "")
   ;
   // clang-format on
+  bpo::variables_map vm;
+  bpo::store(bpo::command_line_parser(argc, argv).options(desc).run(), vm);
+  bpo::notify(vm);  // sets default values
 
-  if (argc != 2 && argc != 3) {
-    std::cout
-        << "usage: nigiri-benchmark GTFS-ZIP-FILE | DIRECTORY [seed]\nLoads a "
-           "zip file containing a timetable in GTFS format, or attempts to "
-           "load all zip files within a given directory.\nIf a seed is "
-           "provided, it will be used to seed the random number generator\n";
+  if (vm.count("help")) {
+    std::cout << desc << "\n";
+    return 0;
+  }
+
+  std::unique_ptr<cista::wrapped<nigiri::timetable>> tt;
+  if (vm.count("tt_path")) {
+    tt = load_timetable({vm["tt_path"].as<std::string>()});
+  } else {
+    std::cout << "Path to timetable missing\n";
     return 1;
   }
 
-  auto tt = load_timetable({argv[1]});
+  gs.interval_size_ = duration_t{vm["interval_size"].as<std::uint32_t>()};
 
-  std::optional<std::uint32_t> seed;
-  if (argc == 3) {
-    seed = static_cast<std::uint32_t>(std::stol(argv[2]));
+  if (vm["start_mode"].as<std::string>() == "intermodal") {
+    gs.start_match_mode_ = location_match_mode::kIntermodal;
+    if (vm.count("intermodal_start")) {
+      if (vm["intermodal_start"].as<std::string>() == "walk") {
+        gs.start_mode_ = query_generation::kWalk;
+      } else if (vm["intermodal_start"].as<std::string>() == "bicycle") {
+        gs.start_mode_ = query_generation::kBicycle;
+      } else if (vm["intermodal_start"].as<std::string>() == "car") {
+        gs.start_mode_ = query_generation::kCar;
+      } else {
+        std::cout << "Unknown intermodal start mode\n";
+        return 1;
+      }
+    }
+  } else if (vm["start_mode"].as<std::string>() == "station") {
+    gs.start_match_mode_ = location_match_mode::kExact;
+  } else {
+    std::cout << "Invalid start mode\n";
+    return 1;
+  }
+
+  if (vm["dest_mode"].as<std::string>() == "intermodal") {
+    gs.dest_match_mode_ = location_match_mode::kIntermodal;
+    if (vm.count("intermodal_dest")) {
+      if (vm["intermodal_dest"].as<std::string>() == "walk") {
+        gs.dest_mode_ = query_generation::kWalk;
+      } else if (vm["intermodal_dest"].as<std::string>() == "bicycle") {
+        gs.dest_mode_ = query_generation::kBicycle;
+      } else if (vm["intermodal_dest"].as<std::string>() == "car") {
+        gs.dest_mode_ = query_generation::kCar;
+      } else {
+        std::cout << "Unknown intermodal start mode\n";
+        return 1;
+      }
+    }
+  } else if (vm["dest_mode"].as<std::string>() == "station") {
+    gs.dest_match_mode_ = location_match_mode::kExact;
+  } else {
+    std::cout << "Invalid destination mode\n";
+    return 1;
   }
 
   std::mutex queries_mutex;
@@ -196,9 +228,11 @@ int main(int argc, char* argv[]) {
   // generate queries
   auto queries = std::vector<query>{};
   {
-    auto qg = seed.has_value()
-                  ? query_generation::generator{**tt, gs, seed.value()}
+    auto qg = vm.count("seed")
+                  ? query_generation::generator{**tt, gs,
+                                                vm["seed"].as<std::uint32_t>()}
                   : query_generation::generator{**tt, gs};
+
     auto query_generation_timer = scoped_timer(fmt::format(
         "generation of {} queries using seed {}", num_queries, qg.seed_));
     progress_tracker->status("generating queries").in_high(queries.size());

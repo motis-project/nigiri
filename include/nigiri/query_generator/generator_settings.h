@@ -10,6 +10,18 @@
 namespace nigiri::query_generation {
 
 struct generator_settings {
+
+  void print(std::ostream& out) {
+    using namespace nigiri::routing;
+    out << "Interval size: " << interval_size_.count() << "\nstart_mode: "
+        << (start_match_mode_ == location_match_mode::kIntermodal ? "intermodal"
+                                                                  : "station")
+        << "\ndest_mode: "
+        << (dest_match_mode_ == location_match_mode::kIntermodal ? "intermodal"
+                                                                 : "station")
+        << "\nintermodal_start_mode: " <<
+  }
+
   duration_t interval_size_{60U};
   routing::location_match_mode start_match_mode_{
       routing::location_match_mode::kIntermodal};
