@@ -30,7 +30,8 @@ nigiri::pareto_set<nigiri::routing::journey> raptor_search(
 }
 
 std::unique_ptr<cista::wrapped<nigiri::timetable>> load_timetable(
-    std::filesystem::path const& input_path) {
+    std::filesystem::path const& input_path,
+    nigiri::interval<date::sys_days> const& tt_interval) {
   auto load_timetable_timer = nigiri::scoped_timer("loading timetable");
 
   // gather paths of input files in target folder
@@ -54,8 +55,6 @@ std::unique_ptr<cista::wrapped<nigiri::timetable>> load_timetable(
   }
 
   auto const config = nigiri::loader::loader_config{100U, "Europe/Berlin"};
-  auto const tt_interval = nigiri::interval<date::sys_days>{
-      {date::January / 1 / 2024}, {date::December / 31 / 2024}};
 
   // hash tt settings and input files
   auto h = cista::hash_combine(
@@ -104,6 +103,45 @@ std::unique_ptr<cista::wrapped<nigiri::timetable>> load_timetable(
   return tt;
 }
 
+std::optional<date::sys_days> parse_date(std::string const& str) {
+  auto tokens = std::vector<std::string>{};
+  auto start = 0U;
+  for (auto i = 0U; i != 3; ++i) {
+    auto end = str.find('-', start);
+    if (end == std::string::npos && i != 2) {
+      return std::nullopt;
+    }
+    tokens.emplace_back(str.substr(start, end - start));
+    start = end + 1;
+  }
+
+  return std::chrono::year_month_day{
+      std::chrono::year{std::stoi(tokens[0])},
+      std::chrono::month{static_cast<std::uint32_t>(std::stoul(tokens[1]))},
+      std::chrono::day{static_cast<std::uint32_t>(std::stoul(tokens[2]))}};
+}
+
+std::optional<geo::box> parse_bbox(std::string const& str) {
+  using namespace geo;
+  if (str == "europe") {
+    return box{latlng{36.0, -11.0}, latlng{72.0, 32.0}};
+  }
+
+  auto tokens = std::vector<std::string>{};
+  auto start = 0U;
+  for (auto i = 0U; i != 4; ++i) {
+    auto end = str.find(',', start);
+    if (end == std::string::npos && i != 3) {
+      return std::nullopt;
+    }
+    tokens.emplace_back(str.substr(start, end - start));
+    start = end + 1;
+  }
+
+  return box{latlng{std::stod(tokens[0]), std::stod(tokens[1])},
+             latlng{std::stod(tokens[2]), std::stod(tokens[3])}};
+}
+
 // needs sorted vector
 template <typename T>
 T quantile(std::vector<T> const& v, double q) {
@@ -146,9 +184,12 @@ int main(int argc, char* argv[]) {
   desc.add_options()
     ("help,h", "produce this help message")
     ("tt_path,p", bpo::value<std::string>(),"path to a GTFS zip file or a directory containing GTFS zip files")
+    ("start_date", bpo::value<std::string>(), "start date of the timetable, format: YYYY-MM-DD")
+    ("end_date", bpo::value<std::string>(), "end date of the timetable, format: YYYY-MM-DD")
     ("seed,s", bpo::value<std::uint32_t>(),"value to seed the RNG of the query generator with, omit for random seed")
     ("num_queries,n", bpo::value<std::uint32_t>(&num_queries)->default_value(10000U), "number of queries to generate/process")
     ("interval_size,i", bpo::value<std::uint32_t>()->default_value(60U), "the initial size of the search interval in minutes")
+    ("bounding_box,b", bpo::value<std::string>(), "limit randomized locations to a bounding box, format: lat_min,lon_min,lat_max,lon_max\ne.g. 36.0,-11.0,72.0,32.0\n(available via \"-b europe\")")
     ("start_mode", bpo::value<std::string>()->default_value("intermodal"), "intermodal | station")
     ("dest_mode", bpo::value<std::string>()->default_value("intermodal"), "intermodal | station")
     ("intermodal_start", bpo::value<std::string>()->default_value("walk"), "walk | bicycle | car")
@@ -171,15 +212,42 @@ int main(int argc, char* argv[]) {
     return 0;
   }
 
+  auto start_date = std::optional<date::sys_days>{};
+  if (vm.count("start_date")) {
+    start_date = parse_date(vm["start_date"].as<std::string>());
+  }
+  if (!start_date.has_value()) {
+    std::cout << "ERROR: start date of timetable missing or invalid\n";
+    return 1;
+  }
+
+  auto end_date = std::optional<date::sys_days>{};
+  if (vm.count("end_date")) {
+    end_date = parse_date(vm["end_date"].as<std::string>());
+  }
+  if (!end_date.has_value()) {
+    std::cout << "ERROR: end date of timetable missing or invalid\n";
+    return 1;
+  }
+
   std::unique_ptr<cista::wrapped<nigiri::timetable>> tt;
   if (vm.count("tt_path")) {
-    tt = load_timetable({vm["tt_path"].as<std::string>()});
+    tt = load_timetable(vm["tt_path"].as<std::string>(),
+                        {start_date.value(), end_date.value()});
   } else {
-    std::cout << "ERROR: Path to timetable missing\n";
+    std::cout << "ERROR: path to timetable missing\n";
     return 1;
   }
 
   gs.interval_size_ = duration_t{vm["interval_size"].as<std::uint32_t>()};
+
+  if (vm.count("bounding_box")) {
+    gs.bbox_ = parse_bbox(vm["bounding_box"].as<std::string>());
+    if (!gs.bbox_.has_value()) {
+      std::cout << "ERROR: malformed bounding box input\n";
+      return 1;
+    }
+  }
 
   if (vm["start_mode"].as<std::string>() == "intermodal") {
     gs.start_match_mode_ = location_match_mode::kIntermodal;
