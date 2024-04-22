@@ -175,7 +175,7 @@ int main(int argc, char* argv[]) {
   if (vm.count("tt_path")) {
     tt = load_timetable({vm["tt_path"].as<std::string>()});
   } else {
-    std::cout << "Path to timetable missing\n";
+    std::cout << "ERROR: Path to timetable missing\n";
     return 1;
   }
 
@@ -191,14 +191,14 @@ int main(int argc, char* argv[]) {
       } else if (vm["intermodal_start"].as<std::string>() == "car") {
         gs.start_mode_ = query_generation::kCar;
       } else {
-        std::cout << "Unknown intermodal start mode\n";
+        std::cout << "ERROR: Unknown intermodal start mode\n";
         return 1;
       }
     }
   } else if (vm["start_mode"].as<std::string>() == "station") {
     gs.start_match_mode_ = location_match_mode::kExact;
   } else {
-    std::cout << "Invalid start mode\n";
+    std::cout << "ERROR: Invalid start mode\n";
     return 1;
   }
 
@@ -212,14 +212,14 @@ int main(int argc, char* argv[]) {
       } else if (vm["intermodal_dest"].as<std::string>() == "car") {
         gs.dest_mode_ = query_generation::kCar;
       } else {
-        std::cout << "Unknown intermodal start mode\n";
+        std::cout << "ERROR: Unknown intermodal start mode\n";
         return 1;
       }
     }
   } else if (vm["dest_mode"].as<std::string>() == "station") {
     gs.dest_match_mode_ = location_match_mode::kExact;
   } else {
-    std::cout << "Invalid destination mode\n";
+    std::cout << "ERROR: Invalid destination mode\n";
     return 1;
   }
 
@@ -235,6 +235,7 @@ int main(int argc, char* argv[]) {
 
     auto query_generation_timer = scoped_timer(fmt::format(
         "generation of {} queries using seed {}", num_queries, qg.seed_));
+    std::cout << "Query generator settings:\n" << gs << "\n";
     progress_tracker->status("generating queries").in_high(queries.size());
     utl::parallel_for_run(
         num_queries,
