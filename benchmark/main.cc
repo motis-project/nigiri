@@ -35,7 +35,7 @@ std::unique_ptr<cista::wrapped<nigiri::timetable>> load_timetable(
   auto load_timetable_timer = nigiri::scoped_timer("loading timetable");
 
   // gather paths of input files in target folder
-  std::vector<std::filesystem::path> input_files;
+  auto input_files = std::vector<std::filesystem::path>{};
   if (std::filesystem::is_regular_file(input_path) &&
       input_path.has_extension() && input_path.extension() == ".zip") {
     // input path directly to GTFS zip file
@@ -51,7 +51,7 @@ std::unique_ptr<cista::wrapped<nigiri::timetable>> load_timetable(
       }
     }
   } else {
-    std::cout << "path provided is invalid\n";
+    std::cout << "ERROR: timetable path provided is invalid\n";
   }
 
   auto const config = nigiri::loader::loader_config{100U, "Europe/Berlin"};
@@ -103,41 +103,39 @@ std::unique_ptr<cista::wrapped<nigiri::timetable>> load_timetable(
   return tt;
 }
 
-std::optional<date::sys_days> parse_date(std::string const& str) {
+std::vector<std::string> tokenize(std::string const& str,
+                                  char delimiter,
+                                  std::uint32_t n_tokens) {
   auto tokens = std::vector<std::string>{};
+  tokens.reserve(n_tokens);
   auto start = 0U;
-  for (auto i = 0U; i != 3; ++i) {
-    auto end = str.find('-', start);
-    if (end == std::string::npos && i != 2) {
-      return std::nullopt;
+  for (auto i = 0U; i != n_tokens; ++i) {
+    auto end = str.find(delimiter, start);
+    if (end == std::string::npos && i != n_tokens - 1U) {
+      break;
     }
     tokens.emplace_back(str.substr(start, end - start));
-    start = end + 1;
+    start = end + 1U;
   }
-
-  return std::chrono::year_month_day{
-      std::chrono::year{std::stoi(tokens[0])},
-      std::chrono::month{static_cast<std::uint32_t>(std::stoul(tokens[1]))},
-      std::chrono::day{static_cast<std::uint32_t>(std::stoul(tokens[2]))}};
+  return tokens;
 }
 
-std::optional<geo::box> parse_bbox(std::string const& str) {
+date::sys_days parse_date(std::string const& str) {
+  auto const tokens = tokenize(str, '-', 3U);
+  using namespace std::chrono;
+  return year_month_day{
+      year{std::stoi(tokens[0])},
+      month{static_cast<std::uint32_t>(std::stoul(tokens[1]))},
+      day{static_cast<std::uint32_t>(std::stoul(tokens[2]))}};
+}
+
+geo::box parse_bbox(std::string const& str) {
   using namespace geo;
   if (str == "europe") {
     return box{latlng{36.0, -11.0}, latlng{72.0, 32.0}};
   }
 
-  auto tokens = std::vector<std::string>{};
-  auto start = 0U;
-  for (auto i = 0U; i != 4; ++i) {
-    auto end = str.find(',', start);
-    if (end == std::string::npos && i != 3) {
-      return std::nullopt;
-    }
-    tokens.emplace_back(str.substr(start, end - start));
-    start = end + 1;
-  }
-
+  auto const tokens = tokenize(str, ',', 4U);
   return box{latlng{std::stod(tokens[0]), std::stod(tokens[1])},
              latlng{std::stod(tokens[2]), std::stod(tokens[3])}};
 }
@@ -189,7 +187,7 @@ int main(int argc, char* argv[]) {
     ("seed,s", bpo::value<std::uint32_t>(),"value to seed the RNG of the query generator with, omit for random seed")
     ("num_queries,n", bpo::value<std::uint32_t>(&num_queries)->default_value(10000U), "number of queries to generate/process")
     ("interval_size,i", bpo::value<std::uint32_t>()->default_value(60U), "the initial size of the search interval in minutes")
-    ("bounding_box,b", bpo::value<std::string>(), "limit randomized locations to a bounding box, format: lat_min,lon_min,lat_max,lon_max\ne.g. 36.0,-11.0,72.0,32.0\n(available via \"-b europe\")")
+    ("bounding_box,b", bpo::value<std::string>(), "limit randomized locations to a bounding box, format: lat_min,lon_min,lat_max,lon_max\ne.g., 36.0,-11.0,72.0,32.0\n(available via \"-b europe\")")
     ("start_mode", bpo::value<std::string>()->default_value("intermodal"), "intermodal | station")
     ("dest_mode", bpo::value<std::string>()->default_value("intermodal"), "intermodal | station")
     ("intermodal_start", bpo::value<std::string>()->default_value("walk"), "walk | bicycle | car")
@@ -212,28 +210,26 @@ int main(int argc, char* argv[]) {
     return 0;
   }
 
-  auto start_date = std::optional<date::sys_days>{};
+  date::sys_days start_date;
   if (vm.count("start_date")) {
     start_date = parse_date(vm["start_date"].as<std::string>());
-  }
-  if (!start_date.has_value()) {
-    std::cout << "ERROR: start date of timetable missing or invalid\n";
+  } else {
+    std::cout << "ERROR: start date of timetable missing\n";
     return 1;
   }
 
-  auto end_date = std::optional<date::sys_days>{};
+  date::sys_days end_date;
   if (vm.count("end_date")) {
     end_date = parse_date(vm["end_date"].as<std::string>());
-  }
-  if (!end_date.has_value()) {
-    std::cout << "ERROR: end date of timetable missing or invalid\n";
+  } else {
+    std::cout << "ERROR: end date of timetable missing\n";
     return 1;
   }
 
   std::unique_ptr<cista::wrapped<nigiri::timetable>> tt;
   if (vm.count("tt_path")) {
-    tt = load_timetable(vm["tt_path"].as<std::string>(),
-                        {start_date.value(), end_date.value()});
+    tt =
+        load_timetable(vm["tt_path"].as<std::string>(), {start_date, end_date});
   } else {
     std::cout << "ERROR: path to timetable missing\n";
     return 1;
@@ -243,10 +239,6 @@ int main(int argc, char* argv[]) {
 
   if (vm.count("bounding_box")) {
     gs.bbox_ = parse_bbox(vm["bounding_box"].as<std::string>());
-    if (!gs.bbox_.has_value()) {
-      std::cout << "ERROR: malformed bounding box input\n";
-      return 1;
-    }
   }
 
   if (vm["start_mode"].as<std::string>() == "intermodal") {
@@ -291,7 +283,7 @@ int main(int argc, char* argv[]) {
     return 1;
   }
 
-  std::mutex queries_mutex;
+  std::mutex mutex;
 
   // generate queries
   auto queries = std::vector<query>{};
@@ -310,7 +302,7 @@ int main(int argc, char* argv[]) {
         [&](auto const i) {
           auto const q = qg.random_pretrip_query();
           if (q.has_value()) {
-            std::lock_guard<std::mutex> guard(queries_mutex);
+            std::lock_guard<std::mutex> guard(mutex);
             queries.emplace_back(q.value());
           }
         },
@@ -336,7 +328,7 @@ int main(int argc, char* argv[]) {
                                 routing::raptor<direction::kForward, false>>{
                     **tt, nullptr, ss, rs, queries[q_idx]}
                     .execute();
-            std::lock_guard<std::mutex> guard(queries_mutex);
+            std::lock_guard<std::mutex> guard(mutex);
             results.emplace_back(q_idx, result);
           } catch (const std::exception& e) {
             std::cout << e.what();
