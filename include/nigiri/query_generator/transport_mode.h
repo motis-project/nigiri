@@ -10,6 +10,12 @@ struct transport_mode {
     return speed_ * max_duration_;
   }  // [m]
 
+  friend std::ostream& operator<<(std::ostream& out, transport_mode const& tm) {
+    out << "(id: " << tm.mode_id_ << ", speed: " << tm.speed_
+        << ", max_duration: " << tm.max_duration_ << ")";
+    return out;
+  }
+
   transport_mode_id_t mode_id_;
   std::uint16_t speed_;  // [m/minute]
   std::uint16_t max_duration_;  // [minutes]

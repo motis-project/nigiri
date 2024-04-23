@@ -2,6 +2,8 @@
 #include <filesystem>
 #include <iostream>
 
+#include "boost/program_options.hpp"
+
 #include "utl/parallel_for.h"
 #include "utl/progress_tracker.h"
 
@@ -28,7 +30,8 @@ nigiri::pareto_set<nigiri::routing::journey> raptor_search(
 }
 
 std::unique_ptr<cista::wrapped<nigiri::timetable>> load_timetable(
-    std::filesystem::path const& input_path) {
+    std::filesystem::path const& input_path,
+    nigiri::interval<date::sys_days> const& tt_interval) {
   auto load_timetable_timer = nigiri::scoped_timer("loading timetable");
 
   // gather paths of input files in target folder
@@ -52,8 +55,6 @@ std::unique_ptr<cista::wrapped<nigiri::timetable>> load_timetable(
   }
 
   auto const config = nigiri::loader::loader_config{100U, "Europe/Berlin"};
-  auto const tt_interval = nigiri::interval<date::sys_days>{
-      {date::January / 1 / 2024}, {date::December / 31 / 2024}};
 
   // hash tt settings and input files
   auto h = cista::hash_combine(
@@ -102,6 +103,45 @@ std::unique_ptr<cista::wrapped<nigiri::timetable>> load_timetable(
   return tt;
 }
 
+std::optional<date::sys_days> parse_date(std::string const& str) {
+  auto tokens = std::vector<std::string>{};
+  auto start = 0U;
+  for (auto i = 0U; i != 3; ++i) {
+    auto end = str.find('-', start);
+    if (end == std::string::npos && i != 2) {
+      return std::nullopt;
+    }
+    tokens.emplace_back(str.substr(start, end - start));
+    start = end + 1;
+  }
+
+  return std::chrono::year_month_day{
+      std::chrono::year{std::stoi(tokens[0])},
+      std::chrono::month{static_cast<std::uint32_t>(std::stoul(tokens[1]))},
+      std::chrono::day{static_cast<std::uint32_t>(std::stoul(tokens[2]))}};
+}
+
+std::optional<geo::box> parse_bbox(std::string const& str) {
+  using namespace geo;
+  if (str == "europe") {
+    return box{latlng{36.0, -11.0}, latlng{72.0, 32.0}};
+  }
+
+  auto tokens = std::vector<std::string>{};
+  auto start = 0U;
+  for (auto i = 0U; i != 4; ++i) {
+    auto end = str.find(',', start);
+    if (end == std::string::npos && i != 3) {
+      return std::nullopt;
+    }
+    tokens.emplace_back(str.substr(start, end - start));
+    start = end + 1;
+  }
+
+  return box{latlng{std::stod(tokens[0]), std::stod(tokens[1])},
+             latlng{std::stod(tokens[2]), std::stod(tokens[3])}};
+}
+
 // needs sorted vector
 template <typename T>
 T quantile(std::vector<T> const& v, double q) {
@@ -132,23 +172,123 @@ void print_stats(std::vector<T> const& var, std::string const& var_name) {
 int main(int argc, char* argv[]) {
   using namespace nigiri;
   using namespace nigiri::routing;
+  namespace bpo = boost::program_options;
   auto const progress_tracker = utl::activate_progress_tracker("benchmark");
   utl::get_global_progress_trackers().silent_ = false;
 
-  if (argc != 2 && argc != 3) {
-    std::cout
-        << "usage: nigiri-benchmark GTFS-ZIP-FILE | DIRECTORY [seed]\nLoads a "
-           "zip file containing a timetable in GTFS format, or attempts to "
-           "load all zip files within a given directory.\nIf a seed is "
-           "provided, it will be used to seed the random number generator\n";
+  std::uint32_t num_queries;
+  auto gs = query_generation::generator_settings{};
+
+  bpo::options_description desc("Allowed options");
+  // clang-format off
+  desc.add_options()
+    ("help,h", "produce this help message")
+    ("tt_path,p", bpo::value<std::string>(),"path to a GTFS zip file or a directory containing GTFS zip files")
+    ("start_date", bpo::value<std::string>(), "start date of the timetable, format: YYYY-MM-DD")
+    ("end_date", bpo::value<std::string>(), "end date of the timetable, format: YYYY-MM-DD")
+    ("seed,s", bpo::value<std::uint32_t>(),"value to seed the RNG of the query generator with, omit for random seed")
+    ("num_queries,n", bpo::value<std::uint32_t>(&num_queries)->default_value(10000U), "number of queries to generate/process")
+    ("interval_size,i", bpo::value<std::uint32_t>()->default_value(60U), "the initial size of the search interval in minutes")
+    ("bounding_box,b", bpo::value<std::string>(), "limit randomized locations to a bounding box, format: lat_min,lon_min,lat_max,lon_max\ne.g. 36.0,-11.0,72.0,32.0\n(available via \"-b europe\")")
+    ("start_mode", bpo::value<std::string>()->default_value("intermodal"), "intermodal | station")
+    ("dest_mode", bpo::value<std::string>()->default_value("intermodal"), "intermodal | station")
+    ("intermodal_start", bpo::value<std::string>()->default_value("walk"), "walk | bicycle | car")
+    ("intermodal_dest", bpo::value<std::string>()->default_value("walk"), "walk | bicycle | car")
+    ("use_start_footpaths", bpo::value<bool>(&gs.use_start_footpaths_)->default_value(true), "")
+    ("max_transfers,t", bpo::value<std::uint8_t>(&gs.max_transfers_)->default_value(7U), "maximum number of transfers during routing")
+    ("min_connection_count,m", bpo::value<std::uint32_t>(&gs.min_connection_count_)->default_value(3U), "the minimum number of connections to find with each query")
+    ("extend_interval_earlier,e", bpo::value<bool>(&gs.extend_interval_earlier_)->default_value(true), "allows extension of the search interval into the past")
+    ("extend_interval_later,l", bpo::value<bool>(&gs.extend_interval_later_)->default_value(true), "allows extension of the search interval into the future")
+    ("prf_idx", bpo::value<profile_idx_t>(&gs.prf_idx_)->default_value(0U), "")
+    ("allowed_claszes", bpo::value<clasz_mask_t>(&gs.allowed_claszes_)->default_value(routing::all_clasz_allowed()), "")
+  ;
+  // clang-format on
+  bpo::variables_map vm;
+  bpo::store(bpo::command_line_parser(argc, argv).options(desc).run(), vm);
+  bpo::notify(vm);  // sets default values
+
+  if (vm.count("help")) {
+    std::cout << desc << "\n";
+    return 0;
+  }
+
+  auto start_date = std::optional<date::sys_days>{};
+  if (vm.count("start_date")) {
+    start_date = parse_date(vm["start_date"].as<std::string>());
+  }
+  if (!start_date.has_value()) {
+    std::cout << "ERROR: start date of timetable missing or invalid\n";
     return 1;
   }
 
-  auto tt = load_timetable({argv[1]});
+  auto end_date = std::optional<date::sys_days>{};
+  if (vm.count("end_date")) {
+    end_date = parse_date(vm["end_date"].as<std::string>());
+  }
+  if (!end_date.has_value()) {
+    std::cout << "ERROR: end date of timetable missing or invalid\n";
+    return 1;
+  }
 
-  std::optional<std::uint32_t> seed;
-  if (argc == 3) {
-    seed = static_cast<std::uint32_t>(std::stol(argv[2]));
+  std::unique_ptr<cista::wrapped<nigiri::timetable>> tt;
+  if (vm.count("tt_path")) {
+    tt = load_timetable(vm["tt_path"].as<std::string>(),
+                        {start_date.value(), end_date.value()});
+  } else {
+    std::cout << "ERROR: path to timetable missing\n";
+    return 1;
+  }
+
+  gs.interval_size_ = duration_t{vm["interval_size"].as<std::uint32_t>()};
+
+  if (vm.count("bounding_box")) {
+    gs.bbox_ = parse_bbox(vm["bounding_box"].as<std::string>());
+    if (!gs.bbox_.has_value()) {
+      std::cout << "ERROR: malformed bounding box input\n";
+      return 1;
+    }
+  }
+
+  if (vm["start_mode"].as<std::string>() == "intermodal") {
+    gs.start_match_mode_ = location_match_mode::kIntermodal;
+    if (vm.count("intermodal_start")) {
+      if (vm["intermodal_start"].as<std::string>() == "walk") {
+        gs.start_mode_ = query_generation::kWalk;
+      } else if (vm["intermodal_start"].as<std::string>() == "bicycle") {
+        gs.start_mode_ = query_generation::kBicycle;
+      } else if (vm["intermodal_start"].as<std::string>() == "car") {
+        gs.start_mode_ = query_generation::kCar;
+      } else {
+        std::cout << "ERROR: Unknown intermodal start mode\n";
+        return 1;
+      }
+    }
+  } else if (vm["start_mode"].as<std::string>() == "station") {
+    gs.start_match_mode_ = location_match_mode::kExact;
+  } else {
+    std::cout << "ERROR: Invalid start mode\n";
+    return 1;
+  }
+
+  if (vm["dest_mode"].as<std::string>() == "intermodal") {
+    gs.dest_match_mode_ = location_match_mode::kIntermodal;
+    if (vm.count("intermodal_dest")) {
+      if (vm["intermodal_dest"].as<std::string>() == "walk") {
+        gs.dest_mode_ = query_generation::kWalk;
+      } else if (vm["intermodal_dest"].as<std::string>() == "bicycle") {
+        gs.dest_mode_ = query_generation::kBicycle;
+      } else if (vm["intermodal_dest"].as<std::string>() == "car") {
+        gs.dest_mode_ = query_generation::kCar;
+      } else {
+        std::cout << "ERROR: Unknown intermodal start mode\n";
+        return 1;
+      }
+    }
+  } else if (vm["dest_mode"].as<std::string>() == "station") {
+    gs.dest_match_mode_ = location_match_mode::kExact;
+  } else {
+    std::cout << "ERROR: Invalid destination mode\n";
+    return 1;
   }
 
   std::mutex queries_mutex;
@@ -156,25 +296,14 @@ int main(int argc, char* argv[]) {
   // generate queries
   auto queries = std::vector<query>{};
   {
-    auto const num_queries = 10000U;
-    auto const gs = query_generation::generator_settings{
-        .interval_size_ = duration_t{60U},
-        .start_match_mode_ = nigiri::routing::location_match_mode::kIntermodal,
-        .dest_match_mode_ = nigiri::routing::location_match_mode::kIntermodal,
-        .start_mode_ = query_generation::kWalk,
-        .dest_mode_ = query_generation::kWalk,
-        .use_start_footpaths_ = true,
-        .max_transfers_ = routing::kMaxTransfers,
-        .min_connection_count_ = 3U,
-        .extend_interval_earlier_ = true,
-        .extend_interval_later_ = true,
-        .prf_idx_ = profile_idx_t{0},
-        .allowed_claszes_ = clasz_mask_t{routing::all_clasz_allowed()}};
-    auto qg = seed.has_value()
-                  ? query_generation::generator{**tt, gs, seed.value()}
+    auto qg = vm.count("seed")
+                  ? query_generation::generator{**tt, gs,
+                                                vm["seed"].as<std::uint32_t>()}
                   : query_generation::generator{**tt, gs};
+
     auto query_generation_timer = scoped_timer(fmt::format(
         "generation of {} queries using seed {}", num_queries, qg.seed_));
+    std::cout << "Query generator settings:\n" << gs << "\n";
     progress_tracker->status("generating queries").in_high(queries.size());
     utl::parallel_for_run(
         num_queries,

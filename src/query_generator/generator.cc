@@ -200,10 +200,23 @@ std::optional<stop_idx_t> generator::random_active_stop(
     return false;
   };
 
+  auto const is_in_bbox = [&](stop_idx_t const& stop_idx) {
+    return !s_.bbox_.has_value() ||
+           s_.bbox_.value().contains(
+               tt_.locations_.coordinates_[stop{
+                   tt_.route_location_seq_[tt_.transport_route_[tr_idx]]
+                                          [stop_idx]}
+                                               .location_idx()]);
+  };
+
+  auto const is_valid = [&](stop_idx_t const& stop_idx) {
+    return is_active(stop_idx) && is_in_bbox(stop_idx);
+  };
+
   // try randomize
   for (auto i = 0U; i < 10; ++i) {
     auto const stop_idx = random_stop();
-    if (is_active(stop_idx)) {
+    if (is_valid(stop_idx)) {
       return stop_idx;
     }
   }
@@ -216,13 +229,13 @@ std::optional<stop_idx_t> generator::random_active_stop(
                     stop_d.max() + 1U)};  // +1 since distribution endpoints
                                           // are [a,b] and interval's are [a,b)
   auto found_stop =
-      std::find_if(begin(stop_idx_itv), end(stop_idx_itv), is_active);
+      std::find_if(begin(stop_idx_itv), end(stop_idx_itv), is_valid);
   if (found_stop != end(stop_idx_itv)) {
     return *found_stop;
   }
   // search stops until randomized stop
   stop_idx_itv = interval<stop_idx_t>{stop_d.min(), stop_idx};
-  found_stop = std::find_if(begin(stop_idx_itv), end(stop_idx_itv), is_active);
+  found_stop = std::find_if(begin(stop_idx_itv), end(stop_idx_itv), is_valid);
   if (found_stop != end(stop_idx_itv)) {
     return *found_stop;
   }
