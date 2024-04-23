@@ -96,7 +96,7 @@ target_compile_features(nigiri-server PUBLIC cxx_std_23)
 # --- BENCHMARK ---
 file(GLOB_RECURSE nigiri-benchmark-files benchmark/main.cc)
 add_executable(nigiri-benchmark ${nigiri-benchmark-files})
-target_link_libraries(nigiri-benchmark PRIVATE nigiri boost_program_options)
+target_link_libraries(nigiri-benchmark PRIVATE nigiri boost-program_options)
 target_compile_features(nigiri-benchmark PUBLIC cxx_std_23)
 
 # --- TEST ---
