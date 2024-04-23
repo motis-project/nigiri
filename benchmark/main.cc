@@ -201,13 +201,17 @@ int main(int argc, char* argv[]) {
           auto ss = search_state{};
           auto rs = raptor_state{};
 
-          auto const result =
-              routing::search<direction::kForward,
-                              routing::raptor<direction::kForward, false>>{
-                  **tt, nullptr, ss, rs, queries[q_idx]}
-                  .execute();
-          std::lock_guard<std::mutex> guard(queries_mutex);
-          results.emplace_back(q_idx, result);
+          try {
+            auto const result =
+                routing::search<direction::kForward,
+                                routing::raptor<direction::kForward, false>>{
+                    **tt, nullptr, ss, rs, queries[q_idx]}
+                    .execute();
+            std::lock_guard<std::mutex> guard(queries_mutex);
+            results.emplace_back(q_idx, result);
+          } catch (const std::exception& e) {
+            std::cout << e.what();
+          }
         },
         progress_tracker->update_fn());
   }
