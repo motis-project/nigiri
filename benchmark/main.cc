@@ -296,18 +296,16 @@ int main(int argc, char* argv[]) {
     auto query_generation_timer = scoped_timer(fmt::format(
         "generation of {} queries using seed {}", num_queries, qg.seed_));
     std::cout << "Query generator settings:\n" << gs << "\n";
-    progress_tracker->status("generating queries").in_high(queries.size());
-    utl::parallel_for_run(
-        num_queries,
-        [&](auto const i) {
-          auto const q = qg.random_pretrip_query();
-          if (q.has_value()) {
-            std::lock_guard<std::mutex> guard(mutex);
-            queries.emplace_back(q.value());
-          }
-        },
-        progress_tracker->update_fn());
+    utl::parallel_for_run(num_queries, [&](auto const i) {
+      auto const q = qg.random_pretrip_query();
+      if (q.has_value()) {
+        std::lock_guard<std::mutex> guard(mutex);
+        queries.emplace_back(q.value());
+      }
+    });
   }
+
+  std::cout << queries.size() << " queries generated successfully\n";
 
   // process queries
   auto results =
