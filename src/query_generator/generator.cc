@@ -17,6 +17,7 @@ generator::generator(timetable const& tt, generator_settings const& settings)
       location_d_{
           static_cast<std::uint32_t>(special_station::kSpecialStationsSize),
           tt_.n_locations() - 1},
+      transport_d_{0U, tt_.transport_traffic_days_.size() - 1U},
       day_d_{kTimetableOffset.count(),
              static_cast<day_idx_t::value_t>(kTimetableOffset.count() +
                                              tt_n_days() - 1)},
@@ -35,6 +36,7 @@ generator::generator(timetable const& tt,
       location_d_{
           static_cast<std::uint32_t>(special_station::kSpecialStationsSize),
           tt_.n_locations() - 1U},
+      transport_d_{0U, tt_.transport_traffic_days_.size() - 1U},
       day_d_{kTimetableOffset.count(),
              static_cast<day_idx_t::value_t>(kTimetableOffset.count() +
                                              tt_n_days() - 1)},
@@ -125,6 +127,23 @@ std::optional<routing::query> generator::random_pretrip_query() {
   return std::nullopt;
 }
 
+std::pair<transport, stop_idx_t> generator::random_transport_active_stop() {
+  transport tpt;
+  std::optional<stop_idx_t> stop_idx = std::nullopt;
+  while (!stop_idx.has_value()) {
+    auto const tpt_idx = random_transport();
+    auto const day_idx = random_active_day(tpt_idx);
+    if (!day_idx.has_value()) {
+      continue;
+    }
+    tpt.t_idx_ = tpt_idx;
+    tpt.day_ = day_idx.value();
+
+    stop_idx = random_active_stop(tpt_idx);
+  }
+  return {tpt, stop_idx.value()};
+}
+
 location_idx_t generator::random_location() {
   if (s_.bbox_.has_value()) {
     return location_idx_t{locs_in_bbox[locs_in_bbox_d_(rng_)]};
@@ -138,6 +157,10 @@ route_idx_t generator::random_route(location_idx_t const loc_idx) {
   auto routes_d =
       std::uniform_int_distribution<std::uint32_t>{0U, routes.size() - 1U};
   return routes[routes_d(rng_)];
+}
+
+transport_idx_t generator::random_transport() {
+  return transport_idx_t{transport_d_(rng_)};
 }
 
 transport_idx_t generator::random_transport(route_idx_t const route_idx) {
@@ -157,6 +180,68 @@ stop_idx_t generator::get_stop_idx(transport_idx_t const tpt_idx,
   }
   assert(false);
   return std::numeric_limits<stop_idx_t>::max();
+}
+
+std::optional<stop_idx_t> generator::random_active_stop(
+    transport_idx_t const tpt_idx) {
+
+  // distribution for stop index
+  // initial stop is not valid for arrival events
+  std::uniform_int_distribution<stop_idx_t> stop_d{
+      stop_idx_t{1U},
+      static_cast<stop_idx_t>(
+          tt_.route_location_seq_[tt_.transport_route_[tpt_idx]].size() - 1U)};
+
+  auto const random_stop = [&]() { return stop_idx_t{stop_d(rng_)}; };
+
+  auto const can_exit = [&](stop_idx_t const& stop_idx) {
+    auto const s =
+        stop{tt_.route_location_seq_[tt_.transport_route_[tpt_idx]][stop_idx]};
+    return s.out_allowed();
+  };
+
+  auto const is_in_bbox = [&](stop_idx_t const& stop_idx) {
+    return !s_.bbox_.has_value() ||
+           s_.bbox_.value().contains(
+               tt_.locations_.coordinates_[stop{
+                   tt_.route_location_seq_[tt_.transport_route_[tpt_idx]]
+                                          [stop_idx]}
+                                               .location_idx()]);
+  };
+
+  auto const is_valid = [&](stop_idx_t const& stop_idx) {
+    return can_exit(stop_idx) && is_in_bbox(stop_idx);
+  };
+
+  // try randomize
+  for (auto i = 0U; i < 10; ++i) {
+    auto const stop_idx = random_stop();
+    if (is_valid(stop_idx)) {
+      return stop_idx;
+    }
+  }
+
+  // fallback: linear search from random stop
+  auto stop_idx = random_stop();
+  // search stops after randomized stop
+  auto stop_idx_itv = interval<stop_idx_t>{
+      stop_idx, static_cast<stop_idx_t>(
+                    stop_d.max() + 1U)};  // +1 since distribution endpoints
+                                          // are [a,b] and interval's are [a,b)
+  auto found_stop =
+      std::find_if(begin(stop_idx_itv), end(stop_idx_itv), is_valid);
+  if (found_stop != end(stop_idx_itv)) {
+    return *found_stop;
+  }
+  // search stops until randomized stop
+  stop_idx_itv = interval<stop_idx_t>{stop_d.min(), stop_idx};
+  found_stop = std::find_if(begin(stop_idx_itv), end(stop_idx_itv), is_valid);
+  if (found_stop != end(stop_idx_itv)) {
+    return *found_stop;
+  }
+
+  // no active stop found
+  return std::nullopt;
 }
 
 bool generator::can_dep(transport_idx_t const tpt_idx,
