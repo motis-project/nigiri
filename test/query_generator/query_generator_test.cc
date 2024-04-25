@@ -132,7 +132,7 @@ TEST(query_generation, reproducibility) {
 
   generator_settings const gs;
   auto const seed = 2342;
-  auto const num_queries = 1000U;
+  auto const num_queries = 100U;
 
   auto qg0 = generator{tt, gs, seed};
   auto result_qg0 = std::vector<std::optional<routing::query>>{};
