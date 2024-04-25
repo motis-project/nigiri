@@ -1,6 +1,7 @@
 #include <algorithm>
 #include <filesystem>
 #include <iostream>
+#include <regex>
 
 #include "boost/program_options.hpp"
 
@@ -51,7 +52,7 @@ std::unique_ptr<cista::wrapped<nigiri::timetable>> load_timetable(
       }
     }
   } else {
-    std::cout << "ERROR: timetable path provided is invalid\n";
+    std::cout << "Error: timetable path provided is invalid\n";
   }
 
   auto const config = nigiri::loader::loader_config{100U, "Europe/Berlin"};
@@ -120,21 +121,33 @@ std::vector<std::string> tokenize(std::string const& str,
   return tokens;
 }
 
-date::sys_days parse_date(std::string const& str) {
-  auto const tokens = tokenize(str, '-', 3U);
+std::optional<date::sys_days> parse_date(std::string const& str) {
   using namespace std::chrono;
+
+  auto const date_regex = std::regex{"^[0-9]{4}-[0|1][0-9]-[0-3][0-9]$"};
+  if (!std::regex_match(begin(str), end(str), date_regex)) {
+    return std::nullopt;
+  }
+  auto const tokens = tokenize(str, '-', 3U);
   return year_month_day{
       year{std::stoi(tokens[0])},
       month{static_cast<std::uint32_t>(std::stoul(tokens[1]))},
       day{static_cast<std::uint32_t>(std::stoul(tokens[2]))}};
 }
 
-geo::box parse_bbox(std::string const& str) {
+std::optional<geo::box> parse_bbox(std::string const& str) {
   using namespace geo;
+
   if (str == "europe") {
     return box{latlng{36.0, -11.0}, latlng{72.0, 32.0}};
   }
 
+  auto const bbox_regex = std::regex{
+      "^[-+]?[0-9]*\\.?[0-9]+,[-+]?[0-9]*\\.?[0-9]+,[-+]?[0-9]*\\.?[0-9]+,[-+]?"
+      "[0-9]*\\.?[0-9]+$"};
+  if (!std::regex_match(begin(str), end(str), bbox_regex)) {
+    return std::nullopt;
+  }
   auto const tokens = tokenize(str, ',', 4U);
   return box{latlng{std::stod(tokens[0]), std::stod(tokens[1])},
              latlng{std::stod(tokens[2]), std::stod(tokens[3])}};
@@ -156,6 +169,11 @@ T quantile(std::vector<T> const& v, double q) {
 
 template <typename T>
 void print_stats(std::vector<T> const& var, std::string const& var_name) {
+  if (var.empty()) {
+    std::cout << "Info: prints_stats for " << var_name
+              << ": Input empty, no statistics to display\n";
+    return;
+  }
   std::cout << "\n--- " << var_name << " --- (n = " << var.size() << ")"
             << "\n  25%: " << std::setw(12) << quantile(var, 0.25)
             << "\n  50%: " << std::setw(12) << quantile(var, 0.5)
@@ -210,28 +228,36 @@ int main(int argc, char* argv[]) {
     return 0;
   }
 
-  date::sys_days start_date;
+  std::optional<date::sys_days> start_date;
   if (vm.count("start_date")) {
     start_date = parse_date(vm["start_date"].as<std::string>());
+    if (!start_date.has_value()) {
+      std::cout << "Error: malformed start date input\n";
+      return 1;
+    }
   } else {
-    std::cout << "ERROR: start date of timetable missing\n";
+    std::cout << "Error: start date of timetable missing\n";
     return 1;
   }
 
-  date::sys_days end_date;
+  std::optional<date::sys_days> end_date;
   if (vm.count("end_date")) {
     end_date = parse_date(vm["end_date"].as<std::string>());
+    if (!end_date.has_value()) {
+      std::cout << "Error: malformed end date input\n";
+      return 1;
+    }
   } else {
-    std::cout << "ERROR: end date of timetable missing\n";
+    std::cout << "Error: end date of timetable missing\n";
     return 1;
   }
 
   std::unique_ptr<cista::wrapped<nigiri::timetable>> tt;
   if (vm.count("tt_path")) {
-    tt =
-        load_timetable(vm["tt_path"].as<std::string>(), {start_date, end_date});
+    tt = load_timetable(vm["tt_path"].as<std::string>(),
+                        {start_date.value(), end_date.value()});
   } else {
-    std::cout << "ERROR: path to timetable missing\n";
+    std::cout << "Error: path to timetable missing\n";
     return 1;
   }
 
@@ -239,6 +265,10 @@ int main(int argc, char* argv[]) {
 
   if (vm.count("bounding_box")) {
     gs.bbox_ = parse_bbox(vm["bounding_box"].as<std::string>());
+    if (!gs.bbox_.has_value()) {
+      std::cout << "Error: malformed bounding box input\n";
+      return 1;
+    }
   }
 
   if (vm["start_mode"].as<std::string>() == "intermodal") {
@@ -251,14 +281,14 @@ int main(int argc, char* argv[]) {
       } else if (vm["intermodal_start"].as<std::string>() == "car") {
         gs.start_mode_ = query_generation::kCar;
       } else {
-        std::cout << "ERROR: Unknown intermodal start mode\n";
+        std::cout << "Error: Unknown intermodal start mode\n";
         return 1;
       }
     }
   } else if (vm["start_mode"].as<std::string>() == "station") {
     gs.start_match_mode_ = location_match_mode::kExact;
   } else {
-    std::cout << "ERROR: Invalid start mode\n";
+    std::cout << "Error: Invalid start mode\n";
     return 1;
   }
 
@@ -272,14 +302,14 @@ int main(int argc, char* argv[]) {
       } else if (vm["intermodal_dest"].as<std::string>() == "car") {
         gs.dest_mode_ = query_generation::kCar;
       } else {
-        std::cout << "ERROR: Unknown intermodal start mode\n";
+        std::cout << "Error: Unknown intermodal start mode\n";
         return 1;
       }
     }
   } else if (vm["dest_mode"].as<std::string>() == "station") {
     gs.dest_match_mode_ = location_match_mode::kExact;
   } else {
-    std::cout << "ERROR: Invalid destination mode\n";
+    std::cout << "Error: Invalid destination mode\n";
     return 1;
   }
 
