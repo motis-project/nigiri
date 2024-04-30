@@ -199,9 +199,7 @@ int main(int argc, char* argv[]) {
   // clang-format off
   desc.add_options()
     ("help,h", "produce this help message")
-    ("tt_path,p", bpo::value<std::string>(),"path to a GTFS zip file or a directory containing GTFS zip files")
-    ("start_date", bpo::value<std::string>(), "start date of the timetable, format: YYYY-MM-DD")
-    ("end_date", bpo::value<std::string>(), "end date of the timetable, format: YYYY-MM-DD")
+    ("tt_path,p", bpo::value<std::string>(),"path to a binary file containing a serialized nigiri timetable, can be created using nigiri-importer")
     ("seed,s", bpo::value<std::uint32_t>(),"value to seed the RNG of the query generator with, omit for random seed")
     ("num_queries,n", bpo::value<std::uint32_t>(&num_queries)->default_value(10000U), "number of queries to generate/process")
     ("interval_size,i", bpo::value<std::uint32_t>()->default_value(60U), "the initial size of the search interval in minutes")
@@ -228,34 +226,22 @@ int main(int argc, char* argv[]) {
     return 0;
   }
 
-  std::optional<date::sys_days> start_date;
-  if (vm.count("start_date")) {
-    start_date = parse_date(vm["start_date"].as<std::string>());
-    if (!start_date.has_value()) {
-      std::cout << "Error: malformed start date input\n";
-      return 1;
-    }
-  } else {
-    std::cout << "Error: start date of timetable missing\n";
-    return 1;
-  }
-
-  std::optional<date::sys_days> end_date;
-  if (vm.count("end_date")) {
-    end_date = parse_date(vm["end_date"].as<std::string>());
-    if (!end_date.has_value()) {
-      std::cout << "Error: malformed end date input\n";
-      return 1;
-    }
-  } else {
-    std::cout << "Error: end date of timetable missing\n";
-    return 1;
-  }
-
   std::unique_ptr<cista::wrapped<nigiri::timetable>> tt;
   if (vm.count("tt_path")) {
-    tt = load_timetable(vm["tt_path"].as<std::string>(),
-                        {start_date.value(), end_date.value()});
+    try {
+      auto const tt_path =
+          std::filesystem::path{vm["tt_path"].as<std::string>()};
+      auto load_timetable_timer = scoped_timer(
+          fmt::format("loading timetable from {}", tt_path.string()));
+      tt = std::make_unique<cista::wrapped<nigiri::timetable>>(
+          nigiri::timetable::read(cista::memory_holder{
+              cista::file{tt_path.c_str(), "r"}.content()}));
+      (**tt).locations_.resolve_timezones();
+    } catch (std::exception const& e) {
+      log(nigiri::log_lvl::error, "benchmark.load",
+          "can not read timetable file: {}", e.what());
+      return 1;
+    }
   } else {
     std::cout << "Error: path to timetable missing\n";
     return 1;
