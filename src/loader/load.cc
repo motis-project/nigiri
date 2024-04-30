@@ -36,7 +36,8 @@ timetable load(std::vector<std::filesystem::path> const& paths,
     auto const dir = make_dir(p);
     auto const loader_it =
         utl::find_if(loaders, [&](auto&& l) { return l->applicable(*dir); });
-    utl::verify(loader_it != end(loaders), "no loader for {} found", p.string());
+    utl::verify(loader_it != end(loaders), "no loader for {} found",
+                p.string());
     log(log_lvl::info, "loader.load", "loading {}", p.string());
     (*loader_it)->load(config, src, *dir, tt);
   }
