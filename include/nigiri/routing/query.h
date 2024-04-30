@@ -28,7 +28,7 @@ struct offset {
   duration_t duration() const noexcept { return duration_; }
   transport_mode_id_t type() const noexcept { return transport_mode_id_; }
 
-  friend bool operator==(offset const& a, offset const& b) = default;
+  friend bool operator==(offset const&, offset const&) = default;
 
   location_idx_t target_;
   duration_t duration_;
@@ -38,7 +38,7 @@ struct offset {
 using start_time_t = std::variant<unixtime_t, interval<unixtime_t>>;
 
 struct query {
-  friend bool operator==(query const& a, query const& b) = default;
+  friend bool operator==(query const&, query const&) = default;
 
   start_time_t start_time_;
   location_match_mode start_match_mode_{
