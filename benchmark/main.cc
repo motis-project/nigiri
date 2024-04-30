@@ -329,17 +329,22 @@ int main(int argc, char* argv[]) {
     auto query_processing_timer =
         scoped_timer(fmt::format("processing of {} queries", queries.size()));
     progress_tracker->status("processing queries").in_high(queries.size());
-    utl::parallel_for_run(
+    struct query_state {
+      search_state ss_;
+      raptor_state rs_;
+    };
+    utl::parallel_for_run_threadlocal<query_state>(
         queries.size(),
-        [&](auto const q_idx) {
-          auto ss = search_state{};
-          auto rs = raptor_state{};
+        [&](auto& query_state, auto const q_idx) {
+          query_state.ss_ = search_state{};
+          query_state.rs_ = raptor_state{};
 
           try {
             auto const result =
                 routing::search<direction::kForward,
                                 routing::raptor<direction::kForward, false>>{
-                    **tt, nullptr, ss, rs, queries[q_idx]}
+                    **tt, nullptr, query_state.ss_, query_state.rs_,
+                    queries[q_idx]}
                     .execute();
             std::lock_guard<std::mutex> guard(mutex);
             results.emplace_back(q_idx, result);
