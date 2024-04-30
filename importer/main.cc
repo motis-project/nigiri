@@ -11,37 +11,13 @@
 
 #include "nigiri/loader/load.h"
 #include "nigiri/loader/loader_interface.h"
-#include "nigiri/logging.h"
-#include "nigiri/timetable.h"
-
-std::vector<std::string> tokenize(std::string const& str,
-                                  char delimiter,
-                                  std::uint32_t n_tokens) {
-  auto tokens = std::vector<std::string>{};
-  tokens.reserve(n_tokens);
-  auto start = 0U;
-  for (auto i = 0U; i != n_tokens; ++i) {
-    auto end = str.find(delimiter, start);
-    if (end == std::string::npos && i != n_tokens - 1U) {
-      break;
-    }
-    tokens.emplace_back(str.substr(start, end - start));
-    start = end + 1U;
-  }
-  return tokens;
-}
 
 std::optional<date::sys_days> parse_date(std::string const& str) {
-
-  auto const date_regex = std::regex{"^[0-9]{4}-[0|1][0-9]-[0-3][0-9]$"};
-  if (!std::regex_match(begin(str), end(str), date_regex)) {
-    return std::nullopt;
-  }
-  auto const tokens = tokenize(str, '-', 3U);
-  return date::year_month_day{
-      date::year{std::stoi(tokens[0])},
-      date::month{static_cast<std::uint32_t>(std::stoul(tokens[1]))},
-      date::day{static_cast<std::uint32_t>(std::stoul(tokens[2]))}};
+  date::sys_days parsed;
+  std::stringstream ss;
+  ss << str;
+  ss >> date::parse("%F", parsed);
+  return parsed;
 }
 
 int main(int argc, char** argv) {
