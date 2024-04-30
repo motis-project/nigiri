@@ -5,6 +5,7 @@
 #include "nigiri/query_generator/generator.h"
 #include "nigiri/query_generator/generator_settings.h"
 #include "nigiri/query_generator/transport_mode.h"
+#include "nigiri/routing/query.h"
 #include "../loader/hrd/hrd_timetable.h"
 
 using namespace date;
@@ -12,58 +13,6 @@ using namespace nigiri;
 using namespace nigiri::loader;
 using namespace nigiri::test_data::hrd_timetable;
 using namespace nigiri::query_generation;
-
-bool equal_queries(routing::query const& a, routing::query const& b) {
-
-  if (holds_alternative<unixtime_t>(a.start_time_) &&
-      holds_alternative<unixtime_t>(b.start_time_)) {
-    if (get<unixtime_t>(a.start_time_) != get<unixtime_t>(b.start_time_)) {
-      return false;
-    }
-  } else if (holds_alternative<interval<unixtime_t>>(a.start_time_) &&
-             holds_alternative<interval<unixtime_t>>(b.start_time_)) {
-    if (get<interval<unixtime_t>>(a.start_time_).from_ !=
-            get<interval<unixtime_t>>(b.start_time_).from_ ||
-        get<interval<unixtime_t>>(a.start_time_).to_ !=
-            get<interval<unixtime_t>>(b.start_time_).to_) {
-      return false;
-    }
-  } else {
-    return false;
-  }
-
-  auto const offset_equal = [](auto const& o0, auto const& o1) {
-    return o0.target_ == o1.target_ && o0.duration_ == o1.duration_ &&
-           o0.transport_mode_id_ == o1.transport_mode_id_;
-  };
-
-  if (a.start_.size() != b.start_.size()) {
-    return false;
-  }
-  for (auto i = 0U; i < a.start_.size(); ++i) {
-    if (!offset_equal(a.start_[i], b.start_[i])) {
-      return false;
-    }
-  }
-
-  if (a.destination_.size() != b.destination_.size()) {
-    return false;
-  }
-  for (auto i = 0U; i < a.destination_.size(); ++i) {
-    if (!offset_equal(a.destination_[i], b.destination_[i])) {
-      return false;
-    }
-  }
-
-  return a.start_match_mode_ == b.start_match_mode_ &&
-         a.dest_match_mode_ == b.dest_match_mode_ &&
-         a.use_start_footpaths_ == b.use_start_footpaths_ &&
-         a.max_transfers_ == b.max_transfers_ &&
-         a.min_connection_count_ == b.min_connection_count_ &&
-         a.extend_interval_earlier_ == b.extend_interval_earlier_ &&
-         a.extend_interval_later_ == b.extend_interval_later_ &&
-         a.prf_idx_ == b.prf_idx_ && a.allowed_claszes_ == b.allowed_claszes_;
-}
 
 TEST(query_generation, pretrip_station) {
   constexpr auto const src = source_idx_t{0U};
@@ -146,7 +95,7 @@ TEST(query_generation, reproducibility) {
     auto const result_qg1 = qg1.random_pretrip_query();
     ASSERT_EQ(result_qg0[i].has_value(), result_qg1.has_value());
     if (result_qg0[i].has_value()) {
-      EXPECT_TRUE(equal_queries(result_qg0[i].value(), result_qg1.value()));
+      EXPECT_EQ(result_qg0[i].value(), result_qg1.value());
     }
   }
 }

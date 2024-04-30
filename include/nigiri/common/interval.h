@@ -107,6 +107,8 @@ struct interval {
     return out << "[" << i.from_ << ", " << i.to_ << "[";
   }
 
+  friend bool operator==(interval<T> const& a, interval<T> const& b) = default;
+
   T from_{}, to_{};
 };
 
