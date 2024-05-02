@@ -1,11 +1,10 @@
 #pragma once
 
-#include "nigiri/types.h"
-
 #include "nigiri/routing/journey.h"
 #include "nigiri/routing/pareto_set.h"
 #include "nigiri/routing/query.h"
 #include "nigiri/timetable.h"
+#include "nigiri/types.h"
 
 namespace nigiri::routing {
 
