@@ -252,6 +252,6 @@ TEST(routing, raptor_intermodal_backward) {
     x.print(ss, tt);
     ss << "\n\n";
   }
-  std::cout << ss.str() << "\n";
+
   EXPECT_EQ(std::string_view{bwd_journeys}, ss.str());
 }
