@@ -248,9 +248,6 @@ int main(int argc, char* argv[]) {
     utl::parallel_for_run_threadlocal<query_state>(
         queries.size(),
         [&](auto& query_state, auto const q_idx) {
-          query_state.ss_ = search_state{};
-          query_state.rs_ = raptor_state{};
-
           try {
             auto const result =
                 routing::search<direction::kForward,
