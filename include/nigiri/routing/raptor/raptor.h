@@ -54,6 +54,7 @@ struct raptor {
          raptor_state& state,
          bitvec& is_dest,
          std::vector<std::uint16_t>& dist_to_dest,
+         bitvec& end_reachable,
          std::vector<std::uint16_t>& lb,
          day_idx_t const base,
          clasz_mask_t const allowed_claszes)
@@ -62,6 +63,7 @@ struct raptor {
         state_{state},
         is_dest_{is_dest},
         dist_to_end_{dist_to_dest},
+        end_reachable_{end_reachable},
         lb_{lb},
         base_{base},
         n_days_{tt_.internal_interval_days().size().count()},
@@ -699,6 +701,7 @@ private:
   raptor_state& state_;
   bitvec& is_dest_;
   std::vector<std::uint16_t>& dist_to_end_;
+  bitvec end_reachable_;
   std::vector<std::uint16_t>& lb_;
   std::array<delta_t, kMaxTransfers + 1> time_at_dest_;
   day_idx_t base_;
