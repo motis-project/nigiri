@@ -27,7 +27,7 @@ struct search_state {
   ~search_state() = default;
 
   std::vector<std::uint16_t> travel_time_lower_bound_;
-  std::vector<bool> is_destination_;
+  bitvec is_destination_;
   std::vector<std::uint16_t> dist_to_dest_;
   std::vector<start> starts_;
   pareto_set<journey> results_;
