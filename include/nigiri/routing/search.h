@@ -9,6 +9,7 @@
 #include "nigiri/routing/dijkstra.h"
 #include "nigiri/routing/for_each_meta.h"
 #include "nigiri/routing/get_fastest_direct.h"
+#include "nigiri/routing/interval_estimate.h"
 #include "nigiri/routing/journey.h"
 #include "nigiri/routing/pareto_set.h"
 #include "nigiri/routing/query.h"
@@ -117,13 +118,13 @@ struct search {
         state_{s},
         q_{std::move(q)},
         search_interval_{std::visit(
-            utl::overloaded{
-                [](interval<unixtime_t> const start_interval) {
-                  return start_interval;
-                },
-                [](unixtime_t const start_time) {
-                  return interval<unixtime_t>{start_time, start_time};
-                }},
+            utl::overloaded{[](interval<unixtime_t> const start_interval) {
+                              return start_interval;
+                            },
+                            [](unixtime_t const start_time) {
+                              return interval<unixtime_t>{start_time,
+                                                          start_time};
+                            }},
             q_.start_time_)},
         fastest_direct_{get_fastest_direct(tt_, q_, SearchDir)},
         algo_{init(q_.allowed_claszes_, algo_state)},
@@ -136,8 +137,15 @@ struct search {
       return {&state_.results_, search_interval_, stats_, algo_.get_stats()};
     }
 
+    auto const itv_est = interval_estimator<SearchDir>{tt_, q_};
+    search_interval_ = itv_est.initial(search_interval_);
+
     state_.starts_.clear();
-    add_start_labels(q_.start_time_, true);
+    if (search_interval_.size() != 0_minutes) {
+      add_start_labels(search_interval_, true);
+    } else {
+      add_start_labels(q_.start_time_, true);
+    }
 
     auto const processing_start_time = std::chrono::system_clock::now();
     auto const is_timeout_reached = [&]() {
@@ -165,13 +173,13 @@ struct search {
             is_ontrip(), max_interval_reached(), q_.extend_interval_earlier_,
             q_.extend_interval_later_,
             std::visit(
-                utl::overloaded{
-                    [](interval<unixtime_t> const& start_interval) {
-                      return start_interval;
-                    },
-                    [](unixtime_t const start_time) {
-                      return interval<unixtime_t>{start_time, start_time};
-                    }},
+                utl::overloaded{[](interval<unixtime_t> const& start_interval) {
+                                  return start_interval;
+                                },
+                                [](unixtime_t const start_time) {
+                                  return interval<unixtime_t>{start_time,
+                                                              start_time};
+                                }},
                 q_.start_time_),
             search_interval_, tt_.external_interval(), n_results_in_interval(),
             is_timeout_reached());
@@ -184,26 +192,21 @@ struct search {
             max_interval_reached(), q_.extend_interval_earlier_,
             q_.extend_interval_later_,
             std::visit(
-                utl::overloaded{
-                    [](interval<unixtime_t> const& start_interval) {
-                      return start_interval;
-                    },
-                    [](unixtime_t const start_time) {
-                      return interval<unixtime_t>{start_time, start_time};
-                    }},
+                utl::overloaded{[](interval<unixtime_t> const& start_interval) {
+                                  return start_interval;
+                                },
+                                [](unixtime_t const start_time) {
+                                  return interval<unixtime_t>{start_time,
+                                                              start_time};
+                                }},
                 q_.start_time_),
             search_interval_, tt_.external_interval(), n_results_in_interval());
       }
 
       state_.starts_.clear();
 
-      auto const new_interval = interval{
-          q_.extend_interval_earlier_ ? tt_.external_interval().clamp(
-                                            search_interval_.from_ - 60_minutes)
-                                      : search_interval_.from_,
-          q_.extend_interval_later_
-              ? tt_.external_interval().clamp(search_interval_.to_ + 60_minutes)
-              : search_interval_.to_};
+      auto const new_interval = itv_est.extension(
+          search_interval_, q_.min_connection_count_ - n_results_in_interval());
       trace("interval adapted: {} -> {}\n", search_interval_, new_interval);
 
       if (new_interval.from_ != search_interval_.from_) {
