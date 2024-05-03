@@ -285,7 +285,7 @@ void collect_destinations(timetable const& tt,
       if (match_mode == location_match_mode::kIntermodal) {
         dist_to_dest[to_idx(l)] =
             static_cast<std::uint16_t>(d.duration_.count());
-        if (dist_to_dest[to_idx(l)] == kUn) } else {
+      } else {
         is_destination.set(to_idx(l), true);
       }
       trace_start("  DEST META: {}, duration={}\n", location{tt, l},

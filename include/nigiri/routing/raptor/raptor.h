@@ -54,7 +54,6 @@ struct raptor {
          raptor_state& state,
          bitvec& is_dest,
          std::vector<std::uint16_t>& dist_to_dest,
-         bitvec& end_reachable,
          std::vector<std::uint16_t>& lb,
          day_idx_t const base,
          clasz_mask_t const allowed_claszes)
@@ -63,7 +62,6 @@ struct raptor {
         state_{state},
         is_dest_{is_dest},
         dist_to_end_{dist_to_dest},
-        end_reachable_{end_reachable},
         lb_{lb},
         base_{base},
         n_days_{tt_.internal_interval_days().size().count()},
@@ -74,6 +72,9 @@ struct raptor {
     state_.resize(n_locations_, n_routes_, n_rt_transports_);
     utl::fill(time_at_dest_, kInvalid);
     state_.round_times_.reset(kInvalid);
+    for (auto i = 0U; i < dist_to_dest.size(); ++i) {
+      state_.end_reachable_.set(i, dist_to_dest[i] != kUnreachable);
+    }
   }
 
   algo_stats_t get_stats() const { return stats_; }
@@ -331,9 +332,8 @@ private:
       return;
     }
 
-    for (auto i = 0U; i != n_locations_; ++i) {
-      if ((state_.prev_station_mark_[i] || state_.station_mark_[i]) &&
-          dist_to_end_[i] != kUnreachable) {
+    state_.end_reachable_.for_each_set_bit([&](auto const i) {
+      if (state_.prev_station_mark_[i] || state_.station_mark_[i]) {
         auto const end_time = clamp(get_best(state_.best_[i], state_.tmp_[i]) +
                                     dir(dist_to_end_[i]));
 
@@ -346,7 +346,7 @@ private:
         trace("┊ │k={}  INTERMODAL FOOTPATH: location={}, dist_to_end={}\n", k,
               location{tt_, location_idx_t{i}}, dist_to_end_[i]);
       }
-    }
+    });
   }
 
   bool update_rt_transport(unsigned const k, rt_transport_idx_t const rt_t) {
@@ -701,7 +701,6 @@ private:
   raptor_state& state_;
   bitvec& is_dest_;
   std::vector<std::uint16_t>& dist_to_end_;
-  bitvec end_reachable_;
   std::vector<std::uint16_t>& lb_;
   std::array<delta_t, kMaxTransfers + 1> time_at_dest_;
   day_idx_t base_;
