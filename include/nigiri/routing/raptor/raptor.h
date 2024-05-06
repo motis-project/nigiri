@@ -11,8 +11,8 @@
 #include "nigiri/rt/rt_timetable.h"
 #include "nigiri/special_stations.h"
 #include "nigiri/timetable.h"
-#include "printable_transport.h"
 #include "nigiri/types.h"
+#include "printable_transport.h"
 
 namespace nigiri::routing {
 
@@ -117,7 +117,7 @@ struct raptor {
 
     trace_print_init_state();
 
-    for (auto k = 1U; k != end_k; ++k) {
+    for (auto k = std::uint8_t{1U}; k != end_k; ++k) {
       for (auto i = 0U; i != n_locations_; ++i) {
         state_.best_[i] = get_best(state_.round_times_[k][i], state_.best_[i]);
       }
@@ -207,7 +207,7 @@ private:
   }
 
   template <bool WithClaszFilter>
-  bool loop_routes(unsigned const k) {
+  bool loop_routes(std::uint8_t const k) {
     auto any_marked = false;
     state_.route_mark_.for_each_set_bit([&](auto const r_idx) {
       auto const r = route_idx_t{r_idx};
@@ -410,7 +410,7 @@ private:
     return any_marked;
   }
 
-  bool update_route(unsigned const k, route_idx_t const r) {
+  bool update_route(std::uint8_t const k, route_idx_t const r) {
     auto const stop_seq = tt_.route_location_seq_[r];
     bool any_marked = false;
 
