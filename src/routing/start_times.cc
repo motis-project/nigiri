@@ -238,6 +238,24 @@ void get_starts(direction const search_dir,
     });
   }
 
+  auto nearest = std::vector<pair<location_idx_t, duration_t>>{};
+  nearest.reserve(shortest_start.size());
+  for (auto const& s : shortest_start) {
+    nearest.emplace_back(s.first, s.second);
+  }
+  std::sort(begin(nearest), end(nearest),
+            [](auto const& a, auto const& b) { return a.second < b.second; });
+  auto routes = std::set<route_idx_t>{};
+  auto closest_per_route = std::vector<pair<location_idx_t, duration_t>>{};
+  closest_per_route.reserve(shortest_start.size());
+  for (auto const& l_d : nearest) {
+    auto new_route = false;
+    for (auto const& route : tt.location_routes_[l_d.first]) {
+      if (!routes.contains(route)) {
+      }
+    }
+  }
+
   auto const cmp = [&](start const& a, start const& b) {
     return fwd ? b < a : a < b;
   };
