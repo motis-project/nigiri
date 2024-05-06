@@ -72,7 +72,7 @@ struct raptor {
     state_.resize(n_locations_, n_routes_, n_rt_transports_);
     utl::fill(time_at_dest_, kInvalid);
     state_.round_times_.reset(kInvalid);
-    for (auto i = 0U; i < dist_to_dest.size(); ++i) {
+    for (auto i = 0U; i != dist_to_dest.size(); ++i) {
       state_.end_reachable_.set(i, dist_to_dest[i] != kUnreachable);
     }
   }
