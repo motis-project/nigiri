@@ -27,7 +27,7 @@ struct search_state {
   ~search_state() = default;
 
   std::vector<std::uint16_t> travel_time_lower_bound_;
-  std::vector<bool> is_destination_;
+  bitvec is_destination_;
   std::vector<std::uint16_t> dist_to_dest_;
   std::vector<start> starts_;
   pareto_set<journey> results_;
@@ -55,7 +55,7 @@ struct search {
   static constexpr auto const kFwd = (SearchDir == direction::kForward);
   static constexpr auto const kBwd = (SearchDir == direction::kBackward);
 
-  Algo init(algo_state_t& algo_state) {
+  Algo init(clasz_mask_t const allowed_claszes, algo_state_t& algo_state) {
     stats_.fastest_direct_ =
         static_cast<std::uint64_t>(fastest_direct_.count());
 
@@ -102,14 +102,16 @@ struct search {
         state_.travel_time_lower_bound_,
         day_idx_t{std::chrono::duration_cast<date::days>(
                       search_interval_.from_ - tt_.internal_interval().from_)
-                      .count()}};
+                      .count()},
+        allowed_claszes};
   }
 
   search(timetable const& tt,
          rt_timetable const* rtt,
          search_state& s,
          algo_state_t& algo_state,
-         query q)
+         query q,
+         std::optional<std::chrono::seconds> timeout = std::nullopt)
       : tt_{tt},
         rtt_{rtt},
         state_{s},
@@ -124,7 +126,8 @@ struct search {
                 }},
             q_.start_time_)},
         fastest_direct_{get_fastest_direct(tt_, q_, SearchDir)},
-        algo_{init(algo_state)} {}
+        algo_{init(q_.allowed_claszes_, algo_state)},
+        timeout_(timeout) {}
 
   routing_result<algo_stats_t> execute() {
     state_.results_.clear();
@@ -136,17 +139,29 @@ struct search {
     state_.starts_.clear();
     add_start_labels(q_.start_time_, true);
 
+    auto const processing_start_time = std::chrono::system_clock::now();
+    auto const is_timeout_reached = [&]() {
+      if (timeout_) {
+        return (std::chrono::system_clock::now() - processing_start_time) >=
+               *timeout_;
+      }
+
+      return false;
+    };
+
     while (true) {
       trace("start_time={}\n", search_interval_);
 
       search_interval();
 
       if (is_ontrip() || max_interval_reached() ||
-          n_results_in_interval() >= q_.min_connection_count_) {
+          n_results_in_interval() >= q_.min_connection_count_ ||
+          is_timeout_reached()) {
         trace(
             "  finished: is_ontrip={}, max_interval_reached={}, "
             "extend_earlier={}, extend_later={}, initial={}, interval={}, "
-            "timetable={}, number_of_results_in_interval={}\n",
+            "timetable={}, number_of_results_in_interval={}, "
+            "timeout_reached={}\n",
             is_ontrip(), max_interval_reached(), q_.extend_interval_earlier_,
             q_.extend_interval_later_,
             std::visit(
@@ -158,7 +173,8 @@ struct search {
                       return interval<unixtime_t>{start_time, start_time};
                     }},
                 q_.start_time_),
-            search_interval_, tt_.external_interval(), n_results_in_interval());
+            search_interval_, tt_.external_interval(), n_results_in_interval(),
+            is_timeout_reached());
         break;
       } else {
         trace(
@@ -290,7 +306,7 @@ private:
                         bool const add_ontrip) {
     get_starts(SearchDir, tt_, rtt_, start_interval, q_.start_,
                q_.start_match_mode_, q_.use_start_footpaths_, state_.starts_,
-               add_ontrip);
+               add_ontrip, q_.prf_idx_);
   }
 
   void remove_ontrip_results() {
@@ -318,7 +334,7 @@ private:
               start_time +
               (kFwd ? 1 : -1) * std::min(fastest_direct_, kMaxTravelTime);
           algo_.execute(start_time, q_.max_transfers_, worst_time_at_dest,
-                        state_.results_);
+                        q_.prf_idx_, state_.results_);
 
           for (auto& j : state_.results_) {
             if (j.legs_.empty() &&
@@ -338,6 +354,7 @@ private:
   search_stats stats_;
   duration_t fastest_direct_;
   Algo algo_;
+  std::optional<std::chrono::seconds> timeout_;
 };
 
 }  // namespace nigiri::routing

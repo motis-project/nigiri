@@ -41,8 +41,6 @@ struct specification {
 
 struct service {
   static const constexpr auto kTimeNotSet = -1;  // NOLINT
-  static category unknown_catergory;
-  static provider unknown_provider;
 
   struct event {
     int time_;
@@ -94,3 +92,6 @@ struct service {
 };
 
 }  // namespace nigiri::loader::hrd
+
+template <>
+struct fmt::formatter<nigiri::loader::hrd::parser_info> : ostream_formatter {};

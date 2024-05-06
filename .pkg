@@ -5,15 +5,15 @@
 [cista]
   url=git@github.com:felixguendling/cista.git
   branch=master
-  commit=04f84b0490e0e91ead20ae6eabed5add8f243ba0
+  commit=ebd5eb5cc7f82c414d3e060a3937d497189a103f
 [geo]
   url=git@github.com:motis-project/geo.git
   branch=master
-  commit=f455b76d5894bb156e3bcb1f85c3e2915820fe3a
+  commit=ee76668f0f0454e4acd3c769e00c6868620e3490
 [utl]
   url=git@github.com:motis-project/utl.git
   branch=master
-  commit=b81cfdccda166cef3c20dd41b4c9697b4137cea4
+  commit=4e0e1eb2be611da3e286a306317737071aaf92be
 [miniz]
   url=git@github.com:motis-project/miniz.git
   branch=master
@@ -21,11 +21,11 @@
 [fmt]
   url=git@github.com:motis-project/fmt.git
   branch=master
-  commit=c68ab4be8f3cb0e5c6eb181b3f419622e15e02bd
+  commit=edb385ac526c24bc917ec4a41bb0edb28f0ca59e
 [date]
   url=git@github.com:motis-project/date.git
   branch=master
-  commit=26d109612ddb8ba331edba7619a6452667f842bb
+  commit=2d2c46a39bbf582dc663be1af926b4d58b2e0c9a
 [wyhash]
   url=git@github.com:motis-project/wyhash.git
   branch=master
@@ -36,5 +36,5 @@
   commit=77e91016354e6d8cba24a86c5abb807de2534c02
 [protobuf]
   url=git@github.com:motis-project/protobuf.git
-  branch=master
-  commit=297171ade5e9bd01d823ffe8b203a5443ec03f15
+  branch=main
+  commit=690e03babf0963d3da9615a2dae0891777842719

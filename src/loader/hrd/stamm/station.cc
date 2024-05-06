@@ -152,7 +152,7 @@ void parse_footpaths(config const& c,
       auto const duration_int =
           parse<int>(line.substr(c.meta_.footpaths_.duration_));
       utl::verify(duration_int <= std::numeric_limits<u8_minutes::rep>::max(),
-                  "footpath duration {} > {}",
+                  "footpath duration {} > {}", duration_int,
                   std::numeric_limits<u8_minutes::rep>::max());
       add_footpath(from, to.id_, u8_minutes{duration_int});
 
@@ -179,7 +179,6 @@ location_map_t parse_stations(config const& c,
   auto const timer = scoped_timer{"parse stations"};
 
   auto empty_idx_vec = vector<location_idx_t>{};
-  auto empty_footpath_vec = vector<footpath>{};
 
   location_map_t stations;
   parse_station_names(c, stations, station_names_file);
@@ -194,9 +193,8 @@ location_map_t parse_stations(config const& c,
     auto const transfer_time = duration_t{eva_int < 1000000 ? 2 : 5};
     auto const idx = tt.locations_.register_location(
         location{id.id_, s.name_, s.pos_, src, location_type::kStation,
-                 osm_node_id_t::invalid(), location_idx_t::invalid(),
-                 st.get_tz(s.id_).first, transfer_time, it_range{empty_idx_vec},
-                 std::span{empty_footpath_vec}, std::span{empty_footpath_vec}});
+                 location_idx_t::invalid(), st.get_tz(s.id_).first,
+                 transfer_time, it_range{empty_idx_vec}});
     s.idx_ = idx;
   }
 

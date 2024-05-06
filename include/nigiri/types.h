@@ -4,11 +4,14 @@
 #include <cinttypes>
 #include <variant>
 
+#include "fmt/ostream.h"
+
 #include "date/date.h"
 #include "date/tz.h"
 
 #include "ankerl/cista_adapter.h"
 
+#include "cista/containers/array.h"
 #include "cista/containers/bitset.h"
 #include "cista/containers/bitvec.h"
 #include "cista/containers/flat_matrix.h"
@@ -59,6 +62,9 @@ using pair = cista::pair<A, B>;
 template <typename K, typename V>
 using vector_map = cista::raw::vector_map<K, V>;
 
+template <typename V, std::size_t SIZE>
+using array = cista::raw::array<V, SIZE>;
+
 template <typename T>
 using vector = cista::raw::vector<T>;
 
@@ -102,20 +108,22 @@ using nvec = cista::raw::nvec<Key, T, N>;
 
 using bitfield_idx_t = cista::strong<std::uint32_t, struct _bitfield_idx>;
 using location_idx_t = cista::strong<std::uint32_t, struct _location_idx>;
-using osm_node_id_t = cista::strong<std::int64_t, struct _osm_node_idx>;
-using route_idx_t = cista::strong<std::uint32_t, struct _location_idx>;
+using route_idx_t = cista::strong<std::uint32_t, struct _route_idx>;
 using section_idx_t = cista::strong<std::uint32_t, struct _section_idx>;
 using section_db_idx_t = cista::strong<std::uint32_t, struct _section_db_idx>;
 using trip_idx_t = cista::strong<std::uint32_t, struct _trip_idx>;
 using trip_id_idx_t = cista::strong<std::uint32_t, struct _trip_id_str_idx>;
 using transport_idx_t = cista::strong<std::uint32_t, struct _transport_idx>;
-using source_idx_t = cista::strong<std::uint8_t, struct _source_idx>;
+using source_idx_t = cista::strong<std::uint16_t, struct _source_idx>;
 using day_idx_t = cista::strong<std::uint16_t, struct _day_idx>;
-using timezone_idx_t = cista::strong<std::uint8_t, struct _timezone_idx>;
+using timezone_idx_t = cista::strong<std::uint16_t, struct _timezone_idx>;
 using merged_trips_idx_t =
     cista::strong<std::uint32_t, struct _merged_trips_idx>;
 using footpath_idx_t = cista::strong<std::uint32_t, struct _footpath_idx>;
 using source_file_idx_t = cista::strong<std::uint16_t, struct _source_file_idx>;
+
+using profile_idx_t = std::uint8_t;
+static constexpr auto const kMaxProfiles = profile_idx_t{8};
 
 using rt_trip_idx_t = cista::strong<std::uint32_t, struct _trip_idx>;
 using rt_add_trip_id_idx_t =
@@ -160,6 +168,13 @@ struct provider {
   timezone_idx_t tz_{timezone_idx_t::invalid()};
 };
 
+// colors in ARGB layout, 0 thus indicates no color specified
+using color_t = cista::strong<std::uint32_t, struct _color>;
+struct route_color {
+  color_t color_;
+  color_t text_color_;
+};
+
 struct trip_id {
   CISTA_COMPARABLE()
   inline friend std::ostream& operator<<(std::ostream& out, trip_id const tid) {
@@ -201,19 +216,19 @@ using duration_t = i16_minutes;
 using unixtime_t = std::chrono::sys_time<i32_minutes>;
 using local_time = date::local_time<i32_minutes>;
 
-constexpr u8_minutes operator"" _i8_minutes(unsigned long long n) {
+constexpr u8_minutes operator""_i8_minutes(unsigned long long n) {
   return duration_t{n};
 }
 
-constexpr duration_t operator"" _minutes(unsigned long long n) {
+constexpr duration_t operator""_minutes(unsigned long long n) {
   return duration_t{n};
 }
 
-constexpr duration_t operator"" _hours(unsigned long long n) {
+constexpr duration_t operator""_hours(unsigned long long n) {
   return duration_t{n * 60U};
 }
 
-constexpr duration_t operator"" _days(unsigned long long n) {
+constexpr duration_t operator""_days(unsigned long long n) {
   return duration_t{n * 1440U};
 }
 
@@ -264,6 +279,8 @@ enum class location_type : std::uint8_t {
 
 enum class event_type { kArr, kDep };
 enum class direction { kForward, kBackward };
+
+using transport_mode_id_t = std::int32_t;
 
 }  // namespace nigiri
 
@@ -407,3 +424,15 @@ inline local_time to_local_time(timezone const& tz, unixtime_t const t) {
 }
 
 }  // namespace nigiri
+
+template <>
+struct fmt::formatter<nigiri::duration_t> : ostream_formatter {};
+
+template <>
+struct fmt::formatter<nigiri::unixtime_t> : ostream_formatter {};
+
+template <>
+struct fmt::formatter<nigiri::debug> : ostream_formatter {};
+
+template <>
+struct fmt::formatter<nigiri::delta> : ostream_formatter {};

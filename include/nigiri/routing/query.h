@@ -1,11 +1,13 @@
 #pragma once
 
 #include <cinttypes>
+#include <limits>
 #include <variant>
 #include <vector>
 
 #include "nigiri/common/interval.h"
 #include "nigiri/footpath.h"
+#include "nigiri/routing/clasz_mask.h"
 #include "nigiri/routing/limits.h"
 #include "nigiri/routing/location_match_mode.h"
 #include "nigiri/types.h"
@@ -17,16 +19,18 @@ namespace nigiri::routing {
 using start_type_t = std::int32_t;
 
 struct offset {
-  offset(location_idx_t const l, duration_t const d, start_type_t const t)
-      : target_{l}, duration_{d}, type_{t} {}
+  offset(location_idx_t const l,
+         duration_t const d,
+         transport_mode_id_t const t)
+      : target_{l}, duration_{d}, transport_mode_id_{t} {}
 
   location_idx_t target() const noexcept { return target_; }
   duration_t duration() const noexcept { return duration_; }
-  start_type_t type() const noexcept { return type_; }
+  transport_mode_id_t type() const noexcept { return transport_mode_id_; }
 
   location_idx_t target_;
   duration_t duration_;
-  start_type_t type_;
+  transport_mode_id_t transport_mode_id_;
 };
 
 using start_time_t = std::variant<unixtime_t, interval<unixtime_t>>;
@@ -44,6 +48,8 @@ struct query {
   unsigned min_connection_count_{0U};
   bool extend_interval_earlier_{false};
   bool extend_interval_later_{false};
+  profile_idx_t prf_idx_{0};
+  clasz_mask_t allowed_claszes_{all_clasz_allowed()};
 };
 
 }  // namespace nigiri::routing

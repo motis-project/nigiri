@@ -11,20 +11,16 @@ namespace nigiri::loader {
 
 void register_special_stations(timetable& tt) {
   auto empty_idx_vec = vector<location_idx_t>{};
-  auto empty_footpath_vec = vector<footpath>{};
   for (auto const& name : special_stations_names) {
     tt.locations_.register_location(location{name,
                                              name,
                                              {0.0, 0.0},
                                              source_idx_t::invalid(),
                                              location_type::kStation,
-                                             osm_node_id_t::invalid(),
                                              location_idx_t::invalid(),
                                              timezone_idx_t::invalid(),
                                              0_minutes,
-                                             it_range{empty_idx_vec},
-                                             std::span{empty_footpath_vec},
-                                             std::span{empty_footpath_vec}});
+                                             it_range{empty_idx_vec}});
   }
   tt.location_routes_.resize(tt.n_locations());
   tt.bitfields_.emplace_back(bitfield{});  // bitfield_idx 0 = 000...00 bitfield
@@ -32,7 +28,8 @@ void register_special_stations(timetable& tt) {
 
 void finalize(timetable& tt,
               bool const adjust_footpaths,
-              bool const merge_duplicates) {
+              bool const merge_duplicates,
+              std::uint16_t const max_footpath_length) {
   tt.location_routes_.resize(tt.n_locations());
 
   {
@@ -50,7 +47,7 @@ void finalize(timetable& tt,
                             tt.trip_id_strings_[b.first].view());
         });
   }
-  build_footpaths(tt, adjust_footpaths, merge_duplicates);
+  build_footpaths(tt, adjust_footpaths, merge_duplicates, max_footpath_length);
   build_lb_graph<direction::kForward>(tt);
   build_lb_graph<direction::kBackward>(tt);
 }

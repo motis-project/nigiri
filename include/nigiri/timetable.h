@@ -49,7 +49,6 @@ struct timetable {
         preprocessing_footpaths_out_.emplace_back();
         preprocessing_footpaths_in_.emplace_back();
         transfer_time_.emplace_back(l.transfer_time_);
-        osm_ids_.emplace_back(osm_node_id_t::invalid());
         parents_.emplace_back(l.parent_);
       } else {
         log(log_lvl::error, "timetable.register_location",
@@ -67,7 +66,6 @@ struct timetable {
       assert(preprocessing_footpaths_out_.size() == next_idx + 1);
       assert(preprocessing_footpaths_in_.size() == next_idx + 1);
       assert(transfer_time_.size() == next_idx + 1);
-      assert(osm_ids_.size() == next_idx + 1);
       assert(parents_.size() == next_idx + 1);
 
       return it->second;
@@ -79,13 +77,10 @@ struct timetable {
                         coordinates_[idx],
                         src_[idx],
                         types_[idx],
-                        osm_ids_[idx],
                         parents_[idx],
                         location_timezones_[idx],
                         transfer_time_[idx],
-                        it_range{equivalences_[idx]},
-                        std::span<footpath const>{footpaths_out_[idx]},
-                        std::span<footpath const>{footpaths_in_[idx]}};
+                        it_range{equivalences_[idx]}};
       l.l_ = idx;
       return l;
     }
@@ -104,14 +99,14 @@ struct timetable {
     vector_map<location_idx_t, source_idx_t> src_;
     vector_map<location_idx_t, u8_minutes> transfer_time_;
     vector_map<location_idx_t, location_type> types_;
-    vector_map<location_idx_t, osm_node_id_t> osm_ids_;
     vector_map<location_idx_t, location_idx_t> parents_;
     vector_map<location_idx_t, timezone_idx_t> location_timezones_;
     mutable_fws_multimap<location_idx_t, location_idx_t> equivalences_;
     mutable_fws_multimap<location_idx_t, location_idx_t> children_;
     mutable_fws_multimap<location_idx_t, footpath> preprocessing_footpaths_out_;
     mutable_fws_multimap<location_idx_t, footpath> preprocessing_footpaths_in_;
-    vecvec<location_idx_t, footpath> footpaths_out_, footpaths_in_;
+    array<vecvec<location_idx_t, footpath>, kMaxProfiles> footpaths_out_;
+    array<vecvec<location_idx_t, footpath>, kMaxProfiles> footpaths_in_;
     vector_map<timezone_idx_t, timezone> timezones_;
   } locations_;
 
@@ -125,6 +120,7 @@ struct timetable {
     std::basic_string<trip_direction_idx_t> const& section_directions_;
     std::basic_string<trip_line_idx_t> const& section_lines_;
     std::basic_string<stop_idx_t> const& stop_seq_numbers_;
+    std::basic_string<route_color> const& route_colors_;
   };
 
   template <typename TripId>
@@ -167,12 +163,16 @@ struct timetable {
   route_idx_t register_route(
       std::basic_string<stop::value_type> const& stop_seq,
       std::basic_string<clasz> const& clasz_sections) {
+    assert(!stop_seq.empty() && stop_seq.size() > 1U);
+    assert(!clasz_sections.empty());
+
     auto const idx = route_location_seq_.size();
     route_transport_ranges_.emplace_back(
         transport_idx_t{transport_traffic_days_.size()},
         transport_idx_t::invalid());
     route_location_seq_.emplace_back(stop_seq);
     route_section_clasz_.emplace_back(clasz_sections);
+    route_clasz_.emplace_back(clasz_sections[0]);
     return route_idx_t{idx};
   }
 
@@ -209,6 +209,7 @@ struct timetable {
     transport_section_providers_.emplace_back(t.section_providers_);
     transport_section_directions_.emplace_back(t.section_directions_);
     transport_section_lines_.emplace_back(t.section_lines_);
+    transport_section_route_colors_.emplace_back(t.route_colors_);
 
     assert(transport_traffic_days_.size() == transport_route_.size());
     assert(transport_traffic_days_.size() == transport_to_trip_section_.size());
@@ -379,6 +380,9 @@ struct timetable {
   // Route -> list of stops
   vecvec<route_idx_t, stop::value_type> route_location_seq_;
 
+  // Route -> clasz
+  vector_map<route_idx_t, clasz> route_clasz_;
+
   // Route -> clasz per section
   vecvec<route_idx_t, clasz> route_section_clasz_;
 
@@ -438,10 +442,14 @@ struct timetable {
   vecvec<transport_idx_t, provider_idx_t> transport_section_providers_;
   vecvec<transport_idx_t, trip_direction_idx_t> transport_section_directions_;
   vecvec<transport_idx_t, trip_line_idx_t> transport_section_lines_;
+  vecvec<transport_idx_t, route_color> transport_section_route_colors_;
 
   // Lower bound graph.
   vecvec<location_idx_t, footpath> fwd_search_lb_graph_;
   vecvec<location_idx_t, footpath> bwd_search_lb_graph_;
+
+  // profile name -> profile_idx_t
+  hash_map<string, profile_idx_t> profiles_;
 };
 
 }  // namespace nigiri

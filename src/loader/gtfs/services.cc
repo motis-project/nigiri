@@ -21,7 +21,8 @@ bitfield calendar_to_bitfield(interval<date::sys_days> const& tt_interval,
       log(log_lvl::error, "loader.gtfs.services",
           "date {} for service {} out of range [tt_interval={}, calendar={}, "
           "iterating={}]",
-          d, service_name, tt_interval, c.interval_, interval{from, to});
+          fmt::streamed(d), service_name, tt_interval, c.interval_,
+          interval{from, to});
       break;
     }
     auto const weekday_index =

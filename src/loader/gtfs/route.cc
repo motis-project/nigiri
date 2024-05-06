@@ -114,9 +114,35 @@ clasz to_clasz(int const route_type) {
     case 1506 /* Private Hire Service Vehicle */:
     case 1507 /* All Taxi Services */:
     case 1700 /* Miscellaneous Service */:
-    case 1702 /* Horse-drawn Carriage */:
-    default: return clasz::kOther;
+    case 1702 /* Horse-drawn Carriage */: return clasz::kOther;
   }
+
+  // types not in the above table but within category type ranges
+  if (route_type >= 1000 && route_type < 1100) {
+    return clasz::kShip;
+  }
+  if (route_type >= 1100 && route_type < 1200) {
+    return clasz::kAir;
+  }
+  if (route_type >= 1200 && route_type < 1300) {
+    return clasz::kShip;
+  }
+
+  return clasz::kOther;
+}
+
+color_t to_color(std::string_view const color_str) {
+  auto const is_hex = [](uint8_t c) {
+    return std::isdigit(c) != 0 || (c >= 'a' && c <= 'f') ||
+           (c >= 'A' && c <= 'F');
+  };
+
+  if (color_str.size() != 6 ||
+      !std::all_of(color_str.begin(), color_str.end(), is_hex)) {
+    return color_t{0};
+  }
+  return color_t{0xFF000000U | static_cast<std::uint32_t>(
+                                   std::strtol(color_str.data(), nullptr, 16))};
 }
 
 route_map_t read_routes(timetable& tt,
@@ -133,6 +159,8 @@ route_map_t read_routes(timetable& tt,
     utl::csv_col<utl::cstr, UTL_NAME("route_long_name")> route_long_name_;
     utl::csv_col<utl::cstr, UTL_NAME("route_desc")> route_desc_;
     utl::csv_col<int, UTL_NAME("route_type")> route_type_;
+    utl::csv_col<utl::cstr, UTL_NAME("route_color")> route_color_;
+    utl::csv_col<utl::cstr, UTL_NAME("route_text_color")> route_text_color_;
   };
 
   auto const progress_tracker = utl::get_active_progress_tracker();
@@ -156,14 +184,17 @@ route_map_t read_routes(timetable& tt,
                        {id, "UNKNOWN_AGENCY",
                         get_tz_idx(tt, timezones, default_tz)});
                  });
-             return std::pair{r.route_id_->to_str(),
-                              std::make_unique<route>(route{
-                                  .agency_ = agency,
-                                  .id_ = r.route_id_->to_str(),
-                                  .short_name_ = r.route_short_name_->to_str(),
-                                  .long_name_ = r.route_long_name_->to_str(),
-                                  .desc_ = r.route_desc_->to_str(),
-                                  .clasz_ = to_clasz(*r.route_type_)})};
+             return std::pair{
+                 r.route_id_->to_str(),
+                 std::make_unique<route>(route{
+                     .agency_ = agency,
+                     .id_ = r.route_id_->to_str(),
+                     .short_name_ = r.route_short_name_->to_str(),
+                     .long_name_ = r.route_long_name_->to_str(),
+                     .desc_ = r.route_desc_->to_str(),
+                     .clasz_ = to_clasz(*r.route_type_),
+                     .color_ = to_color(r.route_color_->to_str()),
+                     .text_color_ = to_color(r.route_text_color_->to_str())})};
            })  //
          | utl::to<route_map_t>();
 }

@@ -26,8 +26,9 @@ bool applicable(config const& c, dir const& d) {
                  auto const exists = d.exists(path);
                  if (!exists) {
                    log(log_lvl::info, "loader.hrd",
-                       "input={}, missing file for config {}: {}", d.path(),
-                       c.version_.view(), path);
+                       "input={}, missing file for config {}: {}",
+                       d.path().generic_string(), c.version_.view(),
+                       path.generic_string());
                  }
                  return exists;
                });
@@ -82,7 +83,8 @@ void load_timetable(source_idx_t const src,
       continue;
     }
 
-    log(log_lvl::info, "loader.hrd.services", "loading {}", path);
+    log(log_lvl::info, "loader.hrd.services", "loading {}",
+        path.generic_string());
     auto const file = d.get_file(path);
     sb.add_services(
         c, relative(path, c.fplan_).string().c_str(), file.data(),

@@ -215,7 +215,8 @@ void get_starts(direction const search_dir,
                 location_match_mode const mode,
                 bool const use_start_footpaths,
                 std::vector<start>& starts,
-                bool const add_ontrip) {
+                bool const add_ontrip,
+                profile_idx_t const prf_idx) {
   hash_map<location_idx_t, duration_t> shortest_start;
 
   auto const update = [&](location_idx_t const l, duration_t const d) {
@@ -228,8 +229,8 @@ void get_starts(direction const search_dir,
     for_each_meta(tt, mode, o.target(), [&](location_idx_t const l) {
       update(l, o.duration());
       if (use_start_footpaths) {
-        auto const footpaths = fwd ? tt.locations_.footpaths_out_[l]
-                                   : tt.locations_.footpaths_in_[l];
+        auto const footpaths = fwd ? tt.locations_.footpaths_out_[prf_idx][l]
+                                   : tt.locations_.footpaths_in_[prf_idx][l];
         for (auto const& fp : footpaths) {
           update(fp.target(), o.duration() + fp.duration());
         }
@@ -262,16 +263,16 @@ void get_starts(direction const search_dir,
 void collect_destinations(timetable const& tt,
                           std::vector<offset> const& destinations,
                           location_match_mode const match_mode,
-                          std::vector<bool>& is_destination,
+                          bitvec& is_destination,
                           std::vector<std::uint16_t>& dist_to_dest) {
   is_destination.resize(tt.n_locations());
-  utl::fill(is_destination, false);
+  utl::fill(is_destination.blocks_, 0U);
 
   static constexpr auto const kIntermodalTarget =
       to_idx(get_special_station(special_station::kEnd));
 
   if (match_mode == location_match_mode::kIntermodal) {
-    is_destination[kIntermodalTarget] = true;
+    is_destination.set(kIntermodalTarget, true);
     dist_to_dest.resize(tt.n_locations());
     utl::fill(dist_to_dest, std::numeric_limits<std::uint16_t>::max());
   } else {
@@ -285,7 +286,7 @@ void collect_destinations(timetable const& tt,
         dist_to_dest[to_idx(l)] =
             static_cast<std::uint16_t>(d.duration_.count());
       } else {
-        is_destination[to_idx(l)] = true;
+        is_destination.set(to_idx(l), true);
       }
       trace_start("  DEST META: {}, duration={}\n", location{tt, l},
                   d.duration_);

@@ -9,7 +9,7 @@
 #include "nigiri/rt/run.h"
 
 namespace gtfsrt = transit_realtime;
-namespace pb = google::protobuf;
+namespace protob = google::protobuf;
 
 namespace nigiri::rt {
 
@@ -73,6 +73,7 @@ delay_propagation update_delay(timetable const& tt,
   rtt.update_time(r.rt_, stop_idx, ev_type,
                   min.has_value() ? std::max(*min, static_time + delay)
                                   : static_time + delay);
+  rtt.dispatch_event_change(r.t_, stop_idx, ev_type, delay, false);
   return {rtt.unix_event_time(r.rt_, stop_idx, ev_type), delay};
 }
 
@@ -96,6 +97,8 @@ delay_propagation update_event(timetable const& tt,
     rtt.update_time(
         r.rt_, stop_idx, ev_type,
         pred_time.has_value() ? std::max(*pred_time, new_time) : new_time);
+    rtt.dispatch_event_change(r.t_, stop_idx, ev_type, new_time - static_time,
+                              false);
     return {new_time, new_time - static_time};
   }
 }
@@ -118,7 +121,7 @@ void update_run(
     rt_timetable& rtt,
     trip_idx_t const trip,
     run& r,
-    pb::RepeatedPtrField<gtfsrt::TripUpdate_StopTimeUpdate> const& stops) {
+    protob::RepeatedPtrField<gtfsrt::TripUpdate_StopTimeUpdate> const& stops) {
   using std::begin;
   using std::end;
 
@@ -158,9 +161,17 @@ void update_run(
           gtfsrt::TripUpdate_StopTimeUpdate_ScheduleRelationship_SKIPPED) {
         // Cancel skipped stops (in_allowed = out_allowed = false).
         stp = stop{stop{stp}.location_idx(), false, false}.value();
-      } else if (upd_it->stop_time_properties().has_assigned_stop_id()) {
+      } else if (upd_it->stop_time_properties().has_assigned_stop_id() ||
+                 (upd_it->has_stop_id() &&
+                  upd_it->stop_id() !=
+                      tt.locations_
+                          .ids_[stop{location_seq[stop_idx]}.location_idx()]
+                          .view())) {
         // Handle track change.
-        auto const& new_id = upd_it->stop_time_properties().assigned_stop_id();
+        auto const& new_id =
+            upd_it->stop_time_properties().has_assigned_stop_id()
+                ? upd_it->stop_time_properties().assigned_stop_id()
+                : upd_it->stop_id();
         auto const l_it = tt.locations_.location_id_to_idx_.find(
             {.id_ = new_id, .src_ = src});
         if (l_it != end(tt.locations_.location_id_to_idx_)) {
@@ -220,6 +231,13 @@ void update_run(
       ++upd_it;
     }
   }
+
+  auto const n_not_cancelled_stops = utl::count_if(
+      rtt.rt_transport_location_seq_[r.rt_],
+      [](stop::value_type const s) { return !stop{s}.is_cancelled(); });
+  if (n_not_cancelled_stops <= 1U) {
+    cancel_run(tt, rtt, r);
+  }
 }
 
 statistics gtfsrt_update_msg(timetable const& tt,
@@ -237,28 +255,46 @@ statistics gtfsrt_update_msg(timetable const& tt,
   auto const today =
       std::chrono::time_point_cast<date::sys_days::duration>(message_time);
   for (auto const& entity : msg.entity()) {
-    if (entity.is_deleted()) {
+    if (entity.has_is_deleted() && entity.is_deleted()) {
+      log(log_lvl::error, "rt.gtfs.unsupported",
+          "unsupported deleted (tag={}, id={})", tag, entity.id());
       ++stats.unsupported_deleted_;
       continue;
     } else if (entity.has_alert()) {
+      log(log_lvl::error, "rt.gtfs.unsupported",
+          "unsupported alert (tag={}, id={})", tag, entity.id());
       ++stats.unsupported_alert_;
       continue;
     } else if (entity.has_vehicle()) {
+      log(log_lvl::error, "rt.gtfs.unsupported",
+          "unsupported vehicle (tag={}, id={})", tag, entity.id());
       ++stats.unsupported_vehicle_;
       continue;
     } else if (!entity.has_trip_update()) {
+      log(log_lvl::error, "rt.gtfs.unsupported",
+          "unsupported no trip update (tag={}, id={})", tag, entity.id());
       ++stats.no_trip_update_;
       continue;
     } else if (!entity.trip_update().has_trip()) {
+      log(log_lvl::error, "rt.gtfs.unsupported",
+          "unsupported no trip in trip update (tag={}, id={})", tag,
+          entity.id());
       ++stats.trip_update_without_trip_;
       continue;
     } else if (!entity.trip_update().trip().has_trip_id()) {
+      log(log_lvl::error, "rt.gtfs.unsupported",
+          "unsupported trip without trip_id (tag={}, id={})", tag, entity.id());
       ++stats.unsupported_no_trip_id_;
       continue;
     } else if (entity.trip_update().trip().schedule_relationship() !=
                    gtfsrt::TripDescriptor_ScheduleRelationship_SCHEDULED &&
                entity.trip_update().trip().schedule_relationship() !=
                    gtfsrt::TripDescriptor_ScheduleRelationship_CANCELED) {
+      log(log_lvl::error, "rt.gtfs.unsupported",
+          "unsupported schedule relationship {} (tag={}, id={})",
+          TripDescriptor_ScheduleRelationship_Name(
+              entity.trip_update().trip().schedule_relationship()),
+          tag, entity.id());
       ++stats.unsupported_schedule_relationship_;
       continue;
     }

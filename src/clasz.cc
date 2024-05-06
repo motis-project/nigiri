@@ -198,7 +198,7 @@ clasz get_clasz(std::string_view s) {
     case hash("Drahtseilbahn"):
     case hash("Standseilbahn"):
     case hash("Sesselbahn"):
-    case hash("Gondola): return claszle car"):
+    case hash("Gondola"):
     case hash("Aufzug"):
     case hash("Elevator"): [[fallthrough]];
     case hash("ASC"): return clasz::kOther;

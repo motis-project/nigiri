@@ -10,6 +10,12 @@
 
 namespace nigiri {
 
+using change_callback_t = std::function<void(transport const transport,
+                                             stop_idx_t const stop_idx,
+                                             event_type const ev_type,
+                                             duration_t const delay,
+                                             bool const cancelled)>;
+
 // General note:
 // - The real-time timetable does not use bitfields. It requires an initial copy
 //   of the bitfields from the static timetable to be able to deactivate bits
@@ -49,6 +55,22 @@ struct rt_timetable {
                               rt_transport_stop_times_[rt_t].size());
     rt_transport_stop_times_[rt_t][static_cast<std::size_t>(ev_idx)] =
         unix_to_delta(new_time);
+  }
+
+  void set_change_callback(change_callback_t callback) {
+    change_callback_ = callback;
+  }
+
+  void reset_change_callback() { change_callback_ = nullptr; }
+
+  void dispatch_event_change(transport const t,
+                             stop_idx_t const stop_idx,
+                             event_type const ev_type,
+                             duration_t const delay,
+                             bool const cancelled) {
+    if (change_callback_) {
+      change_callback_(t, stop_idx, ev_type, delay, cancelled);
+    }
   }
 
   unixtime_t unix_event_time(rt_transport_idx_t const rt_t,
@@ -104,7 +126,8 @@ struct rt_timetable {
   vector_map<bitfield_idx_t, bitfield> bitfields_;
 
   // Location -> RT transports that stop at this location
-  vecvec<location_idx_t, rt_transport_idx_t> location_rt_transports_;
+  mutable_fws_multimap<location_idx_t, rt_transport_idx_t>
+      location_rt_transports_;
 
   // Base-day: all real-time timestamps (departures + arrivals in
   // rt_transport_stop_times_) are given relative to this base day.
@@ -142,6 +165,8 @@ struct rt_timetable {
 
   // RT transport -> canceled flag
   bitvec rt_transport_is_cancelled_;
+
+  change_callback_t change_callback_;
 };
 
 }  // namespace nigiri

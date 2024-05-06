@@ -1,5 +1,7 @@
 #pragma once
 
+#include "fmt/ostream.h"
+
 #include "utl/verify.h"
 
 #include "cista/reflection/printable.h"
@@ -49,6 +51,14 @@ struct footpath {
     return out << "(" << fp.target() << ", " << fp.duration() << ")";
   }
 
+  friend bool operator==(footpath const& a, footpath const& b) {
+    return a.value() == b.value();
+  }
+
+  friend bool operator<(footpath const& a, footpath const& b) {
+    return a.value() < b.value();
+  }
+
   location_idx_t::value_t target_ : kTargetBits;
   location_idx_t::value_t duration_ : kDurationBits;
 };
@@ -66,3 +76,6 @@ template <typename Ctx>
 inline void deserialize(Ctx const&, footpath*) {}
 
 }  // namespace nigiri
+
+template <>
+struct fmt::formatter<nigiri::footpath> : ostream_formatter {};
