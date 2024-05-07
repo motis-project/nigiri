@@ -251,15 +251,28 @@ void get_starts(direction const search_dir,
   for (auto const& l_d : nearest) {
     auto new_route = false;
     for (auto const& route : tt.location_routes_[l_d.first]) {
-      if (!routes.contains(route)) {
+      auto const loc_seq = tt.route_location_seq_[route];
+      auto i = fwd ? 0U : 1U;
+      auto const last = fwd ? loc_seq.size() - 1 : loc_seq.size();
+      for (; i != last; ++i) {
+        auto const stp = stop{loc_seq[i]};
+        if (stp.location_idx() == l_d.first &&
+            ((fwd && stp.in_allowed()) || (!fwd && stp.out_allowed())) &&
+            !routes.contains(route)) {
+          routes.emplace(route);
+          new_route = true;
+        }
       }
+    }
+    if (new_route) {
+      closest_per_route.emplace_back(l_d);
     }
   }
 
   auto const cmp = [&](start const& a, start const& b) {
     return fwd ? b < a : a < b;
   };
-  for (auto const& s : shortest_start) {
+  for (auto const& s : closest_per_route) {
     auto const l = s.first;
     auto const o = s.second;
     std::visit(utl::overloaded{
