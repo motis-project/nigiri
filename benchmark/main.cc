@@ -8,8 +8,6 @@
 #include "utl/parallel_for.h"
 #include "utl/progress_tracker.h"
 
-#include "nigiri/loader/load.h"
-#include "nigiri/loader/loader_interface.h"
 #include "nigiri/logging.h"
 #include "nigiri/query_generator/generator.h"
 #include "nigiri/routing/raptor/raptor.h"
@@ -81,9 +79,6 @@ std::optional<geo::latlng> parse_coord(std::string const& str) {
 // needs sorted vector
 template <typename T>
 T quantile(std::vector<T> const& v, double q) {
-  if (v.empty()) {
-    return 0;
-  }
   q = q < 0.0 ? 0.0 : q;
   q = 1.0 < q ? 1.0 : q;
   if (q == 1.0) {
@@ -92,21 +87,32 @@ T quantile(std::vector<T> const& v, double q) {
   return v[static_cast<std::size_t>(v.size() * q)];
 }
 
-template <typename T>
-void print_stats(std::vector<T> const& var, std::string const& var_name) {
+struct routing_stat {
+  friend std::ostream& operator<<(std::ostream& out, routing_stat const& rs) {
+    out << "(routing_time: " << std::setw(12) << rs.routing_time_
+        << ", search_iterations: " << std::setw(12) << rs.search_iterations_
+        << ")";
+    return out;
+  }
+
+  std::chrono::milliseconds::rep routing_time_;
+  std::uint64_t search_iterations_;
+};
+
+void print_stats(std::vector<routing_stat> const& var,
+                 std::string const& var_name) {
   if (var.empty()) {
     std::cout << "Info: prints_stats for " << var_name
               << ": Input empty, no statistics to display\n";
     return;
   }
   std::cout << "\n--- " << var_name << " --- (n = " << var.size() << ")"
-            << "\n  25%: " << std::setw(12) << quantile(var, 0.25)
-            << "\n  50%: " << std::setw(12) << quantile(var, 0.5)
-            << "\n  75%: " << std::setw(12) << quantile(var, 0.75)
-            << "\n  90%: " << std::setw(12) << quantile(var, 0.9)
-            << "\n  99%: " << std::setw(12) << quantile(var, 0.99)
-            << "\n99.9%: " << std::setw(12) << quantile(var, 0.999)
-            << "\n  max: " << std::setw(12) << var.back()
+            << "\n  25%: " << quantile(var, 0.25)
+            << "\n  50%: " << quantile(var, 0.5)
+            << "\n  75%: " << quantile(var, 0.75)
+            << "\n  90%: " << quantile(var, 0.9)
+            << "\n  99%: " << quantile(var, 0.99)
+            << "\n99.9%: " << quantile(var, 0.999) << "\n  max: " << var.back()
             << "\n----------------------------------\n";
 }
 
@@ -330,20 +336,22 @@ int main(int argc, char* argv[]) {
   }
 
   // print results
-  auto routing_times = std::vector<std::chrono::milliseconds::rep>{};
-  routing_times.reserve(results.size());
-  auto search_iterations = std::vector<std::uint64_t>{};
-  search_iterations.reserve(results.size());
+  auto stats = std::vector<routing_stat>{};
+  stats.reserve(results.size());
   for (auto const& result : results) {
-    routing_times.emplace_back(
-        result.second.search_stats_.execute_time_.count());
-    search_iterations.emplace_back(
-        result.second.search_stats_.search_iterations_);
+    stats.emplace_back(result.second.search_stats_.execute_time_.count(),
+                       result.second.search_stats_.search_iterations_);
   }
-  std::sort(begin(routing_times), end(routing_times));
-  print_stats(routing_times, "routing times [ms]");
-  std::sort(begin(search_iterations), end(search_iterations));
-  print_stats(search_iterations, "search iterations");
+
+  std::sort(begin(stats), end(stats), [](auto const a, auto const b) {
+    return a.routing_time_ < b.routing_time_;
+  });
+  print_stats(stats, "routing_time");
+
+  std::sort(begin(stats), end(stats), [](auto const a, auto const b) {
+    return a.search_iterations_ < b.search_iterations_;
+  });
+  print_stats(stats, "search_iterations");
 
   return 0;
 }
