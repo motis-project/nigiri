@@ -15,6 +15,7 @@
 #include "nigiri/routing/raptor/raptor.h"
 #include "nigiri/routing/search.h"
 #include "nigiri/timetable.h"
+#include "nigiri/types.h"
 
 nigiri::pareto_set<nigiri::routing::journey> raptor_search(
     nigiri::timetable const& tt, nigiri::routing::query q) {
@@ -63,6 +64,23 @@ std::optional<geo::box> parse_bbox(std::string const& str) {
   auto const tokens = tokenize(str, ',', 4U);
   return box{latlng{std::stod(tokens[0]), std::stod(tokens[1])},
              latlng{std::stod(tokens[2]), std::stod(tokens[3])}};
+}
+
+std::optional<geo::latlng> parse_coord(std::string const& str) {
+  using namespace geo;
+
+  auto const coord_regex =
+      std::regex{"^[-+]?[0-9]*\\.?[0-9]+,[-+]?[0-9]*\\.?[0-9]+"};
+  if (!std::regex_match(begin(str), end(str), coord_regex)) {
+    return std::nullopt;
+  }
+  auto const tokens = tokenize(str, ',', 2U);
+  return latlng{std::stod(tokens[0]), std::stod(tokens[1])};
+}
+
+std::optional<nigiri::location_idx_t> parse_station(
+    std::string const& str, nigiri::timetable const& tt) {
+  return tt.locations_.location_id_to_idx_
 }
 
 // needs sorted vector
@@ -152,6 +170,14 @@ int main(int argc, char* argv[]) {
     ("allowed_claszes",
             bpo::value<clasz_mask_t>(&gs.allowed_claszes_)->default_value(routing::all_clasz_allowed()),
             "")
+    ("start_coord", bpo::value<std::string>(),
+            "start coordinate for random queries")
+    ("dest_coord", bpo::value<std::string>(),
+            "destination coordinate for random queries")
+    ("start_station", bpo::value<std::string>(),
+            "start station for random queries")
+    ("dest_station", bpo::value<std::string>(),
+            "destination station for random queries")
   ;
   // clang-format on
   bpo::variables_map vm;
@@ -236,6 +262,24 @@ int main(int argc, char* argv[]) {
     return 1;
   }
 
+  auto start_coord = std::optional<geo::latlng>{};
+  if (vm.count("start_coord")) {
+    gs.start_match_mode_ = location_match_mode::kIntermodal;
+    start_coord = parse_coord(vm["start_coord"].as<std::string>());
+  }
+
+  auto dest_coord = std::optional<geo::latlng>{};
+  if (vm.count("dest_coord")) {
+    gs.dest_match_mode_ = location_match_mode::kIntermodal;
+    dest_coord = parse_coord(vm["dest_coord"].as<std::string>());
+  }
+
+  auto start_station = std::optional<location_idx_t>{};
+  if (vm.count("start_station")) {
+    gs.start_match_mode_ = location_match_mode::kExact;
+    start_station = parse_station(vm["start_coord"].as<std::string>());
+  }
+
   std::mutex mutex;
 
   // generate queries
@@ -250,7 +294,7 @@ int main(int argc, char* argv[]) {
         "generation of {} queries using seed {}", num_queries, qg.seed_));
     std::cout << "Query generator settings:\n" << gs << "\n";
     for (auto i = 0U; i != num_queries; ++i) {
-      auto const q = qg.random_pretrip_query();
+      auto const q = qg.random_query();
       if (q.has_value()) {
         queries.emplace_back(q.value());
       }

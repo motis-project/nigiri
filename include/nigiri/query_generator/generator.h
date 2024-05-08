@@ -23,7 +23,7 @@ struct generator {
                      generator_settings const&,
                      std::uint32_t seed);
 
-  std::optional<routing::query> random_pretrip_query();
+  std::optional<routing::query> random_query();
 
   // use start transport mode to randomize coordinates near a location
   geo::latlng pos_near_start(location_idx_t);
@@ -41,6 +41,7 @@ private:
   void init_geo(generator_settings const& settings);
 
   location_idx_t random_location();
+  location_idx_t random_location(geo::latlng const&, transport_mode const&);
   route_idx_t random_route(location_idx_t);
   transport_idx_t random_transport();
   transport_idx_t random_transport(route_idx_t);

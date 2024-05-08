@@ -28,7 +28,7 @@ TEST(query_generation, pretrip_station) {
 
   auto qg = generator{tt, gs};
 
-  auto const q = qg.random_pretrip_query();
+  auto const q = qg.random_query();
   ASSERT_TRUE(q.has_value());
 
   for (auto const& s : q.value().start_) {
@@ -56,7 +56,7 @@ TEST(query_generation, pretrip_intermodal) {
 
   auto qg = generator{tt, gs};
 
-  auto const q = qg.random_pretrip_query();
+  auto const q = qg.random_query();
   ASSERT_TRUE(q.has_value());
 
   for (auto const& s : q.value().start_) {
@@ -87,12 +87,12 @@ TEST(query_generation, reproducibility) {
   auto result_qg0 = std::vector<std::optional<routing::query>>{};
   result_qg0.reserve(num_queries);
   for (auto i = 0U; i < num_queries; ++i) {
-    result_qg0.emplace_back(qg0.random_pretrip_query());
+    result_qg0.emplace_back(qg0.random_query());
   }
 
   auto qg1 = generator{tt, gs, seed};
   for (auto i = 0U; i < num_queries; ++i) {
-    auto const result_qg1 = qg1.random_pretrip_query();
+    auto const result_qg1 = qg1.random_query();
     ASSERT_EQ(result_qg0[i].has_value(), result_qg1.has_value());
     if (result_qg0[i].has_value()) {
       EXPECT_EQ(result_qg0[i].value(), result_qg1.value());
