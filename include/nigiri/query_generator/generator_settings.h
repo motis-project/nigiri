@@ -39,6 +39,27 @@ struct generator_settings {
         << (gs.extend_interval_later_ ? "true" : "false")
         << "\nprf_idx: " << std::uint32_t{gs.prf_idx_}
         << "\nallowed_claszes: " << gs.allowed_claszes_;
+
+    auto const visit_loc = [](location_idx_t const loc_idx) {
+      std::stringstream ss;
+      ss << "station: " << loc_idx.v_;
+      return ss.str();
+    };
+    auto const visit_coord = [](geo::latlng const& coord) {
+      std::stringstream ss;
+      ss << "coordinate: (" << coord.lat() << "," << coord.lng() << ")";
+      return ss.str();
+    };
+    if (gs.start_.has_value()) {
+      out << "\nstart "
+          << std::visit(utl::overloaded{visit_loc, visit_coord},
+                        gs.start_.value());
+    }
+    if (gs.dest_.has_value()) {
+      out << "\ndestination "
+          << std::visit(utl::overloaded{visit_loc, visit_coord},
+                        gs.dest_.value());
+    }
     return out;
   }
 
