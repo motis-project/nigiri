@@ -83,7 +83,8 @@ Checks: "*,\
 -cppcoreguidelines-avoid-do-while,\
 -misc-include-cleaner,\
 -hicpp-use-emplace,\
--modernize-use-emplace"
+-modernize-use-emplace,\
+-bugprone-switch-missing-default-case"
 WarningsAsErrors: '*'
 HeaderFilterRegex: '^${RELATIVE_SOURCE_DIR}(base|modules|test)/'
 AnalyzeTemporaryDtors: false
