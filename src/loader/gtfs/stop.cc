@@ -154,9 +154,8 @@ void read_transfers(stop_map_t& stops, std::string_view file_content) {
               return fp.target() == to_stop_it->second->location_;
             });
         if (it == end(footpaths)) {
-          footpaths.emplace_back(
-              footpath{to_stop_it->second->location_,
-                       duration_t{*t.min_transfer_time_ / 60}});
+          footpaths.emplace_back(to_stop_it->second->location_,
+                                 duration_t{*t.min_transfer_time_ / 60});
         }
       });
 }
@@ -208,7 +207,7 @@ locations_map read_stops(source_idx_t const src,
               utl::get_or_create(stops, s.parent_station_->trim().view(), []() {
                 return std::make_unique<stop>();
               }).get();
-          parent->id_ = s.parent_station_->trim().to_str();
+          parent->id_ = s.parent_station_->trim().view();
           parent->children_.emplace(new_stop);
           new_stop->parent_ = parent;
         }
@@ -263,7 +262,7 @@ locations_map read_stops(source_idx_t const src,
         .out_bounds(17.F, 20.F)
         .in_high(stops.size());
 
-    auto const add_if_not_exists = [](auto bucket, footpath&& fp) {
+    auto const add_if_not_exists = [](auto bucket, footpath fp) {
       auto const it = std::find_if(begin(bucket), end(bucket), [&](auto&& x) {
         return fp.target() == x.target_;
       });

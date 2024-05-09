@@ -81,7 +81,9 @@ Checks: "*,\
 -cert-dcl51-cpp,\
 -misc-confusable-identifiers,\
 -cppcoreguidelines-avoid-do-while,\
--misc-include-cleaner"
+-misc-include-cleaner,\
+-hicpp-use-emplace,\
+-modernize-use-emplace"
 WarningsAsErrors: '*'
 HeaderFilterRegex: '^${RELATIVE_SOURCE_DIR}(base|modules|test)/'
 AnalyzeTemporaryDtors: false

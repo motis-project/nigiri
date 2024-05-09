@@ -115,6 +115,7 @@ clasz to_clasz(int const route_type) {
     case 1507 /* All Taxi Services */:
     case 1700 /* Miscellaneous Service */:
     case 1702 /* Horse-drawn Carriage */: return clasz::kOther;
+    default:
   }
 
   // types not in the above table but within category type ranges
