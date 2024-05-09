@@ -80,7 +80,8 @@ Checks: "*,\
 -bugprone-reserved-identifier,\
 -cert-dcl51-cpp,\
 -misc-confusable-identifiers,\
--cppcoreguidelines-avoid-do-while"
+-cppcoreguidelines-avoid-do-while,\
+-misc-include-cleaner"
 WarningsAsErrors: '*'
 HeaderFilterRegex: '^${RELATIVE_SOURCE_DIR}(base|modules|test)/'
 AnalyzeTemporaryDtors: false
