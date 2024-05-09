@@ -46,35 +46,6 @@
       }
     },
     {
-      "name": "linux-x86-release",
-      "displayName": "Linux x86 Release",
-      "generator": "Ninja",
-      "binaryDir": "${sourceDir}/build/x86-release",
-      "toolchainFile": "/opt/x86_64-multilib-linux-musl/toolchain-x86.cmake",
-      "cacheVariables": {
-        "CMAKE_EXE_LINKER_FLAGS": "-B/opt/mold",
-        "CMAKE_BUILD_TYPE": "Release"
-      },
-      "environment": {
-        "PATH": "/opt:/opt/cmake-3.26.3-linux-x86_64/bin:/opt/buildcache/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"
-      }
-    },
-    {
-      "name": "linux-arm-release",
-      "displayName": "Linux ARM Release",
-      "generator": "Ninja",
-      "binaryDir": "${sourceDir}/build/arm-release",
-      "toolchainFile": "/opt/arm-unknown-linux-musleabihf/toolchain-arm.cmake",
-      "cacheVariables": {
-        "CMAKE_CROSSCOMPILING_EMULATOR": "qemu-arm-static",
-        "CMAKE_EXE_LINKER_FLAGS": "-latomic -B/opt/mold",
-        "CMAKE_BUILD_TYPE": "Release"
-      },
-      "environment": {
-        "PATH": "/opt:/opt/cmake-3.26.3-linux-x86_64/bin:/opt/buildcache/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"
-      }
-    },
-    {
       "name": "linux-arm64-release",
       "displayName": "Linux ARM64 Release",
       "generator": "Ninja",

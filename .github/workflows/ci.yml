@@ -179,11 +179,6 @@ jobs:
         config:
           - preset: linux-amd64-release
             artifact: linux-amd64
-          - preset: linux-x86-release
-            artifact: linux-x86
-          - preset: linux-arm-release
-            artifact: linux-arm
-            emulator: qemu-arm-static
           - preset: linux-arm64-release
             artifact: linux-arm64
             emulator: qemu-aarch64-static
