@@ -12,9 +12,15 @@
 
 namespace nigiri::rt {
 
-std::pair<date::days, duration_t> split(duration_t const i) {
+std::pair<date::days, duration_t> split_rounded(duration_t const i) {
   auto const a = static_cast<int>(std::round(i.count() / 1440.));
   auto const b = i.count() - a * 1440;
+  return {date::days{a}, duration_t{b}};
+}
+
+std::pair<date::days, duration_t> split(duration_t const i) {
+  auto const a = i.count() / 1440;
+  auto const b = i.count() % 1440;
   return {date::days{a}, duration_t{b}};
 }
 
@@ -55,17 +61,26 @@ void resolve_static(date::sys_days const today,
       auto const gtfs_static_dep =
           tt.event_mam(t, stop_range.from_, event_type::kDep).as_duration() + o;
 
-      if (start_time.has_value() && gtfs_static_dep != *start_time) {
+      auto const [gtfs_static_dep_day, gtfs_static_dep_time] =
+          split(gtfs_static_dep);
+      auto const [start_time_day, start_time_time] =
+          start_time.has_value() ? split(*start_time)
+                                 : std::pair{date::days{0U}, duration_t{0U}};
+      if (start_time.has_value() && gtfs_static_dep_time != start_time_time) {
         continue;
       }
 
+      auto const start_time_day_offset =
+          start_time.has_value() ? gtfs_static_dep_day - start_time_day
+                                 : date::days{0U};
       auto const utc_dep =
           tt.event_mam(t, stop_range.from_, event_type::kDep).as_duration();
       auto const [day_offset, tz_offset_minutes] =
-          split(gtfs_static_dep - utc_dep);
-      auto const day_idx = ((start_date.has_value() ? *start_date : today) +
-                            day_offset - tt.internal_interval_days().from_)
-                               .count();
+          split_rounded(gtfs_static_dep - utc_dep);
+      auto const day_idx =
+          ((start_date.has_value() ? *start_date : today) + day_offset -
+           start_time_day_offset - tt.internal_interval_days().from_)
+              .count();
       if (day_idx > kMaxDays || day_idx < 0) {
         continue;
       }
