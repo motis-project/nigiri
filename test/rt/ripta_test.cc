@@ -137,24 +137,23 @@ TEST(rt, gtfs_rt_ripta) {
   auto rtt = rt::create_rt_timetable(tt, date::sys_days{2024_y / May / 11});
 
   //  // Update.
-  //  {
-  //    auto const msg = rt::json_to_protobuf(kTripUpdate);
-  //    gtfsrt_update_buf(tt, rtt, source_idx_t{0}, "", msg);
-  //
-  //    // Print trip.
-  //    transit_realtime::TripDescriptor td;
-  //    td.set_start_date("20240511");
-  //    td.set_trip_id("3774835");
-  //    td.set_start_time("22:15:00");
-  //    auto const [r, t] = rt::gtfsrt_resolve_run(
-  //        date::sys_days{2023_y / November / 26}, tt, rtt, source_idx_t{0},
-  //        td);
-  //    ASSERT_TRUE(r.valid());
-  //
-  //    auto ss = std::stringstream{};
-  //    ss << "\n" << rt::frun{tt, &rtt, r};
-  //    std::cout << ss.str();
-  //  }
+  {
+    auto const msg = rt::json_to_protobuf(kTripUpdate);
+    gtfsrt_update_buf(tt, rtt, source_idx_t{0}, "", msg);
+
+    // Print trip.
+    transit_realtime::TripDescriptor td;
+    td.set_start_date("20240511");
+    td.set_trip_id("3774835");
+    td.set_start_time("22:15:00");
+    auto const [r, t] = rt::gtfsrt_resolve_run(
+        date::sys_days{2023_y / November / 26}, tt, rtt, source_idx_t{0}, td);
+    ASSERT_TRUE(r.valid());
+
+    auto ss = std::stringstream{};
+    ss << "\n" << rt::frun{tt, &rtt, r};
+    std::cout << ss.str();
+  }
 
   // Update 1.
   {
