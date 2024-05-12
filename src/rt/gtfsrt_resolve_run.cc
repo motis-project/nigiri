@@ -19,8 +19,8 @@ std::pair<date::days, duration_t> split_rounded(duration_t const i) {
 }
 
 std::pair<date::days, duration_t> split(duration_t const i) {
-  auto const a = i.count() / 1440U;
-  auto const b = i.count() % 1440U;
+  auto const a = i.count() / 1440;
+  auto const b = i.count() % 1440;
   return {date::days{a}, duration_t{b}};
 }
 
