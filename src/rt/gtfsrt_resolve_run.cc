@@ -55,17 +55,22 @@ void resolve_static(date::sys_days const today,
       auto const gtfs_static_dep =
           tt.event_mam(t, stop_range.from_, event_type::kDep).as_duration() + o;
 
-      if (start_time.has_value() && gtfs_static_dep != *start_time) {
+      auto const [gtfs_static_dep_day, gtfs_static_dep_time] =
+          split(gtfs_static_dep);
+      auto const [start_time_day, start_time_time] = split(*start_time);
+      if (start_time.has_value() && gtfs_static_dep_time != start_time_time) {
         continue;
       }
 
+      auto const start_time_day_offset = gtfs_static_dep_day - start_time_day;
       auto const utc_dep =
           tt.event_mam(t, stop_range.from_, event_type::kDep).as_duration();
       auto const [day_offset, tz_offset_minutes] =
           split(gtfs_static_dep - utc_dep);
-      auto const day_idx = ((start_date.has_value() ? *start_date : today) +
-                            day_offset - tt.internal_interval_days().from_)
-                               .count();
+      auto const day_idx =
+          ((start_date.has_value() ? *start_date : today) + day_offset -
+           start_time_day_offset - tt.internal_interval_days().from_)
+              .count();
       if (day_idx > kMaxDays || day_idx < 0) {
         continue;
       }
