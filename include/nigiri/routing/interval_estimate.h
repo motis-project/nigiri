@@ -1,6 +1,7 @@
 #pragma once
 
 #include "nigiri/routing/journey.h"
+#include "nigiri/routing/limits.h"
 #include "nigiri/routing/pareto_set.h"
 #include "nigiri/routing/query.h"
 #include "nigiri/timetable.h"
@@ -14,10 +15,9 @@ struct interval_estimator {
       : tt_{tt}, q_{q} {
 
     auto const start_itv = std::visit(
-        utl::overloaded{[](unixtime_t const& ut) {
-                          return interval<unixtime_t>{ut, ut};
-                        },
-                        [](interval<unixtime_t> iut) { return iut; }},
+        utl::overloaded{
+            [](unixtime_t const& ut) { return interval<unixtime_t>{ut, ut}; },
+            [](interval<unixtime_t> iut) { return iut; }},
         q.start_time_);
 
     auto const ext = kMaxSearchIntervalSize - start_itv.size();
