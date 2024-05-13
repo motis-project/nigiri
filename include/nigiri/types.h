@@ -282,7 +282,7 @@ enum class direction { kForward, kBackward };
 
 using transport_mode_id_t = std::int32_t;
 
-constexpr auto const kMaxIntervalDays =
+constexpr auto const kMaxSearchIntervalSize =
     date::days{std::numeric_limits<duration_t::rep>::max() / 1440};
 
 }  // namespace nigiri

@@ -19,7 +19,7 @@ struct interval_estimator {
             [](interval<unixtime_t> iut) { return iut; }},
         q.start_time_);
 
-    auto const ext = kMaxIntervalDays - start_itv.size();
+    auto const ext = kMaxSearchIntervalSize - start_itv.size();
 
     if (q.extend_interval_earlier_ && q.extend_interval_later_) {
       data_type_max_interval_ = {start_itv.from_ - ext / 2,
