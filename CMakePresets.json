@@ -46,35 +46,6 @@
       }
     },
     {
-      "name": "linux-x86-release",
-      "displayName": "Linux x86 Release",
-      "generator": "Ninja",
-      "binaryDir": "${sourceDir}/build/x86-release",
-      "toolchainFile": "/opt/x86_64-multilib-linux-musl/toolchain-x86.cmake",
-      "cacheVariables": {
-        "CMAKE_EXE_LINKER_FLAGS": "-B/opt/mold",
-        "CMAKE_BUILD_TYPE": "Release"
-      },
-      "environment": {
-        "PATH": "/opt:/opt/cmake-3.26.3-linux-x86_64/bin:/opt/buildcache/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"
-      }
-    },
-    {
-      "name": "linux-arm-release",
-      "displayName": "Linux ARM Release",
-      "generator": "Ninja",
-      "binaryDir": "${sourceDir}/build/arm-release",
-      "toolchainFile": "/opt/arm-unknown-linux-musleabihf/toolchain-arm.cmake",
-      "cacheVariables": {
-        "CMAKE_CROSSCOMPILING_EMULATOR": "qemu-arm-static",
-        "CMAKE_EXE_LINKER_FLAGS": "-B/opt/mold",
-        "CMAKE_BUILD_TYPE": "Release"
-      },
-      "environment": {
-        "PATH": "/opt:/opt/cmake-3.26.3-linux-x86_64/bin:/opt/buildcache/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"
-      }
-    },
-    {
       "name": "linux-arm64-release",
       "displayName": "Linux ARM64 Release",
       "generator": "Ninja",
@@ -95,15 +66,15 @@
       "generator": "Ninja",
       "binaryDir": "${sourceDir}/build/sanitizer",
       "cacheVariables": {
+        "CMAKE_C_COMPILER": "clang-17",
+        "CMAKE_CXX_COMPILER": "clang++-17",
+        "CMAKE_EXE_LINKER_FLAGS": "-lc++abi",
         "CMAKE_BUILD_TYPE": "Debug",
         "CMAKE_C_FLAGS": "-fsanitize=address,undefined -fno-omit-frame-pointer",
-        "CMAKE_CXX_FLAGS": "-fsanitize=address,undefined -fno-omit-frame-pointer",
-        "CMAKE_EXE_LINKER_FLAGS": "-B/opt/mold"
+        "CMAKE_CXX_FLAGS": "-stdlib=libc++ -fsanitize=address,undefined -fno-omit-frame-pointer"
       },
       "environment": {
-        "PATH": "/opt:/opt/cmake-3.26.3-linux-x86_64/bin:/opt/buildcache/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin",
-        "CXX": "/usr/bin/g++-11",
-        "CC": "/usr/bin/gcc-11"
+        "PATH": "/opt:/opt/cmake-3.26.3-linux-x86_64/bin:/opt/buildcache/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"
       }
     },
     {
@@ -117,8 +88,8 @@
       },
       "environment": {
         "PATH": "/opt:/opt/cmake-3.26.3-linux-x86_64/bin:/opt/buildcache/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin",
-        "CXX": "/usr/bin/g++-11",
-        "CC": "/usr/bin/gcc-11"
+        "CXX": "/usr/bin/g++-13",
+        "CC": "/usr/bin/gcc-13"
       }
     },
     {
@@ -132,8 +103,8 @@
       },
       "environment": {
         "PATH": "/opt:/opt/cmake-3.26.3-linux-x86_64/bin:/opt/buildcache/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin",
-        "CXX": "/usr/bin/g++-11",
-        "CC": "/usr/bin/gcc-11"
+        "CXX": "/usr/bin/g++-13",
+        "CC": "/usr/bin/gcc-13"
       }
     },
     {
@@ -142,8 +113,8 @@
       "generator": "Ninja",
       "binaryDir": "${sourceDir}/build/clang-tidy",
       "cacheVariables": {
-        "CMAKE_C_COMPILER": "clang-16",
-        "CMAKE_CXX_COMPILER": "clang++-16",
+        "CMAKE_C_COMPILER": "clang-17",
+        "CMAKE_CXX_COMPILER": "clang++-17",
         "CMAKE_CXX_FLAGS": "-stdlib=libc++",
         "CMAKE_EXE_LINKER_FLAGS": "-lc++abi",
         "CMAKE_BUILD_TYPE": "Release",
@@ -167,14 +138,6 @@
     {
       "name": "linux-amd64-release",
       "configurePreset": "linux-amd64-release"
-    },
-    {
-      "name": "linux-x86-release",
-      "configurePreset": "linux-x86-release"
-    },
-    {
-      "name": "linux-arm-release",
-      "configurePreset": "linux-arm-release"
     },
     {
       "name": "linux-arm64-release",
