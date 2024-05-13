@@ -4,6 +4,7 @@
 
 #include "date/date.h"
 
+#include "cista/containers/bitvec.h"
 #include "cista/containers/flat_matrix.h"
 
 #include "nigiri/common/delta_t.h"
@@ -31,10 +32,11 @@ struct raptor_state {
   std::vector<delta_t> tmp_;
   std::vector<delta_t> best_;
   cista::raw::flat_matrix<delta_t> round_times_;
-  std::vector<bool> station_mark_;
-  std::vector<bool> prev_station_mark_;
-  std::vector<bool> route_mark_;
-  std::vector<bool> rt_transport_mark_;
+  bitvec station_mark_;
+  bitvec prev_station_mark_;
+  bitvec route_mark_;
+  bitvec rt_transport_mark_;
+  bitvec end_reachable_;
 };
 
 }  // namespace nigiri::routing

@@ -82,7 +82,7 @@ struct stop {
   }
 
   std::string_view id_;
-  std::string_view name_;
+  cista::raw::generic_string name_;
   std::string_view platform_code_;
   geo::latlng coord_;
   std::string_view timezone_;
@@ -154,9 +154,8 @@ void read_transfers(stop_map_t& stops, std::string_view file_content) {
               return fp.target() == to_stop_it->second->location_;
             });
         if (it == end(footpaths)) {
-          footpaths.emplace_back(
-              footpath{to_stop_it->second->location_,
-                       duration_t{*t.min_transfer_time_ / 60}});
+          footpaths.emplace_back(to_stop_it->second->location_,
+                                 duration_t{*t.min_transfer_time_ / 60});
         }
       });
 }
@@ -176,7 +175,7 @@ locations_map read_stops(source_idx_t const src,
 
   struct csv_stop {
     utl::csv_col<utl::cstr, UTL_NAME("stop_id")> id_;
-    utl::csv_col<utl::cstr, UTL_NAME("stop_name")> name_;
+    utl::csv_col<cista::raw::generic_string, UTL_NAME("stop_name")> name_;
     utl::csv_col<utl::cstr, UTL_NAME("stop_timezone")> timezone_;
     utl::csv_col<utl::cstr, UTL_NAME("parent_station")> parent_station_;
     utl::csv_col<utl::cstr, UTL_NAME("platform_code")> platform_code_;
@@ -191,13 +190,13 @@ locations_map read_stops(source_idx_t const src,
                                        progress_tracker->update_fn())}  //
       | utl::csv<csv_stop>()  //
       |
-      utl::for_each([&](csv_stop const& s) {
+      utl::for_each([&](csv_stop& s) {
         auto const new_stop = utl::get_or_create(stops, s.id_->view(), [&]() {
                                 return std::make_unique<stop>();
                               }).get();
 
         new_stop->id_ = s.id_->view();
-        new_stop->name_ = s.name_->view();
+        new_stop->name_ = std::move(*s.name_);
         new_stop->coord_ = {utl::parse<double>(s.lat_->trim()),
                             utl::parse<double>(s.lon_->trim())};
         new_stop->platform_code_ = s.platform_code_->view();
@@ -208,12 +207,12 @@ locations_map read_stops(source_idx_t const src,
               utl::get_or_create(stops, s.parent_station_->trim().view(), []() {
                 return std::make_unique<stop>();
               }).get();
-          parent->id_ = s.parent_station_->trim().to_str();
+          parent->id_ = s.parent_station_->trim().view();
           parent->children_.emplace(new_stop);
           new_stop->parent_ = parent;
         }
 
-        equal_names[s.name_->view()].emplace_back(new_stop);
+        equal_names[new_stop->name_.view()].emplace_back(new_stop);
       });
 
   auto const stop_vec =
@@ -263,7 +262,7 @@ locations_map read_stops(source_idx_t const src,
         .out_bounds(17.F, 20.F)
         .in_high(stops.size());
 
-    auto const add_if_not_exists = [](auto bucket, footpath&& fp) {
+    auto const add_if_not_exists = [](auto bucket, footpath fp) {
       auto const it = std::find_if(begin(bucket), end(bucket), [&](auto&& x) {
         return fp.target() == x.target_;
       });

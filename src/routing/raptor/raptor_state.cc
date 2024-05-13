@@ -19,6 +19,7 @@ void raptor_state::resize(unsigned const n_locations,
   best_.resize(n_locations);
   round_times_.resize(kMaxTransfers + 1U, n_locations);
   rt_transport_mark_.resize(n_rt_transports);
+  end_reachable_.resize(n_locations);
 }
 
 void raptor_state::print(timetable const& tt,

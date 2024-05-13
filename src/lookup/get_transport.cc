@@ -58,7 +58,7 @@ void for_each_schedule_transport(timetable const& tt,
                 << day_list{traffic_days, tt.internal_interval_days().from_}
                 << "\n";
       if (traffic_days.test(to_idx(t_day))) {
-        cb(transport{t, t_day}, interval);
+        std::forward<Fn>(cb)(transport{t, t_day}, interval);
       }
     }
   }
