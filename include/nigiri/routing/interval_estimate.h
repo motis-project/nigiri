@@ -15,24 +15,13 @@ struct interval_estimator {
       : tt_{tt}, q_{q} {
 
     auto const start_itv = std::visit(
-        utl::overloaded{[](unixtime_t const& ut) {
-                          return interval<unixtime_t>{ut, ut};
-                        },
-                        [](interval<unixtime_t> iut) { return iut; }},
+        utl::overloaded{
+            [](unixtime_t const& ut) { return interval<unixtime_t>{ut, ut}; },
+            [](interval<unixtime_t> iut) { return iut; }},
         q.start_time_);
 
-    auto const ext = kMaxSearchIntervalSize - start_itv.size();
-
-    if (q.extend_interval_earlier_ && q.extend_interval_later_) {
-      data_type_max_interval_ = {start_itv.from_ - ext / 2,
-                                 start_itv.to_ + ext / 2};
-    } else if (q.extend_interval_earlier_) {
-      data_type_max_interval_ = {start_itv.from_ - ext, start_itv.to_};
-    } else if (q.extend_interval_later_) {
-      data_type_max_interval_ = {start_itv.from_, start_itv.to_ + ext};
-    } else {
-      data_type_max_interval_ = start_itv;
-    }
+    data_type_max_interval_ = {start_itv.from_ - kMaxTravelTime,
+                               start_itv.from_ + kMaxTravelTime};
   }
 
   interval<unixtime_t> initial(interval<unixtime_t> const& itv) const {
