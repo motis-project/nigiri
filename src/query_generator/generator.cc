@@ -419,7 +419,7 @@ void generator::add_offsets_for_pos(
         static_cast<std::int16_t>(
             geo::distance(pos,
                           tt_.locations_.coordinates_[location_idx_t{loc}]) /
-            (mode.speed_ * 60)) +
+            mode.speed_) +
         1};
     o.emplace_back(location_idx_t{loc}, duration, mode.mode_id_);
   }
