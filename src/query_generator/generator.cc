@@ -75,9 +75,10 @@ std::optional<routing::query> generator::random_query() {
           s_.start_.value());
     } else {
       start_loc_idx = random_location();
-      if (tt_.location_routes_[start_loc_idx].empty()) {
-        continue;
-      }
+    }
+
+    if (tt_.location_routes_[start_loc_idx].empty()) {
+      continue;
     }
 
     // derive start itv from start
@@ -423,6 +424,7 @@ void generator::add_offsets_for_pos(
         1};
     o.emplace_back(location_idx_t{loc}, duration, mode.mode_id_);
   }
+  std::cout << "position: " << pos << ", n_offsets: " << o.size() << "\n";
 }
 
 }  // namespace nigiri::query_generation
