@@ -25,7 +25,8 @@ duration_t get_fastest_direct(
   for (auto const& s : q.start_) {
     for_each_meta(
         tt, q.start_match_mode_, s.target_, [&](location_idx_t const start) {
-          auto& d = dists[start];
+          // auto& d = dists[start];
+          auto& d = get_dist(start);
           d = std::min(static_cast<label::dist_t>(s.duration_.count()), d);
         });
   }
@@ -66,7 +67,8 @@ duration_t get_fastest_direct(
       if (new_dist > max_dist) {
         continue;
       }
-      auto& target_dist = dists[fp.target()];
+      // auto& target_dist = dists[fp.target()];
+      auto& target_dist = get_dist(fp.target());
       if (new_dist < target_dist && new_dist < pq.n_buckets() &&
           new_dist < max_dist) {
         target_dist = static_cast<label::dist_t>(new_dist);
