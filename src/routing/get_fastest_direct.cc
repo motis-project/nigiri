@@ -67,6 +67,11 @@ duration_t get_fastest_direct(timetable const& tt,
       if (new_dist > max_dist) {
         continue;
       }
+
+      if (!dest_offsets.contains(fp.target())) {
+        continue;
+      }
+
       // auto& target_dist = dists[fp.target()];
       auto& target_dist = get_dist(fp.target());
       if (new_dist < target_dist && new_dist < pq.n_buckets() &&
