@@ -16,7 +16,7 @@ duration_t get_fastest_direct(timetable const& tt,
   auto dists = hash_map<location_idx_t, label::dist_t>{};
   auto const get_dist = [&](location_idx_t const l) -> label::dist_t& {
     return utl::get_or_create(
-        dists, l, []() { return std::numeric_limits<label::dist_t>::max(); });
+        dists, l, []() { return std::numeric_limits<duration_t::rep>::max(); });
   };
 
   auto pq = dial<label, get_bucket>{};
@@ -44,7 +44,7 @@ duration_t get_fastest_direct(timetable const& tt,
     }
   }
 
-  auto end_dist = std::numeric_limits<label::dist_t>::max();
+  auto end_dist = label::dist_t{std::numeric_limits<duration_t::rep>::max()};
   while (!pq.empty()) {
     auto l = pq.top();
     pq.pop();
