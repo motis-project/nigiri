@@ -15,9 +15,10 @@ struct interval_estimator {
       : tt_{tt}, q_{q} {
 
     auto const start_itv = std::visit(
-        utl::overloaded{
-            [](unixtime_t const& ut) { return interval<unixtime_t>{ut, ut}; },
-            [](interval<unixtime_t> iut) { return iut; }},
+        utl::overloaded{[](unixtime_t const& ut) {
+                          return interval<unixtime_t>{ut, ut};
+                        },
+                        [](interval<unixtime_t> iut) { return iut; }},
         q.start_time_);
 
     data_type_max_interval_ = {start_itv.from_ - kMaxSearchIntervalSize,
