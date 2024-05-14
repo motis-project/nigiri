@@ -20,8 +20,8 @@ struct interval_estimator {
             [](interval<unixtime_t> iut) { return iut; }},
         q.start_time_);
 
-    data_type_max_interval_ = {start_itv.from_ - kMaxTravelTime,
-                               start_itv.from_ + kMaxTravelTime};
+    data_type_max_interval_ = {start_itv.from_ - kMaxSearchIntervalSize,
+                               start_itv.from_ + kMaxSearchIntervalSize};
   }
 
   interval<unixtime_t> initial(interval<unixtime_t> const& itv) const {
