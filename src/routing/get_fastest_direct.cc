@@ -53,7 +53,8 @@ duration_t get_fastest_direct(timetable const& tt,
       break;
     }
 
-    if (dists[l.l_] < l.d_) {
+    // if (dists[l.l_] < l.d_) {
+    if (get_dist(l.l_) < l.d_) {
       continue;
     }
 
