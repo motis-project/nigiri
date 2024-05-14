@@ -1,6 +1,7 @@
 #include "gtest/gtest.h"
 
 #include "utl/equal_ranges_linear.h"
+#include "utl/erase_duplicates.h"
 
 #include "nigiri/loader/hrd/load_timetable.h"
 #include "nigiri/loader/init_finish.h"
@@ -279,6 +280,9 @@ TEST(routing, start_times) {
                                   sys_days{2020_y / March / 31}},
              {{A, 15_minutes, 0}, {B, 30_minutes, 0}},
              location_match_mode::kExact, false, starts, true, 0);
+  std::sort(begin(starts), end(starts),
+            [](auto&& a, auto&& b) { return a > b; });
+  starts.erase(std::unique(begin(starts), end(starts)), end(starts));
 
   std::stringstream ss;
   ss << "\n";
