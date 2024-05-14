@@ -424,7 +424,6 @@ void generator::add_offsets_for_pos(
         1};
     o.emplace_back(location_idx_t{loc}, duration, mode.mode_id_);
   }
-  std::cout << "position: " << pos << ", n_offsets: " << o.size() << "\n";
 }
 
 }  // namespace nigiri::query_generation
