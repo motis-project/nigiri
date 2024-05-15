@@ -61,7 +61,7 @@ int main(int ac, char** av) {
   bpo::store(bpo::command_line_parser(ac, av).options(desc).run(), vm);
   bpo::notify(vm);
 
-  if (vm.count("help")) {
+  if (vm.count("help") != 0U) {
     std::cout << desc << "\n";
     return 0;
   }
