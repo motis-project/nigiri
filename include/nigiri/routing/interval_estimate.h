@@ -1,6 +1,7 @@
 #pragma once
 
 #include "nigiri/routing/journey.h"
+#include "nigiri/routing/limits.h"
 #include "nigiri/routing/pareto_set.h"
 #include "nigiri/routing/query.h"
 #include "nigiri/timetable.h"
@@ -11,7 +12,18 @@ namespace nigiri::routing {
 template <direction SearchDir>
 struct interval_estimator {
   explicit interval_estimator(timetable const& tt, query const& q)
-      : tt_{tt}, q_{q} {}
+      : tt_{tt}, q_{q} {
+
+    auto const start_itv = std::visit(
+        utl::overloaded{[](unixtime_t const& ut) {
+                          return interval<unixtime_t>{ut, ut};
+                        },
+                        [](interval<unixtime_t> iut) { return iut; }},
+        q.start_time_);
+
+    data_type_max_interval_ = {start_itv.from_ - kMaxSearchIntervalSize,
+                               start_itv.from_ + kMaxSearchIntervalSize};
+  }
 
   interval<unixtime_t> initial(interval<unixtime_t> const& itv) const {
     if (q_.min_connection_count_ == 0 ||
@@ -50,8 +62,7 @@ struct interval_estimator {
       }
     }
 
-    new_itv.from_ = tt_.external_interval().clamp(new_itv.from_);
-    new_itv.to_ = tt_.external_interval().clamp(new_itv.to_);
+    clamp(new_itv);
 
     return new_itv;
   }
@@ -78,8 +89,7 @@ struct interval_estimator {
       }
     }
 
-    new_itv.from_ = tt_.external_interval().clamp(new_itv.from_);
-    new_itv.to_ = tt_.external_interval().clamp(new_itv.to_);
+    clamp(new_itv);
 
     return new_itv;
   }
@@ -106,8 +116,16 @@ private:
     return can_extend_earlier(itv) && can_extend_later(itv);
   }
 
+  void clamp(interval<unixtime_t>& itv) const {
+    itv.from_ = tt_.external_interval().clamp(itv.from_);
+    itv.to_ = tt_.external_interval().clamp(itv.to_);
+    itv.from_ = data_type_max_interval_.clamp(itv.from_);
+    itv.to_ = data_type_max_interval_.clamp(itv.to_);
+  }
+
   timetable const& tt_;
   query const& q_;
+  interval<unixtime_t> data_type_max_interval_;
 };
 
 }  // namespace nigiri::routing
