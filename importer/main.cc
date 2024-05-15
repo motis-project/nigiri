@@ -1,15 +1,19 @@
-#include <regex>
 #include <vector>
+
+#include "boost/algorithm/string.hpp"
+#include "boost/program_options.hpp"
 
 #include "date/date.h"
 
-#include "boost/program_options.hpp"
-
 #include "utl/progress_tracker.h"
-#include "utl/verify.h"
 
 #include "nigiri/loader/load.h"
 #include "nigiri/loader/loader_interface.h"
+
+namespace fs = std::filesystem;
+namespace bpo = boost::program_options;
+using namespace nigiri::loader;
+using namespace std::string_literals;
 
 date::sys_days parse_date(std::string const& str) {
   if (str == "TODAY") {
@@ -24,91 +28,64 @@ date::sys_days parse_date(std::string const& str) {
   return parsed;
 }
 
-int main(int argc, char** argv) {
-  namespace bpo = boost::program_options;
+int main(int ac, char** av) {
   auto const progress_tracker = utl::activate_progress_tracker("importer");
   auto const silencer = utl::global_progress_bars{true};
 
-  bpo::options_description desc("Allowed options");
-  // clang-format off
-  desc.add_options()
-    ("help,h", "produce this help message")
-    ("path,p", bpo::value<std::string>(),
-                "path to the timetable, can be a directory or a zip file")
-    ("zips,z", bpo::bool_switch()->default_value(false),
-                "if a directory is provided as input path, "
-                "loads all GTFS zip files within the directory")
-    ("start_date,s", bpo::value<std::string>()->default_value("TODAY"),
-                "start date of the timetable, format: YYYY-MM-DD")
-    ("num_days,n", bpo::value<std::uint32_t>()->default_value(365U),
-                "the length of the timetable in days")
-    ("end_date,e", bpo::value<std::string>(),
-                "end date of the timetable, format: YYYY-MM-DD, overrides num_days")
-    ("out,o", bpo::value<std::string>()->default_value("tt.bin"),
-                "the name of the output file")
-    ("link_stop_distance,l",bpo::value<std::uint32_t>()->default_value(100U),
-                "the maximum distance at which stops in proximity will be linked")
-    ("time_zone,t", bpo::value<std::string>()->default_value("Europe/Berlin"),
-                "the default time zone to use")
-  ;
-  // clang-format on
-  bpo::variables_map vm;
-  bpo::store(bpo::command_line_parser(argc, argv).options(desc).run(), vm);
-  bpo::notify(vm);  // sets default values
+  auto input_path = fs::path{};
+  auto output_path = fs::path{"tt.bin"};
+  auto start_date = "TODAY"s;
+  auto n_days = 365U;
+  auto link_stop_distance = 100U;
+  auto tz = "Europe/Berlin"s;
+  auto recursive = false;
+
+  auto desc = bpo::options_description{"Options"};
+  desc.add_options()  //
+      ("help,h", "produce this help message")  //
+      ("in,i", bpo::value(&input_path),
+       "input path (either a ZIP file or a directory containing ZIPs)")  //
+      ("out,o", bpo::value(&output_path)->default_value(output_path),
+       "output file path")  //
+      ("start_date,s", bpo::value(&start_date)->default_value(start_date),
+       "start date of the timetable, format: YYYY-MM-DD")  //
+      ("num_days,n", bpo::value(&n_days)->default_value(n_days),
+       "the length of the timetable in days")  //
+      ("link_stop_distance,l",
+       bpo::value(&link_stop_distance)->default_value(link_stop_distance),
+       "the maximum distance at which stops in proximity will be linked")  //
+      ("tz,t", bpo::value(&tz)->default_value(tz),
+       "the default time zone to use");  //
+
+  auto vm = bpo::variables_map{};
+  bpo::store(bpo::command_line_parser(ac, av).options(desc).run(), vm);
+  bpo::notify(vm);
 
   if (vm.count("help")) {
     std::cout << desc << "\n";
     return 0;
   }
 
-  auto const input_path = std::filesystem::path{vm["path"].as<std::string>()};
-  auto input_files = std::vector<std::filesystem::path>{};
-  if (vm.count("path")) {
-    if (vm["zips"].as<bool>()) {
-      // input path to directory of GTFS zips
-      for (auto const& dir_entry :
-           std::filesystem::directory_iterator(input_path)) {
-        std::filesystem::path file_path(dir_entry);
-        if (std::filesystem::is_regular_file(dir_entry) &&
-            file_path.has_extension() && file_path.extension() == ".zip") {
-          input_files.emplace_back(file_path);
-        }
+  auto input_files = std::vector<fs::path>{};
+  if (is_directory(input_path) && recursive) {
+    for (auto const& e : fs::directory_iterator(input_path)) {
+      if (is_directory(e) /* unpacked zip file */ ||
+          boost::algorithm::to_lower_copy(
+              e.path().extension().generic_string()) == ".zip") {
+        input_files.emplace_back(e.path());
       }
-    } else {
-      // input path to single GTFS zip file or directory
-      input_files.emplace_back(input_path);
     }
-  } else {
-    std::cout << "Error: timetable path missing\n";
+  } else if (exists(input_path) && !recursive) {
+    input_files.emplace_back(input_path);
   }
 
-  date::sys_days const start_date =
-      parse_date(vm["start_date"].as<std::string>());
-  date::sys_days end_date =
-      start_date + date::days{vm["num_days"].as<std::uint32_t>()};
-  if (vm.count("end_date")) {
-    end_date = parse_date(vm["end_date"].as<std::string>());
+  if (input_files.empty()) {
+    std::cerr << "no input file found\n";
+    return 1;
   }
 
-  auto const output_file = std::filesystem::path{vm["out"].as<std::string>()};
-  auto output_path = output_file;
-  if (output_file.has_filename() && !output_file.has_parent_path()) {
-    if (is_directory(input_path)) {
-      output_path = input_path;
-    } else {
-      output_path = input_path.parent_path();
-    }
-    output_path /= output_file;
-  } else if (is_directory(output_file)) {
-    output_path /= "tt.bin";
-  }
-
-  auto const config = nigiri::loader::loader_config{
-      vm["link_stop_distance"].as<std::uint32_t>(),
-      vm["time_zone"].as<std::string>()};
-  auto const tt =
-      nigiri::loader::load(input_files, config, {start_date, end_date});
-  tt.write(output_path);
-
-  return 0;
+  auto const start = parse_date(start_date);
+  load(input_files, {link_stop_distance, tz},
+       {start, start + date::days{n_days}})
+      .write(output_path);
 }
