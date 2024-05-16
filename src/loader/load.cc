@@ -23,7 +23,7 @@ std::vector<std::unique_ptr<loader_interface>> get_loaders() {
 }
 
 timetable load(std::vector<std::filesystem::path> const& paths,
-               loader_config const& config,
+               loader_config const& c,
                interval<date::sys_days> const& date_range) {
   auto const loaders = get_loaders();
 
@@ -39,10 +39,11 @@ timetable load(std::vector<std::filesystem::path> const& paths,
     utl::verify(loader_it != end(loaders), "no loader for {} found",
                 p.string());
     log(log_lvl::info, "loader.load", "loading {}", p.string());
-    (*loader_it)->load(config, src, *dir, tt);
+    (*loader_it)->load(c, src, *dir, tt);
   }
 
-  finalize(tt);
+  finalize(tt, c.adjust_footpaths_, c.merge_duplicates_,
+           c.max_footpath_length_);
 
   return tt;
 }

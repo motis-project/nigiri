@@ -94,10 +94,10 @@ target_link_libraries(nigiri-server PRIVATE nigiri)
 target_compile_features(nigiri-server PUBLIC cxx_std_23)
 
 # --- IMPORTER ---
-file(GLOB_RECURSE nigiri-importer-files importer/main.cc)
-add_executable(nigiri-importer ${nigiri-importer-files})
-target_link_libraries(nigiri-importer PRIVATE nigiri boost-program_options)
-target_compile_features(nigiri-importer PUBLIC cxx_std_23)
+file(GLOB_RECURSE nigiri-import-files exe/import.cc)
+add_executable(nigiri-import ${nigiri-import-files})
+target_link_libraries(nigiri-import PRIVATE nigiri boost-program_options)
+target_compile_features(nigiri-import PUBLIC cxx_std_23)
 
 # --- TEST ---
 add_library(nigiri-generated INTERFACE)
