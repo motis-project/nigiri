@@ -32,33 +32,43 @@ int main(int ac, char** av) {
   auto const progress_tracker = utl::activate_progress_tracker("importer");
   auto const silencer = utl::global_progress_bars{true};
 
-  auto input_path = fs::path{};
-  auto output_path = fs::path{"tt.bin"};
+  auto in = fs::path{};
+  auto out = fs::path{"tt.bin"};
   auto start_date = "TODAY"s;
   auto n_days = 365U;
-  auto link_stop_distance = 100U;
-  auto tz = "Europe/Berlin"s;
   auto recursive = false;
+
+  auto c = loader_config{};
 
   auto desc = bpo::options_description{"Options"};
   desc.add_options()  //
       ("help,h", "produce this help message")  //
-      ("in,i", bpo::value(&input_path),
-       "input path (either a ZIP file or a directory containing ZIPs)")  //
-      ("out,o", bpo::value(&output_path)->default_value(output_path),
-       "output file path")  //
+      ("in,i", bpo::value(&in), "input path")  //
+      ("recursive,r", bpo::bool_switch(&recursive)->default_value(false),
+       "read all zips and directories from the input directory")  //
+      ("out,o", bpo::value(&out)->default_value(out), "output file path")  //
       ("start_date,s", bpo::value(&start_date)->default_value(start_date),
        "start date of the timetable, format: YYYY-MM-DD")  //
       ("num_days,n", bpo::value(&n_days)->default_value(n_days),
        "the length of the timetable in days")  //
-      ("link_stop_distance,l",
-       bpo::value(&link_stop_distance)->default_value(link_stop_distance),
+      ("tz,t", bpo::value(&c.default_tz_)->default_value(c.default_tz_),
+       "the default timezone")  //
+      ("link_stop_distance",
+       bpo::value(&c.link_stop_distance_)->default_value(c.link_stop_distance_),
        "the maximum distance at which stops in proximity will be linked")  //
-      ("tz,t", bpo::value(&tz)->default_value(tz),
-       "the default time zone to use");  //
+      ("merge_duplicates",
+       bpo::value(&c.merge_duplicates_)->default_value(c.merge_duplicates_),
+       "merge duplicates")  //
+      ("adjust_footpaths",
+       bpo::value(&c.adjust_footpaths_)->default_value(c.adjust_footpaths_),
+       "adjust footpath lengths")  //
+      ("max_foopath_length", bpo::value(&c.max_footpath_length_)
+                                 ->default_value(c.max_footpath_length_));
+  auto const pos = bpo::positional_options_description{}.add("in", -1);
 
   auto vm = bpo::variables_map{};
-  bpo::store(bpo::command_line_parser(ac, av).options(desc).run(), vm);
+  bpo::store(
+      bpo::command_line_parser(ac, av).options(desc).positional(pos).run(), vm);
   bpo::notify(vm);
 
   if (vm.count("help") != 0U) {
@@ -67,25 +77,23 @@ int main(int ac, char** av) {
   }
 
   auto input_files = std::vector<fs::path>{};
-  if (is_directory(input_path) && recursive) {
-    for (auto const& e : fs::directory_iterator(input_path)) {
+  if (is_directory(in) && recursive) {
+    for (auto const& e : fs::directory_iterator(in)) {
       if (is_directory(e) /* unpacked zip file */ ||
           boost::algorithm::to_lower_copy(
               e.path().extension().generic_string()) == ".zip") {
         input_files.emplace_back(e.path());
       }
     }
-  } else if (exists(input_path) && !recursive) {
-    input_files.emplace_back(input_path);
+  } else if (exists(in) && !recursive) {
+    input_files.emplace_back(in);
   }
 
   if (input_files.empty()) {
-    std::cerr << "no input file found\n";
+    std::cerr << "no input path found\n";
     return 1;
   }
 
   auto const start = parse_date(start_date);
-  load(input_files, {link_stop_distance, tz},
-       {start, start + date::days{n_days}})
-      .write(output_path);
+  load(input_files, c, {start, start + date::days{n_days}}).write(out);
 }
