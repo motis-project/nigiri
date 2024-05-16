@@ -20,7 +20,10 @@ struct generator_settings {
       return mm == location_match_mode::kIntermodal ? "intermodal" : "station";
     };
 
-    out << "interval_size: " << gs.interval_size_.count();
+    out << "interval_size: "
+        << std::chrono::duration_cast<
+               std::chrono::duration<double, std::ratio<3600>>>(
+               gs.interval_size_);
     if (gs.bbox_.has_value()) {
       out << "\nbbox: min(" << gs.bbox_.value().min_ << "), max("
           << gs.bbox_.value().max_ << ")";
