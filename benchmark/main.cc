@@ -379,12 +379,13 @@ int main(int argc, char* argv[]) {
       ss << "(loc_idx: " << loc_idx.v_ << ", name: "
          << std::string_view{begin((**tt).locations_.names_[loc_idx]),
                              end((**tt).locations_.names_[loc_idx])}
-         << ", coord: " << (**tt).locations_.coordinates_[loc_idx] << ")";
+         << ", coord: (" << (**tt).locations_.coordinates_[loc_idx].lat() << ","
+         << (**tt).locations_.coordinates_[loc_idx].lng() << "))";
       return ss.str();
     };
     auto const visit_coord = [](geo::latlng const& coord) {
       std::stringstream ss;
-      ss << coord;
+      ss << "(" << coord.lat() << "," << coord.lng() << ")";
       return ss.str();
     };
 
