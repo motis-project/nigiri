@@ -93,22 +93,19 @@ T quantile(std::vector<T> const& v, double q) {
 struct benchmark_result {
   friend std::ostream& operator<<(std::ostream& out,
                                   benchmark_result const& br) {
-    out << "(t_total: " << std::fixed << std::setprecision(3) << std::setw(8)
+    out << "(t_total: " << std::fixed << std::setprecision(3) << std::setw(9)
         << std::chrono::duration_cast<
                std::chrono::duration<double, std::ratio<1>>>(br.total_time_)
-               .count()
-        << ", t_exec: " << std::setw(8)
+        << ", t_exec: " << std::setw(9)
         << std::chrono::duration_cast<
                std::chrono::duration<double, std::ratio<1>>>(
                br.routing_result_.search_stats_.execute_time_)
-               .count()
         << ", intvl_ext: " << std::setw(2)
         << br.routing_result_.search_stats_.interval_extensions_
-        << ", intvl_size: " << std::setw(3) << std::defaultfloat
+        << ", intvl_size: " << std::setw(5)
         << std::chrono::duration_cast<
                std::chrono::duration<std::uint32_t, std::ratio<3600>>>(
                br.routing_result_.interval_.size())
-               .count()
         << ", #jrny: " << std::setfill(' ') << std::setw(2)
         << br.journeys_.size() << ")";
     return out;
@@ -371,7 +368,7 @@ int main(int argc, char* argv[]) {
   std::sort(begin(results), end(results), [](auto const& a, auto const& b) {
     return a.total_time_ < b.total_time_;
   });
-  print_results(results, "total_time [s]");
+  print_results(results, "total_time");
 
   auto const print_slow_result = [&](auto const& br) {
     auto const visit_loc_idx = [&](location_idx_t const loc_idx) {
@@ -408,7 +405,7 @@ int main(int argc, char* argv[]) {
     return a.routing_result_.search_stats_.execute_time_ <
            b.routing_result_.search_stats_.execute_time_;
   });
-  print_results(results, "execute_time [s]");
+  print_results(results, "execute_time");
 
   std::sort(begin(results), end(results), [](auto const& a, auto const& b) {
     return a.routing_result_.search_stats_.interval_extensions_ <
@@ -420,7 +417,7 @@ int main(int argc, char* argv[]) {
     return a.routing_result_.interval_.size() <
            b.routing_result_.interval_.size();
   });
-  print_results(results, "interval_size [h]");
+  print_results(results, "interval_size");
 
   std::sort(begin(results), end(results), [](auto const& a, auto const& b) {
     return a.journeys_.size() < b.journeys_.size();
