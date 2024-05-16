@@ -93,14 +93,24 @@ T quantile(std::vector<T> const& v, double q) {
 struct benchmark_result {
   friend std::ostream& operator<<(std::ostream& out,
                                   benchmark_result const& br) {
-    out << "(total_time: " << std::setw(12) << br.total_time_
-        << ", execute_time: " << std::setw(12)
-        << br.routing_result_.search_stats_.execute_time_.count()
-        << ", interval_extensions: " << std::setw(12)
+    out << "(t_total: " << std::fixed << std::setprecision(3) << std::setw(8)
+        << std::chrono::duration_cast<
+               std::chrono::duration<double, std::ratio<1>>>(br.total_time_)
+               .count()
+        << ", t_exec: " << std::setw(8)
+        << std::chrono::duration_cast<
+               std::chrono::duration<double, std::ratio<1>>>(
+               br.routing_result_.search_stats_.execute_time_)
+               .count()
+        << ", intvl_ext: " << std::setw(2)
         << br.routing_result_.search_stats_.interval_extensions_
-        << ", interval_size: " << std::setw(12)
-        << br.routing_result_.interval_.size().count()
-        << ", #journeys: " << std::setw(12) << br.journeys_.size() << ")";
+        << ", intvl_size: " << std::setw(4) << std::defaultfloat
+        << std::chrono::duration_cast<
+               std::chrono::duration<double, std::ratio<3600>>>(
+               br.routing_result_.interval_.size())
+               .count()
+        << ", #jrny: " << std::setfill(' ') << std::setw(2)
+        << br.journeys_.size() << ")";
     return out;
   }
 
@@ -127,7 +137,7 @@ int main(int argc, char* argv[]) {
   auto const progress_tracker = utl::activate_progress_tracker("benchmark");
   utl::get_global_progress_trackers().silent_ = false;
 
-  auto input_path = std::filesystem::path{};
+  auto tt_path = std::filesystem::path{};
   auto num_queries = std::uint32_t{10000U};
   auto gs = query_generation::generator_settings{};
 
@@ -135,7 +145,7 @@ int main(int argc, char* argv[]) {
   // clang-format off
   desc.add_options()
     ("help,h", "produce this help message")
-    ("tt_path,p", bpo::value(&input_path),
+    ("tt_path,p", bpo::value(&tt_path),
             "path to a binary file containing a serialized nigiri timetable")
     ("seed,s", bpo::value<std::uint32_t>(),
             "value to seed the RNG of the query generator with, "
@@ -197,8 +207,6 @@ int main(int argc, char* argv[]) {
   std::unique_ptr<cista::wrapped<nigiri::timetable>> tt;
   if (vm.count("tt_path")) {
     try {
-      auto const tt_path =
-          std::filesystem::path{vm["tt_path"].as<std::string>()};
       auto load_timetable_timer = scoped_timer(
           fmt::format("loading timetable from {}", tt_path.string()));
       tt = std::make_unique<cista::wrapped<nigiri::timetable>>(
@@ -363,38 +371,33 @@ int main(int argc, char* argv[]) {
   std::sort(begin(results), end(results), [](auto const& a, auto const& b) {
     return a.total_time_ < b.total_time_;
   });
-  print_results(results, "total_time");
+  print_results(results, "total_time [s]");
 
   auto const print_slow_result = [&](auto const& br) {
-    std::cout << br;
-    std::cout << "start: "
-              << std::visit(utl::overloaded{[](location_idx_t const loc_idx) {
-                                              std::stringstream ss;
-                                              ss << loc_idx.v_;
-                                              return ss.str();
-                                            },
-                                            [](geo::latlng const& coord) {
-                                              std::stringstream ss;
-                                              ss << coord;
-                                              return ss.str();
-                                            }},
+    auto const visit_loc_idx = [&](location_idx_t const loc_idx) {
+      std::stringstream ss;
+      ss << "loc_idx: " << loc_idx.v_ << ", name: "
+         << std::string_view{begin((**tt).locations_.names_[loc_idx]),
+                             end((**tt).locations_.names_[loc_idx])};
+      return ss.str();
+    };
+    auto const visit_coord = [](geo::latlng const& coord) {
+      std::stringstream ss;
+      ss << coord;
+      return ss.str();
+    };
+
+    std::cout << br << "\nstart: "
+              << std::visit(utl::overloaded{visit_loc_idx, visit_coord},
                             queries[br.q_idx_].start_)
-              << ", dest: "
-              << std::visit(utl::overloaded{[](location_idx_t const loc_idx) {
-                                              std::stringstream ss;
-                                              ss << loc_idx.v_;
-                                              return ss.str();
-                                            },
-                                            [](geo::latlng const& coord) {
-                                              std::stringstream ss;
-                                              ss << coord;
-                                              return ss.str();
-                                            }},
+              << "\ndest: "
+              << std::visit(utl::overloaded{visit_loc_idx, visit_coord},
                             queries[br.q_idx_].dest_)
               << "\n";
   };
-  std::cout << "Slowest Queries:\n";
+  std::cout << "\nSlowest Queries:\n";
   for (auto i = 0; i != results.size() && i != 3; ++i) {
+    std::cout << "\n--- " << i + 1 << " ---\n";
     print_slow_result(rbegin(results)[i]);
   }
   std::cout << "\n";
@@ -403,7 +406,7 @@ int main(int argc, char* argv[]) {
     return a.routing_result_.search_stats_.execute_time_ <
            b.routing_result_.search_stats_.execute_time_;
   });
-  print_results(results, "execute_time");
+  print_results(results, "execute_time [s]");
 
   std::sort(begin(results), end(results), [](auto const& a, auto const& b) {
     return a.routing_result_.search_stats_.interval_extensions_ <
@@ -415,7 +418,7 @@ int main(int argc, char* argv[]) {
     return a.routing_result_.interval_.size() <
            b.routing_result_.interval_.size();
   });
-  print_results(results, "interval_size");
+  print_results(results, "interval_size [h]");
 
   std::sort(begin(results), end(results), [](auto const& a, auto const& b) {
     return a.journeys_.size() < b.journeys_.size();
