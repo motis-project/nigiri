@@ -104,9 +104,9 @@ struct benchmark_result {
                .count()
         << ", intvl_ext: " << std::setw(2)
         << br.routing_result_.search_stats_.interval_extensions_
-        << ", intvl_size: " << std::setw(4) << std::defaultfloat
+        << ", intvl_size: " << std::setw(3) << std::defaultfloat
         << std::chrono::duration_cast<
-               std::chrono::duration<double, std::ratio<3600>>>(
+               std::chrono::duration<std::uint32_t, std::ratio<3600>>>(
                br.routing_result_.interval_.size())
                .count()
         << ", #jrny: " << std::setfill(' ') << std::setw(2)
@@ -376,9 +376,10 @@ int main(int argc, char* argv[]) {
   auto const print_slow_result = [&](auto const& br) {
     auto const visit_loc_idx = [&](location_idx_t const loc_idx) {
       std::stringstream ss;
-      ss << "loc_idx: " << loc_idx.v_ << ", name: "
+      ss << "(loc_idx: " << loc_idx.v_ << ", name: "
          << std::string_view{begin((**tt).locations_.names_[loc_idx]),
-                             end((**tt).locations_.names_[loc_idx])};
+                             end((**tt).locations_.names_[loc_idx])}
+         << ", coord: " << (**tt).locations_.coordinates_[loc_idx] << ")";
       return ss.str();
     };
     auto const visit_coord = [](geo::latlng const& coord) {
@@ -396,7 +397,7 @@ int main(int argc, char* argv[]) {
               << "\n";
   };
   std::cout << "\nSlowest Queries:\n";
-  for (auto i = 0; i != results.size() && i != 3; ++i) {
+  for (auto i = 0; i != results.size() && i != 10; ++i) {
     std::cout << "\n--- " << i + 1 << " ---\n";
     print_slow_result(rbegin(results)[i]);
   }
