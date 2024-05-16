@@ -365,17 +365,39 @@ int main(int argc, char* argv[]) {
   });
   print_results(results, "total_time");
 
-  auto const print_slow_result = [&](auto const& br) { std::cout << br; };
+  auto const print_slow_result = [&](auto const& br) {
+    std::cout << br;
+    std::cout << "start: "
+              << std::visit(utl::overloaded{[](location_idx_t const loc_idx) {
+                                              std::stringstream ss;
+                                              ss << loc_idx.v_;
+                                              return ss.str();
+                                            },
+                                            [](geo::latlng const& coord) {
+                                              std::stringstream ss;
+                                              ss << coord;
+                                              return ss.str();
+                                            }},
+                            queries[br.q_idx_].start_)
+              << ", dest: "
+              << std::visit(utl::overloaded{[](location_idx_t const loc_idx) {
+                                              std::stringstream ss;
+                                              ss << loc_idx.v_;
+                                              return ss.str();
+                                            },
+                                            [](geo::latlng const& coord) {
+                                              std::stringstream ss;
+                                              ss << coord;
+                                              return ss.str();
+                                            }},
+                            queries[br.q_idx_].dest_)
+              << "\n";
+  };
   std::cout << "Slowest Queries:\n";
-  if (!results.empty()) {
-    print_slow_result(rbegin(results));
+  for (auto i = 0; i != results.size() && i != 3; ++i) {
+    print_slow_result(rbegin(results)[i]);
   }
-  if (results.size() > 1) {
-    print_slow_result(rbegin(results)[1]);
-  }
-  if (results.size() > 2) {
-    print_slow_result(rbegin(results)[2]);
-  }
+  std::cout << "\n";
 
   std::sort(begin(results), end(results), [](auto const& a, auto const& b) {
     return a.routing_result_.search_stats_.execute_time_ <
