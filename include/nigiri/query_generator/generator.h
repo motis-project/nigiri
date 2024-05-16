@@ -17,13 +17,19 @@ namespace nigiri::query_generation {
 
 constexpr auto const kMaxGenAttempts = 1000U;
 
+struct start_dest_query {
+  std::variant<nigiri::location_idx_t, geo::latlng> start_;
+  std::variant<nigiri::location_idx_t, geo::latlng> dest_;
+  nigiri::routing::query q_;
+};
+
 struct generator {
   explicit generator(timetable const&, generator_settings const&);
   explicit generator(timetable const&,
                      generator_settings const&,
                      std::uint32_t seed);
 
-  std::optional<routing::query> random_query();
+  std::optional<start_dest_query> random_query();
 
   // use start transport mode to randomize coordinates near a location
   geo::latlng pos_near_start(location_idx_t);

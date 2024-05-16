@@ -15,6 +15,9 @@
 #include "nigiri/timetable.h"
 #include "nigiri/types.h"
 
+using namespace nigiri;
+using namespace nigiri::routing;
+
 nigiri::pareto_set<nigiri::routing::journey> raptor_search(
     nigiri::timetable const& tt, nigiri::routing::query q) {
   using namespace nigiri;
@@ -87,25 +90,28 @@ T quantile(std::vector<T> const& v, double q) {
   return v[static_cast<std::size_t>(v.size() * q)];
 }
 
-struct routing_stat {
-  friend std::ostream& operator<<(std::ostream& out, routing_stat const& rs) {
-    out << "(routing_time: " << std::setw(12) << rs.routing_time_
-        << ", search_iterations: " << std::setw(12) << rs.search_iterations_
-        << ")";
+struct benchmark_result {
+  friend std::ostream& operator<<(std::ostream& out,
+                                  benchmark_result const& br) {
+    out << "(total_time: " << std::setw(12) << br.total_time_
+        << ", execute_time: " << std::setw(12)
+        << br.routing_result_.search_stats_.execute_time_.count()
+        << ", interval_extensions: " << std::setw(12)
+        << br.routing_result_.search_stats_.interval_extensions_
+        << ", interval_size: " << std::setw(12)
+        << br.routing_result_.interval_.size().count()
+        << ", #journeys: " << std::setw(12) << br.journeys_.size() << ")";
     return out;
   }
 
-  std::chrono::milliseconds::rep routing_time_;
-  std::uint64_t search_iterations_;
+  std::uint64_t q_idx_;
+  routing_result<raptor_stats> routing_result_;
+  pareto_set<journey> journeys_;
+  std::chrono::milliseconds total_time_;
 };
 
-void print_stats(std::vector<routing_stat> const& var,
-                 std::string const& var_name) {
-  if (var.empty()) {
-    std::cout << "Info: prints_stats for " << var_name
-              << ": Input empty, no statistics to display\n";
-    return;
-  }
+void print_results(std::vector<benchmark_result> const& var,
+                   std::string const& var_name) {
   std::cout << "\n--- " << var_name << " --- (n = " << var.size() << ")"
             << "\n  25%: " << quantile(var, 0.25)
             << "\n  50%: " << quantile(var, 0.5)
@@ -117,30 +123,28 @@ void print_stats(std::vector<routing_stat> const& var,
 }
 
 int main(int argc, char* argv[]) {
-  using namespace nigiri;
-  using namespace nigiri::routing;
   namespace bpo = boost::program_options;
   auto const progress_tracker = utl::activate_progress_tracker("benchmark");
   utl::get_global_progress_trackers().silent_ = false;
 
-  std::uint32_t num_queries;
+  auto input_path = std::filesystem::path{};
+  auto num_queries = std::uint32_t{10000U};
   auto gs = query_generation::generator_settings{};
 
   bpo::options_description desc("Allowed options");
   // clang-format off
   desc.add_options()
     ("help,h", "produce this help message")
-    ("tt_path,p", bpo::value<std::string>(),
-            "path to a binary file containing a serialized nigiri timetable, "
-            "can be created using nigiri-importer")
+    ("tt_path,p", bpo::value(&input_path),
+            "path to a binary file containing a serialized nigiri timetable")
     ("seed,s", bpo::value<std::uint32_t>(),
             "value to seed the RNG of the query generator with, "
             "omit for random seed")
     ("num_queries,n",
-            bpo::value<std::uint32_t>(&num_queries)->default_value(10000U),
+            bpo::value(&num_queries)->default_value(num_queries),
             "number of queries to generate/process")
     ("interval_size,i", bpo::value<std::uint32_t>()->default_value(60U),
-            "the initial size of the search interval in minutes")
+            "the initial size of the search interval in minutes, set to 0 for ontrip queries")
     ("bounding_box,b", bpo::value<std::string>(),
             "limit randomized locations to a bounding box, "
             "format: lat_min,lon_min,lat_max,lon_max\ne.g., 36.0,-11.0,72.0,32.0\n"
@@ -175,6 +179,10 @@ int main(int argc, char* argv[]) {
             "start coordinate for random queries")
     ("dest_coord", bpo::value<std::string>(),
             "destination coordinate for random queries")
+    ("start_loc", bpo::value<location_idx_t::value_t>(),
+            "start location for random queries")
+    ("dest_loc", bpo::value<location_idx_t::value_t>(),
+        "destination location for random queries")
   ;
   // clang-format on
   bpo::variables_map vm;
@@ -232,7 +240,7 @@ int main(int argc, char* argv[]) {
       }
     }
   } else if (vm["start_mode"].as<std::string>() == "station") {
-    gs.start_match_mode_ = location_match_mode::kExact;
+    gs.start_match_mode_ = location_match_mode::kEquivalent;
   } else {
     std::cout << "Error: Invalid start mode\n";
     return 1;
@@ -253,7 +261,7 @@ int main(int argc, char* argv[]) {
       }
     }
   } else if (vm["dest_mode"].as<std::string>() == "station") {
-    gs.dest_match_mode_ = location_match_mode::kExact;
+    gs.dest_match_mode_ = location_match_mode::kEquivalent;
   } else {
     std::cout << "Error: Invalid destination mode\n";
     return 1;
@@ -281,10 +289,20 @@ int main(int argc, char* argv[]) {
     }
   }
 
+  if (vm.count("start_loc")) {
+    gs.start_match_mode_ = location_match_mode::kEquivalent;
+    gs.start_ = vm["start_loc"].as<location_idx_t>();
+  }
+
+  if (vm.count("dest_loc")) {
+    gs.dest_match_mode_ = location_match_mode::kEquivalent;
+    gs.dest_ = vm["dest_loc"].as<location_idx_t>();
+  }
+
   std::mutex mutex;
 
   // generate queries
-  auto queries = std::vector<query>{};
+  auto queries = std::vector<nigiri::query_generation::start_dest_query>{};
   {
     auto qg = vm.count("seed")
                   ? query_generation::generator{**tt, gs,
@@ -296,9 +314,9 @@ int main(int argc, char* argv[]) {
     std::cout << "--- Query generator settings ---\n"
               << gs << "\n--- --- ---\n";
     for (auto i = 0U; i != num_queries; ++i) {
-      auto const q = qg.random_query();
-      if (q.has_value()) {
-        queries.emplace_back(q.value());
+      auto const sdq = qg.random_query();
+      if (sdq.has_value()) {
+        queries.emplace_back(sdq.value());
       }
     }
   }
@@ -306,8 +324,8 @@ int main(int argc, char* argv[]) {
   std::cout << queries.size() << " queries generated successfully\n";
 
   // process queries
-  auto results =
-      std::vector<pair<std::uint64_t, routing_result<raptor_stats>>>{};
+  auto results = std::vector<benchmark_result>{};
+  results.reserve(queries.size());
   {
     auto query_processing_timer =
         scoped_timer(fmt::format("processing of {} queries", queries.size()));
@@ -320,14 +338,19 @@ int main(int argc, char* argv[]) {
         queries.size(),
         [&](auto& query_state, auto const q_idx) {
           try {
+            auto const total_time_start = std::chrono::steady_clock::now();
             auto const result =
                 routing::search<direction::kForward,
                                 routing::raptor<direction::kForward, false>>{
                     **tt, nullptr, query_state.ss_, query_state.rs_,
-                    queries[q_idx]}
+                    queries[q_idx].q_}
                     .execute();
+            auto const total_time_stop = std::chrono::steady_clock::now();
             std::lock_guard<std::mutex> guard(mutex);
-            results.emplace_back(q_idx, result);
+            results.emplace_back(
+                q_idx, result, *result.journeys_,
+                std::chrono::duration_cast<std::chrono::milliseconds>(
+                    total_time_stop - total_time_start));
           } catch (const std::exception& e) {
             std::cout << e.what();
           }
@@ -336,22 +359,46 @@ int main(int argc, char* argv[]) {
   }
 
   // print results
-  auto stats = std::vector<routing_stat>{};
-  stats.reserve(results.size());
-  for (auto const& result : results) {
-    stats.emplace_back(result.second.search_stats_.execute_time_.count(),
-                       result.second.search_stats_.search_iterations_);
+
+  std::sort(begin(results), end(results), [](auto const& a, auto const& b) {
+    return a.total_time_ < b.total_time_;
+  });
+  print_results(results, "total_time");
+
+  auto const print_slow_result = [&](auto const& br) { std::cout << br; };
+  std::cout << "Slowest Queries:\n";
+  if (!results.empty()) {
+    print_slow_result(rbegin(results));
+  }
+  if (results.size() > 1) {
+    print_slow_result(rbegin(results)[1]);
+  }
+  if (results.size() > 2) {
+    print_slow_result(rbegin(results)[2]);
   }
 
-  std::sort(begin(stats), end(stats), [](auto const a, auto const b) {
-    return a.routing_time_ < b.routing_time_;
+  std::sort(begin(results), end(results), [](auto const& a, auto const& b) {
+    return a.routing_result_.search_stats_.execute_time_ <
+           b.routing_result_.search_stats_.execute_time_;
   });
-  print_stats(stats, "routing_time");
+  print_results(results, "execute_time");
 
-  std::sort(begin(stats), end(stats), [](auto const a, auto const b) {
-    return a.search_iterations_ < b.search_iterations_;
+  std::sort(begin(results), end(results), [](auto const& a, auto const& b) {
+    return a.routing_result_.search_stats_.interval_extensions_ <
+           b.routing_result_.search_stats_.interval_extensions_;
   });
-  print_stats(stats, "search_iterations");
+  print_results(results, "interval_extensions");
+
+  std::sort(begin(results), end(results), [](auto const& a, auto const& b) {
+    return a.routing_result_.interval_.size() <
+           b.routing_result_.interval_.size();
+  });
+  print_results(results, "interval_size");
+
+  std::sort(begin(results), end(results), [](auto const& a, auto const& b) {
+    return a.journeys_.size() < b.journeys_.size();
+  });
+  print_results(results, "#journeys");
 
   return 0;
 }

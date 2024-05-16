@@ -58,9 +58,10 @@ void generator::init_geo(generator_settings const& settings) {
   }
 }
 
-std::optional<routing::query> generator::random_query() {
+std::optional<start_dest_query> generator::random_query() {
   for (auto i = 0U; i != kMaxGenAttempts; ++i) {
-    auto q = make_query();
+    auto sdq = start_dest_query{};
+    sdq.q_ = make_query();
 
     // user-defined start or randomize
     auto start_loc_idx = location_idx_t{};
@@ -124,16 +125,18 @@ std::optional<routing::query> generator::random_query() {
       if (!start_coord.has_value()) {
         start_coord = pos_near_start(start_loc_idx);
       }
-      add_offsets_for_pos(q.start_, start_coord.value(), s_.start_mode_);
+      sdq.start_ = start_coord.value();
+      add_offsets_for_pos(sdq.q_.start_, start_coord.value(), s_.start_mode_);
     } else {
-      q.start_.emplace_back(start_loc_idx, 0_minutes, 0U);
+      sdq.start_ = start_loc_idx;
+      sdq.q_.start_.emplace_back(start_loc_idx, 0_minutes, 0U);
     }
 
     // add time to query
     if (s_.interval_size_.count() == 0) {
-      q.start_time_ = start_itv.value().from_;
+      sdq.q_.start_time_ = start_itv.value().from_;
     } else {
-      q.start_time_ = start_itv.value();
+      sdq.q_.start_time_ = start_itv.value();
     }
 
     // add destination(s) to query
@@ -141,12 +144,15 @@ std::optional<routing::query> generator::random_query() {
       if (!dest_coord.has_value()) {
         dest_coord = pos_near_dest(dest_loc_idx.value());
       }
-      add_offsets_for_pos(q.destination_, dest_coord.value(), s_.dest_mode_);
+      sdq.dest_ = dest_coord.value();
+      add_offsets_for_pos(sdq.q_.destination_, dest_coord.value(),
+                          s_.dest_mode_);
     } else {
-      q.destination_.emplace_back(dest_loc_idx.value(), 0_minutes, 0U);
+      sdq.dest_ = dest_loc_idx.value();
+      sdq.q_.destination_.emplace_back(dest_loc_idx.value(), 0_minutes, 0U);
     }
 
-    return q;
+    return sdq;
   }
 
   log(log_lvl::info, "query_generator.random_pretrip",
