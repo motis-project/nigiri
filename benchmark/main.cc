@@ -309,8 +309,6 @@ int main(int argc, char* argv[]) {
     gs.dest_ = vm["dest_loc"].as<location_idx_t>();
   }
 
-  std::mutex mutex;
-
   // generate queries
   auto queries = std::vector<nigiri::query_generation::start_dest_query>{};
   {
@@ -330,12 +328,12 @@ int main(int argc, char* argv[]) {
       }
     }
   }
-
   std::cout << queries.size() << " queries generated successfully\n";
 
   // process queries
   auto results = std::vector<benchmark_result>{};
   results.reserve(queries.size());
+  std::mutex mutex;
   {
     auto query_processing_timer =
         scoped_timer(fmt::format("processing of {} queries", queries.size()));
@@ -345,8 +343,7 @@ int main(int argc, char* argv[]) {
       raptor_state rs_;
     };
     utl::parallel_for_run_threadlocal<query_state>(
-        queries.size(),
-        [&](auto& query_state, auto const q_idx) {
+        queries.size(), [&](auto& query_state, auto const q_idx) {
           try {
             auto const total_time_start = std::chrono::steady_clock::now();
             auto const result =
@@ -361,15 +358,14 @@ int main(int argc, char* argv[]) {
                 q_idx, result, *result.journeys_,
                 std::chrono::duration_cast<std::chrono::milliseconds>(
                     total_time_stop - total_time_start));
+            progress_tracker->increment();
           } catch (const std::exception& e) {
             std::cout << e.what();
           }
-        },
-        progress_tracker->update_fn());
+        });
   }
 
   // print results
-
   std::sort(begin(results), end(results), [](auto const& a, auto const& b) {
     return a.total_time_ < b.total_time_;
   });
