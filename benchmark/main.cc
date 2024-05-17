@@ -167,7 +167,7 @@ int main(int argc, char* argv[]) {
     ("use_start_footpaths",
             bpo::value<bool>(&gs.use_start_footpaths_)->default_value(true), "")
     ("max_transfers,t",
-            bpo::value<std::uint8_t>(&gs.max_transfers_)->default_value(7U),
+            bpo::value<std::uint32_t>()->default_value(kMaxTransfers),
             "maximum number of transfers during routing")
     ("min_connection_count,m",
             bpo::value<std::uint32_t>(&gs.min_connection_count_)->default_value(3U),
@@ -271,6 +271,11 @@ int main(int argc, char* argv[]) {
     std::cout << "Error: Invalid destination mode\n";
     return 1;
   }
+
+  gs.max_transfers_ = vm["max_transfers"].as<unsigned>() >
+                              std::numeric_limits<std::uint8_t>::max()
+                          ? std::numeric_limits<std::uint8_t>::max()
+                          : vm["max_transfers"].as<unsigned>();
 
   if (vm.count("start_coord")) {
     gs.start_match_mode_ = location_match_mode::kIntermodal;
