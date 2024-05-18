@@ -37,6 +37,7 @@ int main(int ac, char** av) {
   auto start_date = "TODAY"s;
   auto n_days = 365U;
   auto recursive = false;
+  auto ignore = false;
 
   auto c = loader_config{};
 
@@ -46,6 +47,8 @@ int main(int ac, char** av) {
       ("in,i", bpo::value(&in), "input path")  //
       ("recursive,r", bpo::bool_switch(&recursive)->default_value(false),
        "read all zips and directories from the input directory")  //
+      ("ignore", bpo::bool_switch(&ignore)->default_value(false),
+       "ignore if a directory entry is not a timetable (only for recursive)")  //
       ("out,o", bpo::value(&out)->default_value(out), "output file path")  //
       ("start_date,s", bpo::value(&start_date)->default_value(start_date),
        "start date of the timetable, format: YYYY-MM-DD")  //
@@ -95,5 +98,6 @@ int main(int ac, char** av) {
   }
 
   auto const start = parse_date(start_date);
-  load(input_files, c, {start, start + date::days{n_days}}).write(out);
+  load(input_files, c, {start, start + date::days{n_days}}, ignore && recursive)
+      .write(out);
 }
