@@ -357,7 +357,7 @@ struct timetable {
   vector_map<trip_id_idx_t, std::uint32_t> trip_train_nr_;
 
   // Trip index -> all transports with a stop interval
-  vecvec<trip_idx_t, transport_range_t> trip_transport_ranges_;
+  paged_vecvec<trip_idx_t, transport_range_t> trip_transport_ranges_;
 
   // Transport -> stop sequence numbers (relevant for GTFS-RT stop matching)
   // Compaction:
