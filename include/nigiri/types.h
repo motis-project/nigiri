@@ -106,6 +106,16 @@ using optional = cista::optional<T>;
 template <typename Key, typename T, std::size_t N>
 using nvec = cista::raw::nvec<Key, T, N>;
 
+template <typename Key, typename T>
+struct mmap_paged_vecvec_helper {
+  using data_t = cista::paged<vector<T>>;
+  using idx_t = vector<typename data_t::page_t>;
+  using type = cista::paged_vecvec<idx_t, data_t, Key>;
+};
+
+template <typename Key, typename T>
+using paged_vecvec = mmap_paged_vecvec_helper<Key, T>::type;
+
 using bitfield_idx_t = cista::strong<std::uint32_t, struct _bitfield_idx>;
 using location_idx_t = cista::strong<std::uint32_t, struct _location_idx>;
 using route_idx_t = cista::strong<std::uint32_t, struct _route_idx>;

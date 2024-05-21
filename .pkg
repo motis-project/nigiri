@@ -5,7 +5,7 @@
 [cista]
   url=git@github.com:felixguendling/cista.git
   branch=master
-  commit=ebd5eb5cc7f82c414d3e060a3937d497189a103f
+  commit=cbd79598d27b031e1987201c03f287c4874be816
 [geo]
   url=git@github.com:motis-project/geo.git
   branch=master
@@ -25,7 +25,7 @@
 [date]
   url=git@github.com:motis-project/date.git
   branch=master
-  commit=2d2c46a39bbf582dc663be1af926b4d58b2e0c9a
+  commit=646ba5e2e76636d9e65aaa3cf32e3e3a43defa2c
 [wyhash]
   url=git@github.com:motis-project/wyhash.git
   branch=master
@@ -41,4 +41,4 @@
 [boost]
   url=git@github.com:motis-project/boost.git
   branch=master
-  commit=60cae66449fa3c9599b2b7d3d5d44c65301ed3a3
+  commit=be5235eb2258d2ec19e32546ab767a62311d9b46

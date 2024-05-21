@@ -12,8 +12,13 @@ struct timetable;
 namespace nigiri::loader {
 
 struct loader_config {
-  unsigned link_stop_distance_;
-  std::string_view default_tz_;
+  unsigned link_stop_distance_{100U};
+  std::string default_tz_;
+
+  // finalize options
+  bool adjust_footpaths_{true};
+  bool merge_duplicates_{true};
+  std::uint16_t max_footpath_length_{20};
 };
 
 struct loader_interface {
