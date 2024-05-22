@@ -1,13 +1,13 @@
 cmake_minimum_required(VERSION 3.22)
 project(nigiri)
 
-if(NOT DEFINED CMAKE_MSVC_RUNTIME_LIBRARY)
-  if(NIGIRI_MIMALLOC)
+if (NOT DEFINED CMAKE_MSVC_RUNTIME_LIBRARY)
+  if (NIGIRI_MIMALLOC)
     set(CMAKE_MSVC_RUNTIME_LIBRARY "MultiThreaded$<$<CONFIG:Debug>:Debug>DLL")
-  else()
+  else ()
     set(CMAKE_MSVC_RUNTIME_LIBRARY "MultiThreaded$<$<CONFIG:Debug>:Debug>")
-  endif()
-endif()
+  endif ()
+endif ()
 
 include(cmake/buildcache.cmake)
 include(cmake/pkg.cmake)
@@ -15,15 +15,15 @@ include(cmake/pkg.cmake)
 
 # --- GTFS-RT PROTOBUF ---
 add_custom_command(
-    OUTPUT ${CMAKE_CURRENT_BINARY_DIR}/generated/gtfsrt/gtfs-realtime.pb.h
-    OUTPUT ${CMAKE_CURRENT_BINARY_DIR}/generated/gtfsrt/gtfs-realtime.pb.cc
-    COMMAND ${CMAKE_CROSSCOMPILING_EMULATOR} $<TARGET_FILE:protoc>
-    --cpp_out=${CMAKE_CURRENT_BINARY_DIR}/generated/gtfsrt
-    --proto_path=${CMAKE_CURRENT_SOURCE_DIR}
-    ${CMAKE_CURRENT_SOURCE_DIR}/gtfs-realtime.proto
-    DEPENDS protoc
-    DEPENDS ${CMAKE_CURRENT_SOURCE_DIR}/gtfs-realtime.proto
-    COMMENT "Generating GTFS RT protocol buffers C++ code"
+      OUTPUT ${CMAKE_CURRENT_BINARY_DIR}/generated/gtfsrt/gtfs-realtime.pb.h
+      OUTPUT ${CMAKE_CURRENT_BINARY_DIR}/generated/gtfsrt/gtfs-realtime.pb.cc
+      COMMAND ${CMAKE_CROSSCOMPILING_EMULATOR} $<TARGET_FILE:protoc>
+      --cpp_out=${CMAKE_CURRENT_BINARY_DIR}/generated/gtfsrt
+      --proto_path=${CMAKE_CURRENT_SOURCE_DIR}
+      ${CMAKE_CURRENT_SOURCE_DIR}/gtfs-realtime.proto
+      DEPENDS protoc
+      DEPENDS ${CMAKE_CURRENT_SOURCE_DIR}/gtfs-realtime.proto
+      COMMENT "Generating GTFS RT protocol buffers C++ code"
 )
 add_library(gtfsrt ${CMAKE_CURRENT_BINARY_DIR}/generated/gtfsrt/gtfs-realtime.pb.cc)
 target_compile_features(gtfsrt PUBLIC cxx_std_23)
@@ -33,10 +33,10 @@ target_link_libraries(gtfsrt protobuf::libprotobuf)
 
 # --- LINT ---
 option(NIGIRI_LINT "Run clang-tidy with the compiler." OFF)
-if(NIGIRI_LINT)
+if (NIGIRI_LINT)
   # clang-tidy will be run on all targets defined hereafter
   include(cmake/clang-tidy.cmake)
-endif()
+endif ()
 
 if ("${CMAKE_CXX_COMPILER_ID}" STREQUAL "Clang")
   set(nigiri-compile-options
@@ -63,19 +63,19 @@ if ("${CMAKE_CXX_COMPILER_ID}" STREQUAL "Clang")
         -Wno-documentation-unknown-command
         -Wno-duplicate-enum
         -Werror)
-elseif("${CMAKE_CXX_COMPILER_ID}" STREQUAL "AppleClang")
+elseif ("${CMAKE_CXX_COMPILER_ID}" STREQUAL "AppleClang")
   set(nigiri-compile-options -Wall -Wextra -Werror)
-elseif(MSVC)
+elseif (MSVC)
   set(nigiri-compile-options /WX)
-else()
+else ()
   set(nigiri-compile-options
         -Wall
         -Wextra
         -Wno-maybe-uninitialized)
   if (NOT CMAKE_CROSSCOMPILING)
     set(nigiri-compile-options ${nigiri-compile-options} -Werror)
-  endif()
-endif()
+  endif ()
+endif ()
 
 
 # --- LIB ---
@@ -99,12 +99,18 @@ add_executable(nigiri-import ${nigiri-import-files})
 target_link_libraries(nigiri-import PRIVATE nigiri boost-program_options)
 target_compile_features(nigiri-import PUBLIC cxx_std_23)
 
+# --- BENCHMARK ---
+file(GLOB_RECURSE nigiri-benchmark-files benchmark/main.cc)
+add_executable(nigiri-benchmark ${nigiri-benchmark-files})
+target_link_libraries(nigiri-benchmark PRIVATE nigiri boost-program_options)
+target_compile_features(nigiri-benchmark PUBLIC cxx_std_23)
+
 # --- TEST ---
 add_library(nigiri-generated INTERFACE)
 target_include_directories(nigiri-generated INTERFACE ${CMAKE_CURRENT_BINARY_DIR}/generated)
-configure_file (
-  ${CMAKE_CURRENT_SOURCE_DIR}/test/test_dir.h.in
-  ${CMAKE_CURRENT_BINARY_DIR}/generated/test_dir.h
+configure_file(
+      ${CMAKE_CURRENT_SOURCE_DIR}/test/test_dir.h.in
+      ${CMAKE_CURRENT_BINARY_DIR}/generated/test_dir.h
 )
 file(GLOB_RECURSE nigiri-test-files test/*.cc)
 add_executable(nigiri-test ${nigiri-test-files})
