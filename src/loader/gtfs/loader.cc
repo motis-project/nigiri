@@ -8,11 +8,15 @@ bool gtfs_loader::applicable(dir const& d) const {
   return nigiri::loader::gtfs::applicable(d);
 }
 
-void gtfs_loader::load(loader_config const& c,
-                       source_idx_t const src,
-                       dir const& d,
-                       timetable& tt) const {
-  return nigiri::loader::gtfs::load_timetable(c, src, d, tt);
+void gtfs_loader::load(
+    loader_config const& c,
+    source_idx_t const src,
+    dir const& d,
+    timetable& tt,
+    std::shared_ptr<hash_map<bitfield, bitfield_idx_t>> const&
+        global_bitfield_indices) const {
+  return nigiri::loader::gtfs::load_timetable(c, src, d, tt,
+                                              global_bitfield_indices);
 }
 
 cista::hash_t gtfs_loader::hash(dir const& d) const {
