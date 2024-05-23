@@ -101,9 +101,13 @@ struct search {
         state_.is_destination_,
         state_.dist_to_dest_,
         state_.travel_time_lower_bound_,
-        day_idx_t{std::chrono::duration_cast<date::days>(
-                      search_interval_.from_ - tt_.internal_interval().from_)
-                      .count()},
+        day_idx_t{
+            std::chrono::duration_cast<date::days>(
+                std::chrono::round<std::chrono::days>(
+                    search_interval_.from_ +
+                    ((search_interval_.to_ - search_interval_.from_) / 2)) -
+                tt_.internal_interval().from_)
+                .count()},
         allowed_claszes};
   }
 
@@ -118,13 +122,13 @@ struct search {
         state_{s},
         q_{std::move(q)},
         search_interval_{std::visit(
-            utl::overloaded{
-                [](interval<unixtime_t> const start_interval) {
-                  return start_interval;
-                },
-                [](unixtime_t const start_time) {
-                  return interval<unixtime_t>{start_time, start_time};
-                }},
+            utl::overloaded{[](interval<unixtime_t> const start_interval) {
+                              return start_interval;
+                            },
+                            [](unixtime_t const start_time) {
+                              return interval<unixtime_t>{start_time,
+                                                          start_time};
+                            }},
             q_.start_time_)},
         fastest_direct_{get_fastest_direct(tt_, q_, SearchDir)},
         algo_{init(q_.allowed_claszes_, algo_state)},
@@ -171,13 +175,13 @@ struct search {
             "timeout_reached={}\n",
             is_ontrip(), q_.extend_interval_earlier_, q_.extend_interval_later_,
             std::visit(
-                utl::overloaded{
-                    [](interval<unixtime_t> const& start_interval) {
-                      return start_interval;
-                    },
-                    [](unixtime_t const start_time) {
-                      return interval<unixtime_t>{start_time, start_time};
-                    }},
+                utl::overloaded{[](interval<unixtime_t> const& start_interval) {
+                                  return start_interval;
+                                },
+                                [](unixtime_t const start_time) {
+                                  return interval<unixtime_t>{start_time,
+                                                              start_time};
+                                }},
                 q_.start_time_),
             search_interval_, tt_.external_interval(), n_results_in_interval(),
             is_timeout_reached());
@@ -189,13 +193,13 @@ struct search {
             "number_of_results_in_interval={}\n",
             q_.extend_interval_earlier_, q_.extend_interval_later_,
             std::visit(
-                utl::overloaded{
-                    [](interval<unixtime_t> const& start_interval) {
-                      return start_interval;
-                    },
-                    [](unixtime_t const start_time) {
-                      return interval<unixtime_t>{start_time, start_time};
-                    }},
+                utl::overloaded{[](interval<unixtime_t> const& start_interval) {
+                                  return start_interval;
+                                },
+                                [](unixtime_t const start_time) {
+                                  return interval<unixtime_t>{start_time,
+                                                              start_time};
+                                }},
                 q_.start_time_),
             search_interval_, tt_.external_interval(), n_results_in_interval());
       }
