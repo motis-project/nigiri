@@ -15,5 +15,10 @@ bool applicable(config const&, dir const&);
 std::uint64_t hash(config const&, dir const&, std::uint64_t seed = {});
 
 void load_timetable(source_idx_t, config const&, dir const&, timetable&);
+void load_timetable(source_idx_t,
+                    config const&,
+                    dir const&,
+                    timetable&,
+                    hash_map<bitfield, bitfield_idx_t>&);
 
 }  // namespace nigiri::loader::hrd
