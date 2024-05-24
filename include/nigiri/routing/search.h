@@ -101,9 +101,13 @@ struct search {
         state_.is_destination_,
         state_.dist_to_dest_,
         state_.travel_time_lower_bound_,
-        day_idx_t{std::chrono::duration_cast<date::days>(
-                      search_interval_.from_ - tt_.internal_interval().from_)
-                      .count()},
+        day_idx_t{
+            std::chrono::duration_cast<date::days>(
+                std::chrono::round<std::chrono::days>(
+                    search_interval_.from_ +
+                    ((search_interval_.to_ - search_interval_.from_) / 2)) -
+                tt_.internal_interval().from_)
+                .count()},
         allowed_claszes};
   }
 
