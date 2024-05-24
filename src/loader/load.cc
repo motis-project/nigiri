@@ -32,6 +32,8 @@ timetable load(std::vector<std::filesystem::path> const& paths,
   tt.date_range_ = date_range;
   register_special_stations(tt);
 
+  auto global_bitfield_indices = hash_map<bitfield, bitfield_idx_t>{};
+
   for (auto const [idx, p] : utl::enumerate(paths)) {
     auto const src = source_idx_t{idx};
     auto const dir = make_dir(p);
@@ -39,7 +41,7 @@ timetable load(std::vector<std::filesystem::path> const& paths,
         utl::find_if(loaders, [&](auto&& l) { return l->applicable(*dir); });
     if (loader_it != end(loaders)) {
       log(log_lvl::info, "loader.load", "loading {}", p.string());
-      (*loader_it)->load(c, src, *dir, tt);
+      (*loader_it)->load(c, src, *dir, tt, global_bitfield_indices);
     } else if (!ignore) {
       throw utl::fail("no loader for {} found", p.string());
     } else {

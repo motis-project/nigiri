@@ -10,11 +10,14 @@ bool hrd_loader::applicable(dir const& d) const {
   return nigiri::loader::hrd::applicable(config_, d);
 }
 
-void hrd_loader::load(loader_config const&,
-                      source_idx_t const src,
-                      dir const& d,
-                      timetable& tt) const {
-  return nigiri::loader::hrd::load_timetable(src, config_, d, tt);
+void hrd_loader::load(
+    loader_config const&,
+    source_idx_t const src,
+    dir const& d,
+    timetable& tt,
+    hash_map<bitfield, bitfield_idx_t>& global_bitfield_indices) const {
+  return nigiri::loader::hrd::load_timetable(src, config_, d, tt,
+                                             global_bitfield_indices);
 }
 
 cista::hash_t hrd_loader::hash(dir const& d) const {

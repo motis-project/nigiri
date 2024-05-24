@@ -82,6 +82,15 @@ void load_timetable(loader_config const& config,
                     source_idx_t const src,
                     dir const& d,
                     timetable& tt) {
+  auto local_bitfield_indices = hash_map<bitfield, bitfield_idx_t>{};
+  return load_timetable(config, src, d, tt, local_bitfield_indices);
+}
+
+void load_timetable(loader_config const& config,
+                    source_idx_t const src,
+                    dir const& d,
+                    timetable& tt,
+                    hash_map<bitfield, bitfield_idx_t>& bitfield_indices) {
   nigiri::scoped_timer const global_timer{"gtfs parser"};
 
   auto const load = [&](std::string_view file_name) -> file {
@@ -241,7 +250,6 @@ void load_timetable(loader_config const& config,
 
     auto const timer = scoped_timer{"loader.gtfs.routes.build"};
     auto const attributes = std::basic_string<attribute_combination_idx_t>{};
-    auto bitfield_indices = hash_map<bitfield, bitfield_idx_t>{};
     auto lines = hash_map<std::string, trip_line_idx_t>{};
     auto section_directions = std::basic_string<trip_direction_idx_t>{};
     auto section_lines = std::basic_string<trip_line_idx_t>{};

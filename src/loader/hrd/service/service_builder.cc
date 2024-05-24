@@ -46,8 +46,11 @@ void service_builder::add_service(ref_service&& s) {
   }
 }
 
-service_builder::service_builder(stamm& s, timetable& tt)
-    : stamm_{s}, tt_{tt} {}
+service_builder::service_builder(
+    stamm& s,
+    timetable& tt,
+    hash_map<bitfield, bitfield_idx_t>& bitfield_indices)
+    : stamm_{s}, tt_{tt}, bitfield_indices_(bitfield_indices) {}
 
 void service_builder::add_services(config const& c,
                                    const char* filename,

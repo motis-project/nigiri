@@ -27,7 +27,8 @@ struct loader_interface {
   virtual void load(loader_config const&,
                     source_idx_t,
                     dir const&,
-                    timetable&) const = 0;
+                    timetable&,
+                    hash_map<bitfield, bitfield_idx_t>&) const = 0;
   virtual cista::hash_t hash(dir const&) const = 0;
   virtual std::string_view name() const = 0;
 };
