@@ -28,8 +28,7 @@ struct loader_interface {
                     source_idx_t,
                     dir const&,
                     timetable&,
-                    std::shared_ptr<hash_map<bitfield, bitfield_idx_t>> const&
-                        global_bitfield_indices = nullptr) const = 0;
+                    hash_map<bitfield, bitfield_idx_t>&) const = 0;
   virtual cista::hash_t hash(dir const&) const = 0;
   virtual std::string_view name() const = 0;
 };

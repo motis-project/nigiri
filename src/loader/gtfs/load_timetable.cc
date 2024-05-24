@@ -81,9 +81,16 @@ bool applicable(dir const& d) {
 void load_timetable(loader_config const& config,
                     source_idx_t const src,
                     dir const& d,
+                    timetable& tt) {
+  auto local_bitfield_indices = hash_map<bitfield, bitfield_idx_t>{};
+  return load_timetable(config, src, d, tt, local_bitfield_indices);
+}
+
+void load_timetable(loader_config const& config,
+                    source_idx_t const src,
+                    dir const& d,
                     timetable& tt,
-                    std::shared_ptr<hash_map<bitfield, bitfield_idx_t>>
-                        global_bitfield_indices) {
+                    hash_map<bitfield, bitfield_idx_t>& bitfield_indices) {
   nigiri::scoped_timer const global_timer{"gtfs parser"};
 
   auto const load = [&](std::string_view file_name) -> file {
@@ -243,11 +250,6 @@ void load_timetable(loader_config const& config,
 
     auto const timer = scoped_timer{"loader.gtfs.routes.build"};
     auto const attributes = std::basic_string<attribute_combination_idx_t>{};
-    auto bitfield_indices =
-        global_bitfield_indices != nullptr
-            ? global_bitfield_indices
-            : std::make_shared<hash_map<bitfield, bitfield_idx_t>>(
-                  hash_map<bitfield, bitfield_idx_t>{});
     auto lines = hash_map<std::string, trip_line_idx_t>{};
     auto section_directions = std::basic_string<trip_direction_idx_t>{};
     auto section_lines = std::basic_string<trip_line_idx_t>{};
@@ -312,7 +314,7 @@ void load_timetable(loader_config const& config,
 
           tt.add_transport(timetable::transport{
               .bitfield_idx_ = utl::get_or_create(
-                  *bitfield_indices, s.utc_traffic_days_,
+                  bitfield_indices, s.utc_traffic_days_,
                   [&]() { return tt.register_bitfield(s.utc_traffic_days_); }),
               .route_idx_ = route_idx,
               .first_dep_offset_ = s.first_dep_offset_,

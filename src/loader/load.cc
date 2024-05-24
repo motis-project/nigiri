@@ -32,9 +32,7 @@ timetable load(std::vector<std::filesystem::path> const& paths,
   tt.date_range_ = date_range;
   register_special_stations(tt);
 
-  auto global_bitfield_indices =
-      std::make_shared<hash_map<bitfield, bitfield_idx_t>>(
-          hash_map<bitfield, bitfield_idx_t>{});
+  auto global_bitfield_indices = hash_map<bitfield, bitfield_idx_t>{};
 
   for (auto const [idx, p] : utl::enumerate(paths)) {
     auto const src = source_idx_t{idx};

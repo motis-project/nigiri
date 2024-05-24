@@ -12,8 +12,7 @@ struct hrd_loader : public loader_interface {
             source_idx_t const src,
             dir const& d,
             timetable& tt,
-            std::shared_ptr<hash_map<bitfield, bitfield_idx_t>> const&)
-      const override;
+            hash_map<bitfield, bitfield_idx_t>&) const override;
   cista::hash_t hash(dir const&) const override;
   nigiri::loader::hrd::config config_;
 };

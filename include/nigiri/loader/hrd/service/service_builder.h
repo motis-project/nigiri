@@ -14,10 +14,9 @@
 namespace nigiri::loader::hrd {
 
 struct service_builder {
-  explicit service_builder(
-      stamm&,
-      timetable&,
-      std::shared_ptr<hash_map<bitfield, bitfield_idx_t>> const&);
+  explicit service_builder(stamm&,
+                           timetable&,
+                           hash_map<bitfield, bitfield_idx_t>&);
 
   void add_services(config const& c,
                     char const* filename,
@@ -39,7 +38,7 @@ private:
   service_store store_;
   hash_map<std::basic_string<attribute_idx_t>, attribute_combination_idx_t>
       attribute_combinations_;
-  std::shared_ptr<hash_map<bitfield, bitfield_idx_t>> bitfield_indices_;
+  hash_map<bitfield, bitfield_idx_t>& bitfield_indices_;
   interval<std::chrono::sys_days> selection_;
 
   mutable_fws_multimap<location_idx_t, route_idx_t> location_routes_;

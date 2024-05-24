@@ -49,15 +49,8 @@ void service_builder::add_service(ref_service&& s) {
 service_builder::service_builder(
     stamm& s,
     timetable& tt,
-    std::shared_ptr<hash_map<bitfield, bitfield_idx_t>> const&
-        global_bitfield_indices)
-    : stamm_{s}, tt_{tt} {
-  bitfield_indices_ =
-      global_bitfield_indices != nullptr
-          ? global_bitfield_indices
-          : std::make_shared<hash_map<bitfield, bitfield_idx_t>>(
-                hash_map<bitfield, bitfield_idx_t>{});
-}
+    hash_map<bitfield, bitfield_idx_t>& bitfield_indices)
+    : stamm_{s}, tt_{tt}, bitfield_indices_(bitfield_indices) {}
 
 void service_builder::add_services(config const& c,
                                    const char* filename,
@@ -210,7 +203,7 @@ void service_builder::write_services(source_idx_t const src) {
           auto const merged_trip = tt_.register_merged_trip({id});
           tt_.add_transport(timetable::transport{
               .bitfield_idx_ = utl::get_or_create(
-                  *bitfield_indices_, s.utc_traffic_days_,
+                  bitfield_indices_, s.utc_traffic_days_,
                   [&]() { return tt_.register_bitfield(s.utc_traffic_days_); }),
               .route_idx_ = route_idx,
               .first_dep_offset_ = 0_minutes,
