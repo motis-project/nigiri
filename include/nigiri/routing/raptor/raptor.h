@@ -635,7 +635,7 @@ private:
     if constexpr (Rt) {
       return rtt_->bitfields_[rtt_->transport_traffic_days_[t]].test(day);
     } else {
-      return tt_.bitfields_[tt_.transport_traffic_days_[t]].test(day);
+      return tt_.day_bits_[day].test(tt_.transport_traffic_days_[t].v_);
     }
   }
 

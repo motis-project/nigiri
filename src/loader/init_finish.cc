@@ -4,6 +4,7 @@
 
 #include "nigiri/loader/build_footpaths.h"
 #include "nigiri/loader/build_lb_graph.h"
+#include "nigiri/loader/transpose_bitfields.h"
 #include "nigiri/special_stations.h"
 #include "nigiri/timetable.h"
 
@@ -50,6 +51,7 @@ void finalize(timetable& tt,
   build_footpaths(tt, adjust_footpaths, merge_duplicates, max_footpath_length);
   build_lb_graph<direction::kForward>(tt);
   build_lb_graph<direction::kBackward>(tt);
+  transpose_bitfields(tt);
 }
 
 }  // namespace nigiri::loader
