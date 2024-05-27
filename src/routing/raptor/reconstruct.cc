@@ -371,11 +371,24 @@ void reconstruct_journey(timetable const& tt,
     trace_reconstruct("CHECKING FOOTPATHS OF {}\n", location{tt, l});
     auto const footpaths = kFwd ? tt.locations_.footpaths_in_[q.prf_idx_][l]
                                 : tt.locations_.footpaths_out_[q.prf_idx_][l];
+    auto fp_legs_best =
+        std::optional<std::pair<journey::leg, journey::leg>>{std::nullopt};
     for (auto const& fp : footpaths) {
       auto fp_legs = check_fp(k, l, curr_time, fp);
       if (fp_legs.has_value()) {
-        return std::move(*fp_legs);
+        if (fp_legs_best.has_value()) {
+          if (get<footpath>(fp_legs.value().first.uses_).duration() <
+              get<footpath>(fp_legs_best.value().first.uses_).duration()) {
+            fp_legs_best = fp_legs;
+          }
+        } else {
+          fp_legs_best = fp_legs;
+        }
       }
+    }
+
+    if (fp_legs_best.has_value()) {
+      return std::move(*fp_legs_best);
     }
 
     throw utl::fail("reconstruction failed at k={}, t={}, stop={}, time={}", k,
