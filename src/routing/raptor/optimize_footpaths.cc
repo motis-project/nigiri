@@ -46,6 +46,45 @@ void optimize_start(timetable const& tt, query const& q, journey& j) {
   }
 }
 
+void optimize_end(timetable const& tt, query const& q, journey& j) {
+  if (j.legs_.size() <= 1 || !holds_alternative<offset>(j.legs_.back().uses_) ||
+      !holds_alternative<journey::run_enter_exit>(rbegin(j.legs_)[1].uses_)) {
+    return;
+  }
+  auto& offset_leg = j.legs_.back();
+  auto& transport_leg = rbegin(j.legs_)[1];
+  auto& ree = get<journey::run_enter_exit>(transport_leg.uses_);
+  auto offset_dur_best = get<offset>(offset_leg.uses_).duration();
+  for (auto const& o : q.destination_) {
+    if (offset_dur_best <= o.duration()) {
+      continue;
+    }
+    auto const stop_seq =
+        tt.route_location_seq_[tt.transport_route_[ree.r_.t_.t_idx_]];
+    for (auto stop_idx = static_cast<stop_idx_t>(ree.stop_range_.from_ + 1U);
+         stop_idx != stop_seq.size(); ++stop_idx) {
+      auto stp = stop{stop_seq[stop_idx]};
+      if (!stp.out_allowed() || !matches(tt, location_match_mode::kEquivalent,
+                                         o.target(), stp.location_idx())) {
+        continue;
+      }
+      auto const arr = tt.event_time(ree.r_.t_, stop_idx, event_type::kArr);
+      auto const o_end = arr + o.duration();
+      if (o_end <= offset_leg.arr_time_) {
+        offset_leg.from_ = stp.location_idx();
+        offset_leg.dep_time_ = arr;
+        offset_leg.arr_time_ = o_end;
+        offset_leg.uses_ = o;
+        transport_leg.to_ = stp.location_idx();
+        transport_leg.arr_time_ = arr;
+        ree.stop_range_.to_ = stop_idx;
+        ree.r_.stop_range_.to_ = stop_idx;
+        offset_dur_best = o.duration();
+      }
+    }
+  }
+}
+
 void optimize_transfers(timetable const& tt, query const& q, journey& j) {
   for (auto i = 0U; i != j.legs_.size(); ++i) {
     auto& leg = j.legs_[i];
@@ -113,9 +152,7 @@ void optimize_transfers(timetable const& tt, query const& q, journey& j) {
 
 void optimize_footpaths(timetable const& tt, query const& q, journey& j) {
   optimize_start(tt, q, j);
-
-  // optimize end
-
+  optimize_end(tt, q, j);
   optimize_transfers(tt, q, j);
 }
 
