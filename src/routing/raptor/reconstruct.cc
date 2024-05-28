@@ -418,7 +418,7 @@ void reconstruct_journey(timetable const& tt,
     std::reverse(begin(j.legs_), end(j.legs_));
   }
 
-  optimize_footpaths(tt, rtt, q, raptor_state, j, base, base_day_idx);
+  optimize_footpaths(tt, q, j);
 
 #if defined(NIGIRI_TRACE_RECUSTRUCT)
   j.print(std::cout, tt, true);
