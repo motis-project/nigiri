@@ -315,14 +315,18 @@ void reconstruct_journey(timetable const& tt,
     if (q.dest_match_mode_ == location_match_mode::kIntermodal &&
         k == j.transfers_ + 1U) {
       trace_reconstruct("  CHECKING INTERMODAL DEST\n");
+      std::optional<std::pair<journey::leg, journey::leg>> ret;
       for (auto const& dest_offset : q.destination_) {
-        std::optional<std::pair<journey::leg, journey::leg>> ret;
         for_each_meta(
             tt, location_match_mode::kIntermodal, dest_offset.target_,
             [&](location_idx_t const eq) {
               auto intermodal_dest =
                   check_fp(k, l, curr_time, {eq, dest_offset.duration_});
-              if (intermodal_dest.has_value()) {
+              if (intermodal_dest.has_value() &&
+                  (!ret.has_value() ||
+                   get<footpath>(intermodal_dest.value().first.uses_)
+                           .duration() <
+                       get<offset>(ret.value().first.uses_).duration())) {
                 trace_rc_intermodal_dest_match;
                 intermodal_dest->first.uses_ = offset{
                     eq, dest_offset.duration_, dest_offset.transport_mode_id_};
@@ -337,7 +341,11 @@ void reconstruct_journey(timetable const& tt,
                 auto fp_intermodal_dest = check_fp(
                     k, l, curr_time,
                     {fp.target(), dest_offset.duration_ + fp.duration()});
-                if (fp_intermodal_dest.has_value()) {
+                if (fp_intermodal_dest.has_value() &&
+                    (!ret.has_value() ||
+                     get<footpath>(fp_intermodal_dest.value().first.uses_)
+                             .duration() <
+                         get<offset>(ret.value().first.uses_).duration())) {
                   trace_rc_fp_intermodal_dest_match;
                   fp_intermodal_dest->first.uses_ =
                       offset{eq, fp.duration(), dest_offset.transport_mode_id_};
@@ -347,9 +355,9 @@ void reconstruct_journey(timetable const& tt,
                 }
               }
             });
-        if (ret.has_value()) {
-          return std::move(*ret);
-        }
+      }
+      if (ret.has_value()) {
+        return std::move(*ret);
       }
 
       throw utl::fail(
