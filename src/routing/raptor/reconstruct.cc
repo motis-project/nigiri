@@ -383,15 +383,11 @@ void reconstruct_journey(timetable const& tt,
         std::optional<std::pair<journey::leg, journey::leg>>{std::nullopt};
     for (auto const& fp : footpaths) {
       auto fp_legs = check_fp(k, l, curr_time, fp);
-      if (fp_legs.has_value()) {
-        if (fp_legs_best.has_value()) {
-          if (get<footpath>(fp_legs.value().first.uses_).duration() <
-              get<footpath>(fp_legs_best.value().first.uses_).duration()) {
-            fp_legs_best = fp_legs;
-          }
-        } else {
-          fp_legs_best = fp_legs;
-        }
+      if (fp_legs.has_value() &&
+          (!fp_legs_best.has_value() ||
+           get<footpath>(fp_legs.value().first.uses_).duration() <
+               get<footpath>(fp_legs_best.value().first.uses_).duration())) {
+        fp_legs_best = std::move(fp_legs);
       }
     }
 
