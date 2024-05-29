@@ -77,8 +77,8 @@ void optimize_end(timetable const& tt, query const& q, journey& j) {
         offset_leg.uses_ = o;
         transport_leg.to_ = stp.location_idx();
         transport_leg.arr_time_ = arr;
-        ree.stop_range_.to_ = stop_idx;
-        ree.r_.stop_range_.to_ = stop_idx;
+        ree.stop_range_.to_ = stop_idx + 1U;
+        ree.r_.stop_range_.to_ = stop_idx + 1U;
         offset_dur_best = o.duration();
       }
     }
@@ -103,8 +103,8 @@ void optimize_transfers(timetable const& tt, query const& q, journey& j) {
       auto& ree_transfer = get<journey::run_enter_exit>(leg_transfer.uses_);
       auto const stop_seq =
           tt.route_location_seq_[tt.transport_route_[ree.r_.t_.t_idx_]];
-      for (auto stop_idx = stop_idx_t{0U}; stop_idx != stop_seq.size();
-           ++stop_idx) {
+      for (auto stop_idx = static_cast<stop_idx_t>(ree.stop_range_.from_ + 1U);
+           stop_idx != stop_seq.size(); ++stop_idx) {
         auto const stp = stop{stop_seq[stop_idx]};
         if (!stp.out_allowed()) {
           continue;
@@ -119,7 +119,7 @@ void optimize_transfers(timetable const& tt, query const& q, journey& j) {
               tt.route_location_seq_
                   [tt.transport_route_[ree_transfer.r_.t_.t_idx_]];
           for (auto stop_idx_transfer = stop_idx_t{0U};
-               stop_idx_transfer != ree_transfer.stop_range_.to_;
+               stop_idx_transfer != ree_transfer.stop_range_.to_ - 1U;
                ++stop_idx_transfer) {
             auto const stp_transfer =
                 stop{stop_seq_transfer[stop_idx_transfer]};
@@ -135,8 +135,8 @@ void optimize_transfers(timetable const& tt, query const& q, journey& j) {
             if (arr + fp.duration() <= dep) {
               leg.to_ = stp.location_idx();
               leg.arr_time_ = arr;
-              ree.stop_range_.to_ = stop_idx;
-              ree.r_.stop_range_.to_ = stop_idx;
+              ree.stop_range_.to_ = stop_idx + 1U;
+              ree.r_.stop_range_.to_ = stop_idx + 1U;
               leg_transfer.from_ = stp_transfer.location_idx();
               leg_transfer.dep_time_ = dep;
               ree_transfer.stop_range_.from_ = stop_idx_transfer;
