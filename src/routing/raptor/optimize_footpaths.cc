@@ -92,7 +92,9 @@ void optimize_transfers(timetable const& tt, query const& q, journey& j) {
       continue;
     }
     if (i + 2 < j.legs_.size() &&
+        holds_alternative<footpath>(j.legs_[i + 1].uses_) &&
         holds_alternative<journey::run_enter_exit>(j.legs_[i + 2].uses_)) {
+      auto& leg_footpath = j.legs_[i + 1];
       auto& leg_transfer = j.legs_[i + 2];
       if (matches(tt, location_match_mode::kEquivalent, leg.to_,
                   leg_transfer.from_)) {
@@ -130,19 +132,26 @@ void optimize_transfers(timetable const& tt, query const& q, journey& j) {
             }
             auto const arr =
                 tt.event_time(ree.r_.t_, stop_idx, event_type::kArr);
+            auto const arr_fp = arr + fp.duration();
             auto const dep = tt.event_time(ree_transfer.r_.t_,
                                            stop_idx_transfer, event_type::kDep);
-            if (arr + fp.duration() <= dep) {
+            if (arr_fp <= dep) {
               leg.to_ = stp.location_idx();
               leg.arr_time_ = arr;
               ree.stop_range_.to_ = stop_idx + 1U;
               ree.r_.stop_range_.to_ = stop_idx + 1U;
+              leg_footpath.from_ = stp.location_idx();
+              leg_footpath.to_ = stp_transfer.location_idx();
+              leg_footpath.dep_time_ = arr;
+              leg_footpath.arr_time_ = arr_fp;
+              leg_footpath.uses_ = fp;
               leg_transfer.from_ = stp_transfer.location_idx();
               leg_transfer.dep_time_ = dep;
               ree_transfer.stop_range_.from_ = stop_idx_transfer;
               ree_transfer.r_.stop_range_.from_ = stop_idx_transfer;
               fp_dur_best = fp.duration();
             }
+            break;
           }
         }
       }
