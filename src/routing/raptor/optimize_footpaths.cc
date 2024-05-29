@@ -22,10 +22,10 @@ void optimize_start(timetable const& tt, query const& q, journey& j) {
     }
     auto const stop_seq =
         tt.route_location_seq_[tt.transport_route_[ree.r_.t_.t_idx_]];
-    for (auto stop_idx = stop_idx_t{0U}; stop_idx != ree.stop_range_.to_;
+    for (auto stop_idx = stop_idx_t{0U}; stop_idx != ree.stop_range_.to_ - 1U;
          ++stop_idx) {
       auto stp = stop{stop_seq[stop_idx]};
-      if (!stp.in_allowed() || !matches(tt, location_match_mode::kEquivalent,
+      if (!stp.in_allowed() || !matches(tt, location_match_mode::kExact,
                                         o.target(), stp.location_idx())) {
         continue;
       }
@@ -64,7 +64,7 @@ void optimize_end(timetable const& tt, query const& q, journey& j) {
     for (auto stop_idx = static_cast<stop_idx_t>(ree.stop_range_.from_ + 1U);
          stop_idx != stop_seq.size(); ++stop_idx) {
       auto stp = stop{stop_seq[stop_idx]};
-      if (!stp.out_allowed() || !matches(tt, location_match_mode::kEquivalent,
+      if (!stp.out_allowed() || !matches(tt, location_match_mode::kExact,
                                          o.target(), stp.location_idx())) {
         continue;
       }
