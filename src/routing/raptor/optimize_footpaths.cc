@@ -124,7 +124,7 @@ void optimize_transfers(timetable const& tt, query const& q, journey& j) {
             auto const stp_transfer =
                 stop{stop_seq_transfer[stop_idx_transfer]};
             if (!stp_transfer.in_allowed() ||
-                !matches(tt, location_match_mode::kEquivalent, fp.target(),
+                !matches(tt, location_match_mode::kExact, fp.target(),
                          stp_transfer.location_idx())) {
               continue;
             }
