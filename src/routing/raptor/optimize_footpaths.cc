@@ -39,7 +39,6 @@ void optimize_start(timetable const& tt, query const& q, journey& j) {
         transport_leg.from_ = stp.location_idx();
         transport_leg.dep_time_ = dep;
         ree.stop_range_.from_ = stop_idx;
-        ree.r_.stop_range_.from_ = stop_idx;
         offset_dur_best = o.duration();
       }
     }
@@ -78,7 +77,6 @@ void optimize_end(timetable const& tt, query const& q, journey& j) {
         transport_leg.to_ = stp.location_idx();
         transport_leg.arr_time_ = arr;
         ree.stop_range_.to_ = stop_idx + 1U;
-        ree.r_.stop_range_.to_ = stop_idx + 1U;
         offset_dur_best = o.duration();
       }
     }
@@ -130,22 +128,10 @@ void optimize_transfers(timetable const& tt, query const& q, journey& j) {
           auto const arr_fp = arr + fp.duration();
           auto const dep = tt.event_time(ree_transfer.r_.t_, stop_idx_transfer,
                                          event_type::kDep);
-          std::cout
-              << "Found possible transfer optimization: "
-              << std::string_view{begin(tt.locations_.ids_[stp.location_idx()]),
-                                  end(tt.locations_.ids_[stp.location_idx()])}
-              << " --> "
-              << std::string_view{begin(tt.locations_
-                                            .ids_[stp_transfer.location_idx()]),
-                                  end(tt.locations_
-                                          .ids_[stp_transfer.location_idx()])}
-              << " arr: " << arr << ", arr_fp: " << arr_fp << ", dep: " << dep;
           if (arr_fp <= dep) {
-            std::cout << " | connection reached, using improved transfer\n";
             leg.to_ = stp.location_idx();
             leg.arr_time_ = arr;
             ree.stop_range_.to_ = stop_idx + 1U;
-            ree.r_.stop_range_.to_ = stop_idx + 1U;
             leg_footpath.from_ = stp.location_idx();
             leg_footpath.to_ = stp_transfer.location_idx();
             leg_footpath.dep_time_ = arr;
@@ -154,10 +140,7 @@ void optimize_transfers(timetable const& tt, query const& q, journey& j) {
             leg_transfer.from_ = stp_transfer.location_idx();
             leg_transfer.dep_time_ = dep;
             ree_transfer.stop_range_.from_ = stop_idx_transfer;
-            ree_transfer.r_.stop_range_.from_ = stop_idx_transfer;
             fp_dur_best = fp.duration();
-          } else {
-            std::cout << " | connection not reached\n";
           }
           break;
         }
