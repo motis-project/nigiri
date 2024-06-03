@@ -86,73 +86,80 @@ void optimize_end(timetable const& tt, query const& q, journey& j) {
 }
 
 void optimize_transfers(timetable const& tt, query const& q, journey& j) {
-  for (auto i = 0U; i != j.legs_.size(); ++i) {
+  for (auto i = 0U; i + 2 < j.legs_.size(); ++i) {
     auto& leg = j.legs_[i];
-    if (!holds_alternative<journey::run_enter_exit>(leg.uses_)) {
+    auto& leg_footpath = j.legs_[i + 1];
+    auto& leg_transfer = j.legs_[i + 2];
+    if (!holds_alternative<journey::run_enter_exit>(leg.uses_) ||
+        !holds_alternative<footpath>(j.legs_[i + 1].uses_) ||
+        !holds_alternative<journey::run_enter_exit>(j.legs_[i + 2].uses_) ||
+        matches(tt, location_match_mode::kEquivalent, leg.to_,
+                leg_transfer.from_)) {
       continue;
     }
-    if (i + 2 < j.legs_.size() &&
-        holds_alternative<footpath>(j.legs_[i + 1].uses_) &&
-        holds_alternative<journey::run_enter_exit>(j.legs_[i + 2].uses_)) {
-      auto& leg_footpath = j.legs_[i + 1];
-      auto& leg_transfer = j.legs_[i + 2];
-      if (matches(tt, location_match_mode::kEquivalent, leg.to_,
-                  leg_transfer.from_)) {
+    auto fp_dur_best = get<footpath>(leg_footpath.uses_).duration();
+    auto& ree = get<journey::run_enter_exit>(leg.uses_);
+    auto& ree_transfer = get<journey::run_enter_exit>(leg_transfer.uses_);
+    auto const stop_seq =
+        tt.route_location_seq_[tt.transport_route_[ree.r_.t_.t_idx_]];
+    for (auto stop_idx = static_cast<stop_idx_t>(ree.stop_range_.from_ + 1U);
+         stop_idx != stop_seq.size(); ++stop_idx) {
+      auto const stp = stop{stop_seq[stop_idx]};
+      if (!stp.out_allowed()) {
         continue;
       }
-      auto fp_dur_best = get<footpath>(j.legs_[i + 1].uses_).duration();
-      auto& ree = get<journey::run_enter_exit>(leg.uses_);
-      auto& ree_transfer = get<journey::run_enter_exit>(leg_transfer.uses_);
-      auto const stop_seq =
-          tt.route_location_seq_[tt.transport_route_[ree.r_.t_.t_idx_]];
-      for (auto stop_idx = static_cast<stop_idx_t>(ree.stop_range_.from_ + 1U);
-           stop_idx != stop_seq.size(); ++stop_idx) {
-        auto const stp = stop{stop_seq[stop_idx]};
-        if (!stp.out_allowed()) {
+      auto const footpaths =
+          tt.locations_.footpaths_out_[q.prf_idx_][stp.location_idx()];
+      for (auto const& fp : footpaths) {
+        if (fp.duration() >= fp_dur_best) {
           continue;
         }
-        auto const footpaths =
-            tt.locations_.footpaths_out_[q.prf_idx_][stp.location_idx()];
-        for (auto const& fp : footpaths) {
-          if (fp.duration() >= fp_dur_best) {
+        auto const stop_seq_transfer =
+            tt.route_location_seq_
+                [tt.transport_route_[ree_transfer.r_.t_.t_idx_]];
+        for (auto stop_idx_transfer = stop_idx_t{0U};
+             stop_idx_transfer != ree_transfer.stop_range_.to_ - 1U;
+             ++stop_idx_transfer) {
+          auto const stp_transfer = stop{stop_seq_transfer[stop_idx_transfer]};
+          if (!stp_transfer.in_allowed() ||
+              !matches(tt, location_match_mode::kExact, fp.target(),
+                       stp_transfer.location_idx())) {
             continue;
           }
-          auto const stop_seq_transfer =
-              tt.route_location_seq_
-                  [tt.transport_route_[ree_transfer.r_.t_.t_idx_]];
-          for (auto stop_idx_transfer = stop_idx_t{0U};
-               stop_idx_transfer != ree_transfer.stop_range_.to_ - 1U;
-               ++stop_idx_transfer) {
-            auto const stp_transfer =
-                stop{stop_seq_transfer[stop_idx_transfer]};
-            if (!stp_transfer.in_allowed() ||
-                !matches(tt, location_match_mode::kExact, fp.target(),
-                         stp_transfer.location_idx())) {
-              continue;
-            }
-            auto const arr =
-                tt.event_time(ree.r_.t_, stop_idx, event_type::kArr);
-            auto const arr_fp = arr + fp.duration();
-            auto const dep = tt.event_time(ree_transfer.r_.t_,
-                                           stop_idx_transfer, event_type::kDep);
-            if (arr_fp <= dep) {
-              leg.to_ = stp.location_idx();
-              leg.arr_time_ = arr;
-              ree.stop_range_.to_ = stop_idx + 1U;
-              ree.r_.stop_range_.to_ = stop_idx + 1U;
-              leg_footpath.from_ = stp.location_idx();
-              leg_footpath.to_ = stp_transfer.location_idx();
-              leg_footpath.dep_time_ = arr;
-              leg_footpath.arr_time_ = arr_fp;
-              leg_footpath.uses_ = fp;
-              leg_transfer.from_ = stp_transfer.location_idx();
-              leg_transfer.dep_time_ = dep;
-              ree_transfer.stop_range_.from_ = stop_idx_transfer;
-              ree_transfer.r_.stop_range_.from_ = stop_idx_transfer;
-              fp_dur_best = fp.duration();
-            }
-            break;
+          auto const arr = tt.event_time(ree.r_.t_, stop_idx, event_type::kArr);
+          auto const arr_fp = arr + fp.duration();
+          auto const dep = tt.event_time(ree_transfer.r_.t_, stop_idx_transfer,
+                                         event_type::kDep);
+          std::cout
+              << "Found possible transfer optimization: "
+              << std::string_view{begin(tt.locations_.ids_[stp.location_idx()]),
+                                  end(tt.locations_.ids_[stp.location_idx()])}
+              << " --> "
+              << std::string_view{begin(tt.locations_
+                                            .ids_[stp_transfer.location_idx()]),
+                                  end(tt.locations_
+                                          .ids_[stp_transfer.location_idx()])}
+              << " arr: " << arr << ", arr_fp: " << arr_fp << ", dep: " << dep;
+          if (arr_fp <= dep) {
+            std::cout << " | connection reached, using improved transfer\n";
+            leg.to_ = stp.location_idx();
+            leg.arr_time_ = arr;
+            ree.stop_range_.to_ = stop_idx + 1U;
+            ree.r_.stop_range_.to_ = stop_idx + 1U;
+            leg_footpath.from_ = stp.location_idx();
+            leg_footpath.to_ = stp_transfer.location_idx();
+            leg_footpath.dep_time_ = arr;
+            leg_footpath.arr_time_ = arr_fp;
+            leg_footpath.uses_ = fp;
+            leg_transfer.from_ = stp_transfer.location_idx();
+            leg_transfer.dep_time_ = dep;
+            ree_transfer.stop_range_.from_ = stop_idx_transfer;
+            ree_transfer.r_.stop_range_.from_ = stop_idx_transfer;
+            fp_dur_best = fp.duration();
+          } else {
+            std::cout << " | connection not reached\n";
           }
+          break;
         }
       }
     }
