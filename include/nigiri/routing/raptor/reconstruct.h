@@ -23,6 +23,9 @@ void reconstruct_journey(timetable const&,
                          date::sys_days const base,
                          day_idx_t const base_day_idx);
 
-void optimize_footpaths(timetable const&, query const&, journey&);
+void optimize_footpaths(timetable const&,
+                        rt_timetable const*,
+                        query const&,
+                        journey&);
 
 }  // namespace nigiri::routing
