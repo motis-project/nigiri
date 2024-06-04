@@ -15,6 +15,9 @@
 #include "nigiri/timetable.h"
 #include "nigiri/types.h"
 
+#include <sys/resource.h>
+#include <sys/time.h>
+
 using namespace nigiri;
 using namespace nigiri::routing;
 
@@ -425,5 +428,9 @@ int main(int argc, char* argv[]) {
   });
   print_results(results, "#journeys");
 
+  auto r = rusage{};
+  auto rusage = getrusage(RUSAGE_SELF, &r);
+  std::cout << "\nrusage.ru_maxrss: "
+            << static_cast<double>(r.ru_maxrss) / (1024 * 1024) << " GiB\n";
   return 0;
 }
