@@ -19,7 +19,6 @@
 #include "nigiri/logging.h"
 #include "nigiri/stop.h"
 #include "nigiri/types.h"
-#include "day_bits.h"
 
 namespace nigiri {
 
