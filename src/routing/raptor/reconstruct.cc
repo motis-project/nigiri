@@ -233,6 +233,11 @@ void reconstruct_journey(timetable const& tt,
 
     if (rtt != nullptr) {
       for (auto const& rt_t : rtt->location_rt_transports_[l]) {
+        if (!is_allowed(q.allowed_claszes_,
+                        rtt->rt_transport_section_clasz_[rt_t][0])) {
+          continue;
+        }
+
         auto const location_seq = rtt->rt_transport_location_seq_[rt_t];
         for (auto const [i, s] : utl::enumerate(location_seq)) {
           auto const stp = stop{s};
@@ -258,6 +263,10 @@ void reconstruct_journey(timetable const& tt,
     }
 
     for (auto const& r : tt.location_routes_[l]) {
+      if (!is_allowed(q.allowed_claszes_, tt.route_clasz_[r])) {
+        continue;
+      }
+
       auto const location_seq = tt.route_location_seq_[r];
       for (auto const [i, s] : utl::enumerate(location_seq)) {
         auto const stp = stop{s};

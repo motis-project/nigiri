@@ -237,7 +237,7 @@ void connect_components(timetable& tt,
   auto tasks = std::vector<task>{};
   for (auto const& c : components) {
     for (auto i = 0U; i != c.size(); ++i) {
-      tasks.emplace_back(task{.c_ = &c, .idx_ = i, .results_ = {}});
+      tasks.push_back(task{.c_ = &c, .idx_ = i, .results_ = {}});
     }
   }
 

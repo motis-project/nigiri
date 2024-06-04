@@ -202,9 +202,10 @@ clasz get_clasz(std::string_view s) {
     case hash("Aufzug"):
     case hash("Elevator"): [[fallthrough]];
     case hash("ASC"): return clasz::kOther;
+    default:
+      log(log_lvl::error, "loader.hrd.clasz", "cannot assign {}", s);
+      return clasz::kOther;
   }
-  log(log_lvl::error, "loader.hrd.clasz", "cannot assign {}", s);
-  return clasz::kOther;
 }
 
 }  // namespace nigiri

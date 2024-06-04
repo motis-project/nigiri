@@ -9,6 +9,7 @@
 #include "nigiri/routing/dijkstra.h"
 #include "nigiri/routing/for_each_meta.h"
 #include "nigiri/routing/get_fastest_direct.h"
+#include "nigiri/routing/interval_estimate.h"
 #include "nigiri/routing/journey.h"
 #include "nigiri/routing/pareto_set.h"
 #include "nigiri/routing/query.h"
@@ -100,9 +101,13 @@ struct search {
         state_.is_destination_,
         state_.dist_to_dest_,
         state_.travel_time_lower_bound_,
-        day_idx_t{std::chrono::duration_cast<date::days>(
-                      search_interval_.from_ - tt_.internal_interval().from_)
-                      .count()},
+        day_idx_t{
+            std::chrono::duration_cast<date::days>(
+                std::chrono::round<std::chrono::days>(
+                    search_interval_.from_ +
+                    ((search_interval_.to_ - search_interval_.from_) / 2)) -
+                tt_.internal_interval().from_)
+                .count()},
         allowed_claszes};
   }
 
@@ -136,8 +141,15 @@ struct search {
       return {&state_.results_, search_interval_, stats_, algo_.get_stats()};
     }
 
+    auto const itv_est = interval_estimator<SearchDir>{tt_, q_};
+    search_interval_ = itv_est.initial(search_interval_);
+
     state_.starts_.clear();
-    add_start_labels(q_.start_time_, true);
+    if (search_interval_.size() != 0_minutes) {
+      add_start_labels(search_interval_, true);
+    } else {
+      add_start_labels(q_.start_time_, true);
+    }
 
     auto const processing_start_time = std::chrono::system_clock::now();
     auto const is_timeout_reached = [&]() {
@@ -154,16 +166,14 @@ struct search {
 
       search_interval();
 
-      if (is_ontrip() || max_interval_reached() ||
-          n_results_in_interval() >= q_.min_connection_count_ ||
+      if (is_ontrip() || n_results_in_interval() >= q_.min_connection_count_ ||
           is_timeout_reached()) {
         trace(
-            "  finished: is_ontrip={}, max_interval_reached={}, "
+            "  finished: is_ontrip={}, "
             "extend_earlier={}, extend_later={}, initial={}, interval={}, "
             "timetable={}, number_of_results_in_interval={}, "
             "timeout_reached={}\n",
-            is_ontrip(), max_interval_reached(), q_.extend_interval_earlier_,
-            q_.extend_interval_later_,
+            is_ontrip(), q_.extend_interval_earlier_, q_.extend_interval_later_,
             std::visit(
                 utl::overloaded{
                     [](interval<unixtime_t> const& start_interval) {
@@ -178,11 +188,10 @@ struct search {
         break;
       } else {
         trace(
-            "  continue: max_interval_reached={}, extend_earlier={}, "
+            "  continue: extend_earlier={}, "
             "extend_later={}, initial={}, interval={}, timetable={}, "
             "number_of_results_in_interval={}\n",
-            max_interval_reached(), q_.extend_interval_earlier_,
-            q_.extend_interval_later_,
+            q_.extend_interval_earlier_, q_.extend_interval_later_,
             std::visit(
                 utl::overloaded{
                     [](interval<unixtime_t> const& start_interval) {
@@ -197,14 +206,14 @@ struct search {
 
       state_.starts_.clear();
 
-      auto const new_interval = interval{
-          q_.extend_interval_earlier_ ? tt_.external_interval().clamp(
-                                            search_interval_.from_ - 60_minutes)
-                                      : search_interval_.from_,
-          q_.extend_interval_later_
-              ? tt_.external_interval().clamp(search_interval_.to_ + 60_minutes)
-              : search_interval_.to_};
+      auto const new_interval = itv_est.extension(
+          search_interval_, q_.min_connection_count_ - n_results_in_interval());
       trace("interval adapted: {} -> {}\n", search_interval_, new_interval);
+
+      if (new_interval == search_interval_) {
+        trace("maximum interval searched: {}\n", search_interval_);
+        break;
+      }
 
       if (new_interval.from_ != search_interval_.from_) {
         add_start_labels(interval{new_interval.from_, search_interval_.from_},
@@ -304,9 +313,13 @@ private:
 
   void add_start_labels(start_time_t const& start_interval,
                         bool const add_ontrip) {
+    state_.starts_.reserve(500'000);
     get_starts(SearchDir, tt_, rtt_, start_interval, q_.start_,
                q_.start_match_mode_, q_.use_start_footpaths_, state_.starts_,
                add_ontrip, q_.prf_idx_);
+    std::sort(
+        begin(state_.starts_), end(state_.starts_),
+        [&](start const& a, start const& b) { return kFwd ? b < a : a < b; });
   }
 
   void remove_ontrip_results() {

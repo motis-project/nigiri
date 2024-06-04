@@ -18,20 +18,6 @@ void trace_start(char const* fmt_str, Args... args) {
   }
 }
 
-template <typename Collection, typename Less>
-std::pair<typename Collection::iterator, bool> insert_sorted(
-    Collection& v, typename Collection::value_type el, Less&& less) {
-  using std::begin;
-  using std::end;
-  auto const it =
-      std::lower_bound(begin(v), end(v), el, std::forward<Less>(less));
-  if (it == std::end(v) || *it != el) {
-    return {v.insert(it, std::move(el)), true};
-  }
-  return {it, false};
-}
-
-template <typename Less>
 void add_start_times_at_stop(direction const search_dir,
                              timetable const& tt,
                              rt_timetable const* rtt,
@@ -40,8 +26,7 @@ void add_start_times_at_stop(direction const search_dir,
                              location_idx_t const location_idx,
                              interval<unixtime_t> const& interval_with_offset,
                              duration_t const offset,
-                             std::vector<start>& starts,
-                             Less&& less) {
+                             std::vector<start>& starts) {
   auto const first_day_idx = tt.day_idx_mam(interval_with_offset.from_).first;
   auto const last_day_idx = tt.day_idx_mam(interval_with_offset.to_).first;
   trace_start(
@@ -71,18 +56,16 @@ void add_start_times_at_stop(direction const search_dir,
       if (traffic_days.test(to_idx(day - day_offset)) &&
           interval_with_offset.contains(tt.to_unixtime(day, stop_time_mam))) {
         auto const ev_time = tt.to_unixtime(day, stop_time_mam);
-        auto const [it, inserted] = insert_sorted(
-            starts,
+        auto const& s = starts.emplace_back(
             start{.time_at_start_ = search_dir == direction::kForward
                                         ? ev_time - offset
                                         : ev_time + offset,
                   .time_at_stop_ = ev_time,
-                  .stop_ = location_idx},
-            std::forward<Less>(less));
+                  .stop_ = location_idx});
         trace_start(
             "        => ADD START: time_at_start={}, time_at_stop={}, "
             "stop={}\n",
-            it->time_at_start_, it->time_at_stop_,
+            s.time_at_start_, s.time_at_stop_,
             location{tt, starts.back().stop_});
       } else {
         trace_start(
@@ -98,7 +81,6 @@ void add_start_times_at_stop(direction const search_dir,
   }
 }
 
-template <typename Less>
 void add_starts_in_interval(direction const search_dir,
                             timetable const& tt,
                             rt_timetable const* rtt,
@@ -106,8 +88,7 @@ void add_starts_in_interval(direction const search_dir,
                             location_idx_t const l,
                             duration_t const d,
                             std::vector<start>& starts,
-                            bool const add_ontrip,
-                            Less&& cmp) {
+                            bool const add_ontrip) {
   trace_start(
       "    add_starts_in_interval(interval={}, stop={}, duration={}): {} "
       "routes\n",
@@ -145,7 +126,7 @@ void add_starts_in_interval(direction const search_dir,
           search_dir, tt, rtt, r, static_cast<stop_idx_t>(i),
           stop{s}.location_idx(),
           search_dir == direction::kForward ? interval + d : interval - d, d,
-          starts, std::forward<Less>(cmp));
+          starts);
     }
   }
 
@@ -172,18 +153,15 @@ void add_starts_in_interval(direction const search_dir,
             rt_t, static_cast<stop_idx_t>(i),
             (search_dir == direction::kForward ? event_type::kDep
                                                : event_type::kArr));
-        auto const [it, inserted] = insert_sorted(
-            starts,
-            start{.time_at_start_ = search_dir == direction::kForward
-                                        ? ev_time - d
-                                        : ev_time + d,
-                  .time_at_stop_ = ev_time,
-                  .stop_ = l},
-            std::forward<Less>(cmp));
+        auto const& inserted = starts.emplace_back(start{
+            .time_at_start_ =
+                search_dir == direction::kForward ? ev_time - d : ev_time + d,
+            .time_at_stop_ = ev_time,
+            .stop_ = l});
         trace_start(
             "        => ADD RT START: time_at_start={}, time_at_stop={}, "
             "stop={}\n",
-            it->time_at_start_, it->time_at_stop_,
+            inserted.time_at_start_, inserted.time_at_stop_,
             location{tt, starts.back().stop_});
       }
     }
@@ -195,15 +173,14 @@ void add_starts_in_interval(direction const search_dir,
   // departs later and arrives at the same time). These journeys outside the
   // interval will be filtered out before returning the result.
   if (add_ontrip) {
-    insert_sorted(starts,
-                  start{.time_at_start_ = search_dir == direction::kForward
-                                              ? interval.to_
-                                              : interval.from_ - 1_minutes,
-                        .time_at_stop_ = search_dir == direction::kForward
-                                             ? interval.to_ + d
-                                             : interval.from_ - 1_minutes - d,
-                        .stop_ = l},
-                  cmp);
+    starts.emplace_back(
+        start{.time_at_start_ = search_dir == direction::kForward
+                                    ? interval.to_
+                                    : interval.from_ - 1_minutes,
+              .time_at_stop_ = search_dir == direction::kForward
+                                   ? interval.to_ + d
+                                   : interval.from_ - 1_minutes - d,
+              .stop_ = l});
   }
 }
 
@@ -238,6 +215,7 @@ void get_starts(direction const search_dir,
     });
   }
 
+  for (auto const& s : shortest_start) {
   auto nearest = std::vector<pair<location_idx_t, duration_t>>{};
   nearest.reserve(shortest_start.size());
   for (auto const& s : shortest_start) {
@@ -275,18 +253,17 @@ void get_starts(direction const search_dir,
   for (auto const& s : closest_per_route) {
     auto const l = s.first;
     auto const o = s.second;
-    std::visit(utl::overloaded{
-                   [&](interval<unixtime_t> const interval) {
-                     add_starts_in_interval(search_dir, tt, rtt, interval, l, o,
-                                            starts, add_ontrip, cmp);
-                   },
-                   [&](unixtime_t const t) {
-                     insert_sorted(starts,
-                                   start{.time_at_start_ = t,
-                                         .time_at_stop_ = fwd ? t + o : t - o,
-                                         .stop_ = l},
-                                   cmp);
-                   }},
+    std::visit(utl::overloaded{[&](interval<unixtime_t> const interval) {
+                                 add_starts_in_interval(search_dir, tt, rtt,
+                                                        interval, l, o, starts,
+                                                        add_ontrip);
+                               },
+                               [&](unixtime_t const t) {
+                                 starts.emplace_back(
+                                     start{.time_at_start_ = t,
+                                           .time_at_stop_ = fwd ? t + o : t - o,
+                                           .stop_ = l});
+                               }},
                start_time);
   }
 }
