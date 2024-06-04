@@ -215,7 +215,6 @@ void get_starts(direction const search_dir,
     });
   }
 
-  for (auto const& s : shortest_start) {
   auto nearest = std::vector<pair<location_idx_t, duration_t>>{};
   nearest.reserve(shortest_start.size());
   for (auto const& s : shortest_start) {
@@ -247,9 +246,6 @@ void get_starts(direction const search_dir,
     }
   }
 
-  auto const cmp = [&](start const& a, start const& b) {
-    return fwd ? b < a : a < b;
-  };
   for (auto const& s : closest_per_route) {
     auto const l = s.first;
     auto const o = s.second;
