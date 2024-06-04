@@ -19,6 +19,7 @@
 #include "nigiri/logging.h"
 #include "nigiri/stop.h"
 #include "nigiri/types.h"
+#include "day_bits.h"
 
 namespace nigiri {
 
@@ -416,7 +417,7 @@ struct timetable {
 
   // Unique bitfields
   vector_map<bitfield_idx_t, bitfield> bitfields_;
-  vector<bitvec> day_bits_;
+  bitvec day_bits_;
 
   // For each trip the corresponding route
   vector_map<transport_idx_t, route_idx_t> transport_route_;

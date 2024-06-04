@@ -635,7 +635,8 @@ private:
     if constexpr (Rt) {
       return rtt_->bitfields_[rtt_->transport_traffic_days_[t]].test(day);
     } else {
-      return tt_.day_bits_[static_cast<std::uint32_t>(day)].test(
+      return tt_.day_bits_.test(
+          static_cast<std::uint32_t>(day * tt_.bitfields_.size()) +
           tt_.transport_traffic_days_[t].v_);
     }
   }
