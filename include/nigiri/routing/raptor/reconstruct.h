@@ -23,6 +23,7 @@ void reconstruct_journey(timetable const&,
                          date::sys_days const base,
                          day_idx_t const base_day_idx);
 
+template <direction SearchDir>
 void optimize_footpaths(timetable const&,
                         rt_timetable const*,
                         query const&,

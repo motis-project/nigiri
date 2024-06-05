@@ -8,6 +8,7 @@
 
 namespace nigiri::routing {
 
+template <direction SearchDir>
 void optimize_start(timetable const& tt,
                     rt_timetable const* rtt,
                     query const& q,
@@ -16,11 +17,18 @@ void optimize_start(timetable const& tt,
       !holds_alternative<journey::run_enter_exit>(j.legs_[1].uses_)) {
     return;
   }
+
   auto& offset_leg = j.legs_[0];
   auto& transport_leg = j.legs_[1];
   auto& ree = get<journey::run_enter_exit>(transport_leg.uses_);
   auto offset_dur_best = get<offset>(offset_leg.uses_).duration();
-  for (auto const& o : q.start_) {
+
+  auto const* offsets = &q.start_;
+  if constexpr (SearchDir == direction::kBackward) {
+    offsets = &q.destination_;
+  }
+
+  for (auto const& o : *offsets) {
     if (offset_dur_best <= o.duration()) {
       continue;
     }
@@ -58,6 +66,7 @@ void optimize_start(timetable const& tt,
   }
 }
 
+template <direction SearchDir>
 void optimize_end(timetable const& tt,
                   rt_timetable const* rtt,
                   query const& q,
@@ -66,11 +75,18 @@ void optimize_end(timetable const& tt,
       !holds_alternative<journey::run_enter_exit>(rbegin(j.legs_)[1].uses_)) {
     return;
   }
+
   auto& offset_leg = j.legs_.back();
   auto& transport_leg = rbegin(j.legs_)[1];
   auto& ree = get<journey::run_enter_exit>(transport_leg.uses_);
   auto offset_dur_best = get<offset>(offset_leg.uses_).duration();
-  for (auto const& o : q.destination_) {
+
+  auto const* offsets = &q.destination_;
+  if constexpr (SearchDir == direction::kBackward) {
+    offsets = &q.start_;
+  }
+  
+  for (auto const& o : *offsets) {
     if (offset_dur_best <= o.duration()) {
       continue;
     }
@@ -194,13 +210,23 @@ void optimize_transfers(timetable const& tt,
   }
 }
 
+template <direction SearchDir>
 void optimize_footpaths(timetable const& tt,
                         rt_timetable const* rtt,
                         query const& q,
                         journey& j) {
-  optimize_start(tt, rtt, q, j);
-  optimize_end(tt, rtt, q, j);
+  optimize_start<SearchDir>(tt, rtt, q, j);
+  optimize_end<SearchDir>(tt, rtt, q, j);
   optimize_transfers(tt, rtt, q, j);
 }
+
+template void optimize_footpaths<direction::kForward>(timetable const& tt,
+                                                      rt_timetable const* rtt,
+                                                      query const& q,
+                                                      journey& j);
+template void optimize_footpaths<direction::kBackward>(timetable const& tt,
+                                                       rt_timetable const* rtt,
+                                                       query const& q,
+                                                       journey& j);
 
 }  // namespace nigiri::routing
