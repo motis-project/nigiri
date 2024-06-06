@@ -22,6 +22,10 @@ mem_dir shortest_fp_files() {
 agency_id,agency_name,agency_url,agency_timezone
 MTA,MOTIS Transit Authority,https://motis-project.de/,Europe/Berlin
 
+# calendar.txt
+service_id,monday,tuesday,wednesday,thursday,friday,saturday,sunday,start_date,end_date
+D,1,1,1,1,1,1,1,20240101,20241231
+
 # stops.txt
 stop_id,stop_name,stop_desc,stop_lat,stop_lon,stop_url,location_type,parent_station
 A0,A0,start_offset0,,,,,,
@@ -71,10 +75,6 @@ CWE,04:18,04:20,C2,2,0,0
 CWE,04:30,04:32,C3,3,0,0
 CWE,04:40,04:42,C4,4,0,0
 CWE,04:50,04:52,C5,5,0,0
-
-# calender.txt
-service_id,monday,tuesday,wednesday,thursday,friday,saturday,sunday,start_date,end_date
-D,1,1,1,1,1,1,1,20240101,20241231
 
 # transfers.txt
 from_stop_id,to_stop_id,transfer_type,min_transfer_time
