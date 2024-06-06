@@ -6,7 +6,6 @@
 #include "nigiri/timetable.h"
 
 #include "../raptor_search.h"
-#include "utl/enumerate.h"
 
 using namespace date;
 using namespace nigiri;
