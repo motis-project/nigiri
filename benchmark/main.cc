@@ -181,7 +181,7 @@ int main(int argc, char* argv[]) {
     ("extend_interval_later,l",
             bpo::value<bool>(&gs.extend_interval_later_)->default_value(true),
             "allows extension of the search interval into the future")
-    ("prf_idx", bpo::value<profile_idx_t>(&gs.prf_idx_)->default_value(0U), "")
+    ("prf_idx", bpo::value<std::uint32_t>()->default_value(0U), "")
     ("allowed_claszes",
             bpo::value<clasz_mask_t>(&gs.allowed_claszes_)->default_value(routing::all_clasz_allowed()),
             "")
@@ -280,6 +280,15 @@ int main(int argc, char* argv[]) {
                           ? std::numeric_limits<std::uint8_t>::max()
                           : vm["max_transfers"].as<unsigned>();
 
+  if (vm.count("prf_idx")) {
+    if (vm["prf_idx"].as<unsigned>() >
+        std::numeric_limits<profile_idx_t>::max()) {
+      std::cout << "Error: profile idx exceeds numeric limits\n";
+      return 1;
+    }
+    gs.prf_idx_ = vm["prf_idx"].as<unsigned>();
+  }
+
   if (vm.count("start_coord")) {
     gs.start_match_mode_ = location_match_mode::kIntermodal;
     auto const start_coord = parse_coord(vm["start_coord"].as<std::string>());
@@ -304,12 +313,12 @@ int main(int argc, char* argv[]) {
 
   if (vm.count("start_loc")) {
     gs.start_match_mode_ = location_match_mode::kEquivalent;
-    gs.start_ = vm["start_loc"].as<location_idx_t>();
+    gs.start_ = location_idx_t{vm["start_loc"].as<location_idx_t::value_t>()};
   }
 
   if (vm.count("dest_loc")) {
     gs.dest_match_mode_ = location_match_mode::kEquivalent;
-    gs.dest_ = vm["dest_loc"].as<location_idx_t>();
+    gs.dest_ = location_idx_t{vm["dest_loc"].as<location_idx_t::value_t>()};
   }
 
   // generate queries
@@ -374,22 +383,23 @@ int main(int argc, char* argv[]) {
   });
   print_results(results, "total_time");
 
-  auto const print_slow_result = [&](auto const& br) {
-    auto const visit_loc_idx = [&](location_idx_t const loc_idx) {
-      std::stringstream ss;
-      ss << "(loc_idx: " << loc_idx.v_ << ", name: "
-         << std::string_view{begin((**tt).locations_.names_[loc_idx]),
-                             end((**tt).locations_.names_[loc_idx])}
-         << ", coord: (" << (**tt).locations_.coordinates_[loc_idx].lat() << ","
-         << (**tt).locations_.coordinates_[loc_idx].lng() << "))";
-      return ss.str();
-    };
-    auto const visit_coord = [](geo::latlng const& coord) {
-      std::stringstream ss;
-      ss << "(" << coord.lat() << "," << coord.lng() << ")";
-      return ss.str();
-    };
+  auto const visit_coord = [](geo::latlng const& coord) {
+    std::stringstream ss;
+    ss << coord.lat() << "," << coord.lng();
+    return ss.str();
+  };
 
+  auto const visit_loc_idx = [&](location_idx_t const loc_idx) {
+    std::stringstream ss;
+    ss << "loc_idx: " << loc_idx.v_ << ", name: "
+       << std::string_view{begin((**tt).locations_.names_[loc_idx]),
+                           end((**tt).locations_.names_[loc_idx])}
+       << ", coord: (" << visit_coord((**tt).locations_.coordinates_[loc_idx])
+       << ")";
+    return ss.str();
+  };
+
+  auto const print_slow_result = [&](auto const& br) {
     std::cout << br << "\nstart: "
               << std::visit(utl::overloaded{visit_loc_idx, visit_coord},
                             queries[br.q_idx_].start_)
@@ -404,6 +414,57 @@ int main(int argc, char* argv[]) {
     print_slow_result(rbegin(results)[i]);
   }
   std::cout << "\n";
+
+  auto const transport_mode_str = [](auto&& tm) {
+    using namespace nigiri::query_generation;
+    if (tm == kWalk) {
+      return "walk";
+    } else if (tm == kBicycle) {
+      return "bicycle";
+    } else if (tm == kCar) {
+      return "car";
+    }
+    return "";
+  };
+
+  auto ss = std::stringstream{};
+  ss << "Re-run the slowest source-destination "
+        "combination:\n./nigiri-benchmark -p "
+     << tt_path.string() << " -n 1 -i " << gs.interval_size_.count();
+  if (gs.start_match_mode_ == location_match_mode::kIntermodal) {
+    ss << " --start_mode intermodal --intermodal_start "
+       << transport_mode_str(gs.start_mode_);
+  } else {
+    ss << " --start_mode station";
+  }
+  if (gs.dest_match_mode_ == location_match_mode::kIntermodal) {
+    ss << " --dest_mode intermodal --intermodal_dest "
+       << transport_mode_str(gs.dest_mode_);
+  } else {
+    ss << " --dest_mode station";
+  }
+  ss << " --use_start_footpaths " << gs.use_start_footpaths_ << " -t "
+     << std::uint32_t{gs.max_transfers_} << " -m " << gs.min_connection_count_
+     << " -e " << gs.extend_interval_earlier_ << " -l "
+     << gs.extend_interval_later_ << " --prf_idx " << std::uint32_t{gs.prf_idx_}
+     << " --allowed_claszes " << gs.allowed_claszes_;
+  if (gs.start_match_mode_ == location_match_mode::kIntermodal) {
+    ss << " --start_coord "
+       << visit_coord(
+              get<geo::latlng>(queries[rbegin(results)[0].q_idx_].start_));
+  } else {
+    ss << " --start_loc "
+       << get<location_idx_t>(queries[rbegin(results)[0].q_idx_].start_);
+  }
+  if (gs.dest_match_mode_ == location_match_mode::kIntermodal) {
+    ss << " --dest_coord "
+       << visit_coord(
+              get<geo::latlng>(queries[rbegin(results)[0].q_idx_].dest_));
+  } else {
+    ss << " --dest_loc "
+       << get<location_idx_t>(queries[rbegin(results)[0].q_idx_].dest_) << "\n";
+  }
+  std::cout << ss.str() << "\n";
 
   std::sort(begin(results), end(results), [](auto const& a, auto const& b) {
     return a.routing_result_.search_stats_.execute_time_ <
@@ -432,5 +493,6 @@ int main(int argc, char* argv[]) {
   auto rusage = getrusage(RUSAGE_SELF, &r);
   std::cout << "\nrusage.ru_maxrss: "
             << static_cast<double>(r.ru_maxrss) / (1024 * 1024) << " GiB\n";
+
   return 0;
 }

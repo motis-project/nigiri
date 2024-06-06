@@ -16,6 +16,9 @@ struct transport_mode {
     return out;
   }
 
+  friend bool operator==(transport_mode const& a,
+                         transport_mode const& b) = default;
+
   transport_mode_id_t mode_id_;
   std::uint16_t speed_;  // [m/minute]
   std::uint16_t max_duration_;  // [minutes]
