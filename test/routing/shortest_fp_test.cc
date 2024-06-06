@@ -6,6 +6,7 @@
 #include "nigiri/timetable.h"
 
 #include "../raptor_search.h"
+#include "utl/enumerate.h"
 
 using namespace date;
 using namespace nigiri;
@@ -22,9 +23,9 @@ mem_dir shortest_fp_files() {
 agency_id,agency_name,agency_url,agency_timezone
 MTA,MOTIS Transit Authority,https://motis-project.de/,Europe/Berlin
 
-# calendar.txt
-service_id,monday,tuesday,wednesday,thursday,friday,saturday,sunday,start_date,end_date
-D,1,1,1,1,1,1,1,20240101,20241231
+# calendar_dates.txt
+service_id,date,exception_type
+D,20240608,1
 
 # stops.txt
 stop_id,stop_name,stop_desc,stop_lat,stop_lon,stop_url,location_type,parent_station
@@ -87,10 +88,42 @@ B3,C2,2,300
 
 constexpr interval<std::chrono::sys_days> shortest_fp_period() {
   using namespace date;
-  constexpr auto const from = (2024_y / January / 01).operator sys_days();
-  constexpr auto const to = (2024_y / December / 31).operator sys_days();
+  constexpr auto const from = (2024_y / June / 7).operator sys_days();
+  constexpr auto const to = (2024_y / June / 9).operator sys_days();
   return {from, to};
 }
+
+constexpr auto const exp_fwd_journey = R"(
+[2024-06-07 23:57, 2024-06-08 03:00]
+TRANSFERS: 2
+     FROM: (START, START) [2024-06-07 23:57]
+       TO: (END, END) [2024-06-08 03:00]
+leg 0: (START, START) [2024-06-07 23:57] -> (A0, A0) [2024-06-08 00:00]
+  MUMO (id=23, duration=3)
+leg 1: (A0, A0) [2024-06-08 00:00] -> (A3, A3) [2024-06-08 00:15]
+   0: A0      A0..............................................                               d: 08.06 00:00 [08.06 02:00]  [{name=Tram A, day=2024-06-08, id=AWE, src=0}]
+   1: A1      A1.............................................. a: 08.06 00:01 [08.06 02:01]  d: 08.06 00:02 [08.06 02:02]  [{name=Tram A, day=2024-06-08, id=AWE, src=0}]
+   2: A2      A2.............................................. a: 08.06 00:06 [08.06 02:06]  d: 08.06 00:07 [08.06 02:07]  [{name=Tram A, day=2024-06-08, id=AWE, src=0}]
+   3: A3      A3.............................................. a: 08.06 00:15 [08.06 02:15]
+leg 2: (A3, A3) [2024-06-08 00:15] -> (B0, B0) [2024-06-08 00:20]
+  FOOTPATH (duration=5)
+leg 3: (B0, B0) [2024-06-08 01:00] -> (B3, B3) [2024-06-08 01:40]
+   0: B0      B0..............................................                               d: 08.06 01:00 [08.06 03:00]  [{name=Tram B, day=2024-06-08, id=BWE, src=0}]
+   1: B1      B1.............................................. a: 08.06 01:20 [08.06 03:20]  d: 08.06 01:22 [08.06 03:22]  [{name=Tram B, day=2024-06-08, id=BWE, src=0}]
+   2: B2      B2.............................................. a: 08.06 01:30 [08.06 03:30]  d: 08.06 01:32 [08.06 03:32]  [{name=Tram B, day=2024-06-08, id=BWE, src=0}]
+   3: B3      B3.............................................. a: 08.06 01:40 [08.06 03:40]
+leg 4: (B3, B3) [2024-06-08 01:40] -> (C2, C2) [2024-06-08 01:45]
+  FOOTPATH (duration=5)
+leg 5: (C2, C2) [2024-06-08 02:20] -> (C5, C5) [2024-06-08 02:50]
+   2: C2      C2..............................................                               d: 08.06 02:20 [08.06 04:20]  [{name=Tram C, day=2024-06-08, id=CWE, src=0}]
+   3: C3      C3.............................................. a: 08.06 02:30 [08.06 04:30]  d: 08.06 02:32 [08.06 04:32]  [{name=Tram C, day=2024-06-08, id=CWE, src=0}]
+   4: C4      C4.............................................. a: 08.06 02:40 [08.06 04:40]  d: 08.06 02:42 [08.06 04:42]  [{name=Tram C, day=2024-06-08, id=CWE, src=0}]
+   5: C5      C5.............................................. a: 08.06 02:50 [08.06 04:50]
+leg 6: (C5, C5) [2024-06-08 02:50] -> (END, END) [2024-06-08 03:00]
+  MUMO (id=42, duration=10)
+
+
+)";
 
 TEST(routing, raptor_shortest_fp_forward) {
   constexpr auto const src = source_idx_t{0U};
@@ -116,11 +149,11 @@ TEST(routing, raptor_shortest_fp_forward) {
         20_minutes, 42U},
        {tt.locations_.location_id_to_idx_.at({.id_ = "C5", .src_ = src}),
         10_minutes, 42U}},
-      interval{unixtime_t{sys_days{2024_y / June / 8}},
-               unixtime_t{sys_days{2024_y / June / 8} + 12_hours}},
+      interval{unixtime_t{sys_days{2024_y / June / 7}},
+               unixtime_t{sys_days{2024_y / June / 8}}},
       direction::kForward);
 
-  EXPECT_EQ(1U, results.size());
+  ASSERT_EQ(1U, results.size());
 
   std::stringstream ss;
   ss << "\n";
@@ -128,7 +161,78 @@ TEST(routing, raptor_shortest_fp_forward) {
     x.print(ss, tt);
     ss << "\n\n";
   }
-  std::cout << ss.str() << "\n";
+  EXPECT_EQ(std::string_view{exp_fwd_journey}, ss.str());
+}
+
+constexpr auto const exp_bwd_journey = R"(
+[2024-06-08 03:00, 2024-06-07 23:57]
+TRANSFERS: 2
+     FROM: (END, END) [2024-06-07 23:57]
+       TO: (START, START) [2024-06-08 03:00]
+leg 0: (END, END) [2024-06-07 23:57] -> (A0, A0) [2024-06-08 00:00]
+  MUMO (id=23, duration=3)
+leg 1: (A0, A0) [2024-06-08 00:00] -> (A3, A3) [2024-06-08 00:15]
+   0: A0      A0..............................................                               d: 08.06 00:00 [08.06 02:00]  [{name=Tram A, day=2024-06-08, id=AWE, src=0}]
+   1: A1      A1.............................................. a: 08.06 00:01 [08.06 02:01]  d: 08.06 00:02 [08.06 02:02]  [{name=Tram A, day=2024-06-08, id=AWE, src=0}]
+   2: A2      A2.............................................. a: 08.06 00:06 [08.06 02:06]  d: 08.06 00:07 [08.06 02:07]  [{name=Tram A, day=2024-06-08, id=AWE, src=0}]
+   3: A3      A3.............................................. a: 08.06 00:15 [08.06 02:15]
+leg 2: (A3, A3) [2024-06-08 00:55] -> (B0, B0) [2024-06-08 01:00]
+  FOOTPATH (duration=5)
+leg 3: (B0, B0) [2024-06-08 01:00] -> (B3, B3) [2024-06-08 01:40]
+   0: B0      B0..............................................                               d: 08.06 01:00 [08.06 03:00]  [{name=Tram B, day=2024-06-08, id=BWE, src=0}]
+   1: B1      B1.............................................. a: 08.06 01:20 [08.06 03:20]  d: 08.06 01:22 [08.06 03:22]  [{name=Tram B, day=2024-06-08, id=BWE, src=0}]
+   2: B2      B2.............................................. a: 08.06 01:30 [08.06 03:30]  d: 08.06 01:32 [08.06 03:32]  [{name=Tram B, day=2024-06-08, id=BWE, src=0}]
+   3: B3      B3.............................................. a: 08.06 01:40 [08.06 03:40]
+leg 4: (B3, B3) [2024-06-08 01:40] -> (C2, C2) [2024-06-08 01:45]
+  FOOTPATH (duration=5)
+leg 5: (C2, C2) [2024-06-08 02:20] -> (C5, C5) [2024-06-08 02:50]
+   2: C2      C2..............................................                               d: 08.06 02:20 [08.06 04:20]  [{name=Tram C, day=2024-06-08, id=CWE, src=0}]
+   3: C3      C3.............................................. a: 08.06 02:30 [08.06 04:30]  d: 08.06 02:32 [08.06 04:32]  [{name=Tram C, day=2024-06-08, id=CWE, src=0}]
+   4: C4      C4.............................................. a: 08.06 02:40 [08.06 04:40]  d: 08.06 02:42 [08.06 04:42]  [{name=Tram C, day=2024-06-08, id=CWE, src=0}]
+   5: C5      C5.............................................. a: 08.06 02:50 [08.06 04:50]
+leg 6: (C5, C5) [2024-06-08 02:50] -> (START, START) [2024-06-08 03:00]
+  MUMO (id=42, duration=10)
+
+
+)";
+
+TEST(routing, raptor_shortest_fp_backward) {
+  constexpr auto const src = source_idx_t{0U};
+  auto const config = loader_config{};
+
+  timetable tt;
+  tt.date_range_ = shortest_fp_period();
+  register_special_stations(tt);
+  gtfs::load_timetable(config, src, shortest_fp_files(), tt);
+  finalize(tt);
+
+  auto const results = raptor_intermodal_search(
+      tt, nullptr,
+      {{tt.locations_.location_id_to_idx_.at({.id_ = "C3", .src_ = src}),
+        30_minutes, 42U},
+       {tt.locations_.location_id_to_idx_.at({.id_ = "C4", .src_ = src}),
+        20_minutes, 42U},
+       {tt.locations_.location_id_to_idx_.at({.id_ = "C5", .src_ = src}),
+        10_minutes, 42U}},
+      {{tt.locations_.location_id_to_idx_.at({.id_ = "A0", .src_ = src}),
+        3_minutes, 23U},
+       {tt.locations_.location_id_to_idx_.at({.id_ = "A1", .src_ = src}),
+        5_minutes, 23U},
+       {tt.locations_.location_id_to_idx_.at({.id_ = "A2", .src_ = src}),
+        10_minutes, 23U}},
+      interval{unixtime_t{sys_days{2024_y / June / 7}},
+               unixtime_t{sys_days{2024_y / June / 9}}},
+      direction::kBackward);
+
+  ASSERT_EQ(1U, results.size());
+
+  std::stringstream ss;
+  ss << "\n";
+  for (auto const& x : results) {
+    x.print(ss, tt);
+    ss << "\n\n";
+  }
+  EXPECT_EQ(std::string_view{exp_bwd_journey}, ss.str());
 }
 
 }  // namespace
