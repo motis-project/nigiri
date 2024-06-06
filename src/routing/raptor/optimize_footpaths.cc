@@ -85,7 +85,7 @@ void optimize_end(timetable const& tt,
   if constexpr (SearchDir == direction::kBackward) {
     offsets = &q.start_;
   }
-  
+
   for (auto const& o : *offsets) {
     if (offset_dur_best <= o.duration()) {
       continue;
