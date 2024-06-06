@@ -21,9 +21,7 @@ struct generator_settings {
     };
 
     out << "interval_size: "
-        << std::chrono::duration_cast<
-               std::chrono::duration<double, std::ratio<3600>>>(
-               gs.interval_size_);
+        << static_cast<double>(gs.interval_size_.count()) / 60.0 << " h";
     if (gs.bbox_.has_value()) {
       out << "\nbbox: min(" << gs.bbox_.value().min_ << "), max("
           << gs.bbox_.value().max_ << ")";
