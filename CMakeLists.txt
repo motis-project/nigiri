@@ -96,7 +96,7 @@ target_compile_features(nigiri-server PUBLIC cxx_std_23)
 # --- IMPORTER ---
 file(GLOB_RECURSE nigiri-import-files exe/import.cc)
 add_executable(nigiri-import ${nigiri-import-files})
-target_link_libraries(nigiri-import PRIVATE nigiri boost-program_options)
+target_link_libraries(nigiri-import PRIVATE nigiri boost-program_options ianatzdb-res)
 target_compile_features(nigiri-import PUBLIC cxx_std_23)
 
 # --- TEST ---
