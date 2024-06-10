@@ -78,7 +78,7 @@ rating_t set_improvement(pareto_set<nigiri::routing::journey> const& a,
 
   auto impr = rating_t{0.0};
 
-  while (a_copy.size() != 0) {
+  while (!a_copy.empty()) {
     auto max_impr_a = kMinRating;
     auto max_a = 0U;
 
