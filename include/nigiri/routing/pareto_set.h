@@ -45,9 +45,6 @@ struct pareto_set {
   }
   void clear() { els_.clear(); }
 
-  T& operator[](std::size_t idx) { return els_[idx]; }
-  T const& operator[](std::size_t idx) const { return els_[idx]; }
-
 private:
   std::vector<T> els_;
 };
