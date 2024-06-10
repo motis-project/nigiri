@@ -14,7 +14,7 @@ constexpr auto const kMinRating = std::numeric_limits<rating_t>::min();
 constexpr auto const kDefaultWeights = criteria_t{1.0, 1.0, 30.0};
 
 static rating_t improvement(nigiri::routing::journey const& a,
-                            nigiri::routing::journey b,
+                            nigiri::routing::journey const& b,
                             criteria_t const& weights) {
   auto const criteria = [](auto const& j) {
     return criteria_t{
@@ -54,18 +54,18 @@ static rating_t improvement(nigiri::routing::journey const& a,
          (std::atan(p * (dist - q)) + std::numbers::pi / 2.0);
 }
 
-static std::pair<rating_t, nigiri::routing::journey const*> min_improvement(
+static std::pair<rating_t, size_t> min_improvement(
     nigiri::routing::journey const& j,
     pareto_set<nigiri::routing::journey> const& xjs,
     std::array<rating_t, 3> const& weights) {
   auto min_impr = kMaxRating;
-  nigiri::routing::journey const* min = nullptr;
+  auto min = 0U;
 
-  for (auto const& x : xjs) {
-    auto impr = improvement(j, x, weights);
+  for (auto i = 0U; i != xjs.size(); ++i) {
+    auto impr = improvement(j, xjs[i], weights);
     if (impr < min_impr) {
       min_impr = impr;
-      min = &x;
+      min = i;
     }
   }
 
@@ -89,7 +89,24 @@ static rating_t set_improvement(pareto_set<nigiri::routing::journey> const& a,
 
   while (a_copy.size() != 0) {
     auto max_impr_a = kMinRating;
+    auto max_a = 0U;
+    auto min_b = 0U;
+
+    for (auto i = 0U; i != a.size(); ++i) {
+      auto [min_impr, min] = min_improvement(a_copy[i], b_copy, weights);
+      if (min_impr > max_impr_a) {
+        max_impr_a = min_impr;
+        max_a = i;
+        min_b = min;
+      }
+    }
+
+    impr += max_impr_a;
+    b_copy.add(std::move(a_copy[max_a]));
+    a_copy.erase(begin(a_copy) + max_a);
   }
+
+  return impr;
 }
 
 static rating_t rate(pareto_set<nigiri::routing::journey> const& a,
