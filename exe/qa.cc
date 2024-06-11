@@ -50,5 +50,20 @@ int main(int ac, char** av) {
           nigiri::qa::benchmark_criteria::read(
               cista::memory_holder{cista::file{in_c.c_str(), "r"}.content()}));
 
+  auto rating_timing =
+      std::vector<std::pair<nigiri::qa::rating_t, std::chrono::milliseconds>>{};
+  rating_timing.reserve((**ref).qc_.size());
+
+  for (auto const& qc_ref : (**ref).qc_) {
+    for (auto const& qc_cmp : (**cmp).qc_) {
+      if (qc_ref.query_idx_ == qc_cmp.query_idx_) {
+        auto const rating = nigiri::qa::rate(qc_ref.jc_, qc_cmp.jc_);
+        auto const timing = qc_ref.query_time_ - qc_cmp.query_time_;
+        rating_timing.emplace_back(rating, timing);
+        break;
+      }
+    }
+  }
+
   return 0;
 }

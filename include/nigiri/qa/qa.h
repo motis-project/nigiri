@@ -17,7 +17,7 @@ using criteria_t = std::array<rating_t, 3>;
 struct query_criteria {
   std::uint64_t query_idx_;
   std::chrono::milliseconds query_time_;
-  vector<criteria_t> jc_vec_;
+  vector<criteria_t> jc_;
 };
 
 struct benchmark_criteria {
@@ -31,7 +31,7 @@ struct benchmark_criteria {
     return h.combine(cista::hash("nigiri::qa::benchmark_criteria"));
   }
 
-  vector<query_criteria> qr_vec_;
+  vector<query_criteria> qc_;
 };
 
 rating_t rate(vector<criteria_t> const&, vector<criteria_t> const&);
