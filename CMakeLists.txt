@@ -99,6 +99,12 @@ add_executable(nigiri-import ${nigiri-import-files})
 target_link_libraries(nigiri-import PRIVATE nigiri boost-program_options ianatzdb-res)
 target_compile_features(nigiri-import PUBLIC cxx_std_23)
 
+# --- QA ---
+file(GLOB_RECURSE nigiri-qa-files exe/qa.cc)
+add_executable(nigiri-qa ${nigiri-qa-files})
+target_link_libraries(nigiri-qa PRIVATE nigiri boost-program_options)
+target_compile_features(nigiri-qa PUBLIC cxx_std_23)
+
 # --- TEST ---
 add_library(nigiri-generated INTERFACE)
 target_include_directories(nigiri-generated INTERFACE ${CMAKE_CURRENT_BINARY_DIR}/generated)
