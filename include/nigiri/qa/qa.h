@@ -34,6 +34,8 @@ struct benchmark_criteria {
   vector<query_criteria> qc_;
 };
 
+criteria_t to_criteria_t(nigiri::routing::journey const&);
+
 rating_t rate(vector<criteria_t> const&, vector<criteria_t> const&);
 
 rating_t rate(pareto_set<nigiri::routing::journey> const&,

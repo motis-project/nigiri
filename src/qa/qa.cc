@@ -86,6 +86,12 @@ rating_t set_improvement(vector<criteria_t> const& a,
   return impr;
 }
 
+criteria_t to_criteria_t(nigiri::routing::journey const& j) {
+  return {static_cast<rating_t>(-j.start_time_.time_since_epoch().count()),
+          static_cast<rating_t>(j.dest_time_.time_since_epoch().count()),
+          static_cast<rating_t>(j.transfers_)};
+}
+
 rating_t rate(vector<criteria_t> const& a, vector<criteria_t> const& b) {
   if (a.empty() && b.empty()) {
     return rating_t{0.0};
@@ -105,10 +111,7 @@ rating_t rate(pareto_set<nigiri::routing::journey> const& a,
   auto const jc_from_ps = [](auto const& ps) {
     auto jc_vec_ = vector<criteria_t>{};
     for (auto const& j : ps) {
-      jc_vec_.emplace_back(
-          static_cast<rating_t>(-j.start_time_.time_since_epoch().count()),
-          static_cast<rating_t>(j.dest_time_.time_since_epoch().count()),
-          static_cast<rating_t>(j.transfers_));
+      jc_vec_.push_back(to_criteria_t(j));
     }
     return jc_vec_;
   };

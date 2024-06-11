@@ -9,6 +9,7 @@
 #include "utl/progress_tracker.h"
 
 #include "nigiri/logging.h"
+#include "nigiri/qa/qa.h"
 #include "nigiri/query_generator/generator.h"
 #include "nigiri/routing/raptor/raptor.h"
 #include "nigiri/routing/search.h"
@@ -526,6 +527,16 @@ int main(int argc, char* argv[]) {
   print_results(queries, results, **tt, gs, tt_path);
 
   print_memory_usage();
+
+  auto bm_crit = nigiri::qa::benchmark_criteria{};
+  for (auto const& res : results) {
+    auto jc = vector<nigiri::qa::criteria_t>{};
+    for (auto const& j : res.journeys_) {
+      jc.push_back(nigiri::qa::to_criteria_t(j));
+    }
+    bm_crit.qc_.emplace_back(res.q_idx_, res.total_time_, jc);
+  }
+  bm_crit.write("criteria_for_qa.bin");
 
   return 0;
 }
