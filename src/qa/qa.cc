@@ -69,7 +69,7 @@ rating_t set_improvement(vector<criteria_t> const& a,
     auto max_impr_a = kMinRating;
     auto max_a = 0U;
 
-    for (auto i = 0U; i != a.size(); ++i) {
+    for (auto i = 0U; i != a_copy.size(); ++i) {
       auto min_impr = min_improvement(a_copy[i], b_copy, weights);
       if (min_impr > max_impr_a) {
         max_impr_a = min_impr;
