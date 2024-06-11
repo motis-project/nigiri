@@ -47,8 +47,8 @@ rating_t min_improvement(criteria_t const& j,
                          std::array<rating_t, 3> const& weights) {
   auto min_impr = kMaxRating;
 
-  for (auto i = 0U; i != xjs.size(); ++i) {
-    auto impr = improvement(j, xjs[i], weights);
+  for (auto const& xj : xjs) {
+    auto impr = improvement(j, xj, weights);
     if (impr < min_impr) {
       min_impr = impr;
     }
@@ -87,11 +87,11 @@ rating_t set_improvement(vector<criteria_t> const& a,
 }
 
 rating_t rate(vector<criteria_t> const& a, vector<criteria_t> const& b) {
-  if (a.size() == 0 && b.size() == 0) {
+  if (a.empty() && b.empty()) {
     return rating_t{0.0};
-  } else if (a.size() == 0) {
+  } else if (a.empty()) {
     return kMinRating;
-  } else if (b.size() == 0) {
+  } else if (b.empty()) {
     return kMaxRating;
   }
 
