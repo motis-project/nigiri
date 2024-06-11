@@ -1,3 +1,5 @@
+#include "nigiri/qa/qa.h"
+
 #include "boost/program_options.hpp"
 #include <filesystem>
 #include <iostream>
@@ -37,4 +39,16 @@ int main(int ac, char** av) {
     std::cout << "Error: please provide exactly one compare file\n";
     return 1;
   }
+
+  auto const ref =
+      std::make_unique<cista::wrapped<nigiri::qa::benchmark_criteria>>(
+          nigiri::qa::benchmark_criteria::read(
+              cista::memory_holder{cista::file{in_r.c_str(), "r"}.content()}));
+
+  auto const cmp =
+      std::make_unique<cista::wrapped<nigiri::qa::benchmark_criteria>>(
+          nigiri::qa::benchmark_criteria::read(
+              cista::memory_holder{cista::file{in_c.c_str(), "r"}.content()}));
+
+  return 0;
 }
