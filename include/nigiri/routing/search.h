@@ -134,7 +134,8 @@ struct search {
                 }},
             q_.start_time_)},
         fastest_direct_{get_fastest_direct(tt_, q_, SearchDir)},
-        algo_{init(q_.allowed_claszes_, q_.require_bike_transport_, algo_state)},
+        algo_{
+            init(q_.allowed_claszes_, q_.require_bike_transport_, algo_state)},
         timeout_(timeout) {}
 
   routing_result<algo_stats_t> execute() {
