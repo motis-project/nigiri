@@ -143,7 +143,8 @@ void reconstruct_journey(timetable const& tt,
 
   auto const find_entry_in_prev_round =
       [&](unsigned const k, rt::run const& r, stop_idx_t const from_stop_idx,
-          delta_t const time) -> std::optional<journey::leg> {
+          delta_t const time,
+          bool const section_bike_filter) -> std::optional<journey::leg> {
     auto const fr = rt::frun{tt, rtt, r};
     auto const n_stops = kFwd ? from_stop_idx + 1U : fr.size() - from_stop_idx;
     for (auto i = 1U; i != n_stops; ++i) {
@@ -151,6 +152,11 @@ void reconstruct_journey(timetable const& tt,
           static_cast<stop_idx_t>(kFwd ? from_stop_idx - i : from_stop_idx + i);
       auto const stp = fr[stop_idx];
       auto const l = stp.get_location_idx();
+
+      if (section_bike_filter &&
+          !stp.bikes_allowed(kFwd ? event_type::kDep : event_type::kArr)) {
+        break;
+      }
 
       if ((kFwd && !stp.in_allowed()) || (!kFwd && !stp.out_allowed())) {
         continue;
@@ -192,7 +198,8 @@ void reconstruct_journey(timetable const& tt,
 
   auto const get_route_transport =
       [&](unsigned const k, delta_t const time, route_idx_t const r,
-          stop_idx_t const stop_idx) -> std::optional<journey::leg> {
+          stop_idx_t const stop_idx,
+          bool const section_bike_filter) -> std::optional<journey::leg> {
     auto const [day, mam] = split_day_mam(base_day_idx, time);
 
     for (auto const t : tt.route_transport_ranges_[r]) {
@@ -212,11 +219,13 @@ void reconstruct_journey(timetable const& tt,
         continue;
       }
 
-      auto leg =
-          find_entry_in_prev_round(k,
-                                   {.t_ = transport{t, day_idx_t{traffic_day}},
-                                    .stop_range_ = interval<stop_idx_t>{0, 0}},
-                                   stop_idx, time);
+      auto leg = find_entry_in_prev_round(
+          k,
+          {.t_ = transport{t, day_idx_t{traffic_day}},
+           .stop_range_ =
+               interval<stop_idx_t>{0, static_cast<stop_idx_t>(
+                                           tt.route_location_seq_[r].size())}},
+          stop_idx, time, section_bike_filter);
       if (leg.has_value()) {
         return leg;
       }
@@ -238,13 +247,28 @@ void reconstruct_journey(timetable const& tt,
           continue;
         }
 
+        auto section_bike_filter = false;
+        if (q.require_bike_transport_) {
+          auto const bikes_allowed_on_all_sections =
+              rtt->rt_transport_bikes_allowed_.test(rt_t.v_ * 2);
+          auto const bikes_allowed_on_some_sections =
+              rtt->rt_transport_bikes_allowed_.test(rt_t.v_ * 2 + 1);
+          trace_reconstruct(
+              "  rt_t={}: bikes allowed on_all={} on_some={} (RT)\n", rt_t,
+              bikes_allowed_on_all_sections, bikes_allowed_on_some_sections);
+          if (!bikes_allowed_on_all_sections) {
+            if (!bikes_allowed_on_some_sections) {
+              continue;
+            }
+            section_bike_filter = true;
+          }
+        }
+
         auto const location_seq = rtt->rt_transport_location_seq_[rt_t];
         for (auto const [i, s] : utl::enumerate(location_seq)) {
           auto const stp = stop{s};
           auto const stop_idx = static_cast<stop_idx_t>(i);
-          auto const fr = rt::frun{
-              tt, rtt,
-              rt::run{.stop_range_ = interval<stop_idx_t>{0, 0}, .rt_ = rt_t}};
+          auto const fr = rt::frun::from_rt(tt, rtt, rt_t);
           if (stp.location_idx() != l ||  //
               (kFwd && (i == 0U || !stp.out_allowed())) ||
               (!kFwd && (i == location_seq.size() - 1 || !stp.in_allowed())) ||
@@ -254,7 +278,8 @@ void reconstruct_journey(timetable const& tt,
             continue;
           }
 
-          auto leg = find_entry_in_prev_round(k, fr, stop_idx, time);
+          auto leg = find_entry_in_prev_round(k, fr, stop_idx, time,
+                                              section_bike_filter);
           if (leg.has_value()) {
             return leg;
           }
@@ -267,6 +292,23 @@ void reconstruct_journey(timetable const& tt,
         continue;
       }
 
+      auto section_bike_filter = false;
+      if (q.require_bike_transport_) {
+        auto const bikes_allowed_on_all_sections =
+            tt.route_bikes_allowed_.test(r.v_ * 2);
+        auto const bikes_allowed_on_some_sections =
+            tt.route_bikes_allowed_.test(r.v_ * 2 + 1);
+        trace_reconstruct("  r={}: bikes allowed on_all={} on_some={}\n", r,
+                          bikes_allowed_on_all_sections,
+                          bikes_allowed_on_some_sections);
+        if (!bikes_allowed_on_all_sections) {
+          if (!bikes_allowed_on_some_sections) {
+            continue;
+          }
+          section_bike_filter = true;
+        }
+      }
+
       auto const location_seq = tt.route_location_seq_[r];
       for (auto const [i, s] : utl::enumerate(location_seq)) {
         auto const stp = stop{s};
@@ -276,7 +318,8 @@ void reconstruct_journey(timetable const& tt,
           continue;
         }
 
-        auto leg = get_route_transport(k, time, r, static_cast<stop_idx_t>(i));
+        auto leg = get_route_transport(k, time, r, static_cast<stop_idx_t>(i),
+                                       section_bike_filter);
         if (leg.has_value()) {
           return leg;
         }

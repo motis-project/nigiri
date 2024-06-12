@@ -14,6 +14,7 @@ namespace nigiri::loader {
 struct loader_config {
   unsigned link_stop_distance_{100U};
   std::string default_tz_;
+  bool bikes_allowed_default_{false};
 
   // finalize options
   bool adjust_footpaths_{true};

@@ -21,7 +21,7 @@
 [fmt]
   url=git@github.com:motis-project/fmt.git
   branch=master
-  commit=edb385ac526c24bc917ec4a41bb0edb28f0ca59e
+  commit=b668c26168fd65ae9a1ac808fd3ab9e0139acd73
 [date]
   url=git@github.com:motis-project/date.git
   branch=master

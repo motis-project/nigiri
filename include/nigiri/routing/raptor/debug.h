@@ -147,7 +147,7 @@
       location{tt, fp.target()},                                        \
       raptor_state.round_times_[k][to_idx(fp.target())], fp.duration(), \
       location{tt, eq}, raptor_state.round_times_[k][to_idx(eq)],       \
-      dest_offset.duration_, curr_time, dest_offset.type_)
+      dest_offset.duration_, curr_time, dest_offset.type())
 
 #define trace_rc_fp_intermodal_dest_match                        \
   trace_reconstruct(                                             \

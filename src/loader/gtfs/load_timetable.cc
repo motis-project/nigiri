@@ -109,7 +109,8 @@ void load_timetable(loader_config const& config,
   auto const dates = read_calendar_date(load(kCalendarDatesFile).data());
   auto const service =
       merge_traffic_days(tt.internal_interval_days(), calendar, dates);
-  auto trip_data = read_trips(tt, routes, service, load(kTripsFile).data());
+  auto trip_data = read_trips(tt, routes, service, load(kTripsFile).data(),
+                              config.bikes_allowed_default_);
   read_frequencies(trip_data, load(kFrequenciesFile).data());
   read_stop_times(tt, trip_data, stops, load(kStopTimesFile).data());
 
@@ -140,7 +141,7 @@ void load_timetable(loader_config const& config,
   auto const noon_offsets = precompute_noon_offsets(tt, agencies);
 
   stop_seq_t stop_seq_cache;
-  auto const get_route_key =
+  auto const get_stop_seq =
       [&](std::basic_string<gtfs_trip_idx_t> const& trips) {
         if (trips.size() == 1U) {
           return &trip_data.get(trips.front()).stop_seq_;
@@ -165,14 +166,38 @@ void load_timetable(loader_config const& config,
         }
       };
 
+  bitvec bikes_allowed_seq_cache;
+  auto const get_bikes_allowed_seq =
+      [&](std::basic_string<gtfs_trip_idx_t> const& trips) -> bitvec const* {
+    if (trips.size() == 1U) {
+      return trip_data.get(trips.front()).bikes_allowed_
+                 ? &kSingleTripBikesAllowed
+                 : &kSingleTripBikesNotAllowed;
+    } else {
+      bikes_allowed_seq_cache.resize(0);
+      for (auto const [i, t_idx] : utl::enumerate(trips)) {
+        auto const& trp = trip_data.get(t_idx);
+        auto const stop_count = trp.stop_seq_.size();
+        auto const offset = bikes_allowed_seq_cache.size();
+        bikes_allowed_seq_cache.resize(offset + stop_count - 1);
+        for (auto j = 0U; j < stop_count - 1; ++j) {
+          bikes_allowed_seq_cache.set(offset + j, trp.bikes_allowed_);
+        }
+      }
+      return &bikes_allowed_seq_cache;
+    }
+  };
+
   auto const add_trip = [&](std::basic_string<gtfs_trip_idx_t> const& trips,
                             bitfield const* traffic_days) {
     expand_trip(
         trip_data, noon_offsets, tt, trips, traffic_days, tt.date_range_,
         [&](utc_trip&& s) {
-          auto const* stop_seq = get_route_key(s.trips_);
+          auto const* stop_seq = get_stop_seq(s.trips_);
           auto const clasz = trip_data.get(s.trips_.front()).get_clasz(tt);
-          auto const it = route_services.find(std::pair{clasz, stop_seq});
+          auto const* bikes_allowed_seq = get_bikes_allowed_seq(s.trips_);
+          auto const it = route_services.find(
+              route_key_ptr_t{clasz, stop_seq, bikes_allowed_seq});
           if (it != end(route_services)) {
             for (auto& r : it->second) {
               auto const idx = get_index(r, s);
@@ -184,7 +209,7 @@ void load_timetable(loader_config const& config,
             it->second.emplace_back(std::vector<utc_trip>{std::move(s)});
           } else {
             route_services.emplace(
-                std::pair{clasz, *stop_seq},
+                route_key_t{clasz, *stop_seq, *bikes_allowed_seq},
                 std::vector<std::vector<utc_trip>>{{std::move(s)}});
           }
         });
@@ -258,10 +283,10 @@ void load_timetable(loader_config const& config,
     auto location_routes = mutable_fws_multimap<location_idx_t, route_idx_t>{};
     for (auto const& [key, sub_routes] : route_services) {
       for (auto const& services : sub_routes) {
-        auto const& [sections_clasz, stop_seq] = key;
-        auto const route_idx = tt.register_route(stop_seq, {sections_clasz});
+        auto const route_idx =
+            tt.register_route(key.stop_seq_, {key.clasz_}, key.bikes_allowed_);
 
-        for (auto const& s : stop_seq) {
+        for (auto const& s : key.stop_seq_) {
           auto s_routes = location_routes[stop{s}.location_idx()];
           if (s_routes.empty() || s_routes.back() != route_idx) {
             s_routes.emplace_back(route_idx);
@@ -331,7 +356,7 @@ void load_timetable(loader_config const& config,
 
         auto const stop_times_begin = tt.route_stop_times_.size();
         for (auto const [from, to] :
-             utl::pairwise(interval{std::size_t{0U}, stop_seq.size()})) {
+             utl::pairwise(interval{std::size_t{0U}, key.stop_seq_.size()})) {
           // Write departure times of all route services at stop i.
           for (auto const& s : services) {
             tt.route_stop_times_.emplace_back(s.utc_times_[from * 2]);

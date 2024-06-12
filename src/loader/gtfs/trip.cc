@@ -3,7 +3,6 @@
 #include <algorithm>
 #include <numeric>
 #include <stack>
-#include <tuple>
 
 #include "geo/box.h"
 
@@ -115,13 +114,15 @@ trip::trip(route const* route,
            block* blk,
            std::string id,
            trip_direction_idx_t const headsign,
-           std::string short_name)
+           std::string short_name,
+           bool const bikes_allowed)
     : route_(route),
       service_(service),
       block_{blk},
       id_{std::move(id)},
       headsign_(headsign),
-      short_name_(std::move(short_name)) {}
+      short_name_(std::move(short_name)),
+      bikes_allowed_{bikes_allowed} {}
 
 void trip::interpolate() {
   if (!requires_interpolation_) {
@@ -252,7 +253,8 @@ trip_direction_idx_t trip_data::get_or_create_direction(
 trip_data read_trips(timetable& tt,
                      route_map_t const& routes,
                      traffic_days_t const& services,
-                     std::string_view file_content) {
+                     std::string_view file_content,
+                     bool const bikes_allowed_default) {
   struct csv_trip {
     utl::csv_col<utl::cstr, UTL_NAME("route_id")> route_id_;
     utl::csv_col<utl::cstr, UTL_NAME("service_id")> service_id_;
@@ -260,6 +262,7 @@ trip_data read_trips(timetable& tt,
     utl::csv_col<utl::cstr, UTL_NAME("trip_headsign")> trip_headsign_;
     utl::csv_col<utl::cstr, UTL_NAME("trip_short_name")> trip_short_name_;
     utl::csv_col<utl::cstr, UTL_NAME("block_id")> block_id_;
+    utl::csv_col<std::uint8_t, UTL_NAME("bikes_allowed")> bikes_allowed_;
   };
 
   nigiri::scoped_timer const timer{"read trips"};
@@ -290,6 +293,13 @@ trip_data read_trips(timetable& tt,
             return;
           }
 
+          auto bikes_allowed = bikes_allowed_default;
+          if (t.bikes_allowed_.val() == 1) {
+            bikes_allowed = true;
+          } else if (t.bikes_allowed_.val() == 2) {
+            bikes_allowed = false;
+          }
+
           auto const blk = t.block_id_->trim().empty()
                                ? nullptr
                                : utl::get_or_create(
@@ -301,7 +311,7 @@ trip_data read_trips(timetable& tt,
               route_it->second.get(), traffic_days_it->second.get(), blk,
               t.trip_id_->to_str(),
               ret.get_or_create_direction(tt, t.trip_headsign_->view()),
-              t.trip_short_name_->to_str());
+              t.trip_short_name_->to_str(), bikes_allowed);
           ret.trips_.emplace(t.trip_id_->to_str(), trp_idx);
           if (blk != nullptr) {
             blk->trips_.emplace_back(trp_idx);

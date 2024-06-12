@@ -32,7 +32,7 @@ TEST(gtfs, read_trips_example_data) {
   auto const services =
       merge_traffic_days(tt.internal_interval_days(), calendar, dates);
   auto const trip_data =
-      read_trips(tt, routes, services, files.get_file(kTripsFile).data());
+      read_trips(tt, routes, services, files.get_file(kTripsFile).data(), false);
 
   EXPECT_EQ(2U, trip_data.data_.size());
   EXPECT_NE(end(trip_data.trips_), trip_data.trips_.find("AWE1"));
@@ -61,7 +61,7 @@ TEST(gtfs, read_trips_berlin_data) {
   auto const services =
       merge_traffic_days(tt.internal_interval_days(), calendar, dates);
   auto const trip_data =
-      read_trips(tt, routes, services, files.get_file(kTripsFile).data());
+      read_trips(tt, routes, services, files.get_file(kTripsFile).data(), false);
 
   EXPECT_EQ(3, trip_data.data_.size());
 
