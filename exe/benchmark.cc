@@ -330,6 +330,7 @@ int main(int argc, char* argv[]) {
   auto tt_path = std::filesystem::path{};
   auto n_queries = std::uint32_t{100U};
   auto gs = query_generation::generator_settings{};
+  auto qa_path = std::filesystem::path{};
 
   bpo::options_description desc("Allowed options");
   // clang-format off
@@ -383,6 +384,7 @@ int main(int argc, char* argv[]) {
             "start location for random queries")
     ("dest_loc", bpo::value<location_idx_t::value_t>(),
         "destination location for random queries")
+    ("qa_path,q", bpo::value(&qa_path), "path to write the journey criteria to for qa")
   ;
   // clang-format on
   bpo::variables_map vm;
@@ -528,15 +530,17 @@ int main(int argc, char* argv[]) {
 
   print_memory_usage();
 
-  auto bm_crit = nigiri::qa::benchmark_criteria{};
-  for (auto const& res : results) {
-    auto jc = vector<nigiri::qa::criteria_t>{};
-    for (auto const& j : res.journeys_) {
-      jc.push_back(nigiri::qa::to_criteria_t(j));
+  if (vm.count("qa_path")) {
+    auto bm_crit = nigiri::qa::benchmark_criteria{};
+    for (auto const& res : results) {
+      auto jc = vector<nigiri::qa::criteria_t>{};
+      for (auto const& j : res.journeys_) {
+        jc.push_back(nigiri::qa::to_criteria_t(j));
+      }
+      bm_crit.qc_.emplace_back(res.q_idx_, res.total_time_, jc);
     }
-    bm_crit.qc_.emplace_back(res.q_idx_, res.total_time_, jc);
+    bm_crit.write(qa_path);
   }
-  bm_crit.write("criteria_for_qa.bin");
 
   return 0;
 }
