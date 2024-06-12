@@ -240,7 +240,7 @@ std::string results_to_str(pareto_set<routing::journey> const& results,
       x.start_time_ = x.dest_time_;
       x.dest_time_ = start_time;
     }
-    x.print(ss, tt);
+    x.print(ss, tt, rtt);
     ss << "\n\n";
   }
   return ss.str();
