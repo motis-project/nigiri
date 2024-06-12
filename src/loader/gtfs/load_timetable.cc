@@ -179,7 +179,8 @@ void load_timetable(loader_config const& config,
         auto const& trp = trip_data.get(t_idx);
         auto const stop_count = trp.stop_seq_.size();
         auto const offset = bikes_allowed_seq_cache.size();
-        bikes_allowed_seq_cache.resize(offset + stop_count - 1);
+        bikes_allowed_seq_cache.resize(
+            static_cast<bitvec::size_type>(offset + stop_count - 1));
         for (auto j = 0U; j < stop_count - 1; ++j) {
           bikes_allowed_seq_cache.set(offset + j, trp.bikes_allowed_);
         }
