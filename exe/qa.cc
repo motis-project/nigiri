@@ -93,8 +93,8 @@ int main(int ac, char** av) {
   for (auto const& qc_ref : (**ref).qc_) {
     for (auto const& qc_cmp : (**cmp).qc_) {
       if (qc_ref.query_idx_ == qc_cmp.query_idx_) {
-        auto const rating = nigiri::qa::rate(qc_ref.jc_, qc_cmp.jc_);
-        auto const timing = qc_ref.query_time_ - qc_cmp.query_time_;
+        auto const rating = nigiri::qa::rate(qc_cmp.jc_, qc_ref.jc_);
+        auto const timing = qc_cmp.query_time_ - qc_ref.query_time_;
         rating_timing.emplace_back(rating, timing);
         break;
       }
