@@ -6,6 +6,7 @@
 #include "nigiri/query_generator/generator_settings.h"
 #include "nigiri/query_generator/transport_mode.h"
 #include "nigiri/routing/query.h"
+
 #include "../loader/hrd/hrd_timetable.h"
 
 using namespace date;
