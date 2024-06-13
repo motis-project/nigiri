@@ -475,3 +475,105 @@ TEST(routing, bike_transport_test_2) {
     }
   }
 }
+
+constexpr auto const test_files3 = R"(
+# agency.txt
+agency_id,agency_name,agency_url,agency_timezone
+DB,Deutsche Bahn,https://deutschebahn.com,Europe/Berlin
+
+# stops.txt
+stop_id,stop_name,stop_desc,stop_lat,stop_lon,stop_url,location_type,parent_station
+A,A,,0.0,1.0,,
+B,B,,2.0,3.0,,
+C,C,,4.0,5.0,,
+D,D,,6.0,7.0,,
+
+# routes.txt
+route_id,agency_id,route_short_name,route_long_name,route_desc,route_type
+R1,DB,1,,,3
+R2,DB,2,,,3
+R3,DB,3,,,3
+
+# trips.txt
+route_id,service_id,trip_id,trip_headsign,block_id,bikes_allowed
+R1,S1,T1,,1,1
+R1,S1,T4,,2,1
+R2,S1,T2,,1,2
+R2,S1,T5,,2,1
+R3,S1,T3,,1,1
+R3,S1,T6,,2,1
+
+# stop_times.txt
+trip_id,arrival_time,departure_time,stop_id,stop_sequence
+T1,10:00:00,10:00:00,A,0
+T1,10:10:00,10:10:00,B,1
+T2,10:15:00,10:15:00,B,0
+T2,10:20:00,10:20:00,C,1
+T3,10:25:00,10:25:00,C,0
+T3,10:30:00,10:30:00,D,1
+T4,10:00:00,10:00:00,A,0
+T4,10:20:00,10:20:00,B,1
+T5,10:25:00,10:25:00,B,0
+T5,10:30:00,10:30:00,C,1
+T6,10:35:00,10:35:00,C,0
+T6,10:40:00,10:40:00,D,1
+
+# calendar_dates.txt
+service_id,date,exception_type
+S1,20190501,1
+)"sv;
+
+constexpr auto const expected3_A_D_no_bike =
+    R"(
+[2019-05-01 08:00, 2019-05-01 08:30]
+TRANSFERS: 0
+     FROM: (A, A) [2019-05-01 08:00]
+       TO: (D, D) [2019-05-01 08:30]
+leg 0: (A, A) [2019-05-01 08:00] -> (D, D) [2019-05-01 08:30]
+   0: A       A...............................................                               d: 01.05 08:00 [01.05 10:00]  [{name=Bus 1, day=2019-05-01, id=T1, src=0}]
+   1: B       B............................................... a: 01.05 08:10 [01.05 10:10]  d: 01.05 08:15 [01.05 10:15]  [{name=Bus 2, day=2019-05-01, id=T2, src=0}]
+   2: C       C............................................... a: 01.05 08:20 [01.05 10:20]  d: 01.05 08:25 [01.05 10:25]  [{name=Bus 3, day=2019-05-01, id=T3, src=0}]
+   3: D       D............................................... a: 01.05 08:30 [01.05 10:30]
+
+
+)"sv;
+
+constexpr auto const expected3_A_D_bike =
+    R"(
+[2019-05-01 08:00, 2019-05-01 08:40]
+TRANSFERS: 0
+     FROM: (A, A) [2019-05-01 08:00]
+       TO: (D, D) [2019-05-01 08:40]
+leg 0: (A, A) [2019-05-01 08:00] -> (D, D) [2019-05-01 08:40]
+   0: A       A...............................................                               d: 01.05 08:00 [01.05 10:00]  [{name=Bus 1, day=2019-05-01, id=T4, src=0}]
+   1: B       B............................................... a: 01.05 08:20 [01.05 10:20]  d: 01.05 08:25 [01.05 10:25]  [{name=Bus 2, day=2019-05-01, id=T5, src=0}]
+   2: C       C............................................... a: 01.05 08:30 [01.05 10:30]  d: 01.05 08:35 [01.05 10:35]  [{name=Bus 3, day=2019-05-01, id=T6, src=0}]
+   3: D       D............................................... a: 01.05 08:40 [01.05 10:40]
+
+
+)"sv;
+
+TEST(routing, bike_transport_test_3) {
+  auto tt = timetable{};
+
+  tt.date_range_ = {date::sys_days{2019_y / May / 1},
+                    date::sys_days{2019_y / May / 2}};
+  loader::register_special_stations(tt);
+  loader::gtfs::load_timetable({}, source_idx_t{0},
+                               loader::mem_dir::read(test_files3), tt);
+  loader::finalize(tt);
+
+  for (auto const dir : {direction::kForward, direction::kBackward}) {
+    {  // A->D, without bike
+      auto const results =
+          search(tt, nullptr, "A", "D", tt.date_range_, dir, false);
+      EXPECT_EQ(expected3_A_D_no_bike, results_to_str(results, dir, tt));
+    }
+
+    {  // A->D, with bike
+      auto const results =
+          search(tt, nullptr, "A", "D", tt.date_range_, dir, true);
+      EXPECT_EQ(expected3_A_D_bike, results_to_str(results, dir, tt));
+    }
+  }
+}
