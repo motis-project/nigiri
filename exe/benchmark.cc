@@ -342,59 +342,65 @@ int main(int argc, char* argv[]) {
   auto dest_loc_val = location_idx_t::value_t{0U};
 
   bpo::options_description desc("Allowed options");
-  // clang-format off
-  desc.add_options()
-    ("help,h", "produce this help message")
-    ("tt_path,p", bpo::value(&tt_path)->required(),
-            "path to a binary file containing a serialized nigiri timetable")
-    ("seed,s", bpo::value<std::uint32_t>(),
-            "value to seed the RNG of the query generator with, "
-            "omit for random seed")
-    ("num_queries,n",
-            bpo::value(&n_queries)->default_value(n_queries),
-            "number of queries to generate/process")
-    ("interval_size,i", bpo::value<duration_t::rep>(&interval_size)->default_value(60U, "60"),
-            "the initial size of the search interval in minutes, set to 0 for ontrip queries")
-    ("bounding_box,b", bpo::value<std::string>(&bbox_str),
-            "limit randomized locations to a bounding box, "
-            "format: lat_min,lon_min,lat_max,lon_max\ne.g., 36.0,-11.0,72.0,32.0\n"
-            "(available via \"-b europe\")")
-    ("start_mode", bpo::value<std::string>(&start_mode_str)->default_value("intermodal"),
-            "intermodal | station")
-    ("dest_mode", bpo::value<std::string>(&dest_mode_str)->default_value("intermodal"),
-            "intermodal | station")
-    ("intermodal_start", bpo::value<std::string>(&intermodal_start_str)->default_value("walk"),
-            "walk | bicycle | car")
-    ("intermodal_dest", bpo::value<std::string>(&intermodal_dest_str)->default_value("walk"),
-            "walk | bicycle | car")
-    ("use_start_footpaths",
-            bpo::value<bool>(&gs.use_start_footpaths_)->default_value(true), "")
-    ("max_transfers,t",
-            bpo::value<std::uint32_t>(&max_transfers)->default_value(kMaxTransfers),
-            "maximum number of transfers during routing")
-    ("min_connection_count,m",
-            bpo::value<std::uint32_t>(&gs.min_connection_count_)->default_value(3U),
-            "the minimum number of connections to find with each query")
-    ("extend_interval_earlier,e",
-            bpo::value<bool>(&gs.extend_interval_earlier_)->default_value(true, "true"),
-            "allows extension of the search interval into the past")
-    ("extend_interval_later,l",
-            bpo::value<bool>(&gs.extend_interval_later_)->default_value(true, "true"),
-            "allows extension of the search interval into the future")
-    ("prf_idx", bpo::value<std::uint32_t>(&prf_idx)->default_value(0U), "")
-    ("allowed_claszes",
-            bpo::value<clasz_mask_t>(&gs.allowed_claszes_)->default_value(routing::all_clasz_allowed()),
-            "")
-    ("start_coord", bpo::value<std::string>(&start_coord_str),
-            "start coordinate for random queries")
-    ("dest_coord", bpo::value<std::string>(&dest_coord_str),
-            "destination coordinate for random queries")
-    ("start_loc", bpo::value<location_idx_t::value_t>(&start_loc_val),
-            "start location for random queries")
-    ("dest_loc", bpo::value<location_idx_t::value_t>(&dest_loc_val),
-        "destination location for random queries")
-  ;
-  // clang-format on
+  desc.add_options()("help,h", "produce this help message")  //
+      ("tt_path,p", bpo::value(&tt_path)->required(),
+       "path to a binary file containing a serialized nigiri timetable")  //
+      ("seed,s", bpo::value<std::uint32_t>(),
+       "value to seed the RNG of the query generator with, "
+       "omit for random seed")  //
+      ("num_queries,n", bpo::value(&n_queries)->default_value(n_queries),
+       "number of queries to generate/process")(
+          "interval_size,i",
+          bpo::value<duration_t::rep>(&interval_size)->default_value(60U, "60"),
+          "the initial size of the search interval in minutes, set to 0 for "
+          "ontrip queries")  //
+      ("bounding_box,b", bpo::value<std::string>(&bbox_str),
+       "limit randomized locations to a bounding box, "
+       "format: lat_min,lon_min,lat_max,lon_max\ne.g., 36.0,-11.0,72.0,32.0\n"
+       "(available via \"-b europe\")")  //
+      ("start_mode",
+       bpo::value<std::string>(&start_mode_str)->default_value("intermodal"),
+       "intermodal | station")  //
+      ("dest_mode",
+       bpo::value<std::string>(&dest_mode_str)->default_value("intermodal"),
+       "intermodal | station")  //
+      ("intermodal_start",
+       bpo::value<std::string>(&intermodal_start_str)->default_value("walk"),
+       "walk | bicycle | car")  //
+      ("intermodal_dest",
+       bpo::value<std::string>(&intermodal_dest_str)->default_value("walk"),
+       "walk | bicycle | car")  //
+      ("use_start_footpaths",
+       bpo::value<bool>(&gs.use_start_footpaths_)->default_value(true),
+       "")("max_transfers,t",
+           bpo::value<std::uint32_t>(&max_transfers)
+               ->default_value(kMaxTransfers),
+           "maximum number of transfers during routing")  //
+      ("min_connection_count,m",
+       bpo::value<std::uint32_t>(&gs.min_connection_count_)->default_value(3U),
+       "the minimum number of connections to find with each query")  //
+      ("extend_interval_earlier,e",
+       bpo::value<bool>(&gs.extend_interval_earlier_)
+           ->default_value(true, "true"),
+       "allows extension of the search interval into the past")  //
+      ("extend_interval_later,l",
+       bpo::value<bool>(&gs.extend_interval_later_)
+           ->default_value(true, "true"),
+       "allows extension of the search interval into the future")  //
+      ("profile_idx", bpo::value<std::uint32_t>(&prf_idx)->default_value(0U),
+       "footpath profile index")  //
+      ("allowed_claszes",
+       bpo::value<clasz_mask_t>(&gs.allowed_claszes_)
+           ->default_value(routing::all_clasz_allowed()),
+       "")  //
+      ("start_coord", bpo::value<std::string>(&start_coord_str),
+       "start coordinate for random queries")  //
+      ("dest_coord", bpo::value<std::string>(&dest_coord_str),
+       "destination coordinate for random queries")  //
+      ("start_loc", bpo::value<location_idx_t::value_t>(&start_loc_val),
+       "start location for random queries")  //
+      ("dest_loc", bpo::value<location_idx_t::value_t>(&dest_loc_val),
+       "destination location for random queries");
   bpo::variables_map vm;
   bpo::store(bpo::command_line_parser(argc, argv).options(desc).run(), vm);
 
@@ -407,8 +413,8 @@ int main(int argc, char* argv[]) {
   bpo::notify(vm);
 
   std::cout << "loading timetable...\n";
-  auto tt = *nigiri::timetable::read(
-      cista::memory_holder{cista::file{tt_path.c_str(), "r"}.content()});
+  auto tt = *nigiri::timetable::read(cista::memory_holder{
+      cista::file{tt_path.generic_string().c_str(), "r"}.content()});
   tt.locations_.resolve_timezones();
 
   gs.interval_size_ = duration_t{interval_size};
@@ -463,8 +469,8 @@ int main(int argc, char* argv[]) {
                           ? std::numeric_limits<std::uint8_t>::max()
                           : max_transfers;
 
-  if (vm.count("prf_idx") != 0) {
-    if (prf_idx > std::numeric_limits<profile_idx_t>::max()) {
+  if (vm.count("profile_idx") != 0) {
+    if (prf_idx >= kMaxProfiles) {
       std::cout << "Error: profile idx exceeds numeric limits\n";
       return 1;
     }
