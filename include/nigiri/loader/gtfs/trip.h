@@ -119,11 +119,12 @@ struct trip_data {
   vector_map<gtfs_trip_idx_t, trip> data_;
 };
 
-trip_data read_trips(timetable&,
-                     route_map_t const&,
-                     traffic_days_t const&,
-                     std::string_view file_content,
-                     bool bikes_allowed_default);
+trip_data read_trips(
+    timetable&,
+    route_map_t const&,
+    traffic_days_t const&,
+    std::string_view file_content,
+    std::array<bool, kNumClasses> const& bikes_allowed_default);
 
 void read_frequencies(trip_data&, std::string_view);
 

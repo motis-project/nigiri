@@ -250,11 +250,12 @@ trip_direction_idx_t trip_data::get_or_create_direction(
   });
 }
 
-trip_data read_trips(timetable& tt,
-                     route_map_t const& routes,
-                     traffic_days_t const& services,
-                     std::string_view file_content,
-                     bool const bikes_allowed_default) {
+trip_data read_trips(
+    timetable& tt,
+    route_map_t const& routes,
+    traffic_days_t const& services,
+    std::string_view file_content,
+    std::array<bool, kNumClasses> const& bikes_allowed_default) {
   struct csv_trip {
     utl::csv_col<utl::cstr, UTL_NAME("route_id")> route_id_;
     utl::csv_col<utl::cstr, UTL_NAME("service_id")> service_id_;
@@ -293,7 +294,8 @@ trip_data read_trips(timetable& tt,
             return;
           }
 
-          auto bikes_allowed = bikes_allowed_default;
+          auto bikes_allowed = bikes_allowed_default[static_cast<std::size_t>(
+              route_it->second->clasz_)];
           if (t.bikes_allowed_.val() == 1) {
             bikes_allowed = true;
           } else if (t.bikes_allowed_.val() == 2) {
