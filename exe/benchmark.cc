@@ -61,7 +61,7 @@ std::optional<geo::latlng> parse_coord(std::string const& str) {
   using namespace geo;
 
   static auto const coord_regex =
-      std::regex{R"(^\([-+]?[0-9]*\.?[0-9]+,[-+]?[0-9]*\.?[0-9]+\))"};
+      std::regex{R"(^\"\([-+]?[0-9]*\.?[0-9]+, [-+]?[0-9]*\.?[0-9]+\)\")"};
   if (!std::regex_match(begin(str), end(str), coord_regex)) {
     return std::nullopt;
   }
