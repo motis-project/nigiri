@@ -60,7 +60,7 @@ std::optional<geo::latlng> parse_coord(std::string const& str) {
   using namespace geo;
 
   static auto const coord_regex =
-      std::regex{"^\\([-+]?[0-9]*\\.?[0-9]+,[-+]?[0-9]*\\.?[0-9]+\\)"};
+      std::regex{R"(^\([-+]?[0-9]*\.?[0-9]+,[-+]?[0-9]*\.?[0-9]+\))"};
   if (!std::regex_match(begin(str), end(str), coord_regex)) {
     return std::nullopt;
   }
@@ -314,7 +314,7 @@ void print_results(
 
 void print_memory_usage() {
   auto r = rusage{};
-  auto rusage = getrusage(RUSAGE_SELF, &r);
+  getrusage(RUSAGE_SELF, &r);
   std::cout << "\n--- memory usage ---\nrusage.ru_maxrss: "
             << static_cast<double>(r.ru_maxrss) / (1024 * 1024) << " GiB\n";
 }
@@ -396,7 +396,7 @@ int main(int argc, char* argv[]) {
   bpo::store(bpo::command_line_parser(argc, argv).options(desc).run(), vm);
 
   // process program options - begin
-  if (vm.count("help")) {
+  if (vm.count("help") != 0U) {
     std::cout << desc << "\n";
     return 0;
   }
@@ -460,7 +460,7 @@ int main(int argc, char* argv[]) {
                           ? std::numeric_limits<std::uint8_t>::max()
                           : max_transfers;
 
-  if (vm.count("prf_idx")) {
+  if (vm.count("prf_idx") != 0) {
     if (prf_idx > std::numeric_limits<profile_idx_t>::max()) {
       std::cout << "Error: profile idx exceeds numeric limits\n";
       return 1;
@@ -502,7 +502,7 @@ int main(int argc, char* argv[]) {
   // process program options - end
 
   auto queries = std::vector<nigiri::query_generation::start_dest_query>{};
-  if (vm.count("seed")) {
+  if (vm.count("seed") != 0) {
     auto const seed = vm["seed"].as<std::uint32_t>();
     generate_queries(queries, n_queries, tt, gs, &seed);
   } else {
