@@ -278,16 +278,16 @@ void print_results(
      << gs.allowed_claszes_;
   if (gs.start_match_mode_ == location_match_mode::kIntermodal) {
     ss << " --start_coord \""
-       << get<geo::latlng>(queries[rbegin(results)[0].q_idx_].start_);
+       << get<geo::latlng>(queries[rbegin(results)[0].q_idx_].start_) << "\"";
   } else {
-    ss << "\" --start_loc "
+    ss << " --start_loc "
        << get<location_idx_t>(queries[rbegin(results)[0].q_idx_].start_);
   }
   if (gs.dest_match_mode_ == location_match_mode::kIntermodal) {
     ss << " --dest_coord \""
-       << get<geo::latlng>(queries[rbegin(results)[0].q_idx_].dest_);
+       << get<geo::latlng>(queries[rbegin(results)[0].q_idx_].dest_) << "\"";
   } else {
-    ss << "\" --dest_loc "
+    ss << " --dest_loc "
        << get<location_idx_t>(queries[rbegin(results)[0].q_idx_].dest_) << "\n";
   }
   std::cout << ss.str() << "\n";
