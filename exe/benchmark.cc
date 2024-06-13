@@ -15,8 +15,9 @@
 #include "nigiri/timetable.h"
 #include "nigiri/types.h"
 
+#ifndef _WIN32
 #include <sys/resource.h>
-#include <sys/time.h>
+#endif
 
 using namespace nigiri;
 using namespace nigiri::routing;
@@ -157,10 +158,10 @@ void process_queries(
                     .execute();
             auto const total_time_stop = std::chrono::steady_clock::now();
             auto const guard = std::lock_guard{mutex};
-            results.emplace_back(
+            results.emplace_back(benchmark_result{
                 q_idx, result, *result.journeys_,
                 std::chrono::duration_cast<std::chrono::milliseconds>(
-                    total_time_stop - total_time_start));
+                    total_time_stop - total_time_start)});
             progress_tracker->increment();
           } catch (const std::exception& e) {
             std::cout << e.what();
@@ -313,10 +314,12 @@ void print_results(
 }
 
 void print_memory_usage() {
+#ifndef _WIN32
   auto r = rusage{};
   getrusage(RUSAGE_SELF, &r);
   std::cout << "\n--- memory usage ---\nrusage.ru_maxrss: "
             << static_cast<double>(r.ru_maxrss) / (1024 * 1024) << " GiB\n";
+#endif
 }
 
 int main(int argc, char* argv[]) {
