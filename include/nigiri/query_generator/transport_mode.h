@@ -31,4 +31,16 @@ constexpr auto const kBicycle =
 constexpr auto const kCar =
     transport_mode{.mode_id_ = 3, .speed_ = 800U, .max_duration_ = 15U};
 
+constexpr std::optional<transport_mode> to_transport_mode(
+    std::string_view const& str) {
+  if (str == "walk") {
+    return kWalk;
+  } else if (str == "bicycle") {
+    return kBicycle;
+  } else if (str == "car") {
+    return kCar;
+  }
+  return std::nullopt;
+}
+
 }  // namespace nigiri::query_generation
