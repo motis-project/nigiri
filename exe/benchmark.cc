@@ -273,20 +273,21 @@ void print_results(
   ss << " --use_start_footpaths " << gs.use_start_footpaths_ << " -t "
      << std::uint32_t{gs.max_transfers_} << " -m " << gs.min_connection_count_
      << " -e " << gs.extend_interval_earlier_ << " -l "
-     << gs.extend_interval_later_ << " --prf_idx " << std::uint32_t{gs.prf_idx_}
-     << " --allowed_claszes " << gs.allowed_claszes_;
+     << gs.extend_interval_later_ << " --profile_idx "
+     << std::uint32_t{gs.prf_idx_} << " --allowed_claszes "
+     << gs.allowed_claszes_;
   if (gs.start_match_mode_ == location_match_mode::kIntermodal) {
-    ss << " --start_coord "
+    ss << " --start_coord \""
        << get<geo::latlng>(queries[rbegin(results)[0].q_idx_].start_);
   } else {
-    ss << " --start_loc "
+    ss << "\" --start_loc "
        << get<location_idx_t>(queries[rbegin(results)[0].q_idx_].start_);
   }
   if (gs.dest_match_mode_ == location_match_mode::kIntermodal) {
-    ss << " --dest_coord "
+    ss << " --dest_coord \""
        << get<geo::latlng>(queries[rbegin(results)[0].q_idx_].dest_);
   } else {
-    ss << " --dest_loc "
+    ss << "\" --dest_loc "
        << get<location_idx_t>(queries[rbegin(results)[0].q_idx_].dest_) << "\n";
   }
   std::cout << ss.str() << "\n";
