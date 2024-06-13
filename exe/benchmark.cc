@@ -76,16 +76,17 @@ struct benchmark_result {
     using double_seconds_t = std::chrono::duration<double, std::ratio<1>>;
     out << "(t_total: " << std::fixed << std::setprecision(3) << std::setw(9)
         << std::chrono::duration_cast<double_seconds_t>(br.total_time_).count()
-        << ", t_exec: " << std::setw(9)
+        << "s, t_exec: " << std::setw(9)
         << std::chrono::duration_cast<double_seconds_t>(
                br.routing_result_.search_stats_.execute_time_)
                .count()
-        << ", intvl_ext: " << std::setw(2)
+        << "s, intvl_ext: " << std::setw(2)
         << br.routing_result_.search_stats_.interval_extensions_
         << ", intvl_size: " << std::setw(5)
         << std::chrono::duration_cast<std::chrono::hours>(
                br.routing_result_.interval_.size())
-        << ", #jrny: " << std::setfill(' ') << std::setw(2)
+               .count()
+        << "h" << ", #jrny: " << std::setfill(' ') << std::setw(2)
         << br.journeys_.size() << ")";
     return out;
   }
