@@ -392,6 +392,36 @@ leg 0: (A, A) [2019-05-01 08:00] -> (D, D) [2019-05-01 08:35]
 
 )"sv;
 
+constexpr auto const expected2_A_D_no_bike_rt =
+    R"(
+[2019-05-01 08:00, 2019-05-01 08:30]
+TRANSFERS: 0
+     FROM: (A, A) [2019-05-01 08:00]
+       TO: (D, D) [2019-05-01 08:30]
+leg 0: (A, A) [2019-05-01 08:00] -> (D, D) [2019-05-01 08:30]
+   0: A       A...............................................                                                             d: 01.05 08:00 [01.05 10:00]  RT 01.05 08:00 [01.05 10:00]  [{name=Bus 1, day=2019-05-01, id=T1, src=0}]
+   1: B       B............................................... a: 01.05 08:10 [01.05 10:10]  RT 01.05 08:10 [01.05 10:10]  d: 01.05 08:15 [01.05 10:15]  RT 01.05 08:20 [01.05 10:20]  [{name=Bus 2, day=2019-05-01, id=T2, src=0}]
+   2: C       C............................................... a: 01.05 08:20 [01.05 10:20]  RT 01.05 08:25 [01.05 10:25]  d: 01.05 08:20 [01.05 10:20]  RT 01.05 08:25 [01.05 10:25]  [{name=Bus 2, day=2019-05-01, id=T2, src=0}]
+   3: D       D............................................... a: 01.05 08:25 [01.05 10:25]  RT 01.05 08:30 [01.05 10:30]
+
+
+)"sv;
+
+constexpr auto const expected2_A_D_bike_rt =
+    R"(
+[2019-05-01 08:00, 2019-05-01 08:37]
+TRANSFERS: 0
+     FROM: (A, A) [2019-05-01 08:00]
+       TO: (D, D) [2019-05-01 08:37]
+leg 0: (A, A) [2019-05-01 08:00] -> (D, D) [2019-05-01 08:37]
+   0: A       A...............................................                                                             d: 01.05 08:00 [01.05 10:00]  RT 01.05 08:00 [01.05 10:00]  [{name=Bus 1, day=2019-05-01, id=T3, src=0}]
+   1: B       B............................................... a: 01.05 08:20 [01.05 10:20]  RT 01.05 08:20 [01.05 10:20]  d: 01.05 08:25 [01.05 10:25]  RT 01.05 08:27 [01.05 10:27]  [{name=Bus 2, day=2019-05-01, id=T4, src=0}]
+   2: C       C............................................... a: 01.05 08:30 [01.05 10:30]  RT 01.05 08:32 [01.05 10:32]  d: 01.05 08:30 [01.05 10:30]  RT 01.05 08:32 [01.05 10:32]  [{name=Bus 2, day=2019-05-01, id=T4, src=0}]
+   3: D       D............................................... a: 01.05 08:35 [01.05 10:35]  RT 01.05 08:37 [01.05 10:37]
+
+
+)"sv;
+
 TEST(routing, bike_transport_test_2) {
   auto tt = timetable{};
 
@@ -413,6 +443,35 @@ TEST(routing, bike_transport_test_2) {
       auto const results =
           search(tt, nullptr, "A", "D", tt.date_range_, dir, true);
       EXPECT_EQ(expected2_A_D_bike, results_to_str(results, dir, tt));
+    }
+  }
+
+  // RT Update
+  auto rtt = rt::create_rt_timetable(tt, sys_days{2019_y / May / 1});
+  auto const msg =
+      test::to_feed_msg({test::trip{.trip_id_ = "T2",
+                                    .delays_ = {{.stop_id_ = "B",
+                                                 .ev_type_ = event_type::kDep,
+                                                 .delay_minutes_ = 5}}},
+                         test::trip{.trip_id_ = "T4",
+                                    .delays_ = {{.stop_id_ = "B",
+                                                 .ev_type_ = event_type::kDep,
+                                                 .delay_minutes_ = 2}}}},
+                        date::sys_days{2019_y / May / 1} + 1h);
+  rt::gtfsrt_update_msg(tt, rtt, source_idx_t{0}, "", msg);
+
+  for (auto const dir : {direction::kForward, direction::kBackward}) {
+    {  // A->D, without bike
+      auto const results =
+          search(tt, &rtt, "A", "D", tt.date_range_, dir, false);
+      EXPECT_EQ(expected2_A_D_no_bike_rt,
+                results_to_str(results, dir, tt, &rtt));
+    }
+
+    {  // A->D, with bike
+      auto const results =
+          search(tt, &rtt, "A", "D", tt.date_range_, dir, true);
+      EXPECT_EQ(expected2_A_D_bike_rt, results_to_str(results, dir, tt, &rtt));
     }
   }
 }
