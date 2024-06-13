@@ -1,5 +1,7 @@
 #include "nigiri/routing/raptor/reconstruct.h"
 
+#include <iterator>
+
 #include "utl/enumerate.h"
 #include "utl/helpers/algorithm.h"
 
@@ -431,7 +433,11 @@ void reconstruct_journey(timetable const& tt,
     trace_reconstruct("RECONSTRUCT WITH k={}\n", k);
     auto [fp_leg, transport_leg] = get_legs(k, l);
     l = kFwd ? transport_leg.from_ : transport_leg.to_;
-    j.add(std::move(fp_leg));
+    // don't add a 0 minute footpath at the end (fwd) or beginning (bwd)
+    if (i != 0 || fp_leg.from_ != fp_leg.to_ ||
+        fp_leg.dep_time_ != fp_leg.arr_time_) {
+      j.add(std::move(fp_leg));
+    }
     j.add(std::move(transport_leg));
   }
 
@@ -442,6 +448,16 @@ void reconstruct_journey(timetable const& tt,
 
   if constexpr (kFwd) {
     std::reverse(begin(j.legs_), end(j.legs_));
+  } else {
+    // adjust footpaths so that they always begin at the arrival time of
+    // the previous leg
+    for (auto it = std::next(j.legs_.begin()); it != j.legs_.end(); ++it) {
+      if (std::holds_alternative<footpath>(it->uses_)) {
+        auto const diff = it->dep_time_ - std::prev(it)->arr_time_;
+        it->dep_time_ -= diff;
+        it->arr_time_ -= diff;
+      }
+    }
   }
 
 #if defined(NIGIRI_TRACE_RECUSTRUCT)

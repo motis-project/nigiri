@@ -148,7 +148,9 @@ leg 0: (A, A) [2019-05-01 08:00] -> (C, C) [2019-05-01 08:20]
    0: A       A...............................................                               d: 01.05 08:00 [01.05 10:00]  [{name=Bus 0, day=2019-05-01, id=T0, src=0}]
    1: B       B............................................... a: 01.05 08:10 [01.05 10:10]  d: 01.05 08:10 [01.05 10:10]  [{name=Bus 0, day=2019-05-01, id=T0, src=0}]
    2: C       C............................................... a: 01.05 08:20 [01.05 10:20]
-leg 1: (C, C) [2019-05-01 08:35] -> (D, D) [2019-05-01 08:40]
+leg 1: (C, C) [2019-05-01 08:20] -> (C, C) [2019-05-01 08:22]
+  FOOTPATH (duration=2)
+leg 2: (C, C) [2019-05-01 08:35] -> (D, D) [2019-05-01 08:40]
    0: C       C...............................................                               d: 01.05 08:35 [01.05 10:35]  [{name=Bus 2, day=2019-05-01, id=T3, src=0}]
    1: D       D............................................... a: 01.05 08:40 [01.05 10:40]
 
@@ -165,7 +167,9 @@ leg 0: (A, A) [2019-05-01 08:00] -> (C, C) [2019-05-01 08:30]
    0: A       A...............................................                               d: 01.05 08:00 [01.05 10:00]  [{name=Bus 1, day=2019-05-01, id=T1, src=0}]
    1: B       B............................................... a: 01.05 08:15 [01.05 10:15]  d: 01.05 08:15 [01.05 10:15]  [{name=Bus 1, day=2019-05-01, id=T1, src=0}]
    2: C       C............................................... a: 01.05 08:30 [01.05 10:30]
-leg 1: (C, C) [2019-05-01 08:35] -> (D, D) [2019-05-01 08:40]
+leg 1: (C, C) [2019-05-01 08:30] -> (C, C) [2019-05-01 08:32]
+  FOOTPATH (duration=2)
+leg 2: (C, C) [2019-05-01 08:35] -> (D, D) [2019-05-01 08:40]
    0: C       C...............................................                               d: 01.05 08:35 [01.05 10:35]  [{name=Bus 2, day=2019-05-01, id=T3, src=0}]
    1: D       D............................................... a: 01.05 08:40 [01.05 10:40]
 
@@ -204,7 +208,9 @@ leg 0: (A, A) [2019-05-01 08:00] -> (C, C) [2019-05-01 08:20]
    0: A       A...............................................                               d: 01.05 08:00 [01.05 10:00]  [{name=Bus 0, day=2019-05-01, id=T0, src=0}]
    1: B       B............................................... a: 01.05 08:10 [01.05 10:10]  d: 01.05 08:10 [01.05 10:10]  [{name=Bus 0, day=2019-05-01, id=T0, src=0}]
    2: C       C............................................... a: 01.05 08:20 [01.05 10:20]
-leg 1: (C, C) [2019-05-01 08:35] -> (F, F) [2019-05-01 08:55]
+leg 1: (C, C) [2019-05-01 08:20] -> (C, C) [2019-05-01 08:22]
+  FOOTPATH (duration=2)
+leg 2: (C, C) [2019-05-01 08:35] -> (F, F) [2019-05-01 08:55]
    0: C       C...............................................                               d: 01.05 08:35 [01.05 10:35]  [{name=Bus 2, day=2019-05-01, id=T3, src=0}]
    1: D       D............................................... a: 01.05 08:40 [01.05 10:40]  d: 01.05 08:42 [01.05 10:42]  [{name=Bus 3, day=2019-05-01, id=T5, src=0}]
    2: E       E............................................... a: 01.05 08:50 [01.05 10:50]  d: 01.05 08:50 [01.05 10:50]  [{name=Bus 3, day=2019-05-01, id=T5, src=0}]
@@ -223,7 +229,9 @@ leg 0: (A, A) [2019-05-01 08:00] -> (C, C) [2019-05-01 08:30]
    0: A       A...............................................                               d: 01.05 08:00 [01.05 10:00]  [{name=Bus 1, day=2019-05-01, id=T1, src=0}]
    1: B       B............................................... a: 01.05 08:15 [01.05 10:15]  d: 01.05 08:15 [01.05 10:15]  [{name=Bus 1, day=2019-05-01, id=T1, src=0}]
    2: C       C............................................... a: 01.05 08:30 [01.05 10:30]
-leg 1: (C, C) [2019-05-01 08:45] -> (F, F) [2019-05-01 09:05]
+leg 1: (C, C) [2019-05-01 08:30] -> (C, C) [2019-05-01 08:32]
+  FOOTPATH (duration=2)
+leg 2: (C, C) [2019-05-01 08:45] -> (F, F) [2019-05-01 09:05]
    0: C       C...............................................                               d: 01.05 08:45 [01.05 10:45]  [{name=Bus 2, day=2019-05-01, id=T4, src=0}]
    1: D       D............................................... a: 01.05 08:50 [01.05 10:50]  d: 01.05 08:52 [01.05 10:52]  [{name=Bus 3, day=2019-05-01, id=T6, src=0}]
    2: E       E............................................... a: 01.05 09:00 [01.05 11:00]  d: 01.05 09:00 [01.05 11:00]  [{name=Bus 3, day=2019-05-01, id=T6, src=0}]
@@ -235,18 +243,12 @@ leg 1: (C, C) [2019-05-01 08:45] -> (F, F) [2019-05-01 09:05]
 }  // namespace
 
 std::string results_to_str(pareto_set<routing::journey> const& results,
-                           direction const dir,
                            timetable const& tt,
                            rt_timetable const* rtt = nullptr) {
   std::stringstream ss;
   ss << "\n";
-  for (auto x : results) {
-    // to allow for easier comparison, remove footpaths so that the output is
-    // the same for forward and backward search
-    utl::erase_if(x.legs_, [](routing::journey::leg const& l) {
-      return std::holds_alternative<footpath>(l.uses_);
-    });
-    x.print(ss, tt, rtt);
+  for (auto const& j : results) {
+    j.print(ss, tt, rtt);
     ss << "\n\n";
   }
   return ss.str();
@@ -279,49 +281,49 @@ TEST(routing, bike_transport_test_1) {
     {  // A->C, without bike
       auto const results =
           search(tt, nullptr, "A", "C", tt.date_range_, dir, false);
-      EXPECT_EQ(expected_A_C_no_bike, results_to_str(results, dir, tt));
+      EXPECT_EQ(expected_A_C_no_bike, results_to_str(results, tt));
     }
 
     {  // A->C, with bike
       auto const results =
           search(tt, nullptr, "A", "C", tt.date_range_, dir, true);
-      EXPECT_EQ(expected_A_C_bike, results_to_str(results, dir, tt));
+      EXPECT_EQ(expected_A_C_bike, results_to_str(results, tt));
     }
 
     {  // C->D, without bike
       auto const results =
           search(tt, nullptr, "C", "D", tt.date_range_, dir, false);
-      EXPECT_EQ(expected_C_D, results_to_str(results, dir, tt));
+      EXPECT_EQ(expected_C_D, results_to_str(results, tt));
     }
 
     {  // C->D, with bike
       auto const results =
           search(tt, nullptr, "C", "D", tt.date_range_, dir, true);
-      EXPECT_EQ(expected_C_D, results_to_str(results, dir, tt));
+      EXPECT_EQ(expected_C_D, results_to_str(results, tt));
     }
 
     {  // A->D, without bike
       auto const results =
           search(tt, nullptr, "A", "D", tt.date_range_, dir, false);
-      EXPECT_EQ(expected_A_D_no_bike, results_to_str(results, dir, tt));
+      EXPECT_EQ(expected_A_D_no_bike, results_to_str(results, tt));
     }
 
     {  // A->D, with bike
       auto const results =
           search(tt, nullptr, "A", "D", tt.date_range_, dir, true);
-      EXPECT_EQ(expected_A_D_bike, results_to_str(results, dir, tt));
+      EXPECT_EQ(expected_A_D_bike, results_to_str(results, tt));
     }
 
     {  // A->F, without bike
       auto const results =
           search(tt, nullptr, "A", "F", tt.date_range_, dir, false);
-      EXPECT_EQ(expected_A_F_no_bike, results_to_str(results, dir, tt));
+      EXPECT_EQ(expected_A_F_no_bike, results_to_str(results, tt));
     }
 
     {  // A->F, with bike
       auto const results =
           search(tt, nullptr, "A", "F", tt.date_range_, dir, true);
-      EXPECT_EQ(expected_A_F_bike, results_to_str(results, dir, tt));
+      EXPECT_EQ(expected_A_F_bike, results_to_str(results, tt));
     }
   }
 }
@@ -446,13 +448,13 @@ TEST(routing, bike_transport_test_2) {
     {  // A->D, without bike
       auto const results =
           search(tt, nullptr, "A", "D", tt.date_range_, dir, false);
-      EXPECT_EQ(expected2_A_D_no_bike, results_to_str(results, dir, tt));
+      EXPECT_EQ(expected2_A_D_no_bike, results_to_str(results, tt));
     }
 
     {  // A->D, with bike
       auto const results =
           search(tt, nullptr, "A", "D", tt.date_range_, dir, true);
-      EXPECT_EQ(expected2_A_D_bike, results_to_str(results, dir, tt));
+      EXPECT_EQ(expected2_A_D_bike, results_to_str(results, tt));
     }
   }
 
@@ -474,14 +476,13 @@ TEST(routing, bike_transport_test_2) {
     {  // A->D, without bike
       auto const results =
           search(tt, &rtt, "A", "D", tt.date_range_, dir, false);
-      EXPECT_EQ(expected2_A_D_no_bike_rt,
-                results_to_str(results, dir, tt, &rtt));
+      EXPECT_EQ(expected2_A_D_no_bike_rt, results_to_str(results, tt, &rtt));
     }
 
     {  // A->D, with bike
       auto const results =
           search(tt, &rtt, "A", "D", tt.date_range_, dir, true);
-      EXPECT_EQ(expected2_A_D_bike_rt, results_to_str(results, dir, tt, &rtt));
+      EXPECT_EQ(expected2_A_D_bike_rt, results_to_str(results, tt, &rtt));
     }
   }
 }
@@ -581,13 +582,13 @@ TEST(routing, bike_transport_test_3) {
     {  // A->D, without bike
       auto const results =
           search(tt, nullptr, "A", "D", tt.date_range_, dir, false);
-      EXPECT_EQ(expected3_A_D_no_bike, results_to_str(results, dir, tt));
+      EXPECT_EQ(expected3_A_D_no_bike, results_to_str(results, tt));
     }
 
     {  // A->D, with bike
       auto const results =
           search(tt, nullptr, "A", "D", tt.date_range_, dir, true);
-      EXPECT_EQ(expected3_A_D_bike, results_to_str(results, dir, tt));
+      EXPECT_EQ(expected3_A_D_bike, results_to_str(results, tt));
     }
   }
 }
