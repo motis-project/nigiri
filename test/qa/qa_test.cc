@@ -38,12 +38,6 @@ TEST(qa, test1) {
   a.add(std::move(a0));
   a.add(std::move(a1));
 
-  auto b0 = journey{};
-  b0.start_time_ =
-      unixtime_t{sys_days{2024_y / June / 10} + 9_hours + 33_minutes};
-  b0.dest_time_ =
-      unixtime_t{sys_days{2024_y / June / 10} + 11_hours + 34_minutes};
-  b0.transfers_ = 0U;
   auto b1 = journey{};
   b1.start_time_ =
       unixtime_t{sys_days{2024_y / June / 10} + 9_hours + 45_minutes};
@@ -52,7 +46,11 @@ TEST(qa, test1) {
   b1.transfers_ = 1U;
 
   auto b = pareto_set<journey>{};
-  b.add(std::move(b0));
+  b.add({.start_time_ =
+             unixtime_t{sys_days{2024_y / June / 10} + 9_hours + 33_minutes},
+         .dest_time_ =
+             unixtime_t{sys_days{2024_y / June / 10} + 11_hours + 34_minutes},
+         .transfers_ = 0U});
   b.add(std::move(b1));
 
   EXPECT_DOUBLE_EQ(0.342008418450396, qa::rate(a, b));

@@ -18,9 +18,9 @@ T quantile(std::vector<T> const& v, double q) {
   return v[static_cast<std::size_t>(v.size() * q)];
 }
 
-void print_result(std::vector<std::pair<nigiri::qa::rating_t,
-                                        std::chrono::milliseconds>> const& var,
-                  std::string const& var_name) {
+void print_result(
+    std::vector<std::pair<double, std::chrono::milliseconds>> const& var,
+    std::string const& var_name) {
   auto const pair_str = [](auto const& p) {
     auto ss = std::stringstream{};
     ss << "(" << p.first << ", " << p.second << ")";
@@ -76,22 +76,16 @@ int main(int ac, char** av) {
     return 1;
   }
 
-  auto const ref =
-      std::make_unique<cista::wrapped<nigiri::qa::benchmark_criteria>>(
-          nigiri::qa::benchmark_criteria::read(
-              cista::memory_holder{cista::file{in_r.c_str(), "r"}.content()}));
-
-  auto const cmp =
-      std::make_unique<cista::wrapped<nigiri::qa::benchmark_criteria>>(
-          nigiri::qa::benchmark_criteria::read(
-              cista::memory_holder{cista::file{in_c.c_str(), "r"}.content()}));
+  auto const ref = nigiri::qa::benchmark_criteria::read(
+      cista::memory_holder{cista::file{in_r.c_str(), "r"}.content()});
+  auto const cmp = nigiri::qa::benchmark_criteria::read(
+      cista::memory_holder{cista::file{in_c.c_str(), "r"}.content()});
 
   auto rating_timing =
-      std::vector<std::pair<nigiri::qa::rating_t, std::chrono::milliseconds>>{};
-  rating_timing.reserve((**ref).qc_.size());
-
-  for (auto const& qc_ref : (**ref).qc_) {
-    for (auto const& qc_cmp : (**cmp).qc_) {
+      std::vector<std::pair<double, std::chrono::milliseconds>>{};
+  rating_timing.reserve(ref->qc_.size());
+  for (auto const& qc_ref : ref->qc_) {
+    for (auto const& qc_cmp : cmp->qc_) {
       if (qc_ref.query_idx_ == qc_cmp.query_idx_) {
         auto const rating = nigiri::qa::rate(qc_cmp.jc_, qc_ref.jc_);
         auto const timing = qc_cmp.query_time_ - qc_ref.query_time_;
