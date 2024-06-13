@@ -241,17 +241,11 @@ std::string results_to_str(pareto_set<routing::journey> const& results,
   std::stringstream ss;
   ss << "\n";
   for (auto x : results) {
-    // to allow for easier comparison, remove footpaths and adjust
-    // start + dest time, so that the output is the same for
-    // forward and backward search
+    // to allow for easier comparison, remove footpaths so that the output is
+    // the same for forward and backward search
     utl::erase_if(x.legs_, [](routing::journey::leg const& l) {
       return std::holds_alternative<footpath>(l.uses_);
     });
-    if (dir == direction::kBackward) {
-      auto const start_time = x.start_time_;
-      x.start_time_ = x.dest_time_;
-      x.dest_time_ = start_time;
-    }
     x.print(ss, tt, rtt);
     ss << "\n\n";
   }

@@ -69,6 +69,14 @@ struct journey {
     return duration_t{std::abs((dest_time_ - start_time_).count())};
   }
 
+  unixtime_t departure_time() const {
+    return start_time_ <= dest_time_ ? start_time_ : dest_time_;
+  }
+
+  unixtime_t arrival_time() const {
+    return start_time_ <= dest_time_ ? dest_time_ : start_time_;
+  }
+
   void print(std::ostream&,
              timetable const&,
              rt_timetable const* = nullptr,

@@ -152,7 +152,7 @@ TEST(routing, rt_raptor_forward) {
   EXPECT_EQ(std::string_view{fwd_journeys}, ss.str());
 }
 
-constexpr auto const bwd_journeys = R"([2019-05-03 02:00, 2019-05-02 23:00]
+constexpr auto const bwd_journeys = R"([2019-05-02 23:00, 2019-05-03 02:00]
 TRANSFERS: 1
      FROM: (A, A) [2019-05-02 23:00]
        TO: (D, D) [2019-05-03 01:00]
