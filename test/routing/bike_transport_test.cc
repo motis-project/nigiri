@@ -28,6 +28,18 @@ using nigiri::test::raptor_search;
 
 namespace {
 
+// Timetable 1:
+// Bikes allowed in T1, T3, T4, T6, not allowed in T0, T2, T5
+// Connections with bikes allowed are slower
+// A -> C: 10:00 - 10:20 | T0 (no bikes)
+//         10:00 - 10:30 | T1 (bikes allowed)
+//         11:00 - 11:30 | T2 (no bikes)
+// C -> D: 10:35 - 10:40 | T3 (bikes allowed)
+//         10:45 - 10:50 | T4 (bikes allowed)
+// A -> D: 10:00 - 10:40 | T0, T3 (no bikes in T0)
+//         10:00 - 10:40 | T1, T3 (bikes allowed)
+// A -> F: 10:00 - 10:55 | T0, T3, T5 (no bikes in T0, T5)
+//         10:00 - 11:05 | T1, T4, T6 (bikes allowed)
 constexpr auto const test_files_1 = R"(
 # agency.txt
 agency_id,agency_name,agency_url,agency_timezone
@@ -320,6 +332,10 @@ TEST(routing, bike_transport_test_1) {
   }
 }
 
+// Timetable 2:
+// Bikes allowed in all trips except T1, blocks T1>T2 and T3>T4
+// A -> D: 10:00 - 10:25 | T1, T2 (no bikes in T1)
+//         10:00 - 10:35 | T3, T4 (bikes allowed)
 constexpr auto const test_files2 = R"(
 # agency.txt
 agency_id,agency_name,agency_url,agency_timezone
@@ -476,6 +492,10 @@ TEST(routing, bike_transport_test_2) {
   }
 }
 
+// Timetable 3:
+// Bikes allowed in all trips except T2, blocks T1>T2>T3 and T4>T5>T6
+// A -> D: 10:00 - 10:30 | T1, T2, T3 (no bikes in T2)
+//         10:00 - 10:40 | T4, T5, T6 (bikes allowed)
 constexpr auto const test_files3 = R"(
 # agency.txt
 agency_id,agency_name,agency_url,agency_timezone
