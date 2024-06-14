@@ -43,4 +43,16 @@ constexpr std::optional<transport_mode> to_transport_mode(
   return std::nullopt;
 }
 
+constexpr std::optional<std::string> to_string(transport_mode const& tm) {
+  using namespace nigiri::query_generation;
+  if (tm == kWalk) {
+    return "walk";
+  } else if (tm == kBicycle) {
+    return "bicycle";
+  } else if (tm == kCar) {
+    return "car";
+  }
+  return std::nullopt;
+}
+
 }  // namespace nigiri::query_generation
