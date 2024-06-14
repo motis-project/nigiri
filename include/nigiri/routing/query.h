@@ -50,6 +50,7 @@ struct query {
   bool extend_interval_later_{false};
   profile_idx_t prf_idx_{0};
   clasz_mask_t allowed_claszes_{all_clasz_allowed()};
+  bool require_bike_transport_{false};
 };
 
 }  // namespace nigiri::routing
