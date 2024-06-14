@@ -79,24 +79,15 @@ void optimize_last_arrival(timetable const& tt,
       continue;
     }
 
-    auto const fr = (rtt != nullptr && rtt->resolve_rt(ree.r_.t_) !=
-                                           rt_transport_idx_t::invalid())
-                        ? rt::frun::from_rt(tt, rtt, rtt->resolve_rt(ree.r_.t_))
-                        : rt::frun::from_t(tt, rtt, ree.r_.t_);
-
-    for (auto stop_idx = static_cast<stop_idx_t>(ree.stop_range_.from_ + 1U);
-         stop_idx != fr.size(); ++stop_idx) {
-      auto stp = fr[stop_idx];
+    auto fr = rt::frun{tt, rtt, ree.r_};
+    fr.stop_range_ = {static_cast<stop_idx_t>(ree.stop_range_.from_ + 1U),
+                      fr.size()};
+    for (auto const stp : fr) {
       if (!stp.out_allowed() || !matches(tt, location_match_mode::kExact,
                                          o.target(), stp.get_location_idx())) {
         continue;
       }
-      auto const arr =
-          rtt != nullptr &&
-                  rtt->resolve_rt(ree.r_.t_) != rt_transport_idx_t::invalid()
-              ? rtt->unix_event_time(rtt->resolve_rt(ree.r_.t_), stop_idx,
-                                     event_type::kArr)
-              : tt.event_time(ree.r_.t_, stop_idx, event_type::kArr);
+      auto const arr = stp.time(event_type::kArr);
       auto const o_end = arr + o.duration();
       if (o_end <= offset_leg.arr_time_) {
         offset_leg.from_ = stp.get_location_idx();
@@ -105,7 +96,7 @@ void optimize_last_arrival(timetable const& tt,
         offset_leg.uses_ = o;
         transport_leg.to_ = stp.get_location_idx();
         transport_leg.arr_time_ = arr;
-        ree.stop_range_.to_ = stop_idx + 1U;
+        ree.stop_range_.to_ = stp.stop_idx_ + 1U;
         offset_dur_best = o.duration();
       }
     }
@@ -132,12 +123,14 @@ void optimize_transfers(timetable const& tt,
     auto& ree_from = get<journey::run_enter_exit>(leg_from.uses_);
     auto& ree_to = get<journey::run_enter_exit>(leg_to.uses_);
 
-    auto const fr_from = rt::frun{tt, rtt, ree_from.r_};
-    auto const fr_to = rt::frun{tt, rtt, ree_to.r_};
-    for (auto stop_idx =
-             static_cast<stop_idx_t>(ree_from.stop_range_.from_ + 1U);
-         stop_idx != fr_from.size(); ++stop_idx) {
-      auto const stp_from = fr_from[stop_idx];
+    auto fr_from = rt::frun{tt, rtt, ree_from.r_};
+    fr_from.stop_range_ = {
+        static_cast<stop_idx_t>(ree_from.stop_range_.from_ + 1U),
+        fr_from.size()};
+    auto fr_to = rt::frun{tt, rtt, ree_to.r_};
+    fr_to.stop_range_ = {stop_idx_t{0U},
+                         static_cast<stop_idx_t>(ree_to.stop_range_.to_ - 1U)};
+    for (auto stp_from : fr_from) {
       if (!stp_from.out_allowed()) {
         continue;
       }
@@ -148,9 +141,7 @@ void optimize_transfers(timetable const& tt,
           continue;
         }
 
-        for (auto stop_idx_to = stop_idx_t{0U};
-             stop_idx_to != ree_to.stop_range_.to_ - 1U; ++stop_idx_to) {
-          auto const stp_to = fr_to[stop_idx_to];
+        for (auto stp_to : fr_to) {
           if (!stp_to.in_allowed() ||
               fp.target() != stp_to.get_location_idx()) {
             continue;
@@ -161,11 +152,12 @@ void optimize_transfers(timetable const& tt,
           if (arr_fp <= dep) {
             leg_from.to_ = stp_from.get_location_idx();
             leg_from.arr_time_ = arr;
-            ree_from.stop_range_.to_ = stop_idx + 1U;  // half open interval
+            ree_from.stop_range_.to_ =
+                stp_from.stop_idx_ + 1U;  // half open interval
 
             leg_to.from_ = stp_to.get_location_idx();
             leg_to.dep_time_ = dep;
-            ree_to.stop_range_.from_ = stop_idx_to;
+            ree_to.stop_range_.from_ = stp_to.stop_idx_;
 
             leg_footpath.from_ = stp_from.get_location_idx();
             leg_footpath.to_ = stp_to.get_location_idx();
