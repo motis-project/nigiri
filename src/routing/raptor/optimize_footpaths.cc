@@ -134,15 +134,14 @@ void optimize_transfers(timetable const& tt,
       if (!stp_from.out_allowed()) {
         continue;
       }
-      for (auto const& fp :
-           tt.locations_
-               .footpaths_out_[q.prf_idx_][stp_from.get_location_idx()]) {
-        if (fp.duration() >= fp_dur_best) {
+      for (auto stp_to : fr_to) {
+        if (!stp_to.in_allowed()) {
           continue;
         }
-
-        for (auto stp_to : fr_to) {
-          if (!stp_to.in_allowed() ||
+        for (auto const& fp :
+             tt.locations_
+                 .footpaths_out_[q.prf_idx_][stp_from.get_location_idx()]) {
+          if (fp.duration() >= fp_dur_best ||
               fp.target() != stp_to.get_location_idx()) {
             continue;
           }
