@@ -23,8 +23,8 @@ using gtfs_trip_idx_t = cista::strong<std::uint32_t, struct _gtfs_trip_idx>;
 
 struct trip_data;
 
-static auto const kSingleTripBikesAllowed = bitvec("1");
-static auto const kSingleTripBikesNotAllowed = bitvec("0");
+static auto const kSingleTripBikesAllowed = bitvec{"1"};
+static auto const kSingleTripBikesNotAllowed = bitvec{"0"};
 
 struct block {
   std::vector<std::pair<std::basic_string<gtfs_trip_idx_t>, bitfield>>
