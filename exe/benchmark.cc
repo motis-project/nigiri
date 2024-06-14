@@ -61,7 +61,7 @@ std::optional<geo::latlng> parse_coord(std::string const& str) {
   using namespace geo;
 
   static auto const coord_regex =
-      std::regex{R"(^\"\([-+]?[0-9]*\.?[0-9]+, [-+]?[0-9]*\.?[0-9]+\)\")"};
+      std::regex{R"(^\([-+]?[0-9]*\.?[0-9]+, [-+]?[0-9]*\.?[0-9]+\))"};
   if (!std::regex_match(begin(str), end(str), coord_regex)) {
     return std::nullopt;
   }
@@ -102,9 +102,11 @@ void generate_queries(
     std::uint32_t n_queries,
     nigiri::timetable const& tt,
     query_generation::generator_settings const& gs,
-    std::uint32_t const* seed) {
-  auto qg = seed != nullptr ? query_generation::generator{tt, gs, *seed}
-                            : query_generation::generator{tt, gs};
+    std::int64_t const seed) {
+  auto qg = seed > -1
+                ? query_generation::generator{tt, gs,
+                                              static_cast<std::uint32_t>(seed)}
+                : query_generation::generator{tt, gs};
   auto query_generation_timer = scoped_timer(fmt::format(
       "generation of {} queries using seed {}", n_queries, qg.seed_));
   std::cout << "--- Query generator settings ---\n" << gs << "\n--- --- ---\n";
@@ -242,31 +244,19 @@ void print_results(
   }
   std::cout << "\n";
 
-  auto const transport_mode_str = [](auto&& tm) {
-    using namespace nigiri::query_generation;
-    if (tm == kWalk) {
-      return "walk";
-    } else if (tm == kBicycle) {
-      return "bicycle";
-    } else if (tm == kCar) {
-      return "car";
-    }
-    return "";
-  };
-
   auto ss = std::stringstream{};
   ss << "Re-run the slowest source-destination "
         "combination:\n./nigiri-benchmark -p "
      << tt_path.string() << " -n 1 -i " << gs.interval_size_.count();
   if (gs.start_match_mode_ == location_match_mode::kIntermodal) {
     ss << " --start_mode intermodal --intermodal_start "
-       << transport_mode_str(gs.start_mode_);
+       << to_string(gs.start_mode_).value();
   } else {
     ss << " --start_mode station";
   }
   if (gs.dest_match_mode_ == location_match_mode::kIntermodal) {
     ss << " --dest_mode intermodal --intermodal_dest "
-       << transport_mode_str(gs.dest_mode_);
+       << to_string(gs.dest_mode_).value();
   } else {
     ss << " --dest_mode station";
   }
@@ -343,12 +333,13 @@ int main(int argc, char* argv[]) {
   auto dest_coord_str = std::string{};
   auto start_loc_val = location_idx_t::value_t{0U};
   auto dest_loc_val = location_idx_t::value_t{0U};
+  auto seed = std::int64_t{-1};
 
   bpo::options_description desc("Allowed options");
   desc.add_options()("help,h", "produce this help message")  //
       ("tt_path,p", bpo::value(&tt_path)->required(),
        "path to a binary file containing a serialized nigiri timetable")  //
-      ("seed,s", bpo::value<std::uint32_t>(),
+      ("seed,s", bpo::value<std::int64_t>(&seed),
        "value to seed the RNG of the query generator with, "
        "omit for random seed")  //
       ("num_queries,n", bpo::value(&n_queries)->default_value(n_queries),
@@ -514,12 +505,7 @@ int main(int argc, char* argv[]) {
   // process program options - end
 
   auto queries = std::vector<nigiri::query_generation::start_dest_query>{};
-  if (vm.count("seed") != 0) {
-    auto const seed = vm["seed"].as<std::uint32_t>();
-    generate_queries(queries, n_queries, tt, gs, &seed);
-  } else {
-    generate_queries(queries, n_queries, tt, gs, nullptr);
-  }
+  generate_queries(queries, n_queries, tt, gs, seed);
 
   auto results = std::vector<benchmark_result>{};
   process_queries(queries, results, tt);
