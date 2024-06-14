@@ -32,7 +32,7 @@ void optimize_initial_departure(timetable const& tt,
 
     auto r = rt::run{ree.r_};
     r.stop_range_ = {0U, static_cast<stop_idx_t>(ree.stop_range_.to_ - 1U)};
-    for (auto const& stp : rt::frun{tt, rtt, r}) {
+    for (auto const stp : rt::frun{tt, rtt, r}) {
       if (!stp.in_allowed() || !matches(tt, location_match_mode::kExact,
                                         o.target(), stp.get_location_idx())) {
         continue;
