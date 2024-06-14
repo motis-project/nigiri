@@ -25,16 +25,17 @@ void optimize_initial_departure(timetable const& tt,
 
   auto const& offsets =
       (SearchDir == direction::kBackward) ? q.destination_ : q.start_;
-  for (auto const& o : offsets) {
-    if (offset_dur_best <= o.duration()) {
+
+  auto r = rt::run{ree.r_};
+  r.stop_range_ = {0U, static_cast<stop_idx_t>(ree.stop_range_.to_ - 1U)};
+  for (auto const stp : rt::frun{tt, rtt, r}) {
+    if (!stp.in_allowed()) {
       continue;
     }
-
-    auto r = rt::run{ree.r_};
-    r.stop_range_ = {0U, static_cast<stop_idx_t>(ree.stop_range_.to_ - 1U)};
-    for (auto const stp : rt::frun{tt, rtt, r}) {
-      if (!stp.in_allowed() || !matches(tt, location_match_mode::kExact,
-                                        o.target(), stp.get_location_idx())) {
+    for (auto const& o : offsets) {
+      if (offset_dur_best <= o.duration() ||
+          !matches(tt, location_match_mode::kExact, o.target(),
+                   stp.get_location_idx())) {
         continue;
       }
 
@@ -73,18 +74,17 @@ void optimize_last_arrival(timetable const& tt,
   if constexpr (SearchDir == direction::kBackward) {
     offsets = &q.start_;
   }
-
-  for (auto const& o : *offsets) {
-    if (offset_dur_best <= o.duration()) {
+  auto fr = rt::frun{tt, rtt, ree.r_};
+  fr.stop_range_ = {static_cast<stop_idx_t>(ree.stop_range_.from_ + 1U),
+                    fr.size()};
+  for (auto const stp : fr) {
+    if (!stp.out_allowed()) {
       continue;
     }
-
-    auto fr = rt::frun{tt, rtt, ree.r_};
-    fr.stop_range_ = {static_cast<stop_idx_t>(ree.stop_range_.from_ + 1U),
-                      fr.size()};
-    for (auto const stp : fr) {
-      if (!stp.out_allowed() || !matches(tt, location_match_mode::kExact,
-                                         o.target(), stp.get_location_idx())) {
+    for (auto const& o : *offsets) {
+      if (offset_dur_best <= o.duration() ||
+          !matches(tt, location_match_mode::kExact, o.target(),
+                   stp.get_location_idx())) {
         continue;
       }
       auto const arr = stp.time(event_type::kArr);
