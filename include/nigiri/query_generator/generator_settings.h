@@ -48,7 +48,7 @@ struct generator_settings {
     };
     auto const visit_coord = [](geo::latlng const& coord) {
       std::stringstream ss;
-      ss << "coordinate: (" << coord.lat() << "," << coord.lng() << ")";
+      ss << "coordinate: " << coord;
       return ss.str();
     };
     if (gs.start_.has_value()) {
