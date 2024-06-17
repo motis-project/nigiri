@@ -54,6 +54,14 @@ rt_transport_idx_t rt_timetable::add_rt_transport(
   rt_transport_line_.add_back_sized(0U);
   rt_transport_is_cancelled_.resize(rt_transport_is_cancelled_.size() + 1U);
 
+  rt_transport_bikes_allowed_.resize(rt_transport_bikes_allowed_.size() + 2U);
+  rt_transport_bikes_allowed_.set(rt_t_idx * 2,
+                                  tt.route_bikes_allowed_[r.v_ * 2]);
+  rt_transport_bikes_allowed_.set(rt_t_idx * 2 + 1,
+                                  tt.route_bikes_allowed_[r.v_ * 2 + 1]);
+  rt_bikes_allowed_per_section_.emplace_back(
+      tt.route_bikes_allowed_per_section_[r]);
+
   assert(static_trip_lookup_.contains(t));
   assert(rt_transport_static_transport_[rt_transport_idx_t{rt_t_idx}] == t);
   assert(rt_transport_static_transport_.size() == rt_t_idx + 1U);
@@ -63,6 +71,7 @@ rt_transport_idx_t rt_timetable::add_rt_transport(
   assert(rt_transport_display_names_.size() == rt_t_idx + 1U);
   assert(rt_transport_section_clasz_.size() == rt_t_idx + 1U);
   assert(rt_transport_line_.size() == rt_t_idx + 1U);
+  assert(rt_bikes_allowed_per_section_.size() == rt_t_idx + 1U);
 
   return rt_transport_idx_t{rt_t_idx};
 }

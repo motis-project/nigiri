@@ -1,5 +1,6 @@
 #pragma once
 
+#include <array>
 #include <string_view>
 
 #include "nigiri/loader/dir.h"
@@ -14,6 +15,7 @@ namespace nigiri::loader {
 struct loader_config {
   unsigned link_stop_distance_{100U};
   std::string default_tz_;
+  std::array<bool, kNumClasses> bikes_allowed_default_{};
 
   // finalize options
   bool adjust_footpaths_{true};
