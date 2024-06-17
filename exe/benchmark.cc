@@ -388,9 +388,11 @@ int main(int argc, char* argv[]) {
            ->default_value(routing::all_clasz_allowed()),
        "")  //
       ("start_coord", bpo::value<std::string>(&start_coord_str),
-       "start coordinate for random queries")  //
+       "start coordinate for random queries, format: \"(LAT, LON)\", "  //
+       "where LAT/LON are given in decimal degrees")  //
       ("dest_coord", bpo::value<std::string>(&dest_coord_str),
-       "destination coordinate for random queries")  //
+       "destination coordinate for random queries, format: \"(LAT, LON)\", "  //
+       "where LAT/LON are given in decimal degrees")  //
       ("start_loc", bpo::value<location_idx_t::value_t>(&start_loc_val),
        "start location for random queries")  //
       ("dest_loc", bpo::value<location_idx_t::value_t>(&dest_loc_val),
