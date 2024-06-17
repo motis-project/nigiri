@@ -175,6 +175,20 @@ clasz frun::run_stop::get_scheduled_clasz(
                                                        : section_idx(ev_type));
 }
 
+bool frun::run_stop::bikes_allowed(event_type const ev_type) const noexcept {
+  if (fr_->is_rt() && rtt() != nullptr) {
+    auto const bikes_allowed_seq =
+        rtt()->rt_bikes_allowed_per_section_.at(fr_->rt_);
+    return bikes_allowed_seq.at(
+        bikes_allowed_seq.size() == 1U ? 0U : section_idx(ev_type));
+  } else {
+    auto const bikes_allowed_seq = tt().route_bikes_allowed_per_section_.at(
+        tt().transport_route_.at(fr_->t_.t_idx_));
+    return bikes_allowed_seq.at(
+        bikes_allowed_seq.size() == 1U ? 0U : section_idx(ev_type));
+  }
+}
+
 route_color frun::run_stop::get_route_color(event_type ev_type) const noexcept {
   auto const color_sections =
       tt().transport_section_route_colors_.at(fr_->t_.t_idx_);

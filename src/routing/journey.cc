@@ -51,7 +51,7 @@ void journey::print(std::ostream& out,
   if (debug) {
     out << " DURATION: " << travel_time() << " ";
   }
-  out << "[" << start_time_ << ", " << dest_time_ << "]\n";
+  out << "[" << departure_time() << ", " << arrival_time() << "]\n";
   out << "TRANSFERS: " << static_cast<int>(transfers_) << "\n";
   out << "     FROM: " << location{tt, legs_.front().from_} << " ["
       << legs_.front().dep_time_ << "]\n";

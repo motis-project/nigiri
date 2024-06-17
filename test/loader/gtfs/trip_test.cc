@@ -5,6 +5,7 @@
 #include "nigiri/loader/gtfs/agency.h"
 #include "nigiri/loader/gtfs/files.h"
 #include "nigiri/loader/gtfs/trip.h"
+#include "nigiri/loader/loader_interface.h"
 #include "nigiri/timetable.h"
 
 #include "./test_data.h"
@@ -22,6 +23,7 @@ TEST(gtfs, read_trips_example_data) {
                             date::sys_days{August / 1 / 2006}};
   tz_map timezones;
 
+  auto const config = loader_config{};
   auto agencies =
       read_agencies(tt, timezones, files.get_file(kAgencyFile).data());
   auto const routes = read_routes(tt, timezones, agencies,
@@ -32,7 +34,8 @@ TEST(gtfs, read_trips_example_data) {
   auto const services =
       merge_traffic_days(tt.internal_interval_days(), calendar, dates);
   auto const trip_data =
-      read_trips(tt, routes, services, files.get_file(kTripsFile).data());
+      read_trips(tt, routes, services, files.get_file(kTripsFile).data(),
+                 config.bikes_allowed_default_);
 
   EXPECT_EQ(2U, trip_data.data_.size());
   EXPECT_NE(end(trip_data.trips_), trip_data.trips_.find("AWE1"));
@@ -51,6 +54,7 @@ TEST(gtfs, read_trips_berlin_data) {
                             date::sys_days{August / 1 / 2006}};
   tz_map timezones;
 
+  auto const config = loader_config{};
   auto agencies =
       read_agencies(tt, timezones, files.get_file(kAgencyFile).data());
   auto const routes = read_routes(tt, timezones, agencies,
@@ -61,7 +65,8 @@ TEST(gtfs, read_trips_berlin_data) {
   auto const services =
       merge_traffic_days(tt.internal_interval_days(), calendar, dates);
   auto const trip_data =
-      read_trips(tt, routes, services, files.get_file(kTripsFile).data());
+      read_trips(tt, routes, services, files.get_file(kTripsFile).data(),
+                 config.bikes_allowed_default_);
 
   EXPECT_EQ(3, trip_data.data_.size());
 
