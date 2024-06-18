@@ -1,11 +1,10 @@
 #pragma once
 
+#include "nigiri/query_generator/transport_mode.h"
 #include "nigiri/routing/clasz_mask.h"
 #include "nigiri/routing/limits.h"
 #include "nigiri/routing/location_match_mode.h"
 #include "nigiri/timetable.h"
-
-#include "transport_mode.h"
 
 namespace nigiri::query_generation {
 
