@@ -15,6 +15,7 @@ TEST(td_footpath, simple) {
   auto const c = location_idx_t{2};
   auto const d = location_idx_t{3};
   auto const e = location_idx_t{4};
+  auto const f = location_idx_t{5};
 
   td_footpath_out.emplace_back({
       /*
@@ -46,6 +47,13 @@ TEST(td_footpath, simple) {
        * start > t
        */
       td_footpath{e, sys_days{June / 25 / 2024_y} + 12_hours, 5_minutes},
+      td_footpath{e, sys_days{June / 25 / 2024_y} + 13_hours, 10_minutes},
+
+      /*
+       * start > t
+       */
+      td_footpath{f, sys_days{June / 15 / 2024_y} + 9_hours, 5_minutes},
+      td_footpath{f, sys_days{June / 15 / 2024_y} + 10_hours, 7_minutes},
   });
 
   auto count = 0U;
@@ -55,11 +63,12 @@ TEST(td_footpath, simple) {
       sys_days{June / 21 / 2024_y} + 13_hours + 5_minutes,
       kNull,
       sys_days{June / 25 / 2024_y} + 12_hours + 5_minutes,
+      sys_days{June / 15 / 2024_y} + 11_hours + 7_minutes,
   };
   for_each_footpath(td_footpath_out[a], sys_days{June / 15 / 2024_y} + 11_hours,
                     [&](unixtime_t const t, location_idx_t const to) {
                       EXPECT_EQ(map[to], t);
                       ++count;
                     });
-  EXPECT_EQ(3, count);
+  EXPECT_EQ(4, count);
 }
