@@ -3,7 +3,7 @@
 #include "fmt/ranges.h"
 
 #include "nigiri/common/dial.h"
-#include "nigiri/footpath.h"
+#include "nigiri/lb_entry.h"
 #include "nigiri/types.h"
 
 namespace nigiri {
@@ -58,7 +58,7 @@ void dijkstra(vecvec<NodeIdx, Edge> const& graph,
 
 void dijkstra(timetable const&,
               query const&,
-              vecvec<location_idx_t, footpath> const& lb_graph,
+              vecvec<location_idx_t, lb_entry> const& lb_graph,
               std::vector<std::uint16_t>& dists);
 
 }  // namespace nigiri::routing

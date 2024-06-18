@@ -16,8 +16,8 @@ TEST(routing, lb_graph_distances_check) {
   load_timetable(source_idx_t{0U}, hrd_5_20_26, files_simple(), tt);
   finalize(tt);
 
-  using distance_table_t =
-      std::map<std::pair<std::string, std::string>, duration_t>;
+  using distance_table_t = std::map<std::pair<std::string, std::string>,
+                                    std::pair<duration_t, duration_t>>;
   auto distances = distance_table_t{};
   for (auto i = location_idx_t{0U}; i != tt.locations_.ids_.size(); ++i) {
     if (tt.fwd_search_lb_graph_.at(i).empty()) {
@@ -25,11 +25,13 @@ TEST(routing, lb_graph_distances_check) {
     }
     for (auto const& fp : tt.fwd_search_lb_graph_[i]) {
       distances[{std::string{location{tt, i}.name_},
-                 std::string{location{tt, fp.target()}.name_}}] = fp.duration();
+                 std::string{location{tt, fp.target()}.name_}}] =
+          std::pair{fp.footpath_duration(), fp.trip_duration()};
     }
   }
 
-  EXPECT_EQ(
-      (distance_table_t{{{"A", "B"}, 60_minutes}, {{"B", "A"}, 60_minutes}}),
-      distances);
+  EXPECT_EQ((distance_table_t{
+                {{"A", "B"}, std::pair{lb_entry::kUnreachable, 60_minutes}},
+                {{"B", "A"}, std::pair{lb_entry::kUnreachable, 60_minutes}}}),
+            distances);
 }

@@ -15,6 +15,7 @@
 
 #include "nigiri/common/interval.h"
 #include "nigiri/footpath.h"
+#include "nigiri/lb_entry.h"
 #include "nigiri/location.h"
 #include "nigiri/logging.h"
 #include "nigiri/stop.h"
@@ -474,8 +475,8 @@ struct timetable {
   vecvec<transport_idx_t, route_color> transport_section_route_colors_;
 
   // Lower bound graph.
-  vecvec<location_idx_t, footpath> fwd_search_lb_graph_;
-  vecvec<location_idx_t, footpath> bwd_search_lb_graph_;
+  vecvec<location_idx_t, lb_entry> fwd_search_lb_graph_;
+  vecvec<location_idx_t, lb_entry> bwd_search_lb_graph_;
 
   // profile name -> profile_idx_t
   hash_map<string, profile_idx_t> profiles_;
