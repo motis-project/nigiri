@@ -15,6 +15,23 @@ using nigiri::test::raptor_intermodal_search;
 
 namespace {
 
+/*
+ * 3 min     5 min     10 min
+ * offset    offset    offset
+ *  A0   ->   A1   ->   A2   ->   A3   ->   A4   ->   A5
+ *                                |         |
+ *   /----------5 min-------------/         |
+ *   |         /-------------10 min---------/
+ *   |         |
+ *  B0   ->   B1   ->   B2   ->   B3
+ *                      |         |
+ *             /-10 min-/         |
+ *             |         /-5 min--/
+ *             |         |
+ *  C0   ->   C1   ->   C2   ->   C3   ->   C4   ->   C5
+ *                              30 min    20 min    10 min
+ *                              offset    offset    offset
+ */
 mem_dir shortest_fp_files() {
   return mem_dir::read(R"__(
 "(
