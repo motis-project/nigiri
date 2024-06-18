@@ -8,6 +8,7 @@
 #include "nigiri/routing/raptor/debug.h"
 #include "nigiri/routing/raptor/raptor_state.h"
 #include "nigiri/routing/raptor/reconstruct.h"
+#include "nigiri/routing/transfer_time_settings.h"
 #include "nigiri/rt/rt_timetable.h"
 #include "nigiri/special_stations.h"
 #include "nigiri/timetable.h"
@@ -57,7 +58,8 @@ struct raptor {
          std::vector<std::uint16_t>& lb,
          day_idx_t const base,
          clasz_mask_t const allowed_claszes,
-         bool const require_bike_transport)
+         bool const require_bike_transport,
+         transfer_time_settings const& tts)
       : tt_{tt},
         rtt_{rtt},
         state_{state},
@@ -70,7 +72,8 @@ struct raptor {
         n_routes_{tt.n_routes()},
         n_rt_transports_{Rt ? rtt->n_rt_transports() : 0U},
         allowed_claszes_{allowed_claszes},
-        require_bike_transport_{require_bike_transport} {
+        require_bike_transport_{require_bike_transport},
+        transfer_time_settings_{tts} {
     state_.resize(n_locations_, n_routes_, n_rt_transports_);
     utl::fill(time_at_dest_, kInvalid);
     state_.round_times_.reset(kInvalid);
@@ -288,7 +291,9 @@ private:
       auto const transfer_time =
           (!is_intermodal_dest() && is_dest)
               ? 0
-              : dir(tt_.locations_.transfer_time_[location_idx_t{i}]).count();
+              : dir(adjusted_transfer_time(
+                    transfer_time_settings_,
+                    tt_.locations_.transfer_time_[location_idx_t{i}].count()));
       auto const fp_target_time =
           static_cast<delta_t>(state_.tmp_[i] + transfer_time);
       if (is_better(fp_target_time, state_.best_[i]) &&
@@ -320,7 +325,9 @@ private:
 
         auto const target = to_idx(fp.target());
         auto const fp_target_time =
-            clamp(state_.tmp_[i] + dir(fp.duration()).count());
+            clamp(state_.tmp_[i] +
+                  dir(adjusted_transfer_time(transfer_time_settings_,
+                                             fp.duration().count())));
 
         if (is_better(fp_target_time, state_.best_[target]) &&
             is_better(fp_target_time, time_at_dest_[k])) {
@@ -332,8 +339,9 @@ private:
                 "┊ ├k={} *** LB NO UPD: (from={}, tmp={}) --{}--> (to={}, "
                 "best={}) --> update => {}, LB={}, LB_AT_DEST={}, DEST={}\n",
                 k, location{tt_, l_idx}, to_unix(state_.tmp_[to_idx(l_idx)]),
-                fp.duration(), location{tt_, fp.target()},
-                state_.best_[to_idx(fp.target())], fp_target_time, lower_bound,
+                adjusted_transfer_time(transfer_time_settings_, fp.duration()),
+                location{tt_, fp.target()}, state_.best_[to_idx(fp.target())],
+                fp_target_time, lower_bound,
                 to_unix(clamp(fp_target_time + dir(lower_bound))),
                 to_unix(time_at_dest_[k]));
             continue;
@@ -343,7 +351,8 @@ private:
               "┊ ├k={}   footpath: ({}, tmp={}) --{}--> ({}, best={}) --> "
               "update => {}\n",
               k, location{tt_, l_idx}, to_unix(state_.tmp_[to_idx(l_idx)]),
-              fp.duration(), location{tt_, fp.target()},
+              adjusted_transfer_time(transfer_time_settings_, fp.duration()),
+              location{tt_, fp.target()},
               to_unix(state_.best_[to_idx(fp.target())]), fp_target_time);
 
           ++stats_.n_earliest_arrival_updated_by_footpath_;
@@ -358,8 +367,9 @@ private:
               "┊ ├k={}   NO FP UPDATE: {} [best={}] --{}--> {} "
               "[best={}, time_at_dest={}]\n",
               k, location{tt_, l_idx}, state_.best_[to_idx(l_idx)],
-              fp.duration(), location{tt_, fp.target()},
-              state_.best_[to_idx(fp.target())], to_unix(time_at_dest_[k]));
+              adjusted_transfer_time(transfer_time_settings_, fp.duration()),
+              location{tt_, fp.target()}, state_.best_[to_idx(fp.target())],
+              to_unix(time_at_dest_[k]));
         }
       }
     });
@@ -767,6 +777,7 @@ private:
   std::uint32_t n_locations_, n_routes_, n_rt_transports_;
   clasz_mask_t allowed_claszes_;
   bool require_bike_transport_;
+  transfer_time_settings transfer_time_settings_;
 };
 
 }  // namespace nigiri::routing

@@ -78,7 +78,8 @@
       "    --> start: FP+INTERMODAL START -> {}  leg_start_time={}, "        \
       "j_start_time={}, offset={}, footpath=({}, {})\n",                     \
       location{tt, o.target()}, leg_start_time, j.start_time_, o.duration(), \
-      fp.duration(), location{tt, fp.target()})
+      adjusted_transfer_time(q.transfer_time_settings_, fp.duration()),      \
+      location{tt, fp.target()})
 
 #define trace_rc_intermodal_fp_no_match                                        \
   trace_reconstruct(                                                           \
@@ -88,14 +89,17 @@
       location{tt, o.target()},                                                \
       matches(tt, q.start_match_mode_, o.target(), leg_start_location),        \
       location{tt, leg_start_location}, leg_start_time, j.start_time_,         \
-      o.duration(), fp.duration(), location{tt, fp.target()})
+      o.duration(),                                                            \
+      adjusted_transfer_time(q.transfer_time_settings_, fp.duration()),        \
+      location{tt, fp.target()})
 
 #define trace_rc_fp_start_found                                            \
   trace_reconstruct(                                                       \
       "    --> from={}, j_start={}, journey_start={}, fp_target_time={}, " \
       "duration={}\n",                                                     \
       location{tt, fp.target()}, location{tt, leg_start_location},         \
-      j.start_time_, fp_target_time, fp.duration())
+      j.start_time_, fp_target_time,                                       \
+      adjusted_transfer_time(q.transfer_time_settings_, fp.duration()))
 
 #define trace_rc_fp_start_no_match                                        \
   trace_reconstruct(                                                      \
@@ -103,7 +107,8 @@
       "fp_start_time={}, j_start_time={}, fp_duration={}\n",              \
       location{tt, fp.target()}, location{tt, leg_start_location},        \
       is_journey_start(tt, q, fp.target()), fp_target_time, j_start_time, \
-      fp.duration().count())
+      adjusted_transfer_time(q.transfer_time_settings_,                   \
+                             fp.duration().count()))
 
 #define trace_rc_transport                                                    \
   trace_reconstruct(                                                          \
@@ -145,7 +150,8 @@
       "  BAD intermodal+footpath dest offset: {}@{} --{}--> "           \
       "{}@{} --{}--> END@{} (type={})\n",                               \
       location{tt, fp.target()},                                        \
-      raptor_state.round_times_[k][to_idx(fp.target())], fp.duration(), \
+      raptor_state.round_times_[k][to_idx(fp.target())],                \
+      adjusted_transfer_time(q.transfer_time_settings_, fp.duration()), \
       location{tt, eq}, raptor_state.round_times_[k][to_idx(eq)],       \
       dest_offset.duration_, curr_time, dest_offset.type())
 
@@ -153,7 +159,8 @@
   trace_reconstruct(                                             \
       "  found intermodal+footpath dest offset END [{}] -> {}: " \
       "offset={}\n",                                             \
-      curr_time, location{tt, fp.target()}, fp.duration())
+      curr_time, location{tt, fp.target()},                      \
+      adjusted_transfer_time(q.transfer_time_settings_, fp.duration()))
 
 #define trace_rc_intermodal_dest_mismatch                                 \
   trace_reconstruct("  BAD intermodal dest offset: END [{}] -> {}: {}\n", \
@@ -166,19 +173,22 @@
       "offset={}\n",                                    \
       curr_time, location{tt, dest_offset.target_}, dest_offset.duration_)
 
-#define trace_rc_legs_found                                            \
-  trace_reconstruct("found:\n");                                       \
-  transport_leg->print(std::cout, tt, rtt, 1, true);                   \
-  trace_reconstruct(" fp leg: {} {} --{}--> {} {}\n", location{tt, l}, \
-                    delta_to_unix(base, fp_start), fp.duration(),      \
-                    location{tt, fp.target()}, delta_to_unix(base, curr_time))
+#define trace_rc_legs_found                                             \
+  trace_reconstruct("found:\n");                                        \
+  transport_leg->print(std::cout, tt, rtt, 1, true);                    \
+  trace_reconstruct(                                                    \
+      " fp leg: {} {} --{}--> {} {}\n", location{tt, l},                \
+      delta_to_unix(base, fp_start),                                    \
+      adjusted_transfer_time(q.transfer_time_settings_, fp.duration()), \
+      location{tt, fp.target()}, delta_to_unix(base, curr_time))
 
 #define trace_rc_check_fp                                                   \
   trace_reconstruct(                                                        \
       "round {}: searching for transports at {} with curr_time={} --{}--> " \
       "fp_start={}\n ",                                                     \
       k, location{tt, fp.target()}, delta_to_unix(base, curr_time),         \
-      fp.duration(), delta_to_unix(base, fp_start))
+      adjusted_transfer_time(q.transfer_time_settings_, fp.duration()),     \
+      delta_to_unix(base, fp_start))
 
 #else
 #define trace_reconstruct(...)

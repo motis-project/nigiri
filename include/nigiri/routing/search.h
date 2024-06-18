@@ -58,6 +58,7 @@ struct search {
 
   Algo init(clasz_mask_t const allowed_claszes,
             bool const require_bikes_allowed,
+            transfer_time_settings const& tts,
             algo_state_t& algo_state) {
     stats_.fastest_direct_ =
         static_cast<std::uint64_t>(fastest_direct_.count());
@@ -111,7 +112,8 @@ struct search {
                 tt_.internal_interval().from_)
                 .count()},
         allowed_claszes,
-        require_bikes_allowed};
+        require_bikes_allowed,
+        tts};
   }
 
   search(timetable const& tt,
@@ -134,8 +136,11 @@ struct search {
                 }},
             q_.start_time_)},
         fastest_direct_{get_fastest_direct(tt_, q_, SearchDir)},
-        algo_{
-            init(q_.allowed_claszes_, q_.require_bike_transport_, algo_state)},
+
+        algo_{init(q_.allowed_claszes_,
+                   q_.require_bike_transport_,
+                   q.transfer_time_settings_,
+                   algo_state)},
         timeout_(timeout) {
     utl::sort(q.start_);
     utl::sort(q.destination_);
