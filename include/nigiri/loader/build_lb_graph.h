@@ -100,7 +100,9 @@ void build_lb_graph(timetable& tt, profile_idx_t const prf_idx = 0) {
     add_edges(i);
 
     for (auto const& [target, duration] : weights) {
-      entries.emplace_back(target, duration.first, duration.second);
+      entries.emplace_back(lb_entry{.target_ = target,
+                                    .footpath_duration_ = duration.first,
+                                    .trip_duration_ = duration.second});
     }
 
     lb_graph.emplace_back(entries);
