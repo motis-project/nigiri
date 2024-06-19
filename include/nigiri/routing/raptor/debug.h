@@ -199,6 +199,7 @@
 #define trace_rc_transport
 #define trace_rc_transport_mam_mismatch
 #define trace_rc_transport_no_traffic
+#define trace_rc_transport_invalid_td_footpath
 #define trace_rc_transport_not_found
 #define trace_rc_transport_entry_not_possible
 #define trace_rc_transport_entry_found
