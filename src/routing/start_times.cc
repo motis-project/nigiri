@@ -21,16 +21,16 @@ void trace_start(char const* fmt_str, Args... args) {
 unixtime_t rounded_time_at_start(unixtime_t const event_time,
                                  duration_t const offset_time,
                                  direction const search_dir,
-                                 interval<unixtime_t> const& interval) {
+                                 interval<unixtime_t> const& interval,
+                                 std::int32_t const round_to) {
   auto const time_at_start = search_dir == direction::kForward
                                  ? event_time - offset_time
                                  : event_time + offset_time;
   return interval.clamp(unixtime_t{i32_minutes{
-      (time_at_start.time_since_epoch().count() / kStartTimeDivisor) *
-          kStartTimeDivisor +
+      (time_at_start.time_since_epoch().count() / round_to) * round_to +
       (search_dir == direction::kBackward &&
-               time_at_start.time_since_epoch().count() % kStartTimeDivisor != 0
-           ? kStartTimeDivisor
+               time_at_start.time_since_epoch().count() % round_to != 0
+           ? round_to
            : 0)}});
 }
 
@@ -42,7 +42,8 @@ void add_start_times_at_stop(direction const search_dir,
                              location_idx_t const location_idx,
                              interval<unixtime_t> const& interval,
                              duration_t const offset,
-                             std::vector<start>& starts) {
+                             std::vector<start>& starts,
+                             std::int32_t const round_to) {
   auto const interval_with_offset =
       search_dir == direction::kForward ? interval + offset : interval - offset;
   auto const first_day_idx = tt.day_idx_mam(interval_with_offset.from_).first;
@@ -74,11 +75,11 @@ void add_start_times_at_stop(direction const search_dir,
       if (traffic_days.test(to_idx(day - day_offset)) &&
           interval_with_offset.contains(tt.to_unixtime(day, stop_time_mam))) {
         auto const ev_time = tt.to_unixtime(day, stop_time_mam);
-        auto const& s = starts.emplace_back(start{
-            .time_at_start_ =
-                rounded_time_at_start(ev_time, offset, search_dir, interval),
-            .time_at_stop_ = ev_time,
-            .stop_ = location_idx});
+        auto const& s = starts.emplace_back(
+            start{.time_at_start_ = rounded_time_at_start(
+                      ev_time, offset, search_dir, interval, round_to),
+                  .time_at_stop_ = ev_time,
+                  .stop_ = location_idx});
         trace_start(
             "        => ADD START: time_at_start={}, time_at_stop={}, "
             "stop={}\n",
@@ -105,7 +106,8 @@ void add_starts_in_interval(direction const search_dir,
                             location_idx_t const l,
                             duration_t const d,
                             std::vector<start>& starts,
-                            bool const add_ontrip) {
+                            bool const add_ontrip,
+                            std::int32_t const round_to) {
   trace_start(
       "    add_starts_in_interval(interval={}, stop={}, duration={}): {} "
       "routes\n",
@@ -139,9 +141,9 @@ void add_starts_in_interval(direction const search_dir,
       }
 
       trace_start("    -> no skip -> add_start_times_at_stop()\n");
-      add_start_times_at_stop(search_dir, tt, rtt, r,
-                              static_cast<stop_idx_t>(i),
-                              stop{s}.location_idx(), interval, d, starts);
+      add_start_times_at_stop(
+          search_dir, tt, rtt, r, static_cast<stop_idx_t>(i),
+          stop{s}.location_idx(), interval, d, starts, round_to);
     }
   }
 
@@ -168,11 +170,11 @@ void add_starts_in_interval(direction const search_dir,
             rt_t, static_cast<stop_idx_t>(i),
             (search_dir == direction::kForward ? event_type::kDep
                                                : event_type::kArr));
-        auto const& inserted =
-            starts.emplace_back(start{.time_at_start_ = rounded_time_at_start(
-                                          ev_time, d, search_dir, interval),
-                                      .time_at_stop_ = ev_time,
-                                      .stop_ = l});
+        auto const& inserted = starts.emplace_back(
+            start{.time_at_start_ = rounded_time_at_start(
+                      ev_time, d, search_dir, interval, round_to),
+                  .time_at_stop_ = ev_time,
+                  .stop_ = l});
         trace_start(
             "        => ADD RT START: time_at_start={}, time_at_stop={}, "
             "stop={}\n",
@@ -208,7 +210,8 @@ void get_starts(direction const search_dir,
                 bool const use_start_footpaths,
                 std::vector<start>& starts,
                 bool const add_ontrip,
-                profile_idx_t const prf_idx) {
+                profile_idx_t const prf_idx,
+                std::int32_t const round_to) {
   hash_map<location_idx_t, duration_t> shortest_start;
 
   auto const update = [&](location_idx_t const l, duration_t const d) {
@@ -236,7 +239,7 @@ void get_starts(direction const search_dir,
     std::visit(utl::overloaded{[&](interval<unixtime_t> const interval) {
                                  add_starts_in_interval(search_dir, tt, rtt,
                                                         interval, l, o, starts,
-                                                        add_ontrip);
+                                                        add_ontrip, round_to);
                                },
                                [&](unixtime_t const t) {
                                  starts.emplace_back(
