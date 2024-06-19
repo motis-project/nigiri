@@ -859,8 +859,6 @@ TEST(routing, start_times_round_to_multiple_of_2_bwd) {
         }
       });
 
-  std::cout << "ACTUAL backward:\n" << ss.str();
-
   EXPECT_EQ(std::string_view{expected_round_to_2_bwd}, ss.str());
 }
 
