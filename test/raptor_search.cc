@@ -59,7 +59,8 @@ pareto_set<routing::journey> raptor_search(timetable const& tt,
                                            routing::start_time_t time,
                                            direction const search_dir,
                                            routing::clasz_mask_t const mask,
-                                           bool const require_bikes_allowed) {
+                                           bool const require_bikes_allowed,
+                                           profile_idx_t const profile) {
   auto const src = source_idx_t{0};
   auto q = routing::query{
       .start_time_ = time,
@@ -67,7 +68,7 @@ pareto_set<routing::journey> raptor_search(timetable const& tt,
                   0U}},
       .destination_ = {{tt.locations_.location_id_to_idx_.at({to, src}),
                         0_minutes, 0U}},
-      .prf_idx_ = 0,
+      .prf_idx_ = profile,
       .allowed_claszes_ = mask,
       .require_bike_transport_ = require_bikes_allowed};
   return raptor_search(tt, rtt, std::move(q), search_dir);

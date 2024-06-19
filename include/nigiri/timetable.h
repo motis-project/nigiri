@@ -109,10 +109,6 @@ struct timetable {
     array<vecvec<location_idx_t, footpath>, kMaxProfiles> footpaths_out_;
     array<vecvec<location_idx_t, footpath>, kMaxProfiles> footpaths_in_;
     vector_map<timezone_idx_t, timezone> timezones_;
-
-    bitvec_map<location_idx_t> has_td_footpaths_;
-    vecvec<location_idx_t, td_footpath> td_footpaths_out_;
-    vecvec<location_idx_t, td_footpath> td_footpaths_in_;
   } locations_;
 
   struct transport {

@@ -65,10 +65,12 @@ TEST(td_footpath, simple) {
       sys_days{June / 25 / 2024_y} + 12_hours + 5_minutes,
       sys_days{June / 15 / 2024_y} + 11_hours + 7_minutes,
   };
-  for_each_footpath(td_footpath_out[a], sys_days{June / 15 / 2024_y} + 11_hours,
-                    [&](unixtime_t const t, location_idx_t const to) {
-                      EXPECT_EQ(map[to], t);
-                      ++count;
-                    });
+  auto const now = sys_days{June / 15 / 2024_y} + 11_hours;
+  for_each_footpath<direction::kForward>(
+      td_footpath_out[a], now, [&](footpath const fp) {
+        EXPECT_EQ(map[fp.target()], now + fp.duration());
+        ++count;
+        return utl::cflow::kContinue;
+      });
   EXPECT_EQ(4, count);
 }
