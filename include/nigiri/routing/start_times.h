@@ -16,6 +16,8 @@ struct rt_timetable;
 
 namespace nigiri::routing {
 
+static constexpr auto const kStartTimeDivisor = 2;
+
 struct start {
   CISTA_FRIEND_COMPARABLE(start)
   unixtime_t time_at_start_;

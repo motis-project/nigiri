@@ -18,15 +18,33 @@ void trace_start(char const* fmt_str, Args... args) {
   }
 }
 
+unixtime_t rounded_time_at_start(unixtime_t const event_time,
+                                 duration_t const offset_time,
+                                 direction const search_dir,
+                                 interval<unixtime_t> const& interval) {
+  auto const time_at_start = search_dir == direction::kForward
+                                 ? event_time - offset_time
+                                 : event_time + offset_time;
+  return interval.clamp(unixtime_t{i32_minutes{
+      (time_at_start.time_since_epoch().count() / kStartTimeDivisor) *
+          kStartTimeDivisor +
+      (search_dir == direction::kBackward &&
+               time_at_start.time_since_epoch().count() % kStartTimeDivisor != 0
+           ? kStartTimeDivisor
+           : 0)}});
+}
+
 void add_start_times_at_stop(direction const search_dir,
                              timetable const& tt,
                              rt_timetable const* rtt,
                              route_idx_t const route_idx,
                              stop_idx_t const stop_idx,
                              location_idx_t const location_idx,
-                             interval<unixtime_t> const& interval_with_offset,
+                             interval<unixtime_t> const& interval,
                              duration_t const offset,
                              std::vector<start>& starts) {
+  auto const interval_with_offset =
+      search_dir == direction::kForward ? interval + offset : interval - offset;
   auto const first_day_idx = tt.day_idx_mam(interval_with_offset.from_).first;
   auto const last_day_idx = tt.day_idx_mam(interval_with_offset.to_).first;
   trace_start(
@@ -56,12 +74,11 @@ void add_start_times_at_stop(direction const search_dir,
       if (traffic_days.test(to_idx(day - day_offset)) &&
           interval_with_offset.contains(tt.to_unixtime(day, stop_time_mam))) {
         auto const ev_time = tt.to_unixtime(day, stop_time_mam);
-        auto const& s = starts.emplace_back(
-            start{.time_at_start_ = search_dir == direction::kForward
-                                        ? ev_time - offset
-                                        : ev_time + offset,
-                  .time_at_stop_ = ev_time,
-                  .stop_ = location_idx});
+        auto const& s = starts.emplace_back(start{
+            .time_at_start_ =
+                rounded_time_at_start(ev_time, offset, search_dir, interval),
+            .time_at_stop_ = ev_time,
+            .stop_ = location_idx});
         trace_start(
             "        => ADD START: time_at_start={}, time_at_stop={}, "
             "stop={}\n",
@@ -122,11 +139,9 @@ void add_starts_in_interval(direction const search_dir,
       }
 
       trace_start("    -> no skip -> add_start_times_at_stop()\n");
-      add_start_times_at_stop(
-          search_dir, tt, rtt, r, static_cast<stop_idx_t>(i),
-          stop{s}.location_idx(),
-          search_dir == direction::kForward ? interval + d : interval - d, d,
-          starts);
+      add_start_times_at_stop(search_dir, tt, rtt, r,
+                              static_cast<stop_idx_t>(i),
+                              stop{s}.location_idx(), interval, d, starts);
     }
   }
 
@@ -153,11 +168,11 @@ void add_starts_in_interval(direction const search_dir,
             rt_t, static_cast<stop_idx_t>(i),
             (search_dir == direction::kForward ? event_type::kDep
                                                : event_type::kArr));
-        auto const& inserted = starts.emplace_back(start{
-            .time_at_start_ =
-                search_dir == direction::kForward ? ev_time - d : ev_time + d,
-            .time_at_stop_ = ev_time,
-            .stop_ = l});
+        auto const& inserted =
+            starts.emplace_back(start{.time_at_start_ = rounded_time_at_start(
+                                          ev_time, d, search_dir, interval),
+                                      .time_at_stop_ = ev_time,
+                                      .stop_ = l});
         trace_start(
             "        => ADD RT START: time_at_start={}, time_at_stop={}, "
             "stop={}\n",
