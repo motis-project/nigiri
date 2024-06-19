@@ -2,16 +2,21 @@
 
 #include "utl/equal_ranges_linear.h"
 
+#include "nigiri/loader/gtfs/files.h"
+#include "nigiri/loader/gtfs/load_timetable.h"
 #include "nigiri/loader/hrd/load_timetable.h"
 #include "nigiri/loader/init_finish.h"
 #include "nigiri/routing/start_times.h"
 
 #include "../loader/hrd/hrd_timetable.h"
+#include "../raptor_search.h"
 
+using namespace date;
 using namespace nigiri;
 using namespace nigiri::loader;
 using namespace nigiri::routing;
 using namespace nigiri::test_data::hrd_timetable;
+using nigiri::test::raptor_intermodal_search;
 
 //   +---15--- 30freq --> A
 //  /
@@ -301,4 +306,104 @@ TEST(routing, start_times) {
       });
 
   EXPECT_EQ(std::string_view{expected}, ss.str());
+}
+
+mem_dir start_times_files() {
+  return mem_dir::read(R"__(
+"(
+# agency.txt
+agency_id,agency_name,agency_url,agency_timezone
+MTA,MOTIS Transit Authority,https://motis-project.de/,Europe/Berlin
+
+# calendar_dates.txt
+service_id,date,exception_type
+D,20240608,1
+
+# stops.txt
+stop_id,stop_name,stop_desc,stop_lat,stop_lon,stop_url,location_type,parent_station
+A0,A0,start_offset0,,,,,,
+A1,A1,start_offset1,,,,,,
+A2,A2,start_offset2,,,,,,
+A3,A3,,,,,,,
+A4,A4,,,,,,,
+A5,A5,final_stop_of_A,,,,,,
+
+# routes.txt
+route_id,agency_id,route_short_name,route_long_name,route_desc,route_type
+A,MTA,A,A,A0 -> A5,0
+
+# trips.txt
+route_id,service_id,trip_id,trip_headsign,block_id
+A,D,AWE,AWE,1
+
+# stop_times.txt
+trip_id,arrival_time,departure_time,stop_id,stop_sequence,pickup_type,drop_off_type
+AWE,02:00,02:00,A0,0,0,0
+AWE,02:01,02:02,A1,1,0,0
+AWE,02:06,02:07,A2,2,0,0
+AWE,02:15,02:16,A3,3,0,0
+AWE,02:20,02:21,A4,4,0,0
+AWE,02:25,02:26,A5,5,0,0
+)__");
+}
+
+constexpr interval<std::chrono::sys_days> start_times_period() {
+  using namespace date;
+  constexpr auto const from = (2024_y / June / 7).operator sys_days();
+  constexpr auto const to = (2024_y / June / 9).operator sys_days();
+  return {from, to};
+}
+
+constexpr auto const exp_fwd_journey = R"(
+[2024-06-07 23:57, 2024-06-08 00:25]
+TRANSFERS: 0
+     FROM: (START, START) [2024-06-07 23:57]
+       TO: (END, END) [2024-06-08 00:25]
+leg 0: (START, START) [2024-06-07 23:57] -> (A0, A0) [2024-06-08 00:00]
+  MUMO (id=23, duration=3)
+leg 1: (A0, A0) [2024-06-08 00:00] -> (A5, A5) [2024-06-08 00:25]
+   0: A0      A0..............................................                               d: 08.06 00:00 [08.06 02:00]  [{name=Tram A, day=2024-06-08, id=AWE, src=0}]
+   1: A1      A1.............................................. a: 08.06 00:01 [08.06 02:01]  d: 08.06 00:02 [08.06 02:02]  [{name=Tram A, day=2024-06-08, id=AWE, src=0}]
+   2: A2      A2.............................................. a: 08.06 00:06 [08.06 02:06]  d: 08.06 00:07 [08.06 02:07]  [{name=Tram A, day=2024-06-08, id=AWE, src=0}]
+   3: A3      A3.............................................. a: 08.06 00:15 [08.06 02:15]  d: 08.06 00:16 [08.06 02:16]  [{name=Tram A, day=2024-06-08, id=AWE, src=0}]
+   4: A4      A4.............................................. a: 08.06 00:20 [08.06 02:20]  d: 08.06 00:21 [08.06 02:21]  [{name=Tram A, day=2024-06-08, id=AWE, src=0}]
+   5: A5      A5.............................................. a: 08.06 00:25 [08.06 02:25]
+leg 2: (A5, A5) [2024-06-08 00:25] -> (END, END) [2024-06-08 00:25]
+  MUMO (id=0, duration=0)
+
+
+)";
+
+TEST(routing, no_round_out_of_interval) {
+  constexpr auto const src = source_idx_t{0U};
+  auto const config = loader_config{};
+
+  timetable tt;
+  tt.date_range_ = start_times_period();
+  register_special_stations(tt);
+  gtfs::load_timetable(config, src, start_times_files(), tt);
+  finalize(tt);
+
+  auto const results = raptor_intermodal_search(
+      tt, nullptr,
+      {{tt.locations_.location_id_to_idx_.at({.id_ = "A0", .src_ = src}),
+        3_minutes, 23U},
+       {tt.locations_.location_id_to_idx_.at({.id_ = "A1", .src_ = src}),
+        5_minutes, 23U},
+       {tt.locations_.location_id_to_idx_.at({.id_ = "A2", .src_ = src}),
+        10_minutes, 23U}},
+      {{tt.locations_.location_id_to_idx_.at({.id_ = "A5", .src_ = src}),
+        0_minutes, 0U}},
+      interval{unixtime_t{sys_days{2024_y / June / 7} + 23_hours + 57_minutes},
+               unixtime_t{sys_days{2024_y / June / 8}}},
+      direction::kForward);
+
+  std::stringstream ss;
+  ss << "\n";
+  for (auto const& x : results) {
+    x.print(ss, tt);
+    ss << "\n\n";
+  }
+
+  EXPECT_EQ(std::string_view{exp_fwd_journey}, ss.str());
 }
