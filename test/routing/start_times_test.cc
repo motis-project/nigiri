@@ -308,6 +308,562 @@ TEST(routing, start_times) {
   EXPECT_EQ(std::string_view{expected}, ss.str());
 }
 
+constexpr auto const expected_round_to_2_fwd = R"(
+start_time=2020-03-31 00:00
+|  {time_at_start=2020-03-31 00:00, time_at_stop=2020-03-31 00:30, stop=B}
+|  {time_at_start=2020-03-31 00:00, time_at_stop=2020-03-31 00:15, stop=A}
+start_time=2020-03-30 23:44
+|  {time_at_start=2020-03-30 23:44, time_at_stop=2020-03-31 00:00, stop=A}
+start_time=2020-03-30 23:14
+|  {time_at_start=2020-03-30 23:14, time_at_stop=2020-03-30 23:30, stop=A}
+start_time=2020-03-30 23:00
+|  {time_at_start=2020-03-30 23:00, time_at_stop=2020-03-30 23:30, stop=B}
+start_time=2020-03-30 22:44
+|  {time_at_start=2020-03-30 22:44, time_at_stop=2020-03-30 23:15, stop=B}
+|  {time_at_start=2020-03-30 22:44, time_at_stop=2020-03-30 23:00, stop=A}
+start_time=2020-03-30 22:30
+|  {time_at_start=2020-03-30 22:30, time_at_stop=2020-03-30 23:00, stop=B}
+start_time=2020-03-30 22:14
+|  {time_at_start=2020-03-30 22:14, time_at_stop=2020-03-30 22:45, stop=B}
+|  {time_at_start=2020-03-30 22:14, time_at_stop=2020-03-30 22:30, stop=A}
+start_time=2020-03-30 22:00
+|  {time_at_start=2020-03-30 22:00, time_at_stop=2020-03-30 22:30, stop=B}
+start_time=2020-03-30 21:44
+|  {time_at_start=2020-03-30 21:44, time_at_stop=2020-03-30 22:15, stop=B}
+|  {time_at_start=2020-03-30 21:44, time_at_stop=2020-03-30 22:00, stop=A}
+start_time=2020-03-30 21:30
+|  {time_at_start=2020-03-30 21:30, time_at_stop=2020-03-30 22:00, stop=B}
+start_time=2020-03-30 21:14
+|  {time_at_start=2020-03-30 21:14, time_at_stop=2020-03-30 21:45, stop=B}
+|  {time_at_start=2020-03-30 21:14, time_at_stop=2020-03-30 21:30, stop=A}
+start_time=2020-03-30 21:00
+|  {time_at_start=2020-03-30 21:00, time_at_stop=2020-03-30 21:30, stop=B}
+start_time=2020-03-30 20:44
+|  {time_at_start=2020-03-30 20:44, time_at_stop=2020-03-30 21:15, stop=B}
+|  {time_at_start=2020-03-30 20:44, time_at_stop=2020-03-30 21:00, stop=A}
+start_time=2020-03-30 20:30
+|  {time_at_start=2020-03-30 20:30, time_at_stop=2020-03-30 21:00, stop=B}
+start_time=2020-03-30 20:14
+|  {time_at_start=2020-03-30 20:14, time_at_stop=2020-03-30 20:45, stop=B}
+|  {time_at_start=2020-03-30 20:14, time_at_stop=2020-03-30 20:30, stop=A}
+start_time=2020-03-30 20:00
+|  {time_at_start=2020-03-30 20:00, time_at_stop=2020-03-30 20:30, stop=B}
+start_time=2020-03-30 19:44
+|  {time_at_start=2020-03-30 19:44, time_at_stop=2020-03-30 20:15, stop=B}
+|  {time_at_start=2020-03-30 19:44, time_at_stop=2020-03-30 20:00, stop=A}
+start_time=2020-03-30 19:30
+|  {time_at_start=2020-03-30 19:30, time_at_stop=2020-03-30 20:00, stop=B}
+start_time=2020-03-30 19:14
+|  {time_at_start=2020-03-30 19:14, time_at_stop=2020-03-30 19:45, stop=B}
+|  {time_at_start=2020-03-30 19:14, time_at_stop=2020-03-30 19:30, stop=A}
+start_time=2020-03-30 19:00
+|  {time_at_start=2020-03-30 19:00, time_at_stop=2020-03-30 19:30, stop=B}
+start_time=2020-03-30 18:44
+|  {time_at_start=2020-03-30 18:44, time_at_stop=2020-03-30 19:15, stop=B}
+|  {time_at_start=2020-03-30 18:44, time_at_stop=2020-03-30 19:00, stop=A}
+start_time=2020-03-30 18:30
+|  {time_at_start=2020-03-30 18:30, time_at_stop=2020-03-30 19:00, stop=B}
+start_time=2020-03-30 18:14
+|  {time_at_start=2020-03-30 18:14, time_at_stop=2020-03-30 18:45, stop=B}
+|  {time_at_start=2020-03-30 18:14, time_at_stop=2020-03-30 18:30, stop=A}
+start_time=2020-03-30 18:00
+|  {time_at_start=2020-03-30 18:00, time_at_stop=2020-03-30 18:30, stop=B}
+start_time=2020-03-30 17:44
+|  {time_at_start=2020-03-30 17:44, time_at_stop=2020-03-30 18:15, stop=B}
+|  {time_at_start=2020-03-30 17:44, time_at_stop=2020-03-30 18:00, stop=A}
+start_time=2020-03-30 17:30
+|  {time_at_start=2020-03-30 17:30, time_at_stop=2020-03-30 18:00, stop=B}
+start_time=2020-03-30 17:14
+|  {time_at_start=2020-03-30 17:14, time_at_stop=2020-03-30 17:45, stop=B}
+|  {time_at_start=2020-03-30 17:14, time_at_stop=2020-03-30 17:30, stop=A}
+start_time=2020-03-30 17:00
+|  {time_at_start=2020-03-30 17:00, time_at_stop=2020-03-30 17:30, stop=B}
+start_time=2020-03-30 16:44
+|  {time_at_start=2020-03-30 16:44, time_at_stop=2020-03-30 17:15, stop=B}
+|  {time_at_start=2020-03-30 16:44, time_at_stop=2020-03-30 17:00, stop=A}
+start_time=2020-03-30 16:30
+|  {time_at_start=2020-03-30 16:30, time_at_stop=2020-03-30 17:00, stop=B}
+start_time=2020-03-30 16:14
+|  {time_at_start=2020-03-30 16:14, time_at_stop=2020-03-30 16:45, stop=B}
+|  {time_at_start=2020-03-30 16:14, time_at_stop=2020-03-30 16:30, stop=A}
+start_time=2020-03-30 16:00
+|  {time_at_start=2020-03-30 16:00, time_at_stop=2020-03-30 16:30, stop=B}
+start_time=2020-03-30 15:44
+|  {time_at_start=2020-03-30 15:44, time_at_stop=2020-03-30 16:15, stop=B}
+|  {time_at_start=2020-03-30 15:44, time_at_stop=2020-03-30 16:00, stop=A}
+start_time=2020-03-30 15:30
+|  {time_at_start=2020-03-30 15:30, time_at_stop=2020-03-30 16:00, stop=B}
+start_time=2020-03-30 15:14
+|  {time_at_start=2020-03-30 15:14, time_at_stop=2020-03-30 15:45, stop=B}
+|  {time_at_start=2020-03-30 15:14, time_at_stop=2020-03-30 15:30, stop=A}
+start_time=2020-03-30 15:00
+|  {time_at_start=2020-03-30 15:00, time_at_stop=2020-03-30 15:30, stop=B}
+start_time=2020-03-30 14:44
+|  {time_at_start=2020-03-30 14:44, time_at_stop=2020-03-30 15:15, stop=B}
+|  {time_at_start=2020-03-30 14:44, time_at_stop=2020-03-30 15:00, stop=A}
+start_time=2020-03-30 14:30
+|  {time_at_start=2020-03-30 14:30, time_at_stop=2020-03-30 15:00, stop=B}
+start_time=2020-03-30 14:14
+|  {time_at_start=2020-03-30 14:14, time_at_stop=2020-03-30 14:45, stop=B}
+|  {time_at_start=2020-03-30 14:14, time_at_stop=2020-03-30 14:30, stop=A}
+start_time=2020-03-30 14:00
+|  {time_at_start=2020-03-30 14:00, time_at_stop=2020-03-30 14:30, stop=B}
+start_time=2020-03-30 13:44
+|  {time_at_start=2020-03-30 13:44, time_at_stop=2020-03-30 14:15, stop=B}
+|  {time_at_start=2020-03-30 13:44, time_at_stop=2020-03-30 14:00, stop=A}
+start_time=2020-03-30 13:30
+|  {time_at_start=2020-03-30 13:30, time_at_stop=2020-03-30 14:00, stop=B}
+start_time=2020-03-30 13:14
+|  {time_at_start=2020-03-30 13:14, time_at_stop=2020-03-30 13:45, stop=B}
+|  {time_at_start=2020-03-30 13:14, time_at_stop=2020-03-30 13:30, stop=A}
+start_time=2020-03-30 13:00
+|  {time_at_start=2020-03-30 13:00, time_at_stop=2020-03-30 13:30, stop=B}
+start_time=2020-03-30 12:44
+|  {time_at_start=2020-03-30 12:44, time_at_stop=2020-03-30 13:15, stop=B}
+|  {time_at_start=2020-03-30 12:44, time_at_stop=2020-03-30 13:00, stop=A}
+start_time=2020-03-30 12:30
+|  {time_at_start=2020-03-30 12:30, time_at_stop=2020-03-30 13:00, stop=B}
+start_time=2020-03-30 12:14
+|  {time_at_start=2020-03-30 12:14, time_at_stop=2020-03-30 12:45, stop=B}
+|  {time_at_start=2020-03-30 12:14, time_at_stop=2020-03-30 12:30, stop=A}
+start_time=2020-03-30 12:00
+|  {time_at_start=2020-03-30 12:00, time_at_stop=2020-03-30 12:30, stop=B}
+start_time=2020-03-30 11:44
+|  {time_at_start=2020-03-30 11:44, time_at_stop=2020-03-30 12:15, stop=B}
+|  {time_at_start=2020-03-30 11:44, time_at_stop=2020-03-30 12:00, stop=A}
+start_time=2020-03-30 11:30
+|  {time_at_start=2020-03-30 11:30, time_at_stop=2020-03-30 12:00, stop=B}
+start_time=2020-03-30 11:14
+|  {time_at_start=2020-03-30 11:14, time_at_stop=2020-03-30 11:45, stop=B}
+|  {time_at_start=2020-03-30 11:14, time_at_stop=2020-03-30 11:30, stop=A}
+start_time=2020-03-30 11:00
+|  {time_at_start=2020-03-30 11:00, time_at_stop=2020-03-30 11:30, stop=B}
+start_time=2020-03-30 10:44
+|  {time_at_start=2020-03-30 10:44, time_at_stop=2020-03-30 11:15, stop=B}
+|  {time_at_start=2020-03-30 10:44, time_at_stop=2020-03-30 11:00, stop=A}
+start_time=2020-03-30 10:30
+|  {time_at_start=2020-03-30 10:30, time_at_stop=2020-03-30 11:00, stop=B}
+start_time=2020-03-30 10:14
+|  {time_at_start=2020-03-30 10:14, time_at_stop=2020-03-30 10:45, stop=B}
+|  {time_at_start=2020-03-30 10:14, time_at_stop=2020-03-30 10:30, stop=A}
+start_time=2020-03-30 10:00
+|  {time_at_start=2020-03-30 10:00, time_at_stop=2020-03-30 10:30, stop=B}
+start_time=2020-03-30 09:44
+|  {time_at_start=2020-03-30 09:44, time_at_stop=2020-03-30 10:15, stop=B}
+|  {time_at_start=2020-03-30 09:44, time_at_stop=2020-03-30 10:00, stop=A}
+start_time=2020-03-30 09:30
+|  {time_at_start=2020-03-30 09:30, time_at_stop=2020-03-30 10:00, stop=B}
+start_time=2020-03-30 09:14
+|  {time_at_start=2020-03-30 09:14, time_at_stop=2020-03-30 09:45, stop=B}
+|  {time_at_start=2020-03-30 09:14, time_at_stop=2020-03-30 09:30, stop=A}
+start_time=2020-03-30 09:00
+|  {time_at_start=2020-03-30 09:00, time_at_stop=2020-03-30 09:30, stop=B}
+start_time=2020-03-30 08:44
+|  {time_at_start=2020-03-30 08:44, time_at_stop=2020-03-30 09:15, stop=B}
+|  {time_at_start=2020-03-30 08:44, time_at_stop=2020-03-30 09:00, stop=A}
+start_time=2020-03-30 08:30
+|  {time_at_start=2020-03-30 08:30, time_at_stop=2020-03-30 09:00, stop=B}
+start_time=2020-03-30 08:14
+|  {time_at_start=2020-03-30 08:14, time_at_stop=2020-03-30 08:45, stop=B}
+|  {time_at_start=2020-03-30 08:14, time_at_stop=2020-03-30 08:30, stop=A}
+start_time=2020-03-30 08:00
+|  {time_at_start=2020-03-30 08:00, time_at_stop=2020-03-30 08:30, stop=B}
+start_time=2020-03-30 07:44
+|  {time_at_start=2020-03-30 07:44, time_at_stop=2020-03-30 08:15, stop=B}
+|  {time_at_start=2020-03-30 07:44, time_at_stop=2020-03-30 08:00, stop=A}
+start_time=2020-03-30 07:30
+|  {time_at_start=2020-03-30 07:30, time_at_stop=2020-03-30 08:00, stop=B}
+start_time=2020-03-30 07:14
+|  {time_at_start=2020-03-30 07:14, time_at_stop=2020-03-30 07:45, stop=B}
+|  {time_at_start=2020-03-30 07:14, time_at_stop=2020-03-30 07:30, stop=A}
+start_time=2020-03-30 07:00
+|  {time_at_start=2020-03-30 07:00, time_at_stop=2020-03-30 07:30, stop=B}
+start_time=2020-03-30 06:44
+|  {time_at_start=2020-03-30 06:44, time_at_stop=2020-03-30 07:15, stop=B}
+|  {time_at_start=2020-03-30 06:44, time_at_stop=2020-03-30 07:00, stop=A}
+start_time=2020-03-30 06:30
+|  {time_at_start=2020-03-30 06:30, time_at_stop=2020-03-30 07:00, stop=B}
+start_time=2020-03-30 06:14
+|  {time_at_start=2020-03-30 06:14, time_at_stop=2020-03-30 06:45, stop=B}
+|  {time_at_start=2020-03-30 06:14, time_at_stop=2020-03-30 06:30, stop=A}
+start_time=2020-03-30 06:00
+|  {time_at_start=2020-03-30 06:00, time_at_stop=2020-03-30 06:30, stop=B}
+start_time=2020-03-30 05:44
+|  {time_at_start=2020-03-30 05:44, time_at_stop=2020-03-30 06:15, stop=B}
+|  {time_at_start=2020-03-30 05:44, time_at_stop=2020-03-30 06:00, stop=A}
+start_time=2020-03-30 05:30
+|  {time_at_start=2020-03-30 05:30, time_at_stop=2020-03-30 06:00, stop=B}
+start_time=2020-03-30 05:14
+|  {time_at_start=2020-03-30 05:14, time_at_stop=2020-03-30 05:45, stop=B}
+|  {time_at_start=2020-03-30 05:14, time_at_stop=2020-03-30 05:30, stop=A}
+start_time=2020-03-30 05:00
+|  {time_at_start=2020-03-30 05:00, time_at_stop=2020-03-30 05:30, stop=B}
+start_time=2020-03-30 04:44
+|  {time_at_start=2020-03-30 04:44, time_at_stop=2020-03-30 05:15, stop=B}
+|  {time_at_start=2020-03-30 04:44, time_at_stop=2020-03-30 05:00, stop=A}
+start_time=2020-03-30 04:30
+|  {time_at_start=2020-03-30 04:30, time_at_stop=2020-03-30 05:00, stop=B}
+start_time=2020-03-30 04:14
+|  {time_at_start=2020-03-30 04:14, time_at_stop=2020-03-30 04:45, stop=B}
+|  {time_at_start=2020-03-30 04:14, time_at_stop=2020-03-30 04:30, stop=A}
+start_time=2020-03-30 04:00
+|  {time_at_start=2020-03-30 04:00, time_at_stop=2020-03-30 04:30, stop=B}
+start_time=2020-03-30 03:44
+|  {time_at_start=2020-03-30 03:44, time_at_stop=2020-03-30 04:15, stop=B}
+|  {time_at_start=2020-03-30 03:44, time_at_stop=2020-03-30 04:00, stop=A}
+start_time=2020-03-30 03:30
+|  {time_at_start=2020-03-30 03:30, time_at_stop=2020-03-30 04:00, stop=B}
+start_time=2020-03-30 03:14
+|  {time_at_start=2020-03-30 03:14, time_at_stop=2020-03-30 03:45, stop=B}
+|  {time_at_start=2020-03-30 03:14, time_at_stop=2020-03-30 03:30, stop=A}
+start_time=2020-03-30 03:00
+|  {time_at_start=2020-03-30 03:00, time_at_stop=2020-03-30 03:30, stop=B}
+start_time=2020-03-30 02:44
+|  {time_at_start=2020-03-30 02:44, time_at_stop=2020-03-30 03:15, stop=B}
+|  {time_at_start=2020-03-30 02:44, time_at_stop=2020-03-30 03:00, stop=A}
+start_time=2020-03-30 02:30
+|  {time_at_start=2020-03-30 02:30, time_at_stop=2020-03-30 03:00, stop=B}
+start_time=2020-03-30 02:14
+|  {time_at_start=2020-03-30 02:14, time_at_stop=2020-03-30 02:45, stop=B}
+|  {time_at_start=2020-03-30 02:14, time_at_stop=2020-03-30 02:30, stop=A}
+start_time=2020-03-30 02:00
+|  {time_at_start=2020-03-30 02:00, time_at_stop=2020-03-30 02:30, stop=B}
+start_time=2020-03-30 01:44
+|  {time_at_start=2020-03-30 01:44, time_at_stop=2020-03-30 02:15, stop=B}
+|  {time_at_start=2020-03-30 01:44, time_at_stop=2020-03-30 02:00, stop=A}
+start_time=2020-03-30 01:30
+|  {time_at_start=2020-03-30 01:30, time_at_stop=2020-03-30 02:00, stop=B}
+start_time=2020-03-30 01:14
+|  {time_at_start=2020-03-30 01:14, time_at_stop=2020-03-30 01:45, stop=B}
+|  {time_at_start=2020-03-30 01:14, time_at_stop=2020-03-30 01:30, stop=A}
+start_time=2020-03-30 01:00
+|  {time_at_start=2020-03-30 01:00, time_at_stop=2020-03-30 01:30, stop=B}
+start_time=2020-03-30 00:44
+|  {time_at_start=2020-03-30 00:44, time_at_stop=2020-03-30 01:15, stop=B}
+|  {time_at_start=2020-03-30 00:44, time_at_stop=2020-03-30 01:00, stop=A}
+start_time=2020-03-30 00:30
+|  {time_at_start=2020-03-30 00:30, time_at_stop=2020-03-30 01:00, stop=B}
+start_time=2020-03-30 00:14
+|  {time_at_start=2020-03-30 00:14, time_at_stop=2020-03-30 00:45, stop=B}
+|  {time_at_start=2020-03-30 00:14, time_at_stop=2020-03-30 00:30, stop=A}
+start_time=2020-03-30 00:00
+|  {time_at_start=2020-03-30 00:00, time_at_stop=2020-03-30 00:30, stop=B}
+)";
+
+TEST(routing, start_times_round_to_multiple_of_2_fwd) {
+  auto const src = source_idx_t{0U};
+  auto tt = timetable{};
+  tt.date_range_ = full_period();
+  load_timetable(src, loader::hrd::hrd_5_20_26, files_simple(), tt);
+  finalize(tt);
+
+  using namespace date;
+  auto const A = tt.locations_.location_id_to_idx_.at(
+      location_id{.id_ = "0000001", .src_ = src});
+  auto const B = tt.locations_.location_id_to_idx_.at(
+      location_id{.id_ = "0000002", .src_ = src});
+  auto starts = std::vector<start>{};
+  get_starts(direction::kForward, tt, nullptr,
+             interval<unixtime_t>{sys_days{2020_y / March / 30},
+                                  sys_days{2020_y / March / 31}},
+             {{A, 15_minutes, 0}, {B, 30_minutes, 0}},
+             location_match_mode::kExact, false, starts, true, 0, 2);
+  std::sort(begin(starts), end(starts),
+            [](auto&& a, auto&& b) { return a > b; });
+  starts.erase(std::unique(begin(starts), end(starts)), end(starts));
+
+  std::stringstream ss;
+  ss << "\n";
+  utl::equal_ranges_linear(
+      starts,
+      [](start const& a, start const& b) {
+        return a.time_at_start_ == b.time_at_start_;
+      },
+      [&](std::vector<start>::const_iterator const& from_it,
+          std::vector<start>::const_iterator const& to_it) {
+        ss << "start_time=" << from_it->time_at_start_ << "\n";
+        for (auto const& s : it_range{from_it, to_it}) {
+          ss << "|  {time_at_start=" << s.time_at_start_
+             << ", time_at_stop=" << s.time_at_stop_
+             << ", stop=" << tt.locations_.names_[s.stop_].view() << "}\n";
+        }
+      });
+
+  EXPECT_EQ(std::string_view{expected_round_to_2_fwd}, ss.str());
+}
+
+constexpr auto const expected_round_to_2_bwd = R"(
+start_time=2020-03-30 23:46
+|  {time_at_start=2020-03-30 23:46, time_at_stop=2020-03-30 23:30, stop=A}
+start_time=2020-03-30 23:30
+|  {time_at_start=2020-03-30 23:30, time_at_stop=2020-03-30 23:15, stop=A}
+|  {time_at_start=2020-03-30 23:30, time_at_stop=2020-03-30 23:00, stop=B}
+start_time=2020-03-30 23:16
+|  {time_at_start=2020-03-30 23:16, time_at_stop=2020-03-30 23:00, stop=A}
+start_time=2020-03-30 23:00
+|  {time_at_start=2020-03-30 23:00, time_at_stop=2020-03-30 22:45, stop=A}
+|  {time_at_start=2020-03-30 23:00, time_at_stop=2020-03-30 22:30, stop=B}
+start_time=2020-03-30 22:46
+|  {time_at_start=2020-03-30 22:46, time_at_stop=2020-03-30 22:30, stop=A}
+start_time=2020-03-30 22:30
+|  {time_at_start=2020-03-30 22:30, time_at_stop=2020-03-30 22:15, stop=A}
+|  {time_at_start=2020-03-30 22:30, time_at_stop=2020-03-30 22:00, stop=B}
+start_time=2020-03-30 22:16
+|  {time_at_start=2020-03-30 22:16, time_at_stop=2020-03-30 22:00, stop=A}
+start_time=2020-03-30 22:00
+|  {time_at_start=2020-03-30 22:00, time_at_stop=2020-03-30 21:45, stop=A}
+|  {time_at_start=2020-03-30 22:00, time_at_stop=2020-03-30 21:30, stop=B}
+start_time=2020-03-30 21:46
+|  {time_at_start=2020-03-30 21:46, time_at_stop=2020-03-30 21:30, stop=A}
+start_time=2020-03-30 21:30
+|  {time_at_start=2020-03-30 21:30, time_at_stop=2020-03-30 21:15, stop=A}
+|  {time_at_start=2020-03-30 21:30, time_at_stop=2020-03-30 21:00, stop=B}
+start_time=2020-03-30 21:16
+|  {time_at_start=2020-03-30 21:16, time_at_stop=2020-03-30 21:00, stop=A}
+start_time=2020-03-30 21:00
+|  {time_at_start=2020-03-30 21:00, time_at_stop=2020-03-30 20:45, stop=A}
+|  {time_at_start=2020-03-30 21:00, time_at_stop=2020-03-30 20:30, stop=B}
+start_time=2020-03-30 20:46
+|  {time_at_start=2020-03-30 20:46, time_at_stop=2020-03-30 20:30, stop=A}
+start_time=2020-03-30 20:30
+|  {time_at_start=2020-03-30 20:30, time_at_stop=2020-03-30 20:15, stop=A}
+|  {time_at_start=2020-03-30 20:30, time_at_stop=2020-03-30 20:00, stop=B}
+start_time=2020-03-30 20:16
+|  {time_at_start=2020-03-30 20:16, time_at_stop=2020-03-30 20:00, stop=A}
+start_time=2020-03-30 20:00
+|  {time_at_start=2020-03-30 20:00, time_at_stop=2020-03-30 19:45, stop=A}
+|  {time_at_start=2020-03-30 20:00, time_at_stop=2020-03-30 19:30, stop=B}
+start_time=2020-03-30 19:46
+|  {time_at_start=2020-03-30 19:46, time_at_stop=2020-03-30 19:30, stop=A}
+start_time=2020-03-30 19:30
+|  {time_at_start=2020-03-30 19:30, time_at_stop=2020-03-30 19:15, stop=A}
+|  {time_at_start=2020-03-30 19:30, time_at_stop=2020-03-30 19:00, stop=B}
+start_time=2020-03-30 19:16
+|  {time_at_start=2020-03-30 19:16, time_at_stop=2020-03-30 19:00, stop=A}
+start_time=2020-03-30 19:00
+|  {time_at_start=2020-03-30 19:00, time_at_stop=2020-03-30 18:45, stop=A}
+|  {time_at_start=2020-03-30 19:00, time_at_stop=2020-03-30 18:30, stop=B}
+start_time=2020-03-30 18:46
+|  {time_at_start=2020-03-30 18:46, time_at_stop=2020-03-30 18:30, stop=A}
+start_time=2020-03-30 18:30
+|  {time_at_start=2020-03-30 18:30, time_at_stop=2020-03-30 18:15, stop=A}
+|  {time_at_start=2020-03-30 18:30, time_at_stop=2020-03-30 18:00, stop=B}
+start_time=2020-03-30 18:16
+|  {time_at_start=2020-03-30 18:16, time_at_stop=2020-03-30 18:00, stop=A}
+start_time=2020-03-30 18:00
+|  {time_at_start=2020-03-30 18:00, time_at_stop=2020-03-30 17:45, stop=A}
+|  {time_at_start=2020-03-30 18:00, time_at_stop=2020-03-30 17:30, stop=B}
+start_time=2020-03-30 17:46
+|  {time_at_start=2020-03-30 17:46, time_at_stop=2020-03-30 17:30, stop=A}
+start_time=2020-03-30 17:30
+|  {time_at_start=2020-03-30 17:30, time_at_stop=2020-03-30 17:15, stop=A}
+|  {time_at_start=2020-03-30 17:30, time_at_stop=2020-03-30 17:00, stop=B}
+start_time=2020-03-30 17:16
+|  {time_at_start=2020-03-30 17:16, time_at_stop=2020-03-30 17:00, stop=A}
+start_time=2020-03-30 17:00
+|  {time_at_start=2020-03-30 17:00, time_at_stop=2020-03-30 16:45, stop=A}
+|  {time_at_start=2020-03-30 17:00, time_at_stop=2020-03-30 16:30, stop=B}
+start_time=2020-03-30 16:46
+|  {time_at_start=2020-03-30 16:46, time_at_stop=2020-03-30 16:30, stop=A}
+start_time=2020-03-30 16:30
+|  {time_at_start=2020-03-30 16:30, time_at_stop=2020-03-30 16:15, stop=A}
+|  {time_at_start=2020-03-30 16:30, time_at_stop=2020-03-30 16:00, stop=B}
+start_time=2020-03-30 16:16
+|  {time_at_start=2020-03-30 16:16, time_at_stop=2020-03-30 16:00, stop=A}
+start_time=2020-03-30 16:00
+|  {time_at_start=2020-03-30 16:00, time_at_stop=2020-03-30 15:45, stop=A}
+|  {time_at_start=2020-03-30 16:00, time_at_stop=2020-03-30 15:30, stop=B}
+start_time=2020-03-30 15:46
+|  {time_at_start=2020-03-30 15:46, time_at_stop=2020-03-30 15:30, stop=A}
+start_time=2020-03-30 15:30
+|  {time_at_start=2020-03-30 15:30, time_at_stop=2020-03-30 15:15, stop=A}
+|  {time_at_start=2020-03-30 15:30, time_at_stop=2020-03-30 15:00, stop=B}
+start_time=2020-03-30 15:16
+|  {time_at_start=2020-03-30 15:16, time_at_stop=2020-03-30 15:00, stop=A}
+start_time=2020-03-30 15:00
+|  {time_at_start=2020-03-30 15:00, time_at_stop=2020-03-30 14:45, stop=A}
+|  {time_at_start=2020-03-30 15:00, time_at_stop=2020-03-30 14:30, stop=B}
+start_time=2020-03-30 14:46
+|  {time_at_start=2020-03-30 14:46, time_at_stop=2020-03-30 14:30, stop=A}
+start_time=2020-03-30 14:30
+|  {time_at_start=2020-03-30 14:30, time_at_stop=2020-03-30 14:15, stop=A}
+|  {time_at_start=2020-03-30 14:30, time_at_stop=2020-03-30 14:00, stop=B}
+start_time=2020-03-30 14:16
+|  {time_at_start=2020-03-30 14:16, time_at_stop=2020-03-30 14:00, stop=A}
+start_time=2020-03-30 14:00
+|  {time_at_start=2020-03-30 14:00, time_at_stop=2020-03-30 13:45, stop=A}
+|  {time_at_start=2020-03-30 14:00, time_at_stop=2020-03-30 13:30, stop=B}
+start_time=2020-03-30 13:46
+|  {time_at_start=2020-03-30 13:46, time_at_stop=2020-03-30 13:30, stop=A}
+start_time=2020-03-30 13:30
+|  {time_at_start=2020-03-30 13:30, time_at_stop=2020-03-30 13:15, stop=A}
+|  {time_at_start=2020-03-30 13:30, time_at_stop=2020-03-30 13:00, stop=B}
+start_time=2020-03-30 13:16
+|  {time_at_start=2020-03-30 13:16, time_at_stop=2020-03-30 13:00, stop=A}
+start_time=2020-03-30 13:00
+|  {time_at_start=2020-03-30 13:00, time_at_stop=2020-03-30 12:45, stop=A}
+|  {time_at_start=2020-03-30 13:00, time_at_stop=2020-03-30 12:30, stop=B}
+start_time=2020-03-30 12:46
+|  {time_at_start=2020-03-30 12:46, time_at_stop=2020-03-30 12:30, stop=A}
+start_time=2020-03-30 12:30
+|  {time_at_start=2020-03-30 12:30, time_at_stop=2020-03-30 12:15, stop=A}
+|  {time_at_start=2020-03-30 12:30, time_at_stop=2020-03-30 12:00, stop=B}
+start_time=2020-03-30 12:16
+|  {time_at_start=2020-03-30 12:16, time_at_stop=2020-03-30 12:00, stop=A}
+start_time=2020-03-30 12:00
+|  {time_at_start=2020-03-30 12:00, time_at_stop=2020-03-30 11:45, stop=A}
+|  {time_at_start=2020-03-30 12:00, time_at_stop=2020-03-30 11:30, stop=B}
+start_time=2020-03-30 11:46
+|  {time_at_start=2020-03-30 11:46, time_at_stop=2020-03-30 11:30, stop=A}
+start_time=2020-03-30 11:30
+|  {time_at_start=2020-03-30 11:30, time_at_stop=2020-03-30 11:15, stop=A}
+|  {time_at_start=2020-03-30 11:30, time_at_stop=2020-03-30 11:00, stop=B}
+start_time=2020-03-30 11:16
+|  {time_at_start=2020-03-30 11:16, time_at_stop=2020-03-30 11:00, stop=A}
+start_time=2020-03-30 11:00
+|  {time_at_start=2020-03-30 11:00, time_at_stop=2020-03-30 10:45, stop=A}
+|  {time_at_start=2020-03-30 11:00, time_at_stop=2020-03-30 10:30, stop=B}
+start_time=2020-03-30 10:46
+|  {time_at_start=2020-03-30 10:46, time_at_stop=2020-03-30 10:30, stop=A}
+start_time=2020-03-30 10:30
+|  {time_at_start=2020-03-30 10:30, time_at_stop=2020-03-30 10:15, stop=A}
+|  {time_at_start=2020-03-30 10:30, time_at_stop=2020-03-30 10:00, stop=B}
+start_time=2020-03-30 10:16
+|  {time_at_start=2020-03-30 10:16, time_at_stop=2020-03-30 10:00, stop=A}
+start_time=2020-03-30 10:00
+|  {time_at_start=2020-03-30 10:00, time_at_stop=2020-03-30 09:45, stop=A}
+|  {time_at_start=2020-03-30 10:00, time_at_stop=2020-03-30 09:30, stop=B}
+start_time=2020-03-30 09:46
+|  {time_at_start=2020-03-30 09:46, time_at_stop=2020-03-30 09:30, stop=A}
+start_time=2020-03-30 09:30
+|  {time_at_start=2020-03-30 09:30, time_at_stop=2020-03-30 09:15, stop=A}
+|  {time_at_start=2020-03-30 09:30, time_at_stop=2020-03-30 09:00, stop=B}
+start_time=2020-03-30 09:16
+|  {time_at_start=2020-03-30 09:16, time_at_stop=2020-03-30 09:00, stop=A}
+start_time=2020-03-30 09:00
+|  {time_at_start=2020-03-30 09:00, time_at_stop=2020-03-30 08:45, stop=A}
+|  {time_at_start=2020-03-30 09:00, time_at_stop=2020-03-30 08:30, stop=B}
+start_time=2020-03-30 08:46
+|  {time_at_start=2020-03-30 08:46, time_at_stop=2020-03-30 08:30, stop=A}
+start_time=2020-03-30 08:30
+|  {time_at_start=2020-03-30 08:30, time_at_stop=2020-03-30 08:15, stop=A}
+|  {time_at_start=2020-03-30 08:30, time_at_stop=2020-03-30 08:00, stop=B}
+start_time=2020-03-30 08:16
+|  {time_at_start=2020-03-30 08:16, time_at_stop=2020-03-30 08:00, stop=A}
+start_time=2020-03-30 08:00
+|  {time_at_start=2020-03-30 08:00, time_at_stop=2020-03-30 07:45, stop=A}
+|  {time_at_start=2020-03-30 08:00, time_at_stop=2020-03-30 07:30, stop=B}
+start_time=2020-03-30 07:46
+|  {time_at_start=2020-03-30 07:46, time_at_stop=2020-03-30 07:30, stop=A}
+start_time=2020-03-30 07:30
+|  {time_at_start=2020-03-30 07:30, time_at_stop=2020-03-30 07:15, stop=A}
+|  {time_at_start=2020-03-30 07:30, time_at_stop=2020-03-30 07:00, stop=B}
+start_time=2020-03-30 07:16
+|  {time_at_start=2020-03-30 07:16, time_at_stop=2020-03-30 07:00, stop=A}
+start_time=2020-03-30 07:00
+|  {time_at_start=2020-03-30 07:00, time_at_stop=2020-03-30 06:45, stop=A}
+|  {time_at_start=2020-03-30 07:00, time_at_stop=2020-03-30 06:30, stop=B}
+start_time=2020-03-30 06:46
+|  {time_at_start=2020-03-30 06:46, time_at_stop=2020-03-30 06:30, stop=A}
+start_time=2020-03-30 06:30
+|  {time_at_start=2020-03-30 06:30, time_at_stop=2020-03-30 06:15, stop=A}
+|  {time_at_start=2020-03-30 06:30, time_at_stop=2020-03-30 06:00, stop=B}
+start_time=2020-03-30 06:16
+|  {time_at_start=2020-03-30 06:16, time_at_stop=2020-03-30 06:00, stop=A}
+start_time=2020-03-30 06:00
+|  {time_at_start=2020-03-30 06:00, time_at_stop=2020-03-30 05:45, stop=A}
+|  {time_at_start=2020-03-30 06:00, time_at_stop=2020-03-30 05:30, stop=B}
+start_time=2020-03-30 05:46
+|  {time_at_start=2020-03-30 05:46, time_at_stop=2020-03-30 05:30, stop=A}
+start_time=2020-03-30 05:30
+|  {time_at_start=2020-03-30 05:30, time_at_stop=2020-03-30 05:15, stop=A}
+|  {time_at_start=2020-03-30 05:30, time_at_stop=2020-03-30 05:00, stop=B}
+start_time=2020-03-30 05:16
+|  {time_at_start=2020-03-30 05:16, time_at_stop=2020-03-30 05:00, stop=A}
+start_time=2020-03-30 05:00
+|  {time_at_start=2020-03-30 05:00, time_at_stop=2020-03-30 04:45, stop=A}
+|  {time_at_start=2020-03-30 05:00, time_at_stop=2020-03-30 04:30, stop=B}
+start_time=2020-03-30 04:46
+|  {time_at_start=2020-03-30 04:46, time_at_stop=2020-03-30 04:30, stop=A}
+start_time=2020-03-30 04:30
+|  {time_at_start=2020-03-30 04:30, time_at_stop=2020-03-30 04:15, stop=A}
+|  {time_at_start=2020-03-30 04:30, time_at_stop=2020-03-30 04:00, stop=B}
+start_time=2020-03-30 04:16
+|  {time_at_start=2020-03-30 04:16, time_at_stop=2020-03-30 04:00, stop=A}
+start_time=2020-03-30 04:00
+|  {time_at_start=2020-03-30 04:00, time_at_stop=2020-03-30 03:45, stop=A}
+|  {time_at_start=2020-03-30 04:00, time_at_stop=2020-03-30 03:30, stop=B}
+start_time=2020-03-30 03:46
+|  {time_at_start=2020-03-30 03:46, time_at_stop=2020-03-30 03:30, stop=A}
+start_time=2020-03-30 03:30
+|  {time_at_start=2020-03-30 03:30, time_at_stop=2020-03-30 03:15, stop=A}
+|  {time_at_start=2020-03-30 03:30, time_at_stop=2020-03-30 03:00, stop=B}
+start_time=2020-03-30 03:16
+|  {time_at_start=2020-03-30 03:16, time_at_stop=2020-03-30 03:00, stop=A}
+start_time=2020-03-30 03:00
+|  {time_at_start=2020-03-30 03:00, time_at_stop=2020-03-30 02:45, stop=A}
+|  {time_at_start=2020-03-30 03:00, time_at_stop=2020-03-30 02:30, stop=B}
+start_time=2020-03-30 02:46
+|  {time_at_start=2020-03-30 02:46, time_at_stop=2020-03-30 02:30, stop=A}
+start_time=2020-03-30 02:30
+|  {time_at_start=2020-03-30 02:30, time_at_stop=2020-03-30 02:15, stop=A}
+|  {time_at_start=2020-03-30 02:30, time_at_stop=2020-03-30 02:00, stop=B}
+start_time=2020-03-30 02:16
+|  {time_at_start=2020-03-30 02:16, time_at_stop=2020-03-30 02:00, stop=A}
+start_time=2020-03-30 02:00
+|  {time_at_start=2020-03-30 02:00, time_at_stop=2020-03-30 01:45, stop=A}
+|  {time_at_start=2020-03-30 02:00, time_at_stop=2020-03-30 01:30, stop=B}
+start_time=2020-03-30 01:46
+|  {time_at_start=2020-03-30 01:46, time_at_stop=2020-03-30 01:30, stop=A}
+start_time=2020-03-29 23:59
+|  {time_at_start=2020-03-29 23:59, time_at_stop=2020-03-29 23:44, stop=A}
+|  {time_at_start=2020-03-29 23:59, time_at_stop=2020-03-29 23:29, stop=B}
+)";
+
+TEST(routing, start_times_round_to_multiple_of_2_bwd) {
+  auto const src = source_idx_t{0U};
+  auto tt = timetable{};
+  tt.date_range_ = full_period();
+  load_timetable(src, loader::hrd::hrd_5_20_26, files_simple(), tt);
+  finalize(tt);
+
+  using namespace date;
+  auto const A = tt.locations_.location_id_to_idx_.at(
+      location_id{.id_ = "0000001", .src_ = src});
+  auto const B = tt.locations_.location_id_to_idx_.at(
+      location_id{.id_ = "0000002", .src_ = src});
+  auto starts = std::vector<start>{};
+  get_starts(direction::kBackward, tt, nullptr,
+             interval<unixtime_t>{sys_days{2020_y / March / 30},
+                                  sys_days{2020_y / March / 31}},
+             {{A, 15_minutes, 0}, {B, 30_minutes, 0}},
+             location_match_mode::kExact, false, starts, true, 0, 2);
+  std::sort(begin(starts), end(starts),
+            [](auto&& a, auto&& b) { return a > b; });
+  starts.erase(std::unique(begin(starts), end(starts)), end(starts));
+
+  std::stringstream ss;
+  ss << "\n";
+  utl::equal_ranges_linear(
+      starts,
+      [](start const& a, start const& b) {
+        return a.time_at_start_ == b.time_at_start_;
+      },
+      [&](std::vector<start>::const_iterator const& from_it,
+          std::vector<start>::const_iterator const& to_it) {
+        ss << "start_time=" << from_it->time_at_start_ << "\n";
+        for (auto const& s : it_range{from_it, to_it}) {
+          ss << "|  {time_at_start=" << s.time_at_start_
+             << ", time_at_stop=" << s.time_at_stop_
+             << ", stop=" << tt.locations_.names_[s.stop_].view() << "}\n";
+        }
+      });
+
+  std::cout << "ACTUAL backward:\n" << ss.str();
+
+  EXPECT_EQ(std::string_view{expected_round_to_2_bwd}, ss.str());
+}
+
 mem_dir start_times_files() {
   return mem_dir::read(R"__(
 "(
