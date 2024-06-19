@@ -27,7 +27,7 @@ namespace {
 // Trips:
 // T1: A 10:00 -> B 10:10
 // T2: B 10:13 -> C 10:22 (departure 3 min after T1 arrival)
-// T3: B 10:20 -> C 10:30 (departure 10 min after T2 arrival)
+// T3: B 10:20 -> C 10:30 (departure 10 min after T1 arrival)
 // Transfer times for all stations: 2 min (default)
 constexpr auto const test_files = R"(
 # agency.txt
