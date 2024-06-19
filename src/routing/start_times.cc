@@ -22,7 +22,7 @@ unixtime_t rounded_time_at_start(unixtime_t const event_time,
                                  duration_t const offset_time,
                                  direction const search_dir,
                                  interval<unixtime_t> const& interval,
-                                 std::int32_t const round_to) {
+                                 std::uint16_t const round_to) {
   auto const time_at_start = search_dir == direction::kForward
                                  ? event_time - offset_time
                                  : event_time + offset_time;
@@ -43,7 +43,7 @@ void add_start_times_at_stop(direction const search_dir,
                              interval<unixtime_t> const& interval,
                              duration_t const offset,
                              std::vector<start>& starts,
-                             std::int32_t const round_to) {
+                             std::uint16_t const round_to) {
   auto const interval_with_offset =
       search_dir == direction::kForward ? interval + offset : interval - offset;
   auto const first_day_idx = tt.day_idx_mam(interval_with_offset.from_).first;
@@ -107,7 +107,7 @@ void add_starts_in_interval(direction const search_dir,
                             duration_t const d,
                             std::vector<start>& starts,
                             bool const add_ontrip,
-                            std::int32_t const round_to) {
+                            std::uint16_t const round_to) {
   trace_start(
       "    add_starts_in_interval(interval={}, stop={}, duration={}): {} "
       "routes\n",
@@ -211,7 +211,7 @@ void get_starts(direction const search_dir,
                 std::vector<start>& starts,
                 bool const add_ontrip,
                 profile_idx_t const prf_idx,
-                std::int32_t const round_to) {
+                std::uint16_t const round_to) {
   hash_map<location_idx_t, duration_t> shortest_start;
 
   auto const update = [&](location_idx_t const l, duration_t const d) {

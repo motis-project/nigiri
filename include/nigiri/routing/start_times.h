@@ -16,7 +16,7 @@ struct rt_timetable;
 
 namespace nigiri::routing {
 
-static constexpr auto const kDefaultRoundTo = 2;
+static constexpr auto const kDefaultRoundTo = 2U;
 
 struct start {
   CISTA_FRIEND_COMPARABLE(start)
@@ -35,7 +35,7 @@ void get_starts(direction,
                 std::vector<start>&,
                 bool add_ontrip,
                 profile_idx_t,
-                std::int32_t round_to = kDefaultRoundTo);
+                std::uint16_t round_to = kDefaultRoundTo);
 
 void collect_destinations(timetable const&,
                           std::vector<offset> const& destinations,
