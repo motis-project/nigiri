@@ -36,7 +36,7 @@ TEST(td_footpath, simple) {
        * 2024/06/17 12:00 am  |                        |   5 min
        */
       td_footpath{c, kNull, kInfeasible},
-      td_footpath{c, sys_days{June / 21 / 2024_y} + 13_hours, 5_minutes},
+      td_footpath{c, sys_days{June / 15 / 2024_y} + 13_hours, 5_minutes},
 
       /*
        * not possible
@@ -46,8 +46,8 @@ TEST(td_footpath, simple) {
       /*
        * start > t
        */
-      td_footpath{e, sys_days{June / 25 / 2024_y} + 12_hours, 5_minutes},
-      td_footpath{e, sys_days{June / 25 / 2024_y} + 13_hours, 10_minutes},
+      td_footpath{e, sys_days{June / 15 / 2024_y} + 12_hours, 5_minutes},
+      td_footpath{e, sys_days{June / 15 / 2024_y} + 13_hours, 10_minutes},
 
       /*
        * start > t
@@ -60,9 +60,9 @@ TEST(td_footpath, simple) {
   auto const map = vector_map<location_idx_t, unixtime_t>{
       kNull,
       sys_days{June / 15 / 2024_y} + 11_hours + 10_minutes,
-      sys_days{June / 21 / 2024_y} + 13_hours + 5_minutes,
+      sys_days{June / 15 / 2024_y} + 13_hours + 5_minutes,
       kNull,
-      sys_days{June / 25 / 2024_y} + 12_hours + 5_minutes,
+      sys_days{June / 15 / 2024_y} + 12_hours + 5_minutes,
       sys_days{June / 15 / 2024_y} + 11_hours + 7_minutes,
   };
   auto const now = sys_days{June / 15 / 2024_y} + 11_hours;
