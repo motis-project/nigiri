@@ -240,8 +240,6 @@ leg 2: (C, C) [2019-05-01 08:45] -> (F, F) [2019-05-01 09:05]
 
 )"sv;
 
-}  // namespace
-
 std::string results_to_str(pareto_set<routing::journey> const& results,
                            timetable const& tt,
                            rt_timetable const* rtt = nullptr) {
@@ -265,6 +263,8 @@ pareto_set<routing::journey> search(timetable const& tt,
                        dir == direction::kForward ? to : from, start_time, dir,
                        routing::all_clasz_allowed(), require_bikes_allowed);
 }
+
+}  // namespace
 
 TEST(routing, bike_transport_test_1) {
   auto tt = timetable{};

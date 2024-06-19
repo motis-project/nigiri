@@ -119,7 +119,9 @@ void optimize_transfers(timetable const& tt,
       continue;
     }
 
-    auto fp_dur_best = get<footpath>(leg_footpath.uses_).duration();
+    auto fp_dur_best =
+        adjusted_transfer_time(q.transfer_time_settings_,
+                               get<footpath>(leg_footpath.uses_).duration());
     auto& ree_from = get<journey::run_enter_exit>(leg_from.uses_);
     auto& ree_to = get<journey::run_enter_exit>(leg_to.uses_);
 
@@ -141,13 +143,15 @@ void optimize_transfers(timetable const& tt,
         for (auto const& fp :
              tt.locations_
                  .footpaths_out_[q.prf_idx_][stp_from.get_location_idx()]) {
-          if (fp.duration() >= fp_dur_best ||
+          auto const fp_dur =
+              adjusted_transfer_time(q.transfer_time_settings_, fp.duration());
+          if (fp_dur >= fp_dur_best ||
               fp.target() != stp_to.get_location_idx()) {
             continue;
           }
           auto const arr = stp_from.time(event_type::kArr);
           auto const dep = stp_to.time(event_type::kDep);
-          auto const arr_fp = arr + fp.duration();
+          auto const arr_fp = arr + fp_dur;
           if (arr_fp <= dep) {
             leg_from.to_ = stp_from.get_location_idx();
             leg_from.arr_time_ = arr;
@@ -164,7 +168,7 @@ void optimize_transfers(timetable const& tt,
             leg_footpath.arr_time_ = arr_fp;
             leg_footpath.uses_ = fp;
 
-            fp_dur_best = fp.duration();
+            fp_dur_best = fp_dur;
           }
           break;
         }
