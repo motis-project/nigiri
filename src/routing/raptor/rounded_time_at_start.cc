@@ -57,4 +57,10 @@ void correct_rounded_time_at_start(timetable const& tt,
   }
 }
 
+template void correct_rounded_time_at_start<direction::kForward>(
+    timetable const&, rt_timetable const*, query const&, journey&);
+
+template void correct_rounded_time_at_start<direction::kBackward>(
+    timetable const&, rt_timetable const*, query const&, journey&);
+
 }  // namespace nigiri::routing
