@@ -414,6 +414,7 @@ routing::query generator::make_query() const {
   q.extend_interval_later_ = s_.extend_interval_later_;
   q.prf_idx_ = s_.prf_idx_;
   q.allowed_claszes_ = s_.allowed_claszes_;
+  q.transfer_time_settings_ = s_.transfer_time_settings_;
   return q;
 }
 

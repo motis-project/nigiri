@@ -7,6 +7,7 @@
 #include "nigiri/routing/clasz_mask.h"
 #include "nigiri/routing/limits.h"
 #include "nigiri/routing/location_match_mode.h"
+#include "nigiri/routing/transfer_time_settings.h"
 #include "nigiri/timetable.h"
 
 namespace nigiri::query_generation {
@@ -39,7 +40,10 @@ struct generator_settings {
         << "\nextend_interval_later: "
         << (gs.extend_interval_later_ ? "true" : "false")
         << "\nprf_idx: " << std::uint32_t{gs.prf_idx_}
-        << "\nallowed_claszes: " << gs.allowed_claszes_;
+        << "\nallowed_claszes: " << gs.allowed_claszes_
+        << "\nmin_transfer_time: "
+        << gs.transfer_time_settings_.min_transfer_time_
+        << "\ntransfer_time_factor: " << gs.transfer_time_settings_.factor_;
 
     auto const visit_loc = [](location_idx_t const loc_idx) {
       std::stringstream ss;
@@ -81,6 +85,7 @@ struct generator_settings {
   bool extend_interval_later_{false};
   profile_idx_t prf_idx_{0};
   routing::clasz_mask_t allowed_claszes_{routing::all_clasz_allowed()};
+  routing::transfer_time_settings transfer_time_settings_{};
 };
 
 }  // namespace nigiri::query_generation

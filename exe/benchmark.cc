@@ -86,7 +86,8 @@ struct benchmark_result {
         << std::chrono::duration_cast<std::chrono::hours>(
                br.routing_result_.interval_.size())
                .count()
-        << "h" << ", #jrny: " << std::setfill(' ') << std::setw(2)
+        << "h"
+        << ", #jrny: " << std::setfill(' ') << std::setw(2)
         << br.journeys_.size() << ")";
     return out;
   }
@@ -334,6 +335,7 @@ int main(int argc, char* argv[]) {
   auto start_loc_val = location_idx_t::value_t{0U};
   auto dest_loc_val = location_idx_t::value_t{0U};
   auto seed = std::int64_t{-1};
+  auto min_transfer_time = duration_t::rep{};
 
   bpo::options_description desc("Allowed options");
   desc.add_options()("help,h", "produce this help message")  //
@@ -387,6 +389,13 @@ int main(int argc, char* argv[]) {
        bpo::value<clasz_mask_t>(&gs.allowed_claszes_)
            ->default_value(routing::all_clasz_allowed()),
        "")  //
+      ("min_transfer_time",
+       bpo::value<duration_t::rep>(&min_transfer_time)->default_value(0U),
+       "minimum transfer time in minutes")  //
+      ("transfer_time_factor",
+       bpo::value<float>(&gs.transfer_time_settings_.factor_)
+           ->default_value(1.0F),
+       "multiply all transfer times by this factor")  //
       ("start_coord", bpo::value<std::string>(&start_coord_str),
        "start coordinate for random queries, format: \"(LAT, LON)\", "  //
        "where LAT/LON are given in decimal degrees")  //
@@ -464,6 +473,10 @@ int main(int argc, char* argv[]) {
   gs.max_transfers_ = max_transfers > std::numeric_limits<std::uint8_t>::max()
                           ? std::numeric_limits<std::uint8_t>::max()
                           : max_transfers;
+
+  gs.transfer_time_settings_.min_transfer_time_ = duration_t{min_transfer_time};
+  gs.transfer_time_settings_.default_ =
+      min_transfer_time == 0U && gs.transfer_time_settings_.factor_ == 1.0F;
 
   if (vm.count("profile_idx") != 0) {
     if (prf_idx >= kMaxProfiles) {
