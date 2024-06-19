@@ -2,6 +2,7 @@
 
 #include "geo/box.h"
 
+#include "nigiri/query_generator/transport_mode.h"
 #include "nigiri/routing/clasz_mask.h"
 #include "nigiri/routing/limits.h"
 #include "nigiri/routing/location_match_mode.h"

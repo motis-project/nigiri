@@ -136,7 +136,10 @@ struct search {
         fastest_direct_{get_fastest_direct(tt_, q_, SearchDir)},
         algo_{
             init(q_.allowed_claszes_, q_.require_bike_transport_, algo_state)},
-        timeout_(timeout) {}
+        timeout_(timeout) {
+    utl::sort(q.start_);
+    utl::sort(q.destination_);
+  }
 
   routing_result<algo_stats_t> execute() {
     state_.results_.clear();
