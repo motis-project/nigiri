@@ -45,7 +45,7 @@ struct query {
       nigiri::routing::location_match_mode::kExact};
   location_match_mode dest_match_mode_{
       nigiri::routing::location_match_mode::kExact};
-  bool use_start_footpaths_{true};
+  bool use_start_footpaths_{false};
   std::vector<offset> start_;
   std::vector<offset> destination_;
   std::uint8_t max_transfers_{kMaxTransfers};

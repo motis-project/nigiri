@@ -16,7 +16,7 @@ struct generator_settings {
       routing::location_match_mode::kIntermodal};
   transport_mode start_mode_{kWalk};
   transport_mode dest_mode_{kWalk};
-  bool use_start_footpaths_{true};
+  bool use_start_footpaths_{false};
   std::uint8_t max_transfers_{routing::kMaxTransfers};
   unsigned min_connection_count_{0U};
   bool extend_interval_earlier_{false};
