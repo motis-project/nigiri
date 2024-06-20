@@ -293,7 +293,7 @@ enum class event_type { kArr, kDep };
                   |                       Search direction                     |
                   |  Forward                      |  Backward                  |
 ------------------|-------------------------------|----------------------------|
- Algo perspective |                      User perspective                     |
+ Algo perspective |                      User perspective                      |
                   |                               |                            |
     Start         |  Initial departure            |  Final arrival             |
                   |                               |                            |
