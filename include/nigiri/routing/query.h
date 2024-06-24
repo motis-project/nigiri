@@ -28,6 +28,10 @@ struct offset {
   duration_t duration() const noexcept { return duration_; }
   transport_mode_id_t type() const noexcept { return transport_mode_id_; }
 
+  friend bool operator<(offset const& a, offset const& b) {
+    return a.duration_ < b.duration_;
+  }
+
   location_idx_t target_;
   duration_t duration_;
   transport_mode_id_t transport_mode_id_;
@@ -50,6 +54,7 @@ struct query {
   bool extend_interval_later_{false};
   profile_idx_t prf_idx_{0};
   clasz_mask_t allowed_claszes_{all_clasz_allowed()};
+  bool require_bike_transport_{false};
 };
 
 }  // namespace nigiri::routing

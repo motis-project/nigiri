@@ -23,6 +23,9 @@ using gtfs_trip_idx_t = cista::strong<std::uint32_t, struct _gtfs_trip_idx>;
 
 struct trip_data;
 
+static auto const kSingleTripBikesAllowed = bitvec{"1"};
+static auto const kSingleTripBikesNotAllowed = bitvec{"0"};
+
 struct block {
   std::vector<std::pair<std::basic_string<gtfs_trip_idx_t>, bitfield>>
   rule_services(trip_data&);
@@ -60,7 +63,8 @@ struct trip {
        block*,
        std::string id,
        trip_direction_idx_t headsign,
-       std::string short_name);
+       std::string short_name,
+       bool bikes_allowed);
 
   trip(trip&&) = default;
   trip& operator=(trip&&) = default;
@@ -95,6 +99,7 @@ struct trip {
   std::optional<std::vector<frequency>> frequency_;
   bool requires_interpolation_{false};
   bool requires_sorting_{false};
+  bool bikes_allowed_{false};
   std::uint32_t from_line_{0U}, to_line_{0U};
 
   trip_idx_t trip_idx_{trip_idx_t::invalid()};
@@ -114,10 +119,12 @@ struct trip_data {
   vector_map<gtfs_trip_idx_t, trip> data_;
 };
 
-trip_data read_trips(timetable&,
-                     route_map_t const&,
-                     traffic_days_t const&,
-                     std::string_view file_content);
+trip_data read_trips(
+    timetable&,
+    route_map_t const&,
+    traffic_days_t const&,
+    std::string_view file_content,
+    std::array<bool, kNumClasses> const& bikes_allowed_default);
 
 void read_frequencies(trip_data&, std::string_view);
 

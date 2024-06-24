@@ -56,7 +56,9 @@ struct search {
   static constexpr auto const kFwd = (SearchDir == direction::kForward);
   static constexpr auto const kBwd = (SearchDir == direction::kBackward);
 
-  Algo init(clasz_mask_t const allowed_claszes, algo_state_t& algo_state) {
+  Algo init(clasz_mask_t const allowed_claszes,
+            bool const require_bikes_allowed,
+            algo_state_t& algo_state) {
     stats_.fastest_direct_ =
         static_cast<std::uint64_t>(fastest_direct_.count());
 
@@ -108,7 +110,8 @@ struct search {
                     ((search_interval_.to_ - search_interval_.from_) / 2)) -
                 tt_.internal_interval().from_)
                 .count()},
-        allowed_claszes};
+        allowed_claszes,
+        require_bikes_allowed};
   }
 
   search(timetable const& tt,
@@ -131,8 +134,12 @@ struct search {
                 }},
             q_.start_time_)},
         fastest_direct_{get_fastest_direct(tt_, q_, SearchDir)},
-        algo_{init(q_.allowed_claszes_, algo_state)},
-        timeout_(timeout) {}
+        algo_{
+            init(q_.allowed_claszes_, q_.require_bike_transport_, algo_state)},
+        timeout_(timeout) {
+    utl::sort(q.start_);
+    utl::sort(q.destination_);
+  }
 
   routing_result<algo_stats_t> execute() {
     state_.results_.clear();
