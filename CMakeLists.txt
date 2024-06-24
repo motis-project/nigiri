@@ -102,7 +102,7 @@ target_compile_features(nigiri-import PUBLIC cxx_std_23)
 # --- BENCHMARK ---
 file(GLOB_RECURSE nigiri-benchmark-files exe/benchmark.cc)
 add_executable(nigiri-benchmark ${nigiri-benchmark-files})
-target_link_libraries(nigiri-benchmark PRIVATE nigiri boost-program_options)
+target_link_libraries(nigiri-benchmark PRIVATE nigiri boost-program_options ianatzdb-res)
 target_compile_features(nigiri-benchmark PUBLIC cxx_std_23)
 
 # --- QA ---

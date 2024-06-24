@@ -2,6 +2,7 @@
 
 #include "geo/box.h"
 
+#include "nigiri/query_generator/transport_mode.h"
 #include "nigiri/routing/clasz_mask.h"
 #include "nigiri/routing/limits.h"
 #include "nigiri/routing/location_match_mode.h"
@@ -48,7 +49,7 @@ struct generator_settings {
     };
     auto const visit_coord = [](geo::latlng const& coord) {
       std::stringstream ss;
-      ss << "coordinate: (" << coord.lat() << "," << coord.lng() << ")";
+      ss << "coordinate: " << coord;
       return ss.str();
     };
     if (gs.start_.has_value()) {
