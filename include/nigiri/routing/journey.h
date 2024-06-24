@@ -82,10 +82,10 @@ struct journey {
              rt_timetable const* = nullptr,
              bool debug = false) const;
 
-  std::vector<leg> legs_;
-  unixtime_t start_time_;
-  unixtime_t dest_time_;
-  location_idx_t dest_;
+  std::vector<leg> legs_{};
+  unixtime_t start_time_{};
+  unixtime_t dest_time_{};
+  location_idx_t dest_{};
   std::uint8_t transfers_{0U};
 };
 
