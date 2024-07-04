@@ -25,7 +25,7 @@
 [date]
   url=git@github.com:motis-project/date.git
   branch=master
-  commit=646ba5e2e76636d9e65aaa3cf32e3e3a43defa2c
+  commit=d84b23ca2432e17f3f04a3e0cc96b096b99c39a2
 [wyhash]
   url=git@github.com:motis-project/wyhash.git
   branch=master
