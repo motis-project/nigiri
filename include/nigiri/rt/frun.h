@@ -28,8 +28,9 @@ struct frun : public run {
     provider const& get_provider(event_type = event_type::kDep) const noexcept;
     trip_idx_t get_trip_idx(event_type = event_type::kDep) const noexcept;
 
-    unixtime_t scheduled_time(event_type const ev_type) const noexcept;
-    unixtime_t time(event_type const ev_type) const noexcept;
+    unixtime_t scheduled_time(event_type) const noexcept;
+    unixtime_t time(event_type) const noexcept;
+    duration_t delay(event_type) const noexcept;
 
     std::string_view line(event_type = event_type::kDep) const noexcept;
     std::string_view scheduled_line(

@@ -73,6 +73,11 @@ unixtime_t frun::run_stop::time(event_type const ev_type) const noexcept {
              : tt().event_time(fr_->t_, stop_idx_, ev_type);
 }
 
+duration_t frun::run_stop::delay(event_type const ev_type) const noexcept {
+  assert(fr_->size() > stop_idx_);
+  return time(ev_type) - scheduled_time(ev_type);
+}
+
 trip_idx_t frun::run_stop::get_trip_idx(
     event_type const ev_type) const noexcept {
   auto const sections = tt().transport_to_trip_section_.at(fr_->t_.t_idx_);
