@@ -239,7 +239,8 @@ void print_results(
   };
   std::cout << "\nSlowest Queries:\n";
   for (auto i = 0; i != results.size() && i != 10; ++i) {
-    std::cout << "\n--- " << i + 1 << " ---\n";
+    std::cout << "\n--- " << i + 1
+              << " ---\nquery_idx: " << rbegin(results)[i].q_idx_ << '\n';
     print_slow_result(rbegin(results)[i]);
   }
   std::cout << "\n";
