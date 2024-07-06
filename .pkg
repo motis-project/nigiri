@@ -42,3 +42,7 @@
   url=git@github.com:motis-project/boost.git
   branch=master
   commit=be5235eb2258d2ec19e32546ab767a62311d9b46
+[pugixml]
+  url=git@github.com:motis-project/pugixml.git
+  branch=master
+  commit=60175e80e2f5e97e027ac78f7e14c5acc009ce50
