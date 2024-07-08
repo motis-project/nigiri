@@ -12,6 +12,6 @@ namespace nigiri::rt {
 void vdv_update(timetable const&,
                 rt_timetable&,
                 source_idx_t const,
-                std::string_view vdv_msg);
+                std::string const& vdv_msg);
 
 }  // namespace nigiri::rt
