@@ -58,7 +58,7 @@ void dijkstra(vecvec<NodeIdx, Edge, std::uint64_t> const& graph,
 
 void dijkstra(timetable const&,
               query const&,
-              vecvec<location_idx_t, footpath> const& lb_graph,
+              vecvec<location_idx_t, footpath, std::uint64_t> const& lb_graph,
               std::vector<std::uint16_t>& dists);
 
 }  // namespace nigiri::routing

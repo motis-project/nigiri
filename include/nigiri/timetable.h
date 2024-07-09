@@ -474,8 +474,8 @@ struct timetable {
   vecvec<transport_idx_t, route_color> transport_section_route_colors_;
 
   // Lower bound graph.
-  vecvec<location_idx_t, footpath> fwd_search_lb_graph_;
-  vecvec<location_idx_t, footpath> bwd_search_lb_graph_;
+  vecvec<location_idx_t, footpath, std::uint64_t> fwd_search_lb_graph_;
+  vecvec<location_idx_t, footpath, std::uint64_t> bwd_search_lb_graph_;
 
   // profile name -> profile_idx_t
   hash_map<string, profile_idx_t> profiles_;
