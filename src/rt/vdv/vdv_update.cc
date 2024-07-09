@@ -13,6 +13,18 @@
 
 namespace nigiri::rt {
 
+constexpr auto const kAllowedError = 5_minutes;
+
+struct time_of_day_interval {
+  bool contains(std::uint16_t t) const {
+    return start_ <= end_ ? (start_ <= t && t <= end_)
+                          : (start_ <= t || t <= end_);
+  }
+
+  std::uint16_t start_;
+  std::uint16_t end_;
+};
+
 std::optional<location_idx_t> match_location(timetable const& tt,
                                              std::string_view vdv_stop_id) {
   auto loc_match = std::optional<location_idx_t>{};
@@ -27,12 +39,43 @@ std::optional<location_idx_t> match_location(timetable const& tt,
   return loc_match;
 }
 
+template <event_type ET>
+void match_time(timetable const& tt,
+                location_idx_t const loc_idx,
+                unixtime_t const time,
+                std::unordered_set<transport_idx_t>& matches) {
+  auto const unixtime_intvl = interval<unixtime_t>{
+      time - kAllowedError, time + kAllowedError + 1_minutes};
+  auto const time_of_day_intvl = time_of_day_interval{
+      static_cast<uint16_t>(unixtime_intvl.from_.time_since_epoch().count() %
+                            1440),
+      static_cast<std::uint16_t>(unixtime_intvl.to_.time_since_epoch().count() %
+                                 1440)};
+
+  for (auto const route_idx : tt.location_routes_[loc_idx]) {
+    auto const loc_seq = tt.route_location_seq_[route_idx];
+    for (auto stop_idx = 0U; stop_idx != loc_seq.size(); ++stop_idx) {
+      auto const stp = stop{loc_seq[stop_idx]};
+      if (stp.location_idx() != loc_idx) {
+        continue;
+      }
+      if constexpr () {
+      }
+      auto const event_times_at_stop = tt.event_times_at_stop(
+          route_idx, static_cast<stop_idx_t>(stop_idx), ET);
+    }
+  }
+}
+
 std::unordered_set<transport_idx_t> match_stops(timetable const& tt,
                                                 rt_timetable& rtt,
                                                 source_idx_t const src,
                                                 vdv_run const& r) {
-  auto matched_transports = std::unordered_set<transport_idx_t>{};
+  // make these static to reduce number of allocations?
+  auto global_matches = std::unordered_set<transport_idx_t>{};
+  auto local_matches = std::unordered_set<transport_idx_t>{};
   for (auto& vdv_stop : r.stops_) {
+
     auto const loc_idx = match_location(tt, vdv_stop.stop_id_);
     if (!loc_idx.has_value()) {
       log(log_lvl::error, "vdv_update.match_stops",
@@ -40,8 +83,29 @@ std::unordered_set<transport_idx_t> match_stops(timetable const& tt,
           vdv_stop.stop_id_);
       continue;
     }
+
+    if (vdv_stop.t_dep_.has_value()) {
+      match_time<event_type::kDep>(tt, loc_idx.value(), vdv_stop.t_dep_.value(),
+                                   local_matches);
+    } else if (vdv_stop.t_arr_.has_value()) {
+      match_time<event_type::kArr>(tt, loc_idx.value(), vdv_stop.t_arr_.value(),
+                                   local_matches);
+    }
+
+    if (global_matches.empty()) {
+      std::swap(global_matches, local_matches);
+    } else {
+      std::erase_if(global_matches,
+                    [&](auto const& t) { return !local_matches.contains(t); });
+      local_matches.clear();
+    }
+
+    if (global_matches.size() == 1) {
+      break;
+    }
   }
-  return matched_transports;
+
+  return global_matches;
 }
 
 void process_run(timetable const& tt,
