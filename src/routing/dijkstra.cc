@@ -22,7 +22,7 @@ namespace nigiri::routing {
 
 void dijkstra(timetable const& tt,
               query const& q,
-              vecvec<location_idx_t, footpath> const& lb_graph,
+              vecvec<location_idx_t, footpath, std::uint64_t> const& lb_graph,
               std::vector<label::dist_t>& dists) {
   dists.resize(tt.n_locations());
   utl::fill(dists, std::numeric_limits<label::dist_t>::max());

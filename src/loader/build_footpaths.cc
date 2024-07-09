@@ -51,7 +51,7 @@ struct component {
   }
 
   component_it from_, to_;
-  vecvec<location_idx_t, footpath> graph_;
+  vecvec<location_idx_t, footpath, std::uint64_t> graph_;
 };
 
 footgraph get_footpath_graph(timetable& tt) {

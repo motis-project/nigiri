@@ -29,7 +29,7 @@ struct get_bucket {
 struct query;
 
 template <typename NodeIdx, typename Edge, typename Label, typename GetBucketFn>
-void dijkstra(vecvec<NodeIdx, Edge> const& graph,
+void dijkstra(vecvec<NodeIdx, Edge, std::uint64_t> const& graph,
               dial<Label, GetBucketFn>& pq,
               std::vector<typename Label::dist_t>& dists,
               typename Label::dist_t const max_dist =
