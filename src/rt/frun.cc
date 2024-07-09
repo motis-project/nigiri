@@ -87,6 +87,11 @@ trip_idx_t frun::run_stop::get_trip_idx(
       .at(0);
 }
 
+std::string_view frun::run_stop::trip_display_name(
+    event_type const ev_type) const noexcept {
+  return tt().trip_display_names_[get_trip_idx(ev_type)].view();
+}
+
 stop_idx_t frun::run_stop::section_idx(
     event_type const ev_type) const noexcept {
   return static_cast<stop_idx_t>(ev_type == event_type::kDep ? stop_idx_
