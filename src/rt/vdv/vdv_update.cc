@@ -54,15 +54,18 @@ void match_time(timetable const& tt,
 
   for (auto const route_idx : tt.location_routes_[loc_idx]) {
     auto const loc_seq = tt.route_location_seq_[route_idx];
-    for (auto stop_idx = 0U; stop_idx != loc_seq.size(); ++stop_idx) {
+    for (auto stop_idx = 0U + (ET == event_type::kArr ? 1U : 0U);
+         stop_idx != loc_seq.size() - (ET == event_type::kDep ? 1U : 0U);
+         ++stop_idx) {
       auto const stp = stop{loc_seq[stop_idx]};
       if (stp.location_idx() != loc_idx) {
         continue;
       }
-      if constexpr () {
-      }
       auto const event_times_at_stop = tt.event_times_at_stop(
           route_idx, static_cast<stop_idx_t>(stop_idx), ET);
+      // iterate span elements, index of elements tells you that the n-th
+      // indexed transport of the route is the one whose times you are checking
+      // right now
     }
   }
 }
