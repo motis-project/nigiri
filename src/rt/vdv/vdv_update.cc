@@ -13,17 +13,7 @@
 
 namespace nigiri::rt {
 
-constexpr auto const kAllowedError = 5_minutes;
-
-struct time_of_day_interval {
-  bool contains(std::uint16_t t) const {
-    return start_ <= end_ ? (start_ <= t && t <= end_)
-                          : (start_ <= t || t <= end_);
-  }
-
-  std::uint16_t start_;
-  std::uint16_t end_;
-};
+constexpr auto const kAllowedError = minutes_after_midnight_t::rep{5};
 
 std::optional<location_idx_t> match_location(timetable const& tt,
                                              std::string_view vdv_stop_id) {
@@ -44,13 +34,9 @@ void match_time(timetable const& tt,
                 location_idx_t const loc_idx,
                 unixtime_t const time,
                 std::unordered_set<transport_idx_t>& matches) {
-  auto const unixtime_intvl = interval<unixtime_t>{
-      time - kAllowedError, time + kAllowedError + 1_minutes};
-  auto const time_of_day_intvl = time_of_day_interval{
-      static_cast<uint16_t>(unixtime_intvl.from_.time_since_epoch().count() %
-                            1440),
-      static_cast<std::uint16_t>(unixtime_intvl.to_.time_since_epoch().count() %
-                                 1440)};
+  auto const [base_day, base_mam] = tt.day_idx_mam(time);
+  auto const time_of_day_intvl = interval{base_mam.count() - kAllowedError,
+                                          base_mam.count() + kAllowedError + 1};
 
   for (auto const route_idx : tt.location_routes_[loc_idx]) {
     auto const loc_seq = tt.route_location_seq_[route_idx];
@@ -66,6 +52,23 @@ void match_time(timetable const& tt,
       // iterate span elements, index of elements tells you that the n-th
       // indexed transport of the route is the one whose times you are checking
       // right now
+      for (auto i = 0U; i != event_times_at_stop.size(); ++i) {
+        auto const normalize_event_time =
+            [&time_of_day_intvl](auto const event_time) -> std::int16_t {
+          if (time_of_day_intvl.to_ < event_time) {
+            return event_time - 1440;
+          } else if (event_time < time_of_day_intvl.from_) {
+            return event_time + 1440;
+          } else {
+            return event_time;
+          }
+        };
+        auto const normalized_event_time =
+            normalize_event_time(event_times_at_stop[i].mam());
+        if (!time_of_day_intvl.contains(normalized_event_time)) {
+          continue;
+        }
+      }
     }
   }
 }
