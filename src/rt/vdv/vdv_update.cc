@@ -1,6 +1,5 @@
 #include "nigiri/rt/vdv/vdv_update.h"
 
-#include <cassert>
 #include <string>
 #include <string_view>
 #include <unordered_set>
@@ -132,7 +131,7 @@ void process_run(timetable const& tt,
 
 void vdv_update(timetable const& tt,
                 rt_timetable& rtt,
-                source_idx_t const src,
+                [[maybe_unused]] source_idx_t const src,
                 std::string const& vdv_msg) {
   auto doc = pugi::xml_document{};
   auto result = doc.load_string(vdv_msg.c_str());
