@@ -1,5 +1,6 @@
 #include "nigiri/rt/vdv/vdv_update.h"
 
+#include <cassert>
 #include <string>
 #include <string_view>
 #include <unordered_set>
@@ -8,12 +9,8 @@
 #include "utl/verify.h"
 
 #include "nigiri/logging.h"
-#include "nigiri/rt/vdv/vdv_run.h"
-#include "nigiri/timetable.h"
 
 namespace nigiri::rt {
-
-constexpr auto const kAllowedError = minutes_after_midnight_t::rep{5};
 
 std::optional<location_idx_t> match_location(timetable const& tt,
                                              std::string_view vdv_stop_id) {
@@ -43,16 +40,16 @@ void match_time(timetable const& tt,
     for (auto stop_idx = 0U + (ET == event_type::kArr ? 1U : 0U);
          stop_idx != loc_seq.size() - (ET == event_type::kDep ? 1U : 0U);
          ++stop_idx) {
+
       auto const stp = stop{loc_seq[stop_idx]};
       if (stp.location_idx() != loc_idx) {
         continue;
       }
+
       auto const event_times_at_stop = tt.event_times_at_stop(
           route_idx, static_cast<stop_idx_t>(stop_idx), ET);
-      // iterate span elements, index of elements tells you that the n-th
-      // indexed transport of the route is the one whose times you are checking
-      // right now
       for (auto i = 0U; i != event_times_at_stop.size(); ++i) {
+
         auto const normalize_event_time =
             [&time_of_day_intvl](auto const event_time) -> std::int16_t {
           if (time_of_day_intvl.to_ < event_time) {
@@ -63,10 +60,21 @@ void match_time(timetable const& tt,
             return event_time;
           }
         };
+
         auto const normalized_event_time =
             normalize_event_time(event_times_at_stop[i].mam());
         if (!time_of_day_intvl.contains(normalized_event_time)) {
           continue;
+        }
+        auto const midnight_shift = normalized_event_time < 0      ? -1
+                                    : normalized_event_time < 1440 ? 0
+                                                                   : 1;
+        auto const transport_day = day_idx_t{
+            base_day.v_ - event_times_at_stop[i].days() + midnight_shift};
+        auto const transport_idx = tt.route_transport_ranges_[route_idx][i];
+        if (tt.bitfields_[tt.transport_traffic_days_[transport_idx]].test(
+                transport_day.v_)) {
+          matches.insert(transport_idx);
         }
       }
     }
@@ -74,8 +82,6 @@ void match_time(timetable const& tt,
 }
 
 std::unordered_set<transport_idx_t> match_stops(timetable const& tt,
-                                                rt_timetable& rtt,
-                                                source_idx_t const src,
                                                 vdv_run const& r) {
   // make these static to reduce number of allocations?
   auto global_matches = std::unordered_set<transport_idx_t>{};
@@ -115,11 +121,13 @@ std::unordered_set<transport_idx_t> match_stops(timetable const& tt,
 }
 
 void process_run(timetable const& tt,
-                 rt_timetable& rtt,
-                 source_idx_t const src,
+                 [[maybe_unused]] rt_timetable& rtt,
                  pugi::xml_node const& run_node) {
   auto const vdv_run = parse_run(run_node);
-  auto transport_matches = match_stops(tt, rtt, src, vdv_run);
+  auto transport_matches = match_stops(tt, vdv_run);
+  if (transport_matches.size() > 1) {
+    // try to exclude based on trip name, operator, etc.
+  }
 }
 
 void vdv_update(timetable const& tt,
@@ -137,7 +145,7 @@ void vdv_update(timetable const& tt,
   auto const runs_xpath =
       doc.select_nodes("DatenAbrufenAntwort/AUSNachricht/IstFahrt");
   for (auto const& run_xpath : runs_xpath) {
-    process_run(tt, rtt, src, run_xpath.node());
+    process_run(tt, rtt, run_xpath.node());
   }
 }
 
