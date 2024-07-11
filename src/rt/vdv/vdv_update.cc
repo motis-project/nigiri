@@ -1,5 +1,6 @@
 #include "nigiri/rt/vdv/vdv_update.h"
 
+#include <forward_list>
 #include <string>
 #include <string_view>
 #include <unordered_set>
@@ -27,7 +28,7 @@ template <event_type ET>
 void match_time(timetable const& tt,
                 location_idx_t const loc_idx,
                 unixtime_t const time,
-                std::unordered_set<transport_idx_t>& matches) {
+                hash_set<transport>& matches) {
   auto const [base_day, base_mam] = tt.day_idx_mam(time);
   auto const time_of_day_intvl = interval{base_mam.count() - kAllowedError,
                                           base_mam.count() + kAllowedError + 1};
@@ -71,18 +72,17 @@ void match_time(timetable const& tt,
         auto const transport_idx = tt.route_transport_ranges_[route_idx][i];
         if (tt.bitfields_[tt.transport_traffic_days_[transport_idx]].test(
                 transport_day.v_)) {
-          matches.insert(transport_idx);
+          matches.insert({transport_idx, transport_day});
         }
       }
     }
   }
 }
 
-std::unordered_set<transport_idx_t> match_stops(timetable const& tt,
-                                                vdv_run const& r) {
+hash_set<transport> match_transport(timetable const& tt, vdv_run const& r) {
   // make these static to reduce number of allocations?
-  auto global_matches = std::unordered_set<transport_idx_t>{};
-  auto local_matches = std::unordered_set<transport_idx_t>{};
+  auto global_matches = hash_set<transport>{};
+  auto local_matches = hash_set<transport>{};
   for (auto& vdv_stop : r.stops_) {
 
     auto const loc_idx = match_location(tt, vdv_stop.stop_id_);
@@ -117,13 +117,17 @@ std::unordered_set<transport_idx_t> match_stops(timetable const& tt,
   return global_matches;
 }
 
-void process_run(timetable const& tt,
-                 [[maybe_unused]] rt_timetable& rtt,
-                 pugi::xml_node const& run_node) {
+void process_vdv_run(timetable const& tt,
+                     [[maybe_unused]] rt_timetable& rtt,
+                     [[maybe_unused]] source_idx_t const src,
+                     pugi::xml_node const& run_node) {
   auto const vdv_run = parse_run(run_node);
-  auto transport_matches = match_stops(tt, vdv_run);
-  if (transport_matches.size() > 1) {
-    // try to exclude based on trip name, operator, etc.
+
+  auto transport_matches = match_transport(tt, vdv_run);
+  if (transport_matches.size() != 1) {
+    log(log_lvl::error, "vdv_update.process_vdv_run",
+        "Could not match vdv_run to exactly one transport");
+    return;
   }
 }
 
@@ -142,8 +146,16 @@ void vdv_update(timetable const& tt,
   auto const runs_xpath =
       doc.select_nodes("DatenAbrufenAntwort/AUSNachricht/IstFahrt");
   for (auto const& run_xpath : runs_xpath) {
-    process_run(tt, rtt, run_xpath.node());
+    process_vdv_run(tt, rtt, src, run_xpath.node());
   }
 }
 
+template void match_time<event_type::kDep>(timetable const&,
+                                           location_idx_t const,
+                                           unixtime_t const,
+                                           hash_set<transport>&);
+template void match_time<event_type::kArr>(timetable const&,
+                                           location_idx_t const,
+                                           unixtime_t const,
+                                           hash_set<transport>&);
 }  // namespace nigiri::rt

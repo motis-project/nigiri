@@ -236,7 +236,7 @@ TEST(vdv, match_time) {
   load_timetable({}, source_idx_t{0}, vdv_test_files(), tt);
   finalize(tt);
 
-  auto matches = std::unordered_set<transport_idx_t>{};
+  auto matches = hash_set<transport>{};
   match_time<event_type::kArr>(
       tt, location_idx_t{special_stations_names.size()},
       unixtime_t{date::sys_days{2024_y / July / 10} - 2_hours}, matches);
@@ -248,7 +248,7 @@ TEST(vdv, match_time) {
       unixtime_t{date::sys_days{2024_y / July / 10} - 2_hours - 3_minutes},
       matches);
   EXPECT_EQ(matches.size(), 1);
-  EXPECT_TRUE(matches.contains(transport_idx_t{0}));
+  EXPECT_TRUE(matches.contains({transport_idx_t{0}, day_idx_t{13}}));
 
   matches.clear();
   match_time<event_type::kArr>(
@@ -256,7 +256,7 @@ TEST(vdv, match_time) {
       unixtime_t{date::sys_days{2024_y / July / 10} - 1_hours + 2_minutes},
       matches);
   EXPECT_EQ(matches.size(), 1);
-  EXPECT_TRUE(matches.contains(transport_idx_t{0}));
+  EXPECT_TRUE(matches.contains({transport_idx_t{0}, day_idx_t{13}}));
 
   matches.clear();
   match_time<event_type::kDep>(
@@ -264,26 +264,26 @@ TEST(vdv, match_time) {
       unixtime_t{date::sys_days{2024_y / July / 10} - 1_hours - 1_minutes},
       matches);
   EXPECT_EQ(matches.size(), 3);
-  EXPECT_TRUE(matches.contains(transport_idx_t{0}));
-  EXPECT_TRUE(matches.contains(transport_idx_t{1}));
-  EXPECT_TRUE(matches.contains(transport_idx_t{2}));
+  EXPECT_TRUE(matches.contains({transport_idx_t{0}, day_idx_t{13}}));
+  EXPECT_TRUE(matches.contains({transport_idx_t{1}, day_idx_t{13}}));
+  EXPECT_TRUE(matches.contains({transport_idx_t{2}, day_idx_t{13}}));
 
   matches.clear();
   match_time<event_type::kArr>(
       tt, location_idx_t{special_stations_names.size() + 2},
       unixtime_t{date::sys_days{2024_y / July / 10} - 3_minutes}, matches);
   EXPECT_EQ(matches.size(), 3);
-  EXPECT_TRUE(matches.contains(transport_idx_t{0}));
-  EXPECT_TRUE(matches.contains(transport_idx_t{1}));
-  EXPECT_TRUE(matches.contains(transport_idx_t{2}));
+  EXPECT_TRUE(matches.contains({transport_idx_t{0}, day_idx_t{13}}));
+  EXPECT_TRUE(matches.contains({transport_idx_t{1}, day_idx_t{13}}));
+  EXPECT_TRUE(matches.contains({transport_idx_t{2}, day_idx_t{13}}));
 
   matches.clear();
   match_time<event_type::kDep>(
       tt, location_idx_t{special_stations_names.size() + 2},
       unixtime_t{date::sys_days{2024_y / July / 10} + 2_minutes}, matches);
   EXPECT_EQ(matches.size(), 2);
-  EXPECT_TRUE(matches.contains(transport_idx_t{0}));
-  EXPECT_TRUE(matches.contains(transport_idx_t{2}));
+  EXPECT_TRUE(matches.contains({transport_idx_t{0}, day_idx_t{13}}));
+  EXPECT_TRUE(matches.contains({transport_idx_t{2}, day_idx_t{13}}));
 
   matches.clear();
   match_time<event_type::kArr>(
@@ -291,18 +291,18 @@ TEST(vdv, match_time) {
       unixtime_t{date::sys_days{2024_y / July / 10} + 1_hours + 3_minutes},
       matches);
   EXPECT_EQ(matches.size(), 2);
-  EXPECT_TRUE(matches.contains(transport_idx_t{0}));
-  EXPECT_TRUE(matches.contains(transport_idx_t{2}));
+  EXPECT_TRUE(matches.contains({transport_idx_t{0}, day_idx_t{13}}));
+  EXPECT_TRUE(matches.contains({transport_idx_t{2}, day_idx_t{13}}));
 
   matches.clear();
   match_time<event_type::kArr>(
       tt, location_idx_t{special_stations_names.size() + 4},
       unixtime_t{date::sys_days{2024_y / July / 10} + 2_hours}, matches);
   EXPECT_EQ(matches.size(), 1);
-  EXPECT_TRUE(matches.contains(transport_idx_t{0}));
+  EXPECT_TRUE(matches.contains({transport_idx_t{0}, day_idx_t{13}}));
 }
 
-TEST(vdv, match_stops) {
+TEST(vdv, vdv_resolve_run) {
   timetable tt;
   register_special_stations(tt);
   tt.date_range_ = {date::sys_days{2024_y / July / 1},
@@ -310,18 +310,18 @@ TEST(vdv, match_stops) {
   load_timetable({}, source_idx_t{0}, vdv_test_files(), tt);
   finalize(tt);
 
-  auto transport_matches = match_stops(tt, abcde_run);
+  auto transport_matches = match_transport(tt, abcde_run);
   EXPECT_EQ(transport_matches.size(), 1);
-  EXPECT_TRUE(transport_matches.contains(transport_idx_t{0}));
+  EXPECT_TRUE(transport_matches.contains({transport_idx_t{0}, day_idx_t{13}}));
 
   transport_matches.clear();
-  transport_matches = match_stops(tt, bcd_run);
+  transport_matches = match_transport(tt, bcd_run);
   EXPECT_EQ(transport_matches.size(), 1);
-  EXPECT_TRUE(transport_matches.contains(transport_idx_t{0}));
+  EXPECT_TRUE(transport_matches.contains({transport_idx_t{0}, day_idx_t{13}}));
 
   transport_matches.clear();
-  transport_matches = match_stops(tt, bc_run);
+  transport_matches = match_transport(tt, bc_run);
   EXPECT_EQ(transport_matches.size(), 2);
-  EXPECT_TRUE(transport_matches.contains(transport_idx_t{0}));
-  EXPECT_TRUE(transport_matches.contains(transport_idx_t{2}));
+  EXPECT_TRUE(transport_matches.contains({transport_idx_t{0}, day_idx_t{13}}));
+  EXPECT_TRUE(transport_matches.contains({transport_idx_t{2}, day_idx_t{13}}));
 }

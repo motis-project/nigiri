@@ -2,6 +2,7 @@
 
 #include <unordered_set>
 
+#include "nigiri/rt/run.h"
 #include "nigiri/rt/vdv/vdv_run.h"
 #include "nigiri/timetable.h"
 #include "nigiri/types.h"
@@ -22,10 +23,9 @@ template <event_type ET>
 void match_time(timetable const&,
                 location_idx_t const,
                 unixtime_t const,
-                std::unordered_set<transport_idx_t>& matches);
+                hash_set<transport>& matches);
 
-std::unordered_set<transport_idx_t> match_stops(timetable const&,
-                                                vdv_run const&);
+hash_set<transport> match_transport(timetable const&, vdv_run const&);
 
 void vdv_update(timetable const&,
                 rt_timetable&,

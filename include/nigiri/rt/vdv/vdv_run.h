@@ -11,6 +11,8 @@
 namespace nigiri::rt {
 
 struct vdv_stop {
+  friend std::ostream& operator<<(std::ostream&, const vdv_stop&);
+
   std::string stop_id_;
   std::optional<std::string> platform_arr_;
   std::optional<std::string> platform_dep_;
