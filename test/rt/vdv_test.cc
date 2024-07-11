@@ -6,7 +6,8 @@
 #include "nigiri/special_stations.h"
 #include "nigiri/timetable.h"
 
-#include "nigiri/rt/vdv/vdv_update.h"
+#include "nigiri/rt/vdv/vdv_resolve_run.h"
+#include "nigiri/rt/vdv/vdv_run.h"
 
 using namespace nigiri;
 using namespace nigiri::loader;
@@ -211,7 +212,7 @@ auto const bc_run =
                          .additional_stop_ = std::nullopt}}};
 }  // namespace
 
-TEST(vdv, match_location) {
+TEST(vdv_resolve_run, match_location) {
   timetable tt;
   register_special_stations(tt);
   tt.date_range_ = {date::sys_days{2023_y / August / 9},
@@ -228,7 +229,7 @@ TEST(vdv, match_location) {
   EXPECT_EQ(location_idx_t{special_stations_names.size() + 4}, match_e.value());
 }
 
-TEST(vdv, match_time) {
+TEST(vdv_resolve_run, match_time) {
   timetable tt;
   register_special_stations(tt);
   tt.date_range_ = {date::sys_days{2024_y / July / 1},
@@ -302,7 +303,7 @@ TEST(vdv, match_time) {
   EXPECT_TRUE(matches.contains({transport_idx_t{0}, day_idx_t{13}}));
 }
 
-TEST(vdv, vdv_resolve_run) {
+TEST(vdv_resolve_run, match_transport) {
   timetable tt;
   register_special_stations(tt);
   tt.date_range_ = {date::sys_days{2024_y / July / 1},
