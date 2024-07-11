@@ -65,6 +65,152 @@ BD_TRIP,03:00,03:00,D,2,0,0
 )__");
 }
 
+auto const abcde_run =
+    vdv_run{.t_ = date::sys_days{2024_y / July / 10} + 2_minutes,
+            .route_id_ = "AE",
+            .route_text_ = "AE",
+            .direction_id_ = "1",
+            .direction_text_ = "1",
+            .vehicle_ = "vehicle_str",
+            .trip_ref_ = "tripref_str",
+            .operator_ = "operator_str",
+            .date_ = date::sys_days{2024_y / July / 10},
+            .complete_ = true,
+            .canceled_ = false,
+            .additional_run_ = false,
+            .stops_ = std::vector<vdv_stop>{
+                vdv_stop{.stop_id_ = "A",
+                         .platform_arr_ = std::nullopt,
+                         .platform_dep_ = std::nullopt,
+                         .t_arr_ = std::nullopt,
+                         .t_dep_ = date::sys_days{2024_y / July / 9} + 22_hours,
+                         .t_arr_rt_ = std::nullopt,
+                         .t_dep_rt_ = std::nullopt,
+                         .in_allowed_ = std::nullopt,
+                         .out_allowed_ = std::nullopt,
+                         .additional_stop_ = std::nullopt},
+                vdv_stop{.stop_id_ = "B",
+                         .platform_arr_ = std::nullopt,
+                         .platform_dep_ = std::nullopt,
+                         .t_arr_ = date::sys_days{2024_y / July / 9} + 23_hours,
+                         .t_dep_ = date::sys_days{2024_y / July / 9} + 23_hours,
+                         .t_arr_rt_ = std::nullopt,
+                         .t_dep_rt_ = std::nullopt,
+                         .in_allowed_ = std::nullopt,
+                         .out_allowed_ = std::nullopt,
+                         .additional_stop_ = std::nullopt},
+                vdv_stop{.stop_id_ = "C",
+                         .platform_arr_ = std::nullopt,
+                         .platform_dep_ = std::nullopt,
+                         .t_arr_ = date::sys_days{2024_y / July / 10},
+                         .t_dep_ = date::sys_days{2024_y / July / 10},
+                         .t_arr_rt_ = std::nullopt,
+                         .t_dep_rt_ = std::nullopt,
+                         .in_allowed_ = std::nullopt,
+                         .out_allowed_ = std::nullopt,
+                         .additional_stop_ = std::nullopt},
+                vdv_stop{.stop_id_ = "D",
+                         .platform_arr_ = std::nullopt,
+                         .platform_dep_ = std::nullopt,
+                         .t_arr_ = date::sys_days{2024_y / July / 10} + 1_hours,
+                         .t_dep_ = date::sys_days{2024_y / July / 10} + 1_hours,
+                         .t_arr_rt_ = std::nullopt,
+                         .t_dep_rt_ = std::nullopt,
+                         .in_allowed_ = std::nullopt,
+                         .out_allowed_ = std::nullopt,
+                         .additional_stop_ = std::nullopt},
+                vdv_stop{.stop_id_ = "E",
+                         .platform_arr_ = std::nullopt,
+                         .platform_dep_ = std::nullopt,
+                         .t_arr_ = date::sys_days{2024_y / July / 10} + 2_hours,
+                         .t_dep_ = std::nullopt,
+                         .t_arr_rt_ = std::nullopt,
+                         .t_dep_rt_ = std::nullopt,
+                         .in_allowed_ = std::nullopt,
+                         .out_allowed_ = std::nullopt,
+                         .additional_stop_ = std::nullopt}}};
+
+auto const bcd_run =
+    vdv_run{.t_ = date::sys_days{2024_y / July / 10} + 2_minutes,
+            .route_id_ = "AE",
+            .route_text_ = "AE",
+            .direction_id_ = "1",
+            .direction_text_ = "1",
+            .vehicle_ = "Train",
+            .trip_ref_ = "tripref_string",
+            .operator_ = "operator_string",
+            .date_ = date::sys_days{2024_y / July / 10},
+            .complete_ = false,
+            .canceled_ = false,
+            .additional_run_ = false,
+            .stops_ = std::vector<vdv_stop>{
+                vdv_stop{.stop_id_ = "B",
+                         .platform_arr_ = std::nullopt,
+                         .platform_dep_ = std::nullopt,
+                         .t_arr_ = date::sys_days{2024_y / July / 9} + 23_hours,
+                         .t_dep_ = date::sys_days{2024_y / July / 9} + 23_hours,
+                         .t_arr_rt_ = std::nullopt,
+                         .t_dep_rt_ = std::nullopt,
+                         .in_allowed_ = std::nullopt,
+                         .out_allowed_ = std::nullopt,
+                         .additional_stop_ = std::nullopt},
+                vdv_stop{.stop_id_ = "C",
+                         .platform_arr_ = std::nullopt,
+                         .platform_dep_ = std::nullopt,
+                         .t_arr_ = date::sys_days{2024_y / July / 10},
+                         .t_dep_ = date::sys_days{2024_y / July / 10},
+                         .t_arr_rt_ = std::nullopt,
+                         .t_dep_rt_ = std::nullopt,
+                         .in_allowed_ = std::nullopt,
+                         .out_allowed_ = std::nullopt,
+                         .additional_stop_ = std::nullopt},
+                vdv_stop{.stop_id_ = "D",
+                         .platform_arr_ = std::nullopt,
+                         .platform_dep_ = std::nullopt,
+                         .t_arr_ = date::sys_days{2024_y / July / 10} + 1_hours,
+                         .t_dep_ = date::sys_days{2024_y / July / 10} + 1_hours,
+                         .t_arr_rt_ = std::nullopt,
+                         .t_dep_rt_ = std::nullopt,
+                         .in_allowed_ = std::nullopt,
+                         .out_allowed_ = std::nullopt,
+                         .additional_stop_ = std::nullopt}}};
+
+auto const bc_run =
+    vdv_run{.t_ = date::sys_days{2024_y / July / 10} + 2_minutes,
+            .route_id_ = "AE",
+            .route_text_ = "AE",
+            .direction_id_ = "1",
+            .direction_text_ = "1",
+            .vehicle_ = "Train",
+            .trip_ref_ = "tripref_string",
+            .operator_ = "operator_string",
+            .date_ = date::sys_days{2024_y / July / 10},
+            .complete_ = false,
+            .canceled_ = false,
+            .additional_run_ = false,
+            .stops_ = std::vector<vdv_stop>{
+                vdv_stop{.stop_id_ = "B",
+                         .platform_arr_ = std::nullopt,
+                         .platform_dep_ = std::nullopt,
+                         .t_arr_ = date::sys_days{2024_y / July / 9} + 23_hours,
+                         .t_dep_ = date::sys_days{2024_y / July / 9} + 23_hours,
+                         .t_arr_rt_ = std::nullopt,
+                         .t_dep_rt_ = std::nullopt,
+                         .in_allowed_ = std::nullopt,
+                         .out_allowed_ = std::nullopt,
+                         .additional_stop_ = std::nullopt},
+                vdv_stop{.stop_id_ = "C",
+                         .platform_arr_ = std::nullopt,
+                         .platform_dep_ = std::nullopt,
+                         .t_arr_ = date::sys_days{2024_y / July / 10},
+                         .t_dep_ = date::sys_days{2024_y / July / 10},
+                         .t_arr_rt_ = std::nullopt,
+                         .t_dep_rt_ = std::nullopt,
+                         .in_allowed_ = std::nullopt,
+                         .out_allowed_ = std::nullopt,
+                         .additional_stop_ = std::nullopt}}};
+}  // namespace
+
 TEST(vdv, match_location) {
   timetable tt;
   register_special_stations(tt);
@@ -156,4 +302,26 @@ TEST(vdv, match_time) {
   EXPECT_TRUE(matches.contains(transport_idx_t{0}));
 }
 
-}  // namespace
+TEST(vdv, match_stops) {
+  timetable tt;
+  register_special_stations(tt);
+  tt.date_range_ = {date::sys_days{2024_y / July / 1},
+                    date::sys_days{2024_y / July / 31}};
+  load_timetable({}, source_idx_t{0}, vdv_test_files(), tt);
+  finalize(tt);
+
+  auto transport_matches = match_stops(tt, abcde_run);
+  EXPECT_EQ(transport_matches.size(), 1);
+  EXPECT_TRUE(transport_matches.contains(transport_idx_t{0}));
+
+  transport_matches.clear();
+  transport_matches = match_stops(tt, bcd_run);
+  EXPECT_EQ(transport_matches.size(), 1);
+  EXPECT_TRUE(transport_matches.contains(transport_idx_t{0}));
+
+  transport_matches.clear();
+  transport_matches = match_stops(tt, bc_run);
+  EXPECT_EQ(transport_matches.size(), 2);
+  EXPECT_TRUE(transport_matches.contains(transport_idx_t{0}));
+  EXPECT_TRUE(transport_matches.contains(transport_idx_t{2}));
+}

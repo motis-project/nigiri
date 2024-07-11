@@ -13,16 +13,14 @@ namespace nigiri::rt {
 
 std::optional<location_idx_t> match_location(timetable const& tt,
                                              std::string_view vdv_stop_id) {
-  auto loc_match = std::optional<location_idx_t>{};
   for (auto l = 0U; l != tt.n_locations(); ++l) {
     auto const loc_idx = location_idx_t{l};
     if (std::string_view{begin(tt.locations_.ids_[loc_idx]),
                          end(tt.locations_.ids_[loc_idx])} == vdv_stop_id) {
-      loc_match = loc_idx;
-      break;
+      return loc_idx;
     }
   }
-  return loc_match;
+  return std::nullopt;
 }
 
 template <event_type ET>
