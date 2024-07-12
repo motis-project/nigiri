@@ -12,8 +12,8 @@ namespace nigiri::rt {
 
 struct vdv_stop {
   std::string stop_id_;
-  std::optional<std::string> platform_arr_;
-  std::optional<std::string> platform_dep_;
+  std::optional<std::string_view> platform_arr_;
+  std::optional<std::string_view> platform_dep_;
   std::optional<unixtime_t> t_arr_;
   std::optional<unixtime_t> t_dep_;
   std::optional<unixtime_t> t_arr_rt_;
@@ -25,13 +25,13 @@ struct vdv_stop {
 
 struct vdv_run {
   unixtime_t t_;
-  std::string route_id_;
-  std::string route_text_;
-  std::string direction_id_;
-  std::string direction_text_;
-  std::string vehicle_;
-  std::string trip_ref_;
-  std::string operator_;
+  std::string_view route_id_;
+  std::string_view route_text_;
+  std::string_view direction_id_;
+  std::string_view direction_text_;
+  std::string_view vehicle_;
+  std::string_view trip_ref_;
+  std::string_view operator_;
   date::sys_days date_;
   bool complete_;  // if false, only stops with updates will be transmitted
   bool canceled_{false};
