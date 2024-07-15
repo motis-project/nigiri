@@ -13,6 +13,7 @@
 
 #include "nigiri/common/linear_lower_bound.h"
 #include "nigiri/logging.h"
+#include "nigiri/rt/frun.h"
 #include "nigiri/rt/run.h"
 #include "nigiri/rt/vdv/vdv_resolve_run.h"
 #include "nigiri/rt/vdv/vdv_run.h"
@@ -76,12 +77,11 @@ struct vdv_stop {
 std::optional<rt::run> get_run(timetable const& tt,
                                rt_timetable const& rtt,
                                source_idx_t const src,
-                               pugi::xml_node const n) {
-  auto const stops = utl::to_vec(n.select_nodes("IstHalt"),
-                                 [](auto&& n) { return vdv_stop{n.node()}; });
+                               vector<vdv_stop> const& vdv_stops) {
+
   auto const first_it =
-      utl::find_if(stops, [](auto&& s) { return !s.is_additional_; });
-  if (first_it == end(stops)) {
+      utl::find_if(vdv_stops, [](auto&& s) { return !s.is_additional_; });
+  if (first_it == end(vdv_stops)) {
     return std::nullopt;
   }
 
@@ -97,8 +97,8 @@ std::optional<rt::run> get_run(timetable const& tt,
 
       auto const [t, ev_type] = first_stop.get_event();
       auto const [day_idx, mam] = tt.day_idx_mam(t);
-      auto const event_times =
-          tt.event_times_at_stop(r, stop_idx, event_type::kDep);
+      auto const event_times = tt.event_times_at_stop(
+          r, static_cast<stop_idx_t>(stop_idx), event_type::kDep);
       auto const it = utl::find_if(event_times, [&](delta const ev_time) {
         return ev_time.mam() == mam.count();
       });
@@ -109,8 +109,8 @@ std::optional<rt::run> get_run(timetable const& tt,
       auto const ev_day_offset = it->days();
       auto const start_day =
           static_cast<std::size_t>(to_idx(day_idx) - ev_day_offset);
-      auto const tr =
-          tt.route_transport_ranges_[r][std::distance(begin(event_times), it)];
+      auto const tr = tt.route_transport_ranges_[r][static_cast<size_t>(
+          std::distance(begin(event_times), it))];
       if (tt.bitfields_[tt.transport_traffic_days_[tr]].test(start_day)) {
         return rt::run{transport{tr, day_idx_t{start_day}},
                        {0U, static_cast<stop_idx_t>(location_seq.size())}};
@@ -121,13 +121,47 @@ std::optional<rt::run> get_run(timetable const& tt,
   return std::nullopt;
 }
 
+void update_run(timetable const& tt,
+                rt_timetable& rtt,
+                source_idx_t const src,
+                run const& r,
+                vector<vdv_stop> const& vdv_stops,
+                statistics& stats) {
+  auto const fr = rt::frun(tt, &rtt, r);
+  auto fr_stop_it = begin(fr);
+  auto vdv_stop_it = begin(vdv_stops);
+  auto delay = duration_t{0};
+  while (true) {
+    if (vdv_stop_it->is_additional_) {
+      ++stats.unsupported_additional_stop_;
+      ++vdv_stop_it;
+      continue;
+    }
+    if (vdv_stop_it->id_ == fr_stop_it.rs_.id()) {
+      if (vdv_stop_it->rt_arr_.has_value() &&
+          vdv_stop_it->rt_arr_.value() !=
+              fr_stop_it.rs_.time(event_type::kArr)) {
+      }
+    }
+  }
+}
+
 void process_vdv_run(timetable const& tt,
                      rt_timetable& rtt,
                      source_idx_t const src,
-                     pugi::xml_node const& r) {
+                     pugi::xml_node const run_node,
+                     statistics& stats) {
+  auto const vdv_stops = utl::to_vec(
+      run_node.select_nodes("IstHalt"),
+      [](auto&& stop_xpath) { return vdv_stop{stop_xpath.node()}; });
 
-  for (auto const stop : r.select_nodes("IstHalt")) {
+  auto const r = get_run(tt, rtt, src, vdv_stops);
+  if (!r.has_value()) {
+    ++stats.unmatchable_run_;
+    return;
   }
+
+  update_run(tt, rtt, src, *r, vdv_stops, stats);
 }
 
 statistics vdv_update(timetable const& tt,
@@ -138,14 +172,14 @@ statistics vdv_update(timetable const& tt,
   for (auto const& r :
        doc.select_nodes("DatenAbrufenAntwort/AUSNachricht/IstFahrt")) {
     if (get_opt_bool(r.node(), "Zusatzfahrt", false).value()) {
-      ++stats.unsupported_additional_;
+      ++stats.unsupported_additional_run;
       continue;
     } else if (get_opt_bool(r.node(), "FaelltAus", false).value()) {
-      ++stats.unsupported_cancelled_;
+      ++stats.unsupported_cancelled_run;
       continue;
     }
 
-    process_vdv_run(tt, rtt, src, r.node());
+    process_vdv_run(tt, rtt, src, r.node(), stats);
   }
   return stats;
 }

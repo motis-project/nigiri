@@ -14,8 +14,10 @@ namespace nigiri::rt::vdv {
 struct statistics {
   friend std::ostream& operator<<(std::ostream& out, statistics const& s);
 
-  int unsupported_additional_{0};
-  int unsupported_cancelled_{0};
+  int unsupported_additional_run{0};
+  int unsupported_cancelled_run{0};
+  int unsupported_additional_stop_{0};
+  int unmatchable_run_{0};
 };
 
 statistics vdv_update(timetable const&,
