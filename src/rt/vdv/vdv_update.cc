@@ -14,6 +14,7 @@
 #include "nigiri/common/linear_lower_bound.h"
 #include "nigiri/logging.h"
 #include "nigiri/rt/frun.h"
+#include "nigiri/rt/rt_timetable.h"
 #include "nigiri/rt/run.h"
 #include "nigiri/rt/vdv/vdv_resolve_run.h"
 #include "nigiri/rt/vdv/vdv_run.h"
@@ -124,23 +125,58 @@ std::optional<rt::run> get_run(timetable const& tt,
 void update_run(timetable const& tt,
                 rt_timetable& rtt,
                 source_idx_t const src,
-                run const& r,
+                run& r,
                 vector<vdv_stop> const& vdv_stops,
                 statistics& stats) {
+  if (!r.is_rt()) {
+    r.rt_ = rtt.add_rt_transport(src, tt, r.t_);
+  } else {
+    rtt.rt_transport_is_cancelled_.set(to_idx(r.rt_), false);
+  }
+
   auto const fr = rt::frun(tt, &rtt, r);
   auto fr_stop_it = begin(fr);
+  auto stop_idx = fr.stop_range_.from_;
   auto vdv_stop_it = begin(vdv_stops);
-  auto delay = duration_t{0};
-  while (true) {
-    if (vdv_stop_it->is_additional_) {
+
+  auto delay = std::optional<duration_t>{};
+
+  auto const update_event = [&](auto const et, auto const new_time) {
+    delay = new_time - fr_stop_it.rs_.scheduled_time(et);
+    rtt.update_time(fr.rt_, stop_idx, et, new_time);
+    rtt.dispatch_event_change(fr.t_, stop_idx, et, *delay, false);
+  };
+
+  auto const propagate_delay = [&](event_type et) {
+    rtt.update_time(fr.rt_, stop_idx, et,
+                    fr_stop_it.rs_.scheduled_time(et) + *delay);
+    rtt.dispatch_event_change(fr.t_, stop_idx, et, *delay, false);
+  };
+
+  for (; fr_stop_it != end(fr); ++fr_stop_it, ++stop_idx) {
+    // skip additional stops
+    while (vdv_stop_it != end(vdv_stops) && vdv_stop_it->is_additional_) {
       ++stats.unsupported_additional_stop_;
       ++vdv_stop_it;
-      continue;
     }
-    if (vdv_stop_it->id_ == fr_stop_it.rs_.id()) {
-      if (vdv_stop_it->rt_arr_.has_value() &&
-          vdv_stop_it->rt_arr_.value() !=
-              fr_stop_it.rs_.time(event_type::kArr)) {
+
+    // stops match or propagate delay
+    if (vdv_stop_it != end(vdv_stops) &&
+        vdv_stop_it->id_ == fr_stop_it.rs_.id()) {
+      if (stop_idx != 0 && vdv_stop_it->rt_arr_.has_value()) {
+        update_event(event_type::kArr, *vdv_stop_it->rt_arr_);
+      }
+      if (stop_idx != fr.stop_range_.to_ - 1 &&
+          vdv_stop_it->rt_dep_.has_value()) {
+        update_event(event_type::kDep, *vdv_stop_it->rt_dep_);
+      }
+      ++vdv_stop_it;
+    } else if (delay) {
+      if (stop_idx != 0) {
+        propagate_delay(event_type::kArr);
+      }
+      if (stop_idx != fr.stop_range_.to_ - 1) {
+        propagate_delay(event_type::kDep);
       }
     }
   }
