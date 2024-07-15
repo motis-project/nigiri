@@ -1,3 +1,4 @@
+/*
 #include "nigiri/rt/vdv/vdv_xml.h"
 
 #include "utl/parser/arg_parser.h"
@@ -89,3 +90,4 @@ vdv_run parse_run(pugi::xml_node const& run_node) {
 }
 
 }  // namespace nigiri::rt
+ */

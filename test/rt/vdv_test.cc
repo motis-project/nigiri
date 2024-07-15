@@ -3,11 +3,13 @@
 #include "nigiri/loader/dir.h"
 #include "nigiri/loader/gtfs/load_timetable.h"
 #include "nigiri/loader/init_finish.h"
-#include "nigiri/special_stations.h"
-#include "nigiri/timetable.h"
-
+#include "nigiri/rt/create_rt_timetable.h"
+#include "nigiri/rt/rt_timetable.h"
 #include "nigiri/rt/vdv/vdv_resolve_run.h"
 #include "nigiri/rt/vdv/vdv_run.h"
+#include "nigiri/rt/vdv/vdv_update.h"
+#include "nigiri/special_stations.h"
+#include "nigiri/timetable.h"
 
 using namespace nigiri;
 using namespace nigiri::loader;
@@ -210,6 +212,74 @@ auto const bc_run =
                          .in_allowed_ = std::nullopt,
                          .out_allowed_ = std::nullopt,
                          .additional_stop_ = std::nullopt}}};
+
+constexpr auto const vdv_update_msg = R"(
+<?xml version="1.0" encoding="iso-8859-1"?>
+<DatenAbrufenAntwort>
+  <Bestaetigung Zst="2024-07-10T00:00:00" Ergebnis="ok" Fehlernummer="0" />
+  <AUSNachricht AboID="1">
+    <IstFahrt Zst="2024-07-10T00:00:00">
+      <LinienID>AE</LinienID>
+      <RichtungsID>1</RichtungsID>
+      <FahrtRef>
+        <FahrtID>
+          <FahrtBezeichner>AE</FahrtBezeichner>
+          <Betriebstag>2024-07-10</Betriebstag>
+        </FahrtID>
+      </FahrtRef>
+      <Komplettfahrt>false</Komplettfahrt>
+      <BetreiberID>MTA</BetreiberID>
+      <IstHalt>
+        <HaltID>A</HaltID>
+        <Abfahrtszeit>2024-07-10T00:00:00</Abfahrtszeit>
+        <Einsteigeverbot>false</Einsteigeverbot>
+        <Aussteigeverbot>false</Aussteigeverbot>
+        <Durchfahrt>false</Durchfahrt>
+        <Zusatzhalt>false</Zusatzhalt>
+      </IstHalt>
+      <IstHalt>
+        <HaltID>B</HaltID>
+        <Ankunftszeit>2024-07-10T01:00:00</Ankunftszeit>
+        <Abfahrtszeit>2024-07-10T01:00:00</Abfahrtszeit>
+        <IstAbfahrtPrognose>2024-07-10T01:30:00</IstAbfahrtPrognose>
+        <IstAnkunftPrognose>2024-06-21T01:30:00</IstAnkunftPrognose>
+        <Einsteigeverbot>false</Einsteigeverbot>
+        <Aussteigeverbot>false</Aussteigeverbot>
+        <Durchfahrt>false</Durchfahrt>
+        <Zusatzhalt>false</Zusatzhalt>
+      </IstHalt>
+      <IstHalt>
+        <HaltID>D</HaltID>
+        <Ankunftszeit>2024-07-10T03:00:00</Ankunftszeit>
+        <Abfahrtszeit>2024-07-10T03:00:00</Abfahrtszeit>
+        <IstAbfahrtPrognose>2024-07-10T03:15:00</IstAbfahrtPrognose>
+        <IstAnkunftPrognose>2024-06-21T03:15:00</IstAnkunftPrognose>
+        <Einsteigeverbot>false</Einsteigeverbot>
+        <Aussteigeverbot>false</Aussteigeverbot>
+        <Durchfahrt>false</Durchfahrt>
+        <Zusatzhalt>false</Zusatzhalt>
+      </IstHalt>
+      <IstHalt>
+        <HaltID>E</HaltID>
+        <Ankunftszeit>2024-07-10T04:00:00</Ankunftszeit>
+        <Abfahrtszeit>2024-07-10T04:00:00</Abfahrtszeit>
+        <IstAbfahrtPrognose>2024-07-10T04:00:00</IstAbfahrtPrognose>
+        <IstAnkunftPrognose>2024-06-21T04:00:00</IstAnkunftPrognose>
+        <Einsteigeverbot>false</Einsteigeverbot>
+        <Aussteigeverbot>false</Aussteigeverbot>
+        <Durchfahrt>false</Durchfahrt>
+        <Zusatzhalt>false</Zusatzhalt>
+      </IstHalt>
+      <LinienText>AE</LinienText>
+      <ProduktID>Space Train</ProduktID>
+      <RichtungsText>E</RichtungsText>
+      <Zusatzfahrt>false</Zusatzfahrt>
+      <FaelltAus>false</FaelltAus>
+    </IstFahrt>
+  </AUSNachricht>
+</DatenAbrufenAntwort>
+)";
+
 }  // namespace
 
 TEST(vdv_resolve_run, match_location) {
@@ -325,4 +395,19 @@ TEST(vdv_resolve_run, match_transport) {
   EXPECT_EQ(transport_matches.size(), 2);
   EXPECT_TRUE(transport_matches.contains({transport_idx_t{0}, day_idx_t{13}}));
   EXPECT_TRUE(transport_matches.contains({transport_idx_t{2}, day_idx_t{13}}));
+}
+
+TEST(vdv_update, vdv_update) {
+  timetable tt;
+  register_special_stations(tt);
+  tt.date_range_ = {date::sys_days{2024_y / July / 1},
+                    date::sys_days{2024_y / July / 31}};
+  load_timetable({}, source_idx_t{0}, vdv_test_files(), tt);
+  finalize(tt);
+
+  auto doc = pugi::xml_document{};
+  doc.load_string(vdv_update_msg);
+
+  auto rtt = rt::create_rt_timetable(tt, date::sys_days{2024_y / July / 10});
+  rt::vdv::vdv_update(tt, rtt, source_idx_t{0}, doc);
 }

@@ -16,14 +16,14 @@
 #include "nigiri/rt/frun.h"
 #include "nigiri/rt/rt_timetable.h"
 #include "nigiri/rt/run.h"
-#include "nigiri/rt/vdv/vdv_resolve_run.h"
 #include "nigiri/rt/vdv/vdv_run.h"
 #include "nigiri/rt/vdv/vdv_xml.h"
 #include "nigiri/timetable.h"
+#include "nigiri/types.h"
 
 namespace nigiri::rt::vdv {
 
-unixtime_t parse_time(std::string_view str) {
+unixtime_t parse_time(std::string const& str) {
   unixtime_t parsed;
   auto ss = std::stringstream{str};
   ss >> date::parse("%FT%T", parsed);
@@ -76,7 +76,6 @@ struct vdv_stop {
 };
 
 std::optional<rt::run> get_run(timetable const& tt,
-                               rt_timetable const& rtt,
                                source_idx_t const src,
                                vector<vdv_stop> const& vdv_stops) {
 
@@ -191,7 +190,7 @@ void process_vdv_run(timetable const& tt,
       run_node.select_nodes("IstHalt"),
       [](auto&& stop_xpath) { return vdv_stop{stop_xpath.node()}; });
 
-  auto const r = get_run(tt, rtt, src, vdv_stops);
+  auto const r = get_run(tt, src, vdv_stops);
   if (!r.has_value()) {
     ++stats.unmatchable_run_;
     return;
