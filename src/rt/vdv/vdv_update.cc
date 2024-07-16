@@ -148,7 +148,7 @@ void update_run(timetable const& tt,
 
   auto vdv_stop_it = begin(vdv_stops);
 
-  for (auto stop_idx : fr.stop_range_) {
+  for (auto const stop_idx : fr.stop_range_) {
 
     while (vdv_stop_it != end(vdv_stops) && vdv_stop_it->is_additional_) {
       ++stats.unsupported_additional_stop_;
