@@ -215,7 +215,7 @@ auto const bc_run =
                          .additional_stop_ = std::nullopt}}};
 */
 
-constexpr auto const vdv_update_msg = R"(
+constexpr auto const vdv_update_msg0 = R"(
 <?xml version="1.0" encoding="iso-8859-1"?>
 <DatenAbrufenAntwort>
   <Bestaetigung Zst="2024-07-10T00:00:00" Ergebnis="ok" Fehlernummer="0" />
@@ -265,6 +265,41 @@ constexpr auto const vdv_update_msg = R"(
         <HaltID>E</HaltID>
         <Ankunftszeit>2024-07-10T02:00:00</Ankunftszeit>
         <IstAnkunftPrognose>2024-06-10T02:00:00</IstAnkunftPrognose>
+        <Einsteigeverbot>false</Einsteigeverbot>
+        <Aussteigeverbot>false</Aussteigeverbot>
+        <Durchfahrt>false</Durchfahrt>
+        <Zusatzhalt>false</Zusatzhalt>
+      </IstHalt>
+      <LinienText>AE</LinienText>
+      <ProduktID>Space Train</ProduktID>
+      <RichtungsText>E</RichtungsText>
+      <Zusatzfahrt>false</Zusatzfahrt>
+      <FaelltAus>false</FaelltAus>
+    </IstFahrt>
+  </AUSNachricht>
+</DatenAbrufenAntwort>
+)";
+
+constexpr auto const vdv_update_msg1 = R"(
+<?xml version="1.0" encoding="iso-8859-1"?>
+<DatenAbrufenAntwort>
+  <Bestaetigung Zst="2024-07-10T00:00:00" Ergebnis="ok" Fehlernummer="0" />
+  <AUSNachricht AboID="1">
+    <IstFahrt Zst="2024-07-10T00:00:00">
+      <LinienID>AE</LinienID>
+      <RichtungsID>1</RichtungsID>
+      <FahrtRef>
+        <FahrtID>
+          <FahrtBezeichner>AE</FahrtBezeichner>
+          <Betriebstag>2024-07-10</Betriebstag>
+        </FahrtID>
+      </FahrtRef>
+      <Komplettfahrt>false</Komplettfahrt>
+      <BetreiberID>MTA</BetreiberID>
+      <IstHalt>
+        <HaltID>A</HaltID>
+        <Abfahrtszeit>2024-07-09T22:00:00</Abfahrtszeit>
+        <IstAbfahrtPrognose>2024-07-09T23:00:00</IstAbfahrtPrognose>
         <Einsteigeverbot>false</Einsteigeverbot>
         <Aussteigeverbot>false</Aussteigeverbot>
         <Durchfahrt>false</Durchfahrt>
@@ -411,10 +446,52 @@ TEST(vdv_update, vdv_update) {
   auto rtt = rt::create_rt_timetable(tt, date::sys_days{2024_y / July / 10});
 
   auto doc = pugi::xml_document{};
-  doc.load_string(vdv_update_msg);
+  doc.load_string(vdv_update_msg0);
   rt::vdv::vdv_update(tt, rtt, source_idx_t{0}, doc);
 
-  auto const fr = rt::frun(
+  auto fr = rt::frun(
+      tt, &rtt,
+      {{transport_idx_t{0}, day_idx_t{13}}, {stop_idx_t{0}, stop_idx_t{5}}});
+
+  EXPECT_EQ(fr[0].scheduled_time(event_type::kDep),
+            date::sys_days{2024_y / July / 9} + 22_hours);
+  EXPECT_EQ(fr[0].time(event_type::kDep),
+            date::sys_days{2024_y / July / 9} + 23_hours);
+
+  EXPECT_EQ(fr[1].scheduled_time(event_type::kArr),
+            date::sys_days{2024_y / July / 9} + 23_hours);
+  EXPECT_EQ(fr[1].time(event_type::kArr), date::sys_days{2024_y / July / 10});
+  EXPECT_EQ(fr[1].scheduled_time(event_type::kDep),
+            date::sys_days{2024_y / July / 9} + 23_hours);
+  EXPECT_EQ(fr[1].time(event_type::kDep), date::sys_days{2024_y / July / 10});
+
+  EXPECT_EQ(fr[2].scheduled_time(event_type::kArr),
+            date::sys_days{2024_y / July / 10});
+  EXPECT_EQ(fr[2].time(event_type::kArr),
+            date::sys_days{2024_y / July / 10} + 1_hours);
+  EXPECT_EQ(fr[2].scheduled_time(event_type::kDep),
+            date::sys_days{2024_y / July / 10});
+  EXPECT_EQ(fr[2].time(event_type::kDep),
+            date::sys_days{2024_y / July / 10} + 1_hours);
+
+  EXPECT_EQ(fr[3].scheduled_time(event_type::kArr),
+            date::sys_days{2024_y / July / 10} + 1_hours);
+  EXPECT_EQ(fr[3].time(event_type::kArr),
+            date::sys_days{2024_y / July / 10} + 2_hours);
+  EXPECT_EQ(fr[3].scheduled_time(event_type::kDep),
+            date::sys_days{2024_y / July / 10} + 1_hours);
+  EXPECT_EQ(fr[3].time(event_type::kDep),
+            date::sys_days{2024_y / July / 10} + 2_hours);
+
+  EXPECT_EQ(fr[4].scheduled_time(event_type::kArr),
+            date::sys_days{2024_y / July / 10} + 2_hours);
+  EXPECT_EQ(fr[4].time(event_type::kArr),
+            date::sys_days{2024_y / July / 10} + 3_hours);
+
+  doc.load_string(vdv_update_msg1);
+  rt::vdv::vdv_update(tt, rtt, source_idx_t{0}, doc);
+
+  fr = rt::frun(
       tt, &rtt,
       {{transport_idx_t{0}, day_idx_t{13}}, {stop_idx_t{0}, stop_idx_t{5}}});
 
@@ -431,4 +508,27 @@ TEST(vdv_update, vdv_update) {
             date::sys_days{2024_y / July / 9} + 23_hours);
   EXPECT_EQ(fr[1].time(event_type::kDep),
             date::sys_days{2024_y / July / 9} + 23_hours + 30_minutes);
+
+  EXPECT_EQ(fr[2].scheduled_time(event_type::kArr),
+            date::sys_days{2024_y / July / 10});
+  EXPECT_EQ(fr[2].time(event_type::kArr),
+            date::sys_days{2024_y / July / 10} + 30_minutes);
+  EXPECT_EQ(fr[2].scheduled_time(event_type::kDep),
+            date::sys_days{2024_y / July / 10});
+  EXPECT_EQ(fr[2].time(event_type::kDep),
+            date::sys_days{2024_y / July / 10} + 30_minutes);
+
+  EXPECT_EQ(fr[3].scheduled_time(event_type::kArr),
+            date::sys_days{2024_y / July / 10} + 1_hours);
+  EXPECT_EQ(fr[3].time(event_type::kArr),
+            date::sys_days{2024_y / July / 10} + 1_hours + 15_minutes);
+  EXPECT_EQ(fr[3].scheduled_time(event_type::kDep),
+            date::sys_days{2024_y / July / 10} + 1_hours);
+  EXPECT_EQ(fr[3].time(event_type::kDep),
+            date::sys_days{2024_y / July / 10} + 1_hours + 15_minutes);
+
+  EXPECT_EQ(fr[4].scheduled_time(event_type::kArr),
+            date::sys_days{2024_y / July / 10} + 2_hours);
+  EXPECT_EQ(fr[4].time(event_type::kArr),
+            date::sys_days{2024_y / July / 10} + 2_hours);
 }
