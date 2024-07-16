@@ -1,3 +1,4 @@
+/*
 #include "nigiri/rt/vdv/vdv_resolve_run.h"
 
 #include "nigiri/rt/vdv/vdv_run.h"
@@ -119,3 +120,4 @@ template void match_time<event_type::kArr>(timetable const&,
                                            unixtime_t const,
                                            hash_set<transport>&);
 }  // namespace nigiri::rt
+ */

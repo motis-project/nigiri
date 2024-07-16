@@ -58,7 +58,7 @@ struct vdv_stop {
         arr_{get_opt_time(n, "Ankunftszeit")},
         rt_dep_{get_opt_time(n, "IstAnkunftPrognose")},
         rt_arr_{get_opt_time(n, "IstAbfahrtPrognose")},
-        is_additional_{get_opt_bool(n, "Zusatzhalt", false)} {}
+        is_additional_{get_opt_bool(n, "Zusatzhalt", false).value()} {}
 
   std::pair<unixtime_t, event_type> get_event() const {
     if (dep_.has_value()) {
