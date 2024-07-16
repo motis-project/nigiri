@@ -125,53 +125,54 @@ void update_run(timetable const& tt,
                 run& r,
                 auto const& vdv_stops,
                 statistics& stats) {
+
   auto fr = rt::frun(tt, &rtt, r);
   if (!fr.is_rt()) {
     fr.rt_ = rtt.add_rt_transport(src, tt, r.t_);
   }
 
-  auto fr_stop_it = begin(fr);
-  auto stop_idx = fr.stop_range_.from_;
-  auto vdv_stop_it = begin(vdv_stops);
-
   auto delay = std::optional<duration_t>{};
 
-  auto const update_event = [&](auto const et, auto const new_time) {
-    delay = new_time - fr_stop_it.rs_.scheduled_time(et);
+  auto const update_event = [&](auto const stop_idx, auto const et,
+                                auto const new_time) {
+    delay = new_time - fr[stop_idx].scheduled_time(et);
     rtt.update_time(fr.rt_, stop_idx, et, new_time);
     rtt.dispatch_event_change(fr.t_, stop_idx, et, *delay, false);
   };
 
-  auto const propagate_delay = [&](event_type et) {
+  auto const propagate_delay = [&](auto const stop_idx, event_type et) {
     rtt.update_time(fr.rt_, stop_idx, et,
-                    fr_stop_it.rs_.scheduled_time(et) + *delay);
+                    fr[stop_idx].scheduled_time(et) + *delay);
     rtt.dispatch_event_change(fr.t_, stop_idx, et, *delay, false);
   };
 
-  for (; fr_stop_it != end(fr); ++fr_stop_it, ++stop_idx) {
-    // skip additional stops
+  auto vdv_stop_it = begin(vdv_stops);
+
+  for (auto stop_idx : fr.stop_range_) {
+
     while (vdv_stop_it != end(vdv_stops) && vdv_stop_it->is_additional_) {
       ++stats.unsupported_additional_stop_;
       ++vdv_stop_it;
     }
 
-    // match or propagate delay
+    // match stop ids
     if (vdv_stop_it != end(vdv_stops) &&
-        vdv_stop_it->id_ == fr_stop_it.rs_.id()) {
+        vdv_stop_it->id_ == fr[stop_idx].id()) {
       if (stop_idx != 0 && vdv_stop_it->rt_arr_.has_value()) {
-        update_event(event_type::kArr, *vdv_stop_it->rt_arr_);
+        update_event(stop_idx, event_type::kArr, *vdv_stop_it->rt_arr_);
       }
       if (stop_idx != fr.stop_range_.to_ - 1 &&
           vdv_stop_it->rt_dep_.has_value()) {
-        update_event(event_type::kDep, *vdv_stop_it->rt_dep_);
+        update_event(stop_idx, event_type::kDep, *vdv_stop_it->rt_dep_);
       }
       ++vdv_stop_it;
+      // propagate delay
     } else if (delay) {
       if (stop_idx != 0) {
-        propagate_delay(event_type::kArr);
+        propagate_delay(stop_idx, event_type::kArr);
       }
       if (stop_idx != fr.stop_range_.to_ - 1) {
-        propagate_delay(event_type::kDep);
+        propagate_delay(stop_idx, event_type::kDep);
       }
     }
   }
