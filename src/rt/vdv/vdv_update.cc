@@ -16,8 +16,6 @@
 #include "nigiri/rt/frun.h"
 #include "nigiri/rt/rt_timetable.h"
 #include "nigiri/rt/run.h"
-#include "nigiri/rt/vdv/vdv_run.h"
-#include "nigiri/rt/vdv/vdv_xml.h"
 #include "nigiri/timetable.h"
 #include "nigiri/types.h"
 
@@ -56,8 +54,8 @@ struct vdv_stop {
       : id_{get(n, "HaltID").child_value()},
         dep_{get_opt_time(n, "Abfahrtszeit")},
         arr_{get_opt_time(n, "Ankunftszeit")},
-        rt_dep_{get_opt_time(n, "IstAnkunftPrognose")},
-        rt_arr_{get_opt_time(n, "IstAbfahrtPrognose")},
+        rt_dep_{get_opt_time(n, "IstAbfahrtPrognose")},
+        rt_arr_{get_opt_time(n, "IstAnkunftPrognose")},
         is_additional_{get_opt_bool(n, "Zusatzhalt", false).value()} {}
 
   std::pair<unixtime_t, event_type> get_event() const {
@@ -127,13 +125,11 @@ void update_run(timetable const& tt,
                 run& r,
                 auto const& vdv_stops,
                 statistics& stats) {
-  if (!r.is_rt()) {
-    r.rt_ = rtt.add_rt_transport(src, tt, r.t_);
-  } else {
-    rtt.rt_transport_is_cancelled_.set(to_idx(r.rt_), false);
+  auto fr = rt::frun(tt, &rtt, r);
+  if (!fr.is_rt()) {
+    fr.rt_ = rtt.add_rt_transport(src, tt, r.t_);
   }
 
-  auto const fr = rt::frun(tt, &rtt, r);
   auto fr_stop_it = begin(fr);
   auto stop_idx = fr.stop_range_.from_;
   auto vdv_stop_it = begin(vdv_stops);
@@ -159,7 +155,7 @@ void update_run(timetable const& tt,
       ++vdv_stop_it;
     }
 
-    // stops match or propagate delay
+    // match or propagate delay
     if (vdv_stop_it != end(vdv_stops) &&
         vdv_stop_it->id_ == fr_stop_it.rs_.id()) {
       if (stop_idx != 0 && vdv_stop_it->rt_arr_.has_value()) {
