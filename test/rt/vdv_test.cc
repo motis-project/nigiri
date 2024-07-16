@@ -4,6 +4,7 @@
 #include "nigiri/loader/gtfs/load_timetable.h"
 #include "nigiri/loader/init_finish.h"
 #include "nigiri/rt/create_rt_timetable.h"
+#include "nigiri/rt/frun.h"
 #include "nigiri/rt/rt_timetable.h"
 #include "nigiri/rt/vdv/vdv_resolve_run.h"
 #include "nigiri/rt/vdv/vdv_run.h"
@@ -242,7 +243,7 @@ constexpr auto const vdv_update_msg = R"(
         <Ankunftszeit>2024-07-10T01:00:00</Ankunftszeit>
         <Abfahrtszeit>2024-07-10T01:00:00</Abfahrtszeit>
         <IstAbfahrtPrognose>2024-07-10T01:30:00</IstAbfahrtPrognose>
-        <IstAnkunftPrognose>2024-06-21T01:30:00</IstAnkunftPrognose>
+        <IstAnkunftPrognose>2024-07-10T01:30:00</IstAnkunftPrognose>
         <Einsteigeverbot>false</Einsteigeverbot>
         <Aussteigeverbot>false</Aussteigeverbot>
         <Durchfahrt>false</Durchfahrt>
@@ -405,9 +406,27 @@ TEST(vdv_update, vdv_update) {
   load_timetable({}, source_idx_t{0}, vdv_test_files(), tt);
   finalize(tt);
 
+  auto rtt = rt::create_rt_timetable(tt, date::sys_days{2024_y / July / 10});
+
   auto doc = pugi::xml_document{};
   doc.load_string(vdv_update_msg);
-
-  auto rtt = rt::create_rt_timetable(tt, date::sys_days{2024_y / July / 10});
   rt::vdv::vdv_update(tt, rtt, source_idx_t{0}, doc);
+
+  auto const fr = rt::frun(
+      tt, &rtt,
+      {{transport_idx_t{0}, day_idx_t{13}}, {stop_idx_t{0}, stop_idx_t{5}}});
+
+  EXPECT_EQ(fr[0].scheduled_time(event_type::kDep),
+            date::sys_days{2024_y / July / 9} + 22_hours);
+  EXPECT_EQ(fr[0].time(event_type::kDep),
+            date::sys_days{2024_y / July / 9} + 22_hours);
+
+  EXPECT_EQ(fr[1].scheduled_time(event_type::kArr),
+            date::sys_days{2024_y / July / 9} + 23_hours);
+  EXPECT_EQ(fr[1].time(event_type::kArr),
+            date::sys_days{2024_y / July / 9} + 23_hours + 30_minutes);
+  EXPECT_EQ(fr[1].scheduled_time(event_type::kDep),
+            date::sys_days{2024_y / July / 9} + 23_hours);
+  EXPECT_EQ(fr[1].time(event_type::kDep),
+            date::sys_days{2024_y / July / 9} + 23_hours + 30_minutes);
 }

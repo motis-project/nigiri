@@ -77,7 +77,7 @@ struct vdv_stop {
 
 std::optional<rt::run> get_run(timetable const& tt,
                                source_idx_t const src,
-                               vector<vdv_stop> const& vdv_stops) {
+                               auto const& vdv_stops) {
 
   auto const first_it =
       utl::find_if(vdv_stops, [](auto&& s) { return !s.is_additional_; });
@@ -125,7 +125,7 @@ void update_run(timetable const& tt,
                 rt_timetable& rtt,
                 source_idx_t const src,
                 run& r,
-                vector<vdv_stop> const& vdv_stops,
+                auto const& vdv_stops,
                 statistics& stats) {
   if (!r.is_rt()) {
     r.rt_ = rtt.add_rt_transport(src, tt, r.t_);
@@ -190,7 +190,7 @@ void process_vdv_run(timetable const& tt,
       run_node.select_nodes("IstHalt"),
       [](auto&& stop_xpath) { return vdv_stop{stop_xpath.node()}; });
 
-  auto const r = get_run(tt, src, vdv_stops);
+  auto r = get_run(tt, src, vdv_stops);
   if (!r.has_value()) {
     ++stats.unmatchable_run_;
     return;
