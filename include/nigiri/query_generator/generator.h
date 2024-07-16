@@ -15,45 +15,21 @@ struct timetable;
 
 namespace nigiri::query_generation {
 
-constexpr auto const kMaxGenAttempts = 10000U;
+constexpr auto const kMaxGenAttempts = 1000U;
 
-constexpr auto const kTimeOfDayWeights = std::array<int, 24>{
-    1,  // 01: 00:00 - 01:00
-    1,  // 02: 01:00 - 02:00
-    1,  // 03: 02:00 - 03:00
-    1,  // 04: 03:00 - 04:00
-    1,  // 05: 04:00 - 05:00
-    2,  // 06: 05:00 - 06:00
-    3,  // 07: 06:00 - 07:00
-    4,  // 08: 07:00 - 08:00
-    4,  // 09: 08:00 - 09:00
-    3,  // 10: 09:00 - 10:00
-    2,  // 11: 10:00 - 11:00
-    2,  // 12: 11:00 - 12:00
-    2,  // 13: 12:00 - 13:00
-    2,  // 14: 13:00 - 14:00
-    3,  // 15: 14:00 - 15:00
-    4,  // 16: 15:00 - 16:00
-    4,  // 17: 16:00 - 17:00
-    4,  // 18: 17:00 - 18:00
-    4,  // 19: 18:00 - 19:00
-    3,  // 20: 19:00 - 20:00
-    2,  // 21: 20:00 - 21:00
-    1,  // 22: 21:00 - 22:00
-    1,  // 23: 22:00 - 23:00
-    1  // 24: 23:00 - 24:00
+struct start_dest_query {
+  std::variant<nigiri::location_idx_t, geo::latlng> start_;
+  std::variant<nigiri::location_idx_t, geo::latlng> dest_;
+  nigiri::routing::query q_;
 };
 
 struct generator {
   explicit generator(timetable const&, generator_settings const&);
+  explicit generator(timetable const&,
+                     generator_settings const&,
+                     std::uint32_t seed);
 
-  // randomize a point in time within the timetable
-  unixtime_t random_time();
-
-  // randomize a location that is active during the interval
-  // for the given event type
-  std::optional<location_idx_t> random_active_location(
-      interval<unixtime_t> const&, event_type);
+  std::optional<start_dest_query> random_query();
 
   // use start transport mode to randomize coordinates near a location
   geo::latlng pos_near_start(location_idx_t);
@@ -61,52 +37,59 @@ struct generator {
   // uses dest transport mode to randomize coordinates near a location
   geo::latlng pos_near_dest(location_idx_t);
 
-  // randomize a transport and one of its stops that allows the given event type
-  std::pair<transport, stop_idx_t> random_transport_active_stop(event_type et);
-
-  // convenience functions for query generation inside nigiri
-  std::optional<routing::query> random_pretrip_query();
-  std::optional<routing::query> random_ontrip_query();
+  std::pair<transport, stop_idx_t> random_transport_active_stop();
 
   timetable const& tt_;
   generator_settings const& s_;
+  std::uint32_t seed_;
 
 private:
-  transport_idx_t random_transport_idx();
-  day_idx_t random_day();
+  void init_geo(generator_settings const& settings);
 
+  location_idx_t random_location();
+  std::optional<location_idx_t> random_location(geo::latlng const&,
+                                                transport_mode const&);
+  route_idx_t random_route(location_idx_t);
+  transport_idx_t random_transport();
+  transport_idx_t random_transport(route_idx_t);
+  stop_idx_t get_stop_idx(transport_idx_t, location_idx_t) const;
+
+  std::optional<stop_idx_t> random_active_stop(transport_idx_t);
+
+  bool can_dep(transport_idx_t, stop_idx_t) const;
   std::optional<day_idx_t> random_active_day(transport_idx_t);
-  std::optional<stop_idx_t> random_active_stop(transport_idx_t, event_type);
+  std::optional<interval<unixtime_t>> get_start_interval(location_idx_t);
+
+  bool arr_in_itv(transport_idx_t,
+                  stop_idx_t,
+                  interval<unixtime_t> const&) const;
+  bool is_active_dest(location_idx_t, interval<unixtime_t> const&) const;
 
   geo::latlng random_point_in_range(
       geo::latlng const&, std::uniform_int_distribution<std::uint32_t>&);
 
-  interval<day_idx_t> unix_to_day_interval(interval<unixtime_t> const&);
-  std::uint16_t tt_n_days();
+  std::uint16_t tt_n_days() const;
 
   routing::query make_query() const;
 
   void add_offsets_for_pos(std::vector<routing::offset>&,
                            geo::latlng const&,
-                           query_generation::transport_mode const&);
+                           query_generation::transport_mode const&) const;
 
   // R-Tree
   geo::point_rtree locations_rtree_;
+  std::vector<size_t> locs_in_bbox;
 
   // RNG
-  std::random_device rd_;
-  std::mt19937 rng_{rd_()};
+  std::mt19937 rng_;
 
   // Distributions
   std::uniform_int_distribution<location_idx_t::value_t> location_d_;
-  std::uniform_int_distribution<date::sys_days::rep> date_d_;
+  std::uniform_int_distribution<size_t> locs_in_bbox_d_;
   std::uniform_int_distribution<transport_idx_t::value_t> transport_d_;
   std::uniform_int_distribution<day_idx_t::value_t> day_d_;
   std::uniform_int_distribution<std::uint32_t> start_mode_range_d_;
   std::uniform_int_distribution<std::uint32_t> dest_mode_range_d_;
-  std::discrete_distribution<std::uint16_t> hours_d_{begin(kTimeOfDayWeights),
-                                                     end(kTimeOfDayWeights)};
-  std::uniform_int_distribution<std::uint16_t> minutes_d_{0, 59};
   std::uniform_int_distribution<std::uint16_t> bearing_d_{0, 359};
 };
 
