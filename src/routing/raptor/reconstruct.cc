@@ -496,6 +496,8 @@ void reconstruct_journey(timetable const& tt,
     }
   }
 
+  optimize_footpaths<SearchDir>(tt, rtt, q, j);
+
 #if defined(NIGIRI_TRACE_RECUSTRUCT)
   j.print(std::cout, tt, true);
 #endif
