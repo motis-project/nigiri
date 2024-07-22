@@ -1,5 +1,7 @@
 #pragma once
 
+#include "cista/reflection/comparable.h"
+
 #include "utl/cflow.h"
 
 #include "nigiri/footpath.h"
@@ -12,6 +14,8 @@ constexpr auto const kInfeasible =
     duration_t{std::numeric_limits<duration_t::rep>::max()};
 
 struct td_footpath {
+  CISTA_FRIEND_COMPARABLE(td_footpath)
+
   location_idx_t target_;
   unixtime_t valid_from_;
   duration_t duration_;
