@@ -18,6 +18,8 @@ struct statistics {
   int unsupported_cancelled_run{0};
   int unsupported_additional_stop_{0};
   int unmatchable_run_{0};
+  int matched_stops_{0};
+  int propagated_delay_{0};
 };
 
 statistics vdv_update(timetable const&,

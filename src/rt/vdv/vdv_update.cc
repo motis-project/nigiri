@@ -138,12 +138,14 @@ void update_run(timetable const& tt,
     delay = new_time - fr[stop_idx].scheduled_time(et);
     rtt.update_time(fr.rt_, stop_idx, et, new_time);
     rtt.dispatch_event_change(fr.t_, stop_idx, et, *delay, false);
+    ++stats.matched_stops_;
   };
 
   auto const propagate_delay = [&](auto const stop_idx, event_type et) {
     rtt.update_time(fr.rt_, stop_idx, et,
                     fr[stop_idx].scheduled_time(et) + *delay);
     rtt.dispatch_event_change(fr.t_, stop_idx, et, *delay, false);
+    ++stats.propagated_delay_;
   };
 
   auto vdv_stop_it = begin(vdv_stops);
