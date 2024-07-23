@@ -21,8 +21,8 @@ TEST(gtfs, agency) {
   auto const sbb_it = agencies.find("11");
   ASSERT_NE(sbb_it, end(agencies));
 
-  auto& dta = tt.providers_.at(dta_it->second);
-  auto& sbb = tt.providers_.at(sbb_it->second);
+  auto const& dta = tt.providers_.at(dta_it->second);
+  auto const& sbb = tt.providers_.at(sbb_it->second);
   EXPECT_EQ("Demo Transit Authority", dta.long_name_);
   EXPECT_EQ("http://google.com", dta.url_);
   EXPECT_EQ("Schweizerische Bundesbahnen SBB", sbb.long_name_);
