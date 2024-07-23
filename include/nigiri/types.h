@@ -288,7 +288,11 @@ enum class location_type : std::uint8_t {
 };
 
 enum class event_type { kArr, kDep };
-enum class direction { kForward, kBackward };
+
+enum class direction {
+  kForward,
+  kBackward  // start = final arrival, destination = journey departure
+};
 
 using transport_mode_id_t = std::int32_t;
 
