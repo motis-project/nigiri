@@ -29,4 +29,10 @@ void optimize_footpaths(timetable const&,
                         query const&,
                         journey&);
 
+template <direction SearchDir>
+void correct_rounded_time_at_start(timetable const&,
+                                   rt_timetable const*,
+                                   query const&,
+                                   journey&);
+
 }  // namespace nigiri::routing
