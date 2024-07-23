@@ -40,8 +40,8 @@ provider read_provider_names(utl::cstr line) {
   return provider{
       .short_name_ =
           iso_8859_1_to_utf8(parse_name(line.substr(long_name + 3U))),
-      .long_name_ =
-          iso_8859_1_to_utf8(parse_name(line.substr(full_name + 3U)))};
+      .long_name_ = iso_8859_1_to_utf8(parse_name(line.substr(full_name + 3U))),
+      .url_ = "" /* Currently not supported */};
 }
 
 provider_map_t parse_providers(config const& c,
