@@ -138,7 +138,7 @@ void update_run(timetable const& tt,
     delay = new_time - fr[stop_idx].scheduled_time(et);
     rtt.update_time(fr.rt_, stop_idx, et, new_time);
     rtt.dispatch_event_change(fr.t_, stop_idx, et, *delay, false);
-    ++stats.matched_stops_;
+    ++stats.matched_stop_;
   };
 
   auto const propagate_delay = [&](auto const stop_idx, event_type et) {
@@ -178,6 +178,15 @@ void update_run(timetable const& tt,
       }
     }
   }
+
+  while (vdv_stop_it != end(vdv_stops)) {
+    if (vdv_stop_it->is_additional_) {
+      ++stats.unsupported_additional_stop_;
+    } else {
+      ++stats.excess_vdv_stop_;
+    }
+    ++vdv_stop_it;
+  }
 }
 
 void process_vdv_run(timetable const& tt,
@@ -206,10 +215,10 @@ statistics vdv_update(timetable const& tt,
   for (auto const& r :
        doc.select_nodes("DatenAbrufenAntwort/AUSNachricht/IstFahrt")) {
     if (get_opt_bool(r.node(), "Zusatzfahrt", false).value()) {
-      ++stats.unsupported_additional_run;
+      ++stats.unsupported_additional_run_;
       continue;
     } else if (get_opt_bool(r.node(), "FaelltAus", false).value()) {
-      ++stats.unsupported_cancelled_run;
+      ++stats.unsupported_cancelled_run_;
       continue;
     }
 
