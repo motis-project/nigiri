@@ -82,8 +82,7 @@ struct vdv_stop {
 
 std::optional<rt::run> get_run(timetable const& tt,
                                auto const& vdv_stops,
-                               statistics& stats,
-                               source_idx_t const src) {
+                               statistics& stats) {
 
   auto const first_it = utl::find_if(
       vdv_stops, [](auto&& s) { return !s.is_additional_ && !s.has_text81_; });
@@ -114,13 +113,6 @@ std::optional<rt::run> get_run(timetable const& tt,
                                   end(tt.locations_.ids_[*candidates_it])};
 
     auto const l = *candidates_it;
-    if (std::string_view{begin(tt.locations_.ids_[*candidates_it]),
-                         end(tt.locations_.ids_[*candidates_it])} ==
-        first_stop.id_) {
-      std::cout << "candidates_it location_idx: " << l << "\n";
-      std::cout << "get location_idx: "
-                << tt.locations_.get({first_stop.id_, src}).l_ << "\n";
-    }
 
     for (auto const r : tt.location_routes_[l]) {
       auto const location_seq = tt.route_location_seq_[r];
@@ -249,7 +241,7 @@ void process_vdv_run(timetable const& tt,
       run_node.select_nodes("IstHalt"),
       [](auto&& stop_xpath) { return vdv_stop{stop_xpath.node()}; });
 
-  auto r = get_run(tt, vdv_stops, stats, src);
+  auto r = get_run(tt, vdv_stops, stats);
   if (!r.has_value()) {
     ++stats.unmatchable_run_;
     return;
