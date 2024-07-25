@@ -50,6 +50,14 @@ void finalize(timetable& tt,
   build_footpaths(tt, adjust_footpaths, merge_duplicates, max_footpath_length);
   build_lb_graph<direction::kForward>(tt);
   build_lb_graph<direction::kBackward>(tt);
+  std::sort(begin(tt.locations_.sorted_by_location_id_),
+            end(tt.locations_.sorted_by_location_id_),
+            [&](auto const& a, auto const& b) {
+              return std::string_view{begin(tt.locations_.ids_[a]),
+                                      end(tt.locations_.ids_[a])} <
+                     std::string_view{begin(tt.locations_.ids_[b]),
+                                      end(tt.locations_.ids_[b])};
+            });
 }
 
 }  // namespace nigiri::loader
