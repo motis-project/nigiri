@@ -93,6 +93,8 @@ std::optional<rt::run> get_run(timetable const& tt,
 
   auto const& first_stop = *first_it;
 
+  std::cout << "looking for stop: " << first_stop.id_ << "\n";
+
   auto candidates_it =
       lower_bound(begin(tt.locations_.sorted_by_location_id_),
                   end(tt.locations_.sorted_by_location_id_), first_stop.id_,
@@ -101,9 +103,14 @@ std::optional<rt::run> get_run(timetable const& tt,
                                             end(tt.locations_.ids_[el])} < val;
                   });
 
-  while (std::string_view{begin(tt.locations_.ids_[*candidates_it]),
+  while (candidates_it != end(tt.locations_.sorted_by_location_id_) &&
+         std::string_view{begin(tt.locations_.ids_[*candidates_it]),
                           end(tt.locations_.ids_[*candidates_it])}
              .starts_with(first_stop.id_)) {
+
+    std::cout << "candidate: "
+              << std::string_view{begin(tt.locations_.ids_[*candidates_it]),
+                                  end(tt.locations_.ids_[*candidates_it])};
 
     auto const l = *candidates_it;
 
@@ -131,12 +138,13 @@ std::optional<rt::run> get_run(timetable const& tt,
         auto const tr = tt.route_transport_ranges_[r][static_cast<size_t>(
             std::distance(begin(event_times), it))];
         if (tt.bitfields_[tt.transport_traffic_days_[tr]].test(start_day)) {
+          std::cout << " -> time match\n";
           return rt::run{transport{tr, day_idx_t{start_day}},
                          {0U, static_cast<stop_idx_t>(location_seq.size())}};
         }
       }
     }
-
+    std::cout << "\n";
     ++candidates_it;
   }
 
