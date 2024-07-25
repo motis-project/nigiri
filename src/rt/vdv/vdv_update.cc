@@ -81,7 +81,6 @@ struct vdv_stop {
 };
 
 std::optional<rt::run> get_run(timetable const& tt,
-                               source_idx_t const src,
                                auto const& vdv_stops,
                                statistics& stats) {
 
@@ -94,45 +93,51 @@ std::optional<rt::run> get_run(timetable const& tt,
 
   auto const& first_stop = *first_it;
 
-  try {
-    tt.locations_.get({first_stop.id_, src});
-  } catch (std::exception const& e) {
-    std::cout << e.what() << "\n";
-    std::cout << "could not find vdv_stop_id " << first_stop.id_ << "\n";
-    ++stats.unknown_stop_id_;
-    return std::nullopt;
-  }
+  auto candidates_it =
+      lower_bound(begin(tt.locations_.sorted_by_location_id_),
+                  end(tt.locations_.sorted_by_location_id_), first_stop.id_,
+                  [&](auto const& el, auto const& val) {
+                    return std::string_view{begin(tt.locations_.ids_[el]),
+                                            end(tt.locations_.ids_[el])} < val;
+                  });
 
-  auto const l = tt.locations_.get({first_stop.id_, src}).l_;
+  while (std::string_view{begin(tt.locations_.ids_[*candidates_it]),
+                          end(tt.locations_.ids_[*candidates_it])}
+             .starts_with(first_stop.id_)) {
 
-  for (auto const r : tt.location_routes_[l]) {
-    auto const location_seq = tt.route_location_seq_[r];
-    for (auto const [stop_idx, s] : utl::enumerate(location_seq)) {
-      if (stop{s}.location_idx() != l) {
-        continue;
-      }
+    auto const l = *candidates_it;
 
-      auto const [t, ev_type] = first_stop.get_event();
-      auto const [day_idx, mam] = tt.day_idx_mam(t);
-      auto const event_times = tt.event_times_at_stop(
-          r, static_cast<stop_idx_t>(stop_idx), event_type::kDep);
-      auto const it = utl::find_if(event_times, [&](delta const ev_time) {
-        return ev_time.mam() == mam.count();
-      });
-      if (it == end(event_times)) {
-        continue;
-      }
+    for (auto const r : tt.location_routes_[l]) {
+      auto const location_seq = tt.route_location_seq_[r];
+      for (auto const [stop_idx, s] : utl::enumerate(location_seq)) {
+        if (stop{s}.location_idx() != l) {
+          continue;
+        }
 
-      auto const ev_day_offset = it->days();
-      auto const start_day =
-          static_cast<std::size_t>(to_idx(day_idx) - ev_day_offset);
-      auto const tr = tt.route_transport_ranges_[r][static_cast<size_t>(
-          std::distance(begin(event_times), it))];
-      if (tt.bitfields_[tt.transport_traffic_days_[tr]].test(start_day)) {
-        return rt::run{transport{tr, day_idx_t{start_day}},
-                       {0U, static_cast<stop_idx_t>(location_seq.size())}};
+        auto const [t, ev_type] = first_stop.get_event();
+        auto const [day_idx, mam] = tt.day_idx_mam(t);
+        auto const event_times = tt.event_times_at_stop(
+            r, static_cast<stop_idx_t>(stop_idx), event_type::kDep);
+        auto const it = utl::find_if(event_times, [&](delta const ev_time) {
+          return ev_time.mam() == mam.count();
+        });
+        if (it == end(event_times)) {
+          continue;
+        }
+
+        auto const ev_day_offset = it->days();
+        auto const start_day =
+            static_cast<std::size_t>(to_idx(day_idx) - ev_day_offset);
+        auto const tr = tt.route_transport_ranges_[r][static_cast<size_t>(
+            std::distance(begin(event_times), it))];
+        if (tt.bitfields_[tt.transport_traffic_days_[tr]].test(start_day)) {
+          return rt::run{transport{tr, day_idx_t{start_day}},
+                         {0U, static_cast<stop_idx_t>(location_seq.size())}};
+        }
       }
     }
+
+    ++candidates_it;
   }
 
   ++stats.found_stop_but_no_transport_;
@@ -145,7 +150,6 @@ void update_run(timetable const& tt,
                 run& r,
                 auto const& vdv_stops,
                 statistics& stats) {
-
   auto fr = rt::frun(tt, &rtt, r);
   if (!fr.is_rt()) {
     fr.rt_ = rtt.add_rt_transport(src, tt, r.t_);
@@ -158,7 +162,6 @@ void update_run(timetable const& tt,
     delay = new_time - fr[stop_idx].scheduled_time(et);
     rtt.update_time(fr.rt_, stop_idx, et, new_time);
     rtt.dispatch_event_change(fr.t_, stop_idx, et, *delay, false);
-    ++stats.matched_stop_;
   };
 
   auto const propagate_delay = [&](auto const stop_idx, event_type et) {
@@ -172,14 +175,26 @@ void update_run(timetable const& tt,
 
   for (auto const stop_idx : fr.stop_range_) {
 
-    while (vdv_stop_it != end(vdv_stops) && vdv_stop_it->is_additional_) {
-      ++stats.unsupported_additional_stop_;
+    while (vdv_stop_it != end(vdv_stops) &&
+           (vdv_stop_it->is_additional_ || vdv_stop_it->has_text81_)) {
+      if (vdv_stop_it->is_additional_) {
+        ++stats.unsupported_additional_stop_;
+      }
+      if (vdv_stop_it->has_text81_) {
+        ++stats.text81_stop_;
+      }
       ++vdv_stop_it;
     }
 
     // match stop ids
     if (vdv_stop_it != end(vdv_stops) &&
-        vdv_stop_it->id_ == fr[stop_idx].id()) {
+        fr[stop_idx].id().starts_with(vdv_stop_it->id_)) {
+      if (fr[stop_idx].id() == vdv_stop_it->id_) {
+        ++stats.full_match_stop_;
+      } else {
+        ++stats.prefix_match_stop_;
+      }
+
       if (stop_idx != 0 && vdv_stop_it->rt_arr_.has_value()) {
         update_event(stop_idx, event_type::kArr, *vdv_stop_it->rt_arr_);
       }
@@ -218,7 +233,7 @@ void process_vdv_run(timetable const& tt,
       run_node.select_nodes("IstHalt"),
       [](auto&& stop_xpath) { return vdv_stop{stop_xpath.node()}; });
 
-  auto r = get_run(tt, src, vdv_stops, stats);
+  auto r = get_run(tt, vdv_stops, stats);
   if (!r.has_value()) {
     ++stats.unmatchable_run_;
     return;
