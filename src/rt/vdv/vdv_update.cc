@@ -56,7 +56,13 @@ struct vdv_stop {
         arr_{get_opt_time(n, "Ankunftszeit")},
         rt_dep_{get_opt_time(n, "IstAbfahrtPrognose")},
         rt_arr_{get_opt_time(n, "IstAnkunftPrognose")},
-        is_additional_{get_opt_bool(n, "Zusatzhalt", false).value()} {}
+        is_additional_{get_opt_bool(n, "Zusatzhalt", false).value()} {
+    auto const xpath = n.select_node("AbfahrtssteigText");
+    has_text81_ =
+        xpath &&
+        std::string_view{
+            n.select_node("AbfahrtssteigText").node().child_value()} == "81";
+  }
 
   std::pair<unixtime_t, event_type> get_event() const {
     if (dep_.has_value()) {
@@ -71,6 +77,7 @@ struct vdv_stop {
   std::string_view id_;
   std::optional<unixtime_t> dep_, arr_, rt_dep_, rt_arr_;
   bool is_additional_;
+  bool has_text81_;
 };
 
 std::optional<rt::run> get_run(timetable const& tt,
@@ -78,8 +85,8 @@ std::optional<rt::run> get_run(timetable const& tt,
                                auto const& vdv_stops,
                                statistics& stats) {
 
-  auto const first_it =
-      utl::find_if(vdv_stops, [](auto&& s) { return !s.is_additional_; });
+  auto const first_it = utl::find_if(
+      vdv_stops, [](auto&& s) { return !s.is_additional_ && !s.has_text81_; });
   if (first_it == end(vdv_stops)) {
     ++stats.run_with_additional_stops_only_;
     return std::nullopt;
