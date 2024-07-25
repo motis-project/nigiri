@@ -75,15 +75,27 @@ struct vdv_stop {
 
 std::optional<rt::run> get_run(timetable const& tt,
                                source_idx_t const src,
-                               auto const& vdv_stops) {
+                               auto const& vdv_stops,
+                               statistics& stats) {
 
   auto const first_it =
       utl::find_if(vdv_stops, [](auto&& s) { return !s.is_additional_; });
   if (first_it == end(vdv_stops)) {
+    ++stats.run_with_additional_stops_only_;
     return std::nullopt;
   }
 
   auto const& first_stop = *first_it;
+
+  try {
+    tt.locations_.get({first_stop.id_, src});
+  } catch (std::exception const& e) {
+    std::cout << e.what() << "\n";
+    std::cout << "could not find vdv_stop_id " << first_stop.id_ << "\n";
+    ++stats.unknown_stop_id_;
+    return std::nullopt;
+  }
+
   auto const l = tt.locations_.get({first_stop.id_, src}).l_;
 
   for (auto const r : tt.location_routes_[l]) {
@@ -116,6 +128,7 @@ std::optional<rt::run> get_run(timetable const& tt,
     }
   }
 
+  ++stats.found_stop_but_no_transport_;
   return std::nullopt;
 }
 
@@ -198,7 +211,7 @@ void process_vdv_run(timetable const& tt,
       run_node.select_nodes("IstHalt"),
       [](auto&& stop_xpath) { return vdv_stop{stop_xpath.node()}; });
 
-  auto r = get_run(tt, src, vdv_stops);
+  auto r = get_run(tt, src, vdv_stops, stats);
   if (!r.has_value()) {
     ++stats.unmatchable_run_;
     return;
