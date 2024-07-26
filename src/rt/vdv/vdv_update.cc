@@ -81,15 +81,15 @@ std::optional<rt::run> get_run(timetable const& tt,
            utl::find_if(vdv_stops, [](auto&& s) { return !s.is_additional_; });
        vdv_stops_it != end(vdv_stops); ++vdv_stops_it) {
 
-    auto l = location_idx_t{0};
-    try {
-      l = tt.locations_.get({vdv_stops_it->id_, src}).l_;
-    } catch (std::out_of_range const&) {
+    auto loc = tt.locations_.find({vdv_stops_it->id_, src});
+    if (!loc.has_value()) {
       log(log_lvl::error, "vdv_update", "vdv stop {} not found",
           vdv_stops_it->id_);
       ++stats.unknown_stop_id_;
       continue;
     }
+
+    auto const l = loc->l_;
 
     for (auto const r : tt.location_routes_[l]) {
       auto const location_seq = tt.route_location_seq_[r];
