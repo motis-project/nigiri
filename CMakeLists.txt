@@ -110,3 +110,20 @@ file(GLOB_RECURSE nigiri-test-files test/*.cc)
 add_executable(nigiri-test ${nigiri-test-files})
 target_link_libraries(nigiri-test nigiri gtest ianatzdb-res nigiri-generated)
 target_compile_options(nigiri-test PRIVATE ${nigiri-compile-options})
+
+# --- DEV ---
+add_executable(mapper dev/mapper.cc)
+target_link_libraries(mapper PUBLIC cista)
+target_compile_options(mapper PUBLIC ${nigiri-compile-options})
+target_compile_features(mapper PUBLIC cxx_std_23)
+
+add_executable(map-writer dev/writer.cc)
+target_include_directories(map-writer PUBLIC dev)
+target_link_libraries(map-writer PUBLIC cista)
+target_compile_options(map-writer PUBLIC ${nigiri-compile-options})
+target_compile_features(map-writer PUBLIC cxx_std_23)
+
+add_executable(map-reader dev/writer.cc)
+target_link_libraries(map-reader PUBLIC cista)
+target_compile_options(map-reader PUBLIC ${nigiri-compile-options})
+target_compile_features(map-reader PUBLIC cxx_std_23)
