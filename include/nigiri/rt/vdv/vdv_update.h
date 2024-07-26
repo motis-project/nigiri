@@ -16,7 +16,7 @@ struct statistics {
     out << "unsupported additional run: " << s.unsupported_additional_run_
         << "\nunsupported cancelled run: " << s.unsupported_cancelled_run_
         << "\ntotal stops: " << s.total_stops_
-        << "\nmatched stop: " << s.matched_stops_
+        << "\nresolved stops: " << s.resolved_stops_
         << "\nunknown stops: " << s.unknown_stops_
         << "\nunsupported additional stop: " << s.unsupported_additional_stops_
         << "\nno transport found at stop: " << s.no_transport_found_at_stop_
@@ -32,7 +32,7 @@ struct statistics {
         lhs.unsupported_additional_run_ += rhs.unsupported_additional_run_,
         lhs.unsupported_cancelled_run_ += rhs.unsupported_cancelled_run_,
         lhs.total_stops_ += rhs.total_stops_,
-        lhs.matched_stops_ += rhs.matched_stops_,
+        lhs.resolved_stops_ += rhs.resolved_stops_,
         lhs.unknown_stops_ += rhs.unknown_stops_,
         lhs.unsupported_additional_stops_ += rhs.unsupported_additional_run_,
         lhs.no_transport_found_at_stop_ += rhs.no_transport_found_at_stop_,
@@ -45,7 +45,7 @@ struct statistics {
   std::uint32_t unsupported_additional_run_{0U};
   std::uint32_t unsupported_cancelled_run_{0U};
   std::uint32_t total_stops_{0U};
-  std::uint32_t matched_stops_{0U};
+  std::uint32_t resolved_stops_{0U};
   std::uint32_t unknown_stops_{0};
   std::uint32_t unsupported_additional_stops_{0U};
   std::uint32_t no_transport_found_at_stop_{0};

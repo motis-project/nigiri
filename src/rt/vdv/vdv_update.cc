@@ -90,7 +90,7 @@ vector<vdv_stop> resolve_stops(timetable const& tt,
         std::string_view{get(xpath.node(), "HaltID").child_value()};
     auto const l = tt.locations_.find({vdv_stop_id, src});
     if (l.has_value()) {
-      ++stats.matched_stops_;
+      ++stats.resolved_stops_;
       vdv_stops.emplace_back(l->l_, xpath.node());
     } else {
       ++stats.unknown_stops_;
@@ -206,6 +206,7 @@ void process_vdv_run(timetable const& tt,
   auto r = find_run(tt, vdv_stops, stats);
   if (!r.has_value()) {
     ++stats.unmatchable_run_;
+    std::cout << "\nunmatchable run:\n" << run_node << "\n\n";
     return;
   }
 
