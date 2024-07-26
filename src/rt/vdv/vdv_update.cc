@@ -191,7 +191,8 @@ void update_run(timetable const& tt,
   }
 
   while (vdv_stop_it != end(vdv_stops)) {
-    std::cout << "excess vdv stop: " << vdv_stop_it << "\n";
+    std::cout << "excess vdv stop: " << tt.locations_.get(vdv_stop_it->l_).id_
+              << "\n";
     ++stats.excess_vdv_stop_;
     ++vdv_stop_it;
   }
@@ -207,7 +208,9 @@ void process_vdv_run(timetable const& tt,
   auto r = find_run(tt, vdv_stops, stats);
   if (!r.has_value()) {
     ++stats.unmatchable_run_;
-    std::cout << "\nunmatchable run:\n" << run_node.value() << "\n\n";
+    std::cout << "\nunmatchable run:\n";
+    run_node.print(std::cout);
+    std::cout << "\n";
     return;
   }
 
