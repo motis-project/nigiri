@@ -53,6 +53,9 @@ using bitfield = bitset<kMaxDays>;
 
 using bitvec = cista::raw::bitvec;
 
+template <typename K = std::uint32_t>
+using bitvec_map = cista::basic_bitvec<cista::raw::vector<std::uint64_t>, K>;
+
 template <typename... Args>
 using tuple = cista::tuple<Args...>;
 
@@ -153,6 +156,8 @@ using trip_direction_t =
 using trip_direction_idx_t =
     cista::strong<std::uint32_t, struct _trip_direction_idx>;
 using trip_line_idx_t = cista::strong<std::uint32_t, struct _trip_line_idx>;
+using trip_direction_id_t =
+    cista::strong<std::uint8_t, struct _trip_direction_id>;
 using attribute_idx_t = cista::strong<std::uint32_t, struct _attribute_idx>;
 using attribute_combination_idx_t =
     cista::strong<std::uint32_t, struct _attribute_combination>;

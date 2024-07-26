@@ -62,6 +62,7 @@ struct trip {
        bitfield const*,
        block*,
        std::string id,
+       std::uint8_t direction_id,
        trip_direction_idx_t headsign,
        std::string short_name,
        bool bikes_allowed);
@@ -88,6 +89,7 @@ struct trip {
   bitfield const* service_{nullptr};
   block* block_{nullptr};
   std::string id_;
+  trip_direction_id_t direction_id_;
   trip_direction_idx_t headsign_;
   std::string short_name_;
 

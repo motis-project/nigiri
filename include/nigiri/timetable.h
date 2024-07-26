@@ -468,6 +468,7 @@ struct timetable {
   vecvec<trip_direction_string_idx_t, char> trip_direction_strings_;
   vector_map<trip_direction_idx_t, trip_direction_t> trip_directions_;
   vecvec<trip_line_idx_t, char> trip_lines_;
+  bitvec_map<trip_idx_t> trip_direction_ids_;
 
   // Transport to section meta infos; Compaction:
   // - only one value = value is valid for the whole run
