@@ -191,6 +191,7 @@ void update_run(timetable const& tt,
   }
 
   while (vdv_stop_it != end(vdv_stops)) {
+    std::cout << "excess vdv stop: " << vdv_stop_it << "\n";
     ++stats.excess_vdv_stop_;
     ++vdv_stop_it;
   }

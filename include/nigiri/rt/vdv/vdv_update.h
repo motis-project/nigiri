@@ -18,9 +18,11 @@ struct statistics {
         << "\ntotal stops: " << s.total_stops_
         << "\nresolved stops: " << s.resolved_stops_
         << "\nunknown stops: " << s.unknown_stops_
-        << "\nunsupported additional stop: " << s.unsupported_additional_stops_
+        << "\nunsupported additional stops: " << s.unsupported_additional_stops_
         << "\nno transport found at stop: " << s.no_transport_found_at_stop_
-        << "\nunmatchable run: " << s.unmatchable_run_
+        << "\ntotal runs: " << s.total_runs_
+        << "\nmatched runs: " << s.matched_runs_
+        << "\nunmatchable runs: " << s.unmatchable_run_
         << "\nexcess vdv stop: " << s.excess_vdv_stop_
         << "\nupdated event: " << s.updated_event_
         << "\npropagated delay: " << s.propagated_delay_ << "\n";
@@ -34,8 +36,10 @@ struct statistics {
         lhs.total_stops_ += rhs.total_stops_,
         lhs.resolved_stops_ += rhs.resolved_stops_,
         lhs.unknown_stops_ += rhs.unknown_stops_,
-        lhs.unsupported_additional_stops_ += rhs.unsupported_additional_run_,
+        lhs.unsupported_additional_stops_ += rhs.unsupported_additional_stops_,
+        lhs.total_runs_ += rhs.total_runs_,
         lhs.no_transport_found_at_stop_ += rhs.no_transport_found_at_stop_,
+        lhs.matched_runs_ += rhs.matched_runs_,
         lhs.unmatchable_run_ += rhs.unmatchable_run_,
         lhs.excess_vdv_stop_ += rhs.excess_vdv_stop_,
         lhs.updated_event_ += rhs.updated_event_,
@@ -46,9 +50,11 @@ struct statistics {
   std::uint32_t unsupported_cancelled_run_{0U};
   std::uint32_t total_stops_{0U};
   std::uint32_t resolved_stops_{0U};
-  std::uint32_t unknown_stops_{0};
+  std::uint32_t unknown_stops_{0U};
   std::uint32_t unsupported_additional_stops_{0U};
-  std::uint32_t no_transport_found_at_stop_{0};
+  std::uint32_t total_runs_{0U};
+  std::uint32_t no_transport_found_at_stop_{0U};
+  std::uint32_t matched_runs_{0U};
   std::uint32_t unmatchable_run_{0U};
   std::uint32_t excess_vdv_stop_{0U};
   std::uint32_t updated_event_{0U};
