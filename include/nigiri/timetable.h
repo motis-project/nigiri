@@ -50,7 +50,6 @@ struct timetable {
         preprocessing_footpaths_in_.emplace_back();
         transfer_time_.emplace_back(l.transfer_time_);
         parents_.emplace_back(l.parent_);
-        sorted_by_location_id_.emplace_back(l_idx);
       } else {
         log(log_lvl::error, "timetable.register_location",
             "duplicate station {}", l.id_);
@@ -109,7 +108,6 @@ struct timetable {
     array<vecvec<location_idx_t, footpath>, kMaxProfiles> footpaths_out_;
     array<vecvec<location_idx_t, footpath>, kMaxProfiles> footpaths_in_;
     vector_map<timezone_idx_t, timezone> timezones_;
-    vector<location_idx_t> sorted_by_location_id_;
   } locations_;
 
   struct transport {
