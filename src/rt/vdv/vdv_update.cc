@@ -91,9 +91,9 @@ std::optional<rt::run> get_run(timetable const& tt,
     auto l = location_idx_t{0};
     try {
       l = tt.locations_.get({vdv_stops_it->id_, src}).l_;
-    } catch (std::runtime_error const& e) {
-      log(log_lvl::error, "vdv_update", "vdv stop with id {} not found: {}",
-          vdv_stops_it->id_, e.what());
+    } catch (std::out_of_range const&) {
+      log(log_lvl::error, "vdv_update", "vdv stop {} not found",
+          vdv_stops_it->id_);
       ++stats.unknown_stop_id_;
       continue;
     }
