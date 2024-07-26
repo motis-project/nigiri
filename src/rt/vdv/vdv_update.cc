@@ -77,7 +77,6 @@ vector<vdv_stop> resolve_stops(timetable const& tt,
                                statistics& stats) {
   auto vdv_stops = vector<vdv_stop>{};
 
-  // resolve stops
   for (auto const xpath : run_node.select_nodes("IstHalt")) {
     ++stats.total_stops_;
 
