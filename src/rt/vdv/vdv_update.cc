@@ -206,7 +206,7 @@ void process_vdv_run(timetable const& tt,
   auto r = find_run(tt, vdv_stops, stats);
   if (!r.has_value()) {
     ++stats.unmatchable_run_;
-    std::cout << "\nunmatchable run:\n" << run_node << "\n\n";
+    std::cout << "\nunmatchable run:\n" << run_node.value() << "\n\n";
     return;
   }
 
