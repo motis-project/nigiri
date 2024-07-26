@@ -203,6 +203,8 @@ void process_vdv_run(timetable const& tt,
                      source_idx_t const src,
                      pugi::xml_node const run_node,
                      statistics& stats) {
+  ++stats.total_runs_;
+
   auto vdv_stops = resolve_stops(tt, src, run_node, stats);
 
   auto r = find_run(tt, vdv_stops, stats);
@@ -213,6 +215,7 @@ void process_vdv_run(timetable const& tt,
     std::cout << "\n";
     return;
   }
+  ++stats.matched_runs_;
 
   update_run(tt, rtt, src, *r, vdv_stops, stats);
 }
