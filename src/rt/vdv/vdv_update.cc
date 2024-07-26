@@ -114,7 +114,7 @@ std::optional<rt::run> find_run(timetable const& tt,
         auto const [t, ev_type] = vdv_stop.get_event();
         auto const [day_idx, mam] = tt.day_idx_mam(t);
         auto const event_times = tt.event_times_at_stop(
-            r, static_cast<stop_idx_t>(stop_idx), event_type::kDep);
+            r, static_cast<stop_idx_t>(stop_idx), ev_type);
         auto const it = utl::find_if(event_times, [&](delta const ev_time) {
           return ev_time.mam() == mam.count();
         });
