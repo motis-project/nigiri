@@ -10,6 +10,7 @@
 #include "nigiri/routing/clasz_mask.h"
 #include "nigiri/routing/limits.h"
 #include "nigiri/routing/location_match_mode.h"
+#include "nigiri/td_footpath.h"
 #include "nigiri/types.h"
 
 namespace nigiri::routing {
@@ -46,8 +47,9 @@ struct query {
   location_match_mode dest_match_mode_{
       nigiri::routing::location_match_mode::kExact};
   bool use_start_footpaths_{true};
-  std::vector<offset> start_{};
-  std::vector<offset> destination_{};
+  std::vector<offset> start_{}, destination_{};
+  std::vector<td_footpath> td_start_{}, td_dest_{};
+  duration_t max_start_offset_{kMaxTravelTime};
   std::uint8_t max_transfers_{kMaxTransfers};
   unsigned min_connection_count_{0U};
   bool extend_interval_earlier_{false};

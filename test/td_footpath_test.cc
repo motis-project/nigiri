@@ -74,3 +74,24 @@ TEST(td_footpath, simple) {
       });
   EXPECT_EQ(4, count);
 }
+
+TEST(td_footpath, backward) {
+  auto const fps = std::vector<td_footpath>{
+      {.target_ = location_idx_t{0U},
+       .valid_from_ = sys_days{1970_y / January / 1},
+       .duration_ = kInfeasible},
+      {.target_ = location_idx_t{0U},
+       .valid_from_ = sys_days{2020_y / March / 30} + 10h,
+       .duration_ = 10min},
+      {.target_ = location_idx_t{0U},
+       .valid_from_ = sys_days{2020_y / March / 30} + 12h,
+       .duration_ = kInfeasible}};
+
+  auto x = footpath{};
+  for_each_footpath<direction::kBackward>(
+      fps, sys_days{2020_y / March / 30} + 8h, [&](footpath const fp) {
+        x = fp;
+        return utl::cflow::kBreak;
+      });
+  EXPECT_EQ(kInfeasible, x);
+}
