@@ -105,6 +105,7 @@ vector<vdv_stop> resolve_stops(timetable const& tt,
 std::optional<rt::run> find_run(timetable const& tt,
                                 auto const& vdv_stops,
                                 statistics& stats) {
+
   for (auto const& vdv_stop : vdv_stops) {
     for (auto const r : tt.location_routes_[vdv_stop.l_]) {
       auto const location_seq = tt.route_location_seq_[r];
