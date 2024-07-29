@@ -17,19 +17,22 @@ using location_offset_t =
 
 duration_t get_duration(direction const search_dir,
                         unixtime_t const t,
-                        location_offset_t const o) {
-  return std::visit(utl::overloaded{[](duration_t const x) { return x; },
-                                    [&](std::span<td_footpath const> td) {
-                                      auto duration = kInfeasible;
-                                      for_each_footpath(
-                                          search_dir, td, t,
-                                          [&](footpath const fp) {
-                                            duration = fp.duration();
-                                            return utl::cflow::kBreak;
-                                          });
-                                      return duration;
-                                    }},
-                    o);
+                        location_offset_t const o,
+                        bool const invert = true) {
+  return std::visit(
+      utl::overloaded{
+          [](duration_t const x) { return x; },
+          [&](std::span<td_footpath const> td) {
+            auto duration = footpath::kMaxDuration;
+            for_each_footpath(
+                invert
+                    ? (search_dir == direction::kForward ? direction::kBackward
+                                                         : direction::kForward)
+                    : search_dir,
+                td, t, [&](footpath const fp) { duration = fp.duration(); });
+            return duration;
+          }},
+      o);
 }
 
 template <typename... Args>
@@ -49,6 +52,10 @@ void add_start_times_at_stop(direction const search_dir,
                              interval<unixtime_t> const& iv_at_stop,
                              location_offset_t const offset,
                              std::vector<start>& starts) {
+  auto const is_better_or_eq = [&](auto a, auto b) {
+    return search_dir == direction::kForward ? a <= b : a >= b;
+  };
+
   auto const first_day_idx = tt.day_idx_mam(iv_at_stop.from_).first;
   auto const last_day_idx = tt.day_idx_mam(iv_at_stop.to_).first;
   trace_start(
@@ -79,7 +86,7 @@ void add_start_times_at_stop(direction const search_dir,
           iv_at_stop.contains(tt.to_unixtime(day, stop_time_mam))) {
         auto const ev_time = tt.to_unixtime(day, stop_time_mam);
         auto const d = get_duration(search_dir, ev_time, offset);
-        if (d == kInfeasible) {
+        if (d == footpath::kMaxDuration) {
           trace_start("        {} => infeasible\n", ev_time);
           continue;
         }
@@ -89,6 +96,12 @@ void add_start_times_at_stop(direction const search_dir,
         if (!iv_at_start.contains(time_at_start)) {
           trace_start("      iv_at_start={} doesn't contain time_at_start={}\n",
                       iv_at_start, time_at_start);
+          continue;
+        }
+        if (!starts.empty() && starts.back().time_at_start_ == time_at_start &&
+            is_better_or_eq(starts.back().time_at_stop_, ev_time)) {
+          trace_start("      time_at_start={} -> no improvement\n", iv_at_start,
+                      time_at_start);
           continue;
         }
         auto const& s =
@@ -211,8 +224,9 @@ void add_starts_in_interval(direction const search_dir,
   if (add_ontrip) {
     auto const time_at_start =
         search_dir == direction::kForward ? iv.to_ : iv.from_ - 1_minutes;
-    auto const d = get_duration(search_dir, time_at_start, location_offset);
-    if (d != kInfeasible) {
+    auto const d =
+        get_duration(search_dir, time_at_start, location_offset, false);
+    if (d != footpath::kMaxDuration) {
       starts.emplace_back(
           start{.time_at_start_ = time_at_start,
                 .time_at_stop_ = search_dir == direction::kForward

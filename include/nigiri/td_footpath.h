@@ -38,8 +38,9 @@ void for_each_footpath(Collection const& c, unixtime_t const t, Fn&& f) {
             auto const start = std::max(pred->valid_from_, t);
             auto const target_time = start + pred->duration_;
             auto const duration_with_waiting = target_time - t;
-            auto const fp = footpath{pred->target_, duration_with_waiting};
-            f(fp);
+            if (duration_with_waiting < footpath::kMaxDuration) {
+              f(footpath{from->target_, duration_with_waiting});
+            }
           };
 
           for (auto it = from; it != to; ++it) {
@@ -61,11 +62,12 @@ void for_each_footpath(Collection const& c, unixtime_t const t, Fn&& f) {
             auto const start = std::min(valid_from, t);
             auto const target_time = start - duration;
             auto const duration_with_waiting = t - target_time;
-            auto const fp = footpath{from->target_, duration_with_waiting};
-            f(fp);
+            if (duration_with_waiting < footpath::kMaxDuration) {
+              f(footpath{from->target_, duration_with_waiting});
+            }
           };
 
-          if (from != to && from->valid_from_ < t) {
+          if (from != to && from->valid_from_ <= t) {
             if (from->duration_ != footpath::kMaxDuration) {
               call(t, from->duration_);
               return;

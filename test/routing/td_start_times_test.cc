@@ -46,7 +46,7 @@ X,00:10:00,00:10:00,B,2,0,0
 
 # frequencies.txt
 trip_id,start_time,end_time,headway_secs
-X,00:00:00,24:00:00,7200
+X,00:00:00,24:00:00,3600
 )");
 }
 
@@ -60,8 +60,6 @@ TEST(routing, td_start_times) {
   load_timetable({}, source_idx_t{0}, test_files(), tt);
   finalize(tt);
 
-  std::cout << tt << "\n";
-
   using namespace date;
   auto const A = tt.locations_.location_id_to_idx_.at(
       location_id{.id_ = "A", .src_ = src});
@@ -73,13 +71,13 @@ TEST(routing, td_start_times) {
              {
                  {.target_ = A,
                   .valid_from_ = sys_days{1970_y / January / 1},
-                  .duration_ = kInfeasible},
+                  .duration_ = footpath::kMaxDuration},
                  {.target_ = A,
                   .valid_from_ = sys_days{2020_y / March / 30} + 10h,
                   .duration_ = 10min},
                  {.target_ = A,
                   .valid_from_ = sys_days{2020_y / March / 30} + 12h,
-                  .duration_ = kInfeasible},
+                  .duration_ = footpath::kMaxDuration},
                  /*
                  {.target_ = B,
                   .valid_from_ = sys_days{1970_y / January / 1},

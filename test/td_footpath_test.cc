@@ -118,6 +118,17 @@ TEST(td_footpath, backward) {
        .duration_ = footpath::kMaxDuration}};
 
   auto called = false;
+  auto x = footpath{};
+  for_each_footpath<direction::kBackward>(
+      fps, sys_days{2020_y / March / 30} + 12h, [&](footpath const fp) {
+        called = true;
+        x = fp;
+        return utl::cflow::kBreak;
+      });
+  EXPECT_TRUE(called);
+  EXPECT_EQ(10min, x.duration());
+
+  called = false;
   for_each_footpath<direction::kBackward>(
       fps, sys_days{2020_y / March / 30} + 7h, [&](auto&&) {
         called = true;
@@ -126,7 +137,6 @@ TEST(td_footpath, backward) {
   EXPECT_TRUE(!called);
 
   called = false;
-  auto x = footpath{};
   for_each_footpath<direction::kBackward>(
       fps, sys_days{2020_y / March / 30} + 11h, [&](footpath const fp) {
         called = true;
