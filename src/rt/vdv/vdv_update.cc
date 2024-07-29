@@ -31,8 +31,9 @@ unixtime_t parse_time(std::string const& str) {
 std::optional<unixtime_t> get_opt_time(pugi::xml_node const& node,
                                        char const* str) {
   auto const xpath = node.select_node(str);
-  return xpath ? std::optional{parse_time(xpath.node().child_value())}
-               : std::nullopt;
+  return xpath != nullptr
+             ? std::optional{parse_time(xpath.node().child_value())}
+             : std::nullopt;
 }
 
 std::optional<bool> get_opt_bool(
@@ -40,12 +41,13 @@ std::optional<bool> get_opt_bool(
     char const* key,
     std::optional<bool> default_to = std::nullopt) {
   auto const xpath = node.select_node(key);
-  return xpath ? utl::parse<bool>(xpath.node().child_value()) : default_to;
+  return xpath != nullptr ? utl::parse<bool>(xpath.node().child_value())
+                          : default_to;
 }
 
 pugi::xml_node get(pugi::xml_node const& node, char const* str) {
   auto const xpath = node.select_node(str);
-  utl::verify(xpath, "required xml node not found: {}", str);
+  utl::verify(xpath != nullptr, "required xml node not found: {}", str);
   return xpath.node();
 }
 
