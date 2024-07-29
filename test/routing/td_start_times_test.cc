@@ -50,6 +50,15 @@ X,00:00:00,24:00:00,3600
 )");
 }
 
+constexpr auto const expected = R"(
+start_time=2020-03-30 11:50
+      {time_at_start=2020-03-30 11:50, time_at_stop=2020-03-30 12:00, stop=A}
+start_time=2020-03-30 10:50
+      {time_at_start=2020-03-30 10:50, time_at_stop=2020-03-30 11:00, stop=A}
+start_time=2020-03-30 09:50
+      {time_at_start=2020-03-30 09:50, time_at_stop=2020-03-30 10:00, stop=A}
+)";
+
 }  // namespace
 
 TEST(routing, td_start_times) {
@@ -68,28 +77,15 @@ TEST(routing, td_start_times) {
              interval<unixtime_t>{sys_days{2020_y / March / 30},
                                   sys_days{2020_y / March / 31}},
              {},
-             {
-                 {.target_ = A,
-                  .valid_from_ = sys_days{1970_y / January / 1},
-                  .duration_ = footpath::kMaxDuration},
-                 {.target_ = A,
-                  .valid_from_ = sys_days{2020_y / March / 30} + 10h,
-                  .duration_ = 10min},
-                 {.target_ = A,
-                  .valid_from_ = sys_days{2020_y / March / 30} + 12h,
-                  .duration_ = footpath::kMaxDuration},
-                 /*
-                 {.target_ = B,
-                  .valid_from_ = sys_days{1970_y / January / 1},
-                  .duration_ = kInfeasible},
-                 {.target_ = B,
-                  .valid_from_ = sys_days{2020_y / March / 30} + 16h,
-                  .duration_ = 10min},
-                 {.target_ = B,
-                  .valid_from_ = sys_days{2020_y / March / 30} + 18h,
-                  .duration_ = kInfeasible}
-                  */
-             },
+             {{.target_ = A,
+               .valid_from_ = sys_days{1970_y / January / 1},
+               .duration_ = footpath::kMaxDuration},
+              {.target_ = A,
+               .valid_from_ = sys_days{2020_y / March / 30} + 10h,
+               .duration_ = 10min},
+              {.target_ = A,
+               .valid_from_ = sys_days{2020_y / March / 30} + 12h,
+               .duration_ = footpath::kMaxDuration}},
              kMaxTravelTime, location_match_mode::kExact, false, starts, true,
              0);
   std::sort(begin(starts), end(starts),
@@ -107,12 +103,11 @@ TEST(routing, td_start_times) {
           std::vector<start>::const_iterator const& to_it) {
         ss << "start_time=" << from_it->time_at_start_ << "\n";
         for (auto const& s : it_range{from_it, to_it}) {
-          ss << "\t\t\t{time_at_start=" << s.time_at_start_
+          ss << "      {time_at_start=" << s.time_at_start_
              << ", time_at_stop=" << s.time_at_stop_
              << ", stop=" << tt.locations_.names_[s.stop_].view() << "}\n";
         }
       });
 
-  std::cout << ss.str() << "\n";
-  //  EXPECT_EQ(std::string_view{expected}, ss.str());
+  EXPECT_EQ(std::string_view{expected}, ss.str());
 }

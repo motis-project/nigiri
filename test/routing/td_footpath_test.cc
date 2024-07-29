@@ -12,6 +12,7 @@ using namespace date;
 using namespace nigiri;
 using namespace nigiri::loader;
 using namespace nigiri::loader::gtfs;
+using namespace std::chrono_literals;
 using nigiri::test::raptor_search;
 
 namespace {
@@ -168,15 +169,14 @@ TEST(routing, td_footpath) {
 
   tt.locations_.footpaths_out_[kProfile].resize(tt.n_locations());
   tt.locations_.footpaths_in_[kProfile].resize(tt.n_locations());
-  tt.locations_.footpaths_out_[kProfile][B1].push_back(
-      footpath{B2, 20_minutes});
-  tt.locations_.footpaths_in_[kProfile][B2].push_back(footpath{B1, 20_minutes});
+  tt.locations_.footpaths_out_[kProfile][B1].push_back(footpath{B2, 20min});
+  tt.locations_.footpaths_in_[kProfile][B2].push_back(footpath{B1, 20min});
 
   auto rtt = rt::create_rt_timetable(tt, sys_days{2024_y / June / 19});
 
   auto const run_search = [&]() {
     return raptor_search(tt, &rtt, "A", "C",
-                         unixtime_t{sys_days{2024_y / June / 19}} + 8_hours,
+                         unixtime_t{sys_days{2024_y / June / 19}} + 8h,
                          nigiri::direction::kForward,
                          routing::all_clasz_allowed(), false, kProfile);
   };
@@ -195,11 +195,9 @@ TEST(routing, td_footpath) {
 
   // Add elevator available beginning with 11:25 with 10min footpath length.
   rtt.td_footpaths_out_[kProfile][B1].push_back(td_footpath{
-      B2, unixtime_t{sys_days{2024_y / June / 19} + 9_hours + 25_minutes},
-      10_minutes});
+      B2, unixtime_t{sys_days{2024_y / June / 19} + 9h + 25min}, 10min});
   rtt.td_footpaths_in_[kProfile][B2].push_back(td_footpath{
-      B1, unixtime_t{sys_days{2024_y / June / 19} + 9_hours + 25_minutes},
-      10_minutes});
+      B1, unixtime_t{sys_days{2024_y / June / 19} + 9h + 25min}, 10min});
 
   EXPECT_EQ(kElevatorStartsWorkingAt1125, to_string(tt, run_search()));
 }
