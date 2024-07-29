@@ -76,6 +76,35 @@ TEST(td_footpath, simple) {
   EXPECT_EQ(4, count);
 }
 
+TEST(td_footpath, backward_single) {
+  auto const fps = std::vector<td_footpath>{
+      {.target_ = location_idx_t{0U},
+       .valid_from_ = sys_days{1970_y / January / 1},
+       .duration_ = footpath::kMaxDuration},
+      {.target_ = location_idx_t{0U},
+       .valid_from_ = sys_days{2020_y / March / 30} + 10h,
+       .duration_ = 10min}};
+
+  auto called = false;
+  for_each_footpath<direction::kBackward>(
+      fps, sys_days{2020_y / March / 30} + 7h, [&](auto&&) {
+        called = true;
+        return utl::cflow::kBreak;
+      });
+  EXPECT_TRUE(!called);
+
+  called = false;
+  auto x = footpath{};
+  for_each_footpath<direction::kBackward>(
+      fps, sys_days{2020_y / March / 30} + 11h, [&](footpath const fp) {
+        called = true;
+        x = fp;
+        return utl::cflow::kBreak;
+      });
+  EXPECT_TRUE(called);
+  EXPECT_EQ(10min, x.duration());
+}
+
 TEST(td_footpath, backward) {
   auto const fps = std::vector<td_footpath>{
       {.target_ = location_idx_t{0U},

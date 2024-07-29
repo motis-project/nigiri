@@ -3,6 +3,8 @@
 #include "cista/reflection/comparable.h"
 
 #include "utl/cflow.h"
+#include "utl/equal_ranges_linear.h"
+#include "utl/pairwise.h"
 
 #include "nigiri/footpath.h"
 #include "nigiri/types.h"
@@ -22,63 +24,66 @@ struct td_footpath {
 
 template <direction SearchDir, typename Collection, typename Fn>
 void for_each_footpath(Collection const& c, unixtime_t const t, Fn&& f) {
-  static constexpr auto const kFwd = SearchDir == direction::kForward;
-
   auto const r = to_range<SearchDir>(c);
+  utl::equal_ranges_linear(
+      begin(r), end(r),
+      [](td_footpath const& a, td_footpath const& b) {
+        return a.target_ == b.target_;
+      },
+      [&](auto&& from, auto&& to) {
+        if constexpr (SearchDir == direction::kForward) {
+          td_footpath const* pred = nullptr;
 
-  auto to = location_idx_t::invalid();
-  auto pred = static_cast<td_footpath const*>(nullptr);
-  auto const call = [&](td_footpath const& curr) -> std::pair<bool, bool> {
-    std::cout << "CALL: " << (pred != nullptr) << ", duration="
-              << (pred == nullptr ? kInfeasible : pred->duration_) << "\n";
-    auto x = kFwd ? pred : &curr;
-    if (x != nullptr && x->duration_ != footpath::kMaxDuration) {
-      auto const start =
-          kFwd ? std::max(x->valid_from_, t)
-               : std::min(/* TODO why pred */ pred->valid_from_, t);
-      std::cout << "  start=" << start << "=min(" << x->valid_from_ << ", " << t
-                << ")\n";
-      auto const target_time = start + (kFwd ? 1 : -1) * x->duration_;
-      std::cout << "  x_duration=" << x->duration_
-                << ", target_time=" << target_time << "\n";
-      auto const duration = kFwd ? (target_time - t) : (t - target_time);
-      std::cout << "duration=" << duration << "\n";
-      auto const fp = footpath{x->target_, duration};
-      auto const stop = f(fp) == utl::cflow::kBreak;
-      return {true, stop};
-    }
-    return {false, false};
-  };
+          auto const call = [&]() {
+            auto const start = std::max(pred->valid_from_, t);
+            auto const target_time = start + pred->duration_;
+            auto const duration_with_waiting = target_time - t;
+            auto const fp = footpath{pred->target_, duration_with_waiting};
+            f(fp);
+          };
 
-  auto called = false;
-  auto stop = false;
-  for (auto const& fp : r) {
-    std::cout << "fp: valid_from=" << fp.valid_from_
-              << ", duration=" << fp.duration_ << ", called=" << called
-              << ", to=" << to << ", fp_target=" << fp.target_ << ", reached="
-              << (kFwd ? fp.valid_from_ > t : fp.valid_from_ < t) << "\n";
+          for (auto it = from; it != to; ++it) {
+            if (pred == nullptr || pred->duration_ == footpath::kMaxDuration ||
+                it->valid_from_ < t) {
+              pred = &*it;
+            } else {
+              call();
+              return;
+            }
+          }
 
-    if (!called && (fp.target_ != to ||
-                    (kFwd ? fp.valid_from_ > t : fp.valid_from_ < t))) {
-      std::tie(called, stop) = call(fp);
-      if (stop) {
-        return;
-      }
-    }
+          if (pred != nullptr && pred->duration_ != footpath::kMaxDuration) {
+            call();
+          }
+        } else /* (SearchDir == direction::kBackward) */ {
+          auto const call = [&](unixtime_t const valid_from,
+                                duration_t const duration) {
+            auto const start = std::min(valid_from, t);
+            auto const target_time = start - duration;
+            auto const duration_with_waiting = t - target_time;
+            auto const fp = footpath{from->target_, duration_with_waiting};
+            f(fp);
+          };
 
-    if (fp.target_ != to) {
-      called = false;
-    }
-    to = fp.target_;
-    pred = &fp;
-  }
+          if (from != to && from->valid_from_ < t) {
+            if (from->duration_ != footpath::kMaxDuration) {
+              call(t, from->duration_);
+              return;
+            } else if (auto const next = std::next(from); next != to) {
+              call(from->valid_from_, next->duration_);
+              return;
+            }
+          }
 
-  if constexpr (kFwd) {
-    if (!called) {
-      std::cout << "-> last call\n";
-      call(td_footpath{});
-    }
-  }
+          for (auto const [a, b] : utl::pairwise(to_range<SearchDir>(c))) {
+            if (b.duration_ != footpath::kMaxDuration &&
+                interval{b.valid_from_, a.valid_from_}.contains(t)) {
+              call(a.valid_from_, b.duration_);
+              return;
+            }
+          }
+        }
+      });
 }
 
 template <typename Collection, typename Fn>
