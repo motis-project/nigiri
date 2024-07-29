@@ -20,18 +20,16 @@ duration_t get_duration(direction const search_dir,
                         location_offset_t const o,
                         bool const invert = true) {
   return std::visit(
-      utl::overloaded{
-          [](duration_t const x) { return x; },
-          [&](std::span<td_footpath const> td) {
-            auto duration = footpath::kMaxDuration;
-            for_each_footpath(
-                invert
-                    ? (search_dir == direction::kForward ? direction::kBackward
-                                                         : direction::kForward)
-                    : search_dir,
-                td, t, [&](footpath const fp) { duration = fp.duration(); });
-            return duration;
-          }},
+      utl::overloaded{[](duration_t const x) { return x; },
+                      [&](std::span<td_footpath const> td) {
+                        auto duration = footpath::kMaxDuration;
+                        for_each_footpath(
+                            invert ? flip(search_dir) : search_dir, td, t,
+                            [&](footpath const fp) {
+                              duration = fp.duration();
+                            });
+                        return duration;
+                      }},
       o);
 }
 
@@ -294,19 +292,22 @@ void get_starts(direction const search_dir,
       },
       [&](auto&& from_it, auto&& to_it) {
         auto const offset = location_offset_t{std::span{from_it, to_it}};
-        std::visit(utl::overloaded{
-                       [&](interval<unixtime_t> const interval) {
-                         add_starts_in_interval(
-                             search_dir, tt, rtt, interval, from_it->target_,
-                             offset, max_start_offset, starts, add_ontrip);
-                       },
-                       [&](unixtime_t const t) {
-                         auto const d = get_duration(search_dir, t, offset);
-                         starts.emplace_back(
-                             start{.time_at_start_ = t,
-                                   .time_at_stop_ = fwd ? t + d : t - d,
-                                   .stop_ = from_it->target_});
-                       }},
+        std::visit(utl::overloaded{[&](interval<unixtime_t> const interval) {
+                                     add_starts_in_interval(
+                                         search_dir, tt, rtt, interval,
+                                         from_it->target_, offset,
+                                         max_start_offset, starts, add_ontrip);
+                                   },
+                                   [&](unixtime_t const t) {
+                                     auto const d = get_duration(search_dir, t,
+                                                                 offset, false);
+                                     if (d != footpath::kMaxDuration) {
+                                       starts.emplace_back(start{
+                                           .time_at_start_ = t,
+                                           .time_at_stop_ = fwd ? t + d : t - d,
+                                           .stop_ = from_it->target_});
+                                     }
+                                   }},
                    start_time);
       });
 }

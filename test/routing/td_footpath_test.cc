@@ -103,53 +103,58 @@ std::string to_string(timetable const& tt,
     x.print(ss, tt);
     ss << "\n";
   }
-  std::cout << ss.str() << "\n";
   return ss.str();
 }
 
 constexpr auto const kEverythingWorks = R"(
-[2024-06-19 08:00, 2024-06-19 10:00]
+[2024-06-19 07:00, 2024-06-19 10:00]
 TRANSFERS: 1
-     FROM: (A, A) [2024-06-19 08:00]
+     FROM: (A, A) [2024-06-19 07:35]
        TO: (C, C) [2024-06-19 10:00]
-leg 0: (A, A) [2024-06-19 08:00] -> (B1, B1) [2024-06-19 09:00]
+leg 0: (A, A) [2024-06-19 07:35] -> (A, A) [2024-06-19 08:00]
+  MUMO (id=0, duration=25)
+leg 1: (A, A) [2024-06-19 08:00] -> (B1, B1) [2024-06-19 09:00]
    0: A       A...............................................                               d: 19.06 08:00 [19.06 10:00]  [{name=RE 1, day=2024-06-19, id=T1, src=0}]
    1: B1      B1.............................................. a: 19.06 09:00 [19.06 11:00]
-leg 1: (B1, B1) [2024-06-19 09:00] -> (B2, B2) [2024-06-19 09:20]
+leg 2: (B1, B1) [2024-06-19 09:00] -> (B2, B2) [2024-06-19 09:20]
   FOOTPATH (duration=20)
-leg 2: (B2, B2) [2024-06-19 09:30] -> (C, C) [2024-06-19 10:00]
+leg 3: (B2, B2) [2024-06-19 09:30] -> (C, C) [2024-06-19 10:00]
    0: B2      B2..............................................                               d: 19.06 09:30 [19.06 11:30]  [{name=RE 2, day=2024-06-19, id=T2, src=0}]
    1: C       C............................................... a: 19.06 10:00 [19.06 12:00]
 
 )";
 
 constexpr auto const kElevatorOutOfOrder = R"(
-[2024-06-19 08:00, 2024-06-19 13:00]
+[2024-06-19 07:00, 2024-06-19 13:00]
 TRANSFERS: 1
-     FROM: (A, A) [2024-06-19 08:00]
+     FROM: (A, A) [2024-06-19 07:35]
        TO: (C, C) [2024-06-19 13:00]
-leg 0: (A, A) [2024-06-19 08:00] -> (D, D) [2024-06-19 10:00]
+leg 0: (A, A) [2024-06-19 07:35] -> (A, A) [2024-06-19 08:00]
+  MUMO (id=0, duration=25)
+leg 1: (A, A) [2024-06-19 08:00] -> (D, D) [2024-06-19 10:00]
    0: A       A...............................................                               d: 19.06 08:00 [19.06 10:00]  [{name=RE 2, day=2024-06-19, id=T4, src=0}]
    1: D       D............................................... a: 19.06 10:00 [19.06 12:00]
-leg 1: (D, D) [2024-06-19 10:00] -> (D, D) [2024-06-19 10:02]
+leg 2: (D, D) [2024-06-19 10:00] -> (D, D) [2024-06-19 10:02]
   FOOTPATH (duration=2)
-leg 2: (D, D) [2024-06-19 11:00] -> (C, C) [2024-06-19 13:00]
+leg 3: (D, D) [2024-06-19 11:00] -> (C, C) [2024-06-19 13:00]
    0: D       D...............................................                               d: 19.06 11:00 [19.06 13:00]  [{name=RE 1, day=2024-06-19, id=T5, src=0}]
    1: C       C............................................... a: 19.06 13:00 [19.06 15:00]
 
 )";
 
 constexpr auto const kElevatorStartsWorkingAt1125 = R"(
-[2024-06-19 08:00, 2024-06-19 10:30]
+[2024-06-19 07:00, 2024-06-19 10:30]
 TRANSFERS: 1
-     FROM: (A, A) [2024-06-19 08:00]
+     FROM: (A, A) [2024-06-19 07:35]
        TO: (C, C) [2024-06-19 10:30]
-leg 0: (A, A) [2024-06-19 08:00] -> (B1, B1) [2024-06-19 09:00]
+leg 0: (A, A) [2024-06-19 07:35] -> (A, A) [2024-06-19 08:00]
+  MUMO (id=0, duration=25)
+leg 1: (A, A) [2024-06-19 08:00] -> (B1, B1) [2024-06-19 09:00]
    0: A       A...............................................                               d: 19.06 08:00 [19.06 10:00]  [{name=RE 1, day=2024-06-19, id=T1, src=0}]
    1: B1      B1.............................................. a: 19.06 09:00 [19.06 11:00]
-leg 1: (B1, B1) [2024-06-19 09:25] -> (B2, B2) [2024-06-19 09:35]
+leg 2: (B1, B1) [2024-06-19 09:25] -> (B2, B2) [2024-06-19 09:35]
   FOOTPATH (duration=10)
-leg 2: (B2, B2) [2024-06-19 10:00] -> (C, C) [2024-06-19 10:30]
+leg 3: (B2, B2) [2024-06-19 10:00] -> (C, C) [2024-06-19 10:30]
    0: B2      B2..............................................                               d: 19.06 10:00 [19.06 12:00]  [{name=RE 1, day=2024-06-19, id=T3, src=0}]
    1: C       C............................................... a: 19.06 10:30 [19.06 12:30]
 
@@ -164,6 +169,8 @@ TEST(routing, td_footpath) {
   load_timetable({}, source_idx_t{0}, test_files(), tt);
   finalize(tt);
 
+  auto const A = tt.locations_.get({"A", {}}).l_;
+  auto const C = tt.locations_.get({"C", {}}).l_;
   auto const B1 = tt.locations_.get({"B1", {}}).l_;
   auto const B2 = tt.locations_.get({"B2", {}}).l_;
 
@@ -175,10 +182,26 @@ TEST(routing, td_footpath) {
   auto rtt = rt::create_rt_timetable(tt, sys_days{2024_y / June / 19});
 
   auto const run_search = [&]() {
-    return raptor_search(tt, &rtt, "A", "C",
-                         unixtime_t{sys_days{2024_y / June / 19}} + 8h,
-                         nigiri::direction::kForward,
-                         routing::all_clasz_allowed(), false, kProfile);
+    return raptor_search(
+        tt, &rtt,
+        {.start_time_ = unixtime_t{sys_days{2024_y / June / 19}} + 7h,
+         .start_match_mode_ = routing::location_match_mode::kIntermodal,
+         .dest_match_mode_ = routing::location_match_mode::kEquivalent,
+         .use_start_footpaths_ = false,
+         .destination_ = {{C, 0_minutes, 0}},
+         .td_start_ = {{.target_ = A,
+                        .valid_from_ = sys_days{1970_y / January / 1},
+                        .duration_ = footpath::kMaxDuration},
+                       {.target_ = A,
+                        .valid_from_ =
+                            sys_days{2024_y / June / 19} + 7h + 30min,
+                        .duration_ = 10min},
+                       {.target_ = A,
+                        .valid_from_ =
+                            sys_days{2024_y / June / 19} + 7h + 45min,
+                        .duration_ = footpath::kMaxDuration}},
+         .prf_idx_ = 2U},
+        direction::kForward);
   };
 
   // Base: elevator available, no real-time information.

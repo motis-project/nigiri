@@ -294,6 +294,10 @@ enum class location_type : std::uint8_t {
 enum class event_type { kArr, kDep };
 enum class direction { kForward, kBackward };
 
+inline constexpr direction flip(direction const d) noexcept {
+  return d == direction::kForward ? direction::kBackward : direction::kForward;
+}
+
 inline std::string_view to_str(direction const d) {
   return d == direction::kForward ? "FWD" : "BWD";
 }
