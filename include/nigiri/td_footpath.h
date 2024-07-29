@@ -22,19 +22,28 @@ struct td_footpath {
 
 template <direction SearchDir, typename Collection, typename Fn>
 void for_each_footpath(Collection const& c, unixtime_t const t, Fn&& f) {
+  static constexpr auto const kFwd = SearchDir == direction::kForward;
+
+  auto const r = to_range<SearchDir>(c);
+
   auto to = location_idx_t::invalid();
   auto pred = static_cast<td_footpath const*>(nullptr);
-  auto const call = [&]() -> std::pair<bool, bool> {
-    if (pred != nullptr && pred->duration_ != kInfeasible) {
-      auto const start = SearchDir == direction::kForward
-                             ? std::max(pred->valid_from_, t)
-                             : std::min(pred->valid_from_, t);
-      auto const target_time =
-          start + (SearchDir == direction::kForward ? 1 : -1) * pred->duration_;
-      auto const duration = SearchDir == direction::kForward
-                                ? (target_time - t)
-                                : (t - target_time);
-      auto const fp = footpath{pred->target_, duration};
+  auto const call = [&](td_footpath const& curr) -> std::pair<bool, bool> {
+    std::cout << "CALL: " << (pred != nullptr) << ", duration="
+              << (pred == nullptr ? kInfeasible : pred->duration_) << "\n";
+    auto x = kFwd ? pred : &curr;
+    if (x != nullptr && x->duration_ != footpath::kMaxDuration) {
+      auto const start =
+          kFwd ? std::max(x->valid_from_, t)
+               : std::min(/* TODO why pred */ pred->valid_from_, t);
+      std::cout << "  start=" << start << "=min(" << x->valid_from_ << ", " << t
+                << ")\n";
+      auto const target_time = start + (kFwd ? 1 : -1) * x->duration_;
+      std::cout << "  x_duration=" << x->duration_
+                << ", target_time=" << target_time << "\n";
+      auto const duration = kFwd ? (target_time - t) : (t - target_time);
+      std::cout << "duration=" << duration << "\n";
+      auto const fp = footpath{x->target_, duration};
       auto const stop = f(fp) == utl::cflow::kBreak;
       return {true, stop};
     }
@@ -43,9 +52,15 @@ void for_each_footpath(Collection const& c, unixtime_t const t, Fn&& f) {
 
   auto called = false;
   auto stop = false;
-  for (auto const& fp : c) {
-    if (!called && (fp.target_ != to || fp.valid_from_ > t)) {
-      std::tie(called, stop) = call();
+  for (auto const& fp : r) {
+    std::cout << "fp: valid_from=" << fp.valid_from_
+              << ", duration=" << fp.duration_ << ", called=" << called
+              << ", to=" << to << ", fp_target=" << fp.target_ << ", reached="
+              << (kFwd ? fp.valid_from_ > t : fp.valid_from_ < t) << "\n";
+
+    if (!called && (fp.target_ != to ||
+                    (kFwd ? fp.valid_from_ > t : fp.valid_from_ < t))) {
+      std::tie(called, stop) = call(fp);
       if (stop) {
         return;
       }
@@ -58,8 +73,11 @@ void for_each_footpath(Collection const& c, unixtime_t const t, Fn&& f) {
     pred = &fp;
   }
 
-  if (!called) {
-    call();
+  if constexpr (kFwd) {
+    if (!called) {
+      std::cout << "-> last call\n";
+      call(td_footpath{});
+    }
   }
 }
 

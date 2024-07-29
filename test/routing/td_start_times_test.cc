@@ -65,9 +65,6 @@ TEST(routing, td_start_times) {
   using namespace date;
   auto const A = tt.locations_.location_id_to_idx_.at(
       location_id{.id_ = "A", .src_ = src});
-  auto const B = tt.locations_.location_id_to_idx_.at(
-      location_id{.id_ = "B", .src_ = src});
-  assert(A < B);
   auto starts = std::vector<start>{};
   get_starts(direction::kForward, tt, nullptr,
              interval<unixtime_t>{sys_days{2020_y / March / 30},

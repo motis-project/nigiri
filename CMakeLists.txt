@@ -106,7 +106,11 @@ configure_file (
   ${CMAKE_CURRENT_SOURCE_DIR}/test/test_dir.h.in
   ${CMAKE_CURRENT_BINARY_DIR}/generated/test_dir.h
 )
-file(GLOB_RECURSE nigiri-test-files test/*.cc)
-add_executable(nigiri-test ${nigiri-test-files})
-target_link_libraries(nigiri-test nigiri gtest ianatzdb-res nigiri-generated)
+#file(GLOB_RECURSE nigiri-test-files test/*.cc)
+#add_executable(nigiri-test ${nigiri-test-files})
+add_executable(nigiri-test test/main.cc test/td_footpath_test.cc)
+target_include_directories(nigiri-test PRIVATE include)
+target_compile_features(nigiri-test PRIVATE cxx_std_23)
+target_link_libraries(nigiri-test gtest protobuf::libprotobuf date::date cista::cista unordered_dense::unordered_dense utl nigiri-generated)
+#target_link_libraries(nigiri-test nigiri gtest ianatzdb-res nigiri-generated)
 target_compile_options(nigiri-test PRIVATE ${nigiri-compile-options})

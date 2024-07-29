@@ -25,47 +25,48 @@ TEST(td_footpath, simple) {
        * 2024/06/16 11:00 am  |  2024/06/17 12:00 am   |  not possible
        * 2024/06/17 12:00 am  |                        |   5 min
        */
-      td_footpath{b, kNull, 5_minutes},
-      td_footpath{b, sys_days{June / 15 / 2024_y} + 10_hours, 10_minutes},
-      td_footpath{b, sys_days{June / 15 / 2024_y} + 14_hours, 5_minutes},
-      td_footpath{b, sys_days{June / 16 / 2024_y} + 11_hours, kInfeasible},
-      td_footpath{b, sys_days{June / 17 / 2024_y} + 12_hours, 5_minutes},
+      td_footpath{b, kNull, 5min},
+      td_footpath{b, sys_days{June / 15 / 2024_y} + 10h, 10min},
+      td_footpath{b, sys_days{June / 15 / 2024_y} + 14h, 5min},
+      td_footpath{b, sys_days{June / 16 / 2024_y} + 11h,
+                  footpath::kMaxDuration},
+      td_footpath{b, sys_days{June / 17 / 2024_y} + 12h, 5min},
 
       /*
        *                      |  2024/06/21 12:00 am   |   not possible
        * 2024/06/17 12:00 am  |                        |   5 min
        */
-      td_footpath{c, kNull, kInfeasible},
-      td_footpath{c, sys_days{June / 15 / 2024_y} + 13_hours, 5_minutes},
+      td_footpath{c, kNull, footpath::kMaxDuration},
+      td_footpath{c, sys_days{June / 15 / 2024_y} + 13h, 5min},
 
       /*
        * not possible
        */
-      td_footpath{d, kNull, kInfeasible},
+      td_footpath{d, kNull, footpath::kMaxDuration},
 
       /*
        * start > t
        */
-      td_footpath{e, sys_days{June / 15 / 2024_y} + 12_hours, 5_minutes},
-      td_footpath{e, sys_days{June / 15 / 2024_y} + 13_hours, 10_minutes},
+      td_footpath{e, sys_days{June / 15 / 2024_y} + 12h, 5min},
+      td_footpath{e, sys_days{June / 15 / 2024_y} + 13h, 10min},
 
       /*
        * start > t
        */
-      td_footpath{f, sys_days{June / 15 / 2024_y} + 9_hours, 5_minutes},
-      td_footpath{f, sys_days{June / 15 / 2024_y} + 10_hours, 7_minutes},
+      td_footpath{f, sys_days{June / 15 / 2024_y} + 9h, 5min},
+      td_footpath{f, sys_days{June / 15 / 2024_y} + 10h, 7min},
   });
 
   auto count = 0U;
   auto const map = vector_map<location_idx_t, unixtime_t>{
       kNull,
-      sys_days{June / 15 / 2024_y} + 11_hours + 10_minutes,
-      sys_days{June / 15 / 2024_y} + 13_hours + 5_minutes,
+      sys_days{June / 15 / 2024_y} + 11h + 10min,
+      sys_days{June / 15 / 2024_y} + 13h + 5min,
       kNull,
-      sys_days{June / 15 / 2024_y} + 12_hours + 5_minutes,
-      sys_days{June / 15 / 2024_y} + 11_hours + 7_minutes,
+      sys_days{June / 15 / 2024_y} + 12h + 5min,
+      sys_days{June / 15 / 2024_y} + 11h + 7min,
   };
-  auto const now = sys_days{June / 15 / 2024_y} + 11_hours;
+  auto const now = sys_days{June / 15 / 2024_y} + 11h;
   for_each_footpath<direction::kForward>(
       td_footpath_out[a], now, [&](footpath const fp) {
         EXPECT_EQ(map[fp.target()], now + fp.duration());
@@ -79,19 +80,40 @@ TEST(td_footpath, backward) {
   auto const fps = std::vector<td_footpath>{
       {.target_ = location_idx_t{0U},
        .valid_from_ = sys_days{1970_y / January / 1},
-       .duration_ = kInfeasible},
+       .duration_ = footpath::kMaxDuration},
       {.target_ = location_idx_t{0U},
        .valid_from_ = sys_days{2020_y / March / 30} + 10h,
        .duration_ = 10min},
       {.target_ = location_idx_t{0U},
        .valid_from_ = sys_days{2020_y / March / 30} + 12h,
-       .duration_ = kInfeasible}};
+       .duration_ = footpath::kMaxDuration}};
 
+  auto called = false;
+  for_each_footpath<direction::kBackward>(
+      fps, sys_days{2020_y / March / 30} + 7h, [&](auto&&) {
+        called = true;
+        return utl::cflow::kBreak;
+      });
+  EXPECT_TRUE(!called);
+
+  called = false;
   auto x = footpath{};
   for_each_footpath<direction::kBackward>(
-      fps, sys_days{2020_y / March / 30} + 8h, [&](footpath const fp) {
+      fps, sys_days{2020_y / March / 30} + 11h, [&](footpath const fp) {
+        called = true;
         x = fp;
         return utl::cflow::kBreak;
       });
-  EXPECT_EQ(kInfeasible, x);
+  EXPECT_TRUE(called);
+  EXPECT_EQ(10min, x.duration());
+
+  called = false;
+  for_each_footpath<direction::kBackward>(
+      fps, sys_days{2020_y / March / 30} + 13h, [&](footpath const fp) {
+        called = true;
+        x = fp;
+        return utl::cflow::kBreak;
+      });
+  EXPECT_TRUE(called);
+  EXPECT_EQ(1h + 10min, x.duration());
 }
