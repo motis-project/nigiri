@@ -1,20 +1,27 @@
+#include <cista/containers/mmap_vec.h>
 #include <cista/mmap.h>
 #include <cstddef>
 #include <algorithm>
 #include <exception>
 #include <fstream>
 #include <ios>
+#include <numeric>
 #include <ranges>
 #include <iostream>
 #include <format>
 #include <stdexcept>
 #include <vector>
 
+// #include <sys/resource.h>
+
 #include "cista/mmap.h"
 
 #include "shared.h"
 
 const std::string in_file{"../dev/shapes.txt"};
+constexpr std::string_view cache_file_template{"shape-cache.{}.dat"};
+
+using datatype = int32_t;
 
 class InvalidShapesFormat final : public std::runtime_error {
 public:
@@ -31,7 +38,7 @@ InvalidShapesFormat::~InvalidShapesFormat() = default;
 
 struct ShapePoint {
   const size_t id;
-  const int32_t lat, lon;
+  const datatype lat, lon;
   const size_t seq;
 
   static constexpr std::string_view sep{","};
@@ -69,24 +76,54 @@ auto read_lines(auto& data_source) {
         return first >= '0' && first <= '9';
     };
     auto join = [](const auto& view) { return std::string{view.begin(), view.end()}; };
-    
+
     return data_source
         | std::views::filter(filter_cr)
         | std::views::chunk_by(pred)
         | std::views::filter(not_empty)
         | std::views::filter(starts_with_int)
         | std::views::transform(join)
-        | std::views::take(3)
+        // | std::views::take(1'000'000)
         | std::views::transform(ShapePoint::from_string)
     ;
 }
 
+auto get_cache(cista::mmap::protection mode) {
+  return mm_vecvec<std::size_t, datatype>{
+      cista::basic_mmap_vec<datatype, std::size_t>{cista::mmap{std::format(cache_file_template, "values").data(), mode}},
+      cista::basic_mmap_vec<std::size_t, std::size_t>{cista::mmap{std::format(cache_file_template, "metadata").data(), mode}}
+  };
+}
+
+auto get_cache_writer() {
+  return get_cache(cista::mmap::protection::WRITE);
+}
+
 int main() {
+  // rlimit limit{50, RLIM_INFINITY};
+  // std::cout << std::format("Limits applied: {}", ::setrlimit(RLIMIT_RSS, &limit)) << std::endl;
+
     cista::mmap_vec<char> shaped_data{cista::mmap{in_file.data(), cista::mmap::protection::READ}};
+    auto cache = get_cache_writer();
+
+    size_t last_id{0u};
+    auto bucket = cache.add_back_sized(0u);
 
     std::ranges::for_each(
         read_lines(shaped_data),
-        [](const auto& x) { std::cout << static_cast<std::string>(x) << std::endl; }
+        [&bucket, &cache, &last_id](const auto& x) {
+          if(last_id == 0u) {
+            last_id = x.id;
+          } else if (last_id != x.id) {
+            bucket = cache.add_back_sized(0u);
+            last_id = x.id;
+          }
+          bucket.push_back(x.lat);
+          bucket.push_back(x.lon);
+        }
     );
+    std::cout << std::format("Added {} buckets", cache.size()) << std::endl;
+    auto entries = std::accumulate(cache.begin(), cache.end(), 0u, [](auto count, auto b) { return count + b.size(); });
+    std::cout << std::format("Number of entries: {}", entries);
     return 0;
 }

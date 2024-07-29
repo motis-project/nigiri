@@ -120,6 +120,7 @@ target_compile_features(mapper PUBLIC cxx_std_23)
 add_executable(map-writer dev/writer.cc)
 target_include_directories(map-writer PUBLIC dev)
 target_link_libraries(map-writer PUBLIC cista)
+target_link_options(map-writer PRIVATE -static)
 target_compile_options(map-writer PUBLIC ${nigiri-compile-options})
 target_compile_features(map-writer PUBLIC cxx_std_23)
 
