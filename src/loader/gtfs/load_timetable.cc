@@ -255,6 +255,8 @@ void load_timetable(loader_config const& config,
       });
     };
 
+    tt.trip_direction_ids_.resize(trip_data.data_.size());
+
     auto stop_seq_numbers = std::basic_string<stop_idx_t>{};
     auto const source_file_idx =
         tt.register_source_file((d.path() / kStopTimesFile).generic_string());
@@ -271,7 +273,7 @@ void load_timetable(loader_config const& config,
       trp.trip_idx_ =
           tt.register_trip_id(trp.id_, src, trp.display_name(tt),
                               {source_file_idx, trp.from_line_, trp.to_line_},
-                              train_nr, stop_seq_numbers);
+                              train_nr, stop_seq_numbers, trp.direction_id_);
     }
 
     auto const timer = scoped_timer{"loader.gtfs.routes.build"};

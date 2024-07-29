@@ -44,6 +44,9 @@ TEST(gtfs, read_trips_example_data) {
   EXPECT_EQ("Downtown",
             tt.trip_direction(
                 trip_data.data_.at(trip_data.trips_.at("AWE1")).headsign_));
+
+  EXPECT_FALSE(trip_data.data_.at(trip_data.trips_.at("AWE1")).direction_id_);
+  EXPECT_TRUE(trip_data.data_.at(trip_data.trips_.at("AWD1")).direction_id_);
 }
 
 TEST(gtfs, read_trips_berlin_data) {
@@ -75,18 +78,21 @@ TEST(gtfs, read_trips_berlin_data) {
   EXPECT_EQ(
       "Flughafen Schönefeld Terminal (Airport)",
       tt.trip_direction(trip_data.data_[trip_data.trips_.at("1")].headsign_));
+  EXPECT_TRUE(trip_data.data_.at(trip_data.trips_.at("1")).direction_id_);
 
   EXPECT_NE(end(trip_data.trips_), trip_data.trips_.find("2"));
   EXPECT_EQ("1", trip_data.data_[trip_data.trips_.at("2")].route_->id_);
   EXPECT_EQ(
       "S Potsdam Hauptbahnhof",
       tt.trip_direction(trip_data.data_[trip_data.trips_.at("2")].headsign_));
+  EXPECT_FALSE(trip_data.data_.at(trip_data.trips_.at("2")).direction_id_);
 
   EXPECT_NE(end(trip_data.trips_), trip_data.trips_.find("3"));
   EXPECT_EQ("2", trip_data.data_[trip_data.trips_.at("3")].route_->id_);
   EXPECT_EQ(
       "Golzow (PM), Schule",
       tt.trip_direction(trip_data.data_[trip_data.trips_.at("3")].headsign_));
+  EXPECT_TRUE(trip_data.data_.at(trip_data.trips_.at("3")).direction_id_);
 }
 
 }  // namespace nigiri::loader::gtfs

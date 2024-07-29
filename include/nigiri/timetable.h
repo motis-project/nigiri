@@ -152,6 +152,20 @@ struct timetable {
     return trip_idx;
   }
 
+  template <typename TripId>
+  trip_idx_t register_trip_id(TripId const& trip_id_str,
+                              source_idx_t const src,
+                              std::string const& display_name,
+                              trip_debug const dbg,
+                              std::uint32_t const train_nr,
+                              std::span<stop_idx_t> seq_numbers,
+                              bool const direction_id) {
+    auto const trip_idx = register_trip_id(trip_id_str, src, display_name, dbg,
+                                           train_nr, seq_numbers);
+    trip_direction_ids_.set(trip_idx, direction_id);
+    return trip_idx;
+  }
+
   bitfield_idx_t register_bitfield(bitfield const& b) {
     auto const idx = bitfield_idx_t{bitfields_.size()};
     bitfields_.emplace_back(b);

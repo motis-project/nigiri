@@ -55,9 +55,8 @@ block::rule_services(trip_data& trips) {
     gtfs_trip_idx_t trip_;
     bitfield traffic_days_;
   };
-  auto rule_trips = utl::to_vec(trips_, [&](auto&& t) {
-    return rule_trip{t, *trips.get(t).service_};
-  });
+  auto rule_trips = utl::to_vec(
+      trips_, [&](auto&& t) { return rule_trip{t, *trips.get(t).service_}; });
 
   struct queue_entry {
     std::vector<rule_trip>::iterator current_it_;
@@ -113,18 +112,18 @@ trip::trip(route const* route,
            bitfield const* service,
            block* blk,
            std::string id,
-           std::uint8_t direction_id,
            trip_direction_idx_t const headsign,
            std::string short_name,
-           bool const bikes_allowed)
+           bool const bikes_allowed,
+           bool const direction_id)
     : route_(route),
       service_(service),
       block_{blk},
       id_{std::move(id)},
-      direction_id_{direction_id},
       headsign_(headsign),
       short_name_(std::move(short_name)),
-      bikes_allowed_{bikes_allowed} {}
+      bikes_allowed_{bikes_allowed},
+      direction_id_{direction_id} {}
 
 void trip::interpolate() {
   if (!requires_interpolation_) {
@@ -314,9 +313,10 @@ trip_data read_trips(
           auto const trp_idx = gtfs_trip_idx_t{ret.data_.size()};
           ret.data_.emplace_back(
               route_it->second.get(), traffic_days_it->second.get(), blk,
-              t.trip_id_->to_str(), t.direction_id_.val(),
+              t.trip_id_->to_str(),
               ret.get_or_create_direction(tt, t.trip_headsign_->view()),
-              t.trip_short_name_->to_str(), bikes_allowed);
+              t.trip_short_name_->to_str(), bikes_allowed,
+              t.direction_id_.val() == 1);
           ret.trips_.emplace(t.trip_id_->to_str(), trp_idx);
           if (blk != nullptr) {
             blk->trips_.emplace_back(trp_idx);

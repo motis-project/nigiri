@@ -62,10 +62,10 @@ struct trip {
        bitfield const*,
        block*,
        std::string id,
-       std::uint8_t direction_id,
        trip_direction_idx_t headsign,
        std::string short_name,
-       bool bikes_allowed);
+       bool bikes_allowed,
+       bool direction_id);
 
   trip(trip&&) = default;
   trip& operator=(trip&&) = default;
@@ -89,7 +89,6 @@ struct trip {
   bitfield const* service_{nullptr};
   block* block_{nullptr};
   std::string id_;
-  trip_direction_id_t direction_id_;
   trip_direction_idx_t headsign_;
   std::string short_name_;
 
@@ -102,6 +101,7 @@ struct trip {
   bool requires_interpolation_{false};
   bool requires_sorting_{false};
   bool bikes_allowed_{false};
+  bool direction_id_{false};
   std::uint32_t from_line_{0U}, to_line_{0U};
 
   trip_idx_t trip_idx_{trip_idx_t::invalid()};
