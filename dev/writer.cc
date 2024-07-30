@@ -40,10 +40,10 @@ struct ShapePoint {
   const size_t seq;
 
   struct Shape {
-    utl::csv_col<utl::cstr, UTL_NAME("shape_id")> id;
-    utl::csv_col<utl::cstr, UTL_NAME("shape_pt_lat")> lat;
-    utl::csv_col<utl::cstr, UTL_NAME("shape_pt_lon")> lon;
-    utl::csv_col<utl::cstr, UTL_NAME("shape_pt_sequence")> seq;
+    utl::csv_col<size_t, UTL_NAME("shape_id")> id;
+    utl::csv_col<double, UTL_NAME("shape_pt_lat")> lat;
+    utl::csv_col<double, UTL_NAME("shape_pt_lon")> lon;
+    utl::csv_col<size_t, UTL_NAME("shape_pt_sequence")> seq;
   };
 
   static constexpr std::string_view sep{","};
@@ -68,10 +68,10 @@ struct ShapePoint {
 
   static constexpr ShapePoint from_shape(const Shape& shape) {
     return ShapePoint{
-        std::stoul(shape.id->data()),
-        double_to_fix(std::stod(shape.lat->data())),
-        double_to_fix(std::stod(shape.lon->data())),
-        std::stoul(shape.seq->data()),
+        shape.id.val(),
+        double_to_fix(shape.lat.val()),
+        double_to_fix(shape.lon.val()),
+        shape.seq.val(),
     };
   }
 
@@ -154,12 +154,14 @@ int main() {
     bucket.push_back(x.lat);
     bucket.push_back(x.lon);
   };
-  constexpr bool custom{true};
-  const std::string s{shaped_data.data()};
+  constexpr bool custom{false};
+  const std::string_view s{shaped_data};
   if (custom) {
+    std::cout << "Ranges" << std::endl;
     std::ranges::for_each(read_lines(s), store_entry);
     // std::ranges::for_each(read_lines(shaped_data), store_entry);
   } else {
+    std::cout << "Parser" << std::endl;
     progress_lines(s, store_entry);
     // progress_lines(std::string_view(shaped_data), store_entry);
   }
