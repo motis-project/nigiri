@@ -17,6 +17,7 @@
 #include "utl/parser/csv_range.h"
 #include "utl/parser/line_range.h"
 #include "utl/pipes/for_each.h"
+#include "utl/progress_tracker.h"
 
 #include "shared.h"
 #include "utl/pipes/transform.h"
@@ -106,17 +107,33 @@ auto read_lines(auto& data_source) {
       | std::views::transform(join)
       | std::views::filter(not_empty)
       | std::views::filter(starts_with_int)
-      | std::views::take(200'000)
+      // | std::views::take(200'000)
       | std::views::transform(ShapePoint::from_string);
 }
 
-void progress_lines(const auto& data_source, auto func) {
-  utl::noop_progress_consumer x;
-  utl::line_range(utl::make_buf_reader(data_source.data(), std::move(x)))
-    | utl::csv<ShapePoint::Shape>()
-    | utl::transform([](const ShapePoint::Shape& s){ return ShapePoint::from_shape(s); })
-    | utl::for_each(func)
-  ;
+void progress_lines(const auto& file_content, auto func) {
+  auto const progress_tracker = utl::activate_progress_tracker("writer");
+  progress_tracker->status("Parse Agencies")
+      .out_bounds(0.F, 1.F)
+      .in_high(file_content.size());
+  utl::line_range{utl::make_buf_reader(
+             file_content, progress_tracker->update_fn())}  //
+         | utl::csv<ShapePoint::Shape>()  //
+         | utl::transform([&](ShapePoint::Shape const& shape) {
+            return ShapePoint{
+              std::stoul(shape.id->data()),
+              double_to_fix(std::stod(shape.lat->data())),
+              double_to_fix(std::stod(shape.lon->data())),
+              std::stoul(shape.seq->data()),
+            };
+          })
+        | utl::for_each(func)
+        ;
+  // utl::line_range(utl::make_buf_reader(data_source.data(), std::move(x)))
+  //   | utl::csv<ShapePoint::Shape>()
+  //   | utl::transform([](const ShapePoint::Shape& s){ return ShapePoint::from_shape(s); })
+  //   | utl::for_each(func)
+  // ;
 }
 
 auto get_cache(cista::mmap::protection mode) {
@@ -153,10 +170,13 @@ int main() {
         }
     ;
     constexpr bool custom{true};
+    const std::string s{shaped_data.data()};
     if (custom) {
-      std::ranges::for_each(read_lines(shaped_data), store_entry);
+      std::ranges::for_each(read_lines(s), store_entry);
+      // std::ranges::for_each(read_lines(shaped_data), store_entry);
     } else {
-      progress_lines(shaped_data, store_entry);
+      progress_lines(s, store_entry);
+      // progress_lines(std::string_view(shaped_data), store_entry);
     }
 
     std::cout << std::format("Added {} buckets", cache.size()) << std::endl;
