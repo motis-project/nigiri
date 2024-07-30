@@ -2,10 +2,10 @@
 #include <cista/mmap.h>
 #include <cstddef>
 #include <algorithm>
+#include <format>
+#include <iostream>
 #include <numeric>
 #include <ranges>
-#include <iostream>
-#include <format>
 #include <stdexcept>
 #include <string_view>
 #include <vector>
@@ -29,8 +29,8 @@ using datatype = int32_t;
 
 class InvalidShapesFormat final : public std::runtime_error {
 public:
-    InvalidShapesFormat(const std::string& msg) : std::runtime_error{msg} {}
-    ~InvalidShapesFormat() override;
+  InvalidShapesFormat(const std::string& msg) : std::runtime_error{msg} {}
+  ~InvalidShapesFormat() override;
 };
 InvalidShapesFormat::~InvalidShapesFormat() = default;
 
@@ -46,22 +46,12 @@ struct ShapePoint {
     utl::csv_col<utl::cstr, UTL_NAME("shape_pt_sequence")> seq;
   };
 
-  // template <typename T>
-  // struct CsvIterator {
-  //   CsvIterator(T&& t) : t_{std::move(t)} {}
-  //   auto operator*() {
-  //     return t_.value();
-  //   }
-  //   T t_;
-  // }
-
   static constexpr std::string_view sep{","};
 
   static constexpr ShapePoint from_string(const std::string_view row) {
     auto to_string_view = [](auto item) { return std::string_view(item); };
-    auto item_view = std::views::split(row, sep)
-        | std::views::transform(to_string_view)
-    ;
+    auto item_view =
+        std::views::split(row, sep) | std::views::transform(to_string_view);
     std::vector<std::string_view> items{item_view.begin(), item_view.end()};
     if (items.size() < 4 || items.size() > 5) {
       throw InvalidShapesFormat{std::format("Invalid format in row '{}'", row)};
@@ -93,22 +83,24 @@ struct ShapePoint {
 auto read_lines(auto& data_source) {
 
   auto filter_cr = [](const char c) { return c != '\r'; };
-  auto pred = [](const char curr, const char next) { return curr != '\n' and next != '\n'; };
+  auto pred = [](const char curr, const char next) {
+    return curr != '\n' and next != '\n';
+  };
   auto not_empty = [](const auto& view) { return view.begin() != view.end(); };
   auto starts_with_int = [](const auto& view) {
-      char first = view.front();
-      return first >= '0' && first <= '9';
+    char first = view.front();
+    return first >= '0' && first <= '9';
   };
-  auto join = [](const auto& view) { return std::string{view.begin(), view.end()}; };
+  auto join = [](const auto& view) {
+    return std::string{view.begin(), view.end()};
+  };
 
-  return data_source
-      | std::views::filter(filter_cr)
-      | std::views::chunk_by(pred)
-      | std::views::transform(join)
-      | std::views::filter(not_empty)
-      | std::views::filter(starts_with_int)
-      // | std::views::take(200'000)
-      | std::views::transform(ShapePoint::from_string);
+  return data_source | std::views::filter(filter_cr) |
+         std::views::chunk_by(pred) | std::views::transform(join) |
+         std::views::filter(not_empty) |
+         std::views::filter(starts_with_int)
+         // | std::views::take(200'000)
+         | std::views::transform(ShapePoint::from_string);
 }
 
 void progress_lines(const auto& file_content, auto func) {
@@ -116,71 +108,66 @@ void progress_lines(const auto& file_content, auto func) {
   progress_tracker->status("Parse Agencies")
       .out_bounds(0.F, 1.F)
       .in_high(file_content.size());
-  utl::line_range{utl::make_buf_reader(
-             file_content, progress_tracker->update_fn())}  //
-         | utl::csv<ShapePoint::Shape>()  //
-         | utl::transform([&](ShapePoint::Shape const& shape) {
-            return ShapePoint{
-              std::stoul(shape.id->data()),
-              double_to_fix(std::stod(shape.lat->data())),
-              double_to_fix(std::stod(shape.lon->data())),
-              std::stoul(shape.seq->data()),
-            };
-          })
-        | utl::for_each(func)
-        ;
+  utl::line_range{
+      utl::make_buf_reader(file_content, progress_tracker->update_fn())}  //
+      | utl::csv<ShapePoint::Shape>()  //
+      | utl::transform([&](ShapePoint::Shape const& shape) {
+          return ShapePoint::from_shape(shape);
+        }) |
+      utl::for_each(func);
   // utl::line_range(utl::make_buf_reader(data_source.data(), std::move(x)))
   //   | utl::csv<ShapePoint::Shape>()
-  //   | utl::transform([](const ShapePoint::Shape& s){ return ShapePoint::from_shape(s); })
-  //   | utl::for_each(func)
+  //   | utl::transform([](const ShapePoint::Shape& s){ return
+  //   ShapePoint::from_shape(s); }) | utl::for_each(func)
   // ;
 }
 
 auto get_cache(cista::mmap::protection mode) {
   return mm_vecvec<std::size_t, datatype>{
-      cista::basic_mmap_vec<datatype, std::size_t>{cista::mmap{std::format(cache_file_template, "values").data(), mode}},
-      cista::basic_mmap_vec<std::size_t, std::size_t>{cista::mmap{std::format(cache_file_template, "metadata").data(), mode}}
-  };
+      cista::basic_mmap_vec<datatype, std::size_t>{
+          cista::mmap{std::format(cache_file_template, "values").data(), mode}},
+      cista::basic_mmap_vec<std::size_t, std::size_t>{cista::mmap{
+          std::format(cache_file_template, "metadata").data(), mode}}};
 }
 
-auto get_cache_writer() {
-  return get_cache(cista::mmap::protection::WRITE);
-}
+auto get_cache_writer() { return get_cache(cista::mmap::protection::WRITE); }
 
 int main() {
   // rlimit limit{50, RLIM_INFINITY};
-  // std::cout << std::format("Limits applied: {}", ::setrlimit(RLIMIT_RSS, &limit)) << std::endl;
+  // std::cout << std::format("Limits applied: {}", ::setrlimit(RLIMIT_RSS,
+  // &limit)) << std::endl;
 
-    cista::mmap_vec<char> shaped_data{cista::mmap{in_file.data(), cista::mmap::protection::READ}};
-    auto cache = get_cache_writer();
+  cista::mmap_vec<char> shaped_data{
+      cista::mmap{in_file.data(), cista::mmap::protection::READ}};
+  auto cache = get_cache_writer();
 
-    size_t last_id{0u};
-    auto bucket = cache.add_back_sized(0u);
+  size_t last_id{0u};
+  auto bucket = cache.add_back_sized(0u);
 
-    auto store_entry =
-        [&bucket, &cache, &last_id](const auto& x) {
-          if(last_id == 0u) {
-            last_id = x.id;
-          } else if (last_id != x.id) {
-            bucket = cache.add_back_sized(0u);
-            last_id = x.id;
-          }
-          bucket.push_back(x.lat);
-          bucket.push_back(x.lon);
-        }
-    ;
-    constexpr bool custom{true};
-    const std::string s{shaped_data.data()};
-    if (custom) {
-      std::ranges::for_each(read_lines(s), store_entry);
-      // std::ranges::for_each(read_lines(shaped_data), store_entry);
-    } else {
-      progress_lines(s, store_entry);
-      // progress_lines(std::string_view(shaped_data), store_entry);
+  auto store_entry = [&bucket, &cache, &last_id](const auto& x) {
+    if (last_id == 0u) {
+      last_id = x.id;
+    } else if (last_id != x.id) {
+      bucket = cache.add_back_sized(0u);
+      last_id = x.id;
     }
+    bucket.push_back(x.lat);
+    bucket.push_back(x.lon);
+  };
+  constexpr bool custom{true};
+  const std::string s{shaped_data.data()};
+  if (custom) {
+    std::ranges::for_each(read_lines(s), store_entry);
+    // std::ranges::for_each(read_lines(shaped_data), store_entry);
+  } else {
+    progress_lines(s, store_entry);
+    // progress_lines(std::string_view(shaped_data), store_entry);
+  }
 
-    std::cout << std::format("Added {} buckets", cache.size()) << std::endl;
-    auto entries = std::accumulate(cache.begin(), cache.end(), 0u, [](auto count, auto b) { return count + b.size(); });
-    std::cout << std::format("Number of entries: {}", entries);
-    return 0;
+  std::cout << std::format("Added {} buckets", cache.size()) << std::endl;
+  auto entries =
+      std::accumulate(cache.begin(), cache.end(), 0u,
+                      [](auto count, auto b) { return count + b.size(); });
+  std::cout << std::format("Number of entries: {}", entries);
+  return 0;
 }
