@@ -72,7 +72,7 @@ struct search {
                          state_.is_destination_[q_.via_stops_.size()],
                          state_.dist_to_dest_);
 
-    for (auto const& [i, via] : utl::enumerate(q_.via_stops_)) {
+    for (auto const [i, via] : utl::enumerate(q_.via_stops_)) {
       collect_via_destinations(tt_, via.location_, state_.is_destination_[i]);
     }
 
