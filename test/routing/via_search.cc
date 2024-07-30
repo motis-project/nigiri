@@ -598,8 +598,6 @@ TEST(routing, via_test_9) {
 TEST(routing, via_test_10) {
   auto tt = load_timetable(test_files_1);
 
-  // TODO: bwd now correctly returns the 0-transfer connection as well
-
   for (auto const& [dir, start_time] :
        {std::pair{direction::kForward, time("2019-05-01 16:00 Europe/Berlin")},
         std::pair{direction::kBackward,
