@@ -55,7 +55,7 @@ struct raptor {
       raptor_state& state,
       bitvec& is_dest,
       std::vector<std::uint16_t> const& dist_to_dest,
-      hash_map<location_idx_t, std::vector<td_footpath>> const& td_dist_to_dest,
+      hash_map<location_idx_t, std::vector<td_offset>> const& td_dist_to_dest,
       std::vector<std::uint16_t> const& lb,
       day_idx_t const base,
       clasz_mask_t const allowed_claszes,
@@ -79,6 +79,9 @@ struct raptor {
     state_.round_times_.reset(kInvalid);
     for (auto i = 0U; i != dist_to_dest.size(); ++i) {
       state_.end_reachable_.set(i, dist_to_dest[i] != kUnreachable);
+    }
+    for (auto const& [l, _] : td_dist_to_end_) {
+      state_.end_reachable_.set(to_idx(l), true);
     }
   }
 
@@ -179,7 +182,7 @@ struct raptor {
 
       update_transfers(k);
       update_footpaths(k, prf_idx);
-      update_td_footpaths(k, prf_idx);
+      update_td_offsets(k, prf_idx);
       update_intermodal_footpaths(k);
 
       trace_print_state_after_round();
@@ -368,7 +371,7 @@ private:
           trace(
               "┊ ├k={}   NO FP UPDATE: {} [best={}] --{}--> {} "
               "[best={}, time_at_dest={}]\n",
-              k, location{tt_, l_idx}, state_.best_[to_idx(l_idx)],
+              k, location{tt_, l_idx}, to_unix(state_.best_[to_idx(l_idx)]),
               fp.duration(), location{tt_, fp.target()},
               state_.best_[to_idx(fp.target())], to_unix(time_at_dest_[k]));
         }
@@ -376,7 +379,7 @@ private:
     });
   }
 
-  void update_td_footpaths(unsigned const k, profile_idx_t const prf_idx) {
+  void update_td_offsets(unsigned const k, profile_idx_t const prf_idx) {
     if constexpr (!Rt) {
       return;
     }
@@ -864,7 +867,7 @@ private:
   raptor_state& state_;
   bitvec& is_dest_;
   std::vector<std::uint16_t> const& dist_to_end_;
-  hash_map<location_idx_t, std::vector<td_footpath>> const& td_dist_to_end_;
+  hash_map<location_idx_t, std::vector<td_offset>> const& td_dist_to_end_;
   std::vector<std::uint16_t> const& lb_;
   std::array<delta_t, kMaxTransfers + 1> time_at_dest_;
   day_idx_t base_;

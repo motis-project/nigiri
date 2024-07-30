@@ -30,7 +30,6 @@ struct search_state {
   std::vector<std::uint16_t> travel_time_lower_bound_;
   bitvec is_destination_;
   std::vector<std::uint16_t> dist_to_dest_;
-  hash_map<location_idx_t, std::vector<td_footpath>> td_dist_to_dest_;
   std::vector<start> starts_;
   pareto_set<journey> results_;
 };
@@ -103,7 +102,7 @@ struct search {
         algo_state,
         state_.is_destination_,
         state_.dist_to_dest_,
-        state_.td_dist_to_dest_,
+        q_.td_dest_,
         state_.travel_time_lower_bound_,
         day_idx_t{
             std::chrono::duration_cast<date::days>(

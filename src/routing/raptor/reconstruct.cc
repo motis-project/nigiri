@@ -148,6 +148,7 @@ void reconstruct_journey(timetable const& tt,
   auto const is_better_or_eq = [](auto a, auto b) {
     return kFwd ? a <= b : a >= b;
   };
+  auto const is_better = [](auto a, auto b) { return kFwd ? a < b : a > b; };
   auto const is_ontrip = holds_alternative<unixtime_t>(q.start_time_);
   auto const start_matches = [&](delta_t const a, delta_t const b) {
     return is_ontrip ? is_better_or_eq(a, b) : a == b;
@@ -218,7 +219,7 @@ void reconstruct_journey(timetable const& tt,
   auto const get_route_transport =
       [&](unsigned const k, delta_t const time, route_idx_t const r,
           stop_idx_t const stop_idx, bool const section_bike_filter,
-          bool const td_footpath) -> std::optional<journey::leg> {
+          bool const is_td_footpath) -> std::optional<journey::leg> {
     auto const [day, mam] = split_day_mam(base_day_idx, time);
 
     for (auto const t : tt.route_transport_ranges_[r]) {
@@ -226,7 +227,7 @@ void reconstruct_journey(timetable const& tt,
           tt.event_mam(t, stop_idx, kFwd ? event_type::kArr : event_type::kDep);
       trace_rc_transport;
 
-      if (!td_footpath &&
+      if (!is_td_footpath &&
           minutes_after_midnight_t{event_mam.count() % 1440} != mam) {
         trace_rc_transport_mam_mismatch;
         continue;
@@ -242,9 +243,9 @@ void reconstruct_journey(timetable const& tt,
       auto const tr = transport{t, day_idx_t{traffic_day}};
       auto const ev_time = tt.event_time(
           tr, stop_idx, kFwd ? event_type::kArr : event_type::kDep);
-      if (td_footpath) {
+      if (is_td_footpath) {
         auto const fp_time = delta_to_unix(base, time);
-        if (is_better_or_eq(fp_time, ev_time)) {
+        if (is_better(fp_time, ev_time)) {
           trace_rc_transport_invalid_td_footpath;
           continue;
         }
@@ -384,6 +385,47 @@ void reconstruct_journey(timetable const& tt,
     return std::nullopt;
   };
 
+  auto const find_dest_leg = [&](unsigned const k, location_idx_t const l,
+                                 offset const dest_offset,
+                                 bool const td_footpath) {
+    auto ret = std::optional<std::pair<journey::leg, journey::leg>>{};
+    auto const curr_time = raptor_state.round_times_[k][to_idx(l)];
+    for_each_meta(
+        tt, location_match_mode::kIntermodal, dest_offset.target_,
+        [&](location_idx_t const eq) {
+          auto intermodal_dest = check_fp(
+              k, l, curr_time, {eq, dest_offset.duration_}, td_footpath);
+          if (intermodal_dest.has_value()) {
+            trace_rc_intermodal_dest_match;
+            intermodal_dest->first.uses_ = offset{
+                eq, dest_offset.duration_, dest_offset.transport_mode_id_};
+            ret = std::move(intermodal_dest);
+          } else {
+            trace_rc_intermodal_dest_mismatch;
+          }
+
+          for (auto const& fp :
+               kFwd ? tt.locations_.footpaths_in_[q.prf_idx_][eq]
+                    : tt.locations_.footpaths_out_[q.prf_idx_][eq]) {
+            auto fp_intermodal_dest =
+                check_fp(k, l, curr_time,
+                         {fp.target(), dest_offset.duration_ + fp.duration()},
+                         td_footpath);
+            if (fp_intermodal_dest.has_value()) {
+              trace_rc_fp_intermodal_dest_match;
+              fp_intermodal_dest->first.uses_ =
+                  offset{eq, fp.duration(), dest_offset.transport_mode_id_};
+              ret = std::move(fp_intermodal_dest);
+            } else {
+              trace_rc_fp_intermodal_dest_mismatch;
+            }
+          }
+
+          // TODO(felix) rtt->td_footpaths?
+        });
+    return ret;
+  };
+
   auto const get_legs =
       [&](unsigned const k,
           location_idx_t const l) -> std::pair<journey::leg, journey::leg> {
@@ -392,47 +434,28 @@ void reconstruct_journey(timetable const& tt,
         k == j.transfers_ + 1U) {
       trace_reconstruct("  CHECKING INTERMODAL DEST\n");
       for (auto const& dest_offset : q.destination_) {
-        std::optional<std::pair<journey::leg, journey::leg>> ret;
-        for_each_meta(
-            tt, location_match_mode::kIntermodal, dest_offset.target_,
-            [&](location_idx_t const eq) {
-              auto intermodal_dest =
-                  check_fp(k, l, curr_time, {eq, dest_offset.duration_}, false);
-              if (intermodal_dest.has_value()) {
-                trace_rc_intermodal_dest_match;
-                intermodal_dest->first.uses_ = offset{
-                    eq, dest_offset.duration_, dest_offset.transport_mode_id_};
-                ret = std::move(intermodal_dest);
-              } else {
-                trace_rc_intermodal_dest_mismatch;
-              }
-
-              for (auto const& fp :
-                   kFwd ? tt.locations_.footpaths_in_[q.prf_idx_][eq]
-                        : tt.locations_.footpaths_out_[q.prf_idx_][eq]) {
-                auto fp_intermodal_dest = check_fp(
-                    k, l, curr_time,
-                    {fp.target(), dest_offset.duration_ + fp.duration()},
-                    false);
-                if (fp_intermodal_dest.has_value()) {
-                  trace_rc_fp_intermodal_dest_match;
-                  fp_intermodal_dest->first.uses_ =
-                      offset{eq, fp.duration(), dest_offset.transport_mode_id_};
-                  ret = std::move(fp_intermodal_dest);
-                } else {
-                  trace_rc_fp_intermodal_dest_mismatch;
-                }
-              }
-            });
+        auto const ret = find_dest_leg(k, l, dest_offset, false);
         if (ret.has_value()) {
           return std::move(*ret);
+        }
+      }
+
+      for (auto const& [from, td] : q.td_dest_) {
+        auto const d = get_td_duration<flip(SearchDir)>(
+            td, delta_to_unix(base, curr_time));
+        if (d.has_value()) {
+          auto const ret = find_dest_leg(
+              k, l, {from, *d, td.back().transport_mode_id_}, true);
+          if (ret.has_value()) {
+            return std::move(*ret);
+          }
         }
       }
 
       throw utl::fail(
           "intermodal destination reconstruction failed at k={}, t={}, "
           "stop={}, time={}",
-          k, j.transfers_, location{tt, l}, curr_time);
+          k, j.transfers_, location{tt, l}, delta_to_unix(base, curr_time));
     }
 
     trace_reconstruct("CHECKING TRANSFER AT {}\n", location{tt, l});

@@ -17,6 +17,9 @@ using nigiri::test::raptor_search;
 
 namespace {
 
+// time-dependent footpath at start: works [9:30-9:45], duration=10min
+// time-dependent foopath at end: does not work [14:30-15:30], duration=10min
+//
 // Interchange at B
 // A  --> B --> C
 // A  --> D --> C
@@ -32,11 +35,11 @@ namespace {
 //
 // Scenario 1:
 // Everything works
-// A@10:00 --T1--> 11:00 @ B @ 11:30 --T2--> 12:00 @ C
+// A@10:00 --T1--> 11:00 @ B @ 11:30 --T2--> 12:00 @ C --> 12:10
 //
 // Scenario 2:
 // Elevator at B blocked completely, journey via D
-// A@10:00 --T4--> 12:00 @ D @ 13:00 --T5--> 15:00 @ C
+// A@10:00 --T4--> 12:00 @ D @ 13:00 --T5--> 15:00 @ C --wait--> 15:30 --> 15:40
 //
 // Scenario 3:
 // Elevator at B blocked until 11:25, 10min footpath = 11:35 arrival at B2
@@ -106,12 +109,13 @@ std::string to_string(timetable const& tt,
   return ss.str();
 }
 
+// clang-format-off
 constexpr auto const kEverythingWorks = R"(
-[2024-06-19 07:00, 2024-06-19 10:00]
+[2024-06-19 07:00, 2024-06-19 10:10]
 TRANSFERS: 1
-     FROM: (A, A) [2024-06-19 07:35]
-       TO: (C, C) [2024-06-19 10:00]
-leg 0: (A, A) [2024-06-19 07:35] -> (A, A) [2024-06-19 08:00]
+     FROM: (START, START) [2024-06-19 07:35]
+       TO: (END, END) [2024-06-19 10:10]
+leg 0: (START, START) [2024-06-19 07:35] -> (A, A) [2024-06-19 08:00]
   MUMO (id=0, duration=25)
 leg 1: (A, A) [2024-06-19 08:00] -> (B1, B1) [2024-06-19 09:00]
    0: A       A...............................................                               d: 19.06 08:00 [19.06 10:00]  [{name=RE 1, day=2024-06-19, id=T1, src=0}]
@@ -121,15 +125,17 @@ leg 2: (B1, B1) [2024-06-19 09:00] -> (B2, B2) [2024-06-19 09:20]
 leg 3: (B2, B2) [2024-06-19 09:30] -> (C, C) [2024-06-19 10:00]
    0: B2      B2..............................................                               d: 19.06 09:30 [19.06 11:30]  [{name=RE 2, day=2024-06-19, id=T2, src=0}]
    1: C       C............................................... a: 19.06 10:00 [19.06 12:00]
+leg 4: (C, C) [2024-06-19 10:00] -> (END, END) [2024-06-19 10:10]
+  MUMO (id=0, duration=10)
 
 )";
 
 constexpr auto const kElevatorOutOfOrder = R"(
-[2024-06-19 07:00, 2024-06-19 13:00]
+[2024-06-19 07:00, 2024-06-19 13:40]
 TRANSFERS: 1
-     FROM: (A, A) [2024-06-19 07:35]
-       TO: (C, C) [2024-06-19 13:00]
-leg 0: (A, A) [2024-06-19 07:35] -> (A, A) [2024-06-19 08:00]
+     FROM: (START, START) [2024-06-19 07:35]
+       TO: (END, END) [2024-06-19 13:40]
+leg 0: (START, START) [2024-06-19 07:35] -> (A, A) [2024-06-19 08:00]
   MUMO (id=0, duration=25)
 leg 1: (A, A) [2024-06-19 08:00] -> (D, D) [2024-06-19 10:00]
    0: A       A...............................................                               d: 19.06 08:00 [19.06 10:00]  [{name=RE 2, day=2024-06-19, id=T4, src=0}]
@@ -139,15 +145,17 @@ leg 2: (D, D) [2024-06-19 10:00] -> (D, D) [2024-06-19 10:02]
 leg 3: (D, D) [2024-06-19 11:00] -> (C, C) [2024-06-19 13:00]
    0: D       D...............................................                               d: 19.06 11:00 [19.06 13:00]  [{name=RE 1, day=2024-06-19, id=T5, src=0}]
    1: C       C............................................... a: 19.06 13:00 [19.06 15:00]
+leg 4: (C, C) [2024-06-19 13:30] -> (END, END) [2024-06-19 13:40]
+  MUMO (id=0, duration=10)
 
 )";
 
 constexpr auto const kElevatorStartsWorkingAt1125 = R"(
-[2024-06-19 07:00, 2024-06-19 10:30]
+[2024-06-19 07:00, 2024-06-19 10:40]
 TRANSFERS: 1
-     FROM: (A, A) [2024-06-19 07:35]
-       TO: (C, C) [2024-06-19 10:30]
-leg 0: (A, A) [2024-06-19 07:35] -> (A, A) [2024-06-19 08:00]
+     FROM: (START, START) [2024-06-19 07:35]
+       TO: (END, END) [2024-06-19 10:40]
+leg 0: (START, START) [2024-06-19 07:35] -> (A, A) [2024-06-19 08:00]
   MUMO (id=0, duration=25)
 leg 1: (A, A) [2024-06-19 08:00] -> (B1, B1) [2024-06-19 09:00]
    0: A       A...............................................                               d: 19.06 08:00 [19.06 10:00]  [{name=RE 1, day=2024-06-19, id=T1, src=0}]
@@ -157,6 +165,8 @@ leg 2: (B1, B1) [2024-06-19 09:25] -> (B2, B2) [2024-06-19 09:35]
 leg 3: (B2, B2) [2024-06-19 10:00] -> (C, C) [2024-06-19 10:30]
    0: B2      B2..............................................                               d: 19.06 10:00 [19.06 12:00]  [{name=RE 1, day=2024-06-19, id=T3, src=0}]
    1: C       C............................................... a: 19.06 10:30 [19.06 12:30]
+leg 4: (C, C) [2024-06-19 10:30] -> (END, END) [2024-06-19 10:40]
+  MUMO (id=0, duration=10)
 
 )";
 
@@ -166,6 +176,7 @@ TEST(routing, td_footpath) {
   timetable tt;
   tt.date_range_ = {date::sys_days{2024_y / June / 18},
                     date::sys_days{2024_y / June / 20}};
+  register_special_stations(tt);
   load_timetable({}, source_idx_t{0}, test_files(), tt);
   finalize(tt);
 
@@ -189,7 +200,6 @@ TEST(routing, td_footpath) {
             .start_match_mode_ = routing::location_match_mode::kIntermodal,
             .dest_match_mode_ = routing::location_match_mode::kIntermodal,
             .use_start_footpaths_ = false,
-            .destination_ = {{C, 0_minutes, 0}},
             .td_start_ =
                 {{{A,
                    {{.valid_from_ = sys_days{1970_y / January / 1},
@@ -218,6 +228,7 @@ TEST(routing, td_footpath) {
 
   // Base: elevator available, no real-time information.
   EXPECT_EQ(kEverythingWorks, to_string(tt, run_search()));
+  (void)kEverythingWorks;
 
   // Switch to real-time footpaths but don't add any footpaths.
   // Represents "elevator broken forever".
