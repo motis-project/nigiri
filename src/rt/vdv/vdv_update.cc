@@ -122,8 +122,7 @@ std::optional<rt::run> find_run(timetable const& tt,
     return std::nullopt;
   }
 
-  auto const vdv_direction_id =
-      std::stoul(vdv_direction_id_xpath.node().child_value());
+  auto const matches = hash_map<std::pair<rt::run, unsigned>>{};
 
   for (auto const& vdv_stop : vdv_stops) {
     for (auto const r : tt.location_routes_[vdv_stop.l_]) {
@@ -163,31 +162,13 @@ std::optional<rt::run> find_run(timetable const& tt,
               continue;
             }
 
-            auto const trip_direction =
-                tt.transport_to_trip_section_[tr].size() == 1U
-                    ? tt.trip_direction_ids_
-                          [tt.merged_trips_[tt.transport_to_trip_section_[tr]
-                                                .front()]
-                               .front()]
-                    : tt.trip_direction_ids_
-                          [tt.merged_trips_
-                               [tt.transport_to_trip_section_[tr][stop_idx]]
-                                   .front()];
-
-            if ((vdv_direction_id == 1 && trip_direction == 1) ||
-                (vdv_direction_id == 2 && trip_direction == 0)) {
-              std::cout << "stop and event time match, but VDV direction id "
-                        << vdv_direction_id
-                        << " does not match GTFS direction id "
-                        << trip_direction << "\n";
-              continue;
-            }
-
             std::cout << "matched run at vdv stop_idx = " << stop_idx
                       << ": VDV line id " << vdv_line_id
                       << " contains GTFS route_short_name " << trip_line
                       << "\n";
 
+            // use utl::get or create to count number of matching stops for
+            // scoring?
             return rt::run{transport{tr, day_idx_t{tr_day}},
                            {0U, static_cast<stop_idx_t>(location_seq.size())}};
           }
