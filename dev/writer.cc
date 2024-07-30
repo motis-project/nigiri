@@ -2,10 +2,6 @@
 #include <cista/mmap.h>
 #include <cstddef>
 #include <algorithm>
-#include <exception>
-#include <fstream>
-#include <ios>
-#include <iterator>
 #include <numeric>
 #include <ranges>
 #include <iostream>
@@ -17,18 +13,13 @@
 // #include <sys/resource.h>
 
 #include "cista/mmap.h"
-#include "utl/const_str.h"
-#include "utl/parallel_for.h"
 #include "utl/parser/buf_reader.h"
 #include "utl/parser/csv_range.h"
 #include "utl/parser/line_range.h"
 #include "utl/pipes/for_each.h"
-#include "utl/pipes/make_range.h"
-#include "utl/pipes/vec.h"
 
 #include "shared.h"
 #include "utl/pipes/transform.h"
-#include "utl/progress_tracker.h"
 
 const std::string in_file{"../dev/shapes.txt"};
 constexpr std::string_view cache_file_template{"shape-cache.{}.dat"};
@@ -37,14 +28,8 @@ using datatype = int32_t;
 
 class InvalidShapesFormat final : public std::runtime_error {
 public:
-    // InvalidShapesFormat(const std::string& msg);
     InvalidShapesFormat(const std::string& msg) : std::runtime_error{msg} {}
     ~InvalidShapesFormat() override;
-    // ~InvalidShapesFormat() override = default;
-    // ~InvalidShapesFormat() override = {};
-    // virtual const char * what() const override {
-    //     return std::runtime_error::what();
-    // }
 };
 InvalidShapesFormat::~InvalidShapesFormat() = default;
 
@@ -55,9 +40,9 @@ struct ShapePoint {
 
   struct Shape {
     utl::csv_col<utl::cstr, UTL_NAME("shape_id")> id;
-    utl::csv_col<utl::cstr, UTL_NAME("shape_pt_sequence")> seq;
     utl::csv_col<utl::cstr, UTL_NAME("shape_pt_lat")> lat;
     utl::csv_col<utl::cstr, UTL_NAME("shape_pt_lon")> lon;
+    utl::csv_col<utl::cstr, UTL_NAME("shape_pt_sequence")> seq;
   };
 
   // template <typename T>
@@ -104,58 +89,30 @@ struct ShapePoint {
   }
 };
 
-// auto read_lines(auto& data_source) {
+auto read_lines(auto& data_source) {
 
-//   // auto filter_cr = [](const char c) { return c != '\r'; };
-//   // auto pred = [](const char curr, const char next) { return curr != '\n' and next != '\n'; };
-//   // auto not_empty = [](const auto& view) { return view.begin() != view.end(); };
-//   // auto starts_with_int = [](const auto& view) {
-//   //     char first = view.front();
-//   //     return first >= '0' && first <= '9';
-//   // };
-//   // auto join = [](const auto& view) { return std::string{view.begin(), view.end()}; };
+  auto filter_cr = [](const char c) { return c != '\r'; };
+  auto pred = [](const char curr, const char next) { return curr != '\n' and next != '\n'; };
+  auto not_empty = [](const auto& view) { return view.begin() != view.end(); };
+  auto starts_with_int = [](const auto& view) {
+      char first = view.front();
+      return first >= '0' && first <= '9';
+  };
+  auto join = [](const auto& view) { return std::string{view.begin(), view.end()}; };
 
-//   // return data_source
-//       // | std::views::chunk_by(pred)
-//       // | std::views::transform(join)
-//       // | std::views::take(3)
-//       // | std::views::transform(ShapePoint::from_string);
-//   utl::progress_tracker x([](const auto&) { std::cout << "Invoked ..." << std::endl; });
-//   auto reader = utl::line_range{utl::make_buf_reader(std::string_view{data_source}, x)}   //  <typename Reader>data_source
-//   // auto reader = utl::line_range{utl::make_range(std::string_view{data_source})}   //  <typename Reader>data_source
-//       | utl::csv<ShapePoint::Shape>()
-//       | utl::transform([](const ShapePoint::Shape& s){ return ShapePoint::from_shape(s); })
-//       // | std::ranges::input_range<ShapePoint>
-//     ;
-//       return reader;
-//       // static_assert(std::input_iterator<decltype(utl::make_range(reader))>);
-//       // return utl::make_range(reader)
-//       // return std::ranges::input_range<ShapePoint>
-//       // | utl::to<std::ranges::forward_range<ShapePoint>>()
-//       // | std::views::take(3)
-//       // | std::views::take(1'000'000)
-//       // | std::views::transform(ShapePoint::from_string)
-//   // ;
-// }
+  return data_source
+      | std::views::filter(filter_cr)
+      | std::views::chunk_by(pred)
+      | std::views::transform(join)
+      | std::views::filter(not_empty)
+      | std::views::filter(starts_with_int)
+      | std::views::take(200'000)
+      | std::views::transform(ShapePoint::from_string);
+}
 
 void progress_lines(const auto& data_source, auto func) {
-  // utl::progress_tracker x([](const auto&) { std::cout << "Invoked ..." << std::endl; });
-  // utl::noop_progress_update x;
   utl::noop_progress_consumer x;
-  // auto x = [](size_t offset) { std::cout << "Read offset " << offset << std::endl; };
-  // auto buffer = utl::make_buf_reader(std::string_view{data_source}, std::move(x));
-  // auto buffer = utl::make_buf_reader(std::string_view{data_source}, x.update_fn());
-  // auto range= utl::all(data_source);
-  // auto range = utl::make_range(utl::all(data_source.begin(), data_source.end()));
-// utl::line_range{range}
-  // utl::make_buf_reader(range)
-  // utl::line_range{buffer}   //  <typename Reader>data_source
-  // utl::cstr(data_source)
-  // range
-  // std::move(range)
-  // utl::line_range(utl::make_buf_reader(data_source.data(), std::move(x)))
   utl::line_range(utl::make_buf_reader(data_source.data(), std::move(x)))
-    // | utl::vec()
     | utl::csv<ShapePoint::Shape>()
     | utl::transform([](const ShapePoint::Shape& s){ return ShapePoint::from_shape(s); })
     | utl::for_each(func)
@@ -178,52 +135,32 @@ int main() {
   // std::cout << std::format("Limits applied: {}", ::setrlimit(RLIMIT_RSS, &limit)) << std::endl;
 
     cista::mmap_vec<char> shaped_data{cista::mmap{in_file.data(), cista::mmap::protection::READ}};
-//     std::string_view data{R"("shape_id","shape_pt_lat","shape_pt_lon","shape_pt_sequence"
-// 1,50.636259,6.473668,0
-// 1,50.636512,6.473487,1)"};
-    // auto cache = get_cache_writer();
+    auto cache = get_cache_writer();
 
-    // // size_t last_id{0u};
-    // auto bucket = cache.add_back_sized(0u);
-    // bucket.push_back(1111111);
-    {
-      // CsvReader<ShapePoint::Shape> reader{std::string_view(shaped_data, {"shape_id", "shape_pt_lat", "shape_pt_lon", "shape_pt_sequence"})};
-      CsvReader<ShapePoint::Shape> reader{std::string_view(shaped_data)};
-      // CsvReader<ShapePoint::Shape> reader{data};
-      // std::cout << data << std::endl;
-      const auto begin = reader.begin();
-      std::cout << begin.offset_ << std::endl;
+    size_t last_id{0u};
+    auto bucket = cache.add_back_sized(0u);
+
+    auto store_entry =
+        [&bucket, &cache, &last_id](const auto& x) {
+          if(last_id == 0u) {
+            last_id = x.id;
+          } else if (last_id != x.id) {
+            bucket = cache.add_back_sized(0u);
+            last_id = x.id;
+          }
+          bucket.push_back(x.lat);
+          bucket.push_back(x.lon);
+        }
+    ;
+    constexpr bool custom{true};
+    if (custom) {
+      std::ranges::for_each(read_lines(shaped_data), store_entry);
+    } else {
+      progress_lines(shaped_data, store_entry);
     }
 
-    // auto store_entry =
-    //     [&bucket, &cache, &last_id](const auto& x) {
-    //       if(last_id == 0u) {
-    //         last_id = x.id;
-    //       } else if (last_id != x.id) {
-    //         bucket = cache.add_back_sized(0u);
-    //         last_id = x.id;
-    //       }
-    //       bucket.push_back(x.lat);
-    //       bucket.push_back(x.lon);
-    //     }
-    // ;
-    // progress_lines(shaped_data, store_entry);
-    // auto reader = read_lines(shaped_data);
-    // reader
-    //   | utl::for_each(
-    //     [&bucket, &cache, &last_id](const auto& x) {
-    //       if(last_id == 0u) {
-    //         last_id = x.id;
-    //       } else if (last_id != x.id) {
-    //         bucket = cache.add_back_sized(0u);
-    //         last_id = x.id;
-    //       }
-    //       bucket.push_back(x.lat);
-    //       bucket.push_back(x.lon);
-    //     }
-    // );
-    // std::cout << std::format("Added {} buckets", cache.size()) << std::endl;
-    // auto entries = std::accumulate(cache.begin(), cache.end(), 0u, [](auto count, auto b) { return count + b.size(); });
-    // std::cout << std::format("Number of entries: {}", entries);
+    std::cout << std::format("Added {} buckets", cache.size()) << std::endl;
+    auto entries = std::accumulate(cache.begin(), cache.end(), 0u, [](auto count, auto b) { return count + b.size(); });
+    std::cout << std::format("Number of entries: {}", entries);
     return 0;
 }
