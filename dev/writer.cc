@@ -1,5 +1,6 @@
 #include <cista/containers/mmap_vec.h>
 #include <cista/mmap.h>
+#include <sys/types.h>
 #include <cstddef>
 #include <algorithm>
 #include <format>
@@ -8,9 +9,8 @@
 #include <ranges>
 #include <stdexcept>
 #include <string_view>
+#include <unordered_map>
 #include <vector>
-
-// #include <sys/resource.h>
 
 #include "cista/mmap.h"
 #include "utl/parser/buf_reader.h"
@@ -24,8 +24,10 @@
 
 const std::string in_file{"../dev/shapes.txt"};
 constexpr std::string_view cache_file_template{"shape-cache.{}.dat"};
+constexpr std::string_view id_map_file{"shape-id.dat"};  // Might be anything?
 
 using datatype = int32_t;
+using id_type = uint16_t;
 
 class InvalidShapesFormat final : public std::runtime_error {
 public:
@@ -35,12 +37,12 @@ public:
 InvalidShapesFormat::~InvalidShapesFormat() = default;
 
 struct ShapePoint {
-  const size_t id;
+  const id_type id;
   const datatype lat, lon;
   const size_t seq;
 
   struct Shape {
-    utl::csv_col<size_t, UTL_NAME("shape_id")> id;
+    utl::csv_col<id_type, UTL_NAME("shape_id")> id;
     utl::csv_col<double, UTL_NAME("shape_pt_lat")> lat;
     utl::csv_col<double, UTL_NAME("shape_pt_lon")> lon;
     utl::csv_col<size_t, UTL_NAME("shape_pt_sequence")> seq;
@@ -59,7 +61,7 @@ struct ShapePoint {
     assert(items.size() == 4);
 
     return ShapePoint{
-        std::stoul(items[0].data()),
+        static_cast<id_type>(std::stoul(items[0].data())),
         double_to_fix(std::stod(items[1].data())),
         double_to_fix(std::stod(items[2].data())),
         std::stoul(items[3].data()),
@@ -115,11 +117,6 @@ void progress_lines(const auto& file_content, auto func) {
           return ShapePoint::from_shape(shape);
         }) |
       utl::for_each(func);
-  // utl::line_range(utl::make_buf_reader(data_source.data(), std::move(x)))
-  //   | utl::csv<ShapePoint::Shape>()
-  //   | utl::transform([](const ShapePoint::Shape& s){ return
-  //   ShapePoint::from_shape(s); }) | utl::for_each(func)
-  // ;
 }
 
 auto get_cache(cista::mmap::protection mode) {
@@ -132,27 +129,57 @@ auto get_cache(cista::mmap::protection mode) {
 
 auto get_cache_writer() { return get_cache(cista::mmap::protection::WRITE); }
 
-int main() {
-  // rlimit limit{50, RLIM_INFINITY};
-  // std::cout << std::format("Limits applied: {}", ::setrlimit(RLIMIT_RSS,
-  // &limit)) << std::endl;
+auto get_mapper(cista::mmap::protection mode)  {
+  return cista::mmap_vec<id_type>{cista::mmap{id_map_file.data(), mode}};
+}
 
+auto get_map_writer() {
+  return get_mapper(cista::mmap::protection::WRITE);
+}
+
+void show_stats(auto& cache) {
+  std::cout << std::format("Added {} buckets", cache.size()) << std::endl;
+  auto entries =
+      std::accumulate(cache.begin(), cache.end(), 0u,
+                      [](auto count, auto b) { return count + b.size(); });
+  std::cout << std::format("Number of entries: {}", entries) << std::endl;
+
+}
+
+void store_ids(auto ids) {
+  auto mapper = get_map_writer();
+  std::cout << "ID size: " << ids.size() << std::endl;
+  mapper.reserve(static_cast<unsigned int>(2u * ids.size()));
+  auto count{0u};
+  for (auto [id, pos] : ids) {
+    mapper.push_back(id);
+    mapper.push_back(pos);
+    ++count;
+  }
+  std::cout << "Count: " << count << std::endl;
+  std::cout << "Size: " << mapper.size() << "/" << mapper.used_size_<< std::endl;
+}
+
+int main() {
   cista::mmap_vec<char> shaped_data{
       cista::mmap{in_file.data(), cista::mmap::protection::READ}};
   auto cache = get_cache_writer();
 
   size_t last_id{0u};
   auto bucket = cache.add_back_sized(0u);
+  std::unordered_map<id_type, id_type> ids;
 
-  auto store_entry = [&bucket, &cache, &last_id](const auto& x) {
+  auto store_entry = [&bucket, &cache, &ids, &last_id](const auto& point) {
     if (last_id == 0u) {
-      last_id = x.id;
-    } else if (last_id != x.id) {
+      ids.insert({point.id, 0u});
+      last_id = point.id;
+    } else if (last_id != point.id) {
+      ids.insert({point.id, cache.size()});
       bucket = cache.add_back_sized(0u);
-      last_id = x.id;
+      last_id = point.id;
     }
-    bucket.push_back(x.lat);
-    bucket.push_back(x.lon);
+    bucket.push_back(point.lat);
+    bucket.push_back(point.lon);
   };
   constexpr bool custom{false};
   const std::string_view s{shaped_data};
@@ -166,10 +193,10 @@ int main() {
     // progress_lines(std::string_view(shaped_data), store_entry);
   }
 
-  std::cout << std::format("Added {} buckets", cache.size()) << std::endl;
-  auto entries =
-      std::accumulate(cache.begin(), cache.end(), 0u,
-                      [](auto count, auto b) { return count + b.size(); });
-  std::cout << std::format("Number of entries: {}", entries);
+  show_stats(cache);
+  for (auto key : {1, 134, 573}) {
+    std::cout << std::format("Key {} at position {}", key, ids.at(static_cast<id_type>(key))) << std::endl;
+  }
+  store_ids(ids);
   return 0;
 }
