@@ -431,7 +431,8 @@ TEST(routing, via_test_1) {
       tt,
       routing::query{.start_time_ = time("2019-05-01 10:00 Europe/Berlin"),
                      .start_ = {{loc(tt, "A"), 0_minutes, 0U}},
-                     .destination_ = {{loc(tt, "D"), 0_minutes, 0U}}},
+                     .destination_ = {{loc(tt, "D"), 0_minutes, 0U}},
+                     .via_stops_ = {}},
       direction::kForward);
 
   EXPECT_EQ(expected_A_D_no_via, results_to_str(results, tt));
@@ -440,7 +441,7 @@ TEST(routing, via_test_1) {
 TEST(routing, via_test_2) {
   auto const tt = load_timetable(test_files_1);
 
-  for (auto const [dir, start_time] :
+  for (auto const& [dir, start_time] :
        {std::pair{direction::kForward, time("2019-05-01 10:00 Europe/Berlin")},
         std::pair{direction::kBackward,
                   time("2019-05-01 10:30 Europe/Berlin")}}) {
@@ -460,7 +461,7 @@ TEST(routing, via_test_2) {
 TEST(routing, via_test_3) {
   auto tt = load_timetable(test_files_1);
 
-  for (auto const [dir, start_time] :
+  for (auto const& [dir, start_time] :
        {std::pair{direction::kForward, time("2019-05-01 10:00 Europe/Berlin")},
         std::pair{direction::kBackward,
                   time("2019-05-01 10:30 Europe/Berlin")}}) {
@@ -480,7 +481,7 @@ TEST(routing, via_test_3) {
 TEST(routing, via_test_4) {
   auto tt = load_timetable(test_files_1);
 
-  for (auto const [dir, start_time] :
+  for (auto const& [dir, start_time] :
        {std::pair{direction::kForward, time("2019-05-01 10:00 Europe/Berlin")},
         std::pair{direction::kBackward,
                   time("2019-05-01 10:45 Europe/Berlin")}}) {
@@ -500,7 +501,7 @@ TEST(routing, via_test_4) {
 TEST(routing, via_test_5) {
   auto tt = load_timetable(test_files_1);
 
-  for (auto const [dir, start_time] :
+  for (auto const& [dir, start_time] :
        {std::pair{direction::kForward, time("2019-05-01 10:00 Europe/Berlin")},
         std::pair{direction::kBackward,
                   time("2019-05-01 10:40 Europe/Berlin")}}) {
@@ -520,7 +521,7 @@ TEST(routing, via_test_5) {
 TEST(routing, via_test_6) {
   auto tt = load_timetable(test_files_1);
 
-  for (auto const [dir, start_time] :
+  for (auto const& [dir, start_time] :
        {std::pair{direction::kForward, time("2019-05-01 10:00 Europe/Berlin")},
         std::pair{direction::kBackward,
                   time("2019-05-01 10:55 Europe/Berlin")}}) {
@@ -540,7 +541,7 @@ TEST(routing, via_test_6) {
 TEST(routing, via_test_7) {
   auto tt = load_timetable(test_files_1);
 
-  for (auto const [dir, start_time] :
+  for (auto const& [dir, start_time] :
        {std::pair{direction::kForward, time("2019-05-01 15:00 Europe/Berlin")},
         std::pair{direction::kBackward,
                   time("2019-05-01 15:30 Europe/Berlin")}}) {
@@ -560,7 +561,7 @@ TEST(routing, via_test_7) {
 TEST(routing, via_test_8) {
   auto tt = load_timetable(test_files_1);
 
-  for (auto const [dir, start_time] :
+  for (auto const& [dir, start_time] :
        {std::pair{direction::kForward, time("2019-05-01 15:00 Europe/Berlin")},
         std::pair{direction::kBackward,
                   time("2019-05-01 15:30 Europe/Berlin")}}) {
@@ -580,7 +581,7 @@ TEST(routing, via_test_8) {
 TEST(routing, via_test_9) {
   auto tt = load_timetable(test_files_1);
 
-  for (auto const dir : {direction::kForward /*, direction::kBackward*/}) {
+  for (auto const& dir : {direction::kForward /*, direction::kBackward*/}) {
     // A -> J, via I2 (0 min)
     auto const results = search(
         tt,
@@ -599,7 +600,7 @@ TEST(routing, via_test_10) {
 
   // TODO: bwd now correctly returns the 0-transfer connection as well
 
-  for (auto const [dir, start_time] :
+  for (auto const& [dir, start_time] :
        {std::pair{direction::kForward, time("2019-05-01 16:00 Europe/Berlin")},
         std::pair{direction::kBackward,
                   time("2019-05-01 16:40 Europe/Berlin")}}) {
@@ -619,7 +620,7 @@ TEST(routing, via_test_10) {
 TEST(routing, via_test_11) {
   auto tt = load_timetable(test_files_1);
 
-  for (auto const [dir, start_time] :
+  for (auto const& [dir, start_time] :
        {std::pair{direction::kForward, time("2019-05-01 15:00 Europe/Berlin")},
         std::pair{direction::kBackward,
                   time("2019-05-01 16:40 Europe/Berlin")}}) {
@@ -639,7 +640,7 @@ TEST(routing, via_test_11) {
 TEST(routing, via_test_12) {
   auto tt = load_timetable(test_files_1);
 
-  for (auto const [dir, start_time] :
+  for (auto const& [dir, start_time] :
        {std::pair{direction::kForward, time("2019-05-01 15:00 Europe/Berlin")},
         std::pair{direction::kBackward,
                   time("2019-05-01 16:00 Europe/Berlin")}}) {
@@ -659,7 +660,7 @@ TEST(routing, via_test_12) {
 TEST(routing, via_test_13) {
   auto tt = load_timetable(test_files_1);
 
-  for (auto const [dir, start_time] :
+  for (auto const& [dir, start_time] :
        {std::pair{direction::kForward, time("2019-05-01 15:00 Europe/Berlin")},
         std::pair{direction::kBackward,
                   time("2019-05-01 16:00 Europe/Berlin")}}) {
@@ -679,7 +680,7 @@ TEST(routing, via_test_13) {
 TEST(routing, via_test_14) {
   auto tt = load_timetable(test_files_1);
 
-  for (auto const [dir, start_time] :
+  for (auto const& [dir, start_time] :
        {std::pair{direction::kForward, time("2019-05-01 15:00 Europe/Berlin")},
         std::pair{direction::kBackward,
                   time("2019-05-01 16:00 Europe/Berlin")}}) {
@@ -700,7 +701,7 @@ TEST(routing, via_test_14) {
 TEST(routing, via_test_15) {
   auto tt = load_timetable(test_files_1);
 
-  for (auto const [dir, start_time] :
+  for (auto const& [dir, start_time] :
        {std::pair{direction::kForward, time("2019-05-01 11:00 Europe/Berlin")},
         std::pair{direction::kBackward,
                   time("2019-05-01 13:00 Europe/Berlin")}}) {
@@ -720,7 +721,7 @@ TEST(routing, via_test_15) {
 TEST(routing, via_test_16) {
   auto tt = load_timetable(test_files_1);
 
-  for (auto const [dir, start_time] :
+  for (auto const& [dir, start_time] :
        {std::pair{direction::kForward, time("2019-05-01 10:30 Europe/Berlin")},
         std::pair{direction::kBackward,
                   time("2019-05-01 11:30 Europe/Berlin")}}) {
@@ -740,7 +741,7 @@ TEST(routing, via_test_16) {
 TEST(routing, via_test_17) {
   auto tt = load_timetable(test_files_1);
 
-  for (auto const [dir, start_time] :
+  for (auto const& [dir, start_time] :
        {std::pair{direction::kForward, time("2019-05-01 11:00 Europe/Berlin")},
         std::pair{direction::kBackward,
                   time("2019-05-01 13:00 Europe/Berlin")}}) {

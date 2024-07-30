@@ -72,7 +72,8 @@ pareto_set<routing::journey> raptor_search(
       .prf_idx_ = 0,
       .allowed_claszes_ = mask,
       .require_bike_transport_ = require_bikes_allowed,
-      .transfer_time_settings_ = tts};
+      .transfer_time_settings_ = tts,
+      .via_stops_ = {}};
   return raptor_search(tt, rtt, std::move(q), search_dir);
 }
 
@@ -109,7 +110,8 @@ pareto_set<routing::journey> raptor_intermodal_search(
       .min_connection_count_ = min_connection_count,
       .extend_interval_earlier_ = extend_interval_earlier,
       .extend_interval_later_ = extend_interval_later,
-      .prf_idx_ = 0};
+      .prf_idx_ = 0,
+      .via_stops_ = {}};
   return raptor_search(tt, rtt, std::move(q), search_dir);
 }
 
