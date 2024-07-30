@@ -450,3 +450,6 @@ struct fmt::formatter<nigiri::debug> : ostream_formatter {};
 
 template <>
 struct fmt::formatter<nigiri::delta> : ostream_formatter {};
+
+template <>
+struct fmt::formatter<nigiri::transport> : ostream_formatter {};

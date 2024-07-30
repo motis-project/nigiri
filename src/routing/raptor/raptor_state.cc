@@ -1,5 +1,7 @@
 #include "nigiri/routing/raptor/raptor_state.h"
 
+#include <algorithm>
+
 #include "fmt/core.h"
 
 #include "utl/helpers/algorithm.h"
@@ -25,9 +27,12 @@ void raptor_state::resize(unsigned const n_locations,
 void raptor_state::print(timetable const& tt,
                          date::sys_days const base,
                          delta_t const invalid) {
+  auto invalid_array = std::array<delta_t, kMaxVias + 1>{};
+  invalid_array.fill(invalid);
+
   auto const has_empty_rounds = [&](std::uint32_t const l) {
     for (auto k = 0U; k != kMaxTransfers + 1U; ++k) {
-      if (round_times_[k][l] != invalid) {
+      if (round_times_[k][l] != invalid_array) {
         return false;
       }
     }
@@ -42,20 +47,35 @@ void raptor_state::print(timetable const& tt,
     }
   };
 
+  auto const print_deltas =
+      [&](std::array<delta_t, kMaxVias + 1> const& deltas) {
+        fmt::print("[ ");
+        for (auto const d : deltas) {
+          print_delta(d);
+          fmt::print(" ");
+        }
+        fmt::print("]");
+      };
+
   for (auto l = 0U; l != tt.n_locations(); ++l) {
-    if (best_[l] == invalid && has_empty_rounds(l)) {
+    if (best_[l] == invalid_array && has_empty_rounds(l)) {
       continue;
     }
 
     fmt::print("{:80}  ", location{tt, location_idx_t{l}});
 
-    auto const b = best_[l];
+    fmt::print("tmp=");
+    print_deltas(tmp_[l]);
+    fmt::print(", ");
+
+    auto const& b = best_[l];
     fmt::print("best=");
-    print_delta(b);
+    print_deltas(b);
     fmt::print(", round_times: ");
     for (auto i = 0U; i != kMaxTransfers + 1U; ++i) {
-      auto const t = round_times_[i][l];
-      print_delta(t);
+      auto const& t = round_times_[i][l];
+      fmt::print("{}:", i);
+      print_deltas(t);
       fmt::print(" ");
     }
     fmt::print("\n");

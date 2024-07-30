@@ -14,6 +14,7 @@
 #include "nigiri/routing/pareto_set.h"
 #include "nigiri/routing/query.h"
 #include "nigiri/routing/start_times.h"
+#include "nigiri/routing/via_search.h"
 #include "nigiri/timetable.h"
 #include "nigiri/types.h"
 
@@ -28,7 +29,7 @@ struct search_state {
   ~search_state() = default;
 
   std::vector<std::uint16_t> travel_time_lower_bound_;
-  bitvec is_destination_;
+  std::array<bitvec, kMaxVias + 1> is_destination_;
   std::vector<std::uint16_t> dist_to_dest_;
   std::vector<start> starts_;
   pareto_set<journey> results_;
@@ -63,8 +64,17 @@ struct search {
     stats_.fastest_direct_ =
         static_cast<std::uint64_t>(fastest_direct_.count());
 
+    utl::verify(q_.via_stops_.size() <= kMaxVias,
+                "too many via stops: {}, limit: {}", q_.via_stops_.size(),
+                kMaxVias);
+
     collect_destinations(tt_, q_.destination_, q_.dest_match_mode_,
-                         state_.is_destination_, state_.dist_to_dest_);
+                         state_.is_destination_[q_.via_stops_.size()],
+                         state_.dist_to_dest_);
+
+    for (auto const& [i, via] : utl::enumerate(q_.via_stops_)) {
+      collect_via_destinations(tt_, via.location_, state_.is_destination_[i]);
+    }
 
     if constexpr (Algo::kUseLowerBounds) {
       UTL_START_TIMING(lb);
@@ -104,6 +114,7 @@ struct search {
         state_.is_destination_,
         state_.dist_to_dest_,
         state_.travel_time_lower_bound_,
+        q_.via_stops_,
         day_idx_t{
             std::chrono::duration_cast<date::days>(
                 std::chrono::round<std::chrono::days>(
@@ -136,14 +147,14 @@ struct search {
                 }},
             q_.start_time_)},
         fastest_direct_{get_fastest_direct(tt_, q_, SearchDir)},
-
         algo_{init(q_.allowed_claszes_,
                    q_.require_bike_transport_,
-                   q.transfer_time_settings_,
+                   q_.transfer_time_settings_,
                    algo_state)},
         timeout_(timeout) {
-    utl::sort(q.start_);
-    utl::sort(q.destination_);
+    utl::sort(q_.start_);
+    utl::sort(q_.destination_);
+    sanitize_via_stops(tt_, q_);
   }
 
   routing_result<algo_stats_t> execute() {
