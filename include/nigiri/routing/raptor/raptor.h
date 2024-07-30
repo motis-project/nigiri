@@ -368,7 +368,8 @@ private:
             continue;
           }
 
-          auto const start_is_via = v != via_count_ && is_dest_[v][i];
+          auto const start_is_via =
+              v != via_count_ && is_dest_[v][static_cast<bitvec::size_type>(i)];
           auto const start_v = start_is_via ? v + 1 : v;
 
           auto const target_is_via =
