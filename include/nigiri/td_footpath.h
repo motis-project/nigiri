@@ -49,7 +49,7 @@ std::optional<duration_t> get_td_duration(Collection const& c,
 
     for (auto it = from; it != to; ++it) {
       if (pred == nullptr || pred->duration_ == footpath::kMaxDuration ||
-          it->valid_from_ < t) {
+          it->valid_from_ < t + pred->duration_) {
         pred = &*it;
       } else {
         return get();
@@ -83,9 +83,11 @@ std::optional<duration_t> get_td_duration(Collection const& c,
       }
     }
 
+    using namespace std::chrono_literals;
     for (auto const [a, b] : utl::pairwise(it_range{from, to})) {
       if (b.duration_ != footpath::kMaxDuration &&
-          interval{b.valid_from_, a.valid_from_}.contains(t)) {
+          (t >= a.valid_from_ ||
+           interval{b.valid_from_, a.valid_from_ + 1min}.contains(t))) {
         return get(a.valid_from_, b.duration_);
       }
     }
