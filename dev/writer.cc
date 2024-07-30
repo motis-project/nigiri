@@ -55,9 +55,9 @@ struct ShapePoint {
 
   struct Shape {
     utl::csv_col<utl::cstr, UTL_NAME("shape_id")> id;
+    utl::csv_col<utl::cstr, UTL_NAME("shape_pt_sequence")> seq;
     utl::csv_col<utl::cstr, UTL_NAME("shape_pt_lat")> lat;
     utl::csv_col<utl::cstr, UTL_NAME("shape_pt_lon")> lon;
-    utl::csv_col<utl::cstr, UTL_NAME("shape_pt_sequence")> seq;
   };
 
   // template <typename T>
@@ -178,24 +178,36 @@ int main() {
   // std::cout << std::format("Limits applied: {}", ::setrlimit(RLIMIT_RSS, &limit)) << std::endl;
 
     cista::mmap_vec<char> shaped_data{cista::mmap{in_file.data(), cista::mmap::protection::READ}};
-    auto cache = get_cache_writer();
+//     std::string_view data{R"("shape_id","shape_pt_lat","shape_pt_lon","shape_pt_sequence"
+// 1,50.636259,6.473668,0
+// 1,50.636512,6.473487,1)"};
+    // auto cache = get_cache_writer();
 
-    size_t last_id{0u};
-    auto bucket = cache.add_back_sized(0u);
+    // // size_t last_id{0u};
+    // auto bucket = cache.add_back_sized(0u);
+    // bucket.push_back(1111111);
+    {
+      // CsvReader<ShapePoint::Shape> reader{std::string_view(shaped_data, {"shape_id", "shape_pt_lat", "shape_pt_lon", "shape_pt_sequence"})};
+      CsvReader<ShapePoint::Shape> reader{std::string_view(shaped_data)};
+      // CsvReader<ShapePoint::Shape> reader{data};
+      // std::cout << data << std::endl;
+      const auto begin = reader.begin();
+      std::cout << begin.offset_ << std::endl;
+    }
 
-    auto store_entry =
-        [&bucket, &cache, &last_id](const auto& x) {
-          if(last_id == 0u) {
-            last_id = x.id;
-          } else if (last_id != x.id) {
-            bucket = cache.add_back_sized(0u);
-            last_id = x.id;
-          }
-          bucket.push_back(x.lat);
-          bucket.push_back(x.lon);
-        }
-    ;
-    progress_lines(shaped_data, store_entry);
+    // auto store_entry =
+    //     [&bucket, &cache, &last_id](const auto& x) {
+    //       if(last_id == 0u) {
+    //         last_id = x.id;
+    //       } else if (last_id != x.id) {
+    //         bucket = cache.add_back_sized(0u);
+    //         last_id = x.id;
+    //       }
+    //       bucket.push_back(x.lat);
+    //       bucket.push_back(x.lon);
+    //     }
+    // ;
+    // progress_lines(shaped_data, store_entry);
     // auto reader = read_lines(shaped_data);
     // reader
     //   | utl::for_each(
@@ -210,8 +222,8 @@ int main() {
     //       bucket.push_back(x.lon);
     //     }
     // );
-    std::cout << std::format("Added {} buckets", cache.size()) << std::endl;
-    auto entries = std::accumulate(cache.begin(), cache.end(), 0u, [](auto count, auto b) { return count + b.size(); });
-    std::cout << std::format("Number of entries: {}", entries);
+    // std::cout << std::format("Added {} buckets", cache.size()) << std::endl;
+    // auto entries = std::accumulate(cache.begin(), cache.end(), 0u, [](auto count, auto b) { return count + b.size(); });
+    // std::cout << std::format("Number of entries: {}", entries);
     return 0;
 }
