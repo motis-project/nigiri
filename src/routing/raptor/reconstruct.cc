@@ -98,25 +98,20 @@ std::optional<journey::leg> find_start_footpath(timetable const& tt,
       }
     }
 
-    if (!q.td_start_.empty()) {
-      auto const [from, to] =
-          std::equal_range(begin(q.td_start_), end(q.td_start_),
-                           td_footpath{.target_ = leg_start_location},
-                           [&](td_footpath const& a, td_footpath const& b) {
-                             return a.target_ < b.target_;
-                           });
-      auto duration = footpath::kMaxDuration;
-      for_each_footpath(flip(SearchDir), std::span{from, to}, leg_start_time,
-                        [&](footpath const fp) { duration = fp.duration(); });
-      if (duration != footpath::kMaxDuration &&
+    if (auto const it = q.td_start_.find(leg_start_location);
+        it != end(q.td_start_)) {
+      auto const duration =
+          get_td_duration<flip(SearchDir)>(it->second, leg_start_time);
+      if (duration.has_value() &&
           is_better_or_eq(j.start_time_,
-                          leg_start_time - (kFwd ? 1 : -1) * duration)) {
+                          leg_start_time - (kFwd ? 1 : -1) * *duration)) {
         return journey::leg{SearchDir,
                             get_special_station(special_station::kStart),
                             leg_start_location,
-                            leg_start_time - (kFwd ? 1 : -1) * duration,
+                            leg_start_time - (kFwd ? 1 : -1) * (*duration),
                             leg_start_time,
-                            offset{leg_start_location, duration, 0 /* TODO */}};
+                            offset{leg_start_location, *duration,
+                                   it->second.back().transport_mode_id_}};
       }
     }
   } else {

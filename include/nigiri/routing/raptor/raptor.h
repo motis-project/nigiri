@@ -49,20 +49,23 @@ struct raptor {
   }
   static auto dir(auto a) { return (kFwd ? 1 : -1) * a; }
 
-  raptor(timetable const& tt,
-         rt_timetable const* rtt,
-         raptor_state& state,
-         bitvec& is_dest,
-         std::vector<std::uint16_t>& dist_to_dest,
-         std::vector<std::uint16_t>& lb,
-         day_idx_t const base,
-         clasz_mask_t const allowed_claszes,
-         bool const require_bike_transport)
+  raptor(
+      timetable const& tt,
+      rt_timetable const* rtt,
+      raptor_state& state,
+      bitvec& is_dest,
+      std::vector<std::uint16_t> const& dist_to_dest,
+      hash_map<location_idx_t, std::vector<td_footpath>> const& td_dist_to_dest,
+      std::vector<std::uint16_t> const& lb,
+      day_idx_t const base,
+      clasz_mask_t const allowed_claszes,
+      bool const require_bike_transport)
       : tt_{tt},
         rtt_{rtt},
         state_{state},
         is_dest_{is_dest},
         dist_to_end_{dist_to_dest},
+        td_dist_to_end_{td_dist_to_dest},
         lb_{lb},
         base_{base},
         n_days_{tt_.internal_interval_days().size().count()},
@@ -452,17 +455,39 @@ private:
 
     state_.end_reachable_.for_each_set_bit([&](auto const i) {
       if (state_.prev_station_mark_[i] || state_.station_mark_[i]) {
-        auto const end_time = clamp(get_best(state_.best_[i], state_.tmp_[i]) +
-                                    dir(dist_to_end_[i]));
+        auto const l = location_idx_t{i};
+        if (dist_to_end_[i] != std::numeric_limits<std::uint16_t>::max()) {
+          auto const end_time = clamp(
+              get_best(state_.best_[i], state_.tmp_[i]) + dir(dist_to_end_[i]));
 
-        if (is_better(end_time, state_.best_[kIntermodalTarget])) {
-          state_.round_times_[k][kIntermodalTarget] = end_time;
-          state_.best_[kIntermodalTarget] = end_time;
-          update_time_at_dest(k, end_time);
+          if (is_better(end_time, state_.best_[kIntermodalTarget])) {
+            state_.round_times_[k][kIntermodalTarget] = end_time;
+            state_.best_[kIntermodalTarget] = end_time;
+            update_time_at_dest(k, end_time);
+          }
+
+          trace("┊ │k={}  INTERMODAL FOOTPATH: location={}, dist_to_end={}\n",
+                k, location{tt_, l}, dist_to_end_[i]);
+        } else if (auto const it = td_dist_to_end_.find(l);
+                   it != end(td_dist_to_end_)) {
+          auto const fp_start_time = get_best(state_.best_[i], state_.tmp_[i]);
+          auto const duration =
+              get_td_duration<SearchDir>(it->second, to_unix(fp_start_time));
+          if (duration.has_value()) {
+            auto const end_time = clamp(fp_start_time + dir(duration->count()));
+
+            if (is_better(end_time, state_.best_[kIntermodalTarget])) {
+              state_.round_times_[k][kIntermodalTarget] = end_time;
+              state_.best_[kIntermodalTarget] = end_time;
+              update_time_at_dest(k, end_time);
+            }
+
+            trace(
+                "┊ │k={}  TD INTERMODAL FOOTPATH: location={}, start_time={}, "
+                "dist_to_end={}\n",
+                k, location{tt_, l}, fp_start_time, *duration);
+          }
         }
-
-        trace("┊ │k={}  INTERMODAL FOOTPATH: location={}, dist_to_end={}\n", k,
-              location{tt_, location_idx_t{i}}, dist_to_end_[i]);
       }
     });
   }
@@ -838,8 +863,9 @@ private:
   rt_timetable const* rtt_{nullptr};
   raptor_state& state_;
   bitvec& is_dest_;
-  std::vector<std::uint16_t>& dist_to_end_;
-  std::vector<std::uint16_t>& lb_;
+  std::vector<std::uint16_t> const& dist_to_end_;
+  hash_map<location_idx_t, std::vector<td_footpath>> const& td_dist_to_end_;
+  std::vector<std::uint16_t> const& lb_;
   std::array<delta_t, kMaxTransfers + 1> time_at_dest_;
   day_idx_t base_;
   int n_days_;

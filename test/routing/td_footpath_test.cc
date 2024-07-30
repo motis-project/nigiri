@@ -184,23 +184,35 @@ TEST(routing, td_footpath) {
   auto const run_search = [&]() {
     return raptor_search(
         tt, &rtt,
-        {.start_time_ = unixtime_t{sys_days{2024_y / June / 19}} + 7h,
-         .start_match_mode_ = routing::location_match_mode::kIntermodal,
-         .dest_match_mode_ = routing::location_match_mode::kEquivalent,
-         .use_start_footpaths_ = false,
-         .destination_ = {{C, 0_minutes, 0}},
-         .td_start_ = {{.target_ = A,
-                        .valid_from_ = sys_days{1970_y / January / 1},
-                        .duration_ = footpath::kMaxDuration},
-                       {.target_ = A,
-                        .valid_from_ =
-                            sys_days{2024_y / June / 19} + 7h + 30min,
-                        .duration_ = 10min},
-                       {.target_ = A,
-                        .valid_from_ =
-                            sys_days{2024_y / June / 19} + 7h + 45min,
-                        .duration_ = footpath::kMaxDuration}},
-         .prf_idx_ = 2U},
+        routing::query{
+            .start_time_ = unixtime_t{sys_days{2024_y / June / 19}} + 7h,
+            .start_match_mode_ = routing::location_match_mode::kIntermodal,
+            .dest_match_mode_ = routing::location_match_mode::kIntermodal,
+            .use_start_footpaths_ = false,
+            .destination_ = {{C, 0_minutes, 0}},
+            .td_start_ =
+                {{{A,
+                   {{.valid_from_ = sys_days{1970_y / January / 1},
+                     .duration_ = footpath::kMaxDuration,
+                     .transport_mode_id_ = 0},
+                    {.valid_from_ = sys_days{2024_y / June / 19} + 7h + 30min,
+                     .duration_ = 10min,
+                     .transport_mode_id_ = 0},
+                    {.valid_from_ = sys_days{2024_y / June / 19} + 7h + 45min,
+                     .duration_ = footpath::kMaxDuration,
+                     .transport_mode_id_ = 0}}}}},
+            .td_dest_ =
+                {{{C,
+                   {{.valid_from_ = sys_days{1970_y / January / 1},
+                     .duration_ = 10min,
+                     .transport_mode_id_ = 0},
+                    {.valid_from_ = sys_days{2024_y / June / 19} + 12h + 30min,
+                     .duration_ = footpath::kMaxDuration,
+                     .transport_mode_id_ = 0},
+                    {.valid_from_ = sys_days{2024_y / June / 19} + 13h + 30min,
+                     .duration_ = 10min,
+                     .transport_mode_id_ = 0}}}}},
+            .prf_idx_ = 2U},
         direction::kForward);
   };
 
