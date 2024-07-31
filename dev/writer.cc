@@ -25,12 +25,6 @@
 
 const std::string in_file{"../dev/shapes.txt"};
 
-using datatype = int32_t;
-using id_type = std::string;
-// using id_type = uint32_t;
-// using id_type = cista::raw::string;
-// using id_map_type = std::unordered_map<id_type, uint32_t>;
-using id_map_type = std::vector<std::string>;
 
 class InvalidShapesFormat final : public std::runtime_error {
 public:
@@ -41,7 +35,7 @@ InvalidShapesFormat::~InvalidShapesFormat() = default;
 
 struct ShapePoint {
   const id_type id;
-  const datatype lat, lon;
+  const coordinate_type lat, lon;
   const size_t seq;
 
   struct Shape {
@@ -79,22 +73,6 @@ void progress_lines(const auto& file_content, auto func) {
       utl::for_each(func);
 }
 
-auto get_cache(cista::mmap::protection mode) {
-  return mm_vecvec<std::size_t, datatype>{
-      cista::basic_mmap_vec<datatype, std::size_t>{
-          cista::mmap{std::format(cache_file_template, "values").data(), mode}},
-      cista::basic_mmap_vec<std::size_t, std::size_t>{cista::mmap{
-          std::format(cache_file_template, "metadata").data(), mode}}};
-}
-
-auto get_cache_writer() { return get_cache(cista::mmap::protection::WRITE); }
-
-auto get_mapper(cista::mmap::protection mode) {
-  return cista::mmap_vec<char>{cista::mmap{id_map_file.data(), mode}};
-}
-
-auto get_map_writer() { return get_mapper(cista::mmap::protection::WRITE); }
-
 void show_stats(auto& cache) {
   std::cout << std::format("Added {} buckets", cache.size()) << std::endl;
   auto entries =
@@ -109,13 +87,18 @@ void store_ids(auto ids) {
   for (auto id : ids) {
     mapper.insert(mapper.end(), id.begin(), id.end());
     mapper.push_back('\0');
-    // // mapper.insert(id.data());
-    // mapper.emplace_back(id.data());
-    // mapper.push_back(id.data());
   }
-  // constexpr auto mode = cista::mode::WITH_VERSION | cista::mode::WITH_INTEGRITY;
-  // auto ids = cista::raw::string{std::string{"Test"}};
-  // cista::serialize<mode>(mapper, ids);
+}
+
+void test_id_map(auto const& ids) {
+  auto id_map = vec_to_map(ids);
+
+  std::cout << "Testing some ids …" << std::endl;
+  for (auto key : {"1", "134", "573"}) {
+    std::cout << std::format("Key {:>5} at position {:>5}", key,
+                             id_map.at(key))
+              << std::endl;
+  }
 }
 
 int main() {
@@ -146,11 +129,7 @@ int main() {
   store_ids(ids);
 
   show_stats(cache);
-  // std::cout << "Testing some ids …" << std::endl;
-  // for (auto key : {"1", "134", "573"}) {
-  //   std::cout << std::format("Key {:>5} at position {:>5}", key,
-  //                            ids.at(key))
-  //             << std::endl;
-  // }
+  test_id_map(ids);
+
   return 0;
 }
