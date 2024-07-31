@@ -2,14 +2,18 @@
 #include <cista/mmap.h>
 #include <sys/types.h>
 #include <cstddef>
+#include <cstdint>
 #include <format>
 #include <iostream>
 #include <numeric>
 #include <stdexcept>
 #include <string_view>
+#include <vector>
 #include <unordered_map>
 
+#include "cista/containers/hash_map.h"
 #include "cista/mmap.h"
+#include "cista/serialization.h"
 #include "utl/parser/buf_reader.h"
 #include "utl/parser/csv_range.h"
 #include "utl/parser/line_range.h"
@@ -20,11 +24,13 @@
 #include "utl/pipes/transform.h"
 
 const std::string in_file{"../dev/shapes.txt"};
-constexpr std::string_view cache_file_template{"shape-cache.{}.dat"};
-constexpr std::string_view id_map_file{"shape-id.dat"};  // Might be anything?
 
 using datatype = int32_t;
-using id_type = uint16_t;
+using id_type = std::string;
+// using id_type = uint32_t;
+// using id_type = cista::raw::string;
+// using id_map_type = std::unordered_map<id_type, uint32_t>;
+using id_map_type = std::vector<std::string>;
 
 class InvalidShapesFormat final : public std::runtime_error {
 public:
@@ -84,7 +90,7 @@ auto get_cache(cista::mmap::protection mode) {
 auto get_cache_writer() { return get_cache(cista::mmap::protection::WRITE); }
 
 auto get_mapper(cista::mmap::protection mode) {
-  return cista::mmap_vec<id_type>{cista::mmap{id_map_file.data(), mode}};
+  return cista::mmap_vec<char>{cista::mmap{id_map_file.data(), mode}};
 }
 
 auto get_map_writer() { return get_mapper(cista::mmap::protection::WRITE); }
@@ -98,12 +104,18 @@ void show_stats(auto& cache) {
 }
 
 void store_ids(auto ids) {
+// void store_ids(auto ) {
   auto mapper = get_map_writer();
-  mapper.reserve(static_cast<unsigned int>(2u * ids.size()));
-  for (auto [id, pos] : ids) {
-    mapper.push_back(id);
-    mapper.push_back(pos);
+  for (auto id : ids) {
+    mapper.insert(mapper.end(), id.begin(), id.end());
+    mapper.push_back('\0');
+    // // mapper.insert(id.data());
+    // mapper.emplace_back(id.data());
+    // mapper.push_back(id.data());
   }
+  // constexpr auto mode = cista::mode::WITH_VERSION | cista::mode::WITH_INTEGRITY;
+  // auto ids = cista::raw::string{std::string{"Test"}};
+  // cista::serialize<mode>(mapper, ids);
 }
 
 int main() {
@@ -111,16 +123,18 @@ int main() {
       cista::mmap{in_file.data(), cista::mmap::protection::READ}};
   auto cache = get_cache_writer();
 
-  size_t last_id{0u};
+  id_type last_id;
   auto bucket = cache.add_back_sized(0u);
-  std::unordered_map<id_type, id_type> ids;
+  id_map_type ids;
 
   auto store_entry = [&bucket, &cache, &ids, &last_id](const auto& point) {
-    if (last_id == 0u) {
-      ids.insert({point.id, 0u});
+    if (last_id == id_type{}) {
+      // ids.insert({point.id, 0u});
+      ids.push_back(point.id);
       last_id = point.id;
     } else if (last_id != point.id) {
-      ids.insert({point.id, cache.size()});
+      // ids.insert({point.id, cache.size()});
+      ids.push_back(point.id);
       bucket = cache.add_back_sized(0u);
       last_id = point.id;
     }
@@ -132,11 +146,11 @@ int main() {
   store_ids(ids);
 
   show_stats(cache);
-  std::cout << "Testing some ids …" << std::endl;
-  for (auto key : {1, 134, 573}) {
-    std::cout << std::format("Key {:>5} at position {:>5}", key,
-                             ids.at(static_cast<id_type>(key)))
-              << std::endl;
-  }
+  // std::cout << "Testing some ids …" << std::endl;
+  // for (auto key : {"1", "134", "573"}) {
+  //   std::cout << std::format("Key {:>5} at position {:>5}", key,
+  //                            ids.at(key))
+  //             << std::endl;
+  // }
   return 0;
 }

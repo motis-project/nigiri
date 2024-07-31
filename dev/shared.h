@@ -8,6 +8,8 @@
 #include "cista/containers/mmap_vec.h"
 #include "cista/containers/vecvec.h"
 
+constexpr std::string_view cache_file_template{"shape-cache.{}.dat"};
+constexpr std::string_view id_map_file{"shape-id.dat"};  // Might be anything?
 
 template <typename T>
 using mm_vec = cista::basic_mmap_vec<T, std::uint64_t>;
