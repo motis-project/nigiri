@@ -77,6 +77,9 @@ vector<vdv_stop> resolve_stops(timetable const& tt,
                                statistics& stats) {
   auto vdv_stops = vector<vdv_stop>{};
 
+  auto unresolvable_stops =
+      std::ofstream{"unresolvable_stops.txt", std::ios::app};
+
   for (auto const stop : run.select_nodes("IstHalt")) {
     ++stats.total_stops_;
 
@@ -94,9 +97,7 @@ vector<vdv_stop> resolve_stops(timetable const& tt,
       vdv_stops.emplace_back(l->l_, stop.node());
     } else {
       ++stats.unknown_stops_;
-      std::cout << "could not resolve stop " << vdv_stop_id << ":\n";
-      stop.node().print(std::cout);
-      std::cout << "\n";
+      unresolvable_stops << vdv_stop_id << "\n";
     }
   }
 
@@ -157,14 +158,18 @@ std::optional<rt::run> find_run(timetable const& tt,
 
             if (vdv_line_text.find(trip_line.substr(0, trip_line.find(' '))) ==
                 std::string_view::npos) {
+              ++stats.match_prevented_by_line_id_;
               continue;
             }
 
-            ++utl::get_or_create(
-                matches,
+            auto const rt_run =
                 rt::run{transport{tr, day_idx_t{tr_day}},
-                        {0U, static_cast<stop_idx_t>(location_seq.size())}},
-                []() { return 0U; });
+                        {0U, static_cast<stop_idx_t>(location_seq.size())}};
+
+            if (++matches[rt_run] == 10) {
+              return rt_run;
+            }
+
             no_transport_found_at_stop = false;
           }
         }
@@ -177,6 +182,7 @@ std::optional<rt::run> find_run(timetable const& tt,
   if (matches.empty()) {
     return std::nullopt;
   }
+
   std::cout << "match candidates:\n";
   for (auto const [k, v] : matches) {
     std::cout
@@ -200,18 +206,22 @@ void update_run(timetable const& tt,
                 source_idx_t const src,
                 run& r,
                 auto const& vdv_stops,
+                bool const is_complete_run,
                 statistics& stats) {
   auto fr = rt::frun(tt, &rtt, r);
   if (!fr.is_rt()) {
     fr.rt_ = rtt.add_rt_transport(src, tt, r.t_);
   }
 
+  std::cout << "---\nupdating " << fr.name() << "\n";
+
   auto delay = std::optional<duration_t>{};
 
   auto const update_event = [&](auto const stop_idx, auto const et,
                                 auto const new_time) {
     delay = new_time - fr[stop_idx].scheduled_time(et);
-    std::cout << fr[stop_idx].scheduled_time(et) << "+" << delay->count()
+    std::cout << "update " << (et == event_type::kArr ? "ARR: " : "DEP: ")
+              << fr[stop_idx].scheduled_time(et) << "+" << delay->count()
               << "\n";
     rtt.update_time(fr.rt_, stop_idx, et, new_time);
     rtt.dispatch_event_change(fr.t_, stop_idx, et, *delay, false);
@@ -236,6 +246,7 @@ void update_run(timetable const& tt,
                   << ", name: " << tt.locations_.get(it->l_).name_ << "]\n";
       }
     }
+    std::cout << "\n";
     cursor = vdv_stop;
   };
 
@@ -243,14 +254,14 @@ void update_run(timetable const& tt,
     auto matched = false;
     for (auto vdv_stop = cursor; vdv_stop != end(vdv_stops); ++vdv_stop) {
       if (fr[stop_idx].get_location_idx() == vdv_stop->l_) {
+        std::cout << "location match at stop_idx = " << stop_idx
+                  << ": [id: " << fr[stop_idx].id()
+                  << ", name: " << fr[stop_idx].name() << "]\n";
         if (stop_idx != 0 && vdv_stop->rt_arr_.has_value() &&
             vdv_stop->arr_.has_value() &&
             vdv_stop->arr_.value() ==
                 fr[stop_idx].scheduled_time(event_type::kArr)) {
           matched = true;
-          std::cout << "update at stop_idx = " << stop_idx
-                    << ": [id: " << fr[stop_idx].id()
-                    << ", name: " << fr[stop_idx].name() << "] ARR: ";
           update_event(stop_idx, event_type::kArr, *vdv_stop->rt_arr_);
         }
         if (stop_idx != fr.stop_range_.to_ - 1 &&
@@ -258,17 +269,20 @@ void update_run(timetable const& tt,
             vdv_stop->dep_.value() ==
                 fr[stop_idx].scheduled_time(event_type::kDep)) {
           matched = true;
-          std::cout << "update at stop_idx = " << stop_idx
-                    << ": [id: " << fr[stop_idx].id()
-                    << ", name: " << fr[stop_idx].name() << "] DEP: ";
           update_event(stop_idx, event_type::kDep, *vdv_stop->rt_dep_);
         }
         if (matched) {
           std::cout << "\n";
           move_cursor(vdv_stop + 1);
+          break;
         }
-        break;
       }
+    }
+    if (!matched && is_complete_run) {
+      auto gtfs_stop_missing_in_vdv =
+          std::ofstream{"gtfs_stop_missing_in_vdv.txt", std::ios::app};
+      gtfs_stop_missing_in_vdv << "[id: " << fr[stop_idx].id()
+                               << ", name: " << fr[stop_idx].name() << "]\n";
     }
     if (!matched && delay) {
       if (stop_idx != 0) {
@@ -294,7 +308,7 @@ void update_run(timetable const& tt,
     ++cursor;
   }
 
-  std::cout << "\n";
+  std::cout << "---\n\n";
 }
 
 void process_vdv_run(timetable const& tt,
@@ -309,14 +323,17 @@ void process_vdv_run(timetable const& tt,
   auto r = find_run(tt, run, vdv_stops, stats);
   if (!r.has_value()) {
     ++stats.unmatchable_runs_;
-    std::cout << "\nunmatchable run:\n";
-    run.print(std::cout);
-    std::cout << "\n";
+    auto unmatchable_runs =
+        std::ofstream{"unmatchable_runs.txt", std::ios::app};
+    run.print(unmatchable_runs);
+    unmatchable_runs << "\n";
     return;
   }
   ++stats.matched_runs_;
 
-  update_run(tt, rtt, src, *r, vdv_stops, stats);
+  auto const is_complete_run = *get_opt_bool(run, "Komplettfahrt", false);
+
+  update_run(tt, rtt, src, *r, vdv_stops, is_complete_run, stats);
 }
 
 statistics vdv_update(timetable const& tt,
