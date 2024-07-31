@@ -7,6 +7,7 @@
 #include "pugixml.hpp"
 
 #include "utl/enumerate.h"
+#include "utl/get_or_create.h"
 #include "utl/parser/arg_parser.h"
 #include "utl/verify.h"
 
@@ -108,13 +109,13 @@ std::optional<rt::run> find_run(timetable const& tt,
                                 statistics& stats) {
   using namespace std::literals;
 
-  auto const vdv_line_id_xpath = run.select_node("LinienID");
-  if (!vdv_line_id_xpath) {
-    std::cout << "VDV run without line id:\n";
+  auto const vdv_line_text_xpath = run.select_node("LinienText");
+  if (!vdv_line_text_xpath) {
+    std::cout << "VDV run without line text:\n";
     return std::nullopt;
   }
-  auto const vdv_line_id =
-      std::string_view{vdv_line_id_xpath.node().child_value()};
+  auto vdv_line_text = std::string{vdv_line_text_xpath.node().child_value()};
+  std::erase_if(vdv_line_text, [](auto const c) { return c == ' '; });
 
   auto const vdv_direction_id_xpath = run.select_node("RichtungsID");
   if (!vdv_direction_id_xpath) {
@@ -122,9 +123,10 @@ std::optional<rt::run> find_run(timetable const& tt,
     return std::nullopt;
   }
 
-  auto const matches = hash_map<std::pair<rt::run, unsigned>>{};
+  auto matches = hash_map<rt::run, unsigned>{};
 
   for (auto const& vdv_stop : vdv_stops) {
+    auto no_transport_found_at_stop = true;
     for (auto const r : tt.location_routes_[vdv_stop.l_]) {
       auto const location_seq = tt.route_location_seq_[r];
       for (auto const [stop_idx, s] : utl::enumerate(location_seq)) {
@@ -153,31 +155,44 @@ std::optional<rt::run> find_run(timetable const& tt,
                     : tt.trip_lines_[tt.transport_section_lines_[tr][stop_idx]]
                           .view();
 
-            if (vdv_line_id.find(trip_line.substr(0, trip_line.find(' '))) ==
+            if (vdv_line_text.find(trip_line.substr(0, trip_line.find(' '))) ==
                 std::string_view::npos) {
-              std::cout << "stop and event time match, but VDV line id "
-                        << vdv_line_id
-                        << " does not match GTFS route_short_name " << trip_line
-                        << "\n";
               continue;
             }
 
-            std::cout << "matched run at vdv stop_idx = " << stop_idx
-                      << ": VDV line id " << vdv_line_id
-                      << " contains GTFS route_short_name " << trip_line
-                      << "\n";
-
-            // use utl::get or create to count number of matching stops for
-            // scoring?
-            return rt::run{transport{tr, day_idx_t{tr_day}},
-                           {0U, static_cast<stop_idx_t>(location_seq.size())}};
+            ++utl::get_or_create(
+                matches,
+                rt::run{transport{tr, day_idx_t{tr_day}},
+                        {0U, static_cast<stop_idx_t>(location_seq.size())}},
+                []() { return 0U; });
+            no_transport_found_at_stop = false;
           }
         }
       }
     }
-    ++stats.no_transport_found_at_stop_;
+    if (no_transport_found_at_stop) {
+      ++stats.no_transport_found_at_stop_;
+    }
   }
-  return std::nullopt;
+  if (matches.empty()) {
+    return std::nullopt;
+  }
+  std::cout << "match candidates:\n";
+  for (auto const [k, v] : matches) {
+    std::cout
+        << "[line: "
+        << tt.trip_lines_[tt.transport_section_lines_[k.t_.t_idx_].size() == 1
+                              ? tt.transport_section_lines_[k.t_.t_idx_].front()
+                              : tt.transport_section_lines_
+                                    [k.t_.t_idx_][k.stop_range_.from_]]
+               .view()
+        << ", #matching_stops: " << v << "]\n";
+  }
+
+  return std::max_element(
+             begin(matches), end(matches),
+             [](auto const& a, auto const& b) { return a.second < b.second; })
+      ->first;
 }
 
 void update_run(timetable const& tt,
@@ -196,12 +211,16 @@ void update_run(timetable const& tt,
   auto const update_event = [&](auto const stop_idx, auto const et,
                                 auto const new_time) {
     delay = new_time - fr[stop_idx].scheduled_time(et);
+    std::cout << fr[stop_idx].scheduled_time(et) << "+" << delay->count()
+              << "\n";
     rtt.update_time(fr.rt_, stop_idx, et, new_time);
     rtt.dispatch_event_change(fr.t_, stop_idx, et, *delay, false);
     ++stats.updated_events_;
   };
 
   auto const propagate_delay = [&](auto const stop_idx, event_type et) {
+    std::cout << fr[stop_idx].scheduled_time(et) << "+" << delay->count()
+              << "\n";
     rtt.update_time(fr.rt_, stop_idx, et,
                     fr[stop_idx].scheduled_time(et) + *delay);
     rtt.dispatch_event_change(fr.t_, stop_idx, et, *delay, false);
@@ -224,31 +243,47 @@ void update_run(timetable const& tt,
     auto matched = false;
     for (auto vdv_stop = cursor; vdv_stop != end(vdv_stops); ++vdv_stop) {
       if (fr[stop_idx].get_location_idx() == vdv_stop->l_) {
-        matched = true;
-        move_cursor(vdv_stop + 1);
-        std::cout << "update at stop_idx = " << stop_idx
-                  << ": [id: " << fr[stop_idx].id()
-                  << ", name: " << fr[stop_idx].name() << "]\n";
-        if (stop_idx != 0 && vdv_stop->rt_arr_.has_value()) {
+        if (stop_idx != 0 && vdv_stop->rt_arr_.has_value() &&
+            vdv_stop->arr_.has_value() &&
+            vdv_stop->arr_.value() ==
+                fr[stop_idx].scheduled_time(event_type::kArr)) {
+          matched = true;
+          std::cout << "update at stop_idx = " << stop_idx
+                    << ": [id: " << fr[stop_idx].id()
+                    << ", name: " << fr[stop_idx].name() << "] ARR: ";
           update_event(stop_idx, event_type::kArr, *vdv_stop->rt_arr_);
         }
         if (stop_idx != fr.stop_range_.to_ - 1 &&
-            vdv_stop->rt_dep_.has_value()) {
+            vdv_stop->rt_dep_.has_value() && vdv_stop->dep_.has_value() &&
+            vdv_stop->dep_.value() ==
+                fr[stop_idx].scheduled_time(event_type::kDep)) {
+          matched = true;
+          std::cout << "update at stop_idx = " << stop_idx
+                    << ": [id: " << fr[stop_idx].id()
+                    << ", name: " << fr[stop_idx].name() << "] DEP: ";
           update_event(stop_idx, event_type::kDep, *vdv_stop->rt_dep_);
+        }
+        if (matched) {
+          std::cout << "\n";
+          move_cursor(vdv_stop + 1);
         }
         break;
       }
     }
     if (!matched && delay) {
-      std::cout << "propagating delay at stop_idx = " << stop_idx
-                << ": [id: " << fr[stop_idx].id()
-                << ", name: " << fr[stop_idx].name() << "]\n";
       if (stop_idx != 0) {
+        std::cout << "propagating delay at stop_idx = " << stop_idx
+                  << ": [id: " << fr[stop_idx].id()
+                  << ", name: " << fr[stop_idx].name() << "] ARR: ";
         propagate_delay(stop_idx, event_type::kArr);
       }
       if (stop_idx != fr.stop_range_.to_ - 1) {
+        std::cout << "propagating delay at stop_idx = " << stop_idx
+                  << ": [id: " << fr[stop_idx].id()
+                  << ", name: " << fr[stop_idx].name() << "] DEP: ";
         propagate_delay(stop_idx, event_type::kDep);
       }
+      std::cout << "\n";
     }
   }
 
