@@ -135,7 +135,8 @@ std::optional<rt::run> find_run(timetable const& tt,
     return std::nullopt;
   }
 
-  auto matches = hash_map<rt::run, unsigned>{};
+  auto matches =
+      hash_map<transport, std::pair<interval<stop_idx_t>, unsigned>>{};
 
   for (auto const& vdv_stop : vdv_stops) {
     if (vdv_stop.l_ == location_idx_t::invalid()) {
@@ -159,15 +160,18 @@ std::optional<rt::run> find_run(timetable const& tt,
             continue;
           }
 
-          auto const tr_day =
-              static_cast<std::size_t>(to_idx(day_idx) - ev_time.days());
-          auto const tr = tt.route_transport_ranges_[r][ev_time_idx];
+          auto const tr = transport{tt.route_transport_ranges_[r][ev_time_idx],
+                                    day_idx - day_idx_t{ev_time.days()}};
 
-          if (tt.bitfields_[tt.transport_traffic_days_[tr]].test(tr_day)) {
+          if (tt.bitfields_[tt.transport_traffic_days_[tr.t_idx_]].test(
+                  to_idx(tr.day_))) {
+
             auto const trip_line =
-                size(tt.transport_section_lines_[tr]) == 1U
-                    ? tt.trip_lines_[tt.transport_section_lines_[tr][0U]].view()
-                    : tt.trip_lines_[tt.transport_section_lines_[tr][stop_idx]]
+                size(tt.transport_section_lines_[tr.t_idx_]) == 1U
+                    ? tt.trip_lines_[tt.transport_section_lines_[tr.t_idx_][0U]]
+                          .view()
+                    : tt.trip_lines_[tt.transport_section_lines_[tr.t_idx_]
+                                                                [stop_idx]]
                           .view();
 
             if (vdv_line_text.find(trip_line.substr(0, trip_line.find(' '))) ==
@@ -176,12 +180,15 @@ std::optional<rt::run> find_run(timetable const& tt,
               continue;
             }
 
-            auto const rt_run =
-                rt::run{transport{tr, day_idx_t{tr_day}},
-                        {0U, static_cast<stop_idx_t>(location_seq.size())}};
+            if (!matches.contains(tr)) {
+              matches[tr] = {{static_cast<stop_idx_t>(stop_idx),
+                              static_cast<stop_idx_t>(location_seq.size())},
+                             0U};
+            }
 
-            if (++matches[rt_run] == 10) {
-              return rt_run;
+            if (++matches[tr].second == 10) {
+              return rt::run{tr,
+                             {matches[tr].first.from_, matches[tr].first.to_}};
             }
 
             no_transport_found_at_stop = false;
@@ -198,21 +205,25 @@ std::optional<rt::run> find_run(timetable const& tt,
   }
 
   std::cout << "match candidates:\n";
-  for (auto const [k, v] : matches) {
+  for (auto const& [k, v] : matches) {
     std::cout
         << "[line: "
-        << tt.trip_lines_[tt.transport_section_lines_[k.t_.t_idx_].size() == 1
-                              ? tt.transport_section_lines_[k.t_.t_idx_].front()
+        << tt.trip_lines_[tt.transport_section_lines_[k.t_idx_].size() == 1
+                              ? tt.transport_section_lines_[k.t_idx_].front()
                               : tt.transport_section_lines_
-                                    [k.t_.t_idx_][k.stop_range_.from_]]
+                                    [k.t_idx_][matches[k].first.from_]]
                .view()
-        << ", #matching_stops: " << v << "]\n";
+        << ", #matching_stops: " << v.second << "]\n";
   }
 
-  return std::max_element(
-             begin(matches), end(matches),
-             [](auto const& a, auto const& b) { return a.second < b.second; })
-      ->first;
+  auto const most_matches = std::max_element(
+      begin(matches), end(matches), [](auto const& a, auto const& b) {
+        return a.second.second < b.second.second;
+      });
+
+  return rt::run{
+      most_matches->first,
+      {most_matches->second.first.from_, most_matches->second.first.to_}};
 }
 
 void update_run(timetable const& tt,
@@ -227,7 +238,9 @@ void update_run(timetable const& tt,
     fr.rt_ = rtt.add_rt_transport(src, tt, r.t_);
   }
 
-  std::cout << "---\nupdating " << fr.name() << "\n";
+  std::cout << "---\nupdating " << fr.name()
+            << ", stop_idx: " << fr.stop_range_.from_ << " to "
+            << fr.stop_range_.to_ - 1 << "\n";
 
   auto gtfs_stop_missing = std::stringstream{};
   auto prefix_matches = std::stringstream{};
