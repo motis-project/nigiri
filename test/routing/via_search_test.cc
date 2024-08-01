@@ -379,6 +379,39 @@ leg 2: (C, C) [2019-05-01 08:55] -> (D, D) [2019-05-01 09:30]
 
 )"sv;
 
+constexpr auto const expected_intermodal_HO_Q_via_P_0min =
+    R"(
+[2019-05-01 09:00, 2019-05-01 11:00]
+TRANSFERS: 0
+     FROM: (START, START) [2019-05-01 09:00]
+       TO: (Q, Q) [2019-05-01 11:00]
+leg 0: (START, START) [2019-05-01 09:00] -> (O, O) [2019-05-01 09:40]
+  MUMO (id=1, duration=40)
+leg 1: (O, O) [2019-05-01 10:30] -> (Q, Q) [2019-05-01 11:00]
+   2: O       O...............................................                               d: 01.05 10:30 [01.05 12:30]  [{name=Bus 7, day=2019-05-01, id=T10, src=0}]
+   3: P       P............................................... a: 01.05 10:43 [01.05 12:43]  d: 01.05 10:45 [01.05 12:45]  [{name=Bus 7, day=2019-05-01, id=T10, src=0}]
+   4: Q       Q............................................... a: 01.05 11:00 [01.05 13:00]
+
+
+[2019-05-01 09:00, 2019-05-01 10:00]
+TRANSFERS: 1
+     FROM: (START, START) [2019-05-01 09:00]
+       TO: (Q, Q) [2019-05-01 10:00]
+leg 0: (START, START) [2019-05-01 09:00] -> (H, H) [2019-05-01 09:00]
+  MUMO (id=0, duration=0)
+leg 1: (H, H) [2019-05-01 09:00] -> (O, O) [2019-05-01 09:20]
+   0: H       H...............................................                               d: 01.05 09:00 [01.05 11:00]  [{name=Bus 9, day=2019-05-01, id=T12, src=0}]
+   1: O       O............................................... a: 01.05 09:20 [01.05 11:20]
+leg 2: (O, O) [2019-05-01 09:20] -> (O, O) [2019-05-01 09:22]
+  FOOTPATH (duration=2)
+leg 3: (O, O) [2019-05-01 09:30] -> (Q, Q) [2019-05-01 10:00]
+   2: O       O...............................................                               d: 01.05 09:30 [01.05 11:30]  [{name=Bus 7, day=2019-05-01, id=T9, src=0}]
+   3: P       P............................................... a: 01.05 09:43 [01.05 11:43]  d: 01.05 09:45 [01.05 11:45]  [{name=Bus 7, day=2019-05-01, id=T9, src=0}]
+   4: Q       Q............................................... a: 01.05 10:00 [01.05 12:00]
+
+
+)"sv;
+
 std::string results_to_str(pareto_set<routing::journey> const& results,
                            timetable const& tt,
                            rt_timetable const* rtt = nullptr) {
@@ -644,15 +677,18 @@ TEST(routing, via_test_8) {
 TEST(routing, via_test_9) {
   auto tt = load_timetable(test_files_1);
 
-  for (auto const& dir : {direction::kForward /*, direction::kBackward*/}) {
+  for (auto const& [dir, start_time] :
+       {std::pair{direction::kForward, time("2019-05-01 15:00 Europe/Berlin")},
+        std::pair{direction::kBackward,
+                  time("2019-05-01 15:30 Europe/Berlin")}}) {
     // A -> J, via I2 (0 min)
-    auto const results = search(
-        tt, nullptr,
-        routing::query{.start_time_ = time("2019-05-01 15:00 Europe/Berlin"),
-                       .start_ = {{loc(tt, "A"), 0_minutes, 0U}},
-                       .destination_ = {{loc(tt, "J"), 0_minutes, 0U}},
-                       .via_stops_ = {{loc(tt, "I2"), 0_minutes}}},
-        dir);
+    auto const results =
+        search(tt, nullptr,
+               routing::query{.start_time_ = start_time,
+                              .start_ = {{loc(tt, "A"), 0_minutes, 0U}},
+                              .destination_ = {{loc(tt, "J"), 0_minutes, 0U}},
+                              .via_stops_ = {{loc(tt, "I2"), 0_minutes}}},
+               dir);
 
     EXPECT_EQ(expected_A_J_via_I_1500_0min, results_to_str(results, tt));
   }
@@ -661,14 +697,11 @@ TEST(routing, via_test_9) {
 TEST(routing, via_test_10) {
   auto tt = load_timetable(test_files_1);
 
-  for (auto const& [dir, start_time] :
-       {std::pair{direction::kForward, time("2019-05-01 16:00 Europe/Berlin")},
-        std::pair{direction::kBackward,
-                  time("2019-05-01 16:40 Europe/Berlin")}}) {
+  for (auto const& dir : {direction::kForward, direction::kBackward}) {
     // A -> J, via I (0 min)
     auto const results =
         search(tt, nullptr,
-               routing::query{.start_time_ = tt.date_range_ /*start_time*/,
+               routing::query{.start_time_ = tt.date_range_,
                               .start_ = {{loc(tt, "A"), 0_minutes, 0U}},
                               .destination_ = {{loc(tt, "J"), 0_minutes, 0U}},
                               .via_stops_ = {{loc(tt, "I"), 0_minutes}}},
@@ -820,6 +853,103 @@ TEST(routing, via_test_17) {
 
       EXPECT_EQ(expected_H_Q_via_N_0min, results_to_str(results, tt));
     }
+  };
+
+  // without rt
+  test_with_rtt(nullptr);
+
+  // with first trip rt
+  auto rtt = rt::create_rt_timetable(tt, sys_days{2019_y / May / 1});
+  rt::gtfsrt_update_msg(
+      tt, rtt, source_idx_t{0}, "",
+      test::to_feed_msg({test::trip{.trip_id_ = "T11", .delays_ = {}}},
+                        date::sys_days{2019_y / May / 1} + 1h));
+  test_with_rtt(&rtt);
+
+  // with second trip rt
+  rtt = rt::create_rt_timetable(tt, sys_days{2019_y / May / 1});
+  rt::gtfsrt_update_msg(
+      tt, rtt, source_idx_t{0}, "",
+      test::to_feed_msg({test::trip{.trip_id_ = "T10", .delays_ = {}}},
+                        date::sys_days{2019_y / May / 1} + 1h));
+  test_with_rtt(&rtt);
+
+  // with both trips rt
+  rtt = rt::create_rt_timetable(tt, sys_days{2019_y / May / 1});
+  rt::gtfsrt_update_msg(
+      tt, rtt, source_idx_t{0}, "",
+      test::to_feed_msg({test::trip{.trip_id_ = "T11", .delays_ = {}},
+                         test::trip{.trip_id_ = "T10", .delays_ = {}}},
+                        date::sys_days{2019_y / May / 1} + 1h));
+  test_with_rtt(&rtt);
+}
+
+TEST(routing, via_test_18) {
+  auto tt = load_timetable(test_files_1);
+
+  auto const test_with_rtt = [&](rt_timetable const* rtt) {
+    // intermodal: H / O -> Q, via P (0 min)
+    auto const results = search(
+        tt, rtt,
+        routing::query{
+            .start_time_ = time("2019-05-01 11:00 Europe/Berlin"),
+            .start_match_mode_ = routing::location_match_mode::kIntermodal,
+            .start_ = {{loc(tt, "H"), 0_minutes, 0U},
+                       {loc(tt, "O"), 40_minutes, 1U}},
+            .destination_ = {{loc(tt, "Q"), 0_minutes, 0U}},
+            .via_stops_ = {{loc(tt, "P"), 0_minutes}}},
+        direction::kForward);
+
+    EXPECT_EQ(expected_intermodal_HO_Q_via_P_0min, results_to_str(results, tt));
+  };
+
+  // without rt
+  test_with_rtt(nullptr);
+
+  // with first trip rt
+  auto rtt = rt::create_rt_timetable(tt, sys_days{2019_y / May / 1});
+  rt::gtfsrt_update_msg(
+      tt, rtt, source_idx_t{0}, "",
+      test::to_feed_msg({test::trip{.trip_id_ = "T11", .delays_ = {}}},
+                        date::sys_days{2019_y / May / 1} + 1h));
+  test_with_rtt(&rtt);
+
+  // with second trip rt
+  rtt = rt::create_rt_timetable(tt, sys_days{2019_y / May / 1});
+  rt::gtfsrt_update_msg(
+      tt, rtt, source_idx_t{0}, "",
+      test::to_feed_msg({test::trip{.trip_id_ = "T10", .delays_ = {}}},
+                        date::sys_days{2019_y / May / 1} + 1h));
+  test_with_rtt(&rtt);
+
+  // with both trips rt
+  rtt = rt::create_rt_timetable(tt, sys_days{2019_y / May / 1});
+  rt::gtfsrt_update_msg(
+      tt, rtt, source_idx_t{0}, "",
+      test::to_feed_msg({test::trip{.trip_id_ = "T11", .delays_ = {}},
+                         test::trip{.trip_id_ = "T10", .delays_ = {}}},
+                        date::sys_days{2019_y / May / 1} + 1h));
+  test_with_rtt(&rtt);
+}
+
+TEST(routing, via_test_19) {
+  auto tt = load_timetable(test_files_1);
+
+  auto const test_with_rtt = [&](rt_timetable const* rtt) {
+    // intermodal: H / O -> Q, via O (0 min), P (0 min)
+    auto const results = search(
+        tt, rtt,
+        routing::query{
+            .start_time_ = time("2019-05-01 11:00 Europe/Berlin"),
+            .start_match_mode_ = routing::location_match_mode::kIntermodal,
+            .start_ = {{loc(tt, "H"), 0_minutes, 0U},
+                       {loc(tt, "O"), 40_minutes, 1U}},
+            .destination_ = {{loc(tt, "Q"), 0_minutes, 0U}},
+            .via_stops_ = {{loc(tt, "O"), 0_minutes},
+                           {loc(tt, "P"), 0_minutes}}},
+        direction::kForward);
+
+    EXPECT_EQ(expected_intermodal_HO_Q_via_P_0min, results_to_str(results, tt));
   };
 
   // without rt
