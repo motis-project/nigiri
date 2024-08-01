@@ -1,6 +1,7 @@
 #include "gtest/gtest.h"
 
 #include <algorithm>
+#include <regex>
 
 #include "utl/erase_if.h"
 
@@ -412,6 +413,22 @@ leg 3: (O, O) [2019-05-01 09:30] -> (Q, Q) [2019-05-01 10:00]
 
 )"sv;
 
+constexpr auto const expected_intermodal_N_P_via_P_0min =
+    R"(
+[2019-05-01 09:15, 2019-05-01 09:53]
+TRANSFERS: 0
+     FROM: (N, N) [2019-05-01 09:15]
+       TO: (END, END) [2019-05-01 09:53]
+leg 0: (N, N) [2019-05-01 09:15] -> (P, P) [2019-05-01 09:43]
+   1: N       N...............................................                               d: 01.05 09:15 [01.05 11:15]  [{name=Bus 7, day=2019-05-01, id=T9, src=0}]
+   2: O       O............................................... a: 01.05 09:28 [01.05 11:28]  d: 01.05 09:30 [01.05 11:30]  [{name=Bus 7, day=2019-05-01, id=T9, src=0}]
+   3: P       P............................................... a: 01.05 09:43 [01.05 11:43]
+leg 1: (P, P) [2019-05-01 09:43] -> (END, END) [2019-05-01 09:53]
+  MUMO (id=0, duration=10)
+
+
+)"sv;
+
 std::string results_to_str(pareto_set<routing::journey> const& results,
                            timetable const& tt,
                            rt_timetable const* rtt = nullptr) {
@@ -450,6 +467,7 @@ pareto_set<routing::journey> search(timetable const& tt,
                                     direction const dir) {
   if (dir == direction::kBackward) {
     std::swap(q.start_, q.destination_);
+    std::swap(q.start_match_mode_, q.dest_match_mode_);
     std::reverse(begin(q.via_stops_), end(q.via_stops_));
   }
   return raptor_search(tt, rtt, q, dir);
@@ -812,7 +830,7 @@ TEST(routing, via_test_18) {
   test::with_rt_trips(
       tt, sys_days{2019_y / May / 1}, {"T11", "T10"},
       [&](rt_timetable const* rtt) {
-        // intermodal: H / O -> Q, via P (0 min)
+        // intermodal start: H / O -> Q, via P (0 min)
         auto const results = search(
             tt, rtt,
             routing::query{
@@ -835,7 +853,7 @@ TEST(routing, via_test_19) {
   test::with_rt_trips(
       tt, sys_days{2019_y / May / 1}, {"T11", "T10"},
       [&](rt_timetable const* rtt) {
-        // intermodal: H / O -> Q, via O (0 min), P (0 min)
+        // intermodal start: H / O -> Q, via O (0 min), P (0 min)
         auto const results = search(
             tt, rtt,
             routing::query{
@@ -851,4 +869,83 @@ TEST(routing, via_test_19) {
         EXPECT_EQ(expected_intermodal_HO_Q_via_P_0min,
                   results_to_str(results, tt));
       });
+}
+
+TEST(routing, via_test_20) {
+  auto tt = load_timetable(test_files_1);
+
+  test::with_rt_trips(
+      tt, sys_days{2019_y / May / 1}, {"T11", "T10"},
+      [&](rt_timetable const* rtt) {
+        for (auto const& [dir, start_time] :
+             {std::pair{direction::kForward,
+                        time("2019-05-01 11:15 Europe/Berlin")},
+              std::pair{direction::kBackward,
+                        time("2019-05-01 11:53 Europe/Berlin")}}) {
+          // intermodal dest: N -> P, via P (0 min)
+          auto const results = search(
+              tt, rtt,
+              routing::query{
+                  .start_time_ = start_time,
+                  .dest_match_mode_ = routing::location_match_mode::kIntermodal,
+                  .start_ =
+                      {
+                          {loc(tt, "N"), 0_minutes, 0U},
+                      },
+                  .destination_ = {{loc(tt, "P"), 10_minutes, 0U}},
+                  .via_stops_ = {{loc(tt, "P"), 0_minutes}}},
+              dir);
+
+          auto results_str = results_to_str(results, tt);
+          if (dir == direction::kBackward) {
+            results_str =
+                std::regex_replace(results_str, std::regex("START"), "END");
+          }
+
+          EXPECT_EQ(expected_intermodal_N_P_via_P_0min, results_str);
+        }
+      });
+}
+
+TEST(routing, via_test_21) {
+  auto tt = load_timetable(test_files_1);
+
+  for (auto const& [dir, start_time] :
+       {std::pair{direction::kForward, time("2019-05-01 11:00 Europe/Berlin")},
+        std::pair{direction::kBackward,
+                  time("2019-05-01 13:00 Europe/Berlin")}}) {
+    // H -> Q, via H (0 min), N (0 min)
+    auto const results =
+        search(tt, nullptr,
+               routing::query{.start_time_ = start_time,
+                              .start_ = {{loc(tt, "H"), 0_minutes, 0U}},
+                              .destination_ = {{loc(tt, "Q"), 0_minutes, 0U}},
+                              .via_stops_ = {{loc(tt, "H"), 0_minutes},
+                                             {loc(tt, "N"), 0_minutes}}},
+               dir);
+
+    EXPECT_EQ(expected_H_Q_via_N_0min, results_to_str(results, tt));
+  }
+}
+
+TEST(routing, via_test_22) {
+  auto tt = load_timetable(test_files_1);
+
+  for (auto const& [dir, start_time] :
+       {std::pair{direction::kForward, time("2019-05-01 11:00 Europe/Berlin")},
+        std::pair{direction::kBackward,
+                  time("2019-05-01 13:00 Europe/Berlin")}}) {
+    // H -> Q, via H (0 min), N (0 min), Q (0 min)
+    auto const results =
+        search(tt, nullptr,
+               routing::query{.start_time_ = start_time,
+                              .start_ = {{loc(tt, "H"), 0_minutes, 0U}},
+                              .destination_ = {{loc(tt, "Q"), 0_minutes, 0U}},
+                              .via_stops_ = {{loc(tt, "H"), 0_minutes},
+                                             {loc(tt, "N"), 0_minutes},
+                                             {loc(tt, "Q"), 0_minutes}}},
+               dir);
+
+    EXPECT_EQ(expected_H_Q_via_N_0min, results_to_str(results, tt));
+  }
 }
