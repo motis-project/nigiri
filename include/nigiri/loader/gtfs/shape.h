@@ -36,6 +36,10 @@ namespace nigiri::loader::gtfs {
         }
     }
 
+    class InvalidShapesFormat final : public std::runtime_error {
+    public:
+        InvalidShapesFormat(const std::string& msg);
+    };
 
     class ShapeMap {
     public:

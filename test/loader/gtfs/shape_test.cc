@@ -186,3 +186,14 @@ TEST(gtfs, shapeParse_randomColumOrder_parseCorrectly) {
     EXPECT_TRUE(shapes.contains("123"));
     EXPECT_EQ(10, shapes.at("123").size());
 }
+
+TEST(gtfs, shapeParse_notAscendingSequence_throwException) {
+    std::string shapes_data{R"("shape_id","shape_pt_lat","shape_pt_lon","shape_pt_sequence"
+1,50.636512,6.473487,1
+1,50.636259,6.473668,0
+)"};
+    auto paths{get_paths("shape-test-random-column-order")};
+    const DataGuard guard{[&paths]() { cleanup_paths(paths); }};
+
+    EXPECT_THROW(ShapeMap shapes(shapes_data, paths), InvalidShapesFormat);
+}

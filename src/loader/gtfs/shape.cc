@@ -1,5 +1,6 @@
 #include "nigiri/loader/gtfs/shape.h"
 
+#include <format>
 #include <ranges>
 
 #include "cista/mmap.h"
@@ -10,6 +11,8 @@
 #include "utl/pipes/transform.h"
 
 namespace nigiri::loader::gtfs {
+
+    InvalidShapesFormat::InvalidShapesFormat(const std::string& msg) : std::runtime_error{msg} {}
 
     ShapeMap::ShapeMap(const std::string_view data, const Paths& paths) : ShapeMap(create_files(data, paths)) {}
 
@@ -60,18 +63,31 @@ namespace nigiri::loader::gtfs {
 
 
     ShapeMap::id_vec_t ShapeMap::load_shapes(const std::string_view data, shape_data_t& mmap) {
-        key_type last_id;
+        // const ShapePoint* last{nullptr};
+        struct {
+            std::string id;
+            size_t seq;
+            bool first{true};
+        } last;
         auto bucket = mmap.add_back_sized(0u);
         id_vec_t ids;
 
-        auto store_to_map = [&bucket, &mmap, &ids, &last_id](const auto& point) {
-            if (last_id.empty()) {
+        auto store_to_map = [&bucket, &mmap, &ids, &last](const ShapePoint point) {
+            if (last.first) {
                 ids.push_back(point.id);
-                last_id = point.id;
-            } else if (last_id != point.id) {
+                last.first = false;
+                last.id = point.id;
+                last.seq = point.seq;
+            } else if (last.id != point.id) {
                 ids.push_back(point.id);
                 bucket = mmap.add_back_sized(0u);
-                last_id = point.id;
+                last.id = point.id;
+                last.seq = point.seq;
+            } else {
+                if (last.seq >= point.seq) {
+                    throw InvalidShapesFormat(std::format("Non monotonic sequence for shape_id '{}': Sequence number {} followed by {}", point.id, last.seq, point.seq));
+                }
+                last.seq = point.seq;
             }
             bucket.push_back(point.coordinate);
         };
