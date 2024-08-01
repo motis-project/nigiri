@@ -1,14 +1,31 @@
+#include <cstdio>
+#include <filesystem>
 #include <ranges>
+#include <vector>
 
 #include "gtest/gtest.h"
 
+#include "geo/latlng.h"
+
 #include "nigiri/loader/gtfs/shape.h"
-#include <cstdio>
-#include <filesystem>
 
 // #include "./test_data.h"
 
 using namespace nigiri::loader::gtfs;
+
+struct DataGuard {
+    DataGuard(const std::function<void()> f) : f_(f) {}
+    ~DataGuard() { f_(); }
+    const std::function<void()> f_;
+};
+
+void cleanup_paths(const ShapeMap::Paths& paths) {
+    for (auto path : std::vector<std::filesystem::path>{paths.id_file, paths.shape_data_file, paths.shape_metadata_file}) {
+        if (std::filesystem::exists(path)) {
+            std::filesystem::remove(path);
+        }
+    }
+}
 
 TEST(gtfs, shapeImport_validData_storeToMap) {
     std::string shapes_data{R"("shape_id","shape_pt_lat","shape_pt_lon","shape_pt_sequence"
@@ -22,37 +39,36 @@ TEST(gtfs, shapeImport_validData_storeToMap) {
 3105,50.578249,6.383394,8
 3105,50.581956,6.379866,11
 )"};
-    std::string memory_map_base{std::tmpnam(nullptr)};
-    std::vector<std::string> paths{memory_map_base + ".coordinates", memory_map_base + ".metadata"};
-    ShapePoint::MemoryMapConfig config{paths[0], paths[1]};
-    auto shape_map = create_shape_memory_map(config, cista::mmap::protection::WRITE);
-
-    shape_load_map(shapes_data, shape_map);
-
-    EXPECT_EQ(2, shape_map.size());
-    EXPECT_EQ(2, shape_map.at(0).size());
-    EXPECT_EQ(7, shape_map.at(1).size());
-    std::vector<ShapePoint::Coordinate> points{
-        {515436520, 72178300},
-        {514786090, 72232750},
-        {505538220, 63568760},
-        {505609990, 63550280},
-        {505609990, 63550280},
-        {505657240, 63646050},
-        {505782490, 63833940},
-        {505782490, 63833940},
-        {505819560, 63798660},
+    // std::string base_path{std::tmpnam(nullptr)};
+    std::string base_path{"shape-test-create"};
+    ShapeMap::Paths paths{
+        base_path + "-id.dat",
+        base_path + "-shape-data.dat",
+        base_path + "-shape-metadata.dat",
     };
-    for (auto pos : std::views::iota(0u, 2u)) {
-        EXPECT_EQ(points[pos], shape_map.at(0).at(pos));
-    }
-    for (auto pos : std::views::iota(2u, points.size())) {
-        EXPECT_EQ(points[pos], shape_map.at(1).at(pos - 2));
-    }
+    const DataGuard guard{[&paths]() { cleanup_paths(paths); }};
 
-    for (auto path : {config.coordinates_file, config.metadata_file}) {
-        if (std::filesystem::exists(path)) {
-            std::filesystem::remove(path);
-        }
-    }
+    ShapeMap shapes(shapes_data, paths);
+
+    std::vector<std::vector<geo::latlng>> shape_points{
+        {
+            {51.543652,7.217830},
+            {51.478609,7.223275},
+        },
+        {
+            {50.553822,6.356876},
+            {50.560999,6.355028},
+            {50.560999,6.355028},
+            {50.565724,6.364605},
+            {50.578249,6.383394},
+            {50.578249,6.383394},
+            {50.581956,6.379866},
+        },
+    };
+    EXPECT_EQ(2, shapes.size());
+    EXPECT_TRUE(shapes.contains("243"));
+    EXPECT_TRUE(shapes.contains("3105"));
+    EXPECT_FALSE(shapes.contains("1234"));
+    EXPECT_EQ(shape_points.at(0), shapes.at("243"));
+    EXPECT_EQ(shape_points.at(1), shapes.at("3105"));
 }

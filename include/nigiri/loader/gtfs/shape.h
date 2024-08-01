@@ -1,13 +1,12 @@
 #pragma once
 
-#include "nigiri/types.h"
+#include <filesystem>
+#include <unordered_map>
 
-#include "cista//containers/vector.h"
-#include "utl/parser/buf_reader.h"
+#include "geo/latlng.h"
 #include "utl/parser/csv_range.h"
-#include "utl/parser/line_range.h"
-#include "utl/pipes/for_each.h"
-#include "utl/pipes/transform.h"
+
+#include "nigiri/types.h"
 
 // #include "osmium/osm/location.hpp"
 // #include "osr/types.h"
@@ -37,81 +36,52 @@ namespace nigiri::loader::gtfs {
     }
 
 
-    using shape_coordinate_type = int32_t;
-    using shape_id_type = std::string;
-    using shape_id_vec = std::vector<shape_id_type>;
+    class ShapeMap {
+    public:
+        using key_type = std::string;
+        struct Paths {
+            std::filesystem::path id_file;
+            std::filesystem::path shape_data_file;
+            std::filesystem::path shape_metadata_file;
+        };
 
-
-    struct ShapePoint {
-        const shape_id_type id;
-        const struct Coordinate {
+        ShapeMap(const std::string_view data, const Paths& paths);
+        size_t size() const ;
+        bool contains(const key_type&) const;
+        std::vector<geo::latlng> at(const key_type&) const;
+    private:
+        using shape_coordinate_type = std::remove_const<decltype(helper::coordinate_precision)>::type;
+        struct Coordinate {
             shape_coordinate_type lat, lon;
             bool operator==(const Coordinate& other) const = default;
-        } coordinate;
-        const size_t seq;
-
-        struct Shape {
-            utl::csv_col<shape_id_type, UTL_NAME("shape_id")> id;
-            utl::csv_col<double, UTL_NAME("shape_pt_lat")> lat;
-            utl::csv_col<double, UTL_NAME("shape_pt_lon")> lon;
-            utl::csv_col<size_t, UTL_NAME("shape_pt_sequence")> seq;
         };
+        using shape_data_t = helper::mm_vecvec<std::size_t, ShapeMap::Coordinate>;
+        using id_vec_t = std::vector<key_type>;
+        using id_map_t = std::unordered_map<key_type, size_t>;
 
-        struct MemoryMapConfig {
-            const std::string_view coordinates_file;
-            const std::string_view metadata_file;
-            // const std::string_view& ids_file;
-        };
+        ShapeMap(std::pair<shape_data_t, id_vec_t>);
+        static std::pair<shape_data_t, id_vec_t> create_files(const std::string_view data, const Paths& paths);
+        static shape_data_t create_memory_map(const Paths&, const cista::mmap::protection);
+        static id_vec_t load_shapes(const std::string_view, shape_data_t&);
+        static void store_ids(const id_vec_t&, const std::filesystem::path&);
+        static id_map_t id_vec_to_map(const id_vec_t&);
+        static std::vector<geo::latlng> transform_coordinates(const auto&);
 
+        const shape_data_t shape_map_;
+        const id_map_t id_map_;
 
-        static constexpr ShapePoint from_shape(const Shape& shape) {
-            return ShapePoint{
-                shape.id.val(),
-                {
-                    helper::double_to_fix(shape.lat.val()),
-                    helper::double_to_fix(shape.lon.val()),
-                },
-                shape.seq.val(),
+        struct ShapePoint {
+            const key_type id;
+            const Coordinate coordinate;
+            const size_t seq;
+            struct Entry {
+                utl::csv_col<ShapeMap::key_type, UTL_NAME("shape_id")> id;
+                utl::csv_col<double, UTL_NAME("shape_pt_lat")> lat;
+                utl::csv_col<double, UTL_NAME("shape_pt_lon")> lon;
+                utl::csv_col<size_t, UTL_NAME("shape_pt_sequence")> seq;
             };
-        }
-    };
-
-    using shape_data_t = helper::mm_vecvec<std::size_t, ShapePoint::Coordinate>;
-
-    inline shape_data_t create_shape_memory_map(const ShapePoint::MemoryMapConfig& config,
-            const cista::mmap::protection mode = cista::mmap::protection::READ) {
-        return shape_data_t{
-            cista::basic_mmap_vec<ShapePoint::Coordinate, std::size_t>{
-                cista::mmap{config.coordinates_file.data(), mode}},
-            cista::basic_mmap_vec<std::size_t, std::size_t>{cista::mmap{
-                config.metadata_file.data(), mode}}};
-    }
-
-    inline shape_id_vec shape_load_map(const std::string_view& data, shape_data_t& map) {
-        shape_id_type last_id;
-        auto bucket = map.add_back_sized(0u);
-        shape_id_vec ids;
-
-        auto store_to_map = [&bucket, &map, &ids, &last_id](const auto& point) {
-            if (last_id.empty()) {
-                ids.push_back(point.id);
-                last_id = point.id;
-            } else if (last_id != point.id) {
-                ids.push_back(point.id);
-                bucket = map.add_back_sized(0u);
-                last_id = point.id;
-            }
-            bucket.push_back(point.coordinate);
+            static constexpr ShapePoint from_entry(const Entry&);
         };
-
-        utl::line_range{utl::make_buf_reader(data, utl::noop_progress_consumer{})}
-            | utl::csv<ShapePoint::Shape>()
-            | utl::transform([&](ShapePoint::Shape const& shape) {
-                return ShapePoint::from_shape(shape);
-              })
-            | utl::for_each(store_to_map);
-
-        return ids;
-    }
+    };
 
 }
