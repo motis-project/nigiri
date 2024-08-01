@@ -475,52 +475,26 @@ TEST(routing, via_test_1) {
 TEST(routing, via_test_2) {
   auto const tt = load_timetable(test_files_1);
 
-  auto const test_with_rtt = [&](rt_timetable const* rtt) {
-    for (auto const& [dir, start_time] :
-         {std::pair{direction::kForward,
-                    time("2019-05-01 10:00 Europe/Berlin")},
-          std::pair{direction::kBackward,
-                    time("2019-05-01 10:30 Europe/Berlin")}}) {
-      // A -> D, via B (0 min)
-      auto const results =
-          search(tt, rtt,
-                 routing::query{.start_time_ = start_time,
-                                .start_ = {{loc(tt, "A"), 0_minutes, 0U}},
-                                .destination_ = {{loc(tt, "D"), 0_minutes, 0U}},
-                                .via_stops_ = {{loc(tt, "B"), 0_minutes}}},
-                 dir);
+  test::with_rt_trips(
+      tt, sys_days{2019_y / May / 1}, {"T0", "T1"},
+      [&](rt_timetable const* rtt) {
+        for (auto const& [dir, start_time] :
+             {std::pair{direction::kForward,
+                        time("2019-05-01 10:00 Europe/Berlin")},
+              std::pair{direction::kBackward,
+                        time("2019-05-01 10:30 Europe/Berlin")}}) {
+          // A -> D, via B (0 min)
+          auto const results = search(
+              tt, rtt,
+              routing::query{.start_time_ = start_time,
+                             .start_ = {{loc(tt, "A"), 0_minutes, 0U}},
+                             .destination_ = {{loc(tt, "D"), 0_minutes, 0U}},
+                             .via_stops_ = {{loc(tt, "B"), 0_minutes}}},
+              dir);
 
-      EXPECT_EQ(expected_A_D_via_B_0min, results_to_str(results, tt));
-    }
-  };
-
-  // without rt
-  test_with_rtt(nullptr);
-
-  // with first trip rt
-  auto rtt = rt::create_rt_timetable(tt, sys_days{2019_y / May / 1});
-  rt::gtfsrt_update_msg(
-      tt, rtt, source_idx_t{0}, "",
-      test::to_feed_msg({test::trip{.trip_id_ = "T0", .delays_ = {}}},
-                        date::sys_days{2019_y / May / 1} + 1h));
-  test_with_rtt(&rtt);
-
-  // with second trip rt
-  rtt = rt::create_rt_timetable(tt, sys_days{2019_y / May / 1});
-  rt::gtfsrt_update_msg(
-      tt, rtt, source_idx_t{0}, "",
-      test::to_feed_msg({test::trip{.trip_id_ = "T1", .delays_ = {}}},
-                        date::sys_days{2019_y / May / 1} + 1h));
-  test_with_rtt(&rtt);
-
-  // with both trips rt
-  rtt = rt::create_rt_timetable(tt, sys_days{2019_y / May / 1});
-  rt::gtfsrt_update_msg(
-      tt, rtt, source_idx_t{0}, "",
-      test::to_feed_msg({test::trip{.trip_id_ = "T0", .delays_ = {}},
-                         test::trip{.trip_id_ = "T1", .delays_ = {}}},
-                        date::sys_days{2019_y / May / 1} + 1h));
-  test_with_rtt(&rtt);
+          EXPECT_EQ(expected_A_D_via_B_0min, results_to_str(results, tt));
+        }
+      });
 }
 
 TEST(routing, via_test_3) {
@@ -546,52 +520,26 @@ TEST(routing, via_test_3) {
 TEST(routing, via_test_4) {
   auto tt = load_timetable(test_files_1);
 
-  auto const test_with_rtt = [&](rt_timetable const* rtt) {
-    for (auto const& [dir, start_time] :
-         {std::pair{direction::kForward,
-                    time("2019-05-01 10:00 Europe/Berlin")},
-          std::pair{direction::kBackward,
-                    time("2019-05-01 10:45 Europe/Berlin")}}) {
-      // A -> D, via B (10 min)
-      auto const results =
-          search(tt, rtt,
-                 routing::query{.start_time_ = start_time,
-                                .start_ = {{loc(tt, "A"), 0_minutes, 0U}},
-                                .destination_ = {{loc(tt, "D"), 0_minutes, 0U}},
-                                .via_stops_ = {{loc(tt, "B"), 10_minutes}}},
-                 dir);
+  test::with_rt_trips(
+      tt, sys_days{2019_y / May / 1}, {"T0", "T2"},
+      [&](rt_timetable const* rtt) {
+        for (auto const& [dir, start_time] :
+             {std::pair{direction::kForward,
+                        time("2019-05-01 10:00 Europe/Berlin")},
+              std::pair{direction::kBackward,
+                        time("2019-05-01 10:45 Europe/Berlin")}}) {
+          // A -> D, via B (10 min)
+          auto const results = search(
+              tt, rtt,
+              routing::query{.start_time_ = start_time,
+                             .start_ = {{loc(tt, "A"), 0_minutes, 0U}},
+                             .destination_ = {{loc(tt, "D"), 0_minutes, 0U}},
+                             .via_stops_ = {{loc(tt, "B"), 10_minutes}}},
+              dir);
 
-      EXPECT_EQ(expected_A_D_via_B_10min, results_to_str(results, tt));
-    }
-  };
-
-  // without rt
-  test_with_rtt(nullptr);
-
-  // with first trip rt
-  auto rtt = rt::create_rt_timetable(tt, sys_days{2019_y / May / 1});
-  rt::gtfsrt_update_msg(
-      tt, rtt, source_idx_t{0}, "",
-      test::to_feed_msg({test::trip{.trip_id_ = "T0", .delays_ = {}}},
-                        date::sys_days{2019_y / May / 1} + 1h));
-  test_with_rtt(&rtt);
-
-  // with second trip rt
-  rtt = rt::create_rt_timetable(tt, sys_days{2019_y / May / 1});
-  rt::gtfsrt_update_msg(
-      tt, rtt, source_idx_t{0}, "",
-      test::to_feed_msg({test::trip{.trip_id_ = "T2", .delays_ = {}}},
-                        date::sys_days{2019_y / May / 1} + 1h));
-  test_with_rtt(&rtt);
-
-  // with both trips rt
-  rtt = rt::create_rt_timetable(tt, sys_days{2019_y / May / 1});
-  rt::gtfsrt_update_msg(
-      tt, rtt, source_idx_t{0}, "",
-      test::to_feed_msg({test::trip{.trip_id_ = "T0", .delays_ = {}},
-                         test::trip{.trip_id_ = "T2", .delays_ = {}}},
-                        date::sys_days{2019_y / May / 1} + 1h));
-  test_with_rtt(&rtt);
+          EXPECT_EQ(expected_A_D_via_B_10min, results_to_str(results, tt));
+        }
+      });
 }
 
 TEST(routing, via_test_5) {
@@ -835,148 +783,72 @@ TEST(routing, via_test_16) {
 TEST(routing, via_test_17) {
   auto tt = load_timetable(test_files_1);
 
-  auto const test_with_rtt = [&](rt_timetable const* rtt) {
-    for (auto const& [dir, start_time] :
-         {std::pair{direction::kForward,
-                    time("2019-05-01 11:00 Europe/Berlin")},
-          std::pair{direction::kBackward,
-                    time("2019-05-01 13:00 Europe/Berlin")}}) {
-      // H -> Q, via N (0 min), P (0 min)
-      auto const results =
-          search(tt, rtt,
-                 routing::query{.start_time_ = start_time,
-                                .start_ = {{loc(tt, "H"), 0_minutes, 0U}},
-                                .destination_ = {{loc(tt, "Q"), 0_minutes, 0U}},
-                                .via_stops_ = {{loc(tt, "N"), 0_minutes},
-                                               {loc(tt, "P"), 0_minutes}}},
-                 dir);
+  test::with_rt_trips(
+      tt, sys_days{2019_y / May / 1}, {"T11", "T10"},
+      [&](rt_timetable const* rtt) {
+        for (auto const& [dir, start_time] :
+             {std::pair{direction::kForward,
+                        time("2019-05-01 11:00 Europe/Berlin")},
+              std::pair{direction::kBackward,
+                        time("2019-05-01 13:00 Europe/Berlin")}}) {
+          // H -> Q, via N (0 min), P (0 min)
+          auto const results = search(
+              tt, rtt,
+              routing::query{.start_time_ = start_time,
+                             .start_ = {{loc(tt, "H"), 0_minutes, 0U}},
+                             .destination_ = {{loc(tt, "Q"), 0_minutes, 0U}},
+                             .via_stops_ = {{loc(tt, "N"), 0_minutes},
+                                            {loc(tt, "P"), 0_minutes}}},
+              dir);
 
-      EXPECT_EQ(expected_H_Q_via_N_0min, results_to_str(results, tt));
-    }
-  };
-
-  // without rt
-  test_with_rtt(nullptr);
-
-  // with first trip rt
-  auto rtt = rt::create_rt_timetable(tt, sys_days{2019_y / May / 1});
-  rt::gtfsrt_update_msg(
-      tt, rtt, source_idx_t{0}, "",
-      test::to_feed_msg({test::trip{.trip_id_ = "T11", .delays_ = {}}},
-                        date::sys_days{2019_y / May / 1} + 1h));
-  test_with_rtt(&rtt);
-
-  // with second trip rt
-  rtt = rt::create_rt_timetable(tt, sys_days{2019_y / May / 1});
-  rt::gtfsrt_update_msg(
-      tt, rtt, source_idx_t{0}, "",
-      test::to_feed_msg({test::trip{.trip_id_ = "T10", .delays_ = {}}},
-                        date::sys_days{2019_y / May / 1} + 1h));
-  test_with_rtt(&rtt);
-
-  // with both trips rt
-  rtt = rt::create_rt_timetable(tt, sys_days{2019_y / May / 1});
-  rt::gtfsrt_update_msg(
-      tt, rtt, source_idx_t{0}, "",
-      test::to_feed_msg({test::trip{.trip_id_ = "T11", .delays_ = {}},
-                         test::trip{.trip_id_ = "T10", .delays_ = {}}},
-                        date::sys_days{2019_y / May / 1} + 1h));
-  test_with_rtt(&rtt);
+          EXPECT_EQ(expected_H_Q_via_N_0min, results_to_str(results, tt));
+        }
+      });
 }
 
 TEST(routing, via_test_18) {
   auto tt = load_timetable(test_files_1);
 
-  auto const test_with_rtt = [&](rt_timetable const* rtt) {
-    // intermodal: H / O -> Q, via P (0 min)
-    auto const results = search(
-        tt, rtt,
-        routing::query{
-            .start_time_ = time("2019-05-01 11:00 Europe/Berlin"),
-            .start_match_mode_ = routing::location_match_mode::kIntermodal,
-            .start_ = {{loc(tt, "H"), 0_minutes, 0U},
-                       {loc(tt, "O"), 40_minutes, 1U}},
-            .destination_ = {{loc(tt, "Q"), 0_minutes, 0U}},
-            .via_stops_ = {{loc(tt, "P"), 0_minutes}}},
-        direction::kForward);
+  test::with_rt_trips(
+      tt, sys_days{2019_y / May / 1}, {"T11", "T10"},
+      [&](rt_timetable const* rtt) {
+        // intermodal: H / O -> Q, via P (0 min)
+        auto const results = search(
+            tt, rtt,
+            routing::query{
+                .start_time_ = time("2019-05-01 11:00 Europe/Berlin"),
+                .start_match_mode_ = routing::location_match_mode::kIntermodal,
+                .start_ = {{loc(tt, "H"), 0_minutes, 0U},
+                           {loc(tt, "O"), 40_minutes, 1U}},
+                .destination_ = {{loc(tt, "Q"), 0_minutes, 0U}},
+                .via_stops_ = {{loc(tt, "P"), 0_minutes}}},
+            direction::kForward);
 
-    EXPECT_EQ(expected_intermodal_HO_Q_via_P_0min, results_to_str(results, tt));
-  };
-
-  // without rt
-  test_with_rtt(nullptr);
-
-  // with first trip rt
-  auto rtt = rt::create_rt_timetable(tt, sys_days{2019_y / May / 1});
-  rt::gtfsrt_update_msg(
-      tt, rtt, source_idx_t{0}, "",
-      test::to_feed_msg({test::trip{.trip_id_ = "T11", .delays_ = {}}},
-                        date::sys_days{2019_y / May / 1} + 1h));
-  test_with_rtt(&rtt);
-
-  // with second trip rt
-  rtt = rt::create_rt_timetable(tt, sys_days{2019_y / May / 1});
-  rt::gtfsrt_update_msg(
-      tt, rtt, source_idx_t{0}, "",
-      test::to_feed_msg({test::trip{.trip_id_ = "T10", .delays_ = {}}},
-                        date::sys_days{2019_y / May / 1} + 1h));
-  test_with_rtt(&rtt);
-
-  // with both trips rt
-  rtt = rt::create_rt_timetable(tt, sys_days{2019_y / May / 1});
-  rt::gtfsrt_update_msg(
-      tt, rtt, source_idx_t{0}, "",
-      test::to_feed_msg({test::trip{.trip_id_ = "T11", .delays_ = {}},
-                         test::trip{.trip_id_ = "T10", .delays_ = {}}},
-                        date::sys_days{2019_y / May / 1} + 1h));
-  test_with_rtt(&rtt);
+        EXPECT_EQ(expected_intermodal_HO_Q_via_P_0min,
+                  results_to_str(results, tt));
+      });
 }
 
 TEST(routing, via_test_19) {
   auto tt = load_timetable(test_files_1);
 
-  auto const test_with_rtt = [&](rt_timetable const* rtt) {
-    // intermodal: H / O -> Q, via O (0 min), P (0 min)
-    auto const results = search(
-        tt, rtt,
-        routing::query{
-            .start_time_ = time("2019-05-01 11:00 Europe/Berlin"),
-            .start_match_mode_ = routing::location_match_mode::kIntermodal,
-            .start_ = {{loc(tt, "H"), 0_minutes, 0U},
-                       {loc(tt, "O"), 40_minutes, 1U}},
-            .destination_ = {{loc(tt, "Q"), 0_minutes, 0U}},
-            .via_stops_ = {{loc(tt, "O"), 0_minutes},
-                           {loc(tt, "P"), 0_minutes}}},
-        direction::kForward);
+  test::with_rt_trips(
+      tt, sys_days{2019_y / May / 1}, {"T11", "T10"},
+      [&](rt_timetable const* rtt) {
+        // intermodal: H / O -> Q, via O (0 min), P (0 min)
+        auto const results = search(
+            tt, rtt,
+            routing::query{
+                .start_time_ = time("2019-05-01 11:00 Europe/Berlin"),
+                .start_match_mode_ = routing::location_match_mode::kIntermodal,
+                .start_ = {{loc(tt, "H"), 0_minutes, 0U},
+                           {loc(tt, "O"), 40_minutes, 1U}},
+                .destination_ = {{loc(tt, "Q"), 0_minutes, 0U}},
+                .via_stops_ = {{loc(tt, "O"), 0_minutes},
+                               {loc(tt, "P"), 0_minutes}}},
+            direction::kForward);
 
-    EXPECT_EQ(expected_intermodal_HO_Q_via_P_0min, results_to_str(results, tt));
-  };
-
-  // without rt
-  test_with_rtt(nullptr);
-
-  // with first trip rt
-  auto rtt = rt::create_rt_timetable(tt, sys_days{2019_y / May / 1});
-  rt::gtfsrt_update_msg(
-      tt, rtt, source_idx_t{0}, "",
-      test::to_feed_msg({test::trip{.trip_id_ = "T11", .delays_ = {}}},
-                        date::sys_days{2019_y / May / 1} + 1h));
-  test_with_rtt(&rtt);
-
-  // with second trip rt
-  rtt = rt::create_rt_timetable(tt, sys_days{2019_y / May / 1});
-  rt::gtfsrt_update_msg(
-      tt, rtt, source_idx_t{0}, "",
-      test::to_feed_msg({test::trip{.trip_id_ = "T10", .delays_ = {}}},
-                        date::sys_days{2019_y / May / 1} + 1h));
-  test_with_rtt(&rtt);
-
-  // with both trips rt
-  rtt = rt::create_rt_timetable(tt, sys_days{2019_y / May / 1});
-  rt::gtfsrt_update_msg(
-      tt, rtt, source_idx_t{0}, "",
-      test::to_feed_msg({test::trip{.trip_id_ = "T11", .delays_ = {}},
-                         test::trip{.trip_id_ = "T10", .delays_ = {}}},
-                        date::sys_days{2019_y / May / 1} + 1h));
-  test_with_rtt(&rtt);
+        EXPECT_EQ(expected_intermodal_HO_Q_via_P_0min,
+                  results_to_str(results, tt));
+      });
 }

@@ -1,5 +1,12 @@
 #include "./util.h"
 
+#include <iostream>
+
+#include "nigiri/rt/create_rt_timetable.h"
+#include "nigiri/rt/gtfsrt_update.h"
+
+using namespace std::chrono_literals;
+
 namespace nigiri::test {
 
 transit_realtime::FeedMessage to_feed_msg(std::vector<trip> const& trip_delays,
@@ -36,6 +43,34 @@ transit_realtime::FeedMessage to_feed_msg(std::vector<trip> const& trip_delays,
   }
 
   return msg;
+}
+
+void with_rt_trips(timetable const& tt,
+                   date::sys_days const base_day,
+                   std::vector<std::string> const& trip_ids,
+                   std::function<void(rt_timetable*)> const& fn) {
+  auto const trips = trip_ids.size();
+  auto const combinations = 1 << trips;  // 2^n combinations
+
+  // without rt timetable
+  fn(nullptr);
+
+  // with all combinations of trips
+  for (auto i = 1U; i < combinations; ++i) {
+    auto rtt = rt::create_rt_timetable(tt, base_day);
+    auto trip_delays = std::vector<trip>{};
+    std::cout << "with_rt_trips:";
+    for (auto j = 0U; j < trips; ++j) {
+      if (i & (1 << j)) {
+        trip_delays.emplace_back(trip{.trip_id_ = trip_ids[j], .delays_ = {}});
+        std::cout << " " << trip_ids[j];
+      }
+    }
+    std::cout << "\n";
+    rt::gtfsrt_update_msg(tt, rtt, source_idx_t{0}, "",
+                          to_feed_msg(trip_delays, base_day + 1h));
+    fn(&rtt);
+  }
 }
 
 }  // namespace nigiri::test
