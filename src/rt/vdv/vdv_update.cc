@@ -61,13 +61,21 @@ struct vdv_stop {
         rt_dep_{get_opt_time(n, "IstAbfahrtPrognose")},
         rt_arr_{get_opt_time(n, "IstAnkunftPrognose")} {}
 
-  std::pair<unixtime_t, event_type> get_event() const {
-    if (dep_.has_value()) {
-      return {*dep_, event_type::kDep};
-    } else if (arr_.has_value()) {
-      return {*arr_, event_type::kArr};
-    } else {
-      throw utl::fail("no event found (stop={})", l_);
+  std::optional<std::pair<unixtime_t, event_type>> get_event(
+      event_type et) const {
+    switch (et) {
+      case event_type::kArr:
+        if (arr_.has_value()) {
+          return std::pair{*arr_, event_type::kArr};
+        } else {
+          return std::nullopt;
+        }
+      case event_type::kDep:
+        if (dep_.has_value()) {
+          return std::pair{*dep_, event_type::kDep};
+        } else {
+          return std::nullopt;
+        }
     }
   }
 
@@ -150,7 +158,15 @@ std::optional<rt::run> find_run(timetable const& tt,
           continue;
         }
 
-        auto const [t, ev_type] = vdv_stop.get_event();
+        auto ev = vdv_stop.get_event(event_type::kDep);
+        if (stop_idx == location_seq.size() - 1) {
+          ev = vdv_stop.get_event(event_type::kArr);
+        }
+        if (!ev.has_value()) {
+          continue;
+        }
+
+        auto const [t, ev_type] = *ev;
         auto const [day_idx, mam] = tt.day_idx_mam(t);
 
         for (auto const& [ev_time_idx, ev_time] :
