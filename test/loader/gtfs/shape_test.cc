@@ -53,17 +53,17 @@ TEST(gtfs, shapeConstruct_createData_canAccessData) {
 
     std::vector<std::vector<geo::latlng>> shape_points{
         {
-            {51.543652,7.217830},
-            {51.478609,7.223275},
+            {51.543652, 7.217830},
+            {51.478609, 7.223275},
         },
         {
-            {50.553822,6.356876},
-            {50.560999,6.355028},
-            {50.560999,6.355028},
-            {50.565724,6.364605},
-            {50.578249,6.383394},
-            {50.578249,6.383394},
-            {50.581956,6.379866},
+            {50.553822, 6.356876},
+            {50.560999, 6.355028},
+            {50.560999, 6.355028},
+            {50.565724, 6.364605},
+            {50.578249, 6.383394},
+            {50.578249, 6.383394},
+            {50.581956, 6.379866},
         },
     };
     EXPECT_EQ(2, shapes.size());
@@ -106,30 +106,30 @@ TEST(gtfs, shapeConstruct_storeAndLoadData_canAccessData) {
     std::vector<std::string> ids{"120", "3104", "138", "137"};
     std::vector<std::vector<geo::latlng>> shape_points{
         {
-            {50.769767,6.073793},
+            {50.769767, 6.073793},
         },
         {
-            {50.553822,6.356876},
-            {50.560999,6.355028},
-            {50.560999,6.355028},
-            {50.568805,6.374001},
-            {50.578249,6.383394},
-            {50.578249,6.383394},
-            {50.581956,6.379866},
-            {50.581956,6.379866},
-            {50.589090,6.378158},
-            {50.584129,6.372146},
-            {50.585341,6.364319},
-            {50.585341,6.364319},
-            {50.584388,6.361445},
-            {50.581905,6.353209},
+            {50.553822, 6.356876},
+            {50.560999, 6.355028},
+            {50.560999, 6.355028},
+            {50.568805, 6.374001},
+            {50.578249, 6.383394},
+            {50.578249, 6.383394},
+            {50.581956, 6.379866},
+            {50.581956, 6.379866},
+            {50.589090, 6.378158},
+            {50.584129, 6.372146},
+            {50.585341, 6.364319},
+            {50.585341, 6.364319},
+            {50.584388, 6.361445},
+            {50.581905, 6.353209},
         },
         {
-            {51.256676,7.166106},
+            {51.256676, 7.166106},
         },
         {
-            {50.767436,6.089977},
-            {51.194829,6.521109},
+            {50.767436, 6.089977},
+            {51.194829, 6.521109},
         }
     };
     EXPECT_EQ(ids.size(), shapes.size());
@@ -192,8 +192,72 @@ TEST(gtfs, shapeParse_notAscendingSequence_throwException) {
 1,50.636512,6.473487,1
 1,50.636259,6.473668,0
 )"};
-    auto paths{get_paths("shape-test-random-column-order")};
+    auto paths{get_paths("shape-test-not-ascending-sequence")};
     const DataGuard guard{[&paths]() { cleanup_paths(paths); }};
 
     EXPECT_THROW(ShapeMap shapes(shapes_data, paths), InvalidShapesFormat);
+}
+
+// // Currently not testable
+// TEST(gtfs, shapeParse_missingColumn_throwException) {
+//     std::string shapes_data{R"("shape_id","shape_pt_lat","shape_pt_sequence"
+// 1,50.636259,0
+// )"};
+//     auto paths{get_paths("shape-test-missing-column")};
+//     const DataGuard guard{[&paths]() { cleanup_paths(paths); }};
+
+//     EXPECT_THROW(ShapeMap shapes(shapes_data, paths), InvalidShapesFormat);
+// }
+
+TEST(gtfs, shapeParse_shuffledRows_parseAllData) {
+    std::string shapes_data{R"("shape_id","shape_pt_lat","shape_pt_lon","shape_pt_sequence"
+234,51.473214,7.139521,0
+241,51.504903,7.102455,0
+241,51.473214,7.139521,1
+243,51.543652,7.217830,0
+244,51.473214,7.139521,0
+244,51.504903,7.102455,1
+243,51.478609,7.223275,1
+235,51.478609,7.223275,0
+234,51.459894,7.153535,1
+240,51.459894,7.153535,0
+240,51.473214,7.139521,1
+235,51.543652,7.217830,1
+)"};
+    auto paths{get_paths("shape-test-shuffled-rows")};
+    const DataGuard guard{[&paths]() { cleanup_paths(paths); }};
+
+    ShapeMap shapes(shapes_data, paths);
+
+    std::unordered_map<std::string, std::vector<geo::latlng>> shape_points{
+		{"240", {
+            {51.459894, 7.153535},
+            {51.473214, 7.139521},
+        }},
+		{"234", {
+            {51.473214, 7.139521},
+            {51.459894, 7.153535},
+        }},
+		{"244", {
+            {51.473214, 7.139521},
+            {51.504903, 7.102455},
+        }},
+		{"235", {
+            {51.478609, 7.223275},
+            {51.543652, 7.217830},
+        }},
+		{"241", {
+            {51.504903, 7.102455},
+            {51.473214, 7.139521},
+        }},
+		{"243", {
+            {51.543652, 7.217830},
+            {51.478609, 7.223275},
+        }},
+    };
+    EXPECT_EQ(shape_points.size(), shapes.size());
+    for (auto [id, coordinates] : shape_points) {
+        EXPECT_TRUE(shapes.contains(id));
+        EXPECT_EQ(coordinates, shapes.at(id));
+    }
 }

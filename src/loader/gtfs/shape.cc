@@ -63,33 +63,31 @@ namespace nigiri::loader::gtfs {
 
 
     ShapeMap::id_vec_t ShapeMap::load_shapes(const std::string_view data, shape_data_t& mmap) {
-        // const ShapePoint* last{nullptr};
-        struct {
-            std::string id;
-            size_t seq;
-            bool first{true};
-        } last;
-        auto bucket = mmap.add_back_sized(0u);
+        struct State {
+            // shape_data_t::bucket bucket;
+            size_t index{};
+            size_t last_seq{};
+        };
         id_vec_t ids;
+        std::unordered_map<key_type, State> states;
 
-        auto store_to_map = [&bucket, &mmap, &ids, &last](const ShapePoint point) {
-            if (last.first) {
-                ids.push_back(point.id);
-                last.first = false;
-                last.id = point.id;
-                last.seq = point.seq;
-            } else if (last.id != point.id) {
-                ids.push_back(point.id);
-                bucket = mmap.add_back_sized(0u);
-                last.id = point.id;
-                last.seq = point.seq;
-            } else {
-                if (last.seq >= point.seq) {
-                    throw InvalidShapesFormat(std::format("Non monotonic sequence for shape_id '{}': Sequence number {} followed by {}", point.id, last.seq, point.seq));
+        auto store_to_map = [&mmap, &ids, &states](const ShapePoint point) {
+            if (auto found = states.find(point.id); found != states.end()) {
+                auto& state= found->second;
+                if (state.last_seq >= point.seq) {
+                    throw InvalidShapesFormat(std::format("Non monotonic sequence for shape_id '{}': Sequence number {} followed by {}", point.id, state.last_seq, point.seq));
                 }
-                last.seq = point.seq;
+                mmap[state.index].push_back(point.coordinate);
+                // state.bucket.push_back(point.coordinate);
+                state.last_seq = point.seq;
+            } else {
+                auto index = ids.size();
+                auto bucket = mmap.add_back_sized(index);
+                // states.insert({point.id, {std::move(bucket), point.seq}});
+                states.insert({point.id, {index, point.seq}});
+                ids.push_back(point.id);
+                bucket.push_back(point.coordinate);
             }
-            bucket.push_back(point.coordinate);
         };
 
         utl::line_range{utl::make_buf_reader(data, utl::noop_progress_consumer{})}
