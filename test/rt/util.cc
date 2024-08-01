@@ -49,19 +49,19 @@ void with_rt_trips(timetable const& tt,
                    date::sys_days const base_day,
                    std::vector<std::string> const& trip_ids,
                    std::function<void(rt_timetable*)> const& fn) {
-  auto const trips = static_cast<int>(trip_ids.size());
-  auto const combinations = 1 << trips;  // 2^n combinations
+  auto const trips = trip_ids.size();
+  auto const combinations = 1ULL << trips;  // 2^n combinations
 
   // without rt timetable
   fn(nullptr);
 
   // with all combinations of trips
-  for (auto i = 1; i < combinations; ++i) {
+  for (auto i = 1ULL; i < combinations; ++i) {
     auto rtt = rt::create_rt_timetable(tt, base_day);
     auto trip_delays = std::vector<trip>{};
     std::cout << "with_rt_trips:";
-    for (auto j = 0; j < trips; ++j) {
-      if ((i & (1 << j)) != 0) {
+    for (auto j = 0ULL; j < trips; ++j) {
+      if ((i & (1 << j)) != 0ULL) {
         trip_delays.emplace_back(trip{.trip_id_ = trip_ids[j], .delays_ = {}});
         std::cout << " " << trip_ids[j];
       }
