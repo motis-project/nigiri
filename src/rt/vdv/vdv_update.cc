@@ -256,23 +256,21 @@ void update_run(timetable const& tt,
 
   auto delay = std::optional<duration_t>{};
 
-  auto const update_event = [&](auto const stop_idx, auto const et,
+  auto const update_event = [&](auto const& rs, auto const et,
                                 auto const new_time) {
-    delay = new_time - fr[stop_idx].scheduled_time(et);
+    delay = new_time - rs.scheduled_time(et);
     std::cout << "update " << (et == event_type::kArr ? "ARR: " : "DEP: ")
-              << fr[stop_idx].scheduled_time(et) << "+" << delay->count()
-              << "\n";
-    rtt.update_time(fr.rt_, stop_idx, et, new_time);
-    rtt.dispatch_event_change(fr.t_, stop_idx, et, *delay, false);
+              << rs.scheduled_time(et) << "+" << delay->count() << "\n";
+    rtt.update_time(fr.rt_, rs.stop_idx_, et, new_time);
+    rtt.dispatch_event_change(fr.t_, rs.stop_idx_, et, *delay, false);
     ++stats.updated_events_;
   };
 
-  auto const propagate_delay = [&](auto const stop_idx, event_type et) {
-    std::cout << fr[stop_idx].scheduled_time(et) << "+" << delay->count()
-              << "\n";
-    rtt.update_time(fr.rt_, stop_idx, et,
-                    fr[stop_idx].scheduled_time(et) + *delay);
-    rtt.dispatch_event_change(fr.t_, stop_idx, et, *delay, false);
+  auto const propagate_delay = [&](auto const& rs, event_type et) {
+    std::cout << rs.scheduled_time(et) << "+" << delay->count() << "\n";
+    rtt.update_time(fr.rt_, rs.stop_idx_, et,
+                    fr[rs.stop_idx_].scheduled_time(et) + *delay);
+    rtt.dispatch_event_change(fr.t_, rs.stop_idx_, et, *delay, false);
     ++stats.propagated_delays_;
   };
 
@@ -306,28 +304,25 @@ void update_run(timetable const& tt,
     return true;
   };
 
-  for (auto const stop_idx : fr.stop_range_) {
+  for (auto const rs : fr) {
     auto matched = false;
     skipped_stops.clear();
     for (auto vdv_stop = cursor; vdv_stop != end(vdv_stops); ++vdv_stop) {
       if (vdv_stop->l_ != location_idx_t::invalid() &&
-          fr[stop_idx].get_location_idx() == vdv_stop->l_) {
-        std::cout << "location match at stop_idx = " << stop_idx
-                  << ": [id: " << fr[stop_idx].id()
-                  << ", name: " << fr[stop_idx].name() << "]\n";
-        if (stop_idx != 0 && vdv_stop->rt_arr_.has_value() &&
+          rs.get_location_idx() == vdv_stop->l_) {
+        std::cout << "location match at stop_idx = " << rs.stop_idx_
+                  << ": [id: " << rs.id() << ", name: " << rs.name() << "]\n";
+        if (rs.stop_idx_ != 0 && vdv_stop->rt_arr_.has_value() &&
             vdv_stop->arr_.has_value() &&
-            vdv_stop->arr_.value() ==
-                fr[stop_idx].scheduled_time(event_type::kArr)) {
+            vdv_stop->arr_.value() == rs.scheduled_time(event_type::kArr)) {
           matched = true;
-          update_event(stop_idx, event_type::kArr, *vdv_stop->rt_arr_);
+          update_event(rs, event_type::kArr, *vdv_stop->rt_arr_);
         }
-        if (stop_idx != fr.stop_range_.to_ - 1 &&
+        if (rs.stop_idx_ != fr.stop_range_.to_ - 1 &&
             vdv_stop->rt_dep_.has_value() && vdv_stop->dep_.has_value() &&
-            vdv_stop->dep_.value() ==
-                fr[stop_idx].scheduled_time(event_type::kDep)) {
+            vdv_stop->dep_.value() == rs.scheduled_time(event_type::kDep)) {
           matched = true;
-          update_event(stop_idx, event_type::kDep, *vdv_stop->rt_dep_);
+          update_event(rs, event_type::kDep, *vdv_stop->rt_dep_);
         }
         if (matched) {
           std::cout << "\n";
@@ -335,31 +330,30 @@ void update_run(timetable const& tt,
           print_skipped_stops();
           break;
         }
-      } else if (prefix_match(vdv_stop->id_, fr[stop_idx].id())) {
+      } else if (prefix_match(vdv_stop->id_, rs.id())) {
         prefix_matches << "vdv_stop_idx = "
                        << std::distance(begin(vdv_stops), vdv_stop) << ": "
-                       << vdv_stop->id_ << "\ngtfs_stop_idx = " << stop_idx
-                       << ": " << fr[stop_idx].id() << "\n\n";
+                       << vdv_stop->id_ << "\ngtfs_stop_idx = " << rs.stop_idx_
+                       << ": " << rs.id() << "\n\n";
       }
       skipped_stops.emplace_back(*vdv_stop);
     }
     if (!matched && is_complete_run) {
-      gtfs_stop_missing << "stop_idx = " << stop_idx
-                        << ": [id: " << fr[stop_idx].id()
-                        << ", name: " << fr[stop_idx].name() << "]\n";
+      gtfs_stop_missing << "stop_idx = " << rs.stop_idx_ << ": [id: " << rs.id()
+                        << ", name: " << rs.name() << "]\n";
     }
     if (!matched && delay) {
-      if (stop_idx != 0) {
-        std::cout << "propagating delay at stop_idx = " << stop_idx
-                  << ": [id: " << fr[stop_idx].id()
-                  << ", name: " << fr[stop_idx].name() << "] ARR: ";
-        propagate_delay(stop_idx, event_type::kArr);
+      if (rs.stop_idx_ != 0) {
+        std::cout << "propagating delay at stop_idx = " << rs.stop_idx_
+                  << ": [id: " << rs.id() << ", name: " << rs.name()
+                  << "] ARR: ";
+        propagate_delay(rs, event_type::kArr);
       }
-      if (stop_idx != fr.stop_range_.to_ - 1) {
-        std::cout << "propagating delay at stop_idx = " << stop_idx
-                  << ": [id: " << fr[stop_idx].id()
-                  << ", name: " << fr[stop_idx].name() << "] DEP: ";
-        propagate_delay(stop_idx, event_type::kDep);
+      if (rs.stop_idx_ != fr.stop_range_.to_ - 1) {
+        std::cout << "propagating delay at stop_idx = " << rs.stop_idx_
+                  << ": [id: " << rs.id() << ", name: " << rs.name()
+                  << "] DEP: ";
+        propagate_delay(rs, event_type::kDep);
       }
       std::cout << "\n";
     }
