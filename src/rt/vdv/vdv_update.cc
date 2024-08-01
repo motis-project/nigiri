@@ -1,5 +1,6 @@
 #include "nigiri/rt/vdv/vdv_update.h"
 
+#include <ranges>
 #include <sstream>
 #include <string>
 #include <string_view>
@@ -50,8 +51,11 @@ pugi::xml_node get(pugi::xml_node const& node, char const* str) {
 }
 
 struct vdv_stop {
-  explicit vdv_stop(location_idx_t const l, pugi::xml_node const n)
+  explicit vdv_stop(location_idx_t const l,
+                    std::string_view id,
+                    pugi::xml_node const n)
       : l_{l},
+        id_{id},
         dep_{get_opt_time(n, "Abfahrtszeit")},
         arr_{get_opt_time(n, "Ankunftszeit")},
         rt_dep_{get_opt_time(n, "IstAbfahrtPrognose")},
@@ -68,6 +72,7 @@ struct vdv_stop {
   }
 
   location_idx_t l_;
+  std::string_view id_;
   std::optional<unixtime_t> dep_, arr_, rt_dep_, rt_arr_;
 };
 
@@ -76,6 +81,8 @@ vector<vdv_stop> resolve_stops(timetable const& tt,
                                pugi::xml_node const run,
                                statistics& stats) {
   auto vdv_stops = vector<vdv_stop>{};
+
+  auto additional_stops = std::ofstream{"additional_stops.txt", std::ios::app};
 
   auto unresolvable_stops =
       std::ofstream{"unresolvable_stops.txt", std::ios::app};
@@ -86,18 +93,22 @@ vector<vdv_stop> resolve_stops(timetable const& tt,
     auto const vdv_stop_id =
         std::string_view{get(stop.node(), "HaltID").child_value()};
     auto const l = tt.locations_.find({vdv_stop_id, src});
+
+    if (get_opt_bool(stop.node(), "Zusatzhalt", false).value()) {
+      ++stats.unsupported_additional_stops_;
+      additional_stops << vdv_stop_id << ": "
+                       << (l.has_value() ? l->name_ : "unresolvable") << "\n";
+      continue;
+    }
+
     if (l.has_value()) {
       ++stats.resolved_stops_;
-
-      if (get_opt_bool(stop.node(), "Zusatzhalt", false).value()) {
-        ++stats.unsupported_additional_stops_;
-        continue;
-      }
-
-      vdv_stops.emplace_back(l->l_, stop.node());
+      vdv_stops.emplace_back(l->l_, vdv_stop_id, stop.node());
     } else {
       ++stats.unknown_stops_;
       unresolvable_stops << vdv_stop_id << "\n";
+      vdv_stops.emplace_back(location_idx_t::invalid(), vdv_stop_id,
+                             stop.node());
     }
   }
 
@@ -127,6 +138,9 @@ std::optional<rt::run> find_run(timetable const& tt,
   auto matches = hash_map<rt::run, unsigned>{};
 
   for (auto const& vdv_stop : vdv_stops) {
+    if (vdv_stop.l_ == location_idx_t::invalid()) {
+      continue;
+    }
     auto no_transport_found_at_stop = true;
     for (auto const r : tt.location_routes_[vdv_stop.l_]) {
       auto const location_seq = tt.route_location_seq_[r];
@@ -215,6 +229,9 @@ void update_run(timetable const& tt,
 
   std::cout << "---\nupdating " << fr.name() << "\n";
 
+  auto gtfs_stop_missing = std::stringstream{};
+  auto prefix_matches = std::stringstream{};
+
   auto delay = std::optional<duration_t>{};
 
   auto const update_event = [&](auto const stop_idx, auto const et,
@@ -238,22 +255,41 @@ void update_run(timetable const& tt,
   };
 
   auto cursor = begin(vdv_stops);
-  auto const move_cursor = [&](auto const& vdv_stop) {
-    if (cursor + 1 != vdv_stop) {
-      for (auto it = cursor; it != vdv_stop - 1; ++it) {
-        ++stats.skipped_vdv_stops_;
-        std::cout << "skipped vdv stop: [id: " << tt.locations_.get(it->l_).id_
-                  << ", name: " << tt.locations_.get(it->l_).name_ << "]\n";
-      }
+  auto skipped_stops = std::vector<vdv_stop>{};
+  auto const print_skipped_stops = [&]() {
+    for (auto const& s : skipped_stops) {
+      ++stats.skipped_vdv_stops_;
+      std::cout << "skipped vdv stop: [id: " << s.id_ << ", name: "
+                << (s.l_ == location_idx_t::invalid()
+                        ? "unresolvable"
+                        : tt.locations_.get(s.l_).name_)
+                << "]\n";
     }
     std::cout << "\n";
-    cursor = vdv_stop;
+  };
+
+  auto const prefix_match = [](auto const& a, auto const& b) {
+    auto colons = 0U;
+    for (auto const& [el_a, el_b] : std::views::zip(a, b)) {
+      if (el_a != el_b) {
+        return false;
+      }
+      if (el_a == ':') {
+        ++colons;
+      }
+      if (colons == 3U) {
+        break;
+      }
+    }
+    return true;
   };
 
   for (auto const stop_idx : fr.stop_range_) {
     auto matched = false;
+    skipped_stops.clear();
     for (auto vdv_stop = cursor; vdv_stop != end(vdv_stops); ++vdv_stop) {
-      if (fr[stop_idx].get_location_idx() == vdv_stop->l_) {
+      if (vdv_stop->l_ != location_idx_t::invalid() &&
+          fr[stop_idx].get_location_idx() == vdv_stop->l_) {
         std::cout << "location match at stop_idx = " << stop_idx
                   << ": [id: " << fr[stop_idx].id()
                   << ", name: " << fr[stop_idx].name() << "]\n";
@@ -273,16 +309,22 @@ void update_run(timetable const& tt,
         }
         if (matched) {
           std::cout << "\n";
-          move_cursor(vdv_stop + 1);
+          cursor = vdv_stop + 1;
+          print_skipped_stops();
           break;
         }
+      } else if (prefix_match(vdv_stop->id_, fr[stop_idx].id())) {
+        prefix_matches << "vdv_stop_idx = "
+                       << std::distance(begin(vdv_stops), vdv_stop) << ": "
+                       << vdv_stop->id_ << "\ngtfs_stop_idx = " << stop_idx
+                       << ": " << fr[stop_idx].id() << "\n\n";
       }
+      skipped_stops.emplace_back(*vdv_stop);
     }
     if (!matched && is_complete_run) {
-      auto gtfs_stop_missing_in_vdv =
-          std::ofstream{"gtfs_stop_missing_in_vdv.txt", std::ios::app};
-      gtfs_stop_missing_in_vdv << "[id: " << fr[stop_idx].id()
-                               << ", name: " << fr[stop_idx].name() << "]\n";
+      gtfs_stop_missing << "stop_idx = " << stop_idx
+                        << ": [id: " << fr[stop_idx].id()
+                        << ", name: " << fr[stop_idx].name() << "]\n";
     }
     if (!matched && delay) {
       if (stop_idx != 0) {
@@ -302,12 +344,26 @@ void update_run(timetable const& tt,
   }
 
   while (cursor != end(vdv_stops)) {
-    std::cout << "excess vdv stop: [id: " << tt.locations_.get(cursor->l_).id_
-              << ", name: " << tt.locations_.get(cursor->l_).name_ << "]\n";
+    std::cout << "excess vdv stop: [id: " << cursor->id_ << ", name: "
+              << (cursor->l_ == location_idx_t::invalid()
+                      ? "unresolvable"
+                      : tt.locations_.get(cursor->l_).name_)
+              << "]\n";
     ++stats.excess_vdv_stops_;
     ++cursor;
   }
 
+  if (!gtfs_stop_missing.str().empty()) {
+    std::ofstream{"gtfs_stop_missing_in_vdv.txt", std::ios::app}
+        << "---" << fr.name() << ":\n"
+        << gtfs_stop_missing.str() << "---\n\n";
+  }
+
+  if (!prefix_matches.str().empty()) {
+    std::ofstream{"prefix_only_matches.txt", std::ios::app}
+        << "---" << fr.name() << ":\n"
+        << prefix_matches.str() << "---\n\n";
+  }
   std::cout << "---\n\n";
 }
 

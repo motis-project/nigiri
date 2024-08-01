@@ -40,7 +40,7 @@ int main(int argc, char* argv[]) {
   bpo::notify(vm);
 
   auto tt = *nigiri::timetable::read(cista::memory_holder{
-      cista::file{fs::path{"tt.bin"}.generic_string().c_str(), "r"}.content()});
+      cista::file{fs::path{tt_path}.generic_string().c_str(), "r"}.content()});
   tt.locations_.resolve_timezones();
 
   auto rtt =
