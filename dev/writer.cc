@@ -60,12 +60,13 @@ struct ShapePoint {
 };
 
 void progress_lines(const auto& file_content, auto func) {
-  auto const progress_tracker = utl::activate_progress_tracker("writer");
-  progress_tracker->status("Parse Agencies")
-      .out_bounds(0.F, 1.F)
-      .in_high(file_content.size());
+  // auto const progress_tracker = utl::activate_progress_tracker("writer");
+  // progress_tracker->status("Parse Agencies")
+  //     .out_bounds(0.F, 1.F)
+  //     .in_high(file_content.size());
   utl::line_range{
-      utl::make_buf_reader(file_content, progress_tracker->update_fn())}  //
+      // utl::make_buf_reader(file_content, progress_tracker->update_fn())}  //
+      utl::make_buf_reader(file_content, utl::noop_progress_consumer{})}  //
       | utl::csv<ShapePoint::Shape>()  //
       | utl::transform([&](ShapePoint::Shape const& shape) {
           return ShapePoint::from_shape(shape);
