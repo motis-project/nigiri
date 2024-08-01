@@ -26,6 +26,14 @@ void cleanup_paths(const ShapeMap::Paths& paths) {
     }
 }
 
+ShapeMap::Paths get_paths(std::string base_path) {
+    return {
+        base_path + "-id.dat",
+        base_path + "-shape-data.dat",
+        base_path + "-shape-metadata.dat",
+    };
+}
+
 TEST(gtfs, shapeConstruct_createData_canAccessData) {
     std::string shapes_data{R"("shape_id","shape_pt_lat","shape_pt_lon","shape_pt_sequence"
 243,51.543652,7.217830,0
@@ -38,12 +46,7 @@ TEST(gtfs, shapeConstruct_createData_canAccessData) {
 3105,50.578249,6.383394,8
 3105,50.581956,6.379866,11
 )"};
-    std::string base_path{"shape-test-create"};
-    ShapeMap::Paths paths{
-        base_path + "-id.dat",
-        base_path + "-shape-data.dat",
-        base_path + "-shape-metadata.dat",
-    };
+    auto paths{get_paths("shape-test-create")};
     const DataGuard guard{[&paths]() { cleanup_paths(paths); }};
 
     ShapeMap shapes(shapes_data, paths);
@@ -92,12 +95,7 @@ TEST(gtfs, shapeConstruct_storeAndLoadData_canAccessData) {
 137,50.767436,6.089977,4
 137,51.194829,6.521109,988
 )"};
-    std::string base_path{"shape-test-store-and-reload"};
-    ShapeMap::Paths paths{
-        base_path + "-id.dat",
-        base_path + "-shape-data.dat",
-        base_path + "-shape-metadata.dat",
-    };
+    auto paths{get_paths("shape-test-store-and-reload")};
     const DataGuard guard{[&paths]() { cleanup_paths(paths); }};
 
     // Store only
@@ -151,12 +149,7 @@ test id,50.553822,6.356876,0
 🚀,51.543652,7.217830,0
 🚏,51.478609,7.223275,1
 )"};
-    std::string base_path{"shape-test-create"};
-    ShapeMap::Paths paths{
-        base_path + "-id.dat",
-        base_path + "-shape-data.dat",
-        base_path + "-shape-metadata.dat",
-    };
+    auto paths{get_paths("shape-test-valid-ids")};
     const DataGuard guard{[&paths]() { cleanup_paths(paths); }};
 
     ShapeMap shapes(shapes_data, paths);
@@ -169,4 +162,27 @@ test id,50.553822,6.356876,0
     EXPECT_TRUE(shapes.contains(""));
     EXPECT_TRUE(shapes.contains("🚀"));
     EXPECT_TRUE(shapes.contains("🚏"));
+}
+
+TEST(gtfs, shapeParse_randomColumOrder_parseCorrectly) {
+    std::string shapes_data{R"("shape_pt_sequence","shape_pt_lon","shape_id","shape_pt_lat"
+6,6.089410,123,50.767212
+74,6.074227,123,50.775187
+230,6.094470,123,50.871905
+277,6.070844,123,50.890206
+339,6.023209,123,50.896437
+367,5.995949,123,50.890583
+410,5.978670,123,50.890088
+481,5.909033,123,50.879289
+663,5.705982,123,50.849446
+721,5.716989,123,50.838980
+)"};
+    auto paths{get_paths("shape-test-random-column-order")};
+    const DataGuard guard{[&paths]() { cleanup_paths(paths); }};
+
+    ShapeMap shapes(shapes_data, paths);
+
+    EXPECT_EQ(1, shapes.size());
+    EXPECT_TRUE(shapes.contains("123"));
+    EXPECT_EQ(10, shapes.at("123").size());
 }
