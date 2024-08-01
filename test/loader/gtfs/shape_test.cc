@@ -140,3 +140,33 @@ TEST(gtfs, shapeConstruct_storeAndLoadData_canAccessData) {
         EXPECT_EQ(shape_points.at(static_cast<size_t>(pos)), shapes.at(id));
     }
 }
+
+TEST(gtfs, shapeParse_validIDs_parseData) {
+    std::string shapes_data{R"("shape_id","shape_pt_lat","shape_pt_lon","shape_pt_sequence"
+test id,50.553822,6.356876,0
+----,50.560999,6.355028,1
+)" "\x07\x13\x41\x08" R"(,50.560999,6.355028,2
+ルーティング,50.565724,6.364605,3
+,50.565724,6.364605,4
+🚀,51.543652,7.217830,0
+🚏,51.478609,7.223275,1
+)"};
+    std::string base_path{"shape-test-create"};
+    ShapeMap::Paths paths{
+        base_path + "-id.dat",
+        base_path + "-shape-data.dat",
+        base_path + "-shape-metadata.dat",
+    };
+    const DataGuard guard{[&paths]() { cleanup_paths(paths); }};
+
+    ShapeMap shapes(shapes_data, paths);
+
+    EXPECT_EQ(7, shapes.size());
+    EXPECT_TRUE(shapes.contains("test id"));
+    EXPECT_TRUE(shapes.contains("----"));
+    EXPECT_TRUE(shapes.contains("\x07\x13\x41\x08"));
+    EXPECT_TRUE(shapes.contains("ルーティング"));
+    EXPECT_TRUE(shapes.contains(""));
+    EXPECT_TRUE(shapes.contains("🚀"));
+    EXPECT_TRUE(shapes.contains("🚏"));
+}
