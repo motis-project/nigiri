@@ -63,19 +63,12 @@ struct vdv_stop {
 
   std::optional<std::pair<unixtime_t, event_type>> get_event(
       event_type et) const {
-    switch (et) {
-      case event_type::kArr:
-        if (arr_.has_value()) {
-          return std::pair{*arr_, event_type::kArr};
-        } else {
-          return std::nullopt;
-        }
-      case event_type::kDep:
-        if (dep_.has_value()) {
-          return std::pair{*dep_, event_type::kDep};
-        } else {
-          return std::nullopt;
-        }
+    if (et == event_type::kArr && arr_.has_value()) {
+      return std::pair{*arr_, event_type::kArr};
+    } else if (et == event_type::kDep && dep_.has_value()) {
+      return std::pair{*dep_, event_type::kDep};
+    } else {
+      return std::nullopt;
     }
   }
 
