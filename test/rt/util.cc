@@ -61,7 +61,7 @@ void with_rt_trips(timetable const& tt,
     auto trip_delays = std::vector<trip>{};
     std::cout << "with_rt_trips:";
     for (auto j = 0; j < trips; ++j) {
-      if (i & (1 << j) != 0) {
+      if ((i & (1 << j)) != 0) {
         trip_delays.emplace_back(trip{.trip_id_ = trip_ids[j], .delays_ = {}});
         std::cout << " " << trip_ids[j];
       }
