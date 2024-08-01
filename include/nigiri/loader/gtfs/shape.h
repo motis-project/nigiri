@@ -1,6 +1,7 @@
 #pragma once
 
 #include <filesystem>
+#include <vector>
 #include <unordered_map>
 
 #include "geo/latlng.h"
@@ -45,10 +46,12 @@ namespace nigiri::loader::gtfs {
             std::filesystem::path shape_metadata_file;
         };
 
-        ShapeMap(const std::string_view data, const Paths& paths);
+        ShapeMap(const std::string_view, const Paths&);
+        ShapeMap(const Paths&);
         size_t size() const ;
         bool contains(const key_type&) const;
         std::vector<geo::latlng> at(const key_type&) const;
+        static void write_shapes(const std::string_view, const Paths&);
     private:
         using shape_coordinate_type = std::remove_const<decltype(helper::coordinate_precision)>::type;
         struct Coordinate {
@@ -60,10 +63,13 @@ namespace nigiri::loader::gtfs {
         using id_map_t = std::unordered_map<key_type, size_t>;
 
         ShapeMap(std::pair<shape_data_t, id_vec_t>);
-        static std::pair<shape_data_t, id_vec_t> create_files(const std::string_view data, const Paths& paths);
-        static shape_data_t create_memory_map(const Paths&, const cista::mmap::protection);
+        static std::pair<shape_data_t, id_vec_t> create_files(const std::string_view data, const Paths&);
+        static std::pair<shape_data_t, id_vec_t> load_files(const Paths&);
+        static shape_data_t create_memory_map(const Paths&, const cista::mmap::protection = cista::mmap::protection::READ);
+        static auto create_id_memory_map(const std::filesystem::path&, const cista::mmap::protection = cista::mmap::protection::READ);
         static id_vec_t load_shapes(const std::string_view, shape_data_t&);
         static void store_ids(const id_vec_t&, const std::filesystem::path&);
+        static id_vec_t load_ids(const std::filesystem::path&);
         static id_map_t id_vec_to_map(const id_vec_t&);
         static std::vector<geo::latlng> transform_coordinates(const auto&);
 

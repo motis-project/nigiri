@@ -1,7 +1,8 @@
 #include "nigiri/loader/gtfs/shape.h"
 
-#include <algorithm>
 #include <ranges>
+
+#include "cista/mmap.h"
 #include "geo/latlng.h"
 #include "utl/parser/buf_reader.h"
 #include "utl/parser/line_range.h"
@@ -11,6 +12,8 @@
 namespace nigiri::loader::gtfs {
 
     ShapeMap::ShapeMap(const std::string_view data, const Paths& paths) : ShapeMap(create_files(data, paths)) {}
+
+    ShapeMap::ShapeMap(const Paths& paths) : ShapeMap(load_files(paths)) {}
 
     ShapeMap::ShapeMap(std::pair<shape_data_t, id_vec_t> p) : shape_map_{std::move(p.first)}, id_map_{id_vec_to_map(p.second)} {}
 
@@ -27,6 +30,10 @@ namespace nigiri::loader::gtfs {
         return transform_coordinates(shape_map_.at(offset));
     }
 
+    void ShapeMap::write_shapes(const std::string_view data, const Paths& paths) {
+        create_files(data, paths);
+    }
+
     std::pair<ShapeMap::shape_data_t, ShapeMap::id_vec_t> ShapeMap::create_files(const std::string_view data, const Paths& paths) {
         shape_data_t mmap{create_memory_map(paths, cista::mmap::protection::WRITE)};
         id_vec_t ids{load_shapes(data, mmap)};
@@ -34,13 +41,23 @@ namespace nigiri::loader::gtfs {
         return std::make_pair(std::move(mmap), std::move(ids));
     }
 
-    ShapeMap::shape_data_t ShapeMap::create_memory_map(const Paths& paths, const cista::mmap::protection mode = cista::mmap::protection::READ) {
+    std::pair<ShapeMap::shape_data_t, ShapeMap::id_vec_t> ShapeMap::load_files(const Paths& paths) {
+        shape_data_t mmap{create_memory_map(paths)};
+        return std::make_pair(std::move(mmap), load_ids(paths.id_file));
+    }
+
+    ShapeMap::shape_data_t ShapeMap::create_memory_map(const Paths& paths, const cista::mmap::protection mode) {
         return shape_data_t{
             cista::basic_mmap_vec<Coordinate, std::size_t>{
                 cista::mmap{paths.shape_data_file.native().data(), mode}},
             cista::basic_mmap_vec<std::size_t, std::size_t>{cista::mmap{
                 paths.shape_metadata_file.native().data(), mode}}};
     }
+
+    auto ShapeMap::create_id_memory_map(const std::filesystem::path& path, const cista::mmap::protection mode) {
+        return cista::mmap_vec<key_type::value_type>{cista::mmap{path.native().data(), mode}};
+    }
+
 
     ShapeMap::id_vec_t ShapeMap::load_shapes(const std::string_view data, shape_data_t& mmap) {
         key_type last_id;
@@ -68,9 +85,26 @@ namespace nigiri::loader::gtfs {
 
         return ids;
     }
-    void ShapeMap::store_ids(const id_vec_t&, const std::filesystem::path&) {
-        // TODO
+    void ShapeMap::store_ids(const id_vec_t& ids, const std::filesystem::path& path) {
+        auto storage{create_id_memory_map(path, cista::mmap::protection::WRITE)};
+        for (auto id : ids) {
+            storage.insert(storage.end(), id.begin(), id.end());
+            storage.push_back('\0');
+        }
     }
+
+    ShapeMap::id_vec_t ShapeMap::load_ids(const std::filesystem::path& path) {
+        id_vec_t ids{};
+        auto storage{create_id_memory_map(path)};
+        std::string_view view{storage};
+        size_t start{0u}, end;
+        while ((end = view.find('\0', start)) != view.npos) {
+            ids.push_back(key_type{view.substr(start, end - start)});
+            start = end + 1;
+        }
+        return ids;
+    }
+
     ShapeMap::id_map_t ShapeMap::id_vec_to_map(const id_vec_t& ids) {
         id_map_t map;
         for (auto [pos, id] : std::ranges::enumerate_view(ids)) {
@@ -80,16 +114,12 @@ namespace nigiri::loader::gtfs {
     }
 
     std::vector<geo::latlng> ShapeMap::transform_coordinates(const auto& shape) {
-        std::vector<geo::latlng> coordinates;
-        for (auto point : shape) {
-            coordinates.push_back(geo::latlng{helper::fix_to_double(point.lat), helper::fix_to_double(point.lon)});
-        }
-        return coordinates;
-        // auto coordinates = shape
-        //     | std::views::transform([](const Coordinate& c) {
-        //         return geo::latlng{helper::fix_to_double(c.lat), helper::fix_to_double(c.lon)};
-        //     });
-        // return std::vector<geo::latlng>{coordinates};
+        auto coordinates = shape
+            | std::views::transform([](const Coordinate& c) {
+                return geo::latlng{helper::fix_to_double(c.lat), helper::fix_to_double(c.lon)};
+            })
+        ;
+        return std::vector<geo::latlng>{coordinates.begin(), coordinates.end()};
     }
 
     constexpr ShapeMap::ShapePoint ShapeMap::ShapePoint::from_entry(const Entry& entry) {
