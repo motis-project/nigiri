@@ -97,8 +97,8 @@ vector<vdv_stop> resolve_stops(timetable const& tt,
 
     if (get_opt_bool(stop.node(), "Zusatzhalt", false).value()) {
       ++stats.unsupported_additional_stops_;
-      additional_stops << vdv_stop_id << ": "
-                       << (l.has_value() ? l->name_ : "unresolvable") << "\n";
+      additional_stops << "[id: " << vdv_stop_id << ", name:"
+                       << (l.has_value() ? l->name_ : "unresolvable") << "]\n";
       continue;
     }
 
@@ -247,9 +247,9 @@ void update_run(timetable const& tt,
     fr.rt_ = rtt.add_rt_transport(src, tt, r.t_);
   }
 
-  std::cout << "---\nupdating " << fr.name()
+  std::cout << "---updating " << fr.name()
             << ", stop_idx: " << fr.stop_range_.from_ << " to "
-            << fr.stop_range_.to_ - 1 << "\n";
+            << fr.stop_range_.to_ - 1 << "\n\n";
 
   auto gtfs_stop_missing = std::stringstream{};
   auto prefix_matches = std::stringstream{};
@@ -325,7 +325,6 @@ void update_run(timetable const& tt,
           update_event(rs, event_type::kDep, *vdv_stop->rt_dep_);
         }
         if (matched) {
-          std::cout << "\n";
           cursor = vdv_stop + 1;
           print_skipped_stops();
           break;
@@ -338,7 +337,7 @@ void update_run(timetable const& tt,
       }
       skipped_stops.emplace_back(*vdv_stop);
     }
-    if (!matched && is_complete_run) {
+    if (!matched && is_complete_run && rs.stop_idx_ < vdv_stops.size()) {
       gtfs_stop_missing << "stop_idx = " << rs.stop_idx_ << ": [id: " << rs.id()
                         << ", name: " << rs.name() << "]\n";
     }
