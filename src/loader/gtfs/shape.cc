@@ -61,17 +61,37 @@ namespace nigiri::loader::gtfs {
         return cista::mmap_vec<key_type::value_type>{cista::mmap{path.native().data(), mode}};
     }
 
-
+#include <format>
     ShapeMap::id_vec_t ShapeMap::load_shapes(const std::string_view data, shape_data_t& mmap) {
         struct State {
-            // shape_data_t::bucket bucket;
             size_t index{};
             size_t last_seq{};
         };
+        // struct ShapeInfo {
+        //     size_t index{};
+        //     size_t last_seq{};
+        // };
+        // struct {
+        //     std::string_view current_id;
+        //     std::unordered_map<key_type, ShapeInfo> info;
+        // } state;
         id_vec_t ids;
         std::unordered_map<key_type, State> states;
 
         auto store_to_map = [&mmap, &ids, &states](const ShapePoint point) {
+        // auto store_to_map = [&mmap, &ids, &state](const ShapePoint point) {
+            // if (state.info.empty()) {
+            //     state.current_id = point.id;
+            //     state.info.insert({point.id, {0u, point.seq}});
+            //     auto bucket = (mmap.add_back_sized(0u));
+
+            //     bucket.push_back(point.coordinate);
+            //     ids.push_back(point.id);
+            // } else if (state.current_id == point.id) {
+            //     if (state.last_seq >= point.seq) {
+            //         throw InvalidShapesFormat(std::format("Non monotonic sequence for shape_id '{}': Sequence number {} followed by {}", point.id, state.last_seq, point.seq));
+            //     }
+            // }
             if (auto found = states.find(point.id); found != states.end()) {
                 auto& state= found->second;
                 if (state.last_seq >= point.seq) {
@@ -82,12 +102,18 @@ namespace nigiri::loader::gtfs {
                 state.last_seq = point.seq;
             } else {
                 auto index = ids.size();
-                auto bucket = mmap.add_back_sized(index);
+                auto bucket = mmap.add_back_sized(0u);
                 // states.insert({point.id, {std::move(bucket), point.seq}});
                 states.insert({point.id, {index, point.seq}});
                 ids.push_back(point.id);
                 bucket.push_back(point.coordinate);
             }
+            // std::cout << std::format("DEBUG: Size: {}, ID: '{}'", mmap.size(), point.id) << std::endl;
+            // std::cout << "Bucket sizes: ";
+            // for (auto b : mmap) {
+            //     std::cout << b.size() << ", ";
+            // }
+            // std::cout << std::endl;
         };
 
         utl::line_range{utl::make_buf_reader(data, utl::noop_progress_consumer{})}
