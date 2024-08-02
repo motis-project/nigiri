@@ -14,12 +14,12 @@
 using namespace nigiri::loader::gtfs;
 
 struct DataGuard {
-  DataGuard(const std::function<void()> f) : f_(f) {}
+  DataGuard(std::function<void()> const f) : f_(f) {}
   ~DataGuard() { f_(); }
-  const std::function<void()> f_;
+  std::function<void()> const f_;
 };
 
-void cleanup_paths(const ShapeMap::Paths& paths) {
+void cleanup_paths(ShapeMap::Paths const& paths) {
   for (auto path : std::vector<std::filesystem::path>{
            paths.id_file, paths.shape_data_file, paths.shape_metadata_file}) {
     if (std::filesystem::exists(path)) {
@@ -50,7 +50,7 @@ TEST(gtfs, shapeConstruct_createData_canAccessData) {
 3105,50.581956,6.379866,11
 )"};
   auto paths{get_paths("shape-test-create")};
-  const DataGuard guard{[&paths]() { cleanup_paths(paths); }};
+  DataGuard const guard{[&paths]() { cleanup_paths(paths); }};
 
   ShapeMap shapes(shapes_data, paths);
 
@@ -76,7 +76,7 @@ TEST(gtfs, shapeConstruct_createData_canAccessData) {
   EXPECT_EQ(shape_points.at(0), shapes.at("243"));
   EXPECT_EQ(shape_points.at(1), shapes.at("3105"));
   size_t loop_count{}, loop_sum{};
-  for (const auto shape : shapes) {
+  for (auto const shape : shapes) {
     // Reminder: Internal order can be random
     EXPECT_TRUE(shape == shape_points.at(0) || shape == shape_points.at(1));
     ++loop_count;
@@ -113,7 +113,7 @@ TEST(gtfs, shapeConstruct_storeAndLoadData_canAccessData) {
 137,51.194829,6.521109,988
 )"};
   auto paths{get_paths("shape-test-store-and-reload")};
-  const DataGuard guard{[&paths]() { cleanup_paths(paths); }};
+  DataGuard const guard{[&paths]() { cleanup_paths(paths); }};
 
   // Store only
   ShapeMap::write_shapes(shapes_data, paths);
@@ -168,7 +168,7 @@ test id,50.553822,6.356876,0
 🚏,51.478609,7.223275,1
 )"};
   auto paths{get_paths("shape-test-valid-ids")};
-  const DataGuard guard{[&paths]() { cleanup_paths(paths); }};
+  DataGuard const guard{[&paths]() { cleanup_paths(paths); }};
 
   ShapeMap shapes(shapes_data, paths);
 
@@ -197,7 +197,7 @@ TEST(gtfs, shapeParse_randomColumOrder_parseCorrectly) {
 721,5.716989,123,50.838980
 )"};
   auto paths{get_paths("shape-test-random-column-order")};
-  const DataGuard guard{[&paths]() { cleanup_paths(paths); }};
+  DataGuard const guard{[&paths]() { cleanup_paths(paths); }};
 
   ShapeMap shapes(shapes_data, paths);
 
@@ -213,7 +213,7 @@ TEST(gtfs, shapeParse_notAscendingSequence_throwException) {
 1,50.636259,6.473668,0
 )"};
   auto paths{get_paths("shape-test-not-ascending-sequence")};
-  const DataGuard guard{[&paths]() { cleanup_paths(paths); }};
+  DataGuard const guard{[&paths]() { cleanup_paths(paths); }};
 
   EXPECT_THROW(ShapeMap shapes(shapes_data, paths), InvalidShapesFormat);
 }
@@ -224,7 +224,7 @@ TEST(gtfs, shapeParse_notAscendingSequence_throwException) {
 // 1,50.636259,0
 // )"};
 //     auto paths{get_paths("shape-test-missing-column")};
-//     const DataGuard guard{[&paths]() { cleanup_paths(paths); }};
+//     DataGuard const guard{[&paths]() { cleanup_paths(paths); }};
 
 //     EXPECT_THROW(ShapeMap shapes(shapes_data, paths), InvalidShapesFormat);
 // }
@@ -246,7 +246,7 @@ TEST(gtfs, shapeParse_shuffledRows_parseAllData) {
 235,51.543652,7.217830,1
 )"};
   auto paths{get_paths("shape-test-shuffled-rows")};
-  const DataGuard guard{[&paths]() { cleanup_paths(paths); }};
+  DataGuard const guard{[&paths]() { cleanup_paths(paths); }};
 
   ShapeMap shapes(shapes_data, paths);
 
@@ -297,7 +297,7 @@ TEST(gtfs, shapeParse_delayedInsertWithNotAscendingSequence_throwException) {
 1,50.636259,6.473668,0
 )"};
   auto paths{get_paths("shape-test-not-ascending-sequence")};
-  const DataGuard guard{[&paths]() { cleanup_paths(paths); }};
+  DataGuard const guard{[&paths]() { cleanup_paths(paths); }};
 
   EXPECT_THROW(ShapeMap shapes(shapes_data, paths), InvalidShapesFormat);
 }

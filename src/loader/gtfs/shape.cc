@@ -13,23 +13,23 @@
 
 namespace nigiri::loader::gtfs {
 
-InvalidShapesFormat::InvalidShapesFormat(const std::string& msg)
+InvalidShapesFormat::InvalidShapesFormat(std::string const& msg)
     : std::runtime_error{msg} {}
 
 struct ShapePoint {
-  const ShapeMap::key_type id;
-  const ShapeMap::Coordinate coordinate;
-  const size_t seq;
+  ShapeMap::key_type const id;
+  ShapeMap::Coordinate const coordinate;
+  size_t const seq;
   struct Entry {
     utl::csv_col<ShapeMap::key_type, UTL_NAME("shape_id")> id;
     utl::csv_col<double, UTL_NAME("shape_pt_lat")> lat;
     utl::csv_col<double, UTL_NAME("shape_pt_lon")> lon;
     utl::csv_col<size_t, UTL_NAME("shape_pt_sequence")> seq;
   };
-  static constexpr ShapePoint from_entry(const Entry&);
+  static constexpr ShapePoint from_entry(Entry const&);
 };
 
-constexpr ShapePoint ShapePoint::from_entry(const Entry& entry) {
+constexpr ShapePoint ShapePoint::from_entry(Entry const& entry) {
   return ShapePoint{
       entry.id.val(),
       {
@@ -40,17 +40,17 @@ constexpr ShapePoint ShapePoint::from_entry(const Entry& entry) {
   };
 }
 
-ShapeMap::ShapeMap(const std::string_view data, const Paths& paths)
+ShapeMap::ShapeMap(std::string_view const data, Paths const& paths)
     : ShapeMap(create_files(data, paths)) {}
 
-ShapeMap::ShapeMap(const Paths& paths) : ShapeMap(load_files(paths)) {}
+ShapeMap::ShapeMap(Paths const& paths) : ShapeMap(load_files(paths)) {}
 
 ShapeMap::ShapeMap(std::pair<shape_data_t, id_vec_t> p)
     : shape_map_{std::move(p.first)}, id_map_{id_vec_to_map(p.second)} {}
 
 size_t ShapeMap::size() const { return id_map_.size(); }
 
-bool ShapeMap::contains(const key_type& id) const {
+bool ShapeMap::contains(key_type const& id) const {
   return id_map_.contains(id);
 }
 
@@ -68,17 +68,17 @@ ShapeMap::Iterator ShapeMap::end() const {
   };
 }
 
-ShapeMap::value_type ShapeMap::at(const key_type& id) const {
+ShapeMap::value_type ShapeMap::at(key_type const& id) const {
   auto offset = id_map_.at(id);
   return transform_coordinates(shape_map_.at(offset));
 }
 
-void ShapeMap::write_shapes(const std::string_view data, const Paths& paths) {
+void ShapeMap::write_shapes(std::string_view const data, Paths const& paths) {
   create_files(data, paths);
 }
 
 std::pair<ShapeMap::shape_data_t, ShapeMap::id_vec_t> ShapeMap::create_files(
-    const std::string_view data, const Paths& paths) {
+    std::string_view const data, Paths const& paths) {
   shape_data_t mmap{create_memory_map(paths, cista::mmap::protection::WRITE)};
   id_vec_t ids{load_shapes(data, mmap)};
   store_ids(ids, paths.id_file);
@@ -86,13 +86,13 @@ std::pair<ShapeMap::shape_data_t, ShapeMap::id_vec_t> ShapeMap::create_files(
 }
 
 std::pair<ShapeMap::shape_data_t, ShapeMap::id_vec_t> ShapeMap::load_files(
-    const Paths& paths) {
+    Paths const& paths) {
   shape_data_t mmap{create_memory_map(paths)};
   return std::make_pair(std::move(mmap), load_ids(paths.id_file));
 }
 
 ShapeMap::shape_data_t ShapeMap::create_memory_map(
-    const Paths& paths, const cista::mmap::protection mode) {
+    Paths const& paths, cista::mmap::protection const mode) {
   return shape_data_t{
       cista::basic_mmap_vec<Coordinate, std::size_t>{
           cista::mmap{paths.shape_data_file.native().data(), mode}},
@@ -100,13 +100,13 @@ ShapeMap::shape_data_t ShapeMap::create_memory_map(
           cista::mmap{paths.shape_metadata_file.native().data(), mode}}};
 }
 
-auto ShapeMap::create_id_memory_map(const std::filesystem::path& path,
-                                    const cista::mmap::protection mode) {
+auto ShapeMap::create_id_memory_map(std::filesystem::path const& path,
+                                    cista::mmap::protection const mode) {
   return cista::mmap_vec<key_type::value_type>{
       cista::mmap{path.native().data(), mode}};
 }
 
-ShapeMap::id_vec_t ShapeMap::load_shapes(const std::string_view data,
+ShapeMap::id_vec_t ShapeMap::load_shapes(std::string_view const data,
                                          shape_data_t& mmap) {
   struct BucketState {
     size_t offset{};
@@ -115,7 +115,7 @@ ShapeMap::id_vec_t ShapeMap::load_shapes(const std::string_view data,
   std::unordered_map<key_type, BucketState> states;
   id_vec_t ids;
 
-  auto store_to_map = [&ids, &mmap, &states](const ShapePoint point) {
+  auto store_to_map = [&ids, &mmap, &states](ShapePoint const point) {
     if (auto found = states.find(point.id); found != states.end()) {
       auto& state = found->second;
       if (state.last_seq >= point.seq) {
@@ -144,8 +144,8 @@ ShapeMap::id_vec_t ShapeMap::load_shapes(const std::string_view data,
 
   return ids;
 }
-void ShapeMap::store_ids(const id_vec_t& ids,
-                         const std::filesystem::path& path) {
+void ShapeMap::store_ids(id_vec_t const& ids,
+                         std::filesystem::path const& path) {
   auto storage{create_id_memory_map(path, cista::mmap::protection::WRITE)};
   for (auto id : ids) {
     storage.insert(storage.end(), id.begin(), id.end());
@@ -153,7 +153,7 @@ void ShapeMap::store_ids(const id_vec_t& ids,
   }
 }
 
-ShapeMap::id_vec_t ShapeMap::load_ids(const std::filesystem::path& path) {
+ShapeMap::id_vec_t ShapeMap::load_ids(std::filesystem::path const& path) {
   id_vec_t ids{};
   auto storage{create_id_memory_map(path)};
   std::string_view view{storage};
@@ -165,7 +165,7 @@ ShapeMap::id_vec_t ShapeMap::load_ids(const std::filesystem::path& path) {
   return ids;
 }
 
-ShapeMap::id_map_t ShapeMap::id_vec_to_map(const id_vec_t& ids) {
+ShapeMap::id_map_t ShapeMap::id_vec_to_map(id_vec_t const& ids) {
   id_map_t map;
   for (auto [pos, id] : std::ranges::enumerate_view(ids)) {
     map.insert({id, pos});
@@ -173,8 +173,8 @@ ShapeMap::id_map_t ShapeMap::id_vec_to_map(const id_vec_t& ids) {
   return map;
 }
 
-ShapeMap::value_type ShapeMap::transform_coordinates(const auto& shape) {
-  auto coordinates = shape | std::views::transform([](const Coordinate& c) {
+ShapeMap::value_type ShapeMap::transform_coordinates(auto const& shape) {
+  auto coordinates = shape | std::views::transform([](Coordinate const& c) {
                        return geo::latlng{helper::fix_to_double(c.lat),
                                           helper::fix_to_double(c.lon)};
                      });

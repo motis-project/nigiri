@@ -27,18 +27,18 @@ using mm_vecvec = cista::basic_vecvec<K, mm_vec<V>, mm_vec<SizeType>>;
 /* Code duplicated from 'osmium/osm/location.hpp' */
 constexpr int32_t coordinate_precision{10000000};
 
-constexpr int32_t double_to_fix(const double c) noexcept {
+constexpr int32_t double_to_fix(double const c) noexcept {
   return static_cast<int32_t>(std::round(c * coordinate_precision));
 }
 
-constexpr double fix_to_double(const int32_t c) noexcept {
+constexpr double fix_to_double(int32_t const c) noexcept {
   return static_cast<double>(c) / coordinate_precision;
 }
 }  // namespace helper
 
 class InvalidShapesFormat final : public std::runtime_error {
 public:
-  InvalidShapesFormat(const std::string& msg);
+  InvalidShapesFormat(std::string const& msg);
 };
 
 class ShapeMap {
@@ -48,44 +48,44 @@ public:
   struct Paths;
   struct Iterator;
 
-  ShapeMap(const std::string_view, const Paths&);
-  ShapeMap(const Paths&);
+  ShapeMap(std::string_view const, Paths const&);
+  ShapeMap(Paths const&);
   size_t size() const;
-  bool contains(const key_type&) const;
+  bool contains(key_type const&) const;
   Iterator begin() const;
   Iterator end() const;
-  value_type at(const key_type&) const;
-  static void write_shapes(const std::string_view, const Paths&);
+  value_type at(key_type const&) const;
+  static void write_shapes(std::string_view const, Paths const&);
 
 private:
   using shape_coordinate_type =
       std::remove_const<decltype(helper::coordinate_precision)>::type;
   struct Coordinate {
     shape_coordinate_type lat, lon;
-    bool operator==(const Coordinate& other) const = default;
+    bool operator==(Coordinate const& other) const = default;
   };
   using shape_data_t = helper::mm_vecvec<std::size_t, ShapeMap::Coordinate>;
   using id_vec_t = std::vector<key_type>;
   using id_map_t = std::unordered_map<key_type, size_t>;
 
   ShapeMap(std::pair<shape_data_t, id_vec_t>);
-  static std::pair<shape_data_t, id_vec_t> create_files(
-      const std::string_view data, const Paths&);
-  static std::pair<shape_data_t, id_vec_t> load_files(const Paths&);
+  static std::pair<shape_data_t, id_vec_t> create_files(std::string_view const,
+                                                        Paths const&);
+  static std::pair<shape_data_t, id_vec_t> load_files(Paths const&);
   static shape_data_t create_memory_map(
-      const Paths&,
-      const cista::mmap::protection = cista::mmap::protection::READ);
+      Paths const&,
+      cista::mmap::protection const = cista::mmap::protection::READ);
   static auto create_id_memory_map(
-      const std::filesystem::path&,
-      const cista::mmap::protection = cista::mmap::protection::READ);
-  static id_vec_t load_shapes(const std::string_view, shape_data_t&);
-  static void store_ids(const id_vec_t&, const std::filesystem::path&);
-  static id_vec_t load_ids(const std::filesystem::path&);
-  static id_map_t id_vec_to_map(const id_vec_t&);
-  static value_type transform_coordinates(const auto&);
+      std::filesystem::path const&,
+      cista::mmap::protection const = cista::mmap::protection::READ);
+  static id_vec_t load_shapes(std::string_view const, shape_data_t&);
+  static void store_ids(id_vec_t const&, std::filesystem::path const&);
+  static id_vec_t load_ids(std::filesystem::path const&);
+  static id_map_t id_vec_to_map(id_vec_t const&);
+  static value_type transform_coordinates(auto const&);
 
-  const shape_data_t shape_map_;
-  const id_map_t id_map_;
+  shape_data_t const shape_map_;
+  id_map_t const id_map_;
 
   friend struct ShapePoint;
 };
@@ -99,11 +99,11 @@ struct ShapeMap::Paths {
 struct ShapeMap::Iterator {
   using difference_type = std::ptrdiff_t;
   using value_type = value_type;
-  bool operator==(const Iterator&) const = default;
+  bool operator==(Iterator const&) const = default;
   Iterator& operator++();
   Iterator operator++(int);
   value_type operator*() const;
-  const ShapeMap* shapes;
+  ShapeMap const* shapes;
   ShapeMap::id_map_t::const_iterator it;
 };
 static_assert(std::forward_iterator<ShapeMap::Iterator>);
