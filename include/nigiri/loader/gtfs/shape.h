@@ -46,7 +46,7 @@ namespace nigiri::loader::gtfs {
     class ShapeMap {
     public:
         using key_type = std::string;
-        using shapes_t = std::vector<geo::latlng>;
+        using value_type = std::vector<geo::latlng>;
         struct Paths;
         struct Iterator;
 
@@ -56,7 +56,7 @@ namespace nigiri::loader::gtfs {
         bool contains(const key_type&) const;
         Iterator begin() const;
         Iterator end() const;
-        shapes_t at(const key_type&) const;
+        value_type at(const key_type&) const;
         static void write_shapes(const std::string_view, const Paths&);
     private:
         using shape_coordinate_type = std::remove_const<decltype(helper::coordinate_precision)>::type;
@@ -77,7 +77,7 @@ namespace nigiri::loader::gtfs {
         static void store_ids(const id_vec_t&, const std::filesystem::path&);
         static id_vec_t load_ids(const std::filesystem::path&);
         static id_map_t id_vec_to_map(const id_vec_t&);
-        static shapes_t transform_coordinates(const auto&);
+        static value_type transform_coordinates(const auto&);
 
         const shape_data_t shape_map_;
         const id_map_t id_map_;
@@ -93,11 +93,11 @@ namespace nigiri::loader::gtfs {
 
     struct ShapeMap::Iterator {
         using difference_type = std::ptrdiff_t;
-        using value_type = shapes_t;
+        using value_type = value_type;
         bool operator==(const Iterator&) const = default;
         Iterator& operator++();
         Iterator operator++(int);
-        shapes_t operator*() const;
+        value_type operator*() const;
         const ShapeMap* shapes;
         ShapeMap::id_map_t::const_iterator it;
     };

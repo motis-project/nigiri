@@ -70,7 +70,7 @@ namespace nigiri::loader::gtfs {
         };
     }
 
-    ShapeMap::shapes_t ShapeMap::at(const key_type& id) const {
+    ShapeMap::value_type ShapeMap::at(const key_type& id) const {
         auto offset = id_map_.at(id);
         return transform_coordinates(shape_map_.at(offset));
     }
@@ -165,13 +165,13 @@ namespace nigiri::loader::gtfs {
         return map;
     }
 
-    ShapeMap::shapes_t ShapeMap::transform_coordinates(const auto& shape) {
+    ShapeMap::value_type ShapeMap::transform_coordinates(const auto& shape) {
         auto coordinates = shape
             | std::views::transform([](const Coordinate& c) {
                 return geo::latlng{helper::fix_to_double(c.lat), helper::fix_to_double(c.lon)};
             })
         ;
-        return shapes_t{coordinates.begin(), coordinates.end()};
+        return value_type{coordinates.begin(), coordinates.end()};
     }
 
     ShapeMap::Iterator& ShapeMap::Iterator::operator++() {
@@ -185,7 +185,7 @@ namespace nigiri::loader::gtfs {
         return tmp;
     }
 
-    ShapeMap::shapes_t ShapeMap::Iterator::operator*() const {
+    ShapeMap::value_type ShapeMap::Iterator::operator*() const {
         return shapes->at(it->first);
     }
 }
