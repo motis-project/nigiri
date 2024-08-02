@@ -4,10 +4,11 @@
 #include <vector>
 #include <unordered_map>
 
+#include "cista/containers/mmap_vec.h"
+#include "cista/containers/vecvec.h"
+#include "cista/mmap.h"
 #include "geo/latlng.h"
 #include "utl/parser/csv_range.h"
-
-#include "nigiri/types.h"
 
 // #include "osmium/osm/location.hpp"
 // #include "osr/types.h"

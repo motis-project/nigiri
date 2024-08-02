@@ -1,6 +1,9 @@
 cmake_minimum_required(VERSION 3.22)
 project(nigiri)
 
+set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
+set(CMAKE_COLOR_DIAGNOSTICS ON)
+
 if(NOT DEFINED CMAKE_MSVC_RUNTIME_LIBRARY)
   if(NIGIRI_MIMALLOC)
     set(CMAKE_MSVC_RUNTIME_LIBRARY "MultiThreaded$<$<CONFIG:Debug>:Debug>DLL")
@@ -125,6 +128,15 @@ target_compile_options(map-writer PUBLIC ${nigiri-compile-options})
 #target_link_options(map-writer PRIVATE -fsanitize=address)
 #target_compile_options(map-writer PUBLIC ${nigiri-compile-options} -g -fsanitize=address)
 target_compile_features(map-writer PUBLIC cxx_std_23)
+
+add_executable(map-writer2 dev/writer2.cc src/loader/gtfs/shape.cc)
+target_include_directories(map-writer2 PUBLIC include)
+target_link_libraries(map-writer2 PUBLIC cista geo utl)
+target_link_options(map-writer2 PRIVATE -static)
+target_compile_options(map-writer2 PUBLIC ${nigiri-compile-options})
+#target_link_options(map-writer2 PRIVATE -fsanitize=address)
+#target_compile_options(map-writer2 PUBLIC ${nigiri-compile-options} -g -fsanitize=address)
+target_compile_features(map-writer2 PUBLIC cxx_std_23)
 
 add_executable(map-reader dev/reader.cc)
 target_include_directories(map-reader PUBLIC dev)

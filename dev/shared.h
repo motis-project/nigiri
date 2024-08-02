@@ -4,6 +4,7 @@
 
 #include <cstdint>
 #include <cmath>
+#include <format>
 #include <ranges>
 
 #include "cista/containers/mmap_vec.h"
