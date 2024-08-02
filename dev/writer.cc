@@ -8,8 +8,8 @@
 #include <numeric>
 #include <stdexcept>
 #include <string_view>
-#include <vector>
 #include <unordered_map>
+#include <vector>
 
 #include "cista/containers/hash_map.h"
 #include "cista/mmap.h"
@@ -24,7 +24,6 @@
 #include "utl/pipes/transform.h"
 
 const std::string in_file{"../dev/shapes.txt"};
-
 
 class InvalidShapesFormat final : public std::runtime_error {
 public:
@@ -83,7 +82,7 @@ void show_stats(auto& cache) {
 }
 
 void store_ids(auto ids) {
-// void store_ids(auto ) {
+  // void store_ids(auto ) {
   auto mapper = get_map_writer();
   for (auto id : ids) {
     mapper.insert(mapper.end(), id.begin(), id.end());
@@ -96,8 +95,7 @@ void test_id_map(auto const& ids) {
 
   std::cout << "Testing some ids …" << std::endl;
   for (auto key : {"1", "134", "573"}) {
-    std::cout << std::format("Key {:>5} at position {:>5}", key,
-                             id_map.at(key))
+    std::cout << std::format("Key {:>5} at position {:>5}", key, id_map.at(key))
               << std::endl;
   }
 }
