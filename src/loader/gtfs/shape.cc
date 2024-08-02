@@ -28,7 +28,21 @@ namespace nigiri::loader::gtfs {
         return id_map_.contains(id);
     }
 
-    std::vector<geo::latlng> ShapeMap::at(const key_type& id) const {
+    ShapeMap::Iterator ShapeMap::begin() const {
+        return Iterator{
+            this,
+            id_map_.begin(),
+        };
+    }
+
+    ShapeMap::Iterator ShapeMap::end() const {
+        return Iterator{
+            this,
+            id_map_.end(),
+        };
+    }
+
+    ShapeMap::shapes_t ShapeMap::at(const key_type& id) const {
         auto offset = id_map_.at(id);
         return transform_coordinates(shape_map_.at(offset));
     }
@@ -61,7 +75,7 @@ namespace nigiri::loader::gtfs {
         return cista::mmap_vec<key_type::value_type>{cista::mmap{path.native().data(), mode}};
     }
 
-#include <format>
+// #include <format>
     ShapeMap::id_vec_t ShapeMap::load_shapes(const std::string_view data, shape_data_t& mmap) {
         struct State {
             size_t index{};
@@ -153,13 +167,13 @@ namespace nigiri::loader::gtfs {
         return map;
     }
 
-    std::vector<geo::latlng> ShapeMap::transform_coordinates(const auto& shape) {
+    ShapeMap::shapes_t ShapeMap::transform_coordinates(const auto& shape) {
         auto coordinates = shape
             | std::views::transform([](const Coordinate& c) {
                 return geo::latlng{helper::fix_to_double(c.lat), helper::fix_to_double(c.lon)};
             })
         ;
-        return std::vector<geo::latlng>{coordinates.begin(), coordinates.end()};
+        return shapes_t{coordinates.begin(), coordinates.end()};
     }
 
     constexpr ShapeMap::ShapePoint ShapeMap::ShapePoint::from_entry(const Entry& entry) {
@@ -173,4 +187,18 @@ namespace nigiri::loader::gtfs {
         };
     }
 
+    ShapeMap::Iterator& ShapeMap::Iterator::operator++() {
+        ++it;
+        return *this;
+    }
+
+    ShapeMap::Iterator ShapeMap::Iterator::operator++(int) {
+        auto tmp(*this);
+        ++(*this);
+        return tmp;
+    }
+
+    ShapeMap::shapes_t ShapeMap::Iterator::operator*() const {
+        return shapes->at(it->first);
+    }
 }

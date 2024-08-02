@@ -1,5 +1,5 @@
-#include <cista/containers/mmap_vec.h>
 #include <iostream>
+#include <numeric>
 
 #include "cista/mmap.h"
 
@@ -16,5 +16,7 @@ int main() {
     };
     nigiri::loader::gtfs::ShapeMap shapes{data, paths};
     std::cout << "Added " << shapes.size() << " shapes." << std::endl;
+    auto entries = std::accumulate(shapes.begin(), shapes.end(), 0u, [](auto count, auto b) { return count + b.size(); });
+    std::cout << "Number of entries: " << entries << std::endl;
     return 0;
 }

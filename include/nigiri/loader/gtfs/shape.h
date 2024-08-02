@@ -1,5 +1,6 @@
 #pragma once
 
+#include <cstddef>
 #include <filesystem>
 #include <vector>
 #include <unordered_map>
@@ -45,17 +46,17 @@ namespace nigiri::loader::gtfs {
     class ShapeMap {
     public:
         using key_type = std::string;
-        struct Paths {
-            std::filesystem::path id_file;
-            std::filesystem::path shape_data_file;
-            std::filesystem::path shape_metadata_file;
-        };
+        using shapes_t = std::vector<geo::latlng>;
+        struct Paths;
+        struct Iterator;
 
         ShapeMap(const std::string_view, const Paths&);
         ShapeMap(const Paths&);
         size_t size() const ;
         bool contains(const key_type&) const;
-        std::vector<geo::latlng> at(const key_type&) const;
+        Iterator begin() const;
+        Iterator end() const;
+        shapes_t at(const key_type&) const;
         static void write_shapes(const std::string_view, const Paths&);
     private:
         using shape_coordinate_type = std::remove_const<decltype(helper::coordinate_precision)>::type;
@@ -76,23 +77,43 @@ namespace nigiri::loader::gtfs {
         static void store_ids(const id_vec_t&, const std::filesystem::path&);
         static id_vec_t load_ids(const std::filesystem::path&);
         static id_map_t id_vec_to_map(const id_vec_t&);
-        static std::vector<geo::latlng> transform_coordinates(const auto&);
+        static shapes_t transform_coordinates(const auto&);
 
         const shape_data_t shape_map_;
         const id_map_t id_map_;
 
-        struct ShapePoint {
-            const key_type id;
-            const Coordinate coordinate;
-            const size_t seq;
-            struct Entry {
-                utl::csv_col<ShapeMap::key_type, UTL_NAME("shape_id")> id;
-                utl::csv_col<double, UTL_NAME("shape_pt_lat")> lat;
-                utl::csv_col<double, UTL_NAME("shape_pt_lon")> lon;
-                utl::csv_col<size_t, UTL_NAME("shape_pt_sequence")> seq;
-            };
-            static constexpr ShapePoint from_entry(const Entry&);
+        struct ShapePoint;
+    };
+
+    struct ShapeMap::Paths {
+        std::filesystem::path id_file;
+        std::filesystem::path shape_data_file;
+        std::filesystem::path shape_metadata_file;
+    };
+
+    struct ShapeMap::Iterator {
+        using difference_type = std::ptrdiff_t;
+        using value_type = shapes_t;
+        bool operator==(const Iterator&) const = default;
+        Iterator& operator++();
+        Iterator operator++(int);
+        shapes_t operator*() const;
+        const ShapeMap* shapes;
+        ShapeMap::id_map_t::const_iterator it;
+    };
+    static_assert(std::forward_iterator<ShapeMap::Iterator>);
+
+    struct ShapeMap::ShapePoint {
+        const key_type id;
+        const Coordinate coordinate;
+        const size_t seq;
+        struct Entry {
+            utl::csv_col<ShapeMap::key_type, UTL_NAME("shape_id")> id;
+            utl::csv_col<double, UTL_NAME("shape_pt_lat")> lat;
+            utl::csv_col<double, UTL_NAME("shape_pt_lon")> lon;
+            utl::csv_col<size_t, UTL_NAME("shape_pt_sequence")> seq;
         };
+        static constexpr ShapePoint from_entry(const Entry&);
     };
 
 }

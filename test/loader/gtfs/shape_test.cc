@@ -1,4 +1,5 @@
 #include <filesystem>
+#include <numeric>
 #include <ranges>
 #include <vector>
 
@@ -33,6 +34,7 @@ ShapeMap::Paths get_paths(std::string base_path) {
         base_path + "-shape-metadata.dat",
     };
 }
+
 
 TEST(gtfs, shapeConstruct_createData_canAccessData) {
     std::string shapes_data{R"("shape_id","shape_pt_lat","shape_pt_lon","shape_pt_sequence"
@@ -72,7 +74,19 @@ TEST(gtfs, shapeConstruct_createData_canAccessData) {
     EXPECT_FALSE(shapes.contains("1234"));
     EXPECT_EQ(shape_points.at(0), shapes.at("243"));
     EXPECT_EQ(shape_points.at(1), shapes.at("3105"));
+    size_t loop_count{}, loop_sum{};
+    for (const auto shape : shapes) {
+        // Reminder: Internal order can be random
+        EXPECT_TRUE(shape == shape_points.at(0) || shape == shape_points.at(1));
+        ++loop_count;
+        loop_sum += shape.size();
+    }
+    EXPECT_EQ(2, loop_count);
+    EXPECT_EQ(9, loop_sum);
+    auto points_total = std::accumulate(shapes.begin(), shapes.end(), 0u, [](auto sum, auto shape) { return sum + shape.size(); });
+    EXPECT_EQ(9, points_total);
 }
+
 
 TEST(gtfs, shapeConstruct_storeAndLoadData_canAccessData) {
     std::string shapes_data{R"("shape_id","shape_pt_lat","shape_pt_lon","shape_pt_sequence"
@@ -139,6 +153,7 @@ TEST(gtfs, shapeConstruct_storeAndLoadData_canAccessData) {
     }
 }
 
+
 TEST(gtfs, shapeParse_validIDs_parseData) {
     std::string shapes_data{R"("shape_id","shape_pt_lat","shape_pt_lon","shape_pt_sequence"
 test id,50.553822,6.356876,0
@@ -164,6 +179,7 @@ test id,50.553822,6.356876,0
     EXPECT_TRUE(shapes.contains("🚏"));
 }
 
+
 TEST(gtfs, shapeParse_randomColumOrder_parseCorrectly) {
     std::string shapes_data{R"("shape_pt_sequence","shape_pt_lon","shape_id","shape_pt_lat"
 6,6.089410,123,50.767212
@@ -187,6 +203,7 @@ TEST(gtfs, shapeParse_randomColumOrder_parseCorrectly) {
     EXPECT_EQ(10, shapes.at("123").size());
 }
 
+
 TEST(gtfs, shapeParse_notAscendingSequence_throwException) {
     std::string shapes_data{R"("shape_id","shape_pt_lat","shape_pt_lon","shape_pt_sequence"
 1,50.636512,6.473487,1
@@ -198,6 +215,7 @@ TEST(gtfs, shapeParse_notAscendingSequence_throwException) {
     EXPECT_THROW(ShapeMap shapes(shapes_data, paths), InvalidShapesFormat);
 }
 
+
 // // Currently not testable
 // TEST(gtfs, shapeParse_missingColumn_throwException) {
 //     std::string shapes_data{R"("shape_id","shape_pt_lat","shape_pt_sequence"
@@ -208,6 +226,7 @@ TEST(gtfs, shapeParse_notAscendingSequence_throwException) {
 
 //     EXPECT_THROW(ShapeMap shapes(shapes_data, paths), InvalidShapesFormat);
 // }
+
 
 TEST(gtfs, shapeParse_shuffledRows_parseAllData) {
     std::string shapes_data{R"("shape_id","shape_pt_lat","shape_pt_lon","shape_pt_sequence"
