@@ -82,7 +82,7 @@ namespace nigiri::loader::gtfs {
         const shape_data_t shape_map_;
         const id_map_t id_map_;
 
-        struct ShapePoint;
+        friend struct ShapePoint;
     };
 
     struct ShapeMap::Paths {
@@ -102,18 +102,5 @@ namespace nigiri::loader::gtfs {
         ShapeMap::id_map_t::const_iterator it;
     };
     static_assert(std::forward_iterator<ShapeMap::Iterator>);
-
-    struct ShapeMap::ShapePoint {
-        const key_type id;
-        const Coordinate coordinate;
-        const size_t seq;
-        struct Entry {
-            utl::csv_col<ShapeMap::key_type, UTL_NAME("shape_id")> id;
-            utl::csv_col<double, UTL_NAME("shape_pt_lat")> lat;
-            utl::csv_col<double, UTL_NAME("shape_pt_lon")> lon;
-            utl::csv_col<size_t, UTL_NAME("shape_pt_sequence")> seq;
-        };
-        static constexpr ShapePoint from_entry(const Entry&);
-    };
 
 }

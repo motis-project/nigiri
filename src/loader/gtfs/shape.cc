@@ -15,6 +15,33 @@ namespace nigiri::loader::gtfs {
 
     InvalidShapesFormat::InvalidShapesFormat(const std::string& msg) : std::runtime_error{msg} {}
 
+
+    struct ShapePoint {
+        const ShapeMap::key_type id;
+        const ShapeMap::Coordinate coordinate;
+        const size_t seq;
+        struct Entry {
+            utl::csv_col<ShapeMap::key_type, UTL_NAME("shape_id")> id;
+            utl::csv_col<double, UTL_NAME("shape_pt_lat")> lat;
+            utl::csv_col<double, UTL_NAME("shape_pt_lon")> lon;
+            utl::csv_col<size_t, UTL_NAME("shape_pt_sequence")> seq;
+        };
+        static constexpr ShapePoint from_entry(const Entry&);
+    };
+
+    constexpr ShapePoint ShapePoint::from_entry(const Entry& entry) {
+        return ShapePoint{
+            entry.id.val(),
+            {
+                helper::double_to_fix(entry.lat.val()),
+                helper::double_to_fix(entry.lon.val()),
+            },
+            entry.seq.val(),
+        };
+    }
+
+
+
     ShapeMap::ShapeMap(const std::string_view data, const Paths& paths) : ShapeMap(create_files(data, paths)) {}
 
     ShapeMap::ShapeMap(const Paths& paths) : ShapeMap(load_files(paths)) {}
@@ -77,67 +104,27 @@ namespace nigiri::loader::gtfs {
     }
 
     ShapeMap::id_vec_t ShapeMap::load_shapes(const std::string_view data, shape_data_t& mmap) {
-        struct Current {
-            key_type id;
-            shape_data_t::bucket bucket;
-            size_t last_seq{};
-            size_t offset{};
-        };
-        struct BucketInfo {
+        struct BucketState {
             size_t offset{};
             size_t last_seq{};
         };
-        struct {
-            std::optional<Current> current;
-            std::unordered_map<key_type, BucketInfo> info;
-            id_vec_t ids;
-        } state;
+        std::unordered_map<key_type, BucketState> states;
+        id_vec_t ids;
 
-        auto add_new_bucket = [&mmap, &state](const ShapePoint& point) {
-            auto bucket = mmap.add_back_sized(0u);
-            bucket.push_back(point.coordinate);
-            state.current.emplace(Current{
-                point.id,
-                bucket,
-                point.seq,
-                state.ids.size(),
-            });
-            state.ids.push_back(point.id);
-        };
-        auto append_to_bucket = [&mmap](BucketInfo& info, const ShapePoint& point) {
-            mmap.at(info.offset).push_back(point.coordinate);
-            info.last_seq = point.seq;
-        };
-        auto append_to_current_bucket = [](Current& current, const ShapePoint& point) {
-            if (current.last_seq >= point.seq) {
-                throw InvalidShapesFormat(std::format("Non monotonic sequence for shape_id '{}': Sequence number {} followed by {}", point.id, current.last_seq, point.seq));
-            }
-            current.bucket.push_back(point.coordinate);
-            current.last_seq = point.seq;
-        };
-        auto archive_bucket = [&state](const Current& current) {
-            state.info.insert({current.id, {current.offset, current.last_seq}});
-        };
-        auto functions = std::make_tuple(
-            add_new_bucket,
-            append_to_bucket,
-            append_to_current_bucket,
-            archive_bucket
-        );
-
-        auto store_to_map = [&functions, &state](const ShapePoint point) {
-            if (state.current.has_value()) {
-                auto& current = state.current.value();
-                if (current.id == point.id) {
-                    std::get<2>(functions)(current, point);
-                } else if (auto found = state.info.find(point.id); found != state.info.end()) {
-                    std::get<1>(functions)(found->second, point);
-                } else {
-                    std::get<3>(functions)(current);
-                    std::get<0>(functions)(point);
+        auto store_to_map = [&ids, &mmap, &states](const ShapePoint point) {
+            if (auto found = states.find(point.id); found != states.end()) {
+                auto& state = found->second;
+                if (state.last_seq >= point.seq) {
+                    throw InvalidShapesFormat(std::format("Non monotonic sequence for shape_id '{}': Sequence number {} followed by {}", point.id, state.last_seq, point.seq));
                 }
+                mmap[state.offset].push_back(point.coordinate);
+                state.last_seq = point.seq;
             } else {
-                std::get<0>(functions)(point);
+                auto offset = ids.size();
+                auto bucket = mmap.add_back_sized(0u);
+                states.insert({point.id, {offset, point.seq}});
+                bucket.push_back(point.coordinate);
+                ids.push_back(point.id);
             }
         };
 
@@ -148,7 +135,7 @@ namespace nigiri::loader::gtfs {
               })
             | utl::for_each(store_to_map);
 
-        return std::move(state.ids);
+        return ids;
     }
     void ShapeMap::store_ids(const id_vec_t& ids, const std::filesystem::path& path) {
         auto storage{create_id_memory_map(path, cista::mmap::protection::WRITE)};
@@ -185,17 +172,6 @@ namespace nigiri::loader::gtfs {
             })
         ;
         return shapes_t{coordinates.begin(), coordinates.end()};
-    }
-
-    constexpr ShapeMap::ShapePoint ShapeMap::ShapePoint::from_entry(const Entry& entry) {
-        return ShapePoint{
-            entry.id.val(),
-            {
-                helper::double_to_fix(entry.lat.val()),
-                helper::double_to_fix(entry.lon.val()),
-            },
-            entry.seq.val(),
-        };
     }
 
     ShapeMap::Iterator& ShapeMap::Iterator::operator++() {

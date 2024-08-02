@@ -280,3 +280,16 @@ TEST(gtfs, shapeParse_shuffledRows_parseAllData) {
         EXPECT_EQ(coordinates, shapes.at(id));
     }
 }
+
+
+TEST(gtfs, shapeParse_delayedInsertWithNotAscendingSequence_throwException) {
+    std::string shapes_data{R"("shape_id","shape_pt_lat","shape_pt_lon","shape_pt_sequence"
+1,50.636512,6.473487,1
+2,51.473214,7.139521,0
+1,50.636259,6.473668,0
+)"};
+    auto paths{get_paths("shape-test-not-ascending-sequence")};
+    const DataGuard guard{[&paths]() { cleanup_paths(paths); }};
+
+    EXPECT_THROW(ShapeMap shapes(shapes_data, paths), InvalidShapesFormat);
+}
