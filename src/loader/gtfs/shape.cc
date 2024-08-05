@@ -3,6 +3,7 @@
 
 #include <format>
 #include <ranges>
+#include <string>
 
 #include "cista/mmap.h"
 #include "geo/latlng.h"
@@ -116,22 +117,28 @@ ShapeMap::id_vec_t ShapeMap::load_shapes(std::string_view const data,
   id_vec_t ids;
 
   auto store_to_map = [&ids, &mmap, &states](ShapePoint const point) {
-    if (auto found = states.find(point.id); found != states.end()) {
+    const std::string id =
+        point.id.find('\0') == point.id.npos ? point.id : [&point]() {
+          auto v = point.id |
+                   std::views::filter([](const char c) { return c != '\0'; });
+          return std::string{v.begin(), v.end()};
+        }();
+    if (auto found = states.find(id); found != states.end()) {
       auto& state = found->second;
       if (state.last_seq >= point.seq) {
         throw InvalidShapesFormat(
             std::format("Non monotonic sequence for shape_id '{}': Sequence "
                         "number {} followed by {}",
-                        point.id, state.last_seq, point.seq));
+                        id, state.last_seq, point.seq));
       }
       mmap[state.offset].push_back(point.coordinate);
       state.last_seq = point.seq;
     } else {
       auto offset = ids.size();
       auto bucket = mmap.add_back_sized(0u);
-      states.insert({point.id, {offset, point.seq}});
+      states.insert({id, {offset, point.seq}});
       bucket.push_back(point.coordinate);
-      ids.push_back(point.id);
+      ids.push_back(id);
     }
   };
 

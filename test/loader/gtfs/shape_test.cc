@@ -87,9 +87,9 @@ TEST(gtfs, shapeConstruct_createData_canAccessData) {
     ++loop_count;
   }
   EXPECT_EQ(2, loop_count);
-  auto points_total =
-      std::accumulate(shapes.begin(), shapes.end(), 0u,
-                      [](auto sum, auto shape) { return sum + shape.second.size(); });
+  auto points_total = std::accumulate(
+      shapes.begin(), shapes.end(), 0u,
+      [](auto sum, auto shape) { return sum + shape.second.size(); });
   EXPECT_EQ(9, points_total);
 }
 
@@ -303,4 +303,24 @@ TEST(gtfs, shapeParse_delayedInsertWithNotAscendingSequence_throwException) {
   DataGuard const guard{[&paths]() { cleanup_paths(paths); }};
 
   EXPECT_THROW(ShapeMap shapes(shapes_data, paths), InvalidShapesFormat);
+}
+
+TEST(gtfs, shapeParse_idWithNullByte_removeNullByteFromId) {
+  using std::literals::operator""s;
+  std::string shapes_data{
+      R"("shape_id","shape_pt_lat","shape_pt_lon","shape_pt_sequence"
+null)"
+      "\0"s
+      R"(byte,51.543652,7.217830,0
+other,50.553822,6.356876,0
+)"};
+  auto paths{get_paths("shape-test-id-with-null-byte")};
+  DataGuard const guard{[&paths]() { cleanup_paths(paths); }};
+
+  ShapeMap shapes(shapes_data, paths);
+
+  EXPECT_EQ(2, shapes.size());
+  EXPECT_FALSE(shapes.contains("null\0byte"));
+  EXPECT_TRUE(shapes.contains("nullbyte"));
+  EXPECT_TRUE(shapes.contains("other"));
 }
