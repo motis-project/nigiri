@@ -296,6 +296,8 @@ enum class direction {
 
 using transport_mode_id_t = std::int32_t;
 
+using via_offset_t = std::uint8_t;
+
 }  // namespace nigiri
 
 #include <iomanip>
