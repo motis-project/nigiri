@@ -19,7 +19,7 @@ int main() {
   std::cout << "Added " << shapes.size() << " shapes." << std::endl;
   auto entries =
       std::accumulate(shapes.begin(), shapes.end(), 0u,
-                      [](auto count, auto b) { return count + b.size(); });
+                      [](auto count, auto b) { return count + b.second.size(); });
   std::cout << "Number of entries: " << entries << std::endl;
   return 0;
 }
