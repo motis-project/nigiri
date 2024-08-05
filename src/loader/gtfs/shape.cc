@@ -1,4 +1,5 @@
 #include "nigiri/loader/gtfs/shape.h"
+#include "nigiri/logging.h"
 
 #include <format>
 #include <ranges>
@@ -7,16 +8,15 @@
 #include "cista/mmap.h"
 
 #include "utl/parser/buf_reader.h"
+#include "utl/parser/csv_range.h"
 #include "utl/parser/line_range.h"
 #include "utl/pipes/for_each.h"
 #include "utl/pipes/transform.h"
 
 #include "geo/latlng.h"
+#include "utl/verify.h"
 
 namespace nigiri::loader::gtfs {
-
-InvalidShapesFormat::InvalidShapesFormat(std::string const& msg)
-    : std::runtime_error{msg} {}
 
 struct ShapePoint {
   ShapeMap::key_type const id;
@@ -127,10 +127,10 @@ ShapeMap::id_vec_t ShapeMap::load_shapes(std::string_view const data,
     if (auto found = states.find(id); found != states.end()) {
       auto& state = found->second;
       if (state.last_seq >= point.seq) {
-        throw InvalidShapesFormat(
-            std::format("Non monotonic sequence for shape_id '{}': Sequence "
-                        "number {} followed by {}",
-                        id, state.last_seq, point.seq));
+        log(log_lvl::info, "loader.gtfs.shape",
+            "Non monotonic sequence for shape_id '{}': Sequence number {} "
+            "followed by {}",
+            id, state.last_seq, point.seq);
       }
       mmap[state.offset].push_back(point.coordinate);
       state.last_seq = point.seq;

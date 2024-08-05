@@ -1,23 +1,21 @@
 #include <filesystem>
+#include <iostream>
 #include <numeric>
 #include <ranges>
+#include <sstream>
+#include <stdexcept>
 #include <vector>
 
 #include "gtest/gtest.h"
 
 #include "geo/latlng.h"
+#include "utl/raii.h"
 
 #include "nigiri/loader/gtfs/shape.h"
 
 // #include "./test_data.h"
 
 using namespace nigiri::loader::gtfs;
-
-struct DataGuard {
-  DataGuard(std::function<void()> const f) : f_(f) {}
-  ~DataGuard() { f_(); }
-  std::function<void()> const f_;
-};
 
 void cleanup_paths(ShapeMap::Paths const& paths) {
   for (auto path : std::vector<std::filesystem::path>{
@@ -50,7 +48,7 @@ TEST(gtfs, shapeConstruct_createData_canAccessData) {
 3105,50.581956,6.379866,11
 )"};
   auto paths{get_paths("shape-test-create")};
-  DataGuard const guard{[&paths]() { cleanup_paths(paths); }};
+  auto guard = utl::make_raii(paths, cleanup_paths);
 
   ShapeMap shapes(shapes_data, paths);
 
@@ -116,7 +114,7 @@ TEST(gtfs, shapeConstruct_storeAndLoadData_canAccessData) {
 137,51.194829,6.521109,988
 )"};
   auto paths{get_paths("shape-test-store-and-reload")};
-  DataGuard const guard{[&paths]() { cleanup_paths(paths); }};
+  auto guard = utl::make_raii(paths, cleanup_paths);
 
   // Store only
   ShapeMap::write_shapes(shapes_data, paths);
@@ -171,7 +169,7 @@ test id,50.553822,6.356876,0
 🚏,51.478609,7.223275,1
 )"};
   auto paths{get_paths("shape-test-valid-ids")};
-  DataGuard const guard{[&paths]() { cleanup_paths(paths); }};
+  auto guard = utl::make_raii(paths, cleanup_paths);
 
   ShapeMap shapes(shapes_data, paths);
 
@@ -200,7 +198,7 @@ TEST(gtfs, shapeParse_randomColumOrder_parseCorrectly) {
 721,5.716989,123,50.838980
 )"};
   auto paths{get_paths("shape-test-random-column-order")};
-  DataGuard const guard{[&paths]() { cleanup_paths(paths); }};
+  auto guard = utl::make_raii(paths, cleanup_paths);
 
   ShapeMap shapes(shapes_data, paths);
 
@@ -216,9 +214,20 @@ TEST(gtfs, shapeParse_notAscendingSequence_throwException) {
 1,50.636259,6.473668,0
 )"};
   auto paths{get_paths("shape-test-not-ascending-sequence")};
-  DataGuard const guard{[&paths]() { cleanup_paths(paths); }};
+  auto guard = utl::make_raii(paths, cleanup_paths);
+  std::stringstream buffer{};
+  auto backup = std::clog.rdbuf(buffer.rdbuf());
+  auto buffer_guard = utl::make_raii(
+      backup, [](const decltype(backup)& buf) { std::clog.rdbuf(buf); });
 
-  EXPECT_THROW(ShapeMap shapes(shapes_data, paths), InvalidShapesFormat);
+  ShapeMap shapes(shapes_data, paths);
+
+  std::clog.flush();
+  std::string_view log{buffer.str()};
+  // std::cout << "Full log??: >" << log << "<" << std::endl;
+  EXPECT_TRUE(
+      log.contains("Non monotonic sequence for shape_id '1': Sequence number 1 "
+                   "followed by 0"));
 }
 
 // // Currently not testable
@@ -227,7 +236,7 @@ TEST(gtfs, shapeParse_notAscendingSequence_throwException) {
 // 1,50.636259,0
 // )"};
 //     auto paths{get_paths("shape-test-missing-column")};
-//     DataGuard const guard{[&paths]() { cleanup_paths(paths); }};
+//   auto guard = utl::make_raii(paths, cleanup_paths);
 
 //     EXPECT_THROW(ShapeMap shapes(shapes_data, paths), InvalidShapesFormat);
 // }
@@ -249,7 +258,7 @@ TEST(gtfs, shapeParse_shuffledRows_parseAllData) {
 235,51.543652,7.217830,1
 )"};
   auto paths{get_paths("shape-test-shuffled-rows")};
-  DataGuard const guard{[&paths]() { cleanup_paths(paths); }};
+  auto guard = utl::make_raii(paths, cleanup_paths);
 
   ShapeMap shapes(shapes_data, paths);
 
@@ -300,9 +309,19 @@ TEST(gtfs, shapeParse_delayedInsertWithNotAscendingSequence_throwException) {
 1,50.636259,6.473668,0
 )"};
   auto paths{get_paths("shape-test-not-ascending-sequence")};
-  DataGuard const guard{[&paths]() { cleanup_paths(paths); }};
+  auto guard = utl::make_raii(paths, cleanup_paths);
+  std::stringstream buffer{};
+  auto backup = std::clog.rdbuf(buffer.rdbuf());
+  auto buffer_guard = utl::make_raii(
+      backup, [](const decltype(backup)& buf) { std::clog.rdbuf(buf); });
 
-  EXPECT_THROW(ShapeMap shapes(shapes_data, paths), InvalidShapesFormat);
+  ShapeMap shapes(shapes_data, paths);
+
+  std::clog.flush();
+  std::string_view log{buffer.str()};
+  EXPECT_TRUE(
+      log.contains("Non monotonic sequence for shape_id '1': Sequence number 1 "
+                   "followed by 0"));
 }
 
 TEST(gtfs, shapeParse_idWithNullByte_removeNullByteFromId) {
@@ -315,7 +334,7 @@ null)"
 other,50.553822,6.356876,0
 )"};
   auto paths{get_paths("shape-test-id-with-null-byte")};
-  DataGuard const guard{[&paths]() { cleanup_paths(paths); }};
+  auto guard = utl::make_raii(paths, cleanup_paths);
 
   ShapeMap shapes(shapes_data, paths);
 

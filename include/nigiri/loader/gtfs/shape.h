@@ -10,7 +10,6 @@
 #include "cista/containers/vecvec.h"
 #include "cista/mmap.h"
 #include "geo/latlng.h"
-#include "utl/parser/csv_range.h"
 
 // #include "osmium/osm/location.hpp"
 // #include "osr/types.h"
@@ -36,11 +35,6 @@ constexpr double fix_to_double(int32_t const c) noexcept {
   return static_cast<double>(c) / coordinate_precision;
 }
 }  // namespace helper
-
-class InvalidShapesFormat final : public std::runtime_error {
-public:
-  InvalidShapesFormat(std::string const& msg);
-};
 
 class ShapeMap {
 public:
