@@ -499,7 +499,8 @@ private:
           (kBwd && stop_idx != stop_seq.size() - 1U)) {
         auto const by_transport = rt_time_at_stop(
             rt_t, stop_idx, kFwd ? event_type::kArr : event_type::kDep);
-        for (auto v = 0U; v <= n_vias_; ++v) {
+        for (auto j = 0U; j <= n_vias_; ++j) {
+          auto const v = n_vias_ - j;
           auto target_v = v + v_offset[v];
           if (et[v] && (kFwd ? stp.out_allowed() : stp.in_allowed())) {
             auto const is_via = target_v != n_vias_ &&
@@ -513,8 +514,17 @@ private:
             auto current_best = get_best(
                 state_.round_times_[k - 1][l_idx][target_v],
                 state_.tmp_[l_idx][target_v], state_.best_[l_idx][target_v]);
+
+            auto higher_v_best = kInvalid;
+            for (auto higher_v = n_vias_; higher_v != target_v; --higher_v) {
+              higher_v_best = get_best(
+                  higher_v_best, state_.round_times_[k - 1][l_idx][higher_v],
+                  state_.tmp_[l_idx][higher_v], state_.best_[l_idx][higher_v]);
+            }
+
             if (is_better(by_transport, current_best) &&
                 is_better(by_transport, time_at_dest_[k]) &&
+                is_better(by_transport, higher_v_best) &&
                 lb_[l_idx] != kUnreachable &&
                 is_better(by_transport + dir(lb_[l_idx]), time_at_dest_[k])) {
               trace_upd(
@@ -583,7 +593,8 @@ private:
       // v = via state when entering the transport
       // v + v_offset = via state at the current stop after entering the
       // transport (v_offset > 0 if the transport passes via stops)
-      for (auto v = 0U; v <= n_vias_; ++v) {
+      for (auto j = 0U; j <= n_vias_; ++j) {
+        auto const v = n_vias_ - j;
         if (!et[v].is_valid() && !state_.prev_station_mark_[l_idx]) {
           trace("┊ │k={} v={}  stop_idx={} {}: not marked, no et - skip\n", k,
                 v, stop_idx, location{tt_, location_idx_t{l_idx}});
@@ -633,10 +644,19 @@ private:
           current_best[v] = get_best(
               state_.round_times_[k - 1][l_idx][target_v],
               state_.tmp_[l_idx][target_v], state_.best_[l_idx][target_v]);
+
+          auto higher_v_best = kInvalid;
+          for (auto higher_v = n_vias_; higher_v != target_v; --higher_v) {
+            higher_v_best = get_best(
+                higher_v_best, state_.round_times_[k - 1][l_idx][higher_v],
+                state_.tmp_[l_idx][higher_v], state_.best_[l_idx][higher_v]);
+          }
+
           assert(by_transport != std::numeric_limits<delta_t>::min() &&
                  by_transport != std::numeric_limits<delta_t>::max());
           if (is_better(by_transport, current_best[v]) &&
               is_better(by_transport, time_at_dest_[k]) &&
+              is_better(by_transport, higher_v_best) &&
               lb_[l_idx] != kUnreachable &&
               is_better(by_transport + dir(lb_[l_idx]), time_at_dest_[k])) {
             trace_upd(
@@ -659,7 +679,7 @@ private:
             trace(
                 "┊ │k={} v={}->{}    *** NO UPD: at={}, name={}, dbg={}, "
                 "time_by_transport={}, current_best=min({}, {}, {})={} => {} - "
-                "LB={}, LB_AT_DEST={}, TIME_AT_DEST={} "
+                "LB={}, LB_AT_DEST={}, TIME_AT_DEST={}, higher_v_best={} "
                 "(is_better(by_transport={}={}, current_best={}={})={}, "
                 "is_better(by_transport={}={}, time_at_dest_={}={})={}, "
                 "reachable={}, "
@@ -672,9 +692,9 @@ private:
                 to_unix(state_.tmp_[l_idx][target_v]), to_unix(current_best[v]),
                 location{tt_, location_idx_t{l_idx}}, lb_[l_idx],
                 to_unix(time_at_dest_[k]),
-                to_unix(clamp(by_transport + dir(lb_[l_idx]))), by_transport,
-                to_unix(by_transport), current_best[v],
-                to_unix(current_best[v]),
+                to_unix(clamp(by_transport + dir(lb_[l_idx]))),
+                to_unix(higher_v_best), by_transport, to_unix(by_transport),
+                current_best[v], to_unix(current_best[v]),
                 is_better(by_transport, current_best[v]), by_transport,
                 to_unix(by_transport), time_at_dest_[k],
                 to_unix(time_at_dest_[k]),
