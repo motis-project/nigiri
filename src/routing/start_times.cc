@@ -10,7 +10,7 @@
 
 namespace nigiri::routing {
 
-constexpr auto const kTracing = true;
+constexpr auto const kTracing = false;
 
 using location_offset_t = std::variant<duration_t, std::span<td_offset const>>;
 

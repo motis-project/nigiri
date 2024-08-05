@@ -1,5 +1,6 @@
 #include "gtest/gtest.h"
 
+#include "nigiri/routing/query.h"
 #include "nigiri/td_footpath.h"
 #include "nigiri/types.h"
 
@@ -103,6 +104,24 @@ TEST(td_footpath, backward_single) {
       });
   EXPECT_TRUE(called);
   EXPECT_EQ(10min, x.duration());
+}
+
+TEST(td_footpath, backward_1) {
+  auto const fps = std::vector<routing::td_offset>{
+      {.valid_from_ = sys_days{1970_y / January / 1},
+       .duration_ = 10min,
+       .transport_mode_id_ = 0},
+      {.valid_from_ = sys_days{2024_y / June / 19} + 7h + 30min,
+       .duration_ = footpath::kMaxDuration,
+       .transport_mode_id_ = 0},
+      {.valid_from_ = sys_days{2024_y / June / 19} + 12h + 00min,
+       .duration_ = 10min,
+       .transport_mode_id_ = 0}};
+
+  auto const d = get_td_duration<direction::kBackward>(
+      fps, sys_days{2024_y / June / 19} + 8h);
+  ASSERT_TRUE(d.has_value());
+  EXPECT_EQ(40min, *d);
 }
 
 TEST(td_footpath, backward) {
