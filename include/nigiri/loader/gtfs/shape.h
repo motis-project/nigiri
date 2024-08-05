@@ -98,7 +98,7 @@ struct ShapeMap::Paths {
 
 struct ShapeMap::Iterator {
   using difference_type = std::ptrdiff_t;
-  using value_type = value_type;
+  using value_type = std::pair<ShapeMap::key_type, ShapeMap::value_type>;
   bool operator==(Iterator const&) const = default;
   Iterator& operator++();
   Iterator operator++(int);

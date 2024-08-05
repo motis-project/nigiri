@@ -75,18 +75,21 @@ TEST(gtfs, shapeConstruct_createData_canAccessData) {
   EXPECT_FALSE(shapes.contains("1234"));
   EXPECT_EQ(shape_points.at(0), shapes.at("243"));
   EXPECT_EQ(shape_points.at(1), shapes.at("3105"));
-  size_t loop_count{}, loop_sum{};
-  for (auto const shape : shapes) {
+  size_t loop_count{};
+  for (auto const [id, shape] : shapes) {
+    if (id == "243") {
+      EXPECT_EQ(shape_points.at(0), shape);
+    } else {
+      EXPECT_EQ("3105", id);
+      EXPECT_EQ(shape_points.at(1), shape);
+    }
     // Reminder: Internal order can be random
-    EXPECT_TRUE(shape == shape_points.at(0) || shape == shape_points.at(1));
     ++loop_count;
-    loop_sum += shape.size();
   }
   EXPECT_EQ(2, loop_count);
-  EXPECT_EQ(9, loop_sum);
   auto points_total =
       std::accumulate(shapes.begin(), shapes.end(), 0u,
-                      [](auto sum, auto shape) { return sum + shape.size(); });
+                      [](auto sum, auto shape) { return sum + shape.second.size(); });
   EXPECT_EQ(9, points_total);
 }
 

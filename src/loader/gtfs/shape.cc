@@ -192,7 +192,7 @@ ShapeMap::Iterator ShapeMap::Iterator::operator++(int) {
   return tmp;
 }
 
-ShapeMap::value_type ShapeMap::Iterator::operator*() const {
-  return shapes->at(it->first);
+ShapeMap::Iterator::value_type ShapeMap::Iterator::operator*() const {
+  return std::make_pair(it->first, shapes->at(it->first));
 }
 }  // namespace nigiri::loader::gtfs
