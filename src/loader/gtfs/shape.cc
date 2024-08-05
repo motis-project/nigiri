@@ -1,16 +1,17 @@
 #include "nigiri/loader/gtfs/shape.h"
-#include <sys/types.h>
 
 #include <format>
 #include <ranges>
 #include <string>
 
 #include "cista/mmap.h"
-#include "geo/latlng.h"
+
 #include "utl/parser/buf_reader.h"
 #include "utl/parser/line_range.h"
 #include "utl/pipes/for_each.h"
 #include "utl/pipes/transform.h"
+
+#include "geo/latlng.h"
 
 namespace nigiri::loader::gtfs {
 
