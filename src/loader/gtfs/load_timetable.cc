@@ -154,7 +154,9 @@ void load_timetable(loader_config const& config,
               auto const curr_first = stop{trp.stop_seq_.front()};
               stop_seq_cache.back() =
                   stop{prev_last.location_idx(), curr_first.in_allowed(),
-                       prev_last.out_allowed()}
+                       prev_last.out_allowed(),
+                       curr_first.in_allowed_wheelchair(),
+                       prev_last.out_allowed_wheelchair()}
                       .value();
             }
             stop_seq_cache.insert(
