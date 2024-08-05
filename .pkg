@@ -42,3 +42,7 @@
   url=git@github.com:motis-project/boost.git
   branch=master
   commit=be5235eb2258d2ec19e32546ab767a62311d9b46
+[oh]
+  url=git@github.com:felixguendling/oh.git
+  branch=master
+  commit=cad583010bb2ad1b54ac94f9f15e609b330c944a
