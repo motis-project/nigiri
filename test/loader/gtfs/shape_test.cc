@@ -91,70 +91,6 @@ TEST(gtfs, shapeConstruct_createData_canAccessData) {
   EXPECT_EQ(9, points_total);
 }
 
-TEST(gtfs, shapeConstruct_storeAndLoadData_canAccessData) {
-  std::string shapes_data{
-      R"("shape_id","shape_pt_lat","shape_pt_lon","shape_pt_sequence"
-120,50.769767,6.073793,53
-3104,50.553822,6.356876,0
-3104,50.560999,6.355028,1
-3104,50.560999,6.355028,2
-3104,50.568805,6.374001,6
-3104,50.578249,6.383394,7
-3104,50.578249,6.383394,8
-3104,50.581956,6.379866,11
-3104,50.581956,6.379866,12
-3104,50.589090,6.378158,14
-3104,50.584129,6.372146,15
-3104,50.585341,6.364319,17
-3104,50.585341,6.364319,18
-3104,50.584388,6.361445,20
-3104,50.581905,6.353209,25
-138,51.256676,7.166106,3261
-137,50.767436,6.089977,4
-137,51.194829,6.521109,988
-)"};
-  auto paths{get_paths("shape-test-store-and-reload")};
-  auto guard = utl::make_raii(paths, cleanup_paths);
-
-  // Store only
-  ShapeMap::write_shapes(shapes_data, paths);
-  // Restore only
-  ShapeMap shapes(paths);
-
-  std::vector<std::string> ids{"120", "3104", "138", "137"};
-  std::vector<std::vector<geo::latlng>> shape_points{{
-                                                         {50.769767, 6.073793},
-                                                     },
-                                                     {
-                                                         {50.553822, 6.356876},
-                                                         {50.560999, 6.355028},
-                                                         {50.560999, 6.355028},
-                                                         {50.568805, 6.374001},
-                                                         {50.578249, 6.383394},
-                                                         {50.578249, 6.383394},
-                                                         {50.581956, 6.379866},
-                                                         {50.581956, 6.379866},
-                                                         {50.589090, 6.378158},
-                                                         {50.584129, 6.372146},
-                                                         {50.585341, 6.364319},
-                                                         {50.585341, 6.364319},
-                                                         {50.584388, 6.361445},
-                                                         {50.581905, 6.353209},
-                                                     },
-                                                     {
-                                                         {51.256676, 7.166106},
-                                                     },
-                                                     {
-                                                         {50.767436, 6.089977},
-                                                         {51.194829, 6.521109},
-                                                     }};
-  EXPECT_EQ(ids.size(), shapes.size());
-  for (auto [pos, id] : std::ranges::enumerate_view(ids)) {
-    EXPECT_TRUE(shapes.contains(id));
-    EXPECT_EQ(shape_points.at(static_cast<size_t>(pos)), shapes.at(id));
-  }
-}
-
 TEST(gtfs, shapeParse_validIDs_parseData) {
   std::string shapes_data{
       R"("shape_id","shape_pt_lat","shape_pt_lon","shape_pt_sequence"
@@ -339,7 +275,7 @@ other,50.553822,6.356876,0
   ShapeMap shapes(shapes_data, paths);
 
   EXPECT_EQ(2, shapes.size());
-  EXPECT_FALSE(shapes.contains("null\0byte"));
-  EXPECT_TRUE(shapes.contains("nullbyte"));
+  EXPECT_TRUE(shapes.contains("null\0byte"s));
+  EXPECT_FALSE(shapes.contains("nullbyte"));
   EXPECT_TRUE(shapes.contains("other"));
 }

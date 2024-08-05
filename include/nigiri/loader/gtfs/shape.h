@@ -38,13 +38,12 @@ constexpr double fix_to_double(int32_t const c) noexcept {
 
 class ShapeMap {
 public:
-  using key_type = std::string;
+  using key_type = std::string_view;
   using value_type = std::vector<geo::latlng>;
   struct Paths;
   struct Iterator;
 
   ShapeMap(std::string_view const, Paths const&);
-  ShapeMap(Paths const&);
   size_t size() const;
   bool contains(key_type const&) const;
   Iterator begin() const;
@@ -66,7 +65,6 @@ private:
   ShapeMap(std::pair<shape_data_t, id_vec_t>);
   static std::pair<shape_data_t, id_vec_t> create_files(std::string_view const,
                                                         Paths const&);
-  static std::pair<shape_data_t, id_vec_t> load_files(Paths const&);
   static shape_data_t create_memory_map(
       Paths const&,
       cista::mmap::protection const = cista::mmap::protection::READ);
@@ -74,8 +72,6 @@ private:
       std::filesystem::path const&,
       cista::mmap::protection const = cista::mmap::protection::READ);
   static id_vec_t load_shapes(std::string_view const, shape_data_t&);
-  static void store_ids(id_vec_t const&, std::filesystem::path const&);
-  static id_vec_t load_ids(std::filesystem::path const&);
   static id_map_t id_vec_to_map(id_vec_t const&);
   static value_type transform_coordinates(auto const&);
 

@@ -23,7 +23,7 @@ struct ShapePoint {
   ShapeMap::Coordinate const coordinate;
   size_t const seq;
   struct Entry {
-    utl::csv_col<ShapeMap::key_type, UTL_NAME("shape_id")> id;
+    utl::csv_col<utl::cstr, UTL_NAME("shape_id")> id;
     utl::csv_col<double, UTL_NAME("shape_pt_lat")> lat;
     utl::csv_col<double, UTL_NAME("shape_pt_lon")> lon;
     utl::csv_col<size_t, UTL_NAME("shape_pt_sequence")> seq;
@@ -33,7 +33,7 @@ struct ShapePoint {
 
 constexpr ShapePoint ShapePoint::from_entry(Entry const& entry) {
   return ShapePoint{
-      entry.id.val(),
+      entry.id->view(),
       {
           helper::double_to_fix(entry.lat.val()),
           helper::double_to_fix(entry.lon.val()),
@@ -44,8 +44,6 @@ constexpr ShapePoint ShapePoint::from_entry(Entry const& entry) {
 
 ShapeMap::ShapeMap(std::string_view const data, Paths const& paths)
     : ShapeMap(create_files(data, paths)) {}
-
-ShapeMap::ShapeMap(Paths const& paths) : ShapeMap(load_files(paths)) {}
 
 ShapeMap::ShapeMap(std::pair<shape_data_t, id_vec_t> p)
     : shape_map_{std::move(p.first)}, id_map_{id_vec_to_map(p.second)} {}
@@ -83,14 +81,7 @@ std::pair<ShapeMap::shape_data_t, ShapeMap::id_vec_t> ShapeMap::create_files(
     std::string_view const data, Paths const& paths) {
   shape_data_t mmap{create_memory_map(paths, cista::mmap::protection::WRITE)};
   id_vec_t ids{load_shapes(data, mmap)};
-  store_ids(ids, paths.id_file);
   return std::make_pair(std::move(mmap), std::move(ids));
-}
-
-std::pair<ShapeMap::shape_data_t, ShapeMap::id_vec_t> ShapeMap::load_files(
-    Paths const& paths) {
-  shape_data_t mmap{create_memory_map(paths)};
-  return std::make_pair(std::move(mmap), load_ids(paths.id_file));
 }
 
 ShapeMap::shape_data_t ShapeMap::create_memory_map(
@@ -118,28 +109,22 @@ ShapeMap::id_vec_t ShapeMap::load_shapes(std::string_view const data,
   id_vec_t ids;
 
   auto store_to_map = [&ids, &mmap, &states](ShapePoint const point) {
-    const std::string id =
-        point.id.find('\0') == point.id.npos ? point.id : [&point]() {
-          auto v = point.id |
-                   std::views::filter([](const char c) { return c != '\0'; });
-          return std::string{v.begin(), v.end()};
-        }();
-    if (auto found = states.find(id); found != states.end()) {
+    if (auto found = states.find(point.id); found != states.end()) {
       auto& state = found->second;
       if (state.last_seq >= point.seq) {
         log(log_lvl::info, "loader.gtfs.shape",
             "Non monotonic sequence for shape_id '{}': Sequence number {} "
             "followed by {}",
-            id, state.last_seq, point.seq);
+            point.id, state.last_seq, point.seq);
       }
       mmap[state.offset].push_back(point.coordinate);
       state.last_seq = point.seq;
     } else {
       auto offset = ids.size();
       auto bucket = mmap.add_back_sized(0u);
-      states.insert({id, {offset, point.seq}});
+      states.insert({point.id, {offset, point.seq}});
       bucket.push_back(point.coordinate);
-      ids.push_back(id);
+      ids.push_back(point.id);
     }
   };
 
@@ -150,26 +135,6 @@ ShapeMap::id_vec_t ShapeMap::load_shapes(std::string_view const data,
       }) |
       utl::for_each(store_to_map);
 
-  return ids;
-}
-void ShapeMap::store_ids(id_vec_t const& ids,
-                         std::filesystem::path const& path) {
-  auto storage{create_id_memory_map(path, cista::mmap::protection::WRITE)};
-  for (auto id : ids) {
-    storage.insert(storage.end(), id.begin(), id.end());
-    storage.push_back('\0');
-  }
-}
-
-ShapeMap::id_vec_t ShapeMap::load_ids(std::filesystem::path const& path) {
-  id_vec_t ids{};
-  auto storage{create_id_memory_map(path)};
-  std::string_view view{storage};
-  size_t start{0u}, end;
-  while ((end = view.find('\0', start)) != view.npos) {
-    ids.push_back(key_type{view.substr(start, end - start)});
-    start = end + 1;
-  }
   return ids;
 }
 
