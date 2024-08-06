@@ -143,33 +143,6 @@ void load_timetable(loader_config const& config,
   auto const noon_offsets = precompute_noon_offsets(tt, agencies);
 
   stop_seq_t stop_seq_cache;
-  auto const get_stop_seq =
-      [&](std::basic_string<gtfs_trip_idx_t> const& trips) {
-        if (trips.size() == 1U) {
-          return &trip_data.get(trips.front()).stop_seq_;
-        } else {
-          stop_seq_cache.clear();
-          for (auto const [i, t_idx] : utl::enumerate(trips)) {
-            auto const& trp = trip_data.get(t_idx);
-            if (i != 0) {
-              auto const prev_last = stop{stop_seq_cache.back()};
-              auto const curr_first = stop{trp.stop_seq_.front()};
-              stop_seq_cache.back() =
-                  stop{prev_last.location_idx(), curr_first.in_allowed(),
-                       prev_last.out_allowed(),
-                       curr_first.in_allowed_wheelchair(),
-                       prev_last.out_allowed_wheelchair()}
-                      .value();
-            }
-            stop_seq_cache.insert(
-                end(stop_seq_cache),
-                i == 0 ? begin(trp.stop_seq_) : std::next(begin(trp.stop_seq_)),
-                end(trp.stop_seq_));
-          }
-          return &stop_seq_cache;
-        }
-      };
-
   bitvec bikes_allowed_seq_cache;
   auto const get_bikes_allowed_seq =
       [&](std::basic_string<gtfs_trip_idx_t> const& trips) -> bitvec const* {
@@ -198,7 +171,11 @@ void load_timetable(loader_config const& config,
     expand_trip(
         trip_data, noon_offsets, tt, trips, traffic_days, tt.date_range_,
         assistance, [&](utc_trip&& s) {
-          auto const* stop_seq = get_stop_seq(s.trips_);
+          auto const* stop_seq = get_stop_seq(trip_data, s, stop_seq_cache);
+          for (auto const& x : *stop_seq) {
+            std::cout << stop{x} << "\n";
+          }
+
           auto const clasz = trip_data.get(s.trips_.front()).get_clasz(tt);
           auto const* bikes_allowed_seq = get_bikes_allowed_seq(s.trips_);
           auto const it = route_services.find(

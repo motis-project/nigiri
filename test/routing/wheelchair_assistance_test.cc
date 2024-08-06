@@ -18,12 +18,14 @@ using nigiri::test::raptor_search;
 namespace {
 
 constexpr auto const kAssistance = R"(name,lat,lng,time
-A,50.7677663,6.0913818,06:15-22:30
-B,48.841004,10.0965113,"Mo-Fr 07:50-12:00, 12:45-18:10, Sa: 08:50-13:40, 14:25-19:10, So 08:50-13:45, 14:45-21:10"
-C,51.7658783,8.9431876,08:15-17:45
-D,49.298931,10.5775584,"Mo-Sa 06:50-18:50"
+A,0.0,1.0,08:00-22:00
+B,2.0,3.0,08:00-22:00
+C,4.0,5.0,08:00-22:00
 )";
 
+// 00:00
+// A -- B -- C  01:00
+//      +---C   00:50
 mem_dir test_files() {
   return mem_dir::read(R"(
 # agency.txt
@@ -44,71 +46,67 @@ S,20240619,1
 
 # routes.txt
 route_id,agency_id,route_short_name,route_long_name,route_desc,route_type
-R1,DB,RE 1,,,2
-R2,DB,RE 2,,,2
-R3,DB,RE 1,,,2
-R4,DB,RE 2,,,2
-R5,DB,RE 1,,,2
+R1,DB,RE 1,,,101
+R2,DB,RE 2,,,101
 
 # trips.txt
 route_id,service_id,trip_id,trip_headsign,block_id
 R1,S,T1,RE 1,
 R2,S,T2,RE 2,
-R3,S,T3,RE 3,
-R4,S,T4,RE 4,
-R5,S,T5,RE 5,
 
 # stop_times.txt
 trip_id,arrival_time,departure_time,stop_id,stop_sequence,pickup_type,drop_off_type
-T1,10:00:00,10:00:00,A,1,0,0
-T1,11:00:00,11:00:00,B1,2,0,0
-T2,11:30:00,11:30:00,B2,1,0,0
-T2,12:00:00,12:00:00,C,2,0,0
-T3,12:00:00,12:00:00,B2,1,0,0
-T3,12:30:00,12:30:00,C,2,0,0
-T4,10:00:00,10:00:00,A,1,0,0
-T4,12:00:00,12:00:00,D,2,0,0
-T5,13:00:00,13:00:00,D,1,0,0
-T5,15:00:00,15:00:00,C,2,0,0
+T1,00:00:00,00:00:00,A,1,0,0
+T1,00:30:00,00:30:00,B1,2,0,0
+T1,01:00:00,01:00:00,C,3,0,0
+T2,00:40:00,00:40:00,B2,1,0,0
+T2,00:50:00,00:50:00,C,2,0,0
+
+# frequencies.txt
+trip_id,start_time,end_time,headway_secs
+T1,00:00:00,24:00:00,3600
+T2,00:40:00,24:40:00,3600
 )");
 }
 
-// std::string to_string(timetable const& tt,
-//                       pareto_set<routing::journey> const& results) {
-//   std::stringstream ss;
-//   ss << "\n";
-//   for (auto const& x : results) {
-//     x.print(ss, tt);
-//     ss << "\n";
-//   }
-//   return ss.str();
-// }
+std::string to_string(timetable const& tt,
+                      pareto_set<routing::journey> const& results) {
+  std::stringstream ss;
+  ss << "\n";
+  for (auto const& x : results) {
+    x.print(ss, tt);
+    ss << "\n";
+  }
+  return ss.str();
+}
 
 }  // namespace
 
 TEST(routing, wheelchair_assistance) {
   constexpr auto const kProfile = profile_idx_t{2U};
 
-  auto const assistance = read_assistance(kAssistance);
+  auto assistance = read_assistance(kAssistance);
 
   timetable tt;
   tt.date_range_ = {date::sys_days{2024_y / June / 18},
                     date::sys_days{2024_y / June / 20}};
   register_special_stations(tt);
-  load_timetable({}, source_idx_t{0}, test_files(), tt);
+  load_timetable({}, source_idx_t{0}, test_files(), tt, &assistance);
   finalize(tt);
 
-  //  auto const A = tt.locations_.get({"A", {}}).l_;
-  //  auto const C = tt.locations_.get({"C", {}}).l_;
-  //  auto const B1 = tt.locations_.get({"B1", {}}).l_;
-  //  auto const B2 = tt.locations_.get({"B2", {}}).l_;
+  std::cout << tt << "\n";
+
+  auto const B1 = tt.locations_.get({"B1", {}}).l_;
+  auto const B2 = tt.locations_.get({"B2", {}}).l_;
+  tt.locations_.footpaths_out_[kProfile].resize(tt.n_locations());
+  tt.locations_.footpaths_in_[kProfile].resize(tt.n_locations());
+  tt.locations_.footpaths_out_[kProfile][B1].push_back(footpath{B2, 5min});
+  tt.locations_.footpaths_in_[kProfile][B2].push_back(footpath{B1, 5min});
 
   auto const results = raptor_search(
       tt, nullptr, "A", "C",
-      interval{unixtime_t{sys_days{2020_y / March / 30}} + 5_hours,
-               unixtime_t{sys_days{2020_y / March / 30}} + 6_hours},
-      direction::kBackward, kProfile);
+      unixtime_t{sys_days{2024_y / June / 19} + 21_hours}, direction::kForward,
+      routing::all_clasz_allowed(), false, kProfile);
 
-  CISTA_UNUSED_PARAM(results)
-  CISTA_UNUSED_PARAM(kAssistance)
+  std::cout << to_string(tt, results) << "\n";
 }

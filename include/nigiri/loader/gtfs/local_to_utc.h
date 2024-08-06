@@ -26,8 +26,8 @@ struct utc_trip {
   duration_t first_dep_offset_;
   std::basic_string<gtfs_trip_idx_t> trips_;
   std::basic_string<duration_t> utc_times_;
-  stop_seq_t stop_seq_;
   bitfield utc_traffic_days_;
+  stop_seq_t stop_seq_;
 };
 
 inline bool headways_match(trip_data const& trip_data,
@@ -228,7 +228,8 @@ void expand_local_to_utc(trip_data const& trip_data,
             key.tz_offset_,
         .trips_ = fet.trips_,
         .utc_times_ = build_time_string(key),
-        .utc_traffic_days_ = traffic_days});
+        .utc_traffic_days_ = traffic_days,
+        .stop_seq_ = {}});
   }
 }
 
@@ -276,12 +277,24 @@ void expand_assistance(timetable const& tt,
         (tt.internal_interval_days().from_ + date::days{day_idx})
             .time_since_epoch()};
 
-    auto const orig_stop_seq = *get_stop_seq(trip_data, ut, stop_seq_cache);
+    auto stop_seq = *get_stop_seq(trip_data, ut, stop_seq_cache);
     auto stop_times_it = begin(ut.utc_times_);
-    auto stop_seq = stop_seq_t{};
-    for (auto const [a, b] : utl::pairwise(stop_seq)) {
-      auto const from_dep = *stop_times_it++ - ut.first_dep_offset_;
-      auto const to_arr = *stop_times_it++ - ut.first_dep_offset_;
+    for (auto [a, b] : utl::pairwise(stop_seq)) {
+      auto from_dep = *stop_times_it++ - ut.first_dep_offset_;
+      auto to_arr = *stop_times_it++ - ut.first_dep_offset_;
+
+      while (from_dep.count() < 0) {
+        from_dep += 24_hours;
+      }
+      while (to_arr.count() < 0) {
+        to_arr += 24_hours;
+      }
+      while (from_dep.count() >= 1440) {
+        from_dep -= 24_hours;
+      }
+      while (to_arr.count() >= 1440) {
+        to_arr -= 24_hours;
+      }
 
       auto from = stop{a};
       auto to = stop{b};
@@ -294,8 +307,25 @@ void expand_assistance(timetable const& tt,
           assist.is_available(tt, to.location_idx(),
                               oh::local_minutes{day + to_arr});
 
+      std::cout << from.location_idx() << ": dep=" << from_dep << ", assist="
+                << assist.is_available(tt, from.location_idx(),
+                                       oh::local_minutes{day + from_dep})
+                << "\n";
+      std::cout << to.location_idx() << ": arr=" << to_arr << ", assist="
+                << assist.is_available(tt, to.location_idx(),
+                                       oh::local_minutes{day + to_arr})
+                << "\n";
+
       a = from.value();
       b = to.value();
+    }
+
+    for (auto const x : stop_seq) {
+      std::cout << stop{x}.location_idx()
+                << ": in_allowed_wheelchair=" << std::boolalpha
+                << stop{x}.in_allowed_wheelchair()
+                << ", out_allowed_wheelchair=" << std::boolalpha
+                << stop{x}.out_allowed_wheelchair() << "\n";
     }
 
     if (stop_seq == prev_key) {
@@ -310,8 +340,8 @@ void expand_assistance(timetable const& tt,
     consumer(utc_trip{.first_dep_offset_ = ut.first_dep_offset_,
                       .trips_ = ut.trips_,
                       .utc_times_ = ut.utc_times_,
-                      .stop_seq_ = stop_seq,
-                      .utc_traffic_days_ = traffic_days});
+                      .utc_traffic_days_ = traffic_days,
+                      .stop_seq_ = stop_seq});
   }
 }
 

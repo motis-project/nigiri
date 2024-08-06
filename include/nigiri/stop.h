@@ -56,6 +56,12 @@ struct stop {
     }
   }
 
+  friend std::ostream& operator<<(std::ostream& out, stop const& s) {
+    return out << "[out=" << s.out_allowed() << ", in=" << s.in_allowed()
+               << ", wout=" << s.out_allowed_wheelchair()
+               << ", win=" << s.in_allowed_wheelchair() << "]";
+  }
+
   cista::hash_t hash() const {
     return cista::hash_combine(cista::BASE_HASH, value());
   }

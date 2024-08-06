@@ -112,7 +112,8 @@ struct search {
                 tt_.internal_interval().from_)
                 .count()},
         allowed_claszes,
-        require_bikes_allowed};
+        require_bikes_allowed,
+        q_.prf_idx_ == 2U};
   }
 
   search(timetable const& tt,

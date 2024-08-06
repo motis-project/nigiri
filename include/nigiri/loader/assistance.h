@@ -15,10 +15,10 @@ namespace nigiri::loader {
 using assistance_idx_t = cista::strong<std::uint32_t, struct assistance_idx_>;
 
 struct assistance_times {
-  bool is_available(timetable const& tt,
-                    location_idx_t const l,
+  bool is_available(timetable const&,  // tt,
+                    location_idx_t const,  // l,
                     oh::local_minutes const t) {
-    static auto const kRule = oh::parse("08:00-20:00");
+    static auto const kRule = oh::parse("Mo-Fr 08:00-20:00; Sa-So 10:00-18:00");
     return contains(kRule, t);
     /*
     auto const a = utl::get_or_create(cache_, l, [&]() {
