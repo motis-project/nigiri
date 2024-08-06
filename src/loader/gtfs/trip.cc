@@ -263,6 +263,7 @@ trip_data read_trips(
     utl::csv_col<utl::cstr, UTL_NAME("trip_headsign")> trip_headsign_;
     utl::csv_col<utl::cstr, UTL_NAME("trip_short_name")> trip_short_name_;
     utl::csv_col<utl::cstr, UTL_NAME("block_id")> block_id_;
+    utl::csv_col<utl::cstr, UTL_NAME("block_id")> shape_id_;
     utl::csv_col<std::uint8_t, UTL_NAME("bikes_allowed")> bikes_allowed_;
   };
 

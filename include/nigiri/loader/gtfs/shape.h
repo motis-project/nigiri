@@ -11,6 +11,8 @@
 #include "cista/mmap.h"
 #include "geo/latlng.h"
 
+#include "nigiri/types.h"
+
 // #include "osmium/osm/location.hpp"
 // #include "osr/types.h"
 
@@ -23,7 +25,6 @@ using mm_vec = cista::basic_mmap_vec<T, std::uint64_t>;
 
 template <typename K, typename V, typename SizeType = cista::base_t<K>>
 using mm_vecvec = cista::basic_vecvec<K, mm_vec<V>, mm_vec<SizeType>>;
-
 /* Code duplicated from 'osmium/osm/location.hpp' */
 constexpr int32_t coordinate_precision{10000000};
 
@@ -35,6 +36,25 @@ constexpr double fix_to_double(int32_t const c) noexcept {
   return static_cast<double>(c) / coordinate_precision;
 }
 }  // namespace helper
+
+class shape {
+public:
+  using key_type = uint32_t;
+  using value_type = std::vector<geo::latlng>;
+
+  using shape_coordinate_type =
+      std::remove_const<decltype(helper::coordinate_precision)>::type;
+  struct Coordinate {
+    shape_coordinate_type lat, lon;
+    bool operator==(Coordinate const& other) const = default;
+  };
+  using mmap_vecvec = mm_vecvec<key_type, Coordinate>;
+  using stored_type = Coordinate;
+  value_type get() const ;
+private:
+  mmap_vecvec* vecvec{nullptr};
+  key_type index;
+};
 
 class ShapeMap {
 public:

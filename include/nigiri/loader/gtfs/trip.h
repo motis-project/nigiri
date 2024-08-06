@@ -12,6 +12,7 @@
 #include "nigiri/loader/gtfs/parse_time.h"
 #include "nigiri/loader/gtfs/route.h"
 #include "nigiri/loader/gtfs/services.h"
+#include "nigiri/loader/gtfs/shape.h"
 #include "nigiri/loader/gtfs/stop.h"
 #include "nigiri/timetable.h"
 
@@ -84,12 +85,20 @@ struct trip {
 
   clasz get_clasz(timetable const&) const;
 
+  shape::value_type get_shape() const {
+    // TODO Move
+    return shape_
+      .and_then([](const shape& s) { return std::optional{s.get()}; })
+      .value_or(shape::value_type{});
+  }
+
   route const* route_{nullptr};
   bitfield const* service_{nullptr};
   block* block_{nullptr};
   std::string id_;
   trip_direction_idx_t headsign_;
   std::string short_name_;
+  std::optional<shape> shape_;
 
   stop_seq_t stop_seq_;
   std::vector<std::uint16_t> seq_numbers_;

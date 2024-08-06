@@ -28,6 +28,7 @@
 #include "nigiri/loader/gtfs/stop_time.h"
 #include "nigiri/loader/gtfs/trip.h"
 #include "nigiri/loader/loader_interface.h"
+#include "nigiri/common/interval.h"
 #include "nigiri/common/sort_by.h"
 #include "nigiri/logging.h"
 #include "nigiri/timetable.h"
@@ -90,7 +91,8 @@ void load_timetable(loader_config const& config,
                     source_idx_t const src,
                     dir const& d,
                     timetable& tt,
-                    hash_map<bitfield, bitfield_idx_t>& bitfield_indices) {
+                    hash_map<bitfield, bitfield_idx_t>& bitfield_indices,
+                    shape::mmap_vecvec*) {
   nigiri::scoped_timer const global_timer{"gtfs parser"};
 
   auto const load = [&](std::string_view file_name) -> file {

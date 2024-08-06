@@ -1,5 +1,6 @@
 #pragma once
 
+#include "nigiri/loader/gtfs/shape.h"
 #include "nigiri/loader/dir.h"
 #include "nigiri/loader/loader_interface.h"
 #include "nigiri/types.h"
@@ -17,6 +18,7 @@ void load_timetable(loader_config const&,
                     source_idx_t,
                     dir const&,
                     timetable&,
-                    hash_map<bitfield, bitfield_idx_t>&);
+                    hash_map<bitfield, bitfield_idx_t>&,
+                    shape::mmap_vecvec* = nullptr);
 
 }  // namespace nigiri::loader::gtfs
