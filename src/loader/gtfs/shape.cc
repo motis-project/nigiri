@@ -1,12 +1,8 @@
 #include "nigiri/loader/gtfs/shape.h"
 #include "nigiri/logging.h"
 
-#include <format>
 #include <optional>
 #include <ranges>
-#include <string>
-
-#include "cista/mmap.h"
 
 #include "utl/parser/buf_reader.h"
 #include "utl/parser/csv_range.h"
@@ -15,9 +11,22 @@
 #include "utl/pipes/transform.h"
 
 #include "geo/latlng.h"
-#include "utl/verify.h"
 
 namespace nigiri::loader::gtfs {
+
+namespace helper {
+
+using precision_t = decltype(shape::coordinate_precision);
+
+/* Code duplicated from 'osmium/osm/location.hpp' */
+constexpr precision_t double_to_fix(double const c) noexcept {
+  return static_cast<int32_t>(std::round(c * shape::coordinate_precision));
+}
+
+constexpr double fix_to_double(precision_t const c) noexcept {
+  return static_cast<double>(c) / shape::coordinate_precision;
+}
+}  // namespace helper
 
 struct shape_point {
   shape::id_type const id;
@@ -79,10 +88,10 @@ auto load_shapes(const std::string_view data, shape::mmap_vecvec& vecvec) {
   return states;
 }
 
-shape::shape(mmap_vecvec* vecvec, key_type index) : vecvec_{vecvec}, index_{index} {}
+shape::shape(mmap_vecvec::bucket bucket) : bucket_{bucket} {}
 
 shape::value_type shape::get() const {
-  auto coordinates = (*vecvec_)[index_] | std::views::transform([](shape::coordinate const& c) {
+  auto coordinates = bucket_ | std::views::transform([](shape::coordinate const& c) {
                        return geo::latlng{helper::fix_to_double(c.lat),
                                           helper::fix_to_double(c.lon)};
                      });
@@ -102,7 +111,7 @@ shape::builder_t shape::get_builder(const std::string_view data, mmap_vecvec* ve
   auto const map = load_shapes(data, *vecvec);
   return [vecvec, map](const id_type& id) {
     auto found = map.find(id);
-    return (found != map.end()) ? std::make_optional<shape>(shape{vecvec, found->second.offset}) : std::nullopt;
+    return (found != map.end()) ? std::make_optional<shape>(shape{(*vecvec)[found->second.offset]}) : std::nullopt;
   };
 }
 

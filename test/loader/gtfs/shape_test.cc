@@ -9,7 +9,7 @@
 
 #include "gtest/gtest.h"
 
-#include "geo/latlng.h"
+#include "geo/polyline.h"
 #include "utl/raii.h"
 
 #include "nigiri/loader/gtfs/shape.h"
@@ -171,7 +171,7 @@ TEST(gtfs, shapeParse_shuffledRows_parseAllData) {
 
   auto builder = shape::get_builder(shapes_data, &mmap);
 
-  std::unordered_map<std::string, std::vector<geo::latlng>> shape_points{
+  std::unordered_map<std::string, geo::polyline> shape_points{
       {"240",
        {
            {51.459894, 7.153535},
