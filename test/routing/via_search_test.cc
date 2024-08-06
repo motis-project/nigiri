@@ -429,6 +429,22 @@ leg 1: (P, P) [2019-05-01 09:43] -> (END, END) [2019-05-01 09:53]
 
 )"sv;
 
+constexpr auto const expected_M_Q_via_M_0min_O_0min =
+    R"(
+[2019-05-01 09:00, 2019-05-01 10:00]
+TRANSFERS: 0
+     FROM: (M, M) [2019-05-01 09:00]
+       TO: (Q, Q) [2019-05-01 10:00]
+leg 0: (M, M) [2019-05-01 09:00] -> (Q, Q) [2019-05-01 10:00]
+   0: M       M...............................................                               d: 01.05 09:00 [01.05 11:00]  [{name=Bus 7, day=2019-05-01, id=T9, src=0}]
+   1: N       N............................................... a: 01.05 09:13 [01.05 11:13]  d: 01.05 09:15 [01.05 11:15]  [{name=Bus 7, day=2019-05-01, id=T9, src=0}]
+   2: O       O............................................... a: 01.05 09:28 [01.05 11:28]  d: 01.05 09:30 [01.05 11:30]  [{name=Bus 7, day=2019-05-01, id=T9, src=0}]
+   3: P       P............................................... a: 01.05 09:43 [01.05 11:43]  d: 01.05 09:45 [01.05 11:45]  [{name=Bus 7, day=2019-05-01, id=T9, src=0}]
+   4: Q       Q............................................... a: 01.05 10:00 [01.05 12:00]
+
+
+)"sv;
+
 std::string results_to_str(pareto_set<routing::journey> const& results,
                            timetable const& tt,
                            rt_timetable const* rtt = nullptr) {
@@ -475,7 +491,7 @@ pareto_set<routing::journey> search(timetable const& tt,
 
 }  // namespace
 
-TEST(routing, via_test_1) {
+TEST(routing, via_test_1_A_D_to_via) {
   auto const tt = load_timetable(test_files_1);
 
   // A -> D, no via
@@ -490,7 +506,7 @@ TEST(routing, via_test_1) {
   EXPECT_EQ(expected_A_D_no_via, results_to_str(results, tt));
 }
 
-TEST(routing, via_test_2) {
+TEST(routing, via_test_2_A_D_via_B_0m) {
   auto const tt = load_timetable(test_files_1);
 
   test::with_rt_trips(
@@ -516,7 +532,7 @@ TEST(routing, via_test_2) {
       });
 }
 
-TEST(routing, via_test_3) {
+TEST(routing, via_test_3_A_D_via_B_3m) {
   auto tt = load_timetable(test_files_1);
 
   for (auto const& [dir, start_time] :
@@ -536,7 +552,7 @@ TEST(routing, via_test_3) {
   }
 }
 
-TEST(routing, via_test_4) {
+TEST(routing, via_test_4_A_D_via_B_10m) {
   auto tt = load_timetable(test_files_1);
 
   test::with_rt_trips(
@@ -562,7 +578,7 @@ TEST(routing, via_test_4) {
       });
 }
 
-TEST(routing, via_test_5) {
+TEST(routing, via_test_5_A_D_via_C_0m) {
   auto tt = load_timetable(test_files_1);
 
   for (auto const& [dir, start_time] :
@@ -582,7 +598,7 @@ TEST(routing, via_test_5) {
   }
 }
 
-TEST(routing, via_test_6) {
+TEST(routing, via_test_6_A_D_via_C_10m) {
   auto tt = load_timetable(test_files_1);
 
   for (auto const& [dir, start_time] :
@@ -602,7 +618,7 @@ TEST(routing, via_test_6) {
   }
 }
 
-TEST(routing, via_test_7) {
+TEST(routing, via_test_7_A_J_via_I_0m) {
   auto tt = load_timetable(test_files_1);
 
   for (auto const& [dir, start_time] :
@@ -622,7 +638,7 @@ TEST(routing, via_test_7) {
   }
 }
 
-TEST(routing, via_test_8) {
+TEST(routing, via_test_8_A_J_via_I1_0m) {
   auto tt = load_timetable(test_files_1);
 
   for (auto const& [dir, start_time] :
@@ -642,7 +658,7 @@ TEST(routing, via_test_8) {
   }
 }
 
-TEST(routing, via_test_9) {
+TEST(routing, via_test_9_A_J_via_I2_0m) {
   auto tt = load_timetable(test_files_1);
 
   for (auto const& [dir, start_time] :
@@ -662,7 +678,7 @@ TEST(routing, via_test_9) {
   }
 }
 
-TEST(routing, via_test_10) {
+TEST(routing, via_test_10_A_J_via_I_0m) {
   auto tt = load_timetable(test_files_1);
 
   for (auto const& dir : {direction::kForward, direction::kBackward}) {
@@ -679,7 +695,7 @@ TEST(routing, via_test_10) {
   }
 }
 
-TEST(routing, via_test_11) {
+TEST(routing, via_test_11_A_J_via_I_10m) {
   auto tt = load_timetable(test_files_1);
 
   for (auto const& [dir, start_time] :
@@ -699,7 +715,7 @@ TEST(routing, via_test_11) {
   }
 }
 
-TEST(routing, via_test_12) {
+TEST(routing, via_test_12_A_J_via_K_0m) {
   auto tt = load_timetable(test_files_1);
 
   for (auto const& [dir, start_time] :
@@ -719,7 +735,7 @@ TEST(routing, via_test_12) {
   }
 }
 
-TEST(routing, via_test_13) {
+TEST(routing, via_test_13_A_J_via_K_5m) {
   auto tt = load_timetable(test_files_1);
 
   for (auto const& [dir, start_time] :
@@ -739,7 +755,7 @@ TEST(routing, via_test_13) {
   }
 }
 
-TEST(routing, via_test_14) {
+TEST(routing, via_test_14_A_J_via_I_0m_K_5m) {
   auto tt = load_timetable(test_files_1);
 
   for (auto const& [dir, start_time] :
@@ -760,7 +776,7 @@ TEST(routing, via_test_14) {
   }
 }
 
-TEST(routing, via_test_15) {
+TEST(routing, via_test_15_H_Q_via_N_0m) {
   auto tt = load_timetable(test_files_1);
 
   for (auto const& [dir, start_time] :
@@ -780,7 +796,7 @@ TEST(routing, via_test_15) {
   }
 }
 
-TEST(routing, via_test_16) {
+TEST(routing, via_test_16_A_D_via_C_5m) {
   auto tt = load_timetable(test_files_1);
 
   for (auto const& [dir, start_time] :
@@ -800,7 +816,7 @@ TEST(routing, via_test_16) {
   }
 }
 
-TEST(routing, via_test_17) {
+TEST(routing, via_test_17_H_Q_via_N_0m_P_0m) {
   auto tt = load_timetable(test_files_1);
 
   test::with_rt_trips(
@@ -827,7 +843,7 @@ TEST(routing, via_test_17) {
       });
 }
 
-TEST(routing, via_test_18) {
+TEST(routing, via_test_18_intermodal_HO_Q_via_P_0m) {
   auto tt = load_timetable(test_files_1);
 
   test::with_rt_trips(
@@ -851,7 +867,7 @@ TEST(routing, via_test_18) {
       });
 }
 
-TEST(routing, via_test_19) {
+TEST(routing, via_test_19_intermodal_HO_Q_via_O_0m_P_0m) {
   auto tt = load_timetable(test_files_1);
 
   test::with_rt_trips(
@@ -876,7 +892,7 @@ TEST(routing, via_test_19) {
       });
 }
 
-TEST(routing, via_test_20) {
+TEST(routing, via_test_20_N_intermodal_P_via_P_0m) {
   auto tt = load_timetable(test_files_1);
 
   test::with_rt_trips(
@@ -913,7 +929,7 @@ TEST(routing, via_test_20) {
       });
 }
 
-TEST(routing, via_test_21) {
+TEST(routing, via_test_21_H_Q_via_H_0m_N_0m) {
   auto tt = load_timetable(test_files_1);
 
   for (auto const& [dir, start_time] :
@@ -934,7 +950,7 @@ TEST(routing, via_test_21) {
   }
 }
 
-TEST(routing, via_test_22) {
+TEST(routing, via_test_22_H_Q_via_H_0m_N_0m_Q_0m) {
   auto tt = load_timetable(test_files_1);
 
   for (auto const& [dir, start_time] :
@@ -953,5 +969,49 @@ TEST(routing, via_test_22) {
                dir);
 
     EXPECT_EQ(expected_H_Q_via_N_0min, results_to_str(results, tt));
+  }
+}
+
+TEST(routing, via_test_23_M_Q_via_M_0m_O_0m) {
+  // test: first via = start
+  auto tt = load_timetable(test_files_1);
+
+  for (auto const& [dir, start_time] :
+       {std::pair{direction::kForward, time("2019-05-01 11:00 Europe/Berlin")},
+        std::pair{direction::kBackward,
+                  time("2019-05-01 12:00 Europe/Berlin")}}) {
+    // M -> Q, via M (0 min), O (0 min)
+    auto const results =
+        search(tt, nullptr,
+               routing::query{.start_time_ = start_time,
+                              .start_ = {{loc(tt, "M"), 0_minutes, 0U}},
+                              .destination_ = {{loc(tt, "Q"), 0_minutes, 0U}},
+                              .via_stops_ = {{loc(tt, "M"), 0_minutes},
+                                             {loc(tt, "O"), 0_minutes}}},
+               dir);
+
+    EXPECT_EQ(expected_M_Q_via_M_0min_O_0min, results_to_str(results, tt));
+  }
+}
+
+TEST(routing, via_test_24_M_Q_via_O_0m_Q_0m) {
+  // test: last via = destination
+  auto tt = load_timetable(test_files_1);
+
+  for (auto const& [dir, start_time] :
+       {std::pair{direction::kForward, time("2019-05-01 11:00 Europe/Berlin")},
+        std::pair{direction::kBackward,
+                  time("2019-05-01 12:00 Europe/Berlin")}}) {
+    // M -> Q, O (0 min), Q (0 min)
+    auto const results =
+        search(tt, nullptr,
+               routing::query{.start_time_ = start_time,
+                              .start_ = {{loc(tt, "M"), 0_minutes, 0U}},
+                              .destination_ = {{loc(tt, "Q"), 0_minutes, 0U}},
+                              .via_stops_ = {{loc(tt, "O"), 0_minutes},
+                                             {loc(tt, "Q"), 0_minutes}}},
+               dir);
+
+    EXPECT_EQ(expected_M_Q_via_M_0min_O_0min, results_to_str(results, tt));
   }
 }
