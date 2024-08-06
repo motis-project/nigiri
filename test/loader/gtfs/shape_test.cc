@@ -69,23 +69,6 @@ auto create_temporary_paths(std::string base_path) {
   return std::make_pair(create_mmap_vecvec(paths), paths);
 }
 
-void cleanup_paths_old(ShapeMap::Paths const& paths) {
-  for (auto path : std::vector<std::filesystem::path>{
-           paths.id_file, paths.shape_data_file, paths.shape_metadata_file}) {
-    if (std::filesystem::exists(path)) {
-      std::filesystem::remove(path);
-    }
-  }
-}
-
-ShapeMap::Paths get_paths(std::string base_path) {
-  return {
-      base_path + "-id.dat",
-      base_path + "-shape-data.dat",
-      base_path + "-shape-metadata.dat",
-  };
-}
-
 TEST(gtfs, shapeBuilder_withoutData_getNull) {
   auto builder = shape::get_builder();
 
