@@ -57,7 +57,7 @@ auto load_shapes(const std::string_view data, shape::mmap_vecvec& vecvec) {
         log(log_lvl::error, "loader.gtfs.shape",
             "Non monotonic sequence for shape_id '{}': Sequence number {} "
             "followed by {}",
-            point.id, state.last_seq, point.seq);
+            point.id.to_str(), state.last_seq, point.seq);
       }
       vecvec[state.offset].push_back(point.coordinate);
       state.last_seq = point.seq;
