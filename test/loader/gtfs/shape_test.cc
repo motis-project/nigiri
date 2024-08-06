@@ -110,6 +110,35 @@ TEST(gtfs, shapeBuilder_withData_getExistingShapePoints) {
   EXPECT_EQ(shape_points_aachen.at("3105"), shape_3105.value().get());
 }
 
+TEST(gtfs, shapeGet_unusualShapeIds_getAllIds) {
+  using std::literals::operator""s;
+  std::string shapes_data{
+      R"("shape_id","shape_pt_lat","shape_pt_lon","shape_pt_sequence"
+test id,50.553822,6.356876,0
+----,50.560999,6.355028,1
+)"
+      "\x07\x13\x41\x08"
+      R"(,50.560999,6.355028,2
+ルーティング,50.565724,6.364605,3
+,50.565724,6.364605,4
+)" "\0"s R"(,50.578249,6.383394,7
+🚀,51.543652,7.217830,0
+🚏,51.478609,7.223275,1
+)"};
+  auto [mmap, paths] = create_temporary_paths("shape-test-builder");
+  auto guard = utl::make_raii(paths, cleanup_paths);
+
+  auto builder = shape::get_builder(shapes_data_aachen, &mmap);
+
+  std::vector<std::string> ids{"test id"s, "----"s, "\x07\x13\x41\x08"s, "ルーティング"s, ""s, "\0"s, "🚀"s, "🚏"s};
+  for (auto const& id : ids) {
+    auto shape = builder(id);
+    EXPECT_TRUE(shape.has_value());
+    EXPECT_EQ(1, shape->get().size());
+  }
+
+}
+
 // OLD BEGIN ??
 
 TEST(gtfs, shapeConstruct_createData_canAccessData) {
