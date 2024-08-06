@@ -133,7 +133,9 @@ void reconstruct_journey(timetable const& tt,
                          date::sys_days const base,
                          day_idx_t const base_day_idx) {
   constexpr auto const kFwd = SearchDir == direction::kForward;
-  auto const dir = [&](auto a) { return (kFwd ? 1 : -1) * a; };
+  auto const dir = [&]<typename T>(T const a) {
+    return static_cast<T>((kFwd ? 1 : -1) * a);
+  };
   auto const is_better_or_eq = [](auto a, auto b) {
     return kFwd ? a <= b : a >= b;
   };
