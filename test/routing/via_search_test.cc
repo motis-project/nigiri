@@ -450,7 +450,7 @@ leg 0: (A, A) [2019-05-01 13:00] -> (J, J) [2019-05-01 13:30]
 
 
 )"sv;
-}
+}  // namespace
 
 TEST(routing, via_test_7_A_J_via_I_0m) {
   // A -> J, via I (0 min)
@@ -613,7 +613,7 @@ leg 2: (K1, K1) [2019-05-01 13:30] -> (J, J) [2019-05-01 14:00]
 
 
 )"sv;
-}
+}  // namespace
 
 TEST(routing, via_test_12_A_J_via_K_0m) {
   // A -> J, via K (0 min)
@@ -697,7 +697,7 @@ leg 2: (M, M) [2019-05-01 10:00] -> (Q, Q) [2019-05-01 11:00]
 
 
 )"sv;
-}
+}  // namespace
 
 TEST(routing, via_test_15_H_Q_via_N_0m) {
   // H -> Q, via N (0 min)
@@ -790,7 +790,7 @@ leg 3: (O, O) [2019-05-01 09:30] -> (Q, Q) [2019-05-01 10:00]
 
 
 )"sv;
-}
+}  // namespace
 
 TEST(routing, via_test_17_H_Q_via_N_0m_P_0m) {
   // H -> Q, via N (0 min), P (0 min)
@@ -980,7 +980,7 @@ leg 0: (M, M) [2019-05-01 09:00] -> (Q, Q) [2019-05-01 10:00]
 
 
 )"sv;
-}
+}  // namespace
 
 TEST(routing, via_test_23_M_Q_via_M_0m_O_0m) {
   // test: first via = start
