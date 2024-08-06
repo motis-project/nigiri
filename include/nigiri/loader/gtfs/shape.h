@@ -6,9 +6,12 @@
 #include <unordered_map>
 #include <vector>
 
+#include "utl/parser/cstr.h"
+
 #include "cista/containers/mmap_vec.h"
 #include "cista/containers/vecvec.h"
 #include "cista/mmap.h"
+
 #include "geo/latlng.h"
 
 #include "nigiri/types.h"
@@ -41,20 +44,27 @@ class shape {
 public:
   using key_type = uint32_t;
   using value_type = std::vector<geo::latlng>;
-
   using shape_coordinate_type =
       std::remove_const<decltype(helper::coordinate_precision)>::type;
-  struct Coordinate {
+  struct coordinate {
     shape_coordinate_type lat, lon;
-    bool operator==(Coordinate const& other) const = default;
+    bool operator==(coordinate const& other) const = default;
   };
-  using mmap_vecvec = mm_vecvec<key_type, Coordinate>;
-  using stored_type = Coordinate;
+  using mmap_vecvec = mm_vecvec<key_type, coordinate>;
+  using id_type = utl::cstr;
+  using stored_type = coordinate;
+  using builder_t = std::function<std::optional<shape>(const id_type&)>;
+
   value_type get() const ;
+  static builder_t get_builder();
+  static builder_t get_builder(const std::string_view, mmap_vecvec*);
 private:
-  mmap_vecvec* vecvec{nullptr};
-  key_type index;
+  shape(mmap_vecvec*, key_type);
+  mmap_vecvec* vecvec_{nullptr};
+  key_type index_;
 };
+
+// OLD START ??
 
 class ShapeMap {
 public:

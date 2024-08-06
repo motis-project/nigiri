@@ -1,6 +1,7 @@
 #include <filesystem>
 #include <iostream>
 #include <numeric>
+#include <optional>
 #include <ranges>
 #include <sstream>
 #include <stdexcept>
@@ -13,11 +14,63 @@
 
 #include "nigiri/loader/gtfs/shape.h"
 
-// #include "./test_data.h"
+#include "./test_data.h"
 
 using namespace nigiri::loader::gtfs;
 
-void cleanup_paths(ShapeMap::Paths const& paths) {
+const std::string_view shapes_data_aachen{
+      R"("shape_id","shape_pt_lat","shape_pt_lon","shape_pt_sequence"
+243,51.543652,7.217830,0
+243,51.478609,7.223275,1
+3105,50.553822,6.356876,0
+3105,50.560999,6.355028,1
+3105,50.560999,6.355028,2
+3105,50.565724,6.364605,3
+3105,50.578249,6.383394,7
+3105,50.578249,6.383394,8
+3105,50.581956,6.379866,11
+)"};
+
+const std::unordered_map<std::string, shape::value_type> shape_points_aachen {
+      {"243", {
+          {51.543652, 7.217830},
+          {51.478609, 7.223275},
+      }},
+      {"3105", {
+          {50.553822, 6.356876},
+          {50.560999, 6.355028},
+          {50.560999, 6.355028},
+          {50.565724, 6.364605},
+          {50.578249, 6.383394},
+          {50.578249, 6.383394},
+          {50.581956, 6.379866},
+      }},
+};
+
+shape::mmap_vecvec create_mmap_vecvec(std::vector<std::string>& paths) {
+  auto mode = cista::mmap::protection::WRITE;
+  return {
+      cista::basic_mmap_vec<shape::stored_type, std::uint64_t>{
+          cista::mmap{paths.at(0).data(), mode}},
+      cista::basic_mmap_vec<cista::base_t<shape::key_type>, std::uint64_t>{
+          cista::mmap{paths.at(1).data(), mode}}};
+}
+
+void cleanup_paths(std::vector<std::string> const& paths) {
+  for (auto path : paths) {
+    if (std::filesystem::exists(path)) {
+      std::filesystem::remove(path);
+    }
+  }
+}
+
+// auto create_temporary_paths(std::string base_path) {
+auto create_temporary_paths(std::string base_path) {
+  return std::vector<std::string> {base_path + "-data.dat", base_path + "-metadata.dat"};
+  // return std::make_pair(create_mmap_vecvec(paths), paths);
+}
+
+void cleanup_paths_old(ShapeMap::Paths const& paths) {
   for (auto path : std::vector<std::filesystem::path>{
            paths.id_file, paths.shape_data_file, paths.shape_metadata_file}) {
     if (std::filesystem::exists(path)) {
@@ -34,6 +87,35 @@ ShapeMap::Paths get_paths(std::string base_path) {
   };
 }
 
+TEST(gtfs, shapeBuilder_withoutData_getNull) {
+  auto builder = shape::get_builder();
+
+  auto shape = builder("1");
+  EXPECT_EQ(std::nullopt, shape);
+}
+
+TEST(gtfs, shapeBuilder_withData_getExistingShapePoints) {
+  auto paths = create_temporary_paths("shape-test-builder");
+  auto mmap = create_mmap_vecvec(paths);
+  // auto [mmap, paths] = create_temporary_paths("shape-test-builder");
+  std::cout << "&mmap: " << &mmap << std::endl;
+  auto guard = utl::make_raii(paths, cleanup_paths);
+
+  auto builder = shape::get_builder(shapes_data_aachen, &mmap);
+
+  auto shape_not_existing = builder("1");
+  auto shape_243 = builder("243");
+  auto shape_3105 = builder("3105");
+
+  EXPECT_EQ(std::nullopt, shape_not_existing);
+  EXPECT_TRUE(shape_243.has_value());
+  EXPECT_TRUE(shape_3105.has_value());
+  EXPECT_EQ(shape_points_aachen.at("243"), shape_243.value().get());
+  EXPECT_EQ(shape_points_aachen.at("3105"), shape_3105.value().get());
+}
+
+// OLD BEGIN ??
+
 TEST(gtfs, shapeConstruct_createData_canAccessData) {
   std::string shapes_data{
       R"("shape_id","shape_pt_lat","shape_pt_lon","shape_pt_sequence"
@@ -48,7 +130,7 @@ TEST(gtfs, shapeConstruct_createData_canAccessData) {
 3105,50.581956,6.379866,11
 )"};
   auto paths{get_paths("shape-test-create")};
-  auto guard = utl::make_raii(paths, cleanup_paths);
+  auto guard = utl::make_raii(paths, cleanup_paths_old);
 
   ShapeMap shapes(shapes_data, paths);
 
@@ -105,7 +187,7 @@ test id,50.553822,6.356876,0
 🚏,51.478609,7.223275,1
 )"};
   auto paths{get_paths("shape-test-valid-ids")};
-  auto guard = utl::make_raii(paths, cleanup_paths);
+  auto guard = utl::make_raii(paths, cleanup_paths_old);
 
   ShapeMap shapes(shapes_data, paths);
 
@@ -134,7 +216,7 @@ TEST(gtfs, shapeParse_randomColumOrder_parseCorrectly) {
 721,5.716989,123,50.838980
 )"};
   auto paths{get_paths("shape-test-random-column-order")};
-  auto guard = utl::make_raii(paths, cleanup_paths);
+  auto guard = utl::make_raii(paths, cleanup_paths_old);
 
   ShapeMap shapes(shapes_data, paths);
 
@@ -150,7 +232,7 @@ TEST(gtfs, shapeParse_notAscendingSequence_throwException) {
 1,50.636259,6.473668,0
 )"};
   auto paths{get_paths("shape-test-not-ascending-sequence")};
-  auto guard = utl::make_raii(paths, cleanup_paths);
+  auto guard = utl::make_raii(paths, cleanup_paths_old);
   std::stringstream buffer{};
   auto backup = std::clog.rdbuf(buffer.rdbuf());
   auto buffer_guard = utl::make_raii(
@@ -172,7 +254,7 @@ TEST(gtfs, shapeParse_notAscendingSequence_throwException) {
 // 1,50.636259,0
 // )"};
 //     auto paths{get_paths("shape-test-missing-column")};
-//   auto guard = utl::make_raii(paths, cleanup_paths);
+//   auto guard = utl::make_raii(paths, cleanup_paths_old);
 
 //     EXPECT_THROW(ShapeMap shapes(shapes_data, paths), InvalidShapesFormat);
 // }
@@ -194,7 +276,7 @@ TEST(gtfs, shapeParse_shuffledRows_parseAllData) {
 235,51.543652,7.217830,1
 )"};
   auto paths{get_paths("shape-test-shuffled-rows")};
-  auto guard = utl::make_raii(paths, cleanup_paths);
+  auto guard = utl::make_raii(paths, cleanup_paths_old);
 
   ShapeMap shapes(shapes_data, paths);
 
@@ -245,7 +327,7 @@ TEST(gtfs, shapeParse_delayedInsertWithNotAscendingSequence_throwException) {
 1,50.636259,6.473668,0
 )"};
   auto paths{get_paths("shape-test-not-ascending-sequence")};
-  auto guard = utl::make_raii(paths, cleanup_paths);
+  auto guard = utl::make_raii(paths, cleanup_paths_old);
   std::stringstream buffer{};
   auto backup = std::clog.rdbuf(buffer.rdbuf());
   auto buffer_guard = utl::make_raii(
@@ -270,7 +352,7 @@ null)"
 other,50.553822,6.356876,0
 )"};
   auto paths{get_paths("shape-test-id-with-null-byte")};
-  auto guard = utl::make_raii(paths, cleanup_paths);
+  auto guard = utl::make_raii(paths, cleanup_paths_old);
 
   ShapeMap shapes(shapes_data, paths);
 
