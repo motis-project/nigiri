@@ -112,7 +112,7 @@ TEST(routing, raptor_backward) {
                unixtime_t{sys_days{2020_y / March / 30}} + 6_hours},
       direction::kBackward);
 
-  ASSERT_EQ(2U, results.size());
+  EXPECT_EQ(2U, results.size());
 
   std::stringstream ss;
   ss << "\n";

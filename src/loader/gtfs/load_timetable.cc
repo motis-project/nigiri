@@ -81,16 +81,18 @@ bool applicable(dir const& d) {
 void load_timetable(loader_config const& config,
                     source_idx_t const src,
                     dir const& d,
-                    timetable& tt) {
+                    timetable& tt,
+                    assistance_times* assistance) {
   auto local_bitfield_indices = hash_map<bitfield, bitfield_idx_t>{};
-  return load_timetable(config, src, d, tt, local_bitfield_indices);
+  load_timetable(config, src, d, tt, local_bitfield_indices, assistance);
 }
 
 void load_timetable(loader_config const& config,
                     source_idx_t const src,
                     dir const& d,
                     timetable& tt,
-                    hash_map<bitfield, bitfield_idx_t>& bitfield_indices) {
+                    hash_map<bitfield, bitfield_idx_t>& bitfield_indices,
+                    assistance_times* assistance) {
   nigiri::scoped_timer const global_timer{"gtfs parser"};
 
   auto const load = [&](std::string_view file_name) -> file {
@@ -195,7 +197,7 @@ void load_timetable(loader_config const& config,
                             bitfield const* traffic_days) {
     expand_trip(
         trip_data, noon_offsets, tt, trips, traffic_days, tt.date_range_,
-        [&](utc_trip&& s) {
+        assistance, [&](utc_trip&& s) {
           auto const* stop_seq = get_stop_seq(s.trips_);
           auto const clasz = trip_data.get(s.trips_.front()).get_clasz(tt);
           auto const* bikes_allowed_seq = get_bikes_allowed_seq(s.trips_);

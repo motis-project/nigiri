@@ -31,6 +31,31 @@ struct stop {
   bool out_allowed() const { return out_allowed_ != 0U; }
   bool is_cancelled() const { return !in_allowed() && !out_allowed(); }
 
+  bool in_allowed(profile_idx_t const p) const {
+    return p == 2U ? in_allowed_wheelchair() : in_allowed();
+  }
+  bool out_allowed(profile_idx_t const p) const {
+    return p == 2U ? out_allowed_wheelchair() : out_allowed();
+  }
+
+  template <direction SearchDir>
+  bool can_start(bool const is_wheelchair) const {
+    if constexpr (SearchDir == direction::kForward) {
+      return is_wheelchair ? in_allowed_wheelchair() : in_allowed();
+    } else {
+      return is_wheelchair ? out_allowed_wheelchair() : out_allowed();
+    }
+  }
+
+  template <direction SearchDir>
+  bool can_finish(bool const is_wheelchair) const {
+    if constexpr (SearchDir == direction::kForward) {
+      return is_wheelchair ? out_allowed_wheelchair() : out_allowed();
+    } else {
+      return is_wheelchair ? in_allowed_wheelchair() : in_allowed();
+    }
+  }
+
   cista::hash_t hash() const {
     return cista::hash_combine(cista::BASE_HASH, value());
   }

@@ -127,6 +127,7 @@ void add_starts_in_interval(direction const search_dir,
                             location_idx_t const l,
                             location_offset_t const location_offset,
                             duration_t const max_start_offset,
+                            profile_idx_t const p,
                             std::vector<start>& starts,
                             bool const add_ontrip) {
   trace_start(
@@ -153,11 +154,11 @@ void add_starts_in_interval(direction const search_dir,
       // - entering at last stp for forward search
       // - exiting at first stp for backward search
       if ((search_dir == direction::kBackward &&
-           (i == 0U || !stp.out_allowed())) ||
+           (i == 0U || !stp.out_allowed(p))) ||
           (search_dir == direction::kForward &&
-           (i == location_seq.size() - 1 || !stp.in_allowed()))) {
+           (i == location_seq.size() - 1 || !stp.in_allowed(p)))) {
         trace_start("    skip: i={}, out_allowed={}, in_allowed={}\n", i,
-                    stp.out_allowed(), stp.in_allowed());
+                    stp.out_allowed(p), stp.in_allowed(p));
         continue;
       }
 
@@ -183,11 +184,11 @@ void add_starts_in_interval(direction const search_dir,
         }
 
         if ((search_dir == direction::kBackward &&
-             (i == 0U || !stp.out_allowed())) ||
+             (i == 0U || !stp.out_allowed(p))) ||
             (search_dir == direction::kForward &&
-             (i == location_seq.size() - 1 || !stp.in_allowed()))) {
+             (i == location_seq.size() - 1 || !stp.in_allowed(p)))) {
           trace_start("    skip: i={}, out_allowed={}, in_allowed={}\n", i,
-                      stp.out_allowed(), stp.in_allowed());
+                      stp.out_allowed(p), stp.in_allowed(p));
           continue;
         }
 
@@ -244,8 +245,7 @@ void get_starts(
     std::vector<start>& starts,
     bool const add_ontrip,
     profile_idx_t const prf_idx) {
-  hash_map<location_idx_t, duration_t> shortest_start;
-
+  auto shortest_start = hash_map<location_idx_t, duration_t>{};
   auto const update = [&](location_idx_t const l, duration_t const d) {
     auto& val = utl::get_or_create(shortest_start, l, [d]() { return d; });
     val = std::min(val, d);
@@ -271,7 +271,8 @@ void get_starts(
     std::visit(utl::overloaded{[&](interval<unixtime_t> const interval) {
                                  add_starts_in_interval(
                                      search_dir, tt, rtt, interval, l, o,
-                                     max_start_offset, starts, add_ontrip);
+                                     max_start_offset, prf_idx, starts,
+                                     add_ontrip);
                                },
                                [&](unixtime_t const t) {
                                  starts.emplace_back(
@@ -288,7 +289,8 @@ void get_starts(
             [&](interval<unixtime_t> const interval) {
               add_starts_in_interval(search_dir, tt, rtt, interval, stop,
                                      location_offset_t{std::span{offsets}},
-                                     max_start_offset, starts, add_ontrip);
+                                     max_start_offset, prf_idx, starts,
+                                     add_ontrip);
             },
             [&](unixtime_t const t) {
               auto const d = get_duration(search_dir, t, offsets, false);

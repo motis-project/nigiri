@@ -115,6 +115,7 @@ struct raptor {
                unixtime_t const worst_time_at_dest,
                profile_idx_t const prf_idx,
                pareto_set<journey>& results) {
+    auto const is_wheelchair = prf_idx == 2U;
     auto const end_k = std::min(max_transfers, kMaxTransfers) + 1U;
 
     auto const d_worst_at_dest = unix_to_delta(base(), worst_time_at_dest);
@@ -155,19 +156,22 @@ struct raptor {
       std::swap(state_.prev_station_mark_, state_.station_mark_);
       utl::fill(state_.station_mark_.blocks_, 0U);
 
-      any_marked =
-          (allowed_claszes_ == all_clasz_allowed())
-              ? (require_bike_transport_ ? loop_routes<false, true>(k)
-                                         : loop_routes<false, false>(k))
-              : (require_bike_transport_ ? loop_routes<true, true>(k)
-                                         : loop_routes<true, false>(k));
+      any_marked = (allowed_claszes_ == all_clasz_allowed())
+                       ? (require_bike_transport_
+                              ? loop_routes<false, true>(k, is_wheelchair)
+                              : loop_routes<false, false>(k, is_wheelchair))
+                       : (require_bike_transport_
+                              ? loop_routes<true, true>(k, is_wheelchair)
+                              : loop_routes<true, false>(k, is_wheelchair));
       if constexpr (Rt) {
         any_marked |=
             (allowed_claszes_ == all_clasz_allowed())
-                ? (require_bike_transport_ ? loop_rt_routes<false, true>(k)
-                                           : loop_rt_routes<false, false>(k))
-                : (require_bike_transport_ ? loop_rt_routes<true, true>(k)
-                                           : loop_rt_routes<true, false>(k));
+                ? (require_bike_transport_
+                       ? loop_rt_routes<false, true>(k, is_wheelchair)
+                       : loop_rt_routes<false, false>(k, is_wheelchair))
+                : (require_bike_transport_
+                       ? loop_rt_routes<true, true>(k, is_wheelchair)
+                       : loop_rt_routes<true, false>(k, is_wheelchair));
       }
 
       if (!any_marked) {
@@ -221,7 +225,7 @@ private:
   }
 
   template <bool WithClaszFilter, bool WithBikeFilter>
-  bool loop_routes(unsigned const k) {
+  bool loop_routes(unsigned const k, bool const is_wheelchair) {
     auto any_marked = false;
     state_.route_mark_.for_each_set_bit([&](auto const r_idx) {
       auto const r = route_idx_t{r_idx};
@@ -248,14 +252,15 @@ private:
 
       ++stats_.n_routes_visited_;
       trace("┊ ├k={} updating route {}\n", k, r);
-      any_marked |= section_bike_filter ? update_route<true>(k, r)
-                                        : update_route<false>(k, r);
+      any_marked |= section_bike_filter
+                        ? update_route<true>(k, r, is_wheelchair)
+                        : update_route<false>(k, r, is_wheelchair);
     });
     return any_marked;
   }
 
   template <bool WithClaszFilter, bool WithBikeFilter>
-  bool loop_rt_routes(unsigned const k) {
+  bool loop_rt_routes(unsigned const k, bool const is_wheelchair) {
     auto any_marked = false;
     state_.rt_transport_mark_.for_each_set_bit([&](auto const rt_t_idx) {
       auto const rt_t = rt_transport_idx_t{rt_t_idx};
@@ -283,8 +288,9 @@ private:
 
       ++stats_.n_routes_visited_;
       trace("┊ ├k={} updating rt transport {}\n", k, rt_t);
-      any_marked |= section_bike_filter ? update_rt_transport<true>(k, rt_t)
-                                        : update_rt_transport<false>(k, rt_t);
+      any_marked |= section_bike_filter
+                        ? update_rt_transport<true>(k, is_wheelchair, rt_t)
+                        : update_rt_transport<false>(k, is_wheelchair, rt_t);
     });
     return any_marked;
   }
@@ -496,7 +502,9 @@ private:
   }
 
   template <bool WithSectionBikeFilter>
-  bool update_rt_transport(unsigned const k, rt_transport_idx_t const rt_t) {
+  bool update_rt_transport(unsigned const k,
+                           bool const is_wheelchair,
+                           rt_transport_idx_t const rt_t) {
     auto const stop_seq = rtt_->rt_transport_location_seq_[rt_t];
     auto et = false;
     auto any_marked = false;
@@ -521,7 +529,7 @@ private:
         auto current_best = kInvalid;
         auto const by_transport = rt_time_at_stop(
             rt_t, stop_idx, kFwd ? event_type::kArr : event_type::kDep);
-        if (et && (kFwd ? stp.out_allowed() : stp.in_allowed())) {
+        if (et && stp.can_finish<SearchDir>(is_wheelchair)) {
           current_best = get_best(state_.round_times_[k - 1][l_idx],
                                   state_.tmp_[l_idx], state_.best_[l_idx]);
           if (is_better(by_transport, current_best) &&
@@ -549,7 +557,7 @@ private:
         break;
       }
 
-      if (is_last || !(kFwd ? stp.in_allowed() : stp.out_allowed()) ||
+      if (is_last || !(stp.can_start<SearchDir>(is_wheelchair)) ||
           !state_.prev_station_mark_[l_idx]) {
         continue;
       }
@@ -565,7 +573,9 @@ private:
   }
 
   template <bool WithSectionBikeFilter>
-  bool update_route(unsigned const k, route_idx_t const r) {
+  bool update_route(unsigned const k,
+                    route_idx_t const r,
+                    bool const is_wheelchair) {
     auto const stop_seq = tt_.route_location_seq_[r];
     bool any_marked = false;
 
@@ -600,7 +610,7 @@ private:
       }
 
       auto current_best = kInvalid;
-      if (et.is_valid() && (kFwd ? stp.out_allowed() : stp.in_allowed())) {
+      if (et.is_valid() && stp.can_finish<SearchDir>(is_wheelchair)) {
         auto const by_transport = time_at_stop(
             r, et, stop_idx, kFwd ? event_type::kArr : event_type::kDep);
         current_best = get_best(state_.round_times_[k - 1][l_idx],
@@ -659,7 +669,7 @@ private:
             (kFwd ? stp.out_allowed() : stp.in_allowed()));
       }
 
-      if (is_last || !(kFwd ? stp.in_allowed() : stp.out_allowed()) ||
+      if (is_last || !stp.can_start<SearchDir>(is_wheelchair) ||
           !state_.prev_station_mark_[l_idx]) {
         continue;
       }

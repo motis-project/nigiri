@@ -207,7 +207,7 @@ route_color frun::run_stop::get_route_color(event_type ev_type) const noexcept {
 }
 
 bool frun::run_stop::is_canceled() const noexcept {
-  return !get_stop().in_allowed() && !get_stop().out_allowed();
+  return get_stop().is_cancelled();
 }
 
 bool frun::run_stop::in_allowed() const noexcept {
