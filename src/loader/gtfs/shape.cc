@@ -91,27 +91,30 @@ auto load_shapes(const std::string_view data, shape::mmap_vecvec& vecvec) {
 shape::shape(mmap_vecvec::bucket bucket) : bucket_{bucket} {}
 
 shape::value_type shape::get() const {
-  auto coordinates = bucket_ | std::views::transform([](shape::coordinate const& c) {
-                       return geo::latlng{helper::fix_to_double(c.lat),
-                                          helper::fix_to_double(c.lon)};
-                     });
+  auto coordinates =
+      bucket_ | std::views::transform([](shape::coordinate const& c) {
+        return geo::latlng{helper::fix_to_double(c.lat),
+                           helper::fix_to_double(c.lon)};
+      });
   return value_type{coordinates.begin(), coordinates.end()};
 }
 
-std::function<std::optional<shape>(const shape::id_type&)> shape::get_builder() {
-  return [](const id_type&) {
-    return std::nullopt;
-  };
+std::function<std::optional<shape>(const shape::id_type&)>
+shape::get_builder() {
+  return [](const id_type&) { return std::nullopt; };
 }
 
-shape::builder_t shape::get_builder(const std::string_view data, mmap_vecvec* vecvec) {
+shape::builder_t shape::get_builder(const std::string_view data,
+                                    mmap_vecvec* vecvec) {
   if (vecvec == nullptr) {
     return get_builder();
   }
   auto const map = load_shapes(data, *vecvec);
   return [vecvec, map](const id_type& id) {
     auto found = map.find(id);
-    return (found != map.end()) ? std::make_optional<shape>(shape{(*vecvec)[found->second.offset]}) : std::nullopt;
+    return (found != map.end()) ? std::make_optional<shape>(
+                                      shape{(*vecvec)[found->second.offset]})
+                                : std::nullopt;
   };
 }
 

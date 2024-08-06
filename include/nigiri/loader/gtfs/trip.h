@@ -65,6 +65,7 @@ struct trip {
        std::string id,
        trip_direction_idx_t headsign,
        std::string short_name,
+       std::optional<shape>,
        bool bikes_allowed);
 
   trip(trip&&) = default;
@@ -85,12 +86,7 @@ struct trip {
 
   clasz get_clasz(timetable const&) const;
 
-  shape::value_type get_shape() const {
-    // TODO Move
-    return shape_
-      .and_then([](const shape& s) { return std::optional{s.get()}; })
-      .value_or(shape::value_type{});
-  }
+  shape::value_type get_shape() const;
 
   route const* route_{nullptr};
   bitfield const* service_{nullptr};
@@ -132,6 +128,7 @@ trip_data read_trips(
     timetable&,
     route_map_t const&,
     traffic_days_t const&,
+    shape::builder_t const&,
     std::string_view file_content,
     std::array<bool, kNumClasses> const& bikes_allowed_default);
 

@@ -36,9 +36,10 @@ public:
   using stored_type = coordinate;
   using builder_t = std::function<std::optional<shape>(const id_type&)>;
 
-  value_type get() const ;
+  value_type get() const;
   static builder_t get_builder();
   static builder_t get_builder(const std::string_view, mmap_vecvec*);
+
 private:
   shape(mmap_vecvec::bucket);
   mmap_vecvec::bucket bucket_;

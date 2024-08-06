@@ -92,7 +92,7 @@ void load_timetable(loader_config const& config,
                     dir const& d,
                     timetable& tt,
                     hash_map<bitfield, bitfield_idx_t>& bitfield_indices,
-                    shape::mmap_vecvec*) {
+                    shape::mmap_vecvec* shape_vecvec) {
   nigiri::scoped_timer const global_timer{"gtfs parser"};
 
   auto const load = [&](std::string_view file_name) -> file {
@@ -111,8 +111,13 @@ void load_timetable(loader_config const& config,
   auto const dates = read_calendar_date(load(kCalendarDatesFile).data());
   auto const service =
       merge_traffic_days(tt.internal_interval_days(), calendar, dates);
-  auto trip_data = read_trips(tt, routes, service, load(kTripsFile).data(),
-                              config.bikes_allowed_default_);
+  auto const shape_builder =
+      (shape_vecvec == nullptr)
+          ? shape::get_builder()
+          : shape::get_builder(load(kShapesFile).data(), shape_vecvec);
+  auto trip_data =
+      read_trips(tt, routes, service, shape_builder, load(kTripsFile).data(),
+                 config.bikes_allowed_default_);
   read_frequencies(trip_data, load(kFrequenciesFile).data());
   read_stop_times(tt, trip_data, stops, load(kStopTimesFile).data());
 

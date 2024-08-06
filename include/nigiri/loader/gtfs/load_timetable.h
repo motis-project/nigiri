@@ -1,7 +1,7 @@
 #pragma once
 
-#include "nigiri/loader/gtfs/shape.h"
 #include "nigiri/loader/dir.h"
+#include "nigiri/loader/gtfs/shape.h"
 #include "nigiri/loader/loader_interface.h"
 #include "nigiri/types.h"
 

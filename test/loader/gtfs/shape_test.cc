@@ -1,25 +1,22 @@
-#include <filesystem>
 #include <iostream>
-#include <numeric>
 #include <optional>
-#include <ranges>
 #include <sstream>
-#include <stdexcept>
 #include <vector>
 
 #include "gtest/gtest.h"
 
 #include "geo/polyline.h"
+
 #include "utl/raii.h"
 
-#include "nigiri/loader/gtfs/shape.h"
+#include "./shape_test.h"
 
 #include "./test_data.h"
 
 using namespace nigiri::loader::gtfs;
 
 const std::string_view shapes_data_aachen{
-      R"("shape_id","shape_pt_lat","shape_pt_lon","shape_pt_sequence"
+    R"("shape_id","shape_pt_lat","shape_pt_lon","shape_pt_sequence"
 243,51.543652,7.217830,0
 243,51.478609,7.223275,1
 3105,50.553822,6.356876,0
@@ -31,43 +28,23 @@ const std::string_view shapes_data_aachen{
 3105,50.581956,6.379866,11
 )"};
 
-const std::unordered_map<std::string, shape::value_type> shape_points_aachen {
-      {"243", {
-          {51.543652, 7.217830},
-          {51.478609, 7.223275},
-      }},
-      {"3105", {
-          {50.553822, 6.356876},
-          {50.560999, 6.355028},
-          {50.560999, 6.355028},
-          {50.565724, 6.364605},
-          {50.578249, 6.383394},
-          {50.578249, 6.383394},
-          {50.581956, 6.379866},
-      }},
+const std::unordered_map<std::string, shape::value_type> shape_points_aachen{
+    {"243",
+     {
+         {51.543652, 7.217830},
+         {51.478609, 7.223275},
+     }},
+    {"3105",
+     {
+         {50.553822, 6.356876},
+         {50.560999, 6.355028},
+         {50.560999, 6.355028},
+         {50.565724, 6.364605},
+         {50.578249, 6.383394},
+         {50.578249, 6.383394},
+         {50.581956, 6.379866},
+     }},
 };
-
-shape::mmap_vecvec create_mmap_vecvec(std::vector<std::string>& paths) {
-  auto mode = cista::mmap::protection::WRITE;
-  return {
-      cista::basic_mmap_vec<shape::stored_type, std::uint64_t>{
-          cista::mmap{paths.at(0).data(), mode}},
-      cista::basic_mmap_vec<cista::base_t<shape::key_type>, std::uint64_t>{
-          cista::mmap{paths.at(1).data(), mode}}};
-}
-
-void cleanup_paths(std::vector<std::string> const& paths) {
-  for (auto path : paths) {
-    if (std::filesystem::exists(path)) {
-      std::filesystem::remove(path);
-    }
-  }
-}
-
-auto create_temporary_paths(std::string base_path) {
-  std::vector<std::string> paths{base_path + "-data.dat", base_path + "-metadata.dat"};
-  return std::make_pair(create_mmap_vecvec(paths), paths);
-}
 
 TEST(gtfs, shapeBuilder_withoutData_getNull) {
   auto builder = shape::get_builder();
@@ -104,7 +81,9 @@ test id,50.553822,6.356876,0
       R"(,50.560999,6.355028,2
 ルーティング,50.565724,6.364605,3
 ,50.565724,6.364605,4
-)" "\0"s R"(,50.578249,6.383394,7
+)"
+      "\0"s
+      R"(,50.578249,6.383394,7
 🚀,51.543652,7.217830,0
 🚏,51.478609,7.223275,1
 )"};
@@ -113,7 +92,9 @@ test id,50.553822,6.356876,0
 
   auto builder = shape::get_builder(shapes_data, &mmap);
 
-  std::vector<std::string> ids{"test id"s, "----"s, "\x07\x13\x41\x08"s, "ルーティング"s, ""s, "\0"s, "🚀"s, "🚏"s};
+  std::vector<std::string> ids{"test id"s,      "----"s, "\x07\x13\x41\x08"s,
+                               "ルーティング"s, ""s,     "\0"s,
+                               "🚀"s,           "🚏"s};
   for (auto const& id : ids) {
     auto shape = builder(id);
     EXPECT_TRUE(shape.has_value());
@@ -127,7 +108,8 @@ TEST(gtfs, shapeParse_notAscendingSequence_progressAndLogError) {
 1,50.636512,6.473487,1
 1,50.636259,6.473668,0
 )"};
-  auto [mmap, paths] = create_temporary_paths("shape-test-not-ascending-sequence");
+  auto [mmap, paths] =
+      create_temporary_paths("shape-test-not-ascending-sequence");
   auto guard = utl::make_raii(paths, cleanup_paths);
   std::stringstream buffer{};
   auto backup = std::clog.rdbuf(buffer.rdbuf());
@@ -136,10 +118,7 @@ TEST(gtfs, shapeParse_notAscendingSequence_progressAndLogError) {
 
   auto builder = shape::get_builder(shapes_data, &mmap);
 
-  shape::value_type shape_points{
-    {50.636512, 6.473487},
-    {50.636259, 6.473668}
-  };
+  shape::value_type shape_points{{50.636512, 6.473487}, {50.636259, 6.473668}};
   std::clog.flush();
   std::string_view log{buffer.str()};
   auto shape = builder("1");
@@ -210,14 +189,16 @@ TEST(gtfs, shapeParse_shuffledRows_parseAllData) {
   }
 }
 
-TEST(gtfs, shapeParse_delayedInsertWithNotAscendingSequence_progressAndLogError) {
+TEST(gtfs,
+     shapeParse_delayedInsertWithNotAscendingSequence_progressAndLogError) {
   std::string shapes_data{
       R"("shape_id","shape_pt_lat","shape_pt_lon","shape_pt_sequence"
 1,50.636512,6.473487,1
 2,51.473214,7.139521,0
 1,50.636259,6.473668,0
 )"};
-  auto [mmap, paths] = create_temporary_paths("shape-test-not-ascending-sequence");
+  auto [mmap, paths] =
+      create_temporary_paths("shape-test-not-ascending-sequence");
   auto guard = utl::make_raii(paths, cleanup_paths);
   std::stringstream buffer{};
   auto backup = std::clog.rdbuf(buffer.rdbuf());

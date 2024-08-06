@@ -1,6 +1,9 @@
+#include "geo/polyline.h"
 #include "gtest/gtest.h"
 
 #include <algorithm>
+
+#include "utl/raii.h"
 
 #include "nigiri/loader/gtfs/agency.h"
 #include "nigiri/loader/gtfs/files.h"
@@ -8,6 +11,7 @@
 #include "nigiri/loader/loader_interface.h"
 #include "nigiri/timetable.h"
 
+#include "./shape_test.h"
 #include "./test_data.h"
 
 using namespace date;
@@ -17,6 +21,8 @@ namespace nigiri::loader::gtfs {
 
 TEST(gtfs, read_trips_example_data) {
   auto const files = example_files();
+  auto [shape_vecvec, paths] = create_temporary_paths("trips-example-data");
+  auto guard = utl::make_raii(paths, cleanup_paths);
 
   timetable tt;
   tt.date_range_ = interval{date::sys_days{July / 1 / 2006},
@@ -33,21 +39,24 @@ TEST(gtfs, read_trips_example_data) {
   auto const calendar = read_calendar(files.get_file(kCalenderFile).data());
   auto const services =
       merge_traffic_days(tt.internal_interval_days(), calendar, dates);
-  auto const trip_data =
-      read_trips(tt, routes, services, files.get_file(kTripsFile).data(),
-                 config.bikes_allowed_default_);
+  auto const shape_builder =
+      shape::get_builder(files.get_file(kShapesFile).data(), &shape_vecvec);
+  auto const trip_data = read_trips(tt, routes, services, shape_builder,
+                                    files.get_file(kTripsFile).data(),
+                                    config.bikes_allowed_default_);
 
   EXPECT_EQ(2U, trip_data.data_.size());
   EXPECT_NE(end(trip_data.trips_), trip_data.trips_.find("AWE1"));
-  EXPECT_EQ("A", trip_data.data_.at(trip_data.trips_.at("AWE1")).route_->id_);
-
-  EXPECT_EQ("Downtown",
-            tt.trip_direction(
-                trip_data.data_.at(trip_data.trips_.at("AWE1")).headsign_));
+  auto const& trip = trip_data.data_.at(trip_data.trips_.at("AWE1"));
+  EXPECT_EQ("A", trip.route_->id_);
+  EXPECT_EQ("Downtown", tt.trip_direction(trip.headsign_));
+  EXPECT_EQ(std::nullopt, trip.shape_);
 }
 
 TEST(gtfs, read_trips_berlin_data) {
   auto const files = berlin_files();
+  auto [shape_vecvec, paths] = create_temporary_paths("trips-berlin-data");
+  auto guard = utl::make_raii(paths, cleanup_paths);
 
   timetable tt;
   tt.date_range_ = interval{date::sys_days{July / 1 / 2006},
@@ -64,29 +73,32 @@ TEST(gtfs, read_trips_berlin_data) {
   auto const calendar = read_calendar(files.get_file(kCalenderFile).data());
   auto const services =
       merge_traffic_days(tt.internal_interval_days(), calendar, dates);
-  auto const trip_data =
-      read_trips(tt, routes, services, files.get_file(kTripsFile).data(),
-                 config.bikes_allowed_default_);
+  auto const shape_builder =
+      shape::get_builder(files.get_file(kShapesFile).data(), &shape_vecvec);
+  auto const trip_data = read_trips(tt, routes, services, shape_builder,
+                                    files.get_file(kTripsFile).data(),
+                                    config.bikes_allowed_default_);
 
   EXPECT_EQ(3, trip_data.data_.size());
 
   EXPECT_NE(end(trip_data.trips_), trip_data.trips_.find("1"));
-  EXPECT_EQ("1", trip_data.data_[trip_data.trips_.at("1")].route_->id_);
-  EXPECT_EQ(
-      "Flughafen Schönefeld Terminal (Airport)",
-      tt.trip_direction(trip_data.data_[trip_data.trips_.at("1")].headsign_));
+  auto const& trip1 = trip_data.data_[trip_data.trips_.at("1")];
+  EXPECT_EQ("1", trip1.route_->id_);
+  EXPECT_EQ("Flughafen Schönefeld Terminal (Airport)",
+            tt.trip_direction(trip1.headsign_));
+  EXPECT_NE(std::nullopt, trip1.shape_);
 
   EXPECT_NE(end(trip_data.trips_), trip_data.trips_.find("2"));
-  EXPECT_EQ("1", trip_data.data_[trip_data.trips_.at("2")].route_->id_);
-  EXPECT_EQ(
-      "S Potsdam Hauptbahnhof",
-      tt.trip_direction(trip_data.data_[trip_data.trips_.at("2")].headsign_));
+  auto const& trip2 = trip_data.data_[trip_data.trips_.at("2")];
+  EXPECT_EQ("1", trip2.route_->id_);
+  EXPECT_EQ("S Potsdam Hauptbahnhof", tt.trip_direction(trip2.headsign_));
+  EXPECT_NE(std::nullopt, trip2.shape_);
 
   EXPECT_NE(end(trip_data.trips_), trip_data.trips_.find("3"));
-  EXPECT_EQ("2", trip_data.data_[trip_data.trips_.at("3")].route_->id_);
-  EXPECT_EQ(
-      "Golzow (PM), Schule",
-      tt.trip_direction(trip_data.data_[trip_data.trips_.at("3")].headsign_));
+  auto const& trip3 = trip_data.data_[trip_data.trips_.at("3")];
+  EXPECT_EQ("2", trip3.route_->id_);
+  EXPECT_EQ("Golzow (PM), Schule", tt.trip_direction(trip3.headsign_));
+  EXPECT_NE(std::nullopt, trip3.shape_);
 }
 
 }  // namespace nigiri::loader::gtfs
