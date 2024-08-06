@@ -64,10 +64,9 @@ void cleanup_paths(std::vector<std::string> const& paths) {
   }
 }
 
-// auto create_temporary_paths(std::string base_path) {
 auto create_temporary_paths(std::string base_path) {
-  return std::vector<std::string> {base_path + "-data.dat", base_path + "-metadata.dat"};
-  // return std::make_pair(create_mmap_vecvec(paths), paths);
+  std::vector<std::string> paths{base_path + "-data.dat", base_path + "-metadata.dat"};
+  return std::make_pair(create_mmap_vecvec(paths), paths);
 }
 
 void cleanup_paths_old(ShapeMap::Paths const& paths) {
@@ -95,10 +94,7 @@ TEST(gtfs, shapeBuilder_withoutData_getNull) {
 }
 
 TEST(gtfs, shapeBuilder_withData_getExistingShapePoints) {
-  auto paths = create_temporary_paths("shape-test-builder");
-  auto mmap = create_mmap_vecvec(paths);
-  // auto [mmap, paths] = create_temporary_paths("shape-test-builder");
-  std::cout << "&mmap: " << &mmap << std::endl;
+  auto [mmap, paths] = create_temporary_paths("shape-test-builder");
   auto guard = utl::make_raii(paths, cleanup_paths);
 
   auto builder = shape::get_builder(shapes_data_aachen, &mmap);

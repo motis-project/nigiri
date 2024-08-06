@@ -20,8 +20,7 @@
 namespace nigiri::loader::gtfs {
 
 struct shape_point {
-  // shape::id_type const id;
-  std::string const id;
+  shape::id_type const id;
   shape::stored_type const coordinate;
   size_t const seq;
   struct entry {
@@ -35,8 +34,7 @@ struct shape_point {
 
 const shape_point shape_point::from_entry(entry const& entry) {
   return shape_point{
-      // entry.id->view(),
-      entry.id->to_str(),
+      entry.id->view(),
       {
           helper::double_to_fix(entry.lat.val()),
           helper::double_to_fix(entry.lon.val()),
@@ -45,21 +43,18 @@ const shape_point shape_point::from_entry(entry const& entry) {
   };
 }
 
-// auto load_shapes(const std::string_view, shape::mmap_vecvec&) {
 auto load_shapes(const std::string_view data, shape::mmap_vecvec& vecvec) {
   struct state {
     shape::key_type offset{};
     size_t last_seq{};
   };
-  // hash_map<shape::id_type, state> states;
-  // hash_map<std::string, state> states;
-  std::unordered_map<std::string, state> states;
+  hash_map<shape::id_type, state> states;
 
   auto store_to_map = [&vecvec, &states](shape_point const point) {
     if (auto found = states.find(point.id); found != states.end()) {
       auto& state = found->second;
       if (state.last_seq >= point.seq) {
-        log(log_lvl::info, "loader.gtfs.shape",
+        log(log_lvl::error, "loader.gtfs.shape",
             "Non monotonic sequence for shape_id '{}': Sequence number {} "
             "followed by {}",
             point.id, state.last_seq, point.seq);
@@ -93,29 +88,20 @@ shape::value_type shape::get() const {
                      });
   return value_type{coordinates.begin(), coordinates.end()};
 }
+
 std::function<std::optional<shape>(const shape::id_type&)> shape::get_builder() {
   return [](const id_type&) {
     return std::nullopt;
   };
 }
-#include <format>
+
 shape::builder_t shape::get_builder(const std::string_view data, mmap_vecvec* vecvec) {
-  assert(vecvec != nullptr);
-  // std::cout << "Loading map" << std::endl;
+  if (vecvec == nullptr) {
+    return get_builder();
+  }
   auto const map = load_shapes(data, *vecvec);
-  // std::cout << "map loaded" << std::endl;
-  // std::cout << std::format("Contains: {} {} {}", map.contains("3105"), map.contains("243"), map.contains("1")) << std::endl;
-  // return [map](const id_type& id) {
   return [vecvec, map](const id_type& id) {
-    std::string s{id.to_str()};
-    // std::cout << "Searching ..." << std::endl;
-    // std::cout << "Size: " << map.size() << "  ID: " << id.length() << std::endl;
-    // std::cout << std::format("DEBUG: {}", map.contains(id)) << std::endl;
-    auto found = map.find(s);
-    // std::cout << "Size: " << map.size() << "  ID: " << id.length() << std::endl;
-    // std::cout << std::format("Found {}", found != map.end()) << std::endl;
-    std::cout << "DEBUG " << ((found != map.end()) ? "AAA" : "BBB") << std::endl;
-    // return std::nullopt;
+    auto found = map.find(id);
     return (found != map.end()) ? std::make_optional<shape>(shape{vecvec, found->second.offset}) : std::nullopt;
   };
 }
