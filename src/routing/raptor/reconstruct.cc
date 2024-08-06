@@ -33,7 +33,9 @@ std::optional<journey::leg> find_start_footpath(timetable const& tt,
   trace_rc_find_start_footpath;
 
   constexpr auto const kFwd = SearchDir == direction::kForward;
-  auto const dir = [&](auto a) { return (kFwd ? 1 : -1) * a; };
+  auto const dir = [&]<typename T>(T const a) {
+    return static_cast<T>((kFwd ? 1 : -1) * a);
+  };
   auto const is_better_or_eq = [](auto a, auto b) {
     return kFwd ? a <= b : a >= b;
   };

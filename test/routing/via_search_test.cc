@@ -495,7 +495,7 @@ TEST(routing, via_test_2) {
 
   test::with_rt_trips(
       tt, sys_days{2019_y / May / 1}, {"T0", "T1"},
-      [&](rt_timetable const* rtt) {
+      [&](rt_timetable const* rtt, std::string_view rt_trips) {
         for (auto const& [dir, start_time] :
              {std::pair{direction::kForward,
                         time("2019-05-01 10:00 Europe/Berlin")},
@@ -510,7 +510,8 @@ TEST(routing, via_test_2) {
                              .via_stops_ = {{loc(tt, "B"), 0_minutes}}},
               dir);
 
-          EXPECT_EQ(expected_A_D_via_B_0min, results_to_str(results, tt));
+          EXPECT_EQ(expected_A_D_via_B_0min, results_to_str(results, tt))
+              << " rt trips: " << rt_trips;
         }
       });
 }
@@ -540,7 +541,7 @@ TEST(routing, via_test_4) {
 
   test::with_rt_trips(
       tt, sys_days{2019_y / May / 1}, {"T0", "T2"},
-      [&](rt_timetable const* rtt) {
+      [&](rt_timetable const* rtt, std::string_view rt_trips) {
         for (auto const& [dir, start_time] :
              {std::pair{direction::kForward,
                         time("2019-05-01 10:00 Europe/Berlin")},
@@ -555,7 +556,8 @@ TEST(routing, via_test_4) {
                              .via_stops_ = {{loc(tt, "B"), 10_minutes}}},
               dir);
 
-          EXPECT_EQ(expected_A_D_via_B_10min, results_to_str(results, tt));
+          EXPECT_EQ(expected_A_D_via_B_10min, results_to_str(results, tt))
+              << " rt trips: " << rt_trips;
         }
       });
 }
@@ -803,7 +805,7 @@ TEST(routing, via_test_17) {
 
   test::with_rt_trips(
       tt, sys_days{2019_y / May / 1}, {"T11", "T10"},
-      [&](rt_timetable const* rtt) {
+      [&](rt_timetable const* rtt, std::string_view rt_trips) {
         for (auto const& [dir, start_time] :
              {std::pair{direction::kForward,
                         time("2019-05-01 11:00 Europe/Berlin")},
@@ -819,7 +821,8 @@ TEST(routing, via_test_17) {
                                             {loc(tt, "P"), 0_minutes}}},
               dir);
 
-          EXPECT_EQ(expected_H_Q_via_N_0min, results_to_str(results, tt));
+          EXPECT_EQ(expected_H_Q_via_N_0min, results_to_str(results, tt))
+              << " rt trips: " << rt_trips;
         }
       });
 }
@@ -829,7 +832,7 @@ TEST(routing, via_test_18) {
 
   test::with_rt_trips(
       tt, sys_days{2019_y / May / 1}, {"T11", "T10"},
-      [&](rt_timetable const* rtt) {
+      [&](rt_timetable const* rtt, std::string_view rt_trips) {
         // intermodal start: H / O -> Q, via P (0 min)
         auto const results = search(
             tt, rtt,
@@ -843,7 +846,8 @@ TEST(routing, via_test_18) {
             direction::kForward);
 
         EXPECT_EQ(expected_intermodal_HO_Q_via_P_0min,
-                  results_to_str(results, tt));
+                  results_to_str(results, tt))
+            << " rt trips: " << rt_trips;
       });
 }
 
@@ -852,7 +856,7 @@ TEST(routing, via_test_19) {
 
   test::with_rt_trips(
       tt, sys_days{2019_y / May / 1}, {"T11", "T10"},
-      [&](rt_timetable const* rtt) {
+      [&](rt_timetable const* rtt, std::string_view rt_trips) {
         // intermodal start: H / O -> Q, via O (0 min), P (0 min)
         auto const results = search(
             tt, rtt,
@@ -867,7 +871,8 @@ TEST(routing, via_test_19) {
             direction::kForward);
 
         EXPECT_EQ(expected_intermodal_HO_Q_via_P_0min,
-                  results_to_str(results, tt));
+                  results_to_str(results, tt))
+            << " rt trips: " << rt_trips;
       });
 }
 
@@ -876,7 +881,7 @@ TEST(routing, via_test_20) {
 
   test::with_rt_trips(
       tt, sys_days{2019_y / May / 1}, {"T11", "T10"},
-      [&](rt_timetable const* rtt) {
+      [&](rt_timetable const* rtt, std::string_view rt_trips) {
         for (auto const& [dir, start_time] :
              {std::pair{direction::kForward,
                         time("2019-05-01 11:15 Europe/Berlin")},
@@ -902,7 +907,8 @@ TEST(routing, via_test_20) {
                 std::regex_replace(results_str, std::regex("START"), "END");
           }
 
-          EXPECT_EQ(expected_intermodal_N_P_via_P_0min, results_str);
+          EXPECT_EQ(expected_intermodal_N_P_via_P_0min, results_str)
+              << " rt trips: " << rt_trips;
         }
       });
 }

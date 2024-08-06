@@ -53,7 +53,8 @@ struct raptor {
   raptor(timetable const& tt,
          rt_timetable const* rtt,
          raptor_state& state,
-         std::array<bitvec, kMaxVias + 1>& is_dest,
+         bitvec& is_dest,
+         std::array<bitvec, kMaxVias>& is_via,
          std::vector<std::uint16_t>& dist_to_dest,
          std::vector<std::uint16_t>& lb,
          std::vector<via_stop> const& via_stops,
@@ -65,6 +66,7 @@ struct raptor {
         rtt_{rtt},
         state_{state},
         is_dest_{is_dest},
+        is_via_{is_via},
         dist_to_end_{dist_to_dest},
         lb_{lb},
         via_stops_{via_stops},
@@ -109,7 +111,7 @@ struct raptor {
 
   void add_start(location_idx_t const l, unixtime_t const t) {
     auto v = 0U;
-    if (n_vias_ != 0 && is_dest_[0][to_idx(l)]) {
+    if (n_vias_ != 0 && is_via_[0][to_idx(l)]) {
       v = 1U;
     }
     trace_upd("adding start {}: {}, v={}\n", location{tt_, l}, t, v);
@@ -139,7 +141,7 @@ struct raptor {
               get_best(state_.round_times_[k][i][v], state_.best_[i][v]);
         }
       }
-      is_dest_[n_vias_].for_each_set_bit([&](std::uint64_t const i) {
+      is_dest_.for_each_set_bit([&](std::uint64_t const i) {
         update_time_at_dest(k, state_.best_[i][n_vias_]);
       });
 
@@ -198,7 +200,7 @@ struct raptor {
       trace_print_state_after_round();
     }
 
-    is_dest_[n_vias_].for_each_set_bit([&](auto const i) {
+    is_dest_.for_each_set_bit([&](auto const i) {
       for (auto k = 1U; k != end_k; ++k) {
         auto const dest_time = state_.round_times_[k][i][n_vias_];
         if (dest_time != kInvalid) {
@@ -308,8 +310,8 @@ private:
           continue;
         }
 
-        auto const is_dest = v == n_vias_ && is_dest_[v][i];
-        auto const is_via = v != n_vias_ && is_dest_[v][i];
+        auto const is_dest = v == n_vias_ && is_dest_[i];
+        auto const is_via = v != n_vias_ && is_via_[v][i];
         auto const target_v = is_via ? v + 1 : v;
         auto const stay = is_via ? via_stops_[v].stay_ : 0_minutes;
 
@@ -373,11 +375,11 @@ private:
           }
 
           auto const start_is_via =
-              v != n_vias_ && is_dest_[v][static_cast<bitvec::size_type>(i)];
+              v != n_vias_ && is_via_[v][static_cast<bitvec::size_type>(i)];
           auto const start_v = start_is_via ? v + 1 : v;
 
           auto const target_is_via =
-              start_v != n_vias_ && is_dest_[start_v][target];
+              start_v != n_vias_ && is_via_[start_v][target];
           auto const target_v = target_is_via ? start_v + 1 : start_v;
           auto stay = 0_minutes;
           if (start_is_via) {
@@ -426,7 +428,7 @@ private:
             state_.round_times_[k][target][target_v] = fp_target_time;
             state_.best_[target][target_v] = fp_target_time;
             state_.station_mark_.set(target, true);
-            if (target_v == n_vias_ && is_dest_[n_vias_][target]) {
+            if (target_v == n_vias_ && is_dest_[target]) {
               update_time_at_dest(k, fp_target_time);
             }
           } else {
@@ -504,7 +506,7 @@ private:
           auto target_v = v + v_offset[v];
           if (et[v] && (kFwd ? stp.out_allowed() : stp.in_allowed())) {
             auto const is_via = target_v != n_vias_ &&
-                                is_dest_[target_v][l_idx] &&
+                                is_via_[target_v][l_idx] &&
                                 via_stops_[target_v].stay_ == 0_minutes;
             if (is_via) {
               ++v_offset[v];
@@ -624,15 +626,16 @@ private:
           auto const by_transport = time_at_stop(
               r, et[v], stop_idx, kFwd ? event_type::kArr : event_type::kDep);
 
-          auto const is_via = target_v != n_vias_ &&
-                              is_dest_[target_v][l_idx] &&
+          auto const is_via = target_v != n_vias_ && is_via_[target_v][l_idx] &&
                               via_stops_[target_v].stay_ == 0_minutes;
 
           if (n_vias_ != 0) {
             trace_upd(
                 "┊ │k={} v={}(+{})={} via_count={} is_via_dest={} stay={} "
                 "is_via={}\n",
-                k, v, v_offset[v], target_v, n_vias_, is_dest_[target_v][l_idx],
+                k, v, v_offset[v], target_v, n_vias_,
+                target_v != n_vias_ ? is_via_[target_v][l_idx]
+                                    : is_dest_[l_idx],
                 via_stops_[target_v].stay_, is_via);
           }
 
@@ -929,7 +932,8 @@ private:
   timetable const& tt_;
   rt_timetable const* rtt_{nullptr};
   raptor_state& state_;
-  std::array<bitvec, kMaxVias + 1>& is_dest_;
+  bitvec& is_dest_;
+  std::array<bitvec, kMaxVias>& is_via_;
   std::vector<std::uint16_t>& dist_to_end_;
   std::vector<std::uint16_t>& lb_;
   std::vector<via_stop> const& via_stops_;
