@@ -3,6 +3,7 @@
 #include "utl/parser/line_range.h"
 #include "utl/pipes/for_each.h"
 #include "utl/pipes/transform.h"
+#include "utl/progress_tracker.h"
 
 #include "nigiri/loader/gtfs/shape.h"
 #include "nigiri/logging.h"
@@ -59,7 +60,11 @@ auto load_shapes(const std::string_view data, shape::mmap_vecvec& vecvec) {
     }
   };
 
-  utl::line_range{utl::make_buf_reader(data, utl::noop_progress_consumer{})} |
+  auto const progress_tracker = utl::get_active_progress_tracker();
+  progress_tracker->status("Parse Shapes")
+      .out_bounds(0.F, 1.F)
+      .in_high(data.size());
+  utl::line_range{utl::make_buf_reader(data, progress_tracker->update_fn())} |
       utl::csv<shape_point::entry>() |
       utl::transform([&](shape_point::entry const& entry) {
         return shape_point::from_entry(entry);
