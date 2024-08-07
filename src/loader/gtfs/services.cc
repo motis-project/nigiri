@@ -10,25 +10,18 @@ namespace nigiri::loader::gtfs {
 enum class bound { kFirst, kLast };
 
 bitfield calendar_to_bitfield(interval<date::sys_days> const& tt_interval,
-                              std::string const& service_name,
                               calendar const& c) {
-  auto const from = std::max(c.interval_.from_, tt_interval.from_);
-  auto const to = std::min(c.interval_.to_, tt_interval.to_);
+  if (!tt_interval.overlaps(c.interval_)) {
+    return {};
+  }
+  auto const from = tt_interval.clamp(c.interval_.from_);
+  auto const to = tt_interval.clamp(c.interval_.to_);
   auto bit = (from - tt_interval.from_).count();
   auto traffic_days = bitfield{};
-  for (auto d = from; d != to; d = d + date::days{1}, ++bit) {
-    if (bit >= kMaxDays) {
-      log(log_lvl::error, "loader.gtfs.services",
-          "date {} for service {} out of range [tt_interval={}, calendar={}, "
-          "iterating={}]",
-          fmt::streamed(d), service_name, tt_interval, c.interval_,
-          interval{from, to});
-      break;
-    }
-    auto const weekday_index =
-        date::year_month_weekday{d}.weekday().c_encoding();
-    traffic_days.set(static_cast<std::size_t>(bit),
-                     c.week_days_.test(weekday_index));
+  for (auto d = from; d < to && bit < kMaxDays; d = d + date::days{1}, ++bit) {
+    traffic_days.set(
+        static_cast<std::size_t>(bit),
+        c.week_days_.test(date::year_month_weekday{d}.weekday().c_encoding()));
   }
   return traffic_days;
 }
@@ -56,8 +49,8 @@ traffic_days_t merge_traffic_days(
 
   auto s = traffic_days_t{};
   for (auto const& [service_name, calendar] : base) {
-    s[service_name] = std::make_unique<bitfield>(
-        calendar_to_bitfield(tt_interval, service_name, calendar));
+    s[service_name] =
+        std::make_unique<bitfield>(calendar_to_bitfield(tt_interval, calendar));
   }
 
   progress_tracker->status("Add Service Exceptions")
