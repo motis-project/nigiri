@@ -66,8 +66,8 @@ TEST(gtfs, shapeBuilder_withData_getExistingShapePoints) {
   EXPECT_EQ(std::nullopt, shape_not_existing);
   EXPECT_TRUE(shape_243.has_value());
   EXPECT_TRUE(shape_3105.has_value());
-  EXPECT_EQ(shape_points_aachen.at("243"), shape_243.value().get());
-  EXPECT_EQ(shape_points_aachen.at("3105"), shape_3105.value().get());
+  EXPECT_EQ(shape_points_aachen.at("243"), shape_243.value()());
+  EXPECT_EQ(shape_points_aachen.at("3105"), shape_3105.value()());
 }
 
 TEST(gtfs, shapeGet_unusualShapeIds_getAllIds) {
@@ -98,7 +98,7 @@ test id,50.553822,6.356876,0
   for (auto const& id : ids) {
     auto shape = builder(id);
     EXPECT_TRUE(shape.has_value());
-    EXPECT_EQ(1, shape->get().size());
+    EXPECT_EQ(1, (*shape)().size());
   }
 }
 
@@ -123,7 +123,7 @@ TEST(gtfs, shapeParse_notAscendingSequence_progressAndLogError) {
   std::string_view log{buffer.str()};
   auto shape = builder("1");
   EXPECT_TRUE(shape.has_value());
-  EXPECT_EQ(shape_points, shape.value().get());
+  EXPECT_EQ(shape_points, shape.value()());
   EXPECT_TRUE(
       log.contains("Non monotonic sequence for shape_id '1': Sequence number 1 "
                    "followed by 0"));
@@ -185,7 +185,7 @@ TEST(gtfs, shapeParse_shuffledRows_parseAllData) {
   for (auto [id, coordinates] : shape_points) {
     auto shape = builder(id);
     EXPECT_TRUE(shape.has_value());
-    EXPECT_EQ(coordinates, shape->get());
+    EXPECT_EQ(coordinates, (*shape)());
   }
 }
 

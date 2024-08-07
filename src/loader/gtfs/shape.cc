@@ -90,7 +90,7 @@ auto load_shapes(const std::string_view data, shape::mmap_vecvec& vecvec) {
 
 shape::shape(mmap_vecvec::bucket bucket) : bucket_{bucket} {}
 
-shape::value_type shape::get() const {
+shape::value_type shape::operator()() const {
   auto coordinates =
       bucket_ | std::views::transform([](shape::coordinate const& c) {
         return geo::latlng{helper::fix_to_double(c.lat),

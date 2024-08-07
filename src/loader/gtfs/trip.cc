@@ -243,7 +243,7 @@ clasz trip::get_clasz(timetable const& tt) const {
 }
 
 shape::value_type trip::get_shape() const {
-  return shape_.and_then([](const shape& s) { return std::optional{s.get()}; })
+  return shape_.and_then([](const shape& s) { return std::optional{s()}; })
       .value_or(shape::value_type{});
 }
 

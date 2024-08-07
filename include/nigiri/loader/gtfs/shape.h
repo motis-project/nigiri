@@ -36,7 +36,7 @@ public:
   using stored_type = coordinate;
   using builder_t = std::function<std::optional<shape>(const id_type&)>;
 
-  value_type get() const;
+  value_type operator()() const;
   static builder_t get_builder();
   static builder_t get_builder(const std::string_view, mmap_vecvec*);
 
