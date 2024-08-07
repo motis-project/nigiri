@@ -52,7 +52,7 @@ struct query {
       nigiri::routing::location_match_mode::kExact};
   location_match_mode dest_match_mode_{
       nigiri::routing::location_match_mode::kExact};
-  bool use_start_footpaths_{true};
+  bool use_start_footpaths_{false};
   std::vector<offset> start_{}, destination_{};
   hash_map<location_idx_t, std::vector<td_offset>> td_start_{}, td_dest_{};
   duration_t max_start_offset_{kMaxTravelTime};

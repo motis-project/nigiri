@@ -20,6 +20,7 @@ agency_map_t read_agencies(timetable& tt,
   struct agency {
     utl::csv_col<utl::cstr, UTL_NAME("agency_id")> id_;
     utl::csv_col<utl::cstr, UTL_NAME("agency_name")> name_;
+    utl::csv_col<utl::cstr, UTL_NAME("agency_url")> url_;
     utl::csv_col<utl::cstr, UTL_NAME("agency_timezone")> tz_name_;
   };
 
@@ -34,7 +35,7 @@ agency_map_t read_agencies(timetable& tt,
              return std::pair{
                  a.id_->to_str(),
                  tt.register_provider(
-                     {a.id_->view(), a.name_->view(),
+                     {a.id_->view(), a.name_->view(), a.url_->view(),
                       get_tz_idx(tt, timezones, a.tz_name_->trim().view())})};
            })  //
          | utl::to<agency_map_t>();

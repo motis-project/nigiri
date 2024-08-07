@@ -177,8 +177,8 @@ struct attribute {
 
 struct provider {
   CISTA_COMPARABLE()
-  CISTA_PRINTABLE(provider, "short_name", "long_name")
-  string short_name_, long_name_;
+  CISTA_PRINTABLE(provider, "short_name", "long_name", "url")
+  string short_name_, long_name_, url_;
   timezone_idx_t tz_{timezone_idx_t::invalid()};
 };
 
@@ -292,7 +292,11 @@ enum class location_type : std::uint8_t {
 };
 
 enum class event_type { kArr, kDep };
-enum class direction { kForward, kBackward };
+
+enum class direction {
+  kForward,
+  kBackward  // start = final arrival, destination = journey departure
+};
 
 inline constexpr direction flip(direction const d) noexcept {
   return d == direction::kForward ? direction::kBackward : direction::kForward;
