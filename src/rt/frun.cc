@@ -358,7 +358,8 @@ void frun::run_stop::print(std::ostream& out,
 
   // Print stop index, location name.
   auto const s = get_stop();
-  fmt::print(out, "  {:5}, {:5}, {:5}, {:5}  | {:2}: {:7} {:.<48}",
+  fmt::print(out,
+             "  in={:5}, out={:5}, win={:5}, wout={:5}  | {:2}: {:7} {:.<48}",
              s.in_allowed(), s.out_allowed(), s.in_allowed_wheelchair(),
              s.out_allowed_wheelchair(), stop_idx_, get_location().id_, name());
 

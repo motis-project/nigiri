@@ -58,7 +58,7 @@ R2,S,T2,RE 2,
 trip_id,arrival_time,departure_time,stop_id,stop_sequence,pickup_type,drop_off_type
 T1,00:00:00,00:00:00,A,1,0,0
 T1,00:30:00,00:30:00,B1,2,0,0
-T1,01:00:00,01:00:00,C,3,0,0
+T1,01:10:00,01:10:00,C,3,0,0
 T2,00:40:00,00:40:00,B2,1,0,0
 T2,00:50:00,00:50:00,C,2,0,0
 
@@ -83,7 +83,7 @@ std::string to_string(timetable const& tt,
 }  // namespace
 
 TEST(routing, wheelchair_assistance) {
-  constexpr auto const kProfile = profile_idx_t{2U};
+  constexpr auto const kProfile = profile_idx_t{0U};
 
   auto assistance = read_assistance(kAssistance);
 
@@ -105,8 +105,9 @@ TEST(routing, wheelchair_assistance) {
 
   auto const results = raptor_search(
       tt, nullptr, "A", "C",
-      unixtime_t{sys_days{2024_y / June / 19} + 21_hours}, direction::kForward,
-      routing::all_clasz_allowed(), false, kProfile);
+      interval{unixtime_t{sys_days{2024_y / June / 19} + 5_hours},
+               unixtime_t{sys_days{2024_y / June / 19} + 21_hours}},
+      direction::kForward, routing::all_clasz_allowed(), false, kProfile);
 
   std::cout << to_string(tt, results) << "\n";
 }

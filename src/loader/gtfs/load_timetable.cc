@@ -172,10 +172,7 @@ void load_timetable(loader_config const& config,
         trip_data, noon_offsets, tt, trips, traffic_days, tt.date_range_,
         assistance, [&](utc_trip&& s) {
           auto const* stop_seq = get_stop_seq(trip_data, s, stop_seq_cache);
-          for (auto const& x : *stop_seq) {
-            std::cout << stop{x} << "\n";
-          }
-
+          assert(stop_seq->size() > 1U);
           auto const clasz = trip_data.get(s.trips_.front()).get_clasz(tt);
           auto const* bikes_allowed_seq = get_bikes_allowed_seq(s.trips_);
           auto const it = route_services.find(

@@ -239,6 +239,9 @@ inline stop_seq_t const* get_stop_seq(trip_data const& trip_data,
   if (!t.stop_seq_.empty()) {
     return &t.stop_seq_;
   } else if (t.trips_.size() == 1U) {
+    if (trip_data.get(t.trips_.front()).stop_seq_.size() <= 1) {
+      std::terminate();
+    }
     return &trip_data.get(t.trips_.front()).stop_seq_;
   } else {
     stop_seq_cache.clear();
@@ -268,6 +271,13 @@ void expand_assistance(timetable const& tt,
                        assistance_times& assist,
                        utc_trip&& ut,
                        Consumer&& consumer) {
+  using namespace std::chrono_literals;
+
+  auto const time_mod = [](auto const a, auto const b) {
+    using T = std::decay_t<decltype(a)>;
+    return a < T{0} ? ((a % b) + b) % b : a % b;
+  };
+
   auto stop_seq_cache = stop_seq_t{};
   auto assistance_traffic_days = hash_map<stop_seq_t, bitfield>{};
   auto prev_key = stop_seq_t{};
@@ -280,52 +290,28 @@ void expand_assistance(timetable const& tt,
     auto stop_seq = *get_stop_seq(trip_data, ut, stop_seq_cache);
     auto stop_times_it = begin(ut.utc_times_);
     for (auto [a, b] : utl::pairwise(stop_seq)) {
-      auto from_dep = *stop_times_it++ - ut.first_dep_offset_;
-      auto to_arr = *stop_times_it++ - ut.first_dep_offset_;
-
-      while (from_dep.count() < 0) {
-        from_dep += 24_hours;
-      }
-      while (to_arr.count() < 0) {
-        to_arr += 24_hours;
-      }
-      while (from_dep.count() >= 1440) {
-        from_dep -= 24_hours;
-      }
-      while (to_arr.count() >= 1440) {
-        to_arr -= 24_hours;
-      }
+      auto const from_dep =
+          time_mod(*stop_times_it++ + ut.first_dep_offset_, 1440min);
+      auto const to_arr =
+          time_mod(*stop_times_it++ + ut.first_dep_offset_, 1440min);
 
       auto from = stop{a};
       auto to = stop{b};
       from.in_allowed_wheelchair_ =
-          from.in_allowed_ &&
-          assist.is_available(tt, from.location_idx(),
-                              oh::local_minutes{day + from_dep});
+          (from.in_allowed_ &&
+           assist.is_available(tt, from.location_idx(),
+                               oh::local_minutes{day + from_dep}))
+              ? 1U
+              : 0U;
       to.out_allowed_wheelchair_ =
-          to.out_allowed_ &&
-          assist.is_available(tt, to.location_idx(),
-                              oh::local_minutes{day + to_arr});
-
-      std::cout << from.location_idx() << ": dep=" << from_dep << ", assist="
-                << assist.is_available(tt, from.location_idx(),
-                                       oh::local_minutes{day + from_dep})
-                << "\n";
-      std::cout << to.location_idx() << ": arr=" << to_arr << ", assist="
-                << assist.is_available(tt, to.location_idx(),
-                                       oh::local_minutes{day + to_arr})
-                << "\n";
+          (to.out_allowed_ &&
+           assist.is_available(tt, to.location_idx(),
+                               oh::local_minutes{day + to_arr}))
+              ? 1U
+              : 0U;
 
       a = from.value();
       b = to.value();
-    }
-
-    for (auto const x : stop_seq) {
-      std::cout << stop{x}.location_idx()
-                << ": in_allowed_wheelchair=" << std::boolalpha
-                << stop{x}.in_allowed_wheelchair()
-                << ", out_allowed_wheelchair=" << std::boolalpha
-                << stop{x}.out_allowed_wheelchair() << "\n";
     }
 
     if (stop_seq == prev_key) {
