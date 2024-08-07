@@ -119,9 +119,7 @@ void optimize_transfers(timetable const& tt,
       continue;
     }
 
-    auto fp_dur_best =
-        adjusted_transfer_time(q.transfer_time_settings_,
-                               get<footpath>(leg_footpath.uses_).duration());
+    auto fp_dur_best = get<footpath>(leg_footpath.uses_).duration();
     auto& ree_from = get<journey::run_enter_exit>(leg_from.uses_);
     auto& ree_to = get<journey::run_enter_exit>(leg_to.uses_);
 

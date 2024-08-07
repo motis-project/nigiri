@@ -139,7 +139,7 @@ struct search {
 
         algo_{init(q_.allowed_claszes_,
                    q_.require_bike_transport_,
-                   q.transfer_time_settings_,
+                   q_.transfer_time_settings_,
                    algo_state)},
         timeout_(timeout) {
     utl::sort(q.start_);
