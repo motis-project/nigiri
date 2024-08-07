@@ -73,11 +73,6 @@ unixtime_t frun::run_stop::time(event_type const ev_type) const noexcept {
              : tt().event_time(fr_->t_, stop_idx_, ev_type);
 }
 
-duration_t frun::run_stop::delay(event_type const ev_type) const noexcept {
-  assert(fr_->size() > stop_idx_);
-  return time(ev_type) - scheduled_time(ev_type);
-}
-
 trip_idx_t frun::run_stop::get_trip_idx(
     event_type const ev_type) const noexcept {
   auto const sections = tt().transport_to_trip_section_.at(fr_->t_.t_idx_);
@@ -85,11 +80,6 @@ trip_idx_t frun::run_stop::get_trip_idx(
       .merged_trips_[sections.at(sections.size() == 1U ? 0U
                                                        : section_idx(ev_type))]
       .at(0);
-}
-
-std::string_view frun::run_stop::trip_display_name(
-    event_type const ev_type) const noexcept {
-  return tt().trip_display_names_[get_trip_idx(ev_type)].view();
 }
 
 stop_idx_t frun::run_stop::section_idx(
@@ -207,7 +197,7 @@ route_color frun::run_stop::get_route_color(event_type ev_type) const noexcept {
 }
 
 bool frun::run_stop::is_canceled() const noexcept {
-  return get_stop().is_cancelled();
+  return !get_stop().in_allowed() && !get_stop().out_allowed();
 }
 
 bool frun::run_stop::in_allowed() const noexcept {
@@ -357,11 +347,8 @@ void frun::run_stop::print(std::ostream& out,
       get_transport_stop_tz(*fr_->tt_, fr_->t_.t_idx_, get_location().l_));
 
   // Print stop index, location name.
-  auto const s = get_stop();
-  fmt::print(out,
-             "  in={:5}, out={:5}, win={:5}, wout={:5}  | {:2}: {:7} {:.<48}",
-             s.in_allowed(), s.out_allowed(), s.in_allowed_wheelchair(),
-             s.out_allowed_wheelchair(), stop_idx_, get_location().id_, name());
+  fmt::print(out, "  {:2}: {:7} {:.<48}", stop_idx_, get_location().id_,
+             name());
 
   // Print arrival (or whitespace if there's none).
   if (!first && stop_idx_ != fr_->stop_range_.from_) {
