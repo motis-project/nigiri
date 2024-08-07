@@ -168,15 +168,6 @@ struct timetable {
     assert(stop_seq.size() > 1U);
     assert(!clasz_sections.empty());
 
-    if (stop_seq.size() <= 1U) {
-      std::terminate();
-    }
-
-    std::cout << "WRITING LENGTH=" << stop_seq.size() << "\n";
-    for (auto const& x : stop_seq) {
-      std::cout << "  " << stop{x} << "\n";
-    }
-
     auto const idx = route_location_seq_.size();
     route_transport_ranges_.emplace_back(
         transport_idx_t{transport_traffic_days_.size()},
