@@ -10,6 +10,7 @@
 
 #include "cista/containers/vecvec.h"
 
+#include "geo/latlng.h"
 #include "geo/polyline.h"
 
 #include "nigiri/types.h"
@@ -21,16 +22,9 @@ namespace nigiri::loader::gtfs {
 
 class shape {
 public:
-  constexpr static int32_t coordinate_precision{10000000};
-
   using key_type = uint32_t;
   using value_type = geo::polyline;
-  using shape_coordinate_type =
-      std::remove_const<decltype(coordinate_precision)>::type;
-  struct coordinate {
-    shape_coordinate_type lat, lon;
-    bool operator==(coordinate const& other) const = default;
-  };
+  using coordinate = geo::latlng;
   using mmap_vecvec = mm_vecvec<key_type, coordinate>;
   using id_type = utl::cstr;
   using stored_type = coordinate;

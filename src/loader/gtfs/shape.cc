@@ -14,20 +14,6 @@
 
 namespace nigiri::loader::gtfs {
 
-namespace helper {
-
-using precision_t = decltype(shape::coordinate_precision);
-
-/* Code duplicated from 'osmium/osm/location.hpp' */
-constexpr precision_t double_to_fix(double const c) noexcept {
-  return static_cast<int32_t>(std::round(c * shape::coordinate_precision));
-}
-
-constexpr double fix_to_double(precision_t const c) noexcept {
-  return static_cast<double>(c) / shape::coordinate_precision;
-}
-}  // namespace helper
-
 struct shape_point {
   shape::id_type const id;
   shape::stored_type const coordinate;
@@ -45,8 +31,8 @@ const shape_point shape_point::from_entry(entry const& entry) {
   return shape_point{
       entry.id->view(),
       {
-          helper::double_to_fix(entry.lat.val()),
-          helper::double_to_fix(entry.lon.val()),
+          entry.lat.val(),
+          entry.lon.val(),
       },
       entry.seq.val(),
   };
@@ -91,12 +77,7 @@ auto load_shapes(const std::string_view data, shape::mmap_vecvec& vecvec) {
 shape::shape(mmap_vecvec::bucket bucket) : bucket_{bucket} {}
 
 shape::value_type shape::operator()() const {
-  auto coordinates =
-      bucket_ | std::views::transform([](shape::coordinate const& c) {
-        return geo::latlng{helper::fix_to_double(c.lat),
-                           helper::fix_to_double(c.lon)};
-      });
-  return value_type{coordinates.begin(), coordinates.end()};
+  return value_type{bucket_.begin(), bucket_.end()};
 }
 
 std::function<std::optional<shape>(const shape::id_type&)>

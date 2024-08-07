@@ -1,5 +1,6 @@
 #include <iostream>
 #include <optional>
+#include <ranges>
 #include <sstream>
 #include <vector>
 
@@ -11,9 +12,16 @@
 
 #include "./shape_test.h"
 
-#include "./test_data.h"
-
 using namespace nigiri::loader::gtfs;
+
+void assert_polyline_eq(geo::polyline const& line1,
+                        geo::polyline const& line2) {
+  EXPECT_EQ(line1.size(), line2.size());
+  for (auto [p1, p2] : std::views::zip(line1, line2)) {
+    EXPECT_DOUBLE_EQ(p1.lat(), p2.lat());
+    EXPECT_DOUBLE_EQ(p1.lng(), p2.lng());
+  }
+}
 
 const std::string_view shapes_data_aachen{
     R"("shape_id","shape_pt_lat","shape_pt_lon","shape_pt_sequence"
@@ -66,8 +74,8 @@ TEST(gtfs, shapeBuilder_withData_getExistingShapePoints) {
   EXPECT_EQ(std::nullopt, shape_not_existing);
   EXPECT_TRUE(shape_243.has_value());
   EXPECT_TRUE(shape_3105.has_value());
-  EXPECT_EQ(shape_points_aachen.at("243"), shape_243.value()());
-  EXPECT_EQ(shape_points_aachen.at("3105"), shape_3105.value()());
+  assert_polyline_eq(shape_points_aachen.at("243"), shape_243.value()());
+  assert_polyline_eq(shape_points_aachen.at("3105"), shape_3105.value()());
 }
 
 TEST(gtfs, shapeGet_unusualShapeIds_getAllIds) {
@@ -123,7 +131,7 @@ TEST(gtfs, shapeParse_notAscendingSequence_progressAndLogError) {
   std::string_view log{buffer.str()};
   auto shape = builder("1");
   EXPECT_TRUE(shape.has_value());
-  EXPECT_EQ(shape_points, shape.value()());
+  assert_polyline_eq(shape_points, shape.value()());
   EXPECT_TRUE(
       log.contains("Non monotonic sequence for shape_id '1': Sequence number 1 "
                    "followed by 0"));
@@ -185,7 +193,7 @@ TEST(gtfs, shapeParse_shuffledRows_parseAllData) {
   for (auto [id, coordinates] : shape_points) {
     auto shape = builder(id);
     EXPECT_TRUE(shape.has_value());
-    EXPECT_EQ(coordinates, (*shape)());
+    assert_polyline_eq(coordinates, (*shape)());
   }
 }
 
