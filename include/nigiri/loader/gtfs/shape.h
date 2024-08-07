@@ -1,10 +1,6 @@
 #pragma once
 
-#include <cstddef>
-#include <filesystem>
-#include <type_traits>
-#include <unordered_map>
-#include <vector>
+#include <optional>
 
 #include "utl/parser/cstr.h"
 
@@ -14,9 +10,6 @@
 #include "geo/polyline.h"
 
 #include "nigiri/types.h"
-
-// #include "osmium/osm/location.hpp"
-// #include "osr/types.h"
 
 namespace nigiri::loader::gtfs {
 

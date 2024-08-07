@@ -1,16 +1,11 @@
-#include "nigiri/loader/gtfs/shape.h"
-#include "nigiri/logging.h"
-
-#include <optional>
-#include <ranges>
-
 #include "utl/parser/buf_reader.h"
 #include "utl/parser/csv_range.h"
 #include "utl/parser/line_range.h"
 #include "utl/pipes/for_each.h"
 #include "utl/pipes/transform.h"
 
-#include "geo/latlng.h"
+#include "nigiri/loader/gtfs/shape.h"
+#include "nigiri/logging.h"
 
 namespace nigiri::loader::gtfs {
 
