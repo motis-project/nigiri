@@ -85,9 +85,9 @@ shape::builder_t shape::get_builder(const std::string_view data,
   auto const map = load_shapes(data, *vecvec);
   return [vecvec, map](const id_type& id) {
     auto found = map.find(id);
-    return (found != map.end()) ? std::make_optional<shape>(
-                                      shape{(*vecvec)[found->second.offset]})
-                                : std::nullopt;
+    return (found != map.end())
+               ? std::make_optional(shape{(*vecvec)[found->second.offset]})
+               : std::nullopt;
   };
 }
 
