@@ -1,5 +1,7 @@
 #include "nigiri/routing/raptor/reconstruct.h"
 
+#include "utl/overloaded.h"
+
 #include "nigiri/routing/for_each_meta.h"
 #include "nigiri/routing/journey.h"
 #include "nigiri/rt/frun.h"
@@ -29,6 +31,12 @@ void optimize_initial_departure(timetable const& tt,
   auto r = rt::run{ree.r_};
   r.stop_range_ = {0U, static_cast<stop_idx_t>(ree.stop_range_.to_ - 1U)};
   for (auto const stp : rt::frun{tt, rtt, r}) {
+    if (!q.via_stops_.empty() &&
+        matches(tt, location_match_mode::kEquivalent, stp.get_location_idx(),
+                q.via_stops_[0].location_)) {
+      // don't skip over via stops
+      break;
+    }
     if (!stp.in_allowed()) {
       continue;
     }
@@ -107,7 +115,41 @@ void optimize_transfers(timetable const& tt,
                         rt_timetable const* rtt,
                         query const& q,
                         journey& j) {
+  // v = vias reached in previous legs
+  auto v = via_offset_t{0};
+
   for (auto i = 0U; i + 2 < j.legs_.size(); ++i) {
+    if (i > 0U) {
+      auto const& prev_leg = j.legs_[i - 1];
+      std::visit(utl::overloaded{
+                     [&](journey::run_enter_exit const& t) {
+                       auto const fr = rt::frun{tt, rtt, t.r_};
+                       for (auto s = t.stop_range_.from_;
+                            s != t.stop_range_.to_; ++s) {
+                         if (v != q.via_stops_.size() &&
+                             q.via_stops_[v].stay_ == 0_minutes &&
+                             matches(tt, location_match_mode::kEquivalent,
+                                     q.via_stops_[v].location_,
+                                     fr[s].get_location_idx())) {
+                           ++v;
+                         }
+                       }
+                     },
+                     [&](footpath const&) {
+                       if (v != q.via_stops_.size() &&
+                           matches(tt, location_match_mode::kEquivalent,
+                                   q.via_stops_[v].location_, prev_leg.from_)) {
+                         ++v;
+                       }
+                       if (v != q.via_stops_.size() &&
+                           matches(tt, location_match_mode::kEquivalent,
+                                   q.via_stops_[v].location_, prev_leg.to_)) {
+                         ++v;
+                       }
+                     }},
+                 prev_leg.uses_);
+    }
+
     auto& leg_from = j.legs_[i];
     auto& leg_footpath = j.legs_[i + 1];
     auto& leg_to = j.legs_[i + 2];
@@ -119,19 +161,60 @@ void optimize_transfers(timetable const& tt,
       continue;
     }
 
-    auto fp_dur_best =
-        adjusted_transfer_time(q.transfer_time_settings_,
-                               get<footpath>(leg_footpath.uses_).duration());
+    auto fp_dur_best = get<footpath>(leg_footpath.uses_).duration();
     auto& ree_from = get<journey::run_enter_exit>(leg_from.uses_);
     auto& ree_to = get<journey::run_enter_exit>(leg_to.uses_);
 
+    auto current_v = v;
+    // footpaths from or to a via stop with stay duration != 0 are kept as is
+    auto keep_transfer = false;
+
     auto fr_from = rt::frun{tt, rtt, ree_from.r_};
-    fr_from.stop_range_ = {
-        static_cast<stop_idx_t>(ree_from.stop_range_.from_ + 1U),
-        fr_from.size()};
+    auto from_start = static_cast<stop_idx_t>(ree_from.stop_range_.from_ + 1U);
+
+    // make sure that no via stops are skipped in ree_from
+    for (auto s = ree_from.stop_range_.from_; s < fr_from.size(); ++s) {
+      if (current_v < q.via_stops_.size() &&
+          matches(tt, location_match_mode::kEquivalent,
+                  fr_from[s].get_location_idx(),
+                  q.via_stops_[current_v].location_)) {
+        if (q.via_stops_[current_v].stay_ == 0_minutes) {
+          from_start = std::max(from_start, s);
+          ++current_v;
+        } else {
+          keep_transfer = true;
+          break;
+        }
+      }
+    }
+
+    fr_from.stop_range_ = {from_start, fr_from.size()};
+
     auto fr_to = rt::frun{tt, rtt, ree_to.r_};
-    fr_to.stop_range_ = {stop_idx_t{0U},
-                         static_cast<stop_idx_t>(ree_to.stop_range_.to_ - 1U)};
+    auto to_end = static_cast<stop_idx_t>(ree_to.stop_range_.to_ - 1U);
+
+    // make sure that no via stops are skipped in ree_to
+    for (auto s = ree_to.stop_range_.from_; s < fr_to.size(); ++s) {
+      if (current_v < q.via_stops_.size() &&
+          matches(tt, location_match_mode::kEquivalent,
+                  fr_to[s].get_location_idx(),
+                  q.via_stops_[current_v].location_)) {
+        if (q.via_stops_[current_v].stay_ == 0_minutes) {
+          to_end = std::min(to_end, static_cast<stop_idx_t>(s + 1U));
+          ++current_v;
+        } else {
+          keep_transfer = true;
+          break;
+        }
+      }
+    }
+
+    fr_to.stop_range_ = {stop_idx_t{0U}, to_end};
+
+    if (keep_transfer) {
+      continue;
+    }
+
     for (auto stp_from : fr_from) {
       if (!stp_from.out_allowed()) {
         continue;

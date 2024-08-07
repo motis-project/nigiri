@@ -1,5 +1,6 @@
 #include "nigiri/routing/raptor/reconstruct.h"
 
+#include <cassert>
 #include <iterator>
 
 #include "utl/enumerate.h"
@@ -144,7 +145,7 @@ void reconstruct_journey(timetable const& tt,
     return is_ontrip ? is_better_or_eq(a, b) : a == b;
   };
 
-  auto v = q.via_stops_.size();
+  auto v = static_cast<via_offset_t>(q.via_stops_.size());
 
 #if defined(NIGIRI_TRACE_RECONSTRUCT)
   auto const best = [&](std::uint32_t const k, location_idx_t const l) {
@@ -388,7 +389,8 @@ void reconstruct_journey(timetable const& tt,
     if (v != 0 && matches(tt, location_match_mode::kEquivalent,
                           q.via_stops_[v - 1].location_, fp.target())) {
       --v;
-      stay_fp_target += q.via_stops_[v].stay_;
+      assert(stay_fp_target == 0_minutes);
+      stay_fp_target = q.via_stops_[v].stay_;
       trace_reconstruct(
           "  [check_fp]: fp target matches current via: v={}->{}, "
           "stay_fp_target={}\n",

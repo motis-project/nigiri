@@ -54,13 +54,12 @@ K,K,,20.0,21.0,1,
 K1,K1,,20.0,21.0,,K
 K2,K2,,20.0,21.0,,K
 L,L,,22.0,23.0,1,
-L1,L1,,22.0,23.0,,L
-L2,L2,,22.0,23.0,,L
 M,M,,24.0,25.0,,
 N,N,,26.0,27.0,,
 O,O,,28.0,29.0,,
 P,P,,30.0,31.0,,
 Q,Q,,32.0,33.0,,
+R,R,,34.0,35.0,,
 
 # routes.txt
 route_id,agency_id,route_short_name,route_long_name,route_desc,route_type
@@ -74,6 +73,7 @@ R6,DB,6,,,3
 R7,DB,7,,,3
 R8,DB,8,,,3
 R9,DB,9,,,3
+R10,DB,10,,,3
 
 # trips.txt
 route_id,service_id,trip_id,trip_headsign,block_id
@@ -91,6 +91,7 @@ R7,S1,T10,,
 R8,S1,T11,,
 R9,S1,T12,,
 R2,S1,T13,,
+R10,S1,T14,,
 
 # stop_times.txt
 trip_id,arrival_time,departure_time,stop_id,stop_sequence
@@ -132,6 +133,12 @@ T12,11:20:00,11:20:00,O,1
 T13,10:30:00,10:30:00,A,0
 T13,10:45:00,10:55:00,C,1
 T13,11:30:00,11:30:00,D,2
+T14,10:15:00,10:15:00,F,0
+T14,10:42:00,10:45:00,G,1
+T14,11:02:00,11:05:00,R,2
+T14,12:00:00,12:02:00,L,3
+T14,12:22:00,12:25:00,O,4
+T14,12:40:00,12:40:00,P,5
 
 # calendar_dates.txt
 service_id,date,exception_type
@@ -145,8 +152,8 @@ I1,I2,2,240
 I2,I1,2,240
 I,K,2,300
 K,I,2,300
-K,L,2,360
-L,K,2,360
+C,G,2,300
+D,R,2,900
 )"sv;
 
 std::string results_to_str(pareto_set<routing::journey> const& results,
@@ -195,7 +202,7 @@ pareto_set<routing::journey> search(timetable const& tt,
 
 }  // namespace
 
-TEST(routing, via_test_1_A_D_to_via) {
+TEST(routing, via_test_1_A_D_no_via) {
   // A -> D, no via
   auto const tt = load_timetable(test_files_1);
 
@@ -1006,7 +1013,7 @@ TEST(routing, via_test_23_M_Q_via_M_0m_O_0m) {
 
 TEST(routing, via_test_24_M_Q_via_O_0m_Q_0m) {
   // test: last via = destination
-  // M -> Q, O (0 min), Q (0 min)
+  // M -> Q, via O (0 min), Q (0 min)
   auto tt = load_timetable(test_files_1);
 
   for (auto const& [dir, start_time] :
@@ -1024,4 +1031,212 @@ TEST(routing, via_test_24_M_Q_via_O_0m_Q_0m) {
 
     EXPECT_EQ(expected_M_Q_via_M_0min_O_0min, results_to_str(results, tt));
   }
+}
+
+namespace {
+constexpr auto const expected_A_L =
+    R"(
+[2019-05-01 08:00, 2019-05-01 10:00]
+TRANSFERS: 1
+     FROM: (A, A) [2019-05-01 08:00]
+       TO: (L, L) [2019-05-01 10:00]
+leg 0: (A, A) [2019-05-01 08:00] -> (C, C) [2019-05-01 08:20]
+   0: A       A...............................................                               d: 01.05 08:00 [01.05 10:00]  [{name=Bus 2, day=2019-05-01, id=T3, src=0}]
+   1: C       C............................................... a: 01.05 08:20 [01.05 10:20]
+leg 1: (C, C) [2019-05-01 08:20] -> (G, G) [2019-05-01 08:25]
+  FOOTPATH (duration=5)
+leg 2: (G, G) [2019-05-01 08:45] -> (L, L) [2019-05-01 10:00]
+   1: G       G...............................................                               d: 01.05 08:45 [01.05 10:45]  [{name=Bus 10, day=2019-05-01, id=T14, src=0}]
+   2: R       R............................................... a: 01.05 09:02 [01.05 11:02]  d: 01.05 09:05 [01.05 11:05]  [{name=Bus 10, day=2019-05-01, id=T14, src=0}]
+   3: L       L............................................... a: 01.05 10:00 [01.05 12:00]
+
+
+)"sv;
+}  // namespace
+
+TEST(routing, via_test_25_A_L_no_via) {
+  // test: shortest footpath between T3->T14 (5m D->R instead of 15m C->G)
+  // A -> L
+  auto tt = load_timetable(test_files_1);
+
+  auto const results = search(
+      tt, nullptr,
+      routing::query{.start_time_ = time("2019-05-01 10:00 Europe/Berlin"),
+                     .start_ = {{loc(tt, "A"), 0_minutes, 0U}},
+                     .destination_ = {{loc(tt, "L"), 0_minutes, 0U}},
+                     .via_stops_ = {}},
+      direction::kForward);
+
+  EXPECT_EQ(expected_A_L, results_to_str(results, tt));
+}
+
+TEST(routing, via_test_26_A_L_via_C_0m) {
+  // test: shortest footpath between T3->T14 (5m D->R instead of 15m C->G)
+  // A -> L, via C (0 min)
+  auto tt = load_timetable(test_files_1);
+
+  auto const results = search(
+      tt, nullptr,
+      routing::query{.start_time_ = time("2019-05-01 10:00 Europe/Berlin"),
+                     .start_ = {{loc(tt, "A"), 0_minutes, 0U}},
+                     .destination_ = {{loc(tt, "L"), 0_minutes, 0U}},
+                     .via_stops_ = {{loc(tt, "C"), 0_minutes}}},
+      direction::kForward);
+
+  EXPECT_EQ(expected_A_L, results_to_str(results, tt));
+}
+
+TEST(routing, via_test_27_A_L_via_R_0m) {
+  // test: shortest footpath between T3->T14 (5m D->R instead of 15m C->G)
+  // A -> L, via R (0 min)
+  auto tt = load_timetable(test_files_1);
+
+  auto const results = search(
+      tt, nullptr,
+      routing::query{.start_time_ = time("2019-05-01 10:00 Europe/Berlin"),
+                     .start_ = {{loc(tt, "A"), 0_minutes, 0U}},
+                     .destination_ = {{loc(tt, "L"), 0_minutes, 0U}},
+                     .via_stops_ = {{loc(tt, "R"), 0_minutes}}},
+      direction::kForward);
+
+  EXPECT_EQ(expected_A_L, results_to_str(results, tt));
+}
+
+TEST(routing, via_test_28_A_L_via_R_2m) {
+  // test: keep the transfer with the longer footpath because of the
+  // via with stay > 0 min
+  // A -> L, via R (2 min)
+  auto tt = load_timetable(test_files_1);
+
+  constexpr auto const expected_A_L_via_R_2m =
+      R"(
+[2019-05-01 08:00, 2019-05-01 10:00]
+TRANSFERS: 1
+     FROM: (A, A) [2019-05-01 08:00]
+       TO: (L, L) [2019-05-01 10:00]
+leg 0: (A, A) [2019-05-01 08:00] -> (D, D) [2019-05-01 08:40]
+   0: A       A...............................................                               d: 01.05 08:00 [01.05 10:00]  [{name=Bus 2, day=2019-05-01, id=T3, src=0}]
+   1: C       C............................................... a: 01.05 08:20 [01.05 10:20]  d: 01.05 08:22 [01.05 10:22]  [{name=Bus 2, day=2019-05-01, id=T3, src=0}]
+   2: D       D............................................... a: 01.05 08:40 [01.05 10:40]
+leg 1: (D, D) [2019-05-01 08:40] -> (R, R) [2019-05-01 08:55]
+  FOOTPATH (duration=15)
+leg 2: (R, R) [2019-05-01 09:05] -> (L, L) [2019-05-01 10:00]
+   2: R       R...............................................                               d: 01.05 09:05 [01.05 11:05]  [{name=Bus 10, day=2019-05-01, id=T14, src=0}]
+   3: L       L............................................... a: 01.05 10:00 [01.05 12:00]
+
+
+)"sv;
+
+  auto const results = search(
+      tt, nullptr,
+      routing::query{.start_time_ = time("2019-05-01 10:00 Europe/Berlin"),
+                     .start_ = {{loc(tt, "A"), 0_minutes, 0U}},
+                     .destination_ = {{loc(tt, "L"), 0_minutes, 0U}},
+                     .via_stops_ = {{loc(tt, "R"), 2_minutes}}},
+      direction::kForward);
+
+  EXPECT_EQ(expected_A_L_via_R_2m, results_to_str(results, tt));
+}
+
+TEST(routing, via_test_29_A_L_via_D_2m) {
+  // test: keep the transfer with the longer footpath because of the
+  // via with stay > 0 min
+  // A -> L, via R (2 min)
+  auto tt = load_timetable(test_files_1);
+
+  constexpr auto const expected_A_L_via_D_2m =
+      R"(
+[2019-05-01 08:00, 2019-05-01 10:00]
+TRANSFERS: 1
+     FROM: (A, A) [2019-05-01 08:00]
+       TO: (L, L) [2019-05-01 10:00]
+leg 0: (A, A) [2019-05-01 08:00] -> (D, D) [2019-05-01 08:40]
+   0: A       A...............................................                               d: 01.05 08:00 [01.05 10:00]  [{name=Bus 2, day=2019-05-01, id=T3, src=0}]
+   1: C       C............................................... a: 01.05 08:20 [01.05 10:20]  d: 01.05 08:22 [01.05 10:22]  [{name=Bus 2, day=2019-05-01, id=T3, src=0}]
+   2: D       D............................................... a: 01.05 08:40 [01.05 10:40]
+leg 1: (D, D) [2019-05-01 08:42] -> (R, R) [2019-05-01 08:57]
+  FOOTPATH (duration=15)
+leg 2: (R, R) [2019-05-01 09:05] -> (L, L) [2019-05-01 10:00]
+   2: R       R...............................................                               d: 01.05 09:05 [01.05 11:05]  [{name=Bus 10, day=2019-05-01, id=T14, src=0}]
+   3: L       L............................................... a: 01.05 10:00 [01.05 12:00]
+
+
+)"sv;
+
+  auto const results = search(
+      tt, nullptr,
+      routing::query{.start_time_ = time("2019-05-01 10:00 Europe/Berlin"),
+                     .start_ = {{loc(tt, "A"), 0_minutes, 0U}},
+                     .destination_ = {{loc(tt, "L"), 0_minutes, 0U}},
+                     .via_stops_ = {{loc(tt, "D"), 2_minutes}}},
+      direction::kForward);
+
+  EXPECT_EQ(expected_A_L_via_D_2m, results_to_str(results, tt));
+}
+
+TEST(routing, via_test_30_A_intermodal_LP_via_O_0m) {
+  // test: keep the longer intermodal offset because of the via O
+  // A -> intermodal L/P, via O (0 min)
+  auto tt = load_timetable(test_files_1);
+
+  constexpr auto const expected_A_intermodal_LP_via_O_0m =
+      R"(
+[2019-05-01 08:00, 2019-05-01 11:00]
+TRANSFERS: 1
+     FROM: (A, A) [2019-05-01 08:00]
+       TO: (END, END) [2019-05-01 11:00]
+leg 0: (A, A) [2019-05-01 08:00] -> (C, C) [2019-05-01 08:20]
+   0: A       A...............................................                               d: 01.05 08:00 [01.05 10:00]  [{name=Bus 2, day=2019-05-01, id=T3, src=0}]
+   1: C       C............................................... a: 01.05 08:20 [01.05 10:20]
+leg 1: (C, C) [2019-05-01 08:20] -> (G, G) [2019-05-01 08:25]
+  FOOTPATH (duration=5)
+leg 2: (G, G) [2019-05-01 08:45] -> (P, P) [2019-05-01 10:40]
+   1: G       G...............................................                               d: 01.05 08:45 [01.05 10:45]  [{name=Bus 10, day=2019-05-01, id=T14, src=0}]
+   2: R       R............................................... a: 01.05 09:02 [01.05 11:02]  d: 01.05 09:05 [01.05 11:05]  [{name=Bus 10, day=2019-05-01, id=T14, src=0}]
+   3: L       L............................................... a: 01.05 10:00 [01.05 12:00]  d: 01.05 10:02 [01.05 12:02]  [{name=Bus 10, day=2019-05-01, id=T14, src=0}]
+   4: O       O............................................... a: 01.05 10:22 [01.05 12:22]  d: 01.05 10:25 [01.05 12:25]  [{name=Bus 10, day=2019-05-01, id=T14, src=0}]
+   5: P       P............................................... a: 01.05 10:40 [01.05 12:40]
+leg 3: (P, P) [2019-05-01 10:40] -> (END, END) [2019-05-01 11:00]
+  MUMO (id=0, duration=20)
+
+
+[2019-05-01 08:00, 2019-05-01 10:03]
+TRANSFERS: 2
+     FROM: (A, A) [2019-05-01 08:00]
+       TO: (END, END) [2019-05-01 10:03]
+leg 0: (A, A) [2019-05-01 08:00] -> (D, D) [2019-05-01 08:40]
+   0: A       A...............................................                               d: 01.05 08:00 [01.05 10:00]  [{name=Bus 2, day=2019-05-01, id=T3, src=0}]
+   1: C       C............................................... a: 01.05 08:20 [01.05 10:20]  d: 01.05 08:22 [01.05 10:22]  [{name=Bus 2, day=2019-05-01, id=T3, src=0}]
+   2: D       D............................................... a: 01.05 08:40 [01.05 10:40]
+leg 1: (D, D) [2019-05-01 08:40] -> (H, H) [2019-05-01 08:43]
+  FOOTPATH (duration=3)
+leg 2: (H, H) [2019-05-01 09:00] -> (O, O) [2019-05-01 09:20]
+   0: H       H...............................................                               d: 01.05 09:00 [01.05 11:00]  [{name=Bus 9, day=2019-05-01, id=T12, src=0}]
+   1: O       O............................................... a: 01.05 09:20 [01.05 11:20]
+leg 3: (O, O) [2019-05-01 09:20] -> (O, O) [2019-05-01 09:22]
+  FOOTPATH (duration=2)
+leg 4: (O, O) [2019-05-01 09:30] -> (P, P) [2019-05-01 09:43]
+   2: O       O...............................................                               d: 01.05 09:30 [01.05 11:30]  [{name=Bus 7, day=2019-05-01, id=T9, src=0}]
+   3: P       P............................................... a: 01.05 09:43 [01.05 11:43]
+leg 5: (P, P) [2019-05-01 09:43] -> (END, END) [2019-05-01 10:03]
+  MUMO (id=0, duration=20)
+
+
+)"sv;
+
+  auto const results =
+      search(tt, nullptr,
+             routing::query{
+                 .start_time_ = time("2019-05-01 10:00 Europe/Berlin"),
+                 .dest_match_mode_ = routing::location_match_mode::kIntermodal,
+                 .start_ = {{loc(tt, "A"), 0_minutes, 0U}},
+                 .destination_ = {{loc(tt, "L"), 5_minutes, 0U},
+                                  {loc(tt, "P"), 20_minutes, 0U}},
+                 .via_stops_ = {{loc(tt, "O"), 0_minutes}}},
+             direction::kForward);
+
+  std::cout << "\n\n********\n\n"
+            << results_to_str(results, tt) << "\n\n********\n\n";
+
+  EXPECT_EQ(expected_A_intermodal_LP_via_O_0m, results_to_str(results, tt));
 }
