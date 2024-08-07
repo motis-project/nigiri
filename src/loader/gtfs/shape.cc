@@ -69,14 +69,11 @@ auto load_shapes(const std::string_view data, shape::mmap_vecvec& vecvec) {
   return states;
 }
 
-shape::shape(mmap_vecvec::bucket bucket) : bucket_{bucket} {}
-
 shape::value_type shape::operator()() const {
   return value_type{bucket_.begin(), bucket_.end()};
 }
 
-std::function<std::optional<shape>(const shape::id_type&)>
-shape::get_builder() {
+shape::builder_t shape::get_builder() {
   return [](const id_type&) { return std::nullopt; };
 }
 
