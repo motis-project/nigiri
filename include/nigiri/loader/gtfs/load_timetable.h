@@ -1,7 +1,8 @@
 #pragma once
 
+#include "geo/latlng.h"
+
 #include "nigiri/loader/dir.h"
-#include "nigiri/loader/gtfs/shape.h"
 #include "nigiri/loader/loader_interface.h"
 #include "nigiri/types.h"
 
@@ -19,6 +20,6 @@ void load_timetable(loader_config const&,
                     dir const&,
                     timetable&,
                     hash_map<bitfield, bitfield_idx_t>&,
-                    shape::mmap_vecvec* = nullptr);
+                    mm_vecvec<uint32_t, geo::latlng>* = nullptr);
 
 }  // namespace nigiri::loader::gtfs

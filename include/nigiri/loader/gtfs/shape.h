@@ -13,21 +13,9 @@
 
 namespace nigiri::loader::gtfs {
 
-struct shape {
-public:
-  using key_type = uint32_t;
-  using value_type = geo::polyline;
-  using coordinate = geo::latlng;
-  using mmap_vecvec = mm_vecvec<key_type, coordinate>;
-  using id_type = utl::cstr;
-  using stored_type = coordinate;
-  using builder_t = std::function<std::optional<const shape>(const id_type&)>;
+using shape_id_map_t = hash_map<std::string, shape_idx_t>;
 
-  mmap_vecvec::bucket bucket_;
-
-  value_type operator()() const;
-  static builder_t get_builder();
-  static builder_t get_builder(const std::string_view, mmap_vecvec*);
-};
+shape_id_map_t parse_shapes(std::string_view const,
+                            mm_vecvec<uint32_t, geo::latlng>*);
 
 }  // namespace nigiri::loader::gtfs

@@ -33,8 +33,8 @@ TEST(gtfs, read_stop_times_example_data) {
   auto const calendar = read_calendar(files.get_file(kCalenderFile).data());
   auto const services =
       merge_traffic_days(tt.internal_interval_days(), calendar, dates);
-  auto const shape_builder = shape::get_builder();
-  auto trip_data = read_trips(tt, routes, services, shape::get_builder(),
+  auto const shapes = shape_id_map_t{};
+  auto trip_data = read_trips(tt, routes, services, shapes,
                               files.get_file(kTripsFile).data(),
                               config.bikes_allowed_default_);
   auto const stops = read_stops(source_idx_t{0}, tt, timezones,
@@ -59,7 +59,8 @@ TEST(gtfs, read_stop_times_example_data) {
   auto awe1_it = trip_data.trips_.find("AWE1");
   ASSERT_NE(end(trip_data.trips_), awe1_it);
 
-  EXPECT_EQ(std::nullopt, trip_data.data_[awe1_it->second].shape_);
+  EXPECT_EQ(shape_idx_t::invalid(),
+            trip_data.data_[awe1_it->second].shape_idx_);
 
   auto& awe1_stop_times = trip_data.data_[awe1_it->second].event_times_[0];
   auto stp = stop{trip_data.data_[awe1_it->second].stop_seq_[0]};

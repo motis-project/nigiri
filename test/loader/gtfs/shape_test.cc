@@ -34,7 +34,7 @@ const std::string_view shapes_data_aachen{
 3105,50.581956,6.379866,11
 )"};
 
-const std::unordered_map<std::string, shape::value_type> shape_points_aachen{
+const std::unordered_map<std::string, geo::polyline> shape_points_aachen{
     {"243",
      {
          {51.543652, 7.217830},
@@ -53,27 +53,31 @@ const std::unordered_map<std::string, shape::value_type> shape_points_aachen{
 };
 
 TEST(gtfs, shapeBuilder_withoutData_getNull) {
-  auto builder = shape::get_builder();
+  auto const shapes = parse_shapes("", nullptr);
 
-  auto shape = builder("1");
-  EXPECT_EQ(std::nullopt, shape);
+  auto const index_it = shapes.find("1");
+  EXPECT_EQ(shapes.end(), index_it);
 }
 
 TEST(gtfs, shapeBuilder_withData_getExistingShapePoints) {
   auto [mmap, paths] = create_temporary_paths("shape-test-builder");
-  auto guard = utl::make_raii(paths, cleanup_paths);
+  auto const guard = utl::make_raii(paths, cleanup_paths);
 
-  auto builder = shape::get_builder(shapes_data_aachen, &mmap);
+  auto const shapes = parse_shapes(shapes_data_aachen, &mmap);
 
-  auto shape_not_existing = builder("1");
-  auto shape_243 = builder("243");
-  auto shape_3105 = builder("3105");
+  auto const shape_not_existing_it = shapes.find("1");
+  auto const shape_243_it = shapes.find("243");
+  auto const shape_3105_it = shapes.find("3105");
 
-  EXPECT_EQ(std::nullopt, shape_not_existing);
-  EXPECT_TRUE(shape_243.has_value());
-  EXPECT_TRUE(shape_3105.has_value());
-  assert_polyline_eq(shape_points_aachen.at("243"), shape_243.value()());
-  assert_polyline_eq(shape_points_aachen.at("3105"), shape_3105.value()());
+  EXPECT_EQ(shapes.end(), shape_not_existing_it);
+  EXPECT_NE(shapes.end(), shape_243_it);
+  EXPECT_NE(shapes.end(), shape_3105_it);
+  auto const shape_243 = mmap[shape_243_it->second.v_];
+  auto const shape_3105 = mmap[shape_3105_it->second.v_];
+  assert_polyline_eq(shape_points_aachen.at("243"),
+                     geo::polyline{shape_243.begin(), shape_243.end()});
+  assert_polyline_eq(shape_points_aachen.at("3105"),
+                     geo::polyline{shape_3105.begin(), shape_3105.end()});
 }
 
 TEST(gtfs, shapeGet_unusualShapeIds_getAllIds) {
@@ -96,15 +100,15 @@ test id,50.553822,6.356876,0
   auto [mmap, paths] = create_temporary_paths("shape-test-unicode-ids");
   auto guard = utl::make_raii(paths, cleanup_paths);
 
-  auto builder = shape::get_builder(shapes_data, &mmap);
+  auto const shapes = parse_shapes(shapes_data, &mmap);
 
   std::vector<std::string> ids{"test id"s,      "----"s, "\x07\x13\x41\x08"s,
                                "ルーティング"s, ""s,     "\0"s,
                                "🚀"s,           "🚏"s};
   for (auto const& id : ids) {
-    auto shape = builder(id);
-    EXPECT_TRUE(shape.has_value());
-    EXPECT_EQ(1, (*shape)().size());
+    auto shape_it = shapes.find(id);
+    EXPECT_NE(shapes.end(), shape_it);
+    EXPECT_EQ(1, mmap[shape_it->second.v_].size());
   }
 }
 
@@ -122,14 +126,16 @@ TEST(gtfs, shapeParse_notAscendingSequence_progressAndLogError) {
   auto buffer_guard = utl::make_raii(
       backup, [](const decltype(backup)& buf) { std::clog.rdbuf(buf); });
 
-  auto builder = shape::get_builder(shapes_data, &mmap);
+  auto const shapes = parse_shapes(shapes_data, &mmap);
 
-  shape::value_type shape_points{{50.636512, 6.473487}, {50.636259, 6.473668}};
+  auto const shape_points =
+      geo::polyline{{50.636512, 6.473487}, {50.636259, 6.473668}};
   std::clog.flush();
   std::string_view log{buffer.str()};
-  auto shape = builder("1");
-  EXPECT_TRUE(shape.has_value());
-  assert_polyline_eq(shape_points, shape.value()());
+  auto const shape_it = shapes.find("1");
+  EXPECT_NE(shapes.end(), shape_it);
+  auto const shape = mmap[shape_it->second.v_];
+  assert_polyline_eq(shape_points, geo::polyline{shape.begin(), shape.end()});
   EXPECT_TRUE(
       log.contains("Non monotonic sequence for shape_id '1': Sequence number 1 "
                    "followed by 0"));
@@ -154,7 +160,7 @@ TEST(gtfs, shapeParse_shuffledRows_parseAllData) {
   auto [mmap, paths] = create_temporary_paths("shape-test-shuffled-rows");
   auto guard = utl::make_raii(paths, cleanup_paths);
 
-  auto builder = shape::get_builder(shapes_data, &mmap);
+  auto const shapes = parse_shapes(shapes_data, &mmap);
 
   std::unordered_map<std::string, geo::polyline> shape_points{
       {"240",
@@ -188,10 +194,11 @@ TEST(gtfs, shapeParse_shuffledRows_parseAllData) {
            {51.478609, 7.223275},
        }},
   };
-  for (auto [id, coordinates] : shape_points) {
-    auto shape = builder(id);
-    EXPECT_TRUE(shape.has_value());
-    assert_polyline_eq(coordinates, (*shape)());
+  for (auto [id, polyline] : shape_points) {
+    auto const shape_it = shapes.find(id);
+    EXPECT_NE(shapes.end(), shape_it);
+    auto const shape = mmap[shape_it->second.v_];
+    assert_polyline_eq(polyline, geo::polyline{shape.begin(), shape.end()});
   }
 }
 
@@ -211,12 +218,12 @@ TEST(gtfs,
   auto buffer_guard = utl::make_raii(
       backup, [](const decltype(backup)& buf) { std::clog.rdbuf(buf); });
 
-  auto builder = shape::get_builder(shapes_data, &mmap);
+  auto const shapes = parse_shapes(shapes_data, &mmap);
 
   std::clog.flush();
   std::string_view log{buffer.str()};
-  EXPECT_TRUE(builder("1").has_value());
-  EXPECT_TRUE(builder("2").has_value());
+  EXPECT_NE(shapes.find("1"), shapes.end());
+  EXPECT_NE(shapes.find("2"), shapes.end());
   EXPECT_TRUE(
       log.contains("Non monotonic sequence for shape_id '1': Sequence number 1 "
                    "followed by 0"));

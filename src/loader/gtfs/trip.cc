@@ -6,6 +6,7 @@
 
 #include "geo/box.h"
 
+#include "geo/polyline.h"
 #include "utl/enumerate.h"
 #include "utl/erase_if.h"
 #include "utl/get_or_create.h"
@@ -115,7 +116,7 @@ trip::trip(route const* route,
            std::string id,
            trip_direction_idx_t const headsign,
            std::string short_name,
-           std::optional<shape> shape,
+           shape_idx_t shape_idx,
            bool const bikes_allowed)
     : route_(route),
       service_(service),
@@ -123,7 +124,7 @@ trip::trip(route const* route,
       id_{std::move(id)},
       headsign_(headsign),
       short_name_(std::move(short_name)),
-      shape_(shape),
+      shape_idx_(shape_idx),
       bikes_allowed_{bikes_allowed} {}
 
 void trip::interpolate() {
@@ -242,11 +243,6 @@ clasz trip::get_clasz(timetable const& tt) const {
   }
 }
 
-shape::value_type trip::get_shape() const {
-  return shape_.and_then([](const shape& s) { return std::optional{s()}; })
-      .value_or(shape::value_type{});
-}
-
 trip_direction_idx_t trip_data::get_or_create_direction(
     timetable& tt, std::string_view headsign) {
   return utl::get_or_create(directions_, headsign, [&]() {
@@ -261,7 +257,7 @@ trip_data read_trips(
     timetable& tt,
     route_map_t const& routes,
     traffic_days_t const& services,
-    shape::builder_t const& shape_builder,
+    shape_id_map_t const& shapes,
     std::string_view file_content,
     std::array<bool, kNumClasses> const& bikes_allowed_default) {
   struct csv_trip {
@@ -303,6 +299,11 @@ trip_data read_trips(
             return;
           }
 
+          auto const shape_it = shapes.find(t.shape_id_->view());
+          auto const& shape_idx = (shape_it == shapes.end())
+                                      ? shape_idx_t::invalid()
+                                      : shape_it->second;
+
           auto bikes_allowed = bikes_allowed_default[static_cast<std::size_t>(
               route_it->second->clasz_)];
           if (t.bikes_allowed_.val() == 1) {
@@ -322,8 +323,7 @@ trip_data read_trips(
               route_it->second.get(), traffic_days_it->second.get(), blk,
               t.trip_id_->to_str(),
               ret.get_or_create_direction(tt, t.trip_headsign_->view()),
-              t.trip_short_name_->to_str(),
-              shape_builder(t.shape_id_->to_str()), bikes_allowed);
+              t.trip_short_name_->to_str(), shape_idx, bikes_allowed);
           ret.trips_.emplace(t.trip_id_->to_str(), trp_idx);
           if (blk != nullptr) {
             blk->trips_.emplace_back(trp_idx);

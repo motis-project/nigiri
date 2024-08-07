@@ -15,6 +15,7 @@
 #include "nigiri/loader/gtfs/shape.h"
 #include "nigiri/loader/gtfs/stop.h"
 #include "nigiri/timetable.h"
+#include "nigiri/types.h"
 
 namespace nigiri::loader::gtfs {
 
@@ -65,7 +66,7 @@ struct trip {
        std::string id,
        trip_direction_idx_t headsign,
        std::string short_name,
-       std::optional<shape>,
+       shape_idx_t,
        bool bikes_allowed);
 
   trip(trip&&) = default;
@@ -86,15 +87,13 @@ struct trip {
 
   clasz get_clasz(timetable const&) const;
 
-  shape::value_type get_shape() const;
-
   route const* route_{nullptr};
   bitfield const* service_{nullptr};
   block* block_{nullptr};
   std::string id_;
   trip_direction_idx_t headsign_;
   std::string short_name_;
-  std::optional<shape> shape_;
+  shape_idx_t shape_idx_;
 
   stop_seq_t stop_seq_;
   std::vector<std::uint16_t> seq_numbers_;
@@ -128,7 +127,7 @@ trip_data read_trips(
     timetable&,
     route_map_t const&,
     traffic_days_t const&,
-    shape::builder_t const&,
+    shape_id_map_t const&,
     std::string_view file_content,
     std::array<bool, kNumClasses> const& bikes_allowed_default);
 

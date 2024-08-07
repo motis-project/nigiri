@@ -23,6 +23,7 @@
 #include "nigiri/loader/gtfs/route.h"
 #include "nigiri/loader/gtfs/route_key.h"
 #include "nigiri/loader/gtfs/services.h"
+#include "nigiri/loader/gtfs/shape.h"
 #include "nigiri/loader/gtfs/stop.h"
 #include "nigiri/loader/gtfs/stop_seq_number_encoding.h"
 #include "nigiri/loader/gtfs/stop_time.h"
@@ -92,7 +93,7 @@ void load_timetable(loader_config const& config,
                     dir const& d,
                     timetable& tt,
                     hash_map<bitfield, bitfield_idx_t>& bitfield_indices,
-                    shape::mmap_vecvec* shape_vecvec) {
+                    mm_vecvec<uint32_t, geo::latlng>* shape_vecvec) {
   nigiri::scoped_timer const global_timer{"gtfs parser"};
 
   auto const load = [&](std::string_view file_name) -> file {
@@ -111,12 +112,11 @@ void load_timetable(loader_config const& config,
   auto const dates = read_calendar_date(load(kCalendarDatesFile).data());
   auto const service =
       merge_traffic_days(tt.internal_interval_days(), calendar, dates);
-  auto const shape_builder =
-      (shape_vecvec == nullptr)
-          ? shape::get_builder()
-          : shape::get_builder(load(kShapesFile).data(), shape_vecvec);
+  auto const shape = (shape_vecvec != nullptr)
+                         ? parse_shapes(load(kShapesFile).data(), shape_vecvec)
+                         : shape_id_map_t{};
   auto trip_data =
-      read_trips(tt, routes, service, shape_builder, load(kTripsFile).data(),
+      read_trips(tt, routes, service, shape, load(kTripsFile).data(),
                  config.bikes_allowed_default_);
   read_frequencies(trip_data, load(kFrequenciesFile).data());
   read_stop_times(tt, trip_data, stops, load(kStopTimesFile).data());

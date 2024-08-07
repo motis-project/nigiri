@@ -39,9 +39,9 @@ TEST(gtfs, read_trips_example_data) {
   auto const calendar = read_calendar(files.get_file(kCalenderFile).data());
   auto const services =
       merge_traffic_days(tt.internal_interval_days(), calendar, dates);
-  auto const shape_builder =
-      shape::get_builder(files.get_file(kShapesFile).data(), &shape_vecvec);
-  auto const trip_data = read_trips(tt, routes, services, shape_builder,
+  auto const shapes =
+      parse_shapes(files.get_file(kShapesFile).data(), &shape_vecvec);
+  auto const trip_data = read_trips(tt, routes, services, shapes,
                                     files.get_file(kTripsFile).data(),
                                     config.bikes_allowed_default_);
 
@@ -50,7 +50,7 @@ TEST(gtfs, read_trips_example_data) {
   auto const& trip = trip_data.data_.at(trip_data.trips_.at("AWE1"));
   EXPECT_EQ("A", trip.route_->id_);
   EXPECT_EQ("Downtown", tt.trip_direction(trip.headsign_));
-  EXPECT_EQ(std::nullopt, trip.shape_);
+  EXPECT_EQ(shape_idx_t::invalid(), trip.shape_idx_);
 }
 
 TEST(gtfs, read_trips_berlin_data) {
@@ -73,9 +73,9 @@ TEST(gtfs, read_trips_berlin_data) {
   auto const calendar = read_calendar(files.get_file(kCalenderFile).data());
   auto const services =
       merge_traffic_days(tt.internal_interval_days(), calendar, dates);
-  auto const shape_builder =
-      shape::get_builder(files.get_file(kShapesFile).data(), &shape_vecvec);
-  auto const trip_data = read_trips(tt, routes, services, shape_builder,
+  auto const shapes =
+      parse_shapes(files.get_file(kShapesFile).data(), &shape_vecvec);
+  auto const trip_data = read_trips(tt, routes, services, shapes,
                                     files.get_file(kTripsFile).data(),
                                     config.bikes_allowed_default_);
 
@@ -86,19 +86,19 @@ TEST(gtfs, read_trips_berlin_data) {
   EXPECT_EQ("1", trip1.route_->id_);
   EXPECT_EQ("Flughafen Schönefeld Terminal (Airport)",
             tt.trip_direction(trip1.headsign_));
-  EXPECT_NE(std::nullopt, trip1.shape_);
+  EXPECT_NE(shape_idx_t::invalid(), trip1.shape_idx_);
 
   EXPECT_NE(end(trip_data.trips_), trip_data.trips_.find("2"));
   auto const& trip2 = trip_data.data_[trip_data.trips_.at("2")];
   EXPECT_EQ("1", trip2.route_->id_);
   EXPECT_EQ("S Potsdam Hauptbahnhof", tt.trip_direction(trip2.headsign_));
-  EXPECT_NE(std::nullopt, trip2.shape_);
+  EXPECT_NE(shape_idx_t::invalid(), trip2.shape_idx_);
 
   EXPECT_NE(end(trip_data.trips_), trip_data.trips_.find("3"));
   auto const& trip3 = trip_data.data_[trip_data.trips_.at("3")];
   EXPECT_EQ("2", trip3.route_->id_);
   EXPECT_EQ("Golzow (PM), Schule", tt.trip_direction(trip3.headsign_));
-  EXPECT_NE(std::nullopt, trip3.shape_);
+  EXPECT_NE(shape_idx_t::invalid(), trip3.shape_idx_);
 }
 
 }  // namespace nigiri::loader::gtfs
