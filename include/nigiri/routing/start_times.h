@@ -32,12 +32,17 @@ void get_starts(direction,
                 bool use_start_footpaths,
                 std::vector<start>&,
                 bool add_ontrip,
-                profile_idx_t);
+                profile_idx_t,
+                transfer_time_settings const&);
 
 void collect_destinations(timetable const&,
                           std::vector<offset> const& destinations,
                           location_match_mode const,
                           bitvec& is_destination,
                           std::vector<std::uint16_t>& dist_to_dest);
+
+void collect_via_destinations(timetable const&,
+                              location_idx_t via,
+                              bitvec& is_destination);
 
 }  // namespace nigiri::routing

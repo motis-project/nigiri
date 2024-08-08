@@ -226,7 +226,7 @@ using duration_t = i16_minutes;
 using unixtime_t = std::chrono::sys_time<i32_minutes>;
 using local_time = date::local_time<i32_minutes>;
 
-constexpr u8_minutes operator""_i8_minutes(unsigned long long n) {
+constexpr u8_minutes operator""_u8_minutes(unsigned long long n) {
   return duration_t{n};
 }
 
@@ -295,6 +295,8 @@ enum class direction {
 };
 
 using transport_mode_id_t = std::int32_t;
+
+using via_offset_t = std::uint8_t;
 
 }  // namespace nigiri
 
@@ -450,3 +452,6 @@ struct fmt::formatter<nigiri::debug> : ostream_formatter {};
 
 template <>
 struct fmt::formatter<nigiri::delta> : ostream_formatter {};
+
+template <>
+struct fmt::formatter<nigiri::transport> : ostream_formatter {};

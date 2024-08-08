@@ -1,5 +1,6 @@
 #pragma once
 
+#include <array>
 #include <vector>
 
 #include "date/date.h"
@@ -8,6 +9,7 @@
 #include "cista/containers/flat_matrix.h"
 
 #include "nigiri/common/delta_t.h"
+#include "nigiri/routing/limits.h"
 
 namespace nigiri {
 struct timetable;
@@ -29,9 +31,9 @@ struct raptor_state {
 
   void print(timetable const& tt, date::sys_days, delta_t invalid);
 
-  std::vector<delta_t> tmp_;
-  std::vector<delta_t> best_;
-  cista::raw::flat_matrix<delta_t> round_times_;
+  std::vector<std::array<delta_t, kMaxVias + 1>> tmp_;
+  std::vector<std::array<delta_t, kMaxVias + 1>> best_;
+  cista::raw::flat_matrix<std::array<delta_t, kMaxVias + 1>> round_times_;
   bitvec station_mark_;
   bitvec prev_station_mark_;
   bitvec route_mark_;

@@ -193,7 +193,8 @@ void get_starts(direction const search_dir,
                 bool const use_start_footpaths,
                 std::vector<start>& starts,
                 bool const add_ontrip,
-                profile_idx_t const prf_idx) {
+                profile_idx_t const prf_idx,
+                transfer_time_settings const& tts) {
   hash_map<location_idx_t, duration_t> shortest_start;
 
   auto const update = [&](location_idx_t const l, duration_t const d) {
@@ -209,7 +210,8 @@ void get_starts(direction const search_dir,
         auto const footpaths = fwd ? tt.locations_.footpaths_out_[prf_idx][l]
                                    : tt.locations_.footpaths_in_[prf_idx][l];
         for (auto const& fp : footpaths) {
-          update(fp.target(), o.duration() + fp.duration());
+          update(fp.target(),
+                 o.duration() + adjusted_transfer_time(tts, fp.duration()));
         }
       }
     });
@@ -265,6 +267,20 @@ void collect_destinations(timetable const& tt,
                   d.duration_);
     });
   }
+}
+
+void collect_via_destinations(timetable const& tt,
+                              location_idx_t const via,
+                              bitvec& is_destination) {
+  is_destination.resize(tt.n_locations());
+  utl::fill(is_destination.blocks_, 0U);
+
+  trace_start("VIA METAS OF {}\n", location{tt, via});
+  for_each_meta(tt, location_match_mode::kEquivalent, via,
+                [&](location_idx_t const l) {
+                  is_destination.set(to_idx(l), true);
+                  trace_start("  VIA META: {}\n", location{tt, l});
+                });
 }
 
 }  // namespace nigiri::routing

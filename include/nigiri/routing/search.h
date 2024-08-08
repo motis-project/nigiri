@@ -14,6 +14,7 @@
 #include "nigiri/routing/pareto_set.h"
 #include "nigiri/routing/query.h"
 #include "nigiri/routing/start_times.h"
+#include "nigiri/routing/via_search.h"
 #include "nigiri/timetable.h"
 #include "nigiri/types.h"
 
@@ -29,6 +30,7 @@ struct search_state {
 
   std::vector<std::uint16_t> travel_time_lower_bound_;
   bitvec is_destination_;
+  std::array<bitvec, kMaxVias> is_via_;
   std::vector<std::uint16_t> dist_to_dest_;
   std::vector<start> starts_;
   pareto_set<journey> results_;
@@ -58,12 +60,21 @@ struct search {
 
   Algo init(clasz_mask_t const allowed_claszes,
             bool const require_bikes_allowed,
+            transfer_time_settings const& tts,
             algo_state_t& algo_state) {
     stats_.fastest_direct_ =
         static_cast<std::uint64_t>(fastest_direct_.count());
 
+    utl::verify(q_.via_stops_.size() <= kMaxVias,
+                "too many via stops: {}, limit: {}", q_.via_stops_.size(),
+                kMaxVias);
+
     collect_destinations(tt_, q_.destination_, q_.dest_match_mode_,
                          state_.is_destination_, state_.dist_to_dest_);
+
+    for (auto const [i, via] : utl::enumerate(q_.via_stops_)) {
+      collect_via_destinations(tt_, via.location_, state_.is_via_[i]);
+    }
 
     if constexpr (Algo::kUseLowerBounds) {
       UTL_START_TIMING(lb);
@@ -101,8 +112,10 @@ struct search {
         rtt_,
         algo_state,
         state_.is_destination_,
+        state_.is_via_,
         state_.dist_to_dest_,
         state_.travel_time_lower_bound_,
+        q_.via_stops_,
         day_idx_t{
             std::chrono::duration_cast<date::days>(
                 std::chrono::round<std::chrono::days>(
@@ -111,7 +124,8 @@ struct search {
                 tt_.internal_interval().from_)
                 .count()},
         allowed_claszes,
-        require_bikes_allowed};
+        require_bikes_allowed,
+        tts};
   }
 
   search(timetable const& tt,
@@ -134,11 +148,14 @@ struct search {
                 }},
             q_.start_time_)},
         fastest_direct_{get_fastest_direct(tt_, q_, SearchDir)},
-        algo_{
-            init(q_.allowed_claszes_, q_.require_bike_transport_, algo_state)},
+        algo_{init(q_.allowed_claszes_,
+                   q_.require_bike_transport_,
+                   q_.transfer_time_settings_,
+                   algo_state)},
         timeout_(timeout) {
-    utl::sort(q.start_);
-    utl::sort(q.destination_);
+    utl::sort(q_.start_);
+    utl::sort(q_.destination_);
+    sanitize_via_stops(tt_, q_);
   }
 
   routing_result<algo_stats_t> execute() {
@@ -323,7 +340,7 @@ private:
     state_.starts_.reserve(500'000);
     get_starts(SearchDir, tt_, rtt_, start_interval, q_.start_,
                q_.start_match_mode_, q_.use_start_footpaths_, state_.starts_,
-               add_ontrip, q_.prf_idx_);
+               add_ontrip, q_.prf_idx_, q_.transfer_time_settings_);
     std::sort(
         begin(state_.starts_), end(state_.starts_),
         [&](start const& a, start const& b) { return kFwd ? b < a : a < b; });
