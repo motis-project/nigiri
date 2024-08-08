@@ -357,10 +357,8 @@ void frun::run_stop::print(std::ostream& out,
       get_transport_stop_tz(*fr_->tt_, fr_->t_.t_idx_, get_location().l_));
 
   // Print stop index, location name.
-  auto const s = get_stop();
-  fmt::print(out, "  {:5}, {:5}, {:5}, {:5}  | {:2}: {:7} {:.<48}",
-             s.in_allowed(), s.out_allowed(), s.in_allowed_wheelchair(),
-             s.out_allowed_wheelchair(), stop_idx_, get_location().id_, name());
+  fmt::print(out, "  {:2}: {:7} {:.<48}", stop_idx_, get_location().id_,
+             name());
 
   // Print arrival (or whitespace if there's none).
   if (!first && stop_idx_ != fr_->stop_range_.from_) {
