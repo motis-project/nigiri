@@ -1235,8 +1235,5 @@ leg 5: (P, P) [2019-05-01 09:43] -> (END, END) [2019-05-01 10:03]
                  .via_stops_ = {{loc(tt, "O"), 0_minutes}}},
              direction::kForward);
 
-  std::cout << "\n\n********\n\n"
-            << results_to_str(results, tt) << "\n\n********\n\n";
-
   EXPECT_EQ(expected_A_intermodal_LP_via_O_0m, results_to_str(results, tt));
 }
