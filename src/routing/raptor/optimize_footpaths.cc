@@ -68,6 +68,7 @@ void optimize_last_arrival(timetable const& tt,
                            rt_timetable const* rtt,
                            query const& q,
                            journey& j) {
+
   if (j.legs_.size() <= 1 || !holds_alternative<offset>(j.legs_.back().uses_) ||
       !holds_alternative<journey::run_enter_exit>(rbegin(j.legs_)[1].uses_)) {
     return;
@@ -82,9 +83,25 @@ void optimize_last_arrival(timetable const& tt,
   if constexpr (SearchDir == direction::kBackward) {
     offsets = &q.start_;
   }
+
   auto fr = rt::frun{tt, rtt, ree.r_};
-  fr.stop_range_ = {static_cast<stop_idx_t>(ree.stop_range_.from_ + 1U),
-                    fr.size()};
+  auto range_from = static_cast<stop_idx_t>(ree.stop_range_.from_ + 1U);
+
+  if (!q.via_stops_.empty()) {
+    // don't skip the last via stop
+    auto const& last_via = q.via_stops_.back();
+    for (auto i = stop_idx_t{0U}; i < fr.size(); ++i) {
+      auto idx = static_cast<stop_idx_t>(fr.size() - i - 1U);
+      if (matches(tt, location_match_mode::kEquivalent,
+                  fr[idx].get_location_idx(), last_via.location_)) {
+        range_from = std::max(range_from, idx);
+        break;
+      }
+    }
+  }
+
+  fr.stop_range_ = {range_from, fr.size()};
+
   for (auto const stp : fr) {
     if (!stp.out_allowed()) {
       continue;

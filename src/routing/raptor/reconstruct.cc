@@ -594,10 +594,7 @@ void reconstruct_journey(timetable const& tt,
     }
   }
 
-  if (q.via_stops_.empty()) {
-    // the current implementation doesn't work with via stops
-    optimize_footpaths<SearchDir>(tt, rtt, q, j);
-  }
+  optimize_footpaths<SearchDir>(tt, rtt, q, j);
 
 #if defined(NIGIRI_TRACE_RECUSTRUCT)
   j.print(std::cout, tt, true);
