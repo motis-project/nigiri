@@ -115,14 +115,16 @@ trip::trip(route const* route,
            std::string id,
            trip_direction_idx_t const headsign,
            std::string short_name,
-           bool const bikes_allowed)
+           bool const bikes_allowed,
+           bool const direction_id)
     : route_(route),
       service_(service),
       block_{blk},
       id_{std::move(id)},
       headsign_(headsign),
       short_name_(std::move(short_name)),
-      bikes_allowed_{bikes_allowed} {}
+      bikes_allowed_{bikes_allowed},
+      direction_id_{direction_id} {}
 
 void trip::interpolate() {
   if (!requires_interpolation_) {
@@ -262,6 +264,7 @@ trip_data read_trips(
     utl::csv_col<utl::cstr, UTL_NAME("trip_id")> trip_id_;
     utl::csv_col<utl::cstr, UTL_NAME("trip_headsign")> trip_headsign_;
     utl::csv_col<utl::cstr, UTL_NAME("trip_short_name")> trip_short_name_;
+    utl::csv_col<std::uint8_t, UTL_NAME("direction_id")> direction_id_;
     utl::csv_col<utl::cstr, UTL_NAME("block_id")> block_id_;
     utl::csv_col<std::uint8_t, UTL_NAME("bikes_allowed")> bikes_allowed_;
   };
@@ -313,7 +316,8 @@ trip_data read_trips(
               route_it->second.get(), traffic_days_it->second.get(), blk,
               t.trip_id_->to_str(),
               ret.get_or_create_direction(tt, t.trip_headsign_->view()),
-              t.trip_short_name_->to_str(), bikes_allowed);
+              t.trip_short_name_->to_str(), bikes_allowed,
+              t.direction_id_.val() == 1);
           ret.trips_.emplace(t.trip_id_->to_str(), trp_idx);
           if (blk != nullptr) {
             blk->trips_.emplace_back(trp_idx);

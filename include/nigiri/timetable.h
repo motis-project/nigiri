@@ -89,6 +89,12 @@ struct timetable {
       return get(location_id_to_idx_.at(id));
     }
 
+    std::optional<location> find(location_id const& id) const {
+      auto const it = location_id_to_idx_.find(id);
+      return it == end(location_id_to_idx_) ? std::nullopt
+                                            : std::optional{get(it->second)};
+    }
+
     void resolve_timezones();
 
     // Station access: external station id -> internal station idx
@@ -143,6 +149,20 @@ struct timetable {
     trip_train_nr_.emplace_back(train_nr);
     trip_stop_seq_numbers_.emplace_back(seq_numbers);
 
+    return trip_idx;
+  }
+
+  template <typename TripId>
+  trip_idx_t register_trip_id(TripId const& trip_id_str,
+                              source_idx_t const src,
+                              std::string const& display_name,
+                              trip_debug const dbg,
+                              std::uint32_t const train_nr,
+                              std::span<stop_idx_t> seq_numbers,
+                              bool const direction_id) {
+    auto const trip_idx = register_trip_id(trip_id_str, src, display_name, dbg,
+                                           train_nr, seq_numbers);
+    trip_direction_ids_.set(trip_idx, direction_id);
     return trip_idx;
   }
 
@@ -462,6 +482,7 @@ struct timetable {
   vecvec<trip_direction_string_idx_t, char> trip_direction_strings_;
   vector_map<trip_direction_idx_t, trip_direction_t> trip_directions_;
   vecvec<trip_line_idx_t, char> trip_lines_;
+  bitvec_map<trip_idx_t> trip_direction_ids_;
 
   // Transport to section meta infos; Compaction:
   // - only one value = value is valid for the whole run

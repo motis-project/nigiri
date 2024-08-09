@@ -53,6 +53,9 @@ using bitfield = bitset<kMaxDays>;
 
 using bitvec = cista::raw::bitvec;
 
+template <typename K = std::uint32_t>
+using bitvec_map = cista::basic_bitvec<cista::raw::vector<std::uint64_t>, K>;
+
 template <typename... Args>
 using tuple = cista::tuple<Args...>;
 
