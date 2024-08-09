@@ -268,8 +268,7 @@ void update_run(timetable const& tt,
 
   auto const propagate_delay = [&](auto const& rs, event_type et) {
     std::cout << rs.scheduled_time(et) << "+" << delay->count() << "\n";
-    rtt.update_time(fr.rt_, rs.stop_idx_, et,
-                    fr[rs.stop_idx_].scheduled_time(et) + *delay);
+    rtt.update_time(fr.rt_, rs.stop_idx_, et, rs.scheduled_time(et) + *delay);
     rtt.dispatch_event_change(fr.t_, rs.stop_idx_, et, *delay, false);
     ++stats.propagated_delays_;
   };
