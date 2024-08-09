@@ -112,17 +112,12 @@ std::optional<journey::leg> find_start_footpath(timetable const& tt,
                             leg_start_time,
                             offset{leg_start_location, *duration,
                                    it->second.back().transport_mode_id_}};
-      } else if (duration.has_value()) {
+      } else {
         trace(
             "excluded td journey start at leg_start_location={}: "
             "leg_start_time={}, duration={}, start={}, journey_start={}\n",
-            location{tt, leg_start_location}, leg_start_time, *duration,
-            leg_start_time - (kFwd ? 1 : -1) * *duration, j.start_time_);
-      } else {
-        trace(
-            "excluded td journey start leg_start_time={}, duration=infeasible, "
-            "start={}, journey_start={}\n",
-            leg_start_time, *duration,
+            location{tt, leg_start_location}, leg_start_time,
+            duration.has_value() ? *duration : kInfeasible,
             leg_start_time - (kFwd ? 1 : -1) * *duration, j.start_time_);
       }
     }

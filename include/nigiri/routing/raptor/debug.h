@@ -19,7 +19,8 @@
 #define NIGIRI_TRACE_RECONSTRUCT
 #ifdef NIGIRI_TRACE_RECONSTRUCT
 #define trace_reconstruct(...) fmt::print(__VA_ARGS__)
-#else #define trace_reconstruct(...)
+#else
+#define trace_reconstruct(...)
 #endif
 
 #define trace_print_state(...)         \
