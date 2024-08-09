@@ -30,9 +30,11 @@ struct nigiri_location {
 typedef struct nigiri_location nigiri_location_t;
 
 struct nigiri_route_stop {
-  unsigned int location_idx : 30;
+  unsigned int location_idx : 28;
   unsigned int in_allowed : 1;
   unsigned int out_allowed : 1;
+  unsigned int in_allowed_wheelchair : 1;
+  unsigned int out_allowed_wheelchair : 1;
 };
 typedef struct nigiri_route_stop nigiri_route_stop_t;
 

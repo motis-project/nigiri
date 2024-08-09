@@ -27,6 +27,7 @@
 #include "cista/strong.h"
 
 #include "nigiri/common/interval.h"
+#include "nigiri/common/it_range.h"
 
 namespace nigiri {
 
@@ -52,6 +53,9 @@ constexpr auto const kMaxDays = 512;
 using bitfield = bitset<kMaxDays>;
 
 using bitvec = cista::raw::bitvec;
+
+template <typename K = std::uint32_t>
+using bitvec_map = cista::basic_bitvec<cista::raw::vector<std::uint64_t>, K>;
 
 template <typename... Args>
 using tuple = cista::tuple<Args...>;
@@ -293,6 +297,23 @@ enum class direction {
   kForward,
   kBackward  // start = final arrival, destination = journey departure
 };
+
+inline constexpr direction flip(direction const d) noexcept {
+  return d == direction::kForward ? direction::kBackward : direction::kForward;
+}
+
+inline std::string_view to_str(direction const d) {
+  return d == direction::kForward ? "FWD" : "BWD";
+}
+
+template <direction D, typename Collection>
+auto to_range(Collection const& c) {
+  if constexpr (D == direction::kForward) {
+    return it_range{c.begin(), c.end()};
+  } else {
+    return it_range{c.rbegin(), c.rend()};
+  }
+}
 
 using transport_mode_id_t = std::int32_t;
 

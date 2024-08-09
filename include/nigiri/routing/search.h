@@ -102,6 +102,7 @@ struct search {
         algo_state,
         state_.is_destination_,
         state_.dist_to_dest_,
+        q_.td_dest_,
         state_.travel_time_lower_bound_,
         day_idx_t{
             std::chrono::duration_cast<date::days>(
@@ -111,7 +112,8 @@ struct search {
                 tt_.internal_interval().from_)
                 .count()},
         allowed_claszes,
-        require_bikes_allowed};
+        require_bikes_allowed,
+        q_.prf_idx_ == 2U};
   }
 
   search(timetable const& tt,
@@ -149,7 +151,9 @@ struct search {
     }
 
     auto const itv_est = interval_estimator<SearchDir>{tt_, q_};
-    search_interval_ = itv_est.initial(search_interval_);
+    if (is_pretrip()) {
+      search_interval_ = itv_est.initial(search_interval_);
+    }
 
     state_.starts_.clear();
     if (search_interval_.size() != 0_minutes) {
@@ -321,9 +325,10 @@ private:
   void add_start_labels(start_time_t const& start_interval,
                         bool const add_ontrip) {
     state_.starts_.reserve(500'000);
-    get_starts(SearchDir, tt_, rtt_, start_interval, q_.start_,
-               q_.start_match_mode_, q_.use_start_footpaths_, state_.starts_,
-               add_ontrip, q_.prf_idx_);
+    get_starts(SearchDir, tt_, rtt_, start_interval, q_.start_, q_.td_start_,
+               q_.max_start_offset_, q_.start_match_mode_,
+               q_.use_start_footpaths_, state_.starts_, add_ontrip,
+               q_.prf_idx_);
     std::sort(
         begin(state_.starts_), end(state_.starts_),
         [&](start const& a, start const& b) { return kFwd ? b < a : a < b; });

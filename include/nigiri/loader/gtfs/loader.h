@@ -10,7 +10,8 @@ struct gtfs_loader : public loader_interface {
             source_idx_t const,
             dir const&,
             timetable&,
-            hash_map<bitfield, bitfield_idx_t>&) const override;
+            hash_map<bitfield, bitfield_idx_t>&,
+            assistance_times*) const override;
   cista::hash_t hash(dir const&) const override;
   std::string_view name() const override;
 };

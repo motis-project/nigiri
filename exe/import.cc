@@ -35,6 +35,7 @@ int main(int ac, char** av) {
   auto in = fs::path{};
   auto out = fs::path{"tt.bin"};
   auto start_date = "TODAY"s;
+  auto assistance_times = fs::path{};
   auto n_days = 365U;
   auto recursive = false;
   auto ignore = false;
@@ -66,7 +67,8 @@ int main(int ac, char** av) {
        bpo::value(&c.adjust_footpaths_)->default_value(c.adjust_footpaths_),
        "adjust footpath lengths")  //
       ("max_foopath_length", bpo::value(&c.max_footpath_length_)
-                                 ->default_value(c.max_footpath_length_));
+                                 ->default_value(c.max_footpath_length_))  //
+      ("assistance_times", bpo::value(&assistance_times));
   auto const pos = bpo::positional_options_description{}.add("in", -1);
 
   auto vm = bpo::variables_map{};
@@ -94,6 +96,11 @@ int main(int ac, char** av) {
 
   if (input_files.empty()) {
     std::cerr << "no input path found\n";
+    return 1;
+  }
+
+  if (vm.contains("assistance_times")) {
+    std::cout << "using assistance_times: " << assistance_times << "\n";
     return 1;
   }
 

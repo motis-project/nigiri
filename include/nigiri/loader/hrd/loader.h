@@ -12,7 +12,8 @@ struct hrd_loader : public loader_interface {
             source_idx_t const src,
             dir const& d,
             timetable& tt,
-            hash_map<bitfield, bitfield_idx_t>&) const override;
+            hash_map<bitfield, bitfield_idx_t>&,
+            assistance_times*) const override;
   cista::hash_t hash(dir const&) const override;
   nigiri::loader::hrd::config config_;
 };

@@ -77,6 +77,8 @@ void read_stop_times(timetable& tt,
         try {
           auto const arrival_time = hhmm_to_min(*s.arrival_time_);
           auto const departure_time = hhmm_to_min(*s.departure_time_);
+          auto const in_allowed = *s.pickup_type_ != 1;
+          auto const out_allowed = *s.drop_off_type_ != 1;
 
           t->requires_interpolation_ |= arrival_time == kInterpolate;
           t->requires_interpolation_ |= departure_time == kInterpolate;
@@ -84,9 +86,8 @@ void read_stop_times(timetable& tt,
                                    t->seq_numbers_.back() > *s.stop_sequence_);
 
           t->seq_numbers_.emplace_back(*s.stop_sequence_);
-          t->stop_seq_.push_back(stop{stops.at(s.stop_id_->view()),
-                                      *s.pickup_type_ != 1,
-                                      *s.drop_off_type_ != 1}
+          t->stop_seq_.push_back(stop{stops.at(s.stop_id_->view()), in_allowed,
+                                      out_allowed, in_allowed, out_allowed}
                                      .value());
           t->event_times_.emplace_back(
               stop_events{.arr_ = arrival_time, .dep_ = departure_time});
