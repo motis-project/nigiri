@@ -7,7 +7,6 @@
 
 #include "nigiri/common/sort_by.h"
 #include "nigiri/timetable.h"
-#include <optional>
 
 #include "./test_data.h"
 

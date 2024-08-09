@@ -1,4 +1,3 @@
-#include "geo/polyline.h"
 #include "gtest/gtest.h"
 
 #include <algorithm>
@@ -22,7 +21,7 @@ namespace nigiri::loader::gtfs {
 TEST(gtfs, read_trips_example_data) {
   auto const files = example_files();
   auto [shape_vecvec, paths] = create_temporary_paths("trips-example-data");
-  auto guard = utl::make_raii(paths, cleanup_paths);
+  auto const guard = utl::make_raii(paths, cleanup_paths);
 
   timetable tt;
   tt.date_range_ = interval{date::sys_days{July / 1 / 2006},
@@ -56,7 +55,7 @@ TEST(gtfs, read_trips_example_data) {
 TEST(gtfs, read_trips_berlin_data) {
   auto const files = berlin_files();
   auto [shape_vecvec, paths] = create_temporary_paths("trips-berlin-data");
-  auto guard = utl::make_raii(paths, cleanup_paths);
+  auto const guard = utl::make_raii(paths, cleanup_paths);
 
   timetable tt;
   tt.date_range_ = interval{date::sys_days{July / 1 / 2006},

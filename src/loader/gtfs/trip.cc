@@ -6,7 +6,6 @@
 
 #include "geo/box.h"
 
-#include "geo/polyline.h"
 #include "utl/enumerate.h"
 #include "utl/erase_if.h"
 #include "utl/get_or_create.h"
@@ -300,7 +299,7 @@ trip_data read_trips(
           }
 
           auto const shape_it = shapes.find(t.shape_id_->view());
-          auto const& shape_idx = (shape_it == shapes.end())
+          auto const shape_idx = (shape_it == shapes.end())
                                       ? shape_idx_t::invalid()
                                       : shape_it->second;
 

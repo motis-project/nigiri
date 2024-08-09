@@ -1,6 +1,7 @@
 #pragma once
 
 #include <filesystem>
+
 #include "geo/latlng.h"
 
 #include "nigiri/loader/gtfs/shape.h"

@@ -2,7 +2,6 @@
 #include "utl/parser/csv_range.h"
 #include "utl/parser/line_range.h"
 #include "utl/pipes/for_each.h"
-#include "utl/pipes/transform.h"
 #include "utl/progress_tracker.h"
 
 #include "nigiri/loader/gtfs/shape.h"
@@ -10,7 +9,7 @@
 
 namespace nigiri::loader::gtfs {
 
-shape_id_map_t parse_shapes(std::string_view const data,
+shape_id_map_t const parse_shapes(std::string_view const data,
                             mm_vecvec<uint32_t, geo::latlng>* vecvec) {
   if (vecvec == nullptr) {
     return {};

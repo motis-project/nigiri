@@ -98,7 +98,7 @@ test id,50.553822,6.356876,0
 🚏,51.478609,7.223275,1
 )"};
   auto [mmap, paths] = create_temporary_paths("shape-test-unicode-ids");
-  auto guard = utl::make_raii(paths, cleanup_paths);
+  auto const guard = utl::make_raii(paths, cleanup_paths);
 
   auto const shapes = parse_shapes(shapes_data, &mmap);
 
@@ -120,7 +120,7 @@ TEST(gtfs, shapeParse_notAscendingSequence_progressAndLogError) {
 )"};
   auto [mmap, paths] =
       create_temporary_paths("shape-test-not-ascending-sequence");
-  auto guard = utl::make_raii(paths, cleanup_paths);
+  auto const guard = utl::make_raii(paths, cleanup_paths);
   std::stringstream buffer{};
   auto backup = std::clog.rdbuf(buffer.rdbuf());
   auto buffer_guard = utl::make_raii(
@@ -158,7 +158,7 @@ TEST(gtfs, shapeParse_shuffledRows_parseAllData) {
 235,51.543652,7.217830,1
 )"};
   auto [mmap, paths] = create_temporary_paths("shape-test-shuffled-rows");
-  auto guard = utl::make_raii(paths, cleanup_paths);
+  auto const guard = utl::make_raii(paths, cleanup_paths);
 
   auto const shapes = parse_shapes(shapes_data, &mmap);
 
@@ -212,7 +212,7 @@ TEST(gtfs,
 )"};
   auto [mmap, paths] =
       create_temporary_paths("shape-test-not-ascending-sequence");
-  auto guard = utl::make_raii(paths, cleanup_paths);
+  auto const guard = utl::make_raii(paths, cleanup_paths);
   std::stringstream buffer{};
   auto backup = std::clog.rdbuf(buffer.rdbuf());
   auto buffer_guard = utl::make_raii(
