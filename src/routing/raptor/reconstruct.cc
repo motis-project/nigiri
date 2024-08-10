@@ -427,8 +427,6 @@ void reconstruct_journey(timetable const& tt,
               trace_rc_fp_intermodal_dest_mismatch;
             }
           }
-
-          // TODO(felix) rtt->td_footpaths?
         });
     return ret;
   };
