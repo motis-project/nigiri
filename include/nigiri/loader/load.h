@@ -16,7 +16,7 @@ struct loader_config;
 timetable load(std::vector<std::filesystem::path> const&,
                loader_config const&,
                interval<date::sys_days> const&,
-               assistance_times const*,
+               assistance_times*,
                bool ignore = false);
 
 }  // namespace nigiri::loader
