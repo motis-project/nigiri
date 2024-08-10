@@ -15,12 +15,9 @@ namespace nigiri::loader {
 using assistance_idx_t = cista::strong<std::uint32_t, struct assistance_idx_>;
 
 struct assistance_times {
-  bool is_available(timetable const&,  // tt,
-                    location_idx_t const,  // l,
+  bool is_available(timetable const& tt,
+                    location_idx_t const l,
                     oh::local_minutes const t) {
-    static auto const kRule = oh::parse("Mo-Fr 08:00-20:00; Sa-So 10:00-18:00");
-    return contains(kRule, t);
-    /*
     auto const a = utl::get_or_create(cache_, l, [&]() {
       auto const in_radius =
           rtree_.in_radius(tt.locations_.coordinates_[l], 800);
@@ -28,7 +25,6 @@ struct assistance_times {
                                : assistance_idx_t{in_radius.front()};
     });
     return a != assistance_idx_t::invalid() && oh::contains(rules_[a], t);
-     */
   }
 
   vecvec<assistance_idx_t, char> names_;
