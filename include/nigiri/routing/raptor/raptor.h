@@ -323,7 +323,9 @@ private:
     state_.prev_station_mark_.for_each_set_bit([&](std::uint64_t const i) {
       auto const l_idx = location_idx_t{i};
       if constexpr (Rt) {
-        if (prf_idx != 0U && rtt_->has_td_footpaths_[prf_idx].test(l_idx)) {
+        if (prf_idx != 0U && (kFwd ? rtt_->has_td_footpaths_out_
+                                   : rtt_->has_td_footpaths_in_)[prf_idx]
+                                 .test(l_idx)) {
           return;
         }
       }
@@ -392,7 +394,9 @@ private:
 
     state_.prev_station_mark_.for_each_set_bit([&](std::uint64_t const i) {
       auto const l_idx = location_idx_t{i};
-      if (!rtt_->has_td_footpaths_[prf_idx].test(l_idx)) {
+      if (!(kFwd ? rtt_->has_td_footpaths_out_
+                 : rtt_->has_td_footpaths_in_)[prf_idx]
+               .test(l_idx)) {
         return;
       }
 

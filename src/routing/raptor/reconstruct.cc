@@ -484,7 +484,9 @@ void reconstruct_journey(timetable const& tt,
     }
 
     if (rtt != nullptr && q.prf_idx_ != 0U &&
-        rtt->has_td_footpaths_[q.prf_idx_].test(l)) {
+        (kFwd ? rtt->has_td_footpaths_in_
+              : rtt->has_td_footpaths_out_)[q.prf_idx_]
+            .test(l)) {
       trace_reconstruct("CHECKING TD FOOTPATHS OF {}\n", location{tt, l});
       auto const td_footpaths = kFwd ? rtt->td_footpaths_in_[q.prf_idx_][l]
                                      : rtt->td_footpaths_out_[q.prf_idx_][l];

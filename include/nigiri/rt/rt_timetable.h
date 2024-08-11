@@ -119,7 +119,8 @@ struct rt_timetable {
     return rt_transport_src_.size();
   }
 
-  array<bitvec_map<location_idx_t>, kMaxProfiles> has_td_footpaths_;
+  array<bitvec_map<location_idx_t>, kMaxProfiles> has_td_footpaths_out_;
+  array<bitvec_map<location_idx_t>, kMaxProfiles> has_td_footpaths_in_;
   array<vecvec<location_idx_t, td_footpath>, kMaxProfiles> td_footpaths_out_;
   array<vecvec<location_idx_t, td_footpath>, kMaxProfiles> td_footpaths_in_;
 

@@ -232,8 +232,10 @@ TEST(routing, td_footpath) {
 
   // Switch to real-time footpaths but don't add any footpaths.
   // Represents "elevator broken forever".
-  rtt.has_td_footpaths_[kProfile].set(B1, true);
-  rtt.has_td_footpaths_[kProfile].set(B2, true);
+  rtt.has_td_footpaths_in_[kProfile].set(B1, true);
+  rtt.has_td_footpaths_in_[kProfile].set(B2, true);
+  rtt.has_td_footpaths_out_[kProfile].set(B1, true);
+  rtt.has_td_footpaths_out_[kProfile].set(B2, true);
   rtt.td_footpaths_out_[kProfile].resize(tt.n_locations());
   rtt.td_footpaths_in_[kProfile].resize(tt.n_locations());
 
