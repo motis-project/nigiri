@@ -145,12 +145,12 @@ void reconstruct_journey_with_vias(timetable const& tt,
     return is_ontrip ? is_better_or_eq(a, b) : a == b;
   };
 
-  auto const best_state = raptor_state.get_best<Vias>();
   auto const round_times = raptor_state.get_round_times<Vias>();
 
   auto v = static_cast<via_offset_t>(q.via_stops_.size());
 
 #if defined(NIGIRI_TRACE_RECONSTRUCT)
+  auto const best_state = raptor_state.get_best<Vias>();
   auto const best = [&](std::uint32_t const k, location_idx_t const l) {
     return std::min(best_state[to_idx(l)][v], round_times[k][to_idx(l)][v]);
   };
