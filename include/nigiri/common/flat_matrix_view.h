@@ -14,7 +14,8 @@ struct base_flat_matrix_view {
         : matrix_(matrix), i_(i) {}
 
     using iterator = typename Span::iterator;
-    using const_iterator = typename Span::const_iterator;
+    // libc++ doesn't have std::span::const_iterator
+    using const_iterator = iterator;
 
     const_iterator begin() const {
       return std::next(matrix_.entries_, matrix_.n_columns_ * i_);
@@ -47,7 +48,7 @@ struct base_flat_matrix_view {
     const_row(base_flat_matrix_view const& matrix, size_type const i)
         : matrix_(matrix), i_(i) {}
 
-    using iterator = typename Span::const_iterator;
+    using iterator = typename Span::iterator;
 
     iterator begin() const {
       return std::next(matrix_.entries_, matrix_.n_columns_ * i_);
