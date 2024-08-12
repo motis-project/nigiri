@@ -32,6 +32,8 @@ struct offset {
     return a.duration_ < b.duration_;
   }
 
+  friend bool operator==(offset const&, offset const&) = default;
+
   location_idx_t target_;
   duration_t duration_;
   transport_mode_id_t transport_mode_id_;
@@ -40,6 +42,8 @@ struct offset {
 using start_time_t = std::variant<unixtime_t, interval<unixtime_t>>;
 
 struct query {
+  friend bool operator==(query const&, query const&) = default;
+
   start_time_t start_time_;
   location_match_mode start_match_mode_{
       nigiri::routing::location_match_mode::kExact};

@@ -37,8 +37,8 @@ struct search_state {
 struct search_stats {
   std::uint64_t lb_time_{0ULL};
   std::uint64_t fastest_direct_{0ULL};
-  std::uint64_t search_iterations_{0ULL};
   std::uint64_t interval_extensions_{0ULL};
+  std::chrono::milliseconds execute_time_{0LL};
 };
 
 template <typename AlgoStats>
@@ -158,10 +158,10 @@ struct search {
       add_start_labels(q_.start_time_, true);
     }
 
-    auto const processing_start_time = std::chrono::system_clock::now();
+    auto const processing_start_time = std::chrono::steady_clock::now();
     auto const is_timeout_reached = [&]() {
       if (timeout_) {
-        return (std::chrono::system_clock::now() - processing_start_time) >=
+        return (std::chrono::steady_clock::now() - processing_start_time) >=
                *timeout_;
       }
 
@@ -244,7 +244,7 @@ struct search {
 
       search_interval_ = new_interval;
 
-      ++stats_.search_iterations_;
+      ++stats_.interval_extensions_;
     }
 
     if (is_pretrip()) {
@@ -258,6 +258,9 @@ struct search {
       });
     }
 
+    stats_.execute_time_ =
+        std::chrono::duration_cast<std::chrono::milliseconds>(
+            (std::chrono::steady_clock::now() - processing_start_time));
     return {.journeys_ = &state_.results_,
             .interval_ = search_interval_,
             .search_stats_ = stats_,
