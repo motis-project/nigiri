@@ -276,7 +276,7 @@ trip_data read_trips(
 
   auto const progress_tracker = utl::get_active_progress_tracker();
   progress_tracker->status("Read Trips")
-      .out_bounds(40.F, 44.F)
+      .out_bounds(38.F, 42.F)
       .in_high(file_content.size());
   utl::line_range{
       utl::make_buf_reader(file_content, progress_tracker->update_fn())}  //
@@ -346,7 +346,7 @@ void read_frequencies(trip_data& trips, std::string_view file_content) {
 
   auto const progress_tracker = utl::get_active_progress_tracker();
   progress_tracker->status("Read Frequencies")
-      .out_bounds(44.F, 45.F)
+      .out_bounds(42.F, 43.F)
       .in_high(file_content.size());
   return utl::line_range{utl::make_buf_reader(
              file_content, progress_tracker->update_fn())}  //

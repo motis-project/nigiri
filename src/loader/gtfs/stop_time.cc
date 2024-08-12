@@ -42,7 +42,7 @@ void read_stop_times(timetable& tt,
   auto i = 1U;
   auto const progress_tracker = utl::get_active_progress_tracker();
   progress_tracker->status("Read Stop Times")
-      .out_bounds(45.F, 70.F)
+      .out_bounds(43.F, 68.F)
       .in_high(file_content.size());
   auto lookup_direction = cached_lookup(trips.directions_);
   utl::line_range{

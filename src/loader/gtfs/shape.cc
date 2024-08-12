@@ -51,7 +51,7 @@ shape_id_map_t const parse_shapes(std::string_view const data,
 
   auto const progress_tracker = utl::get_active_progress_tracker();
   progress_tracker->status("Parse Shapes")
-      .out_bounds(0.F, 1.F)
+      .out_bounds(37.F, 38.F)
       .in_high(data.size());
   utl::line_range{utl::make_buf_reader(data, progress_tracker->update_fn())} |
       utl::csv<shape_entry>() | utl::for_each(store_to_map);
