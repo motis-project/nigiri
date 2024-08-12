@@ -42,6 +42,11 @@ struct raptor {
       std::numeric_limits<std::uint16_t>::max();
   static constexpr auto const kIntermodalTarget =
       to_idx(get_special_station(special_station::kEnd));
+  static constexpr auto const kInvalidArray = []() {
+    auto a = std::array<delta_t, Vias + 1>{};
+    a.fill(kInvalid);
+    return a;
+  }();
 
   static bool is_better(auto a, auto b) { return kFwd ? a < b : a > b; }
   static bool is_better_or_eq(auto a, auto b) { return kFwd ? a <= b : a >= b; }
@@ -95,16 +100,12 @@ struct raptor {
 
   void reset_arrivals() {
     utl::fill(time_at_dest_, kInvalid);
-    auto invalid_array = std::array<delta_t, Vias + 1>{};
-    invalid_array.fill(kInvalid);
-    round_times_.reset(invalid_array);
+    round_times_.reset(kInvalidArray);
   }
 
   void next_start_time() {
-    auto invalid_array = std::array<delta_t, Vias + 1>{};
-    invalid_array.fill(kInvalid);
-    utl::fill(best_, invalid_array);
-    utl::fill(tmp_, invalid_array);
+    utl::fill(best_, kInvalidArray);
+    utl::fill(tmp_, kInvalidArray);
     utl::fill(state_.prev_station_mark_.blocks_, 0U);
     utl::fill(state_.station_mark_.blocks_, 0U);
     utl::fill(state_.route_mark_.blocks_, 0U);
@@ -114,10 +115,7 @@ struct raptor {
   }
 
   void add_start(location_idx_t const l, unixtime_t const t) {
-    auto v = 0U;
-    if (Vias != 0 && is_via_[0][to_idx(l)]) {
-      v = 1U;
-    }
+    auto const v = (Vias != 0 && is_via_[0][to_idx(l)]) ? 1U : 0U;
     trace_upd("adding start {}: {}, v={}\n", location{tt_, l}, t, v);
     best_[to_idx(l)][v] = unix_to_delta(base(), t);
     round_times_[0U][to_idx(l)][v] = unix_to_delta(base(), t);
@@ -306,7 +304,7 @@ private:
 
   void update_transfers(unsigned const k) {
     state_.prev_station_mark_.for_each_set_bit([&](auto&& i) {
-      for (auto v = 0U; v <= Vias; ++v) {
+      for (auto v = 0U; v != Vias + 1; ++v) {
         auto const tmp_time = tmp_[i][v];
         if (tmp_time == kInvalid) {
           continue;
@@ -370,7 +368,7 @@ private:
 
         auto const target = to_idx(fp.target());
 
-        for (auto v = 0U; v <= Vias; ++v) {
+        for (auto v = 0U; v != Vias + 1; ++v) {
           auto const tmp_time = tmp_[i][v];
           if (tmp_time == kInvalid) {
             continue;
@@ -499,7 +497,7 @@ private:
           (kBwd && stop_idx != stop_seq.size() - 1U)) {
         auto const by_transport = rt_time_at_stop(
             rt_t, stop_idx, kFwd ? event_type::kArr : event_type::kDep);
-        for (auto j = 0U; j <= Vias; ++j) {
+        for (auto j = 0U; j != Vias + 1; ++j) {
           auto const v = Vias - j;
           auto target_v = v + v_offset[v];
           if (et[v] && (kFwd ? stp.out_allowed() : stp.in_allowed())) {
@@ -557,7 +555,7 @@ private:
 
       auto const by_transport = rt_time_at_stop(
           rt_t, stop_idx, kFwd ? event_type::kDep : event_type::kArr);
-      for (auto v = 0U; v <= Vias; ++v) {
+      for (auto v = 0U; v != Vias + 1; ++v) {
         auto const target_v = v + v_offset[v];
         auto const prev_round_time = round_times_[k - 1][l_idx][target_v];
         if (is_better_or_eq(prev_round_time, by_transport)) {
@@ -591,7 +589,7 @@ private:
       // v = via state when entering the transport
       // v + v_offset = via state at the current stop after entering the
       // transport (v_offset > 0 if the transport passes via stops)
-      for (auto j = 0U; j <= Vias; ++j) {
+      for (auto j = 0U; j != Vias + 1; ++j) {
         auto const v = Vias - j;
         if (!et[v].is_valid() && !state_.prev_station_mark_[l_idx]) {
           trace("┊ │k={} v={}  stop_idx={} {}: not marked, no et - skip\n", k,
@@ -721,7 +719,7 @@ private:
         break;
       }
 
-      for (auto v = 0U; v <= Vias; ++v) {
+      for (auto v = 0U; v != Vias + 1; ++v) {
         if (!et[v].is_valid() && !state_.prev_station_mark_[l_idx]) {
           continue;
         }

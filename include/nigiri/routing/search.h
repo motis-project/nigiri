@@ -13,8 +13,8 @@
 #include "nigiri/routing/journey.h"
 #include "nigiri/routing/pareto_set.h"
 #include "nigiri/routing/query.h"
+#include "nigiri/routing/sanitize_via_stops.h"
 #include "nigiri/routing/start_times.h"
-#include "nigiri/routing/via_search.h"
 #include "nigiri/timetable.h"
 #include "nigiri/types.h"
 

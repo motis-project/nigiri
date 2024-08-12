@@ -36,43 +36,42 @@ struct raptor_state {
 
   template <via_offset_t Vias>
   std::span<std::array<delta_t, Vias + 1>> get_tmp() {
-    return std::span<std::array<delta_t, Vias + 1>>{
-        reinterpret_cast<std::array<delta_t, Vias + 1>*>(&tmp_storage_[0]),
+    return {
+        reinterpret_cast<std::array<delta_t, Vias + 1>*>(tmp_storage_.data()),
         n_locations_};
   }
 
   template <via_offset_t Vias>
   std::span<std::array<delta_t, Vias + 1>> get_best() {
-    return std::span<std::array<delta_t, Vias + 1>>{
-        reinterpret_cast<std::array<delta_t, Vias + 1>*>(&best_storage_[0]),
+    return {
+        reinterpret_cast<std::array<delta_t, Vias + 1>*>(best_storage_.data()),
         n_locations_};
   }
 
   template <via_offset_t Vias>
   std::span<std::array<delta_t, Vias + 1> const> get_best() const {
-    return std::span<std::array<delta_t, Vias + 1> const>{
-        reinterpret_cast<std::array<delta_t, Vias + 1> const*>(
-            &best_storage_[0]),
-        n_locations_};
+    return {reinterpret_cast<std::array<delta_t, Vias + 1> const*>(
+                best_storage_.data()),
+            n_locations_};
   }
 
   template <via_offset_t Vias>
   flat_matrix_view<std::array<delta_t, Vias + 1>> get_round_times() {
-    return {std::span<std::array<delta_t, Vias + 1>>{
-                reinterpret_cast<std::array<delta_t, Vias + 1>*>(
-                    &round_times_storage_[0]),
-                n_locations_ * (kMaxTransfers + 1)},
-            kMaxTransfers + 1U, n_locations_};
+    return {{reinterpret_cast<std::array<delta_t, Vias + 1>*>(
+                 round_times_storage_.data()),
+             n_locations_ * (kMaxTransfers + 1)},
+            kMaxTransfers + 1U,
+            n_locations_};
   }
 
   template <via_offset_t Vias>
   flat_matrix_view<std::array<delta_t, Vias + 1> const> get_round_times()
       const {
-    return {std::span<std::array<delta_t, Vias + 1> const>{
-                reinterpret_cast<std::array<delta_t, Vias + 1> const*>(
-                    &round_times_storage_[0]),
-                n_locations_ * (kMaxTransfers + 1)},
-            kMaxTransfers + 1U, n_locations_};
+    return {{reinterpret_cast<std::array<delta_t, Vias + 1> const*>(
+                 round_times_storage_.data()),
+             n_locations_ * (kMaxTransfers + 1)},
+            kMaxTransfers + 1U,
+            n_locations_};
   }
 
   unsigned n_locations_{};

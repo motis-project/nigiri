@@ -4,7 +4,7 @@
 
 #include "utl/verify.h"
 
-#include "nigiri/routing/via_search.h"
+#include "nigiri/routing/sanitize_via_stops.h"
 
 namespace nigiri::routing {
 
