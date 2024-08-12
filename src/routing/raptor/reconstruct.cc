@@ -460,6 +460,8 @@ void reconstruct_journey(timetable const& tt,
     }
   }
 
+  correct_rounded_time_at_start<SearchDir>(tt, rtt, q, j);
+
   optimize_footpaths<SearchDir>(tt, rtt, q, j);
 
 #if defined(NIGIRI_TRACE_RECUSTRUCT)
