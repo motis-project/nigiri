@@ -25,7 +25,7 @@ bool is_journey_start(timetable const& tt,
   });
 }
 
-template <direction SearchDir>
+template <direction SearchDir, via_offset_t Vias>
 std::optional<journey::leg> find_start_footpath(timetable const& tt,
                                                 query const& q,
                                                 journey const& j,
@@ -65,8 +65,8 @@ std::optional<journey::leg> find_start_footpath(timetable const& tt,
       kFwd ? tt.locations_.footpaths_in_[q.prf_idx_][leg_start_location]
            : tt.locations_.footpaths_out_[q.prf_idx_][leg_start_location];
   auto const j_start_time = unix_to_delta(base, j.start_time_);
-  auto const fp_target_time =
-      state.round_times_[0][to_idx(leg_start_location)][0];
+  auto const round_times = state.get_round_times<Vias>();
+  auto const fp_target_time = round_times[0][to_idx(leg_start_location)][0];
 
   if (q.start_match_mode_ == location_match_mode::kIntermodal) {
     for (auto const& o : q.start_) {
@@ -125,14 +125,14 @@ std::optional<journey::leg> find_start_footpath(timetable const& tt,
   throw utl::fail("no valid journey start found");
 }
 
-template <direction SearchDir>
-void reconstruct_journey(timetable const& tt,
-                         rt_timetable const* rtt,
-                         query const& q,
-                         raptor_state const& raptor_state,
-                         journey& j,
-                         date::sys_days const base,
-                         day_idx_t const base_day_idx) {
+template <direction SearchDir, via_offset_t Vias>
+void reconstruct_journey_with_vias(timetable const& tt,
+                                   rt_timetable const* rtt,
+                                   query const& q,
+                                   raptor_state const& raptor_state,
+                                   journey& j,
+                                   date::sys_days const base,
+                                   day_idx_t const base_day_idx) {
   constexpr auto const kFwd = SearchDir == direction::kForward;
   auto const dir = [&]<typename T>(T const a) {
     return static_cast<T>((kFwd ? 1 : -1) * a);
@@ -145,12 +145,14 @@ void reconstruct_journey(timetable const& tt,
     return is_ontrip ? is_better_or_eq(a, b) : a == b;
   };
 
+  auto const best_state = raptor_state.get_best<Vias>();
+  auto const round_times = raptor_state.get_round_times<Vias>();
+
   auto v = static_cast<via_offset_t>(q.via_stops_.size());
 
 #if defined(NIGIRI_TRACE_RECONSTRUCT)
   auto const best = [&](std::uint32_t const k, location_idx_t const l) {
-    return std::min(raptor_state.best_[to_idx(l)][v],
-                    raptor_state.round_times_[k][to_idx(l)][v]);
+    return std::min(best_state[to_idx(l)][v], round_times[k][to_idx(l)][v]);
   };
 #endif
 
@@ -178,8 +180,7 @@ void reconstruct_journey(timetable const& tt,
 
       auto const event_time = unix_to_delta(
           base, stp.time(kFwd ? event_type::kDep : event_type::kArr));
-      auto const round_time =
-          raptor_state.round_times_[k - 1][to_idx(l)][new_v];
+      auto const round_time = round_times[k - 1][to_idx(l)][new_v];
 
       auto const stop_matches_via =
           new_v != 0 && q.via_stops_[new_v - 1].stay_ == 0_minutes &&
@@ -453,7 +454,7 @@ void reconstruct_journey(timetable const& tt,
   auto const get_legs =
       [&](unsigned const k,
           location_idx_t const l) -> std::pair<journey::leg, journey::leg> {
-    auto const curr_time = raptor_state.round_times_[k][to_idx(l)][v];
+    auto const curr_time = round_times[k][to_idx(l)][v];
     trace_reconstruct("get_legs: k={}, v={}, l={}, curr_time={}\n", k, v,
                       location{tt, l}, delta_to_unix(base, curr_time));
 
@@ -546,7 +547,8 @@ void reconstruct_journey(timetable const& tt,
     j.add(std::move(transport_leg));
   }
 
-  auto init_fp = find_start_footpath<SearchDir>(tt, q, j, raptor_state, base);
+  auto init_fp =
+      find_start_footpath<SearchDir, Vias>(tt, q, j, raptor_state, base);
   if (init_fp.has_value()) {
     j.add(std::move(*init_fp));
   }
@@ -599,6 +601,34 @@ void reconstruct_journey(timetable const& tt,
 #if defined(NIGIRI_TRACE_RECUSTRUCT)
   j.print(std::cout, tt, true);
 #endif
+}
+
+template <direction SearchDir>
+void reconstruct_journey(timetable const& tt,
+                         rt_timetable const* rtt,
+                         query const& q,
+                         raptor_state const& raptor_state,
+                         journey& j,
+                         date::sys_days const base,
+                         day_idx_t const base_day_idx) {
+  static_assert(kMaxVias == 3,
+                "reconstruct.cc needs to be adjusted for kMaxVias");
+
+  switch (q.via_stops_.size()) {
+    case 0:
+      return reconstruct_journey_with_vias<SearchDir, 0>(
+          tt, rtt, q, raptor_state, j, base, base_day_idx);
+    case 1:
+      return reconstruct_journey_with_vias<SearchDir, 1>(
+          tt, rtt, q, raptor_state, j, base, base_day_idx);
+    case 2:
+      return reconstruct_journey_with_vias<SearchDir, 2>(
+          tt, rtt, q, raptor_state, j, base, base_day_idx);
+    case 3:
+      return reconstruct_journey_with_vias<SearchDir, 3>(
+          tt, rtt, q, raptor_state, j, base, base_day_idx);
+  }
+  std::unreachable();
 }
 
 template void reconstruct_journey<direction::kForward>(timetable const&,

@@ -1,6 +1,7 @@
 #include "./raptor_search.h"
 
 #include "nigiri/routing/raptor/raptor.h"
+#include "nigiri/routing/raptor_search.h"
 #include "nigiri/routing/search.h"
 #include "nigiri/timetable.h"
 
@@ -18,38 +19,17 @@ unixtime_t parse_time(std::string_view s, char const* format) {
       date::make_zoned(tz, ls).get_sys_time());
 }
 
-template <direction SearchDir>
-pareto_set<routing::journey> raptor_search(timetable const& tt,
-                                           rt_timetable const* rtt,
-                                           routing::query q) {
-  using algo_state_t = routing::raptor_state;
-  static auto search_state = routing::search_state{};
-  static auto algo_state = algo_state_t{};
-
-  if (rtt == nullptr) {
-    using algo_t = routing::raptor<SearchDir, false>;
-    return *(routing::search<SearchDir, algo_t>{tt, rtt, search_state,
-                                                algo_state, std::move(q)}
-                 .execute()
-                 .journeys_);
-  } else {
-    using algo_t = routing::raptor<SearchDir, true>;
-    return *(routing::search<SearchDir, algo_t>{tt, rtt, search_state,
-                                                algo_state, std::move(q)}
-                 .execute()
-                 .journeys_);
-  }
-}
-
 pareto_set<routing::journey> raptor_search(timetable const& tt,
                                            rt_timetable const* rtt,
                                            routing::query q,
                                            direction const search_dir) {
-  if (search_dir == direction::kForward) {
-    return raptor_search<direction::kForward>(tt, rtt, std::move(q));
-  } else {
-    return raptor_search<direction::kBackward>(tt, rtt, std::move(q));
-  }
+  using algo_state_t = routing::raptor_state;
+  static auto search_state = routing::search_state{};
+  static auto algo_state = algo_state_t{};
+
+  return *(routing::raptor_search(tt, rtt, search_state, algo_state,
+                                  std::move(q), search_dir)
+               .journeys_);
 }
 
 pareto_set<routing::journey> raptor_search(
