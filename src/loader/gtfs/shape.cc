@@ -28,7 +28,7 @@ shape_id_map_t const parse_shapes(std::string_view const data,
   };
   auto states = hash_map<utl::cstr, shape_state>{};
 
-  auto const store_to_map = [&](shape_entry const entry) {
+  auto const store_to_map = [&states, &vecvec](shape_entry const entry) {
     if (auto found = states.find(entry.id_->view()); found != states.end()) {
       auto& state = found->second;
       auto const seq = entry.seq_.val();
