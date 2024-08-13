@@ -1,18 +1,23 @@
 #pragma once
 
+#include <vector>
+
 #include "nigiri/loader/gtfs/trip.h"
+#include "nigiri/types.h"
 
 namespace nigiri::loader::gtfs {
 
 struct route_key_t {
   clasz clasz_{clasz::kOther};
   stop_seq_t stop_seq_;
+  std::vector<shape_section> shapes_;
   bitvec bikes_allowed_;
 };
 
 struct route_key_ptr_t {
   clasz clasz_{clasz::kOther};
   stop_seq_t const* stop_seq_{nullptr};
+  std::vector<shape_section> const* shapes_{};
   bitvec const* bikes_allowed_{nullptr};
 };
 

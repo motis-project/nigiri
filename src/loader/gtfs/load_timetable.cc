@@ -174,6 +174,20 @@ void load_timetable(loader_config const& config,
         }
       };
 
+  std::vector<shape_section> shape_cache;
+  auto const get_shapes = [&](std::basic_string<gtfs_trip_idx_t> const& trips) {
+    shape_cache.clear();
+    for (auto const [i, t_idx] : utl::enumerate(trips)) {
+      auto const& trp = trip_data.get(t_idx);
+      auto const shape_idx = trp.shape_idx_;
+      if (shape_idx == shape_idx_t::invalid()) {
+        continue;
+      }
+      shape_cache.push_back(shape_section{shape_idx});
+    }
+    return &shape_cache;
+  };
+
   bitvec bikes_allowed_seq_cache;
   auto const get_bikes_allowed_seq =
       [&](std::basic_string<gtfs_trip_idx_t> const& trips) -> bitvec const* {
@@ -203,10 +217,11 @@ void load_timetable(loader_config const& config,
         trip_data, noon_offsets, tt, trips, traffic_days, tt.date_range_,
         [&](utc_trip&& s) {
           auto const* stop_seq = get_stop_seq(s.trips_);
+          auto const* section_shapes = get_shapes(s.trips_);
           auto const clasz = trip_data.get(s.trips_.front()).get_clasz(tt);
           auto const* bikes_allowed_seq = get_bikes_allowed_seq(s.trips_);
-          auto const it = route_services.find(
-              route_key_ptr_t{clasz, stop_seq, bikes_allowed_seq});
+          auto const it = route_services.find(route_key_ptr_t{
+              clasz, stop_seq, section_shapes, bikes_allowed_seq});
           if (it != end(route_services)) {
             for (auto& r : it->second) {
               auto const idx = get_index(r, s);
@@ -218,7 +233,8 @@ void load_timetable(loader_config const& config,
             it->second.emplace_back(std::vector<utc_trip>{std::move(s)});
           } else {
             route_services.emplace(
-                route_key_t{clasz, *stop_seq, *bikes_allowed_seq},
+                route_key_t{clasz, *stop_seq, *section_shapes,
+                            *bikes_allowed_seq},
                 std::vector<std::vector<utc_trip>>{{std::move(s)}});
           }
         });
@@ -292,9 +308,8 @@ void load_timetable(loader_config const& config,
     auto location_routes = mutable_fws_multimap<location_idx_t, route_idx_t>{};
     for (auto const& [key, sub_routes] : route_services) {
       for (auto const& services : sub_routes) {
-        auto const shape = shape_section{shape_idx_t::invalid(), 0u, 0u};
-        auto const route_idx =
-            tt.register_route(key.stop_seq_, {key.clasz_}, std::vector{shape}, key.bikes_allowed_);
+        auto const route_idx = tt.register_route(
+            key.stop_seq_, {key.clasz_}, key.shapes_, key.bikes_allowed_);
 
         for (auto const& s : key.stop_seq_) {
           auto s_routes = location_routes[stop{s}.location_idx()];
