@@ -12,6 +12,7 @@
 #include "utl/parser/arg_parser.h"
 #include "utl/verify.h"
 
+#include "nigiri/routing/for_each_meta.h"
 #include "nigiri/rt/frun.h"
 #include "nigiri/rt/rt_timetable.h"
 #include "nigiri/rt/run.h"
@@ -136,7 +137,7 @@ std::optional<rt::run> find_run(timetable const& tt,
     return std::nullopt;
   }
 
-  auto matches =
+  auto candidates =
       hash_map<transport, std::pair<interval<stop_idx_t>, unsigned>>{};
 
   for (auto const& vdv_stop : vdv_stops) {
@@ -147,7 +148,8 @@ std::optional<rt::run> find_run(timetable const& tt,
     for (auto const r : tt.location_routes_[vdv_stop.l_]) {
       auto const location_seq = tt.route_location_seq_[r];
       for (auto const [stop_idx, s] : utl::enumerate(location_seq)) {
-        if (stop{s}.location_idx() != vdv_stop.l_) {
+        if (!matches(tt, routing::location_match_mode::kEquivalent,
+                     stop{s}.location_idx(), vdv_stop.l_)) {
           continue;
         }
 
@@ -189,15 +191,15 @@ std::optional<rt::run> find_run(timetable const& tt,
               continue;
             }
 
-            if (!matches.contains(tr)) {
-              matches[tr] = {{static_cast<stop_idx_t>(stop_idx),
-                              static_cast<stop_idx_t>(location_seq.size())},
-                             0U};
+            if (!candidates.contains(tr)) {
+              candidates[tr] = {{static_cast<stop_idx_t>(stop_idx),
+                                 static_cast<stop_idx_t>(location_seq.size())},
+                                0U};
             }
 
-            if (++matches[tr].second == 10) {
-              return rt::run{tr,
-                             {matches[tr].first.from_, matches[tr].first.to_}};
+            if (++candidates[tr].second == 10) {
+              return rt::run{
+                  tr, {candidates[tr].first.from_, candidates[tr].first.to_}};
             }
 
             no_transport_found_at_stop = false;
@@ -209,24 +211,24 @@ std::optional<rt::run> find_run(timetable const& tt,
       ++stats.no_transport_found_at_stop_;
     }
   }
-  if (matches.empty()) {
+  if (candidates.empty()) {
     return std::nullopt;
   }
 
   std::cout << "match candidates:\n";
-  for (auto const& [k, v] : matches) {
+  for (auto const& [k, v] : candidates) {
     std::cout
         << "[line: "
         << tt.trip_lines_[tt.transport_section_lines_[k.t_idx_].size() == 1
                               ? tt.transport_section_lines_[k.t_idx_].front()
                               : tt.transport_section_lines_
-                                    [k.t_idx_][matches[k].first.from_]]
+                                    [k.t_idx_][candidates[k].first.from_]]
                .view()
         << ", #matching_stops: " << v.second << "]\n";
   }
 
   auto const most_matches = std::max_element(
-      begin(matches), end(matches), [](auto const& a, auto const& b) {
+      begin(candidates), end(candidates), [](auto const& a, auto const& b) {
         return a.second.second < b.second.second;
       });
 
@@ -309,20 +311,24 @@ void update_run(timetable const& tt,
     skipped_stops.clear();
     for (auto vdv_stop = cursor; vdv_stop != end(vdv_stops); ++vdv_stop) {
       if (vdv_stop->l_ != location_idx_t::invalid() &&
-          rs.get_location_idx() == vdv_stop->l_) {
+          matches(tt, routing::location_match_mode::kEquivalent,
+                  rs.get_location_idx(), vdv_stop->l_)) {
         std::cout << "location match at stop_idx = " << rs.stop_idx_
                   << ": [id: " << rs.id() << ", name: " << rs.name() << "]\n";
-        if (rs.stop_idx_ != 0 && vdv_stop->rt_arr_.has_value() &&
-            vdv_stop->arr_.has_value() &&
+        if (rs.stop_idx_ != 0 && vdv_stop->arr_.has_value() &&
             vdv_stop->arr_.value() == rs.scheduled_time(event_type::kArr)) {
           matched_arr = true;
-          update_event(rs, event_type::kArr, *vdv_stop->rt_arr_);
+          if (vdv_stop->rt_arr_.has_value()) {
+            update_event(rs, event_type::kArr, *vdv_stop->rt_arr_);
+          }
         }
         if (rs.stop_idx_ != fr.stop_range_.to_ - 1 &&
-            vdv_stop->rt_dep_.has_value() && vdv_stop->dep_.has_value() &&
+            vdv_stop->dep_.has_value() &&
             vdv_stop->dep_.value() == rs.scheduled_time(event_type::kDep)) {
           matched_dep = true;
-          update_event(rs, event_type::kDep, *vdv_stop->rt_dep_);
+          if (vdv_stop->rt_dep_.has_value()) {
+            update_event(rs, event_type::kDep, *vdv_stop->rt_dep_);
+          }
         }
         if (matched_arr || matched_dep) {
           cursor = vdv_stop + 1;
