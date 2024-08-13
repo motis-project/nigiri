@@ -5,6 +5,7 @@
 #include "nigiri/loader/gtfs/parse_date.h"
 #include "nigiri/loader/gtfs/parse_time.h"
 #include "nigiri/common/day_list.h"
+#include "nigiri/common/split_duration.h"
 #include "nigiri/rt/rt_timetable.h"
 #include "nigiri/rt/trip_update.h"
 #include "nigiri/timetable.h"
@@ -74,12 +75,13 @@ void resolve_static(date::sys_days const today,
       auto const start_time_day_offset =
           start_time.has_value() ? gtfs_static_dep_day - start_time_day
                                  : date::days{0U};
-      auto const [day_offset, tz_offset_minutes] =
-          split_rounded(gtfs_static_dep - utc_dep);
+      auto const [day_offset, tz_offset_minutes] = split_rounded(o);
+
       auto const day_idx =
           ((start_date.has_value() ? *start_date : today) + day_offset -
            start_time_day_offset - tt.internal_interval_days().from_)
               .count();
+
       if (day_idx > kMaxDays || day_idx < 0) {
         continue;
       }

@@ -48,7 +48,30 @@ struct frun : public run {
 
     bool in_allowed() const noexcept;
     bool out_allowed() const noexcept;
+    bool in_allowed_wheelchair() const noexcept;
+    bool out_allowed_wheelchair() const noexcept;
     bool is_canceled() const noexcept;
+
+    bool in_allowed(bool const is_wheelchair) const noexcept;
+    bool out_allowed(bool const is_wheelchair) const noexcept;
+
+    template <enum direction SearchDir>
+    bool can_start(bool const is_wheelchair) const {
+      if constexpr (SearchDir == direction::kForward) {
+        return is_wheelchair ? in_allowed_wheelchair() : in_allowed();
+      } else {
+        return is_wheelchair ? out_allowed_wheelchair() : out_allowed();
+      }
+    }
+
+    template <enum direction SearchDir>
+    bool can_finish(bool const is_wheelchair) const {
+      if constexpr (SearchDir == direction::kForward) {
+        return is_wheelchair ? out_allowed_wheelchair() : out_allowed();
+      } else {
+        return is_wheelchair ? in_allowed_wheelchair() : in_allowed();
+      }
+    }
 
     stop_idx_t section_idx(event_type) const noexcept;
 

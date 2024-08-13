@@ -12,6 +12,7 @@
 #include "nigiri/loader/gtfs/noon_offsets.h"
 #include "nigiri/loader/gtfs/trip.h"
 #include "nigiri/common/day_list.h"
+#include "nigiri/common/split_duration.h"
 #include "nigiri/timetable.h"
 
 namespace nigiri::loader::gtfs {
@@ -271,13 +272,6 @@ void expand_assistance(timetable const& tt,
                        assistance_times& assist,
                        utc_trip&& ut,
                        Consumer&& consumer) {
-  using namespace std::chrono_literals;
-
-  auto const time_mod = [](auto const a, auto const b) {
-    using T = std::decay_t<decltype(a)>;
-    return a < T{0} ? ((a % b) + b) % b : a % b;
-  };
-
   auto stop_seq_cache = stop_seq_t{};
   auto assistance_traffic_days = hash_map<stop_seq_t, bitfield>{};
   auto prev_key = stop_seq_t{};
@@ -290,23 +284,23 @@ void expand_assistance(timetable const& tt,
     auto stop_seq = *get_stop_seq(trip_data, ut, stop_seq_cache);
     auto stop_times_it = begin(ut.utc_times_);
     for (auto [a, b] : utl::pairwise(stop_seq)) {
-      auto const from_dep =
-          time_mod(*stop_times_it++ + ut.first_dep_offset_, 1440min);
-      auto const to_arr =
-          time_mod(*stop_times_it++ + ut.first_dep_offset_, 1440min);
+      auto const [dep_day_offset, dep] =
+          split_time_mod(*stop_times_it++ + ut.first_dep_offset_);
+      auto const [arr_day_offset, arr] =
+          split_time_mod(*stop_times_it++ + ut.first_dep_offset_);
 
       auto from = stop{a};
       auto to = stop{b};
       from.in_allowed_wheelchair_ =
           (from.in_allowed_ &&
            assist.is_available(tt, from.location_idx(),
-                               oh::local_minutes{day + from_dep}))
+                               oh::local_minutes{day + dep_day_offset + dep}))
               ? 1U
               : 0U;
       to.out_allowed_wheelchair_ =
           (to.out_allowed_ &&
            assist.is_available(tt, to.location_idx(),
-                               oh::local_minutes{day + to_arr}))
+                               oh::local_minutes{day + arr_day_offset + arr}))
               ? 1U
               : 0U;
 

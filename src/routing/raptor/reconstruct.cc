@@ -152,6 +152,7 @@ void reconstruct_journey(timetable const& tt,
                          date::sys_days const base,
                          day_idx_t const base_day_idx) {
   constexpr auto const kFwd = SearchDir == direction::kForward;
+  auto const is_wheelchair = q.prf_idx_ == 2U;
   auto const is_better_or_eq = [](auto a, auto b) {
     return kFwd ? a <= b : a >= b;
   };
@@ -185,7 +186,8 @@ void reconstruct_journey(timetable const& tt,
         break;
       }
 
-      if ((kFwd && !stp.in_allowed()) || (!kFwd && !stp.out_allowed())) {
+      if ((kFwd && !stp.in_allowed(is_wheelchair)) ||
+          (!kFwd && !stp.out_allowed(is_wheelchair))) {
         continue;
       }
 
@@ -309,8 +311,9 @@ void reconstruct_journey(timetable const& tt,
           auto const stop_idx = static_cast<stop_idx_t>(i);
           auto const fr = rt::frun::from_rt(tt, rtt, rt_t);
           if (stp.location_idx() != l ||  //
-              (kFwd && (i == 0U || !stp.out_allowed())) ||
-              (!kFwd && (i == location_seq.size() - 1 || !stp.in_allowed())) ||
+              (kFwd && (i == 0U || !stp.out_allowed(is_wheelchair))) ||
+              (!kFwd && (i == location_seq.size() - 1 ||
+                         !stp.in_allowed(is_wheelchair))) ||
               delta_to_unix(base, time) !=
                   fr[stop_idx].time(kFwd ? event_type::kArr
                                          : event_type::kDep)) {
@@ -352,8 +355,9 @@ void reconstruct_journey(timetable const& tt,
       for (auto const [i, s] : utl::enumerate(location_seq)) {
         auto const stp = stop{s};
         if (stp.location_idx() != l ||  //
-            (kFwd && (i == 0U || !stp.out_allowed())) ||
-            (!kFwd && (i == location_seq.size() - 1 || !stp.in_allowed()))) {
+            (kFwd && (i == 0U || !stp.out_allowed(is_wheelchair))) ||
+            (!kFwd && (i == location_seq.size() - 1 ||
+                       !stp.in_allowed(is_wheelchair)))) {
           continue;
         }
 

@@ -5,6 +5,8 @@
 #include "nigiri/loader/init_finish.h"
 
 #include "nigiri/rt/create_rt_timetable.h"
+#include "nigiri/rt/frun.h"
+#include "nigiri/rt/gtfsrt_resolve_run.h"
 #include "nigiri/rt/rt_timetable.h"
 #include "../raptor_search.h"
 
@@ -20,7 +22,7 @@ namespace {
 constexpr auto const kAssistance = R"(name,lat,lng,time
 A,0.0,1.0,08:00-22:00
 B,2.0,3.0,08:00-22:00
-C,4.0,5.0,08:00-22:00
+C,4.0,5.0,"Th; 08:00-22:00"
 )";
 
 // 00:00
@@ -69,22 +71,9 @@ T2,00:40:00,24:40:00,3600
 )");
 }
 
-std::string to_string(timetable const& tt,
-                      pareto_set<routing::journey> const& results) {
-  std::stringstream ss;
-  ss << "\n";
-  for (auto const& x : results) {
-    x.print(ss, tt);
-    ss << "\n";
-  }
-  return ss.str();
-}
-
 }  // namespace
 
 TEST(routing, wheelchair_assistance) {
-  constexpr auto const kProfile = profile_idx_t{0U};
-
   auto assistance = read_assistance(kAssistance);
 
   timetable tt;
@@ -94,20 +83,47 @@ TEST(routing, wheelchair_assistance) {
   load_timetable({}, source_idx_t{0}, test_files(), tt, &assistance);
   finalize(tt);
 
-  std::cout << tt << "\n";
-
   auto const B1 = tt.locations_.get({"B1", {}}).l_;
   auto const B2 = tt.locations_.get({"B2", {}}).l_;
-  tt.locations_.footpaths_out_[kProfile].resize(tt.n_locations());
-  tt.locations_.footpaths_in_[kProfile].resize(tt.n_locations());
-  tt.locations_.footpaths_out_[kProfile][B1].push_back(footpath{B2, 5min});
-  tt.locations_.footpaths_in_[kProfile][B2].push_back(footpath{B1, 5min});
+  for (auto const profile : {0U, 2U}) {
+    tt.locations_.footpaths_out_[profile].resize(tt.n_locations());
+    tt.locations_.footpaths_in_[profile].resize(tt.n_locations());
+    tt.locations_.footpaths_out_[profile][B1].push_back(footpath{B2, 5min});
+    tt.locations_.footpaths_in_[profile][B2].push_back(footpath{B1, 5min});
+  }
 
-  auto const results = raptor_search(
-      tt, nullptr, "A", "C",
-      interval{unixtime_t{sys_days{2024_y / June / 19} + 5_hours},
-               unixtime_t{sys_days{2024_y / June / 19} + 21_hours}},
-      direction::kForward, routing::all_clasz_allowed(), false, kProfile);
+  auto const iv = interval{unixtime_t{sys_days{2024_y / June / 19} + 5_hours},
+                           unixtime_t{sys_days{2024_y / June / 19} + 21_hours}};
 
-  std::cout << to_string(tt, results) << "\n";
+  auto const results_walk =
+      raptor_search(tt, nullptr, "A", "C", iv, direction::kForward,
+                    routing::all_clasz_allowed(), false, 0U);
+  ASSERT_FALSE(results_walk.begin() == results_walk.end());
+  EXPECT_EQ((unixtime_t{sys_days{2024_y / June / 19} + 5_hours}),
+            results_walk.begin()->start_time_);
+  EXPECT_EQ((unixtime_t{sys_days{2024_y / June / 19} + 20_hours}),
+            std::prev(results_walk.end())->start_time_);
+
+  auto const results_wheelchair =
+      raptor_search(tt, nullptr, "A", "C", iv, direction::kForward,
+                    routing::all_clasz_allowed(), false, 2U);
+  ASSERT_FALSE(results_wheelchair.begin() == results_wheelchair.end());
+  EXPECT_EQ((unixtime_t{sys_days{2024_y / June / 19} + 6_hours}),
+            results_wheelchair.begin()->start_time_);
+  EXPECT_EQ((unixtime_t{sys_days{2024_y / June / 19} + 19_hours}),
+            std::prev(results_wheelchair.end())->start_time_);
+
+  auto td = transit_realtime::TripDescriptor();
+  *td.mutable_start_time() = "23:00:00";
+  *td.mutable_start_date() = "20240619";
+  *td.mutable_trip_id() = "T1";
+
+  auto rtt = rt::create_rt_timetable(tt, date::sys_days{2024_y / June / 19});
+  auto const [r, t] = rt::gtfsrt_resolve_run(date::sys_days{2019_y / May / 4},
+                                             tt, rtt, source_idx_t{0}, td);
+  EXPECT_TRUE(r.valid());
+
+  auto const fr = rt::frun{tt, &rtt, r};
+  ASSERT_EQ(3U, fr.size());
+  ASSERT_TRUE(fr[2].out_allowed_wheelchair());
 }

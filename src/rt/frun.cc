@@ -218,6 +218,22 @@ bool frun::run_stop::out_allowed() const noexcept {
   return get_stop().out_allowed();
 }
 
+bool frun::run_stop::in_allowed_wheelchair() const noexcept {
+  return get_stop().in_allowed_wheelchair();
+}
+
+bool frun::run_stop::out_allowed_wheelchair() const noexcept {
+  return get_stop().out_allowed_wheelchair();
+}
+
+bool frun::run_stop::in_allowed(bool const wheelchair) const noexcept {
+  return wheelchair ? in_allowed_wheelchair() : in_allowed();
+}
+
+bool frun::run_stop::out_allowed(bool const wheelchair) const noexcept {
+  return wheelchair ? out_allowed_wheelchair() : out_allowed();
+}
+
 timetable const& frun::run_stop::tt() const noexcept { return *fr_->tt_; }
 rt_timetable const* frun::run_stop::rtt() const noexcept { return fr_->rtt_; }
 
