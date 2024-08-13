@@ -176,12 +176,9 @@ void update_run(
         auto const l_it = tt.locations_.location_id_to_idx_.find(
             {.id_ = new_id, .src_ = src});
         if (l_it != end(tt.locations_.location_id_to_idx_)) {
-          stp = stop{l_it->second, stop{stp}.in_allowed(),
-                     stop{stp}.out_allowed(),
-                     // TODO(felix)
-                     // check wheelchair assistance service
-                     // availability at arrival + departure time
-                     true, true}
+          auto const s = stop{stp};
+          stp = stop{l_it->second, s.in_allowed(), s.out_allowed(),
+                     s.in_allowed_wheelchair(), s.out_allowed_wheelchair()}
                     .value();
           auto transports = rtt.location_rt_transports_[l_it->second];
           if (utl::find(transports, r.rt_) == end(transports)) {
