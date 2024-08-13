@@ -44,7 +44,8 @@ struct generator_settings {
         << "\nallowed_claszes: " << gs.allowed_claszes_
         << "\nmin_transfer_time: "
         << gs.transfer_time_settings_.min_transfer_time_
-        << "\ntransfer_time_factor: " << gs.transfer_time_settings_.factor_;
+        << "\ntransfer_time_factor: " << gs.transfer_time_settings_.factor_
+        << "\nvias: " << gs.n_vias_;
 
     auto const visit_loc = [](location_idx_t const loc_idx) {
       std::stringstream ss;
@@ -87,6 +88,7 @@ struct generator_settings {
   profile_idx_t prf_idx_{0};
   routing::clasz_mask_t allowed_claszes_{routing::all_clasz_allowed()};
   routing::transfer_time_settings transfer_time_settings_{};
+  unsigned n_vias_{0U};
 };
 
 }  // namespace nigiri::query_generation

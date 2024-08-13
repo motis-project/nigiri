@@ -393,6 +393,8 @@ int main(int argc, char* argv[]) {
        bpo::value<float>(&gs.transfer_time_settings_.factor_)
            ->default_value(1.0F),
        "multiply all transfer times by this factor")  //
+      ("vias", bpo::value<unsigned>(&gs.n_vias_)->default_value(0U),
+       "number of via stops")  //
       ("start_coord", bpo::value<std::string>(&start_coord_str),
        "start coordinate for random queries, format: \"(LAT, LON)\", "  //
        "where LAT/LON are given in decimal degrees")  //
