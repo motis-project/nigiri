@@ -304,7 +304,8 @@ void update_run(timetable const& tt,
   };
 
   for (auto const rs : fr) {
-    auto matched = false;
+    auto matched_arr = false;
+    auto matched_dep = false;
     skipped_stops.clear();
     for (auto vdv_stop = cursor; vdv_stop != end(vdv_stops); ++vdv_stop) {
       if (vdv_stop->l_ != location_idx_t::invalid() &&
@@ -314,16 +315,16 @@ void update_run(timetable const& tt,
         if (rs.stop_idx_ != 0 && vdv_stop->rt_arr_.has_value() &&
             vdv_stop->arr_.has_value() &&
             vdv_stop->arr_.value() == rs.scheduled_time(event_type::kArr)) {
-          matched = true;
+          matched_arr = true;
           update_event(rs, event_type::kArr, *vdv_stop->rt_arr_);
         }
         if (rs.stop_idx_ != fr.stop_range_.to_ - 1 &&
             vdv_stop->rt_dep_.has_value() && vdv_stop->dep_.has_value() &&
             vdv_stop->dep_.value() == rs.scheduled_time(event_type::kDep)) {
-          matched = true;
+          matched_dep = true;
           update_event(rs, event_type::kDep, *vdv_stop->rt_dep_);
         }
-        if (matched) {
+        if (matched_arr || matched_dep) {
           cursor = vdv_stop + 1;
           print_skipped_stops();
           break;
@@ -336,18 +337,19 @@ void update_run(timetable const& tt,
       }
       skipped_stops.emplace_back(*vdv_stop);
     }
-    if (!matched && is_complete_run && rs.stop_idx_ < vdv_stops.size()) {
+    if (!matched_arr && !matched_dep && is_complete_run &&
+        rs.stop_idx_ < vdv_stops.size()) {
       gtfs_stop_missing << "stop_idx = " << rs.stop_idx_ << ": [id: " << rs.id()
                         << ", name: " << rs.name() << "]\n";
     }
-    if (!matched && delay) {
-      if (rs.stop_idx_ != 0) {
+    if (delay) {
+      if (rs.stop_idx_ != 0 && !matched_arr) {
         std::cout << "propagating delay at stop_idx = " << rs.stop_idx_
                   << ": [id: " << rs.id() << ", name: " << rs.name()
                   << "] ARR: ";
         propagate_delay(rs, event_type::kArr);
       }
-      if (rs.stop_idx_ != fr.stop_range_.to_ - 1) {
+      if (rs.stop_idx_ != fr.stop_range_.to_ - 1 && !matched_dep) {
         std::cout << "propagating delay at stop_idx = " << rs.stop_idx_
                   << ": [id: " << rs.id() << ", name: " << rs.name()
                   << "] DEP: ";
