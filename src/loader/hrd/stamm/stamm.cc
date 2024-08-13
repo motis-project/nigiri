@@ -106,7 +106,7 @@ provider_idx_t stamm::resolve_provider(utl::cstr s) {
         "creating new provider for missing {}", s.view());
     auto const idx = provider_idx_t{tt_.providers_.size()};
     tt_.providers_.emplace_back(
-        provider{.short_name_ = s.view(), .long_name_ = s.view()});
+        provider{.short_name_ = s.view(), .long_name_ = s.view(), .url_ = ""});
     providers_[s.to_str()] = idx;
     return idx;
   } else {

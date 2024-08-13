@@ -52,11 +52,11 @@ struct footpath {
   }
 
   friend bool operator==(footpath const& a, footpath const& b) {
-    return a.value() == b.value();
+    return std::tie(a.target_, a.duration_) == std::tie(b.target_, b.duration_);
   }
 
   friend bool operator<(footpath const& a, footpath const& b) {
-    return a.value() < b.value();
+    return std::tie(a.target_, a.duration_) < std::tie(b.target_, b.duration_);
   }
 
   location_idx_t::value_t target_ : kTargetBits;

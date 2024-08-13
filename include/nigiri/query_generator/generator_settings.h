@@ -75,7 +75,7 @@ struct generator_settings {
   transport_mode dest_mode_{kWalk};
   std::optional<std::variant<location_idx_t, geo::latlng>> start_;
   std::optional<std::variant<location_idx_t, geo::latlng>> dest_;
-  bool use_start_footpaths_{true};
+  bool use_start_footpaths_{false};
   std::uint8_t max_transfers_{routing::kMaxTransfers};
   unsigned min_connection_count_{0U};
   bool extend_interval_earlier_{false};

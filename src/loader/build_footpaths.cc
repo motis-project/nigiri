@@ -49,6 +49,17 @@ struct component {
     assert(i < size());
     return std::next(from_, static_cast<component_it::difference_type>(i))->l_;
   }
+  void verify() const {
+    for (auto i = location_idx_t{0U}; i != graph_.size(); ++i) {
+      auto const bucket = graph_[i];
+      for (auto j = 0U; j != bucket.size(); ++j) {
+        auto const fp = bucket[j];
+        utl_verify(fp.target() < graph_.size(),
+                   "fp.target={}, graph.size={}, i={}, j={}", fp.target(),
+                   graph_.size(), i, j);
+      }
+    }
+  }
 
   component_it from_, to_;
   vecvec<location_idx_t, footpath> graph_;
@@ -179,6 +190,8 @@ void build_component_graph(
     utl::erase_duplicates(n);
     c.graph_.emplace_back(n);
   }
+
+  c.verify();
 }
 
 void connect_components(timetable& tt,

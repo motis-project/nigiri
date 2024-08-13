@@ -52,3 +52,16 @@ TEST(gtfs, service_dates) {
   EXPECT_EQ(we_traffic_days, *traffic_days["WE"]);
   EXPECT_EQ(wd_traffic_days, *traffic_days["WD"]);
 }
+
+TEST(gtfs, von_dates) {
+  constexpr auto const kCalendar =
+      R"(service_id,monday,tuesday,wednesday,thursday,friday,saturday,sunday,start_date,end_date
+"T0+ss#68","1","1","1","1","1","0","0","20240226","20240428")";
+  auto const i = interval{date::sys_days{August / 7 / 2024},
+                          date::sys_days{August / 7 / 2025}};
+  auto const dates = read_calendar_date("");
+  auto const calendar = read_calendar(kCalendar);
+  auto const traffic_days = merge_traffic_days(i, calendar, dates);
+
+  EXPECT_TRUE(traffic_days.at("T0+ss#68")->none());
+}
