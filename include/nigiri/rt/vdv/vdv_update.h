@@ -31,23 +31,23 @@ struct statistics {
     return out;
   }
 
-  friend statistics operator+(statistics lhs, statistics const& rhs) {
-    return {
-        lhs.unsupported_additional_runs_ += rhs.unsupported_additional_runs_,
-        lhs.unsupported_cancelled_runs_ += rhs.unsupported_cancelled_runs_,
-        lhs.total_stops_ += rhs.total_stops_,
-        lhs.resolved_stops_ += rhs.resolved_stops_,
-        lhs.unknown_stops_ += rhs.unknown_stops_,
-        lhs.unsupported_additional_stops_ += rhs.unsupported_additional_stops_,
-        lhs.total_runs_ += rhs.total_runs_,
-        lhs.no_transport_found_at_stop_ += rhs.no_transport_found_at_stop_,
-        lhs.match_prevented_by_line_id_ += rhs.match_prevented_by_line_id_,
-        lhs.matched_runs_ += rhs.matched_runs_,
-        lhs.unmatchable_runs_ += rhs.unmatchable_runs_,
-        lhs.skipped_vdv_stops_ += rhs.skipped_vdv_stops_,
-        lhs.excess_vdv_stops_ += rhs.excess_vdv_stops_,
-        lhs.updated_events_ += rhs.updated_events_,
-        lhs.propagated_delays_ += rhs.propagated_delays_};
+  friend statistics& operator+=(statistics& lhs, statistics const& rhs) {
+    lhs.unsupported_additional_runs_ += rhs.unsupported_additional_runs_;
+    lhs.unsupported_cancelled_runs_ += rhs.unsupported_cancelled_runs_;
+    lhs.total_stops_ += rhs.total_stops_;
+    lhs.resolved_stops_ += rhs.resolved_stops_;
+    lhs.unknown_stops_ += rhs.unknown_stops_;
+    lhs.unsupported_additional_stops_ += rhs.unsupported_additional_stops_;
+    lhs.total_runs_ += rhs.total_runs_;
+    lhs.no_transport_found_at_stop_ += rhs.no_transport_found_at_stop_;
+    lhs.match_prevented_by_line_id_ += rhs.match_prevented_by_line_id_;
+    lhs.matched_runs_ += rhs.matched_runs_;
+    lhs.unmatchable_runs_ += rhs.unmatchable_runs_;
+    lhs.skipped_vdv_stops_ += rhs.skipped_vdv_stops_;
+    lhs.excess_vdv_stops_ += rhs.excess_vdv_stops_;
+    lhs.updated_events_ += rhs.updated_events_;
+    lhs.propagated_delays_ += rhs.propagated_delays_;
+    return lhs;
   }
 
   std::uint32_t unsupported_additional_runs_{0U};
