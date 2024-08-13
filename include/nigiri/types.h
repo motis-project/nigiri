@@ -217,6 +217,11 @@ struct debug {
   unsigned line_from_{0U}, line_to_{0U};
 };
 
+struct shape_section {
+  shape_idx_t shape_;
+  std::uint64_t start_idx_{0}, end_idx_{0};
+};
+
 struct transport {
   CISTA_FRIEND_COMPARABLE(transport)
   CISTA_PRINTABLE(transport, "idx", "day")

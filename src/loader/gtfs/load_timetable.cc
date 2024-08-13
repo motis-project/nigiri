@@ -33,6 +33,7 @@
 #include "nigiri/common/sort_by.h"
 #include "nigiri/logging.h"
 #include "nigiri/timetable.h"
+#include "nigiri/types.h"
 
 namespace fs = std::filesystem;
 
@@ -291,8 +292,9 @@ void load_timetable(loader_config const& config,
     auto location_routes = mutable_fws_multimap<location_idx_t, route_idx_t>{};
     for (auto const& [key, sub_routes] : route_services) {
       for (auto const& services : sub_routes) {
+        auto const shape = shape_section{shape_idx_t::invalid(), 0u, 0u};
         auto const route_idx =
-            tt.register_route(key.stop_seq_, {key.clasz_}, key.bikes_allowed_);
+            tt.register_route(key.stop_seq_, {key.clasz_}, std::vector{shape}, key.bikes_allowed_);
 
         for (auto const& s : key.stop_seq_) {
           auto s_routes = location_routes[stop{s}.location_idx()];

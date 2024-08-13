@@ -4,10 +4,12 @@
 #include <filesystem>
 #include <span>
 #include <type_traits>
+#include <vector>
 
 #include "cista/memory_holder.h"
 #include "cista/reflection/printable.h"
 
+#include "geo/polyline.h"
 #include "utl/verify.h"
 #include "utl/zip.h"
 
@@ -163,6 +165,7 @@ struct timetable {
   route_idx_t register_route(
       std::basic_string<stop::value_type> const& stop_seq,
       std::basic_string<clasz> const& clasz_sections,
+      std::vector<shape_section> shapes,
       bitvec const& bikes_allowed_per_section) {
     assert(!stop_seq.empty() && stop_seq.size() > 1U);
     assert(!clasz_sections.empty());
@@ -173,6 +176,7 @@ struct timetable {
         transport_idx_t::invalid());
     route_location_seq_.emplace_back(stop_seq);
     route_section_clasz_.emplace_back(clasz_sections);
+    route_section_shape_.emplace_back(shapes);
     route_clasz_.emplace_back(clasz_sections[0]);
 
     auto const sections = bikes_allowed_per_section.size();
@@ -338,6 +342,18 @@ struct timetable {
                         }});
   }
 
+  // cista::basic_vector<geo::polyline, cista::raw::ptr> get_shapes(route_idx_t route_idx) const {
+  geo::polyline get_shapes(route_idx_t route_idx, mm_vecvec<uint32_t, geo::latlng> const* const shape_vecvec) const {
+    auto polyline = geo::polyline{};
+    for (auto const& shape : route_section_shape_[route_idx]) {
+      if (shape.shape_ != shape_idx_t::invalid()) {
+        auto const& bucket = shape_vecvec->at(shape.shape_.v_);
+        polyline.insert(polyline.end(), bucket.begin(), bucket.end());
+      }
+    }
+    return polyline;
+  }
+
   std::string_view transport_name(transport_idx_t const t) const {
     return trip_display_names_
         [merged_trips_[transport_to_trip_section_[t].front()].front()]
@@ -405,6 +421,9 @@ struct timetable {
 
   // Route -> clasz per section
   vecvec<route_idx_t, clasz> route_section_clasz_;
+
+  // Route -> shape per section
+  vecvec<route_idx_t, shape_section> route_section_shape_;
 
   // Route * 2 -> bikes allowed along the route
   // Route * 2 + 1 -> bikes along parts of the route
