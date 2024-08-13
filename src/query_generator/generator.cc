@@ -64,11 +64,13 @@ std::optional<start_dest_query> generator::random_query() {
     sdq.q_ = make_query();
 
     // user-defined start or randomize
-    auto start_loc_idx = location_idx_t{};
+    auto start_loc_idx = std::optional{location_idx_t{}};
     auto start_coord = std::optional<geo::latlng>{};
     if (s_.start_.has_value()) {
       start_loc_idx = std::visit(
-          utl::overloaded{[](location_idx_t const loc_idx) { return loc_idx; },
+          utl::overloaded{[](location_idx_t const loc_idx) {
+                            return std::optional{loc_idx};
+                          },
                           [&](geo::latlng const& coord) {
                             start_coord = coord;
                             return random_location(coord, s_.start_mode_);
@@ -78,12 +80,13 @@ std::optional<start_dest_query> generator::random_query() {
       start_loc_idx = random_location();
     }
 
-    if (tt_.location_routes_[start_loc_idx].empty()) {
+    if (!start_loc_idx.has_value() ||
+        tt_.location_routes_[start_loc_idx.value()].empty()) {
       continue;
     }
 
     // derive start itv from start
-    auto const start_itv = get_start_interval(start_loc_idx);
+    auto const start_itv = get_start_interval(start_loc_idx.value());
     if (!start_itv.has_value()) {
       continue;
     }
@@ -93,7 +96,9 @@ std::optional<start_dest_query> generator::random_query() {
     auto dest_coord = std::optional<geo::latlng>{};
     if (s_.dest_.has_value()) {
       dest_loc_idx = std::visit(
-          utl::overloaded{[](location_idx_t const loc_idx) { return loc_idx; },
+          utl::overloaded{[](location_idx_t const loc_idx) {
+                            return std::optional{loc_idx};
+                          },
                           [&](geo::latlng const& coord) {
                             dest_coord = coord;
                             return random_location(coord, s_.dest_mode_);
@@ -123,13 +128,13 @@ std::optional<start_dest_query> generator::random_query() {
     // add start(s) to query
     if (s_.start_match_mode_ == routing::location_match_mode::kIntermodal) {
       if (!start_coord.has_value()) {
-        start_coord = pos_near_start(start_loc_idx);
+        start_coord = pos_near_start(start_loc_idx.value());
       }
       sdq.start_ = start_coord.value();
       add_offsets_for_pos(sdq.q_.start_, start_coord.value(), s_.start_mode_);
     } else {
-      sdq.start_ = start_loc_idx;
-      sdq.q_.start_.emplace_back(start_loc_idx, 0_minutes, 0U);
+      sdq.start_ = start_loc_idx.value();
+      sdq.q_.start_.emplace_back(start_loc_idx.value(), 0_minutes, 0U);
     }
 
     // add time to query
@@ -181,15 +186,23 @@ std::pair<transport, stop_idx_t> generator::random_transport_active_stop() {
 
 location_idx_t generator::random_location() {
   if (s_.bbox_.has_value()) {
-    return location_idx_t{locs_in_bbox[locs_in_bbox_d_(rng_)]};
-  } else {
-    return location_idx_t{location_d_(rng_)};
+    if (!locs_in_bbox.empty()) {
+      return location_idx_t{locs_in_bbox[locs_in_bbox_d_(rng_)]};
+    }
+    log(log_lvl::info, "query_generator.random_location",
+        "no locations in bounding box: using all locations instead");
   }
+  return location_idx_t{location_d_(rng_)};
 }
 
-location_idx_t generator::random_location(geo::latlng const& coord,
-                                          transport_mode const& mode) {
-  auto const locs_in_range = locations_rtree_.in_radius(coord, mode.range());
+std::optional<location_idx_t> generator::random_location(
+    geo::latlng const& coord, transport_mode const& mode) {
+  auto range = mode.range();
+  auto locs_in_range = locations_rtree_.in_radius(coord, range);
+  while (locs_in_range.empty()) {
+    range *= 2;
+    locs_in_range = locations_rtree_.in_radius(coord, range);
+  }
   auto locs_d =
       std::uniform_int_distribution<std::size_t>{0U, locs_in_range.size() - 1U};
   return location_idx_t{locs_in_range[locs_d(rng_)]};

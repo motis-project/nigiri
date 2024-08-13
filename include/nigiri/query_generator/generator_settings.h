@@ -3,12 +3,13 @@
 #include "geo/box.h"
 
 #include "nigiri/query_generator/transport_mode.h"
-
 #include "nigiri/routing/clasz_mask.h"
 #include "nigiri/routing/limits.h"
 #include "nigiri/routing/location_match_mode.h"
 #include "nigiri/routing/transfer_time_settings.h"
 #include "nigiri/timetable.h"
+
+#include "transport_mode.h"
 
 namespace nigiri::query_generation {
 
@@ -78,7 +79,7 @@ struct generator_settings {
   transport_mode dest_mode_{kWalk};
   std::optional<std::variant<location_idx_t, geo::latlng>> start_;
   std::optional<std::variant<location_idx_t, geo::latlng>> dest_;
-  bool use_start_footpaths_{true};
+  bool use_start_footpaths_{false};
   std::uint8_t max_transfers_{routing::kMaxTransfers};
   unsigned min_connection_count_{0U};
   bool extend_interval_earlier_{false};
