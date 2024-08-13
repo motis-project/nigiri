@@ -300,8 +300,8 @@ trip_data read_trips(
 
           auto const shape_it = shapes.find(t.shape_id_->view());
           auto const shape_idx = (shape_it == shapes.end())
-                                      ? shape_idx_t::invalid()
-                                      : shape_it->second;
+                                     ? shape_idx_t::invalid()
+                                     : shape_it->second;
 
           auto bikes_allowed = bikes_allowed_default[static_cast<std::size_t>(
               route_it->second->clasz_)];
