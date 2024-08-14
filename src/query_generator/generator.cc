@@ -161,7 +161,7 @@ std::optional<start_dest_query> generator::random_query() {
     for (auto v = 0U; v != s_.n_vias_; ++v) {
       auto const loc = random_location();
       auto const stay = static_cast<duration_t>(stay_d_(rng_));
-      sdq.q_.via_stops_.emplace_back(loc, stay);
+      sdq.q_.via_stops_.emplace_back(routing::via_stop{loc, stay});
     }
 
     return sdq;
