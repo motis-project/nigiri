@@ -16,14 +16,15 @@ struct meat_profile_computer {
     connection_idx_t exit_conn_;
   };
 
-  explicit meat_profile_computer(timetable const& tt, day_idx_t base)
+  explicit meat_profile_computer(timetable const& tt, day_idx_t const& base, profile_idx_t const& prf_idx)
       : tt_{tt},
         base_{base},
         trip_reset_list_(tt.n_transports()),
         trip_reset_list_end_{0},
         stop_reset_list_(tt.n_locations()),
         stop_reset_list_end_{0},
-        profile_set_{tt_} {
+        profile_set_{tt_},
+        prf_idx_{prf_idx} {
     assert(std::numeric_limits<meat_t>::has_infinity == true);
 
     for (auto t_idx = transport_idx_t{0}; t_idx < tt_.n_transports(); ++t_idx) {
@@ -184,13 +185,14 @@ struct meat_profile_computer {
   }
 
   timetable const& tt_;
-  day_idx_t base_;
+  day_idx_t const& base_;
   std::vector<transport_idx_t> trip_reset_list_;
   transport_idx_t::value_t trip_reset_list_end_;
   std::vector<location_idx_t> stop_reset_list_;
   location_idx_t::value_t stop_reset_list_end_;
   profile_set profile_set_;
   vecvec<transport_idx_t, trip_data> trip_;
+  profile_idx_t const& prf_idx_;
 };
 
 }  // namespace nigiri::routing::meat::csa

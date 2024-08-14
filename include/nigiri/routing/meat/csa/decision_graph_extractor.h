@@ -14,14 +14,14 @@ namespace nigiri::routing::meat::csa {
 struct decision_graph_extractor {
 private:
   timetable const& tt_;
-  day_idx_t base_;
+  day_idx_t const& base_;
   mutable std::stack<profile_entry const*> stack_;
   // mutable std::vector<profile_entry*> queue_;
   mutable bitvec is_enter_conn_relevant_;
   mutable vector_map<location_idx_t, int> to_node_id_;
 
 public:
-  explicit decision_graph_extractor(timetable const& tt, day_idx_t base)
+  explicit decision_graph_extractor(timetable const& tt, day_idx_t const& base)
       : tt_(tt),
         base_(base),
         to_node_id_(tt_.n_locations(), -1) {

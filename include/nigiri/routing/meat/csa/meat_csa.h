@@ -27,15 +27,17 @@ struct meat_csa {
         bound_parameter_{bound_parameter},
         fuzzy_parameter_{fuzzy_parameter},
         allowed_claszes_{allowed_claszes},
-        mpc_{tt_, base},
-        dge_{tt_, base} {}
+        prf_idx_{0},
+        mpc_{tt_, base_, prf_idx_},
+        dge_{tt_, base_} {}
   void execute(unixtime_t const start_time,
                location_idx_t const start_location,
                location_idx_t const end_location,
                // std::uint8_t const max_transfers,
                // unixtime_t const worst_time_at_dest,
-               // profile_idx_t const prf_idx, //TODO footpahts
+               profile_idx_t const prf_idx,  // TODO footpahts
                decision_graph& result_graph) {
+    prf_idx_ = prf_idx;
     auto without_clasz_filter = allowed_claszes_ == all_clasz_allowed();
     auto s_time = to_delta(start_time);
     auto con_begin = without_clasz_filter ? first_conn_after<false>(s_time)
@@ -63,13 +65,13 @@ struct meat_csa {
                         con_begin, con_end, start_location, s_time);
 
     if (without_clasz_filter) {
-      mpc_.compute_profile_set<false>(
-          con_begin, con_end, ea, end_location, max_delay_, fuzzy_parameter_, 1,
-          allowed_claszes_);
+      mpc_.compute_profile_set<false>(con_begin, con_end, ea, end_location,
+                                      max_delay_, fuzzy_parameter_, 1,
+                                      allowed_claszes_);
     } else {
-      mpc_.compute_profile_set<true>(
-          con_begin, con_end, ea, end_location, max_delay_, fuzzy_parameter_, 1,
-          allowed_claszes_);
+      mpc_.compute_profile_set<true>(con_begin, con_end, ea, end_location,
+                                     max_delay_, fuzzy_parameter_, 1,
+                                     allowed_claszes_);
     }
     // without_clasz_filter  // TODO: was ist mit transfer_cost (aktuell: 1)
     //     ? mpc_.compute_profile_set<false>(con_begin, con_end, ea,
@@ -166,7 +168,7 @@ private:
   }
 
   template <bool WithClaszFilter>
-  std::pair<day_idx_t, connection_idx_t> last_conn_befor(delta_t time) {
+  std::pair<day_idx_t, connection_idx_t> last_conn_before(delta_t time) {
     auto [day, mam] = split(time);
 
     if (day < 0) {
@@ -219,7 +221,6 @@ private:
     vector_map<transport_idx_t, uint16_t> trip_first_con(
         tt_.n_transports(), std::numeric_limits<uint16_t>::max());
     esa[source_stop] = source_time;
-    // TODO footpats
     auto [day, mam] = split(source_time);
 
     delta_t const target_offset =
@@ -250,18 +251,15 @@ private:
           trip_first_con[conn->transport_idx_] = conn->trip_con_idx_;
         }
         if (stop{conn->arr_stop_}.out_allowed()) {
-          // TODO footpaths
           auto const conn_arr_time = tt_to_delta(
               day + (conn->arr_time_.days() - conn->dep_time_.days()),
               conn->arr_time_.mam());
-          esa[stop{conn->arr_stop_}.location_idx()] = std::min(
-              esa[stop{conn->arr_stop_}.location_idx()],
-              static_cast<delta_t>(
-                  conn_arr_time +
-                  tt_.locations_
-                      .transfer_time_[stop{conn->arr_stop_}.location_idx()]
-                      .count() +
-                  max_delay_));
+          auto const c_arr_stop_idx = stop{conn->arr_stop_}.location_idx();
+          auto const conn_max_arr_time =
+              clamp(conn_arr_time +
+                    tt_.locations_.transfer_time_[c_arr_stop_idx].count() +
+                    max_delay_);
+          update_arr_times(esa, conn_max_arr_time, c_arr_stop_idx);
         }
       }
 
@@ -288,7 +286,7 @@ private:
           return {day, conn_end - 1};
         }
       } else {
-        return last_conn_befor<WithClaszFilter>(
+        return last_conn_before<WithClaszFilter>(
             source_time +
             static_cast<delta_t>(
                 bound_parameter_ *
@@ -298,6 +296,19 @@ private:
                                   // wurde, und hier nicht gefragt ist? sollte
                                   // da eventuell nur die transfer_time_
                                   // abgezogen werden?);
+      }
+    }
+  }
+
+  void update_arr_times(vector_map<location_idx_t, delta_t>& ea,
+                        delta_t const arr_time,
+                        location_idx_t const arr_stop_idx) {
+    if (arr_time < ea[arr_stop_idx]) {
+      ea[arr_stop_idx] = arr_time;
+      for (auto const& fp :
+           tt_.locations_.footpaths_out_[prf_idx_][arr_stop_idx]) {
+        ea[fp.target()] =
+            std::min(ea[fp.target()], clamp(arr_time + fp.duration().count()));
       }
     }
   }
@@ -319,7 +330,6 @@ private:
         tt_.n_transports(), std::numeric_limits<uint16_t>::max());
 
     ea[source_stop] = source_time;
-    // TODO footpaths
 
     auto conn = conn_begin;
     auto& day = conn.first;
@@ -340,12 +350,10 @@ private:
           trip_first_con[c.transport_idx_] = c.trip_con_idx_;
         }
         if (stop{c.arr_stop_}.out_allowed()) {
-          // TODO footpaths
           auto const c_arr_time =
               tt_to_delta(day + (c.arr_time_.days() - c.dep_time_.days()),
                           c.arr_time_.mam());
-          ea[stop{c.arr_stop_}.location_idx()] =
-              std::min(ea[stop{c.arr_stop_}.location_idx()], c_arr_time);
+          update_arr_times(ea, c_arr_time, stop{c.arr_stop_}.location_idx());
         }
       }
 
@@ -366,6 +374,7 @@ private:
   double bound_parameter_;  // alpha
   double fuzzy_parameter_;
   clasz_mask_t allowed_claszes_;
+  profile_idx_t prf_idx_;
   meat_profile_computer mpc_;
   decision_graph_extractor dge_;
 };
