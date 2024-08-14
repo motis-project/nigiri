@@ -611,7 +611,7 @@ void reconstruct_journey(timetable const& tt,
                          journey& j,
                          date::sys_days const base,
                          day_idx_t const base_day_idx) {
-  static_assert(kMaxVias == 3,
+  static_assert(kMaxVias == 2,
                 "reconstruct.cc needs to be adjusted for kMaxVias");
 
   switch (q.via_stops_.size()) {
@@ -623,9 +623,6 @@ void reconstruct_journey(timetable const& tt,
           tt, rtt, q, raptor_state, j, base, base_day_idx);
     case 2:
       return reconstruct_journey_with_vias<SearchDir, 2>(
-          tt, rtt, q, raptor_state, j, base, base_day_idx);
-    case 3:
-      return reconstruct_journey_with_vias<SearchDir, 3>(
           tt, rtt, q, raptor_state, j, base, base_day_idx);
   }
   std::unreachable();

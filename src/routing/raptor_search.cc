@@ -45,7 +45,7 @@ routing_result<raptor_stats> raptor_search_with_dir(
               "too many via stops: {}, limit: {}", q.via_stops_.size(),
               kMaxVias);
 
-  static_assert(kMaxVias == 3,
+  static_assert(kMaxVias == 2,
                 "raptor_search.cc needs to be adjusted for kMaxVias");
 
   switch (q.via_stops_.size()) {
@@ -57,9 +57,6 @@ routing_result<raptor_stats> raptor_search_with_dir(
                                                    std::move(q), timeout);
     case 2:
       return raptor_search_with_vias<SearchDir, 2>(tt, rtt, s_state, r_state,
-                                                   std::move(q), timeout);
-    case 3:
-      return raptor_search_with_vias<SearchDir, 3>(tt, rtt, s_state, r_state,
                                                    std::move(q), timeout);
   }
   std::unreachable();

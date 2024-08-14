@@ -949,6 +949,8 @@ TEST(routing, via_test_21_H_Q_via_H_0m_N_0m) {
   }
 }
 
+/*
+// this test needs kMaxVias = 3, currently disabled because of kMaxVias = 2
 TEST(routing, via_test_22_H_Q_via_H_0m_N_0m_Q_0m) {
   // H -> Q, via H (0 min), N (0 min), Q (0 min)
   auto tt = load_timetable(test_files_1);
@@ -970,6 +972,7 @@ TEST(routing, via_test_22_H_Q_via_H_0m_N_0m_Q_0m) {
     EXPECT_EQ(expected_H_Q_via_N_0min, results_to_str(results, tt));
   }
 }
+*/
 
 namespace {
 constexpr auto const expected_M_Q_via_M_0min_O_0min =
