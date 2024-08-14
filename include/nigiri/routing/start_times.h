@@ -23,17 +23,20 @@ struct start {
   location_idx_t stop_;
 };
 
-void get_starts(direction,
-                timetable const&,
-                rt_timetable const*,
-                start_time_t const& start_time,
-                std::vector<offset> const& station_offsets,
-                location_match_mode,
-                bool use_start_footpaths,
-                std::vector<start>&,
-                bool add_ontrip,
-                profile_idx_t,
-                transfer_time_settings const&);
+void get_starts(
+    direction,
+    timetable const&,
+    rt_timetable const*,
+    start_time_t const& start_time,
+    std::vector<offset> const& start_offsets,
+    hash_map<location_idx_t, std::vector<td_offset>> const& start_td_offsets,
+    duration_t const max_start_offset,
+    location_match_mode,
+    bool use_start_footpaths,
+    std::vector<start>&,
+    bool add_ontrip,
+    profile_idx_t,
+    transfer_time_settings const&);
 
 void collect_destinations(timetable const&,
                           std::vector<offset> const& destinations,

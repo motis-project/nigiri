@@ -127,6 +127,10 @@
 #define trace_rc_transport_no_traffic \
   trace_reconstruct("    -> no traffic on day {}\n ", traffic_day)
 
+#define trace_rc_transport_invalid_td_footpath                               \
+  trace_reconstruct("    -> td footpath mismatch ev_time={}, fp_time={}\n ", \
+                    ev_time, fp_time)
+
 #define trace_rc_transport_not_found \
   trace_reconstruct("    -> no entry found\n")
 
@@ -205,6 +209,7 @@
 #define trace_rc_transport
 #define trace_rc_transport_mam_mismatch
 #define trace_rc_transport_no_traffic
+#define trace_rc_transport_invalid_td_footpath
 #define trace_rc_transport_not_found
 #define trace_rc_transport_entry_not_possible
 #define trace_rc_transport_entry_found

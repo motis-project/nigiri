@@ -11,6 +11,7 @@
 #include "nigiri/routing/limits.h"
 #include "nigiri/routing/location_match_mode.h"
 #include "nigiri/routing/transfer_time_settings.h"
+#include "nigiri/td_footpath.h"
 #include "nigiri/types.h"
 
 namespace nigiri::routing {
@@ -40,6 +41,14 @@ struct offset {
   transport_mode_id_t transport_mode_id_;
 };
 
+struct td_offset {
+  friend bool operator==(td_offset const&, td_offset const&) = default;
+
+  unixtime_t valid_from_;
+  duration_t duration_;
+  transport_mode_id_t transport_mode_id_;
+};
+
 using start_time_t = std::variant<unixtime_t, interval<unixtime_t>>;
 
 struct query {
@@ -51,8 +60,9 @@ struct query {
   location_match_mode dest_match_mode_{
       nigiri::routing::location_match_mode::kExact};
   bool use_start_footpaths_{false};
-  std::vector<offset> start_;
-  std::vector<offset> destination_;
+  std::vector<offset> start_{}, destination_{};
+  hash_map<location_idx_t, std::vector<td_offset>> td_start_{}, td_dest_{};
+  duration_t max_start_offset_{kMaxTravelTime};
   std::uint8_t max_transfers_{kMaxTransfers};
   unsigned min_connection_count_{0U};
   bool extend_interval_earlier_{false};
