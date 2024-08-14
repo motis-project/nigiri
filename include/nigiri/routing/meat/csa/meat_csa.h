@@ -28,7 +28,7 @@ struct meat_csa {
         fuzzy_parameter_{fuzzy_parameter},
         allowed_claszes_{allowed_claszes},
         prf_idx_{0},
-        mpc_{tt_, base_, prf_idx_},
+        mpc_{tt_, base_, allowed_claszes_, prf_idx_},
         dge_{tt_, base_} {}
   void execute(unixtime_t const start_time,
                location_idx_t const start_location,
@@ -66,22 +66,12 @@ struct meat_csa {
 
     if (without_clasz_filter) {
       mpc_.compute_profile_set<false>(con_begin, con_end, ea, end_location,
-                                      max_delay_, fuzzy_parameter_, 1,
-                                      allowed_claszes_);
+                                      max_delay_, fuzzy_parameter_, 1);
     } else {
       mpc_.compute_profile_set<true>(con_begin, con_end, ea, end_location,
-                                     max_delay_, fuzzy_parameter_, 1,
-                                     allowed_claszes_);
+                                     max_delay_, fuzzy_parameter_, 1);
     }
-    // without_clasz_filter  // TODO: was ist mit transfer_cost (aktuell: 1)
-    //     ? mpc_.compute_profile_set<false>(con_begin, con_end, ea,
-    //     end_location,
-    //                                       max_delay_, fuzzy_parameter_, 1,
-    //                                       allowed_claszes_)
-    //     : mpc_.compute_profile_set<true>(con_begin, con_end, ea,
-    //     end_location,
-    //                                      max_delay_, fuzzy_parameter_, 1,
-    //                                      allowed_claszes_);
+
     int max_ride_count = std::numeric_limits<int>::max();
     int max_arrow_count = std::numeric_limits<int>::max();
     int max_display_delay;

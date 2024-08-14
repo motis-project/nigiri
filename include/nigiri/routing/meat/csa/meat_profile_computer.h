@@ -16,15 +16,19 @@ struct meat_profile_computer {
     connection_idx_t exit_conn_;
   };
 
-  explicit meat_profile_computer(timetable const& tt, day_idx_t const& base, profile_idx_t const& prf_idx)
+  explicit meat_profile_computer(timetable const& tt,
+                                 day_idx_t const& base,
+                                 clasz_mask_t const& allowed_claszes,
+                                 profile_idx_t const& prf_idx)
       : tt_{tt},
         base_{base},
+        allowed_claszes_{allowed_claszes},
+        prf_idx_{prf_idx},
         trip_reset_list_(tt.n_transports()),
         trip_reset_list_end_{0},
         stop_reset_list_(tt.n_locations()),
         stop_reset_list_end_{0},
-        profile_set_{tt_},
-        prf_idx_{prf_idx} {
+        profile_set_{tt_} {
     assert(std::numeric_limits<meat_t>::has_infinity == true);
 
     for (auto t_idx = transport_idx_t{0}; t_idx < tt_.n_transports(); ++t_idx) {
@@ -68,11 +72,10 @@ struct meat_profile_computer {
       location_idx_t target_stop,
       delta_t max_delay,
       meat_t fuzzy_dominance_offset,
-      meat_t
-          transfer_cost,  ///??? für was ist die extra transfer_cost ? für min
-                          /// umstigszeit, da wir die "normale" umstigszeit
-                          /// hier nicht mehr beachten
-      clasz_mask_t allowed_claszes) {
+      meat_t transfer_cost  ///??? für was ist die extra transfer_cost ? für min
+                            /// umstigszeit, da wir die "normale" umstigszeit
+                            /// hier nicht mehr beachten
+  ) {
     reset_trip();
     reset_stop();
 
@@ -102,7 +105,7 @@ struct meat_profile_computer {
       auto const c_dep_time = tt_to_delta(day, c.dep_time_.mam());
       if ((WithClaszFilter
                ? is_allowed(
-                     allowed_claszes,
+                     allowed_claszes_,
                      tt_.route_clasz_[tt_.transport_route_[c.transport_idx_]])
                : true) &&
           tt_.is_connection_active(c, day) &&
@@ -186,13 +189,14 @@ struct meat_profile_computer {
 
   timetable const& tt_;
   day_idx_t const& base_;
+  clasz_mask_t const& allowed_claszes_;
+  profile_idx_t const& prf_idx_;
   std::vector<transport_idx_t> trip_reset_list_;
   transport_idx_t::value_t trip_reset_list_end_;
   std::vector<location_idx_t> stop_reset_list_;
   location_idx_t::value_t stop_reset_list_end_;
   profile_set profile_set_;
   vecvec<transport_idx_t, trip_data> trip_;
-  profile_idx_t const& prf_idx_;
 };
 
 }  // namespace nigiri::routing::meat::csa
