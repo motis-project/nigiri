@@ -175,7 +175,8 @@ void load_timetable(loader_config const& config,
       };
 
   std::vector<shape_idx_t> shape_cache{};
-  auto const get_shapes = [&shape_cache, td = std::cref(trip_data)](std::basic_string<gtfs_trip_idx_t> const& trips) {
+  auto const get_shapes = [&shape_cache, td = std::cref(trip_data)](
+                              std::basic_string<gtfs_trip_idx_t> const& trips) {
     shape_cache.clear();
     for (auto const& trip_idx : trips) {
       auto const& trip = td.get().get(trip_idx);
@@ -304,8 +305,9 @@ void load_timetable(loader_config const& config,
     auto location_routes = mutable_fws_multimap<location_idx_t, route_idx_t>{};
     for (auto const& [key, sub_routes] : route_services) {
       for (auto const& services : sub_routes) {
-        auto const route_idx = tt.register_route(
-            key.stop_seq_, {key.clasz_}, key.shapes_indices_, key.bikes_allowed_);
+        auto const route_idx =
+            tt.register_route(key.stop_seq_, {key.clasz_}, key.shapes_indices_,
+                              key.bikes_allowed_);
 
         for (auto const& s : key.stop_seq_) {
           auto s_routes = location_routes[stop{s}.location_idx()];

@@ -342,7 +342,9 @@ struct timetable {
                         }});
   }
 
-  std::vector<geo::polyline> get_shapes(route_idx_t route_idx, mm_vecvec<uint32_t, geo::latlng> const* const shape_vecvec) const {
+  std::vector<geo::polyline> get_shapes(
+      route_idx_t route_idx,
+      mm_vecvec<uint32_t, geo::latlng> const* const shape_vecvec) const {
     if (shape_vecvec == nullptr) {
       return {};
     }

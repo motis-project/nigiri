@@ -66,7 +66,8 @@ TEST(gtfs, shapeRequest_noShape_getEmptyVector) {
                     date::sys_days{2024_y / March / 2}};
   loader::register_special_stations(tt);
   loader::gtfs::load_timetable({}, source_idx_t{0},
-                               loader::mem_dir::read(test_files_without_shapes), tt);
+                               loader::mem_dir::read(test_files_without_shapes),
+                               tt);
   loader::finalize(tt);
 
   auto const route_idx = route_idx_t{1};  // TODO
@@ -171,9 +172,10 @@ TEST(gtfs, shapeRequest_singleTripWithShape_getFullShape) {
   tt.date_range_ = {date::sys_days{2024_y / March / 1},
                     date::sys_days{2024_y / March / 2}};
   loader::register_special_stations(tt);
-    auto local_bitfield_indices = hash_map<bitfield, bitfield_idx_t>{};
+  auto local_bitfield_indices = hash_map<bitfield, bitfield_idx_t>{};
   loader::gtfs::load_timetable({}, source_idx_t{1},
-                               loader::mem_dir::read(test_files_with_shapes), tt, local_bitfield_indices, &mmap);
+                               loader::mem_dir::read(test_files_with_shapes),
+                               tt, local_bitfield_indices, &mmap);
   loader::finalize(tt);
 
   for (auto r : tt.route_section_shape_indices_) {
@@ -185,12 +187,12 @@ TEST(gtfs, shapeRequest_singleTripWithShape_getFullShape) {
   auto const shapes = tt.get_shapes(route_idx, &mmap);
 
   auto expected_shape = std::vector{{geo::polyline{
-    {4.0f, 5.0f},
-    {5.5f, 2.5f},
-    {5.5f, 3.0f},
-    {6.0f, 3.0f},
-    {5.0f, 2.0f},
-    {4.0f, 2.0f},
+      {4.0f, 5.0f},
+      {5.5f, 2.5f},
+      {5.5f, 3.0f},
+      {6.0f, 3.0f},
+      {5.0f, 2.0f},
+      {4.0f, 2.0f},
   }}};
   EXPECT_EQ(expected_shape, shapes);
 }
@@ -205,9 +207,10 @@ TEST(gtfs, shapeRequest_singleTripWithoutShape_getEmptyShape) {
   tt.date_range_ = {date::sys_days{2024_y / March / 1},
                     date::sys_days{2024_y / March / 2}};
   loader::register_special_stations(tt);
-    auto local_bitfield_indices = hash_map<bitfield, bitfield_idx_t>{};
+  auto local_bitfield_indices = hash_map<bitfield, bitfield_idx_t>{};
   loader::gtfs::load_timetable({}, source_idx_t{1},
-                               loader::mem_dir::read(test_files_with_shapes), tt, local_bitfield_indices, &mmap);
+                               loader::mem_dir::read(test_files_with_shapes),
+                               tt, local_bitfield_indices, &mmap);
   loader::finalize(tt);
 
   for (auto r : tt.route_section_shape_indices_) {
@@ -234,7 +237,8 @@ TEST(gtfs, shapeRequest_singleTripWithoutShape_getEmptyShape) {
 //   loader::register_special_stations(tt);
 //     auto local_bitfield_indices = hash_map<bitfield, bitfield_idx_t>{};
 //   loader::gtfs::load_timetable({}, source_idx_t{0},
-//                                loader::mem_dir::read(test_files_with_shapes), tt, local_bitfield_indices, &mmap);
+//                                loader::mem_dir::read(test_files_with_shapes),
+//                                tt, local_bitfield_indices, &mmap);
 //   loader::finalize(tt);
 
 //   for (auto r : tt.route_section_shape_) {
@@ -263,7 +267,8 @@ TEST(gtfs, shapeRequest_singleTripWithoutShape_getEmptyShape) {
 //                     date::sys_days{2024_y / March / 2}};
 //   loader::register_special_stations(tt);
 //   loader::gtfs::load_timetable({}, source_idx_t{0},
-//                                loader::mem_dir::read(test_files_with_shapes), tt);
+//                                loader::mem_dir::read(test_files_with_shapes),
+//                                tt);
 //   loader::finalize(tt);
 
 //   auto const route_idx = route_idx_t{1};  // TODO
