@@ -128,6 +128,7 @@ using section_db_idx_t = cista::strong<std::uint32_t, struct _section_db_idx>;
 using trip_idx_t = cista::strong<std::uint32_t, struct _trip_idx>;
 using trip_id_idx_t = cista::strong<std::uint32_t, struct _trip_id_str_idx>;
 using transport_idx_t = cista::strong<std::uint32_t, struct _transport_idx>;
+using connection_idx_t = cista::strong<std::uint32_t, struct _connection_idx>;
 using source_idx_t = cista::strong<std::uint16_t, struct _source_idx>;
 using day_idx_t = cista::strong<std::uint16_t, struct _day_idx>;
 using timezone_idx_t = cista::strong<std::uint16_t, struct _timezone_idx>;
@@ -163,6 +164,13 @@ using attribute_combination_idx_t =
 using provider_idx_t = cista::strong<std::uint32_t, struct _provider_idx>;
 
 using transport_range_t = pair<transport_idx_t, interval<stop_idx_t>>;
+
+using meat_t = double;
+// TODO: auch day_idx ?
+struct ride {
+  connection_idx_t enter_conn_;
+  connection_idx_t exit_conn_;
+};
 
 struct trip_debug {
   source_file_idx_t source_file_idx_;

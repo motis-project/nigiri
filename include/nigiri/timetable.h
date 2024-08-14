@@ -14,6 +14,7 @@
 #include "geo/latlng.h"
 
 #include "nigiri/common/interval.h"
+#include "nigiri/connection.h"
 #include "nigiri/footpath.h"
 #include "nigiri/location.h"
 #include "nigiri/logging.h"
@@ -308,6 +309,10 @@ struct timetable {
     return locations_.names_.size();
   }
 
+  cista::base_t<transport_idx_t> n_transports() const{
+    return transport_route_.size();
+  }
+
   cista::base_t<route_idx_t> n_routes() const {
     return route_location_seq_.size();
   }
@@ -477,6 +482,22 @@ struct timetable {
   // Lower bound graph.
   vecvec<location_idx_t, footpath> fwd_search_lb_graph_;
   vecvec<location_idx_t, footpath> bwd_search_lb_graph_;
+
+  // connections for csa algo.
+  vector_map<connection_idx_t, connection> fwd_connections_;
+  size_t n_active_connections_; //TODO remove?
+
+  // Trip index -> ROUNDDOWN((depature_last_conn - depature_first_conn)/24h)+1day
+  vector_map<transport_idx_t, day_idx_t::value_t> travel_duration_days_;
+
+  bool is_connection_active(connection_idx_t const& c, day_idx_t d) const {
+    return is_connection_active(fwd_connections_[c], d);
+  }
+  bool is_connection_active(connection const& c, day_idx_t d) const {
+    auto con_day_offset = c.dep_time_.days();
+    return bitfields_[transport_traffic_days_[c.transport_idx_]].test(
+        d.v_ - con_day_offset);
+  }
 
   // profile name -> profile_idx_t
   hash_map<string, profile_idx_t> profiles_;

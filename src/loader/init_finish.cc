@@ -2,6 +2,7 @@
 
 #include <execution>
 
+#include "nigiri/loader/build_csa_connections.h"
 #include "nigiri/loader/build_footpaths.h"
 #include "nigiri/loader/build_lb_graph.h"
 #include "nigiri/special_stations.h"
@@ -50,6 +51,7 @@ void finalize(timetable& tt,
   build_footpaths(tt, adjust_footpaths, merge_duplicates, max_footpath_length);
   build_lb_graph<direction::kForward>(tt);
   build_lb_graph<direction::kBackward>(tt);
+  build_csa_connections(tt);
 }
 
 }  // namespace nigiri::loader

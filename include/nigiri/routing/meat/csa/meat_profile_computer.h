@@ -1,0 +1,196 @@
+#pragma once
+
+#include "nigiri/common/delta_t.h"
+#include "nigiri/routing/clasz_mask.h"
+#include "nigiri/routing/meat/csa/profile.h"
+#include "nigiri/routing/meat/delay.h"
+#include "nigiri/timetable.h"
+#include "nigiri/types.h"
+
+namespace nigiri::routing::meat::csa {
+
+struct meat_profile_computer {
+
+  struct trip_data {
+    meat_t meat_;
+    connection_idx_t exit_conn_;
+  };
+
+  explicit meat_profile_computer(timetable const& tt, day_idx_t base)
+      : tt_{tt},
+        base_{base},
+        trip_reset_list_(tt.n_transports()),
+        trip_reset_list_end_{0},
+        stop_reset_list_(tt.n_locations()),
+        stop_reset_list_end_{0},
+        profile_set_{tt_} {
+    assert(std::numeric_limits<meat_t>::has_infinity == true);
+
+    for (auto t_idx = transport_idx_t{0}; t_idx < tt_.n_transports(); ++t_idx) {
+      auto const t_size = tt_.travel_duration_days_[t_idx];
+      trip_.emplace_back(std::vector<trip_data>(
+          t_size, {std::numeric_limits<meat_t>::infinity(),
+                   connection_idx_t::invalid()}));
+    }
+    assert(trip_.size() == tt_.n_transports());
+  }
+
+  const profile_set& get_profile_set() const { return profile_set_; }
+
+  std::pair<day_idx_t, minutes_after_midnight_t> split(delta_t const x) const {
+    return split_day_mam(base_, x);
+  }
+  delta_t tt_to_delta(day_idx_t const day, std::int16_t mam) const {
+    return nigiri::tt_to_delta(base_, day, duration_t{mam});
+    // return clamp((as_int(day) - as_int(base_)) * 1440 + mam);
+  }
+  void reset_trip() {
+    for (auto i = 0U; i < trip_reset_list_end_; ++i) {
+      for (auto& t : trip_[trip_reset_list_[i]]) {
+        t = {std::numeric_limits<meat_t>::infinity(),
+             connection_idx_t::invalid()};
+      }
+    }
+    trip_reset_list_end_ = 0;
+  }
+  void reset_stop() {
+    for (auto i = 0U; i < stop_reset_list_end_; ++i)
+      profile_set_.reset_stop(stop_reset_list_[i]);
+    stop_reset_list_end_ = 0;
+  }
+
+  template <bool WithClaszFilter>
+  void compute_profile_set(
+      std::pair<day_idx_t, connection_idx_t> const& conn_begin,
+      std::pair<day_idx_t, connection_idx_t> const& conn_end,
+      vector_map<location_idx_t, delta_t> const& ea,
+      location_idx_t target_stop,
+      delta_t max_delay,
+      meat_t fuzzy_dominance_offset,
+      meat_t
+          transfer_cost,  ///??? für was ist die extra transfer_cost ? für min
+                          /// umstigszeit, da wir die "normale" umstigszeit
+                          /// hier nicht mehr beachten
+      clasz_mask_t allowed_claszes) {
+    reset_trip();
+    reset_stop();
+
+    auto evaluate_profile = [&](location_idx_t stop, delta_t when) {
+      meat_t meat = 0.0;
+      double assigned_prob = 0.0;
+
+      auto i = std::begin(profile_set_.for_stop(stop));
+      while (assigned_prob < 1.0) {
+        double new_prob =
+            delay_prob(i->dep_time_ - when,
+                       tt_.locations_.transfer_time_[stop].count(), max_delay);
+        meat += (new_prob - assigned_prob) * i->meat_;
+        assigned_prob = new_prob;
+        ++i;
+      }
+      return meat;
+    };
+
+    // TODO footpaths
+    auto conn = conn_end;
+    auto& day = conn.first;
+    auto& con_idx = conn.second;
+    std::int8_t n_day = 0;
+    while (conn >= conn_begin) {
+      auto const& c = tt_.fwd_connections_[con_idx];
+      auto const c_dep_time = tt_to_delta(day, c.dep_time_.mam());
+      if ((WithClaszFilter
+               ? is_allowed(
+                     allowed_claszes,
+                     tt_.route_clasz_[tt_.transport_route_[c.transport_idx_]])
+               : true) &&
+          tt_.is_connection_active(c, day) &&
+          ea[stop{c.dep_stop_}.location_idx()] <= c_dep_time) {
+        auto const c_arr_time = tt_to_delta(
+            day + (c.arr_time_.days() - c.dep_time_.days()), c.arr_time_.mam());
+        auto const d_idx = (c.dep_time_.days() + n_day) %
+                           tt_.travel_duration_days_[c.transport_idx_];
+
+        meat_t meat = trip_[c.transport_idx_][d_idx].meat_;
+
+        if (stop{c.arr_stop_}.out_allowed()) {
+          if (stop{c.arr_stop_}.location_idx() == target_stop) {
+            meat = std::min(
+                meat, static_cast<meat_t>(
+                          c_arr_time) /*TODO erwartungswert auf addieren?*/);
+          }
+
+          if (!profile_set_.is_stop_empty(stop{c.arr_stop_}.location_idx())) {
+            meat = std::min(
+                meat,
+                evaluate_profile(stop{c.arr_stop_}.location_idx(), c_arr_time) +
+                    transfer_cost);  // TODO: Warum keine Umsteigezeiten? Da
+            // wir auch sehr knappe Verbindungen
+            // später im Graph haben wollen? Was
+            // ist die statische tranfer_cost?
+          }
+
+          if (meat < trip_[c.transport_idx_][d_idx].meat_) {
+            if (trip_[c.transport_idx_][d_idx].meat_ ==
+                std::numeric_limits<meat_t>::infinity()) {
+              trip_reset_list_[trip_reset_list_end_++] = c.transport_idx_;
+            }
+            trip_[c.transport_idx_][d_idx].meat_ = meat;
+            trip_[c.transport_idx_][d_idx].exit_conn_ = con_idx;
+          }
+        }
+
+        if (stop{c.dep_stop_}.in_allowed()) {
+          profile_entry new_entry = {
+              c_dep_time,
+              meat,
+              {con_idx, trip_[c.transport_idx_][d_idx].exit_conn_}};
+          profile_entry early_entry =
+              profile_set_.early_stop_entry(stop{c.dep_stop_}.location_idx());
+
+          if (new_entry.meat_ < early_entry.meat_ - fuzzy_dominance_offset) {
+            if (early_entry.dep_time_ == c_dep_time) {
+              profile_set_.replace_early_entry(stop{c.dep_stop_}.location_idx(),
+                                               new_entry);
+            } else {
+              if (profile_set_.is_stop_empty(
+                      stop{c.dep_stop_}.location_idx())) {
+                stop_reset_list_[stop_reset_list_end_++] =
+                    stop{c.dep_stop_}.location_idx();
+              }
+              profile_set_.add_early_entry(stop{c.dep_stop_}.location_idx(),
+                                           new_entry);
+            }
+          }
+        }
+      }
+
+      if (c.trip_con_idx_ == 0) {
+        auto const d_idx = (c.dep_time_.days() + n_day) %
+                           tt_.travel_duration_days_[c.transport_idx_];
+        trip_[c.transport_idx_][d_idx] = {
+            std::numeric_limits<meat_t>::infinity(),
+            connection_idx_t::invalid()};
+      }
+
+      if (con_idx == connection_idx_t{0}) {
+        --day;
+        con_idx = connection_idx_t{tt_.fwd_connections_.size() - 1};
+        ++n_day;
+      } else {
+        --con_idx;
+      }
+    }
+  }
+
+  timetable const& tt_;
+  day_idx_t base_;
+  std::vector<transport_idx_t> trip_reset_list_;
+  transport_idx_t::value_t trip_reset_list_end_;
+  std::vector<location_idx_t> stop_reset_list_;
+  location_idx_t::value_t stop_reset_list_end_;
+  profile_set profile_set_;
+  vecvec<transport_idx_t, trip_data> trip_;
+};
+
+}  // namespace nigiri::routing::meat::csa

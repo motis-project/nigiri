@@ -1,0 +1,108 @@
+#pragma once
+
+#include <ostream>
+#include <vector>
+
+#include "nigiri/location.h"
+#include "nigiri/routing/meat/csa/binary_search.h"
+#include "nigiri/routing/meat/decision_graph.h"
+
+namespace nigiri::routing::meat {
+
+struct expanded_representation {
+  expanded_representation() {}
+  explicit expanded_representation(decision_graph const& g) {
+    slots_of_node_.resize(g.node_count());
+
+    for (auto& x : g.arcs_) {
+      slots_of_node_[x.dep_node_].push_back(time_slot{x.dep_time_});
+      slots_of_node_[x.arr_node_].push_back(time_slot{x.arr_time_});
+    }
+
+    for (auto& x : slots_of_node_) {
+      std::sort(x.begin(), x.end(),
+                [](auto l, auto r) { return l.when_ < r.when_; });
+      x.erase(std::unique(x.begin(), x.end(),
+                          [](auto l, auto r) { return l.when_ == r.when_; }),
+              x.end());
+    }
+
+    for (int i = 0; i < g.node_count(); ++i) {
+      for (auto& y : slots_of_node_[i]) {
+        int id = slots_.size();
+        slots_.push_back({i, y.when_});
+        y.slot_ = id;
+      }
+    }
+
+    arcs_.resize(g.arc_count());
+
+    auto find_slot = [&](int where, unixtime_t when) {
+      return csa::binary_find_first_true(
+                 slots_of_node_[where].begin(), slots_of_node_[where].end(),
+                 [&](auto s) { return when <= slots_[s.slot_].when_; })
+          ->slot_;
+    };
+
+    for (int i = 0; i < g.arc_count(); ++i) {
+      arcs_[i].dep_slot_ =
+          find_slot(g.arcs_[i].dep_node_, g.arcs_[i].dep_time_);
+      arcs_[i].arr_slot_ =
+          find_slot(g.arcs_[i].arr_node_, g.arcs_[i].arr_time_);
+    }
+  }
+
+  struct slot {
+    int node_id_;
+    unixtime_t when_;
+  };
+
+  struct extra_arc {
+    int dep_slot_;
+    int arr_slot_;
+  };
+
+  union time_slot {
+    unixtime_t when_;
+    int slot_;
+  };
+
+  std::vector<slot> slots_;
+  std::vector<std::vector<time_slot>> slots_of_node_;
+  std::vector<extra_arc> arcs_;
+
+  int node_count() const { return slots_of_node_.size(); }
+
+  int slot_count() const { return slots_.size(); }
+
+  int arc_count() const { return arcs_.size(); }
+};
+
+inline void write_dot(std::ostream& out,
+                      timetable const& tt,
+                      decision_graph const& g,
+                      expanded_representation const& r) {
+  out << "digraph decision_graph{\n"
+         "\tsplines=polyline;rankdir=LR;\n";
+
+  for (int i = 0; i < g.node_count(); ++i) {
+    out << "\tnode" << i << "[shape=record,"
+        << "URL=\"javascript:onstop(" << i << "," << g.nodes_[i].stop_id_
+        << ")\","
+        << "tooltip=\"" << location(tt, g.nodes_[i].stop_id_) << "\","
+        << "label=\"" << location(tt, g.nodes_[i].stop_id_);
+
+    for (auto s : r.slots_of_node_[i]) {
+      out << "|<slot" << s.slot_ << ">" << r.slots_[s.slot_].when_;
+    }
+    out << "\"];\n";
+  }
+  for (int i = 0; i < r.arc_count(); ++i)
+    out << "\tnode" << r.slots_[r.arcs_[i].dep_slot_].node_id_ << ":slot"
+        << r.arcs_[i].dep_slot_ << " -> node"
+        << r.slots_[r.arcs_[i].arr_slot_].node_id_ << ":slot"
+        << r.arcs_[i].arr_slot_ << ";\n";
+
+  out << '}' << std::endl;
+}
+}  // namespace nigiri::routing::meat
