@@ -165,7 +165,7 @@ struct timetable {
   route_idx_t register_route(
       std::basic_string<stop::value_type> const& stop_seq,
       std::basic_string<clasz> const& clasz_sections,
-      std::vector<shape_section> shapes,
+      std::vector<shape_idx_t> shape_indices,
       bitvec const& bikes_allowed_per_section) {
     assert(!stop_seq.empty() && stop_seq.size() > 1U);
     assert(!clasz_sections.empty());
@@ -176,7 +176,7 @@ struct timetable {
         transport_idx_t::invalid());
     route_location_seq_.emplace_back(stop_seq);
     route_section_clasz_.emplace_back(clasz_sections);
-    route_section_shape_.emplace_back(shapes);
+    route_section_shape_indices_.emplace_back(shape_indices);
     route_clasz_.emplace_back(clasz_sections[0]);
 
     auto const sections = bikes_allowed_per_section.size();
@@ -342,16 +342,20 @@ struct timetable {
                         }});
   }
 
-  // cista::basic_vector<geo::polyline, cista::raw::ptr> get_shapes(route_idx_t route_idx) const {
-  geo::polyline get_shapes(route_idx_t route_idx, mm_vecvec<uint32_t, geo::latlng> const* const shape_vecvec) const {
-    auto polyline = geo::polyline{};
-    for (auto const& shape : route_section_shape_[route_idx]) {
-      if (shape.shape_ != shape_idx_t::invalid()) {
-        auto const& bucket = shape_vecvec->at(shape.shape_.v_);
-        polyline.insert(polyline.end(), bucket.begin(), bucket.end());
+  std::vector<geo::polyline> get_shapes(route_idx_t route_idx, mm_vecvec<uint32_t, geo::latlng> const* const shape_vecvec) const {
+    if (shape_vecvec == nullptr) {
+      return {};
+    }
+    auto polylines = std::vector<geo::polyline>{};
+    for (auto const& shape_idx : route_section_shape_indices_[route_idx]) {
+      if (shape_idx == shape_idx_t::invalid()) {
+        polylines.push_back(geo::polyline{});
+      } else {
+        auto const& bucket = shape_vecvec->at(shape_idx.v_);
+        polylines.push_back(geo::polyline(bucket.begin(), bucket.end()));
       }
     }
-    return polyline;
+    return polylines;
   }
 
   std::string_view transport_name(transport_idx_t const t) const {
@@ -423,7 +427,7 @@ struct timetable {
   vecvec<route_idx_t, clasz> route_section_clasz_;
 
   // Route -> shape per section
-  vecvec<route_idx_t, shape_section> route_section_shape_;
+  vecvec<route_idx_t, shape_idx_t> route_section_shape_indices_;
 
   // Route * 2 -> bikes allowed along the route
   // Route * 2 + 1 -> bikes along parts of the route
