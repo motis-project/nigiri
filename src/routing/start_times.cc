@@ -244,7 +244,8 @@ void get_starts(
     bool const use_start_footpaths,
     std::vector<start>& starts,
     bool const add_ontrip,
-    profile_idx_t const prf_idx) {
+    profile_idx_t const prf_idx,
+    transfer_time_settings const& tts) {
   auto shortest_start = hash_map<location_idx_t, duration_t>{};
   auto const update = [&](location_idx_t const l, duration_t const d) {
     auto& val = utl::get_or_create(shortest_start, l, [d]() { return d; });
@@ -259,7 +260,8 @@ void get_starts(
         auto const footpaths = fwd ? tt.locations_.footpaths_out_[prf_idx][l]
                                    : tt.locations_.footpaths_in_[prf_idx][l];
         for (auto const& fp : footpaths) {
-          update(fp.target(), o.duration() + fp.duration());
+          update(fp.target(),
+                 o.duration() + adjusted_transfer_time(tts, fp.duration()));
         }
       }
     });

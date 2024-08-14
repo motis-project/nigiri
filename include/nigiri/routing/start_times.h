@@ -35,7 +35,8 @@ void get_starts(
     bool use_start_footpaths,
     std::vector<start>&,
     bool add_ontrip,
-    profile_idx_t);
+    profile_idx_t,
+    transfer_time_settings const&);
 
 void collect_destinations(timetable const&,
                           std::vector<offset> const& destinations,

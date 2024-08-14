@@ -37,8 +37,8 @@ struct search_state {
 struct search_stats {
   std::uint64_t lb_time_{0ULL};
   std::uint64_t fastest_direct_{0ULL};
-  std::uint64_t search_iterations_{0ULL};
   std::uint64_t interval_extensions_{0ULL};
+  std::chrono::milliseconds execute_time_{0LL};
 };
 
 template <typename AlgoStats>
@@ -58,9 +58,15 @@ struct search {
 
   Algo init(clasz_mask_t const allowed_claszes,
             bool const require_bikes_allowed,
+            transfer_time_settings& tts,
             algo_state_t& algo_state) {
     stats_.fastest_direct_ =
         static_cast<std::uint64_t>(fastest_direct_.count());
+
+    tts.factor_ = std::max(tts.factor_, 1.0F);
+    if (tts.factor_ == 1.0F && tts.min_transfer_time_ == 0_minutes) {
+      tts.default_ = true;
+    }
 
     collect_destinations(tt_, q_.destination_, q_.dest_match_mode_,
                          state_.is_destination_, state_.dist_to_dest_);
@@ -113,7 +119,8 @@ struct search {
                 .count()},
         allowed_claszes,
         require_bikes_allowed,
-        q_.prf_idx_ == 2U};
+        q_.prf_idx_ == 2U,
+        tts};
   }
 
   search(timetable const& tt,
@@ -127,17 +134,20 @@ struct search {
         state_{s},
         q_{std::move(q)},
         search_interval_{std::visit(
-            utl::overloaded{
-                [](interval<unixtime_t> const start_interval) {
-                  return start_interval;
-                },
-                [](unixtime_t const start_time) {
-                  return interval<unixtime_t>{start_time, start_time};
-                }},
+            utl::overloaded{[](interval<unixtime_t> const start_interval) {
+                              return start_interval;
+                            },
+                            [](unixtime_t const start_time) {
+                              return interval<unixtime_t>{start_time,
+                                                          start_time};
+                            }},
             q_.start_time_)},
         fastest_direct_{get_fastest_direct(tt_, q_, SearchDir)},
-        algo_{
-            init(q_.allowed_claszes_, q_.require_bike_transport_, algo_state)},
+
+        algo_{init(q_.allowed_claszes_,
+                   q_.require_bike_transport_,
+                   q_.transfer_time_settings_,
+                   algo_state)},
         timeout_(timeout) {
     utl::sort(q.start_);
     utl::sort(q.destination_);
@@ -162,10 +172,10 @@ struct search {
       add_start_labels(q_.start_time_, true);
     }
 
-    auto const processing_start_time = std::chrono::system_clock::now();
+    auto const processing_start_time = std::chrono::steady_clock::now();
     auto const is_timeout_reached = [&]() {
       if (timeout_) {
-        return (std::chrono::system_clock::now() - processing_start_time) >=
+        return (std::chrono::steady_clock::now() - processing_start_time) >=
                *timeout_;
       }
 
@@ -186,13 +196,13 @@ struct search {
             "timeout_reached={}\n",
             is_ontrip(), q_.extend_interval_earlier_, q_.extend_interval_later_,
             std::visit(
-                utl::overloaded{
-                    [](interval<unixtime_t> const& start_interval) {
-                      return start_interval;
-                    },
-                    [](unixtime_t const start_time) {
-                      return interval<unixtime_t>{start_time, start_time};
-                    }},
+                utl::overloaded{[](interval<unixtime_t> const& start_interval) {
+                                  return start_interval;
+                                },
+                                [](unixtime_t const start_time) {
+                                  return interval<unixtime_t>{start_time,
+                                                              start_time};
+                                }},
                 q_.start_time_),
             search_interval_, tt_.external_interval(), n_results_in_interval(),
             is_timeout_reached());
@@ -204,13 +214,13 @@ struct search {
             "number_of_results_in_interval={}\n",
             q_.extend_interval_earlier_, q_.extend_interval_later_,
             std::visit(
-                utl::overloaded{
-                    [](interval<unixtime_t> const& start_interval) {
-                      return start_interval;
-                    },
-                    [](unixtime_t const start_time) {
-                      return interval<unixtime_t>{start_time, start_time};
-                    }},
+                utl::overloaded{[](interval<unixtime_t> const& start_interval) {
+                                  return start_interval;
+                                },
+                                [](unixtime_t const start_time) {
+                                  return interval<unixtime_t>{start_time,
+                                                              start_time};
+                                }},
                 q_.start_time_),
             search_interval_, tt_.external_interval(), n_results_in_interval());
       }
@@ -248,7 +258,7 @@ struct search {
 
       search_interval_ = new_interval;
 
-      ++stats_.search_iterations_;
+      ++stats_.interval_extensions_;
     }
 
     if (is_pretrip()) {
@@ -262,6 +272,9 @@ struct search {
       });
     }
 
+    stats_.execute_time_ =
+        std::chrono::duration_cast<std::chrono::milliseconds>(
+            (std::chrono::steady_clock::now() - processing_start_time));
     return {.journeys_ = &state_.results_,
             .interval_ = search_interval_,
             .search_stats_ = stats_,
@@ -327,8 +340,8 @@ private:
     state_.starts_.reserve(500'000);
     get_starts(SearchDir, tt_, rtt_, start_interval, q_.start_, q_.td_start_,
                q_.max_start_offset_, q_.start_match_mode_,
-               q_.use_start_footpaths_, state_.starts_, add_ontrip,
-               q_.prf_idx_);
+               q_.use_start_footpaths_, state_.starts_, add_ontrip, q_.prf_idx_,
+               q_.transfer_time_settings_);
     std::sort(
         begin(state_.starts_), end(state_.starts_),
         [&](start const& a, start const& b) { return kFwd ? b < a : a < b; });

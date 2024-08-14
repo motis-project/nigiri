@@ -90,7 +90,7 @@ TEST(routing, td_start_times) {
                          {.valid_from_ = sys_days{2020_y / March / 30} + 12h,
                           .duration_ = footpath::kMaxDuration,
                           .transport_mode_id_ = 0U}}}}},
-      kMaxTravelTime, location_match_mode::kExact, false, starts, true, 0);
+      kMaxTravelTime, location_match_mode::kExact, false, starts, true, 0U, {});
   std::sort(begin(starts), end(starts),
             [](auto&& a, auto&& b) { return a > b; });
   starts.erase(std::unique(begin(starts), end(starts)), end(starts));
