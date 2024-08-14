@@ -178,10 +178,6 @@ TEST(gtfs, shapeRequest_singleTripWithShape_getFullShape) {
                                tt, local_bitfield_indices, &mmap);
   loader::finalize(tt);
 
-  for (auto r : tt.route_section_shape_indices_) {
-    std::cout << "Size: " << r.size() << std::endl;
-  }
-
   // Testing shape 'Last', used by 'Trip 3' (index == 2)
   auto const route_idx = route_idx_t{2};
   auto const shapes = tt.get_shapes(route_idx, &mmap);
@@ -212,10 +208,6 @@ TEST(gtfs, shapeRequest_singleTripWithoutShape_getEmptyShape) {
                                loader::mem_dir::read(test_files_with_shapes),
                                tt, local_bitfield_indices, &mmap);
   loader::finalize(tt);
-
-  for (auto r : tt.route_section_shape_indices_) {
-    std::cout << "Size: " << r.size() << std::endl;
-  }
 
   // Testing trip without shape, i.e. 'Trip 4' (index == 3)
   auto const route_idx = route_idx_t{3};
