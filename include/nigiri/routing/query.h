@@ -41,6 +41,8 @@ struct offset {
 };
 
 struct via_stop {
+  friend bool operator==(via_stop const&, via_stop const&) = default;
+
   location_idx_t location_{};
   duration_t stay_{};
 };
