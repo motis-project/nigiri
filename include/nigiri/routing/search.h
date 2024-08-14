@@ -58,9 +58,15 @@ struct search {
 
   Algo init(clasz_mask_t const allowed_claszes,
             bool const require_bikes_allowed,
+            transfer_time_settings& tts,
             algo_state_t& algo_state) {
     stats_.fastest_direct_ =
         static_cast<std::uint64_t>(fastest_direct_.count());
+
+    tts.factor_ = std::max(tts.factor_, 1.0F);
+    if (tts.factor_ == 1.0F && tts.min_transfer_time_ == 0_minutes) {
+      tts.default_ = true;
+    }
 
     collect_destinations(tt_, q_.destination_, q_.dest_match_mode_,
                          state_.is_destination_, state_.dist_to_dest_);
@@ -111,7 +117,8 @@ struct search {
                 tt_.internal_interval().from_)
                 .count()},
         allowed_claszes,
-        require_bikes_allowed};
+        require_bikes_allowed,
+        tts};
   }
 
   search(timetable const& tt,
@@ -134,8 +141,11 @@ struct search {
                 }},
             q_.start_time_)},
         fastest_direct_{get_fastest_direct(tt_, q_, SearchDir)},
-        algo_{
-            init(q_.allowed_claszes_, q_.require_bike_transport_, algo_state)},
+
+        algo_{init(q_.allowed_claszes_,
+                   q_.require_bike_transport_,
+                   q_.transfer_time_settings_,
+                   algo_state)},
         timeout_(timeout) {
     utl::sort(q.start_);
     utl::sort(q.destination_);
@@ -323,7 +333,7 @@ private:
     state_.starts_.reserve(500'000);
     get_starts(SearchDir, tt_, rtt_, start_interval, q_.start_,
                q_.start_match_mode_, q_.use_start_footpaths_, state_.starts_,
-               add_ontrip, q_.prf_idx_);
+               add_ontrip, q_.prf_idx_, q_.transfer_time_settings_);
     std::sort(
         begin(state_.starts_), end(state_.starts_),
         [&](start const& a, start const& b) { return kFwd ? b < a : a < b; });

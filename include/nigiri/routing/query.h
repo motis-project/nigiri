@@ -10,6 +10,7 @@
 #include "nigiri/routing/clasz_mask.h"
 #include "nigiri/routing/limits.h"
 #include "nigiri/routing/location_match_mode.h"
+#include "nigiri/routing/transfer_time_settings.h"
 #include "nigiri/types.h"
 
 namespace nigiri::routing {
@@ -55,6 +56,7 @@ struct query {
   profile_idx_t prf_idx_{0};
   clasz_mask_t allowed_claszes_{all_clasz_allowed()};
   bool require_bike_transport_{false};
+  transfer_time_settings transfer_time_settings_{};
 };
 
 }  // namespace nigiri::routing
