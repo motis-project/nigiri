@@ -20,8 +20,7 @@ namespace nigiri::loader::gtfs {
 
 TEST(gtfs, read_trips_example_data) {
   auto const files = example_files();
-  auto [shape_vecvec, paths] = create_temporary_paths("trips-example-data");
-  auto const guard = utl::make_raii(paths, cleanup_paths);
+  auto mmap = shape_test_mmap{"trips-example-data"};
 
   timetable tt;
   tt.date_range_ = interval{date::sys_days{July / 1 / 2006},
@@ -39,7 +38,7 @@ TEST(gtfs, read_trips_example_data) {
   auto const services =
       merge_traffic_days(tt.internal_interval_days(), calendar, dates);
   auto const shapes =
-      parse_shapes(files.get_file(kShapesFile).data(), &shape_vecvec);
+      parse_shapes(files.get_file(kShapesFile).data(), &mmap.get_vecvec());
   auto const trip_data = read_trips(tt, routes, services, shapes,
                                     files.get_file(kTripsFile).data(),
                                     config.bikes_allowed_default_);
@@ -54,8 +53,7 @@ TEST(gtfs, read_trips_example_data) {
 
 TEST(gtfs, read_trips_berlin_data) {
   auto const files = berlin_files();
-  auto [shape_vecvec, paths] = create_temporary_paths("trips-berlin-data");
-  auto const guard = utl::make_raii(paths, cleanup_paths);
+  auto mmap = shape_test_mmap{"trips-berlin-data"};
 
   timetable tt;
   tt.date_range_ = interval{date::sys_days{July / 1 / 2006},
@@ -73,7 +71,7 @@ TEST(gtfs, read_trips_berlin_data) {
   auto const services =
       merge_traffic_days(tt.internal_interval_days(), calendar, dates);
   auto const shapes =
-      parse_shapes(files.get_file(kShapesFile).data(), &shape_vecvec);
+      parse_shapes(files.get_file(kShapesFile).data(), &mmap.get_vecvec());
   auto const trip_data = read_trips(tt, routes, services, shapes,
                                     files.get_file(kTripsFile).data(),
                                     config.bikes_allowed_default_);
