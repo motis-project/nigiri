@@ -131,7 +131,7 @@ TEST(gtfs, shapeParse_notAscendingSequence_progressAndLogError) {
   auto const shape_points =
       geo::polyline{{50.636512, 6.473487}, {50.636259, 6.473668}};
   std::clog.flush();
-  std::string_view log{buffer.str()};
+  std::string log{buffer.str()};
   auto const shape_it = shapes.find("1");
   EXPECT_NE(shapes.end(), shape_it);
   auto const shape = mmap[shape_it->second.v_];
@@ -221,7 +221,7 @@ TEST(gtfs,
   auto const shapes = parse_shapes(shapes_data, &mmap);
 
   std::clog.flush();
-  std::string_view log{buffer.str()};
+  std::string log{buffer.str()};
   EXPECT_NE(shapes.find("1"), shapes.end());
   EXPECT_NE(shapes.find("2"), shapes.end());
   EXPECT_TRUE(
