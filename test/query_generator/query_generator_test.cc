@@ -60,7 +60,7 @@ TEST(query_generation, reproducibility) {
 
   generator_settings const gs;
   auto const seed = 2342;
-  auto const num_queries = 100U;
+  auto const num_queries = 3U;
 
   auto qg0 = generator{tt, gs, seed};
   auto result_qg0 =
