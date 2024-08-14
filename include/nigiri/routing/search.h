@@ -6,6 +6,7 @@
 #include "utl/timing.h"
 #include "utl/to_vec.h"
 
+#include "nigiri/logging.h"
 #include "nigiri/routing/dijkstra.h"
 #include "nigiri/routing/for_each_meta.h"
 #include "nigiri/routing/get_fastest_direct.h"
@@ -385,7 +386,13 @@ private:
             if (j.legs_.empty() &&
                 (is_ontrip() || search_interval_.contains(j.start_time_)) &&
                 j.travel_time() < fastest_direct_) {
-              algo_.reconstruct(q_, j);
+              try {
+                algo_.reconstruct(q_, j);
+              } catch (std::exception const& e) {
+                j.error_ = true;
+                log(log_lvl::error, "search", "reconstruct failed: {}",
+                    e.what());
+              }
             }
           }
         });

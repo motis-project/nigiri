@@ -501,9 +501,9 @@ void reconstruct_journey_with_vias(timetable const& tt,
       }
 
       throw utl::fail(
-          "intermodal destination reconstruction failed at k={}, t={}, "
+          "intermodal destination reconstruction failed at k={}, t={}, v={}, "
           "stop={}, time={}",
-          k, j.transfers_, location{tt, l}, curr_time);
+          k, j.transfers_, v, location{tt, l}, curr_time);
     }
 
     trace_reconstruct("CHECKING TRANSFER AT {}\n", location{tt, l});
@@ -529,8 +529,9 @@ void reconstruct_journey_with_vias(timetable const& tt,
       }
     }
 
-    throw utl::fail("reconstruction failed at k={}, t={}, stop={}, time={}", k,
-                    j.transfers_, location{tt, l}, curr_time);
+    throw utl::fail(
+        "reconstruction failed at k={}, t={}, v={}, stop={}, time={}", k,
+        j.transfers_, v, location{tt, l}, curr_time);
   };
 
   auto l = j.dest_;
