@@ -58,10 +58,15 @@ struct search {
 
   Algo init(clasz_mask_t const allowed_claszes,
             bool const require_bikes_allowed,
-            transfer_time_settings const& tts,
+            transfer_time_settings& tts,
             algo_state_t& algo_state) {
     stats_.fastest_direct_ =
         static_cast<std::uint64_t>(fastest_direct_.count());
+
+    tts.factor_ = std::max(tts.factor_, 1.0F);
+    if (tts.factor_ == 1.0F && tts.min_transfer_time_ == 0_minutes) {
+      tts.default_ = true;
+    }
 
     collect_destinations(tt_, q_.destination_, q_.dest_match_mode_,
                          state_.is_destination_, state_.dist_to_dest_);
