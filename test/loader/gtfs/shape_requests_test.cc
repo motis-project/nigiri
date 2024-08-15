@@ -224,7 +224,8 @@ TEST(gtfs, shapeRequest_singleTripWithoutShape_getEmptyShape) {
 //     auto local_bitfield_indices = hash_map<bitfield, bitfield_idx_t>{};
 //   loader::gtfs::load_timetable({}, source_idx_t{0},
 //                                loader::mem_dir::read(test_files_with_shapes),
-//                                tt, local_bitfield_indices, &mmap.get_vecvec());
+//                                tt, local_bitfield_indices,
+//                                &mmap.get_vecvec());
 //   loader::finalize(tt);
 
 //   for (auto r : tt.route_section_shape_) {
