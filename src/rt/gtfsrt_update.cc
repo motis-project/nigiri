@@ -160,7 +160,8 @@ void update_run(
       if (upd_it->schedule_relationship() ==
           gtfsrt::TripUpdate_StopTimeUpdate_ScheduleRelationship_SKIPPED) {
         // Cancel skipped stops (in_allowed = out_allowed = false).
-        stp = stop{stop{stp}.location_idx(), false, false}.value();
+        stp =
+            stop{stop{stp}.location_idx(), false, false, false, false}.value();
       } else if (upd_it->stop_time_properties().has_assigned_stop_id() ||
                  (upd_it->has_stop_id() &&
                   upd_it->stop_id() !=
@@ -175,8 +176,9 @@ void update_run(
         auto const l_it = tt.locations_.location_id_to_idx_.find(
             {.id_ = new_id, .src_ = src});
         if (l_it != end(tt.locations_.location_id_to_idx_)) {
-          stp = stop{l_it->second, stop{stp}.in_allowed(),
-                     stop{stp}.out_allowed()}
+          auto const s = stop{stp};
+          stp = stop{l_it->second, s.in_allowed(), s.out_allowed(),
+                     s.in_allowed_wheelchair(), s.out_allowed_wheelchair()}
                     .value();
           auto transports = rtt.location_rt_transports_[l_it->second];
           if (utl::find(transports, r.rt_) == end(transports)) {

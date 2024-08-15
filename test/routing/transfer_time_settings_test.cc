@@ -158,7 +158,7 @@ pareto_set<routing::journey> search(timetable const& tt,
                                     routing::transfer_time_settings const tts) {
   return raptor_search(tt, rtt, dir == direction::kForward ? from : to,
                        dir == direction::kForward ? to : from, start_time, dir,
-                       routing::all_clasz_allowed(), false, tts);
+                       routing::all_clasz_allowed(), false, 0U, tts);
 }
 
 }  // namespace
