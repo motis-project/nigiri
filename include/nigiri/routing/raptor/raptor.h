@@ -492,11 +492,24 @@ private:
           ++stats_.n_footpaths_visited_;
 
           auto const target = to_idx(fp.target());
-          auto const fp_target_time =
-              clamp(tmp_time + dir(fp.duration()).count());
 
-          // TODO: via / stay
-          auto const target_v = v;
+          auto const start_is_via =
+              v != Vias && is_via_[v][static_cast<bitvec::size_type>(i)];
+          auto const start_v = start_is_via ? v + 1 : v;
+
+          auto const target_is_via =
+              start_v != Vias && is_via_[start_v][target];
+          auto const target_v = target_is_via ? start_v + 1 : start_v;
+          auto stay = 0_minutes;
+          if (start_is_via) {
+            stay += via_stops_[v].stay_;
+          }
+          if (target_is_via) {
+            stay += via_stops_[start_v].stay_;
+          }
+
+          auto const fp_target_time =
+              clamp(tmp_time + dir(fp.duration().count() + stay.count()));
 
           if (is_better(fp_target_time, best_[target][target_v]) &&
               is_better(fp_target_time, time_at_dest_[k])) {
@@ -519,10 +532,11 @@ private:
 
             trace_upd(
                 "┊ ├k={}   td footpath: ({}, tmp={}) --{}--> ({}, best={}) --> "
-                "update => {}\n",
+                "update => {}, v={}->{}, stay={}\n",
                 k, location{tt_, l_idx}, to_unix(tmp_[to_idx(l_idx)][v]),
                 fp.duration(), location{tt_, fp.target()},
-                to_unix(best_[target][target_v]), fp_target_time);
+                to_unix(best_[target][target_v]), to_unix(fp_target_time), v,
+                target_v, stay);
 
             ++stats_.n_earliest_arrival_updated_by_footpath_;
             round_times_[k][target][target_v] = fp_target_time;
