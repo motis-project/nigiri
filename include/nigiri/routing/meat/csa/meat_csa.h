@@ -210,7 +210,7 @@ private:
         std::numeric_limits<delta_t>::max());  // earliest safe arrival
     vector_map<transport_idx_t, uint16_t> trip_first_con(
         tt_.n_transports(), std::numeric_limits<uint16_t>::max());
-    esa[source_stop] = source_time;
+    update_arr_times(esa, source_time, source_stop);
     auto [day, mam] = split(source_time);
 
     delta_t const target_offset =
@@ -282,10 +282,13 @@ private:
                 bound_parameter_ *
                 (esa[target_stop] - target_offset -
                  source_time)));  //??? TODO Warum target_offset hier? da
-                                  // sie weiter oben (Zeile 214) addierd
+                                  // sie weiter oben (ca. Zeile 214) addierd
                                   // wurde, und hier nicht gefragt ist? sollte
                                   // da eventuell nur die transfer_time_
-                                  // abgezogen werden?);
+                                  // abgezogen werden?); safe: if no transfer
+                                  // can break => da am ende kein transfer,
+                                  // braucht es auch kein delay bzw.
+                                  // transfertime
       }
     }
   }
@@ -319,7 +322,7 @@ private:
     vector_map<transport_idx_t, uint16_t> trip_first_con(
         tt_.n_transports(), std::numeric_limits<uint16_t>::max());
 
-    ea[source_stop] = source_time;
+    update_arr_times(ea, source_time, source_stop);
 
     auto conn = conn_begin;
     auto& day = conn.first;
