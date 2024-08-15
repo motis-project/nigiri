@@ -157,6 +157,13 @@ std::optional<start_dest_query> generator::random_query() {
       sdq.q_.destination_.emplace_back(dest_loc_idx.value(), 0_minutes, 0U);
     }
 
+    // add via stops to query
+    for (auto v = 0U; v != s_.n_vias_; ++v) {
+      auto const loc = random_location();
+      auto const stay = static_cast<duration_t>(stay_d_(rng_));
+      sdq.q_.via_stops_.emplace_back(routing::via_stop{loc, stay});
+    }
+
     return sdq;
   }
 
@@ -427,6 +434,7 @@ routing::query generator::make_query() const {
   q.extend_interval_later_ = s_.extend_interval_later_;
   q.prf_idx_ = s_.prf_idx_;
   q.allowed_claszes_ = s_.allowed_claszes_;
+  q.transfer_time_settings_ = s_.transfer_time_settings_;
   return q;
 }
 

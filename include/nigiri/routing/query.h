@@ -49,6 +49,13 @@ struct td_offset {
   transport_mode_id_t transport_mode_id_;
 };
 
+struct via_stop {
+  friend bool operator==(via_stop const&, via_stop const&) = default;
+
+  location_idx_t location_{};
+  duration_t stay_{};
+};
+
 using start_time_t = std::variant<unixtime_t, interval<unixtime_t>>;
 
 struct query {
@@ -71,6 +78,7 @@ struct query {
   clasz_mask_t allowed_claszes_{all_clasz_allowed()};
   bool require_bike_transport_{false};
   transfer_time_settings transfer_time_settings_{};
+  std::vector<via_stop> via_stops_{};
 };
 
 }  // namespace nigiri::routing

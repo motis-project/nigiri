@@ -9,6 +9,8 @@ struct rt_timetable;
 
 namespace nigiri::test {
 
+unixtime_t parse_time(std::string_view s, char const* format);
+
 pareto_set<routing::journey> raptor_search(
     timetable const&,
     rt_timetable const*,

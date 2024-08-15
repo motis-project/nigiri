@@ -11,5 +11,6 @@ static constexpr auto const kMaxTravelTime = 1_days;
 static constexpr auto const kMaxSearchIntervalSize =
     date::days{std::numeric_limits<duration_t::rep>::max() / 1440} -
     (kMaxTravelTime + 2_days);
+static constexpr auto const kMaxVias = 2;
 
 }  // namespace nigiri::routing

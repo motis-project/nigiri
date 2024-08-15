@@ -44,4 +44,8 @@ void collect_destinations(timetable const&,
                           bitvec& is_destination,
                           std::vector<std::uint16_t>& dist_to_dest);
 
+void collect_via_destinations(timetable const&,
+                              location_idx_t via,
+                              bitvec& is_destination);
+
 }  // namespace nigiri::routing
