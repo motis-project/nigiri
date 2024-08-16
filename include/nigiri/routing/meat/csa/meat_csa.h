@@ -205,6 +205,7 @@ private:
       location_idx_t source_stop,
       delta_t source_time,
       location_idx_t target_stop) {
+
     vector_map<location_idx_t, delta_t> esa(
         tt_.n_locations(),
         std::numeric_limits<delta_t>::max());  // earliest safe arrival
@@ -219,25 +220,32 @@ private:
                      // wenn
                      // umstige passieren, kann also schon direkt addierd werden
 
+    // auto const time_limit = std::min(source_time + kMaxTravelTime.count(),
+    // tt_to_delta(end_of_tt_));
+
     connection_idx_t conn_end = conn_begin;
     connection const* conn = &tt_.fwd_connections_[conn_end];
     auto conn_dep_time = tt_to_delta(day, conn->dep_time_.mam());
     while (day < n_days_ && /* test if conn depature < min ( max travel time,
                                end of timetable TODO: n_days_ or end_of_tt_) */
            conn_dep_time - source_time < kMaxTravelTime.count() &&
+           // conn_dep_time < time_limit &&
            esa[target_stop] > conn_dep_time + target_offset) {
       // TODO test ist conn active befor iterate over transfers
       // if (tt_.is_connection_active(*conn,day)){}
-      if (tt_.is_connection_active(*conn, day) &&
-          (trip_first_con[conn->transport_idx_] <= conn->trip_con_idx_ ||
-           (esa[stop{conn->dep_stop_}.location_idx()] <= conn_dep_time &&
-            stop{conn->dep_stop_}.in_allowed() &&
-            (WithClaszFilter
-                 ? is_allowed(allowed_claszes_,
-                              tt_.route_clasz_
-                                  [tt_.transport_route_[conn->transport_idx_]])
-                 : true)))) {
-        if (trip_first_con[conn->transport_idx_] > conn->trip_con_idx_) {
+      auto const via_trip =
+          trip_first_con[conn->transport_idx_] <= conn->trip_con_idx_;
+      auto const via_station =
+          esa[stop{conn->dep_stop_}.location_idx()] <= conn_dep_time &&
+          stop{conn->dep_stop_}.in_allowed() &&
+          (WithClaszFilter
+               ? is_allowed(allowed_claszes_,
+                            tt_.route_clasz_
+                                [tt_.transport_route_[conn->transport_idx_]])
+               : true);
+
+      if (tt_.is_connection_active(*conn, day) && (via_trip || via_station)) {
+        if (!via_trip) {
           trip_first_con[conn->transport_idx_] = conn->trip_con_idx_;
         }
         if (stop{conn->arr_stop_}.out_allowed()) {
@@ -330,16 +338,18 @@ private:
     while (conn <= conn_end) {
       auto const& c = tt_.fwd_connections_[con_idx];
       auto const c_dep_time = tt_to_delta(day, c.dep_time_.mam());
-      if (tt_.is_connection_active(c, day) &&
-          (trip_first_con[c.transport_idx_] <= c.trip_con_idx_ ||
-           (ea[stop{c.dep_stop_}.location_idx()] <= c_dep_time &&
-            stop{c.dep_stop_}.in_allowed() &&
-            (WithClaszFilter
-                 ? is_allowed(
-                       allowed_claszes_,
-                       tt_.route_clasz_[tt_.transport_route_[c.transport_idx_]])
-                 : true)))) {
-        if (trip_first_con[c.transport_idx_] > c.trip_con_idx_) {
+      auto const via_trip = trip_first_con[c.transport_idx_] <= c.trip_con_idx_;
+      auto const via_station =
+          ea[stop{c.dep_stop_}.location_idx()] <= c_dep_time &&
+          stop{c.dep_stop_}.in_allowed() &&
+          (WithClaszFilter
+               ? is_allowed(
+                     allowed_claszes_,
+                     tt_.route_clasz_[tt_.transport_route_[c.transport_idx_]])
+               : true);
+               
+      if (tt_.is_connection_active(c, day) && (via_trip || via_station)) {
+        if (!via_trip) {
           trip_first_con[c.transport_idx_] = c.trip_con_idx_;
         }
         if (stop{c.arr_stop_}.out_allowed()) {
