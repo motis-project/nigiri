@@ -174,17 +174,6 @@ void load_timetable(loader_config const& config,
         }
       };
 
-  std::vector<shape_idx_t> shape_cache{};
-  auto const get_shapes = [&shape_cache, td = std::cref(trip_data)](
-                              std::basic_string<gtfs_trip_idx_t> const& trips) {
-    shape_cache.clear();
-    for (auto const& trip_idx : trips) {
-      auto const& trip = td.get().get(trip_idx);
-      shape_cache.push_back(trip.shape_idx_);
-    }
-    return &shape_cache;
-  };
-
   bitvec bikes_allowed_seq_cache;
   auto const get_bikes_allowed_seq =
       [&](std::basic_string<gtfs_trip_idx_t> const& trips) -> bitvec const* {
@@ -214,11 +203,10 @@ void load_timetable(loader_config const& config,
         trip_data, noon_offsets, tt, trips, traffic_days, tt.date_range_,
         [&](utc_trip&& s) {
           auto const* stop_seq = get_stop_seq(s.trips_);
-          auto const* section_shapes = get_shapes(s.trips_);
           auto const clasz = trip_data.get(s.trips_.front()).get_clasz(tt);
           auto const* bikes_allowed_seq = get_bikes_allowed_seq(s.trips_);
           auto const it = route_services.find(route_key_ptr_t{
-              clasz, stop_seq, section_shapes, bikes_allowed_seq});
+              clasz, stop_seq, bikes_allowed_seq});
           if (it != end(route_services)) {
             for (auto& r : it->second) {
               auto const idx = get_index(r, s);
@@ -230,7 +218,7 @@ void load_timetable(loader_config const& config,
             it->second.emplace_back(std::vector<utc_trip>{std::move(s)});
           } else {
             route_services.emplace(
-                route_key_t{clasz, *stop_seq, *section_shapes,
+                route_key_t{clasz, *stop_seq,
                             *bikes_allowed_seq},
                 std::vector<std::vector<utc_trip>>{{std::move(s)}});
           }
@@ -306,7 +294,7 @@ void load_timetable(loader_config const& config,
     for (auto const& [key, sub_routes] : route_services) {
       for (auto const& services : sub_routes) {
         auto const route_idx =
-            tt.register_route(key.stop_seq_, {key.clasz_}, key.shapes_indices_,
+            tt.register_route(key.stop_seq_, {key.clasz_},
                               key.bikes_allowed_);
 
         for (auto const& s : key.stop_seq_) {
@@ -407,6 +395,7 @@ void load_timetable(loader_config const& config,
     // Build transport ranges.
     for (auto const& t : trip_data.data_) {
       tt.trip_transport_ranges_.emplace_back(t.transport_ranges_);
+      tt.trip_shape_indices_.push_back(t.shape_idx_);
     }
   }
 }

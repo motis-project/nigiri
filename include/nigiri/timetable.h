@@ -165,7 +165,6 @@ struct timetable {
   route_idx_t register_route(
       std::basic_string<stop::value_type> const& stop_seq,
       std::basic_string<clasz> const& clasz_sections,
-      std::vector<shape_idx_t> shape_indices,
       bitvec const& bikes_allowed_per_section) {
     assert(!stop_seq.empty() && stop_seq.size() > 1U);
     assert(!clasz_sections.empty());
@@ -176,7 +175,6 @@ struct timetable {
         transport_idx_t::invalid());
     route_location_seq_.emplace_back(stop_seq);
     route_section_clasz_.emplace_back(clasz_sections);
-    trip_section_shape_indices_.emplace_back(shape_indices);
     route_clasz_.emplace_back(clasz_sections[0]);
 
     auto const sections = bikes_allowed_per_section.size();
@@ -342,26 +340,19 @@ struct timetable {
                         }});
   }
 
-  std::vector<geo::polyline> get_shapes(
+  geo::polyline get_shape(
       trip_idx_t trip_idx,
       mm_vecvec<uint32_t, geo::latlng> const* const shape_vecvec) const {
-    // std::cout << "DEBUG: SHAPE REQUEST" << std::endl;
     if (shape_vecvec == nullptr) {
-      // std::cout << "DEBUG: SHAPE EMPTY" << std::endl;
       return {};
     }
     auto polylines = std::vector<geo::polyline>{};
-    // std::cout << "TRIP INDEX: " << trip_idx << std::endl;
-    for (auto const& shape_idx : trip_section_shape_indices_[trip_idx]) {
-      // std::cout << "SHAPE INDEX: " << shape_idx << std::endl;
-      if (shape_idx == shape_idx_t::invalid()) {
-        polylines.push_back(geo::polyline{});
-      } else {
-        auto const& bucket = shape_vecvec->at(shape_idx.v_);
-        polylines.push_back(geo::polyline(bucket.begin(), bucket.end()));
-      }
+    auto const shape_idx = trip_shape_indices_.at(trip_idx);
+    if (shape_idx == shape_idx_t::invalid()) {
+      return {};
     }
-    return polylines;
+    auto const& bucket = shape_vecvec->at(shape_idx.v_);
+    return geo::polyline(bucket.begin(), bucket.end());
   }
 
   std::string_view transport_name(transport_idx_t const t) const {
@@ -405,6 +396,9 @@ struct timetable {
   // Trip index -> all transports with a stop interval
   paged_vecvec<trip_idx_t, transport_range_t> trip_transport_ranges_;
 
+  // Trip index -> shape per trip
+  vector_map<trip_idx_t, shape_idx_t> trip_shape_indices_;
+
   // Transport -> stop sequence numbers (relevant for GTFS-RT stop matching)
   // Compaction:
   // - empty = zero-based sequence 0,1,2,...
@@ -419,9 +413,6 @@ struct timetable {
 
   // Trip index -> display name
   vecvec<trip_idx_t, char> trip_display_names_;
-
-  // Trip index -> shape per section
-  vecvec<trip_idx_t, shape_idx_t> trip_section_shape_indices_;
 
   // Route -> range of transports in this route (from/to transport_idx_t)
   vector_map<route_idx_t, interval<transport_idx_t>> route_transport_ranges_;
