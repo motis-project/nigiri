@@ -70,8 +70,8 @@ TEST(gtfs, shapeRequest_noShape_getEmptyVector) {
                                tt);
   loader::finalize(tt);
 
-  auto const route_idx = route_idx_t{1};  // TODO
-  auto const shapes = tt.get_shapes(route_idx, nullptr);
+  auto const trip_idx = trip_idx_t{1};  // TODO
+  auto const shapes = tt.get_shapes(trip_idx, nullptr);
 
   auto expected_shape = std::vector<geo::polyline>{};
   EXPECT_EQ(expected_shape, shapes);
@@ -177,8 +177,8 @@ TEST(gtfs, shapeRequest_singleTripWithShape_getFullShape) {
   loader::finalize(tt);
 
   // Testing shape 'Last', used by 'Trip 3' (index == 2)
-  auto const route_idx = route_idx_t{2};
-  auto const shapes = tt.get_shapes(route_idx, &mmap.get_vecvec());
+  auto const trip_idx = trip_idx_t{2};
+  auto const shapes = tt.get_shapes(trip_idx, &mmap.get_vecvec());
 
   auto expected_shape = std::vector{{geo::polyline{
       {4.0f, 5.0f},
@@ -206,8 +206,8 @@ TEST(gtfs, shapeRequest_singleTripWithoutShape_getEmptyShape) {
   loader::finalize(tt);
 
   // Testing trip without shape, i.e. 'Trip 4' (index == 3)
-  auto const route_idx = route_idx_t{3};
-  auto const shapes = tt.get_shapes(route_idx, &mmap.get_vecvec());
+  auto const trip_idx = trip_idx_t{3};
+  auto const shapes = tt.get_shapes(trip_idx, &mmap.get_vecvec());
 
   auto expected_shape = std::vector<geo::polyline>{{}};
   EXPECT_EQ(expected_shape, shapes);
@@ -231,8 +231,8 @@ TEST(gtfs, shapeRequest_singleTripWithoutShape_getEmptyShape) {
 //   for (auto r : tt.route_section_shape_) {
 //     std::cout << "Size: " << r.size() << std::endl;
 //   }
-//   auto const route_idx = route_idx_t{1};  // TODO
-//   auto const shapes = tt.get_shapes(route_idx, &mmap.get_vecvec());
+//   auto const trip_idx = trip_idx_t{1};  // TODO
+//   auto const shapes = tt.get_shapes(trip_idx, &mmap.get_vecvec());
 
 //   auto expected_shape = std::vector{geo::polyline{
 //     {2.4f, 2.0f},
@@ -258,8 +258,8 @@ TEST(gtfs, shapeRequest_singleTripWithoutShape_getEmptyShape) {
 //                                tt);
 //   loader::finalize(tt);
 
-//   auto const route_idx = route_idx_t{1};  // TODO
-//   auto const shapes = tt.get_shapes(route_idx, nullptr);
+//   auto const trip_idx = trip_idx_t{1};  // TODO
+//   auto const shapes = tt.get_shapes(trip_idx, nullptr);
 
 //   auto expected_shape = std::vector{geo::polyline{}};
 //   EXPECT_EQ(expected_shape, shapes);

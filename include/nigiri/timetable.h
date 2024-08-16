@@ -176,7 +176,7 @@ struct timetable {
         transport_idx_t::invalid());
     route_location_seq_.emplace_back(stop_seq);
     route_section_clasz_.emplace_back(clasz_sections);
-    route_section_shape_indices_.emplace_back(shape_indices);
+    trip_section_shape_indices_.emplace_back(shape_indices);
     route_clasz_.emplace_back(clasz_sections[0]);
 
     auto const sections = bikes_allowed_per_section.size();
@@ -343,13 +343,17 @@ struct timetable {
   }
 
   std::vector<geo::polyline> get_shapes(
-      route_idx_t route_idx,
+      trip_idx_t trip_idx,
       mm_vecvec<uint32_t, geo::latlng> const* const shape_vecvec) const {
+    // std::cout << "DEBUG: SHAPE REQUEST" << std::endl;
     if (shape_vecvec == nullptr) {
+      // std::cout << "DEBUG: SHAPE EMPTY" << std::endl;
       return {};
     }
     auto polylines = std::vector<geo::polyline>{};
-    for (auto const& shape_idx : route_section_shape_indices_[route_idx]) {
+    // std::cout << "TRIP INDEX: " << trip_idx << std::endl;
+    for (auto const& shape_idx : trip_section_shape_indices_[trip_idx]) {
+      // std::cout << "SHAPE INDEX: " << shape_idx << std::endl;
       if (shape_idx == shape_idx_t::invalid()) {
         polylines.push_back(geo::polyline{});
       } else {
@@ -416,6 +420,9 @@ struct timetable {
   // Trip index -> display name
   vecvec<trip_idx_t, char> trip_display_names_;
 
+  // Trip index -> shape per section
+  vecvec<trip_idx_t, shape_idx_t> trip_section_shape_indices_;
+
   // Route -> range of transports in this route (from/to transport_idx_t)
   vector_map<route_idx_t, interval<transport_idx_t>> route_transport_ranges_;
 
@@ -427,9 +434,6 @@ struct timetable {
 
   // Route -> clasz per section
   vecvec<route_idx_t, clasz> route_section_clasz_;
-
-  // Route -> shape per section
-  vecvec<route_idx_t, shape_idx_t> route_section_shape_indices_;
 
   // Route * 2 -> bikes allowed along the route
   // Route * 2 + 1 -> bikes along parts of the route

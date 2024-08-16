@@ -13,9 +13,10 @@ void gtfs_loader::load(
     source_idx_t const src,
     dir const& d,
     timetable& tt,
-    hash_map<bitfield, bitfield_idx_t>& global_bitfield_indices) const {
+    hash_map<bitfield, bitfield_idx_t>& global_bitfield_indices,
+    mm_vecvec<uint32_t, ::geo::latlng>* shape_vecvec) const {
   return nigiri::loader::gtfs::load_timetable(c, src, d, tt,
-                                              global_bitfield_indices);
+                                              global_bitfield_indices, shape_vecvec);
 }
 
 cista::hash_t gtfs_loader::hash(dir const& d) const {
