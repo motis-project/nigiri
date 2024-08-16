@@ -419,8 +419,7 @@ statistics vdv_update(timetable const& tt,
                       source_idx_t const src,
                       pugi::xml_document const& doc) {
   auto stats = statistics{};
-  for (auto const& r :
-       doc.select_nodes("DatenAbrufenAntwort/AUSNachricht/IstFahrt")) {
+  for (auto const& r : doc.select_nodes("//IstFahrt")) {
     if (get_opt_bool(r.node(), "Zusatzfahrt", false).value()) {
       ++stats.unsupported_additional_runs_;
       continue;
