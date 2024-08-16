@@ -39,7 +39,7 @@ struct run {
   // real-time instance, not set if no real-time info available
   rt_transport_idx_t rt_{rt_transport_idx_t::invalid()};
 
-  trip_idx_t trip_idx{trip_idx_t::invalid()};
+  trip_idx_t trip_idx_{trip_idx_t::invalid()};
 };
 
 }  // namespace nigiri::rt
