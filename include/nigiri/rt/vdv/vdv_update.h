@@ -24,6 +24,7 @@ struct statistics {
         << "\ntotal runs: " << s.total_runs_
         << "\nmatched runs: " << s.matched_runs_
         << "\nunmatchable runs: " << s.unmatchable_runs_
+        << "\nruns without stops: " << s.runs_without_stops_
         << "\nskipped vdv stops: " << s.skipped_vdv_stops_
         << "\nexcess vdv stops: " << s.excess_vdv_stops_
         << "\nupdated events: " << s.updated_events_
@@ -43,6 +44,7 @@ struct statistics {
     lhs.match_prevented_by_line_id_ += rhs.match_prevented_by_line_id_;
     lhs.matched_runs_ += rhs.matched_runs_;
     lhs.unmatchable_runs_ += rhs.unmatchable_runs_;
+    lhs.runs_without_stops_ += rhs.runs_without_stops_;
     lhs.skipped_vdv_stops_ += rhs.skipped_vdv_stops_;
     lhs.excess_vdv_stops_ += rhs.excess_vdv_stops_;
     lhs.updated_events_ += rhs.updated_events_;
@@ -61,6 +63,7 @@ struct statistics {
   std::uint32_t match_prevented_by_line_id_{0U};
   std::uint32_t matched_runs_{0U};
   std::uint32_t unmatchable_runs_{0U};
+  std::uint32_t runs_without_stops_{0U};
   std::uint32_t skipped_vdv_stops_{0U};
   std::uint32_t excess_vdv_stops_{0U};
   std::uint32_t updated_events_{0U};

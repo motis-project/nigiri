@@ -399,6 +399,7 @@ void process_vdv_run(timetable const& tt,
   auto vdv_stops = resolve_stops(tt, src, run, stats);
 
   if (vdv_stops.empty()) {
+    ++stats.runs_without_stops_;
     auto run_without_stops =
         std::ofstream{"runs_without_stops.txt", std::ios::app};
     run.print(run_without_stops);
