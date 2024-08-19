@@ -398,6 +398,14 @@ void process_vdv_run(timetable const& tt,
 
   auto vdv_stops = resolve_stops(tt, src, run, stats);
 
+  if (vdv_stops.empty()) {
+    auto run_without_stops =
+        std::ofstream{"runs_without_stops.txt", std::ios::app};
+    run.print(run_without_stops);
+    run_without_stops << "\n";
+    return;
+  }
+
   auto r = find_run(tt, run, vdv_stops, stats);
   if (!r.has_value()) {
     ++stats.unmatchable_runs_;
