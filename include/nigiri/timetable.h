@@ -341,18 +341,22 @@ struct timetable {
   }
 
   geo::polyline get_shape(
-      trip_idx_t trip_idx,
+      shape_idx_t shape_idx,
       mm_vecvec<uint32_t, geo::latlng> const* const shape_vecvec) const {
-    if (shape_vecvec == nullptr) {
-      return {};
-    }
-    auto polylines = std::vector<geo::polyline>{};
-    auto const shape_idx = trip_shape_indices_.at(trip_idx);
-    if (shape_idx == shape_idx_t::invalid()) {
+    if (shape_vecvec == nullptr || shape_idx == shape_idx_t::invalid()) {
       return {};
     }
     auto const& bucket = shape_vecvec->at(shape_idx.v_);
     return geo::polyline(bucket.begin(), bucket.end());
+  }
+
+  geo::polyline get_shape(
+      trip_idx_t trip_idx,
+      mm_vecvec<uint32_t, geo::latlng> const* const shape_vecvec) const {
+    if (shape_vecvec == nullptr || trip_idx == trip_idx_t::invalid()) {
+      return {};
+    }
+    return get_shape(trip_shape_indices_.at(trip_idx), shape_vecvec);
   }
 
   std::string_view transport_name(transport_idx_t const t) const {

@@ -27,6 +27,7 @@
 #include "cista/strong.h"
 
 #include "nigiri/common/interval.h"
+#include "nigiri/types2.h"
 
 namespace nigiri {
 
@@ -105,12 +106,6 @@ using optional = cista::optional<T>;
 
 template <typename Key, typename T, std::size_t N>
 using nvec = cista::raw::nvec<Key, T, N>;
-
-template <typename T>
-using mm_vec = cista::basic_mmap_vec<T, std::uint64_t>;
-
-template <typename Key, typename V, typename SizeType = cista::base_t<Key>>
-using mm_vecvec = cista::basic_vecvec<Key, mm_vec<V>, mm_vec<SizeType>>;
 
 template <typename Key, typename T>
 struct mmap_paged_vecvec_helper {
