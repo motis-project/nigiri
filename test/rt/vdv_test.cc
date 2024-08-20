@@ -232,6 +232,144 @@ constexpr auto const vdv_update_msg2 = R"(
 </DatenAbrufenAntwort>
 )";
 
+}  // namespace
+
+TEST(vdv_update, basic) {
+  timetable tt;
+  register_special_stations(tt);
+  tt.date_range_ = {date::sys_days{2024_y / July / 1},
+                    date::sys_days{2024_y / July / 31}};
+  load_timetable({}, source_idx_t{0}, vdv_test_files(), tt);
+  finalize(tt);
+
+  auto rtt = rt::create_rt_timetable(tt, date::sys_days{2024_y / July / 10});
+
+  auto doc = pugi::xml_document{};
+  doc.load_string(vdv_update_msg0);
+  rt::vdv::vdv_update(tt, rtt, source_idx_t{0}, doc);
+
+  auto fr = rt::frun(
+      tt, &rtt,
+      {{transport_idx_t{0}, day_idx_t{13}}, {stop_idx_t{0}, stop_idx_t{5}}});
+
+  EXPECT_EQ(fr[0].scheduled_time(event_type::kDep),
+            date::sys_days{2024_y / July / 9} + 22_hours);
+  EXPECT_EQ(fr[0].time(event_type::kDep),
+            date::sys_days{2024_y / July / 9} + 22_hours);
+
+  EXPECT_EQ(fr[1].scheduled_time(event_type::kArr),
+            date::sys_days{2024_y / July / 9} + 23_hours);
+  EXPECT_EQ(fr[1].time(event_type::kArr),
+            date::sys_days{2024_y / July / 9} + 23_hours + 30_minutes);
+  EXPECT_EQ(fr[1].scheduled_time(event_type::kDep),
+            date::sys_days{2024_y / July / 9} + 23_hours);
+  EXPECT_EQ(fr[1].time(event_type::kDep),
+            date::sys_days{2024_y / July / 9} + 23_hours + 30_minutes);
+
+  EXPECT_EQ(fr[2].scheduled_time(event_type::kArr),
+            date::sys_days{2024_y / July / 10});
+  EXPECT_EQ(fr[2].time(event_type::kArr),
+            date::sys_days{2024_y / July / 10} + 30_minutes);
+  EXPECT_EQ(fr[2].scheduled_time(event_type::kDep),
+            date::sys_days{2024_y / July / 10});
+  EXPECT_EQ(fr[2].time(event_type::kDep),
+            date::sys_days{2024_y / July / 10} + 30_minutes);
+
+  EXPECT_EQ(fr[3].scheduled_time(event_type::kArr),
+            date::sys_days{2024_y / July / 10} + 1_hours);
+  EXPECT_EQ(fr[3].time(event_type::kArr),
+            date::sys_days{2024_y / July / 10} + 1_hours + 15_minutes);
+  EXPECT_EQ(fr[3].scheduled_time(event_type::kDep),
+            date::sys_days{2024_y / July / 10} + 1_hours);
+  EXPECT_EQ(fr[3].time(event_type::kDep),
+            date::sys_days{2024_y / July / 10} + 1_hours + 15_minutes);
+
+  EXPECT_EQ(fr[4].scheduled_time(event_type::kArr),
+            date::sys_days{2024_y / July / 10} + 2_hours);
+  EXPECT_EQ(fr[4].time(event_type::kArr),
+            date::sys_days{2024_y / July / 10} + 2_hours);
+
+  doc.load_string(vdv_update_msg1);
+  rt::vdv::vdv_update(tt, rtt, source_idx_t{0}, doc);
+
+  EXPECT_EQ(fr[0].scheduled_time(event_type::kDep),
+            date::sys_days{2024_y / July / 9} + 22_hours);
+  EXPECT_EQ(fr[0].time(event_type::kDep),
+            date::sys_days{2024_y / July / 9} + 23_hours);
+
+  EXPECT_EQ(fr[1].scheduled_time(event_type::kArr),
+            date::sys_days{2024_y / July / 9} + 23_hours);
+  EXPECT_EQ(fr[1].time(event_type::kArr), date::sys_days{2024_y / July / 10});
+  EXPECT_EQ(fr[1].scheduled_time(event_type::kDep),
+            date::sys_days{2024_y / July / 9} + 23_hours);
+  EXPECT_EQ(fr[1].time(event_type::kDep), date::sys_days{2024_y / July / 10});
+
+  EXPECT_EQ(fr[2].scheduled_time(event_type::kArr),
+            date::sys_days{2024_y / July / 10});
+  EXPECT_EQ(fr[2].time(event_type::kArr),
+            date::sys_days{2024_y / July / 10} + 1_hours);
+  EXPECT_EQ(fr[2].scheduled_time(event_type::kDep),
+            date::sys_days{2024_y / July / 10});
+  EXPECT_EQ(fr[2].time(event_type::kDep),
+            date::sys_days{2024_y / July / 10} + 1_hours);
+
+  EXPECT_EQ(fr[3].scheduled_time(event_type::kArr),
+            date::sys_days{2024_y / July / 10} + 1_hours);
+  EXPECT_EQ(fr[3].time(event_type::kArr),
+            date::sys_days{2024_y / July / 10} + 2_hours);
+  EXPECT_EQ(fr[3].scheduled_time(event_type::kDep),
+            date::sys_days{2024_y / July / 10} + 1_hours);
+  EXPECT_EQ(fr[3].time(event_type::kDep),
+            date::sys_days{2024_y / July / 10} + 2_hours);
+
+  EXPECT_EQ(fr[4].scheduled_time(event_type::kArr),
+            date::sys_days{2024_y / July / 10} + 2_hours);
+  EXPECT_EQ(fr[4].time(event_type::kArr),
+            date::sys_days{2024_y / July / 10} + 3_hours);
+
+  doc.load_string(vdv_update_msg2);
+  rt::vdv::vdv_update(tt, rtt, source_idx_t{0}, doc);
+
+  EXPECT_EQ(fr[0].scheduled_time(event_type::kDep),
+            date::sys_days{2024_y / July / 9} + 22_hours);
+  EXPECT_EQ(fr[0].time(event_type::kDep),
+            date::sys_days{2024_y / July / 9} + 22_hours + 1_minutes);
+
+  EXPECT_EQ(fr[1].scheduled_time(event_type::kArr),
+            date::sys_days{2024_y / July / 9} + 23_hours);
+  EXPECT_EQ(fr[1].time(event_type::kArr),
+            date::sys_days{2024_y / July / 9} + 22_hours + 55_minutes);
+  EXPECT_EQ(fr[1].scheduled_time(event_type::kDep),
+            date::sys_days{2024_y / July / 9} + 23_hours);
+  EXPECT_EQ(fr[1].time(event_type::kDep),
+            date::sys_days{2024_y / July / 9} + 23_hours + 05_minutes);
+
+  EXPECT_EQ(fr[2].scheduled_time(event_type::kArr),
+            date::sys_days{2024_y / July / 10});
+  EXPECT_EQ(fr[2].time(event_type::kArr),
+            date::sys_days{2024_y / July / 9} + 23_hours + 55_minutes);
+  EXPECT_EQ(fr[2].scheduled_time(event_type::kDep),
+            date::sys_days{2024_y / July / 10});
+  EXPECT_EQ(fr[2].time(event_type::kDep),
+            date::sys_days{2024_y / July / 10} + 5_minutes);
+
+  EXPECT_EQ(fr[3].scheduled_time(event_type::kArr),
+            date::sys_days{2024_y / July / 10} + 1_hours);
+  EXPECT_EQ(fr[3].time(event_type::kArr),
+            date::sys_days{2024_y / July / 10} + 1_hours + 5_minutes);
+  EXPECT_EQ(fr[3].scheduled_time(event_type::kDep),
+            date::sys_days{2024_y / July / 10} + 1_hours);
+  EXPECT_EQ(fr[3].time(event_type::kDep),
+            date::sys_days{2024_y / July / 10} + 1_hours + 5_minutes);
+
+  EXPECT_EQ(fr[4].scheduled_time(event_type::kArr),
+            date::sys_days{2024_y / July / 10} + 2_hours);
+  EXPECT_EQ(fr[4].time(event_type::kArr),
+            date::sys_days{2024_y / July / 10} + 2_hours + 7_minutes);
+}
+
+namespace {
+
 mem_dir ev11_files() {
   return mem_dir::read(R"__(
 # trips.txt
@@ -418,140 +556,6 @@ constexpr auto const update_rvs261 = R"(
 )";
 
 }  // namespace
-
-TEST(vdv_update, basic) {
-  timetable tt;
-  register_special_stations(tt);
-  tt.date_range_ = {date::sys_days{2024_y / July / 1},
-                    date::sys_days{2024_y / July / 31}};
-  load_timetable({}, source_idx_t{0}, vdv_test_files(), tt);
-  finalize(tt);
-
-  auto rtt = rt::create_rt_timetable(tt, date::sys_days{2024_y / July / 10});
-
-  auto doc = pugi::xml_document{};
-  doc.load_string(vdv_update_msg0);
-  rt::vdv::vdv_update(tt, rtt, source_idx_t{0}, doc);
-
-  auto fr = rt::frun(
-      tt, &rtt,
-      {{transport_idx_t{0}, day_idx_t{13}}, {stop_idx_t{0}, stop_idx_t{5}}});
-
-  EXPECT_EQ(fr[0].scheduled_time(event_type::kDep),
-            date::sys_days{2024_y / July / 9} + 22_hours);
-  EXPECT_EQ(fr[0].time(event_type::kDep),
-            date::sys_days{2024_y / July / 9} + 22_hours);
-
-  EXPECT_EQ(fr[1].scheduled_time(event_type::kArr),
-            date::sys_days{2024_y / July / 9} + 23_hours);
-  EXPECT_EQ(fr[1].time(event_type::kArr),
-            date::sys_days{2024_y / July / 9} + 23_hours + 30_minutes);
-  EXPECT_EQ(fr[1].scheduled_time(event_type::kDep),
-            date::sys_days{2024_y / July / 9} + 23_hours);
-  EXPECT_EQ(fr[1].time(event_type::kDep),
-            date::sys_days{2024_y / July / 9} + 23_hours + 30_minutes);
-
-  EXPECT_EQ(fr[2].scheduled_time(event_type::kArr),
-            date::sys_days{2024_y / July / 10});
-  EXPECT_EQ(fr[2].time(event_type::kArr),
-            date::sys_days{2024_y / July / 10} + 30_minutes);
-  EXPECT_EQ(fr[2].scheduled_time(event_type::kDep),
-            date::sys_days{2024_y / July / 10});
-  EXPECT_EQ(fr[2].time(event_type::kDep),
-            date::sys_days{2024_y / July / 10} + 30_minutes);
-
-  EXPECT_EQ(fr[3].scheduled_time(event_type::kArr),
-            date::sys_days{2024_y / July / 10} + 1_hours);
-  EXPECT_EQ(fr[3].time(event_type::kArr),
-            date::sys_days{2024_y / July / 10} + 1_hours + 15_minutes);
-  EXPECT_EQ(fr[3].scheduled_time(event_type::kDep),
-            date::sys_days{2024_y / July / 10} + 1_hours);
-  EXPECT_EQ(fr[3].time(event_type::kDep),
-            date::sys_days{2024_y / July / 10} + 1_hours + 15_minutes);
-
-  EXPECT_EQ(fr[4].scheduled_time(event_type::kArr),
-            date::sys_days{2024_y / July / 10} + 2_hours);
-  EXPECT_EQ(fr[4].time(event_type::kArr),
-            date::sys_days{2024_y / July / 10} + 2_hours);
-
-  doc.load_string(vdv_update_msg1);
-  rt::vdv::vdv_update(tt, rtt, source_idx_t{0}, doc);
-
-  EXPECT_EQ(fr[0].scheduled_time(event_type::kDep),
-            date::sys_days{2024_y / July / 9} + 22_hours);
-  EXPECT_EQ(fr[0].time(event_type::kDep),
-            date::sys_days{2024_y / July / 9} + 23_hours);
-
-  EXPECT_EQ(fr[1].scheduled_time(event_type::kArr),
-            date::sys_days{2024_y / July / 9} + 23_hours);
-  EXPECT_EQ(fr[1].time(event_type::kArr), date::sys_days{2024_y / July / 10});
-  EXPECT_EQ(fr[1].scheduled_time(event_type::kDep),
-            date::sys_days{2024_y / July / 9} + 23_hours);
-  EXPECT_EQ(fr[1].time(event_type::kDep), date::sys_days{2024_y / July / 10});
-
-  EXPECT_EQ(fr[2].scheduled_time(event_type::kArr),
-            date::sys_days{2024_y / July / 10});
-  EXPECT_EQ(fr[2].time(event_type::kArr),
-            date::sys_days{2024_y / July / 10} + 1_hours);
-  EXPECT_EQ(fr[2].scheduled_time(event_type::kDep),
-            date::sys_days{2024_y / July / 10});
-  EXPECT_EQ(fr[2].time(event_type::kDep),
-            date::sys_days{2024_y / July / 10} + 1_hours);
-
-  EXPECT_EQ(fr[3].scheduled_time(event_type::kArr),
-            date::sys_days{2024_y / July / 10} + 1_hours);
-  EXPECT_EQ(fr[3].time(event_type::kArr),
-            date::sys_days{2024_y / July / 10} + 2_hours);
-  EXPECT_EQ(fr[3].scheduled_time(event_type::kDep),
-            date::sys_days{2024_y / July / 10} + 1_hours);
-  EXPECT_EQ(fr[3].time(event_type::kDep),
-            date::sys_days{2024_y / July / 10} + 2_hours);
-
-  EXPECT_EQ(fr[4].scheduled_time(event_type::kArr),
-            date::sys_days{2024_y / July / 10} + 2_hours);
-  EXPECT_EQ(fr[4].time(event_type::kArr),
-            date::sys_days{2024_y / July / 10} + 3_hours);
-
-  doc.load_string(vdv_update_msg2);
-  rt::vdv::vdv_update(tt, rtt, source_idx_t{0}, doc);
-
-  EXPECT_EQ(fr[0].scheduled_time(event_type::kDep),
-            date::sys_days{2024_y / July / 9} + 22_hours);
-  EXPECT_EQ(fr[0].time(event_type::kDep),
-            date::sys_days{2024_y / July / 9} + 22_hours + 1_minutes);
-
-  EXPECT_EQ(fr[1].scheduled_time(event_type::kArr),
-            date::sys_days{2024_y / July / 9} + 23_hours);
-  EXPECT_EQ(fr[1].time(event_type::kArr),
-            date::sys_days{2024_y / July / 9} + 22_hours + 55_minutes);
-  EXPECT_EQ(fr[1].scheduled_time(event_type::kDep),
-            date::sys_days{2024_y / July / 9} + 23_hours);
-  EXPECT_EQ(fr[1].time(event_type::kDep),
-            date::sys_days{2024_y / July / 9} + 23_hours + 05_minutes);
-
-  EXPECT_EQ(fr[2].scheduled_time(event_type::kArr),
-            date::sys_days{2024_y / July / 10});
-  EXPECT_EQ(fr[2].time(event_type::kArr),
-            date::sys_days{2024_y / July / 9} + 23_hours + 55_minutes);
-  EXPECT_EQ(fr[2].scheduled_time(event_type::kDep),
-            date::sys_days{2024_y / July / 10});
-  EXPECT_EQ(fr[2].time(event_type::kDep),
-            date::sys_days{2024_y / July / 10} + 5_minutes);
-
-  EXPECT_EQ(fr[3].scheduled_time(event_type::kArr),
-            date::sys_days{2024_y / July / 10} + 1_hours);
-  EXPECT_EQ(fr[3].time(event_type::kArr),
-            date::sys_days{2024_y / July / 10} + 1_hours + 5_minutes);
-  EXPECT_EQ(fr[3].scheduled_time(event_type::kDep),
-            date::sys_days{2024_y / July / 10} + 1_hours);
-  EXPECT_EQ(fr[3].time(event_type::kDep),
-            date::sys_days{2024_y / July / 10} + 1_hours + 5_minutes);
-
-  EXPECT_EQ(fr[4].scheduled_time(event_type::kArr),
-            date::sys_days{2024_y / July / 10} + 2_hours);
-  EXPECT_EQ(fr[4].time(event_type::kArr),
-            date::sys_days{2024_y / July / 10} + 2_hours + 7_minutes);
-}
 
 TEST(vdv_update, rvs261) {
   timetable tt;
@@ -1018,7 +1022,7 @@ TEST(vdv_update, vgm270) {
 
   std::cout << fr << "\n";
 
-  // Sv270 from GTFS and VGM270 from the update should match even though:
+  // Sv270 from GTFS and VGM270 from the VDV update should match even though:
   // - Prefix of line name does not match
   // - the VDV update has minor time differences
   EXPECT_TRUE(fr.is_rt());

@@ -141,8 +141,8 @@ std::optional<rt::run> find_run(timetable const& tt,
   auto vdv_line_text = std::string{vdv_line_text_xpath.node().child_value()};
   std::erase_if(vdv_line_text, [](auto const c) { return c == ' '; });
 
-  auto const line_text_match = [&](auto const transport_idx,
-                                   auto const stop_idx) {
+  auto const postfix_match = [&](auto const transport_idx,
+                                 auto const stop_idx) {
     auto const trip_line =
         size(tt.transport_section_lines_[transport_idx]) == 1U
             ? tt.trip_lines_[tt.transport_section_lines_[transport_idx][0U]]
@@ -150,11 +150,7 @@ std::optional<rt::run> find_run(timetable const& tt,
             : tt.trip_lines_[tt.transport_section_lines_[transport_idx]
                                                         [stop_idx]]
                   .view();
-    if (vdv_line_text.find(trip_line.substr(0, trip_line.find(' '))) ==
-        std::string_view::npos) {
-      return false;
-    }
-    return true;
+    return trip_line.rfind(vdv_line_text) != std::string_view::npos;
   };
 
   auto const vdv_direction_id_xpath = run.select_node("RichtungsID");
@@ -200,7 +196,7 @@ std::optional<rt::run> find_run(timetable const& tt,
           auto const tr = transport{tt.route_transport_ranges_[r][ev_time_idx],
                                     day_idx - day_idx_t{ev_time.days()}};
 
-          if (!line_text_match(tr.t_idx_, stop_idx)) {
+          if (!postfix_match(tr.t_idx_, stop_idx)) {
             ++stats.match_prevented_by_line_id_;
             continue;
           }
