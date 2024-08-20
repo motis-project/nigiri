@@ -21,6 +21,7 @@ struct statistics {
         << "\nunsupported additional stops: " << s.unsupported_additional_stops_
         << "\nno transport found at stop: " << s.no_transport_found_at_stop_
         << "\nmatch prevented by line id: " << s.match_prevented_by_line_id_
+        << "\nmultiple matches: " << s.multiple_matches_
         << "\ntotal runs: " << s.total_runs_
         << "\nmatched runs: " << s.matched_runs_
         << "\nunmatchable runs: " << s.unmatchable_runs_
@@ -42,6 +43,7 @@ struct statistics {
     lhs.total_runs_ += rhs.total_runs_;
     lhs.no_transport_found_at_stop_ += rhs.no_transport_found_at_stop_;
     lhs.match_prevented_by_line_id_ += rhs.match_prevented_by_line_id_;
+    lhs.multiple_matches_ += rhs.multiple_matches_;
     lhs.matched_runs_ += rhs.matched_runs_;
     lhs.unmatchable_runs_ += rhs.unmatchable_runs_;
     lhs.runs_without_stops_ += rhs.runs_without_stops_;
@@ -61,6 +63,7 @@ struct statistics {
   std::uint32_t total_runs_{0U};
   std::uint32_t no_transport_found_at_stop_{0U};
   std::uint32_t match_prevented_by_line_id_{0U};
+  std::uint32_t multiple_matches_{0U};
   std::uint32_t matched_runs_{0U};
   std::uint32_t unmatchable_runs_{0U};
   std::uint32_t runs_without_stops_{0U};

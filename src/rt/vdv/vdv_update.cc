@@ -100,7 +100,6 @@ vector<vdv_stop> resolve_stops(timetable const& tt,
       ++stats.unsupported_additional_stops_;
       additional_stops << "[id: " << vdv_stop_id << ", name:"
                        << (l.has_value() ? l->name_ : "unresolvable") << "]\n";
-      continue;
     }
 
     if (l.has_value()) {
@@ -131,6 +130,22 @@ std::optional<rt::run> find_run(timetable const& tt,
   auto vdv_line_text = std::string{vdv_line_text_xpath.node().child_value()};
   std::erase_if(vdv_line_text, [](auto const c) { return c == ' '; });
 
+  auto const line_text_match = [&](auto const transport_idx,
+                                   auto const stop_idx) {
+    auto const trip_line =
+        size(tt.transport_section_lines_[transport_idx]) == 1U
+            ? tt.trip_lines_[tt.transport_section_lines_[transport_idx][0U]]
+                  .view()
+            : tt.trip_lines_[tt.transport_section_lines_[transport_idx]
+                                                        [stop_idx]]
+                  .view();
+    if (vdv_line_text.find(trip_line.substr(0, trip_line.find(' '))) ==
+        std::string_view::npos) {
+      return false;
+    }
+    return true;
+  };
+
   auto const vdv_direction_id_xpath = run.select_node("RichtungsID");
   if (!vdv_direction_id_xpath) {
     std::cout << "VDV run without direction id:\n";
@@ -138,7 +153,7 @@ std::optional<rt::run> find_run(timetable const& tt,
   }
 
   auto candidates =
-      hash_map<transport, std::pair<interval<stop_idx_t>, unsigned>>{};
+      std::vector<std::tuple<transport, interval<stop_idx_t>, unsigned>>{};
 
   for (auto const& vdv_stop : vdv_stops) {
     if (vdv_stop.l_ == location_idx_t::invalid()) {
@@ -174,32 +189,28 @@ std::optional<rt::run> find_run(timetable const& tt,
           auto const tr = transport{tt.route_transport_ranges_[r][ev_time_idx],
                                     day_idx - day_idx_t{ev_time.days()}};
 
+          if (!line_text_match(tr.t_idx_, stop_idx)) {
+            ++stats.match_prevented_by_line_id_;
+            continue;
+          }
+
           if (tt.bitfields_[tt.transport_traffic_days_[tr.t_idx_]].test(
                   to_idx(tr.day_))) {
 
-            auto const trip_line =
-                size(tt.transport_section_lines_[tr.t_idx_]) == 1U
-                    ? tt.trip_lines_[tt.transport_section_lines_[tr.t_idx_][0U]]
-                          .view()
-                    : tt.trip_lines_[tt.transport_section_lines_[tr.t_idx_]
-                                                                [stop_idx]]
-                          .view();
-
-            if (vdv_line_text.find(trip_line.substr(0, trip_line.find(' '))) ==
-                std::string_view::npos) {
-              ++stats.match_prevented_by_line_id_;
-              continue;
+            auto candidate = std::find_if(
+                begin(candidates), end(candidates),
+                [&](auto const& c) { return get<transport>(c) == tr; });
+            if (candidate == end(candidates)) {
+              candidates.emplace_back(
+                  tr,
+                  interval{static_cast<stop_idx_t>(stop_idx),
+                           static_cast<stop_idx_t>(location_seq.size())},
+                  0U);
+              candidate = end(candidates) - 1;
             }
 
-            if (!candidates.contains(tr)) {
-              candidates[tr] = {{static_cast<stop_idx_t>(stop_idx),
-                                 static_cast<stop_idx_t>(location_seq.size())},
-                                0U};
-            }
-
-            if (++candidates[tr].second == 10) {
-              return rt::run{
-                  tr, {candidates[tr].first.from_, candidates[tr].first.to_}};
+            if (++get<unsigned>(*candidate) == 10) {
+              return rt::run{tr, get<interval<stop_idx_t>>(*candidate)};
             }
 
             no_transport_found_at_stop = false;
@@ -215,26 +226,39 @@ std::optional<rt::run> find_run(timetable const& tt,
     return std::nullopt;
   }
 
-  std::cout << "match candidates:\n";
-  for (auto const& [k, v] : candidates) {
-    std::cout
-        << "[line: "
-        << tt.trip_lines_[tt.transport_section_lines_[k.t_idx_].size() == 1
-                              ? tt.transport_section_lines_[k.t_idx_].front()
-                              : tt.transport_section_lines_
-                                    [k.t_idx_][candidates[k].first.from_]]
-               .view()
-        << ", #matching_stops: " << v.second << "]\n";
+  std::sort(begin(candidates), end(candidates),
+            [](auto const& a, auto const& b) {
+              return std::get<unsigned>(a) > std::get<unsigned>(b);
+            });
+
+  if (candidates.size() > 1) {
+    if (get<unsigned>(candidates[0]) == get<unsigned>(candidates[1])) {
+      ++stats.multiple_matches_;
+      auto multiple_matches =
+          std::ofstream{"multiple_matches.txt", std::ios::app};
+      multiple_matches << "multiple match candidates:\n";
+      for (auto const& c : candidates) {
+        multiple_matches
+            << "[line: "
+            << tt.trip_lines_
+                   [tt.transport_section_lines_[get<transport>(c).t_idx_]
+                                .size() == 1
+                        ? tt.transport_section_lines_[get<transport>(c).t_idx_]
+                              .front()
+                        : tt.transport_section_lines_
+                              [get<transport>(c).t_idx_]
+                              [get<interval<stop_idx_t>>(c).from_]]
+                       .view()
+            << ", #matching_stops: " << get<unsigned>(c) << "]\n";
+      }
+      multiple_matches << "for update:\n";
+      run.print(multiple_matches);
+      multiple_matches << "\n";
+    }
   }
 
-  auto const most_matches = std::max_element(
-      begin(candidates), end(candidates), [](auto const& a, auto const& b) {
-        return a.second.second < b.second.second;
-      });
-
-  return rt::run{
-      most_matches->first,
-      {most_matches->second.first.from_, most_matches->second.first.to_}};
+  return rt::run{get<transport>(candidates.front()),
+                 get<interval<stop_idx_t>>(candidates.front())};
 }
 
 void update_run(timetable const& tt,
@@ -249,9 +273,11 @@ void update_run(timetable const& tt,
     fr.rt_ = rtt.add_rt_transport(src, tt, r.t_);
   }
 
-  std::cout << "---updating " << fr.name()
-            << ", stop_idx: " << fr.stop_range_.from_ << " to "
-            << fr.stop_range_.to_ - 1 << "\n\n";
+  auto update_events = std::ofstream{"update_events.txt", std::ios::app};
+
+  update_events << "---updating " << fr.name()
+                << ", stop_idx: " << fr.stop_range_.from_ << " to "
+                << fr.stop_range_.to_ - 1 << "\n\n";
 
   auto gtfs_stop_missing = std::stringstream{};
   auto prefix_matches = std::stringstream{};
@@ -261,15 +287,15 @@ void update_run(timetable const& tt,
   auto const update_event = [&](auto const& rs, auto const et,
                                 auto const new_time) {
     delay = new_time - rs.scheduled_time(et);
-    std::cout << "update " << (et == event_type::kArr ? "ARR: " : "DEP: ")
-              << rs.scheduled_time(et) << "+" << delay->count() << "\n";
+    update_events << "update " << (et == event_type::kArr ? "ARR: " : "DEP: ")
+                  << rs.scheduled_time(et) << "+" << delay->count() << "\n";
     rtt.update_time(fr.rt_, rs.stop_idx_, et, new_time);
     rtt.dispatch_event_change(fr.t_, rs.stop_idx_, et, *delay, false);
     ++stats.updated_events_;
   };
 
   auto const propagate_delay = [&](auto const& rs, event_type et) {
-    std::cout << rs.scheduled_time(et) << "+" << delay->count() << "\n";
+    update_events << rs.scheduled_time(et) << "+" << delay->count() << "\n";
     rtt.update_time(fr.rt_, rs.stop_idx_, et, rs.scheduled_time(et) + *delay);
     rtt.dispatch_event_change(fr.t_, rs.stop_idx_, et, *delay, false);
     ++stats.propagated_delays_;
@@ -280,13 +306,12 @@ void update_run(timetable const& tt,
   auto const print_skipped_stops = [&]() {
     for (auto const& s : skipped_stops) {
       ++stats.skipped_vdv_stops_;
-      std::cout << "skipped vdv stop: [id: " << s.id_ << ", name: "
-                << (s.l_ == location_idx_t::invalid()
-                        ? "unresolvable"
-                        : tt.locations_.get(s.l_).name_)
-                << "]\n";
+      update_events << "skipped vdv stop: [id: " << s.id_ << ", name: "
+                    << (s.l_ == location_idx_t::invalid()
+                            ? "unresolvable"
+                            : tt.locations_.get(s.l_).name_)
+                    << "]\n";
     }
-    std::cout << "\n";
   };
 
   auto const prefix_match = [](auto const& a, auto const& b) {
@@ -313,8 +338,9 @@ void update_run(timetable const& tt,
       if (vdv_stop->l_ != location_idx_t::invalid() &&
           matches(tt, routing::location_match_mode::kEquivalent,
                   rs.get_location_idx(), vdv_stop->l_)) {
-        std::cout << "location match at stop_idx = " << rs.stop_idx_
-                  << ": [id: " << rs.id() << ", name: " << rs.name() << "]\n";
+        update_events << "location match at stop_idx = " << rs.stop_idx_
+                      << ": [id: " << rs.id() << ", name: " << rs.name()
+                      << "]\n";
         if (rs.stop_idx_ != 0 && vdv_stop->arr_.has_value() &&
             vdv_stop->arr_.value() == rs.scheduled_time(event_type::kArr)) {
           matched_arr = true;
@@ -350,27 +376,27 @@ void update_run(timetable const& tt,
     }
     if (delay) {
       if (rs.stop_idx_ != 0 && !matched_arr) {
-        std::cout << "propagating delay at stop_idx = " << rs.stop_idx_
-                  << ": [id: " << rs.id() << ", name: " << rs.name()
-                  << "] ARR: ";
+        update_events << "propagating delay at stop_idx = " << rs.stop_idx_
+                      << ": [id: " << rs.id() << ", name: " << rs.name()
+                      << "] ARR: ";
         propagate_delay(rs, event_type::kArr);
       }
       if (rs.stop_idx_ != fr.stop_range_.to_ - 1 && !matched_dep) {
-        std::cout << "propagating delay at stop_idx = " << rs.stop_idx_
-                  << ": [id: " << rs.id() << ", name: " << rs.name()
-                  << "] DEP: ";
+        update_events << "propagating delay at stop_idx = " << rs.stop_idx_
+                      << ": [id: " << rs.id() << ", name: " << rs.name()
+                      << "] DEP: ";
         propagate_delay(rs, event_type::kDep);
       }
-      std::cout << "\n";
     }
+    update_events << "\n";
   }
 
   while (cursor != end(vdv_stops)) {
-    std::cout << "excess vdv stop: [id: " << cursor->id_ << ", name: "
-              << (cursor->l_ == location_idx_t::invalid()
-                      ? "unresolvable"
-                      : tt.locations_.get(cursor->l_).name_)
-              << "]\n";
+    update_events << "excess vdv stop: [id: " << cursor->id_ << ", name: "
+                  << (cursor->l_ == location_idx_t::invalid()
+                          ? "unresolvable"
+                          : tt.locations_.get(cursor->l_).name_)
+                  << "]\n";
     ++stats.excess_vdv_stops_;
     ++cursor;
   }
@@ -386,7 +412,7 @@ void update_run(timetable const& tt,
         << "---" << fr.name() << ":\n"
         << prefix_matches.str() << "---\n\n";
   }
-  std::cout << "---\n\n";
+  update_events << "---\n\n";
 }
 
 void process_vdv_run(timetable const& tt,
@@ -431,9 +457,16 @@ statistics vdv_update(timetable const& tt,
   for (auto const& r : doc.select_nodes("//IstFahrt")) {
     if (get_opt_bool(r.node(), "Zusatzfahrt", false).value()) {
       ++stats.unsupported_additional_runs_;
+      auto additional_runs =
+          std::ofstream{"additional_runs.txt", std::ios::app};
+      r.node().print(additional_runs);
+      additional_runs << "\n";
       continue;
     } else if (get_opt_bool(r.node(), "FaelltAus", false).value()) {
       ++stats.unsupported_cancelled_runs_;
+      auto canceled_runs = std::ofstream{"canceled_runs.txt", std::ios::app};
+      r.node().print(canceled_runs);
+      canceled_runs << "\n";
       continue;
     }
 
