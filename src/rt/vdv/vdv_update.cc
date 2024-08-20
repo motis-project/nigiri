@@ -78,6 +78,17 @@ struct vdv_stop {
   std::optional<unixtime_t> dep_, arr_, rt_dep_, rt_arr_;
 };
 
+template <typename T>
+bool epsilon_equal(T const& a, T const& b) {
+  constexpr auto const epsilon = T{1};
+  return a - epsilon <= b && b <= a + epsilon;
+}
+
+bool epsilon_equal_unixtime(unixtime_t const a, unixtime_t const b) {
+  return epsilon_equal(a.time_since_epoch().count(),
+                       b.time_since_epoch().count());
+}
+
 vector<vdv_stop> resolve_stops(timetable const& tt,
                                source_idx_t const src,
                                pugi::xml_node const run,
@@ -182,7 +193,7 @@ std::optional<rt::run> find_run(timetable const& tt,
         for (auto const& [ev_time_idx, ev_time] :
              utl::enumerate(tt.event_times_at_stop(
                  r, static_cast<stop_idx_t>(stop_idx), ev_type))) {
-          if (ev_time.mam() != mam.count()) {
+          if (!epsilon_equal(ev_time.mam(), mam.count())) {
             continue;
           }
 
@@ -342,7 +353,8 @@ void update_run(timetable const& tt,
                       << ": [id: " << rs.id() << ", name: " << rs.name()
                       << "]\n";
         if (rs.stop_idx_ != 0 && vdv_stop->arr_.has_value() &&
-            vdv_stop->arr_.value() == rs.scheduled_time(event_type::kArr)) {
+            epsilon_equal_unixtime(vdv_stop->arr_.value(),
+                                   rs.scheduled_time(event_type::kArr))) {
           matched_arr = true;
           if (vdv_stop->rt_arr_.has_value()) {
             update_event(rs, event_type::kArr, *vdv_stop->rt_arr_);
@@ -350,7 +362,8 @@ void update_run(timetable const& tt,
         }
         if (rs.stop_idx_ != fr.stop_range_.to_ - 1 &&
             vdv_stop->dep_.has_value() &&
-            vdv_stop->dep_.value() == rs.scheduled_time(event_type::kDep)) {
+            epsilon_equal_unixtime(vdv_stop->dep_.value(),
+                                   rs.scheduled_time(event_type::kDep))) {
           matched_dep = true;
           if (vdv_stop->rt_dep_.has_value()) {
             update_event(rs, event_type::kDep, *vdv_stop->rt_dep_);
