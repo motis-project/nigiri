@@ -70,11 +70,12 @@ TEST(gtfs, shapeRequest_noShape_getEmptyVector) {
                                tt);
   loader::finalize(tt);
 
-  auto const trip_idx = trip_idx_t{1};  // TODO
-  auto const shapes = tt.get_shapes(trip_idx, nullptr);
+  auto const shape_by_trip_index = tt.get_shape(trip_idx_t{1}, nullptr);
+  auto const shape_by_shape_index = tt.get_shape(shape_idx_t{1}, nullptr);
 
-  auto expected_shape = std::vector<geo::polyline>{};
-  EXPECT_EQ(expected_shape, shapes);
+  auto expected_shape = geo::polyline{};
+  EXPECT_EQ(expected_shape, shape_by_trip_index);
+  EXPECT_EQ(expected_shape, shape_by_shape_index);
 }
 
 constexpr auto const test_files_with_shapes = R"(
@@ -177,18 +178,17 @@ TEST(gtfs, shapeRequest_singleTripWithShape_getFullShape) {
   loader::finalize(tt);
 
   // Testing shape 'Last', used by 'Trip 3' (index == 2)
-  auto const trip_idx = trip_idx_t{2};
-  auto const shapes = tt.get_shapes(trip_idx, &mmap.get_vecvec());
+  auto const shape_by_trip_index =
+      tt.get_shape(trip_idx_t{2}, &mmap.get_vecvec());
+  auto const shape_by_shape_index =
+      tt.get_shape(shape_idx_t{3}, &mmap.get_vecvec());
 
-  auto expected_shape = std::vector{{geo::polyline{
-      {4.0f, 5.0f},
-      {5.5f, 2.5f},
-      {5.5f, 3.0f},
-      {6.0f, 3.0f},
-      {5.0f, 2.0f},
-      {4.0f, 2.0f},
-  }}};
-  EXPECT_EQ(expected_shape, shapes);
+  auto expected_shape = geo::polyline{
+      {4.0f, 5.0f}, {5.5f, 2.5f}, {5.5f, 3.0f},
+      {6.0f, 3.0f}, {5.0f, 2.0f}, {4.0f, 2.0f},
+  };
+  EXPECT_EQ(expected_shape, shape_by_trip_index);
+  EXPECT_EQ(expected_shape, shape_by_shape_index);
 }
 
 TEST(gtfs, shapeRequest_singleTripWithoutShape_getEmptyShape) {
@@ -206,11 +206,14 @@ TEST(gtfs, shapeRequest_singleTripWithoutShape_getEmptyShape) {
   loader::finalize(tt);
 
   // Testing trip without shape, i.e. 'Trip 4' (index == 3)
-  auto const trip_idx = trip_idx_t{3};
-  auto const shapes = tt.get_shapes(trip_idx, &mmap.get_vecvec());
+  auto const shape_by_trip_index =
+      tt.get_shape(trip_idx_t{3}, &mmap.get_vecvec());
+  auto const shape_by_shape_index =
+      tt.get_shape(shape_idx_t::invalid(), &mmap.get_vecvec());
 
-  auto expected_shape = std::vector<geo::polyline>{{}};
-  EXPECT_EQ(expected_shape, shapes);
+  auto expected_shape = geo::polyline{};
+  EXPECT_EQ(expected_shape, shape_by_trip_index);
+  EXPECT_EQ(expected_shape, shape_by_shape_index);
 }
 
 // TEST(gtfs, shapeRequest_routeWithShape_getFullShape) {
@@ -232,9 +235,9 @@ TEST(gtfs, shapeRequest_singleTripWithoutShape_getEmptyShape) {
 //     std::cout << "Size: " << r.size() << std::endl;
 //   }
 //   auto const trip_idx = trip_idx_t{1};  // TODO
-//   auto const shapes = tt.get_shapes(trip_idx, &mmap.get_vecvec());
+//   auto const shape = tt.get_shape(trip_idx, &mmap.get_vecvec());
 
-//   auto expected_shape = std::vector{geo::polyline{
+//   auto expected_shape = geo::polyline{
 //     {2.4f, 2.0f},
 //     {2.504f, 1.999f},
 //     {3.0f, 4.0f},
@@ -243,8 +246,8 @@ TEST(gtfs, shapeRequest_singleTripWithoutShape_getEmptyShape) {
 //     {5.5f, 3.0f},
 //     {6.0f, 3.0f},
 //     {5.0f, 2.0f},
-//   }};
-//   EXPECT_EQ(expected_shape, shapes);
+//   };
+//   EXPECT_EQ(expected_shape, shape);
 // }
 
 // TEST(gtfs, shapeRequest_withoutMemoryMap_getEmptyVector) {
@@ -259,8 +262,8 @@ TEST(gtfs, shapeRequest_singleTripWithoutShape_getEmptyShape) {
 //   loader::finalize(tt);
 
 //   auto const trip_idx = trip_idx_t{1};  // TODO
-//   auto const shapes = tt.get_shapes(trip_idx, nullptr);
+//   auto const shape = tt.get_shape(trip_idx, nullptr);
 
-//   auto expected_shape = std::vector{geo::polyline{}};
-//   EXPECT_EQ(expected_shape, shapes);
+//   auto expected_shape = geo::polyline{};
+//   EXPECT_EQ(expected_shape, shape);
 // }

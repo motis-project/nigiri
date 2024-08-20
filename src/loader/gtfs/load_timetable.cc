@@ -205,8 +205,8 @@ void load_timetable(loader_config const& config,
           auto const* stop_seq = get_stop_seq(s.trips_);
           auto const clasz = trip_data.get(s.trips_.front()).get_clasz(tt);
           auto const* bikes_allowed_seq = get_bikes_allowed_seq(s.trips_);
-          auto const it = route_services.find(route_key_ptr_t{
-              clasz, stop_seq, bikes_allowed_seq});
+          auto const it = route_services.find(
+              route_key_ptr_t{clasz, stop_seq, bikes_allowed_seq});
           if (it != end(route_services)) {
             for (auto& r : it->second) {
               auto const idx = get_index(r, s);
@@ -218,8 +218,7 @@ void load_timetable(loader_config const& config,
             it->second.emplace_back(std::vector<utc_trip>{std::move(s)});
           } else {
             route_services.emplace(
-                route_key_t{clasz, *stop_seq,
-                            *bikes_allowed_seq},
+                route_key_t{clasz, *stop_seq, *bikes_allowed_seq},
                 std::vector<std::vector<utc_trip>>{{std::move(s)}});
           }
         });
@@ -294,8 +293,7 @@ void load_timetable(loader_config const& config,
     for (auto const& [key, sub_routes] : route_services) {
       for (auto const& services : sub_routes) {
         auto const route_idx =
-            tt.register_route(key.stop_seq_, {key.clasz_},
-                              key.bikes_allowed_);
+            tt.register_route(key.stop_seq_, {key.clasz_}, key.bikes_allowed_);
 
         for (auto const& s : key.stop_seq_) {
           auto s_routes = location_routes[stop{s}.location_idx()];
