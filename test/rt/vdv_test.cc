@@ -1027,3 +1027,287 @@ TEST(vdv_update, vgm270) {
   // - the VDV update has minor time differences
   EXPECT_TRUE(fr.is_rt());
 }
+
+namespace {
+
+// manually added stops from VDV update to stops.txt, originally they were
+// missing in the GTFS timetable
+mem_dir smd712_files() {
+  return mem_dir::read(R"__(
+# trips.txt
+"route_id","service_id","trip_id","trip_headsign","trip_short_name","direction_id","block_id","shape_id","wheelchair_accessible","bikes_allowed"
+"de:von:69-712_3",15131,2586108206,"Königswartha Kirchplatz","",0,,73059,0,0
+
+# routes.txt
+"route_id","agency_id","route_short_name","route_long_name","route_type","route_color","route_text_color","route_desc"
+"de:von:69-712_3",7891,"712","",3,"","",""
+
+# agency.txt
+"agency_id","agency_name","agency_url","agency_timezone","agency_lang","agency_phone"
+7891,"Schmidt-Reisen","https://www.delfi.de","Europe/Berlin","",""
+
+# stop_times.txt
+"trip_id","arrival_time","departure_time","stop_id","stop_sequence","pickup_type","drop_off_type","stop_headsign"
+2586108206,18:00:00,18:00:00,"de:14625:7501:0:9_G",0,0,0,""
+2586108206,18:03:00,18:03:00,"de:14625:7502:0:1_G",1,0,0,""
+2586108206,18:05:00,18:05:00,"de:14625:7507:0:1_G",2,0,0,""
+2586108206,18:08:00,18:08:00,"de:14625:7578:0:1_G",3,0,0,""
+2586108206,18:09:00,18:09:00,"de:14625:7577:0:1_G",4,0,0,""
+2586108206,18:12:00,18:12:00,"de:14625:7652:0:1_G",5,0,0,""
+2586108206,18:13:00,18:13:00,"de:14625:7651:0:E1",6,0,0,""
+2586108206,18:20:00,18:20:00,"de:14625:7648:0:1",7,0,0,""
+2586108206,18:22:00,18:22:00,"de:14625:7667:0:1",8,0,0,""
+2586108206,18:24:00,18:24:00,"de:14625:7668:0:1",9,0,0,""
+2586108206,18:27:00,18:27:00,"de:14625:7670:0:1",10,0,0,""
+2586108206,18:29:00,18:29:00,"de:14625:7673:0:1",11,0,0,""
+2586108206,18:31:00,18:31:00,"de:14625:7682:0:1",12,0,0,""
+2586108206,18:33:00,18:33:00,"de:14625:7675:0:1",13,0,0,""
+2586108206,18:36:00,18:36:00,"de:14625:7677:0:1_G",14,0,0,""
+2586108206,18:40:00,18:40:00,"de:14625:7691:0:1_G",15,0,0,""
+2586108206,18:42:00,18:42:00,"de:14625:7716:0:1_G",16,0,0,""
+2586108206,18:43:00,18:43:00,"de:14625:7731:0:1_G",17,0,0,""
+2586108206,18:44:00,18:44:00,"de:14625:7732:0:1_G",18,0,0,""
+2586108206,18:45:00,18:45:00,"de:14625:7733:0:2",19,0,0,""
+
+# stops.txt
+"stop_id","stop_code","stop_name","stop_desc","stop_lat","stop_lon","location_type","parent_station","wheelchair_boarding","platform_code","level_id"
+"de:14625:7731:0:1_G","","Königswartha Gewerbegebiet",,"51.309200000000","14.312678000000",0,,0,"",""
+"de:14625:7731:0:1","","Königswartha Gewerbegebiet",,"51.309178000000","14.312651000000",0,,0,"",""
+"de:14625:7716:0:1_G","","Niesendorf",,"51.298670000000","14.316972000000",0,,0,"",""
+"de:14625:7716:0:1","","Niesendorf",,"51.298737000000","14.316945000000",0,,0,"",""
+"de:14625:7691:0:1_G","","Zescha Dorfclub",,"51.287137000000","14.319101000000",0,,0,"",""
+"de:14625:7691:0:1","","Zescha Dorfclub",,"51.287182000000","14.319047000000",0,,0,"",""
+"de:14625:7677:0:1_G","","Neschwitz Dorfschänke",,"51.269335000000","14.329350000000",0,,0,"",""
+"de:14625:7677:0:1","","Neschwitz Dorfschänke",,"51.269375000000","14.329324000000",0,,0,"",""
+"de:14625:7675:0:1","","Uebigau (b Neschwitz)",,"51.253359000000","14.333923000000",0,,0,"",""
+"de:14625:7682:0:1","","Krinitz b Bautzen Dorfplatz",,"51.243620000000","14.337804000000",0,,0,"",""
+"de:14625:7732:0:1_G","","Königswartha Bahnhof",,"51.310222000000","14.322757000000",0,,0,"",""
+"de:14625:7732:0:1","","Königswartha Bahnhof",,"51.310290000000","14.322847000000",0,,0,"",""
+"de:14625:7670:0:1","","Loga An der Schanze",,"51.231106000000","14.332171000000",0,,0,"",""
+"de:14625:7502:0:1_G","","Bautzen Lauengraben",,"51.179602000000","14.424958000000",0,,0,"",""
+"de:14625:7502:0:1","","Bautzen Lauengraben",,"51.179670000000","14.425210000000",0,,0,"",""
+"de:14625:7577:0:1_G","","Bautzen Hoyerswerdaer Straße",,"51.196443000000","14.409480000000",0,,0,"",""
+"de:14625:7577:0:1","","Bautzen Hoyerswerdaer Straße",,"51.196612000000","14.409462000000",0,,0,"",""
+"de:14625:7668:0:1","","Milkwitz",,"51.230021000000","14.358950000000",0,,0,"",""
+"de:14625:7667:0:1","","Großbrösern",,"51.223619000000","14.365023000000",0,,0,"",""
+"de:14625:7651:0:E1","","Großwelka",,"51.211352000000","14.390472000000",0,,0,"",""
+"de:14625:7651:0:1","","Großwelka",,"51.210756000000","14.383672000000",0,,0,"",""
+"de:14625:7733:0:2","","Königswartha Kirchplatz","Königswartha Kirchplatz","51.309672000000","14.328452000000",0,,0,"2","2"
+"de:14625:7733:0:1","","Königswartha Kirchplatz","Königswartha Kirchplatz","51.309930000000","14.328767000000",0,,0,"1","2"
+"de:14625:7578:0:1_G","","Bautzen Abzw Seidau",,"51.191781000000","14.412436000000",0,,0,"",""
+"de:14625:7578:0:1","","Bautzen Abzw Seidau",,"51.191849000000","14.412400000000",0,,0,"",""
+"de:14625:7507:0:1_G","","Bautzen Fiedlerstraße",,"51.181100000000","14.415014000000",0,,0,"",""
+"de:14625:7507:0:1","","Bautzen Fiedlerstraße",,"51.181241000000","14.414960000000",0,,0,"",""
+"de:14625:7673:0:1","","Saritsch",,"51.235657000000","14.332755000000",0,,0,"",""
+"de:14625:7501:0:9_G","","Bautzen August-Bebel-Pl (ZOB)",,"51.177006000000","14.433986000000",0,,0,"",""
+"de:14625:7501:0:9","","Bautzen August-Bebel-Pl (ZOB)",,"51.177017000000","14.433968000000",0,,0,"",""
+"de:14625:7652:0:1_G","","Kleinwelka Gasthof",,"51.213204000000","14.392987000000",0,,0,"",""
+"de:14625:7652:0:1","","Kleinwelka Gasthof",,"51.213283000000","14.392942000000",0,,0,"",""
+"de:14625:7648:0:1","","Schmochtitz",,"51.213429000000","14.362040000000",0,,0,"",""
+
+# calendar.txt
+"service_id","monday","tuesday","wednesday","thursday","friday","saturday","sunday","start_date","end_date"
+15131,1,1,1,1,1,0,0,20240729,20241214
+
+# calendar_dates.txt
+"service_id","date","exception_type"
+15131,20240729,2
+15131,20240805,2
+15131,20240730,2
+15131,20240806,2
+15131,20240731,2
+15131,20241120,2
+15131,20240801,2
+15131,20241003,2
+15131,20241031,2
+15131,20240802,2
+
+)__");
+}
+
+constexpr auto const update_smd712 = R"(
+<IstFahrt Zst="2024-08-20T18:29:08">
+	<LinienID>SMD712</LinienID>
+	<RichtungsID>1</RichtungsID>
+	<FahrtRef>
+		<FahrtID>
+			<FahrtBezeichner>SMD13712015_vvorbl</FahrtBezeichner>
+			<Betriebstag>2024-08-20</Betriebstag>
+		</FahrtID>
+	</FahrtRef>
+	<Komplettfahrt>true</Komplettfahrt>
+	<BetreiberID>vvorbl</BetreiberID>
+	<IstHalt>
+		<HaltID>de:14625:7501:0:9</HaltID>
+		<Abfahrtszeit>2024-08-20T16:00:00</Abfahrtszeit>
+		<AbfahrtssteigText>9</AbfahrtssteigText>
+		<Besetztgrad>Unbekannt</Besetztgrad>
+	</IstHalt>
+	<IstHalt>
+		<HaltID>de:14625:7502:0:1</HaltID>
+		<Abfahrtszeit>2024-08-20T16:03:00</Abfahrtszeit>
+		<Ankunftszeit>2024-08-20T16:03:00</Ankunftszeit>
+		<AbfahrtssteigText>1</AbfahrtssteigText>
+		<Besetztgrad>Unbekannt</Besetztgrad>
+	</IstHalt>
+	<IstHalt>
+		<HaltID>de:14625:7507:0:1</HaltID>
+		<Abfahrtszeit>2024-08-20T16:05:00</Abfahrtszeit>
+		<Ankunftszeit>2024-08-20T16:05:00</Ankunftszeit>
+		<AbfahrtssteigText>1</AbfahrtssteigText>
+		<Besetztgrad>Unbekannt</Besetztgrad>
+	</IstHalt>
+	<IstHalt>
+		<HaltID>de:14625:7578:0:1</HaltID>
+		<Abfahrtszeit>2024-08-20T16:08:00</Abfahrtszeit>
+		<Ankunftszeit>2024-08-20T16:08:00</Ankunftszeit>
+		<AbfahrtssteigText>1</AbfahrtssteigText>
+		<Besetztgrad>Unbekannt</Besetztgrad>
+	</IstHalt>
+	<IstHalt>
+		<HaltID>de:14625:7577:0:1</HaltID>
+		<Abfahrtszeit>2024-08-20T16:09:00</Abfahrtszeit>
+		<Ankunftszeit>2024-08-20T16:09:00</Ankunftszeit>
+		<AbfahrtssteigText>1</AbfahrtssteigText>
+		<Besetztgrad>Unbekannt</Besetztgrad>
+	</IstHalt>
+	<IstHalt>
+		<HaltID>de:14625:7652:0:1</HaltID>
+		<Abfahrtszeit>2024-08-20T16:12:00</Abfahrtszeit>
+		<Ankunftszeit>2024-08-20T16:12:00</Ankunftszeit>
+		<AbfahrtssteigText>1</AbfahrtssteigText>
+		<Besetztgrad>Unbekannt</Besetztgrad>
+	</IstHalt>
+	<IstHalt>
+		<HaltID>de:14625:7651:0:1</HaltID>
+		<Abfahrtszeit>2024-08-20T16:14:00</Abfahrtszeit>
+		<Ankunftszeit>2024-08-20T16:14:00</Ankunftszeit>
+		<AbfahrtssteigText>1</AbfahrtssteigText>
+		<Besetztgrad>Unbekannt</Besetztgrad>
+	</IstHalt>
+	<IstHalt>
+		<HaltID>de:14625:7648:0:1</HaltID>
+		<Abfahrtszeit>2024-08-20T16:16:00</Abfahrtszeit>
+		<Ankunftszeit>2024-08-20T16:16:00</Ankunftszeit>
+		<AbfahrtssteigText>1</AbfahrtssteigText>
+		<Besetztgrad>Unbekannt</Besetztgrad>
+	</IstHalt>
+	<IstHalt>
+		<HaltID>de:14625:7667:0:1</HaltID>
+		<Abfahrtszeit>2024-08-20T16:18:00</Abfahrtszeit>
+		<Ankunftszeit>2024-08-20T16:18:00</Ankunftszeit>
+		<AbfahrtssteigText>1</AbfahrtssteigText>
+		<Besetztgrad>Unbekannt</Besetztgrad>
+	</IstHalt>
+	<IstHalt>
+		<HaltID>de:14625:7668:0:1</HaltID>
+		<Abfahrtszeit>2024-08-20T16:21:00</Abfahrtszeit>
+		<Ankunftszeit>2024-08-20T16:21:00</Ankunftszeit>
+		<AbfahrtssteigText>1</AbfahrtssteigText>
+		<Besetztgrad>Unbekannt</Besetztgrad>
+	</IstHalt>
+	<IstHalt>
+		<HaltID>de:14625:7670:0:1</HaltID>
+		<Abfahrtszeit>2024-08-20T16:24:00</Abfahrtszeit>
+		<Ankunftszeit>2024-08-20T16:24:00</Ankunftszeit>
+		<AbfahrtssteigText>1</AbfahrtssteigText>
+		<Besetztgrad>Unbekannt</Besetztgrad>
+	</IstHalt>
+	<IstHalt>
+		<HaltID>de:14625:7673:0:1</HaltID>
+		<Abfahrtszeit>2024-08-20T16:26:00</Abfahrtszeit>
+		<Ankunftszeit>2024-08-20T16:26:00</Ankunftszeit>
+		<AbfahrtssteigText>1</AbfahrtssteigText>
+		<Besetztgrad>Unbekannt</Besetztgrad>
+	</IstHalt>
+	<IstHalt>
+		<HaltID>de:14625:7682:0:1</HaltID>
+		<Abfahrtszeit>2024-08-20T16:28:00</Abfahrtszeit>
+		<Ankunftszeit>2024-08-20T16:28:00</Ankunftszeit>
+		<AbfahrtssteigText>1</AbfahrtssteigText>
+		<Besetztgrad>Unbekannt</Besetztgrad>
+	</IstHalt>
+	<IstHalt>
+		<HaltID>de:14625:7675:0:1</HaltID>
+		<Abfahrtszeit>2024-08-20T16:30:00</Abfahrtszeit>
+		<Ankunftszeit>2024-08-20T16:30:00</Ankunftszeit>
+		<AbfahrtssteigText>1</AbfahrtssteigText>
+		<Besetztgrad>Unbekannt</Besetztgrad>
+	</IstHalt>
+	<IstHalt>
+		<HaltID>de:14625:7677:0:1</HaltID>
+		<Abfahrtszeit>2024-08-20T16:33:00</Abfahrtszeit>
+		<Ankunftszeit>2024-08-20T16:33:00</Ankunftszeit>
+		<AbfahrtssteigText>1</AbfahrtssteigText>
+		<Besetztgrad>Unbekannt</Besetztgrad>
+	</IstHalt>
+	<IstHalt>
+		<HaltID>de:14625:7691:0:1</HaltID>
+		<Abfahrtszeit>2024-08-20T16:37:00</Abfahrtszeit>
+		<Ankunftszeit>2024-08-20T16:37:00</Ankunftszeit>
+		<AbfahrtssteigText>1</AbfahrtssteigText>
+		<Besetztgrad>Unbekannt</Besetztgrad>
+	</IstHalt>
+	<IstHalt>
+		<HaltID>de:14625:7716:0:1</HaltID>
+		<Abfahrtszeit>2024-08-20T16:39:00</Abfahrtszeit>
+		<Ankunftszeit>2024-08-20T16:39:00</Ankunftszeit>
+		<AbfahrtssteigText>1</AbfahrtssteigText>
+		<Besetztgrad>Unbekannt</Besetztgrad>
+	</IstHalt>
+	<IstHalt>
+		<HaltID>de:14625:7731:0:1</HaltID>
+		<Abfahrtszeit>2024-08-20T16:40:00</Abfahrtszeit>
+		<Ankunftszeit>2024-08-20T16:40:00</Ankunftszeit>
+		<AbfahrtssteigText>1</AbfahrtssteigText>
+		<Besetztgrad>Unbekannt</Besetztgrad>
+	</IstHalt>
+	<IstHalt>
+		<HaltID>de:14625:7732:0:1</HaltID>
+		<Abfahrtszeit>2024-08-20T16:41:00</Abfahrtszeit>
+		<Ankunftszeit>2024-08-20T16:41:00</Ankunftszeit>
+		<AbfahrtssteigText>1</AbfahrtssteigText>
+		<Besetztgrad>Unbekannt</Besetztgrad>
+	</IstHalt>
+	<IstHalt>
+		<HaltID>de:14625:7733:0:1</HaltID>
+		<Ankunftszeit>2024-08-20T16:42:00</Ankunftszeit>
+		<AnkunftssteigText>1</AnkunftssteigText>
+		<Besetztgrad>Unbekannt</Besetztgrad>
+	</IstHalt>
+	<LinienText>712</LinienText>
+	<ProduktID>SMD712</ProduktID>
+	<RichtungsText>Königswartha</RichtungsText>
+	<PrognoseMoeglich>false</PrognoseMoeglich>
+	<FaelltAus>false</FaelltAus>
+</IstFahrt>
+)";
+
+}  // namespace
+
+TEST(vdv_update, smd712) {
+  timetable tt;
+  register_special_stations(tt);
+  tt.date_range_ = {date::sys_days{2024_y / August / 1},
+                    date::sys_days{2024_y / August / 31}};
+  load_timetable({}, source_idx_t{0}, smd712_files(), tt);
+  finalize(tt);
+
+  auto rtt = rt::create_rt_timetable(tt, date::sys_days{2024_y / August / 20});
+
+  auto doc = pugi::xml_document{};
+  doc.load_string(update_smd712);
+  rt::vdv::vdv_update(tt, rtt, source_idx_t{0}, doc);
+
+  auto fr = rt::frun(
+      tt, &rtt,
+      {{transport_idx_t{0}, day_idx_t{24}}, {stop_idx_t{0}, stop_idx_t{20}}});
+
+  std::cout << fr << "\n";
+
+  // The reference time of line 712 in the update is from the year-long
+  // timetable. However, the GTFS timetable contains different times due to the
+  // line being redirected starting from June 29
+  // the time differences is up to 4 minutes
+  EXPECT_FALSE(fr.is_rt());
+}
