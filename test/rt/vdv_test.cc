@@ -1311,3 +1311,333 @@ TEST(vdv_update, smd712) {
   // the time differences is up to 4 minutes
   EXPECT_FALSE(fr.is_rt());
 }
+
+namespace {
+
+mem_dir rbo920_files() {
+  return mem_dir::read(R"__(
+# trips.txt
+"route_id","service_id","trip_id","trip_headsign","trip_short_name","direction_id","block_id","shape_id","wheelchair_accessible","bikes_allowed"
+"de:vvo:27-920_3",4047,2593448036,"Kamenz Bahnhof","",0,,50455,0,0
+
+# routes.txt
+"route_id","agency_id","route_short_name","route_long_name","route_type","route_color","route_text_color","route_desc"
+"de:vvo:27-920_3",8197,"920","",3,"","",""
+
+# agency.txt
+"agency_id","agency_name","agency_url","agency_timezone","agency_lang","agency_phone"
+8197,"RBO-Busverkehr","https://www.delfi.de","Europe/Berlin","",""
+
+# stop_times.txt
+"trip_id","arrival_time","departure_time","stop_id","stop_sequence","pickup_type","drop_off_type","stop_headsign"
+2593448036,18:32:00,18:32:00,"de:14625:6201:2:7",0,0,0,""
+2593448036,18:34:00,18:34:00,"de:14625:6224:1:2",1,0,0,""
+2593448036,18:36:00,18:36:00,"de:14625:6200:1:1",2,0,0,""
+2593448036,18:37:00,18:37:00,"de:14625:6237:1:1",3,0,0,""
+2593448036,18:38:00,18:38:00,"de:14625:6238:1:1",4,0,0,""
+2593448036,18:40:00,18:40:00,"de:14625:6249:1:1",5,0,0,""
+2593448036,18:41:00,18:41:00,"de:14625:6211:1:2",6,0,0,""
+2593448036,18:43:00,18:43:00,"de:14625:6215:1:1",7,0,0,""
+2593448036,18:44:00,18:44:00,"de:14625:6250:1:1",8,0,0,""
+2593448036,18:45:00,18:45:00,"de:14625:6231:1:2",9,0,0,""
+2593448036,18:46:00,18:46:00,"de:14625:6230:1:2",10,0,0,""
+2593448036,18:47:00,18:47:00,"de:14625:6229:1:2",11,0,0,""
+2593448036,18:49:00,18:49:00,"de:14625:6221:1:2",12,0,0,""
+2593448036,18:55:00,18:55:00,"de:14625:6223:1:2",13,0,0,""
+2593448036,18:57:00,18:57:00,"de:14625:6207:1:2",14,0,0,""
+2593448036,18:58:00,18:58:00,"de:14625:6230:1:1",15,0,0,""
+2593448036,18:59:00,18:59:00,"de:14625:6231:1:1",16,0,0,""
+2593448036,19:00:00,19:00:00,"de:14625:6250:1:2",17,0,0,""
+2593448036,19:01:00,19:01:00,"de:14625:6215:1:2",18,0,0,""
+2593448036,19:03:00,19:03:00,"de:14625:6211:1:1",19,0,0,""
+2593448036,19:04:00,19:04:00,"de:14625:6249:1:2",20,0,0,""
+2593448036,19:06:00,19:06:00,"de:14625:6238:1:2",21,0,0,""
+2593448036,19:07:00,19:07:00,"de:14625:6237:1:2",22,0,0,""
+2593448036,19:08:00,19:08:00,"de:14625:6200:1:6",23,0,0,""
+2593448036,19:10:00,19:10:00,"de:14625:6224:1:1",24,0,0,""
+2593448036,19:12:00,19:12:00,"de:14625:6201:2:8",25,0,0,""
+
+# stops.txt
+"stop_id","stop_code","stop_name","stop_desc","stop_lat","stop_lon","location_type","parent_station","wheelchair_boarding","platform_code","level_id"
+"de:14625:6201:2:8","","Kamenz Bahnhof","Bus","51.274708000000","14.092617000000",0,,0,"8","2"
+"de:14625:6224:1:1","","Kamenz Oststraße","Haltestelle","51.275956000000","14.098519000000",0,,0,"1","2"
+"de:14625:6200:1:6","","Kamenz Macherstraße","Haltestelle","51.278333000000","14.102319000000",0,,0,"6","2"
+"de:14625:6237:1:2","","Kamenz Nordostvorstadt","Haltestelle","51.279642000000","14.100532000000",0,,0,"2","2"
+"de:14625:6238:1:2","","Kamenz Nordstraße/Stadion","Haltestelle","51.281771000000","14.098978000000",0,,0,"2","2"
+"de:14625:6249:1:2","","Kamenz Friedensstraße","Haltestelle","51.289311000000","14.101942000000",0,,0,"2","2"
+"de:14625:6237:1:1","","Kamenz Nordostvorstadt","Haltestelle","51.279451000000","14.100792000000",0,,0,"1","2"
+"de:14625:6231:1:1","","Kamenz Jesau Jan-Skala-Straße","Haltestelle","51.281417000000","14.118723000000",0,,0,"1","2"
+"de:14625:6250:1:1","","Kamenz Jesau Neschwitzer Str","Haltestelle","51.284143000000","14.122594000000",0,,0,"1","2"
+"de:14625:6230:1:1","","Kamenz Jesau Elsteraue","Haltestelle","51.278305000000","14.114680000000",0,,0,"1","2"
+"de:14625:6221:1:2","","Kamenz Andreas-Günther-Straße","Haltestelle","51.273089000000","14.116585000000",0,,0,"2","2"
+"de:14625:6207:1:2","","Kamenz Netto-Markt","Haltestelle","51.273208000000","14.108311000000",0,,0,"2","2"
+"de:14625:6229:1:2","","Kamenz Jesauer Straße","Haltestelle","51.276006000000","14.114105000000",0,,0,"2","2"
+"de:14625:6224:1:2","","Kamenz Oststraße","Haltestelle","51.275927000000","14.098753000000",0,,0,"2","2"
+"de:14625:6230:1:2","","Kamenz Jesau Elsteraue","Haltestelle","51.278276000000","14.114752000000",0,,0,"2","2"
+"de:14625:6231:1:2","","Kamenz Jesau Jan-Skala-Straße","Haltestelle","51.281249000000","14.118255000000",0,,0,"2","2"
+"de:14625:6211:1:2","","Kamenz Schwimmhalle","Haltestelle","51.286278000000","14.111141000000",0,,0,"2","2"
+"de:14625:6249:1:1","","Kamenz Friedensstraße","Haltestelle","51.289261000000","14.101915000000",0,,0,"1","2"
+"de:14625:6250:1:2","","Kamenz Jesau Neschwitzer Str","Haltestelle","51.284064000000","14.122666000000",0,,0,"2","2"
+"de:14625:6238:1:1","","Kamenz Nordstraße/Stadion","Haltestelle","51.282176000000","14.098879000000",0,,0,"1","2"
+"de:14625:6200:1:1","","Kamenz Macherstraße","Haltestelle","51.278052000000","14.101906000000",0,,0,"1","2"
+"de:14625:6211:1:1","","Kamenz Schwimmhalle","Haltestelle","51.286845000000","14.111572000000",0,,0,"1","2"
+"de:14625:6215:1:1","","Kamenz Schule Neschwitzer Str.","Haltestelle","51.285064000000","14.113997000000",0,,0,"1","2"
+"de:14625:6215:1:2","","Kamenz Schule Neschwitzer Str.","Haltestelle","51.285384000000","14.115102000000",0,,0,"2","2"
+"de:14625:6223:1:2","","Kamenz Forststraße","Haltestelle","51.267419000000","14.112740000000",0,,0,"2","2"
+"de:14625:6201:2:7","","Kamenz Bahnhof","Bus","51.274579000000","14.092716000000",0,,0,"7","2"
+
+# calendar.txt
+"service_id","monday","tuesday","wednesday","thursday","friday","saturday","sunday","start_date","end_date"
+4047,0,0,0,0,0,0,0,20240805,20241214
+
+# calendar_dates.txt
+"service_id","date","exception_type"
+4047,20240819,1
+4047,20240820,1
+4047,20240821,1
+4047,20240822,1
+4047,20240816,1
+4047,20240817,1
+4047,20240818,1
+
+)__");
+}
+
+constexpr auto const update_rbo920 = R"(
+<IstFahrt Zst="2024-08-20T18:30:08">
+	<LinienID>RBO920</LinienID>
+	<RichtungsID>1</RichtungsID>
+	<FahrtRef>
+		<FahrtID>
+			<FahrtBezeichner>RBO13655_vvorbl</FahrtBezeichner>
+			<Betriebstag>2024-08-20</Betriebstag>
+		</FahrtID>
+	</FahrtRef>
+	<Komplettfahrt>true</Komplettfahrt>
+	<UmlaufID>18901</UmlaufID>
+	<BetreiberID>vvorbl</BetreiberID>
+	<IstHalt>
+		<HaltID>de:14625:6201:2:7</HaltID>
+		<Abfahrtszeit>2024-08-20T16:32:00</Abfahrtszeit>
+		<AbfahrtssteigText>7</AbfahrtssteigText>
+		<Besetztgrad>Unbekannt</Besetztgrad>
+	</IstHalt>
+	<IstHalt>
+		<HaltID>de:14625:6224:1:2</HaltID>
+		<Abfahrtszeit>2024-08-20T16:34:00</Abfahrtszeit>
+		<Ankunftszeit>2024-08-20T16:34:00</Ankunftszeit>
+		<AbfahrtssteigText>2</AbfahrtssteigText>
+		<Besetztgrad>Unbekannt</Besetztgrad>
+	</IstHalt>
+	<IstHalt>
+		<HaltID>de:14625:6200:1:1</HaltID>
+		<Abfahrtszeit>2024-08-20T16:36:00</Abfahrtszeit>
+		<Ankunftszeit>2024-08-20T16:36:00</Ankunftszeit>
+		<AbfahrtssteigText>1</AbfahrtssteigText>
+		<Besetztgrad>Unbekannt</Besetztgrad>
+	</IstHalt>
+	<IstHalt>
+		<HaltID>de:14625:6237:1:1</HaltID>
+		<Abfahrtszeit>2024-08-20T16:37:00</Abfahrtszeit>
+		<Ankunftszeit>2024-08-20T16:37:00</Ankunftszeit>
+		<AbfahrtssteigText>1</AbfahrtssteigText>
+		<Besetztgrad>Unbekannt</Besetztgrad>
+	</IstHalt>
+	<IstHalt>
+		<HaltID>de:14625:6238:1:1</HaltID>
+		<Abfahrtszeit>2024-08-20T16:38:00</Abfahrtszeit>
+		<Ankunftszeit>2024-08-20T16:38:00</Ankunftszeit>
+		<AbfahrtssteigText>1</AbfahrtssteigText>
+		<Besetztgrad>Unbekannt</Besetztgrad>
+	</IstHalt>
+	<IstHalt>
+		<HaltID>de:14625:6249:1:1</HaltID>
+		<Abfahrtszeit>2024-08-20T16:40:00</Abfahrtszeit>
+		<Ankunftszeit>2024-08-20T16:40:00</Ankunftszeit>
+		<AbfahrtssteigText>1</AbfahrtssteigText>
+		<Besetztgrad>Unbekannt</Besetztgrad>
+	</IstHalt>
+	<IstHalt>
+		<HaltID>de:14625:6211:1:2</HaltID>
+		<Abfahrtszeit>2024-08-20T16:41:00</Abfahrtszeit>
+		<Ankunftszeit>2024-08-20T16:41:00</Ankunftszeit>
+		<AbfahrtssteigText>2</AbfahrtssteigText>
+		<Besetztgrad>Unbekannt</Besetztgrad>
+	</IstHalt>
+	<IstHalt>
+		<HaltID>de:14625:6215:1:1</HaltID>
+		<Abfahrtszeit>2024-08-20T16:43:00</Abfahrtszeit>
+		<Ankunftszeit>2024-08-20T16:43:00</Ankunftszeit>
+		<AbfahrtssteigText>1</AbfahrtssteigText>
+		<Besetztgrad>Unbekannt</Besetztgrad>
+	</IstHalt>
+	<IstHalt>
+		<HaltID>de:14625:6250:1:1</HaltID>
+		<Abfahrtszeit>2024-08-20T16:44:00</Abfahrtszeit>
+		<Ankunftszeit>2024-08-20T16:44:00</Ankunftszeit>
+		<AbfahrtssteigText>1</AbfahrtssteigText>
+		<Besetztgrad>Unbekannt</Besetztgrad>
+	</IstHalt>
+	<IstHalt>
+		<HaltID>de:14625:6231:1:2</HaltID>
+		<Abfahrtszeit>2024-08-20T16:45:00</Abfahrtszeit>
+		<Ankunftszeit>2024-08-20T16:45:00</Ankunftszeit>
+		<AbfahrtssteigText>2</AbfahrtssteigText>
+		<Besetztgrad>Unbekannt</Besetztgrad>
+	</IstHalt>
+	<IstHalt>
+		<HaltID>de:14625:6230:1:2</HaltID>
+		<Abfahrtszeit>2024-08-20T16:46:00</Abfahrtszeit>
+		<Ankunftszeit>2024-08-20T16:46:00</Ankunftszeit>
+		<AbfahrtssteigText>2</AbfahrtssteigText>
+		<Besetztgrad>Unbekannt</Besetztgrad>
+	</IstHalt>
+	<IstHalt>
+		<HaltID>de:14625:6229:1:2</HaltID>
+		<Abfahrtszeit>2024-08-20T16:47:00</Abfahrtszeit>
+		<Ankunftszeit>2024-08-20T16:47:00</Ankunftszeit>
+		<AbfahrtssteigText>2</AbfahrtssteigText>
+		<Besetztgrad>Unbekannt</Besetztgrad>
+	</IstHalt>
+	<IstHalt>
+		<HaltID>de:14625:6221:1:2</HaltID>
+		<Abfahrtszeit>2024-08-20T16:49:00</Abfahrtszeit>
+		<Ankunftszeit>2024-08-20T16:49:00</Ankunftszeit>
+		<AbfahrtssteigText>2</AbfahrtssteigText>
+		<Besetztgrad>Unbekannt</Besetztgrad>
+	</IstHalt>
+	<IstHalt>
+		<HaltID>de:14625:6223:1:2</HaltID>
+		<Abfahrtszeit>2024-08-20T16:55:00</Abfahrtszeit>
+		<Ankunftszeit>2024-08-20T16:51:00</Ankunftszeit>
+		<AbfahrtssteigText>2</AbfahrtssteigText>
+		<RichtungsText>Pendelverkehr Forstfest Ri. Bahnhof</RichtungsText>
+		<Besetztgrad>Unbekannt</Besetztgrad>
+	</IstHalt>
+	<IstHalt>
+		<HaltID>de:14625:6207:1:2</HaltID>
+		<Abfahrtszeit>2024-08-20T16:57:00</Abfahrtszeit>
+		<Ankunftszeit>2024-08-20T16:57:00</Ankunftszeit>
+		<AbfahrtssteigText>2</AbfahrtssteigText>
+		<RichtungsText>Pendelverkehr Forstfest Ri. Bahnhof</RichtungsText>
+		<Besetztgrad>Unbekannt</Besetztgrad>
+	</IstHalt>
+	<IstHalt>
+		<HaltID>de:14625:6230:1:1</HaltID>
+		<Abfahrtszeit>2024-08-20T16:58:00</Abfahrtszeit>
+		<Ankunftszeit>2024-08-20T16:58:00</Ankunftszeit>
+		<AbfahrtssteigText>1</AbfahrtssteigText>
+		<RichtungsText>Pendelverkehr Forstfest Ri. Bahnhof</RichtungsText>
+		<Besetztgrad>Unbekannt</Besetztgrad>
+	</IstHalt>
+	<IstHalt>
+		<HaltID>de:14625:6231:1:1</HaltID>
+		<Abfahrtszeit>2024-08-20T16:59:00</Abfahrtszeit>
+		<Ankunftszeit>2024-08-20T16:59:00</Ankunftszeit>
+		<AbfahrtssteigText>1</AbfahrtssteigText>
+		<RichtungsText>Pendelverkehr Forstfest Ri. Bahnhof</RichtungsText>
+		<Besetztgrad>Unbekannt</Besetztgrad>
+	</IstHalt>
+	<IstHalt>
+		<HaltID>de:14625:6250:1:2</HaltID>
+		<Abfahrtszeit>2024-08-20T17:00:00</Abfahrtszeit>
+		<Ankunftszeit>2024-08-20T17:00:00</Ankunftszeit>
+		<AbfahrtssteigText>2</AbfahrtssteigText>
+		<RichtungsText>Pendelverkehr Forstfest Ri. Bahnhof</RichtungsText>
+		<Besetztgrad>Unbekannt</Besetztgrad>
+	</IstHalt>
+	<IstHalt>
+		<HaltID>de:14625:6215:1:2</HaltID>
+		<Abfahrtszeit>2024-08-20T17:01:00</Abfahrtszeit>
+		<Ankunftszeit>2024-08-20T17:01:00</Ankunftszeit>
+		<AbfahrtssteigText>2</AbfahrtssteigText>
+		<RichtungsText>Pendelverkehr Forstfest Ri. Bahnhof</RichtungsText>
+		<Besetztgrad>Unbekannt</Besetztgrad>
+	</IstHalt>
+	<IstHalt>
+		<HaltID>de:14625:6211:1:1</HaltID>
+		<Abfahrtszeit>2024-08-20T17:03:00</Abfahrtszeit>
+		<Ankunftszeit>2024-08-20T17:03:00</Ankunftszeit>
+		<AbfahrtssteigText>1</AbfahrtssteigText>
+		<RichtungsText>Pendelverkehr Forstfest Ri. Bahnhof</RichtungsText>
+		<Besetztgrad>Unbekannt</Besetztgrad>
+	</IstHalt>
+	<IstHalt>
+		<HaltID>de:14625:6249:1:2</HaltID>
+		<Abfahrtszeit>2024-08-20T17:04:00</Abfahrtszeit>
+		<Ankunftszeit>2024-08-20T17:04:00</Ankunftszeit>
+		<AbfahrtssteigText>2</AbfahrtssteigText>
+		<RichtungsText>Pendelverkehr Forstfest Ri. Bahnhof</RichtungsText>
+		<Besetztgrad>Unbekannt</Besetztgrad>
+	</IstHalt>
+	<IstHalt>
+		<HaltID>de:14625:6238:1:2</HaltID>
+		<Abfahrtszeit>2024-08-20T17:06:00</Abfahrtszeit>
+		<Ankunftszeit>2024-08-20T17:06:00</Ankunftszeit>
+		<AbfahrtssteigText>2</AbfahrtssteigText>
+		<RichtungsText>Pendelverkehr Forstfest Ri. Bahnhof</RichtungsText>
+		<Besetztgrad>Unbekannt</Besetztgrad>
+	</IstHalt>
+	<IstHalt>
+		<HaltID>de:14625:6237:1:2</HaltID>
+		<Abfahrtszeit>2024-08-20T17:07:00</Abfahrtszeit>
+		<Ankunftszeit>2024-08-20T17:07:00</Ankunftszeit>
+		<AbfahrtssteigText>2</AbfahrtssteigText>
+		<RichtungsText>Pendelverkehr Forstfest Ri. Bahnhof</RichtungsText>
+		<Besetztgrad>Unbekannt</Besetztgrad>
+	</IstHalt>
+	<IstHalt>
+		<HaltID>de:14625:6200:1:6</HaltID>
+		<Abfahrtszeit>2024-08-20T17:08:00</Abfahrtszeit>
+		<Ankunftszeit>2024-08-20T17:08:00</Ankunftszeit>
+		<AbfahrtssteigText>6</AbfahrtssteigText>
+		<RichtungsText>Pendelverkehr Forstfest Ri. Bahnhof</RichtungsText>
+		<Besetztgrad>Unbekannt</Besetztgrad>
+	</IstHalt>
+	<IstHalt>
+		<HaltID>de:14625:6224:1:1</HaltID>
+		<Abfahrtszeit>2024-08-20T17:10:00</Abfahrtszeit>
+		<Ankunftszeit>2024-08-20T17:10:00</Ankunftszeit>
+		<AbfahrtssteigText>1</AbfahrtssteigText>
+		<RichtungsText>Pendelverkehr Forstfest Ri. Bahnhof</RichtungsText>
+		<Besetztgrad>Unbekannt</Besetztgrad>
+	</IstHalt>
+	<IstHalt>
+		<HaltID>de:14625:6201:2:8</HaltID>
+		<Ankunftszeit>2024-08-20T17:12:00</Ankunftszeit>
+		<AnkunftssteigText>8</AnkunftssteigText>
+		<RichtungsText>Pendelverkehr Forstfest Ri. Bahnhof</RichtungsText>
+		<Besetztgrad>Unbekannt</Besetztgrad>
+	</IstHalt>
+	<LinienText>920</LinienText>
+	<ProduktID>RBO920</ProduktID>
+	<RichtungsText>Pendelverkehr Forstfest Ri. Forststrasse</RichtungsText>
+	<PrognoseMoeglich>true</PrognoseMoeglich>
+	<FaelltAus>false</FaelltAus>
+</IstFahrt>
+)";
+
+}  // namespace
+
+TEST(vdv_update, rbo920) {
+  timetable tt;
+  register_special_stations(tt);
+  tt.date_range_ = {date::sys_days{2024_y / August / 1},
+                    date::sys_days{2024_y / August / 31}};
+  load_timetable({}, source_idx_t{0}, rbo920_files(), tt);
+  finalize(tt);
+
+  auto rtt = rt::create_rt_timetable(tt, date::sys_days{2024_y / August / 20});
+
+  auto doc = pugi::xml_document{};
+  doc.load_string(update_rbo920);
+  rt::vdv::vdv_update(tt, rtt, source_idx_t{0}, doc);
+
+  auto fr = rt::frun(
+      tt, &rtt,
+      {{transport_idx_t{0}, day_idx_t{24}}, {stop_idx_t{0}, stop_idx_t{26}}});
+
+  std::cout << fr << "\n";
+
+  EXPECT_TRUE(fr.is_rt());
+}
