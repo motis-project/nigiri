@@ -159,8 +159,13 @@ std::optional<rt::run> find_run(timetable const& tt,
     return std::nullopt;
   }
 
-  auto candidates =
-      std::vector<std::tuple<transport, interval<stop_idx_t>, unsigned>>{};
+  struct candidate {
+    transport tr_;
+    interval<stop_idx_t> stop_range_;
+    std::uint32_t n_matches_;
+  };
+
+  auto candidates = std::vector<candidate>{};
 
   for (auto const& vdv_stop : vdv_stops) {
     if (vdv_stop.l_ == location_idx_t::invalid()) {
@@ -204,9 +209,15 @@ std::optional<rt::run> find_run(timetable const& tt,
           if (tt.bitfields_[tt.transport_traffic_days_[tr.t_idx_]].test(
                   to_idx(tr.day_))) {
 
-            auto candidate = std::find_if(
-                begin(candidates), end(candidates),
-                [&](auto const& c) { return get<transport>(c) == tr; });
+            auto candidate =
+                std::find_if(begin(candidates), end(candidates),
+                             [&](auto const& c) { return c.tr_ == tr; });
+
+            if (candidate != end(candidates) &&
+                stop_idx < candidate->stop_range_.from_) {
+              continue;
+            }
+
             if (candidate == end(candidates)) {
               candidates.emplace_back(
                   tr,
@@ -216,8 +227,8 @@ std::optional<rt::run> find_run(timetable const& tt,
               candidate = end(candidates) - 1;
             }
 
-            if (++get<unsigned>(*candidate) == 10) {
-              return rt::run{tr, get<interval<stop_idx_t>>(*candidate)};
+            if (++candidate->n_matches_ == 10) {
+              return rt::run{tr, candidate->stop_range_};
             }
 
             no_transport_found_at_stop = false;
@@ -233,13 +244,12 @@ std::optional<rt::run> find_run(timetable const& tt,
     return std::nullopt;
   }
 
-  std::sort(begin(candidates), end(candidates),
-            [](auto const& a, auto const& b) {
-              return std::get<unsigned>(a) > std::get<unsigned>(b);
-            });
+  std::sort(
+      begin(candidates), end(candidates),
+      [](auto const& a, auto const& b) { return a.n_matches_ > b.n_matches_; });
 
   if (candidates.size() > 1) {
-    if (get<unsigned>(candidates[0]) == get<unsigned>(candidates[1])) {
+    if (candidates[0].n_matches_ == candidates[1].n_matches_) {
       ++stats.multiple_matches_;
       auto multiple_matches =
           std::ofstream{"multiple_matches.txt", std::ios::app};
@@ -248,15 +258,12 @@ std::optional<rt::run> find_run(timetable const& tt,
         multiple_matches
             << "[line: "
             << tt.trip_lines_
-                   [tt.transport_section_lines_[get<transport>(c).t_idx_]
-                                .size() == 1
-                        ? tt.transport_section_lines_[get<transport>(c).t_idx_]
-                              .front()
-                        : tt.transport_section_lines_
-                              [get<transport>(c).t_idx_]
-                              [get<interval<stop_idx_t>>(c).from_]]
+                   [tt.transport_section_lines_[c.tr_.t_idx_].size() == 1
+                        ? tt.transport_section_lines_[c.tr_.t_idx_].front()
+                        : tt.transport_section_lines_[c.tr_.t_idx_]
+                                                     [c.stop_range_.from_]]
                        .view()
-            << ", #matching_stops: " << get<unsigned>(c) << "]\n";
+            << ", #matching_stops: " << c.n_matches_ << "]\n";
       }
       multiple_matches << "for update:\n";
       run.print(multiple_matches);
@@ -264,8 +271,7 @@ std::optional<rt::run> find_run(timetable const& tt,
     }
   }
 
-  return rt::run{get<transport>(candidates.front()),
-                 get<interval<stop_idx_t>>(candidates.front())};
+  return rt::run{candidates.front().tr_, candidates.front().stop_range_};
 }
 
 void update_run(timetable const& tt,
