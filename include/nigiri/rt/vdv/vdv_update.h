@@ -2,16 +2,13 @@
 
 #include "pugixml.hpp"
 
+#include "nigiri/rt/run.h"
 #include "nigiri/types.h"
 
 namespace nigiri {
 struct rt_timetable;
 struct timetable;
 }  // namespace nigiri
-
-namespace nigiri::rt {
-struct run;
-}  // namespace nigiri::rt
 
 namespace nigiri::rt::vdv {
 
