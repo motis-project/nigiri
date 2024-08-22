@@ -103,7 +103,7 @@ std::optional<rt::run> updater::find_run(pugi::xml_node const vdv_run,
                                          bool const is_complete_run) {
   if (!is_complete_run) {
     ++stats_.search_on_incomplete_;
-    log(log_lvl::error, "vdv_updater.find_run",
+    log(log_lvl::info, "vdv_updater.find_run",
         "Warning: attempting to match an incomplete VDV run");
   }
 
@@ -186,27 +186,27 @@ std::optional<rt::run> updater::find_run(pugi::xml_node const vdv_run,
       begin(candidates), end(candidates),
       [](auto const& a, auto const& b) { return a.n_matches_ > b.n_matches_; });
 
-  if (candidates.size() > 1) {
-    if (candidates[0].n_matches_ == candidates[1].n_matches_) {
-      ++stats_.multiple_matches_;
-      auto multiple_matches =
-          std::ofstream{"multiple_matches.txt", std::ios::app};
-      multiple_matches << "multiple match candidates:\n";
-      for (auto const& c : candidates) {
-        multiple_matches
-            << "[line: "
-            << tt_.trip_lines_
-                   [tt_.transport_section_lines_[c.r_.t_.t_idx_].size() == 1
-                        ? tt_.transport_section_lines_[c.r_.t_.t_idx_].front()
-                        : tt_.transport_section_lines_[c.r_.t_.t_idx_]
-                                                      [c.r_.stop_range_.from_]]
-                       .view()
-            << ", #matching_stops: " << c.n_matches_ << "]\n";
-      }
-      multiple_matches << "for update:\n";
-      vdv_run.print(multiple_matches);
-      multiple_matches << "\n";
+  if (candidates.size() > 1 &&
+      candidates[0].n_matches_ == candidates[1].n_matches_) {
+    ++stats_.multiple_matches_;
+    auto multiple_matches =
+        std::ofstream{"multiple_matches.txt", std::ios::app};
+    multiple_matches << "multiple match candidates:\n";
+    for (auto const& c : candidates) {
+      multiple_matches
+          << "[line: "
+          << tt_.trip_lines_
+                 [tt_.transport_section_lines_[c.r_.t_.t_idx_].size() == 1
+                      ? tt_.transport_section_lines_[c.r_.t_.t_idx_].front()
+                      : tt_.transport_section_lines_[c.r_.t_.t_idx_]
+                                                    [c.r_.stop_range_.from_]]
+                     .view()
+          << ", #matching_stops: " << c.n_matches_ << "]\n";
     }
+    multiple_matches << "for update:\n";
+    vdv_run.print(multiple_matches);
+    multiple_matches << "\n";
+    return std::nullopt;
   }
 
   ++stats_.found_runs_;
