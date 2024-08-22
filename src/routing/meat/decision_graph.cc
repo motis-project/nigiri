@@ -1,5 +1,7 @@
 #include "nigiri/routing/meat/decision_graph.h"
 
+#include <variant>
+
 #include "nigiri/routing/meat/delay.h"
 
 namespace nigiri::routing::meat {
@@ -28,11 +30,19 @@ std::vector<double> compute_reach_probabilities(timetable const& tt,
     for (auto out_id : g.nodes_[in.arr_node_].out_) {
       auto& out = g.arcs_[out_id];
 
-      double change_prob = delay_prob(
-          (out.dep_time_ - in.arr_time_).count(),
-          tt.locations_.transfer_time_[g.nodes_[in.arr_node_].stop_id_].count(),
-          max_delay);  // ??? Zweiter Parameter ist im Original falsch! es wird
-                       // keine umstigeszeit sondern eine id übergeben
+      double change_prob;
+
+      if (std::holds_alternative<footpath>(in.uses_)) {
+        change_prob = in.arr_time_ < out.dep_time_ ? 0 : 1;
+      } else {
+        change_prob = delay_prob(
+            (out.dep_time_ - in.arr_time_).count(),
+            tt.locations_.transfer_time_[g.nodes_[in.arr_node_].stop_id_]
+                .count(),
+            max_delay);  // ??? Zweiter Parameter ist im Original
+                         // falsch! es wird keine umstigeszeit
+                         // sondern eine id übergeben TODO: Kommentar entfernen
+      }
 
       p[out_id] += p[in_id] * (change_prob - assigned_prob);
       assigned_prob = change_prob;

@@ -29,13 +29,13 @@ struct meat_csa {
         allowed_claszes_{allowed_claszes},
         prf_idx_{0},
         mpc_{tt_, base_, allowed_claszes_, prf_idx_},
-        dge_{tt_, base_} {}
+        dge_{tt_, base_, mpc_.get_profile_set()} {}
   void execute(unixtime_t const start_time,
                location_idx_t const start_location,
                location_idx_t const end_location,
                // std::uint8_t const max_transfers,
                // unixtime_t const worst_time_at_dest,
-               profile_idx_t const prf_idx,  // TODO footpahts
+               profile_idx_t const prf_idx,
                decision_graph& result_graph) {
     prf_idx_ = prf_idx;
     auto without_clasz_filter = allowed_claszes_ == all_clasz_allowed();
@@ -66,10 +66,10 @@ struct meat_csa {
 
     if (without_clasz_filter) {
       mpc_.compute_profile_set<false>(con_begin, con_end, ea, end_location,
-                                      max_delay_, fuzzy_parameter_, 1);
+                                      s_time, max_delay_, fuzzy_parameter_, 1);
     } else {
       mpc_.compute_profile_set<true>(con_begin, con_end, ea, end_location,
-                                     max_delay_, fuzzy_parameter_, 1);
+                                     s_time, max_delay_, fuzzy_parameter_, 1);
     }
 
     int max_ride_count = std::numeric_limits<int>::max();
@@ -79,8 +79,7 @@ struct meat_csa {
         extract_small_sub_decision_graph(
             dge_, mpc_.get_profile_set(), start_location, s_time, end_location,
             max_delay_, max_ride_count, max_arrow_count);
-    mpc_.reset_trip();
-    mpc_.reset_stop();
+    mpc_.reset();
   }
 
 private:
@@ -215,10 +214,7 @@ private:
     auto [day, mam] = split(source_time);
 
     delta_t const target_offset =
-        tt_.locations_.transfer_time_[target_stop].count() +
-        max_delay_;  //??? Warum auch change_time ? Da esa nur relevant ist,
-                     // wenn
-                     // umstige passieren, kann also schon direkt addierd werden
+        tt_.locations_.transfer_time_[target_stop].count() + max_delay_;
 
     // auto const time_limit = std::min(source_time + kMaxTravelTime.count(),
     // tt_to_delta(end_of_tt_));
@@ -347,7 +343,7 @@ private:
                      allowed_claszes_,
                      tt_.route_clasz_[tt_.transport_route_[c.transport_idx_]])
                : true);
-               
+
       if (tt_.is_connection_active(c, day) && (via_trip || via_station)) {
         if (!via_trip) {
           trip_first_con[c.transport_idx_] = c.trip_con_idx_;

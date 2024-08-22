@@ -1,6 +1,7 @@
 #pragma once
 
 #include "nigiri/common/delta_t.h"
+#include "nigiri/routing/journey.h"
 #include "nigiri/timetable.h"
 #include "nigiri/types.h"
 
@@ -19,18 +20,18 @@ struct decision_graph {
     unixtime_t dep_time_;
     unixtime_t arr_time_;
     unixtime_t meat_;
-    ride ride_;
+    std::variant<journey::run_enter_exit, footpath> uses_;
   };
+
+  int node_count() const { return nodes_.size(); }
+
+  int arc_count() const { return arcs_.size(); }
 
   std::vector<node> nodes_;
   std::vector<arc> arcs_;
   int source_node_;
   int target_node_;
   int first_arc_;
-
-  int node_count() const { return nodes_.size(); }
-
-  int arc_count() const { return arcs_.size(); }
 };
 
 std::vector<double> compute_reach_probabilities(timetable const& tt,

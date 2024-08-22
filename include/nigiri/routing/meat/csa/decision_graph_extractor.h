@@ -12,34 +12,12 @@
 namespace nigiri::routing::meat::csa {
 
 struct decision_graph_extractor {
-private:
-  timetable const& tt_;
-  day_idx_t const& base_;
-  mutable std::stack<profile_entry const*> stack_;
-  // mutable std::vector<profile_entry*> queue_;
-  mutable bitvec is_enter_conn_relevant_;
-  mutable vector_map<location_idx_t, int> to_node_id_;
-
 public:
-  explicit decision_graph_extractor(timetable const& tt, day_idx_t const& base)
-      : tt_(tt),
-        base_(base),
-        to_node_id_(tt_.n_locations(), -1) {
-    is_enter_conn_relevant_.resize(tt_.fwd_connections_.size() *
-                                   kMaxSearchDays);
-
-    // size_t n_entry1 = 0;
-    // size_t n_entry2 = 0;
-    // for (auto& c : tt.fwd_connections_) {
-    //   if (c.dep_stop_.in_allowed()) {
-    //     ;
-    //     n_entry1 +=
-    //         tt.bitfields_[tt.transport_traffic_days_[c.transport_idx_]].count();
-    //     n_entry2 += kMaxSearchDays;
-    //   }
-    // }
-    // auto b = n_entry1 < n_entry2;
-    // queue_ = std::vector<int>(b ? n_entry1 : n_entry2);
+  explicit decision_graph_extractor(timetable const& tt,
+                                    day_idx_t const& base,
+                                    profile_set const& ps)
+      : tt_(tt), base_(base), to_node_id_(tt_.n_locations(), -1) {
+    is_enter_conn_relevant_.resize(ps.n_entry_idxs());
   }
 
 private:
@@ -65,6 +43,13 @@ public:
                             delta_t source_time,
                             location_idx_t target_stop,
                             delta_t max_delay) const;
+
+private:
+  timetable const& tt_;
+  day_idx_t const& base_;
+  mutable std::stack<profile_entry const*> stack_;
+  mutable bitvec is_enter_conn_relevant_;
+  mutable vector_map<location_idx_t, int> to_node_id_;
 };
 
 std::pair<decision_graph, delta_t> extract_small_sub_decision_graph(
