@@ -6,29 +6,26 @@
 
 namespace nigiri::routing::meat {
 
-std::vector<double> compute_reach_probabilities(timetable const& tt,
-                                                decision_graph const& g,
+void decision_graph::compute_use_probabilities(timetable const& tt,
                                                 delta_t max_delay) {
-  std::vector<double> p(g.arc_count(), 0.0);
+  if (arc_count() == 0) return;
 
-  if (g.arc_count() == 0) return p;
-
-  std::vector<int> ordered_arcs(g.arc_count());
-  for (int i = 0; i < g.arc_count(); ++i) ordered_arcs[i] = i;
+  std::vector<int> ordered_arcs(arc_count());
+  for (int i = 0; i < arc_count(); ++i) ordered_arcs[i] = i;
 
   std::sort(ordered_arcs.begin(), ordered_arcs.end(), [&](int l, int r) {
-    return g.arcs_[l].dep_time_ < g.arcs_[r].dep_time_;
+    return arcs_[l].dep_time_ < arcs_[r].dep_time_;
   });
 
-  assert(ordered_arcs.front() == g.first_arc_);
+  assert(ordered_arcs.front() == first_arc_);
 
-  p[g.first_arc_] = 1.0;
+  arcs_[first_arc_].use_prob_ = 1.0;
   for (auto in_id : ordered_arcs) {
-    auto& in = g.arcs_[in_id];
+    auto& in = arcs_[in_id];
     double assigned_prob = 0.0;
 
-    for (auto out_id : g.nodes_[in.arr_node_].out_) {
-      auto& out = g.arcs_[out_id];
+    for (auto out_id : nodes_[in.arr_node_].out_) {
+      auto& out = arcs_[out_id];
 
       double change_prob;
 
@@ -37,18 +34,18 @@ std::vector<double> compute_reach_probabilities(timetable const& tt,
       } else {
         change_prob = delay_prob(
             (out.dep_time_ - in.arr_time_).count(),
-            tt.locations_.transfer_time_[g.nodes_[in.arr_node_].stop_id_]
+            tt.locations_.transfer_time_[nodes_[in.arr_node_].stop_id_]
                 .count(),
             max_delay);  // ??? Zweiter Parameter ist im Original
                          // falsch! es wird keine umstigeszeit
                          // sondern eine id übergeben TODO: Kommentar entfernen
       }
 
-      p[out_id] += p[in_id] * (change_prob - assigned_prob);
+      arcs_[out_id].use_prob_ += arcs_[in_id].use_prob_ * (change_prob - assigned_prob);
       assigned_prob = change_prob;
     }
   }
-  return p;
+  return;
 }
 
 }  // namespace nigiri::routing::meat

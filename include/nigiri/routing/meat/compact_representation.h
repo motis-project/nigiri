@@ -82,7 +82,9 @@ inline void write_dot(std::ostream& out,
         << "[shape=record,"
         //<< "URL=\"javascript:onstop(" << i << "," << g.nodes_[i].stop_id_
         //<< ")\","
-        << "tooltip=\"" << location(tt, g.nodes_[i].stop_id_) << "\","
+        << "tooltip=\"" << location(tt, g.nodes_[i].stop_id_)
+        << "\\ntransfer time="
+        << location(tt, g.nodes_[i].stop_id_).transfer_time_ << "\","
         << "label=\"" << location(tt, g.nodes_[i].stop_id_).name_;
 
     // if (r.out_[i].size() > 1) {
@@ -103,24 +105,27 @@ inline void write_dot(std::ostream& out,
           << r.out_[i][j].arr_node_ << " [tooltip=\"";
       for (auto const dg_arc : r.out_[i][j].dg_arcs_) {
         std::visit(
-            utl::overloaded{[&](footpath const& fp) {
-                              out << "MEAT=" << g.arcs_[dg_arc].meat_
-                                  << "\\nFOOTPATH (duration="
-                                  << fp.duration().count() << ")\\n\\n";
-                            },
-                            [&](journey::run_enter_exit const& r) {
-                              out << "MEAT=" << g.arcs_[dg_arc].meat_ << "\\n";
-                              auto const fr = rt::frun{tt, nullptr, r.r_};
-                              for (auto i = r.stop_range_.from_;
-                                   i != r.stop_range_.to_; ++i) {
-                                if (!fr[i].is_canceled()) {
-                                  fr[i].print(out, i == r.stop_range_.from_,
-                                              i == r.stop_range_.to_ - 1U);
-                                  out << "\\n";
-                                }
-                              }
-                              out << "\\n\\n";
-                            }},
+            utl::overloaded{
+                [&](footpath const& fp) {
+                  out << "probability of use=" << g.arcs_[dg_arc].use_prob_
+                      << "\\nMEAT=" << g.arcs_[dg_arc].meat_
+                      << "\\nFOOTPATH (duration=" << fp.duration().count()
+                      << ")\\n\\n";
+                },
+                [&](journey::run_enter_exit const& r) {
+                  out << "probability of use=" << g.arcs_[dg_arc].use_prob_
+                      << "\\nMEAT=" << g.arcs_[dg_arc].meat_ << "\\n";
+                  auto const fr = rt::frun{tt, nullptr, r.r_};
+                  for (auto i = r.stop_range_.from_; i != r.stop_range_.to_;
+                       ++i) {
+                    if (!fr[i].is_canceled()) {
+                      fr[i].print(out, i == r.stop_range_.from_,
+                                  i == r.stop_range_.to_ - 1U);
+                      out << "\\n";
+                    }
+                  }
+                  out << "\\n\\n";
+                }},
             g.arcs_[dg_arc].uses_);
       }
       out << "\"];\n";

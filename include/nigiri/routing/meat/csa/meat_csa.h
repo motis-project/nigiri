@@ -79,6 +79,7 @@ struct meat_csa {
         extract_small_sub_decision_graph(
             dge_, mpc_.get_profile_set(), start_location, s_time, end_location,
             max_delay_, max_ride_count, max_arrow_count);
+    result_graph.compute_use_probabilities(tt_, max_delay_);
     mpc_.reset();
   }
 

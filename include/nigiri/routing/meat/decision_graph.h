@@ -21,11 +21,14 @@ struct decision_graph {
     unixtime_t arr_time_;
     unixtime_t meat_;
     std::variant<journey::run_enter_exit, footpath> uses_;
+    double use_prob_;
   };
 
   int node_count() const { return nodes_.size(); }
 
   int arc_count() const { return arcs_.size(); }
+
+  void compute_use_probabilities(timetable const& tt, delta_t max_delay);
 
   std::vector<node> nodes_;
   std::vector<arc> arcs_;
@@ -33,9 +36,5 @@ struct decision_graph {
   int target_node_;
   int first_arc_;
 };
-
-std::vector<double> compute_reach_probabilities(timetable const& tt,
-                                                decision_graph const& g,
-                                                delta_t max_delay);
 
 }  // namespace nigiri::routing::meat

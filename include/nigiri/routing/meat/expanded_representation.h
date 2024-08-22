@@ -91,10 +91,13 @@ inline void write_dot(std::ostream& out,
          "\tsplines=polyline;rankdir=LR;\n";
 
   for (int i = 0; i < g.node_count(); ++i) {
-    out << "\tnode" << i << "[shape=record,"
+    out << "\tnode" << i
+        << "[shape=record,"
         //<< "URL=\"javascript:onstop(" << i << "," << g.nodes_[i].stop_id_
         //<< ")\","
-        << "tooltip=\"" << location(tt, g.nodes_[i].stop_id_) << "\","
+        << "tooltip=\"" << location(tt, g.nodes_[i].stop_id_)
+        << "\\ntransfer time="
+        << location(tt, g.nodes_[i].stop_id_).transfer_time_ << "\","
         << "label=\"" << location(tt, g.nodes_[i].stop_id_).name_;
 
     for (auto s : r.slots_of_node_[i]) {
@@ -108,24 +111,26 @@ inline void write_dot(std::ostream& out,
         << r.slots_[r.arcs_[i].arr_slot_].node_id_ << ":slot"
         << r.arcs_[i].arr_slot_ << " [";
     std::visit(
-        utl::overloaded{[&](footpath const& fp) {
-                          out << "label=\"walk\",tooltip=\"MEAT=" << g.arcs_[i].meat_ << "\\nFOOTPATH (duration="
-                              << fp.duration().count() << ")\"";
-                        },
-                        [&](journey::run_enter_exit const& r) {
-                          out << "label=\"" << tt.transport_name(r.r_.t_.t_idx_)
-                              << "\",tooltip=\"MEAT=" << g.arcs_[i].meat_ << "\\n";
-                          auto const fr = rt::frun{tt, nullptr, r.r_};
-                          for (auto i = r.stop_range_.from_;
-                               i != r.stop_range_.to_; ++i) {
-                            if (!fr[i].is_canceled()) {
-                              fr[i].print(out, i == r.stop_range_.from_,
-                                          i == r.stop_range_.to_ - 1U);
-                              out << "\\n";
-                            }
-                          }
-                          out << "\"";
-                        }},
+        utl::overloaded{
+            [&](footpath const& fp) {
+              out << "label=\"walk\",tooltip=\"probability of use="
+                  << g.arcs_[i].use_prob_ << "\\nMEAT=" << g.arcs_[i].meat_
+                  << "\\nFOOTPATH (duration=" << fp.duration().count() << ")\"";
+            },
+            [&](journey::run_enter_exit const& r) {
+              out << "label=\"" << tt.transport_name(r.r_.t_.t_idx_)
+                  << "\",tooltip=\"probability of use=" << g.arcs_[i].use_prob_
+                  << "\\nMEAT=" << g.arcs_[i].meat_ << "\\n";
+              auto const fr = rt::frun{tt, nullptr, r.r_};
+              for (auto i = r.stop_range_.from_; i != r.stop_range_.to_; ++i) {
+                if (!fr[i].is_canceled()) {
+                  fr[i].print(out, i == r.stop_range_.from_,
+                              i == r.stop_range_.to_ - 1U);
+                  out << "\\n";
+                }
+              }
+              out << "\"";
+            }},
         g.arcs_[i].uses_);
     out << "];\n";
   }

@@ -160,7 +160,8 @@ decision_graph decision_graph_extractor::operator()(
               int arc_id = g.arcs_.size();
               delta_t arr_time = e->dep_time_ + w.fp_.duration().count();
               g.arcs_.push_back({dep_node, arr_node, to_unix(e->dep_time_),
-                                 to_unix(arr_time), to_unix(e->meat_), w.fp_});
+                                 to_unix(arr_time), to_unix(e->meat_), w.fp_,
+                                 0.0});
               g.nodes_[dep_node].out_.push_back(arc_id);
               g.nodes_[arr_node].in_.push_back(arc_id);
             },
@@ -185,7 +186,8 @@ decision_graph decision_graph_extractor::operator()(
                        {.t_ = transport{enter_conn.transport_idx_, day},
                         .stop_range_ = interval<stop_idx_t>{0, 0}},
                        enter_conn.trip_con_idx_,
-                       static_cast<stop_idx_t>(exit_conn.trip_con_idx_ + 1)}});
+                       static_cast<stop_idx_t>(exit_conn.trip_con_idx_ + 1)},
+                   0.0});
               g.nodes_[dep_node].out_.push_back(arc_id);
               g.nodes_[arr_node].in_.push_back(arc_id);
 
@@ -206,7 +208,8 @@ decision_graph decision_graph_extractor::operator()(
                     {dep_node, arr_node, to_unix(dep_time), to_unix(arr_time),
                      to_unix(e->meat_),
                      footpath(target_stop, duration_t{static_cast<delta_t>(
-                                               fp_dis_to_target)})});
+                                               fp_dis_to_target)}),
+                     0.0});
                 g.nodes_[dep_node].out_.push_back(arc_id);
                 g.nodes_[arr_node].in_.push_back(arc_id);
               }
