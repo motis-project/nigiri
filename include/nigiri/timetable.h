@@ -4,7 +4,6 @@
 #include <filesystem>
 #include <span>
 #include <type_traits>
-#include <vector>
 
 #include "cista/memory_holder.h"
 #include "cista/reflection/printable.h"

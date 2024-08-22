@@ -1,9 +1,6 @@
 #pragma once
 
-#include <vector>
-
 #include "nigiri/loader/gtfs/trip.h"
-#include "nigiri/types.h"
 
 namespace nigiri::loader::gtfs {
 
