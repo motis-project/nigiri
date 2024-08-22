@@ -384,8 +384,9 @@ void updater::process_vdv_run(rt_timetable& rtt, pugi::xml_node const vdv_run) {
   auto const is_complete_run = *get_opt_bool(vdv_run, "Komplettfahrt", false);
 
   auto const vdv_run_id =
-      std::string{get(vdv_run, "//FahrtBezeichner").child_value()}.append(
-          get(vdv_run, "//Betriebstag").child_value());
+      std::string{
+          get(vdv_run, "./FahrtRef/FahrtID/FahrtBezeichner").child_value()}
+          .append(get(vdv_run, "./FahrtRef/FahrtID/Betriebstag").child_value());
 
   auto r = vdv_nigiri_.contains(vdv_run_id)
                ? std::optional{vdv_nigiri_.at(vdv_run_id)}

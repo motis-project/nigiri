@@ -368,6 +368,9 @@ TEST(vdv_update, basic) {
             date::sys_days{2024_y / July / 10} + 2_hours);
   EXPECT_EQ(fr[4].time(event_type::kArr),
             date::sys_days{2024_y / July / 10} + 2_hours + 7_minutes);
+
+  EXPECT_EQ(u.get_stats().found_runs_, 1);
+  EXPECT_EQ(u.get_stats().matched_runs_, 3);
 }
 
 namespace {
