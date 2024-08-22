@@ -169,10 +169,6 @@ std::optional<rt::run> updater::find_run(pugi::xml_node const vdv_run,
               candidate = end(candidates) - 1;
             }
 
-            if (++candidate->n_matches_ == 10) {
-              return candidate->r_;
-            }
-
             no_transport_found_at_stop = false;
           }
         }
