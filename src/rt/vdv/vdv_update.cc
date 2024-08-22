@@ -28,8 +28,8 @@ unixtime_t parse_time(std::string const& str) {
   return parsed;
 }
 
-std::optional<unixtime_t> get_opt_time(pugi::xml_node const& node,
-                                       char const* str) {
+std::optional<unixtime_t> updater::get_opt_time(pugi::xml_node const& node,
+                                                char const* str) {
   auto const xpath = node.select_node(str);
   return xpath != nullptr
              ? std::optional{parse_time(xpath.node().child_value())}
@@ -51,33 +51,6 @@ pugi::xml_node get(pugi::xml_node const& node, char const* str) {
   return xpath.node();
 }
 
-struct vdv_stop {
-  explicit vdv_stop(location_idx_t const l,
-                    std::string_view id,
-                    pugi::xml_node const n)
-      : l_{l},
-        id_{id},
-        dep_{get_opt_time(n, "Abfahrtszeit")},
-        arr_{get_opt_time(n, "Ankunftszeit")},
-        rt_dep_{get_opt_time(n, "IstAbfahrtPrognose")},
-        rt_arr_{get_opt_time(n, "IstAnkunftPrognose")} {}
-
-  std::optional<std::pair<unixtime_t, event_type>> get_event(
-      event_type et) const {
-    if (et == event_type::kArr && arr_.has_value()) {
-      return std::pair{*arr_, event_type::kArr};
-    } else if (et == event_type::kDep && dep_.has_value()) {
-      return std::pair{*dep_, event_type::kDep};
-    } else {
-      return std::nullopt;
-    }
-  }
-
-  location_idx_t l_;
-  std::string_view id_;
-  std::optional<unixtime_t> dep_, arr_, rt_dep_, rt_arr_;
-};
-
 template <typename T>
 bool epsilon_equal(T const& a, T const& b) {
   constexpr auto const epsilon = T{1};
@@ -89,10 +62,7 @@ bool epsilon_equal_unixtime(unixtime_t const a, unixtime_t const b) {
                        b.time_since_epoch().count());
 }
 
-vector<vdv_stop> resolve_stops(timetable const& tt,
-                               source_idx_t const src,
-                               pugi::xml_node const run,
-                               statistics& stats) {
+vector<updater::vdv_stop> updater::resolve_stops(pugi::xml_node const vdv_run) {
   auto vdv_stops = vector<vdv_stop>{};
 
   auto additional_stops = std::ofstream{"additional_stops.txt", std::ios::app};
@@ -100,24 +70,24 @@ vector<vdv_stop> resolve_stops(timetable const& tt,
   auto unresolvable_stops =
       std::ofstream{"unresolvable_stops.txt", std::ios::app};
 
-  for (auto const stop : run.select_nodes("IstHalt")) {
-    ++stats.total_stops_;
+  for (auto const stop : vdv_run.select_nodes("IstHalt")) {
+    ++stats_.total_stops_;
 
     auto const vdv_stop_id =
         std::string_view{get(stop.node(), "HaltID").child_value()};
-    auto const l = tt.locations_.find({vdv_stop_id, src});
+    auto const l = tt_.locations_.find({vdv_stop_id, src_idx_});
 
     if (get_opt_bool(stop.node(), "Zusatzhalt", false).value()) {
-      ++stats.unsupported_additional_stops_;
+      ++stats_.unsupported_additional_stops_;
       additional_stops << "[id: " << vdv_stop_id << ", name:"
                        << (l.has_value() ? l->name_ : "unresolvable") << "]\n";
     }
 
     if (l.has_value()) {
-      ++stats.resolved_stops_;
+      ++stats_.resolved_stops_;
       vdv_stops.emplace_back(l->l_, vdv_stop_id, stop.node());
     } else {
-      ++stats.unknown_stops_;
+      ++stats_.unknown_stops_;
       unresolvable_stops << vdv_stop_id << "\n";
       vdv_stops.emplace_back(location_idx_t::invalid(), vdv_stop_id,
                              stop.node());
@@ -127,41 +97,18 @@ vector<vdv_stop> resolve_stops(timetable const& tt,
   return vdv_stops;
 }
 
-std::optional<rt::run> find_run(timetable const& tt,
-                                pugi::xml_node const run,
-                                auto const& vdv_stops,
-                                statistics& stats) {
-  using namespace std::literals;
-
-  auto const vdv_line_text_xpath = run.select_node("LinienText");
-  if (!vdv_line_text_xpath) {
-    std::cout << "VDV run without line text:\n";
-    return std::nullopt;
-  }
-  auto vdv_line_text = std::string{vdv_line_text_xpath.node().child_value()};
-  std::erase_if(vdv_line_text, [](auto const c) { return c == ' '; });
-
-  auto const postfix_match = [&](auto const transport_idx,
-                                 auto const stop_idx) {
-    auto const trip_line =
-        size(tt.transport_section_lines_[transport_idx]) == 1U
-            ? tt.trip_lines_[tt.transport_section_lines_[transport_idx][0U]]
-                  .view()
-            : tt.trip_lines_[tt.transport_section_lines_[transport_idx]
-                                                        [stop_idx]]
-                  .view();
-    return trip_line.rfind(vdv_line_text) != std::string_view::npos;
-  };
-
-  auto const vdv_direction_id_xpath = run.select_node("RichtungsID");
-  if (!vdv_direction_id_xpath) {
-    std::cout << "VDV run without direction id:\n";
-    return std::nullopt;
+std::optional<rt::run> updater::find_run(pugi::xml_node const vdv_run,
+                                         std::string_view vdv_run_id,
+                                         vector<vdv_stop> const& vdv_stops,
+                                         bool const is_complete_run) {
+  if (!is_complete_run) {
+    ++stats_.search_on_incomplete_;
+    log(log_lvl::error, "vdv_updater.find_run",
+        "Warning: attempting to match an incomplete VDV run");
   }
 
   struct candidate {
-    transport tr_;
-    interval<stop_idx_t> stop_range_;
+    run r_;
     std::uint32_t n_matches_;
   };
 
@@ -172,10 +119,10 @@ std::optional<rt::run> find_run(timetable const& tt,
       continue;
     }
     auto no_transport_found_at_stop = true;
-    for (auto const r : tt.location_routes_[vdv_stop.l_]) {
-      auto const location_seq = tt.route_location_seq_[r];
+    for (auto const r : tt_.location_routes_[vdv_stop.l_]) {
+      auto const location_seq = tt_.route_location_seq_[r];
       for (auto const [stop_idx, s] : utl::enumerate(location_seq)) {
-        if (!matches(tt, routing::location_match_mode::kEquivalent,
+        if (!matches(tt_, routing::location_match_mode::kEquivalent,
                      stop{s}.location_idx(), vdv_stop.l_)) {
           continue;
         }
@@ -189,46 +136,41 @@ std::optional<rt::run> find_run(timetable const& tt,
         }
 
         auto const [t, ev_type] = *ev;
-        auto const [day_idx, mam] = tt.day_idx_mam(t);
+        auto const [day_idx, mam] = tt_.day_idx_mam(t);
 
-        for (auto const& [ev_time_idx, ev_time] :
-             utl::enumerate(tt.event_times_at_stop(
+        for (auto const [ev_time_idx, ev_time] :
+             utl::enumerate(tt_.event_times_at_stop(
                  r, static_cast<stop_idx_t>(stop_idx), ev_type))) {
           if (!epsilon_equal(ev_time.mam(), mam.count())) {
             continue;
           }
 
-          auto const tr = transport{tt.route_transport_ranges_[r][ev_time_idx],
+          auto const tr = transport{tt_.route_transport_ranges_[r][ev_time_idx],
                                     day_idx - day_idx_t{ev_time.days()}};
 
-          if (!postfix_match(tr.t_idx_, stop_idx)) {
-            ++stats.match_prevented_by_line_id_;
-            continue;
-          }
-
-          if (tt.bitfields_[tt.transport_traffic_days_[tr.t_idx_]].test(
+          if (tt_.bitfields_[tt_.transport_traffic_days_[tr.t_idx_]].test(
                   to_idx(tr.day_))) {
 
             auto candidate =
                 std::find_if(begin(candidates), end(candidates),
-                             [&](auto const& c) { return c.tr_ == tr; });
+                             [&](auto const& c) { return c.r_.t_ == tr; });
 
             if (candidate != end(candidates) &&
-                stop_idx < candidate->stop_range_.from_) {
+                stop_idx < candidate->r_.stop_range_.from_) {
               continue;
             }
 
             if (candidate == end(candidates)) {
               candidates.emplace_back(
-                  tr,
-                  interval{static_cast<stop_idx_t>(stop_idx),
-                           static_cast<stop_idx_t>(location_seq.size())},
+                  run{tr,
+                      interval{static_cast<stop_idx_t>(stop_idx),
+                               static_cast<stop_idx_t>(location_seq.size())}},
                   0U);
               candidate = end(candidates) - 1;
             }
 
             if (++candidate->n_matches_ == 10) {
-              return rt::run{tr, candidate->stop_range_};
+              return candidate->r_;
             }
 
             no_transport_found_at_stop = false;
@@ -237,7 +179,7 @@ std::optional<rt::run> find_run(timetable const& tt,
       }
     }
     if (no_transport_found_at_stop) {
-      ++stats.no_transport_found_at_stop_;
+      ++stats_.no_transport_found_at_stop_;
     }
   }
   if (candidates.empty()) {
@@ -250,40 +192,39 @@ std::optional<rt::run> find_run(timetable const& tt,
 
   if (candidates.size() > 1) {
     if (candidates[0].n_matches_ == candidates[1].n_matches_) {
-      ++stats.multiple_matches_;
+      ++stats_.multiple_matches_;
       auto multiple_matches =
           std::ofstream{"multiple_matches.txt", std::ios::app};
       multiple_matches << "multiple match candidates:\n";
       for (auto const& c : candidates) {
         multiple_matches
             << "[line: "
-            << tt.trip_lines_
-                   [tt.transport_section_lines_[c.tr_.t_idx_].size() == 1
-                        ? tt.transport_section_lines_[c.tr_.t_idx_].front()
-                        : tt.transport_section_lines_[c.tr_.t_idx_]
-                                                     [c.stop_range_.from_]]
+            << tt_.trip_lines_
+                   [tt_.transport_section_lines_[c.r_.t_.t_idx_].size() == 1
+                        ? tt_.transport_section_lines_[c.r_.t_.t_idx_].front()
+                        : tt_.transport_section_lines_[c.r_.t_.t_idx_]
+                                                      [c.r_.stop_range_.from_]]
                        .view()
             << ", #matching_stops: " << c.n_matches_ << "]\n";
       }
       multiple_matches << "for update:\n";
-      run.print(multiple_matches);
+      vdv_run.print(multiple_matches);
       multiple_matches << "\n";
     }
   }
 
-  return rt::run{candidates.front().tr_, candidates.front().stop_range_};
+  ++stats_.found_runs_;
+  vdv_nigiri_[vdv_run_id] = candidates.front().r_;
+  return candidates.front().r_;
 }
 
-void update_run(timetable const& tt,
-                rt_timetable& rtt,
-                source_idx_t const src,
-                run& r,
-                auto const& vdv_stops,
-                bool const is_complete_run,
-                statistics& stats) {
-  auto fr = rt::frun(tt, &rtt, r);
+void updater::update_run(rt_timetable& rtt,
+                         run& r,
+                         vector<vdv_stop> const& vdv_stops,
+                         bool const is_complete_run) {
+  auto fr = rt::frun(tt_, &rtt, r);
   if (!fr.is_rt()) {
-    fr.rt_ = rtt.add_rt_transport(src, tt, r.t_);
+    fr.rt_ = rtt.add_rt_transport(src_idx_, tt_, r.t_);
   }
 
   auto update_events = std::ofstream{"update_events.txt", std::ios::app};
@@ -304,25 +245,25 @@ void update_run(timetable const& tt,
                   << rs.scheduled_time(et) << "+" << delay->count() << "\n";
     rtt.update_time(fr.rt_, rs.stop_idx_, et, new_time);
     rtt.dispatch_event_change(fr.t_, rs.stop_idx_, et, *delay, false);
-    ++stats.updated_events_;
+    ++stats_.updated_events_;
   };
 
   auto const propagate_delay = [&](auto const& rs, event_type et) {
     update_events << rs.scheduled_time(et) << "+" << delay->count() << "\n";
     rtt.update_time(fr.rt_, rs.stop_idx_, et, rs.scheduled_time(et) + *delay);
     rtt.dispatch_event_change(fr.t_, rs.stop_idx_, et, *delay, false);
-    ++stats.propagated_delays_;
+    ++stats_.propagated_delays_;
   };
 
   auto cursor = begin(vdv_stops);
   auto skipped_stops = std::vector<vdv_stop>{};
   auto const print_skipped_stops = [&]() {
     for (auto const& s : skipped_stops) {
-      ++stats.skipped_vdv_stops_;
+      ++stats_.skipped_vdv_stops_;
       update_events << "skipped vdv stop: [id: " << s.id_ << ", name: "
                     << (s.l_ == location_idx_t::invalid()
                             ? "unresolvable"
-                            : tt.locations_.get(s.l_).name_)
+                            : tt_.locations_.get(s.l_).name_)
                     << "]\n";
     }
   };
@@ -349,7 +290,7 @@ void update_run(timetable const& tt,
     skipped_stops.clear();
     for (auto vdv_stop = cursor; vdv_stop != end(vdv_stops); ++vdv_stop) {
       if (vdv_stop->l_ != location_idx_t::invalid() &&
-          matches(tt, routing::location_match_mode::kEquivalent,
+          matches(tt_, routing::location_match_mode::kEquivalent,
                   rs.get_location_idx(), vdv_stop->l_)) {
         update_events << "location match at stop_idx = " << rs.stop_idx_
                       << ": [id: " << rs.id() << ", name: " << rs.name()
@@ -410,9 +351,9 @@ void update_run(timetable const& tt,
     update_events << "excess vdv stop: [id: " << cursor->id_ << ", name: "
                   << (cursor->l_ == location_idx_t::invalid()
                           ? "unresolvable"
-                          : tt.locations_.get(cursor->l_).name_)
+                          : tt_.locations_.get(cursor->l_).name_)
                   << "]\n";
-    ++stats.excess_vdv_stops_;
+    ++stats_.excess_vdv_stops_;
     ++cursor;
   }
 
@@ -430,64 +371,62 @@ void update_run(timetable const& tt,
   update_events << "---\n\n";
 }
 
-void process_vdv_run(timetable const& tt,
-                     rt_timetable& rtt,
-                     source_idx_t const src,
-                     pugi::xml_node const run,
-                     statistics& stats) {
-  ++stats.total_runs_;
+void updater::process_vdv_run(rt_timetable& rtt, pugi::xml_node const vdv_run) {
+  ++stats_.total_runs_;
 
-  auto vdv_stops = resolve_stops(tt, src, run, stats);
+  auto vdv_stops = resolve_stops(vdv_run);
 
   if (vdv_stops.empty()) {
-    ++stats.runs_without_stops_;
+    ++stats_.runs_without_stops_;
     auto run_without_stops =
         std::ofstream{"runs_without_stops.txt", std::ios::app};
-    run.print(run_without_stops);
+    vdv_run.print(run_without_stops);
     run_without_stops << "\n";
     return;
   }
 
-  auto r = find_run(tt, run, vdv_stops, stats);
+  auto const is_complete_run = *get_opt_bool(vdv_run, "Komplettfahrt", false);
+
+  auto const vdv_run_id =
+      std::string{get(vdv_run, "//FahrtBezeichner").child_value()}.append(
+          get(vdv_run, "//Betriebstag").child_value());
+
+  auto r = vdv_nigiri_.contains(vdv_run_id)
+               ? std::optional{vdv_nigiri_.at(vdv_run_id)}
+               : find_run(vdv_run, vdv_run_id, vdv_stops, is_complete_run);
   if (!r.has_value()) {
-    ++stats.unmatchable_runs_;
+    ++stats_.unmatchable_runs_;
     auto unmatchable_runs =
         std::ofstream{"unmatchable_runs.txt", std::ios::app};
-    run.print(unmatchable_runs);
+    vdv_run.print(unmatchable_runs);
     unmatchable_runs << "\n";
     return;
   }
-  ++stats.matched_runs_;
+  ++stats_.matched_runs_;
 
-  auto const is_complete_run = *get_opt_bool(run, "Komplettfahrt", false);
-
-  update_run(tt, rtt, src, *r, vdv_stops, is_complete_run, stats);
+  update_run(rtt, *r, vdv_stops, is_complete_run);
 }
 
-statistics vdv_update(timetable const& tt,
-                      rt_timetable& rtt,
-                      source_idx_t const src,
-                      pugi::xml_document const& doc) {
+void updater::update(rt_timetable& rtt, pugi::xml_document const& doc) {
   auto stats = statistics{};
-  for (auto const& r : doc.select_nodes("//IstFahrt")) {
-    if (get_opt_bool(r.node(), "Zusatzfahrt", false).value()) {
+  for (auto const& vdv_run : doc.select_nodes("//IstFahrt")) {
+    if (get_opt_bool(vdv_run.node(), "Zusatzfahrt", false).value()) {
       ++stats.unsupported_additional_runs_;
       auto additional_runs =
           std::ofstream{"additional_runs.txt", std::ios::app};
-      r.node().print(additional_runs);
+      vdv_run.node().print(additional_runs);
       additional_runs << "\n";
       continue;
-    } else if (get_opt_bool(r.node(), "FaelltAus", false).value()) {
+    } else if (get_opt_bool(vdv_run.node(), "FaelltAus", false).value()) {
       ++stats.unsupported_cancelled_runs_;
       auto canceled_runs = std::ofstream{"canceled_runs.txt", std::ios::app};
-      r.node().print(canceled_runs);
+      vdv_run.node().print(canceled_runs);
       canceled_runs << "\n";
       continue;
     }
 
-    process_vdv_run(tt, rtt, src, r.node(), stats);
+    process_vdv_run(rtt, vdv_run.node());
   }
-  return stats;
 }
 
 }  // namespace nigiri::rt::vdv

@@ -239,14 +239,16 @@ TEST(vdv_update, basic) {
   register_special_stations(tt);
   tt.date_range_ = {date::sys_days{2024_y / July / 1},
                     date::sys_days{2024_y / July / 31}};
-  load_timetable({}, source_idx_t{0}, vdv_test_files(), tt);
+  auto const src_idx = source_idx_t{0};
+  load_timetable({}, src_idx, vdv_test_files(), tt);
   finalize(tt);
 
   auto rtt = rt::create_rt_timetable(tt, date::sys_days{2024_y / July / 10});
 
   auto doc = pugi::xml_document{};
   doc.load_string(vdv_update_msg0);
-  rt::vdv::vdv_update(tt, rtt, source_idx_t{0}, doc);
+  auto u = rt::vdv::updater{tt, src_idx};
+  u.update(rtt, doc);
 
   auto fr = rt::frun(
       tt, &rtt,
@@ -290,7 +292,7 @@ TEST(vdv_update, basic) {
             date::sys_days{2024_y / July / 10} + 2_hours);
 
   doc.load_string(vdv_update_msg1);
-  rt::vdv::vdv_update(tt, rtt, source_idx_t{0}, doc);
+  u.update(rtt, doc);
 
   EXPECT_EQ(fr[0].scheduled_time(event_type::kDep),
             date::sys_days{2024_y / July / 9} + 22_hours);
@@ -328,7 +330,7 @@ TEST(vdv_update, basic) {
             date::sys_days{2024_y / July / 10} + 3_hours);
 
   doc.load_string(vdv_update_msg2);
-  rt::vdv::vdv_update(tt, rtt, source_idx_t{0}, doc);
+  u.update(rtt, doc);
 
   EXPECT_EQ(fr[0].scheduled_time(event_type::kDep),
             date::sys_days{2024_y / July / 9} + 22_hours);
@@ -370,41 +372,85 @@ TEST(vdv_update, basic) {
 
 namespace {
 
-mem_dir ev11_files() {
+mem_dir ev11_rvs261_files() {
   return mem_dir::read(R"__(
 # trips.txt
 "route_id","service_id","trip_id","trip_headsign","trip_short_name","direction_id","block_id","shape_id","wheelchair_accessible","bikes_allowed"
-"de:vvo:11-11:EV11_3",10408,2581118895,"A.-/Leipziger Str.","",0,,68745,0,0
+"de:vvo:11-11:EV11_3",1171,2593425252,"A.-/Leipziger Str.","",0,,47995,0,0
+"de:vvo:15-261-b_3",1171,2593414015,"Dresden Hauptbahnhof","",0,,47609,0,0
 
 # routes.txt
 "route_id","agency_id","route_short_name","route_long_name","route_type","route_color","route_text_color","route_desc"
 "de:vvo:11-11:EV11_3",8194,"EV 11","",3,"","",""
+"de:vvo:15-261-b_3",8193,"261","",3,"","",""
 
 # agency.txt
 "agency_id","agency_name","agency_url","agency_timezone","agency_lang","agency_phone"
 8194,"DVB-Bus","https://www.delfi.de","Europe/Berlin","",""
+8193,"Busübernahme OVPS","https://www.delfi.de","Europe/Berlin","",""
 
 # stop_times.txt
 "trip_id","arrival_time","departure_time","stop_id","stop_sequence","pickup_type","drop_off_type","stop_headsign"
-2581118895,17:24:00,17:24:00,"de:14612:302:1:5",0,0,0,""
-2581118895,17:25:00,17:25:00,"de:14612:302:1:2",1,0,0,""
-2581118895,17:26:00,17:26:00,"de:14612:301:1:1",2,0,0,""
-2581118895,17:27:00,17:27:00,"de:14612:305:1:1",3,0,0,""
-2581118895,17:28:00,17:28:00,"de:14612:300:2:1",4,0,0,""
-2581118895,17:29:00,17:29:00,"de:14612:299:1:1",5,0,0,""
-2581118895,17:31:00,17:31:00,"de:14612:298:1:1",6,0,0,""
-2581118895,17:33:00,17:33:00,"de:14612:297:1:1",7,0,0,""
-2581118895,17:35:00,17:35:00,"de:14612:296:1:1",8,0,0,""
-2581118895,17:36:00,17:36:00,"de:14612:295:1:1",9,0,0,""
-2581118895,17:37:00,17:37:00,"de:14612:294:1:1",10,0,0,""
-2581118895,17:38:00,17:38:00,"de:14612:293:1:1",11,0,0,""
-2581118895,17:39:00,17:39:00,"de:14612:292:2:91",12,0,0,""
-2581118895,17:41:00,17:41:00,"de:14612:291:1:1",13,0,0,""
-2581118895,17:43:00,17:43:00,"de:14612:290:1:1",14,0,0,""
-2581118895,17:45:00,17:45:00,"de:14612:12:1:1",15,0,0,""
-2581118895,17:47:00,17:47:00,"de:14612:13:2:3",16,0,0,""
-2581118895,17:49:00,17:49:00,"de:14612:16:6:92",17,0,0,""
-2581118895,17:52:00,17:52:00,"de:14612:17:2:9",18,0,0,""
+2593425252,17:24:00,17:24:00,"de:14612:302:1:5",0,0,0,""
+2593425252,17:25:00,17:25:00,"de:14612:302:1:2",1,0,0,""
+2593425252,17:26:00,17:26:00,"de:14612:301:1:1",2,0,0,""
+2593425252,17:27:00,17:27:00,"de:14612:305:1:1",3,0,0,""
+2593425252,17:28:00,17:28:00,"de:14612:300:2:1",4,0,0,""
+2593425252,17:29:00,17:29:00,"de:14612:299:1:1",5,0,0,""
+2593425252,17:31:00,17:31:00,"de:14612:298:1:1",6,0,0,""
+2593425252,17:33:00,17:33:00,"de:14612:297:1:1",7,0,0,""
+2593425252,17:35:00,17:35:00,"de:14612:296:1:1",8,0,0,""
+2593425252,17:36:00,17:36:00,"de:14612:295:1:1",9,0,0,""
+2593425252,17:37:00,17:37:00,"de:14612:294:1:1",10,0,0,""
+2593425252,17:38:00,17:38:00,"de:14612:293:1:1",11,0,0,""
+2593425252,17:39:00,17:39:00,"de:14612:292:2:91",12,0,0,""
+2593425252,17:41:00,17:41:00,"de:14612:291:1:1",13,0,0,""
+2593425252,17:43:00,17:43:00,"de:14612:290:1:1",14,0,0,""
+2593425252,17:45:00,17:45:00,"de:14612:12:1:1",15,0,0,""
+2593425252,17:47:00,17:47:00,"de:14612:13:2:3",16,0,0,""
+2593425252,17:49:00,17:49:00,"de:14612:16:6:92",17,0,0,""
+2593425252,17:52:00,17:52:00,"de:14612:17:2:9",18,0,0,""
+2593414015,16:15:00,16:15:00,"de:14628:3921:0:4",0,0,0,""
+2593414015,16:16:00,16:16:00,"de:14628:3919:0:1",1,0,0,""
+2593414015,16:17:00,16:17:00,"de:14628:3935:0:2",2,0,0,""
+2593414015,16:19:00,16:19:00,"de:14628:3934:1:1",3,0,0,""
+2593414015,16:20:00,16:20:00,"de:14628:3925:0:1",4,0,0,""
+2593414015,16:23:00,16:23:00,"de:14628:3860:0:1",5,0,0,""
+2593414015,16:25:00,16:25:00,"de:14628:3851:0:1",6,0,0,""
+2593414015,16:27:00,16:27:00,"de:14628:3850:0:1",7,0,0,""
+2593414015,16:30:00,16:35:00,"de:14628:3881:0:3",8,0,0,""
+2593414015,16:36:00,16:36:00,"de:14628:3886:0:2",9,0,0,""
+2593414015,16:38:00,16:38:00,"de:14628:3880:3:2",10,0,0,""
+2593414015,16:40:00,16:40:00,"de:14628:3889:0:1",11,0,0,""
+2593414015,16:42:00,16:42:00,"de:14628:3882:0:1",12,0,0,""
+2593414015,16:44:00,16:44:00,"de:14628:3917:0:1",13,0,0,""
+2593414015,16:45:00,16:45:00,"de:14628:3916:0:1",14,0,0,""
+2593414015,16:46:00,16:46:00,"de:14628:3915:0:1",15,0,0,""
+2593414015,16:48:00,16:48:00,"de:14628:3823:0:1",16,0,0,""
+2593414015,16:49:00,16:49:00,"de:14628:3824:3:1",17,0,0,""
+2593414015,16:51:00,16:51:00,"de:14628:3825:0:1",18,0,0,""
+2593414015,16:53:00,16:53:00,"de:14628:3826:0:1",19,0,0,""
+2593414015,16:55:00,16:55:00,"de:14628:3827:0:1",20,0,0,""
+2593414015,16:57:00,16:58:00,"de:14628:3816:0:1",21,0,0,""
+2593414015,16:59:00,16:59:00,"de:14628:3817:0:1",22,0,0,""
+2593414015,17:02:00,17:02:00,"de:14628:3836:0:1",23,0,0,""
+2593414015,17:06:00,17:06:00,"de:14628:3810:0:1",24,0,0,""
+2593414015,17:09:00,17:09:00,"de:14625:6791:0:1",25,0,0,""
+2593414015,17:13:00,17:13:00,"de:14612:6765:0:1",26,0,0,""
+2593414015,17:16:00,17:16:00,"de:14612:6764:0:2",27,0,0,""
+2593414015,17:17:00,17:17:00,"de:14612:6769:0:1",28,0,0,""
+2593414015,17:19:00,17:19:00,"de:14612:3771:0:1",29,0,0,""
+2593414015,17:22:00,17:22:00,"de:14612:3775:1:1",30,0,0,""
+2593414015,17:23:00,17:23:00,"de:14612:3774:1:1",31,0,0,""
+2593414015,17:26:00,17:26:00,"de:14612:302:5:12",32,0,0,""
+2593414015,17:28:00,17:28:00,"de:14612:300:2:1",33,0,0,""
+2593414015,17:31:00,17:31:00,"de:14612:298:1:1",34,0,0,""
+2593414015,17:36:00,17:36:00,"de:14612:294:1:1",35,0,0,""
+2593414015,17:37:00,17:37:00,"de:14612:293:1:1",36,0,0,""
+2593414015,17:44:00,17:44:00,"de:14612:13:3:6",37,0,0,""
+2593414015,17:48:00,17:48:00,"de:14612:5:3:5",38,0,0,""
+2593414015,17:50:00,17:50:00,"de:14612:29:2:4",39,0,0,""
+2593414015,17:53:00,17:53:00,"de:14612:28:2:6",40,0,0,""
 
 # stops.txt
 "stop_id","stop_code","stop_name","stop_desc","stop_lat","stop_lon","location_type","parent_station","wheelchair_boarding","platform_code","level_id"
@@ -427,22 +473,65 @@ mem_dir ev11_files() {
 "de:14612:297:1:1","","Dresden Mordgrundbrücke","Haltestelle","51.064274000000","13.811696000000",0,,0,"1","2"
 "de:14612:305:1:1","","Dresden Hegereiterstraße","Haltestelle","51.061960000000","13.843721000000",0,,0,"1","2"
 "de:14612:302:1:5","","Dresden Bühlau Ullersdorfer Pl","Hst. Strab","51.062321000000","13.855049000000",0,,0,"5","2"
+"de:14612:29:2:4","","Dresden Walpurgisstraße","Walpurgis Bus","51.043574000000","13.737648000000",0,,0,"4","2"
+"de:14612:293:1:1","","Dresden Waldschlößchen","Haltestelle","51.067453000000","13.776940000000",0,,0,"1","2"
+"de:14612:298:1:1","","Dresden Plattleite","Haltestelle","51.063761000000","13.821497000000",0,,0,"1","2"
+"de:14612:300:2:1","","Dresden Schwimmhalle Bühlau","Haltestelle Btf","51.062259000000","13.838727000000",0,,0,"1","2"
+"de:14612:3775:1:1","","Weißig Am Weißiger Bach","Haltestelle","51.062197000000","13.886158000000",0,,0,"1","2"
+"de:14612:6769:0:1","","Rossendorf Schänkhübel",,"51.063676000000","13.934846000000",0,,0,"",""
+"de:14612:6764:0:2","","Rossendorf Siedlung B 6",,"51.063772000000","13.940308000000",0,,0,"",""
+"de:14628:3810:0:1","","Wilschdorf Gasthaus",,"51.061802000000","14.012928000000",0,,0,"",""
+"de:14628:3817:0:1","","Stolpen Schützenhausstraße",,"51.050384000000","14.079394000000",0,,0,"",""
+"de:14628:3850:0:1","","Langburkersdorf Sebnitzer Str.","Langburkersdorf Sebnitzer Str.","51.024276000000","14.231955000000",0,,0,"1","2"
+"de:14628:3827:0:1","","Langenwolmsdorf Niederdorf","Langenwolmsdorf Niederdorf","51.045082000000","14.100963000000",0,,0,"1","2"
+"de:14628:3823:0:1","","Langenwolmsdorf Bahnübergang",,"51.036581000000","14.160422000000",0,,0,"",""
+"de:14628:3824:3:1","","Langenwolmsdorf Bahnhof","Bus","51.036666000000","14.153371000000",0,,0,"1","2"
+"de:14628:3917:0:1","","Polenz Erbgericht",,"51.024225000000","14.185566000000",0,,0,"",""
+"de:14628:3889:0:1","","Neustadt Neustadthalle",,"51.024672000000","14.209821000000",0,,0,"",""
+"de:14612:6765:0:1","","Rossendorf Forschungszentrum",,"51.063151000000","13.950109000000",0,,0,"",""
+"de:14628:3921:0:4","","Sebnitz Busbahnhof","Sebnitz Busbahnhof","50.967195000000","14.270646000000",0,,0,"4","2"
+"de:14628:3915:0:1","","Polenz Am Polenztal",,"51.028203000000","14.172433000000",0,,0,"",""
+"de:14628:3916:0:1","","Polenz Schmiede",,"51.025440000000","14.179889000000",0,,0,"",""
+"de:14628:3880:3:2","","Neustadt Bahnhof","Bus","51.021649000000","14.212731000000",0,,0,"2","2"
+"de:14612:28:2:6","","Dresden Hauptbahnhof","Hbf Am Hbf","51.039727000000","13.733767000000",0,,0,"6","2"
+"de:14612:3774:1:1","","Weißig Am Steinkreuz","Hst. Ri Bühlau","51.060023000000","13.878226000000",0,,0,"1","2"
+"de:14628:3816:0:1","","Stolpen Ärztehaus",,"51.050701000000","14.087066000000",0,,0,"",""
+"de:14625:6791:0:1","","Wilschdorf Abzw. Wilschdorf B6",,"51.063845000000","13.981667000000",0,,0,"",""
+"de:14628:3836:0:1","","Rennersdorf Kammergut",,"51.057810000000","14.063108000000",0,,0,"",""
+"de:14628:3925:0:1","","Sebnitz Dr.-Steudner-Straße",,"50.982852000000","14.262148000000",0,,0,"",""
+"de:14628:3881:0:3","","Neustadt Wilhelm-Kaulisch-Str.",,"51.026271000000","14.219289000000",0,,0,"",""
+"de:14628:3825:0:1","","Langenwolmsdorf Oberdorf",,"51.039394000000","14.132449000000",0,,0,"",""
+"de:14628:3860:0:1","","Rugiswalde Abzweig",,"50.999391000000","14.244046000000",0,,0,"",""
+"de:14628:3851:0:1","","Langburkersdorf Tännicht",,"51.012720000000","14.232153000000",0,,0,"",""
+"de:14612:302:5:12","","Dresden Bühlau Ullersdorfer Pl","Bus_B6","51.062123000000","13.853055000000",0,,0,"12","2"
+"de:14628:3935:0:2","","Sebnitz Brückenschänke","Schandauer","50.968728000000","14.257377000000",0,,0,"2","2"
+"de:14628:3934:1:1","","Sebnitz Schönbacher Weg","Nord","50.977021000000","14.261339000000",0,,0,"1","2"
+"de:14612:13:3:6","","Dresden Albertplatz","Albertstraße","51.061610000000","13.746003000000",0,,0,"6","2"
+"de:14628:3826:0:1","","Langenwolmsdorf Ortszentrum",,"51.042049000000","14.119118000000",0,,0,"",""
+"de:14612:5:3:5","","Dresden Pirnaischer Platz","Petersburger Str","51.048888000000","13.744484000000",0,,0,"5","2"
+"de:14612:3771:0:1","","Weißig Fußweg zum Napoleonstein",,"51.060763000000","13.919027000000",0,,0,"",""
+"de:14628:3919:0:1","","Sebnitz Schandauer Straße",,"50.968830000000","14.269837000000",0,,0,"",""
+"de:14628:3882:0:1","","Neustadt Abzweig Polenz",,"51.029999000000","14.201933000000",0,,0,"",""
+"de:14612:294:1:1","","Dresden Angelikastraße","Haltestelle","51.067035000000","13.782959000000",0,,0,"1","2"
+"de:14628:3886:0:2","","Neustadt Friedenseck",,"51.022474000000","14.219478000000",0,,0,"",""
 
 # calendar.txt
 "service_id","monday","tuesday","wednesday","thursday","friday","saturday","sunday","start_date","end_date"
-10408,1,1,1,1,1,0,0,20240729,20241214
+1171,1,1,1,1,1,0,0,20240805,20241214
 
 # calendar_dates.txt
 "service_id","date","exception_type"
-10408,20240729,2
-10408,20240805,2
-10408,20240730,2
-10408,20240731,2
-10408,20241120,2
-10408,20240801,2
-10408,20241003,2
-10408,20241031,2
-10408,20240802,2
+1171,20240805,2
+1171,20240812,2
+1171,20240806,2
+1171,20240813,2
+1171,20240807,2
+1171,20241120,2
+1171,20240808,2
+1171,20241003,2
+1171,20241031,2
+1171,20240809,2
+
 
 )__");
 }
@@ -562,22 +651,29 @@ TEST(vdv_update, rvs261) {
   register_special_stations(tt);
   tt.date_range_ = {date::sys_days{2024_y / August / 1},
                     date::sys_days{2024_y / August / 31}};
-  load_timetable({}, source_idx_t{0}, ev11_files(), tt);
+  auto const src_idx = source_idx_t{0};
+  load_timetable({}, src_idx, ev11_rvs261_files(), tt);
   finalize(tt);
 
   auto rtt = rt::create_rt_timetable(tt, date::sys_days{2024_y / August / 19});
 
+  auto u = rt::vdv::updater{tt, src_idx};
+
   auto doc = pugi::xml_document{};
   doc.load_string(update_rvs261);
-  rt::vdv::vdv_update(tt, rtt, source_idx_t{0}, doc);
+  u.update(rtt, doc);
 
-  auto fr = rt::frun(
-      tt, &rtt,
-      {{transport_idx_t{0}, day_idx_t{23}}, {stop_idx_t{0}, stop_idx_t{19}}});
+  auto fr_ev11 = rt::frun{
+      tt,
+      &rtt,
+      {{transport_idx_t{0}, day_idx_t{23}}, {stop_idx_t{0}, stop_idx_t{19}}}};
+  EXPECT_FALSE(fr_ev11.is_rt());
 
-  // ev11 and rvs261 have matching departure times but line name should prevent
-  // match
-  EXPECT_FALSE(fr.is_rt());
+  auto fr_rvs261 = rt::frun{
+      tt,
+      &rtt,
+      {{transport_idx_t{1}, day_idx_t{23}}, {stop_idx_t{0}, stop_idx_t{41}}}};
+  EXPECT_TRUE(fr_rvs261.is_rt());
 }
 
 namespace {
@@ -1007,14 +1103,17 @@ TEST(vdv_update, vgm270) {
   register_special_stations(tt);
   tt.date_range_ = {date::sys_days{2024_y / August / 1},
                     date::sys_days{2024_y / August / 31}};
-  load_timetable({}, source_idx_t{0}, sv270_files(), tt);
+  auto const src_idx = source_idx_t{0};
+  load_timetable({}, src_idx, sv270_files(), tt);
   finalize(tt);
 
   auto rtt = rt::create_rt_timetable(tt, date::sys_days{2024_y / August / 20});
 
+  auto u = rt::vdv::updater{tt, src_idx};
+
   auto doc = pugi::xml_document{};
   doc.load_string(update_vgm270);
-  rt::vdv::vdv_update(tt, rtt, source_idx_t{0}, doc);
+  u.update(rtt, doc);
 
   auto fr = rt::frun(
       tt, &rtt,
@@ -1290,14 +1389,17 @@ TEST(vdv_update, smd712) {
   register_special_stations(tt);
   tt.date_range_ = {date::sys_days{2024_y / August / 1},
                     date::sys_days{2024_y / August / 31}};
-  load_timetable({}, source_idx_t{0}, smd712_files(), tt);
+  auto const src_idx = source_idx_t{0};
+  load_timetable({}, src_idx, smd712_files(), tt);
   finalize(tt);
 
   auto rtt = rt::create_rt_timetable(tt, date::sys_days{2024_y / August / 20});
 
+  auto u = rt::vdv::updater{tt, src_idx};
+
   auto doc = pugi::xml_document{};
   doc.load_string(update_smd712);
-  rt::vdv::vdv_update(tt, rtt, source_idx_t{0}, doc);
+  u.update(rtt, doc);
 
   auto fr = rt::frun(
       tt, &rtt,
@@ -1624,14 +1726,17 @@ TEST(vdv_update, rbo920) {
   register_special_stations(tt);
   tt.date_range_ = {date::sys_days{2024_y / August / 1},
                     date::sys_days{2024_y / August / 31}};
-  load_timetable({}, source_idx_t{0}, rbo920_files(), tt);
+  auto const src_idx = source_idx_t{0};
+  load_timetable({}, src_idx, rbo920_files(), tt);
   finalize(tt);
 
   auto rtt = rt::create_rt_timetable(tt, date::sys_days{2024_y / August / 20});
 
+  auto u = rt::vdv::updater{tt, src_idx};
+
   auto doc = pugi::xml_document{};
   doc.load_string(update_rbo920);
-  rt::vdv::vdv_update(tt, rtt, source_idx_t{0}, doc);
+  u.update(rtt, doc);
 
   auto fr = rt::frun(
       tt, &rtt,
