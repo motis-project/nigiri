@@ -166,7 +166,7 @@ using provider_idx_t = cista::strong<std::uint32_t, struct _provider_idx>;
 using transport_range_t = pair<transport_idx_t, interval<stop_idx_t>>;
 
 using meat_t = double;
-// TODO: auch day_idx ?
+
 struct ride {
   connection_idx_t enter_conn_;
   connection_idx_t exit_conn_;
