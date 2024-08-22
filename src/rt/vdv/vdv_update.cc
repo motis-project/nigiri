@@ -168,7 +168,7 @@ std::optional<rt::run> updater::find_run(pugi::xml_node const vdv_run,
                   0U);
               candidate = end(candidates) - 1;
             }
-
+            ++candidate->n_matches_;
             no_transport_found_at_stop = false;
           }
         }
