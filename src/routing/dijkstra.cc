@@ -28,15 +28,26 @@ void dijkstra(timetable const& tt,
   utl::fill(dists, std::numeric_limits<label::dist_t>::max());
 
   std::map<location_idx_t, label::dist_t> min;
+  auto const update_min = [&](location_idx_t const x, duration_t const d) {
+    auto const p = tt.locations_.parents_[x];
+    auto const l = (p == location_idx_t::invalid()) ? x : p;
+    auto& m = utl::get_or_create(min, l, [&]() { return dists[to_idx(l)]; });
+    m = std::min(static_cast<label::dist_t>(d.count()), m);
+  };
+
   for (auto const& start : q.destination_) {
     for_each_meta(
-        tt, q.dest_match_mode_, start.target_, [&](location_idx_t const x) {
-          auto const p = tt.locations_.parents_[x];
-          auto const l = (p == location_idx_t::invalid()) ? x : p;
-          auto& m =
-              utl::get_or_create(min, l, [&]() { return dists[to_idx(l)]; });
-          m = std::min(static_cast<label::dist_t>(start.duration().count()), m);
-        });
+        tt, q.dest_match_mode_, start.target_,
+        [&](location_idx_t const x) { update_min(x, start.duration()); });
+  }
+
+  for (auto const& [from, td] : q.td_dest_) {
+    for (auto const& fp : td) {
+      if (fp.duration_ != footpath::kMaxDuration &&
+          fp.duration_ < kMaxTravelTime) {
+        update_min(from, fp.duration_);
+      }
+    }
   }
 
   auto pq = dial<label, get_bucket>{kMaxTravelTime.count()};

@@ -1,6 +1,5 @@
 #include "gtest/gtest.h"
 
-#include "nigiri/loader/gtfs/files.h"
 #include "nigiri/loader/gtfs/load_timetable.h"
 #include "nigiri/loader/hrd/load_timetable.h"
 #include "nigiri/loader/init_finish.h"
@@ -33,45 +32,41 @@ namespace {
 // => delay T_RE2 at B  [03.05. 00:30]+2h = [03.05. 02:30]
 // => search connection from A --> D (only possible if the transfer at B works!)
 mem_dir test_files() {
-  using std::filesystem::path;
-  return {
-      {{path{kAgencyFile},
-        std::string{
-            R"(agency_id,agency_name,agency_url,agency_timezone
+  return mem_dir::read(R"(
+# agency.txt
+agency_id,agency_name,agency_url,agency_timezone
 DB,Deutsche Bahn,https://deutschebahn.com,Europe/Berlin
-)"}},
-       {path{kStopFile},
-        std::string{
-            R"(stop_id,stop_name,stop_desc,stop_lat,stop_lon,stop_url,location_type,parent_station
+
+# stops.txt
+stop_id,stop_name,stop_desc,stop_lat,stop_lon,stop_url,location_type,parent_station
 A,A,,0.0,1.0,,
 B,B,,2.0,3.0,,
 C,C,,4.0,5.0,,
 D,D,,6.0,7.0,,
-)"}},
-       {path{kCalendarDatesFile}, std::string{R"(service_id,date,exception_type
+
+# calendar_dates.txt
+service_id,date,exception_type
 S_RE1,20190501,1
 S_RE2,20190503,1
-)"}},
-       {path{kRoutesFile},
-        std::string{
-            R"(route_id,agency_id,route_short_name,route_long_name,route_desc,route_type
+
+# routes.txt
+route_id,agency_id,route_short_name,route_long_name,route_desc,route_type
 R_RE1,DB,RE 1,,,3
 R_RE2,DB,RE 2,,,3
-)"}},
-       {path{kTripsFile},
-        std::string{R"(route_id,service_id,trip_id,trip_headsign,block_id
+
+# trips.txt
+route_id,service_id,trip_id,trip_headsign,block_id
 R_RE1,S_RE1,T_RE1,RE 1,
 R_RE2,S_RE2,T_RE2,RE 2,
-)"}},
-       {path{kStopTimesFile},
-        std::string{
-            R"(trip_id,arrival_time,departure_time,stop_id,stop_sequence,pickup_type,drop_off_type
+
+# stop_times.txt
+trip_id,arrival_time,departure_time,stop_id,stop_sequence,pickup_type,drop_off_type
 T_RE1,49:00:00,49:00:00,A,1,0,0
 T_RE1,50:00:00,50:00:00,B,2,0,0
 T_RE2,00:30:00,00:30:00,B,1,0,0
 T_RE2,00:45:00,00:45:00,C,2,0,0
 T_RE2,01:00:00,01:00:00,D,3,0,0
-)"}}}};
+)");
 }
 
 constexpr auto const fwd_journeys = R"([2019-05-02 23:00, 2019-05-03 01:00]
@@ -106,12 +101,7 @@ TEST(routing, rt_raptor_forward) {
   finalize(tt);
 
   // Create empty RT timetable.
-  auto rtt = rt_timetable{};
-  rtt.transport_traffic_days_ = tt.transport_traffic_days_;
-  rtt.bitfields_ = tt.bitfields_;
-  rtt.base_day_ = date::sys_days{2019_y / May / 3};
-  rtt.base_day_idx_ = tt.day_idx(rtt.base_day_);
-  rtt.location_rt_transports_[location_idx_t{tt.n_locations() - 1U}];
+  auto rtt = rt::create_rt_timetable(tt, date::sys_days{2019_y / May / 3});
 
   transit_realtime::FeedMessage msg;
 

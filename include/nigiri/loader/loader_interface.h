@@ -5,6 +5,7 @@
 
 #include "geo/latlng.h"
 
+#include "nigiri/loader/assistance.h"
 #include "nigiri/loader/dir.h"
 #include "nigiri/types.h"
 
@@ -33,6 +34,7 @@ struct loader_interface {
                     dir const&,
                     timetable&,
                     hash_map<bitfield, bitfield_idx_t>&,
+                    assistance_times*,
                     mm_vecvec<uint32_t, ::geo::latlng>* = nullptr) const = 0;
   virtual cista::hash_t hash(dir const&) const = 0;
   virtual std::string_view name() const = 0;
