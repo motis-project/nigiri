@@ -186,6 +186,10 @@ std::optional<rt::run> updater::find_run(pugi::xml_node const vdv_run,
       begin(candidates), end(candidates),
       [](auto const& a, auto const& b) { return a.n_matches_ > b.n_matches_; });
 
+  if (candidates.front().n_matches_ < vdv_stops.size() / 2) {
+    return std::nullopt;
+  }
+
   if (candidates.size() > 1 &&
       candidates[0].n_matches_ == candidates[1].n_matches_) {
     ++stats_.multiple_matches_;
