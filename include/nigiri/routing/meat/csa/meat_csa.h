@@ -12,6 +12,7 @@
 
 namespace nigiri::routing::meat::csa {
 
+template <typename ProfileSet>
 struct meat_csa {
   meat_csa(timetable const& tt,
            day_idx_t const base,
@@ -67,11 +68,11 @@ struct meat_csa {
                         con_begin, con_end, start_location, s_time);
 
     if (without_clasz_filter) {
-      mpc_.compute_profile_set<false>(con_begin, con_end, ea, end_location,
+      mpc_.template compute_profile_set<false>(con_begin, con_end, ea, end_location,
                                       s_time, max_delay_, fuzzy_parameter_,
                                       meat_transfer_cost_);
     } else {
-      mpc_.compute_profile_set<true>(con_begin, con_end, ea, end_location,
+      mpc_.template compute_profile_set<true>(con_begin, con_end, ea, end_location,
                                      s_time, max_delay_, fuzzy_parameter_,
                                      meat_transfer_cost_);
     }
@@ -80,7 +81,7 @@ struct meat_csa {
     int max_arrow_count = std::numeric_limits<int>::max();
     int max_display_delay;
     std::tie(result_graph, max_display_delay) =
-        extract_small_sub_decision_graph(
+        extract_small_sub_decision_graph<ProfileSet>(
             dge_, mpc_.get_profile_set(), start_location, s_time, end_location,
             max_delay_, max_ride_count, max_arrow_count);
     result_graph.compute_use_probabilities(tt_, max_delay_);
@@ -380,8 +381,8 @@ private:
   double fuzzy_parameter_;
   clasz_mask_t allowed_claszes_;
   profile_idx_t prf_idx_;
-  meat_profile_computer mpc_;
-  decision_graph_extractor dge_;
+  meat_profile_computer<ProfileSet> mpc_;
+  decision_graph_extractor<ProfileSet> dge_;
 };
 
 }  // namespace nigiri::routing::meat::csa

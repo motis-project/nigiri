@@ -12,6 +12,7 @@
 
 namespace nigiri::routing::meat::csa {
 
+template <typename ProfileSet>
 struct meat_profile_computer {
 
   struct trip_data {
@@ -41,7 +42,7 @@ struct meat_profile_computer {
     assert(trip_.size() == tt_.n_transports());
   }
 
-  const profile_set& get_profile_set() const { return profile_set_; }
+  const ProfileSet& get_profile_set() const { return profile_set_; }
 
   std::pair<day_idx_t, minutes_after_midnight_t> split(delta_t const x) const {
     return split_day_mam(base_, x);
@@ -231,7 +232,7 @@ struct meat_profile_computer {
   profile_idx_t const& fp_prf_idx_;
   std::vector<transport_idx_t> trip_reset_list_;
   transport_idx_t::value_t trip_reset_list_end_;
-  profile_set profile_set_;
+  ProfileSet profile_set_;
   vecvec<transport_idx_t, trip_data> trip_;
   std::priority_queue<std::unique_ptr<profile_entry>,
                       std::vector<std::unique_ptr<profile_entry>>,

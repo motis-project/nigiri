@@ -4,7 +4,7 @@
 
 namespace nigiri::routing::meat::csa {
 
-profile_set::profile_set(timetable const& tt)
+static_profile_set::static_profile_set(timetable const& tt)
     : fp_dis_to_target_(tt.n_locations(),
                         std::numeric_limits<meat_t>::infinity()),
       fp_to_target_reset_list_(tt.n_locations()),
@@ -56,7 +56,7 @@ profile_set::profile_set(timetable const& tt)
   }
 }
 
-val_t_con profile_set::compute_entry_amount() const {
+val_t_con static_profile_set::compute_entry_amount() const {
   val_t_con n = -entry_begin_end_.size();
   for (auto p : entry_begin_end_) n += p.second - p.first;
   return n;
