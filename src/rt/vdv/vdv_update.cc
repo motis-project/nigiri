@@ -130,57 +130,60 @@ std::optional<rt::run> updater::find_run(pugi::xml_node const vdv_run,
       continue;
     }
     auto no_transport_found_at_stop = true;
-    for (auto const r : tt_.location_routes_[vdv_stop.l_]) {
-      auto const location_seq = tt_.route_location_seq_[r];
-      for (auto const [stop_idx, s] : utl::enumerate(location_seq)) {
-        if (!matches(tt_, routing::location_match_mode::kEquivalent,
-                     stop{s}.location_idx(), vdv_stop.l_)) {
-          continue;
-        }
-
-        auto ev = vdv_stop.get_event(event_type::kDep);
-        if (stop_idx == location_seq.size() - 1) {
-          ev = vdv_stop.get_event(event_type::kArr);
-        }
-        if (!ev.has_value()) {
-          continue;
-        }
-
-        auto const [t, ev_type] = *ev;
-        auto const [day_idx, mam] = tt_.day_idx_mam(t);
-
-        for (auto const [ev_time_idx, ev_time] :
-             utl::enumerate(tt_.event_times_at_stop(
-                 r, static_cast<stop_idx_t>(stop_idx), ev_type))) {
-          if (!epsilon_equal(ev_time.mam(), mam.count())) {
+    for (auto const l : tt_.locations_.equivalences_[vdv_stop.l_]) {
+      for (auto const r : tt_.location_routes_[l]) {
+        auto const location_seq = tt_.route_location_seq_[r];
+        for (auto const [stop_idx, s] : utl::enumerate(location_seq)) {
+          if (!matches(tt_, routing::location_match_mode::kEquivalent,
+                       stop{s}.location_idx(), vdv_stop.l_)) {
             continue;
           }
 
-          auto const tr = transport{tt_.route_transport_ranges_[r][ev_time_idx],
-                                    day_idx - day_idx_t{ev_time.days()}};
+          auto ev = vdv_stop.get_event(event_type::kDep);
+          if (stop_idx == location_seq.size() - 1) {
+            ev = vdv_stop.get_event(event_type::kArr);
+          }
+          if (!ev.has_value()) {
+            continue;
+          }
 
-          if (tt_.bitfields_[tt_.transport_traffic_days_[tr.t_idx_]].test(
-                  to_idx(tr.day_))) {
+          auto const [t, ev_type] = *ev;
+          auto const [day_idx, mam] = tt_.day_idx_mam(t);
 
-            auto candidate =
-                std::find_if(begin(candidates), end(candidates),
-                             [&](auto const& c) { return c.r_.t_ == tr; });
-
-            if (candidate != end(candidates) &&
-                stop_idx < candidate->r_.stop_range_.from_) {
+          for (auto const [ev_time_idx, ev_time] :
+               utl::enumerate(tt_.event_times_at_stop(
+                   r, static_cast<stop_idx_t>(stop_idx), ev_type))) {
+            if (!epsilon_equal(ev_time.mam(), mam.count())) {
               continue;
             }
 
-            if (candidate == end(candidates)) {
-              candidates.emplace_back(
-                  run{tr,
-                      interval{static_cast<stop_idx_t>(stop_idx),
-                               static_cast<stop_idx_t>(location_seq.size())}},
-                  0U);
-              candidate = end(candidates) - 1;
+            auto const tr =
+                transport{tt_.route_transport_ranges_[r][ev_time_idx],
+                          day_idx - day_idx_t{ev_time.days()}};
+
+            if (tt_.bitfields_[tt_.transport_traffic_days_[tr.t_idx_]].test(
+                    to_idx(tr.day_))) {
+
+              auto candidate =
+                  std::find_if(begin(candidates), end(candidates),
+                               [&](auto const& c) { return c.r_.t_ == tr; });
+
+              if (candidate != end(candidates) &&
+                  stop_idx < candidate->r_.stop_range_.from_) {
+                continue;
+              }
+
+              if (candidate == end(candidates)) {
+                candidates.emplace_back(
+                    run{tr,
+                        interval{static_cast<stop_idx_t>(stop_idx),
+                                 static_cast<stop_idx_t>(location_seq.size())}},
+                    0U);
+                candidate = end(candidates) - 1;
+              }
+              ++candidate->n_matches_;
+              no_transport_found_at_stop = false;
             }
-            ++candidate->n_matches_;
-            no_transport_found_at_stop = false;
           }
         }
       }
