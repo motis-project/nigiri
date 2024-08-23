@@ -10,6 +10,7 @@
 #include "nigiri/rt/create_rt_timetable.h"
 #include "nigiri/rt/gtfsrt_update.h"
 #include "nigiri/rt/rt_timetable.h"
+#include "nigiri/shape.h"
 #include "nigiri/timetable.h"
 #include "nigiri/types.h"
 
@@ -70,8 +71,8 @@ TEST(gtfs, shapeRequest_noShape_getEmptyVector) {
                                tt);
   loader::finalize(tt);
 
-  auto const shape_by_trip_index = tt.get_shape(trip_idx_t{1}, nullptr);
-  auto const shape_by_shape_index = tt.get_shape(shape_idx_t{1}, nullptr);
+  auto const shape_by_trip_index = get_shape(trip_idx_t{1}, tt, nullptr);
+  auto const shape_by_shape_index = get_shape(shape_idx_t{1}, nullptr);
 
   auto expected_shape = geo::polyline{};
   EXPECT_EQ(expected_shape, shape_by_trip_index);
@@ -179,9 +180,9 @@ TEST(gtfs, shapeRequest_singleTripWithShape_getFullShape) {
 
   // Testing shape 'Last', used by 'Trip 3' (index == 2)
   auto const shape_by_trip_index =
-      tt.get_shape(trip_idx_t{2}, &mmap.get_vecvec());
+      get_shape(trip_idx_t{2}, tt, &mmap.get_vecvec());
   auto const shape_by_shape_index =
-      tt.get_shape(shape_idx_t{3}, &mmap.get_vecvec());
+      get_shape(shape_idx_t{3}, &mmap.get_vecvec());
 
   auto expected_shape = geo::polyline{
       {4.0f, 5.0f}, {5.5f, 2.5f}, {5.5f, 3.0f},
@@ -207,9 +208,9 @@ TEST(gtfs, shapeRequest_singleTripWithoutShape_getEmptyShape) {
 
   // Testing trip without shape, i.e. 'Trip 4' (index == 3)
   auto const shape_by_trip_index =
-      tt.get_shape(trip_idx_t{3}, &mmap.get_vecvec());
+      get_shape(trip_idx_t{3}, tt, &mmap.get_vecvec());
   auto const shape_by_shape_index =
-      tt.get_shape(shape_idx_t::invalid(), &mmap.get_vecvec());
+      get_shape(shape_idx_t::invalid(), &mmap.get_vecvec());
 
   auto expected_shape = geo::polyline{};
   EXPECT_EQ(expected_shape, shape_by_trip_index);
@@ -235,7 +236,7 @@ TEST(gtfs, shapeRequest_singleTripWithoutShape_getEmptyShape) {
 //     std::cout << "Size: " << r.size() << std::endl;
 //   }
 //   auto const trip_idx = trip_idx_t{1};  // TODO
-//   auto const shape = tt.get_shape(trip_idx, &mmap.get_vecvec());
+//   auto const shape = get_shape(trip_idx, tt, &mmap.get_vecvec());
 
 //   auto expected_shape = geo::polyline{
 //     {2.4f, 2.0f},
@@ -262,7 +263,7 @@ TEST(gtfs, shapeRequest_singleTripWithoutShape_getEmptyShape) {
 //   loader::finalize(tt);
 
 //   auto const trip_idx = trip_idx_t{1};  // TODO
-//   auto const shape = tt.get_shape(trip_idx, nullptr);
+//   auto const shape = get_shape(trip_idx, tt, nullptr);
 
 //   auto expected_shape = geo::polyline{};
 //   EXPECT_EQ(expected_shape, shape);

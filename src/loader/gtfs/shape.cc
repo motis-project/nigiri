@@ -6,7 +6,6 @@
 #include "utl/pipes/for_each.h"
 #include "utl/progress_tracker.h"
 
-#include "nigiri/loader/gtfs/shape.h"
 #include "nigiri/logging.h"
 
 namespace nigiri::loader::gtfs {

@@ -340,25 +340,6 @@ struct timetable {
                         }});
   }
 
-  geo::polyline get_shape(
-      shape_idx_t shape_idx,
-      mm_vecvec<shape_idx_t, geo::latlng> const* const shape_vecvec) const {
-    if (shape_vecvec == nullptr || shape_idx == shape_idx_t::invalid()) {
-      return {};
-    }
-    auto const& bucket = shape_vecvec->at(shape_idx);
-    return geo::polyline(bucket.begin(), bucket.end());
-  }
-
-  geo::polyline get_shape(
-      trip_idx_t trip_idx,
-      mm_vecvec<shape_idx_t, geo::latlng> const* const shape_vecvec) const {
-    if (shape_vecvec == nullptr || trip_idx == trip_idx_t::invalid()) {
-      return {};
-    }
-    return get_shape(trip_shape_indices_.at(trip_idx), shape_vecvec);
-  }
-
   std::string_view transport_name(transport_idx_t const t) const {
     return trip_display_names_
         [merged_trips_[transport_to_trip_section_[t].front()].front()]
