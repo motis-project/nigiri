@@ -212,6 +212,7 @@ decision_graph decision_graph_extractor<ProfileSet>::operator()(
 }
 
 template struct decision_graph_extractor<static_profile_set>;
+template struct decision_graph_extractor<dynamic_profile_set>;
 template struct decision_graph_extractor<dynamic_growth_profile_set>;
 
 }  // namespace nigiri::routing::meat::csa
