@@ -3,18 +3,17 @@
 
 namespace nigiri {
 
-geo::polyline get_shape(
-    trip_idx_t trip_idx, timetable const& tt,
-    shape_vecvec_t const* const shape_vecvec) {
-if (shape_vecvec == nullptr || trip_idx == trip_idx_t::invalid()) {
+geo::polyline get_shape(trip_idx_t trip_idx,
+                        timetable const& tt,
+                        shape_vecvec_t const* const shape_vecvec) {
+  if (shape_vecvec == nullptr || trip_idx == trip_idx_t::invalid()) {
     return {};
-}
-return get_shape(tt.trip_shape_indices_.at(trip_idx), shape_vecvec);
+  }
+  return get_shape(tt.trip_shape_indices_.at(trip_idx), shape_vecvec);
 }
 
-geo::polyline get_shape(
-    shape_idx_t const shape_idx,
-    shape_vecvec_t const* const shape_vecvec) {
+geo::polyline get_shape(shape_idx_t const shape_idx,
+                        shape_vecvec_t const* const shape_vecvec) {
   if (shape_vecvec == nullptr || shape_idx == shape_idx_t::invalid()) {
     return {};
   }
@@ -22,4 +21,4 @@ geo::polyline get_shape(
   return geo::polyline(bucket.begin(), bucket.end());
 }
 
-}
+}  // namespace nigiri
