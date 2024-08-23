@@ -98,7 +98,7 @@ vector<updater::vdv_stop> updater::resolve_stops(pugi::xml_node const vdv_run) {
 }
 
 struct candidate {
-  explicit candidate(run&& r) : r_{std::move(r)} {}
+  explicit candidate(run const& r) : r_{r} {}
 
   friend bool operator<(candidate const& a, candidate const& b) {
     return a.n_matches_ > b.n_matches_ ||
