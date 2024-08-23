@@ -18,6 +18,7 @@ struct meat_csa {
            clasz_mask_t const allowed_claszes,
            delta_t max_delay = 30,
            double bound_parameter = 1.0,
+           meat_t meat_transfer_cost = 0.0,
            double fuzzy_parameter = 0.0)
       : tt_{tt},
         end_of_tt_{tt_.internal_interval().to_},
@@ -25,6 +26,7 @@ struct meat_csa {
         n_days_{tt_.internal_interval_days().size().count()},
         max_delay_{max_delay},
         bound_parameter_{bound_parameter},
+        meat_transfer_cost_{meat_transfer_cost},
         fuzzy_parameter_{fuzzy_parameter},
         allowed_claszes_{allowed_claszes},
         prf_idx_{0},
@@ -66,10 +68,12 @@ struct meat_csa {
 
     if (without_clasz_filter) {
       mpc_.compute_profile_set<false>(con_begin, con_end, ea, end_location,
-                                      s_time, max_delay_, fuzzy_parameter_, 1);
+                                      s_time, max_delay_, fuzzy_parameter_,
+                                      meat_transfer_cost_);
     } else {
       mpc_.compute_profile_set<true>(con_begin, con_end, ea, end_location,
-                                     s_time, max_delay_, fuzzy_parameter_, 1);
+                                     s_time, max_delay_, fuzzy_parameter_,
+                                     meat_transfer_cost_);
     }
 
     int max_ride_count = std::numeric_limits<int>::max();
@@ -372,6 +376,7 @@ private:
   int n_days_;
   delta_t max_delay_;
   double bound_parameter_;  // alpha
+  meat_t meat_transfer_cost_;
   double fuzzy_parameter_;
   clasz_mask_t allowed_claszes_;
   profile_idx_t prf_idx_;
