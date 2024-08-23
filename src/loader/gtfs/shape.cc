@@ -44,7 +44,7 @@ shape_id_map_t const parse_shapes(std::string_view const data,
           geo::latlng{entry.lat_.val(), entry.lon_.val()});
       state.last_seq_ = seq;
     } else {
-      auto const index = static_cast<shape_idx_t>(states.size());
+      auto const index = static_cast<shape_idx_t>(vecvec->size());
       auto bucket = vecvec->add_back_sized(0u);
       states.insert({entry.id_->view(), {index, entry.seq_.val()}});
       bucket.push_back(geo::latlng{entry.lat_.val(), entry.lon_.val()});
