@@ -2036,6 +2036,7 @@ TEST(vdv_update, ovo65) {
   doc.load_string(update_ovo65);
   u.update(rtt, doc);
 
+  // the shorter transport is a better match as it has a better matching ratio
   auto const fr0 = rt::frun{
       tt,
       &rtt,
