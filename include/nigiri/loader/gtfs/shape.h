@@ -16,6 +16,6 @@ namespace nigiri::loader::gtfs {
 using shape_id_map_t = hash_map<std::string, shape_idx_t>;
 
 shape_id_map_t const parse_shapes(std::string_view const,
-                                  mm_vecvec<uint32_t, geo::latlng>*);
+                                  mm_vecvec<shape_idx_t, geo::latlng>*);
 
 }  // namespace nigiri::loader::gtfs

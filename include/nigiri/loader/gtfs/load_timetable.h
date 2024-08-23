@@ -25,7 +25,7 @@ void load_timetable(loader_config const&,
                     dir const&,
                     timetable&,
                     assistance_times* = nullptr,
-                    mm_vecvec<uint32_t, geo::latlng>* = nullptr);
+                    mm_vecvec<shape_idx_t, geo::latlng>* = nullptr);
 
 void load_timetable(loader_config const&,
                     source_idx_t,
@@ -33,6 +33,6 @@ void load_timetable(loader_config const&,
                     timetable&,
                     hash_map<bitfield, bitfield_idx_t>&,
                     assistance_times* = nullptr,
-                    mm_vecvec<uint32_t, geo::latlng>* = nullptr);
+                    mm_vecvec<shape_idx_t, geo::latlng>* = nullptr);
 
 }  // namespace nigiri::loader::gtfs

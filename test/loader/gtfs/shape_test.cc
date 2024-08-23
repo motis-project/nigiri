@@ -74,8 +74,8 @@ TEST(gtfs, shapeBuilder_withData_getExistingShapePoints) {
   EXPECT_EQ(shapes.end(), shape_not_existing_it);
   EXPECT_NE(shapes.end(), shape_243_it);
   EXPECT_NE(shapes.end(), shape_3105_it);
-  auto const shape_243 = vecvec[shape_243_it->second.v_];
-  auto const shape_3105 = vecvec[shape_3105_it->second.v_];
+  auto const shape_243 = vecvec[shape_243_it->second];
+  auto const shape_3105 = vecvec[shape_3105_it->second];
   assert_polyline_eq(shape_points_aachen.at("243"),
                      geo::polyline{shape_243.begin(), shape_243.end()});
   assert_polyline_eq(shape_points_aachen.at("3105"),
@@ -110,7 +110,7 @@ test id,50.553822,6.356876,0
   for (auto const& id : ids) {
     auto shape_it = shapes.find(id);
     EXPECT_NE(shapes.end(), shape_it);
-    EXPECT_EQ(1, vecvec[shape_it->second.v_].size());
+    EXPECT_EQ(1, vecvec[shape_it->second].size());
   }
 }
 
@@ -135,7 +135,7 @@ TEST(gtfs, shapeParse_notAscendingSequence_progressAndLogError) {
   std::string log{buffer.str()};
   auto const shape_it = shapes.find("1");
   EXPECT_NE(shapes.end(), shape_it);
-  auto const shape = vecvec[shape_it->second.v_];
+  auto const shape = vecvec[shape_it->second];
   assert_polyline_eq(shape_points, geo::polyline{shape.begin(), shape.end()});
   EXPECT_TRUE(
       log.contains("Non monotonic sequence for shape_id '1': Sequence number 1 "
@@ -198,7 +198,7 @@ TEST(gtfs, shapeParse_shuffledRows_parseAllData) {
   for (auto [id, polyline] : shape_points) {
     auto const shape_it = shapes.find(id);
     EXPECT_NE(shapes.end(), shape_it);
-    auto const shape = vecvec[shape_it->second.v_];
+    auto const shape = vecvec[shape_it->second];
     assert_polyline_eq(polyline, geo::polyline{shape.begin(), shape.end()});
   }
 }

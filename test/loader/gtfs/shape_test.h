@@ -9,7 +9,7 @@
 namespace nigiri::loader::gtfs {
 
 class shape_test_mmap {
-  using Key = uint32_t;
+  using Key = shape_idx_t;
   using Value = geo::latlng;
   static auto create_paths(std::string base_path) {
     return std::vector<std::string>{base_path + "-data.dat",

@@ -342,17 +342,17 @@ struct timetable {
 
   geo::polyline get_shape(
       shape_idx_t shape_idx,
-      mm_vecvec<uint32_t, geo::latlng> const* const shape_vecvec) const {
+      mm_vecvec<shape_idx_t, geo::latlng> const* const shape_vecvec) const {
     if (shape_vecvec == nullptr || shape_idx == shape_idx_t::invalid()) {
       return {};
     }
-    auto const& bucket = shape_vecvec->at(shape_idx.v_);
+    auto const& bucket = shape_vecvec->at(shape_idx);
     return geo::polyline(bucket.begin(), bucket.end());
   }
 
   geo::polyline get_shape(
       trip_idx_t trip_idx,
-      mm_vecvec<uint32_t, geo::latlng> const* const shape_vecvec) const {
+      mm_vecvec<shape_idx_t, geo::latlng> const* const shape_vecvec) const {
     if (shape_vecvec == nullptr || trip_idx == trip_idx_t::invalid()) {
       return {};
     }

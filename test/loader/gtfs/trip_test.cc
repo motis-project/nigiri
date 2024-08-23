@@ -6,6 +6,7 @@
 
 #include "nigiri/loader/gtfs/agency.h"
 #include "nigiri/loader/gtfs/files.h"
+#include "nigiri/loader/gtfs/shape.h"
 #include "nigiri/loader/gtfs/trip.h"
 #include "nigiri/loader/loader_interface.h"
 #include "nigiri/timetable.h"

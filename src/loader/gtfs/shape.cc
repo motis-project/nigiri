@@ -1,3 +1,5 @@
+#include "nigiri/loader/gtfs/shape.h"
+
 #include "utl/parser/buf_reader.h"
 #include "utl/parser/csv_range.h"
 #include "utl/parser/line_range.h"
@@ -10,7 +12,7 @@
 namespace nigiri::loader::gtfs {
 
 shape_id_map_t const parse_shapes(std::string_view const data,
-                                  mm_vecvec<uint32_t, geo::latlng>* vecvec) {
+                                  mm_vecvec<shape_idx_t, geo::latlng>* vecvec) {
   if (vecvec == nullptr) {
     return {};
   }
@@ -38,11 +40,11 @@ shape_id_map_t const parse_shapes(std::string_view const data,
             "followed by {}",
             entry.id_.val().to_str(), state.last_seq_, seq);
       }
-      (*vecvec)[state.index_.v_].push_back(
+      (*vecvec)[state.index_].push_back(
           geo::latlng{entry.lat_.val(), entry.lon_.val()});
       state.last_seq_ = seq;
     } else {
-      auto const index{static_cast<shape_idx_t>(states.size())};
+      auto const index = static_cast<shape_idx_t>(states.size());
       auto bucket = vecvec->add_back_sized(0u);
       states.insert({entry.id_->view(), {index, entry.seq_.val()}});
       bucket.push_back(geo::latlng{entry.lat_.val(), entry.lon_.val()});
