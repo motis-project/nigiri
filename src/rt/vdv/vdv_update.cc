@@ -97,6 +97,22 @@ vector<updater::vdv_stop> updater::resolve_stops(pugi::xml_node const vdv_run) {
   return vdv_stops;
 }
 
+struct candidate {
+  friend bool operator<(candidate const& a, candidate const& b) {
+    return a.n_matches_ > b.n_matches_ ||
+           (a.n_matches_ == b.n_matches_ &&
+            a.r_.stop_range_.size() < b.r_.stop_range_.size());
+  }
+
+  friend bool operator==(candidate const& a, candidate const& b) {
+    return a.n_matches_ == b.n_matches_ &&
+           a.r_.stop_range_.size() == b.r_.stop_range_.size();
+  }
+
+  run r_;
+  std::uint32_t n_matches_;
+};
+
 std::optional<rt::run> updater::find_run(pugi::xml_node const vdv_run,
                                          std::string_view vdv_run_id,
                                          vector<vdv_stop> const& vdv_stops,
@@ -106,11 +122,6 @@ std::optional<rt::run> updater::find_run(pugi::xml_node const vdv_run,
     log(log_lvl::info, "vdv_updater.find_run",
         "Warning: attempting to match an incomplete VDV run");
   }
-
-  struct candidate {
-    run r_;
-    std::uint32_t n_matches_;
-  };
 
   auto candidates = std::vector<candidate>{};
 
@@ -182,16 +193,13 @@ std::optional<rt::run> updater::find_run(pugi::xml_node const vdv_run,
     return std::nullopt;
   }
 
-  std::sort(
-      begin(candidates), end(candidates),
-      [](auto const& a, auto const& b) { return a.n_matches_ > b.n_matches_; });
+  std::sort(begin(candidates), end(candidates));
 
-  if (candidates.front().n_matches_ < vdv_stops.size() / 2) {
+  if (candidates.front().n_matches_ < vdv_stops.size() / 2.0) {
     return std::nullopt;
   }
 
-  if (candidates.size() > 1 &&
-      candidates[0].n_matches_ == candidates[1].n_matches_) {
+  if (candidates.size() > 1 && candidates[0] == candidates[1]) {
     ++stats_.multiple_matches_;
     auto multiple_matches =
         std::ofstream{"multiple_matches.txt", std::ios::app};

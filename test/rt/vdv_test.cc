@@ -1118,11 +1118,10 @@ TEST(vdv_update, vgm270) {
   doc.load_string(update_vgm270);
   u.update(rtt, doc);
 
-  auto fr = rt::frun(
-      tt, &rtt,
-      {{transport_idx_t{0}, day_idx_t{24}}, {stop_idx_t{0}, stop_idx_t{39}}});
-
-  std::cout << fr << "\n";
+  auto fr = rt::frun{
+      tt,
+      &rtt,
+      {{transport_idx_t{0}, day_idx_t{24}}, {stop_idx_t{0}, stop_idx_t{39}}}};
 
   // Sv270 from GTFS and VGM270 from the VDV update should match even though:
   // - Prefix of line name does not match
@@ -1404,11 +1403,10 @@ TEST(vdv_update, smd712) {
   doc.load_string(update_smd712);
   u.update(rtt, doc);
 
-  auto fr = rt::frun(
-      tt, &rtt,
-      {{transport_idx_t{0}, day_idx_t{24}}, {stop_idx_t{0}, stop_idx_t{20}}});
-
-  std::cout << fr << "\n";
+  auto fr = rt::frun{
+      tt,
+      &rtt,
+      {{transport_idx_t{0}, day_idx_t{24}}, {stop_idx_t{0}, stop_idx_t{20}}}};
 
   // The reference time of line 712 in the update is from the year-long
   // timetable. However, the GTFS timetable contains different times due to the
@@ -1741,11 +1739,312 @@ TEST(vdv_update, rbo920) {
   doc.load_string(update_rbo920);
   u.update(rtt, doc);
 
-  auto fr = rt::frun(
-      tt, &rtt,
-      {{transport_idx_t{0}, day_idx_t{24}}, {stop_idx_t{0}, stop_idx_t{26}}});
-
-  std::cout << fr << "\n";
-
+  auto fr = rt::frun{
+      tt,
+      &rtt,
+      {{transport_idx_t{0}, day_idx_t{24}}, {stop_idx_t{0}, stop_idx_t{26}}}};
   EXPECT_TRUE(fr.is_rt());
+}
+
+namespace {
+
+mem_dir ovo65_files() {
+  return mem_dir::read(R"__(
+# trips.txt
+"route_id","service_id","trip_id","trip_headsign","trip_short_name","direction_id","block_id","shape_id","wheelchair_accessible","bikes_allowed"
+"de:von:26-65_3",1180,2593401825,"Melaune Ort","",0,84112,89747,0,0
+"de:von:26-65_3",1194,2593401832,"Weißenberg (Kr BZ) Markt","",0,,89745,0,0
+
+# routes.txt
+"route_id","agency_id","route_short_name","route_long_name","route_type","route_color","route_text_color","route_desc"
+"de:von:26-65_3",14177,"65","",3,"","",""
+
+# agency.txt
+"agency_id","agency_name","agency_url","agency_timezone","agency_lang","agency_phone"
+14177,"Omnibus Verkehr Oberlausitz","https://www.delfi.de","Europe/Berlin","",""
+
+# stop_times.txt
+"trip_id","arrival_time","departure_time","stop_id","stop_sequence","pickup_type","drop_off_type","stop_headsign"
+2593401825,13:18:00,13:18:00,"de:14626:8691:0:2",0,0,0,""
+2593401825,13:23:00,13:23:00,"de:14626:8730:0:2",1,0,0,""
+2593401825,13:25:00,13:25:00,"de:14626:8731:0:2",2,0,0,""
+2593401825,13:26:00,13:26:00,"de:14626:8732:0:2",3,0,0,""
+2593401825,13:27:00,13:27:00,"de:14626:8734:0:2",4,0,0,""
+2593401825,13:28:00,13:28:00,"de:14626:8736:0:2",5,0,0,""
+2593401825,13:29:00,13:29:00,"de:14626:8737:0:1",6,0,0,""
+2593401825,13:33:00,13:33:00,"de:14626:8740:0:2",7,0,0,""
+2593401825,13:35:00,13:35:00,"de:14626:8741:0:2",8,0,0,""
+2593401825,13:37:00,13:37:00,"de:14626:8745:0:1",9,0,0,""
+2593401825,13:39:00,13:39:00,"de:14626:8746:0:1",10,0,0,""
+2593401825,13:42:00,13:42:00,"de:14626:8747:0:3",11,0,0,""
+2593401825,13:43:00,13:43:00,"de:14626:8761:0:1",12,0,0,""
+2593401825,13:44:00,13:44:00,"de:14626:8753:0:2",13,0,0,""
+2593401825,13:45:00,13:45:00,"de:14626:8751:0:2",14,0,0,""
+2593401832,13:05:00,13:05:00,"de:14626:8880:0:3",0,0,0,""
+2593401832,13:07:00,13:07:00,"de:14626:8877:0:2",1,0,0,""
+2593401832,13:09:00,13:09:00,"de:14626:8898:0:2",2,0,0,""
+2593401832,13:10:00,13:10:00,"de:14626:8881:1:1",3,0,0,""
+2593401832,13:11:00,13:11:00,"de:14626:8890:3:1",4,0,0,""
+2593401832,13:12:00,13:12:00,"de:14626:8891:1:1",5,0,0,""
+2593401832,13:13:00,13:13:00,"de:14626:8892:1:1",6,0,0,""
+2593401832,13:14:00,13:14:00,"de:14626:8930:0:1",7,0,0,""
+2593401832,13:15:00,13:15:00,"de:14626:8914:0:1",8,0,0,""
+2593401832,13:16:00,13:16:00,"de:14626:8934:0:2",9,0,0,""
+2593401832,13:18:00,13:18:00,"de:14626:8691:0:2",10,0,0,""
+2593401832,13:23:00,13:23:00,"de:14626:8730:0:2",11,0,0,""
+2593401832,13:25:00,13:25:00,"de:14626:8731:0:2",12,0,0,""
+2593401832,13:26:00,13:26:00,"de:14626:8732:0:2",13,0,0,""
+2593401832,13:27:00,13:27:00,"de:14626:8734:0:2",14,0,0,""
+2593401832,13:28:00,13:28:00,"de:14626:8736:0:2",15,0,0,""
+2593401832,13:29:00,13:29:00,"de:14626:8737:0:1",16,0,0,""
+2593401832,13:33:00,13:33:00,"de:14626:8740:0:2",17,0,0,""
+2593401832,13:35:00,13:35:00,"de:14626:8741:0:2",18,0,0,""
+2593401832,13:37:00,13:37:00,"de:14626:8745:0:1",19,0,0,""
+2593401832,13:39:00,13:39:00,"de:14626:8746:0:1",20,0,0,""
+2593401832,13:42:00,13:42:00,"de:14626:8747:0:3",21,0,0,""
+2593401832,13:43:00,13:43:00,"de:14626:8761:0:1",22,0,0,""
+2593401832,13:44:00,13:44:00,"de:14626:8753:0:2",23,0,0,""
+2593401832,13:45:00,13:45:00,"de:14626:8751:0:2",24,0,0,""
+2593401832,13:49:00,13:49:00,"de:14626:8754:0:2",25,0,0,""
+2593401832,13:50:00,13:50:00,"de:14626:8755:0:2",26,0,0,""
+2593401832,13:52:00,13:52:00,"de:14626:8756:0:2",27,0,0,""
+2593401832,13:53:00,13:53:00,"de:14626:8739:0:2",28,0,0,""
+2593401832,13:58:00,13:58:00,"de:14625:7904:0:2",29,0,0,""
+2593401832,14:00:00,14:00:00,"de:14625:7903:0:2",30,0,0,""
+
+# stops.txt
+"stop_id","stop_code","stop_name","stop_desc","stop_lat","stop_lon","location_type","parent_station","wheelchair_boarding","platform_code","level_id"
+"de:14626:8761:0:1","","Döbschütz Abzw Melaune",,"51.195154000000","14.755844000000",0,,0,"",""
+"de:14626:8747:0:3","","Arnsdorf (OL) Holzmühle","Arnsdorf (OL) Holzmühle","51.201638000000","14.760290000000",0,,0,"3","2"
+"de:14626:8741:0:2","","Hilbersdorf (OL) Kreuzung",,"51.188854000000","14.789917000000",0,,0,"",""
+"de:14626:8753:0:2","","Melaune Hort","Melaune Hort","51.192643000000","14.752996000000",0,,0,"2","2"
+"de:14626:8746:0:1","","Arnsdorf Abzw Thiemendorf",,"51.198931000000","14.774708000000",0,,0,"",""
+"de:14626:8740:0:2","","Hilbersdorf (OL) Schäferei",,"51.185751000000","14.805251000000",0,,0,"",""
+"de:14626:8751:0:2","","Melaune Ort","Melaune Ort","51.189997000000","14.747938000000",0,,0,"2","2"
+"de:14626:8737:0:1","","Königshain Oberdorf",,"51.185802000000","14.849691000000",0,,0,"",""
+"de:14626:8734:0:2","","Königshain Gemeindeverwaltung",,"51.181123000000","14.866884000000",0,,0,"",""
+"de:14626:8745:0:1","","Arnsdorf (OL) Trodler","Arnsdorf (OL) Trodler","51.195593000000","14.785434000000",0,,0,"1","2"
+"de:14626:8736:0:2","","Königshain Hennig",,"51.182390000000","14.857174000000",0,,0,"",""
+"de:14626:8691:0:2","","Girbigsdorf Sandschänke","Girbigsdorf Sandschänke","51.166474000000","14.934060000000",0,,0,"2","2"
+"de:14626:8732:0:2","","Königshain Teich",,"51.181821000000","14.875131000000",0,,0,"",""
+"de:14626:8731:0:2","","Königshain Gut",,"51.179614000000","14.880126000000",0,,0,"",""
+"de:14626:8730:0:2","","Königshain Ortseingang",,"51.177992000000","14.892558000000",0,,0,"",""
+"de:14626:8739:0:2","","Buchholz b Görlitz, Eichberg",,"51.198959000000","14.696492000000",0,,0,"",""
+"de:14626:8756:0:2","","Buchholz Ortseingang",,"51.196054000000","14.702124000000",0,,0,"",""
+"de:14626:8755:0:2","","Tetta Gasthaus",,"51.192147000000","14.714279000000",0,,0,"",""
+"de:14625:7903:0:2","","Weißenberg (Kr BZ) Markt","Weißenberg (Kr BZ) Markt","51.196837000000","14.658574000000",0,,0,"2","2"
+"de:14626:8754:0:2","","Tetta Ortseingang",,"51.193172000000","14.721223000000",0,,0,"",""
+"de:14626:8881:1:1","","Görlitz Jägerkaserne","Bus Steige 1+2","51.155640000000","14.984896000000",0,,0,"1","2"
+"de:14626:8930:0:1","","Görlitz Klinikum",,"51.162288000000","14.971403000000",0,,0,"",""
+"de:14626:8914:0:1","","Görlitz Stadion Junge Welt",,"51.163961000000","14.961405000000",0,,0,"",""
+"de:14626:8934:0:2","","Görlitz Flugplatz",,"51.163978000000","14.945810000000",0,,0,"",""
+"de:14626:8890:3:1","","Görlitz Heiliges Grab","Bus","51.158502000000","14.983495000000",0,,0,"1","2"
+"de:14626:8880:0:3","","Görlitz Busbahnhof","Görlitz Busbahnhof","51.148253000000","14.976901000000",0,,0,"3","2"
+"de:14626:8898:0:2","","Görlitz Theater","Görlitz Theater","51.153595000000","14.985210000000",0,,0,"2","2"
+"de:14626:8892:1:1","","Görlitz Zeppelinstraße","Bus","51.161218000000","14.974880000000",0,,0,"1","2"
+"de:14626:8877:0:2","","Görlitz Lutherplatz",,"51.151352000000","14.979309000000",0,,0,"",""
+"de:14625:7904:0:2","","Weißenberg Schützenhaus","Weißenberg Schützenhaus","51.196026000000","14.664242000000",0,,0,"2","2"
+"de:14626:8891:1:1","","Görlitz Kummerau","Bus","51.159443000000","14.978904000000",0,,0,"1","2"
+"de:14626:8691:0:1","","Girbigsdorf Sandschänke","Girbigsdorf Sandschänke","51.166530000000","14.933971000000",0,,0,"1","2"
+"de:14626:8737:0:2","","Königshain Oberdorf",,"51.185644000000","14.850086000000",0,,0,"",""
+"de:14626:8761:0:2","","Döbschütz Abzw Melaune",,"51.195103000000","14.756068000000",0,,0,"",""
+"de:14626:8751:0:1","","Melaune Ort","Melaune Ort","51.190374000000","14.748567000000",0,,0,"1","2"
+
+# calendar.txt
+"service_id","monday","tuesday","wednesday","thursday","friday","saturday","sunday","start_date","end_date"
+1180,1,1,1,1,1,0,0,20240805,20241214
+1194,1,1,1,1,1,1,0,20240805,20241214
+
+# calendar_dates.txt
+"service_id","date","exception_type"
+1180,20240805,2
+1180,20240812,2
+1180,20241007,2
+1180,20241014,2
+1180,20240806,2
+1180,20240813,2
+1180,20241008,2
+1180,20241015,2
+1180,20240807,2
+1180,20241009,2
+1180,20241016,2
+1180,20241120,2
+1180,20240808,2
+1180,20241003,2
+1180,20241010,2
+1180,20241017,2
+1180,20241031,2
+1180,20240809,2
+1180,20241011,2
+1180,20241018,2
+1194,20240805,2
+1194,20240812,2
+1194,20240806,2
+1194,20240813,2
+1194,20240807,2
+1194,20241120,2
+1194,20240808,2
+1194,20241003,2
+1194,20241031,2
+1194,20240809,2
+1194,20240810,2
+
+
+)__");
+}
+
+constexpr auto const update_ovo65 = R"(
+<IstFahrt Zst="2024-08-23T10:37:13">
+	<LinienID>OVO65</LinienID>
+	<RichtungsID>1</RichtungsID>
+	<FahrtRef>
+		<FahrtID>
+			<FahrtBezeichner>OVO16065030_vvorbl</FahrtBezeichner>
+			<Betriebstag>2024-08-23</Betriebstag>
+		</FahrtID>
+	</FahrtRef>
+	<Komplettfahrt>true</Komplettfahrt>
+	<UmlaufID>1808</UmlaufID>
+	<BetreiberID>vvorbl</BetreiberID>
+	<IstHalt>
+		<HaltID>de:14626:8691:0:1</HaltID>
+		<Abfahrtszeit>2024-08-23T11:18:00</Abfahrtszeit>
+		<AbfahrtssteigText>1</AbfahrtssteigText>
+		<Besetztgrad>Unbekannt</Besetztgrad>
+	</IstHalt>
+	<IstHalt>
+		<HaltID>de:14626:8730:0:2</HaltID>
+		<Abfahrtszeit>2024-08-23T11:23:00</Abfahrtszeit>
+		<Ankunftszeit>2024-08-23T11:23:00</Ankunftszeit>
+		<AbfahrtssteigText>2</AbfahrtssteigText>
+		<Besetztgrad>Unbekannt</Besetztgrad>
+	</IstHalt>
+	<IstHalt>
+		<HaltID>de:14626:8731:0:2</HaltID>
+		<Abfahrtszeit>2024-08-23T11:25:00</Abfahrtszeit>
+		<Ankunftszeit>2024-08-23T11:25:00</Ankunftszeit>
+		<AbfahrtssteigText>2</AbfahrtssteigText>
+		<Besetztgrad>Unbekannt</Besetztgrad>
+	</IstHalt>
+	<IstHalt>
+		<HaltID>de:14626:8732:0:2</HaltID>
+		<Abfahrtszeit>2024-08-23T11:26:00</Abfahrtszeit>
+		<Ankunftszeit>2024-08-23T11:26:00</Ankunftszeit>
+		<AbfahrtssteigText>2</AbfahrtssteigText>
+		<Besetztgrad>Unbekannt</Besetztgrad>
+	</IstHalt>
+	<IstHalt>
+		<HaltID>de:14626:8734:0:2</HaltID>
+		<Abfahrtszeit>2024-08-23T11:27:00</Abfahrtszeit>
+		<Ankunftszeit>2024-08-23T11:27:00</Ankunftszeit>
+		<AbfahrtssteigText>2</AbfahrtssteigText>
+		<Besetztgrad>Unbekannt</Besetztgrad>
+	</IstHalt>
+	<IstHalt>
+		<HaltID>de:14626:8736:0:2</HaltID>
+		<Abfahrtszeit>2024-08-23T11:28:00</Abfahrtszeit>
+		<Ankunftszeit>2024-08-23T11:28:00</Ankunftszeit>
+		<AbfahrtssteigText>2</AbfahrtssteigText>
+		<Besetztgrad>Unbekannt</Besetztgrad>
+	</IstHalt>
+	<IstHalt>
+		<HaltID>de:14626:8737:0:2</HaltID>
+		<Abfahrtszeit>2024-08-23T11:29:00</Abfahrtszeit>
+		<Ankunftszeit>2024-08-23T11:29:00</Ankunftszeit>
+		<AbfahrtssteigText>2</AbfahrtssteigText>
+		<Besetztgrad>Unbekannt</Besetztgrad>
+	</IstHalt>
+	<IstHalt>
+		<HaltID>de:14626:8740:0:2</HaltID>
+		<Abfahrtszeit>2024-08-23T11:33:00</Abfahrtszeit>
+		<Ankunftszeit>2024-08-23T11:33:00</Ankunftszeit>
+		<AbfahrtssteigText>2</AbfahrtssteigText>
+		<Besetztgrad>Unbekannt</Besetztgrad>
+	</IstHalt>
+	<IstHalt>
+		<HaltID>de:14626:8741:0:2</HaltID>
+		<Abfahrtszeit>2024-08-23T11:35:00</Abfahrtszeit>
+		<Ankunftszeit>2024-08-23T11:35:00</Ankunftszeit>
+		<AbfahrtssteigText>2</AbfahrtssteigText>
+		<Besetztgrad>Unbekannt</Besetztgrad>
+	</IstHalt>
+	<IstHalt>
+		<HaltID>de:14626:8745:0:1</HaltID>
+		<Abfahrtszeit>2024-08-23T11:37:00</Abfahrtszeit>
+		<Ankunftszeit>2024-08-23T11:37:00</Ankunftszeit>
+		<AbfahrtssteigText>1</AbfahrtssteigText>
+		<Besetztgrad>Unbekannt</Besetztgrad>
+	</IstHalt>
+	<IstHalt>
+		<HaltID>de:14626:8746:0:1</HaltID>
+		<Abfahrtszeit>2024-08-23T11:39:00</Abfahrtszeit>
+		<Ankunftszeit>2024-08-23T11:39:00</Ankunftszeit>
+		<AbfahrtssteigText>1</AbfahrtssteigText>
+		<Besetztgrad>Unbekannt</Besetztgrad>
+	</IstHalt>
+	<IstHalt>
+		<HaltID>de:14626:8747:0:3</HaltID>
+		<Abfahrtszeit>2024-08-23T11:42:00</Abfahrtszeit>
+		<Ankunftszeit>2024-08-23T11:42:00</Ankunftszeit>
+		<AbfahrtssteigText>3</AbfahrtssteigText>
+		<Besetztgrad>Unbekannt</Besetztgrad>
+	</IstHalt>
+	<IstHalt>
+		<HaltID>de:14626:8761:0:2</HaltID>
+		<Abfahrtszeit>2024-08-23T11:43:00</Abfahrtszeit>
+		<Ankunftszeit>2024-08-23T11:43:00</Ankunftszeit>
+		<AbfahrtssteigText>1</AbfahrtssteigText>
+		<Besetztgrad>Unbekannt</Besetztgrad>
+	</IstHalt>
+	<IstHalt>
+		<HaltID>de:14626:8753:0:2</HaltID>
+		<Abfahrtszeit>2024-08-23T11:44:00</Abfahrtszeit>
+		<Ankunftszeit>2024-08-23T11:44:00</Ankunftszeit>
+		<AbfahrtssteigText>2</AbfahrtssteigText>
+		<Besetztgrad>Unbekannt</Besetztgrad>
+	</IstHalt>
+	<IstHalt>
+		<HaltID>de:14626:8751:0:1</HaltID>
+		<Ankunftszeit>2024-08-23T11:45:00</Ankunftszeit>
+		<AnkunftssteigText>1</AnkunftssteigText>
+		<Besetztgrad>Unbekannt</Besetztgrad>
+	</IstHalt>
+	<LinienText>65</LinienText>
+	<ProduktID>OVO65</ProduktID>
+	<RichtungsText>Melaune</RichtungsText>
+	<PrognoseMoeglich>true</PrognoseMoeglich>
+	<FaelltAus>false</FaelltAus>
+</IstFahrt>
+)";
+
+}  // namespace
+
+TEST(vdv_update, ovo65) {
+  timetable tt;
+  register_special_stations(tt);
+  tt.date_range_ = {date::sys_days{2024_y / August / 1},
+                    date::sys_days{2024_y / August / 31}};
+  auto const src_idx = source_idx_t{0};
+  load_timetable({}, src_idx, ovo65_files(), tt);
+  finalize(tt);
+
+  auto rtt = rt::create_rt_timetable(tt, date::sys_days{2024_y / August / 23});
+
+  auto u = rt::vdv::updater{tt, src_idx};
+
+  auto doc = pugi::xml_document{};
+  doc.load_string(update_ovo65);
+  u.update(rtt, doc);
+
+  auto const fr0 = rt::frun{
+      tt,
+      &rtt,
+      {{transport_idx_t{0U}, day_idx_t{27}}, {stop_idx_t{0}, stop_idx_t{31U}}}};
+  EXPECT_FALSE(fr0.is_rt());
+
+  auto const fr1 = rt::frun{
+      tt,
+      &rtt,
+      {{transport_idx_t{1U}, day_idx_t{27}}, {stop_idx_t{0}, stop_idx_t{15U}}}};
+  EXPECT_TRUE(fr1.is_rt());
 }
