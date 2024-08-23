@@ -2049,3 +2049,350 @@ TEST(vdv_update, ovo65) {
       {{transport_idx_t{1U}, day_idx_t{27}}, {stop_idx_t{0}, stop_idx_t{15U}}}};
   EXPECT_TRUE(fr1.is_rt());
 }
+
+namespace {
+
+mem_dir rbo707_files() {
+  return mem_dir::read(R"__(
+# trips.txt
+"route_id","service_id","trip_id","trip_headsign","trip_short_name","direction_id","block_id","shape_id","wheelchair_accessible","bikes_allowed"
+"de:von:27-707_3",1180,2593399830,"Caßlau","",0,,89176,0,0
+
+# routes.txt
+"route_id","agency_id","route_short_name","route_long_name","route_type","route_color","route_text_color","route_desc"
+"de:von:27-707_3",7874,"707","",3,"","",""
+
+# agency.txt
+"agency_id","agency_name","agency_url","agency_timezone","agency_lang","agency_phone"
+7874,"RBO-Bus","https://www.delfi.de","Europe/Berlin","",""
+
+# stop_times.txt
+"trip_id","arrival_time","departure_time","stop_id","stop_sequence","pickup_type","drop_off_type","stop_headsign"
+2593399830,12:15:00,12:15:00,"de:14625:7501:0:7_G",0,0,0,""
+2593399830,12:19:00,12:19:00,"de:14625:7502:0:1_G",1,0,0,""
+2593399830,12:21:00,12:21:00,"de:14625:7507:0:1_G",2,0,0,""
+2593399830,12:23:00,12:23:00,"de:14625:7578:0:1_G",3,0,0,""
+2593399830,12:25:00,12:25:00,"de:14625:7577:0:1_G",4,0,0,""
+2593399830,12:28:00,12:28:00,"de:14625:7652:0:1_G",5,0,0,""
+2593399830,12:31:00,12:31:00,"de:14625:7662:0:1",6,0,0,""
+2593399830,12:33:00,12:33:00,"de:14625:7776:0:2",7,0,0,""
+2593399830,12:37:00,12:37:00,"de:14625:7772:0:1_G",8,0,0,""
+2593399830,12:41:00,12:41:00,"de:14625:7683:0:1",9,0,0,""
+2593399830,12:42:00,12:42:00,"de:14625:7684:0:1",10,0,0,""
+2593399830,12:46:00,12:46:00,"de:14625:7686:0:1_G",11,0,0,""
+2593399830,12:48:00,12:48:00,"de:14625:7677:0:1_G",12,0,0,""
+2593399830,12:50:00,12:50:00,"de:14625:7679:0:1_G",13,0,0,""
+2593399830,12:56:00,12:56:00,"de:14625:7704:0:1",14,0,0,""
+2593399830,12:58:00,12:58:00,"de:14625:7708:0:2",15,0,0,""
+2593399830,13:00:00,13:00:00,"de:14625:7705:0:1_G",16,0,0,""
+2593399830,13:02:00,13:02:00,"de:14625:7709:0:1_G",17,0,0,""
+2593399830,13:04:00,13:04:00,"de:14625:7707:0:1_G",18,0,0,""
+2593399830,13:09:00,13:09:00,"de:14625:7706:0:1",19,0,0,""
+2593399830,13:11:00,13:11:00,"de:14625:7699:0:1",20,0,0,""
+2593399830,13:12:00,13:12:00,"de:14625:7698:0:1",21,0,0,""
+2593399830,13:14:00,13:14:00,"de:14625:7695:0:1_G",22,0,0,""
+2593399830,13:18:00,13:18:00,"de:14625:7697:0:1",23,0,0,""
+
+# stops.txt
+"stop_id","stop_code","stop_name","stop_desc","stop_lat","stop_lon","location_type","parent_station","wheelchair_boarding","platform_code","level_id"
+"de:14625:7695:0:1_G","","Doberschütz (b Neschwitz)",,"51.270937000000","14.267852000000",0,,0,"",""
+"de:14625:7695:0:1","","Doberschütz (b Neschwitz)",,"51.270915000000","14.267852000000",0,,0,"",""
+"de:14625:7708:0:2","","Wetro Werk",,"51.256384000000","14.302096000000",0,,0,"",""
+"de:14625:7706:0:1","","Neu-Puschwitz",,"51.259161000000","14.294864000000",0,,0,"",""
+"de:14625:7501:0:7_G","","Bautzen August-Bebel-Pl (ZOB)",,"51.177395000000","14.433501000000",0,,0,"",""
+"de:14625:7501:0:7","","Bautzen August-Bebel-Pl (ZOB)",,"51.177395000000","14.433501000000",0,,0,"",""
+"de:14625:7705:0:1_G","","Puschwitz",,"51.249384000000","14.290831000000",0,,0,"",""
+"de:14625:7705:0:1","","Puschwitz",,"51.250402000000","14.292178000000",0,,0,"",""
+"de:14625:7698:0:1","","Lissahora",,"51.269864000000","14.283932000000",0,,0,"",""
+"de:14625:7704:0:1","","Wetro Dorf",,"51.250846000000","14.308519000000",0,,0,"",""
+"de:14625:7677:0:1_G","","Neschwitz Dorfschänke",,"51.269335000000","14.329350000000",0,,0,"",""
+"de:14625:7677:0:1","","Neschwitz Dorfschänke",,"51.269375000000","14.329324000000",0,,0,"",""
+"de:14625:7707:0:1_G","","Jeßnitz (b Puschwitz) Dorfteich",,"51.249519000000","14.276952000000",0,,0,"",""
+"de:14625:7707:0:1","","Jeßnitz (b Puschwitz) Dorfteich",,"51.249491000000","14.276925000000",0,,0,"",""
+"de:14625:7683:0:1","","Luga (b Neschwitz) Dorfclub",,"51.249721000000","14.348592000000",0,,0,"",""
+"de:14625:7652:0:1_G","","Kleinwelka Gasthof",,"51.213204000000","14.392987000000",0,,0,"",""
+"de:14625:7652:0:1","","Kleinwelka Gasthof",,"51.213283000000","14.392942000000",0,,0,"",""
+"de:14625:7776:0:2","","Radibor Schule",,"51.241956000000","14.395619000000",0,,0,"",""
+"de:14625:7699:0:1","","Lomske (b Neschwitz)",,"51.267593000000","14.298987000000",0,,0,"",""
+"de:14625:7686:0:1_G","","Holscha Teich",,"51.266587000000","14.343822000000",0,,0,"",""
+"de:14625:7686:0:1","","Holscha Teich",,"51.266587000000","14.343715000000",0,,0,"",""
+"de:14625:7662:0:1","","Cölln Dorfplatz",,"51.227000000000","14.390122000000",0,,0,"",""
+"de:14625:7679:0:1_G","","Neschwitz Grundschule",,"51.271690000000","14.323206000000",0,,0,"",""
+"de:14625:7679:0:1","","Neschwitz Grundschule",,"51.271741000000","14.323179000000",0,,0,"",""
+"de:14625:7507:0:1_G","","Bautzen Fiedlerstraße",,"51.181100000000","14.415014000000",0,,0,"",""
+"de:14625:7507:0:1","","Bautzen Fiedlerstraße",,"51.181241000000","14.414960000000",0,,0,"",""
+"de:14625:7772:0:1_G","","Quoos Dorfplatz",,"51.249204000000","14.366792000000",0,,0,"",""
+"de:14625:7772:0:1","","Quoos Dorfplatz",,"51.249165000000","14.366855000000",0,,0,"",""
+"de:14625:7684:0:1","","Luga (b Neschwitz) Dorf",,"51.245009000000","14.346203000000",0,,0,"",""
+"de:14625:7697:0:1","","Caßlau","Caßlau","51.281783000000","14.273502000000",0,,0,"1","2"
+"de:14625:7578:0:1_G","","Bautzen Abzw Seidau",,"51.191781000000","14.412436000000",0,,0,"",""
+"de:14625:7578:0:1","","Bautzen Abzw Seidau",,"51.191849000000","14.412400000000",0,,0,"",""
+"de:14625:7502:0:1_G","","Bautzen Lauengraben",,"51.179602000000","14.424958000000",0,,0,"",""
+"de:14625:7502:0:1","","Bautzen Lauengraben",,"51.179670000000","14.425210000000",0,,0,"",""
+"de:14625:7577:0:1_G","","Bautzen Hoyerswerdaer Straße",,"51.196443000000","14.409480000000",0,,0,"",""
+"de:14625:7577:0:1","","Bautzen Hoyerswerdaer Straße",,"51.196612000000","14.409462000000",0,,0,"",""
+"de:14625:7709:0:1_G","","Guhra Dorfplatz",,"51.243755000000","14.286204000000",0,,0,"",""
+"de:14625:7709:0:1","","Guhra Dorfplatz",,"51.243705000000","14.286231000000",0,,0,"",""
+"de:14625:7699:0:2","","Lomske (b Neschwitz)",,"51.267615000000","14.299778000000",0,,0,"",""
+"de:14625:7698:0:2","","Lissahora",,"51.269931000000","14.284084000000",0,,0,"",""
+"de:14625:7697:0:2","","Caßlau","Caßlau","51.281721000000","14.273556000000",0,,0,"2","2"
+
+# calendar.txt
+"service_id","monday","tuesday","wednesday","thursday","friday","saturday","sunday","start_date","end_date"
+1180,1,1,1,1,1,0,0,20240805,20241214
+
+# calendar_dates.txt
+"service_id","date","exception_type"
+1180,20240805,2
+1180,20240812,2
+1180,20241007,2
+1180,20241014,2
+1180,20240806,2
+1180,20240813,2
+1180,20241008,2
+1180,20241015,2
+1180,20240807,2
+1180,20241009,2
+1180,20241016,2
+1180,20241120,2
+1180,20240808,2
+1180,20241003,2
+1180,20241010,2
+1180,20241017,2
+1180,20241031,2
+1180,20240809,2
+1180,20241011,2
+1180,20241018,2
+
+)__");
+}
+
+constexpr auto const update_rbo707 = R"(
+<IstFahrt Zst="2024-08-23T13:12:24">
+	<LinienID>RBO707</LinienID>
+	<RichtungsID>1</RichtungsID>
+	<FahrtRef>
+		<FahrtID>
+			<FahrtBezeichner>RBO2732_vvorbl</FahrtBezeichner>
+			<Betriebstag>2024-08-23</Betriebstag>
+		</FahrtID>
+	</FahrtRef>
+	<Komplettfahrt>true</Komplettfahrt>
+	<BetreiberID>vvorbl</BetreiberID>
+	<IstHalt>
+		<HaltID>de:14625:7501:0:7</HaltID>
+		<Abfahrtszeit>2024-08-23T10:15:00</Abfahrtszeit>
+		<AbfahrtssteigText>7</AbfahrtssteigText>
+		<Besetztgrad>Unbekannt</Besetztgrad>
+	</IstHalt>
+	<IstHalt>
+		<HaltID>de:14625:7502:0:1</HaltID>
+		<Abfahrtszeit>2024-08-23T10:19:00</Abfahrtszeit>
+		<Ankunftszeit>2024-08-23T10:19:00</Ankunftszeit>
+		<AbfahrtssteigText>1</AbfahrtssteigText>
+		<Besetztgrad>Unbekannt</Besetztgrad>
+	</IstHalt>
+	<IstHalt>
+		<HaltID>de:14625:7507:0:1</HaltID>
+		<Abfahrtszeit>2024-08-23T10:21:00</Abfahrtszeit>
+		<Ankunftszeit>2024-08-23T10:21:00</Ankunftszeit>
+		<AbfahrtssteigText>1</AbfahrtssteigText>
+		<Besetztgrad>Unbekannt</Besetztgrad>
+	</IstHalt>
+	<IstHalt>
+		<HaltID>de:14625:7578:0:1</HaltID>
+		<Abfahrtszeit>2024-08-23T10:23:00</Abfahrtszeit>
+		<Ankunftszeit>2024-08-23T10:23:00</Ankunftszeit>
+		<AbfahrtssteigText>1</AbfahrtssteigText>
+		<Besetztgrad>Unbekannt</Besetztgrad>
+	</IstHalt>
+	<IstHalt>
+		<HaltID>de:14625:7577:0:1</HaltID>
+		<Abfahrtszeit>2024-08-23T10:25:00</Abfahrtszeit>
+		<Ankunftszeit>2024-08-23T10:25:00</Ankunftszeit>
+		<AbfahrtssteigText>1</AbfahrtssteigText>
+		<Besetztgrad>Unbekannt</Besetztgrad>
+	</IstHalt>
+	<IstHalt>
+		<HaltID>de:14625:7652:0:1</HaltID>
+		<Abfahrtszeit>2024-08-23T10:28:00</Abfahrtszeit>
+		<Ankunftszeit>2024-08-23T10:28:00</Ankunftszeit>
+		<AbfahrtssteigText>1</AbfahrtssteigText>
+		<Besetztgrad>Unbekannt</Besetztgrad>
+	</IstHalt>
+	<IstHalt>
+		<HaltID>de:14625:7662:0:1</HaltID>
+		<Abfahrtszeit>2024-08-23T10:31:00</Abfahrtszeit>
+		<Ankunftszeit>2024-08-23T10:31:00</Ankunftszeit>
+		<AbfahrtssteigText>1</AbfahrtssteigText>
+		<Besetztgrad>Unbekannt</Besetztgrad>
+	</IstHalt>
+	<IstHalt>
+		<HaltID>de:14625:7776:0:2</HaltID>
+		<Abfahrtszeit>2024-08-23T10:33:00</Abfahrtszeit>
+		<Ankunftszeit>2024-08-23T10:33:00</Ankunftszeit>
+		<AbfahrtssteigText>2</AbfahrtssteigText>
+		<RichtungsText>Caßlau über Neschwitz</RichtungsText>
+		<Besetztgrad>Unbekannt</Besetztgrad>
+	</IstHalt>
+	<IstHalt>
+		<HaltID>de:14625:7772:0:1</HaltID>
+		<Abfahrtszeit>2024-08-23T10:37:00</Abfahrtszeit>
+		<Ankunftszeit>2024-08-23T10:37:00</Ankunftszeit>
+		<AbfahrtssteigText>1</AbfahrtssteigText>
+		<RichtungsText>Caßlau über Neschwitz</RichtungsText>
+		<Besetztgrad>Unbekannt</Besetztgrad>
+	</IstHalt>
+	<IstHalt>
+		<HaltID>de:14625:7683:0:1</HaltID>
+		<Abfahrtszeit>2024-08-23T10:41:00</Abfahrtszeit>
+		<Ankunftszeit>2024-08-23T10:41:00</Ankunftszeit>
+		<AbfahrtssteigText>1</AbfahrtssteigText>
+		<RichtungsText>Caßlau über Neschwitz</RichtungsText>
+		<Besetztgrad>Unbekannt</Besetztgrad>
+	</IstHalt>
+	<IstHalt>
+		<HaltID>de:14625:7684:0:1</HaltID>
+		<Abfahrtszeit>2024-08-23T10:42:00</Abfahrtszeit>
+		<Ankunftszeit>2024-08-23T10:42:00</Ankunftszeit>
+		<AbfahrtssteigText>1</AbfahrtssteigText>
+		<RichtungsText>Caßlau über Neschwitz</RichtungsText>
+		<Besetztgrad>Unbekannt</Besetztgrad>
+	</IstHalt>
+	<IstHalt>
+		<HaltID>de:14625:7686:0:1</HaltID>
+		<Abfahrtszeit>2024-08-23T10:46:00</Abfahrtszeit>
+		<Ankunftszeit>2024-08-23T10:46:00</Ankunftszeit>
+		<AbfahrtssteigText>1</AbfahrtssteigText>
+		<RichtungsText>Caßlau über Neschwitz</RichtungsText>
+		<Besetztgrad>Unbekannt</Besetztgrad>
+	</IstHalt>
+	<IstHalt>
+		<HaltID>de:14625:7677:0:1</HaltID>
+		<Abfahrtszeit>2024-08-23T10:48:00</Abfahrtszeit>
+		<Ankunftszeit>2024-08-23T10:48:00</Ankunftszeit>
+		<AbfahrtssteigText>1</AbfahrtssteigText>
+		<RichtungsText>Caßlau</RichtungsText>
+		<Besetztgrad>Unbekannt</Besetztgrad>
+	</IstHalt>
+	<IstHalt>
+		<HaltID>de:14625:7679:0:1</HaltID>
+		<Abfahrtszeit>2024-08-23T10:50:00</Abfahrtszeit>
+		<Ankunftszeit>2024-08-23T10:50:00</Ankunftszeit>
+		<AbfahrtssteigText>1</AbfahrtssteigText>
+		<RichtungsText>Caßlau</RichtungsText>
+		<Besetztgrad>Unbekannt</Besetztgrad>
+	</IstHalt>
+	<IstHalt>
+		<HaltID>de:14625:7704:0:1</HaltID>
+		<Abfahrtszeit>2024-08-23T10:56:00</Abfahrtszeit>
+		<Ankunftszeit>2024-08-23T10:56:00</Ankunftszeit>
+		<AbfahrtssteigText>1</AbfahrtssteigText>
+		<RichtungsText>Caßlau</RichtungsText>
+		<Besetztgrad>Unbekannt</Besetztgrad>
+	</IstHalt>
+	<IstHalt>
+		<HaltID>de:14625:7708:0:2</HaltID>
+		<Abfahrtszeit>2024-08-23T10:58:00</Abfahrtszeit>
+		<Ankunftszeit>2024-08-23T10:58:00</Ankunftszeit>
+		<AbfahrtssteigText>2</AbfahrtssteigText>
+		<RichtungsText>Caßlau</RichtungsText>
+		<Besetztgrad>Unbekannt</Besetztgrad>
+	</IstHalt>
+	<IstHalt>
+		<HaltID>de:14625:7705:0:1</HaltID>
+		<Abfahrtszeit>2024-08-23T11:00:00</Abfahrtszeit>
+		<Ankunftszeit>2024-08-23T11:00:00</Ankunftszeit>
+		<AbfahrtssteigText>1</AbfahrtssteigText>
+		<RichtungsText>Caßlau</RichtungsText>
+		<Besetztgrad>Unbekannt</Besetztgrad>
+	</IstHalt>
+	<IstHalt>
+		<HaltID>de:14625:7709:0:1</HaltID>
+		<Abfahrtszeit>2024-08-23T11:02:00</Abfahrtszeit>
+		<Ankunftszeit>2024-08-23T11:02:00</Ankunftszeit>
+		<AbfahrtssteigText>1</AbfahrtssteigText>
+		<RichtungsText>Caßlau</RichtungsText>
+		<Besetztgrad>Unbekannt</Besetztgrad>
+	</IstHalt>
+	<IstHalt>
+		<HaltID>de:14625:7707:0:1</HaltID>
+		<Abfahrtszeit>2024-08-23T11:04:00</Abfahrtszeit>
+		<Ankunftszeit>2024-08-23T11:04:00</Ankunftszeit>
+		<AbfahrtssteigText>1</AbfahrtssteigText>
+		<RichtungsText>Caßlau</RichtungsText>
+		<Besetztgrad>Unbekannt</Besetztgrad>
+	</IstHalt>
+	<IstHalt>
+		<HaltID>de:14625:7706:0:1</HaltID>
+		<Abfahrtszeit>2024-08-23T11:09:00</Abfahrtszeit>
+		<Ankunftszeit>2024-08-23T11:09:00</Ankunftszeit>
+		<AbfahrtssteigText>1</AbfahrtssteigText>
+		<RichtungsText>Caßlau</RichtungsText>
+		<Besetztgrad>Unbekannt</Besetztgrad>
+	</IstHalt>
+	<IstHalt>
+		<HaltID>de:14625:7699:0:2</HaltID>
+		<Abfahrtszeit>2024-08-23T11:11:00</Abfahrtszeit>
+		<Ankunftszeit>2024-08-23T11:11:00</Ankunftszeit>
+		<AbfahrtssteigText>2</AbfahrtssteigText>
+		<RichtungsText>Caßlau</RichtungsText>
+		<Besetztgrad>Unbekannt</Besetztgrad>
+	</IstHalt>
+	<IstHalt>
+		<HaltID>de:14625:7698:0:2</HaltID>
+		<Abfahrtszeit>2024-08-23T11:12:00</Abfahrtszeit>
+		<Ankunftszeit>2024-08-23T11:12:00</Ankunftszeit>
+		<AbfahrtssteigText>2</AbfahrtssteigText>
+		<RichtungsText>Caßlau</RichtungsText>
+		<Besetztgrad>Unbekannt</Besetztgrad>
+	</IstHalt>
+	<IstHalt>
+		<HaltID>de:14625:7695:0:1</HaltID>
+		<Abfahrtszeit>2024-08-23T11:14:00</Abfahrtszeit>
+		<Ankunftszeit>2024-08-23T11:14:00</Ankunftszeit>
+		<AbfahrtssteigText>1</AbfahrtssteigText>
+		<RichtungsText>Caßlau</RichtungsText>
+		<Besetztgrad>Unbekannt</Besetztgrad>
+	</IstHalt>
+	<IstHalt>
+		<HaltID>de:14625:7697:0:2</HaltID>
+		<Ankunftszeit>2024-08-23T11:18:00</Ankunftszeit>
+		<AnkunftssteigText>2</AnkunftssteigText>
+		<RichtungsText>Caßlau</RichtungsText>
+		<Besetztgrad>Unbekannt</Besetztgrad>
+	</IstHalt>
+	<LinienText>707</LinienText>
+	<ProduktID>RBO707</ProduktID>
+	<RichtungsText>Caßlau über Radibor - Neschwitz</RichtungsText>
+	<PrognoseMoeglich>true</PrognoseMoeglich>
+	<FaelltAus>false</FaelltAus>
+</IstFahrt>
+)";
+
+}  // namespace
+
+TEST(vdv_update, rbo707) {
+  timetable tt;
+  register_special_stations(tt);
+  tt.date_range_ = {date::sys_days{2024_y / August / 1},
+                    date::sys_days{2024_y / August / 31}};
+  auto const src_idx = source_idx_t{0};
+  load_timetable({}, src_idx, rbo707_files(), tt);
+  finalize(tt);
+
+  auto rtt = rt::create_rt_timetable(tt, date::sys_days{2024_y / August / 23});
+
+  auto u = rt::vdv::updater{tt, src_idx};
+
+  auto doc = pugi::xml_document{};
+  doc.load_string(update_rbo707);
+  u.update(rtt, doc);
+
+  auto const fr = rt::frun{tt,
+                           &rtt,
+                           {{transport_idx_t{0U}, day_idx_t{27U}},
+                            {stop_idx_t{0U}, stop_idx_t{24U}}}};
+  
+  EXPECT_TRUE(fr.is_rt());
+}
