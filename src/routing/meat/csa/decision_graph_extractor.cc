@@ -44,9 +44,6 @@ decision_graph_extractor::extract_relevant_entries(
           std::vector<profile_entry>::const_iterator> const& e_it) {
         auto const& e = *e_it;
         auto e_bit_idx = profile_set.global_index_of(e_it);
-        assert(e.dep_time_ == profile_set.entry_[e_bit_idx].dep_time_ &&
-               e.meat_ == profile_set.entry_[e_bit_idx].meat_);
-        assert(&(*e_it) == &profile_set.entry_[e_bit_idx]);
         if (!is_enter_conn_relevant_[e_bit_idx]) {
           relevant.push_back(&(*e_it));
           is_enter_conn_relevant_.set(e_bit_idx);
@@ -64,20 +61,6 @@ decision_graph_extractor::extract_relevant_entries(
                     }
                   }},
               e.uses_);
-          // if (stop{tt_.fwd_connections_[e.ride_.exit_conn_].arr_stop_}
-          //         .location_idx() != target_stop) {
-          //   // push(e.ride.exit_conn);
-          //   stack_.push(*e_it);
-
-          // // TODO footpath
-          // if(fp_dis_to_target_[stop{tt_.fwd_connections_[e.ride_.exit_conn_].arr_stop_}.location_idx()]
-          // != std::numeric_limits<meat_t>::infinity() &&
-          // fp_dis_to_target_[stop{tt_.fwd_connections_[e.ride_.exit_conn_].arr_stop_}.location_idx()]
-          // + e.arr_time_ == e.meat_){
-          //   relevant.push_back(/*add final footpath*/);
-          // }
-          // //
-          // }
         }
       };
 
@@ -112,13 +95,6 @@ decision_graph_extractor::extract_relevant_entries(
                   on_new_relevant_entry);
             }},
         pe->uses_);
-
-    // if (profile_set.fp_dis_to_target_[p_exit_conn_idx] !=
-    // std::numeric_limits<meat_t>::infinity() &&
-    // profile_set.fp_dis_to_target_[p_exit_conn_idx] + arr_time == p.meat_){
-    //   relevant.push_back(/*add final footpath*/); // TODO relevant hat nur
-    //   ref auf profile_entry, ändern oder doch erst später anfügen
-    // }
   }
 
   is_enter_conn_relevant_.reset();
