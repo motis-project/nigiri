@@ -2393,6 +2393,6 @@ TEST(vdv_update, rbo707) {
                            &rtt,
                            {{transport_idx_t{0U}, day_idx_t{27U}},
                             {stop_idx_t{0U}, stop_idx_t{24U}}}};
-  
+
   EXPECT_TRUE(fr.is_rt());
 }
