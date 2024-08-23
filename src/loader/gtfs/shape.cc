@@ -11,7 +11,7 @@
 namespace nigiri::loader::gtfs {
 
 shape_id_map_t const parse_shapes(std::string_view const data,
-                                  mm_vecvec<shape_idx_t, geo::latlng>* vecvec) {
+                                  shape_vecvec_t* vecvec) {
   if (vecvec == nullptr) {
     return {};
   }

@@ -9,10 +9,10 @@ namespace nigiri {
 
 geo::polyline get_shape(
     trip_idx_t trip_idx, timetable const&,
-    mm_vecvec<shape_idx_t, geo::latlng> const* const);
+    shape_vecvec_t const* const);
 
 geo::polyline get_shape(
     shape_idx_t const,
-    mm_vecvec<shape_idx_t, geo::latlng> const* const);
+    shape_vecvec_t const* const);
 
 }

@@ -35,7 +35,7 @@ struct loader_interface {
                     timetable&,
                     hash_map<bitfield, bitfield_idx_t>&,
                     assistance_times*,
-                    mm_vecvec<shape_idx_t, ::geo::latlng>* = nullptr) const = 0;
+                    shape_vecvec_t* = nullptr) const = 0;
   virtual cista::hash_t hash(dir const&) const = 0;
   virtual std::string_view name() const = 0;
 };

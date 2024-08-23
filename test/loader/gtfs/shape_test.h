@@ -15,7 +15,7 @@ class shape_test_mmap {
     return std::vector<std::string>{base_path + "-data.dat",
                                     base_path + "-metadata.dat"};
   }
-  static mm_vecvec<Key, Value> create_mmap(std::vector<std::string>& paths) {
+  static shape_vecvec_t create_mmap(std::vector<std::string>& paths) {
     auto mode = cista::mmap::protection::WRITE;
     return {cista::basic_mmap_vec<Value, std::uint64_t>{
                 cista::mmap{paths.at(0).data(), mode}},
@@ -33,11 +33,11 @@ public:
       }
     }
   }
-  mm_vecvec<Key, Value>& get_vecvec() { return mmap; }
+  shape_vecvec_t& get_vecvec() { return mmap; }
 
 private:
   std::vector<std::string> paths;
-  mm_vecvec<Key, Value> mmap;
+  shape_vecvec_t mmap;
 };
 
 }  // namespace nigiri::loader::gtfs

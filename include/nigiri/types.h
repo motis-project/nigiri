@@ -26,6 +26,8 @@
 #include "cista/reflection/printable.h"
 #include "cista/strong.h"
 
+#include "geo/latlng.h"
+
 #include "nigiri/common/interval.h"
 #include "nigiri/common/it_range.h"
 
@@ -169,6 +171,7 @@ using attribute_combination_idx_t =
     cista::strong<std::uint32_t, struct _attribute_combination>;
 using provider_idx_t = cista::strong<std::uint32_t, struct _provider_idx>;
 
+using shape_vecvec_t = mm_vecvec<shape_idx_t, geo::latlng>;
 using transport_range_t = pair<transport_idx_t, interval<stop_idx_t>>;
 
 struct trip_debug {
