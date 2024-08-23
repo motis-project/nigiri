@@ -5,6 +5,7 @@
 
 #include "date/date.h"
 
+#include "nigiri/loader/assistance.h"
 #include "nigiri/common/interval.h"
 #include "nigiri/timetable.h"
 
@@ -15,6 +16,7 @@ struct loader_config;
 timetable load(std::vector<std::filesystem::path> const&,
                loader_config const&,
                interval<date::sys_days> const&,
+               assistance_times*,
                bool ignore = false);
 
 }  // namespace nigiri::loader

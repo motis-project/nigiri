@@ -81,16 +81,18 @@ bool applicable(dir const& d) {
 void load_timetable(loader_config const& config,
                     source_idx_t const src,
                     dir const& d,
-                    timetable& tt) {
+                    timetable& tt,
+                    assistance_times* assistance) {
   auto local_bitfield_indices = hash_map<bitfield, bitfield_idx_t>{};
-  return load_timetable(config, src, d, tt, local_bitfield_indices);
+  load_timetable(config, src, d, tt, local_bitfield_indices, assistance);
 }
 
 void load_timetable(loader_config const& config,
                     source_idx_t const src,
                     dir const& d,
                     timetable& tt,
-                    hash_map<bitfield, bitfield_idx_t>& bitfield_indices) {
+                    hash_map<bitfield, bitfield_idx_t>& bitfield_indices,
+                    assistance_times* assistance) {
   nigiri::scoped_timer const global_timer{"gtfs parser"};
 
   auto const load = [&](std::string_view file_name) -> file {
@@ -141,31 +143,6 @@ void load_timetable(loader_config const& config,
   auto const noon_offsets = precompute_noon_offsets(tt, agencies);
 
   stop_seq_t stop_seq_cache;
-  auto const get_stop_seq =
-      [&](std::basic_string<gtfs_trip_idx_t> const& trips) {
-        if (trips.size() == 1U) {
-          return &trip_data.get(trips.front()).stop_seq_;
-        } else {
-          stop_seq_cache.clear();
-          for (auto const [i, t_idx] : utl::enumerate(trips)) {
-            auto const& trp = trip_data.get(t_idx);
-            if (i != 0) {
-              auto const prev_last = stop{stop_seq_cache.back()};
-              auto const curr_first = stop{trp.stop_seq_.front()};
-              stop_seq_cache.back() =
-                  stop{prev_last.location_idx(), curr_first.in_allowed(),
-                       prev_last.out_allowed()}
-                      .value();
-            }
-            stop_seq_cache.insert(
-                end(stop_seq_cache),
-                i == 0 ? begin(trp.stop_seq_) : std::next(begin(trp.stop_seq_)),
-                end(trp.stop_seq_));
-          }
-          return &stop_seq_cache;
-        }
-      };
-
   bitvec bikes_allowed_seq_cache;
   auto const get_bikes_allowed_seq =
       [&](std::basic_string<gtfs_trip_idx_t> const& trips) -> bitvec const* {
@@ -193,8 +170,8 @@ void load_timetable(loader_config const& config,
                             bitfield const* traffic_days) {
     expand_trip(
         trip_data, noon_offsets, tt, trips, traffic_days, tt.date_range_,
-        [&](utc_trip&& s) {
-          auto const* stop_seq = get_stop_seq(s.trips_);
+        assistance, [&](utc_trip&& s) {
+          auto const* stop_seq = get_stop_seq(trip_data, s, stop_seq_cache);
           auto const clasz = trip_data.get(s.trips_.front()).get_clasz(tt);
           auto const* bikes_allowed_seq = get_bikes_allowed_seq(s.trips_);
           auto const it = route_services.find(
@@ -211,7 +188,7 @@ void load_timetable(loader_config const& config,
           } else {
             route_services.emplace(
                 route_key_t{clasz, *stop_seq, *bikes_allowed_seq},
-                std::vector<std::vector<utc_trip>>{{std::move(s)}});
+                std::vector<std::vector<utc_trip>>{{s}});
           }
         });
   };

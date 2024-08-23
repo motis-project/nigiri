@@ -35,6 +35,7 @@ int main(int ac, char** av) {
   auto in = fs::path{};
   auto out = fs::path{"tt.bin"};
   auto start_date = "TODAY"s;
+  auto assistance_path = fs::path{};
   auto n_days = 365U;
   auto recursive = false;
   auto ignore = false;
@@ -66,7 +67,8 @@ int main(int ac, char** av) {
        bpo::value(&c.adjust_footpaths_)->default_value(c.adjust_footpaths_),
        "adjust footpath lengths")  //
       ("max_foopath_length", bpo::value(&c.max_footpath_length_)
-                                 ->default_value(c.max_footpath_length_));
+                                 ->default_value(c.max_footpath_length_))  //
+      ("assistance_times", bpo::value(&assistance_path));
   auto const pos = bpo::positional_options_description{}.add("in", -1);
 
   auto vm = bpo::variables_map{};
@@ -97,7 +99,15 @@ int main(int ac, char** av) {
     return 1;
   }
 
+  auto assistance = std::unique_ptr<assistance_times>{};
+  if (vm.contains("assistance_times")) {
+    auto const f = cista::mmap{assistance_path.generic_string().c_str(),
+                               cista::mmap::protection::READ};
+    assistance = std::make_unique<assistance_times>(read_assistance(f.view()));
+  }
+
   auto const start = parse_date(start_date);
-  load(input_files, c, {start, start + date::days{n_days}}, ignore && recursive)
+  load(input_files, c, {start, start + date::days{n_days}}, assistance.get(),
+       ignore && recursive)
       .write(out);
 }

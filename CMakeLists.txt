@@ -82,7 +82,7 @@ endif ()
 file(GLOB_RECURSE nigiri-files src/*.cc)
 add_library(nigiri ${nigiri-files})
 target_include_directories(nigiri PUBLIC include)
-target_link_libraries(nigiri PUBLIC cista geo utl fmt date miniz date-tz wyhash unordered_dense gtfsrt pugixml)
+target_link_libraries(nigiri PUBLIC cista geo utl fmt date miniz date-tz wyhash unordered_dense gtfsrt oh pugixml)
 target_compile_features(nigiri PUBLIC cxx_std_23)
 target_compile_options(nigiri PRIVATE ${nigiri-compile-options})
 
@@ -99,6 +99,12 @@ add_executable(nigiri-import ${nigiri-import-files})
 target_link_libraries(nigiri-import PRIVATE nigiri boost-program_options ianatzdb-res)
 target_compile_features(nigiri-import PUBLIC cxx_std_23)
 
+# --- BENCHMARK ---
+file(GLOB_RECURSE nigiri-benchmark-files exe/benchmark.cc)
+add_executable(nigiri-benchmark ${nigiri-benchmark-files})
+target_link_libraries(nigiri-benchmark PRIVATE nigiri boost-program_options ianatzdb-res)
+target_compile_features(nigiri-benchmark PUBLIC cxx_std_23)
+
 # --- VDV UPDATE FILE ---
 add_executable(vdv-update exe/vdv_update.cc)
 target_compile_features(vdv-update PUBLIC cxx_std_23)
@@ -113,5 +119,6 @@ configure_file(
 )
 file(GLOB_RECURSE nigiri-test-files test/*.cc)
 add_executable(nigiri-test ${nigiri-test-files})
+target_include_directories(nigiri-test PRIVATE include)
 target_link_libraries(nigiri-test nigiri gtest ianatzdb-res nigiri-generated)
 target_compile_options(nigiri-test PRIVATE ${nigiri-compile-options})
