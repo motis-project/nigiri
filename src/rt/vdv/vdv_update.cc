@@ -110,7 +110,7 @@ struct candidate {
   }
 
   run r_;
-  std::uint32_t n_matches_;
+  std::uint32_t n_matches_{0U};
 };
 
 std::optional<rt::run> updater::find_run(pugi::xml_node const vdv_run,
@@ -174,11 +174,10 @@ std::optional<rt::run> updater::find_run(pugi::xml_node const vdv_run,
               }
 
               if (candidate == end(candidates)) {
-                candidates.emplace_back(
-                    run{tr,
-                        interval{static_cast<stop_idx_t>(stop_idx),
-                                 static_cast<stop_idx_t>(location_seq.size())}},
-                    0U);
+                candidates.emplace_back(run{
+                    tr,
+                    interval{static_cast<stop_idx_t>(stop_idx),
+                             static_cast<stop_idx_t>(location_seq.size())}});
                 candidate = end(candidates) - 1;
               }
               ++candidate->n_matches_;
