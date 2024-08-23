@@ -12,20 +12,16 @@ profile_set::profile_set(timetable const& tt)
       stop_reset_list_(tt.n_locations()),
       stop_reset_list_end_{0},
       entry_begin_end_(tt.n_locations()) {
-  vector_map<location_idx_t, val_t_con> max_entry1(tt.n_locations(), 1);
-  size_t n_entry1 = tt.n_locations();
-  vector_map<location_idx_t, val_t_con> max_entry2(tt.n_locations(), 1);
-  size_t n_entry2 = tt.n_locations();
+  vector_map<location_idx_t, val_t_con> max_entry(tt.n_locations(), 1);
+  size_t n_entry = tt.n_locations();
   for (auto& c : tt.fwd_connections_) {
     if (!stop{c.dep_stop_}.in_allowed()) {
       continue;
     }
     auto n_c_in_tt =
         tt.bitfields_[tt.transport_traffic_days_[c.transport_idx_]].count();
-    max_entry1[stop{c.dep_stop_}.location_idx()] += n_c_in_tt;
-    n_entry1 += n_c_in_tt;
-    max_entry2[stop{c.dep_stop_}.location_idx()] += kMaxSearchDays;
-    n_entry2 += kMaxSearchDays;
+    max_entry[stop{c.dep_stop_}.location_idx()] += n_c_in_tt;
+    n_entry += n_c_in_tt;
 
     vector_map<location_idx_t, val_t_con> max_fp(tt.n_locations(), 0);
     for (auto const& fps : tt.locations_.footpaths_in_) {
@@ -39,27 +35,12 @@ profile_set::profile_set(timetable const& tt)
           continue;
         }
         ++max_fp[fp.target()];
-        max_entry1[fp.target()] += n_c_in_tt;
-        n_entry1 += n_c_in_tt;
-        max_entry2[fp.target()] += kMaxSearchDays;
-        n_entry2 += kMaxSearchDays;
+        max_entry[fp.target()] += n_c_in_tt;
+        n_entry += n_c_in_tt;
       }
     }
-    // TODO
-    // dafür muss fp_prf_idx_ fest sein (nicht const& sondern const[in
-    // meat_profile_computer])
-    // for (auto const& fp :
-    //     tt.locations_.footpaths_in_[0 /* TODO fp_prf_idx_*/]
-    //                                [stop{c.dep_stop_}.location_idx()]) {
-    //  max_entry1[fp.target()] += n_c_in_tt;
-    //  n_entry1 += n_c_in_tt;
-    //  max_entry2[fp.target()] += kMaxSearchDays;
-    //  n_entry2 += kMaxSearchDays;
-    //}
   }
-  auto b = n_entry1 < n_entry2;
-  auto const& max_entry = b ? max_entry1 : max_entry2;
-  entry_ = std::vector<profile_entry>(b ? n_entry1 : n_entry2);
+  entry_ = std::vector<profile_entry>(n_entry);
 
   entry_begin_end_[location_idx_t{0}].first = 0;
   for (auto i = location_idx_t{1}; i < tt.n_locations(); ++i)
