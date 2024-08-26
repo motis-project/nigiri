@@ -3266,3 +3266,455 @@ TEST(vdv_update, vgm456) {
   // due to road closures
   EXPECT_TRUE(fr.is_rt());
 }
+
+namespace {
+
+mem_dir rvs347_files() {
+  return mem_dir::read(R"__(
+# trips.txt
+"route_id","service_id","trip_id","trip_headsign","trip_short_name","direction_id","block_id","shape_id","wheelchair_accessible","bikes_allowed"
+"de:vvo:23-347_3",1171,2593427812,"Rabenau Markt","",1,85683,48284,0,0
+
+# routes.txt
+"route_id","agency_id","route_short_name","route_long_name","route_type","route_color","route_text_color","route_desc"
+"de:vvo:23-347_3",8195,"347","",3,"","",""
+
+# agency.txt
+"agency_id","agency_name","agency_url","agency_timezone","agency_lang","agency_phone"
+8195,"RVD-Busverkehr","https://www.delfi.de","Europe/Berlin","",""
+
+# stop_times.txt
+"trip_id","arrival_time","departure_time","stop_id","stop_sequence","pickup_type","drop_off_type","stop_headsign"
+2593427812,15:19:00,15:19:00,"de:14628:1030:0:4",0,0,0,""
+2593427812,15:21:00,15:21:00,"de:14628:1039:0:2",1,0,0,""
+2593427812,15:24:00,15:24:00,"de:14628:1276:2:91",2,0,0,""
+2593427812,15:26:00,15:26:00,"de:14628:1275:2:91",3,0,0,""
+2593427812,15:29:00,15:29:00,"de:14628:1293:0:1",4,0,0,""
+2593427812,15:31:00,15:31:00,"de:14628:1292:0:1",5,0,0,""
+
+# stops.txt
+"stop_id","stop_code","stop_name","stop_desc","stop_lat","stop_lon","location_type","parent_station","wheelchair_boarding","platform_code","level_id"
+"de:14628:1275:2:91","","Obernaundorf Gasthof","Marktsteig","50.967772000000","13.666151000000",0,,0,"91","2"
+"de:14628:1292:0:1","","Rabenau Markt","Rabenau Markt","50.963077000000","13.641430000000",0,,0,"1","2"
+"de:14628:1276:2:91","","Obernaundorf Wendeplatz","Marktsteig","50.971065000000","13.681144000000",0,,0,"91","2"
+"de:14628:1293:0:1","","Rabenau Obernaundorfer Straße",,"50.965340000000","13.645050000000",0,,0,"",""
+"de:14628:1039:0:2","","Possendorf Wilmsdorf",,"50.970686000000","13.702120000000",0,,0,"",""
+"de:14628:1030:0:4","","Possendorf Hauptstr (Wpl)","Possendorf Hauptstr (Wpl)","50.968219000000","13.712828000000",0,,0,"4","2"
+
+# calendar.txt
+"service_id","monday","tuesday","wednesday","thursday","friday","saturday","sunday","start_date","end_date"
+1171,1,1,1,1,1,0,0,20240805,20241214
+
+# calendar_dates.txt
+"service_id","date","exception_type"
+1171,20240805,2
+1171,20240812,2
+1171,20240806,2
+1171,20240813,2
+1171,20240807,2
+1171,20241120,2
+1171,20240808,2
+1171,20241003,2
+1171,20241031,2
+1171,20240809,2
+
+)__");
+}
+
+constexpr auto const update_rvs347 = R"(
+<IstFahrt Zst="2024-08-26T15:25:23">
+	<LinienID>RVS347</LinienID>
+	<RichtungsID>2</RichtungsID>
+	<FahrtRef>
+		<FahrtID>
+			<FahrtBezeichner>RVS31512_vvorbl</FahrtBezeichner>
+			<Betriebstag>2024-08-26</Betriebstag>
+		</FahrtID>
+	</FahrtRef>
+	<Komplettfahrt>true</Komplettfahrt>
+	<BetreiberID>vvorbl</BetreiberID>
+	<IstHalt>
+		<HaltID>de:14628:1030:0:4</HaltID>
+		<Abfahrtszeit>2024-08-26T13:19:00</Abfahrtszeit>
+		<AbfahrtssteigText>4</AbfahrtssteigText>
+		<Besetztgrad>Unbekannt</Besetztgrad>
+	</IstHalt>
+	<IstHalt>
+		<HaltID>de:14628:1039:0:2</HaltID>
+		<Abfahrtszeit>2024-08-26T13:21:00</Abfahrtszeit>
+		<Ankunftszeit>2024-08-26T13:21:00</Ankunftszeit>
+		<AbfahrtssteigText>2</AbfahrtssteigText>
+		<Besetztgrad>Unbekannt</Besetztgrad>
+	</IstHalt>
+	<IstHalt>
+		<HaltID>de:14628:1276:0:1</HaltID>
+		<Abfahrtszeit>2024-08-26T13:24:00</Abfahrtszeit>
+		<Ankunftszeit>2024-08-26T13:24:00</Ankunftszeit>
+		<AbfahrtssteigText>1</AbfahrtssteigText>
+		<Besetztgrad>Unbekannt</Besetztgrad>
+	</IstHalt>
+	<IstHalt>
+		<HaltID>de:14628:1275:0:1</HaltID>
+		<Abfahrtszeit>2024-08-26T13:26:00</Abfahrtszeit>
+		<Ankunftszeit>2024-08-26T13:26:00</Ankunftszeit>
+		<AbfahrtssteigText>1</AbfahrtssteigText>
+		<Besetztgrad>Unbekannt</Besetztgrad>
+	</IstHalt>
+	<IstHalt>
+		<HaltID>de:14628:1274:0:1</HaltID>
+		<Abfahrtszeit>2024-08-26T13:27:00</Abfahrtszeit>
+		<Ankunftszeit>2024-08-26T13:27:00</Ankunftszeit>
+		<AbfahrtssteigText>1</AbfahrtssteigText>
+		<Besetztgrad>Unbekannt</Besetztgrad>
+	</IstHalt>
+	<IstHalt>
+		<HaltID>de:14628:1293:0:1</HaltID>
+		<Abfahrtszeit>2024-08-26T13:29:00</Abfahrtszeit>
+		<Ankunftszeit>2024-08-26T13:29:00</Ankunftszeit>
+		<AbfahrtssteigText>1</AbfahrtssteigText>
+		<Besetztgrad>Unbekannt</Besetztgrad>
+	</IstHalt>
+	<IstHalt>
+		<HaltID>de:14628:1292:0:1</HaltID>
+		<Ankunftszeit>2024-08-26T13:31:00</Ankunftszeit>
+		<AnkunftssteigText>1</AnkunftssteigText>
+		<Besetztgrad>Unbekannt</Besetztgrad>
+	</IstHalt>
+	<LinienText>347</LinienText>
+	<ProduktID>RVS347</ProduktID>
+	<RichtungsText>Rabenau - 376 Dippoldiswalde</RichtungsText>
+	<PrognoseMoeglich>true</PrognoseMoeglich>
+	<FaelltAus>false</FaelltAus>
+</IstFahrt>
+)";
+
+}  // namespace
+
+TEST(vdv_update, rvs347) {
+  timetable tt;
+  register_special_stations(tt);
+  tt.date_range_ = {date::sys_days{2024_y / August / 1},
+                    date::sys_days{2024_y / August / 31}};
+  auto const src_idx = source_idx_t{0};
+  load_timetable({}, src_idx, rvs347_files(), tt);
+  finalize(tt);
+
+  auto rtt = rt::create_rt_timetable(tt, date::sys_days{2024_y / August / 26});
+
+  auto u = rt::vdv::updater{tt, src_idx};
+
+  auto doc = pugi::xml_document{};
+  doc.load_string(update_rvs347);
+  u.update(rtt, doc);
+
+  auto const fr = rt::frun{tt,
+                           &rtt,
+                           {{transport_idx_t{0U}, day_idx_t{30U}},
+                            {stop_idx_t{0U}, stop_idx_t{6U}}}};
+
+  EXPECT_TRUE(fr.is_rt());
+}
+
+namespace {
+
+mem_dir rbo512_files() {
+  return mem_dir::read(R"__(
+# trips.txt
+"route_id","service_id","trip_id","trip_headsign","trip_short_name","direction_id","block_id","shape_id","wheelchair_accessible","bikes_allowed"
+"6750606_3",268,2593443891,"Bautzen August-Bebel-Pl (ZOB)","",1,,49668,0,0
+"de:von:27-512_3",268,2593399553,"Bautzen August-Bebel-Pl (ZOB)","",1,,89076,0,0
+
+# routes.txt
+"route_id","agency_id","route_short_name","route_long_name","route_type","route_color","route_text_color","route_desc"
+"6750606_3",8197,"512","",3,"","",""
+"de:von:27-512_3",7874,"512/267","",3,"","",""
+
+# agency.txt
+"agency_id","agency_name","agency_url","agency_timezone","agency_lang","agency_phone"
+8197,"RBO-Busverkehr","https://www.delfi.de","Europe/Berlin","",""
+7874,"RBO-Bus","https://www.delfi.de","Europe/Berlin","",""
+
+# stop_times.txt
+"trip_id","arrival_time","departure_time","stop_id","stop_sequence","pickup_type","drop_off_type","stop_headsign"
+2593443891,16:02:00,16:02:00,"de:14628:3880:3:5",0,0,0,""
+2593443891,16:04:00,16:04:00,"de:14628:3889:0:1",1,0,0,""
+2593443891,16:06:00,16:06:00,"de:14628:3881:0:2",2,0,0,""
+2593443891,16:08:00,16:08:00,"de:14628:3852:0:1",3,0,0,""
+2593443891,16:16:00,16:16:00,"de:14628:3863:0:1",4,0,0,""
+2593443891,16:20:00,16:20:00,"de:14628:3864:0:1",5,0,0,""
+2593443891,16:21:00,16:21:00,"de:14628:3865:0:1",6,0,0,""
+2593443891,16:23:00,16:23:00,"de:14625:7254:0:2",7,0,0,""
+2593443891,16:26:00,16:26:00,"de:14625:7251:0:2",8,0,0,""
+2593443891,16:27:00,16:27:00,"de:14625:7250:0:2",9,0,0,""
+2593443891,16:29:00,16:29:00,"de:14625:7241:0:2",10,0,0,""
+2593443891,16:30:00,16:30:00,"de:14625:7240:0:2",11,0,0,""
+2593443891,16:32:00,16:32:00,"de:14625:7230:3:2",12,0,0,""
+2593443891,16:34:00,16:34:00,"de:14625:7231:0:2",13,0,0,""
+2593443891,16:35:00,16:35:00,"de:14625:7232:0:2",14,0,0,""
+2593443891,16:37:00,16:37:00,"de:14625:7449:0:2",15,0,0,""
+2593443891,16:38:00,16:38:00,"de:14625:7442:0:2",16,0,0,""
+2593443891,16:40:00,16:40:00,"de:14625:7455:0:2",17,0,0,""
+2593443891,16:41:00,16:41:00,"de:14625:7420:0:2",18,0,0,""
+2593443891,16:48:00,16:48:00,"de:14625:7468:0:2",19,0,0,""
+2593443891,16:50:00,16:50:00,"de:14625:7513:0:2",20,0,0,""
+2593443891,16:51:00,16:51:00,"de:14625:7512:0:2",21,0,0,""
+2593443891,16:52:00,16:52:00,"de:14625:7504:0:2",22,0,0,""
+2593443891,16:53:00,16:53:00,"de:14625:7509:0:2",23,0,0,""
+2593443891,16:54:00,16:54:00,"de:14625:7500:3:2",24,0,0,""
+2593443891,16:56:00,16:56:00,"de:14625:7501:0:11",25,0,0,""
+2593399553,16:26:00,16:26:00,"de:14625:7251:0:2",0,0,0,""
+2593399553,16:27:00,16:27:00,"de:14625:7250:0:2_G",1,0,0,""
+2593399553,16:29:00,16:29:00,"de:14625:7241:0:2_G",2,0,0,""
+2593399553,16:30:00,16:30:00,"de:14625:7240:0:2_G",3,0,0,""
+2593399553,16:32:00,16:32:00,"de:14625:7230:3:2",4,0,0,""
+2593399553,16:34:00,16:34:00,"de:14625:7231:0:2",5,0,0,""
+2593399553,16:35:00,16:35:00,"de:14625:7232:0:2_G",6,0,0,""
+2593399553,16:37:00,16:37:00,"de:14625:7449:0:2_G",7,0,0,""
+2593399553,16:38:00,16:38:00,"de:14625:7442:0:2_G",8,0,0,""
+2593399553,16:40:00,16:40:00,"de:14625:7455:0:2_G",9,0,0,""
+2593399553,16:41:00,16:41:00,"de:14625:7420:0:2_G",10,0,0,""
+2593399553,16:48:00,16:48:00,"de:14625:7468:0:2_G",11,0,0,""
+2593399553,16:50:00,16:50:00,"de:14625:7513:0:2_G",12,0,0,""
+2593399553,16:51:00,16:51:00,"de:14625:7512:0:2",13,0,0,""
+2593399553,16:52:00,16:52:00,"de:14625:7504:0:2",14,0,0,""
+2593399553,16:53:00,16:53:00,"de:14625:7509:0:2",15,0,0,""
+2593399553,16:54:00,16:54:00,"de:14625:7500:3:2",16,0,0,""
+2593399553,16:56:00,16:56:00,"de:14625:7501:0:11_G",17,0,0,""
+
+# stops.txt
+"stop_id","stop_code","stop_name","stop_desc","stop_lat","stop_lon","location_type","parent_station","wheelchair_boarding","platform_code","level_id"
+"de:14625:7468:0:2","","Preuschwitz",,"51.158480000000","14.408214000000",0,,0,"",""
+"de:14625:7420:0:2","","Neu-Drauschkowitz",,"51.144900000000","14.349203000000",0,,0,"",""
+"de:14625:7455:0:2","","Weißnaußlitz",,"51.138317000000","14.347658000000",0,,0,"",""
+"de:14625:7442:0:2","","Dretschen Zur Postschänke",,"51.125560000000","14.341208000000",0,,0,"",""
+"de:14625:7449:0:2","","Neu-Diehmen",,"51.112619000000","14.331156000000",0,,0,"",""
+"de:14625:7230:3:2","","Neukirch (Lausitz) Bf Ost","Bus","51.091088000000","14.321275000000",0,,0,"2","2"
+"de:14625:7240:0:2","","Ringenhain Siedlerstraße",,"51.081309000000","14.328596000000",0,,0,"",""
+"de:14625:7232:0:2","","Neukirch/Lausitz Sandhübel",,"51.100803000000","14.327365000000",0,,0,"",""
+"de:14625:7501:0:11","","Bautzen August-Bebel-Pl (ZOB)",,"51.177006000000","14.433079000000",0,,0,"",""
+"de:14628:3864:0:1","","Hohwald Hohwaldschänke",,"51.052993000000","14.279404000000",0,,0,"",""
+"de:14628:3863:0:1","","Hohwaldklinik",,"51.047516000000","14.290400000000",0,,0,"",""
+"de:14625:7504:0:2","","Bautzen Neusalzaer Straße","Bautzen Neusalzaer Straße","51.171504000000","14.424311000000",0,,0,"2","2"
+"de:14625:7241:0:2","","Ringenhain Erbgericht",,"51.077534000000","14.337301000000",0,,0,"",""
+"de:14625:7251:0:2","","Steinigtwolmsdorf Weifaer Straße","Steinigtwolmsdorf Weifaer Straße","51.064839000000","14.345619000000",0,,0,"2","2"
+"de:14625:7254:0:2","","Steinigtwolmsdorf Waldhaus",,"51.060113000000","14.318948000000",0,,0,"",""
+"de:14628:3880:3:5","","Neustadt Bahnhof","Bus","51.021705000000","14.212983000000",0,,0,"5","2"
+"de:14625:7250:0:2","","Steinigtwolmsdorf Niederdorf",,"51.069761000000","14.341002000000",0,,0,"",""
+"de:14625:7509:0:2","","Bautzen Packhofstraße","Bautzen Packhofstraße","51.173717000000","14.423817000000",0,,0,"2","2"
+"de:14625:7513:0:2","","Bautzen Gewerbepark Wilthener Straße",,"51.166913000000","14.422254000000",0,,0,"",""
+"de:14628:3852:0:1","","Langburkersdorf A-Schubert-Str","Langburkersdorf A-Schubert-Str","51.025056000000","14.232575000000",0,,0,"1","2"
+"de:14625:7512:0:2","","Bautzen Zeppelinstraße","Bautzen Zeppelinstraße","51.169673000000","14.425255000000",0,,0,"2","2"
+"de:14628:3865:0:1","","Hohwald Steinwerke",,"51.057934000000","14.294244000000",0,,0,"",""
+"de:14625:7231:0:2","","Neukirch/Lausitz Bautzener Straße","Neukirch/Lausitz Bautzener Straße","51.093458000000","14.320754000000",0,,0,"2","2"
+"de:14628:3881:0:2","","Neustadt Wilhelm-Kaulisch-Str.",,"51.026282000000","14.219316000000",0,,0,"",""
+"de:14625:7500:3:2","","Bautzen Bahnhof","Bus","51.174061000000","14.428444000000",0,,0,"2","2"
+"de:14628:3889:0:1","","Neustadt Neustadthalle",,"51.024672000000","14.209821000000",0,,0,"",""
+"de:14625:7501:0:11_G","","Bautzen August-Bebel-Pl (ZOB)",,"51.176995000000","14.433052000000",0,,0,"",""
+"de:14625:7513:0:2_G","","Bautzen Gewerbepark Wilthener Straße",,"51.166806000000","14.422227000000",0,,0,"",""
+"de:14625:7442:0:2_G","","Dretschen Zur Postschänke",,"51.125442000000","14.341100000000",0,,0,"",""
+"de:14625:7420:0:2_G","","Neu-Drauschkowitz",,"51.144793000000","14.349167000000",0,,0,"",""
+"de:14625:7449:0:2_G","","Neu-Diehmen",,"51.112535000000","14.331057000000",0,,0,"",""
+"de:14625:7232:0:2_G","","Neukirch/Lausitz Sandhübel",,"51.100696000000","14.327266000000",0,,0,"",""
+"de:14625:7240:0:2_G","","Ringenhain Siedlerstraße",,"51.081287000000","14.328650000000",0,,0,"",""
+"de:14625:7455:0:2_G","","Weißnaußlitz",,"51.138255000000","14.347667000000",0,,0,"",""
+"de:14625:7250:0:2_G","","Steinigtwolmsdorf Niederdorf",,"51.069722000000","14.341029000000",0,,0,"",""
+"de:14625:7241:0:2_G","","Ringenhain Erbgericht",,"51.077579000000","14.337094000000",0,,0,"",""
+"de:14625:7468:0:2_G","","Preuschwitz",,"51.158525000000","14.408079000000",0,,0,"",""
+
+
+# calendar.txt
+"service_id","monday","tuesday","wednesday","thursday","friday","saturday","sunday","start_date","end_date"
+268,1,1,1,1,1,1,1,20240805,20241214
+
+# calendar_dates.txt
+"service_id","date","exception_type"
+268,20240805,2
+268,20240812,2
+268,20240806,2
+268,20240813,2
+268,20240807,2
+268,20240808,2
+268,20240809,2
+268,20240810,2
+268,20240811,2
+
+)__");
+}
+
+constexpr auto const update_rbo512 = R"(
+<IstFahrt Zst="2024-08-26T15:29:21">
+	<LinienID>RBO512</LinienID>
+	<RichtungsID>2</RichtungsID>
+	<FahrtRef>
+		<FahrtID>
+			<FahrtBezeichner>RBO5557_vvorbl</FahrtBezeichner>
+			<Betriebstag>2024-08-26</Betriebstag>
+		</FahrtID>
+	</FahrtRef>
+	<Komplettfahrt>true</Komplettfahrt>
+	<UmlaufID>65021</UmlaufID>
+	<BetreiberID>vvorbl</BetreiberID>
+	<IstHalt>
+		<HaltID>de:14625:7251:0:2</HaltID>
+		<Abfahrtszeit>2024-08-26T14:26:00</Abfahrtszeit>
+		<AbfahrtssteigText>2</AbfahrtssteigText>
+		<Besetztgrad>Unbekannt</Besetztgrad>
+	</IstHalt>
+	<IstHalt>
+		<HaltID>de:14625:7250:0:2</HaltID>
+		<Abfahrtszeit>2024-08-26T14:27:00</Abfahrtszeit>
+		<Ankunftszeit>2024-08-26T14:27:00</Ankunftszeit>
+		<AbfahrtssteigText>2</AbfahrtssteigText>
+		<Besetztgrad>Unbekannt</Besetztgrad>
+	</IstHalt>
+	<IstHalt>
+		<HaltID>de:14625:7241:0:2</HaltID>
+		<Abfahrtszeit>2024-08-26T14:29:00</Abfahrtszeit>
+		<Ankunftszeit>2024-08-26T14:29:00</Ankunftszeit>
+		<AbfahrtssteigText>2</AbfahrtssteigText>
+		<Besetztgrad>Unbekannt</Besetztgrad>
+	</IstHalt>
+	<IstHalt>
+		<HaltID>de:14625:7240:0:2</HaltID>
+		<Abfahrtszeit>2024-08-26T14:30:00</Abfahrtszeit>
+		<Ankunftszeit>2024-08-26T14:30:00</Ankunftszeit>
+		<AbfahrtssteigText>2</AbfahrtssteigText>
+		<Besetztgrad>Unbekannt</Besetztgrad>
+	</IstHalt>
+	<IstHalt>
+		<HaltID>de:14625:7230:3:2</HaltID>
+		<Abfahrtszeit>2024-08-26T14:32:00</Abfahrtszeit>
+		<Ankunftszeit>2024-08-26T14:32:00</Ankunftszeit>
+		<AbfahrtssteigText>2</AbfahrtssteigText>
+		<Besetztgrad>Unbekannt</Besetztgrad>
+	</IstHalt>
+	<IstHalt>
+		<HaltID>de:14625:7231:0:2</HaltID>
+		<Abfahrtszeit>2024-08-26T14:34:00</Abfahrtszeit>
+		<Ankunftszeit>2024-08-26T14:34:00</Ankunftszeit>
+		<AbfahrtssteigText>2</AbfahrtssteigText>
+		<Besetztgrad>Unbekannt</Besetztgrad>
+	</IstHalt>
+	<IstHalt>
+		<HaltID>de:14625:7232:0:2</HaltID>
+		<Abfahrtszeit>2024-08-26T14:35:00</Abfahrtszeit>
+		<Ankunftszeit>2024-08-26T14:35:00</Ankunftszeit>
+		<AbfahrtssteigText>2</AbfahrtssteigText>
+		<Besetztgrad>Unbekannt</Besetztgrad>
+	</IstHalt>
+	<IstHalt>
+		<HaltID>de:14625:7449:0:2</HaltID>
+		<Abfahrtszeit>2024-08-26T14:37:00</Abfahrtszeit>
+		<Ankunftszeit>2024-08-26T14:37:00</Ankunftszeit>
+		<AbfahrtssteigText>2</AbfahrtssteigText>
+		<Besetztgrad>Unbekannt</Besetztgrad>
+	</IstHalt>
+	<IstHalt>
+		<HaltID>de:14625:7442:0:2</HaltID>
+		<Abfahrtszeit>2024-08-26T14:38:00</Abfahrtszeit>
+		<Ankunftszeit>2024-08-26T14:38:00</Ankunftszeit>
+		<AbfahrtssteigText>2</AbfahrtssteigText>
+		<Besetztgrad>Unbekannt</Besetztgrad>
+	</IstHalt>
+	<IstHalt>
+		<HaltID>de:14625:7455:0:2</HaltID>
+		<Abfahrtszeit>2024-08-26T14:40:00</Abfahrtszeit>
+		<Ankunftszeit>2024-08-26T14:40:00</Ankunftszeit>
+		<AbfahrtssteigText>2</AbfahrtssteigText>
+		<Besetztgrad>Unbekannt</Besetztgrad>
+	</IstHalt>
+	<IstHalt>
+		<HaltID>de:14625:7420:0:2</HaltID>
+		<Abfahrtszeit>2024-08-26T14:41:00</Abfahrtszeit>
+		<Ankunftszeit>2024-08-26T14:41:00</Ankunftszeit>
+		<AbfahrtssteigText>2</AbfahrtssteigText>
+		<Besetztgrad>Unbekannt</Besetztgrad>
+	</IstHalt>
+	<IstHalt>
+		<HaltID>de:14625:7468:0:2</HaltID>
+		<Abfahrtszeit>2024-08-26T14:48:00</Abfahrtszeit>
+		<Ankunftszeit>2024-08-26T14:48:00</Ankunftszeit>
+		<AbfahrtssteigText>2</AbfahrtssteigText>
+		<Besetztgrad>Unbekannt</Besetztgrad>
+	</IstHalt>
+	<IstHalt>
+		<HaltID>de:14625:7513:0:2</HaltID>
+		<Abfahrtszeit>2024-08-26T14:50:00</Abfahrtszeit>
+		<Ankunftszeit>2024-08-26T14:50:00</Ankunftszeit>
+		<AbfahrtssteigText>2</AbfahrtssteigText>
+		<Besetztgrad>Unbekannt</Besetztgrad>
+	</IstHalt>
+	<IstHalt>
+		<HaltID>de:14625:7512:0:2</HaltID>
+		<Abfahrtszeit>2024-08-26T14:51:00</Abfahrtszeit>
+		<Ankunftszeit>2024-08-26T14:51:00</Ankunftszeit>
+		<AbfahrtssteigText>2</AbfahrtssteigText>
+		<Besetztgrad>Unbekannt</Besetztgrad>
+	</IstHalt>
+	<IstHalt>
+		<HaltID>de:14625:7504:0:2</HaltID>
+		<Abfahrtszeit>2024-08-26T14:52:00</Abfahrtszeit>
+		<Ankunftszeit>2024-08-26T14:52:00</Ankunftszeit>
+		<AbfahrtssteigText>2</AbfahrtssteigText>
+		<Besetztgrad>Unbekannt</Besetztgrad>
+	</IstHalt>
+	<IstHalt>
+		<HaltID>de:14625:7509:0:2</HaltID>
+		<Abfahrtszeit>2024-08-26T14:53:00</Abfahrtszeit>
+		<Ankunftszeit>2024-08-26T14:53:00</Ankunftszeit>
+		<AbfahrtssteigText>2</AbfahrtssteigText>
+		<Besetztgrad>Unbekannt</Besetztgrad>
+	</IstHalt>
+	<IstHalt>
+		<HaltID>de:14625:7500:3:2</HaltID>
+		<Abfahrtszeit>2024-08-26T14:54:00</Abfahrtszeit>
+		<Ankunftszeit>2024-08-26T14:54:00</Ankunftszeit>
+		<AbfahrtssteigText>2</AbfahrtssteigText>
+		<Besetztgrad>Unbekannt</Besetztgrad>
+	</IstHalt>
+	<IstHalt>
+		<HaltID>de:14625:7501:0:11</HaltID>
+		<Ankunftszeit>2024-08-26T14:56:00</Ankunftszeit>
+		<AnkunftssteigText>11</AnkunftssteigText>
+		<Besetztgrad>Unbekannt</Besetztgrad>
+	</IstHalt>
+	<LinienText>512</LinienText>
+	<ProduktID>RBO512</ProduktID>
+	<RichtungsText>Bautzen A.-Bebel-Platz</RichtungsText>
+	<PrognoseMoeglich>false</PrognoseMoeglich>
+	<FaelltAus>false</FaelltAus>
+</IstFahrt>
+)";
+
+}  // namespace
+
+TEST(vdv_update, rbo512) {
+  timetable tt;
+  register_special_stations(tt);
+  tt.date_range_ = {date::sys_days{2024_y / August / 1},
+                    date::sys_days{2024_y / August / 31}};
+  auto const src_idx = source_idx_t{0};
+  load_timetable({}, src_idx, rbo512_files(), tt);
+  finalize(tt);
+
+  auto rtt = rt::create_rt_timetable(tt, date::sys_days{2024_y / August / 26});
+
+  auto u = rt::vdv::updater{tt, src_idx};
+
+  auto doc = pugi::xml_document{};
+  doc.load_string(update_rbo512);
+  u.update(rtt, doc);
+
+  auto const fr0 = rt::frun{tt,
+                            &rtt,
+                            {{transport_idx_t{0U}, day_idx_t{30U}},
+                             {stop_idx_t{0U}, stop_idx_t{26U}}}};
+  EXPECT_FALSE(fr0.is_rt());
+
+  // Should only match the shorter transport
+  auto const fr1 = rt::frun{tt,
+                            &rtt,
+                            {{transport_idx_t{1U}, day_idx_t{30U}},
+                             {stop_idx_t{0U}, stop_idx_t{18U}}}};
+  EXPECT_TRUE(fr1.is_rt());
+}
