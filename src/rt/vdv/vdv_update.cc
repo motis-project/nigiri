@@ -53,7 +53,7 @@ pugi::xml_node get(pugi::xml_node const& node, char const* str) {
 
 template <typename T>
 bool epsilon_equal(T const& a, T const& b) {
-  constexpr auto const epsilon = T{1};
+  constexpr auto const epsilon = T{updater::kAllowedTimeDiscrepancy};
   return a - epsilon <= b && b <= a + epsilon;
 }
 

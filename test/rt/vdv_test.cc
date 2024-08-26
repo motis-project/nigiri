@@ -1412,7 +1412,7 @@ TEST(vdv_update, smd712) {
   // timetable. However, the GTFS timetable contains different times due to the
   // line being redirected starting from June 29
   // the time differences is up to 4 minutes
-  EXPECT_FALSE(fr.is_rt());
+  EXPECT_TRUE(fr.is_rt());
 }
 
 namespace {
@@ -2394,5 +2394,354 @@ TEST(vdv_update, rbo707) {
                            {{transport_idx_t{0U}, day_idx_t{27U}},
                             {stop_idx_t{0U}, stop_idx_t{24U}}}};
 
+  EXPECT_TRUE(fr.is_rt());
+}
+
+namespace {
+
+mem_dir rbo501_files() {
+  return mem_dir::read(R"__(
+# trips.txt
+"route_id","service_id","trip_id","trip_headsign","trip_short_name","direction_id","block_id","shape_id","wheelchair_accessible","bikes_allowed"
+"de:von:27-501_3",1194,2593399129,"Mücka Bahnhof","",0,,89026,0,0
+
+# routes.txt
+"route_id","agency_id","route_short_name","route_long_name","route_type","route_color","route_text_color","route_desc"
+"de:von:27-501_3",7874,"501","",3,"","",""
+
+# agency.txt
+"agency_id","agency_name","agency_url","agency_timezone","agency_lang","agency_phone"
+7874,"RBO-Bus","https://www.delfi.de","Europe/Berlin","",""
+
+# stop_times.txt
+"trip_id","arrival_time","departure_time","stop_id","stop_sequence","pickup_type","drop_off_type","stop_headsign"
+2593399129,10:04:00,10:04:00,"de:14625:7501:0:4",0,0,0,""
+2593399129,10:05:00,10:05:00,"de:14625:7500:3:1",1,0,0,""
+2593399129,10:08:00,10:08:00,"de:14625:7553:0:1",2,0,0,""
+2593399129,10:09:00,10:09:00,"de:14625:7575:0:1",3,0,0,""
+2593399129,10:11:00,10:11:00,"de:14625:7545:0:1",4,0,0,""
+2593399129,10:13:00,10:13:00,"de:14625:7540:0:1",5,0,0,""
+2593399129,10:16:00,10:16:00,"de:14625:7543:0:1",6,0,0,""
+2593399129,10:19:00,10:19:00,"de:14625:7853:0:1",7,0,0,""
+2593399129,10:21:00,10:21:00,"de:14625:7855:0:1",8,0,0,""
+2593399129,10:24:00,10:24:00,"de:14625:7857:0:1",9,0,0,""
+2593399129,10:26:00,10:26:00,"de:14625:7831:0:1",10,0,0,""
+2593399129,10:27:00,10:27:00,"de:14625:7832:0:1",11,0,0,""
+2593399129,10:29:00,10:29:00,"de:14625:7833:0:1",12,0,0,""
+2593399129,10:30:00,10:30:00,"de:14625:7834:0:1",13,0,0,""
+2593399129,10:32:00,10:32:00,"de:14625:7839:0:1",14,0,0,""
+2593399129,10:36:00,10:36:00,"de:14626:8595:0:1",15,0,0,""
+2593399129,10:37:00,10:37:00,"de:14626:8592:0:1",16,0,0,""
+2593399129,10:39:00,10:39:00,"de:14626:8591:0:1",17,0,0,""
+2593399129,10:41:00,10:41:00,"de:14626:8461:0:1",18,0,0,""
+2593399129,10:44:00,10:44:00,"de:14626:8463:0:1",19,0,0,""
+2593399129,10:47:00,10:47:00,"de:14626:8466:0:1",20,0,0,""
+2593399129,10:49:00,10:49:00,"de:14626:8467:0:1",21,0,0,""
+2593399129,10:51:00,10:51:00,"de:14626:8468:5:2",22,0,0,""
+
+# stops.txt
+"stop_id","stop_code","stop_name","stop_desc","stop_lat","stop_lon","location_type","parent_station","wheelchair_boarding","platform_code","level_id"
+"de:14626:8468:5:2","","Mücka Bahnhof","Bus","51.319683000000","14.704622000000",0,,0,"2","2"
+"de:14626:8467:0:1","","Mücka Schule","Mücka Schule","51.314995000000","14.703831000000",0,,0,"1","2"
+"de:14626:8463:0:1","","Förstgen Gasthaus",,"51.296895000000","14.663739000000",0,,0,"",""
+"de:14626:8591:0:1","","Weigersdorf Niederdorf",,"51.268846000000","14.645746000000",0,,0,"",""
+"de:14626:8592:0:1","","Weigersdorf Landambulatorium",,"51.273505000000","14.640778000000",0,,0,"",""
+"de:14626:8466:0:1","","Mücka Bildungszentrum",,"51.311722000000","14.688434000000",0,,0,"",""
+"de:14626:8595:0:1","","Dauban",,"51.276843000000","14.634823000000",0,,0,"",""
+"de:14625:7834:0:1","","Guttau Anbau",,"51.257840000000","14.572713000000",0,,0,"",""
+"de:14625:7832:0:1","","Abzweig nach Brösa",,"51.256519000000","14.553399000000",0,,0,"",""
+"de:14625:7857:0:1","","Malschwitz Schule",,"51.237518000000","14.521850000000",0,,0,"",""
+"de:14625:7553:0:1","","Bautzen Ziegelwall",,"51.182615000000","14.435639000000",0,,0,"",""
+"de:14625:7575:0:1","","Bautzen List-/Muskauer Straße",,"51.185301000000","14.438163000000",0,,0,"",""
+"de:14625:7831:0:1","","Guttau Gewerbegebiet",,"51.249328000000","14.543302000000",0,,0,"",""
+"de:14625:7540:0:1","","Bautzen Burker Straße",,"51.197833000000","14.463235000000",0,,0,"",""
+"de:14625:7855:0:1","","Pließkowitz Malschwitzer Landstraße",,"51.227101000000","14.506175000000",0,,0,"",""
+"de:14625:7839:0:1","","Kleinsaubernitz",,"51.264130000000","14.598809000000",0,,0,"",""
+"de:14625:7833:0:1","","Guttau Hauptstraße",,"51.258464000000","14.561179000000",0,,0,"",""
+"de:14625:7545:0:1","","Bautzen Gesundbrunnenring",,"51.191134000000","14.451926000000",0,,0,"",""
+"de:14625:7853:0:1","","Doberschütz (b Malschwitz) Am Schafberg",,"51.219630000000","14.497982000000",0,,0,"",""
+"de:14625:7543:0:1","","Bautzen Burk Talsperre",,"51.208989000000","14.471500000000",0,,0,"",""
+"de:14625:7500:3:1","","Bautzen Bahnhof","Bus","51.173723000000","14.429764000000",0,,0,"1","2"
+"de:14626:8461:0:1","","Abzweig nach Leipgen",,"51.282923000000","14.656283000000",0,,0,"",""
+"de:14625:7501:0:4","","Bautzen August-Bebel-Pl (ZOB)",,"51.177423000000","14.433843000000",0,,0,"",""
+
+# calendar.txt
+"service_id","monday","tuesday","wednesday","thursday","friday","saturday","sunday","start_date","end_date"
+1194,1,1,1,1,1,1,0,20240805,20241214
+
+# calendar_dates.txt
+"service_id","date","exception_type"
+1194,20240805,2
+1194,20240812,2
+1194,20240806,2
+1194,20240813,2
+1194,20240807,2
+1194,20241120,2
+1194,20240808,2
+1194,20241003,2
+1194,20241031,2
+1194,20240809,2
+1194,20240810,2
+
+)__");
+}
+
+constexpr auto const update_rbo501 = R"(
+<IstFahrt Zst="2024-08-26T10:37:40">
+	<LinienID>RBO501</LinienID>
+	<RichtungsID>1</RichtungsID>
+	<FahrtRef>
+		<FahrtID>
+			<FahrtBezeichner>RBO2812_vvorbl</FahrtBezeichner>
+			<Betriebstag>2024-08-26</Betriebstag>
+		</FahrtID>
+	</FahrtRef>
+	<Komplettfahrt>true</Komplettfahrt>
+	<BetreiberID>vvorbl</BetreiberID>
+	<IstHalt>
+		<HaltID>de:14625:7501:0:4</HaltID>
+		<Abfahrtszeit>2024-08-26T08:04:00</Abfahrtszeit>
+		<IstAbfahrtPrognose>2024-08-26T08:04:00</IstAbfahrtPrognose>
+		<AbfahrtssteigText>4</AbfahrtssteigText>
+		<Besetztgrad>Unbekannt</Besetztgrad>
+	</IstHalt>
+	<IstHalt>
+		<HaltID>de:14625:7500:3:1</HaltID>
+		<Abfahrtszeit>2024-08-26T08:05:00</Abfahrtszeit>
+		<Ankunftszeit>2024-08-26T08:05:00</Ankunftszeit>
+		<IstAbfahrtPrognose>2024-08-26T08:05:40</IstAbfahrtPrognose>
+		<IstAnkunftPrognose>2024-08-26T08:05:40</IstAnkunftPrognose>
+		<AbfahrtssteigText>1</AbfahrtssteigText>
+		<Besetztgrad>Unbekannt</Besetztgrad>
+	</IstHalt>
+	<IstHalt>
+		<HaltID>de:14625:7553:0:1</HaltID>
+		<Abfahrtszeit>2024-08-26T08:08:00</Abfahrtszeit>
+		<Ankunftszeit>2024-08-26T08:08:00</Ankunftszeit>
+		<IstAbfahrtPrognose>2024-08-26T08:10:16</IstAbfahrtPrognose>
+		<IstAnkunftPrognose>2024-08-26T08:08:00</IstAnkunftPrognose>
+		<AbfahrtssteigText>1</AbfahrtssteigText>
+		<Besetztgrad>Unbekannt</Besetztgrad>
+	</IstHalt>
+	<IstHalt>
+		<HaltID>de:14625:7596:0:1</HaltID>
+		<Abfahrtszeit>2024-08-26T08:10:00</Abfahrtszeit>
+		<Ankunftszeit>2024-08-26T08:10:00</Ankunftszeit>
+		<IstAbfahrtPrognose>2024-08-26T08:12:14</IstAbfahrtPrognose>
+		<IstAnkunftPrognose>2024-08-26T08:12:14</IstAnkunftPrognose>
+		<AbfahrtssteigText>1</AbfahrtssteigText>
+		<Besetztgrad>Unbekannt</Besetztgrad>
+	</IstHalt>
+	<IstHalt>
+		<HaltID>de:14625:7545:0:1</HaltID>
+		<Abfahrtszeit>2024-08-26T08:14:00</Abfahrtszeit>
+		<Ankunftszeit>2024-08-26T08:14:00</Ankunftszeit>
+		<IstAbfahrtPrognose>2024-08-26T08:16:05</IstAbfahrtPrognose>
+		<IstAnkunftPrognose>2024-08-26T08:16:05</IstAnkunftPrognose>
+		<AbfahrtssteigText>1</AbfahrtssteigText>
+		<Besetztgrad>Unbekannt</Besetztgrad>
+	</IstHalt>
+	<IstHalt>
+		<HaltID>de:14625:7540:0:1</HaltID>
+		<Abfahrtszeit>2024-08-26T08:16:00</Abfahrtszeit>
+		<Ankunftszeit>2024-08-26T08:16:00</Ankunftszeit>
+		<IstAbfahrtPrognose>2024-08-26T08:18:05</IstAbfahrtPrognose>
+		<IstAnkunftPrognose>2024-08-26T08:18:05</IstAnkunftPrognose>
+		<AbfahrtssteigText>1</AbfahrtssteigText>
+		<Besetztgrad>Unbekannt</Besetztgrad>
+	</IstHalt>
+	<IstHalt>
+		<HaltID>de:14625:7543:0:1</HaltID>
+		<Abfahrtszeit>2024-08-26T08:19:00</Abfahrtszeit>
+		<Ankunftszeit>2024-08-26T08:19:00</Ankunftszeit>
+		<IstAbfahrtPrognose>2024-08-26T08:20:31</IstAbfahrtPrognose>
+		<IstAnkunftPrognose>2024-08-26T08:20:31</IstAnkunftPrognose>
+		<AbfahrtssteigText>1</AbfahrtssteigText>
+		<Besetztgrad>Unbekannt</Besetztgrad>
+	</IstHalt>
+	<IstHalt>
+		<HaltID>de:14625:7853:0:1</HaltID>
+		<Abfahrtszeit>2024-08-26T08:22:00</Abfahrtszeit>
+		<Ankunftszeit>2024-08-26T08:22:00</Ankunftszeit>
+		<IstAbfahrtPrognose>2024-08-26T08:23:11</IstAbfahrtPrognose>
+		<IstAnkunftPrognose>2024-08-26T08:23:11</IstAnkunftPrognose>
+		<AbfahrtssteigText>1</AbfahrtssteigText>
+		<Besetztgrad>Unbekannt</Besetztgrad>
+	</IstHalt>
+	<IstHalt>
+		<HaltID>de:14625:7855:0:1</HaltID>
+		<Abfahrtszeit>2024-08-26T08:24:00</Abfahrtszeit>
+		<Ankunftszeit>2024-08-26T08:24:00</Ankunftszeit>
+		<IstAbfahrtPrognose>2024-08-26T08:24:31</IstAbfahrtPrognose>
+		<IstAnkunftPrognose>2024-08-26T08:24:31</IstAnkunftPrognose>
+		<AbfahrtssteigText>1</AbfahrtssteigText>
+		<Besetztgrad>Unbekannt</Besetztgrad>
+	</IstHalt>
+	<IstHalt>
+		<HaltID>de:14625:7857:0:1</HaltID>
+		<Abfahrtszeit>2024-08-26T08:27:00</Abfahrtszeit>
+		<Ankunftszeit>2024-08-26T08:27:00</Ankunftszeit>
+		<IstAbfahrtPrognose>2024-08-26T08:26:47</IstAbfahrtPrognose>
+		<IstAnkunftPrognose>2024-08-26T08:27:00</IstAnkunftPrognose>
+		<AbfahrtssteigText>1</AbfahrtssteigText>
+		<Besetztgrad>Unbekannt</Besetztgrad>
+	</IstHalt>
+	<IstHalt>
+		<HaltID>de:14625:7831:0:1</HaltID>
+		<Abfahrtszeit>2024-08-26T08:29:00</Abfahrtszeit>
+		<Ankunftszeit>2024-08-26T08:29:00</Ankunftszeit>
+		<IstAbfahrtPrognose>2024-08-26T08:29:26</IstAbfahrtPrognose>
+		<IstAnkunftPrognose>2024-08-26T08:29:26</IstAnkunftPrognose>
+		<AbfahrtssteigText>1</AbfahrtssteigText>
+		<Besetztgrad>Unbekannt</Besetztgrad>
+	</IstHalt>
+	<IstHalt>
+		<HaltID>de:14625:7832:0:1</HaltID>
+		<Abfahrtszeit>2024-08-26T08:30:00</Abfahrtszeit>
+		<Ankunftszeit>2024-08-26T08:30:00</Ankunftszeit>
+		<IstAbfahrtPrognose>2024-08-26T08:30:26</IstAbfahrtPrognose>
+		<IstAnkunftPrognose>2024-08-26T08:30:26</IstAnkunftPrognose>
+		<AbfahrtssteigText>1</AbfahrtssteigText>
+		<Besetztgrad>Unbekannt</Besetztgrad>
+	</IstHalt>
+	<IstHalt>
+		<HaltID>de:14625:7833:0:1</HaltID>
+		<Abfahrtszeit>2024-08-26T08:32:00</Abfahrtszeit>
+		<Ankunftszeit>2024-08-26T08:32:00</Ankunftszeit>
+		<IstAbfahrtPrognose>2024-08-26T08:32:02</IstAbfahrtPrognose>
+		<IstAnkunftPrognose>2024-08-26T08:32:02</IstAnkunftPrognose>
+		<AbfahrtssteigText>1</AbfahrtssteigText>
+		<Besetztgrad>Unbekannt</Besetztgrad>
+	</IstHalt>
+	<IstHalt>
+		<HaltID>de:14625:7834:0:1</HaltID>
+		<Abfahrtszeit>2024-08-26T08:33:00</Abfahrtszeit>
+		<Ankunftszeit>2024-08-26T08:33:00</Ankunftszeit>
+		<IstAbfahrtPrognose>2024-08-26T08:33:39</IstAbfahrtPrognose>
+		<IstAnkunftPrognose>2024-08-26T08:33:39</IstAnkunftPrognose>
+		<AbfahrtssteigText>1</AbfahrtssteigText>
+		<Besetztgrad>Unbekannt</Besetztgrad>
+	</IstHalt>
+	<IstHalt>
+		<HaltID>de:14625:7839:0:1</HaltID>
+		<Abfahrtszeit>2024-08-26T08:35:00</Abfahrtszeit>
+		<Ankunftszeit>2024-08-26T08:35:00</Ankunftszeit>
+		<IstAbfahrtPrognose>2024-08-26T08:36:23</IstAbfahrtPrognose>
+		<IstAnkunftPrognose>2024-08-26T08:35:00</IstAnkunftPrognose>
+		<AbfahrtssteigText>1</AbfahrtssteigText>
+		<RichtungsText>Mücka Bahnhof</RichtungsText>
+		<Besetztgrad>Unbekannt</Besetztgrad>
+	</IstHalt>
+	<IstHalt>
+		<HaltID>de:14626:8595:0:1</HaltID>
+		<Abfahrtszeit>2024-08-26T08:39:00</Abfahrtszeit>
+		<Ankunftszeit>2024-08-26T08:39:00</Ankunftszeit>
+		<IstAbfahrtPrognose>2024-08-26T08:40:34</IstAbfahrtPrognose>
+		<IstAnkunftPrognose>2024-08-26T08:40:34</IstAnkunftPrognose>
+		<AbfahrtssteigText>1</AbfahrtssteigText>
+		<RichtungsText>Mücka Bahnhof</RichtungsText>
+		<Besetztgrad>Unbekannt</Besetztgrad>
+	</IstHalt>
+	<IstHalt>
+		<HaltID>de:14626:8592:0:1</HaltID>
+		<Abfahrtszeit>2024-08-26T08:40:00</Abfahrtszeit>
+		<Ankunftszeit>2024-08-26T08:40:00</Ankunftszeit>
+		<IstAbfahrtPrognose>2024-08-26T08:41:22</IstAbfahrtPrognose>
+		<IstAnkunftPrognose>2024-08-26T08:41:22</IstAnkunftPrognose>
+		<AbfahrtssteigText>1</AbfahrtssteigText>
+		<RichtungsText>Mücka Bahnhof</RichtungsText>
+		<Besetztgrad>Unbekannt</Besetztgrad>
+	</IstHalt>
+	<IstHalt>
+		<HaltID>de:14626:8591:0:1</HaltID>
+		<Abfahrtszeit>2024-08-26T08:42:00</Abfahrtszeit>
+		<Ankunftszeit>2024-08-26T08:42:00</Ankunftszeit>
+		<IstAbfahrtPrognose>2024-08-26T08:43:34</IstAbfahrtPrognose>
+		<IstAnkunftPrognose>2024-08-26T08:43:34</IstAnkunftPrognose>
+		<AbfahrtssteigText>1</AbfahrtssteigText>
+		<RichtungsText>Mücka Bahnhof</RichtungsText>
+		<Besetztgrad>Unbekannt</Besetztgrad>
+	</IstHalt>
+	<IstHalt>
+		<HaltID>de:14626:8461:0:1</HaltID>
+		<Abfahrtszeit>2024-08-26T08:44:00</Abfahrtszeit>
+		<Ankunftszeit>2024-08-26T08:44:00</Ankunftszeit>
+		<IstAbfahrtPrognose>2024-08-26T08:45:34</IstAbfahrtPrognose>
+		<IstAnkunftPrognose>2024-08-26T08:45:34</IstAnkunftPrognose>
+		<AbfahrtssteigText>1</AbfahrtssteigText>
+		<RichtungsText>Mücka Bahnhof</RichtungsText>
+		<Besetztgrad>Unbekannt</Besetztgrad>
+	</IstHalt>
+	<IstHalt>
+		<HaltID>de:14626:8463:0:1</HaltID>
+		<Abfahrtszeit>2024-08-26T08:47:00</Abfahrtszeit>
+		<Ankunftszeit>2024-08-26T08:47:00</Ankunftszeit>
+		<IstAbfahrtPrognose>2024-08-26T08:47:31</IstAbfahrtPrognose>
+		<IstAnkunftPrognose>2024-08-26T08:47:31</IstAnkunftPrognose>
+		<AbfahrtssteigText>1</AbfahrtssteigText>
+		<RichtungsText>Mücka Bahnhof</RichtungsText>
+		<Besetztgrad>Unbekannt</Besetztgrad>
+	</IstHalt>
+	<IstHalt>
+		<HaltID>de:14626:8466:0:1</HaltID>
+		<Abfahrtszeit>2024-08-26T08:50:00</Abfahrtszeit>
+		<Ankunftszeit>2024-08-26T08:50:00</Ankunftszeit>
+		<IstAbfahrtPrognose>2024-08-26T08:50:31</IstAbfahrtPrognose>
+		<IstAnkunftPrognose>2024-08-26T08:50:31</IstAnkunftPrognose>
+		<AbfahrtssteigText>1</AbfahrtssteigText>
+		<RichtungsText>Mücka Bahnhof</RichtungsText>
+		<Besetztgrad>Unbekannt</Besetztgrad>
+	</IstHalt>
+	<IstHalt>
+		<HaltID>de:14626:8467:0:1</HaltID>
+		<Abfahrtszeit>2024-08-26T08:52:00</Abfahrtszeit>
+		<Ankunftszeit>2024-08-26T08:52:00</Ankunftszeit>
+		<IstAbfahrtPrognose>2024-08-26T08:52:31</IstAbfahrtPrognose>
+		<IstAnkunftPrognose>2024-08-26T08:52:31</IstAnkunftPrognose>
+		<AbfahrtssteigText>1</AbfahrtssteigText>
+		<RichtungsText>Mücka Bahnhof</RichtungsText>
+		<Besetztgrad>Unbekannt</Besetztgrad>
+	</IstHalt>
+	<IstHalt>
+		<HaltID>de:14626:8468:5:2</HaltID>
+		<Ankunftszeit>2024-08-26T08:54:00</Ankunftszeit>
+		<IstAnkunftPrognose>2024-08-26T08:54:31</IstAnkunftPrognose>
+		<AnkunftssteigText>2</AnkunftssteigText>
+		<RichtungsText>Mücka Bahnhof</RichtungsText>
+		<Besetztgrad>Unbekannt</Besetztgrad>
+	</IstHalt>
+	<LinienText>501</LinienText>
+	<ProduktID>RBO501</ProduktID>
+	<RichtungsText>Mücka über Kleinsaubernitz</RichtungsText>
+	<PrognoseMoeglich>true</PrognoseMoeglich>
+	<FaelltAus>false</FaelltAus>
+</IstFahrt>
+)";
+
+}  // namespace
+
+TEST(vdv_update, rbo501) {
+  timetable tt;
+  register_special_stations(tt);
+  tt.date_range_ = {date::sys_days{2024_y / August / 1},
+                    date::sys_days{2024_y / August / 31}};
+  auto const src_idx = source_idx_t{0};
+  load_timetable({}, src_idx, rbo501_files(), tt);
+  finalize(tt);
+
+  auto rtt = rt::create_rt_timetable(tt, date::sys_days{2024_y / August / 26});
+
+  auto u = rt::vdv::updater{tt, src_idx};
+
+  auto doc = pugi::xml_document{};
+  doc.load_string(update_rbo501);
+  u.update(rtt, doc);
+
+  auto const fr = rt::frun{tt,
+                           &rtt,
+                           {{transport_idx_t{0U}, day_idx_t{30U}},
+                            {stop_idx_t{0U}, stop_idx_t{23U}}}};
+
+  // Requires the matching to tolerate time discrepancies of up to 3 minutes
   EXPECT_TRUE(fr.is_rt());
 }
