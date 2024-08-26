@@ -10,8 +10,8 @@ geo::polyline get_shape(trip_idx_t trip_idx,
     return {};
   }
   return (trip_idx < tt.trip_shape_indices_.size())
-    ? get_shape(tt.trip_shape_indices_[trip_idx], shape)
-    : geo::polyline{};
+             ? get_shape(tt.trip_shape_indices_[trip_idx], shape)
+             : geo::polyline{};
 }
 
 geo::polyline get_shape(shape_idx_t const shape_idx,

@@ -26,7 +26,8 @@ class shape_test_mmap {
 
 public:
   explicit shape_test_mmap(std::string base_path)
-      : paths{create_paths(base_path)}, mmap{std::make_optional(create_mmap(paths))} {}
+      : paths{create_paths(base_path)},
+        mmap{std::make_optional(create_mmap(paths))} {}
   ~shape_test_mmap() {
     for (auto path : paths) {
       if (std::filesystem::exists(path)) {

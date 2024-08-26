@@ -38,8 +38,12 @@ TEST(gtfs, read_trips_example_data) {
   auto const calendar = read_calendar(files.get_file(kCalenderFile).data());
   auto const services =
       merge_traffic_days(tt.internal_interval_days(), calendar, dates);
-  auto const shapes =
-      mmap.get_vecvec().and_then([&files](auto& file) { return std::make_optional(parse_shapes(files.get_file(kShapesFile).data(), file)); }).value();
+  auto const shapes = mmap.get_vecvec()
+                          .and_then([&files](auto& file) {
+                            return std::make_optional(parse_shapes(
+                                files.get_file(kShapesFile).data(), file));
+                          })
+                          .value();
   auto const trip_data = read_trips(tt, routes, services, shapes,
                                     files.get_file(kTripsFile).data(),
                                     config.bikes_allowed_default_);
@@ -71,8 +75,12 @@ TEST(gtfs, read_trips_berlin_data) {
   auto const calendar = read_calendar(files.get_file(kCalenderFile).data());
   auto const services =
       merge_traffic_days(tt.internal_interval_days(), calendar, dates);
-  auto const shapes =
-      mmap.get_vecvec().and_then([&files](auto& file) { return std::make_optional(parse_shapes(files.get_file(kShapesFile).data(), file)); }).value();
+  auto const shapes = mmap.get_vecvec()
+                          .and_then([&files](auto& file) {
+                            return std::make_optional(parse_shapes(
+                                files.get_file(kShapesFile).data(), file));
+                          })
+                          .value();
   auto const trip_data = read_trips(tt, routes, services, shapes,
                                     files.get_file(kTripsFile).data(),
                                     config.bikes_allowed_default_);

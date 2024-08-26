@@ -125,9 +125,12 @@ void load_timetable(loader_config const& config,
   auto const dates = read_calendar_date(load(kCalendarDatesFile).data());
   auto const service =
       merge_traffic_days(tt.internal_interval_days(), calendar, dates);
-  auto const shapes = shape_vecvec
-    .and_then([&load](auto& file) -> std::optional<shape_id_map_t> { return parse_shapes(load(kShapesFile).data(), file); })
-    .value_or(shape_id_map_t{});
+  auto const shapes =
+      shape_vecvec
+          .and_then([&load](auto& file) -> std::optional<shape_id_map_t> {
+            return parse_shapes(load(kShapesFile).data(), file);
+          })
+          .value_or(shape_id_map_t{});
   auto trip_data =
       read_trips(tt, routes, service, shapes, load(kTripsFile).data(),
                  config.bikes_allowed_default_);

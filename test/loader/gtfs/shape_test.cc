@@ -59,7 +59,12 @@ TEST(gtfs, shapeBuilder_withData_getExistingShapePoints) {
   auto mmap = shape_test_mmap{"shape-test-builder"};
   auto& vecvec = mmap.get_vecvec();
 
-  auto const shapes = vecvec.and_then([](auto& file) { return std::make_optional(parse_shapes(shapes_data_aachen, file)); }).value();
+  auto const shapes =
+      vecvec
+          .and_then([](auto& file) {
+            return std::make_optional(parse_shapes(shapes_data_aachen, file));
+          })
+          .value();
 
   auto const shape_not_existing_it = shapes.find("1");
   auto const shape_243_it = shapes.find("243");
@@ -96,7 +101,12 @@ test id,50.553822,6.356876,0
   auto mmap = shape_test_mmap{"shape-test-unicode-ids"};
   auto& vecvec = mmap.get_vecvec();
 
-  auto const shapes = vecvec.and_then([&shapes_data](auto& file) { return std::make_optional(parse_shapes(shapes_data, file)); }).value();
+  auto const shapes =
+      vecvec
+          .and_then([&shapes_data](auto& file) {
+            return std::make_optional(parse_shapes(shapes_data, file));
+          })
+          .value();
 
   std::vector<std::string> ids{"test id"s,      "----"s, "\x07\x13\x41\x08"s,
                                "ルーティング"s, ""s,     "\0"s,
@@ -121,7 +131,12 @@ TEST(gtfs, shapeParse_notAscendingSequence_progressAndLogError) {
   auto buffer_guard = utl::make_raii(
       backup, [](const decltype(backup)& buf) { std::clog.rdbuf(buf); });
 
-  auto const shapes = vecvec.and_then([&shapes_data](auto& file) { return std::make_optional(parse_shapes(shapes_data, file)); }).value();
+  auto const shapes =
+      vecvec
+          .and_then([&shapes_data](auto& file) {
+            return std::make_optional(parse_shapes(shapes_data, file));
+          })
+          .value();
 
   auto const shape_points =
       geo::polyline{{50.636512, 6.473487}, {50.636259, 6.473668}};
@@ -155,7 +170,12 @@ TEST(gtfs, shapeParse_shuffledRows_parseAllData) {
   auto mmap = shape_test_mmap{"shape-test-shuffled-rows"};
   auto& vecvec = mmap.get_vecvec();
 
-  auto const shapes = vecvec.and_then([&shapes_data](auto& file) { return std::make_optional(parse_shapes(shapes_data, file)); }).value();
+  auto const shapes =
+      vecvec
+          .and_then([&shapes_data](auto& file) {
+            return std::make_optional(parse_shapes(shapes_data, file));
+          })
+          .value();
 
   std::unordered_map<std::string, geo::polyline> shape_points{
       {"240",
@@ -211,7 +231,12 @@ TEST(gtfs,
   auto buffer_guard = utl::make_raii(
       backup, [](const decltype(backup)& buf) { std::clog.rdbuf(buf); });
 
-  auto const shapes = mmap.get_vecvec().and_then([&shapes_data](auto& file) { return std::make_optional(parse_shapes(shapes_data, file)); }).value();
+  auto const shapes =
+      mmap.get_vecvec()
+          .and_then([&shapes_data](auto& file) {
+            return std::make_optional(parse_shapes(shapes_data, file));
+          })
+          .value();
 
   std::clog.flush();
   std::string log{buffer.str()};
