@@ -6,6 +6,7 @@
 #include "utl/pipes/for_each.h"
 #include "utl/progress_tracker.h"
 
+#include "nigiri/common/cached_lookup.h"
 #include "nigiri/logging.h"
 
 namespace nigiri::loader::gtfs {
@@ -24,26 +25,24 @@ shape_id_map_t const parse_shapes(std::string_view const data,
     size_t last_seq_{};
   };
   auto states = hash_map<utl::cstr, shape_state>{};
+  auto lookup = cached_lookup(states);
 
-  auto const store_to_map = [&states, &shapes](shape_entry const entry) {
-    if (auto found = states.find(entry.id_->view()); found != states.end()) {
-      auto& state = found->second;
-      auto const seq = entry.seq_.val();
-      if (state.last_seq_ >= seq) {
-        log(log_lvl::error, "loader.gtfs.shape",
-            "Non monotonic sequence for shape_id '{}': Sequence number {} "
-            "followed by {}",
-            entry.id_.val().to_str(), state.last_seq_, seq);
-      }
-      shapes[state.index_].push_back(
-          geo::latlng{entry.lat_.val(), entry.lon_.val()});
-      state.last_seq_ = seq;
-    } else {
+  auto const store_to_map = [&lookup, &shapes](shape_entry const entry) {
+    auto& state = lookup(entry.id_.val(), [&shapes] -> shape_state {
       auto const index = static_cast<shape_idx_t>(shapes.size());
-      auto bucket = shapes.add_back_sized(0u);
-      states.insert({entry.id_->view(), {index, entry.seq_.val()}});
-      bucket.push_back(geo::latlng{entry.lat_.val(), entry.lon_.val()});
+      shapes.add_back_sized(0u);
+      return {index, 0};
+    });
+    auto const seq = entry.seq_.val();
+    auto bucket = shapes[state.index_];
+    if (bucket.size() > 0 && state.last_seq_ >= seq) {
+      log(log_lvl::error, "loader.gtfs.shape",
+          "Non monotonic sequence for shape_id '{}': Sequence number {} "
+          "followed by {}",
+          entry.id_.val().to_str(), state.last_seq_, seq);
     }
+    bucket.push_back(geo::latlng{entry.lat_.val(), entry.lon_.val()});
+    state.last_seq_ = seq;
   };
 
   auto const progress_tracker = utl::get_active_progress_tracker();

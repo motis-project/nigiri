@@ -5,21 +5,21 @@ namespace nigiri {
 
 geo::polyline get_shape(trip_idx_t trip_idx,
                         timetable const& tt,
-                        shape_vecvec_t const& shape) {
+                        shape_vecvec_t const& shapes) {
   if (trip_idx == trip_idx_t::invalid()) {
     return {};
   }
   return (trip_idx < tt.trip_shape_indices_.size())
-             ? get_shape(tt.trip_shape_indices_[trip_idx], shape)
+             ? get_shape(tt.trip_shape_indices_[trip_idx], shapes)
              : geo::polyline{};
 }
 
 geo::polyline get_shape(shape_idx_t const shape_idx,
-                        shape_vecvec_t const& shape) {
+                        shape_vecvec_t const& shapes) {
   if (shape_idx == shape_idx_t::invalid()) {
     return {};
   }
-  auto const& bucket = shape.at(shape_idx);
+  auto const& bucket = shapes.at(shape_idx);
   return geo::polyline(bucket.begin(), bucket.end());
 }
 
