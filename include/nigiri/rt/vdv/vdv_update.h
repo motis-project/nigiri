@@ -78,7 +78,7 @@ struct statistics {
 };
 
 struct updater {
-  static constexpr auto const kAllowedTimeDiscrepancy = 5U;  // minutes
+  static constexpr auto const kAllowedTimeDiscrepancy = 10U;  // minutes
 
   updater(timetable const& tt, source_idx_t const src_idx)
       : tt_{tt}, src_idx_{src_idx} {}
