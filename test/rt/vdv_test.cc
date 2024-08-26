@@ -2745,3 +2745,524 @@ TEST(vdv_update, rbo501) {
   // Requires the matching to tolerate time discrepancies of up to 3 minutes
   EXPECT_TRUE(fr.is_rt());
 }
+
+namespace {
+
+mem_dir vgm456_files() {
+  return mem_dir::read(R"__(
+# trips.txt
+"route_id","service_id","trip_id","trip_headsign","trip_short_name","direction_id","block_id","shape_id","wheelchair_accessible","bikes_allowed"
+"de:vvo:24-456_3",1180,2593431074,"Radeburg Grundschule","",0,,49243,0,0
+
+# routes.txt
+"route_id","agency_id","route_short_name","route_long_name","route_type","route_color","route_text_color","route_desc"
+"de:vvo:24-456_3",8196,"456","",3,"","",""
+
+# agency.txt
+"agency_id","agency_name","agency_url","agency_timezone","agency_lang","agency_phone"
+8196,"VGM-Busverkehr","https://www.delfi.de","Europe/Berlin","",""
+
+# stop_times.txt
+"trip_id","arrival_time","departure_time","stop_id","stop_sequence","pickup_type","drop_off_type","stop_headsign"
+2593431074,10:36:00,10:36:00,"de:14627:5021:3:4",0,0,0,""
+2593431074,10:38:00,10:38:00,"de:14627:5001:0:4",1,0,0,""
+2593431074,10:40:00,10:40:00,"de:14627:5029:1:1",2,0,0,""
+2593431074,10:42:00,10:42:00,"de:14627:5030:0:1",3,0,0,""
+2593431074,10:43:00,10:43:00,"de:14627:5047:0:1",4,0,0,""
+2593431074,10:44:00,10:44:00,"de:14627:5031:0:1",5,0,0,""
+2593431074,10:45:00,10:45:00,"de:14627:5032:0:1",6,0,0,""
+2593431074,10:47:00,10:47:00,"de:14627:5200:0:1",7,0,0,""
+2593431074,10:51:00,10:51:00,"de:14627:5430:0:1",8,0,0,""
+2593431074,10:52:00,10:52:00,"de:14627:5431:0:1",9,0,0,""
+2593431074,10:54:00,10:54:00,"de:14627:5445:0:1",10,0,0,""
+2593431074,10:56:00,10:56:00,"de:14627:5441:0:1",11,0,0,""
+2593431074,10:58:00,10:58:00,"de:14627:5440:3:1",12,0,0,""
+2593431074,11:02:00,11:02:00,"de:14627:5451:0:1",13,0,0,""
+2593431074,11:04:00,11:04:00,"de:14627:5450:0:1",14,0,0,""
+2593431074,11:07:00,11:07:00,"de:14627:5481:0:1",15,0,0,""
+2593431074,11:09:00,11:09:00,"de:14627:5480:0:1",16,0,0,""
+2593431074,11:10:00,11:10:00,"de:14627:5486:0:1",17,0,0,""
+2593431074,11:11:00,11:11:00,"de:14627:5485:0:1",18,0,0,""
+2593431074,11:15:00,11:15:00,"de:14627:5497:0:1",19,0,0,""
+2593431074,11:19:00,11:19:00,"de:14627:5492:0:1",20,0,0,""
+2593431074,11:20:00,11:20:00,"de:14627:5491:0:1",21,0,0,""
+2593431074,11:22:00,11:22:00,"de:14627:5490:0:1",22,0,0,""
+2593431074,11:24:00,11:24:00,"de:14627:5475:0:1",23,0,0,""
+2593431074,11:26:00,11:26:00,"de:14627:5476:0:1",24,0,0,""
+2593431074,11:28:00,11:28:00,"de:14627:5477:0:1",25,0,0,""
+2593431074,11:31:00,11:31:00,"de:14627:5474:0:1",26,0,0,""
+2593431074,11:34:00,11:34:00,"de:14627:5470:0:1",27,0,0,""
+2593431074,11:37:00,11:37:00,"de:14627:5473:0:1",28,0,0,""
+2593431074,11:38:00,11:38:00,"de:14627:5465:0:1",29,0,0,""
+2593431074,11:40:00,11:40:00,"de:14627:5466:0:1",30,0,0,""
+2593431074,11:42:00,11:42:00,"de:14627:5460:0:1",31,0,0,""
+2593431074,11:44:00,11:44:00,"de:14627:5461:0:1",32,0,0,""
+2593431074,11:48:00,11:48:00,"de:14627:5252:0:1",33,0,0,""
+2593431074,11:52:00,11:52:00,"de:14627:4360:0:2",34,0,0,""
+2593431074,11:54:00,11:54:00,"de:14627:4367:0:1",35,0,0,""
+2593431074,11:55:00,11:55:00,"de:14627:4378:0:1",36,0,0,""
+
+# stops.txt
+"stop_id","stop_code","stop_name","stop_desc","stop_lat","stop_lon","location_type","parent_station","wheelchair_boarding","platform_code","level_id"
+"de:14627:4367:0:1","","Radeburg Meißner Berg",,"51.213615000000","13.715478000000",0,,0,"",""
+"de:14627:5252:0:1","","Rödern Königsbrücker Straße",,"51.232316000000","13.729465000000",0,,0,"",""
+"de:14627:5466:0:1","","Dobra","Haltestelle","51.258914000000","13.773725000000",0,,0,"1","2"
+"de:14627:5474:0:1","","Kleinnaundorf Zum Springbach",,"51.245234000000","13.789688000000",0,,0,"",""
+"de:14627:5477:0:1","","Tauscha Anbau",,"51.257632000000","13.803531000000",0,,0,"",""
+"de:14627:5476:0:1","","Tauscha Dorf",,"51.265418000000","13.804240000000",0,,0,"",""
+"de:14627:5475:0:1","","Tauscha Abzw Dobra",,"51.268059000000","13.791933000000",0,,0,"",""
+"de:14627:5473:0:1","","Kleinnaundorf Am Eichberg",,"51.244728000000","13.785169000000",0,,0,"",""
+"de:14627:5491:0:1","","Sacka Großenhainer Straße",,"51.283985000000","13.792553000000",0,,0,"",""
+"de:14627:5497:0:1","","Stölpchen",,"51.309122000000","13.784235000000",0,,0,"",""
+"de:14627:5481:0:1","","Thiendorf Autobahn","Haltestelle","51.294822000000","13.729707000000",0,,0,"1","2"
+"de:14627:5440:3:1","","Lampertswalde Bahnhof","Bus","51.309228000000","13.678279000000",0,,0,"1","2"
+"de:14627:5465:0:1","","Kleinnaundorf Feldmühle",,"51.249058000000","13.780498000000",0,,0,"",""
+"de:14627:5490:0:1","","Sacka Kirche",,"51.277197000000","13.792275000000",0,,0,"",""
+"de:14627:5450:0:1","","Schönfeld Schloss",,"51.303612000000","13.708246000000",0,,0,"",""
+"de:14627:5451:0:1","","Schönfeld Straße der MTS",,"51.301838000000","13.699533000000",0,,0,"",""
+"de:14627:5441:0:1","","Lampertswalde Großenhainer Str","Haltestelle","51.315203000000","13.673194000000",0,,0,"1","2"
+"de:14627:5021:3:4","","Großenhain Cottbuser Bahnhof","Busbahnhof","51.291177000000","13.524253000000",0,,0,"4","2"
+"de:14627:4378:0:1","","Radeburg Grundschule",,"51.214549000000","13.716637000000",0,,0,"",""
+"de:14627:5486:0:1","","Welxande Neubau",,"51.297035000000","13.747835000000",0,,0,"",""
+"de:14627:5445:0:1","","Lampertswalde Gewerbegebiet",,"51.305719000000","13.670858000000",0,,0,"",""
+"de:14627:5480:0:1","","Thiendorf Welxander Straße","Thiendorf Welxander Straße","51.293620000000","13.740900000000",0,,0,"1","2"
+"de:14627:5430:0:1","","Quersa Abzw Brockwitz",,"51.302944000000","13.636094000000",0,,0,"",""
+"de:14627:5031:0:1","","Großenhain Bornweg",,"51.295631000000","13.554778000000",0,,0,"",""
+"de:14627:5492:0:1","","Sacka Zum Oberdorf",,"51.289424000000","13.791601000000",0,,0,"",""
+"de:14627:5200:0:1","","Folbern",,"51.299776000000","13.588276000000",0,,0,"",""
+"de:14627:5461:0:1","","Zschorna Zur Teichwirtschaft",,"51.254371000000","13.739957000000",0,,0,"",""
+"de:14627:5460:0:1","","Zschorna Freibad",,"51.252983000000","13.752731000000",0,,0,"",""
+"de:14627:5030:0:1","","Großenhain Radeburger Platz","Haltestelle","51.294294000000","13.535554000000",0,,0,"1","2"
+"de:14627:5431:0:1","","Quersa Mühlbacher Weg",,"51.304000000000","13.645535000000",0,,0,"",""
+"de:14627:5029:1:1","","Großenhain Fr-Schubert-Allee","Grundschule","51.293895000000","13.530982000000",0,,0,"1","2"
+"de:14627:5001:0:4","","Großenhain Mozartallee",,"51.291924000000","13.527721000000",0,,0,"",""
+"de:14627:5485:0:1","","Welxande Stölpchener Straße","Haltestelle","51.298805000000","13.755004000000",0,,0,"1","2"
+"de:14627:5470:0:1","","Würschnitz",,"51.235522000000","13.793829000000",0,,0,"",""
+"de:14627:5047:0:1","","Großenhain An der Turnhalle","Standard","51.295131000000","13.545040000000",0,,0,"1","2"
+"de:14627:4360:0:2","","Radeburg Busbahnhof","Radeburg Busbahnhof","51.215156000000","13.720841000000",0,,0,"2","2"
+"de:14627:5032:0:1","","Großenhain Friedrich-Ebert-Str",,"51.296142000000","13.560159000000",0,,0,"",""
+
+# calendar.txt
+"service_id","monday","tuesday","wednesday","thursday","friday","saturday","sunday","start_date","end_date"
+1180,1,1,1,1,1,0,0,20240805,20241214
+
+# calendar_dates.txt
+"service_id","date","exception_type"
+1180,20240805,2
+1180,20240812,2
+1180,20241007,2
+1180,20241014,2
+1180,20240806,2
+1180,20240813,2
+1180,20241008,2
+1180,20241015,2
+1180,20240807,2
+1180,20241009,2
+1180,20241016,2
+1180,20241120,2
+1180,20240808,2
+1180,20241003,2
+1180,20241010,2
+1180,20241017,2
+1180,20241031,2
+1180,20240809,2
+1180,20241011,2
+1180,20241018,2
+)__");
+}
+
+constexpr auto const update_vgm456 = R"(
+<IstFahrt Zst="2024-08-26T11:25:27">
+	<LinienID>VGM456</LinienID>
+	<RichtungsID>1</RichtungsID>
+	<FahrtRef>
+		<FahrtID>
+			<FahrtBezeichner>VGM45601301_vvorbl</FahrtBezeichner>
+			<Betriebstag>2024-08-26</Betriebstag>
+		</FahrtID>
+	</FahrtRef>
+	<Komplettfahrt>true</Komplettfahrt>
+	<BetreiberID>vvorbl</BetreiberID>
+	<IstHalt>
+		<HaltID>de:14627:5021:3:4</HaltID>
+		<Abfahrtszeit>2024-08-26T08:36:00</Abfahrtszeit>
+		<IstAbfahrtPrognose>2024-08-26T08:36:00</IstAbfahrtPrognose>
+		<AbfahrtssteigText>4</AbfahrtssteigText>
+		<Besetztgrad>Unbekannt</Besetztgrad>
+	</IstHalt>
+	<IstHalt>
+		<HaltID>de:14627:5001:0:4</HaltID>
+		<Abfahrtszeit>2024-08-26T08:38:00</Abfahrtszeit>
+		<Ankunftszeit>2024-08-26T08:38:00</Ankunftszeit>
+		<IstAbfahrtPrognose>2024-08-26T08:40:25</IstAbfahrtPrognose>
+		<IstAnkunftPrognose>2024-08-26T08:40:25</IstAnkunftPrognose>
+		<AbfahrtssteigText>4</AbfahrtssteigText>
+		<Besetztgrad>Unbekannt</Besetztgrad>
+	</IstHalt>
+	<IstHalt>
+		<HaltID>de:14627:5029:1:1</HaltID>
+		<Abfahrtszeit>2024-08-26T08:40:00</Abfahrtszeit>
+		<Ankunftszeit>2024-08-26T08:40:00</Ankunftszeit>
+		<IstAbfahrtPrognose>2024-08-26T08:42:25</IstAbfahrtPrognose>
+		<IstAnkunftPrognose>2024-08-26T08:42:25</IstAnkunftPrognose>
+		<AbfahrtssteigText>1</AbfahrtssteigText>
+		<Besetztgrad>Unbekannt</Besetztgrad>
+	</IstHalt>
+	<IstHalt>
+		<HaltID>de:14627:5030:0:1</HaltID>
+		<Abfahrtszeit>2024-08-26T08:42:00</Abfahrtszeit>
+		<Ankunftszeit>2024-08-26T08:42:00</Ankunftszeit>
+		<IstAbfahrtPrognose>2024-08-26T08:43:06</IstAbfahrtPrognose>
+		<IstAnkunftPrognose>2024-08-26T08:43:06</IstAnkunftPrognose>
+		<AbfahrtssteigText>1</AbfahrtssteigText>
+		<Besetztgrad>Unbekannt</Besetztgrad>
+	</IstHalt>
+	<IstHalt>
+		<HaltID>de:14627:5047:0:1</HaltID>
+		<Abfahrtszeit>2024-08-26T08:43:00</Abfahrtszeit>
+		<Ankunftszeit>2024-08-26T08:43:00</Ankunftszeit>
+		<IstAbfahrtPrognose>2024-08-26T08:44:06</IstAbfahrtPrognose>
+		<IstAnkunftPrognose>2024-08-26T08:44:06</IstAnkunftPrognose>
+		<AbfahrtssteigText>1</AbfahrtssteigText>
+		<Besetztgrad>Unbekannt</Besetztgrad>
+	</IstHalt>
+	<IstHalt>
+		<HaltID>de:14627:5031:0:1</HaltID>
+		<Abfahrtszeit>2024-08-26T08:44:00</Abfahrtszeit>
+		<Ankunftszeit>2024-08-26T08:44:00</Ankunftszeit>
+		<IstAbfahrtPrognose>2024-08-26T08:45:40</IstAbfahrtPrognose>
+		<IstAnkunftPrognose>2024-08-26T08:45:40</IstAnkunftPrognose>
+		<AbfahrtssteigText>1</AbfahrtssteigText>
+		<Besetztgrad>Unbekannt</Besetztgrad>
+	</IstHalt>
+	<IstHalt>
+		<HaltID>de:14627:5032:0:1</HaltID>
+		<Abfahrtszeit>2024-08-26T08:45:00</Abfahrtszeit>
+		<Ankunftszeit>2024-08-26T08:45:00</Ankunftszeit>
+		<IstAbfahrtPrognose>2024-08-26T08:46:40</IstAbfahrtPrognose>
+		<IstAnkunftPrognose>2024-08-26T08:46:40</IstAnkunftPrognose>
+		<AbfahrtssteigText>1</AbfahrtssteigText>
+		<Besetztgrad>Unbekannt</Besetztgrad>
+	</IstHalt>
+	<IstHalt>
+		<HaltID>de:14627:5200:0:1</HaltID>
+		<Abfahrtszeit>2024-08-26T08:47:00</Abfahrtszeit>
+		<Ankunftszeit>2024-08-26T08:47:00</Ankunftszeit>
+		<IstAbfahrtPrognose>2024-08-26T08:48:09</IstAbfahrtPrognose>
+		<IstAnkunftPrognose>2024-08-26T08:48:09</IstAnkunftPrognose>
+		<AbfahrtssteigText>1</AbfahrtssteigText>
+		<Besetztgrad>Unbekannt</Besetztgrad>
+	</IstHalt>
+	<IstHalt>
+		<HaltID>de:14627:5430:0:1</HaltID>
+		<Abfahrtszeit>2024-08-26T08:51:00</Abfahrtszeit>
+		<Ankunftszeit>2024-08-26T08:51:00</Ankunftszeit>
+		<IstAbfahrtPrognose>2024-08-26T08:52:03</IstAbfahrtPrognose>
+		<IstAnkunftPrognose>2024-08-26T08:52:03</IstAnkunftPrognose>
+		<AbfahrtssteigText>1</AbfahrtssteigText>
+		<Besetztgrad>Unbekannt</Besetztgrad>
+	</IstHalt>
+	<IstHalt>
+		<HaltID>de:14627:5431:0:1</HaltID>
+		<Abfahrtszeit>2024-08-26T08:52:00</Abfahrtszeit>
+		<Ankunftszeit>2024-08-26T08:52:00</Ankunftszeit>
+		<IstAbfahrtPrognose>2024-08-26T08:52:46</IstAbfahrtPrognose>
+		<IstAnkunftPrognose>2024-08-26T08:52:46</IstAnkunftPrognose>
+		<AbfahrtssteigText>1</AbfahrtssteigText>
+		<Besetztgrad>Unbekannt</Besetztgrad>
+	</IstHalt>
+	<IstHalt>
+		<HaltID>de:14627:5445:0:1</HaltID>
+		<Abfahrtszeit>2024-08-26T08:54:00</Abfahrtszeit>
+		<Ankunftszeit>2024-08-26T08:54:00</Ankunftszeit>
+		<IstAbfahrtPrognose>2024-08-26T08:54:20</IstAbfahrtPrognose>
+		<IstAnkunftPrognose>2024-08-26T08:54:20</IstAnkunftPrognose>
+		<AbfahrtssteigText>1</AbfahrtssteigText>
+		<Besetztgrad>Unbekannt</Besetztgrad>
+	</IstHalt>
+	<IstHalt>
+		<HaltID>de:14627:5441:0:1</HaltID>
+		<Abfahrtszeit>2024-08-26T08:56:00</Abfahrtszeit>
+		<Ankunftszeit>2024-08-26T08:56:00</Ankunftszeit>
+		<IstAbfahrtPrognose>2024-08-26T08:56:55</IstAbfahrtPrognose>
+		<IstAnkunftPrognose>2024-08-26T08:56:55</IstAnkunftPrognose>
+		<AbfahrtssteigText>1</AbfahrtssteigText>
+		<Besetztgrad>Unbekannt</Besetztgrad>
+	</IstHalt>
+	<IstHalt>
+		<HaltID>de:14627:5440:3:1</HaltID>
+		<Abfahrtszeit>2024-08-26T08:58:00</Abfahrtszeit>
+		<Ankunftszeit>2024-08-26T08:58:00</Ankunftszeit>
+		<IstAbfahrtPrognose>2024-08-26T08:58:18</IstAbfahrtPrognose>
+		<IstAnkunftPrognose>2024-08-26T08:58:18</IstAnkunftPrognose>
+		<AbfahrtssteigText>1</AbfahrtssteigText>
+		<Besetztgrad>Unbekannt</Besetztgrad>
+	</IstHalt>
+	<IstHalt>
+		<HaltID>de:14627:5451:0:1</HaltID>
+		<Abfahrtszeit>2024-08-26T09:02:00</Abfahrtszeit>
+		<Ankunftszeit>2024-08-26T09:02:00</Ankunftszeit>
+		<IstAbfahrtPrognose>2024-08-26T09:01:21</IstAbfahrtPrognose>
+		<IstAnkunftPrognose>2024-08-26T09:01:21</IstAnkunftPrognose>
+		<AbfahrtssteigText>1</AbfahrtssteigText>
+		<Besetztgrad>Unbekannt</Besetztgrad>
+	</IstHalt>
+	<IstHalt>
+		<HaltID>de:14627:5450:0:97</HaltID>
+		<Abfahrtszeit>2024-08-26T09:04:00</Abfahrtszeit>
+		<Ankunftszeit>2024-08-26T09:04:00</Ankunftszeit>
+		<IstAbfahrtPrognose>2024-08-26T09:01:59</IstAbfahrtPrognose>
+		<IstAnkunftPrognose>2024-08-26T09:04:00</IstAnkunftPrognose>
+		<AbfahrtssteigText>97</AbfahrtssteigText>
+		<Besetztgrad>Unbekannt</Besetztgrad>
+	</IstHalt>
+	<IstHalt>
+		<HaltID>de:14627:5482:0:2</HaltID>
+		<Abfahrtszeit>2024-08-26T09:14:00</Abfahrtszeit>
+		<Ankunftszeit>2024-08-26T09:14:00</Ankunftszeit>
+		<IstAbfahrtPrognose>2024-08-26T09:08:56</IstAbfahrtPrognose>
+		<IstAnkunftPrognose>2024-08-26T09:08:56</IstAnkunftPrognose>
+		<AbfahrtssteigText>2</AbfahrtssteigText>
+		<Besetztgrad>Unbekannt</Besetztgrad>
+	</IstHalt>
+	<IstHalt>
+		<HaltID>de:14627:5480:0:1</HaltID>
+		<Abfahrtszeit>2024-08-26T09:16:00</Abfahrtszeit>
+		<Ankunftszeit>2024-08-26T09:16:00</Ankunftszeit>
+		<IstAbfahrtPrognose>2024-08-26T09:09:50</IstAbfahrtPrognose>
+		<IstAnkunftPrognose>2024-08-26T09:09:50</IstAnkunftPrognose>
+		<AbfahrtssteigText>1</AbfahrtssteigText>
+		<Besetztgrad>Unbekannt</Besetztgrad>
+	</IstHalt>
+	<IstHalt>
+		<HaltID>de:14627:5486:0:1</HaltID>
+		<Abfahrtszeit>2024-08-26T09:17:00</Abfahrtszeit>
+		<Ankunftszeit>2024-08-26T09:17:00</Ankunftszeit>
+		<IstAbfahrtPrognose>2024-08-26T09:10:49</IstAbfahrtPrognose>
+		<IstAnkunftPrognose>2024-08-26T09:10:49</IstAnkunftPrognose>
+		<AbfahrtssteigText>1</AbfahrtssteigText>
+		<Besetztgrad>Unbekannt</Besetztgrad>
+	</IstHalt>
+	<IstHalt>
+		<HaltID>de:14627:5485:0:1</HaltID>
+		<Abfahrtszeit>2024-08-26T09:18:00</Abfahrtszeit>
+		<Ankunftszeit>2024-08-26T09:18:00</Ankunftszeit>
+		<IstAbfahrtPrognose>2024-08-26T09:11:49</IstAbfahrtPrognose>
+		<IstAnkunftPrognose>2024-08-26T09:11:49</IstAnkunftPrognose>
+		<AbfahrtssteigText>1</AbfahrtssteigText>
+		<Besetztgrad>Unbekannt</Besetztgrad>
+	</IstHalt>
+	<IstHalt>
+		<HaltID>de:14627:5497:0:1</HaltID>
+		<Abfahrtszeit>2024-08-26T09:22:00</Abfahrtszeit>
+		<Ankunftszeit>2024-08-26T09:22:00</Ankunftszeit>
+		<IstAbfahrtPrognose>2024-08-26T09:21:45</IstAbfahrtPrognose>
+		<IstAnkunftPrognose>2024-08-26T09:21:45</IstAnkunftPrognose>
+		<AbfahrtssteigText>1</AbfahrtssteigText>
+		<Besetztgrad>Unbekannt</Besetztgrad>
+	</IstHalt>
+	<IstHalt>
+		<HaltID>de:14627:5492:0:1</HaltID>
+		<Abfahrtszeit>2024-08-26T09:26:00</Abfahrtszeit>
+		<Ankunftszeit>2024-08-26T09:26:00</Ankunftszeit>
+		<IstAbfahrtPrognose>2024-08-26T09:25:45</IstAbfahrtPrognose>
+		<IstAnkunftPrognose>2024-08-26T09:25:45</IstAnkunftPrognose>
+		<AbfahrtssteigText>1</AbfahrtssteigText>
+		<Besetztgrad>Unbekannt</Besetztgrad>
+	</IstHalt>
+	<IstHalt>
+		<HaltID>de:14627:5491:0:1</HaltID>
+		<Abfahrtszeit>2024-08-26T09:27:00</Abfahrtszeit>
+		<Ankunftszeit>2024-08-26T09:27:00</Ankunftszeit>
+		<IstAbfahrtPrognose>2024-08-26T09:25:49</IstAbfahrtPrognose>
+		<IstAnkunftPrognose>2024-08-26T09:25:49</IstAnkunftPrognose>
+		<AbfahrtssteigText>1</AbfahrtssteigText>
+		<RichtungsText>Radeburg Grundschule</RichtungsText>
+		<Besetztgrad>Unbekannt</Besetztgrad>
+	</IstHalt>
+	<IstHalt>
+		<HaltID>de:14627:5490:0:1</HaltID>
+		<Abfahrtszeit>2024-08-26T09:29:00</Abfahrtszeit>
+		<Ankunftszeit>2024-08-26T09:29:00</Ankunftszeit>
+		<IstAbfahrtPrognose>2024-08-26T09:27:49</IstAbfahrtPrognose>
+		<IstAnkunftPrognose>2024-08-26T09:27:49</IstAnkunftPrognose>
+		<AbfahrtssteigText>1</AbfahrtssteigText>
+		<RichtungsText>Radeburg Grundschule</RichtungsText>
+		<Besetztgrad>Unbekannt</Besetztgrad>
+	</IstHalt>
+	<IstHalt>
+		<HaltID>de:14627:5475:0:1</HaltID>
+		<Abfahrtszeit>2024-08-26T09:31:00</Abfahrtszeit>
+		<Ankunftszeit>2024-08-26T09:31:00</Ankunftszeit>
+		<IstAbfahrtPrognose>2024-08-26T09:29:49</IstAbfahrtPrognose>
+		<IstAnkunftPrognose>2024-08-26T09:29:49</IstAnkunftPrognose>
+		<AbfahrtssteigText>1</AbfahrtssteigText>
+		<RichtungsText>Radeburg Grundschule</RichtungsText>
+		<Besetztgrad>Unbekannt</Besetztgrad>
+	</IstHalt>
+	<IstHalt>
+		<HaltID>de:14627:5476:0:1</HaltID>
+		<Abfahrtszeit>2024-08-26T09:33:00</Abfahrtszeit>
+		<Ankunftszeit>2024-08-26T09:33:00</Ankunftszeit>
+		<IstAbfahrtPrognose>2024-08-26T09:32:27</IstAbfahrtPrognose>
+		<IstAnkunftPrognose>2024-08-26T09:32:27</IstAnkunftPrognose>
+		<AbfahrtssteigText>1</AbfahrtssteigText>
+		<RichtungsText>Radeburg Grundschule</RichtungsText>
+		<Besetztgrad>Unbekannt</Besetztgrad>
+	</IstHalt>
+	<IstHalt>
+		<HaltID>de:14627:5477:0:1</HaltID>
+		<Abfahrtszeit>2024-08-26T09:35:00</Abfahrtszeit>
+		<Ankunftszeit>2024-08-26T09:35:00</Ankunftszeit>
+		<IstAbfahrtPrognose>2024-08-26T09:34:27</IstAbfahrtPrognose>
+		<IstAnkunftPrognose>2024-08-26T09:34:27</IstAnkunftPrognose>
+		<AbfahrtssteigText>1</AbfahrtssteigText>
+		<RichtungsText>Radeburg Grundschule</RichtungsText>
+		<Besetztgrad>Unbekannt</Besetztgrad>
+	</IstHalt>
+	<IstHalt>
+		<HaltID>de:14627:5474:0:1</HaltID>
+		<Abfahrtszeit>2024-08-26T09:38:00</Abfahrtszeit>
+		<Ankunftszeit>2024-08-26T09:38:00</Ankunftszeit>
+		<IstAbfahrtPrognose>2024-08-26T09:37:27</IstAbfahrtPrognose>
+		<IstAnkunftPrognose>2024-08-26T09:37:27</IstAnkunftPrognose>
+		<AbfahrtssteigText>1</AbfahrtssteigText>
+		<RichtungsText>Radeburg Grundschule</RichtungsText>
+		<Besetztgrad>Unbekannt</Besetztgrad>
+	</IstHalt>
+	<IstHalt>
+		<HaltID>de:14627:5470:0:1</HaltID>
+		<Abfahrtszeit>2024-08-26T09:41:00</Abfahrtszeit>
+		<Ankunftszeit>2024-08-26T09:41:00</Ankunftszeit>
+		<IstAbfahrtPrognose>2024-08-26T09:40:27</IstAbfahrtPrognose>
+		<IstAnkunftPrognose>2024-08-26T09:40:27</IstAnkunftPrognose>
+		<AbfahrtssteigText>1</AbfahrtssteigText>
+		<RichtungsText>Radeburg Grundschule</RichtungsText>
+		<Besetztgrad>Unbekannt</Besetztgrad>
+	</IstHalt>
+	<IstHalt>
+		<HaltID>de:14627:5473:0:1</HaltID>
+		<Abfahrtszeit>2024-08-26T09:44:00</Abfahrtszeit>
+		<Ankunftszeit>2024-08-26T09:44:00</Ankunftszeit>
+		<IstAbfahrtPrognose>2024-08-26T09:43:27</IstAbfahrtPrognose>
+		<IstAnkunftPrognose>2024-08-26T09:43:27</IstAnkunftPrognose>
+		<AbfahrtssteigText>1</AbfahrtssteigText>
+		<RichtungsText>Radeburg Grundschule</RichtungsText>
+		<Besetztgrad>Unbekannt</Besetztgrad>
+	</IstHalt>
+	<IstHalt>
+		<HaltID>de:14627:5465:0:1</HaltID>
+		<Abfahrtszeit>2024-08-26T09:45:00</Abfahrtszeit>
+		<Ankunftszeit>2024-08-26T09:45:00</Ankunftszeit>
+		<IstAbfahrtPrognose>2024-08-26T09:44:27</IstAbfahrtPrognose>
+		<IstAnkunftPrognose>2024-08-26T09:44:27</IstAnkunftPrognose>
+		<AbfahrtssteigText>1</AbfahrtssteigText>
+		<RichtungsText>Radeburg Grundschule</RichtungsText>
+		<Besetztgrad>Unbekannt</Besetztgrad>
+	</IstHalt>
+	<IstHalt>
+		<HaltID>de:14627:5466:0:1</HaltID>
+		<Abfahrtszeit>2024-08-26T09:47:00</Abfahrtszeit>
+		<Ankunftszeit>2024-08-26T09:47:00</Ankunftszeit>
+		<IstAbfahrtPrognose>2024-08-26T09:46:27</IstAbfahrtPrognose>
+		<IstAnkunftPrognose>2024-08-26T09:46:27</IstAnkunftPrognose>
+		<AbfahrtssteigText>1</AbfahrtssteigText>
+		<RichtungsText>Radeburg Grundschule</RichtungsText>
+		<Besetztgrad>Unbekannt</Besetztgrad>
+	</IstHalt>
+	<IstHalt>
+		<HaltID>de:14627:5460:0:1</HaltID>
+		<Abfahrtszeit>2024-08-26T09:49:00</Abfahrtszeit>
+		<Ankunftszeit>2024-08-26T09:49:00</Ankunftszeit>
+		<IstAbfahrtPrognose>2024-08-26T09:48:27</IstAbfahrtPrognose>
+		<IstAnkunftPrognose>2024-08-26T09:48:27</IstAnkunftPrognose>
+		<AbfahrtssteigText>1</AbfahrtssteigText>
+		<RichtungsText>Radeburg Grundschule</RichtungsText>
+		<Besetztgrad>Unbekannt</Besetztgrad>
+	</IstHalt>
+	<IstHalt>
+		<HaltID>de:14627:5461:0:1</HaltID>
+		<Abfahrtszeit>2024-08-26T09:51:00</Abfahrtszeit>
+		<Ankunftszeit>2024-08-26T09:51:00</Ankunftszeit>
+		<IstAbfahrtPrognose>2024-08-26T09:50:27</IstAbfahrtPrognose>
+		<IstAnkunftPrognose>2024-08-26T09:50:27</IstAnkunftPrognose>
+		<AbfahrtssteigText>1</AbfahrtssteigText>
+		<RichtungsText>Radeburg Grundschule</RichtungsText>
+		<Besetztgrad>Unbekannt</Besetztgrad>
+	</IstHalt>
+	<IstHalt>
+		<HaltID>de:14627:5252:0:1</HaltID>
+		<Abfahrtszeit>2024-08-26T09:55:00</Abfahrtszeit>
+		<Ankunftszeit>2024-08-26T09:55:00</Ankunftszeit>
+		<IstAbfahrtPrognose>2024-08-26T09:54:27</IstAbfahrtPrognose>
+		<IstAnkunftPrognose>2024-08-26T09:54:27</IstAnkunftPrognose>
+		<AbfahrtssteigText>1</AbfahrtssteigText>
+		<RichtungsText>Radeburg Grundschule</RichtungsText>
+		<Besetztgrad>Unbekannt</Besetztgrad>
+	</IstHalt>
+	<IstHalt>
+		<HaltID>de:14627:4360:0:2</HaltID>
+		<Abfahrtszeit>2024-08-26T09:59:00</Abfahrtszeit>
+		<Ankunftszeit>2024-08-26T09:59:00</Ankunftszeit>
+		<IstAbfahrtPrognose>2024-08-26T09:58:27</IstAbfahrtPrognose>
+		<IstAnkunftPrognose>2024-08-26T09:58:27</IstAnkunftPrognose>
+		<AbfahrtssteigText>2</AbfahrtssteigText>
+		<RichtungsText>Radeburg Grundschule</RichtungsText>
+		<Besetztgrad>Unbekannt</Besetztgrad>
+	</IstHalt>
+	<IstHalt>
+		<HaltID>de:14627:4367:0:1</HaltID>
+		<Abfahrtszeit>2024-08-26T10:01:00</Abfahrtszeit>
+		<Ankunftszeit>2024-08-26T10:01:00</Ankunftszeit>
+		<IstAbfahrtPrognose>2024-08-26T10:00:27</IstAbfahrtPrognose>
+		<IstAnkunftPrognose>2024-08-26T10:00:27</IstAnkunftPrognose>
+		<AbfahrtssteigText>1</AbfahrtssteigText>
+		<RichtungsText>Radeburg Grundschule</RichtungsText>
+		<Besetztgrad>Unbekannt</Besetztgrad>
+	</IstHalt>
+	<IstHalt>
+		<HaltID>de:14627:4378:0:1</HaltID>
+		<Ankunftszeit>2024-08-26T10:02:00</Ankunftszeit>
+		<IstAnkunftPrognose>2024-08-26T10:01:27</IstAnkunftPrognose>
+		<AnkunftssteigText>1</AnkunftssteigText>
+		<RichtungsText>Radeburg Grundschule</RichtungsText>
+		<Besetztgrad>Unbekannt</Besetztgrad>
+	</IstHalt>
+	<LinienText>456</LinienText>
+	<ProduktID>VGM456</ProduktID>
+	<RichtungsText>Radeburg ü. Sacka</RichtungsText>
+	<PrognoseMoeglich>true</PrognoseMoeglich>
+	<FaelltAus>false</FaelltAus>
+</IstFahrt>
+)";
+
+}  // namespace
+
+TEST(vdv_update, vgm456) {
+  timetable tt;
+  register_special_stations(tt);
+  tt.date_range_ = {date::sys_days{2024_y / August / 1},
+                    date::sys_days{2024_y / August / 31}};
+  auto const src_idx = source_idx_t{0};
+  load_timetable({}, src_idx, vgm456_files(), tt);
+  finalize(tt);
+
+  auto rtt = rt::create_rt_timetable(tt, date::sys_days{2024_y / August / 26});
+
+  auto u = rt::vdv::updater{tt, src_idx};
+
+  auto doc = pugi::xml_document{};
+  doc.load_string(update_vgm456);
+  u.update(rtt, doc);
+
+  auto const fr = rt::frun{tt,
+                           &rtt,
+                           {{transport_idx_t{0U}, day_idx_t{30U}},
+                            {stop_idx_t{0U}, stop_idx_t{27U}}}};
+
+  // should match the update to the run
+  // however, the reference timetable of the update and the GTFS timetable
+  // do not match as the reference timetable of the VDV update is changed
+  // due to road closures
+  EXPECT_TRUE(fr.is_rt());
+}
