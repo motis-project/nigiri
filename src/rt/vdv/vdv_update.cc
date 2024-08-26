@@ -87,24 +87,25 @@ vector<updater::vdv_stop> updater::resolve_stops(pugi::xml_node const vdv_run) {
 }
 
 struct candidate {
-  explicit candidate(run const& r) : r_{r} {}
+  explicit candidate(run const& r, std::uint32_t const total_length)
+      : r_{r}, total_length_{total_length} {}
 
   friend bool operator<(candidate const& a, candidate const& b) {
     return a.n_matches_ > b.n_matches_ ||
            (a.n_matches_ == b.n_matches_ && a.error_ < b.error_) ||
            (a.n_matches_ == b.n_matches_ && a.error_ == b.error_ &&
-            a.r_.stop_range_.size() < b.r_.stop_range_.size());
+            a.total_length_ < b.total_length_);
   }
 
   friend bool operator==(candidate const& a, candidate const& b) {
-    return a.n_matches_ == b.n_matches_ &&
-           a.r_.stop_range_.size() == b.r_.stop_range_.size() &&
-           a.error_ == b.error_;
+    return a.n_matches_ == b.n_matches_ && a.error_ == b.error_ &&
+           a.total_length_ == b.total_length_;
   }
 
   run r_;
   std::uint32_t n_matches_{0U};
   std::uint32_t error_{0U};  // minutes
+  std::uint32_t total_length_;
 };
 
 std::optional<rt::run> updater::find_run(pugi::xml_node const vdv_run,
@@ -171,10 +172,11 @@ std::optional<rt::run> updater::find_run(pugi::xml_node const vdv_run,
               }
 
               if (candidate == end(candidates)) {
-                candidates.emplace_back(run{
-                    tr,
-                    interval{static_cast<stop_idx_t>(stop_idx),
-                             static_cast<stop_idx_t>(location_seq.size())}});
+                candidates.emplace_back(
+                    run{tr,
+                        interval{static_cast<stop_idx_t>(stop_idx),
+                                 static_cast<stop_idx_t>(location_seq.size())}},
+                    location_seq.size());
                 candidate = end(candidates) - 1;
               }
               ++candidate->n_matches_;
