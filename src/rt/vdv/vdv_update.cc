@@ -51,17 +51,6 @@ pugi::xml_node get(pugi::xml_node const& node, char const* str) {
   return xpath.node();
 }
 
-template <typename T>
-bool epsilon_equal(T const& a, T const& b) {
-  constexpr auto const epsilon = T{updater::kAllowedTimeDiscrepancy};
-  return a - epsilon <= b && b <= a + epsilon;
-}
-
-bool epsilon_equal_unixtime(unixtime_t const a, unixtime_t const b) {
-  return epsilon_equal(a.time_since_epoch().count(),
-                       b.time_since_epoch().count());
-}
-
 vector<updater::vdv_stop> updater::resolve_stops(pugi::xml_node const vdv_run) {
   auto vdv_stops = vector<vdv_stop>{};
 
@@ -102,17 +91,20 @@ struct candidate {
 
   friend bool operator<(candidate const& a, candidate const& b) {
     return a.n_matches_ > b.n_matches_ ||
-           (a.n_matches_ == b.n_matches_ &&
+           (a.n_matches_ == b.n_matches_ && a.error_ < b.error_) ||
+           (a.n_matches_ == b.n_matches_ && a.error_ == b.error_ &&
             a.r_.stop_range_.size() < b.r_.stop_range_.size());
   }
 
   friend bool operator==(candidate const& a, candidate const& b) {
     return a.n_matches_ == b.n_matches_ &&
-           a.r_.stop_range_.size() == b.r_.stop_range_.size();
+           a.r_.stop_range_.size() == b.r_.stop_range_.size() &&
+           a.error_ == b.error_;
   }
 
   run r_;
   std::uint32_t n_matches_{0U};
+  std::uint32_t error_{0U};  // minutes
 };
 
 std::optional<rt::run> updater::find_run(pugi::xml_node const vdv_run,
@@ -155,7 +147,10 @@ std::optional<rt::run> updater::find_run(pugi::xml_node const vdv_run,
           for (auto const [ev_time_idx, ev_time] :
                utl::enumerate(tt_.event_times_at_stop(
                    r, static_cast<stop_idx_t>(stop_idx), ev_type))) {
-            if (!epsilon_equal(ev_time.mam(), mam.count())) {
+
+            auto const local_error = static_cast<std::uint32_t>(
+                std::abs(ev_time.mam() - mam.count()));
+            if (local_error > updater::kAllowedTimeDiscrepancy) {
               continue;
             }
 
@@ -183,6 +178,7 @@ std::optional<rt::run> updater::find_run(pugi::xml_node const vdv_run,
                 candidate = end(candidates) - 1;
               }
               ++candidate->n_matches_;
+              candidate->error_ += local_error;
               no_transport_found_at_stop = false;
             }
           }
@@ -308,8 +304,11 @@ void updater::update_run(rt_timetable& rtt,
                       << ": [id: " << rs.id() << ", name: " << rs.name()
                       << "]\n";
         if (rs.stop_idx_ != 0 && vdv_stop->arr_.has_value() &&
-            epsilon_equal_unixtime(vdv_stop->arr_.value(),
-                                   rs.scheduled_time(event_type::kArr))) {
+            (static_cast<std::uint32_t>(
+                 std::abs(vdv_stop->arr_.value().time_since_epoch().count() -
+                          rs.scheduled_time(event_type::kArr)
+                              .time_since_epoch()
+                              .count())) <= kAllowedTimeDiscrepancy)) {
           matched_arr = true;
           if (vdv_stop->rt_arr_.has_value()) {
             update_event(rs, event_type::kArr, *vdv_stop->rt_arr_);
@@ -317,8 +316,11 @@ void updater::update_run(rt_timetable& rtt,
         }
         if (rs.stop_idx_ != fr.stop_range_.to_ - 1 &&
             vdv_stop->dep_.has_value() &&
-            epsilon_equal_unixtime(vdv_stop->dep_.value(),
-                                   rs.scheduled_time(event_type::kDep))) {
+            static_cast<std::uint32_t>(
+                std::abs(vdv_stop->dep_.value().time_since_epoch().count() -
+                         rs.scheduled_time(event_type::kDep)
+                             .time_since_epoch()
+                             .count())) <= kAllowedTimeDiscrepancy) {
           matched_dep = true;
           if (vdv_stop->rt_dep_.has_value()) {
             update_event(rs, event_type::kDep, *vdv_stop->rt_dep_);
