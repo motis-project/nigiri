@@ -11,11 +11,7 @@
 namespace nigiri::loader::gtfs {
 
 shape_id_map_t const parse_shapes(std::string_view const data,
-                                  shape_vecvec_t* vecvec) {
-  if (vecvec == nullptr) {
-    return {};
-  }
-
+                                  shape_vecvec_t& vecvec) {
   struct shape_entry {
     utl::csv_col<utl::cstr, UTL_NAME("shape_id")> id_;
     utl::csv_col<double, UTL_NAME("shape_pt_lat")> lat_;
@@ -39,12 +35,12 @@ shape_id_map_t const parse_shapes(std::string_view const data,
             "followed by {}",
             entry.id_.val().to_str(), state.last_seq_, seq);
       }
-      (*vecvec)[state.index_].push_back(
+      vecvec[state.index_].push_back(
           geo::latlng{entry.lat_.val(), entry.lon_.val()});
       state.last_seq_ = seq;
     } else {
-      auto const index = static_cast<shape_idx_t>(vecvec->size());
-      auto bucket = vecvec->add_back_sized(0u);
+      auto const index = static_cast<shape_idx_t>(vecvec.size());
+      auto bucket = vecvec.add_back_sized(0u);
       states.insert({entry.id_->view(), {index, entry.seq_.val()}});
       bucket.push_back(geo::latlng{entry.lat_.val(), entry.lon_.val()});
     }

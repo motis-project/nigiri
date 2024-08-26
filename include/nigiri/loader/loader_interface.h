@@ -1,6 +1,7 @@
 #pragma once
 
 #include <array>
+#include <optional>
 #include <string_view>
 
 #include "geo/latlng.h"
@@ -34,8 +35,8 @@ struct loader_interface {
                     dir const&,
                     timetable&,
                     hash_map<bitfield, bitfield_idx_t>&,
-                    assistance_times*,
-                    shape_vecvec_t* = nullptr) const = 0;
+                    std::optional<shape_vecvec_t>&,
+                    assistance_times*) const = 0;
   virtual cista::hash_t hash(dir const&) const = 0;
   virtual std::string_view name() const = 0;
 };
