@@ -228,6 +228,28 @@ std::optional<rt::run> updater::find_run(pugi::xml_node const vdv_run,
   return candidates.front().r_;
 }
 
+void monotonize(frun& fr, rt_timetable& rtt) {
+  auto next_time = unixtime_t::max();
+
+  auto const update = [&](auto const& rs, auto const ev, auto const new_time) {
+    rtt.update_time(fr.rt_, rs.stop_idx_, ev, new_time);
+    rtt.dispatch_event_change(fr.t_, rs.stop_idx_, ev,
+                              new_time - rs.scheduled_time(ev), false);
+    next_time = new_time;
+  };
+
+  for (auto it = rbegin(fr); it != rend(fr); --it) {
+    if (it.rs_.stop_idx_ != fr.stop_range_.to_ - 1) {
+      update(it.rs_, event_type::kDep,
+             std::min(it.rs_.time(event_type::kDep), next_time));
+    }
+    if (it.rs_.stop_idx_ != fr.stop_range_.from_) {
+      update(it.rs_, event_type::kArr,
+             std::min(it.rs_.time(event_type::kArr), next_time));
+    }
+  }
+}
+
 void updater::update_run(rt_timetable& rtt,
                          run& r,
                          vector<vdv_stop> const& vdv_stops,
@@ -372,6 +394,7 @@ void updater::update_run(rt_timetable& rtt,
     ++stats_.excess_vdv_stops_;
     ++cursor;
   }
+  update_events << "---\n\n";
 
   if (!gtfs_stop_missing.str().empty()) {
     std::ofstream{"gtfs_stop_missing_in_vdv.txt", std::ios::app}
@@ -384,7 +407,8 @@ void updater::update_run(rt_timetable& rtt,
         << "---" << fr.name() << ":\n"
         << prefix_matches.str() << "---\n\n";
   }
-  update_events << "---\n\n";
+
+  monotonize(fr, rtt);
 }
 
 void updater::process_vdv_run(rt_timetable& rtt, pugi::xml_node const vdv_run) {
