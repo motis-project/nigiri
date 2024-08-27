@@ -3718,3 +3718,696 @@ TEST(vdv_update, rbo512) {
                              {stop_idx_t{0U}, stop_idx_t{18U}}}};
   EXPECT_TRUE(fr1.is_rt());
 }
+
+namespace {
+
+mem_dir vgm418_files() {
+  return mem_dir::read(R"__(
+# trips.txt
+"route_id","service_id","trip_id","trip_headsign","trip_short_name","direction_id","block_id","shape_id","wheelchair_accessible","bikes_allowed"
+"de:vvo:24-418_3",1171,2593430133,"Meißen Busbahnhof","",1,,48900,0,0
+
+# routes.txt
+"route_id","agency_id","route_short_name","route_long_name","route_type","route_color","route_text_color","route_desc"
+"de:vvo:24-418_3",8196,"418","",3,"","",""
+
+# agency.txt
+"agency_id","agency_name","agency_url","agency_timezone","agency_lang","agency_phone"
+8196,"VGM-Busverkehr","https://www.delfi.de","Europe/Berlin","",""
+
+# stop_times.txt
+"trip_id","arrival_time","departure_time","stop_id","stop_sequence","pickup_type","drop_off_type","stop_headsign"
+2593430133,17:37:00,17:37:00,"de:14627:4850:0:1",0,0,0,""
+2593430133,17:40:00,17:40:00,"de:14522:80004:0:BS_G",1,0,0,""
+2593430133,17:41:00,17:41:00,"de:14522:98055:0:BO",2,0,0,""
+2593430133,17:43:00,17:43:00,"de:14627:4848:0:2",3,0,0,""
+2593430133,17:45:00,17:45:00,"de:14627:4856:0:2",4,0,0,""
+2593430133,17:47:00,17:47:00,"de:14627:4857:0:2",5,0,0,""
+2593430133,17:49:00,17:49:00,"de:14627:4872:0:2",6,0,0,""
+2593430133,17:51:00,17:51:00,"de:14627:4870:0:2",7,0,0,""
+2593430133,17:53:00,17:53:00,"de:14627:4809:0:2",8,0,0,""
+2593430133,17:55:00,17:55:00,"de:14627:4800:3:1",9,0,0,""
+2593430133,17:56:00,17:56:00,"de:14627:4793:0:1_G",10,0,0,""
+2593430133,17:57:00,17:57:00,"de:14627:4797:0:1_G",11,0,0,""
+2593430133,17:59:00,18:03:00,"de:14627:4801:0:1",12,0,0,""
+2593430133,18:05:00,18:05:00,"de:14627:4804:0:2_G",13,0,0,""
+2593430133,18:06:00,18:06:00,"de:14627:4805:0:2_G",14,0,0,""
+2593430133,18:07:00,18:07:00,"de:14627:4806:0:2_G",15,0,0,""
+2593430133,18:09:00,18:09:00,"de:14627:4810:1:1",16,0,0,""
+2593430133,18:10:00,18:10:00,"de:14627:4816:0:2",17,0,0,""
+2593430133,18:11:00,18:11:00,"de:14627:4811:0:2",18,0,0,""
+2593430133,18:12:00,18:12:00,"de:14627:4817:0:2",19,0,0,""
+2593430133,18:13:00,18:13:00,"de:14627:4813:0:2",20,0,0,""
+2593430133,18:14:00,18:14:00,"de:14627:4814:0:2",21,0,0,""
+2593430133,18:15:00,18:15:00,"de:14627:4824:0:2",22,0,0,""
+2593430133,18:16:00,18:16:00,"de:14627:4825:0:2",23,0,0,""
+2593430133,18:17:00,18:17:00,"de:14627:4826:0:2",24,0,0,""
+2593430133,18:18:00,18:18:00,"de:14627:4819:0:2",25,0,0,""
+2593430133,18:19:00,18:19:00,"de:14627:4837:0:2",26,0,0,""
+2593430133,18:20:00,18:20:00,"de:14627:4836:0:2",27,0,0,""
+2593430133,18:21:00,18:21:00,"de:14627:4838:0:2",28,0,0,""
+2593430133,18:22:00,18:22:00,"de:14627:4693:0:2",29,0,0,""
+2593430133,18:23:00,18:23:00,"de:14627:4692:0:2",30,0,0,""
+2593430133,18:24:00,18:24:00,"de:14627:4691:3:2",31,0,0,""
+2593430133,18:25:00,18:25:00,"de:14627:4690:0:2",32,0,0,""
+2593430133,18:28:00,18:28:00,"de:14627:4688:0:2",33,0,0,""
+2593430133,18:29:00,18:29:00,"de:14627:4689:0:2",34,0,0,""
+2593430133,18:31:00,18:31:00,"de:14627:4685:0:2",35,0,0,""
+2593430133,18:32:00,18:32:00,"de:14627:4684:0:2",36,0,0,""
+2593430133,18:34:00,18:34:00,"de:14627:4088:0:2",37,0,0,""
+2593430133,18:35:00,18:35:00,"de:14627:4083:0:2",38,0,0,""
+2593430133,18:36:00,18:36:00,"de:14627:4082:1:2",39,0,0,""
+2593430133,18:37:00,18:37:00,"de:14627:4081:1:2",40,0,0,""
+2593430133,18:38:00,18:38:00,"de:14627:4080:1:2",41,0,0,""
+2593430133,18:39:00,18:39:00,"de:14627:4077:1:2",42,0,0,""
+2593430133,18:40:00,18:40:00,"de:14627:4076:1:2",43,0,0,""
+2593430133,18:41:00,18:41:00,"de:14627:4018:1:2",44,0,0,""
+2593430133,18:42:00,18:42:00,"de:14627:4075:1:2",45,0,0,""
+2593430133,18:44:00,18:44:00,"de:14627:4013:1:3",46,0,0,""
+2593430133,18:45:00,18:45:00,"de:14627:4055:3:2",47,0,0,""
+2593430133,18:46:00,18:46:00,"de:14627:4048:1:2",48,0,0,""
+2593430133,18:48:00,18:48:00,"de:14627:4010:1:4",49,0,0,""
+2593430133,18:50:00,18:50:00,"de:14627:4007:1:1",50,0,0,""
+
+# stops.txt
+"stop_id","stop_code","stop_name","stop_desc","stop_lat","stop_lon","location_type","parent_station","wheelchair_boarding","platform_code","level_id"
+"de:14627:4007:1:1","","Meißen Busbahnhof","Busbahnhof","51.163736000000","13.483308000000",0,,0,"1","2"
+"de:14627:4010:1:4","","Meißen Bahnhofstraße","SüdOst Ri Busbf","51.164040000000","13.478421000000",0,,0,"2","2"
+"de:14627:4048:1:2","","Meißen Uferstraße","Haltestelle","51.163049000000","13.475798000000",0,,0,"2","2"
+"de:14627:4055:3:2","","Meißen S-Bahnhof Altstadt","3","51.160615000000","13.473265000000",0,,0,"2","2"
+"de:14627:4684:0:2","","Garsebach Mittelmühle",,"51.129625000000","13.436964000000",0,,0,"",""
+"de:14627:4013:1:3","","Meißen Talbad","Kerstingstraße","51.157376000000","13.468513000000",0,,0,"3","2"
+"de:14627:4018:1:2","","Meißen W.-Walkhoff-Platz","Haltestelle","51.152722000000","13.459835000000",0,,0,"2","2"
+"de:14627:4076:1:2","","Meißen Schützestraße","Haltestelle","51.150558000000","13.458865000000",0,,0,"2","2"
+"de:14627:4077:1:2","","Meißen Hohe Eifer","Haltestelle","51.144973000000","13.459718000000",0,,0,"2","2"
+"de:14627:4685:0:2","","Garsebach Wendeplatz",,"51.126051000000","13.431350000000",0,,0,"",""
+"de:14627:4811:0:2","","Deutschenbora Abzweig Meißen",,"51.053727000000","13.358649000000",0,,0,"",""
+"de:14627:4856:0:2","","Abzw Starbach",,"51.089988000000","13.267039000000",0,,0,"",""
+"de:14627:4693:0:2","","Miltitz Bad",,"51.095449000000","13.414848000000",0,,0,"",""
+"de:14627:4826:0:2","","Rothschönberg Abzw Kottewitz",,"51.071726000000","13.398094000000",0,,0,"",""
+"de:14627:4836:0:2","","Munzig Abzw Burkhardswalde","Munzig Abzw Burkhardswalde","51.085000000000","13.411227000000",0,,0,"2","2"
+"de:14627:4805:0:2_G","","Nossen Siedlung Eula",,"51.057629000000","13.316141000000",0,,0,"",""
+"de:14627:4837:0:2","","Munzig Abzw Heynitz",,"51.079531000000","13.404256000000",0,,0,"",""
+"de:14627:4080:1:2","","Meißen Kühnestraße","Haltestelle","51.140899000000","13.458676000000",0,,0,"2","2"
+"de:14627:4819:0:2","","Rothschönberg Appenhof",,"51.074802000000","13.401840000000",0,,0,"",""
+"de:14627:4690:0:2","","Miltitz OT Roitzschen",,"51.110228000000","13.416680000000",0,,0,"",""
+"de:14627:4838:0:2","","Munzig Kulturhaus",,"51.090208000000","13.413015000000",0,,0,"",""
+"de:14627:4825:0:2","","Rothschönberg Weg zum Gasthof",,"51.069338000000","13.392515000000",0,,0,"",""
+"de:14627:4689:0:2","","Robschütz",,"51.122848000000","13.422852000000",0,,0,"",""
+"de:14627:4806:0:2_G","","Nossen Eula Neuer Weg",,"51.056856000000","13.328115000000",0,,0,"",""
+"de:14627:4824:0:2","","Rothschönberg Rote Mühle",,"51.067114000000","13.381053000000",0,,0,"",""
+"de:14627:4816:0:2","","Deutschenbora Bahnhofstraße","Deutschenbora Bahnhofstraße","51.053840000000","13.350618000000",0,,0,"2","2"
+"de:14627:4081:1:2","","Meißen Zuckerhut","Haltestelle","51.136987000000","13.459206000000",0,,0,"2","2"
+"de:14627:4813:0:2","","Deutschenbora Elgersdorfer Str.",,"51.060554000000","13.362395000000",0,,0,"",""
+"de:14627:4088:0:2","","Meißen Steinbruch",,"51.134383000000","13.447825000000",0,,0,"",""
+"de:14627:4075:1:2","","Meißen Niesnerstraße","Haltestelle","51.154119000000","13.461506000000",0,,0,"2","2"
+"de:14627:4817:0:2","","Deutschenbora Am Fußweg",,"51.058070000000","13.359017000000",0,,0,"",""
+"de:14627:4797:0:1_G","","Nossen Grundschule",,"51.057375000000","13.295677000000",0,,0,"",""
+"de:14627:4793:0:1_G","","Nossen August-Bebel-Straße",,"51.059233000000","13.298237000000",0,,0,"",""
+"de:14627:4809:0:2","","Nossen Brücke",,"51.063857000000","13.286901000000",0,,0,"",""
+"de:14627:4688:0:2","","Robschütz Abzweig Luga",,"51.119696000000","13.418252000000",0,,0,"",""
+"de:14627:4810:1:1","","Deutschenbora Hirschfelder Str","Hauptstr. (Eula)","51.054382000000","13.344132000000",0,,0,"1","2"
+"de:14627:4801:0:1","","Nossen Markt","Markt","51.057573000000","13.298911000000",0,,0,"1","2"
+"de:14627:4800:3:1","","Nossen Bahnhof","Bus","51.060435000000","13.293494000000",0,,0,"1","2"
+"de:14627:4691:3:2","","Miltitz Bahnhof","Bus","51.105614000000","13.418594000000",0,,0,"2","2"
+"de:14627:4804:0:2_G","","Nossen Bahnübergang",,"51.058126000000","13.306367000000",0,,0,"",""
+"de:14627:4082:1:2","","Meißen Buschbad","Haltestelle","51.134834000000","13.458353000000",0,,0,"2","2"
+"de:14522:98055:0:BO","","Choren, Dorfeingang",,"51.098823000000","13.248974000000",0,,0,"",""
+"de:14627:4872:0:2","","Neubodenbach",,"51.080248000000","13.278789000000",0,,0,"",""
+"de:14627:4814:0:2","","Deutschenbora Klotz-Mühle",,"51.062462000000","13.369644000000",0,,0,"",""
+"de:14627:4857:0:2","","Starbach Logistikzentrum",,"51.087477000000","13.269204000000",0,,0,"",""
+"de:14627:4848:0:2","","Starbach Dorfplatz",,"51.092894000000","13.269518000000",0,,0,"",""
+"de:14627:4870:0:2","","Rhäsa",,"51.069999000000","13.285059000000",0,,0,"",""
+"de:14522:80004:0:BS_G","","Choren, Wendestelle",,"51.101260000000","13.242012000000",0,,0,"",""
+"de:14627:4083:0:2","","Meißen Abzweig Dobritz",,"51.136299000000","13.451714000000",0,,0,"",""
+"de:14627:4692:0:2","","Miltitz Mühle",,"51.101700000000","13.414461000000",0,,0,"",""
+"de:14627:4850:0:1","","Rüsseina Wendeplatz",,"51.111221000000","13.261379000000",0,,0,"",""
+"de:14522:80004:0:BS","","Choren, Wendestelle",,"51.101260000000","13.241994000000",0,,0,"",""
+"de:14627:4793:0:1","","Nossen August-Bebel-Straße",,"51.059204000000","13.298219000000",0,,0,"",""
+"de:14627:4797:0:1","","Nossen Grundschule",,"51.057420000000","13.295578000000",0,,0,"",""
+"de:14627:4804:0:2","","Nossen Bahnübergang",,"51.058103000000","13.306313000000",0,,0,"",""
+"de:14627:4805:0:2","","Nossen Siedlung Eula",,"51.057595000000","13.315970000000",0,,0,"",""
+"de:14627:4806:0:2","","Nossen Eula Neuer Weg",,"51.056850000000","13.328160000000",0,,0,"",""
+"de:14627:4810:1:2","","Deutschenbora Hirschfelder Str","Hauptstr. (Eula)","51.054309000000","13.344312000000",0,,0,"2","2"
+"de:14627:4010:1:2","","Meißen Bahnhofstraße","Nordwest Ri Brücke","51.164598000000","13.477784000000",0,,0,"1","2"
+
+# calendar.txt
+"service_id","monday","tuesday","wednesday","thursday","friday","saturday","sunday","start_date","end_date"
+1171,1,1,1,1,1,0,0,20240805,20241214
+
+# calendar_dates.txt
+"service_id","date","exception_type"
+1171,20240805,2
+1171,20240812,2
+1171,20240806,2
+1171,20240813,2
+1171,20240807,2
+1171,20241120,2
+1171,20240808,2
+1171,20241003,2
+1171,20241031,2
+1171,20240809,2
+
+)__");
+}
+
+// prognosis: arrival at second stop before departure at first
+constexpr auto const update_vgm418 = R"(
+<IstFahrt Zst="2024-08-26T17:49:13">
+  <LinienID>VGM418</LinienID>
+  <RichtungsID>2</RichtungsID>
+  <FahrtRef>
+    <FahrtID>
+      <FahrtBezeichner>VGM41802401_vvorbl</FahrtBezeichner>
+      <Betriebstag>2024-08-26</Betriebstag>
+    </FahrtID>
+  </FahrtRef>
+  <Komplettfahrt>true</Komplettfahrt>
+  <BetreiberID>vvorbl</BetreiberID>
+  <IstHalt>
+    <HaltID>de:14627:4850:0:1</HaltID>
+    <Abfahrtszeit>2024-08-26T15:37:00</Abfahrtszeit>
+    <IstAbfahrtPrognose>2024-08-26T15:58:04</IstAbfahrtPrognose>
+    <AbfahrtssteigText>1</AbfahrtssteigText>
+    <Besetztgrad>Unbekannt</Besetztgrad>
+  </IstHalt>
+  <IstHalt>
+    <HaltID>de:14522:80004:0:BS</HaltID>
+    <Abfahrtszeit>2024-08-26T15:40:00</Abfahrtszeit>
+    <Ankunftszeit>2024-08-26T15:40:00</Ankunftszeit>
+    <IstAbfahrtPrognose>2024-08-26T15:46:07</IstAbfahrtPrognose>
+    <IstAnkunftPrognose>2024-08-26T15:46:07</IstAnkunftPrognose>
+    <AbfahrtssteigText>1</AbfahrtssteigText>
+    <Besetztgrad>Unbekannt</Besetztgrad>
+  </IstHalt>
+  <IstHalt>
+    <HaltID>de:14522:98055:0:BO</HaltID>
+    <Abfahrtszeit>2024-08-26T15:41:00</Abfahrtszeit>
+    <Ankunftszeit>2024-08-26T15:41:00</Ankunftszeit>
+    <IstAbfahrtPrognose>2024-08-26T15:47:07</IstAbfahrtPrognose>
+    <IstAnkunftPrognose>2024-08-26T15:47:07</IstAnkunftPrognose>
+    <AbfahrtssteigText>2</AbfahrtssteigText>
+    <Besetztgrad>Unbekannt</Besetztgrad>
+  </IstHalt>
+  <IstHalt>
+    <HaltID>de:14627:4848:0:2</HaltID>
+    <Abfahrtszeit>2024-08-26T15:43:00</Abfahrtszeit>
+    <Ankunftszeit>2024-08-26T15:43:00</Ankunftszeit>
+    <IstAbfahrtPrognose>2024-08-26T15:49:23</IstAbfahrtPrognose>
+    <IstAnkunftPrognose>2024-08-26T15:49:23</IstAnkunftPrognose>
+    <AbfahrtssteigText>2</AbfahrtssteigText>
+    <Besetztgrad>Unbekannt</Besetztgrad>
+  </IstHalt>
+  <IstHalt>
+    <HaltID>de:14627:4856:0:2</HaltID>
+    <Abfahrtszeit>2024-08-26T15:45:00</Abfahrtszeit>
+    <Ankunftszeit>2024-08-26T15:45:00</Ankunftszeit>
+    <IstAbfahrtPrognose>2024-08-26T15:51:23</IstAbfahrtPrognose>
+    <IstAnkunftPrognose>2024-08-26T15:51:23</IstAnkunftPrognose>
+    <AbfahrtssteigText>2</AbfahrtssteigText>
+    <Besetztgrad>Unbekannt</Besetztgrad>
+  </IstHalt>
+  <IstHalt>
+    <HaltID>de:14627:4857:0:2</HaltID>
+    <Abfahrtszeit>2024-08-26T15:47:00</Abfahrtszeit>
+    <Ankunftszeit>2024-08-26T15:47:00</Ankunftszeit>
+    <IstAbfahrtPrognose>2024-08-26T15:52:25</IstAbfahrtPrognose>
+    <IstAnkunftPrognose>2024-08-26T15:52:25</IstAnkunftPrognose>
+    <AbfahrtssteigText>2</AbfahrtssteigText>
+    <Besetztgrad>Unbekannt</Besetztgrad>
+  </IstHalt>
+  <IstHalt>
+    <HaltID>de:14627:4872:0:2</HaltID>
+    <Abfahrtszeit>2024-08-26T15:49:00</Abfahrtszeit>
+    <Ankunftszeit>2024-08-26T15:49:00</Ankunftszeit>
+    <IstAbfahrtPrognose>2024-08-26T15:54:25</IstAbfahrtPrognose>
+    <IstAnkunftPrognose>2024-08-26T15:54:25</IstAnkunftPrognose>
+    <AbfahrtssteigText>2</AbfahrtssteigText>
+    <Besetztgrad>Unbekannt</Besetztgrad>
+  </IstHalt>
+  <IstHalt>
+    <HaltID>de:14627:4870:0:2</HaltID>
+    <Abfahrtszeit>2024-08-26T15:51:00</Abfahrtszeit>
+    <Ankunftszeit>2024-08-26T15:51:00</Ankunftszeit>
+    <IstAbfahrtPrognose>2024-08-26T15:56:25</IstAbfahrtPrognose>
+    <IstAnkunftPrognose>2024-08-26T15:56:25</IstAnkunftPrognose>
+    <AbfahrtssteigText>2</AbfahrtssteigText>
+    <Besetztgrad>Unbekannt</Besetztgrad>
+  </IstHalt>
+  <IstHalt>
+    <HaltID>de:14627:4809:0:2</HaltID>
+    <Abfahrtszeit>2024-08-26T15:53:00</Abfahrtszeit>
+    <Ankunftszeit>2024-08-26T15:53:00</Ankunftszeit>
+    <IstAbfahrtPrognose>2024-08-26T15:58:25</IstAbfahrtPrognose>
+    <IstAnkunftPrognose>2024-08-26T15:58:25</IstAnkunftPrognose>
+    <AbfahrtssteigText>2</AbfahrtssteigText>
+    <Besetztgrad>Unbekannt</Besetztgrad>
+  </IstHalt>
+  <IstHalt>
+    <HaltID>de:14627:4800:3:1</HaltID>
+    <Abfahrtszeit>2024-08-26T15:55:00</Abfahrtszeit>
+    <Ankunftszeit>2024-08-26T15:55:00</Ankunftszeit>
+    <IstAbfahrtPrognose>2024-08-26T16:00:25</IstAbfahrtPrognose>
+    <IstAnkunftPrognose>2024-08-26T16:00:25</IstAnkunftPrognose>
+    <AbfahrtssteigText>1</AbfahrtssteigText>
+    <Besetztgrad>Unbekannt</Besetztgrad>
+  </IstHalt>
+  <IstHalt>
+    <HaltID>de:14627:4793:0:1</HaltID>
+    <Abfahrtszeit>2024-08-26T15:56:00</Abfahrtszeit>
+    <Ankunftszeit>2024-08-26T15:56:00</Ankunftszeit>
+    <IstAbfahrtPrognose>2024-08-26T16:01:25</IstAbfahrtPrognose>
+    <IstAnkunftPrognose>2024-08-26T16:01:25</IstAnkunftPrognose>
+    <AbfahrtssteigText>1</AbfahrtssteigText>
+    <Besetztgrad>Unbekannt</Besetztgrad>
+  </IstHalt>
+  <IstHalt>
+    <HaltID>de:14627:4797:0:1</HaltID>
+    <Abfahrtszeit>2024-08-26T15:57:00</Abfahrtszeit>
+    <Ankunftszeit>2024-08-26T15:57:00</Ankunftszeit>
+    <IstAbfahrtPrognose>2024-08-26T16:02:25</IstAbfahrtPrognose>
+    <IstAnkunftPrognose>2024-08-26T16:02:25</IstAnkunftPrognose>
+    <AbfahrtssteigText>1</AbfahrtssteigText>
+    <Besetztgrad>Unbekannt</Besetztgrad>
+  </IstHalt>
+  <IstHalt>
+    <HaltID>de:14627:4801:0:1</HaltID>
+    <Abfahrtszeit>2024-08-26T16:03:00</Abfahrtszeit>
+    <Ankunftszeit>2024-08-26T15:59:00</Ankunftszeit>
+    <IstAbfahrtPrognose>2024-08-26T16:04:25</IstAbfahrtPrognose>
+    <IstAnkunftPrognose>2024-08-26T16:04:25</IstAnkunftPrognose>
+    <AbfahrtssteigText>1</AbfahrtssteigText>
+    <RichtungsText>Meißen ü. Miltitz</RichtungsText>
+    <Besetztgrad>Unbekannt</Besetztgrad>
+  </IstHalt>
+  <IstHalt>
+    <HaltID>de:14627:4804:0:2</HaltID>
+    <Abfahrtszeit>2024-08-26T16:05:00</Abfahrtszeit>
+    <Ankunftszeit>2024-08-26T16:05:00</Ankunftszeit>
+    <IstAbfahrtPrognose>2024-08-26T16:07:07</IstAbfahrtPrognose>
+    <IstAnkunftPrognose>2024-08-26T16:07:07</IstAnkunftPrognose>
+    <AbfahrtssteigText>2</AbfahrtssteigText>
+    <RichtungsText>Meißen ü. Miltitz</RichtungsText>
+    <Besetztgrad>Unbekannt</Besetztgrad>
+  </IstHalt>
+  <IstHalt>
+    <HaltID>de:14627:4805:0:2</HaltID>
+    <Abfahrtszeit>2024-08-26T16:06:00</Abfahrtszeit>
+    <Ankunftszeit>2024-08-26T16:06:00</Ankunftszeit>
+    <IstAbfahrtPrognose>2024-08-26T16:08:07</IstAbfahrtPrognose>
+    <IstAnkunftPrognose>2024-08-26T16:08:07</IstAnkunftPrognose>
+    <AbfahrtssteigText>2</AbfahrtssteigText>
+    <RichtungsText>Meißen ü. Miltitz</RichtungsText>
+    <Besetztgrad>Unbekannt</Besetztgrad>
+  </IstHalt>
+  <IstHalt>
+    <HaltID>de:14627:4806:0:2</HaltID>
+    <Abfahrtszeit>2024-08-26T16:07:00</Abfahrtszeit>
+    <Ankunftszeit>2024-08-26T16:07:00</Ankunftszeit>
+    <IstAbfahrtPrognose>2024-08-26T16:09:07</IstAbfahrtPrognose>
+    <IstAnkunftPrognose>2024-08-26T16:09:07</IstAnkunftPrognose>
+    <AbfahrtssteigText>2</AbfahrtssteigText>
+    <RichtungsText>Meißen ü. Miltitz</RichtungsText>
+    <Besetztgrad>Unbekannt</Besetztgrad>
+  </IstHalt>
+  <IstHalt>
+    <HaltID>de:14627:4810:1:2</HaltID>
+    <Abfahrtszeit>2024-08-26T16:09:00</Abfahrtszeit>
+    <Ankunftszeit>2024-08-26T16:09:00</Ankunftszeit>
+    <IstAbfahrtPrognose>2024-08-26T16:11:07</IstAbfahrtPrognose>
+    <IstAnkunftPrognose>2024-08-26T16:11:07</IstAnkunftPrognose>
+    <AbfahrtssteigText>2</AbfahrtssteigText>
+    <RichtungsText>Meißen ü. Miltitz</RichtungsText>
+    <Besetztgrad>Unbekannt</Besetztgrad>
+  </IstHalt>
+  <IstHalt>
+    <HaltID>de:14627:4816:0:2</HaltID>
+    <Abfahrtszeit>2024-08-26T16:10:00</Abfahrtszeit>
+    <Ankunftszeit>2024-08-26T16:10:00</Ankunftszeit>
+    <IstAbfahrtPrognose>2024-08-26T16:12:07</IstAbfahrtPrognose>
+    <IstAnkunftPrognose>2024-08-26T16:12:07</IstAnkunftPrognose>
+    <AbfahrtssteigText>2</AbfahrtssteigText>
+    <RichtungsText>Meißen ü. Miltitz</RichtungsText>
+    <Besetztgrad>Unbekannt</Besetztgrad>
+  </IstHalt>
+  <IstHalt>
+    <HaltID>de:14627:4811:0:2</HaltID>
+    <Abfahrtszeit>2024-08-26T16:11:00</Abfahrtszeit>
+    <Ankunftszeit>2024-08-26T16:11:00</Ankunftszeit>
+    <IstAbfahrtPrognose>2024-08-26T16:13:07</IstAbfahrtPrognose>
+    <IstAnkunftPrognose>2024-08-26T16:13:07</IstAnkunftPrognose>
+    <AbfahrtssteigText>2</AbfahrtssteigText>
+    <RichtungsText>Meißen ü. Miltitz</RichtungsText>
+    <Besetztgrad>Unbekannt</Besetztgrad>
+  </IstHalt>
+  <IstHalt>
+    <HaltID>de:14627:4817:0:2</HaltID>
+    <Abfahrtszeit>2024-08-26T16:12:00</Abfahrtszeit>
+    <Ankunftszeit>2024-08-26T16:12:00</Ankunftszeit>
+    <IstAbfahrtPrognose>2024-08-26T16:14:07</IstAbfahrtPrognose>
+    <IstAnkunftPrognose>2024-08-26T16:14:07</IstAnkunftPrognose>
+    <AbfahrtssteigText>2</AbfahrtssteigText>
+    <RichtungsText>Meißen ü. Miltitz</RichtungsText>
+    <Besetztgrad>Unbekannt</Besetztgrad>
+  </IstHalt>
+  <IstHalt>
+    <HaltID>de:14627:4813:0:2</HaltID>
+    <Abfahrtszeit>2024-08-26T16:13:00</Abfahrtszeit>
+    <Ankunftszeit>2024-08-26T16:13:00</Ankunftszeit>
+    <IstAbfahrtPrognose>2024-08-26T16:15:07</IstAbfahrtPrognose>
+    <IstAnkunftPrognose>2024-08-26T16:15:07</IstAnkunftPrognose>
+    <AbfahrtssteigText>2</AbfahrtssteigText>
+    <RichtungsText>Meißen ü. Miltitz</RichtungsText>
+    <Besetztgrad>Unbekannt</Besetztgrad>
+  </IstHalt>
+  <IstHalt>
+    <HaltID>de:14627:4814:0:2</HaltID>
+    <Abfahrtszeit>2024-08-26T16:14:00</Abfahrtszeit>
+    <Ankunftszeit>2024-08-26T16:14:00</Ankunftszeit>
+    <IstAbfahrtPrognose>2024-08-26T16:16:07</IstAbfahrtPrognose>
+    <IstAnkunftPrognose>2024-08-26T16:16:07</IstAnkunftPrognose>
+    <AbfahrtssteigText>2</AbfahrtssteigText>
+    <RichtungsText>Meißen ü. Miltitz</RichtungsText>
+    <Besetztgrad>Unbekannt</Besetztgrad>
+  </IstHalt>
+  <IstHalt>
+    <HaltID>de:14627:4824:0:2</HaltID>
+    <Abfahrtszeit>2024-08-26T16:15:00</Abfahrtszeit>
+    <Ankunftszeit>2024-08-26T16:15:00</Ankunftszeit>
+    <IstAbfahrtPrognose>2024-08-26T16:17:07</IstAbfahrtPrognose>
+    <IstAnkunftPrognose>2024-08-26T16:17:07</IstAnkunftPrognose>
+    <AbfahrtssteigText>2</AbfahrtssteigText>
+    <RichtungsText>Meißen ü. Miltitz</RichtungsText>
+    <Besetztgrad>Unbekannt</Besetztgrad>
+  </IstHalt>
+  <IstHalt>
+    <HaltID>de:14627:4825:0:2</HaltID>
+    <Abfahrtszeit>2024-08-26T16:16:00</Abfahrtszeit>
+    <Ankunftszeit>2024-08-26T16:16:00</Ankunftszeit>
+    <IstAbfahrtPrognose>2024-08-26T16:18:07</IstAbfahrtPrognose>
+    <IstAnkunftPrognose>2024-08-26T16:18:07</IstAnkunftPrognose>
+    <AbfahrtssteigText>2</AbfahrtssteigText>
+    <RichtungsText>Meißen ü. Miltitz</RichtungsText>
+    <Besetztgrad>Unbekannt</Besetztgrad>
+  </IstHalt>
+  <IstHalt>
+    <HaltID>de:14627:4826:0:2</HaltID>
+    <Abfahrtszeit>2024-08-26T16:17:00</Abfahrtszeit>
+    <Ankunftszeit>2024-08-26T16:17:00</Ankunftszeit>
+    <IstAbfahrtPrognose>2024-08-26T16:19:07</IstAbfahrtPrognose>
+    <IstAnkunftPrognose>2024-08-26T16:19:07</IstAnkunftPrognose>
+    <AbfahrtssteigText>2</AbfahrtssteigText>
+    <RichtungsText>Meißen ü. Miltitz</RichtungsText>
+    <Besetztgrad>Unbekannt</Besetztgrad>
+  </IstHalt>
+  <IstHalt>
+    <HaltID>de:14627:4819:0:2</HaltID>
+    <Abfahrtszeit>2024-08-26T16:18:00</Abfahrtszeit>
+    <Ankunftszeit>2024-08-26T16:18:00</Ankunftszeit>
+    <IstAbfahrtPrognose>2024-08-26T16:20:07</IstAbfahrtPrognose>
+    <IstAnkunftPrognose>2024-08-26T16:20:07</IstAnkunftPrognose>
+    <AbfahrtssteigText>2</AbfahrtssteigText>
+    <RichtungsText>Meißen ü. Miltitz</RichtungsText>
+    <Besetztgrad>Unbekannt</Besetztgrad>
+  </IstHalt>
+  <IstHalt>
+    <HaltID>de:14627:4837:0:2</HaltID>
+    <Abfahrtszeit>2024-08-26T16:19:00</Abfahrtszeit>
+    <Ankunftszeit>2024-08-26T16:19:00</Ankunftszeit>
+    <IstAbfahrtPrognose>2024-08-26T16:21:07</IstAbfahrtPrognose>
+    <IstAnkunftPrognose>2024-08-26T16:21:07</IstAnkunftPrognose>
+    <AbfahrtssteigText>2</AbfahrtssteigText>
+    <RichtungsText>Meißen ü. Miltitz</RichtungsText>
+    <Besetztgrad>Unbekannt</Besetztgrad>
+  </IstHalt>
+  <IstHalt>
+    <HaltID>de:14627:4836:0:2</HaltID>
+    <Abfahrtszeit>2024-08-26T16:20:00</Abfahrtszeit>
+    <Ankunftszeit>2024-08-26T16:20:00</Ankunftszeit>
+    <IstAbfahrtPrognose>2024-08-26T16:22:07</IstAbfahrtPrognose>
+    <IstAnkunftPrognose>2024-08-26T16:22:07</IstAnkunftPrognose>
+    <AbfahrtssteigText>2</AbfahrtssteigText>
+    <RichtungsText>Meißen ü. Miltitz</RichtungsText>
+    <Besetztgrad>Unbekannt</Besetztgrad>
+  </IstHalt>
+  <IstHalt>
+    <HaltID>de:14627:4838:0:2</HaltID>
+    <Abfahrtszeit>2024-08-26T16:21:00</Abfahrtszeit>
+    <Ankunftszeit>2024-08-26T16:21:00</Ankunftszeit>
+    <IstAbfahrtPrognose>2024-08-26T16:23:07</IstAbfahrtPrognose>
+    <IstAnkunftPrognose>2024-08-26T16:23:07</IstAnkunftPrognose>
+    <AbfahrtssteigText>2</AbfahrtssteigText>
+    <RichtungsText>Meißen ü. Miltitz</RichtungsText>
+    <Besetztgrad>Unbekannt</Besetztgrad>
+  </IstHalt>
+  <IstHalt>
+    <HaltID>de:14627:4693:0:2</HaltID>
+    <Abfahrtszeit>2024-08-26T16:22:00</Abfahrtszeit>
+    <Ankunftszeit>2024-08-26T16:22:00</Ankunftszeit>
+    <IstAbfahrtPrognose>2024-08-26T16:24:07</IstAbfahrtPrognose>
+    <IstAnkunftPrognose>2024-08-26T16:24:07</IstAnkunftPrognose>
+    <AbfahrtssteigText>2</AbfahrtssteigText>
+    <RichtungsText>Meißen ü. Miltitz</RichtungsText>
+    <Besetztgrad>Unbekannt</Besetztgrad>
+  </IstHalt>
+  <IstHalt>
+    <HaltID>de:14627:4692:0:2</HaltID>
+    <Abfahrtszeit>2024-08-26T16:23:00</Abfahrtszeit>
+    <Ankunftszeit>2024-08-26T16:23:00</Ankunftszeit>
+    <IstAbfahrtPrognose>2024-08-26T16:25:07</IstAbfahrtPrognose>
+    <IstAnkunftPrognose>2024-08-26T16:25:07</IstAnkunftPrognose>
+    <AbfahrtssteigText>2</AbfahrtssteigText>
+    <RichtungsText>Meißen ü. Miltitz</RichtungsText>
+    <Besetztgrad>Unbekannt</Besetztgrad>
+  </IstHalt>
+  <IstHalt>
+    <HaltID>de:14627:4691:3:2</HaltID>
+    <Abfahrtszeit>2024-08-26T16:24:00</Abfahrtszeit>
+    <Ankunftszeit>2024-08-26T16:24:00</Ankunftszeit>
+    <IstAbfahrtPrognose>2024-08-26T16:26:07</IstAbfahrtPrognose>
+    <IstAnkunftPrognose>2024-08-26T16:26:07</IstAnkunftPrognose>
+    <AbfahrtssteigText>2</AbfahrtssteigText>
+    <RichtungsText>Meißen Busbahnhof</RichtungsText>
+    <Besetztgrad>Unbekannt</Besetztgrad>
+  </IstHalt>
+  <IstHalt>
+    <HaltID>de:14627:4690:0:2</HaltID>
+    <Abfahrtszeit>2024-08-26T16:25:00</Abfahrtszeit>
+    <Ankunftszeit>2024-08-26T16:25:00</Ankunftszeit>
+    <IstAbfahrtPrognose>2024-08-26T16:27:07</IstAbfahrtPrognose>
+    <IstAnkunftPrognose>2024-08-26T16:27:07</IstAnkunftPrognose>
+    <AbfahrtssteigText>2</AbfahrtssteigText>
+    <RichtungsText>Meißen Busbahnhof</RichtungsText>
+    <Besetztgrad>Unbekannt</Besetztgrad>
+  </IstHalt>
+  <IstHalt>
+    <HaltID>de:14627:4688:0:2</HaltID>
+    <Abfahrtszeit>2024-08-26T16:28:00</Abfahrtszeit>
+    <Ankunftszeit>2024-08-26T16:28:00</Ankunftszeit>
+    <IstAbfahrtPrognose>2024-08-26T16:30:07</IstAbfahrtPrognose>
+    <IstAnkunftPrognose>2024-08-26T16:30:07</IstAnkunftPrognose>
+    <AbfahrtssteigText>2</AbfahrtssteigText>
+    <RichtungsText>Meißen Busbahnhof</RichtungsText>
+    <Besetztgrad>Unbekannt</Besetztgrad>
+  </IstHalt>
+  <IstHalt>
+    <HaltID>de:14627:4689:0:2</HaltID>
+    <Abfahrtszeit>2024-08-26T16:29:00</Abfahrtszeit>
+    <Ankunftszeit>2024-08-26T16:29:00</Ankunftszeit>
+    <IstAbfahrtPrognose>2024-08-26T16:31:07</IstAbfahrtPrognose>
+    <IstAnkunftPrognose>2024-08-26T16:31:07</IstAnkunftPrognose>
+    <AbfahrtssteigText>2</AbfahrtssteigText>
+    <RichtungsText>Meißen Busbahnhof</RichtungsText>
+    <Besetztgrad>Unbekannt</Besetztgrad>
+  </IstHalt>
+  <IstHalt>
+    <HaltID>de:14627:4685:0:2</HaltID>
+    <Abfahrtszeit>2024-08-26T16:31:00</Abfahrtszeit>
+    <Ankunftszeit>2024-08-26T16:31:00</Ankunftszeit>
+    <IstAbfahrtPrognose>2024-08-26T16:33:07</IstAbfahrtPrognose>
+    <IstAnkunftPrognose>2024-08-26T16:33:07</IstAnkunftPrognose>
+    <AbfahrtssteigText>2</AbfahrtssteigText>
+    <RichtungsText>Meißen Busbahnhof</RichtungsText>
+    <Besetztgrad>Unbekannt</Besetztgrad>
+  </IstHalt>
+  <IstHalt>
+    <HaltID>de:14627:4684:0:2</HaltID>
+    <Abfahrtszeit>2024-08-26T16:32:00</Abfahrtszeit>
+    <Ankunftszeit>2024-08-26T16:32:00</Ankunftszeit>
+    <IstAbfahrtPrognose>2024-08-26T16:34:07</IstAbfahrtPrognose>
+    <IstAnkunftPrognose>2024-08-26T16:34:07</IstAnkunftPrognose>
+    <AbfahrtssteigText>2</AbfahrtssteigText>
+    <RichtungsText>Meißen Busbahnhof</RichtungsText>
+    <Besetztgrad>Unbekannt</Besetztgrad>
+  </IstHalt>
+  <IstHalt>
+    <HaltID>de:14627:4088:0:2</HaltID>
+    <Abfahrtszeit>2024-08-26T16:34:00</Abfahrtszeit>
+    <Ankunftszeit>2024-08-26T16:34:00</Ankunftszeit>
+    <IstAbfahrtPrognose>2024-08-26T16:36:07</IstAbfahrtPrognose>
+    <IstAnkunftPrognose>2024-08-26T16:36:07</IstAnkunftPrognose>
+    <AbfahrtssteigText>2</AbfahrtssteigText>
+    <RichtungsText>Meißen Busbahnhof</RichtungsText>
+    <Besetztgrad>Unbekannt</Besetztgrad>
+  </IstHalt>
+  <IstHalt>
+    <HaltID>de:14627:4083:0:2</HaltID>
+    <Abfahrtszeit>2024-08-26T16:35:00</Abfahrtszeit>
+    <Ankunftszeit>2024-08-26T16:35:00</Ankunftszeit>
+    <IstAbfahrtPrognose>2024-08-26T16:37:07</IstAbfahrtPrognose>
+    <IstAnkunftPrognose>2024-08-26T16:37:07</IstAnkunftPrognose>
+    <AbfahrtssteigText>2</AbfahrtssteigText>
+    <RichtungsText>Meißen Busbahnhof</RichtungsText>
+    <Besetztgrad>Unbekannt</Besetztgrad>
+  </IstHalt>
+  <IstHalt>
+    <HaltID>de:14627:4082:1:2</HaltID>
+    <Abfahrtszeit>2024-08-26T16:36:00</Abfahrtszeit>
+    <Ankunftszeit>2024-08-26T16:36:00</Ankunftszeit>
+    <IstAbfahrtPrognose>2024-08-26T16:38:07</IstAbfahrtPrognose>
+    <IstAnkunftPrognose>2024-08-26T16:38:07</IstAnkunftPrognose>
+    <AbfahrtssteigText>2</AbfahrtssteigText>
+    <RichtungsText>Meißen Busbahnhof</RichtungsText>
+    <Besetztgrad>Unbekannt</Besetztgrad>
+  </IstHalt>
+  <IstHalt>
+    <HaltID>de:14627:4081:1:2</HaltID>
+    <Abfahrtszeit>2024-08-26T16:37:00</Abfahrtszeit>
+    <Ankunftszeit>2024-08-26T16:37:00</Ankunftszeit>
+    <IstAbfahrtPrognose>2024-08-26T16:39:07</IstAbfahrtPrognose>
+    <IstAnkunftPrognose>2024-08-26T16:39:07</IstAnkunftPrognose>
+    <AbfahrtssteigText>2</AbfahrtssteigText>
+    <RichtungsText>Meißen Busbahnhof</RichtungsText>
+    <Besetztgrad>Unbekannt</Besetztgrad>
+  </IstHalt>
+  <IstHalt>
+    <HaltID>de:14627:4080:1:2</HaltID>
+    <Abfahrtszeit>2024-08-26T16:38:00</Abfahrtszeit>
+    <Ankunftszeit>2024-08-26T16:38:00</Ankunftszeit>
+    <IstAbfahrtPrognose>2024-08-26T16:40:07</IstAbfahrtPrognose>
+    <IstAnkunftPrognose>2024-08-26T16:40:07</IstAnkunftPrognose>
+    <AbfahrtssteigText>2</AbfahrtssteigText>
+    <RichtungsText>Meißen Busbahnhof</RichtungsText>
+    <Besetztgrad>Unbekannt</Besetztgrad>
+  </IstHalt>
+  <IstHalt>
+    <HaltID>de:14627:4077:1:2</HaltID>
+    <Abfahrtszeit>2024-08-26T16:39:00</Abfahrtszeit>
+    <Ankunftszeit>2024-08-26T16:39:00</Ankunftszeit>
+    <IstAbfahrtPrognose>2024-08-26T16:41:07</IstAbfahrtPrognose>
+    <IstAnkunftPrognose>2024-08-26T16:41:07</IstAnkunftPrognose>
+    <AbfahrtssteigText>2</AbfahrtssteigText>
+    <RichtungsText>Meißen Busbahnhof</RichtungsText>
+    <Besetztgrad>Unbekannt</Besetztgrad>
+  </IstHalt>
+  <IstHalt>
+    <HaltID>de:14627:4076:1:2</HaltID>
+    <Abfahrtszeit>2024-08-26T16:40:00</Abfahrtszeit>
+    <Ankunftszeit>2024-08-26T16:40:00</Ankunftszeit>
+    <IstAbfahrtPrognose>2024-08-26T16:42:07</IstAbfahrtPrognose>
+    <IstAnkunftPrognose>2024-08-26T16:42:07</IstAnkunftPrognose>
+    <AbfahrtssteigText>2</AbfahrtssteigText>
+    <RichtungsText>Meißen Busbahnhof</RichtungsText>
+    <Besetztgrad>Unbekannt</Besetztgrad>
+  </IstHalt>
+  <IstHalt>
+    <HaltID>de:14627:4018:1:2</HaltID>
+    <Abfahrtszeit>2024-08-26T16:41:00</Abfahrtszeit>
+    <Ankunftszeit>2024-08-26T16:41:00</Ankunftszeit>
+    <IstAbfahrtPrognose>2024-08-26T16:43:07</IstAbfahrtPrognose>
+    <IstAnkunftPrognose>2024-08-26T16:43:07</IstAnkunftPrognose>
+    <AbfahrtssteigText>2</AbfahrtssteigText>
+    <RichtungsText>Meißen Busbahnhof</RichtungsText>
+    <Besetztgrad>Unbekannt</Besetztgrad>
+  </IstHalt>
+  <IstHalt>
+    <HaltID>de:14627:4075:1:2</HaltID>
+    <Abfahrtszeit>2024-08-26T16:42:00</Abfahrtszeit>
+    <Ankunftszeit>2024-08-26T16:42:00</Ankunftszeit>
+    <IstAbfahrtPrognose>2024-08-26T16:44:07</IstAbfahrtPrognose>
+    <IstAnkunftPrognose>2024-08-26T16:44:07</IstAnkunftPrognose>
+    <AbfahrtssteigText>2</AbfahrtssteigText>
+    <RichtungsText>Meißen Busbahnhof</RichtungsText>
+    <Besetztgrad>Unbekannt</Besetztgrad>
+  </IstHalt>
+  <IstHalt>
+    <HaltID>de:14627:4013:1:3</HaltID>
+    <Abfahrtszeit>2024-08-26T16:44:00</Abfahrtszeit>
+    <Ankunftszeit>2024-08-26T16:44:00</Ankunftszeit>
+    <IstAbfahrtPrognose>2024-08-26T16:46:07</IstAbfahrtPrognose>
+    <IstAnkunftPrognose>2024-08-26T16:46:07</IstAnkunftPrognose>
+    <AbfahrtssteigText>3</AbfahrtssteigText>
+    <RichtungsText>Meißen Busbahnhof</RichtungsText>
+    <Besetztgrad>Unbekannt</Besetztgrad>
+  </IstHalt>
+  <IstHalt>
+    <HaltID>de:14627:4055:3:2</HaltID>
+    <Abfahrtszeit>2024-08-26T16:45:00</Abfahrtszeit>
+    <Ankunftszeit>2024-08-26T16:45:00</Ankunftszeit>
+    <IstAbfahrtPrognose>2024-08-26T16:47:07</IstAbfahrtPrognose>
+    <IstAnkunftPrognose>2024-08-26T16:47:07</IstAnkunftPrognose>
+    <AbfahrtssteigText>2</AbfahrtssteigText>
+    <RichtungsText>Meißen Busbahnhof</RichtungsText>
+    <Besetztgrad>Unbekannt</Besetztgrad>
+  </IstHalt>
+  <IstHalt>
+    <HaltID>de:14627:4048:1:2</HaltID>
+    <Abfahrtszeit>2024-08-26T16:46:00</Abfahrtszeit>
+    <Ankunftszeit>2024-08-26T16:46:00</Ankunftszeit>
+    <IstAbfahrtPrognose>2024-08-26T16:48:07</IstAbfahrtPrognose>
+    <IstAnkunftPrognose>2024-08-26T16:48:07</IstAnkunftPrognose>
+    <AbfahrtssteigText>2</AbfahrtssteigText>
+    <RichtungsText>Meißen Busbahnhof</RichtungsText>
+    <Besetztgrad>Unbekannt</Besetztgrad>
+  </IstHalt>
+  <IstHalt>
+    <HaltID>de:14627:4010:1:2</HaltID>
+    <Abfahrtszeit>2024-08-26T16:48:00</Abfahrtszeit>
+    <Ankunftszeit>2024-08-26T16:48:00</Ankunftszeit>
+    <IstAbfahrtPrognose>2024-08-26T16:50:07</IstAbfahrtPrognose>
+    <IstAnkunftPrognose>2024-08-26T16:50:07</IstAnkunftPrognose>
+    <AbfahrtssteigText>2</AbfahrtssteigText>
+    <RichtungsText>Meißen Busbahnhof</RichtungsText>
+    <Besetztgrad>Unbekannt</Besetztgrad>
+  </IstHalt>
+  <IstHalt>
+    <HaltID>de:14627:4007:1:1</HaltID>
+    <Ankunftszeit>2024-08-26T16:50:00</Ankunftszeit>
+    <IstAnkunftPrognose>2024-08-26T16:52:07</IstAnkunftPrognose>
+    <AnkunftssteigText>1</AnkunftssteigText>
+    <RichtungsText>Meißen Busbahnhof</RichtungsText>
+    <Besetztgrad>Unbekannt</Besetztgrad>
+  </IstHalt>
+  <LinienText>418</LinienText>
+  <ProduktID>VGM418</ProduktID>
+  <RichtungsText>Meißen ü. Nossen - Miltitz</RichtungsText>
+  <PrognoseMoeglich>true</PrognoseMoeglich>
+  <FaelltAus>false</FaelltAus>
+</IstFahrt>
+)";
+
+}  // namespace
+
+TEST(vdv_update, vgm418) {
+  timetable tt;
+  register_special_stations(tt);
+  tt.date_range_ = {date::sys_days{2024_y / August / 1},
+                    date::sys_days{2024_y / August / 31}};
+  auto const src_idx = source_idx_t{0};
+  load_timetable({}, src_idx, vgm418_files(), tt);
+  finalize(tt);
+
+  auto rtt = rt::create_rt_timetable(tt, date::sys_days{2024_y / August / 26});
+
+  auto u = rt::vdv::updater{tt, src_idx};
+
+  auto doc = pugi::xml_document{};
+  doc.load_string(update_vgm418);
+  u.update(rtt, doc);
+
+  auto const fr = rt::frun{tt,
+                           &rtt,
+                           {{transport_idx_t{0U}, day_idx_t{30U}},
+                            {stop_idx_t{0U}, stop_idx_t{51U}}}};
+  EXPECT_TRUE(fr.is_rt());
+}
