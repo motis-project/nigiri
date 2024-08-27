@@ -97,7 +97,9 @@ decision_graph_extractor<ProfileSet>::extract_relevant_entries(
         pe->uses_);
   }
 
-  is_enter_conn_relevant_.reset();
+  // is_enter_conn_relevant_.reset(); TODO
+  is_enter_conn_relevant_.for_each_set_bit(
+      [&](std::uint64_t const i) { is_enter_conn_relevant_.set(i, false); });
 
   return relevant;
 }

@@ -165,6 +165,7 @@ struct dynamic_growth_profile_set {
   void add_early_entry(location_idx_t stop_id, profile_entry const& e) {
     if (is_stop_un_init(stop_id)) {
       init_stop(stop_id);
+      stop_reset_list_[stop_reset_list_end_++] = stop_id;
     } else if (is_stop_empty(stop_id)) {
       stop_reset_list_[stop_reset_list_end_++] = stop_id;
     }
