@@ -425,17 +425,16 @@ void updater::process_vdv_run(rt_timetable& rtt, pugi::xml_node const vdv_run) {
 }
 
 void updater::update(rt_timetable& rtt, pugi::xml_document const& doc) {
-  auto stats = statistics{};
   for (auto const& vdv_run : doc.select_nodes("//IstFahrt")) {
     if (get_opt_bool(vdv_run.node(), "Zusatzfahrt", false).value()) {
-      ++stats.unsupported_additional_runs_;
+      ++stats_.unsupported_additional_runs_;
       auto additional_runs =
           std::ofstream{"additional_runs.txt", std::ios::app};
       vdv_run.node().print(additional_runs);
       additional_runs << "\n";
       continue;
     } else if (get_opt_bool(vdv_run.node(), "FaelltAus", false).value()) {
-      ++stats.unsupported_cancelled_runs_;
+      ++stats_.unsupported_cancelled_runs_;
       auto canceled_runs = std::ofstream{"canceled_runs.txt", std::ios::app};
       vdv_run.node().print(canceled_runs);
       canceled_runs << "\n";
