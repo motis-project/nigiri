@@ -5,6 +5,7 @@
 
 #include "nigiri/common/delta_t.h"
 #include "nigiri/routing/clasz_mask.h"
+#include "nigiri/routing/meat/csa/meat_csa_stats.h"
 #include "nigiri/routing/meat/csa/profile.h"
 #include "nigiri/routing/meat/delay.h"
 #include "nigiri/timetable.h"
@@ -23,11 +24,13 @@ struct meat_profile_computer {
   explicit meat_profile_computer(timetable const& tt,
                                  day_idx_t const& base,
                                  clasz_mask_t const& allowed_claszes,
-                                 profile_idx_t const& prf_idx)
+                                 profile_idx_t const& prf_idx,
+                                 meat_csa_stats& stats)
       : tt_{tt},
         base_{base},
         allowed_claszes_{allowed_claszes},
         fp_prf_idx_{prf_idx},
+        stats_{stats},
         trip_reset_list_(tt.n_transports()),
         trip_reset_list_end_{0},
         profile_set_{tt_} {
@@ -110,6 +113,7 @@ struct meat_profile_computer {
     auto& con_idx = conn.second;
     std::int8_t n_day = 0;
     while (conn >= conn_begin) {
+      stats_.meat_n_connections_scanned_++;
       auto const& c = tt_.fwd_connections_[con_idx];
       auto const c_dep_time = tt_to_delta(day, c.dep_time_.mam());
 
@@ -179,6 +183,7 @@ struct meat_profile_computer {
                     clamp(c_dep_time - fp.duration().count()), meat,
                     walk{fp.target(),
                          footpath(c_dep_stop_idx, fp.duration())}}));
+                stats_.meat_n_fp_added_to_que_++;
               }
             }
           }
@@ -202,16 +207,18 @@ struct meat_profile_computer {
       }
     }
     insert_footpaths_till(source_time, fuzzy_dominance_offset);
+    stats_.meat_n_e_in_profile_ = profile_set_.compute_entry_amount();
   }
 
   void add_or_replace_entry(profile_entry const& new_entry,
-                            location_idx_t dep_stop_idx) {
+                            location_idx_t dep_stop_idx) { // TODO: ref to early_entry
     auto early_entry = profile_set_.early_stop_entry(dep_stop_idx);
     if (early_entry.dep_time_ == new_entry.dep_time_) {
       profile_set_.replace_early_entry(dep_stop_idx, new_entry);
     } else {
       profile_set_.add_early_entry(dep_stop_idx, new_entry);
     }
+    stats_.meat_n_e_added_or_replaced_to_profile_++;
   }
 
   void insert_footpaths_till(delta_t time, meat_t f_d_offset) {
@@ -221,6 +228,7 @@ struct meat_profile_computer {
       auto const& ee = profile_set_.early_stop_entry(dep_stop_idx);
       if (np->meat_ < ee.meat_ - f_d_offset) {
         add_or_replace_entry(*np, dep_stop_idx);
+        stats_.meat_n_fp_added_to_profile_++;
       }
       fp_que_.pop();
     }
@@ -230,6 +238,7 @@ struct meat_profile_computer {
   day_idx_t const& base_;
   clasz_mask_t const& allowed_claszes_;
   profile_idx_t const& fp_prf_idx_;
+  meat_csa_stats& stats_;
   std::vector<transport_idx_t> trip_reset_list_;
   transport_idx_t::value_t trip_reset_list_end_;
   ProfileSet profile_set_;
