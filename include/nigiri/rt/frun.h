@@ -96,6 +96,9 @@ struct frun : public run {
     iterator& operator++() noexcept;
     iterator operator++(int) noexcept;
 
+    iterator& operator--() noexcept;
+    iterator operator--(int) noexcept;
+
     bool operator==(iterator const o) const noexcept;
     bool operator!=(iterator o) const noexcept;
 
@@ -115,6 +118,12 @@ struct frun : public run {
 
   friend iterator begin(frun const& fr) noexcept;
   friend iterator end(frun const& fr) noexcept;
+
+  iterator rbegin() const noexcept;
+  iterator rend() const noexcept;
+
+  friend iterator rbegin(frun const& fr) noexcept;
+  friend iterator rend(frun const& fr) noexcept;
 
   stop_idx_t first_valid(stop_idx_t from = 0U) const;
   stop_idx_t last_valid() const;

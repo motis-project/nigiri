@@ -250,6 +250,21 @@ frun::iterator frun::iterator::operator++(int) noexcept {
   return r;
 }
 
+frun::iterator& frun::iterator::operator--() noexcept {
+  do {
+    --rs_.stop_idx_;
+  } while (rs_.stop_idx_ !=
+               static_cast<stop_idx_t>(rs_.fr_->stop_range_.from_ - 1U) &&
+           rs_.is_canceled());
+  return *this;
+}
+
+frun::iterator frun::iterator::operator--(int) noexcept {
+  auto r = *this;
+  --(*this);
+  return r;
+}
+
 bool frun::iterator::operator==(iterator const o) const noexcept {
   return rs_ == o.rs_;
 }
@@ -318,6 +333,19 @@ frun::iterator frun::end() const noexcept {
 
 frun::iterator begin(frun const& fr) noexcept { return fr.begin(); }
 frun::iterator end(frun const& fr) noexcept { return fr.end(); }
+
+frun::iterator frun::rbegin() const noexcept {
+  return iterator{run_stop{.fr_ = this, .stop_idx_ = last_valid()}};
+}
+
+frun::iterator frun::rend() const noexcept {
+  return iterator{
+      run_stop{.fr_ = this,
+               .stop_idx_ = static_cast<stop_idx_t>(stop_range_.from_ - 1U)}};
+}
+
+frun::iterator rbegin(frun const& fr) noexcept { return fr.rbegin(); }
+frun::iterator rend(frun const& fr) noexcept { return fr.rend(); }
 
 stop_idx_t frun::size() const noexcept {
   return static_cast<stop_idx_t>(
