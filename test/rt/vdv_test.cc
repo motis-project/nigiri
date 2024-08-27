@@ -3872,7 +3872,7 @@ mem_dir vgm418_files() {
 }
 
 // prognosis: arrival at second stop before departure at first
-constexpr auto const update_vgm418 = R"(
+constexpr auto const update_vgm418_0 = R"(
 <IstFahrt Zst="2024-08-26T17:49:13">
   <LinienID>VGM418</LinienID>
   <RichtungsID>2</RichtungsID>
@@ -4250,6 +4250,8 @@ constexpr auto const update_vgm418 = R"(
     <RichtungsText>Meißen Busbahnhof</RichtungsText>
     <Besetztgrad>Unbekannt</Besetztgrad>
   </IstHalt>
+)";
+constexpr auto const update_vgm418_1 = R"(
   <IstHalt>
     <HaltID>de:14627:4083:0:2</HaltID>
     <Abfahrtszeit>2024-08-26T16:35:00</Abfahrtszeit>
@@ -4402,7 +4404,7 @@ TEST(vdv_update, vgm418) {
   auto u = rt::vdv::updater{tt, src_idx};
 
   auto doc = pugi::xml_document{};
-  doc.load_string(update_vgm418);
+  doc.load_string(std::string{update_vgm418_0}.append(update_vgm418_1).c_str());
   u.update(rtt, doc);
 
   auto const fr = rt::frun{tt,
