@@ -204,7 +204,7 @@ std::optional<rt::run> updater::find_run(std::string_view vdv_run_id,
   }
 
   if (candidates.size() > 1 && candidates[0] == candidates[1]) {
-    ++stats_.multiple_matches_;
+#ifdef VDV_DEBUG
     vdv_trace(std::format("multiple match candidates for {}:", vdv_run_id));
     for (auto const& c : candidates) {
       vdv_trace(std::format(
@@ -217,6 +217,8 @@ std::optional<rt::run> updater::find_run(std::string_view vdv_run_id,
                   .view(),
           c.n_matches_, c.error_, c.total_length_));
     }
+#endif
+    ++stats_.multiple_matches_;
     return std::nullopt;
   }
 
@@ -283,7 +285,7 @@ void updater::update_run(rt_timetable& rtt,
   auto cursor = begin(vdv_stops);
   auto skipped_stops = std::vector<vdv_stop>{};
   auto const print_skipped_stops = [&]() {
-    for (auto const& s : skipped_stops) {
+    for (auto const& s [[maybe_unused]] : skipped_stops) {
       ++stats_.skipped_vdv_stops_;
       vdv_trace(std::format("skipped vdv stop: [id: {}, name: {}]", s.id_,
                             s.l_ == location_idx_t::invalid()
