@@ -122,8 +122,7 @@ private:
 
   vector<vdv_stop> resolve_stops(pugi::xml_node const vdv_run);
 
-  std::optional<rt::run> find_run(pugi::xml_node vdv_run,
-                                  std::string_view vdv_run_id,
+  std::optional<rt::run> find_run(std::string_view vdv_run_id,
                                   vector<vdv_stop> const&,
                                   bool is_complete_run);
 
