@@ -4409,5 +4409,16 @@ TEST(vdv_update, vgm418) {
                            &rtt,
                            {{transport_idx_t{0U}, day_idx_t{30U}},
                             {stop_idx_t{0U}, stop_idx_t{51U}}}};
+
   EXPECT_TRUE(fr.is_rt());
+  for (auto i = stop_idx_t{0}; i != fr.size() - 1; ++i) {
+    auto const rs = fr[i];
+    if (i != 0) {
+      EXPECT_LE(rs.time(nigiri::event_type::kArr),
+                rs.time(nigiri::event_type::kDep));
+    }
+    auto const rs_next = fr[i + 1];
+    EXPECT_LE(rs.time(nigiri::event_type::kDep),
+              rs_next.time(nigiri::event_type::kArr));
+  }
 }
