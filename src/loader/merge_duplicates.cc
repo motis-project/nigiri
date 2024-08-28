@@ -39,21 +39,31 @@ bool merge(timetable& tt,
     return false;
   }
 
-  if ((bf_a & bf_b) == bf_a) {
-    tt.transport_traffic_days_[b] = bitfield_idx_t{0U};  // disable trip 'b'
+  auto const merge_and_nullify = [&tt](transport_idx_t const x,
+                                       transport_idx_t const y) {
+    tt.transport_traffic_days_[x] = bitfield_idx_t{0U};  // disable trip 'b'
 
-    for (auto const merged_trips_idx_b : tt.transport_to_trip_section_[b]) {
-      for (auto const b_trp : tt.merged_trips_[merged_trips_idx_b]) {
-        for (auto& [t, range] : tt.trip_transport_ranges_[b_trp]) {
-          if (t == b) {
-            t = a;  // replace b with a in b's trip transport ranges
+    for (auto const merged_trips_idx_a : tt.transport_to_trip_section_[x]) {
+      for (auto const a_trp : tt.merged_trips_[merged_trips_idx_a]) {
+        for (auto& [t, range] : tt.trip_transport_ranges_[a_trp]) {
+          if (t == x) {
+            t = y;  // replace b with x in b's trip transport ranges
           }
         }
       }
     }
+  };
+
+  auto const is_superset = [](bitfield const& x, bitfield const& y) {
+    return (x & y) == x;
+  };
+
+  if (is_superset(bf_b, bf_a)) {
+    merge_and_nullify(a, b);
+  } else if (is_superset(bf_a, bf_b)) {
+    merge_and_nullify(b, a);
   } else {
-    tt.transport_traffic_days_[a] = tt.register_bitfield(bf_a | bf_b);
-    tt.transport_traffic_days_[b] = tt.register_bitfield(bf_b & ~bf_a);
+    tt.transport_traffic_days_[a] = tt.register_bitfield(bf_a & ~(bf_a & bf_b));
 
     hash_set<trip_idx_t> b_trips;
     for (auto const merged_trips_idx_b : tt.transport_to_trip_section_[b]) {
@@ -100,11 +110,16 @@ unsigned find_duplicates(timetable& tt,
         continue;
       }
 
-      for (auto const [x, y] : utl::zip(a_loc_seq, b_loc_seq)) {
-        if (!matches.contains(make_match_pair(stop{x}.location_idx(),
-                                              stop{y}.location_idx()))) {
-          continue;
-        }
+      auto const station_sequence_matches = [&]() {
+        return utl::all_of(utl::zip(a_loc_seq, b_loc_seq), [&](auto&& pair) {
+          auto const [x, y] = pair;
+          return matches.contains(
+              make_match_pair(stop{x}.location_idx(), stop{y}.location_idx()));
+        });
+      };
+
+      if (!station_sequence_matches()) {
+        continue;
       }
 
       auto const a_transport_range = tt.route_transport_ranges_[a_route];
