@@ -34,7 +34,7 @@ private:
     return tt_.internal_interval_days().from_ + as_int(base_) * date::days{1};
   }
   unixtime_t to_unix(delta_t const t) const { return delta_to_unix(base(), t); }
-  unixtime_t to_unix(meat_t const t) const { return delta_to_unix(base(), t); }
+  unixtime_t to_unix(meat_t const t) const { return delta_to_unix(base(), static_cast<delta_t>(t)); }
   std::pair<day_idx_t, minutes_after_midnight_t> split(delta_t const x) const {
     return split_day_mam(base_, x);
   }
