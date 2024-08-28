@@ -27,7 +27,6 @@ struct meat_csa {
            meat_t meat_transfer_cost = 0.0,
            double fuzzy_parameter = 0.0)
       : tt_{tt},
-        end_of_tt_{tt_.internal_interval().to_},
         base_{base},
         n_days_{tt_.internal_interval_days().size().count()},
         max_delay_{max_delay},
@@ -234,13 +233,13 @@ private:
       location_idx_t source_stop,
       delta_t source_time,
       location_idx_t target_stop) {
-
+    using c_idx_t = connection::trip_con_idx_t;
     UTL_START_TIMING(esa_time);
-    vector_map<location_idx_t, delta_t> esa(
+    auto esa = vector_map<location_idx_t, delta_t>(
         tt_.n_locations(),
         std::numeric_limits<delta_t>::max());  // earliest safe arrival
-    vector_map<transport_idx_t, uint16_t> trip_first_con(
-        tt_.n_transports(), std::numeric_limits<uint16_t>::max());
+    auto trip_first_con = vector_map<transport_idx_t, c_idx_t>(
+        tt_.n_transports(), std::numeric_limits<c_idx_t>::max());
     update_arr_times(esa, source_time, source_stop,
                      stats_.esa_n_update_arr_time_);
     auto [day, mam] = split(source_time);
@@ -248,20 +247,14 @@ private:
     delta_t const target_offset =
         tt_.locations_.transfer_time_[target_stop].count() + max_delay_;
 
-    // auto const time_limit = std::min(source_time + kMaxTravelTime.count(),
-    // tt_to_delta(end_of_tt_));
-
-    connection_idx_t conn_end = conn_begin;
-    connection const* conn = &tt_.fwd_connections_[conn_end];
+    auto conn_end = conn_begin;
+    auto const* conn = &tt_.fwd_connections_[conn_end];
     auto conn_dep_time = tt_to_delta(day, conn->dep_time_.mam());
-    while (day < n_days_ && /* test if conn depature < min ( max travel time,
-                               end of timetable TODO: n_days_ or end_of_tt_) */
+    while (day < n_days_ &&
            conn_dep_time - source_time < kMaxTravelTime.count() &&
-           // conn_dep_time < time_limit &&
            esa[target_stop] > conn_dep_time + target_offset) {
       stats_.esa_n_connections_scanned_++;
-      // TODO test ist conn active befor iterate over transfers
-      // if (tt_.is_connection_active(*conn,day)){}
+
       auto const via_trip =
           trip_first_con[conn->transport_idx_] <= conn->trip_con_idx_;
       auto const via_station =
@@ -317,18 +310,9 @@ private:
         }
       } else {
         return last_conn_before<WithClaszFilter>(
-            source_time +
-            static_cast<delta_t>(
-                bound_parameter_ *
-                (esa[target_stop] - target_offset -
-                 source_time)));  //??? TODO Warum target_offset hier? da
-                                  // sie weiter oben (ca. Zeile 214) addierd
-                                  // wurde, und hier nicht gefragt ist? sollte
-                                  // da eventuell nur die transfer_time_
-                                  // abgezogen werden?); safe: if no transfer
-                                  // can break => da am ende kein transfer,
-                                  // braucht es auch kein delay bzw.
-                                  // transfertime
+            source_time + static_cast<delta_t>(bound_parameter_ *
+                                               (esa[target_stop] -
+                                                target_offset - source_time)));
       }
     }
   }
@@ -353,16 +337,12 @@ private:
       std::pair<day_idx_t, connection_idx_t> const& conn_begin,
       std::pair<day_idx_t, connection_idx_t> const& conn_end,
       location_idx_t source_stop,
-      delta_t source_time
-      // location_idx_t target_stop
-  ) {  // TODO: Warum keine Umsteigezeiten? Da wir auch sehr
-       // knappe Verbindungen später im Graph haben wollen?
-       // ich brauche trotz dem trip-aware, da sonst
-       // in_allowd/out_allowd nicht funktioniren
-    vector_map<location_idx_t, delta_t> ea(tt_.n_locations(),
-                                           std::numeric_limits<delta_t>::max());
-    vector_map<transport_idx_t, uint16_t> trip_first_con(
-        tt_.n_transports(), std::numeric_limits<uint16_t>::max());
+      delta_t source_time) {
+    using c_idx_t = connection::trip_con_idx_t;
+    auto ea = vector_map<location_idx_t, delta_t>(
+        tt_.n_locations(), std::numeric_limits<delta_t>::max());
+    auto trip_first_con = vector_map<transport_idx_t, c_idx_t>(
+        tt_.n_transports(), std::numeric_limits<c_idx_t>::max());
 
     update_arr_times(ea, source_time, source_stop,
                      stats_.ea_n_update_arr_time_);
@@ -407,7 +387,6 @@ private:
   }
 
   timetable const& tt_;
-  unixtime_t end_of_tt_;  // TODO entfernen?
   day_idx_t base_;
   int n_days_;
   delta_t max_delay_;
