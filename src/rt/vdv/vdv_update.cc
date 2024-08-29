@@ -155,6 +155,12 @@ std::optional<rt::run> updater::find_run(std::string_view vdv_run_id,
                utl::enumerate(tt_.event_times_at_stop(
                    r, static_cast<stop_idx_t>(stop_idx), ev_type))) {
 
+            auto const error = std::abs(nigiri_ev_time.mam() - vdv_mam.count());
+            auto const local_score = kExact_match_score - error * error;
+            if (local_score < 0) {
+              continue;
+            }
+
             auto const tr =
                 transport{tt_.route_transport_ranges_[r][nigiri_ev_time_idx],
                           vdv_day_idx - day_idx_t{nigiri_ev_time.days()}};
@@ -180,13 +186,9 @@ std::optional<rt::run> updater::find_run(std::string_view vdv_run_id,
                 candidate = end(candidates) - 1;
               }
 
-              auto const error =
-                  std::abs(nigiri_ev_time.mam() - vdv_mam.count());
-              auto const local_score = kExact_match_score - error * error;
-              candidate->local_best_ = std::max(
-                  candidate->local_best_,
-                  local_score < 0 ? 0U
-                                  : static_cast<std::uint32_t>(local_score));
+              candidate->local_best_ =
+                  std::max(candidate->local_best_,
+                           static_cast<std::uint32_t>(local_score));
 
               no_transport_found_at_stop = false;
             }
