@@ -72,7 +72,7 @@ TEST(gtfs, shapeRequest_noShape_getEmptyVector) {
   auto& shape_data = mmap.get_shape_data();
   auto const shape_by_trip_index =
       shape_data
-          .and_then([&tt](auto const& file) {
+          .and_then([&](auto const& file) {
             return std::make_optional(get_shape(trip_idx_t{1}, tt, file));
           })
           .value();
@@ -190,7 +190,7 @@ TEST(gtfs, shapeRequest_singleTripWithShape_getFullShape) {
   // Testing shape 'Last', used by 'Trip 3' (index == 2)
   auto const shape_by_trip_index =
       shape_data
-          .and_then([&tt](auto const& file) {
+          .and_then([&](auto const& file) {
             return std::make_optional(get_shape(trip_idx_t{2}, tt, file));
           })
           .value();
@@ -227,7 +227,7 @@ TEST(gtfs, shapeRequest_singleTripWithoutShape_getEmptyShape) {
   // Testing trip without shape, i.e. 'Trip 4' (index == 3)
   auto const shape_by_trip_index =
       shape_data
-          .and_then([&tt](auto const& file) {
+          .and_then([&](auto const& file) {
             return std::make_optional(get_shape(trip_idx_t{3}, tt, file));
           })
           .value();

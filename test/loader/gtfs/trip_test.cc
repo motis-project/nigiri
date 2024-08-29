@@ -37,7 +37,7 @@ TEST(gtfs, read_trips_example_data) {
   auto const services =
       merge_traffic_days(tt.internal_interval_days(), calendar, dates);
   auto const shapes = mmap.get_shape_data()
-                          .and_then([&files](auto& file) {
+                          .and_then([&](auto& file) {
                             return std::make_optional(parse_shapes(
                                 files.get_file(kShapesFile).data(), file));
                           })
@@ -74,7 +74,7 @@ TEST(gtfs, read_trips_berlin_data) {
   auto const services =
       merge_traffic_days(tt.internal_interval_days(), calendar, dates);
   auto const shapes = mmap.get_shape_data()
-                          .and_then([&files](auto& file) {
+                          .and_then([&](auto& file) {
                             return std::make_optional(parse_shapes(
                                 files.get_file(kShapesFile).data(), file));
                           })

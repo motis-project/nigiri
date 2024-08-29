@@ -27,8 +27,8 @@ shape_id_map_t const parse_shapes(std::string_view const data,
   auto states = hash_map<utl::cstr, shape_state>{};
   auto lookup = cached_lookup(states);
 
-  auto const store_to_map = [&lookup, &shapes](shape_entry const entry) {
-    auto& state = lookup(entry.id_.val(), [&shapes] -> shape_state {
+  auto const store_to_map = [&](shape_entry const entry) {
+    auto& state = lookup(entry.id_.val(), [&] -> shape_state {
       auto const index = static_cast<shape_idx_t>(shapes.size());
       shapes.add_back_sized(0u);
       return {index, 0};

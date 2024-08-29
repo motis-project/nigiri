@@ -126,7 +126,7 @@ void load_timetable(loader_config const& config,
       merge_traffic_days(tt.internal_interval_days(), calendar, dates);
   auto const shape_indices =
       shapes
-          .and_then([&load](auto& file) -> std::optional<shape_id_map_t> {
+          .and_then([&](auto& file) -> std::optional<shape_id_map_t> {
             return parse_shapes(load(kShapesFile).data(), file);
           })
           .value_or(shape_id_map_t{});

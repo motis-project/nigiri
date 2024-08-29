@@ -103,7 +103,7 @@ test id,50.553822,6.356876,0
 
   auto const shapes =
       shape_data
-          .and_then([&shapes_data](auto& file) {
+          .and_then([&](auto& file) {
             return std::make_optional(parse_shapes(shapes_data, file));
           })
           .value();
@@ -133,7 +133,7 @@ TEST(gtfs, shapeParse_notAscendingSequence_progressAndLogError) {
 
   auto const shapes =
       shape_data
-          .and_then([&shapes_data](auto& file) {
+          .and_then([&](auto& file) {
             return std::make_optional(parse_shapes(shapes_data, file));
           })
           .value();
@@ -172,7 +172,7 @@ TEST(gtfs, shapeParse_shuffledRows_parseAllData) {
 
   auto const shapes =
       shape_data
-          .and_then([&shapes_data](auto& file) {
+          .and_then([&](auto& file) {
             return std::make_optional(parse_shapes(shapes_data, file));
           })
           .value();
@@ -233,7 +233,7 @@ TEST(gtfs,
 
   auto const shapes =
       mmap.get_shape_data()
-          .and_then([&shapes_data](auto& file) {
+          .and_then([&](auto& file) {
             return std::make_optional(parse_shapes(shapes_data, file));
           })
           .value();
