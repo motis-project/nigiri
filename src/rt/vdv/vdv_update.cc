@@ -113,7 +113,7 @@ struct candidate {
   std::uint32_t total_length_;
 };
 
-constexpr auto const kExact_match_score = 1000;
+constexpr auto const kExactMatchScore = 1000;
 
 std::optional<rt::run> updater::find_run(std::string_view vdv_run_id,
                                          vector<vdv_stop> const& vdv_stops,
@@ -156,7 +156,7 @@ std::optional<rt::run> updater::find_run(std::string_view vdv_run_id,
                    r, static_cast<stop_idx_t>(stop_idx), ev_type))) {
 
             auto const error = std::abs(nigiri_ev_time.mam() - vdv_mam.count());
-            auto const local_score = kExact_match_score - error * error;
+            auto const local_score = kExactMatchScore - error * error;
             if (local_score < 0) {
               continue;
             }
@@ -209,7 +209,7 @@ std::optional<rt::run> updater::find_run(std::string_view vdv_run_id,
 
   std::sort(begin(candidates), end(candidates));
 
-  if (candidates.front().score_ < vdv_stops.size() * kExact_match_score / 2) {
+  if (candidates.front().score_ < vdv_stops.size() * kExactMatchScore / 2) {
     return std::nullopt;
   }
 
