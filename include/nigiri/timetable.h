@@ -8,7 +8,6 @@
 #include "cista/memory_holder.h"
 #include "cista/reflection/printable.h"
 
-#include "geo/polyline.h"
 #include "utl/verify.h"
 #include "utl/zip.h"
 

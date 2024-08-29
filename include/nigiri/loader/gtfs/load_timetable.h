@@ -2,8 +2,6 @@
 
 #include <optional>
 
-#include "geo/latlng.h"
-
 #include "nigiri/loader/dir.h"
 #include "nigiri/loader/loader_interface.h"
 #include "nigiri/types.h"

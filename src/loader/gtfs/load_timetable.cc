@@ -32,7 +32,6 @@
 #include "nigiri/common/sort_by.h"
 #include "nigiri/logging.h"
 #include "nigiri/timetable.h"
-#include "nigiri/types.h"
 
 namespace fs = std::filesystem;
 

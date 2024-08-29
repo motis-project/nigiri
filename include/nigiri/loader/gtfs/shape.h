@@ -1,13 +1,6 @@
 #pragma once
 
-#include <optional>
-
-#include "utl/parser/cstr.h"
-
-#include "cista/containers/vecvec.h"
-
-#include "geo/latlng.h"
-#include "geo/polyline.h"
+#include <string_view>
 
 #include "nigiri/types.h"
 

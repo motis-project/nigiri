@@ -2,8 +2,6 @@
 
 #include <algorithm>
 
-#include "utl/raii.h"
-
 #include "nigiri/loader/gtfs/agency.h"
 #include "nigiri/loader/gtfs/files.h"
 #include "nigiri/loader/gtfs/shape.h"

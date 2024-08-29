@@ -4,8 +4,6 @@
 #include <optional>
 #include <string_view>
 
-#include "geo/latlng.h"
-
 #include "nigiri/loader/assistance.h"
 #include "nigiri/loader/dir.h"
 #include "nigiri/types.h"

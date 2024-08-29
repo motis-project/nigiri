@@ -2,8 +2,6 @@
 
 #include "geo/polyline.h"
 
-#include "utl/raii.h"
-
 #include "nigiri/loader/gtfs/files.h"
 #include "nigiri/loader/gtfs/load_timetable.h"
 #include "nigiri/loader/init_finish.h"
@@ -18,9 +16,7 @@
 
 using namespace nigiri;
 using namespace date;
-// using namespace std::chrono_literals;
 using namespace std::string_view_literals;
-// using nigiri::test::raptor_search;
 
 constexpr auto const test_files_without_shapes = R"(
 # agency.txt
@@ -205,7 +201,7 @@ TEST(gtfs, shapeRequest_singleTripWithShape_getFullShape) {
           })
           .value();
 
-  auto expected_shape = geo::polyline{
+  auto const expected_shape = geo::polyline{
       {4.0f, 5.0f}, {5.5f, 2.5f}, {5.5f, 3.0f},
       {6.0f, 3.0f}, {5.0f, 2.0f}, {4.0f, 2.0f},
   };
@@ -242,46 +238,7 @@ TEST(gtfs, shapeRequest_singleTripWithoutShape_getEmptyShape) {
           })
           .value();
 
-  auto expected_shape = geo::polyline{};
+  auto const expected_shape = geo::polyline{};
   EXPECT_EQ(expected_shape, shape_by_trip_index);
   EXPECT_EQ(expected_shape, shape_by_shape_index);
 }
-
-// TEST(gtfs, shapeRequest_routeWithShape_getFullShape) {
-//   auto mmap = loader::gtfs::shape_test_mmap{"shape-route-test"};
-//   auto& shape_data = mmap.get_shape_data();
-
-//   auto tt = timetable{};
-
-//   tt.date_range_ = {date::sys_days{2024_y / March / 1},
-//                     date::sys_days{2024_y / March / 2}};
-//   loader::register_special_stations(tt);
-//     auto local_bitfield_indices = hash_map<bitfield, bitfield_idx_t>{};
-//   loader::gtfs::load_timetable({}, source_idx_t{0},
-//                                loader::mem_dir::read(test_files_with_shapes),
-//                                tt, local_bitfield_indices,
-//                                shape_data, nullptr);
-//   loader::finalize(tt);
-
-//   for (auto r : tt.route_section_shape_) {
-//     std::cout << "Size: " << r.size() << std::endl;
-//   }
-//   auto const trip_idx = trip_idx_t{1};  // TODO
-//   auto const shape_by_trip_index =
-//       shape_data
-//           .and_then([&tt](auto const& file) {
-//             return std::make_optional(get_shape(trip_idx_t{1}, tt, file));
-//           })
-
-//   auto expected_shape = geo::polyline{
-//     {2.4f, 2.0f},
-//     {2.504f, 1.999f},
-//     {3.0f, 4.0f},
-//     {5.0f, 4.0f},
-//     {5.5f, 2.5f},
-//     {5.5f, 3.0f},
-//     {6.0f, 3.0f},
-//     {5.0f, 2.0f},
-//   };
-//   EXPECT_EQ(expected_shape, shape);
-// }

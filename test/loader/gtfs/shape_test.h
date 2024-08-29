@@ -12,9 +12,8 @@ namespace nigiri::loader::gtfs {
 class shape_test_mmap {
   using Key = shape_idx_t;
   using Value = geo::latlng;
-  static auto create_paths(std::string base_path) {
-    return std::vector<std::string>{base_path + "-data.dat",
-                                    base_path + "-metadata.dat"};
+  static std::vector<std::string> create_paths(std::string base_path) {
+    return {base_path + "-data.dat", base_path + "-metadata.dat"};
   }
   static shape_vecvec_t create_mmap(std::vector<std::string>& paths) {
     auto mode = cista::mmap::protection::WRITE;
