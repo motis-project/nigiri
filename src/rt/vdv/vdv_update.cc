@@ -21,7 +21,7 @@
 
 namespace nigiri::rt::vdv {
 
-#define VDV_DEBUG
+// #define VDV_DEBUG
 #ifdef VDV_DEBUG
 #define vdv_trace(s) std::cout << s << "\n"
 #else
@@ -94,8 +94,8 @@ struct candidate {
       : r_{r}, total_length_{total_length} {}
 
   void finish_stop() {
-    score_ += local_score_;
-    local_score_ = 0.0;
+    score_ += local_best_;
+    local_best_ = 0U;
   }
 
   friend bool operator<(candidate const& a, candidate const& b) {
@@ -108,10 +108,12 @@ struct candidate {
   }
 
   run r_;
-  double score_{0.0};
-  double local_score_{0.0};
+  std::uint32_t score_{0U};
+  std::uint32_t local_best_{0U};
   std::uint32_t total_length_;
 };
+
+constexpr auto const kExact_match_score = 1000;
 
 std::optional<rt::run> updater::find_run(std::string_view vdv_run_id,
                                          vector<vdv_stop> const& vdv_stops,
@@ -138,24 +140,24 @@ std::optional<rt::run> updater::find_run(std::string_view vdv_run_id,
             continue;
           }
 
-          auto ev = vdv_stop.get_event(event_type::kDep);
+          auto vdv_ev = vdv_stop.get_event(event_type::kDep);
           if (stop_idx == location_seq.size() - 1) {
-            ev = vdv_stop.get_event(event_type::kArr);
+            vdv_ev = vdv_stop.get_event(event_type::kArr);
           }
-          if (!ev.has_value()) {
+          if (!vdv_ev.has_value()) {
             continue;
           }
 
-          auto const [t, ev_type] = *ev;
-          auto const [day_idx, mam] = tt_.day_idx_mam(t);
+          auto const [vdv_time, ev_type] = *vdv_ev;
+          auto const [vdv_day_idx, vdv_mam] = tt_.day_idx_mam(vdv_time);
 
-          for (auto const [ev_time_idx, ev_time] :
+          for (auto const [nigiri_ev_time_idx, nigiri_ev_time] :
                utl::enumerate(tt_.event_times_at_stop(
                    r, static_cast<stop_idx_t>(stop_idx), ev_type))) {
 
             auto const tr =
-                transport{tt_.route_transport_ranges_[r][ev_time_idx],
-                          day_idx - day_idx_t{ev_time.days()}};
+                transport{tt_.route_transport_ranges_[r][nigiri_ev_time_idx],
+                          vdv_day_idx - day_idx_t{nigiri_ev_time.days()}};
 
             if (tt_.bitfields_[tt_.transport_traffic_days_[tr.t_idx_]].test(
                     to_idx(tr.day_))) {
@@ -178,10 +180,13 @@ std::optional<rt::run> updater::find_run(std::string_view vdv_run_id,
                 candidate = end(candidates) - 1;
               }
 
-              candidate->local_score_ = std::max(
-                  candidate->local_score_,
-                  1.0 / static_cast<double>(
-                            std::abs(ev_time.mam() - mam.count()) + 1));
+              auto const error =
+                  std::abs(nigiri_ev_time.mam() - vdv_mam.count());
+              auto const local_score = kExact_match_score - error * error;
+              candidate->local_best_ = std::max(
+                  candidate->local_best_,
+                  local_score < 0 ? 0U
+                                  : static_cast<std::uint32_t>(local_score));
 
               no_transport_found_at_stop = false;
             }
@@ -202,7 +207,7 @@ std::optional<rt::run> updater::find_run(std::string_view vdv_run_id,
 
   std::sort(begin(candidates), end(candidates));
 
-  if (candidates.front().score_ < vdv_stops.size() / 2.0) {
+  if (candidates.front().score_ < vdv_stops.size() * kExact_match_score / 2) {
     return std::nullopt;
   }
 
@@ -224,6 +229,22 @@ std::optional<rt::run> updater::find_run(std::string_view vdv_run_id,
     ++stats_.multiple_matches_;
     return std::nullopt;
   }
+#ifdef VDV_DEBUG
+  else {
+    vdv_trace(std::format("match candidates for {}:", vdv_run_id));
+    for (auto const& c : candidates) {
+      vdv_trace(std::format(
+          "[line: {}, score: {}, length: {}]",
+          tt_.trip_lines_
+              [tt_.transport_section_lines_[c.r_.t_.t_idx_].size() == 1
+                   ? tt_.transport_section_lines_[c.r_.t_.t_idx_].front()
+                   : tt_.transport_section_lines_[c.r_.t_.t_idx_]
+                                                 [c.r_.stop_range_.from_]]
+                  .view(),
+          c.score_, c.total_length_));
+    }
+  }
+#endif
 
   ++stats_.found_runs_;
   vdv_nigiri_[vdv_run_id] = candidates.front().r_;
