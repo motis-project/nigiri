@@ -8,13 +8,17 @@
 
 namespace nigiri::loader {
 
-match_set_t link_nearby_stations(timetable& tt, bool const store_matches) {
+template <bool MatchIntraSrc, bool MatchInterSrc>
+match_set_t link_nearby_stations(timetable& tt) {
   constexpr auto const kLinkNearbyMaxDistance = 300;  // [m];
 
   auto const locations_rtree =
       geo::make_point_rtree(tt.locations_.coordinates_);
 
   auto matches = match_set_t{};
+  if constexpr (!MatchIntraSrc && !MatchInterSrc) {
+    return matches;
+  }
   for (auto l_from_idx = location_idx_t{0U};
        l_from_idx != tt.locations_.src_.size(); ++l_from_idx) {
     auto const from_pos = tt.locations_.coordinates_[l_from_idx];
@@ -35,11 +39,21 @@ match_set_t link_nearby_stations(timetable& tt, bool const store_matches) {
       }
 
       auto const to_src = tt.locations_.src_[l_to_idx];
-      auto const to_pos = tt.locations_.coordinates_[l_to_idx];
-      if (to_src == source_idx_t::invalid() /* no dummy stations */
-          || from_src == to_src /* don't short-circuit */) {
+      if (to_src == source_idx_t::invalid() /* no dummy stations */) {
         continue;
       }
+      if constexpr (!MatchIntraSrc) {
+        if (to_src == from_src) {
+          continue;
+        }
+      }
+      if constexpr (!MatchInterSrc) {
+        if (to_src != from_src) {
+          continue;
+        }
+      }
+
+      auto const to_pos = tt.locations_.coordinates_[l_to_idx];
 
       auto const from_transfer_time =
           duration_t{tt.locations_.transfer_time_[l_from_idx]};
@@ -56,7 +70,7 @@ match_set_t link_nearby_stations(timetable& tt, bool const store_matches) {
           l_from_idx, duration);
       tt.locations_.equivalences_[l_from_idx].emplace_back(l_to_idx);
 
-      if (store_matches) {
+      if constexpr (MatchIntraSrc || MatchInterSrc) {
         matches.emplace(make_match_pair(l_from_idx, l_to_idx));
       }
     }
@@ -64,5 +78,10 @@ match_set_t link_nearby_stations(timetable& tt, bool const store_matches) {
 
   return matches;
 }
+
+template match_set_t link_nearby_stations<false, false>(timetable&);
+template match_set_t link_nearby_stations<false, true>(timetable&);
+template match_set_t link_nearby_stations<true, false>(timetable&);
+template match_set_t link_nearby_stations<true, true>(timetable&);
 
 }  // namespace nigiri::loader

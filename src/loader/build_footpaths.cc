@@ -407,11 +407,17 @@ void write_footpaths(timetable& tt) {
 
 void build_footpaths(timetable& tt,
                      bool const adjust_footpaths,
-                     bool const merge_duplicates,
+                     bool const merge_dupes_intra_src,
+                     bool const merge_dupes_inter_src,
                      std::uint16_t const max_footpath_length) {
   add_links_to_and_between_children(tt);
-  auto const matches = link_nearby_stations(tt, merge_duplicates);
-  if (merge_duplicates) {
+  auto const matches =
+      merge_dupes_intra_src && merge_dupes_inter_src
+          ? link_nearby_stations<true, true>(tt)
+      : merge_dupes_intra_src ? link_nearby_stations<true, false>(tt)
+      : merge_dupes_inter_src ? link_nearby_stations<false, true>(tt)
+                              : link_nearby_stations<false, false>(tt);
+  if (merge_dupes_intra_src || merge_dupes_inter_src) {
     for (auto const& [a, b] : matches) {
       find_duplicates(tt, matches, a, b);
     }

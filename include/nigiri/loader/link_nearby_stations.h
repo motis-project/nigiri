@@ -6,6 +6,7 @@ struct timetable;
 
 namespace nigiri::loader {
 
-match_set_t link_nearby_stations(timetable&, bool const store_matches);
+template <bool MatchIntraSrc, bool MatchInterSrc>
+match_set_t link_nearby_stations(timetable&);
 
 }  // namespace nigiri::loader
