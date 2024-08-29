@@ -73,6 +73,11 @@ unixtime_t frun::run_stop::time(event_type const ev_type) const noexcept {
              : tt().event_time(fr_->t_, stop_idx_, ev_type);
 }
 
+duration_t frun::run_stop::delay(event_type const ev_type) const noexcept {
+  assert(fr_->size() > stop_idx_);
+  return time(ev_type) - scheduled_time(ev_type);
+}
+
 trip_idx_t frun::run_stop::get_trip_idx(
     event_type const ev_type) const noexcept {
   auto const sections = tt().transport_to_trip_section_.at(fr_->t_.t_idx_);
@@ -80,6 +85,11 @@ trip_idx_t frun::run_stop::get_trip_idx(
       .merged_trips_[sections.at(sections.size() == 1U ? 0U
                                                        : section_idx(ev_type))]
       .at(0);
+}
+
+std::string_view frun::run_stop::trip_display_name(
+    event_type const ev_type) const noexcept {
+  return tt().trip_display_names_[get_trip_idx(ev_type)].view();
 }
 
 stop_idx_t frun::run_stop::section_idx(
@@ -197,7 +207,7 @@ route_color frun::run_stop::get_route_color(event_type ev_type) const noexcept {
 }
 
 bool frun::run_stop::is_canceled() const noexcept {
-  return !get_stop().in_allowed() && !get_stop().out_allowed();
+  return get_stop().is_cancelled();
 }
 
 bool frun::run_stop::in_allowed() const noexcept {
@@ -206,6 +216,22 @@ bool frun::run_stop::in_allowed() const noexcept {
 
 bool frun::run_stop::out_allowed() const noexcept {
   return get_stop().out_allowed();
+}
+
+bool frun::run_stop::in_allowed_wheelchair() const noexcept {
+  return get_stop().in_allowed_wheelchair();
+}
+
+bool frun::run_stop::out_allowed_wheelchair() const noexcept {
+  return get_stop().out_allowed_wheelchair();
+}
+
+bool frun::run_stop::in_allowed(bool const wheelchair) const noexcept {
+  return wheelchair ? in_allowed_wheelchair() : in_allowed();
+}
+
+bool frun::run_stop::out_allowed(bool const wheelchair) const noexcept {
+  return wheelchair ? out_allowed_wheelchair() : out_allowed();
 }
 
 timetable const& frun::run_stop::tt() const noexcept { return *fr_->tt_; }
