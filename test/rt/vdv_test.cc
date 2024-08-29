@@ -4424,3 +4424,222 @@ TEST(vdv_update, vgm418) {
               rs_next.time(nigiri::event_type::kArr));
   }
 }
+
+namespace {
+
+mem_dir rvs360_files() {
+  return mem_dir::read(R"__(
+# trips.txt
+"route_id","service_id","trip_id","trip_headsign","trip_short_name","direction_id","block_id","shape_id","wheelchair_accessible","bikes_allowed"
+"de:vvo:23-360_3",1171,2593428077,"Bannewitz Windbergstraße","",0,85739,48341,0,0
+"de:vvo:21-66_3",1171,2593419356,"Freital-Deuben","",0,85071,47843,0,0
+
+# routes.txt
+"route_id","agency_id","route_short_name","route_long_name","route_type","route_color","route_text_color","route_desc"
+"de:vvo:23-360_3",8195,"360","",3,"","",""
+"de:vvo:21-66_3",8194,"66","",3,"","",""
+
+# agency.txt
+"agency_id","agency_name","agency_url","agency_timezone","agency_lang","agency_phone"
+8195,"RVD-Busverkehr","https://www.delfi.de","Europe/Berlin","",""
+8194,"DVB-Bus","https://www.delfi.de","Europe/Berlin","",""
+
+# stop_times.txt
+"trip_id","arrival_time","departure_time","stop_id","stop_sequence","pickup_type","drop_off_type","stop_headsign"
+2593428077,16:54:00,16:54:00,"de:14612:28:2:6",0,0,0,""
+2593428077,16:56:00,16:56:00,"de:14612:131:2:4",1,0,0,""
+2593428077,16:58:00,16:58:00,"de:14612:727:2:4",2,0,0,""
+2593428077,16:59:00,16:59:00,"de:14612:732:1:2",3,0,0,""
+2593428077,17:01:00,17:01:00,"de:14612:733:1:2",4,0,0,""
+2593428077,17:05:00,17:05:00,"de:14628:1072:0:1",5,0,0,""
+2593428077,17:07:00,17:07:00,"de:14628:1070:0:1",6,0,0,""
+2593428077,17:09:00,17:09:00,"de:14628:1076:0:1",7,0,0,""
+2593419356,16:29:00,16:29:00,"de:14612:935:1:3",0,0,0,""
+2593419356,16:30:00,16:30:00,"de:14612:935:1:2",1,0,0,""
+2593419356,16:31:00,16:31:00,"de:14612:938:1:1",2,0,0,""
+2593419356,16:32:00,16:32:00,"de:14612:934:1:1",3,0,0,""
+2593419356,16:33:00,16:33:00,"de:14612:792:1:1",4,0,0,""
+2593419356,16:34:00,16:34:00,"de:14612:324:1:1",5,0,0,""
+2593419356,16:36:00,16:36:00,"de:14612:790:1:1",6,0,0,""
+2593419356,16:37:00,16:37:00,"de:14612:789:1:1",7,0,0,""
+2593419356,16:39:00,16:39:00,"de:14612:788:1:1",8,0,0,""
+2593419356,16:40:00,16:40:00,"de:14612:787:1:1",9,0,0,""
+2593419356,16:42:00,16:42:00,"de:14612:786:1:1",10,0,0,""
+2593419356,16:44:00,16:44:00,"de:14612:785:1:1",11,0,0,""
+2593419356,16:46:00,16:46:00,"de:14612:784:1:1",12,0,0,""
+2593419356,16:47:00,16:47:00,"de:14612:309:1:2",13,0,0,""
+2593419356,16:49:00,16:49:00,"de:14612:311:2:4",14,0,0,""
+2593419356,16:50:00,16:50:00,"de:14612:782:1:2",15,0,0,""
+2593419356,16:52:00,16:52:00,"de:14612:30:1:2",16,0,0,""
+2593419356,16:54:00,16:54:00,"de:14612:28:2:6",17,0,0,""
+2593419356,16:56:00,16:56:00,"de:14612:131:2:4",18,0,0,""
+2593419356,16:58:00,16:58:00,"de:14612:727:2:4",19,0,0,""
+2593419356,16:59:00,16:59:00,"de:14612:732:1:2",20,0,0,""
+2593419356,17:01:00,17:01:00,"de:14612:733:1:2",21,0,0,""
+2593419356,17:02:00,17:02:00,"de:14612:743:1:2",22,0,0,""
+2593419356,17:03:00,17:03:00,"de:14612:740:1:2",23,0,0,""
+2593419356,17:05:00,17:05:00,"de:14612:741:1:2",24,0,0,""
+2593419356,17:06:00,17:06:00,"de:14612:164:1:2",25,0,0,""
+2593419356,17:07:00,17:07:00,"de:14612:165:1:5",26,0,0,""
+
+# stops.txt
+"stop_id","stop_code","stop_name","stop_desc","stop_lat","stop_lon","location_type","parent_station","wheelchair_boarding","platform_code","level_id"
+"de:14628:1070:0:1","","Bannewitz Boderitzer Straße","Bannewitz Boderitzer Straße","50.998763000000","13.720257000000",0,,0,"1","2"
+"de:14628:1072:0:1","","Bannewitz Nöthnitz",,"51.003959000000","13.727120000000",0,,0,"",""
+"de:14612:733:1:2","","Dresden Südhöhe","Bergstraße","51.019846000000","13.728854000000",0,,0,"2","2"
+"de:14612:732:1:2","","Dresden Mommsenstraße","Haltestelle","51.027480000000","13.731270000000",0,,0,"2","2"
+"de:14612:131:2:4","","Dresden Reichenbachstraße","Fritz-Löffler Bus","51.034705000000","13.731144000000",0,,0,"4","2"
+"de:14612:727:2:4","","Dresden Technische Universität","Ri. Südhöhe","51.029570000000","13.730713000000",0,,0,"4","2"
+"de:14628:1076:0:1","","Bannewitz Windbergstraße","Bannewitz Windbergstraße","50.993833000000","13.717616000000",0,,0,"1","2"
+"de:14612:28:2:6","","Dresden Hauptbahnhof","Hbf Am Hbf","51.039727000000","13.733767000000",0,,0,"6","2"
+"de:14612:741:1:2","","Dresden Cunnersdorfer Straße","Haltestelle","51.018105000000","13.707096000000",0,,0,"2","2"
+"de:14612:740:1:2","","Dresden Dorfhainer Straße","Haltestelle","51.018812000000","13.718981000000",0,,0,"2","2"
+"de:14612:743:1:2","","Dresden Höckendorfer Weg","Haltestelle","51.019433000000","13.725485000000",0,,0,"2","2"
+"de:14612:164:1:2","","Dresden Achtbeeteweg","Haltestelle","51.017648000000","13.703216000000",0,,0,"2","2"
+"de:14612:934:1:1","","Dresden Theilestraße","Haltestelle","50.990633000000","13.802390000000",0,,0,"1","2"
+"de:14612:784:1:1","","DD C-D-Friedrich-Straße","Haltestelle","51.026864000000","13.755201000000",0,,0,"1","2"
+"de:14612:938:1:1","","Dresden Hänichenweg","Haltestelle","50.988298000000","13.802623000000",0,,0,"1","2"
+"de:14612:30:1:2","","Dresden Gret-Palucca-Straße","Zentralhst.","51.039010000000","13.739346000000",0,,0,"2","2"
+"de:14612:785:1:1","","Dresden Corinthstraße","Ri. Hbf","51.021394000000","13.764157000000",0,,0,"1","2"
+"de:14612:782:1:2","","Dresden Uhlandstraße","Haltestelle","51.036920000000","13.739481000000",0,,0,"2","2"
+"de:14612:787:1:1","","Dresden Marie-Wittich-Straße","Haltestelle","51.013127000000","13.777282000000",0,,0,"1","2"
+"de:14612:311:2:4","","Dresden Strehlener Platz","Strehlener Str.","51.034152000000","13.748060000000",0,,0,"4","2"
+"de:14612:309:1:2","","Dresden Weberplatz","Haltestelle","51.031237000000","13.751060000000",0,,0,"2","2"
+"de:14612:788:1:1","","Dresden Tornaer Straße","Haltestelle","51.009849000000","13.783651000000",0,,0,"1","2"
+"de:14612:789:1:1","","Dresden Gamigstraße","Haltestelle","51.005581000000","13.788439000000",0,,0,"1","2"
+"de:14612:790:1:1","","Dresden Fritz-Meinhardt-Straße","B 172","51.001986000000","13.793568000000",0,,0,"1","2"
+"de:14612:792:1:1","","Dresden Erich-Kästner-Straße","Dohnaer stw","50.995829000000","13.803405000000",0,,0,"1","2"
+"de:14612:324:1:1","","DD Prohlis Kaufpark Nickern","Haltestelle","50.998334000000","13.800099000000",0,,0,"1","2"
+"de:14612:165:1:5","","Dresden Coschütz","Haltestelle","51.015935000000","13.699353000000",0,,0,"2","2"
+"de:14612:935:1:2","","Dresden Lockwitz","Am Plan","50.987269000000","13.806872000000",0,,0,"2","2"
+"de:14612:786:1:1","","Dresden Spitzwegstraße","Haltestelle","51.015568000000","13.771757000000",0,,0,"1","2"
+"de:14612:935:1:3","","Dresden Lockwitz","Am Plan","50.987467000000","13.806540000000",0,,0,"3","2"
+
+# calendar.txt
+"service_id","monday","tuesday","wednesday","thursday","friday","saturday","sunday","start_date","end_date"
+1171,1,1,1,1,1,0,0,20240805,20241214
+
+# calendar_dates.txt
+"service_id","date","exception_type"
+1171,20240805,2
+1171,20240812,2
+1171,20240806,2
+1171,20240813,2
+1171,20240807,2
+1171,20241120,2
+1171,20240808,2
+1171,20241003,2
+1171,20241031,2
+1171,20240809,2
+
+)__");
+}
+
+constexpr auto const update_rvs360 = R"(
+<IstFahrt Zst="2024-08-27T16:34:15">
+	<LinienID>RVS360</LinienID>
+	<RichtungsID>1</RichtungsID>
+	<FahrtRef>
+		<FahrtID>
+			<FahrtBezeichner>RVS24204_vvorbl</FahrtBezeichner>
+			<Betriebstag>2024-08-27</Betriebstag>
+		</FahrtID>
+	</FahrtRef>
+	<Komplettfahrt>true</Komplettfahrt>
+	<UmlaufID>33301</UmlaufID>
+	<BetreiberID>vvorbl</BetreiberID>
+	<IstHalt>
+		<HaltID>de:14612:28:2:6</HaltID>
+		<Abfahrtszeit>2024-08-27T14:54:00</Abfahrtszeit>
+		<AbfahrtssteigText>6</AbfahrtssteigText>
+		<Besetztgrad>Unbekannt</Besetztgrad>
+	</IstHalt>
+	<IstHalt>
+		<HaltID>de:14612:131:2:4</HaltID>
+		<Abfahrtszeit>2024-08-27T14:56:00</Abfahrtszeit>
+		<Ankunftszeit>2024-08-27T14:56:00</Ankunftszeit>
+		<AbfahrtssteigText>4</AbfahrtssteigText>
+		<Besetztgrad>Unbekannt</Besetztgrad>
+	</IstHalt>
+	<IstHalt>
+		<HaltID>de:14612:727:2:4</HaltID>
+		<Abfahrtszeit>2024-08-27T14:58:00</Abfahrtszeit>
+		<Ankunftszeit>2024-08-27T14:58:00</Ankunftszeit>
+		<AbfahrtssteigText>4</AbfahrtssteigText>
+		<Besetztgrad>Unbekannt</Besetztgrad>
+	</IstHalt>
+	<IstHalt>
+		<HaltID>de:14612:732:1:2</HaltID>
+		<Abfahrtszeit>2024-08-27T14:59:00</Abfahrtszeit>
+		<Ankunftszeit>2024-08-27T14:59:00</Ankunftszeit>
+		<AbfahrtssteigText>2</AbfahrtssteigText>
+		<Besetztgrad>Unbekannt</Besetztgrad>
+	</IstHalt>
+	<IstHalt>
+		<HaltID>de:14612:733:1:2</HaltID>
+		<Abfahrtszeit>2024-08-27T15:01:00</Abfahrtszeit>
+		<Ankunftszeit>2024-08-27T15:01:00</Ankunftszeit>
+		<AbfahrtssteigText>2</AbfahrtssteigText>
+		<Besetztgrad>Unbekannt</Besetztgrad>
+	</IstHalt>
+	<IstHalt>
+		<HaltID>de:14628:1072:0:1</HaltID>
+		<Abfahrtszeit>2024-08-27T15:05:00</Abfahrtszeit>
+		<Ankunftszeit>2024-08-27T15:05:00</Ankunftszeit>
+		<AbfahrtssteigText>1</AbfahrtssteigText>
+		<Besetztgrad>Unbekannt</Besetztgrad>
+	</IstHalt>
+	<IstHalt>
+		<HaltID>de:14628:1070:0:1</HaltID>
+		<Abfahrtszeit>2024-08-27T15:07:00</Abfahrtszeit>
+		<Ankunftszeit>2024-08-27T15:07:00</Ankunftszeit>
+		<AbfahrtssteigText>1</AbfahrtssteigText>
+		<Besetztgrad>Unbekannt</Besetztgrad>
+	</IstHalt>
+	<IstHalt>
+		<HaltID>de:14628:1076:0:1</HaltID>
+		<Ankunftszeit>2024-08-27T15:09:00</Ankunftszeit>
+		<AnkunftssteigText>1</AnkunftssteigText>
+		<Besetztgrad>Unbekannt</Besetztgrad>
+	</IstHalt>
+	<LinienText>360</LinienText>
+	<ProduktID>RVS360</ProduktID>
+	<RichtungsText>Bannewitz - 164 Deuben</RichtungsText>
+	<PrognoseMoeglich>true</PrognoseMoeglich>
+	<FaelltAus>false</FaelltAus>
+</IstFahrt>
+)";
+
+}  // namespace
+
+TEST(vdv_update, rvs360) {
+  timetable tt;
+  register_special_stations(tt);
+  tt.date_range_ = {date::sys_days{2024_y / August / 1},
+                    date::sys_days{2024_y / August / 31}};
+  auto const src_idx = source_idx_t{0};
+  load_timetable({}, src_idx, rvs360_files(), tt);
+  finalize(tt);
+
+  auto rtt = rt::create_rt_timetable(tt, date::sys_days{2024_y / August / 27});
+
+  auto u = rt::vdv::updater{tt, src_idx};
+
+  auto doc = pugi::xml_document{};
+  doc.load_string(update_rvs360);
+  u.update(rtt, doc);
+
+  // Should only match line 360
+  auto const fr0 = rt::frun{tt,
+                            &rtt,
+                            {{transport_idx_t{0U}, day_idx_t{31U}},
+                             {stop_idx_t{0U}, stop_idx_t{8U}}}};
+  EXPECT_TRUE(fr0.is_rt());
+
+  // should not match line 66
+  auto const fr1 = rt::frun{tt,
+                            &rtt,
+                            {{transport_idx_t{1U}, day_idx_t{31U}},
+                             {stop_idx_t{0U}, stop_idx_t{27U}}}};
+  EXPECT_FALSE(fr1.is_rt());
+}
