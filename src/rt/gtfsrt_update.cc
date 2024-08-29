@@ -251,11 +251,13 @@ statistics gtfsrt_update_msg(timetable const& tt,
     return {.no_header_ = true};
   }
 
-  auto stats = statistics{.total_entities_ = msg.entity_size()};
   auto const message_time =
       date::sys_seconds{std::chrono::seconds{msg.header().timestamp()}};
   auto const today =
       std::chrono::time_point_cast<date::sys_days::duration>(message_time);
+  auto stats = statistics{.total_entities_ = msg.entity_size(),
+                          .feed_timestamp_ = message_time};
+
   for (auto const& entity : msg.entity()) {
     if (entity.has_is_deleted() && entity.is_deleted()) {
       log(log_lvl::error, "rt.gtfs.unsupported",
