@@ -39,7 +39,10 @@ struct profile {
 };
 
 struct static_profile_set {
-  static_profile_set(timetable const& tt);
+  static_profile_set()
+      : fp_to_target_reset_list_end_{0}, stop_reset_list_end_{0} {};
+
+  void prepare_for_tt(timetable const& tt);
 
   profile for_stop(location_idx_t stop_id) const {
     return {entry_.begin() + entry_begin_end_[stop_id].first,
@@ -115,19 +118,24 @@ struct static_profile_set {
 };
 
 struct dynamic_growth_profile_set {
-  dynamic_growth_profile_set(timetable const& tt)
-      : tt_{tt},
+  dynamic_growth_profile_set()
+      : tt_{nullptr},
         recompute_entry_amount_{true},
-        l_start_idx_(tt.n_locations(), 0),
-        fp_dis_to_target_(tt.n_locations(),
-                          std::numeric_limits<meat_t>::infinity()),
-        fp_to_target_reset_list_(tt.n_locations()),
         fp_to_target_reset_list_end_{0},
-        stop_reset_list_(tt.n_locations()),
-        stop_reset_list_end_{0},
-        entry_idx_end_(tt.n_locations(),
-                       std::pair(std::numeric_limits<size_t>::max(), 0)),
-        entry_() {};
+        stop_reset_list_end_{0} {};
+
+  void prepare_for_tt(timetable const& tt) {
+    reset();
+
+    tt_ = &tt;
+    l_start_idx_.resize(tt.n_locations(), 0);
+    fp_dis_to_target_.resize(tt.n_locations(),
+                             std::numeric_limits<meat_t>::infinity());
+    fp_to_target_reset_list_.resize(tt.n_locations());
+    stop_reset_list_.resize(tt.n_locations());
+    entry_idx_end_.resize(tt.n_locations(),
+                          std::pair(std::numeric_limits<size_t>::max(), 0));
+  }
 
   profile for_stop(location_idx_t stop_id) const {
     return {entry_[entry_idx_end_[stop_id].first].begin(),
@@ -238,13 +246,14 @@ struct dynamic_growth_profile_set {
       std::reverse_iterator<std::vector<profile_entry>::const_iterator> const&
           rit) const {
     location_idx_t stop_idx;
-    std::visit(
-        utl::overloaded{[&](walk const& w) { stop_idx = w.from_; },
-                        [&](ride const& r) {
-                          auto enter_conn = tt_.fwd_connections_[r.enter_conn_];
-                          stop_idx = stop{enter_conn.dep_stop_}.location_idx();
-                        }},
-        rit->uses_);
+    std::visit(utl::overloaded{[&](walk const& w) { stop_idx = w.from_; },
+                               [&](ride const& r) {
+                                 auto enter_conn =
+                                     tt_->fwd_connections_[r.enter_conn_];
+                                 stop_idx =
+                                     stop{enter_conn.dep_stop_}.location_idx();
+                               }},
+               rit->uses_);
     if (recompute_entry_amount_) {
       compute_entry_amount();
     }
@@ -256,7 +265,7 @@ struct dynamic_growth_profile_set {
            l_start_idx_[stop_idx];
   }
 
-  timetable const& tt_;
+  timetable const* tt_;
   mutable bool recompute_entry_amount_;
   mutable vector_map<location_idx_t, size_t> l_start_idx_;
   vector_map<location_idx_t, meat_t> fp_dis_to_target_;
@@ -269,22 +278,31 @@ struct dynamic_growth_profile_set {
 };
 
 struct dynamic_profile_set {
-  dynamic_profile_set(timetable const& tt)
-      : tt_{tt},
+  dynamic_profile_set()
+      : tt_{nullptr},
         recompute_entry_amount_{true},
-        l_start_idx_(tt.n_locations(), 0),
-        fp_dis_to_target_(tt.n_locations(),
-                          std::numeric_limits<meat_t>::infinity()),
-        fp_to_target_reset_list_(tt.n_locations()),
         fp_to_target_reset_list_end_{0},
-        stop_reset_list_(tt.n_locations()),
-        stop_reset_list_end_{0},
-        entry_(tt.n_locations(),
-               std::vector<profile_entry>(
-                   {{std::numeric_limits<delta_t>::max(),
-                     std::numeric_limits<meat_t>::infinity(),
-                     ride{connection_idx_t::invalid(),
-                          connection_idx_t::invalid()}}})) {};
+        stop_reset_list_end_{0} {};
+
+  void prepare_for_tt(timetable const& tt) {
+    reset();
+    
+    tt_ = &tt;
+    l_start_idx_.resize(tt.n_locations(), 0);
+    fp_dis_to_target_.resize(tt.n_locations(),
+                             std::numeric_limits<meat_t>::infinity());
+    fp_to_target_reset_list_.resize(tt.n_locations());
+    fp_to_target_reset_list_.shrink_to_fit();
+    stop_reset_list_.resize(tt.n_locations());
+    stop_reset_list_.shrink_to_fit();
+    entry_.resize(
+        tt.n_locations(),
+        std::vector<profile_entry>({{std::numeric_limits<delta_t>::max(),
+                                     std::numeric_limits<meat_t>::infinity(),
+                                     ride{connection_idx_t::invalid(),
+                                          connection_idx_t::invalid()}}}));
+    entry_.shrink_to_fit();
+  }
 
   profile for_stop(location_idx_t stop_id) const {
     return {entry_[to_idx(stop_id)].begin(), entry_[to_idx(stop_id)].end()};
@@ -364,13 +382,14 @@ struct dynamic_profile_set {
       std::reverse_iterator<std::vector<profile_entry>::const_iterator> const&
           rit) const {
     location_idx_t stop_idx;
-    std::visit(
-        utl::overloaded{[&](walk const& w) { stop_idx = w.from_; },
-                        [&](ride const& r) {
-                          auto enter_conn = tt_.fwd_connections_[r.enter_conn_];
-                          stop_idx = stop{enter_conn.dep_stop_}.location_idx();
-                        }},
-        rit->uses_);
+    std::visit(utl::overloaded{[&](walk const& w) { stop_idx = w.from_; },
+                               [&](ride const& r) {
+                                 auto enter_conn =
+                                     tt_->fwd_connections_[r.enter_conn_];
+                                 stop_idx =
+                                     stop{enter_conn.dep_stop_}.location_idx();
+                               }},
+               rit->uses_);
     if (recompute_entry_amount_) {
       compute_entry_amount();
     }
@@ -381,7 +400,7 @@ struct dynamic_profile_set {
            l_start_idx_[stop_idx];
   }
 
-  timetable const& tt_;
+  timetable const* tt_;
   mutable bool recompute_entry_amount_;
   mutable vector_map<location_idx_t, size_t> l_start_idx_;
   vector_map<location_idx_t, meat_t> fp_dis_to_target_;

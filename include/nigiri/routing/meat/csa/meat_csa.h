@@ -1,5 +1,6 @@
 #pragma once
 
+#include "utl/helpers/algorithm.h"
 #include "utl/timing.h"
 
 #include "nigiri/common/delta_t.h"
@@ -7,6 +8,7 @@
 #include "nigiri/routing/limits.h"
 #include "nigiri/routing/meat/csa/binary_search.h"
 #include "nigiri/routing/meat/csa/decision_graph_extractor.h"
+#include "nigiri/routing/meat/csa/meat_csa_state.h"
 #include "nigiri/routing/meat/csa/meat_csa_stats.h"
 #include "nigiri/routing/meat/csa/meat_profile_computer.h"
 #include "nigiri/routing/meat/decision_graph.h"
@@ -17,9 +19,11 @@ namespace nigiri::routing::meat::csa {
 
 template <typename ProfileSet>
 struct meat_csa {
+  using algo_state_t = meat_csa_state<ProfileSet>;
   using algo_stats_t = meat_csa_stats;
 
   meat_csa(timetable const& tt,
+           meat_csa_state<ProfileSet>& state,
            day_idx_t const base,
            clasz_mask_t const allowed_claszes,
            delta_t max_delay = 30,
@@ -35,19 +39,24 @@ struct meat_csa {
         fuzzy_parameter_{fuzzy_parameter},
         allowed_claszes_{allowed_claszes},
         prf_idx_{0},
-        mpc_{tt_, base_, allowed_claszes_, prf_idx_, stats_},
-        dge_{tt_, base_, mpc_.get_profile_set()} {}
+        state_{state.prepare_for_tt(tt_)},
+        mpc_{tt_, state_, base_, allowed_claszes_, prf_idx_, stats_},
+        dge_{tt_, base_, state_.profile_set_} {}
 
   algo_stats_t get_stats() const { return stats_; }
+
+  void next_start_time() {
+    mpc_.reset();
+    dge_.reset();
+    state_.reset();
+    stats_.reset();
+  }
 
   void execute(unixtime_t const start_time,
                location_idx_t const start_location,
                location_idx_t const end_location,
-               // std::uint8_t const max_transfers,
-               // unixtime_t const worst_time_at_dest,
                profile_idx_t const prf_idx,
                decision_graph& result_graph) {
-    stats_.reset();
     UTL_START_TIMING(total_time);
     prf_idx_ = prf_idx;
     auto without_clasz_filter = allowed_claszes_ == all_clasz_allowed();
@@ -70,23 +79,26 @@ struct meat_csa {
           {{start_location, {}, {}}, {end_location, {}, {}}}, {}, 0, 1, -1};
       return;
     }
+    reset_csa_state();
     UTL_START_TIMING(ea_time);
-    auto ea = without_clasz_filter
-                  ? compute_one_to_all_earliest_arrival<false>(
-                        con_begin, con_end, start_location, s_time)
-                  : compute_one_to_all_earliest_arrival<true>(
-                        con_begin, con_end, start_location, s_time);
+    if (without_clasz_filter) {
+      compute_one_to_all_earliest_arrival<false>(con_begin, con_end,
+                                                 start_location, s_time);
+    } else {
+      compute_one_to_all_earliest_arrival<true>(con_begin, con_end,
+                                                start_location, s_time);
+    }
     UTL_STOP_TIMING(ea_time);
     stats_.ea_duration_ = static_cast<std::uint64_t>(UTL_TIMING_MS(ea_time));
 
     UTL_START_TIMING(meat_time);
     if (without_clasz_filter) {
       mpc_.template compute_profile_set<false>(
-          con_begin, con_end, ea, end_location, s_time, max_delay_,
+          con_begin, con_end, end_location, s_time, max_delay_,
           fuzzy_parameter_, meat_transfer_cost_);
     } else {
       mpc_.template compute_profile_set<true>(
-          con_begin, con_end, ea, end_location, s_time, max_delay_,
+          con_begin, con_end, end_location, s_time, max_delay_,
           fuzzy_parameter_, meat_transfer_cost_);
     }
     UTL_STOP_TIMING(meat_time);
@@ -99,19 +111,24 @@ struct meat_csa {
     UTL_START_TIMING(extract_time);
     std::tie(result_graph, max_display_delay) =
         extract_small_sub_decision_graph<ProfileSet>(
-            dge_, mpc_.get_profile_set(), start_location, s_time, end_location,
+            dge_, start_location, s_time, end_location,
             max_delay_, max_ride_count, max_arrow_count);
     result_graph.compute_use_probabilities(tt_, max_delay_);
     UTL_STOP_TIMING(extract_time);
     stats_.extract_graph_duration_ =
         static_cast<std::uint64_t>(UTL_TIMING_MS(extract_time));
-    mpc_.reset();
     UTL_STOP_TIMING(total_time);
     stats_.total_duration_ =
         static_cast<std::uint64_t>(UTL_TIMING_MS(total_time));
   }
 
 private:
+  void reset_csa_state() {
+    using c_idx_t = connection::trip_con_idx_t;
+    utl::fill(state_.ea_, std::numeric_limits<delta_t>::max());
+    utl::fill(state_.trip_first_con_, std::numeric_limits<c_idx_t>::max());
+  }
+
   int as_int(day_idx_t const d) const { return static_cast<int>(d.v_); }
   date::sys_days base() const {
     return tt_.internal_interval_days().from_ + as_int(base_) * date::days{1};
@@ -233,13 +250,9 @@ private:
       location_idx_t source_stop,
       delta_t source_time,
       location_idx_t target_stop) {
-    using c_idx_t = connection::trip_con_idx_t;
     UTL_START_TIMING(esa_time);
-    auto esa = vector_map<location_idx_t, delta_t>(
-        tt_.n_locations(),
-        std::numeric_limits<delta_t>::max());  // earliest safe arrival
-    auto trip_first_con = vector_map<transport_idx_t, c_idx_t>(
-        tt_.n_transports(), std::numeric_limits<c_idx_t>::max());
+    auto& esa = state_.ea_;  // earliest safe arrival
+    auto& trip_first_con = state_.trip_first_con_;
     update_arr_times(esa, source_time, source_stop,
                      stats_.esa_n_update_arr_time_);
     auto [day, mam] = split(source_time);
@@ -333,16 +346,13 @@ private:
   }
 
   template <bool WithClaszFilter>
-  vector_map<location_idx_t, delta_t> compute_one_to_all_earliest_arrival(
+  void compute_one_to_all_earliest_arrival(
       std::pair<day_idx_t, connection_idx_t> const& conn_begin,
       std::pair<day_idx_t, connection_idx_t> const& conn_end,
       location_idx_t source_stop,
       delta_t source_time) {
-    using c_idx_t = connection::trip_con_idx_t;
-    auto ea = vector_map<location_idx_t, delta_t>(
-        tt_.n_locations(), std::numeric_limits<delta_t>::max());
-    auto trip_first_con = vector_map<transport_idx_t, c_idx_t>(
-        tt_.n_transports(), std::numeric_limits<c_idx_t>::max());
+    auto& ea = state_.ea_;
+    auto& trip_first_con = state_.trip_first_con_;
 
     update_arr_times(ea, source_time, source_stop,
                      stats_.ea_n_update_arr_time_);
@@ -383,7 +393,7 @@ private:
       }
     }
 
-    return ea;
+    return;
   }
 
   timetable const& tt_;
@@ -395,6 +405,7 @@ private:
   double fuzzy_parameter_;
   clasz_mask_t allowed_claszes_;
   profile_idx_t prf_idx_;
+  meat_csa_state<ProfileSet>& state_;
   meat_profile_computer<ProfileSet> mpc_;
   decision_graph_extractor<ProfileSet> dge_;
   meat_csa_stats stats_;

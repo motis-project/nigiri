@@ -31,19 +31,18 @@ void forall_optimal_outgoing_connections(profile const& p,
 template <typename ProfileSet>
 std::vector<profile_entry const*>
 decision_graph_extractor<ProfileSet>::extract_relevant_entries(
-    ProfileSet const& profile_set,
     location_idx_t source_stop,
     delta_t source_time,
     location_idx_t target_stop,
     delta_t max_delay) const {
   std::vector<profile_entry const*> relevant;
-  is_enter_conn_relevant_.resize(profile_set.n_entry_idxs());
+  is_enter_conn_relevant_.resize(profile_set_.n_entry_idxs());
 
   auto on_new_relevant_entry =
       [&](std::reverse_iterator<
           std::vector<profile_entry>::const_iterator> const& e_it) {
         auto const& e = *e_it;
-        auto e_bit_idx = profile_set.global_index_of(e_it);
+        auto e_bit_idx = profile_set_.global_index_of(e_it);
         if (!is_enter_conn_relevant_[e_bit_idx]) {
           relevant.push_back(&(*e_it));
           is_enter_conn_relevant_.set(e_bit_idx);
@@ -64,7 +63,7 @@ decision_graph_extractor<ProfileSet>::extract_relevant_entries(
         }
       };
 
-  forall_optimal_outgoing_connections(profile_set.for_stop(source_stop),
+  forall_optimal_outgoing_connections(profile_set_.for_stop(source_stop),
                                       source_time, 0, on_new_relevant_entry);
   while (!stack_.empty()) {
     auto const& pe = stack_.top();
@@ -75,7 +74,7 @@ decision_graph_extractor<ProfileSet>::extract_relevant_entries(
               delta_t arr_time = pe->dep_time_ + w.fp_.duration().count();
               stack_.pop();
               forall_optimal_outgoing_connections(
-                  profile_set.for_stop(w.fp_.target()), arr_time,
+                  profile_set_.for_stop(w.fp_.target()), arr_time,
                   tt_.locations_.transfer_time_[w.fp_.target()].count() +
                       max_delay,
                   on_new_relevant_entry);
@@ -89,7 +88,7 @@ decision_graph_extractor<ProfileSet>::extract_relevant_entries(
                   (p_exit_conn.arr_time_ - p_enter_conn.dep_time_).count();
               stack_.pop();
               forall_optimal_outgoing_connections(
-                  profile_set.for_stop(p_exit_stop_idx), arr_time,
+                  profile_set_.for_stop(p_exit_stop_idx), arr_time,
                   tt_.locations_.transfer_time_[p_exit_stop_idx].count() +
                       max_delay,
                   on_new_relevant_entry);
@@ -97,27 +96,22 @@ decision_graph_extractor<ProfileSet>::extract_relevant_entries(
         pe->uses_);
   }
 
-  // is_enter_conn_relevant_.reset(); TODO
-  is_enter_conn_relevant_.for_each_set_bit(
-      [&](std::uint64_t const i) { is_enter_conn_relevant_.set(i, false); });
-
   return relevant;
 }
 
 template <typename ProfileSet>
 decision_graph decision_graph_extractor<ProfileSet>::operator()(
-    ProfileSet const& profile_set,
     location_idx_t source_stop,
     delta_t source_time,
     location_idx_t target_stop,
     delta_t max_delay) const {
-  if (profile_set.is_stop_empty(source_stop)) {
+  if (profile_set_.is_stop_empty(source_stop)) {
     return decision_graph{
         {{source_stop, {}, {}}, {target_stop, {}, {}}}, {}, 0, 1, -1};
   }
 
-  auto entry_list = extract_relevant_entries(
-      profile_set, source_stop, source_time, target_stop, max_delay);
+  auto entry_list = extract_relevant_entries(source_stop, source_time,
+                                             target_stop, max_delay);
 
   decision_graph g;
   int node_count = 0;
@@ -171,8 +165,8 @@ decision_graph decision_graph_extractor<ProfileSet>::operator()(
               g.nodes_[arr_node].in_.push_back(arc_id);
 
               auto fp_dis_to_target =
-                  profile_set.fp_dis_to_target_[stop{exit_conn.arr_stop_}
-                                                    .location_idx()];
+                  profile_set_.fp_dis_to_target_[stop{exit_conn.arr_stop_}
+                                                     .location_idx()];
               bool add_final_footpath =
                   stop{exit_conn.arr_stop_}.location_idx() != target_stop &&
                   fp_dis_to_target != std::numeric_limits<meat_t>::infinity() &&

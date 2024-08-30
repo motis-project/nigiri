@@ -4,14 +4,15 @@
 
 namespace nigiri::routing::meat::csa {
 
-static_profile_set::static_profile_set(timetable const& tt)
-    : fp_dis_to_target_(tt.n_locations(),
-                        std::numeric_limits<meat_t>::infinity()),
-      fp_to_target_reset_list_(tt.n_locations()),
-      fp_to_target_reset_list_end_{0},
-      stop_reset_list_(tt.n_locations()),
-      stop_reset_list_end_{0},
-      entry_begin_end_(tt.n_locations()) {
+void static_profile_set::prepare_for_tt(timetable const& tt) {
+  reset();
+  
+  fp_dis_to_target_.resize(tt.n_locations(),
+                           std::numeric_limits<meat_t>::infinity());
+  fp_to_target_reset_list_.resize(tt.n_locations());
+  stop_reset_list_.resize(tt.n_locations());
+  entry_begin_end_.resize(tt.n_locations());
+
   vector_map<location_idx_t, val_t_con> max_entry(tt.n_locations(), 1);
   size_t n_entry = tt.n_locations();
   for (auto& c : tt.fwd_connections_) {
@@ -40,12 +41,13 @@ static_profile_set::static_profile_set(timetable const& tt)
       }
     }
   }
-  entry_ = std::vector<profile_entry>(n_entry);
+  entry_.resize(n_entry);
 
   entry_begin_end_[location_idx_t{0}].first = 0;
-  for (auto i = location_idx_t{1}; i < tt.n_locations(); ++i)
+  for (auto i = location_idx_t{1}; i < tt.n_locations(); ++i) {
     entry_begin_end_[i].first =
         entry_begin_end_[i - 1].first + max_entry[i - 1];
+  }
 
   for (auto i = location_idx_t{0}; i < tt.n_locations(); ++i) {
     entry_begin_end_[i].second = entry_begin_end_[i].first + 1;

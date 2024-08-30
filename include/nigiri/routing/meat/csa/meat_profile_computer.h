@@ -22,18 +22,20 @@ struct meat_profile_computer {
   };
 
   explicit meat_profile_computer(timetable const& tt,
+                                 meat_csa_state<ProfileSet>& state,
                                  day_idx_t const& base,
                                  clasz_mask_t const& allowed_claszes,
                                  profile_idx_t const& prf_idx,
                                  meat_csa_stats& stats)
       : tt_{tt},
         base_{base},
+        state_{state},
         allowed_claszes_{allowed_claszes},
         fp_prf_idx_{prf_idx},
         stats_{stats},
         trip_reset_list_(tt.n_transports()),
         trip_reset_list_end_{0},
-        profile_set_{tt_} {
+        profile_set_{state_.profile_set_} {
     assert(std::numeric_limits<meat_t>::has_infinity == true);
 
     for (auto t_idx = transport_idx_t{0}; t_idx < tt_.n_transports(); ++t_idx) {
@@ -45,18 +47,14 @@ struct meat_profile_computer {
     assert(trip_.size() == tt_.n_transports());
   }
 
-  const ProfileSet& get_profile_set() const { return profile_set_; }
-
   std::pair<day_idx_t, minutes_after_midnight_t> split(delta_t const x) const {
     return split_day_mam(base_, x);
   }
   delta_t tt_to_delta(day_idx_t const day, std::int16_t mam) const {
     return nigiri::tt_to_delta(base_, day, duration_t{mam});
-    // return clamp((as_int(day) - as_int(base_)) * 1440 + mam);
   }
   void reset() {
     reset_trip();
-    profile_set_.reset();
     while (!fp_que_.empty()) {
       fp_que_.pop();
     }
@@ -75,7 +73,6 @@ struct meat_profile_computer {
   void compute_profile_set(
       std::pair<day_idx_t, connection_idx_t> const& conn_begin,
       std::pair<day_idx_t, connection_idx_t> const& conn_end,
-      vector_map<location_idx_t, delta_t> const& ea,
       location_idx_t target_stop,
       delta_t source_time,
       delta_t max_delay,
@@ -84,7 +81,7 @@ struct meat_profile_computer {
                             /// umstigszeit, da wir die "normale" umstigszeit
                             /// hier nicht mehr beachten; "strafe" für umstiege?
   ) {
-    reset();
+    auto const& ea = state_.ea_;
 
     auto evaluate_profile = [&](location_idx_t stop, delta_t when) {
       meat_t meat = 0.0;
@@ -210,8 +207,9 @@ struct meat_profile_computer {
     stats_.meat_n_e_in_profile_ = profile_set_.compute_entry_amount();
   }
 
-  void add_or_replace_entry(profile_entry const& new_entry,
-                            location_idx_t dep_stop_idx) { // TODO: ref to early_entry
+  void add_or_replace_entry(
+      profile_entry const& new_entry,
+      location_idx_t dep_stop_idx) {  // TODO: ref to early_entry
     auto early_entry = profile_set_.early_stop_entry(dep_stop_idx);
     if (early_entry.dep_time_ == new_entry.dep_time_) {
       profile_set_.replace_early_entry(dep_stop_idx, new_entry);
@@ -236,12 +234,13 @@ struct meat_profile_computer {
 
   timetable const& tt_;
   day_idx_t const& base_;
+  meat_csa_state<ProfileSet>& state_;
   clasz_mask_t const& allowed_claszes_;
   profile_idx_t const& fp_prf_idx_;
   meat_csa_stats& stats_;
   std::vector<transport_idx_t> trip_reset_list_;
   transport_idx_t::value_t trip_reset_list_end_;
-  ProfileSet profile_set_;
+  ProfileSet& profile_set_;
   vecvec<transport_idx_t, trip_data> trip_;
   std::priority_queue<std::unique_ptr<profile_entry>,
                       std::vector<std::unique_ptr<profile_entry>>,
