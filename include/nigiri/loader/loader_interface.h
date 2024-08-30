@@ -20,7 +20,8 @@ struct loader_config {
 
   // finalize options
   bool adjust_footpaths_{true};
-  bool merge_duplicates_{true};
+  bool merge_dupes_intra_src{true};
+  bool merge_dupes_inter_src{true};
   std::uint16_t max_footpath_length_{20};
 };
 
