@@ -71,7 +71,7 @@ TEST(gtfs, shapeRequest_noShape_getEmptyVector) {
   loader::finalize(tt);
 
   auto const shape_by_trip_index = get_shape(trip_idx_t{1}, tt, shape_data);
-  auto const shape_by_shape_index = get_shape(shape_idx_t{1},   shape_data);
+  auto const shape_by_shape_index = get_shape(shape_idx_t{1}, shape_data);
 
   EXPECT_EQ(geo::polyline{}, shape_by_trip_index);
   EXPECT_EQ(geo::polyline{}, shape_by_shape_index);
@@ -178,10 +178,8 @@ TEST(gtfs, shapeRequest_singleTripWithShape_getFullShape) {
   loader::finalize(tt);
 
   // Testing shape 'Last', used by 'Trip 3' (index == 2)
-  auto const shape_by_trip_index =
-      get_shape(trip_idx_t{2}, tt, shape_data);
-  auto const shape_by_shape_index =
-      get_shape(shape_idx_t{3}, shape_data);
+  auto const shape_by_trip_index = get_shape(trip_idx_t{2}, tt, shape_data);
+  auto const shape_by_shape_index = get_shape(shape_idx_t{3}, shape_data);
 
   auto const expected_shape = geo::polyline{
       {4.0f, 5.0f}, {5.5f, 2.5f}, {5.5f, 3.0f},
@@ -207,8 +205,7 @@ TEST(gtfs, shapeRequest_singleTripWithoutShape_getEmptyShape) {
   loader::finalize(tt);
 
   // Testing trip without shape, i.e. 'Trip 4' (index == 3)
-  auto const shape_by_trip_index =
-      get_shape(trip_idx_t{3}, tt, shape_data);
+  auto const shape_by_trip_index = get_shape(trip_idx_t{3}, tt, shape_data);
   auto const shape_by_shape_index =
       get_shape(shape_idx_t::invalid(), shape_data);
 

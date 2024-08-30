@@ -115,8 +115,8 @@ void load_timetable(loader_config const& config,
   auto const dates = read_calendar_date(load(kCalendarDatesFile).data());
   auto const service =
       merge_traffic_days(tt.internal_interval_days(), calendar, dates);
-  auto const shape_indices = (shapes != nullptr)
-                          ? parse_shapes(load(kShapesFile).data(), *shapes)
+  auto const shape_indices =
+      (shapes != nullptr) ? parse_shapes(load(kShapesFile).data(), *shapes)
                           : shape_id_map_t{};
   auto trip_data =
       read_trips(tt, routes, service, shape_indices, load(kTripsFile).data(),
