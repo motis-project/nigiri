@@ -161,11 +161,30 @@ TEST(loader, merge_intra_src) {
   for (auto a = transport_idx_t{0U}; a != tt.next_transport_idx(); ++a) {
     for (auto b = transport_idx_t{0U}; b != tt.next_transport_idx(); ++b) {
       if (a != b) {
-        //                EXPECT_EQ(tt.bitfields_[tt.transport_traffic_days_[a]]
-        //                &
-        //                      tt.bitfields_[tt.transport_traffic_days_[b]],
-        //                  tt.bitfields_[bitfield_idx_t{0U}]);
+        EXPECT_EQ(tt.bitfields_[tt.transport_traffic_days_[a]] &
+                      tt.bitfields_[tt.transport_traffic_days_[b]],
+                  tt.bitfields_[bitfield_idx_t{0U}]);
       }
     }
+  }
+
+  auto tt_contains_2593445697 = false;
+  auto tt_contains_2593399070 = false;
+  for (auto i = trip_id_idx_t{0U}; i != tt.trip_id_strings_.size(); ++i) {
+    if (tt.trip_id_strings_[i].view() == "2593445697") {
+      tt_contains_2593445697 = true;
+    }
+    if (tt.trip_id_strings_[i].view() == "2593399070") {
+      tt_contains_2593399070 = true;
+    }
+  }
+  EXPECT_TRUE(tt_contains_2593445697);
+  EXPECT_TRUE(tt_contains_2593399070);
+
+  for (auto [tr_range_a, tr_range_b] :
+       utl::zip(tt.trip_transport_ranges_[trip_idx_t{0U}],
+                tt.trip_transport_ranges_[trip_idx_t{1U}])) {
+    EXPECT_EQ(tr_range_a.first, tr_range_b.first);
+    EXPECT_EQ(tr_range_a.second, tr_range_b.second);
   }
 }
