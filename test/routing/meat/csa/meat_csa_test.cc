@@ -45,9 +45,9 @@ struct load_tt {
   timetable tt_;
 };
 
-class meat_csa_profiles_test : public testing::Test, public load_tt {
+class MeatCsaProfilesTest : public testing::Test, public load_tt {
 protected:
-  meat_csa_profiles_test()
+  MeatCsaProfilesTest()
       : state_static_{},
         state_dynamic_growth_{},
         state_dynamic_{},
@@ -109,7 +109,7 @@ protected:
   mcsa::meat_csa<mcsa::dynamic_profile_set> meat_dynamic_;
 };
 
-TEST_F(meat_csa_profiles_test, same_and_correct_on_simple_run) {
+TEST_F(MeatCsaProfilesTest, SameAndCorrectOnSimpleRun) {
   auto g_s = meat_static_execute();
   auto g_dg = meat_dynamic_growth_execute();
   auto g_d = meat_dynamic_execute();
@@ -121,7 +121,7 @@ TEST_F(meat_csa_profiles_test, same_and_correct_on_simple_run) {
   expect_eq(g_d, g_dg);
 }
 
-TEST_F(meat_csa_profiles_test, same_on_several_runs) {
+TEST_F(MeatCsaProfilesTest, SameOnSeveralRuns) {
   // test static_profile_set
   auto g_s = meat_static_execute();
   auto ea_s = state_static_.profile_set_.compute_entry_amount();
@@ -192,7 +192,7 @@ TEST_F(meat_csa_profiles_test, same_on_several_runs) {
   EXPECT_EQ(ne_d, ne_d3);
 }
 
-TEST_F(meat_csa_profiles_test, same_on_new_meat_csa_router) {
+TEST_F(MeatCsaProfilesTest, SameOnNewMeatCsaRouter) {
   auto g_s = meat_static_execute();
   auto ea_s = state_static_.profile_set_.compute_entry_amount();
   auto ne_s = state_static_.profile_set_.n_entry_idxs();
@@ -234,7 +234,7 @@ TEST_F(meat_csa_profiles_test, same_on_new_meat_csa_router) {
   EXPECT_EQ(ne_d, ne_d2);
 }
 
-TEST(meat_csa, simple) {
+TEST(MeatCsa, Simple) {
   constexpr auto const src = source_idx_t{0U};
 
   timetable tt;
