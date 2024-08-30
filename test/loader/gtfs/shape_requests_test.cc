@@ -58,6 +58,7 @@ S1,20240301,1
 
 TEST(gtfs, shapeRequest_noShape_getEmptyVector) {
   auto mmap = loader::gtfs::shape_test_mmap{"shape-route-trip-with-shape"};
+  auto& shape_data = mmap.get_shape_data();
 
   auto tt = timetable{};
 
@@ -69,19 +70,8 @@ TEST(gtfs, shapeRequest_noShape_getEmptyVector) {
                                tt);
   loader::finalize(tt);
 
-  auto& shape_data = mmap.get_shape_data();
-  auto const shape_by_trip_index =
-      shape_data
-          .and_then([&](auto const& file) {
-            return std::make_optional(get_shape(trip_idx_t{1}, tt, file));
-          })
-          .value();
-  auto const shape_by_shape_index =
-      shape_data
-          .and_then([](auto const& file) {
-            return std::make_optional(get_shape(shape_idx_t::invalid(), file));
-          })
-          .value();
+  auto const shape_by_trip_index = get_shape(trip_idx_t{1}, tt, shape_data);
+  auto const shape_by_shape_index = get_shape(shape_idx_t{1},   shape_data);
 
   EXPECT_EQ(geo::polyline{}, shape_by_trip_index);
   EXPECT_EQ(geo::polyline{}, shape_by_shape_index);
@@ -182,24 +172,16 @@ TEST(gtfs, shapeRequest_singleTripWithShape_getFullShape) {
                     date::sys_days{2024_y / March / 2}};
   loader::register_special_stations(tt);
   auto local_bitfield_indices = hash_map<bitfield, bitfield_idx_t>{};
-  loader::gtfs::load_timetable({}, source_idx_t{1},
-                               loader::mem_dir::read(test_files_with_shapes),
-                               tt, local_bitfield_indices, shape_data, nullptr);
+  loader::gtfs::load_timetable(
+      {}, source_idx_t{1}, loader::mem_dir::read(test_files_with_shapes), tt,
+      local_bitfield_indices, nullptr, &shape_data);
   loader::finalize(tt);
 
   // Testing shape 'Last', used by 'Trip 3' (index == 2)
   auto const shape_by_trip_index =
-      shape_data
-          .and_then([&](auto const& file) {
-            return std::make_optional(get_shape(trip_idx_t{2}, tt, file));
-          })
-          .value();
+      get_shape(trip_idx_t{2}, tt, shape_data);
   auto const shape_by_shape_index =
-      shape_data
-          .and_then([](auto const& file) {
-            return std::make_optional(get_shape(shape_idx_t{3}, file));
-          })
-          .value();
+      get_shape(shape_idx_t{3}, shape_data);
 
   auto const expected_shape = geo::polyline{
       {4.0f, 5.0f}, {5.5f, 2.5f}, {5.5f, 3.0f},
@@ -219,24 +201,16 @@ TEST(gtfs, shapeRequest_singleTripWithoutShape_getEmptyShape) {
                     date::sys_days{2024_y / March / 2}};
   loader::register_special_stations(tt);
   auto local_bitfield_indices = hash_map<bitfield, bitfield_idx_t>{};
-  loader::gtfs::load_timetable({}, source_idx_t{1},
-                               loader::mem_dir::read(test_files_with_shapes),
-                               tt, local_bitfield_indices, shape_data, nullptr);
+  loader::gtfs::load_timetable(
+      {}, source_idx_t{1}, loader::mem_dir::read(test_files_with_shapes), tt,
+      local_bitfield_indices, nullptr, &shape_data);
   loader::finalize(tt);
 
   // Testing trip without shape, i.e. 'Trip 4' (index == 3)
   auto const shape_by_trip_index =
-      shape_data
-          .and_then([&](auto const& file) {
-            return std::make_optional(get_shape(trip_idx_t{3}, tt, file));
-          })
-          .value();
+      get_shape(trip_idx_t{3}, tt, shape_data);
   auto const shape_by_shape_index =
-      shape_data
-          .and_then([](auto const& file) {
-            return std::make_optional(get_shape(shape_idx_t::invalid(), file));
-          })
-          .value();
+      get_shape(shape_idx_t::invalid(), shape_data);
 
   auto const expected_shape = geo::polyline{};
   EXPECT_EQ(expected_shape, shape_by_trip_index);

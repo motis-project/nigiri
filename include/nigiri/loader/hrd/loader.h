@@ -1,7 +1,5 @@
 #pragma once
 
-#include <optional>
-
 #include "nigiri/loader/hrd/parser_config.h"
 #include "nigiri/loader/loader_interface.h"
 
@@ -15,8 +13,8 @@ struct hrd_loader : public loader_interface {
             dir const& d,
             timetable& tt,
             hash_map<bitfield, bitfield_idx_t>&,
-            std::optional<shape_vecvec_t>&,
-            assistance_times*) const override;
+            assistance_times*,
+            shape_vecvec_t* = nullptr) const override;
   cista::hash_t hash(dir const&) const override;
   nigiri::loader::hrd::config config_;
 };

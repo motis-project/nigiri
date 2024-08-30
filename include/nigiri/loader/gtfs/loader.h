@@ -1,7 +1,5 @@
 #pragma once
 
-#include <optional>
-
 #include "nigiri/loader/loader_interface.h"
 
 namespace nigiri::loader::gtfs {
@@ -13,8 +11,8 @@ struct gtfs_loader : public loader_interface {
             dir const&,
             timetable&,
             hash_map<bitfield, bitfield_idx_t>&,
-            std::optional<shape_vecvec_t>&,
-            assistance_times*) const override;
+            assistance_times*,
+            shape_vecvec_t* = nullptr) const override;
   cista::hash_t hash(dir const&) const override;
   std::string_view name() const override;
 };

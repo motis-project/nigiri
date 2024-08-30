@@ -1,6 +1,5 @@
 #include "gtest/gtest.h"
 
-#include <optional>
 #include <ranges>
 #include <sstream>
 #include <vector>
@@ -59,12 +58,7 @@ TEST(gtfs, shapeBuilder_withData_getExistingShapePoints) {
   auto mmap = shape_test_mmap{"shape-test-builder"};
   auto& shape_data = mmap.get_shape_data();
 
-  auto const shapes =
-      shape_data
-          .and_then([](auto& file) {
-            return std::make_optional(parse_shapes(shapes_data_aachen, file));
-          })
-          .value();
+  auto const shapes = parse_shapes(shapes_data_aachen, shape_data);
 
   auto const shape_not_existing_it = shapes.find("1");
   auto const shape_243_it = shapes.find("243");
@@ -73,8 +67,8 @@ TEST(gtfs, shapeBuilder_withData_getExistingShapePoints) {
   EXPECT_EQ(shapes.end(), shape_not_existing_it);
   EXPECT_NE(shapes.end(), shape_243_it);
   EXPECT_NE(shapes.end(), shape_3105_it);
-  auto const shape_243 = shape_data.value()[shape_243_it->second];
-  auto const shape_3105 = shape_data.value()[shape_3105_it->second];
+  auto const shape_243 = shape_data[shape_243_it->second];
+  auto const shape_3105 = shape_data[shape_3105_it->second];
   assert_polyline_eq(shape_points_aachen.at("243"),
                      geo::polyline{shape_243.begin(), shape_243.end()});
   assert_polyline_eq(shape_points_aachen.at("3105"),
@@ -101,12 +95,7 @@ test id,50.553822,6.356876,0
   auto mmap = shape_test_mmap{"shape-test-unicode-ids"};
   auto& shape_data = mmap.get_shape_data();
 
-  auto const shapes =
-      shape_data
-          .and_then([&](auto& file) {
-            return std::make_optional(parse_shapes(shapes_data, file));
-          })
-          .value();
+  auto const shapes = parse_shapes(shapes_data, shape_data);
 
   std::vector<std::string> ids{"test id"s,      "----"s, "\x07\x13\x41\x08"s,
                                "ルーティング"s, ""s,     "\0"s,
@@ -114,7 +103,7 @@ test id,50.553822,6.356876,0
   for (auto const& id : ids) {
     auto const shape_it = shapes.find(id);
     EXPECT_NE(shapes.end(), shape_it);
-    EXPECT_EQ(1, shape_data.value()[shape_it->second].size());
+    EXPECT_EQ(1, shape_data[shape_it->second].size());
   }
 }
 
@@ -131,12 +120,7 @@ TEST(gtfs, shapeParse_notAscendingSequence_progressAndLogError) {
   auto const buffer_guard = utl::make_raii(
       backup, [](const decltype(backup)& buf) { std::clog.rdbuf(buf); });
 
-  auto const shapes =
-      shape_data
-          .and_then([&](auto& file) {
-            return std::make_optional(parse_shapes(shapes_data, file));
-          })
-          .value();
+  auto const shapes = parse_shapes(shapes_data, shape_data);
 
   auto const shape_points =
       geo::polyline{{50.636512, 6.473487}, {50.636259, 6.473668}};
@@ -144,7 +128,7 @@ TEST(gtfs, shapeParse_notAscendingSequence_progressAndLogError) {
   auto const log = std::string{buffer.str()};
   auto const shape_it = shapes.find("1");
   EXPECT_NE(shapes.end(), shape_it);
-  auto const shape = shape_data.value()[shape_it->second];
+  auto const shape = shape_data[shape_it->second];
   assert_polyline_eq(shape_points, geo::polyline{shape.begin(), shape.end()});
   EXPECT_TRUE(
       log.contains("Non monotonic sequence for shape_id '1': Sequence number 1 "
@@ -170,12 +154,7 @@ TEST(gtfs, shapeParse_shuffledRows_parseAllData) {
   auto mmap = shape_test_mmap{"shape-test-shuffled-rows"};
   auto& shape_data = mmap.get_shape_data();
 
-  auto const shapes =
-      shape_data
-          .and_then([&](auto& file) {
-            return std::make_optional(parse_shapes(shapes_data, file));
-          })
-          .value();
+  auto const shapes = parse_shapes(shapes_data, shape_data);
 
   auto const shape_points = std::unordered_map<std::string, geo::polyline>{
       {"240",
@@ -212,7 +191,7 @@ TEST(gtfs, shapeParse_shuffledRows_parseAllData) {
   for (auto [id, polyline] : shape_points) {
     auto const shape_it = shapes.find(id);
     EXPECT_NE(shapes.end(), shape_it);
-    auto const shape = shape_data.value()[shape_it->second];
+    auto const shape = shape_data[shape_it->second];
     assert_polyline_eq(polyline, geo::polyline{shape.begin(), shape.end()});
   }
 }
@@ -231,12 +210,7 @@ TEST(gtfs,
   auto const buffer_guard = utl::make_raii(
       backup, [](const decltype(backup)& buf) { std::clog.rdbuf(buf); });
 
-  auto const shapes =
-      mmap.get_shape_data()
-          .and_then([&](auto& file) {
-            return std::make_optional(parse_shapes(shapes_data, file));
-          })
-          .value();
+  auto const shapes = parse_shapes(shapes_data, mmap.get_shape_data());
 
   std::clog.flush();
   auto const log = std::string{buffer.str()};

@@ -1,7 +1,5 @@
 #pragma once
 
-#include <optional>
-
 #include "nigiri/loader/dir.h"
 #include "nigiri/loader/loader_interface.h"
 #include "nigiri/types.h"
@@ -24,21 +22,15 @@ void load_timetable(loader_config const&,
                     source_idx_t,
                     dir const&,
                     timetable&,
-                    assistance_times* = nullptr);
-
-void load_timetable(loader_config const&,
-                    source_idx_t,
-                    dir const&,
-                    timetable&,
-                    std::optional<shape_vecvec_t>&,
-                    assistance_times* = nullptr);
+                    assistance_times* = nullptr,
+                    shape_vecvec_t* = nullptr);
 
 void load_timetable(loader_config const&,
                     source_idx_t,
                     dir const&,
                     timetable&,
                     hash_map<bitfield, bitfield_idx_t>&,
-                    std::optional<shape_vecvec_t>&,
-                    assistance_times* = nullptr);
+                    assistance_times* = nullptr,
+                    shape_vecvec_t* = nullptr);
 
 }  // namespace nigiri::loader::gtfs

@@ -1,7 +1,6 @@
 #pragma once
 
 #include <filesystem>
-#include <optional>
 #include <vector>
 
 #include "date/date.h"
@@ -18,8 +17,8 @@ struct loader_config;
 timetable load(std::vector<std::filesystem::path> const&,
                loader_config const&,
                interval<date::sys_days> const&,
-               std::optional<shape_vecvec_t>&,
                assistance_times*,
+               shape_vecvec_t*,
                bool ignore = false);
 
 }  // namespace nigiri::loader

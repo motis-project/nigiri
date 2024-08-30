@@ -14,10 +14,10 @@ geo::polyline get_shape(trip_idx_t const trip_idx,
 
 geo::polyline get_shape(shape_idx_t const shape_idx,
                         shape_vecvec_t const& shapes) {
-  if (shape_idx == shape_idx_t::invalid()) {
+  if (shape_idx == shape_idx_t::invalid() || shape_idx >= shapes.size()) {
     return {};
   }
-  auto const& bucket = shapes.at(shape_idx);
+  auto const& bucket = shapes[shape_idx];
   return geo::polyline(bucket.begin(), bucket.end());
 }
 
