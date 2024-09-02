@@ -421,6 +421,9 @@ void build_footpaths(timetable& tt,
     for (auto const& [a, b] : matches) {
       find_duplicates(tt, matches, a, b);
     }
+    for (auto l = location_idx_t{0U}; l != tt.n_locations(); ++l) {
+      find_duplicates(tt, matches, l, l);
+    }
   }
   connect_components(tt, max_footpath_length, adjust_footpaths);
   sort_footpaths(tt);
