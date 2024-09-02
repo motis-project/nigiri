@@ -28,10 +28,10 @@ shape_id_map_t const parse_shapes(std::string_view const data,
   auto lookup = cached_lookup(states);
 
   auto const store_to_map = [&](shape_entry const entry) {
-    auto& state = lookup(entry.id_.val(), [&] -> shape_state {
+    auto& state = lookup(entry.id_.val(), [&] {
       auto const index = static_cast<shape_idx_t>(shapes.size());
       shapes.add_back_sized(0u);
-      return {index, 0};
+      return shape_state{index, 0};
     });
     auto const seq = entry.seq_.val();
     auto bucket = shapes[state.index_];
