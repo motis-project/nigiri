@@ -134,6 +134,7 @@ unsigned find_duplicates(timetable& tt,
         if (*a_t == *b_t) {
           ++a_t;
           ++b_t;
+          continue;
         }
 
         auto const time_a = tt.event_mam(a_route, *a_t, 0U, event_type::kDep);
