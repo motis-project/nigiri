@@ -33,6 +33,10 @@ bool merge(timetable& tt,
            stop_idx_t const size,
            transport_idx_t const a,
            transport_idx_t const b) {
+  if (a == b) {
+    return true;
+  }
+
   auto const bf_a = tt.bitfields_[tt.transport_traffic_days_[a]];
   auto const bf_b = tt.bitfields_[tt.transport_traffic_days_[b]];
   if ((bf_a & bf_b).none()) {
@@ -127,6 +131,11 @@ unsigned find_duplicates(timetable& tt,
       auto a_t = begin(a_transport_range), b_t = begin(b_transport_range);
 
       while (a_t != end(a_transport_range) && b_t != end(b_transport_range)) {
+        if (*a_t == *b_t) {
+          ++a_t;
+          ++b_t;
+        }
+
         auto const time_a = tt.event_mam(a_route, *a_t, 0U, event_type::kDep);
         auto const time_b = tt.event_mam(b_route, *b_t, 0U, event_type::kDep);
 

@@ -15,7 +15,7 @@ using namespace date;
 
 namespace {
 
-mem_dir rbo500_files() {
+mem_dir rbo500_a_files() {
   return mem_dir::read(R"__(
 # trips.txt
 "route_id","service_id","trip_id","trip_headsign","trip_short_name","direction_id","block_id","shape_id","wheelchair_accessible","bikes_allowed"
@@ -155,7 +155,7 @@ TEST(loader, merge_intra_src) {
   tt.date_range_ = {date::sys_days{2024_y / August / 5},
                     date::sys_days{2024_y / December / 14}};
   register_special_stations(tt);
-  load_timetable({}, source_idx_t{0}, rbo500_files(), tt);
+  load_timetable({}, source_idx_t{0}, rbo500_a_files(), tt);
   finalize(tt, false, true, false);
 
   for (auto a = transport_idx_t{0U}; a != tt.next_transport_idx(); ++a) {
@@ -186,6 +186,8 @@ TEST(loader, merge_intra_src) {
                 tt.trip_transport_ranges_[trip_idx_t{1U}])) {
     EXPECT_EQ(tr_range_a.first, tr_range_b.first);
     EXPECT_EQ(tr_range_a.second, tr_range_b.second);
+    EXPECT_NE(tt.bitfields_[tt.transport_traffic_days_[tr_range_a.first]],
+              tt.bitfields_[bitfield_idx_t{0U}]);
   }
 }
 
@@ -349,8 +351,6 @@ TEST(loader, merge_inter_src) {
   load_timetable({}, source_idx_t{1}, line1_2593402613_files(), tt);
   finalize(tt, false, false, true);
 
-  std::cout << tt << "\n";
-
   for (auto a = transport_idx_t{0U}; a != tt.next_transport_idx(); ++a) {
     for (auto b = transport_idx_t{0U}; b != tt.next_transport_idx(); ++b) {
       if (a != b) {
@@ -379,12 +379,14 @@ TEST(loader, merge_inter_src) {
                 tt.trip_transport_ranges_[trip_idx_t{1U}])) {
     EXPECT_EQ(tr_range_a.first, tr_range_b.first);
     EXPECT_EQ(tr_range_a.second, tr_range_b.second);
+    EXPECT_NE(tt.bitfields_[tt.transport_traffic_days_[tr_range_a.first]],
+              tt.bitfields_[bitfield_idx_t{0U}]);
   }
 }
 
 namespace {
 
-mem_dir bus500_files() {
+mem_dir rbo500_b_files() {
   return mem_dir::read(R"__(
 # trips.txt
 "route_id","service_id","trip_id","trip_headsign","trip_short_name","direction_id","block_id","shape_id","wheelchair_accessible","bikes_allowed"
@@ -525,10 +527,10 @@ mem_dir bus500_files() {
 TEST(loader, merge_reflexive_matching) {
   timetable tt;
   register_special_stations(tt);
-  tt.date_range_ = {date::sys_days{2024_y / August / 1},
-                    date::sys_days{2024_y / September / 30}};
+  tt.date_range_ = {date::sys_days{2024_y / August / 5},
+                    date::sys_days{2024_y / December / 14}};
   auto const src_idx = source_idx_t{0};
-  load_timetable({}, src_idx, bus500_files(), tt);
+  load_timetable({}, src_idx, rbo500_b_files(), tt);
   finalize(tt, false, true, false);
 
   for (auto a = transport_idx_t{0U}; a != tt.next_transport_idx(); ++a) {
@@ -539,5 +541,27 @@ TEST(loader, merge_reflexive_matching) {
                   tt.bitfields_[bitfield_idx_t{0U}]);
       }
     }
+  }
+
+  auto tt_contains_2593445670 = false;
+  auto tt_contains_2593399038 = false;
+  for (auto i = trip_id_idx_t{0U}; i != tt.trip_id_strings_.size(); ++i) {
+    if (tt.trip_id_strings_[i].view() == "2593445670") {
+      tt_contains_2593445670 = true;
+    }
+    if (tt.trip_id_strings_[i].view() == "2593399038") {
+      tt_contains_2593399038 = true;
+    }
+  }
+  EXPECT_TRUE(tt_contains_2593445670);
+  EXPECT_TRUE(tt_contains_2593399038);
+
+  for (auto [tr_range_a, tr_range_b] :
+       utl::zip(tt.trip_transport_ranges_[trip_idx_t{0U}],
+                tt.trip_transport_ranges_[trip_idx_t{1U}])) {
+    EXPECT_EQ(tr_range_a.first, tr_range_b.first);
+    EXPECT_EQ(tr_range_a.second, tr_range_b.second);
+    EXPECT_NE(tt.bitfields_[tt.transport_traffic_days_[tr_range_a.first]],
+              tt.bitfields_[bitfield_idx_t{0U}]);
   }
 }
