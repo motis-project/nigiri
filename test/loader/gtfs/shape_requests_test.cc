@@ -73,8 +73,10 @@ TEST(gtfs, shapeRequest_noShape_getEmptyVector) {
   auto const shape_by_trip_index = get_shape(trip_idx_t{1}, tt, shape_data);
   auto const shape_by_shape_index = get_shape(shape_idx_t{1}, shape_data);
 
-  EXPECT_EQ(geo::polyline{}, shape_by_trip_index);
-  EXPECT_EQ(geo::polyline{}, shape_by_shape_index);
+  EXPECT_EQ(geo::polyline{}, (geo::polyline{shape_by_trip_index.begin(),
+                                            shape_by_trip_index.end()}));
+  EXPECT_EQ(geo::polyline{}, (geo::polyline{shape_by_shape_index.begin(),
+                                            shape_by_shape_index.end()}));
 }
 
 constexpr auto const test_files_with_shapes = R"(
@@ -185,8 +187,10 @@ TEST(gtfs, shapeRequest_singleTripWithShape_getFullShape) {
       {4.0f, 5.0f}, {5.5f, 2.5f}, {5.5f, 3.0f},
       {6.0f, 3.0f}, {5.0f, 2.0f}, {4.0f, 2.0f},
   };
-  EXPECT_EQ(expected_shape, shape_by_trip_index);
-  EXPECT_EQ(expected_shape, shape_by_shape_index);
+  EXPECT_EQ(expected_shape, (geo::polyline{shape_by_trip_index.begin(),
+                                           shape_by_trip_index.end()}));
+  EXPECT_EQ(expected_shape, (geo::polyline{shape_by_shape_index.begin(),
+                                           shape_by_shape_index.end()}));
 }
 
 TEST(gtfs, shapeRequest_singleTripWithoutShape_getEmptyShape) {
@@ -210,6 +214,8 @@ TEST(gtfs, shapeRequest_singleTripWithoutShape_getEmptyShape) {
       get_shape(shape_idx_t::invalid(), shape_data);
 
   auto const expected_shape = geo::polyline{};
-  EXPECT_EQ(expected_shape, shape_by_trip_index);
-  EXPECT_EQ(expected_shape, shape_by_shape_index);
+  EXPECT_EQ(expected_shape, (geo::polyline{shape_by_trip_index.begin(),
+                                           shape_by_trip_index.end()}));
+  EXPECT_EQ(expected_shape, (geo::polyline{shape_by_shape_index.begin(),
+                                           shape_by_shape_index.end()}));
 }
