@@ -48,9 +48,9 @@ S7,S6,3,
 )"};
 
 constexpr auto const example_trips_file_content =
-    R"(route_id,service_id,trip_id,trip_headsign,direction_id,block_id
-A,WE,AWE1,Downtown,0,1
-A,WE,AWD1,Downtown,1,2
+    R"(route_id,service_id,trip_id,trip_headsign,block_id
+A,WE,AWE1,Downtown,1
+A,WE,AWD1,Downtown,2
 )";
 
 constexpr auto const example_frequencies_file_content =
@@ -141,9 +141,9 @@ F11,F04---,,,,1203,,,
 
 constexpr auto const berlin_trips_file_content =
     R"(route_id,service_id,trip_id,trip_headsign,trip_short_name,direction_id,block_id,shape_id
-1,000856,1,Flughafen Schönefeld Terminal (Airport),,1,1,
-1,000856,2,S Potsdam Hauptbahnhof,,0,2,
-2,000861,3,"Golzow (PM), Schule",,1,3,
+1,000856,1,Flughafen Schönefeld Terminal (Airport),,,1,
+1,000856,2,S Potsdam Hauptbahnhof,,,2,
+2,000861,3,"Golzow (PM), Schule",,,3,
 )";
 
 loader::mem_dir berlin_files() {
