@@ -4,12 +4,21 @@
 #include "nigiri/loader/gtfs/files.h"
 #include "nigiri/loader/gtfs/load_timetable.h"
 #include "nigiri/loader/init_finish.h"
+#include "nigiri/rt/gtfsrt_resolve_run.h"
 #include "nigiri/timetable.h"
 
 using namespace nigiri;
 using namespace nigiri::loader;
 using namespace nigiri::loader::gtfs;
 using namespace date;
+
+auto resolve(date::sys_days d,
+             timetable const& tt,
+             source_idx_t const src,
+             transit_realtime::TripDescriptor const& td) {
+  rt_timetable rtt;
+  return rt::gtfsrt_resolve_run(d, tt, rtt, src, td);
+}
 
 namespace {
 
@@ -170,18 +179,20 @@ TEST(loader, merge_intra_src) {
     }
   }
 
-  auto tt_contains_2593445697 = false;
-  auto tt_contains_2593399070 = false;
-  for (auto i = trip_id_idx_t{0U}; i != tt.trip_id_strings_.size(); ++i) {
-    if (tt.trip_id_strings_[i].view() == "2593445697") {
-      tt_contains_2593445697 = true;
-    }
-    if (tt.trip_id_strings_[i].view() == "2593399070") {
-      tt_contains_2593399070 = true;
-    }
-  }
-  EXPECT_TRUE(tt_contains_2593445697);
-  EXPECT_TRUE(tt_contains_2593399070);
+  auto td = transit_realtime::TripDescriptor();
+
+  *td.mutable_trip_id() = "2593445697";
+  auto const [r0, t0] =
+      resolve(date::sys_days{2024_y / September / 3}, tt, source_idx_t{0}, td);
+  ASSERT_TRUE(r0.valid());
+
+  *td.mutable_trip_id() = "2593399070";
+  auto const [r1, t1] =
+      resolve(date::sys_days{2024_y / September / 3}, tt, source_idx_t{0}, td);
+  ASSERT_TRUE(r1.valid());
+
+  EXPECT_EQ(r0.t_, r1.t_);
+  EXPECT_NE(t0, t1);
 
   for (auto [tr_range_a, tr_range_b] :
        utl::zip(tt.trip_transport_ranges_[trip_idx_t{0U}],
@@ -367,18 +378,20 @@ TEST(loader, merge_inter_src) {
     }
   }
 
-  auto tt_contains_2593432458 = false;
-  auto tt_contains_2593402613 = false;
-  for (auto i = trip_id_idx_t{0U}; i != tt.trip_id_strings_.size(); ++i) {
-    if (tt.trip_id_strings_[i].view() == "2593432458") {
-      tt_contains_2593432458 = true;
-    }
-    if (tt.trip_id_strings_[i].view() == "2593402613") {
-      tt_contains_2593402613 = true;
-    }
-  }
-  EXPECT_TRUE(tt_contains_2593432458);
-  EXPECT_TRUE(tt_contains_2593402613);
+  auto td = transit_realtime::TripDescriptor();
+
+  *td.mutable_trip_id() = "2593432458";
+  auto const [r0, t0] =
+      resolve(date::sys_days{2024_y / September / 3}, tt, source_idx_t{0}, td);
+  ASSERT_TRUE(r0.valid());
+
+  *td.mutable_trip_id() = "2593402613";
+  auto const [r1, t1] =
+      resolve(date::sys_days{2024_y / September / 3}, tt, source_idx_t{1}, td);
+  ASSERT_TRUE(r1.valid());
+
+  EXPECT_EQ(r0.t_, r1.t_);
+  EXPECT_NE(t0, t1);
 
   for (auto [tr_range_a, tr_range_b] :
        utl::zip(tt.trip_transport_ranges_[trip_idx_t{0U}],
@@ -553,18 +566,20 @@ TEST(loader, merge_reflexive_matching) {
     }
   }
 
-  auto tt_contains_2593445670 = false;
-  auto tt_contains_2593399038 = false;
-  for (auto i = trip_id_idx_t{0U}; i != tt.trip_id_strings_.size(); ++i) {
-    if (tt.trip_id_strings_[i].view() == "2593445670") {
-      tt_contains_2593445670 = true;
-    }
-    if (tt.trip_id_strings_[i].view() == "2593399038") {
-      tt_contains_2593399038 = true;
-    }
-  }
-  EXPECT_TRUE(tt_contains_2593445670);
-  EXPECT_TRUE(tt_contains_2593399038);
+  auto td = transit_realtime::TripDescriptor();
+
+  *td.mutable_trip_id() = "2593445670";
+  auto const [r0, t0] =
+      resolve(date::sys_days{2024_y / September / 3}, tt, source_idx_t{0}, td);
+  ASSERT_TRUE(r0.valid());
+
+  *td.mutable_trip_id() = "2593399038";
+  auto const [r1, t1] =
+      resolve(date::sys_days{2024_y / September / 3}, tt, source_idx_t{0}, td);
+  ASSERT_TRUE(r1.valid());
+
+  EXPECT_EQ(r0.t_, r1.t_);
+  EXPECT_NE(t0, t1);
 
   for (auto [tr_range_a, tr_range_b] :
        utl::zip(tt.trip_transport_ranges_[trip_idx_t{0U}],
