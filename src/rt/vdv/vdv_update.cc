@@ -210,10 +210,9 @@ std::optional<rt::run> updater::find_run(std::string_view vdv_run_id,
             continue;
           }
 
-          auto vdv_ev = vdv_stop.get_event(event_type::kDep);
-          if (stop_idx == location_seq.size() - 1) {
-            vdv_ev = vdv_stop.get_event(event_type::kArr);
-          }
+          auto const vdv_ev = stop_idx == location_seq.size() - 1
+                                  ? vdv_stop.get_event(event_type::kArr)
+                                  : vdv_stop.get_event(event_type::kDep);
           if (!vdv_ev.has_value()) {
             continue;
           }
