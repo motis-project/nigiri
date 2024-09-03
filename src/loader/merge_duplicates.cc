@@ -1,6 +1,6 @@
 #include "nigiri/loader/merge_duplicates.h"
 
-#include "nigiri/routing/for_each_meta.h"
+#include "nigiri/for_each_meta.h"
 #include "nigiri/timetable.h"
 
 namespace nigiri::loader {

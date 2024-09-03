@@ -1,6 +1,6 @@
 #include "nigiri/routing/start_times.h"
 
-#include "nigiri/routing/for_each_meta.h"
+#include "nigiri/for_each_meta.h"
 #include "nigiri/rt/rt_timetable.h"
 #include "nigiri/special_stations.h"
 #include "utl/enumerate.h"
