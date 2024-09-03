@@ -35,8 +35,9 @@ void link_nearby_stations(timetable& tt) {
 
       auto const to_src = tt.locations_.src_[l_to_idx];
       auto const to_pos = tt.locations_.coordinates_[l_to_idx];
-      if (to_src == source_idx_t::invalid()) {
-        continue; /* no dummy stations */
+      if (to_src == source_idx_t::invalid() /* no dummy stations */
+          || from_src == to_src /* don't short-circuit */) {
+        continue;
       }
 
       auto const from_transfer_time =
