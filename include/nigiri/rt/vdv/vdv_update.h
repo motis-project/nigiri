@@ -61,9 +61,7 @@ private:
                                                 char const*);
 
   struct vdv_stop {
-    explicit vdv_stop(location_idx_t const,
-                      std::string_view id,
-                      pugi::xml_node const);
+    explicit vdv_stop(location_idx_t, std::string_view id, pugi::xml_node);
 
     std::optional<std::pair<unixtime_t, event_type>> get_event(
         event_type et) const;
@@ -73,7 +71,7 @@ private:
     std::optional<unixtime_t> dep_, arr_, rt_dep_, rt_arr_;
   };
 
-  vector<vdv_stop> resolve_stops(pugi::xml_node const vdv_run);
+  vector<vdv_stop> resolve_stops(pugi::xml_node vdv_run);
 
   std::optional<rt::run> find_run(std::string_view vdv_run_id,
                                   vector<vdv_stop> const&,
