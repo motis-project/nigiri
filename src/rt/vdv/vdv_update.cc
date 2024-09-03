@@ -456,10 +456,9 @@ void updater::process_vdv_run(rt_timetable& rtt, pugi::xml_node const vdv_run) {
 
   auto vdv_stops = resolve_stops(vdv_run);
 
-  auto const vdv_run_id =
-      std::string{
-          get(vdv_run, "./FahrtRef/FahrtID/FahrtBezeichner").child_value()}
-          .append(get(vdv_run, "./FahrtRef/FahrtID/Betriebstag").child_value());
+  auto const vdv_run_id = fmt::format(
+      "{}{}", get(vdv_run, "./FahrtRef/FahrtID/FahrtBezeichner").child_value(),
+      get(vdv_run, "./FahrtRef/FahrtID/Betriebstag").child_value());
 
   if (vdv_stops.empty()) {
     ++stats_.runs_without_stops_;
