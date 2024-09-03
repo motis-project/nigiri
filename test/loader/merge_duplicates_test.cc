@@ -199,8 +199,8 @@ TEST(loader, merge_intra_src) {
                 tt.trip_transport_ranges_[trip_idx_t{1U}])) {
     EXPECT_EQ(tr_range_a.first, tr_range_b.first);
     EXPECT_EQ(tr_range_a.second, tr_range_b.second);
-    EXPECT_NE(tt.bitfields_[tt.transport_traffic_days_[tr_range_a.first]],
-              tt.bitfields_[bitfield_idx_t{0U}]);
+    EXPECT_FALSE(
+        tt.bitfields_[tt.transport_traffic_days_[tr_range_a.first]].none());
   }
 }
 
@@ -398,8 +398,8 @@ TEST(loader, merge_inter_src) {
                 tt.trip_transport_ranges_[trip_idx_t{1U}])) {
     EXPECT_EQ(tr_range_a.first, tr_range_b.first);
     EXPECT_EQ(tr_range_a.second, tr_range_b.second);
-    EXPECT_NE(tt.bitfields_[tt.transport_traffic_days_[tr_range_a.first]],
-              tt.bitfields_[bitfield_idx_t{0U}]);
+    EXPECT_FALSE(
+        tt.bitfields_[tt.transport_traffic_days_[tr_range_a.first]].none());
   }
 }
 
@@ -586,7 +586,7 @@ TEST(loader, merge_reflexive_matching) {
                 tt.trip_transport_ranges_[trip_idx_t{1U}])) {
     EXPECT_EQ(tr_range_a.first, tr_range_b.first);
     EXPECT_EQ(tr_range_a.second, tr_range_b.second);
-    EXPECT_NE(tt.bitfields_[tt.transport_traffic_days_[tr_range_a.first]],
-              tt.bitfields_[bitfield_idx_t{0U}]);
+    EXPECT_FALSE(
+        tt.bitfields_[tt.transport_traffic_days_[tr_range_a.first]].none());
   }
 }
