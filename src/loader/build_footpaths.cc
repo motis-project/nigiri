@@ -411,18 +411,23 @@ void build_footpaths(timetable& tt,
                      bool const merge_dupes_inter_src,
                      std::uint16_t const max_footpath_length) {
   add_links_to_and_between_children(tt);
-  auto const matches =
-      merge_dupes_intra_src && merge_dupes_inter_src
-          ? link_nearby_stations<true, true>(tt)
-      : merge_dupes_intra_src ? link_nearby_stations<true, false>(tt)
-      : merge_dupes_inter_src ? link_nearby_stations<false, true>(tt)
-                              : link_nearby_stations<false, false>(tt);
+  link_nearby_stations(tt);
   if (merge_dupes_intra_src || merge_dupes_inter_src) {
-    for (auto const& [a, b] : matches) {
-      find_duplicates(tt, matches, a, b);
-    }
     for (auto l = location_idx_t{0U}; l != tt.n_locations(); ++l) {
-      find_duplicates(tt, matches, l, l);
+      if (tt.locations_.src_[l] == source_idx_t{source_idx_t::invalid()}) {
+        continue;
+      }
+      for (auto e : tt.locations_.equivalences_[l]) {
+        if (tt.locations_.src_[e] == source_idx_t{source_idx_t::invalid()} ||
+            (!merge_dupes_intra_src &&
+             tt.locations_.src_[l] == tt.locations_.src_[e]) ||
+            (!merge_dupes_inter_src &&
+             tt.locations_.src_[l] != tt.locations_.src_[e])) {
+          continue;
+        }
+
+        find_duplicates(tt, l, e);
+      }
     }
   }
   connect_components(tt, max_footpath_length, adjust_footpaths);
