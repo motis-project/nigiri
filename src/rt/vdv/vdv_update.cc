@@ -411,12 +411,14 @@ void updater::process_vdv_run(rt_timetable& rtt, pugi::xml_node const vdv_run) {
                ? std::optional{vdv_nigiri_.at(vdv_run_id)}
                : find_run(vdv_run_id, vdv_stops, is_complete_run);
   if (!r.has_value()) {
+    if (is_complete_run) {
 #ifdef VDV_DEBUG
-    vdv_trace("unmatchable run:");
-    vdv_run.print(std::cout);
-    vdv_trace("\n");
+      vdv_trace("unmatchable run:");
+      vdv_run.print(std::cout);
+      vdv_trace("\n");
 #endif
-    ++stats_.unmatchable_runs_;
+      ++stats_.unmatchable_runs_;
+    }
     return;
   }
   ++stats_.matched_runs_;
