@@ -33,9 +33,7 @@ bool merge(timetable& tt,
            stop_idx_t const size,
            transport_idx_t const a,
            transport_idx_t const b) {
-  if (a == b) {
-    return true;
-  }
+  assert(a != b);
 
   auto const bf_a = tt.bitfields_[tt.transport_traffic_days_[a]];
   auto const bf_b = tt.bitfields_[tt.transport_traffic_days_[b]];
