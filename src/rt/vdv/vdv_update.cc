@@ -330,14 +330,14 @@ void monotonize(frun& fr, rt_timetable& rtt) {
     next_time = new_time;
   };
 
-  for (auto it = last(fr); it != before_first(fr); --it) {
-    if (it.rs_.stop_idx_ != fr.stop_range_.to_ - 1) {
-      update(it.rs_, event_type::kDep,
-             std::min(it.rs_.time(event_type::kDep), next_time));
+  for (auto rs : it_range(rbegin(fr), rend(fr))) {
+    if (rs.stop_idx_ != fr.stop_range_.to_ - 1) {
+      update(rs, event_type::kDep,
+             std::min(rs.time(event_type::kDep), next_time));
     }
-    if (it.rs_.stop_idx_ != fr.stop_range_.from_) {
-      update(it.rs_, event_type::kArr,
-             std::min(it.rs_.time(event_type::kArr), next_time));
+    if (rs.stop_idx_ != fr.stop_range_.from_) {
+      update(rs, event_type::kArr,
+             std::min(rs.time(event_type::kArr), next_time));
     }
   }
 }
