@@ -1,7 +1,5 @@
 #include "gtest/gtest.h"
 
-#include "utl/enumerate.h"
-
 #include "nigiri/loader/dir.h"
 #include "nigiri/loader/gtfs/files.h"
 #include "nigiri/loader/gtfs/load_timetable.h"
