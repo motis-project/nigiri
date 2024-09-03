@@ -99,8 +99,8 @@ struct frun : public run {
     iterator& operator--() noexcept;
     iterator operator--(int) noexcept;
 
-    bool operator==(iterator const o) const noexcept;
-    bool operator!=(iterator o) const noexcept;
+    bool operator==(iterator const) const noexcept;
+    bool operator!=(iterator) const noexcept;
 
     run_stop operator*() const noexcept;
 
@@ -116,14 +116,14 @@ struct frun : public run {
   iterator begin() const noexcept;
   iterator end() const noexcept;
 
-  friend iterator begin(frun const& fr) noexcept;
-  friend iterator end(frun const& fr) noexcept;
+  friend iterator begin(frun const&) noexcept;
+  friend iterator end(frun const&) noexcept;
 
   iterator rbegin() const noexcept;
   iterator rend() const noexcept;
 
-  friend iterator rbegin(frun const& fr) noexcept;
-  friend iterator rend(frun const& fr) noexcept;
+  friend iterator rbegin(frun const&) noexcept;
+  friend iterator rend(frun const&) noexcept;
 
   stop_idx_t first_valid(stop_idx_t from = 0U) const;
   stop_idx_t last_valid() const;
@@ -136,7 +136,7 @@ struct frun : public run {
   trip_idx_t trip_idx() const;
   clasz get_clasz() const noexcept;
 
-  void print(std::ostream&, interval<stop_idx_t> stop_range);
+  void print(std::ostream&, interval<stop_idx_t>);
   friend std::ostream& operator<<(std::ostream&, frun const&);
 
   static frun from_rt(timetable const&,
