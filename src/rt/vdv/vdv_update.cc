@@ -398,11 +398,9 @@ void updater::update_run(rt_timetable& rtt,
           matches(tt_, routing::location_match_mode::kEquivalent,
                   rs.get_location_idx(), vdv_stop->l_)) {
         if (rs.stop_idx_ != 0 && vdv_stop->arr_.has_value() &&
-            (static_cast<std::uint32_t>(
-                 std::abs(vdv_stop->arr_.value().time_since_epoch().count() -
-                          rs.scheduled_time(event_type::kArr)
-                              .time_since_epoch()
-                              .count())) <= kAllowedTimeDiscrepancy)) {
+            (static_cast<std::uint32_t>(std::abs(
+                 (vdv_stop->arr_.value() - rs.scheduled_time(event_type::kArr))
+                     .count())) <= kAllowedTimeDiscrepancy)) {
           matched_arr = true;
           if (vdv_stop->rt_arr_.has_value()) {
             update_event(rs, event_type::kArr, *vdv_stop->rt_arr_);
@@ -410,11 +408,9 @@ void updater::update_run(rt_timetable& rtt,
         }
         if (rs.stop_idx_ != fr.stop_range_.to_ - 1 &&
             vdv_stop->dep_.has_value() &&
-            static_cast<std::uint32_t>(
-                std::abs(vdv_stop->dep_.value().time_since_epoch().count() -
-                         rs.scheduled_time(event_type::kDep)
-                             .time_since_epoch()
-                             .count())) <= kAllowedTimeDiscrepancy) {
+            static_cast<std::uint32_t>(std::abs(
+                (vdv_stop->dep_.value() - rs.scheduled_time(event_type::kDep))
+                    .count())) <= kAllowedTimeDiscrepancy) {
           matched_dep = true;
           if (vdv_stop->rt_dep_.has_value()) {
             update_event(rs, event_type::kDep, *vdv_stop->rt_dep_);
