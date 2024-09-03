@@ -6,7 +6,7 @@
 
 #include "nigiri/common/dial.h"
 #include "nigiri/footpath.h"
-#include "nigiri/routing/for_each_meta.h"
+#include "nigiri/for_each_meta.h"
 #include "nigiri/routing/limits.h"
 #include "nigiri/routing/query.h"
 

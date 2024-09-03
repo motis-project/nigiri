@@ -6,9 +6,9 @@
 #include "utl/timing.h"
 #include "utl/to_vec.h"
 
+#include "nigiri/for_each_meta.h"
 #include "nigiri/logging.h"
 #include "nigiri/routing/dijkstra.h"
-#include "nigiri/routing/for_each_meta.h"
 #include "nigiri/routing/get_fastest_direct.h"
 #include "nigiri/routing/interval_estimate.h"
 #include "nigiri/routing/journey.h"
