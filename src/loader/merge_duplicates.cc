@@ -43,13 +43,13 @@ bool merge(timetable& tt,
 
   auto const merge_and_nullify = [&tt](transport_idx_t const x,
                                        transport_idx_t const y) {
-    tt.transport_traffic_days_[x] = bitfield_idx_t{0U};  // disable trip 'b'
+    tt.transport_traffic_days_[x] = bitfield_idx_t{0U};  // disable transport x
 
-    for (auto const merged_trips_idx_a : tt.transport_to_trip_section_[x]) {
-      for (auto const a_trp : tt.merged_trips_[merged_trips_idx_a]) {
-        for (auto& [t, range] : tt.trip_transport_ranges_[a_trp]) {
+    for (auto const merged_trips_idx_x : tt.transport_to_trip_section_[x]) {
+      for (auto const x_trp : tt.merged_trips_[merged_trips_idx_x]) {
+        for (auto& [t, range] : tt.trip_transport_ranges_[x_trp]) {
           if (t == x) {
-            t = y;  // replace b with x in b's trip transport ranges
+            t = y;  // replace x with y in x's trip transport ranges
           }
         }
       }
