@@ -88,7 +88,6 @@ bool merge(timetable& tt,
 }
 
 unsigned find_duplicates(timetable& tt,
-                         match_set_t const& matches,
                          location_idx_t const a,
                          location_idx_t const b) {
   auto merged = 0U;
@@ -115,8 +114,8 @@ unsigned find_duplicates(timetable& tt,
       auto const station_sequence_matches = [&]() {
         return utl::all_of(utl::zip(a_loc_seq, b_loc_seq), [&](auto&& pair) {
           auto const [x, y] = pair;
-          return x == y || matches.contains(make_match_pair(
-                               stop{x}.location_idx(), stop{y}.location_idx()));
+          return matches(tt, routing::location_match_mode::kEquivalent,
+                         stop{x}.location_idx(), stop{y}.location_idx());
         });
       };
 
