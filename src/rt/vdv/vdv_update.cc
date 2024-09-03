@@ -333,7 +333,7 @@ void monotonize(frun& fr, rt_timetable& rtt) {
     next_time = new_time;
   };
 
-  for (auto it = rbegin(fr); it != rend(fr); --it) {
+  for (auto it = last(fr); it != before_first(fr); --it) {
     if (it.rs_.stop_idx_ != fr.stop_range_.to_ - 1) {
       update(it.rs_, event_type::kDep,
              std::min(it.rs_.time(event_type::kDep), next_time));

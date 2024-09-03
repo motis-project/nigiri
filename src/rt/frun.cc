@@ -334,18 +334,20 @@ frun::iterator frun::end() const noexcept {
 frun::iterator begin(frun const& fr) noexcept { return fr.begin(); }
 frun::iterator end(frun const& fr) noexcept { return fr.end(); }
 
-frun::iterator frun::rbegin() const noexcept {
+frun::iterator frun::last() const noexcept {
   return iterator{run_stop{.fr_ = this, .stop_idx_ = last_valid()}};
 }
 
-frun::iterator frun::rend() const noexcept {
+frun::iterator frun::before_first() const noexcept {
   return iterator{
       run_stop{.fr_ = this,
                .stop_idx_ = static_cast<stop_idx_t>(stop_range_.from_ - 1U)}};
 }
 
-frun::iterator rbegin(frun const& fr) noexcept { return fr.rbegin(); }
-frun::iterator rend(frun const& fr) noexcept { return fr.rend(); }
+frun::iterator last(frun const& fr) noexcept { return fr.last(); }
+frun::iterator before_first(frun const& fr) noexcept {
+  return fr.before_first();
+}
 
 stop_idx_t frun::size() const noexcept {
   return static_cast<stop_idx_t>(

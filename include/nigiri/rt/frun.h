@@ -119,11 +119,11 @@ struct frun : public run {
   friend iterator begin(frun const&) noexcept;
   friend iterator end(frun const&) noexcept;
 
-  iterator rbegin() const noexcept;
-  iterator rend() const noexcept;
+  iterator last() const noexcept;
+  iterator before_first() const noexcept;
 
-  friend iterator rbegin(frun const&) noexcept;
-  friend iterator rend(frun const&) noexcept;
+  friend iterator last(frun const&) noexcept;
+  friend iterator before_first(frun const&) noexcept;
 
   stop_idx_t first_valid(stop_idx_t from = 0U) const;
   stop_idx_t last_valid() const;
