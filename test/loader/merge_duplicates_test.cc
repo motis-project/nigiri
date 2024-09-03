@@ -156,14 +156,18 @@ TEST(loader, merge_intra_src) {
                     date::sys_days{2024_y / December / 14}};
   register_special_stations(tt);
   load_timetable({}, source_idx_t{0}, rbo500_a_files(), tt);
+
+  ASSERT_TRUE(!tt.bitfields_.empty() &&
+              tt.bitfields_[bitfield_idx_t{0U}].none());
+
   finalize(tt, false, true, false);
 
   for (auto a = transport_idx_t{0U}; a != tt.next_transport_idx(); ++a) {
     for (auto b = transport_idx_t{0U}; b != tt.next_transport_idx(); ++b) {
       if (a != b) {
-        EXPECT_EQ(tt.bitfields_[tt.transport_traffic_days_[a]] &
-                      tt.bitfields_[tt.transport_traffic_days_[b]],
-                  tt.bitfields_[bitfield_idx_t{0U}]);
+        EXPECT_TRUE((tt.bitfields_[tt.transport_traffic_days_[a]] &
+                     tt.bitfields_[tt.transport_traffic_days_[b]])
+                        .none());
       }
     }
   }
@@ -349,14 +353,18 @@ TEST(loader, merge_inter_src) {
   register_special_stations(tt);
   load_timetable({}, source_idx_t{0}, line1_2593432458_files(), tt);
   load_timetable({}, source_idx_t{1}, line1_2593402613_files(), tt);
+
+  ASSERT_TRUE(!tt.bitfields_.empty() &&
+              tt.bitfields_[bitfield_idx_t{0U}].none());
+
   finalize(tt, false, false, true);
 
   for (auto a = transport_idx_t{0U}; a != tt.next_transport_idx(); ++a) {
     for (auto b = transport_idx_t{0U}; b != tt.next_transport_idx(); ++b) {
       if (a != b) {
-        EXPECT_EQ(tt.bitfields_[tt.transport_traffic_days_[a]] &
-                      tt.bitfields_[tt.transport_traffic_days_[b]],
-                  tt.bitfields_[bitfield_idx_t{0U}]);
+        EXPECT_TRUE((tt.bitfields_[tt.transport_traffic_days_[a]] &
+                     tt.bitfields_[tt.transport_traffic_days_[b]])
+                        .none());
       }
     }
   }
@@ -531,14 +539,18 @@ TEST(loader, merge_reflexive_matching) {
                     date::sys_days{2024_y / December / 14}};
   auto const src_idx = source_idx_t{0};
   load_timetable({}, src_idx, rbo500_b_files(), tt);
+
+  ASSERT_TRUE(!tt.bitfields_.empty() &&
+              tt.bitfields_[bitfield_idx_t{0U}].none());
+
   finalize(tt, false, true, false);
 
   for (auto a = transport_idx_t{0U}; a != tt.next_transport_idx(); ++a) {
     for (auto b = transport_idx_t{0U}; b != tt.next_transport_idx(); ++b) {
       if (a != b) {
-        EXPECT_EQ(tt.bitfields_[tt.transport_traffic_days_[a]] &
-                      tt.bitfields_[tt.transport_traffic_days_[b]],
-                  tt.bitfields_[bitfield_idx_t{0U}]);
+        EXPECT_TRUE((tt.bitfields_[tt.transport_traffic_days_[a]] &
+                     tt.bitfields_[tt.transport_traffic_days_[b]])
+                        .none());
       }
     }
   }
