@@ -23,7 +23,7 @@
 
 namespace nigiri::rt::vdv {
 
-// #define VDV_DEBUG
+#define VDV_DEBUG
 #ifdef VDV_DEBUG
 #define vdv_trace(...) fmt::print(__VA_ARGS__)
 #else
@@ -144,8 +144,8 @@ vector<updater::vdv_stop> updater::resolve_stops(pugi::xml_node const vdv_run) {
 
     if (get_opt_bool(stop.node(), "Zusatzhalt", false).value()) {
       ++stats_.unsupported_additional_stops_;
-      vdv_trace("unsupported additional stop: [id: {}, name: {}]", vdv_stop_id,
-                l.has_value() ? l->name_ : "unresolvable");
+      vdv_trace("unsupported additional stop: [id: {}, name: {}]\n",
+                vdv_stop_id, l.has_value() ? l->name_ : "unresolvable");
     }
 
     if (l.has_value()) {
@@ -155,7 +155,7 @@ vector<updater::vdv_stop> updater::resolve_stops(pugi::xml_node const vdv_run) {
       ++stats_.unknown_stops_;
       vdv_stops.emplace_back(location_idx_t::invalid(), vdv_stop_id,
                              stop.node());
-      vdv_trace("unresolvable stop: {}", vdv_stop_id);
+      vdv_trace("unresolvable stop: {}\n", vdv_stop_id);
     }
   }
 
@@ -191,7 +191,7 @@ std::optional<rt::run> updater::find_run(std::string_view vdv_run_id,
                                          bool const is_complete_run) {
   if (!is_complete_run) {
     ++stats_.search_on_incomplete_;
-    vdv_trace("Attempting to match an incomplete vdv run: {}", vdv_run_id);
+    vdv_trace("Attempting to match an incomplete vdv run: {}\n", vdv_run_id);
   }
 
   auto candidates = std::vector<candidate>{};
@@ -284,9 +284,9 @@ std::optional<rt::run> updater::find_run(std::string_view vdv_run_id,
 
   if (candidates.size() > 1 && candidates[0] == candidates[1]) {
 #ifdef VDV_DEBUG
-    vdv_trace("multiple match candidates for {}:", vdv_run_id);
+    vdv_trace("multiple match candidates for {}:\n", vdv_run_id);
     for (auto const& c : candidates) {
-      vdv_trace("[line: {}, score: {}, length: {}]",
+      vdv_trace("[line: {}, score: {}, length: {}]\n",
                 tt_.trip_lines_
                     [tt_.transport_section_lines_[c.r_.t_.t_idx_].size() == 1
                          ? tt_.transport_section_lines_[c.r_.t_.t_idx_].front()
@@ -301,9 +301,9 @@ std::optional<rt::run> updater::find_run(std::string_view vdv_run_id,
   }
 #ifdef VDV_DEBUG
   else {
-    vdv_trace("match candidates for {}:", vdv_run_id);
+    vdv_trace("match candidates for {}:\n", vdv_run_id);
     for (auto const& c : candidates) {
-      vdv_trace("[line: {}, score: {}, length: {}]",
+      vdv_trace("[line: {}, score: {}, length: {}]\n",
                 tt_.trip_lines_
                     [tt_.transport_section_lines_[c.r_.t_.t_idx_].size() == 1
                          ? tt_.transport_section_lines_[c.r_.t_.t_idx_].front()
@@ -320,24 +320,36 @@ std::optional<rt::run> updater::find_run(std::string_view vdv_run_id,
   return candidates.front().r_;
 }
 
+void update_event(rt_timetable& rtt,
+                  frun::run_stop const& rs,
+                  event_type const et,
+                  unixtime_t const new_time,
+                  std::optional<duration_t>* delay_propagation = nullptr) {
+  auto delay = new_time - rs.scheduled_time(et);
+  vdv_trace("update [stop_idx: {}, id: {}, name: {}] {}: {}{}{}\n",
+            rs.stop_idx_, rs.id(), rs.name(),
+            et == event_type::kArr ? "ARR" : "DEP", rs.scheduled_time(et),
+            delay.count() >= 0 ? "+" : "", delay.count());
+  rtt.update_time(rs.fr_->rt_, rs.stop_idx_, et, new_time);
+  rtt.dispatch_event_change(rs.fr_->t_, rs.stop_idx_, et, delay, false);
+  if (delay_propagation) {
+    *delay_propagation = delay;
+  }
+}
+
 void monotonize(frun& fr, rt_timetable& rtt) {
-  auto next_time = unixtime_t::max();
+  vdv_trace("---monotonizing {}, stop_range: [{}, {}[\n", fr.name(),
+            fr.stop_range_.from_, fr.stop_range_.to_);
 
-  auto const update = [&](auto const& rs, auto const ev, auto const new_time) {
-    rtt.update_time(fr.rt_, rs.stop_idx_, ev, new_time);
-    rtt.dispatch_event_change(fr.t_, rs.stop_idx_, ev,
-                              new_time - rs.scheduled_time(ev), false);
-    next_time = new_time;
-  };
-
+  auto upper_bound = unixtime_t::max();
   for (auto const rs : it_range(rbegin(fr), rend(fr))) {
     if (rs.stop_idx_ != fr.stop_range_.to_ - 1) {
-      update(rs, event_type::kDep,
-             std::min(rs.time(event_type::kDep), next_time));
+      upper_bound = std::min(rs.time(event_type::kDep), upper_bound);
+      update_event(rtt, rs, event_type::kDep, upper_bound);
     }
     if (rs.stop_idx_ != fr.stop_range_.from_) {
-      update(rs, event_type::kArr,
-             std::min(rs.time(event_type::kArr), next_time));
+      upper_bound = std::min(rs.time(event_type::kArr), upper_bound);
+      update_event(rtt, rs, event_type::kArr, upper_bound);
     }
   }
 }
@@ -353,20 +365,8 @@ void updater::update_run(rt_timetable& rtt,
 
   auto delay = std::optional<duration_t>{};
 
-  auto const update_event = [&](auto const& rs, auto const et,
-                                auto const new_time) {
-    delay = new_time - rs.scheduled_time(et);
-    vdv_trace("update [stop_idx: {}, id: {}, name: {}] {}: {}{}{}",
-              rs.stop_idx_, rs.id(), rs.name(),
-              et == event_type::kArr ? "ARR" : "DEP", rs.scheduled_time(et),
-              delay->count() >= 0 ? "+" : "", delay->count());
-    rtt.update_time(fr.rt_, rs.stop_idx_, et, new_time);
-    rtt.dispatch_event_change(fr.t_, rs.stop_idx_, et, *delay, false);
-    ++stats_.updated_events_;
-  };
-
   auto const propagate_delay = [&](auto const& rs, event_type et) {
-    vdv_trace("propagate [stop_idx: {}, id: {}, name: {}] {}: {}{}{}",
+    vdv_trace("propagate [stop_idx: {}, id: {}, name: {}] {}: {}{}{}\n",
               rs.stop_idx_, rs.id(), rs.name(),
               et == event_type::kArr ? "ARR" : "DEP", rs.scheduled_time(et),
               delay->count() >= 0 ? "+" : "", delay->count());
@@ -380,14 +380,14 @@ void updater::update_run(rt_timetable& rtt,
   auto const print_skipped_stops = [&]() {
     for (auto const& s [[maybe_unused]] : skipped_stops) {
       ++stats_.skipped_vdv_stops_;
-      vdv_trace("skipped vdv stop: [id: {}, name: {}]", s.id_,
+      vdv_trace("skipped vdv stop: [id: {}, name: {}]\n", s.id_,
                 s.l_ == location_idx_t::invalid()
                     ? "unresolvable"
                     : tt_.locations_.get(s.l_).name_);
     }
   };
 
-  vdv_trace("---updating {}, stop_range: [{}, {}[", fr.name(),
+  vdv_trace("---updating {}, stop_range: [{}, {}[\n", fr.name(),
             fr.stop_range_.from_, fr.stop_range_.to_);
   for (auto const rs : fr) {
     auto matched_arr = false;
@@ -403,7 +403,8 @@ void updater::update_run(rt_timetable& rtt,
                      .count())) <= kAllowedTimeDiscrepancy)) {
           matched_arr = true;
           if (vdv_stop->rt_arr_.has_value()) {
-            update_event(rs, event_type::kArr, *vdv_stop->rt_arr_);
+            update_event(rtt, rs, event_type::kArr, *vdv_stop->rt_arr_, &delay);
+            ++stats_.updated_events_;
           }
         }
         if (rs.stop_idx_ != fr.stop_range_.to_ - 1 &&
@@ -413,7 +414,8 @@ void updater::update_run(rt_timetable& rtt,
                     .count())) <= kAllowedTimeDiscrepancy) {
           matched_dep = true;
           if (vdv_stop->rt_dep_.has_value()) {
-            update_event(rs, event_type::kDep, *vdv_stop->rt_dep_);
+            update_event(rtt, rs, event_type::kDep, *vdv_stop->rt_dep_, &delay);
+            ++stats_.updated_events_;
           }
         }
         if (matched_arr || matched_dep) {
@@ -426,7 +428,7 @@ void updater::update_run(rt_timetable& rtt,
     }
     if (!matched_arr && !matched_dep && is_complete_run &&
         rs.stop_idx_ < vdv_stops.size()) {
-      vdv_trace("missing gtfs stop at stop_idx = {}: [id: {}, name: {}]",
+      vdv_trace("missing gtfs stop at stop_idx = {}: [id: {}, name: {}]\n",
                 rs.stop_idx_, rs.id(), rs.name());
     }
     if (delay) {
@@ -440,7 +442,7 @@ void updater::update_run(rt_timetable& rtt,
   }
 
   while (cursor != end(vdv_stops)) {
-    vdv_trace("excess vdv stop: [id: {}, name: {}]", cursor->id_,
+    vdv_trace("excess vdv stop: [id: {}, name: {}]\n", cursor->id_,
               cursor->l_ == location_idx_t::invalid()
                   ? "unresolvable"
                   : tt_.locations_.get(cursor->l_).name_);
@@ -462,7 +464,7 @@ void updater::process_vdv_run(rt_timetable& rtt, pugi::xml_node const vdv_run) {
 
   if (vdv_stops.empty()) {
     ++stats_.runs_without_stops_;
-    vdv_trace("vdv run without stops: {}", vdv_run_id);
+    vdv_trace("vdv run without stops: {}\n", vdv_run_id);
     return;
   }
 
@@ -474,7 +476,7 @@ void updater::process_vdv_run(rt_timetable& rtt, pugi::xml_node const vdv_run) {
   if (!r.has_value()) {
     if (is_complete_run) {
 #ifdef VDV_DEBUG
-      vdv_trace("unmatchable run:");
+      vdv_trace("unmatchable run:\n");
       vdv_run.print(std::cout);
       vdv_trace("\n");
 #endif
@@ -491,14 +493,14 @@ void updater::update(rt_timetable& rtt, pugi::xml_document const& doc) {
   for (auto const& vdv_run : doc.select_nodes("//IstFahrt")) {
     if (get_opt_bool(vdv_run.node(), "Zusatzfahrt", false).value()) {
 #ifdef VDV_DEBUG
-      vdv_trace("unsupported additional run:");
+      vdv_trace("unsupported additional run:\n");
       vdv_run.node().print(std::cout);
 #endif
       ++stats_.unsupported_additional_runs_;
       continue;
     } else if (get_opt_bool(vdv_run.node(), "FaelltAus", false).value()) {
 #ifdef VDV_DEBUG
-      vdv_trace("unsupported canceled run:");
+      vdv_trace("unsupported canceled run:\n");
       vdv_run.node().print(std::cout);
 #endif
       ++stats_.unsupported_cancelled_runs_;
