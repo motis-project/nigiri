@@ -105,11 +105,6 @@ add_executable(nigiri-benchmark ${nigiri-benchmark-files})
 target_link_libraries(nigiri-benchmark PRIVATE nigiri boost-program_options ianatzdb-res)
 target_compile_features(nigiri-benchmark PUBLIC cxx_std_23)
 
-# --- VDV UPDATE FILE ---
-add_executable(vdv-update exe/vdv_update.cc)
-target_compile_features(vdv-update PUBLIC cxx_std_23)
-target_link_libraries(vdv-update nigiri boost-program_options)
-
 # --- TEST ---
 add_library(nigiri-generated INTERFACE)
 target_include_directories(nigiri-generated INTERFACE ${CMAKE_CURRENT_BINARY_DIR}/generated)
