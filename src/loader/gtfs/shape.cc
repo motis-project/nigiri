@@ -11,8 +11,8 @@
 
 namespace nigiri::loader::gtfs {
 
-shape_id_map_t const parse_shapes(std::string_view const data,
-                                  shape_vecvec_t& shapes) {
+shape_id_map_t parse_shapes(std::string_view const data,
+                            shape_vecvec_t& shapes) {
   struct shape_entry {
     utl::csv_col<utl::cstr, UTL_NAME("shape_id")> id_;
     utl::csv_col<double, UTL_NAME("shape_pt_lat")> lat_;
@@ -35,7 +35,7 @@ shape_id_map_t const parse_shapes(std::string_view const data,
     });
     auto const seq = entry.seq_.val();
     auto bucket = shapes[state.index_];
-    if (bucket.size() > 0 && state.last_seq_ >= seq) {
+    if (!bucket.empty() && state.last_seq_ >= seq) {
       log(log_lvl::error, "loader.gtfs.shape",
           "Non monotonic sequence for shape_id '{}': Sequence number {} "
           "followed by {}",

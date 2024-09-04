@@ -97,9 +97,9 @@ test id,50.553822,6.356876,0
 
   auto const shapes = parse_shapes(shapes_data, shape_data);
 
-  std::vector<std::string> ids{"test id"s,      "----"s, "\x07\x13\x41\x08"s,
-                               "ルーティング"s, ""s,     "\0"s,
-                               "🚀"s,           "🚏"s};
+  std::vector<std::string> const ids{
+      "test id"s, "----"s, "\x07\x13\x41\x08"s, "ルーティング"s, ""s, "\0"s,
+      "🚀"s,      "🚏"s};
   for (auto const& id : ids) {
     auto const shape_it = shapes.find(id);
     EXPECT_NE(shapes.end(), shape_it);
@@ -115,7 +115,7 @@ TEST(gtfs, shapeParse_notAscendingSequence_progressAndLogError) {
 )";
   auto mmap = shape_test_mmap{"shape-test-not-ascending-sequence"};
   auto& shape_data = mmap.get_shape_data();
-  std::stringstream buffer{};
+  std::stringstream const buffer{};
   auto const backup = std::clog.rdbuf(buffer.rdbuf());
   auto const buffer_guard = utl::make_raii(
       backup, [](const decltype(backup)& buf) { std::clog.rdbuf(buf); });
@@ -205,7 +205,7 @@ TEST(gtfs,
 1,50.636259,6.473668,0
 )";
   auto mmap = shape_test_mmap{"shape-test-not-ascending-sequence"};
-  std::stringstream buffer{};
+  std::stringstream const buffer{};
   auto const backup = std::clog.rdbuf(buffer.rdbuf());
   auto const buffer_guard = utl::make_raii(
       backup, [](const decltype(backup)& buf) { std::clog.rdbuf(buf); });
