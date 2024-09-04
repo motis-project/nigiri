@@ -331,7 +331,7 @@ void update_event(rt_timetable& rtt,
             delay.count() >= 0 ? "+" : "", delay.count());
   rtt.update_time(rs.fr_->rt_, rs.stop_idx_, et, new_time);
   rtt.dispatch_event_change(rs.fr_->t_, rs.stop_idx_, et, delay, false);
-  if (delay_propagation) {
+  if (delay_propagation != nullptr) {
     *delay_propagation = delay;
   }
 }
