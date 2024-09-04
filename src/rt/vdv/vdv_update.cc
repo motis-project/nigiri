@@ -224,9 +224,9 @@ std::optional<rt::run> updater::find_run(std::string_view vdv_run_id,
                utl::enumerate(tt_.event_times_at_stop(
                    r, static_cast<stop_idx_t>(stop_idx), ev_type))) {
 
-            auto const error =
-                mam_dist(static_cast<std::uint16_t>(nigiri_ev_time.mam()),
-                         static_cast<std::uint16_t>(vdv_mam.count()));
+            auto const [error, day_shift] =
+                mam_dist(static_cast<std::uint16_t>(vdv_mam.count()),
+                         static_cast<std::uint16_t>(nigiri_ev_time.mam()));
             auto const local_score = kExactMatchScore - error * error;
             if (local_score < 0) {
               continue;
@@ -234,7 +234,8 @@ std::optional<rt::run> updater::find_run(std::string_view vdv_run_id,
 
             auto const tr =
                 transport{tt_.route_transport_ranges_[r][nigiri_ev_time_idx],
-                          vdv_day_idx - day_idx_t{nigiri_ev_time.days()}};
+                          vdv_day_idx - day_idx_t{nigiri_ev_time.days()} +
+                              day_idx_t{day_shift}};
 
             if (tt_.bitfields_[tt_.transport_traffic_days_[tr.t_idx_]].test(
                     to_idx(tr.day_))) {
