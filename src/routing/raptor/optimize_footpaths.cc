@@ -2,7 +2,7 @@
 
 #include "utl/overloaded.h"
 
-#include "nigiri/routing/for_each_meta.h"
+#include "nigiri/for_each_meta.h"
 #include "nigiri/routing/journey.h"
 #include "nigiri/rt/frun.h"
 #include "nigiri/rt/rt_timetable.h"

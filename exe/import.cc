@@ -60,9 +60,14 @@ int main(int ac, char** av) {
       ("link_stop_distance",
        bpo::value(&c.link_stop_distance_)->default_value(c.link_stop_distance_),
        "the maximum distance at which stops in proximity will be linked")  //
-      ("merge_duplicates",
-       bpo::value(&c.merge_duplicates_)->default_value(c.merge_duplicates_),
-       "merge duplicates")  //
+      ("merge_dupes_intra_source",
+       bpo::value(&c.merge_dupes_intra_src_)
+           ->default_value(c.merge_dupes_intra_src_),
+       "merge duplicates within a source")  //
+      ("merge_dupes_inter_source",
+       bpo::value(&c.merge_dupes_inter_src_)
+           ->default_value(c.merge_dupes_inter_src_),
+       "merge duplicates between different sources")  //
       ("adjust_footpaths",
        bpo::value(&c.adjust_footpaths_)->default_value(c.adjust_footpaths_),
        "adjust footpath lengths")  //

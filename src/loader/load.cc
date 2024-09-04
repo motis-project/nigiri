@@ -1,7 +1,5 @@
 #include "nigiri/loader/load.h"
 
-#include <tuple>
-
 #include "utl/enumerate.h"
 
 #include "nigiri/loader/dir.h"
@@ -50,8 +48,8 @@ timetable load(std::vector<std::filesystem::path> const& paths,
     }
   }
 
-  finalize(tt, c.adjust_footpaths_, c.merge_duplicates_,
-           c.max_footpath_length_);
+  finalize(tt, c.adjust_footpaths_, c.merge_dupes_intra_src_,
+           c.merge_dupes_inter_src_, c.max_footpath_length_);
 
   return tt;
 }

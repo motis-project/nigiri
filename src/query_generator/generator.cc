@@ -1,7 +1,7 @@
 #include "nigiri/query_generator/generator.h"
 
+#include "nigiri/location_match_mode.h"
 #include "nigiri/logging.h"
-#include "nigiri/routing/location_match_mode.h"
 #include "nigiri/routing/ontrip_train.h"
 #include "nigiri/special_stations.h"
 #include "nigiri/timetable.h"

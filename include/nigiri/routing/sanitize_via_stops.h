@@ -1,6 +1,6 @@
 #pragma once
 
-#include "nigiri/routing/for_each_meta.h"
+#include "nigiri/for_each_meta.h"
 #include "nigiri/routing/query.h"
 #include "nigiri/timetable.h"
 
