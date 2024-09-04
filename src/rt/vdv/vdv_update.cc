@@ -13,6 +13,7 @@
 
 #include "fmt/core.h"
 
+#include "nigiri/common/mam_dist.h"
 #include "nigiri/for_each_meta.h"
 #include "nigiri/rt/frun.h"
 #include "nigiri/rt/rt_timetable.h"
@@ -223,7 +224,9 @@ std::optional<rt::run> updater::find_run(std::string_view vdv_run_id,
                utl::enumerate(tt_.event_times_at_stop(
                    r, static_cast<stop_idx_t>(stop_idx), ev_type))) {
 
-            auto const error = std::abs(nigiri_ev_time.mam() - vdv_mam.count());
+            auto const error =
+                mam_dist(static_cast<std::uint16_t>(nigiri_ev_time.mam()),
+                         static_cast<std::uint16_t>(vdv_mam.count()));
             auto const local_score = kExactMatchScore - error * error;
             if (local_score < 0) {
               continue;
