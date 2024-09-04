@@ -374,6 +374,212 @@ TEST(vdv_update, delay_propagation) {
 }
 
 namespace {
+mem_dir before_midnight_files() {
+  return mem_dir::read(R"__(
+# agency.txt
+agency_id,agency_name,agency_url,agency_timezone
+MTA,MOTIS Transit Authority,https://motis-project.de/,Europe/Berlin
+
+# calendar_dates.txt
+service_id,date,exception_type
+D,20240710,1
+
+# stops.txt
+stop_id,stop_name,stop_desc,stop_lat,stop_lon,stop_url,location_type,parent_station
+A,A,,,,,,
+B,B,,,,,,
+
+# routes.txt
+route_id,agency_id,route_short_name,route_long_name,route_desc,route_type
+AB,MTA,AB,AB,A -> B,0
+
+# trips.txt
+route_id,service_id,trip_id,trip_headsign,block_id
+AB,D,AB_TRIP,AB_TRIP,1
+
+
+# stop_times.txt
+trip_id,arrival_time,departure_time,stop_id,stop_sequence,pickup_type,drop_off_type
+AB_TRIP,01:58,01:58,A,0,0,0
+AB_TRIP,03:00,03:00,B,1,0,0
+
+)__");
+}
+
+constexpr auto const after_midnight_update = R"(
+<?xml version="1.0" encoding="iso-8859-1"?>
+<DatenAbrufenAntwort>
+  <Bestaetigung Zst="2024-07-10T00:00:00" Ergebnis="ok" Fehlernummer="0" />
+  <AUSNachricht AboID="1">
+    <IstFahrt Zst="2024-07-10T00:00:00">
+      <LinienID>AB</LinienID>
+      <RichtungsID>1</RichtungsID>
+      <FahrtRef>
+        <FahrtID>
+          <FahrtBezeichner>AB</FahrtBezeichner>
+          <Betriebstag>2024-07-10</Betriebstag>
+        </FahrtID>
+      </FahrtRef>
+      <Komplettfahrt>false</Komplettfahrt>
+      <BetreiberID>MTA</BetreiberID>
+      <IstHalt>
+        <HaltID>A</HaltID>
+        <Abfahrtszeit>2024-07-10T00:02:00</Abfahrtszeit>
+        <Einsteigeverbot>false</Einsteigeverbot>
+        <Aussteigeverbot>false</Aussteigeverbot>
+        <Durchfahrt>false</Durchfahrt>
+        <Zusatzhalt>false</Zusatzhalt>
+      </IstHalt>
+      <IstHalt>
+        <HaltID>B</HaltID>
+        <Ankunftszeit>2024-07-10T01:00:00</Ankunftszeit>
+        <IstAnkunftPrognose>2024-07-10T01:00:00</IstAnkunftPrognose>
+        <Einsteigeverbot>false</Einsteigeverbot>
+        <Aussteigeverbot>false</Aussteigeverbot>
+        <Durchfahrt>false</Durchfahrt>
+        <Zusatzhalt>false</Zusatzhalt>
+      </IstHalt>
+      <LinienText>AB</LinienText>
+      <ProduktID>AB</ProduktID>
+      <RichtungsText>B</RichtungsText>
+      <Zusatzfahrt>false</Zusatzfahrt>
+      <FaelltAus>false</FaelltAus>
+    </IstFahrt>
+  </AUSNachricht>
+</DatenAbrufenAntwort>
+)";
+
+}  // namespace
+
+TEST(vdv_update, tt_before_midnight_update_after_midnight) {
+  timetable tt;
+  register_special_stations(tt);
+  tt.date_range_ = {date::sys_days{2024_y / July / 1},
+                    date::sys_days{2024_y / July / 31}};
+  auto const src_idx = source_idx_t{0};
+  load_timetable({}, src_idx, before_midnight_files(), tt);
+  finalize(tt);
+
+  std::cout << tt << "\n";
+
+  auto rtt = rt::create_rt_timetable(tt, date::sys_days{2024_y / July / 9});
+
+  auto doc = pugi::xml_document{};
+  doc.load_string(after_midnight_update);
+  auto u = rt::vdv::updater{tt, src_idx};
+  u.update(rtt, doc);
+
+  auto fr = rt::frun(
+      tt, &rtt,
+      {{transport_idx_t{0}, day_idx_t{13}}, {stop_idx_t{0}, stop_idx_t{2}}});
+
+  EXPECT_TRUE(fr.is_rt());
+}
+
+namespace {
+mem_dir after_midnight_files() {
+  return mem_dir::read(R"__(
+# agency.txt
+agency_id,agency_name,agency_url,agency_timezone
+MTA,MOTIS Transit Authority,https://motis-project.de/,Europe/Berlin
+
+# calendar_dates.txt
+service_id,date,exception_type
+D,20240710,1
+
+# stops.txt
+stop_id,stop_name,stop_desc,stop_lat,stop_lon,stop_url,location_type,parent_station
+A,A,,,,,,
+B,B,,,,,,
+
+# routes.txt
+route_id,agency_id,route_short_name,route_long_name,route_desc,route_type
+AB,MTA,AB,AB,A -> B,0
+
+# trips.txt
+route_id,service_id,trip_id,trip_headsign,block_id
+AB,D,AB_TRIP,AB_TRIP,1
+
+
+# stop_times.txt
+trip_id,arrival_time,departure_time,stop_id,stop_sequence,pickup_type,drop_off_type
+AB_TRIP,02:02,02:02,A,0,0,0
+AB_TRIP,03:00,03:00,B,1,0,0
+
+)__");
+}
+
+constexpr auto const before_midnight_update = R"(
+<?xml version="1.0" encoding="iso-8859-1"?>
+<DatenAbrufenAntwort>
+  <Bestaetigung Zst="2024-07-10T00:00:00" Ergebnis="ok" Fehlernummer="0" />
+  <AUSNachricht AboID="1">
+    <IstFahrt Zst="2024-07-10T00:00:00">
+      <LinienID>AB</LinienID>
+      <RichtungsID>1</RichtungsID>
+      <FahrtRef>
+        <FahrtID>
+          <FahrtBezeichner>AB</FahrtBezeichner>
+          <Betriebstag>2024-07-10</Betriebstag>
+        </FahrtID>
+      </FahrtRef>
+      <Komplettfahrt>false</Komplettfahrt>
+      <BetreiberID>MTA</BetreiberID>
+      <IstHalt>
+        <HaltID>A</HaltID>
+        <Abfahrtszeit>2024-07-09T23:58:00</Abfahrtszeit>
+        <Einsteigeverbot>false</Einsteigeverbot>
+        <Aussteigeverbot>false</Aussteigeverbot>
+        <Durchfahrt>false</Durchfahrt>
+        <Zusatzhalt>false</Zusatzhalt>
+      </IstHalt>
+      <IstHalt>
+        <HaltID>B</HaltID>
+        <Ankunftszeit>2024-07-10T01:00:00</Ankunftszeit>
+        <IstAnkunftPrognose>2024-07-10T01:00:00</IstAnkunftPrognose>
+        <Einsteigeverbot>false</Einsteigeverbot>
+        <Aussteigeverbot>false</Aussteigeverbot>
+        <Durchfahrt>false</Durchfahrt>
+        <Zusatzhalt>false</Zusatzhalt>
+      </IstHalt>
+      <LinienText>AB</LinienText>
+      <ProduktID>AB</ProduktID>
+      <RichtungsText>B</RichtungsText>
+      <Zusatzfahrt>false</Zusatzfahrt>
+      <FaelltAus>false</FaelltAus>
+    </IstFahrt>
+  </AUSNachricht>
+</DatenAbrufenAntwort>
+)";
+
+}  // namespace
+
+TEST(vdv_update, tt_after_midnight_update_before_midnight) {
+  timetable tt;
+  register_special_stations(tt);
+  tt.date_range_ = {date::sys_days{2024_y / July / 1},
+                    date::sys_days{2024_y / July / 31}};
+  auto const src_idx = source_idx_t{0};
+  load_timetable({}, src_idx, after_midnight_files(), tt);
+  finalize(tt);
+
+  std::cout << tt << "\n";
+
+  auto rtt = rt::create_rt_timetable(tt, date::sys_days{2024_y / July / 10});
+
+  auto doc = pugi::xml_document{};
+  doc.load_string(before_midnight_update);
+  auto u = rt::vdv::updater{tt, src_idx};
+  u.update(rtt, doc);
+
+  auto fr = rt::frun(
+      tt, &rtt,
+      {{transport_idx_t{0}, day_idx_t{14}}, {stop_idx_t{0}, stop_idx_t{2}}});
+
+  EXPECT_TRUE(fr.is_rt());
+}
+
+namespace {
 
 mem_dir rbo707_files() {
   return mem_dir::read(R"__(
