@@ -335,14 +335,11 @@ frun::iterator begin(frun const& fr) noexcept { return fr.begin(); }
 frun::iterator end(frun const& fr) noexcept { return fr.end(); }
 
 std::reverse_iterator<frun::iterator> frun::rbegin() const noexcept {
-  return std::make_reverse_iterator(
-      iterator{run_stop{.fr_ = this, .stop_idx_ = last_valid()}});
+  return std::make_reverse_iterator(end());
 }
 
 std::reverse_iterator<frun::iterator> frun::rend() const noexcept {
-  return std::make_reverse_iterator(iterator{
-      run_stop{.fr_ = this,
-               .stop_idx_ = static_cast<stop_idx_t>(stop_range_.from_ - 1U)}});
+  return std::make_reverse_iterator(begin());
 }
 
 std::reverse_iterator<frun::iterator> rbegin(frun const& fr) noexcept {
