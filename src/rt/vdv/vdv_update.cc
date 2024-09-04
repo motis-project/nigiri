@@ -1,6 +1,5 @@
 #include "nigiri/rt/vdv/vdv_update.h"
 
-#include <ranges>
 #include <sstream>
 #include <string>
 #include <string_view>
