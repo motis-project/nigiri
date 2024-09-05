@@ -9,7 +9,7 @@
 #include "nigiri/loader/loader_interface.h"
 #include "nigiri/timetable.h"
 
-#include "./shape_test.h"
+#include "./../../shape_test.h"
 #include "./test_data.h"
 
 using namespace date;

@@ -6,13 +6,13 @@
 
 #include "nigiri/types.h"
 
-namespace nigiri::loader::gtfs {
+namespace nigiri {
 
 class shape_test_mmap {
   using Key = shape_idx_t;
   using Value = geo::latlng;
   struct data_paths {
-    data_paths(std::string const& base_path)
+    explicit data_paths(std::string const& base_path)
         : data_file_{base_path + "-data.dat"},
           metadata_file_{base_path + "-metadata.dat"} {}
     ~data_paths() {
@@ -22,11 +22,15 @@ class shape_test_mmap {
             std::filesystem::remove(path);
           } catch (std::filesystem::filesystem_error const& e) {
             std::cerr << "Failed to delete '" << path << "': " << e.what()
-                      << std::endl;
+                      << "\n";
           }
         }
       }
     }
+    data_paths(data_paths const&) = delete;
+    data_paths& operator=(data_paths const&) = delete;
+    data_paths(data_paths&&) = delete;
+    data_paths&& operator=(data_paths&&) = delete;
     std::string data_file_;
     std::string metadata_file_;
   };
@@ -39,7 +43,7 @@ class shape_test_mmap {
   }
 
 public:
-  explicit shape_test_mmap(std::string base_path)
+  explicit shape_test_mmap(std::string const& base_path)
       : paths_{base_path}, mmap_{create_mmap(paths_)} {}
   shape_vecvec_t& get_shape_data() { return mmap_; }
 
@@ -48,4 +52,4 @@ private:
   shape_vecvec_t mmap_;
 };
 
-}  // namespace nigiri::loader::gtfs
+}  // namespace nigiri

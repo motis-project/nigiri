@@ -2,12 +2,10 @@
 
 #include "geo/polyline.h"
 
-#include "nigiri/loader/gtfs/files.h"
 #include "nigiri/loader/gtfs/load_timetable.h"
 #include "nigiri/loader/init_finish.h"
 #include "nigiri/rt/create_rt_timetable.h"
 #include "nigiri/rt/gtfsrt_update.h"
-#include "nigiri/rt/rt_timetable.h"
 #include "nigiri/shape.h"
 #include "nigiri/timetable.h"
 #include "nigiri/types.h"
@@ -56,8 +54,8 @@ service_id,date,exception_type
 S1,20240301,1
 )"sv;
 
-TEST(gtfs, shapeRequest_noShape_getEmptyVector) {
-  auto mmap = loader::gtfs::shape_test_mmap{"shape-route-trip-with-shape"};
+TEST(shape, shapeRequest_noShape_getEmptyVector) {
+  auto mmap = shape_test_mmap{"shape-route-trip-with-shape"};
   auto& shape_data = mmap.get_shape_data();
 
   auto tt = timetable{};
@@ -164,8 +162,8 @@ service_id,date,exception_type
 S1,20240301,1
 )"sv;
 
-TEST(gtfs, shapeRequest_singleTripWithShape_getFullShape) {
-  auto mmap = loader::gtfs::shape_test_mmap{"shape-route-trip-with-shape"};
+TEST(shape, shapeRequest_singleTripWithShape_getFullShape) {
+  auto mmap = shape_test_mmap{"shape-route-trip-with-shape"};
   auto& shape_data = mmap.get_shape_data();
 
   auto tt = timetable{};
@@ -193,8 +191,8 @@ TEST(gtfs, shapeRequest_singleTripWithShape_getFullShape) {
                                            shape_by_shape_index.end()}));
 }
 
-TEST(gtfs, shapeRequest_singleTripWithoutShape_getEmptyShape) {
-  auto mmap = loader::gtfs::shape_test_mmap{"shape-route-trip-without-shape"};
+TEST(shape, shapeRequest_singleTripWithoutShape_getEmptyShape) {
+  auto mmap = shape_test_mmap{"shape-route-trip-without-shape"};
   auto& shape_data = mmap.get_shape_data();
 
   auto tt = timetable{};

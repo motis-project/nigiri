@@ -10,7 +10,7 @@
 
 #include "nigiri/loader/gtfs/shape.h"
 
-#include "./shape_test.h"
+#include "./../../shape_test.h"
 
 using namespace nigiri::loader::gtfs;
 
@@ -55,7 +55,7 @@ auto const shape_points_aachen = std::unordered_map<std::string, geo::polyline>{
 };
 
 TEST(gtfs, shapeBuilder_withData_getExistingShapePoints) {
-  auto mmap = shape_test_mmap{"shape-test-builder"};
+  auto mmap = nigiri::shape_test_mmap{"shape-test-builder"};
   auto& shape_data = mmap.get_shape_data();
 
   auto const shapes = parse_shapes(shapes_data_aachen, shape_data);
@@ -92,7 +92,7 @@ test id,50.553822,6.356876,0
 🚀,51.543652,7.217830,0
 🚏,51.478609,7.223275,1
 )";
-  auto mmap = shape_test_mmap{"shape-test-unicode-ids"};
+  auto mmap = nigiri::shape_test_mmap{"shape-test-unicode-ids"};
   auto& shape_data = mmap.get_shape_data();
 
   auto const shapes = parse_shapes(shapes_data, shape_data);
@@ -113,7 +113,7 @@ TEST(gtfs, shapeParse_notAscendingSequence_progressAndLogError) {
 1,50.636512,6.473487,1
 1,50.636259,6.473668,0
 )";
-  auto mmap = shape_test_mmap{"shape-test-not-ascending-sequence"};
+  auto mmap = nigiri::shape_test_mmap{"shape-test-not-ascending-sequence"};
   auto& shape_data = mmap.get_shape_data();
   std::stringstream const buffer{};
   auto const backup = std::clog.rdbuf(buffer.rdbuf());
@@ -151,7 +151,7 @@ TEST(gtfs, shapeParse_shuffledRows_parseAllData) {
 240,51.473214,7.139521,1
 235,51.543652,7.217830,1
 )";
-  auto mmap = shape_test_mmap{"shape-test-shuffled-rows"};
+  auto mmap = nigiri::shape_test_mmap{"shape-test-shuffled-rows"};
   auto& shape_data = mmap.get_shape_data();
 
   auto const shapes = parse_shapes(shapes_data, shape_data);
@@ -204,7 +204,7 @@ TEST(gtfs,
 2,51.473214,7.139521,0
 1,50.636259,6.473668,0
 )";
-  auto mmap = shape_test_mmap{"shape-test-not-ascending-sequence"};
+  auto mmap = nigiri::shape_test_mmap{"shape-test-not-ascending-sequence"};
   std::stringstream const buffer{};
   auto const backup = std::clog.rdbuf(buffer.rdbuf());
   auto const buffer_guard = utl::make_raii(
