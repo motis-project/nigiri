@@ -1,6 +1,20 @@
 #include "nigiri/shape.h"
 
+#include "fmt/core.h"
+
+#include "nigiri/timetable.h"
+
 namespace nigiri {
+
+shapes_storage_t create_shapes_storage(std::filesystem::path const& path) {
+  constexpr auto const kMode = cista::mmap::protection::WRITE;
+  return {
+      cista::basic_mmap_vec<geo::latlng, std::uint64_t>{cista::mmap{
+          fmt::format("{}_data.bin", path.generic_string()).c_str(), kMode}},
+      cista::basic_mmap_vec<cista::base_t<shape_idx_t>, std::uint64_t>{
+          cista::mmap{fmt::format("{}_idx.bin", path.generic_string()).c_str(),
+                      kMode}}};
+}
 
 std::span<geo::latlng const> get_shape(timetable const& tt,
                                        shapes_storage_t const& shapes,

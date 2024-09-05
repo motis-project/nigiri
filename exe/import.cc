@@ -9,9 +9,11 @@
 
 #include "nigiri/loader/load.h"
 #include "nigiri/loader/loader_interface.h"
+#include "nigiri/shape.h"
 
 namespace fs = std::filesystem;
 namespace bpo = boost::program_options;
+using namespace nigiri;
 using namespace nigiri::loader;
 using namespace std::string_literals;
 
@@ -34,6 +36,7 @@ int main(int ac, char** av) {
 
   auto in = fs::path{};
   auto out = fs::path{"tt.bin"};
+  auto out_shapes = fs::path{"shapes"};
   auto start_date = "TODAY"s;
   auto assistance_path = fs::path{};
   auto n_days = 365U;
@@ -68,7 +71,8 @@ int main(int ac, char** av) {
        "adjust footpath lengths")  //
       ("max_foopath_length", bpo::value(&c.max_footpath_length_)
                                  ->default_value(c.max_footpath_length_))  //
-      ("assistance_times", bpo::value(&assistance_path));
+      ("assistance_times", bpo::value(&assistance_path))  //
+      ("shapes", bpo::value(&out_shapes));
   auto const pos = bpo::positional_options_description{}.add("in", -1);
 
   auto vm = bpo::variables_map{};
@@ -106,8 +110,14 @@ int main(int ac, char** av) {
     assistance = std::make_unique<assistance_times>(read_assistance(f.view()));
   }
 
+  auto shapes = std::unique_ptr<shapes_storage_t>();
+  if (vm.contains("shapes")) {
+    shapes =
+        std::make_unique<shapes_storage_t>(create_shapes_storage(out_shapes));
+  }
+
   auto const start = parse_date(start_date);
   load(input_files, c, {start, start + date::days{n_days}}, assistance.get(),
-       nullptr, ignore && recursive)
+       shapes.get(), ignore && recursive)
       .write(out);
 }

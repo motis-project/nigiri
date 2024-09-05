@@ -16,17 +16,12 @@
 #include "nigiri/common/span_cmp.h"
 #include "nigiri/shape.h"
 
+namespace fs = std::filesystem;
 using namespace nigiri;
 using namespace nigiri::loader::gtfs;
 
-shapes_storage_t create_shapes_storage(char const* path) {
-  constexpr auto const kMode = cista::mmap::protection::WRITE;
-  auto const tmp = std::filesystem::temp_directory_path();
-  return {
-      cista::basic_mmap_vec<geo::latlng, std::uint64_t>{
-          cista::mmap{fmt::format("{}/{}_data.bin", tmp, path).c_str(), kMode}},
-      cista::basic_mmap_vec<cista::base_t<shape_idx_t>, std::uint64_t>{
-          cista::mmap{fmt::format("{}/{}_idx.bin", tmp, path).c_str(), kMode}}};
+shapes_storage_t create_tmp_shapes_storage(char const* path) {
+  return create_shapes_storage(fs::temp_directory_path() / path);
 }
 
 TEST(gtfs, shape_get_existing_shape_points) {
@@ -43,7 +38,7 @@ TEST(gtfs, shape_get_existing_shape_points) {
 3105,50.581956,6.379866,11
 )";
 
-  auto shape_data = create_shapes_storage("shape-test-builder");
+  auto shape_data = create_tmp_shapes_storage("shape-test-builder");
   auto const shapes = parse_shapes(kShapesData, shape_data);
 
   EXPECT_EQ(end(shapes), shapes.find("1"));
@@ -77,7 +72,8 @@ TEST(gtfs, shape_not_ascending_sequence) {
   auto const buffer_guard =
       utl::make_finally([&]() { std::clog.rdbuf(backup); });
 
-  auto shape_data = create_shapes_storage("shape-test-not-ascending-sequence");
+  auto shape_data =
+      create_tmp_shapes_storage("shape-test-not-ascending-sequence");
   auto const shapes = parse_shapes(kShapesData, shape_data);
   std::clog.flush();
 
@@ -105,7 +101,7 @@ TEST(gtfs, shape_shuffled_rows) {
 235,51.543652,7.217830,1
 )";
 
-  auto shape_data = create_shapes_storage("shape-test-shuffled-rows");
+  auto shape_data = create_tmp_shapes_storage("shape-test-shuffled-rows");
   auto const shapes = parse_shapes(kShapesData, shape_data);
 
   auto const shape_points =
@@ -158,7 +154,8 @@ TEST(gtfs, shape_delay_insert_no_ascending_sequence) {
   auto const buffer_guard =
       utl::make_finally([&]() { std::clog.rdbuf(backup); });
 
-  auto shape_data = create_shapes_storage("shape-test-not-ascending-sequence");
+  auto shape_data =
+      create_tmp_shapes_storage("shape-test-not-ascending-sequence");
   auto const shapes = parse_shapes(kShapesData, shape_data);
 
   std::clog.flush();

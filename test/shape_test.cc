@@ -16,7 +16,7 @@ using namespace date;
 using namespace std::string_view_literals;
 
 // linked from gtfs/shape_test.cc
-shapes_storage_t create_shapes_storage(char const*);
+shapes_storage_t create_tmp_shapes_storage(char const*);
 
 namespace {
 
@@ -113,7 +113,7 @@ TEST(shape, single_trip_with_shape) {
                     date::sys_days{2024_y / March / 2}};
   loader::register_special_stations(tt);
   auto local_bitfield_indices = hash_map<bitfield, bitfield_idx_t>{};
-  auto shape_data = create_shapes_storage("shape-route-trip-with-shape");
+  auto shape_data = create_tmp_shapes_storage("shape-route-trip-with-shape");
   loader::gtfs::load_timetable({}, source_idx_t{1},
                                loader::mem_dir::read(kWithShapes), tt,
                                local_bitfield_indices, nullptr, &shape_data);
