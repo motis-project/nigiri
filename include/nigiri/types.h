@@ -26,6 +26,8 @@
 #include "cista/reflection/printable.h"
 #include "cista/strong.h"
 
+#include "geo/latlng.h"
+
 #include "nigiri/common/interval.h"
 #include "nigiri/common/it_range.h"
 
@@ -110,6 +112,12 @@ using optional = cista::optional<T>;
 template <typename Key, typename T, std::size_t N>
 using nvec = cista::raw::nvec<Key, T, N>;
 
+template <typename T>
+using mm_vec = cista::basic_mmap_vec<T, std::uint64_t>;
+
+template <typename Key, typename V, typename SizeType = cista::base_t<Key>>
+using mm_vecvec = cista::basic_vecvec<Key, mm_vec<V>, mm_vec<SizeType>>;
+
 template <typename Key, typename T>
 struct mmap_paged_vecvec_helper {
   using data_t = cista::paged<vector<T>>;
@@ -125,6 +133,7 @@ using location_idx_t = cista::strong<std::uint32_t, struct _location_idx>;
 using route_idx_t = cista::strong<std::uint32_t, struct _route_idx>;
 using section_idx_t = cista::strong<std::uint32_t, struct _section_idx>;
 using section_db_idx_t = cista::strong<std::uint32_t, struct _section_db_idx>;
+using shape_idx_t = cista::strong<std::uint32_t, struct _shape_idx>;
 using trip_idx_t = cista::strong<std::uint32_t, struct _trip_idx>;
 using trip_id_idx_t = cista::strong<std::uint32_t, struct _trip_id_str_idx>;
 using transport_idx_t = cista::strong<std::uint32_t, struct _transport_idx>;
@@ -162,6 +171,7 @@ using attribute_combination_idx_t =
     cista::strong<std::uint32_t, struct _attribute_combination>;
 using provider_idx_t = cista::strong<std::uint32_t, struct _provider_idx>;
 
+using shapes_storage_t = mm_vecvec<shape_idx_t, geo::latlng>;
 using transport_range_t = pair<transport_idx_t, interval<stop_idx_t>>;
 
 struct trip_debug {

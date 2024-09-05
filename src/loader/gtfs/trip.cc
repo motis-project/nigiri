@@ -115,6 +115,7 @@ trip::trip(route const* route,
            std::string id,
            trip_direction_idx_t const headsign,
            std::string short_name,
+           shape_idx_t shape_idx,
            bool const bikes_allowed)
     : route_(route),
       service_(service),
@@ -122,6 +123,7 @@ trip::trip(route const* route,
       id_{std::move(id)},
       headsign_(headsign),
       short_name_(std::move(short_name)),
+      shape_idx_(shape_idx),
       bikes_allowed_{bikes_allowed} {}
 
 void trip::interpolate() {
@@ -254,6 +256,7 @@ trip_data read_trips(
     timetable& tt,
     route_map_t const& routes,
     traffic_days_t const& services,
+    shape_id_map_t const& shapes,
     std::string_view file_content,
     std::array<bool, kNumClasses> const& bikes_allowed_default) {
   struct csv_trip {
@@ -263,6 +266,7 @@ trip_data read_trips(
     utl::csv_col<utl::cstr, UTL_NAME("trip_headsign")> trip_headsign_;
     utl::csv_col<utl::cstr, UTL_NAME("trip_short_name")> trip_short_name_;
     utl::csv_col<utl::cstr, UTL_NAME("block_id")> block_id_;
+    utl::csv_col<utl::cstr, UTL_NAME("shape_id")> shape_id_;
     utl::csv_col<std::uint8_t, UTL_NAME("bikes_allowed")> bikes_allowed_;
   };
 
@@ -272,7 +276,7 @@ trip_data read_trips(
 
   auto const progress_tracker = utl::get_active_progress_tracker();
   progress_tracker->status("Read Trips")
-      .out_bounds(40.F, 44.F)
+      .out_bounds(38.F, 42.F)
       .in_high(file_content.size());
   utl::line_range{
       utl::make_buf_reader(file_content, progress_tracker->update_fn())}  //
@@ -294,6 +298,11 @@ trip_data read_trips(
             return;
           }
 
+          auto const shape_it = shapes.find(t.shape_id_->view());
+          auto const shape_idx = (shape_it == end(shapes))
+                                     ? shape_idx_t::invalid()
+                                     : shape_it->second.index_;
+
           auto bikes_allowed = bikes_allowed_default[static_cast<std::size_t>(
               route_it->second->clasz_)];
           if (t.bikes_allowed_.val() == 1) {
@@ -313,7 +322,7 @@ trip_data read_trips(
               route_it->second.get(), traffic_days_it->second.get(), blk,
               t.trip_id_->to_str(),
               ret.get_or_create_direction(tt, t.trip_headsign_->view()),
-              t.trip_short_name_->to_str(), bikes_allowed);
+              t.trip_short_name_->to_str(), shape_idx, bikes_allowed);
           ret.trips_.emplace(t.trip_id_->to_str(), trp_idx);
           if (blk != nullptr) {
             blk->trips_.emplace_back(trp_idx);
@@ -337,7 +346,7 @@ void read_frequencies(trip_data& trips, std::string_view file_content) {
 
   auto const progress_tracker = utl::get_active_progress_tracker();
   progress_tracker->status("Read Frequencies")
-      .out_bounds(44.F, 45.F)
+      .out_bounds(42.F, 43.F)
       .in_high(file_content.size());
   return utl::line_range{utl::make_buf_reader(
              file_content, progress_tracker->update_fn())}  //

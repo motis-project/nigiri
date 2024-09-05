@@ -14,9 +14,10 @@ void gtfs_loader::load(
     dir const& d,
     timetable& tt,
     hash_map<bitfield, bitfield_idx_t>& global_bitfield_indices,
-    assistance_times* assistance) const {
+    assistance_times* assistance,
+    shapes_storage_t* shapes) const {
   return nigiri::loader::gtfs::load_timetable(
-      c, src, d, tt, global_bitfield_indices, assistance);
+      c, src, d, tt, global_bitfield_indices, assistance, shapes);
 }
 
 cista::hash_t gtfs_loader::hash(dir const& d) const {

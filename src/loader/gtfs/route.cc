@@ -165,7 +165,7 @@ route_map_t read_routes(timetable& tt,
 
   auto const progress_tracker = utl::get_active_progress_tracker();
   progress_tracker->status("Parse Routes")
-      .out_bounds(30.F, 32.F)
+      .out_bounds(27.F, 29.F)
       .in_high(file_content.size());
   return utl::line_range{utl::make_buf_reader(
              file_content, progress_tracker->update_fn())}  //
