@@ -1,5 +1,7 @@
 #pragma once
 
+#include "fmt/format.h"
+
 #include "utl/enumerate.h"
 #include "utl/equal_ranges_linear.h"
 #include "utl/erase_if.h"
@@ -7,6 +9,7 @@
 #include "utl/to_vec.h"
 
 #include "nigiri/for_each_meta.h"
+#include "nigiri/get_otel_tracer.h"
 #include "nigiri/logging.h"
 #include "nigiri/routing/dijkstra.h"
 #include "nigiri/routing/get_fastest_direct.h"
@@ -63,6 +66,9 @@ struct search {
             bool const require_bikes_allowed,
             transfer_time_settings& tts,
             algo_state_t& algo_state) {
+    auto span = get_otel_tracer()->StartSpan("search::init");
+    auto scope = opentelemetry::trace::Scope{span};
+
     stats_.fastest_direct_ =
         static_cast<std::uint64_t>(fastest_direct_.count());
 
@@ -83,6 +89,8 @@ struct search {
     }
 
     if constexpr (Algo::kUseLowerBounds) {
+      auto lb_span = get_otel_tracer()->StartSpan("lower bounds");
+      auto lb_scope = opentelemetry::trace::Scope{lb_span};
       UTL_START_TIMING(lb);
       dijkstra(tt_, q_,
                kFwd ? tt_.fwd_search_lb_graph_ : tt_.bwd_search_lb_graph_,
@@ -167,6 +175,9 @@ struct search {
   }
 
   routing_result<algo_stats_t> execute() {
+    auto span = get_otel_tracer()->StartSpan("search::execute");
+    auto scope = opentelemetry::trace::Scope{span};
+
     state_.results_.clear();
 
     if (start_dest_overlap()) {
@@ -219,6 +230,8 @@ struct search {
                 q_.start_time_),
             search_interval_, tt_.external_interval(), n_results_in_interval(),
             is_timeout_reached());
+        span->SetAttribute("nigiri.search.timeout_reached",
+                           is_timeout_reached());
         break;
       } else {
         trace(
@@ -367,6 +380,9 @@ private:
   }
 
   void search_interval() {
+    auto span = get_otel_tracer()->StartSpan("search::search_interval");
+    auto scope = opentelemetry::trace::Scope{span};
+
     utl::equal_ranges_linear(
         state_.starts_,
         [](start const& a, start const& b) {
@@ -397,6 +413,12 @@ private:
                 j.error_ = true;
                 log(log_lvl::error, "search", "reconstruct failed: {}",
                     e.what());
+                span->SetStatus(opentelemetry::trace::StatusCode::kError,
+                                "exception");
+                span->AddEvent(
+                    "exception",
+                    {{"exception.message",
+                      fmt::format("reconstruct failed: {}", e.what())}});
               }
             }
           }
