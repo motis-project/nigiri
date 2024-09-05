@@ -14,15 +14,15 @@ namespace nigiri::loader::gtfs {
 shape_id_map_t parse_shapes(std::string_view const data,
                             shape_vecvec_t& shapes) {
   struct shape_entry {
-    utl::csv_col<utl::cstr, UTL_NAME("shape_id")> id_;
-    utl::csv_col<double, UTL_NAME("shape_pt_lat")> lat_;
-    utl::csv_col<double, UTL_NAME("shape_pt_lon")> lon_;
-    utl::csv_col<size_t, UTL_NAME("shape_pt_sequence")> seq_;
+    utl::csv_col<utl::cstr, UTL_NAME("shape_id")> id_{};
+    utl::csv_col<double, UTL_NAME("shape_pt_lat")> lat_{};
+    utl::csv_col<double, UTL_NAME("shape_pt_lon")> lon_{};
+    utl::csv_col<std::size_t, UTL_NAME("shape_pt_sequence")> seq_{};
   };
 
   struct shape_state {
     shape_idx_t index_{};
-    size_t last_seq_{};
+    std::size_t last_seq_{};
   };
   auto states = hash_map<utl::cstr, shape_state>{};
   auto lookup = cached_lookup(states);
