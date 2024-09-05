@@ -29,7 +29,7 @@ shapes_storage_t create_shapes_storage(char const* path) {
           cista::mmap{fmt::format("{}/{}_idx.bin", tmp, path).c_str(), kMode}}};
 }
 
-TEST(gtfs, shapeBuilder_withData_getExistingShapePoints) {
+TEST(gtfs, shape_get_existing_shape_points) {
   constexpr auto const kShapesData =
       R"("shape_id","shape_pt_lat","shape_pt_lon","shape_pt_sequence"
 243,51.543652,7.217830,0
@@ -66,7 +66,7 @@ TEST(gtfs, shapeBuilder_withData_getExistingShapePoints) {
             get_shape(shape_data, shapes.at("3105").index_));
 }
 
-TEST(gtfs, shapeParse_notAscendingSequence_progressAndLogError) {
+TEST(gtfs, shape_not_ascending_sequence) {
   constexpr auto const kShapesData =
       R"("shape_id","shape_pt_lat","shape_pt_lon","shape_pt_sequence"
 1,50.636512,6.473487,1
@@ -88,7 +88,7 @@ TEST(gtfs, shapeParse_notAscendingSequence_progressAndLogError) {
       "followed by 0"));
 }
 
-TEST(gtfs, shapeParse_shuffledRows_parseAllData) {
+TEST(gtfs, shape_shuffled_rows) {
   constexpr auto const kShapesData =
       R"("shape_id","shape_pt_lat","shape_pt_lon","shape_pt_sequence"
 234,51.473214,7.139521,0
@@ -146,8 +146,7 @@ TEST(gtfs, shapeParse_shuffledRows_parseAllData) {
   }
 }
 
-TEST(gtfs,
-     shapeParse_delayedInsertWithNotAscendingSequence_progressAndLogError) {
+TEST(gtfs, shape_delay_insert_no_ascending_sequence) {
   constexpr auto const kShapesData =
       R"("shape_id","shape_pt_lat","shape_pt_lon","shape_pt_sequence"
 1,50.636512,6.473487,1
