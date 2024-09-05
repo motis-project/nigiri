@@ -26,7 +26,7 @@ timetable load(std::vector<std::filesystem::path> const& paths,
                loader_config const& c,
                interval<date::sys_days> const& date_range,
                assistance_times* a,
-               shape_vecvec_t* shapes,
+               shapes_storage_t* shapes,
                bool ignore) {
   auto const loaders = get_loaders();
 

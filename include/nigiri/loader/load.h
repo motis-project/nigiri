@@ -18,7 +18,7 @@ timetable load(std::vector<std::filesystem::path> const&,
                loader_config const&,
                interval<date::sys_days> const&,
                assistance_times*,
-               shape_vecvec_t*,
+               shapes_storage_t*,
                bool ignore = false);
 
 }  // namespace nigiri::loader

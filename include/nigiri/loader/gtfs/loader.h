@@ -12,7 +12,7 @@ struct gtfs_loader : public loader_interface {
             timetable&,
             hash_map<bitfield, bitfield_idx_t>&,
             assistance_times*,
-            shape_vecvec_t*) const override;
+            shapes_storage_t*) const override;
   cista::hash_t hash(dir const&) const override;
   std::string_view name() const override;
 };

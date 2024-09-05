@@ -32,10 +32,9 @@ TEST(gtfs, read_stop_times_example_data) {
   auto const calendar = read_calendar(files.get_file(kCalenderFile).data());
   auto const services =
       merge_traffic_days(tt.internal_interval_days(), calendar, dates);
-  auto const shapes = shape_id_map_t{};
-  auto trip_data = read_trips(tt, routes, services, shapes,
-                              files.get_file(kTripsFile).data(),
-                              config.bikes_allowed_default_);
+  auto trip_data =
+      read_trips(tt, routes, services, {}, files.get_file(kTripsFile).data(),
+                 config.bikes_allowed_default_);
   auto const stops = read_stops(source_idx_t{0}, tt, timezones,
                                 files.get_file(kStopFile).data(),
                                 files.get_file(kTransfersFile).data(), 0U);

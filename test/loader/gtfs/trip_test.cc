@@ -7,19 +7,22 @@
 #include "nigiri/loader/gtfs/shape.h"
 #include "nigiri/loader/gtfs/trip.h"
 #include "nigiri/loader/loader_interface.h"
+#include "nigiri/common/span_cmp.h"
 #include "nigiri/timetable.h"
 
-#include "./../../shape_test.h"
 #include "./test_data.h"
 
 using namespace date;
+using namespace nigiri;
 using namespace nigiri::loader;
+
+// linked from gtfs/shape_test.cc
+shapes_storage_t create_shapes_storage(char const*);
 
 namespace nigiri::loader::gtfs {
 
 TEST(gtfs, read_trips_example_data) {
   auto const files = example_files();
-  auto mmap = shape_test_mmap{"trips-example-data"};
 
   timetable tt;
   tt.date_range_ = interval{date::sys_days{July / 1 / 2006},
@@ -36,8 +39,9 @@ TEST(gtfs, read_trips_example_data) {
   auto const calendar = read_calendar(files.get_file(kCalenderFile).data());
   auto const services =
       merge_traffic_days(tt.internal_interval_days(), calendar, dates);
+  auto shapes_storage = create_shapes_storage("example_shapes");
   auto const shapes =
-      parse_shapes(files.get_file(kShapesFile).data(), mmap.get_shape_data());
+      parse_shapes(files.get_file(kShapesFile).data(), shapes_storage);
   auto const trip_data = read_trips(tt, routes, services, shapes,
                                     files.get_file(kTripsFile).data(),
                                     config.bikes_allowed_default_);
@@ -52,7 +56,6 @@ TEST(gtfs, read_trips_example_data) {
 
 TEST(gtfs, read_trips_berlin_data) {
   auto const files = berlin_files();
-  auto mmap = shape_test_mmap{"trips-berlin-data"};
 
   timetable tt;
   tt.date_range_ = interval{date::sys_days{July / 1 / 2006},
@@ -69,13 +72,14 @@ TEST(gtfs, read_trips_berlin_data) {
   auto const calendar = read_calendar(files.get_file(kCalenderFile).data());
   auto const services =
       merge_traffic_days(tt.internal_interval_days(), calendar, dates);
+  auto shapes_storage = create_shapes_storage("berlin_shapes");
   auto const shapes =
-      parse_shapes(files.get_file(kShapesFile).data(), mmap.get_shape_data());
+      parse_shapes(files.get_file(kShapesFile).data(), shapes_storage);
   auto const trip_data = read_trips(tt, routes, services, shapes,
                                     files.get_file(kTripsFile).data(),
                                     config.bikes_allowed_default_);
 
-  EXPECT_EQ(3, trip_data.data_.size());
+  EXPECT_EQ(3U, trip_data.data_.size());
 
   EXPECT_NE(end(trip_data.trips_), trip_data.trips_.find("1"));
   auto const& trip1 = trip_data.data_[trip_data.trips_.at("1")];

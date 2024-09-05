@@ -6,8 +6,13 @@
 
 namespace nigiri::loader::gtfs {
 
-using shape_id_map_t = hash_map<std::string, shape_idx_t>;
+struct shape_state {
+  shape_idx_t index_{};
+  std::size_t last_seq_{};
+};
 
-shape_id_map_t parse_shapes(std::string_view const, shape_vecvec_t&);
+using shape_id_map_t = hash_map<std::string, shape_state>;
+
+shape_id_map_t parse_shapes(std::string_view const, shapes_storage_t&);
 
 }  // namespace nigiri::loader::gtfs

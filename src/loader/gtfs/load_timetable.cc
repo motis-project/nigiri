@@ -84,7 +84,7 @@ void load_timetable(loader_config const& config,
                     dir const& d,
                     timetable& tt,
                     assistance_times* assistance,
-                    shape_vecvec_t* shapes) {
+                    shapes_storage_t* shapes) {
   auto local_bitfield_indices = hash_map<bitfield, bitfield_idx_t>{};
   load_timetable(config, src, d, tt, local_bitfield_indices, assistance,
                  shapes);
@@ -96,7 +96,7 @@ void load_timetable(loader_config const& config,
                     timetable& tt,
                     hash_map<bitfield, bitfield_idx_t>& bitfield_indices,
                     assistance_times* assistance,
-                    shape_vecvec_t* shapes) {
+                    shapes_storage_t* shapes) {
   nigiri::scoped_timer const global_timer{"gtfs parser"};
 
   auto const load = [&](std::string_view file_name) -> file {

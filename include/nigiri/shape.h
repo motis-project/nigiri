@@ -10,10 +10,10 @@
 namespace nigiri {
 
 std::span<geo::latlng const> get_shape(timetable const&,
-                                       shape_vecvec_t const&,
+                                       shapes_storage_t const&,
                                        trip_idx_t const);
 
-std::span<geo::latlng const> get_shape(shape_vecvec_t const&,
+std::span<geo::latlng const> get_shape(shapes_storage_t const&,
                                        shape_idx_t const);
 
 }  // namespace nigiri

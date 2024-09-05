@@ -4,78 +4,19 @@
 
 #include "nigiri/loader/gtfs/load_timetable.h"
 #include "nigiri/loader/init_finish.h"
+#include "nigiri/common/span_cmp.h"
 #include "nigiri/rt/create_rt_timetable.h"
 #include "nigiri/rt/gtfsrt_update.h"
 #include "nigiri/shape.h"
 #include "nigiri/timetable.h"
 #include "nigiri/types.h"
 
-#include "./shape_test.h"
-
 using namespace nigiri;
 using namespace date;
 using namespace std::string_view_literals;
 
-constexpr auto const test_files_without_shapes = R"(
-# agency.txt
-agency_id,agency_name,agency_url,agency_timezone
-DB,Deutsche Bahn,https://deutschebahn.com,Europe/Berlin
-LH,Lufthansa,https://lufthansa.de,Europe/Berlin
-
-# stops.txt
-stop_id,stop_name,stop_desc,stop_lat,stop_lon,stop_url,location_type,parent_station
-A,A,,0.0,1.0,,
-B,B,,2.0,3.0,,
-C,C,,4.0,5.0,,
-
-# routes.txt
-route_id,agency_id,route_short_name,route_long_name,route_desc,route_type
-AIR,LH,X,,,1100
-R1,DB,1,,,3
-R2,DB,2,,,2
-
-# trips.txt
-route_id,service_id,trip_id,trip_headsign,block_id
-AIR,S1,AIR,,
-R1,S1,T1,,
-R2,S1,T2,,
-
-# stop_times.txt
-trip_id,arrival_time,departure_time,stop_id,stop_sequence,pickup_type,drop_off_type
-AIR,10:00:00,10:00:00,A,0,0,0
-AIR,11:00:00,11:00:00,C,1,0,0
-T1,10:00:00,10:00:00,A,0,0,0
-T1,10:55:00,10:55:00,B,1,0,0
-T2,11:05:00,11:05:00,B,0,0,0
-T2,12:00:00,12:00:00,C,1,0,0
-
-# calendar_dates.txt
-service_id,date,exception_type
-S1,20240301,1
-)"sv;
-
-TEST(shape, shapeRequest_noShape_getEmptyVector) {
-  auto mmap = shape_test_mmap{"shape-route-trip-with-shape"};
-  auto& shape_data = mmap.get_shape_data();
-
-  auto tt = timetable{};
-
-  tt.date_range_ = {date::sys_days{2024_y / March / 1},
-                    date::sys_days{2024_y / March / 2}};
-  loader::register_special_stations(tt);
-  loader::gtfs::load_timetable({}, source_idx_t{0},
-                               loader::mem_dir::read(test_files_without_shapes),
-                               tt);
-  loader::finalize(tt);
-
-  auto const shape_by_trip_index = get_shape(tt, shape_data, trip_idx_t{1});
-  auto const shape_by_shape_index = get_shape(shape_data, shape_idx_t{1});
-
-  EXPECT_EQ(geo::polyline{}, (geo::polyline{shape_by_trip_index.begin(),
-                                            shape_by_trip_index.end()}));
-  EXPECT_EQ(geo::polyline{}, (geo::polyline{shape_by_shape_index.begin(),
-                                            shape_by_shape_index.end()}));
-}
+// linked from gtfs/shape_test.cc
+shapes_storage_t create_shapes_storage(char const*);
 
 constexpr auto const test_files_with_shapes = R"(
 # agency.txt
@@ -163,15 +104,12 @@ S1,20240301,1
 )"sv;
 
 TEST(shape, shapeRequest_singleTripWithShape_getFullShape) {
-  auto mmap = shape_test_mmap{"shape-route-trip-with-shape"};
-  auto& shape_data = mmap.get_shape_data();
-
   auto tt = timetable{};
-
   tt.date_range_ = {date::sys_days{2024_y / March / 1},
                     date::sys_days{2024_y / March / 2}};
   loader::register_special_stations(tt);
   auto local_bitfield_indices = hash_map<bitfield, bitfield_idx_t>{};
+  auto shape_data = create_shapes_storage("shape-route-trip-with-shape");
   loader::gtfs::load_timetable(
       {}, source_idx_t{1}, loader::mem_dir::read(test_files_with_shapes), tt,
       local_bitfield_indices, nullptr, &shape_data);
@@ -185,22 +123,18 @@ TEST(shape, shapeRequest_singleTripWithShape_getFullShape) {
       {4.0f, 5.0f}, {5.5f, 2.5f}, {5.5f, 3.0f},
       {6.0f, 3.0f}, {5.0f, 2.0f}, {4.0f, 2.0f},
   };
-  EXPECT_EQ(expected_shape, (geo::polyline{shape_by_trip_index.begin(),
-                                           shape_by_trip_index.end()}));
-  EXPECT_EQ(expected_shape, (geo::polyline{shape_by_shape_index.begin(),
-                                           shape_by_shape_index.end()}));
+  EXPECT_EQ(expected_shape, shape_by_trip_index);
+  EXPECT_EQ(expected_shape, shape_by_shape_index);
 }
 
 TEST(shape, shapeRequest_singleTripWithoutShape_getEmptyShape) {
-  auto mmap = shape_test_mmap{"shape-route-trip-without-shape"};
-  auto& shape_data = mmap.get_shape_data();
-
   auto tt = timetable{};
 
   tt.date_range_ = {date::sys_days{2024_y / March / 1},
                     date::sys_days{2024_y / March / 2}};
   loader::register_special_stations(tt);
   auto local_bitfield_indices = hash_map<bitfield, bitfield_idx_t>{};
+  auto shape_data = create_shapes_storage("shape-route-trip-without-shape");
   loader::gtfs::load_timetable(
       {}, source_idx_t{1}, loader::mem_dir::read(test_files_with_shapes), tt,
       local_bitfield_indices, nullptr, &shape_data);
@@ -211,9 +145,6 @@ TEST(shape, shapeRequest_singleTripWithoutShape_getEmptyShape) {
   auto const shape_by_shape_index =
       get_shape(shape_data, shape_idx_t::invalid());
 
-  auto const expected_shape = geo::polyline{};
-  EXPECT_EQ(expected_shape, (geo::polyline{shape_by_trip_index.begin(),
-                                           shape_by_trip_index.end()}));
-  EXPECT_EQ(expected_shape, (geo::polyline{shape_by_shape_index.begin(),
-                                           shape_by_shape_index.end()}));
+  EXPECT_TRUE(shape_by_trip_index.empty());
+  EXPECT_TRUE(shape_by_shape_index.empty());
 }

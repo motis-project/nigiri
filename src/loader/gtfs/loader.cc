@@ -15,7 +15,7 @@ void gtfs_loader::load(
     timetable& tt,
     hash_map<bitfield, bitfield_idx_t>& global_bitfield_indices,
     assistance_times* assistance,
-    shape_vecvec_t* shapes) const {
+    shapes_storage_t* shapes) const {
   return nigiri::loader::gtfs::load_timetable(
       c, src, d, tt, global_bitfield_indices, assistance, shapes);
 }
