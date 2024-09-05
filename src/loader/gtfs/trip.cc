@@ -55,9 +55,8 @@ block::rule_services(trip_data& trips) {
     gtfs_trip_idx_t trip_;
     bitfield traffic_days_;
   };
-  auto rule_trips = utl::to_vec(trips_, [&](auto&& t) {
-    return rule_trip{t, *trips.get(t).service_};
-  });
+  auto rule_trips = utl::to_vec(
+      trips_, [&](auto&& t) { return rule_trip{t, *trips.get(t).service_}; });
 
   struct queue_entry {
     std::vector<rule_trip>::iterator current_it_;
@@ -299,7 +298,7 @@ trip_data read_trips(
           }
 
           auto const shape_it = shapes.find(t.shape_id_->view());
-          auto const shape_idx = (shape_it == shapes.end())
+          auto const shape_idx = (shape_it == end(shapes))
                                      ? shape_idx_t::invalid()
                                      : shape_it->second.index_;
 

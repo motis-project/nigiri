@@ -18,7 +18,7 @@ std::span<geo::latlng const> get_shape(shapes_storage_t const& shapes,
     return {};
   }
   auto const bucket = shapes[shape_idx];
-  return {bucket.begin(), bucket.end()};
+  return {begin(bucket), end(bucket)};
 }
 
 }  // namespace nigiri
