@@ -7,10 +7,10 @@
 namespace nigiri {
 
 shapes_storage_t create_shapes_storage(std::filesystem::path const& path,
-                                       cista::mmap::protection const kMode) {
+                                       cista::mmap::protection const mode) {
   return {
       cista::basic_mmap_vec<geo::latlng, std::uint64_t>{cista::mmap{
-          fmt::format("{}_data.bin", path.generic_string()).c_str(), kMode}},
+          fmt::format("{}_data.bin", path.generic_string()).c_str(), mode}},
       cista::basic_mmap_vec<cista::base_t<shape_idx_t>, std::uint64_t>{
           cista::mmap{fmt::format("{}_idx.bin", path.generic_string()).c_str(),
                       kMode}}};
