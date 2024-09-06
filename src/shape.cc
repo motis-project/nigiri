@@ -13,7 +13,7 @@ shapes_storage_t create_shapes_storage(std::filesystem::path const& path,
           fmt::format("{}_data.bin", path.generic_string()).c_str(), mode}},
       cista::basic_mmap_vec<cista::base_t<shape_idx_t>, std::uint64_t>{
           cista::mmap{fmt::format("{}_idx.bin", path.generic_string()).c_str(),
-                      kMode}}};
+                      mode}}};
 }
 
 std::span<geo::latlng const> get_shape(timetable const& tt,
