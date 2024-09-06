@@ -13,7 +13,9 @@ struct timetable;
 
 namespace nigiri {
 
-shapes_storage_t create_shapes_storage(std::filesystem::path const&);
+shapes_storage_t create_shapes_storage(
+    std::filesystem::path const&,
+    cista::mmap::protection = cista::mmap::protection::WRITE);
 
 std::span<geo::latlng const> get_shape(timetable const&,
                                        shapes_storage_t const&,
