@@ -44,7 +44,7 @@ traffic_days_t merge_traffic_days(
 
   auto const progress_tracker = utl::get_active_progress_tracker();
   progress_tracker->status("Build Base Services")
-      .out_bounds(36.F, 38.F)
+      .out_bounds(33.F, 35.F)
       .in_high(base.size());
 
   auto s = traffic_days_t{};
@@ -54,7 +54,7 @@ traffic_days_t merge_traffic_days(
   }
 
   progress_tracker->status("Add Service Exceptions")
-      .out_bounds(38.F, 40.F)
+      .out_bounds(35.F, 37.F)
       .in_high(base.size());
   for (auto const& [service_name, service_exceptions] : exceptions) {
     for (auto const& day : service_exceptions) {

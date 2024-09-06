@@ -24,6 +24,7 @@ timetable load(std::vector<std::filesystem::path> const& paths,
                loader_config const& c,
                interval<date::sys_days> const& date_range,
                assistance_times* a,
+               shapes_storage_t* shapes,
                bool ignore) {
   auto const loaders = get_loaders();
 
@@ -40,7 +41,7 @@ timetable load(std::vector<std::filesystem::path> const& paths,
         utl::find_if(loaders, [&](auto&& l) { return l->applicable(*dir); });
     if (loader_it != end(loaders)) {
       log(log_lvl::info, "loader.load", "loading {}", p.string());
-      (*loader_it)->load(c, src, *dir, tt, global_bitfield_indices, a);
+      (*loader_it)->load(c, src, *dir, tt, global_bitfield_indices, a, shapes);
     } else if (!ignore) {
       throw utl::fail("no loader for {} found", p.string());
     } else {

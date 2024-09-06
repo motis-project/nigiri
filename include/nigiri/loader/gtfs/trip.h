@@ -12,6 +12,7 @@
 #include "nigiri/loader/gtfs/parse_time.h"
 #include "nigiri/loader/gtfs/route.h"
 #include "nigiri/loader/gtfs/services.h"
+#include "nigiri/loader/gtfs/shape.h"
 #include "nigiri/loader/gtfs/stop.h"
 #include "nigiri/timetable.h"
 
@@ -64,6 +65,7 @@ struct trip {
        std::string id,
        trip_direction_idx_t headsign,
        std::string short_name,
+       shape_idx_t,
        bool bikes_allowed);
 
   trip(trip&&) = default;
@@ -90,6 +92,7 @@ struct trip {
   std::string id_;
   trip_direction_idx_t headsign_;
   std::string short_name_;
+  shape_idx_t shape_idx_;
 
   stop_seq_t stop_seq_;
   std::vector<std::uint16_t> seq_numbers_;
@@ -123,6 +126,7 @@ trip_data read_trips(
     timetable&,
     route_map_t const&,
     traffic_days_t const&,
+    shape_id_map_t const&,
     std::string_view file_content,
     std::array<bool, kNumClasses> const& bikes_allowed_default);
 

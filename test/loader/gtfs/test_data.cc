@@ -47,6 +47,14 @@ S6,S7,2,300
 S7,S6,3,
 )"};
 
+constexpr auto const example_shapes_file_content =
+    R"("shape_id","shape_pt_lat","shape_pt_lon","shape_pt_sequence"
+123,51.526339,14.003664,0
+123,51.520679,13.980126,1
+123,51.520679,13.980126,2
+123,51.514264,13.985332,3
+)";
+
 constexpr auto const example_trips_file_content =
     R"(route_id,service_id,trip_id,trip_headsign,block_id
 A,WE,AWE1,Downtown,1
@@ -86,6 +94,7 @@ loader::mem_dir example_files() {
        {path{kTransfersFile}, std::string{example_transfers_file_content}},
        {path{kRoutesFile}, std::string{example_routes_file_content}},
        {path{kFrequenciesFile}, std::string{example_frequencies_file_content}},
+       {path{kShapesFile}, std::string{example_shapes_file_content}},
        {path{kTripsFile}, std::string{example_trips_file_content}},
        {path{kStopTimesFile}, std::string{example_stop_times_content}}}};
 }
@@ -139,11 +148,30 @@ constexpr auto const berlin_routes_file_content =
 F11,F04---,,,,1203,,,
 )";
 
+constexpr auto const berlin_shapes_file_content =
+    R"("shape_id","shape_pt_lat","shape_pt_lon","shape_pt_sequence"
+101,51.851349,13.710569,16
+101,51.852000,13.708819,25
+101,51.854863,13.704366,55
+101,51.862833,13.703288,67
+101,51.872519,13.698557,84
+102,51.917357,13.583086,102
+102,51.917640,13.578006,123
+102,51.917317,13.578529,190
+102,51.892762,13.609018,325
+102,51.851055,13.711492,461
+102,51.850520,13.712951,464
+103,51.917047,13.582706,113
+103,51.895977,13.622296,186
+103,51.854119,13.704374,283
+103,51.852374,13.709008,300
+)";
+
 constexpr auto const berlin_trips_file_content =
     R"(route_id,service_id,trip_id,trip_headsign,trip_short_name,direction_id,block_id,shape_id
-1,000856,1,Flughafen Schönefeld Terminal (Airport),,,1,
-1,000856,2,S Potsdam Hauptbahnhof,,,2,
-2,000861,3,"Golzow (PM), Schule",,,3,
+1,000856,1,Flughafen Schönefeld Terminal (Airport),,,1,101
+1,000856,2,S Potsdam Hauptbahnhof,,,2,102
+2,000861,3,"Golzow (PM), Schule",,,3,103
 )";
 
 loader::mem_dir berlin_files() {
@@ -155,6 +183,7 @@ loader::mem_dir berlin_files() {
             std::string{berlin_calendar_dates_file_content}},
            {path{kTransfersFile}, std::string{berlin_transfers_file_content}},
            {path{kRoutesFile}, std::string{berlin_routes_file_content}},
+           {path{kShapesFile}, std::string{berlin_shapes_file_content}},
            {path{kTripsFile}, std::string{berlin_trips_file_content}}}};
 }
 
