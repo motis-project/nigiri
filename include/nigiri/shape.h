@@ -9,7 +9,7 @@
 
 namespace nigiri {
 struct timetable;
-}  // namespace nigiri
+}
 
 namespace nigiri {
 
