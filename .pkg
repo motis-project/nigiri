@@ -49,4 +49,4 @@
 [opentelemetry-cpp]
   url=git@github.com:motis-project/opentelemetry-cpp.git
   branch=main
-  commit=63ce4f99419b01bd969514a7cd7a5ba64c075c0d
+  commit=6f7d69a1353d518eda1b691da1008c6cc5abad33
