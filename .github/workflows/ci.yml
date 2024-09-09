@@ -16,7 +16,7 @@ concurrency:
 jobs:
   formatting:
     runs-on: ubuntu-latest
-    container: ghcr.io/motis-project/docker-cpp-build
+    container: ghcr.io/motis-project/docker-cpp-build:pr-4
     steps:
       - uses: actions/checkout@v4
 
@@ -24,7 +24,7 @@ jobs:
         run: |
           find include src test \
             -type f -a \( -name "*.cc" -o -name "*.h" -o -name ".cuh" -o -name ".cu" \) \
-            -print0 | xargs -0 clang-format-17 -i
+            -print0 | xargs -0 clang-format-18 -i
 
       - name: Check for differences
         run: |
@@ -169,7 +169,7 @@ jobs:
   linux:
     runs-on: [ self-hosted, linux, x64, '${{ matrix.config.preset }}' ]
     container:
-      image: ghcr.io/motis-project/docker-cpp-build
+      image: ghcr.io/motis-project/docker-cpp-build:pr-4
       volumes:
         - ${{ github.event.repository.name }}-${{ matrix.config.preset }}-deps:/deps
         - ${{ github.event.repository.name }}-${{ matrix.config.preset }}-buildcache:/buildcache
