@@ -23,6 +23,7 @@
 #include "nigiri/loader/gtfs/route.h"
 #include "nigiri/loader/gtfs/route_key.h"
 #include "nigiri/loader/gtfs/services.h"
+#include "nigiri/loader/gtfs/shape.h"
 #include "nigiri/loader/gtfs/stop.h"
 #include "nigiri/loader/gtfs/stop_seq_number_encoding.h"
 #include "nigiri/loader/gtfs/stop_time.h"
@@ -82,9 +83,11 @@ void load_timetable(loader_config const& config,
                     source_idx_t const src,
                     dir const& d,
                     timetable& tt,
-                    assistance_times* assistance) {
+                    assistance_times* assistance,
+                    shapes_storage_t* shapes) {
   auto local_bitfield_indices = hash_map<bitfield, bitfield_idx_t>{};
-  load_timetable(config, src, d, tt, local_bitfield_indices, assistance);
+  load_timetable(config, src, d, tt, local_bitfield_indices, assistance,
+                 shapes);
 }
 
 void load_timetable(loader_config const& config,
@@ -92,7 +95,8 @@ void load_timetable(loader_config const& config,
                     dir const& d,
                     timetable& tt,
                     hash_map<bitfield, bitfield_idx_t>& bitfield_indices,
-                    assistance_times* assistance) {
+                    assistance_times* assistance,
+                    shapes_storage_t* shapes) {
   nigiri::scoped_timer const global_timer{"gtfs parser"};
 
   auto const load = [&](std::string_view file_name) -> file {
@@ -111,8 +115,12 @@ void load_timetable(loader_config const& config,
   auto const dates = read_calendar_date(load(kCalendarDatesFile).data());
   auto const service =
       merge_traffic_days(tt.internal_interval_days(), calendar, dates);
-  auto trip_data = read_trips(tt, routes, service, load(kTripsFile).data(),
-                              config.bikes_allowed_default_);
+  auto const shape_indices =
+      (shapes != nullptr) ? parse_shapes(load(kShapesFile).data(), *shapes)
+                          : shape_id_map_t{};
+  auto trip_data =
+      read_trips(tt, routes, service, shape_indices, load(kTripsFile).data(),
+                 config.bikes_allowed_default_);
   read_frequencies(trip_data, load(kFrequenciesFile).data());
   read_stop_times(tt, trip_data, stops, load(kStopTimesFile).data());
 
@@ -362,6 +370,7 @@ void load_timetable(loader_config const& config,
     // Build transport ranges.
     for (auto const& t : trip_data.data_) {
       tt.trip_transport_ranges_.emplace_back(t.transport_ranges_);
+      tt.trip_shape_indices_.push_back(t.shape_idx_);
     }
   }
 }
