@@ -318,11 +318,23 @@ statistics gtfsrt_update_msg(timetable const& tt,
 
       if (!r.valid()) {
         log(log_lvl::error, "rt.gtfs.resolve", "could not resolve (tag={}) {}",
-            tag, remove_nl(entity.trip_update().trip().DebugString()));
+            tag, remove_nl(td.DebugString()));
         span->AddEvent(
             "unresolved trip",
-            {{"entity.id", entity.id()},
-             {"trip", remove_nl(entity.trip_update().trip().DebugString())}});
+            {
+                {"entity.id", entity.id()},
+                {"trip.trip_id", td.has_trip_id() ? td.trip_id() : ""},
+                {"trip.route_id", td.has_route_id() ? td.route_id() : ""},
+                {"trip.direction_id", td.direction_id()},
+                {"trip.start_time", td.has_start_time() ? td.start_time() : ""},
+                {"trip.start_date", td.has_start_date() ? td.start_date() : ""},
+                {"trip.schedule_relationship",
+                 td.has_schedule_relationship()
+                     ? TripDescriptor_ScheduleRelationship_Name(
+                           td.schedule_relationship())
+                     : ""},
+                {"trip.str", remove_nl(td.DebugString())},
+            });
         ++stats.trip_resolve_error_;
         continue;
       }
