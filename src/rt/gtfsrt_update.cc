@@ -3,6 +3,7 @@
 #include "utl/pairwise.h"
 
 #include "nigiri/loader/gtfs/stop_seq_number_encoding.h"
+#include "nigiri/get_otel_tracer.h"
 #include "nigiri/logging.h"
 #include "nigiri/rt/frun.h"
 #include "nigiri/rt/gtfsrt_resolve_run.h"
@@ -247,15 +248,25 @@ statistics gtfsrt_update_msg(timetable const& tt,
                              source_idx_t const src,
                              std::string_view tag,
                              gtfsrt::FeedMessage const& msg) {
+  auto span = get_otel_tracer()->StartSpan("gtfsrt_update_msg", {{"tag", tag}});
+  auto scope = opentelemetry::trace::Scope{span};
+
   if (!msg.has_header()) {
+    span->SetStatus(opentelemetry::trace::StatusCode::kError, "missing header");
     return {.no_header_ = true};
   }
 
-  auto stats = statistics{.total_entities_ = msg.entity_size()};
   auto const message_time =
       date::sys_seconds{std::chrono::seconds{msg.header().timestamp()}};
   auto const today =
       std::chrono::time_point_cast<date::sys_days::duration>(message_time);
+  auto stats = statistics{.total_entities_ = msg.entity_size(),
+                          .feed_timestamp_ = message_time};
+
+  span->SetAttribute("nigiri.gtfsrt.header.timestamp",
+                     msg.header().timestamp());
+  span->SetAttribute("nigiri.gtfsrt.total_entities", msg.entity_size());
+
   for (auto const& entity : msg.entity()) {
     if (entity.has_is_deleted() && entity.is_deleted()) {
       log(log_lvl::error, "rt.gtfs.unsupported",
@@ -307,7 +318,23 @@ statistics gtfsrt_update_msg(timetable const& tt,
 
       if (!r.valid()) {
         log(log_lvl::error, "rt.gtfs.resolve", "could not resolve (tag={}) {}",
-            tag, remove_nl(entity.trip_update().trip().DebugString()));
+            tag, remove_nl(td.DebugString()));
+        span->AddEvent(
+            "unresolved trip",
+            {
+                {"entity.id", entity.id()},
+                {"trip.trip_id", td.has_trip_id() ? td.trip_id() : ""},
+                {"trip.route_id", td.has_route_id() ? td.route_id() : ""},
+                {"trip.direction_id", td.direction_id()},
+                {"trip.start_time", td.has_start_time() ? td.start_time() : ""},
+                {"trip.start_date", td.has_start_date() ? td.start_date() : ""},
+                {"trip.schedule_relationship",
+                 td.has_schedule_relationship()
+                     ? TripDescriptor_ScheduleRelationship_Name(
+                           td.schedule_relationship())
+                     : ""},
+                {"trip.str", remove_nl(td.DebugString())},
+            });
         ++stats.trip_resolve_error_;
         continue;
       }
@@ -323,9 +350,13 @@ statistics gtfsrt_update_msg(timetable const& tt,
     } catch (const std::exception& e) {
       ++stats.total_entities_fail_;
       log(log_lvl::error, "rt.gtfs",
-          "GTFS-RT error (tag={}): time={}, entitiy={}, message={}, error={}",
+          "GTFS-RT error (tag={}): time={}, entity={}, message={}, error={}",
           tag, date::format("%T", message_time), entity.id(),
           remove_nl(entity.DebugString()), e.what());
+      span->AddEvent("exception",
+                     {{"exception.message", e.what()},
+                      {"entity.id", entity.id()},
+                      {"message", remove_nl(entity.DebugString())}});
     }
   }
 
