@@ -16,7 +16,7 @@ concurrency:
 jobs:
   formatting:
     runs-on: ubuntu-latest
-    container: ghcr.io/motis-project/docker-cpp-build:pr-4
+    container: ghcr.io/motis-project/docker-cpp-build
     steps:
       - uses: actions/checkout@v4
 
@@ -169,7 +169,7 @@ jobs:
   linux:
     runs-on: [ self-hosted, linux, x64, '${{ matrix.config.preset }}' ]
     container:
-      image: ghcr.io/motis-project/docker-cpp-build:pr-4
+      image: ghcr.io/motis-project/docker-cpp-build
       volumes:
         - ${{ github.event.repository.name }}-${{ matrix.config.preset }}-deps:/deps
         - ${{ github.event.repository.name }}-${{ matrix.config.preset }}-buildcache:/buildcache
