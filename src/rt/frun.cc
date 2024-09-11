@@ -354,7 +354,8 @@ std::span<geo::latlng const> get_subshape(Range const shape, geo::latlng const& 
 }
 
 std::span<geo::latlng const> frun::get_shape(shapes_storage_t const& shapes, interval<stop_idx_t> const& segment) const {
-  auto const trip_index = trip_idx();
+  // auto const trip_index = trip_idx();
+  auto const trip_index = trip_idx(segment);
   assert(tt_ != nullptr);
   auto const get_coordinate = [&](stop_idx_t const& stop_index) -> geo::latlng {  // TODO Fix for Windows
     auto const s = (*this)[stop_index].get_stop();
@@ -396,6 +397,20 @@ trip_idx_t frun::trip_idx() const {
         .at(0);
   }
   throw utl::fail("trip idx only for scheduled trip");
+}
+
+trip_idx_t frun::trip_idx(interval<stop_idx_t> const& segment) const {
+  if (!is_scheduled()) {
+    throw utl::fail("trip idx only for scheduled trip");
+  }
+  auto const& sections = tt_->transport_to_trip_section_.at(t_.t_idx_);
+  auto const upper = static_cast<std::uint16_t>(sections.size() - 1U);
+  // if (sections.size() == 1U) {
+  //   return tt_->merged_trips_[sections.at(0)].at(0);
+  // }
+  // auto const segment_count = segment.from_;  // TODO Wrong for head of 2nd section
+  auto const segment_count = std::max(segment.from_, upper);  // TODO Wrong for head of 2nd section
+    return tt_->merged_trips_[sections.at(segment_count)].at(0);
 }
 
 void frun::run_stop::print(std::ostream& out,

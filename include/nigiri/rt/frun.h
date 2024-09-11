@@ -130,6 +130,7 @@ struct frun : public run {
 
   trip_id id() const noexcept;
   trip_idx_t trip_idx() const;
+  trip_idx_t trip_idx(interval<stop_idx_t> const&) const;
   clasz get_clasz() const noexcept;
 
   std::span<geo::latlng const> get_shape(shapes_storage_t const&, interval<stop_idx_t> const&) const;
