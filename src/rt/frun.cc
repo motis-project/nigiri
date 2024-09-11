@@ -353,7 +353,8 @@ std::span<geo::latlng const> get_subshape(Range const shape, geo::latlng const& 
   return {subshape_from, best_to.segment_idx_};
 }
 
-std::span<geo::latlng const> frun::get_shape(shapes_storage_t const& shapes, trip_idx_t const trip_index, interval<stop_idx_t> const& segment) const {
+std::span<geo::latlng const> frun::get_shape(shapes_storage_t const& shapes, interval<stop_idx_t> const& segment) const {
+  auto const trip_index = trip_idx();
   assert(tt_ != nullptr);
   auto const get_coordinate = [&](stop_idx_t const& stop_index) -> geo::latlng {  // TODO Fix for Windows
     auto const s = (*this)[stop_index].get_stop();
