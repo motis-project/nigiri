@@ -1,7 +1,10 @@
 #include "nigiri/rt/frun.h"
 
+#include "geo/polyline.h"
+
 #include "nigiri/lookup/get_transport_stop_tz.h"
 #include "nigiri/rt/rt_timetable.h"
+#include "nigiri/shape.h"
 #include "nigiri/timetable.h"
 
 namespace nigiri::rt {
@@ -336,6 +339,34 @@ clasz frun::get_clasz() const noexcept {
   } else {
     return rtt_->rt_transport_section_clasz_[rt_].at(0);
   }
+}
+
+// TODO Move into shape
+template <std::ranges::range Range>
+std::span<geo::latlng const> get_subshape(Range const shape, geo::latlng const& from, geo::latlng const& to) {
+  // FIXME
+  // - Use next segment if close to segment end
+  auto const best_from = geo::distance_to_polyline(from, shape);
+  auto const subshape_from = begin(shape) + static_cast<decltype(shape)::difference_type>(best_from.segment_idx_);
+  auto const remaining_shape = std::span{subshape_from, end(shape)};
+  auto const best_to = geo::distance_to_polyline(to, remaining_shape);
+  return {subshape_from, best_to.segment_idx_};
+}
+
+std::span<geo::latlng const> frun::get_shape(shapes_storage_t const& shapes, trip_idx_t const trip_index, interval<stop_idx_t> const& segment) const {
+  assert(tt_ != nullptr);
+  auto const get_coordinate = [&](stop_idx_t const& stop_index) -> geo::latlng {  // TODO Fix for Windows
+    auto const s = (*this)[stop_index].get_stop();
+    return tt_->locations_.coordinates_.at(s.location_idx());
+  };
+  auto const shape = nigiri::get_shape(*tt_, shapes, trip_index);
+  shape_cache_ = {get_coordinate(segment.from_), get_coordinate(segment.to_)};
+  if (!shape.empty()) {
+    if (auto const subshape = get_subshape(shape, shape_cache_[0], shape_cache_[1]); !subshape.empty()) {
+      return subshape;
+    }
+  }
+  return {shape_cache_};
 }
 
 trip_id frun::id() const noexcept {
