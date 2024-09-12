@@ -133,7 +133,8 @@ struct frun : public run {
   trip_idx_t trip_idx() const;
   clasz get_clasz() const noexcept;
 
-  std::span<geo::latlng const> get_shape(shapes_storage const&, interval<stop_idx_t> const&) const;
+  std::span<geo::latlng const> get_shape(shapes_storage const&,
+                                         interval<stop_idx_t> const&) const;
 
   void print(std::ostream&, interval<stop_idx_t> stop_range);
   friend std::ostream& operator<<(std::ostream&, frun const&);
@@ -148,7 +149,8 @@ struct frun : public run {
 
   timetable const* tt_;
   rt_timetable const* rtt_;
-  mutable std::array<geo::latlng, 2> shape_cache_;  // FIXME Remove cache from class (maybe part of 'shape'?)
+  mutable std::array<geo::latlng, 2>
+      shape_cache_;  // FIXME Remove cache from class (maybe part of 'shape'?)
 };
 
 }  // namespace nigiri::rt

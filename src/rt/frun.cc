@@ -341,13 +341,17 @@ clasz frun::get_clasz() const noexcept {
   }
 }
 
-std::span<geo::latlng const> frun::get_shape(shapes_storage const& shapes_data, interval<stop_idx_t> const& segment) const {
+std::span<geo::latlng const> frun::get_shape(
+    shapes_storage const& shapes_data,
+    interval<stop_idx_t> const& segment) const {
   assert(tt_ != nullptr);
   auto const from = (*this)[segment.from_];
   auto const to = (*this)[segment.to_];
   auto const trip_index = from.get_trip_idx(event_type::kDep);
-  if (segment.from_ < segment.to_ && trip_index == to.get_trip_idx(event_type::kArr)) {
-    auto const shape = shapes_data.get_shape(*tt_, trip_index, interval{from.pos(), to.pos()});
+  if (segment.from_ < segment.to_ &&
+      trip_index == to.get_trip_idx(event_type::kArr)) {
+    auto const shape =
+        shapes_data.get_shape(*tt_, trip_index, interval{from.pos(), to.pos()});
     if (!shape.empty()) {
       return shape;
     }

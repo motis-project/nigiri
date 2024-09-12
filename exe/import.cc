@@ -121,7 +121,7 @@ int main(int ac, char** av) {
   }
 
   auto const start = parse_date(start_date);
-  load(input_files, c, {start, start + date::days{n_days}}, shapes, assistance.get(),
-       ignore && recursive)
+  load(input_files, c, {start, start + date::days{n_days}}, shapes,
+       assistance.get(), ignore && recursive)
       .write(out);
 }

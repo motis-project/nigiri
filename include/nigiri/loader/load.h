@@ -7,8 +7,8 @@
 
 #include "nigiri/loader/assistance.h"
 #include "nigiri/common/interval.h"
-#include "nigiri/timetable.h"
 #include "nigiri/shape.h"
+#include "nigiri/timetable.h"
 #include "nigiri/types.h"
 
 namespace nigiri::loader {

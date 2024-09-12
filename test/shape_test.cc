@@ -135,7 +135,8 @@ TEST(shape, single_trip_with_shape) {
   // Testing trip without shape, i.e. 'Trip 4' (index == 3)
   {
     auto const shape_by_trip_index = shapes_data.get_shape(tt, trip_idx_t{3});
-    auto const shape_by_shape_index = shapes_data.get_shape(shape_idx_t::invalid());
+    auto const shape_by_shape_index =
+        shapes_data.get_shape(shape_idx_t::invalid());
 
     EXPECT_TRUE(shape_by_trip_index.empty());
     EXPECT_TRUE(shape_by_shape_index.empty());
