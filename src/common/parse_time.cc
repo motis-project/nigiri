@@ -1,7 +1,6 @@
 #include "nigiri/common/parse_time.h"
 
-#include <ios>
-#include <strstream>
+#include <sstream>
 
 namespace nigiri {
 
