@@ -350,7 +350,7 @@ std::span<geo::latlng const> get_subshape(Range const shape, geo::latlng const& 
   auto const subshape_from = begin(shape) + static_cast<decltype(shape)::difference_type>(best_from.segment_idx_);
   auto const remaining_shape = std::span{subshape_from, end(shape)};
   auto const best_to = geo::distance_to_polyline(to, remaining_shape);
-  return {subshape_from, best_to.segment_idx_};
+  return {subshape_from, best_to.segment_idx_ + 1};
 }
 
 std::span<geo::latlng const> frun::get_shape(shapes_storage_t const& shapes, interval<stop_idx_t> const& segment) const {
