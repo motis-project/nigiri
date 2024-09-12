@@ -238,7 +238,6 @@ std::optional<rt::run> updater::find_run(std::string_view vdv_run_id,
 
             if (tt_.bitfields_[tt_.transport_traffic_days_[tr.t_idx_]].test(
                     to_idx(tr.day_))) {
-
               auto candidate =
                   std::find_if(begin(candidates), end(candidates),
                                [&](auto const& c) { return c.r_.t_ == tr; });
