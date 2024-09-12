@@ -32,16 +32,22 @@ shapes_storage::shapes_storage(
         std::filesystem::path const& path,
         cista::mmap::protection const mode) : data_{std::make_unique<shapes_storage_t>(create_storage<shape_idx_t, geo::latlng>(path, mode))} {}
 
-std::span<geo::latlng const> shapes_storage::get_shape(timetable const& tt, trip_idx_t const trip_index) const {
-  if (data_->empty()) {
+std::span<geo::latlng const> shapes_storage::get_shape(shape_idx_t const shape_index) const {
+  if (!data_) {
     return {};
   }
-  auto const shape_index = get_shape_index(tt, trip_index);
   if (shape_index == shape_idx_t::invalid() || shape_index > data_->size()) {
     return {};
   }
   auto const shape = data_->at(shape_index);
   return {begin(shape), end(shape)};
+}
+
+std::span<geo::latlng const> shapes_storage::get_shape(timetable const& tt, trip_idx_t const trip_index) const {
+  if (!data_) {
+    return {};
+  }
+  return get_shape(get_shape_index(tt, trip_index));
 }
 
 std::span<geo::latlng const> shapes_storage::get_shape(timetable const& tt, trip_idx_t const trip_index, interval<geo::latlng const> const& range) const {
@@ -62,32 +68,6 @@ shape_idx_t get_shape_index(timetable const& tt, trip_idx_t const trip_index) {
     return shape_idx_t::invalid();
   }
   return tt.trip_shape_indices_.at(trip_index);
-}
-
-// ---- TODO Remove ----
-
-shapes_storage_t create_shapes_storage(std::filesystem::path const& path,
-                                       cista::mmap::protection const mode) {
-  return create_storage<shape_idx_t, geo::latlng>(path, mode);
-}
-
-std::span<geo::latlng const> get_shape(timetable const& tt,
-                                       shapes_storage_t const& shapes,
-                                       trip_idx_t const trip_idx) {
-  if (trip_idx == trip_idx_t::invalid() ||
-      trip_idx >= tt.trip_shape_indices_.size()) {
-    return {};
-  }
-  return get_shape(shapes, tt.trip_shape_indices_[trip_idx]);
-}
-
-std::span<geo::latlng const> get_shape(shapes_storage_t const& shapes,
-                                       shape_idx_t const shape_idx) {
-  if (shape_idx == shape_idx_t::invalid() || shape_idx >= shapes.size()) {
-    return {};
-  }
-  auto const bucket = shapes[shape_idx];
-  return {begin(bucket), end(bucket)};
 }
 
 }  // namespace nigiri

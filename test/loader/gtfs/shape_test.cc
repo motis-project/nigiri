@@ -20,8 +20,8 @@ namespace fs = std::filesystem;
 using namespace nigiri;
 using namespace nigiri::loader::gtfs;
 
-shapes_storage_t create_tmp_shapes_storage(char const* path) {
-  return create_shapes_storage(fs::temp_directory_path() / path);
+shapes_storage create_tmp_shapes_storage(char const* path) {
+  return shapes_storage{fs::temp_directory_path() / path};
 }
 
 TEST(gtfs, shape_get_existing_shape_points) {
@@ -38,8 +38,8 @@ TEST(gtfs, shape_get_existing_shape_points) {
 3105,50.581956,6.379866,11
 )";
 
-  auto shape_data = create_tmp_shapes_storage("shape-test-builder");
-  auto const shapes = parse_shapes(kShapesData, shape_data);
+  auto shapes_data = create_tmp_shapes_storage("shape-test-builder");
+  auto const shapes = parse_shapes(kShapesData, shapes_data);
 
   EXPECT_EQ(end(shapes), shapes.find("1"));
 
@@ -47,7 +47,7 @@ TEST(gtfs, shape_get_existing_shape_points) {
                 {51.543652, 7.217830},
                 {51.478609, 7.223275},
             }),
-            get_shape(shape_data, shapes.at("243").index_));
+            shapes_data.get_shape(shapes.at("243").index_));
 
   EXPECT_EQ((geo::polyline{
                 {50.553822, 6.356876},
@@ -58,7 +58,7 @@ TEST(gtfs, shape_get_existing_shape_points) {
                 {50.578249, 6.383394},
                 {50.581956, 6.379866},
             }),
-            get_shape(shape_data, shapes.at("3105").index_));
+            shapes_data.get_shape(shapes.at("3105").index_));
 }
 
 TEST(gtfs, shape_not_ascending_sequence) {
@@ -72,13 +72,13 @@ TEST(gtfs, shape_not_ascending_sequence) {
   auto const buffer_guard =
       utl::make_finally([&]() { std::clog.rdbuf(backup); });
 
-  auto shape_data =
+  auto shapes_data =
       create_tmp_shapes_storage("shape-test-not-ascending-sequence");
-  auto const shapes = parse_shapes(kShapesData, shape_data);
+  auto const shapes = parse_shapes(kShapesData, shapes_data);
   std::clog.flush();
 
   EXPECT_EQ((geo::polyline{{50.636512, 6.473487}, {50.636259, 6.473668}}),
-            get_shape(shape_data, shapes.at("1").index_));
+            shapes_data.get_shape(shapes.at("1").index_));
   EXPECT_TRUE(buffer.str().contains(
       "Non monotonic sequence for shape_id '1': Sequence number 1 "
       "followed by 0"));
@@ -101,8 +101,8 @@ TEST(gtfs, shape_shuffled_rows) {
 235,51.543652,7.217830,1
 )";
 
-  auto shape_data = create_tmp_shapes_storage("shape-test-shuffled-rows");
-  auto const shapes = parse_shapes(kShapesData, shape_data);
+  auto shapes_data = create_tmp_shapes_storage("shape-test-shuffled-rows");
+  auto const shapes = parse_shapes(kShapesData, shapes_data);
 
   auto const shape_points =
       std::initializer_list<std::pair<std::string_view, geo::polyline>>{
@@ -138,7 +138,7 @@ TEST(gtfs, shape_shuffled_rows) {
            }},
       };
   for (auto [id, polyline] : shape_points) {
-    EXPECT_EQ(polyline, get_shape(shape_data, shapes.at(id).index_));
+    EXPECT_EQ(polyline, shapes_data.get_shape(shapes.at(id).index_));
   }
 }
 
@@ -164,4 +164,17 @@ TEST(gtfs, shape_delay_insert_no_ascending_sequence) {
   EXPECT_TRUE(buffer.str().contains(
       "Non monotonic sequence for shape_id '1': Sequence number 1 "
       "followed by 0"));
+}
+
+TEST(gtfs, shape_when_no_storage_is_used_then_shape_will_be_empty) {
+  constexpr auto const kShapesData =
+      R"("shape_id","shape_pt_lat","shape_pt_lon","shape_pt_sequence"
+1,50.636512,6.473487,0
+)";
+
+  auto shapes_data = shapes_storage{};
+  auto const shapes = parse_shapes(kShapesData, shapes_data);
+
+  EXPECT_TRUE(shapes.empty());
+  EXPECT_TRUE(shapes_data.get_shape(shape_idx_t{0}).empty());
 }

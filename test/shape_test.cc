@@ -16,7 +16,7 @@ using namespace date;
 using namespace std::string_view_literals;
 
 // linked from gtfs/shape_test.cc
-shapes_storage_t create_tmp_shapes_storage(char const*);
+shapes_storage create_tmp_shapes_storage(char const*);
 
 namespace {
 
@@ -113,16 +113,16 @@ TEST(shape, single_trip_with_shape) {
                     date::sys_days{2024_y / March / 2}};
   loader::register_special_stations(tt);
   auto local_bitfield_indices = hash_map<bitfield, bitfield_idx_t>{};
-  auto shape_data = create_tmp_shapes_storage("shape-route-trip-with-shape");
+  auto shapes_data = create_tmp_shapes_storage("shape-route-trip-with-shape");
   loader::gtfs::load_timetable({}, source_idx_t{1},
                                loader::mem_dir::read(kWithShapes), tt,
-                               local_bitfield_indices, nullptr, &shape_data);
+                               local_bitfield_indices, shapes_data, nullptr);
   loader::finalize(tt);
 
   // Testing shape 'Last', used by 'Trip 3' (index == 2)
   {
-    auto const shape_by_trip_index = get_shape(tt, shape_data, trip_idx_t{2});
-    auto const shape_by_shape_index = get_shape(shape_data, shape_idx_t{3});
+    auto const shape_by_trip_index = shapes_data.get_shape(tt, trip_idx_t{2});
+    auto const shape_by_shape_index = shapes_data.get_shape(shape_idx_t{3});
 
     auto const expected_shape = geo::polyline{
         {4.0f, 5.0f}, {5.5f, 2.5f}, {5.5f, 3.0f},
@@ -134,9 +134,8 @@ TEST(shape, single_trip_with_shape) {
 
   // Testing trip without shape, i.e. 'Trip 4' (index == 3)
   {
-    auto const shape_by_trip_index = get_shape(tt, shape_data, trip_idx_t{3});
-    auto const shape_by_shape_index =
-        get_shape(shape_data, shape_idx_t::invalid());
+    auto const shape_by_trip_index = shapes_data.get_shape(tt, trip_idx_t{3});
+    auto const shape_by_shape_index = shapes_data.get_shape(shape_idx_t::invalid());
 
     EXPECT_TRUE(shape_by_trip_index.empty());
     EXPECT_TRUE(shape_by_shape_index.empty());

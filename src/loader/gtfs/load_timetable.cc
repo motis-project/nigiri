@@ -83,11 +83,19 @@ void load_timetable(loader_config const& config,
                     source_idx_t const src,
                     dir const& d,
                     timetable& tt,
-                    assistance_times* assistance,
-                    shapes_storage_t* shapes) {
+                    assistance_times* assistance) {
+  auto shapes_data = shapes_storage{};
+  load_timetable(config, src, d, tt, shapes_data, assistance);
+}
+
+void load_timetable(loader_config const& config,
+                    source_idx_t const src,
+                    dir const& d,
+                    timetable& tt,
+                    shapes_storage& shapes_data,
+                    assistance_times* assistance) {
   auto local_bitfield_indices = hash_map<bitfield, bitfield_idx_t>{};
-  load_timetable(config, src, d, tt, local_bitfield_indices, assistance,
-                 shapes);
+  load_timetable(config, src, d, tt, local_bitfield_indices, shapes_data, assistance);
 }
 
 void load_timetable(loader_config const& config,
@@ -95,8 +103,8 @@ void load_timetable(loader_config const& config,
                     dir const& d,
                     timetable& tt,
                     hash_map<bitfield, bitfield_idx_t>& bitfield_indices,
-                    assistance_times* assistance,
-                    shapes_storage_t* shapes) {
+                    shapes_storage& shapes_data,
+                    assistance_times* assistance) {
   nigiri::scoped_timer const global_timer{"gtfs parser"};
 
   auto const load = [&](std::string_view file_name) -> file {
@@ -115,9 +123,7 @@ void load_timetable(loader_config const& config,
   auto const dates = read_calendar_date(load(kCalendarDatesFile).data());
   auto const service =
       merge_traffic_days(tt.internal_interval_days(), calendar, dates);
-  auto const shape_indices =
-      (shapes != nullptr) ? parse_shapes(load(kShapesFile).data(), *shapes)
-                          : shape_id_map_t{};
+  auto const shape_indices = parse_shapes(load(kShapesFile).data(), shapes_data);
   auto trip_data =
       read_trips(tt, routes, service, shape_indices, load(kTripsFile).data(),
                  config.bikes_allowed_default_);

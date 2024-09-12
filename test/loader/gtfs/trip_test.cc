@@ -17,7 +17,7 @@ using namespace nigiri;
 using namespace nigiri::loader;
 
 // linked from gtfs/shape_test.cc
-shapes_storage_t create_tmp_shapes_storage(char const*);
+shapes_storage create_tmp_shapes_storage(char const*);
 
 namespace nigiri::loader::gtfs {
 

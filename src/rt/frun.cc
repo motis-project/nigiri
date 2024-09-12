@@ -341,29 +341,15 @@ clasz frun::get_clasz() const noexcept {
   }
 }
 
-// TODO Move into shape
-template <std::ranges::range Range>
-std::span<geo::latlng const> get_subshape(Range const shape, geo::latlng const& from, geo::latlng const& to) {
-  // FIXME
-  // - Use next segment if close to segment end
-  auto const best_from = geo::distance_to_polyline(from, shape);
-  auto const subshape_from = begin(shape) + static_cast<decltype(shape)::difference_type>(best_from.segment_idx_);
-  auto const remaining_shape = std::span{subshape_from, end(shape)};
-  auto const best_to = geo::distance_to_polyline(to, remaining_shape);
-  return {subshape_from, best_to.segment_idx_ + 1};
-}
-
-std::span<geo::latlng const> frun::get_shape(shapes_storage_t const& shapes, interval<stop_idx_t> const& segment) const {
+std::span<geo::latlng const> frun::get_shape(shapes_storage const& shapes_data, interval<stop_idx_t> const& segment) const {
   assert(tt_ != nullptr);
   auto const from = (*this)[segment.from_];
   auto const to = (*this)[segment.to_];
   auto const trip_index = from.get_trip_idx(event_type::kDep);
   if (segment.from_ < segment.to_ && trip_index == to.get_trip_idx(event_type::kArr)) {
-    auto const shape = nigiri::get_shape(*tt_, shapes, trip_index);
+    auto const shape = shapes_data.get_shape(*tt_, trip_index, interval{from.pos(), to.pos()});
     if (!shape.empty()) {
-      if (auto const subshape = get_subshape(shape, from.pos(), to.pos()); !subshape.empty()) {
-        return subshape;
-      }
+      return shape;
     }
   }
   shape_cache_ = {from.pos(), to.pos()};

@@ -21,6 +21,7 @@ struct shapes_storage {
             std::filesystem::path const&,
             cista::mmap::protection = cista::mmap::protection::WRITE);
     // TODO Use interval<stop_idx_t> instead
+    std::span<geo::latlng const> get_shape(shape_idx_t) const;
     std::span<geo::latlng const> get_shape(timetable const&, trip_idx_t) const;
     std::span<geo::latlng const> get_shape(timetable const&, trip_idx_t, interval<geo::latlng const> const&) const;
     std::span<geo::latlng const> make_span(interval<geo::latlng const> const&);
@@ -29,15 +30,5 @@ struct shapes_storage {
 };
 
 shape_idx_t get_shape_index(timetable const&, trip_idx_t);
-
-shapes_storage_t create_shapes_storage(
-    std::filesystem::path const&,
-    cista::mmap::protection = cista::mmap::protection::WRITE);
-
-std::span<geo::latlng const> get_shape(timetable const&,
-                                       shapes_storage_t const&,
-                                       trip_idx_t);
-
-std::span<geo::latlng const> get_shape(shapes_storage_t const&, shape_idx_t);
 
 }  // namespace nigiri

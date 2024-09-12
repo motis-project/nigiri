@@ -8,6 +8,7 @@
 #include "nigiri/common/interval.h"
 #include "nigiri/location.h"
 #include "nigiri/rt/run.h"
+#include "nigiri/shape.h"
 #include "nigiri/stop.h"
 #include "nigiri/types.h"
 
@@ -132,7 +133,7 @@ struct frun : public run {
   trip_idx_t trip_idx() const;
   clasz get_clasz() const noexcept;
 
-  std::span<geo::latlng const> get_shape(shapes_storage_t const&, interval<stop_idx_t> const&) const;
+  std::span<geo::latlng const> get_shape(shapes_storage const&, interval<stop_idx_t> const&) const;
 
   void print(std::ostream&, interval<stop_idx_t> stop_range);
   friend std::ostream& operator<<(std::ostream&, frun const&);

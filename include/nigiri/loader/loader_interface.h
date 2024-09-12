@@ -5,6 +5,7 @@
 
 #include "nigiri/loader/assistance.h"
 #include "nigiri/loader/dir.h"
+#include "nigiri/shape.h"
 #include "nigiri/types.h"
 
 namespace nigiri {
@@ -33,8 +34,8 @@ struct loader_interface {
                     dir const&,
                     timetable&,
                     hash_map<bitfield, bitfield_idx_t>&,
-                    assistance_times*,
-                    shapes_storage_t*) const = 0;
+                    shapes_storage&,
+                    assistance_times*) const = 0;
   virtual cista::hash_t hash(dir const&) const = 0;
   virtual std::string_view name() const = 0;
 };
