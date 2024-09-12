@@ -14,6 +14,7 @@
 #include "fmt/core.h"
 
 #include "nigiri/common/mam_dist.h"
+#include "nigiri/common/parse_time.h"
 #include "nigiri/for_each_meta.h"
 #include "nigiri/rt/frun.h"
 #include "nigiri/rt/rt_timetable.h"
@@ -80,13 +81,6 @@ updater::updater(nigiri::timetable const& tt, source_idx_t const src_idx)
 void updater::reset_vdv_run_ids_() { vdv_nigiri_.clear(); }
 
 statistics const& updater::get_stats() const { return stats_; }
-
-unixtime_t parse_time(std::string const& str) {
-  unixtime_t parsed;
-  auto ss = std::stringstream{str};
-  ss >> date::parse("%FT%T", parsed);
-  return parsed;
-}
 
 std::optional<unixtime_t> updater::get_opt_time(pugi::xml_node const& node,
                                                 char const* str) {
