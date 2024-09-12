@@ -1,6 +1,5 @@
 #pragma once
 
-#include <array>
 #include <filesystem>
 #include <memory>
 #include <span>
@@ -25,9 +24,7 @@ struct shapes_storage {
   std::span<geo::latlng const> get_shape(timetable const&, trip_idx_t) const;
   std::span<geo::latlng const> get_shape(
       timetable const&, trip_idx_t, interval<geo::latlng const> const&) const;
-  std::span<geo::latlng const> make_span(interval<geo::latlng const> const&) const;
   std::unique_ptr<shapes_storage_t> data_;
-  mutable std::array<geo::latlng, 2> no_shape_cache_;
 };
 
 shape_idx_t get_shape_index(timetable const&, trip_idx_t);

@@ -66,12 +66,6 @@ std::span<geo::latlng const> shapes_storage::get_shape(
   return get_subshape(shape, range.from_, range.to_);
 }
 
-std::span<geo::latlng const> shapes_storage::make_span(
-    interval<geo::latlng const> const& range) const {
-  no_shape_cache_ = {range.from_, range.to_};
-  return {no_shape_cache_};
-}
-
 shape_idx_t get_shape_index(timetable const& tt, trip_idx_t const trip_index) {
   if (trip_index == trip_idx_t::invalid() ||
       trip_index >= tt.trip_shape_indices_.size()) {

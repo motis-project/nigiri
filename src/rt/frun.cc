@@ -1,7 +1,5 @@
 #include "nigiri/rt/frun.h"
 
-#include "geo/polyline.h"
-
 #include "nigiri/lookup/get_transport_stop_tz.h"
 #include "nigiri/rt/rt_timetable.h"
 #include "nigiri/shape.h"
@@ -341,9 +339,9 @@ clasz frun::get_clasz() const noexcept {
   }
 }
 
-std::span<geo::latlng const> frun::get_shape(
-    shapes_storage const& shapes_data,
-    interval<stop_idx_t> const& segment) const {
+std::variant<std::span<geo::latlng const>, std::array<geo::latlng const, 2>>
+frun::get_shape(shapes_storage const& shapes_data,
+                interval<stop_idx_t> const& segment) const {
   assert(tt_ != nullptr);
   auto const from = (*this)[segment.from_];
   auto const to = (*this)[segment.to_];
@@ -356,7 +354,7 @@ std::span<geo::latlng const> frun::get_shape(
       return shape;
     }
   }
-  return shapes_data.make_span({from.pos(), to.pos()});
+  return std::array{from.pos(), to.pos()};
 }
 
 trip_id frun::id() const noexcept {
