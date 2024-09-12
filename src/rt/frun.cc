@@ -354,20 +354,19 @@ std::span<geo::latlng const> get_subshape(Range const shape, geo::latlng const& 
 }
 
 std::span<geo::latlng const> frun::get_shape(shapes_storage_t const& shapes, interval<stop_idx_t> const& segment) const {
-  // auto const trip_index = trip_idx();
-  auto const trip_index = trip_idx(segment.from_);
   assert(tt_ != nullptr);
-  auto const get_coordinate = [&](stop_idx_t const& stop_index) -> geo::latlng {  // TODO Fix for Windows
-    auto const s = (*this)[stop_index].get_stop();
-    return tt_->locations_.coordinates_.at(s.location_idx());
-  };
-  auto const shape = nigiri::get_shape(*tt_, shapes, trip_index);
-  shape_cache_ = {get_coordinate(segment.from_), get_coordinate(segment.to_)};
-  if (!shape.empty()) {
-    if (auto const subshape = get_subshape(shape, shape_cache_[0], shape_cache_[1]); !subshape.empty()) {
-      return subshape;
+  auto const from = (*this)[segment.from_];
+  auto const to = (*this)[segment.to_];
+  auto const trip_index = from.get_trip_idx(event_type::kDep);
+  if (segment.from_ < segment.to_ && trip_index == to.get_trip_idx(event_type::kArr)) {
+    auto const shape = nigiri::get_shape(*tt_, shapes, trip_index);
+    if (!shape.empty()) {
+      if (auto const subshape = get_subshape(shape, from.pos(), to.pos()); !subshape.empty()) {
+        return subshape;
+      }
     }
   }
+  shape_cache_ = {from.pos(), to.pos()};
   return {shape_cache_};
 }
 
@@ -397,14 +396,6 @@ trip_idx_t frun::trip_idx() const {
         .at(0);
   }
   throw utl::fail("trip idx only for scheduled trip");
-}
-
-trip_idx_t frun::trip_idx(stop_idx_t const from) const {
-  auto const sections_count = stop_range_.size() - 1;
-  if (sections_count > 0 && from >= sections_count) {
-    return trip_idx_t::invalid();
-  }
-  return (*this)[from].get_trip_idx();
 }
 
 void frun::run_stop::print(std::ostream& out,
