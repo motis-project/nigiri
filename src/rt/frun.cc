@@ -356,8 +356,7 @@ std::span<geo::latlng const> frun::get_shape(
       return shape;
     }
   }
-  shape_cache_ = {from.pos(), to.pos()};
-  return {shape_cache_};
+  return shapes_data.make_span({from.pos(), to.pos()});
 }
 
 trip_id frun::id() const noexcept {

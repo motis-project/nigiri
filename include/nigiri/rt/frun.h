@@ -149,8 +149,6 @@ struct frun : public run {
 
   timetable const* tt_;
   rt_timetable const* rtt_;
-  mutable std::array<geo::latlng, 2>
-      shape_cache_;  // FIXME Remove cache from class (maybe part of 'shape'?)
 };
 
 }  // namespace nigiri::rt

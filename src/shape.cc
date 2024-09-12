@@ -67,7 +67,7 @@ std::span<geo::latlng const> shapes_storage::get_shape(
 }
 
 std::span<geo::latlng const> shapes_storage::make_span(
-    interval<geo::latlng const> const& range) {
+    interval<geo::latlng const> const& range) const {
   no_shape_cache_ = {range.from_, range.to_};
   return {no_shape_cache_};
 }
