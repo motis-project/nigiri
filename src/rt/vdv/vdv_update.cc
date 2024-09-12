@@ -85,9 +85,15 @@ statistics const& updater::get_stats() const { return stats_; }
 std::optional<unixtime_t> updater::get_opt_time(pugi::xml_node const& node,
                                                 char const* str) {
   auto const xpath = node.select_node(str);
-  return xpath != nullptr
-             ? std::optional{parse_time(xpath.node().child_value())}
-             : std::nullopt;
+  if (xpath != nullptr) {
+    try {
+      return std::optional{parse_time(xpath.node().child_value())};
+    } catch (std::exception const& e) {
+      log(log_lvl::error, "vdv_update.get_opt_time", "invalid time input: {}",
+          xpath.node().child_value());
+    }
+  }
+  return std::nullopt;
 }
 
 std::optional<bool> get_opt_bool(

@@ -8,7 +8,7 @@ using namespace nigiri;
 using namespace date;
 
 TEST(parse_time, invalid_time) {
-  EXPECT_EQ(unixtime_t{0_minutes}, parse_time("invalid"));
+  EXPECT_THROW(parse_time("invalid"), std::exception);
 }
 
 TEST(parse_time, valid_time) {
