@@ -354,7 +354,7 @@ frun::get_shape(shapes_storage const& shapes_data,
       return shape;
     }
   }
-  return std::array{from.pos(), to.pos()};
+  return std::array<geo::latlng const, 2>{from.pos(), to.pos()};
 }
 
 trip_id frun::id() const noexcept {
