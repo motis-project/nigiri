@@ -21,7 +21,7 @@
 [fmt]
   url=git@github.com:motis-project/fmt.git
   branch=master
-  commit=09e6cf8fa61ff44509595005631f9da5d917ed3f
+  commit=dc10f83be70ac2873d5f8d1ce317596f1fd318a2
 [date]
   url=git@github.com:motis-project/date.git
   branch=master
@@ -46,6 +46,11 @@
   url=git@github.com:felixguendling/oh.git
   branch=master
   commit=d21c30f40e52a83d6dc09bcffd0067598b5ec069
+[opentelemetry-cpp]
+  url=git@github.com:motis-project/opentelemetry-cpp.git
+  branch=main
+  commit=ec4aef6b17b697052edef5417825ad71947b2ed1
+
 [pugixml]
   url=git@github.com:motis-project/pugixml.git
   branch=master
