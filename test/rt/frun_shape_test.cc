@@ -1,8 +1,11 @@
 #include "gtest/gtest.h"
 
+#include <algorithm>
 #include <array>
 #include <string_view>
+#include <ranges>
 #include <variant>
+#include <vector>
 
 #include "geo/latlng.h"
 
@@ -21,6 +24,24 @@ using namespace nigiri::loader;
 using namespace nigiri::loader::gtfs;
 using std::operator""sv;
 
+// linked from gtfs/shape_test.cc
+shapes_storage create_tmp_shapes_storage(char const*);
+
+namespace std {
+bool operator==(std::span<geo::latlng const> const& lhs, std::span<geo::latlng const> const& rhs) {
+    if (lhs.size() != rhs.size()) {
+        return false;
+    }
+    auto const zip = std::views::zip(lhs, rhs);
+    return std::all_of(begin(zip), end(zip), [](auto const ab) { auto const& [a, b] = ab; return a == b; });
+    // for (auto const [a, b] : std::views::zip(lhs, rhs)) {
+    //     if (a != b) {
+    //         return false;
+    //     }
+    // }
+    // return true;
+}
+}
 namespace {
 
 constexpr auto kScheduleWithoutShape = R"(
@@ -65,15 +86,18 @@ constexpr auto kShapeWithoutDistances = R"(
 # shapes.txt
 "shape_id","shape_pt_lat","shape_pt_lon","shape_pt_sequence"
 SHAPE_1,1.0,1.0,0
-SHAPE_1,1.0,1.5,0
-SHAPE_1,2.0,2.0,0
-SHAPE_1,2.0,2.5,0
-SHAPE_1,3.0,3.0,0
-SHAPE_1,3.0,3.5,0
-SHAPE_1,4.0,4.0,0
-SHAPE_1,4.0,4.5,0
-SHAPE_1,5.0,5.0,0
+SHAPE_1,1.0,1.5,1
+SHAPE_1,2.0,2.0,2
+SHAPE_1,2.0,2.5,3
+SHAPE_1,3.0,3.0,4
+SHAPE_1,3.0,3.5,5
+SHAPE_1,4.0,4.0,6
+SHAPE_1,4.0,4.5,7
+SHAPE_1,5.0,5.0,8
+SHAPE_1,5.0,5.5,9
+SHAPE_1,6.0,6.0,10
 )"sv;
+
 
 // Shapes tested for: B -> C, A -> B, E -> F, B -> E
 template <typename Variant>
@@ -163,6 +187,35 @@ TEST(rt, frun_get_shape_when_no_storage_is_used_then_get_owning_array_variant) {
           {geo::latlng{1.0F, 1.0F}, geo::latlng{2.0F, 2.0F}},
           {geo::latlng{5.0F, 5.0F}, geo::latlng{6.0F, 6.0F}},
           {geo::latlng{2.0F, 2.0F}, geo::latlng{5.0F, 5.0F}},
+      }});
+}
+
+TEST(
+    rt,
+    frun_get_shape_when_shapes_without_distances_are_used_then_get_correct_span) {
+  auto shapes_data =
+      create_tmp_shapes_storage("rfun-get-shape-without-distances");
+  auto const schedule_data =
+      std::string{kScheduleWithoutShape} + std::string{kShapeWithoutDistances};
+  auto const expected_shapes = std::vector<std::vector<geo::latlng>>{
+      {{geo::latlng{2.0F, 2.0F}, geo::latlng{2.0F, 2.5F},
+        geo::latlng{3.0F, 3.0F}}},
+      {{geo::latlng{1.0F, 1.0F}, geo::latlng{1.0F, 1.5F},
+        geo::latlng{2.0F, 2.0F}}},
+      {{geo::latlng{5.0F, 5.0F}, geo::latlng{5.0F, 5.5F},
+        geo::latlng{6.0F, 6.0F}}},
+      {{geo::latlng{2.0F, 2.0F}, geo::latlng{2.0F, 2.5F},
+        geo::latlng{3.0F, 3.0F}, geo::latlng{3.0F, 3.5F},
+        geo::latlng{4.0F, 4.0F}, geo::latlng{4.0F, 4.5F},
+        geo::latlng{5.0F, 5.0F}}},
+  };
+  parametrized_test<std::span<geo::latlng const>>(
+      schedule_data, shapes_data,
+      {{
+          {begin(expected_shapes[0]), end(expected_shapes[0])},
+          {begin(expected_shapes[1]), end(expected_shapes[1])},
+          {begin(expected_shapes[2]), end(expected_shapes[2])},
+          {begin(expected_shapes[3]), end(expected_shapes[3])},
       }});
 }
 
