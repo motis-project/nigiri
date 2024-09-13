@@ -203,13 +203,13 @@ struct dynamic_growth_profile_set {
   }
 
   size_t compute_entry_amount() const {
-    size_t n_entrys = 0;
+    size_t n_entries = 0;
     for (auto i = 0U; i < stop_reset_list_end_; ++i) {
-      l_start_idx_[stop_reset_list_[i]] = n_entrys;
-      n_entrys += entry_idx_end_[stop_reset_list_[i]].second;
+      l_start_idx_[stop_reset_list_[i]] = n_entries;
+      n_entries += entry_idx_end_[stop_reset_list_[i]].second;
     }
     recompute_entry_amount_ = false;
-    return n_entrys - stop_reset_list_end_;
+    return n_entries - stop_reset_list_end_;
   };
 
   void reset_fp_dis_to_target() {
@@ -339,13 +339,13 @@ struct dynamic_profile_set {
   }
 
   size_t compute_entry_amount() const {
-    size_t n_entrys = 0;
+    size_t n_entries = 0;
     for (auto i = 0U; i < stop_reset_list_end_; ++i) {
-      l_start_idx_[stop_reset_list_[i]] = n_entrys;
-      n_entrys += entry_[to_idx(stop_reset_list_[i])].size();
+      l_start_idx_[stop_reset_list_[i]] = n_entries;
+      n_entries += entry_[to_idx(stop_reset_list_[i])].size();
     }
     recompute_entry_amount_ = false;
-    return n_entrys - stop_reset_list_end_;
+    return n_entries - stop_reset_list_end_;
   };
 
   void reset_fp_dis_to_target() {
