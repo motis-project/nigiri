@@ -26,7 +26,10 @@
 #include "cista/reflection/printable.h"
 #include "cista/strong.h"
 
+#include "geo/latlng.h"
+
 #include "nigiri/common/interval.h"
+#include "nigiri/common/it_range.h"
 
 namespace nigiri {
 
@@ -52,6 +55,9 @@ constexpr auto const kMaxDays = 512;
 using bitfield = bitset<kMaxDays>;
 
 using bitvec = cista::raw::bitvec;
+
+template <typename K = std::uint32_t>
+using bitvec_map = cista::basic_bitvec<cista::raw::vector<std::uint64_t>, K>;
 
 template <typename... Args>
 using tuple = cista::tuple<Args...>;
@@ -106,6 +112,12 @@ using optional = cista::optional<T>;
 template <typename Key, typename T, std::size_t N>
 using nvec = cista::raw::nvec<Key, T, N>;
 
+template <typename T>
+using mm_vec = cista::basic_mmap_vec<T, std::uint64_t>;
+
+template <typename Key, typename V, typename SizeType = cista::base_t<Key>>
+using mm_vecvec = cista::basic_vecvec<Key, mm_vec<V>, mm_vec<SizeType>>;
+
 template <typename Key, typename T>
 struct mmap_paged_vecvec_helper {
   using data_t = cista::paged<vector<T>>;
@@ -121,6 +133,7 @@ using location_idx_t = cista::strong<std::uint32_t, struct _location_idx>;
 using route_idx_t = cista::strong<std::uint32_t, struct _route_idx>;
 using section_idx_t = cista::strong<std::uint32_t, struct _section_idx>;
 using section_db_idx_t = cista::strong<std::uint32_t, struct _section_db_idx>;
+using shape_idx_t = cista::strong<std::uint32_t, struct _shape_idx>;
 using trip_idx_t = cista::strong<std::uint32_t, struct _trip_idx>;
 using trip_id_idx_t = cista::strong<std::uint32_t, struct _trip_id_str_idx>;
 using transport_idx_t = cista::strong<std::uint32_t, struct _transport_idx>;
@@ -158,6 +171,7 @@ using attribute_combination_idx_t =
     cista::strong<std::uint32_t, struct _attribute_combination>;
 using provider_idx_t = cista::strong<std::uint32_t, struct _provider_idx>;
 
+using shapes_storage_t = mm_vecvec<shape_idx_t, geo::latlng>;
 using transport_range_t = pair<transport_idx_t, interval<stop_idx_t>>;
 
 struct trip_debug {
@@ -173,8 +187,8 @@ struct attribute {
 
 struct provider {
   CISTA_COMPARABLE()
-  CISTA_PRINTABLE(provider, "short_name", "long_name")
-  string short_name_, long_name_;
+  CISTA_PRINTABLE(provider, "short_name", "long_name", "url")
+  string short_name_, long_name_, url_;
   timezone_idx_t tz_{timezone_idx_t::invalid()};
 };
 
@@ -226,7 +240,7 @@ using duration_t = i16_minutes;
 using unixtime_t = std::chrono::sys_time<i32_minutes>;
 using local_time = date::local_time<i32_minutes>;
 
-constexpr u8_minutes operator""_i8_minutes(unsigned long long n) {
+constexpr u8_minutes operator""_u8_minutes(unsigned long long n) {
   return duration_t{n};
 }
 
@@ -288,9 +302,32 @@ enum class location_type : std::uint8_t {
 };
 
 enum class event_type { kArr, kDep };
-enum class direction { kForward, kBackward };
+
+enum class direction {
+  kForward,
+  kBackward  // start = final arrival, destination = journey departure
+};
+
+inline constexpr direction flip(direction const d) noexcept {
+  return d == direction::kForward ? direction::kBackward : direction::kForward;
+}
+
+inline std::string_view to_str(direction const d) {
+  return d == direction::kForward ? "FWD" : "BWD";
+}
+
+template <direction D, typename Collection>
+auto to_range(Collection const& c) {
+  if constexpr (D == direction::kForward) {
+    return it_range{c.begin(), c.end()};
+  } else {
+    return it_range{c.rbegin(), c.rend()};
+  }
+}
 
 using transport_mode_id_t = std::int32_t;
+
+using via_offset_t = std::uint8_t;
 
 }  // namespace nigiri
 
@@ -446,3 +483,6 @@ struct fmt::formatter<nigiri::debug> : ostream_formatter {};
 
 template <>
 struct fmt::formatter<nigiri::delta> : ostream_formatter {};
+
+template <>
+struct fmt::formatter<nigiri::transport> : ostream_formatter {};

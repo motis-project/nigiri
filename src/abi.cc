@@ -67,7 +67,7 @@ nigiri_timetable_t* nigiri_load_from_dir(nigiri::loader::dir const& d,
   nigiri::loader::register_special_stations(*t->tt);
   auto local_bitfield_indices =
       nigiri::hash_map<nigiri::bitfield, nigiri::bitfield_idx_t>{};
-  (*c)->load({}, src, d, *t->tt, local_bitfield_indices);
+  (*c)->load({}, src, d, *t->tt, local_bitfield_indices, nullptr, nullptr);
   nigiri::loader::finalize(*t->tt);
 
   t->rtt = std::make_shared<nigiri::rt_timetable>(

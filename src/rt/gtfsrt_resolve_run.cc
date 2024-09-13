@@ -5,6 +5,7 @@
 #include "nigiri/loader/gtfs/parse_date.h"
 #include "nigiri/loader/gtfs/parse_time.h"
 #include "nigiri/common/day_list.h"
+#include "nigiri/common/split_duration.h"
 #include "nigiri/rt/rt_timetable.h"
 #include "nigiri/rt/trip_update.h"
 #include "nigiri/timetable.h"
@@ -58,8 +59,9 @@ void resolve_static(date::sys_days const today,
   for (auto i = lb; i != end(tt.trip_id_to_idx_) && id_matches(i->first); ++i) {
     for (auto const [t, stop_range] : tt.trip_transport_ranges_[i->second]) {
       auto const o = tt.transport_first_dep_offset_[t];
-      auto const gtfs_static_dep =
-          tt.event_mam(t, stop_range.from_, event_type::kDep).as_duration() + o;
+      auto const utc_dep =
+          tt.event_mam(t, stop_range.from_, event_type::kDep).as_duration();
+      auto const gtfs_static_dep = utc_dep + o;
 
       auto const [gtfs_static_dep_day, gtfs_static_dep_time] =
           split(gtfs_static_dep);
@@ -73,14 +75,13 @@ void resolve_static(date::sys_days const today,
       auto const start_time_day_offset =
           start_time.has_value() ? gtfs_static_dep_day - start_time_day
                                  : date::days{0U};
-      auto const utc_dep =
-          tt.event_mam(t, stop_range.from_, event_type::kDep).as_duration();
-      auto const [day_offset, tz_offset_minutes] =
-          split_rounded(gtfs_static_dep - utc_dep);
+      auto const [day_offset, tz_offset_minutes] = split_rounded(o);
+
       auto const day_idx =
           ((start_date.has_value() ? *start_date : today) + day_offset -
            start_time_day_offset - tt.internal_interval_days().from_)
               .count();
+
       if (day_idx > kMaxDays || day_idx < 0) {
         continue;
       }
