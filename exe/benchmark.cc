@@ -406,7 +406,7 @@ int main(int argc, char* argv[]) {
       ("start_loc", bpo::value<location_idx_t::value_t>(&start_loc_val),
        "start location for random queries")  //
       ("dest_loc", bpo::value<location_idx_t::value_t>(&dest_loc_val),
-       "destination location for random queries") //
+       "destination location for random queries")  //
       ("qa_path,q", bpo::value(&qa_path),
        "path to write the journey criteria to for qa");
   bpo::variables_map vm;
@@ -537,7 +537,10 @@ int main(int argc, char* argv[]) {
     for (auto const& res : results) {
       auto jc = vector<nigiri::qa::criteria_t>{};
       for (auto const& j : res.journeys_) {
-        jc.push_back(nigiri::qa::to_criteria_t(j));
+        jc.emplace_back(
+            static_cast<double>(j.start_time_.time_since_epoch().count()),
+            static_cast<double>(j.dest_time_.time_since_epoch().count()),
+            static_cast<double>(j.transfers_));
       }
       bm_crit.qc_.emplace_back(res.q_idx_, res.total_time_, jc);
     }
