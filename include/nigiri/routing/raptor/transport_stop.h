@@ -31,8 +31,8 @@ struct sorted_transport {
         .day_ = day_idx_t{static_cast<std::int32_t>(to_idx(base)) + day_idx_}};
   }
 
-  std::int32_t day_idx_ : 2;
-  std::int32_t t_idx_ : 30;
+  std::int32_t day_idx_ : 4;
+  std::int32_t t_idx_ : 28;
 };
 
 struct transport_stop {
