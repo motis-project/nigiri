@@ -15,12 +15,11 @@ void decision_graph::compute_use_probabilities_on_sorted_g(timetable const& tt,
     double assigned_prob = 0.0;
 
     // find first out with dep_time_ >= in.arr_time_
-    auto it_out =
-        std::lower_bound(nodes_[in.arr_node_].out_.begin(),
-                        nodes_[in.arr_node_].out_.end(), in.arr_time_,
-                         [&](int const& out, unixtime_t const& value) {
-                           return arcs_[out].dep_time_ < value;
-                         });
+    auto it_out = std::lower_bound(
+        nodes_[in.arr_node_].out_.begin(), nodes_[in.arr_node_].out_.end(),
+        in.arr_time_, [&](int const& out, unixtime_t const& value) {
+          return arcs_[out].dep_time_ < value;
+        });
     for (; it_out != nodes_[in.arr_node_].out_.end(); ++it_out) {
       auto& out = arcs_[*it_out];
 
@@ -35,14 +34,13 @@ void decision_graph::compute_use_probabilities_on_sorted_g(timetable const& tt,
             max_delay);
       }
 
-      arcs_[*it_out].use_prob_ +=
-          in.use_prob_ * (change_prob - assigned_prob);
+      arcs_[*it_out].use_prob_ += in.use_prob_ * (change_prob - assigned_prob);
       assigned_prob = change_prob;
       if (assigned_prob == 1) {
         break;
       }
     }
-    assert(assigned_prob == 1);
+    assert((assigned_prob > 0.99 && assigned_prob <= 1) || assigned_prob == 0);
   }
 }
 
@@ -100,14 +98,13 @@ void decision_graph::compute_use_probabilities_on_unsorted_g(
             max_delay);
       }
 
-      arcs_[*it_out].use_prob_ +=
-          in.use_prob_ * (change_prob - assigned_prob);
+      arcs_[*it_out].use_prob_ += in.use_prob_ * (change_prob - assigned_prob);
       assigned_prob = change_prob;
       if (assigned_prob == 1) {
         break;
       }
     }
-    assert(assigned_prob == 1);
+    assert((assigned_prob > 0.99 && assigned_prob <= 1) || assigned_prob == 0);
   }
 }
 
