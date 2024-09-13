@@ -1,6 +1,6 @@
 #include "nigiri/loader/merge_duplicates.h"
 
-#include "nigiri/loader/match_set.h"
+#include "nigiri/for_each_meta.h"
 #include "nigiri/timetable.h"
 
 namespace nigiri::loader {
@@ -33,27 +33,39 @@ bool merge(timetable& tt,
            stop_idx_t const size,
            transport_idx_t const a,
            transport_idx_t const b) {
+  assert(a != b);
+
   auto const bf_a = tt.bitfields_[tt.transport_traffic_days_[a]];
   auto const bf_b = tt.bitfields_[tt.transport_traffic_days_[b]];
   if ((bf_a & bf_b).none()) {
     return false;
   }
 
-  if ((bf_a & bf_b) == bf_a) {
-    tt.transport_traffic_days_[b] = bitfield_idx_t{0U};  // disable trip 'b'
+  auto const merge_and_nullify = [&tt](transport_idx_t const x,
+                                       transport_idx_t const y) {
+    tt.transport_traffic_days_[x] = bitfield_idx_t{0U};  // disable transport x
 
-    for (auto const merged_trips_idx_b : tt.transport_to_trip_section_[b]) {
-      for (auto const b_trp : tt.merged_trips_[merged_trips_idx_b]) {
-        for (auto& [t, range] : tt.trip_transport_ranges_[b_trp]) {
-          if (t == b) {
-            t = a;  // replace b with a in b's trip transport ranges
+    for (auto const merged_trips_idx_x : tt.transport_to_trip_section_[x]) {
+      for (auto const x_trp : tt.merged_trips_[merged_trips_idx_x]) {
+        for (auto& [t, range] : tt.trip_transport_ranges_[x_trp]) {
+          if (t == x) {
+            t = y;  // replace x with y in x's trip transport ranges
           }
         }
       }
     }
+  };
+
+  auto const is_superset = [](bitfield const& x, bitfield const& y) {
+    return (x & y) == x;
+  };
+
+  if (is_superset(bf_b, bf_a)) {
+    merge_and_nullify(a, b);
+  } else if (is_superset(bf_a, bf_b)) {
+    merge_and_nullify(b, a);
   } else {
-    tt.transport_traffic_days_[a] = tt.register_bitfield(bf_a | bf_b);
-    tt.transport_traffic_days_[b] = tt.register_bitfield(bf_b & ~bf_a);
+    tt.transport_traffic_days_[a] = tt.register_bitfield(bf_a & ~(bf_a & bf_b));
 
     hash_set<trip_idx_t> b_trips;
     for (auto const merged_trips_idx_b : tt.transport_to_trip_section_[b]) {
@@ -76,7 +88,6 @@ bool merge(timetable& tt,
 }
 
 unsigned find_duplicates(timetable& tt,
-                         match_set_t const& matches,
                          location_idx_t const a,
                          location_idx_t const b) {
   auto merged = 0U;
@@ -100,11 +111,16 @@ unsigned find_duplicates(timetable& tt,
         continue;
       }
 
-      for (auto const [x, y] : utl::zip(a_loc_seq, b_loc_seq)) {
-        if (!matches.contains(make_match_pair(stop{x}.location_idx(),
-                                              stop{y}.location_idx()))) {
-          continue;
-        }
+      auto const station_sequence_matches = [&]() {
+        return utl::all_of(utl::zip(a_loc_seq, b_loc_seq), [&](auto&& pair) {
+          auto const [x, y] = pair;
+          return matches(tt, routing::location_match_mode::kEquivalent,
+                         stop{x}.location_idx(), stop{y}.location_idx());
+        });
+      };
+
+      if (!station_sequence_matches()) {
+        continue;
       }
 
       auto const a_transport_range = tt.route_transport_ranges_[a_route];
@@ -112,6 +128,12 @@ unsigned find_duplicates(timetable& tt,
       auto a_t = begin(a_transport_range), b_t = begin(b_transport_range);
 
       while (a_t != end(a_transport_range) && b_t != end(b_transport_range)) {
+        if (*a_t == *b_t) {
+          ++a_t;
+          ++b_t;
+          continue;
+        }
+
         auto const time_a = tt.event_mam(a_route, *a_t, 0U, event_type::kDep);
         auto const time_b = tt.event_mam(b_route, *b_t, 0U, event_type::kDep);
 

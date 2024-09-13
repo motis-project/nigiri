@@ -3,8 +3,8 @@
 #include "utl/get_or_create.h"
 
 #include "nigiri/common/dial.h"
+#include "nigiri/for_each_meta.h"
 #include "nigiri/routing/dijkstra.h"
-#include "nigiri/routing/for_each_meta.h"
 #include "nigiri/special_stations.h"
 
 namespace nigiri::routing {
@@ -61,7 +61,9 @@ duration_t get_fastest_direct(timetable const& tt,
                                     : tt.locations_.footpaths_in_[q.prf_idx_]);
     for (auto const& fp : footpaths[l.l_]) {
       auto const new_dist =
-          l.d_ + static_cast<label::dist_t>(fp.duration().count());
+          l.d_ + adjusted_transfer_time(
+                     q.transfer_time_settings_,
+                     static_cast<label::dist_t>(fp.duration().count()));
       if (new_dist > max_dist) {
         continue;
       }

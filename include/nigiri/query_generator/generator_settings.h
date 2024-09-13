@@ -2,10 +2,11 @@
 
 #include "geo/box.h"
 
+#include "nigiri/location_match_mode.h"
 #include "nigiri/query_generator/transport_mode.h"
 #include "nigiri/routing/clasz_mask.h"
 #include "nigiri/routing/limits.h"
-#include "nigiri/routing/location_match_mode.h"
+#include "nigiri/routing/transfer_time_settings.h"
 #include "nigiri/timetable.h"
 
 #include "transport_mode.h"
@@ -40,7 +41,11 @@ struct generator_settings {
         << "\nextend_interval_later: "
         << (gs.extend_interval_later_ ? "true" : "false")
         << "\nprf_idx: " << std::uint32_t{gs.prf_idx_}
-        << "\nallowed_claszes: " << gs.allowed_claszes_;
+        << "\nallowed_claszes: " << gs.allowed_claszes_
+        << "\nmin_transfer_time: "
+        << gs.transfer_time_settings_.min_transfer_time_
+        << "\ntransfer_time_factor: " << gs.transfer_time_settings_.factor_
+        << "\nvias: " << gs.n_vias_;
 
     auto const visit_loc = [](location_idx_t const loc_idx) {
       std::stringstream ss;
@@ -75,13 +80,15 @@ struct generator_settings {
   transport_mode dest_mode_{kWalk};
   std::optional<std::variant<location_idx_t, geo::latlng>> start_;
   std::optional<std::variant<location_idx_t, geo::latlng>> dest_;
-  bool use_start_footpaths_{true};
+  bool use_start_footpaths_{false};
   std::uint8_t max_transfers_{routing::kMaxTransfers};
   unsigned min_connection_count_{0U};
   bool extend_interval_earlier_{false};
   bool extend_interval_later_{false};
   profile_idx_t prf_idx_{0};
   routing::clasz_mask_t allowed_claszes_{routing::all_clasz_allowed()};
+  routing::transfer_time_settings transfer_time_settings_{};
+  unsigned n_vias_{0U};
 };
 
 }  // namespace nigiri::query_generation

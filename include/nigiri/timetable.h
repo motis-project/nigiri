@@ -18,6 +18,7 @@
 #include "nigiri/location.h"
 #include "nigiri/logging.h"
 #include "nigiri/stop.h"
+#include "nigiri/td_footpath.h"
 #include "nigiri/types.h"
 
 namespace nigiri {
@@ -164,7 +165,7 @@ struct timetable {
       std::basic_string<stop::value_type> const& stop_seq,
       std::basic_string<clasz> const& clasz_sections,
       bitvec const& bikes_allowed_per_section) {
-    assert(!stop_seq.empty() && stop_seq.size() > 1U);
+    assert(stop_seq.size() > 1U);
     assert(!clasz_sections.empty());
 
     auto const idx = route_location_seq_.size();
@@ -378,6 +379,9 @@ struct timetable {
 
   // Trip index -> all transports with a stop interval
   paged_vecvec<trip_idx_t, transport_range_t> trip_transport_ranges_;
+
+  // Trip index -> shape per trip
+  vector_map<trip_idx_t, shape_idx_t> trip_shape_indices_;
 
   // Transport -> stop sequence numbers (relevant for GTFS-RT stop matching)
   // Compaction:

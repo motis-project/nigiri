@@ -1,8 +1,8 @@
 cmake_minimum_required(VERSION 3.22)
 project(nigiri)
 
-if (NOT DEFINED CMAKE_MSVC_RUNTIME_LIBRARY)
-  if (NIGIRI_MIMALLOC)
+if(NOT DEFINED CMAKE_MSVC_RUNTIME_LIBRARY)
+  if(NIGIRI_MIMALLOC)
     set(CMAKE_MSVC_RUNTIME_LIBRARY "MultiThreaded$<$<CONFIG:Debug>:Debug>DLL")
   else ()
     set(CMAKE_MSVC_RUNTIME_LIBRARY "MultiThreaded$<$<CONFIG:Debug>:Debug>")
@@ -62,6 +62,7 @@ if ("${CMAKE_CXX_COMPILER_ID}" STREQUAL "Clang")
         -Wno-reserved-macro-identifier
         -Wno-documentation-unknown-command
         -Wno-duplicate-enum
+        -Wno-switch-default
         -Werror)
 elseif ("${CMAKE_CXX_COMPILER_ID}" STREQUAL "AppleClang")
   set(nigiri-compile-options -Wall -Wextra -Werror)
@@ -82,7 +83,7 @@ endif ()
 file(GLOB_RECURSE nigiri-files src/*.cc)
 add_library(nigiri ${nigiri-files})
 target_include_directories(nigiri PUBLIC include)
-target_link_libraries(nigiri PUBLIC cista geo utl fmt date miniz date-tz wyhash unordered_dense gtfsrt)
+target_link_libraries(nigiri PUBLIC cista geo utl fmt date miniz date-tz wyhash unordered_dense gtfsrt oh opentelemetry_api)
 target_compile_features(nigiri PUBLIC cxx_std_23)
 target_compile_options(nigiri PRIVATE ${nigiri-compile-options})
 
@@ -120,5 +121,6 @@ configure_file(
 )
 file(GLOB_RECURSE nigiri-test-files test/*.cc)
 add_executable(nigiri-test ${nigiri-test-files})
+target_include_directories(nigiri-test PRIVATE include)
 target_link_libraries(nigiri-test nigiri gtest ianatzdb-res nigiri-generated)
 target_compile_options(nigiri-test PRIVATE ${nigiri-compile-options})

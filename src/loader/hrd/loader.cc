@@ -15,7 +15,9 @@ void hrd_loader::load(
     source_idx_t const src,
     dir const& d,
     timetable& tt,
-    hash_map<bitfield, bitfield_idx_t>& global_bitfield_indices) const {
+    hash_map<bitfield, bitfield_idx_t>& global_bitfield_indices,
+    assistance_times*,
+    shapes_storage_t*) const {
   return nigiri::loader::hrd::load_timetable(src, config_, d, tt,
                                              global_bitfield_indices);
 }

@@ -47,7 +47,8 @@ private:
   void init_geo(generator_settings const& settings);
 
   location_idx_t random_location();
-  location_idx_t random_location(geo::latlng const&, transport_mode const&);
+  std::optional<location_idx_t> random_location(geo::latlng const&,
+                                                transport_mode const&);
   route_idx_t random_route(location_idx_t);
   transport_idx_t random_transport();
   transport_idx_t random_transport(route_idx_t);
@@ -90,6 +91,8 @@ private:
   std::uniform_int_distribution<std::uint32_t> start_mode_range_d_;
   std::uniform_int_distribution<std::uint32_t> dest_mode_range_d_;
   std::uniform_int_distribution<std::uint16_t> bearing_d_{0, 359};
+  std::discrete_distribution<unsigned> stay_d_{40, 5, 5, 5, 5, 10,
+                                               5,  5, 5, 5, 10};
 };
 
 }  // namespace nigiri::query_generation
