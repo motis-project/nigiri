@@ -28,8 +28,15 @@ struct decision_graph {
 
   int arc_count() const { return arcs_.size(); }
 
-  void compute_use_probabilities(timetable const& tt, delta_t max_delay);
-
+  void compute_use_probabilities(timetable const& tt,
+                                 delta_t max_delay,
+                                 bool g_is_sorted_by_dep_time = false);
+private:
+  void compute_use_probabilities_on_sorted_g(timetable const& tt,
+                                             delta_t max_delay);
+  void compute_use_probabilities_on_unsorted_g(timetable const& tt,
+                                               delta_t max_delay);
+public:
   std::vector<node> nodes_;
   std::vector<arc> arcs_;
   int source_node_;
