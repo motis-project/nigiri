@@ -1,8 +1,8 @@
 cmake_minimum_required(VERSION 3.22)
 project(nigiri)
 
-if (NOT DEFINED CMAKE_MSVC_RUNTIME_LIBRARY)
-  if (NIGIRI_MIMALLOC)
+if(NOT DEFINED CMAKE_MSVC_RUNTIME_LIBRARY)
+  if(NIGIRI_MIMALLOC)
     set(CMAKE_MSVC_RUNTIME_LIBRARY "MultiThreaded$<$<CONFIG:Debug>:Debug>DLL")
   else ()
     set(CMAKE_MSVC_RUNTIME_LIBRARY "MultiThreaded$<$<CONFIG:Debug>:Debug>")

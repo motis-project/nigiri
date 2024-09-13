@@ -9,6 +9,7 @@
 #include "utl/progress_tracker.h"
 
 #include "nigiri/logging.h"
+#include "nigiri/qa/qa.h"
 #include "nigiri/query_generator/generator.h"
 #include "nigiri/routing/raptor/raptor.h"
 #include "nigiri/routing/raptor_search.h"
@@ -333,6 +334,7 @@ int main(int argc, char* argv[]) {
   auto dest_loc_val = location_idx_t::value_t{0U};
   auto seed = std::int64_t{-1};
   auto min_transfer_time = duration_t::rep{};
+  auto qa_path = std::filesystem::path{};
 
   bpo::options_description desc("Allowed options");
   desc.add_options()("help,h", "produce this help message")  //
@@ -404,7 +406,9 @@ int main(int argc, char* argv[]) {
       ("start_loc", bpo::value<location_idx_t::value_t>(&start_loc_val),
        "start location for random queries")  //
       ("dest_loc", bpo::value<location_idx_t::value_t>(&dest_loc_val),
-       "destination location for random queries");
+       "destination location for random queries") //
+      ("qa_path,q", bpo::value(&qa_path),
+       "path to write the journey criteria to for qa");
   bpo::variables_map vm;
   bpo::store(bpo::command_line_parser(argc, argv).options(desc).run(), vm);
 
@@ -527,6 +531,18 @@ int main(int argc, char* argv[]) {
   print_results(queries, results, tt, gs, tt_path);
 
   print_memory_usage();
+
+  if (vm.count("qa_path")) {
+    auto bm_crit = nigiri::qa::benchmark_criteria{};
+    for (auto const& res : results) {
+      auto jc = vector<nigiri::qa::criteria_t>{};
+      for (auto const& j : res.journeys_) {
+        jc.push_back(nigiri::qa::to_criteria_t(j));
+      }
+      bm_crit.qc_.emplace_back(res.q_idx_, res.total_time_, jc);
+    }
+    bm_crit.write(qa_path);
+  }
 
   return 0;
 }
