@@ -806,7 +806,7 @@ private:
               lb_[l_idx] != kUnreachable &&
               is_better(by_transport + dir(lb_[l_idx]), time_at_dest_[k])) {
 
-            auto const st = sorted_transport{base_, et};
+            auto const st = sorted_transport{base_, et[v]};
             auto const [added, inserted_it, dominated_by_it] =
                 state_.r_.add<SearchDir>(r, st, stop_idx, k);
             if (added) {
