@@ -27,9 +27,12 @@ struct frun : public run {
 
     provider const& get_provider(event_type = event_type::kDep) const noexcept;
     trip_idx_t get_trip_idx(event_type = event_type::kDep) const noexcept;
+    std::string_view trip_display_name(
+        event_type = event_type::kDep) const noexcept;
 
-    unixtime_t scheduled_time(event_type const ev_type) const noexcept;
-    unixtime_t time(event_type const ev_type) const noexcept;
+    unixtime_t scheduled_time(event_type) const noexcept;
+    unixtime_t time(event_type) const noexcept;
+    duration_t delay(event_type) const noexcept;
 
     std::string_view line(event_type = event_type::kDep) const noexcept;
     std::string_view scheduled_line(
@@ -39,11 +42,36 @@ struct frun : public run {
     clasz get_clasz(event_type = event_type::kDep) const noexcept;
     clasz get_scheduled_clasz(event_type = event_type::kDep) const noexcept;
 
+    bool bikes_allowed(event_type = event_type::kDep) const noexcept;
+
     route_color get_route_color(event_type = event_type::kDep) const noexcept;
 
     bool in_allowed() const noexcept;
     bool out_allowed() const noexcept;
+    bool in_allowed_wheelchair() const noexcept;
+    bool out_allowed_wheelchair() const noexcept;
     bool is_canceled() const noexcept;
+
+    bool in_allowed(bool const is_wheelchair) const noexcept;
+    bool out_allowed(bool const is_wheelchair) const noexcept;
+
+    template <enum direction SearchDir>
+    bool can_start(bool const is_wheelchair) const {
+      if constexpr (SearchDir == direction::kForward) {
+        return is_wheelchair ? in_allowed_wheelchair() : in_allowed();
+      } else {
+        return is_wheelchair ? out_allowed_wheelchair() : out_allowed();
+      }
+    }
+
+    template <enum direction SearchDir>
+    bool can_finish(bool const is_wheelchair) const {
+      if constexpr (SearchDir == direction::kForward) {
+        return is_wheelchair ? out_allowed_wheelchair() : out_allowed();
+      } else {
+        return is_wheelchair ? in_allowed_wheelchair() : in_allowed();
+      }
+    }
 
     stop_idx_t section_idx(event_type) const noexcept;
 

@@ -165,37 +165,41 @@ route_map_t read_routes(timetable& tt,
 
   auto const progress_tracker = utl::get_active_progress_tracker();
   progress_tracker->status("Parse Routes")
-      .out_bounds(30.F, 32.F)
+      .out_bounds(27.F, 29.F)
       .in_high(file_content.size());
   return utl::line_range{utl::make_buf_reader(
              file_content, progress_tracker->update_fn())}  //
          | utl::csv<csv_route>()  //
-         | utl::transform([&](csv_route const& r) {
-             auto const agency =
-                 utl::get_or_create(agencies, r.agency_id_->view(), [&]() {
-                   log(log_lvl::error, "gtfs.route",
-                       "agency {} not found, using UNKNOWN with local timezone",
-                       r.agency_id_->view());
+         |
+         utl::transform([&](csv_route const& r) {
+           auto const agency =
+               agencies.size() == 1U
+                   ? agencies.begin()->second
+                   : utl::get_or_create(agencies, r.agency_id_->view(), [&]() {
+                       log(log_lvl::error, "gtfs.route",
+                           "agency {} not found, using UNKNOWN with local "
+                           "timezone",
+                           r.agency_id_->view());
 
-                   auto const id = r.agency_id_->view().empty()
-                                       ? "UKN"
-                                       : r.agency_id_->view();
-                   return tt.register_provider(
-                       {id, "UNKNOWN_AGENCY",
-                        get_tz_idx(tt, timezones, default_tz)});
-                 });
-             return std::pair{
-                 r.route_id_->to_str(),
-                 std::make_unique<route>(route{
-                     .agency_ = agency,
-                     .id_ = r.route_id_->to_str(),
-                     .short_name_ = r.route_short_name_->to_str(),
-                     .long_name_ = r.route_long_name_->to_str(),
-                     .desc_ = r.route_desc_->to_str(),
-                     .clasz_ = to_clasz(*r.route_type_),
-                     .color_ = to_color(r.route_color_->to_str()),
-                     .text_color_ = to_color(r.route_text_color_->to_str())})};
-           })  //
+                       auto const id = r.agency_id_->view().empty()
+                                           ? "UKN"
+                                           : r.agency_id_->view();
+                       return tt.register_provider(
+                           {id, "UNKNOWN_AGENCY", "",
+                            get_tz_idx(tt, timezones, default_tz)});
+                     });
+           return std::pair{
+               r.route_id_->to_str(),
+               std::make_unique<route>(route{
+                   .agency_ = agency,
+                   .id_ = r.route_id_->to_str(),
+                   .short_name_ = r.route_short_name_->to_str(),
+                   .long_name_ = r.route_long_name_->to_str(),
+                   .desc_ = r.route_desc_->to_str(),
+                   .clasz_ = to_clasz(*r.route_type_),
+                   .color_ = to_color(r.route_color_->to_str()),
+                   .text_color_ = to_color(r.route_text_color_->to_str())})};
+         })  //
          | utl::to<route_map_t>();
 }
 

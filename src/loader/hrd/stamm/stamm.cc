@@ -21,6 +21,7 @@ std::vector<file> stamm::load_files(config const& c, dir const& d) {
                          try {
                            return d.get_file(c.prefix(d) / c.core_data_ / file);
                          } catch (...) {
+                           continue;
                          }
                        }
                        throw utl::fail("no file available: {}", alt);
@@ -105,7 +106,7 @@ provider_idx_t stamm::resolve_provider(utl::cstr s) {
         "creating new provider for missing {}", s.view());
     auto const idx = provider_idx_t{tt_.providers_.size()};
     tt_.providers_.emplace_back(
-        provider{.short_name_ = s.view(), .long_name_ = s.view()});
+        provider{.short_name_ = s.view(), .long_name_ = s.view(), .url_ = ""});
     providers_[s.to_str()] = idx;
     return idx;
   } else {

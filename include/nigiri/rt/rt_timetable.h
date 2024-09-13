@@ -119,6 +119,11 @@ struct rt_timetable {
     return rt_transport_src_.size();
   }
 
+  array<bitvec_map<location_idx_t>, kMaxProfiles> has_td_footpaths_out_;
+  array<bitvec_map<location_idx_t>, kMaxProfiles> has_td_footpaths_in_;
+  array<vecvec<location_idx_t, td_footpath>, kMaxProfiles> td_footpaths_out_;
+  array<vecvec<location_idx_t, td_footpath>, kMaxProfiles> td_footpaths_in_;
+
   // Updated transport traffic days from the static timetable.
   // Initial: 100% copy from static, then adapted according to real-time
   // updates
@@ -165,6 +170,13 @@ struct rt_timetable {
 
   // RT transport -> canceled flag
   bitvec rt_transport_is_cancelled_;
+
+  // RT transport * 2 -> bikes allowed along the transport
+  // RT transport * 2 + 1 -> bikes along parts of the transport
+  bitvec rt_transport_bikes_allowed_;
+
+  // RT transport -> bikes allowed for each section
+  vecvec<rt_transport_idx_t, bool> rt_bikes_allowed_per_section_;
 
   change_callback_t change_callback_;
 };

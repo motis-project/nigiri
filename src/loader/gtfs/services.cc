@@ -10,25 +10,18 @@ namespace nigiri::loader::gtfs {
 enum class bound { kFirst, kLast };
 
 bitfield calendar_to_bitfield(interval<date::sys_days> const& tt_interval,
-                              std::string const& service_name,
                               calendar const& c) {
-  auto const from = std::max(c.interval_.from_, tt_interval.from_);
-  auto const to = std::min(c.interval_.to_, tt_interval.to_);
+  if (!tt_interval.overlaps(c.interval_)) {
+    return {};
+  }
+  auto const from = tt_interval.clamp(c.interval_.from_);
+  auto const to = tt_interval.clamp(c.interval_.to_);
   auto bit = (from - tt_interval.from_).count();
   auto traffic_days = bitfield{};
-  for (auto d = from; d != to; d = d + date::days{1}, ++bit) {
-    if (bit >= kMaxDays) {
-      log(log_lvl::error, "loader.gtfs.services",
-          "date {} for service {} out of range [tt_interval={}, calendar={}, "
-          "iterating={}]",
-          fmt::streamed(d), service_name, tt_interval, c.interval_,
-          interval{from, to});
-      break;
-    }
-    auto const weekday_index =
-        date::year_month_weekday{d}.weekday().c_encoding();
-    traffic_days.set(static_cast<std::size_t>(bit),
-                     c.week_days_.test(weekday_index));
+  for (auto d = from; d < to && bit < kMaxDays; d = d + date::days{1}, ++bit) {
+    traffic_days.set(
+        static_cast<std::size_t>(bit),
+        c.week_days_.test(date::year_month_weekday{d}.weekday().c_encoding()));
   }
   return traffic_days;
 }
@@ -51,17 +44,17 @@ traffic_days_t merge_traffic_days(
 
   auto const progress_tracker = utl::get_active_progress_tracker();
   progress_tracker->status("Build Base Services")
-      .out_bounds(36.F, 38.F)
+      .out_bounds(33.F, 35.F)
       .in_high(base.size());
 
   auto s = traffic_days_t{};
   for (auto const& [service_name, calendar] : base) {
-    s[service_name] = std::make_unique<bitfield>(
-        calendar_to_bitfield(tt_interval, service_name, calendar));
+    s[service_name] =
+        std::make_unique<bitfield>(calendar_to_bitfield(tt_interval, calendar));
   }
 
   progress_tracker->status("Add Service Exceptions")
-      .out_bounds(38.F, 40.F)
+      .out_bounds(35.F, 37.F)
       .in_high(base.size());
   for (auto const& [service_name, service_exceptions] : exceptions) {
     for (auto const& day : service_exceptions) {

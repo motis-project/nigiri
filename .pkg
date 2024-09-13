@@ -1,19 +1,19 @@
 [googletest]
   url=git@github.com:motis-project/googletest.git
   branch=master
-  commit=34a46558609e05865c197f0260ab36daa7cbbb6e
+  commit=7b64fca6ea0833628d6f86255a81424365f7cc0c
 [cista]
   url=git@github.com:felixguendling/cista.git
   branch=master
-  commit=ebd5eb5cc7f82c414d3e060a3937d497189a103f
+  commit=f52a62c4d83377acd398227ab4fcd6c946bdbd70
 [geo]
   url=git@github.com:motis-project/geo.git
   branch=master
-  commit=ee76668f0f0454e4acd3c769e00c6868620e3490
+  commit=0a14addf42e91b267906a156c9c2564935c03eaf
 [utl]
   url=git@github.com:motis-project/utl.git
   branch=master
-  commit=fd7425b1a57a4b887318ba8c41a3184f8c4a50c5
+  commit=77aac494c45d2b070e65fe712abc34ac74a91d0f
 [miniz]
   url=git@github.com:motis-project/miniz.git
   branch=master
@@ -21,11 +21,11 @@
 [fmt]
   url=git@github.com:motis-project/fmt.git
   branch=master
-  commit=edb385ac526c24bc917ec4a41bb0edb28f0ca59e
+  commit=dc10f83be70ac2873d5f8d1ce317596f1fd318a2
 [date]
   url=git@github.com:motis-project/date.git
   branch=master
-  commit=2d2c46a39bbf582dc663be1af926b4d58b2e0c9a
+  commit=d84b23ca2432e17f3f04a3e0cc96b096b99c39a2
 [wyhash]
   url=git@github.com:motis-project/wyhash.git
   branch=master
@@ -37,4 +37,16 @@
 [protobuf]
   url=git@github.com:motis-project/protobuf.git
   branch=main
-  commit=690e03babf0963d3da9615a2dae0891777842719
+  commit=d8136b9c6a62db6ce09900ecdeb82bb793096cbd
+[boost]
+  url=git@github.com:motis-project/boost.git
+  branch=master
+  commit=be5235eb2258d2ec19e32546ab767a62311d9b46
+[oh]
+  url=git@github.com:felixguendling/oh.git
+  branch=master
+  commit=d21c30f40e52a83d6dc09bcffd0067598b5ec069
+[opentelemetry-cpp]
+  url=git@github.com:motis-project/opentelemetry-cpp.git
+  branch=main
+  commit=ec4aef6b17b697052edef5417825ad71947b2ed1

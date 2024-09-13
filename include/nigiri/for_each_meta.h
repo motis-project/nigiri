@@ -1,6 +1,6 @@
 #pragma once
 
-#include "nigiri/routing/location_match_mode.h"
+#include "nigiri/location_match_mode.h"
 #include "nigiri/timetable.h"
 
 namespace nigiri::routing {

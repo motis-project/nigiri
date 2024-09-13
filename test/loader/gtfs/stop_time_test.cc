@@ -1,7 +1,10 @@
 #include "gtest/gtest.h"
 
 #include "nigiri/loader/gtfs/files.h"
+#include "nigiri/loader/gtfs/shape.h"
 #include "nigiri/loader/gtfs/stop_time.h"
+#include "nigiri/loader/loader_interface.h"
+
 #include "nigiri/common/sort_by.h"
 #include "nigiri/timetable.h"
 
@@ -19,6 +22,7 @@ TEST(gtfs, read_stop_times_example_data) {
                             date::sys_days{August / 1 / 2006}};
   tz_map timezones;
 
+  auto const config = loader_config{};
   auto agencies =
       read_agencies(tt, timezones, files.get_file(kAgencyFile).data());
   auto const routes = read_routes(tt, timezones, agencies,
@@ -29,7 +33,8 @@ TEST(gtfs, read_stop_times_example_data) {
   auto const services =
       merge_traffic_days(tt.internal_interval_days(), calendar, dates);
   auto trip_data =
-      read_trips(tt, routes, services, files.get_file(kTripsFile).data());
+      read_trips(tt, routes, services, {}, files.get_file(kTripsFile).data(),
+                 config.bikes_allowed_default_);
   auto const stops = read_stops(source_idx_t{0}, tt, timezones,
                                 files.get_file(kStopFile).data(),
                                 files.get_file(kTransfersFile).data(), 0U);
@@ -51,6 +56,9 @@ TEST(gtfs, read_stop_times_example_data) {
 
   auto awe1_it = trip_data.trips_.find("AWE1");
   ASSERT_NE(end(trip_data.trips_), awe1_it);
+
+  EXPECT_EQ(shape_idx_t::invalid(),
+            trip_data.data_[awe1_it->second].shape_idx_);
 
   auto& awe1_stop_times = trip_data.data_[awe1_it->second].event_times_[0];
   auto stp = stop{trip_data.data_[awe1_it->second].stop_seq_[0]};

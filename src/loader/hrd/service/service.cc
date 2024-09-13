@@ -125,11 +125,11 @@ void compute_ranges(std::vector<utl::cstr> const& spec_lines,
                     range_parse_information const& parse_info,
                     Fn&& fn) {
   for (auto const& spec : spec_lines) {
-    fn(std::make_pair(spec,
-                      range(stops, spec.substr(parse_info.from_eva_or_idx_),
-                            spec.substr(parse_info.to_eva_or_idx_),
-                            spec.substr(parse_info.from_hhmm_or_idx_),
-                            spec.substr(parse_info.to_hhmm_or_idx_))));
+    std::forward<Fn>(fn)(std::make_pair(
+        spec, range(stops, spec.substr(parse_info.from_eva_or_idx_),
+                    spec.substr(parse_info.to_eva_or_idx_),
+                    spec.substr(parse_info.from_hhmm_or_idx_),
+                    spec.substr(parse_info.to_hhmm_or_idx_))));
   }
 }
 
@@ -279,8 +279,8 @@ bool specification::read_line(utl::cstr line,
       break;
     case 'L': line_information_.push_back(line); break;
     case 'R': directions_.push_back(line); break;
+    default: return false;
   }
-
   return false;
 }
 

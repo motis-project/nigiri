@@ -8,13 +8,12 @@
 
 namespace nigiri::loader {
 
-match_set_t link_nearby_stations(timetable& tt, bool const store_matches) {
+void link_nearby_stations(timetable& tt) {
   constexpr auto const kLinkNearbyMaxDistance = 300;  // [m];
 
   auto const locations_rtree =
       geo::make_point_rtree(tt.locations_.coordinates_);
 
-  auto matches = match_set_t{};
   for (auto l_from_idx = location_idx_t{0U};
        l_from_idx != tt.locations_.src_.size(); ++l_from_idx) {
     auto const from_pos = tt.locations_.coordinates_[l_from_idx];
@@ -55,14 +54,8 @@ match_set_t link_nearby_stations(timetable& tt, bool const store_matches) {
       tt.locations_.preprocessing_footpaths_in_[l_to_idx].emplace_back(
           l_from_idx, duration);
       tt.locations_.equivalences_[l_from_idx].emplace_back(l_to_idx);
-
-      if (store_matches) {
-        matches.emplace(make_match_pair(l_from_idx, l_to_idx));
-      }
     }
   }
-
-  return matches;
 }
 
 }  // namespace nigiri::loader

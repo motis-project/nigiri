@@ -61,6 +61,15 @@ void load_timetable(source_idx_t const src,
                     config const& c,
                     dir const& d,
                     timetable& tt) {
+  auto local_bitfield_indices = hash_map<bitfield, bitfield_idx_t>{};
+  return load_timetable(src, c, d, tt, local_bitfield_indices);
+}
+
+void load_timetable(source_idx_t const src,
+                    config const& c,
+                    dir const& d,
+                    timetable& tt,
+                    hash_map<bitfield, bitfield_idx_t>& bitfield_indices) {
   auto st = stamm{c, tt, d};
 
   auto progress_tracker = utl::get_active_progress_tracker();
@@ -75,7 +84,7 @@ void load_timetable(source_idx_t const src,
                | utl::sum());
   auto total_bytes_processed = std::uint64_t{0U};
 
-  auto sb = service_builder{st, tt};
+  auto sb = service_builder{st, tt, bitfield_indices};
   for (auto const& path : d.list_files(c.prefix(d) / c.fplan_)) {
     if (path.filename().generic_string().starts_with(".") ||
         (!c.fplan_file_extension_.empty() &&

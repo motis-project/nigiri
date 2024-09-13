@@ -69,8 +69,8 @@ TEST(loader, build_footpaths) {
   00:03.0->(A, A)
   00:03.0->(C, C)
 (C, C)
-  00:06.0->(A, A)
   00:03.0->(B, B)
+  00:06.0->(A, A)
 )"sv,
             ss.str());
 }

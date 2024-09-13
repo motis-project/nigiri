@@ -27,7 +27,7 @@ hash_map<std::string, calendar> read_calendar(std::string_view file_content) {
 
   auto const progress_tracker = utl::get_active_progress_tracker();
   progress_tracker->status("Parse Calendar")
-      .out_bounds(32.F, 34.F)
+      .out_bounds(29.F, 31.F)
       .in_high(file_content.size());
   return utl::line_range{utl::make_buf_reader(
              file_content, progress_tracker->update_fn())}  //
