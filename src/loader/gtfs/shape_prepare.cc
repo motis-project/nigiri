@@ -36,7 +36,7 @@ constexpr std::vector<location_idx_t> get_interior_locations(
   return locations;
 }
 
-constexpr trip_idx_t find_in_cache(
+trip_idx_t find_in_cache(
     hash_map<
         shape_idx_t,
         std::vector<std::pair<std::vector<location_idx_t>, trip_idx_t>>> const&

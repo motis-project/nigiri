@@ -70,7 +70,7 @@ void shapes_storage::add_offsets(trip_idx_t,
 }
 
 void shapes_storage::duplicate_offsets(trip_idx_t const from,
-                                       trip_idx_t const /*to*/) {
+                                       [[maybe_unused]] trip_idx_t const to) {
   if (!offsets_) {
     return;
   }
