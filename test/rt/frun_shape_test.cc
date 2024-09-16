@@ -219,4 +219,34 @@ TEST(
       }});
 }
 
+TEST(
+    rt,
+    frun_get_shape_when_shapes_with_shared_stops_are_used_then_get_correct_span_even_when_last_two_stops_fall_together) {
+constexpr auto kShapeWithSharedStops = R"(
+# shapes.txt
+"shape_id","shape_pt_lat","shape_pt_lon","shape_pt_sequence"
+SHAPE_1,1.0,1.0,0
+SHAPE_1,2.5,2.5,3
+SHAPE_1,6.0,6.0,10
+)"sv;
+  auto shapes_data =
+      create_tmp_shapes_storage("rfun-get-shape-with-shared-stops");
+  auto const schedule_data =
+      std::string{kScheduleWithoutShape} + std::string{kShapeWithSharedStops};
+  auto const expected_shapes = std::vector<std::vector<geo::latlng>>{
+      {{geo::latlng{2.5F, 2.5F}}},
+      {{geo::latlng{1.0F, 1.0F}, geo::latlng{2.5F, 2.5F}}},
+      {{geo::latlng{6.0F, 6.0F}}},
+      {{geo::latlng{2.5F, 2.5F}, geo::latlng{6.0F, 6.0F}}},
+  };
+  parametrized_test<std::span<geo::latlng const>>(
+      schedule_data, shapes_data,
+      {{
+          {begin(expected_shapes[0]), end(expected_shapes[0])},
+          {begin(expected_shapes[1]), end(expected_shapes[1])},
+          {begin(expected_shapes[2]), end(expected_shapes[2])},
+          {begin(expected_shapes[3]), end(expected_shapes[3])},
+      }});
+}
+
 }  // namespace
