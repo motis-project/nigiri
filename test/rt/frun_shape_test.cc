@@ -2,8 +2,8 @@
 
 #include <algorithm>
 #include <array>
-#include <string_view>
 #include <ranges>
+#include <string_view>
 #include <variant>
 #include <vector>
 
@@ -28,20 +28,18 @@ using std::operator""sv;
 shapes_storage create_tmp_shapes_storage(char const*);
 
 namespace std {
-bool operator==(std::span<geo::latlng const> const& lhs, std::span<geo::latlng const> const& rhs) {
-    if (lhs.size() != rhs.size()) {
-        return false;
-    }
-    auto const zip = std::views::zip(lhs, rhs);
-    return std::all_of(begin(zip), end(zip), [](auto const ab) { auto const& [a, b] = ab; return a == b; });
-    // for (auto const [a, b] : std::views::zip(lhs, rhs)) {
-    //     if (a != b) {
-    //         return false;
-    //     }
-    // }
-    // return true;
+bool operator==(std::span<geo::latlng const> const& lhs,
+                std::span<geo::latlng const> const& rhs) {
+  if (lhs.size() != rhs.size()) {
+    return false;
+  }
+  auto const zip = std::views::zip(lhs, rhs);
+  return std::all_of(begin(zip), end(zip), [](auto const ab) {
+    auto const& [a, b] = ab;
+    return a == b;
+  });
 }
-}
+}  // namespace std
 namespace {
 
 constexpr auto kScheduleWithoutShape = R"(
@@ -97,7 +95,6 @@ SHAPE_1,5.0,5.0,8
 SHAPE_1,5.0,5.5,9
 SHAPE_1,6.0,6.0,10
 )"sv;
-
 
 // Shapes tested for: B -> C, A -> B, E -> F, B -> E
 template <typename Variant>
@@ -222,7 +219,7 @@ TEST(
 TEST(
     rt,
     frun_get_shape_when_shapes_with_shared_stops_are_used_then_get_correct_span_even_when_last_two_stops_fall_together) {
-constexpr auto kShapeWithSharedStops = R"(
+  constexpr auto kShapeWithSharedStops = R"(
 # shapes.txt
 "shape_id","shape_pt_lat","shape_pt_lon","shape_pt_sequence"
 SHAPE_1,1.0,1.0,0

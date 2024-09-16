@@ -351,7 +351,7 @@ frun::get_shape(shapes_storage const& shapes_data,
     auto start_offset = stop_idx_t{0};
     if (segment.from_ == 0) {
       while (start_offset < from.stop_idx_) {
-        // Get location 'start_offset' before start
+        // Find first location on segment, i.e. having the same trip_idx_t
         auto const next = (*this)[-(++start_offset)];
         if (next.get_trip_idx(event_type::kDep) != trip_index) {
           --start_offset;
@@ -359,28 +359,12 @@ frun::get_shape(shapes_storage const& shapes_data,
         }
       }
     }
-    // std::cout << "INDICES: " << segment.from_ << " / " << from.stop_idx_ << " / " << from.section_idx(event_type::kDep) << " / " << start_offset << "\n";
-    // if (from.stop_idx_ > 0) {
-    //   auto x = (*this)[-from.stop_idx_];
-    //   std::cout << "x: " << x << " / " << x.pos() << " / " << x.get_trip_idx() << "\n";
-    // }
-    // auto const section_begin = std::lower_bound()
-    // auto const iv = interval{
-    //       stop_idx_t{static_cast<std::uint16_t>(segment.from_ + start_offset)},
-    //       stop_idx_t{static_cast<std::uint16_t>(segment.to_ + start_offset)}
-    //     };
-    // std::cout << "Intervals: " << segment << " / " << iv << " / " << start_offset << "\n";
-    // auto const shape =
-    //     shapes_data.get_shape(*tt_, trip_index, iv);
-    auto const shape =
-        shapes_data.get_shape(*tt_, trip_index, interval{
-          stop_idx_t{static_cast<std::uint16_t>(segment.from_ + start_offset)},
-          stop_idx_t{static_cast<std::uint16_t>(segment.to_ + start_offset)}
-        });
-        // shapes_data.get_shape(*tt_, trip_index, segment);
-        // shapes_data.get_shape(*tt_, trip_index, interval{from.pos(), to.pos()});
-        // shapes_data.get_shape(*tt_, trip_index, interval{from.stop_idx_, to.stop_idx_});
-        // shapes_data.get_shape(*tt_, trip_index, interval{from.section_idx(event_type::kDep), to.section_idx(event_type::kArr)});
+    auto const shape = shapes_data.get_shape(
+        *tt_, trip_index,
+        interval{stop_idx_t{
+                     static_cast<std::uint16_t>(segment.from_ + start_offset)},
+                 stop_idx_t{
+                     static_cast<std::uint16_t>(segment.to_ + start_offset)}});
     if (!shape.empty()) {
       return shape;
     }
