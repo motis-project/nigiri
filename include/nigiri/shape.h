@@ -30,10 +30,11 @@ struct shapes_storage {
   // void add_offset(trip_idx_t, shape_offset_t);
   // void create_offsets(std::size_t);
   void add_offsets(trip_idx_t, std::vector<shape_offset_t> const&);
+  void duplicate_offsets(trip_idx_t from, trip_idx_t to);
   std::unique_ptr<shapes_storage_t> data_;
   std::unique_ptr<shape_offsets_storage_t> offsets_;
 };
 
-shape_idx_t get_shape_index(timetable const&, trip_idx_t);
+constexpr shape_idx_t get_shape_index(timetable const&, trip_idx_t);
 
 }  // namespace nigiri

@@ -5,6 +5,7 @@
 #include "geo/polyline.h"
 
 #include "nigiri/timetable.h"
+#include "nigiri/types.h"
 
 namespace nigiri {
 
@@ -102,7 +103,18 @@ void shapes_storage::add_offsets(trip_idx_t, std::vector<shape_offset_t> const& 
 //   (*offsets_)[trip_index].push_back(offset);
 // }
 
-shape_idx_t get_shape_index(timetable const& tt, trip_idx_t const trip_index) {
+void shapes_storage::duplicate_offsets(trip_idx_t const from, trip_idx_t const /*to*/) {
+  if (!offsets_) {
+    return;
+  }
+  assert(from < to);
+  assert(to == offsets_->size());
+
+  auto const& duplicate = offsets_->at(from);
+  offsets_->emplace_back(std::vector(begin(duplicate), end(duplicate)));
+}
+
+constexpr shape_idx_t get_shape_index(timetable const& tt, trip_idx_t const trip_index) {
   if (trip_index == trip_idx_t::invalid() ||
       trip_index >= tt.trip_shape_indices_.size()) {
     return shape_idx_t::invalid();
