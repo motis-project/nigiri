@@ -245,4 +245,158 @@ SHAPE_1,6.0,6.0,10
       }});
 }
 
+TEST(
+    rt,
+    frun_get_shape_when_multiple_trips_share_a_shape_then_get_correct_shape_for_both) {
+  constexpr auto kMultipleTripsWithSharedShape = R"(
+# agency.txt
+agency_name,agency_url,agency_timezone,agency_lang,agency_phone,agency_id
+test,https://test.com,Europe/Berlin,DE,0800123456,AGENCY_1
+
+# stops.txt
+stop_id,stop_name,stop_lat,stop_lon
+A,A,1.0,1.0
+B,B,2.0,2.0
+C,C,3.0,3.0
+
+# calendar_dates.txt
+service_id,date,exception_type
+SERVICE_1,20240101,1
+
+# routes.txt
+route_id,agency_id,route_short_name,route_long_name,route_type
+ROUTE_1,AGENCY_1,Route 1,,3
+
+# trips.txt
+route_id,service_id,trip_id,trip_headsign,block_id,shape_id,
+ROUTE_1,SERVICE_1,TRIP_1,E,,SHAPE_1,
+ROUTE_1,SERVICE_1,TRIP_2,E,,SHAPE_1,
+
+# shapes.txt
+"shape_id","shape_pt_lat","shape_pt_lon","shape_pt_sequence"
+SHAPE_1,1.0,1.0,1
+SHAPE_1,1.5,1.0,2
+SHAPE_1,2.0,2.0,4
+SHAPE_1,3.0,3.0,8
+
+# stop_times.txt
+trip_id,arrival_time,departure_time,stop_id,stop_sequence,pickup_type,drop_off_type
+TRIP_1,10:00:00,10:00:00,A,1,0,0
+TRIP_1,11:00:00,11:00:00,B,2,0,0
+TRIP_1,12:00:00,12:00:00,C,3,0,0
+TRIP_2,20:00:00,20:00:00,A,1,0,0
+TRIP_2,21:00:00,21:00:00,B,2,0,0
+TRIP_2,22:00:00,22:00:00,C,3,0,0
+)"sv;
+  auto shapes_data =
+      create_tmp_shapes_storage("rfun-get-shape-with-shared-shapes");
+
+  auto const schedule = mem_dir::read(kMultipleTripsWithSharedShape);
+  // Load static timetable.
+  timetable tt;
+  tt.date_range_ = {date::sys_days{2024_y / January / 1},
+                    date::sys_days{2024_y / January / 2}};
+  load_timetable({}, source_idx_t{0}, schedule, tt, nullptr, &shapes_data);
+  finalize(tt);
+
+  // Create empty RT timetable.
+  auto rtt = rt::create_rt_timetable(tt, date::sys_days{2024_y / January / 1});
+
+  // TRIP_1
+  {
+    // Create run
+    transit_realtime::TripDescriptor td;
+    td.set_start_date("20240101");
+    td.set_trip_id("TRIP_1");
+    td.set_start_time("10:00:00");
+    auto const [r, t] = rt::gtfsrt_resolve_run(
+        date::sys_days{2024_y / January / 1}, tt, rtt, source_idx_t{0}, td);
+    ASSERT_TRUE(r.valid());
+
+    // Create full run
+    auto const full_run = rt::frun{tt, &rtt, r};
+
+    // A -> C
+    {
+      auto const shape = full_run.get_shape(
+          &shapes_data, interval{stop_idx_t{0}, stop_idx_t{2}});
+
+      ASSERT_TRUE(std::holds_alternative<std::span<geo::latlng const>>(shape));
+      EXPECT_EQ((std::span<geo::latlng const>{
+                    {geo::latlng{1.0F, 1.0F}, geo::latlng{1.5F, 1.0F},
+                     geo::latlng{2.0F, 2.0F}, geo::latlng{3.0F, 3.0F}}}),
+                std::get<std::span<geo::latlng const>>(shape));
+    }
+    // A -> B
+    {
+      auto const shape = full_run.get_shape(
+          &shapes_data, interval{stop_idx_t{0}, stop_idx_t{1}});
+
+      ASSERT_TRUE(std::holds_alternative<std::span<geo::latlng const>>(shape));
+      EXPECT_EQ((std::span<geo::latlng const>{{geo::latlng{1.0F, 1.0F},
+                                               geo::latlng{1.5F, 1.0F},
+                                               geo::latlng{2.0F, 2.0F}}}),
+                std::get<std::span<geo::latlng const>>(shape));
+    }
+    // B -> C
+    {
+      auto const shape = full_run.get_shape(
+          &shapes_data, interval{stop_idx_t{1}, stop_idx_t{2}});
+
+      ASSERT_TRUE(std::holds_alternative<std::span<geo::latlng const>>(shape));
+      EXPECT_EQ((std::span<geo::latlng const>{
+                    {geo::latlng{2.0F, 2.0F}, geo::latlng{3.0F, 3.0F}}}),
+                std::get<std::span<geo::latlng const>>(shape));
+    }
+  }
+
+  // TRIP_2
+  {
+    // Create run
+    transit_realtime::TripDescriptor td;
+    td.set_start_date("20240101");
+    td.set_trip_id("TRIP_2");
+    td.set_start_time("20:00:00");
+    auto const [r, t] = rt::gtfsrt_resolve_run(
+        date::sys_days{2024_y / January / 1}, tt, rtt, source_idx_t{0}, td);
+    ASSERT_TRUE(r.valid());
+
+    // Create full run
+    auto const full_run = rt::frun{tt, &rtt, r};
+
+    // A -> C
+    {
+      auto const shape = full_run.get_shape(
+          &shapes_data, interval{stop_idx_t{0}, stop_idx_t{2}});
+
+      ASSERT_TRUE(std::holds_alternative<std::span<geo::latlng const>>(shape));
+      EXPECT_EQ((std::span<geo::latlng const>{
+                    {geo::latlng{1.0F, 1.0F}, geo::latlng{1.5F, 1.0F},
+                     geo::latlng{2.0F, 2.0F}, geo::latlng{3.0F, 3.0F}}}),
+                std::get<std::span<geo::latlng const>>(shape));
+    }
+    // A -> B
+    {
+      auto const shape = full_run.get_shape(
+          &shapes_data, interval{stop_idx_t{0}, stop_idx_t{1}});
+
+      ASSERT_TRUE(std::holds_alternative<std::span<geo::latlng const>>(shape));
+      EXPECT_EQ((std::span<geo::latlng const>{{geo::latlng{1.0F, 1.0F},
+                                               geo::latlng{1.5F, 1.0F},
+                                               geo::latlng{2.0F, 2.0F}}}),
+                std::get<std::span<geo::latlng const>>(shape));
+    }
+    // B -> C
+    {
+      auto const shape = full_run.get_shape(
+          &shapes_data, interval{stop_idx_t{1}, stop_idx_t{2}});
+
+      ASSERT_TRUE(std::holds_alternative<std::span<geo::latlng const>>(shape));
+      EXPECT_EQ((std::span<geo::latlng const>{
+                    {geo::latlng{2.0F, 2.0F}, geo::latlng{3.0F, 3.0F}}}),
+                std::get<std::span<geo::latlng const>>(shape));
+    }
+  }
+}
+
 }  // namespace
