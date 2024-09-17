@@ -116,7 +116,7 @@ TEST(shape, single_trip_with_shape) {
   auto shapes_data = create_tmp_shapes_storage("shape-route-trip-with-shape");
   loader::gtfs::load_timetable({}, source_idx_t{1},
                                loader::mem_dir::read(kWithShapes), tt,
-                               local_bitfield_indices, shapes_data, nullptr);
+                               local_bitfield_indices, nullptr, &shapes_data);
   loader::finalize(tt);
 
   // Testing shape 'Last', used by 'Trip 3' (index == 2)

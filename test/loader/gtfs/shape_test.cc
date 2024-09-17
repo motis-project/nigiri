@@ -165,16 +165,3 @@ TEST(gtfs, shape_delay_insert_no_ascending_sequence) {
       "Non monotonic sequence for shape_id '1': Sequence number 1 "
       "followed by 0"));
 }
-
-TEST(gtfs, shape_when_no_storage_is_used_then_shape_will_be_empty) {
-  constexpr auto const kShapesData =
-      R"("shape_id","shape_pt_lat","shape_pt_lon","shape_pt_sequence"
-1,50.636512,6.473487,0
-)";
-
-  auto shapes_data = shapes_storage{};
-  auto const shapes = parse_shapes(kShapesData, shapes_data);
-
-  EXPECT_TRUE(shapes.empty());
-  EXPECT_TRUE(shapes_data.get_shape(shape_idx_t{0}).empty());
-}

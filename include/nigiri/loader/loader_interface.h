@@ -34,8 +34,8 @@ struct loader_interface {
                     dir const&,
                     timetable&,
                     hash_map<bitfield, bitfield_idx_t>&,
-                    shapes_storage&,
-                    assistance_times*) const = 0;
+                    assistance_times*,
+                    shapes_storage*) const = 0;
   virtual cista::hash_t hash(dir const&) const = 0;
   virtual std::string_view name() const = 0;
 };

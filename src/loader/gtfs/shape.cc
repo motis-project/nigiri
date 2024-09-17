@@ -13,10 +13,7 @@ namespace nigiri::loader::gtfs {
 
 shape_id_map_t parse_shapes(std::string_view const data,
                             shapes_storage& shapes_data) {
-  if (!shapes_data.data_) {
-    return {};
-  }
-  auto& shapes = *shapes_data.data_;
+  auto& shapes = shapes_data.data_;
   struct shape_entry {
     utl::csv_col<utl::cstr, UTL_NAME("shape_id")> id_;
     utl::csv_col<double, UTL_NAME("shape_pt_lat")> lat_;

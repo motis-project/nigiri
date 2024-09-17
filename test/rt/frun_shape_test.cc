@@ -40,6 +40,7 @@ bool operator==(std::span<geo::latlng const> const& lhs,
   });
 }
 }  // namespace std
+
 namespace {
 
 constexpr auto kScheduleWithoutShape = R"(
@@ -99,14 +100,14 @@ SHAPE_1,6.0,6.0,10
 // Shapes tested for: B -> C, A -> B, E -> F, B -> E
 template <typename Variant>
 constexpr void parametrized_test(std::string const& schedule_data,
-                                 shapes_storage& shapes_data,
+                                 shapes_storage* shapes_data,
                                  std::array<Variant, 4> test_cases) {
   auto const schedule = mem_dir::read(schedule_data);
   // Load static timetable.
   timetable tt;
   tt.date_range_ = {date::sys_days{2024_y / January / 1},
                     date::sys_days{2024_y / January / 2}};
-  load_timetable({}, source_idx_t{0}, schedule, tt, shapes_data);
+  load_timetable({}, source_idx_t{0}, schedule, tt, nullptr, shapes_data);
   finalize(tt);
 
   // Create empty RT timetable.
@@ -161,10 +162,9 @@ constexpr void parametrized_test(std::string const& schedule_data,
 TEST(
     rt,
     frun_get_shape_when_no_shapes_and_storage_is_used_then_get_owning_array_variant) {
-  auto shapes_data = shapes_storage{};
   auto const schedule_data = std::string{kScheduleWithoutShape};
   parametrized_test<std::array<geo::latlng const, 2>>(
-      schedule_data, shapes_data,
+      schedule_data, nullptr,
       {{
           {geo::latlng{2.0F, 2.0F}, geo::latlng{3.0F, 3.0F}},
           {geo::latlng{1.0F, 1.0F}, geo::latlng{2.0F, 2.0F}},
@@ -174,11 +174,10 @@ TEST(
 }
 
 TEST(rt, frun_get_shape_when_no_storage_is_used_then_get_owning_array_variant) {
-  auto shapes_data = shapes_storage{};
   auto const schedule_data =
       std::string{kScheduleWithoutShape} + std::string{kShapeWithoutDistances};
   parametrized_test<std::array<geo::latlng const, 2>>(
-      schedule_data, shapes_data,
+      schedule_data, nullptr,
       {{
           {geo::latlng{2.0F, 2.0F}, geo::latlng{3.0F, 3.0F}},
           {geo::latlng{1.0F, 1.0F}, geo::latlng{2.0F, 2.0F}},
@@ -207,7 +206,7 @@ TEST(
         geo::latlng{5.0F, 5.0F}}},
   };
   parametrized_test<std::span<geo::latlng const>>(
-      schedule_data, shapes_data,
+      schedule_data, &shapes_data,
       {{
           {begin(expected_shapes[0]), end(expected_shapes[0])},
           {begin(expected_shapes[1]), end(expected_shapes[1])},
@@ -237,7 +236,7 @@ SHAPE_1,6.0,6.0,10
       {{geo::latlng{2.5F, 2.5F}, geo::latlng{6.0F, 6.0F}}},
   };
   parametrized_test<std::span<geo::latlng const>>(
-      schedule_data, shapes_data,
+      schedule_data, &shapes_data,
       {{
           {begin(expected_shapes[0]), end(expected_shapes[0])},
           {begin(expected_shapes[1]), end(expected_shapes[1])},
