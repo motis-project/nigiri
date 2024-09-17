@@ -1,5 +1,7 @@
 #include "nigiri/shape.h"
 
+#include <ranges>
+
 #include "fmt/core.h"
 
 #include "nigiri/timetable.h"
@@ -66,7 +68,10 @@ void shapes_storage::duplicate_offsets(trip_idx_t const from,
   assert(to == offsets_.size());
 
   auto const& duplicate = offsets_.at(from);
-  offsets_.emplace_back(std::vector(begin(duplicate), end(duplicate)));
+  auto offsets = offsets_.add_back_sized(duplicate.size());
+  for (auto const [index, offset] : std::views::enumerate(duplicate)) {
+    offsets[static_cast<unsigned>(index)] = offset;
+  }
 }
 
 shape_idx_t get_shape_index(timetable const& tt, trip_idx_t const trip_index) {
