@@ -44,7 +44,6 @@ bool operator==(std::span<geo::latlng const> const& lhs,
 namespace {
 
 constexpr auto kScheduleWithoutShape = R"(
-     "(
 # agency.txt
 agency_name,agency_url,agency_timezone,agency_lang,agency_phone,agency_id
 test,https://test.com,Europe/Berlin,DE,0800123456,AGENCY_1
