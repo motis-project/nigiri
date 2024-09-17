@@ -95,13 +95,6 @@ struct search {
       dijkstra(tt_, q_,
                kFwd ? tt_.fwd_search_lb_graph_ : tt_.bwd_search_lb_graph_,
                state_.travel_time_lower_bound_);
-      for (auto i = 0U; i != tt_.n_locations(); ++i) {
-        auto const lb = state_.travel_time_lower_bound_[i];
-        for (auto const c : tt_.locations_.children_[location_idx_t{i}]) {
-          state_.travel_time_lower_bound_[to_idx(c)] =
-              std::min(lb, state_.travel_time_lower_bound_[to_idx(c)]);
-        }
-      }
       UTL_STOP_TIMING(lb);
       stats_.lb_time_ = static_cast<std::uint64_t>(UTL_TIMING_MS(lb));
 
