@@ -47,7 +47,7 @@ double min_improvement(criteria_t const& j,
   auto min_impr = kMaxRating;
 
   for (auto const& xj : xjs) {
-    auto impr = improvement(j, xj, weights);
+    auto const impr = improvement(j, xj, weights);
     if (impr < min_impr) {
       min_impr = impr;
     }
