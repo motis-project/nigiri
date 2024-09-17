@@ -13,6 +13,32 @@ using namespace nigiri::loader;
 using namespace nigiri::routing;
 
 namespace {
+
+/*
+            10 min walk
+            ┌────────────────┐
+            │                │
+            │     ┌──────────┼──┐
+            │     │      │      │10:30
+            │     │      │  D2  ┼─────────────────┐
+            │     │      │      │                 │
+            │     │──────┼──────│                 │
+            │     │      │      │                 │
+            └─────┼  D1  │      │D                │
+                  │      │      │            11:30│
+                  └─┬───────────┘      ┌──────────▼──┐
+                    │09:30             │      │      │
+                    │                 C│      │  C2  ┼──┐
+                    │                  │      │      │  │
+                    │                  │──────┼──────│  │
+                    │09:45             │      │      │  │
+┌───┐09:00        ┌─▼─┐                │  C1  │      │  │
+│ A ├────────────►│ B ┼────────────────►      │      │  │
+└───┘       09:30 └───┘10:00      11:00└───┬─────────┘  │
+                                           │            │
+                                           └────────────┘
+                                               15 min walk
+ */
 mem_dir dijkstra_files() {
   return mem_dir::read(R"__(
 "(
@@ -71,17 +97,16 @@ C2,C1,2,900
 }
 }  // namespace
 
-TEST(routing, dijkstra_exact) {
+TEST(routing, dijkstra) {
   timetable tt;
   tt.date_range_ = {sys_days{2024_y / June / 7}, sys_days{2024_y / June / 9}};
   register_special_stations(tt);
   auto const src = source_idx_t{0U};
   gtfs::load_timetable({}, src, dijkstra_files(), tt);
   finalize(tt);
-  
-  auto const d1_l = tt.locations_.location_id_to_idx_.at({"D1", src});
 
-  auto const q_d1_c = query{
+  auto const d1_l = tt.locations_.location_id_to_idx_.at({"D1", src});
+  auto const q_d1_c2 = query{
       .start_time_ = unixtime_t{sys_days{2024_y / June / 8} + 7_hours},
       .start_match_mode_ = location_match_mode::kExact,
       .dest_match_mode_ = location_match_mode::kExact,
@@ -89,32 +114,20 @@ TEST(routing, dijkstra_exact) {
       .destination_ = {{tt.locations_.location_id_to_idx_.at({"C2", src}),
                         0_minutes, 0U}},
   };
-
   auto dists = std::vector<std::uint16_t>{};
-  dijkstra(tt, q_d1_c, tt.fwd_search_lb_graph_, dists);
+  dijkstra(tt, q_d1_c2, tt.fwd_search_lb_graph_, dists);
   EXPECT_EQ(60U, dists[d1_l.v_]);
-}
 
-TEST(routing, dijkstra_equivalent) {
-  timetable tt;
-  tt.date_range_ = {sys_days{2024_y / June / 7}, sys_days{2024_y / June / 9}};
-  register_special_stations(tt);
-  auto const src = source_idx_t{0U};
-  gtfs::load_timetable({}, src, dijkstra_files(), tt);
-  finalize(tt);
-
-  auto const d1_l = tt.locations_.location_id_to_idx_.at({"D", src});
-
+  auto const d_l = tt.locations_.location_id_to_idx_.at({"D", src});
   auto const q_d_c = query{
       .start_time_ = unixtime_t{sys_days{2024_y / June / 8} + 7_hours},
       .start_match_mode_ = location_match_mode::kEquivalent,
       .dest_match_mode_ = location_match_mode::kEquivalent,
-      .start_ = {{d1_l, 0_minutes, 0U}},
+      .start_ = {{d_l, 0_minutes, 0U}},
       .destination_ = {{tt.locations_.location_id_to_idx_.at({"C", src}),
                         0_minutes, 0U}},
   };
-
-  auto dists = std::vector<std::uint16_t>{};
+  dists = std::vector<std::uint16_t>{};
   dijkstra(tt, q_d_c, tt.fwd_search_lb_graph_, dists);
-  EXPECT_EQ(60U, dists[d1_l.v_]);
+  EXPECT_EQ(60U, dists[d_l.v_]);
 }
