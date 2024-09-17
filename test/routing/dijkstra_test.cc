@@ -29,6 +29,8 @@ stop_id,stop_name,stop_desc,stop_lat,stop_lon,stop_url,location_type,parent_stat
 A,A,A,,,,0,
 B,B,B,,,,0,
 C,C,C,,,,0,
+C1,C1,C1,,,,0,C
+C2,C2,C2,,,,0,C
 D,D,D,,,,1,
 D1,D1,D1,,,,0,D
 D2,D2,D2,,,,0,D
@@ -54,9 +56,16 @@ AB_TRP,09:30,09:30,B,1,0,0
 DB_TRP,09:30,09:30,D1,0,0,0
 DB_TRP,09:45,09:45,B,1,0,0
 BC_TRP,10:00,10:00,B,0,0,0
-BC_TRP,11:00,11:00,C,1,0,0
+BC_TRP,11:00,11:00,C2,1,0,0
 DC_TRP,10:30,10:30,D2,0,0,0
-DC_TRP,11:30,11:30,C,1,0,0
+DC_TRP,11:30,11:30,C1,1,0,0
+
+# transfers.txt
+from_stop_id,to_stop_id,transfer_type,min_transfer_time
+D1,D2,2,600
+D2,D1,2,600
+C1,C2,2,900
+C2,C1,2,900
 
 )__");
 }
@@ -69,9 +78,7 @@ TEST(routing, dijkstra_exact) {
   auto const src = source_idx_t{0U};
   gtfs::load_timetable({}, src, dijkstra_files(), tt);
   finalize(tt);
-
-  std::cout << "tt:\n" << tt << "\n";
-
+  
   auto const d1_l = tt.locations_.location_id_to_idx_.at({"D1", src});
 
   auto const q_d1_c = query{
@@ -79,30 +86,13 @@ TEST(routing, dijkstra_exact) {
       .start_match_mode_ = location_match_mode::kExact,
       .dest_match_mode_ = location_match_mode::kExact,
       .start_ = {{d1_l, 0_minutes, 0U}},
-      .destination_ = {{tt.locations_.location_id_to_idx_.at({"C", src}),
+      .destination_ = {{tt.locations_.location_id_to_idx_.at({"C2", src}),
                         0_minutes, 0U}},
   };
 
-  std::cout << "lb_graph:\n";
-  for (auto l = 0U; l < tt.n_locations(); ++l) {
-    std::cout << std::format("{}: ",
-                             tt.locations_.get(location_idx_t{l}).name_);
-    for (auto const& fp : tt.fwd_search_lb_graph_[location_idx_t{l}]) {
-      std::cout << fp << " ";
-    }
-    std::cout << "\n";
-  }
-
   auto dists = std::vector<std::uint16_t>{};
   dijkstra(tt, q_d1_c, tt.fwd_search_lb_graph_, dists);
-
-  std::cout << "dists:\n";
-  for (auto l = 0U; l < dists.size(); ++l) {
-    std::cout << std::format(
-        "{}: {}\n", tt.locations_.get(location_idx_t{l}).name_, dists[l]);
-  }
-
-  EXPECT_EQ(75U, dists[d1_l.v_]);
+  EXPECT_EQ(60U, dists[d1_l.v_]);
 }
 
 TEST(routing, dijkstra_equivalent) {
@@ -113,11 +103,9 @@ TEST(routing, dijkstra_equivalent) {
   gtfs::load_timetable({}, src, dijkstra_files(), tt);
   finalize(tt);
 
-  std::cout << "tt:\n" << tt << "\n";
+  auto const d1_l = tt.locations_.location_id_to_idx_.at({"D", src});
 
-  auto const d1_l = tt.locations_.location_id_to_idx_.at({"D1", src});
-
-  auto const q_d1_c = query{
+  auto const q_d_c = query{
       .start_time_ = unixtime_t{sys_days{2024_y / June / 8} + 7_hours},
       .start_match_mode_ = location_match_mode::kEquivalent,
       .dest_match_mode_ = location_match_mode::kEquivalent,
@@ -126,24 +114,7 @@ TEST(routing, dijkstra_equivalent) {
                         0_minutes, 0U}},
   };
 
-  std::cout << "lb_graph:\n";
-  for (auto l = 0U; l < tt.n_locations(); ++l) {
-    std::cout << std::format("{}: ",
-                             tt.locations_.get(location_idx_t{l}).name_);
-    for (auto const& fp : tt.fwd_search_lb_graph_[location_idx_t{l}]) {
-      std::cout << fp << " ";
-    }
-    std::cout << "\n";
-  }
-
   auto dists = std::vector<std::uint16_t>{};
-  dijkstra(tt, q_d1_c, tt.fwd_search_lb_graph_, dists);
-
-  std::cout << "dists:\n";
-  for (auto l = 0U; l < dists.size(); ++l) {
-    std::cout << std::format(
-        "{}: {}\n", tt.locations_.get(location_idx_t{l}).name_, dists[l]);
-  }
-
+  dijkstra(tt, q_d_c, tt.fwd_search_lb_graph_, dists);
   EXPECT_EQ(60U, dists[d1_l.v_]);
 }
