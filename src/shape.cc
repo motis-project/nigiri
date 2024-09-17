@@ -61,11 +61,12 @@ std::span<geo::latlng const> shapes_storage::get_shape(
   return shape.subspan(from_offset, to_offset - from_offset + 1);
 }
 
-void shapes_storage::add_offsets(trip_idx_t,
+void shapes_storage::add_offsets([[maybe_unused]] trip_idx_t const trip_index,
                                  std::vector<shape_offset_t> const& offsets) {
   if (!offsets_) {
     return;
   }
+  assert(trip_index == offsets_.size());
   offsets_->emplace_back(offsets);
 }
 
