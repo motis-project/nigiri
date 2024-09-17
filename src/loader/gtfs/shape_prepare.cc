@@ -27,8 +27,7 @@ auto get_closest(geo::latlng coordinate,
   return static_cast<unsigned>(offset);
 }
 
-constexpr std::vector<location_idx_t> get_interior_locations(
-    stop_seq_t const& stops) {
+std::vector<location_idx_t> get_interior_locations(stop_seq_t const& stops) {
   auto const length = stops.length();
   assert(length >= 2U);
   auto locations = std::vector<location_idx_t>(length - 2);
@@ -56,7 +55,7 @@ trip_idx_t find_in_cache(
   return trip_idx_t::invalid();
 }
 
-constexpr std::vector<shape_offset_t> split_shape(
+std::vector<shape_offset_t> split_shape(
     timetable const& tt,
     std::span<geo::latlng const> shape,
     std::vector<location_idx_t> const& locations) {

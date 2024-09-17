@@ -33,6 +33,6 @@ struct shapes_storage {
   std::unique_ptr<shape_offsets_storage_t> offsets_;
 };
 
-constexpr shape_idx_t get_shape_index(timetable const&, trip_idx_t);
+shape_idx_t get_shape_index(timetable const&, trip_idx_t);
 
 }  // namespace nigiri

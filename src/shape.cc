@@ -81,8 +81,7 @@ void shapes_storage::duplicate_offsets(trip_idx_t const from,
   offsets_->emplace_back(std::vector(begin(duplicate), end(duplicate)));
 }
 
-constexpr shape_idx_t get_shape_index(timetable const& tt,
-                                      trip_idx_t const trip_index) {
+shape_idx_t get_shape_index(timetable const& tt, trip_idx_t const trip_index) {
   if (trip_index == trip_idx_t::invalid() ||
       trip_index >= tt.trip_shape_indices_.size()) {
     return shape_idx_t::invalid();
