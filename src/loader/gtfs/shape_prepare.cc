@@ -3,6 +3,8 @@
 #include "geo/latlng.h"
 #include "geo/polyline.h"
 
+#include "utl/progress_tracker.h"
+
 #include "nigiri/shape.h"
 #include "nigiri/stop.h"
 #include "nigiri/types.h"
@@ -78,10 +80,15 @@ constexpr std::vector<shape_offset_t> split_shape(
 void calculate_shape_offsets(timetable const& tt,
                              shapes_storage& shapes_data,
                              vector_map<gtfs_trip_idx_t, trip> const& trips) {
+  auto const progress_tracker = utl::get_active_progress_tracker();
+  progress_tracker->status("Calculating shape offsets")
+      .out_bounds(98.F, 100.F)
+      .in_high(trips.size());
   auto offsets_cache = hash_map<
       shape_idx_t,
       std::vector<std::pair<std::vector<location_idx_t>, trip_idx_t>>>{};
   for (auto const& trip : trips) {
+    progress_tracker->update_fn();
     auto const trip_index = trip.trip_idx_;
     if (trip.stop_seq_.size() < 2U) {
       shapes_data.add_offsets(trip_index, {});

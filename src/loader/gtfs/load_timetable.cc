@@ -212,7 +212,7 @@ void load_timetable(loader_config const& config,
 
   {
     progress_tracker->status("Expand Trips")
-        .out_bounds(70.F, 85.F)
+        .out_bounds(68.F, 83.F)
         .in_high(trip_data.data_.size());
     auto const timer = scoped_timer{"loader.gtfs.trips.expand"};
 
@@ -227,7 +227,7 @@ void load_timetable(loader_config const& config,
 
   {
     progress_tracker->status("Stay Seated")
-        .out_bounds(85.F, 87.F)
+        .out_bounds(83.F, 85.F)
         .in_high(route_services.size());
     auto const timer = scoped_timer{"loader.gtfs.trips.block_id"};
 
@@ -240,7 +240,7 @@ void load_timetable(loader_config const& config,
 
   {
     progress_tracker->status("Write Trips")
-        .out_bounds(87.F, 100.F)
+        .out_bounds(85.F, 98.F)
         .in_high(route_services.size());
 
     auto const is_train_number = [](auto const& s) {
