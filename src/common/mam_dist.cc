@@ -14,11 +14,7 @@ std::pair<i32_minutes, date::days> mam_dist(i32_minutes const expected,
   auto const abs = std::abs(diff);
 
   if (abs > 1440 / 2) {
-    if (diff < 0) {
-      return {i32_minutes{1440 - abs}, date::days{-1}};
-    } else {
-      return {i32_minutes{1440 - abs}, date::days{+1}};
-    }
+    return {i32_minutes{1440 - abs}, date::days{diff < 0 ? -1 : +1}};
   } else {
     return {i32_minutes{abs}, date::days{0}};
   }
