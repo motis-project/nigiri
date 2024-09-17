@@ -1,9 +1,12 @@
 #pragma once
 
-#include "pugixml.hpp"
-
 #include "nigiri/rt/run.h"
 #include "nigiri/types.h"
+
+namespace pugi {
+struct xml_document;
+struct xml_node;
+}  // namespace pugi
 
 namespace nigiri {
 struct rt_timetable;

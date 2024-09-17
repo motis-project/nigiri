@@ -1,5 +1,7 @@
 #include "gtest/gtest.h"
 
+#include "pugixml.hpp"
+
 #include "nigiri/loader/dir.h"
 #include "nigiri/loader/gtfs/load_timetable.h"
 #include "nigiri/loader/init_finish.h"
