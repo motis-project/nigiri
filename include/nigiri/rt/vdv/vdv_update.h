@@ -38,15 +38,13 @@ struct statistics {
 
 struct updater {
   static constexpr auto const kExactMatchScore = 1000;
-  static constexpr auto const derive_time_discrepancy = []() {
+  static constexpr auto const kAllowedTimeDiscrepancy = []() {
     auto error = 0;
     while (kExactMatchScore - error * error > 0) {
       ++error;
     }
     return error - 1;
-  };
-  static constexpr auto const kAllowedTimeDiscrepancy =
-      derive_time_discrepancy();  // minutes
+  }();  // minutes
 
   updater(timetable const&, source_idx_t);
 
