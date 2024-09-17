@@ -95,16 +95,16 @@ void calculate_shape_offsets(timetable const& tt,
     }
     auto const shape_index = trip.shape_idx_;
     auto const locations = get_interior_locations(trip.stop_seq_);
-    if (auto cached_trip_index =
-            find_in_cache(offsets_cache, shape_index, locations);
-        cached_trip_index != trip_idx_t::invalid()) {
+    auto const cached_trip_index =
+        find_in_cache(offsets_cache, shape_index, locations);
+    if (cached_trip_index != trip_idx_t::invalid()) {
       shapes_data.duplicate_offsets(cached_trip_index, trip_index);
     } else {
       auto const shape = shapes_data.get_shape(shape_index);
       auto const offsets = split_shape(tt, shape, locations);
       shapes_data.add_offsets(trip_index, offsets);
-      if (auto const it = offsets_cache.find(shape_index);
-          it == offsets_cache.end()) {
+      auto const it = offsets_cache.find(shape_index);
+      if (it == offsets_cache.end()) {
         offsets_cache.emplace_hint(
             it, shape_index,
             std::vector{std::make_pair(locations, trip_index)});
