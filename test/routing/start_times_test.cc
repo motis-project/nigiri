@@ -2,10 +2,14 @@
 
 #include "utl/equal_ranges_linear.h"
 
+#include "nigiri/loader/gtfs/load_timetable.h"
 #include "nigiri/loader/hrd/load_timetable.h"
 #include "nigiri/loader/init_finish.h"
 #include "nigiri/routing/start_times.h"
+#include "nigiri/rt/create_rt_timetable.h"
+#include "nigiri/rt/rt_timetable.h"
 
+#include "nigiri/rt/frun.h"
 #include "../loader/hrd/hrd_timetable.h"
 
 using namespace nigiri;
@@ -301,4 +305,122 @@ TEST(routing, start_times) {
       });
 
   EXPECT_EQ(std::string_view{expected}, ss.str());
+}
+
+namespace {
+
+mem_dir rt_start_times_files() {
+  return mem_dir::read(R"__(
+
+# agency.txt
+agency_id,agency_name,agency_url,agency_timezone
+MTA,MOTIS Transit Authority,https://motis-project.de/,Europe/Berlin
+
+# calendar_dates.txt
+service_id,date,exception_type
+D,20240710,1
+
+# stops.txt
+stop_id,stop_name,stop_desc,stop_lat,stop_lon,stop_url,location_type,parent_station
+A,A,,,,,,
+B,B,,,,,,
+
+# routes.txt
+route_id,agency_id,route_short_name,route_long_name,route_desc,route_type
+AB,MTA,AB,AB,A -> B,0
+
+# trips.txt
+route_id,service_id,trip_id,trip_headsign,block_id
+AB,D,AB_TRIP,AB_TRIP,1
+
+# stop_times.txt
+trip_id,arrival_time,departure_time,stop_id,stop_sequence,pickup_type,drop_off_type
+AB_TRIP,00:00,00:00,A,0,0,0
+AB_TRIP,01:00,01:00,B,1,0,0
+
+)__");
+}
+
+}  // namespace
+
+TEST(routing, rt_start_times) {
+  using namespace nigiri;
+  using namespace nigiri::loader;
+  using namespace nigiri::loader::gtfs;
+  using namespace date;
+
+  timetable tt;
+  register_special_stations(tt);
+  tt.date_range_ = {sys_days{2024_y / July / 1}, sys_days{2024_y / July / 31}};
+  auto const src = source_idx_t{0};
+  load_timetable({}, src, rt_start_times_files(), tt);
+  finalize(tt);
+
+  auto rtt = rt::create_rt_timetable(tt, sys_days{2024_y / July / 10});
+
+  auto const A = tt.locations_.location_id_to_idx_.at(
+      location_id{.id_ = "A", .src_ = src});
+
+  auto const get_starts_str = [&]() {
+    auto starts = std::vector<start>{};
+    get_starts(direction::kForward, tt, &rtt,
+               interval<unixtime_t>{sys_days{2024_y / July / 9} + 21_hours,
+                                    sys_days{2024_y / July / 9} + 23_hours},
+               {{A, 15_minutes, 0}}, {}, duration_t::max(),
+               location_match_mode::kExact, false, starts, true, 0, {});
+    std::sort(begin(starts), end(starts),
+              [](auto&& a, auto&& b) { return a > b; });
+    starts.erase(std::unique(begin(starts), end(starts)), end(starts));
+
+    std::stringstream ss;
+    ss << "\n";
+    utl::equal_ranges_linear(
+        starts,
+        [](start const& a, start const& b) {
+          return a.time_at_start_ == b.time_at_start_;
+        },
+        [&](std::vector<start>::const_iterator const& from_it,
+            std::vector<start>::const_iterator const& to_it) {
+          ss << "start_time=" << from_it->time_at_start_ << "\n";
+          for (auto const& s : it_range{from_it, to_it}) {
+            ss << "|  {time_at_start=" << s.time_at_start_
+               << ", time_at_stop=" << s.time_at_stop_
+               << ", stop=" << tt.locations_.names_[s.stop_].view() << "}\n";
+          }
+        });
+    return ss.str();
+  };
+
+  constexpr auto const expected_static = R"(
+start_time=2024-07-09 23:00
+|  {time_at_start=2024-07-09 23:00, time_at_stop=2024-07-09 23:15, stop=A}
+start_time=2024-07-09 21:45
+|  {time_at_start=2024-07-09 21:45, time_at_stop=2024-07-09 22:00, stop=A}
+)";
+  EXPECT_EQ(std::string_view{expected_static}, get_starts_str());
+
+  auto const r = rt::run{{transport_idx_t{0U}, day_idx_t{13U}},
+                         interval{stop_idx_t{0U}, stop_idx_t{1U}}};
+  auto fr = rt::frun(tt, &rtt, {});
+  fr.rt_ = rtt.add_rt_transport(src, tt, r.t_);
+
+  rtt.update_time(fr.rt_, stop_idx_t{0U}, event_type::kDep,
+                  sys_days{2024_y / July / 10});
+
+  constexpr auto const expected_rt_no_start = R"(
+start_time=2024-07-09 23:00
+|  {time_at_start=2024-07-09 23:00, time_at_stop=2024-07-09 23:15, stop=A}
+)";
+  EXPECT_EQ(std::string_view{expected_rt_no_start}, get_starts_str());
+
+  rtt.update_time(fr.rt_, stop_idx_t{0U}, event_type::kDep,
+                  sys_days{2024_y / July / 9} + 21_hours + 15_minutes);
+
+  constexpr auto const expected_rt_with_start = R"(
+start_time=2024-07-09 23:00
+|  {time_at_start=2024-07-09 23:00, time_at_stop=2024-07-09 23:15, stop=A}
+start_time=2024-07-09 21:00
+|  {time_at_start=2024-07-09 21:00, time_at_stop=2024-07-09 21:15, stop=A}
+)";
+  EXPECT_EQ(std::string_view{expected_rt_with_start}, get_starts_str());
 }
