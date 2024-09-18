@@ -56,8 +56,7 @@ block::rule_services(trip_data& trips) {
     bitfield traffic_days_;
   };
   auto rule_trips = utl::to_vec(
-      trips_, [&](auto&& t) { return rule_trip{t, *trips.get(t).service_};
-});
+      trips_, [&](auto&& t) { return rule_trip{t, *trips.get(t).service_}; });
 
   struct queue_entry {
     std::vector<rule_trip>::iterator current_it_;
