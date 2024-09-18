@@ -105,6 +105,12 @@ add_executable(nigiri-benchmark ${nigiri-benchmark-files})
 target_link_libraries(nigiri-benchmark PRIVATE nigiri boost-program_options ianatzdb-res)
 target_compile_features(nigiri-benchmark PUBLIC cxx_std_23)
 
+# --- BENCHMARK MEAT CSA---
+file(GLOB_RECURSE nigiri-meat-csa-files exe/run_meat_csa.cc)
+add_executable(nigiri-meat-csa ${nigiri-meat-csa-files})
+target_link_libraries(nigiri-meat-csa PRIVATE nigiri boost-program_options ianatzdb-res)
+target_compile_features(nigiri-meat-csa PUBLIC cxx_std_23)
+
 # --- TEST ---
 add_library(nigiri-generated INTERFACE)
 target_include_directories(nigiri-generated INTERFACE ${CMAKE_CURRENT_BINARY_DIR}/generated)
