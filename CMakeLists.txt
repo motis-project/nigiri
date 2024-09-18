@@ -115,5 +115,5 @@ configure_file(
 file(GLOB_RECURSE nigiri-test-files test/*.cc)
 add_executable(nigiri-test ${nigiri-test-files})
 target_include_directories(nigiri-test PRIVATE include)
-target_link_libraries(nigiri-test nigiri gtest ianatzdb-res nigiri-generated pugixml)
+target_link_libraries(nigiri-test nigiri gtest ianatzdb-res nigiri-generated)
 target_compile_options(nigiri-test PRIVATE ${nigiri-compile-options})
