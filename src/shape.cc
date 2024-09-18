@@ -47,18 +47,24 @@ std::span<geo::latlng const> shapes_storage::get_shape(
 }
 
 std::span<geo::latlng const> shapes_storage::get_shape(
-    timetable const& tt, trip_idx_t const trip_index) const {
-  return get_shape(get_shape_index(tt, trip_index));
+    trip_idx_t const trip_index) const {
+  if (trip_index == trip_idx_t::invalid() ||
+      trip_index >= trip_offset_indices_.size()) {
+    return {};
+  }
+  auto const& [shape_index, _] = trip_offset_indices_[trip_index];
+  return get_shape(shape_index);
 }
 
 std::span<geo::latlng const> shapes_storage::get_shape(
     trip_idx_t const trip_index, interval<stop_idx_t> const& range) const {
-  if (trip_index >= trip_offset_indices_.size()) {
+  if (trip_index == trip_idx_t::invalid() ||
+      trip_index >= trip_offset_indices_.size()) {
     return {};
   }
   auto const& [shape_index, offset_index] = trip_offset_indices_[trip_index];
-  if (shape_index == shape_idx_t::invalid() ||
-      offset_index == shape_offset_idx_t::invalid()) {
+  // Reminder: shape_index is checked by 'get_shape(shape_index)'
+  if (offset_index == shape_offset_idx_t::invalid()) {
     return {};
   }
   auto const shape = get_shape(shape_index);
@@ -78,19 +84,11 @@ shape_offset_idx_t shapes_storage::add_offsets(
   return index;
 }
 
-void shapes_storage::register_trip(
+void shapes_storage::add_trip_shape_offsets(
     [[maybe_unused]] trip_idx_t const trip_index,
     cista::pair<shape_idx_t, shape_offset_idx_t> const& offset_index) {
   assert(trip_index == trip_offset_indices_.size());
   trip_offset_indices_.emplace_back(offset_index);
-}
-
-shape_idx_t get_shape_index(timetable const& tt, trip_idx_t const trip_index) {
-  if (trip_index == trip_idx_t::invalid() ||
-      trip_index >= tt.trip_shape_indices_.size()) {
-    return shape_idx_t::invalid();
-  }
-  return tt.trip_shape_indices_.at(trip_index);
 }
 
 }  // namespace nigiri

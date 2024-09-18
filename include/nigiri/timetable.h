@@ -380,9 +380,6 @@ struct timetable {
   // Trip index -> all transports with a stop interval
   paged_vecvec<trip_idx_t, transport_range_t> trip_transport_ranges_;
 
-  // Trip index -> shape per trip
-  vector_map<trip_idx_t, shape_idx_t> trip_shape_indices_;
-
   // Transport -> stop sequence numbers (relevant for GTFS-RT stop matching)
   // Compaction:
   // - empty = zero-based sequence 0,1,2,...

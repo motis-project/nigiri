@@ -375,7 +375,6 @@ void load_timetable(loader_config const& config,
     // Build transport ranges.
     for (auto const& t : trip_data.data_) {
       tt.trip_transport_ranges_.emplace_back(t.transport_ranges_);
-      tt.trip_shape_indices_.push_back(t.shape_idx_);
     }
   }
 }

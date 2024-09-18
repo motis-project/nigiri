@@ -102,7 +102,7 @@ void calculate_shape_offsets(timetable const& tt,
     auto const trip_index = trip.trip_idx_;
     auto const shape_index = trip.shape_idx_;
     if (shape_index == shape_idx_t::invalid() || trip.stop_seq_.size() < 2U) {
-      shapes_data.register_trip(
+      shapes_data.add_trip_shape_offsets(
           trip_index,
           cista::pair{shape_idx_t::invalid(), shape_offset_idx_t::invalid()});
     } else {
@@ -113,7 +113,7 @@ void calculate_shape_offsets(timetable const& tt,
             auto const offsets = split_shape(tt, shape, trip.stop_seq_);
             return cista::pair{shape_index, shapes_data.add_offsets(offsets)};
           });
-      shapes_data.register_trip(trip_index, shape_offset_indices);
+      shapes_data.add_trip_shape_offsets(trip_index, shape_offset_indices);
     }
   }
 }
