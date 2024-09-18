@@ -25,7 +25,11 @@ void decision_graph::compute_use_probabilities_on_sorted_g(timetable const& tt,
 
       double change_prob;
 
-      if (std::holds_alternative<footpath>(in.uses_)) {
+      auto const in_is_fp = std::holds_alternative<footpath>(in.uses_);
+      auto const out_is_final_fp =
+          std::holds_alternative<footpath>(out.uses_) &&
+          out.arr_node_ == target_node_;
+      if (in_is_fp || out_is_final_fp) {
         change_prob = 1;
       } else {
         change_prob = delay_prob(
@@ -40,7 +44,7 @@ void decision_graph::compute_use_probabilities_on_sorted_g(timetable const& tt,
         break;
       }
     }
-    assert((assigned_prob > 0.99 && assigned_prob <= 1) || assigned_prob == 0);
+    assert(assigned_prob == 1 || (in.arr_node_ == target_node_ && assigned_prob == 0));
   }
 }
 
@@ -89,7 +93,11 @@ void decision_graph::compute_use_probabilities_on_unsorted_g(
 
       double change_prob;
 
-      if (std::holds_alternative<footpath>(in.uses_)) {
+      auto const in_is_fp = std::holds_alternative<footpath>(in.uses_);
+      auto const out_is_final_fp =
+          std::holds_alternative<footpath>(out.uses_) &&
+          out.arr_node_ == target_node_;
+      if (in_is_fp || out_is_final_fp) {
         change_prob = 1;
       } else {
         change_prob = delay_prob(
@@ -104,7 +112,7 @@ void decision_graph::compute_use_probabilities_on_unsorted_g(
         break;
       }
     }
-    assert((assigned_prob > 0.99 && assigned_prob <= 1) || assigned_prob == 0);
+    assert(assigned_prob == 1 || (in.arr_node_ == target_node_ && assigned_prob == 0));
   }
 }
 
