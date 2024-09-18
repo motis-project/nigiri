@@ -9,6 +9,16 @@ namespace nigiri::routing::meat::csa {
 
 namespace {
 template <class F>
+void for_first_optimal_outgoing_connection(profile const& p,
+                                           delta_t when,
+                                           const F& f) {
+  auto i = binary_find_first_true(
+      std::begin(p), std::end(p),
+      [&](profile_entry const& e) { return when <= e.dep_time_; });
+  f(i);
+}
+
+template <class F>
 void forall_optimal_outgoing_connections(profile const& p,
                                          delta_t when,
                                          delta_t dur,
@@ -64,8 +74,8 @@ decision_graph_extractor<ProfileSet>::extract_relevant_entries(
       };
 
   assert(!profile_set_.is_stop_empty(source_stop));
-  forall_optimal_outgoing_connections(profile_set_.for_stop(source_stop),
-                                      source_time, 0, on_new_relevant_entry);
+  for_first_optimal_outgoing_connection(profile_set_.for_stop(source_stop),
+                                        source_time, on_new_relevant_entry);
   while (!stack_.empty()) {
     auto const& pe = stack_.top();
 
