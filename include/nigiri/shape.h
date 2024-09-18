@@ -26,8 +26,7 @@ struct shapes_storage {
 
   mm_vecvec<shape_idx_t, geo::latlng> data_;
   mm_vecvec<shape_offset_idx_t, shape_offset_t> offsets_;
-  cista::basic_mmap_vec<cista::pair<shape_idx_t, shape_offset_idx_t>,
-                        trip_idx_t>
+  mm_vec_map<trip_idx_t, cista::pair<shape_idx_t, shape_offset_idx_t>>
       trip_offset_indices_;
 };
 

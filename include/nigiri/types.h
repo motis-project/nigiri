@@ -112,6 +112,9 @@ using optional = cista::optional<T>;
 template <typename Key, typename T, std::size_t N>
 using nvec = cista::raw::nvec<Key, T, N>;
 
+template <typename K, typename V>
+using mm_vec_map = cista::basic_mmap_vec<V, K>;
+
 template <typename T>
 using mm_vec = cista::basic_mmap_vec<T, std::uint64_t>;
 
