@@ -258,7 +258,7 @@ struct dynamic_growth_profile_set {
       compute_entry_amount();
     }
     assert(&(*rit) ==
-           &entry_[stop_idx.v_][rit.base() -
+           &entry_[entry_idx_end_[stop_idx].first][rit.base() -
                                 entry_[entry_idx_end_[stop_idx].first].begin() -
                                 1]);
     return rit.base() - entry_[entry_idx_end_[stop_idx].first].begin() - 1 +
