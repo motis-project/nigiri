@@ -32,16 +32,6 @@ auto get_closest(geo::latlng coordinate,
   return static_cast<unsigned>(offset);
 }
 
-std::vector<location_idx_t> get_interior_locations(stop_seq_t const& stops) {
-  auto const length = stops.length();
-  assert(length >= 2U);
-  auto locations = std::vector<location_idx_t>(length - 2);
-  for (auto i = 0U; i < locations.size(); ++i) {
-    locations[i] = stop(stops[i + 1]).location_idx();
-  }
-  return locations;
-}
-
 std::vector<shape_offset_t> split_shape(
     timetable const& tt,
     std::span<geo::latlng const> const shape,
