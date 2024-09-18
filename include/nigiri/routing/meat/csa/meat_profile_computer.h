@@ -77,10 +77,7 @@ struct meat_profile_computer {
       delta_t source_time,
       delta_t max_delay,
       meat_t fuzzy_dominance_offset,
-      meat_t transfer_cost  ///??? für was ist die extra transfer_cost ? für min
-                            /// umstigszeit, da wir die "normale" umstigszeit
-                            /// hier nicht mehr beachten; "strafe" für umstiege?
-  ) {
+      meat_t transfer_cost) {
     auto const& ea = state_.ea_;
 
     auto evaluate_profile = [&](location_idx_t stop, delta_t when) {
@@ -90,7 +87,7 @@ struct meat_profile_computer {
       auto i = std::begin(profile_set_.for_stop(stop));
       while (assigned_prob < 1.0) {
         double new_prob =
-            delay_prob(i->dep_time_ - when,
+            delay_prob(clamp(i->dep_time_ - when),
                        tt_.locations_.transfer_time_[stop].count(), max_delay);
         meat += (new_prob - assigned_prob) * i->meat_;
         assigned_prob = new_prob;
@@ -136,18 +133,13 @@ struct meat_profile_computer {
           meat = std::min(
               meat, profile_set_.fp_dis_to_target_[c_arr_stop_idx] +
                         static_cast<meat_t>(
-                            c_arr_time) /*TODO erwartungswert auf addieren?*/);
-          // TODO erwartungswert auf addieren? add final footpath in
-          // graph_extractor müsste abgeändert werden
+                            c_arr_time) /*TODO add expected value to it?*/);
+          // TODO add expected value to it? add final footpath in
+          // graph_extractor would have to be changed
 
           if (!profile_set_.is_stop_empty(c_arr_stop_idx)) {
-            meat = std::min(
-                meat,
-                evaluate_profile(c_arr_stop_idx, c_arr_time) +
-                    transfer_cost);  // TODO: Warum keine Umsteigezeiten? Da
-            // wir auch sehr knappe Verbindungen
-            // später im Graph haben wollen? Was
-            // ist die statische tranfer_cost? "strafe" für umstiege?
+            meat = std::min(meat, evaluate_profile(c_arr_stop_idx, c_arr_time) +
+                                      transfer_cost);
           }
 
           if (meat < trip_[c.transport_idx_][d_idx].meat_) {
@@ -160,28 +152,30 @@ struct meat_profile_computer {
           }
         }
 
-        if (stop{c.dep_stop_}.in_allowed()) {
-          auto const c_dep_stop_idx = stop{c.dep_stop_}.location_idx();
-          profile_entry new_entry = {
+        auto const c_dep_stop_idx = stop{c.dep_stop_}.location_idx();
+        auto const faster_than_walk =
+            meat < profile_set_.fp_dis_to_target_[c_dep_stop_idx] +
+                       static_cast<meat_t>(c_dep_time);
+        auto const& early_entry = profile_set_.early_stop_entry(c_dep_stop_idx);
+        if (stop{c.dep_stop_}.in_allowed() && faster_than_walk &&
+            meat < early_entry.meat_ - fuzzy_dominance_offset) {
+          auto const new_entry = profile_entry{
               c_dep_time, meat,
               ride{con_idx, trip_[c.transport_idx_][d_idx].exit_conn_}};
-          profile_entry const& early_entry =
-              profile_set_.early_stop_entry(c_dep_stop_idx);
-
-          // TODO einfahce prüfung funktioniert nicht mehr, da footpaths früher
-          // an con.dep_stop ankommen können
-          if (new_entry.meat_ < early_entry.meat_ - fuzzy_dominance_offset) {
-            add_or_replace_entry(new_entry, c_dep_stop_idx);
-            for (auto const& fp :
-                 tt_.locations_.footpaths_in_[fp_prf_idx_][c_dep_stop_idx]) {
-              auto const& ee_fp = profile_set_.early_stop_entry(fp.target());
-              if (meat < ee_fp.meat_ - fuzzy_dominance_offset) {
-                fp_que_.push(std::make_unique<profile_entry>(profile_entry{
-                    clamp(c_dep_time - fp.duration().count()), meat,
-                    walk{fp.target(),
-                         footpath(c_dep_stop_idx, fp.duration())}}));
-                stats_.meat_n_fp_added_to_que_++;
-              }
+          add_or_replace_entry(new_entry, c_dep_stop_idx);
+          for (auto const& fp :
+               tt_.locations_.footpaths_in_[fp_prf_idx_][c_dep_stop_idx]) {
+            auto const fp_dep_time = clamp(c_dep_time - fp.duration().count());
+            auto const& ee_fp = profile_set_.early_stop_entry(fp.target());
+            auto const faster_than_final_fp =
+                meat < profile_set_.fp_dis_to_target_[fp.target()] +
+                           static_cast<meat_t>(fp_dep_time);
+            if (faster_than_final_fp &&
+                meat < ee_fp.meat_ - fuzzy_dominance_offset) {
+              fp_que_.push(std::make_unique<profile_entry>(profile_entry{
+                  fp_dep_time, meat,
+                  walk{fp.target(), footpath(c_dep_stop_idx, fp.duration())}}));
+              stats_.meat_n_fp_added_to_que_++;
             }
           }
         }
@@ -207,10 +201,9 @@ struct meat_profile_computer {
     stats_.meat_n_e_in_profile_ = profile_set_.compute_entry_amount();
   }
 
-  void add_or_replace_entry(
-      profile_entry const& new_entry,
-      location_idx_t dep_stop_idx) {  // TODO: ref to early_entry
-    auto early_entry = profile_set_.early_stop_entry(dep_stop_idx);
+  void add_or_replace_entry(profile_entry const& new_entry,
+                            location_idx_t dep_stop_idx) {
+    auto const& early_entry = profile_set_.early_stop_entry(dep_stop_idx);
     if (early_entry.dep_time_ == new_entry.dep_time_) {
       profile_set_.replace_early_entry(dep_stop_idx, new_entry);
     } else {

@@ -487,7 +487,7 @@ struct timetable {
   vector_map<connection_idx_t, connection> fwd_connections_;
   size_t n_active_connections_; //TODO remove?
 
-  // Trip index -> ROUNDDOWN((depature_last_conn - depature_first_conn)/24h)+1day
+  // Trip index -> ROUNDDOWN((departure_last_conn - departure_first_conn)/24h)+1day
   vector_map<transport_idx_t, day_idx_t::value_t> travel_duration_days_;
 
   bool is_connection_active(connection_idx_t const& c, day_idx_t d) const {

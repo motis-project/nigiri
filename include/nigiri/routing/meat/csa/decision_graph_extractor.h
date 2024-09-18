@@ -31,14 +31,23 @@ private:
       delta_t source_time,
       location_idx_t target_stop,
       delta_t max_delay) const;
+  void add_final_fps(decision_graph& g,
+                     location_idx_t target_stop,
+                     int target_node_id) const;
   int as_int(day_idx_t const d) const { return static_cast<int>(d.v_); }
   date::sys_days base() const {
     return tt_.internal_interval_days().from_ + as_int(base_) * date::days{1};
   }
+  delta_t clamp(meat_t t) const {
+    return static_cast<delta_t>(
+        std::clamp(t, static_cast<meat_t>(std::numeric_limits<delta_t>::min()),
+                   static_cast<meat_t>(std::numeric_limits<delta_t>::max())));
+  }
   unixtime_t to_unix(delta_t const t) const { return delta_to_unix(base(), t); }
   unixtime_t to_unix(meat_t const t) const {
-    return delta_to_unix(base(), static_cast<delta_t>(t));
+    return delta_to_unix(base(), clamp(t));
   }
+  duration_t to_duration(meat_t const t) const { return duration_t{clamp(t)}; }
   std::pair<day_idx_t, minutes_after_midnight_t> split(delta_t const x) const {
     return split_day_mam(base_, x);
   }
@@ -49,9 +58,7 @@ public:
                             location_idx_t target_stop,
                             delta_t max_delay) const;
 
-  void reset() {
-    is_enter_conn_relevant_.zero_out();
-  }
+  void reset() { is_enter_conn_relevant_.zero_out(); }
 
 private:
   timetable const& tt_;

@@ -60,7 +60,7 @@ struct expanded_representation {
     auto find_slot = [&](int where, unixtime_t when) {
       return csa::binary_find_first_true(
                  slots_of_node_[where].begin(), slots_of_node_[where].end(),
-                 [&](auto s) { return when <= slots_[s.slot_].when_; })
+                 [&](auto const& s) { return when <= slots_[s.slot_].when_; })
           ->slot_;
     };
 
@@ -96,6 +96,8 @@ inline void write_dot(std::ostream& out,
         //<< "URL=\"javascript:onstop(" << i << "," << g.nodes_[i].stop_id_
         //<< ")\","
         << "tooltip=\"" << location(tt, g.nodes_[i].stop_id_)
+        //<< "\\nlocation_idx_t value="
+        //<< g.nodes_[i].stop_id_
         << "\\ntransfer time="
         << location(tt, g.nodes_[i].stop_id_).transfer_time_ << "\","
         << "label=\"" << location(tt, g.nodes_[i].stop_id_).name_;
