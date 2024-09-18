@@ -360,7 +360,7 @@ frun::get_shape(shapes_storage const* const shapes_data,
       }
     }
     auto const shape = shapes_data->get_shape(
-        *tt_, trip_index,
+        trip_index,
         interval{stop_idx_t{
                      static_cast<std::uint16_t>(segment.from_ + start_offset)},
                  stop_idx_t{

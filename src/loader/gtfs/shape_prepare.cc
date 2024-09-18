@@ -77,8 +77,9 @@ void calculate_shape_offsets(timetable const& tt,
       .out_bounds(98.F, 100.F)
       .in_high(trips.size());
 
-  auto offsets_cache =
-      hash_map<std::pair<shape_idx_t, stop_seq_t const*>, shape_offset_idx_t,
+  auto shape_offsets_cache =
+      hash_map<std::pair<shape_idx_t, stop_seq_t const*>,
+               cista::pair<shape_idx_t, shape_offset_idx_t>,
                decltype([](std::pair<shape_idx_t, stop_seq_t const*> const&
                                pair) noexcept {
                  return cista::hashing<std::pair<shape_idx_t, stop_seq_t>>{}(
@@ -99,17 +100,20 @@ void calculate_shape_offsets(timetable const& tt,
   for (auto const& trip : trips) {
     progress_tracker->update_fn();
     auto const trip_index = trip.trip_idx_;
-    if (trip.stop_seq_.size() < 2U) {
-      shapes_data.register_trip(trip_index, shape_offset_idx_t::invalid());
+    auto const shape_index = trip.shape_idx_;
+    if (shape_index == shape_idx_t::invalid() || trip.stop_seq_.size() < 2U) {
+      shapes_data.register_trip(
+          trip_index,
+          cista::pair{shape_idx_t::invalid(), shape_offset_idx_t::invalid()});
     } else {
-      auto const offset_index = utl::get_or_create(
-          offsets_cache, std::make_pair(trip.shape_idx_, &trip.stop_seq_),
+      auto const shape_offset_indices = utl::get_or_create(
+          shape_offsets_cache, std::make_pair(trip.shape_idx_, &trip.stop_seq_),
           [&]() {
-            auto const shape = shapes_data.get_shape(trip.shape_idx_);
+            auto const shape = shapes_data.get_shape(shape_index);
             auto const offsets = split_shape(tt, shape, trip.stop_seq_);
-            return shapes_data.add_offsets(offsets);
+            return cista::pair{shape_index, shapes_data.add_offsets(offsets)};
           });
-      shapes_data.register_trip(trip_index, offset_index);
+      shapes_data.register_trip(trip_index, shape_offset_indices);
     }
   }
 }
