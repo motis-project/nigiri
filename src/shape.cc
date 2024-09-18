@@ -1,6 +1,7 @@
 #include "nigiri/shape.h"
 
 #include <cstdint>
+#include <format>
 
 #include "fmt/core.h"
 
