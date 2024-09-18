@@ -3,6 +3,8 @@
 #include <filesystem>
 #include <span>
 
+#include "cista/containers/mmap_vec.h"
+
 #include "geo/latlng.h"
 
 #include "nigiri/types.h"
@@ -22,10 +24,11 @@ struct shapes_storage {
   std::span<geo::latlng const> get_shape(timetable const&,
                                          trip_idx_t,
                                          interval<stop_idx_t> const&) const;
-  void add_offsets(trip_idx_t, std::vector<shape_offset_t> const&);
-  void duplicate_offsets(trip_idx_t from, trip_idx_t to);
+  shape_offset_idx_t add_offsets(std::vector<shape_offset_t> const&);
+  void register_trip(trip_idx_t, shape_offset_idx_t);
   mm_vecvec<shape_idx_t, geo::latlng> data_;
-  mm_vecvec<trip_idx_t, shape_offset_t> offsets_;
+  mm_vecvec<shape_offset_idx_t, shape_offset_t> offsets_;
+  cista::basic_mmap_vec<shape_offset_idx_t, trip_idx_t> trip_offset_indices_;
 };
 
 shape_idx_t get_shape_index(timetable const&, trip_idx_t);

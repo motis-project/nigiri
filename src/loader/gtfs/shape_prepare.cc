@@ -78,7 +78,7 @@ void calculate_shape_offsets(timetable const& tt,
       .in_high(trips.size());
 
   auto offsets_cache =
-      hash_map<std::pair<shape_idx_t, stop_seq_t const*>, trip_idx_t,
+      hash_map<std::pair<shape_idx_t, stop_seq_t const*>, shape_offset_idx_t,
                decltype([](std::pair<shape_idx_t, stop_seq_t const*> const&
                                pair) noexcept {
                  return cista::hashing<std::pair<shape_idx_t, stop_seq_t>>{}(
@@ -100,18 +100,16 @@ void calculate_shape_offsets(timetable const& tt,
     progress_tracker->update_fn();
     auto const trip_index = trip.trip_idx_;
     if (trip.stop_seq_.size() < 2U) {
-      shapes_data.add_offsets(trip_index, {});
-      continue;
-    }
-    auto const cached_trip_index = utl::get_or_create(
-        offsets_cache, std::make_pair(trip.shape_idx_, &trip.stop_seq_), [&]() {
-          auto const shape = shapes_data.get_shape(trip.shape_idx_);
-          auto const offsets = split_shape(tt, shape, trip.stop_seq_);
-          shapes_data.add_offsets(trip_index, offsets);
-          return trip_index;
-        });
-    if (cached_trip_index != trip_index) {
-      shapes_data.duplicate_offsets(cached_trip_index, trip_index);
+      shapes_data.register_trip(trip_index, shape_offset_idx_t::invalid());
+    } else {
+      auto const offset_index = utl::get_or_create(
+          offsets_cache, std::make_pair(trip.shape_idx_, &trip.stop_seq_),
+          [&]() {
+            auto const shape = shapes_data.get_shape(trip.shape_idx_);
+            auto const offsets = split_shape(tt, shape, trip.stop_seq_);
+            return shapes_data.add_offsets(offsets);
+          });
+      shapes_data.register_trip(trip_index, offset_index);
     }
   }
 }
