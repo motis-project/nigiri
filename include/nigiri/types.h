@@ -172,7 +172,6 @@ using attribute_combination_idx_t =
     cista::strong<std::uint32_t, struct _attribute_combination>;
 using provider_idx_t = cista::strong<std::uint32_t, struct _provider_idx>;
 
-using shapes_storage_t = mm_vecvec<shape_idx_t, geo::latlng>;
 using transport_range_t = pair<transport_idx_t, interval<stop_idx_t>>;
 
 struct trip_debug {
