@@ -4,8 +4,8 @@
 #include "nigiri/types.h"
 
 namespace pugi {
-struct xml_document;
-struct xml_node;
+class xml_document;
+class xml_node;
 }  // namespace pugi
 
 namespace nigiri {
