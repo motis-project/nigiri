@@ -97,7 +97,7 @@ void calculate_shape_offsets(timetable const& tt,
                         (*lhs.second == *rhs.second);
                })>{};
   for (auto const& trip : trips) {
-    progress_tracker->update_fn();
+    progress_tracker->increment();
     auto const trip_index = trip.trip_idx_;
     auto const shape_index = trip.shape_idx_;
     if (shape_index == shape_idx_t::invalid() || trip.stop_seq_.size() < 2U) {
