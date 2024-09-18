@@ -111,8 +111,8 @@ struct meat_csa {
     UTL_START_TIMING(extract_time);
     std::tie(result_graph, max_display_delay) =
         extract_small_sub_decision_graph<ProfileSet>(
-            dge_, start_location, s_time, end_location,
-            max_delay_, max_ride_count, max_arrow_count);
+            dge_, start_location, s_time, end_location, max_delay_,
+            max_ride_count, max_arrow_count);
     result_graph.compute_use_probabilities(tt_, max_delay_);
     UTL_STOP_TIMING(extract_time);
     stats_.extract_graph_duration_ =
@@ -257,8 +257,10 @@ private:
                      stats_.esa_n_update_arr_time_);
     auto [day, mam] = split(source_time);
 
+    auto constexpr extra_delay = 1;
     delta_t const target_offset =
-        tt_.locations_.transfer_time_[target_stop].count() + max_delay_;
+        tt_.locations_.transfer_time_[target_stop].count() + max_delay_ +
+        extra_delay;
 
     auto conn_end = conn_begin;
     auto const* conn = &tt_.fwd_connections_[conn_end];
@@ -291,7 +293,7 @@ private:
           auto const conn_max_arr_time =
               clamp(conn_arr_time +
                     tt_.locations_.transfer_time_[c_arr_stop_idx].count() +
-                    max_delay_);
+                    max_delay_ + extra_delay);
           update_arr_times(esa, conn_max_arr_time, c_arr_stop_idx,
                            stats_.esa_n_update_arr_time_);
         }
