@@ -342,7 +342,7 @@ clasz frun::get_clasz() const noexcept {
 std::variant<std::span<geo::latlng const>, std::array<geo::latlng const, 2>>
 frun::get_shape(shapes_storage const* const shapes_data,
                 interval<stop_idx_t> const& segment) const {
-  assert(segment.from_ < segment.to);
+  assert(segment.from_ < segment.to_);
   auto const from = (*this)[segment.from_];
   auto const to = (*this)[segment.to_];
   auto const trip_index = from.get_trip_idx(event_type::kDep);
