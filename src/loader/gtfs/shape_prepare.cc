@@ -17,7 +17,7 @@
 namespace nigiri::loader::gtfs {
 
 auto get_closest(geo::latlng coordinate,
-                 std::span<geo::latlng const> const& shape) {
+                 std::span<geo::latlng const> const shape) {
   if (shape.size() < 2) {
     return 0U;
   }
@@ -42,9 +42,10 @@ std::vector<location_idx_t> get_interior_locations(stop_seq_t const& stops) {
   return locations;
 }
 
-std::vector<shape_offset_t> split_shape(timetable const& tt,
-                                        std::span<geo::latlng const> shape,
-                                        stop_seq_t const& stops) {
+std::vector<shape_offset_t> split_shape(
+    timetable const& tt,
+    std::span<geo::latlng const> const shape,
+    stop_seq_t const& stops) {
   if (shape.empty()) {
     return {};
   }

@@ -342,11 +342,11 @@ clasz frun::get_clasz() const noexcept {
 std::variant<std::span<geo::latlng const>, std::array<geo::latlng const, 2>>
 frun::get_shape(shapes_storage const* const shapes_data,
                 interval<stop_idx_t> const& segment) const {
-  assert(tt_ != nullptr);
+  assert(segment.from_ < segment.to);
   auto const from = (*this)[segment.from_];
   auto const to = (*this)[segment.to_];
   auto const trip_index = from.get_trip_idx(event_type::kDep);
-  if (shapes_data != nullptr && segment.from_ < segment.to_ &&
+  if (shapes_data != nullptr &&
       trip_index == to.get_trip_idx(event_type::kArr)) {
     auto start_offset = stop_idx_t{0};
     if (segment.from_ == 0) {
@@ -360,11 +360,10 @@ frun::get_shape(shapes_storage const* const shapes_data,
       }
     }
     auto const shape = shapes_data->get_shape(
-        trip_index,
-        interval{stop_idx_t{
-                     static_cast<std::uint16_t>(segment.from_ + start_offset)},
-                 stop_idx_t{
-                     static_cast<std::uint16_t>(segment.to_ + start_offset)}});
+        trip_index, interval{stop_idx_t{static_cast<std::uint16_t>(
+                                 segment.from_ + start_offset)},
+                             stop_idx_t{static_cast<std::uint16_t>(
+                                 segment.to_ + start_offset)}});
     if (!shape.empty()) {
       return shape;
     }
