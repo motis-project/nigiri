@@ -90,6 +90,12 @@ struct timetable {
       return get(location_id_to_idx_.at(id));
     }
 
+    std::optional<location> find(location_id const& id) const {
+      auto const it = location_id_to_idx_.find(id);
+      return it == end(location_id_to_idx_) ? std::nullopt
+                                            : std::optional{get(it->second)};
+    }
+
     void resolve_timezones();
 
     // Station access: external station id -> internal station idx
