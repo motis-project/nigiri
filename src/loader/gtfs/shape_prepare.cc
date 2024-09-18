@@ -83,20 +83,18 @@ void calculate_shape_offsets(timetable const& tt,
                cista::pair<shape_idx_t, shape_offset_idx_t>,
                decltype([](std::pair<shape_idx_t, stop_seq_t const*> const&
                                pair) noexcept {
-                 return cista::hashing<std::pair<shape_idx_t, stop_seq_t>>{}(
-                     std::make_pair(pair.first, *pair.second));
+                 auto h = cista::BASE_HASH;
+                 h = cista::hash_combine(
+                     h, cista::hashing<shape_idx_t>{}(pair.first));
+                 h = cista::hash_combine(
+                     h, cista::hashing<stop_seq_t>{}(*pair.second));
+                 return h;
                }),
                decltype([](std::pair<shape_idx_t, stop_seq_t const*> const& lhs,
                            std::pair<shape_idx_t, stop_seq_t const*> const&
                                rhs) noexcept {
-                 if (lhs.first != rhs.first ||
-                     lhs.second->size() != rhs.second->size()) {
-                   return false;
-                 }
-                 auto const& zip = utl::zip(*lhs.second, *rhs.second);
-                 return std::all_of(begin(zip), end(zip), [](auto const pair) {
-                   return std::get<0>(pair) == std::get<1>(pair);
-                 });
+                 return (lhs.first == rhs.first) &&
+                        (*lhs.second == *rhs.second);
                })>{};
   for (auto const& trip : trips) {
     progress_tracker->update_fn();
