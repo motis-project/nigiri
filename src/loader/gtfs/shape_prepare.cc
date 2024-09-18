@@ -76,30 +76,26 @@ void calculate_shape_offsets(timetable const& tt,
   progress_tracker->status("Calculating shape offsets")
       .out_bounds(98.F, 100.F)
       .in_high(trips.size());
-  struct hash_stop_seq_t {
-    auto operator()(
-        std::pair<shape_idx_t, stop_seq_t const*> const& pair) const noexcept {
-      return cista::hashing<std::pair<shape_idx_t, stop_seq_t>>{}(
-          std::make_pair(pair.first, *pair.second));
-    }
-  };
 
-  struct equals_stop_seq_t {
-    auto operator()(
-        std::pair<shape_idx_t, stop_seq_t const*> const& lhs,
-        std::pair<shape_idx_t, stop_seq_t const*> const& rhs) const noexcept {
-      if (lhs.first != rhs.first || lhs.second->size() != rhs.second->size()) {
-        return false;
-      }
-      auto const& zip = utl::zip(*lhs.second, *rhs.second);
-      return std::all_of(begin(zip), end(zip), [](auto const pair) {
-        return std::get<0>(pair) == std::get<1>(pair);
-      });
-    }
-  };
   auto offsets_cache =
       hash_map<std::pair<shape_idx_t, stop_seq_t const*>, trip_idx_t,
-               hash_stop_seq_t, equals_stop_seq_t>{};
+               decltype([](std::pair<shape_idx_t, stop_seq_t const*> const&
+                               pair) noexcept {
+                 return cista::hashing<std::pair<shape_idx_t, stop_seq_t>>{}(
+                     std::make_pair(pair.first, *pair.second));
+               }),
+               decltype([](std::pair<shape_idx_t, stop_seq_t const*> const& lhs,
+                           std::pair<shape_idx_t, stop_seq_t const*> const&
+                               rhs) noexcept {
+                 if (lhs.first != rhs.first ||
+                     lhs.second->size() != rhs.second->size()) {
+                   return false;
+                 }
+                 auto const& zip = utl::zip(*lhs.second, *rhs.second);
+                 return std::all_of(begin(zip), end(zip), [](auto const pair) {
+                   return std::get<0>(pair) == std::get<1>(pair);
+                 });
+               })>{};
   for (auto const& trip : trips) {
     progress_tracker->update_fn();
     auto const trip_index = trip.trip_idx_;
