@@ -1,7 +1,6 @@
 #include "nigiri/shape.h"
 
 #include <cstdint>
-#include <format>
 
 #include "fmt/core.h"
 
@@ -34,7 +33,7 @@ shapes_storage::shapes_storage(std::filesystem::path const& path,
       trip_offset_indices_{
           create_storage_vector<cista::pair<shape_idx_t, shape_offset_idx_t>,
                                 trip_idx_t>(
-              std::format("{}_offset_indices.bin", path.generic_string()),
+              fmt::format("{}_offset_indices.bin", path.generic_string()),
               mode)} {}
 
 std::span<geo::latlng const> shapes_storage::get_shape(
