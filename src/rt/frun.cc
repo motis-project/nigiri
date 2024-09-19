@@ -381,11 +381,18 @@ void frun::for_each_shape_point(
     for_each_shape_point(range, callback);
     return;
   }
+  auto const shift_interval = [](interval<stop_idx_t> const& range_interval,
+                                 stop_idx_t const offset) {
+    return interval{static_cast<stop_idx_t>(range_interval.from_ + offset),
+                    static_cast<stop_idx_t>(range_interval.to_ + offset)};
+  };
+
   assert(range.from_ < range.to_);
   assert(stop_range_.from_ + range.to_ <= stop_range_.to_);
   auto const from = (*this)[range.from_];
   auto const from_trip_index = from.get_trip_idx(event_type::kDep);
-  auto const shape = shapes_data->get_shape(from_trip_index, range);
+  auto const shape = shapes_data->get_shape(
+      from_trip_index, shift_interval(range, stop_range_.from_));
   if (!shape.empty()) {
     std::for_each(std::begin(shape), std::end(shape), callback);
     return;

@@ -15,6 +15,7 @@
 #include "nigiri/rt/create_rt_timetable.h"
 #include "nigiri/rt/frun.h"
 #include "nigiri/rt/gtfsrt_resolve_run.h"
+#include "nigiri/rt/run.h"
 #include "nigiri/shape.h"
 #include "nigiri/timetable.h"
 
@@ -218,14 +219,39 @@ TEST(
     ASSERT_TRUE(r.valid());
     // Create full run
     auto const full_run = rt::frun{tt, &rtt, r};
-    leg_shape.clear();
 
+    leg_shape.clear();
     full_run.for_each_shape_point(
         &shapes_data, interval{stop_idx_t{0}, stop_idx_t{1 + 1}}, plot_point);
 
     expected_shape = {
         geo::latlng{1.0F, 1.0F},
         geo::latlng{0.0F, 0.0F},
+    };
+    EXPECT_EQ(expected_shape, leg_shape);
+  }
+  // frun containing a sub trip
+  {
+    // Create run
+    transit_realtime::TripDescriptor td;
+    td.set_trip_id("TRIP_1");
+    auto const [r, t] = rt::gtfsrt_resolve_run(
+        date::sys_days{2024_y / January / 1}, tt, rtt, source_idx_t{0}, td);
+    ASSERT_TRUE(r.valid());
+    // Create sub run containing single trip leg
+    auto const r_modified =
+        rt::run{r.t_, interval{stop_idx_t{2}, stop_idx_t{4}}, r.rt_};
+    // Create full run
+    auto const full_run = rt::frun{tt, &rtt, r_modified};
+
+    leg_shape.clear();
+    full_run.for_each_shape_point(
+        &shapes_data, interval{stop_idx_t{0}, stop_idx_t{1 + 1}}, plot_point);
+
+    expected_shape = {
+        geo::latlng{1.0F, 3.0F},
+        geo::latlng{0.5F, 3.5F},
+        geo::latlng{1.0F, 4.0F},
     };
     EXPECT_EQ(expected_shape, leg_shape);
   }
