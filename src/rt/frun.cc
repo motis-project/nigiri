@@ -376,8 +376,7 @@ void frun::for_each_shape_point(
     interval<stop_idx_t> const& range,
     std::function<void(geo::latlng const&)> const&& callback) const {
   assert(range.from_ <= range.to_);
-  assert(stop_range_.from_ <= range.from);
-  assert(stop_range_.to_ <= range.to_);
+  assert(stop_range_.from_ + range.to_ <= stop_range_.to_);
   for (auto const stop_index : range) {
     auto const coordinate = (*this)[stop_index].pos();
     callback(coordinate);
