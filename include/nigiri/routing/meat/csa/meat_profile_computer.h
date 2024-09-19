@@ -77,7 +77,8 @@ struct meat_profile_computer {
       delta_t source_time,
       delta_t max_delay,
       meat_t fuzzy_dominance_offset,
-      meat_t transfer_cost) {
+      meat_t transfer_cost,
+      delta_t last_arr) {
     auto const& ea = state_.ea_;
 
     auto evaluate_profile = [&](location_idx_t stop, delta_t when) {
@@ -110,6 +111,8 @@ struct meat_profile_computer {
       stats_.meat_n_connections_scanned_++;
       auto const& c = tt_.fwd_connections_[con_idx];
       auto const c_dep_time = tt_to_delta(day, c.dep_time_.mam());
+      auto const c_arr_time = tt_to_delta(
+          day + (c.arr_time_.days() - c.dep_time_.days()), c.arr_time_.mam());
 
       insert_footpaths_till(c_dep_time, fuzzy_dominance_offset);
 
@@ -119,9 +122,8 @@ struct meat_profile_computer {
                      tt_.route_clasz_[tt_.transport_route_[c.transport_idx_]])
                : true) &&
           tt_.is_connection_active(c, day) &&
-          ea[stop{c.dep_stop_}.location_idx()] <= c_dep_time) {
-        auto const c_arr_time = tt_to_delta(
-            day + (c.arr_time_.days() - c.dep_time_.days()), c.arr_time_.mam());
+          ea[stop{c.dep_stop_}.location_idx()] <= c_dep_time &&
+          c_arr_time <= last_arr) {
         auto const d_idx = (c.dep_time_.days() + n_day) %
                            tt_.travel_duration_days_[c.transport_idx_];
 

@@ -41,7 +41,8 @@ struct meat_csa {
         prf_idx_{0},
         state_{state.prepare_for_tt(tt_)},
         mpc_{tt_, state_, base_, allowed_claszes_, prf_idx_, stats_},
-        dge_{tt_, base_, state_.profile_set_} {}
+        dge_{tt_, base_, state_.profile_set_},
+        last_arr_{0} {}
 
   algo_stats_t get_stats() const { return stats_; }
 
@@ -95,11 +96,11 @@ struct meat_csa {
     if (without_clasz_filter) {
       mpc_.template compute_profile_set<false>(
           con_begin, con_end, end_location, s_time, max_delay_,
-          fuzzy_parameter_, meat_transfer_cost_);
+          fuzzy_parameter_, meat_transfer_cost_, last_arr_);
     } else {
       mpc_.template compute_profile_set<true>(
           con_begin, con_end, end_location, s_time, max_delay_,
-          fuzzy_parameter_, meat_transfer_cost_);
+          fuzzy_parameter_, meat_transfer_cost_, last_arr_);
     }
     UTL_STOP_TIMING(meat_time);
     stats_.meat_duration_ =
@@ -315,19 +316,22 @@ private:
       return {day_idx_t::invalid(), connection_idx_t::invalid()};
     } else {
       if (bound_parameter_ == std::numeric_limits<double>::max()) {
+        last_arr_ = std::numeric_limits<delta_t>::max();
         return {day_idx_t{n_days_},
                 connection_idx_t{tt_.fwd_connections_.size() - 1}};
       } else if (bound_parameter_ == 1.0) {
+        last_arr_ = esa[target_stop];
         if (conn_end == connection_idx_t{0}) {
           return {day - 1, connection_idx_t{tt_.fwd_connections_.size() - 1}};
         } else {
           return {day, conn_end - 1};
         }
       } else {
-        return last_conn_before<WithClaszFilter>(
-            source_time + static_cast<delta_t>(bound_parameter_ *
-                                               (esa[target_stop] -
-                                                target_offset - source_time)));
+        last_arr_ =
+            source_time + static_cast<delta_t>(
+                              bound_parameter_ *
+                              (esa[target_stop] - target_offset - source_time));
+        return last_conn_before<WithClaszFilter>(last_arr_);
       }
     }
   }
@@ -410,6 +414,7 @@ private:
   meat_csa_state<ProfileSet>& state_;
   meat_profile_computer<ProfileSet> mpc_;
   decision_graph_extractor<ProfileSet> dge_;
+  delta_t last_arr_;
   meat_csa_stats stats_;
 };
 
