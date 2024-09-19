@@ -155,14 +155,47 @@ TEST(rt, rt_block_id_test) {
         std::get<nigiri::routing::journey::run_enter_exit>(leg.uses_);
     auto const fr = rt::frun(tt, &rtt, run_ee.r_);
     auto leg_shape = std::vector<geo::latlng>{};
+    std::cout << "DEBUG 2: " << fr.size() << "\n";
 
-    fr.for_each_shape_point(
-        nullptr, run_ee.stop_range_,
-        [&leg_shape](geo::latlng const& point) { leg_shape.push_back(point); });
+    // Full journey leg
+    {
+      leg_shape.clear();
 
-    auto const expected_shape =
-        std::vector{geo::latlng{2.0F, 3.0F}, geo::latlng{4.0F, 5.0F},
-                    geo::latlng{6.0F, 7.0F}, geo::latlng{8.0F, 9.0F}};
-    EXPECT_EQ(expected_shape, leg_shape);
+      fr.for_each_shape_point(nullptr, run_ee.stop_range_,
+                              [&leg_shape](geo::latlng const& point) {
+                                leg_shape.push_back(point);
+                              });
+
+      auto const expected_shape =
+          std::vector{geo::latlng{2.0F, 3.0F}, geo::latlng{4.0F, 5.0F},
+                      geo::latlng{6.0F, 7.0F}, geo::latlng{8.0F, 9.0F}};
+      EXPECT_EQ(expected_shape, leg_shape);
+    }
+    // Single leg
+    {
+      leg_shape.clear();
+
+      fr.for_each_shape_point(nullptr, interval{stop_idx_t{2}, stop_idx_t{3 + 1}},
+                              [&leg_shape](geo::latlng const& point) {
+                                leg_shape.push_back(point);
+                              });
+
+      auto const expected_shape =
+          std::vector{geo::latlng{4.0F, 5.0F}, geo::latlng{6.0F, 7.0F}};
+      EXPECT_EQ(expected_shape, leg_shape);
+    }
+    // Single stop
+    {
+      leg_shape.clear();
+
+      fr.for_each_shape_point(nullptr, interval{stop_idx_t{1}, stop_idx_t{1 + 1}},
+                              [&leg_shape](geo::latlng const& point) {
+                                leg_shape.push_back(point);
+                              });
+
+      auto const expected_shape =
+          std::vector{geo::latlng{2.0F, 3.0F}};
+      EXPECT_EQ(expected_shape, leg_shape);
+    }
   }
 }

@@ -18,6 +18,8 @@
 #include "nigiri/shape.h"
 #include "nigiri/timetable.h"
 
+#include "../raptor_search.h"
+
 using namespace date;
 using namespace nigiri;
 using namespace nigiri::loader;
@@ -43,7 +45,7 @@ bool operator==(std::span<geo::latlng const> const& lhs,
 
 namespace {
 
-constexpr auto kScheduleWithoutShape = R"(
+constexpr auto kSchedule = R"(
 # agency.txt
 agency_name,agency_url,agency_timezone,agency_lang,agency_phone,agency_id
 test,https://test.com,Europe/Berlin,DE,0800123456,AGENCY_1
@@ -51,11 +53,18 @@ test,https://test.com,Europe/Berlin,DE,0800123456,AGENCY_1
 # stops.txt
 stop_id,stop_name,stop_lat,stop_lon
 A,A,1.0,1.0
-B,B,2.0,2.0
-C,C,3.0,3.0
-D,D,4.0,4.0
-E,E,5.0,5.0
-F,F,6.0,6.0
+B,B,1.0,2.0
+C,C,1.0,3.0
+D,D,1.0,4.0
+F,F,2.0,1.0
+G,G,3.0,1.0
+H,H,3.0,2.0
+I,I,3.0,3.0
+J,J,4.0,3.0
+K,K,5.0,3.0
+M,M,2.0,2.0
+N,N,3.0,3.0
+O,O,4.0,4.0
 
 # calendar_dates.txt
 service_id,date,exception_type
@@ -67,7 +76,36 @@ ROUTE_1,AGENCY_1,Route 1,,3
 
 # trips.txt
 route_id,service_id,trip_id,trip_headsign,block_id,shape_id,
-ROUTE_1,SERVICE_1,TRIP_1,E,,SHAPE_1,
+ROUTE_1,SERVICE_1,TRIP_1,E,BLOCK_1,SHAPE_1,
+ROUTE_1,SERVICE_1,TRIP_2,E,BLOCK_2,SHAPE_2,
+ROUTE_1,SERVICE_1,TRIP_3,E,BLOCK_2,SHAPE_3,
+ROUTE_1,SERVICE_1,TRIP_4,E,BLOCK_2,SHAPE_4,
+ROUTE_1,SERVICE_1,TRIP_5,E,BLOCK_3,SHAPE_5,
+
+# shapes.txt
+"shape_id","shape_pt_lat","shape_pt_lon","shape_pt_sequence"
+SHAPE_1,1.0,1.0,0
+SHAPE_1,0.5,1.5,1
+SHAPE_1,1.0,2.0,2
+SHAPE_1,0.5,2.5,3
+SHAPE_1,1.0,3.0,4
+SHAPE_1,0.5,3.5,5
+SHAPE_1,1.0,4.0,6
+SHAPE_2,1.0,1.0,0
+SHAPE_2,1.5,0.5,1
+SHAPE_2,2.0,1.0,2
+SHAPE_2,2.5,0.5,3
+SHAPE_2,3.0,1.0,4
+SHAPE_3,3.0,1.0,0
+SHAPE_3,3.5,1.5,1
+SHAPE_3,3.0,2.0,2
+SHAPE_3,3.5,2.5,3
+SHAPE_3,3.0,3.0,4
+SHAPE_4,3.0,3.0,0
+SHAPE_4,3.5,2.5,1
+SHAPE_4,4.0,3.0,2
+SHAPE_4,4.5,2.5,3
+SHAPE_4,5.0,3.0,4
 
 # stop_times.txt
 trip_id,arrival_time,departure_time,stop_id,stop_sequence,pickup_type,drop_off_type
@@ -75,222 +113,28 @@ TRIP_1,10:00:00,10:00:00,A,1,0,0
 TRIP_1,11:00:00,11:00:00,B,2,0,0
 TRIP_1,12:00:00,12:00:00,C,3,0,0
 TRIP_1,13:00:00,13:00:00,D,4,0,0
-TRIP_1,14:00:00,14:00:00,E,5,0,0
-TRIP_1,15:00:00,15:00:00,F,6,0,0
+TRIP_2,10:00:00,10:00:00,A,1,0,0
+TRIP_2,11:00:00,11:00:00,F,2,0,0
+TRIP_2,12:00:00,12:00:00,G,3,0,0
+TRIP_3,12:00:00,12:00:00,G,3,0,0
+TRIP_3,13:00:00,13:00:00,H,4,0,0
+TRIP_3,14:00:00,14:00:00,I,5,0,0
+TRIP_4,14:00:00,14:00:00,I,5,0,0
+TRIP_4,15:00:00,15:00:00,J,6,0,0
+TRIP_4,16:00:00,16:00:00,K,6,0,0
+TRIP_5,10:00:00,10:00:00,A,1,0,0
+TRIP_5,11:00:00,11:00:00,M,2,0,0
+TRIP_5,12:00:00,12:00:00,N,3,0,0
+TRIP_5,13:00:00,13:00:00,O,4,0,0
 
 )"sv;
 
-constexpr auto kShapeWithoutDistances = R"(
-# shapes.txt
-"shape_id","shape_pt_lat","shape_pt_lon","shape_pt_sequence"
-SHAPE_1,1.0,1.0,0
-SHAPE_1,1.0,1.5,1
-SHAPE_1,2.0,2.0,2
-SHAPE_1,2.0,2.5,3
-SHAPE_1,3.0,3.0,4
-SHAPE_1,3.0,3.5,5
-SHAPE_1,4.0,4.0,6
-SHAPE_1,4.0,4.5,7
-SHAPE_1,5.0,5.0,8
-SHAPE_1,5.0,5.5,9
-SHAPE_1,6.0,6.0,10
-)"sv;
-
-// Shapes tested for: B -> C, A -> B, E -> F, B -> E
-template <typename Variant>
-constexpr void parametrized_test(std::string const& schedule_data,
-                                 shapes_storage* shapes_data,
-                                 std::array<Variant, 4> test_cases) {
-  auto const schedule = mem_dir::read(schedule_data);
-  // Load static timetable.
-  timetable tt;
-  tt.date_range_ = {date::sys_days{2024_y / January / 1},
-                    date::sys_days{2024_y / January / 2}};
-  load_timetable({}, source_idx_t{0}, schedule, tt, nullptr, shapes_data);
-  finalize(tt);
-
-  // Create empty RT timetable.
-  auto rtt = rt::create_rt_timetable(tt, date::sys_days{2024_y / January / 1});
-
-  // Create run
-  transit_realtime::TripDescriptor td;
-  td.set_start_date("20240101");
-  td.set_trip_id("TRIP_1");
-  td.set_start_time("10:00:00");
-  auto const [r, t] = rt::gtfsrt_resolve_run(
-      date::sys_days{2024_y / January / 1}, tt, rtt, source_idx_t{0}, td);
-  ASSERT_TRUE(r.valid());
-
-  // Create full run
-  auto const full_run = rt::frun{tt, &rtt, r};
-
-  // B -> C
-  {
-    auto const shape =
-        full_run.get_shape(shapes_data, interval{stop_idx_t{1}, stop_idx_t{2}});
-
-    ASSERT_TRUE(std::holds_alternative<Variant>(shape));
-    EXPECT_EQ(test_cases[0], std::get<Variant>(shape));
-  }
-  // A -> B
-  {
-    auto const shape =
-        full_run.get_shape(shapes_data, interval{stop_idx_t{0}, stop_idx_t{1}});
-
-    ASSERT_TRUE(std::holds_alternative<Variant>(shape));
-    EXPECT_EQ(test_cases[1], std::get<Variant>(shape));
-  }
-  // E -> F
-  {
-    auto const shape =
-        full_run.get_shape(shapes_data, interval{stop_idx_t{4}, stop_idx_t{5}});
-
-    ASSERT_TRUE(std::holds_alternative<Variant>(shape));
-    EXPECT_EQ(test_cases[2], std::get<Variant>(shape));
-  }
-  // B -> E
-  {
-    auto const shape =
-        full_run.get_shape(shapes_data, interval{stop_idx_t{1}, stop_idx_t{4}});
-
-    ASSERT_TRUE(std::holds_alternative<Variant>(shape));
-    EXPECT_EQ(test_cases[3], std::get<Variant>(shape));
-  }
-}
-
 TEST(
     rt,
-    frun_get_shape_when_no_shapes_and_storage_is_used_then_get_owning_array_variant) {
-  auto const schedule_data = std::string{kScheduleWithoutShape};
-  parametrized_test<std::array<geo::latlng const, 2>>(
-      schedule_data, nullptr,
-      {{
-          {geo::latlng{2.0F, 2.0F}, geo::latlng{3.0F, 3.0F}},
-          {geo::latlng{1.0F, 1.0F}, geo::latlng{2.0F, 2.0F}},
-          {geo::latlng{5.0F, 5.0F}, geo::latlng{6.0F, 6.0F}},
-          {geo::latlng{2.0F, 2.0F}, geo::latlng{5.0F, 5.0F}},
-      }});
-}
+    frun_for_each_shape_point_when_shapes_are_provided_then_process_all_subshapes) {
+  auto const schedule = mem_dir::read(kSchedule);
+  auto shapes_data = create_tmp_shapes_storage("rfun-for-each-shape-point");
 
-TEST(rt, frun_get_shape_when_no_storage_is_used_then_get_owning_array_variant) {
-  auto const schedule_data =
-      std::string{kScheduleWithoutShape} + std::string{kShapeWithoutDistances};
-  parametrized_test<std::array<geo::latlng const, 2>>(
-      schedule_data, nullptr,
-      {{
-          {geo::latlng{2.0F, 2.0F}, geo::latlng{3.0F, 3.0F}},
-          {geo::latlng{1.0F, 1.0F}, geo::latlng{2.0F, 2.0F}},
-          {geo::latlng{5.0F, 5.0F}, geo::latlng{6.0F, 6.0F}},
-          {geo::latlng{2.0F, 2.0F}, geo::latlng{5.0F, 5.0F}},
-      }});
-}
-
-TEST(
-    rt,
-    frun_get_shape_when_shapes_without_distances_are_used_then_get_correct_span) {
-  auto shapes_data =
-      create_tmp_shapes_storage("rfun-get-shape-without-distances");
-  auto const schedule_data =
-      std::string{kScheduleWithoutShape} + std::string{kShapeWithoutDistances};
-  auto const expected_shapes = std::vector<std::vector<geo::latlng>>{
-      {{geo::latlng{2.0F, 2.0F}, geo::latlng{2.0F, 2.5F},
-        geo::latlng{3.0F, 3.0F}}},
-      {{geo::latlng{1.0F, 1.0F}, geo::latlng{1.0F, 1.5F},
-        geo::latlng{2.0F, 2.0F}}},
-      {{geo::latlng{5.0F, 5.0F}, geo::latlng{5.0F, 5.5F},
-        geo::latlng{6.0F, 6.0F}}},
-      {{geo::latlng{2.0F, 2.0F}, geo::latlng{2.0F, 2.5F},
-        geo::latlng{3.0F, 3.0F}, geo::latlng{3.0F, 3.5F},
-        geo::latlng{4.0F, 4.0F}, geo::latlng{4.0F, 4.5F},
-        geo::latlng{5.0F, 5.0F}}},
-  };
-  parametrized_test<std::span<geo::latlng const>>(
-      schedule_data, &shapes_data,
-      {{
-          {begin(expected_shapes[0]), end(expected_shapes[0])},
-          {begin(expected_shapes[1]), end(expected_shapes[1])},
-          {begin(expected_shapes[2]), end(expected_shapes[2])},
-          {begin(expected_shapes[3]), end(expected_shapes[3])},
-      }});
-}
-
-TEST(
-    rt,
-    frun_get_shape_when_shapes_with_shared_stops_are_used_then_get_correct_span_even_when_last_two_stops_fall_together) {
-  constexpr auto kShapeWithSharedStops = R"(
-# shapes.txt
-"shape_id","shape_pt_lat","shape_pt_lon","shape_pt_sequence"
-SHAPE_1,1.0,1.0,0
-SHAPE_1,2.5,2.5,3
-SHAPE_1,6.0,6.0,10
-)"sv;
-  auto shapes_data =
-      create_tmp_shapes_storage("rfun-get-shape-with-shared-stops");
-  auto const schedule_data =
-      std::string{kScheduleWithoutShape} + std::string{kShapeWithSharedStops};
-  auto const expected_shapes = std::vector<std::vector<geo::latlng>>{
-      {{geo::latlng{2.5F, 2.5F}}},
-      {{geo::latlng{1.0F, 1.0F}, geo::latlng{2.5F, 2.5F}}},
-      {{geo::latlng{6.0F, 6.0F}}},
-      {{geo::latlng{2.5F, 2.5F}, geo::latlng{6.0F, 6.0F}}},
-  };
-  parametrized_test<std::span<geo::latlng const>>(
-      schedule_data, &shapes_data,
-      {{
-          {begin(expected_shapes[0]), end(expected_shapes[0])},
-          {begin(expected_shapes[1]), end(expected_shapes[1])},
-          {begin(expected_shapes[2]), end(expected_shapes[2])},
-          {begin(expected_shapes[3]), end(expected_shapes[3])},
-      }});
-}
-
-TEST(
-    rt,
-    frun_get_shape_when_multiple_trips_share_a_shape_then_get_correct_shape_for_both) {
-  constexpr auto kMultipleTripsWithSharedShape = R"(
-# agency.txt
-agency_name,agency_url,agency_timezone,agency_lang,agency_phone,agency_id
-test,https://test.com,Europe/Berlin,DE,0800123456,AGENCY_1
-
-# stops.txt
-stop_id,stop_name,stop_lat,stop_lon
-A,A,1.0,1.0
-B,B,2.0,2.0
-C,C,3.0,3.0
-
-# calendar_dates.txt
-service_id,date,exception_type
-SERVICE_1,20240101,1
-
-# routes.txt
-route_id,agency_id,route_short_name,route_long_name,route_type
-ROUTE_1,AGENCY_1,Route 1,,3
-
-# trips.txt
-route_id,service_id,trip_id,trip_headsign,block_id,shape_id,
-ROUTE_1,SERVICE_1,TRIP_1,E,,SHAPE_1,
-ROUTE_1,SERVICE_1,TRIP_2,E,,SHAPE_1,
-
-# shapes.txt
-"shape_id","shape_pt_lat","shape_pt_lon","shape_pt_sequence"
-SHAPE_1,1.0,1.0,1
-SHAPE_1,1.5,1.0,2
-SHAPE_1,2.0,2.0,4
-SHAPE_1,3.0,3.0,8
-
-# stop_times.txt
-trip_id,arrival_time,departure_time,stop_id,stop_sequence,pickup_type,drop_off_type
-TRIP_1,10:00:00,10:00:00,A,1,0,0
-TRIP_1,11:00:00,11:00:00,B,2,0,0
-TRIP_1,12:00:00,12:00:00,C,3,0,0
-TRIP_2,20:00:00,20:00:00,A,1,0,0
-TRIP_2,21:00:00,21:00:00,B,2,0,0
-TRIP_2,22:00:00,22:00:00,C,3,0,0
-)"sv;
-  auto shapes_data =
-      create_tmp_shapes_storage("rfun-get-shape-with-shared-shapes");
-
-  auto const schedule = mem_dir::read(kMultipleTripsWithSharedShape);
   // Load static timetable.
   timetable tt;
   tt.date_range_ = {date::sys_days{2024_y / January / 1},
@@ -301,99 +145,63 @@ TRIP_2,22:00:00,22:00:00,C,3,0,0
   // Create empty RT timetable.
   auto rtt = rt::create_rt_timetable(tt, date::sys_days{2024_y / January / 1});
 
+  auto expected_shape = std::vector<geo::latlng>{};
+  auto leg_shape = std::vector<geo::latlng>{};
+  auto plot_point = [&leg_shape](geo::latlng const& point) {
+    leg_shape.push_back(point);
+  };
+
   // TRIP_1
   {
     // Create run
     transit_realtime::TripDescriptor td;
-    td.set_start_date("20240101");
     td.set_trip_id("TRIP_1");
-    td.set_start_time("10:00:00");
     auto const [r, t] = rt::gtfsrt_resolve_run(
         date::sys_days{2024_y / January / 1}, tt, rtt, source_idx_t{0}, td);
     ASSERT_TRUE(r.valid());
-
     // Create full run
     auto const full_run = rt::frun{tt, &rtt, r};
 
-    // A -> C
+    // Full trip
     {
-      auto const shape = full_run.get_shape(
-          &shapes_data, interval{stop_idx_t{0}, stop_idx_t{2}});
+      leg_shape.clear();
 
-      ASSERT_TRUE(std::holds_alternative<std::span<geo::latlng const>>(shape));
-      EXPECT_EQ((std::span<geo::latlng const>{
-                    {geo::latlng{1.0F, 1.0F}, geo::latlng{1.5F, 1.0F},
-                     geo::latlng{2.0F, 2.0F}, geo::latlng{3.0F, 3.0F}}}),
-                std::get<std::span<geo::latlng const>>(shape));
+      full_run.for_each_shape_point(
+          &shapes_data, interval{stop_idx_t{0}, stop_idx_t{3 + 1}}, plot_point);
+
+      expected_shape = {
+          geo::latlng{1.0F, 1.0F}, geo::latlng{0.5F, 1.5F},
+          geo::latlng{1.0F, 2.0F}, geo::latlng{0.5F, 2.5F},
+          geo::latlng{1.0F, 3.0F}, geo::latlng{0.5F, 3.5F},
+          geo::latlng{1.0F, 4.0F},
+      };
+      EXPECT_EQ(expected_shape, leg_shape);
     }
-    // A -> B
+    // Single leg
     {
-      auto const shape = full_run.get_shape(
-          &shapes_data, interval{stop_idx_t{0}, stop_idx_t{1}});
+      leg_shape.clear();
 
-      ASSERT_TRUE(std::holds_alternative<std::span<geo::latlng const>>(shape));
-      EXPECT_EQ((std::span<geo::latlng const>{{geo::latlng{1.0F, 1.0F},
-                                               geo::latlng{1.5F, 1.0F},
-                                               geo::latlng{2.0F, 2.0F}}}),
-                std::get<std::span<geo::latlng const>>(shape));
+      full_run.for_each_shape_point(
+          &shapes_data, interval{stop_idx_t{1}, stop_idx_t{2 + 1}}, plot_point);
+
+      expected_shape = {
+          geo::latlng{1.0F, 2.0F},
+          geo::latlng{0.5F, 2.5F},
+          geo::latlng{1.0F, 3.0F},
+      };
+      EXPECT_EQ(expected_shape, leg_shape);
     }
-    // B -> C
+    // Single stop
     {
-      auto const shape = full_run.get_shape(
-          &shapes_data, interval{stop_idx_t{1}, stop_idx_t{2}});
+      leg_shape.clear();
 
-      ASSERT_TRUE(std::holds_alternative<std::span<geo::latlng const>>(shape));
-      EXPECT_EQ((std::span<geo::latlng const>{
-                    {geo::latlng{2.0F, 2.0F}, geo::latlng{3.0F, 3.0F}}}),
-                std::get<std::span<geo::latlng const>>(shape));
-    }
-  }
+      full_run.for_each_shape_point(
+          &shapes_data, interval{stop_idx_t{0}, stop_idx_t{0 + 1}}, plot_point);
 
-  // TRIP_2
-  {
-    // Create run
-    transit_realtime::TripDescriptor td;
-    td.set_start_date("20240101");
-    td.set_trip_id("TRIP_2");
-    td.set_start_time("20:00:00");
-    auto const [r, t] = rt::gtfsrt_resolve_run(
-        date::sys_days{2024_y / January / 1}, tt, rtt, source_idx_t{0}, td);
-    ASSERT_TRUE(r.valid());
-
-    // Create full run
-    auto const full_run = rt::frun{tt, &rtt, r};
-
-    // A -> C
-    {
-      auto const shape = full_run.get_shape(
-          &shapes_data, interval{stop_idx_t{0}, stop_idx_t{2}});
-
-      ASSERT_TRUE(std::holds_alternative<std::span<geo::latlng const>>(shape));
-      EXPECT_EQ((std::span<geo::latlng const>{
-                    {geo::latlng{1.0F, 1.0F}, geo::latlng{1.5F, 1.0F},
-                     geo::latlng{2.0F, 2.0F}, geo::latlng{3.0F, 3.0F}}}),
-                std::get<std::span<geo::latlng const>>(shape));
-    }
-    // A -> B
-    {
-      auto const shape = full_run.get_shape(
-          &shapes_data, interval{stop_idx_t{0}, stop_idx_t{1}});
-
-      ASSERT_TRUE(std::holds_alternative<std::span<geo::latlng const>>(shape));
-      EXPECT_EQ((std::span<geo::latlng const>{{geo::latlng{1.0F, 1.0F},
-                                               geo::latlng{1.5F, 1.0F},
-                                               geo::latlng{2.0F, 2.0F}}}),
-                std::get<std::span<geo::latlng const>>(shape));
-    }
-    // B -> C
-    {
-      auto const shape = full_run.get_shape(
-          &shapes_data, interval{stop_idx_t{1}, stop_idx_t{2}});
-
-      ASSERT_TRUE(std::holds_alternative<std::span<geo::latlng const>>(shape));
-      EXPECT_EQ((std::span<geo::latlng const>{
-                    {geo::latlng{2.0F, 2.0F}, geo::latlng{3.0F, 3.0F}}}),
-                std::get<std::span<geo::latlng const>>(shape));
+      expected_shape = {
+          geo::latlng{1.0F, 1.0F},
+      };
+      EXPECT_EQ(expected_shape, leg_shape);
     }
   }
 }

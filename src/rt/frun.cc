@@ -1,5 +1,7 @@
 #include "nigiri/rt/frun.h"
 
+#include <algorithm>
+
 #include "nigiri/lookup/get_transport_stop_tz.h"
 #include "nigiri/rt/rt_timetable.h"
 #include "nigiri/shape.h"
@@ -372,10 +374,25 @@ frun::get_shape(shapes_storage const* const shapes_data,
 }
 
 void frun::for_each_shape_point(
-    shapes_storage const* const,
+    shapes_storage const* const shapes_data,
     interval<stop_idx_t> const& range,
-    std::function<void(geo::latlng const&)> const&& callback) const {
-  assert(range.from_ <= range.to_);
+    std::function<void(geo::latlng const&)> const& callback) const {
+  if (shapes_data == nullptr) {
+    for_each_shape_point(range, callback);
+    return;
+  }
+  assert(range.from_ < range.to_);
+  assert(stop_range_.from_ + range.to_ <= stop_range_.to_);
+  auto const from = (*this)[range.from_];
+  auto const from_trip_index = from.get_trip_idx(event_type::kDep);
+  auto const shape = shapes_data->get_shape(from_trip_index, range);
+  std::for_each(std::begin(shape), std::end(shape), callback);
+}
+
+void frun::for_each_shape_point(
+    interval<stop_idx_t> const& range,
+    std::function<void(geo::latlng const&)> const& callback) const {
+  assert(range.from_ < range.to_);
   assert(stop_range_.from_ + range.to_ <= stop_range_.to_);
   for (auto const stop_index : range) {
     auto const coordinate = (*this)[stop_index].pos();

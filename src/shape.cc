@@ -72,7 +72,7 @@ std::span<geo::latlng const> shapes_storage::get_shape(
   }
   auto const& offsets = offsets_.at(offset_index);
   auto const from_offset = static_cast<unsigned>(offsets.at(range.from_));
-  auto const to_offset = static_cast<unsigned>(offsets.at(range.to_));
+  auto const to_offset = static_cast<unsigned>(offsets.at(range.to_ - 1));
   return shape.subspan(from_offset, to_offset - from_offset + 1);
 }
 
