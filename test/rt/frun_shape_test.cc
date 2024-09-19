@@ -65,6 +65,7 @@ K,K,5.0,3.0
 M,M,2.0,2.0
 N,N,3.0,3.0
 O,O,4.0,4.0
+Q,O,0.0,0.0
 
 # calendar_dates.txt
 service_id,date,exception_type
@@ -81,6 +82,7 @@ ROUTE_1,SERVICE_1,TRIP_2,E,BLOCK_2,SHAPE_2,
 ROUTE_1,SERVICE_1,TRIP_3,E,BLOCK_2,SHAPE_3,
 ROUTE_1,SERVICE_1,TRIP_4,E,BLOCK_2,SHAPE_4,
 ROUTE_1,SERVICE_1,TRIP_5,E,BLOCK_3,SHAPE_5,
+ROUTE_1,SERVICE_1,TRIP_6,E,BLOCK_4,
 
 # shapes.txt
 "shape_id","shape_pt_lat","shape_pt_lon","shape_pt_sequence"
@@ -126,6 +128,8 @@ TRIP_5,10:00:00,10:00:00,A,1,0,0
 TRIP_5,11:00:00,11:00:00,M,2,0,0
 TRIP_5,12:00:00,12:00:00,N,3,0,0
 TRIP_5,13:00:00,13:00:00,O,4,0,0
+TRIP_6,10:00:00,10:00:00,A,1,0,0
+TRIP_6,11:00:00,11:00:00,Q,2,0,0
 
 )"sv;
 
@@ -203,6 +207,27 @@ TEST(
       };
       EXPECT_EQ(expected_shape, leg_shape);
     }
+  }
+  // TRIP_6 (trip without shape)
+  {
+    // Create run
+    transit_realtime::TripDescriptor td;
+    td.set_trip_id("TRIP_6");
+    auto const [r, t] = rt::gtfsrt_resolve_run(
+        date::sys_days{2024_y / January / 1}, tt, rtt, source_idx_t{0}, td);
+    ASSERT_TRUE(r.valid());
+    // Create full run
+    auto const full_run = rt::frun{tt, &rtt, r};
+    leg_shape.clear();
+
+    full_run.for_each_shape_point(
+        &shapes_data, interval{stop_idx_t{0}, stop_idx_t{1 + 1}}, plot_point);
+
+    expected_shape = {
+        geo::latlng{1.0F, 1.0F},
+        geo::latlng{0.0F, 0.0F},
+    };
+    EXPECT_EQ(expected_shape, leg_shape);
   }
 }
 

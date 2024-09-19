@@ -386,7 +386,11 @@ void frun::for_each_shape_point(
   auto const from = (*this)[range.from_];
   auto const from_trip_index = from.get_trip_idx(event_type::kDep);
   auto const shape = shapes_data->get_shape(from_trip_index, range);
-  std::for_each(std::begin(shape), std::end(shape), callback);
+  if (!shape.empty()) {
+    std::for_each(std::begin(shape), std::end(shape), callback);
+    return;
+  }
+  for_each_shape_point(range, callback);
 }
 
 void frun::for_each_shape_point(
