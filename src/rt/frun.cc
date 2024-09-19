@@ -371,6 +371,19 @@ frun::get_shape(shapes_storage const* const shapes_data,
   return std::array<geo::latlng const, 2>{from.pos(), to.pos()};
 }
 
+void frun::for_each_shape_point(
+    shapes_storage const* const,
+    interval<stop_idx_t> const& range,
+    std::function<void(geo::latlng const&)> const&& callback) const {
+  assert(range.from_ <= range.to_);
+  assert(stop_range_.from_ <= range.from);
+  assert(stop_range_.to_ <= range.to_);
+  for (auto const stop_index : range) {
+    auto const coordinate = (*this)[stop_index].pos();
+    callback(coordinate);
+  }
+}
+
 trip_id frun::id() const noexcept {
   if (is_scheduled()) {
     auto const trip_idx =

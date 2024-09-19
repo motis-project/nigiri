@@ -1,6 +1,7 @@
 #pragma once
 
 #include <array>
+#include <functional>
 #include <iosfwd>
 #include <span>
 #include <variant>
@@ -137,6 +138,10 @@ struct frun : public run {
 
   std::variant<std::span<geo::latlng const>, std::array<geo::latlng const, 2>>
   get_shape(shapes_storage const* const, interval<stop_idx_t> const&) const;
+  void for_each_shape_point(
+      shapes_storage const*,
+      interval<stop_idx_t> const&,
+      std::function<void(geo::latlng const&)> const&&) const;
 
   void print(std::ostream&, interval<stop_idx_t> stop_range);
   friend std::ostream& operator<<(std::ostream&, frun const&);
