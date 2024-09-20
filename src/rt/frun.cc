@@ -411,6 +411,16 @@ void frun::for_each_shape_point(
       return *first - range.from_;
     }
   };
+  auto const process_shape = [&callback](std::span<geo::latlng const> shape,
+                                         bool const include_last) {
+    if (shape.empty()) {
+      return;
+    }
+    if (!include_last) {
+      shape = shape.first(shape.size() - 1);
+    }
+    std::for_each(std::begin(shape), std::end(shape), callback);
+  };
   assert(range.from_ < range.to_);
   assert(stop_range_.from_ + range.to_ <= stop_range_.to_);
   auto const from = (*this)[range.from_];
@@ -423,7 +433,7 @@ void frun::for_each_shape_point(
   while (current_trip_index != final_trip_index) {
     auto const [shape, stops] = shapes_data->get_shape_with_stop_count(
         current_trip_index, current_interval.from_);
-    std::for_each(std::begin(shape), std::end(shape), callback);
+    process_shape(shape, false);
     stop_offset += stops;
     current_trip_index =
         (*this)[static_cast<stop_idx_t>(stop_offset)].get_trip_idx(
