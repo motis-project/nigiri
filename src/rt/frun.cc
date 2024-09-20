@@ -378,10 +378,12 @@ void frun::for_each_shape_point(
     shapes_storage const* const shapes_data,
     interval<stop_idx_t> const& range,
     std::function<void(geo::latlng const&)> const& callback) const {
+  // Full fallback
   if (shapes_data == nullptr) {
     for_each_shape_point(range, callback);
     return;
   }
+  // Helper functions
   auto const shift_interval = [](interval<stop_idx_t> const& range_interval,
                                  int const offset) {
     assert(range_interval.from_ >= -offset);  // Result interval must be valid
@@ -421,6 +423,7 @@ void frun::for_each_shape_point(
     }
     std::for_each(std::begin(shape), std::end(shape), callback);
   };
+  // Setup
   assert(range.from_ < range.to_);
   assert(stop_range_.from_ + range.to_ <= stop_range_.to_);
   auto const from = (*this)[range.from_];
@@ -429,17 +432,19 @@ void frun::for_each_shape_point(
   auto current_trip_index = from.get_trip_idx(event_type::kDep);
   auto current_interval =
       shift_interval(range, get_first_offset(current_trip_index));
-  auto stop_offset = range.from_;
+  auto current_offset = range.from_;
+  // Process trips, excluding last
   while (current_trip_index != final_trip_index) {
     auto const [shape, stops] = shapes_data->get_shape_with_stop_count(
         current_trip_index, current_interval.from_);
     process_shape(shape, false);
-    stop_offset += stops;
+    auto const offset_adjustment = (current_offset == range.from_) ? stops : stops - 1;
+    current_offset += offset_adjustment;
     current_trip_index =
-        (*this)[static_cast<stop_idx_t>(stop_offset)].get_trip_idx(
+        (*this)[static_cast<stop_idx_t>(current_offset)].get_trip_idx(
             event_type::kDep);
     current_interval = interval{
-        stop_idx_t{0}, static_cast<stop_idx_t>(current_interval.to_ - stops)};
+        stop_idx_t{0}, static_cast<stop_idx_t>(current_interval.to_ - offset_adjustment)};
   }
   auto const shape =
       shapes_data->get_shape(current_trip_index, current_interval);

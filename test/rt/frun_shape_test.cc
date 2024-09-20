@@ -344,6 +344,22 @@ TEST(
         };
         EXPECT_EQ(expected_shape, leg_shape);
       }
+      // F → G → H → I → J
+      {
+        leg_shape.clear();
+        full_run.for_each_shape_point(
+            &shapes_data, interval{stop_idx_t{1}, stop_idx_t{5 + 1}},
+            plot_point);
+
+        expected_shape = {
+            geo::latlng{2.0F, 1.0F}, geo::latlng{2.5F, 0.5F},
+            geo::latlng{3.0F, 1.0F}, geo::latlng{3.5F, 1.5F},
+            geo::latlng{3.0F, 2.0F}, geo::latlng{3.5F, 2.5F},
+            geo::latlng{3.0F, 3.0F}, geo::latlng{3.5F, 2.5F},
+            geo::latlng{4.0F, 3.0F},
+        };
+        EXPECT_EQ(expected_shape, leg_shape);
+      }
     }
   }
 }
