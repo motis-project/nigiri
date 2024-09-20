@@ -155,7 +155,6 @@ TEST(rt, rt_block_id_test) {
         std::get<nigiri::routing::journey::run_enter_exit>(leg.uses_);
     auto const fr = rt::frun(tt, &rtt, run_ee.r_);
     auto leg_shape = std::vector<geo::latlng>{};
-    std::cout << "DEBUG 2: " << fr.size() << "\n";
 
     // Full journey leg
     {
