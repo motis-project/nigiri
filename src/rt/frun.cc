@@ -414,10 +414,25 @@ void frun::for_each_shape_point(
   assert(range.from_ < range.to_);
   assert(stop_range_.from_ + range.to_ <= stop_range_.to_);
   auto const from = (*this)[range.from_];
-  auto const from_trip_index = from.get_trip_idx(event_type::kDep);
-  auto const shift = get_first_offset(from_trip_index);
+  auto const to = (*this)[range.to_ - 1];
+  auto const final_trip_index = to.get_trip_idx(event_type::kArr);
+  auto current_trip_index = from.get_trip_idx(event_type::kDep);
+  auto current_interval =
+      shift_interval(range, get_first_offset(current_trip_index));
+  auto stop_offset = range.from_;
+  while (current_trip_index != final_trip_index) {
+    auto const [shape, stops] = shapes_data->get_shape_with_stop_count(
+        current_trip_index, current_interval.from_);
+    std::for_each(std::begin(shape), std::end(shape), callback);
+    stop_offset += stops;
+    current_trip_index =
+        (*this)[static_cast<stop_idx_t>(stop_offset)].get_trip_idx(
+            event_type::kDep);
+    current_interval = interval{
+        stop_idx_t{0}, static_cast<stop_idx_t>(current_interval.to_ - stops)};
+  }
   auto const shape =
-      shapes_data->get_shape(from_trip_index, shift_interval(range, shift));
+      shapes_data->get_shape(current_trip_index, current_interval);
   if (!shape.empty()) {
     std::for_each(std::begin(shape), std::end(shape), callback);
     return;

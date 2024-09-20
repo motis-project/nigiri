@@ -327,6 +327,24 @@ TEST(
         EXPECT_EQ(expected_shape, leg_shape);
       }
     }
+    // Joined shape for continuous trips
+    {
+      // H → I → J
+      {
+        leg_shape.clear();
+        full_run.for_each_shape_point(
+            &shapes_data, interval{stop_idx_t{3}, stop_idx_t{5 + 1}},
+            plot_point);
+
+        // TODO ? Use duplicated stop {3.0F, 3.0F} ?
+        expected_shape = {
+            geo::latlng{3.0F, 2.0F}, geo::latlng{3.5F, 2.5F},
+            geo::latlng{3.0F, 3.0F}, geo::latlng{3.5F, 2.5F},
+            geo::latlng{4.0F, 3.0F},
+        };
+        EXPECT_EQ(expected_shape, leg_shape);
+      }
+    }
   }
 }
 

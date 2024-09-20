@@ -76,6 +76,28 @@ std::span<geo::latlng const> shapes_storage::get_shape(
   return shape.subspan(from_offset, to_offset - from_offset + 1);
 }
 
+// FIXME Mostly duplicate of 'get_shape(trip_idx_t, interval<stop_idx_t>)'
+std::pair<std::span<geo::latlng const>, int>
+shapes_storage::get_shape_with_stop_count(trip_idx_t const trip_index,
+                                          stop_idx_t const from) const {
+  if (trip_index == trip_idx_t::invalid() ||
+      trip_index >= trip_offset_indices_.size()) {
+    return {};
+  }
+  auto const& [shape_index, offset_index] = trip_offset_indices_[trip_index];
+  // Reminder: shape_index is checked by 'get_shape(shape_index)'
+  if (offset_index == shape_offset_idx_t::invalid()) {
+    return {};
+  }
+  auto const shape = get_shape(shape_index);
+  if (shape.empty()) {
+    return std::make_pair(shape, 0);
+  }
+  auto const& offsets = offsets_.at(offset_index);
+  auto const offset = static_cast<unsigned>(offsets.at(from));
+  return std::make_pair(shape.subspan(offset), offsets.size() - from);
+}
+
 shape_offset_idx_t shapes_storage::add_offsets(
     std::vector<shape_offset_t> const& offsets) {
   auto const index = shape_offset_idx_t{offsets_.size()};
