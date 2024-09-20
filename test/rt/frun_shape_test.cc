@@ -255,6 +255,32 @@ TEST(
     };
     EXPECT_EQ(expected_shape, leg_shape);
   }
+  // sub trip of a merged trip
+  {
+    // Create run
+    transit_realtime::TripDescriptor td;
+    td.set_trip_id("TRIP_3");
+    auto const [r, t] = rt::gtfsrt_resolve_run(
+        date::sys_days{2024_y / January / 1}, tt, rtt, source_idx_t{0}, td);
+    ASSERT_TRUE(r.valid());
+    // Create sub run containing single trip leg
+    auto const r_modified =
+        rt::run{r.t_, interval{stop_idx_t{3}, stop_idx_t{5}}, r.rt_};
+    // Create full run
+    auto const full_run = rt::frun{tt, &rtt, r_modified};
+
+    // H → I
+    leg_shape.clear();
+    full_run.for_each_shape_point(
+        &shapes_data, interval{stop_idx_t{0}, stop_idx_t{1 + 1}}, plot_point);
+
+    expected_shape = {
+        geo::latlng{3.0F, 2.0F},
+        geo::latlng{3.5F, 2.5F},
+        geo::latlng{3.0F, 3.0F},
+    };
+    EXPECT_EQ(expected_shape, leg_shape);
+  }
 }
 
 }  // namespace

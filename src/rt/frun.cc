@@ -1,6 +1,7 @@
 #include "nigiri/rt/frun.h"
 
 #include <algorithm>
+#include <iterator>
 
 #include "nigiri/lookup/get_transport_stop_tz.h"
 #include "nigiri/rt/rt_timetable.h"
@@ -386,13 +387,30 @@ void frun::for_each_shape_point(
     return interval{static_cast<stop_idx_t>(range_interval.from_ + offset),
                     static_cast<stop_idx_t>(range_interval.to_ + offset)};
   };
-
+  auto const find_trip_start = [&](trip_idx_t const trip_index) {
+    if (stop_range_.from_ == stop_idx_t{0}) {
+      return stop_idx_t{0};
+    }
+    auto const candidates = interval{stop_idx_t{0}, stop_range_.from_};
+    auto const first =
+        std::find_if(std::begin(candidates), std::end(candidates),
+                     [&](stop_idx_t candidate) {
+                       auto const next = (*this)[-(++candidate)];
+                       return next.get_trip_idx(event_type::kDep) != trip_index;
+                     });
+    if (first == std::end(candidates)) {
+      return stop_range_.from_;
+    } else {
+      return *first;
+    }
+  };
   assert(range.from_ < range.to_);
   assert(stop_range_.from_ + range.to_ <= stop_range_.to_);
   auto const from = (*this)[range.from_];
   auto const from_trip_index = from.get_trip_idx(event_type::kDep);
-  auto const shape = shapes_data->get_shape(
-      from_trip_index, shift_interval(range, stop_range_.from_));
+  auto const shift = find_trip_start(from_trip_index);
+  auto const shape =
+      shapes_data->get_shape(from_trip_index, shift_interval(range, shift));
   if (!shape.empty()) {
     std::for_each(std::begin(shape), std::end(shape), callback);
     return;
