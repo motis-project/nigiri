@@ -383,32 +383,39 @@ void frun::for_each_shape_point(
     return;
   }
   auto const shift_interval = [](interval<stop_idx_t> const& range_interval,
-                                 stop_idx_t const offset) {
+                                 int const offset) {
+    assert(range_interval.from_ >= -offset);  // Result interval must be valid
     return interval{static_cast<stop_idx_t>(range_interval.from_ + offset),
                     static_cast<stop_idx_t>(range_interval.to_ + offset)};
   };
-  auto const find_trip_start = [&](trip_idx_t const trip_index) {
-    if (stop_range_.from_ == stop_idx_t{0}) {
-      return stop_idx_t{0};
+  auto const get_first_offset = [&](trip_idx_t const trip_index) {
+    auto const range_offset =
+        static_cast<stop_idx_t>(stop_range_.from_ + range.from_);
+    if (range_offset == stop_idx_t{0}) {
+      return 0;
     }
-    auto const candidates = interval{stop_idx_t{0}, stop_range_.from_};
-    auto const first =
-        std::find_if(std::begin(candidates), std::end(candidates),
-                     [&](stop_idx_t candidate) {
-                       auto const next = (*this)[-(++candidate)];
-                       return next.get_trip_idx(event_type::kDep) != trip_index;
-                     });
+    auto const candidates = interval{stop_idx_t{0}, range_offset};
+    auto const first = std::find_if(
+        std::begin(candidates), std::end(candidates),
+        [&](stop_idx_t const candidate) {
+          auto const previous_stop = (candidate < range.from_)
+                                         ? (*this)[static_cast<stop_idx_t>(
+                                               range.from_ - (candidate + 1))]
+                                         : (*this)[-static_cast<stop_idx_t>(
+                                               (candidate + 1) - range.from_)];
+          return previous_stop.get_trip_idx(event_type::kDep) != trip_index;
+        });
     if (first == std::end(candidates)) {
-      return stop_range_.from_;
+      return static_cast<int>(stop_range_.from_);
     } else {
-      return *first;
+      return *first - range.from_;
     }
   };
   assert(range.from_ < range.to_);
   assert(stop_range_.from_ + range.to_ <= stop_range_.to_);
   auto const from = (*this)[range.from_];
   auto const from_trip_index = from.get_trip_idx(event_type::kDep);
-  auto const shift = find_trip_start(from_trip_index);
+  auto const shift = get_first_offset(from_trip_index);
   auto const shape =
       shapes_data->get_shape(from_trip_index, shift_interval(range, shift));
   if (!shape.empty()) {

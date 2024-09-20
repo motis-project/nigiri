@@ -281,6 +281,53 @@ TEST(
     };
     EXPECT_EQ(expected_shape, leg_shape);
   }
+  // Full run covering multiple trips
+  {
+    auto const results = nigiri::test::raptor_search(
+        tt, &rtt, "F", "J",
+        unixtime_t{sys_days{2024_y / January / 1}} + 10_hours);
+    ASSERT_EQ(1, results.size());
+    ASSERT_EQ(1, results.begin()->legs_.size());
+    auto const& leg = results.begin()->legs_[0];
+    ASSERT_TRUE(
+        std::holds_alternative<nigiri::routing::journey::run_enter_exit>(
+            leg.uses_));
+    auto const& run_ee =
+        std::get<nigiri::routing::journey::run_enter_exit>(leg.uses_);
+    auto const full_run = rt::frun(tt, &rtt, run_ee.r_);
+
+    // Shape for a single trip
+    {
+      // A → F → G
+      {
+        leg_shape.clear();
+        full_run.for_each_shape_point(
+            &shapes_data, interval{stop_idx_t{0}, stop_idx_t{2 + 1}},
+            plot_point);
+
+        expected_shape = {
+            geo::latlng{1.0F, 1.0F}, geo::latlng{1.5F, 0.5F},
+            geo::latlng{2.0F, 1.0F}, geo::latlng{2.5F, 0.5F},
+            geo::latlng{3.0F, 1.0F},
+        };
+        EXPECT_EQ(expected_shape, leg_shape);
+      }
+      // G → H → I
+      {
+        leg_shape.clear();
+        full_run.for_each_shape_point(
+            &shapes_data, interval{stop_idx_t{2}, stop_idx_t{4 + 1}},
+            plot_point);
+
+        expected_shape = {
+            geo::latlng{3.0F, 1.0F}, geo::latlng{3.5F, 1.5F},
+            geo::latlng{3.0F, 2.0F}, geo::latlng{3.5F, 2.5F},
+            geo::latlng{3.0F, 3.0F},
+        };
+        EXPECT_EQ(expected_shape, leg_shape);
+      }
+    }
+  }
 }
 
 }  // namespace
