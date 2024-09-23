@@ -28,7 +28,6 @@ using std::operator""sv;
 // linked from gtfs/shape_test.cc
 shapes_storage create_tmp_shapes_storage(char const*);
 
-namespace std {
 bool operator==(std::span<geo::latlng const> const& lhs,
                 std::span<geo::latlng const> const& rhs) {
   if (lhs.size() != rhs.size()) {
@@ -40,7 +39,6 @@ bool operator==(std::span<geo::latlng const> const& lhs,
     return a == b;
   });
 }
-}  // namespace std
 
 namespace {
 
