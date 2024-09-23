@@ -53,7 +53,7 @@ void dijkstra(timetable const& tt,
   auto pq = dial<label, get_bucket>{kMaxTravelTime.count()};
   for (auto const& [l, duration] : min) {
     auto const d = duration;
-    for_each_meta(tt, q.start_match_mode_, l, [&](location_idx_t const meta) {
+    for_each_meta(tt, q.dest_match_mode_, l, [&](location_idx_t const meta) {
       pq.push(label{meta, d});
       dists[to_idx(meta)] = std::min(d, dists[to_idx(meta)]);
       trace("DIJKSTRA INIT @{}: {}\n", location{tt, meta}, duration);
@@ -61,6 +61,13 @@ void dijkstra(timetable const& tt,
   }
 
   dijkstra(lb_graph, pq, dists);
+
+  for (auto i = 0U; i != tt.n_locations(); ++i) {
+    auto const lb = dists[i];
+    for (auto const c : tt.locations_.children_[location_idx_t{i}]) {
+      dists[to_idx(c)] = std::min(lb, dists[to_idx(c)]);
+    }
+  }
 }
 
 }  // namespace nigiri::routing

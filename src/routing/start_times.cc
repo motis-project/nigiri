@@ -197,11 +197,17 @@ void add_starts_in_interval(direction const search_dir,
             (search_dir == direction::kForward ? event_type::kDep
                                                : event_type::kArr));
         auto const d = get_duration(search_dir, ev_time, location_offset);
-        auto const& inserted = starts.emplace_back(start{
-            .time_at_start_ =
-                search_dir == direction::kForward ? ev_time - d : ev_time + d,
-            .time_at_stop_ = ev_time,
-            .stop_ = l});
+        auto const time_at_start =
+            search_dir == direction::kForward ? ev_time - d : ev_time + d;
+
+        if (!iv.contains(time_at_start)) {
+          continue;
+        }
+
+        auto const& inserted =
+            starts.emplace_back(start{.time_at_start_ = time_at_start,
+                                      .time_at_stop_ = ev_time,
+                                      .stop_ = l});
         trace_start(
             "        => ADD RT START: time_at_start={}, time_at_stop={}, "
             "stop={}\n",

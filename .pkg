@@ -25,7 +25,7 @@
 [date]
   url=git@github.com:motis-project/date.git
   branch=master
-  commit=d84b23ca2432e17f3f04a3e0cc96b096b99c39a2
+  commit=ce88cc33b5551f66655614eeebb7c5b7189025fb
 [wyhash]
   url=git@github.com:motis-project/wyhash.git
   branch=master
@@ -50,3 +50,7 @@
   url=git@github.com:motis-project/opentelemetry-cpp.git
   branch=main
   commit=ec4aef6b17b697052edef5417825ad71947b2ed1
+[pugixml]
+  url=git@github.com:motis-project/pugixml.git
+  branch=master
+  commit=60175e80e2f5e97e027ac78f7e14c5acc009ce50
