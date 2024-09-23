@@ -175,7 +175,7 @@ TEST(
 
   auto expected_shape = std::vector<geo::latlng>{};
   auto leg_shape = std::vector<geo::latlng>{};
-  auto plot_point = [&leg_shape](geo::latlng const& point) {
+  auto const plot_point = [&leg_shape](geo::latlng const& point) {
     leg_shape.push_back(point);
   };
 
