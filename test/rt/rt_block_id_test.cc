@@ -173,7 +173,8 @@ TEST(rt, rt_block_id_test) {
     {
       leg_shape.clear();
 
-      fr.for_each_shape_point(nullptr, interval{stop_idx_t{2}, stop_idx_t{3 + 1}},
+      fr.for_each_shape_point(nullptr,
+                              interval{stop_idx_t{2}, stop_idx_t{3 + 1}},
                               [&leg_shape](geo::latlng const& point) {
                                 leg_shape.push_back(point);
                               });
@@ -186,13 +187,13 @@ TEST(rt, rt_block_id_test) {
     {
       leg_shape.clear();
 
-      fr.for_each_shape_point(nullptr, interval{stop_idx_t{1}, stop_idx_t{1 + 1}},
+      fr.for_each_shape_point(nullptr,
+                              interval{stop_idx_t{1}, stop_idx_t{1 + 1}},
                               [&leg_shape](geo::latlng const& point) {
                                 leg_shape.push_back(point);
                               });
 
-      auto const expected_shape =
-          std::vector{geo::latlng{2.0F, 3.0F}};
+      auto const expected_shape = std::vector{geo::latlng{2.0F, 3.0F}};
       EXPECT_EQ(expected_shape, leg_shape);
     }
   }
