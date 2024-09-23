@@ -385,7 +385,7 @@ TEST(
       }
     }
   }
-  // Mixed trips, with and without shape
+  // Multiple trips, some with and some without shape
   {
     auto const results = nigiri::test::raptor_search(
         tt, &rtt, "F", "X",
