@@ -9,8 +9,6 @@
 #include "utl/progress_tracker.h"
 #include "utl/zip.h"
 
-#include "nigiri/loader/gtfs/trip.h"
-#include "nigiri/shape.h"
 #include "nigiri/stop.h"
 #include "nigiri/types.h"
 
