@@ -142,9 +142,6 @@ struct frun : public run {
       shapes_storage const*,
       interval<stop_idx_t> const&,
       std::function<void(geo::latlng const&)> const&) const;
-  void for_each_shape_point(
-      interval<stop_idx_t> const&,
-      std::function<void(geo::latlng const&)> const&) const;
 
   void print(std::ostream&, interval<stop_idx_t> stop_range);
   friend std::ostream& operator<<(std::ostream&, frun const&);

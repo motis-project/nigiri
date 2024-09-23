@@ -378,9 +378,15 @@ void frun::for_each_shape_point(
     shapes_storage const* const shapes_data,
     interval<stop_idx_t> const& range,
     std::function<void(geo::latlng const&)> const& callback) const {
+  auto const process_stops = [&](interval<stop_idx_t> const subrange) {
+    for (auto const stop_index : subrange) {
+      auto const coordinate = (*this)[stop_index].pos();
+      callback(coordinate);
+    }
+  };
   // Full fallback
   if (shapes_data == nullptr) {
-    for_each_shape_point(range, callback);
+    process_stops(range);
     return;
   }
   // Helper functions
@@ -472,23 +478,13 @@ void frun::for_each_shape_point(
                                   current_interval.from_ - processed_stops)};
     }
   }
+  // Final trip
   auto const shape =
       shapes_data->get_shape(current_trip_index, current_interval);
   if (!shape.empty()) {
-    std::for_each(std::begin(shape), std::end(shape), callback);
-    return;
-  }
-  for_each_shape_point(range, callback);
-}
-
-void frun::for_each_shape_point(
-    interval<stop_idx_t> const& range,
-    std::function<void(geo::latlng const&)> const& callback) const {
-  assert(range.from_ < range.to_);
-  assert(stop_range_.from_ + range.to_ <= stop_range_.to_);
-  for (auto const stop_index : range) {
-    auto const coordinate = (*this)[stop_index].pos();
-    callback(coordinate);
+    process_shape(shape, true);
+  } else {
+    process_stops(interval{stop_idx_t{current_offset}, range.to_});
   }
 }
 
