@@ -1,20 +1,17 @@
 #include "nigiri/loader/gtfs/shape_prepare.h"
 
-#include <algorithm>
-
 #include "geo/latlng.h"
 #include "geo/polyline.h"
 
 #include "utl/get_or_create.h"
 #include "utl/progress_tracker.h"
-#include "utl/zip.h"
 
 #include "nigiri/stop.h"
 #include "nigiri/types.h"
 
 namespace nigiri::loader::gtfs {
 
-auto get_closest(geo::latlng coordinate,
+auto get_closest(geo::latlng const& coordinate,
                  std::span<geo::latlng const> const shape) {
   if (shape.size() < 2) {
     return 0U;
@@ -66,24 +63,21 @@ void calculate_shape_offsets(timetable const& tt,
       .out_bounds(98.F, 100.F)
       .in_high(trips.size());
 
+  auto const key_hash =
+      [](std::pair<shape_idx_t, stop_seq_t const*> const& pair) noexcept {
+        auto h = cista::BASE_HASH;
+        h = cista::hash_combine(h, cista::hashing<shape_idx_t>{}(pair.first));
+        h = cista::hash_combine(h, cista::hashing<stop_seq_t>{}(*pair.second));
+        return h;
+      };
+  auto const key_compare =
+      [](std::pair<shape_idx_t, stop_seq_t const*> const& lhs,
+         std::pair<shape_idx_t, stop_seq_t const*> const& rhs) noexcept {
+        return (lhs.first == rhs.first) && (*lhs.second == *rhs.second);
+      };
   auto shape_offsets_cache =
-      hash_map<std::pair<shape_idx_t, stop_seq_t const*>,
-               cista::pair<shape_idx_t, shape_offset_idx_t>,
-               decltype([](std::pair<shape_idx_t, stop_seq_t const*> const&
-                               pair) noexcept {
-                 auto h = cista::BASE_HASH;
-                 h = cista::hash_combine(
-                     h, cista::hashing<shape_idx_t>{}(pair.first));
-                 h = cista::hash_combine(
-                     h, cista::hashing<stop_seq_t>{}(*pair.second));
-                 return h;
-               }),
-               decltype([](std::pair<shape_idx_t, stop_seq_t const*> const& lhs,
-                           std::pair<shape_idx_t, stop_seq_t const*> const&
-                               rhs) noexcept {
-                 return (lhs.first == rhs.first) &&
-                        (*lhs.second == *rhs.second);
-               })>{};
+      hash_map<std::pair<shape_idx_t, stop_seq_t const*>, shape_offset_idx_t,
+               decltype(key_hash), decltype(key_compare)>{};
   for (auto const& trip : trips) {
     progress_tracker->increment();
     auto const trip_index = trip.trip_idx_;
@@ -93,14 +87,15 @@ void calculate_shape_offsets(timetable const& tt,
           trip_index,
           cista::pair{shape_idx_t::invalid(), shape_offset_idx_t::invalid()});
     } else {
-      auto const shape_offset_indices = utl::get_or_create(
+      auto const shape_offset_index = utl::get_or_create(
           shape_offsets_cache, std::make_pair(trip.shape_idx_, &trip.stop_seq_),
           [&]() {
             auto const shape = shapes_data.get_shape(shape_index);
             auto const offsets = split_shape(tt, shape, trip.stop_seq_);
-            return cista::pair{shape_index, shapes_data.add_offsets(offsets)};
+            return shapes_data.add_offsets(offsets);
           });
-      shapes_data.add_trip_shape_offsets(trip_index, shape_offset_indices);
+      shapes_data.add_trip_shape_offsets(
+          trip_index, cista::pair{shape_index, shape_offset_index});
     }
   }
 }
