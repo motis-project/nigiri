@@ -1,5 +1,7 @@
 #pragma once
 
+#include <cmath>
+
 #include "utl/helpers/algorithm.h"
 #include "utl/timing.h"
 
@@ -365,10 +367,10 @@ private:
           return {day, conn_end - 1};
         }
       } else {
-        auto la =
+        auto la = std::round(
             source_time + (bound_parameter_ *
                            static_cast<double>(esa[target_stop] -
-                                               target_offset - source_time));
+                                               target_offset - source_time)));
         last_arr_ = static_cast<delta_t>(std::clamp(
             la, static_cast<double>(std::numeric_limits<delta_t>::min()),
             static_cast<double>(std::numeric_limits<delta_t>::max() - 1)));

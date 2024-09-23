@@ -230,7 +230,7 @@ TEST(MeatCsa, Alpha) {
 
   auto ss = std::stringstream{};
   {
-    auto alpha = 1.13;
+    auto alpha = 1.12;
     auto state = mcsa::meat_csa_state<mcsa::dynamic_profile_set>{};
     auto meat = mcsa::meat_csa<mcsa::dynamic_profile_set>{
         ltt.tt_,   state, day_idx_t{4}, routing::all_clasz_allowed(),
@@ -244,6 +244,24 @@ TEST(MeatCsa, Alpha) {
     m::write_dot(std::cout, ltt.tt_, g, r);
     EXPECT_EQ(ss.str(), expanded_dot_graph_a_1)
         << ss.str() << "\n " << expanded_dot_graph_a_1;
+  }
+
+  {
+    auto s = std::stringstream{};
+    auto alpha = 1.12;
+    auto state = mcsa::meat_csa_state<mcsa::dynamic_profile_set>{};
+    auto meat = mcsa::meat_csa<mcsa::dynamic_profile_set>{
+        ltt.tt_,   state, day_idx_t{6}, routing::all_clasz_allowed(),
+        max_delay, alpha};
+    auto g = m::decision_graph{};
+
+    meat.execute(start_time, start_location, end_location, prf_idx, g);
+
+    auto r = m::expanded_representation{g};
+    m::write_dot(s, ltt.tt_, g, r);
+    m::write_dot(std::cout, ltt.tt_, g, r);
+    EXPECT_EQ(s.str(), expanded_dot_graph_a_1)
+        << s.str() << "\n " << expanded_dot_graph_a_1;
   }
 
   auto ss2 = std::stringstream{};
