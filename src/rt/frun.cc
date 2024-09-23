@@ -341,38 +341,6 @@ clasz frun::get_clasz() const noexcept {
   }
 }
 
-std::variant<std::span<geo::latlng const>, std::array<geo::latlng const, 2>>
-frun::get_shape(shapes_storage const* const shapes_data,
-                interval<stop_idx_t> const& segment) const {
-  assert(segment.from_ < segment.to_);
-  auto const from = (*this)[segment.from_];
-  auto const to = (*this)[segment.to_];
-  auto const trip_index = from.get_trip_idx(event_type::kDep);
-  if (shapes_data != nullptr &&
-      trip_index == to.get_trip_idx(event_type::kArr)) {
-    auto start_offset = stop_idx_t{0};
-    if (segment.from_ == 0) {
-      while (start_offset < from.stop_idx_) {
-        // Find first location on segment, i.e. having the same trip_idx_t
-        auto const next = (*this)[-(++start_offset)];
-        if (next.get_trip_idx(event_type::kDep) != trip_index) {
-          --start_offset;
-          break;
-        }
-      }
-    }
-    auto const shape = shapes_data->get_shape(
-        trip_index, interval{stop_idx_t{static_cast<std::uint16_t>(
-                                 segment.from_ + start_offset)},
-                             stop_idx_t{static_cast<std::uint16_t>(
-                                 segment.to_ + start_offset)}});
-    if (!shape.empty()) {
-      return shape;
-    }
-  }
-  return std::array<geo::latlng const, 2>{from.pos(), to.pos()};
-}
-
 void frun::for_each_shape_point(
     shapes_storage const* const shapes_data,
     interval<stop_idx_t> const& range,

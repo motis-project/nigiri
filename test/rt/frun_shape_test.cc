@@ -1,10 +1,8 @@
 #include "gtest/gtest.h"
 
 #include <algorithm>
-#include <array>
 #include <ranges>
 #include <string_view>
-#include <variant>
 #include <vector>
 
 #include "geo/latlng.h"

@@ -1,6 +1,5 @@
 #include "gtest/gtest.h"
 
-#include <variant>
 #include <vector>
 
 #include "geo/latlng.h"

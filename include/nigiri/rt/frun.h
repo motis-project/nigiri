@@ -1,10 +1,8 @@
 #pragma once
 
-#include <array>
 #include <functional>
 #include <iosfwd>
 #include <span>
-#include <variant>
 
 #include "geo/latlng.h"
 
@@ -136,8 +134,6 @@ struct frun : public run {
   trip_idx_t trip_idx() const;
   clasz get_clasz() const noexcept;
 
-  std::variant<std::span<geo::latlng const>, std::array<geo::latlng const, 2>>
-  get_shape(shapes_storage const* const, interval<stop_idx_t> const&) const;
   void for_each_shape_point(
       shapes_storage const*,
       interval<stop_idx_t> const&,
