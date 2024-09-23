@@ -3,7 +3,6 @@
 #include <filesystem>
 #include <span>
 
-#include "cista/containers/mmap_vec.h"
 #include "cista/containers/pair.h"
 
 #include "geo/latlng.h"

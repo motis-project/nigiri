@@ -25,6 +25,21 @@ mm_vecvec<Key, Value> create_storage(std::filesystem::path const& path,
           fmt::format("{}_{}_idx.bin", path.generic_string(), prefix), mode)};
 }
 
+std::pair<std::span<geo::latlng const>, shape_offset_idx_t> get_shape(
+    shapes_storage const& storage, trip_idx_t const trip_index) {
+  if (trip_index == trip_idx_t::invalid() ||
+      trip_index >= storage.trip_offset_indices_.size()) {
+    return {};
+  }
+  auto const [shape_index, offset_index] =
+      storage.trip_offset_indices_[trip_index];
+  // Reminder: shape_index is checked by 'storage.get_shape(shape_index)'
+  if (offset_index == shape_offset_idx_t::invalid()) {
+    return {};
+  }
+  return std::make_pair(storage.get_shape(shape_index), offset_index);
+}
+
 shapes_storage::shapes_storage(std::filesystem::path const& path,
                                cista::mmap::protection const mode)
     : data_{create_storage<shape_idx_t, geo::latlng>(path, "points", mode)},
@@ -41,60 +56,37 @@ std::span<geo::latlng const> shapes_storage::get_shape(
   if (shape_index == shape_idx_t::invalid() || shape_index > data_.size()) {
     return {};
   }
-  auto const shape = data_.at(shape_index);
-  return {begin(shape), end(shape)};
+  auto const shape = data_[shape_index];
+  return {std::begin(shape), std::end(shape)};
 }
 
 std::span<geo::latlng const> shapes_storage::get_shape(
     trip_idx_t const trip_index) const {
-  if (trip_index == trip_idx_t::invalid() ||
-      trip_index >= trip_offset_indices_.size()) {
-    return {};
-  }
-  auto const& [shape_index, _] = trip_offset_indices_[trip_index];
-  return get_shape(shape_index);
+  auto const [shape, _] = nigiri::get_shape(*this, trip_index);
+  return shape;
 }
 
 std::span<geo::latlng const> shapes_storage::get_shape(
     trip_idx_t const trip_index, interval<stop_idx_t> const& range) const {
-  if (trip_index == trip_idx_t::invalid() ||
-      trip_index >= trip_offset_indices_.size()) {
-    return {};
-  }
-  auto const& [shape_index, offset_index] = trip_offset_indices_[trip_index];
-  // Reminder: shape_index is checked by 'get_shape(shape_index)'
-  if (offset_index == shape_offset_idx_t::invalid()) {
-    return {};
-  }
-  auto const shape = get_shape(shape_index);
+  auto const [shape, offset_index] = nigiri::get_shape(*this, trip_index);
   if (shape.empty()) {
     return shape;
   }
-  auto const& offsets = offsets_.at(offset_index);
-  auto const from_offset = static_cast<unsigned>(offsets.at(range.from_));
-  auto const to_offset = static_cast<unsigned>(offsets.at(range.to_ - 1));
-  return shape.subspan(from_offset, to_offset - from_offset + 1);
+  auto const offsets = offsets_[offset_index];
+  auto const from = static_cast<unsigned>(offsets[range.from_]);
+  auto const to = static_cast<unsigned>(offsets[range.to_ - 1]);
+  return shape.subspan(from, to - from + 1);
 }
 
-// FIXME Mostly duplicate of 'get_shape(trip_idx_t, interval<stop_idx_t>)'
 std::pair<std::span<geo::latlng const>, int>
 shapes_storage::get_shape_with_stop_count(trip_idx_t const trip_index,
                                           stop_idx_t const from) const {
-  if (trip_index == trip_idx_t::invalid() ||
-      trip_index >= trip_offset_indices_.size()) {
-    return {};
-  }
-  auto const& [shape_index, offset_index] = trip_offset_indices_[trip_index];
-  // Reminder: shape_index is checked by 'get_shape(shape_index)'
-  if (offset_index == shape_offset_idx_t::invalid()) {
-    return {};
-  }
-  auto const shape = get_shape(shape_index);
+  auto const [shape, offset_index] = nigiri::get_shape(*this, trip_index);
   if (shape.empty()) {
-    return std::make_pair(shape, 0);
+    return {};
   }
-  auto const& offsets = offsets_.at(offset_index);
-  auto const offset = static_cast<unsigned>(offsets.at(from));
+  auto const offsets = offsets_[offset_index];
+  auto const offset = static_cast<unsigned>(offsets[from]);
   return std::make_pair(shape.subspan(offset), offsets.size() - from);
 }
 
