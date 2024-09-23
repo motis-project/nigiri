@@ -100,8 +100,6 @@ struct meat_profile_computer {
       profile_set_.set_fp_dis_to_target(fp.target(), fp.duration().count());
     }
 
-    assert(static_cast<int>(conn_end.first.v_) >= 0);
-    assert(static_cast<int>(conn_begin.first.v_) >= 0);
     auto conn = conn_end;
     auto& day = conn.first;
     auto& con_idx = conn.second;
