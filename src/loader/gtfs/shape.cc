@@ -32,20 +32,20 @@ shape_id_map_t parse_shapes(std::string_view const data,
   utl::line_range{utl::make_buf_reader(data, progress_tracker->update_fn())}  //
       | utl::csv<shape_entry>()  //
       | utl::for_each([&](shape_entry const entry) {
-          auto& state = lookup(entry.id_.val().view(), [&] {
+          auto& state = lookup(entry.id_->view(), [&] {
             auto const index = static_cast<shape_idx_t>(shapes.size());
             shapes.add_back_sized(0U);
             return shape_state{index, 0U};
           });
-          auto const seq = entry.seq_.val();
+          auto const seq = *entry.seq_;
           auto bucket = shapes[state.index_];
           if (!bucket.empty() && state.last_seq_ >= seq) {
             log(log_lvl::error, "loader.gtfs.shape",
                 "Non monotonic sequence for shape_id '{}': Sequence number {} "
                 "followed by {}",
-                entry.id_.val().to_str(), state.last_seq_, seq);
+                entry.id_->to_str(), state.last_seq_, seq);
           }
-          bucket.push_back(geo::latlng{entry.lat_.val(), entry.lon_.val()});
+          bucket.push_back(geo::latlng{*entry.lat_, *entry.lon_});
           state.last_seq_ = seq;
           state.distances_.push_back(*entry.distance_);
         });
