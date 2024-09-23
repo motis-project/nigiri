@@ -399,15 +399,14 @@ void frun::for_each_shape_point(
   auto const process_trip_stops = [&](stop_idx_t const from,
                                       trip_idx_t const current_trip_index) {
     auto stop_index = from;
-    auto next_stop = (*this)[stop_index];
-    while (true) {
-      callback(next_stop.pos());
-      next_stop = (*this)[++stop_index];
-      auto const next_trip_index = next_stop.get_trip_idx(event_type::kDep);
-      if (next_trip_index != current_trip_index) {
-        return std::make_pair(next_trip_index, stop_index - from);
-      }
-    }
+    auto run_stop = (*this)[stop_index];
+    auto next_trip_index = trip_idx_t{0};
+    do {
+      callback(run_stop.pos());
+      run_stop = (*this)[++stop_index];
+      next_trip_index = run_stop.get_trip_idx(event_type::kDep);
+    } while (next_trip_index == current_trip_index);
+    return std::make_pair(next_trip_index, stop_index - from);
   };
   // Setup
   assert(range.from_ < range.to_);
