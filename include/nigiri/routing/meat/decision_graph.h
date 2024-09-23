@@ -10,13 +10,13 @@ namespace nigiri::routing::meat {
 struct decision_graph {
   struct node {
     location_idx_t stop_id_;
-    std::vector<int> out_;
-    std::vector<int> in_;
+    vector_map<dg_arc_2idx_t, dg_arc_idx_t> out_;
+    vector_map<dg_arc_2idx_t, dg_arc_idx_t> in_;
   };
 
   struct arc {
-    int dep_node_;
-    int arr_node_;
+    dg_node_idx_t dep_node_;
+    dg_node_idx_t arr_node_;
     unixtime_t dep_time_;
     unixtime_t arr_time_;
     unixtime_t meat_;
@@ -24,24 +24,26 @@ struct decision_graph {
     double use_prob_;
   };
 
-  int node_count() const { return nodes_.size(); }
+  auto node_count() const { return nodes_.size(); }
 
-  int arc_count() const { return arcs_.size(); }
+  auto arc_count() const { return arcs_.size(); }
 
   void compute_use_probabilities(timetable const& tt,
                                  delta_t max_delay,
                                  bool g_is_sorted_by_dep_time = false);
+
 private:
   void compute_use_probabilities_on_sorted_g(timetable const& tt,
                                              delta_t max_delay);
   void compute_use_probabilities_on_unsorted_g(timetable const& tt,
                                                delta_t max_delay);
+
 public:
-  std::vector<node> nodes_;
-  std::vector<arc> arcs_;
-  int source_node_;
-  int target_node_;
-  int first_arc_;
+  vector_map<dg_node_idx_t, node> nodes_;
+  vector_map<dg_arc_idx_t, arc> arcs_;
+  dg_node_idx_t source_node_;
+  dg_node_idx_t target_node_;
+  dg_arc_idx_t first_arc_;
 };
 
 }  // namespace nigiri::routing::meat

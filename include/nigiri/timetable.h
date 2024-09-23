@@ -309,7 +309,7 @@ struct timetable {
     return locations_.names_.size();
   }
 
-  cista::base_t<transport_idx_t> n_transports() const{
+  cista::base_t<transport_idx_t> n_transports() const {
     return transport_route_.size();
   }
 
@@ -485,18 +485,21 @@ struct timetable {
 
   // connections for csa algo.
   vector_map<connection_idx_t, connection> fwd_connections_;
-  size_t n_active_connections_; //TODO remove?
+  size_t n_active_connections_;  // TODO remove?
 
-  // Trip index -> ROUNDDOWN((departure_last_conn - departure_first_conn)/24h)+1day
+  // Trip index -> ROUNDDOWN((departure_last_conn -
+  // departure_first_conn)/24h)+1day
   vector_map<transport_idx_t, day_idx_t::value_t> travel_duration_days_;
 
-  bool is_connection_active(connection_idx_t const& c, day_idx_t d) const {
-    return is_connection_active(fwd_connections_[c], d);
-  }
   bool is_connection_active(connection const& c, day_idx_t d) const {
     auto con_day_offset = c.dep_time_.days();
+    // TODO is this if needed ? raptor seems not to need it?
+    if (static_cast<int>(to_idx(d)) - con_day_offset < 0)
+    {
+      return false;
+    } 
     return bitfields_[transport_traffic_days_[c.transport_idx_]].test(
-        d.v_ - con_day_offset);
+        static_cast<std::size_t>(static_cast<int>(to_idx(d)) - con_day_offset));
   }
 
   // profile name -> profile_idx_t

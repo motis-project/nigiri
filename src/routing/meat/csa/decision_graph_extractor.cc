@@ -1,5 +1,7 @@
 #include "nigiri/routing/meat/csa/decision_graph_extractor.h"
 
+#include <cmath>
+
 #include "utl/overloaded.h"
 
 #include "nigiri/routing/journey.h"
@@ -46,16 +48,19 @@ decision_graph_extractor<ProfileSet>::extract_relevant_entries(
     location_idx_t target_stop,
     delta_t max_delay) const {
   std::vector<profile_entry const*> relevant;
-  is_enter_conn_relevant_.resize(profile_set_.n_entry_idxs());
+  is_enter_conn_relevant_.resize(
+      static_cast<bitvec::size_type>(profile_set_.n_entry_idxs()));
 
   auto on_new_relevant_entry =
       [&](std::reverse_iterator<
           std::vector<profile_entry>::const_iterator> const& e_it) {
         auto const& e = *e_it;
         auto e_bit_idx = profile_set_.global_index_of(e_it);
-        if (!is_enter_conn_relevant_[e_bit_idx]) {
+        if (!is_enter_conn_relevant_[static_cast<bitvec::size_type>(
+                e_bit_idx)]) {
           relevant.push_back(&(*e_it));
-          is_enter_conn_relevant_.set(e_bit_idx);
+          is_enter_conn_relevant_.set(
+              static_cast<bitvec::size_type>(e_bit_idx));
           std::visit(
               utl::overloaded{
                   [&](walk const& w) {
@@ -118,8 +123,11 @@ decision_graph decision_graph_extractor<ProfileSet>::operator()(
     location_idx_t target_stop,
     delta_t max_delay) const {
   if (profile_set_.is_stop_empty(source_stop)) {
-    return decision_graph{
-        {{source_stop, {}, {}}, {target_stop, {}, {}}}, {}, 0, 1, -1};
+    return decision_graph{{{source_stop, {}, {}}, {target_stop, {}, {}}},
+                          {},
+                          dg_node_idx_t{0},
+                          dg_node_idx_t{1},
+                          dg_arc_idx_t::invalid()};
   }
 
   auto entry_list = extract_relevant_entries(source_stop, source_time,
@@ -128,11 +136,11 @@ decision_graph decision_graph_extractor<ProfileSet>::operator()(
   // TODO sort entry_list by e.dep_time_? then g.arcs_ and g.nodes_[x].out_
   // are sorted by dep_time_, except the ones added by add_final_fps()
 
-  decision_graph g;
-  int node_count = 0;
+  auto g = decision_graph{};
+  auto node_count = dg_node_idx_t{0};
 
   auto discover_stop = [&](location_idx_t s) {
-    if (to_node_id_[s] == -1) {
+    if (to_node_id_[s] == dg_node_idx_t::invalid()) {
       g.nodes_.push_back({s, {}, {}});
       to_node_id_[s] = node_count++;
     }
@@ -143,9 +151,9 @@ decision_graph decision_graph_extractor<ProfileSet>::operator()(
     std::visit(
         utl::overloaded{
             [&](walk const& w) {
-              int dep_node = discover_stop(w.from_);
-              int arr_node = discover_stop(w.fp_.target());
-              int arc_id = g.arcs_.size();
+              auto dep_node = discover_stop(w.from_);
+              auto arr_node = discover_stop(w.fp_.target());
+              auto arc_id = dg_arc_idx_t{g.arcs_.size()};
               delta_t arr_time = e->dep_time_ + w.fp_.duration().count();
               g.arcs_.push_back({dep_node, arr_node, to_unix(e->dep_time_),
                                  to_unix(arr_time), to_unix(e->meat_), w.fp_,
@@ -157,16 +165,18 @@ decision_graph decision_graph_extractor<ProfileSet>::operator()(
               auto const& enter_conn = tt_.fwd_connections_[r.enter_conn_];
               auto const& exit_conn = tt_.fwd_connections_[r.exit_conn_];
 
-              int dep_node =
+              auto dep_node =
                   discover_stop(stop{enter_conn.dep_stop_}.location_idx());
-              int arr_node =
+              auto arr_node =
                   discover_stop(stop{exit_conn.arr_stop_}.location_idx());
-              int arc_id = g.arcs_.size();
+              auto arc_id = dg_arc_idx_t{g.arcs_.size()};
               delta_t arr_time =
                   e->dep_time_ +
                   (exit_conn.arr_time_ - enter_conn.dep_time_).count();
               auto [day, mam] = split(e->dep_time_);
-              day = day - enter_conn.dep_time_.days();
+              assert(enter_conn.dep_time_.days() >= 0);
+              day = static_cast<day_idx_t>(as_int(day) -
+                                           enter_conn.dep_time_.days());
               g.arcs_.push_back(
                   {dep_node, arr_node, to_unix(e->dep_time_), to_unix(arr_time),
                    to_unix(e->meat_),
@@ -186,33 +196,35 @@ decision_graph decision_graph_extractor<ProfileSet>::operator()(
   g.target_node_ = discover_stop(target_stop);
   add_final_fps(g, target_stop, g.target_node_);
 
-  g.first_arc_ = 0;
+  g.first_arc_ = dg_arc_idx_t{0};
   {
-    auto min_dep_time = g.arcs_[0].dep_time_;
-    for (auto i = 1; i < g.arc_count(); ++i)
+    auto min_dep_time = g.arcs_[dg_arc_idx_t{0}].dep_time_;
+    for (auto i = dg_arc_idx_t{1}; i < g.arc_count(); ++i)
       if (g.arcs_[i].dep_time_ < min_dep_time) {
         min_dep_time = g.arcs_[i].dep_time_;
         g.first_arc_ = i;
       }
   }
 
-  for (auto x : g.nodes_) to_node_id_[x.stop_id_] = -1;
+  for (auto x : g.nodes_) to_node_id_[x.stop_id_] = dg_node_idx_t::invalid();
 
   return g;
 }
 
 template <typename ProfileSet>
 void decision_graph_extractor<ProfileSet>::add_final_fps(
-    decision_graph& g, location_idx_t target_stop, int target_node_id) const {
+    decision_graph& g,
+    location_idx_t target_stop,
+    dg_node_idx_t target_node_id) const {
   for (auto const& n : g.nodes_) {
     auto const fp_dis_to_target = profile_set_.fp_dis_to_target_[n.stop_id_];
     if (n.stop_id_ == target_stop ||
-        fp_dis_to_target == std::numeric_limits<meat_t>::infinity()) {
+        (!std::isfinite(fp_dis_to_target) && !std::signbit(fp_dis_to_target))) {
       continue;
     }
     auto fp_dep_s = std::set<unixtime_t>{};
     auto const in_size = n.in_.size();
-    for (auto in_idx = 0U; in_idx < in_size; ++in_idx) {
+    for (auto in_idx = dg_arc_2idx_t{0}; in_idx < in_size; ++in_idx) {
       auto const a_idx = n.in_[in_idx];
       auto const& a = g.arcs_[a_idx];
       bool const add_final_footpath =
@@ -229,7 +241,7 @@ void decision_graph_extractor<ProfileSet>::add_final_fps(
         continue;
       }
 
-      auto const arc_id = g.arcs_.size();
+      auto const arc_id = dg_arc_idx_t{g.arcs_.size()};
       g.arcs_.push_back({dep_node, arr_node, dep_time, arr_time, a.meat_,
                          footpath(target_stop, to_duration(fp_dis_to_target)),
                          0.0});

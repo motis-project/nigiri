@@ -40,7 +40,7 @@ struct profile {
 
 struct static_profile_set {
   static_profile_set()
-      : fp_to_target_reset_list_end_{0}, stop_reset_list_end_{0} {};
+      : fp_to_target_reset_list_end_{0}, stop_reset_list_end_{0} {}
 
   void prepare_for_tt(timetable const& tt);
 
@@ -98,13 +98,15 @@ struct static_profile_set {
     fp_to_target_reset_list_[fp_to_target_reset_list_end_++] = l_idx;
   }
 
-  size_t n_entry_idxs() const { return entry_.size(); }
+  auto n_entry_idxs() const { return entry_.size(); }
 
   auto global_index_of(
       std::reverse_iterator<std::vector<profile_entry>::const_iterator> const&
           rit) const {
 
-    assert(&(*rit) == &entry_[rit.base() - entry_.begin() - 1]);
+    assert(
+        &(*rit) ==
+        &entry_[static_cast<unsigned long>(rit.base() - entry_.begin() - 1)]);
     return rit.base() - entry_.begin() - 1;
   }
 
@@ -122,7 +124,7 @@ struct dynamic_growth_profile_set {
       : tt_{nullptr},
         recompute_entry_amount_{true},
         fp_to_target_reset_list_end_{0},
-        stop_reset_list_end_{0} {};
+        stop_reset_list_end_{0} {}
 
   void prepare_for_tt(timetable const& tt) {
     reset();
@@ -140,7 +142,7 @@ struct dynamic_growth_profile_set {
   profile for_stop(location_idx_t stop_id) const {
     return {entry_[entry_idx_end_[stop_id].first].begin(),
             entry_[entry_idx_end_[stop_id].first].begin() +
-                entry_idx_end_[stop_id].second};
+                static_cast<long>(entry_idx_end_[stop_id].second)};
   }
 
   void reset_stop(location_idx_t stop_id) {
@@ -210,7 +212,7 @@ struct dynamic_growth_profile_set {
     }
     recompute_entry_amount_ = false;
     return n_entries - stop_reset_list_end_;
-  };
+  }
 
   void reset_fp_dis_to_target() {
     for (auto i = 0U; i < fp_to_target_reset_list_end_; ++i) {
@@ -238,7 +240,7 @@ struct dynamic_growth_profile_set {
     fp_to_target_reset_list_[fp_to_target_reset_list_end_++] = l_idx;
   }
 
-  size_t n_entry_idxs() const {
+  auto n_entry_idxs() const {
     return compute_entry_amount() + stop_reset_list_end_;
   }
 
@@ -257,12 +259,12 @@ struct dynamic_growth_profile_set {
     if (recompute_entry_amount_) {
       compute_entry_amount();
     }
-    assert(&(*rit) ==
-           &entry_[entry_idx_end_[stop_idx].first][rit.base() -
-                                entry_[entry_idx_end_[stop_idx].first].begin() -
-                                1]);
+    assert(
+        &(*rit) ==
+        &entry_[entry_idx_end_[stop_idx].first][static_cast<unsigned long>(
+            rit.base() - entry_[entry_idx_end_[stop_idx].first].begin() - 1)]);
     return rit.base() - entry_[entry_idx_end_[stop_idx].first].begin() - 1 +
-           l_start_idx_[stop_idx];
+           static_cast<long>(l_start_idx_[stop_idx]);
   }
 
   timetable const* tt_;
@@ -282,11 +284,11 @@ struct dynamic_profile_set {
       : tt_{nullptr},
         recompute_entry_amount_{true},
         fp_to_target_reset_list_end_{0},
-        stop_reset_list_end_{0} {};
+        stop_reset_list_end_{0} {}
 
   void prepare_for_tt(timetable const& tt) {
     reset();
-    
+
     tt_ = &tt;
     l_start_idx_.resize(tt.n_locations(), 0);
     fp_dis_to_target_.resize(tt.n_locations(),
@@ -346,7 +348,7 @@ struct dynamic_profile_set {
     }
     recompute_entry_amount_ = false;
     return n_entries - stop_reset_list_end_;
-  };
+  }
 
   void reset_fp_dis_to_target() {
     for (auto i = 0U; i < fp_to_target_reset_list_end_; ++i) {
@@ -374,7 +376,7 @@ struct dynamic_profile_set {
     fp_to_target_reset_list_[fp_to_target_reset_list_end_++] = l_idx;
   }
 
-  size_t n_entry_idxs() const {
+  auto n_entry_idxs() const {
     return compute_entry_amount() + stop_reset_list_end_;
   }
 
@@ -393,11 +395,10 @@ struct dynamic_profile_set {
     if (recompute_entry_amount_) {
       compute_entry_amount();
     }
-    assert(&(*rit) ==
-           &entry_[stop_idx.v_]
-                  [rit.base() - entry_[to_idx(stop_idx)].begin() - 1]);
+    assert(&(*rit) == &entry_[stop_idx.v_][static_cast<unsigned long>(
+                          rit.base() - entry_[to_idx(stop_idx)].begin() - 1)]);
     return rit.base() - entry_[to_idx(stop_idx)].begin() - 1 +
-           l_start_idx_[stop_idx];
+           static_cast<long>(l_start_idx_[stop_idx]);
   }
 
   timetable const* tt_;

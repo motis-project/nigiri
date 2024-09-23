@@ -163,6 +163,10 @@ using attribute_combination_idx_t =
     cista::strong<std::uint32_t, struct _attribute_combination>;
 using provider_idx_t = cista::strong<std::uint32_t, struct _provider_idx>;
 
+using dg_node_idx_t = cista::strong<std::uint16_t, struct _dg_node_idx>;
+using dg_arc_idx_t = cista::strong<std::uint16_t, struct _dg_arc_idx>;
+using dg_arc_2idx_t = cista::strong<std::uint16_t, struct _dg_2arc_idx>;
+
 using transport_range_t = pair<transport_idx_t, interval<stop_idx_t>>;
 
 using meat_t = double;

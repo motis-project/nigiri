@@ -21,8 +21,9 @@ public:
       : tt_{tt},
         base_{base},
         profile_set_{ps},
-        to_node_id_(tt_.n_locations(), -1) {
-    is_enter_conn_relevant_.resize(ps.n_entry_idxs());
+        to_node_id_(tt_.n_locations(), dg_node_idx_t::invalid()) {
+    is_enter_conn_relevant_.resize(
+        static_cast<bitvec::size_type>(ps.n_entry_idxs()));
   }
 
 private:
@@ -33,7 +34,7 @@ private:
       delta_t max_delay) const;
   void add_final_fps(decision_graph& g,
                      location_idx_t target_stop,
-                     int target_node_id) const;
+                     dg_node_idx_t target_node_id) const;
   int as_int(day_idx_t const d) const { return static_cast<int>(d.v_); }
   date::sys_days base() const {
     return tt_.internal_interval_days().from_ + as_int(base_) * date::days{1};
@@ -66,7 +67,7 @@ private:
   ProfileSet const& profile_set_;
   mutable std::stack<profile_entry const*> stack_;
   mutable bitvec is_enter_conn_relevant_;
-  mutable vector_map<location_idx_t, int> to_node_id_;
+  mutable vector_map<location_idx_t, dg_node_idx_t> to_node_id_;
 };
 
 template <typename ProfileSet>

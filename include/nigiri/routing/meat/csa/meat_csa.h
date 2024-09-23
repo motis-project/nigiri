@@ -42,7 +42,12 @@ struct meat_csa {
         state_{state.prepare_for_tt(tt_)},
         mpc_{tt_, state_, base_, allowed_claszes_, prf_idx_, stats_},
         dge_{tt_, base_, state_.profile_set_},
-        last_arr_{0} {}
+        last_arr_{0} {
+    assert(n_days_ >= 0);
+    assert(tt.day_idx(tt.internal_interval_days().from_) == 0 &&
+           "first day_idx of tt is not 0");
+    assert(as_int(tt.day_idx(tt.internal_interval_days().to_)) == n_days_);
+  }
 
   algo_stats_t get_stats() const { return stats_; }
 
@@ -65,19 +70,26 @@ struct meat_csa {
     auto con_begin = without_clasz_filter ? first_conn_after<false>(s_time)
                                           : first_conn_after<true>(s_time);
     if (con_begin.first == day_idx_t::invalid()) {
-      result_graph = decision_graph{
-          {{start_location, {}, {}}, {end_location, {}, {}}}, {}, 0, 1, -1};
+      result_graph =
+          decision_graph{{{start_location, {}, {}}, {end_location, {}, {}}},
+                         {},
+                         dg_node_idx_t{0},
+                         dg_node_idx_t{1},
+                         dg_arc_idx_t::invalid()};
       return;
     }
-    auto con_end =
-        without_clasz_filter
-            ? compute_safe_connection_end<false>(
-                  con_begin.second, start_location, s_time, end_location)
-            : compute_safe_connection_end<true>(
-                  con_begin.second, start_location, s_time, end_location);
+    auto con_end = without_clasz_filter
+                       ? compute_safe_connection_end<false>(
+                             con_begin, start_location, s_time, end_location)
+                       : compute_safe_connection_end<true>(
+                             con_begin, start_location, s_time, end_location);
     if (con_end.first == day_idx_t::invalid()) {
-      result_graph = decision_graph{
-          {{start_location, {}, {}}, {end_location, {}, {}}}, {}, 0, 1, -1};
+      result_graph =
+          decision_graph{{{start_location, {}, {}}, {end_location, {}, {}}},
+                         {},
+                         dg_node_idx_t{0},
+                         dg_node_idx_t{1},
+                         dg_arc_idx_t::invalid()};
       return;
     }
     reset_csa_state();
@@ -167,33 +179,42 @@ private:
       delta_t time) {  // compute_conn_begin
     auto [day, mam] = split(time);
 
-    if (day >= n_days_) {
+    if (as_int(day) >= n_days_) {
       return {day_idx_t::invalid(), connection_idx_t::invalid()};
     }
 
-    auto it = binary_find_first_true(
-        tt_.fwd_connections_.begin(), tt_.fwd_connections_.end(),
-        [&](connection const& c) { return mam.count() <= c.dep_time_.mam(); });
+    auto it = tt_.fwd_connections_.begin();
+    // assumes fist day of tt is always 0
+    if (as_int(day) < 0) {
+      day = day_idx_t{0};
+    } else {
+      it = binary_find_first_true(tt_.fwd_connections_.begin(),
+                                  tt_.fwd_connections_.end(),
+                                  [&](connection const& c) {
+                                    return mam.count() <= c.dep_time_.mam();
+                                  });
 
-    if (it == tt_.fwd_connections_.end()) {
-      it = tt_.fwd_connections_.begin();
-      day++;
-      if (day >= n_days_) {
-        return {day_idx_t::invalid(), connection_idx_t::invalid()};
+      if (it == tt_.fwd_connections_.end()) {
+        it = tt_.fwd_connections_.begin();
+        day++;
+        if (as_int(day) >= n_days_) {
+          return {day_idx_t::invalid(), connection_idx_t::invalid()};
+        }
       }
     }
+
     while (
-        !(tt_.is_connection_active(*it, day) &&
-          (WithClaszFilter
+        !((WithClaszFilter
                ? is_allowed(
                      allowed_claszes_,
                      tt_.route_clasz_[tt_.transport_route_[it->transport_idx_]])
-               : true))) {
+               : true) &&
+          tt_.is_connection_active(*it, day))) {
       it++;
       if (it == tt_.fwd_connections_.end()) {
         it = tt_.fwd_connections_.begin();
         day++;
-        if (day >= n_days_) {
+        if (as_int(day) >= n_days_) {
           return {day_idx_t::invalid(), connection_idx_t::invalid()};
         }
       }
@@ -207,34 +228,41 @@ private:
   std::pair<day_idx_t, connection_idx_t> last_conn_before(delta_t time) {
     auto [day, mam] = split(time);
 
-    if (day < 0) {
+    if (as_int(day) < 0) {
       return {day_idx_t::invalid(), connection_idx_t::invalid()};
     }
 
-    auto it = binary_find_first_true(
-        tt_.fwd_connections_.begin(), tt_.fwd_connections_.end(),
-        [&](connection const& c) { return mam.count() <= c.dep_time_.mam(); });
+    auto it = tt_.fwd_connections_.end();
+    if (as_int(day) >= n_days_) {
+      day = day_idx_t{n_days_ - 1};
+    } else {
+      it = binary_find_first_true(tt_.fwd_connections_.begin(),
+                                  tt_.fwd_connections_.end(),
+                                  [&](connection const& c) {
+                                    return mam.count() <= c.dep_time_.mam();
+                                  });
 
-    if (it == tt_.fwd_connections_.begin()) {
-      it = tt_.fwd_connections_.end();
-      --day;
-      if (day < 0) {
-        return {day_idx_t::invalid(), connection_idx_t::invalid()};
+      if (it == tt_.fwd_connections_.begin()) {
+        it = tt_.fwd_connections_.end();
+        --day;
+        if (as_int(day) < 0) {
+          return {day_idx_t::invalid(), connection_idx_t::invalid()};
+        }
       }
     }
     --it;
 
     while (
-        !(tt_.is_connection_active(*it, day) &&
-          (WithClaszFilter
+        !((WithClaszFilter
                ? is_allowed(
                      allowed_claszes_,
                      tt_.route_clasz_[tt_.transport_route_[it->transport_idx_]])
-               : true))) {
+               : true) &&
+          tt_.is_connection_active(*it, day))) {
       if (it == tt_.fwd_connections_.begin()) {
         it = tt_.fwd_connections_.end();
         --day;
-        if (day < 0) {
+        if (as_int(day) < 0) {
           return {day_idx_t::invalid(), connection_idx_t::invalid()};
         }
       }
@@ -247,7 +275,7 @@ private:
 
   template <bool WithClaszFilter>
   std::pair<day_idx_t, connection_idx_t> compute_safe_connection_end(
-      connection_idx_t conn_begin,
+      std::pair<day_idx_t, connection_idx_t> const& conn_begin,
       location_idx_t source_stop,
       delta_t source_time,
       location_idx_t target_stop) {
@@ -256,17 +284,20 @@ private:
     auto& trip_first_con = state_.trip_first_con_;
     update_arr_times(esa, source_time, source_stop,
                      stats_.esa_n_update_arr_time_);
-    auto [day, mam] = split(source_time);
+    // TODO remove
+    // auto [day, mam] = split(source_time);
 
     auto constexpr extra_delay = 1;
     delta_t const target_offset =
         tt_.locations_.transfer_time_[target_stop].count() + max_delay_ +
         extra_delay;
 
-    auto conn_end = conn_begin;
+    auto conn_end = conn_begin.second;
+    auto day = conn_begin.first;
+    assert(as_int(day) >= 0);
     auto const* conn = &tt_.fwd_connections_[conn_end];
     auto conn_dep_time = tt_to_delta(day, conn->dep_time_.mam());
-    while (day < n_days_ &&
+    while (as_int(day) < n_days_ &&
            conn_dep_time - source_time < kMaxTravelTime.count() &&
            esa[target_stop] > conn_dep_time + target_offset) {
       stats_.esa_n_connections_scanned_++;
@@ -282,14 +313,15 @@ private:
                                 [tt_.transport_route_[conn->transport_idx_]])
                : true);
 
-      if (tt_.is_connection_active(*conn, day) && (via_trip || via_station)) {
+      if ((via_trip || via_station) && tt_.is_connection_active(*conn, day)) {
         if (!via_trip) {
           trip_first_con[conn->transport_idx_] = conn->trip_con_idx_;
         }
         if (stop{conn->arr_stop_}.out_allowed()) {
-          auto const conn_arr_time = tt_to_delta(
-              day + (conn->arr_time_.days() - conn->dep_time_.days()),
-              conn->arr_time_.mam());
+          auto const conn_arr_time =
+              tt_to_delta(day + static_cast<day_idx_t>(conn->arr_time_.days() -
+                                                       conn->dep_time_.days()),
+                          conn->arr_time_.mam());
           auto const c_arr_stop_idx = stop{conn->arr_stop_}.location_idx();
           auto const conn_max_arr_time =
               clamp(conn_arr_time +
@@ -317,7 +349,7 @@ private:
     } else {
       if (bound_parameter_ == std::numeric_limits<double>::max()) {
         last_arr_ = std::numeric_limits<delta_t>::max();
-        return {day_idx_t{n_days_},
+        return {day_idx_t{n_days_ - 1},
                 connection_idx_t{tt_.fwd_connections_.size() - 1}};
       } else if (bound_parameter_ == 1.0) {
         last_arr_ = esa[target_stop];
@@ -357,6 +389,8 @@ private:
       std::pair<day_idx_t, connection_idx_t> const& conn_end,
       location_idx_t source_stop,
       delta_t source_time) {
+    assert(as_int(conn_begin.first) >= 0);
+    assert(as_int(conn_end.first) >= 0);
     auto& ea = state_.ea_;
     auto& trip_first_con = state_.trip_first_con_;
 
@@ -380,13 +414,14 @@ private:
                      tt_.route_clasz_[tt_.transport_route_[c.transport_idx_]])
                : true);
 
-      if (tt_.is_connection_active(c, day) && (via_trip || via_station)) {
+      if ((via_trip || via_station) && tt_.is_connection_active(c, day)) {
         if (!via_trip) {
           trip_first_con[c.transport_idx_] = c.trip_con_idx_;
         }
         if (stop{c.arr_stop_}.out_allowed()) {
           auto const c_arr_time =
-              tt_to_delta(day + (c.arr_time_.days() - c.dep_time_.days()),
+              tt_to_delta(day + static_cast<day_idx_t>(c.arr_time_.days() -
+                                                       c.dep_time_.days()),
                           c.arr_time_.mam());
           update_arr_times(ea, c_arr_time, stop{c.arr_stop_}.location_idx(),
                            stats_.ea_n_update_arr_time_);

@@ -35,11 +35,14 @@ void build_csa_connections(timetable& tt) {
       for (size_t nth_tran_of_r = 0; nth_tran_of_r < n_transports;
            ++nth_tran_of_r) {
         auto const tran_idx = transport_range[nth_tran_of_r];
-        auto const dep_time_idx = stop_time_range.from_ +
-                                  n_transports * (stop_idx * 2) + nth_tran_of_r;
-        auto const arr_time_idx = stop_time_range.from_ +
-                                  n_transports * ((stop_idx + 1) * 2 - 1) +
-                                  nth_tran_of_r;
+        auto const dep_time_idx =
+            static_cast<nigiri::vector<nigiri::delta>::access_type>(
+                stop_time_range.from_ + n_transports * (stop_idx * 2) +
+                nth_tran_of_r);
+        auto const arr_time_idx =
+            static_cast<nigiri::vector<nigiri::delta>::access_type>(
+                stop_time_range.from_ +
+                n_transports * ((stop_idx + 1) * 2 - 1) + nth_tran_of_r);
         auto const& dep_time = tt.route_stop_times_[dep_time_idx];
         auto const& arr_time = tt.route_stop_times_[arr_time_idx];
 
@@ -52,11 +55,6 @@ void build_csa_connections(timetable& tt) {
   }
   assert(num_con == tt.fwd_connections_.size());
 
-  // sort connections
-  // utl::sort(tt.fwd_connections_, [&](auto const& a, auto const& b) {
-  //  return tt.route_stop_times_[a.dep_time_idx_].mam() <
-  //         tt.route_stop_times_[b.dep_time_idx_].mam();
-  //});
   utl::sort(tt.fwd_connections_, [](auto const& a, auto const& b) {
     return a.dep_time_.mam() < b.dep_time_.mam();
   });
@@ -67,8 +65,9 @@ void build_csa_connections(timetable& tt) {
         tt.route_location_seq_[tt.transport_route_[t_idx]].size() - 2);
     delta diff = tt.event_mam(t_idx, last_dep_stop_idx, event_type::kDep) -
                  tt.event_mam(t_idx, stop_idx_t{0}, event_type::kDep);
-    tt.travel_duration_days_.push_back(diff.days() + 1);
-    // tt.travel_duration_days_[t_idx] = diff.days()+1;
+    assert(diff.days() >= 0);
+    auto days = static_cast<uint16_t>(diff.days());
+    tt.travel_duration_days_.push_back(days + 1);
   }
 }
 
