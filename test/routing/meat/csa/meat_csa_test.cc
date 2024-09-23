@@ -284,6 +284,46 @@ TEST(MeatCsa, Alpha) {
         << ss3.str() << "\n " << expanded_dot_graph_a_1;
   }
 
+  auto ss4 = std::stringstream{};
+  {
+    auto alpha = std::numeric_limits<double>::max();
+    auto state = mcsa::meat_csa_state<mcsa::dynamic_profile_set>{};
+    auto meat = mcsa::meat_csa<mcsa::dynamic_profile_set>{
+        ltt.tt_,   state, day_idx_t{4}, routing::all_clasz_allowed(),
+        max_delay, alpha};
+    auto g = m::decision_graph{};
+
+    meat.execute(start_time, start_location, end_location, prf_idx, g);
+
+    auto r = m::expanded_representation{g};
+
+    m::write_dot(ss4, ltt.tt_, g, r);
+    m::write_dot(std::cout, ltt.tt_, g, r);
+    EXPECT_EQ(ss4.str(), expanded_dot_graph_a_2)
+        << ss4.str() << "\n " << expanded_dot_graph_a_2;
+  }
+
+  auto ss5 = std::stringstream{};
+  {
+    auto alpha = 1000.0;
+    auto state = mcsa::meat_csa_state<mcsa::dynamic_profile_set>{};
+    auto meat = mcsa::meat_csa<mcsa::dynamic_profile_set>{
+        ltt.tt_,   state, day_idx_t{4}, routing::all_clasz_allowed(),
+        max_delay, alpha};
+    auto g = m::decision_graph{};
+
+    meat.execute(start_time, start_location, end_location, prf_idx, g);
+
+    auto r = m::expanded_representation{g};
+
+    m::write_dot(ss5, ltt.tt_, g, r);
+    m::write_dot(std::cout, ltt.tt_, g, r);
+    EXPECT_EQ(ss5.str(), expanded_dot_graph_a_2)
+        << ss5.str() << "\n " << expanded_dot_graph_a_2;
+  }
+
   EXPECT_EQ(ss.str(), ss3.str());
+  EXPECT_EQ(ss2.str(), ss4.str());
+  EXPECT_EQ(ss2.str(), ss5.str());
   EXPECT_NE(ss.str(), ss2.str());
 }

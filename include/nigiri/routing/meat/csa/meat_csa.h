@@ -348,9 +348,10 @@ private:
       return {day_idx_t::invalid(), connection_idx_t::invalid()};
     } else {
       if (bound_parameter_ == std::numeric_limits<double>::max()) {
-        last_arr_ = std::numeric_limits<delta_t>::max();
-        return {day_idx_t{n_days_ - 1},
-                connection_idx_t{tt_.fwd_connections_.size() - 1}};
+        last_arr_ = std::numeric_limits<delta_t>::max()-1;
+        return last_conn_before<WithClaszFilter>(last_arr_);
+        //return {day_idx_t{n_days_ - 1},
+        //        connection_idx_t{tt_.fwd_connections_.size() - 1}};
       } else if (bound_parameter_ == 1.0) {
         last_arr_ = esa[target_stop];
         if (conn_end == connection_idx_t{0}) {
@@ -359,10 +360,10 @@ private:
           return {day, conn_end - 1};
         }
       } else {
-        last_arr_ =
-            source_time + static_cast<delta_t>(
-                              bound_parameter_ *
-                              (esa[target_stop] - target_offset - source_time));
+        auto la = source_time + (bound_parameter_ * static_cast<double>(esa[target_stop] - target_offset - source_time));
+        last_arr_ = static_cast<delta_t>(
+      std::clamp(la, static_cast<double>(std::numeric_limits<delta_t>::min()),
+                 static_cast<double>(std::numeric_limits<delta_t>::max()-1)));           
         return last_conn_before<WithClaszFilter>(last_arr_);
       }
     }
