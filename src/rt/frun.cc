@@ -438,13 +438,13 @@ void frun::for_each_shape_point(
     auto const [shape, stops] = shapes_data->get_shape_with_stop_count(
         current_trip_index, current_interval.from_);
     process_shape(shape, false);
-    auto const offset_adjustment = (current_offset == range.from_) ? stops : stops - 1;
+    auto const offset_adjustment = stops - 1;
     current_offset += offset_adjustment;
     current_trip_index =
         (*this)[static_cast<stop_idx_t>(current_offset)].get_trip_idx(
             event_type::kDep);
     current_interval = interval{
-        stop_idx_t{0}, static_cast<stop_idx_t>(current_interval.to_ - offset_adjustment)};
+        stop_idx_t{0}, static_cast<stop_idx_t>(current_interval.to_ - current_interval.from_ - offset_adjustment)};
   }
   auto const shape =
       shapes_data->get_shape(current_trip_index, current_interval);
