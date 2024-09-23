@@ -34,6 +34,7 @@ void read_stop_times(timetable& tt,
     utl::csv_col<utl::cstr, UTL_NAME("stop_headsign")> stop_headsign_;
     utl::csv_col<int, UTL_NAME("pickup_type")> pickup_type_;
     utl::csv_col<int, UTL_NAME("drop_off_type")> drop_off_type_;
+    utl::csv_col<double, UTL_NAME("shape_dist_traveled")> distance_;
   };
 
   auto const timer = scoped_timer{"read stop times"};
@@ -91,6 +92,7 @@ void read_stop_times(timetable& tt,
                                      .value());
           t->event_times_.emplace_back(
               stop_events{.arr_ = arrival_time, .dep_ = departure_time});
+          t->distance_traveled_.emplace_back(*s.distance_);
 
           if (!s.stop_headsign_->empty()) {
             t->stop_headsigns_.resize(t->seq_numbers_.size(),

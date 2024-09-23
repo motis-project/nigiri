@@ -4,6 +4,7 @@
 #include "geo/polyline.h"
 
 #include "utl/get_or_create.h"
+#include "utl/pairwise.h"
 #include "utl/progress_tracker.h"
 
 #include "nigiri/stop.h"
@@ -55,9 +56,36 @@ std::vector<shape_offset_t> split_shape(
   return offsets;
 }
 
+auto get_shape_distance_map(shape_id_map_t const& shape_states) {
+  auto shape_distances =
+      hash_map<shape_idx_t,
+               decltype(shape_id_map_t::value_type::second_type::distances_)
+                   const*>{};
+  auto const are_distances = [](std::ranges::range auto const& distances) {
+    if (distances.empty()) {
+      return false;
+    }
+    for (auto const [previous, next] : utl::pairwise(distances)) {
+      if (previous >= next) {
+        return false;
+      }
+    }
+    return true;
+  };
+  for (auto const& [_, state] : shape_states) {
+    if (are_distances(state.distances_)) {
+      shape_distances[state.index_] = &state.distances_;
+    }
+  }
+  return shape_distances;
+}
+
 void calculate_shape_offsets(timetable const& tt,
                              shapes_storage& shapes_data,
-                             vector_map<gtfs_trip_idx_t, trip> const& trips) {
+                             vector_map<gtfs_trip_idx_t, trip> const& trips,
+                             shape_id_map_t const& shape_states) {
+  auto const shapes_distances = get_shape_distance_map(shape_states);
+
   auto const progress_tracker = utl::get_active_progress_tracker();
   progress_tracker->status("Calculating shape offsets")
       .out_bounds(98.F, 100.F)
@@ -82,6 +110,11 @@ void calculate_shape_offsets(timetable const& tt,
     progress_tracker->increment();
     auto const trip_index = trip.trip_idx_;
     auto const shape_index = trip.shape_idx_;
+    auto const shape_distances = shapes_distances.find(shape_index);
+    if (shape_distances != std::end(shapes_distances)) {
+      // TODO Split by distance
+      continue;
+    }
     if (shape_index == shape_idx_t::invalid() || trip.stop_seq_.size() < 2U) {
       shapes_data.add_trip_shape_offsets(
           trip_index,

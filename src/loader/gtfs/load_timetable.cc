@@ -132,9 +132,9 @@ void load_timetable(loader_config const& config,
       if (t.requires_sorting_) {
         t.stop_headsigns_.resize(t.seq_numbers_.size());
         std::tie(t.seq_numbers_, t.stop_seq_, t.event_times_,
-                 t.stop_headsigns_) =
+                 t.stop_headsigns_, t.distance_traveled_) =
             sort_by(t.seq_numbers_, t.stop_seq_, t.event_times_,
-                    t.stop_headsigns_);
+                    t.stop_headsigns_, t.distance_traveled_);
       }
     }
   }
@@ -261,7 +261,7 @@ void load_timetable(loader_config const& config,
                               train_nr, stop_seq_numbers);
     }
     if (shapes_data != nullptr) {
-      calculate_shape_offsets(tt, *shapes_data, trip_data.data_);
+      calculate_shape_offsets(tt, *shapes_data, trip_data.data_, shape_indices);
     }
 
     auto const timer = scoped_timer{"loader.gtfs.routes.build"};

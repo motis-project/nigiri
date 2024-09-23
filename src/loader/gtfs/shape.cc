@@ -19,6 +19,7 @@ shape_id_map_t parse_shapes(std::string_view const data,
     utl::csv_col<double, UTL_NAME("shape_pt_lat")> lat_;
     utl::csv_col<double, UTL_NAME("shape_pt_lon")> lon_;
     utl::csv_col<std::size_t, UTL_NAME("shape_pt_sequence")> seq_;
+    utl::csv_col<double, UTL_NAME("shape_dist_traveled")> distance_;
   };
 
   auto states = shape_id_map_t{};
@@ -46,6 +47,7 @@ shape_id_map_t parse_shapes(std::string_view const data,
           }
           bucket.push_back(geo::latlng{entry.lat_.val(), entry.lon_.val()});
           state.last_seq_ = seq;
+          state.distances_.push_back(*entry.distance_);
         });
   return states;
 }

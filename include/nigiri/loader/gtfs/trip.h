@@ -99,6 +99,7 @@ struct trip {
   std::vector<std::uint16_t> seq_numbers_;
   std::vector<stop_events> event_times_;
   std::vector<trip_direction_idx_t> stop_headsigns_;
+  std::vector<double> distance_traveled_;
 
   std::optional<std::vector<frequency>> frequency_;
   bool requires_interpolation_{false};
