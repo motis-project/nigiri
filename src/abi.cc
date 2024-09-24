@@ -175,13 +175,11 @@ nigiri_route_t* nigiri_get_route(const nigiri_timetable_t* t, uint32_t idx) {
   auto stops = t->tt->route_location_seq_[ridx];
   auto route = new nigiri_route_t;
   auto const n_stops = stops.size();
+  route->stops = new nigiri_route_stop_t[n_stops];
   if (n_stops > 0) {
-    auto route_stops = new nigiri_route_stop_t[n_stops];
-    std::memcpy(route_stops, &stops.front(),
+    std::memcpy(route->stops, &stops.front(),
                 sizeof(nigiri_route_stop_t) * n_stops);
-    route->stops = route_stops;
   }
-
   route->n_stops = static_cast<uint16_t>(n_stops);
   route->clasz =
       static_cast<uint16_t>(t->tt->route_section_clasz_[ridx].front());
@@ -213,8 +211,8 @@ nigiri_location_t* nigiri_get_location_with_footpaths(
                        ? t->tt->locations_.footpaths_in_[0][lidx]
                        : t->tt->locations_.footpaths_out_[0][lidx];
   auto const n_footpaths = footpaths.size();
+  location->footpaths = new nigiri_footpath_t[n_footpaths];
   if (n_footpaths > 0) {
-    location->footpaths = new nigiri_footpath_t[n_footpaths];
     std::memcpy(location->footpaths, &footpaths.front(),
                 sizeof(nigiri_footpath_t) * n_footpaths);
   }
@@ -232,6 +230,7 @@ nigiri_location_t* nigiri_get_location(const nigiri_timetable_t* t,
 }
 
 void nigiri_destroy_location(const nigiri_location_t* location) {
+  delete[] location->footpaths;
   delete location;
 }
 
