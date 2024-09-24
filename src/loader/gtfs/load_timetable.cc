@@ -13,6 +13,7 @@
 
 #include "wyhash.h"
 
+#include "nigiri/loader/gtfs/booking_rule.h"
 #include "nigiri/loader/get_index.h"
 #include "nigiri/loader/gtfs/agency.h"
 #include "nigiri/loader/gtfs/calendar.h"
@@ -118,6 +119,7 @@ void load_timetable(loader_config const& config,
   auto const shape_indices =
       (shapes != nullptr) ? parse_shapes(load(kShapesFile).data(), *shapes)
                           : shape_id_map_t{};
+  auto booking_rules = read_booking_rule(load(kBookingRulesFile).data());
   auto trip_data =
       read_trips(tt, routes, service, shape_indices, load(kTripsFile).data(),
                  config.bikes_allowed_default_);

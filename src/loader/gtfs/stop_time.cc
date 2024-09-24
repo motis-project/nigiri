@@ -30,7 +30,13 @@ void read_stop_times(timetable& tt,
     utl::csv_col<utl::cstr, UTL_NAME("arrival_time")> arrival_time_;
     utl::csv_col<utl::cstr, UTL_NAME("departure_time")> departure_time_;
     utl::csv_col<utl::cstr, UTL_NAME("stop_id")> stop_id_;
+    //utl::csv_col<utl::cstr, UTL_NAME("location_group_id")> location_group_id_; //TODO Only in swiss data
+    //utl::csv_col<utl::cstr, UTL_NAME("location_id")> location_id_; //TODO Only in swiss data
     utl::csv_col<std::uint16_t, UTL_NAME("stop_sequence")> stop_sequence_;
+    utl::csv_col<utl::cstr, UTL_NAME("start_pickup_drop_off_window")> start_pickup_drop_off_window_;
+    utl::csv_col<utl::cstr, UTL_NAME("end_pickup_drop_off_window")> end_pickup_drop_off_window_;
+    utl::csv_col<utl::cstr, UTL_NAME("pickup_booking_rule_id")> pickup_booking_rule_id_;
+    utl::csv_col<utl::cstr, UTL_NAME("drop_off_booking_rule_id")> drop_off_booking_rule_id_;
     utl::csv_col<utl::cstr, UTL_NAME("stop_headsign")> stop_headsign_;
     utl::csv_col<int, UTL_NAME("pickup_type")> pickup_type_;
     utl::csv_col<int, UTL_NAME("drop_off_type")> drop_off_type_;
@@ -77,8 +83,8 @@ void read_stop_times(timetable& tt,
         try {
           auto const arrival_time = hhmm_to_min(*s.arrival_time_);
           auto const departure_time = hhmm_to_min(*s.departure_time_);
-          auto const in_allowed = *s.pickup_type_ != 1;
-          auto const out_allowed = *s.drop_off_type_ != 1;
+          auto const in_allowed = *s.pickup_type_ != 1; // TODO rather type == 0, so it is regualr traffic
+          auto const out_allowed = *s.drop_off_type_ != 1; // TODO rather type == 0, so it is regualr traffic
 
           t->requires_interpolation_ |= arrival_time == kInterpolate;
           t->requires_interpolation_ |= departure_time == kInterpolate;

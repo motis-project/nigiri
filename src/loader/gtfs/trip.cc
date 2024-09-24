@@ -267,6 +267,7 @@ trip_data read_trips(
     utl::csv_col<utl::cstr, UTL_NAME("block_id")> block_id_;
     utl::csv_col<utl::cstr, UTL_NAME("shape_id")> shape_id_;
     utl::csv_col<std::uint8_t, UTL_NAME("bikes_allowed")> bikes_allowed_;
+    //utl::csv_col<std::uint8_t, UTL_NAME("wheelchair_accessible")> wheelchair_accessible_; //TODO
   };
 
   nigiri::scoped_timer const timer{"read trips"};
