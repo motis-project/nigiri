@@ -72,11 +72,13 @@ nigiri_timetable_t* nigiri_load_from_dir(nigiri::loader::dir const& d,
                             static_cast<time_t>(to_ts)))};
 
   nigiri::loader::register_special_stations(*t->tt);
+
   auto local_bitfield_indices =
       nigiri::hash_map<nigiri::bitfield, nigiri::bitfield_idx_t>{};
-  auto config = nigiri::loader::loader_config{};
-  config.link_stop_distance_ = link_stop_distance;
-  (*c)->load(config, src, d, *t->tt, local_bitfield_indices, nullptr, nullptr);
+
+  (*c)->load({.link_stop_distance_ = link_stop_distance,
+              .default_tz_ = "Europe/Berlin"},
+             src, d, *t->tt, local_bitfield_indices, nullptr, nullptr);
   nigiri::loader::finalize(*t->tt);
 
   t->rtt = std::make_shared<nigiri::rt_timetable>(
@@ -173,9 +175,10 @@ nigiri_route_t* nigiri_get_route(const nigiri_timetable_t* t, uint32_t idx) {
   auto stops = t->tt->route_location_seq_[ridx];
   auto const n_stops = stops.size();
   auto route_stops = new nigiri_route_stop_t[n_stops];
-  std::memcpy(route_stops, &stops.front(),
-              sizeof(nigiri_route_stop_t) * n_stops);
-
+  if (n_stops > 0) {
+    std::memcpy(route_stops, &stops.front(),
+                sizeof(nigiri_route_stop_t) * n_stops);
+  }
   auto route = new nigiri_route_t;
 
   route->stops = route_stops;
@@ -211,8 +214,10 @@ nigiri_location_t* nigiri_get_location_with_footpaths(
                        : t->tt->locations_.footpaths_out_[0][lidx];
   auto const n_footpaths = footpaths.size();
   location->footpaths = new nigiri_footpath_t[n_footpaths];
-  std::memcpy(location->footpaths, &footpaths.front(),
-              sizeof(nigiri_footpath_t) * n_footpaths);
+  if (n_footpaths > 0) {
+    std::memcpy(location->footpaths, &footpaths.front(),
+                sizeof(nigiri_footpath_t) * n_footpaths);
+  }
   location->n_footpaths = static_cast<uint32_t>(n_footpaths);
   location->parent =
       l.parent_ == nigiri::location_idx_t::invalid()
