@@ -131,8 +131,8 @@ void load_timetable(loader_config const& config,
     for (auto& t : trip_data.data_) {
       if (t.requires_sorting_) {
         t.stop_headsigns_.resize(t.seq_numbers_.size());
-        std::tie(t.seq_numbers_, t.stop_seq_, t.event_times_,
-                 t.stop_headsigns_, t.distance_traveled_) =
+        std::tie(t.seq_numbers_, t.stop_seq_, t.event_times_, t.stop_headsigns_,
+                 t.distance_traveled_) =
             sort_by(t.seq_numbers_, t.stop_seq_, t.event_times_,
                     t.stop_headsigns_, t.distance_traveled_);
       }
