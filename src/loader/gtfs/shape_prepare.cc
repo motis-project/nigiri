@@ -64,12 +64,19 @@ std::vector<shape_offset_t> split_shape_by_offsets(
   auto offsets = std::vector<shape_offset_t>{};
   offsets.reserve(stops.size());
   auto last = std::begin(shape);
+  auto const get_closest = [&](auto const candidate, auto const stop) {
+    if (candidate == std::end(shape)) {
+      return candidate - 1;
+    } else if (candidate == last) {
+      return candidate;
+    } else {
+      return (stop - *(candidate - 1) < *candidate - stop) ? candidate - 1
+                                                           : candidate;
+    }
+  };
   for (auto const& stop : stops) {
     auto const candidate = std::lower_bound(last, std::end(shape), stop);
-    auto const closest =
-        (candidate > last && (stop - *(candidate - 1)) < *candidate - stop)
-            ? candidate - 1
-            : candidate;
+    auto const closest = get_closest(candidate, stop);
     auto const offset = std::distance(std::begin(shape), closest);
     offsets.push_back(shape_offset_t{offset});
   }
