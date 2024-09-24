@@ -90,6 +90,7 @@ ROUTE_1,SERVICE_1,TRIP_7,E,BLOCK_5,SHAPE_2,
 ROUTE_1,SERVICE_1,TRIP_8,E,BLOCK_5,,
 ROUTE_1,SERVICE_1,TRIP_9,E,BLOCK_5,,
 ROUTE_1,SERVICE_1,TRIP_10,E,BLOCK_5,SHAPE_6,
+ROUTE_1,SERVICE_1,TRIP_11,E,BLOCK_6,SHAPE_7,
 
 # shapes.txt
 "shape_id","shape_pt_lat","shape_pt_lon","shape_pt_sequence","shape_dist_traveled"
@@ -133,6 +134,13 @@ SHAPE_6,6.5,2.5,2,
 SHAPE_6,7.0,2.0,3,
 SHAPE_6,6.5,1.5,4,
 SHAPE_6,7.0,1.0,5,
+SHAPE_7,1.0,1.0,0,0.0
+SHAPE_7,1.5,1.5,1,0.7
+SHAPE_7,2.0,2.0,2,1.4
+SHAPE_7,2.5,2.5,3,2.1
+SHAPE_7,3.0,3.0,4,2.9
+SHAPE_7,3.5,3.5,5,3.5
+SHAPE_7,4.0,4.0,6,4.2
 
 # stop_times.txt
 trip_id,arrival_time,departure_time,stop_id,stop_sequence,pickup_type,drop_off_type,shape_dist_traveled
@@ -167,6 +175,10 @@ TRIP_9,16:00:00,16:00:00,V,2,0,0,
 TRIP_10,17:00:00,17:00:00,V,1,0,0,
 TRIP_10,18:00:00,18:00:00,W,2,0,0,
 TRIP_10,19:00:00,19:00:00,X,3,0,0,
+TRIP_11,10:00:00,10:00:00,A,1,0,0,0.00
+TRIP_11,11:00:00,11:00:00,M,2,0,0,1.41
+TRIP_11,12:00:00,12:00:00,N,3,0,0,2.83
+TRIP_11,13:00:00,13:00:00,O,4,0,0,4.24
 
 )"sv;
 
@@ -504,6 +516,33 @@ TEST(
           geo::latlng{3.0F, 3.5F}, geo::latlng{2.5F, 3.0F},
           geo::latlng{3.0F, 3.0F},
       };
+      EXPECT_EQ(expected_shape, leg_shape);
+    }
+  }
+  // Trip with not exactly matching distances traveled
+  {
+    // Create run
+    transit_realtime::TripDescriptor td;
+    td.set_trip_id("TRIP_11");
+    auto const [r, t] = rt::gtfsrt_resolve_run(
+        date::sys_days{2024_y / January / 1}, tt, rtt, source_idx_t{0}, td);
+    ASSERT_TRUE(r.valid());
+    // Create full run
+    auto const full_run = rt::frun{tt, &rtt, r};
+
+    // M (shape < stop_times) → N (stop_times < shape)
+    {
+      leg_shape.clear();
+
+      full_run.for_each_shape_point(
+          &shapes_data, interval{stop_idx_t{1}, stop_idx_t{2 + 1}}, plot_point);
+
+      expected_shape = {
+          geo::latlng{2.0F, 2.0F},
+          geo::latlng{2.5F, 2.5F},
+          geo::latlng{3.0F, 3.0F},
+      };
+
       EXPECT_EQ(expected_shape, leg_shape);
     }
   }
