@@ -1,5 +1,8 @@
 #include "nigiri/loader/gtfs/shape_prepare.h"
 
+#include <algorithm>
+#include <iterator>
+
 #include "geo/latlng.h"
 #include "geo/polyline.h"
 
@@ -56,24 +59,45 @@ std::vector<shape_offset_t> split_shape(
   return offsets;
 }
 
+std::vector<shape_offset_t> split_shape_by_offsets(
+    std::vector<double> const& stops, std::vector<double> const& shape) {
+  auto offsets = std::vector<shape_offset_t>{};
+  offsets.reserve(stops.size());
+  auto last = std::begin(shape);
+  for (auto const& stop : stops) {
+    auto const candidate = std::lower_bound(last, std::end(shape), stop);
+    auto const closest =
+        (candidate > last && (stop - *(candidate - 1)) < *candidate - stop)
+            ? candidate - 1
+            : candidate;
+    auto const offset = std::distance(std::begin(shape), closest);
+    offsets.push_back(shape_offset_t{offset});
+  }
+  return offsets;
+}
+
+bool is_monotonic_distances(std::ranges::range auto const& distances) {
+  if (distances.empty()) {
+    return false;
+  }
+  auto const first = *std::begin(distances);
+  if (first != 0.0) {
+    return false;
+  }
+  auto const pairs = utl::pairwise(distances);
+  return std::all_of(std::begin(pairs), std::end(pairs), [](auto const pair) {
+    auto const [previous, next] = pair;
+    return previous < next;
+  });
+};
+
 auto get_shape_distance_map(shape_id_map_t const& shape_states) {
   auto shape_distances =
       hash_map<shape_idx_t,
                decltype(shape_id_map_t::value_type::second_type::distances_)
                    const*>{};
-  auto const are_distances = [](std::ranges::range auto const& distances) {
-    if (distances.empty()) {
-      return false;
-    }
-    for (auto const [previous, next] : utl::pairwise(distances)) {
-      if (previous >= next) {
-        return false;
-      }
-    }
-    return true;
-  };
   for (auto const& [_, state] : shape_states) {
-    if (are_distances(state.distances_)) {
+    if (is_monotonic_distances(state.distances_)) {
       shape_distances[state.index_] = &state.distances_;
     }
   }
@@ -110,10 +134,16 @@ void calculate_shape_offsets(timetable const& tt,
     progress_tracker->increment();
     auto const trip_index = trip.trip_idx_;
     auto const shape_index = trip.shape_idx_;
-    auto const shape_distances = shapes_distances.find(shape_index);
-    if (shape_distances != std::end(shapes_distances)) {
-      // TODO Split by distance
-      continue;
+    if (is_monotonic_distances(trip.distance_traveled_)) {
+      auto const shape_distances = shapes_distances.find(shape_index);
+      if (shape_distances != std::end(shapes_distances)) {
+        auto const offsets = split_shape_by_offsets(trip.distance_traveled_,
+                                                    *shape_distances->second);
+        auto const shape_offset_index = shapes_data.add_offsets(offsets);
+        shapes_data.add_trip_shape_offsets(
+            trip_index, cista::pair{shape_index, shape_offset_index});
+        continue;
+      }
     }
     if (shape_index == shape_idx_t::invalid() || trip.stop_seq_.size() < 2U) {
       shapes_data.add_trip_shape_offsets(
