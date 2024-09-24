@@ -56,7 +56,6 @@ nigiri_timetable_t* nigiri_load_from_dir(nigiri::loader::dir const& d,
       std::make_unique<nigiri::loader::hrd::hrd_5_20_avv_loader>());
 
   auto const src = nigiri::source_idx_t{0U};
-  const std::string_view default_timezone_{"Europe/Berlin"};
 
   auto const c =
       utl::find_if(loaders, [&](auto&& l) { return l->applicable(d); });
@@ -75,8 +74,9 @@ nigiri_timetable_t* nigiri_load_from_dir(nigiri::loader::dir const& d,
   nigiri::loader::register_special_stations(*t->tt);
   auto local_bitfield_indices =
       nigiri::hash_map<nigiri::bitfield, nigiri::bitfield_idx_t>{};
-  (*c)->load({.link_stop_distance_ = link_stop_distance,
-              .default_tz_ = default_timezone_}, src, d, *t->tt, local_bitfield_indices, nullptr, nullptr);
+  auto config = nigiri::loader::loader_config{};
+  config.link_stop_distance_ = link_stop_distance;
+  (*c)->load(config, src, d, *t->tt, local_bitfield_indices, nullptr, nullptr);
   nigiri::loader::finalize(*t->tt);
 
   t->rtt = std::make_shared<nigiri::rt_timetable>(
@@ -209,9 +209,11 @@ nigiri_location_t* nigiri_get_location_with_footpaths(
   auto footpaths = incoming_footpaths
                        ? t->tt->locations_.footpaths_in_[0][lidx]
                        : t->tt->locations_.footpaths_out_[0][lidx];
-  location->footpaths =
-      reinterpret_cast<nigiri_footpath_t*>(&footpaths.front()); // TODO
-  location->n_footpaths = footpaths.size();
+  auto const n_footpaths = footpaths.size();
+  location->footpaths = new nigiri_footpath_t[n_footpaths];
+  std::memcpy(location->footpaths, &footpaths.front(),
+              sizeof(nigiri_footpath_t) * n_footpaths);
+  location->n_footpaths = static_cast<uint32_t>(n_footpaths);
   location->parent =
       l.parent_ == nigiri::location_idx_t::invalid()
           ? 0
@@ -284,13 +286,15 @@ nigiri::pareto_set<nigiri::routing::journey> raptor_search(
   static auto search_state = nigiri::routing::search_state{};
   static auto algo_state = nigiri::routing::raptor_state{};
   if (backward_search) {
-    using algo_t = nigiri::routing::raptor<nigiri::direction::kBackward, true>;
+    using algo_t =
+        nigiri::routing::raptor<nigiri::direction::kBackward, true, 0>;
     return *(nigiri::routing::search<nigiri::direction::kBackward, algo_t>{
         tt, rtt, search_state, algo_state, std::move(q)}
                  .execute()
                  .journeys_);
   } else {
-    using algo_t = nigiri::routing::raptor<nigiri::direction::kForward, true>;
+    using algo_t =
+        nigiri::routing::raptor<nigiri::direction::kForward, true, 0>;
     return *(nigiri::routing::search<nigiri::direction::kForward, algo_t>{
         tt, rtt, search_state, algo_state, std::move(q)}
                  .execute()
@@ -319,12 +323,12 @@ nigiri_pareto_set_t* nigiri_get_journeys(const nigiri_timetable_t* t,
   auto js = new nigiri_journey_t[n_journeys];
 
   auto const pareto_set = new nigiri_pareto_set_t;
-  pareto_set->n_journeys = n_journeys;
+  pareto_set->n_journeys = static_cast<uint16_t>(n_journeys);
   pareto_set->journeys = js;
 
   auto i = 0;
   for (auto it = journeys.begin(); it != journeys.end(); it++, i++) {
-    js[i].n_legs = it->legs_.size();
+    js[i].n_legs = static_cast<uint16_t>(it->legs_.size());
     js[i].legs = new nigiri_leg_t[it->legs_.size()];
     js[i].start_time = std::chrono::system_clock::to_time_t(it->start_time_);
     js[i].dest_time = std::chrono::system_clock::to_time_t(it->dest_time_);
@@ -353,22 +357,12 @@ nigiri_pareto_set_t* nigiri_get_journeys(const nigiri_timetable_t* t,
             l->to_stop_idx = run.stop_range_.to_ - 1U;
             l->to_location_idx = static_cast<nigiri::location_idx_t::value_t>(
                 to.get_location_idx());
-            l->duration = (to.time(nigiri::event_type::kArr) -
-                           from.time(nigiri::event_type::kDep))
-                              .count();
+            l->duration =
+                static_cast<uint32_t>((to.time(nigiri::event_type::kArr) -
+                                       from.time(nigiri::event_type::kDep))
+                                          .count());
           };
-      auto const set_footpath = [&, leg = leg](nigiri::footpath const fp) {
-        l->is_footpath = true;
-        l->transport_idx = 0;
-        l->day_idx = 0, l->from_stop_idx = 0;
-        l->from_location_idx =
-            static_cast<nigiri::location_idx_t::value_t>(leg.from_);
-        l->to_stop_idx = 0;
-        l->to_location_idx =
-            static_cast<nigiri::location_idx_t::value_t>(leg.to_);
-        l->duration = fp.duration().count();
-      };
-      auto const set_offset = [&, leg = leg](nigiri::routing::offset const x) {
+      auto const set_footpath = [&, leg](nigiri::footpath const fp) {
         l->is_footpath = true;
         l->transport_idx = 0;
         l->day_idx = 0;
@@ -378,7 +372,19 @@ nigiri_pareto_set_t* nigiri_get_journeys(const nigiri_timetable_t* t,
         l->to_stop_idx = 0;
         l->to_location_idx =
             static_cast<nigiri::location_idx_t::value_t>(leg.to_);
-        l->duration = x.duration().count();
+        l->duration = static_cast<uint32_t>(fp.duration().count());
+      };
+      auto const set_offset = [&, leg](nigiri::routing::offset const x) {
+        l->is_footpath = true;
+        l->transport_idx = 0;
+        l->day_idx = 0;
+        l->from_stop_idx = 0;
+        l->from_location_idx =
+            static_cast<nigiri::location_idx_t::value_t>(leg.from_);
+        l->to_stop_idx = 0;
+        l->to_location_idx =
+            static_cast<nigiri::location_idx_t::value_t>(leg.to_);
+        l->duration = static_cast<uint32_t>(x.duration().count());
       };
       std::visit(utl::overloaded{set_run, set_footpath, set_offset}, leg.uses_);
     }
