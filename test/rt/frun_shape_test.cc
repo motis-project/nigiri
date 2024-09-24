@@ -372,11 +372,10 @@ TEST(
             &shapes_data, interval{stop_idx_t{3}, stop_idx_t{5 + 1}},
             plot_point);
 
-        // TODO ? Use duplicated stop {3.0F, 3.0F} ?
         expected_shape = {
             geo::latlng{3.0F, 2.0F}, geo::latlng{3.5F, 2.5F},
-            geo::latlng{3.0F, 3.0F}, geo::latlng{3.5F, 2.5F},
-            geo::latlng{4.0F, 3.0F},
+            geo::latlng{3.0F, 3.0F}, geo::latlng{3.0F, 3.0F},
+            geo::latlng{3.5F, 2.5F}, geo::latlng{4.0F, 3.0F},
         };
         EXPECT_EQ(expected_shape, leg_shape);
       }
@@ -389,8 +388,9 @@ TEST(
 
         expected_shape = {
             geo::latlng{2.0F, 1.0F}, geo::latlng{2.5F, 0.5F},
-            geo::latlng{3.0F, 1.0F}, geo::latlng{3.5F, 1.5F},
-            geo::latlng{3.0F, 2.0F}, geo::latlng{3.5F, 2.5F},
+            geo::latlng{3.0F, 1.0F}, geo::latlng{3.0F, 1.0F},
+            geo::latlng{3.5F, 1.5F}, geo::latlng{3.0F, 2.0F},
+            geo::latlng{3.5F, 2.5F}, geo::latlng{3.0F, 3.0F},
             geo::latlng{3.0F, 3.0F}, geo::latlng{3.5F, 2.5F},
             geo::latlng{4.0F, 3.0F},
         };
@@ -422,11 +422,12 @@ TEST(
 
       expected_shape = {
           geo::latlng{2.0F, 1.0F}, geo::latlng{2.5F, 0.5F},
-          geo::latlng{3.0F, 1.0F}, geo::latlng{4.0F, 1.0F},
+          geo::latlng{3.0F, 1.0F}, geo::latlng{3.0F, 1.0F},
+          geo::latlng{4.0F, 1.0F}, geo::latlng{5.0F, 1.0F},
           geo::latlng{5.0F, 1.0F}, geo::latlng{6.0F, 2.0F},
-          geo::latlng{7.0F, 3.0F}, geo::latlng{6.5F, 2.5F},
-          geo::latlng{7.0F, 2.0F}, geo::latlng{6.5F, 1.5F},
-          geo::latlng{7.0F, 1.0F},
+          geo::latlng{7.0F, 3.0F}, geo::latlng{7.0F, 3.0F},
+          geo::latlng{6.5F, 2.5F}, geo::latlng{7.0F, 2.0F},
+          geo::latlng{6.5F, 1.5F}, geo::latlng{7.0F, 1.0F},
       };
       EXPECT_EQ(expected_shape, leg_shape);
     }

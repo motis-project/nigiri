@@ -416,25 +416,23 @@ void frun::for_each_shape_point(
       return *first - range.from_;
     }
   };
-  auto const process_shape = [&callback](std::span<geo::latlng const> shape,
-                                         bool const include_last) {
+  auto const process_shape = [&](std::span<geo::latlng const> const shape) {
     if (shape.empty()) {
       return;
-    }
-    if (!include_last) {
-      shape = shape.first(shape.size() - 1);
     }
     std::for_each(std::begin(shape), std::end(shape), callback);
   };
   auto const process_trip_stops = [&](stop_idx_t const from,
                                       trip_idx_t const current_trip_index) {
     auto stop_index = from;
+    // Reminder: Always at least 2 stops
     auto run_stop = (*this)[stop_index];
     auto next_trip_index = trip_idx_t{0};
+    callback(run_stop.pos());
     do {
-      callback(run_stop.pos());
       run_stop = (*this)[++stop_index];
       next_trip_index = run_stop.get_trip_idx(event_type::kDep);
+      callback(run_stop.pos());
     } while (next_trip_index == current_trip_index);
     return std::make_pair(next_trip_index, stop_index - from);
   };
@@ -452,33 +450,27 @@ void frun::for_each_shape_point(
   while (current_trip_index != final_trip_index) {
     auto const [shape, stops] = shapes_data->get_shape_with_stop_count(
         current_trip_index, current_interval.from_);
+    auto offset_adjustment = stops - 1;
     if (stops > 0) {
-      process_shape(shape, false);
-      auto const offset_adjustment = stops - 1;
-      current_offset += offset_adjustment;
+      process_shape(shape);
       current_trip_index =
-          (*this)[static_cast<stop_idx_t>(current_offset)].get_trip_idx(
-              event_type::kDep);
-      current_interval = interval{
-          stop_idx_t{0},
-          static_cast<stop_idx_t>(current_interval.to_ -
-                                  current_interval.from_ - offset_adjustment)};
+          (*this)[static_cast<stop_idx_t>(current_offset + offset_adjustment)]
+              .get_trip_idx(event_type::kDep);
     } else {
-      auto const [next_trip_index, processed_stops] =
+      std::tie(current_trip_index, offset_adjustment) =
           process_trip_stops(stop_idx_t{current_offset}, current_trip_index);
-      current_offset += processed_stops;
-      current_trip_index = next_trip_index;
-      current_interval = interval{
-          stop_idx_t{0},
-          static_cast<stop_idx_t>(current_interval.to_ -
-                                  current_interval.from_ - processed_stops)};
     }
+    current_offset += offset_adjustment;
+    current_interval =
+        interval{stop_idx_t{0}, static_cast<stop_idx_t>(current_interval.to_ -
+                                                        current_interval.from_ -
+                                                        offset_adjustment)};
   }
   // Final trip
   auto const shape =
       shapes_data->get_shape(current_trip_index, current_interval);
   if (!shape.empty()) {
-    process_shape(shape, true);
+    process_shape(shape);
   } else {
     process_stops(interval{stop_idx_t{current_offset}, range.to_});
   }
