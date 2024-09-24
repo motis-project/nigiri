@@ -139,18 +139,16 @@ void calculate_shape_offsets(timetable const& tt,
     progress_tracker->increment();
     auto const trip_index = trip.trip_idx_;
     auto const shape_index = trip.shape_idx_;
-    if (is_monotonic_distances(trip.distance_traveled_)) {
-      auto const shape_distances = shapes_distances.find(shape_index);
-      if (shape_distances != std::end(shapes_distances)) {
-        auto const offsets = split_shape_by_offsets(trip.distance_traveled_,
-                                                    *shape_distances->second);
-        auto const shape_offset_index = shapes_data.add_offsets(offsets);
-        shapes_data.add_trip_shape_offsets(
-            trip_index, cista::pair{shape_index, shape_offset_index});
-        continue;
-      }
-    }
-    if (shape_index == shape_idx_t::invalid() || trip.stop_seq_.size() < 2U) {
+    auto const shape_distances = shapes_distances.find(shape_index);
+    if (shape_distances != std::end(shapes_distances) &&
+        is_monotonic_distances(trip.distance_traveled_)) {
+      auto const offsets = split_shape_by_offsets(trip.distance_traveled_,
+                                                  *shape_distances->second);
+      auto const shape_offset_index = shapes_data.add_offsets(offsets);
+      shapes_data.add_trip_shape_offsets(
+          trip_index, cista::pair{shape_index, shape_offset_index});
+    } else if (shape_index == shape_idx_t::invalid() ||
+               trip.stop_seq_.size() < 2U) {
       shapes_data.add_trip_shape_offsets(
           trip_index,
           cista::pair{shape_idx_t::invalid(), shape_offset_idx_t::invalid()});
