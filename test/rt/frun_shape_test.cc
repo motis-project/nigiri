@@ -318,7 +318,7 @@ TEST(
     // Create full run
     auto const full_run = rt::frun{tt, &rtt, r_modified};
 
-    // H → I
+    // H -> I
     leg_shape.clear();
     full_run.for_each_shape_point(
         &shapes_data, interval{stop_idx_t{0}, stop_idx_t{1 + 1}}, plot_point);
@@ -347,7 +347,7 @@ TEST(
 
     // Shape for a single trip
     {
-      // A → F → G
+      // A -> F -> G
       {
         leg_shape.clear();
         full_run.for_each_shape_point(
@@ -361,7 +361,7 @@ TEST(
         };
         EXPECT_EQ(expected_shape, leg_shape);
       }
-      // G → H → I
+      // G -> H -> I
       {
         leg_shape.clear();
         full_run.for_each_shape_point(
@@ -378,7 +378,7 @@ TEST(
     }
     // Joined shape for continuous trips
     {
-      // H → I → J
+      // H -> I -> J
       {
         leg_shape.clear();
         full_run.for_each_shape_point(
@@ -392,7 +392,7 @@ TEST(
         };
         EXPECT_EQ(expected_shape, leg_shape);
       }
-      // F → G → H → I → J
+      // F -> G -> H -> I -> J
       {
         leg_shape.clear();
         full_run.for_each_shape_point(
@@ -426,7 +426,7 @@ TEST(
         std::get<nigiri::routing::journey::run_enter_exit>(leg.uses_);
     auto const full_run = rt::frun(tt, &rtt, run_ee.r_);
 
-    // F → G → S → T → U → V → W → X
+    // F -> G -> S -> T -> U -> V -> W -> X
     {
       leg_shape.clear();
 
@@ -531,7 +531,7 @@ TEST(
     // Create full run
     auto const full_run = rt::frun{tt, &rtt, r};
 
-    // M (shape < stop_times) → N (stop_times < shape)
+    // M (shape < stop_times) -> N (stop_times < shape)
     {
       leg_shape.clear();
 
