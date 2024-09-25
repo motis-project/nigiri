@@ -1,11 +1,12 @@
 #include "gtest/gtest.h"
 
-#include <algorithm>
 #include <ranges>
 #include <string_view>
 #include <vector>
 
 #include "geo/latlng.h"
+
+#include "utl/helpers/algorithm.h"
 
 #include "nigiri/loader/dir.h"
 #include "nigiri/loader/gtfs/load_timetable.h"
@@ -34,7 +35,7 @@ bool operator==(std::span<geo::latlng const> const& lhs,
     return false;
   }
   auto const zip = std::views::zip(lhs, rhs);
-  return std::all_of(begin(zip), end(zip), [](auto const ab) {
+  return utl::all_of(zip, [](auto const ab) {
     auto const& [a, b] = ab;
     return a == b;
   });

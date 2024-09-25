@@ -3,6 +3,8 @@
 #include <algorithm>
 #include <iterator>
 
+#include "utl/helpers/algorithm.h"
+
 #include "nigiri/lookup/get_transport_stop_tz.h"
 #include "nigiri/rt/rt_timetable.h"
 #include "nigiri/timetable.h"
@@ -400,17 +402,17 @@ void frun::for_each_shape_point(
       return 0;
     }
     auto const candidates = interval{stop_idx_t{0}, range_offset};
-    auto const first = std::find_if(
-        std::begin(candidates), std::end(candidates),
-        [&](stop_idx_t const candidate) {
-          auto const previous_stop = (candidate < range.from_)
-                                         ? (*this)[static_cast<stop_idx_t>(
-                                               range.from_ - (candidate + 1))]
-                                         : (*this)[-static_cast<stop_idx_t>(
-                                               (candidate + 1) - range.from_)];
-          return previous_stop.get_trip_idx(event_type::kDep) != trip_index;
-        });
-    if (first == std::end(candidates)) {
+    auto const first = utl::find_if(candidates, [&](stop_idx_t const
+                                                        candidate) {
+      auto const previous_stop =
+          (candidate < range.from_)
+              ? (*this)[static_cast<stop_idx_t>(range.from_ - (candidate + 1))]
+              : (*this)[-static_cast<stop_idx_t>((candidate + 1) -
+                                                 range.from_)];
+      return previous_stop.get_trip_idx(event_type::kDep) != trip_index;
+    });
+    using std::end;
+    if (first == end(candidates)) {
       return static_cast<int>(stop_range_.from_);
     } else {
       return *first - range.from_;
@@ -420,7 +422,8 @@ void frun::for_each_shape_point(
     if (shape.empty()) {
       return;
     }
-    std::for_each(std::begin(shape), std::end(shape), callback);
+    using std::begin, std::end;
+    std::for_each(begin(shape), end(shape), callback);
   };
   auto const process_trip_stops = [&](stop_idx_t const from,
                                       trip_idx_t const current_trip_index) {

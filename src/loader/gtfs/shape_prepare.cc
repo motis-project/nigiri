@@ -7,6 +7,7 @@
 #include "geo/polyline.h"
 
 #include "utl/get_or_create.h"
+#include "utl/helpers/algorithm.h"
 #include "utl/pairwise.h"
 #include "utl/progress_tracker.h"
 
@@ -63,18 +64,18 @@ std::vector<shape_offset_t> split_shape_by_offsets(
     std::vector<double> const& stops, std::vector<double> const& shape) {
   auto offsets = std::vector<shape_offset_t>{};
   offsets.reserve(stops.size());
-  auto last = std::begin(shape);
+  auto last = begin(shape);
   auto offset = decltype(offsets)::iterator::difference_type{};
   for (auto const& stop : stops) {
-    auto const candidate = std::lower_bound(last, std::end(shape), stop);
-    if (candidate == std::end(shape)) {
-      offset = std::distance(std::begin(shape), candidate - 1);
+    auto const candidate = std::lower_bound(last, end(shape), stop);
+    if (candidate == end(shape)) {
+      offset = static_cast<decltype(offset)>(shape.size() - 1);
     } else if (candidate == last) {
-      offset = std::distance(std::begin(shape), candidate);
+      offset = std::distance(begin(shape), candidate);
     } else if (stop - *(candidate - 1) < *candidate - stop) {
-      offset = std::distance(std::begin(shape), candidate - 1);
+      offset = std::distance(begin(shape), candidate - 1);
     } else {
-      offset = std::distance(std::begin(shape), candidate);
+      offset = std::distance(begin(shape), candidate);
     }
     offsets.push_back(shape_offset_t{offset});
   }
@@ -85,12 +86,12 @@ bool is_monotonic_distances(std::ranges::range auto const& distances) {
   if (distances.empty()) {
     return false;
   }
-  auto const first = *std::begin(distances);
+  auto const first = *begin(distances);
   if (first != 0.0) {
     return false;
   }
   auto const pairs = utl::pairwise(distances);
-  return std::all_of(std::begin(pairs), std::end(pairs), [](auto const pair) {
+  return utl::all_of(pairs, [](auto const pair) {
     auto const [previous, next] = pair;
     return previous < next;
   });
@@ -140,7 +141,7 @@ void calculate_shape_offsets(timetable const& tt,
     auto const trip_index = trip.trip_idx_;
     auto const shape_index = trip.shape_idx_;
     auto const shape_distances = shapes_distances.find(shape_index);
-    if (shape_distances != std::end(shapes_distances) &&
+    if (shape_distances != end(shapes_distances) &&
         is_monotonic_distances(trip.distance_traveled_)) {
       auto const offsets = split_shape_by_offsets(trip.distance_traveled_,
                                                   *shape_distances->second);

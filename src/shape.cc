@@ -57,7 +57,7 @@ std::span<geo::latlng const> shapes_storage::get_shape(
     return {};
   }
   auto const shape = data_[shape_index];
-  return {std::begin(shape), std::end(shape)};
+  return {begin(shape), end(shape)};
 }
 
 std::span<geo::latlng const> shapes_storage::get_shape(
