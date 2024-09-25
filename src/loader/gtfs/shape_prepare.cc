@@ -64,13 +64,14 @@ std::vector<shape_offset_t> split_shape_by_offsets(
     std::vector<double> const& stops, std::vector<double> const& shape) {
   auto offsets = std::vector<shape_offset_t>{};
   offsets.reserve(stops.size());
-  auto last = begin(shape);
+  auto remaining_shape_begin = begin(shape);
   auto offset = decltype(offsets)::iterator::difference_type{};
   for (auto const& stop : stops) {
-    auto const candidate = std::lower_bound(last, end(shape), stop);
+    auto const candidate =
+        std::lower_bound(remaining_shape_begin, end(shape), stop);
     if (candidate == end(shape)) {
       offset = static_cast<decltype(offset)>(shape.size() - 1);
-    } else if (candidate == last) {
+    } else if (candidate == remaining_shape_begin) {
       offset = std::distance(begin(shape), candidate);
     } else if (stop - *(candidate - 1) < *candidate - stop) {
       offset = std::distance(begin(shape), candidate - 1);
