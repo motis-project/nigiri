@@ -24,3 +24,17 @@ TEST(interval, clamp) {
 
   EXPECT_EQ(t(14), clamp(i, t(20)));
 }
+
+TEST(interval, shift) {
+  auto const i = interval{stop_idx_t{3}, stop_idx_t{14}};
+
+  // operator+()
+  EXPECT_EQ((interval{stop_idx_t{25}, stop_idx_t{36}}), i + 22);
+  // operator-()
+  EXPECT_EQ((interval{stop_idx_t{1}, stop_idx_t{12}}), i - 2);
+  // Unsigned underflow
+  EXPECT_EQ((interval{static_cast<stop_idx_t>(-stop_idx_t{12}),
+                      static_cast<stop_idx_t>(-stop_idx_t{1})}),
+            i - 15);
+  EXPECT_EQ((interval{stop_idx_t{65500}, stop_idx_t{65511}}), i - 39);
+}
