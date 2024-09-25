@@ -391,10 +391,10 @@ void frun::for_each_shape_point(
   auto const get_first_offset = [&](trip_idx_t const trip_index) {
     auto const range_offset =
         static_cast<stop_idx_t>(stop_range_.from_ + range.from_);
-    if (range_offset == stop_idx_t{0}) {
+    if (range_offset == stop_idx_t{0U}) {
       return 0;
     }
-    auto const candidates = interval{stop_idx_t{0}, range_offset};
+    auto const candidates = interval{stop_idx_t{0U}, range_offset};
     auto const first = utl::find_if(candidates, [&](stop_idx_t const
                                                         candidate) {
       auto const previous_stop =
@@ -424,7 +424,7 @@ void frun::for_each_shape_point(
     auto stop_index = from;
     // Reminder: Always at least 2 stops
     auto run_stop = (*this)[stop_index];
-    auto next_trip_index = trip_idx_t{0};
+    auto next_trip_index = trip_idx_t{0U};
     callback(run_stop.pos());
     do {
       run_stop = (*this)[++stop_index];
@@ -456,10 +456,10 @@ void frun::for_each_shape_point(
           process_trip_stops(stop_idx_t{current_offset}, current_trip_index);
     }
     current_offset += offset_adjustment;
-    current_interval =
-        interval{stop_idx_t{0}, static_cast<stop_idx_t>(current_interval.to_ -
-                                                        current_interval.from_ -
-                                                        offset_adjustment)};
+    current_interval = interval{
+        stop_idx_t{0U},
+        static_cast<stop_idx_t>(current_interval.to_ - current_interval.from_ -
+                                offset_adjustment)};
   }
   // Final trip
   auto const shape =

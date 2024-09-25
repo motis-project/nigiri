@@ -41,11 +41,11 @@ std::vector<shape_offset_t> split_shape(
     return {};
   }
   auto offsets = std::vector<shape_offset_t>(stops.size());
-  auto offset = shape_offset_t{0};
+  auto offset = shape_offset_t{0U};
 
   for (auto const [index, location_index] : utl::enumerate(stops)) {
     if (index == 0U) {
-      offsets[0] = shape_offset_t{0};
+      offsets[0] = shape_offset_t{0U};
     } else if (index == stops.size() - 1U) {
       offsets[index] = shape_offset_t{shape.size() - 1U};
     } else {

@@ -194,7 +194,7 @@ TEST(
   timetable tt;
   tt.date_range_ = {date::sys_days{2024_y / January / 1},
                     date::sys_days{2024_y / January / 2}};
-  load_timetable({}, source_idx_t{0}, schedule, tt, nullptr, &shapes_data);
+  load_timetable({}, source_idx_t{0U}, schedule, tt, nullptr, &shapes_data);
   finalize(tt);
 
   // Create empty RT timetable.
@@ -211,7 +211,7 @@ TEST(
     transit_realtime::TripDescriptor td;
     td.set_trip_id("TRIP_1");
     auto const [r, t] = rt::gtfsrt_resolve_run(
-        date::sys_days{2024_y / January / 1}, tt, rtt, source_idx_t{0}, td);
+        date::sys_days{2024_y / January / 1}, tt, rtt, source_idx_t{0U}, td);
     ASSERT_TRUE(r.valid());
     // Create full run
     auto const full_run = rt::frun{tt, &rtt, r};
@@ -221,7 +221,8 @@ TEST(
       leg_shape.clear();
 
       full_run.for_each_shape_point(
-          &shapes_data, interval{stop_idx_t{0}, stop_idx_t{3 + 1}}, plot_point);
+          &shapes_data, interval{stop_idx_t{0U}, stop_idx_t{3U + 1U}},
+          plot_point);
 
       EXPECT_EQ((geo::polyline{
                     {1.0F, 1.0F},
@@ -239,7 +240,8 @@ TEST(
       leg_shape.clear();
 
       full_run.for_each_shape_point(
-          &shapes_data, interval{stop_idx_t{1}, stop_idx_t{2 + 1}}, plot_point);
+          &shapes_data, interval{stop_idx_t{1U}, stop_idx_t{2U + 1U}},
+          plot_point);
 
       EXPECT_EQ((geo::polyline{
                     {1.0F, 2.0F},
@@ -253,7 +255,8 @@ TEST(
       leg_shape.clear();
 
       full_run.for_each_shape_point(
-          &shapes_data, interval{stop_idx_t{0}, stop_idx_t{0 + 1}}, plot_point);
+          &shapes_data, interval{stop_idx_t{0U}, stop_idx_t{0U + 1U}},
+          plot_point);
 
       EXPECT_EQ((geo::polyline{
                     {1.0F, 1.0F},
@@ -273,8 +276,9 @@ TEST(
     auto const full_run = rt::frun{tt, &rtt, r};
 
     leg_shape.clear();
-    full_run.for_each_shape_point(
-        &shapes_data, interval{stop_idx_t{0}, stop_idx_t{1 + 1}}, plot_point);
+    full_run.for_each_shape_point(&shapes_data,
+                                  interval{stop_idx_t{0U}, stop_idx_t{1U + 1U}},
+                                  plot_point);
 
     EXPECT_EQ((geo::polyline{
                   {1.0F, 1.0F},
@@ -292,13 +296,14 @@ TEST(
     ASSERT_TRUE(r.valid());
     // Create sub run containing single trip leg
     auto const r_modified =
-        rt::run{r.t_, interval{stop_idx_t{2}, stop_idx_t{4}}, r.rt_};
+        rt::run{r.t_, interval{stop_idx_t{2U}, stop_idx_t{4U}}, r.rt_};
     // Create full run
     auto const full_run = rt::frun{tt, &rtt, r_modified};
 
     leg_shape.clear();
-    full_run.for_each_shape_point(
-        &shapes_data, interval{stop_idx_t{0}, stop_idx_t{1 + 1}}, plot_point);
+    full_run.for_each_shape_point(&shapes_data,
+                                  interval{stop_idx_t{0U}, stop_idx_t{1U + 1U}},
+                                  plot_point);
 
     EXPECT_EQ((geo::polyline{
                   {1.0F, 3.0F},
@@ -317,14 +322,15 @@ TEST(
     ASSERT_TRUE(r.valid());
     // Create sub run containing single trip leg
     auto const r_modified =
-        rt::run{r.t_, interval{stop_idx_t{3}, stop_idx_t{5}}, r.rt_};
+        rt::run{r.t_, interval{stop_idx_t{3U}, stop_idx_t{5U}}, r.rt_};
     // Create full run
     auto const full_run = rt::frun{tt, &rtt, r_modified};
 
     // H -> I
     leg_shape.clear();
-    full_run.for_each_shape_point(
-        &shapes_data, interval{stop_idx_t{0}, stop_idx_t{1 + 1}}, plot_point);
+    full_run.for_each_shape_point(&shapes_data,
+                                  interval{stop_idx_t{0U}, stop_idx_t{1U + 1U}},
+                                  plot_point);
 
     EXPECT_EQ((geo::polyline{
                   {3.0F, 2.0F},
@@ -354,7 +360,7 @@ TEST(
       {
         leg_shape.clear();
         full_run.for_each_shape_point(
-            &shapes_data, interval{stop_idx_t{0}, stop_idx_t{2 + 1}},
+            &shapes_data, interval{stop_idx_t{0U}, stop_idx_t{2U + 1U}},
             plot_point);
 
         EXPECT_EQ((geo::polyline{
@@ -370,7 +376,7 @@ TEST(
       {
         leg_shape.clear();
         full_run.for_each_shape_point(
-            &shapes_data, interval{stop_idx_t{2}, stop_idx_t{4 + 1}},
+            &shapes_data, interval{stop_idx_t{2U}, stop_idx_t{4U + 1U}},
             plot_point);
 
         EXPECT_EQ((geo::polyline{
@@ -389,7 +395,7 @@ TEST(
       {
         leg_shape.clear();
         full_run.for_each_shape_point(
-            &shapes_data, interval{stop_idx_t{3}, stop_idx_t{5 + 1}},
+            &shapes_data, interval{stop_idx_t{3U}, stop_idx_t{5U + 1U}},
             plot_point);
 
         EXPECT_EQ((geo::polyline{
@@ -406,7 +412,7 @@ TEST(
       {
         leg_shape.clear();
         full_run.for_each_shape_point(
-            &shapes_data, interval{stop_idx_t{1}, stop_idx_t{5 + 1}},
+            &shapes_data, interval{stop_idx_t{1U}, stop_idx_t{5U + 1U}},
             plot_point);
 
         EXPECT_EQ((geo::polyline{
@@ -446,7 +452,8 @@ TEST(
       leg_shape.clear();
 
       full_run.for_each_shape_point(
-          &shapes_data, interval{stop_idx_t{1}, stop_idx_t{8 + 1}}, plot_point);
+          &shapes_data, interval{stop_idx_t{1U}, stop_idx_t{8U + 1U}},
+          plot_point);
 
       EXPECT_EQ((geo::polyline{
                     {2.0F, 1.0F},
@@ -507,7 +514,8 @@ TEST(
       leg_shape.clear();
 
       full_run.for_each_shape_point(
-          &shapes_data, interval{stop_idx_t{0}, stop_idx_t{1 + 1}}, plot_point);
+          &shapes_data, interval{stop_idx_t{0U}, stop_idx_t{1U + 1U}},
+          plot_point);
 
       EXPECT_EQ((geo::polyline{
                     {1.0F, 1.0F},
@@ -521,7 +529,8 @@ TEST(
       leg_shape.clear();
 
       full_run.for_each_shape_point(
-          &shapes_data, interval{stop_idx_t{2}, stop_idx_t{3 + 1}}, plot_point);
+          &shapes_data, interval{stop_idx_t{2U}, stop_idx_t{3U + 1U}},
+          plot_point);
 
       EXPECT_EQ((geo::polyline{
                     {3.0F, 3.0F},
@@ -535,7 +544,8 @@ TEST(
       leg_shape.clear();
 
       full_run.for_each_shape_point(
-          &shapes_data, interval{stop_idx_t{1}, stop_idx_t{2 + 1}}, plot_point);
+          &shapes_data, interval{stop_idx_t{1U}, stop_idx_t{2U + 1U}},
+          plot_point);
 
       EXPECT_EQ((geo::polyline{
                     {2.0F, 2.0F},
@@ -567,7 +577,8 @@ TEST(
       leg_shape.clear();
 
       full_run.for_each_shape_point(
-          &shapes_data, interval{stop_idx_t{1}, stop_idx_t{2 + 1}}, plot_point);
+          &shapes_data, interval{stop_idx_t{1U}, stop_idx_t{2U + 1U}},
+          plot_point);
 
       EXPECT_EQ((geo::polyline{
                     {2.0F, 2.0F},
