@@ -5,6 +5,7 @@
 #include <vector>
 
 #include "geo/latlng.h"
+#include "geo/polyline.h"
 
 #include "utl/helpers/algorithm.h"
 
@@ -199,7 +200,6 @@ TEST(
   // Create empty RT timetable.
   auto rtt = rt::create_rt_timetable(tt, date::sys_days{2024_y / January / 1});
 
-  auto expected_shape = std::vector<geo::latlng>{};
   auto leg_shape = std::vector<geo::latlng>{};
   auto const plot_point = [&leg_shape](geo::latlng const& point) {
     leg_shape.push_back(point);
@@ -223,13 +223,16 @@ TEST(
       full_run.for_each_shape_point(
           &shapes_data, interval{stop_idx_t{0}, stop_idx_t{3 + 1}}, plot_point);
 
-      expected_shape = {
-          geo::latlng{1.0F, 1.0F}, geo::latlng{0.5F, 1.5F},
-          geo::latlng{1.0F, 2.0F}, geo::latlng{0.5F, 2.5F},
-          geo::latlng{1.0F, 3.0F}, geo::latlng{0.5F, 3.5F},
-          geo::latlng{1.0F, 4.0F},
-      };
-      EXPECT_EQ(expected_shape, leg_shape);
+      EXPECT_EQ((geo::polyline{
+                    {1.0F, 1.0F},
+                    {0.5F, 1.5F},
+                    {1.0F, 2.0F},
+                    {0.5F, 2.5F},
+                    {1.0F, 3.0F},
+                    {0.5F, 3.5F},
+                    {1.0F, 4.0F},
+                }),
+                leg_shape);
     }
     // Single leg
     {
@@ -238,12 +241,12 @@ TEST(
       full_run.for_each_shape_point(
           &shapes_data, interval{stop_idx_t{1}, stop_idx_t{2 + 1}}, plot_point);
 
-      expected_shape = {
-          geo::latlng{1.0F, 2.0F},
-          geo::latlng{0.5F, 2.5F},
-          geo::latlng{1.0F, 3.0F},
-      };
-      EXPECT_EQ(expected_shape, leg_shape);
+      EXPECT_EQ((geo::polyline{
+                    {1.0F, 2.0F},
+                    {0.5F, 2.5F},
+                    {1.0F, 3.0F},
+                }),
+                leg_shape);
     }
     // Single stop
     {
@@ -252,10 +255,10 @@ TEST(
       full_run.for_each_shape_point(
           &shapes_data, interval{stop_idx_t{0}, stop_idx_t{0 + 1}}, plot_point);
 
-      expected_shape = {
-          geo::latlng{1.0F, 1.0F},
-      };
-      EXPECT_EQ(expected_shape, leg_shape);
+      EXPECT_EQ((geo::polyline{
+                    {1.0F, 1.0F},
+                }),
+                leg_shape);
     }
   }
   // TRIP_6 (trip without shape)
@@ -273,11 +276,11 @@ TEST(
     full_run.for_each_shape_point(
         &shapes_data, interval{stop_idx_t{0}, stop_idx_t{1 + 1}}, plot_point);
 
-    expected_shape = {
-        geo::latlng{1.0F, 1.0F},
-        geo::latlng{0.0F, 0.0F},
-    };
-    EXPECT_EQ(expected_shape, leg_shape);
+    EXPECT_EQ((geo::polyline{
+                  {1.0F, 1.0F},
+                  {0.0F, 0.0F},
+              }),
+              leg_shape);
   }
   // frun containing a sub trip
   {
@@ -297,12 +300,12 @@ TEST(
     full_run.for_each_shape_point(
         &shapes_data, interval{stop_idx_t{0}, stop_idx_t{1 + 1}}, plot_point);
 
-    expected_shape = {
-        geo::latlng{1.0F, 3.0F},
-        geo::latlng{0.5F, 3.5F},
-        geo::latlng{1.0F, 4.0F},
-    };
-    EXPECT_EQ(expected_shape, leg_shape);
+    EXPECT_EQ((geo::polyline{
+                  {1.0F, 3.0F},
+                  {0.5F, 3.5F},
+                  {1.0F, 4.0F},
+              }),
+              leg_shape);
   }
   // sub trip of a merged trip
   {
@@ -323,12 +326,12 @@ TEST(
     full_run.for_each_shape_point(
         &shapes_data, interval{stop_idx_t{0}, stop_idx_t{1 + 1}}, plot_point);
 
-    expected_shape = {
-        geo::latlng{3.0F, 2.0F},
-        geo::latlng{3.5F, 2.5F},
-        geo::latlng{3.0F, 3.0F},
-    };
-    EXPECT_EQ(expected_shape, leg_shape);
+    EXPECT_EQ((geo::polyline{
+                  {3.0F, 2.0F},
+                  {3.5F, 2.5F},
+                  {3.0F, 3.0F},
+              }),
+              leg_shape);
   }
   // Full run covering multiple trips
   {
@@ -354,12 +357,14 @@ TEST(
             &shapes_data, interval{stop_idx_t{0}, stop_idx_t{2 + 1}},
             plot_point);
 
-        expected_shape = {
-            geo::latlng{1.0F, 1.0F}, geo::latlng{1.5F, 0.5F},
-            geo::latlng{2.0F, 1.0F}, geo::latlng{2.5F, 0.5F},
-            geo::latlng{3.0F, 1.0F},
-        };
-        EXPECT_EQ(expected_shape, leg_shape);
+        EXPECT_EQ((geo::polyline{
+                      {1.0F, 1.0F},
+                      {1.5F, 0.5F},
+                      {2.0F, 1.0F},
+                      {2.5F, 0.5F},
+                      {3.0F, 1.0F},
+                  }),
+                  leg_shape);
       }
       // G -> H -> I
       {
@@ -368,12 +373,14 @@ TEST(
             &shapes_data, interval{stop_idx_t{2}, stop_idx_t{4 + 1}},
             plot_point);
 
-        expected_shape = {
-            geo::latlng{3.0F, 1.0F}, geo::latlng{3.5F, 1.5F},
-            geo::latlng{3.0F, 2.0F}, geo::latlng{3.5F, 2.5F},
-            geo::latlng{3.0F, 3.0F},
-        };
-        EXPECT_EQ(expected_shape, leg_shape);
+        EXPECT_EQ((geo::polyline{
+                      {3.0F, 1.0F},
+                      {3.5F, 1.5F},
+                      {3.0F, 2.0F},
+                      {3.5F, 2.5F},
+                      {3.0F, 3.0F},
+                  }),
+                  leg_shape);
       }
     }
     // Joined shape for continuous trips
@@ -385,12 +392,15 @@ TEST(
             &shapes_data, interval{stop_idx_t{3}, stop_idx_t{5 + 1}},
             plot_point);
 
-        expected_shape = {
-            geo::latlng{3.0F, 2.0F}, geo::latlng{3.5F, 2.5F},
-            geo::latlng{3.0F, 3.0F}, geo::latlng{3.0F, 3.0F},
-            geo::latlng{3.5F, 2.5F}, geo::latlng{4.0F, 3.0F},
-        };
-        EXPECT_EQ(expected_shape, leg_shape);
+        EXPECT_EQ((geo::polyline{
+                      {3.0F, 2.0F},
+                      {3.5F, 2.5F},
+                      {3.0F, 3.0F},
+                      {3.0F, 3.0F},
+                      {3.5F, 2.5F},
+                      {4.0F, 3.0F},
+                  }),
+                  leg_shape);
       }
       // F -> G -> H -> I -> J
       {
@@ -399,15 +409,20 @@ TEST(
             &shapes_data, interval{stop_idx_t{1}, stop_idx_t{5 + 1}},
             plot_point);
 
-        expected_shape = {
-            geo::latlng{2.0F, 1.0F}, geo::latlng{2.5F, 0.5F},
-            geo::latlng{3.0F, 1.0F}, geo::latlng{3.0F, 1.0F},
-            geo::latlng{3.5F, 1.5F}, geo::latlng{3.0F, 2.0F},
-            geo::latlng{3.5F, 2.5F}, geo::latlng{3.0F, 3.0F},
-            geo::latlng{3.0F, 3.0F}, geo::latlng{3.5F, 2.5F},
-            geo::latlng{4.0F, 3.0F},
-        };
-        EXPECT_EQ(expected_shape, leg_shape);
+        EXPECT_EQ((geo::polyline{
+                      {2.0F, 1.0F},
+                      {2.5F, 0.5F},
+                      {3.0F, 1.0F},
+                      {3.0F, 1.0F},
+                      {3.5F, 1.5F},
+                      {3.0F, 2.0F},
+                      {3.5F, 2.5F},
+                      {3.0F, 3.0F},
+                      {3.0F, 3.0F},
+                      {3.5F, 2.5F},
+                      {4.0F, 3.0F},
+                  }),
+                  leg_shape);
       }
     }
   }
@@ -433,16 +448,23 @@ TEST(
       full_run.for_each_shape_point(
           &shapes_data, interval{stop_idx_t{1}, stop_idx_t{8 + 1}}, plot_point);
 
-      expected_shape = {
-          geo::latlng{2.0F, 1.0F}, geo::latlng{2.5F, 0.5F},
-          geo::latlng{3.0F, 1.0F}, geo::latlng{3.0F, 1.0F},
-          geo::latlng{4.0F, 1.0F}, geo::latlng{5.0F, 1.0F},
-          geo::latlng{5.0F, 1.0F}, geo::latlng{6.0F, 2.0F},
-          geo::latlng{7.0F, 3.0F}, geo::latlng{7.0F, 3.0F},
-          geo::latlng{6.5F, 2.5F}, geo::latlng{7.0F, 2.0F},
-          geo::latlng{6.5F, 1.5F}, geo::latlng{7.0F, 1.0F},
-      };
-      EXPECT_EQ(expected_shape, leg_shape);
+      EXPECT_EQ((geo::polyline{
+                    {2.0F, 1.0F},
+                    {2.5F, 0.5F},
+                    {3.0F, 1.0F},
+                    {3.0F, 1.0F},
+                    {4.0F, 1.0F},
+                    {5.0F, 1.0F},
+                    {5.0F, 1.0F},
+                    {6.0F, 2.0F},
+                    {7.0F, 3.0F},
+                    {7.0F, 3.0F},
+                    {6.5F, 2.5F},
+                    {7.0F, 2.0F},
+                    {6.5F, 1.5F},
+                    {7.0F, 1.0F},
+                }),
+                leg_shape);
     }
   }
   // Trip with distance traveled available
@@ -463,17 +485,22 @@ TEST(
       full_run.for_each_shape_point(&shapes_data, full_run.stop_range_,
                                     plot_point);
 
-      expected_shape = {
-          geo::latlng{1.0F, 1.0F}, geo::latlng{2.0F, 1.5F},
-          geo::latlng{2.0F, 2.0F}, geo::latlng{2.0F, 2.5F},
-          geo::latlng{1.5F, 2.0F}, geo::latlng{2.0F, 2.0F},
-          geo::latlng{3.0F, 2.0F}, geo::latlng{3.0F, 3.0F},
-          geo::latlng{3.0F, 3.5F}, geo::latlng{2.5F, 3.0F},
-          geo::latlng{3.0F, 3.0F}, geo::latlng{3.5F, 3.0F},
-          geo::latlng{4.0F, 4.0F},
-      };
-
-      EXPECT_EQ(expected_shape, leg_shape);
+      EXPECT_EQ((geo::polyline{
+                    {1.0F, 1.0F},
+                    {2.0F, 1.5F},
+                    {2.0F, 2.0F},
+                    {2.0F, 2.5F},
+                    {1.5F, 2.0F},
+                    {2.0F, 2.0F},
+                    {3.0F, 2.0F},
+                    {3.0F, 3.0F},
+                    {3.0F, 3.5F},
+                    {2.5F, 3.0F},
+                    {3.0F, 3.0F},
+                    {3.5F, 3.0F},
+                    {4.0F, 4.0F},
+                }),
+                leg_shape);
     }
     // First leg, no loop
     {
@@ -482,12 +509,12 @@ TEST(
       full_run.for_each_shape_point(
           &shapes_data, interval{stop_idx_t{0}, stop_idx_t{1 + 1}}, plot_point);
 
-      expected_shape = {
-          geo::latlng{1.0F, 1.0F},
-          geo::latlng{2.0F, 1.5F},
-          geo::latlng{2.0F, 2.0F},
-      };
-      EXPECT_EQ(expected_shape, leg_shape);
+      EXPECT_EQ((geo::polyline{
+                    {1.0F, 1.0F},
+                    {2.0F, 1.5F},
+                    {2.0F, 2.0F},
+                }),
+                leg_shape);
     }
     // Last leg, no loop
     {
@@ -496,12 +523,12 @@ TEST(
       full_run.for_each_shape_point(
           &shapes_data, interval{stop_idx_t{2}, stop_idx_t{3 + 1}}, plot_point);
 
-      expected_shape = {
-          geo::latlng{3.0F, 3.0F},
-          geo::latlng{3.5F, 3.0F},
-          geo::latlng{4.0F, 4.0F},
-      };
-      EXPECT_EQ(expected_shape, leg_shape);
+      EXPECT_EQ((geo::polyline{
+                    {3.0F, 3.0F},
+                    {3.5F, 3.0F},
+                    {4.0F, 4.0F},
+                }),
+                leg_shape);
     }
     // Loop on start and end
     {
@@ -510,14 +537,18 @@ TEST(
       full_run.for_each_shape_point(
           &shapes_data, interval{stop_idx_t{1}, stop_idx_t{2 + 1}}, plot_point);
 
-      expected_shape = {
-          geo::latlng{2.0F, 2.0F}, geo::latlng{2.0F, 2.5F},
-          geo::latlng{1.5F, 2.0F}, geo::latlng{2.0F, 2.0F},
-          geo::latlng{3.0F, 2.0F}, geo::latlng{3.0F, 3.0F},
-          geo::latlng{3.0F, 3.5F}, geo::latlng{2.5F, 3.0F},
-          geo::latlng{3.0F, 3.0F},
-      };
-      EXPECT_EQ(expected_shape, leg_shape);
+      EXPECT_EQ((geo::polyline{
+                    {2.0F, 2.0F},
+                    {2.0F, 2.5F},
+                    {1.5F, 2.0F},
+                    {2.0F, 2.0F},
+                    {3.0F, 2.0F},
+                    {3.0F, 3.0F},
+                    {3.0F, 3.5F},
+                    {2.5F, 3.0F},
+                    {3.0F, 3.0F},
+                }),
+                leg_shape);
     }
   }
   // Trip with not exactly matching distances traveled
@@ -538,13 +569,12 @@ TEST(
       full_run.for_each_shape_point(
           &shapes_data, interval{stop_idx_t{1}, stop_idx_t{2 + 1}}, plot_point);
 
-      expected_shape = {
-          geo::latlng{2.0F, 2.0F},
-          geo::latlng{2.5F, 2.5F},
-          geo::latlng{3.0F, 3.0F},
-      };
-
-      EXPECT_EQ(expected_shape, leg_shape);
+      EXPECT_EQ((geo::polyline{
+                    {2.0F, 2.0F},
+                    {2.5F, 2.5F},
+                    {3.0F, 3.0F},
+                }),
+                leg_shape);
     }
   }
 }
