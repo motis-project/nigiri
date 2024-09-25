@@ -388,12 +388,6 @@ void frun::for_each_shape_point(
     return;
   }
   // Helper functions
-  auto const shift_interval = [](interval<stop_idx_t> const& range_interval,
-                                 int const offset) {
-    assert(range_interval.from_ >= -offset);  // Result interval must be valid
-    return interval{static_cast<stop_idx_t>(range_interval.from_ + offset),
-                    static_cast<stop_idx_t>(range_interval.to_ + offset)};
-  };
   auto const get_first_offset = [&](trip_idx_t const trip_index) {
     auto const range_offset =
         static_cast<stop_idx_t>(stop_range_.from_ + range.from_);
@@ -445,8 +439,7 @@ void frun::for_each_shape_point(
   auto const to = (*this)[range.to_ - 1];
   auto const final_trip_index = to.get_trip_idx(event_type::kArr);
   auto current_trip_index = from.get_trip_idx(event_type::kDep);
-  auto current_interval =
-      shift_interval(range, get_first_offset(current_trip_index));
+  auto current_interval = range + get_first_offset(current_trip_index);
   auto current_offset = range.from_;
   // Process trips, excluding last
   while (current_trip_index != final_trip_index) {
