@@ -434,7 +434,7 @@ void frun::for_each_shape_point(
     return std::make_pair(next_trip_index, stop_index - from);
   };
   // Setup
-  assert(stop_range_.from_ + range.to_ <= stop_range_.to);
+  assert(stop_range_.from_ + range.to_ <= stop_range_.to_);
   auto const from = (*this)[range.from_];
   auto const to = (*this)[range.to_ - 1];
   auto const final_trip_index = to.get_trip_idx(event_type::kArr);
