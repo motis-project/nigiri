@@ -6,6 +6,7 @@
 #include "geo/latlng.h"
 #include "geo/polyline.h"
 
+#include "utl/enumerate.h"
 #include "utl/get_or_create.h"
 #include "utl/helpers/algorithm.h"
 #include "utl/pairwise.h"
@@ -42,8 +43,7 @@ std::vector<shape_offset_t> split_shape(
   auto offsets = std::vector<shape_offset_t>(stops.size());
   auto offset = shape_offset_t{0};
 
-  auto index = 0U;
-  for (auto const& location_index : stops) {
+  for (auto const [index, location_index] : utl::enumerate(stops)) {
     if (index == 0U) {
       offsets[0] = shape_offset_t{0};
     } else if (index == stops.size() - 1U) {
@@ -54,7 +54,6 @@ std::vector<shape_offset_t> split_shape(
       offsets[index] = offset += get_closest(
           location.pos_, shape.subspan(static_cast<std::size_t>(offset.v_)));
     }
-    ++index;
   }
 
   return offsets;
