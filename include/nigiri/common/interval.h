@@ -57,12 +57,12 @@ struct interval {
 
   template <typename X>
   interval operator+(X const& x) const {
-    return {from_ + x, to_ + x};
+    return {static_cast<T>(from_ + x), static_cast<T>(to_ + x)};
   }
 
   template <typename X>
   interval operator-(X const& x) const {
-    return {from_ - x, to_ - x};
+    return {static_cast<T>(from_ - x), static_cast<T>(to_ - x)};
   }
 
   template <typename X>
