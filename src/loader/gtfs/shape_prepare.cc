@@ -41,7 +41,7 @@ std::vector<shape_offset_t> split_shape(
     return {};
   }
   auto offsets = std::vector<shape_offset_t>(stops.size());
-  auto offset = shape_offset_t{0U};
+  auto offset = cista::base_t<shape_offset_t>{0U};
 
   for (auto const [index, location_index] : utl::enumerate(stops)) {
     if (index == 0U) {
@@ -51,8 +51,8 @@ std::vector<shape_offset_t> split_shape(
     } else {
       auto const location =
           tt.locations_.get(stop(location_index).location_idx());
-      offsets[index] = offset += get_closest(
-          location.pos_, shape.subspan(static_cast<std::size_t>(offset.v_)));
+      offset += get_closest(location.pos_, shape.subspan(offset));
+      offsets[index] = shape_offset_t{offset};
     }
   }
 
