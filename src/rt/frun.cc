@@ -1,6 +1,5 @@
 #include "nigiri/rt/frun.h"
 
-#include <algorithm>
 #include <iterator>
 
 #include "utl/helpers/algorithm.h"
@@ -422,8 +421,9 @@ void frun::for_each_shape_point(
     if (shape.empty()) {
       return;
     }
-    using std::begin, std::end;
-    std::for_each(begin(shape), end(shape), callback);
+    for (auto const point : shape) {
+      callback(point);
+    }
   };
   auto const process_trip_stops = [&](stop_idx_t const from,
                                       trip_idx_t const current_trip_index) {
