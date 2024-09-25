@@ -404,8 +404,7 @@ void frun::for_each_shape_point(
                                                  range.from_)];
       return previous_stop.get_trip_idx(event_type::kDep) != trip_index;
     });
-    using std::end;
-    if (first == end(candidates)) {
+    if (first == candidates.end()) {
       return static_cast<int>(stop_range_.from_);
     } else {
       return *first - range.from_;
