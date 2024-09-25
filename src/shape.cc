@@ -8,7 +8,7 @@
 
 namespace nigiri {
 
-template <typename Value, typename Size = uint64_t>
+template <typename Value, typename Size = std::uint64_t>
 cista::basic_mmap_vec<Value, Size> create_storage_vector(
     std::string_view const path, cista::mmap::protection const mode) {
   return cista::basic_mmap_vec<Value, Size>{cista::mmap{path.data(), mode}};
