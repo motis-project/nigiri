@@ -31,7 +31,8 @@ struct meat_csa {
            delta_t max_delay = 30,
            double bound_parameter = 1.0,
            meat_t meat_transfer_cost = 0.0,
-           double fuzzy_parameter = 0.0)
+           double fuzzy_parameter = 0.0,
+           duration_t max_travel_time = kMaxTravelTime)
       : tt_{tt},
         base_{base},
         n_days_{tt_.internal_interval_days().size().count()},
@@ -40,6 +41,7 @@ struct meat_csa {
         meat_transfer_cost_{meat_transfer_cost},
         fuzzy_parameter_{fuzzy_parameter},
         allowed_claszes_{allowed_claszes},
+        max_travel_time_{max_travel_time},
         prf_idx_{0},
         state_{state.prepare_for_tt(tt_)},
         mpc_{tt_, state_, base_, allowed_claszes_, prf_idx_, stats_},
@@ -65,6 +67,7 @@ struct meat_csa {
                location_idx_t const end_location,
                profile_idx_t const prf_idx,
                decision_graph& result_graph) {
+    assert(tt_.internal_interval_days().from_ <= start_time);
     UTL_START_TIMING(total_time);
     prf_idx_ = prf_idx;
     auto without_clasz_filter = allowed_claszes_ == all_clasz_allowed();
@@ -141,7 +144,9 @@ private:
   void reset_csa_state() {
     using c_idx_t = connection::trip_con_idx_t;
     utl::fill(state_.ea_, std::numeric_limits<delta_t>::max());
-    utl::fill(state_.trip_first_con_, std::numeric_limits<c_idx_t>::max());
+    for (auto& v : state_.first_con_reachable_) {
+      utl::fill(v, std::numeric_limits<c_idx_t>::max());
+    }
   }
 
   int as_int(day_idx_t const d) const { return static_cast<int>(d.v_); }
@@ -186,19 +191,17 @@ private:
       return {day_idx_t::invalid(), connection_idx_t::invalid()};
     }
 
-     auto it = binary_find_first_true(tt_.fwd_connections_.begin(),
-                                  tt_.fwd_connections_.end(),
-                                  [&](connection const& c) {
-                                    return mam.count() <= c.dep_time_.mam();
-                                  });
+    auto it = binary_find_first_true(
+        tt_.fwd_connections_.begin(), tt_.fwd_connections_.end(),
+        [&](connection const& c) { return mam.count() <= c.dep_time_.mam(); });
 
-      if (it == tt_.fwd_connections_.end()) {
-        it = tt_.fwd_connections_.begin();
-        day++;
-        if (as_int(day) >= n_days_) {
-          return {day_idx_t::invalid(), connection_idx_t::invalid()};
-        }
+    if (it == tt_.fwd_connections_.end()) {
+      it = tt_.fwd_connections_.begin();
+      day++;
+      if (as_int(day) >= n_days_) {
+        return {day_idx_t::invalid(), connection_idx_t::invalid()};
       }
+    }
 
     while (
         !((WithClaszFilter
@@ -274,11 +277,9 @@ private:
       location_idx_t target_stop) {
     UTL_START_TIMING(esa_time);
     auto& esa = state_.ea_;  // earliest safe arrival
-    auto& trip_first_con = state_.trip_first_con_;
+    auto& first_con_reachable = state_.first_con_reachable_;
     update_arr_times(esa, source_time, source_stop,
                      stats_.esa_n_update_arr_time_);
-    // TODO remove
-    // auto [day, mam] = split(source_time);
 
     auto constexpr extra_delay = 1;
     delta_t const target_offset =
@@ -290,12 +291,19 @@ private:
     auto const* conn = &tt_.fwd_connections_[conn_end];
     auto conn_dep_time = tt_to_delta(day, conn->dep_time_.mam());
     while (as_int(day) < n_days_ &&
-           conn_dep_time - source_time < kMaxTravelTime.count() &&
+           conn_dep_time - source_time < max_travel_time_.count() &&
            esa[target_stop] > conn_dep_time + target_offset) {
       stats_.esa_n_connections_scanned_++;
 
+      auto const n_th_search_day = to_idx(day - conn_begin.first);
+      auto const trip_day_idx = static_cast<uint16_t>(
+          (conn->dep_time_.days() +
+           n_th_search_day *
+               (tt_.travel_duration_days_[conn->transport_idx_] - 1)) %
+          tt_.travel_duration_days_[conn->transport_idx_]);
       auto const via_trip =
-          trip_first_con[conn->transport_idx_] <= conn->trip_con_idx_;
+          first_con_reachable[conn->transport_idx_][trip_day_idx] <=
+          conn->trip_con_idx_;
       auto const via_station =
           esa[stop{conn->dep_stop_}.location_idx()] <= conn_dep_time &&
           stop{conn->dep_stop_}.in_allowed() &&
@@ -307,7 +315,8 @@ private:
 
       if ((via_trip || via_station) && tt_.is_connection_active(*conn, day)) {
         if (!via_trip) {
-          trip_first_con[conn->transport_idx_] = conn->trip_con_idx_;
+          first_con_reachable[conn->transport_idx_][trip_day_idx] =
+              conn->trip_con_idx_;
         }
         if (stop{conn->arr_stop_}.out_allowed()) {
           auto const conn_arr_time =
@@ -336,7 +345,7 @@ private:
     stats_.esa_duration_ = static_cast<std::uint64_t>(UTL_TIMING_MS(esa_time));
 
     if (esa[target_stop] == std::numeric_limits<delta_t>::max() ||
-        esa[target_stop] - source_time > kMaxTravelTime.count()) {
+        esa[target_stop] - source_time > max_travel_time_.count()) {
       return {day_idx_t::invalid(), connection_idx_t::invalid()};
     } else {
       if (bound_parameter_ == std::numeric_limits<double>::max()) {
@@ -384,7 +393,7 @@ private:
       location_idx_t source_stop,
       delta_t source_time) {
     auto& ea = state_.ea_;
-    auto& trip_first_con = state_.trip_first_con_;
+    auto& first_con_reachable = state_.first_con_reachable_;
 
     update_arr_times(ea, source_time, source_stop,
                      stats_.ea_n_update_arr_time_);
@@ -396,7 +405,15 @@ private:
       stats_.ea_n_connections_scanned_++;
       auto const& c = tt_.fwd_connections_[con_idx];
       auto const c_dep_time = tt_to_delta(day, c.dep_time_.mam());
-      auto const via_trip = trip_first_con[c.transport_idx_] <= c.trip_con_idx_;
+      auto const n_th_search_day = to_idx(day - conn_begin.first);
+      auto const trip_day_idx = static_cast<uint16_t>(
+          (c.dep_time_.days() +
+           n_th_search_day *
+               (tt_.travel_duration_days_[c.transport_idx_] - 1)) %
+          tt_.travel_duration_days_[c.transport_idx_]);
+      auto const via_trip =
+          first_con_reachable[c.transport_idx_][trip_day_idx] <=
+          c.trip_con_idx_;
       auto const via_station =
           ea[stop{c.dep_stop_}.location_idx()] <= c_dep_time &&
           stop{c.dep_stop_}.in_allowed() &&
@@ -408,7 +425,7 @@ private:
 
       if ((via_trip || via_station) && tt_.is_connection_active(c, day)) {
         if (!via_trip) {
-          trip_first_con[c.transport_idx_] = c.trip_con_idx_;
+          first_con_reachable[c.transport_idx_][trip_day_idx] = c.trip_con_idx_;
         }
         if (stop{c.arr_stop_}.out_allowed()) {
           auto const c_arr_time =
@@ -437,6 +454,7 @@ private:
   meat_t meat_transfer_cost_;
   double fuzzy_parameter_;
   clasz_mask_t allowed_claszes_;
+  duration_t max_travel_time_;
   profile_idx_t prf_idx_;
   meat_csa_state<ProfileSet>& state_;
   meat_profile_computer<ProfileSet> mpc_;
