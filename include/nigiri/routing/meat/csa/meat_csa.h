@@ -144,9 +144,7 @@ private:
   void reset_csa_state() {
     using c_idx_t = connection::trip_con_idx_t;
     utl::fill(state_.ea_, std::numeric_limits<delta_t>::max());
-    for (auto& v : state_.first_con_reachable_) {
-      utl::fill(v, std::numeric_limits<c_idx_t>::max());
-    }
+    utl::fill(state_.first_con_reachable_.data_, std::numeric_limits<c_idx_t>::max());
   }
 
   int as_int(day_idx_t const d) const { return static_cast<int>(d.v_); }

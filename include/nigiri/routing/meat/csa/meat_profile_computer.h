@@ -5,6 +5,7 @@
 
 #include "nigiri/common/delta_t.h"
 #include "nigiri/routing/clasz_mask.h"
+#include "nigiri/routing/meat/csa/meat_csa_state.h"
 #include "nigiri/routing/meat/csa/meat_csa_stats.h"
 #include "nigiri/routing/meat/csa/profile.h"
 #include "nigiri/routing/meat/delay.h"
@@ -15,11 +16,6 @@ namespace nigiri::routing::meat::csa {
 
 template <typename ProfileSet>
 struct meat_profile_computer {
-
-  struct trip_data {
-    meat_t meat_;
-    connection_idx_t exit_conn_;
-  };
 
   explicit meat_profile_computer(timetable const& tt,
                                  meat_csa_state<ProfileSet>& state,
@@ -33,37 +29,17 @@ struct meat_profile_computer {
         allowed_claszes_{allowed_claszes},
         fp_prf_idx_{prf_idx},
         stats_{stats},
-        trip_reset_list_(tt.n_transports()),
-        trip_reset_list_end_{0},
         profile_set_{state_.profile_set_} {
-    assert(std::numeric_limits<meat_t>::has_infinity == true);
-
-    for (auto t_idx = transport_idx_t{0}; t_idx < tt_.n_transports(); ++t_idx) {
-      auto const t_size = tt_.travel_duration_days_[t_idx];
-      trip_.emplace_back(std::vector<trip_data>(
-          t_size, {std::numeric_limits<meat_t>::infinity(),
-                   connection_idx_t::invalid()}));
-    }
-    assert(trip_.size() == tt_.n_transports());
+    static_assert(std::numeric_limits<meat_t>::has_infinity == true);
   }
 
   delta_t tt_to_delta(day_idx_t const day, std::int16_t mam) const {
     return nigiri::tt_to_delta(base_, day, duration_t{mam});
   }
   void reset() {
-    reset_trip();
     while (!fp_que_.empty()) {
       fp_que_.pop();
     }
-  }
-  void reset_trip() {
-    for (auto i = 0U; i < trip_reset_list_end_; ++i) {
-      for (auto& t : trip_[trip_reset_list_[i]]) {
-        t = {std::numeric_limits<meat_t>::infinity(),
-             connection_idx_t::invalid()};
-      }
-    }
-    trip_reset_list_end_ = 0;
   }
 
   template <bool WithClaszFilter>
@@ -77,6 +53,7 @@ struct meat_profile_computer {
       meat_t transfer_cost,
       delta_t last_arr) {
     auto const& ea = state_.ea_;
+    auto& trip = state_.trip_;
 
     auto evaluate_profile = [&](location_idx_t stop, delta_t when) {
       meat_t meat = 0.0;
@@ -103,7 +80,6 @@ struct meat_profile_computer {
     auto conn = conn_end;
     auto& day = conn.first;
     auto& con_idx = conn.second;
-    std::uint8_t n_day = 0;
     while (conn >= conn_begin) {
       stats_.meat_n_connections_scanned_++;
       auto const& c = tt_.fwd_connections_[con_idx];
@@ -121,11 +97,12 @@ struct meat_profile_computer {
                : true) &&
           ea[stop{c.dep_stop_}.location_idx()] <= c_dep_time &&
           c_arr_time <= last_arr && tt_.is_connection_active(c, day)) {
-        auto const d_idx = static_cast<day_idx_t::value_t>(
-            (c.dep_time_.days() + n_day) %
+        auto const n_th_search_day = to_idx(conn_end.first - day);
+        auto const trip_day_idx = static_cast<day_idx_t::value_t>(
+            (c.dep_time_.days() + n_th_search_day) %
             tt_.travel_duration_days_[c.transport_idx_]);
 
-        meat_t meat = trip_[c.transport_idx_][d_idx].meat_;
+        meat_t meat = trip[c.transport_idx_][trip_day_idx].meat_;
 
         if (stop{c.arr_stop_}.out_allowed()) {
           auto c_arr_stop_idx = stop{c.arr_stop_}.location_idx();
@@ -142,13 +119,9 @@ struct meat_profile_computer {
                                       transfer_cost);
           }
 
-          if (meat < trip_[c.transport_idx_][d_idx].meat_) {
-            if (trip_[c.transport_idx_][d_idx].meat_ ==
-                std::numeric_limits<meat_t>::infinity()) {
-              trip_reset_list_[trip_reset_list_end_++] = c.transport_idx_;
-            }
-            trip_[c.transport_idx_][d_idx].meat_ = meat;
-            trip_[c.transport_idx_][d_idx].exit_conn_ = con_idx;
+          if (meat < trip[c.transport_idx_][trip_day_idx].meat_) {
+            trip[c.transport_idx_][trip_day_idx].meat_ = meat;
+            trip[c.transport_idx_][trip_day_idx].exit_conn_ = con_idx;
           }
         }
 
@@ -161,7 +134,7 @@ struct meat_profile_computer {
             meat < early_entry.meat_ - fuzzy_dominance_offset) {
           auto const new_entry = profile_entry{
               c_dep_time, meat,
-              ride{con_idx, trip_[c.transport_idx_][d_idx].exit_conn_}};
+              ride{con_idx, trip[c.transport_idx_][trip_day_idx].exit_conn_}};
           add_or_replace_entry(new_entry, c_dep_stop_idx);
           for (auto const& fp :
                tt_.locations_.footpaths_in_[fp_prf_idx_][c_dep_stop_idx]) {
@@ -181,11 +154,13 @@ struct meat_profile_computer {
         }
       }
 
-      if (c.trip_con_idx_ == 0) {
-        auto const d_idx = static_cast<day_idx_t::value_t>(
-            (c.dep_time_.days() + n_day) %
+      auto const reset_trip_data = c.trip_con_idx_ == 0;
+      if (reset_trip_data) {
+        auto const n_th_search_day = to_idx(conn_end.first - day);
+        auto const trip_day_idx = static_cast<day_idx_t::value_t>(
+            (c.dep_time_.days() + n_th_search_day) %
             tt_.travel_duration_days_[c.transport_idx_]);
-        trip_[c.transport_idx_][d_idx] = {
+        trip[c.transport_idx_][trip_day_idx] = {
             std::numeric_limits<meat_t>::infinity(),
             connection_idx_t::invalid()};
       }
@@ -193,7 +168,6 @@ struct meat_profile_computer {
       if (con_idx == connection_idx_t{0}) {
         --day;
         con_idx = connection_idx_t{tt_.fwd_connections_.size() - 1};
-        ++n_day;
       } else {
         --con_idx;
       }
@@ -232,10 +206,7 @@ struct meat_profile_computer {
   clasz_mask_t const& allowed_claszes_;
   profile_idx_t const& fp_prf_idx_;
   meat_csa_stats& stats_;
-  std::vector<transport_idx_t> trip_reset_list_;
-  transport_idx_t::value_t trip_reset_list_end_;
   ProfileSet& profile_set_;
-  vecvec<transport_idx_t, trip_data> trip_;
   std::priority_queue<std::unique_ptr<profile_entry>,
                       std::vector<std::unique_ptr<profile_entry>>,
                       decltype([](std::unique_ptr<profile_entry> const& l,

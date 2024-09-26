@@ -8,11 +8,14 @@ meat_csa_state<ProfileSet>& meat_csa_state<ProfileSet>::prepare_for_tt(
   ea_.resize(tt.n_locations());
   profile_set_.prepare_for_tt(tt);
 
-  first_con_reachable_.resize(tt.n_transports());
+  first_con_reachable_.clear();
+  trip_.clear();
   for (auto t_idx = transport_idx_t{0}; t_idx < tt.n_transports(); ++t_idx) {
     auto const t_size = tt.travel_duration_days_[t_idx];
-    first_con_reachable_[t_idx].resize(t_size);
+    first_con_reachable_.add_back_sized(t_size);
+    trip_.add_back_sized(t_size);
   }
+  assert(trip_.size() == tt.n_transports());
 
   reset();
 

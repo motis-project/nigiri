@@ -13,6 +13,11 @@
 
 namespace nigiri::routing::meat::csa {
 
+struct trip_data {
+  meat_t meat_;
+  connection_idx_t exit_conn_;
+};
+
 template <typename ProfileSet>
 struct meat_csa_state {
   using c_idx_t = connection::trip_con_idx_t;
@@ -27,18 +32,18 @@ struct meat_csa_state {
   meat_csa_state<ProfileSet>& prepare_for_tt(timetable const& tt);
   void reset() {
     utl::fill(ea_, std::numeric_limits<delta_t>::max());
-    for (auto& v : first_con_reachable_) {
-      utl::fill(v, std::numeric_limits<c_idx_t>::max());
-    }
+    utl::fill(first_con_reachable_.data_, std::numeric_limits<c_idx_t>::max());
+    utl::fill(trip_.data_, trip_data{std::numeric_limits<meat_t>::infinity(),
+                                     connection_idx_t::invalid()});
     profile_set_.reset();
   }
 
   vector_map<location_idx_t, delta_t> ea_;
-  vector_map<transport_idx_t, std::vector<c_idx_t>> first_con_reachable_;
+  vecvec<transport_idx_t, c_idx_t> first_con_reachable_;
   ProfileSet profile_set_;
-  // TODO
-  // add trip_ , trip_reset from meat_profile_computer?
-  // add to_node_id_ from decision_graph_extractor ?
+  vecvec<transport_idx_t, trip_data> trip_;
+  //  TODO
+  //  add to_node_id_ from decision_graph_extractor ?
 };
 
 }  // namespace nigiri::routing::meat::csa
