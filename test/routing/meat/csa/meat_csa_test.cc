@@ -1,17 +1,15 @@
 #include "gtest/gtest.h"
 
-#include "nigiri/loader/gtfs/load_timetable.h"
-#include "nigiri/loader/init_finish.h"
-
 #include "nigiri/timetable.h"
 
 #include "nigiri/routing/meat/compact_representation.h"
 #include "nigiri/routing/meat/csa/meat_csa.h"
 #include "nigiri/routing/meat/expanded_representation.h"
 
+#include "../load_sv_tt.h"
+
 using namespace date;
 using namespace nigiri;
-using namespace nigiri::loader;
 using namespace std::string_view_literals;
 
 namespace m = routing::meat;
@@ -94,42 +92,30 @@ constexpr auto const expanded_dot_graph = R"(digraph decision_graph{
 }
 )";
 
-struct load_tt {
-  load_tt(std::string_view tt) {
-    src_ = source_idx_t{0};
-    tt_.date_range_ = {date::sys_days{2024_y / March / 1},
-                       date::sys_days{2024_y / March / 2}};
-    register_special_stations(tt_);
-    gtfs::load_timetable({}, src_, loader::mem_dir::read(tt), tt_);
-    finalize(tt_);
-  }
-  source_idx_t src_;
-  timetable tt_;
-};
-
 // Tests if graph is found / indirect if con_end = compute_safe_connection_end()
 // is correct
 TEST(MeatCsa, FinalConnOfStation) {
-  auto ltt = load_tt{test_tt};
+  auto tt = test::load_tt(test_tt, {date::sys_days{2024_y / March / 1},
+                                    date::sys_days{2024_y / March / 2}});
   auto state = mcsa::meat_csa_state<mcsa::dynamic_profile_set>{};
   auto meat = mcsa::meat_csa<mcsa::dynamic_profile_set>{
-      ltt.tt_, state, day_idx_t{4}, routing::all_clasz_allowed()};
+      tt, state, day_idx_t{4}, routing::all_clasz_allowed()};
   auto g = m::decision_graph{};
 
   auto const from = "S";
   auto const to = "T";
-  auto const start_time = *ltt.tt_.date_range_.begin();
+  auto const start_time = *tt.date_range_.begin();
   auto const start_location =
-      ltt.tt_.locations_.location_id_to_idx_.at({from, source_idx_t{0}});
+      tt.locations_.location_id_to_idx_.at({from, source_idx_t{0}});
   auto const end_location =
-      ltt.tt_.locations_.location_id_to_idx_.at({to, source_idx_t{0}});
+      tt.locations_.location_id_to_idx_.at({to, source_idx_t{0}});
   auto const prf_idx = profile_idx_t{0};
 
   meat.execute(start_time, start_location, end_location, prf_idx, g);
 
   auto r = m::expanded_representation{g};
   auto ss = std::stringstream{};
-  m::write_dot(ss, ltt.tt_, g, r);
+  m::write_dot(ss, tt, g, r);
   EXPECT_EQ(ss.str(), expanded_dot_graph)
       << ss.str() << "\n " << expanded_dot_graph;
 }
@@ -216,16 +202,17 @@ constexpr auto const expanded_dot_graph_a_2 = R"(digraph decision_graph{
 )";
 
 TEST(MeatCsa, Alpha) {
-  auto ltt = load_tt{test2_tt};
+  auto tt = test::load_tt(test2_tt, {date::sys_days{2024_y / March / 1},
+                                     date::sys_days{2024_y / March / 2}});
   auto const max_delay = 30;
 
   auto const from = "S";
   auto const to = "T";
-  auto const start_time = *ltt.tt_.date_range_.begin();
+  auto const start_time = *tt.date_range_.begin();
   auto const start_location =
-      ltt.tt_.locations_.location_id_to_idx_.at({from, source_idx_t{0}});
+      tt.locations_.location_id_to_idx_.at({from, source_idx_t{0}});
   auto const end_location =
-      ltt.tt_.locations_.location_id_to_idx_.at({to, source_idx_t{0}});
+      tt.locations_.location_id_to_idx_.at({to, source_idx_t{0}});
   auto const prf_idx = profile_idx_t{0};
 
   auto ss = std::stringstream{};
@@ -233,15 +220,14 @@ TEST(MeatCsa, Alpha) {
     auto alpha = 1.12;
     auto state = mcsa::meat_csa_state<mcsa::dynamic_profile_set>{};
     auto meat = mcsa::meat_csa<mcsa::dynamic_profile_set>{
-        ltt.tt_,   state, day_idx_t{4}, routing::all_clasz_allowed(),
+        tt,        state, day_idx_t{4}, routing::all_clasz_allowed(),
         max_delay, alpha};
     auto g = m::decision_graph{};
 
     meat.execute(start_time, start_location, end_location, prf_idx, g);
 
     auto r = m::expanded_representation{g};
-    m::write_dot(ss, ltt.tt_, g, r);
-    m::write_dot(std::cout, ltt.tt_, g, r);
+    m::write_dot(ss, tt, g, r);
     EXPECT_EQ(ss.str(), expanded_dot_graph_a_1)
         << ss.str() << "\n " << expanded_dot_graph_a_1;
   }
@@ -251,17 +237,17 @@ TEST(MeatCsa, Alpha) {
     auto alpha = 1.12;
     auto state = mcsa::meat_csa_state<mcsa::dynamic_profile_set>{};
     auto meat = mcsa::meat_csa<mcsa::dynamic_profile_set>{
-        ltt.tt_,   state, day_idx_t{6}, routing::all_clasz_allowed(),
+        tt,        state, day_idx_t{6}, routing::all_clasz_allowed(),
         max_delay, alpha};
     auto g = m::decision_graph{};
 
     meat.execute(start_time, start_location, end_location, prf_idx, g);
 
     auto r = m::expanded_representation{g};
-    m::write_dot(s, ltt.tt_, g, r);
-    m::write_dot(std::cout, ltt.tt_, g, r);
+    m::write_dot(s, tt, g, r);
     EXPECT_EQ(s.str(), expanded_dot_graph_a_1)
-        << s.str() << "\n " << expanded_dot_graph_a_1;
+        << s.str() << "\n " << expanded_dot_graph_a_1
+        << "\n delta_t of start_time is negative";
   }
 
   auto ss2 = std::stringstream{};
@@ -269,7 +255,7 @@ TEST(MeatCsa, Alpha) {
     auto alpha = 1.14;
     auto state = mcsa::meat_csa_state<mcsa::dynamic_profile_set>{};
     auto meat = mcsa::meat_csa<mcsa::dynamic_profile_set>{
-        ltt.tt_,   state, day_idx_t{4}, routing::all_clasz_allowed(),
+        tt,        state, day_idx_t{4}, routing::all_clasz_allowed(),
         max_delay, alpha};
     auto g = m::decision_graph{};
 
@@ -277,8 +263,7 @@ TEST(MeatCsa, Alpha) {
 
     auto r = m::expanded_representation{g};
 
-    m::write_dot(ss2, ltt.tt_, g, r);
-    m::write_dot(std::cout, ltt.tt_, g, r);
+    m::write_dot(ss2, tt, g, r);
     EXPECT_EQ(ss2.str(), expanded_dot_graph_a_2)
         << ss2.str() << "\n " << expanded_dot_graph_a_2;
   }
@@ -288,7 +273,7 @@ TEST(MeatCsa, Alpha) {
     auto alpha = 1.0;
     auto state = mcsa::meat_csa_state<mcsa::dynamic_profile_set>{};
     auto meat = mcsa::meat_csa<mcsa::dynamic_profile_set>{
-        ltt.tt_,   state, day_idx_t{4}, routing::all_clasz_allowed(),
+        tt,        state, day_idx_t{4}, routing::all_clasz_allowed(),
         max_delay, alpha};
     auto g = m::decision_graph{};
 
@@ -296,8 +281,7 @@ TEST(MeatCsa, Alpha) {
 
     auto r = m::expanded_representation{g};
 
-    m::write_dot(ss3, ltt.tt_, g, r);
-    m::write_dot(std::cout, ltt.tt_, g, r);
+    m::write_dot(ss3, tt, g, r);
     EXPECT_EQ(ss3.str(), expanded_dot_graph_a_1)
         << ss3.str() << "\n " << expanded_dot_graph_a_1;
   }
@@ -307,7 +291,7 @@ TEST(MeatCsa, Alpha) {
     auto alpha = std::numeric_limits<double>::max();
     auto state = mcsa::meat_csa_state<mcsa::dynamic_profile_set>{};
     auto meat = mcsa::meat_csa<mcsa::dynamic_profile_set>{
-        ltt.tt_,   state, day_idx_t{4}, routing::all_clasz_allowed(),
+        tt,        state, day_idx_t{4}, routing::all_clasz_allowed(),
         max_delay, alpha};
     auto g = m::decision_graph{};
 
@@ -315,8 +299,7 @@ TEST(MeatCsa, Alpha) {
 
     auto r = m::expanded_representation{g};
 
-    m::write_dot(ss4, ltt.tt_, g, r);
-    m::write_dot(std::cout, ltt.tt_, g, r);
+    m::write_dot(ss4, tt, g, r);
     EXPECT_EQ(ss4.str(), expanded_dot_graph_a_2)
         << ss4.str() << "\n " << expanded_dot_graph_a_2;
   }
@@ -326,7 +309,7 @@ TEST(MeatCsa, Alpha) {
     auto alpha = 1000.0;
     auto state = mcsa::meat_csa_state<mcsa::dynamic_profile_set>{};
     auto meat = mcsa::meat_csa<mcsa::dynamic_profile_set>{
-        ltt.tt_,   state, day_idx_t{4}, routing::all_clasz_allowed(),
+        tt,        state, day_idx_t{4}, routing::all_clasz_allowed(),
         max_delay, alpha};
     auto g = m::decision_graph{};
 
@@ -334,8 +317,7 @@ TEST(MeatCsa, Alpha) {
 
     auto r = m::expanded_representation{g};
 
-    m::write_dot(ss5, ltt.tt_, g, r);
-    m::write_dot(std::cout, ltt.tt_, g, r);
+    m::write_dot(ss5, tt, g, r);
     EXPECT_EQ(ss5.str(), expanded_dot_graph_a_2)
         << ss5.str() << "\n " << expanded_dot_graph_a_2;
   }
