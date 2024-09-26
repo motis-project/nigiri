@@ -15,6 +15,8 @@ using namespace std::string_view_literals;
 namespace m = routing::meat;
 namespace mcsa = m::csa;
 
+namespace {
+
 // Timetable:
 // Connections
 // S -> A: 00:00 - 00:01
@@ -92,6 +94,8 @@ constexpr auto const expanded_dot_graph = R"(digraph decision_graph{
 }
 )";
 
+}  // namespace
+
 // Tests if graph is found / indirect if con_end = compute_safe_connection_end()
 // is correct
 TEST(MeatCsa, FinalConnOfStation) {
@@ -119,6 +123,8 @@ TEST(MeatCsa, FinalConnOfStation) {
   EXPECT_EQ(ss.str(), expanded_dot_graph)
       << ss.str() << "\n " << expanded_dot_graph;
 }
+
+namespace {
 
 // Timetable:
 // Connections
@@ -200,6 +206,8 @@ constexpr auto const expanded_dot_graph_a_2 = R"(digraph decision_graph{
 	node2:slot7 -> node3:slot11 [label="BT ",tooltip="probability of use=0.113755\nMEAT=2024-03-01 00:42\n   0: B       B...............................................                               d: 01.03 00:41 [01.03 01:41]  [{name=BT , day=2024-03-01, id=BT2, src=0}]\n   1: T       T............................................... a: 01.03 00:42 [01.03 01:42]\n"];
 }
 )";
+
+}  // namespace
 
 TEST(MeatCsa, Alpha) {
   auto tt = test::load_tt(test2_tt, {date::sys_days{2024_y / March / 1},

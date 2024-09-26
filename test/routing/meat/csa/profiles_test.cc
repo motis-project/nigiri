@@ -35,6 +35,8 @@ struct timetable;
 struct rt_timetable;
 }  // namespace nigiri
 
+namespace {
+
 // Timetable:
 // Connections
 // S -> A: 00:00 - 00:01
@@ -125,6 +127,8 @@ struct load_tt {
   source_idx_t src_;
   timetable tt_;
 };
+
+}  // namespace
 
 class MeatCsaProfilesTest : public testing::Test, public load_tt {
 protected:

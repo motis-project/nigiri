@@ -17,8 +17,10 @@ using namespace std::string_view_literals;
 namespace m = routing::meat;
 namespace mcsa = m::csa;
 
+namespace {
+
 // Timetable:
-// Touts/Connections
+// Routs/Connections
 // R1: S -> A -> B -> T
 // S -> A: 00:00 - 24:02
 // A -> B: 24:04 - 24:06
@@ -73,6 +75,8 @@ constexpr auto const expanded_dot_graph_s_t = R"(digraph decision_graph{
 	node0:slot0 -> node1:slot1 [label="R1",tooltip="probability of use=1\nMEAT=2024-03-05 00:12\n   0: S       S...............................................                               d: 03.03 00:00 [03.03 01:00]  [{name=R1, day=2024-03-03, id=TR10, src=0}]\n   1: A       A............................................... a: 04.03 00:02 [04.03 01:02]  d: 04.03 00:04 [04.03 01:04]  [{name=R1, day=2024-03-03, id=TR10, src=0}]\n   2: B       B............................................... a: 04.03 00:06 [04.03 01:06]  d: 04.03 00:10 [04.03 01:10]  [{name=R1, day=2024-03-03, id=TR10, src=0}]\n   3: T       T............................................... a: 05.03 00:12 [05.03 01:12]\n"];
 }
 )";
+
+}  // namespace
 
 TEST(MeatCsa, MultiDayTripsAB) {
   auto tt = test::load_tt(
