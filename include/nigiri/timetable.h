@@ -493,11 +493,6 @@ struct timetable {
 
   bool is_connection_active(connection const& c, day_idx_t d) const {
     auto con_day_offset = c.dep_time_.days();
-    // TODO is this if needed ? raptor seems not to need it?
-    if (static_cast<int>(to_idx(d)) - con_day_offset < 0)
-    {
-      return false;
-    } 
     return bitfields_[transport_traffic_days_[c.transport_idx_]].test(
         static_cast<std::size_t>(static_cast<int>(to_idx(d)) - con_day_offset));
   }
