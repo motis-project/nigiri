@@ -6,7 +6,6 @@
 
 #include "geo/latlng.h"
 
-#include "utl/helpers/algorithm.h"
 #include "utl/overloaded.h"
 
 #include "nigiri/lookup/get_transport_stop_tz.h"
@@ -383,18 +382,17 @@ void frun::for_each_shape_point(
     std::function<void(geo::latlng const&)> const& callback) const {
   using stop_int = interval<stop_idx_t>;
   assert(stop_range_.from_ + range.to_ <= stop_range_.to_);
-  auto const visitor = utl::overloaded{
-          [&](std::span<geo::latlng const> shape) {
-            for (auto const& pos : shape) {
-              callback(pos);
-            }
-          },
-          [&](stop_int relative_range) {
-            for (auto const stop_index : relative_range) {
-              callback((*this)[stop_index].pos());
-            }
-          }
-        };
+  auto const visitor =
+      utl::overloaded{[&](std::span<geo::latlng const> shape) {
+                        for (auto const& pos : shape) {
+                          callback(pos);
+                        }
+                      },
+                      [&](stop_int relative_range) {
+                        for (auto const stop_index : relative_range) {
+                          callback((*this)[stop_index].pos());
+                        }
+                      }};
   if (range.size() < 2) {
     visitor(range);
     return;
@@ -407,39 +405,69 @@ void frun::for_each_shape_point(
   };
   struct trip_details {
     stop_int intersect(stop_int other) const {
-      return offset_range_.overlaps(other) ? stop_int{std::max(offset_range_.from_, other.from_), std::min(offset_range_.to_, other.to_)} : stop_int{0U, 0U};
+      return offset_range_.overlaps(other)
+                 ? stop_int{std::max(offset_range_.from_, other.from_),
+                            std::min(offset_range_.to_, other.to_)}
+                 : stop_int{0U, 0U};
     }
     stop_int offset_range_;
     trip_idx_t trip_index_;
   };
-  auto trips = std::views::iota(-1, static_cast<int>(absolute_last_stop)) // Add additional 'trip_outgoing' for first and last stop
-    | std::views::transform([&](stop_idx_t const absolute_offset) {
-        auto const trip_index = (static_cast<stop_idx_t>(absolute_offset + 1U) == 0U || absolute_offset == absolute_last_stop - 1) ?
-          trip_idx_t::invalid() :(*this)[absolute_offset - stop_range_.from_].get_trip_idx(event_type::kDep);
+  // Range over all trips using absolute 'trip_details.offset_range_'
+  auto trips =
+      std::views::iota(
+          -1, static_cast<int>(
+                  absolute_last_stop))  // Add additional 'trip_outgoing' for
+                                        // first and last stop
+      |
+      std::views::transform([&](stop_idx_t const absolute_offset) {
+        auto const trip_index =
+            (static_cast<stop_idx_t>(absolute_offset + 1U) == stop_idx_t{0U} ||
+             absolute_offset + 1U == absolute_last_stop)
+                ? trip_idx_t::invalid()
+                : (*this)[absolute_offset - stop_range_.from_].get_trip_idx(
+                      event_type::kDep);
         return trip_outgoing{absolute_offset, trip_index};
-    }) //
-    | std::views::pairwise  //
-    | std::views::filter([](std::pair<trip_outgoing, trip_outgoing> const pair) { return pair.first.trip_index_ != pair.second.trip_index_; })  //
-    | std::views::transform([](std::pair<trip_outgoing, trip_outgoing> const pair) { return pair.second; })  // Notice: This also drops leading invalid trip_idx_t
-    | std::views::pairwise  //
-    | std::views::transform([](std::pair<trip_outgoing, trip_outgoing> const pair) { return trip_details{{pair.first.absolute_offset_, static_cast<stop_idx_t>(pair.second.absolute_offset_ + 1)}, pair.first.trip_index_}; })
-    ;
-    auto const get_graph = [&](stop_int range_absolute, trip_idx_t const trip_index, stop_idx_t const trip_absolute_offset) {
-      using variant_type = std::variant<std::span<geo::latlng const>, stop_int>;
-      if (shapes_data != nullptr) {
-      auto const shape = shapes_data->get_shape(trip_index, range_absolute << trip_absolute_offset);
+      })  //
+      | std::views::pairwise  //
+      | std::views::filter(
+            [](std::pair<trip_outgoing, trip_outgoing> const pair) {
+              return pair.first.trip_index_ != pair.second.trip_index_;
+            })  //
+      | std::views::transform(
+            [](std::pair<trip_outgoing, trip_outgoing> const pair) {
+              return pair.second;
+            })  // Notice: First trip requires leading invalid trip_idx_t
+      | std::views::pairwise  //
+      | std::views::transform(
+            [](std::pair<trip_outgoing, trip_outgoing> const pair) {
+              return trip_details{
+                  {pair.first.absolute_offset_,
+                   static_cast<stop_idx_t>(pair.second.absolute_offset_ + 1U)},
+                  pair.first.trip_index_};
+            });
+  auto const get_graph = [&](stop_int absolute_range,
+                             trip_idx_t const trip_index,
+                             stop_idx_t const trip_absolute_offset) {
+    using variant_type = std::variant<std::span<geo::latlng const>, stop_int>;
+    if (shapes_data != nullptr) {
+      auto const shape = shapes_data->get_shape(
+          trip_index, absolute_range << trip_absolute_offset);
       if (!shape.empty()) {
         return variant_type{shape};
-       }
-      }
-      return variant_type{range_absolute << stop_range_.from_};
-    };
-    for (auto const absolute_trip_range : trips) {
-      auto const common_legs_absolute = absolute_trip_range.intersect(absolute_stop_range);
-      if (common_legs_absolute.size() > 1) {
-        std::visit(visitor, get_graph(common_legs_absolute, absolute_trip_range.trip_index_, absolute_trip_range.offset_range_.from_));
       }
     }
+    return variant_type{absolute_range << stop_range_.from_};
+  };
+  for (auto const absolute_trip_range : trips) {
+    auto const absolute_common_legs =
+        absolute_trip_range.intersect(absolute_stop_range);
+    if (absolute_common_legs.size() > 1) {
+      std::visit(visitor, get_graph(absolute_common_legs,
+                                    absolute_trip_range.trip_index_,
+                                    absolute_trip_range.offset_range_.from_));
+    }
+  }
 }
 
 trip_id frun::id() const noexcept {
