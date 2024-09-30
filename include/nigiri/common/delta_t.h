@@ -52,7 +52,8 @@ inline std::pair<day_idx_t, minutes_after_midnight_t> split_day_mam(
   assert(x != std::numeric_limits<delta_t>::min());
   assert(x != std::numeric_limits<delta_t>::max());
   if (x < 0) {
-    auto const t = -x / 1440 + 1;
+    auto const o = (x % 1440) == 0 ? 0 : 1;
+    auto const t = -x / 1440 + o;
     auto const min = x + (t * 1440);
     return {static_cast<day_idx_t>(static_cast<int>(to_idx(base)) - t),
             minutes_after_midnight_t{min}};
