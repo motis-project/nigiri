@@ -454,7 +454,8 @@ void frun::for_each_shape_point(
     current_offset += offset_adjustment;
     current_interval = interval{
         stop_idx_t{0U},
-        static_cast<stop_idx_t>(current_interval.size() - offset_adjustment)};
+        static_cast<stop_idx_t>(static_cast<unsigned>(current_interval.size()) -
+                                offset_adjustment)};
   }
   // Final trip
   auto const shape =

@@ -45,8 +45,10 @@ std::vector<shape_offset_t> split_shape(timetable const& tt,
   auto remaining_start = cista::base_t<shape_offset_t>{0U};
 
   for (auto const [i, s] : utl::enumerate(stop_seq)) {
-    if (i == 0U || i == stop_seq.size() - 1U) {
-      offsets[i] = shape_offset_t{i};
+    if (i == 0U) {
+      offsets[0] = shape_offset_t{0U};
+    } else if (i == stop_seq.size() - 1U) {
+      offsets[i] = shape_offset_t{shape.size() - 1U};
     } else {
       auto const pos = tt.locations_.coordinates_[stop{s}.location_idx()];
       remaining_start += get_closest(pos, shape.subspan(remaining_start));
@@ -63,10 +65,11 @@ std::vector<shape_offset_t> split_shape_by_dist_traveled(
   auto offsets = std::vector<shape_offset_t>{};
   offsets.reserve(dist_traveled_stops_times.size());
   auto remaining_shape_begin = begin(dist_traveled_shape);
-  for (auto const& stop : dist_traveled_stops_times) {
-    auto const it =
-        std::lower_bound(remaining_shape_begin, end(dist_traveled_shape), stop);
-    offsets.push_back(shape_offset_t{it - begin(dist_traveled_shape)});
+  for (auto const& distance : dist_traveled_stops_times) {
+    remaining_shape_begin = std::lower_bound(
+        remaining_shape_begin, end(dist_traveled_shape), distance);
+    offsets.push_back(
+        shape_offset_t{remaining_shape_begin - begin(dist_traveled_shape)});
   }
   return offsets;
 }
@@ -85,11 +88,11 @@ void calculate_shape_offsets(timetable const& tt,
   auto const shapes_distances =
       utl::all(shape_states)  //
       | utl::remove_if([](auto&& x) {
-          auto const [_, state] = x;
+          auto const& [_, state] = x;
           return !is_monotonic_distances(state.distances_);
         })  //
       | utl::transform([](auto&& x) {
-          auto const [_, state] = x;
+          auto const& [_, state] = x;
           return std::pair{state.index_, &state.distances_};
         })  //
       | utl::to<hash_map<shape_idx_t, std::vector<double> const*>>();
