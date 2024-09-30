@@ -448,6 +448,7 @@ TEST(
     auto const full_run = rt::frun(tt, &rtt, run_ee.r_);
 
     // F -> G -> S -> T -> U -> V -> W -> X
+    // Shape -> No shape -> No shape -> Shape
     {
       leg_shape.clear();
 
@@ -470,6 +471,42 @@ TEST(
                     {7.0F, 2.0F},
                     {6.5F, 1.5F},
                     {7.0F, 1.0F},
+                }),
+                leg_shape);
+    }
+    // F -> G -> S
+    // Shape -> No shape
+    {
+      leg_shape.clear();
+
+      full_run.for_each_shape_point(
+          &shapes_data, interval{stop_idx_t{1U}, stop_idx_t{3U + 1U}},
+          plot_point);
+
+      EXPECT_EQ((geo::polyline{
+                    {2.0F, 1.0F},
+                    {2.5F, 0.5F},
+                    {3.0F, 1.0F},
+                    {3.0F, 1.0F},
+                    {4.0F, 1.0F},
+                }),
+                leg_shape);
+    }
+    // U -> V -> W
+    // No shape -> Shape
+    {
+      leg_shape.clear();
+
+      full_run.for_each_shape_point(
+          &shapes_data, interval{stop_idx_t{5U}, stop_idx_t{7U + 1U}},
+          plot_point);
+
+      EXPECT_EQ((geo::polyline{
+                    {6.0F, 2.0F},
+                    {7.0F, 3.0F},
+                    {7.0F, 3.0F},
+                    {6.5F, 2.5F},
+                    {7.0F, 2.0F},
                 }),
                 leg_shape);
     }
