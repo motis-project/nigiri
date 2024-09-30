@@ -194,7 +194,7 @@ TEST(rt, rt_block_id_test) {
                                 leg_shape.push_back(point);
                               });
 
-      EXPECT_TRUE(leg_shape.empty());
+      EXPECT_EQ((geo::polyline{{2.0F, 3.0F}}), leg_shape);
     }
   }
 }

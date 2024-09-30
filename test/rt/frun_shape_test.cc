@@ -258,11 +258,10 @@ TEST(
           &shapes_data, interval{stop_idx_t{0U}, stop_idx_t{0U + 1U}},
           plot_point);
 
-      EXPECT_TRUE(leg_shape.empty());
-      // EXPECT_EQ((geo::polyline{
-      //               {1.0F, 1.0F},
-      //           }),
-      //           leg_shape);
+      EXPECT_EQ((geo::polyline{
+                    {1.0F, 1.0F},
+                }),
+                leg_shape);
     }
   }
   // TRIP_6 (trip without shape)

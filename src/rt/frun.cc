@@ -395,6 +395,10 @@ void frun::for_each_shape_point(
             }
           }
         };
+  if (range.size() < 2) {
+    visitor(range);
+    return;
+  }
   auto const absolute_stop_range = range >> stop_range_.from_;
   auto const& absolute_last_stop = stop_range_.to_;
   struct trip_outgoing {
