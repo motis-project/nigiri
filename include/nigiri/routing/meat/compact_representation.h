@@ -34,9 +34,9 @@ struct compact_representation {
     out_.resize(g.node_count());
 
     for (auto const [i, x] : utl::enumerate(g.arcs_)) {
-      out_[to_idx(x.dep_node_)].push_back(
-          {x.arr_node_, x.dep_time_, x.dep_time_,
-           std::vector<dg_arc_idx_t>(1, dg_arc_idx_t{i})});
+      out_[to_idx(x.dep_node_)].emplace_back(
+          x.arr_node_, x.dep_time_, x.dep_time_,
+          std::vector<dg_arc_idx_t>(1, dg_arc_idx_t{i}));
     }
 
     for (auto& x : out_) {

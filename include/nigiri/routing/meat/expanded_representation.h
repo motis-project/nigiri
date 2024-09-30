@@ -35,8 +35,8 @@ struct expanded_representation {
     slots_of_node_.resize(g.node_count());
 
     for (auto& x : g.arcs_) {
-      slots_of_node_[to_idx(x.dep_node_)].push_back(time_slot{x.dep_time_});
-      slots_of_node_[to_idx(x.arr_node_)].push_back(time_slot{x.arr_time_});
+      slots_of_node_[to_idx(x.dep_node_)].emplace_back(x.dep_time_);
+      slots_of_node_[to_idx(x.arr_node_)].emplace_back(x.arr_time_);
     }
 
     for (auto& x : slots_of_node_) {
@@ -50,7 +50,7 @@ struct expanded_representation {
     for (auto i = 0U; i < g.node_count(); ++i) {
       for (auto& y : slots_of_node_[i]) {
         auto id = slots_.size();
-        slots_.push_back({i, y.when_});
+        slots_.emplace_back(i, y.when_);
         y.slot_ = id;
       }
     }

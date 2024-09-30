@@ -161,13 +161,13 @@ struct dynamic_growth_profile_set {
 
   void init_stop(location_idx_t stop_id) {
     if (entry_idx_end_[stop_id].first == std::numeric_limits<size_t>::max()) {
-      entry_.push_back(std::vector<profile_entry>());
+      entry_.emplace_back();
       entry_idx_end_[stop_id].first = entry_.size() - 1;
     }
-    entry_[entry_idx_end_[stop_id].first].push_back(profile_entry{
+    entry_[entry_idx_end_[stop_id].first].emplace_back(
         std::numeric_limits<delta_t>::max(),
         std::numeric_limits<meat_t>::infinity(),
-        ride{connection_idx_t::invalid(), connection_idx_t::invalid()}});
+        ride{connection_idx_t::invalid(), connection_idx_t::invalid()});
     entry_idx_end_[stop_id].second = 1;
     recompute_entry_amount_ = true;
   }
@@ -181,7 +181,7 @@ struct dynamic_growth_profile_set {
     }
     if (entry_[entry_idx_end_[stop_id].first].size() <=
         entry_idx_end_[stop_id].second) {
-      entry_[entry_idx_end_[stop_id].first].push_back(e);
+      entry_[entry_idx_end_[stop_id].first].emplace_back(e);
     } else {
       entry_[entry_idx_end_[stop_id].first][entry_idx_end_[stop_id].second] = e;
     }
@@ -312,10 +312,10 @@ struct dynamic_profile_set {
 
   void reset_stop(location_idx_t stop_id) {
     entry_[to_idx(stop_id)].clear();
-    entry_[to_idx(stop_id)].push_back(profile_entry{
+    entry_[to_idx(stop_id)].emplace_back(
         std::numeric_limits<delta_t>::max(),
         std::numeric_limits<meat_t>::infinity(),
-        ride{connection_idx_t::invalid(), connection_idx_t::invalid()}});
+        ride{connection_idx_t::invalid(), connection_idx_t::invalid()});
     entry_[to_idx(stop_id)].shrink_to_fit();
     recompute_entry_amount_ = true;
   }

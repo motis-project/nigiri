@@ -141,7 +141,8 @@ decision_graph decision_graph_extractor<ProfileSet>::operator()(
 
   auto discover_stop = [&](location_idx_t s) {
     if (to_node_id_[s] == dg_node_idx_t::invalid()) {
-      g.nodes_.push_back({s, {}, {}});
+      g.nodes_.emplace_back(s, vector_map<dg_arc_2idx_t, dg_arc_idx_t>{},
+                            vector_map<dg_arc_2idx_t, dg_arc_idx_t>{});
       to_node_id_[s] = node_count++;
     }
     return to_node_id_[s];
@@ -155,9 +156,9 @@ decision_graph decision_graph_extractor<ProfileSet>::operator()(
               auto arr_node = discover_stop(w.fp_.target());
               auto arc_id = dg_arc_idx_t{g.arcs_.size()};
               delta_t arr_time = e->dep_time_ + w.fp_.duration().count();
-              g.arcs_.push_back({dep_node, arr_node, to_unix(e->dep_time_),
-                                 to_unix(arr_time), to_unix(e->meat_), w.fp_,
-                                 0.0});
+              g.arcs_.emplace_back(dep_node, arr_node, to_unix(e->dep_time_),
+                                   to_unix(arr_time), to_unix(e->meat_), w.fp_,
+                                   0.0);
               g.nodes_[dep_node].out_.push_back(arc_id);
               g.nodes_[arr_node].in_.push_back(arc_id);
             },
@@ -177,15 +178,15 @@ decision_graph decision_graph_extractor<ProfileSet>::operator()(
               assert(enter_conn.dep_time_.days() >= 0);
               day = static_cast<day_idx_t>(as_int(day) -
                                            enter_conn.dep_time_.days());
-              g.arcs_.push_back(
-                  {dep_node, arr_node, to_unix(e->dep_time_), to_unix(arr_time),
-                   to_unix(e->meat_),
-                   journey::run_enter_exit{
-                       {.t_ = transport{enter_conn.transport_idx_, day},
-                        .stop_range_ = interval<stop_idx_t>{0, 0}},
-                       enter_conn.trip_con_idx_,
-                       static_cast<stop_idx_t>(exit_conn.trip_con_idx_ + 1)},
-                   0.0});
+              g.arcs_.emplace_back(
+                  dep_node, arr_node, to_unix(e->dep_time_), to_unix(arr_time),
+                  to_unix(e->meat_),
+                  journey::run_enter_exit{
+                      {.t_ = transport{enter_conn.transport_idx_, day},
+                       .stop_range_ = interval<stop_idx_t>{0, 0}},
+                      enter_conn.trip_con_idx_,
+                      static_cast<stop_idx_t>(exit_conn.trip_con_idx_ + 1)},
+                  0.0);
               g.nodes_[dep_node].out_.push_back(arc_id);
               g.nodes_[arr_node].in_.push_back(arc_id);
             }},
@@ -242,9 +243,9 @@ void decision_graph_extractor<ProfileSet>::add_final_fps(
       }
 
       auto const arc_id = dg_arc_idx_t{g.arcs_.size()};
-      g.arcs_.push_back({dep_node, arr_node, dep_time, arr_time, a.meat_,
-                         footpath(target_stop, to_duration(fp_dis_to_target)),
-                         0.0});
+      g.arcs_.emplace_back(dep_node, arr_node, dep_time, arr_time, a.meat_,
+                           footpath(target_stop, to_duration(fp_dis_to_target)),
+                           0.0);
       g.nodes_[dep_node].out_.push_back(arc_id);
       g.nodes_[arr_node].in_.push_back(arc_id);
     }
