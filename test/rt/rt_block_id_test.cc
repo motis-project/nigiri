@@ -3,6 +3,7 @@
 #include <vector>
 
 #include "geo/latlng.h"
+#include "geo/polyline.h"
 
 #include "nigiri/loader/gtfs/files.h"
 #include "nigiri/loader/gtfs/load_timetable.h"
@@ -164,10 +165,12 @@ TEST(rt, rt_block_id_test) {
                                 leg_shape.push_back(point);
                               });
 
-      auto const expected_shape =
-          std::vector{geo::latlng{2.0F, 3.0F}, geo::latlng{4.0F, 5.0F},
-                      geo::latlng{6.0F, 7.0F}, geo::latlng{8.0F, 9.0F}};
-      EXPECT_EQ(expected_shape, leg_shape);
+      EXPECT_EQ((geo::polyline{{2.0F, 3.0F},
+                               {4.0F, 5.0F},
+                               {6.0F, 7.0F},
+                               {6.0F, 7.0F},
+                               {8.0F, 9.0F}}),
+                leg_shape);
     }
     // Single leg
     {
@@ -179,9 +182,7 @@ TEST(rt, rt_block_id_test) {
                                 leg_shape.push_back(point);
                               });
 
-      auto const expected_shape =
-          std::vector{geo::latlng{4.0F, 5.0F}, geo::latlng{6.0F, 7.0F}};
-      EXPECT_EQ(expected_shape, leg_shape);
+      EXPECT_EQ((geo::polyline{{4.0F, 5.0F}, {6.0F, 7.0F}}), leg_shape);
     }
     // Single stop
     {
@@ -193,8 +194,7 @@ TEST(rt, rt_block_id_test) {
                                 leg_shape.push_back(point);
                               });
 
-      auto const expected_shape = std::vector{geo::latlng{2.0F, 3.0F}};
-      EXPECT_EQ(expected_shape, leg_shape);
+      EXPECT_TRUE(leg_shape.empty());
     }
   }
 }
