@@ -429,7 +429,7 @@ void frun::for_each_shape_point(
                       event_type::kDep);
         return trip_outgoing{absolute_offset, trip_index};
       })  //
-      | std::views::pairwise  //
+      | std::views::adjacent<2>  //
       | std::views::filter(
             [](std::pair<trip_outgoing, trip_outgoing> const pair) {
               return pair.first.trip_index_ != pair.second.trip_index_;
@@ -438,7 +438,7 @@ void frun::for_each_shape_point(
             [](std::pair<trip_outgoing, trip_outgoing> const pair) {
               return pair.second;
             })  // Notice: First trip requires leading invalid trip_idx_t
-      | std::views::pairwise  //
+      | std::views::adjacent<2>  //
       | std::views::transform(
             [](std::pair<trip_outgoing, trip_outgoing> const pair) {
               return trip_details{
