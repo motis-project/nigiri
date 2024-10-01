@@ -1,7 +1,6 @@
 #include "nigiri/loader/gtfs/shape_prepare.h"
 
 #include <algorithm>
-#include <iterator>
 
 #include "geo/latlng.h"
 #include "geo/polyline.h"
@@ -10,10 +9,6 @@
 #include "utl/get_or_create.h"
 #include "utl/helpers/algorithm.h"
 #include "utl/pairwise.h"
-#include "utl/pipes/all.h"
-#include "utl/pipes/remove_if.h"
-#include "utl/pipes/transform.h"
-#include "utl/pipes/vec.h"
 #include "utl/progress_tracker.h"
 
 #include "nigiri/stop.h"
