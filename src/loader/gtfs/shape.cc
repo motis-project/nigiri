@@ -40,6 +40,7 @@ shape_loader_state parse_shapes(std::string_view const data,
           auto& state = lookup(entry.id_->view(), [&] {
             auto const index = static_cast<shape_idx_t>(shapes.size());
             shapes.add_back_sized(0U);
+            states.distances_.push_back({});
             return shape_state{index, 0U};
           });
           auto const seq = *entry.seq_;
@@ -53,11 +54,7 @@ shape_loader_state parse_shapes(std::string_view const data,
           bucket.push_back(geo::latlng{*entry.lat_, *entry.lon_});
           state.last_seq_ = seq;
           auto const index = state.index_ - index_offset;
-          if (index < states.distances_.size()) {
-            states.distances_[index].push_back(*entry.distance_);
-          } else {
-            states.distances_.push_back({*entry.distance_});
-          }
+          states.distances_[index].push_back(*entry.distance_);
         });
   for (auto& distances : states.distances_) {
     if (!std::ranges::any_of(
