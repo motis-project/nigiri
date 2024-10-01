@@ -93,10 +93,7 @@ decision_graph_extractor<ProfileSet>::extract_relevant_entries(
                   profile_set_.for_stop(w.fp_.target()), arr_time, 0,
                   on_new_relevant_entry);
             },
-            [&](ride const&
-                    r) {  // TODO check if it uses final fp -> don't call
-                          // forall_optimal_outgoing_connections  or use returns
-                          // in forall_optimal_outgoing_connections
+            [&](ride const& r) {
               auto p_exit_conn = tt_.fwd_connections_[r.exit_conn_];
               auto p_exit_stop_idx = stop{p_exit_conn.arr_stop_}.location_idx();
               auto p_enter_conn = tt_.fwd_connections_[r.enter_conn_];
