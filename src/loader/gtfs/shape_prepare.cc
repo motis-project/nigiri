@@ -121,31 +121,27 @@ void calculate_shape_offsets(timetable const& tt,
     progress_tracker->increment();
     auto const trip_index = trip.trip_idx_;
     auto const shape_index = trip.shape_idx_;
-    auto const shape_distances = shapes_distances.find(shape_index);
-    if (shape_distances != end(shapes_distances) &&
-        is_monotonic_distances(trip.distance_traveled_)) {
-      auto const offsets = split_shape_by_dist_traveled(
-          trip.distance_traveled_, *shape_distances->second);
-      auto const shape_offset_index = shapes_data.add_offsets(offsets);
-      shapes_data.add_trip_shape_offsets(
-          trip_index, cista::pair{shape_index, shape_offset_index});
-    } else if (shape_index == shape_idx_t::invalid() ||
-               trip.stop_seq_.size() < 2U) {
-      shapes_data.add_trip_shape_offsets(
-          trip_index,
-          cista::pair{shape_idx_t::invalid(), shape_offset_idx_t::invalid()});
-    } else {
-      auto const shape_offset_index = utl::get_or_create(
-          shape_offsets_cache, std::make_pair(trip.shape_idx_, &trip.stop_seq_),
-          [&]() {
-            // TODO hashing for first two cases (distance_traveled known)
-            auto const shape = shapes_data.get_shape(shape_index);
-            auto const offsets = split_shape(tt, shape, trip.stop_seq_);
+
+    auto const shape_offset_index = utl::get_or_create(
+        shape_offsets_cache, std::make_pair(trip.shape_idx_, &trip.stop_seq_),
+        [&]() {
+          if (shape_index == shape_idx_t::invalid() ||
+              trip.stop_seq_.size() < 2U) {
+            return shape_offset_idx_t::invalid();
+          }
+          auto const shape_distances = shapes_distances.find(shape_index);
+          if (shape_distances != end(shapes_distances) &&
+              is_monotonic_distances(trip.distance_traveled_)) {
+            auto const offsets = split_shape_by_dist_traveled(
+                trip.distance_traveled_, *shape_distances->second);
             return shapes_data.add_offsets(offsets);
-          });
-      shapes_data.add_trip_shape_offsets(
-          trip_index, cista::pair{shape_index, shape_offset_index});
-    }
+          }
+          auto const shape = shapes_data.get_shape(shape_index);
+          auto const offsets = split_shape(tt, shape, trip.stop_seq_);
+          return shapes_data.add_offsets(offsets);
+        });
+    shapes_data.add_trip_shape_offsets(
+        trip_index, cista::pair{shape_index, shape_offset_index});
   }
 }
 
