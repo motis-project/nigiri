@@ -31,6 +31,7 @@ shape_loader_state parse_shapes(std::string_view const data,
       .index_offset_ = index_offset,
   };
   auto lookup = cached_lookup(states.id_map_);
+  auto distances = vecvec<shape_idx_t, double>{};
 
   auto const progress_tracker = utl::get_active_progress_tracker();
   progress_tracker->status("Parse Shapes")
@@ -43,7 +44,7 @@ shape_loader_state parse_shapes(std::string_view const data,
         auto& state = lookup(entry.id_->view(), [&] {
           auto const index = static_cast<shape_idx_t>(shapes.size());
           shapes.add_back_sized(0U);
-          states.distances_.push_back({});
+          distances.add_back_sized(0U);
           return shape_state{index, 0U, 0.0};
         });
         auto const seq = *entry.seq_;
@@ -57,17 +58,19 @@ shape_loader_state parse_shapes(std::string_view const data,
                 entry.id_->to_str(), state.last_seq_, seq);
           }
           // Store average to allow small rounding errors
-          states.distances_[state.index_ - index_offset].push_back(
+          distances[state.index_ - index_offset].push_back(
               (state.last_distance_traveled_ + distance_traveled) / 2.0);
         }
         bucket.push_back(geo::latlng{*entry.lat_, *entry.lon_});
         state.last_seq_ = seq;
         state.last_distance_traveled_ = distance_traveled;
       });
-  for (auto distances : states.distances_) {
-    if (!std::ranges::any_of(
-            distances, [](double const distance) { return distance > 0.0; })) {
-      distances.clear();
+  for (auto const shape_distances : distances) {
+    if (utl::any_of(shape_distances,
+                    [](double const distance) { return distance > 0.0; })) {
+      states.distances_.emplace_back(shape_distances);
+    } else {
+      states.distances_.add_back_sized(0U);
     }
   }
   return states;

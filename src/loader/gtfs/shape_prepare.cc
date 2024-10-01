@@ -61,7 +61,8 @@ std::vector<shape_offset_t> split_shape(timetable const& tt,
 
 std::vector<shape_offset_t> split_shape_by_dist_traveled(
     std::vector<double> const& dist_traveled_stops_times,
-    std::vector<double> const& dist_traveled_shape) {
+    decltype(shape_loader_state::distances_)::const_bucket const&
+        dist_traveled_shape) {
   auto offsets = std::vector<shape_offset_t>{};
   offsets.reserve(dist_traveled_stops_times.size());
   auto remaining_shape_begin = begin(dist_traveled_shape);
