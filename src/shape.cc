@@ -37,7 +37,7 @@ std::pair<std::span<geo::latlng const>, shape_offset_idx_t> get_shape(
   if (offset_index == shape_offset_idx_t::invalid()) {
     return {};
   }
-  return std::make_pair(storage.get_shape(shape_index), offset_index);
+  return std::pair{storage.get_shape(shape_index), offset_index};
 }
 
 shapes_storage::shapes_storage(std::filesystem::path const& path,
