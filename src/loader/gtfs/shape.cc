@@ -2,6 +2,8 @@
 
 #include <algorithm>
 
+#include "geo/latlng.h"
+
 #include "utl/parser/buf_reader.h"
 #include "utl/parser/csv_range.h"
 #include "utl/parser/line_range.h"
@@ -36,27 +38,33 @@ shape_loader_state parse_shapes(std::string_view const data,
       .in_high(data.size());
   utl::line_range{utl::make_buf_reader(data, progress_tracker->update_fn())}  //
       | utl::csv<shape_entry>()  //
-      | utl::for_each([&](shape_entry const entry) {
-          auto& state = lookup(entry.id_->view(), [&] {
-            auto const index = static_cast<shape_idx_t>(shapes.size());
-            shapes.add_back_sized(0U);
-            states.distances_.push_back({});
-            return shape_state{index, 0U};
-          });
-          auto const seq = *entry.seq_;
-          auto bucket = shapes[state.index_];
-          if (!bucket.empty() && state.last_seq_ >= seq) {
+      |
+      utl::for_each([&](shape_entry const entry) {
+        auto& state = lookup(entry.id_->view(), [&] {
+          auto const index = static_cast<shape_idx_t>(shapes.size());
+          shapes.add_back_sized(0U);
+          states.distances_.push_back({});
+          return shape_state{index, 0U, 0.0};
+        });
+        auto const seq = *entry.seq_;
+        auto const distance_traveled = *entry.distance_;
+        auto bucket = shapes[state.index_];
+        if (!bucket.empty()) {
+          if (state.last_seq_ >= seq) {
             log(log_lvl::error, "loader.gtfs.shape",
                 "Non monotonic sequence for shape_id '{}': Sequence number {} "
                 "followed by {}",
                 entry.id_->to_str(), state.last_seq_, seq);
           }
-          bucket.push_back(geo::latlng{*entry.lat_, *entry.lon_});
-          state.last_seq_ = seq;
-          auto const index = state.index_ - index_offset;
-          states.distances_[index].push_back(*entry.distance_);
-        });
-  for (auto& distances : states.distances_) {
+          // Store average to allow small rounding errors
+          states.distances_[state.index_ - index_offset].push_back(
+              (state.last_distance_traveled_ + distance_traveled) / 2.0);
+        }
+        bucket.push_back(geo::latlng{*entry.lat_, *entry.lon_});
+        state.last_seq_ = seq;
+        state.last_distance_traveled_ = distance_traveled;
+      });
+  for (auto distances : states.distances_) {
     if (!std::ranges::any_of(
             distances, [](double const distance) { return distance > 0.0; })) {
       distances.clear();

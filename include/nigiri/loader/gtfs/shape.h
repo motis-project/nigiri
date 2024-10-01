@@ -11,12 +11,11 @@ namespace nigiri::loader::gtfs {
 struct shape_state {
   shape_idx_t index_{};
   std::size_t last_seq_{};
-  std::vector<double> distances_{};
+  double last_distance_traveled_;
 };
 
 struct shape_loader_state {
   hash_map<std::string, shape_state> id_map_{};
-  // vecvec<shape_idx_t, double> distances_{};
   vector_map<shape_idx_t, std::vector<double>> distances_{};
   shape_idx_t index_offset_;
 };
