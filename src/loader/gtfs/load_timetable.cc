@@ -116,12 +116,12 @@ void load_timetable(loader_config const& config,
   auto const dates = read_calendar_date(load(kCalendarDatesFile).data());
   auto const service =
       merge_traffic_days(tt.internal_interval_days(), calendar, dates);
-  auto const shape_indices =
+  auto const shape_states =
       (shapes_data != nullptr)
           ? parse_shapes(load(kShapesFile).data(), *shapes_data)
-          : shape_id_map_t{};
+          : shape_loader_state{};
   auto trip_data =
-      read_trips(tt, routes, service, shape_indices, load(kTripsFile).data(),
+      read_trips(tt, routes, service, shape_states, load(kTripsFile).data(),
                  config.bikes_allowed_default_);
   read_frequencies(trip_data, load(kFrequenciesFile).data());
   read_stop_times(tt, trip_data, stops, load(kStopTimesFile).data());
@@ -261,7 +261,7 @@ void load_timetable(loader_config const& config,
                               train_nr, stop_seq_numbers);
     }
     if (shapes_data != nullptr) {
-      calculate_shape_offsets(tt, *shapes_data, trip_data.data_, shape_indices);
+      calculate_shape_offsets(tt, *shapes_data, trip_data.data_, shape_states);
     }
 
     auto const timer = scoped_timer{"loader.gtfs.routes.build"};

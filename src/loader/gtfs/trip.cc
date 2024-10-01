@@ -255,7 +255,7 @@ trip_data read_trips(
     timetable& tt,
     route_map_t const& routes,
     traffic_days_t const& services,
-    shape_id_map_t const& shapes,
+    shape_loader_state const& shape_states,
     std::string_view file_content,
     std::array<bool, kNumClasses> const& bikes_allowed_default) {
   struct csv_trip {
@@ -268,6 +268,7 @@ trip_data read_trips(
     utl::csv_col<utl::cstr, UTL_NAME("shape_id")> shape_id_;
     utl::csv_col<std::uint8_t, UTL_NAME("bikes_allowed")> bikes_allowed_;
   };
+  auto const& shapes = shape_states.id_map_;
 
   nigiri::scoped_timer const timer{"read trips"};
 

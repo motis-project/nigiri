@@ -128,7 +128,7 @@ trip_data read_trips(
     timetable&,
     route_map_t const&,
     traffic_days_t const&,
-    shape_id_map_t const&,
+    shape_loader_state const&,
     std::string_view file_content,
     std::array<bool, kNumClasses> const& bikes_allowed_default);
 

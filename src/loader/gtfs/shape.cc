@@ -1,5 +1,7 @@
 #include "nigiri/loader/gtfs/shape.h"
 
+#include <algorithm>
+
 #include "utl/parser/buf_reader.h"
 #include "utl/parser/csv_range.h"
 #include "utl/parser/line_range.h"
@@ -11,8 +13,8 @@
 
 namespace nigiri::loader::gtfs {
 
-shape_id_map_t parse_shapes(std::string_view const data,
-                            shapes_storage& shapes_data) {
+shape_loader_state parse_shapes(std::string_view const data,
+                                shapes_storage& shapes_data) {
   auto& shapes = shapes_data.data_;
   struct shape_entry {
     utl::csv_col<utl::cstr, UTL_NAME("shape_id")> id_;
@@ -22,8 +24,11 @@ shape_id_map_t parse_shapes(std::string_view const data,
     utl::csv_col<double, UTL_NAME("shape_dist_traveled")> distance_;
   };
 
-  auto states = shape_id_map_t{};
-  auto lookup = cached_lookup(states);
+  auto const index_offset = static_cast<shape_idx_t>(shapes.size());
+  auto states = shape_loader_state{
+      .index_offset_ = index_offset,
+  };
+  auto lookup = cached_lookup(states.id_map_);
 
   auto const progress_tracker = utl::get_active_progress_tracker();
   progress_tracker->status("Parse Shapes")
@@ -47,8 +52,19 @@ shape_id_map_t parse_shapes(std::string_view const data,
           }
           bucket.push_back(geo::latlng{*entry.lat_, *entry.lon_});
           state.last_seq_ = seq;
-          state.distances_.push_back(*entry.distance_);
+          auto const index = state.index_ - index_offset;
+          if (index < states.distances_.size()) {
+            states.distances_[index].push_back(*entry.distance_);
+          } else {
+            states.distances_.push_back({*entry.distance_});
+          }
         });
+  for (auto& distances : states.distances_) {
+    if (!std::ranges::any_of(
+            distances, [](double const distance) { return distance > 0.0; })) {
+      distances.clear();
+    }
+  }
   return states;
 }
 

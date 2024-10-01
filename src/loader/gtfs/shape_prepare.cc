@@ -84,18 +84,8 @@ bool is_monotonic_distances(std::vector<double> const& distances) {
 void calculate_shape_offsets(timetable const& tt,
                              shapes_storage& shapes_data,
                              vector_map<gtfs_trip_idx_t, trip> const& trips,
-                             shape_id_map_t const& shape_states) {
-  auto const shapes_distances =
-      utl::all(shape_states)  //
-      | utl::remove_if([](auto&& x) {
-          auto const& [_, state] = x;
-          return !is_monotonic_distances(state.distances_);
-        })  //
-      | utl::transform([](auto&& x) {
-          auto const& [_, state] = x;
-          return std::pair{state.index_, &state.distances_};
-        })  //
-      | utl::to<hash_map<shape_idx_t, std::vector<double> const*>>();
+                             shape_loader_state const& shape_states) {
+  auto const& shapes_distances = shape_states.distances_;
 
   auto const progress_tracker = utl::get_active_progress_tracker();
   progress_tracker->status("Calculating shape offsets")
@@ -129,11 +119,11 @@ void calculate_shape_offsets(timetable const& tt,
               trip.stop_seq_.size() < 2U) {
             return shape_offset_idx_t::invalid();
           }
-          auto const shape_distances = shapes_distances.find(shape_index);
-          if (shape_distances != end(shapes_distances) &&
+          auto const& shape_distances = shapes_distances[shape_index + shape_states.index_offset_];
+          if (!shape_distances.empty() &&
               is_monotonic_distances(trip.distance_traveled_)) {
             auto const offsets = split_shape_by_dist_traveled(
-                trip.distance_traveled_, *shape_distances->second);
+                trip.distance_traveled_, shape_distances);
             return shapes_data.add_offsets(offsets);
           }
           auto const shape = shapes_data.get_shape(shape_index);

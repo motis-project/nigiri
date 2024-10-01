@@ -39,7 +39,8 @@ TEST(gtfs, shape_get_existing_shape_points) {
 )";
 
   auto shapes_data = create_tmp_shapes_storage("shape-test-builder");
-  auto const shapes = parse_shapes(kShapesData, shapes_data);
+  auto const shape_states = parse_shapes(kShapesData, shapes_data);
+  auto const& shapes = shape_states.id_map_;
 
   EXPECT_EQ(end(shapes), shapes.find("1"));
 
@@ -74,7 +75,8 @@ TEST(gtfs, shape_not_ascending_sequence) {
 
   auto shapes_data =
       create_tmp_shapes_storage("shape-test-not-ascending-sequence");
-  auto const shapes = parse_shapes(kShapesData, shapes_data);
+  auto const shape_states = parse_shapes(kShapesData, shapes_data);
+  auto const& shapes = shape_states.id_map_;
   std::clog.flush();
 
   EXPECT_EQ((geo::polyline{{50.636512, 6.473487}, {50.636259, 6.473668}}),
@@ -102,7 +104,8 @@ TEST(gtfs, shape_shuffled_rows) {
 )";
 
   auto shapes_data = create_tmp_shapes_storage("shape-test-shuffled-rows");
-  auto const shapes = parse_shapes(kShapesData, shapes_data);
+  auto const shape_states = parse_shapes(kShapesData, shapes_data);
+  auto const& shapes = shape_states.id_map_;
 
   auto const shape_points =
       std::initializer_list<std::pair<std::string_view, geo::polyline>>{
@@ -156,7 +159,8 @@ TEST(gtfs, shape_delay_insert_no_ascending_sequence) {
 
   auto shape_data =
       create_tmp_shapes_storage("shape-test-not-ascending-sequence");
-  auto const shapes = parse_shapes(kShapesData, shape_data);
+  auto const shape_states = parse_shapes(kShapesData, shape_data);
+  auto const& shapes = shape_states.id_map_;
 
   std::clog.flush();
   EXPECT_NE(shapes.find("1"), end(shapes));
