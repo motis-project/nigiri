@@ -119,7 +119,8 @@ void calculate_shape_offsets(timetable const& tt,
               trip.stop_seq_.size() < 2U) {
             return shape_offset_idx_t::invalid();
           }
-          auto const& shape_distances = shapes_distances[shape_index + shape_states.index_offset_];
+          auto const& shape_distances =
+              shapes_distances[shape_index + shape_states.index_offset_];
           if (!shape_distances.empty() &&
               is_monotonic_distances(trip.distance_traveled_)) {
             auto const offsets = split_shape_by_dist_traveled(
