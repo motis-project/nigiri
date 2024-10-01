@@ -1,7 +1,6 @@
 #include "nigiri/rt/frun.h"
 
 #include <iterator>
-#include <ranges>
 #include <variant>
 
 #include "geo/latlng.h"
@@ -398,11 +397,7 @@ void frun::for_each_shape_point(
     return;
   }
   auto const absolute_stop_range = range >> stop_range_.from_;
-  auto const& absolute_last_stop = stop_range_.to_;
-  struct trip_outgoing {
-    stop_idx_t absolute_offset_;
-    trip_idx_t trip_index_;
-  };
+  auto const absolute_last_stop = static_cast<stop_idx_t>(stop_range_.to_ - 1);
   struct trip_details {
     stop_int intersect(stop_int other) const {
       return offset_range_.overlaps(other)
@@ -413,39 +408,6 @@ void frun::for_each_shape_point(
     stop_int offset_range_;
     trip_idx_t trip_index_;
   };
-  // Range over all trips using absolute 'trip_details.offset_range_'
-  auto trips =
-      std::views::iota(
-          -1, static_cast<int>(
-                  absolute_last_stop))  // Add additional 'trip_outgoing' for
-                                        // first and last stop
-      |
-      std::views::transform([&](stop_idx_t const absolute_offset) {
-        auto const trip_index =
-            (static_cast<stop_idx_t>(absolute_offset + 1U) == stop_idx_t{0U} ||
-             absolute_offset + 1U == absolute_last_stop)
-                ? trip_idx_t::invalid()
-                : (*this)[absolute_offset - stop_range_.from_].get_trip_idx(
-                      event_type::kDep);
-        return trip_outgoing{absolute_offset, trip_index};
-      })  //
-      | std::views::adjacent<2>  //
-      | std::views::filter(
-            [](std::pair<trip_outgoing, trip_outgoing> const pair) {
-              return pair.first.trip_index_ != pair.second.trip_index_;
-            })  //
-      | std::views::transform(
-            [](std::pair<trip_outgoing, trip_outgoing> const pair) {
-              return pair.second;
-            })  // Notice: First trip requires leading invalid trip_idx_t
-      | std::views::adjacent<2>  //
-      | std::views::transform(
-            [](std::pair<trip_outgoing, trip_outgoing> const pair) {
-              return trip_details{
-                  {pair.first.absolute_offset_,
-                   static_cast<stop_idx_t>(pair.second.absolute_offset_ + 1U)},
-                  pair.first.trip_index_};
-            });
   auto const get_graph = [&](stop_int absolute_range,
                              trip_idx_t const trip_index,
                              stop_idx_t const trip_absolute_offset) {
@@ -459,14 +421,34 @@ void frun::for_each_shape_point(
     }
     return variant_type{absolute_range << stop_range_.from_};
   };
-  for (auto const absolute_trip_range : trips) {
-    auto const absolute_common_legs =
-        absolute_trip_range.intersect(absolute_stop_range);
-    if (absolute_common_legs.size() > 1) {
-      std::visit(visitor, get_graph(absolute_common_legs,
-                                    absolute_trip_range.trip_index_,
-                                    absolute_trip_range.offset_range_.from_));
+  // Range over all trips using absolute 'trip_details.offset_range_'
+  auto last_trip = trip_idx_t::invalid();
+  auto trip_start = 0U;
+  for (auto const i : interval{0U, absolute_last_stop + 1U}) {
+    auto const current_trip =
+        (i < absolute_last_stop)
+            ? (*this)[static_cast<stop_idx_t>(i - stop_range_.from_)]
+                  .get_trip_idx(event_type::kDep)
+            : trip_idx_t::invalid();
+    if (current_trip == last_trip) {
+      continue;
     }
+    if (i > 0U) {
+      auto const absolute_trip = trip_details{
+          .offset_range_ = stop_int{static_cast<stop_idx_t>(trip_start),
+                                    static_cast<stop_idx_t>(i + 1)},
+          .trip_index_ = last_trip,
+      };
+      auto const absolute_common_legs =
+          absolute_trip.intersect(absolute_stop_range);
+      if (absolute_common_legs.size() > 1) {
+        std::visit(visitor,
+                   get_graph(absolute_common_legs, absolute_trip.trip_index_,
+                             absolute_trip.offset_range_.from_));
+      }
+    }
+    last_trip = current_trip;
+    trip_start = i;
   }
 }
 
