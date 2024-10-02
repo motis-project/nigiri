@@ -63,6 +63,7 @@ J,J,4.0,3.0
 K,K,5.0,3.0
 M,M,2.0,2.0
 N,N,3.0,3.0
+N1,N1,3.5,3.0
 O,O,4.0,4.0
 Q,Q,0.0,0.0
 S,S,4.0,1.0
@@ -87,6 +88,7 @@ ROUTE_1,SERVICE_1,TRIP_2,E,BLOCK_2,SHAPE_2,
 ROUTE_1,SERVICE_1,TRIP_3,E,BLOCK_2,SHAPE_3,
 ROUTE_1,SERVICE_1,TRIP_4,E,BLOCK_2,SHAPE_4,
 ROUTE_1,SERVICE_1,TRIP_5,E,BLOCK_3,SHAPE_5,
+ROUTE_1,SERVICE_1,TRIP_5+,E,BLOCK_7,SHAPE_5,
 ROUTE_1,SERVICE_1,TRIP_6,E,BLOCK_4,,
 ROUTE_1,SERVICE_1,TRIP_7,E,BLOCK_5,SHAPE_2,
 ROUTE_1,SERVICE_1,TRIP_8,E,BLOCK_5,,
@@ -163,6 +165,11 @@ TRIP_5,10:00:00,10:00:00,A,1,0,0,0.00
 TRIP_5,11:00:00,11:00:00,M,2,0,0,1.62
 TRIP_5,12:00:00,12:00:00,N,3,0,0,7.03
 TRIP_5,13:00:00,13:00:00,O,4,0,0,8.71
+TRIP_5+,10:00:00,10:00:00,A,1,0,0,
+TRIP_5+,11:00:00,11:00:00,M,2,0,0,
+TRIP_5+,12:00:00,12:00:00,N,3,0,0,
+TRIP_5+,12:30:00,12:30:00,N1,4,0,0,
+TRIP_5+,13:00:00,13:00:00,O,5,0,0,
 TRIP_6,10:00:00,10:00:00,A,1,0,0,
 TRIP_6,11:00:00,11:00:00,Q,2,0,0,
 TRIP_7,10:00:00,10:00:00,A,1,0,0,
@@ -593,6 +600,37 @@ TEST(
                     {3.0F, 3.0F},
                     {3.0F, 3.5F},
                     {2.5F, 3.0F},
+                    {3.0F, 3.0F},
+                }),
+                leg_shape);
+    }
+  }
+  // Distance traveled available for shape but not on trip
+  {
+    // Create run
+    transit_realtime::TripDescriptor td;
+    td.set_trip_id("TRIP_5+");
+    auto const [r, t] = rt::gtfsrt_resolve_run(
+        date::sys_days{2024_y / January / 1}, tt, rtt, source_idx_t{0}, td);
+    ASSERT_TRUE(r.valid());
+    // Create full run
+    auto const full_run = rt::frun{tt, &rtt, r};
+
+    // Loop on start and end
+    // Match first stop each loop
+    {
+      leg_shape.clear();
+
+      full_run.for_each_shape_point(
+          &shapes_data, interval{stop_idx_t{1U}, stop_idx_t{2U + 1U}},
+          plot_point);
+
+      EXPECT_EQ((geo::polyline{
+                    {2.0F, 2.0F},
+                    {2.0F, 2.5F},
+                    {1.5F, 2.0F},
+                    {2.0F, 2.0F},
+                    {3.0F, 2.0F},
                     {3.0F, 3.0F},
                 }),
                 leg_shape);

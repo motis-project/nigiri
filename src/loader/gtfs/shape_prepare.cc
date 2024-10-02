@@ -9,8 +9,6 @@
 
 #include "utl/enumerate.h"
 #include "utl/get_or_create.h"
-#include "utl/helpers/algorithm.h"
-#include "utl/pairwise.h"
 #include "utl/progress_tracker.h"
 
 #include "nigiri/stop.h"
@@ -74,13 +72,6 @@ std::vector<shape_offset_t> split_shape_by_dist_traveled(
   return offsets;
 }
 
-bool is_monotonic_distances(std::vector<double> const& distances) {
-  return utl::all_of(utl::pairwise(distances), [](auto&& pair) {
-    auto const [previous, next] = pair;
-    return previous < next;
-  });
-}
-
 void calculate_shape_offsets(timetable const& tt,
                              shapes_storage& shapes_data,
                              vector_map<gtfs_trip_idx_t, trip> const& trips,
@@ -121,7 +112,7 @@ void calculate_shape_offsets(timetable const& tt,
               shape_states
                   .distance_edges_[shape_index + shape_states.index_offset_];
           if (!shape_distances.empty() &&
-              is_monotonic_distances(trip.distance_traveled_)) {
+              valid_distances(trip.distance_traveled_)) {
             auto const offsets = split_shape_by_dist_traveled(
                 trip.distance_traveled_, shape_distances);
             return shapes_data.add_offsets(offsets);

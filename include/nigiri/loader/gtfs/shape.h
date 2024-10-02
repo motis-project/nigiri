@@ -1,7 +1,10 @@
 #pragma once
 
+#include <ranges>
 #include <string_view>
-#include <vector>
+#include <type_traits>
+
+#include "utl/helpers/algorithm.h"
 
 #include "nigiri/shape.h"
 #include "nigiri/types.h"
@@ -21,5 +24,13 @@ struct shape_loader_state {
 };
 
 shape_loader_state parse_shapes(std::string_view const, shapes_storage&);
+
+template <typename DoubleRange>
+  requires std::ranges::range<DoubleRange> &&
+           std::is_same_v<std::ranges::range_value_t<DoubleRange>, double>
+inline bool valid_distances(DoubleRange distances) {
+  return utl::any_of(distances,
+                     [](double const distance) { return distance > 0.0; });
+}
 
 }  // namespace nigiri::loader::gtfs

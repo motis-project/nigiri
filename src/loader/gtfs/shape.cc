@@ -60,8 +60,7 @@ shape_loader_state parse_shapes(std::string_view const data,
   for (auto const shape_distances : distances) {
     auto distance_edges = states.distance_edges_.add_back_sized(0U);
     // Skip shapes without any distances provided
-    if (utl::any_of(shape_distances,
-                    [](double const distance) { return distance > 0.0; })) {
+    if (valid_distances(shape_distances)) {
       for (auto const [from, to] : utl::pairwise(shape_distances)) {
         distance_edges.push_back((from + to) / 2.0);
       }
