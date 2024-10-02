@@ -33,7 +33,8 @@ std::pair<std::span<geo::latlng const>, shape_offset_idx_t> get_shape(
   }
   auto const [shape_index, offset_index] =
       storage.trip_offset_indices_[trip_index];
-  // Reminder: shape_index is checked by 'storage.get_shape(shape_index)'
+  assert((shape_idx == shape_idx_t::invalid()) ==
+         (offset_idx == shape_offset_idx_t::invalid()));
   if (offset_index == shape_offset_idx_t::invalid()) {
     return {};
   }
