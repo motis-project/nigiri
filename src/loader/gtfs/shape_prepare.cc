@@ -110,7 +110,7 @@ void calculate_shape_offsets(timetable const& tt,
           }
           auto const& shape_distances =
               shape_states
-                  .distance_edges_[shape_index + shape_states.index_offset_];
+                  .distance_edges_[shape_index - shape_states.index_offset_];
           if (!shape_distances.empty() &&
               valid_distances(trip.distance_traveled_)) {
             auto const offsets = split_shape_by_dist_traveled(
