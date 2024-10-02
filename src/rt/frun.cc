@@ -398,11 +398,11 @@ void frun::for_each_shape_point(
     return absolute_range << stop_range_.from_;
   };
   auto consume_pos = [&callback, last_pos = geo::latlng{200, 200}](
-                         geo::latlng const&& pos) mutable {
+                         geo::latlng const& pos) mutable {
     if (pos != last_pos) {
       callback(pos);
     }
-    last_pos = std::move(pos);
+    last_pos = pos;
   };
   // Range over all trips using absolute 'trip_details.offset_range_'
   auto last_trip_index = trip_idx_t::invalid();
@@ -422,8 +422,8 @@ void frun::for_each_shape_point(
     if (common_stops.size() > 1) {
       std::visit(
           utl::overloaded{[&](std::span<geo::latlng const> shape) {
-                            for (auto const pos : shape) {
-                              consume_pos(std::move(pos));
+                            for (auto const& pos : shape) {
+                              consume_pos(pos);
                             }
                           },
                           [&](stop_int relative_range) {
