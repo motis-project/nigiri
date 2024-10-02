@@ -103,7 +103,7 @@ void calculate_shape_offsets(timetable const& tt,
     auto const shape_index = trip.shape_idx_;
 
     auto const shape_offset_index = utl::get_or_create(
-        shape_offsets_cache, std::pair{trip.shape_idx_, &trip.stop_seq_},
+        shape_offsets_cache, std::pair{shape_index, &trip.stop_seq_},
         [&]() {
           if (shape_index == shape_idx_t::invalid() ||
               trip.stop_seq_.size() < 2U) {
