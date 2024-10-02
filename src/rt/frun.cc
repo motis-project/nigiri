@@ -421,32 +421,32 @@ void frun::for_each_shape_point(
     return absolute_range << stop_range_.from_;
   };
   // Range over all trips using absolute 'trip_details.offset_range_'
-  auto last_trip = trip_idx_t::invalid();
+  auto last_trip_index = trip_idx_t::invalid();
   auto trip_start = 0U;
   for (auto const i : interval{0U, absolute_last_stop + 1U}) {
-    auto const current_trip =
+    auto const current_trip_index =
         (i < absolute_last_stop)
             ? (*this)[static_cast<stop_idx_t>(i - stop_range_.from_)]
                   .get_trip_idx(event_type::kDep)
             : trip_idx_t::invalid();
-    if (current_trip == last_trip) {
+    if (current_trip_index == last_trip_index) {
       continue;
     }
     if (i > 0U) {
       auto const absolute_trip = trip_details{
           .offset_range_ = stop_int{static_cast<stop_idx_t>(trip_start),
                                     static_cast<stop_idx_t>(i + 1)},
-          .trip_index_ = last_trip,
+          .trip_index_ = last_trip_index,
       };
-      auto const absolute_common_legs =
+      auto const absolute_common_stops =
           absolute_trip.intersect(absolute_stop_range);
-      if (absolute_common_legs.size() > 1) {
+      if (absolute_common_stops.size() > 1) {
         std::visit(visitor,
-                   get_graph(absolute_common_legs, absolute_trip.trip_index_,
+                   get_graph(absolute_common_stops, absolute_trip.trip_index_,
                              absolute_trip.offset_range_.from_));
       }
     }
-    last_trip = current_trip;
+    last_trip_index = current_trip_index;
     trip_start = i;
   }
 }
