@@ -409,16 +409,16 @@ void frun::for_each_shape_point(
   };
   auto const get_graph = [&](stop_int absolute_range,
                              trip_idx_t const trip_index,
-                             stop_idx_t const trip_absolute_offset) {
-    using variant_type = std::variant<std::span<geo::latlng const>, stop_int>;
+                             stop_idx_t const absolute_trip_offset)
+      -> std::variant<std::span<geo::latlng const>, stop_int> {
     if (shapes_data != nullptr) {
       auto const shape = shapes_data->get_shape(
-          trip_index, absolute_range << trip_absolute_offset);
+          trip_index, absolute_range << absolute_trip_offset);
       if (!shape.empty()) {
-        return variant_type{shape};
+        return shape;
       }
     }
-    return variant_type{absolute_range << stop_range_.from_};
+    return absolute_range << stop_range_.from_;
   };
   // Range over all trips using absolute 'trip_details.offset_range_'
   auto last_trip = trip_idx_t::invalid();
