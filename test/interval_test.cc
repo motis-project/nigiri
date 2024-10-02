@@ -38,3 +38,18 @@ TEST(interval, shift) {
             i >> -15);
   EXPECT_EQ((interval{stop_idx_t{65500}, stop_idx_t{65511}}), i << 39);
 }
+
+TEST(interval, intersection) {
+  auto const i = interval{100, 200};
+
+  // 'i' is superset
+  EXPECT_EQ((interval{125, 175}), i.intersect(interval{125, 175}));
+  // 'i' is subset
+  EXPECT_EQ(i, i.intersect(interval{75, 225}));
+  // Disjunct intervals
+  EXPECT_EQ((interval{0, 0}), i.intersect(interval{25, 75}));
+  // Other cases
+  EXPECT_EQ((interval{135, 200}), i.intersect(interval{135, 250}));
+  EXPECT_EQ((interval{100, 149}), i.intersect(interval{0, 149}));
+  EXPECT_EQ(i, i.intersect(i));
+}
