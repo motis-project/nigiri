@@ -1,6 +1,8 @@
 #include "nigiri/loader/gtfs/shape_prepare.h"
 
 #include <algorithm>
+#include <ranges>
+#include <type_traits>
 
 #include "geo/latlng.h"
 #include "geo/polyline.h"
@@ -54,18 +56,20 @@ std::vector<shape_offset_t> split_shape(timetable const& tt,
   return offsets;
 }
 
+template <typename DoubleRange>
+  requires std::ranges::range<DoubleRange> &&
+           std::is_same_v<std::ranges::range_value_t<DoubleRange>, double>
 std::vector<shape_offset_t> split_shape_by_dist_traveled(
     std::vector<double> const& dist_traveled_stops_times,
-    decltype(shape_loader_state::distances_)::const_bucket const&
-        dist_traveled_shape) {
+    DoubleRange const& dist_traveled_shape_edges) {
   auto offsets = std::vector<shape_offset_t>{};
   offsets.reserve(dist_traveled_stops_times.size());
-  auto remaining_shape_begin = begin(dist_traveled_shape);
+  auto remaining_shape_begin = begin(dist_traveled_shape_edges);
   for (auto const& distance : dist_traveled_stops_times) {
     remaining_shape_begin = std::lower_bound(
-        remaining_shape_begin, end(dist_traveled_shape), distance);
-    offsets.push_back(
-        shape_offset_t{remaining_shape_begin - begin(dist_traveled_shape)});
+        remaining_shape_begin, end(dist_traveled_shape_edges), distance);
+    offsets.push_back(shape_offset_t{remaining_shape_begin -
+                                     begin(dist_traveled_shape_edges)});
   }
   return offsets;
 }
@@ -81,8 +85,6 @@ void calculate_shape_offsets(timetable const& tt,
                              shapes_storage& shapes_data,
                              vector_map<gtfs_trip_idx_t, trip> const& trips,
                              shape_loader_state const& shape_states) {
-  auto const& shapes_distances = shape_states.distances_;
-
   auto const progress_tracker = utl::get_active_progress_tracker();
   progress_tracker->status("Calculating shape offsets")
       .out_bounds(98.F, 100.F)
@@ -116,7 +118,8 @@ void calculate_shape_offsets(timetable const& tt,
             return shape_offset_idx_t::invalid();
           }
           auto const& shape_distances =
-              shapes_distances[shape_index + shape_states.index_offset_];
+              shape_states
+                  .distance_edges_[shape_index + shape_states.index_offset_];
           if (!shape_distances.empty() &&
               is_monotonic_distances(trip.distance_traveled_)) {
             auto const offsets = split_shape_by_dist_traveled(

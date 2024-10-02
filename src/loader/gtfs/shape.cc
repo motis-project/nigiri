@@ -1,9 +1,8 @@
 #include "nigiri/loader/gtfs/shape.h"
 
-#include <algorithm>
-
 #include "geo/latlng.h"
 
+#include "utl/pairwise.h"
 #include "utl/parser/buf_reader.h"
 #include "utl/parser/csv_range.h"
 #include "utl/parser/line_range.h"
@@ -39,38 +38,33 @@ shape_loader_state parse_shapes(std::string_view const data,
       .in_high(data.size());
   utl::line_range{utl::make_buf_reader(data, progress_tracker->update_fn())}  //
       | utl::csv<shape_entry>()  //
-      |
-      utl::for_each([&](shape_entry const entry) {
-        auto& state = lookup(entry.id_->view(), [&] {
-          auto const index = static_cast<shape_idx_t>(shapes.size());
-          shapes.add_back_sized(0U);
-          distances.add_back_sized(0U);
-          return shape_state{index, 0U, 0.0};
-        });
-        auto const seq = *entry.seq_;
-        auto const distance_traveled = *entry.distance_;
-        auto bucket = shapes[state.index_];
-        if (!bucket.empty()) {
-          if (state.last_seq_ >= seq) {
+      | utl::for_each([&](shape_entry const entry) {
+          auto& state = lookup(entry.id_->view(), [&] {
+            auto const index = static_cast<shape_idx_t>(shapes.size());
+            shapes.add_back_sized(0U);
+            distances.add_back_sized(0U);
+            return shape_state{index, 0U};
+          });
+          auto const seq = *entry.seq_;
+          auto bucket = shapes[state.index_];
+          if (!bucket.empty() && state.last_seq_ >= seq) {
             log(log_lvl::error, "loader.gtfs.shape",
                 "Non monotonic sequence for shape_id '{}': Sequence number {} "
                 "followed by {}",
                 entry.id_->to_str(), state.last_seq_, seq);
           }
-          // Store average to allow small rounding errors
-          distances[state.index_ - index_offset].push_back(
-              (state.last_distance_traveled_ + distance_traveled) / 2.0);
-        }
-        bucket.push_back(geo::latlng{*entry.lat_, *entry.lon_});
-        state.last_seq_ = seq;
-        state.last_distance_traveled_ = distance_traveled;
-      });
+          bucket.push_back(geo::latlng{*entry.lat_, *entry.lon_});
+          state.last_seq_ = seq;
+          distances[state.index_ - index_offset].push_back(*entry.distance_);
+        });
   for (auto const shape_distances : distances) {
+    auto distance_edges = states.distance_edges_.add_back_sized(0U);
+    // Skip shapes without any distances provided
     if (utl::any_of(shape_distances,
                     [](double const distance) { return distance > 0.0; })) {
-      states.distances_.emplace_back(shape_distances);
-    } else {
-      states.distances_.add_back_sized(0U);
+      for (auto const [from, to] : utl::pairwise(shape_distances)) {
+        distance_edges.push_back((from + to) / 2.0);
+      }
     }
   }
   return states;
