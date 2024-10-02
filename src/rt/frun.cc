@@ -384,7 +384,6 @@ void frun::for_each_shape_point(
               range.size());
   assert(stop_range_.from_ + range.to_ <= stop_range_.to_);
   auto const absolute_stop_range = range >> stop_range_.from_;
-  auto const absolute_last_stop = static_cast<stop_idx_t>(stop_range_.to_ - 1);
   auto const get_graph = [&](stop_int absolute_range,
                              trip_idx_t const trip_index,
                              stop_idx_t const absolute_trip_offset)
@@ -408,11 +407,11 @@ void frun::for_each_shape_point(
   // Range over all trips using absolute 'trip_details.offset_range_'
   auto last_trip_index = trip_idx_t::invalid();
   auto trip_start = stop_idx_t{0U};
-  for (auto const [from, to] : utl::pairwise(interval{
-           stop_idx_t{0U}, static_cast<stop_idx_t>(absolute_last_stop + 1U)})) {
+  for (auto const [from, to] :
+       utl::pairwise(interval{stop_idx_t{0U}, stop_range_.to_})) {
     auto const trip_index =
-        (*this)[static_cast<stop_idx_t>(from - stop_range_.from_)].get_trip_idx(
-            event_type::kDep);
+        (*this)[static_cast<stop_idx_t>(from - stop_range_.from_)]  //
+            .get_trip_idx(event_type::kDep);
     if (trip_index != last_trip_index) {
       last_trip_index = trip_index;
       trip_start = from;
