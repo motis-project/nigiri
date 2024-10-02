@@ -78,18 +78,6 @@ std::span<geo::latlng const> shapes_storage::get_shape(
   return shape.subspan(from, to - from + 1);
 }
 
-std::pair<std::span<geo::latlng const>, unsigned>
-shapes_storage::get_shape_with_stop_count(trip_idx_t const trip_index,
-                                          stop_idx_t const from) const {
-  auto const [shape, offset_index] = nigiri::get_shape(*this, trip_index);
-  if (shape.empty()) {
-    return {};
-  }
-  auto const offsets = offsets_[offset_index];
-  auto const offset = static_cast<unsigned>(offsets[from]);
-  return std::pair{shape.subspan(offset), offsets.size() - from};
-}
-
 shape_offset_idx_t shapes_storage::add_offsets(
     std::vector<shape_offset_t> const& offsets) {
   auto const index = shape_offset_idx_t{offsets_.size()};

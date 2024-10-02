@@ -19,8 +19,6 @@ struct shapes_storage {
   std::span<geo::latlng const> get_shape(trip_idx_t) const;
   std::span<geo::latlng const> get_shape(trip_idx_t,
                                          interval<stop_idx_t> const&) const;
-  std::pair<std::span<geo::latlng const>, unsigned> get_shape_with_stop_count(
-      trip_idx_t, stop_idx_t) const;
   shape_offset_idx_t add_offsets(std::vector<shape_offset_t> const&);
   void add_trip_shape_offsets(
       trip_idx_t, cista::pair<shape_idx_t, shape_offset_idx_t> const&);
