@@ -379,15 +379,14 @@ void frun::for_each_shape_point(
     shapes_storage const* shapes_data,
     interval<stop_idx_t> const& range,
     std::function<void(geo::latlng const&)> const& callback) const {
-  using stop_int = interval<stop_idx_t>;
   utl::verify(range.size() >= 2, "Range must contain at least 2 stops. Is {}",
               range.size());
   assert(stop_range_.from_ + range.to_ <= stop_range_.to_);
   auto const absolute_stop_range = range >> stop_range_.from_;
-  auto const get_graph = [&](stop_int absolute_range,
+  auto const get_graph = [&](interval<stop_idx_t> absolute_range,
                              trip_idx_t const trip_index,
                              stop_idx_t const absolute_trip_offset)
-      -> std::variant<std::span<geo::latlng const>, stop_int> {
+      -> std::variant<std::span<geo::latlng const>, interval<stop_idx_t>> {
     if (shapes_data != nullptr) {
       auto const shape = shapes_data->get_shape(
           trip_index, absolute_range << absolute_trip_offset);
@@ -426,7 +425,7 @@ void frun::for_each_shape_point(
                               consume_pos(pos);
                             }
                           },
-                          [&](stop_int relative_range) {
+                          [&](interval<stop_idx_t> relative_range) {
                             for (auto const stop_index : relative_range) {
                               consume_pos((*this)[stop_index].pos());
                             }
