@@ -383,9 +383,9 @@ void frun::for_each_shape_point(
               range.size());
   assert(stop_range_.from_ + range.to_ <= stop_range_.to_);
   auto const absolute_stop_range = range >> stop_range_.from_;
-  auto const get_graph = [&](interval<stop_idx_t> absolute_range,
-                             trip_idx_t const trip_index,
-                             stop_idx_t const absolute_trip_offset)
+  auto const get_subshape = [&](interval<stop_idx_t> absolute_range,
+                                trip_idx_t const trip_index,
+                                stop_idx_t const absolute_trip_offset)
       -> std::variant<std::span<geo::latlng const>, interval<stop_idx_t>> {
     if (shapes_data != nullptr) {
       auto const shape = shapes_data->get_shape(
@@ -404,16 +404,16 @@ void frun::for_each_shape_point(
         last_pos = pos;
       };
   // Range over all trips using absolute 'trip_details.offset_range_'
-  auto last_trip_index = trip_idx_t::invalid();
-  auto trip_start = stop_idx_t{0U};
+  auto previous_trip_index = trip_idx_t::invalid();
+  auto absolute_trip_start = stop_idx_t{0U};
   for (auto const [from, to] :
        utl::pairwise(interval{stop_idx_t{0U}, stop_range_.to_})) {
-    auto const trip_index =
+    auto const curr_trip_index =
         (*this)[static_cast<stop_idx_t>(from - stop_range_.from_)]  //
             .get_trip_idx(event_type::kDep);
-    if (trip_index != last_trip_index) {
-      last_trip_index = trip_index;
-      trip_start = from;
+    if (curr_trip_index != previous_trip_index) {
+      previous_trip_index = curr_trip_index;
+      absolute_trip_start = from;
     }
     auto const common_stops =
         interval{from, static_cast<stop_idx_t>(to + 1)}.intersect(
@@ -430,7 +430,7 @@ void frun::for_each_shape_point(
                               consume_pos((*this)[stop_index].pos());
                             }
                           }},
-          get_graph(common_stops, trip_index, trip_start));
+          get_subshape(common_stops, curr_trip_index, absolute_trip_start));
     }
   }
 }
