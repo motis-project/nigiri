@@ -396,13 +396,13 @@ void frun::for_each_shape_point(
     }
     return absolute_range << stop_range_.from_;
   };
-  auto consume_pos = [&callback, last_pos = geo::latlng{200, 200}](
-                         geo::latlng const& pos) mutable {
-    if (pos != last_pos) {
-      callback(pos);
-    }
-    last_pos = pos;
-  };
+  auto consume_pos =
+      [&, last_pos = geo::latlng{200, 200}](geo::latlng const& pos) mutable {
+        if (pos != last_pos) {
+          callback(pos);
+        }
+        last_pos = pos;
+      };
   // Range over all trips using absolute 'trip_details.offset_range_'
   auto last_trip_index = trip_idx_t::invalid();
   auto trip_start = stop_idx_t{0U};
