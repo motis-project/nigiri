@@ -647,9 +647,7 @@ TEST(
     // Create full run
     auto const full_run = rt::frun{tt, &rtt, r};
 
-    // M -> N
-    // For M: shape < stop_times => shape
-    // For N: stop_times < shape => shape
+    // M (shape < stop_times) -> N (stop_times < shape)
     {
       leg_shape.clear();
 
