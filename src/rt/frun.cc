@@ -404,15 +404,15 @@ void frun::for_each_shape_point(
         last_pos = pos;
       };
   // Range over all trips using absolute 'trip_details.offset_range_'
-  auto previous_trip_index = trip_idx_t::invalid();
+  auto curr_trip_index = trip_idx_t::invalid();
   auto absolute_trip_start = stop_idx_t{0U};
   for (auto const [from, to] :
        utl::pairwise(interval{stop_idx_t{0U}, stop_range_.to_})) {
-    auto const curr_trip_index =
+    auto const trip_index =
         (*this)[static_cast<stop_idx_t>(from - stop_range_.from_)]  //
             .get_trip_idx(event_type::kDep);
-    if (curr_trip_index != previous_trip_index) {
-      previous_trip_index = curr_trip_index;
+    if (trip_index != curr_trip_index) {
+      curr_trip_index = trip_index;
       absolute_trip_start = from;
     }
     auto const common_stops =
@@ -430,7 +430,7 @@ void frun::for_each_shape_point(
                               consume_pos((*this)[stop_index].pos());
                             }
                           }},
-          get_subshape(common_stops, curr_trip_index, absolute_trip_start));
+          get_subshape(common_stops, trip_index, absolute_trip_start));
     }
   }
 }
