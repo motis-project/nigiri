@@ -1,5 +1,6 @@
 #include "gtest/gtest.h"
 
+#include <stdexcept>
 #include <vector>
 
 #include "geo/latlng.h"
@@ -165,11 +166,8 @@ TEST(rt, rt_block_id_test) {
                                 leg_shape.push_back(point);
                               });
 
-      EXPECT_EQ((geo::polyline{{2.0F, 3.0F},
-                               {4.0F, 5.0F},
-                               {6.0F, 7.0F},
-                               {6.0F, 7.0F},
-                               {8.0F, 9.0F}}),
+      EXPECT_EQ((geo::polyline{
+                    {2.0F, 3.0F}, {4.0F, 5.0F}, {6.0F, 7.0F}, {8.0F, 9.0F}}),
                 leg_shape);
     }
     // Single leg
@@ -186,15 +184,21 @@ TEST(rt, rt_block_id_test) {
     }
     // Single stop
     {
-      leg_shape.clear();
-
-      fr.for_each_shape_point(nullptr,
-                              interval{stop_idx_t{1}, stop_idx_t{1 + 1}},
-                              [&leg_shape](geo::latlng const& point) {
-                                leg_shape.push_back(point);
-                              });
-
-      EXPECT_EQ((geo::polyline{{2.0F, 3.0F}}), leg_shape);
+      EXPECT_THROW(
+          {
+            try {
+              fr.for_each_shape_point(
+                  nullptr, interval{stop_idx_t{1}, stop_idx_t{1 + 1}},
+                  [&leg_shape](geo::latlng const& point) {
+                    leg_shape.push_back(point);
+                  });
+            } catch (std::runtime_error& e) {
+              EXPECT_STREQ("Range must contain at least 2 stops. Is 1",
+                           e.what());
+              throw e;
+            }
+          },
+          std::runtime_error);
     }
   }
 }

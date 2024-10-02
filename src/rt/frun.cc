@@ -5,6 +5,7 @@
 #include <variant>
 
 #include "utl/overloaded.h"
+#include "utl/verify.h"
 
 #include "nigiri/lookup/get_transport_stop_tz.h"
 #include "nigiri/rt/rt_timetable.h"
@@ -379,22 +380,9 @@ void frun::for_each_shape_point(
     interval<stop_idx_t> const& range,
     std::function<void(geo::latlng const&)> const& callback) const {
   using stop_int = interval<stop_idx_t>;
+  utl::verify(range.size() >= 2, "Range must contain at least 2 stops. Is {}",
+              range.size());
   assert(stop_range_.from_ + range.to_ <= stop_range_.to_);
-  auto const visitor =
-      utl::overloaded{[&](std::span<geo::latlng const> shape) {
-                        for (auto const& pos : shape) {
-                          callback(pos);
-                        }
-                      },
-                      [&](stop_int relative_range) {
-                        for (auto const stop_index : relative_range) {
-                          callback((*this)[stop_index].pos());
-                        }
-                      }};
-  if (range.size() < 2) {
-    visitor(range);
-    return;
-  }
   auto const absolute_stop_range = range >> stop_range_.from_;
   auto const absolute_last_stop = static_cast<stop_idx_t>(stop_range_.to_ - 1);
   auto const get_graph = [&](stop_int absolute_range,
@@ -413,6 +401,7 @@ void frun::for_each_shape_point(
   // Range over all trips using absolute 'trip_details.offset_range_'
   auto last_trip_index = trip_idx_t::invalid();
   auto trip_start = stop_idx_t{0U};
+  auto last_pos = geo::latlng{200, 200};
   for (auto const [from, to] : utl::pairwise(interval{
            stop_idx_t{0U}, static_cast<stop_idx_t>(absolute_last_stop + 1U)})) {
     auto const trip_index =
@@ -422,9 +411,29 @@ void frun::for_each_shape_point(
       last_trip_index = trip_index;
       trip_start = from;
     }
-    auto const segment = interval{from, static_cast<stop_idx_t>(to)};
-    if (segment.overlaps(absolute_stop_range)) {
-      std::visit(visitor, get_graph(segment, trip_index, trip_start));
+    auto const common_stops =
+        interval{from, static_cast<stop_idx_t>(to + 1)}.intersect(
+            absolute_stop_range);
+    if (common_stops.size() > 1) {
+      std::visit(
+          utl::overloaded{[&](std::span<geo::latlng const> shape) {
+                            for (auto const& pos : shape) {
+                              if (pos != last_pos) {
+                                callback(pos);
+                              }
+                              last_pos = pos;
+                            }
+                          },
+                          [&](stop_int relative_range) {
+                            for (auto const stop_index : relative_range) {
+                              auto const pos = (*this)[stop_index].pos();
+                              if (pos != last_pos) {
+                                callback(pos);
+                              }
+                              last_pos = pos;
+                            }
+                          }},
+          get_graph(common_stops, trip_index, trip_start));
     }
   }
 }

@@ -1,6 +1,7 @@
 #include "gtest/gtest.h"
 
 #include <ranges>
+#include <stdexcept>
 #include <string_view>
 #include <vector>
 
@@ -259,16 +260,19 @@ TEST(
     }
     // Single stop
     {
-      leg_shape.clear();
-
-      full_run.for_each_shape_point(
-          &shapes_data, interval{stop_idx_t{0U}, stop_idx_t{0U + 1U}},
-          plot_point);
-
-      EXPECT_EQ((geo::polyline{
-                    {1.0F, 1.0F},
-                }),
-                leg_shape);
+      EXPECT_THROW(
+          {
+            try {
+              full_run.for_each_shape_point(
+                  &shapes_data, interval{stop_idx_t{0U}, stop_idx_t{0U + 1U}},
+                  plot_point);
+            } catch (std::runtime_error& e) {
+              EXPECT_STREQ("Range must contain at least 2 stops. Is 1",
+                           e.what());
+              throw e;
+            }
+          },
+          std::runtime_error);
     }
   }
   // TRIP_6 (trip without shape)
@@ -409,7 +413,6 @@ TEST(
                       {3.0F, 2.0F},
                       {3.5F, 2.5F},
                       {3.0F, 3.0F},
-                      {3.0F, 3.0F},
                       {3.5F, 2.5F},
                       {4.0F, 3.0F},
                   }),
@@ -426,11 +429,9 @@ TEST(
                       {2.0F, 1.0F},
                       {2.5F, 0.5F},
                       {3.0F, 1.0F},
-                      {3.0F, 1.0F},
                       {3.5F, 1.5F},
                       {3.0F, 2.0F},
                       {3.5F, 2.5F},
-                      {3.0F, 3.0F},
                       {3.0F, 3.0F},
                       {3.5F, 2.5F},
                       {4.0F, 3.0F},
@@ -467,12 +468,9 @@ TEST(
                     {2.0F, 1.0F},
                     {2.5F, 0.5F},
                     {3.0F, 1.0F},
-                    {3.0F, 1.0F},
                     {4.0F, 1.0F},
                     {5.0F, 1.0F},
-                    {5.0F, 1.0F},
                     {6.0F, 2.0F},
-                    {7.0F, 3.0F},
                     {7.0F, 3.0F},
                     {6.5F, 2.5F},
                     {7.0F, 2.0F},
@@ -494,7 +492,6 @@ TEST(
                     {2.0F, 1.0F},
                     {2.5F, 0.5F},
                     {3.0F, 1.0F},
-                    {3.0F, 1.0F},
                     {4.0F, 1.0F},
                 }),
                 leg_shape);
@@ -510,7 +507,6 @@ TEST(
 
       EXPECT_EQ((geo::polyline{
                     {6.0F, 2.0F},
-                    {7.0F, 3.0F},
                     {7.0F, 3.0F},
                     {6.5F, 2.5F},
                     {7.0F, 2.0F},

@@ -2,6 +2,7 @@
 
 #include <cassert>
 #include <concepts>
+#include <cstdlib>
 #include <algorithm>
 #include <iterator>
 #include <ostream>
@@ -77,6 +78,14 @@ struct interval {
 
   bool overlaps(interval const& o) const {
     return from_ < o.to_ && to_ > o.from_;
+  }
+
+  interval intersect(interval const& o) const {
+    if (overlaps(o)) {
+      return {std::max(from_, o.from_), std::min(to_, o.to_)};
+    } else {
+      return {};
+    }
   }
 
   iterator begin() const { return {from_}; }
