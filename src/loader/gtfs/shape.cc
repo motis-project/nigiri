@@ -61,6 +61,8 @@ shape_loader_state parse_shapes(std::string_view const data,
     auto distance_edges = states.distance_edges_.add_back_sized(0U);
     // Skip shapes without any distances provided
     if (valid_distances(shape_distances)) {
+      // Store median between to points. This allows 'std::lower_bound' to get
+      // the closest point, even if distances don't match exactly
       for (auto const [from, to] : utl::pairwise(shape_distances)) {
         distance_edges.push_back((from + to) / 2.0);
       }

@@ -30,9 +30,10 @@ std::size_t get_closest(geo::latlng const& pos,
              : best.segment_idx_ + 1;
 }
 
-std::vector<shape_offset_t> split_shape(timetable const& tt,
-                                        std::span<geo::latlng const> shape,
-                                        stop_seq_t const& stop_seq) {
+std::vector<shape_offset_t> get_offsets_by_stops(
+    timetable const& tt,
+    std::span<geo::latlng const> shape,
+    stop_seq_t const& stop_seq) {
   if (shape.empty()) {
     return {};
   }
@@ -58,7 +59,7 @@ std::vector<shape_offset_t> split_shape(timetable const& tt,
 template <typename DoubleRange>
   requires std::ranges::range<DoubleRange> &&
            std::is_same_v<std::ranges::range_value_t<DoubleRange>, double>
-std::vector<shape_offset_t> split_shape_by_dist_traveled(
+std::vector<shape_offset_t> get_offsets_by_dist_traveled(
     std::vector<double> const& dist_traveled_stops_times,
     DoubleRange const& dist_traveled_shape_edges) {
   auto offsets = std::vector<shape_offset_t>{};
@@ -113,12 +114,12 @@ void calculate_shape_offsets(timetable const& tt,
                   .distance_edges_[shape_idx - shape_states.index_offset_];
           if (!shape_distances.empty() &&
               valid_distances(trip.distance_traveled_)) {
-            auto const offsets = split_shape_by_dist_traveled(
+            auto const offsets = get_offsets_by_dist_traveled(
                 trip.distance_traveled_, shape_distances);
             return shapes_data.add_offsets(offsets);
           }
           auto const shape = shapes_data.get_shape(shape_idx);
-          auto const offsets = split_shape(tt, shape, trip.stop_seq_);
+          auto const offsets = get_offsets_by_stops(tt, shape, trip.stop_seq_);
           return shapes_data.add_offsets(offsets);
         });
     shapes_data.add_trip_shape_offsets(
