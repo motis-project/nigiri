@@ -99,31 +99,30 @@ void calculate_shape_offsets(timetable const& tt,
                decltype(key_hash), decltype(key_compare)>{};
   for (auto const& trip : trips) {
     progress_tracker->increment();
-    auto const trip_index = trip.trip_idx_;
-    auto const shape_index = trip.shape_idx_;
+    auto const trip_idx = trip.trip_idx_;
+    auto const shape_idx = trip.shape_idx_;
 
-    auto const shape_offset_index = utl::get_or_create(
-        shape_offsets_cache, std::pair{shape_index, &trip.stop_seq_},
-        [&]() {
-          if (shape_index == shape_idx_t::invalid() ||
+    auto const shape_offset_idx = utl::get_or_create(
+        shape_offsets_cache, std::pair{shape_idx, &trip.stop_seq_}, [&]() {
+          if (shape_idx == shape_idx_t::invalid() ||
               trip.stop_seq_.size() < 2U) {
             return shape_offset_idx_t::invalid();
           }
           auto const& shape_distances =
               shape_states
-                  .distance_edges_[shape_index - shape_states.index_offset_];
+                  .distance_edges_[shape_idx - shape_states.index_offset_];
           if (!shape_distances.empty() &&
               valid_distances(trip.distance_traveled_)) {
             auto const offsets = split_shape_by_dist_traveled(
                 trip.distance_traveled_, shape_distances);
             return shapes_data.add_offsets(offsets);
           }
-          auto const shape = shapes_data.get_shape(shape_index);
+          auto const shape = shapes_data.get_shape(shape_idx);
           auto const offsets = split_shape(tt, shape, trip.stop_seq_);
           return shapes_data.add_offsets(offsets);
         });
     shapes_data.add_trip_shape_offsets(
-        trip_index, cista::pair{shape_index, shape_offset_index});
+        trip_idx, cista::pair{shape_idx, shape_offset_idx});
   }
 }
 

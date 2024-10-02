@@ -384,12 +384,12 @@ void frun::for_each_shape_point(
   assert(stop_range_.from_ + range.to_ <= stop_range_.to_);
   auto const absolute_stop_range = range >> stop_range_.from_;
   auto const get_subshape = [&](interval<stop_idx_t> absolute_range,
-                                trip_idx_t const trip_index,
+                                trip_idx_t const trip_idx,
                                 stop_idx_t const absolute_trip_offset)
       -> std::variant<std::span<geo::latlng const>, interval<stop_idx_t>> {
     if (shapes_data != nullptr) {
       auto const shape = shapes_data->get_shape(
-          trip_index, absolute_range << absolute_trip_offset);
+          trip_idx, absolute_range << absolute_trip_offset);
       if (!shape.empty()) {
         return shape;
       }
@@ -405,33 +405,32 @@ void frun::for_each_shape_point(
     last_pos = pos;
   };
   // Range over all trips using absolute 'trip_details.offset_range_'
-  auto curr_trip_index = trip_idx_t::invalid();
+  auto curr_trip_idx = trip_idx_t::invalid();
   auto absolute_trip_start = stop_idx_t{0U};
   for (auto const [from, to] :
        utl::pairwise(interval{stop_idx_t{0U}, stop_range_.to_})) {
-    auto const trip_index =
+    auto const trip_idx =
         (*this)[static_cast<stop_idx_t>(from - stop_range_.from_)]  //
             .get_trip_idx(event_type::kDep);
-    if (trip_index != curr_trip_index) {
-      curr_trip_index = trip_index;
+    if (trip_idx != curr_trip_idx) {
+      curr_trip_idx = trip_idx;
       absolute_trip_start = from;
     }
     auto const common_stops =
         interval{from, static_cast<stop_idx_t>(to + 1)}.intersect(
             absolute_stop_range);
     if (common_stops.size() > 1) {
-      std::visit(
-          utl::overloaded{[&](std::span<geo::latlng const> shape) {
-                            for (auto const& pos : shape) {
-                              consume_pos(pos);
-                            }
-                          },
-                          [&](interval<stop_idx_t> relative_range) {
-                            for (auto const stop_index : relative_range) {
-                              consume_pos((*this)[stop_index].pos());
-                            }
-                          }},
-          get_subshape(common_stops, trip_index, absolute_trip_start));
+      std::visit(utl::overloaded{[&](std::span<geo::latlng const> shape) {
+                                   for (auto const& pos : shape) {
+                                     consume_pos(pos);
+                                   }
+                                 },
+                                 [&](interval<stop_idx_t> relative_range) {
+                                   for (auto const stop_idx : relative_range) {
+                                     consume_pos((*this)[stop_idx].pos());
+                                   }
+                                 }},
+                 get_subshape(common_stops, trip_idx, absolute_trip_start));
     }
   }
 }
