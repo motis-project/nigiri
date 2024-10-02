@@ -397,16 +397,6 @@ void frun::for_each_shape_point(
   }
   auto const absolute_stop_range = range >> stop_range_.from_;
   auto const absolute_last_stop = static_cast<stop_idx_t>(stop_range_.to_ - 1);
-  struct trip_details {
-    stop_int intersect(stop_int other) const {
-      return offset_range_.overlaps(other)
-                 ? stop_int{std::max(offset_range_.from_, other.from_),
-                            std::min(offset_range_.to_, other.to_)}
-                 : stop_int{0U, 0U};
-    }
-    stop_int offset_range_;
-    trip_idx_t trip_index_;
-  };
   auto const get_graph = [&](stop_int absolute_range,
                              trip_idx_t const trip_index,
                              stop_idx_t const absolute_trip_offset)
@@ -422,32 +412,20 @@ void frun::for_each_shape_point(
   };
   // Range over all trips using absolute 'trip_details.offset_range_'
   auto last_trip_index = trip_idx_t::invalid();
-  auto trip_start = 0U;
-  for (auto const i : interval{0U, absolute_last_stop + 1U}) {
-    auto const current_trip_index =
-        (i < absolute_last_stop)
-            ? (*this)[static_cast<stop_idx_t>(i - stop_range_.from_)]
-                  .get_trip_idx(event_type::kDep)
-            : trip_idx_t::invalid();
-    if (current_trip_index == last_trip_index) {
-      continue;
+  auto trip_start = stop_idx_t{0U};
+  for (auto const [from, to] : utl::pairwise(interval{
+           stop_idx_t{0U}, static_cast<stop_idx_t>(absolute_last_stop + 1U)})) {
+    auto const trip_index =
+        (*this)[static_cast<stop_idx_t>(from - stop_range_.from_)].get_trip_idx(
+            event_type::kDep);
+    if (trip_index != last_trip_index) {
+      last_trip_index = trip_index;
+      trip_start = from;
     }
-    if (i > 0U) {
-      auto const absolute_trip = trip_details{
-          .offset_range_ = stop_int{static_cast<stop_idx_t>(trip_start),
-                                    static_cast<stop_idx_t>(i + 1)},
-          .trip_index_ = last_trip_index,
-      };
-      auto const absolute_common_stops =
-          absolute_trip.intersect(absolute_stop_range);
-      if (absolute_common_stops.size() > 1) {
-        std::visit(visitor,
-                   get_graph(absolute_common_stops, absolute_trip.trip_index_,
-                             absolute_trip.offset_range_.from_));
-      }
+    auto const segment = interval{from, static_cast<stop_idx_t>(to)};
+    if (segment.overlaps(absolute_stop_range)) {
+      std::visit(visitor, get_graph(segment, trip_index, trip_start));
     }
-    last_trip_index = current_trip_index;
-    trip_start = i;
   }
 }
 
