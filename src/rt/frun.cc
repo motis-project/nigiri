@@ -1,9 +1,8 @@
 #include "nigiri/rt/frun.h"
 
 #include <iterator>
+#include <span>
 #include <variant>
-
-#include "geo/latlng.h"
 
 #include "utl/overloaded.h"
 

@@ -2,7 +2,6 @@
 
 #include <functional>
 #include <iosfwd>
-#include <span>
 
 #include "geo/latlng.h"
 

@@ -2,6 +2,7 @@
 
 #include <algorithm>
 #include <ranges>
+#include <span>
 #include <type_traits>
 
 #include "geo/latlng.h"
