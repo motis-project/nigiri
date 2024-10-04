@@ -17,12 +17,6 @@ struct loader_config {
   unsigned link_stop_distance_{100U};
   std::string default_tz_;
   std::array<bool, kNumClasses> bikes_allowed_default_{};
-
-  // finalize options
-  bool adjust_footpaths_{true};
-  bool merge_dupes_intra_src_{true};
-  bool merge_dupes_inter_src_{true};
-  std::uint16_t max_footpath_length_{20};
 };
 
 struct loader_interface {

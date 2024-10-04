@@ -9,6 +9,7 @@
 
 #include "nigiri/loader/load.h"
 #include "nigiri/loader/loader_interface.h"
+#include "nigiri/common/parse_date.h"
 #include "nigiri/shape.h"
 
 namespace fs = std::filesystem;
@@ -16,19 +17,6 @@ namespace bpo = boost::program_options;
 using namespace nigiri;
 using namespace nigiri::loader;
 using namespace std::string_literals;
-
-date::sys_days parse_date(std::string const& str) {
-  if (str == "TODAY") {
-    return std::chrono::time_point_cast<date::days>(
-        std::chrono::system_clock::now());
-  }
-
-  date::sys_days parsed;
-  std::stringstream ss;
-  ss << str;
-  ss >> date::parse("%F", parsed);
-  return parsed;
-}
 
 int main(int ac, char** av) {
   auto const progress_tracker = utl::activate_progress_tracker("importer");
@@ -43,6 +31,7 @@ int main(int ac, char** av) {
   auto recursive = false;
   auto ignore = false;
 
+  auto finalize_opt = finalize_options{};
   auto c = loader_config{};
 
   auto desc = bpo::options_description{"Options"};
@@ -64,18 +53,20 @@ int main(int ac, char** av) {
        bpo::value(&c.link_stop_distance_)->default_value(c.link_stop_distance_),
        "the maximum distance at which stops in proximity will be linked")  //
       ("merge_dupes_intra_source",
-       bpo::value(&c.merge_dupes_intra_src_)
-           ->default_value(c.merge_dupes_intra_src_),
+       bpo::value(&finalize_opt.merge_dupes_intra_src_)
+           ->default_value(finalize_opt.merge_dupes_intra_src_),
        "merge duplicates within a source")  //
       ("merge_dupes_inter_source",
-       bpo::value(&c.merge_dupes_inter_src_)
-           ->default_value(c.merge_dupes_inter_src_),
+       bpo::value(&finalize_opt.merge_dupes_inter_src_)
+           ->default_value(finalize_opt.merge_dupes_inter_src_),
        "merge duplicates between different sources")  //
       ("adjust_footpaths",
-       bpo::value(&c.adjust_footpaths_)->default_value(c.adjust_footpaths_),
+       bpo::value(&finalize_opt.adjust_footpaths_)
+           ->default_value(finalize_opt.adjust_footpaths_),
        "adjust footpath lengths")  //
-      ("max_foopath_length", bpo::value(&c.max_footpath_length_)
-                                 ->default_value(c.max_footpath_length_))  //
+      ("max_foopath_length",
+       bpo::value(&finalize_opt.max_footpath_length_)
+           ->default_value(finalize_opt.max_footpath_length_))  //
       ("assistance_times", bpo::value(&assistance_path))  //
       ("shapes", bpo::value(&out_shapes));
   auto const pos = bpo::positional_options_description{}.add("in", -1);
@@ -90,17 +81,17 @@ int main(int ac, char** av) {
     return 0;
   }
 
-  auto input_files = std::vector<fs::path>{};
+  auto input_files = std::vector<std::pair<fs::path, loader_config>>{};
   if (is_directory(in) && recursive) {
     for (auto const& e : fs::directory_iterator(in)) {
       if (is_directory(e) /* unpacked zip file */ ||
           boost::algorithm::to_lower_copy(
               e.path().extension().generic_string()) == ".zip") {
-        input_files.emplace_back(e.path());
+        input_files.emplace_back(e.path(), c);
       }
     }
   } else if (exists(in) && !recursive) {
-    input_files.emplace_back(in);
+    input_files.emplace_back(in, c);
   }
 
   if (input_files.empty()) {
