@@ -74,8 +74,8 @@ TEST(gtfs, read_stop_times_example_data) {
   EXPECT_EQ("S2", tt.locations_.ids_[stp.location_idx()].view());
   EXPECT_EQ(6_hours + 15_minutes, awe1_stop_times.arr_);
   EXPECT_EQ(6_hours + 15_minutes, awe1_stop_times.dep_);
-  EXPECT_FALSE(stp.out_allowed());
-  EXPECT_TRUE(stp.in_allowed());
+  EXPECT_FALSE(stp.in_allowed());
+  EXPECT_TRUE(stp.out_allowed());
 
   awe1_stop_times = trip_data.data_[awe1_it->second].event_times_[2];
   stp = stop{trip_data.data_[awe1_it->second].stop_seq_[2]};
