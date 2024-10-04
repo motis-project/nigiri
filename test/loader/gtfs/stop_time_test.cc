@@ -1,7 +1,6 @@
 #include "gtest/gtest.h"
 
 #include "nigiri/loader/gtfs/files.h"
-#include "nigiri/loader/gtfs/shape.h"
 #include "nigiri/loader/gtfs/stop_time.h"
 #include "nigiri/loader/loader_interface.h"
 
@@ -39,7 +38,8 @@ TEST(gtfs, read_stop_times_example_data) {
                                 files.get_file(kStopFile).data(),
                                 files.get_file(kTransfersFile).data(), 0U);
 
-  read_stop_times(tt, trip_data, stops, files.get_file(kStopTimesFile).data());
+  read_stop_times(tt, trip_data, stops, files.get_file(kStopTimesFile).data(),
+                  true);
 
   for (auto& t : trip_data.data_) {
     if (t.requires_sorting_) {

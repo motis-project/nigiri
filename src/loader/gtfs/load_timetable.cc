@@ -124,7 +124,8 @@ void load_timetable(loader_config const& config,
       read_trips(tt, routes, service, shape_states, load(kTripsFile).data(),
                  config.bikes_allowed_default_);
   read_frequencies(trip_data, load(kFrequenciesFile).data());
-  read_stop_times(tt, trip_data, stops, load(kStopTimesFile).data());
+  read_stop_times(tt, trip_data, stops, load(kStopTimesFile).data(),
+                  shapes_data != nullptr);
 
   {
     auto const timer = scoped_timer{"loader.gtfs.trips.sort"};
