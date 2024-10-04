@@ -89,13 +89,14 @@ ROUTE_1,SERVICE_1,TRIP_2,E,BLOCK_2,SHAPE_2,
 ROUTE_1,SERVICE_1,TRIP_3,E,BLOCK_2,SHAPE_3,
 ROUTE_1,SERVICE_1,TRIP_4,E,BLOCK_2,SHAPE_4,
 ROUTE_1,SERVICE_1,TRIP_5,E,BLOCK_3,SHAPE_5,
-ROUTE_1,SERVICE_1,TRIP_5+,E,BLOCK_7,SHAPE_5,
+ROUTE_1,SERVICE_1,TRIP_5+,E,BLOCK_5+,SHAPE_5,
 ROUTE_1,SERVICE_1,TRIP_6,E,BLOCK_4,,
 ROUTE_1,SERVICE_1,TRIP_7,E,BLOCK_5,SHAPE_2,
 ROUTE_1,SERVICE_1,TRIP_8,E,BLOCK_5,,
 ROUTE_1,SERVICE_1,TRIP_9,E,BLOCK_5,,
 ROUTE_1,SERVICE_1,TRIP_10,E,BLOCK_5,SHAPE_6,
 ROUTE_1,SERVICE_1,TRIP_11,E,BLOCK_6,SHAPE_7,
+ROUTE_1,SERVICE_1,TRIP_12,E,BLOCK_7,SHAPE_8,
 
 # shapes.txt
 "shape_id","shape_pt_lat","shape_pt_lon","shape_pt_sequence","shape_dist_traveled"
@@ -146,6 +147,10 @@ SHAPE_7,2.5,2.5,3,2.1
 SHAPE_7,3.0,3.0,4,2.9
 SHAPE_7,3.5,3.5,5,3.5
 SHAPE_7,4.0,4.0,6,4.2
+SHAPE_8,1.0,1.0,0,0.0
+SHAPE_8,1.5,1.5,1,0.0
+SHAPE_8,2.0,2.0,2,2.0
+SHAPE_8,3.0,3.0,3,4.0
 
 # stop_times.txt
 trip_id,arrival_time,departure_time,stop_id,stop_sequence,pickup_type,drop_off_type,shape_dist_traveled
@@ -189,6 +194,9 @@ TRIP_11,10:00:00,10:00:00,A,1,0,0,0.00
 TRIP_11,11:00:00,11:00:00,M,2,0,0,1.41
 TRIP_11,12:00:00,12:00:00,N,3,0,0,2.83
 TRIP_11,13:00:00,13:00:00,O,4,0,0,4.24
+TRIP_12,10:00:00,10:00:00,A,1,0,0,0.0
+TRIP_12,11:00:00,11:00:00,M,2,0,0,2.0
+TRIP_12,12:00:00,12:00:00,N,3,0,0,4.0
 
 )"sv;
 
@@ -655,6 +663,33 @@ TEST(
                     {2.0F, 2.0F},
                     {2.5F, 2.5F},
                     {3.0F, 3.0F},
+                }),
+                leg_shape);
+    }
+  }
+  // Trip with multiple leading 0.0 distances
+  {
+    // Create run
+    transit_realtime::TripDescriptor td;
+    td.set_trip_id("TRIP_12");
+    auto const [r, t] = rt::gtfsrt_resolve_run(
+        date::sys_days{2024_y / January / 1}, tt, rtt, source_idx_t{0}, td);
+    ASSERT_TRUE(r.valid());
+    // Create full run
+    auto const full_run = rt::frun{tt, &rtt, r};
+
+    // A -> M
+    {
+      leg_shape.clear();
+
+      full_run.for_each_shape_point(
+          &shapes_data, interval{stop_idx_t{0U}, stop_idx_t{1U + 1U}},
+          plot_point);
+
+      EXPECT_EQ((geo::polyline{
+                    {1.0F, 1.0F},
+                    {1.5F, 1.5F},
+                    {2.0F, 2.0F},
                 }),
                 leg_shape);
     }

@@ -14,6 +14,12 @@
 
 namespace nigiri::loader::gtfs {
 
+void resize(auto& bucket, std::size_t size) {
+  for (auto const _ : interval{bucket.size(), size}) {
+    bucket.push_back(0);
+  }
+}
+
 shape_loader_state parse_shapes(std::string_view const data,
                                 shapes_storage& shapes_data) {
   auto& shapes = shapes_data.data_;
@@ -55,17 +61,22 @@ shape_loader_state parse_shapes(std::string_view const data,
           }
           bucket.push_back(geo::latlng{*entry.lat_, *entry.lon_});
           state.last_seq_ = seq;
-          distances[state.index_ - index_offset].push_back(*entry.distance_);
+          auto curr_distances = distances[state.index_ - index_offset];
+          if (curr_distances.empty()) {
+            if (*entry.distance_ != 0.0) {
+              resize(curr_distances, bucket.size());
+              curr_distances.back() = *entry.distance_;
+            }
+          } else {
+            curr_distances.push_back(*entry.distance_);
+          }
         });
   for (auto const shape_distances : distances) {
     auto distance_edges = states.distance_edges_.add_back_sized(0U);
-    // Skip shapes without any distances provided
-    if (valid_distances(shape_distances)) {
+    for (auto const [from, to] : utl::pairwise(shape_distances)) {
       // Store median between to points. This allows 'std::lower_bound' to get
       // the closest point, even if distances don't match exactly
-      for (auto const [from, to] : utl::pairwise(shape_distances)) {
-        distance_edges.push_back((from + to) / 2.0);
-      }
+      distance_edges.push_back((from + to) / 2.0);
     }
   }
   return states;
