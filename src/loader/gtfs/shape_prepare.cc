@@ -112,8 +112,7 @@ void calculate_shape_offsets(timetable const& tt,
           auto const& shape_distances =
               shape_states
                   .distance_edges_[shape_idx - shape_states.index_offset_];
-          if (!shape_distances.empty() &&
-              valid_distances(trip.distance_traveled_)) {
+          if (!shape_distances.empty() && !trip.distance_traveled_.empty()) {
             auto const offsets = get_offsets_by_dist_traveled(
                 trip.distance_traveled_, shape_distances);
             return shapes_data.add_offsets(offsets);

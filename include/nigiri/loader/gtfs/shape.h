@@ -25,12 +25,4 @@ struct shape_loader_state {
 
 shape_loader_state parse_shapes(std::string_view const, shapes_storage&);
 
-template <typename DoubleRange>
-  requires std::ranges::range<DoubleRange> &&
-           std::is_same_v<std::ranges::range_value_t<DoubleRange>, double>
-bool valid_distances(DoubleRange distances) {
-  return utl::any_of(distances,
-                     [](double const distance) { return distance > 0.0; });
-}
-
 }  // namespace nigiri::loader::gtfs
