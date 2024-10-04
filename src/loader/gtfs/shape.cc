@@ -16,7 +16,7 @@ namespace nigiri::loader::gtfs {
 
 void resize(auto& bucket, std::size_t size) {
   for ([[maybe_unused]] auto const _ : interval{bucket.size(), size}) {
-    bucket.push_back(0);
+    bucket.push_back(0.0);
   }
 }
 
