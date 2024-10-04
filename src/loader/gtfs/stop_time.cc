@@ -92,7 +92,17 @@ void read_stop_times(timetable& tt,
                                      .value());
           t->event_times_.emplace_back(
               stop_events{.arr_ = arrival_time, .dep_ = departure_time});
-          t->distance_traveled_.emplace_back(*s.distance_);
+          // Ensure 'dist_traveled_' is only filled if not all entries are 0.0
+          if (*s.distance_ != 0.0) {
+            if (t->distance_traveled_.empty()) {
+              t->distance_traveled_.resize(t->seq_numbers_.size());
+              t->distance_traveled_.back() = *s.distance_;
+            } else {
+              t->distance_traveled_.emplace_back(*s.distance_);
+            }
+          } else if (!t->distance_traveled_.empty()) {
+            t->distance_traveled_.emplace_back(*s.distance_);
+          }
 
           if (!s.stop_headsign_->empty()) {
             t->stop_headsigns_.resize(t->seq_numbers_.size(),
