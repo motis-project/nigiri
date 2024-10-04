@@ -100,6 +100,14 @@ TEST(gtfs, read_stop_times_example_data) {
   EXPECT_TRUE(stp.out_allowed());
   EXPECT_TRUE(stp.in_allowed());
 
+  // Check distances are stored iff at least 1 entry is != 0.0
+  EXPECT_EQ((std::vector{0.0, 0.0, 4.0, 0.0, 0.0}),
+            trip_data.data_[awe1_it->second].distance_traveled_);
+  // Check distances are not stored if column is 0.0
+  auto awd1_it = trip_data.trips_.find("AWD1");
+  ASSERT_NE(end(trip_data.trips_), awd1_it);
+  EXPECT_TRUE(trip_data.data_[awd1_it->second].distance_traveled_.empty());
+
   read_frequencies(trip_data, files.get_file(kFrequenciesFile).data());
 }
 
