@@ -49,4 +49,13 @@ void finalize(timetable& tt, finalize_options const opt) {
   build_lb_graph<direction::kBackward>(tt);
 }
 
+void finalize(timetable& tt,
+              bool const adjust_footpaths,
+              bool const merge_dupes_intra_src,
+              bool const merge_dupes_inter_src,
+              std::uint16_t const max_footpath_length) {
+  finalize(tt, {adjust_footpaths, merge_dupes_intra_src, merge_dupes_inter_src,
+                max_footpath_length});
+}
+
 }  // namespace nigiri::loader
