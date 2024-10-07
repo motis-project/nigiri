@@ -15,12 +15,11 @@ namespace nigiri::loader {
 struct assistance_times;
 struct loader_config;
 
-timetable load(
-    std::vector<std::pair<std::filesystem::path, loader_config>> const&,
-    finalize_options const&,
-    interval<date::sys_days> const&,
-    assistance_times* = nullptr,
-    shapes_storage_t* = nullptr,
-    bool ignore = false);
+timetable load(std::vector<std::pair<std::string, loader_config>> const&,
+               finalize_options const&,
+               interval<date::sys_days> const&,
+               assistance_times* = nullptr,
+               shapes_storage_t* = nullptr,
+               bool ignore = false);
 
 }  // namespace nigiri::loader
