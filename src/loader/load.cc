@@ -39,7 +39,11 @@ timetable load(
   for (auto const [idx, in] : utl::enumerate(paths)) {
     auto const& [path, local_config] = in;
     auto const src = source_idx_t{idx};
-    auto const dir = make_dir(path);
+    auto const dir =
+        path.generic_string().starts_with("\n#")
+            // hack to load strings in integration tests
+            ? std::make_unique<mem_dir>(mem_dir::read(path.generic_string()))
+            : make_dir(path);
     auto const it =
         utl::find_if(loaders, [&](auto&& l) { return l->applicable(*dir); });
     if (it != end(loaders)) {
