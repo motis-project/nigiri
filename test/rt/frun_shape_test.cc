@@ -8,8 +8,6 @@
 #include "geo/latlng.h"
 #include "geo/polyline.h"
 
-#include "utl/helpers/algorithm.h"
-
 #include "nigiri/loader/dir.h"
 #include "nigiri/loader/gtfs/load_timetable.h"
 #include "nigiri/loader/init_finish.h"
@@ -30,18 +28,6 @@ using std::operator""sv;
 
 // linked from gtfs/shape_test.cc
 shapes_storage create_tmp_shapes_storage(char const*);
-
-bool operator==(std::span<geo::latlng const> const& lhs,
-                std::span<geo::latlng const> const& rhs) {
-  if (lhs.size() != rhs.size()) {
-    return false;
-  }
-  auto const zip = std::views::zip(lhs, rhs);
-  return utl::all_of(zip, [](auto const ab) {
-    auto const& [a, b] = ab;
-    return a == b;
-  });
-}
 
 namespace {
 
