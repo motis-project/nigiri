@@ -23,8 +23,6 @@
 
 namespace nigiri {
 
-constexpr auto const kBinaryVersion = 1U;
-
 struct timetable {
   struct locations {
     timezone_idx_t register_timezone(timezone tz) {
