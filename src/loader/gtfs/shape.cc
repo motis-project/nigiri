@@ -36,7 +36,6 @@ shape_loader_state parse_shapes(std::string_view const data,
       .index_offset_ = index_offset,
   };
   auto lookup = cached_lookup(states.id_map_);
-  auto distances = vecvec<shape_idx_t, double>{};
 
   auto const progress_tracker = utl::get_active_progress_tracker();
   progress_tracker->status("Parse Shapes")
@@ -48,7 +47,7 @@ shape_loader_state parse_shapes(std::string_view const data,
           auto& state = lookup(entry.id_->view(), [&] {
             auto const index = static_cast<shape_idx_t>(shapes.size());
             shapes.add_back_sized(0U);
-            distances.add_back_sized(0U);
+            states.distances_.add_back_sized(0U);
             return shape_state{index, 0U};
           });
           auto const seq = *entry.seq_;
@@ -61,24 +60,16 @@ shape_loader_state parse_shapes(std::string_view const data,
           }
           bucket.push_back(geo::latlng{*entry.lat_, *entry.lon_});
           state.last_seq_ = seq;
-          auto curr_distances = distances[state.index_ - index_offset];
-          if (curr_distances.empty()) {
+          auto distances = states.distances_[state.index_ - index_offset];
+          if (distances.empty()) {
             if (*entry.distance_ != 0.0) {
-              resize(curr_distances, bucket.size());
-              curr_distances.back() = *entry.distance_;
+              resize(distances, bucket.size());
+              distances.back() = *entry.distance_;
             }
           } else {
-            curr_distances.push_back(*entry.distance_);
+            distances.push_back(*entry.distance_);
           }
         });
-  for (auto const shape_distances : distances) {
-    auto distance_edges = states.distance_edges_.add_back_sized(0U);
-    for (auto const [from, to] : utl::pairwise(shape_distances)) {
-      // Store median between to points. This allows 'std::lower_bound' to get
-      // the closest point, even if distances don't match exactly
-      distance_edges.push_back((from + to) / 2.0);
-    }
-  }
   return states;
 }
 

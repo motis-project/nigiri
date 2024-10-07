@@ -637,7 +637,9 @@ TEST(
     // Create full run
     auto const full_run = rt::frun{tt, &rtt, r};
 
-    // M (shape < stop_times) -> N (stop_times < shape)
+    // M -> N
+    // For M: shape < stop_times => shape
+    // For N: stop_times < shape => shape
     {
       leg_shape.clear();
 
@@ -646,7 +648,6 @@ TEST(
           plot_point);
 
       EXPECT_EQ((geo::polyline{
-                    {2.0F, 2.0F},
                     {2.5F, 2.5F},
                     {3.0F, 3.0F},
                 }),

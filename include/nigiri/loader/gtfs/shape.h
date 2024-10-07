@@ -1,10 +1,6 @@
 #pragma once
 
-#include <ranges>
 #include <string_view>
-#include <type_traits>
-
-#include "utl/helpers/algorithm.h"
 
 #include "nigiri/shape.h"
 #include "nigiri/types.h"
@@ -18,8 +14,7 @@ struct shape_state {
 
 struct shape_loader_state {
   hash_map<std::string, shape_state> id_map_{};
-  // Stores median for each leg to allow small errors for each stop
-  vecvec<shape_idx_t, double> distance_edges_{};
+  vecvec<shape_idx_t, double> distances_{};
   shape_idx_t index_offset_;
 };
 
