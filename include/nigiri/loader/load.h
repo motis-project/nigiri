@@ -5,7 +5,7 @@
 
 #include "date/date.h"
 
-#include "nigiri/loader/assistance.h"
+#include "nigiri/loader/build_footpaths.h"
 #include "nigiri/common/interval.h"
 #include "nigiri/shape.h"
 #include "nigiri/timetable.h"
@@ -13,13 +13,15 @@
 
 namespace nigiri::loader {
 
+struct assistance_times;
 struct loader_config;
 
-timetable load(std::vector<std::filesystem::path> const&,
-               loader_config const&,
-               interval<date::sys_days> const&,
-               assistance_times*,
-               shapes_storage*,
-               bool ignore = false);
+timetable load(
+    std::vector<std::pair<std::filesystem::path, loader_config>> const&,
+    finalize_options const&,
+    interval<date::sys_days> const&,
+    assistance_times* = nullptr,
+    shapes_storage* = nullptr,
+    bool ignore = false);
 
 }  // namespace nigiri::loader
