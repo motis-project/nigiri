@@ -14,12 +14,6 @@
 
 namespace nigiri::loader::gtfs {
 
-void resize(auto& bucket, std::size_t size) {
-  for ([[maybe_unused]] auto const _ : interval{bucket.size(), size}) {
-    bucket.push_back(0.0);
-  }
-}
-
 shape_loader_state parse_shapes(std::string_view const data,
                                 shapes_storage& shapes_data) {
   auto& shapes = shapes_data.data_;
@@ -63,7 +57,7 @@ shape_loader_state parse_shapes(std::string_view const data,
           auto distances = states.distances_[state.index_ - index_offset];
           if (distances.empty()) {
             if (*entry.distance_ != 0.0) {
-              resize(distances, bucket.size());
+              distances.grow(bucket.size());
               distances.back() = *entry.distance_;
             }
           } else {
