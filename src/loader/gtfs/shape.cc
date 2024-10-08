@@ -2,7 +2,6 @@
 
 #include "geo/latlng.h"
 
-#include "utl/pairwise.h"
 #include "utl/parser/buf_reader.h"
 #include "utl/parser/csv_range.h"
 #include "utl/parser/line_range.h"
