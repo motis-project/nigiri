@@ -549,9 +549,9 @@ private:
             trace(
                 "┊ ├k={}   NO TD FP UPDATE: {} [best={}] --{}--> {} "
                 "[best={}, time_at_dest={}]\n",
-                k, location{tt_, l_idx}, state_.best_[to_idx(l_idx)],
+                k, location{tt_, l_idx}, best_[to_idx(l_idx)][v],
                 adjusted_transfer_time(transfer_time_settings_, fp.duration()),
-                location{tt_, fp.target()}, state_.best_[target],
+                location{tt_, fp.target()}, best_[target][v],
                 to_unix(time_at_dest_[k]));
           }
 
