@@ -91,7 +91,7 @@ int main(int ac, char** av) {
       }
     }
   } else if (exists(in) && !recursive) {
-    input_files.emplace_back(in, c);
+    input_files.emplace_back(in.generic_string(), c);
   }
 
   if (input_files.empty()) {
