@@ -203,6 +203,9 @@ struct route_color {
   color_t color_;
   color_t text_color_;
 };
+inline std::string to_str(color_t const c) {
+  return fmt::format("{:06x}", to_idx(c) & 0x00ffffff);
+}
 
 struct trip_id {
   CISTA_COMPARABLE()
