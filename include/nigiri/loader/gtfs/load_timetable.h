@@ -2,6 +2,7 @@
 
 #include "nigiri/loader/dir.h"
 #include "nigiri/loader/loader_interface.h"
+#include "nigiri/shape.h"
 #include "nigiri/types.h"
 
 namespace nigiri {
@@ -23,7 +24,7 @@ void load_timetable(loader_config const&,
                     dir const&,
                     timetable&,
                     assistance_times* = nullptr,
-                    shapes_storage_t* = nullptr);
+                    shapes_storage* = nullptr);
 
 void load_timetable(loader_config const&,
                     source_idx_t,
@@ -31,6 +32,6 @@ void load_timetable(loader_config const&,
                     timetable&,
                     hash_map<bitfield, bitfield_idx_t>&,
                     assistance_times* = nullptr,
-                    shapes_storage_t* = nullptr);
+                    shapes_storage* = nullptr);
 
 }  // namespace nigiri::loader::gtfs

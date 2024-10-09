@@ -21,10 +21,23 @@
 
 namespace nigiri::loader::gtfs {
 
+void add_distance(auto& trip_data, double const distance) {
+  auto& distances = trip_data.distance_traveled_;
+  if (distances.empty()) {
+    if (distance != 0.0) {
+      distances.resize(trip_data.seq_numbers_.size());
+      distances.back() = distance;
+    }
+  } else {
+    distances.emplace_back(distance);
+  }
+}
+
 void read_stop_times(timetable& tt,
                      trip_data& trips,
                      locations_map const& stops,
-                     std::string_view file_content) {
+                     std::string_view file_content,
+                     bool const store_distances) {
   struct csv_stop_time {
     utl::csv_col<utl::cstr, UTL_NAME("trip_id")> trip_id_;
     utl::csv_col<utl::cstr, UTL_NAME("arrival_time")> arrival_time_;
@@ -34,6 +47,7 @@ void read_stop_times(timetable& tt,
     utl::csv_col<utl::cstr, UTL_NAME("stop_headsign")> stop_headsign_;
     utl::csv_col<int, UTL_NAME("pickup_type")> pickup_type_;
     utl::csv_col<int, UTL_NAME("drop_off_type")> drop_off_type_;
+    utl::csv_col<double, UTL_NAME("shape_dist_traveled")> distance_;
   };
 
   auto const timer = scoped_timer{"read stop times"};
@@ -91,6 +105,9 @@ void read_stop_times(timetable& tt,
                                      .value());
           t->event_times_.emplace_back(
               stop_events{.arr_ = arrival_time, .dep_ = departure_time});
+          if (store_distances) {
+            add_distance(*t, *s.distance_);
+          }
 
           if (!s.stop_headsign_->empty()) {
             t->stop_headsigns_.resize(t->seq_numbers_.size(),

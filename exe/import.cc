@@ -106,10 +106,9 @@ int main(int ac, char** av) {
     assistance = std::make_unique<assistance_times>(read_assistance(f.view()));
   }
 
-  auto shapes = std::unique_ptr<shapes_storage_t>();
+  auto shapes = std::unique_ptr<shapes_storage>{};
   if (vm.contains("shapes")) {
-    shapes =
-        std::make_unique<shapes_storage_t>(create_shapes_storage(out_shapes));
+    shapes = std::make_unique<shapes_storage>(out_shapes);
   }
 
   auto const start = parse_date(start_date);

@@ -2,6 +2,7 @@
 
 #include "nigiri/loader/hrd/parser_config.h"
 #include "nigiri/loader/loader_interface.h"
+#include "nigiri/shape.h"
 
 namespace nigiri::loader::hrd {
 
@@ -14,7 +15,7 @@ struct hrd_loader : public loader_interface {
             timetable& tt,
             hash_map<bitfield, bitfield_idx_t>&,
             assistance_times*,
-            shapes_storage_t*) const override;
+            shapes_storage*) const override;
   cista::hash_t hash(dir const&) const override;
   nigiri::loader::hrd::config config_;
 };

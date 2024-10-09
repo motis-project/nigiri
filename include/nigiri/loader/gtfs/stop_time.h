@@ -10,6 +10,7 @@ namespace nigiri::loader::gtfs {
 void read_stop_times(timetable&,
                      trip_data&,
                      locations_map const&,
-                     std::string_view file_content);
+                     std::string_view file_content,
+                     bool);
 
 }  // namespace nigiri::loader::gtfs

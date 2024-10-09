@@ -20,6 +20,7 @@
 #include "nigiri/rt/create_rt_timetable.h"
 #include "nigiri/rt/gtfsrt_update.h"
 #include "nigiri/rt/rt_timetable.h"
+#include "nigiri/shape.h"
 #include "nigiri/timetable.h"
 #include "nigiri/types.h"
 

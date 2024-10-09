@@ -69,18 +69,18 @@ AWE1,20:30:00,28:00:00,420
 )"};
 
 constexpr auto const example_stop_times_content =
-    R"(trip_id,arrival_time,departure_time,stop_id,stop_sequence,pickup_type,drop_off_type
-AWD1,6:45,6:45,S6,6,0,0
-AWD1,,,S5,5,0,0
-AWD1,,,S4,4,0,0
-AWD1,6:20,6:20,S3,3,0,0
-AWD1,,,S2,2,0,0
-AWD1,6:10,6:10,S1,1,0,0
-AWE1,6:45,6:45,S6,5,0,0
-AWE1,,,S5,4,0,0
-AWE1,6:20,6:30,S3,3,0,0
-AWE1,,,S2,2,1,3
-AWE1,6:10,6:10,S1,1,0,0
+    R"(trip_id,arrival_time,departure_time,stop_id,stop_sequence,pickup_type,drop_off_type,shape_dist_traveled,
+AWD1,6:45,6:45,S6,6,0,0,,
+AWD1,,,S5,5,0,0,,
+AWD1,,,S4,4,0,0,0.0,
+AWD1,6:20,6:20,S3,3,0,0,0.0,
+AWD1,,,S2,2,0,0,,
+AWD1,6:10,6:10,S1,1,0,0,,
+AWE1,6:45,6:45,S6,5,0,0,,
+AWE1,,,S5,4,0,0,,
+AWE1,6:20,6:30,S3,3,0,0,5.0,
+AWE1,,,S2,2,1,3,3.14,
+AWE1,6:10,6:10,S1,1,0,0,,
 )";
 
 loader::mem_dir example_files() {

@@ -28,13 +28,28 @@ TEST(interval, clamp) {
 TEST(interval, shift) {
   auto const i = interval{stop_idx_t{3}, stop_idx_t{14}};
 
-  // operator+()
-  EXPECT_EQ((interval{stop_idx_t{25}, stop_idx_t{36}}), i + 22);
-  // operator-()
-  EXPECT_EQ((interval{stop_idx_t{1}, stop_idx_t{12}}), i - 2);
+  // operator>>()
+  EXPECT_EQ((interval{stop_idx_t{25}, stop_idx_t{36}}), i >> 22);
+  // operator<<()
+  EXPECT_EQ((interval{stop_idx_t{1}, stop_idx_t{12}}), i << 2);
   // Unsigned underflow
   EXPECT_EQ((interval{static_cast<stop_idx_t>(-stop_idx_t{12}),
                       static_cast<stop_idx_t>(-stop_idx_t{1})}),
-            i - 15);
-  EXPECT_EQ((interval{stop_idx_t{65500}, stop_idx_t{65511}}), i - 39);
+            i >> -15);
+  EXPECT_EQ((interval{stop_idx_t{65500}, stop_idx_t{65511}}), i << 39);
+}
+
+TEST(interval, intersection) {
+  auto const i = interval{100, 200};
+
+  // 'i' is superset
+  EXPECT_EQ((interval{125, 175}), i.intersect(interval{125, 175}));
+  // 'i' is subset
+  EXPECT_EQ(i, i.intersect(interval{75, 225}));
+  // Disjunct intervals
+  EXPECT_EQ((interval{0, 0}), i.intersect(interval{25, 75}));
+  // Other cases
+  EXPECT_EQ((interval{135, 200}), i.intersect(interval{135, 250}));
+  EXPECT_EQ((interval{100, 149}), i.intersect(interval{0, 149}));
+  EXPECT_EQ(i, i.intersect(i));
 }

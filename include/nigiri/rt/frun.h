@@ -1,10 +1,16 @@
 #pragma once
 
+#include <functional>
 #include <iosfwd>
 
+#include "geo/latlng.h"
+
+#include "nigiri/common/interval.h"
 #include "nigiri/location.h"
 #include "nigiri/rt/run.h"
+#include "nigiri/shape.h"
 #include "nigiri/stop.h"
+#include "nigiri/types.h"
 
 namespace nigiri {
 struct rt_timetable;
@@ -135,6 +141,11 @@ struct frun : public run {
   trip_id id() const noexcept;
   trip_idx_t trip_idx() const;
   clasz get_clasz() const noexcept;
+
+  void for_each_shape_point(
+      shapes_storage const*,
+      interval<stop_idx_t> const&,
+      std::function<void(geo::latlng const&)> const&) const;
 
   void print(std::ostream&, interval<stop_idx_t>);
   friend std::ostream& operator<<(std::ostream&, frun const&);

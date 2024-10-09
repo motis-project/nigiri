@@ -2,6 +2,7 @@
 
 #include <string_view>
 
+#include "nigiri/shape.h"
 #include "nigiri/types.h"
 
 namespace nigiri::loader::gtfs {
@@ -11,8 +12,12 @@ struct shape_state {
   std::size_t last_seq_{};
 };
 
-using shape_id_map_t = hash_map<std::string, shape_state>;
+struct shape_loader_state {
+  hash_map<std::string, shape_state> id_map_{};
+  vecvec<shape_idx_t, double> distances_{};
+  shape_idx_t index_offset_;
+};
 
-shape_id_map_t parse_shapes(std::string_view const, shapes_storage_t&);
+shape_loader_state parse_shapes(std::string_view const, shapes_storage&);
 
 }  // namespace nigiri::loader::gtfs

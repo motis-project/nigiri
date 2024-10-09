@@ -26,7 +26,7 @@ timetable load(std::vector<std::pair<std::string, loader_config>> const& paths,
                finalize_options const& finalize_opt,
                interval<date::sys_days> const& date_range,
                assistance_times* a,
-               shapes_storage_t* shapes,
+               shapes_storage* shapes,
                bool ignore) {
   auto const loaders = get_loaders();
 

@@ -1,7 +1,6 @@
 #include "gtest/gtest.h"
 
 #include "nigiri/loader/gtfs/files.h"
-#include "nigiri/loader/gtfs/shape.h"
 #include "nigiri/loader/gtfs/stop_time.h"
 #include "nigiri/loader/loader_interface.h"
 
@@ -39,14 +38,16 @@ TEST(gtfs, read_stop_times_example_data) {
                                 files.get_file(kStopFile).data(),
                                 files.get_file(kTransfersFile).data(), 0U);
 
-  read_stop_times(tt, trip_data, stops, files.get_file(kStopTimesFile).data());
+  read_stop_times(tt, trip_data, stops, files.get_file(kStopTimesFile).data(),
+                  true);
 
   for (auto& t : trip_data.data_) {
     if (t.requires_sorting_) {
       t.stop_headsigns_.resize(t.seq_numbers_.size());
-      std::tie(t.seq_numbers_, t.stop_seq_, t.event_times_, t.stop_headsigns_) =
+      std::tie(t.seq_numbers_, t.stop_seq_, t.event_times_, t.stop_headsigns_,
+               t.distance_traveled_) =
           sort_by(t.seq_numbers_, t.stop_seq_, t.event_times_,
-                  t.stop_headsigns_);
+                  t.stop_headsigns_, t.distance_traveled_);
     }
   }
 
@@ -99,6 +100,14 @@ TEST(gtfs, read_stop_times_example_data) {
   EXPECT_EQ(6_hours + 45_minutes, awe1_stop_times.dep_);
   EXPECT_TRUE(stp.out_allowed());
   EXPECT_TRUE(stp.in_allowed());
+
+  // Check distances are stored iff at least 1 entry is != 0.0
+  EXPECT_EQ((std::vector{0.0, 3.14, 5.0, 0.0, 0.0}),
+            trip_data.data_[awe1_it->second].distance_traveled_);
+  // Check distances are not stored if column is 0.0
+  auto awd1_it = trip_data.trips_.find("AWD1");
+  ASSERT_NE(end(trip_data.trips_), awd1_it);
+  EXPECT_TRUE(trip_data.data_[awd1_it->second].distance_traveled_.empty());
 
   read_frequencies(trip_data, files.get_file(kFrequenciesFile).data());
 }
