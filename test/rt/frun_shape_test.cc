@@ -140,8 +140,9 @@ SHAPE_8,2.0,2.0,2,2.0
 SHAPE_8,3.0,3.0,3,4.0
 SHAPE_9,1.0,1.0,0,
 SHAPE_9,2.5,2.5,1,
-SHAPE_9,4.0,4.0,2,
+SHAPE_9,3.625,3.625,2,
 SHAPE_9,4.0,4.0,3,
+SHAPE_9,4.0,4.0,4,
 
 # stop_times.txt
 trip_id,arrival_time,departure_time,stop_id,stop_sequence,pickup_type,drop_off_type,shape_dist_traveled
@@ -714,6 +715,7 @@ TEST(
       EXPECT_EQ((geo::polyline{
                     {2.0F, 2.0F},
                     {2.5F, 2.5F},
+                    {3.625F, 3.625F},
                     {3.0F, 3.0F},
                 }),
                 leg_shape);
