@@ -396,11 +396,14 @@ void frun::for_each_shape_point(
     }
     return absolute_range << stop_range_.from_;
   };
-  constexpr auto kInvalidLatLng = geo::latlng{200, 200};
-  auto consume_pos = [&, last_pos =
-                             kInvalidLatLng](geo::latlng const& pos) mutable {
-    if (pos != last_pos) {
+  auto start_pos = (*this)[range.from_].pos();
+  callback(start_pos);
+  auto consume_pos = [&, last_pos = std::move(start_pos), changed = false](
+                         geo::latlng const& pos,
+                         bool const force_if_unchanged = false) mutable {
+    if (pos != last_pos || (force_if_unchanged && !changed)) {
       callback(pos);
+      changed = true;
     }
     last_pos = pos;
   };
@@ -433,6 +436,7 @@ void frun::for_each_shape_point(
                  get_subshape(common_stops, trip_idx, absolute_trip_start));
     }
   }
+  consume_pos((*this)[static_cast<stop_idx_t>(range.to_ - 1)].pos(), true);
 }
 
 trip_id frun::id() const noexcept {

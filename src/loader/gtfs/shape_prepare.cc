@@ -34,12 +34,15 @@ std::vector<shape_offset_t> get_offsets_by_stops(
     timetable const& tt,
     std::span<geo::latlng const> shape,
     stop_seq_t const& stop_seq) {
-  if (shape.empty()) {
+  // Need at least 1 shape point per stop
+  if (shape.size() < stop_seq.size()) {
     return {};
   }
 
   auto offsets = std::vector<shape_offset_t>(stop_seq.size());
-  auto remaining_start = cista::base_t<shape_offset_t>{0U};
+  auto remaining_start = cista::base_t<shape_offset_t>{1U};
+  // Reserve space to map each stop to a different point
+  auto max_width = shape.size() - stop_seq.size();
 
   for (auto const [i, s] : utl::enumerate(stop_seq)) {
     if (i == 0U) {
@@ -48,8 +51,11 @@ std::vector<shape_offset_t> get_offsets_by_stops(
       offsets[i] = shape_offset_t{shape.size() - 1U};
     } else {
       auto const pos = tt.locations_.coordinates_[stop{s}.location_idx()];
-      remaining_start += get_closest(pos, shape.subspan(remaining_start));
-      offsets[i] = shape_offset_t{remaining_start};
+      auto const offset =
+          get_closest(pos, shape.subspan(remaining_start, max_width + 1U));
+      offsets[i] = shape_offset_t{remaining_start + offset};
+      remaining_start += offset + 1U;
+      max_width -= offset;
     }
   }
 

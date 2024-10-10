@@ -83,6 +83,7 @@ ROUTE_1,SERVICE_1,TRIP_9,E,BLOCK_5,,
 ROUTE_1,SERVICE_1,TRIP_10,E,BLOCK_5,SHAPE_6,
 ROUTE_1,SERVICE_1,TRIP_11,E,BLOCK_6,SHAPE_7,
 ROUTE_1,SERVICE_1,TRIP_12,E,BLOCK_7,SHAPE_8,
+ROUTE_1,SERVICE_1,TRIP_13,E,BLOCK_8,SHAPE_9,
 
 # shapes.txt
 "shape_id","shape_pt_lat","shape_pt_lon","shape_pt_sequence","shape_dist_traveled"
@@ -137,6 +138,11 @@ SHAPE_8,1.0,1.0,0,0.0
 SHAPE_8,1.5,1.5,1,0.0
 SHAPE_8,2.0,2.0,2,2.0
 SHAPE_8,3.0,3.0,3,4.0
+SHAPE_9,1.0,1.0,0,
+SHAPE_9,2.5,2.5,1,
+SHAPE_9,3.625,3.625,2,
+SHAPE_9,4.0,4.0,3,
+SHAPE_9,4.0,4.0,4,
 
 # stop_times.txt
 trip_id,arrival_time,departure_time,stop_id,stop_sequence,pickup_type,drop_off_type,shape_dist_traveled
@@ -183,6 +189,11 @@ TRIP_11,13:00:00,13:00:00,O,4,0,0,4.24
 TRIP_12,10:00:00,10:00:00,A,1,0,0,0.0
 TRIP_12,11:00:00,11:00:00,M,2,0,0,2.0
 TRIP_12,12:00:00,12:00:00,N,3,0,0,4.0
+TRIP_13,10:00:00,10:00:00,A,1,0,0,
+TRIP_13,11:00:00,11:00:00,M,2,0,0,
+TRIP_13,12:00:00,12:00:00,N,3,0,0,
+TRIP_13,13:00:00,13:00:00,O,4,0,0,
+TRIP_13,13:05:00,13:05:00,O,5,0,0,
 
 )"sv;
 
@@ -648,6 +659,7 @@ TEST(
           plot_point);
 
       EXPECT_EQ((geo::polyline{
+                    {2.0F, 2.0F},
                     {2.5F, 2.5F},
                     {3.0F, 3.0F},
                 }),
@@ -677,6 +689,48 @@ TEST(
                     {1.0F, 1.0F},
                     {1.5F, 1.5F},
                     {2.0F, 2.0F},
+                }),
+                leg_shape);
+    }
+  }
+  // Segments must always contain at least 2 points
+  {
+    // Create run
+    transit_realtime::TripDescriptor td;
+    td.set_trip_id("TRIP_13");
+    auto const [r, t] = rt::gtfsrt_resolve_run(
+        date::sys_days{2024_y / January / 1}, tt, rtt, source_idx_t{0}, td);
+    ASSERT_TRUE(r.valid());
+    // Create full run
+    auto const full_run = rt::frun{tt, &rtt, r};
+
+    // Two stops close to same shape point (1.5, 1.5)
+    {
+      leg_shape.clear();
+
+      full_run.for_each_shape_point(
+          &shapes_data, interval{stop_idx_t{1U}, stop_idx_t{2U + 1U}},
+          plot_point);
+
+      EXPECT_EQ((geo::polyline{
+                    {2.0F, 2.0F},
+                    {2.5F, 2.5F},
+                    {3.625F, 3.625F},
+                    {3.0F, 3.0F},
+                }),
+                leg_shape);
+    }
+    // Duplicated end stop
+    {
+      leg_shape.clear();
+
+      full_run.for_each_shape_point(
+          &shapes_data, interval{stop_idx_t{3U}, stop_idx_t{4U + 1U}},
+          plot_point);
+
+      EXPECT_EQ((geo::polyline{
+                    {4.0F, 4.0F},
+                    {4.0F, 4.0F},
                 }),
                 leg_shape);
     }
