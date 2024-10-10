@@ -365,7 +365,7 @@ struct timetable {
 
   void write(cista::memory_holder&) const;
   void write(std::filesystem::path const&) const;
-  static cista::wrapped<timetable> read(cista::memory_holder&&);
+  static cista::wrapped<timetable> read(std::filesystem::path const&);
 
   // Schedule range.
   interval<date::sys_days> date_range_;
