@@ -60,13 +60,14 @@ td_booking_rule_map_t read_td_booking_rules(std::string_view file_content) {
 
     return std::pair{
       b.id_->to_str(),
-      std::make_unique<td_booking_rule>{
+      std::make_unique<td_booking_rule>(td_booking_rule{
         .type_ = b.type_.val(),
         .prior_notice_duration_min_ = b.prior_notice_duration_min_.val(),
         .prior_notice_duration_max_ = b.prior_notice_duration_max_.val(),
         .prior_notice_last_day_ = b.prior_notice_last_day_.val(),
         .prior_notice_last_time_ = gtfs::hhmm_to_min(*b.prior_notice_last_time_),
-        .prior_notice_start_day_ = b.prior_notice_start_day_->to_str(),
+        .prior_notice_start_day_ = b.prior_notice_start_day_->empty() ? static_cast<uint16_t>(0) : static_cast<uint16_t>(
+                          strtoul(b.prior_notice_start_day_->c_str(), NULL, 10)),
         .prior_notice_start_time_ = gtfs::hhmm_to_min(*b.prior_notice_start_time_),
         .prior_notice_service_id_ = b.prior_notice_service_id_->to_str(),
         .message_ = b.message_->to_str(),
@@ -74,8 +75,8 @@ td_booking_rule_map_t read_td_booking_rules(std::string_view file_content) {
         .drop_off_message_ = b.drop_off_message_->to_str(),
         .phone_number_ = b.phone_number_->to_str(),
         .info_url_ = b.info_url_->to_str(),
-        .booking_url_ = b.booking_url_->to_str(),
-      }};
+        .booking_url_ = b.booking_url_->to_str()
+      })};
   }) //
   | utl::to<td_booking_rule_map_t>();
 }

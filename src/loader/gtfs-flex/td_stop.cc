@@ -57,22 +57,22 @@ td_stop_map_t read_td_stops(std::string_view file_content) {
 
     return std::pair{
         s.stop_id_->to_str(),
-        std::make_unique<td_stop>{
+        std::make_unique<td_stop>(td_stop{
           .code_ = s.stop_code_->to_str(),
           .name_ = s.stop_name_->to_str(),
           .tts_name_ = s.tts_stop_name_->to_str(),
-          .desc = s.stop_desc_->to_str(),
+          .desc_ = s.stop_desc_->to_str(),
           .lat_ = s.stop_lat_->to_str(),
           .lon_ = s.stop_lon_->to_str(),
           .zone_id_ = s.zone_id_->to_str(),
-          .url = s.stop_url_->to_str(),
+          .url_ = s.stop_url_->to_str(),
           .location_type_ = s.location_type_.val(),
           .parent_station_ = s.parent_station_->to_str(),
-          .timezone = s.stop_timezone_->to_str(),
-          .wheelchair_boarding = s.wheelchair_boarding_.val(),
-          .level_id = s.level_id_->to_str(),
+          .timezone_ = s.stop_timezone_->to_str(),
+          .wheelchair_boarding_ = s.wheelchair_boarding_.val(),
+          .level_id_ = s.level_id_->to_str(),
           .platform_code_ = s.platform_code_->to_str()
-        }
+        })
   };
   })  //
   | utl::to<td_stop_map_t>();

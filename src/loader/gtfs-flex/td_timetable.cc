@@ -11,14 +11,11 @@ namespace nigiri::loader::gtfs_flex {
                                             td_stop_area_map_t stop_areas,
                                             td_stop_time_map_t stop_times,
                                             td_trip_map_t trips) {
-    td_timetable_map_t td_timetable{};
+    td_timetable_map_t td_timetable_map{};
     for(auto stop_time : stop_times) {
       auto timetable_id = stop_time.first;
       td_stop_id_t stop_id = timetable_id.first;
       td_trip_id_t trip_id = timetable_id.second;
-
-
-
 
       std::string any_booking_rule_id = "";
       auto pick_up_booking_rule_id = stop_times[timetable_id]->pickup_booking_rule_id_;
@@ -37,8 +34,8 @@ namespace nigiri::loader::gtfs_flex {
         booking_rule_service_id = booking_rules[any_booking_rule_id]->prior_notice_service_id_;
       }
 
-      td_timetable.emplace(timetable_id,
-      std::make_unique<td_timetable>{
+      td_timetable_map.emplace(timetable_id,
+      std::make_unique<td_timetable_t>(td_timetable_t{
         .pick_up_booking_rule_type_ = pick_up_booking_rule_id ? std::nullopt : booking_rules[pick_up_booking_rule_id]->type_,
         .pick_up_booking_rule_prior_notice_duration_min_ = pick_up_booking_rule_id.empty() ? std::nullopt : booking_rules[pick_up_booking_rule_id]->prior_notice_duration_min_,
         .pick_up_booking_rule_prior_notice_duration_max_ = stop_times[timetable_id]->pickup_booking_rule_id_.empty() ? std::nullopt : booking_rules[pick_up_booking_rule_id]->prior_notice_duration_max_,
@@ -65,9 +62,9 @@ namespace nigiri::loader::gtfs_flex {
         .booking_rule_info_url_ = any_booking_rule_id.empty() ? std::nullopt : booking_rules[any_booking_rule_id]->info_url_,
         .booking_rule_booking_url_ = any_booking_rule_id.empty() ? std::nullopt : booking_rules[any_booking_rule_id]->booking_url_,
 
-        .booking_rule_calendar_week_days = booking_rule_service_id.empty() ? std::nullopt : calendar[booking_rule_service_id]->week_days_,
+        .booking_rule_calendar_week_days_ = booking_rule_service_id.empty() ? std::nullopt : calendar[booking_rule_service_id]->week_days_,
         .booking_rule_calendar_interval_ = booking_rule_service_id.empty() ? std::nullopt : calendar[booking_rule_service_id]->interval_,
-        .booking_rule_calendar_date_exceptions = booking_rule_service_id.empty() ? std::nullopt : calendar_dates[booking_rule_service_id],
+        .booking_rule_calendar_date_exceptions_ = booking_rule_service_id.empty() ? std::nullopt : calendar_dates[booking_rule_service_id],
 
         .trip_calendar_week_days_ = trip_service_id.empty() ? std::nullopt : calendar[trip_service_id]->week_days_,
         .trip_calendar_interval_ = trip_service_id.empty() ? std::nullopt : calendar[trip_service_id]->interval_,
@@ -97,8 +94,8 @@ namespace nigiri::loader::gtfs_flex {
         .stop_time_drop_off_type_ = stop_times[timetable_id]->drop_off_type_,
         .stop_time_pickup_booking_rule_id_ = stop_times[timetable_id]->pickup_booking_rule_id_,
         .stop_time_drop_off_booking_rule_id_ = stop_times[timetable_id]->drop_off_booking_rule_id_
-      });
+      }));
     }
-    return td_timetable;
+    return td_timetable_map;
   }
-}
+}  // namespace nigiri::loader::gtfs_flex

@@ -13,7 +13,6 @@
 
 #include "wyhash.h"
 
-#include "nigiri/loader/gtfs/booking_rule.h"
 #include "nigiri/loader/get_index.h"
 #include "nigiri/loader/gtfs/agency.h"
 #include "nigiri/loader/gtfs/calendar.h"

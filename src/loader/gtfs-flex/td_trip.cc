@@ -17,10 +17,10 @@ td_trip_map_t read_td_trips(std::string_view file_content) {
     utl::csv_col<utl::cstr, UTL_NAME("shape_id")> shape_id_;
     utl::csv_col<utl::cstr, UTL_NAME("trip_headsign")> trip_headsign_;
     utl::csv_col<utl::cstr, UTL_NAME("trip_short_name")> trip_short_name_;
-    utl::csv_col<utl::cstr, UTL_NAME("direction_id")> direction_id_;
+    utl::csv_col<uint8_t, UTL_NAME("direction_id")> direction_id_;
     utl::csv_col<utl::cstr, UTL_NAME("block_id")> block_id_;
-    utl::csv_col<utl::cstr, UTL_NAME("wheelchair_accessible")> wheelchair_accessible_;
-    utl::csv_col<utl::cstr, UTL_NAME("bikes_allowed")> bikes_allowed_;
+    utl::csv_col<uint8_t, UTL_NAME("wheelchair_accessible")> wheelchair_accessible_;
+    utl::csv_col<uint8_t, UTL_NAME("bikes_allowed")> bikes_allowed_;
     utl::csv_col<utl::cstr, UTL_NAME("trip_note")> trip_note_;
     utl::csv_col<utl::cstr, UTL_NAME("route_direction")> route_direction_;
   };
@@ -35,7 +35,7 @@ td_trip_map_t read_td_trips(std::string_view file_content) {
   | utl::transform([&](csv_td_trip const& t) {
     return std::pair{
         t.trip_id_->to_str(),
-        std::make_unique<td_trip>{
+        std::make_unique<td_trip>(td_trip{
           .route_id_ = t.route_id_->to_str(),
           .service_id_ = t.service_id_->to_str(),
           .shape_id_ = t.shape_id_->to_str(),
@@ -47,7 +47,7 @@ td_trip_map_t read_td_trips(std::string_view file_content) {
           .route_direction_ = t.route_direction_->to_str(),
           .wheelchair_accessible_ = t.wheelchair_accessible_.val(),
           .bikes_allowed_ = t.bikes_allowed_.val(),
-        }
+        })
   };
   })  //
   | utl::to<td_trip_map_t>();

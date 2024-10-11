@@ -42,10 +42,11 @@ td_calendar_map_t read_td_calendar(std::string_view file_content) {
       days.set(6, *e.saturday_ == 1);
 
       return std::pair{e.id_->to_str(),
-                       std::make_unique<td_calendar>{.week_days_ = days,
-                                .interval_ = {gtfs::parse_date(*e.start_date_),
+                       std::make_unique<td_calendar>(td_calendar{
+                         .week_days_ = days,
+                          .interval_ = {gtfs::parse_date(*e.start_date_),
                             gtfs::parse_date(*e.end_date_) +
-                                                  date::days{1}}}};
+                                                  date::days{1}}})};
     })  //
   | utl::to<td_calendar_map_t>();
 }

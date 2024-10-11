@@ -4,8 +4,6 @@
 
 namespace nigiri::loader::gtfs_flex {
 
-const uint8_t DEFAULT_CONTINOUS_STOPPING_PICKUP_DROPOFF = 1;
-
 struct td_route {
   std::string agency_id_;       // Conditionally Required If Multiple Agencies Are Defined in agency.txt
   std::string short_name_;      // Conditionally Required If long_name_ Is Empty

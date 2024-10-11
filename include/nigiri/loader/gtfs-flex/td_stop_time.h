@@ -4,10 +4,6 @@
 
 namespace nigiri::loader::gtfs_flex {
 
-const uint8_t DEFAULT_CONTINOUS_STOPPING_PICKUP_DROPOFF = 1;
-const uint8_t DEFAULT_TIMEPOINT = 1;
-const double_t DEFAULT_FACTOR = 1.0;
-
 struct td_stop_time {
   uint16_t stop_sequence_;                    // Required
   std::string stop_headsign_;                 // Optional

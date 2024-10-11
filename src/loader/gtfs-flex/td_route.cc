@@ -6,6 +6,7 @@
 #include <utl/pipes/transform.h>
 #include <utl/pipes/vec.h>
 #include <utl/progress_tracker.h>
+#include "nigiri/loader/gtfs-flex/td_default_values.h"
 
 namespace nigiri::loader::gtfs_flex {
 
@@ -39,20 +40,21 @@ td_route_map_t read_td_routes(std::string_view file_content) {
 
     return std::pair{
         r.route_id_->to_str(),
-        std::make_unique<td_route>{
+        std::make_unique<td_route>(td_route{
           .agency_id_ = r.agency_id_->to_str(),
           .short_name_ = r.route_short_name_->to_str(),
           .long_name_ = r.route_long_name_->to_str(),
           .desc_ = r.route_desc_->to_str(),
-          .type_ = strtoul(r.route_type_->c_str(), NULL, 10),
+          .type_ = static_cast<uint16_t>(
+                             strtoul(r.route_type_->c_str(), NULL, 10)),
           .url_ = r.route_url_->to_str(),
           .color_ = r.route_color_->to_str(),
           .text_color_ = r.route_text_color_->to_str(),
           .sort_order_ = r.route_sort_order_->to_str(),
-          .continuous_pickup_ = r.continuous_pickup_->to_str().empty() ? DEFAULT_CONTINOUS_STOPPING_PICKUP_DROPOFF : atoi(r.continuous_pickup_->c_str()),
-          .continuous_drop_off_ = r.continuous_pickup_->to_str().empty() ? DEFAULT_CONTINOUS_STOPPING_PICKUP_DROPOFF : atoi(r.continuous_pickup_->c_str()),
+          .continuous_pickup_ = r.continuous_pickup_->to_str().empty() ? DEFAULT_CONTINOUS_STOPPING_PICKUP_DROPOFF : static_cast<uint8_t>(atoi(r.continuous_pickup_->c_str())),
+          .continuous_drop_off_ = r.continuous_pickup_->to_str().empty() ? DEFAULT_CONTINOUS_STOPPING_PICKUP_DROPOFF : static_cast<uint8_t>(atoi(r.continuous_pickup_->c_str())),
           .network_id_ = r.network_id_->to_str()
-        }
+        })
   };
   })  //
   | utl::to<td_route_map_t>();

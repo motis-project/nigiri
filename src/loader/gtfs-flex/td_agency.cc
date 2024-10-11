@@ -29,13 +29,13 @@ td_agency_map_t read_td_agencies(std::string_view file_content) {
   | utl::transform([&](csv_td_agency const& a) {
     return std::pair{
         a.id_->to_str(),
-        std::make_unique<td_agency>{
+        std::make_unique<td_agency>(td_agency{
           .name_ = a.name_->to_str(),
           .tz_name_ = a.tz_name_->to_str(),
           .language_ = a.language_->to_str(),
           .phone_number_ = a.phone_number_->to_str(),
           .url_ = a.url_->to_str()
-        }
+        })
   };
   })  //
   | utl::to<td_agency_map_t>();

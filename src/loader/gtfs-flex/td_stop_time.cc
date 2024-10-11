@@ -9,6 +9,7 @@
 #include <utl/pipes/transform.h>
 #include <utl/pipes/vec.h>
 #include <utl/progress_tracker.h>
+#include "nigiri/loader/gtfs-flex/td_default_values.h"
 
 namespace nigiri::loader::gtfs_flex {
 
@@ -63,7 +64,7 @@ td_stop_time_map_t read_td_stop_times(std::string_view file_content) {
 
     return std::pair{
         td_stop_time_id_t{final_id, s.trip_id_->to_str()},
-        std::make_unique<td_stop_time>{
+        std::make_unique<td_stop_time>(td_stop_time{
             .stop_sequence_ = s.stop_sequence_.val(),
             .stop_headsign_ = s.stop_headsign_->to_str(),
             .arrival_time_ = gtfs::hhmm_to_min(*s.arrival_time_),
@@ -71,8 +72,8 @@ td_stop_time_map_t read_td_stop_times(std::string_view file_content) {
             .start_pickup_drop_off_window_ = gtfs::hhmm_to_min(*s.start_pickup_drop_off_window_),
             .end_pickup_drop_off_window_ = gtfs::hhmm_to_min(*s.end_pickup_drop_off_window_),
             .shape_dist_traveled_ = s.shape_dist_traveled_.val(),
-            .timepoint_ = s.timepoint_->view().empty() ? DEFAULT_TIMEPOINT : atoi(s.timepoint_->c_str()),
-            .stop_note_ = s.stop_note_->view(),
+            .timepoint_ = s.timepoint_->view().empty() ? DEFAULT_TIMEPOINT : static_cast<uint8_t>(atoi(s.timepoint_->c_str())),
+            .stop_note_ = s.stop_note_->to_str(),
             .mean_duration_factor_ = s.mean_duration_factor_->view().empty() ? DEFAULT_FACTOR : std::stod(s.mean_duration_factor_->c_str()),
             .mean_duration_offset_ = s.mean_duration_offset_.val(),
             .safe_duration_factor_ = s.safe_duration_factor_->view().empty() ? DEFAULT_FACTOR : std::stod(s.safe_duration_factor_->c_str()),
@@ -81,9 +82,10 @@ td_stop_time_map_t read_td_stop_times(std::string_view file_content) {
             .drop_off_type_ = s.drop_off_type_.val(),
             .pickup_booking_rule_id_ = s.pickup_booking_rule_id_->to_str(),
             .drop_off_booking_rule_id_ = s.drop_off_booking_rule_id_->to_str(),
-            .continuous_pickup_ = s.continuous_pickup_->to_str().empty() ? DEFAULT_CONTINOUS_STOPPING_PICKUP_DROPOFF : atoi(s.continuous_pickup_->c_str()),
-            .continuous_drop_off_ = s.continuous_drop_off_->to_str().empty() ? DEFAULT_CONTINOUS_STOPPING_PICKUP_DROPOFF : atoi(s.continuous_drop_off_->c_str())
-        }
+            .continuous_pickup_ = s.continuous_pickup_->to_str().empty() ? DEFAULT_CONTINOUS_STOPPING_PICKUP_DROPOFF : static_cast<uint8_t>(atoi(s.continuous_pickup_->c_str())),
+            .continuous_drop_off_ = s.continuous_drop_off_->to_str().empty() ? DEFAULT_CONTINOUS_STOPPING_PICKUP_DROPOFF : static_cast<uint8_t>(
+                          atoi(s.continuous_drop_off_->c_str()))
+        })
   };
   })  //
   | utl::to<td_stop_time_map_t>();
