@@ -421,8 +421,7 @@ int main(int argc, char* argv[]) {
   bpo::notify(vm);
 
   std::cout << "loading timetable...\n";
-  auto tt = *nigiri::timetable::read(cista::memory_holder{
-      cista::file{tt_path.generic_string().c_str(), "r"}.content()});
+  auto tt = *nigiri::timetable::read(tt_path);
   tt.locations_.resolve_timezones();
 
   gs.interval_size_ = duration_t{interval_size};
