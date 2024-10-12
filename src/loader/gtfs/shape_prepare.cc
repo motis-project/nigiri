@@ -34,11 +34,6 @@ std::vector<shape_offset_t> get_offsets_by_stops(
     timetable const& tt,
     std::span<geo::latlng const> shape,
     stop_seq_t const& stop_seq) {
-  // Need at least 1 shape point per stop
-  if (shape.size() < stop_seq.size()) {
-    return {};
-  }
-
   auto offsets = std::vector<shape_offset_t>(stop_seq.size());
   auto remaining_start = cista::base_t<shape_offset_t>{1U};
   // Reserve space to map each stop to a different point
@@ -123,11 +118,17 @@ void calculate_shape_offsets(timetable const& tt,
             return shapes_data.add_offsets(offsets);
           }
           auto const shape = shapes_data.get_shape(shape_idx);
+          if (shape.size() < trip.stop_seq_.size()) {
+            return shape_offset_idx_t::invalid();  // >= 1 shape/point required
+          }
           auto const offsets = get_offsets_by_stops(tt, shape, trip.stop_seq_);
           return shapes_data.add_offsets(offsets);
         });
     shapes_data.add_trip_shape_offsets(
-        trip_idx, cista::pair{shape_idx, shape_offset_idx});
+        trip_idx, cista::pair{shape_offset_idx == shape_offset_idx_t::invalid()
+                                  ? shape_idx_t::invalid()
+                                  : shape_idx,
+                              shape_offset_idx});
   }
 }
 
