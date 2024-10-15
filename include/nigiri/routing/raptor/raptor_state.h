@@ -10,6 +10,7 @@
 #include "cista/containers/flat_matrix.h"
 
 #include "nigiri/common/delta_t.h"
+#include "nigiri/routing/raptor/transport_stop.h"
 #include "nigiri/common/flat_matrix_view.h"
 #include "nigiri/routing/limits.h"
 
@@ -83,6 +84,7 @@ struct raptor_state {
   bitvec route_mark_;
   bitvec rt_transport_mark_;
   bitvec end_reachable_;
+  reached r_;
 };
 
 }  // namespace nigiri::routing
