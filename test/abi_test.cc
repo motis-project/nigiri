@@ -2,6 +2,7 @@
 
 #include "date/date.h"
 
+#include <cstdint>
 #include "nigiri/loader/dir.h"
 #include "nigiri/abi.h"
 #include "nigiri/rt/util.h"
@@ -446,78 +447,89 @@ TEST(rt, abi_timetable) {
     EXPECT_EQ(6, evt.day_idx);
 
     if (*test_event_change_counter_ptr == 0) {
-      EXPECT_EQ(-1, evt.in_out_allowed);
-      EXPECT_EQ(0, evt.location_idx);
+      EXPECT_EQ(false, evt.stop_change);
+      EXPECT_EQ(true, evt.stop_in_out_allowed);
+      EXPECT_EQ(UINT32_MAX, evt.stop_location_idx);
       EXPECT_EQ(14, evt.stop_idx);
       EXPECT_EQ(false, evt.is_departure);
       EXPECT_EQ(1, evt.delay);
     }
     if (*test_event_change_counter_ptr == 1) {
-      EXPECT_EQ(-1, evt.in_out_allowed);
-      EXPECT_EQ(0, evt.location_idx);
+      EXPECT_EQ(false, evt.stop_change);
+      EXPECT_EQ(true, evt.stop_in_out_allowed);
+      EXPECT_EQ(UINT32_MAX, evt.stop_location_idx);
       EXPECT_EQ(14, evt.stop_idx);
       EXPECT_EQ(true, evt.is_departure);
       EXPECT_EQ(1, evt.delay);
     }
     if (*test_event_change_counter_ptr == 8) {
-      EXPECT_EQ(-1, evt.in_out_allowed);
-      EXPECT_EQ(0, evt.location_idx);
+      EXPECT_EQ(false, evt.stop_change);
+      EXPECT_EQ(true, evt.stop_in_out_allowed);
+      EXPECT_EQ(UINT32_MAX, evt.stop_location_idx);
       EXPECT_EQ(18, evt.stop_idx);
       EXPECT_EQ(false, evt.is_departure);
       EXPECT_EQ(2, evt.delay);
     }
     if (*test_event_change_counter_ptr == 9) {
-      EXPECT_EQ(-1, evt.in_out_allowed);
-      EXPECT_EQ(0, evt.location_idx);
+      EXPECT_EQ(false, evt.stop_change);
+      EXPECT_EQ(true, evt.stop_in_out_allowed);
+      EXPECT_EQ(UINT32_MAX, evt.stop_location_idx);
       EXPECT_EQ(18, evt.stop_idx);
       EXPECT_EQ(true, evt.is_departure);
       EXPECT_EQ(2, evt.delay);
     }
     if (*test_event_change_counter_ptr == 22) {
-      EXPECT_EQ(-1, evt.in_out_allowed);
-      EXPECT_EQ(35, evt.location_idx);
+      EXPECT_EQ(true, evt.stop_change);
+      EXPECT_EQ(true, evt.stop_in_out_allowed);
+      EXPECT_EQ(35, evt.stop_location_idx);
       EXPECT_EQ(25, evt.stop_idx);
       EXPECT_EQ(false, evt.is_departure);
       EXPECT_EQ(0, evt.delay);
     }
     if (*test_event_change_counter_ptr == 23) {
-      EXPECT_EQ(-1, evt.in_out_allowed);
-      EXPECT_EQ(35, evt.location_idx);
+      EXPECT_EQ(true, evt.stop_change);
+      EXPECT_EQ(true, evt.stop_in_out_allowed);
+      EXPECT_EQ(35, evt.stop_location_idx);
       EXPECT_EQ(25, evt.stop_idx);
       EXPECT_EQ(true, evt.is_departure);
       EXPECT_EQ(0, evt.delay);
     }
     if (*test_event_change_counter_ptr == 24) {
-      EXPECT_EQ(-1, evt.in_out_allowed);
-      EXPECT_EQ(0, evt.location_idx);
+      EXPECT_EQ(false, evt.stop_change);
+      EXPECT_EQ(true, evt.stop_in_out_allowed);
+      EXPECT_EQ(UINT32_MAX, evt.stop_location_idx);
       EXPECT_EQ(25, evt.stop_idx);
       EXPECT_EQ(false, evt.is_departure);
       EXPECT_EQ(-1, evt.delay);
     }
     if (*test_event_change_counter_ptr == 25) {
-      EXPECT_EQ(-1, evt.in_out_allowed);
-      EXPECT_EQ(0, evt.location_idx);
+      EXPECT_EQ(false, evt.stop_change);
+      EXPECT_EQ(true, evt.stop_in_out_allowed);
+      EXPECT_EQ(UINT32_MAX, evt.stop_location_idx);
       EXPECT_EQ(25, evt.stop_idx);
       EXPECT_EQ(true, evt.is_departure);
       EXPECT_EQ(-1, evt.delay);
     }
     if (*test_event_change_counter_ptr == 26) {
-      EXPECT_EQ(0, evt.in_out_allowed);
-      EXPECT_EQ(0, evt.location_idx);
+      EXPECT_EQ(true, evt.stop_change);
+      EXPECT_EQ(false, evt.stop_in_out_allowed);
+      EXPECT_EQ(35, evt.stop_location_idx);
       EXPECT_EQ(26, evt.stop_idx);
       EXPECT_EQ(false, evt.is_departure);
       EXPECT_EQ(0, evt.delay);
     }
     if (*test_event_change_counter_ptr == 27) {
-      EXPECT_EQ(0, evt.in_out_allowed);
-      EXPECT_EQ(0, evt.location_idx);
+      EXPECT_EQ(true, evt.stop_change);
+      EXPECT_EQ(false, evt.stop_in_out_allowed);
+      EXPECT_EQ(35, evt.stop_location_idx);
       EXPECT_EQ(26, evt.stop_idx);
       EXPECT_EQ(true, evt.is_departure);
       EXPECT_EQ(0, evt.delay);
     }
     if (*test_event_change_counter_ptr == 30) {
-      EXPECT_EQ(-1, evt.in_out_allowed);
-      EXPECT_EQ(0, evt.location_idx);
+      EXPECT_EQ(false, evt.stop_change);
+      EXPECT_EQ(true, evt.stop_in_out_allowed);
+      EXPECT_EQ(UINT32_MAX, evt.stop_location_idx);
       EXPECT_EQ(27, evt.stop_idx);
       EXPECT_EQ(false, evt.is_departure);
       EXPECT_EQ(0, evt.delay);

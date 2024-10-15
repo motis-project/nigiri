@@ -60,9 +60,10 @@ struct nigiri_event_change {
   uint16_t day_idx;
   uint16_t stop_idx;
   bool is_departure;
-  uint32_t location_idx;  // 0 if unset
-  int16_t in_out_allowed;  // -1 if unset
-  int16_t delay;
+  bool stop_change;
+  uint32_t stop_location_idx;  // ignore if UINT_MAX or stop_change == false
+  bool stop_in_out_allowed;  // ignore if stop_change == false
+  int16_t delay;  // ignore if stop_change == true
 };
 typedef struct nigiri_event_change nigiri_event_change_t;
 

@@ -245,18 +245,20 @@ void nigiri_update_with_rt_from_buf(const nigiri_timetable_t* t,
   auto const rtt_callback =
       [&](nigiri::transport const transport, nigiri::stop_idx_t const stop_idx,
           nigiri::event_type const ev_type,
-          nigiri::location_idx_t const location_idx, int16_t in_out_allowed,
-          nigiri::duration_t const delay) {
+          std::optional<nigiri::location_idx_t> const location_idx,
+          std::optional<bool> in_out_allowed,
+          std::optional<nigiri::duration_t> const delay) {
         nigiri_event_change_t const c = {
             .transport_idx =
                 static_cast<nigiri::transport_idx_t::value_t>(transport.t_idx_),
             .day_idx = static_cast<nigiri::day_idx_t::value_t>(transport.day_),
             .stop_idx = stop_idx,
             .is_departure = ev_type != nigiri::event_type::kArr,
-            .location_idx =
-                static_cast<nigiri::location_idx_t::value_t>(location_idx),
-            .in_out_allowed = in_out_allowed,
-            .delay = delay.count()};
+            .stop_change = !delay.has_value(),
+            .stop_location_idx = static_cast<nigiri::location_idx_t::value_t>(
+                location_idx.value_or(nigiri::location_idx_t::invalid())),
+            .stop_in_out_allowed = in_out_allowed.value_or(true),
+            .delay = delay.value_or(nigiri::duration_t{0}).count()};
         callback(c, context);
       };
 
