@@ -120,17 +120,17 @@ TEST(rt, rt_block_id_test) {
   EXPECT_EQ(3U, stats.total_entities_success_);
 
   auto const [r1, t1] = rt::gtfsrt_resolve_run(
-      date::sys_days{May / 1 / 2019}, tt, rtt, source_idx_t{0},
+      date::sys_days{May / 1 / 2019}, tt, &rtt, source_idx_t{0},
       msg1.entity(0).trip_update().trip());
   ASSERT_TRUE(r1.valid());
 
   auto const [r2, t2] = rt::gtfsrt_resolve_run(
-      date::sys_days{May / 1 / 2019}, tt, rtt, source_idx_t{0},
+      date::sys_days{May / 1 / 2019}, tt, &rtt, source_idx_t{0},
       msg1.entity(1).trip_update().trip());
   ASSERT_TRUE(r2.valid());
 
   auto const [r3, t3] = rt::gtfsrt_resolve_run(
-      date::sys_days{May / 1 / 2019}, tt, rtt, source_idx_t{0},
+      date::sys_days{May / 1 / 2019}, tt, &rtt, source_idx_t{0},
       msg1.entity(2).trip_update().trip());
   ASSERT_TRUE(r3.valid());
 

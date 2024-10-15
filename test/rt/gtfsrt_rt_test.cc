@@ -383,7 +383,7 @@ TEST(rt, gtfs_rt_update_1) {
   td.set_trip_id("3248651");
   td.set_start_time("05:15:00");
   auto const [r, t] = rt::gtfsrt_resolve_run(date::sys_days{May / 1 / 2019}, tt,
-                                             rtt, source_idx_t{0}, td);
+                                             &rtt, source_idx_t{0}, td);
   ASSERT_TRUE(r.valid());
 
   auto ss = std::stringstream{};

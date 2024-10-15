@@ -89,7 +89,7 @@ TEST(rt, gtfsrt_resolve_static_trip) {
     *td.mutable_trip_id() = "T_RE1";
 
     auto const [r, t] = rt::gtfsrt_resolve_run(date::sys_days{2019_y / May / 3},
-                                               tt, rtt, source_idx_t{0}, td);
+                                               tt, &rtt, source_idx_t{0}, td);
     EXPECT_TRUE(r.valid());
   }
 
@@ -100,7 +100,7 @@ TEST(rt, gtfsrt_resolve_static_trip) {
     *td.mutable_trip_id() = "T_RE2";
 
     auto const [r, t] = rt::gtfsrt_resolve_run(date::sys_days{2019_y / May / 4},
-                                               tt, rtt, source_idx_t{0}, td);
+                                               tt, &rtt, source_idx_t{0}, td);
     EXPECT_TRUE(r.valid());
   }
 
@@ -112,7 +112,7 @@ TEST(rt, gtfsrt_resolve_static_trip) {
     // 2019-05-02 21:30 UTC
     // -> we give "today" in UTC (start_day would be local days)
     auto const [r, t] = rt::gtfsrt_resolve_run(date::sys_days{2019_y / May / 4},
-                                               tt, rtt, source_idx_t{0}, td);
+                                               tt, &rtt, source_idx_t{0}, td);
     ASSERT_TRUE(r.valid());
   }
 }
@@ -174,7 +174,7 @@ TEST(rt, resolve_tz) {
     td.set_trip_id("5456914");
 
     auto const r = gtfsrt_resolve_run(date::sys_days{2023_y / August / 3}, tt,
-                                      rtt, source_idx_t{0U}, td);
+                                      &rtt, source_idx_t{0U}, td);
     EXPECT_TRUE(r.first.valid());
   }
 
@@ -189,7 +189,7 @@ TEST(rt, resolve_tz) {
     td.set_trip_id("5456915");
 
     auto const r = gtfsrt_resolve_run(date::sys_days{2023_y / August / 3}, tt,
-                                      rtt, source_idx_t{0U}, td);
+                                      &rtt, source_idx_t{0U}, td);
     EXPECT_TRUE(r.first.valid());
   }
 }
@@ -245,7 +245,7 @@ TEST(rt, gtfs_rt_update) {
   auto i = 0U, j = 0U;
   auto fr = frun{tt, nullptr,
                  rt::gtfsrt_resolve_run(date::sys_days{2019_y / May / 4}, tt,
-                                        rtt, source_idx_t{0}, *td)
+                                        &rtt, source_idx_t{0}, *td)
                      .first};
   ASSERT_TRUE(fr.valid());
   for (auto const [from, to] : utl::pairwise(fr)) {
@@ -261,7 +261,7 @@ TEST(rt, gtfs_rt_update) {
 
   // Basic checks with rt_timetable!=nullptr.
   fr = frun{tt, &rtt,
-            rt::gtfsrt_resolve_run(date::sys_days{2019_y / May / 4}, tt, rtt,
+            rt::gtfsrt_resolve_run(date::sys_days{2019_y / May / 4}, tt, &rtt,
                                    source_idx_t{0}, *td)
                 .first};
   i = j = 0U;
@@ -289,7 +289,7 @@ TEST(rt, gtfs_rt_update) {
 
   auto stats = rt::gtfsrt_update_msg(tt, rtt, source_idx_t{0}, "tag", msg0);
   auto [r, t] = rt::gtfsrt_resolve_run(date::sys_days{2019_y / May / 4}, tt,
-                                       rtt, source_idx_t{0}, *td);
+                                       &rtt, source_idx_t{0}, *td);
   EXPECT_EQ(1U, stats.total_entities_success_);
   if (stats.total_entities_success_ != 1U) {
     std::cout << stats << "\n";
@@ -327,7 +327,7 @@ TEST(rt, gtfs_rt_update) {
   EXPECT_EQ(1U, stats.total_entities_success_);
 
   std::tie(r, t) = rt::gtfsrt_resolve_run(date::sys_days{2019_y / May / 4}, tt,
-                                          rtt, source_idx_t{0}, *td);
+                                          &rtt, source_idx_t{0}, *td);
   ASSERT_TRUE(r.valid());
   ASSERT_TRUE(r.is_rt());
   ASSERT_TRUE(r.t_.is_valid());

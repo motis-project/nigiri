@@ -224,7 +224,7 @@ TEST(
     transit_realtime::TripDescriptor td;
     td.set_trip_id("TRIP_1");
     auto const [r, t] = rt::gtfsrt_resolve_run(
-        date::sys_days{2024_y / January / 1}, tt, rtt, source_idx_t{0U}, td);
+        date::sys_days{2024_y / January / 1}, tt, &rtt, source_idx_t{0U}, td);
     ASSERT_TRUE(r.valid());
     // Create full run
     auto const full_run = rt::frun{tt, &rtt, r};
@@ -286,7 +286,7 @@ TEST(
     transit_realtime::TripDescriptor td;
     td.set_trip_id("TRIP_6");
     auto const [r, t] = rt::gtfsrt_resolve_run(
-        date::sys_days{2024_y / January / 1}, tt, rtt, source_idx_t{0}, td);
+        date::sys_days{2024_y / January / 1}, tt, &rtt, source_idx_t{0}, td);
     ASSERT_TRUE(r.valid());
     // Create full run
     auto const full_run = rt::frun{tt, &rtt, r};
@@ -308,7 +308,7 @@ TEST(
     transit_realtime::TripDescriptor td;
     td.set_trip_id("TRIP_1");
     auto const [r, t] = rt::gtfsrt_resolve_run(
-        date::sys_days{2024_y / January / 1}, tt, rtt, source_idx_t{0}, td);
+        date::sys_days{2024_y / January / 1}, tt, &rtt, source_idx_t{0}, td);
     ASSERT_TRUE(r.valid());
     // Create sub run containing single trip leg
     auto const r_modified =
@@ -334,7 +334,7 @@ TEST(
     transit_realtime::TripDescriptor td;
     td.set_trip_id("TRIP_3");
     auto const [r, t] = rt::gtfsrt_resolve_run(
-        date::sys_days{2024_y / January / 1}, tt, rtt, source_idx_t{0}, td);
+        date::sys_days{2024_y / January / 1}, tt, &rtt, source_idx_t{0}, td);
     ASSERT_TRUE(r.valid());
     // Create sub run containing single trip leg
     auto const r_modified =
@@ -525,7 +525,7 @@ TEST(
     transit_realtime::TripDescriptor td;
     td.set_trip_id("TRIP_5");
     auto const [r, t] = rt::gtfsrt_resolve_run(
-        date::sys_days{2024_y / January / 1}, tt, rtt, source_idx_t{0}, td);
+        date::sys_days{2024_y / January / 1}, tt, &rtt, source_idx_t{0}, td);
     ASSERT_TRUE(r.valid());
     // Create full run
     auto const full_run = rt::frun{tt, &rtt, r};
@@ -612,7 +612,7 @@ TEST(
     transit_realtime::TripDescriptor td;
     td.set_trip_id("TRIP_5+");
     auto const [r, t] = rt::gtfsrt_resolve_run(
-        date::sys_days{2024_y / January / 1}, tt, rtt, source_idx_t{0}, td);
+        date::sys_days{2024_y / January / 1}, tt, &rtt, source_idx_t{0}, td);
     ASSERT_TRUE(r.valid());
     // Create full run
     auto const full_run = rt::frun{tt, &rtt, r};
@@ -643,7 +643,7 @@ TEST(
     transit_realtime::TripDescriptor td;
     td.set_trip_id("TRIP_11");
     auto const [r, t] = rt::gtfsrt_resolve_run(
-        date::sys_days{2024_y / January / 1}, tt, rtt, source_idx_t{0}, td);
+        date::sys_days{2024_y / January / 1}, tt, &rtt, source_idx_t{0}, td);
     ASSERT_TRUE(r.valid());
     // Create full run
     auto const full_run = rt::frun{tt, &rtt, r};
@@ -672,7 +672,7 @@ TEST(
     transit_realtime::TripDescriptor td;
     td.set_trip_id("TRIP_12");
     auto const [r, t] = rt::gtfsrt_resolve_run(
-        date::sys_days{2024_y / January / 1}, tt, rtt, source_idx_t{0}, td);
+        date::sys_days{2024_y / January / 1}, tt, &rtt, source_idx_t{0}, td);
     ASSERT_TRUE(r.valid());
     // Create full run
     auto const full_run = rt::frun{tt, &rtt, r};
@@ -699,7 +699,7 @@ TEST(
     transit_realtime::TripDescriptor td;
     td.set_trip_id("TRIP_13");
     auto const [r, t] = rt::gtfsrt_resolve_run(
-        date::sys_days{2024_y / January / 1}, tt, rtt, source_idx_t{0}, td);
+        date::sys_days{2024_y / January / 1}, tt, &rtt, source_idx_t{0}, td);
     ASSERT_TRUE(r.valid());
     // Create full run
     auto const full_run = rt::frun{tt, &rtt, r};

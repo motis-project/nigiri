@@ -12,14 +12,6 @@ using namespace nigiri::loader;
 using namespace nigiri::loader::gtfs;
 using namespace date;
 
-auto resolve(date::sys_days d,
-             timetable const& tt,
-             source_idx_t const src,
-             transit_realtime::TripDescriptor const& td) {
-  rt_timetable rtt;
-  return rt::gtfsrt_resolve_run(d, tt, rtt, src, td);
-}
-
 namespace {
 
 mem_dir rbo500_a_files() {
@@ -182,13 +174,13 @@ TEST(loader, merge_intra_src) {
   auto td = transit_realtime::TripDescriptor();
 
   *td.mutable_trip_id() = "2593445697";
-  auto const [r0, t0] =
-      resolve(date::sys_days{2024_y / September / 3}, tt, source_idx_t{0}, td);
+  auto const [r0, t0] = rt::gtfsrt_resolve_run(
+      date::sys_days{2024_y / September / 3}, tt, nullptr, source_idx_t{0}, td);
   ASSERT_TRUE(r0.valid());
 
   *td.mutable_trip_id() = "2593399070";
-  auto const [r1, t1] =
-      resolve(date::sys_days{2024_y / September / 3}, tt, source_idx_t{0}, td);
+  auto const [r1, t1] = rt::gtfsrt_resolve_run(
+      date::sys_days{2024_y / September / 3}, tt, nullptr, source_idx_t{0}, td);
   ASSERT_TRUE(r1.valid());
 
   EXPECT_EQ(r0.t_, r1.t_);
@@ -381,13 +373,13 @@ TEST(loader, merge_inter_src) {
   auto td = transit_realtime::TripDescriptor();
 
   *td.mutable_trip_id() = "2593432458";
-  auto const [r0, t0] =
-      resolve(date::sys_days{2024_y / September / 3}, tt, source_idx_t{0}, td);
+  auto const [r0, t0] = rt::gtfsrt_resolve_run(
+      date::sys_days{2024_y / September / 3}, tt, nullptr, source_idx_t{0}, td);
   ASSERT_TRUE(r0.valid());
 
   *td.mutable_trip_id() = "2593402613";
-  auto const [r1, t1] =
-      resolve(date::sys_days{2024_y / September / 3}, tt, source_idx_t{1}, td);
+  auto const [r1, t1] = rt::gtfsrt_resolve_run(
+      date::sys_days{2024_y / September / 3}, tt, nullptr, source_idx_t{1}, td);
   ASSERT_TRUE(r1.valid());
 
   EXPECT_EQ(r0.t_, r1.t_);
@@ -569,13 +561,13 @@ TEST(loader, merge_reflexive_matching) {
   auto td = transit_realtime::TripDescriptor();
 
   *td.mutable_trip_id() = "2593445670";
-  auto const [r0, t0] =
-      resolve(date::sys_days{2024_y / September / 3}, tt, source_idx_t{0}, td);
+  auto const [r0, t0] = rt::gtfsrt_resolve_run(
+      date::sys_days{2024_y / September / 3}, tt, nullptr, source_idx_t{0}, td);
   ASSERT_TRUE(r0.valid());
 
   *td.mutable_trip_id() = "2593399038";
-  auto const [r1, t1] =
-      resolve(date::sys_days{2024_y / September / 3}, tt, source_idx_t{0}, td);
+  auto const [r1, t1] = rt::gtfsrt_resolve_run(
+      date::sys_days{2024_y / September / 3}, tt, nullptr, source_idx_t{0}, td);
   ASSERT_TRUE(r1.valid());
 
   EXPECT_EQ(r0.t_, r1.t_);

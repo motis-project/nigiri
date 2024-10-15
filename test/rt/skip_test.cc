@@ -134,7 +134,7 @@ TEST(rt, gtfs_rt_skip) {
   td.set_trip_id("TRIP_1");
   td.set_start_time("10:00:00");
   auto const [r, t] = rt::gtfsrt_resolve_run(
-      date::sys_days{2023_y / November / 26}, tt, rtt, source_idx_t{0}, td);
+      date::sys_days{2023_y / November / 26}, tt, &rtt, source_idx_t{0}, td);
   ASSERT_TRUE(r.valid());
 
   auto ss = std::stringstream{};
