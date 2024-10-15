@@ -314,7 +314,7 @@ statistics gtfsrt_update_msg(timetable const& tt,
 
     try {
       auto const td = entity.trip_update().trip();
-      auto [r, trip] = gtfsrt_resolve_run(today, tt, rtt, src, td);
+      auto [r, trip] = gtfsrt_resolve_run(today, tt, &rtt, src, td);
 
       if (!r.valid()) {
         log(log_lvl::error, "rt.gtfs.resolve", "could not resolve (tag={}) {}",

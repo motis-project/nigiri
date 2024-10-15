@@ -106,13 +106,15 @@ void resolve_rt(rt_timetable const& rtt, run& output) {
 std::pair<run, trip_idx_t> gtfsrt_resolve_run(
     date::sys_days const today,
     timetable const& tt,
-    rt_timetable& rtt,
+    rt_timetable const* rtt,
     source_idx_t const src,
     transit_realtime::TripDescriptor const& td) {
   auto r = run{};
   trip_idx_t trip;
   resolve_static(today, tt, src, td, r, trip);
-  resolve_rt(rtt, r);
+  if (rtt != nullptr) {
+    resolve_rt(*rtt, r);
+  }
   return {r, trip};
 }
 

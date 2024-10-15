@@ -306,7 +306,7 @@ struct timetable {
   }
 
   unixtime_t to_unixtime(day_idx_t const d,
-                         minutes_after_midnight_t const m) const {
+                         minutes_after_midnight_t const m = 0_minutes) const {
     return internal_interval_days().from_ + to_idx(d) * 1_days + m;
   }
 
