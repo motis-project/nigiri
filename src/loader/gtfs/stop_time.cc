@@ -1,5 +1,7 @@
 #include "nigiri/loader/gtfs/stop_time.h"
 
+#include <nigiri/loader/gtfs/booking_rule.h>
+
 #include <algorithm>
 #include <tuple>
 
@@ -24,22 +26,26 @@ namespace nigiri::loader::gtfs {
 void read_stop_times(timetable& tt,
                      trip_data& trips,
                      locations_map const& stops,
+                     booking_rule_map_t& booking_rules,
                      std::string_view file_content) {
   struct csv_stop_time {
+    //GTFS
     utl::csv_col<utl::cstr, UTL_NAME("trip_id")> trip_id_;
     utl::csv_col<utl::cstr, UTL_NAME("arrival_time")> arrival_time_;
     utl::csv_col<utl::cstr, UTL_NAME("departure_time")> departure_time_;
     utl::csv_col<utl::cstr, UTL_NAME("stop_id")> stop_id_;
+    utl::csv_col<std::uint16_t, UTL_NAME("stop_sequence")> stop_sequence_;
+    utl::csv_col<utl::cstr, UTL_NAME("stop_headsign")> stop_headsign_;
+    utl::csv_col<int, UTL_NAME("pickup_type")> pickup_type_;
+    utl::csv_col<int, UTL_NAME("drop_off_type")> drop_off_type_;
+
+    //GTFS-Flex specific
     //utl::csv_col<utl::cstr, UTL_NAME("location_group_id")> location_group_id_; //TODO Only in swiss data
     //utl::csv_col<utl::cstr, UTL_NAME("location_id")> location_id_; //TODO Only in swiss data
-    utl::csv_col<std::uint16_t, UTL_NAME("stop_sequence")> stop_sequence_;
     utl::csv_col<utl::cstr, UTL_NAME("start_pickup_drop_off_window")> start_pickup_drop_off_window_;
     utl::csv_col<utl::cstr, UTL_NAME("end_pickup_drop_off_window")> end_pickup_drop_off_window_;
     utl::csv_col<utl::cstr, UTL_NAME("pickup_booking_rule_id")> pickup_booking_rule_id_;
     utl::csv_col<utl::cstr, UTL_NAME("drop_off_booking_rule_id")> drop_off_booking_rule_id_;
-    utl::csv_col<utl::cstr, UTL_NAME("stop_headsign")> stop_headsign_;
-    utl::csv_col<int, UTL_NAME("pickup_type")> pickup_type_;
-    utl::csv_col<int, UTL_NAME("drop_off_type")> drop_off_type_;
   };
 
   auto const timer = scoped_timer{"read stop times"};
@@ -81,10 +87,15 @@ void read_stop_times(timetable& tt,
         }
 
         try {
-          auto const arrival_time = hhmm_to_min(*s.arrival_time_);
-          auto const departure_time = hhmm_to_min(*s.departure_time_);
-          auto const in_allowed = *s.pickup_type_ != 1; // TODO rather type == 0, so it is regualr traffic
-          auto const out_allowed = *s.drop_off_type_ != 1; // TODO rather type == 0, so it is regualr traffic
+          auto const is_flex_trip = *s.pickup_type_ == PICKUP_DROPOFF_TYPE_PHONE_AGENCY || *s.pickup_type_ == PICKUP_DROPOFF_TYPE_COORDINATE_WITH_DRIVER || *s.drop_off_type_ == PICKUP_DROPOFF_TYPE_PHONE_AGENCY || *s.drop_off_type_ == PICKUP_DROPOFF_TYPE_COORDINATE_WITH_DRIVER;
+          auto const arrival_time =  *s.pickup_type_ == PICKUP_DROPOFF_TYPE_REGULAR ? hhmm_to_min(*s.arrival_time_) : duration_t{0};
+          auto const departure_time = *s.drop_off_type_ == PICKUP_DROPOFF_TYPE_REGULAR ? hhmm_to_min(*s.departure_time_) : duration_t{0};
+          auto const start_window = is_flex_trip ? hhmm_to_min(*s.start_pickup_drop_off_window_) : duration_t{0};
+          auto const end_window =  is_flex_trip ? hhmm_to_min(*s.start_pickup_drop_off_window_) : duration_t{0};
+
+
+          auto const in_allowed = *s.pickup_type_ != PICKUP_DROPOFF_TYPE_UNAVAILABLE;
+          auto const out_allowed = *s.drop_off_type_ != PICKUP_DROPOFF_TYPE_UNAVAILABLE;
 
           t->requires_interpolation_ |= arrival_time == kInterpolate;
           t->requires_interpolation_ |= departure_time == kInterpolate;
@@ -97,6 +108,27 @@ void read_stop_times(timetable& tt,
                                      .value());
           t->event_times_.emplace_back(
               stop_events{.arr_ = arrival_time, .dep_ = departure_time});
+
+          t->window_times_.emplace_back(
+            stop_windows{.start_ = start_window, .end_ = end_window});
+
+          const auto pickup_booking_rule_idx = booking_rules.find(s.pickup_booking_rule_id_);
+          const auto dropoff_booking_rule_idx = booking_rules.find(s.drop_off_booking_rule_id_);
+
+          if(is_flex_trip) {
+            if(pickup_booking_rule_idx == booking_rules.end()) {
+              log(log_lvl::error, "loader.gtfs.stop_time",
+              "stop_times.txt:{}: unknown pickup_booking_rule_idx \"{}\"", i, s.pickup_booking_rule_id_->view());
+              return;
+            }
+            if(dropoff_booking_rule_idx == booking_rules.end()) {
+              log(log_lvl::error, "loader.gtfs.stop_time",
+              "stop_times.txt:{}: unknown pickup_booking_rule_idx \"{}\"", i, s.drop_off_booking_rule_id_->view());
+              return;
+            }
+            t->booking_rule_idxs_.emplace_back(std::make_pair<booking_rule_idx_t, booking_rule_idx_t>{pickup_booking_rule_idx, dropoff_booking_rule_idx});
+          }
+
 
           if (!s.stop_headsign_->empty()) {
             t->stop_headsigns_.resize(t->seq_numbers_.size(),

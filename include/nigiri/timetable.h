@@ -227,6 +227,12 @@ struct timetable {
     return provider_idx_t{idx};
   }
 
+  booking_rule_idx_t register_booking_rule(booking_rule&& b) {
+    auto const idx = booking_rules_.size();
+    booking_rules_.emplace_back(std::move(b));
+    return booking_rule_idx_t{idx};
+  }
+
   void add_transport(transport&& t) {
     transport_first_dep_offset_.emplace_back(t.first_dep_offset_);
     transport_traffic_days_.emplace_back(t.bitfield_idx_);
@@ -469,6 +475,7 @@ struct timetable {
   vector_map<attribute_idx_t, attribute> attributes_;
   vecvec<attribute_combination_idx_t, attribute_idx_t> attribute_combinations_;
   vector_map<provider_idx_t, provider> providers_;
+  vector_map<booking_rule_idx_t, booking_rule> booking_rules_;
   vecvec<trip_direction_string_idx_t, char> trip_direction_strings_;
   vector_map<trip_direction_idx_t, trip_direction_t> trip_directions_;
   vecvec<trip_line_idx_t, char> trip_lines_;

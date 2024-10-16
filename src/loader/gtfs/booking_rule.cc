@@ -1,6 +1,7 @@
-#include "nigiri/loader/gtfs-flex/td_booking_rule.h"
+#include "nigiri/loader/gtfs/booking_rule.h"
 
 #include <nigiri/loader/gtfs/parse_time.h>
+#include <nigiri/loader/gtfs/services.h>
 #include <nigiri/logging.h>
 #include <utl/parser/buf_reader.h>
 #include <utl/parser/csv_range.h>
@@ -8,9 +9,10 @@
 #include <utl/pipes/transform.h>
 #include <utl/pipes/vec.h>
 #include <utl/progress_tracker.h>
+#include "nigiri/timetable.h"
 
-namespace nigiri::loader::gtfs_flex {
-td_booking_rule_map_t read_td_booking_rules(std::string_view file_content) {
+namespace nigiri::loader::gtfs {
+booking_rule_map_t read_booking_rules(traffic_days_t const& services, timetable& tt, std::string_view file_content) {
   auto const timer = scoped_timer{"gtfs_flex.loader.booking_rules"};
 
   auto const progress_tracker = utl::get_active_progress_tracker();
@@ -58,27 +60,41 @@ td_booking_rule_map_t read_td_booking_rules(std::string_view file_content) {
         break;
     }
 
+    auto traffic_days_it = services.end();
+    auto error = false;
+    if(!b.prior_notice_service_id_->empty()) {
+      traffic_days_it = services.find(b.prior_notice_service_id_->view());
+          if (traffic_days_it == end(services)) {
+            log(log_lvl::error, "loader.gtfs.booking_rule",
+                R"(booking_rule "{}": prior_notice_service_id "{}" not found)", b.id_->view(),
+                b.prior_notice_service_id_->view());
+            error = true;
+          }
+    }
+
+
     return std::pair{
       b.id_->to_str(),
-      std::make_unique<td_booking_rule>(td_booking_rule{
-        .type_ = b.type_.val(),
-        .prior_notice_duration_min_ = b.prior_notice_duration_min_.val(),
-        .prior_notice_duration_max_ = b.prior_notice_duration_max_.val(),
-        .prior_notice_last_day_ = b.prior_notice_last_day_.val(),
-        .prior_notice_last_time_ = gtfs::hhmm_to_min(*b.prior_notice_last_time_),
-        .prior_notice_start_day_ = b.prior_notice_start_day_->empty() ? static_cast<uint16_t>(0) : static_cast<uint16_t>(
-                          strtoul(b.prior_notice_start_day_->c_str(), NULL, 10)),
-        .prior_notice_start_time_ = gtfs::hhmm_to_min(*b.prior_notice_start_time_),
-        .prior_notice_service_id_ = b.prior_notice_service_id_->to_str(),
-        .message_ = b.message_->to_str(),
-        .pickup_message_ = b.pickup_message_->to_str(),
-        .drop_off_message_ = b.drop_off_message_->to_str(),
-        .phone_number_ = b.phone_number_->to_str(),
-        .info_url_ = b.info_url_->to_str(),
-        .booking_url_ = b.booking_url_->to_str()
+      tt.register_booking_rule(
+      {
+          .type_ = b.type_.val(),
+          .prior_notice_duration_min_ = b.prior_notice_duration_min_.val(),
+          .prior_notice_duration_max_ = b.prior_notice_duration_max_.val(),
+          .prior_notice_last_day_ = b.prior_notice_last_day_.val(),
+          .prior_notice_last_time_ = hhmm_to_min(*b.prior_notice_last_time_),
+          .prior_notice_start_day_ = b.prior_notice_start_day_->empty() ? static_cast<uint16_t>(0) : static_cast<uint16_t>(
+                            strtoul(b.prior_notice_start_day_->c_str(), NULL, 10)),
+          .prior_notice_start_time_ = hhmm_to_min(*b.prior_notice_start_time_),
+          .prior_notice_service_id_ = b.prior_notice_service_id_->empty() || error ? std::nullopt : traffic_days_it,
+          .message_ = b.message_->to_str(),
+          .pickup_message_ = b.pickup_message_->to_str(),
+          .drop_off_message_ = b.drop_off_message_->to_str(),
+          .phone_number_ = b.phone_number_->to_str(),
+          .info_url_ = b.info_url_->to_str(),
+          .booking_url_ = b.booking_url_->to_str()
       })};
-  }) //
-  | utl::to<td_booking_rule_map_t>();
+  })//
+  | utl::to<booking_rule_map_t>();
 }
 
-}  // namespace nigiri::loader::gtfs_flex
+}  // namespace nigiri::loader::gtfs

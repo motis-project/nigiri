@@ -54,3 +54,7 @@
   url=git@github.com:motis-project/pugixml.git
   branch=master
   commit=60175e80e2f5e97e027ac78f7e14c5acc009ce50
+[json]
+  url=git@github.com:motis-project/json.git
+  branch=develop
+  commit=410c74782230daaa15054d6ee0975c0607091cb3

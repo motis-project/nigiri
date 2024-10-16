@@ -170,6 +170,7 @@ using attribute_idx_t = cista::strong<std::uint32_t, struct _attribute_idx>;
 using attribute_combination_idx_t =
     cista::strong<std::uint32_t, struct _attribute_combination>;
 using provider_idx_t = cista::strong<std::uint32_t, struct _provider_idx>;
+using booking_rule_idx_t = cista::strong<std::uint32_t, struct _booking_rule_idx>;
 
 using shapes_storage_t = mm_vecvec<shape_idx_t, geo::latlng>;
 using transport_range_t = pair<transport_idx_t, interval<stop_idx_t>>;
@@ -270,6 +271,29 @@ struct tz_offsets {
 };
 
 using timezone = variant<pair<string, void const*>, tz_offsets>;
+
+struct booking_rule {
+  CISTA_COMPARABLE()
+  CISTA_PRINTABLE(booking_rule, "type", "prior_notice_duration_min",
+    "prior_notice_duration_max", "prior_notice_last_day", "prior_notice_last_time",
+    "prior_notice_start_day", "prior_notice_start_time", "prior_notice_service_id",
+    "message", "pickup_message", "drop_off_message", "drop_off_message", "phone_number"
+    "info_url", "booking_url")
+  uint8_t type_;                                          //Required 0=Real-Time-Booking, 1=Same-Day-Booking, 2=Prior-Day-Booking
+  uint16_t prior_notice_duration_min_;                    //Conditionally Required If booking_type=1
+  uint16_t prior_notice_duration_max_;                    //Conditionally Forbidden For booking_type=0 And booking_type=2
+  uint16_t prior_notice_last_day_;                        //Conditionally Required If booking_type=2
+  duration_t prior_notice_last_time_;                     //Conditionally Required If prior_notice_last_day Is Defined
+  uint16_t prior_notice_start_day_;                       //Conditionally Forbidden For booking_type=0 And For booking_type=1 If prior_notice_duration_max Is Defined
+  duration_t prior_notice_start_time_;                    //Conditionally Required If prior_notice_start_day Is Defined
+  std::optional<provider_idx_t> prior_notice_service_id_; //Conditionally Forbidden If booking_type=0 And booking_type=1
+  std::string message_;                                   //Optional
+  std::string pickup_message_;                            //Optional
+  std::string drop_off_message_;                          //Optional
+  std::string phone_number_;                              //Optional
+  std::string info_url_;                                  //Optional
+  std::string booking_url_;                               //Optional
+};
 
 enum class clasz : std::uint8_t {
   kAir = 0,
