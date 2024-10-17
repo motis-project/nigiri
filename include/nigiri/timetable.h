@@ -442,7 +442,8 @@ struct timetable {
   //  stop-1-dep: [...]
   // ...
   // RouteN: ...
-  vector_map<route_idx_t, interval<std::uint32_t>> route_stop_time_ranges_; //std::uint32_t -> trip_idx_t
+  vector_map<route_idx_t, interval<std::uint32_t>>
+      route_stop_time_ranges_;  // std::uint32_t -> trip_idx_t
   vector<delta> route_stop_times_;
 
   // Offset between the stored time and the time given in the GTFS timetable.

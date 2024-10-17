@@ -124,10 +124,12 @@ void load_timetable(loader_config const& config,
   auto trip_data =
       read_trips(tt, routes, service, shape_indices, load(kTripsFile).data(),
                  config.bikes_allowed_default_);
-  auto booking_rules = read_booking_rules(service, tt, load(kBookingRulesFile).data());
+  auto booking_rules =
+      read_booking_rules(service, tt, load(kBookingRulesFile).data());
 
   read_frequencies(trip_data, load(kFrequenciesFile).data());
-  read_stop_times(tt, trip_data, stops, booking_rules, load(kStopTimesFile).data());
+  read_stop_times(tt, trip_data, stops, booking_rules,
+                  load(kStopTimesFile).data());
 
   {
     auto const timer = scoped_timer{"loader.gtfs.trips.sort"};

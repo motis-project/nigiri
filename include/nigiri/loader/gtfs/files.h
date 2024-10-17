@@ -4,7 +4,7 @@
 
 namespace nigiri::loader::gtfs {
 
-//GTFS files
+// GTFS files
 constexpr auto const kAgencyFile = std::string_view{"agency.txt"};
 constexpr auto const kStopFile = std::string_view{"stops.txt"};
 constexpr auto const kRoutesFile = std::string_view{"routes.txt"};
@@ -18,30 +18,15 @@ constexpr auto const kTransfersFile = std::string_view{"transfers.txt"};
 constexpr auto const kFeedInfoFile = std::string_view{"feed_info.txt"};
 constexpr auto const kFrequenciesFile = std::string_view{"frequencies.txt"};
 
-//GTFS-Flex files
-constexpr auto const kLocationGroupsFile = std::string_view{"location_groups.txt"};
-constexpr auto const kLocationGroupStopsFile = std::string_view{"location_group_stops.txt"};
+// GTFS-Flex files
+constexpr auto const kLocationGroupsFile =
+    std::string_view{"location_groups.txt"};
+constexpr auto const kLocationGroupStopsFile =
+    std::string_view{"location_group_stops.txt"};
 constexpr auto const kBookingRulesFile = std::string_view{"booking_rules.txt"};
-constexpr auto const kLocationGeojsonFile = std::string_view{"location.geojson"};
+constexpr auto const kLocationGeojsonFile =
+    std::string_view{"location.geojson"};
 constexpr auto const kAreasFile = std::string_view{"areas.txt"};
 constexpr auto const kStopAreasFile = std::string_view{"stop_areas.txt"};
 
 }  // namespace nigiri::loader::gtfs
-
-namespace nigiri::loader::gtfs_flex {
-  constexpr auto const k_td_AgencyFile = std::string_view{"agency.txt"};
-  constexpr auto const k_td_StopFile = std::string_view{"stops.txt"};
-  constexpr auto const k_td_RoutesFile = std::string_view{"routes.txt"};
-  constexpr auto const k_td_TripsFile = std::string_view{"trips.txt"};
-  constexpr auto const k_td_StopTimesFile = std::string_view{"stop_times.txt"};
-  constexpr auto const k_td_CalenderFile = std::string_view{"calendar.txt"};
-  constexpr auto const k_td_CalendarDatesFile =
-      std::string_view{"calendar_dates.txt"};
-  //gtfs flex specific
-  constexpr auto const k_td_LocationGroupsFile = std::string_view{"location_groups.txt"};
-  constexpr auto const k_td_LocationGroupStopsFile = std::string_view{"location_group_stops.txt"};
-  constexpr auto const k_td_BookingRulesFile = std::string_view{"booking_rules.txt"};
-  constexpr auto const k_td_LocationGeojsonFile = std::string_view{"location.geojson"};
-  constexpr auto const k_td_AreasFile = std::string_view{"areas.txt"};
-  constexpr auto const k_td_StopAreasFile = std::string_view{"stop_areas.txt"};
-}

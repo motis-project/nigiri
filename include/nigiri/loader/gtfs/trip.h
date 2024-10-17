@@ -102,7 +102,8 @@ struct trip {
   std::vector<std::uint16_t> seq_numbers_;
   std::vector<stop_events> event_times_;
   std::vector<stop_windows> window_times_;
-  std::vector<std::pair<booking_rule_idx_t, booking_rule_idx_t>> booking_rule_idxs_; //<pickup, dropoff>
+  std::vector<std::pair<booking_rule_idx_t, booking_rule_idx_t>>
+      booking_rule_idxs_;  //<pickup, dropoff>
 
   std::vector<trip_direction_idx_t> stop_headsigns_;
 
