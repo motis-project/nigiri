@@ -14,6 +14,7 @@
 #include "nigiri/routing/query.h"
 #include "nigiri/routing/start_times.h"
 #include "nigiri/timetable.h"
+#include "gpu_timetable.h"
 #include "nigiri/types.h"
 
 namespace nigiri::routing {
@@ -29,6 +30,7 @@ struct search_state {
   std::vector<std::uint16_t> travel_time_lower_bound_;
   std::vector<bool> is_destination_;
   std::vector<std::uint16_t> dist_to_dest_;
+  std::vector<std::uint8_t > is_destination_gpu_;
   std::vector<start> starts_;
   pareto_set<journey> results_;
 };
@@ -92,12 +94,62 @@ struct search {
       }
 #endif
     }
+    return Algo{
+          tt_,
+          rtt_,
+          algo_state,
+          state_.is_destination_,
+          state_.dist_to_dest_,
+          state_.travel_time_lower_bound_,
+          day_idx_t{std::chrono::duration_cast<date::days>(
+                        search_interval_.from_ - tt_.internal_interval().from_)
+                        .count()},
+          allowed_claszes};
+  }
 
+  Algo init_gpu(clasz_mask_t const allowed_claszes, algo_state_t& algo_state) {
+    stats_.fastest_direct_ =
+        static_cast<std::uint64_t>(fastest_direct_.count());
+
+    collect_destinations_gpu(tt_, q_.destination_, q_.dest_match_mode_,
+                         state_.is_destination_gpu_, state_.dist_to_dest_);
+
+    if constexpr (Algo::kUseLowerBounds) {
+      UTL_START_TIMING(lb);
+      dijkstra(tt_, q_,
+               kFwd ? tt_.fwd_search_lb_graph_ : tt_.bwd_search_lb_graph_,
+               state_.travel_time_lower_bound_);
+      for (auto i = 0U; i != tt_.n_locations(); ++i) {
+        auto const lb = state_.travel_time_lower_bound_[i];
+        for (auto const c : tt_.locations_.children_[location_idx_t{i}]) {
+          state_.travel_time_lower_bound_[to_idx(c)] =
+              std::min(lb, state_.travel_time_lower_bound_[to_idx(c)]);
+        }
+      }
+      UTL_STOP_TIMING(lb);
+      stats_.lb_time_ = static_cast<std::uint64_t>(UTL_TIMING_MS(lb));
+
+#if defined(NIGIRI_TRACING)
+      for (auto const& o : q_.start_) {
+        trace_upd("start {}: {}\n", location{tt_, o.target()}, o.duration());
+      }
+      for (auto const& o : q_.destination_) {
+        trace_upd("dest {}: {}\n", location{tt_, o.target()}, o.duration());
+      }
+      for (auto const [l, lb] :
+           utl::enumerate(state_.travel_time_lower_bound_)) {
+        if (lb != std::numeric_limits<std::decay_t<decltype(lb)>>::max()) {
+          trace_upd("lb {}: {}\n", location{tt_, location_idx_t{l}}, lb);
+        }
+      }
+#endif
+    }
     return Algo{
         tt_,
         rtt_,
+        gtt_,
         algo_state,
-        state_.is_destination_,
+        state_.is_destination_gpu_,
         state_.dist_to_dest_,
         state_.travel_time_lower_bound_,
         day_idx_t{std::chrono::duration_cast<date::days>(
@@ -105,7 +157,6 @@ struct search {
                       .count()},
         allowed_claszes};
   }
-
   search(timetable const& tt,
          rt_timetable const* rtt,
          search_state& s,
@@ -114,6 +165,7 @@ struct search {
          std::optional<std::chrono::seconds> timeout = std::nullopt)
       : tt_{tt},
         rtt_{rtt},
+        gtt_{nullptr},
         state_{s},
         q_{std::move(q)},
         search_interval_{std::visit(
@@ -127,6 +179,31 @@ struct search {
             q_.start_time_)},
         fastest_direct_{get_fastest_direct(tt_, q_, SearchDir)},
         algo_{init(q_.allowed_claszes_, algo_state)},
+        timeout_(timeout) {}
+
+  search(timetable const& tt,
+         rt_timetable const* rtt,
+         gpu_timetable const* gtt,
+         search_state& s,
+         algo_state_t& algo_state,
+         query q,
+         std::optional<std::chrono::seconds> timeout = std::nullopt)
+      : tt_{tt},
+        rtt_{rtt},
+        gtt_{gtt},
+        state_{s},
+        q_{std::move(q)},
+        search_interval_{std::visit(
+            utl::overloaded{
+                [](interval<unixtime_t> const start_interval) {
+                  return start_interval;
+                },
+                [](unixtime_t const start_time) {
+                  return interval<unixtime_t>{start_time, start_time};
+                }},
+            q_.start_time_)},
+        fastest_direct_{get_fastest_direct(tt_, q_, SearchDir)},
+        algo_{init_gpu(q_.allowed_claszes_, algo_state)},
         timeout_(timeout) {}
 
   routing_result<algo_stats_t> execute() {
@@ -348,6 +425,7 @@ private:
 
   timetable const& tt_;
   rt_timetable const* rtt_;
+  gpu_timetable const* gtt_;
   search_state& state_;
   query q_;
   interval<unixtime_t> search_interval_;
