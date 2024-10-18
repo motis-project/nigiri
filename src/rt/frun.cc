@@ -375,9 +375,31 @@ clasz frun::get_clasz() const noexcept {
   }
 }
 
+void frun::for_each_trip(
+    std::function<void(trip_idx_t const, interval<stop_idx_t> const)> const&
+        callback) const {
+  auto curr_trip_idx = trip_idx_t::invalid();
+  auto curr_from = stop_idx_t{0U};
+  for (auto const [from, to] :
+       utl::pairwise(interval{stop_idx_t{0U}, stop_range_.to_})) {
+    auto const trip_idx =
+        (*this)[static_cast<stop_idx_t>(from - stop_range_.from_)]  //
+            .get_trip_idx(event_type::kDep);
+    if (trip_idx == curr_trip_idx) {
+      continue;
+    }
+    if (from != 0U) {
+      callback(curr_trip_idx, interval{curr_from, to});
+    }
+    curr_trip_idx = trip_idx;
+    curr_from = from;
+  }
+  callback(curr_trip_idx, interval{curr_from, stop_range_.to_});
+}
+
 void frun::for_each_shape_point(
     shapes_storage const* shapes_data,
-    interval<stop_idx_t> const& range,
+    interval<stop_idx_t> const range,
     std::function<void(geo::latlng const&)> const& callback) const {
   utl::verify(range.size() >= 2, "Range must contain at least 2 stops. Is {}",
               range.size());
@@ -407,21 +429,9 @@ void frun::for_each_shape_point(
     }
     last_pos = pos;
   };
-  // Range over all trips using absolute 'trip_details.offset_range_'
-  auto curr_trip_idx = trip_idx_t::invalid();
-  auto absolute_trip_start = stop_idx_t{0U};
-  for (auto const [from, to] :
-       utl::pairwise(interval{stop_idx_t{0U}, stop_range_.to_})) {
-    auto const trip_idx =
-        (*this)[static_cast<stop_idx_t>(from - stop_range_.from_)]  //
-            .get_trip_idx(event_type::kDep);
-    if (trip_idx != curr_trip_idx) {
-      curr_trip_idx = trip_idx;
-      absolute_trip_start = from;
-    }
-    auto const common_stops =
-        interval{from, static_cast<stop_idx_t>(to + 1)}.intersect(
-            absolute_stop_range);
+  for_each_trip([&](trip_idx_t const trip_idx,
+                    interval<stop_idx_t> const subrange) {
+    auto const common_stops = subrange.intersect(absolute_stop_range);
     if (common_stops.size() > 1) {
       std::visit(utl::overloaded{[&](std::span<geo::latlng const> shape) {
                                    for (auto const& pos : shape) {
@@ -433,9 +443,9 @@ void frun::for_each_shape_point(
                                      consume_pos((*this)[stop_idx].pos());
                                    }
                                  }},
-                 get_subshape(common_stops, trip_idx, absolute_trip_start));
+                 get_subshape(common_stops, trip_idx, subrange.from_));
     }
-  }
+  });
   consume_pos((*this)[static_cast<stop_idx_t>(range.to_ - 1)].pos(), true);
 }
 

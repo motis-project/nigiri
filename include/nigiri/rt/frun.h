@@ -142,9 +142,12 @@ struct frun : public run {
   trip_idx_t trip_idx() const;
   clasz get_clasz() const noexcept;
 
+  void for_each_trip(
+      std::function<void(trip_idx_t const, interval<stop_idx_t> const)> const&)
+      const;
   void for_each_shape_point(
       shapes_storage const*,
-      interval<stop_idx_t> const&,
+      interval<stop_idx_t> const,
       std::function<void(geo::latlng const&)> const&) const;
 
   void print(std::ostream&, interval<stop_idx_t>);
