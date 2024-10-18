@@ -24,9 +24,11 @@ namespace nigiri::rt {
 struct frun : public run {
   struct run_stop {
     stop get_stop() const noexcept;
+    stop get_scheduled_stop() const noexcept;
     location get_location() const noexcept;
     geo::latlng pos() const noexcept;
     location_idx_t get_location_idx() const noexcept;
+    location_idx_t get_scheduled_location_idx() const noexcept;
     std::string_view name() const noexcept;
     std::string_view track() const noexcept;
     std::string_view id() const noexcept;

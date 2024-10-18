@@ -14,11 +14,20 @@
 namespace nigiri::rt {
 
 stop frun::run_stop::get_stop() const noexcept {
+  assert(fr_->size() > stop_idx_);
   return stop{
       (fr_->is_rt() && rtt() != nullptr)
           ? rtt()->rt_transport_location_seq_[fr_->rt_][stop_idx_]
           : tt().route_location_seq_[tt().transport_route_[fr_->t_.t_idx_]]
                                     [stop_idx_]};
+}
+
+stop frun::run_stop::get_scheduled_stop() const noexcept {
+  assert(fr_->size() > stop_idx_);
+  return fr_->is_scheduled()
+             ? tt().route_location_seq_[tt().transport_route_[fr_->t_.t_idx_]]
+                                       [stop_idx_]
+             : rtt()->rt_transport_location_seq_[fr_->rt_][stop_idx_];
 }
 
 std::string_view frun::run_stop::name() const noexcept {
@@ -63,6 +72,11 @@ geo::latlng frun::run_stop::pos() const noexcept {
 location_idx_t frun::run_stop::get_location_idx() const noexcept {
   assert(fr_->size() > stop_idx_);
   return get_stop().location_idx();
+}
+
+location_idx_t frun::run_stop::get_scheduled_location_idx() const noexcept {
+  assert(fr_->size() > stop_idx_);
+  return get_scheduled_stop().location_idx();
 }
 
 unixtime_t frun::run_stop::scheduled_time(
