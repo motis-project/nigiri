@@ -23,9 +23,7 @@ using nigiri::test::raptor_search;
 
 std::filesystem::path project_root = std::filesystem::current_path().parent_path();
 std::filesystem::path test_path_germany_zip(project_root / "test/routing/20240916_fahrplaene_gesamtdeutschland_gtfs.zip");
-std::filesystem::path test_path_germany(project_root / "test/routing/20240916_fahrplaene_gesamtdeutschland_gtfs");
 auto const german_dir_zip = zip_dir{test_path_germany_zip};
-auto const german_dir = fs_dir{test_path_germany};
 
 std::vector<std::basic_string_view<char>> get_locations(const timetable& tt) {
   std::vector<std::basic_string_view<char>> locations;
@@ -64,7 +62,7 @@ TEST(routing, gpu_benchmark) {
   std::cout << "Lade Fahrplan..." << std::endl;
 
   tt.date_range_ = {date::sys_days{2024_y / September / 25},
-                    date::sys_days{2024_y / September / 26}}; //test_files_germany only available until December 14
+                    date::sys_days{2024_y / September / 26}};
   loader::register_special_stations(tt);
   loader::gtfs::load_timetable({}, source_idx_t{0}, german_dir_zip, tt);
   std::cout << "Fahrplan geladen." << std::endl;
