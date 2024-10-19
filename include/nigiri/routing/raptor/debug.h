@@ -2,11 +2,11 @@
 
 #include "fmt/core.h"
 
-// #define NIGIRI_TRACING
+//#define NIGIRI_TRACING
 #if defined(NIGIRI_TRACING)
 
-// #define NIGIRI_RAPTOR_TRACING_ONLY_UPDATES
-// #define NIGIRI_RAPTOR_INTERVAL_TRACING
+//#define NIGIRI_RAPTOR_TRACING_ONLY_UPDATES
+//#define NIGIRI_RAPTOR_INTERVAL_TRACING
 
 #define trace_upd(...) fmt::print(__VA_ARGS__)
 
@@ -134,6 +134,15 @@
       delta_to_unix(base, best(k - 1, l)), event_time,                     \
       fr[stop_idx].time(kFwd ? event_type::kDep : event_type::kArr))
 
+#define trace_rc_transport_entry_not_possible_gpu                              \
+  trace_reconstruct(                                                       \
+      "      ENTRY NOT POSSIBLE AT {}: k={} k-1={}, best_at_stop=min({}, " \
+      "{})={}={} > event_time={}={}\n",                                    \
+      location{tt, l}, k, k - 1, state.host_.best_[to_idx(l)],            \
+      state.host_.round_times_[(k - 1)* state.host_.column_count_round_times_ +to_idx(l)], best(k - 1, l),         \
+      delta_to_unix(base, best(k - 1, l)), event_time,                     \
+      fr[stop_idx].time(kFwd ? event_type::kDep : event_type::kArr))
+
 #define trace_rc_transport_entry_found                                 \
   trace_reconstruct(                                                   \
       "      FOUND ENTRY AT name={}, dbg={}, location={}: {} <= {}\n", \
@@ -147,6 +156,15 @@
       location{tt, fp.target()},                                        \
       raptor_state.round_times_[k][to_idx(fp.target())], fp.duration(), \
       location{tt, eq}, raptor_state.round_times_[k][to_idx(eq)],       \
+      dest_offset.duration_, curr_time, dest_offset.type_)
+
+#define trace_rc_fp_intermodal_dest_mismatch_gpu                        \
+  trace_reconstruct(                                                    \
+      "  BAD intermodal+footpath dest offset: {}@{} --{}--> "           \
+      "{}@{} --{}--> END@{} (type={})\n",                               \
+      location{tt, fp.target()},                                        \
+      state.host_.round_times_[k* state.host_.column_count_round_times_ + to_idx(fp.target())], fp.duration(), \
+      location{tt, eq}, state.host_.round_times_[k* state.host_.column_count_round_times_ + to_idx(eq)],       \
       dest_offset.duration_, curr_time, dest_offset.type_)
 
 #define trace_rc_fp_intermodal_dest_match                        \
@@ -197,8 +215,10 @@
 #define trace_rc_transport_no_traffic
 #define trace_rc_transport_not_found
 #define trace_rc_transport_entry_not_possible
+#define trace_rc_transport_entry_not_possible_gpu
 #define trace_rc_transport_entry_found
 #define trace_rc_fp_intermodal_dest_mismatch
+#define trace_rc_fp_intermodal_dest_mismatch_gpu
 #define trace_rc_fp_intermodal_dest_match
 #define trace_rc_intermodal_dest_mismatch
 #define trace_rc_intermodal_dest_match

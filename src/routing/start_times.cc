@@ -293,5 +293,37 @@ void collect_destinations(timetable const& tt,
     });
   }
 }
+void collect_destinations_gpu(timetable const& tt,
+                          std::vector<offset> const& destinations,
+                          location_match_mode const match_mode,
+                          std::vector<uint8_t>& is_destination,
+                          std::vector<std::uint16_t>& dist_to_dest) {
+  is_destination.resize(tt.n_locations());
+  utl::fill(is_destination, false);
 
+  static constexpr auto const kIntermodalTarget =
+      to_idx(get_special_station(special_station::kEnd));
+
+  if (match_mode == location_match_mode::kIntermodal) {
+    is_destination[kIntermodalTarget] = true;
+    dist_to_dest.resize(tt.n_locations());
+    utl::fill(dist_to_dest, std::numeric_limits<std::uint16_t>::max());
+  } else {
+    dist_to_dest.clear();
+  }
+
+  for (auto const& d : destinations) {
+    trace_start("DEST METAS OF {}\n", location{tt, d.target_});
+    for_each_meta(tt, match_mode, d.target_, [&](location_idx_t const l) {
+      if (match_mode == location_match_mode::kIntermodal) {
+        dist_to_dest[to_idx(l)] =
+            static_cast<std::uint16_t>(d.duration_.count());
+      } else {
+        is_destination[to_idx(l)] = true;
+      }
+      trace_start("  DEST META: {}, duration={}\n", location{tt, l},
+                  d.duration_);
+    });
+  }
+}
 }  // namespace nigiri::routing

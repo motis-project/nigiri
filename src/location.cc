@@ -20,6 +20,8 @@ location::location(timetable const& tt, location_idx_t idx)
       transfer_time_{tt.locations_.transfer_time_[idx]},
       equivalences_{tt.locations_.equivalences_[idx]} {}
 
+
+
 location::location(
     std::string_view id,
     std::string_view name,

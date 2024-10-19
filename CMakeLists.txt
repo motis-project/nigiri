@@ -1,6 +1,10 @@
+
 cmake_minimum_required(VERSION 3.22)
 project(nigiri)
 
+find_package(CUDAToolkit REQUIRED)
+
+# Nutzen der modernen CUDA-Unterstützung in CMake
 if(NOT DEFINED CMAKE_MSVC_RUNTIME_LIBRARY)
   if(NIGIRI_MIMALLOC)
     set(CMAKE_MSVC_RUNTIME_LIBRARY "MultiThreaded$<$<CONFIG:Debug>:Debug>DLL")
@@ -98,7 +102,12 @@ target_compile_features(nigiri PUBLIC cxx_std_23)
 target_compile_options(nigiri PRIVATE ${nigiri-compile-options})
 
 if (NIGIRI_CUDA)
-  add_library(gpuraptor SHARED src/routing/gpu.cu)
+  find_package(CUDAToolkit REQUIRED)
+  add_library(gpuraptor SHARED
+          src/routing/gpu_timetable.cu
+          src/routing/gpu_raptor.cu
+          src/routing/gpu_raptor_state.cu
+  )
   set_target_properties(gpuraptor PROPERTIES
       WINDOWS_EXPORT_ALL_SYMBOLS ON
       CUDA_SEPARABLE_COMPILATION ON
@@ -106,13 +115,15 @@ if (NIGIRI_CUDA)
       RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}
       LIBRARY_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}
       INSTALL_RPATH "$ORIGIN/../lib:$ORIGIN/")
+  include_directories(${CUDAToolkit_INCLUDE_DIRS})
   target_include_directories(gpuraptor PUBLIC include)
   set_property(TARGET gpuraptor PROPERTY CUDA_ARCHITECTURES native)
-  set_target_properties(gpuraptor PROPERTIES LINKER_LANGUAGE CUDA)
+  target_link_libraries(gpuraptor ${CUDAToolkit_LIBRARIES})
   target_link_libraries(gpuraptor PRIVATE cista fmt date unordered_dense geo utl)
   target_compile_definitions(gpuraptor PRIVATE NIGIRI_CUDA=1)
   set_property(TARGET gpuraptor PROPERTY CUDA_STANDARD 23)
   target_link_libraries(nigiri PRIVATE gpuraptor)
+  set(CMAKE_CUDA_FLAGS "${CMAKE_CUDA_FLAGS} -lineinfo")
 endif ()
 
 

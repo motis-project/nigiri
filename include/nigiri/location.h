@@ -9,14 +9,15 @@
 
 #include "nigiri/common/it_range.h"
 #include "nigiri/types.h"
+#include "nigiri/routing/gpu_timetable.h"
 
 namespace nigiri {
-
 struct timetable;
 
 struct location {
   friend std::ostream& operator<<(std::ostream&, location const&);
   location(timetable const&, location_idx_t);
+  location(gpu_timetable const&, gpu_location_idx_t);
   location(std::string_view id,
            std::string_view name,
            geo::latlng pos,

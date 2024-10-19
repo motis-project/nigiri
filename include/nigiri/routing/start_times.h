@@ -39,5 +39,9 @@ void collect_destinations(timetable const&,
                           location_match_mode const,
                           std::vector<bool>& is_destination,
                           std::vector<std::uint16_t>& dist_to_dest);
-
+void collect_destinations_gpu(timetable const& tt,
+                              std::vector<offset> const& destinations,
+                              location_match_mode const match_mode,
+                              std::vector<uint8_t>& is_destination,
+                              std::vector<std::uint16_t>& dist_to_dest);
 }  // namespace nigiri::routing
