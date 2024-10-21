@@ -322,7 +322,7 @@ std::optional<rt::run> updater::find_run(std::string_view vdv_run_id,
 }
 
 void update_event(rt_timetable& rtt,
-                  frun::run_stop const& rs,
+                  run_stop const& rs,
                   event_type const et,
                   unixtime_t const new_time,
                   std::optional<duration_t>* delay_propagation = nullptr) {
