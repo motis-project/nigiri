@@ -161,8 +161,11 @@ void calculate_shape_boxes(timetable const& tt, shapes_storage& shapes_data) {
     });
   }
   // Create bounding boxes for all routes
-  for (auto const [i, claszes] : utl::enumerate(tt.route_section_clasz_)) {
-    auto const r = route_idx_t{i};
+  for (auto const r : tt.transport_route_) {
+    // Skip routes added with previous timetables
+    if  (r < shapes_data.boxes_.size()) {
+      continue;
+    }
     auto const seq = tt.route_location_seq_[r];
     assert(seq.size() > 0U);
     auto segment_boxes = std::vector<geo::box>(seq.size());
