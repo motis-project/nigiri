@@ -4,6 +4,8 @@
 
 #include "fmt/core.h"
 
+#include "utl/verify.h"
+
 #include "nigiri/types.h"
 
 namespace nigiri {
@@ -49,7 +51,8 @@ shapes_storage::shapes_storage(std::filesystem::path const& path,
           create_storage_vector<cista::pair<shape_idx_t, shape_offset_idx_t>,
                                 trip_idx_t>(
               fmt::format("{}_offset_indices.bin", path.generic_string()),
-              mode)} {}
+              mode)},
+      boxes_{create_storage<route_idx_t, geo::box>(path, "boxes", mode)} {}
 
 std::span<geo::latlng const> shapes_storage::get_shape(
     shape_idx_t const shape_idx) const {
@@ -90,6 +93,25 @@ void shapes_storage::add_trip_shape_offsets(
     cista::pair<shape_idx_t, shape_offset_idx_t> const& offset_idx) {
   assert(trip_idx == trip_offset_indices_.size());
   trip_offset_indices_.emplace_back(offset_idx);
+}
+
+geo::box shapes_storage::get_bounding_box(route_idx_t const route_idx) const {
+  utl::verify(route_idx < boxes_.size(), "Route index {} is out of bounds",
+              route_idx);
+  // 0: bounding box for trip
+  return boxes_[route_idx][0];
+}
+
+geo::box shapes_storage::get_bounding_box_or_else(
+    nigiri::route_idx_t const route_idx,
+    std::size_t const segment,
+    std::function<geo::box()> const& callback) const {
+
+  utl::verify(route_idx < boxes_.size(), "Route index {} is out of bounds",
+              route_idx);
+  auto const& boxes = boxes_[route_idx];
+  // 1-N: bounding box for segment
+  return segment + 1 < boxes.size() ? boxes[segment + 1] : callback();
 }
 
 }  // namespace nigiri

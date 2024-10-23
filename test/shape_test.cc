@@ -1,5 +1,6 @@
 #include "gtest/gtest.h"
 
+#include "geo/box.h"
 #include "geo/polyline.h"
 
 #include "nigiri/loader/gtfs/load_timetable.h"
@@ -76,6 +77,7 @@ Last,5.5,2.5,2
 Last,5.5,3.0,3
 Last,6.0,3.0,5
 Last,5.0,2.0,8
+Last,4.0,1.9,11
 Last,4.0,2.0,13
 
 # stop_times.txt
@@ -125,8 +127,8 @@ TEST(shape, single_trip_with_shape) {
     auto const shape_by_shape_idx = shapes_data.get_shape(shape_idx_t{3});
 
     auto const expected_shape = geo::polyline{
-        {4.0f, 5.0f}, {5.5f, 2.5f}, {5.5f, 3.0f},
-        {6.0f, 3.0f}, {5.0f, 2.0f}, {4.0f, 2.0f},
+        {4.0, 5.0}, {5.5, 2.5}, {5.5, 3.0}, {6.0, 3.0},
+        {5.0, 2.0}, {4.0, 1.9}, {4.0, 2.0},
     };
     EXPECT_EQ(expected_shape, shape_by_trip_idx);
     EXPECT_EQ(expected_shape, shape_by_shape_idx);
@@ -156,5 +158,29 @@ TEST(shape, single_trip_with_shape) {
     EXPECT_TRUE(shape_by_huge_shape_idx.empty());
     EXPECT_TRUE(shape_by_invalid_trip_idx.empty());
     EXPECT_TRUE(shape_by_invalid_shape_idx.empty());
+  }
+
+  // Testing bounding boxes
+  {
+    // Full shape in bounding box included
+    EXPECT_EQ((geo::make_box({{0.0, 2.0}, {1.0, 4.0}})),
+              shapes_data.get_bounding_box(route_idx_t{0U}));
+    // Shape in bounding box included
+    EXPECT_EQ((geo::make_box({{4.0, 1.9}, {6.0, 5.0}})),
+              shapes_data.get_bounding_box(route_idx_t{2U}));
+    // Bounding boxes for segments
+    auto const kTestBox = geo::make_box({{90.0, 45.0}});
+    auto const fallback = [&]() { return kTestBox; };
+    // Bounding box extended by shape
+    EXPECT_EQ(
+        (geo::make_box({{5.0, 2.0}, {6.0, 3.0}})),
+        shapes_data.get_bounding_box_or_else(route_idx_t{2}, 2, fallback));
+    EXPECT_EQ(
+        (geo::make_box({{4.0, 1.9}, {5.0, 2.0}})),
+        shapes_data.get_bounding_box_or_else(route_idx_t{2}, 3, fallback));
+
+    // Shape contained in bounding box
+    EXPECT_EQ(kTestBox, shapes_data.get_bounding_box_or_else(route_idx_t{2}, 4,
+                                                             fallback));
   }
 }
