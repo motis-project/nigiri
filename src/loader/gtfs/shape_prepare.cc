@@ -135,32 +135,9 @@ void calculate_shape_offsets(timetable const& tt,
 }
 
 void calculate_shape_boxes(timetable const& tt, shapes_storage& shapes_data) {
-  auto shape_segment_boxes =
+  auto cached_shape_boxes =
       hash_map<cista::pair<shape_idx_t, shape_offset_idx_t>,
                std::vector<geo::box>>{};
-  // Create bounding boxes for all shape segments
-  for (auto const key : shapes_data.trip_offset_indices_) {
-    if (key.first == shape_idx_t::invalid() ||
-        key.second == shape_offset_idx_t::invalid()) {
-      continue;
-    }
-    utl::get_or_create(shape_segment_boxes, key, [&]() {
-      auto const shape = shapes_data.get_shape(key.first);
-      auto const& offsets = shapes_data.offsets_[key.second];
-      auto segment_boxes = std::vector<geo::box>(offsets.size() - 1);
-      for (auto const [i, pair] : utl::enumerate(utl::pairwise(offsets))) {
-        auto& box = segment_boxes[i];
-        auto const& [from, to] = pair;
-        for (auto const point :
-             shape.subspan(cista::to_idx(from),
-                           cista::to_idx(to) - cista::to_idx(from) + 1)) {
-          box.extend(point);
-        }
-      }
-      return segment_boxes;
-    });
-  }
-  // Create bounding boxes for all routes not already added
   for (auto const r : tt.transport_route_ |
                           std::views::filter([&](route_idx_t const route_idx) {
                             return route_idx >= shapes_data.boxes_.size();
@@ -180,12 +157,28 @@ void calculate_shape_boxes(timetable const& tt, shapes_storage& shapes_data) {
                                          .rt_ = rt_transport_idx_t::invalid()}};
       frun.for_each_trip([&](trip_idx_t const trip_idx,
                              interval<stop_idx_t> const absolute_range) {
-        auto shape_boxes = static_cast<std::vector<geo::box> const*>(nullptr);
-        auto it = shape_segment_boxes.find(
-            shapes_data.trip_offset_indices_[trip_idx]);
-        if (it != end(shape_segment_boxes)) {
-          shape_boxes = &it->second;
-        }
+        auto const key = shapes_data.trip_offset_indices_[trip_idx];
+        auto const& shape_boxes =
+            utl::get_or_create(cached_shape_boxes, key, [&]() {
+              if (key.first == shape_idx_t::invalid() ||
+                  key.second == shape_offset_idx_t::invalid()) {
+                return std::vector<geo::box>{};
+              }
+              auto const shape = shapes_data.get_shape(key.first);
+              auto const& offsets = shapes_data.offsets_[key.second];
+              auto boxes = std::vector<geo::box>(offsets.size() - 1);
+              for (auto const [i, pair] :
+                   utl::enumerate(utl::pairwise(offsets))) {
+                auto& box = boxes[i];
+                auto const& [from, to] = pair;
+                for (auto const point : shape.subspan(
+                         cista::to_idx(from),
+                         cista::to_idx(to) - cista::to_idx(from) + 1)) {
+                  box.extend(point);
+                }
+              }
+              return boxes;
+            });
         auto prev_pos = tt.locations_.coordinates_.at(
             stop{seq[absolute_range.from_]}.location_idx());
         bounding_box.extend(prev_pos);
@@ -196,8 +189,8 @@ void calculate_shape_boxes(timetable const& tt, shapes_storage& shapes_data) {
           bounding_box.extend(next_pos);
           box.extend(prev_pos);
           box.extend(next_pos);
-          if (shape_boxes != nullptr) {
-            auto const& shape_box = (*shape_boxes)[static_cast<std::size_t>(
+          if (!shape_boxes.empty()) {
+            auto const& shape_box = shape_boxes[static_cast<std::size_t>(
                 cista::to_idx(from) - cista::to_idx(absolute_range.from_))];
             if (!box.contains(shape_box)) {
               bounding_box.extend(shape_box);
