@@ -169,18 +169,22 @@ TEST(shape, single_trip_with_shape) {
     EXPECT_EQ((geo::make_box({{4.0, 1.9}, {6.0, 5.0}})),
               shapes_data.get_bounding_box(route_idx_t{2U}));
     // Bounding boxes for segments
-    auto const kTestBox = geo::make_box({{90.0, 45.0}});
-    auto const fallback = [&]() { return kTestBox; };
     // Bounding box extended by shape
-    EXPECT_EQ(
-        (geo::make_box({{5.0, 2.0}, {6.0, 3.0}})),
-        shapes_data.get_bounding_box_or_else(route_idx_t{2}, 2, fallback));
-    EXPECT_EQ(
-        (geo::make_box({{4.0, 1.9}, {5.0, 2.0}})),
-        shapes_data.get_bounding_box_or_else(route_idx_t{2}, 3, fallback));
+    {
+      auto const extended_by_shape =
+          shapes_data.get_bounding_box(route_idx_t{2}, 3);
+      ASSERT_TRUE(extended_by_shape.has_value());
+      EXPECT_EQ((geo::make_box({{4.0, 1.9}, {5.0, 2.0}})), *extended_by_shape);
 
+      auto const before_last_extend =
+          shapes_data.get_bounding_box(route_idx_t{2}, 2);
+      ASSERT_TRUE(before_last_extend.has_value());
+      EXPECT_EQ((geo::make_box({{5.0, 2.0}, {6.0, 3.0}})), *before_last_extend);
+    }
     // Shape contained in bounding box
-    EXPECT_EQ(kTestBox, shapes_data.get_bounding_box_or_else(route_idx_t{2}, 4,
-                                                             fallback));
+    {
+
+      EXPECT_FALSE(shapes_data.get_bounding_box(route_idx_t{2}, 4).has_value());
+    }
   }
 }

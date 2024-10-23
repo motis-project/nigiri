@@ -166,7 +166,7 @@ void calculate_shape_boxes(timetable const& tt, shapes_storage& shapes_data) {
     auto const seq = tt.route_location_seq_[r];
     assert(seq.size() > 0U);
     auto segment_boxes = std::vector<geo::box>(seq.size());
-    auto nontrivial = 0U;
+    auto last_extend = 0U;
     // 0: bounding box for trip,  1-N: bounding box for segment
     auto& bounding_box = segment_boxes[0U];
     auto const stop_indices =
@@ -200,7 +200,7 @@ void calculate_shape_boxes(timetable const& tt, shapes_storage& shapes_data) {
             if (!box.contains(shape_box)) {
               bounding_box.extend(shape_box);
               box.extend(shape_box);
-              nontrivial = std::max(nontrivial, from + 1U);
+              last_extend = std::max(last_extend, from + 1U);
             }
           }
           prev_pos = next_pos;
@@ -208,7 +208,7 @@ void calculate_shape_boxes(timetable const& tt, shapes_storage& shapes_data) {
       });
     }
     // 0: bounding box for trip,  1-N: bounding box for segment
-    segment_boxes.resize(nontrivial + 1);
+    segment_boxes.resize(last_extend + 1);
     shapes_data.boxes_.emplace_back(segment_boxes);
   }
 }

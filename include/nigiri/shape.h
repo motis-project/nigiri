@@ -1,6 +1,7 @@
 #pragma once
 
 #include <filesystem>
+#include <optional>
 #include <span>
 
 #include "cista/containers/pair.h"
@@ -24,9 +25,7 @@ struct shapes_storage {
   void add_trip_shape_offsets(
       trip_idx_t, cista::pair<shape_idx_t, shape_offset_idx_t> const&);
   geo::box get_bounding_box(route_idx_t) const;
-  geo::box get_bounding_box_or_else(route_idx_t,
-                                    std::size_t,
-                                    std::function<geo::box()> const&) const;
+  std::optional<geo::box> get_bounding_box(route_idx_t, std::size_t) const;
 
   mm_vecvec<shape_idx_t, geo::latlng> data_;
   mm_vecvec<shape_offset_idx_t, shape_offset_t> offsets_;

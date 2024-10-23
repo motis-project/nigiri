@@ -102,16 +102,15 @@ geo::box shapes_storage::get_bounding_box(route_idx_t const route_idx) const {
   return boxes_[route_idx][0];
 }
 
-geo::box shapes_storage::get_bounding_box_or_else(
-    nigiri::route_idx_t const route_idx,
-    std::size_t const segment,
-    std::function<geo::box()> const& callback) const {
+std::optional<geo::box> shapes_storage::get_bounding_box(
+    nigiri::route_idx_t const route_idx, std::size_t const segment) const {
 
   utl::verify(route_idx < boxes_.size(), "Route index {} is out of bounds",
               route_idx);
   auto const& boxes = boxes_[route_idx];
   // 1-N: bounding box for segment
-  return segment + 1 < boxes.size() ? boxes[segment + 1] : callback();
+  return segment + 1 < boxes.size() ? boxes[segment + 1]
+                                    : std::optional<geo::box>{};
 }
 
 }  // namespace nigiri
