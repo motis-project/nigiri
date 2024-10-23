@@ -138,10 +138,10 @@ void calculate_shape_boxes(timetable const& tt, shapes_storage& shapes_data) {
   auto cached_shape_boxes =
       hash_map<cista::pair<shape_idx_t, shape_offset_idx_t>,
                std::vector<geo::box>>{};
-  for (auto const r : tt.transport_route_ |
-                          std::views::filter([&](route_idx_t const route_idx) {
-                            return route_idx >= shapes_data.boxes_.size();
-                          })) {
+  auto const new_routes =
+      interval{static_cast<route_idx_t>(shapes_data.boxes_.size()),
+               static_cast<route_idx_t>(tt.route_transport_ranges_.size())};
+  for (auto const r : new_routes) {
     auto const seq = tt.route_location_seq_[r];
     assert(seq.size() > 0U);
     auto segment_boxes = std::vector<geo::box>(seq.size());
