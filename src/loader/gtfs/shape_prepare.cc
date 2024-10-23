@@ -160,12 +160,11 @@ void calculate_shape_boxes(timetable const& tt, shapes_storage& shapes_data) {
       return segment_boxes;
     });
   }
-  // Create bounding boxes for all routes
-  for (auto const r : tt.transport_route_) {
-    // Skip routes added with previous timetables
-    if  (r < shapes_data.boxes_.size()) {
-      continue;
-    }
+  // Create bounding boxes for all routes not already added
+  for (auto const r : tt.transport_route_ |
+                          std::views::filter([&](route_idx_t const route_idx) {
+                            return route_idx >= shapes_data.boxes_.size();
+                          })) {
     auto const seq = tt.route_location_seq_[r];
     assert(seq.size() > 0U);
     auto segment_boxes = std::vector<geo::box>(seq.size());
