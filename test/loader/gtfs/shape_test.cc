@@ -14,7 +14,7 @@
 
 #include "nigiri/loader/gtfs/shape.h"
 #include "nigiri/common/span_cmp.h"
-#include "nigiri/shape.h"
+#include "nigiri/shapes_storage.h"
 
 namespace fs = std::filesystem;
 using namespace nigiri;

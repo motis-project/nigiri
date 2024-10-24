@@ -10,6 +10,7 @@
 
 #include "nigiri/common/cached_lookup.h"
 #include "nigiri/logging.h"
+#include "nigiri/shapes_storage.h"
 
 namespace nigiri::loader::gtfs {
 
@@ -39,8 +40,8 @@ shape_loader_state parse_shapes(std::string_view const data,
       | utl::for_each([&](shape_entry const entry) {
           auto& state = lookup(entry.id_->view(), [&] {
             auto const index = static_cast<shape_idx_t>(shapes.size());
-            shapes.add_back_sized(0U);
-            states.distances_.add_back_sized(0U);
+            shapes.emplace_back_empty();
+            states.distances_.emplace_back_empty();
             return shape_state{index, 0U};
           });
           auto const seq = *entry.seq_;
@@ -56,7 +57,9 @@ shape_loader_state parse_shapes(std::string_view const data,
           auto distances = states.distances_[state.index_ - index_offset];
           if (distances.empty()) {
             if (*entry.distance_ != 0.0) {
-              distances.grow(bucket.size());
+              for (auto i = 0U; i != bucket.size(); ++i) {
+                distances.push_back(0.0);
+              }
               distances.back() = *entry.distance_;
             }
           } else {

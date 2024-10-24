@@ -8,6 +8,7 @@
 #include "nigiri/loader/gtfs/trip.h"
 #include "nigiri/loader/loader_interface.h"
 #include "nigiri/common/span_cmp.h"
+#include "nigiri/shapes_storage.h"
 #include "nigiri/timetable.h"
 
 #include "./test_data.h"
@@ -15,9 +16,6 @@
 using namespace date;
 using namespace nigiri;
 using namespace nigiri::loader;
-
-// linked from gtfs/shape_test.cc
-shapes_storage create_tmp_shapes_storage(char const*);
 
 namespace nigiri::loader::gtfs {
 
@@ -39,9 +37,9 @@ TEST(gtfs, read_trips_example_data) {
   auto const calendar = read_calendar(files.get_file(kCalenderFile).data());
   auto const services =
       merge_traffic_days(tt.internal_interval_days(), calendar, dates);
-  auto shapes_storage = create_tmp_shapes_storage("example_shapes");
+  auto shapes_store = shapes_storage{"example_shapes"};
   auto const shapes =
-      parse_shapes(files.get_file(kShapesFile).data(), shapes_storage);
+      parse_shapes(files.get_file(kShapesFile).data(), shapes_store);
   auto const trip_data = read_trips(tt, routes, services, shapes,
                                     files.get_file(kTripsFile).data(),
                                     config.bikes_allowed_default_);
@@ -72,9 +70,9 @@ TEST(gtfs, read_trips_berlin_data) {
   auto const calendar = read_calendar(files.get_file(kCalenderFile).data());
   auto const services =
       merge_traffic_days(tt.internal_interval_days(), calendar, dates);
-  auto shapes_storage = create_tmp_shapes_storage("berlin_shapes");
+  auto shapes_store = shapes_storage{"berlin_shapes"};
   auto const shapes =
-      parse_shapes(files.get_file(kShapesFile).data(), shapes_storage);
+      parse_shapes(files.get_file(kShapesFile).data(), shapes_store);
   auto const trip_data = read_trips(tt, routes, services, shapes,
                                     files.get_file(kTripsFile).data(),
                                     config.bikes_allowed_default_);

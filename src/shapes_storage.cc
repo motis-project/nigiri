@@ -1,4 +1,4 @@
-#include "nigiri/shape.h"
+#include "nigiri/shapes_storage.h"
 
 #include <cstdint>
 
@@ -6,23 +6,27 @@
 
 #include "nigiri/types.h"
 
+namespace fs = std::filesystem;
+
 namespace nigiri {
 
-template <typename Value, typename Size = std::uint64_t>
-cista::basic_mmap_vec<Value, Size> create_storage_vector(
-    std::string_view const path, cista::mmap::protection const mode) {
-  return cista::basic_mmap_vec<Value, Size>{cista::mmap{path.data(), mode}};
-}
+shapes_storage::shapes_storage(std::filesystem::path path,
+                               cista::mmap::protection const mode)
+    : mode_{mode},
+      p_{[&]() {
+        fs::create_directories(path);
+        return std::move(path);
+      }()},
+      data_{cista::paged<mm_vec<geo::latlng>>{
+                mm_vec<geo::latlng>{mm("shapes_data.bin")}},
+            mm_vec<cista::page<std::uint64_t, std::uint16_t>>{
+                mm("platform_ref_index.bin")}},
+      offsets_{mm_vec<shape_offset_t>{mm("shape_offsets_data.bin")},
+               mm_vec<std::uint64_t>{mm("shape_offsets_idx.bin")}},
+      trip_offset_indices_{mm("shape_trip_offsets.bin")} {}
 
-template <typename Key, typename Value>
-mm_vecvec<Key, Value> create_storage(std::filesystem::path const& path,
-                                     std::string_view prefix,
-                                     cista::mmap::protection const mode) {
-  return {
-      create_storage_vector<Value>(
-          fmt::format("{}_{}_data.bin", path.generic_string(), prefix), mode),
-      create_storage_vector<cista::base_t<Key>>(
-          fmt::format("{}_{}_idx.bin", path.generic_string(), prefix), mode)};
+cista::mmap shapes_storage::mm(char const* file) {
+  return cista::mmap{(p_ / file).generic_string().c_str(), mode_};
 }
 
 std::pair<std::span<geo::latlng const>, shape_offset_idx_t> get_shape(
@@ -40,20 +44,10 @@ std::pair<std::span<geo::latlng const>, shape_offset_idx_t> get_shape(
   return std::pair{storage.get_shape(shape_idx), offset_idx};
 }
 
-shapes_storage::shapes_storage(std::filesystem::path const& path,
-                               cista::mmap::protection const mode)
-    : data_{create_storage<shape_idx_t, geo::latlng>(path, "points", mode)},
-      offsets_{create_storage<shape_offset_idx_t, shape_offset_t>(
-          path, "offsets", mode)},
-      trip_offset_indices_{
-          create_storage_vector<cista::pair<shape_idx_t, shape_offset_idx_t>,
-                                trip_idx_t>(
-              fmt::format("{}_offset_indices.bin", path.generic_string()),
-              mode)} {}
-
 std::span<geo::latlng const> shapes_storage::get_shape(
     shape_idx_t const shape_idx) const {
-  if (shape_idx == shape_idx_t::invalid() || shape_idx > data_.size()) {
+  if (shape_idx == shape_idx_t::invalid() ||
+      static_cast<std::size_t>(to_idx(shape_idx)) > data_.size()) {
     return {};
   }
   auto const shape = data_[shape_idx];
