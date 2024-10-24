@@ -68,9 +68,13 @@ std::vector<shape_offset_t> get_offsets_by_dist_traveled(
   auto offsets = std::vector<shape_offset_t>{};
   offsets.reserve(dist_traveled_stops_times.size());
   auto remaining_shape_begin = begin(dist_traveled_shape_edges);
+  // Ensure final offset maps to valid shape point
+  auto const shape_end =
+      begin(dist_traveled_shape_edges) +
+      (end(dist_traveled_shape_edges) - begin(dist_traveled_shape_edges)) - 1;
   for (auto const& distance : dist_traveled_stops_times) {
-    remaining_shape_begin = std::lower_bound(
-        remaining_shape_begin, end(dist_traveled_shape_edges), distance);
+    remaining_shape_begin =
+        std::lower_bound(remaining_shape_begin, shape_end, distance);
     offsets.push_back(shape_offset_t{remaining_shape_begin -
                                      begin(dist_traveled_shape_edges)});
   }
