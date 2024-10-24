@@ -7,9 +7,12 @@
 
 #include "nigiri/loader/build_footpaths.h"
 #include "nigiri/common/interval.h"
-#include "nigiri/shape.h"
 #include "nigiri/timetable.h"
 #include "nigiri/types.h"
+
+namespace nigiri {
+struct shapes_storage;
+}
 
 namespace nigiri::loader {
 

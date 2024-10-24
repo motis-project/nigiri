@@ -2,7 +2,6 @@
 
 #include "nigiri/loader/dir.h"
 #include "nigiri/loader/loader_interface.h"
-#include "nigiri/shape.h"
 #include "nigiri/types.h"
 
 namespace nigiri {

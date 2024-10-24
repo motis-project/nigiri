@@ -2,8 +2,11 @@
 
 #include "nigiri/loader/gtfs/shape.h"
 #include "nigiri/loader/gtfs/trip.h"
-#include "nigiri/shape.h"
-#include "nigiri/timetable.h"
+
+namespace nigiri {
+struct shapes_storage;
+struct timetable;
+}  // namespace nigiri
 
 namespace nigiri::loader::gtfs {
 

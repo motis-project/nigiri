@@ -10,7 +10,7 @@
 #include "nigiri/loader/load.h"
 #include "nigiri/loader/loader_interface.h"
 #include "nigiri/common/parse_date.h"
-#include "nigiri/shape.h"
+#include "nigiri/shapes_storage.h"
 
 namespace fs = std::filesystem;
 namespace bpo = boost::program_options;
@@ -108,7 +108,8 @@ int main(int ac, char** av) {
 
   auto shapes = std::unique_ptr<shapes_storage>{};
   if (vm.contains("shapes")) {
-    shapes = std::make_unique<shapes_storage>(out_shapes);
+    shapes = std::make_unique<shapes_storage>(out_shapes,
+                                              cista::mmap::protection::WRITE);
   }
 
   auto const start = parse_date(start_date);

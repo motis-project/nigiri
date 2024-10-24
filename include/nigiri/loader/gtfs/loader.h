@@ -1,7 +1,6 @@
 #pragma once
 
 #include "nigiri/loader/loader_interface.h"
-#include "nigiri/shape.h"
 
 namespace nigiri::loader::gtfs {
 

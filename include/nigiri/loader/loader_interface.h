@@ -5,12 +5,12 @@
 
 #include "nigiri/loader/assistance.h"
 #include "nigiri/loader/dir.h"
-#include "nigiri/shape.h"
 #include "nigiri/types.h"
 
 namespace nigiri {
+struct shapes_storage;
 struct timetable;
-}
+}  // namespace nigiri
 
 namespace nigiri::loader {
 
