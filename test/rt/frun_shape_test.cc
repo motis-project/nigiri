@@ -328,7 +328,7 @@ TEST(
               }),
               leg_shape);
   }
-  // sub trip of a merged trip
+  // sub trip of a block trip
   {
     // Create run
     transit_realtime::TripDescriptor td;
