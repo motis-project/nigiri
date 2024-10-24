@@ -17,9 +17,9 @@ shapes_storage::shapes_storage(std::filesystem::path path,
         fs::create_directories(path);
         return std::move(path);
       }()},
-      data_{cista::paged<mm_vec<geo::latlng>>{
+      data_{mm_paged_vecvec_helper<shape_idx_t, geo::latlng>::data_t{
                 mm_vec<geo::latlng>{mm("shapes_data.bin")}},
-            mm_vec<cista::page<std::uint64_t, std::uint16_t>>{
+            mm_vec<cista::page<std::uint64_t, std::uint32_t>>{
                 mm("platform_ref_index.bin")}},
       offsets_{mm_vec<shape_offset_t>{mm("shape_offsets_data.bin")},
                mm_vec<std::uint64_t>{mm("shape_offsets_idx.bin")}},
