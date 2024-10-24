@@ -367,6 +367,11 @@ void load_timetable(loader_config const& config,
       progress_tracker->increment();
     }
 
+    // Build bounding boxes
+    if (shapes_data != nullptr) {
+      calculate_shape_boxes(tt, *shapes_data);
+    }
+
     // Build location_routes map
     for (auto l = tt.location_routes_.size(); l != tt.n_locations(); ++l) {
       tt.location_routes_.emplace_back(location_routes[location_idx_t{l}]);

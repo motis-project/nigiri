@@ -12,6 +12,8 @@
 #include "utl/get_or_create.h"
 #include "utl/progress_tracker.h"
 
+#include "nigiri/rt/frun.h"
+#include "nigiri/shape.h"
 #include "nigiri/stop.h"
 #include "nigiri/types.h"
 
@@ -66,9 +68,13 @@ std::vector<shape_offset_t> get_offsets_by_dist_traveled(
   auto offsets = std::vector<shape_offset_t>{};
   offsets.reserve(dist_traveled_stops_times.size());
   auto remaining_shape_begin = begin(dist_traveled_shape_edges);
+  // Ensure final offset maps to valid shape point
+  auto const shape_end =
+      begin(dist_traveled_shape_edges) +
+      (end(dist_traveled_shape_edges) - begin(dist_traveled_shape_edges)) - 1;
   for (auto const& distance : dist_traveled_stops_times) {
-    remaining_shape_begin = std::lower_bound(
-        remaining_shape_begin, end(dist_traveled_shape_edges), distance);
+    remaining_shape_begin =
+        std::lower_bound(remaining_shape_begin, shape_end, distance);
     offsets.push_back(shape_offset_t{remaining_shape_begin -
                                      begin(dist_traveled_shape_edges)});
   }
@@ -129,6 +135,80 @@ void calculate_shape_offsets(timetable const& tt,
                                   ? shape_idx_t::invalid()
                                   : shape_idx,
                               shape_offset_idx});
+  }
+}
+
+void calculate_shape_boxes(timetable const& tt, shapes_storage& shapes_data) {
+  auto cached_shape_boxes =
+      hash_map<cista::pair<shape_idx_t, shape_offset_idx_t>,
+               std::vector<geo::box>>{};
+  auto const new_routes =
+      interval{static_cast<route_idx_t>(shapes_data.boxes_.size()),
+               static_cast<route_idx_t>(tt.route_transport_ranges_.size())};
+  for (auto const r : new_routes) {
+    auto const seq = tt.route_location_seq_[r];
+    assert(seq.size() > 0U);
+    auto segment_boxes = std::vector<geo::box>(seq.size());
+    auto last_extend = 0U;
+    // 0: bounding box for trip,  1-N: bounding box for segment
+    auto& bounding_box = segment_boxes[0U];
+    auto const stop_indices =
+        interval{stop_idx_t{0U}, static_cast<stop_idx_t>(seq.size())};
+    for (auto const transport_idx : tt.route_transport_ranges_[r]) {
+      auto const frun = rt::frun{tt, nullptr,
+                                 rt::run{.t_ = transport{transport_idx},
+                                         .stop_range_ = stop_indices,
+                                         .rt_ = rt_transport_idx_t::invalid()}};
+      frun.for_each_trip([&](trip_idx_t const trip_idx,
+                             interval<stop_idx_t> const absolute_range) {
+        auto const key = shapes_data.trip_offset_indices_[trip_idx];
+        auto const& shape_boxes =
+            utl::get_or_create(cached_shape_boxes, key, [&]() {
+              if (key.first == shape_idx_t::invalid() ||
+                  key.second == shape_offset_idx_t::invalid()) {
+                return std::vector<geo::box>{};
+              }
+              auto const shape = shapes_data.get_shape(key.first);
+              auto const& offsets = shapes_data.offsets_[key.second];
+              auto boxes = std::vector<geo::box>(offsets.size() - 1);
+              for (auto const [i, pair] :
+                   utl::enumerate(utl::pairwise(offsets))) {
+                auto& box = boxes[i];
+                auto const& [from, to] = pair;
+                for (auto const point : shape.subspan(
+                         cista::to_idx(from),
+                         cista::to_idx(to) - cista::to_idx(from) + 1)) {
+                  box.extend(point);
+                }
+              }
+              return boxes;
+            });
+        auto prev_pos = tt.locations_.coordinates_.at(
+            stop{seq[absolute_range.from_]}.location_idx());
+        bounding_box.extend(prev_pos);
+        for (auto const [from, to] : utl::pairwise(absolute_range)) {
+          auto const next_pos =
+              tt.locations_.coordinates_.at(stop{seq[to]}.location_idx());
+          auto& box = segment_boxes[cista::to_idx(to)];
+          bounding_box.extend(next_pos);
+          box.extend(prev_pos);
+          box.extend(next_pos);
+          if (!shape_boxes.empty()) {
+            auto const& shape_box = shape_boxes[static_cast<std::size_t>(
+                cista::to_idx(from) - cista::to_idx(absolute_range.from_))];
+            if (!box.contains(shape_box)) {
+              bounding_box.extend(shape_box);
+              box.extend(shape_box);
+              last_extend = std::max(last_extend, from + 1U);
+            }
+          }
+          prev_pos = next_pos;
+        }
+      });
+    }
+    // 0: bounding box for trip,  1-N: bounding box for segment
+    segment_boxes.resize(last_extend + 1);
+    shapes_data.boxes_.emplace_back(segment_boxes);
   }
 }
 

@@ -665,6 +665,22 @@ TEST(
                 }),
                 leg_shape);
     }
+    // N -> O
+    // For O: shape < stop_times => Could be out of bounds
+    {
+      leg_shape.clear();
+
+      full_run.for_each_shape_point(
+          &shapes_data, interval{stop_idx_t{2U}, stop_idx_t{3U + 1U}},
+          plot_point);
+
+      EXPECT_EQ((geo::polyline{
+                    {3.0F, 3.0F},
+                    {3.5F, 3.5F},
+                    {4.0F, 4.0F},
+                }),
+                leg_shape);
+    }
   }
   // Trip with multiple leading 0.0 distances
   {
