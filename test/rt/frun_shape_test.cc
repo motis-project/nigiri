@@ -198,7 +198,8 @@ TEST(
     rt,
     frun_for_each_shape_point_when_shapes_are_provided_then_process_all_subshapes) {
   auto const schedule = mem_dir::read(kSchedule);
-  auto shapes_data = shapes_storage{"rfun-for-each-shape-point"};
+  auto shapes_data = shapes_storage{"rfun-for-each-shape-point",
+                                    cista::mmap::protection::WRITE};
 
   // Load static timetable.
   timetable tt;

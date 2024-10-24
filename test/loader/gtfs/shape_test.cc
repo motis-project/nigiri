@@ -20,10 +20,6 @@ namespace fs = std::filesystem;
 using namespace nigiri;
 using namespace nigiri::loader::gtfs;
 
-shapes_storage create_tmp_shapes_storage(char const* path) {
-  return shapes_storage{fs::temp_directory_path() / path};
-}
-
 TEST(gtfs, shape_get_existing_shape_points) {
   constexpr auto const kShapesData =
       R"("shape_id","shape_pt_lat","shape_pt_lon","shape_pt_sequence"
@@ -38,7 +34,9 @@ TEST(gtfs, shape_get_existing_shape_points) {
 3105,50.581956,6.379866,11
 )";
 
-  auto shapes_data = create_tmp_shapes_storage("shape-test-builder");
+  auto shapes_data =
+      shapes_storage{fs::temp_directory_path() / "shape-test-builder",
+                     cista::mmap::protection::WRITE};
   auto const shape_states = parse_shapes(kShapesData, shapes_data);
   auto const& shapes = shape_states.id_map_;
 
@@ -73,8 +71,9 @@ TEST(gtfs, shape_not_ascending_sequence) {
   auto const buffer_guard =
       utl::make_finally([&]() { std::clog.rdbuf(backup); });
 
-  auto shapes_data =
-      create_tmp_shapes_storage("shape-test-not-ascending-sequence");
+  auto shapes_data = shapes_storage{
+      fs::temp_directory_path() / "shape-test-not-ascending-sequence",
+      cista::mmap::protection::WRITE};
   auto const shape_states = parse_shapes(kShapesData, shapes_data);
   auto const& shapes = shape_states.id_map_;
   std::clog.flush();
@@ -103,7 +102,9 @@ TEST(gtfs, shape_shuffled_rows) {
 235,51.543652,7.217830,1
 )";
 
-  auto shapes_data = create_tmp_shapes_storage("shape-test-shuffled-rows");
+  auto shapes_data =
+      shapes_storage{fs::temp_directory_path() / "shape-test-shuffled-rows",
+                     cista::mmap::protection::WRITE};
   auto const shape_states = parse_shapes(kShapesData, shapes_data);
   auto const& shapes = shape_states.id_map_;
 
@@ -157,9 +158,10 @@ TEST(gtfs, shape_delay_insert_no_ascending_sequence) {
   auto const buffer_guard =
       utl::make_finally([&]() { std::clog.rdbuf(backup); });
 
-  auto shape_data =
-      create_tmp_shapes_storage("shape-test-not-ascending-sequence");
-  auto const shape_states = parse_shapes(kShapesData, shape_data);
+  auto shapes_data = shapes_storage{
+      fs::temp_directory_path() / "shape-test-not-ascending-sequence",
+      cista::mmap::protection::WRITE};
+  auto const shape_states = parse_shapes(kShapesData, shapes_data);
   auto const& shapes = shape_states.id_map_;
 
   std::clog.flush();

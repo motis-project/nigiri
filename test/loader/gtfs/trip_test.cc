@@ -37,7 +37,8 @@ TEST(gtfs, read_trips_example_data) {
   auto const calendar = read_calendar(files.get_file(kCalenderFile).data());
   auto const services =
       merge_traffic_days(tt.internal_interval_days(), calendar, dates);
-  auto shapes_store = shapes_storage{"example_shapes"};
+  auto shapes_store =
+      shapes_storage{"example_shapes", cista::mmap::protection::WRITE};
   auto const shapes =
       parse_shapes(files.get_file(kShapesFile).data(), shapes_store);
   auto const trip_data = read_trips(tt, routes, services, shapes,
@@ -70,7 +71,8 @@ TEST(gtfs, read_trips_berlin_data) {
   auto const calendar = read_calendar(files.get_file(kCalenderFile).data());
   auto const services =
       merge_traffic_days(tt.internal_interval_days(), calendar, dates);
-  auto shapes_store = shapes_storage{"berlin_shapes"};
+  auto shapes_store =
+      shapes_storage{"berlin_shapes", cista::mmap::protection::WRITE};
   auto const shapes =
       parse_shapes(files.get_file(kShapesFile).data(), shapes_store);
   auto const trip_data = read_trips(tt, routes, services, shapes,

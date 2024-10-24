@@ -12,8 +12,7 @@
 namespace nigiri {
 
 struct shapes_storage {
-  shapes_storage(std::filesystem::path,
-                 cista::mmap::protection = cista::mmap::protection::WRITE);
+  shapes_storage(std::filesystem::path, cista::mmap::protection);
 
   cista::mmap mm(char const* file);
 

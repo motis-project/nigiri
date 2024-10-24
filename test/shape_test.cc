@@ -110,7 +110,8 @@ TEST(shape, single_trip_with_shape) {
                     date::sys_days{2024_y / March / 2}};
   loader::register_special_stations(tt);
   auto local_bitfield_indices = hash_map<bitfield, bitfield_idx_t>{};
-  auto shapes_data = shapes_storage{"shape-route-trip-with-shape"};
+  auto shapes_data = shapes_storage{"shape-route-trip-with-shape",
+                                    cista::mmap::protection::WRITE};
   loader::gtfs::load_timetable({}, source_idx_t{1},
                                loader::mem_dir::read(kWithShapes), tt,
                                local_bitfield_indices, nullptr, &shapes_data);
