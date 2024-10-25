@@ -9,9 +9,6 @@
 
 #include "geo/polyline.h"
 
-#include "utl/raii.h"
-#include "utl/zip.h"
-
 #include "nigiri/loader/gtfs/shape.h"
 #include "nigiri/common/span_cmp.h"
 #include "nigiri/shapes_storage.h"
@@ -46,7 +43,7 @@ TEST(gtfs, shape_get_existing_shape_points) {
                 {51.543652, 7.217830},
                 {51.478609, 7.223275},
             }),
-            shapes_data.get_shape(shapes.at("243").index_));
+            shapes_data.get_shape(shapes.at("243")));
 
   EXPECT_EQ((geo::polyline{
                 {50.553822, 6.356876},
@@ -57,7 +54,7 @@ TEST(gtfs, shape_get_existing_shape_points) {
                 {50.578249, 6.383394},
                 {50.581956, 6.379866},
             }),
-            shapes_data.get_shape(shapes.at("3105").index_));
+            shapes_data.get_shape(shapes.at("3105")));
 }
 
 TEST(gtfs, shape_not_ascending_sequence) {
@@ -66,23 +63,15 @@ TEST(gtfs, shape_not_ascending_sequence) {
 1,50.636512,6.473487,1
 1,50.636259,6.473668,0
 )";
-  auto const buffer = std::stringstream{};
-  auto const backup = std::clog.rdbuf(buffer.rdbuf());
-  auto const buffer_guard =
-      utl::make_finally([&]() { std::clog.rdbuf(backup); });
 
   auto shapes_data = shapes_storage{
       fs::temp_directory_path() / "shape-test-not-ascending-sequence",
       cista::mmap::protection::WRITE};
   auto const shape_states = parse_shapes(kShapesData, shapes_data);
   auto const& shapes = shape_states.id_map_;
-  std::clog.flush();
 
-  EXPECT_EQ((geo::polyline{{50.636512, 6.473487}, {50.636259, 6.473668}}),
-            shapes_data.get_shape(shapes.at("1").index_));
-  EXPECT_TRUE(buffer.str().contains(
-      "Non monotonic sequence for shape_id '1': Sequence number 1 "
-      "followed by 0"));
+  EXPECT_EQ((geo::polyline{{50.636259, 6.473668}, {50.636512, 6.473487}}),
+            shapes_data.get_shape(shapes.at("1")));
 }
 
 TEST(gtfs, shape_shuffled_rows) {
@@ -142,7 +131,7 @@ TEST(gtfs, shape_shuffled_rows) {
            }},
       };
   for (auto [id, polyline] : shape_points) {
-    EXPECT_EQ(polyline, shapes_data.get_shape(shapes.at(id).index_));
+    EXPECT_EQ(polyline, shapes_data.get_shape(shapes.at(id)));
   }
 }
 
@@ -153,11 +142,6 @@ TEST(gtfs, shape_delay_insert_no_ascending_sequence) {
 2,51.473214,7.139521,0
 1,50.636259,6.473668,0
 )";
-  auto const buffer = std::stringstream{};
-  auto const backup = std::clog.rdbuf(buffer.rdbuf());
-  auto const buffer_guard =
-      utl::make_finally([&]() { std::clog.rdbuf(backup); });
-
   auto shapes_data = shapes_storage{
       fs::temp_directory_path() / "shape-test-not-ascending-sequence",
       cista::mmap::protection::WRITE};
@@ -167,7 +151,4 @@ TEST(gtfs, shape_delay_insert_no_ascending_sequence) {
   std::clog.flush();
   EXPECT_NE(shapes.find("1"), end(shapes));
   EXPECT_NE(shapes.find("2"), end(shapes));
-  EXPECT_TRUE(buffer.str().contains(
-      "Non monotonic sequence for shape_id '1': Sequence number 1 "
-      "followed by 0"));
 }
