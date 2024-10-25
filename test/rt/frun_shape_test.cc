@@ -15,7 +15,7 @@
 #include "nigiri/rt/frun.h"
 #include "nigiri/rt/gtfsrt_resolve_run.h"
 #include "nigiri/rt/run.h"
-#include "nigiri/shape.h"
+#include "nigiri/shapes_storage.h"
 #include "nigiri/timetable.h"
 
 #include "../raptor_search.h"
@@ -25,9 +25,6 @@ using namespace nigiri;
 using namespace nigiri::loader;
 using namespace nigiri::loader::gtfs;
 using std::operator""sv;
-
-// linked from gtfs/shape_test.cc
-shapes_storage create_tmp_shapes_storage(char const*);
 
 namespace {
 
@@ -201,7 +198,8 @@ TEST(
     rt,
     frun_for_each_shape_point_when_shapes_are_provided_then_process_all_subshapes) {
   auto const schedule = mem_dir::read(kSchedule);
-  auto shapes_data = create_tmp_shapes_storage("rfun-for-each-shape-point");
+  auto shapes_data = shapes_storage{"rfun-for-each-shape-point",
+                                    cista::mmap::protection::WRITE};
 
   // Load static timetable.
   timetable tt;

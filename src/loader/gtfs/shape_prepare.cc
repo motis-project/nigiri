@@ -12,6 +12,7 @@
 #include "utl/get_or_create.h"
 #include "utl/progress_tracker.h"
 
+#include "nigiri/shapes_storage.h"
 #include "nigiri/stop.h"
 #include "nigiri/types.h"
 
@@ -92,9 +93,9 @@ void calculate_shape_offsets(timetable const& tt,
         return h;
       };
   auto const key_compare =
-      [](std::pair<shape_idx_t, stop_seq_t const*> const& lhs,
-         std::pair<shape_idx_t, stop_seq_t const*> const& rhs) noexcept {
-        return (lhs.first == rhs.first) && (*lhs.second == *rhs.second);
+      [](std::pair<shape_idx_t, stop_seq_t const*> const& a,
+         std::pair<shape_idx_t, stop_seq_t const*> const& b) noexcept {
+        return (a.first == b.first) && (*a.second == *b.second);
       };
   auto shape_offsets_cache =
       hash_map<std::pair<shape_idx_t, stop_seq_t const*>, shape_offset_idx_t,
@@ -111,7 +112,8 @@ void calculate_shape_offsets(timetable const& tt,
             return shape_offset_idx_t::invalid();
           }
           auto const& shape_distances =
-              shape_states.distances_[shape_idx - shape_states.index_offset_];
+              shape_states
+                  .distances_[to_idx(shape_idx - shape_states.index_offset_)];
           if (!shape_distances.empty() && !trip.distance_traveled_.empty()) {
             auto const offsets = get_offsets_by_dist_traveled(
                 trip.distance_traveled_, shape_distances);
