@@ -148,7 +148,9 @@ TEST(gtfs, shape_delay_insert_no_ascending_sequence) {
   auto const shape_states = parse_shapes(kShapesData, shapes_data);
   auto const& shapes = shape_states.id_map_;
 
-  std::clog.flush();
-  EXPECT_NE(shapes.find("1"), end(shapes));
+  auto const shape_idx = shapes.find("1");
+  EXPECT_NE(shape_idx, end(shapes));
   EXPECT_NE(shapes.find("2"), end(shapes));
+  EXPECT_EQ((geo::polyline{{50.636259, 6.473668}, {50.636512, 6.473487}}),
+            shapes_data.get_shape(shape_idx->second));
 }

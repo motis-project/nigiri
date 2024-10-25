@@ -64,13 +64,14 @@ shape_loader_state parse_shapes(std::string_view const data,
           }
         });
 
+  auto polyline = std::vector<geo::latlng>();
   auto shape_idx = states.index_offset_;
   for (auto i = 0U; i != states.distances_.size(); ++i) {
     if (utl::is_sorted(seq[i], std::less<>{})) {
       continue;
     }
 
-    auto polyline = std::vector<geo::latlng>(shapes[shape_idx].size());
+    polyline.resize(shapes[shape_idx].size());
     for (auto j = 0U; j != shapes[shape_idx].size(); ++j) {
       polyline[j] = shapes[shape_idx][j];
     }
