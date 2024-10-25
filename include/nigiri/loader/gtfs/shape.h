@@ -13,7 +13,6 @@ namespace nigiri::loader::gtfs {
 struct shape_loader_state {
   hash_map<std::string, shape_idx_t> id_map_{};
   std::vector<std::vector<double>> distances_{};
-  std::vector<std::vector<std::uint32_t>> seq_{};
   shape_idx_t index_offset_;
 };
 
