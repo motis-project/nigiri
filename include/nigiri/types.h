@@ -123,7 +123,8 @@ using mm_vecvec = cista::basic_vecvec<Key, mm_vec<V>, mm_vec<SizeType>>;
 
 template <typename Key, typename T>
 struct paged_vecvec_helper {
-  using data_t = cista::paged<vector<T>>;
+  using data_t =
+      cista::paged<vector<T>, std::uint64_t, std::uint32_t, 4U, 1U << 31U>;
   using idx_t = vector<typename data_t::page_t>;
   using type = cista::paged_vecvec<idx_t, data_t, Key>;
 };
@@ -134,7 +135,7 @@ using paged_vecvec = paged_vecvec_helper<Key, T>::type;
 template <typename Key, typename T>
 struct mm_paged_vecvec_helper {
   using data_t =
-      cista::paged<mm_vec<T>, std::uint64_t, std::uint32_t, 2U, 1U << 20U>;
+      cista::paged<mm_vec<T>, std::uint64_t, std::uint32_t, 2U, 1U << 31U>;
   using idx_t = mm_vec<typename data_t::page_t>;
   using type = cista::paged_vecvec<idx_t, data_t, Key>;
 };
