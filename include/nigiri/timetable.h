@@ -12,6 +12,9 @@
 #include "utl/zip.h"
 
 #include "geo/latlng.h"
+#include "loader/gtfs/location_geojson.h"
+#include "loader/gtfs/stop.h"
+#include "tg.h"
 
 #include "nigiri/common/interval.h"
 #include "nigiri/footpath.h"
@@ -20,6 +23,8 @@
 #include "nigiri/stop.h"
 #include "nigiri/td_footpath.h"
 #include "nigiri/types.h"
+
+#include <utl/get_or_create.h>
 
 namespace nigiri {
 
@@ -103,6 +108,8 @@ struct timetable {
     vecvec<location_idx_t, char> names_;
     vecvec<location_idx_t, char> ids_;
     vector_map<location_idx_t, geo::latlng> coordinates_;
+    // vector_map<location_idx_t, tg_geo> coordinates_;
+    // vector_map<location_idx_t, ENUM> geometry_type_;
     vector_map<location_idx_t, source_idx_t> src_;
     vector_map<location_idx_t, u8_minutes> transfer_time_;
     vector_map<location_idx_t, location_type> types_;
@@ -116,6 +123,91 @@ struct timetable {
     array<vecvec<location_idx_t, footpath>, kMaxProfiles> footpaths_in_;
     vector_map<timezone_idx_t, timezone> timezones_;
   } locations_;
+
+  struct areas {
+    std::pair<location_id_type, area_idx_t> register_area(
+        source_idx_t src,
+        const std::string& area_id,
+        const std::vector<std::string>& location_ids,
+        loader::gtfs::locations_map& location_id_to_idx,
+        loader::gtfs::location_geojson_map_t&
+            location_id_to_location_geojson_idx) {
+      if (location_ids.empty()) {
+        return {location_id_type::kUnvalid, area_idx_t{}};
+      }
+      auto next_idx = -1;
+      auto type = location_id_type::kStop;
+      const auto location_idx_pos = location_id_to_idx.find(
+          location_id{.id_ = location_ids[0], .src_ = src});
+      if (location_idx_pos == end(location_id_to_idx)) {
+        type = location_id_type::kGeoJson;
+      }
+
+      switch (type) {
+        case location_id_type::kStop:
+          next_idx = static_cast<area_idx_t::value_t>(
+              area_idx_to_location_idxs_.size());
+          area_idx_to_location_idxs_.push_back(std::vector<location_idx_t>());
+          for (auto const& id : location_ids) {
+            const auto location_idx_pos =
+                location_id_to_idx.find(location_id{.id_ = id, .src_ = src});
+            if (location_idx_pos == location_id_to_idx.end()) {
+              // TODO log error
+            }
+            area_idx_to_location_idxs_[next_idx].push_back(
+                location_idx_pos->second);
+          }
+          area_id_to_area_idx_.emplace(area_id, next_idx);
+          break;
+        case location_id_type::kGeoJson:
+          next_idx = static_cast<area_idx_t::value_t>(
+              area_idx_to_location_geojson_idxs_.size());
+          area_idx_to_location_geojson_idxs_.push_back(
+              std::vector<location_geojson_idx_t>());
+          for (auto const& id : location_ids) {
+            const auto location_geojson_idx_pos =
+                location_id_to_location_geojson_idx.find(id);
+            if (location_geojson_idx_pos ==
+                location_id_to_location_geojson_idx.end()) {
+              // TODO log error
+            }
+            area_idx_to_location_geojson_idxs_[next_idx].push_back(
+                location_geojson_idx_pos->second);
+          }
+          area_id_to_area_idx_.emplace(area_id, next_idx);
+          break;
+        default: assert(false);
+      }
+      return {type, area_idx_t{next_idx}};
+    }
+
+    hash_map<std::string, location_id_type> location_id_to_location_id_type_;
+
+    hash_map<std::string, area_idx_t> area_id_to_area_idx_;
+    vector_map<area_idx_t, std::vector<location_idx_t>>
+        area_idx_to_location_idxs_;
+    vector_map<area_idx_t, std::vector<location_geojson_idx_t>>
+        area_idx_to_location_geojson_idxs_;
+  } areas_;
+
+  hash_map<std::string, location_id_type> area_id_to_location_id_type_;
+
+  location_geojson_idx_t register_location_geojson(
+      std::string id,
+      tg_geom_type type,
+      const std::shared_ptr<tg_geom*>& geometry) {
+    auto const next_idx = static_cast<location_geojson_idx_t::value_t>(
+        location_geojson_types_.size());
+    location_geojson_types_.push_back(type);
+    locations_geojson_geometries_.push_back(geometry);
+    return location_geojson_idx_t{next_idx};
+  }
+
+  hash_map<std::string, location_geojson_idx_t>
+      location_id_to_location_geojson_idx_;
+  vector_map<location_idx_t, tg_geom_type> location_geojson_types_;
+  vector_map<location_idx_t, std::shared_ptr<tg_geom*>>
+      locations_geojson_geometries_;
 
   struct transport {
     bitfield_idx_t bitfield_idx_;

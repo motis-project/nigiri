@@ -130,6 +130,9 @@ using paged_vecvec = mmap_paged_vecvec_helper<Key, T>::type;
 
 using bitfield_idx_t = cista::strong<std::uint32_t, struct _bitfield_idx>;
 using location_idx_t = cista::strong<std::uint32_t, struct _location_idx>;
+using location_geojson_idx_t =
+    cista::strong<std::uint32_t, struct _location_geojson_idx>;
+using area_idx_t = cista::strong<std::uint32_t, struct _area_idx>;
 using route_idx_t = cista::strong<std::uint32_t, struct _route_idx>;
 using section_idx_t = cista::strong<std::uint32_t, struct _section_idx>;
 using section_db_idx_t = cista::strong<std::uint32_t, struct _section_db_idx>;
@@ -217,6 +220,8 @@ struct location_id {
   string id_;
   source_idx_t src_;
 };
+
+enum class location_id_type { kUnvalid, kStop, kGeoJson, kArea };
 
 struct debug {
   inline friend std::ostream& operator<<(std::ostream& out, debug const dbg) {

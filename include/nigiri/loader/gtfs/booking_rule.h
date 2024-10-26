@@ -1,10 +1,7 @@
 #pragma once
 
 #include "nigiri/types.h"
-#include "agency.h"
 #include "services.h"
-
-#include <bitset>
 
 namespace nigiri {
 struct timetable;

@@ -1,5 +1,6 @@
 #include "nigiri/loader/gtfs/load_timetable.h"
 
+#include <nigiri/loader/gtfs/area.h>
 #include <nigiri/loader/gtfs/booking_rule.h>
 
 #include <charconv>
@@ -128,6 +129,12 @@ void load_timetable(loader_config const& config,
       read_booking_rules(service, tt, load(kBookingRulesFile).data());
 
   read_frequencies(trip_data, load(kFrequenciesFile).data());
+  const auto geojson_id_to_idx =
+      read_location_geojson(tt, load(kLocationGeojsonFile).data());
+  auto areas = read_areas(
+      src, tt, stops, geojson_id_to_idx, load(kStopAreasFile).data(),
+      load(kLocationGroupsFile).data(), load(kLocationGroupStopsFile).data());
+
   read_stop_times(tt, trip_data, stops, booking_rules,
                   load(kStopTimesFile).data());
 

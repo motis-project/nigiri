@@ -16,6 +16,9 @@
 #include "nigiri/loader/gtfs/trip.h"
 #include "nigiri/common/cached_lookup.h"
 #include "nigiri/logging.h"
+
+#include <boost/algorithm/string/split.hpp>
+
 #include "utl/pipes/for_each.h"
 
 namespace nigiri::loader::gtfs {
@@ -31,6 +34,10 @@ void read_stop_times(timetable& tt,
     utl::csv_col<utl::cstr, UTL_NAME("arrival_time")> arrival_time_;
     utl::csv_col<utl::cstr, UTL_NAME("departure_time")> departure_time_;
     utl::csv_col<utl::cstr, UTL_NAME("stop_id")> stop_id_;
+    utl::csv_col<utl::cstr, UTL_NAME("area_id")> area_id_;
+    utl::csv_col<utl::cstr, UTL_NAME("location_id")>
+        location_id_;  // location_geojson_id
+    utl::csv_col<utl::cstr, UTL_NAME("location_group_id")> location_group_id_;
     utl::csv_col<std::uint16_t, UTL_NAME("stop_sequence")> stop_sequence_;
     utl::csv_col<utl::cstr, UTL_NAME("stop_headsign")> stop_headsign_;
     utl::csv_col<int, UTL_NAME("pickup_type")> pickup_type_;
@@ -59,11 +66,21 @@ void read_stop_times(timetable& tt,
       .out_bounds(43.F, 68.F)
       .in_high(file_content.size());
   auto lookup_direction = cached_lookup(trips.directions_);
-  utl::line_range{
-      utl::make_buf_reader(file_content, progress_tracker->update_fn())}  //
-      | utl::csv<csv_stop_time>()  //
+
+  auto line_range = utl::line_range{
+      utl::make_buf_reader(file_content, progress_tracker->update_fn())};  //
+  auto header = line_range.begin().to_str();
+
+  const auto kStopIdReferencesEverything =
+      !header.contains("location_id") &&
+      !header.contains("location_group_id") && !header.contains("area_id");
+
+  line_range | utl::csv<csv_stop_time>()  //
       |
       utl::for_each([&](csv_stop_time const& s) {
+        // TODO Implementation for s.stop_id_ is geojson id and Implementation
+        // for s.stop_id_ is area_id
+
         ++i;
 
         trip* t = nullptr;
@@ -113,8 +130,10 @@ void read_stop_times(timetable& tt,
           auto const out_allowed =
               *s.drop_off_type_ != kPickupDropoffUnavailableType;
 
-          t->requires_interpolation_ |= arrival_time == kInterpolate;
-          t->requires_interpolation_ |= departure_time == kInterpolate;
+          t->requires_interpolation_ |=
+              arrival_time == kInterpolate && !is_flex_trip;
+          t->requires_interpolation_ |=
+              departure_time == kInterpolate && !is_flex_trip;
           t->requires_sorting_ |= (!t->seq_numbers_.empty() &&
                                    t->seq_numbers_.back() > *s.stop_sequence_);
 
