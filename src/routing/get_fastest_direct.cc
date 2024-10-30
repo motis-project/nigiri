@@ -13,6 +13,10 @@ duration_t get_fastest_direct(timetable const& tt,
                               query const& q,
                               direction const dir,
                               label::dist_t const max_dist) {
+  if (q.fastest_direct_) {
+    return *q.fastest_direct_;
+  }
+
   auto dists = hash_map<location_idx_t, label::dist_t>{};
   auto const get_dist = [&](location_idx_t const l) -> label::dist_t& {
     return utl::get_or_create(
