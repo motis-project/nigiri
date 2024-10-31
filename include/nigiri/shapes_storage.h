@@ -35,7 +35,7 @@ struct shapes_storage {
   mm_vecvec<shape_offset_idx_t, shape_offset_t, std::uint64_t> offsets_;
   mm_vec_map<trip_idx_t, cista::pair<shape_idx_t, shape_offset_idx_t>>
       trip_offset_indices_;
-  mm_vecvec<route_idx_t, geo::box> boxes_;
+  mm_vecvec<route_idx_t, geo::box, std::uint64_t> boxes_;
 };
 
 }  // namespace nigiri
