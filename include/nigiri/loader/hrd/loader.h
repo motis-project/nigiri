@@ -2,7 +2,6 @@
 
 #include "nigiri/loader/hrd/parser_config.h"
 #include "nigiri/loader/loader_interface.h"
-#include "nigiri/shape.h"
 
 namespace nigiri::loader::hrd {
 

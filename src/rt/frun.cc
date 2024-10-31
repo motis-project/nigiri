@@ -9,6 +9,7 @@
 
 #include "nigiri/lookup/get_transport_stop_tz.h"
 #include "nigiri/rt/rt_timetable.h"
+#include "nigiri/shapes_storage.h"
 #include "nigiri/timetable.h"
 
 namespace nigiri::rt {

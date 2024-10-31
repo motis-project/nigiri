@@ -8,16 +8,13 @@
 #include "nigiri/common/span_cmp.h"
 #include "nigiri/rt/create_rt_timetable.h"
 #include "nigiri/rt/gtfsrt_update.h"
-#include "nigiri/shape.h"
+#include "nigiri/shapes_storage.h"
 #include "nigiri/timetable.h"
 #include "nigiri/types.h"
 
 using namespace nigiri;
 using namespace date;
 using namespace std::string_view_literals;
-
-// linked from gtfs/shape_test.cc
-shapes_storage create_tmp_shapes_storage(char const*);
 
 namespace {
 
@@ -115,7 +112,8 @@ TEST(shape, single_trip_with_shape) {
                     date::sys_days{2024_y / March / 2}};
   loader::register_special_stations(tt);
   auto local_bitfield_indices = hash_map<bitfield, bitfield_idx_t>{};
-  auto shapes_data = create_tmp_shapes_storage("shape-route-trip-with-shape");
+  auto shapes_data = shapes_storage{"shape-route-trip-with-shape",
+                                    cista::mmap::protection::WRITE};
   loader::gtfs::load_timetable({}, source_idx_t{1},
                                loader::mem_dir::read(kWithShapes), tt,
                                local_bitfield_indices, nullptr, &shapes_data);

@@ -8,11 +8,11 @@
 #include "nigiri/common/interval.h"
 #include "nigiri/location.h"
 #include "nigiri/rt/run.h"
-#include "nigiri/shape.h"
 #include "nigiri/stop.h"
 #include "nigiri/types.h"
 
 namespace nigiri {
+struct shapes_storage;
 struct rt_timetable;
 struct timetable;
 }  // namespace nigiri

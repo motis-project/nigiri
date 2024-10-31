@@ -14,9 +14,10 @@
 namespace nigiri {
 
 struct shapes_storage {
-  explicit shapes_storage(
-      std::filesystem::path const&,
-      cista::mmap::protection = cista::mmap::protection::WRITE);
+  shapes_storage(std::filesystem::path, cista::mmap::protection);
+
+  cista::mmap mm(char const* file);
+
   std::span<geo::latlng const> get_shape(shape_idx_t) const;
   std::span<geo::latlng const> get_shape(trip_idx_t) const;
   std::span<geo::latlng const> get_shape(trip_idx_t,
@@ -27,8 +28,11 @@ struct shapes_storage {
   geo::box get_bounding_box(route_idx_t) const;
   std::optional<geo::box> get_bounding_box(route_idx_t, std::size_t) const;
 
-  mm_vecvec<shape_idx_t, geo::latlng> data_;
-  mm_vecvec<shape_offset_idx_t, shape_offset_t> offsets_;
+  cista::mmap::protection mode_;
+  std::filesystem::path p_;
+
+  mm_paged_vecvec<shape_idx_t, geo::latlng> data_;
+  mm_vecvec<shape_offset_idx_t, shape_offset_t, std::uint64_t> offsets_;
   mm_vec_map<trip_idx_t, cista::pair<shape_idx_t, shape_offset_idx_t>>
       trip_offset_indices_;
   mm_vecvec<route_idx_t, geo::box> boxes_;
