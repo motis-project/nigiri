@@ -12,8 +12,10 @@ namespace nigiri::loader::gtfs {
 
 // TODO Rename
 struct trip_shapes {
-  std::vector<std::vector<stop_seq_t const*>> stop_sequences_;
+  trip_shapes(shape_loader_state const&,
+                            vector_map<gtfs_trip_idx_t, trip> const&);
   shape_idx_t index_offset_;
+  std::vector<std::vector<stop_seq_t const*>> stop_sequences_;
 };
 
 trip_shapes get_shape_pairs(shape_loader_state const&,

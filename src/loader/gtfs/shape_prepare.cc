@@ -22,28 +22,23 @@
 
 namespace nigiri::loader::gtfs {
 
-trip_shapes get_shape_pairs(shape_loader_state const& states,
-                            vector_map<gtfs_trip_idx_t, trip> const& trips) {
-  auto const min = states.index_offset_;
-  auto const length = states.id_map_.size();
-  // TODO Change name
-  auto pairs = trip_shapes{
-      .stop_sequences_ = std::vector<std::vector<stop_seq_t const*>>(length),
-      .index_offset_ = min,
-  };
+trip_shapes::trip_shapes(shape_loader_state const& states,
+                         vector_map<gtfs_trip_idx_t, trip> const& trips)
+    : index_offset_{states.index_offset_},
+      stop_sequences_{
+          std::vector<std::vector<stop_seq_t const*>>(states.id_map_.size())} {
   for (auto const& trip : trips) {
     if (trip.shape_idx_ == shape_idx_t::invalid()) {
       continue;
     }
     auto& candidates =
-        pairs.stop_sequences_[cista::to_idx(trip.shape_idx_ - min)];
+        stop_sequences_[cista::to_idx(trip.shape_idx_ - index_offset_)];
     if (std::all_of(std::execution::par_unseq, candidates.begin(),
                     candidates.end(),
                     [&](auto const& it) { return *it != trip.stop_seq_; })) {
       candidates.emplace_back(&trip.stop_seq_);
     }
   }
-  return pairs;
 }
 
 std::size_t get_closest(geo::latlng const& pos,
