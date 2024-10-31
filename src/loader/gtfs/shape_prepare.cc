@@ -1,9 +1,12 @@
 #include "nigiri/loader/gtfs/shape_prepare.h"
 
 #include <algorithm>
+#include <execution>
 #include <ranges>
 #include <span>
 #include <type_traits>
+
+#include "cista/strong.h"
 
 #include "geo/latlng.h"
 #include "geo/polyline.h"
@@ -18,6 +21,30 @@
 #include "nigiri/types.h"
 
 namespace nigiri::loader::gtfs {
+
+trip_shapes get_shape_pairs(shape_loader_state const& states,
+                            vector_map<gtfs_trip_idx_t, trip> const& trips) {
+  auto const min = states.index_offset_;
+  auto const length = states.id_map_.size();
+  // TODO Change name
+  auto pairs = trip_shapes{
+      .stop_sequences_ = std::vector<std::vector<stop_seq_t const*>>(length),
+      .index_offset_ = min,
+  };
+  for (auto const& trip : trips) {
+    if (trip.shape_idx_ == shape_idx_t::invalid()) {
+      continue;
+    }
+    auto& candidates =
+        pairs.stop_sequences_[cista::to_idx(trip.shape_idx_ - min)];
+    if (std::all_of(std::execution::par_unseq, candidates.begin(),
+                    candidates.end(),
+                    [&](auto const& it) { return *it != trip.stop_seq_; })) {
+      candidates.emplace_back(&trip.stop_seq_);
+    }
+  }
+  return pairs;
+}
 
 std::size_t get_closest(geo::latlng const& pos,
                         std::span<geo::latlng const> shape) {
