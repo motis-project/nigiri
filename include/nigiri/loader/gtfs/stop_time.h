@@ -6,12 +6,15 @@
 
 namespace nigiri::loader::gtfs {
 
-constexpr auto kPickupDropoffRegularType = 0;
-constexpr auto kPickupDropoffUnavailableType = 1;
-constexpr auto kPickupDropoffPhoneAgencyType = 2;
-constexpr auto kPickupDropoffCoordinateWithDriverType = 3;
+enum PickupDropoffType : std::uint8_t {
+  kRegularType = 0,
+  kUnavailableType = 1,
+  kPhoneAgencyType = 2,
+  kCoordinateWithDriverType = 3
+};
 
-void read_stop_times(timetable&,
+void read_stop_times(source_idx_t src,
+                     timetable&,
                      trip_data&,
                      locations_map const&,
                      booking_rule_map_t&,

@@ -10,6 +10,7 @@ namespace nigiri::loader::gtfs {
 using location_geojson_map_t =
     hash_map<std::string_view, location_geojson_idx_t>;
 
-location_geojson_map_t read_location_geojson(timetable& tt,
+location_geojson_map_t read_location_geojson(source_idx_t src,
+                                             timetable& tt,
                                              std::string_view file_content);
 }  // namespace nigiri::loader::gtfs

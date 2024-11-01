@@ -132,7 +132,7 @@ clasz to_clasz(int const route_type) {
 }
 
 color_t to_color(std::string_view const color_str) {
-  auto const is_hex = [](uint8_t c) {
+  auto const is_hex = [](std::int8_t c) {
     return std::isdigit(c) != 0 || (c >= 'a' && c <= 'f') ||
            (c >= 'A' && c <= 'F');
   };

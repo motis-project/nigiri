@@ -214,6 +214,38 @@ struct trip_id {
   source_idx_t src_;
 };
 
+struct area_idx {
+  CISTA_COMPARABLE()
+  CISTA_PRINTABLE(area_idx, "location_idx", "location_geojson_idx")
+  std::optional<area_idx_t> location_idx_;
+  std::optional<area_idx_t> location_geojson_idx_;
+};
+
+struct area_id {
+  CISTA_COMPARABLE()
+  CISTA_PRINTABLE(area_id, "id", "src")
+  string id_;
+  source_idx_t src_;
+};
+
+struct locationGeoJson_id {
+  CISTA_COMPARABLE()
+  CISTA_PRINTABLE(locationGeoJson_id, "id", "src")
+  string id_;
+  source_idx_t src_;
+};
+
+struct location_trip_id {
+  CISTA_COMPARABLE()
+  CISTA_PRINTABLE(location_trip_id, "location_id", "trip_id", "src")
+  string location_id_;
+  string trip_id_;
+  source_idx_t src_;
+};
+
+using location_trip_idx_t =
+    cista::strong<std::uint32_t, struct _locationtrip_idx_t>;
+
 struct location_id {
   CISTA_COMPARABLE()
   CISTA_PRINTABLE(location_id, "id", "src")
@@ -221,7 +253,7 @@ struct location_id {
   source_idx_t src_;
 };
 
-enum class location_id_type { kUnvalid, kStop, kGeoJson, kArea };
+enum class location_id_type { kInvalid, kStop, kGeoJson, kArea };
 
 struct debug {
   inline friend std::ostream& operator<<(std::ostream& out, debug const dbg) {

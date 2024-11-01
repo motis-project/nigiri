@@ -8,9 +8,12 @@ struct timetable;
 }
 
 namespace nigiri::loader::gtfs {
-constexpr auto kRealTimeBooking = 0;
-constexpr auto kSameDayBooking = 1;
-constexpr auto kPriorDaysBooking = 2;
+
+enum Booking_type : std::uint8_t {
+  kRealTimeBooking = 0,
+  kSameDayBooking = 1,
+  kPriorDaysBooking = 2
+};
 
 using booking_rule_map_t = hash_map<std::string_view, booking_rule_idx_t>;
 

@@ -58,10 +58,6 @@ struct stop_events {
   minutes_after_midnight_t arr_{kInterpolate}, dep_{kInterpolate};
 };
 
-struct stop_windows {
-  minutes_after_midnight_t start_{0}, end_{0};
-};
-
 struct trip {
   trip(route const*,
        bitfield const*,
@@ -101,9 +97,6 @@ struct trip {
   stop_seq_t stop_seq_;
   std::vector<std::uint16_t> seq_numbers_;
   std::vector<stop_events> event_times_;
-  std::vector<stop_windows> window_times_;
-  std::vector<std::pair<booking_rule_idx_t, booking_rule_idx_t>>
-      booking_rule_idxs_;  //<pickup, dropoff>
 
   std::vector<trip_direction_idx_t> stop_headsigns_;
 

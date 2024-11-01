@@ -9,7 +9,8 @@
 #include <utl/pipes/transform.h>
 #include <utl/pipes/vec.h>
 #include <utl/progress_tracker.h>
-#include "nigiri/timetable.h"
+
+#include <nigiri/timetable.h>
 
 namespace nigiri::loader::gtfs {
 booking_rule_map_t read_booking_rules(traffic_days_t const& services,
@@ -24,12 +25,12 @@ booking_rule_map_t read_booking_rules(traffic_days_t const& services,
 
   struct csv_booking_rule {
     utl::csv_col<utl::cstr, UTL_NAME("booking_rule_id")> id_;
-    utl::csv_col<uint8_t, UTL_NAME("booking_type")> type_;
-    utl::csv_col<uint16_t, UTL_NAME("prior_notice_duration_min")>
+    utl::csv_col<std::uint8_t, UTL_NAME("booking_type")> type_;
+    utl::csv_col<std::uint16_t, UTL_NAME("prior_notice_duration_min")>
         prior_notice_duration_min_;
-    utl::csv_col<uint16_t, UTL_NAME("prior_notice_duration_max")>
+    utl::csv_col<std::uint16_t, UTL_NAME("prior_notice_duration_max")>
         prior_notice_duration_max_;
-    utl::csv_col<uint16_t, UTL_NAME("prior_notice_last_day")>
+    utl::csv_col<std::uint16_t, UTL_NAME("prior_notice_last_day")>
         prior_notice_last_day_;
     utl::csv_col<utl::cstr, UTL_NAME("prior_notice_last_time")>
         prior_notice_last_time_;
@@ -39,12 +40,12 @@ booking_rule_map_t read_booking_rules(traffic_days_t const& services,
         prior_notice_start_time_;
     utl::csv_col<utl::cstr, UTL_NAME("prior_notice_service_id")>
         prior_notice_service_id_;
-    utl::csv_col<utl::cstr, UTL_NAME("message")> message_;
-    utl::csv_col<utl::cstr, UTL_NAME("pickup_message")> pickup_message_;
-    utl::csv_col<utl::cstr, UTL_NAME("drop_off_message")> drop_off_message_;
-    utl::csv_col<utl::cstr, UTL_NAME("phone_number")> phone_number_;
-    utl::csv_col<utl::cstr, UTL_NAME("info_url")> info_url_;
-    utl::csv_col<utl::cstr, UTL_NAME("booking_url")> booking_url_;
+    // utl::csv_col<utl::cstr, UTL_NAME("message")> message_;
+    // utl::csv_col<utl::cstr, UTL_NAME("pickup_message")> pickup_message_;
+    // utl::csv_col<utl::cstr, UTL_NAME("drop_off_message")> drop_off_message_;
+    // utl::csv_col<utl::cstr, UTL_NAME("phone_number")> phone_number_;
+    // utl::csv_col<utl::cstr, UTL_NAME("info_url")> info_url_;
+    // utl::csv_col<utl::cstr, UTL_NAME("booking_url")> booking_url_;
   };
 
   return utl::line_range{utl::make_buf_reader(
@@ -86,33 +87,33 @@ booking_rule_map_t read_booking_rules(traffic_days_t const& services,
 
            return std::pair{
                b.id_->to_str(),
-               tt.register_booking_rule(
-                   {.type_ = b.type_.val(),
-                    .prior_notice_duration_min_ =
-                        b.prior_notice_duration_min_.val(),
-                    .prior_notice_duration_max_ =
-                        b.prior_notice_duration_max_.val(),
-                    .prior_notice_last_day_ = b.prior_notice_last_day_.val(),
-                    .prior_notice_last_time_ =
-                        hhmm_to_min(*b.prior_notice_last_time_),
-                    .prior_notice_start_day_ =
-                        b.prior_notice_start_day_->empty()
-                            ? static_cast<uint16_t>(0)
-                            : static_cast<uint16_t>(
-                                  strtoul(b.prior_notice_start_day_->c_str(),
-                                          NULL, 10)),
-                    .prior_notice_start_time_ =
-                        hhmm_to_min(*b.prior_notice_start_time_),
-                    .prior_notice_service_id_ =
-                        b.prior_notice_service_id_->empty() || error
-                            ? std::nullopt
-                            : traffic_days_it,
-                    .message_ = b.message_->to_str(),
-                    .pickup_message_ = b.pickup_message_->to_str(),
-                    .drop_off_message_ = b.drop_off_message_->to_str(),
-                    .phone_number_ = b.phone_number_->to_str(),
-                    .info_url_ = b.info_url_->to_str(),
-                    .booking_url_ = b.booking_url_->to_str()})};
+               tt.register_booking_rule({
+                   .type_ = b.type_.val(),
+                   .prior_notice_duration_min_ =
+                       b.prior_notice_duration_min_.val(),
+                   .prior_notice_duration_max_ =
+                       b.prior_notice_duration_max_.val(),
+                   .prior_notice_last_day_ = b.prior_notice_last_day_.val(),
+                   .prior_notice_last_time_ =
+                       hhmm_to_min(*b.prior_notice_last_time_),
+                   .prior_notice_start_day_ =
+                       b.prior_notice_start_day_->empty()
+                           ? static_cast<std::uint16_t>(0)
+                           : static_cast<std::uint16_t>(strtoul(
+                                 b.prior_notice_start_day_->c_str(), NULL, 10)),
+                   .prior_notice_start_time_ =
+                       hhmm_to_min(*b.prior_notice_start_time_),
+                   .prior_notice_service_id_ =
+                       b.prior_notice_service_id_->empty() || error
+                           ? std::nullopt
+                           : traffic_days_it,
+                   // .message_ = b.message_->to_str(),
+                   // .pickup_message_ = b.pickup_message_->to_str(),
+                   // .drop_off_message_ = b.drop_off_message_->to_str(),
+                   // .phone_number_ = b.phone_number_->to_str(),
+                   // .info_url_ = b.info_url_->to_str(),
+                   // .booking_url_ = b.booking_url_->to_str()
+               })};
          })  //
          | utl::to<booking_rule_map_t>();
 }

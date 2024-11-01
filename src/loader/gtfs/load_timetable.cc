@@ -73,6 +73,10 @@ cista::hash_t hash(dir const& d) {
   return h;
 }
 
+/*
+ * TODO Variable hinzufügen, welche besagt, dass GTFS-Flex aktiviert ist und
+ * sich somit die Voraussetzungen für applicable ändert
+ */
 bool applicable(dir const& d) {
   for (auto const& file_name : required_files) {
     if (!d.exists(file_name)) {
@@ -130,12 +134,12 @@ void load_timetable(loader_config const& config,
 
   read_frequencies(trip_data, load(kFrequenciesFile).data());
   const auto geojson_id_to_idx =
-      read_location_geojson(tt, load(kLocationGeojsonFile).data());
+      read_location_geojson(src, tt, load(kLocationGeojsonFile).data());
   auto areas = read_areas(
       src, tt, stops, geojson_id_to_idx, load(kStopAreasFile).data(),
       load(kLocationGroupsFile).data(), load(kLocationGroupStopsFile).data());
 
-  read_stop_times(tt, trip_data, stops, booking_rules,
+  read_stop_times(src, tt, trip_data, stops, booking_rules,
                   load(kStopTimesFile).data());
 
   {
