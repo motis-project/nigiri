@@ -44,6 +44,8 @@ struct offset {
 struct td_offset {
   friend bool operator==(td_offset const&, td_offset const&) = default;
 
+  duration_t duration() const noexcept { return duration_; }
+
   unixtime_t valid_from_;
   duration_t duration_;
   transport_mode_id_t transport_mode_id_;
