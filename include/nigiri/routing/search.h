@@ -52,7 +52,9 @@ struct routing_result {
   AlgoStats algo_stats_;
 };
 
-template <direction SearchDir, typename Algo>
+template <direction SearchDir,
+          typename Algo,
+          search_type SearchType = search_type::kNormal>
 struct search {
   using algo_state_t = typename Algo::algo_state_t;
   using algo_stats_t = typename Algo::algo_stats_t;
@@ -62,7 +64,10 @@ struct search {
   Algo init(clasz_mask_t const allowed_claszes,
             bool const require_bikes_allowed,
             transfer_time_settings& tts,
-            algo_state_t& algo_state) {
+            algo_state_t& algo_state,
+            int16_t static_arrival_delay = 0,
+            day_idx_t base = day_idx_t{0},
+            delta_t last_arr = 0) {
     stats_.fastest_direct_ =
         static_cast<std::uint64_t>(fastest_direct_.count());
 
@@ -113,27 +118,31 @@ struct search {
 #endif
     }
 
-    return Algo{
-        tt_,
-        rtt_,
-        algo_state,
-        state_.is_destination_,
-        state_.is_via_,
-        state_.dist_to_dest_,
-        q_.td_dest_,
-        state_.travel_time_lower_bound_,
-        q_.via_stops_,
-        day_idx_t{
-            std::chrono::duration_cast<date::days>(
-                std::chrono::round<std::chrono::days>(
-                    search_interval_.from_ +
-                    ((search_interval_.to_ - search_interval_.from_) / 2)) -
-                tt_.internal_interval().from_)
-                .count()},
-        allowed_claszes,
-        require_bikes_allowed,
-        q_.prf_idx_ == 2U,
-        tts};
+    return Algo{tt_,
+                rtt_,
+                algo_state,
+                state_.is_destination_,
+                state_.is_via_,
+                state_.dist_to_dest_,
+                q_.td_dest_,
+                state_.travel_time_lower_bound_,
+                q_.via_stops_,
+                SearchType == search_type::kNormal
+                    ? day_idx_t{std::chrono::duration_cast<date::days>(
+                                    std::chrono::round<std::chrono::days>(
+                                        search_interval_.from_ +
+                                        ((search_interval_.to_ -
+                                          search_interval_.from_) /
+                                         2)) -
+                                    tt_.internal_interval().from_)
+                                    .count()}
+                    : base,
+                allowed_claszes,
+                require_bikes_allowed,
+                q_.prf_idx_ == 2U,
+                tts,
+                static_arrival_delay,
+                last_arr};
   }
 
   search(timetable const& tt,
@@ -141,25 +150,31 @@ struct search {
          search_state& s,
          algo_state_t& algo_state,
          query q,
-         std::optional<std::chrono::seconds> timeout = std::nullopt)
+         std::optional<std::chrono::seconds> timeout = std::nullopt,
+         int16_t static_arrival_delay = 0,
+         day_idx_t base = day_idx_t{0},
+         delta_t last_arr = 0)
       : tt_{tt},
         rtt_{rtt},
         state_{s},
         q_{std::move(q)},
         search_interval_{std::visit(
-            utl::overloaded{
-                [](interval<unixtime_t> const start_interval) {
-                  return start_interval;
-                },
-                [](unixtime_t const start_time) {
-                  return interval<unixtime_t>{start_time, start_time};
-                }},
+            utl::overloaded{[](interval<unixtime_t> const start_interval) {
+                              return start_interval;
+                            },
+                            [](unixtime_t const start_time) {
+                              return interval<unixtime_t>{start_time,
+                                                          start_time};
+                            }},
             q_.start_time_)},
         fastest_direct_{get_fastest_direct(tt_, q_, SearchDir)},
         algo_{init(q_.allowed_claszes_,
                    q_.require_bike_transport_,
                    q_.transfer_time_settings_,
-                   algo_state)},
+                   algo_state,
+                   static_arrival_delay,
+                   base,
+                   last_arr)},
         timeout_(timeout) {
     utl::sort(q_.start_);
     utl::sort(q_.destination_);
@@ -209,13 +224,13 @@ struct search {
             "timeout_reached={}\n",
             is_ontrip(), q_.extend_interval_earlier_, q_.extend_interval_later_,
             std::visit(
-                utl::overloaded{
-                    [](interval<unixtime_t> const& start_interval) {
-                      return start_interval;
-                    },
-                    [](unixtime_t const start_time) {
-                      return interval<unixtime_t>{start_time, start_time};
-                    }},
+                utl::overloaded{[](interval<unixtime_t> const& start_interval) {
+                                  return start_interval;
+                                },
+                                [](unixtime_t const start_time) {
+                                  return interval<unixtime_t>{start_time,
+                                                              start_time};
+                                }},
                 q_.start_time_),
             search_interval_, tt_.external_interval(), n_results_in_interval(),
             is_timeout_reached());
@@ -227,13 +242,13 @@ struct search {
             "number_of_results_in_interval={}\n",
             q_.extend_interval_earlier_, q_.extend_interval_later_,
             std::visit(
-                utl::overloaded{
-                    [](interval<unixtime_t> const& start_interval) {
-                      return start_interval;
-                    },
-                    [](unixtime_t const start_time) {
-                      return interval<unixtime_t>{start_time, start_time};
-                    }},
+                utl::overloaded{[](interval<unixtime_t> const& start_interval) {
+                                  return start_interval;
+                                },
+                                [](unixtime_t const start_time) {
+                                  return interval<unixtime_t>{start_time,
+                                                              start_time};
+                                }},
                 q_.start_time_),
             search_interval_, tt_.external_interval(), n_results_in_interval());
       }
@@ -381,22 +396,28 @@ private:
             algo_.add_start(s.stop_, s.time_at_stop_);
           }
 
+          // TODO was ist mit dem worst_time_at_dest, bzw. was ist
+          // fastest_direct_? ist das nur schnellster Fußweg zum Ziel? aber
+          // warum ist das so kompliziert, das ist wahrscheinlich für
+          // intermodale suchen, wo es intermodale wege zum Ziel gibt
           auto const worst_time_at_dest =
               start_time +
               (kFwd ? 1 : -1) * std::min(fastest_direct_, kMaxTravelTime);
           algo_.execute(start_time, q_.max_transfers_, worst_time_at_dest,
                         q_.prf_idx_, state_.results_);
 
-          for (auto& j : state_.results_) {
-            if (j.legs_.empty() &&
-                (is_ontrip() || search_interval_.contains(j.start_time_)) &&
-                j.travel_time() < fastest_direct_) {
-              try {
-                algo_.reconstruct(q_, j);
-              } catch (std::exception const& e) {
-                j.error_ = true;
-                log(log_lvl::error, "search", "reconstruct failed: {}",
-                    e.what());
+          if (SearchType == search_type::kNormal) {
+            for (auto& j : state_.results_) {
+              if (j.legs_.empty() &&
+                  (is_ontrip() || search_interval_.contains(j.start_time_)) &&
+                  j.travel_time() < fastest_direct_) {
+                try {
+                  algo_.reconstruct(q_, j);
+                } catch (std::exception const& e) {
+                  j.error_ = true;
+                  log(log_lvl::error, "search", "reconstruct failed: {}",
+                      e.what());
+                }
               }
             }
           }

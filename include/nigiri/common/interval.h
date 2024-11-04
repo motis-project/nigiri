@@ -97,6 +97,10 @@ struct interval {
     return r.end();
   }
 
+  T front() const { return from_; }
+
+  T back() const { return static_cast<T>(to_ - 1); }
+
   auto size() const { return to_ - from_; }
 
   T operator[](std::size_t const i) const {

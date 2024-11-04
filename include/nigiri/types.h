@@ -310,6 +310,8 @@ enum class direction {
   kBackward  // start = final arrival, destination = journey departure
 };
 
+enum class search_type{ kNormal, kESA, kEA};
+
 inline constexpr direction flip(direction const d) noexcept {
   return d == direction::kForward ? direction::kBackward : direction::kForward;
 }

@@ -29,12 +29,15 @@ struct raptor_stats {
   std::uint64_t route_update_prevented_by_lower_bound_{0ULL};
 };
 
-template <direction SearchDir, bool Rt, via_offset_t Vias>
+template <direction SearchDir,
+          bool Rt,
+          via_offset_t Vias,
+          search_type SearchType = search_type::kNormal>
 struct raptor {
   using algo_state_t = raptor_state;
   using algo_stats_t = raptor_stats;
 
-  static constexpr bool kUseLowerBounds = true;
+  static constexpr bool kUseLowerBounds = (SearchType != search_type::kEA);
   static constexpr auto const kFwd = (SearchDir == direction::kForward);
   static constexpr auto const kBwd = (SearchDir == direction::kBackward);
   static constexpr auto const kInvalid = kInvalidDelta<SearchDir>;
@@ -71,7 +74,9 @@ struct raptor {
       clasz_mask_t const allowed_claszes,
       bool const require_bike_transport,
       bool const is_wheelchair,
-      transfer_time_settings const& tts)
+      transfer_time_settings const& tts,
+      delta_t static_arrival_delay = delta_t{0},
+      delta_t last_arr = 0)
       : tt_{tt},
         rtt_{rtt},
         n_days_{tt_.internal_interval_days().size().count()},
@@ -92,7 +97,9 @@ struct raptor {
         allowed_claszes_{allowed_claszes},
         require_bike_transport_{require_bike_transport},
         is_wheelchair_{is_wheelchair},
-        transfer_time_settings_{tts} {
+        transfer_time_settings_{tts},
+        static_arrival_delay_{static_arrival_delay},
+        last_arr_{last_arr} {
     assert(Vias == via_stops_.size());
     reset_arrivals();
     // only used for intermodal queries (dist_to_dest != empty)
@@ -210,27 +217,35 @@ struct raptor {
       trace_print_state_after_round();
     }
 
-    is_dest_.for_each_set_bit([&](auto const i) {
-      for (auto k = 1U; k != end_k; ++k) {
-        auto const dest_time = round_times_[k][i][Vias];
-        if (dest_time != kInvalid) {
-          trace("ADDING JOURNEY: start={}, dest={} @ {}, transfers={}\n",
-                start_time, delta_to_unix(base(), round_times_[k][i][Vias]),
-                location{tt_, location_idx_t{i}}, k - 1);
-          auto const [optimal, it, dominated_by] = results.add(
-              journey{.legs_ = {},
-                      .start_time_ = start_time,
-                      .dest_time_ = delta_to_unix(base(), dest_time),
-                      .dest_ = location_idx_t{i},
-                      .transfers_ = static_cast<std::uint8_t>(k - 1)});
-          if (!optimal) {
-            trace("  DOMINATED BY: start={}, dest={} @ {}, transfers={}\n",
-                  dominated_by->start_time_, dominated_by->dest_time_,
-                  location{tt_, dominated_by->dest_}, dominated_by->transfers_);
+    // TODO for esa: get best dest_time, ignore the rest (dest_time -
+    // static_arrival_delay_)
+    // TODO for ea: get best time for each location, ignore the rest
+    // round_times_[end_k-1][i][Vias] always best time at location i?
+
+    if (SearchType == search_type::kNormal) {
+      is_dest_.for_each_set_bit([&](auto const i) {
+        for (auto k = 1U; k != end_k; ++k) {
+          auto const dest_time = round_times_[k][i][Vias];
+          if (dest_time != kInvalid) {
+            trace("ADDING JOURNEY: start={}, dest={} @ {}, transfers={}\n",
+                  start_time, delta_to_unix(base(), round_times_[k][i][Vias]),
+                  location{tt_, location_idx_t{i}}, k - 1);
+            auto const [optimal, it, dominated_by] = results.add(
+                journey{.legs_ = {},
+                        .start_time_ = start_time,
+                        .dest_time_ = delta_to_unix(base(), dest_time),
+                        .dest_ = location_idx_t{i},
+                        .transfers_ = static_cast<std::uint8_t>(k - 1)});
+            if (!optimal) {
+              trace("  DOMINATED BY: start={}, dest={} @ {}, transfers={}\n",
+                    dominated_by->start_time_, dominated_by->dest_time_,
+                    location{tt_, dominated_by->dest_},
+                    dominated_by->transfers_);
+            }
           }
         }
-      }
-    });
+      });
+    }
   }
 
   void reconstruct(query const& q, journey& j) {
@@ -331,7 +346,8 @@ private:
             target_v, stay);
 
         auto const transfer_time =
-            (!is_intermodal_dest() && is_dest)
+            ((!is_intermodal_dest() && is_dest) ||
+             SearchType == search_type::kEA)
                 ? 0
                 : dir(adjusted_transfer_time(
                           transfer_time_settings_,
@@ -348,9 +364,13 @@ private:
             time_at_dest_[k]);
 
         if (is_better(fp_target_time, best_[i][target_v]) &&
-            is_better(fp_target_time, time_at_dest_[k])) {
-          if (lb_[i] == kUnreachable ||
-              !is_better(fp_target_time + dir(lb_[i]), time_at_dest_[k])) {
+            (is_better(fp_target_time, time_at_dest_[k]) ||
+             SearchType == search_type::kEA) &&
+            (SearchType != search_type::kEA ||
+             is_better_or_eq(fp_target_time, last_arr_))) {
+          if (kUseLowerBounds &&
+              (lb_[i] == kUnreachable ||
+               !is_better(fp_target_time + dir(lb_[i]), time_at_dest_[k]))) {
             ++stats_.fp_update_prevented_by_lower_bound_;
             return;
           }
@@ -413,11 +433,15 @@ private:
                              stay.count()));
 
           if (is_better(fp_target_time, best_[target][target_v]) &&
-              is_better(fp_target_time, time_at_dest_[k])) {
+              (is_better(fp_target_time, time_at_dest_[k]) ||
+               SearchType == search_type::kEA) &&
+              (SearchType != search_type::kEA ||
+               is_better_or_eq(fp_target_time, last_arr_))) {
             auto const lower_bound = lb_[target];
-            if (lower_bound == kUnreachable ||
-                !is_better(fp_target_time + dir(lower_bound),
-                           time_at_dest_[k])) {
+            if (kUseLowerBounds &&
+                (lower_bound == kUnreachable ||
+                 !is_better(fp_target_time + dir(lower_bound),
+                            time_at_dest_[k]))) {
               ++stats_.fp_update_prevented_by_lower_bound_;
               trace_upd(
                   "┊ ├k={} *** LB NO UPD: (from={}, tmp={}) --{}--> (to={}, "
@@ -763,8 +787,10 @@ private:
         auto target_v = v + v_offset[v];
 
         if (et[v].is_valid() && stp.can_finish<SearchDir>(is_wheelchair_)) {
-          auto const by_transport = time_at_stop(
-              r, et[v], stop_idx, kFwd ? event_type::kArr : event_type::kDep);
+          auto const by_transport =
+              clamp(time_at_stop(r, et[v], stop_idx,
+                                 kFwd ? event_type::kArr : event_type::kDep) +
+                    static_arrival_delay_);
 
           auto const is_via = target_v != Vias && is_via_[target_v][l_idx] &&
                               via_stops_[target_v].stay_ == 0_minutes;
@@ -797,10 +823,14 @@ private:
           assert(by_transport != std::numeric_limits<delta_t>::min() &&
                  by_transport != std::numeric_limits<delta_t>::max());
           if (is_better(by_transport, current_best[v]) &&
-              is_better(by_transport, time_at_dest_[k]) &&
+              (is_better(by_transport, time_at_dest_[k]) ||
+               SearchType == search_type::kEA) &&
               is_better(by_transport, higher_v_best) &&
-              lb_[l_idx] != kUnreachable &&
-              is_better(by_transport + dir(lb_[l_idx]), time_at_dest_[k])) {
+              (!kUseLowerBounds ||
+               (lb_[l_idx] != kUnreachable &&
+                is_better(by_transport + dir(lb_[l_idx]), time_at_dest_[k]))) &&
+              (SearchType != search_type::kEA ||
+               is_better_or_eq(by_transport, last_arr_))) {
             trace_upd(
                 "┊ │k={} v={}->{}    name={}, dbg={}, time_by_transport={}, "
                 "BETTER THAN current_best={} => update, {} marking station "
@@ -861,7 +891,7 @@ private:
         continue;
       }
 
-      if (lb_[l_idx] == kUnreachable) {
+      if (kUseLowerBounds && lb_[l_idx] == kUnreachable) {
         break;
       }
 
@@ -953,8 +983,12 @@ private:
         auto const ev = *it;
         auto const ev_mam = ev.mam();
 
+        // TODO diese pruning schein mir falsch zu sein, da in der nächsten
+        // Iteration ev_mam wieder klein sein kann als das aktuelle ev_mam, und
+        // somit die Bedingung dann nicht wahr wird
         if (is_better_or_eq(time_at_dest_[k],
-                            to_delta(day, ev_mam) + dir(lb_[to_idx(l)]))) {
+                            to_delta(day, ev_mam) + dir(lb_[to_idx(l)])) &&
+            kUseLowerBounds) {
           trace(
               "┊ │k={}      => name={}, dbg={}, day={}={}, best_mam={}, "
               "transport_mam={}, transport_time={} => TIME AT DEST {} IS "
@@ -1086,6 +1120,8 @@ private:
   bool require_bike_transport_;
   bool is_wheelchair_;
   transfer_time_settings transfer_time_settings_;
+  delta_t static_arrival_delay_;
+  delta_t last_arr_;
 };
 
 }  // namespace nigiri::routing
