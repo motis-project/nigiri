@@ -8,7 +8,7 @@
 #include "nigiri/common/delta_t.h"
 #include "nigiri/routing/clasz_mask.h"
 #include "nigiri/routing/limits.h"
-#include "nigiri/routing/meat/csa/binary_search.h"
+#include "nigiri/routing/meat/binary_search.h"
 #include "nigiri/routing/meat/csa/decision_graph_extractor.h"
 #include "nigiri/routing/meat/csa/meat_csa_state.h"
 #include "nigiri/routing/meat/csa/meat_csa_stats.h"
@@ -350,7 +350,7 @@ private:
         last_arr_ = std::numeric_limits<delta_t>::max() - 1;
         return last_conn_before<WithClaszFilter>(last_arr_);
       } else if (bound_parameter_ == 1.0) {
-        last_arr_ = esa[target_stop];
+        last_arr_ = esa[target_stop] - target_offset;
         if (conn_end == connection_idx_t{0}) {
           return {day - 1, connection_idx_t{tt_.fwd_connections_.size() - 1}};
         } else {

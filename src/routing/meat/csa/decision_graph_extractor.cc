@@ -5,7 +5,7 @@
 #include "utl/overloaded.h"
 
 #include "nigiri/routing/journey.h"
-#include "nigiri/routing/meat/csa/binary_search.h"
+#include "nigiri/routing/meat/binary_search.h"
 
 namespace nigiri::routing::meat::csa {
 

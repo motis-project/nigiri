@@ -1,6 +1,6 @@
 #pragma once
 
-namespace nigiri::routing::meat::csa {
+namespace nigiri::routing::meat {
 
 template <class Iter, class Pred>
 Iter binary_find_first_true(Iter begin, Iter end, Pred p) {
@@ -18,4 +18,4 @@ Iter binary_find_first_true(Iter begin, Iter end, Pred p) {
   return begin;
 }
 
-}  // namespace nigiri::routing::meat::csa
+}  // namespace nigiri::routing::meat

@@ -212,17 +212,17 @@ TEST_F(MeatCsaProfilesTest, SameAndCorrectOnSimpleRun) {
 
   auto ea_s = state_static_.profile_set_.compute_entry_amount();
   auto ne_s = state_static_.profile_set_.n_entry_idxs();
-  EXPECT_EQ(ea_s, 8);
+  EXPECT_EQ(ea_s, 5);
   EXPECT_TRUE(ne_s > ea_s);
 
   auto ea_dg = state_dynamic_growth_.profile_set_.compute_entry_amount();
   auto ne_dg = state_dynamic_growth_.profile_set_.n_entry_idxs();
-  EXPECT_EQ(ea_dg, 8);
+  EXPECT_EQ(ea_dg, 5);
   EXPECT_TRUE(ne_dg > ea_dg);
 
   auto ea_d = state_dynamic_.profile_set_.compute_entry_amount();
   auto ne_d = state_dynamic_.profile_set_.n_entry_idxs();
-  EXPECT_EQ(ea_d, 8);
+  EXPECT_EQ(ea_d, 5);
   EXPECT_TRUE(ne_d > ea_d);
 
   meat_static_.next_start_time();

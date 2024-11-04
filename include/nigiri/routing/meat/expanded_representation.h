@@ -7,7 +7,7 @@
 
 #include "nigiri/location.h"
 #include "nigiri/routing/journey.h"
-#include "nigiri/routing/meat/csa/binary_search.h"
+#include "nigiri/routing/meat/binary_search.h"
 #include "nigiri/routing/meat/decision_graph.h"
 #include "nigiri/rt/frun.h"
 
@@ -58,7 +58,7 @@ struct expanded_representation {
     arcs_.resize(g.arc_count());
 
     auto find_slot = [&](dg_node_idx_t where, unixtime_t when) {
-      return csa::binary_find_first_true(
+      return binary_find_first_true(
                  slots_of_node_[to_idx(where)].begin(),
                  slots_of_node_[to_idx(where)].end(),
                  [&](auto const& s) { return when <= slots_[s.slot_].when_; })
