@@ -262,10 +262,8 @@ void load_timetable(loader_config const& config,
                               train_nr, stop_seq_numbers);
     }
     auto shape_pairs = trip_shapes{shape_states, trip_data.data_};
-    if (shapes_data != nullptr) {
-      shape_pairs.calculate_shape_offsets(tt, *shapes_data, shape_states);
-      shape_pairs.store_offsets(*shapes_data, trip_data.data_);
-    }
+    shape_pairs.calculate_shape_offsets(tt, shapes_data, shape_states);
+    shape_pairs.store_offsets(trip_data.data_);
 
     auto const timer = scoped_timer{"loader.gtfs.routes.build"};
     auto const attributes = std::basic_string<attribute_combination_idx_t>{};
@@ -370,9 +368,7 @@ void load_timetable(loader_config const& config,
     }
 
     // Build bounding boxes
-    if (shapes_data != nullptr) {
-      shape_pairs.create_boxes(tt, *shapes_data);
-    }
+    shape_pairs.create_boxes(tt);
 
     // Build location_routes map
     for (auto l = tt.location_routes_.size(); l != tt.n_locations(); ++l) {

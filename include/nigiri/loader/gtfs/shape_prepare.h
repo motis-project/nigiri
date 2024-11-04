@@ -32,12 +32,13 @@ struct trip_shapes {
   trip_shapes(shape_loader_state const&,
               vector_map<gtfs_trip_idx_t, trip> const&);
   void calculate_shape_offsets(timetable const&,
-                               shapes_storage&,
+                               shapes_storage*,
                                shape_loader_state const&);
-  void store_offsets(shapes_storage&, vector_map<gtfs_trip_idx_t, trip> const&) const;
-  void create_boxes(timetable const&, shapes_storage&) const;
+  void store_offsets(vector_map<gtfs_trip_idx_t, trip> const&) const;
+  void create_boxes(timetable const&) const;
   shape_idx_t index_offset_;
   std::vector<shape_segments> shape_segments_;
+  shapes_storage* shapes_;
 };
 
 trip_shapes get_shape_pairs(shape_loader_state const&,
