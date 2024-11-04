@@ -41,6 +41,15 @@ struct search_state {
 };
 
 struct search_stats {
+  std::map<std::string, std::uint64_t> to_map() const {
+    return {
+        {"lb_time", lb_time_},
+        {"fastest_direct", fastest_direct_},
+        {"interval_extensions", interval_extensions_},
+        {"execute_time", execute_time_.count()},
+    };
+  }
+
   std::uint64_t lb_time_{0ULL};
   std::uint64_t fastest_direct_{0ULL};
   std::uint64_t interval_extensions_{0ULL};
