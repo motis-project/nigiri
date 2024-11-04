@@ -251,9 +251,14 @@ void trip_shapes::calculate_shape_offsets(timetable const& tt,
                                           shapes_storage& shapes_data,
                                           shape_loader_state const& states) {
   auto m = std::mutex{};
+  auto const progress_tracker = utl::get_active_progress_tracker();
+  progress_tracker->status("Calculating shape offsets")
+      .out_bounds(98.F, 99.F)
+      .in_high(shape_segments_.size());
   std::for_each(
       std::execution::par_unseq, shape_segments_.begin(), shape_segments_.end(),
       [&](shape_segments& segments) {
+        progress_tracker->increment();
         if (segments.offsets_.empty()) {
           return;
         }
@@ -325,7 +330,12 @@ void trip_shapes::calculate_shape_offsets(timetable const& tt,
 void trip_shapes::store_offsets(
     shapes_storage& shapes_data,
     vector_map<gtfs_trip_idx_t, trip> const& trips) const {
+  auto const progress_tracker = utl::get_active_progress_tracker();
+  progress_tracker->status("Storing trip offsets")
+      .out_bounds(100.F, 100.F)
+      .in_high(trips.size());
   for (auto const& trip : trips) {
+    progress_tracker->increment();
     auto const trip_idx = trip.trip_idx_;
     auto const shape_idx = trip.shape_idx_;
     auto const offset_idx = [&]() {
