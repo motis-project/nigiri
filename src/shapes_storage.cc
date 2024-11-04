@@ -107,7 +107,7 @@ std::optional<geo::box> shapes_storage::get_bounding_box(
   auto const& boxes = boxes_[route_idx];
   // 1-N: bounding box for segment
   return segment + 1 < boxes.size() ? boxes[segment + 1]
-                                    : std::optional<geo::box>{};
+                                    : std::optional<geo::box>{std::nullopt};
 }
 
 }  // namespace nigiri
