@@ -41,14 +41,4 @@ struct trip_shapes {
   shapes_storage* shapes_;
 };
 
-trip_shapes get_shape_pairs(shape_loader_state const&,
-                            vector_map<gtfs_trip_idx_t, trip> const&);
-
-void calculate_shape_offsets(timetable const&,
-                             shapes_storage&,
-                             vector_map<gtfs_trip_idx_t, trip> const&,
-                             shape_loader_state const&);
-
-void calculate_shape_boxes(timetable const&, shapes_storage&);
-
 }  // namespace nigiri::loader::gtfs
