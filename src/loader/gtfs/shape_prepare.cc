@@ -237,10 +237,13 @@ trip_shapes::trip_shapes(shape_loader_state const& states,
     }
     auto const idx = cista::to_idx(trip.shape_idx_ - index_offset_);
     auto& candidates = shape_segments_[idx].offsets_;
-    if (std::all_of(std::execution::par_unseq, candidates.begin(),
-                    candidates.end(), [&](shape_segment const& it) {
-                      return *it.stop_seq_ != trip.stop_seq_;
-                    })) {
+    if (std::all_of(
+#if __cpp_lib_execution
+            std::execution::par_unseq,
+#endif
+            candidates.begin(), candidates.end(), [&](shape_segment const& it) {
+              return *it.stop_seq_ != trip.stop_seq_;
+            })) {
       auto distances =
           trip.distance_traveled_.empty() ? nullptr : &trip.distance_traveled_;
       candidates.emplace_back(&trip.stop_seq_, distances);
@@ -261,7 +264,10 @@ void trip_shapes::calculate_shape_offsets(timetable const& tt,
       .out_bounds(98.F, 99.F)
       .in_high(shape_segments_.size());
   std::for_each(
-      std::execution::par_unseq, shape_segments_.begin(), shape_segments_.end(),
+#if __cpp_lib_execution
+      std::execution::par_unseq,
+#endif
+      shape_segments_.begin(), shape_segments_.end(),
       [&](shape_segments& segments) {
         progress_tracker->increment();
         if (segments.offsets_.empty()) {
@@ -351,11 +357,13 @@ void trip_shapes::store_offsets(
       }
       auto const& segments =
           shape_segments_[cista::to_idx(shape_idx - index_offset_)].offsets_;
-      auto const segment =
-          std::find_if(std::execution::par_unseq, begin(segments),
-                       end(segments), [&](shape_segment const& s) {
-                         return *s.stop_seq_ == trip.stop_seq_;
-                       });
+      auto const segment = std::find_if(
+#if __cpp_lib_execution
+          std::execution::par_unseq,
+#endif
+          begin(segments), end(segments), [&](shape_segment const& s) {
+            return *s.stop_seq_ == trip.stop_seq_;
+          });
       return segment->offset_idx_;
     }();
     shapes_->add_trip_shape_offsets(trip_idx,
@@ -373,8 +381,11 @@ void trip_shapes::create_boxes(timetable const& tt) const {
   auto route_boxes =
       std::vector<std::vector<geo::box>>(cista::to_idx(new_routes.size()));
   std::transform(
-      std::execution::par, begin(new_routes), end(new_routes),
-      begin(route_boxes), [&](route_idx_t const r) {
+#if __cpp_lib_execution
+      std::execution::par,
+#endif
+      begin(new_routes), end(new_routes), begin(route_boxes),
+      [&](route_idx_t const r) {
         auto const seq = tt.route_location_seq_[r];
         assert(seq.size() > 0U);
         auto boxes = std::vector<geo::box>(seq.size() - 1 + 1);
@@ -403,11 +414,13 @@ void trip_shapes::create_boxes(timetable const& tt) const {
               auto const& segments =
                   shape_segments_[cista::to_idx(shape_idx - index_offset_)]
                       .offsets_;
-              auto const& segment =
-                  std::find_if(std::execution::par_unseq, begin(segments),
-                               end(segments), [&](shape_segment const& s) {
-                                 return s.offset_idx_ == offset_idx;
-                               });
+              auto const& segment = std::find_if(
+#if __cpp_lib_execution
+                  std::execution::par_unseq,
+#endif
+                  begin(segments), end(segments), [&](shape_segment const& s) {
+                    return s.offset_idx_ == offset_idx;
+                  });
               bounding_box.extend(segment->boxes_[0]);
               for (auto i = 1U; i < segment->boxes_.size(); ++i) {
                 boxes[(i - 1) + cista::to_idx(absolute_range.from_) + 1] =
@@ -421,8 +434,8 @@ void trip_shapes::create_boxes(timetable const& tt) const {
         boxes.resize(last_extend);
         return boxes;
       });
-  for (auto const& box : route_boxes) {
-    shapes_->boxes_.emplace_back(box);
+  for (auto const& boxes : route_boxes) {
+    shapes_->boxes_.emplace_back(boxes);
   }
 }
 }  // namespace nigiri::loader::gtfs
