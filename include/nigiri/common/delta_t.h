@@ -51,16 +51,8 @@ inline std::pair<day_idx_t, minutes_after_midnight_t> split_day_mam(
     day_idx_t const base, delta_t const x) {
   assert(x != std::numeric_limits<delta_t>::min());
   assert(x != std::numeric_limits<delta_t>::max());
-  if (x < 0) {
-    auto const o = (x % 1440) == 0 ? 0 : 1;
-    auto const t = -x / 1440 + o;
-    auto const min = x + (t * 1440);
-    return {static_cast<day_idx_t>(static_cast<int>(to_idx(base)) - t),
-            minutes_after_midnight_t{min}};
-  } else {
-    return {static_cast<day_idx_t>(static_cast<int>(to_idx(base)) + x / 1440),
-            minutes_after_midnight_t{x % 1440}};
-  }
+  auto const minutes = base.v_ * 1440 + x;
+  return {day_idx_t{minutes / 1440}, minutes_after_midnight_t{minutes % 1440}};
 }
 
 }  // namespace nigiri
