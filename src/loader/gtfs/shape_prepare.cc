@@ -324,7 +324,7 @@ void trip_shapes::calculate_shape_offsets(timetable const& tt,
 
 void trip_shapes::store_offsets(
     shapes_storage& shapes_data,
-    vector_map<gtfs_trip_idx_t, trip> const& trips) {
+    vector_map<gtfs_trip_idx_t, trip> const& trips) const {
   for (auto const& trip : trips) {
     auto const trip_idx = trip.trip_idx_;
     auto const shape_idx = trip.shape_idx_;
@@ -347,7 +347,7 @@ void trip_shapes::store_offsets(
 }
 
 void trip_shapes::create_boxes(timetable const& tt,
-                               shapes_storage& shapes_data) {
+                               shapes_storage& shapes_data) const {
   auto const new_routes =
       interval{static_cast<route_idx_t>(shapes_data.boxes_.size()),
                static_cast<route_idx_t>(tt.route_transport_ranges_.size())};
