@@ -640,7 +640,6 @@ struct timetable {
   vector_map<booking_rule_idx_t, booking_rule> booking_rules_;
 
   // stop times
-  vector_map<area_idx_t, source_idx_t> locationTrip_src_;
   hash_map<location_trip_id, location_trip_idx_t> location_trip_id_to_idx;
   vector_map<location_trip_idx_t, stop_windows> window_times_;
   vector_map<location_trip_idx_t, booking_rule_idx_t> pickup_booking_rules_;
