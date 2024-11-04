@@ -295,7 +295,7 @@ TEST(MeatRaptor, Simple) {
   auto r2 = m::compact_representation{g};
   auto ss1 = std::stringstream{};
   m::write_dot(ss1, tt, g, r);
-  m::write_dot(std::cout, tt, g, r);
+  // m::write_dot(std::cout, tt, g, r);
   (void)r2;
   // m::write_dot(std::cout, tt, g, r2);
 

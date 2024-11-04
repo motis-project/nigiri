@@ -110,11 +110,12 @@ struct meat_raptor {
         nigiri::routing::raptor<search_dir, false, vias, search_type::kESA>;
     using algo_ea_t =
         nigiri::routing::raptor<search_dir, false, vias, search_type::kEA>;
-    auto const esa_static_arr_delay =
-        max_delay_ /*TODO +1 ? wie beim meat_csa?*/;
+    // necessary, so that a connection exist where delay_prob() returns 1
+    auto constexpr extra_delay = 1;
+    auto const esa_static_arr_delay = clamp(max_delay_ + extra_delay);
     nigiri::routing::search<search_dir, algo_esa_t, search_type::kESA>{
-        tt_, nullptr,      state_.s_state_, state_.r_state_,
-        q,   std::nullopt, max_delay_,      base_}
+        tt_, nullptr,      state_.s_state_,      state_.r_state_,
+        q,   std::nullopt, esa_static_arr_delay, base_}
         .execute();
     auto const best_arr =
         state_.r_state_.get_best<vias>()[to_idx(target_location)][vias];
