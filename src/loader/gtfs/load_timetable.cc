@@ -269,7 +269,7 @@ void load_timetable(loader_config const& config,
             : std::make_optional(
                   shape_prepare{shape_states, trip_data.data_, *shapes_data});
     if (shape_results.has_value()) {
-      shape_results->calculate_results(tt, shape_states);
+      shape_results->calculate_results(tt, std::move(shape_states));
       shape_results->write_trip_shape_offsets(trip_data.data_);
     }
 
