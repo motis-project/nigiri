@@ -107,12 +107,12 @@ shape_prepare::shape_prepare(shape_loader_state const& states,
       continue;
     }
     auto const idx = cista::to_idx(trip.shape_idx_ - index_offset_);
-    auto& candidates = shape_results_[idx].results_;
+    auto& results = shape_results_[idx].results_;
     if (std::all_of(
 #if __cpp_lib_execution
             std::execution::par_unseq,
 #endif
-            candidates.begin(), candidates.end(),
+            results.begin(), results.end(),
             [&](shape_results::result const& it) {
               return *it.stop_seq_ != trip.stop_seq_;
             })) {
