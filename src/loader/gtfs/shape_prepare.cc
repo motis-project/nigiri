@@ -13,9 +13,9 @@
 #include "geo/polyline.h"
 
 #include "utl/enumerate.h"
-#include "utl/get_or_create.h"
 #include "utl/progress_tracker.h"
 
+#include "nigiri/loader/gtfs/shape.h"
 #include "nigiri/rt/frun.h"
 #include "nigiri/shapes_storage.h"
 #include "nigiri/stop.h"
@@ -84,32 +84,33 @@ std::vector<shape_offset_t> get_offsets_by_dist_traveled(
   return offsets;
 }
 
-shape_segment::shape_segment(stop_seq_t const* stop_seq,
-                             std::vector<double> const* distances)
+shape_prepare::shape_results::result::result(
+    stop_seq_t const* stop_seq, std::vector<double> const* distances)
     : stop_seq_{stop_seq},
-      offset_idx_{shape_offset_idx_t::invalid()},
       distances_{distances},
+      offset_idx_{shape_offset_idx_t::invalid()},
       boxes_{} {}
 
-trip_shapes::trip_shapes(shape_loader_state const& states,
-                         vector_map<gtfs_trip_idx_t, trip> const& trips)
+shape_prepare::shape_prepare(shape_loader_state const& states,
+                             vector_map<gtfs_trip_idx_t, trip> const& trips)
     : index_offset_{states.index_offset_},
-      shape_segments_(states.id_map_.size()),
+      shape_results_(states.id_map_.size()),
       shapes_{nullptr} {
-  for (auto i = 0U; i < shape_segments_.size(); ++i) {
-    shape_segments_[i].shape_idx_ = static_cast<shape_idx_t>(index_offset_ + i);
+  for (auto i = 0U; i < shape_results_.size(); ++i) {
+    shape_results_[i].shape_idx_ = static_cast<shape_idx_t>(index_offset_ + i);
   }
   for (auto const& trip : trips) {
     if (trip.shape_idx_ == shape_idx_t::invalid()) {
       continue;
     }
     auto const idx = cista::to_idx(trip.shape_idx_ - index_offset_);
-    auto& candidates = shape_segments_[idx].offsets_;
+    auto& candidates = shape_results_[idx].results_;
     if (std::all_of(
 #if __cpp_lib_execution
             std::execution::par_unseq,
 #endif
-            candidates.begin(), candidates.end(), [&](shape_segment const& it) {
+            candidates.begin(), candidates.end(),
+            [&](shape_results::result const& it) {
               return *it.stop_seq_ != trip.stop_seq_;
             })) {
       auto distances =
@@ -119,9 +120,9 @@ trip_shapes::trip_shapes(shape_loader_state const& states,
   }
 }
 
-void trip_shapes::calculate_shape_offsets(timetable const& tt,
-                                          shapes_storage* shapes_data,
-                                          shape_loader_state const& states) {
+void shape_prepare::calculate_results(timetable const& tt,
+                                      shapes_storage* shapes_data,
+                                      shape_loader_state const& states) {
   if (shapes_data == nullptr) {
     return;
   }
@@ -130,22 +131,22 @@ void trip_shapes::calculate_shape_offsets(timetable const& tt,
   auto const progress_tracker = utl::get_active_progress_tracker();
   progress_tracker->status("Calculating shape offsets")
       .out_bounds(98.F, 99.F)
-      .in_high(shape_segments_.size());
+      .in_high(shape_results_.size());
   std::for_each(
 #if __cpp_lib_execution
       std::execution::par_unseq,
 #endif
-      shape_segments_.begin(), shape_segments_.end(),
-      [&](shape_segments& segments) {
+      shape_results_.begin(), shape_results_.end(),
+      [&](shape_results& segments) {
         progress_tracker->increment();
-        if (segments.offsets_.empty()) {
+        if (segments.results_.empty()) {
           return;
         }
         auto const shape = shapes_->get_shape(segments.shape_idx_);
         auto const& shape_distances =
             states
                 .distances_[cista::to_idx(segments.shape_idx_ - index_offset_)];
-        for (auto& segment : segments.offsets_) {
+        for (auto& segment : segments.results_) {
           auto const offsets = [&]() {
             if (!shape_distances.empty() && segment.distances_ != nullptr) {
               return get_offsets_by_dist_traveled(*segment.distances_,
@@ -206,7 +207,7 @@ void trip_shapes::calculate_shape_offsets(timetable const& tt,
       });
 }
 
-void trip_shapes::store_offsets(
+void shape_prepare::write_trip_shape_offsets(
     vector_map<gtfs_trip_idx_t, trip> const& trips) const {
   if (shapes_ == nullptr) {
     return;
@@ -224,12 +225,12 @@ void trip_shapes::store_offsets(
         return shape_offset_idx_t::invalid();
       }
       auto const& segments =
-          shape_segments_[cista::to_idx(shape_idx - index_offset_)].offsets_;
+          shape_results_[cista::to_idx(shape_idx - index_offset_)].results_;
       auto const segment = std::find_if(
 #if __cpp_lib_execution
           std::execution::par_unseq,
 #endif
-          begin(segments), end(segments), [&](shape_segment const& s) {
+          begin(segments), end(segments), [&](shape_results::result const& s) {
             return *s.stop_seq_ == trip.stop_seq_;
           });
       return segment->offset_idx_;
@@ -239,7 +240,7 @@ void trip_shapes::store_offsets(
   }
 }
 
-void trip_shapes::create_boxes(timetable const& tt) const {
+void shape_prepare::write_route_boxes(timetable const& tt) const {
   if (shapes_ == nullptr) {
     return;
   }
@@ -280,13 +281,14 @@ void trip_shapes::create_boxes(timetable const& tt) const {
               }
             } else {
               auto const& segments =
-                  shape_segments_[cista::to_idx(shape_idx - index_offset_)]
-                      .offsets_;
+                  shape_results_[cista::to_idx(shape_idx - index_offset_)]
+                      .results_;
               auto const& segment = std::find_if(
 #if __cpp_lib_execution
                   std::execution::par_unseq,
 #endif
-                  begin(segments), end(segments), [&](shape_segment const& s) {
+                  begin(segments), end(segments),
+                  [&](shape_results::result const& s) {
                     return s.offset_idx_ == offset_idx;
                   });
               bounding_box.extend(segment->boxes_[0]);
