@@ -116,9 +116,9 @@ shape_prepare::shape_prepare(shape_loader_state const& states,
             [&](shape_results::result const& it) {
               return *it.stop_seq_ != trip.stop_seq_;
             })) {
-      auto distances =
+      auto const distances =
           trip.distance_traveled_.empty() ? nullptr : &trip.distance_traveled_;
-      candidates.emplace_back(&trip.stop_seq_, distances);
+      results.emplace_back(&trip.stop_seq_, std::move(distances));
     }
   }
 }
