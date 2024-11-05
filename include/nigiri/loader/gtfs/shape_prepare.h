@@ -29,15 +29,15 @@ struct shape_prepare {
   };
 
   shape_prepare(shape_loader_state const&,
-                vector_map<gtfs_trip_idx_t, trip> const&);
-  void calculate_results(timetable const&,
-                         shapes_storage*,
-                         shape_loader_state const&);
+                vector_map<gtfs_trip_idx_t, trip> const&,
+                shapes_storage&);
+  void calculate_results(timetable const&, shape_loader_state const&);
   void write_trip_shape_offsets(vector_map<gtfs_trip_idx_t, trip> const&) const;
   void write_route_boxes(timetable const&) const;
   shape_idx_t index_offset_;
   std::vector<shape_results> shape_results_;
-  shapes_storage* shapes_;
+  shapes_storage& shapes_;
+  bool results_ready_;
 };
 
 }  // namespace nigiri::loader::gtfs

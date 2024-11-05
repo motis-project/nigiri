@@ -14,6 +14,7 @@
 
 #include "utl/enumerate.h"
 #include "utl/progress_tracker.h"
+#include "utl/verify.h"
 
 #include "nigiri/loader/gtfs/shape.h"
 #include "nigiri/rt/frun.h"
@@ -92,10 +93,12 @@ shape_prepare::shape_results::result::result(
       boxes_{} {}
 
 shape_prepare::shape_prepare(shape_loader_state const& states,
-                             vector_map<gtfs_trip_idx_t, trip> const& trips)
+                             vector_map<gtfs_trip_idx_t, trip> const& trips,
+                             shapes_storage& shapes_data)
     : index_offset_{states.index_offset_},
       shape_results_(states.id_map_.size()),
-      shapes_{nullptr} {
+      shapes_{shapes_data},
+      results_ready_{false} {
   for (auto i = 0U; i < shape_results_.size(); ++i) {
     shape_results_[i].shape_idx_ = static_cast<shape_idx_t>(index_offset_ + i);
   }
@@ -121,12 +124,7 @@ shape_prepare::shape_prepare(shape_loader_state const& states,
 }
 
 void shape_prepare::calculate_results(timetable const& tt,
-                                      shapes_storage* shapes_data,
                                       shape_loader_state const& states) {
-  if (shapes_data == nullptr) {
-    return;
-  }
-  shapes_ = shapes_data;
   auto m = std::mutex{};
   auto const progress_tracker = utl::get_active_progress_tracker();
   progress_tracker->status("Calculating shape offsets")
@@ -142,7 +140,7 @@ void shape_prepare::calculate_results(timetable const& tt,
         if (segments.results_.empty()) {
           return;
         }
-        auto const shape = shapes_->get_shape(segments.shape_idx_);
+        auto const shape = shapes_.get_shape(segments.shape_idx_);
         auto const& shape_distances =
             states
                 .distances_[cista::to_idx(segments.shape_idx_ - index_offset_)];
@@ -160,7 +158,7 @@ void shape_prepare::calculate_results(timetable const& tt,
           }();
           if (!offsets.empty()) {
             auto const guard = std::lock_guard<decltype(m)>{m};
-            segment.offset_idx_ = shapes_->add_offsets(offsets);
+            segment.offset_idx_ = shapes_.add_offsets(offsets);
           } else {
             segment.offset_idx_ = shape_offset_idx_t::invalid();
           }
@@ -205,16 +203,15 @@ void shape_prepare::calculate_results(timetable const& tt,
           }();
         }
       });
+  results_ready_ = true;
 }
 
 void shape_prepare::write_trip_shape_offsets(
     vector_map<gtfs_trip_idx_t, trip> const& trips) const {
-  if (shapes_ == nullptr) {
-    return;
-  }
+  utl::verify(results_ready_, "Operation requires calculated results");
   auto const progress_tracker = utl::get_active_progress_tracker();
   progress_tracker->status("Storing trip offsets")
-      .out_bounds(100.F, 100.F)
+      .out_bounds(99.F, 100.F)
       .in_high(trips.size());
   for (auto const& trip : trips) {
     progress_tracker->increment();
@@ -235,17 +232,15 @@ void shape_prepare::write_trip_shape_offsets(
           });
       return segment->offset_idx_;
     }();
-    shapes_->add_trip_shape_offsets(trip_idx,
-                                    cista::pair{shape_idx, offset_idx});
+    shapes_.add_trip_shape_offsets(trip_idx,
+                                   cista::pair{shape_idx, offset_idx});
   }
 }
 
 void shape_prepare::write_route_boxes(timetable const& tt) const {
-  if (shapes_ == nullptr) {
-    return;
-  }
+  utl::verify(results_ready_, "Operation requires calculated results");
   auto const new_routes =
-      interval{static_cast<route_idx_t>(shapes_->boxes_.size()),
+      interval{static_cast<route_idx_t>(shapes_.boxes_.size()),
                static_cast<route_idx_t>(tt.route_transport_ranges_.size())};
   auto route_boxes =
       std::vector<std::vector<geo::box>>(cista::to_idx(new_routes.size()));
@@ -272,7 +267,7 @@ void shape_prepare::write_route_boxes(timetable const& tt) const {
           frun.for_each_trip([&](trip_idx_t const trip_idx,
                                  interval<stop_idx_t> const absolute_range) {
             auto const [shape_idx, offset_idx] =
-                shapes_->trip_offset_indices_[trip_idx];
+                shapes_.trip_offset_indices_[trip_idx];
             if (shape_idx == shape_idx_t::invalid() ||
                 offset_idx == shape_offset_idx_t::invalid()) {
               for (auto const idx : absolute_range) {
@@ -307,7 +302,7 @@ void shape_prepare::write_route_boxes(timetable const& tt) const {
         return boxes;
       });
   for (auto const& boxes : route_boxes) {
-    shapes_->boxes_.emplace_back(boxes);
+    shapes_.boxes_.emplace_back(boxes);
   }
 }
 }  // namespace nigiri::loader::gtfs
