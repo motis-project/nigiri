@@ -442,6 +442,20 @@ TEST(
                   leg_shape);
       }
     }
+    // Testing bounding boxes
+    {
+      // Full route A -> F -> G -> H -> I -> J -> K (Index 1)
+      EXPECT_EQ((geo::make_box({{1.0, 0.5}, {5.0, 3.0}})),
+                shapes_data.get_bounding_box(route_idx_t{1U}));
+      // Shape segment not contained in simple box
+      // H -> I
+      {
+        auto const segment_box =
+            shapes_data.get_bounding_box(route_idx_t{1}, 4);
+        ASSERT_TRUE(segment_box.has_value());
+        EXPECT_EQ((geo::make_box({{3.0, 2.5}, {4.0, 3.0}})), *segment_box);
+      }
+    }
   }
   // Multiple trips, some with and some without shape
   {
