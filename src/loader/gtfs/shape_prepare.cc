@@ -294,9 +294,10 @@ void trip_shapes::create_boxes(timetable const& tt) const {
                 boxes[(i - 1) + cista::to_idx(absolute_range.from_) + 1] =
                     segment->boxes_[i];
               }
-              last_extend = std::max(
-                  last_extend,
-                  static_cast<unsigned long>(segment->boxes_.size() + absolute_range.from_));
+              last_extend =
+                  std::max(last_extend,
+                           static_cast<unsigned long>(segment->boxes_.size() +
+                                                      absolute_range.from_));
             }
           });
         }
