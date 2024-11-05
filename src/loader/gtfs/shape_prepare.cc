@@ -135,39 +135,39 @@ void shape_prepare::calculate_results(timetable const& tt,
       std::execution::par_unseq,
 #endif
       shape_results_.begin(), shape_results_.end(),
-      [&](shape_results& segments) {
+      [&](shape_results& results) {
         progress_tracker->increment();
-        if (segments.results_.empty()) {
+        if (results.results_.empty()) {
           return;
         }
-        auto const shape = shapes_.get_shape(segments.shape_idx_);
+        auto const shape = shapes_.get_shape(results.shape_idx_);
         auto const& shape_distances =
             states
-                .distances_[cista::to_idx(segments.shape_idx_ - index_offset_)];
-        for (auto& segment : segments.results_) {
+                .distances_[cista::to_idx(results.shape_idx_ - index_offset_)];
+        for (auto& result : results.results_) {
           auto const offsets = [&]() {
-            if (!shape_distances.empty() && segment.distances_ != nullptr) {
-              return get_offsets_by_dist_traveled(*segment.distances_,
+            if (!shape_distances.empty() && result.distances_ != nullptr) {
+              return get_offsets_by_dist_traveled(*result.distances_,
                                                   shape_distances);
             }
-            if (shape.size() < segment.stop_seq_->size()) {
+            if (shape.size() < result.stop_seq_->size()) {
               return std::vector<shape_offset_t>{};
             }
 
-            return get_offsets_by_stops(tt, shape, *segment.stop_seq_);
+            return get_offsets_by_stops(tt, shape, *result.stop_seq_);
           }();
           if (!offsets.empty()) {
             auto const guard = std::lock_guard<decltype(m)>{m};
-            segment.offset_idx_ = shapes_.add_offsets(offsets);
+            result.offset_idx_ = shapes_.add_offsets(offsets);
           } else {
-            segment.offset_idx_ = shape_offset_idx_t::invalid();
+            result.offset_idx_ = shape_offset_idx_t::invalid();
           }
-          segment.boxes_ = [&]() {
+          result.boxes_ = [&]() {
             // Store box of full shape at index 0
             auto boxes =
                 offsets.empty()
                     ? std::vector<geo::box>(1)
-                    : std::vector<geo::box>(segment.stop_seq_->size() - 1 + 1);
+                    : std::vector<geo::box>(result.stop_seq_->size() - 1 + 1);
             auto& shape_box = boxes.front();
             auto last_extend = 0UL;
             if (!offsets.empty()) {
@@ -182,10 +182,10 @@ void shape_prepare::calculate_results(timetable const& tt,
                   segment_box.extend(point);
                 }
                 auto const from_l =
-                    tt.locations_.coordinates_[stop{(*segment.stop_seq_)[i]}
+                    tt.locations_.coordinates_[stop{(*result.stop_seq_)[i]}
                                                    .location_idx()];
                 auto const to_l =
-                    tt.locations_.coordinates_[stop{(*segment.stop_seq_)[i + 1]}
+                    tt.locations_.coordinates_[stop{(*result.stop_seq_)[i + 1]}
                                                    .location_idx()];
                 auto const stop_box = geo::make_box({from_l, to_l});
                 if (!stop_box.contains(segment_box)) {
@@ -193,7 +193,7 @@ void shape_prepare::calculate_results(timetable const& tt,
                 }
               }
             } else {
-              for (auto const s : *segment.stop_seq_) {
+              for (auto const s : *result.stop_seq_) {
                 shape_box.extend(
                     tt.locations_.coordinates_[stop{s}.location_idx()]);
               }
@@ -221,16 +221,16 @@ void shape_prepare::write_trip_shape_offsets(
       if (shape_idx == shape_idx_t::invalid()) {
         return shape_offset_idx_t::invalid();
       }
-      auto const& segments =
+      auto const& results =
           shape_results_[cista::to_idx(shape_idx - index_offset_)].results_;
-      auto const segment = std::find_if(
+      auto const result = std::find_if(
 #if __cpp_lib_execution
           std::execution::par_unseq,
 #endif
-          begin(segments), end(segments), [&](shape_results::result const& s) {
-            return *s.stop_seq_ == trip.stop_seq_;
+          begin(results), end(results), [&](shape_results::result const& res) {
+            return *res.stop_seq_ == trip.stop_seq_;
           });
-      return segment->offset_idx_;
+      return result->offset_idx_;
     }();
     shapes_.add_trip_shape_offsets(trip_idx,
                                    cista::pair{shape_idx, offset_idx});
@@ -255,7 +255,7 @@ void shape_prepare::write_route_boxes(timetable const& tt) const {
         auto boxes = std::vector<geo::box>(seq.size() - 1 + 1);
         auto last_extend = 1UL;
         auto& bounding_box = boxes[0U];
-        // 0: bounding box for trip,  1-N: bounding box for each segment
+        // 0: bounding box for route,  1-N: bounding box for each segment
         auto const stop_indices =
             interval{stop_idx_t{0U}, static_cast<stop_idx_t>(seq.size())};
         for (auto const transport_idx : tt.route_transport_ranges_[r]) {
@@ -275,25 +275,25 @@ void shape_prepare::write_route_boxes(timetable const& tt) const {
                     tt.locations_.coordinates_[stop{seq[idx]}.location_idx()]);
               }
             } else {
-              auto const& segments =
+              auto const& results =
                   shape_results_[cista::to_idx(shape_idx - index_offset_)]
                       .results_;
-              auto const& segment = std::find_if(
+              auto const& result = std::find_if(
 #if __cpp_lib_execution
                   std::execution::par_unseq,
 #endif
-                  begin(segments), end(segments),
-                  [&](shape_results::result const& s) {
-                    return s.offset_idx_ == offset_idx;
+                  begin(results), end(results),
+                  [&](shape_results::result const& res) {
+                    return res.offset_idx_ == offset_idx;
                   });
-              bounding_box.extend(segment->boxes_[0]);
-              for (auto i = 1U; i < segment->boxes_.size(); ++i) {
+              bounding_box.extend(result->boxes_[0]);
+              for (auto i = 1U; i < result->boxes_.size(); ++i) {
                 boxes[(i - 1) + cista::to_idx(absolute_range.from_) + 1] =
-                    segment->boxes_[i];
+                    result->boxes_[i];
               }
               last_extend =
                   std::max(last_extend,
-                           static_cast<unsigned long>(segment->boxes_.size() +
+                           static_cast<unsigned long>(result->boxes_.size() +
                                                       absolute_range.from_));
             }
           });
