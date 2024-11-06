@@ -270,7 +270,7 @@ void load_timetable(loader_config const& config,
                   shape_prepare{shape_states, trip_data.data_, *shapes_data});
     if (shape_results.has_value()) {
       shape_results->calculate_results(tt, std::move(shape_states));
-      shape_results->write_trip_shape_offsets(trip_data.data_);
+      shape_results->create_trip_shape_offsets(trip_data.data_);
     }
 
     auto const timer = scoped_timer{"loader.gtfs.routes.build"};
@@ -377,7 +377,7 @@ void load_timetable(loader_config const& config,
 
     // Build bounding boxes
     if (shape_results.has_value()) {
-      shape_results->write_route_boxes(tt);
+      shape_results->create_route_boxes(tt);
     }
 
     // Build location_routes map

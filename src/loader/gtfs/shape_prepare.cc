@@ -196,7 +196,7 @@ void shape_prepare::calculate_results(timetable const& tt,
   results_ready_ = true;
 }
 
-void shape_prepare::write_trip_shape_offsets(
+void shape_prepare::create_trip_shape_offsets(
     vector_map<gtfs_trip_idx_t, trip> const& trips) const {
   utl::verify(results_ready_, "Operation requires calculated results");
   auto const progress_tracker = utl::get_active_progress_tracker();
@@ -225,7 +225,7 @@ void shape_prepare::write_trip_shape_offsets(
   }
 }
 
-void shape_prepare::write_route_boxes(timetable const& tt) const {
+void shape_prepare::create_route_boxes(timetable const& tt) const {
   utl::verify(results_ready_, "Operation requires calculated results");
   auto const route_offset = shapes_.boxes_.size();
   auto const routes_count = tt.route_transport_ranges_.size() - route_offset;
