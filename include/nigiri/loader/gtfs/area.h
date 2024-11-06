@@ -9,8 +9,7 @@ struct timetable;
 }
 
 namespace nigiri::loader::gtfs {
-using area_map_t =
-    hash_map<std::string, std::pair<location_id_type, area_idx_t>>;
+using area_map_t = hash_map<std::string, area_idx>;
 
 area_map_t read_areas(source_idx_t const stop_areas_src,
                       source_idx_t const location_groups_src,

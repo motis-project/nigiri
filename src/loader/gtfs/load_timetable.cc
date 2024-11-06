@@ -135,9 +135,10 @@ void load_timetable(loader_config const& config,
   read_frequencies(trip_data, load(kFrequenciesFile).data());
   const auto geojson_id_to_idx =
       read_location_geojson(src, tt, load(kLocationGeojsonFile).data());
-  auto areas = read_areas(
-      src, tt, stops, geojson_id_to_idx, load(kStopAreasFile).data(),
-      load(kLocationGroupsFile).data(), load(kLocationGroupStopsFile).data());
+  auto areas =
+      read_areas(src, src, src, src, src, tt, stops, geojson_id_to_idx,
+                 load(kStopAreasFile).data(), load(kLocationGroupsFile).data(),
+                 load(kLocationGroupStopsFile).data());
 
   read_stop_times(src, tt, trip_data, stops, booking_rules,
                   load(kStopTimesFile).data());

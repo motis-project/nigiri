@@ -216,7 +216,6 @@ struct trip_id {
 
 struct area_idx {
   CISTA_COMPARABLE()
-  CISTA_PRINTABLE(area_idx, "location_idx", "location_geojson_idx")
   std::optional<area_idx_t> location_idx_;
   std::optional<area_idx_t> location_geojson_idx_;
 };
@@ -312,22 +311,20 @@ using timezone = variant<pair<string, void const*>, tz_offsets>;
 
 struct booking_rule {
   CISTA_COMPARABLE()
-  CISTA_PRINTABLE(booking_rule,
-                  "type",
-                  "prior_notice_duration_min",
-                  "prior_notice_duration_max",
-                  "prior_notice_last_day",
-                  "prior_notice_last_time",
-                  "prior_notice_start_day",
-                  "prior_notice_start_time",
-                  "prior_notice_service_id",
-                  "message",
-                  "pickup_message",
-                  "drop_off_message",
-                  "drop_off_message",
-                  "phone_number"
-                  "info_url",
-                  "booking_url")
+  // CISTA_PRINTABLE(booking_rule,
+  //                 "type",
+  //                 "prior_notice_duration_min",
+  //                 "prior_notice_duration_max",
+  //                 "prior_notice_last_day",
+  //                 "prior_notice_start_day")
+  // "message",
+  // "pickup_message",
+  // "drop_off_message",
+  // "drop_off_message",
+  // "phone_number"
+  // "info_url",
+  // "booking_url"
+
   uint8_t type_;  // Required 0=Real-Time-Booking, 1=Same-Day-Booking,
                   // 2=Prior-Day-Booking
   uint16_t
@@ -342,15 +339,15 @@ struct booking_rule {
                                      // prior_notice_duration_max Is Defined
   duration_t prior_notice_start_time_;  // Conditionally Required If
                                         // prior_notice_start_day Is Defined
-  std::optional<provider_idx_t>
-      prior_notice_service_id_;  // Conditionally Forbidden If booking_type=0
-                                 // And booking_type=1
-  std::string message_;  // Optional
-  std::string pickup_message_;  // Optional
-  std::string drop_off_message_;  // Optional
-  std::string phone_number_;  // Optional
-  std::string info_url_;  // Optional
-  std::string booking_url_;  // Optional
+  std::optional<bitfield_idx_t>
+      bitfield_idx_;  // Conditionally Forbidden If booking_type=0
+                      // And booking_type=1
+  // std::string message_;  // Optional
+  // std::string pickup_message_;  // Optional
+  // std::string drop_off_message_;  // Optional
+  // std::string phone_number_;  // Optional
+  // std::string info_url_;  // Optional
+  // std::string booking_url_;  // Optional
 };
 
 enum class clasz : std::uint8_t {

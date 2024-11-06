@@ -151,8 +151,8 @@ struct timetable {
                 "register_area: no location source were given for location_id "
                 "\"{}\"",
                 l_id);
-            return area_idx{.location_geojson_idx_ = std::nullopt,
-                            .location_idx_ = std::nullopt};
+            return area_idx{.location_idx_ = std::nullopt,
+                            .location_geojson_idx_ = std::nullopt};
           }
           if (!new_idx.location_idx_.has_value()) {
             new_idx.location_idx_ =
@@ -172,8 +172,8 @@ struct timetable {
                 "register_area: no location geojson source were given for "
                 "location_gejson_id \"{}\"",
                 l_id);
-            return area_idx{.location_geojson_idx_ = std::nullopt,
-                            .location_idx_ = std::nullopt};
+            return area_idx{.location_idx_ = std::nullopt,
+                            .location_geojson_idx_ = std::nullopt};
           }
           if (!new_idx.location_geojson_idx_.has_value()) {
             new_idx.location_geojson_idx_ =
@@ -190,16 +190,17 @@ struct timetable {
         } else {
           log(log_lvl::error, "timetable",
               "register_area: unknown location_id \"{}\"", l_id);
-          return area_idx{.location_geojson_idx_ = std::nullopt,
-                          .location_idx_ = std::nullopt};
+          return area_idx{.location_idx_ = std::nullopt,
+                          .location_geojson_idx_ = std::nullopt};
         }
       }
       area_id_to_area_idx_.emplace(
           nigiri::area_id{.id_ = area_id, .src_ = area_src}, new_idx);
+      area_src_.emplace(new_idx, area_src);
       return new_idx;
     }
 
-    vector_map<area_idx, source_idx_t> area_src_;
+    hash_map<area_idx, source_idx_t> area_src_;
 
     hash_map<location_id, location_id_type> location_id_to_location_id_type_;
     hash_map<area_id, area_idx> area_id_to_area_idx_;
@@ -227,15 +228,17 @@ struct timetable {
     std::basic_string<route_color> const& route_colors_;
   };
 
-  location_geojson_idx_t register_location_geojson(
-      source_idx_t src,
-      std::string const& id,
-      tg_geom_type const type,
-      const utl::raii<tg_geom*, decltype(tg_geom_free)>& geometry) {
+  location_geojson_idx_t register_location_geojson(source_idx_t src,
+                                                   std::string const& id,
+                                                   tg_geom_type const type,
+                                                   tg_geom* geometry) {
     auto const next_idx =
         location_geojson_idx_t{location_geojson_types_.size()};
     location_geojson_types_.push_back(type);
-    locations_geojson_geometries_.push_back(geometry);
+    // auto const ptr =
+    //     std::unique_ptr<tg_geom, void (*)(tg_geom*)>(geometry, tg_geom_free);
+    locations_geojson_geometries_.emplace_back(std::make_unique<tg_geom*>(
+        geometry));  // TODO Dekonstruktorfunktion hinzufügen
     location_id_to_location_geojson_idx_.emplace(id, next_idx);
     return next_idx;
   }
@@ -253,7 +256,7 @@ struct timetable {
     dropoff_booking_rules_.emplace_back(dropoff_booking_rule_id);
     location_trip_id_to_idx.emplace(
         location_trip_id{
-            .src_ = src, .location_id_ = location_id, .trip_id_ = trip_id},
+            .location_id_ = location_id, .trip_id_ = trip_id, .src_ = src},
         next_idx);
     return next_idx;
   }
@@ -631,7 +634,7 @@ struct timetable {
   hash_map<std::string, location_geojson_idx_t>
       location_id_to_location_geojson_idx_;
   vector_map<location_idx_t, tg_geom_type> location_geojson_types_;
-  vector_map<location_idx_t, utl::raii<tg_geom*, decltype(tg_geom_free)>>
+  vector_map<location_idx_t, std::unique_ptr<tg_geom*>>
       locations_geojson_geometries_;
 
   // booking rules

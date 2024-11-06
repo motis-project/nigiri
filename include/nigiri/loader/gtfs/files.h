@@ -29,4 +29,10 @@ constexpr auto const kLocationGeojsonFile =
 constexpr auto const kAreasFile = std::string_view{"areas.txt"};
 constexpr auto const kStopAreasFile = std::string_view{"stop_areas.txt"};
 
+// Files used for Tests only
+constexpr auto const kBookingRuleCalendarFile =
+    std::string_view{"booking_rule_calendar.txt"};
+constexpr auto const kBookingRuleCalendarDatesFile =
+    std::string_view{"booking_rule_calendar_dates.txt"};
+
 }  // namespace nigiri::loader::gtfs

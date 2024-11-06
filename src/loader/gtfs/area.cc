@@ -68,25 +68,25 @@ area_map_t read_areas(source_idx_t const area_src,
       utl::make_buf_reader(file_content, progress_tracker->update_fn())}  //
       | utl::csv<csv_area>()  //
       | utl::for_each([&](csv_area const& a) {
-          // TODO assert?
-
           auto area_id = a.area_id_->view();
           if (area_id.empty()) {
             area_id = a.location_group_id_->view();
           }
           if (area_id.empty()) {
-            // TODO log error
-          }
-
-          auto location_ids =
-              utl::get_or_create(area_id_to_location_ids, area_id,
-                                 []() { return std::vector<std::string>{}; });
-          if (!a.location_id_->empty()) {
-            location_ids.push_back(a.location_id_->to_str());
-          } else if (!a.stop_id_->empty()) {
-            location_ids.push_back(a.stop_id_->to_str());
+            log(log_lvl::error, "loader.gtfs.area",
+                R"(area_id and location_group_id are empty!)");
           } else {
-            // TODO error log
+            auto location_ids =
+                utl::get_or_create(area_id_to_location_ids, area_id,
+                                   []() { return std::vector<std::string>{}; });
+            if (!a.location_id_->empty()) {
+              location_ids.push_back(a.location_id_->to_str());
+            } else if (!a.stop_id_->empty()) {
+              location_ids.push_back(a.stop_id_->to_str());
+            } else {
+              log(log_lvl::error, "loader.gtfs.area",
+                  R"(area {}: location_id and stop_id are empty!)", area_id);
+            }
           }
         });
   for (auto const a_to_l : area_id_to_location_ids) {
@@ -95,6 +95,7 @@ area_map_t read_areas(source_idx_t const area_src,
         location_id_to_idx, geojson_id_to_idx);
     area_map.emplace(a_to_l.first, area_idx);
   }
+  return area_map;
 }
 
 }  // namespace nigiri::loader::gtfs

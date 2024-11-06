@@ -53,7 +53,13 @@ booking_rule_map_t read_booking_rules(traffic_days_t const& services,
          | utl::csv<csv_booking_rule>()  //
          |
          utl::transform([&](csv_booking_rule const& b) {
-           // Checking GTFS-flex-specification requirements
+           // // Checking GTFS-flex-specification requirements
+           // if (b.id_->empty()) {
+           //   log(log_lvl::error, "loader.gtfs.booking_rule",
+           //       R"(booking_rule_id is empty)");
+           //   return std::make_pair<std::string, booking_rule_idx_t>{};
+           // }
+
            assert(!b.id_->view().empty());
            assert(b.type_.val() == kRealTimeBooking ||
                   b.type_.val() == kSameDayBooking ||
@@ -84,7 +90,10 @@ booking_rule_map_t read_booking_rules(traffic_days_t const& services,
                error = true;
              }
            }
-
+           std::optional<bitfield_idx_t> index{};
+           if (!b.prior_notice_service_id_->empty() && !error) {
+             index = tt.register_bitfield(*traffic_days_it->second);
+           }
            return std::pair{
                b.id_->to_str(),
                tt.register_booking_rule({
@@ -103,10 +112,10 @@ booking_rule_map_t read_booking_rules(traffic_days_t const& services,
                                  b.prior_notice_start_day_->c_str(), NULL, 10)),
                    .prior_notice_start_time_ =
                        hhmm_to_min(*b.prior_notice_start_time_),
-                   .prior_notice_service_id_ =
-                       b.prior_notice_service_id_->empty() || error
-                           ? std::nullopt
-                           : traffic_days_it,
+                   .bitfield_idx_ = index
+                   // b.prior_notice_service_id_->empty() || error
+                   //     ? std::nullopt
+                   //     : tt.register_bitfield(*traffic_days_it->second),
                    // .message_ = b.message_->to_str(),
                    // .pickup_message_ = b.pickup_message_->to_str(),
                    // .drop_off_message_ = b.drop_off_message_->to_str(),

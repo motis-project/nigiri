@@ -71,7 +71,7 @@ void read_stop_times(source_idx_t src,
       !header.contains("location_id") &&
       !header.contains("location_group_id") && !header.contains("area_id");
 
-  line_range | utl::csv<csv_stop_time>()  //
+  std::move(line_range) | utl::csv<csv_stop_time>()  //
       |
       utl::for_each([&](csv_stop_time const& s) {
         auto const is_flex_trip =
@@ -91,10 +91,10 @@ void read_stop_times(source_idx_t src,
             id = s.area_id_->to_str();
           }
 
-          const auto pickup_booking_rule_idx =
-              booking_rules.find(s.pickup_booking_rule_id_);
-          const auto dropoff_booking_rule_idx =
-              booking_rules.find(s.drop_off_booking_rule_id_);
+          auto const pickup_booking_rule_idx =
+              booking_rules.find(s.pickup_booking_rule_id_->view());
+          auto const dropoff_booking_rule_idx =
+              booking_rules.find(s.drop_off_booking_rule_id_->view());
 
           if (pickup_booking_rule_idx == booking_rules.end()) {
             log(log_lvl::error, "loader.gtfs.stop_time",

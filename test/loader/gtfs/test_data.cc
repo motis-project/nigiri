@@ -1,9 +1,12 @@
 #include "./test_data.h"
 
+#include <nigiri/loader/gtfs/services.h>
+
 #include "nigiri/loader/gtfs/files.h"
 
-namespace nigiri::loader::gtfs {
+#include "nigiri/types.h"
 
+namespace nigiri::loader::gtfs {
 constexpr auto const example_calendar_file_content = std::string_view{
     R"(service_id,monday,tuesday,wednesday,thursday,friday,saturday,sunday,start_date,end_date
 WE,0,0,0,0,0,1,1,20060701,20060731
@@ -83,6 +86,52 @@ AWE1,,,S2,2,0,1,3
 AWE1,6:10,6:10,S1,1,0,0,0
 )";
 
+// GTFS-Flex
+
+constexpr auto const example_booking_rules_content =
+    R"("booking_rule_id,booking_type,prior_notice_duration_min,prior_notice_duration_max,prior_notice_last_day,prior_notice_last_time,prior_notice_start_day,prior_notice_start_time,prior_notice_service_id
+1,0,,,,,,,
+2,0,,,,,,,
+3,1,5,,,,,,
+5,1,30,10080,,,,,
+4,1,15,1440,,,,,
+7,2,,,1,12:00:00,,,
+8,2,,,3,18:00:00,7,18:00:00,
+9,2,,,7,00:00:00,30,08:00:00,service_1
+)";
+
+constexpr auto const example_booking_rules_calendar_content =
+    R"("service_id,monday,tuesday,wednesday,thursday,friday,saturday,sunday,start_date,end_date
+service_1,1,1,1,1,1,0,0,20240101,20241231
+)";
+
+constexpr auto const example_booking_rules_calendar_dates_content =
+    R"("service_id,date,exception_type
+service_1,20240118,2
+service_1,20240401,2
+service_1,20240815,2
+service_1,20240923,2
+service_1,20240924,2
+service_1,20240926,2
+service_1,20241225,2
+service_1,20241226,2
+service_1,20241228,1
+service_1,20241229,1
+service_1,20241231,2
+)";
+
+constexpr auto const example_location_geojsons_content =
+    R"(")";  // TODO Testdaten einpflegen
+
+constexpr auto const example_location_groups_content =
+    R"(")";  // TODO Testdaten einpflegen
+
+constexpr auto const example_location_group_stops_content =
+    R"(")";  // TODO Testdaten einpflegen
+
+constexpr auto const example_stop_areas_content =
+    R"(")";  // TODO Testdaten einpflegen
+
 loader::mem_dir example_files() {
   using std::filesystem::path;
   return {
@@ -96,7 +145,19 @@ loader::mem_dir example_files() {
        {path{kFrequenciesFile}, std::string{example_frequencies_file_content}},
        {path{kShapesFile}, std::string{example_shapes_file_content}},
        {path{kTripsFile}, std::string{example_trips_file_content}},
-       {path{kStopTimesFile}, std::string{example_stop_times_content}}}};
+       {path{kStopTimesFile}, std::string{example_stop_times_content}},
+       {path{kBookingRulesFile}, std::string{example_booking_rules_content}},
+       {path{kBookingRuleCalendarFile},
+        std::string{example_booking_rules_calendar_content}},
+       {path{kBookingRuleCalendarDatesFile},
+        std::string{example_booking_rules_calendar_dates_content}},
+       {path{kLocationGeojsonFile},
+        std::string{example_location_geojsons_content}},
+       {path{kLocationGroupsFile},
+        std::string{example_location_groups_content}},
+       {path{kLocationGroupStopsFile},
+        std::string{example_location_group_stops_content}},
+       {path{kStopAreasFile}, std::string{example_stop_areas_content}}}};
 }
 
 constexpr auto const berlin_agencies_file_content = std::string_view{

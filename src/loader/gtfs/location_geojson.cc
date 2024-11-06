@@ -11,13 +11,13 @@ namespace nigiri::loader::gtfs {
 location_geojson_map_t read_location_geojson(source_idx_t src,
                                              timetable& tt,
                                              std::string_view file_content) {
-  std::string constexpr kGeojsonFeaturesKey = "features";
-  std::string constexpr kGeojsonIDKey = "id";
-  std::string constexpr kGeojsonGeometryKey = "geometry";
-  std::string constexpr kGeojsonTypeKey = "type";
-  std::string constexpr kGeojsonPointValue = "point";
-  std::string constexpr kGeojsonPolygonValue = "polygon";
-  std::string constexpr kGeojsonMultipolygonValue = "multipolygon";
+  // constexpr char* const kGeojsonFeaturesKey = "features";
+  // constexpr char* const kGeojsonIDKey = "id";
+  // constexpr char* const kGeojsonGeometryKey = "geometry";
+  // constexpr char* const kGeojsonTypeKey = "type";
+  // constexpr char* const kGeojsonPointValue = "point";
+  // constexpr char* const kGeojsonPolygonValue = "polygon";
+  // constexpr char* const kGeojsonMultipolygonValue = "multipolygon";
 
   location_geojson_map_t location_geojson{};
 
@@ -29,22 +29,29 @@ location_geojson_map_t read_location_geojson(source_idx_t src,
   }
 
   auto featureCollection = json.as_object();
-  const auto features = featureCollection[kGeojsonFeaturesKey].as_array();
+  auto const features = featureCollection["features"].as_array();
   for (auto feature = features.begin(); feature != features.end(); ++feature) {
-    const auto id = feature[kGeojsonIDKey].as_string();
-    const auto geometry_object = feature[kGeojsonGeometryKey].as_object();
+    auto const feature_object = feature->as_object();
+    auto const id = std::string(feature_object.at("id").as_string());
+    auto const geometry_object = feature_object.at("geometry").as_object();
 
     const auto feature_content = feature->as_string();
     auto type = TG_GEOMETRYCOLLECTION;
-    switch (geometry_object[kGeojsonTypeKey].as_string()) {
-      case kGeojsonPointValue: type = TG_POINT; break;
-      case kGeojsonPolygonValue: type = TG_POLYGON; break;
-      case kGeojsonMultipolygonValue: type = TG_MULTIPOLYGON; break;
+    auto const type_name = std::string(geometry_object.at("type").as_string());
+    if (type_name == "point") {
+      type = TG_POINT;
+    } else if (type_name == "polygon") {
+      type = TG_POLYGON;
+    } else if (type_name == "multipolygon") {
+      type = TG_MULTIPOLYGON;
+    } else {
+      // TODO log error
     }
 
-    const auto ptr =
-        utl::raii(tg_parse_geojson(feature_content.c_str()), tg_geom_free);
-    const auto idx = tt.register_location_geojson(id, type, ptr);
+    // const auto ptr =
+    //     utl::raii(tg_parse_geojson(feature_content.c_str()), tg_geom_free);
+    const auto idx = tt.register_location_geojson(
+        src, id, type, tg_parse_geojson(feature_content.c_str()));
     location_geojson.emplace(id, idx);
   }
   return location_geojson;
