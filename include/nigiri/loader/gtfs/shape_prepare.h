@@ -35,6 +35,7 @@ struct shape_prepare {
   void write_trip_shape_offsets(vector_map<gtfs_trip_idx_t, trip> const&) const;
   void write_route_boxes(timetable const&) const;
   shape_idx_t index_offset_;
+
   std::vector<shape_results> shape_results_;
   shapes_storage& shapes_;
   bool results_ready_;
