@@ -26,7 +26,8 @@ struct shapes_storage {
   void add_trip_shape_offsets(
       trip_idx_t, cista::pair<shape_idx_t, shape_offset_idx_t> const&);
   geo::box get_bounding_box(route_idx_t) const;
-  std::optional<geo::box> get_bounding_box(route_idx_t, std::size_t) const;
+  std::optional<geo::box> get_bounding_box(route_idx_t,
+                                           std::size_t segment) const;
 
   cista::mmap::protection mode_;
   std::filesystem::path p_;
