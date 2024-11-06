@@ -377,7 +377,7 @@ void load_timetable(loader_config const& config,
 
     // Build bounding boxes
     if (shape_results.has_value()) {
-      shape_results->create_route_boxes(tt);
+      shape_results->create_route_bounding_boxes(tt);
     }
 
     // Build location_routes map

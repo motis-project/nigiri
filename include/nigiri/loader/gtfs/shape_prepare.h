@@ -21,8 +21,8 @@ struct shape_prepare {
       stop_seq_t const* stop_seq_;
       std::vector<double> const* distances_;
       shape_offset_idx_t offset_idx_;
-      geo::box trip_box_;
-      std::vector<geo::box> segment_boxes_;
+      geo::box trip_bbox_;
+      std::vector<geo::box> segment_bboxes_;
     };
 
     shape_idx_t shape_idx_;
@@ -35,7 +35,7 @@ struct shape_prepare {
   void calculate_results(timetable const&, shape_loader_state const&);
   void create_trip_shape_offsets(
       vector_map<gtfs_trip_idx_t, trip> const&) const;
-  void create_route_boxes(timetable const&) const;
+  void create_route_bounding_boxes(timetable const&) const;
   shape_idx_t index_offset_;
 
   std::vector<shape_results> shape_results_;
