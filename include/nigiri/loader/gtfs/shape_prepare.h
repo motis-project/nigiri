@@ -21,7 +21,8 @@ struct shape_prepare {
       stop_seq_t const* stop_seq_;
       std::vector<double> const* distances_;
       shape_offset_idx_t offset_idx_;
-      std::vector<geo::box> boxes_;
+      geo::box trip_box_;
+      std::vector<geo::box> segment_boxes_;
     };
 
     shape_idx_t shape_idx_;

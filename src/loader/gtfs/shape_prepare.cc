@@ -92,7 +92,8 @@ shape_prepare::shape_results::result::result(
     : stop_seq_{stop_seq},
       distances_{distances},
       offset_idx_{shape_offset_idx_t::invalid()},
-      boxes_{} {}
+      trip_box_{},
+      segment_boxes_{} {}
 
 shape_prepare::shape_prepare(shape_loader_state const& states,
                              vector_map<gtfs_trip_idx_t, trip> const& trips,
@@ -136,6 +137,7 @@ void shape_prepare::calculate_results(timetable const& tt,
     auto const& shape_distances =
         states.distances_[cista::to_idx(results.shape_idx_ - index_offset_)];
     for (auto& result : results.results_) {
+
       auto const offsets = [&]() {
         if (!shape_distances.empty() && result.distances_ != nullptr) {
           return get_offsets_by_dist_traveled(*result.distances_,
@@ -147,50 +149,44 @@ void shape_prepare::calculate_results(timetable const& tt,
 
         return get_offsets_by_stops(tt, shape, *result.stop_seq_);
       }();
+
       if (!offsets.empty()) {
         auto const guard = std::lock_guard<decltype(m)>{m};
         result.offset_idx_ = shapes_.add_offsets(offsets);
       } else {
         result.offset_idx_ = shape_offset_idx_t::invalid();
       }
-      result.boxes_ = [&]() {
-        // Store box of full shape at index 0
-        auto boxes =
-            offsets.empty()
-                ? std::vector<geo::box>(1)
-                : std::vector<geo::box>(result.stop_seq_->size() - 1 + 1);
-        auto& shape_box = boxes.front();
-        auto last_extend = 0UL;
-        if (!offsets.empty()) {
-          for (auto const [i, pair] : utl::enumerate(utl::pairwise(offsets))) {
-            auto& segment_box = boxes[i + 1U];
-            auto const& [from, to] = pair;
-            for (auto const point :
-                 shape.subspan(cista::to_idx(from),
-                               cista::to_idx(to) - cista::to_idx(from) + 1)) {
-              shape_box.extend(point);
-              segment_box.extend(point);
-            }
-            auto const from_l =
-                tt.locations_
-                    .coordinates_[stop{(*result.stop_seq_)[i]}.location_idx()];
-            auto const to_l =
-                tt.locations_.coordinates_[stop{(*result.stop_seq_)[i + 1]}
-                                               .location_idx()];
-            auto const stop_box = geo::make_box({from_l, to_l});
-            if (!stop_box.contains(segment_box)) {
-              last_extend = i + 1U;
-            }
+
+      if (!offsets.empty()) {
+        result.segment_boxes_ = std::vector<geo::box>(offsets.size() - 1);
+        auto box_count = 0UL;
+        for (auto const [i, pair] : utl::enumerate(utl::pairwise(offsets))) {
+          auto& segment_box = result.segment_boxes_[i];
+          auto const& [from, to] = pair;
+          for (auto const point :
+               shape.subspan(cista::to_idx(from),
+                             cista::to_idx(to) - cista::to_idx(from) + 1)) {
+            result.trip_box_.extend(point);
+            segment_box.extend(point);
           }
-        } else {
-          for (auto const s : *result.stop_seq_) {
-            shape_box.extend(
-                tt.locations_.coordinates_[stop{s}.location_idx()]);
+          auto const from_l =
+              tt.locations_
+                  .coordinates_[stop{(*result.stop_seq_)[i]}.location_idx()];
+          auto const to_l =
+              tt.locations_.coordinates_[stop{(*result.stop_seq_)[i + 1]}
+                                             .location_idx()];
+          auto const stop_box = geo::make_box({from_l, to_l});
+          if (!stop_box.contains(segment_box)) {
+            box_count = i + 1U;
           }
         }
-        boxes.reserve(last_extend + 1);
-        return boxes;
-      }();
+        result.segment_boxes_.resize(box_count);
+      } else {
+        for (auto const s : *result.stop_seq_) {
+          result.trip_box_.extend(
+              tt.locations_.coordinates_[stop{s}.location_idx()]);
+        }
+      }
     }
   });
   results_ready_ = true;
@@ -227,18 +223,18 @@ void shape_prepare::create_trip_shape_offsets(
 
 void shape_prepare::create_route_boxes(timetable const& tt) const {
   utl::verify(results_ready_, "Operation requires calculated results");
-  auto const route_offset = shapes_.boxes_.size();
+  auto const route_offset = shapes_.route_boxes_.size();
   auto const routes_count = tt.route_transport_ranges_.size() - route_offset;
-  auto route_boxes = std::vector<std::vector<geo::box>>(routes_count);
+  auto route_boxes = std::vector<geo::box>(routes_count);
+  auto route_segment_boxes = std::vector<std::vector<geo::box>>(routes_count);
   utl::parallel_for(std::views::iota(0U, routes_count), [&](std::size_t const
                                                                 box_idx) {
     auto const r = static_cast<route_idx_t>(box_idx + route_offset);
     auto const seq = tt.route_location_seq_[r];
     assert(seq.size() > 0U);
-    auto boxes = std::vector<geo::box>(seq.size() - 1 + 1);
-    auto last_extend = 1UL;
-    auto& bounding_box = boxes[0U];
-    // 0: bounding box for route,  1-N: bounding box for each segment
+    auto bounding_box = geo::box{};
+    auto segment_boxes = std::vector<geo::box>(seq.size() - 1);
+    auto box_count = 0UL;
     auto const stop_indices =
         interval{stop_idx_t{0U}, static_cast<stop_idx_t>(seq.size())};
     for (auto const transport_idx : tt.route_transport_ranges_[r]) {
@@ -262,22 +258,25 @@ void shape_prepare::create_route_boxes(timetable const& tt) const {
               [&](shape_results::result const& res) {
                 return res.offset_idx_ == offset_idx;
               });
-          bounding_box.extend(result->boxes_[0]);
-          for (auto i = 1U; i < result->boxes_.size(); ++i) {
-            boxes[(i - 1) + cista::to_idx(absolute_range.from_) + 1] =
-                result->boxes_[i];
+          bounding_box.extend(result->trip_box_);
+          for (auto i = 0U; i < result->segment_boxes_.size(); ++i) {
+            segment_boxes[i + cista::to_idx(absolute_range.from_)] =
+                result->segment_boxes_[i];
           }
-          last_extend = std::max(
-              last_extend, static_cast<unsigned long>(result->boxes_.size() +
-                                                      absolute_range.from_));
+          box_count = std::max(box_count, static_cast<unsigned long>(
+                                              result->segment_boxes_.size() +
+                                              absolute_range.from_));
         }
       });
     }
-    boxes.resize(last_extend);
-    route_boxes[box_idx] = std::move(boxes);
+    segment_boxes.resize(box_count);
+    route_boxes[box_idx] = std::move(bounding_box);
+    route_segment_boxes[box_idx] = std::move(segment_boxes);
   });
-  for (auto const& boxes : route_boxes) {
-    shapes_.boxes_.emplace_back(boxes);
+  for (auto const [route_box, segment_boxes] :
+       utl::zip(route_boxes, route_segment_boxes)) {
+    shapes_.route_boxes_.emplace_back(route_box);
+    shapes_.segment_boxes_.emplace_back(segment_boxes);
   }
 }
 }  // namespace nigiri::loader::gtfs
