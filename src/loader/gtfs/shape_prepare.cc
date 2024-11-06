@@ -227,8 +227,7 @@ void shape_prepare::create_route_boxes(timetable const& tt) const {
   auto const routes_count = tt.route_transport_ranges_.size() - route_offset;
   auto route_boxes = std::vector<geo::box>(routes_count);
   auto route_segment_boxes = std::vector<std::vector<geo::box>>(routes_count);
-  utl::parallel_for(std::views::iota(0U, routes_count), [&](std::size_t const
-                                                                box_idx) {
+  utl::parallel_for_run(route_boxes.size(), [&](std::size_t const box_idx) {
     auto const r = static_cast<route_idx_t>(box_idx + route_offset);
     auto const seq = tt.route_location_seq_[r];
     assert(seq.size() > 0U);
