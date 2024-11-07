@@ -296,8 +296,7 @@ std::vector<bbox_task> create_bbox_tasks(
     shape_idx_t const shape_offset) {
   auto const new_routes =
       interval{static_cast<route_idx_t>(route_offset),
-               static_cast<route_idx_t>(tt.route_transport_ranges_.size() -
-                                        route_offset)};
+               static_cast<route_idx_t>(tt.route_transport_ranges_.size())};
   return utl::all(new_routes)  //
          |
          utl::transform([&](route_idx_t const& r) {
