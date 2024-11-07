@@ -375,6 +375,9 @@ void load_timetable(loader_config const& config,
       progress_tracker->increment();
     }
 
+    if (shapes_data != nullptr) {
+      calculate_shape_offsets_and_bboxes(tt, *shapes_data, trip_data.data_, shape_states);
+    }
     // Build bounding boxes
     if (shape_results.has_value()) {
       shape_results->create_route_bounding_boxes(tt);

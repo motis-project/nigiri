@@ -43,4 +43,10 @@ struct shape_prepare {
   bool results_ready_;
 };
 
+void calculate_shape_offsets_and_bboxes(
+    timetable const&,
+    shapes_storage&,
+    vector_map<gtfs_trip_idx_t, trip> const&,
+    shape_loader_state const&);
+
 }  // namespace nigiri::loader::gtfs
