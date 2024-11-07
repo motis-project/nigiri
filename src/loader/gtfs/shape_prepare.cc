@@ -334,17 +334,15 @@ std::vector<offset_task> create_offset_tasks(
 
   return utl::all(std::move(inputs))  //
          |
-         utl::transform([&tt, &shapes_data, &states,
-                         index_offset](input_data const& input) {
+         utl::transform([&](input_data const& in) {
            return offset_task{
                .task_ =
-                   [&]() {
+                   [&, input = in, index_offset]() {
                      auto const shape = shapes_data.get_shape(input.shape_idx_);
                      auto const& shape_distances =
                          states.distances_[cista::to_idx(input.shape_idx_ -
                                                          index_offset)];
                      return std::make_optional<offset_task::results>({
-                         // .results_ = utl::all(std::move(input.inputs_))  //
                          .results_ =
                              utl::all(input.inputs_)  //
                              |
