@@ -2,6 +2,7 @@
 
 #include <algorithm>
 #include <mutex>
+#include <optional>
 #include <ranges>
 #include <span>
 #include <type_traits>
@@ -14,6 +15,7 @@
 #include "utl/enumerate.h"
 #include "utl/helpers/algorithm.h"
 #include "utl/parallel_for.h"
+#include "utl/pipes/all.h"
 #include "utl/pipes/transform.h"
 #include "utl/pipes/vec.h"
 #include "utl/progress_tracker.h"
@@ -287,6 +289,7 @@ void shape_prepare::create_route_bounding_boxes(timetable const& tt) const {
 struct offset_task {
   struct results {
     struct result {
+      stop_seq_t const* stop_seq_;
       std::vector<shape_offset_t> offsets_;
       geo::box trip_bbox;
       std::vector<geo::box> segment_bboxes_;
@@ -408,6 +411,7 @@ std::vector<offset_task> create_offset_tasks(
                                    }
                                    //
                                    return offset_task::results::result{
+                                       .stop_seq_ = pair.first,
                                        .offsets_ = std::move(offsets),
                                        .trip_bbox = std::move(trip_bbox),
                                        .segment_bboxes_ =
@@ -423,6 +427,39 @@ std::vector<offset_task> create_offset_tasks(
          | utl::vec();
 }
 
+void assign_shape_offsets(shapes_storage& shapes_data,
+                          vector_map<gtfs_trip_idx_t, trip> const& trips,
+                          std::vector<offset_task> tasks,
+                          shape_idx_t const index_offset) {
+  assert(utl::all_of(tasks, [](offset_task const& task) {
+    return task.results_ != std::nullopt;
+  }));
+  for (auto const& trip : trips) {
+    auto const trip_idx = trip.trip_idx_;
+    auto const shape_idx = trip.shape_idx_;
+    if (shape_idx == shape_idx_t::invalid()) {
+      shapes_data.add_trip_shape_offsets(
+          trip_idx, cista::pair{shape_idx, shape_offset_idx_t::invalid()});
+    } else {
+      auto const& results =
+          tasks[cista::to_idx(shape_idx - index_offset)].results_->results_;
+      auto const it = std::ranges::lower_bound(
+          results, trip.stop_seq_,
+          [&](stop_seq_t const& a, stop_seq_t const& b) { return a < b; },
+          [](offset_task::results::result const& res) {
+            return *res.stop_seq_;
+          });
+      if (it->offsets_.empty()) {
+        shapes_data.add_trip_shape_offsets(
+            trip_idx, cista::pair{shape_idx, shape_offset_idx_t::invalid()});
+      } else {
+        shapes_data.add_trip_shape_offsets(
+            trip_idx,
+            cista::pair{shape_idx, shapes_data.add_offsets(it->offsets_)});
+      }
+    }
+  }
+}
 
 void calculate_shape_offsets_and_bboxes(
     timetable const& tt,
@@ -430,7 +467,16 @@ void calculate_shape_offsets_and_bboxes(
     vector_map<gtfs_trip_idx_t, trip> const& trips,
     shape_loader_state const& shape_states) {
   auto offset_tasks = create_offset_tasks(tt, shapes_data, trips, shape_states);
+  auto const offset_progress_tracker = utl::get_active_progress_tracker();
+  offset_progress_tracker->status("Creating trip offsets")
+      .out_bounds(98.F, 99.F)
+      .in_high(trips.size());
   utl::parallel_for(offset_tasks,
-                    [](offset_task& task) { task.results_ = task.task_(); });
+                    [&offset_progress_tracker](offset_task& task) {
+                      offset_progress_tracker->increment();
+                      task.results_ = task.task_();
+                    });
+  assign_shape_offsets(shapes_data, trips, offset_tasks,
+                       shape_states.index_offset_);
 }
 }  // namespace nigiri::loader::gtfs
