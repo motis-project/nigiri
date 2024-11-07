@@ -290,11 +290,10 @@ struct offset_task {
   struct results {
     struct result {
       stop_seq_t const* stop_seq_;
-      shape_offset_idx_t shape_offset_idx_;
+      std::vector<shape_offset_t> offsets_;
       geo::box trip_bbox_;
       std::vector<geo::box> segment_bboxes_;
     };
-    // shape_idx_t shape_idx_;
     std::vector<result> results_;
   };
   std::function<std::optional<results>()> task_;
@@ -335,7 +334,6 @@ std::vector<offset_task> create_offset_tasks(
     shape_inputs.emplace(it, &trip.stop_seq_, std::move(distances));
   }
 
-  auto m = std::mutex{};
   return utl::all(std::move(inputs))  //
          |
          utl::transform([&](input_data const& in) {
@@ -367,15 +365,6 @@ std::vector<offset_task> create_offset_tasks(
 
                                      return get_offsets_by_stops(tt, shape,
                                                                  *stop_seq);
-                                   }();
-                                   auto const shape_offset_idx = [&]() {
-                                     if (offsets.empty()) {
-                                       return shape_offset_idx_t::invalid();
-                                     } else {
-                                       auto const guard =
-                                           std::lock_guard<decltype(m)>{m};
-                                       return shapes_data.add_offsets(offsets);
-                                     }
                                    }();
                                    // Calculate bounding boxes
                                    auto trip_bbox = geo::box{};
@@ -422,7 +411,7 @@ std::vector<offset_task> create_offset_tasks(
                                    //
                                    return offset_task::results::result{
                                        .stop_seq_ = pair.first,
-                                       .shape_offset_idx_ = shape_offset_idx,
+                                       .offsets_ = std::move(offsets),
                                        .trip_bbox_ = std::move(trip_bbox),
                                        .segment_bboxes_ =
                                            std::move(segment_bboxes),
@@ -437,13 +426,47 @@ std::vector<offset_task> create_offset_tasks(
          | utl::vec();
 }
 
-void assign_shape_offsets(shapes_storage& shapes_data,
-                          vector_map<gtfs_trip_idx_t, trip> const& trips,
-                          std::vector<offset_task> tasks,
-                          shape_idx_t const index_offset) {
+struct shape_results {
+  struct trip {
+    stop_seq_t const* stop_seq_;
+    shape_offset_idx_t shape_offset_idx_;
+    geo::box trip_bbox_;
+    std::vector<geo::box> segment_bboxes_;
+  };
+  std::vector<trip> trips_;
+};
+
+std::vector<shape_results> assign_shape_offsets(
+    shapes_storage& shapes_data,
+    vector_map<gtfs_trip_idx_t, trip> const& trips,
+    std::vector<offset_task>&& tasks,
+    shape_idx_t const index_offset) {
   assert(utl::all_of(tasks, [](offset_task const& task) {
     return task.results_ != std::nullopt;
   }));
+  auto const entries =
+      utl::all(std::move(tasks))  //
+      |
+      utl::transform([&](offset_task const& task) {
+        return shape_results{
+            .trips_ =
+                utl::all(task.results_->results_)  //
+                |
+                utl::transform([&](offset_task::results::result const& result) {
+                  return shape_results::trip{
+                      .stop_seq_ = result.stop_seq_,
+                      .shape_offset_idx_ =
+                          result.offsets_.empty()
+                              ? shape_offset_idx_t::invalid()
+                              : shapes_data.add_offsets(result.offsets_),
+                      .trip_bbox_ = result.trip_bbox_,
+                      .segment_bboxes_ = result.segment_bboxes_,
+                  };
+                })  //
+                | utl::vec(),
+        };
+      }) |
+      utl::vec();
   for (auto const& trip : trips) {
     auto const trip_idx = trip.trip_idx_;
     auto const shape_idx = trip.shape_idx_;
@@ -452,17 +475,16 @@ void assign_shape_offsets(shapes_storage& shapes_data,
           trip_idx, cista::pair{shape_idx, shape_offset_idx_t::invalid()});
     } else {
       auto const& results =
-          tasks[cista::to_idx(shape_idx - index_offset)].results_->results_;
+          entries[cista::to_idx(shape_idx - index_offset)].trips_;
       auto const it = std::ranges::lower_bound(
           results, trip.stop_seq_,
           [&](stop_seq_t const& a, stop_seq_t const& b) { return a < b; },
-          [](offset_task::results::result const& res) {
-            return *res.stop_seq_;
-          });
+          [](shape_results::trip const& entry) { return *entry.stop_seq_; });
       shapes_data.add_trip_shape_offsets(
           trip_idx, cista::pair{shape_idx, it->shape_offset_idx_});
     }
   }
+  return entries;
 }
 
 struct bbox_task {
@@ -474,11 +496,12 @@ struct bbox_task {
   std::optional<result> result_;
 };
 
-std::vector<bbox_task> create_bbox_tasks(timetable const& tt,
-                                         shapes_storage& shapes_data,
-                                         std::vector<offset_task> const& tasks,
-                                         std::size_t const route_offset,
-                                         shape_idx_t const shape_offset) {
+std::vector<bbox_task> create_bbox_tasks(
+    timetable const& tt,
+    shapes_storage& shapes_data,
+    std::vector<shape_results> const& results,
+    std::size_t const route_offset,
+    shape_idx_t const shape_offset) {
   assert(utl::all_of(tasks, [](offset_task const& task) {
     return task.results_ != std::nullopt;
   }));
@@ -521,16 +544,14 @@ std::vector<bbox_task> create_bbox_tasks(timetable const& tt,
                                      [stop{seq[idx]}.location_idx()]);
                            }
                          } else {
-                           auto const& results =
-                           // TODO : INVALID OFFSET?
-                               tasks[cista::to_idx(shape_idx - shape_offset)]
-                                   .results_->results_;
                            auto const result = std::ranges::lower_bound(
-                               results, offset_idx,
+                               results[cista::to_idx(shape_idx - shape_offset)]
+                                   .trips_,
+                               offset_idx,
                                [](shape_offset_idx_t const a,
                                   shape_offset_idx_t const b) { return a < b; },
-                               [](offset_task::results::result const& res) {
-                                 return res.shape_offset_idx_;
+                               [](shape_results::trip const& trip) {
+                                 return trip.shape_offset_idx_;
                                });
                            bounding_box.extend(result->trip_bbox_);
                            for (auto i = 0U; i < result->segment_bboxes_.size();
@@ -580,10 +601,10 @@ void calculate_shape_offsets_and_bboxes(
                       offset_progress_tracker->increment();
                       task.results_ = task.task_();
                     });
-  assign_shape_offsets(shapes_data, trips, offset_tasks,
-                       shape_states.index_offset_);
+  auto results = assign_shape_offsets(
+      shapes_data, trips, std::move(offset_tasks), shape_states.index_offset_);
 
-  auto bbox_tasks = create_bbox_tasks(tt, shapes_data, offset_tasks,
+  auto bbox_tasks = create_bbox_tasks(tt, shapes_data, results,
                                       shapes_data.route_bboxes_.size(),
                                       shape_states.index_offset_);
   auto const bbox_progress_tracker = utl::get_active_progress_tracker();
