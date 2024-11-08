@@ -359,6 +359,7 @@ std::vector<bbox_task> create_bbox_tasks(
                              }
                            });
                      }
+                      segment_bboxes.resize(bbox_count);
 
                      return std::make_optional(bbox_task::result{
                          std::move(bounding_box), std::move(segment_bboxes)});
