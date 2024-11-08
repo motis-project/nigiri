@@ -320,39 +320,38 @@ std::vector<bbox_task> create_bbox_tasks(
                            rt::run{.t_ = transport{transport_idx},
                                    .stop_range_ = stop_indices,
                                    .rt_ = rt_transport_idx_t::invalid()}};
-                       frun.for_each_trip(
-                           [&](trip_idx_t const trip_idx,
-                               interval<stop_idx_t> const absolute_range) {
-                             auto const [shape_idx, offset_idx] =
-                                 shapes_data.trip_offset_indices_[trip_idx];
-                             if (shape_idx != shape_idx_t::invalid() &&
-                                 offset_idx != shape_offset_idx_t::invalid()) {
-                               auto const result = std::ranges::lower_bound(
-                                   bbox_data[cista::to_idx(shape_idx -
-                                                           shape_offset)]
-                                       .trips_,
-                                   offset_idx,
-                                   [](shape_offset_idx_t const a,
-                                      shape_offset_idx_t const b) {
-                                     return a < b;
-                                   },
-                                   [](bbox_and_offset_data::trip const& trip) {
-                                     return trip.shape_offset_idx_;
-                                   });
-                               bounding_box.extend(result->trip_bbox_);
-                               for (auto i = 0U;
-                                    i < result->segment_bboxes_.size(); ++i) {
-                                 segment_bboxes[i + cista::to_idx(
-                                                        absolute_range.from_)] =
-                                     result->segment_bboxes_[i];
-                               }
-                               bbox_count =
-                                   std::max(bbox_count,
-                                            static_cast<unsigned long>(
-                                                result->segment_bboxes_.size() +
-                                                absolute_range.from_));
-                             }
-                           });
+                       frun.for_each_trip([&](trip_idx_t const trip_idx,
+                                              interval<stop_idx_t> const
+                                                  absolute_range) {
+                         auto const [shape_idx, offset_idx] =
+                             shapes_data.trip_offset_indices_[trip_idx];
+                         if (shape_idx == shape_idx_t::invalid() ||
+                             offset_idx == shape_offset_idx_t::invalid()) {
+                           return;
+                         }
+                         auto const result = std::ranges::lower_bound(
+                             bbox_data[cista::to_idx(shape_idx - shape_offset)]
+                                 .trips_,
+                             offset_idx,
+                             [](shape_offset_idx_t const a,
+                                shape_offset_idx_t const b) { return a < b; },
+                             [](bbox_and_offset_data::trip const& trip) {
+                               return trip.shape_offset_idx_;
+                             });
+                         bounding_box.extend(result->trip_bbox_);
+                         auto const& bboxes = result->segment_bboxes_;
+                         if (bboxes.empty()) {
+                           return;
+                         }
+                         for (auto const [i, bbox] : utl::enumerate(bboxes)) {
+                           segment_bboxes[i + cista::to_idx(
+                                                  absolute_range.from_)] = bbox;
+                         }
+                         bbox_count =
+                             std::max(bbox_count,
+                                      bboxes.size() +
+                                          cista::to_idx(absolute_range.from_));
+                       });
                      }
                      segment_bboxes.resize(bbox_count);
                      // Extend bounding boxes to contain all stops

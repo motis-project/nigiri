@@ -50,6 +50,7 @@ N,N,3.0,3.0
 N1,N1,3.5,3.0
 O,O,4.0,4.0
 Q,Q,0.0,0.0
+Q+,Q+,-1.0,-1.0
 S,S,4.0,1.0
 T,T,5.0,1.0
 U,U,6.0,2.0
@@ -82,6 +83,7 @@ ROUTE_2,SERVICE_1,TRIP_4,E,BLOCK_2,SHAPE_4,
 ROUTE_3,SERVICE_1,TRIP_5,E,BLOCK_3,SHAPE_5,
 ROUTE_4,SERVICE_1,TRIP_5+,E,BLOCK_5+,SHAPE_5,
 ROUTE_5,SERVICE_1,TRIP_6,E,BLOCK_4,,
+ROUTE_5,SERVICE_1,TRIP_6+,E,BLOCK_4,SHAPE_QQ+,
 ROUTE_6,SERVICE_1,TRIP_7,E,BLOCK_5,SHAPE_2,
 ROUTE_6,SERVICE_1,TRIP_8,E,BLOCK_5,,
 ROUTE_6,SERVICE_1,TRIP_9,E,BLOCK_5,,
@@ -127,6 +129,9 @@ SHAPE_5,2.5,3.0,9,6.53
 SHAPE_5,3.0,3.0,10,7.03
 SHAPE_5,3.5,3.0,11,7.53
 SHAPE_5,4.0,4.0,11,8.71
+SHAPE_QQ+,0.0,0.0,1,
+SHAPE_QQ+,-0.4,-0.6,2,
+SHAPE_QQ+,-1.0,-1.0,2,
 SHAPE_6,7.0,3.0,1,
 SHAPE_6,6.5,2.5,2,
 SHAPE_6,7.0,2.0,3,
@@ -175,6 +180,8 @@ TRIP_5+,12:30:00,12:30:00,N1,4,0,0,
 TRIP_5+,13:00:00,13:00:00,O,5,0,0,
 TRIP_6,10:00:00,10:00:00,A,1,0,0,
 TRIP_6,11:00:00,11:00:00,Q,2,0,0,
+TRIP_6+,11:00:00,11:00:00,Q,1,0,0,
+TRIP_6+,12:00:00,12:00:00,Q+,2,0,0,
 TRIP_7,10:00:00,10:00:00,A,1,0,0,
 TRIP_7,11:00:00,11:00:00,F,2,0,0,
 TRIP_7,12:00:00,12:00:00,G,3,0,0,
@@ -778,14 +785,27 @@ TEST(
     // Route 6
     {
       auto const r = route_idx_t{5U};
+      // Ensure the correct route is used
       EXPECT_EQ((geo::make_box({{1.0, 0.5}, {7.0, 3.0}})),
                 shapes_data.get_bounding_box(r));
+      // On 4th trip
       auto const extended_bbox = shapes_data.get_bounding_box(r, 6);
       ASSERT_TRUE(extended_bbox.has_value());
       EXPECT_EQ((geo::make_box({{6.5, 2.0}, {7.0, 3.0}})), *extended_bbox);
+      // On 3rd trip
       auto const test_bbox = shapes_data.get_bounding_box(r, 5);
       ASSERT_TRUE(extended_bbox.has_value());
       EXPECT_EQ((geo::make_box({{6.0, 2.0}, {7.0, 3.0}})), *test_bbox);
+    }
+    // Do not insert bounding boxes if sequential trip has no segment bounding
+    // boxes
+    {
+      auto const r = route_idx_t{4U};
+      // Ensure the correct route is used
+      EXPECT_EQ((geo::make_box({{-1.0, -1.0}, {1.0, 1.0}})),
+                shapes_data.get_bounding_box(r));
+      // On 1st trip
+      ASSERT_FALSE(shapes_data.get_bounding_box(r, 0).has_value());
     }
   }
 }
