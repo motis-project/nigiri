@@ -133,7 +133,7 @@ std::vector<offset_task> create_offset_tasks(
     }
     auto const distances =
         trip.distance_traveled_.empty() ? nullptr : &trip.distance_traveled_;
-    shape_inputs.emplace(it, &trip.stop_seq_, std::move(distances));
+    shape_inputs.insert(it, input_pair{&trip.stop_seq_, std::move(distances)});
   }
 
   return utl::all(std::move(inputs))  //
