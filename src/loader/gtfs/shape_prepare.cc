@@ -13,6 +13,7 @@
 #include "geo/polyline.h"
 
 #include "utl/enumerate.h"
+#include "utl/pairwise.h"
 #include "utl/parallel_for.h"
 #include "utl/pipes/all.h"
 #include "utl/pipes/transform.h"
@@ -324,14 +325,8 @@ std::vector<bbox_task> create_bbox_tasks(
                                interval<stop_idx_t> const absolute_range) {
                              auto const [shape_idx, offset_idx] =
                                  shapes_data.trip_offset_indices_[trip_idx];
-                             if (shape_idx == shape_idx_t::invalid() ||
-                                 offset_idx == shape_offset_idx_t::invalid()) {
-                               for (auto const idx : absolute_range) {
-                                 bounding_box.extend(
-                                     tt.locations_.coordinates_
-                                         [stop{seq[idx]}.location_idx()]);
-                               }
-                             } else {
+                             if (shape_idx != shape_idx_t::invalid() &&
+                                 offset_idx != shape_offset_idx_t::invalid()) {
                                auto const result = std::ranges::lower_bound(
                                    bbox_data[cista::to_idx(shape_idx -
                                                            shape_offset)]
@@ -359,7 +354,26 @@ std::vector<bbox_task> create_bbox_tasks(
                              }
                            });
                      }
-                      segment_bboxes.resize(bbox_count);
+                     segment_bboxes.resize(bbox_count);
+                     // Extend bounding boxes to contain all stops
+                     for (auto const [i, segment] :
+                          utl::enumerate(utl::pairwise(stop_indices))) {
+                       auto const [from, to] = segment;
+                       auto const from_l =
+                           tt.locations_
+                               .coordinates_[stop{seq[from]}.location_idx()];
+                       auto const to_l =
+                           tt.locations_
+                               .coordinates_[stop{seq[to]}.location_idx()];
+                       if (i == 0U) {
+                         bounding_box.extend(from_l);
+                       }
+                       bounding_box.extend(to_l);
+                       if (i < bbox_count) {
+                         segment_bboxes[i].extend(from_l);
+                         segment_bboxes[i].extend(to_l);
+                       }
+                     }
 
                      return std::make_optional(bbox_task::result{
                          std::move(bounding_box), std::move(segment_bboxes)});

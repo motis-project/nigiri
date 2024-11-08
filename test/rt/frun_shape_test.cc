@@ -64,23 +64,31 @@ SERVICE_1,20240101,1
 # routes.txt
 route_id,agency_id,route_short_name,route_long_name,route_type
 ROUTE_1,AGENCY_1,Route 1,,3
+ROUTE_2,AGENCY_1,Route 2,,3
+ROUTE_3,AGENCY_1,Route 3,,3
+ROUTE_4,AGENCY_1,Route 4,,3
+ROUTE_5,AGENCY_1,Route 5,,3
+ROUTE_6,AGENCY_1,Route 6,,3
+ROUTE_7,AGENCY_1,Route 7,,3
+ROUTE_8,AGENCY_1,Route 8,,3
+ROUTE_9,AGENCY_1,Route 9,,3
 
 # trips.txt
 route_id,service_id,trip_id,trip_headsign,block_id,shape_id,
 ROUTE_1,SERVICE_1,TRIP_1,E,BLOCK_1,SHAPE_1,
-ROUTE_1,SERVICE_1,TRIP_2,E,BLOCK_2,SHAPE_2,
-ROUTE_1,SERVICE_1,TRIP_3,E,BLOCK_2,SHAPE_3,
-ROUTE_1,SERVICE_1,TRIP_4,E,BLOCK_2,SHAPE_4,
-ROUTE_1,SERVICE_1,TRIP_5,E,BLOCK_3,SHAPE_5,
-ROUTE_1,SERVICE_1,TRIP_5+,E,BLOCK_5+,SHAPE_5,
-ROUTE_1,SERVICE_1,TRIP_6,E,BLOCK_4,,
-ROUTE_1,SERVICE_1,TRIP_7,E,BLOCK_5,SHAPE_2,
-ROUTE_1,SERVICE_1,TRIP_8,E,BLOCK_5,,
-ROUTE_1,SERVICE_1,TRIP_9,E,BLOCK_5,,
-ROUTE_1,SERVICE_1,TRIP_10,E,BLOCK_5,SHAPE_6,
-ROUTE_1,SERVICE_1,TRIP_11,E,BLOCK_6,SHAPE_7,
-ROUTE_1,SERVICE_1,TRIP_12,E,BLOCK_7,SHAPE_8,
-ROUTE_1,SERVICE_1,TRIP_13,E,BLOCK_8,SHAPE_9,
+ROUTE_2,SERVICE_1,TRIP_2,E,BLOCK_2,SHAPE_2,
+ROUTE_2,SERVICE_1,TRIP_3,E,BLOCK_2,SHAPE_3,
+ROUTE_2,SERVICE_1,TRIP_4,E,BLOCK_2,SHAPE_4,
+ROUTE_3,SERVICE_1,TRIP_5,E,BLOCK_3,SHAPE_5,
+ROUTE_4,SERVICE_1,TRIP_5+,E,BLOCK_5+,SHAPE_5,
+ROUTE_5,SERVICE_1,TRIP_6,E,BLOCK_4,,
+ROUTE_6,SERVICE_1,TRIP_7,E,BLOCK_5,SHAPE_2,
+ROUTE_6,SERVICE_1,TRIP_8,E,BLOCK_5,,
+ROUTE_6,SERVICE_1,TRIP_9,E,BLOCK_5,,
+ROUTE_6,SERVICE_1,TRIP_10,E,BLOCK_5,SHAPE_6,
+ROUTE_7,SERVICE_1,TRIP_11,E,BLOCK_11,SHAPE_11,
+ROUTE_8,SERVICE_1,TRIP_12,E,BLOCK_12,SHAPE_12,
+ROUTE_9,SERVICE_1,TRIP_13,E,BLOCK_13,SHAPE_13,
 
 # shapes.txt
 "shape_id","shape_pt_lat","shape_pt_lon","shape_pt_sequence","shape_dist_traveled"
@@ -124,22 +132,22 @@ SHAPE_6,6.5,2.5,2,
 SHAPE_6,7.0,2.0,3,
 SHAPE_6,6.5,1.5,4,
 SHAPE_6,7.0,1.0,5,
-SHAPE_7,1.0,1.0,0,0.0
-SHAPE_7,1.5,1.5,1,0.7
-SHAPE_7,2.0,2.0,2,1.4
-SHAPE_7,2.5,2.5,3,2.1
-SHAPE_7,3.0,3.0,4,2.9
-SHAPE_7,3.5,3.5,5,3.5
-SHAPE_7,4.0,4.0,6,4.2
-SHAPE_8,1.0,1.0,0,0.0
-SHAPE_8,1.5,1.5,1,0.0
-SHAPE_8,2.0,2.0,2,2.0
-SHAPE_8,3.0,3.0,3,4.0
-SHAPE_9,1.0,1.0,0,
-SHAPE_9,2.5,2.5,1,
-SHAPE_9,3.625,3.625,2,
-SHAPE_9,4.0,4.0,3,
-SHAPE_9,4.0,4.0,4,
+SHAPE_11,1.0,1.0,0,0.0
+SHAPE_11,1.5,1.5,1,0.7
+SHAPE_11,2.0,2.0,2,1.4
+SHAPE_11,2.5,2.5,3,2.1
+SHAPE_11,3.0,3.0,4,2.9
+SHAPE_11,3.5,3.5,5,3.5
+SHAPE_11,4.0,4.0,6,4.2
+SHAPE_12,1.0,1.0,0,0.0
+SHAPE_12,1.5,1.5,1,0.0
+SHAPE_12,2.0,2.0,2,2.0
+SHAPE_12,3.0,3.0,3,4.0
+SHAPE_13,1.0,1.0,0,
+SHAPE_13,2.5,2.5,1,
+SHAPE_13,3.625,3.625,2,
+SHAPE_13,4.0,4.0,3,
+SHAPE_13,4.0,4.0,4,
 
 # stop_times.txt
 trip_id,arrival_time,departure_time,stop_id,stop_sequence,pickup_type,drop_off_type,shape_dist_traveled
@@ -761,6 +769,23 @@ TEST(
                     {4.0F, 4.0F},
                 }),
                 leg_shape);
+    }
+  }
+  // Bounding boxes for route containing sequential trips
+  {
+    // Trip with bounding boxes defined by stops if followed by trip where
+    // bounding boxes are extended by shape
+    // Route 6
+    {
+      auto const r = route_idx_t{5U};
+      EXPECT_EQ((geo::make_box({{1.0, 0.5}, {7.0, 3.0}})),
+                shapes_data.get_bounding_box(r));
+      auto const extended_bbox = shapes_data.get_bounding_box(r, 6);
+      ASSERT_TRUE(extended_bbox.has_value());
+      EXPECT_EQ((geo::make_box({{6.5, 2.0}, {7.0, 3.0}})), *extended_bbox);
+      auto const test_bbox = shapes_data.get_bounding_box(r, 5);
+      ASSERT_TRUE(extended_bbox.has_value());
+      EXPECT_EQ((geo::make_box({{6.0, 2.0}, {7.0, 3.0}})), *test_bbox);
     }
   }
 }
