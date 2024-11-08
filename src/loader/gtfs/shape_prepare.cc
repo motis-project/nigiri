@@ -309,7 +309,7 @@ std::vector<bbox_task> create_bbox_tasks(
                      auto bounding_box = geo::box{};
                      auto segment_bboxes = std::vector<geo::box>{};
                      segment_bboxes.resize(seq.size() - 1);
-                     auto bbox_count = 0UL;
+                     auto bbox_count = static_cast<std::size_t>(0U);
                      auto const stop_indices = interval{
                          stop_idx_t{0U}, static_cast<stop_idx_t>(seq.size())};
 
@@ -349,8 +349,9 @@ std::vector<bbox_task> create_bbox_tasks(
                          }
                          bbox_count =
                              std::max(bbox_count,
-                                      bboxes.size() +
-                                          cista::to_idx(absolute_range.from_));
+                                      static_cast<std::size_t>(
+                                          bboxes.size() +
+                                          cista::to_idx(absolute_range.from_)));
                        });
                      }
                      segment_bboxes.resize(bbox_count);
