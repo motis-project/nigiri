@@ -12,7 +12,9 @@
 #include "nigiri/routing/meat/csa/meat_csa_state.h"
 #include "nigiri/routing/meat/decision_graph.h"
 #include "nigiri/routing/meat/expanded_representation.h"
+#include "nigiri/routing/meat/raptor/meat_raptor_state.h"
 #include "nigiri/routing/meat_csa_search.h"
+#include "nigiri/routing/meat_raptor_search.h"
 #include "nigiri/timetable.h"
 #include "nigiri/types.h"
 // #include "nigiri/logging.h"
@@ -26,6 +28,7 @@ using namespace nigiri::routing;
 
 namespace m = routing::meat;
 namespace mcsa = m::csa;
+namespace mraptor = m::raptor;
 
 std::vector<std::string> tokenize(std::string_view const& str,
                                   char delimiter,
@@ -98,49 +101,70 @@ void generate_queries(
   std::cout << queries.size() << " queries generated successfully\n";
 }
 
+template <typename MeatStats>
 struct benchmark_result {
-  friend std::ostream& operator<<(std::ostream& out,
-                                  benchmark_result const& br) {
-    using double_seconds_t = std::chrono::duration<double, std::ratio<1>>;
-    out << "(t_total: " << std::fixed << std::setprecision(3) << std::setw(9)
-        << std::chrono::duration_cast<double_seconds_t>(br.total_time_).count()
-        << "s, t_exec: " << std::setw(9) << br.stats_.total_duration_
-        << "ms, t_esa: " << std::setw(9) << br.stats_.esa_duration_
-        << "ms, t_ea: " << std::setw(9) << br.stats_.ea_duration_
-        << "ms, t_meat: " << std::setw(9) << br.stats_.meat_duration_
-        << "ms, t_ext_g: " << std::setw(9) << br.stats_.extract_graph_duration_
-        << "ms, esa_#con: " << std::setw(2)
-        << br.stats_.esa_n_connections_scanned_ << ", ea_#con: " << std::setw(2)
-        << br.stats_.ea_n_connections_scanned_
-        << ", meat_#con: " << std::setw(2)
-        << br.stats_.meat_n_connections_scanned_
-        << ", #fp_to_que: " << std::setw(2) << br.stats_.meat_n_fp_added_to_que_
-        << ", #fp_to_prof: " << std::setw(2)
-        << br.stats_.meat_n_fp_added_to_profile_
-        << ", #con_to_prof: " << std::setw(2)
-        << br.stats_.meat_n_e_added_or_replaced_to_profile_
-        << ", #e_in_prof: " << std::setw(2) << br.stats_.meat_n_e_in_profile_
-        << ")";
-    return out;
-  }
-
   std::uint64_t q_idx_;
-  mcsa::meat_csa_stats stats_;
+  MeatStats stats_;
   m::decision_graph g_;
   std::chrono::milliseconds total_time_;
 };
+std::ostream& operator<<(std::ostream& out,
+                         benchmark_result<mcsa::meat_csa_stats> const& br) {
+  using double_seconds_t = std::chrono::duration<double, std::ratio<1>>;
+  out << "(t_total: " << std::fixed << std::setprecision(3) << std::setw(9)
+      << std::chrono::duration_cast<double_seconds_t>(br.total_time_).count()
+      << "s, t_exec: " << std::setw(9) << br.stats_.total_duration_
+      << "ms, t_esa: " << std::setw(9) << br.stats_.esa_duration_
+      << "ms, t_ea: " << std::setw(9) << br.stats_.ea_duration_
+      << "ms, t_meat: " << std::setw(9) << br.stats_.meat_duration_
+      << "ms, t_ext_g: " << std::setw(9) << br.stats_.extract_graph_duration_
+      << "ms, esa_#con: " << std::setw(2)
+      << br.stats_.esa_n_connections_scanned_ << ", ea_#con: " << std::setw(2)
+      << br.stats_.ea_n_connections_scanned_ << ", meat_#con: " << std::setw(2)
+      << br.stats_.meat_n_connections_scanned_
+      << ", #fp_to_que: " << std::setw(2) << br.stats_.meat_n_fp_added_to_que_
+      << ", #fp_to_prof: " << std::setw(2)
+      << br.stats_.meat_n_fp_added_to_profile_
+      << ", #con_to_prof: " << std::setw(2)
+      << br.stats_.meat_n_e_added_or_replaced_to_profile_
+      << ", #e_in_prof: " << std::setw(2) << br.stats_.meat_n_e_in_profile_
+      << ")";
+  return out;
+}
+std::ostream& operator<<(
+    std::ostream& out, benchmark_result<mraptor::meat_raptor_stats> const& br) {
+  using double_seconds_t = std::chrono::duration<double, std::ratio<1>>;
+  out << "(t_total: " << std::fixed << std::setprecision(3) << std::setw(9)
+      << std::chrono::duration_cast<double_seconds_t>(br.total_time_).count()
+      << "s, t_exec: " << std::setw(9) << br.stats_.total_duration_
+      << "ms, t_esa: " << std::setw(9) << br.stats_.esa_duration_
+      << "ms, t_ea: " << std::setw(9) << br.stats_.ea_duration_
+      << "ms, t_meat: " << std::setw(9) << br.stats_.meat_duration_
+      << "ms, t_ext_g: " << std::setw(9) << br.stats_.extract_graph_duration_
+      << "ms, meat_#tran_it: " << std::setw(2)
+      << br.stats_.meat_n_active_transports_iterated_
+      << ", meat_#stops_it: " << std::setw(2)
+      << br.stats_.meat_n_stops_iterated_ << ", #fp_to_prof: " << std::setw(2)
+      << br.stats_.meat_n_fp_added_to_profile_
+      << ", #con_to_prof: " << std::setw(2)
+      << br.stats_.meat_n_e_added_to_profile_
+      << ", #e_in_prof: " << std::setw(2) << br.stats_.meat_n_e_in_profile_
+      << ")";
+  return out;
+}
 
 void process_queries(
     std::vector<nigiri::query_generation::start_dest_query> const& queries,
-    std::vector<benchmark_result>& results,
+    std::vector<benchmark_result<mcsa::meat_csa_stats>>& results,
     nigiri::timetable const& tt,
     bool parallel) {
   results.reserve(queries.size());
   std::mutex mutex;
   {
-    auto query_processing_timer =
-        scoped_timer(fmt::format("processing of {} queries", queries.size()));
-    auto const progress_tracker = utl::activate_progress_tracker("benchmark");
+    auto query_processing_timer = scoped_timer(
+        fmt::format("processing of {} queries (MEAT CSA)", queries.size()));
+    auto const progress_tracker =
+        utl::activate_progress_tracker("benchmark MEAT CSA");
     utl::get_global_progress_trackers().silent_ = false;
     progress_tracker->status("processing queries").in_high(queries.size());
     if (parallel) {
@@ -177,10 +201,178 @@ void process_queries(
                   total_time_stop - total_time_start)});
           progress_tracker->increment();
           // TODO remove
-          if (q_idx == 0) {
-            auto r = m::expanded_representation{result.g_};
-            m::write_dot(std::cout, tt, result.g_, r);
+          // if (q_idx == 0) {
+          //  auto r = m::expanded_representation{result.g_};
+          //  m::write_dot(std::cout, tt, result.g_, r);
+          //}
+        } catch (const std::exception& e) {
+          std::cout << e.what();
+        }
+      }
+    }
+  }
+}
+
+void process_queries(
+    std::vector<nigiri::query_generation::start_dest_query> const& queries,
+    std::vector<benchmark_result<mraptor::meat_raptor_stats>>& results,
+    nigiri::timetable const& tt,
+    bool parallel) {
+  results.reserve(queries.size());
+  std::mutex mutex;
+  {
+    auto query_processing_timer = scoped_timer(
+        fmt::format("processing of {} queries (MEAT RAPTOR)", queries.size()));
+    auto const progress_tracker =
+        utl::activate_progress_tracker("benchmark MEAT RAPTOR");
+    utl::get_global_progress_trackers().silent_ = false;
+    progress_tracker->status("processing queries").in_high(queries.size());
+    if (parallel) {
+      struct query_state {
+        mraptor::meat_raptor_state ms_;
+      };
+      utl::parallel_for_run_threadlocal<query_state>(
+          queries.size(), [&](auto& query_state, auto const q_idx) {
+            try {
+              auto const total_time_start = std::chrono::steady_clock::now();
+              auto const result = routing::meat_raptor_search(
+                  tt, query_state.ms_, queries[q_idx].q_);
+              auto const total_time_stop = std::chrono::steady_clock::now();
+              auto const guard = std::lock_guard{mutex};
+              results.emplace_back(benchmark_result{
+                  q_idx, result.stats_, result.g_,
+                  std::chrono::duration_cast<std::chrono::milliseconds>(
+                      total_time_stop - total_time_start)});
+              progress_tracker->increment();
+            } catch (const std::exception& e) {
+              std::cout << e.what();
+            }
+          });
+    } else {
+      mraptor::meat_raptor_state ms;
+      for (auto const [q_idx, q] : utl::enumerate(queries)) {
+        try {
+          auto const total_time_start = std::chrono::steady_clock::now();
+          auto const result = routing::meat_raptor_search(tt, ms, q.q_);
+          auto const total_time_stop = std::chrono::steady_clock::now();
+          results.emplace_back(benchmark_result{
+              q_idx, result.stats_, result.g_,
+              std::chrono::duration_cast<std::chrono::milliseconds>(
+                  total_time_stop - total_time_start)});
+          progress_tracker->increment();
+          // TODO remove
+          // if (q_idx == 0) {
+          //  auto r = m::expanded_representation{result.g_};
+          //  m::write_dot(std::cout, tt, result.g_, r);
+          //}
+        } catch (const std::exception& e) {
+          std::cout << e.what();
+        }
+      }
+    }
+  }
+}
+
+void process_queries(
+    std::vector<nigiri::query_generation::start_dest_query> const& queries,
+    std::vector<benchmark_result<mcsa::meat_csa_stats>>& results_csa,
+    std::vector<benchmark_result<mraptor::meat_raptor_stats>>& results_raptor,
+    nigiri::timetable const& tt,
+    bool parallel) {
+  results_csa.reserve(queries.size());
+  results_raptor.reserve(queries.size());
+  std::mutex mutex;
+  {
+    auto query_processing_timer = scoped_timer(
+        fmt::format("processing of {} queries (MEAT CSA & RAPTOR)", queries.size()));
+    auto const progress_tracker =
+        utl::activate_progress_tracker("benchmark MEAT CSA & RAPTOR");
+    utl::get_global_progress_trackers().silent_ = false;
+    progress_tracker->status("processing queries").in_high(queries.size());
+    if (parallel) {
+      struct query_state {
+        mcsa::meat_csa_state<mcsa::dynamic_profile_set> ms_c_;
+        mraptor::meat_raptor_state ms_r_;
+      };
+      utl::parallel_for_run_threadlocal<query_state>(
+          queries.size(), [&](auto& query_state, auto const q_idx) {
+            try {
+              auto const total_time_c_start = std::chrono::steady_clock::now();
+              auto const result_c = routing::meat_csa_search(
+                  tt, query_state.ms_c_, queries[q_idx].q_);
+              auto const total_time_c_stop = std::chrono::steady_clock::now();
+
+              auto const total_time_r_start = std::chrono::steady_clock::now();
+              auto const result_r = routing::meat_raptor_search(
+                  tt, query_state.ms_r_, queries[q_idx].q_);
+              auto const total_time_r_stop = std::chrono::steady_clock::now();
+
+              auto er_c = m::expanded_representation{result_c.g_};
+              auto er_r = m::expanded_representation{result_r.g_};
+              auto ss_c = std::stringstream{};
+              auto ss_r = std::stringstream{};
+              m::write_dot(ss_c, tt, result_c.g_, er_c);
+              m::write_dot(ss_r, tt, result_r.g_, er_r);
+              if (ss_c.str() != ss_r.str() /*result_c.g_ != result_r.g_*/) {
+                std::cout << std::endl
+                          << ss_c.str() << std::endl
+                          << ss_r.str() << std::endl;
+              }
+
+              auto const guard = std::lock_guard{mutex};
+              results_csa.emplace_back(benchmark_result{
+                  q_idx, result_c.stats_, result_c.g_,
+                  std::chrono::duration_cast<std::chrono::milliseconds>(
+                      total_time_c_stop - total_time_c_start)});
+              results_raptor.emplace_back(benchmark_result{
+                  q_idx, result_r.stats_, result_r.g_,
+                  std::chrono::duration_cast<std::chrono::milliseconds>(
+                      total_time_r_stop - total_time_r_start)});
+
+              progress_tracker->increment();
+            } catch (const std::exception& e) {
+              std::cout << e.what();
+            }
+          });
+    } else {
+      mcsa::meat_csa_state<mcsa::dynamic_profile_set> ms_c;
+      mraptor::meat_raptor_state ms_r;
+      for (auto const [q_idx, q] : utl::enumerate(queries)) {
+        try {
+          auto const total_time_c_start = std::chrono::steady_clock::now();
+          auto const result_c = routing::meat_csa_search(tt, ms_c, q.q_);
+          auto const total_time_c_stop = std::chrono::steady_clock::now();
+          results_csa.emplace_back(benchmark_result{
+              q_idx, result_c.stats_, result_c.g_,
+              std::chrono::duration_cast<std::chrono::milliseconds>(
+                  total_time_c_stop - total_time_c_start)});
+
+          auto const total_time_r_start = std::chrono::steady_clock::now();
+          auto const result_r = routing::meat_raptor_search(tt, ms_r, q.q_);
+          auto const total_time_r_stop = std::chrono::steady_clock::now();
+          results_raptor.emplace_back(benchmark_result{
+              q_idx, result_r.stats_, result_r.g_,
+              std::chrono::duration_cast<std::chrono::milliseconds>(
+                  total_time_r_stop - total_time_r_start)});
+
+          auto er_c = m::expanded_representation{result_c.g_};
+          auto er_r = m::expanded_representation{result_r.g_};
+          auto ss_c = std::stringstream{};
+          auto ss_r = std::stringstream{};
+          m::write_dot(ss_c, tt, result_c.g_, er_c);
+          m::write_dot(ss_r, tt, result_r.g_, er_r);
+          if (ss_c.str() != ss_r.str() /*result_c.g_ != result_r.g_*/) {
+            std::cout << std::endl
+                      << ss_c.str() << std::endl
+                      << ss_r.str() << std::endl;
           }
+
+          progress_tracker->increment();
+          // TODO remove
+          // if (q_idx == 0) {
+          //  auto r = m::expanded_representation{result.g_};
+          //  m::write_dot(std::cout, tt, result.g_, r);
+          //}
         } catch (const std::exception& e) {
           std::cout << e.what();
         }
@@ -191,7 +383,7 @@ void process_queries(
 
 // needs sorted vector
 template <typename T>
-T quantile(std::vector<T> const& v, double q) {
+T const& quantile(std::vector<T> const& v, double q) {
   q = q < 0.0 ? 0.0 : q;
   q = 1.0 < q ? 1.0 : q;
   if (q == 1.0) {
@@ -200,8 +392,8 @@ T quantile(std::vector<T> const& v, double q) {
   return v[static_cast<std::size_t>(v.size() * q)];
 }
 
-void print_result(std::vector<benchmark_result> const& var,
-                  std::string const& var_name) {
+template <typename T>
+void print_result(std::vector<T> const& var, std::string const& var_name) {
   std::cout << "\n--- " << var_name << " --- (n = " << var.size() << ")"
             << "\n  10%: " << quantile(var, 0.1)
             << "\n  20%: " << quantile(var, 0.2)
@@ -217,9 +409,10 @@ void print_result(std::vector<benchmark_result> const& var,
             << "\n----------------------------------\n";
 }
 
+template <typename MeatStats>
 void print_results(
     std::vector<nigiri::query_generation::start_dest_query> const& queries,
-    std::vector<benchmark_result>& results,
+    std::vector<benchmark_result<MeatStats>>& results,
     nigiri::timetable const& tt,
     nigiri::query_generation::generator_settings const& gs,
     std::filesystem::path const& tt_path) {
@@ -541,10 +734,15 @@ int main(int argc, char* argv[]) {
   auto queries = std::vector<nigiri::query_generation::start_dest_query>{};
   generate_queries(queries, n_queries, tt, gs, seed);
 
-  auto results = std::vector<benchmark_result>{};
-  process_queries(queries, results, tt, false);
+  auto results_csa = std::vector<benchmark_result<mcsa::meat_csa_stats>>{};
+  auto results_raptor =
+      std::vector<benchmark_result<mraptor::meat_raptor_stats>>{};
+  process_queries(queries, results_csa, results_raptor, tt, false);
 
-  print_results(queries, results, tt, gs, tt_path);
+  std::cout << std::endl << "Results for the MEAT CSA:" << std::endl;
+  print_results(queries, results_csa, tt, gs, tt_path);
+  std::cout << std::endl << "Results for the MEAT RAPTRO:" << std::endl;
+  print_results(queries, results_raptor, tt, gs, tt_path);
 
   print_memory_usage();
 
