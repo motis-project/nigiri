@@ -120,6 +120,8 @@ decision_graph decision_graph_extractor<ProfileSet>::operator()(
     location_idx_t target_stop,
     delta_t max_delay) const {
   if (profile_set_.is_stop_empty(source_stop)) {
+    // TODO remove
+    assert(false && "Should not be empty");
     return decision_graph{{{source_stop, {}, {}}, {target_stop, {}, {}}},
                           {},
                           dg_node_idx_t{0},
