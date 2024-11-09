@@ -113,10 +113,16 @@ struct meat_raptor {
     // necessary, so that a connection exist where delay_prob() returns 1
     auto constexpr extra_delay = 1;
     auto const esa_static_arr_delay = clamp(max_delay_ + extra_delay);
-    nigiri::routing::search<search_dir, algo_esa_t, search_type::kESA>{
-        tt_, nullptr,      state_.s_state_,      state_.r_state_,
-        q,   std::nullopt, esa_static_arr_delay, base_}
-        .execute();
+
+    UTL_START_TIMING(esa_time);
+    stats_.esa_stats_ =
+        nigiri::routing::search<search_dir, algo_esa_t, search_type::kESA>{
+            tt_, nullptr,      state_.s_state_,      state_.r_state_,
+            q,   std::nullopt, esa_static_arr_delay, base_}
+            .execute();
+    UTL_STOP_TIMING(esa_time);
+    stats_.esa_duration_ = static_cast<std::uint64_t>(UTL_TIMING_MS(esa_time));
+
     auto const best_arr =
         state_.r_state_.get_best<vias>()[to_idx(target_location)][vias];
 
@@ -149,28 +155,47 @@ struct meat_raptor {
           static_cast<double>(std::numeric_limits<delta_t>::max() - 1)));
     }
 
+    UTL_START_TIMING(ea_time);
     // - (one to all raptor with τlast as target pruning value, to determine
     // all, ea (s, τ, ·)) ? ea
-    nigiri::routing::search<search_dir, algo_ea_t, search_type::kEA>{
-        tt_,          nullptr, state_.s_state_, state_.r_state_, std::move(q),
-        std::nullopt, 0,       base_,           last_arr_}
-        .execute();
+    stats_.ea_stats_ =
+        nigiri::routing::search<search_dir, algo_ea_t, search_type::kEA>{
+            tt_,
+            nullptr,
+            state_.s_state_,
+            state_.r_state_,
+            std::move(q),
+            std::nullopt,
+            0,
+            base_,
+            last_arr_}
+            .execute();
+    UTL_STOP_TIMING(ea_time);
+    stats_.ea_duration_ = static_cast<std::uint64_t>(UTL_TIMING_MS(ea_time));
 
+    UTL_START_TIMING(meat_time);
     if (without_clasz_filter) {
-      compute_profile_set<false>(start_location, target_location, s_time);
+      compute_profile_set<false>(start_location, target_location);
     } else {
-      compute_profile_set<true>(start_location, target_location, s_time);
+      compute_profile_set<true>(start_location, target_location);
     }
+    UTL_STOP_TIMING(meat_time);
+    stats_.meat_duration_ =
+        static_cast<std::uint64_t>(UTL_TIMING_MS(meat_time));
 
     auto const max_ride_count = std::numeric_limits<int>::max();
     auto const max_arrow_count = std::numeric_limits<int>::max();
     int max_display_delay;
+    UTL_START_TIMING(extract_time);
     std::tie(result_graph, max_display_delay) =
         extract_small_sub_decision_graph(dge_, start_location, s_time,
                                          target_location, max_delay_,
                                          max_ride_count, max_arrow_count);
+    stats_.meat_n_e_in_profile_ = state_.profile_set_.compute_entry_amount();
     result_graph.compute_use_probabilities(tt_, max_delay_);
-
+    UTL_STOP_TIMING(extract_time);
+    stats_.extract_graph_duration_ =
+        static_cast<std::uint64_t>(UTL_TIMING_MS(extract_time));
     UTL_STOP_TIMING(total_time);
     stats_.total_duration_ =
         static_cast<std::uint64_t>(UTL_TIMING_MS(total_time));
@@ -212,8 +237,7 @@ private:
 
   template <bool WithClaszFilter>
   void compute_profile_set(location_idx_t start_location,
-                           location_idx_t target_location,
-                           delta_t start_time) {
+                           location_idx_t target_location) {
     state_.station_mark_.set(to_idx(target_location), true);
     state_.fp_dis_to_target_[target_location] = 0.0;
     for (auto const& fp :
@@ -253,11 +277,13 @@ private:
       state_.station_mark_.zero_out();
 
       // update_transfers(k); do not need it
-      update_footpaths(start_location, start_time);
+      update_footpaths(start_location);
     }
   }
 
-  void update_footpaths(location_idx_t start_location, delta_t start_time) {
+  void update_footpaths(location_idx_t start_location) {
+    auto constexpr vias = 0U;
+    auto const ea = first_dim_accessor{state_.r_state_.get_best<vias>(), vias};
     state_.prev_station_mark_.for_each_set_bit([&](auto const i) {
       auto const l_idx = location_idx_t{i};
       if (l_idx == start_location) {
@@ -274,7 +300,7 @@ private:
           auto const faster_than_final_fp =
               pe.meat_ < state_.fp_dis_to_target_[fp_start_location] +
                              static_cast<meat_t>(fp_dep_time);
-          if (fp_dep_time < start_time || !faster_than_final_fp ||
+          if (fp_dep_time < ea[fp_start_location.v_] || !faster_than_final_fp ||
               fp_start_location == l_idx) {
             continue;
           }
@@ -288,6 +314,8 @@ private:
                   walk{fp_start_location, footpath{l_idx, fp.duration()}}});
           if (added) {
             state_.station_mark_.set(to_idx(fp_start_location), true);
+            stats_.meat_n_e_added_to_profile_++;
+            stats_.meat_n_fp_added_to_profile_++;
           }
         }
       }
@@ -326,6 +354,7 @@ private:
     auto active_transports = std::vector<transport_data>{};
     auto outside_bounds = std::pair<transport, transport>{};
     for (auto i = 0U; i != stop_seq.size(); ++i) {
+      stats_.meat_n_stops_iterated_++;
       auto const stop_idx = static_cast<stop_idx_t>(stop_seq.size() - i - 1U);
       auto const stp = stop{stop_seq[stop_idx]};
       auto const l_idx = stp.location_idx();
@@ -342,6 +371,7 @@ private:
 
       if (stp.in_allowed()) {
         auto entry_added_to_profile = false;
+        stats_.meat_n_active_transports_iterated_ += active_transports.size();
         for (auto const& td : active_transports) {
           auto const dep_time =
               time_at_stop(r, td.trip_, stop_idx, event_type::kDep);
@@ -356,9 +386,13 @@ private:
             // this loop (wahrscheinlich ist remove_if zu teuer)
             continue;
           }
-          entry_added_to_profile |= state_.profile_set_.add_entry(
-              l_idx, profile_entry{dep_time, td.meat_,
-                                   ride(td.trip_, stop_idx, td.exit_stop_)});
+          if (state_.profile_set_.add_entry(
+                  l_idx,
+                  profile_entry{dep_time, td.meat_,
+                                ride(td.trip_, stop_idx, td.exit_stop_)})) {
+            entry_added_to_profile = true;
+            stats_.meat_n_e_added_to_profile_++;
+          }
         }
         if (entry_added_to_profile) {
           any_marked = true;
@@ -394,6 +428,7 @@ private:
 
       // if state_.prev_station_mark_[l_idx_v] && out_allowed(): check all t
       // in active_transports if the meat value can be improved
+      stats_.meat_n_active_transports_iterated_ += active_transports.size();
       auto const stop_not_empty = !state_.profile_set_.is_stop_empty(l_idx);
       for (auto& td : active_transports) {
         auto const arr_time =

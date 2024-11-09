@@ -109,7 +109,7 @@ struct profile_set {
     }
     auto const [added, it1, it2] =
         entry_[to_idx(stop_id)].unsorted_add(std::move(e));
-    recompute_entry_amount_ = true;
+    recompute_entry_amount_ = added;
     return added;
   }
 
