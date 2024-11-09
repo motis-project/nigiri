@@ -145,7 +145,7 @@ struct meat_profile_computer {
                            static_cast<meat_t>(fp_dep_time);
             if (faster_than_final_fp &&
                 meat < ee_fp.meat_ - fuzzy_dominance_offset &&
-                fp_dep_time <= source_time) {
+                fp_dep_time >= source_time) {
               fp_que_.push(std::make_unique<profile_entry>(profile_entry{
                   fp_dep_time, meat,
                   walk{fp.target(), footpath(c_dep_stop_idx, fp.duration())}}));
