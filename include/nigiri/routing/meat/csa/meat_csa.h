@@ -144,7 +144,8 @@ private:
   void reset_csa_state() {
     using c_idx_t = connection::trip_con_idx_t;
     utl::fill(state_.ea_, std::numeric_limits<delta_t>::max());
-    utl::fill(state_.first_con_reachable_.data_, std::numeric_limits<c_idx_t>::max());
+    utl::fill(state_.first_con_reachable_.data_,
+              std::numeric_limits<c_idx_t>::max());
   }
 
   int as_int(day_idx_t const d) const { return static_cast<int>(d.v_); }
@@ -279,10 +280,9 @@ private:
     update_arr_times(esa, source_time, source_stop,
                      stats_.esa_n_update_arr_time_);
 
+    // necessary, so that a connection exist where delay_prob() returns 1
     auto constexpr extra_delay = 1;
-    delta_t const target_offset =
-        tt_.locations_.transfer_time_[target_stop].count() + max_delay_ +
-        extra_delay;
+    delta_t const target_offset = max_delay_ + extra_delay;
 
     auto conn_end = conn_begin.second;
     auto day = conn_begin.first;
@@ -322,12 +322,15 @@ private:
                                                        conn->dep_time_.days()),
                           conn->arr_time_.mam());
           auto const c_arr_stop_idx = stop{conn->arr_stop_}.location_idx();
+          auto const transfer_time =
+              c_arr_stop_idx == target_stop
+                  ? delta_t{0}
+                  : static_cast<delta_t>(
+                        tt_.locations_.transfer_time_[c_arr_stop_idx].count());
           auto const conn_max_arr_time =
-              clamp(conn_arr_time +
-                    tt_.locations_.transfer_time_[c_arr_stop_idx].count() +
-                    max_delay_ + extra_delay);
+              clamp(conn_arr_time + max_delay_ + extra_delay);
           update_arr_times(esa, conn_max_arr_time, c_arr_stop_idx,
-                           stats_.esa_n_update_arr_time_);
+                           stats_.esa_n_update_arr_time_, transfer_time);
         }
       }
 
@@ -372,10 +375,12 @@ private:
   void update_arr_times(vector_map<location_idx_t, delta_t>& ea,
                         delta_t const arr_time,
                         location_idx_t const arr_stop_idx,
-                        std::uint64_t& n_up_arr_time) {
-    if (arr_time < ea[arr_stop_idx]) {
+                        std::uint64_t& n_up_arr_time,
+                        delta_t const transfer_time = delta_t{0}) {
+    auto const trans_arr_time = clamp(arr_time + transfer_time);
+    if (trans_arr_time < ea[arr_stop_idx]) {
       ++n_up_arr_time;
-      ea[arr_stop_idx] = arr_time;
+      ea[arr_stop_idx] = trans_arr_time;
       for (auto const& fp :
            tt_.locations_.footpaths_out_[prf_idx_][arr_stop_idx]) {
         ea[fp.target()] =
