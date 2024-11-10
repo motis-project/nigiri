@@ -129,6 +129,8 @@ struct timetable {
   } locations_;
 
   struct areas {
+    area_idx_t const kMaxAreaIndex = area_idx_t{UINT32_MAX};
+
     area_idx register_area(
         source_idx_t const area_src,
         std::optional<source_idx_t> const location_src,
@@ -138,8 +140,8 @@ struct timetable {
         loader::gtfs::locations_map const& location_id_to_idx,
         loader::gtfs::location_geojson_map_t const&
             location_id_to_location_geojson_idx) {
-      area_idx new_idx{.location_idx_ = std::nullopt,
-                       .location_geojson_idx_ = std::nullopt};
+      area_idx new_idx{.location_idx_ = area_idx_t{UINT32_MAX},
+                       .location_geojson_idx_ = area_idx_t{UINT32_MAX}};
 
       for (auto const l_id : location_ids) {
         auto const location_idx_iterator = location_id_to_idx.find(l_id);
@@ -151,10 +153,10 @@ struct timetable {
                 "register_area: no location source were given for location_id "
                 "\"{}\"",
                 l_id);
-            return area_idx{.location_idx_ = std::nullopt,
-                            .location_geojson_idx_ = std::nullopt};
+            return area_idx{.location_idx_ = kMaxAreaIndex,
+                            .location_geojson_idx_ = kMaxAreaIndex};
           }
-          if (!new_idx.location_idx_.has_value()) {
+          if (new_idx.location_idx_ == kMaxAreaIndex) {
             new_idx.location_idx_ =
                 area_idx_t{area_idx_to_location_idxs_.size()};
             area_idx_to_location_idxs_.emplace_back(
@@ -162,7 +164,7 @@ struct timetable {
           }
           location_id_to_location_id_type_.emplace(
               location_id{l_id, location_src.value()}, location_id_type::kStop);
-          area_idx_to_location_idxs_[new_idx.location_idx_.value()].push_back(
+          area_idx_to_location_idxs_[new_idx.location_idx_].push_back(
               location_idx_iterator->second);
         } else if ((location_geojson_idx_iterator =
                         location_id_to_location_geojson_idx.find(l_id)) !=
@@ -172,10 +174,10 @@ struct timetable {
                 "register_area: no location geojson source were given for "
                 "location_gejson_id \"{}\"",
                 l_id);
-            return area_idx{.location_idx_ = std::nullopt,
-                            .location_geojson_idx_ = std::nullopt};
+            return area_idx{.location_idx_ = kMaxAreaIndex,
+                            .location_geojson_idx_ = kMaxAreaIndex};
           }
-          if (!new_idx.location_geojson_idx_.has_value()) {
+          if (new_idx.location_geojson_idx_ == kMaxAreaIndex) {
             new_idx.location_geojson_idx_ =
                 area_idx_t{area_idx_to_location_geojson_idxs_.size()};
             area_idx_to_location_geojson_idxs_.emplace_back(
@@ -184,14 +186,13 @@ struct timetable {
           location_id_to_location_id_type_.emplace(
               location_id{l_id, geojson_src.value()},
               location_id_type::kGeoJson);
-          area_idx_to_location_geojson_idxs_[new_idx.location_geojson_idx_
-                                                 .value()]
+          area_idx_to_location_geojson_idxs_[new_idx.location_geojson_idx_]
               .push_back(location_geojson_idx_iterator->second);
         } else {
           log(log_lvl::error, "timetable",
               "register_area: unknown location_id \"{}\"", l_id);
-          return area_idx{.location_idx_ = std::nullopt,
-                          .location_geojson_idx_ = std::nullopt};
+          return area_idx{.location_idx_ = kMaxAreaIndex,
+                          .location_geojson_idx_ = kMaxAreaIndex};
         }
       }
       area_id_to_area_idx_.emplace(
@@ -631,15 +632,15 @@ struct timetable {
   /* GTFS-Flex */
   // location gejson
   vector_map<location_geojson_idx_t, source_idx_t> location_geojson_src_;
-  hash_map<std::string, location_geojson_idx_t>
-      location_id_to_location_geojson_idx_;
+  hash_map<string, location_geojson_idx_t> location_id_to_location_geojson_idx_;
   vector_map<location_idx_t, tg_geom_type> location_geojson_types_;
-  vector_map<location_idx_t, std::unique_ptr<tg_geom*>>
-      locations_geojson_geometries_;
+  std::vector<std::unique_ptr<tg_geom*>> locations_geojson_geometries_;
+  // vector_map<location_idx_t, std::unique_ptr<tg_geom*>>
+  // locations_geojson_geometries_;
 
   // booking rules
   vector_map<booking_rule_idx_t, source_idx_t> booking_rule_src_;
-  hash_map<std::string, booking_rule_idx_t> booking_rule_id_to_idx;
+  hash_map<string, booking_rule_idx_t> booking_rule_id_to_idx;
   vector_map<booking_rule_idx_t, booking_rule> booking_rules_;
 
   // stop times

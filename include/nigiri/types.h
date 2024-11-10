@@ -216,8 +216,8 @@ struct trip_id {
 
 struct area_idx {
   CISTA_COMPARABLE()
-  std::optional<area_idx_t> location_idx_;
-  std::optional<area_idx_t> location_geojson_idx_;
+  area_idx_t location_idx_;
+  area_idx_t location_geojson_idx_;
 };
 
 struct area_id {
@@ -339,9 +339,8 @@ struct booking_rule {
                                      // prior_notice_duration_max Is Defined
   duration_t prior_notice_start_time_;  // Conditionally Required If
                                         // prior_notice_start_day Is Defined
-  std::optional<bitfield_idx_t>
-      bitfield_idx_;  // Conditionally Forbidden If booking_type=0
-                      // And booking_type=1
+  bitfield_idx_t bitfield_idx_;  // Conditionally Forbidden If booking_type=0
+                                 // And booking_type=1
   // std::string message_;  // Optional
   // std::string pickup_message_;  // Optional
   // std::string drop_off_message_;  // Optional

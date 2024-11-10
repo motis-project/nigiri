@@ -13,6 +13,11 @@ enum PickupDropoffType : std::uint8_t {
   kCoordinateWithDriverType = 3
 };
 
+void read_stop_times(timetable& tt,
+                     trip_data& trips,
+                     locations_map const& stops,
+                     std::string_view file_content);
+
 void read_stop_times(source_idx_t src,
                      timetable&,
                      trip_data&,

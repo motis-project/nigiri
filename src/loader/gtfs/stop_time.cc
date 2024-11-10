@@ -22,6 +22,14 @@
 
 namespace nigiri::loader::gtfs {
 
+void read_stop_times(timetable& tt,
+                     trip_data& trips,
+                     locations_map const& stops,
+                     std::string_view file_content) {
+  auto b = booking_rule_map_t{};
+  return read_stop_times(source_idx_t{0}, tt, trips, stops, b, file_content);
+}
+
 void read_stop_times(source_idx_t src,
                      timetable& tt,
                      trip_data& trips,

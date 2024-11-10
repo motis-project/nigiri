@@ -16,6 +16,8 @@ namespace nigiri::loader::gtfs {
 booking_rule_map_t read_booking_rules(traffic_days_t const& services,
                                       timetable& tt,
                                       std::string_view file_content) {
+  auto const kMaxBitfieldIndex = bitfield_idx_t{UINT32_MAX};
+
   auto const timer = scoped_timer{"gtfs_flex.loader.booking_rules"};
 
   auto const progress_tracker = utl::get_active_progress_tracker();
@@ -90,10 +92,10 @@ booking_rule_map_t read_booking_rules(traffic_days_t const& services,
                error = true;
              }
            }
-           std::optional<bitfield_idx_t> index{};
-           if (!b.prior_notice_service_id_->empty() && !error) {
-             index = tt.register_bitfield(*traffic_days_it->second);
-           }
+           // bitfield_idx_t index = ;
+           // if (!b.prior_notice_service_id_->empty() && !error) {
+           //   index = tt.register_bitfield(*traffic_days_it->second);
+           // }
            return std::pair{
                b.id_->to_str(),
                tt.register_booking_rule({
@@ -112,7 +114,10 @@ booking_rule_map_t read_booking_rules(traffic_days_t const& services,
                                  b.prior_notice_start_day_->c_str(), NULL, 10)),
                    .prior_notice_start_time_ =
                        hhmm_to_min(*b.prior_notice_start_time_),
-                   .bitfield_idx_ = index
+                   .bitfield_idx_ =
+                       b.prior_notice_service_id_->empty() || error
+                           ? kMaxBitfieldIndex
+                           : tt.register_bitfield(*traffic_days_it->second)
                    // b.prior_notice_service_id_->empty() || error
                    //     ? std::nullopt
                    //     : tt.register_bitfield(*traffic_days_it->second),
