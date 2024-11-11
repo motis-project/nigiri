@@ -14,7 +14,7 @@ namespace nigiri::loader::gtfs {
 void calculate_shape_offsets_and_bboxes(
     timetable const&,
     shapes_storage&,
-    vector_map<gtfs_trip_idx_t, trip> const&,
-    shape_loader_state const&);
+    shape_loader_state const&,
+    vector_map<gtfs_trip_idx_t, trip> const&);
 
 }  // namespace nigiri::loader::gtfs

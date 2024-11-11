@@ -26,12 +26,12 @@ shape_loader_state parse_shapes(std::string_view const data,
     utl::csv_col<double, UTL_NAME("shape_dist_traveled")> distance_;
   };
 
-  auto const index_offset = static_cast<shape_idx_t>(shapes.size());
+  auto const index_offset = static_cast<shape_idx_t::value_t>(shapes.size());
   auto states = shape_loader_state{
       .index_offset_ = index_offset,
   };
   auto lookup = cached_lookup(states.id_map_);
-  auto seq = std::vector<std::vector<std::uint32_t>>{};
+  auto seq = vector_map<relative_shape_idx_t, std::vector<std::uint32_t>>{};
 
   auto const progress_tracker = utl::get_active_progress_tracker();
   progress_tracker->status("Parse Shapes")
@@ -49,7 +49,7 @@ shape_loader_state parse_shapes(std::string_view const data,
           });
           auto polyline = shapes[shape_idx];
           polyline.push_back(geo::latlng{*entry.lat_, *entry.lon_});
-          auto const state_idx = to_idx(shape_idx - index_offset);
+          auto const state_idx = states.get_relative_idx(shape_idx);
           seq[state_idx].push_back(*entry.seq_);
           auto& distances = states.distances_[state_idx];
           if (distances.empty()) {
@@ -65,11 +65,13 @@ shape_loader_state parse_shapes(std::string_view const data,
         });
 
   auto polyline = std::vector<geo::latlng>();
-  auto shape_idx = states.index_offset_;
-  for (auto i = 0U; i != states.distances_.size(); ++i) {
+  for (auto const i :
+       interval{relative_shape_idx_t{0U},
+                relative_shape_idx_t{states.distances_.size()}}) {
     if (utl::is_sorted(seq[i], std::less<>{})) {
       continue;
     }
+    auto const shape_idx = states.get_shape_idx(i);
 
     polyline.resize(shapes[shape_idx].size());
     for (auto j = 0U; j != shapes[shape_idx].size(); ++j) {
@@ -79,7 +81,6 @@ shape_loader_state parse_shapes(std::string_view const data,
     std::tie(seq[i], states.distances_[i], polyline) =
         utl::sort_by(seq[i], states.distances_[i], polyline);
     std::copy(begin(polyline), end(polyline), begin(shapes[shape_idx]));
-    ++shape_idx;
   }
 
   return states;

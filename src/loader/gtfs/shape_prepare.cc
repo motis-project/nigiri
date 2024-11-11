@@ -13,6 +13,7 @@
 #include "geo/polyline.h"
 
 #include "utl/enumerate.h"
+#include "utl/helpers/algorithm.h"
 #include "utl/insert_sorted.h"
 #include "utl/pairwise.h"
 #include "utl/parallel_for.h"
@@ -142,35 +143,18 @@ struct bbox_and_offset_data {
   std::vector<trip> trips_;
 };
 
-std::vector<bbox_and_offset_data> assign_shape_offsets(
-    shapes_storage& shapes_data,
-    vector_map<gtfs_trip_idx_t, trip> const& trips,
-    std::vector<offset_task>&& tasks,
-    shape_idx_t const index_offset) {
-  assert(utl::all_of(tasks, [](offset_task const& task) {
-    return task.results_ != std::nullopt;
-  }));
-  auto const entries =
-      utl::all(std::move(tasks))  //
-      | utl::transform([&](offset_task const& task) {
-          return bbox_and_offset_data{
-              .trips_ =
-                  utl::all(*task.results_)  //
-                  | utl::transform([&](offset_task::result const& result) {
-                      return bbox_and_offset_data::trip{
-                          .stop_seq_ = result.stop_seq_,
-                          .shape_offset_idx_ =
-                              result.offsets_.empty()
-                                  ? shape_offset_idx_t::invalid()
-                                  : shapes_data.add_offsets(result.offsets_),
-                          .trip_bbox_ = result.trip_bbox_,
-                          .segment_bboxes_ = result.segment_bboxes_,
-                      };
-                    })  //
-                  | utl::vec(),
-          };
-        }) |
-      utl::vec();
+void assign_shape_offsets(shapes_storage& shapes_data,
+                          vector_map<gtfs_trip_idx_t, trip> const& trips,
+                          vector_map<relative_shape_idx_t, task>& tasks,
+                          shape_loader_state const& states) {
+  for (auto& shape_tasks : tasks) {
+    for (auto& task : shape_tasks) {
+      auto& r = task.result_;
+      if (!r.offsets_.empty()) {
+        r.shape_offset_idx_ = shapes_data.add_offsets(std::move(r.offsets_));
+      }
+    }
+  }
   for (auto const& trip : trips) {
     auto const trip_idx = trip.trip_idx_;
     auto const shape_idx = trip.shape_idx_;
@@ -178,19 +162,15 @@ std::vector<bbox_and_offset_data> assign_shape_offsets(
       shapes_data.add_trip_shape_offsets(
           trip_idx, cista::pair{shape_idx, shape_offset_idx_t::invalid()});
     } else {
-      auto const& results =
-          entries[cista::to_idx(shape_idx - index_offset)].trips_;
-      auto const it = std::ranges::lower_bound(
-          results, trip.stop_seq_,
+      auto const shape_tasks = tasks[states.get_relative_idx(shape_idx)];
+      auto const task = std::ranges::lower_bound(
+          shape_tasks, trip.stop_seq_,
           [&](stop_seq_t const& a, stop_seq_t const& b) { return a < b; },
-          [](bbox_and_offset_data::trip const& entry) {
-            return *entry.stop_seq_;
-          });
+          [](stop_seq_dist const& s) { return *s.stop_seq_; });
       shapes_data.add_trip_shape_offsets(
-          trip_idx, cista::pair{shape_idx, it->shape_offset_idx_});
+          trip_idx, cista::pair{shape_idx, task->result_.shape_offset_idx_});
     }
   }
-  return entries;
 }
 
 struct bbox_task {
@@ -297,6 +277,78 @@ std::vector<bbox_task> create_bbox_tasks(
          utl::vec();
 }
 
+void assign_bounding_boxes(timetable const& tt,
+                           shapes_storage& shapes_data,
+                           vector_map<relative_shape_idx_t, task>& tasks,
+                           shape_loader_state const& shape_states) {
+  auto const new_routes =
+      interval{static_cast<route_idx_t>(shapes_data.route_bboxes_.size()),
+               static_cast<route_idx_t>(tt.route_transport_ranges_.size())};
+  for (auto const r : new_routes) {
+    auto const seq = tt.route_location_seq_[r];
+    assert(seq.size() > 0U);
+    auto bounding_box = geo::box{};
+    auto segment_bboxes = std::vector<geo::box>{};
+    segment_bboxes.resize(seq.size() - 1);
+    auto const stop_indices =
+        interval{stop_idx_t{0U}, static_cast<stop_idx_t>(seq.size())};
+
+    // Create basic bounding boxes, span by stops
+    for (auto const [i, s] : utl::enumerate(stop_indices)) {
+      auto const pos = tt.locations_.coordinates_[stop{seq[s]}.location_idx()];
+      bounding_box.extend(pos);
+      if (i > 0U) {
+        segment_bboxes[i - 1U].extend(pos);
+      }
+      if (i < segment_bboxes.size()) {
+        segment_bboxes[i].extend(pos);
+      }
+    }
+
+    // TODO Sorted vector <shape_idx, shape_offset_idx>
+    auto is_trivial = true;
+
+    for (auto const transport_idx : tt.route_transport_ranges_[r]) {
+      auto const frun = rt::frun{tt, nullptr,
+                                 rt::run{.t_ = transport{transport_idx},
+                                         .stop_range_ = stop_indices,
+                                         .rt_ = rt_transport_idx_t::invalid()}};
+      frun.for_each_trip([&](trip_idx_t const trip_idx,
+                             interval<stop_idx_t> const absolute_range) {
+        auto const [shape_idx, offset_idx] =
+            shapes_data.trip_offset_indices_[trip_idx];
+        if (shape_idx == shape_idx_t::invalid() ||
+            offset_idx == shape_offset_idx_t::invalid()) {
+          return;
+        }
+        auto const& shape_tasks =
+            tasks[shape_states.get_relative_idx(shape_idx)];
+        auto const it = utl::find_if(shape_tasks, [&](stop_seq_dist const& s) {
+          return s.result_.shape_offset_idx_ == offset_idx;
+        });
+
+        auto const& res = it->result_;
+        bounding_box.extend(res.trip_bbox_);
+        auto const& bboxes = res.segment_bboxes_;
+        if (!bboxes.empty()) {
+          for (auto const [i, bbox] : utl::enumerate(bboxes)) {
+            segment_bboxes[i + cista::to_idx(absolute_range.from_)].extend(
+                bbox);
+          }
+          is_trivial = false;
+        }
+      });
+    }
+
+    if (is_trivial) {
+      segment_bboxes.clear();
+    }
+
+    shapes_data.route_bboxes_.emplace_back(std::move(bounding_box));
+    shapes_data.route_segment_bboxes_.emplace_back(std::move(segment_bboxes));
+  }
+}
+
 void assign_bounding_boxes(shapes_storage& shapes_data,
                            std::vector<bbox_task> const&& tasks) {
   for (auto const& task : tasks) {
@@ -365,27 +417,15 @@ void calculate_shape_offsets_and_bboxes(
     vector_map<gtfs_trip_idx_t, trip> const& trips) {
   utl::get_active_progress_tracker()
       ->status("Creating trip offsets")
-      .out_bounds(98.F, 99.F);
+      .out_bounds(98.F, 100.F);
   auto tasks = create_offset_tasks(trips, shape_states);
   utl::parallel_for_run(tasks.size(), [&](std::size_t const i) {
     auto const s = relative_shape_idx_t{i};
     process_task(tt, shapes_data, shape_states, s, tasks[s]);
   });
 
-  auto bbox_data = assign_shape_offsets(
-      shapes_data, trips, std::move(offset_tasks), shape_states.index_offset_);
-
-  auto bbox_tasks = create_bbox_tasks(tt, shapes_data, bbox_data,
-                                      shapes_data.route_bboxes_.size(),
-                                      shape_states.index_offset_);
-  auto const bbox_progress_tracker = utl::get_active_progress_tracker();
-  bbox_progress_tracker->status("Creating bounding boxes")
-      .out_bounds(99.F, 100.F);
-  utl::parallel_for(bbox_tasks, [&bbox_progress_tracker](bbox_task& task) {
-    bbox_progress_tracker->increment();
-    task.result_ = task.task_();
-  });
-  assign_bounding_boxes(shapes_data, std::move(bbox_tasks));
+  assign_shape_offsets(shapes_data, trips, tasks, shape_states);
+  assign_bounding_boxes(tt, shapes_data, tasks, shape_states);
 }
 
 }  // namespace nigiri::loader::gtfs

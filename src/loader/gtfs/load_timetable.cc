@@ -366,8 +366,8 @@ void load_timetable(loader_config const& config,
     }
 
     if (shapes_data != nullptr) {
-      calculate_shape_offsets_and_bboxes(tt, *shapes_data, trip_data.data_,
-                                         shape_states);
+      calculate_shape_offsets_and_bboxes(tt, *shapes_data, shape_states,
+                                         trip_data.data_);
     }
 
     // Build location_routes map
