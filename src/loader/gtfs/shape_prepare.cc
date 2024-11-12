@@ -205,8 +205,15 @@ void assign_shape_offsets(shapes_storage& shapes_data,
           task, trip.stop_seq_,
           [&](stop_seq_t const& a, stop_seq_t const& b) { return a < b; },
           [](stop_seq_dist const& s) { return *s.stop_seq_; });
-      shapes_data.add_trip_shape_offsets(
-          trip_idx, cista::pair{shape_idx, x->result_.shape_offset_idx_});
+      if (x != end(task) &&
+          x->result_.shape_offset_idx_ != shape_offset_idx_t::invalid()) {
+        shapes_data.add_trip_shape_offsets(
+            trip_idx, cista::pair{shape_idx, x->result_.shape_offset_idx_});
+      } else {
+        shapes_data.add_trip_shape_offsets(
+            trip_idx,
+            cista::pair{shape_idx_t::invalid(), shape_offset_idx_t::invalid()});
+      }
     }
   }
 }
@@ -258,6 +265,9 @@ void assign_bounding_boxes(timetable const& tt,
         auto const it = utl::find_if(task, [&](stop_seq_dist const& s) {
           return s.result_.shape_offset_idx_ == offset_idx;
         });
+        if (it == end(task)) {
+          return;
+        }
 
         auto const& res = it->result_;
         bounding_box.extend(res.trip_bbox_);
