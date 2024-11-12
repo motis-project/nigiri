@@ -185,9 +185,9 @@ void assign_shape_offsets(shapes_storage& shapes_data,
                           vector_map<gtfs_trip_idx_t, trip> const& trips,
                           vector_map<relative_shape_idx_t, task>& tasks,
                           shape_loader_state const& states) {
-  for (auto& shape_tasks : tasks) {
-    for (auto& task : shape_tasks) {
-      auto& r = task.result_;
+  for (auto& task : tasks) {
+    for (auto& x : task) {
+      auto& r = x.result_;
       if (!r.offsets_.empty()) {
         r.shape_offset_idx_ = shapes_data.add_offsets(std::move(r.offsets_));
       }
@@ -200,20 +200,20 @@ void assign_shape_offsets(shapes_storage& shapes_data,
       shapes_data.add_trip_shape_offsets(
           trip_idx, cista::pair{shape_idx, shape_offset_idx_t::invalid()});
     } else {
-      auto const shape_tasks = tasks[states.get_relative_idx(shape_idx)];
-      auto const task = std::ranges::lower_bound(
-          shape_tasks, trip.stop_seq_,
+      auto const task = tasks[states.get_relative_idx(shape_idx)];
+      auto const x = std::ranges::lower_bound(
+          task, trip.stop_seq_,
           [&](stop_seq_t const& a, stop_seq_t const& b) { return a < b; },
           [](stop_seq_dist const& s) { return *s.stop_seq_; });
       shapes_data.add_trip_shape_offsets(
-          trip_idx, cista::pair{shape_idx, task->result_.shape_offset_idx_});
+          trip_idx, cista::pair{shape_idx, x->result_.shape_offset_idx_});
     }
   }
 }
 
 void assign_bounding_boxes(timetable const& tt,
                            shapes_storage& shapes_data,
-                           vector_map<relative_shape_idx_t, task>& tasks,
+                           vector_map<relative_shape_idx_t, task> const& tasks,
                            shape_loader_state const& shape_states) {
   auto const new_routes =
       interval{static_cast<route_idx_t>(shapes_data.route_bboxes_.size()),
@@ -254,9 +254,8 @@ void assign_bounding_boxes(timetable const& tt,
             offset_idx == shape_offset_idx_t::invalid()) {
           return;
         }
-        auto const& shape_tasks =
-            tasks[shape_states.get_relative_idx(shape_idx)];
-        auto const it = utl::find_if(shape_tasks, [&](stop_seq_dist const& s) {
+        auto const& task = tasks[shape_states.get_relative_idx(shape_idx)];
+        auto const it = utl::find_if(task, [&](stop_seq_dist const& s) {
           return s.result_.shape_offset_idx_ == offset_idx;
         });
 

@@ -3,7 +3,6 @@
 #include <charconv>
 #include <filesystem>
 #include <numeric>
-#include <optional>
 #include <string>
 
 #include "utl/get_or_create.h"

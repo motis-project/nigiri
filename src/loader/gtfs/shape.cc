@@ -26,9 +26,8 @@ shape_loader_state parse_shapes(std::string_view const data,
     utl::csv_col<double, UTL_NAME("shape_dist_traveled")> distance_;
   };
 
-  auto const index_offset = static_cast<shape_idx_t::value_t>(shapes.size());
   auto states = shape_loader_state{
-      .index_offset_ = index_offset,
+      .index_offset_ = static_cast<shape_idx_t::value_t>(shapes.size()),
   };
   auto lookup = cached_lookup(states.id_map_);
   auto seq = vector_map<relative_shape_idx_t, std::vector<std::uint32_t>>{};
