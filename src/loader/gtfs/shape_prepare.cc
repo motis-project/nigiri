@@ -296,15 +296,18 @@ void calculate_shape_offsets_and_bboxes(
     shapes_storage& shapes_data,
     shape_loader_state const& shape_states,
     vector_map<gtfs_trip_idx_t, trip> const& trips) {
-  utl::get_active_progress_tracker()
-      ->status("Creating trip offsets")
-      .out_bounds(98.F, 100.F);
+  auto const progress_tracker = utl::get_active_progress_tracker();
+  progress_tracker->status("Creating trip offsets")
+      .out_bounds(98.F, 99.F)
+      .in_high(shape_states.id_map_.size());
   auto tasks = create_offset_tasks(trips, shape_states);
   utl::parallel_for_run(tasks.size(), [&](std::size_t const i) {
     auto const s = relative_shape_idx_t{i};
     process_task(tt, shapes_data, shape_states, s, tasks[s]);
   });
 
+  progress_tracker->status("Writing offsets and bounding boxes")
+      .out_bounds(99.F, 100.F);
   assign_shape_offsets(shapes_data, trips, tasks, shape_states);
   assign_bounding_boxes(tt, shapes_data, tasks, shape_states);
 }
