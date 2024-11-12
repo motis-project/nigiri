@@ -1,7 +1,6 @@
 #include "nigiri/loader/gtfs/shape_prepare.h"
 
 #include <algorithm>
-#include <optional>
 #include <ranges>
 #include <span>
 #include <type_traits>
@@ -17,9 +16,6 @@
 #include "utl/insert_sorted.h"
 #include "utl/pairwise.h"
 #include "utl/parallel_for.h"
-#include "utl/pipes/all.h"
-#include "utl/pipes/transform.h"
-#include "utl/pipes/vec.h"
 #include "utl/progress_tracker.h"
 
 #include "nigiri/loader/gtfs/shape.h"
