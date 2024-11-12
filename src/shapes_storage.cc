@@ -2,7 +2,11 @@
 
 #include <cstdint>
 
+#include "cista/strong.h"
+
 #include "fmt/core.h"
+
+#include "utl/verify.h"
 
 #include "nigiri/types.h"
 
@@ -23,7 +27,11 @@ shapes_storage::shapes_storage(std::filesystem::path path,
                 mm("platform_ref_index.bin")}},
       offsets_{mm_vec<shape_offset_t>{mm("shape_offsets_data.bin")},
                mm_vec<std::uint64_t>{mm("shape_offsets_idx.bin")}},
-      trip_offset_indices_{mm("shape_trip_offsets.bin")} {}
+      trip_offset_indices_{mm("shape_trip_offsets.bin")},
+      route_bboxes_{mm("shape_route_bboxes.bin")},
+      route_segment_bboxes_{
+          mm_vec<geo::box>{mm("shape_route_segment_bboxes_data.bin")},
+          mm_vec<std::uint64_t>{mm("shape_route_segment_bboxes_idx.bin")}} {}
 
 cista::mmap shapes_storage::mm(char const* file) {
   return cista::mmap{(p_ / file).generic_string().c_str(), mode_};
@@ -84,6 +92,22 @@ void shapes_storage::add_trip_shape_offsets(
     cista::pair<shape_idx_t, shape_offset_idx_t> const& offset_idx) {
   assert(trip_idx == trip_offset_indices_.size());
   trip_offset_indices_.emplace_back(offset_idx);
+}
+
+geo::box shapes_storage::get_bounding_box(route_idx_t const route_idx) const {
+  utl::verify(cista::to_idx(route_idx) < route_bboxes_.size(),
+              "Route index {} is out of bounds", route_idx);
+  return route_bboxes_[route_idx];
+}
+
+std::optional<geo::box> shapes_storage::get_bounding_box(
+    nigiri::route_idx_t const route_idx, std::size_t const segment) const {
+
+  utl::verify(cista::to_idx(route_idx) < route_segment_bboxes_.size(),
+              "Route index {} is out of bounds", route_idx);
+  auto const& bboxes = route_segment_bboxes_[route_idx];
+  return segment < bboxes.size() ? bboxes[segment]
+                                 : std::optional<geo::box>{std::nullopt};
 }
 
 }  // namespace nigiri
