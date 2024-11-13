@@ -24,7 +24,7 @@ shapes_storage::shapes_storage(std::filesystem::path path,
       data_{mm_paged_vecvec_helper<shape_idx_t, geo::latlng>::data_t{
                 mm_vec<geo::latlng>{mm("shapes_data.bin")}},
             mm_vec<cista::page<std::uint64_t, std::uint32_t>>{
-                mm("platform_ref_index.bin")}},
+                mm("shapes_idx.bin")}},
       offsets_{mm_vec<shape_offset_t>{mm("shape_offsets_data.bin")},
                mm_vec<std::uint64_t>{mm("shape_offsets_idx.bin")}},
       trip_offset_indices_{mm("shape_trip_offsets.bin")},
