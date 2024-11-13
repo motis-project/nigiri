@@ -162,8 +162,6 @@ struct timetable {
             area_idx_to_location_idxs_.emplace_back(
                 std::vector<location_idx_t>{});
           }
-          location_id_to_location_id_type_.emplace(
-              location_id{l_id, location_src.value()}, location_id_type::kStop);
           area_idx_to_location_idxs_[new_idx.location_idx_].push_back(
               location_idx_iterator->second);
         } else if ((location_geojson_idx_iterator =
@@ -183,9 +181,6 @@ struct timetable {
             area_idx_to_location_geojson_idxs_.emplace_back(
                 std::vector<location_geojson_idx_t>{});
           }
-          location_id_to_location_id_type_.emplace(
-              location_id{l_id, geojson_src.value()},
-              location_id_type::kGeoJson);
           area_idx_to_location_geojson_idxs_[new_idx.location_geojson_idx_]
               .push_back(location_geojson_idx_iterator->second);
         } else {
@@ -197,23 +192,14 @@ struct timetable {
       }
       area_id_to_area_idx_.emplace(
           nigiri::area_id{.id_ = area_id, .src_ = area_src}, new_idx);
-      area_src_.emplace(new_idx, area_src);
       return new_idx;
     }
 
-    hash_map<area_idx, source_idx_t> area_src_;
-
-    hash_map<location_id, location_id_type> location_id_to_location_id_type_;
     hash_map<area_id, area_idx> area_id_to_area_idx_;
 
-    // vector_map<area_idx_t, std::vector<location_idx_t>>
-    //     area_idx_to_location_idxs_;
     vecvec<area_idx_t, location_idx_t> area_idx_to_location_idxs_;
     vecvec<area_idx_t, location_geojson_idx_t>
         area_idx_to_location_geojson_idxs_;
-
-    // vector_map<area_idx_t, std::vector<location_geojson_idx_t>>
-    //     area_idx_to_location_geojson_idxs_;
   } areas_;
 
   struct transport {
@@ -238,9 +224,10 @@ struct timetable {
     location_geojson_types_.push_back(type);
     // auto const ptr =
     //     std::unique_ptr<tg_geom, void (*)(tg_geom*)>(geometry, tg_geom_free);
-    locations_geojson_geometries_.emplace_back(std::make_unique<tg_geom*>(
-        geometry));  // TODO Dekonstruktorfunktion hinzufügen
-    location_id_to_location_geojson_idx_.emplace(id, next_idx);
+    // locations_geojson_geometries_.emplace_back(std::make_unique<tg_geom*>(
+    //     geometry));  // TODO Dekonstruktorfunktion hinzufügen
+    location_id_to_location_geojson_idx_.emplace(
+        locationGeoJson_id{.id_ = id, .src_ = src}, next_idx);
     return next_idx;
   }
 
@@ -630,17 +617,20 @@ struct timetable {
   hash_map<string, profile_idx_t> profiles_;
 
   /* GTFS-Flex */
-  // location gejson
+  // location geojson
+  hash_map<locationGeoJson_id, location_geojson_idx_t>
+      location_id_to_location_geojson_idx_;
   vector_map<location_geojson_idx_t, source_idx_t> location_geojson_src_;
-  hash_map<string, location_geojson_idx_t> location_id_to_location_geojson_idx_;
   vector_map<location_idx_t, tg_geom_type> location_geojson_types_;
-  std::vector<std::unique_ptr<tg_geom*>> locations_geojson_geometries_;
   // vector_map<location_idx_t, std::unique_ptr<tg_geom*>>
-  // locations_geojson_geometries_;
+  //     locations_geojson_geometries_;
+  // std::vector<std::unique_ptr<tg_geom*>> locations_geojson_geometries_;
+  //  vector_map<location_idx_t, std::unique_ptr<tg_geom*>>
+  //  locations_geojson_geometries_;
 
   // booking rules
-  vector_map<booking_rule_idx_t, source_idx_t> booking_rule_src_;
   hash_map<string, booking_rule_idx_t> booking_rule_id_to_idx;
+  vector_map<booking_rule_idx_t, source_idx_t> booking_rule_src_;
   vector_map<booking_rule_idx_t, booking_rule> booking_rules_;
 
   // stop times

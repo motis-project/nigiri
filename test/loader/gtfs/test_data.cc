@@ -121,16 +121,108 @@ service_1,20241231,2
 )";
 
 constexpr auto const example_location_geojsons_content =
-    R"(")";  // TODO Testdaten einpflegen
+    R"({
+  "type": "FeatureCollection",
+  "features": [
+	{
+	  "id": "l_geo_1",
+      "type": "Feature",
+      "geometry":
+	  {
+		"type": "MultiPolygon",
+		"coordinates": [
+			[
+			   [
+				 [102.0, 2.0],
+				 [103.0, 2.0],
+				 [103.0, 3.0],
+				 [102.0, 3.0],
+				 [102.0, 2.0]
+			   ]
+			 ],
+			 [
+			   [
+				 [100.0, 0.0],
+				 [101.0, 0.0],
+				 [101.0, 1.0],
+				 [100.0, 1.0],
+				 [100.0, 0.0]
+			   ],
+			   [
+				 [100.2, 0.2],
+				 [100.2, 0.8],
+				 [100.8, 0.8],
+				 [100.8, 0.2],
+				 [100.2, 0.2]
+			   ]
+			 ]
+		]
+	  }
+
+	 },
+	 {
+		"id": "l_geo_2",
+		"type": "Feature",
+		"geometry":
+		{
+		   "type": "Polygon",
+		   "coordinates": [
+			 [[100.0, 0.0],
+			 [101.0, 0.0],
+			 [101.0, 1.0],
+			 [100.0, 1.0],
+			 [100.0, 0.0]]
+		   ]
+		}
+	 },
+	 {
+		"id": "l_geo_3",
+		"type": "Feature",
+		"geometry":
+		{
+			"type": "Point",
+			"coordinates": [100.0, 0.0]
+		}
+	 }
+  ]
+}")";
 
 constexpr auto const example_location_groups_content =
-    R"(")";  // TODO Testdaten einpflegen
+    R"(location_group_id,location_id
+l_g_1,S1
+l_g_1,S2
+l_g_1,l_geo_1
+l_g_1,l_geo_2
+l_g_2,l_geo3
+l_g_3,S4
+")";
 
 constexpr auto const example_location_group_stops_content =
-    R"(")";  // TODO Testdaten einpflegen
+    R"(location_group_id,stop_id
+l_g_s_1,S1
+l_g_s_1,S2
+l_g_s_1,S3
+l_g_s_2,S4
+l_g_s_2,S5
+l_g_s_2,S6
+l_g_s_2,S7
+l_g_s_3,S8
+l_g_s_3,S2
+")";
 
 constexpr auto const example_stop_areas_content =
-    R"(")";  // TODO Testdaten einpflegen
+    R"(area_id,stop_id
+a_1,S1
+a_2,S2
+a_2,S3
+a_2,S4
+a_2,S5
+a_2,S6
+a_3,S1
+a_3,S2
+a_3,S7
+a_3,S8
+")";
 
 loader::mem_dir example_files() {
   using std::filesystem::path;

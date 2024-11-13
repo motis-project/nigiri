@@ -42,8 +42,8 @@ area_map_t read_areas(source_idx_t const stop_areas_src,
 }
 
 area_map_t read_areas(source_idx_t const area_src,
-                      std::optional<source_idx_t> const location_src,
-                      std::optional<source_idx_t> const geojson_src,
+                      source_idx_t const location_src,
+                      source_idx_t const geojson_src,
                       timetable& tt,
                       locations_map const& location_id_to_idx,
                       location_geojson_map_t const& geojson_id_to_idx,
