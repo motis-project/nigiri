@@ -99,10 +99,10 @@ void read_stop_times(timetable& tt,
           t->requires_sorting_ |= (!t->seq_numbers_.empty() &&
                                    t->seq_numbers_.back() > *s.stop_sequence_);
 
-          t->seq_numbers_.emplace_back(*s.stop_sequence_);
           t->stop_seq_.push_back(stop{stops.at(s.stop_id_->view()), in_allowed,
                                       out_allowed, in_allowed, out_allowed}
                                      .value());
+          t->seq_numbers_.emplace_back(*s.stop_sequence_);
           t->event_times_.emplace_back(
               stop_events{.arr_ = arrival_time, .dep_ = departure_time});
           if (store_distances) {
