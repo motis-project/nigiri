@@ -274,8 +274,8 @@ void assign_bounding_boxes(timetable const& tt,
         auto const& bboxes = res.segment_bboxes_;
         if (!bboxes.empty()) {
           for (auto const [i, bbox] : utl::enumerate(bboxes)) {
-            segment_bboxes[i + cista::to_idx(absolute_range.from_)].extend(
-                bbox);
+            segment_bboxes.at(i + cista::to_idx(absolute_range.from_))
+                .extend(bbox);
           }
           is_trivial = false;
         }
