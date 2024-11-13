@@ -220,9 +220,9 @@ struct raptor {
       utl::fill(state_.station_mark_.blocks_, 0U);
 
       update_transfers(k);
+      update_intermodal_footpaths(k);
       update_footpaths(k, prf_idx);
       update_td_offsets(k, prf_idx);
-      update_intermodal_footpaths(k);
 
       trace_print_state_after_round();
     }
