@@ -37,10 +37,10 @@ void resolve_static(date::sys_days const today,
   auto const& trip_id = td.trip_id();
   auto const lb = std::lower_bound(
       begin(tt.trip_id_to_idx_), end(tt.trip_id_to_idx_), trip_id,
-      [&](pair<trip_id_idx_t, trip_idx_t> const& a, string const& b) {
+      [&](pair<trip_id_idx_t, trip_idx_t> const& a, auto&& b) {
         return std::tuple(tt.trip_id_src_[a.first],
                           tt.trip_id_strings_[a.first].view()) <
-               std::tuple(src, b.view());
+               std::tuple(src, b);
       });
 
   auto const start_date = td.has_start_date()
