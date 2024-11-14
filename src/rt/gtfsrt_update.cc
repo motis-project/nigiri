@@ -367,8 +367,9 @@ statistics gtfsrt_update_buf(timetable const& tt,
                              rt_timetable& rtt,
                              source_idx_t const src,
                              std::string_view tag,
-                             std::string_view protobuf) {
-  gtfsrt::FeedMessage msg;
+                             std::string_view protobuf,
+                             gtfsrt::FeedMessage& msg) {
+  msg.Clear();
 
   auto const success =
       msg.ParseFromArray(reinterpret_cast<void const*>(protobuf.data()),
@@ -381,6 +382,15 @@ statistics gtfsrt_update_buf(timetable const& tt,
   }
 
   return gtfsrt_update_msg(tt, rtt, src, tag, msg);
+}
+
+statistics gtfsrt_update_buf(timetable const& tt,
+                             rt_timetable& rtt,
+                             source_idx_t const src,
+                             std::string_view tag,
+                             std::string_view protobuf) {
+  auto msg = gtfsrt::FeedMessage{};
+  return gtfsrt_update_buf(tt, rtt, src, tag, protobuf, msg);
 }
 
 }  // namespace nigiri::rt
