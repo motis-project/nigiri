@@ -216,35 +216,35 @@ TEST(routing, transfer_time_settings_test) {
       EXPECT_EQ(expected_A_C_f20, results_to_str(results, tt));
     }
     {
-      // A -> C, default transfer time, 2 min disposable (= 4 min)
+      // A -> C, default transfer time, 2 min additional (= 4 min)
       auto const results =
           search(tt, nullptr, "A", "C", tt.date_range_, dir,
-                 {.default_ = false, .disposable_time_ = duration_t{2}});
+                 {.default_ = false, .additional_time_ = duration_t{2}});
       EXPECT_EQ(expected_A_C_f20, results_to_str(results, tt));
     }
     {
-      // A -> C, 1.5x transfer time, 1 min disposable (= 4 min)
+      // A -> C, 1.5x transfer time, 1 min additional (= 4 min)
       auto const results = search(tt, nullptr, "A", "C", tt.date_range_, dir,
                                   {.default_ = false,
-                                   .disposable_time_ = duration_t{1},
+                                   .additional_time_ = duration_t{1},
                                    .factor_ = 1.5F});
       EXPECT_EQ(expected_A_C_f20, results_to_str(results, tt));
     }
     {
-      // A -> C, min 3 min transfer time, 1 min disposable (= 4 min)
+      // A -> C, min 3 min transfer time, 1 min additional (= 4 min)
       auto const results = search(tt, nullptr, "A", "C", tt.date_range_, dir,
                                   {.default_ = false,
                                    .min_transfer_time_ = duration_t{3},
-                                   .disposable_time_ = duration_t{1}});
+                                   .additional_time_ = duration_t{1}});
       EXPECT_EQ(expected_A_C_f20, results_to_str(results, tt));
     }
     {
-      // A -> C, min 3 min transfer time, 2.5x transfer time, 5 min disposable
+      // A -> C, min 3 min transfer time, 2.5x transfer time, 5 min additional
       // (= 10 min)
       auto const results = search(tt, nullptr, "A", "C", tt.date_range_, dir,
                                   {.default_ = false,
                                    .min_transfer_time_ = duration_t{3},
-                                   .disposable_time_ = duration_t{5},
+                                   .additional_time_ = duration_t{5},
                                    .factor_ = 2.5F});
       EXPECT_EQ(expected_A_C_min10, results_to_str(results, tt));
     }
