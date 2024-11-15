@@ -86,7 +86,8 @@ struct search {
                 kMaxVias);
 
     tts.factor_ = std::max(tts.factor_, 1.0F);
-    if (tts.factor_ == 1.0F && tts.min_transfer_time_ == 0_minutes) {
+    if (tts.factor_ == 1.0F && tts.min_transfer_time_ == 0_minutes &&
+        tts.disposable_time_ == 0_minutes) {
       tts.default_ = true;
     }
 
