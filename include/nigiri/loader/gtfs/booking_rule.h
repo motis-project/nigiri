@@ -15,7 +15,7 @@ enum Booking_type : std::uint8_t {
   kPriorDaysBooking = 2
 };
 
-using booking_rule_map_t = hash_map<std::string_view, booking_rule_idx_t>;
+using booking_rule_map_t = hash_map<std::string, booking_rule_idx_t>;
 
 booking_rule_map_t read_booking_rules(traffic_days_t const& services,
                                       timetable& tt,

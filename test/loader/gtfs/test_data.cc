@@ -88,8 +88,9 @@ AWE1,6:10,6:10,S1,1,0,0,0
 
 // GTFS-Flex
 
+// TODO 25-tes Zeichen wieder hinzufügen
 constexpr auto const example_booking_rules_content =
-    R"("booking_rule_id,booking_type,prior_notice_duration_min,prior_notice_duration_max,prior_notice_last_day,prior_notice_last_time,prior_notice_start_day,prior_notice_start_time,prior_notice_service_id
+    R"(booking_rule_id,booking_type,prior_notice_duration_mi,prior_notice_duration_ma,prior_notice_last_day,prior_notice_last_time,prior_notice_start_day,prior_notice_start_time,prior_notice_service_id
 1,0,,,,,,,
 2,0,,,,,,,
 3,1,5,,,,,,
@@ -101,12 +102,12 @@ constexpr auto const example_booking_rules_content =
 )";
 
 constexpr auto const example_booking_rules_calendar_content =
-    R"("service_id,monday,tuesday,wednesday,thursday,friday,saturday,sunday,start_date,end_date
+    R"(service_id,monday,tuesday,wednesday,thursday,friday,saturday,sunday,start_date,end_date
 service_1,1,1,1,1,1,0,0,20240101,20241231
 )";
 
 constexpr auto const example_booking_rules_calendar_dates_content =
-    R"("service_id,date,exception_type
+    R"(service_id,date,exception_type
 service_1,20240118,2
 service_1,20240401,2
 service_1,20240815,2
@@ -185,7 +186,7 @@ constexpr auto const example_location_geojsons_content =
 		}
 	 }
   ]
-}")";
+})";
 
 constexpr auto const example_location_groups_content =
     R"(location_group_id,location_id
@@ -193,9 +194,9 @@ l_g_1,S1
 l_g_1,S2
 l_g_1,l_geo_1
 l_g_1,l_geo_2
-l_g_2,l_geo3
+l_g_2,l_geo_3
 l_g_3,S4
-")";
+)";
 
 constexpr auto const example_location_group_stops_content =
     R"(location_group_id,stop_id
@@ -208,7 +209,7 @@ l_g_s_2,S6
 l_g_s_2,S7
 l_g_s_3,S8
 l_g_s_3,S2
-")";
+)";
 
 constexpr auto const example_stop_areas_content =
     R"(area_id,stop_id
@@ -222,7 +223,7 @@ a_3,S1
 a_3,S2
 a_3,S7
 a_3,S8
-")";
+)";
 
 loader::mem_dir example_files() {
   using std::filesystem::path;

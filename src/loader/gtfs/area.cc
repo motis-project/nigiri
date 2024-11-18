@@ -76,7 +76,7 @@ area_map_t read_areas(source_idx_t const area_src,
             log(log_lvl::error, "loader.gtfs.area",
                 R"(area_id and location_group_id are empty!)");
           } else {
-            auto location_ids =
+            auto& location_ids =
                 utl::get_or_create(area_id_to_location_ids, area_id,
                                    []() { return std::vector<std::string>{}; });
             if (!a.location_id_->empty()) {

@@ -217,8 +217,8 @@ struct trip_id {
 
 struct area_idx {
   CISTA_COMPARABLE()
-  area_idx_t location_idx_;
-  area_idx_t location_geojson_idx_;
+  area_idx_t location_;
+  area_idx_t location_geojson_;
 };
 
 struct area_id {
