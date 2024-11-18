@@ -81,6 +81,9 @@ struct meat_csa {
                          dg_node_idx_t{0},
                          dg_node_idx_t{1},
                          dg_arc_idx_t::invalid()};
+      UTL_STOP_TIMING(total_time);
+      stats_.total_duration_ =
+          static_cast<std::uint64_t>(UTL_TIMING_MS(total_time));
       return;
     }
     auto con_end = without_clasz_filter
@@ -95,6 +98,9 @@ struct meat_csa {
                          dg_node_idx_t{0},
                          dg_node_idx_t{1},
                          dg_arc_idx_t::invalid()};
+      UTL_STOP_TIMING(total_time);
+      stats_.total_duration_ =
+          static_cast<std::uint64_t>(UTL_TIMING_MS(total_time));
       return;
     }
     reset_csa_state();
@@ -282,7 +288,9 @@ private:
 
     // necessary, so that a connection exist where delay_prob() returns 1
     auto constexpr extra_delay = 1;
-    delta_t const target_offset = max_delay_ + extra_delay;
+    delta_t const target_offset =
+        tt_.locations_.transfer_time_[target_stop].count() + max_delay_ +
+        extra_delay;
 
     auto conn_end = conn_begin.second;
     auto day = conn_begin.first;
@@ -322,15 +330,12 @@ private:
                                                        conn->dep_time_.days()),
                           conn->arr_time_.mam());
           auto const c_arr_stop_idx = stop{conn->arr_stop_}.location_idx();
-          auto const transfer_time =
-              c_arr_stop_idx == target_stop
-                  ? delta_t{0}
-                  : static_cast<delta_t>(
-                        tt_.locations_.transfer_time_[c_arr_stop_idx].count());
           auto const conn_max_arr_time =
-              clamp(conn_arr_time + max_delay_ + extra_delay);
+              clamp(conn_arr_time +
+                    tt_.locations_.transfer_time_[c_arr_stop_idx].count() +
+                    max_delay_ + extra_delay);
           update_arr_times(esa, conn_max_arr_time, c_arr_stop_idx,
-                           stats_.esa_n_update_arr_time_, transfer_time);
+                           stats_.esa_n_update_arr_time_);
         }
       }
 
@@ -375,12 +380,10 @@ private:
   void update_arr_times(vector_map<location_idx_t, delta_t>& ea,
                         delta_t const arr_time,
                         location_idx_t const arr_stop_idx,
-                        std::uint64_t& n_up_arr_time,
-                        delta_t const transfer_time = delta_t{0}) {
-    auto const trans_arr_time = clamp(arr_time + transfer_time);
-    if (trans_arr_time < ea[arr_stop_idx]) {
+                        std::uint64_t& n_up_arr_time) {
+    if (arr_time < ea[arr_stop_idx]) {
       ++n_up_arr_time;
-      ea[arr_stop_idx] = trans_arr_time;
+      ea[arr_stop_idx] = arr_time;
       for (auto const& fp :
            tt_.locations_.footpaths_out_[prf_idx_][arr_stop_idx]) {
         ea[fp.target()] =

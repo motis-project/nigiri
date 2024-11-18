@@ -55,15 +55,15 @@ struct meat_profile_computer {
     auto const& ea = state_.ea_;
     auto& trip = state_.trip_;
 
-    auto evaluate_profile = [&](location_idx_t stop, delta_t when) {
-      meat_t meat = 0.0;
-      double assigned_prob = 0.0;
+    auto evaluate_profile = [&](location_idx_t const stop, delta_t const when) {
+      auto meat = meat_t{0.0};
+      auto assigned_prob = 0.0;
+      auto transfer_time = tt_.locations_.transfer_time_[stop].count();
 
       auto i = std::begin(profile_set_.for_stop(stop));
       while (assigned_prob < 1.0) {
         double new_prob =
-            delay_prob(clamp(i->dep_time_ - when),
-                       tt_.locations_.transfer_time_[stop].count(), max_delay);
+            delay_prob(clamp(i->dep_time_ - when), transfer_time, max_delay);
         meat += (new_prob - assigned_prob) * i->meat_;
         assigned_prob = new_prob;
         ++i;

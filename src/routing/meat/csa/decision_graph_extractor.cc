@@ -121,7 +121,8 @@ decision_graph decision_graph_extractor<ProfileSet>::operator()(
     delta_t max_delay) const {
   if (profile_set_.is_stop_empty(source_stop)) {
     // TODO remove
-    assert(false && "Should not be empty");
+    assert(false && "Should not be empty (CSA)");
+    std::cout << "Should not be empty (CSA)" << std::endl;
     return decision_graph{{{source_stop, {}, {}}, {target_stop, {}, {}}},
                           {},
                           dg_node_idx_t{0},

@@ -138,6 +138,9 @@ struct meat_raptor {
                          dg_node_idx_t{0},
                          dg_node_idx_t{1},
                          dg_arc_idx_t::invalid()};
+      UTL_STOP_TIMING(total_time);
+      stats_.total_duration_ =
+          static_cast<std::uint64_t>(UTL_TIMING_MS(total_time));
       return;
     }
 
@@ -238,10 +241,17 @@ private:
   template <bool WithClaszFilter>
   void compute_profile_set(location_idx_t start_location,
                            location_idx_t target_location) {
+    auto constexpr vias = 0U;
+    auto const ea = first_dim_accessor{state_.r_state_.get_best<vias>(), vias};
+    assert(ea[to_idx(target_location)] < std::numeric_limits<delta_t>::max());
+
     state_.station_mark_.set(to_idx(target_location), true);
     state_.fp_dis_to_target_[target_location] = 0.0;
     for (auto const& fp :
          tt_.locations_.footpaths_in_[fp_prf_idx_][target_location]) {
+      if (ea[to_idx(fp.target())] == std::numeric_limits<delta_t>::max()) {
+        continue;
+      }
       state_.station_mark_.set(to_idx(fp.target()), true);
       state_.fp_dis_to_target_[fp.target()] = fp.duration().count();
     }
@@ -300,8 +310,8 @@ private:
           auto const faster_than_final_fp =
               pe.meat_ < state_.fp_dis_to_target_[fp_start_location] +
                              static_cast<meat_t>(fp_dep_time);
-          if (fp_dep_time < ea[fp_start_location.v_] || !faster_than_final_fp ||
-              fp_start_location == l_idx) {
+          if (fp_dep_time < ea[cista::to_idx(fp_start_location)] ||
+              !faster_than_final_fp || fp_start_location == l_idx) {
             continue;
           }
 
@@ -361,7 +371,8 @@ private:
       auto const l_idx_v = cista::to_idx(l_idx);
       auto const is_last = i == stop_seq.size() - 1U;
 
-      if (active_transports.empty() && !state_.prev_station_mark_[l_idx_v]) {
+      if (ea[l_idx_v] == std::numeric_limits<delta_t>::max() ||
+          (active_transports.empty() && !state_.prev_station_mark_[l_idx_v])) {
         continue;
       }
 
@@ -435,7 +446,7 @@ private:
             time_at_stop(r, td.trip_, stop_idx, event_type::kArr);
         if (arr_time < ea[l_idx_v]) {
           // TODO remove, if those cases are removed earlier
-          std::cout << "arr_time of transport < ea[l_idx_v]" << std::endl;
+          // std::cout << "arr_time of transport < ea[l_idx_v]" << std::endl;
           continue;
         }
         auto meat = td.meat_;
@@ -513,15 +524,15 @@ private:
   //      }
   //}
 
-  meat_t evaluate_profile(location_idx_t stop, delta_t when) {
-    meat_t meat = 0.0;
-    double assigned_prob = 0.0;
+  meat_t evaluate_profile(location_idx_t const stop, delta_t const when) const {
+    auto meat = meat_t{0.0};
+    auto assigned_prob = 0.0;
+    auto transfer_time = tt_.locations_.transfer_time_[stop].count();
 
     auto i = state_.profile_set_.for_stop_begin(stop, when);
     while (assigned_prob < 1.0) {
-      double new_prob =
-          delay_prob(clamp(i->dep_time_ - when),
-                     tt_.locations_.transfer_time_[stop].count(), max_delay_);
+      auto new_prob =
+          delay_prob(clamp(i->dep_time_ - when), transfer_time, max_delay_);
       meat += (new_prob - assigned_prob) * i->meat_;
       assigned_prob = new_prob;
       ++i;

@@ -217,11 +217,6 @@ struct raptor {
       trace_print_state_after_round();
     }
 
-    // TODO for esa: get best dest_time, ignore the rest (dest_time -
-    // static_arrival_delay_)
-    // TODO for ea: get best time for each location, ignore the rest
-    // round_times_[end_k-1][i][Vias] always best time at location i?
-
     if (SearchType == search_type::kNormal) {
       is_dest_.for_each_set_bit([&](auto const i) {
         for (auto k = 1U; k != end_k; ++k) {
@@ -407,7 +402,8 @@ private:
         auto const target = to_idx(fp.target());
 
         for (auto v = 0U; v != Vias + 1; ++v) {
-          auto const tmp_time = tmp_[i][v];
+          auto const tmp_time =
+              SearchType == search_type::kESA ? best_[i][v] : tmp_[i][v];
           if (tmp_time == kInvalid) {
             continue;
           }
@@ -573,9 +569,9 @@ private:
             trace(
                 "┊ ├k={}   NO TD FP UPDATE: {} [best={}] --{}--> {} "
                 "[best={}, time_at_dest={}]\n",
-                k, location{tt_, l_idx}, state_.best_[to_idx(l_idx)],
+                k, location{tt_, l_idx}, best_[to_idx(l_idx)],
                 adjusted_transfer_time(transfer_time_settings_, fp.duration()),
-                location{tt_, fp.target()}, state_.best_[target],
+                location{tt_, fp.target()}, best_[target],
                 to_unix(time_at_dest_[k]));
           }
 

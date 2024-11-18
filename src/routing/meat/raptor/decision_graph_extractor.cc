@@ -118,7 +118,8 @@ decision_graph decision_graph_extractor::operator()(location_idx_t source_stop,
                                                     delta_t max_delay) const {
   if (state_.profile_set_.is_stop_empty(source_stop)) {
     // TODO remove
-    assert(false && "Should not be empty");
+    assert(false && "Should not be empty (RAPTOR)");
+    std::cout << "Should not be empty (RAPTOR)" << std::endl;
     return decision_graph{{{source_stop, {}, {}}, {target_stop, {}, {}}},
                           {},
                           dg_node_idx_t{0},
