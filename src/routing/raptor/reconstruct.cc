@@ -83,24 +83,6 @@ std::optional<journey::leg> find_start_footpath(timetable const& tt,
       } else {
         trace_rc_intermodal_no_match;
       }
-
-      for (auto const& fp : footpaths) {
-        auto const duration =
-            (o.duration() +
-             adjusted_transfer_time(q.transfer_time_settings_, fp.duration()));
-        if (matches(tt, q.start_match_mode_, o.target(), fp.target()) &&
-            is_better_or_eq(j.start_time_, leg_start_time - dir(duration))) {
-          trace_rc_intermodal_fp_start_found;
-          return journey::leg{SearchDir,
-                              get_special_station(special_station::kStart),
-                              leg_start_location,
-                              j.start_time_,
-                              j.start_time_ + dir(duration),
-                              o};
-        } else {
-          trace_rc_intermodal_fp_no_match;
-        }
-      }
     }
 
     if (auto const it = q.td_start_.find(leg_start_location);
@@ -510,25 +492,6 @@ void reconstruct_journey_with_vias(timetable const& tt,
             ret = std::move(intermodal_dest);
           } else {
             trace_rc_intermodal_dest_mismatch;
-          }
-
-          for (auto const& fp :
-               kFwd ? tt.locations_.footpaths_in_[q.prf_idx_][eq]
-                    : tt.locations_.footpaths_out_[q.prf_idx_][eq]) {
-            auto const fp_duration = adjusted_transfer_time(
-                q.transfer_time_settings_, fp.duration());
-            auto fp_intermodal_dest =
-                check_fp(k, l, curr_time,
-                         {fp.target(), dest_offset.duration_ + fp_duration},
-                         false, td_footpath);
-            if (fp_intermodal_dest.has_value()) {
-              trace_rc_fp_intermodal_dest_match;
-              fp_intermodal_dest->first.uses_ =
-                  offset{eq, fp_duration, dest_offset.transport_mode_id_};
-              ret = std::move(fp_intermodal_dest);
-            } else {
-              trace_rc_fp_intermodal_dest_mismatch;
-            }
           }
         });
     return ret;
