@@ -86,9 +86,11 @@ struct search {
                 kMaxVias);
 
     tts.factor_ = std::max(tts.factor_, 1.0F);
-    if (tts.factor_ == 1.0F && tts.min_transfer_time_ == 0_minutes) {
-      tts.default_ = true;
-    }
+    tts.min_transfer_time_ = std::max(tts.min_transfer_time_, 0_minutes);
+    tts.additional_time_ = std::max(tts.additional_time_, 0_minutes);
+    tts.default_ = tts.factor_ == 1.0F  //
+                   && tts.min_transfer_time_ == 0_minutes  //
+                   && tts.additional_time_ == 0_minutes;
 
     collect_destinations(tt_, q_.destination_, q_.dest_match_mode_,
                          state_.is_destination_, state_.dist_to_dest_);
