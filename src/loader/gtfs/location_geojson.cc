@@ -72,7 +72,9 @@ location_geojson_map_t read_location_geojson(source_idx_t src,
     }
 
     const auto idx = tt.register_location_geojson(
-        src, id, type, tg_parse_geojson(feature_content.c_str()));
+        src, id, type
+        // tg_parse_geojson(feature_content.c_str())
+        );
     location_geojson.emplace(id, idx);
   }
   return location_geojson;

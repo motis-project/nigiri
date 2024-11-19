@@ -89,7 +89,7 @@ area_map_t read_areas(source_idx_t const area_src,
             }
           }
         });
-  for (auto const a_to_l : area_id_to_location_ids) {
+  for (auto const& a_to_l : area_id_to_location_ids) {
     auto const area_idx = tt.areas_.register_area(
         area_src, location_src, geojson_src, a_to_l.first, a_to_l.second,
         location_id_to_idx, geojson_id_to_idx);

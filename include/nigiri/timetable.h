@@ -143,7 +143,7 @@ struct timetable {
       area_idx new_idx{.location_ = kMaxAreaIndex,
                        .location_geojson_ = kMaxAreaIndex};
 
-      for (auto const l_id : location_ids) {
+      for (auto const& l_id : location_ids) {
         auto const location_idx_iterator = location_id_to_idx.find(l_id);
         loader::gtfs::location_geojson_map_t::const_iterator
             location_geojson_idx_iterator;
@@ -216,8 +216,9 @@ struct timetable {
 
   location_geojson_idx_t register_location_geojson(source_idx_t src,
                                                    std::string const& id,
-                                                   tg_geom_type const type,
-                                                   tg_geom* geometry) {
+                                                   tg_geom_type const type
+                                                   // tg_geom* geometry
+                                                   ) {
     auto const next_idx =
         location_geojson_idx_t{location_geojson_types_.size()};
     location_geojson_types_.push_back(type);
@@ -626,7 +627,7 @@ struct timetable {
   // vector_map<location_geojson_idx_t, utl::raii<tg_geom,
   // decltype(tg_geom_free)>>
   //     test;
-  std::unique_ptr<int> test;
+  // std::unique_ptr<int> test;
 
   // booking rules
   hash_map<string, booking_rule_idx_t> booking_rule_id_to_idx;
@@ -638,7 +639,7 @@ struct timetable {
   vector_map<location_trip_idx_t, stop_windows> window_times_;
   vector_map<location_trip_idx_t, booking_rule_idx_t> pickup_booking_rules_;
   vector_map<location_trip_idx_t, booking_rule_idx_t> dropoff_booking_rules_;
-  std::unique_ptr<int> b;
+  // std::unique_ptr<int> b;
 };
 
 }  // namespace nigiri
