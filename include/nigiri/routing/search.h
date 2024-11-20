@@ -294,9 +294,12 @@ struct search {
 
     if (is_pretrip()) {
       utl::erase_if(state_.results_, [&](journey const& j) {
+        auto const travel_time = j.travel_time();
         return !search_interval_.contains(j.start_time_) ||
-               j.travel_time() >= fastest_direct_ ||
-               j.travel_time() > kMaxTravelTime;
+               travel_time >= fastest_direct_ ||
+               (q_.max_travel_time_.has_value() &&
+                travel_time > q_.max_travel_time_) ||
+               travel_time > kMaxTravelTime;
       });
       utl::sort(state_.results_, [](journey const& a, journey const& b) {
         return a.start_time_ < b.start_time_;

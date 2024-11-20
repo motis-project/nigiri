@@ -14,11 +14,7 @@ duration_t get_fastest_direct(timetable const& tt,
                               direction const dir,
                               label::dist_t const max_dist) {
   if (q.fastest_direct_) {
-    return q.max_travel_time_.has_value()
-               ? std::min(*q.fastest_direct_, *q.max_travel_time_ + 1_minutes)
-               : *q.fastest_direct_;
-  } else if (q.max_travel_time_.has_value()) {
-    return *q.max_travel_time_ + 1_minutes;
+    return *q.fastest_direct_;
   }
 
   auto dists = hash_map<location_idx_t, label::dist_t>{};
