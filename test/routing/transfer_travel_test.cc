@@ -90,7 +90,7 @@ leg 2: (B, B) [2019-05-01 08:13] -> (C, C) [2019-05-01 08:22]
 
 )"sv;
 
-constexpr auto const expected_A_C_min10 =
+constexpr auto const expected_A_C_dur10 =
     R"(
 [2019-05-01 08:00, 2019-05-01 08:30]
 TRANSFERS: 1
@@ -108,7 +108,7 @@ leg 2: (B, B) [2019-05-01 08:20] -> (C, C) [2019-05-01 08:30]
 
 )"sv;
 
-constexpr auto const expected_A_C_f15 =
+constexpr auto const expected_A_C_dur3 =
     R"(
 [2019-05-01 08:00, 2019-05-01 08:22]
 TRANSFERS: 1
@@ -126,7 +126,7 @@ leg 2: (B, B) [2019-05-01 08:13] -> (C, C) [2019-05-01 08:22]
 
 )"sv;
 
-constexpr auto const expected_A_C_f20 =
+constexpr auto const expected_A_C_dur4 =
     R"(
 [2019-05-01 08:00, 2019-05-01 08:30]
 TRANSFERS: 1
@@ -193,7 +193,7 @@ pareto_set<routing::journey> search(timetable const& tt,
 
 }  // namespace
 
-TEST(routing, transfer_time_settings_test) {
+TEST(routing, transfer_travel_test) {
   auto tt = timetable{};
 
   tt.date_range_ = {date::sys_days{2019_y / May / 1},
@@ -207,6 +207,7 @@ TEST(routing, transfer_time_settings_test) {
       .max_travel_time_ = 30_minutes,
   };
 
+  // Tests for transfer_time_settings
   for (auto const dir : {direction::kForward, direction::kBackward}) {
 
     {  // A -> C, default transfer time (= 2 min)
@@ -219,21 +220,21 @@ TEST(routing, transfer_time_settings_test) {
       auto const results =
           search(tt, nullptr, "A", "C", tt.date_range_, dir, kRestrictForTTS,
                  {.default_ = false, .min_transfer_time_ = duration_t{10}});
-      EXPECT_EQ(expected_A_C_min10, results_to_str(results, tt));
+      EXPECT_EQ(expected_A_C_dur10, results_to_str(results, tt));
     }
 
     {  // A -> C, 1.5x transfer time (= 3 min)
       auto const results =
           search(tt, nullptr, "A", "C", tt.date_range_, dir, kRestrictForTTS,
                  {.default_ = false, .factor_ = 1.5F});
-      EXPECT_EQ(expected_A_C_f15, results_to_str(results, tt));
+      EXPECT_EQ(expected_A_C_dur3, results_to_str(results, tt));
     }
 
     {  // A -> C, 2.0x transfer time (= 4 min)
       auto const results =
           search(tt, nullptr, "A", "C", tt.date_range_, dir, kRestrictForTTS,
                  {.default_ = false, .factor_ = 2.0F});
-      EXPECT_EQ(expected_A_C_f20, results_to_str(results, tt));
+      EXPECT_EQ(expected_A_C_dur4, results_to_str(results, tt));
     }
 
     {  // A -> C, min 10 min transfer time, 2.0x transfer time (= 10 min)
@@ -242,7 +243,7 @@ TEST(routing, transfer_time_settings_test) {
                  {.default_ = false,
                   .min_transfer_time_ = duration_t{10},
                   .factor_ = 2.0F});
-      EXPECT_EQ(expected_A_C_min10, results_to_str(results, tt));
+      EXPECT_EQ(expected_A_C_dur10, results_to_str(results, tt));
     }
 
     {  // A -> C, min 3 min transfer time, 2.0x transfer time (= 4 min)
@@ -251,14 +252,14 @@ TEST(routing, transfer_time_settings_test) {
                  {.default_ = false,
                   .min_transfer_time_ = duration_t{3},
                   .factor_ = 2.0F});
-      EXPECT_EQ(expected_A_C_f20, results_to_str(results, tt));
+      EXPECT_EQ(expected_A_C_dur4, results_to_str(results, tt));
     }
     {
       // A -> C, default transfer time, 2 min additional (= 4 min)
       auto const results =
           search(tt, nullptr, "A", "C", tt.date_range_, dir, kRestrictForTTS,
                  {.default_ = false, .additional_time_ = duration_t{2}});
-      EXPECT_EQ(expected_A_C_f20, results_to_str(results, tt));
+      EXPECT_EQ(expected_A_C_dur4, results_to_str(results, tt));
     }
     {
       // A -> C, 1.5x transfer time, 1 min additional (= 4 min)
@@ -267,7 +268,7 @@ TEST(routing, transfer_time_settings_test) {
                  {.default_ = false,
                   .additional_time_ = duration_t{1},
                   .factor_ = 1.5F});
-      EXPECT_EQ(expected_A_C_f20, results_to_str(results, tt));
+      EXPECT_EQ(expected_A_C_dur4, results_to_str(results, tt));
     }
     {
       // A -> C, min 3 min transfer time, 1 min additional (= 4 min)
@@ -276,7 +277,7 @@ TEST(routing, transfer_time_settings_test) {
                  {.default_ = false,
                   .min_transfer_time_ = duration_t{3},
                   .additional_time_ = duration_t{1}});
-      EXPECT_EQ(expected_A_C_f20, results_to_str(results, tt));
+      EXPECT_EQ(expected_A_C_dur4, results_to_str(results, tt));
     }
     {
       // A -> C, min 3 min transfer time, 2.5x transfer time, 5 min additional
@@ -287,11 +288,11 @@ TEST(routing, transfer_time_settings_test) {
                   .min_transfer_time_ = duration_t{3},
                   .additional_time_ = duration_t{5},
                   .factor_ = 2.5F});
-      EXPECT_EQ(expected_A_C_min10, results_to_str(results, tt));
+      EXPECT_EQ(expected_A_C_dur10, results_to_str(results, tt));
     }
-    // Test with transfer restrictions
+    // Test with search restrictions
     {
-      // A -> C, default max travel time
+      // A -> C, default max_travel_time
       auto const results = search(tt, nullptr, "A", "C", tt.date_range_, dir,
                                   {.max_travel_time_ = std::nullopt}, {});
       EXPECT_EQ(add_direct(expected_A_C_default, dir),
@@ -299,9 +300,9 @@ TEST(routing, transfer_time_settings_test) {
     }
   }
 
-  // Tests with transfer restrictions
+  // Tests with search restrictions
   {
-    // A -> C, invalid x travel time
+    // A -> C, invalid max_travel_time
     constexpr auto const dir = direction::kForward;
     auto const results = search(tt, nullptr, "A", "C", tt.date_range_, dir,
                                 {.max_travel_time_ = -1_days}, {});
