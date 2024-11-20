@@ -177,7 +177,7 @@ struct search {
         timeout_(timeout) {
     utl::sort(q_.start_);
     utl::sort(q_.destination_);
-    sanitize_query(q);
+    sanitize_query(q_);
     sanitize_via_stops(tt_, q_);
   }
 

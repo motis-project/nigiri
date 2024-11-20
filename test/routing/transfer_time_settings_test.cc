@@ -287,12 +287,23 @@ TEST(routing, transfer_time_settings_test) {
                   .factor_ = 2.5F});
       EXPECT_EQ(expected_A_C_min10, results_to_str(results, tt));
     }
+    // Test with transfer restrictions
     {
       // A -> C, default max travel time
-      auto const results = search(tt, nullptr, "A", "C", tt.date_range_, dir,
-                                  std::nullopt, {});
+      auto const results =
+          search(tt, nullptr, "A", "C", tt.date_range_, dir, std::nullopt, {});
       EXPECT_EQ(add_direct(expected_A_C_default, dir),
                 results_to_str(results, tt));
     }
+  }
+
+  // Tests with transfer restrictions
+  {
+    // A -> C, invalid x travel time
+    constexpr auto const dir = direction::kForward;
+    auto const results =
+        search(tt, nullptr, "A", "C", tt.date_range_, dir, -1_days, {});
+    EXPECT_EQ(add_direct(expected_A_C_default, dir),
+              results_to_str(results, tt));
   }
 }
