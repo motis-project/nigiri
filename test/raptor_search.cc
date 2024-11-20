@@ -1,5 +1,6 @@
 #include "./raptor_search.h"
 
+#include "nigiri/routing/limits.h"
 #include "nigiri/routing/raptor/raptor.h"
 #include "nigiri/routing/raptor_search.h"
 #include "nigiri/routing/search.h"
@@ -42,7 +43,7 @@ pareto_set<routing::journey> raptor_search(
     routing::clasz_mask_t const mask,
     bool const require_bikes_allowed,
     profile_idx_t const profile,
-    std::optional<duration_t> max_travel_time,
+    search_restrictions restrictions_,
     routing::transfer_time_settings const tts) {
   auto const src = source_idx_t{0};
   auto q = routing::query{
@@ -51,7 +52,9 @@ pareto_set<routing::journey> raptor_search(
                   0U}},
       .destination_ = {{tt.locations_.location_id_to_idx_.at({to, src}),
                         0_minutes, 0U}},
-      .max_travel_time_ = max_travel_time,
+      .max_transfers_ =
+          restrictions_.max_transfers_.value_or(routing::kMaxTransfers),
+      .max_travel_time_ = restrictions_.max_travel_time_,
       .prf_idx_ = profile,
       .allowed_claszes_ = mask,
       .require_bike_transport_ = require_bikes_allowed,
@@ -69,11 +72,11 @@ pareto_set<routing::journey> raptor_search(
     direction const search_dir,
     routing::clasz_mask_t mask,
     bool const require_bikes_allowed,
-    std::optional<duration_t> max_travel_time,
+    search_restrictions restrictions_,
     routing::transfer_time_settings const tts) {
   return raptor_search(tt, rtt, from, to, parse_time(time, "%Y-%m-%d %H:%M %Z"),
                        search_dir, mask, require_bikes_allowed, 0U,
-                       max_travel_time, tts);
+                       restrictions_, tts);
 }
 
 pareto_set<routing::journey> raptor_intermodal_search(

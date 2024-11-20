@@ -12,6 +12,10 @@ struct rt_timetable;
 namespace nigiri::test {
 
 unixtime_t parse_time(std::string_view s, char const* format);
+struct search_restrictions {
+  std::optional<std::uint8_t> max_transfers_ = std::nullopt;
+  std::optional<duration_t> max_travel_time_ = std::nullopt;
+};
 
 pareto_set<routing::journey> raptor_search(
     timetable const&,
@@ -22,7 +26,7 @@ pareto_set<routing::journey> raptor_search(
     direction = direction::kForward,
     routing::clasz_mask_t mask = routing::all_clasz_allowed(),
     bool require_bikes_allowed = false,
-    std::optional<duration_t> max_travel_time = std::nullopt,
+    search_restrictions restrictions_ = {},
     routing::transfer_time_settings tts = {});
 
 pareto_set<routing::journey> raptor_search(
@@ -35,7 +39,7 @@ pareto_set<routing::journey> raptor_search(
     routing::clasz_mask_t mask = routing::all_clasz_allowed(),
     bool require_bikes_allowed = false,
     profile_idx_t const profile = 0U,
-    std::optional<duration_t> max_travel_time = std::nullopt,
+    search_restrictions restrictions_ = {},
     routing::transfer_time_settings tts = {});
 
 pareto_set<routing::journey> raptor_search(timetable const&,
