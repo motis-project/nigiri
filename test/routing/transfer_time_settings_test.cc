@@ -203,7 +203,7 @@ TEST(routing, transfer_time_settings_test) {
                                loader::mem_dir::read(test_files), tt);
   loader::finalize(tt);
 
-  constexpr auto const kRestrictNoDirect = search_restrictions{
+  constexpr auto const kRestrictForTTS = search_restrictions{
       .max_travel_time_ = 30_minutes,
   };
 
@@ -211,34 +211,34 @@ TEST(routing, transfer_time_settings_test) {
 
     {  // A -> C, default transfer time (= 2 min)
       auto const results = search(tt, nullptr, "A", "C", tt.date_range_, dir,
-                                  kRestrictNoDirect, {});
+                                  kRestrictForTTS, {});
       EXPECT_EQ(expected_A_C_default, results_to_str(results, tt));
     }
 
     {  // A -> C, min 10 min transfer time (= 10 min)
       auto const results =
-          search(tt, nullptr, "A", "C", tt.date_range_, dir, kRestrictNoDirect,
+          search(tt, nullptr, "A", "C", tt.date_range_, dir, kRestrictForTTS,
                  {.default_ = false, .min_transfer_time_ = duration_t{10}});
       EXPECT_EQ(expected_A_C_min10, results_to_str(results, tt));
     }
 
     {  // A -> C, 1.5x transfer time (= 3 min)
       auto const results =
-          search(tt, nullptr, "A", "C", tt.date_range_, dir, kRestrictNoDirect,
+          search(tt, nullptr, "A", "C", tt.date_range_, dir, kRestrictForTTS,
                  {.default_ = false, .factor_ = 1.5F});
       EXPECT_EQ(expected_A_C_f15, results_to_str(results, tt));
     }
 
     {  // A -> C, 2.0x transfer time (= 4 min)
       auto const results =
-          search(tt, nullptr, "A", "C", tt.date_range_, dir, kRestrictNoDirect,
+          search(tt, nullptr, "A", "C", tt.date_range_, dir, kRestrictForTTS,
                  {.default_ = false, .factor_ = 2.0F});
       EXPECT_EQ(expected_A_C_f20, results_to_str(results, tt));
     }
 
     {  // A -> C, min 10 min transfer time, 2.0x transfer time (= 10 min)
       auto const results =
-          search(tt, nullptr, "A", "C", tt.date_range_, dir, kRestrictNoDirect,
+          search(tt, nullptr, "A", "C", tt.date_range_, dir, kRestrictForTTS,
                  {.default_ = false,
                   .min_transfer_time_ = duration_t{10},
                   .factor_ = 2.0F});
@@ -247,7 +247,7 @@ TEST(routing, transfer_time_settings_test) {
 
     {  // A -> C, min 3 min transfer time, 2.0x transfer time (= 4 min)
       auto const results =
-          search(tt, nullptr, "A", "C", tt.date_range_, dir, kRestrictNoDirect,
+          search(tt, nullptr, "A", "C", tt.date_range_, dir, kRestrictForTTS,
                  {.default_ = false,
                   .min_transfer_time_ = duration_t{3},
                   .factor_ = 2.0F});
@@ -256,14 +256,14 @@ TEST(routing, transfer_time_settings_test) {
     {
       // A -> C, default transfer time, 2 min additional (= 4 min)
       auto const results =
-          search(tt, nullptr, "A", "C", tt.date_range_, dir, kRestrictNoDirect,
+          search(tt, nullptr, "A", "C", tt.date_range_, dir, kRestrictForTTS,
                  {.default_ = false, .additional_time_ = duration_t{2}});
       EXPECT_EQ(expected_A_C_f20, results_to_str(results, tt));
     }
     {
       // A -> C, 1.5x transfer time, 1 min additional (= 4 min)
       auto const results =
-          search(tt, nullptr, "A", "C", tt.date_range_, dir, kRestrictNoDirect,
+          search(tt, nullptr, "A", "C", tt.date_range_, dir, kRestrictForTTS,
                  {.default_ = false,
                   .additional_time_ = duration_t{1},
                   .factor_ = 1.5F});
@@ -272,7 +272,7 @@ TEST(routing, transfer_time_settings_test) {
     {
       // A -> C, min 3 min transfer time, 1 min additional (= 4 min)
       auto const results =
-          search(tt, nullptr, "A", "C", tt.date_range_, dir, kRestrictNoDirect,
+          search(tt, nullptr, "A", "C", tt.date_range_, dir, kRestrictForTTS,
                  {.default_ = false,
                   .min_transfer_time_ = duration_t{3},
                   .additional_time_ = duration_t{1}});
@@ -282,7 +282,7 @@ TEST(routing, transfer_time_settings_test) {
       // A -> C, min 3 min transfer time, 2.5x transfer time, 5 min additional
       // (= 10 min)
       auto const results =
-          search(tt, nullptr, "A", "C", tt.date_range_, dir, kRestrictNoDirect,
+          search(tt, nullptr, "A", "C", tt.date_range_, dir, kRestrictForTTS,
                  {.default_ = false,
                   .min_transfer_time_ = duration_t{3},
                   .additional_time_ = duration_t{5},
