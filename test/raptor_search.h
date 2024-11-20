@@ -1,5 +1,7 @@
 #include "nigiri/routing/journey.h"
 
+#include <optional>
+
 #include "nigiri/routing/pareto_set.h"
 
 namespace nigiri {
@@ -20,6 +22,7 @@ pareto_set<routing::journey> raptor_search(
     direction = direction::kForward,
     routing::clasz_mask_t mask = routing::all_clasz_allowed(),
     bool require_bikes_allowed = false,
+    std::optional<duration_t> max_travel_time = std::nullopt,
     routing::transfer_time_settings tts = {});
 
 pareto_set<routing::journey> raptor_search(
@@ -32,6 +35,7 @@ pareto_set<routing::journey> raptor_search(
     routing::clasz_mask_t mask = routing::all_clasz_allowed(),
     bool require_bikes_allowed = false,
     profile_idx_t const profile = 0U,
+    std::optional<duration_t> max_travel_time = std::nullopt,
     routing::transfer_time_settings tts = {});
 
 pareto_set<routing::journey> raptor_search(timetable const&,

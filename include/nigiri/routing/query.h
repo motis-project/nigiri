@@ -2,6 +2,7 @@
 
 #include <cinttypes>
 #include <limits>
+#include <optional>
 #include <variant>
 #include <vector>
 
@@ -73,6 +74,7 @@ struct query {
   hash_map<location_idx_t, std::vector<td_offset>> td_start_{}, td_dest_{};
   duration_t max_start_offset_{kMaxTravelTime};
   std::uint8_t max_transfers_{kMaxTransfers};
+  std::optional<duration_t> max_travel_time_{std::nullopt};
   unsigned min_connection_count_{0U};
   bool extend_interval_earlier_{false};
   bool extend_interval_later_{false};
