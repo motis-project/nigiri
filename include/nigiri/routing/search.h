@@ -18,6 +18,7 @@
 #include "nigiri/routing/limits.h"
 #include "nigiri/routing/pareto_set.h"
 #include "nigiri/routing/query.h"
+#include "nigiri/routing/sanitize_query.h"
 #include "nigiri/routing/sanitize_via_stops.h"
 #include "nigiri/routing/start_times.h"
 #include "nigiri/timetable.h"
@@ -176,6 +177,7 @@ struct search {
         timeout_(timeout) {
     utl::sort(q_.start_);
     utl::sort(q_.destination_);
+    sanitize_query(q);
     sanitize_via_stops(tt_, q_);
   }
 
@@ -294,12 +296,9 @@ struct search {
 
     if (is_pretrip()) {
       utl::erase_if(state_.results_, [&](journey const& j) {
-        auto const travel_time = j.travel_time();
         return !search_interval_.contains(j.start_time_) ||
-               travel_time >= fastest_direct_ ||
-               (q_.max_travel_time_.has_value() &&
-                travel_time > q_.max_travel_time_) ||
-               travel_time > kMaxTravelTime;
+               j.travel_time() >= fastest_direct_ ||
+               j.travel_time() > q_.max_travel_time_.value_or(kMaxTravelTime);
       });
       utl::sort(state_.results_, [](journey const& a, journey const& b) {
         return a.start_time_ < b.start_time_;
