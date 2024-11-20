@@ -54,7 +54,8 @@ pareto_set<routing::journey> raptor_search(
                         0_minutes, 0U}},
       .max_transfers_ =
           restrictions_.max_transfers_.value_or(routing::kMaxTransfers),
-      .max_travel_time_ = restrictions_.max_travel_time_,
+      .max_travel_time_ =
+          restrictions_.max_travel_time_.value_or(routing::kMaxTravelTime),
       .prf_idx_ = profile,
       .allowed_claszes_ = mask,
       .require_bike_transport_ = require_bikes_allowed,

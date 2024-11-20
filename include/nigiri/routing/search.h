@@ -298,7 +298,7 @@ struct search {
       utl::erase_if(state_.results_, [&](journey const& j) {
         return !search_interval_.contains(j.start_time_) ||
                j.travel_time() >= fastest_direct_ ||
-               j.travel_time() > q_.max_travel_time_.value_or(kMaxTravelTime);
+               j.travel_time() > q_.max_travel_time_;
       });
       utl::sort(state_.results_, [](journey const& a, journey const& b) {
         return a.start_time_ < b.start_time_;
