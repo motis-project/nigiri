@@ -405,8 +405,9 @@ private:
           }
 
           auto const worst_time_at_dest =
-              start_time +
-              (kFwd ? 1 : -1) * std::min(fastest_direct_, kMaxTravelTime);
+              start_time + (kFwd ? 1 : -1) *
+                               (std::min(fastest_direct_, q_.max_travel_time_) +
+                                duration_t{1});
           algo_.execute(start_time, q_.max_transfers_, worst_time_at_dest,
                         q_.prf_idx_, state_.results_);
 
