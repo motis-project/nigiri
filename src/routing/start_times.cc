@@ -273,7 +273,38 @@ void get_starts(
     });
   }
 
+  auto nearest = std::vector<pair<location_idx_t, duration_t>>{};
+  nearest.reserve(shortest_start.size());
   for (auto const& s : shortest_start) {
+    nearest.emplace_back(s.first, s.second);
+  }
+  std::sort(begin(nearest), end(nearest),
+            [](auto const& a, auto const& b) { return a.second < b.second; });
+  auto routes = std::set<route_idx_t>{};
+  auto closest_per_route = std::vector<pair<location_idx_t, duration_t>>{};
+  closest_per_route.reserve(shortest_start.size());
+  for (auto const& l_d : nearest) {
+    auto new_route = false;
+    for (auto const& route : tt.location_routes_[l_d.first]) {
+      auto const loc_seq = tt.route_location_seq_[route];
+      auto i = fwd ? 0U : 1U;
+      auto const last = fwd ? loc_seq.size() - 1 : loc_seq.size();
+      for (; i != last; ++i) {
+        auto const stp = stop{loc_seq[i]};
+        if (stp.location_idx() == l_d.first &&
+            ((fwd && stp.in_allowed()) || (!fwd && stp.out_allowed())) &&
+            !routes.contains(route)) {
+          routes.emplace(route);
+          new_route = true;
+        }
+      }
+    }
+    if (new_route) {
+      closest_per_route.emplace_back(l_d);
+    }
+  }
+
+  for (auto const& s : closest_per_route) {
     auto const l = s.first;
     auto const o = s.second;
     std::visit(utl::overloaded{[&](interval<unixtime_t> const interval) {
