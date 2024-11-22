@@ -33,17 +33,15 @@ pareto_set<routing::journey> raptor_search(timetable const& tt,
                .journeys_);
 }
 
-pareto_set<routing::journey> raptor_search(
-    timetable const& tt,
-    rt_timetable const* rtt,
-    std::string_view from,
-    std::string_view to,
-    routing::start_time_t time,
-    direction const search_dir,
-    routing::clasz_mask_t const mask,
-    bool const require_bikes_allowed,
-    profile_idx_t const profile,
-    routing::transfer_time_settings const tts) {
+pareto_set<routing::journey> raptor_search(timetable const& tt,
+                                           rt_timetable const* rtt,
+                                           std::string_view from,
+                                           std::string_view to,
+                                           routing::start_time_t time,
+                                           direction const search_dir,
+                                           routing::clasz_mask_t const mask,
+                                           bool const require_bikes_allowed,
+                                           profile_idx_t const profile) {
   auto const src = source_idx_t{0};
   auto q = routing::query{
       .start_time_ = time,
@@ -54,23 +52,20 @@ pareto_set<routing::journey> raptor_search(
       .prf_idx_ = profile,
       .allowed_claszes_ = mask,
       .require_bike_transport_ = require_bikes_allowed,
-      .transfer_time_settings_ = tts,
       .via_stops_ = {}};
   return raptor_search(tt, rtt, std::move(q), search_dir);
 }
 
-pareto_set<routing::journey> raptor_search(
-    timetable const& tt,
-    rt_timetable const* rtt,
-    std::string_view from,
-    std::string_view to,
-    std::string_view time,
-    direction const search_dir,
-    routing::clasz_mask_t mask,
-    bool const require_bikes_allowed,
-    routing::transfer_time_settings const tts) {
+pareto_set<routing::journey> raptor_search(timetable const& tt,
+                                           rt_timetable const* rtt,
+                                           std::string_view from,
+                                           std::string_view to,
+                                           std::string_view time,
+                                           direction const search_dir,
+                                           routing::clasz_mask_t mask,
+                                           bool const require_bikes_allowed) {
   return raptor_search(tt, rtt, from, to, parse_time(time, "%Y-%m-%d %H:%M %Z"),
-                       search_dir, mask, require_bikes_allowed, 0U, tts);
+                       search_dir, mask, require_bikes_allowed, 0U);
 }
 
 pareto_set<routing::journey> raptor_search(timetable const& tt,
