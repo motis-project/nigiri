@@ -404,6 +404,10 @@ private:
             algo_.add_start(s.stop_, s.time_at_stop_);
           }
 
+          /*
+           * Upper bound: Search journeys faster than 'worst_time_at_dest'
+           * It will not find journeys with the same duration
+           */
           auto const worst_time_at_dest =
               start_time + (kFwd ? 1 : -1) *
                                (std::min(fastest_direct_, q_.max_travel_time_) +

@@ -315,6 +315,17 @@ TEST(routing, transfer_travel_test) {
 
   // Tests with search restrictions
   {
+    // Edge case: A -> C, 2.0x transfer time (= 4 min) (see above)
+    // max_travel_time = 29 min < result travel time (= 30 min)
+    constexpr auto const dir = direction::kForward;
+    auto const results = search(
+        tt, "A", "C", dir,
+        {.start_time_ = tt.date_range_,
+         .max_travel_time_ = 29_minutes,
+         .transfer_time_settings_ = {.default_ = false, .factor_ = 2.0F}});
+    EXPECT_EQ("\n", results_to_str(results, tt));
+  }
+  {
     // A -> C, invalid max_travel_time
     constexpr auto const dir = direction::kForward;
     auto const results =
