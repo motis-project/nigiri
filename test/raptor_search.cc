@@ -43,7 +43,6 @@ pareto_set<routing::journey> raptor_search(
     routing::clasz_mask_t const mask,
     bool const require_bikes_allowed,
     profile_idx_t const profile,
-    search_restrictions restrictions_,
     routing::transfer_time_settings const tts) {
   auto const src = source_idx_t{0};
   auto q = routing::query{
@@ -52,10 +51,6 @@ pareto_set<routing::journey> raptor_search(
                   0U}},
       .destination_ = {{tt.locations_.location_id_to_idx_.at({to, src}),
                         0_minutes, 0U}},
-      .max_transfers_ =
-          restrictions_.max_transfers_.value_or(routing::kMaxTransfers),
-      .max_travel_time_ =
-          restrictions_.max_travel_time_.value_or(routing::kMaxTravelTime),
       .prf_idx_ = profile,
       .allowed_claszes_ = mask,
       .require_bike_transport_ = require_bikes_allowed,
@@ -73,11 +68,31 @@ pareto_set<routing::journey> raptor_search(
     direction const search_dir,
     routing::clasz_mask_t mask,
     bool const require_bikes_allowed,
-    search_restrictions restrictions_,
     routing::transfer_time_settings const tts) {
   return raptor_search(tt, rtt, from, to, parse_time(time, "%Y-%m-%d %H:%M %Z"),
-                       search_dir, mask, require_bikes_allowed, 0U,
-                       restrictions_, tts);
+                       search_dir, mask, require_bikes_allowed, 0U, tts);
+}
+
+pareto_set<routing::journey> raptor_search(timetable const& tt,
+                                           rt_timetable const* rtt,
+                                           routing::query&& q,
+                                           std::string_view from,
+                                           std::string_view to,
+                                           std::string_view time,
+                                           direction const search_dir) {
+  auto const src = source_idx_t{0};
+  if (!from.empty()) {
+    q.start_ = {
+        {tt.locations_.location_id_to_idx_.at({from, src}), 0_minutes, 0U}};
+  }
+  if (!to.empty()) {
+    q.destination_ = {
+        {tt.locations_.location_id_to_idx_.at({to, src}), 0_minutes, 0U}};
+  }
+  if (!time.empty()) {
+    q.start_time_ = parse_time(time, "%Y-%m-%d %H:%M %Z");
+  }
+  return raptor_search(tt, rtt, std::move(q), search_dir);
 }
 
 pareto_set<routing::journey> raptor_intermodal_search(
