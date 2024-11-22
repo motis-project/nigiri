@@ -1,8 +1,6 @@
 
 #include "gtest/gtest.h"
 
-#include <optional>
-
 #include "utl/erase_if.h"
 
 #include "nigiri/loader/gtfs/agency.h"
