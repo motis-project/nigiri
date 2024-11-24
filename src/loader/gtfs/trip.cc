@@ -382,10 +382,17 @@ void read_frequencies(trip_data& trips, std::string_view file_content) {
            if (!frequencies.has_value()) {
              frequencies = std::vector<frequency>{};
            }
+
+           // If the service operates multiple times per minute, make sure not
+           // to end up with zero.
+           auto const headway_minutes = duration_t{std::max(
+               static_cast<int>(
+                   std::round(static_cast<float>(headway_secs) / 60.F)),
+               1)};
            frequencies->emplace_back(
                frequency{hhmm_to_min(freq.start_time_->view()),
-                         hhmm_to_min(freq.end_time_->view()),
-                         duration_t{headway_secs / 60}, schedule_relationship});
+                         hhmm_to_min(freq.end_time_->view()), headway_minutes,
+                         schedule_relationship});
          });
 }
 
