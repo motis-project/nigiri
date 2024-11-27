@@ -75,9 +75,9 @@ void read_stop_times(source_idx_t src,
       utl::make_buf_reader(file_content, progress_tracker->update_fn())};  //
   auto header = line_range.begin().to_str();
 
-  const auto kStopIdReferencesEverything =
-      !header.contains("location_id") &&
-      !header.contains("location_group_id") && !header.contains("area_id");
+  // const auto kStopIdReferencesEverything =
+  //     !header.contains("location_id") &&
+  //     !header.contains("location_group_id") && !header.contains("area_id");
 
   std::move(line_range) | utl::csv<csv_stop_time>()  //
       |
