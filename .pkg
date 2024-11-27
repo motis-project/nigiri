@@ -54,3 +54,7 @@
   url=git@github.com:motis-project/pugixml.git
   branch=master
   commit=60175e80e2f5e97e027ac78f7e14c5acc009ce50
+[tg]
+  url=git@github.com:triptix-tech/tg.git
+  branch=main
+  commit=20c0f298b8ce58de29a790290f44dca7c4ecc364

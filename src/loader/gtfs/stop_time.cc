@@ -1,8 +1,5 @@
 #include "nigiri/loader/gtfs/stop_time.h"
 
-#include <algorithm>
-#include <tuple>
-
 #include "utl/enumerate.h"
 #include "utl/parser/arg_parser.h"
 #include "utl/parser/buf_reader.h"
@@ -13,10 +10,14 @@
 #include "utl/pipes/vec.h"
 #include "utl/progress_tracker.h"
 
+#include <nigiri/loader/gtfs/booking_rule.h>
 #include "nigiri/loader/gtfs/parse_time.h"
 #include "nigiri/loader/gtfs/trip.h"
 #include "nigiri/common/cached_lookup.h"
 #include "nigiri/logging.h"
+
+#include <boost/algorithm/string/split.hpp>
+
 #include "utl/pipes/for_each.h"
 
 namespace nigiri::loader::gtfs {
@@ -25,7 +26,18 @@ void read_stop_times(timetable& tt,
                      trip_data& trips,
                      locations_map const& stops,
                      std::string_view file_content) {
+  auto b = booking_rule_map_t{};
+  return read_stop_times(source_idx_t{0}, tt, trips, stops, b, file_content);
+}
+
+void read_stop_times(source_idx_t src,
+                     timetable& tt,
+                     trip_data& trips,
+                     locations_map const& stops,
+                     booking_rule_map_t& booking_rules,
+                     std::string_view file_content) {
   struct csv_stop_time {
+    // GTFS
     utl::csv_col<utl::cstr, UTL_NAME("trip_id")> trip_id_;
     utl::csv_col<utl::cstr, UTL_NAME("arrival_time")> arrival_time_;
     utl::csv_col<utl::cstr, UTL_NAME("departure_time")> departure_time_;
@@ -34,6 +46,19 @@ void read_stop_times(timetable& tt,
     utl::csv_col<utl::cstr, UTL_NAME("stop_headsign")> stop_headsign_;
     utl::csv_col<int, UTL_NAME("pickup_type")> pickup_type_;
     utl::csv_col<int, UTL_NAME("drop_off_type")> drop_off_type_;
+
+    // GTFS-Flex specific
+    utl::csv_col<utl::cstr, UTL_NAME("area_id")> area_id_;
+    utl::csv_col<utl::cstr, UTL_NAME("location_id")> location_geojson_id_;
+    utl::csv_col<utl::cstr, UTL_NAME("location_group_id")> location_group_id_;
+    utl::csv_col<utl::cstr, UTL_NAME("start_pickup_drop_off_window")>
+        start_pickup_drop_off_window_;
+    utl::csv_col<utl::cstr, UTL_NAME("end_pickup_drop_off_window")>
+        end_pickup_drop_off_window_;
+    utl::csv_col<utl::cstr, UTL_NAME("pickup_booking_rule_id")>
+        pickup_booking_rule_id_;
+    utl::csv_col<utl::cstr, UTL_NAME("drop_off_booking_rule_id")>
+        drop_off_booking_rule_id_;
   };
 
   auto const timer = scoped_timer{"read stop times"};
@@ -45,11 +70,64 @@ void read_stop_times(timetable& tt,
       .out_bounds(43.F, 68.F)
       .in_high(file_content.size());
   auto lookup_direction = cached_lookup(trips.directions_);
-  utl::line_range{
-      utl::make_buf_reader(file_content, progress_tracker->update_fn())}  //
-      | utl::csv<csv_stop_time>()  //
+
+  auto line_range = utl::line_range{
+      utl::make_buf_reader(file_content, progress_tracker->update_fn())};  //
+  auto header = line_range.begin().to_str();
+
+  // const auto kStopIdReferencesEverything =
+  //     !header.contains("location_id") &&
+  //     !header.contains("location_group_id") && !header.contains("area_id");
+
+  std::move(line_range) | utl::csv<csv_stop_time>()  //
       |
       utl::for_each([&](csv_stop_time const& s) {
+        auto const is_flex_trip =
+            *s.pickup_type_ == kPhoneAgencyType ||
+            *s.pickup_type_ == kCoordinateWithDriverType ||
+            *s.drop_off_type_ == kPhoneAgencyType ||
+            *s.drop_off_type_ == kCoordinateWithDriverType;
+
+        if (is_flex_trip) {
+
+          auto id = s.stop_id_->to_str();
+          if (!s.location_geojson_id_->empty()) {
+            id = s.location_geojson_id_->to_str();
+          } else if (!s.location_group_id_->empty()) {
+            id = s.location_group_id_->to_str();
+          } else if (!s.area_id_->empty()) {
+            id = s.area_id_->to_str();
+          }
+
+          auto const pickup_booking_rule_idx =
+              booking_rules.find(s.pickup_booking_rule_id_->view());
+          auto const dropoff_booking_rule_idx =
+              booking_rules.find(s.drop_off_booking_rule_id_->view());
+
+          if (pickup_booking_rule_idx == booking_rules.end()) {
+            log(log_lvl::error, "loader.gtfs.stop_time",
+                "stop_times.txt:{}: unknown pickup_booking_rule_idx \"{}\"", i,
+                s.pickup_booking_rule_id_->view());
+            return;
+          }
+          if (dropoff_booking_rule_idx == booking_rules.end()) {
+            log(log_lvl::error, "loader.gtfs.stop_time",
+                "stop_times.txt:{}: unknown pickup_booking_rule_idx \"{}\"", i,
+                s.drop_off_booking_rule_id_->view());
+            return;
+          }
+
+          auto const start_window =
+              hhmm_to_min(*s.start_pickup_drop_off_window_);
+          auto const end_window = hhmm_to_min(*s.start_pickup_drop_off_window_);
+
+          auto const window_time = stop_windows{start_window, end_window};
+
+          tt.register_location_trip(src, id, s.trip_id_->to_str(), window_time,
+                                    pickup_booking_rule_idx->second,
+                                    dropoff_booking_rule_idx->second);
+        }
+
         ++i;
 
         trip* t = nullptr;
@@ -75,13 +153,27 @@ void read_stop_times(timetable& tt,
         }
 
         try {
-          auto const arrival_time = hhmm_to_min(*s.arrival_time_);
-          auto const departure_time = hhmm_to_min(*s.departure_time_);
-          auto const in_allowed = *s.pickup_type_ != 1;
-          auto const out_allowed = *s.drop_off_type_ != 1;
 
-          t->requires_interpolation_ |= arrival_time == kInterpolate;
-          t->requires_interpolation_ |= departure_time == kInterpolate;
+          auto const arrival_time = *s.pickup_type_ == kRegularType
+                                        ? hhmm_to_min(*s.arrival_time_)
+                                        : duration_t{0};
+          auto const departure_time = *s.drop_off_type_ == kRegularType
+                                          ? hhmm_to_min(*s.departure_time_)
+                                          : duration_t{0};
+          auto const start_window =
+              is_flex_trip ? hhmm_to_min(*s.start_pickup_drop_off_window_)
+                           : duration_t{0};
+          auto const end_window =
+              is_flex_trip ? hhmm_to_min(*s.start_pickup_drop_off_window_)
+                           : duration_t{0};
+
+          auto const in_allowed = *s.pickup_type_ != kUnavailableType;
+          auto const out_allowed = *s.drop_off_type_ != kUnavailableType;
+
+          t->requires_interpolation_ |=
+              arrival_time == kInterpolate && !is_flex_trip;
+          t->requires_interpolation_ |=
+              departure_time == kInterpolate && !is_flex_trip;
           t->requires_sorting_ |= (!t->seq_numbers_.empty() &&
                                    t->seq_numbers_.back() > *s.stop_sequence_);
 
