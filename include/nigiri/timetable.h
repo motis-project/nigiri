@@ -19,6 +19,7 @@
 
 #include "nigiri/common/interval.h"
 #include "nigiri/footpath.h"
+#include "nigiri/geometry.h"
 #include "nigiri/location.h"
 #include "nigiri/logging.h"
 #include "nigiri/stop.h"
@@ -214,17 +215,33 @@ struct timetable {
     std::basic_string<route_color> const& route_colors_;
   };
 
-  location_geojson_idx_t register_location_geojson(source_idx_t src,
-                                                   std::string const& id,
-                                                   tg_geom_type const type,
-                                                   tg_geom* geometry) {
+  location_geojson_idx_t register_location_geojson(source_idx_t const src,
+                                                   std::string const id,
+                                                   tg_geom const* geometry) {
     auto const next_idx =
-        location_geojson_idx_t{location_geojson_types_.size()};
-    location_geojson_types_.push_back(type);
-    // auto const ptr =
-    //     std::unique_ptr<tg_geom, void (*)(tg_geom*)>(geometry, tg_geom_free);
-    // locations_geojson_geometries_.emplace_back(std::make_unique<tg_geom*>(
-    //     geometry));  // TODO Dekonstruktorfunktion hinzufügen
+        location_geojson_idx_t{location_geojson_geometries.size()};
+    auto const type = tg_geom_typeof(geometry);
+    tg_poly const* poly;
+    switch (type) {
+      case TG_POINT:
+        auto const p = tg_geom_point(geometry);
+        location_geojson_geometries.push_back(
+            point_to_multipolygon(point{p.x, p.y}));
+        break;
+      case TG_POLYGON:
+        poly = tg_geom_poly(geometry);
+        location_geojson_geometries.push_back(
+            polygon_to_multipolygon(create_polygon(poly)));
+        break;
+      case TG_MULTIPOLYGON:
+        location_geojson_geometries.push_back(create_multipolygon(geometry));
+        break;
+      default:
+        break;
+        // log(log_lvl::error, "timetable.register_location_geojson",
+        //     "Unkown tg_geometry type {}", tg_geom_typeof(geometry));
+    }
+
     location_id_to_location_geojson_idx_.emplace(
         locationGeoJson_id{.id_ = id, .src_ = src}, next_idx);
     return next_idx;
@@ -620,13 +637,7 @@ struct timetable {
   hash_map<locationGeoJson_id, location_geojson_idx_t>
       location_id_to_location_geojson_idx_;
   vector_map<location_geojson_idx_t, source_idx_t> location_geojson_src_;
-  vector_map<location_idx_t, tg_geom_type> location_geojson_types_;
-  // vector_map<location_idx_t, std::unique_ptr<tg_geom*>>
-  //     locations_geojson_geometries_;
-  // vector_map<location_geojson_idx_t, utl::raii<tg_geom,
-  // decltype(tg_geom_free)>>
-  //     test;
-  std::unique_ptr<int> test;
+  vector_map<location_geojson_idx_t, multipolgyon> location_geojson_geometries;
 
   // booking rules
   hash_map<string, booking_rule_idx_t> booking_rule_id_to_idx;
@@ -638,7 +649,6 @@ struct timetable {
   vector_map<location_trip_idx_t, stop_windows> window_times_;
   vector_map<location_trip_idx_t, booking_rule_idx_t> pickup_booking_rules_;
   vector_map<location_trip_idx_t, booking_rule_idx_t> dropoff_booking_rules_;
-  std::unique_ptr<int> b;
 };
 
 }  // namespace nigiri

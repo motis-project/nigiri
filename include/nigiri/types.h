@@ -31,6 +31,8 @@
 #include "nigiri/common/interval.h"
 #include "nigiri/common/it_range.h"
 
+#include <tg.h>
+
 namespace nigiri {
 
 // Extend interval by one day. This is required due to the departure/arrival

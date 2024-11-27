@@ -40,7 +40,8 @@ location_geojson_map_t read_location_geojson(source_idx_t src,
           std::distance(features.begin(), feature) + 1, "id");
       continue;
     }
-    auto const id = std::string(id_entry->value().as_string());
+    auto const boost_string_id = id_entry->value().as_string();
+    auto const id = std::string(boost_string_id.data(), boost_string_id.size());
     auto const geometry_entry = feature_object.find("geometry");
     if (geometry_entry == feature_object.end()) {
       log(log_lvl::error, "loader.gtfs.location_geojson",
@@ -49,30 +50,16 @@ location_geojson_map_t read_location_geojson(source_idx_t src,
     }
     auto const geometry_object = geometry_entry->value().as_object();
 
-    const auto feature_content = feature->as_string();
-    auto type = TG_GEOMETRYCOLLECTION;
-    auto const type_entry = geometry_object.find("type");
-    if (type_entry == geometry_object.end()) {
+    auto const feature_content = boost::json::serialize(geometry_object);
+
+    auto const geometry = tg_parse_geojson(feature_content.c_str());
+    if (tg_geom_error(geometry)) {
       log(log_lvl::error, "loader.gtfs.location_geojson",
-          R"(feature {}: Could not find entry with key "{}"!)", id, "type");
-      continue;
-    }
-    auto type_name = type_entry->value().at("type").as_string();
-    boost::algorithm::to_lower(type_name);
-    if (type_name == "point") {
-      type = TG_POINT;
-    } else if (type_name == "polygon") {
-      type = TG_POLYGON;
-    } else if (type_name == "multipolygon") {
-      type = TG_MULTIPOLYGON;
-    } else {
-      log(log_lvl::error, "loader.gtfs.location_geojson",
-          R"(feature {}: geometry type "{}" unknown!)", id, type_name);
+          R"(feature {}: Could not parse feature!)", id);
       continue;
     }
 
-    const auto idx = tt.register_location_geojson(
-        src, id, type, tg_parse_geojson(feature_content.c_str()));
+    const auto idx = tt.register_location_geojson(src, id, geometry);
     location_geojson.emplace(id, idx);
   }
   return location_geojson;

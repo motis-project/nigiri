@@ -159,7 +159,6 @@ constexpr auto const example_location_geojsons_content =
 			 ]
 		]
 	  }
-
 	 },
 	 {
 		"id": "l_geo_2",
