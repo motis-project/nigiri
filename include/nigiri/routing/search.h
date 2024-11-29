@@ -153,7 +153,8 @@ struct search {
          search_state& s,
          algo_state_t& algo_state,
          query q,
-         std::optional<std::chrono::seconds> timeout = std::nullopt)
+         std::optional<std::chrono::seconds> timeout = std::nullopt,
+         std::optional<std::filesystem::path> dbg_dir = std::nullopt)
       : tt_{tt},
         rtt_{rtt},
         state_{s},
@@ -172,7 +173,8 @@ struct search {
                    q_.require_bike_transport_,
                    q_.transfer_time_settings_,
                    algo_state)},
-        timeout_(timeout) {
+        timeout_(timeout),
+        dbg_dir_{dbg_dir} {
     utl::sort(q_.start_);
     utl::sort(q_.destination_);
     sanitize_via_stops(tt_, q_);
@@ -181,6 +183,10 @@ struct search {
   routing_result<algo_stats_t> execute() {
     auto span = get_otel_tracer()->StartSpan("search::execute");
     auto scope = opentelemetry::trace::Scope{span};
+
+    if (dbg_dir_) {
+      std::filesystem::create_directory(*dbg_dir_ / std::to_string(q_.id_));
+    }
 
     state_.results_.clear();
 
@@ -210,10 +216,10 @@ struct search {
       return false;
     };
 
-    while (true) {
+    for (auto i = 0U;; ++i) {
       trace("start_time={}\n", search_interval_);
 
-      search_interval();
+      search_interval(i);
 
       if (is_ontrip() || n_results_in_interval() >= q_.min_connection_count_ ||
           is_timeout_reached()) {
@@ -383,9 +389,14 @@ private:
     });
   }
 
-  void search_interval() {
+  void search_interval(std::uint32_t i) {
     auto span = get_otel_tracer()->StartSpan("search::search_interval");
     auto scope = opentelemetry::trace::Scope{span};
+
+    if (dbg_dir_) {
+      std::filesystem::create_directory(*dbg_dir_ / std::to_string(q_.id_) /
+                                        std::to_string(i));
+    }
 
     utl::equal_ranges_linear(
         state_.starts_,
@@ -405,7 +416,11 @@ private:
               start_time +
               (kFwd ? 1 : -1) * std::min(fastest_direct_, kMaxTravelTime);
           algo_.execute(start_time, q_.max_transfers_, worst_time_at_dest,
-                        q_.prf_idx_, state_.results_);
+                        q_.prf_idx_, state_.results_,
+                        dbg_dir_
+                            ? *dbg_dir_ / std::to_string(q_.id_) /
+                                  std::to_string(i) / std::to_string(start_time)
+                            : std::nullopt);
 
           for (auto& j : state_.results_) {
             if (j.legs_.empty() &&
@@ -438,6 +453,7 @@ private:
   duration_t fastest_direct_;
   Algo algo_;
   std::optional<std::chrono::seconds> timeout_;
+  std::optional<std::filesystem::path> dbg_dir_;
 };
 
 }  // namespace nigiri::routing

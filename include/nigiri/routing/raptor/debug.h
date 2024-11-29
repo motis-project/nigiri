@@ -228,3 +228,10 @@
 #define trace_upd(...)
 #define trace(...)
 #endif
+
+#ifdef NIGIRI_DUMP_ROUND_TIMES
+#define dump_round_times(path, ptr, size)
+
+#else
+#define dump_round_times(path, ptr, size)
+#endif

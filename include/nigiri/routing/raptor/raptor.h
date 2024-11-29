@@ -151,7 +151,8 @@ struct raptor {
                std::uint8_t const max_transfers,
                unixtime_t const worst_time_at_dest,
                profile_idx_t const prf_idx,
-               pareto_set<journey>& results) {
+               pareto_set<journey>& results,
+               std::optional<std::filesystem::path> dbg_dir = std::nullopt) {
     auto const end_k = std::min(max_transfers, kMaxTransfers) + 1U;
 
     auto const d_worst_at_dest = unix_to_delta(base(), worst_time_at_dest);
@@ -160,6 +161,10 @@ struct raptor {
     }
 
     trace_print_init_state();
+    if (dbg_dir) {
+      std::filesystem::create_directory(*dbg_dir);
+      // serialize round_times init state
+    }
 
     for (auto k = 1U; k != end_k; ++k) {
       for (auto i = 0U; i != n_locations_; ++i) {
@@ -382,6 +387,8 @@ private:
         }
       }
     });
+
+    dump_round_times(, round_times_[k], n_locations_);
   }
 
   void update_footpaths(unsigned const k, profile_idx_t const prf_idx) {
