@@ -25,12 +25,6 @@ struct ring {
 
   ring(point&& p) { points_.emplace_back(p); }
 
-  // ring(std::vector<point>& points) {
-  //   points_.reserve(points.size());
-  //   for (auto& p : points) {
-  //     points_.emplace_back(p);
-  //   }
-  // }
   ring(std::initializer_list<point> points) {
     points_.reserve(points.size());
     for (auto& p : points) {

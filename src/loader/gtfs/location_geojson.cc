@@ -18,7 +18,7 @@ location_geojson_map_t read_location_geojson(source_idx_t src,
   auto json = boost::json::parse(file_content, ec);
   if (ec) {
     log(log_lvl::error, "loader.gtfs.location_geojson",
-        R"(Could not parse location.geojson!)");
+        "Could not parse location.geojson");
     return location_geojson;
   }
 
@@ -27,7 +27,7 @@ location_geojson_map_t read_location_geojson(source_idx_t src,
   auto const features_entry = featureCollection.find("features");
   if (features_entry == featureCollection.end()) {
     log(log_lvl::error, "loader.gtfs.location_geojson",
-        R"(Could not find entry with key "{}"!)", "features");
+        "Could not find entry with key \"{}\"", "features");
     return location_geojson;
   }
   auto const features = features_entry->value().as_array();
@@ -36,7 +36,7 @@ location_geojson_map_t read_location_geojson(source_idx_t src,
     auto const id_entry = feature_object.find("id");
     if (id_entry == feature_object.end()) {
       log(log_lvl::error, "loader.gtfs.location_geojson",
-          R"(feature index {}: Could not find entry with key "{}"!)",
+          "feature index {}: Could not find entry with key \"{}\"",
           std::distance(features.begin(), feature) + 1, "id");
       continue;
     }
@@ -45,7 +45,7 @@ location_geojson_map_t read_location_geojson(source_idx_t src,
     auto const geometry_entry = feature_object.find("geometry");
     if (geometry_entry == feature_object.end()) {
       log(log_lvl::error, "loader.gtfs.location_geojson",
-          R"(feature {}: Could not find entry with key "{}"!)", id, "geometry");
+          "feature {}: Could not find entry with key \"{}\"", id, "geometry");
       continue;
     }
     auto const geometry_object = geometry_entry->value().as_object();
@@ -55,7 +55,7 @@ location_geojson_map_t read_location_geojson(source_idx_t src,
     auto const geometry = tg_parse_geojson(feature_content.c_str());
     if (tg_geom_error(geometry)) {
       log(log_lvl::error, "loader.gtfs.location_geojson",
-          R"(feature {}: Could not parse feature!)", id);
+          "feature {}: Could not parse feature", id);
       continue;
     }
 

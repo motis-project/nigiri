@@ -7,6 +7,7 @@
 #include <utl/progress_tracker.h>
 
 #include <nigiri/timetable.h>
+#include <utl/get_or_create.h>
 
 namespace nigiri::loader::gtfs {
 area_map_t read_areas(source_idx_t const stop_areas_src,
@@ -20,6 +21,7 @@ area_map_t read_areas(source_idx_t const stop_areas_src,
                       std::string_view const stop_areas_content,
                       std::string_view const location_groups_content,
                       std::string_view const location_group_stops_content) {
+  auto const timer = scoped_timer{"read areas"};
   auto stop_areas_map =
       read_areas(stop_areas_src, location_src, geojson_src, tt,
                  location_id_to_idx, geojson_id_to_idx, stop_areas_content);
@@ -56,7 +58,7 @@ area_map_t read_areas(source_idx_t const area_src,
   };
 
   auto const progress_tracker = utl::get_active_progress_tracker();
-  progress_tracker->status("Parse Agencies")
+  progress_tracker->status("Parse area")
       .out_bounds(0.F, 1.F)
       .in_high(file_content.size());
 
@@ -74,19 +76,19 @@ area_map_t read_areas(source_idx_t const area_src,
           }
           if (area_id.empty()) {
             log(log_lvl::error, "loader.gtfs.area",
-                R"(area_id and location_group_id are empty!)");
+                "area_id and location_group_id are empty!");
+            return;
+          }
+          auto& location_ids =
+              utl::get_or_create(area_id_to_location_ids, area_id,
+                                 []() { return std::vector<std::string>{}; });
+          if (!a.location_id_->empty()) {
+            location_ids.push_back(a.location_id_->to_str());
+          } else if (!a.stop_id_->empty()) {
+            location_ids.push_back(a.stop_id_->to_str());
           } else {
-            auto& location_ids =
-                utl::get_or_create(area_id_to_location_ids, area_id,
-                                   []() { return std::vector<std::string>{}; });
-            if (!a.location_id_->empty()) {
-              location_ids.push_back(a.location_id_->to_str());
-            } else if (!a.stop_id_->empty()) {
-              location_ids.push_back(a.stop_id_->to_str());
-            } else {
-              log(log_lvl::error, "loader.gtfs.area",
-                  R"(area {}: location_id and stop_id are empty!)", area_id);
-            }
+            log(log_lvl::error, "loader.gtfs.area",
+                "area {}: location_id and stop_id are empty", area_id);
           }
         });
   for (auto const& a_to_l : area_id_to_location_ids) {

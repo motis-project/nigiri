@@ -55,8 +55,9 @@ block::rule_services(trip_data& trips) {
     gtfs_trip_idx_t trip_;
     bitfield traffic_days_;
   };
-  auto rule_trips = utl::to_vec(
-      trips_, [&](auto&& t) { return rule_trip{t, *trips.get(t).service_}; });
+  auto rule_trips = utl::to_vec(trips_, [&](auto&& t) {
+    return rule_trip{t, *trips.get(t).service_};
+  });
 
   struct queue_entry {
     std::vector<rule_trip>::iterator current_it_;
@@ -267,7 +268,6 @@ trip_data read_trips(
     utl::csv_col<utl::cstr, UTL_NAME("block_id")> block_id_;
     utl::csv_col<utl::cstr, UTL_NAME("shape_id")> shape_id_;
     utl::csv_col<std::uint8_t, UTL_NAME("bikes_allowed")> bikes_allowed_;
-    //utl::csv_col<std::uint8_t, UTL_NAME("wheelchair_accessible")> wheelchair_accessible_; //TODO
   };
 
   nigiri::scoped_timer const timer{"read trips"};

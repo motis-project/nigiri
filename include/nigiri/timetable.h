@@ -8,7 +8,6 @@
 #include "cista/memory_holder.h"
 #include "cista/reflection/printable.h"
 
-#include "utl/raii.h"
 #include "utl/verify.h"
 #include "utl/zip.h"
 
@@ -26,13 +25,7 @@
 #include "nigiri/td_footpath.h"
 #include "nigiri/types.h"
 
-#include <utl/get_or_create.h>
-
 namespace nigiri {
-
-struct stop_windows {
-  minutes_after_midnight_t start_{0}, end_{0};
-};
 
 struct timetable {
 
@@ -130,8 +123,6 @@ struct timetable {
   } locations_;
 
   struct areas {
-    area_idx_t const kMaxAreaIndex = area_idx_t{UINT32_MAX};
-
     area_idx register_area(
         source_idx_t const area_src,
         std::optional<source_idx_t> const location_src,
@@ -141,8 +132,8 @@ struct timetable {
         loader::gtfs::locations_map const& location_id_to_idx,
         loader::gtfs::location_geojson_map_t const&
             location_id_to_location_geojson_idx) {
-      area_idx new_idx{.location_ = kMaxAreaIndex,
-                       .location_geojson_ = kMaxAreaIndex};
+      area_idx new_idx{.location_ = kInvalidAreaIndex,
+                       .location_geojson_ = kInvalidAreaIndex};
 
       for (auto const l_id : location_ids) {
         auto const location_idx_iterator = location_id_to_idx.find(l_id);
@@ -154,16 +145,16 @@ struct timetable {
                 "register_area: no location source were given for location_id "
                 "\"{}\"",
                 l_id);
-            return area_idx{.location_ = kMaxAreaIndex,
-                            .location_geojson_ = kMaxAreaIndex};
+            continue;
           }
-          if (new_idx.location_ == kMaxAreaIndex) {
+          if (new_idx.location_ == kInvalidAreaIndex) {
             new_idx.location_ = area_idx_t{area_idx_to_location_idxs_.size()};
             area_idx_to_location_idxs_.emplace_back(
                 std::vector<location_idx_t>{});
           }
           area_idx_to_location_idxs_[new_idx.location_].push_back(
               location_idx_iterator->second);
+
         } else if ((location_geojson_idx_iterator =
                         location_id_to_location_geojson_idx.find(l_id)) !=
                    end(location_id_to_location_geojson_idx)) {
@@ -172,10 +163,9 @@ struct timetable {
                 "register_area: no location geojson source were given for "
                 "location_gejson_id \"{}\"",
                 l_id);
-            return area_idx{.location_ = kMaxAreaIndex,
-                            .location_geojson_ = kMaxAreaIndex};
+            continue;
           }
-          if (new_idx.location_geojson_ == kMaxAreaIndex) {
+          if (new_idx.location_geojson_ == kInvalidAreaIndex) {
             new_idx.location_geojson_ =
                 area_idx_t{area_idx_to_location_geojson_idxs_.size()};
             area_idx_to_location_geojson_idxs_.emplace_back(
@@ -186,8 +176,7 @@ struct timetable {
         } else {
           log(log_lvl::error, "timetable",
               "register_area: unknown location_id \"{}\"", l_id);
-          return area_idx{.location_ = kMaxAreaIndex,
-                          .location_geojson_ = kMaxAreaIndex};
+          continue;
         }
       }
       area_id_to_area_idx_.emplace(
@@ -216,7 +205,7 @@ struct timetable {
   };
 
   location_geojson_idx_t register_location_geojson(source_idx_t const src,
-                                                   std::string const id,
+                                                   std::string const& id,
                                                    tg_geom const* geometry) {
     auto const next_idx =
         location_geojson_idx_t{location_geojson_geometries.size()};
@@ -236,10 +225,10 @@ struct timetable {
       case TG_MULTIPOLYGON:
         location_geojson_geometries.push_back(create_multipolygon(geometry));
         break;
-      default:
-        break;
-        // log(log_lvl::error, "timetable.register_location_geojson",
-        //     "Unkown tg_geometry type {}", tg_geom_typeof(geometry));
+      default: {
+        log(log_lvl::error, "timetable.register_location_geojson",
+            "Unkown tg_geometry type {}", static_cast<int>(type));
+      }
     }
 
     location_id_to_location_geojson_idx_.emplace(
@@ -251,10 +240,15 @@ struct timetable {
       source_idx_t const src,
       std::string const& location_id,
       std::string const& trip_id,
-      stop_windows const& stop_windows,
-      booking_rule_idx_t const pickup_booking_rule_id,
-      booking_rule_idx_t const dropoff_booking_rule_id) {
+      pickup_dropoff_type pickup_type,
+      pickup_dropoff_type dropoff_type,
+      stop_window const& stop_windows,
+      booking_rule_idx_t const pickup_booking_rule_id = kInvalidBookingRuleIdx,
+      booking_rule_idx_t const dropoff_booking_rule_id =
+          kInvalidBookingRuleIdx) {
     auto const next_idx = location_trip_idx_t{window_times_.size()};
+    pickup_types_.emplace_back(pickup_type);
+    dropoff_types_.emplace_back(dropoff_type);
     window_times_.emplace_back(stop_windows);
     pickup_booking_rules_.emplace_back(pickup_booking_rule_id);
     dropoff_booking_rules_.emplace_back(dropoff_booking_rule_id);
@@ -362,9 +356,11 @@ struct timetable {
     return provider_idx_t{idx};
   }
 
-  booking_rule_idx_t register_booking_rule(booking_rule&& b) {
+  booking_rule_idx_t register_booking_rule(std::string const& id,
+                                           booking_rule&& b) {
     auto const idx = booking_rules_.size();
     booking_rules_.emplace_back(std::move(b));
+    // booking_rule_id_to_idx.emplace(id, b);
     return booking_rule_idx_t{idx};
   }
 
@@ -646,9 +642,11 @@ struct timetable {
 
   // stop times
   hash_map<location_trip_id, location_trip_idx_t> location_trip_id_to_idx;
-  vector_map<location_trip_idx_t, stop_windows> window_times_;
+  vector_map<location_trip_idx_t, stop_window> window_times_;
   vector_map<location_trip_idx_t, booking_rule_idx_t> pickup_booking_rules_;
   vector_map<location_trip_idx_t, booking_rule_idx_t> dropoff_booking_rules_;
+  vector_map<location_trip_idx_t, pickup_dropoff_type> pickup_types_;
+  vector_map<location_trip_idx_t, pickup_dropoff_type> dropoff_types_;
 };
 
 }  // namespace nigiri

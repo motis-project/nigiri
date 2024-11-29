@@ -70,19 +70,41 @@ cista::hash_t hash(dir const& d) {
   hash_file(kFeedInfoFile);
   hash_file(kFrequenciesFile);
 
+  hash_file(kBookingRulesFile);
+  hash_file(kLocationGroupsFile);
+  hash_file(kLocationGroupStopsFile);
+  hash_file(kAreasFile);
+  hash_file(kLocationGeojsonFile);
+
   return h;
 }
 
-/*
- * TODO Variable hinzufügen, welche besagt, dass GTFS-Flex aktiviert ist und
- * sich somit die Voraussetzungen für applicable ändert
- */
-bool applicable(dir const& d) {
+bool applicable(dir const& d, bool gtfs_flex_enabled) {
   for (auto const& file_name : required_files) {
     if (!d.exists(file_name)) {
       return false;
     }
   }
+
+  if (gtfs_flex_enabled) {
+    bool requirements = true;
+    requirements = requirements &&
+                   (d.exists(kCalenderFile) || d.exists(kCalendarDatesFile));
+    requirements =
+        requirements &&
+        (d.exists(kLocationGeojsonFile) || d.exists(kLocationGroupsFile) ||
+         d.exists(kLocationGroupStopsFile) || d.exists(kAreasFile) ||
+         d.exists(kStopFile));
+    if (d.exists(kAreasFile) || d.exists(kLocationGroupStopsFile)) {
+      requirements = requirements && d.exists(kStopFile);
+    }
+    if (d.exists(kLocationGroupsFile)) {
+      requirements = requirements &&
+                     (d.exists(kStopFile) || d.exists(kLocationGroupStopsFile));
+    }
+    return requirements;
+  }
+
   return d.exists(kCalenderFile) || d.exists(kCalendarDatesFile);
 }
 

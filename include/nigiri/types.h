@@ -131,10 +131,12 @@ template <typename Key, typename T>
 using paged_vecvec = mmap_paged_vecvec_helper<Key, T>::type;
 
 using bitfield_idx_t = cista::strong<std::uint32_t, struct _bitfield_idx>;
+auto constexpr kInvalidBitfieldIdx = bitfield_idx_t{UINT32_MAX};
 using location_idx_t = cista::strong<std::uint32_t, struct _location_idx>;
 using location_geojson_idx_t =
     cista::strong<std::uint32_t, struct _location_geojson_idx>;
 using area_idx_t = cista::strong<std::uint32_t, struct _area_idx>;
+area_idx_t const kInvalidAreaIndex = area_idx_t{UINT32_MAX};
 using area_element_idx_t = cista::strong<std::uint32_t, struct _area_idx>;
 using route_idx_t = cista::strong<std::uint32_t, struct _route_idx>;
 using section_idx_t = cista::strong<std::uint32_t, struct _section_idx>;
@@ -178,6 +180,7 @@ using attribute_combination_idx_t =
 using provider_idx_t = cista::strong<std::uint32_t, struct _provider_idx>;
 using booking_rule_idx_t =
     cista::strong<std::uint32_t, struct _booking_rule_idx>;
+auto constexpr kInvalidBookingRuleIdx = booking_rule_idx_t{MAXUINT32};
 
 using shapes_storage_t = mm_vecvec<shape_idx_t, geo::latlng>;
 using transport_range_t = pair<transport_idx_t, interval<stop_idx_t>>;
@@ -297,6 +300,10 @@ constexpr duration_t operator""_days(unsigned long long n) {
 
 using minutes_after_midnight_t = duration_t;
 
+struct stop_window {
+  minutes_after_midnight_t start_{0}, end_{0};
+};
+
 struct tz_offsets {
   struct season {
     duration_t offset_{0};
@@ -312,42 +319,15 @@ using timezone = variant<pair<string, void const*>, tz_offsets>;
 
 struct booking_rule {
   CISTA_COMPARABLE()
-  // CISTA_PRINTABLE(booking_rule,
-  //                 "type",
-  //                 "prior_notice_duration_min",
-  //                 "prior_notice_duration_max",
-  //                 "prior_notice_last_day",
-  //                 "prior_notice_start_day")
-  // "message",
-  // "pickup_message",
-  // "drop_off_message",
-  // "drop_off_message",
-  // "phone_number"
-  // "info_url",
-  // "booking_url"
 
-  uint8_t type_;  // Required 0=Real-Time-Booking, 1=Same-Day-Booking,
-                  // 2=Prior-Day-Booking
-  uint16_t
-      prior_notice_duration_min_;  // Conditionally Required If booking_type=1
-  uint16_t prior_notice_duration_max_;  // Conditionally Forbidden For
-                                        // booking_type=0 And booking_type=2
-  uint16_t prior_notice_last_day_;  // Conditionally Required If booking_type=2
-  duration_t prior_notice_last_time_;  // Conditionally Required If
-                                       // prior_notice_last_day Is Defined
-  uint16_t prior_notice_start_day_;  // Conditionally Forbidden For
-                                     // booking_type=0 And For booking_type=1 If
-                                     // prior_notice_duration_max Is Defined
-  duration_t prior_notice_start_time_;  // Conditionally Required If
-                                        // prior_notice_start_day Is Defined
-  bitfield_idx_t bitfield_idx_;  // Conditionally Forbidden If booking_type=0
-                                 // And booking_type=1
-  // std::string message_;  // Optional
-  // std::string pickup_message_;  // Optional
-  // std::string drop_off_message_;  // Optional
-  // std::string phone_number_;  // Optional
-  // std::string info_url_;  // Optional
-  // std::string booking_url_;  // Optional
+  uint8_t type_;
+  uint16_t prior_notice_duration_min_;
+  uint16_t prior_notice_duration_max_;
+  uint16_t prior_notice_last_day_;
+  duration_t prior_notice_last_time_;
+  uint16_t prior_notice_start_day_;
+  duration_t prior_notice_start_time_;
+  bitfield_idx_t bitfield_idx_;
 };
 
 enum class clasz : std::uint8_t {
@@ -378,6 +358,13 @@ enum class location_type : std::uint8_t {
            // parent. No manual connection in routing initialization or
            // additional links between parent<->child necessary.
   kStation
+};
+
+enum pickup_dropoff_type : std::uint8_t {
+  kRegularType = 0,
+  kUnavailableType = 1,
+  kPhoneAgencyType = 2,
+  kCoordinateWithDriverType = 3
 };
 
 enum class event_type { kArr, kDep };

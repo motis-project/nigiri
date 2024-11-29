@@ -16,7 +16,7 @@ namespace nigiri::loader::gtfs {
 
 cista::hash_t hash(dir const& d);
 
-bool applicable(dir const&);
+bool applicable(dir const&, bool gtfs_flex_enabled = false);
 
 void load_timetable(loader_config const&,
                     source_idx_t,

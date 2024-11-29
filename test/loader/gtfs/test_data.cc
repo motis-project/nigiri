@@ -87,8 +87,18 @@ AWE1,6:10,6:10,S1,1,0,0,0
 )";
 
 // GTFS-Flex
+constexpr auto const example_stop_times_gtfs_flex_content =
+    R"(trip_id,arrival_time,departure_time,stop_id,location_group_id,area_id,location_id,stop_sequence,start_pickup_drop_off_window,end_pickup_drop_off_window,pickup_booking_rule_id,drop_off_booking_rule_id,stop_headsign,pickup_type,drop_off_type
+AWE1,,,S1,,,,,06:00:00,19:00:00,,,,2,3
+AWE1,,,S2,,,,,06:00:00,19:00:00,,,,2,3
+AWE1,,,,,,l_geo_1,,06:00:00,19:00:00,,,,2,3
+AWE1,,,,,,l_geo_2,,08:00:00,20:00:00,3,3,,2,2
+AWD1,,,,,,l_geo_3,,11:00:00,17:00:00,3,3,,2,2
+AWD1,,,,l_g_1,,,,10:00:00,19:00:00,4,5,,2,2
+AWD1,,,,,a_3,,,06:00:00,15:00:00,7,7,,2,2
+AWD1,,,S8,,,,,14:00:00,21:00:00,9,,,2,1
+)";
 
-// TODO 25-tes Zeichen wieder hinzufügen
 constexpr auto const example_booking_rules_content =
     R"(booking_rule_id,booking_type,prior_notice_duration_min,prior_notice_duration_max,prior_notice_last_day,prior_notice_last_time,prior_notice_start_day,prior_notice_start_time,prior_notice_service_id
 1,0,,,,,,,
@@ -249,7 +259,9 @@ loader::mem_dir example_files() {
         std::string{example_location_groups_content}},
        {path{kLocationGroupStopsFile},
         std::string{example_location_group_stops_content}},
-       {path{kStopAreasFile}, std::string{example_stop_areas_content}}}};
+       {path{kStopAreasFile}, std::string{example_stop_areas_content}},
+       {path{kStopTimesGTFSFlexFile},
+        std::string{example_stop_times_gtfs_flex_content}}}};
 }
 
 constexpr auto const berlin_agencies_file_content = std::string_view{

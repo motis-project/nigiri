@@ -34,5 +34,7 @@ constexpr auto const kBookingRuleCalendarFile =
     std::string_view{"booking_rule_calendar.txt"};
 constexpr auto const kBookingRuleCalendarDatesFile =
     std::string_view{"booking_rule_calendar_dates.txt"};
+constexpr auto const kStopTimesGTFSFlexFile =
+    std::string_view{"stop_times_gtfs_flex.txt"};
 
 }  // namespace nigiri::loader::gtfs

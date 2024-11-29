@@ -3,10 +3,14 @@
 #include "nigiri/loader/gtfs/files.h"
 #include "nigiri/loader/gtfs/shape.h"
 #include "nigiri/loader/gtfs/stop_time.h"
+
+#include <nigiri/loader/gtfs/area.h>
+
 #include "nigiri/loader/loader_interface.h"
 
 #include "nigiri/common/sort_by.h"
 #include "nigiri/timetable.h"
+#include "nigiri/types.h"
 
 #include "./test_data.h"
 
@@ -101,6 +105,110 @@ TEST(gtfs, read_stop_times_example_data) {
   EXPECT_TRUE(stp.in_allowed());
 
   read_frequencies(trip_data, files.get_file(kFrequenciesFile).data());
+}
+
+TEST(gtfs, read_stop_times_gtfs_flex_example_data) {
+  auto const files = example_files();
+
+  timetable tt;
+  tt.date_range_ = interval{date::sys_days{July / 1 / 2006},
+                            date::sys_days{August / 1 / 2006}};
+  tz_map timezones;
+
+  source_idx_t src{0};
+
+  auto const config = loader_config{};
+  auto agencies =
+      read_agencies(tt, timezones, files.get_file(kAgencyFile).data());
+  auto const routes = read_routes(tt, timezones, agencies,
+                                  files.get_file(kRoutesFile).data(), "CET");
+  auto const dates =
+      read_calendar_date(files.get_file(kCalendarDatesFile).data());
+  auto const calendar = read_calendar(files.get_file(kCalenderFile).data());
+  auto const services =
+      merge_traffic_days(tt.internal_interval_days(), calendar, dates);
+  auto trip_data =
+      read_trips(tt, routes, services, {}, files.get_file(kTripsFile).data(),
+                 config.bikes_allowed_default_);
+  auto const stops = read_stops(source_idx_t{0}, tt, timezones,
+                                files.get_file(kStopFile).data(),
+                                files.get_file(kTransfersFile).data(), 0U);
+
+  auto const location_geojsons = read_location_geojson(
+      src, tt, files.get_file(kLocationGeojsonFile).data());
+
+  // auto const areas =
+  //     read_areas(src, src, src, src, src, tt, stops, location_geojsons,
+  //                files.get_file(kAreasFile).data(),
+  //                files.get_file(kLocationGroupsFile).data(), "");
+
+  auto booking_rule_calendar =
+      read_calendar(files.get_file(kBookingRuleCalendarFile).data());
+  auto booking_rule_calendar_dates =
+      read_calendar_date(files.get_file(kBookingRuleCalendarDatesFile).data());
+  auto booking_rule_services =
+      merge_traffic_days(tt.internal_interval_days(), booking_rule_calendar,
+                         booking_rule_calendar_dates);
+
+  auto const booking_rules = read_booking_rules(
+      booking_rule_services, tt, files.get_file(kBookingRulesFile).data());
+
+  read_stop_times(src, tt, trip_data, stops, booking_rules,
+                  files.get_file(kStopTimesGTFSFlexFile).data());
+
+  auto const test_stop_time =
+      [&](std::string const& location_id, std::string const& trip_id,
+          stop_window&& expected_window, booking_rule_idx_t expected_pickup,
+          booking_rule_idx_t expected_dropoff,
+          pickup_dropoff_type expected_pickup_type,
+          pickup_dropoff_type expected_dropoff_type) {
+        ASSERT_NO_THROW({
+          auto const idx = tt.location_trip_id_to_idx.at(
+              location_trip_id{location_id, trip_id, src});
+
+          EXPECT_EQ(tt.window_times_.at(idx).start_, expected_window.start_);
+          EXPECT_EQ(tt.window_times_.at(idx).end_, expected_window.end_);
+          EXPECT_EQ(tt.pickup_booking_rules_.at(idx), expected_pickup);
+          EXPECT_EQ(tt.dropoff_booking_rules_.at(idx), expected_dropoff);
+          EXPECT_EQ(tt.pickup_types_.at(idx), expected_pickup_type);
+          EXPECT_EQ(tt.dropoff_types_.at(idx), expected_dropoff_type);
+        });
+      };
+
+  auto const br_idx_3 = booking_rules.at("3");
+  auto const br_idx_4 = booking_rules.at("4");
+  auto const br_idx_5 = booking_rules.at("5");
+  auto const br_idx_7 = booking_rules.at("7");
+  auto const br_idx_9 = booking_rules.at("9");
+
+  test_stop_time("S1", "AWE1",
+                 stop_window{hhmm_to_min("06:00:00"), hhmm_to_min("19:00:00")},
+                 kInvalidBookingRuleIdx, kInvalidBookingRuleIdx,
+                 kPhoneAgencyType, kCoordinateWithDriverType);
+  test_stop_time("S2", "AWE1",
+                 stop_window{hhmm_to_min("06:00:00"), hhmm_to_min("19:00:00")},
+                 kInvalidBookingRuleIdx, kInvalidBookingRuleIdx,
+                 kPhoneAgencyType, kCoordinateWithDriverType);
+  test_stop_time("l_geo_1", "AWE1",
+                 stop_window{hhmm_to_min("06:00:00"), hhmm_to_min("19:00:00")},
+                 kInvalidBookingRuleIdx, kInvalidBookingRuleIdx,
+                 kPhoneAgencyType, kCoordinateWithDriverType);
+  test_stop_time("l_geo_2", "AWE1",
+                 stop_window{hhmm_to_min("08:00:00"), hhmm_to_min("20:00:00")},
+                 br_idx_3, br_idx_3, kPhoneAgencyType, kPhoneAgencyType);
+  test_stop_time("l_geo_3", "AWD1",
+                 stop_window{hhmm_to_min("11:00:00"), hhmm_to_min("17:00:00")},
+                 br_idx_3, br_idx_3, kPhoneAgencyType, kPhoneAgencyType);
+  test_stop_time("l_g_1", "AWD1",
+                 stop_window{hhmm_to_min("10:00:00"), hhmm_to_min("19:00:00")},
+                 br_idx_4, br_idx_5, kPhoneAgencyType, kPhoneAgencyType);
+  test_stop_time("a_3", "AWD1",
+                 stop_window{hhmm_to_min("06:00:00"), hhmm_to_min("15:00:00")},
+                 br_idx_7, br_idx_7, kPhoneAgencyType, kPhoneAgencyType);
+  test_stop_time("S8", "AWD1",
+                 stop_window{hhmm_to_min("14:00:00"), hhmm_to_min("21:00:00")},
+                 br_idx_9, kInvalidBookingRuleIdx, kPhoneAgencyType,
+                 kUnavailableType);
 }
 
 }  // namespace nigiri::loader::gtfs

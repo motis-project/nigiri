@@ -34,7 +34,7 @@ void read_stop_times(source_idx_t src,
                      timetable& tt,
                      trip_data& trips,
                      locations_map const& stops,
-                     booking_rule_map_t& booking_rules,
+                     booking_rule_map_t const& booking_rules,
                      std::string_view file_content) {
   struct csv_stop_time {
     // GTFS
@@ -71,15 +71,9 @@ void read_stop_times(source_idx_t src,
       .in_high(file_content.size());
   auto lookup_direction = cached_lookup(trips.directions_);
 
-  auto line_range = utl::line_range{
-      utl::make_buf_reader(file_content, progress_tracker->update_fn())};  //
-  auto header = line_range.begin().to_str();
-
-  // const auto kStopIdReferencesEverything =
-  //     !header.contains("location_id") &&
-  //     !header.contains("location_group_id") && !header.contains("area_id");
-
-  std::move(line_range) | utl::csv<csv_stop_time>()  //
+  utl::line_range{
+      utl::make_buf_reader(file_content, progress_tracker->update_fn())}  //
+      | utl::csv<csv_stop_time>()  //
       |
       utl::for_each([&](csv_stop_time const& s) {
         auto const is_flex_trip =
@@ -87,45 +81,51 @@ void read_stop_times(source_idx_t src,
             *s.pickup_type_ == kCoordinateWithDriverType ||
             *s.drop_off_type_ == kPhoneAgencyType ||
             *s.drop_off_type_ == kCoordinateWithDriverType;
-
         if (is_flex_trip) {
-
-          auto id = s.stop_id_->to_str();
-          if (!s.location_geojson_id_->empty()) {
+          std::string id;
+          if (!s.stop_id_->empty()) {
+            id = s.stop_id_->to_str();
+          } else if (!s.location_geojson_id_->empty()) {
             id = s.location_geojson_id_->to_str();
           } else if (!s.location_group_id_->empty()) {
             id = s.location_group_id_->to_str();
           } else if (!s.area_id_->empty()) {
             id = s.area_id_->to_str();
+          } else {
+            log(log_lvl::error, "loader.gtfs.stop_time",
+                "Neither stop_id, location_id, location_group_id nor area_id "
+                "are set");
+            return;
           }
 
-          auto const pickup_booking_rule_idx =
+          auto const pickup_booking_rule_idx_it =
               booking_rules.find(s.pickup_booking_rule_id_->view());
-          auto const dropoff_booking_rule_idx =
+          auto const dropoff_booking_rule_idx_it =
               booking_rules.find(s.drop_off_booking_rule_id_->view());
 
-          if (pickup_booking_rule_idx == booking_rules.end()) {
-            log(log_lvl::error, "loader.gtfs.stop_time",
-                "stop_times.txt:{}: unknown pickup_booking_rule_idx \"{}\"", i,
-                s.pickup_booking_rule_id_->view());
-            return;
-          }
-          if (dropoff_booking_rule_idx == booking_rules.end()) {
-            log(log_lvl::error, "loader.gtfs.stop_time",
-                "stop_times.txt:{}: unknown pickup_booking_rule_idx \"{}\"", i,
-                s.drop_off_booking_rule_id_->view());
-            return;
-          }
+          auto const pickup_booking_rule_idx =
+              pickup_booking_rule_idx_it == booking_rules.end()
+                  ? kInvalidBookingRuleIdx
+                  : pickup_booking_rule_idx_it->second;
+
+          auto const dropoff_booking_rule_idx =
+              dropoff_booking_rule_idx_it == booking_rules.end()
+                  ? kInvalidBookingRuleIdx
+                  : dropoff_booking_rule_idx_it->second;
 
           auto const start_window =
-              hhmm_to_min(*s.start_pickup_drop_off_window_);
-          auto const end_window = hhmm_to_min(*s.start_pickup_drop_off_window_);
+              hhmm_to_min(s.start_pickup_drop_off_window_->c_str());
+          auto const end_window =
+              hhmm_to_min(s.end_pickup_drop_off_window_->c_str());
 
-          auto const window_time = stop_windows{start_window, end_window};
+          auto const window_time = stop_window{start_window, end_window};
 
-          tt.register_location_trip(src, id, s.trip_id_->to_str(), window_time,
-                                    pickup_booking_rule_idx->second,
-                                    dropoff_booking_rule_idx->second);
+          tt.register_location_trip(
+              src, id, s.trip_id_->to_str(),
+              static_cast<pickup_dropoff_type>(*s.pickup_type_),
+              static_cast<pickup_dropoff_type>(*s.drop_off_type_), window_time,
+              pickup_booking_rule_idx, dropoff_booking_rule_idx);
+          return;
         }
 
         ++i;
@@ -154,26 +154,16 @@ void read_stop_times(source_idx_t src,
 
         try {
 
-          auto const arrival_time = *s.pickup_type_ == kRegularType
-                                        ? hhmm_to_min(*s.arrival_time_)
-                                        : duration_t{0};
-          auto const departure_time = *s.drop_off_type_ == kRegularType
-                                          ? hhmm_to_min(*s.departure_time_)
-                                          : duration_t{0};
-          auto const start_window =
-              is_flex_trip ? hhmm_to_min(*s.start_pickup_drop_off_window_)
-                           : duration_t{0};
-          auto const end_window =
-              is_flex_trip ? hhmm_to_min(*s.start_pickup_drop_off_window_)
-                           : duration_t{0};
+          auto const arrival_time =
+              is_flex_trip ? duration_t{0} : hhmm_to_min(*s.arrival_time_);
+          auto const departure_time =
+              is_flex_trip ? duration_t{0} : hhmm_to_min(*s.departure_time_);
 
           auto const in_allowed = *s.pickup_type_ != kUnavailableType;
           auto const out_allowed = *s.drop_off_type_ != kUnavailableType;
 
-          t->requires_interpolation_ |=
-              arrival_time == kInterpolate && !is_flex_trip;
-          t->requires_interpolation_ |=
-              departure_time == kInterpolate && !is_flex_trip;
+          t->requires_interpolation_ |= arrival_time == kInterpolate;
+          t->requires_interpolation_ |= departure_time == kInterpolate;
           t->requires_sorting_ |= (!t->seq_numbers_.empty() &&
                                    t->seq_numbers_.back() > *s.stop_sequence_);
 
