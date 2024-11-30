@@ -137,11 +137,6 @@ TEST(gtfs, read_stop_times_gtfs_flex_example_data) {
   auto const location_geojsons = read_location_geojson(
       src, tt, files.get_file(kLocationGeojsonFile).data());
 
-  // auto const areas =
-  //     read_areas(src, src, src, src, src, tt, stops, location_geojsons,
-  //                files.get_file(kAreasFile).data(),
-  //                files.get_file(kLocationGroupsFile).data(), "");
-
   auto booking_rule_calendar =
       read_calendar(files.get_file(kBookingRuleCalendarFile).data());
   auto booking_rule_calendar_dates =

@@ -181,7 +181,6 @@ locations_map read_stops(source_idx_t const src,
     utl::csv_col<utl::cstr, UTL_NAME("platform_code")> platform_code_;
     utl::csv_col<utl::cstr, UTL_NAME("stop_lat")> lat_;
     utl::csv_col<utl::cstr, UTL_NAME("stop_lon")> lon_;
-    //utl::csv_col<utl::cstr, UTL_NAME("wheelchair_boarding")> wheelchair_boarding_; //TODO missing?
   };
 
   locations_map locations;
