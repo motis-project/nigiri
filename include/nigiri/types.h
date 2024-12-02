@@ -350,6 +350,8 @@ using transport_mode_id_t = std::int32_t;
 
 using via_offset_t = std::uint8_t;
 
+using delta_t = std::int16_t;
+static_assert(sizeof(delta_t) == 2);
 }  // namespace nigiri
 
 #include <iomanip>

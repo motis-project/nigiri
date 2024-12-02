@@ -145,7 +145,8 @@ struct search {
         allowed_claszes,
         require_bikes_allowed,
         q_.prf_idx_ == 2U,
-        tts};
+        tts,
+        dbg_dir_};
   }
 
   search(timetable const& tt,
@@ -393,11 +394,6 @@ private:
     auto span = get_otel_tracer()->StartSpan("search::search_interval");
     auto scope = opentelemetry::trace::Scope{span};
 
-    if (dbg_dir_) {
-      std::filesystem::create_directory(*dbg_dir_ / std::to_string(q_.id_) /
-                                        std::to_string(i));
-    }
-
     utl::equal_ranges_linear(
         state_.starts_,
         [](start const& a, start const& b) {
@@ -415,12 +411,13 @@ private:
           auto const worst_time_at_dest =
               start_time +
               (kFwd ? 1 : -1) * std::min(fastest_direct_, kMaxTravelTime);
+          if (dbg_dir_) {
+            algo_.dbg_dir_ = fmt::format("{}/query_{}/interval_{}/{}",
+                                         *dbg_dir_, q_.id_, i, start_time);
+            std::filesystem::create_directory(algo_.dbg_dir_);
+          }
           algo_.execute(start_time, q_.max_transfers_, worst_time_at_dest,
-                        q_.prf_idx_, state_.results_,
-                        dbg_dir_
-                            ? *dbg_dir_ / std::to_string(q_.id_) /
-                                  std::to_string(i) / std::to_string(start_time)
-                            : std::nullopt);
+                        q_.prf_idx_, state_.results_);
 
           for (auto& j : state_.results_) {
             if (j.legs_.empty() &&
@@ -453,7 +450,7 @@ private:
   duration_t fastest_direct_;
   Algo algo_;
   std::optional<std::chrono::seconds> timeout_;
-  std::optional<std::filesystem::path> dbg_dir_;
+  std::optional<std::string> dbg_dir_;
 };
 
 }  // namespace nigiri::routing

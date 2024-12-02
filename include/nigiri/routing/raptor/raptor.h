@@ -151,8 +151,7 @@ struct raptor {
                std::uint8_t const max_transfers,
                unixtime_t const worst_time_at_dest,
                profile_idx_t const prf_idx,
-               pareto_set<journey>& results,
-               std::optional<std::filesystem::path> dbg_dir = std::nullopt) {
+               pareto_set<journey>& results) {
     auto const end_k = std::min(max_transfers, kMaxTransfers) + 1U;
 
     auto const d_worst_at_dest = unix_to_delta(base(), worst_time_at_dest);
@@ -161,10 +160,7 @@ struct raptor {
     }
 
     trace_print_init_state();
-    if (dbg_dir) {
-      std::filesystem::create_directory(*dbg_dir);
-      // serialize round_times init state
-    }
+    dump_round_times(dbg_dir_, "init", state_, 0U, Vias);
 
     for (auto k = 1U; k != end_k; ++k) {
       for (auto i = 0U; i != n_locations_; ++i) {
@@ -387,8 +383,7 @@ private:
         }
       }
     });
-
-    dump_round_times(, round_times_[k], n_locations_);
+    dump_round_times(dbg_dir_, "update_transfers", state_, k, Vias);
   }
 
   void update_footpaths(unsigned const k, profile_idx_t const prf_idx) {
@@ -484,6 +479,7 @@ private:
         }
       }
     });
+    dump_round_times(dbg_dir_, "update_footpaths", state_, k, Vias);
   }
 
   void update_td_offsets(unsigned const k, profile_idx_t const prf_idx) {
@@ -583,6 +579,7 @@ private:
         });
       }
     });
+    dump_round_times(dbg_dir_, "update_td_offsets", state_, k, Vias);
   }
 
   void update_intermodal_footpaths(unsigned const k) {
@@ -635,6 +632,7 @@ private:
         }
       }
     });
+    dump_round_times(dbg_dir_, "update_intermodal_footpaths", state_, k, Vias);
   }
 
   template <bool WithSectionBikeFilter>
@@ -1110,6 +1108,7 @@ private:
   bool require_bike_transport_;
   bool is_wheelchair_;
   transfer_time_settings transfer_time_settings_;
+  std::optional<std::string> dbg_dir_{};
 };
 
 }  // namespace nigiri::routing
