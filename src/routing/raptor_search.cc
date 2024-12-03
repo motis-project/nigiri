@@ -27,17 +27,18 @@ routing_result<raptor_stats> raptor_search_with_vias(
     search_state& s_state,
     raptor_state& r_state,
     query q,
-    std::optional<std::chrono::seconds> const timeout) {
+    std::optional<std::chrono::seconds> const timeout,
+    std::string const* dbg_dir) {
 
   if (rtt == nullptr) {
     using algo_t = raptor<SearchDir, false, Vias>;
-    return search<SearchDir, algo_t>{tt,      rtt,          s_state,
-                                     r_state, std::move(q), timeout}
+    return search<SearchDir, algo_t>{tt,           rtt,     s_state, r_state,
+                                     std::move(q), timeout, dbg_dir}
         .execute();
   } else {
     using algo_t = raptor<SearchDir, true, Vias>;
-    return search<SearchDir, algo_t>{tt,      rtt,          s_state,
-                                     r_state, std::move(q), timeout}
+    return search<SearchDir, algo_t>{tt,           rtt,     s_state, r_state,
+                                     std::move(q), timeout, dbg_dir}
         .execute();
   }
 }
@@ -49,7 +50,8 @@ routing_result<raptor_stats> raptor_search_with_dir(
     search_state& s_state,
     raptor_state& r_state,
     query q,
-    std::optional<std::chrono::seconds> const timeout) {
+    std::optional<std::chrono::seconds> const timeout,
+    std::string const* dbg_dir) {
   sanitize_via_stops(tt, q);
   utl::verify(q.via_stops_.size() <= kMaxVias,
               "too many via stops: {}, limit: {}", q.via_stops_.size(),
@@ -60,14 +62,14 @@ routing_result<raptor_stats> raptor_search_with_dir(
 
   switch (q.via_stops_.size()) {
     case 0:
-      return raptor_search_with_vias<SearchDir, 0>(tt, rtt, s_state, r_state,
-                                                   std::move(q), timeout);
+      return raptor_search_with_vias<SearchDir, 0>(
+          tt, rtt, s_state, r_state, std::move(q), timeout, dbg_dir);
     case 1:
-      return raptor_search_with_vias<SearchDir, 1>(tt, rtt, s_state, r_state,
-                                                   std::move(q), timeout);
+      return raptor_search_with_vias<SearchDir, 1>(
+          tt, rtt, s_state, r_state, std::move(q), timeout, dbg_dir);
     case 2:
-      return raptor_search_with_vias<SearchDir, 2>(tt, rtt, s_state, r_state,
-                                                   std::move(q), timeout);
+      return raptor_search_with_vias<SearchDir, 2>(
+          tt, rtt, s_state, r_state, std::move(q), timeout, dbg_dir);
   }
   std::unreachable();
 }
@@ -92,7 +94,8 @@ routing_result<raptor_stats> raptor_search(
     raptor_state& r_state,
     query q,
     direction const search_dir,
-    std::optional<std::chrono::seconds> const timeout) {
+    std::optional<std::chrono::seconds> const timeout,
+    std::string const* dbg_dir) {
   auto span = get_otel_tracer()->StartSpan("raptor_search");
   auto scope = opentelemetry::trace::Scope{span};
   if (span->IsRecording()) {
@@ -144,10 +147,10 @@ routing_result<raptor_stats> raptor_search(
 
   if (search_dir == direction::kForward) {
     return raptor_search_with_dir<direction::kForward>(
-        tt, rtt, s_state, r_state, std::move(q), timeout);
+        tt, rtt, s_state, r_state, std::move(q), timeout, dbg_dir);
   } else {
     return raptor_search_with_dir<direction::kBackward>(
-        tt, rtt, s_state, r_state, std::move(q), timeout);
+        tt, rtt, s_state, r_state, std::move(q), timeout, dbg_dir);
   }
 }
 

@@ -145,8 +145,7 @@ struct search {
         allowed_claszes,
         require_bikes_allowed,
         q_.prf_idx_ == 2U,
-        tts,
-        dbg_dir_};
+        tts};
   }
 
   search(timetable const& tt,
@@ -155,7 +154,7 @@ struct search {
          algo_state_t& algo_state,
          query q,
          std::optional<std::chrono::seconds> timeout = std::nullopt,
-         std::optional<std::filesystem::path> dbg_dir = std::nullopt)
+         std::string const* dbg_dir = nullptr)
       : tt_{tt},
         rtt_{rtt},
         state_{s},
@@ -184,10 +183,6 @@ struct search {
   routing_result<algo_stats_t> execute() {
     auto span = get_otel_tracer()->StartSpan("search::execute");
     auto scope = opentelemetry::trace::Scope{span};
-
-    if (dbg_dir_) {
-      std::filesystem::create_directory(*dbg_dir_ / std::to_string(q_.id_));
-    }
 
     state_.results_.clear();
 
@@ -414,7 +409,7 @@ private:
           if (dbg_dir_) {
             algo_.dbg_dir_ = fmt::format("{}/query_{}/interval_{}/{}",
                                          *dbg_dir_, q_.id_, i, start_time);
-            std::filesystem::create_directory(algo_.dbg_dir_);
+            std::filesystem::create_directories(*algo_.dbg_dir_);
           }
           algo_.execute(start_time, q_.max_transfers_, worst_time_at_dest,
                         q_.prf_idx_, state_.results_);
@@ -450,7 +445,7 @@ private:
   duration_t fastest_direct_;
   Algo algo_;
   std::optional<std::chrono::seconds> timeout_;
-  std::optional<std::string> dbg_dir_;
+  std::string const* dbg_dir_;
 };
 
 }  // namespace nigiri::routing

@@ -4,6 +4,7 @@
 
 #include "nigiri/common/delta_t.h"
 #include "nigiri/common/linear_lower_bound.h"
+#include "nigiri/routing/dump_round_times.h"
 #include "nigiri/routing/journey.h"
 #include "nigiri/routing/limits.h"
 #include "nigiri/routing/pareto_set.h"
@@ -254,6 +255,8 @@ struct raptor {
   void reconstruct(query const& q, journey& j) {
     reconstruct_journey<SearchDir>(tt_, rtt_, q, state_, j, base(), base_);
   }
+
+  std::optional<std::string> dbg_dir_;
 
 private:
   date::sys_days base() const {
@@ -1108,7 +1111,6 @@ private:
   bool require_bike_transport_;
   bool is_wheelchair_;
   transfer_time_settings transfer_time_settings_;
-  std::optional<std::string> dbg_dir_{};
 };
 
 }  // namespace nigiri::routing
