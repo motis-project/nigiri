@@ -211,10 +211,10 @@ struct search {
       return false;
     };
 
-    for (auto i = 0U;; ++i) {
+    while (true) {
       trace("start_time={}\n", search_interval_);
 
-      search_interval(i);
+      search_interval();
 
       if (is_ontrip() || n_results_in_interval() >= q_.min_connection_count_ ||
           is_timeout_reached()) {
@@ -384,7 +384,7 @@ private:
     });
   }
 
-  void search_interval(std::uint32_t i) {
+  void search_interval() {
     auto span = get_otel_tracer()->StartSpan("search::search_interval");
     auto scope = opentelemetry::trace::Scope{span};
 
@@ -410,8 +410,8 @@ private:
           algo_.dbg_dir_ = fmt::format(
               "{}/query_{}_[{}]/interval_{}_[{}]-[{}]/start_[{}]",
               NIGIRI_DUMP_ROUND_TIMES_DIR, q_.id_,
-              tt_.to_unixtime(algo_.get_base()), i, search_interval_.from_,
-              search_interval_.to_, start_time);
+              tt_.to_unixtime(algo_.get_base()), stats_.interval_extensions_,
+              search_interval_.from_, search_interval_.to_, start_time);
           std::filesystem::create_directories(*algo_.dbg_dir_);
 #endif
 
