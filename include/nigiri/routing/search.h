@@ -12,6 +12,7 @@
 #include "nigiri/get_otel_tracer.h"
 #include "nigiri/logging.h"
 #include "nigiri/routing/dijkstra.h"
+#include "nigiri/routing/dump_round_times.h"
 #include "nigiri/routing/get_fastest_direct.h"
 #include "nigiri/routing/interval_estimate.h"
 #include "nigiri/routing/journey.h"
@@ -404,6 +405,16 @@ private:
           auto const worst_time_at_dest =
               start_time +
               (kFwd ? 1 : -1) * std::min(fastest_direct_, kMaxTravelTime);
+
+#ifdef NIGIRI_DUMP_ROUND_TIMES_DIR
+          algo_.dbg_dir_ = fmt::format(
+              "{}/query_{}_[{}]/interval_{}_[{}]-[{}]/start_[{}]",
+              NIGIRI_DUMP_ROUND_TIMES_DIR, q_.id_,
+              tt_.to_unixtime(algo_.get_base()), stats_.interval_extensions_,
+              search_interval_.from_, search_interval_.to_, start_time);
+          std::filesystem::create_directories(*algo_.dbg_dir_);
+#endif
+
           algo_.execute(start_time, q_.max_transfers_, worst_time_at_dest,
                         q_.prf_idx_, state_.results_);
 
