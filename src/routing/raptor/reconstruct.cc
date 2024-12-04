@@ -182,19 +182,29 @@ void reconstruct_journey_with_vias(timetable const& tt,
         break;
       }
 
+      auto const stop_matches_via =
+          new_v != 0 && q.via_stops_[new_v - 1].stay_ == 0_minutes &&
+          matches(tt, location_match_mode::kEquivalent,
+                  q.via_stops_[new_v - 1].location_, l);
+
+      auto const check_via = [&]() {
+        if (stop_matches_via) {
+          trace_reconstruct(
+              "  [find_entry_in_prev_round] new_v={}->{} (stop matches via)\n",
+              v, new_v, new_v - 1);
+          --new_v;
+        }
+      };
+
       if ((kFwd && !stp.in_allowed(is_wheelchair)) ||
           (!kFwd && !stp.out_allowed(is_wheelchair))) {
+        check_via();
         continue;
       }
 
       auto const event_time = unix_to_delta(
           base, stp.time(kFwd ? event_type::kDep : event_type::kArr));
       auto const round_time = round_times[k - 1][to_idx(l)][new_v];
-
-      auto const stop_matches_via =
-          new_v != 0 && q.via_stops_[new_v - 1].stay_ == 0_minutes &&
-          matches(tt, location_match_mode::kEquivalent,
-                  q.via_stops_[new_v - 1].location_, l);
 
       if (is_better_or_eq(round_time, event_time) ||
           // special case: first stop with meta stations
@@ -212,12 +222,7 @@ void reconstruct_journey_with_vias(timetable const& tt,
             journey::run_enter_exit{r, stop_idx, from_stop_idx}};
       } else {
         trace_rc_transport_entry_not_possible;
-        if (stop_matches_via) {
-          trace_reconstruct(
-              "  [find_entry_in_prev_round] new_v={}->{} (stop matches via)\n",
-              v, new_v, new_v - 1);
-          --new_v;
-        }
+        check_via();
       }
     }
 
