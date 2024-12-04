@@ -16,7 +16,7 @@ void dump_round_times_fun(std::optional<std::string> const& dbg_dir,
                           raptor_state const& rs,
                           unsigned const k) {
   if (dbg_dir) {
-    auto ostrm = std::ofstream{std::format("{}/k{}_{}.bin", *dbg_dir, k, tag),
+    auto ostrm = std::ofstream{fmt::format("{}/k{}_{}.bin", *dbg_dir, k, tag),
                                std::ios::binary};
     ostrm.write(reinterpret_cast<char const*>(
                     &rs.round_times_storage_[k * rs.n_locations_ * (Vias + 1)]),
