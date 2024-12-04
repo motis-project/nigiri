@@ -124,6 +124,8 @@ struct raptor {
 
   algo_stats_t get_stats() const { return stats_; }
 
+  day_idx_t get_base() const { return base_; }
+
   void reset_arrivals() {
     utl::fill(time_at_dest_, kInvalid);
     round_times_.reset(kInvalidArray);

@@ -24,8 +24,8 @@ void dump_round_times_fun(std::optional<std::string> const& dbg_dir,
   }
 }
 
+}  // namespace nigiri::routing
+
 #else
 #define dump_round_times(dbg_dir, tag, state, k, Vias)
 #endif
-
-}  // namespace nigiri::routing

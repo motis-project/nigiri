@@ -407,9 +407,11 @@ private:
               (kFwd ? 1 : -1) * std::min(fastest_direct_, kMaxTravelTime);
 
 #ifdef NIGIRI_DUMP_ROUND_TIMES_DIR
-          algo_.dbg_dir_ =
-              fmt::format("{}/query_{}/interval_{}/{}",
-                          NIGIRI_DUMP_ROUND_TIMES_DIR, q_.id_, i, start_time);
+          algo_.dbg_dir_ = fmt::format(
+              "{}/query_{}_[{}]/interval_{}_[{}]-[{}]/{}",
+              NIGIRI_DUMP_ROUND_TIMES_DIR, q_.id_,
+              tt_.to_unixtime(algo_.get_base()), i, search_interval_.from_,
+              search_interval_.to_, start_time);
           std::filesystem::create_directories(*algo_.dbg_dir_);
 
 #endif
