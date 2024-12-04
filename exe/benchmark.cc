@@ -115,8 +115,9 @@ void generate_queries(
   std::cout << "--- Query generator settings ---\n" << gs << "\n--- --- ---\n";
   queries.reserve(n_queries);
   for (auto i = 0U; i != n_queries; ++i) {
-    auto const sdq = qg.random_query();
+    auto sdq = qg.random_query();
     if (sdq.has_value()) {
+      sdq.value().q_.id_ = i;
       queries.emplace_back(sdq.value());
     }
   }
