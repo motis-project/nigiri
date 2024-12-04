@@ -258,7 +258,9 @@ struct raptor {
     reconstruct_journey<SearchDir>(tt_, rtt_, q, state_, j, base(), base_);
   }
 
+#ifdef NIGIRI_DUMP_ROUND_TIMES_DIR
   std::optional<std::string> dbg_dir_;
+#endif
 
 private:
   date::sys_days base() const {

@@ -3,7 +3,7 @@
 #include "nigiri/routing/raptor/raptor_state.h"
 #include "nigiri/types.h"
 
-#define NIGIRI_DUMP_ROUND_TIMES_DIR "./round_times"
+// #define NIGIRI_DUMP_ROUND_TIMES_DIR "./round_times"
 #ifdef NIGIRI_DUMP_ROUND_TIMES_DIR
 #define dump_round_times(dbg_dir, tag, state, k, Vias) \
   dump_round_times_fun<Vias>(dbg_dir, tag, state, k)
