@@ -12,6 +12,7 @@
 #include "nigiri/get_otel_tracer.h"
 #include "nigiri/logging.h"
 #include "nigiri/routing/dijkstra.h"
+#include "nigiri/routing/dump_round_times.h"
 #include "nigiri/routing/get_fastest_direct.h"
 #include "nigiri/routing/interval_estimate.h"
 #include "nigiri/routing/journey.h"
@@ -153,8 +154,7 @@ struct search {
          search_state& s,
          algo_state_t& algo_state,
          query q,
-         std::optional<std::chrono::seconds> timeout = std::nullopt,
-         std::string const* dbg_dir = nullptr)
+         std::optional<std::chrono::seconds> timeout = std::nullopt)
       : tt_{tt},
         rtt_{rtt},
         state_{s},
@@ -173,8 +173,7 @@ struct search {
                    q_.require_bike_transport_,
                    q_.transfer_time_settings_,
                    algo_state)},
-        timeout_(timeout),
-        dbg_dir_{dbg_dir} {
+        timeout_(timeout) {
     utl::sort(q_.start_);
     utl::sort(q_.destination_);
     sanitize_via_stops(tt_, q_);
@@ -406,11 +405,14 @@ private:
           auto const worst_time_at_dest =
               start_time +
               (kFwd ? 1 : -1) * std::min(fastest_direct_, kMaxTravelTime);
-          if (dbg_dir_) {
-            algo_.dbg_dir_ = fmt::format("{}/query_{}/interval_{}/{}",
-                                         *dbg_dir_, q_.id_, i, start_time);
-            std::filesystem::create_directories(*algo_.dbg_dir_);
-          }
+
+#ifdef NIGIRI_DUMP_ROUND_TIMES_DIR
+          algo_.dbg_dir_ =
+              fmt::format("{}/query_{}/interval_{}/{}",
+                          NIGIRI_DUMP_ROUND_TIMES_DIR, q_.id_, i, start_time);
+          std::filesystem::create_directories(*algo_.dbg_dir_);
+
+#endif
           algo_.execute(start_time, q_.max_transfers_, worst_time_at_dest,
                         q_.prf_idx_, state_.results_);
 
@@ -445,7 +447,6 @@ private:
   duration_t fastest_direct_;
   Algo algo_;
   std::optional<std::chrono::seconds> timeout_;
-  std::string const* dbg_dir_;
 };
 
 }  // namespace nigiri::routing

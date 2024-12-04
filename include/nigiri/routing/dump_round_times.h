@@ -3,13 +3,10 @@
 #include "nigiri/routing/raptor/raptor_state.h"
 #include "nigiri/types.h"
 
-#define NIGIRI_DUMP_ROUND_TIMES
-#ifdef NIGIRI_DUMP_ROUND_TIMES
+#define NIGIRI_DUMP_ROUND_TIMES_DIR "./round_times"
+#ifdef NIGIRI_DUMP_ROUND_TIMES_DIR
 #define dump_round_times(dbg_dir, tag, state, k, Vias) \
   dump_round_times_fun<Vias>(dbg_dir, tag, state, k)
-#else
-#define dump_round_times(dbg_dir, tag, state, k, Vias)
-#endif
 
 namespace nigiri::routing {
 
@@ -21,9 +18,14 @@ void dump_round_times_fun(std::optional<std::string> const& dbg_dir,
   if (dbg_dir) {
     auto ostrm = std::ofstream{std::format("{}/k{}_{}.bin", *dbg_dir, k, tag),
                                std::ios::binary};
-    ostrm.write(reinterpret_cast<char*>(rs.get_round_times<Vias>()[k]),
+    ostrm.write(reinterpret_cast<char const*>(
+                    &rs.round_times_storage_[k * rs.n_locations_ * (Vias + 1)]),
                 rs.n_locations_ * (Vias + 1) * sizeof(delta_t));
   }
 }
+
+#else
+#define dump_round_times(dbg_dir, tag, state, k, Vias)
+#endif
 
 }  // namespace nigiri::routing

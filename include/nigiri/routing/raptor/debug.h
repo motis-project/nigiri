@@ -5,7 +5,7 @@
 #include "nigiri/routing/raptor/raptor_state.h"
 #include "nigiri/types.h"
 
-#define NIGIRI_TRACING
+// #define NIGIRI_TRACING
 #if defined(NIGIRI_TRACING)
 
 // #define NIGIRI_RAPTOR_TRACING_ONLY_UPDATES
