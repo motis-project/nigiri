@@ -388,7 +388,7 @@ private:
         }
       }
     });
-    dump_round_times(dbg_dir_, "update_transfers", state_, k, Vias);
+    dump_round_times(dbg_dir_, "1_update_transfers", state_, k, Vias);
   }
 
   void update_footpaths(unsigned const k, profile_idx_t const prf_idx) {
@@ -484,7 +484,7 @@ private:
         }
       }
     });
-    dump_round_times(dbg_dir_, "update_footpaths", state_, k, Vias);
+    dump_round_times(dbg_dir_, "3_update_footpaths", state_, k, Vias);
   }
 
   void update_td_offsets(unsigned const k, profile_idx_t const prf_idx) {
@@ -584,7 +584,7 @@ private:
         });
       }
     });
-    dump_round_times(dbg_dir_, "update_td_offsets", state_, k, Vias);
+    dump_round_times(dbg_dir_, "4_update_td_offsets", state_, k, Vias);
   }
 
   void update_intermodal_footpaths(unsigned const k) {
@@ -637,7 +637,8 @@ private:
         }
       }
     });
-    dump_round_times(dbg_dir_, "update_intermodal_footpaths", state_, k, Vias);
+    dump_round_times(dbg_dir_, "2_update_intermodal_footpaths", state_, k,
+                     Vias);
   }
 
   template <bool WithSectionBikeFilter>
