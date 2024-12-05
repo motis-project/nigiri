@@ -1240,3 +1240,130 @@ leg 5: (P, P) [2019-05-01 09:43] -> (END, END) [2019-05-01 10:03]
 
   EXPECT_EQ(expected_A_intermodal_LP_via_O_0m, results_to_str(results, tt));
 }
+
+TEST(routing, via_test_31_M_Q_via_Q_10m) {
+  // test: last via = destination, with stay duration (ignored)
+  // M -> Q, via Q (10 min)
+  auto tt = load_timetable(test_files_1);
+
+  constexpr auto const expected_M_Q_via_O_10min =
+      R"(
+[2019-05-01 09:00, 2019-05-01 10:00]
+TRANSFERS: 0
+     FROM: (M, M) [2019-05-01 09:00]
+       TO: (Q, Q) [2019-05-01 10:00]
+leg 0: (M, M) [2019-05-01 09:00] -> (Q, Q) [2019-05-01 10:00]
+   0: M       M...............................................                               d: 01.05 09:00 [01.05 11:00]  [{name=Bus 7, day=2019-05-01, id=T9, src=0}]
+   1: N       N............................................... a: 01.05 09:13 [01.05 11:13]  d: 01.05 09:15 [01.05 11:15]  [{name=Bus 7, day=2019-05-01, id=T9, src=0}]
+   2: O       O............................................... a: 01.05 09:28 [01.05 11:28]  d: 01.05 09:30 [01.05 11:30]  [{name=Bus 7, day=2019-05-01, id=T9, src=0}]
+   3: P       P............................................... a: 01.05 09:43 [01.05 11:43]  d: 01.05 09:45 [01.05 11:45]  [{name=Bus 7, day=2019-05-01, id=T9, src=0}]
+   4: Q       Q............................................... a: 01.05 10:00 [01.05 12:00]
+
+
+)"sv;
+
+  for (auto const& [dir, start_time] :
+       {std::pair{direction::kForward, time("2019-05-01 11:00 Europe/Berlin")},
+        std::pair{direction::kBackward,
+                  time("2019-05-01 12:00 Europe/Berlin")}}) {
+    auto const results =
+        search(tt, nullptr,
+               routing::query{.start_time_ = start_time,
+                              .start_ = {{loc(tt, "M"), 0_minutes, 0U}},
+                              .destination_ = {{loc(tt, "Q"), 0_minutes, 0U}},
+                              .via_stops_ = {{loc(tt, "Q"), 10_minutes}}},
+               dir);
+
+    EXPECT_EQ(expected_M_Q_via_O_10min, results_to_str(results, tt));
+  }
+}
+
+TEST(routing, via_test_32_M_intermodal_Q_via_Q_10m) {
+  // test: last via = destination, with stay duration (before intermodal fp)
+  // M -> Q, via Q (10 min)
+  auto tt = load_timetable(test_files_1);
+
+  constexpr auto const expected_M_intermodal_Q_via_O_10min =
+      R"(
+[2019-05-01 09:00, 2019-05-01 10:25]
+TRANSFERS: 0
+     FROM: (M, M) [2019-05-01 09:00]
+       TO: (END, END) [2019-05-01 10:25]
+leg 0: (M, M) [2019-05-01 09:00] -> (Q, Q) [2019-05-01 10:00]
+   0: M       M...............................................                               d: 01.05 09:00 [01.05 11:00]  [{name=Bus 7, day=2019-05-01, id=T9, src=0}]
+   1: N       N............................................... a: 01.05 09:13 [01.05 11:13]  d: 01.05 09:15 [01.05 11:15]  [{name=Bus 7, day=2019-05-01, id=T9, src=0}]
+   2: O       O............................................... a: 01.05 09:28 [01.05 11:28]  d: 01.05 09:30 [01.05 11:30]  [{name=Bus 7, day=2019-05-01, id=T9, src=0}]
+   3: P       P............................................... a: 01.05 09:43 [01.05 11:43]  d: 01.05 09:45 [01.05 11:45]  [{name=Bus 7, day=2019-05-01, id=T9, src=0}]
+   4: Q       Q............................................... a: 01.05 10:00 [01.05 12:00]
+leg 1: (Q, Q) [2019-05-01 10:10] -> (END, END) [2019-05-01 10:25]
+  MUMO (id=0, duration=15)
+
+
+)"sv;
+
+  for (auto const& [dir, start_time] :
+       {std::pair{direction::kForward, time("2019-05-01 11:00 Europe/Berlin")},
+        std::pair{direction::kBackward,
+                  time("2019-05-01 12:25 Europe/Berlin")}}) {
+    auto const results =
+        search(tt, nullptr,
+               routing::query{.start_time_ = start_time,
+                              .dest_match_mode_ =
+                                  routing::location_match_mode::kIntermodal,
+                              .start_ = {{loc(tt, "M"), 0_minutes, 0U}},
+                              .destination_ = {{loc(tt, "Q"), 15_minutes, 0U}},
+                              .via_stops_ = {{loc(tt, "Q"), 10_minutes}}},
+               dir);
+
+    auto results_str = results_to_str(results, tt);
+    if (dir == direction::kBackward) {
+      results_str = std::regex_replace(results_str, std::regex("START"), "END");
+    }
+    EXPECT_EQ(expected_M_intermodal_Q_via_O_10min, results_str);
+  }
+}
+
+TEST(routing, via_test_33_M_intermodal_Q_via_Q_0m) {
+  // test: last via = destination
+  // M -> Q, via Q (0 min)
+  auto tt = load_timetable(test_files_1);
+
+  constexpr auto const expected_M_intermodal_Q_via_O_0min =
+      R"(
+[2019-05-01 09:00, 2019-05-01 10:15]
+TRANSFERS: 0
+     FROM: (M, M) [2019-05-01 09:00]
+       TO: (END, END) [2019-05-01 10:15]
+leg 0: (M, M) [2019-05-01 09:00] -> (Q, Q) [2019-05-01 10:00]
+   0: M       M...............................................                               d: 01.05 09:00 [01.05 11:00]  [{name=Bus 7, day=2019-05-01, id=T9, src=0}]
+   1: N       N............................................... a: 01.05 09:13 [01.05 11:13]  d: 01.05 09:15 [01.05 11:15]  [{name=Bus 7, day=2019-05-01, id=T9, src=0}]
+   2: O       O............................................... a: 01.05 09:28 [01.05 11:28]  d: 01.05 09:30 [01.05 11:30]  [{name=Bus 7, day=2019-05-01, id=T9, src=0}]
+   3: P       P............................................... a: 01.05 09:43 [01.05 11:43]  d: 01.05 09:45 [01.05 11:45]  [{name=Bus 7, day=2019-05-01, id=T9, src=0}]
+   4: Q       Q............................................... a: 01.05 10:00 [01.05 12:00]
+leg 1: (Q, Q) [2019-05-01 10:00] -> (END, END) [2019-05-01 10:15]
+  MUMO (id=0, duration=15)
+
+
+)"sv;
+
+  for (auto const& [dir, start_time] :
+       {std::pair{direction::kForward, time("2019-05-01 11:00 Europe/Berlin")},
+        std::pair{direction::kBackward,
+                  time("2019-05-01 12:15 Europe/Berlin")}}) {
+    auto const results =
+        search(tt, nullptr,
+               routing::query{.start_time_ = start_time,
+                              .dest_match_mode_ =
+                                  routing::location_match_mode::kIntermodal,
+                              .start_ = {{loc(tt, "M"), 0_minutes, 0U}},
+                              .destination_ = {{loc(tt, "Q"), 15_minutes, 0U}},
+                              .via_stops_ = {{loc(tt, "Q"), 0_minutes}}},
+               dir);
+
+    auto results_str = results_to_str(results, tt);
+    if (dir == direction::kBackward) {
+      results_str = std::regex_replace(results_str, std::regex("START"), "END");
+    }
+    EXPECT_EQ(expected_M_intermodal_Q_via_O_0min, results_str);
+  }
+}
