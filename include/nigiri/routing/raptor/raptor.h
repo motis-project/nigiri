@@ -592,8 +592,8 @@ private:
           if (best_time == kInvalid) {
             return;
           }
-          auto const stay = Vias != 0 && is_via_[Vias - 1][i]
-                                ? via_stops_[Vias - 1].stay_
+          auto const stay = Vias != 0 && is_via_[Vias - 1U][i]
+                                ? via_stops_[Vias - 1U].stay_
                                 : 0_minutes;
           auto const end_time =
               clamp(best_time + stay.count() + dir(dist_to_end_[i]));

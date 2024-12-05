@@ -396,7 +396,7 @@ void reconstruct_journey_with_vias(timetable const& tt,
 
     auto const backup_v = v;
 
-    auto const is_final_leg = k == j.transfers_ + 1;
+    auto const is_final_leg = k == j.transfers_ + 1U;
     auto const is_intermodal =
         q.dest_match_mode_ == location_match_mode::kIntermodal;
     auto stay_l = 0_minutes;
