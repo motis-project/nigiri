@@ -137,6 +137,13 @@ void load_timetable(loader_config const& config,
             sort_by(t.seq_numbers_, t.stop_seq_, t.event_times_,
                     t.stop_headsigns_, t.distance_traveled_);
       }
+
+      auto pred = minutes_after_midnight_t{0U};
+      for (auto& [arr, dep] : t.event_times_) {
+        arr = std::max(pred, arr);
+        dep = std::max(arr, dep);
+        pred = dep;
+      }
     }
   }
 
