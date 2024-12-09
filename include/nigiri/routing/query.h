@@ -17,7 +17,7 @@
 
 namespace nigiri {
 struct timetable;
-};
+}
 
 namespace nigiri::routing {
 
