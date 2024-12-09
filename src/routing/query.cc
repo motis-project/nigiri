@@ -1,10 +1,13 @@
-#pragma once
+#include "nigiri/routing/query.h"
 
 #include "nigiri/for_each_meta.h"
-#include "nigiri/routing/query.h"
-#include "nigiri/timetable.h"
 
 namespace nigiri::routing {
+inline void sanitize_query(query& q) {
+  if (q.max_travel_time_.count() < 0 || q.max_travel_time_ > kMaxTravelTime) {
+    q.max_travel_time_ = kMaxTravelTime;
+  }
+}
 
 inline void sanitize_via_stops(timetable const& tt, query& q) {
   while (q.via_stops_.size() >= 2) {
@@ -24,6 +27,11 @@ inline void sanitize_via_stops(timetable const& tt, query& q) {
       break;
     }
   }
+}
+
+void query::sanitize(timetable const& tt) {
+  sanitize_query(*this);
+  sanitize_via_stops(tt, *this);
 }
 
 }  // namespace nigiri::routing

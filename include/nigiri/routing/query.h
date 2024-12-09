@@ -15,6 +15,10 @@
 #include "nigiri/td_footpath.h"
 #include "nigiri/types.h"
 
+namespace nigiri {
+struct timetable;
+};
+
 namespace nigiri::routing {
 
 // Integer value that enables the caller to know
@@ -63,6 +67,7 @@ using start_time_t = std::variant<unixtime_t, interval<unixtime_t>>;
 
 struct query {
   friend bool operator==(query const&, query const&) = default;
+  void sanitize(timetable const&);
 
   start_time_t start_time_;
   location_match_mode start_match_mode_{

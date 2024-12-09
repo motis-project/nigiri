@@ -18,8 +18,6 @@
 #include "nigiri/routing/limits.h"
 #include "nigiri/routing/pareto_set.h"
 #include "nigiri/routing/query.h"
-#include "nigiri/routing/sanitize_query.h"
-#include "nigiri/routing/sanitize_via_stops.h"
 #include "nigiri/routing/start_times.h"
 #include "nigiri/timetable.h"
 #include "nigiri/types.h"
@@ -177,8 +175,7 @@ struct search {
         timeout_(timeout) {
     utl::sort(q_.start_);
     utl::sort(q_.destination_);
-    sanitize_query(q_);
-    sanitize_via_stops(tt_, q_);
+    q.sanitize(tt);
   }
 
   routing_result<algo_stats_t> execute() {
