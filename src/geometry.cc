@@ -134,4 +134,86 @@ polygon polygon_from_multipolygon(multipolgyon& multipoly) {
   return multipoly.polygons_[0];
 }
 
+tg_geom* multipolgyon::to_tg_geom() {
+  switch (original_type_) {
+    case TG_POINT:
+      return tg_geom_new_point(create_tg_point(point_from_multipolygon(*this)));
+    case TG_MULTIPOINT:
+      return reinterpret_cast<tg_geom*>(
+          create_tg_ring(ring_from_multipolygon(*this)));
+    case TG_POLYGON:
+      return reinterpret_cast<tg_geom*>(
+          create_tg_poly(polygon_from_multipolygon(*this)));
+    case TG_MULTIPOLYGON:
+    default: {
+      // log(log_lvl::error, "loader.geometry.to_tg_geom", "Unkown type {}",
+      //     static_cast<int>(original_type_));
+      return nullptr;
+    }
+  }
+}
+
+bool point::intersects(geo::box const& b) const {
+  return b.contains(geo::latlng{this->x_, this->y_});
+}
+
+bool ring::intersects(geo::box const& b) const {
+  auto const tg_box = tg_rect{.min = tg_point{b.min_.lng(), b.min_.lat()},
+                              .max = tg_point{b.max_.lng(), b.max_.lat()}};
+  auto const r = reinterpret_cast<tg_geom*>(create_tg_ring(*this));
+  bool const result = tg_geom_intersects_rect(r, tg_box);
+  tg_geom_free(r);
+  return result;
+}
+
+bool polygon::intersects(geo::box const& b) const {
+  auto const tg_box = tg_rect{.min = tg_point{b.min_.lng(), b.min_.lat()},
+                              .max = tg_point{b.max_.lng(), b.max_.lat()}};
+  auto const p = reinterpret_cast<tg_geom*>(create_tg_poly(*this));
+  bool const result = tg_geom_intersects_rect(p, tg_box);
+  tg_geom_free(p);
+  return result;
+}
+
+bool multipolgyon::intersects(geo::box const& b) const {
+  auto const tg_box = tg_rect{.min = tg_point{b.min_.lng(), b.min_.lat()},
+                              .max = tg_point{b.max_.lng(), b.max_.lat()}};
+  auto const m = create_tg_multipoly(*this);
+  bool const result = tg_geom_intersects_rect(m, tg_box);
+  tg_geom_free(m);
+  return result;
+}
+
+// bool polygon::is_within(geo::box const& b) const {
+//   auto points = {{tg_point{b.min_.lat(), b.min_.lng()},
+//                   tg_point{b.max_.lat(), b.min_.lng()},
+//                   tg_point{b.max_.lat(), b.max_.lng()},
+//                   tg_point{b.min_.lat(), b.max_.lng()},
+//                   tg_point{b.min_.lat(), b.min_.lng()}}};
+//   auto* p = &points[0];
+//   auto tg_box = tg_poly_new(tg_ring_new(p, 5));
+//
+//   auto const poly = reinterpret_cast<tg_geom*>(create_tg_poly(*this));
+//   bool const result = tg_geom_within(poly, tg_box);
+//   tg_geom_free(poly);
+//   tg_geom_free(tg_box);
+//   return result;
+// }
+//
+// bool multipolgyon::is_within(geo::box const& b) const {
+//   auto points = {{tg_point{b.min_.lat(), b.min_.lng()},
+//                   tg_point{b.max_.lat(), b.min_.lng()},
+//                   tg_point{b.max_.lat(), b.max_.lng()},
+//                   tg_point{b.min_.lat(), b.max_.lng()},
+//                   tg_point{b.min_.lat(), b.min_.lng()}}};
+//   auto* p = &points[0];
+//   auto tg_box = tg_poly_new(tg_ring_new(p, 5));
+//
+//   auto const multi = create_tg_multipoly(*this);
+//   bool const result = tg_geom_within(multi, tg_box);
+//   tg_geom_free(multi);
+//   tg_geom_free(tg_box);
+//   return result;
+// }
+
 };  // namespace nigiri

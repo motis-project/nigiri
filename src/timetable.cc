@@ -10,8 +10,7 @@
 
 namespace nigiri {
 
-constexpr auto const kMode =
-    cista::mode::WITH_INTEGRITY | cista::mode::WITH_STATIC_VERSION;
+constexpr auto const kMode = cista::mode::WITH_INTEGRITY;
 
 std::string reverse(std::string s) {
   std::reverse(s.begin(), s.end());

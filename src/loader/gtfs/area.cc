@@ -10,27 +10,16 @@
 #include <utl/get_or_create.h>
 
 namespace nigiri::loader::gtfs {
-area_map_t read_areas(source_idx_t const stop_areas_src,
-                      source_idx_t const location_groups_src,
-                      source_idx_t const location_groups_stops_src,
-                      source_idx_t const location_src,
-                      source_idx_t const geojson_src,
+area_map_t read_areas(source_idx_t const src,
                       timetable& tt,
-                      locations_map const& location_id_to_idx,
-                      location_geojson_map_t const& geojson_id_to_idx,
                       std::string_view const stop_areas_content,
                       std::string_view const location_groups_content,
                       std::string_view const location_group_stops_content) {
   auto const timer = scoped_timer{"read areas"};
-  auto stop_areas_map =
-      read_areas(stop_areas_src, location_src, geojson_src, tt,
-                 location_id_to_idx, geojson_id_to_idx, stop_areas_content);
-  auto location_groups_map = read_areas(
-      location_groups_src, location_src, geojson_src, tt, location_id_to_idx,
-      geojson_id_to_idx, location_groups_content);
-  auto location_group_stops_map = read_areas(
-      location_groups_stops_src, location_src, geojson_src, tt,
-      location_id_to_idx, geojson_id_to_idx, location_group_stops_content);
+  auto stop_areas_map = read_areas(src, tt, stop_areas_content);
+  auto location_groups_map = read_areas(src, tt, location_groups_content);
+  auto location_group_stops_map =
+      read_areas(src, tt, location_group_stops_content);
 
   auto merged_map = area_map_t{};
   merged_map.reserve(stop_areas_map.size() + location_groups_map.size() +
@@ -43,12 +32,8 @@ area_map_t read_areas(source_idx_t const stop_areas_src,
   return merged_map;
 }
 
-area_map_t read_areas(source_idx_t const area_src,
-                      source_idx_t const location_src,
-                      source_idx_t const geojson_src,
+area_map_t read_areas(source_idx_t const src,
                       timetable& tt,
-                      locations_map const& location_id_to_idx,
-                      location_geojson_map_t const& geojson_id_to_idx,
                       std::string_view const file_content) {
   struct csv_area {
     utl::csv_col<utl::cstr, UTL_NAME("area_id")> area_id_;
@@ -92,9 +77,7 @@ area_map_t read_areas(source_idx_t const area_src,
           }
         });
   for (auto const& a_to_l : area_id_to_location_ids) {
-    auto const area_idx = tt.areas_.register_area(
-        area_src, location_src, geojson_src, a_to_l.first, a_to_l.second,
-        location_id_to_idx, geojson_id_to_idx);
+    auto const area_idx = tt.register_area(src, a_to_l.first, a_to_l.second);
     area_map.emplace(a_to_l.first, area_idx);
   }
   return area_map;

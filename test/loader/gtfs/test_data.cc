@@ -234,6 +234,216 @@ a_3,S7
 a_3,S8
 )";
 
+constexpr auto const example_rtree_stops_content = R"(stop_id,stop_lat,stop_lon
+Amsterdam,52.37980421231532,4.894331113707807
+Frankfurt,50.108966514429596,8.687370378495103
+Muenchen,48.13977960466778,11.572389926278788
+Stuttgart,48.78106035877934,9.174858910926702
+Nuernberg,49.45660607952482,11.068864156396245
+)";
+
+constexpr auto const example_rtree_location_groups_content =
+    R"(location_group_id,location_id
+l_g_1,Brandenburg
+l_g_2,Duesseldorf-Umgebung
+l_g_2,Amsterdam
+l_g_2,Frankfurt
+l_g_3,Muenchen
+l_g_3,Stuttgart
+l_g_3,Nuernberg
+l_g_4,Wien-Umgebung
+l_g_5,Wien-Umgebung2
+)";
+
+constexpr auto const example_rtree_location_geojson_content = R"(
+{
+  "type": "FeatureCollection",
+  "features": [
+    {
+      "type": "Feature",
+      "id": "Brandenburg",
+      "geometry": {
+        "coordinates": [
+          [
+            [
+              14.43213958293137,
+              53.25693385473642
+            ],
+            [
+              11.279301993749755,
+              53.11265675625097
+            ],
+            [
+              10.693315343603132,
+              51.64776304007273
+            ],
+            [
+              11.798760447151835,
+              51.04145377887218
+            ],
+            [
+              12.716653590734552,
+              50.88988753931426
+            ],
+            [
+              11.87429774862801,
+              50.44192517637538
+            ],
+            [
+              12.295550152799763,
+              50.206650709569374
+            ],
+            [
+              14.951014011686766,
+              51.00365598647906
+            ],
+            [
+              14.597666069434041,
+              52.342541193460164
+            ],
+            [
+              14.43213958293137,
+              53.25693385473642
+            ]
+          ],
+          [
+            [
+              13.243247234630786,
+              52.63120535418105
+            ],
+            [
+              13.077704937438853,
+              52.562651145433165
+            ],
+            [
+              13.077702806447178,
+              52.43897716344631
+            ],
+            [
+              13.679670830804781,
+              52.36092568183406
+            ],
+            [
+              13.747391501574526,
+              52.44356046588726
+            ],
+            [
+              13.484031433607328,
+              52.66315992883648
+            ],
+            [
+              13.243247234630786,
+              52.63120535418105
+            ]
+          ]
+        ],
+        "type": "Polygon"
+      }
+    },
+    {
+      "type": "Feature",
+      "id": "Duesseldorf-Umgebung",
+      "geometry": {
+        "coordinates": [
+          [
+            [
+              5.409550988547295,
+              52.116365734812945
+            ],
+            [
+              5.387997619365024,
+              50.27940127239947
+            ],
+            [
+              8.500492703440614,
+              50.236119600129996
+            ],
+            [
+              7.968533668917871,
+              51.90722408367796
+            ],
+            [
+              5.409550988547295,
+              52.116365734812945
+            ]
+          ]
+        ],
+        "type": "Polygon"
+      }
+    },
+    {
+      "type": "Feature",
+        "id": "Wien-Umgebung",
+      "geometry": {
+        "coordinates": [
+          [
+            [
+              16.07682433489032,
+              48.739642926441945
+            ],
+            [
+              14.305311800016113,
+              48.32391493741267
+            ],
+            [
+              15.459132098991745,
+              47.043075854264345
+            ],
+            [
+              17.135143217382137,
+              48.01011892461713
+            ],
+            [
+              16.866678086212232,
+              48.71969720825075
+            ],
+            [
+              16.07682433489032,
+              48.739642926441945
+            ]
+          ]
+        ],
+        "type": "Polygon"
+      }
+    },
+    {
+      "type": "Feature",
+        "id": "Wien-Umgebung2",
+      "geometry": {
+        "coordinates": [
+          [
+            [
+              14.295178369097812,
+              46.62450745703154
+            ],
+            [
+              16.0047096870463,
+              47.6909722226882
+            ],
+            [
+              16.375601936571115,
+              48.199391851780575
+            ],
+            [
+              14.862044169066081,
+              48.11494365511763
+            ],
+            [
+              13.627702705678644,
+              47.71146159416162
+            ],
+            [
+              14.295178369097812,
+              46.62450745703154
+            ]
+          ]
+        ],
+        "type": "Polygon"
+      }
+    }
+  ]
+})";
+
 loader::mem_dir example_files() {
   using std::filesystem::path;
   return {
@@ -261,7 +471,12 @@ loader::mem_dir example_files() {
         std::string{example_location_group_stops_content}},
        {path{kStopAreasFile}, std::string{example_stop_areas_content}},
        {path{kStopTimesGTFSFlexFile},
-        std::string{example_stop_times_gtfs_flex_content}}}};
+        std::string{example_stop_times_gtfs_flex_content}},
+       {path{kRtreeStopFile}, std::string{example_rtree_stops_content}},
+       {path{kRtreeLocationGeojsonFile},
+        std::string{example_rtree_location_geojson_content}},
+       {path{kRtreeLocationGroupFile},
+        std::string{example_rtree_location_groups_content}}}};
 }
 
 constexpr auto const berlin_agencies_file_content = std::string_view{

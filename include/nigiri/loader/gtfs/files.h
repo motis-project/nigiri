@@ -36,5 +36,9 @@ constexpr auto const kBookingRuleCalendarDatesFile =
     std::string_view{"booking_rule_calendar_dates.txt"};
 constexpr auto const kStopTimesGTFSFlexFile =
     std::string_view{"stop_times_gtfs_flex.txt"};
-
+constexpr auto const kRtreeStopFile = std::string_view{"rtree_stops.txt"};
+constexpr auto const kRtreeLocationGroupFile =
+    std::string_view{"rtree_location_groups.txt"};
+constexpr auto const kRtreeLocationGeojsonFile =
+    std::string_view{"rtree_location.geojson"};
 }  // namespace nigiri::loader::gtfs

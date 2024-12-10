@@ -5,12 +5,15 @@
 #include <span>
 #include <type_traits>
 
+#include "cista/containers/rtree.h"
 #include "cista/memory_holder.h"
 #include "cista/reflection/printable.h"
+#include "cista/serialization.h"
 
 #include "utl/verify.h"
 #include "utl/zip.h"
 
+#include "geo/box.h"
 #include "geo/latlng.h"
 #include "loader/gtfs/location_geojson.h"
 #include "loader/gtfs/stop.h"
@@ -28,7 +31,6 @@
 namespace nigiri {
 
 struct timetable {
-
   struct locations {
     timezone_idx_t register_timezone(timezone tz) {
       auto const idx = timezone_idx_t{
@@ -122,75 +124,6 @@ struct timetable {
     vector_map<timezone_idx_t, timezone> timezones_;
   } locations_;
 
-  struct areas {
-    area_idx register_area(
-        source_idx_t const area_src,
-        std::optional<source_idx_t> const location_src,
-        std::optional<source_idx_t> const geojson_src,
-        std::string const& area_id,
-        std::vector<std::string> const& location_ids,
-        loader::gtfs::locations_map const& location_id_to_idx,
-        loader::gtfs::location_geojson_map_t const&
-            location_id_to_location_geojson_idx) {
-      area_idx new_idx{.location_ = kInvalidAreaIndex,
-                       .location_geojson_ = kInvalidAreaIndex};
-
-      for (auto const l_id : location_ids) {
-        auto const location_idx_iterator = location_id_to_idx.find(l_id);
-        loader::gtfs::location_geojson_map_t::const_iterator
-            location_geojson_idx_iterator;
-        if (location_idx_iterator != end(location_id_to_idx)) {
-          if (!location_src.has_value()) {
-            log(log_lvl::error, "timetable",
-                "register_area: no location source were given for location_id "
-                "\"{}\"",
-                l_id);
-            continue;
-          }
-          if (new_idx.location_ == kInvalidAreaIndex) {
-            new_idx.location_ = area_idx_t{area_idx_to_location_idxs_.size()};
-            area_idx_to_location_idxs_.emplace_back(
-                std::vector<location_idx_t>{});
-          }
-          area_idx_to_location_idxs_[new_idx.location_].push_back(
-              location_idx_iterator->second);
-
-        } else if ((location_geojson_idx_iterator =
-                        location_id_to_location_geojson_idx.find(l_id)) !=
-                   end(location_id_to_location_geojson_idx)) {
-          if (!geojson_src.has_value()) {
-            log(log_lvl::error, "timetable",
-                "register_area: no location geojson source were given for "
-                "location_gejson_id \"{}\"",
-                l_id);
-            continue;
-          }
-          if (new_idx.location_geojson_ == kInvalidAreaIndex) {
-            new_idx.location_geojson_ =
-                area_idx_t{area_idx_to_location_geojson_idxs_.size()};
-            area_idx_to_location_geojson_idxs_.emplace_back(
-                std::vector<location_geojson_idx_t>{});
-          }
-          area_idx_to_location_geojson_idxs_[new_idx.location_geojson_]
-              .push_back(location_geojson_idx_iterator->second);
-        } else {
-          log(log_lvl::error, "timetable",
-              "register_area: unknown location_id \"{}\"", l_id);
-          continue;
-        }
-      }
-      area_id_to_area_idx_.emplace(
-          nigiri::area_id{.id_ = area_id, .src_ = area_src}, new_idx);
-      return new_idx;
-    }
-
-    hash_map<area_id, area_idx> area_id_to_area_idx_;
-
-    vecvec<area_idx_t, location_idx_t> area_idx_to_location_idxs_;
-    vecvec<area_idx_t, location_geojson_idx_t>
-        area_idx_to_location_geojson_idxs_;
-  } areas_;
-
   struct transport {
     bitfield_idx_t bitfield_idx_;
     route_idx_t route_idx_;
@@ -203,6 +136,110 @@ struct timetable {
     std::basic_string<stop_idx_t> const& stop_seq_numbers_;
     std::basic_string<route_color> const& route_colors_;
   };
+
+  area_idx register_area(source_idx_t const src,
+                         std::string const& area_id,
+                         std::vector<std::string> const& location_ids) {
+    area_idx new_idx{.location_ = kInvalidAreaIndex,
+                     .location_geojson_ = kInvalidAreaIndex};
+    using geojson_iterator_t = serializable_table<
+        location_geojson_id, cista::strong<unsigned, _location_geojson_idx>,
+        cista::hash_all, cista::equals_all,
+        cista::basic_vector<
+            std::pair<location_geojson_id,
+                      cista::strong<unsigned, _location_geojson_idx>>,
+            cista::raw::ptr>,
+        ankerl::unordered_dense::bucket_type::standard, false>::iterator;
+
+    auto b = geo::box{};
+    for (auto const& l_id : location_ids) {
+      auto const location_idx_iterator =
+          locations_.location_id_to_idx_.find({l_id, src});
+      geojson_iterator_t location_geojson_idx_iterator;
+      if (location_idx_iterator != end(locations_.location_id_to_idx_)) {
+        if (new_idx.location_ == kInvalidAreaIndex) {
+          new_idx.location_ = area_idx_t{area_idx_to_location_idxs_.size()};
+          area_idx_to_location_idxs_.emplace_back(
+              std::vector<location_idx_t>{});
+        }
+        area_idx_to_location_idxs_[new_idx.location_].push_back(
+            location_idx_iterator->second);
+        auto coordinate =
+            locations_.coordinates_[location_idx_iterator->second];
+        b.extend(coordinate);
+      } else if ((location_geojson_idx_iterator =
+                      location_id_to_location_geojson_idx_.find({l_id, src})) !=
+                 end(location_id_to_location_geojson_idx_)) {
+        if (new_idx.location_geojson_ == kInvalidAreaIndex) {
+          new_idx.location_geojson_ =
+              area_idx_t{area_idx_to_location_geojson_idxs_.size()};
+          area_idx_to_location_geojson_idxs_.emplace_back(
+              std::vector<location_geojson_idx_t>{});
+        }
+        area_idx_to_location_geojson_idxs_[new_idx.location_geojson_].push_back(
+            location_geojson_idx_iterator->second);
+        std::vector<point*> points;
+        location_geojson_geometries[location_geojson_idx_iterator->second]
+            .as_points(points);
+        for (auto* p : points) {
+          b.extend(geo::latlng{p->y_, p->x_});
+        }
+      } else {
+        log(log_lvl::error, "timetable",
+            "register_area: unknown location_id \"{}\"", l_id);
+      }
+    }
+    area_rtree_.insert(b.min_.lnglat_float(), b.max_.lnglat_float(), new_idx);
+    area_id_to_area_idx_.emplace(nigiri::area_id{.id_ = area_id, .src_ = src},
+                                 new_idx);
+    return new_idx;
+  }
+
+  match_t lookup_td_stops(geo::latlng const& center,
+                          double const max_match_distance) {
+    auto radius = max_match_distance;
+    if (max_match_distance == 0.0) {
+      radius = std::numeric_limits<double>::epsilon();
+    }
+    auto const b = geo::box{center, radius};
+    match_t matches;
+    area_rtree_.search(
+        b.min_.lnglat_float(), b.max_.lnglat_float(),
+        [&](auto, auto, area_idx const& a) {
+          auto match = area_match{
+              .area_idxs_ = area_idx{kInvalidAreaIndex, kInvalidAreaIndex}};
+          if (a.location_ != kInvalidAreaIndex) {
+            for (auto l_idx : area_idx_to_location_idxs_[a.location_]) {
+              auto const point =
+                  geo::make_box({locations_.coordinates_[l_idx]});
+              if (b.overlaps(point)) {
+                match.area_idxs_.location_ = a.location_;
+                match.locations_.push_back(l_idx);
+              }
+            }
+          }
+          if (a.location_geojson_ != kInvalidAreaIndex) {
+            for (auto g_idx :
+                 area_idx_to_location_geojson_idxs_[a.location_geojson_]) {
+              auto geo = location_geojson_geometries[g_idx];
+              if (geo.intersects(b)) {
+                match.area_idxs_.location_geojson_ = a.location_geojson_;
+                match.location_geojsons_.push_back(g_idx);
+              }
+            }
+          }
+          if (match.area_idxs_.location_ != kInvalidAreaIndex ||
+              match.area_idxs_.location_geojson_ != kInvalidAreaIndex) {
+            matches.push_back(match);
+          }
+          return true;
+        });
+    return matches;
+  }
+
+  match_t lookup_td_stops(geo::latlng const& c) {
+    return lookup_td_stops(c, 0.0);
+  }
 
   location_geojson_idx_t register_location_geojson(source_idx_t const src,
                                                    std::string const& id,
@@ -232,7 +269,7 @@ struct timetable {
     }
 
     location_id_to_location_geojson_idx_.emplace(
-        locationGeoJson_id{.id_ = id, .src_ = src}, next_idx);
+        location_geojson_id{.id_ = id, .src_ = src}, next_idx);
     return next_idx;
   }
 
@@ -629,8 +666,14 @@ struct timetable {
   hash_map<string, profile_idx_t> profiles_;
 
   /* GTFS-Flex */
+  // areas
+  hash_map<area_id, area_idx> area_id_to_area_idx_;
+  vecvec<area_idx_t, location_idx_t> area_idx_to_location_idxs_;
+  vecvec<area_idx_t, location_geojson_idx_t> area_idx_to_location_geojson_idxs_;
+  cista::raw::rtree<area_idx> area_rtree_;
+
   // location geojson
-  hash_map<locationGeoJson_id, location_geojson_idx_t>
+  hash_map<location_geojson_id, location_geojson_idx_t>
       location_id_to_location_geojson_idx_;
   vector_map<location_geojson_idx_t, source_idx_t> location_geojson_src_;
   vector_map<location_geojson_idx_t, multipolgyon> location_geojson_geometries;

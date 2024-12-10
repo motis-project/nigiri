@@ -1,7 +1,9 @@
 #pragma once
 
 #include <cista/containers/vector.h>
+#include <geo/box.h>
 #include <tg.h>
+#include <utl/pipes/transform.h>
 #include <tuple>
 
 namespace nigiri {
@@ -12,6 +14,8 @@ struct point {
   point() {}
 
   point(double const x, double const y) : x_{x}, y_{y} {}
+
+  bool intersects(geo::box const& b) const;
 
   auto cista_members() { return std::tie(x_, y_); }
   double x_;
@@ -32,6 +36,15 @@ struct ring {
     }
   }
 
+  void as_points(std::vector<point*>& points) {
+    points.reserve(points.size() + points_.size());
+    for (auto& p : points_) {
+      points.emplace_back(&p);
+    }
+  }
+
+  bool intersects(geo::box const& b) const;
+
   auto cista_members() { return std::tie(points_); }
   vector<point> points_;
 };
@@ -50,6 +63,12 @@ struct polygon {
       holes_.emplace_back(h);
     }
   }
+
+  // bool is_within(geo::box const& b) const;
+
+  bool intersects(geo::box const& b) const;
+
+  void as_points(std::vector<point*>& points) { exterior_.as_points(points); }
 
   auto cista_members() { return std::tie(exterior_, holes_); }
   ring exterior_;
@@ -76,7 +95,19 @@ struct multipolgyon {
     }
   }
 
-  auto cista_members() { return std::tie(polygons_); }
+  void as_points(std::vector<point*>& points) {
+    for (auto& p : polygons_) {
+      p.as_points(points);
+    }
+  }
+
+  tg_geom* to_tg_geom();
+
+  bool intersects(geo::box const& b) const;
+
+  // bool is_within(geo::box const& b) const;
+
+  auto cista_members() { return std::tie(polygons_, original_type_); }
   vector<polygon> polygons_;
   tg_geom_type original_type_;
 };

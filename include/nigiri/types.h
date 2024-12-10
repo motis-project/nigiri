@@ -226,6 +226,14 @@ struct area_idx {
   area_idx_t location_geojson_;
 };
 
+struct area_match {
+  area_idx area_idxs_;
+  std::vector<location_idx_t> locations_;
+  std::vector<location_geojson_idx_t> location_geojsons_;
+};
+
+using match_t = std::vector<area_match>;
+
 struct area_id {
   CISTA_COMPARABLE()
   CISTA_PRINTABLE(area_id, "id", "src")
@@ -233,9 +241,9 @@ struct area_id {
   source_idx_t src_;
 };
 
-struct locationGeoJson_id {
+struct location_geojson_id {
   CISTA_COMPARABLE()
-  CISTA_PRINTABLE(locationGeoJson_id, "id", "src")
+  CISTA_PRINTABLE(location_geojson_id, "id", "src")
   string id_;
   source_idx_t src_;
 };
