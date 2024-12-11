@@ -268,47 +268,69 @@ statistics gtfsrt_update_msg(timetable const& tt,
   span->SetAttribute("nigiri.gtfsrt.total_entities", msg.entity_size());
 
   for (auto const& entity : msg.entity()) {
+    bool skip = false;
+    if (uint8_t count = entity.has_alert() + entity.has_trip_update() +
+                        entity.has_vehicle();
+        count > 1U) {
+      log(log_lvl::error, "rt.gtfs.unsupported",
+          R"(message has multiple of "trip_update", "vehicle" and "alert" set. This is discouraged by the spec (https://gtfs.org/documentation/realtime/reference/#message-feedentity) (tag={}, id={}))",
+          tag, entity.id());
+    }
+    // no continue here so we don't skip as long as it also has a trip_update
+    if (entity.has_vehicle()) {
+      log(log_lvl::error, "rt.gtfs.unsupported",
+          R"(ignoring unsupported "vehicle" field (tag={}, id={}))", tag,
+          entity.id());
+      ++stats.unsupported_vehicle_;
+    }
+    // no continue here so we don't skip as long as it also has a trip_update
+    if (entity.has_alert()) {
+      log(log_lvl::error, "rt.gtfs.unsupported",
+          R"(ignoring unsupported "alert" field (tag={}, id={}))", tag,
+          entity.id());
+      ++stats.unsupported_alert_;
+    }
     if (entity.has_is_deleted() && entity.is_deleted()) {
       log(log_lvl::error, "rt.gtfs.unsupported",
-          "unsupported deleted (tag={}, id={})", tag, entity.id());
+          R"(unsupported "id_deleted" field (tag={}, id={}), skipping message)",
+          tag, entity.id());
       ++stats.unsupported_deleted_;
-      continue;
-    } else if (entity.has_alert()) {
+      skip = true;
+    }
+    if (!entity.has_trip_update()) {
       log(log_lvl::error, "rt.gtfs.unsupported",
-          "unsupported alert (tag={}, id={})", tag, entity.id());
-      ++stats.unsupported_alert_;
-      continue;
-    } else if (entity.has_vehicle()) {
-      log(log_lvl::error, "rt.gtfs.unsupported",
-          "unsupported vehicle (tag={}, id={})", tag, entity.id());
-      ++stats.unsupported_vehicle_;
-      continue;
-    } else if (!entity.has_trip_update()) {
-      log(log_lvl::error, "rt.gtfs.unsupported",
-          "unsupported no trip update (tag={}, id={})", tag, entity.id());
+          R"(unsupported: no "trip_update" field (tag={}, id={}), skipping message)",
+          tag, entity.id());
       ++stats.no_trip_update_;
-      continue;
-    } else if (!entity.trip_update().has_trip()) {
+      skip = true;
+    }
+    if (!entity.trip_update().has_trip()) {
       log(log_lvl::error, "rt.gtfs.unsupported",
-          "unsupported no trip in trip update (tag={}, id={})", tag,
-          entity.id());
+          R"(unsupported: no "trip" field in "trip_update" field (tag={}, id={}), skipping message)",
+          tag, entity.id());
       ++stats.trip_update_without_trip_;
       continue;
     } else if (!entity.trip_update().trip().has_trip_id()) {
       log(log_lvl::error, "rt.gtfs.unsupported",
-          "unsupported trip without trip_id (tag={}, id={})", tag, entity.id());
+          R"(unsupported: no "trip_id" field in "trip_update.trip" (tag={}, id={}), skipping message)",
+          tag, entity.id());
       ++stats.unsupported_no_trip_id_;
-      continue;
+      skip = true;
     } else if (entity.trip_update().trip().schedule_relationship() !=
                    gtfsrt::TripDescriptor_ScheduleRelationship_SCHEDULED &&
                entity.trip_update().trip().schedule_relationship() !=
                    gtfsrt::TripDescriptor_ScheduleRelationship_CANCELED) {
       log(log_lvl::error, "rt.gtfs.unsupported",
-          "unsupported schedule relationship {} (tag={}, id={})",
+          "unsupported schedule relationship {} (tag={}, id={}), skipping "
+          "message",
           TripDescriptor_ScheduleRelationship_Name(
               entity.trip_update().trip().schedule_relationship()),
           tag, entity.id());
       ++stats.unsupported_schedule_relationship_;
+      skip = true;
+    }
+
+    if (skip) {
       continue;
     }
 
