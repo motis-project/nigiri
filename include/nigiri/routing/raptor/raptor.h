@@ -1007,10 +1007,6 @@ private:
                                    location_idx_t const l) {
     ++stats_.n_earliest_trip_calls_;
 
-    auto const n_days_to_iterate = std::min(
-        kMaxTravelTime.count() / 1440 + 1,
-        kFwd ? n_days_ - as_int(day_at_stop) : as_int(day_at_stop) + 1);
-
     auto const event_times = tt_.event_times_at_stop(
         r, stop_idx, kFwd ? event_type::kDep : event_type::kArr);
 
@@ -1026,14 +1022,13 @@ private:
     auto const l_idx =
         stop{tt_.route_location_seq_[r][stop_idx]}.location_idx();
 
-    trace(
-        "┊ │k={}    et: current_best_at_stop={}, stop_idx={}, location={}, "
-        "n_days_to_iterate={}\n",
-        k, tt_.to_unixtime(day_at_stop, mam_at_stop), stop_idx,
-        location{tt_, l_idx}, n_days_to_iterate);
+    trace("┊ │k={}    et: current_best_at_stop={}, stop_idx={}, location={}\n",
+          k, tt_.to_unixtime(day_at_stop, mam_at_stop), stop_idx,
+          location{tt_, l_idx});
 #endif
 
-    for (auto i = day_idx_t::value_t{0U}; i != n_days_to_iterate; ++i) {
+    constexpr auto const kNDaysToIterate = day_idx_t::value_t{2U};
+    for (auto i = day_idx_t::value_t{0U}; i != kNDaysToIterate; ++i) {
       auto const ev_time_range =
           it_range{i == 0U ? seek_first_day() : get_begin_it(event_times),
                    get_end_it(event_times)};
