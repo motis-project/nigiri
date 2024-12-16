@@ -121,10 +121,14 @@ using mm_vec = cista::basic_mmap_vec<T, std::uint64_t>;
 template <typename Key, typename V, typename SizeType = cista::base_t<Key>>
 using mm_vecvec = cista::basic_vecvec<Key, mm_vec<V>, mm_vec<SizeType>>;
 
-template <typename Key, typename T>
+template <typename Key,
+          typename T,
+          typename PageSizeType = std::uint32_t,
+          PageSizeType MinPageSize = 4U,
+          PageSizeType MaxPageSize = 1U << 31U>
 struct paged_vecvec_helper {
-  using data_t =
-      cista::paged<vector<T>, std::uint64_t, std::uint32_t, 4U, 1U << 31U>;
+  using data_t = cista::
+      paged<vector<T>, std::uint64_t, PageSizeType, MinPageSize, MaxPageSize>;
   using idx_t = vector<typename data_t::page_t>;
   using type = cista::paged_vecvec<idx_t, data_t, Key>;
 };
