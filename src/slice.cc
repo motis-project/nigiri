@@ -11,11 +11,27 @@ namespace nigiri {
 slice::slice(nigiri::timetable const& tt,
              interval<nigiri::day_idx_t> extract_interval)
     : base_day_{extract_interval.from_} {
-  using stop_seq_view_t = std::basic_string_view<stop::value_type>;
-  using route_times_cache_t =
-      paged_vecvec_helper<std::uint32_t, delta_t, std::uint16_t, 8U,
-                          1U << 15U>::type;
+  // ====================
+  // LOCATION TRANSLATION
+  // --------------------
+  location_l_.resize(tt.n_locations(), l_idx_t::invalid());
 
+  auto const get_or_create_l = [&](location_idx_t const l) {
+    if (location_l_[l] == l_idx_t::invalid()) {
+      auto const next = l_idx_t{l_location_.size()};
+      location_l_[l] = next;
+      l_location_.push_back(l);
+    }
+    return location_l_[l];
+  };
+
+  auto const get_or_create_stop = [&](stop::value_type const v) {
+    return get_or_create_l(stop{v}.location_idx());
+  };
+
+  // ============
+  // BUILD ROUTES
+  // ------------
   auto const to_delta = [&](unixtime_t const t) {
     return unix_to_delta(tt.internal_interval_days().from_, t);
   };
@@ -36,6 +52,9 @@ slice::slice(nigiri::timetable const& tt,
     return times;
   };
 
+  using route_times_cache_t =
+      paged_vecvec_helper<std::uint32_t, delta_t, std::uint16_t, 8U,
+                          1U << 15U>::type;
   auto const get_index = [&](route_times_cache_t const& route_times,
                              route_idx_t const r_idx,
                              std::vector<delta_t> const& transport_times)
@@ -59,26 +78,9 @@ slice::slice(nigiri::timetable const& tt,
     return index;
   };
 
-  location_l_.resize(tt.n_locations(), l_idx_t::invalid());
-
-  auto stop_seq_rs = hash_map<stop_seq_view_t, std::vector<r_idx_t>>{};
   auto r_l_seq = vecvec<r_idx_t, l_idx_t>{};
   auto r_t_times = vector_map<r_idx_t, route_times_cache_t>{};
   auto l_r = paged_vecvec<l_idx_t, r_idx_t>{};
-
-  auto const get_or_create_l = [&](location_idx_t const l) {
-    if (location_l_[l] == l_idx_t::invalid()) {
-      auto const next = l_idx_t{l_location_.size()};
-      location_l_[l] = next;
-      l_location_.push_back(l);
-    }
-    return location_l_[l];
-  };
-
-  auto const get_or_create_stop = [&](stop::value_type const v) {
-    return get_or_create_l(stop{v}.location_idx());
-  };
-
   auto const add_transport = [&](std::vector<r_idx_t>& r_candidates,
                                  route_idx_t const r, transport const tr) {
     auto const& times = get_transport_times(r, tr);
@@ -99,8 +101,12 @@ slice::slice(nigiri::timetable const& tt,
     for (auto const s : r_l_seq_[next]) {
       l_r[get_or_create_stop(s)].push_back(next);
     }
+
+    t_transport_.push_back(tr);
   };
 
+  using stop_seq_view_t = std::basic_string_view<stop::value_type>;
+  auto stop_seq_rs = hash_map<stop_seq_view_t, std::vector<r_idx_t>>{};
   for (auto r = route_idx_t{0U}; r != tt.n_routes(); ++r) {
     auto& r_candidates = stop_seq_rs[tt.route_location_seq_[r]];
     auto const last_stop_idx =
@@ -120,6 +126,33 @@ slice::slice(nigiri::timetable const& tt,
     }
   }
 
+  // ===========
+  // COPY ROUTES
+  // -----------
+  for (auto const [stop_seq, routes] : stop_seq_rs) {
+    for (auto const r : routes) {
+      auto const stop_times_begin = tt.route_stop_times_.size();
+      for (auto const [from, to] :
+           utl::pairwise(interval{std::size_t{0U}, stop_seq.size()})) {
+        // Write departure times of all route services at stop i.
+        for (auto const s : r_t_times[r]) {
+          r_stop_times_.emplace_back(s[from * 2]);
+        }
+
+        // Write arrival times of all route services at stop i+1.
+        for (auto const s : r_t_times[r]) {
+          r_stop_times_.emplace_back(s[to * 2 - 1]);
+        }
+      }
+      auto const stop_times_end = tt.route_stop_times_.size();
+      r_stop_time_ranges_.emplace_back(
+          interval{stop_times_begin, stop_times_end});
+    }
+  }
+
+  // =========
+  // FOOTPATHS
+  // ---------
   auto const filter_and_translate_footpaths =
       [&](vecvec<location_idx_t, footpath> const& fps) {
         auto ret = vecvec<l_idx_t, fp>{};

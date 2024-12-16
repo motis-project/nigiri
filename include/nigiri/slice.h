@@ -35,9 +35,9 @@ struct slice {
   vecvec<r_idx_t, stop::value_type> r_l_seq_;
 
   vector_map<t_idx_t, transport> t_transport_;
-  vector_map<r_idx_t, interval<std::uint32_t>> r_stop_time_ranges_;
   vector_map<r_idx_t, interval<t_idx_t>> r_transport_ranges_;
 
+  vector_map<r_idx_t, interval<std::uint32_t>> r_stop_time_ranges_;
   vector<delta_t> r_stop_times_;
   day_idx_t base_day_;
 };
