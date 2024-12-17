@@ -46,7 +46,7 @@ struct raptor_stats {
   std::uint64_t route_update_prevented_by_lower_bound_{0ULL};
 };
 
-template <direction SearchDir, bool Rt, via_offset_t Vias>
+template <typename Timetable, direction SearchDir, bool Rt, via_offset_t Vias>
 struct raptor {
   using algo_state_t = raptor_state;
   using algo_stats_t = raptor_stats;
@@ -75,7 +75,7 @@ struct raptor {
   static auto dir(auto a) { return (kFwd ? 1 : -1) * a; }
 
   raptor(
-      timetable const& tt,
+      Timetable const& tt,
       rt_timetable const* rtt,
       raptor_state& state,
       bitvec& is_dest,
@@ -1082,7 +1082,7 @@ private:
     }
   }
 
-  timetable const& tt_;
+  Timetable const& tt_;
   rt_timetable const* rtt_{nullptr};
   int n_days_;
   std::uint32_t n_locations_, n_routes_, n_rt_transports_;

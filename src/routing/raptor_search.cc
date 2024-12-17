@@ -30,12 +30,12 @@ routing_result<raptor_stats> raptor_search_with_vias(
     std::optional<std::chrono::seconds> const timeout) {
 
   if (rtt == nullptr) {
-    using algo_t = raptor<SearchDir, false, Vias>;
+    using algo_t = raptor<timetable, SearchDir, false, Vias>;
     return search<SearchDir, algo_t>{tt,      rtt,          s_state,
                                      r_state, std::move(q), timeout}
         .execute();
   } else {
-    using algo_t = raptor<SearchDir, true, Vias>;
+    using algo_t = raptor<timetable, SearchDir, true, Vias>;
     return search<SearchDir, algo_t>{tt,      rtt,          s_state,
                                      r_state, std::move(q), timeout}
         .execute();

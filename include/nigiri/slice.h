@@ -9,19 +9,12 @@ namespace nigiri {
 
 struct timetable;
 
-using l_idx_t = cista::strong<std::uint32_t, struct l_idx_>;
-using t_idx_t = cista::strong<std::uint32_t, struct t_idx_>;
-using r_idx_t = cista::strong<std::uint32_t, struct r_idx_>;
+using l_idx_t = location_idx_t;
+using t_idx_t = transport_idx_t;
+using r_idx_t = route_idx_t;
+using fp = footpath;
 
 struct slice {
-  struct fp {
-    l_idx_t target() const { return l_idx_t{target_}; }
-    duration_t duration() const { return duration_t{duration_}; }
-
-    l_idx_t::value_t target_ : footpath::kTargetBits;
-    l_idx_t::value_t duration_ : footpath::kDurationBits;
-  };
-
   explicit slice(timetable const&, interval<day_idx_t>);
 
   vector_map<location_idx_t, l_idx_t> location_l_;

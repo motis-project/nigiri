@@ -129,7 +129,7 @@ slice::slice(nigiri::timetable const& tt,
   // ===========
   // COPY ROUTES
   // -----------
-  for (auto const [stop_seq, routes] : stop_seq_rs) {
+  for (auto const& [stop_seq, routes] : stop_seq_rs) {
     for (auto const r : routes) {
       auto const stop_times_begin = tt.route_stop_times_.size();
       for (auto const [from, to] :
@@ -158,16 +158,14 @@ slice::slice(nigiri::timetable const& tt,
         auto ret = vecvec<l_idx_t, fp>{};
         for (auto l = l_idx_t{0U}; l != l_location_.size(); ++l) {
           using namespace std::views;
-          ret.emplace_back(
-              fps[l_location_[l]]  //
-              | drop_while([&](footpath const x) {
-                  return location_l_[x.target()] != l_idx_t::invalid();
-                })  //
-              | transform([&](footpath const x) {
-                  return fp{.target_ = to_idx(location_l_[x.target()]),
-                            .duration_ = static_cast<l_idx_t::value_t>(
-                                x.duration().count())};
-                }));
+          ret.emplace_back(fps[l_location_[l]]  //
+                           | drop_while([&](footpath const x) {
+                               return location_l_[x.target()] !=
+                                      l_idx_t::invalid();
+                             })  //
+                           | transform([&](footpath const x) {
+                               return fp{location_l_[x.target()], x.duration()};
+                             }));
         }
         return ret;
       };
