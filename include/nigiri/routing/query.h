@@ -2,6 +2,7 @@
 
 #include <cinttypes>
 #include <limits>
+#include <optional>
 #include <variant>
 #include <vector>
 
@@ -13,6 +14,10 @@
 #include "nigiri/routing/transfer_time_settings.h"
 #include "nigiri/td_footpath.h"
 #include "nigiri/types.h"
+
+namespace nigiri {
+struct timetable;
+}
 
 namespace nigiri::routing {
 
@@ -62,6 +67,7 @@ using start_time_t = std::variant<unixtime_t, interval<unixtime_t>>;
 
 struct query {
   friend bool operator==(query const&, query const&) = default;
+  void sanitize(timetable const&);
 
   start_time_t start_time_;
   location_match_mode start_match_mode_{
@@ -73,6 +79,7 @@ struct query {
   hash_map<location_idx_t, std::vector<td_offset>> td_start_{}, td_dest_{};
   duration_t max_start_offset_{kMaxTravelTime};
   std::uint8_t max_transfers_{kMaxTransfers};
+  duration_t max_travel_time_{kMaxTravelTime};
   unsigned min_connection_count_{0U};
   bool extend_interval_earlier_{false};
   bool extend_interval_later_{false};

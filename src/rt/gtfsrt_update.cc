@@ -268,43 +268,52 @@ statistics gtfsrt_update_msg(timetable const& tt,
   span->SetAttribute("nigiri.gtfsrt.total_entities", msg.entity_size());
 
   for (auto const& entity : msg.entity()) {
-    if (entity.has_is_deleted() && entity.is_deleted()) {
+    auto const unsupported = [&](bool const is_set, char const* field,
+                                 int& stat) {
+      if (is_set) {
+        log(log_lvl::error, "rt.gtfs.unsupported",
+            R"(ignoring unsupported "{}" field (tag={}, id={}))", field, tag,
+            entity.id());
+        ++stat;
+      }
+    };
+
+    unsupported(entity.has_vehicle(), "vehicle", stats.unsupported_vehicle_);
+    unsupported(entity.has_alert(), "alert", stats.unsupported_alert_);
+    unsupported(entity.has_is_deleted() && entity.is_deleted(), "deleted",
+                stats.unsupported_deleted_);
+
+    if (!entity.has_trip_update()) {
       log(log_lvl::error, "rt.gtfs.unsupported",
-          "unsupported deleted (tag={}, id={})", tag, entity.id());
-      ++stats.unsupported_deleted_;
-      continue;
-    } else if (entity.has_alert()) {
-      log(log_lvl::error, "rt.gtfs.unsupported",
-          "unsupported alert (tag={}, id={})", tag, entity.id());
-      ++stats.unsupported_alert_;
-      continue;
-    } else if (entity.has_vehicle()) {
-      log(log_lvl::error, "rt.gtfs.unsupported",
-          "unsupported vehicle (tag={}, id={})", tag, entity.id());
-      ++stats.unsupported_vehicle_;
-      continue;
-    } else if (!entity.has_trip_update()) {
-      log(log_lvl::error, "rt.gtfs.unsupported",
-          "unsupported no trip update (tag={}, id={})", tag, entity.id());
+          R"(unsupported: no "trip_update" field (tag={}, id={}), skipping message)",
+          tag, entity.id());
       ++stats.no_trip_update_;
       continue;
-    } else if (!entity.trip_update().has_trip()) {
+    }
+
+    if (!entity.trip_update().has_trip()) {
       log(log_lvl::error, "rt.gtfs.unsupported",
-          "unsupported no trip in trip update (tag={}, id={})", tag,
-          entity.id());
+          R"(unsupported: no "trip" field in "trip_update" field (tag={}, id={}), skipping message)",
+          tag, entity.id());
       ++stats.trip_update_without_trip_;
       continue;
-    } else if (!entity.trip_update().trip().has_trip_id()) {
+    }
+
+    if (!entity.trip_update().trip().has_trip_id()) {
       log(log_lvl::error, "rt.gtfs.unsupported",
-          "unsupported trip without trip_id (tag={}, id={})", tag, entity.id());
+          R"(unsupported: no "trip_id" field in "trip_update.trip" (tag={}, id={}), skipping message)",
+          tag, entity.id());
       ++stats.unsupported_no_trip_id_;
       continue;
-    } else if (entity.trip_update().trip().schedule_relationship() !=
-                   gtfsrt::TripDescriptor_ScheduleRelationship_SCHEDULED &&
-               entity.trip_update().trip().schedule_relationship() !=
-                   gtfsrt::TripDescriptor_ScheduleRelationship_CANCELED) {
+    }
+
+    if (entity.trip_update().trip().schedule_relationship() !=
+            gtfsrt::TripDescriptor_ScheduleRelationship_SCHEDULED &&
+        entity.trip_update().trip().schedule_relationship() !=
+            gtfsrt::TripDescriptor_ScheduleRelationship_CANCELED) {
       log(log_lvl::error, "rt.gtfs.unsupported",
-          "unsupported schedule relationship {} (tag={}, id={})",
+          "unsupported schedule relationship {} (tag={}, id={}), skipping "
+          "message",
           TripDescriptor_ScheduleRelationship_Name(
               entity.trip_update().trip().schedule_relationship()),
           tag, entity.id());
@@ -367,8 +376,9 @@ statistics gtfsrt_update_buf(timetable const& tt,
                              rt_timetable& rtt,
                              source_idx_t const src,
                              std::string_view tag,
-                             std::string_view protobuf) {
-  gtfsrt::FeedMessage msg;
+                             std::string_view protobuf,
+                             gtfsrt::FeedMessage& msg) {
+  msg.Clear();
 
   auto const success =
       msg.ParseFromArray(reinterpret_cast<void const*>(protobuf.data()),
@@ -381,6 +391,15 @@ statistics gtfsrt_update_buf(timetable const& tt,
   }
 
   return gtfsrt_update_msg(tt, rtt, src, tag, msg);
+}
+
+statistics gtfsrt_update_buf(timetable const& tt,
+                             rt_timetable& rtt,
+                             source_idx_t const src,
+                             std::string_view tag,
+                             std::string_view protobuf) {
+  auto msg = gtfsrt::FeedMessage{};
+  return gtfsrt_update_buf(tt, rtt, src, tag, protobuf, msg);
 }
 
 }  // namespace nigiri::rt

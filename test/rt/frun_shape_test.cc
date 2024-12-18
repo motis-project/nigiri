@@ -50,6 +50,7 @@ N,N,3.0,3.0
 N1,N1,3.5,3.0
 O,O,4.0,4.0
 Q,Q,0.0,0.0
+Q+,Q+,-1.0,-1.0
 S,S,4.0,1.0
 T,T,5.0,1.0
 U,U,6.0,2.0
@@ -64,23 +65,32 @@ SERVICE_1,20240101,1
 # routes.txt
 route_id,agency_id,route_short_name,route_long_name,route_type
 ROUTE_1,AGENCY_1,Route 1,,3
+ROUTE_2,AGENCY_1,Route 2,,3
+ROUTE_3,AGENCY_1,Route 3,,3
+ROUTE_4,AGENCY_1,Route 4,,3
+ROUTE_5,AGENCY_1,Route 5,,3
+ROUTE_6,AGENCY_1,Route 6,,3
+ROUTE_7,AGENCY_1,Route 7,,3
+ROUTE_8,AGENCY_1,Route 8,,3
+ROUTE_9,AGENCY_1,Route 9,,3
 
 # trips.txt
 route_id,service_id,trip_id,trip_headsign,block_id,shape_id,
 ROUTE_1,SERVICE_1,TRIP_1,E,BLOCK_1,SHAPE_1,
-ROUTE_1,SERVICE_1,TRIP_2,E,BLOCK_2,SHAPE_2,
-ROUTE_1,SERVICE_1,TRIP_3,E,BLOCK_2,SHAPE_3,
-ROUTE_1,SERVICE_1,TRIP_4,E,BLOCK_2,SHAPE_4,
-ROUTE_1,SERVICE_1,TRIP_5,E,BLOCK_3,SHAPE_5,
-ROUTE_1,SERVICE_1,TRIP_5+,E,BLOCK_5+,SHAPE_5,
-ROUTE_1,SERVICE_1,TRIP_6,E,BLOCK_4,,
-ROUTE_1,SERVICE_1,TRIP_7,E,BLOCK_5,SHAPE_2,
-ROUTE_1,SERVICE_1,TRIP_8,E,BLOCK_5,,
-ROUTE_1,SERVICE_1,TRIP_9,E,BLOCK_5,,
-ROUTE_1,SERVICE_1,TRIP_10,E,BLOCK_5,SHAPE_6,
-ROUTE_1,SERVICE_1,TRIP_11,E,BLOCK_6,SHAPE_7,
-ROUTE_1,SERVICE_1,TRIP_12,E,BLOCK_7,SHAPE_8,
-ROUTE_1,SERVICE_1,TRIP_13,E,BLOCK_8,SHAPE_9,
+ROUTE_2,SERVICE_1,TRIP_2,E,BLOCK_2,SHAPE_2,
+ROUTE_2,SERVICE_1,TRIP_3,E,BLOCK_2,SHAPE_3,
+ROUTE_2,SERVICE_1,TRIP_4,E,BLOCK_2,SHAPE_4,
+ROUTE_3,SERVICE_1,TRIP_5,E,BLOCK_3,SHAPE_5,
+ROUTE_4,SERVICE_1,TRIP_5+,E,BLOCK_5+,SHAPE_5,
+ROUTE_5,SERVICE_1,TRIP_6,E,BLOCK_4,,
+ROUTE_5,SERVICE_1,TRIP_6+,E,BLOCK_4,SHAPE_QQ+,
+ROUTE_6,SERVICE_1,TRIP_7,E,BLOCK_5,SHAPE_2,
+ROUTE_6,SERVICE_1,TRIP_8,E,BLOCK_5,,
+ROUTE_6,SERVICE_1,TRIP_9,E,BLOCK_5,,
+ROUTE_6,SERVICE_1,TRIP_10,E,BLOCK_5,SHAPE_6,
+ROUTE_7,SERVICE_1,TRIP_11,E,BLOCK_11,SHAPE_11,
+ROUTE_8,SERVICE_1,TRIP_12,E,BLOCK_12,SHAPE_12,
+ROUTE_9,SERVICE_1,TRIP_13,E,BLOCK_13,SHAPE_13,
 
 # shapes.txt
 "shape_id","shape_pt_lat","shape_pt_lon","shape_pt_sequence","shape_dist_traveled"
@@ -119,27 +129,30 @@ SHAPE_5,2.5,3.0,9,6.53
 SHAPE_5,3.0,3.0,10,7.03
 SHAPE_5,3.5,3.0,11,7.53
 SHAPE_5,4.0,4.0,11,8.71
+SHAPE_QQ+,0.0,0.0,1,
+SHAPE_QQ+,-0.4,-0.6,2,
+SHAPE_QQ+,-1.0,-1.0,2,
 SHAPE_6,7.0,3.0,1,
 SHAPE_6,6.5,2.5,2,
 SHAPE_6,7.0,2.0,3,
 SHAPE_6,6.5,1.5,4,
 SHAPE_6,7.0,1.0,5,
-SHAPE_7,1.0,1.0,0,0.0
-SHAPE_7,1.5,1.5,1,0.7
-SHAPE_7,2.0,2.0,2,1.4
-SHAPE_7,2.5,2.5,3,2.1
-SHAPE_7,3.0,3.0,4,2.9
-SHAPE_7,3.5,3.5,5,3.5
-SHAPE_7,4.0,4.0,6,4.2
-SHAPE_8,1.0,1.0,0,0.0
-SHAPE_8,1.5,1.5,1,0.0
-SHAPE_8,2.0,2.0,2,2.0
-SHAPE_8,3.0,3.0,3,4.0
-SHAPE_9,1.0,1.0,0,
-SHAPE_9,2.5,2.5,1,
-SHAPE_9,3.625,3.625,2,
-SHAPE_9,4.0,4.0,3,
-SHAPE_9,4.0,4.0,4,
+SHAPE_11,1.0,1.0,0,0.0
+SHAPE_11,1.5,1.5,1,0.7
+SHAPE_11,2.0,2.0,2,1.4
+SHAPE_11,2.5,2.5,3,2.1
+SHAPE_11,3.0,3.0,4,2.9
+SHAPE_11,3.5,3.5,5,3.5
+SHAPE_11,4.0,4.0,6,4.2
+SHAPE_12,1.0,1.0,0,0.0
+SHAPE_12,1.5,1.5,1,0.0
+SHAPE_12,2.0,2.0,2,2.0
+SHAPE_12,3.0,3.0,3,4.0
+SHAPE_13,1.0,1.0,0,
+SHAPE_13,2.5,2.5,1,
+SHAPE_13,3.625,3.625,2,
+SHAPE_13,4.0,4.0,3,
+SHAPE_13,4.0,4.0,4,
 
 # stop_times.txt
 trip_id,arrival_time,departure_time,stop_id,stop_sequence,pickup_type,drop_off_type,shape_dist_traveled
@@ -167,6 +180,8 @@ TRIP_5+,12:30:00,12:30:00,N1,4,0,0,
 TRIP_5+,13:00:00,13:00:00,O,5,0,0,
 TRIP_6,10:00:00,10:00:00,A,1,0,0,
 TRIP_6,11:00:00,11:00:00,Q,2,0,0,
+TRIP_6+,11:00:00,11:00:00,Q,1,0,0,
+TRIP_6+,12:00:00,12:00:00,Q+,2,0,0,
 TRIP_7,10:00:00,10:00:00,A,1,0,0,
 TRIP_7,11:00:00,11:00:00,F,2,0,0,
 TRIP_7,12:00:00,12:00:00,G,3,0,0,
@@ -326,7 +341,7 @@ TEST(
               }),
               leg_shape);
   }
-  // sub trip of a merged trip
+  // sub trip of a block trip
   {
     // Create run
     transit_realtime::TripDescriptor td;
@@ -440,6 +455,20 @@ TEST(
                       {4.0F, 3.0F},
                   }),
                   leg_shape);
+      }
+    }
+    // Testing bounding boxes
+    {
+      // Full route A -> F -> G -> H -> I -> J -> K (Index 1)
+      EXPECT_EQ((geo::make_box({{1.0, 0.5}, {5.0, 3.0}})),
+                shapes_data.get_bounding_box(route_idx_t{1U}));
+      // Shape segment not contained in simple box
+      // H -> I
+      {
+        auto const segment_box =
+            shapes_data.get_bounding_box(route_idx_t{1}, 4);
+        ASSERT_TRUE(segment_box.has_value());
+        EXPECT_EQ((geo::make_box({{3.0, 2.5}, {4.0, 3.0}})), *segment_box);
       }
     }
   }
@@ -663,6 +692,22 @@ TEST(
                 }),
                 leg_shape);
     }
+    // N -> O
+    // For O: shape < stop_times => Could be out of bounds
+    {
+      leg_shape.clear();
+
+      full_run.for_each_shape_point(
+          &shapes_data, interval{stop_idx_t{2U}, stop_idx_t{3U + 1U}},
+          plot_point);
+
+      EXPECT_EQ((geo::polyline{
+                    {3.0F, 3.0F},
+                    {3.5F, 3.5F},
+                    {4.0F, 4.0F},
+                }),
+                leg_shape);
+    }
   }
   // Trip with multiple leading 0.0 distances
   {
@@ -731,6 +776,36 @@ TEST(
                     {4.0F, 4.0F},
                 }),
                 leg_shape);
+    }
+  }
+  // Bounding boxes for route containing sequential trips
+  {
+    // Trip with bounding boxes defined by stops if followed by trip where
+    // bounding boxes are extended by shape
+    // Route 6
+    {
+      auto const r = route_idx_t{5U};
+      // Ensure the correct route is used
+      EXPECT_EQ((geo::make_box({{1.0, 0.5}, {7.0, 3.0}})),
+                shapes_data.get_bounding_box(r));
+      // On 4th trip
+      auto const extended_bbox = shapes_data.get_bounding_box(r, 6);
+      ASSERT_TRUE(extended_bbox.has_value());
+      EXPECT_EQ((geo::make_box({{6.5, 2.0}, {7.0, 3.0}})), *extended_bbox);
+      // On 3rd trip
+      auto const test_bbox = shapes_data.get_bounding_box(r, 5);
+      ASSERT_TRUE(extended_bbox.has_value());
+      EXPECT_EQ((geo::make_box({{6.0, 2.0}, {7.0, 3.0}})), *test_bbox);
+    }
+    // Do not insert bounding boxes if sequential trip has no segment bounding
+    // boxes
+    {
+      auto const r = route_idx_t{4U};
+      // Ensure the correct route is used
+      EXPECT_EQ((geo::make_box({{-1.0, -1.0}, {1.0, 1.0}})),
+                shapes_data.get_bounding_box(r));
+      // On 1st trip
+      ASSERT_FALSE(shapes_data.get_bounding_box(r, 0).has_value());
     }
   }
 }

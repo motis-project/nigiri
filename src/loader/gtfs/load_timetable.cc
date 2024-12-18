@@ -137,6 +137,13 @@ void load_timetable(loader_config const& config,
             sort_by(t.seq_numbers_, t.stop_seq_, t.event_times_,
                     t.stop_headsigns_, t.distance_traveled_);
       }
+
+      auto pred = minutes_after_midnight_t{0U};
+      for (auto& [arr, dep] : t.event_times_) {
+        arr = std::max(pred, arr);
+        dep = std::max(arr, dep);
+        pred = dep;
+      }
     }
   }
 
@@ -261,9 +268,6 @@ void load_timetable(loader_config const& config,
                               {source_file_idx, trp.from_line_, trp.to_line_},
                               train_nr, stop_seq_numbers);
     }
-    if (shapes_data != nullptr) {
-      calculate_shape_offsets(tt, *shapes_data, trip_data.data_, shape_states);
-    }
 
     auto const timer = scoped_timer{"loader.gtfs.routes.build"};
     auto const attributes = std::basic_string<attribute_combination_idx_t>{};
@@ -365,6 +369,11 @@ void load_timetable(loader_config const& config,
       }
 
       progress_tracker->increment();
+    }
+
+    if (shapes_data != nullptr) {
+      calculate_shape_offsets_and_bboxes(tt, *shapes_data, shape_states,
+                                         trip_data.data_);
     }
 
     // Build location_routes map

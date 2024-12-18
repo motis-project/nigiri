@@ -14,7 +14,7 @@
 #include "utl/verify.h"
 
 #include "nigiri/get_otel_tracer.h"
-#include "nigiri/routing/sanitize_via_stops.h"
+#include "nigiri/routing/query.h"
 
 namespace nigiri::routing {
 
@@ -66,7 +66,7 @@ routing_result<raptor_stats> raptor_search_with_dir(
     raptor_state& r_state,
     query q,
     std::optional<std::chrono::seconds> const timeout) {
-  sanitize_via_stops(tt, q);
+  q.sanitize(tt);
   utl::verify(q.via_stops_.size() <= kMaxVias,
               "too many via stops: {}, limit: {}", q.via_stops_.size(),
               kMaxVias);

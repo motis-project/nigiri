@@ -80,7 +80,8 @@ void expand_frequencies(trip_data const& trip_data,
                         bitfield const* traffic_days,
                         Consumer&& consumer) {
   auto const has_frequency = [&](gtfs_trip_idx_t const i) {
-    return trip_data.get(i).frequency_.has_value();
+    auto const& t = trip_data.get(i);
+    return !t.event_times_.empty() && t.frequency_.has_value();
   };
 
   if (utl::any_of(trips, has_frequency)) {

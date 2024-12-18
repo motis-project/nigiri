@@ -531,6 +531,13 @@ int main(int argc, char* argv[]) {
 
   print_memory_usage();
 
+  auto total = std::chrono::milliseconds{0U};
+  for (auto const& res : results) {
+    total += res.total_time_;
+  }
+  std::cout << "AVG: " << (static_cast<double>(total.count()) / results.size())
+            << "ms\n";
+
   if (vm.count("qa_path")) {
     auto bm_crit = nigiri::qa::benchmark_criteria{};
     for (auto const& res : results) {
@@ -541,6 +548,7 @@ int main(int argc, char* argv[]) {
             static_cast<double>(j.dest_time_.time_since_epoch().count()),
             static_cast<double>(j.transfers_));
       }
+      utl::sort(jc);
       bm_crit.qc_.emplace_back(res.q_idx_, res.total_time_, jc);
     }
     bm_crit.write(qa_path);

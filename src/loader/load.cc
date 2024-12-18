@@ -49,7 +49,11 @@ timetable load(std::vector<std::pair<std::string, loader_config>> const& paths,
       if (!is_in_memory) {
         log(log_lvl::info, "loader.load", "loading {}", path);
       }
-      (*it)->load(local_config, src, *dir, tt, bitfields, a, shapes);
+      try {
+        (*it)->load(local_config, src, *dir, tt, bitfields, a, shapes);
+      } catch (std::exception const& e) {
+        throw utl::fail("failed to load {}: {}", path, e.what());
+      }
     } else if (!ignore) {
       throw utl::fail("no loader for {} found", path);
     } else {

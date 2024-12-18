@@ -43,10 +43,12 @@ X,20191027,1
         std::string{
             R"(route_id,agency_id,route_short_name,route_long_name,route_desc,route_type
 A,DB,1337,Long Name,Route Description,3
+B,DB,99,MisMatch,A route containing a stop without an entry in stops.txt,3
 )"}},
        {path{kTripsFile},
         std::string{R"(route_id,service_id,trip_id,trip_headsign,block_id
 A,X,X1,Trip X,
+B,X,X2,Stop ID missing,
 )"}},
        {path{kStopTimesFile},
         std::string{
@@ -56,6 +58,9 @@ X1,00:59:00,01:59:00,B,2,0,0
 X1,02:00:00,02:01:00,C,3,0,0
 X1,02:59:00,03:00:00,D,4,0,0
 X1,03:30:00,03:30:00,E,5,0,0
+X2,00:00:00,00:00:00,A,1,0,0
+X2,00:30:00,00:30:00,missing,2,0,0
+X2,01:00:00,01:00:00,D,3,0,0
 )"}}}};
 }
 
@@ -118,4 +123,26 @@ TEST(gtfs, local_to_unix_trip_test) {
   EXPECT_EQ("2019-03-31T01:00+01:00", iso(t_march->first, 2, event_type::kArr));
   EXPECT_EQ("2019-03-31T01:59+01:00", iso(t_march->first, 3, event_type::kArr));
   EXPECT_EQ("2019-03-31T03:00+02:00", iso(t_march->first, 3, event_type::kDep));
+
+  // Route with stop_id not contained in 'stops.txt'
+  {
+    auto const t_mm = get_ref_transport(tt, trip_id{"X2", source_idx_t{0}},
+                                        2019_y / March / 30, true);
+    ASSERT_TRUE(t_mm.has_value());
+    constexpr auto kExpectedStops = 2U;
+    auto const r = tt.transport_route_[t_mm->first.t_idx_];
+    auto trip_count = 0U;
+
+    EXPECT_EQ(kExpectedStops, tt.route_location_seq_[r].size());
+    for (auto const transport_idx : tt.route_transport_ranges_[r]) {
+      for (auto const& merged_trip_idx :
+           tt.transport_to_trip_section_[transport_idx]) {
+        for (auto const& trip_idx : tt.merged_trips_[merged_trip_idx]) {
+          EXPECT_EQ(kExpectedStops, tt.trip_stop_seq_numbers_[trip_idx].size());
+          ++trip_count;
+        }
+      }
+    }
+    EXPECT_TRUE(trip_count > 0U);
+  }
 }

@@ -47,8 +47,8 @@ struct interval {
       t_ -= x;
       return *this;
     }
-    iterator operator+(difference_type const x) const { return *this += x; }
-    iterator operator-(difference_type const x) const { return *this -= x; }
+    iterator operator+(difference_type const x) const { return {t_ + x}; }
+    iterator operator-(difference_type const x) const { return {t_ - x}; }
     friend difference_type operator-(iterator const& a, iterator const& b) {
       return static_cast<difference_type>(cista::to_idx(a.t_) -
                                           cista::to_idx(b.t_));
