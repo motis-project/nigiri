@@ -202,19 +202,19 @@ void service_builder::write_services(source_idx_t const src) {
             section_lines_.clear();
           }
 
-          auto const merged_trip = tt_.register_merged_trip({id});
+          auto const merged_trips =
+              std::basic_string{tt_.register_merged_trip({id})};
           tt_.add_transport(timetable::transport{
               .bitfield_idx_ = utl::get_or_create(
                   bitfield_indices_, s.utc_traffic_days_,
                   [&]() { return tt_.register_bitfield(s.utc_traffic_days_); }),
               .route_idx_ = route_idx,
               .first_dep_offset_ = 0_minutes,
-              .external_trip_ids_ = {merged_trip},
+              .external_trip_ids_ = merged_trips,
               .section_attributes_ = section_attributes_,
               .section_providers_ = section_providers_,
               .section_directions_ = section_directions_,
               .section_lines_ = section_lines_,
-              .stop_seq_numbers_ = stop_seq_numbers_,
               .route_colors_ = route_colors_});
         } catch (std::exception const& e) {
           log(log_lvl::error, "loader.hrd.service",

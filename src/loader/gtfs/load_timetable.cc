@@ -329,6 +329,7 @@ void load_timetable(loader_config const& config,
             }
           }
 
+          auto const providers = std::basic_string{first.route_->agency_};
           tt.add_transport(timetable::transport{
               .bitfield_idx_ = utl::get_or_create(
                   bitfield_indices, s.utc_traffic_days_,
@@ -337,10 +338,9 @@ void load_timetable(loader_config const& config,
               .first_dep_offset_ = s.first_dep_offset_,
               .external_trip_ids_ = external_trip_ids,
               .section_attributes_ = attributes,
-              .section_providers_ = {first.route_->agency_},
+              .section_providers_ = providers,
               .section_directions_ = section_directions,
               .section_lines_ = section_lines,
-              .stop_seq_numbers_ = stop_seq_numbers,
               .route_colors_ = route_colors});
         }
 

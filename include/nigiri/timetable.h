@@ -121,13 +121,12 @@ struct timetable {
     bitfield_idx_t bitfield_idx_;
     route_idx_t route_idx_;
     duration_t first_dep_offset_;
-    std::basic_string<merged_trips_idx_t> const& external_trip_ids_;
-    std::basic_string<attribute_combination_idx_t> const& section_attributes_;
-    std::basic_string<provider_idx_t> const& section_providers_;
-    std::basic_string<trip_direction_idx_t> const& section_directions_;
-    std::basic_string<trip_line_idx_t> const& section_lines_;
-    std::basic_string<stop_idx_t> const& stop_seq_numbers_;
-    std::basic_string<route_color> const& route_colors_;
+    std::basic_string_view<merged_trips_idx_t> external_trip_ids_;
+    std::basic_string_view<attribute_combination_idx_t> section_attributes_;
+    std::basic_string_view<provider_idx_t> section_providers_;
+    std::basic_string_view<trip_direction_idx_t> section_directions_;
+    std::basic_string_view<trip_line_idx_t> section_lines_;
+    std::basic_string_view<route_color> route_colors_;
   };
 
   template <typename TripId>
@@ -193,11 +192,15 @@ struct timetable {
     route_bikes_allowed_.set(idx * 2 + 1, bikes_allowed_on_some_sections);
 
     route_bikes_allowed_per_section_.resize(idx + 1);
+    auto bucket = route_bikes_allowed_per_section_[route_idx_t{idx}];
     if (bikes_allowed_on_some_sections && !bikes_allowed_on_all_sections) {
-      auto bucket = route_bikes_allowed_per_section_[route_idx_t{idx}];
       for (auto i = 0U; i < bikes_allowed_per_section.size(); ++i) {
         bucket.push_back(bikes_allowed_per_section[i]);
       }
+    } else if (bikes_allowed_on_all_sections) {
+      bucket.push_back(true);
+    } else {
+      bucket.push_back(false);
     }
 
     return route_idx_t{idx};
@@ -227,7 +230,10 @@ struct timetable {
     return provider_idx_t{idx};
   }
 
-  void add_transport(transport&& t) {
+  transport_idx_t add_transport(transport&& t) {
+    auto const transport_idx =
+        transport_idx_t{transport_first_dep_offset_.size()};
+
     transport_first_dep_offset_.emplace_back(t.first_dep_offset_);
     transport_traffic_days_.emplace_back(t.bitfield_idx_);
     transport_route_.emplace_back(t.route_idx_);
@@ -244,6 +250,8 @@ struct timetable {
            transport_section_directions_.back().size() == 1U ||
            transport_section_directions_.back().size() ==
                route_location_seq_.at(transport_route_.back()).size() - 1U);
+
+    return transport_idx;
   }
 
   transport_idx_t next_transport_idx() const {
@@ -278,6 +286,14 @@ struct timetable {
                   stop_idx_t const stop_idx,
                   event_type const ev_type) const {
     return event_mam(transport_route_[t], t, stop_idx, ev_type);
+  }
+
+  unixtime_t event_time(route_idx_t const r,
+                        nigiri::transport t,
+                        stop_idx_t const stop_idx,
+                        event_type const ev_type) const {
+    return unixtime_t{internal_interval_days().from_ + to_idx(t.day_) * 1_days +
+                      event_mam(r, t.t_idx_, stop_idx, ev_type).as_duration()};
   }
 
   unixtime_t event_time(nigiri::transport t,
@@ -440,13 +456,6 @@ struct timetable {
   // Required to match GTFS-RT with GTFS-static trips.
   vector_map<transport_idx_t, duration_t> transport_first_dep_offset_;
 
-  // Services in GTFS can start with a first departure time > 24:00:00
-  // The loader transforms this into a time <24:00:00 and shifts the bits in the
-  // bitset accordingly. To still be able to match the traffic day from the
-  // corresponding service_id, it's necessary to store the number of days which
-  // is floor(stop_times.txt:departure_time/1440)
-  vector_map<transport_idx_t, std::uint8_t> initial_day_offset_;
-
   // Trip index -> traffic day bitfield
   vector_map<transport_idx_t, bitfield_idx_t> transport_traffic_days_;
 
@@ -483,9 +492,6 @@ struct timetable {
   // Lower bound graph.
   vecvec<location_idx_t, footpath> fwd_search_lb_graph_;
   vecvec<location_idx_t, footpath> bwd_search_lb_graph_;
-
-  // profile name -> profile_idx_t
-  hash_map<string, profile_idx_t> profiles_;
 };
 
 }  // namespace nigiri
