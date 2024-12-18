@@ -4,17 +4,20 @@
 
 #include "nigiri/common/delta_t.h"
 #include "nigiri/common/interval.h"
+#include "nigiri/rt/run.h"
 #include "nigiri/stop.h"
 #include "nigiri/timetable.h"
 #include "nigiri/types.h"
 
 namespace nigiri {
 
-using change_callback_t = std::function<void(transport const transport,
-                                             stop_idx_t const stop_idx,
-                                             event_type const ev_type,
-                                             duration_t const delay,
-                                             bool const cancelled)>;
+using change_callback_t =
+    std::function<void(transport const transport,
+                       stop_idx_t const stop_idx,
+                       event_type const ev_type,
+                       std::optional<location_idx_t> const location_idx,
+                       std::optional<bool> const in_out_allowed,
+                       std::optional<duration_t> const delay)>;
 
 // General note:
 // - The real-time timetable does not use bitfields. It requires an initial copy
@@ -63,14 +66,34 @@ struct rt_timetable {
 
   void reset_change_callback() { change_callback_ = nullptr; }
 
-  void dispatch_event_change(transport const t,
-                             stop_idx_t const stop_idx,
-                             event_type const ev_type,
-                             duration_t const delay,
-                             bool const cancelled) {
-    if (change_callback_) {
-      change_callback_(t, stop_idx, ev_type, delay, cancelled);
+  void dispatch_event(rt::run const& r,
+                      stop_idx_t const stop_idx,
+                      event_type const ev_type,
+                      std::optional<location_idx_t> const location_idx,
+                      std::optional<bool> const in_out_allowed,
+                      std::optional<duration_t> const delay) {
+    if (change_callback_ &&
+        ((ev_type == event_type::kArr && stop_idx != r.stop_range_.from_) ||
+         (ev_type == event_type::kDep && stop_idx != r.stop_range_.to_ - 1))) {
+      change_callback_(r.t_, stop_idx, ev_type, location_idx, in_out_allowed,
+                       delay);
     }
+  }
+
+  void dispatch_delay(rt::run const& r,
+                      stop_idx_t const stop_idx,
+                      event_type const ev_type,
+                      duration_t const delay) {
+    dispatch_event(r, stop_idx, ev_type, std::nullopt, std::nullopt, delay);
+  }
+
+  void dispatch_stop_change(rt::run const& r,
+                            stop_idx_t const stop_idx,
+                            event_type const ev_type,
+                            std::optional<location_idx_t> const location_idx,
+                            std::optional<bool> const in_out_allowed) {
+    dispatch_event(r, stop_idx, ev_type, location_idx, in_out_allowed,
+                   std::nullopt);
   }
 
   unixtime_t unix_event_time(rt_transport_idx_t const rt_t,
