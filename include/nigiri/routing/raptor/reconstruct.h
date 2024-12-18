@@ -14,7 +14,7 @@ struct search_state;
 struct raptor_state;
 struct journey;
 
-template <direction SearchDir>
+template <bool Slice, direction SearchDir>
 void reconstruct_journey(timetable const&,
                          rt_timetable const*,
                          query const&,

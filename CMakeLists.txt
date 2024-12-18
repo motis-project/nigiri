@@ -87,11 +87,11 @@ target_link_libraries(nigiri PUBLIC cista geo utl fmt date miniz date-tz wyhash 
 target_compile_features(nigiri PUBLIC cxx_std_23)
 target_compile_options(nigiri PRIVATE ${nigiri-compile-options})
 
-# --- MAIN ---
-file(GLOB_RECURSE nigiri-server-files server/main.cc)
-add_executable(nigiri-server ${nigiri-server-files})
-target_link_libraries(nigiri-server PRIVATE nigiri)
-target_compile_features(nigiri-server PUBLIC cxx_std_23)
+# --- SLICE ---
+file(GLOB_RECURSE nigiri-slice-files exe/slice.cc)
+add_executable(nigiri-slice ${nigiri-slice-files})
+target_link_libraries(nigiri-slice PRIVATE nigiri boost-program_options ianatzdb-res)
+target_compile_features(nigiri-slice PUBLIC cxx_std_23)
 
 # --- IMPORTER ---
 file(GLOB_RECURSE nigiri-import-files exe/import.cc)

@@ -41,9 +41,10 @@ rt_transport_idx_t rt_timetable::add_rt_transport(
     for (auto const [a, b] : utl::pairwise(location_seq)) {
       CISTA_UNUSED_PARAM(a)
       CISTA_UNUSED_PARAM(b)
-      times[i++] = unix_to_delta(tt.event_time(t, stop_idx, event_type::kDep));
       times[i++] =
-          unix_to_delta(tt.event_time(t, ++stop_idx, event_type::kArr));
+          unix_to_delta(tt.check_event_time(t, stop_idx, event_type::kDep));
+      times[i++] =
+          unix_to_delta(tt.check_event_time(t, ++stop_idx, event_type::kArr));
     }
   } else {
     rt_transport_stop_times_.emplace_back(time_seq);

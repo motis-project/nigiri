@@ -70,7 +70,7 @@ delay_propagation update_delay(timetable const& tt,
                                event_type const ev_type,
                                duration_t const delay,
                                std::optional<unixtime_t> const min) {
-  auto const static_time = tt.event_time(r.t_, stop_idx, ev_type);
+  auto const static_time = tt.check_event_time(r.t_, stop_idx, ev_type);
   rtt.update_time(r.rt_, stop_idx, ev_type,
                   min.has_value() ? std::max(*min, static_time + delay)
                                   : static_time + delay);
@@ -91,7 +91,7 @@ delay_propagation update_event(timetable const& tt,
                             std::chrono::seconds{ev.delay()}),
                         pred_time);
   } else /* if (ev.has_time()) */ {
-    auto const static_time = tt.event_time(r.t_, stop_idx, ev_type);
+    auto const static_time = tt.check_event_time(r.t_, stop_idx, ev_type);
     auto const new_time =
         unixtime_t{std::chrono::duration_cast<unixtime_t::duration>(
             std::chrono::seconds{ev.time()})};

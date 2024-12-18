@@ -88,7 +88,7 @@ timetable slice(nigiri::timetable const& tt,
     // stop idx: 0 |  1  |  2  | 3
     auto const ev_type = ev_idx % 2 == 0 ? event_type::kDep : event_type::kArr;
     auto const stop_idx = static_cast<stop_idx_t>((ev_idx + 1U) / 2U);
-    auto const ev_time = tt.event_time(r, t, stop_idx, ev_type);
+    auto const ev_time = tt.event_time<false>(r, t, stop_idx, ev_type);
     return unix_to_delta(s.internal_interval_days().from_, ev_time);
   };
 
@@ -165,7 +165,7 @@ timetable slice(nigiri::timetable const& tt,
         static_cast<stop_idx_t>(tt.route_location_seq_[r].size() - 1U);
     for (auto const t : tt.route_transport_ranges_[r]) {
       auto const day_extend =
-          tt.event_mam(r, t, last_stop_idx, event_type::kArr).days_;
+          tt.event_mam<false>(r, t, last_stop_idx, event_type::kArr).days_;
       auto const first_day_interval = interval{
           tt.day_idx(slice_interval.from_ - day_extend * date::days{1}),
           tt.day_idx(slice_interval.to_)};
@@ -248,13 +248,13 @@ timetable slice(nigiri::timetable const& tt,
            utl::pairwise(interval{std::size_t{0U}, key.stop_seq_.size()})) {
         // Write departure times of all route services at stop i.
         for (auto const t : tmp_routes[tmp_r]) {
-          s.route_stop_times_.emplace_back(
+          s.slice_route_stop_times_.emplace_back(
               get_transport_time(tt.transport_route_[t.t_idx_], t, from * 2));
         }
 
         // Write arrival times of all route services at stop i+1.
         for (auto const t : tmp_routes[tmp_r]) {
-          s.route_stop_times_.emplace_back(
+          s.slice_route_stop_times_.emplace_back(
               get_transport_time(tt.transport_route_[t.t_idx_], t, to * 2 - 1));
         }
       }
@@ -301,8 +301,8 @@ timetable slice(nigiri::timetable const& tt,
   // ========
   // FINALIZE
   // --------
-  loader::build_lb_graph<direction::kForward>(s);
-  loader::build_lb_graph<direction::kBackward>(s);
+  loader::build_lb_graph<direction::kForward, true>(s);
+  loader::build_lb_graph<direction::kBackward, true>(s);
   s.location_routes_.resize(s.n_locations());
 
   return s;

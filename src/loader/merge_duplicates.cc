@@ -15,14 +15,14 @@ unsigned get_delta(timetable const& tt,
   auto delta = 0U;
   for (auto i = stop_idx_t{0U}; i != size; ++i) {
     if (i != 0U) {
-      delta += static_cast<unsigned>(
-          std::abs(tt.event_mam(a_route, a, i, event_type::kArr).count() -
-                   tt.event_mam(b_route, b, i, event_type::kArr).count()));
+      delta += static_cast<unsigned>(std::abs(
+          tt.event_mam<false>(a_route, a, i, event_type::kArr).count() -
+          tt.event_mam<false>(b_route, b, i, event_type::kArr).count()));
     }
     if (i != size - 1U) {
-      delta += static_cast<unsigned>(
-          std::abs(tt.event_mam(a_route, a, i, event_type::kDep).count() -
-                   tt.event_mam(b_route, b, i, event_type::kDep).count()));
+      delta += static_cast<unsigned>(std::abs(
+          tt.event_mam<false>(a_route, a, i, event_type::kDep).count() -
+          tt.event_mam<false>(b_route, b, i, event_type::kDep).count()));
     }
   }
 
@@ -134,8 +134,10 @@ unsigned find_duplicates(timetable& tt,
           continue;
         }
 
-        auto const time_a = tt.event_mam(a_route, *a_t, 0U, event_type::kDep);
-        auto const time_b = tt.event_mam(b_route, *b_t, 0U, event_type::kDep);
+        auto const time_a =
+            tt.event_mam<false>(a_route, *a_t, 0U, event_type::kDep);
+        auto const time_b =
+            tt.event_mam<false>(b_route, *b_t, 0U, event_type::kDep);
 
         if (time_a == time_b) {
           if (get_delta(tt, a_route, b_route, *a_t, *b_t) < a_loc_seq.size()) {

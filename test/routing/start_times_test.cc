@@ -278,11 +278,12 @@ TEST(routing, start_times) {
   auto const B = tt.locations_.location_id_to_idx_.at(
       location_id{.id_ = "0000002", .src_ = src});
   auto starts = std::vector<start>{};
-  get_starts(direction::kForward, tt, nullptr,
-             interval<unixtime_t>{sys_days{2020_y / March / 30},
-                                  sys_days{2020_y / March / 31}},
-             {{A, 15_minutes, 0}, {B, 30_minutes, 0}}, {}, duration_t::max(),
-             location_match_mode::kExact, false, starts, true, 0, {});
+  get_starts<false>(direction::kForward, tt, nullptr,
+                    interval<unixtime_t>{sys_days{2020_y / March / 30},
+                                         sys_days{2020_y / March / 31}},
+                    {{A, 15_minutes, 0}, {B, 30_minutes, 0}}, {},
+                    duration_t::max(), location_match_mode::kExact, false,
+                    starts, true, 0, {});
   std::sort(begin(starts), end(starts),
             [](auto&& a, auto&& b) { return a > b; });
   starts.erase(std::unique(begin(starts), end(starts)), end(starts));
@@ -363,11 +364,12 @@ TEST(routing, rt_start_times) {
 
   auto const get_starts_str = [&]() {
     auto starts = std::vector<start>{};
-    get_starts(direction::kForward, tt, &rtt,
-               interval<unixtime_t>{sys_days{2024_y / July / 9} + 21_hours,
-                                    sys_days{2024_y / July / 9} + 23_hours},
-               {{A, 15_minutes, 0}}, {}, duration_t::max(),
-               location_match_mode::kExact, false, starts, true, 0, {});
+    get_starts<false>(
+        direction::kForward, tt, &rtt,
+        interval<unixtime_t>{sys_days{2024_y / July / 9} + 21_hours,
+                             sys_days{2024_y / July / 9} + 23_hours},
+        {{A, 15_minutes, 0}}, {}, duration_t::max(),
+        location_match_mode::kExact, false, starts, true, 0, {});
     std::sort(begin(starts), end(starts),
               [](auto&& a, auto&& b) { return a > b; });
     starts.erase(std::unique(begin(starts), end(starts)), end(starts));

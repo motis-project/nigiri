@@ -13,6 +13,7 @@
 
 #include "geo/latlng.h"
 
+#include "nigiri/common/delta_t.h"
 #include "nigiri/common/interval.h"
 #include "nigiri/footpath.h"
 #include "nigiri/location.h"
@@ -258,49 +259,100 @@ struct timetable {
     return transport_idx_t{transport_traffic_days_.size()};
   }
 
-  std::span<delta const> event_times_at_stop(route_idx_t const r,
-                                             stop_idx_t const stop_idx,
-                                             event_type const ev_type) const {
+  template <bool Slice>
+  std::conditional_t<Slice, std::span<delta_t const>, std::span<delta const>>
+  event_times_at_stop(route_idx_t const r,
+                      stop_idx_t const stop_idx,
+                      event_type const ev_type) const {
     auto const n_transports =
         static_cast<unsigned>(route_transport_ranges_[r].size());
     auto const idx = static_cast<unsigned>(
         route_stop_time_ranges_[r].from_ +
         n_transports * (stop_idx * 2 - (ev_type == event_type::kArr ? 1 : 0)));
-    return std::span<delta const>{&route_stop_times_[idx], n_transports};
+    if constexpr (Slice) {
+      return std::span<delta_t const>{&slice_route_stop_times_[idx],
+                                      n_transports};
+    } else {
+      return std::span<delta const>{&route_stop_times_[idx], n_transports};
+    }
   }
 
-  delta event_mam(route_idx_t const r,
-                  transport_idx_t t,
-                  stop_idx_t const stop_idx,
-                  event_type const ev_type) const {
+  template <bool Slice>
+  std::conditional_t<Slice, delta_t, delta> event_mam(
+      route_idx_t const r,
+      transport_idx_t t,
+      stop_idx_t const stop_idx,
+      event_type const ev_type) const {
     auto const range = route_transport_ranges_[r];
     auto const n_transports = static_cast<unsigned>(range.size());
     auto const route_stop_begin = static_cast<unsigned>(
         route_stop_time_ranges_[r].from_ +
         n_transports * (stop_idx * 2 - (ev_type == event_type::kArr ? 1 : 0)));
     auto const t_idx_in_route = to_idx(t) - to_idx(range.from_);
-    return route_stop_times_[route_stop_begin + t_idx_in_route];
+    if constexpr (Slice) {
+      return slice_route_stop_times_[route_stop_begin + t_idx_in_route];
+    } else {
+      return route_stop_times_[route_stop_begin + t_idx_in_route];
+    }
   }
 
-  delta event_mam(transport_idx_t t,
-                  stop_idx_t const stop_idx,
-                  event_type const ev_type) const {
-    return event_mam(transport_route_[t], t, stop_idx, ev_type);
+  duration_t checked_event_mam_as_duration(route_idx_t const r,
+                                           transport_idx_t t,
+                                           stop_idx_t const stop_idx,
+                                           event_type const ev_type) const {
+    if (slice_route_stop_times_.empty()) {
+      return as_duration(event_mam<false>(r, t, stop_idx, ev_type));
+    } else {
+      return as_duration(event_mam<true>(r, t, stop_idx, ev_type));
+    }
   }
 
+  template <bool Slice>
+  auto event_mam(transport_idx_t t,
+                 stop_idx_t const stop_idx,
+                 event_type const ev_type) const {
+    return event_mam<Slice>(transport_route_[t], t, stop_idx, ev_type);
+  }
+
+  duration_t checked_event_mam_as_duration(transport_idx_t t,
+                                           stop_idx_t const stop_idx,
+                                           event_type const ev_type) const {
+    if (slice_route_stop_times_.empty()) {
+      return as_duration(
+          event_mam<false>(transport_route_[t], t, stop_idx, ev_type));
+    } else {
+      return as_duration(
+          event_mam<true>(transport_route_[t], t, stop_idx, ev_type));
+    }
+  }
+
+  template <bool Slice>
   unixtime_t event_time(route_idx_t const r,
                         nigiri::transport t,
                         stop_idx_t const stop_idx,
                         event_type const ev_type) const {
-    return unixtime_t{internal_interval_days().from_ + to_idx(t.day_) * 1_days +
-                      event_mam(r, t.t_idx_, stop_idx, ev_type).as_duration()};
+    return unixtime_t{
+        internal_interval_days().from_ + to_idx(t.day_) * 1_days +
+        event_mam<Slice>(r, t.t_idx_, stop_idx, ev_type).as_duration()};
   }
 
+  template <bool Slice>
   unixtime_t event_time(nigiri::transport t,
                         stop_idx_t const stop_idx,
                         event_type const ev_type) const {
-    return unixtime_t{internal_interval_days().from_ + to_idx(t.day_) * 1_days +
-                      event_mam(t.t_idx_, stop_idx, ev_type).as_duration()};
+    return unixtime_t{
+        internal_interval_days().from_ + to_idx(t.day_) * 1_days +
+        as_duration(event_mam<Slice>(t.t_idx_, stop_idx, ev_type))};
+  }
+
+  unixtime_t check_event_time(nigiri::transport t,
+                              stop_idx_t const stop_idx,
+                              event_type const ev_type) const {
+    if (slice_route_stop_times_.empty()) {
+      return event_time<false>(t, stop_idx, ev_type);
+    } else {
+      return event_time<true>(t, stop_idx, ev_type);
+    }
   }
 
   day_idx_t day_idx(date::year_month_day const day) const {
@@ -451,6 +503,7 @@ struct timetable {
   // RouteN: ...
   vector_map<route_idx_t, interval<std::uint32_t>> route_stop_time_ranges_;
   vector<delta> route_stop_times_;
+  vector<delta_t> slice_route_stop_times_;
 
   // Offset between the stored time and the time given in the GTFS timetable.
   // Required to match GTFS-RT with GTFS-static trips.

@@ -7,15 +7,7 @@
 
 namespace nigiri::routing {
 
-constexpr auto const kTracing = true;
-
-template <typename... Args>
-void trace(fmt::format_string<Args...> fmt_str, Args... args) {
-  if constexpr (kTracing) {
-    fmt::print(std::cout, fmt_str, std::forward<Args&&>(args)...);
-  }
-}
-
+template <bool Slice>
 void generate_ontrip_train_query(timetable const& tt,
                                  transport const& t,
                                  stop_idx_t const stop_idx,
@@ -27,22 +19,27 @@ void generate_ontrip_train_query(timetable const& tt,
   utl::verify(stop_idx < location_seq.size(),
               "invalid stop index {} [{} stops]", stop_idx,
               location_seq.size());
-  auto const time_at_first = tt.event_time(t, stop_idx, event_type::kArr);
+  auto const time_at_first =
+      tt.event_time<Slice>(t, stop_idx, event_type::kArr);
   for (auto i = stop_idx; i != location_seq.size(); ++i) {
     auto const l_idx = stop{location_seq[i]}.location_idx();
     auto const arrival_time_with_transfer =
-        tt.event_time(t, i, event_type::kArr) +
+        tt.event_time<Slice>(t, i, event_type::kArr) +
         tt.locations_.transfer_time_[l_idx];
     q.start_.emplace_back(l_idx, arrival_time_with_transfer - time_at_first,
                           static_cast<std::uint8_t>(i));
-    trace(
-        "first_arrival={}, stop={}, arrival={}, arrival_with_transfer={}, "
-        "offset={}\n",
-        time_at_first, location{tt, l_idx},
-        tt.event_time(t, i, event_type::kArr), arrival_time_with_transfer,
-        arrival_time_with_transfer - time_at_first);
   }
   q.start_time_ = time_at_first;
 }
+
+template void generate_ontrip_train_query<true>(timetable const&,
+                                                transport const&,
+                                                stop_idx_t const,
+                                                query&);
+
+template void generate_ontrip_train_query<false>(timetable const&,
+                                                 transport const&,
+                                                 stop_idx_t const,
+                                                 query&);
 
 }  // namespace nigiri::routing

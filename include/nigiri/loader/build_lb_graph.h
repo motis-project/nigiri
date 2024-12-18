@@ -8,7 +8,7 @@
 
 namespace nigiri::loader {
 
-template <direction SearchDir>
+template <direction SearchDir, bool Slice>
 void build_lb_graph(timetable& tt, profile_idx_t const prf_idx = 0) {
   hash_map<location_idx_t, duration_t> weights;
 
@@ -61,9 +61,9 @@ void build_lb_graph(timetable& tt, profile_idx_t const prf_idx = 0) {
 
         auto min = duration_t{std::numeric_limits<duration_t::rep>::max()};
         for (auto const t : tt.route_transport_ranges_[r]) {
-          auto const from_time = tt.event_mam(t, from, event_type::kDep);
-          auto const to_time = tt.event_mam(t, to, event_type::kArr);
-          min = std::min((to_time - from_time).as_duration(), min);
+          auto const from_time = tt.event_mam<Slice>(t, from, event_type::kDep);
+          auto const to_time = tt.event_mam<Slice>(t, to, event_type::kArr);
+          min = std::min(as_duration(to_time - from_time), min);
         }
         update_weight(target, min);
       }

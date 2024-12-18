@@ -116,15 +116,15 @@ nigiri_transport_t* nigiri_get_transport(const nigiri_timetable_t* t,
     if (i != 0) {
       event_mams[i * 2 - 1] =
           t->tt
-              ->event_mam(tidx, static_cast<nigiri::stop_idx_t>(i),
-                          nigiri::event_type::kArr)
+              ->event_mam<false>(tidx, static_cast<nigiri::stop_idx_t>(i),
+                                 nigiri::event_type::kArr)
               .count();
     }
     if (i != n_stops - 1) {
       event_mams[i * 2] =
           t->tt
-              ->event_mam(tidx, static_cast<nigiri::stop_idx_t>(i),
-                          nigiri::event_type::kDep)
+              ->event_mam<false>(tidx, static_cast<nigiri::stop_idx_t>(i),
+                                 nigiri::event_type::kDep)
               .count();
     }
   }

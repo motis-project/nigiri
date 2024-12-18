@@ -59,8 +59,8 @@ void resolve_static(date::sys_days const today,
   for (auto i = lb; i != end(tt.trip_id_to_idx_) && id_matches(i->first); ++i) {
     for (auto const [t, stop_range] : tt.trip_transport_ranges_[i->second]) {
       auto const o = tt.transport_first_dep_offset_[t];
-      auto const utc_dep =
-          tt.event_mam(t, stop_range.from_, event_type::kDep).as_duration();
+      auto const utc_dep = tt.checked_event_mam_as_duration(t, stop_range.from_,
+                                                            event_type::kDep);
       auto const gtfs_static_dep = utc_dep + o;
 
       auto const [gtfs_static_dep_day, gtfs_static_dep_time] =

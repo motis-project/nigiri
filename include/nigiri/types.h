@@ -454,6 +454,8 @@ struct delta {
   std::uint16_t mam_ : 11;
 };
 
+inline duration_t as_duration(delta const x) { return x.as_duration(); }
+
 template <std::size_t NMaxTypes>
 constexpr auto static_type_hash(delta const*,
                                 cista::hash_data<NMaxTypes> h) noexcept {

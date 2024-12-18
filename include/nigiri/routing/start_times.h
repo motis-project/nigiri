@@ -23,6 +23,7 @@ struct start {
   location_idx_t stop_;
 };
 
+template <bool Slice>
 void get_starts(
     direction,
     timetable const&,

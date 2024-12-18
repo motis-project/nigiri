@@ -7,6 +7,6 @@ namespace nigiri {
 
 struct timetable;
 
-timetable slice(timetable const&, interval<day_idx_t>);
+timetable slice(timetable const&, interval<date::sys_days>);
 
 }  // namespace nigiri

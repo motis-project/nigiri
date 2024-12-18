@@ -36,6 +36,7 @@ void trace_start(char const* fmt_str, Args... args) {
   }
 }
 
+template <bool Slice>
 void add_start_times_at_stop(direction const search_dir,
                              timetable const& tt,
                              rt_timetable const* rtt,
@@ -62,14 +63,15 @@ void add_start_times_at_stop(direction const search_dir,
     auto const& traffic_days =
         rtt == nullptr ? tt.bitfields_[tt.transport_traffic_days_[t]]
                        : rtt->bitfields_[rtt->transport_traffic_days_[t]];
-    auto const stop_time =
-        tt.event_mam(t, stop_idx,
-                     (search_dir == direction::kForward ? event_type::kDep
-                                                        : event_type::kArr));
+    auto const stop_time = tt.event_mam<Slice>(
+        t, stop_idx,
+        (search_dir == direction::kForward ? event_type::kDep
+                                           : event_type::kArr));
 
     auto const day_offset =
-        static_cast<std::uint16_t>(stop_time.count() / 1440);
-    auto const stop_time_mam = duration_t{stop_time.count() % 1440};
+        static_cast<std::uint16_t>(as_duration(stop_time).count() / 1440);
+    auto const stop_time_mam =
+        duration_t{as_duration(stop_time).count() % 1440};
     trace_start(
         "      interval=[{}, {}[, transport={}, name={}, stop_time={} "
         "(day_offset={}, stop_time_mam={})\n",
@@ -114,12 +116,13 @@ void add_start_times_at_stop(direction const search_dir,
             day, day_offset,
             tt.date_range_.from_ + to_idx(day - day_offset) * 1_days,
             traffic_days.test(to_idx(day)),
-            iv_at_stop.contains(tt.to_unixtime(day, stop_time.as_duration())));
+            iv_at_stop.contains(tt.to_unixtime(day, as_duration(stop_time))));
       }
     }
   }
 }
 
+template <bool Slice>
 void add_starts_in_interval(direction const search_dir,
                             timetable const& tt,
                             rt_timetable const* rtt,
@@ -163,7 +166,7 @@ void add_starts_in_interval(direction const search_dir,
       }
 
       trace_start("    -> no skip -> add_start_times_at_stop()\n");
-      add_start_times_at_stop(
+      add_start_times_at_stop<Slice>(
           search_dir, tt, rtt, r, static_cast<stop_idx_t>(i),
           stop{s}.location_idx(), iv,
           search_dir == direction::kForward
@@ -238,6 +241,7 @@ void add_starts_in_interval(direction const search_dir,
   }
 }
 
+template <bool Slice>
 void get_starts(
     direction const search_dir,
     timetable const& tt,
@@ -277,7 +281,7 @@ void get_starts(
     auto const l = s.first;
     auto const o = s.second;
     std::visit(utl::overloaded{[&](interval<unixtime_t> const interval) {
-                                 add_starts_in_interval(
+                                 add_starts_in_interval<Slice>(
                                      search_dir, tt, rtt, interval, l, o,
                                      max_start_offset, prf_idx, starts,
                                      add_ontrip);
@@ -295,10 +299,10 @@ void get_starts(
     std::visit(
         utl::overloaded{
             [&](interval<unixtime_t> const interval) {
-              add_starts_in_interval(search_dir, tt, rtt, interval, stop,
-                                     location_offset_t{std::span{offsets}},
-                                     max_start_offset, prf_idx, starts,
-                                     add_ontrip);
+              add_starts_in_interval<Slice>(
+                  search_dir, tt, rtt, interval, stop,
+                  location_offset_t{std::span{offsets}}, max_start_offset,
+                  prf_idx, starts, add_ontrip);
             },
             [&](unixtime_t const t) {
               auto const d = get_duration(search_dir, t, offsets, false);
@@ -359,5 +363,35 @@ void collect_via_destinations(timetable const& tt,
                   trace_start("  VIA META: {}\n", location{tt, l});
                 });
 }
+
+template void get_starts<true>(
+    direction,
+    timetable const&,
+    rt_timetable const*,
+    start_time_t const&,
+    std::vector<offset> const&,
+    hash_map<location_idx_t, std::vector<td_offset>> const&,
+    duration_t const,
+    location_match_mode,
+    bool,
+    std::vector<start>&,
+    bool,
+    profile_idx_t,
+    transfer_time_settings const&);
+
+template void get_starts<false>(
+    direction,
+    timetable const&,
+    rt_timetable const*,
+    start_time_t const&,
+    std::vector<offset> const&,
+    hash_map<location_idx_t, std::vector<td_offset>> const&,
+    duration_t const,
+    location_match_mode,
+    bool,
+    std::vector<start>&,
+    bool,
+    profile_idx_t,
+    transfer_time_settings const&);
 
 }  // namespace nigiri::routing

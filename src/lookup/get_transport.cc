@@ -43,7 +43,8 @@ void for_each_schedule_transport(timetable const& tt,
             reinterpret_cast<date::time_zone const*>(
                 tz.template as<pair<string, void const*>>().second));
       }
-      auto const first_dep = tt.event_mam(t, interval.from_, event_type::kDep);
+      auto const first_dep =
+          tt.event_mam<false>(t, interval.from_, event_type::kDep);
       auto const day_offset =
           (first_dep.as_duration() + tz_offset).count() / 1440;
       auto const t_day =

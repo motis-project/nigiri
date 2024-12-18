@@ -38,7 +38,7 @@ TEST(routing, ontrip_train) {
                             {.id_ = "0000004", .src_ = src}),
                         10_minutes, 77U}},
       .via_stops_ = {}};
-  generate_ontrip_train_query(tt, t->first, 1, q);
+  generate_ontrip_train_query<false>(tt, t->first, 1, q);
 
   auto const results = raptor_search(tt, nullptr, std::move(q));
 

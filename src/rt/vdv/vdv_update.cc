@@ -221,7 +221,7 @@ std::optional<rt::run> updater::find_run(std::string_view vdv_run_id,
           auto const [vdv_day_idx, vdv_mam] = tt_.day_idx_mam(vdv_time);
 
           for (auto const [nigiri_ev_time_idx, nigiri_ev_time] :
-               utl::enumerate(tt_.event_times_at_stop(
+               utl::enumerate(tt_.event_times_at_stop<false>(
                    r, static_cast<stop_idx_t>(stop_idx), ev_type))) {
             auto const [error, day_shift] =
                 mam_dist(vdv_mam, i32_minutes{nigiri_ev_time.mam()});

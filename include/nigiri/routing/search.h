@@ -64,7 +64,7 @@ struct routing_result {
   AlgoStats algo_stats_;
 };
 
-template <direction SearchDir, typename Algo>
+template <bool Slice, direction SearchDir, typename Algo>
 struct search {
   using algo_state_t = typename Algo::algo_state_t;
   using algo_stats_t = typename Algo::algo_stats_t;
@@ -366,10 +366,10 @@ private:
   void add_start_labels(start_time_t const& start_interval,
                         bool const add_ontrip) {
     state_.starts_.reserve(500'000);
-    get_starts(SearchDir, tt_, rtt_, start_interval, q_.start_, q_.td_start_,
-               q_.max_start_offset_, q_.start_match_mode_,
-               q_.use_start_footpaths_, state_.starts_, add_ontrip, q_.prf_idx_,
-               q_.transfer_time_settings_);
+    get_starts<Slice>(SearchDir, tt_, rtt_, start_interval, q_.start_,
+                      q_.td_start_, q_.max_start_offset_, q_.start_match_mode_,
+                      q_.use_start_footpaths_, state_.starts_, add_ontrip,
+                      q_.prf_idx_, q_.transfer_time_settings_);
     std::sort(
         begin(state_.starts_), end(state_.starts_),
         [&](start const& a, start const& b) { return kFwd ? b < a : a < b; });

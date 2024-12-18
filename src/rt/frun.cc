@@ -83,7 +83,7 @@ location_idx_t run_stop::get_scheduled_location_idx() const noexcept {
 unixtime_t run_stop::scheduled_time(event_type const ev_type) const noexcept {
   assert(fr_->size() > stop_idx_);
   return fr_->is_scheduled()
-             ? tt().event_time(fr_->t_, stop_idx_, ev_type)
+             ? tt().check_event_time(fr_->t_, stop_idx_, ev_type)
              : rtt()->unix_event_time(fr_->rt_, stop_idx_, ev_type);
 }
 
@@ -91,7 +91,7 @@ unixtime_t run_stop::time(event_type const ev_type) const noexcept {
   assert(fr_->size() > stop_idx_);
   return (fr_->is_rt() && rtt() != nullptr)
              ? rtt()->unix_event_time(fr_->rt_, stop_idx_, ev_type)
-             : tt().event_time(fr_->t_, stop_idx_, ev_type);
+             : tt().check_event_time(fr_->t_, stop_idx_, ev_type);
 }
 
 duration_t run_stop::delay(event_type const ev_type) const noexcept {

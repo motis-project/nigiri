@@ -45,8 +45,8 @@ void finalize(timetable& tt, finalize_options const opt) {
         });
   }
   build_footpaths(tt, opt);
-  build_lb_graph<direction::kForward>(tt);
-  build_lb_graph<direction::kBackward>(tt);
+  build_lb_graph<direction::kForward, false>(tt);
+  build_lb_graph<direction::kBackward, false>(tt);
 }
 
 void finalize(timetable& tt,

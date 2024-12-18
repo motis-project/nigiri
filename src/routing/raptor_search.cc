@@ -20,6 +20,27 @@ namespace nigiri::routing {
 
 namespace {
 
+template <bool Slice, direction SearchDir, via_offset_t Vias>
+routing_result<raptor_stats> raptor_search_with_slice(
+    timetable const& tt,
+    rt_timetable const* rtt,
+    search_state& s_state,
+    raptor_state& r_state,
+    query q,
+    std::optional<std::chrono::seconds> const timeout) {
+  if (rtt == nullptr) {
+    using algo_t = raptor<timetable, Slice, SearchDir, false, Vias>;
+    return search<Slice, SearchDir, algo_t>{tt,      rtt,          s_state,
+                                            r_state, std::move(q), timeout}
+        .execute();
+  } else {
+    using algo_t = raptor<timetable, Slice, SearchDir, true, Vias>;
+    return search<Slice, SearchDir, algo_t>{tt,      rtt,          s_state,
+                                            r_state, std::move(q), timeout}
+        .execute();
+  }
+}
+
 template <direction SearchDir, via_offset_t Vias>
 routing_result<raptor_stats> raptor_search_with_vias(
     timetable const& tt,
@@ -28,17 +49,12 @@ routing_result<raptor_stats> raptor_search_with_vias(
     raptor_state& r_state,
     query q,
     std::optional<std::chrono::seconds> const timeout) {
-
-  if (rtt == nullptr) {
-    using algo_t = raptor<timetable, SearchDir, false, Vias>;
-    return search<SearchDir, algo_t>{tt,      rtt,          s_state,
-                                     r_state, std::move(q), timeout}
-        .execute();
+  if (tt.slice_route_stop_times_.empty()) {
+    return raptor_search_with_slice<false, SearchDir, Vias>(
+        tt, rtt, s_state, r_state, q, timeout);
   } else {
-    using algo_t = raptor<timetable, SearchDir, true, Vias>;
-    return search<SearchDir, algo_t>{tt,      rtt,          s_state,
-                                     r_state, std::move(q), timeout}
-        .execute();
+    return raptor_search_with_slice<true, SearchDir, Vias>(tt, rtt, s_state,
+                                                           r_state, q, timeout);
   }
 }
 

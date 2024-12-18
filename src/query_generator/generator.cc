@@ -363,8 +363,8 @@ std::optional<interval<unixtime_t>> generator::get_start_interval(
     return std::nullopt;
   }
 
-  auto const dep_time = tt_.event_time(transport{tpt_idx, day_idx.value()},
-                                       stp_idx, event_type::kDep);
+  auto const dep_time = tt_.check_event_time(
+      transport{tpt_idx, day_idx.value()}, stp_idx, event_type::kDep);
   return interval<unixtime_t>{dep_time,
                               dep_time + duration_t{s_.interval_size_}};
 }
@@ -376,8 +376,8 @@ bool generator::arr_in_itv(transport_idx_t const tpt_idx,
   for (auto day_idx = day_idx_t{kTimetableOffset.count()};
        day_idx != tt_n_days(); ++day_idx) {
     if (bf.test(day_idx.v_)) {
-      if (itv.contains(
-              tt_.event_time({tpt_idx, day_idx}, stp_idx, event_type::kArr))) {
+      if (itv.contains(tt_.check_event_time({tpt_idx, day_idx}, stp_idx,
+                                            event_type::kArr))) {
         return true;
       }
     }

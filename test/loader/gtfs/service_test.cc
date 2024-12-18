@@ -70,7 +70,7 @@ TEST(gtfs, local_to_unix_trip_test) {
   auto const unixtime = [&](transport const t, stop_idx_t const stop_idx,
                             event_type const ev_type) {
     return std::chrono::time_point_cast<std::chrono::seconds>(
-               tt.event_time(t, stop_idx, ev_type))
+               tt.event_time<false>(t, stop_idx, ev_type))
         .time_since_epoch()
         .count();
   };
@@ -88,9 +88,9 @@ TEST(gtfs, local_to_unix_trip_test) {
 
   auto const iso = [&](transport const t, stop_idx_t const stop_idx,
                        event_type const ev_type) {
-    return date::format(
-        "%FT%R%Ez",
-        zoned_time{get_tz(t, stop_idx), tt.event_time(t, stop_idx, ev_type)});
+    return date::format("%FT%R%Ez",
+                        zoned_time{get_tz(t, stop_idx),
+                                   tt.event_time<false>(t, stop_idx, ev_type)});
   };
 
   auto const t_oct = get_ref_transport(tt, trip_id{"X1", source_idx_t{0}},

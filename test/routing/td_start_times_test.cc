@@ -73,7 +73,7 @@ TEST(routing, td_start_times) {
   auto const A = tt.locations_.location_id_to_idx_.at(
       location_id{.id_ = "A", .src_ = src});
   auto starts = std::vector<start>{};
-  get_starts(
+  get_starts<false>(
       direction::kForward, tt, nullptr,
       interval<unixtime_t>{sys_days{2020_y / March / 30},
                            sys_days{2020_y / March / 31}},
