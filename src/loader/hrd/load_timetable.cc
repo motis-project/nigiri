@@ -12,6 +12,7 @@
 
 #include "nigiri/loader/hrd/service/service_builder.h"
 #include "nigiri/loader/hrd/stamm/stamm.h"
+#include "nigiri/slice.h"
 
 namespace fs = std::filesystem;
 
@@ -105,6 +106,8 @@ void load_timetable(source_idx_t const src,
   }
 
   sb.write_location_routes();
+
+  tt = slice(tt, tt.date_range_);
 }
 
 }  // namespace nigiri::loader::hrd

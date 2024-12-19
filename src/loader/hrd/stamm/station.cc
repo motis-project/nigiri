@@ -201,7 +201,7 @@ location_map_t parse_stations(config const& c,
   for (auto& [eva, s] : stations) {
     for (auto const& e : s.equivalent_) {
       if (auto const it = stations.find(e); it != end(stations)) {
-        tt.locations_.equivalences_[s.idx_].emplace_back(it->second.idx_);
+        tt.locations_.equivalences_[s.idx_].push_back(it->second.idx_);
       } else {
         log(log_lvl::error, "loader.hrd.meta", "station {} not found", e);
       }
@@ -212,10 +212,10 @@ location_map_t parse_stations(config const& c,
       auto const adjusted_duration =
           std::max({tt.locations_.transfer_time_[s.idx_],
                     tt.locations_.transfer_time_[target_idx], duration});
-      tt.locations_.preprocessing_footpaths_out_[s.idx_].emplace_back(
-          target_idx, adjusted_duration);
-      tt.locations_.preprocessing_footpaths_in_[target_idx].emplace_back(
-          s.idx_, adjusted_duration);
+      tt.locations_.preprocessing_footpaths_out_[s.idx_].push_back(
+          {target_idx, adjusted_duration});
+      tt.locations_.preprocessing_footpaths_in_[target_idx].push_back(
+          {s.idx_, adjusted_duration});
     }
   }
 

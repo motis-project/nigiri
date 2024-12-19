@@ -7,8 +7,8 @@
 
 #include "nigiri/loader/build_lb_graph.h"
 #include "nigiri/loader/gtfs/route_key.h"
-#include "nigiri/loader/init_finish.h"
 #include "nigiri/common/delta_t.h"
+#include "nigiri/special_stations.h"
 #include "nigiri/timetable.h"
 
 namespace nigiri {
@@ -31,10 +31,12 @@ T to(auto&& range) {
 timetable slice(nigiri::timetable const& tt,
                 interval<date::sys_days> slice_interval) {
   auto s = timetable{};
-  loader::register_special_stations(s);
   s.date_range_ = slice_interval;
+  std::cout << "EXTRACT SLICE: " << slice_interval << "\n";
+  std::cout << "FULL TIMETABLE: " << tt.external_interval() << "\n";
 
-  // Copy basic information about trips.
+  // Copy basic information.
+  s.locations_.timezones_ = tt.locations_.timezones_;
   s.trip_id_to_idx_ = tt.trip_id_to_idx_;
   s.trip_ids_ = tt.trip_ids_;
   s.trip_id_strings_ = tt.trip_id_strings_;
@@ -58,15 +60,33 @@ timetable slice(nigiri::timetable const& tt,
   using l_idx_t = location_idx_t;  // l_idx for location_idx in the slice
   auto l_location = vector_map<l_idx_t, location_idx_t>{};
   auto location_l = vector_map<location_idx_t, l_idx_t>{};
+  auto l_routes = paged_vecvec<l_idx_t, route_idx_t>{};
   location_l.resize(tt.n_locations(), l_idx_t::invalid());
+  l_location.resize(s.n_locations(), l_idx_t::invalid());
 
-  auto const get_or_create_l = [&](location_idx_t const x) {
-    if (location_l[x] == l_idx_t::invalid()) {
-      location_l[x] = s.locations_.register_location(tt.locations_.get(x));
-      l_location.push_back(x);
-    }
-    return location_l[x];
-  };
+  std::function<l_idx_t(location_idx_t)> get_or_create_l =
+      [&](location_idx_t const x) {
+        if (location_l[x] == l_idx_t::invalid()) {
+          auto loc = tt.locations_.get(x);
+          loc.parent_ =
+              (loc.parent_ == location_idx_t::invalid() || loc.parent_ == x)
+                  ? location_idx_t::invalid()
+                  : get_or_create_l(loc.parent_);
+          location_l[x] = s.locations_.register_location(loc);
+          utl::verify(location_idx_t{l_location.size()} == location_l[x],
+                      "l_location.size={} != location_l[{}]={}",
+                      l_location.size(), x, location_l[x]);
+          l_location.push_back(x);
+          l_routes.emplace_back_empty();
+        }
+        return location_l[x];
+      };
+  for (auto l = location_idx_t{0U};
+       l != static_cast<std::underlying_type_t<special_station>>(
+                special_station::kSpecialStationsSize);
+       ++l) {
+    get_or_create_l(l);
+  }
 
   auto const get_or_create_stop =
       [&](stop::value_type const v) -> stop::value_type {
@@ -113,31 +133,35 @@ timetable slice(nigiri::timetable const& tt,
   using tmp_route_idx_t = cista::strong<std::uint32_t, struct tmp_route_idx_>;
   auto const get_index = [&](paged_vecvec<tmp_route_idx_t, transport>::bucket r,
                              transport const t) {
-    auto const index = static_cast<unsigned>(std::distance(
+    auto const i = static_cast<unsigned>(std::distance(
         begin(r),
         std::lower_bound(begin(r), end(r), t,
                          [&](transport const a, transport const b) {
                            return std::ranges::lexicographical_compare(
                                get_event_times(a), get_event_times(b));
                          })));
-    return (stays_ordered(get_event_times(r[index - 1U]), get_event_times(t)) &&
-            stays_ordered(get_event_times(t), get_event_times(r[index])))
-               ? std::optional{index}
+    return ((i == 0 ||
+             stays_ordered(get_event_times(r[i - 1U]), get_event_times(t))) &&
+            (i == r.size() ||
+             stays_ordered(get_event_times(t), get_event_times(r[i]))))
+               ? std::optional{i}
                : std::nullopt;
   };
 
   auto tmp_routes = paged_vecvec<tmp_route_idx_t, transport>{};
   auto const add_transport = [&](std::vector<tmp_route_idx_t>& r_candidates,
-                                 transport const tr) {
+                                 transport const t) {
     for (auto const& r : r_candidates) {
       auto transports = tmp_routes[r];
-      auto const index = get_index(transports, tr);
+      auto const index = get_index(transports, t);
       if (index.has_value()) {
-        transports.insert(begin(transports) + *index, tr);
+        transports.insert(begin(transports) + *index, t);
         return;
       }
     }
-    tmp_routes.emplace_back({tr});  // no fitting route found - create new
+    auto const new_tmp_route_idx = tmp_route_idx_t{tmp_routes.size()};
+    tmp_routes.emplace_back({t});
+    r_candidates.emplace_back(new_tmp_route_idx);
   };
 
   auto const get_bikes_allowed_seq = [&](route_idx_t const r) -> bitvec {
@@ -152,6 +176,7 @@ timetable slice(nigiri::timetable const& tt,
 
   auto stop_seq_tmp_routes = hash_map<route_key_t, std::vector<tmp_route_idx_t>,
                                       route_key_hash, route_key_equals>{};
+  auto n_transports = 0U;
   for (auto r = route_idx_t{0U}; r != tt.n_routes(); ++r) {
     auto const route_key = route_key_t{
         tt.route_clasz_[r],
@@ -160,7 +185,6 @@ timetable slice(nigiri::timetable const& tt,
                          return get_or_create_stop(stp);
                        })),
         get_bikes_allowed_seq(r)};
-    auto& r_candidates = stop_seq_tmp_routes[route_key];
     auto const last_stop_idx =
         static_cast<stop_idx_t>(tt.route_location_seq_[r].size() - 1U);
     for (auto const t : tt.route_transport_ranges_[r]) {
@@ -171,25 +195,35 @@ timetable slice(nigiri::timetable const& tt,
           tt.day_idx(slice_interval.to_)};
       for (auto const day : first_day_interval) {
         if (tt.bitfields_[tt.transport_traffic_days_[t]].test(to_idx(day))) {
-          add_transport(r_candidates, transport{t, day});
+          ++n_transports;
+          add_transport(stop_seq_tmp_routes[route_key], transport{t, day});
         }
       }
     }
   }
 
+  auto n_split_routes = 0U;
+  for (auto const& [_, tmp_r] : stop_seq_tmp_routes) {
+    utl::verify(!tmp_r.empty(), "empty route");
+    n_split_routes += tmp_r.size();
+  }
+  std::cout << "n_transports=" << n_transports << "\n";
+  std::cout << "n_routes=" << stop_seq_tmp_routes.size() << "\n";
+  std::cout << "n_split_routes=" << n_split_routes << "\n";
+
   // ===========
   // COPY ROUTES
   // -----------
-  auto location_routes = mutable_fws_multimap<location_idx_t, route_idx_t>{};
+  s.trip_transport_ranges_.resize(tt.trip_transport_ranges_.size());
   for (auto const& [key, routes] : stop_seq_tmp_routes) {
     for (auto const tmp_r : routes) {
       auto const route_idx =
           s.register_route(key.stop_seq_, {key.clasz_}, key.bikes_allowed_);
 
       for (auto const stp : key.stop_seq_) {
-        auto s_routes = location_routes[stop{stp}.location_idx()];
-        if (s_routes.empty() || s_routes.back() != route_idx) {
-          s_routes.emplace_back(route_idx);
+        auto const l = stop{stp}.location_idx();
+        if (l_routes[l].empty() || l_routes[l].back() != route_idx) {
+          l_routes[l].push_back(route_idx);
         }
       }
 
@@ -243,7 +277,7 @@ timetable slice(nigiri::timetable const& tt,
 
       s.finish_route();
 
-      auto const stop_times_begin = s.route_stop_times_.size();
+      auto const stop_times_begin = s.slice_route_stop_times_.size();
       for (auto const [from, to] :
            utl::pairwise(interval{std::size_t{0U}, key.stop_seq_.size()})) {
         // Write departure times of all route services at stop i.
@@ -258,16 +292,14 @@ timetable slice(nigiri::timetable const& tt,
               get_transport_time(tt.transport_route_[t.t_idx_], t, to * 2 - 1));
         }
       }
-      auto const stop_times_end = s.route_stop_times_.size();
-      s.route_stop_time_ranges_.emplace_back(
-          interval{stop_times_begin, stop_times_end});
+      s.route_stop_time_ranges_.push_back(
+          {stop_times_begin, s.route_stop_times_.size()});
     }
   }
 
   // Build location_routes map.
-  for (auto l = tt.location_routes_.size(); l != tt.n_locations(); ++l) {
-    s.location_routes_.emplace_back(location_routes[location_idx_t{l}]);
-    assert(tt.location_routes_.size() == l + 1U);
+  for (auto l = l_idx_t{0U}; l != s.n_locations(); ++l) {
+    s.location_routes_.emplace_back(l_routes[l]);
   }
 
   // =========
@@ -276,26 +308,33 @@ timetable slice(nigiri::timetable const& tt,
   auto const filter_and_translate_footpaths =
       [&](vecvec<location_idx_t, footpath> const& fps) {
         auto ret = vecvec<l_idx_t, footpath>{};
-        for (auto l = l_idx_t{0U}; l != l_location.size(); ++l) {
-          using namespace std::views;
-          ret.emplace_back(fps[l_location[l]]  //
-                           | drop_while([&](footpath const x) {
-                               return location_l[x.target()] !=
-                                      l_idx_t::invalid();
-                             })  //
-                           | transform([&](footpath const x) -> footpath {
-                               return {location_l[x.target()], x.duration()};
-                             }));
+        if (!fps.empty()) {
+          for (auto l = l_idx_t{0U}; l != l_location.size(); ++l) {
+            using namespace std::views;
+            ret.emplace_back(fps[l_location[l]]  //
+                             | filter([&](footpath const x) {
+                                 return location_l[x.target()] !=
+                                        l_idx_t::invalid();
+                               })  //
+                             | transform([&](footpath const x) -> footpath {
+                                 return {location_l[x.target()], x.duration()};
+                               }));
+          }
         }
         return ret;
       };
-  for (auto [full, filtered] :
-       utl::zip(tt.locations_.footpaths_out_, s.locations_.footpaths_out_)) {
-    filtered = filter_and_translate_footpaths(full);
+  s.locations_.equivalences_.clear();
+  for (auto i = l_idx_t{0U}; i != s.n_locations(); ++i) {
+    auto const eq = tt.locations_.equivalences_[l_location[i]];
+    s.locations_.equivalences_.emplace_back(eq);
   }
-  for (auto [full, filtered] :
-       utl::zip(tt.locations_.footpaths_in_, s.locations_.footpaths_in_)) {
-    filtered = filter_and_translate_footpaths(full);
+  for (auto i = 0U; i != kMaxProfiles; ++i) {
+    s.locations_.footpaths_out_[i] =
+        filter_and_translate_footpaths(tt.locations_.footpaths_out_[i]);
+  }
+  for (auto i = 0U; i != kMaxProfiles; ++i) {
+    s.locations_.footpaths_in_[i] =
+        filter_and_translate_footpaths(tt.locations_.footpaths_in_[i]);
   }
 
   // ========

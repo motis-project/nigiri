@@ -58,65 +58,98 @@ void add_start_times_at_stop(direction const search_dir,
       "last_day_idx={}, date_range={}\n",
       iv_at_stop, first_day_idx, last_day_idx, tt.date_range_);
 
-  auto const& transport_range = tt.route_transport_ranges_[route_idx];
-  for (auto t = transport_range.from_; t != transport_range.to_; ++t) {
-    auto const& traffic_days =
-        rtt == nullptr ? tt.bitfields_[tt.transport_traffic_days_[t]]
-                       : rtt->bitfields_[rtt->transport_traffic_days_[t]];
-    auto const stop_time = tt.event_mam<Slice>(
-        t, stop_idx,
-        (search_dir == direction::kForward ? event_type::kDep
-                                           : event_type::kArr));
-
-    auto const day_offset =
-        static_cast<std::uint16_t>(as_duration(stop_time).count() / 1440);
-    auto const stop_time_mam =
-        duration_t{as_duration(stop_time).count() % 1440};
-    trace_start(
-        "      interval=[{}, {}[, transport={}, name={}, stop_time={} "
-        "(day_offset={}, stop_time_mam={})\n",
-        iv_at_stop.from_, iv_at_stop.to_, t, tt.transport_name(t), stop_time,
-        day_offset, stop_time_mam);
-    for (auto day = first_day_idx; day <= last_day_idx; ++day) {
-      if (traffic_days.test(to_idx(day - day_offset)) &&
-          iv_at_stop.contains(tt.to_unixtime(day, stop_time_mam))) {
-        auto const ev_time = tt.to_unixtime(day, stop_time_mam);
-        auto const d = get_duration(search_dir, ev_time, offset);
-        if (d == footpath::kMaxDuration) {
-          trace_start("        {} => infeasible\n", ev_time);
-          continue;
+  for (auto t : tt.route_transport_ranges_[route_idx]) {
+    if constexpr (Slice) {
+      auto const ev_time = tt.template event_time<Slice>(
+          route_idx, {t}, stop_idx,
+          (search_dir == direction::kForward ? event_type::kDep
+                                             : event_type::kArr));
+      auto const d = get_duration(search_dir, ev_time, offset);
+      if (d == footpath::kMaxDuration) {
+        trace_start("        {} => infeasible\n", ev_time);
+        continue;
+      }
+      trace_start("        {} => duration={}\n", ev_time, d);
+      auto const time_at_start =
+          search_dir == direction::kForward ? ev_time - d : ev_time + d;
+      if (!iv_at_start.contains(time_at_start)) {
+        trace_start("      iv_at_start={} doesn't contain time_at_start={}\n",
+                    iv_at_start, time_at_start);
+        continue;
+      }
+      if (!starts.empty() && starts.back().time_at_start_ == time_at_start &&
+          is_better_or_eq(starts.back().time_at_stop_, ev_time)) {
+        trace_start("      time_at_start={} -> no improvement\n", iv_at_start,
+                    time_at_start);
+        continue;
+      }
+      auto const& s = starts.emplace_back(start{.time_at_start_ = time_at_start,
+                                                .time_at_stop_ = ev_time,
+                                                .stop_ = location_idx});
+      trace_start(
+          "        => ADD START: time_at_start={}, time_at_stop={}, "
+          "stop={}\n",
+          s.time_at_start_, s.time_at_stop_, location{tt, starts.back().stop_});
+    } else {
+      auto const stop_time = tt.event_mam<Slice>(
+          t, stop_idx,
+          (search_dir == direction::kForward ? event_type::kDep
+                                             : event_type::kArr));
+      auto const day_offset =
+          static_cast<std::uint16_t>(as_duration(stop_time).count() / 1440);
+      auto const stop_time_mam =
+          duration_t{as_duration(stop_time).count() % 1440};
+      trace_start(
+          "      interval=[{}, {}[, transport={}, name={}, stop_time={} "
+          "(day_offset={}, stop_time_mam={})\n",
+          iv_at_stop.from_, iv_at_stop.to_, t, tt.transport_name(t), stop_time,
+          day_offset, stop_time_mam);
+      for (auto day = first_day_idx; day <= last_day_idx; ++day) {
+        auto const& traffic_days =
+            rtt == nullptr ? tt.bitfields_[tt.transport_traffic_days_[t]]
+                           : rtt->bitfields_[rtt->transport_traffic_days_[t]];
+        if (traffic_days.test(to_idx(day - day_offset)) &&
+            iv_at_stop.contains(tt.to_unixtime(day, stop_time_mam))) {
+          auto const ev_time = tt.to_unixtime(day, stop_time_mam);
+          auto const d = get_duration(search_dir, ev_time, offset);
+          if (d == footpath::kMaxDuration) {
+            trace_start("        {} => infeasible\n", ev_time);
+            continue;
+          }
+          trace_start("        {} => duration={}\n", ev_time, d);
+          auto const time_at_start =
+              search_dir == direction::kForward ? ev_time - d : ev_time + d;
+          if (!iv_at_start.contains(time_at_start)) {
+            trace_start(
+                "      iv_at_start={} doesn't contain time_at_start={}\n",
+                iv_at_start, time_at_start);
+            continue;
+          }
+          if (!starts.empty() &&
+              starts.back().time_at_start_ == time_at_start &&
+              is_better_or_eq(starts.back().time_at_stop_, ev_time)) {
+            trace_start("      time_at_start={} -> no improvement\n",
+                        iv_at_start, time_at_start);
+            continue;
+          }
+          auto const& s =
+              starts.emplace_back(start{.time_at_start_ = time_at_start,
+                                        .time_at_stop_ = ev_time,
+                                        .stop_ = location_idx});
+          trace_start(
+              "        => ADD START: time_at_start={}, time_at_stop={}, "
+              "stop={}\n",
+              s.time_at_start_, s.time_at_stop_,
+              location{tt, starts.back().stop_});
+        } else {
+          trace_start(
+              "        skip: day={}, day_offset={}, date={}, active={}, "
+              "in_interval={}\n",
+              day, day_offset,
+              tt.date_range_.from_ + to_idx(day - day_offset) * 1_days,
+              traffic_days.test(to_idx(day)),
+              iv_at_stop.contains(tt.to_unixtime(day, as_duration(stop_time))));
         }
-        trace_start("        {} => duration={}\n", ev_time, d);
-        auto const time_at_start =
-            search_dir == direction::kForward ? ev_time - d : ev_time + d;
-        if (!iv_at_start.contains(time_at_start)) {
-          trace_start("      iv_at_start={} doesn't contain time_at_start={}\n",
-                      iv_at_start, time_at_start);
-          continue;
-        }
-        if (!starts.empty() && starts.back().time_at_start_ == time_at_start &&
-            is_better_or_eq(starts.back().time_at_stop_, ev_time)) {
-          trace_start("      time_at_start={} -> no improvement\n", iv_at_start,
-                      time_at_start);
-          continue;
-        }
-        auto const& s =
-            starts.emplace_back(start{.time_at_start_ = time_at_start,
-                                      .time_at_stop_ = ev_time,
-                                      .stop_ = location_idx});
-        trace_start(
-            "        => ADD START: time_at_start={}, time_at_stop={}, "
-            "stop={}\n",
-            s.time_at_start_, s.time_at_stop_,
-            location{tt, starts.back().stop_});
-      } else {
-        trace_start(
-            "        skip: day={}, day_offset={}, date={}, active={}, "
-            "in_interval={}\n",
-            day, day_offset,
-            tt.date_range_.from_ + to_idx(day - day_offset) * 1_days,
-            traffic_days.test(to_idx(day)),
-            iv_at_stop.contains(tt.to_unixtime(day, as_duration(stop_time))));
       }
     }
   }

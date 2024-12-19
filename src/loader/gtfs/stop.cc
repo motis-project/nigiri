@@ -267,7 +267,7 @@ locations_map read_stops(source_idx_t const src,
         return fp.target() == x.target_;
       });
       if (it == end(bucket)) {
-        bucket.emplace_back(fp);
+        bucket.push_back(fp);
       }
     };
 
@@ -276,15 +276,14 @@ locations_map read_stops(source_idx_t const src,
         tt.locations_.parents_[s->location_] = s->parent_->location_;
       }
       for (auto const& c : s->children_) {
-        tt.locations_.children_[s->location_].emplace_back(c->location_);
+        tt.locations_.children_[s->location_].push_back(c->location_);
       }
 
       // GTFS footpaths
       for (auto const& fp : s->footpaths_) {
-        tt.locations_.preprocessing_footpaths_out_[s->location_].emplace_back(
-            fp);
-        tt.locations_.preprocessing_footpaths_in_[fp.target()].emplace_back(
-            s->location_, fp.duration());
+        tt.locations_.preprocessing_footpaths_out_[s->location_].push_back(fp);
+        tt.locations_.preprocessing_footpaths_in_[fp.target()].push_back(
+            footpath{s->location_, fp.duration()});
       }
     }
 
@@ -304,7 +303,7 @@ locations_map read_stops(source_idx_t const src,
     hash_set<stop*> todo, done;
     for (auto const& [id, s] : stops) {
       for (auto const& eq : s->get_metas(stop_vec, todo, done)) {
-        tt.locations_.equivalences_[s->location_].emplace_back(eq->location_);
+        tt.locations_.equivalences_[s->location_].push_back(eq->location_);
         add_if_not_exists(
             tt.locations_.preprocessing_footpaths_out_[s->location_],
             {eq->location_, 2_minutes});

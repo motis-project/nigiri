@@ -82,12 +82,14 @@ std::optional<start_dest_query> generator::random_query() {
 
     if (!start_loc_idx.has_value() ||
         tt_.location_routes_[start_loc_idx.value()].empty()) {
+      std::cout << "NO ROUTES\n";
       continue;
     }
 
     // derive start itv from start
     auto const start_itv = get_start_interval(start_loc_idx.value());
     if (!start_itv.has_value()) {
+      std::cout << "NO START INTERVAL FOUND\n";
       continue;
     }
 
@@ -115,10 +117,12 @@ std::optional<start_dest_query> generator::random_query() {
         if (is_active_dest(dest_loc_idx.value(), dest_itv)) {
           break;
         } else {
+          std::cout << "DEST NOT ACTIVE\n";
           dest_loc_idx = std::nullopt;
         }
       }
       if (!dest_loc_idx.has_value()) {
+        std::cout << "NO DEST LOC FOUND\n";
         continue;
       }
     }
@@ -315,6 +319,10 @@ bool generator::can_dep(transport_idx_t const tpt_idx,
 
 std::optional<day_idx_t> generator::random_active_day(
     nigiri::transport_idx_t const tr_idx) {
+  if (!tt_.slice_route_stop_times_.empty()) {
+    return day_idx_t{0U};
+  }
+
   auto const random_day = [&]() { return day_idx_t{day_d_(rng_)}; };
 
   auto const& bf = tt_.bitfields_[tt_.transport_traffic_days_[tr_idx]];
@@ -372,6 +380,16 @@ std::optional<interval<unixtime_t>> generator::get_start_interval(
 bool generator::arr_in_itv(transport_idx_t const tpt_idx,
                            stop_idx_t const stp_idx,
                            interval<unixtime_t> const& itv) const {
+  if (!tt_.slice_route_stop_times_.empty()) {
+    auto const ev_time =
+        tt_.check_event_time({tpt_idx}, stp_idx, event_type::kArr);
+    auto const good = itv.contains(ev_time);
+    if (!good) {
+      std::cout << "interval " << itv << " does not contain " << ev_time
+                << "\n";
+    }
+    return good;
+  }
   auto const& bf = tt_.bitfields_[tt_.transport_traffic_days_[tpt_idx]];
   for (auto day_idx = day_idx_t{kTimetableOffset.count()};
        day_idx != tt_n_days(); ++day_idx) {

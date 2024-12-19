@@ -735,8 +735,8 @@ private:
                     "time_by_transport={}, "
                     "BETTER THAN dest_best={} => update, {} marking station "
                     "{} (destination)!\n",
-                    k, v, dest_v, tt_.transport_name(et[v].t_idx_),
-                    tt_.dbg(et[v].t_idx_), to_unix(by_transport),
+                    k, v, dest_v, rtt_->transport_name(tt_, rt_t),
+                    rtt_->dbg(tt_, rt_t), to_unix(by_transport),
                     to_unix(best_dest),
                     !is_better(by_transport, best_dest) ? "NOT" : "",
                     location{tt_, stp.location_idx()});
@@ -1015,7 +1015,7 @@ private:
 
     if constexpr (Slice) {
       auto const from = get_begin_it(event_times);
-      auto const to = get_begin_it(event_times);
+      auto const to = get_end_it(event_times);
       auto const it = std::lower_bound(
           from, to, time,
           [&](delta_t const a, delta_t const b) { return is_better(a, b); });
@@ -1039,10 +1039,9 @@ private:
           stop{tt_.route_location_seq_[r][stop_idx]}.location_idx();
 
       trace(
-          "┊ │k={}    et: current_best_at_stop={}, stop_idx={}, location={}, "
-          "n_days_to_iterate={}\n",
+          "┊ │k={}    et: current_best_at_stop={}, stop_idx={}, location={}\n",
           k, tt_.to_unixtime(day_at_stop, mam_at_stop), stop_idx,
-          location{tt_, l_idx}, n_days_to_iterate);
+          location{tt_, l_idx});
 #endif
 
       constexpr auto const kNDaysToIterate = 2U;

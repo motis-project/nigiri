@@ -131,20 +131,20 @@ void process_2_node_component(timetable& tt,
     auto const duration = std::max({u8_minutes{fgraph[idx_a].front().duration_},
                                     tt.locations_.transfer_time_[l_idx_a],
                                     tt.locations_.transfer_time_[l_idx_b]});
-    tt.locations_.preprocessing_footpaths_out_[l_idx_a].emplace_back(l_idx_b,
-                                                                     duration);
-    tt.locations_.preprocessing_footpaths_in_[l_idx_b].emplace_back(l_idx_a,
-                                                                    duration);
+    tt.locations_.preprocessing_footpaths_out_[l_idx_a].push_back(
+        footpath{l_idx_b, duration});
+    tt.locations_.preprocessing_footpaths_in_[l_idx_b].push_back(
+        footpath{l_idx_a, duration});
   }
 
   if (!fgraph[idx_b].empty()) {
     auto const duration = std::max({u8_minutes{fgraph[idx_b].front().duration_},
                                     tt.locations_.transfer_time_[l_idx_a],
                                     tt.locations_.transfer_time_[l_idx_b]});
-    tt.locations_.preprocessing_footpaths_out_[l_idx_b].emplace_back(l_idx_a,
-                                                                     duration);
-    tt.locations_.preprocessing_footpaths_in_[l_idx_a].emplace_back(l_idx_b,
-                                                                    duration);
+    tt.locations_.preprocessing_footpaths_out_[l_idx_b].push_back(
+        footpath{l_idx_a, duration});
+    tt.locations_.preprocessing_footpaths_in_[l_idx_a].push_back(
+        footpath{l_idx_b, duration});
   }
 }
 
@@ -207,11 +207,9 @@ void connect_components(timetable& tt,
   utl::sort(assignments);
 
   tt.locations_.preprocessing_footpaths_out_.clear();
-  tt.locations_.preprocessing_footpaths_out_[location_idx_t{
-      tt.locations_.src_.size() - 1}];
+  tt.locations_.preprocessing_footpaths_out_.resize(tt.n_locations());
   tt.locations_.preprocessing_footpaths_in_.clear();
-  tt.locations_.preprocessing_footpaths_in_[location_idx_t{
-      tt.locations_.src_.size() - 1}];
+  tt.locations_.preprocessing_footpaths_in_.resize(tt.n_locations());
 
   auto tmp_graph = cista::raw::mutable_fws_multimap<location_idx_t, footpath>{};
   auto components = std::vector<component>{};
@@ -281,6 +279,8 @@ void connect_components(timetable& tt,
   // ================
   // Write Footpaths
   // ----------------
+  tt.locations_.preprocessing_footpaths_out_.resize(tt.n_locations());
+  tt.locations_.preprocessing_footpaths_in_.resize(tt.n_locations());
   for (auto const& t : tasks) {
     auto const& c = *t.c_;
     auto const from_l = c.location_idx(t.idx_);
@@ -307,10 +307,10 @@ void connect_components(timetable& tt,
         adjusted = u8_minutes{adjusted_int};
       }
 
-      tt.locations_.preprocessing_footpaths_out_[from_l].emplace_back(to_l,
-                                                                      adjusted);
-      tt.locations_.preprocessing_footpaths_in_[to_l].emplace_back(from_l,
-                                                                   adjusted);
+      tt.locations_.preprocessing_footpaths_out_[from_l].push_back(
+          {to_l, adjusted});
+      tt.locations_.preprocessing_footpaths_in_[to_l].push_back(
+          {from_l, adjusted});
     }
   }
 }
@@ -344,7 +344,7 @@ void add_links_to_and_between_children(timetable& tt) {
   for (auto l = location_idx_t{0U};
        l != tt.locations_.preprocessing_footpaths_out_.size(); ++l) {
     for (auto const& fp : fp_out[l]) {
-      tt.locations_.preprocessing_footpaths_out_[l].emplace_back(fp);
+      tt.locations_.preprocessing_footpaths_out_[l].push_back(fp);
     }
   }
 
@@ -357,14 +357,14 @@ void add_links_to_and_between_children(timetable& tt) {
       if (tt.locations_.types_[child_i] != location_type::kGeneratedTrack) {
         continue;
       }
-      tt.locations_.preprocessing_footpaths_out_[parent].emplace_back(child_i,
-                                                                      t);
-      tt.locations_.preprocessing_footpaths_out_[child_i].emplace_back(parent,
-                                                                       t);
+      tt.locations_.preprocessing_footpaths_out_[parent].push_back(
+          {child_i, t});
+      tt.locations_.preprocessing_footpaths_out_[child_i].push_back(
+          {parent, t});
       for (auto j = 0U; j != children.size(); ++j) {
         if (i != j) {
-          tt.locations_.preprocessing_footpaths_out_[child_i].emplace_back(
-              children[j], t);
+          tt.locations_.preprocessing_footpaths_out_[child_i].push_back(
+              {children[j], t});
         }
       }
     }

@@ -114,18 +114,18 @@ nigiri_transport_t* nigiri_get_transport(const nigiri_timetable_t* t,
   auto event_mams = new int16_t[(n_stops - 1) * 2];
   for (size_t i = 0; i < n_stops; i++) {
     if (i != 0) {
-      event_mams[i * 2 - 1] =
-          t->tt
-              ->event_mam<false>(tidx, static_cast<nigiri::stop_idx_t>(i),
-                                 nigiri::event_type::kArr)
-              .count();
+      event_mams[i * 2 - 1] = t->tt
+                                  ->checked_event_mam_as_duration(
+                                      tidx, static_cast<nigiri::stop_idx_t>(i),
+                                      nigiri::event_type::kArr)
+                                  .count();
     }
     if (i != n_stops - 1) {
-      event_mams[i * 2] =
-          t->tt
-              ->event_mam<false>(tidx, static_cast<nigiri::stop_idx_t>(i),
-                                 nigiri::event_type::kDep)
-              .count();
+      event_mams[i * 2] = t->tt
+                              ->checked_event_mam_as_duration(
+                                  tidx, static_cast<nigiri::stop_idx_t>(i),
+                                  nigiri::event_type::kDep)
+                              .count();
     }
   }
   transport->route_idx = static_cast<nigiri::route_idx_t::value_t>(route_idx);

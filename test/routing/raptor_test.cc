@@ -2,6 +2,7 @@
 
 #include "nigiri/loader/hrd/load_timetable.h"
 #include "nigiri/loader/init_finish.h"
+#include "nigiri/slice.h"
 
 #include "../loader/hrd/hrd_timetable.h"
 
@@ -47,7 +48,7 @@ leg 2: (B, 0000002) [2020-03-30 06:45] -> (C, 0000003) [2020-03-30 07:45]
 TEST(routing, raptor_forward) {
   constexpr auto const src = source_idx_t{0U};
 
-  timetable tt;
+  auto tt = timetable{};
   tt.date_range_ = full_period();
   load_timetable(src, loader::hrd::hrd_5_20_26, files_abc(), tt);
   finalize(tt);

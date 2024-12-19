@@ -10,14 +10,6 @@
 #include "nigiri/routing/limits.h"
 #include "nigiri/routing/query.h"
 
-// #define NIGIRI_DIJKSTRA_TRACING
-
-#ifdef NIGIRI_DIJKSTRA_TRACING
-#define trace(...) fmt::print(__VA_ARGS__)
-#else
-#define trace(...)
-#endif
-
 namespace nigiri::routing {
 
 void dijkstra(timetable const& tt,
@@ -56,7 +48,6 @@ void dijkstra(timetable const& tt,
     for_each_meta(tt, q.dest_match_mode_, l, [&](location_idx_t const meta) {
       pq.push(label{meta, d});
       dists[to_idx(meta)] = std::min(d, dists[to_idx(meta)]);
-      trace("DIJKSTRA INIT @{}: {}\n", location{tt, meta}, duration);
     });
   }
 

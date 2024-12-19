@@ -51,7 +51,7 @@ tracks parse_track_rules(config const& c,
           l.type_ = location_type::kGeneratedTrack;
           l.parent_ = parent;
           auto const child = tt.locations_.register_location(l);
-          tt.locations_.children_[parent].emplace_back(child);
+          tt.locations_.children_[parent].push_back(child);
           return child;
         });
 

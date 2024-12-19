@@ -49,11 +49,11 @@ void link_nearby_stations(timetable& tt) {
       auto const duration =
           std::max({from_transfer_time, to_transfer_time, walk_duration});
 
-      tt.locations_.preprocessing_footpaths_out_[l_from_idx].emplace_back(
-          l_to_idx, duration);
-      tt.locations_.preprocessing_footpaths_in_[l_to_idx].emplace_back(
-          l_from_idx, duration);
-      tt.locations_.equivalences_[l_from_idx].emplace_back(l_to_idx);
+      tt.locations_.preprocessing_footpaths_out_[l_from_idx].push_back(
+          footpath{l_to_idx, duration});
+      tt.locations_.preprocessing_footpaths_in_[l_to_idx].push_back(
+          footpath{l_from_idx, duration});
+      tt.locations_.equivalences_[l_from_idx].push_back(l_to_idx);
     }
   }
 }

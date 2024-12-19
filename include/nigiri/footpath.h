@@ -32,7 +32,7 @@ struct footpath {
     utl::verify(to_idx(target) <
                     std::numeric_limits<location_idx_t::value_t>::max() >>
                     kDurationBits,
-                "station index overflow");
+                "station index overflow {}", target);
     if (duration > kMaxDuration) {
       [[unlikely]] nigiri::log(log_lvl::error, "footpath",
                                "footpath overflow: {} > {} adjusted to {}",

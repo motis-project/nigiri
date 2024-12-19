@@ -44,22 +44,26 @@ void for_each_schedule_transport(timetable const& tt,
                 tz.template as<pair<string, void const*>>().second));
       }
       auto const first_dep =
-          tt.event_mam<false>(t, interval.from_, event_type::kDep);
-      auto const day_offset =
-          (first_dep.as_duration() + tz_offset).count() / 1440;
-      auto const t_day =
-          tt.day_idx(date::sys_days{day} - day_offset * date::days{1});
-      auto const& traffic_days = tt.bitfields_[tt.transport_traffic_days_[t]];
+          tt.checked_event_mam_as_duration(t, interval.from_, event_type::kDep);
+      auto const day_offset = (first_dep + tz_offset).count() / 1440;
 
-      std::cout << tt.trip_id_strings_[i->first].view()
-                << "first_dep=" << first_dep << ", day_offset=" << day_offset
-                << ", day=" << tt.to_unixtime(t_day, 0_minutes)
-                << ", active=" << traffic_days.test(to_idx(t_day))
-                << ", traffic_days="
-                << day_list{traffic_days, tt.internal_interval_days().from_}
-                << "\n";
-      if (traffic_days.test(to_idx(t_day))) {
-        std::forward<Fn>(cb)(transport{t, t_day}, interval);
+      if (tt.slice_route_stop_times_.empty()) {
+        auto const t_day =
+            tt.day_idx(date::sys_days{day} - day_offset * date::days{1});
+        auto const& traffic_days = tt.bitfields_[tt.transport_traffic_days_[t]];
+
+        std::cout << tt.trip_id_strings_[i->first].view()
+                  << "first_dep=" << first_dep << ", day_offset=" << day_offset
+                  << ", day=" << tt.to_unixtime(t_day, 0_minutes)
+                  << ", active=" << traffic_days.test(to_idx(t_day))
+                  << ", traffic_days="
+                  << day_list{traffic_days, tt.internal_interval_days().from_}
+                  << "\n";
+        if (traffic_days.test(to_idx(t_day))) {
+          std::forward<Fn>(cb)(transport{t, t_day}, interval);
+        }
+      } else {
+        std::forward<Fn>(cb)(transport{t}, interval);
       }
     }
   }

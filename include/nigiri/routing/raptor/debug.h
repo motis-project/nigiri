@@ -118,12 +118,13 @@
       tt.transport_name(t), tt.dbg(t),                                        \
       location{tt, stop{tt.route_location_seq_[r][stop_idx]}.location_idx()}, \
       delta_to_unix(base, time), day, mam,                                    \
-      static_cast<int>(to_idx(day)) - event_mam.count() / 1440, event_mam)
+      static_cast<int>(to_idx(day)) - as_duration(event_mam).count() / 1440,  \
+      event_mam)
 
 #define trace_rc_transport_mam_mismatch                              \
   trace_reconstruct(                                                 \
       "    -> ev_mam mismatch: transport_ev={} vs footpath = {}\n ", \
-      duration_t{event_mam.count()}, duration_t{mam})
+      duration_t{as_duration(event_mam).count()}, duration_t{mam})
 
 #define trace_rc_transport_no_traffic \
   trace_reconstruct("    -> no traffic on day {}\n ", traffic_day)

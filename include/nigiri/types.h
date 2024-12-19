@@ -253,7 +253,9 @@ struct transport {
   CISTA_FRIEND_COMPARABLE(transport)
   CISTA_PRINTABLE(transport, "idx", "day")
   static transport invalid() noexcept { return transport{}; }
-  constexpr bool is_valid() const { return day_ != day_idx_t::invalid(); }
+  constexpr bool is_valid() const {
+    return t_idx_ != transport_idx_t::invalid();
+  }
   transport_idx_t t_idx_{transport_idx_t::invalid()};
   day_idx_t day_{day_idx_t::invalid()};
 };

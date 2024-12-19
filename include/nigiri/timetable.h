@@ -46,10 +46,10 @@ struct timetable {
         src_.emplace_back(l.src_);
         types_.emplace_back(l.type_);
         location_timezones_.emplace_back(l.timezone_idx_);
-        equivalences_.emplace_back();
-        children_.emplace_back();
-        preprocessing_footpaths_out_.emplace_back();
-        preprocessing_footpaths_in_.emplace_back();
+        equivalences_.emplace_back_empty();
+        children_.emplace_back_empty();
+        preprocessing_footpaths_out_.emplace_back_empty();
+        preprocessing_footpaths_in_.emplace_back_empty();
         transfer_time_.emplace_back(l.transfer_time_);
         parents_.emplace_back(l.parent_);
       } else {
@@ -109,10 +109,10 @@ struct timetable {
     vector_map<location_idx_t, location_type> types_;
     vector_map<location_idx_t, location_idx_t> parents_;
     vector_map<location_idx_t, timezone_idx_t> location_timezones_;
-    mutable_fws_multimap<location_idx_t, location_idx_t> equivalences_;
-    mutable_fws_multimap<location_idx_t, location_idx_t> children_;
-    mutable_fws_multimap<location_idx_t, footpath> preprocessing_footpaths_out_;
-    mutable_fws_multimap<location_idx_t, footpath> preprocessing_footpaths_in_;
+    paged_vecvec<location_idx_t, location_idx_t> equivalences_;
+    paged_vecvec<location_idx_t, location_idx_t> children_;
+    paged_vecvec<location_idx_t, footpath> preprocessing_footpaths_out_;
+    paged_vecvec<location_idx_t, footpath> preprocessing_footpaths_in_;
     array<vecvec<location_idx_t, footpath>, kMaxProfiles> footpaths_out_;
     array<vecvec<location_idx_t, footpath>, kMaxProfiles> footpaths_in_;
     vector_map<timezone_idx_t, timezone> timezones_;
@@ -331,18 +331,28 @@ struct timetable {
                         nigiri::transport t,
                         stop_idx_t const stop_idx,
                         event_type const ev_type) const {
-    return unixtime_t{
-        internal_interval_days().from_ + to_idx(t.day_) * 1_days +
-        event_mam<Slice>(r, t.t_idx_, stop_idx, ev_type).as_duration()};
+    auto const ev_time =
+        as_duration(event_mam<Slice>(r, t.t_idx_, stop_idx, ev_type));
+    auto const base = internal_interval_days().from_;
+    if constexpr (Slice) {
+      return unixtime_t{base + ev_time};
+    } else {
+      return unixtime_t{base + to_idx(t.day_) * 1_days + ev_time};
+    }
   }
 
   template <bool Slice>
   unixtime_t event_time(nigiri::transport t,
                         stop_idx_t const stop_idx,
                         event_type const ev_type) const {
-    return unixtime_t{
-        internal_interval_days().from_ + to_idx(t.day_) * 1_days +
-        as_duration(event_mam<Slice>(t.t_idx_, stop_idx, ev_type))};
+    auto const ev_time =
+        as_duration(event_mam<Slice>(t.t_idx_, stop_idx, ev_type));
+    auto const base = internal_interval_days().from_;
+    if constexpr (Slice) {
+      return unixtime_t{base + ev_time};
+    } else {
+      return unixtime_t{base + to_idx(t.day_) * 1_days + ev_time};
+    }
   }
 
   unixtime_t check_event_time(nigiri::transport t,

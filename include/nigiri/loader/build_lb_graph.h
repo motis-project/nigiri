@@ -61,9 +61,12 @@ void build_lb_graph(timetable& tt, profile_idx_t const prf_idx = 0) {
 
         auto min = duration_t{std::numeric_limits<duration_t::rep>::max()};
         for (auto const t : tt.route_transport_ranges_[r]) {
-          auto const from_time = tt.event_mam<Slice>(t, from, event_type::kDep);
-          auto const to_time = tt.event_mam<Slice>(t, to, event_type::kArr);
-          min = std::min(as_duration(to_time - from_time), min);
+          auto const from_time =
+              tt.checked_event_mam_as_duration(t, from, event_type::kDep);
+          auto const to_time =
+              tt.checked_event_mam_as_duration(t, to, event_type::kArr);
+          min = std::min(to_time - from_time, min);
+          assert(min >= 0_minutes);
         }
         update_weight(target, min);
       }

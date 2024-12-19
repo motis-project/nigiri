@@ -53,7 +53,8 @@ TEST(loader, build_footpaths) {
   loader::finalize(tt);
 
   auto ss = std::stringstream{};
-  for (auto const [i, x] : utl::enumerate(tt.locations_.footpaths_out_[0])) {
+  for (auto const [i, x] :
+       utl::enumerate(tt.locations_.preprocessing_footpaths_out_)) {
     if (!x.empty()) {
       ss << location{tt, location_idx_t{i}} << "\n";
       for (auto const y : x) {
