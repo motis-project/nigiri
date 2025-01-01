@@ -388,8 +388,6 @@ void load_timetable(loader_config const& config,
       tt.trip_transport_ranges_.emplace_back(t.transport_ranges_);
     }
   }
-
-  tt = slice(tt, tt.date_range_);
 }
 
 }  // namespace nigiri::loader::gtfs

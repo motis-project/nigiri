@@ -28,6 +28,15 @@ T to(auto&& range) {
   return t;
 }
 
+template <typename T>
+T const& to(auto&& range, T& buf) {
+  buf.clear();
+  for (auto&& x : range) {
+    buf.push_back(std::forward<decltype(x)>(x));
+  }
+  return buf;
+}
+
 timetable slice(nigiri::timetable const& tt,
                 interval<date::sys_days> slice_interval) {
   auto s = timetable{};
@@ -73,6 +82,9 @@ timetable slice(nigiri::timetable const& tt,
                   ? location_idx_t::invalid()
                   : get_or_create_l(loc.parent_);
           location_l[x] = s.locations_.register_location(loc);
+          if (loc.parent_ != location_idx_t::invalid()) {
+            s.locations_.children_[loc.parent_].push_back(location_l[x]);
+          }
           utl::verify(location_idx_t{l_location.size()} == location_l[x],
                       "l_location.size={} != location_l[{}]={}",
                       l_location.size(), x, location_l[x]);
@@ -324,9 +336,16 @@ timetable slice(nigiri::timetable const& tt,
         return ret;
       };
   s.locations_.equivalences_.clear();
+  auto buf = std::vector<location_idx_t>{};
   for (auto i = l_idx_t{0U}; i != s.n_locations(); ++i) {
-    auto const eq = tt.locations_.equivalences_[l_location[i]];
-    s.locations_.equivalences_.emplace_back(eq);
+    using namespace std::views;
+    s.locations_.equivalences_.emplace_back(to(
+        tt.locations_.equivalences_[l_location[i]]  //
+            | filter([&](location_idx_t const l) {
+                return location_l[l] != location_idx_t::invalid();
+              })  //
+            | transform([&](location_idx_t const l) { return location_l[l]; }),
+        buf));
   }
   for (auto i = 0U; i != kMaxProfiles; ++i) {
     s.locations_.footpaths_out_[i] =

@@ -40,7 +40,7 @@ struct generator {
   std::pair<transport, stop_idx_t> random_transport_active_stop();
 
   timetable const& tt_;
-  generator_settings const& s_;
+  generator_settings s_;
   std::uint32_t seed_;
 
 private:
