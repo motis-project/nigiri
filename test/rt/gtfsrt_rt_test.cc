@@ -273,7 +273,7 @@ auto const kTripUpdate =
         "time": "1691661152"
        },
        "departure": {
-        "time": "1691661152"
+        "time": "0"
        },
        "stopId": "2524",
        "scheduleRelationship": "SCHEDULED"

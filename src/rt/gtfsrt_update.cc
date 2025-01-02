@@ -123,6 +123,21 @@ void cancel_run(timetable const&, rt_timetable& rtt, run& r) {
   }
 }
 
+unixtime_t fallback_pred(rt_timetable const& rtt,
+                         run const& r,
+                         std::optional<delay_propagation> const pred,
+                         stop_idx_t const stop_idx,
+                         event_type const ev_type) {
+  if (pred.has_value()) {
+    return pred->pred_time_;
+  }
+  if (stop_idx == 0U) {
+    return unixtime_t{0_minutes};
+  }
+  return rtt.unix_event_time(
+      r.rt_, ev_type == event_type::kDep ? stop_idx - 1U : stop_idx, ev_type);
+}
+
 void update_run(
     source_idx_t const src,
     timetable const& tt,
@@ -223,7 +238,7 @@ void update_run(
           (upd_it->arrival().has_delay() || upd_it->arrival().has_time())) {
         pred = update_event(
             tt, rtt, r, stop_idx, event_type::kArr, upd_it->arrival(),
-            pred.has_value() ? pred->pred_time_ : unixtime_t{0_minutes});
+            fallback_pred(rtt, r, pred, stop_idx, event_type::kDep));
       } else if (pred.has_value()) {
         pred = update_delay(tt, rtt, r, stop_idx, event_type::kArr,
                             pred->pred_delay_, pred->pred_time_);
@@ -245,7 +260,7 @@ void update_run(
           (upd_it->departure().has_time() || upd_it->departure().has_delay())) {
         pred = update_event(
             tt, rtt, r, stop_idx, event_type::kDep, upd_it->departure(),
-            pred.has_value() ? pred->pred_time_ : unixtime_t{0_minutes});
+            fallback_pred(rtt, r, pred, stop_idx, event_type::kArr));
       } else if (pred.has_value()) {
         pred = update_delay(tt, rtt, r, stop_idx, event_type::kDep,
                             pred->pred_delay_, pred->pred_time_);
