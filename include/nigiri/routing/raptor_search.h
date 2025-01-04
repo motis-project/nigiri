@@ -6,8 +6,6 @@
 
 namespace nigiri::routing {
 
-enum class raptor_variant { kAdvanced, kSimple };
-
 routing_result<raptor_stats> raptor_search(
     timetable const& tt,
     rt_timetable const* rtt,

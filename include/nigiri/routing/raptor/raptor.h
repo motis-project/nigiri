@@ -251,7 +251,8 @@ struct raptor {
   }
 
   void reconstruct(query const& q, journey& j) {
-    reconstruct_journey<SearchDir>(tt_, rtt_, q, state_, j, base(), base_);
+    reconstruct_journey<SearchDir>(tt_, rtt_, q, state_, j, base(), base_,
+                                   raptor_variant::kAdvanced);
   }
 
 private:

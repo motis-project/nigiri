@@ -1,5 +1,6 @@
 #pragma once
 
+#include "nigiri/routing/raptor/raptor_variant.h"
 #include "nigiri/types.h"
 
 namespace nigiri {
@@ -21,7 +22,8 @@ void reconstruct_journey(timetable const&,
                          raptor_state const&,
                          journey&,
                          date::sys_days const base,
-                         day_idx_t const base_day_idx);
+                         day_idx_t base_day_idx,
+                         raptor_variant);
 
 template <direction SearchDir>
 void optimize_footpaths(timetable const&,

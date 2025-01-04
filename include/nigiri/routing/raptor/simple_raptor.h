@@ -62,7 +62,6 @@ struct simple_raptor {
         n_routes_{tt.n_routes()},
         n_rt_transports_{Rt ? rtt->n_rt_transports() : 0U},
         state_{state.resize(n_locations_, n_routes_, n_rt_transports_)},
-        tmp_{state.get_tmp_simple()},
         best_{state.get_best_simple()},
         round_times_{state.get_round_times_simple()},
         is_dest_{is_dest},
@@ -94,7 +93,6 @@ struct simple_raptor {
 
   void next_start_time() {
     utl::fill(best_, kInvalid);
-    utl::fill(tmp_, kInvalid);
     utl::fill(state_.prev_station_mark_.blocks_, 0U);
     utl::fill(state_.station_mark_.blocks_, 0U);
     utl::fill(state_.route_mark_.blocks_, 0U);
@@ -179,7 +177,6 @@ struct simple_raptor {
       std::swap(state_.prev_station_mark_, state_.station_mark_);
       utl::fill(state_.station_mark_.blocks_, 0U);
 
-      update_transfers(k);
       update_intermodal_footpaths(k);
       update_footpaths(k, prf_idx);
       update_td_offsets(k, prf_idx);
@@ -211,7 +208,8 @@ struct simple_raptor {
   }
 
   void reconstruct(query const& q, journey& j) {
-    reconstruct_journey<SearchDir>(tt_, rtt_, q, state_, j, base(), base_);
+    reconstruct_journey<SearchDir>(tt_, rtt_, q, state_, j, base(), base_,
+                                   raptor_variant::kSimple);
   }
 
 private:
@@ -288,35 +286,6 @@ private:
     return any_marked;
   }
 
-  void update_transfers(unsigned const k) {
-    state_.prev_station_mark_.for_each_set_bit([&](auto&& i) {
-      auto const is_dest = is_dest_[i];
-      auto const transfer_time =
-          (!is_intermodal_dest() && is_dest)
-              ? 0
-              : dir(adjusted_transfer_time(
-                    transfer_time_settings_,
-                    tt_.locations_.transfer_time_[location_idx_t{i}].count()));
-      auto const fp_target_time = static_cast<delta_t>(tmp_[i] + transfer_time);
-      if (is_better(fp_target_time, best_[i]) &&
-          is_better(fp_target_time, time_at_dest_[k])) {
-        if (lb_[i] == kUnreachable ||
-            !is_better(fp_target_time + dir(lb_[i]), time_at_dest_[k])) {
-          ++stats_.fp_update_prevented_by_lower_bound_;
-          return;
-        }
-
-        ++stats_.n_earliest_arrival_updated_by_footpath_;
-        round_times_[k][i] = fp_target_time;
-        best_[i] = fp_target_time;
-        state_.station_mark_.set(i, true);
-        if (is_dest) {
-          update_time_at_dest(k, fp_target_time);
-        }
-      }
-    });
-  }
-
   void update_footpaths(unsigned const k, profile_idx_t const prf_idx) {
     state_.prev_station_mark_.for_each_set_bit([&](std::uint64_t const i) {
       auto const l_idx = location_idx_t{i};
@@ -336,8 +305,9 @@ private:
 
         auto const target = to_idx(fp.target());
         auto const fp_target_time =
-            clamp(tmp_[i] + dir(adjusted_transfer_time(transfer_time_settings_,
-                                                       fp.duration().count())));
+            clamp(round_times_[k][i] +
+                  dir(adjusted_transfer_time(transfer_time_settings_,
+                                             fp.duration().count())));
 
         if (is_better(fp_target_time, best_[target]) &&
             is_better(fp_target_time, time_at_dest_[k])) {
@@ -405,11 +375,12 @@ private:
                              : rtt_->td_footpaths_in_[prf_idx][l_idx];
 
       for_each_footpath<
-          SearchDir>(fps, to_unix(tmp_[i]), [&](footpath const fp) {
+          SearchDir>(fps, to_unix(round_times_[k][i]), [&](footpath const fp) {
         ++stats_.n_footpaths_visited_;
 
         auto const target = to_idx(fp.target());
-        auto const fp_target_time = clamp(tmp_[i] + dir(fp.duration()).count());
+        auto const fp_target_time =
+            clamp(round_times_[k][i] + dir(fp.duration()).count());
 
         if (is_better(fp_target_time, best_[target]) &&
             is_better(fp_target_time, time_at_dest_[k])) {
@@ -467,8 +438,8 @@ private:
       if (state_.prev_station_mark_[i] || state_.station_mark_[i]) {
         auto const l = location_idx_t{i};
         if (dist_to_end_[i] != std::numeric_limits<std::uint16_t>::max()) {
-          auto const end_time =
-              clamp(get_best(best_[i], tmp_[i]) + dir(dist_to_end_[i]));
+          auto const end_time = clamp(get_best(best_[i], round_times_[k][i]) +
+                                      dir(dist_to_end_[i]));
 
           if (is_better(end_time, best_[kIntermodalTarget])) {
             round_times_[k][kIntermodalTarget] = end_time;
@@ -480,7 +451,7 @@ private:
                 k, location{tt_, l}, dist_to_end_[i]);
         } else if (auto const it = td_dist_to_end_.find(l);
                    it != end(td_dist_to_end_)) {
-          auto const fp_start_time = get_best(best_[i], tmp_[i]);
+          auto const fp_start_time = get_best(best_[i], round_times_[k][i]);
           auto const duration =
               get_td_duration<SearchDir>(it->second, to_unix(fp_start_time));
           if (duration.has_value()) {
@@ -530,8 +501,8 @@ private:
         auto const by_transport = rt_time_at_stop(
             rt_t, stop_idx, kFwd ? event_type::kArr : event_type::kDep);
         if (et && stp.can_finish<SearchDir>(is_wheelchair_)) {
-          current_best =
-              get_best(round_times_[k - 1][l_idx], tmp_[l_idx], best_[l_idx]);
+          current_best = get_best(round_times_[k - 1][l_idx],
+                                  round_times_[k][l_idx], best_[l_idx]);
           if (is_better(by_transport, current_best) &&
               is_better(by_transport, time_at_dest_[k]) &&
               lb_[l_idx] != kUnreachable &&
@@ -546,7 +517,8 @@ private:
                 location{tt_, stp.location_idx()});
 
             ++stats_.n_earliest_arrival_updated_by_route_;
-            tmp_[l_idx] = get_best(by_transport, tmp_[l_idx]);
+            round_times_[k][l_idx] =
+                get_best(by_transport, round_times_[k][l_idx]);
             state_.station_mark_.set(l_idx, true);
             current_best = by_transport;
             any_marked = true;
@@ -612,9 +584,6 @@ private:
       if (et.is_valid() && stp.can_finish<SearchDir>(is_wheelchair_)) {
         auto const by_transport = time_at_stop(
             r, et, stop_idx, kFwd ? event_type::kArr : event_type::kDep);
-        //        current_best =
-        //            get_best(round_times_[k - 1][l_idx], tmp_[l_idx],
-        //            best_[l_idx]);
         current_best = get_best(round_times_[k - 1][l_idx], best_[l_idx]);
         assert(by_transport != std::numeric_limits<delta_t>::min() &&
                by_transport != std::numeric_limits<delta_t>::max());
@@ -690,7 +659,8 @@ private:
         auto const [day, mam] = split(prev_round_time);
         auto const new_et = get_earliest_transport(k, r, stop_idx, day, mam,
                                                    stp.location_idx());
-        current_best = get_best(current_best, best_[l_idx], tmp_[l_idx]);
+        current_best =
+            get_best(current_best, best_[l_idx], round_times_[k][l_idx]);
         if (new_et.is_valid() &&
             (current_best == kInvalid ||
              is_better_or_eq(
@@ -877,7 +847,6 @@ private:
   int n_days_;
   std::uint32_t n_locations_, n_routes_, n_rt_transports_;
   raptor_state& state_;
-  std::span<delta_t> tmp_;
   std::span<delta_t> best_;
   flat_matrix_view<delta_t> round_times_;
   bitvec const& is_dest_;

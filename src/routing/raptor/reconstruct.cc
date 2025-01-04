@@ -11,6 +11,7 @@
 #include "nigiri/for_each_meta.h"
 #include "nigiri/routing/journey.h"
 #include "nigiri/routing/raptor/raptor_state.h"
+#include "nigiri/routing/raptor_search.h"
 #include "nigiri/rt/frun.h"
 #include "nigiri/rt/rt_timetable.h"
 #include "nigiri/special_stations.h"
@@ -138,7 +139,8 @@ void reconstruct_journey_with_vias(timetable const& tt,
                                    raptor_state const& raptor_state,
                                    journey& j,
                                    date::sys_days const base,
-                                   day_idx_t const base_day_idx) {
+                                   day_idx_t const base_day_idx,
+                                   raptor_variant const variant) {
   constexpr auto const kFwd = SearchDir == direction::kForward;
   auto const dir = [&]<typename T>(T const a) {
     return static_cast<T>((kFwd ? 1 : -1) * a);
@@ -548,14 +550,16 @@ void reconstruct_journey_with_vias(timetable const& tt,
     }
 
     trace_reconstruct("CHECKING TRANSFER AT {}\n", location{tt, l});
-    auto transfer_at_same_stop = check_fp(
-        k, l, curr_time,
-        footpath{l,
-                 (k == j.transfers_ + 1U)
-                     ? 0_u8_minutes
-                     : adjusted_transfer_time(q.transfer_time_settings_,
-                                              tt.locations_.transfer_time_[l])},
-        false, false);
+    auto transfer_at_same_stop =
+        check_fp(k, l, curr_time,
+                 footpath{l, (k == j.transfers_ + 1U)
+                                 ? 0_u8_minutes
+                                 : adjusted_transfer_time(
+                                       q.transfer_time_settings_,
+                                       variant == raptor_variant::kSimple
+                                           ? u8_minutes{0U}
+                                           : tt.locations_.transfer_time_[l])},
+                 false, false);
     if (transfer_at_same_stop.has_value()) {
       return std::move(*transfer_at_same_stop);
     }
@@ -679,20 +683,21 @@ void reconstruct_journey(timetable const& tt,
                          raptor_state const& raptor_state,
                          journey& j,
                          date::sys_days const base,
-                         day_idx_t const base_day_idx) {
+                         day_idx_t const base_day_idx,
+                         raptor_variant const variant) {
   static_assert(kMaxVias == 2,
                 "reconstruct.cc needs to be adjusted for kMaxVias");
 
   switch (q.via_stops_.size()) {
     case 0:
       return reconstruct_journey_with_vias<SearchDir, 0>(
-          tt, rtt, q, raptor_state, j, base, base_day_idx);
+          tt, rtt, q, raptor_state, j, base, base_day_idx, variant);
     case 1:
       return reconstruct_journey_with_vias<SearchDir, 1>(
-          tt, rtt, q, raptor_state, j, base, base_day_idx);
+          tt, rtt, q, raptor_state, j, base, base_day_idx, variant);
     case 2:
       return reconstruct_journey_with_vias<SearchDir, 2>(
-          tt, rtt, q, raptor_state, j, base, base_day_idx);
+          tt, rtt, q, raptor_state, j, base, base_day_idx, variant);
   }
   std::unreachable();
 }
@@ -702,15 +707,17 @@ template void reconstruct_journey<direction::kForward>(timetable const&,
                                                        query const&,
                                                        raptor_state const&,
                                                        journey&,
-                                                       date::sys_days const,
-                                                       day_idx_t const);
+                                                       date::sys_days,
+                                                       day_idx_t,
+                                                       raptor_variant);
 
 template void reconstruct_journey<direction::kBackward>(timetable const&,
                                                         rt_timetable const*,
                                                         query const&,
                                                         raptor_state const&,
                                                         journey&,
-                                                        date::sys_days const,
-                                                        day_idx_t const);
+                                                        date::sys_days,
+                                                        day_idx_t,
+                                                        raptor_variant);
 
 }  // namespace nigiri::routing
