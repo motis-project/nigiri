@@ -74,6 +74,36 @@ struct raptor_state {
             n_locations_};
   }
 
+  // ===================
+  // NON ARRAY FUNCTIONS
+  // -------------------
+  std::span<delta_t> get_tmp_simple() {
+    return {reinterpret_cast<delta_t*>(tmp_storage_.data()), n_locations_};
+  }
+
+  std::span<delta_t> get_best_simple() {
+    return {reinterpret_cast<delta_t*>(best_storage_.data()), n_locations_};
+  }
+
+  std::span<delta_t const> get_best_simple() const {
+    return {reinterpret_cast<delta_t const*>(best_storage_.data()),
+            n_locations_};
+  }
+
+  flat_matrix_view<delta_t> get_round_times_simple() {
+    return {{reinterpret_cast<delta_t*>(round_times_storage_.data()),
+             n_locations_ * (kMaxTransfers + 1)},
+            kMaxTransfers + 1U,
+            n_locations_};
+  }
+
+  flat_matrix_view<delta_t const> get_round_times_simple() const {
+    return {{reinterpret_cast<delta_t const*>(round_times_storage_.data()),
+             n_locations_ * (kMaxTransfers + 1)},
+            kMaxTransfers + 1U,
+            n_locations_};
+  }
+
   unsigned n_locations_{};
   std::vector<delta_t> tmp_storage_;
   std::vector<delta_t> best_storage_;

@@ -138,7 +138,8 @@ nigiri::pareto_set<nigiri::routing::journey> raptor_search(
 void process_queries(
     std::vector<nigiri::query_generation::start_dest_query> const& queries,
     std::vector<benchmark_result>& results,
-    nigiri::timetable const& tt) {
+    nigiri::timetable const& tt,
+    raptor_variant const variant) {
   results.reserve(queries.size());
   std::mutex mutex;
   {
@@ -157,7 +158,7 @@ void process_queries(
             auto const total_time_start = std::chrono::steady_clock::now();
             auto const result = routing::raptor_search(
                 tt, nullptr, query_state.ss_, query_state.rs_,
-                queries[q_idx].q_, direction::kForward);
+                queries[q_idx].q_, direction::kForward, variant);
             auto const total_time_stop = std::chrono::steady_clock::now();
             auto const guard = std::lock_guard{mutex};
             results.emplace_back(benchmark_result{
@@ -335,6 +336,7 @@ int main(int argc, char* argv[]) {
   auto seed = std::int64_t{-1};
   auto min_transfer_time = duration_t::rep{};
   auto qa_path = std::filesystem::path{};
+  auto variant = std::string{"advanced"};
 
   bpo::options_description desc("Allowed options");
   desc.add_options()("help,h", "produce this help message")  //
@@ -367,10 +369,10 @@ int main(int argc, char* argv[]) {
        "walk | bicycle | car")  //
       ("use_start_footpaths",
        bpo::value<bool>(&gs.use_start_footpaths_)->default_value(true),
-       "")("max_transfers,t",
-           bpo::value<std::uint32_t>(&max_transfers)
-               ->default_value(kMaxTransfers),
-           "maximum number of transfers during routing")  //
+       "")  //
+      ("max_transfers,t",
+       bpo::value<std::uint32_t>(&max_transfers)->default_value(kMaxTransfers),
+       "maximum number of transfers during routing")  //
       ("min_connection_count,m",
        bpo::value<std::uint32_t>(&gs.min_connection_count_)->default_value(3U),
        "the minimum number of connections to find with each query")  //
@@ -407,6 +409,8 @@ int main(int argc, char* argv[]) {
        "start location for random queries")  //
       ("dest_loc", bpo::value<location_idx_t::value_t>(&dest_loc_val),
        "destination location for random queries")  //
+      ("variant",
+       bpo::value<std::string>(&variant)->default_value("advanced"))  //
       ("qa_path,q", bpo::value(&qa_path),
        "path to write the journey criteria to for qa");
   bpo::variables_map vm;
@@ -525,7 +529,10 @@ int main(int argc, char* argv[]) {
   generate_queries(queries, n_queries, tt, gs, seed);
 
   auto results = std::vector<benchmark_result>{};
-  process_queries(queries, results, tt);
+  process_queries(queries, results, tt,
+                  variant == "advanced"
+                      ? nigiri::routing::raptor_variant::kAdvanced
+                      : nigiri::routing::raptor_variant::kSimple);
 
   print_results(queries, results, tt, gs, tt_path);
 

@@ -15,6 +15,7 @@
 
 #include "nigiri/get_otel_tracer.h"
 #include "nigiri/routing/query.h"
+#include "nigiri/routing/raptor/simple_raptor.h"
 
 namespace nigiri::routing {
 
@@ -27,18 +28,32 @@ routing_result<raptor_stats> raptor_search_with_vias(
     search_state& s_state,
     raptor_state& r_state,
     query q,
+    raptor_variant const variant,
     std::optional<std::chrono::seconds> const timeout) {
-
-  if (rtt == nullptr) {
-    using algo_t = raptor<SearchDir, false, Vias>;
-    return search<SearchDir, algo_t>{tt,      rtt,          s_state,
-                                     r_state, std::move(q), timeout}
-        .execute();
+  if (variant == raptor_variant::kAdvanced) {
+    if (rtt == nullptr) {
+      using algo_t = raptor<SearchDir, false, Vias>;
+      return search<SearchDir, algo_t>{tt,      rtt,          s_state,
+                                       r_state, std::move(q), timeout}
+          .execute();
+    } else {
+      using algo_t = raptor<SearchDir, true, Vias>;
+      return search<SearchDir, algo_t>{tt,      rtt,          s_state,
+                                       r_state, std::move(q), timeout}
+          .execute();
+    }
   } else {
-    using algo_t = raptor<SearchDir, true, Vias>;
-    return search<SearchDir, algo_t>{tt,      rtt,          s_state,
-                                     r_state, std::move(q), timeout}
-        .execute();
+    if (rtt == nullptr) {
+      using algo_t = simple_raptor<SearchDir, false>;
+      return search<SearchDir, algo_t>{tt,      rtt,          s_state,
+                                       r_state, std::move(q), timeout}
+          .execute();
+    } else {
+      using algo_t = simple_raptor<SearchDir, true>;
+      return search<SearchDir, algo_t>{tt,      rtt,          s_state,
+                                       r_state, std::move(q), timeout}
+          .execute();
+    }
   }
 }
 
@@ -49,6 +64,7 @@ routing_result<raptor_stats> raptor_search_with_dir(
     search_state& s_state,
     raptor_state& r_state,
     query q,
+    raptor_variant const variant,
     std::optional<std::chrono::seconds> const timeout) {
   q.sanitize(tt);
   utl::verify(q.via_stops_.size() <= kMaxVias,
@@ -60,14 +76,14 @@ routing_result<raptor_stats> raptor_search_with_dir(
 
   switch (q.via_stops_.size()) {
     case 0:
-      return raptor_search_with_vias<SearchDir, 0>(tt, rtt, s_state, r_state,
-                                                   std::move(q), timeout);
+      return raptor_search_with_vias<SearchDir, 0>(
+          tt, rtt, s_state, r_state, std::move(q), variant, timeout);
     case 1:
-      return raptor_search_with_vias<SearchDir, 1>(tt, rtt, s_state, r_state,
-                                                   std::move(q), timeout);
+      return raptor_search_with_vias<SearchDir, 1>(
+          tt, rtt, s_state, r_state, std::move(q), variant, timeout);
     case 2:
-      return raptor_search_with_vias<SearchDir, 2>(tt, rtt, s_state, r_state,
-                                                   std::move(q), timeout);
+      return raptor_search_with_vias<SearchDir, 2>(
+          tt, rtt, s_state, r_state, std::move(q), variant, timeout);
   }
   std::unreachable();
 }
@@ -92,6 +108,7 @@ routing_result<raptor_stats> raptor_search(
     raptor_state& r_state,
     query q,
     direction const search_dir,
+    raptor_variant const variant,
     std::optional<std::chrono::seconds> const timeout) {
   auto span = get_otel_tracer()->StartSpan("raptor_search");
   auto scope = opentelemetry::trace::Scope{span};
@@ -144,10 +161,10 @@ routing_result<raptor_stats> raptor_search(
 
   if (search_dir == direction::kForward) {
     return raptor_search_with_dir<direction::kForward>(
-        tt, rtt, s_state, r_state, std::move(q), timeout);
+        tt, rtt, s_state, r_state, std::move(q), variant, timeout);
   } else {
     return raptor_search_with_dir<direction::kBackward>(
-        tt, rtt, s_state, r_state, std::move(q), timeout);
+        tt, rtt, s_state, r_state, std::move(q), variant, timeout);
   }
 }
 
