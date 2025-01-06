@@ -1,5 +1,7 @@
 #include "nigiri/loader/gtfs/stop_time.h"
 
+#include <nigiri/loader/gtfs/area.h>
+
 #include "utl/enumerate.h"
 #include "utl/parser/arg_parser.h"
 #include "utl/parser/buf_reader.h"
@@ -27,12 +29,14 @@ void read_stop_times(timetable& tt,
                      locations_map const& stops,
                      std::string_view file_content) {
   auto b = booking_rule_map_t{};
-  return read_stop_times(source_idx_t{0}, tt, trips, stops, b, file_content);
+  return read_stop_times(tt, source_idx_t{0}, trips, location_geojson_map_t{},
+                         stops, b, file_content);
 }
 
-void read_stop_times(source_idx_t src,
-                     timetable& tt,
+void read_stop_times(timetable& tt,
+                     source_idx_t src,
                      trip_data& trips,
+                     location_geojson_map_t const& geojsons,
                      locations_map const& stops,
                      booking_rule_map_t const& booking_rules,
                      std::string_view file_content) {
@@ -81,52 +85,6 @@ void read_stop_times(source_idx_t src,
             *s.pickup_type_ == kCoordinateWithDriverType ||
             *s.drop_off_type_ == kPhoneAgencyType ||
             *s.drop_off_type_ == kCoordinateWithDriverType;
-        if (is_flex_trip) {
-          std::string id;
-          if (!s.stop_id_->empty()) {
-            id = s.stop_id_->to_str();
-          } else if (!s.location_geojson_id_->empty()) {
-            id = s.location_geojson_id_->to_str();
-          } else if (!s.location_group_id_->empty()) {
-            id = s.location_group_id_->to_str();
-          } else if (!s.area_id_->empty()) {
-            id = s.area_id_->to_str();
-          } else {
-            log(log_lvl::error, "loader.gtfs.stop_time",
-                "Neither stop_id, location_id, location_group_id nor area_id "
-                "are set");
-            return;
-          }
-
-          auto const pickup_booking_rule_idx_it =
-              booking_rules.find(s.pickup_booking_rule_id_->view());
-          auto const dropoff_booking_rule_idx_it =
-              booking_rules.find(s.drop_off_booking_rule_id_->view());
-
-          auto const pickup_booking_rule_idx =
-              pickup_booking_rule_idx_it == booking_rules.end()
-                  ? kInvalidBookingRuleIdx
-                  : pickup_booking_rule_idx_it->second;
-
-          auto const dropoff_booking_rule_idx =
-              dropoff_booking_rule_idx_it == booking_rules.end()
-                  ? kInvalidBookingRuleIdx
-                  : dropoff_booking_rule_idx_it->second;
-
-          auto const start_window =
-              hhmm_to_min(s.start_pickup_drop_off_window_->c_str());
-          auto const end_window =
-              hhmm_to_min(s.end_pickup_drop_off_window_->c_str());
-
-          auto const window_time = stop_window{start_window, end_window};
-
-          tt.register_location_trip(
-              src, id, s.trip_id_->to_str(),
-              static_cast<pickup_dropoff_type>(*s.pickup_type_),
-              static_cast<pickup_dropoff_type>(*s.drop_off_type_), window_time,
-              pickup_booking_rule_idx, dropoff_booking_rule_idx);
-          return;
-        }
 
         ++i;
 
@@ -150,6 +108,57 @@ void read_stop_times(source_idx_t src,
           last_trip = t;
 
           t->from_line_ = i;
+        }
+
+        if (is_flex_trip) {
+          if (s.location_geojson_id_->empty()) {
+            log(log_lvl::error, "loader.gtfs.stop_time",
+                "location_id is empty");
+            return;
+          }
+          auto const id = s.location_geojson_id_->to_str();
+          auto const g_it = geojsons.find(id);
+          if (g_it == end(geojsons)) {
+            log(log_lvl::error, "loader.gtfs.stop_time",
+                "location_id \"{}\" not defined in location.geojson", id);
+            return;
+          }
+          auto const g_idx = g_it->second;
+
+          auto const pickup_booking_rule_idx_it =
+              booking_rules.find(s.pickup_booking_rule_id_->view());
+          auto const dropoff_booking_rule_idx_it =
+              booking_rules.find(s.drop_off_booking_rule_id_->view());
+
+          auto const pickup_booking_rule_idx =
+              pickup_booking_rule_idx_it == booking_rules.end()
+                  ? booking_rule_idx_t::invalid()
+                  : pickup_booking_rule_idx_it->second;
+
+          auto const dropoff_booking_rule_idx =
+              dropoff_booking_rule_idx_it == booking_rules.end()
+                  ? booking_rule_idx_t::invalid()
+                  : dropoff_booking_rule_idx_it->second;
+
+          auto const start_window =
+              hhmm_to_min(s.start_pickup_drop_off_window_->c_str());
+          auto const end_window =
+              hhmm_to_min(s.end_pickup_drop_off_window_->c_str());
+
+          auto const window_time = stop_window{start_window, end_window};
+
+          if (t->trip_idx_ == trip_idx_t::invalid()) {
+            t->trip_idx_ = tt.register_trip_id(
+                t->id_, src, t->display_name(tt),
+                {source_file_idx_t{0}, t->from_line_, t->to_line_});
+          }
+
+          tt.register_geometry_trip(
+              g_idx, t->trip_idx_,
+              static_cast<pickup_dropoff_type>(*s.pickup_type_),
+              static_cast<pickup_dropoff_type>(*s.drop_off_type_), window_time,
+              pickup_booking_rule_idx, dropoff_booking_rule_idx);
+          return;
         }
 
         try {
@@ -188,7 +197,6 @@ void read_stop_times(source_idx_t src,
               "stop_times.txt:{}: unknown stop \"{}\"", i, s.stop_id_->view());
         }
       });
-
   if (last_trip != nullptr) {
     last_trip->to_line_ = i;
   }

@@ -136,7 +136,7 @@ booking_rule_map_t read_booking_rules(traffic_days_t const& services,
                         hhmm_to_min(*b.prior_notice_start_time_),
                     .bitfield_idx_ =
                         b.prior_notice_service_id_->empty() || error
-                            ? kInvalidBitfieldIdx
+                            ? bitfield_idx_t::invalid()
                             : tt.register_bitfield(*traffic_days_it->second)})};
          })  //
          | utl::to<booking_rule_map_t>();

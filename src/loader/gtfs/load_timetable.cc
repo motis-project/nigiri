@@ -155,13 +155,13 @@ void load_timetable(loader_config const& config,
       read_booking_rules(service, tt, load(kBookingRulesFile).data());
 
   read_frequencies(trip_data, load(kFrequenciesFile).data());
-  const auto geojson_id_to_idx =
-      read_location_geojson(src, tt, load(kLocationGeojsonFile).data());
-  auto areas = read_areas(src, tt, load(kStopAreasFile).data(),
+  const auto geojsons =
+      read_location_geojson(tt, load(kLocationGeojsonFile).data());
+  auto areas = read_areas(tt, stops, load(kStopAreasFile).data(),
                           load(kLocationGroupsFile).data(),
                           load(kLocationGroupStopsFile).data());
 
-  read_stop_times(src, tt, trip_data, stops, booking_rules,
+  read_stop_times(tt, src, trip_data, geojsons, stops, booking_rules,
                   load(kStopTimesFile).data());
 
   {
@@ -293,10 +293,12 @@ void load_timetable(loader_config const& config,
                         train_nr);
       }
       encode_seq_numbers(trp.seq_numbers_, stop_seq_numbers);
-      trp.trip_idx_ =
-          tt.register_trip_id(trp.id_, src, trp.display_name(tt),
-                              {source_file_idx, trp.from_line_, trp.to_line_},
-                              train_nr, stop_seq_numbers);
+      if (trp.trip_idx_ == trip_idx_t::invalid()) {
+        trp.trip_idx_ =
+            tt.register_trip_id(trp.id_, src, trp.display_name(tt),
+                                {source_file_idx, trp.from_line_, trp.to_line_},
+                                train_nr, stop_seq_numbers);
+      }
     }
 
     auto const timer = scoped_timer{"loader.gtfs.routes.build"};

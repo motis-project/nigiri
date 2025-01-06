@@ -1,6 +1,5 @@
 #pragma once
 
-#include <compare>
 #include <filesystem>
 #include <span>
 #include <type_traits>
@@ -27,6 +26,10 @@
 #include "nigiri/stop.h"
 #include "nigiri/td_footpath.h"
 #include "nigiri/types.h"
+
+#include <utl/get_or_create.h>
+#include <utl/pipes/for_each.h>
+#include <ranges>
 
 namespace nigiri {
 
@@ -137,163 +140,160 @@ struct timetable {
     std::basic_string<route_color> const& route_colors_;
   };
 
-  area_idx register_area(source_idx_t const src,
-                         std::string const& area_id,
-                         std::vector<std::string> const& location_ids) {
-    area_idx new_idx{.location_ = kInvalidAreaIndex,
-                     .location_geojson_ = kInvalidAreaIndex};
-    using geojson_iterator_t = serializable_table<
-        location_geojson_id, cista::strong<unsigned, _location_geojson_idx>,
-        cista::hash_all, cista::equals_all,
-        cista::basic_vector<
-            std::pair<location_geojson_id,
-                      cista::strong<unsigned, _location_geojson_idx>>,
-            cista::raw::ptr>,
-        ankerl::unordered_dense::bucket_type::standard, false>::iterator;
-
-    auto b = geo::box{};
-    for (auto const& l_id : location_ids) {
-      auto const location_idx_iterator =
-          locations_.location_id_to_idx_.find({l_id, src});
-      geojson_iterator_t location_geojson_idx_iterator;
-      if (location_idx_iterator != end(locations_.location_id_to_idx_)) {
-        if (new_idx.location_ == kInvalidAreaIndex) {
-          new_idx.location_ = area_idx_t{area_idx_to_location_idxs_.size()};
-          area_idx_to_location_idxs_.emplace_back(
-              std::vector<location_idx_t>{});
-        }
-        area_idx_to_location_idxs_[new_idx.location_].push_back(
-            location_idx_iterator->second);
-        auto coordinate =
-            locations_.coordinates_[location_idx_iterator->second];
-        b.extend(coordinate);
-      } else if ((location_geojson_idx_iterator =
-                      location_id_to_location_geojson_idx_.find({l_id, src})) !=
-                 end(location_id_to_location_geojson_idx_)) {
-        if (new_idx.location_geojson_ == kInvalidAreaIndex) {
-          new_idx.location_geojson_ =
-              area_idx_t{area_idx_to_location_geojson_idxs_.size()};
-          area_idx_to_location_geojson_idxs_.emplace_back(
-              std::vector<location_geojson_idx_t>{});
-        }
-        area_idx_to_location_geojson_idxs_[new_idx.location_geojson_].push_back(
-            location_geojson_idx_iterator->second);
-        std::vector<point*> points;
-        location_geojson_geometries[location_geojson_idx_iterator->second]
-            .as_points(points);
-        for (auto* p : points) {
-          b.extend(geo::latlng{p->y_, p->x_});
-        }
-      } else {
-        log(log_lvl::error, "timetable",
-            "register_area: unknown location_id \"{}\"", l_id);
-      }
-    }
-    area_rtree_.insert(b.min_.lnglat_float(), b.max_.lnglat_float(), new_idx);
-    area_id_to_area_idx_.emplace(nigiri::area_id{.id_ = area_id, .src_ = src},
-                                 new_idx);
-    return new_idx;
+  area_idx_t register_area(std::string const& area_id,
+                           std::vector<location_idx_t> const& locations) {
+    auto const next_idx = area_idx_t{area_idx_to_location_idxs_.size()};
+    area_idx_to_area_id_.emplace_back(area_id);
+    area_idx_to_location_idxs_.emplace_back(locations);
+    return next_idx;
   }
 
   match_t lookup_td_stops(geo::latlng const& center,
-                          double const max_match_distance) {
+                          double const max_match_distance =
+                              std::numeric_limits<double>::epsilon()) {
     auto radius = max_match_distance;
     if (max_match_distance == 0.0) {
       radius = std::numeric_limits<double>::epsilon();
     }
     auto const b = geo::box{center, radius};
-    match_t matches;
-    area_rtree_.search(
-        b.min_.lnglat_float(), b.max_.lnglat_float(),
-        [&](auto, auto, area_idx const& a) {
-          auto match = area_match{
-              .area_idxs_ = area_idx{kInvalidAreaIndex, kInvalidAreaIndex}};
-          if (a.location_ != kInvalidAreaIndex) {
-            for (auto l_idx : area_idx_to_location_idxs_[a.location_]) {
-              auto const point =
-                  geo::make_box({locations_.coordinates_[l_idx]});
-              if (b.overlaps(point)) {
-                match.area_idxs_.location_ = a.location_;
-                match.locations_.push_back(l_idx);
-              }
-            }
-          }
-          if (a.location_geojson_ != kInvalidAreaIndex) {
-            for (auto g_idx :
-                 area_idx_to_location_geojson_idxs_[a.location_geojson_]) {
-              auto geo = location_geojson_geometries[g_idx];
-              if (geo.intersects(b)) {
-                match.area_idxs_.location_geojson_ = a.location_geojson_;
-                match.location_geojsons_.push_back(g_idx);
-              }
-            }
-          }
-          if (match.area_idxs_.location_ != kInvalidAreaIndex ||
-              match.area_idxs_.location_geojson_ != kInvalidAreaIndex) {
-            matches.push_back(match);
-          }
-          return true;
-        });
+    auto matches = match_t{};
+    geometry_rtree_.search(b.min_.lnglat_float(), b.max_.lnglat_float(),
+                           [&](auto, auto, geometry_idx_t const& g_idx) {
+                             if (geometry_[g_idx].intersects(b)) {
+                               matches.push_back(g_idx);
+                             }
+                             return true;
+                           });
     return matches;
   }
 
-  match_t lookup_td_stops(geo::latlng const& c) {
-    return lookup_td_stops(c, 0.0);
-  }
-
-  location_geojson_idx_t register_location_geojson(source_idx_t const src,
-                                                   std::string const& id,
-                                                   tg_geom const* geometry) {
-    auto const next_idx =
-        location_geojson_idx_t{location_geojson_geometries.size()};
+  geometry_idx_t register_geometry(tg_geom const* geometry) {
+    auto const next_idx = geometry_idx_t{geometry_.size()};
     auto const type = tg_geom_typeof(geometry);
     tg_poly const* poly;
     switch (type) {
       case TG_POINT:
         auto const p = tg_geom_point(geometry);
-        location_geojson_geometries.push_back(
-            point_to_multipolygon(point{p.x, p.y}));
+        geometry_.push_back(point_to_multipolygon(point{p.x, p.y}));
         break;
       case TG_POLYGON:
         poly = tg_geom_poly(geometry);
-        location_geojson_geometries.push_back(
-            polygon_to_multipolygon(create_polygon(poly)));
+        geometry_.push_back(polygon_to_multipolygon(create_polygon(poly)));
         break;
       case TG_MULTIPOLYGON:
-        location_geojson_geometries.push_back(create_multipolygon(geometry));
+        geometry_.push_back(create_multipolygon(geometry));
         break;
       default: {
-        log(log_lvl::error, "timetable.register_location_geojson",
-            "Unkown tg_geometry type {}", static_cast<int>(type));
+        log(log_lvl::error, "timetable.register_geometry",
+            "Unknown tg_geometry type {}", static_cast<int>(type));
       }
     }
-
-    location_id_to_location_geojson_idx_.emplace(
-        location_geojson_id{.id_ = id, .src_ = src}, next_idx);
+    geometry_idx_to_trip_idxs_.emplace_back(std::vector<trip_idx_t>{});
+    auto b = geo::box{};
+    std::vector<point*> points;
+    geometry_[next_idx].as_points(points);
+    for (auto* p : points) {
+      b.extend(geo::latlng{p->y_, p->x_});
+    }
+    geometry_rtree_.insert(b.min_.lnglat_float(), b.max_.lnglat_float(),
+                           next_idx);
     return next_idx;
   }
 
-  location_trip_idx_t register_location_trip(
-      source_idx_t const src,
-      std::string const& location_id,
-      std::string const& trip_id,
-      pickup_dropoff_type pickup_type,
-      pickup_dropoff_type dropoff_type,
+  template <typename Fn>
+  void calculate_geometry_durations(Fn& calc_duration) {
+    hash_map<trip_idx_t, std::vector<geometry_idx_t>> trip_to_geos;
+    auto const size = geometry_idx_to_trip_idxs_.size();
+    for (auto i = 0; i < size; ++i) {
+      auto const g_idx = geometry_idx_t{i};
+      for (auto t : geometry_idx_to_trip_idxs_[g_idx]) {
+        auto& el = utl::get_or_create(
+            trip_to_geos, t, [] { return std::vector<geometry_idx_t>{}; });
+        el.push_back(g_idx);
+      }
+    }
+
+    geometry_duration_.clear();
+    geometry_duration_.resize(size);
+    for (auto i = 0; i < size; ++i) {
+      auto geo_idx = geometry_idx_t{i};
+      for (auto j = 0; j < size; ++j) {
+        geometry_duration_[geo_idx].push_back(duration_t::max());
+      }
+    }
+
+    for (const auto& geos : trip_to_geos.values() | std::views::values) {
+      std::for_each(geos.begin(), geos.end(), [&](auto const& start) {
+        for (auto i = 0; i < geos.size(); ++i) {
+          auto const& end = geos[i];
+          if (start == end) {
+            geometry_duration_[start][i] = duration_t::zero();
+          } else if (geometry_duration_.at(start).at(i) == duration_t::max()) {
+            auto const& startpoint = geometry_.at(start).get_center();
+            auto const& endpoint = geometry_.at(end).get_center();
+            geometry_duration_[start][i] = calc_duration(startpoint, endpoint);
+          }
+        }
+      });
+    }
+  }
+
+  geometry_trip_idx_t register_geometry_trip(
+      geometry_idx_t const geo_idx,
+      trip_idx_t const trip_idx,
+      pickup_dropoff_type const pickup_type,
+      pickup_dropoff_type const dropoff_type,
       stop_window const& stop_windows,
-      booking_rule_idx_t const pickup_booking_rule_id = kInvalidBookingRuleIdx,
+      booking_rule_idx_t const pickup_booking_rule_id =
+          booking_rule_idx_t::invalid(),
       booking_rule_idx_t const dropoff_booking_rule_id =
-          kInvalidBookingRuleIdx) {
-    auto const next_idx = location_trip_idx_t{window_times_.size()};
+          booking_rule_idx_t::invalid()) {
+    if (geo_idx == geometry_idx_t::invalid()) {
+      log(log_lvl::error, "timetable.register_location_trip",
+          "geometry_idx is invalid");
+      return geometry_trip_idx_t::invalid();
+    }
+    if (trip_idx == trip_idx_t::invalid()) {
+      log(log_lvl::error, "timetable.register_location_trip",
+          "trip_idx is invalid");
+      return geometry_trip_idx_t::invalid();
+    }
+
+    auto const next_idx = geometry_trip_idx_t{window_times_.size()};
     pickup_types_.emplace_back(pickup_type);
     dropoff_types_.emplace_back(dropoff_type);
     window_times_.emplace_back(stop_windows);
     pickup_booking_rules_.emplace_back(pickup_booking_rule_id);
     dropoff_booking_rules_.emplace_back(dropoff_booking_rule_id);
-    location_trip_id_to_idx.emplace(
-        location_trip_id{
-            .location_id_ = location_id, .trip_id_ = trip_id, .src_ = src},
-        next_idx);
+    geometry_trip_idxs_.emplace(geometry_trip_idx{trip_idx, geo_idx}, next_idx);
+
+    // Should be improved by implementing .erase function to base_vec and using
+    // std::unique
+    if (std::find(geometry_idx_to_trip_idxs_[geo_idx].begin(),
+                  geometry_idx_to_trip_idxs_[geo_idx].end(),
+                  trip_idx) == geometry_idx_to_trip_idxs_[geo_idx].end()) {
+      geometry_idx_to_trip_idxs_[geo_idx].push_back(trip_idx);
+    }
     return next_idx;
+  }
+
+  template <typename TripId>
+  trip_idx_t register_trip_id(TripId const& trip_id_str,
+                              source_idx_t const src,
+                              std::string const& display_name,
+                              trip_debug const dbg) {
+    auto const trip_idx = trip_idx_t{trip_ids_.size()};
+
+    auto const trip_id_idx = trip_id_idx_t{trip_id_strings_.size()};
+    trip_id_strings_.emplace_back(trip_id_str);
+    trip_id_src_.emplace_back(src);
+
+    trip_id_to_idx_.emplace_back(trip_id_idx, trip_idx);
+    trip_display_names_.emplace_back(display_name);
+    trip_debug_.emplace_back().emplace_back(dbg);
+    trip_ids_.emplace_back().emplace_back(trip_id_idx);
+
+    return trip_idx;
   }
 
   template <typename TripId>
@@ -396,8 +396,7 @@ struct timetable {
   booking_rule_idx_t register_booking_rule(std::string const& id,
                                            booking_rule&& b) {
     auto const idx = booking_rules_.size();
-    booking_rules_.emplace_back(std::move(b));
-    // booking_rule_id_to_idx.emplace(id, b);
+    booking_rules_.emplace_back(b);
     return booking_rule_idx_t{idx};
   }
 
@@ -610,8 +609,7 @@ struct timetable {
   //  stop-1-dep: [...]
   // ...
   // RouteN: ...
-  vector_map<route_idx_t, interval<std::uint32_t>>
-      route_stop_time_ranges_;  // std::uint32_t -> trip_idx_t
+  vector_map<route_idx_t, interval<std::uint32_t>> route_stop_time_ranges_;
   vector<delta> route_stop_times_;
 
   // Offset between the stored time and the time given in the GTFS timetable.
@@ -667,16 +665,14 @@ struct timetable {
 
   /* GTFS-Flex */
   // areas
-  hash_map<area_id, area_idx> area_id_to_area_idx_;
+  vecvec<area_idx_t, char> area_idx_to_area_id_;
   vecvec<area_idx_t, location_idx_t> area_idx_to_location_idxs_;
-  vecvec<area_idx_t, location_geojson_idx_t> area_idx_to_location_geojson_idxs_;
-  cista::raw::rtree<area_idx> area_rtree_;
 
   // location geojson
-  hash_map<location_geojson_id, location_geojson_idx_t>
-      location_id_to_location_geojson_idx_;
-  vector_map<location_geojson_idx_t, source_idx_t> location_geojson_src_;
-  vector_map<location_geojson_idx_t, multipolgyon> location_geojson_geometries;
+  vector_map<geometry_idx_t, multipolgyon> geometry_;
+  vecvec<geometry_idx_t, trip_idx_t> geometry_idx_to_trip_idxs_;
+  cista::raw::rtree<geometry_idx_t> geometry_rtree_;
+  vecvec<geometry_idx_t, duration_t> geometry_duration_;
 
   // booking rules
   hash_map<string, booking_rule_idx_t> booking_rule_id_to_idx;
@@ -684,12 +680,12 @@ struct timetable {
   vector_map<booking_rule_idx_t, booking_rule> booking_rules_;
 
   // stop times
-  hash_map<location_trip_id, location_trip_idx_t> location_trip_id_to_idx;
-  vector_map<location_trip_idx_t, stop_window> window_times_;
-  vector_map<location_trip_idx_t, booking_rule_idx_t> pickup_booking_rules_;
-  vector_map<location_trip_idx_t, booking_rule_idx_t> dropoff_booking_rules_;
-  vector_map<location_trip_idx_t, pickup_dropoff_type> pickup_types_;
-  vector_map<location_trip_idx_t, pickup_dropoff_type> dropoff_types_;
+  hash_map<geometry_trip_idx, geometry_trip_idx_t> geometry_trip_idxs_;
+  vector_map<geometry_trip_idx_t, stop_window> window_times_;
+  vector_map<geometry_trip_idx_t, booking_rule_idx_t> pickup_booking_rules_;
+  vector_map<geometry_trip_idx_t, booking_rule_idx_t> dropoff_booking_rules_;
+  vector_map<geometry_trip_idx_t, pickup_dropoff_type> pickup_types_;
+  vector_map<geometry_trip_idx_t, pickup_dropoff_type> dropoff_types_;
 };
 
 }  // namespace nigiri

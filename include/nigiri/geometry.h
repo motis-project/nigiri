@@ -3,7 +3,6 @@
 #include <cista/containers/vector.h>
 #include <geo/box.h>
 #include <tg.h>
-#include <utl/pipes/transform.h>
 #include <tuple>
 
 namespace nigiri {
@@ -64,8 +63,6 @@ struct polygon {
     }
   }
 
-  // bool is_within(geo::box const& b) const;
-
   bool intersects(geo::box const& b) const;
 
   void as_points(std::vector<point*>& points) { exterior_.as_points(points); }
@@ -101,11 +98,11 @@ struct multipolgyon {
     }
   }
 
+  geo::latlng get_center();
+
   tg_geom* to_tg_geom();
 
   bool intersects(geo::box const& b) const;
-
-  // bool is_within(geo::box const& b) const;
 
   auto cista_members() { return std::tie(polygons_, original_type_); }
   vector<polygon> polygons_;

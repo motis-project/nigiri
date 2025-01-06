@@ -40,7 +40,7 @@ TEST(gtfs, booking_rule) {
       EXPECT_EQ(booking_rule.prior_notice_last_time_, kInterpolate);
       EXPECT_EQ(booking_rule.prior_notice_start_day_, 0);
       EXPECT_EQ(booking_rule.prior_notice_start_time_, kInterpolate);
-      EXPECT_EQ(booking_rule.bitfield_idx_, kInvalidBitfieldIdx);
+      EXPECT_EQ(booking_rule.bitfield_idx_, bitfield_idx_t::invalid());
     });
   };
 
@@ -59,7 +59,7 @@ TEST(gtfs, booking_rule) {
     EXPECT_EQ(booking_rule.prior_notice_last_time_, kInterpolate);
     EXPECT_EQ(booking_rule.prior_notice_start_day_, 0);
     EXPECT_EQ(booking_rule.prior_notice_start_time_, kInterpolate);
-    EXPECT_EQ(booking_rule.bitfield_idx_, kInvalidBitfieldIdx);
+    EXPECT_EQ(booking_rule.bitfield_idx_, bitfield_idx_t::invalid());
   });
 
   ASSERT_NO_THROW({
@@ -73,7 +73,7 @@ TEST(gtfs, booking_rule) {
     EXPECT_EQ(booking_rule.prior_notice_last_time_, kInterpolate);
     EXPECT_EQ(booking_rule.prior_notice_start_day_, 0);
     EXPECT_EQ(booking_rule.prior_notice_start_time_, kInterpolate);
-    EXPECT_EQ(booking_rule.bitfield_idx_, kInvalidBitfieldIdx);
+    EXPECT_EQ(booking_rule.bitfield_idx_, bitfield_idx_t::invalid());
   });
 
   ASSERT_NO_THROW({
@@ -87,7 +87,7 @@ TEST(gtfs, booking_rule) {
     EXPECT_EQ(booking_rule.prior_notice_last_time_, kInterpolate);
     EXPECT_EQ(booking_rule.prior_notice_start_day_, 0);
     EXPECT_EQ(booking_rule.prior_notice_start_time_, kInterpolate);
-    EXPECT_EQ(booking_rule.bitfield_idx_, kInvalidBitfieldIdx);
+    EXPECT_EQ(booking_rule.bitfield_idx_, bitfield_idx_t::invalid());
   });
 
   // Prior-Days-Booking
@@ -102,7 +102,7 @@ TEST(gtfs, booking_rule) {
     EXPECT_EQ(booking_rule.prior_notice_last_time_, hhmm_to_min("12:00:00"));
     EXPECT_EQ(booking_rule.prior_notice_start_day_, 0);
     EXPECT_EQ(booking_rule.prior_notice_start_time_, kInterpolate);
-    EXPECT_EQ(booking_rule.bitfield_idx_, kInvalidBitfieldIdx);
+    EXPECT_EQ(booking_rule.bitfield_idx_, bitfield_idx_t::invalid());
   });
 
   ASSERT_NO_THROW({
@@ -116,7 +116,7 @@ TEST(gtfs, booking_rule) {
     EXPECT_EQ(booking_rule.prior_notice_last_time_, hhmm_to_min("18:00:00"));
     EXPECT_EQ(booking_rule.prior_notice_start_day_, 7);
     EXPECT_EQ(booking_rule.prior_notice_start_time_, hhmm_to_min("18:00:00"));
-    EXPECT_EQ(booking_rule.bitfield_idx_, kInvalidBitfieldIdx);
+    EXPECT_EQ(booking_rule.bitfield_idx_, bitfield_idx_t::invalid());
   });
 
   ASSERT_NO_THROW({
@@ -130,6 +130,6 @@ TEST(gtfs, booking_rule) {
     EXPECT_EQ(booking_rule.prior_notice_last_time_, hhmm_to_min("00:00:00"));
     EXPECT_EQ(booking_rule.prior_notice_start_day_, 30);
     EXPECT_EQ(booking_rule.prior_notice_start_time_, hhmm_to_min("08:00:00"));
-    EXPECT_NE(booking_rule.bitfield_idx_, kInvalidBitfieldIdx);
+    EXPECT_NE(booking_rule.bitfield_idx_, bitfield_idx_t::invalid());
   });
 }

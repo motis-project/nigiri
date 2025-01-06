@@ -131,12 +131,9 @@ template <typename Key, typename T>
 using paged_vecvec = mmap_paged_vecvec_helper<Key, T>::type;
 
 using bitfield_idx_t = cista::strong<std::uint32_t, struct _bitfield_idx>;
-auto constexpr kInvalidBitfieldIdx = bitfield_idx_t{UINT32_MAX};
 using location_idx_t = cista::strong<std::uint32_t, struct _location_idx>;
-using location_geojson_idx_t =
-    cista::strong<std::uint32_t, struct _location_geojson_idx>;
+using geometry_idx_t = cista::strong<std::uint32_t, struct _geometry_idx>;
 using area_idx_t = cista::strong<std::uint32_t, struct _area_idx>;
-area_idx_t const kInvalidAreaIndex = area_idx_t{UINT32_MAX};
 using area_element_idx_t = cista::strong<std::uint32_t, struct _area_idx>;
 using route_idx_t = cista::strong<std::uint32_t, struct _route_idx>;
 using section_idx_t = cista::strong<std::uint32_t, struct _section_idx>;
@@ -180,7 +177,6 @@ using attribute_combination_idx_t =
 using provider_idx_t = cista::strong<std::uint32_t, struct _provider_idx>;
 using booking_rule_idx_t =
     cista::strong<std::uint32_t, struct _booking_rule_idx>;
-auto constexpr kInvalidBookingRuleIdx = booking_rule_idx_t{MAXUINT32};
 
 using shapes_storage_t = mm_vecvec<shape_idx_t, geo::latlng>;
 using transport_range_t = pair<transport_idx_t, interval<stop_idx_t>>;
@@ -220,43 +216,31 @@ struct trip_id {
   source_idx_t src_;
 };
 
-struct area_idx {
+using match_t = std::vector<geometry_idx_t>;
+
+struct geometry_id {
   CISTA_COMPARABLE()
-  area_idx_t location_;
-  area_idx_t location_geojson_;
-};
-
-struct area_match {
-  area_idx area_idxs_;
-  std::vector<location_idx_t> locations_;
-  std::vector<location_geojson_idx_t> location_geojsons_;
-};
-
-using match_t = std::vector<area_match>;
-
-struct area_id {
-  CISTA_COMPARABLE()
-  CISTA_PRINTABLE(area_id, "id", "src")
+  CISTA_PRINTABLE(geometry_id, "id", "src")
   string id_;
   source_idx_t src_;
 };
 
-struct location_geojson_id {
+struct geometry_trip_idx {
   CISTA_COMPARABLE()
-  CISTA_PRINTABLE(location_geojson_id, "id", "src")
-  string id_;
-  source_idx_t src_;
+  CISTA_PRINTABLE(geometry_trip_idx, "trip_idx", "geometry_idx")
+  trip_idx_t trip_idx_;
+  geometry_idx_t geometry_idx_;
 };
 
-struct location_trip_id {
+struct geometry_trip_id {
   CISTA_COMPARABLE()
-  CISTA_PRINTABLE(location_trip_id, "location_id", "trip_id", "src")
-  string location_id_;
+  CISTA_PRINTABLE(geometry_trip_id, "geometry_id", "trip_id", "src")
+  string geometry_id_;
   string trip_id_;
   source_idx_t src_;
 };
 
-using location_trip_idx_t =
+using geometry_trip_idx_t =
     cista::strong<std::uint32_t, struct _locationtrip_idx_t>;
 
 struct location_id {

@@ -110,12 +110,12 @@ TEST(gtfs, read_stop_times_example_data) {
 TEST(gtfs, read_stop_times_gtfs_flex_example_data) {
   auto const files = example_files();
 
+  auto const src = source_idx_t{0};
+
   timetable tt;
   tt.date_range_ = interval{date::sys_days{July / 1 / 2006},
                             date::sys_days{August / 1 / 2006}};
   tz_map timezones;
-
-  source_idx_t src{0};
 
   auto const config = loader_config{};
   auto agencies =
@@ -134,8 +134,8 @@ TEST(gtfs, read_stop_times_gtfs_flex_example_data) {
                                 files.get_file(kStopFile).data(),
                                 files.get_file(kTransfersFile).data(), 0U);
 
-  auto const location_geojsons = read_location_geojson(
-      src, tt, files.get_file(kLocationGeojsonFile).data());
+  auto const location_geojsons =
+      read_location_geojson(tt, files.get_file(kLocationGeojsonFile).data());
 
   auto booking_rule_calendar =
       read_calendar(files.get_file(kBookingRuleCalendarFile).data());
@@ -148,62 +148,59 @@ TEST(gtfs, read_stop_times_gtfs_flex_example_data) {
   auto const booking_rules = read_booking_rules(
       booking_rule_services, tt, files.get_file(kBookingRulesFile).data());
 
-  read_stop_times(src, tt, trip_data, stops, booking_rules,
+  read_stop_times(tt, src, trip_data, location_geojsons, stops, booking_rules,
                   files.get_file(kStopTimesGTFSFlexFile).data());
 
   auto const test_stop_time =
-      [&](std::string const& location_id, std::string const& trip_id,
+      [&](std::string const& geo_id, std::string const& trip_id,
+          std::initializer_list<std::string> const expected_trips,
           stop_window&& expected_window, booking_rule_idx_t expected_pickup,
           booking_rule_idx_t expected_dropoff,
           pickup_dropoff_type expected_pickup_type,
           pickup_dropoff_type expected_dropoff_type) {
-        ASSERT_NO_THROW({
-          auto const idx = tt.location_trip_id_to_idx.at(
-              location_trip_id{location_id, trip_id, src});
 
-          EXPECT_EQ(tt.window_times_.at(idx).start_, expected_window.start_);
-          EXPECT_EQ(tt.window_times_.at(idx).end_, expected_window.end_);
-          EXPECT_EQ(tt.pickup_booking_rules_.at(idx), expected_pickup);
-          EXPECT_EQ(tt.dropoff_booking_rules_.at(idx), expected_dropoff);
-          EXPECT_EQ(tt.pickup_types_.at(idx), expected_pickup_type);
-          EXPECT_EQ(tt.dropoff_types_.at(idx), expected_dropoff_type);
-        });
+        auto const gtfs_trip_idx = trip_data.trips_[trip_id];
+        auto const trip_idx = trip_data.data_[gtfs_trip_idx].trip_idx_;
+        auto const geo_idx = location_geojsons.at(geo_id);
+
+        ASSERT_LT(geo_idx.v_, tt.geometry_idx_to_trip_idxs_.size());
+        ASSERT_EQ(tt.geometry_idx_to_trip_idxs_[geo_idx].size(),
+                  expected_trips.size());
+        for (auto i = 0; i < expected_trips.size(); ++i) {
+          auto const id = *(expected_trips.begin() + i);
+          auto const gtfs_t_idx = trip_data.trips_[id];
+          auto t_idx = trip_data.data_[gtfs_t_idx].trip_idx_;
+          EXPECT_EQ(tt.geometry_idx_to_trip_idxs_[geo_idx][i], t_idx);
+        }
+
+        geometry_trip_idx gt_idx;
+        gt_idx = geometry_trip_idx{trip_idx, geo_idx};
+        auto idx = tt.geometry_trip_idxs_[gt_idx];
+
+        EXPECT_EQ(tt.window_times_.at(idx).start_, expected_window.start_);
+        EXPECT_EQ(tt.window_times_.at(idx).end_, expected_window.end_);
+        EXPECT_EQ(tt.pickup_booking_rules_.at(idx), expected_pickup);
+        EXPECT_EQ(tt.dropoff_booking_rules_.at(idx), expected_dropoff);
+        EXPECT_EQ(tt.pickup_types_.at(idx), expected_pickup_type);
+        EXPECT_EQ(tt.dropoff_types_.at(idx), expected_dropoff_type);
       };
-
   auto const br_idx_3 = booking_rules.at("3");
   auto const br_idx_4 = booking_rules.at("4");
   auto const br_idx_5 = booking_rules.at("5");
-  auto const br_idx_7 = booking_rules.at("7");
-  auto const br_idx_9 = booking_rules.at("9");
 
-  test_stop_time("S1", "AWE1",
+  test_stop_time("l_geo_1", "AWE1", {"AWE1", "AWD1"},
                  stop_window{hhmm_to_min("06:00:00"), hhmm_to_min("19:00:00")},
-                 kInvalidBookingRuleIdx, kInvalidBookingRuleIdx,
+                 booking_rule_idx_t::invalid(), booking_rule_idx_t::invalid(),
                  kPhoneAgencyType, kCoordinateWithDriverType);
-  test_stop_time("S2", "AWE1",
-                 stop_window{hhmm_to_min("06:00:00"), hhmm_to_min("19:00:00")},
-                 kInvalidBookingRuleIdx, kInvalidBookingRuleIdx,
-                 kPhoneAgencyType, kCoordinateWithDriverType);
-  test_stop_time("l_geo_1", "AWE1",
-                 stop_window{hhmm_to_min("06:00:00"), hhmm_to_min("19:00:00")},
-                 kInvalidBookingRuleIdx, kInvalidBookingRuleIdx,
-                 kPhoneAgencyType, kCoordinateWithDriverType);
-  test_stop_time("l_geo_2", "AWE1",
+  test_stop_time("l_geo_2", "AWE1", {"AWE1"},
                  stop_window{hhmm_to_min("08:00:00"), hhmm_to_min("20:00:00")},
                  br_idx_3, br_idx_3, kPhoneAgencyType, kPhoneAgencyType);
-  test_stop_time("l_geo_3", "AWD1",
+  test_stop_time("l_geo_3", "AWD1", {"AWD1"},
                  stop_window{hhmm_to_min("11:00:00"), hhmm_to_min("17:00:00")},
                  br_idx_3, br_idx_3, kPhoneAgencyType, kPhoneAgencyType);
-  test_stop_time("l_g_1", "AWD1",
+  test_stop_time("l_geo_1", "AWD1", {"AWE1", "AWD1"},
                  stop_window{hhmm_to_min("10:00:00"), hhmm_to_min("19:00:00")},
-                 br_idx_4, br_idx_5, kPhoneAgencyType, kPhoneAgencyType);
-  test_stop_time("a_3", "AWD1",
-                 stop_window{hhmm_to_min("06:00:00"), hhmm_to_min("15:00:00")},
-                 br_idx_7, br_idx_7, kPhoneAgencyType, kPhoneAgencyType);
-  test_stop_time("S8", "AWD1",
-                 stop_window{hhmm_to_min("14:00:00"), hhmm_to_min("21:00:00")},
-                 br_idx_9, kInvalidBookingRuleIdx, kPhoneAgencyType,
-                 kUnavailableType);
+                 br_idx_4, br_idx_5, kPhoneAgencyType, kUnavailableType);
 }
 
 }  // namespace nigiri::loader::gtfs

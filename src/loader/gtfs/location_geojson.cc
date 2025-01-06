@@ -9,8 +9,7 @@
 #include <nigiri/timetable.h>
 
 namespace nigiri::loader::gtfs {
-location_geojson_map_t read_location_geojson(source_idx_t src,
-                                             timetable& tt,
+location_geojson_map_t read_location_geojson(timetable& tt,
                                              std::string_view file_content) {
   location_geojson_map_t location_geojson{};
 
@@ -59,7 +58,7 @@ location_geojson_map_t read_location_geojson(source_idx_t src,
       continue;
     }
 
-    const auto idx = tt.register_location_geojson(src, id, geometry);
+    const auto idx = tt.register_geometry(geometry);
     location_geojson.emplace(id, idx);
   }
   return location_geojson;

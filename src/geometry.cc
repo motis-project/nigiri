@@ -144,10 +144,10 @@ tg_geom* multipolgyon::to_tg_geom() {
     case TG_POLYGON:
       return reinterpret_cast<tg_geom*>(
           create_tg_poly(polygon_from_multipolygon(*this)));
-    case TG_MULTIPOLYGON:
+    case TG_MULTIPOLYGON: return create_tg_multipoly(*this);
     default: {
-      // log(log_lvl::error, "loader.geometry.to_tg_geom", "Unkown type {}",
-      //     static_cast<int>(original_type_));
+      log(log_lvl::error, "loader.geometry.to_tg_geom", "Unknown type {}",
+          static_cast<int>(original_type_));
       return nullptr;
     }
   }
@@ -184,36 +184,11 @@ bool multipolgyon::intersects(geo::box const& b) const {
   return result;
 }
 
-// bool polygon::is_within(geo::box const& b) const {
-//   auto points = {{tg_point{b.min_.lat(), b.min_.lng()},
-//                   tg_point{b.max_.lat(), b.min_.lng()},
-//                   tg_point{b.max_.lat(), b.max_.lng()},
-//                   tg_point{b.min_.lat(), b.max_.lng()},
-//                   tg_point{b.min_.lat(), b.min_.lng()}}};
-//   auto* p = &points[0];
-//   auto tg_box = tg_poly_new(tg_ring_new(p, 5));
-//
-//   auto const poly = reinterpret_cast<tg_geom*>(create_tg_poly(*this));
-//   bool const result = tg_geom_within(poly, tg_box);
-//   tg_geom_free(poly);
-//   tg_geom_free(tg_box);
-//   return result;
-// }
-//
-// bool multipolgyon::is_within(geo::box const& b) const {
-//   auto points = {{tg_point{b.min_.lat(), b.min_.lng()},
-//                   tg_point{b.max_.lat(), b.min_.lng()},
-//                   tg_point{b.max_.lat(), b.max_.lng()},
-//                   tg_point{b.min_.lat(), b.max_.lng()},
-//                   tg_point{b.min_.lat(), b.min_.lng()}}};
-//   auto* p = &points[0];
-//   auto tg_box = tg_poly_new(tg_ring_new(p, 5));
-//
-//   auto const multi = create_tg_multipoly(*this);
-//   bool const result = tg_geom_within(multi, tg_box);
-//   tg_geom_free(multi);
-//   tg_geom_free(tg_box);
-//   return result;
-// }
+geo::latlng multipolgyon::get_center() {
+  auto const tg = to_tg_geom();
+  auto [x, y] = tg_geom_point(tg);
+  tg_geom_free(tg);
+  return geo::latlng{.lat_ = y, .lng_ = x};
+}
 
 };  // namespace nigiri

@@ -94,10 +94,16 @@ AWE1,,,S2,,,,,06:00:00,19:00:00,,,,2,3
 AWE1,,,,,,l_geo_1,,06:00:00,19:00:00,,,,2,3
 AWE1,,,,,,l_geo_2,,08:00:00,20:00:00,3,3,,2,2
 AWD1,,,,,,l_geo_3,,11:00:00,17:00:00,3,3,,2,2
-AWD1,,,,l_g_1,,,,10:00:00,19:00:00,4,5,,2,2
+AWD1,,,,,,l_geo_1,,10:00:00,19:00:00,4,5,,2,1
 AWD1,,,,,a_3,,,06:00:00,15:00:00,7,7,,2,2
 AWD1,,,S8,,,,,14:00:00,21:00:00,9,,,2,1
 )";
+
+constexpr auto const example_calculation_stop_times_content =
+    R"(trip_id,arrival_time,departure_time,stop_id,location_group_id,area_id,location_id,stop_sequence,start_pickup_drop_off_window,end_pickup_drop_off_window,pickup_booking_rule_id,drop_off_booking_rule_id,stop_headsign,pickup_type,drop_off_type
+AWE1,,,,,,l_geo_1,,06:00:00,19:00:00,,,,2,2
+AWE1,,,,,,l_geo_2,,08:00:00,20:00:00,,,,2,2
+AWE1,,,,,,l_geo_3,,11:00:00,17:00:00,,,,2,2)";
 
 constexpr auto const example_booking_rules_content =
     R"(booking_rule_id,booking_type,prior_notice_duration_min,prior_notice_duration_max,prior_notice_last_day,prior_notice_last_time,prior_notice_start_day,prior_notice_start_time,prior_notice_service_id
@@ -130,6 +136,14 @@ service_1,20241228,1
 service_1,20241229,1
 service_1,20241231,2
 )";
+
+constexpr auto const example_calculate_duration_stop_times_content =
+    R"(trip_id,location_id,start_pickup_drop_off_window,end_pickup_drop_off_window,pickup_type,drop_off_type
+AWE1,l_geo_1,08:00:00,20:00:00,2,2
+AWE1,l_geo_2,08:00:00,20:00:00,2,2
+AWE1,l_geo_3,08:00:00,20:00:00,2,2
+AWD1,l_geo_1,08:00:00,20:00:00,2,2
+AWD1,l_geo_2,08:00:00,20:00:00,2,2)";
 
 constexpr auto const example_location_geojsons_content =
     R"({
@@ -201,9 +215,8 @@ constexpr auto const example_location_groups_content =
     R"(location_group_id,location_id
 l_g_1,S1
 l_g_1,S2
-l_g_1,l_geo_1
-l_g_1,l_geo_2
-l_g_2,l_geo_3
+l_g_2,S2
+l_g_2,S3
 l_g_3,S4
 )";
 
@@ -234,106 +247,117 @@ a_3,S7
 a_3,S8
 )";
 
-constexpr auto const example_rtree_stops_content = R"(stop_id,stop_lat,stop_lon
-Amsterdam,52.37980421231532,4.894331113707807
-Frankfurt,50.108966514429596,8.687370378495103
-Muenchen,48.13977960466778,11.572389926278788
-Stuttgart,48.78106035877934,9.174858910926702
-Nuernberg,49.45660607952482,11.068864156396245
-)";
+// constexpr auto const example_rtree_stops_content =
+// R"(stop_id,stop_lat,stop_lon Amsterdam,52.37980421231532,4.894331113707807
+// Frankfurt,50.108966514429596,8.687370378495103
+// Muenchen,48.13977960466778,11.572389926278788
+// Stuttgart,48.78106035877934,9.174858910926702
+// Nuernberg,49.45660607952482,11.068864156396245
+// )";
 
-constexpr auto const example_rtree_location_groups_content =
-    R"(location_group_id,location_id
-l_g_1,Brandenburg
-l_g_2,Duesseldorf-Umgebung
-l_g_2,Amsterdam
-l_g_2,Frankfurt
-l_g_3,Muenchen
-l_g_3,Stuttgart
-l_g_3,Nuernberg
-l_g_4,Wien-Umgebung
-l_g_5,Wien-Umgebung2
-)";
+// constexpr auto const example_rtree_location_groups_content =
+//     R"(location_group_id,location_id
+// l_g_1,Brandenburg
+// l_g_2,Duesseldorf-Umgebung
+// l_g_2,Amsterdam
+// l_g_2,Frankfurt
+// l_g_3,Muenchen
+// l_g_3,Stuttgart
+// l_g_3,Nuernberg
+// l_g_4,Wien-Umgebung
+// l_g_5,Wien-Umgebung2
+// )";
 
 constexpr auto const example_rtree_location_geojson_content = R"(
 {
   "type": "FeatureCollection",
   "features": [
     {
+      "id": "Hamburg",
       "type": "Feature",
-      "id": "Brandenburg",
       "geometry": {
         "coordinates": [
           [
             [
-              14.43213958293137,
-              53.25693385473642
+              9.751770519805689,
+              53.62584100789584
             ],
             [
-              11.279301993749755,
-              53.11265675625097
+              9.762410640626797,
+              53.43409438157471
             ],
             [
-              10.693315343603132,
-              51.64776304007273
+              10.287026505159702,
+              53.45521050190814
             ],
             [
-              11.798760447151835,
-              51.04145377887218
+              10.191300654742008,
+              53.73918552803653
             ],
             [
-              12.716653590734552,
-              50.88988753931426
+              9.751770519805689,
+              53.62584100789584
+            ]
+          ]
+        ],
+        "type": "Polygon"
+      }
+    },
+    {
+      "id": "Brandenburg",
+      "type": "Feature",
+      "geometry": {
+        "coordinates": [
+          [
+            [
+              12.260542414487588,
+              52.91034192621956
             ],
             [
-              11.87429774862801,
-              50.44192517637538
+              12.361251119686358,
+              52.01276913741299
             ],
             [
-              12.295550152799763,
-              50.206650709569374
+              14.184948884937711,
+              51.757954680446744
             ],
             [
-              14.951014011686766,
-              51.00365598647906
+              14.170654247805032,
+              52.884287411589696
             ],
             [
-              14.597666069434041,
-              52.342541193460164
+              12.673244396164591,
+              53.09228501155809
             ],
             [
-              14.43213958293137,
-              53.25693385473642
+              12.260542414487588,
+              52.91034192621956
             ]
           ],
           [
             [
-              13.243247234630786,
-              52.63120535418105
+              13.477216663102496,
+              52.66526132418906
             ],
             [
-              13.077704937438853,
-              52.562651145433165
+              13.138236580197173,
+              52.583571451783115
             ],
             [
-              13.077702806447178,
-              52.43897716344631
+              13.109761306575024,
+              52.40551151503061
             ],
             [
-              13.679670830804781,
-              52.36092568183406
+              13.684321195944989,
+              52.366021619324215
             ],
             [
-              13.747391501574526,
-              52.44356046588726
+              13.780077450022617,
+              52.44496868885096
             ],
             [
-              13.484031433607328,
-              52.66315992883648
-            ],
-            [
-              13.243247234630786,
-              52.63120535418105
+              13.477216663102496,
+              52.66526132418906
             ]
           ]
         ],
@@ -341,30 +365,101 @@ constexpr auto const example_rtree_location_geojson_content = R"(
       }
     },
     {
+      "id": "Duesseldorf-Dortmund",
       "type": "Feature",
-      "id": "Duesseldorf-Umgebung",
+      "properties": {},
       "geometry": {
         "coordinates": [
           [
             [
-              5.409550988547295,
-              52.116365734812945
+              [
+                6.540826947576335,
+                51.331274150875856
+              ],
+              [
+                6.433150247191662,
+                51.18737679292502
+              ],
+              [
+                6.6175347700291525,
+                50.95044724567808
+              ],
+              [
+                6.994557634811912,
+                51.02475037797447
+              ],
+              [
+                7.164627300593793,
+                51.26539739757342
+              ],
+              [
+                6.540826947576335,
+                51.331274150875856
+              ]
+            ]
+          ],
+          [
+            [
+              [
+                7.14167635117289,
+                51.638322419138916
+              ],
+              [
+                6.965604834201457,
+                51.451511031185504
+              ],
+              [
+                7.359210445505624,
+                51.34042253405107
+              ],
+              [
+                7.901673906934974,
+                51.455402887313
+              ],
+              [
+                7.647158692768556,
+                51.66659704075761
+              ],
+              [
+                7.14167635117289,
+                51.638322419138916
+              ]
+            ]
+          ]
+        ],
+        "type": "MultiPolygon"
+      }
+    },
+    {
+      "id": "Frankfurt",
+      "type": "Feature",
+      "properties": {},
+      "geometry": {
+        "coordinates": [
+          [
+            [
+              8.668459051176455,
+              50.18655020999668
             ],
             [
-              5.387997619365024,
-              50.27940127239947
+              8.40865692371446,
+              50.09098053005752
             ],
             [
-              8.500492703440614,
-              50.236119600129996
+              8.479450699870085,
+              49.94578833465832
             ],
             [
-              7.968533668917871,
-              51.90722408367796
+              9.109757559710118,
+              50.036024403013954
             ],
             [
-              5.409550988547295,
-              52.116365734812945
+              8.91943669422551,
+              50.23945321492022
+            ],
+            [
+              8.668459051176455,
+              50.18655020999668
             ]
           ]
         ],
@@ -372,69 +467,35 @@ constexpr auto const example_rtree_location_geojson_content = R"(
       }
     },
     {
+      "id": "Mainz",
       "type": "Feature",
-        "id": "Wien-Umgebung",
+      "properties": {},
       "geometry": {
         "coordinates": [
           [
             [
-              16.07682433489032,
-              48.739642926441945
+              8.020445199484499,
+              49.98817389319032
             ],
             [
-              14.305311800016113,
-              48.32391493741267
+              8.189407106535725,
+              49.91015943227734
             ],
             [
-              15.459132098991745,
-              47.043075854264345
+              8.594078647846544,
+              49.905737119417665
             ],
             [
-              17.135143217382137,
-              48.01011892461713
+              8.555273549423674,
+              50.03620407197471
             ],
             [
-              16.866678086212232,
-              48.71969720825075
+              8.235940876442186,
+              50.04804663784495
             ],
             [
-              16.07682433489032,
-              48.739642926441945
-            ]
-          ]
-        ],
-        "type": "Polygon"
-      }
-    },
-    {
-      "type": "Feature",
-        "id": "Wien-Umgebung2",
-      "geometry": {
-        "coordinates": [
-          [
-            [
-              14.295178369097812,
-              46.62450745703154
-            ],
-            [
-              16.0047096870463,
-              47.6909722226882
-            ],
-            [
-              16.375601936571115,
-              48.199391851780575
-            ],
-            [
-              14.862044169066081,
-              48.11494365511763
-            ],
-            [
-              13.627702705678644,
-              47.71146159416162
-            ],
-            [
-              14.295178369097812,
-              46.62450745703154
+              8.020445199484499,
+              49.98817389319032
             ]
           ]
         ],
@@ -472,11 +533,13 @@ loader::mem_dir example_files() {
        {path{kStopAreasFile}, std::string{example_stop_areas_content}},
        {path{kStopTimesGTFSFlexFile},
         std::string{example_stop_times_gtfs_flex_content}},
-       {path{kRtreeStopFile}, std::string{example_rtree_stops_content}},
+       // {path{kRtreeStopFile}, std::string{example_rtree_stops_content}},
        {path{kRtreeLocationGeojsonFile},
         std::string{example_rtree_location_geojson_content}},
-       {path{kRtreeLocationGroupFile},
-        std::string{example_rtree_location_groups_content}}}};
+       // {path{kRtreeLocationGroupFile},
+       //  std::string{example_rtree_location_groups_content}}
+       {{path{kCalculateDurationStopTimesFile}},
+        std::string{example_calculation_stop_times_content}}}};
 }
 
 constexpr auto const berlin_agencies_file_content = std::string_view{
