@@ -158,7 +158,6 @@ TEST(gtfs, read_stop_times_gtfs_flex_example_data) {
           booking_rule_idx_t expected_dropoff,
           pickup_dropoff_type expected_pickup_type,
           pickup_dropoff_type expected_dropoff_type) {
-
         auto const gtfs_trip_idx = trip_data.trips_[trip_id];
         auto const trip_idx = trip_data.data_[gtfs_trip_idx].trip_idx_;
         auto const geo_idx = location_geojsons.at(geo_id);
