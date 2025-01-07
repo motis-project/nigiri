@@ -411,7 +411,7 @@ TEST(rt, abi_timetable) {
   EXPECT_EQ(596, transport->event_mams[transport->n_event_mams - 2]);
   EXPECT_EQ(598, transport->event_mams[transport->n_event_mams - 1]);
   auto const t_name = std::string{transport->name, transport->name_len};
-  EXPECT_EQ("Tram iXpress Fischer-Hallman", t_name);
+  EXPECT_EQ("iXpress Fischer-Hallman", t_name);
 
   auto const route = nigiri_get_route(t, transport->route_idx);
   EXPECT_EQ(28, route->n_stops);
