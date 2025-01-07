@@ -3,6 +3,9 @@
 #include "area.h"
 #include "booking_rule.h"
 
+#include <map>
+#include <string>
+
 #include "nigiri/loader/gtfs/trip.h"
 
 namespace nigiri::loader::gtfs {
@@ -10,7 +13,8 @@ namespace nigiri::loader::gtfs {
 void read_stop_times(timetable& tt,
                      trip_data& trips,
                      locations_map const& stops,
-                     std::string_view file_content);
+                     std::string_view file_content,
+                     bool);
 
 void read_stop_times(timetable&,
                      source_idx_t,
@@ -18,6 +22,7 @@ void read_stop_times(timetable&,
                      location_geojson_map_t const&,
                      locations_map const&,
                      booking_rule_map_t const&,
-                     std::string_view file_content);
+                     std::string_view file_content,
+                     bool);
 
 }  // namespace nigiri::loader::gtfs

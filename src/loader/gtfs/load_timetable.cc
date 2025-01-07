@@ -27,6 +27,7 @@
 #include "nigiri/loader/gtfs/route_key.h"
 #include "nigiri/loader/gtfs/services.h"
 #include "nigiri/loader/gtfs/shape.h"
+#include "nigiri/loader/gtfs/shape_prepare.h"
 #include "nigiri/loader/gtfs/stop.h"
 #include "nigiri/loader/gtfs/stop_seq_number_encoding.h"
 #include "nigiri/loader/gtfs/stop_time.h"
@@ -113,10 +114,10 @@ void load_timetable(loader_config const& config,
                     dir const& d,
                     timetable& tt,
                     assistance_times* assistance,
-                    shapes_storage_t* shapes) {
+                    shapes_storage* shapes_data) {
   auto local_bitfield_indices = hash_map<bitfield, bitfield_idx_t>{};
   load_timetable(config, src, d, tt, local_bitfield_indices, assistance,
-                 shapes);
+                 shapes_data);
 }
 
 void load_timetable(loader_config const& config,
@@ -125,7 +126,7 @@ void load_timetable(loader_config const& config,
                     timetable& tt,
                     hash_map<bitfield, bitfield_idx_t>& bitfield_indices,
                     assistance_times* assistance,
-                    shapes_storage_t* shapes) {
+                    shapes_storage* shapes_data) {
   nigiri::scoped_timer const global_timer{"gtfs parser"};
 
   auto const load = [&](std::string_view file_name) -> file {
@@ -144,12 +145,12 @@ void load_timetable(loader_config const& config,
   auto const dates = read_calendar_date(load(kCalendarDatesFile).data());
   auto const service =
       merge_traffic_days(tt.internal_interval_days(), calendar, dates);
-  auto const shape_indices =
-      (shapes != nullptr) ? parse_shapes(load(kShapesFile).data(), *shapes)
-                          : shape_id_map_t{};
-
+  auto const shape_states =
+      (shapes_data != nullptr)
+          ? parse_shapes(load(kShapesFile).data(), *shapes_data)
+          : shape_loader_state{};
   auto trip_data =
-      read_trips(tt, routes, service, shape_indices, load(kTripsFile).data(),
+      read_trips(tt, routes, service, shape_states, load(kTripsFile).data(),
                  config.bikes_allowed_default_);
   auto booking_rules =
       read_booking_rules(service, tt, load(kBookingRulesFile).data());
@@ -162,17 +163,24 @@ void load_timetable(loader_config const& config,
                           load(kLocationGroupStopsFile).data());
 
   read_stop_times(tt, src, trip_data, geojsons, stops, booking_rules,
-                  load(kStopTimesFile).data());
+                  load(kStopTimesFile).data(), shapes_data != nullptr);
 
   {
     auto const timer = scoped_timer{"loader.gtfs.trips.sort"};
     for (auto& t : trip_data.data_) {
       if (t.requires_sorting_) {
         t.stop_headsigns_.resize(t.seq_numbers_.size());
-        std::tie(t.seq_numbers_, t.stop_seq_, t.event_times_,
-                 t.stop_headsigns_) =
+        std::tie(t.seq_numbers_, t.stop_seq_, t.event_times_, t.stop_headsigns_,
+                 t.distance_traveled_) =
             sort_by(t.seq_numbers_, t.stop_seq_, t.event_times_,
-                    t.stop_headsigns_);
+                    t.stop_headsigns_, t.distance_traveled_);
+      }
+
+      auto pred = minutes_after_midnight_t{0U};
+      for (auto& [arr, dep] : t.event_times_) {
+        arr = std::max(pred, arr);
+        dep = std::max(arr, dep);
+        pred = dep;
       }
     }
   }
@@ -243,7 +251,7 @@ void load_timetable(loader_config const& config,
 
   {
     progress_tracker->status("Expand Trips")
-        .out_bounds(70.F, 85.F)
+        .out_bounds(68.F, 83.F)
         .in_high(trip_data.data_.size());
     auto const timer = scoped_timer{"loader.gtfs.trips.expand"};
 
@@ -258,7 +266,7 @@ void load_timetable(loader_config const& config,
 
   {
     progress_tracker->status("Stay Seated")
-        .out_bounds(85.F, 87.F)
+        .out_bounds(83.F, 85.F)
         .in_high(route_services.size());
     auto const timer = scoped_timer{"loader.gtfs.trips.block_id"};
 
@@ -271,7 +279,7 @@ void load_timetable(loader_config const& config,
 
   {
     progress_tracker->status("Write Trips")
-        .out_bounds(87.F, 100.F)
+        .out_bounds(85.F, 98.F)
         .in_high(route_services.size());
 
     auto const is_train_number = [](auto const& s) {
@@ -403,6 +411,11 @@ void load_timetable(loader_config const& config,
       progress_tracker->increment();
     }
 
+    if (shapes_data != nullptr) {
+      calculate_shape_offsets_and_bboxes(tt, *shapes_data, shape_states,
+                                         trip_data.data_);
+    }
+
     // Build location_routes map
     for (auto l = tt.location_routes_.size(); l != tt.n_locations(); ++l) {
       tt.location_routes_.emplace_back(location_routes[location_idx_t{l}]);
@@ -412,7 +425,6 @@ void load_timetable(loader_config const& config,
     // Build transport ranges.
     for (auto const& t : trip_data.data_) {
       tt.trip_transport_ranges_.emplace_back(t.transport_ranges_);
-      tt.trip_shape_indices_.push_back(t.shape_idx_);
     }
   }
 }

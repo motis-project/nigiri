@@ -15,6 +15,7 @@
 #include "nigiri/loader/gtfs/shape.h"
 #include "nigiri/loader/gtfs/stop.h"
 #include "nigiri/timetable.h"
+#include "nigiri/types.h"
 
 namespace nigiri::loader::gtfs {
 
@@ -99,6 +100,7 @@ struct trip {
   std::vector<stop_events> event_times_;
 
   std::vector<trip_direction_idx_t> stop_headsigns_;
+  std::vector<double> distance_traveled_;
 
   std::optional<std::vector<frequency>> frequency_;
   bool requires_interpolation_{false};
@@ -127,7 +129,7 @@ trip_data read_trips(
     timetable&,
     route_map_t const&,
     traffic_days_t const&,
-    shape_id_map_t const&,
+    shape_loader_state const&,
     std::string_view file_content,
     std::array<bool, kNumClasses> const& bikes_allowed_default);
 

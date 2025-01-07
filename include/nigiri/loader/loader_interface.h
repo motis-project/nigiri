@@ -8,8 +8,9 @@
 #include "nigiri/types.h"
 
 namespace nigiri {
+struct shapes_storage;
 struct timetable;
-}
+}  // namespace nigiri
 
 namespace nigiri::loader {
 
@@ -17,12 +18,6 @@ struct loader_config {
   unsigned link_stop_distance_{100U};
   std::string default_tz_;
   std::array<bool, kNumClasses> bikes_allowed_default_{};
-
-  // finalize options
-  bool adjust_footpaths_{true};
-  bool merge_dupes_intra_src_{true};
-  bool merge_dupes_inter_src_{true};
-  std::uint16_t max_footpath_length_{20};
 };
 
 struct loader_interface {
@@ -34,7 +29,7 @@ struct loader_interface {
                     timetable&,
                     hash_map<bitfield, bitfield_idx_t>&,
                     assistance_times*,
-                    shapes_storage_t*) const = 0;
+                    shapes_storage*) const = 0;
   virtual cista::hash_t hash(dir const&) const = 0;
   virtual std::string_view name() const = 0;
 };

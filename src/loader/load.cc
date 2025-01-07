@@ -1,5 +1,7 @@
 #include "nigiri/loader/load.h"
 
+#include "fmt/std.h"
+
 #include "utl/enumerate.h"
 
 #include "nigiri/loader/dir.h"
@@ -20,11 +22,11 @@ std::vector<std::unique_ptr<loader_interface>> get_loaders() {
   return loaders;
 }
 
-timetable load(std::vector<std::filesystem::path> const& paths,
-               loader_config const& c,
+timetable load(std::vector<std::pair<std::string, loader_config>> const& paths,
+               finalize_options const& finalize_opt,
                interval<date::sys_days> const& date_range,
                assistance_times* a,
-               shapes_storage_t* shapes,
+               shapes_storage* shapes,
                bool ignore) {
   auto const loaders = get_loaders();
 
@@ -32,25 +34,34 @@ timetable load(std::vector<std::filesystem::path> const& paths,
   tt.date_range_ = date_range;
   register_special_stations(tt);
 
-  auto global_bitfield_indices = hash_map<bitfield, bitfield_idx_t>{};
-
-  for (auto const [idx, p] : utl::enumerate(paths)) {
+  auto bitfields = hash_map<bitfield, bitfield_idx_t>{};
+  for (auto const [idx, in] : utl::enumerate(paths)) {
+    auto const& [path, local_config] = in;
+    auto const is_in_memory = path.starts_with("\n#");
     auto const src = source_idx_t{idx};
-    auto const dir = make_dir(p);
-    auto const loader_it =
+    auto const dir = is_in_memory
+                         // hack to load strings in integration tests
+                         ? std::make_unique<mem_dir>(mem_dir::read(path))
+                         : make_dir(path);
+    auto const it =
         utl::find_if(loaders, [&](auto&& l) { return l->applicable(*dir); });
-    if (loader_it != end(loaders)) {
-      log(log_lvl::info, "loader.load", "loading {}", p.string());
-      (*loader_it)->load(c, src, *dir, tt, global_bitfield_indices, a, shapes);
+    if (it != end(loaders)) {
+      if (!is_in_memory) {
+        log(log_lvl::info, "loader.load", "loading {}", path);
+      }
+      try {
+        (*it)->load(local_config, src, *dir, tt, bitfields, a, shapes);
+      } catch (std::exception const& e) {
+        throw utl::fail("failed to load {}: {}", path, e.what());
+      }
     } else if (!ignore) {
-      throw utl::fail("no loader for {} found", p.string());
+      throw utl::fail("no loader for {} found", path);
     } else {
-      log(log_lvl::error, "loader.load", "no loader for {} found", p.string());
+      log(log_lvl::error, "loader.load", "no loader for {} found", path);
     }
   }
 
-  finalize(tt, c.adjust_footpaths_, c.merge_dupes_intra_src_,
-           c.merge_dupes_inter_src_, c.max_footpath_length_);
+  finalize(tt, finalize_opt);
 
   return tt;
 }

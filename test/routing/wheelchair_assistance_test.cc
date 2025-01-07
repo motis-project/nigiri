@@ -120,7 +120,7 @@ TEST(routing, wheelchair_assistance) {
 
   auto rtt = rt::create_rt_timetable(tt, date::sys_days{2024_y / June / 19});
   auto const [r, t] = rt::gtfsrt_resolve_run(date::sys_days{2019_y / May / 4},
-                                             tt, rtt, source_idx_t{0}, td);
+                                             tt, &rtt, source_idx_t{0}, td);
   EXPECT_TRUE(r.valid());
 
   auto const fr = rt::frun{tt, &rtt, r};

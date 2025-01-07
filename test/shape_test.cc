@@ -1,5 +1,6 @@
 #include "gtest/gtest.h"
 
+#include "geo/box.h"
 #include "geo/polyline.h"
 
 #include "nigiri/loader/gtfs/load_timetable.h"
@@ -7,16 +8,13 @@
 #include "nigiri/common/span_cmp.h"
 #include "nigiri/rt/create_rt_timetable.h"
 #include "nigiri/rt/gtfsrt_update.h"
-#include "nigiri/shape.h"
+#include "nigiri/shapes_storage.h"
 #include "nigiri/timetable.h"
 #include "nigiri/types.h"
 
 using namespace nigiri;
 using namespace date;
 using namespace std::string_view_literals;
-
-// linked from gtfs/shape_test.cc
-shapes_storage_t create_tmp_shapes_storage(char const*);
 
 namespace {
 
@@ -76,6 +74,7 @@ Last,5.5,2.5,2
 Last,5.5,3.0,3
 Last,6.0,3.0,5
 Last,5.0,2.0,8
+Last,4.0,1.9,11
 Last,4.0,2.0,13
 
 # stop_times.txt
@@ -113,32 +112,76 @@ TEST(shape, single_trip_with_shape) {
                     date::sys_days{2024_y / March / 2}};
   loader::register_special_stations(tt);
   auto local_bitfield_indices = hash_map<bitfield, bitfield_idx_t>{};
-  auto shape_data = create_tmp_shapes_storage("shape-route-trip-with-shape");
+  auto shapes_data = shapes_storage{"shape-route-trip-with-shape",
+                                    cista::mmap::protection::WRITE};
   loader::gtfs::load_timetable({}, source_idx_t{1},
                                loader::mem_dir::read(kWithShapes), tt,
-                               local_bitfield_indices, nullptr, &shape_data);
+                               local_bitfield_indices, nullptr, &shapes_data);
   loader::finalize(tt);
 
   // Testing shape 'Last', used by 'Trip 3' (index == 2)
   {
-    auto const shape_by_trip_index = get_shape(tt, shape_data, trip_idx_t{2});
-    auto const shape_by_shape_index = get_shape(shape_data, shape_idx_t{3});
+    auto const shape_by_trip_idx = shapes_data.get_shape(trip_idx_t{2});
+    auto const shape_by_shape_idx = shapes_data.get_shape(shape_idx_t{3});
 
     auto const expected_shape = geo::polyline{
-        {4.0f, 5.0f}, {5.5f, 2.5f}, {5.5f, 3.0f},
-        {6.0f, 3.0f}, {5.0f, 2.0f}, {4.0f, 2.0f},
+        {4.0, 5.0}, {5.5, 2.5}, {5.5, 3.0}, {6.0, 3.0},
+        {5.0, 2.0}, {4.0, 1.9}, {4.0, 2.0},
     };
-    EXPECT_EQ(expected_shape, shape_by_trip_index);
-    EXPECT_EQ(expected_shape, shape_by_shape_index);
+    EXPECT_EQ(expected_shape, shape_by_trip_idx);
+    EXPECT_EQ(expected_shape, shape_by_shape_idx);
   }
 
   // Testing trip without shape, i.e. 'Trip 4' (index == 3)
   {
-    auto const shape_by_trip_index = get_shape(tt, shape_data, trip_idx_t{3});
-    auto const shape_by_shape_index =
-        get_shape(shape_data, shape_idx_t::invalid());
+    auto const shape_by_trip_idx = shapes_data.get_shape(trip_idx_t{3});
+    auto const shape_by_shape_idx =
+        shapes_data.get_shape(shape_idx_t::invalid());
 
-    EXPECT_TRUE(shape_by_trip_index.empty());
-    EXPECT_TRUE(shape_by_shape_index.empty());
+    EXPECT_TRUE(shape_by_trip_idx.empty());
+    EXPECT_TRUE(shape_by_shape_idx.empty());
+  }
+
+  // Testing out of bounds
+  {
+    auto const shape_by_huge_trip_idx = shapes_data.get_shape(trip_idx_t{999});
+    auto const shape_by_huge_shape_idx =
+        shapes_data.get_shape(shape_idx_t{999});
+    auto const shape_by_invalid_trip_idx =
+        shapes_data.get_shape(trip_idx_t::invalid());
+    auto const shape_by_invalid_shape_idx =
+        shapes_data.get_shape(shape_idx_t::invalid());
+
+    EXPECT_TRUE(shape_by_huge_trip_idx.empty());
+    EXPECT_TRUE(shape_by_huge_shape_idx.empty());
+    EXPECT_TRUE(shape_by_invalid_trip_idx.empty());
+    EXPECT_TRUE(shape_by_invalid_shape_idx.empty());
+  }
+
+  // Testing bounding boxes
+  {
+    // Full shape in bounding box included
+    EXPECT_EQ((geo::make_box({{0.0, 2.0}, {1.0, 4.0}})),
+              shapes_data.get_bounding_box(route_idx_t{0U}));
+    // Shape in bounding box included
+    EXPECT_EQ((geo::make_box({{4.0, 1.9}, {6.0, 5.0}})),
+              shapes_data.get_bounding_box(route_idx_t{2U}));
+    // Bounding boxes for segments
+    // Bounding box extended by shape
+    {
+      auto const extended_by_shape =
+          shapes_data.get_bounding_box(route_idx_t{2}, 3);
+      ASSERT_TRUE(extended_by_shape.has_value());
+      EXPECT_EQ((geo::make_box({{4.0, 1.9}, {5.0, 2.0}})), *extended_by_shape);
+
+      auto const before_last_extend =
+          shapes_data.get_bounding_box(route_idx_t{2}, 2);
+      ASSERT_TRUE(before_last_extend.has_value());
+      EXPECT_EQ((geo::make_box({{5.0, 2.0}, {6.0, 3.0}})), *before_last_extend);
+    }
+    // Shape contained in bounding box
+    {
+      EXPECT_FALSE(shapes_data.get_bounding_box(route_idx_t{4}, 0).has_value());
+    }
   }
 }

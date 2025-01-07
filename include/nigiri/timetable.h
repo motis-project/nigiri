@@ -479,7 +479,7 @@ struct timetable {
   }
 
   unixtime_t to_unixtime(day_idx_t const d,
-                         minutes_after_midnight_t const m) const {
+                         minutes_after_midnight_t const m = 0_minutes) const {
     return internal_interval_days().from_ + to_idx(d) * 1_days + m;
   }
 
@@ -538,7 +538,7 @@ struct timetable {
 
   void write(cista::memory_holder&) const;
   void write(std::filesystem::path const&) const;
-  static cista::wrapped<timetable> read(cista::memory_holder&&);
+  static cista::wrapped<timetable> read(std::filesystem::path const&);
 
   // Schedule range.
   interval<date::sys_days> date_range_;
@@ -558,9 +558,6 @@ struct timetable {
 
   // Trip index -> all transports with a stop interval
   paged_vecvec<trip_idx_t, transport_range_t> trip_transport_ranges_;
-
-  // Trip index -> shape per trip
-  vector_map<trip_idx_t, shape_idx_t> trip_shape_indices_;
 
   // Transport -> stop sequence numbers (relevant for GTFS-RT stop matching)
   // Compaction:

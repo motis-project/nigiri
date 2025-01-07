@@ -1,9 +1,16 @@
 #include "gtest/gtest.h"
 
+#include <stdexcept>
+#include <vector>
+
+#include "geo/latlng.h"
+#include "geo/polyline.h"
+
 #include "nigiri/loader/gtfs/files.h"
 #include "nigiri/loader/gtfs/load_timetable.h"
 #include "nigiri/loader/hrd/load_timetable.h"
 #include "nigiri/loader/init_finish.h"
+#include "nigiri/routing/journey.h"
 #include "nigiri/rt/create_rt_timetable.h"
 #include "nigiri/rt/frun.h"
 #include "nigiri/rt/gtfsrt_resolve_run.h"
@@ -11,6 +18,7 @@
 #include "nigiri/rt/rt_timetable.h"
 
 #include "../loader/hrd/hrd_timetable.h"
+#include "../raptor_search.h"
 
 #include "./util.h"
 
@@ -21,6 +29,7 @@ using namespace nigiri::loader::gtfs;
 using namespace std::chrono_literals;
 using namespace std::string_view_literals;
 using namespace nigiri::test;
+using nigiri::test::raptor_search;
 
 namespace {
 
@@ -65,14 +74,14 @@ S1,20190501,1
 )"sv;
 
 constexpr auto const expected =
-    R"(   0: A       A...............................................                                                             d: 30.04 22:30 [01.05 00:30]  RT 30.04 23:30 [01.05 01:30]  [{name=Bus RE 1, day=2019-04-30, id=T1, src=0}]
+    R"(   0: A       A...............................................                                                             d: 30.04 22:30 [01.05 00:30]  RT 30.04 23:30 [01.05 01:30]  [{name=RE 1, day=2019-04-30, id=T1, src=0}]
    1: B       B............................................... a: 01.05 08:00 [01.05 10:00]  RT 01.05 09:00 [01.05 11:00]
 
-   1: B       B...............................................                                                             d: 02.05 00:10 [02.05 02:10]  RT 02.05 00:11 [02.05 02:11]  [{name=Bus RE 2, day=2019-04-30, id=T2, src=0}]
-   2: C       C............................................... a: 02.05 01:00 [02.05 03:00]  RT 02.05 02:00 [02.05 04:00]  d: 02.05 01:00 [02.05 03:00]  RT 02.05 02:00 [02.05 04:00]  [{name=Bus RE 2, day=2019-04-30, id=T2, src=0}]
+   1: B       B...............................................                                                             d: 02.05 00:10 [02.05 02:10]  RT 02.05 00:11 [02.05 02:11]  [{name=RE 2, day=2019-04-30, id=T2, src=0}]
+   2: C       C............................................... a: 02.05 01:00 [02.05 03:00]  RT 02.05 02:00 [02.05 04:00]  d: 02.05 01:00 [02.05 03:00]  RT 02.05 02:00 [02.05 04:00]  [{name=RE 2, day=2019-04-30, id=T2, src=0}]
    3: D       D............................................... a: 02.05 02:00 [02.05 04:00]  RT 02.05 03:00 [02.05 05:00]
 
-   3: D       D...............................................                                                             d: 02.05 02:30 [02.05 04:30]  RT 02.05 03:00 [02.05 05:00]  [{name=Bus RE 3, day=2019-04-30, id=T3, src=0}]
+   3: D       D...............................................                                                             d: 02.05 02:30 [02.05 04:30]  RT 02.05 03:00 [02.05 05:00]  [{name=RE 3, day=2019-04-30, id=T3, src=0}]
    4: E       E............................................... a: 02.05 02:40 [02.05 04:40]  RT 02.05 03:00 [02.05 05:00]
 
 )";
@@ -111,17 +120,17 @@ TEST(rt, rt_block_id_test) {
   EXPECT_EQ(3U, stats.total_entities_success_);
 
   auto const [r1, t1] = rt::gtfsrt_resolve_run(
-      date::sys_days{May / 1 / 2019}, tt, rtt, source_idx_t{0},
+      date::sys_days{May / 1 / 2019}, tt, &rtt, source_idx_t{0},
       msg1.entity(0).trip_update().trip());
   ASSERT_TRUE(r1.valid());
 
   auto const [r2, t2] = rt::gtfsrt_resolve_run(
-      date::sys_days{May / 1 / 2019}, tt, rtt, source_idx_t{0},
+      date::sys_days{May / 1 / 2019}, tt, &rtt, source_idx_t{0},
       msg1.entity(1).trip_update().trip());
   ASSERT_TRUE(r2.valid());
 
   auto const [r3, t3] = rt::gtfsrt_resolve_run(
-      date::sys_days{May / 1 / 2019}, tt, rtt, source_idx_t{0},
+      date::sys_days{May / 1 / 2019}, tt, &rtt, source_idx_t{0},
       msg1.entity(2).trip_update().trip());
   ASSERT_TRUE(r3.valid());
 
@@ -130,4 +139,66 @@ TEST(rt, rt_block_id_test) {
      << rt::frun{tt, &rtt, r2} << "\n"
      << rt::frun{tt, &rtt, r3} << "\n";
   EXPECT_EQ(expected, ss.str());
+
+  // Get shape for journey leg containing multiple trips
+  {
+    auto const results = raptor_search(
+        tt, &rtt, "B", "E",
+        interval{unixtime_t{sys_days{2019_y / May / 2}} + 0_hours,
+                 unixtime_t{sys_days{2019_y / May / 2}} + 1_hours});
+    ASSERT_EQ(1, results.size());
+    ASSERT_EQ(1, results.begin()->legs_.size());
+    auto const& leg = results.begin()->legs_[0];
+    ASSERT_TRUE(
+        std::holds_alternative<nigiri::routing::journey::run_enter_exit>(
+            leg.uses_));
+    auto const& run_ee =
+        std::get<nigiri::routing::journey::run_enter_exit>(leg.uses_);
+    auto const fr = rt::frun(tt, &rtt, run_ee.r_);
+    auto leg_shape = std::vector<geo::latlng>{};
+
+    // Full journey leg
+    {
+      leg_shape.clear();
+
+      fr.for_each_shape_point(nullptr, run_ee.stop_range_,
+                              [&leg_shape](geo::latlng const& point) {
+                                leg_shape.push_back(point);
+                              });
+
+      EXPECT_EQ((geo::polyline{
+                    {2.0F, 3.0F}, {4.0F, 5.0F}, {6.0F, 7.0F}, {8.0F, 9.0F}}),
+                leg_shape);
+    }
+    // Single leg
+    {
+      leg_shape.clear();
+
+      fr.for_each_shape_point(nullptr,
+                              interval{stop_idx_t{2}, stop_idx_t{3 + 1}},
+                              [&leg_shape](geo::latlng const& point) {
+                                leg_shape.push_back(point);
+                              });
+
+      EXPECT_EQ((geo::polyline{{4.0F, 5.0F}, {6.0F, 7.0F}}), leg_shape);
+    }
+    // Single stop
+    {
+      EXPECT_THROW(
+          {
+            try {
+              fr.for_each_shape_point(
+                  nullptr, interval{stop_idx_t{1}, stop_idx_t{1 + 1}},
+                  [&leg_shape](geo::latlng const& point) {
+                    leg_shape.push_back(point);
+                  });
+            } catch (std::runtime_error& e) {
+              EXPECT_STREQ("Range must contain at least 2 stops. Is 1",
+                           e.what());
+              throw e;
+            }
+          },
+          std::runtime_error);
+    }
+  }
 }

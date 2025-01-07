@@ -114,6 +114,9 @@ using optional = cista::optional<T>;
 template <typename Key, typename T, std::size_t N>
 using nvec = cista::raw::nvec<Key, T, N>;
 
+template <typename K, typename V>
+using mm_vec_map = cista::basic_mmap_vec<V, K>;
+
 template <typename T>
 using mm_vec = cista::basic_mmap_vec<T, std::uint64_t>;
 
@@ -121,14 +124,26 @@ template <typename Key, typename V, typename SizeType = cista::base_t<Key>>
 using mm_vecvec = cista::basic_vecvec<Key, mm_vec<V>, mm_vec<SizeType>>;
 
 template <typename Key, typename T>
-struct mmap_paged_vecvec_helper {
-  using data_t = cista::paged<vector<T>>;
+struct paged_vecvec_helper {
+  using data_t =
+      cista::paged<vector<T>, std::uint64_t, std::uint32_t, 4U, 1U << 31U>;
   using idx_t = vector<typename data_t::page_t>;
   using type = cista::paged_vecvec<idx_t, data_t, Key>;
 };
 
 template <typename Key, typename T>
-using paged_vecvec = mmap_paged_vecvec_helper<Key, T>::type;
+using paged_vecvec = paged_vecvec_helper<Key, T>::type;
+
+template <typename Key, typename T>
+struct mm_paged_vecvec_helper {
+  using data_t =
+      cista::paged<mm_vec<T>, std::uint64_t, std::uint32_t, 2U, 1U << 31U>;
+  using idx_t = mm_vec<typename data_t::page_t>;
+  using type = cista::paged_vecvec<idx_t, data_t, Key>;
+};
+
+template <typename Key, typename T>
+using mm_paged_vecvec = mm_paged_vecvec_helper<Key, T>::type;
 
 using bitfield_idx_t = cista::strong<std::uint32_t, struct _bitfield_idx>;
 using location_idx_t = cista::strong<std::uint32_t, struct _location_idx>;
@@ -139,6 +154,9 @@ using route_idx_t = cista::strong<std::uint32_t, struct _route_idx>;
 using section_idx_t = cista::strong<std::uint32_t, struct _section_idx>;
 using section_db_idx_t = cista::strong<std::uint32_t, struct _section_db_idx>;
 using shape_idx_t = cista::strong<std::uint32_t, struct _shape_idx>;
+using shape_offset_t = cista::strong<std::uint32_t, struct _shape_offset>;
+using shape_offset_idx_t =
+    cista::strong<std::uint32_t, struct _shape_offset_idx>;
 using trip_idx_t = cista::strong<std::uint32_t, struct _trip_idx>;
 using trip_id_idx_t = cista::strong<std::uint32_t, struct _trip_id_str_idx>;
 using transport_idx_t = cista::strong<std::uint32_t, struct _transport_idx>;
@@ -178,7 +196,6 @@ using provider_idx_t = cista::strong<std::uint32_t, struct _provider_idx>;
 using booking_rule_idx_t =
     cista::strong<std::uint32_t, struct _booking_rule_idx>;
 
-using shapes_storage_t = mm_vecvec<shape_idx_t, geo::latlng>;
 using transport_range_t = pair<transport_idx_t, interval<stop_idx_t>>;
 
 struct trip_debug {
@@ -205,6 +222,10 @@ struct route_color {
   color_t color_;
   color_t text_color_;
 };
+inline std::optional<std::string> to_str(color_t const c) {
+  return c == 0U ? std::nullopt
+                 : std::optional{fmt::format("{:06x}", to_idx(c) & 0x00ffffff)};
+}
 
 struct trip_id {
   CISTA_COMPARABLE()

@@ -94,6 +94,28 @@ double rate(vector<criteria_t> const& a, vector<criteria_t> const& b) {
     return kMaxRating;
   }
 
+  if (a != b) {
+    auto const print_set = [](vector<criteria_t> const& x) {
+      for (auto const c : x) {
+        auto const dep =
+            unixtime_t{i32_minutes{static_cast<std::int32_t>(c[0])}};
+        auto const arr =
+            unixtime_t{i32_minutes{static_cast<std::int32_t>(c[1])}};
+        auto const transfers = c[2];
+        std::cout << "  " << dep << " - " << arr << " transfers=" << transfers
+                  << "\n";
+      }
+    };
+
+    std::cout << "cmp\n";
+    print_set(a);
+
+    std::cout << "ref\n";
+    print_set(b);
+
+    std::cout << "\n\n";
+  }
+
   auto const LR = set_improvement(a, b, kDefaultWeights);
   auto const RL = set_improvement(b, a, kDefaultWeights);
   return LR - RL;

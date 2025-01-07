@@ -2,6 +2,7 @@
 
 #include <cinttypes>
 #include <limits>
+#include <optional>
 #include <variant>
 #include <vector>
 
@@ -13,6 +14,10 @@
 #include "nigiri/routing/transfer_time_settings.h"
 #include "nigiri/td_footpath.h"
 #include "nigiri/types.h"
+
+namespace nigiri {
+struct timetable;
+}
 
 namespace nigiri::routing {
 
@@ -44,6 +49,8 @@ struct offset {
 struct td_offset {
   friend bool operator==(td_offset const&, td_offset const&) = default;
 
+  duration_t duration() const noexcept { return duration_; }
+
   unixtime_t valid_from_;
   duration_t duration_;
   transport_mode_id_t transport_mode_id_;
@@ -60,6 +67,7 @@ using start_time_t = std::variant<unixtime_t, interval<unixtime_t>>;
 
 struct query {
   friend bool operator==(query const&, query const&) = default;
+  void sanitize(timetable const&);
 
   start_time_t start_time_;
   location_match_mode start_match_mode_{
@@ -71,6 +79,7 @@ struct query {
   hash_map<location_idx_t, std::vector<td_offset>> td_start_{}, td_dest_{};
   duration_t max_start_offset_{kMaxTravelTime};
   std::uint8_t max_transfers_{kMaxTransfers};
+  duration_t max_travel_time_{kMaxTravelTime};
   unsigned min_connection_count_{0U};
   bool extend_interval_earlier_{false};
   bool extend_interval_later_{false};
@@ -79,6 +88,7 @@ struct query {
   bool require_bike_transport_{false};
   transfer_time_settings transfer_time_settings_{};
   std::vector<via_stop> via_stops_{};
+  std::optional<duration_t> fastest_direct_{};
 };
 
 }  // namespace nigiri::routing

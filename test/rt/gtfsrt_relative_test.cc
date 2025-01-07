@@ -82,36 +82,36 @@ auto const kTripUpdate =
       "startDate": "20231126"
      },
      "stopTimeUpdate": [
-      {
-       "stopSequence": 1,
-       "scheduleRelationship": "SKIPPED"
-      },
-      {
-       "stopSequence": 2,
-       "scheduleRelationship": "SKIPPED"
-      },
-      {
-       "stopSequence": 4,
-       "scheduleRelationship": "SKIPPED"
-      },
-      {
-       "stopSequence": 6,
-       "scheduleRelationship": "SKIPPED"
-      }
-     ]
+        {
+          "stop_sequence":3,
+          "arrival":{"delay":-5400},
+          "departure":{"delay":-5400},
+          "schedule_relationship":"SCHEDULED"
+        },
+        {
+          "stop_sequence":5,
+          "arrival":{"delay":-5460},
+          "departure":{"delay":-5520},
+          "schedule_relationship":"SCHEDULED"
+        }
+      ]
     }
   }
  ]
 })"s;
 
 constexpr auto const expected = R"(
-   2: C       C............................................... a: 26.11 11:00 [26.11 12:00]  RT 26.11 11:00 [26.11 12:00]  d: 26.11 11:00 [26.11 12:00]  RT 26.11 11:00 [26.11 12:00]  [{name=Route 1, day=2023-11-26, id=TRIP_1, src=0}]
-   4: E       E............................................... a: 26.11 13:00 [26.11 14:00]  RT 26.11 13:00 [26.11 14:00]  d: 26.11 13:00 [26.11 14:00]  RT 26.11 13:00 [26.11 14:00]  [{name=Route 1, day=2023-11-26, id=TRIP_1, src=0}]
+   0: A       A...............................................                                                             d: 26.11 09:00 [26.11 10:00]  RT 26.11 09:00 [26.11 10:00]  [{name=Route 1, day=2023-11-26, id=TRIP_1, src=0}]
+   1: B       B............................................... a: 26.11 10:00 [26.11 11:00]  RT 26.11 10:00 [26.11 11:00]  d: 26.11 10:00 [26.11 11:00]  RT 26.11 10:00 [26.11 11:00]  [{name=Route 1, day=2023-11-26, id=TRIP_1, src=0}]
+   2: C       C............................................... a: 26.11 11:00 [26.11 12:00]  RT 26.11 10:00 [26.11 11:00]  d: 26.11 11:00 [26.11 12:00]  RT 26.11 10:00 [26.11 11:00]  [{name=Route 1, day=2023-11-26, id=TRIP_1, src=0}]
+   3: D       D............................................... a: 26.11 12:00 [26.11 13:00]  RT 26.11 10:30 [26.11 11:30]  d: 26.11 12:00 [26.11 13:00]  RT 26.11 10:30 [26.11 11:30]  [{name=Route 1, day=2023-11-26, id=TRIP_1, src=0}]
+   4: E       E............................................... a: 26.11 13:00 [26.11 14:00]  RT 26.11 11:29 [26.11 12:29]  d: 26.11 13:00 [26.11 14:00]  RT 26.11 11:29 [26.11 12:29]  [{name=Route 1, day=2023-11-26, id=TRIP_1, src=0}]
+   5: F       F............................................... a: 26.11 14:00 [26.11 15:00]  RT 26.11 12:28 [26.11 13:28]
 )"sv;
 
 }  // namespace
 
-TEST(rt, gtfs_rt_skip) {
+TEST(rt, gtfs_rt_relative) {
   // Load static timetable.
   timetable tt;
   register_special_stations(tt);
@@ -140,9 +140,4 @@ TEST(rt, gtfs_rt_skip) {
   auto ss = std::stringstream{};
   ss << "\n" << rt::frun{tt, &rtt, r};
   EXPECT_EQ(expected, ss.str());
-
-  for (auto const [from, to] : utl::pairwise(rt::frun{tt, &rtt, r})) {
-    EXPECT_EQ(from.id(), "C");
-    EXPECT_EQ(to.id(), "E");
-  }
 }

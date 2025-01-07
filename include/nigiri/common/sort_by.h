@@ -10,6 +10,9 @@ template <typename T>
 void apply_permutation(std::vector<unsigned> const& permutation,
                        T const& orig,
                        T& vec) {
+  if (orig.empty()) {
+    return;
+  }
   for (auto i = 0U; i != permutation.size(); ++i) {
     vec[i] = orig[permutation[i]];
   }

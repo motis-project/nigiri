@@ -13,7 +13,7 @@ std::pair<date::days, duration_t> split_rounded(duration_t);
 std::pair<run, trip_idx_t> gtfsrt_resolve_run(
     date::sys_days const today,
     timetable const&,
-    rt_timetable&,
+    rt_timetable const*,
     source_idx_t,
     transit_realtime::TripDescriptor const&);
 

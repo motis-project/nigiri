@@ -20,13 +20,15 @@ struct interval_estimator {
             [](interval<unixtime_t> iut) { return iut; }},
         q.start_time_);
 
+    auto const interval =
+        q.fastest_direct_ ? std::chrono::days{1} : std::chrono::days{2};
     data_type_max_interval_ = {
         std::chrono::round<std::chrono::days>(
             start_itv.from_ + ((start_itv.to_ - start_itv.from_) / 2)) -
-            kMaxSearchIntervalSize,
+            interval,
         std::chrono::round<std::chrono::days>(
             start_itv.from_ + ((start_itv.to_ - start_itv.from_) / 2)) +
-            kMaxSearchIntervalSize};
+            interval};
   }
 
   interval<unixtime_t> initial(interval<unixtime_t> const& itv) const {

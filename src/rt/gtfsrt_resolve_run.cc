@@ -37,10 +37,10 @@ void resolve_static(date::sys_days const today,
   auto const& trip_id = td.trip_id();
   auto const lb = std::lower_bound(
       begin(tt.trip_id_to_idx_), end(tt.trip_id_to_idx_), trip_id,
-      [&](pair<trip_id_idx_t, trip_idx_t> const& a, string const& b) {
+      [&](pair<trip_id_idx_t, trip_idx_t> const& a, auto&& b) {
         return std::tuple(tt.trip_id_src_[a.first],
                           tt.trip_id_strings_[a.first].view()) <
-               std::tuple(src, std::string_view{b});
+               std::tuple(src, static_cast<std::string_view>(b));
       });
 
   auto const start_date = td.has_start_date()
@@ -106,13 +106,15 @@ void resolve_rt(rt_timetable const& rtt, run& output) {
 std::pair<run, trip_idx_t> gtfsrt_resolve_run(
     date::sys_days const today,
     timetable const& tt,
-    rt_timetable& rtt,
+    rt_timetable const* rtt,
     source_idx_t const src,
     transit_realtime::TripDescriptor const& td) {
   auto r = run{};
   trip_idx_t trip;
   resolve_static(today, tt, src, td, r, trip);
-  resolve_rt(rtt, r);
+  if (rtt != nullptr) {
+    resolve_rt(*rtt, r);
+  }
   return {r, trip};
 }
 

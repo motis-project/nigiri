@@ -2,6 +2,7 @@
 
 #include <cassert>
 #include <concepts>
+#include <cstdlib>
 #include <algorithm>
 #include <iterator>
 #include <ostream>
@@ -46,8 +47,8 @@ struct interval {
       t_ -= x;
       return *this;
     }
-    iterator operator+(difference_type const x) const { return *this += x; }
-    iterator operator-(difference_type const x) const { return *this -= x; }
+    iterator operator+(difference_type const x) const { return {t_ + x}; }
+    iterator operator-(difference_type const x) const { return {t_ - x}; }
     friend difference_type operator-(iterator const& a, iterator const& b) {
       return static_cast<difference_type>(cista::to_idx(a.t_) -
                                           cista::to_idx(b.t_));
@@ -56,13 +57,13 @@ struct interval {
   };
 
   template <typename X>
-  interval operator+(X const& x) const {
-    return {from_ + x, to_ + x};
+  interval operator>>(X const& x) const {
+    return {static_cast<T>(from_ + x), static_cast<T>(to_ + x)};
   }
 
   template <typename X>
-  interval operator-(X const& x) const {
-    return {from_ - x, to_ - x};
+  interval operator<<(X const& x) const {
+    return {static_cast<T>(from_ - x), static_cast<T>(to_ - x)};
   }
 
   template <typename X>
@@ -77,6 +78,14 @@ struct interval {
 
   bool overlaps(interval const& o) const {
     return from_ < o.to_ && to_ > o.from_;
+  }
+
+  interval intersect(interval const& o) const {
+    if (overlaps(o)) {
+      return {std::max(from_, o.from_), std::min(to_, o.to_)};
+    } else {
+      return {};
+    }
   }
 
   iterator begin() const { return {from_}; }

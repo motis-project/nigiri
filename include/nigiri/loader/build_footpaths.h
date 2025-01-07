@@ -4,10 +4,13 @@
 
 namespace nigiri::loader {
 
-void build_footpaths(timetable& tt,
-                     bool adjust_footpaths,
-                     bool merge_dupes_intra_src,
-                     bool merge_dupes_inter_src,
-                     std::uint16_t max_footpath_length);
+struct finalize_options {
+  bool adjust_footpaths_{true};
+  bool merge_dupes_intra_src_{true};
+  bool merge_dupes_inter_src_{true};
+  std::uint16_t max_footpath_length_{20};
+};
+
+void build_footpaths(timetable& tt, finalize_options);
 
 }  // namespace nigiri::loader

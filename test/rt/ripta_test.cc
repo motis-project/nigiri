@@ -92,7 +92,7 @@ TEST(rt, gtfs_rt_ripta) {
     td.set_trip_id("3774835");
     td.set_start_time("22:15:00");
     auto const [r, t] = rt::gtfsrt_resolve_run(
-        date::sys_days{2024_y / May / 11}, tt, rtt, source_idx_t{0}, td);
+        date::sys_days{2024_y / May / 11}, tt, &rtt, source_idx_t{0}, td);
     ASSERT_TRUE(r.valid());
   }
 
@@ -102,7 +102,7 @@ TEST(rt, gtfs_rt_ripta) {
     td.set_trip_id("3776558");
     td.set_start_time("00:17:00");
     auto const [r, t] = rt::gtfsrt_resolve_run(
-        date::sys_days{2024_y / May / 11}, tt, rtt, source_idx_t{0}, td);
+        date::sys_days{2024_y / May / 11}, tt, &rtt, source_idx_t{0}, td);
     ASSERT_TRUE(r.valid());
   }
 
@@ -112,7 +112,7 @@ TEST(rt, gtfs_rt_ripta) {
     td.set_trip_id("3795513");
     td.set_start_time("22:52:00");
     auto const [r, t] = rt::gtfsrt_resolve_run(
-        date::sys_days{2024_y / May / 16}, tt, rtt, source_idx_t{0}, td);
+        date::sys_days{2024_y / May / 16}, tt, &rtt, source_idx_t{0}, td);
     ASSERT_TRUE(r.valid());
   }
 }

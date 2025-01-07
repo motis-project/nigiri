@@ -83,24 +83,6 @@ std::optional<journey::leg> find_start_footpath(timetable const& tt,
       } else {
         trace_rc_intermodal_no_match;
       }
-
-      for (auto const& fp : footpaths) {
-        auto const duration =
-            (o.duration() +
-             adjusted_transfer_time(q.transfer_time_settings_, fp.duration()));
-        if (matches(tt, q.start_match_mode_, o.target(), fp.target()) &&
-            is_better_or_eq(j.start_time_, leg_start_time - dir(duration))) {
-          trace_rc_intermodal_fp_start_found;
-          return journey::leg{SearchDir,
-                              get_special_station(special_station::kStart),
-                              leg_start_location,
-                              j.start_time_,
-                              j.start_time_ + dir(duration),
-                              o};
-        } else {
-          trace_rc_intermodal_fp_no_match;
-        }
-      }
     }
 
     if (auto const it = q.td_start_.find(leg_start_location);
@@ -200,19 +182,29 @@ void reconstruct_journey_with_vias(timetable const& tt,
         break;
       }
 
+      auto const stop_matches_via =
+          new_v != 0 && q.via_stops_[new_v - 1].stay_ == 0_minutes &&
+          matches(tt, location_match_mode::kEquivalent,
+                  q.via_stops_[new_v - 1].location_, l);
+
+      auto const check_via = [&]() {
+        if (stop_matches_via) {
+          trace_reconstruct(
+              "  [find_entry_in_prev_round] new_v={}->{} (stop matches via)\n",
+              v, new_v, new_v - 1);
+          --new_v;
+        }
+      };
+
       if ((kFwd && !stp.in_allowed(is_wheelchair)) ||
           (!kFwd && !stp.out_allowed(is_wheelchair))) {
+        check_via();
         continue;
       }
 
       auto const event_time = unix_to_delta(
           base, stp.time(kFwd ? event_type::kDep : event_type::kArr));
       auto const round_time = round_times[k - 1][to_idx(l)][new_v];
-
-      auto const stop_matches_via =
-          new_v != 0 && q.via_stops_[new_v - 1].stay_ == 0_minutes &&
-          matches(tt, location_match_mode::kEquivalent,
-                  q.via_stops_[new_v - 1].location_, l);
 
       if (is_better_or_eq(round_time, event_time) ||
           // special case: first stop with meta stations
@@ -230,12 +222,7 @@ void reconstruct_journey_with_vias(timetable const& tt,
             journey::run_enter_exit{r, stop_idx, from_stop_idx}};
       } else {
         trace_rc_transport_entry_not_possible;
-        if (stop_matches_via) {
-          trace_reconstruct(
-              "  [find_entry_in_prev_round] new_v={}->{} (stop matches via)\n",
-              v, new_v, new_v - 1);
-          --new_v;
-        }
+        check_via();
       }
     }
 
@@ -409,15 +396,22 @@ void reconstruct_journey_with_vias(timetable const& tt,
 
     auto const backup_v = v;
 
+    auto const is_final_leg = k == j.transfers_ + 1U;
+    auto const is_intermodal =
+        q.dest_match_mode_ == location_match_mode::kIntermodal;
     auto stay_l = 0_minutes;
     auto stay_fp_target = 0_minutes;
-    trace_reconstruct("  [check_fp] v={}, l={}, fp.target={}\n", v,
-                      location{tt, l}, location{tt, fp.target()});
+    trace_reconstruct(
+        "  [check_fp] v={}, l={}, fp.target={}, final_leg={}, intermodal={}\n",
+        v, location{tt, l}, location{tt, fp.target()}, is_final_leg,
+        is_intermodal);
     if (v != 0 && matches(tt, location_match_mode::kEquivalent,
                           q.via_stops_[v - 1].location_, l)) {
       --v;
       if (matches(tt, location_match_mode::kEquivalent, l, fp.target())) {
-        stay_fp_target = q.via_stops_[v].stay_;
+        if (!is_final_leg) {
+          stay_fp_target = q.via_stops_[v].stay_;
+        }
         trace_reconstruct(
             "  [check_fp]: fp start+target matches current via: v={}->{}, "
             "stay_target={}\n",
@@ -433,7 +427,9 @@ void reconstruct_journey_with_vias(timetable const& tt,
                           q.via_stops_[v - 1].location_, fp.target())) {
       --v;
       assert(stay_fp_target == 0_minutes);
-      stay_fp_target = q.via_stops_[v].stay_;
+      if (!is_final_leg || is_intermodal) {
+        stay_fp_target = q.via_stops_[v].stay_;
+      }
       trace_reconstruct(
           "  [check_fp]: fp target matches current via: v={}->{}, "
           "stay_fp_target={}\n",
@@ -510,25 +506,6 @@ void reconstruct_journey_with_vias(timetable const& tt,
             ret = std::move(intermodal_dest);
           } else {
             trace_rc_intermodal_dest_mismatch;
-          }
-
-          for (auto const& fp :
-               kFwd ? tt.locations_.footpaths_in_[q.prf_idx_][eq]
-                    : tt.locations_.footpaths_out_[q.prf_idx_][eq]) {
-            auto const fp_duration = adjusted_transfer_time(
-                q.transfer_time_settings_, fp.duration());
-            auto fp_intermodal_dest =
-                check_fp(k, l, curr_time,
-                         {fp.target(), dest_offset.duration_ + fp_duration},
-                         false, td_footpath);
-            if (fp_intermodal_dest.has_value()) {
-              trace_rc_fp_intermodal_dest_match;
-              fp_intermodal_dest->first.uses_ =
-                  offset{eq, fp_duration, dest_offset.transport_mode_id_};
-              ret = std::move(fp_intermodal_dest);
-            } else {
-              trace_rc_fp_intermodal_dest_mismatch;
-            }
           }
         });
     return ret;

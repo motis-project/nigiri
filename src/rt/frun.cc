@@ -1,12 +1,21 @@
 #include "nigiri/rt/frun.h"
 
+#include <iterator>
+#include <span>
+#include <variant>
+
+#include "utl/overloaded.h"
+#include "utl/verify.h"
+
 #include "nigiri/lookup/get_transport_stop_tz.h"
 #include "nigiri/rt/rt_timetable.h"
+#include "nigiri/shapes_storage.h"
 #include "nigiri/timetable.h"
 
 namespace nigiri::rt {
 
-stop frun::run_stop::get_stop() const noexcept {
+stop run_stop::get_stop() const noexcept {
+  assert(fr_->size() > stop_idx_);
   return stop{
       (fr_->is_rt() && rtt() != nullptr)
           ? rtt()->rt_transport_location_seq_[fr_->rt_][stop_idx_]
@@ -14,7 +23,15 @@ stop frun::run_stop::get_stop() const noexcept {
                                     [stop_idx_]};
 }
 
-std::string_view frun::run_stop::name() const noexcept {
+stop run_stop::get_scheduled_stop() const noexcept {
+  assert(fr_->size() > stop_idx_);
+  return fr_->is_scheduled()
+             ? tt().route_location_seq_[tt().transport_route_[fr_->t_.t_idx_]]
+                                       [stop_idx_]
+             : rtt()->rt_transport_location_seq_[fr_->rt_][stop_idx_];
+}
+
+std::string_view run_stop::name() const noexcept {
   auto const l = get_location_idx();
   auto const type = tt().locations_.types_.at(l);
   auto const p =
@@ -24,7 +41,7 @@ std::string_view frun::run_stop::name() const noexcept {
   return tt().locations_.names_.at(p).view();
 }
 
-std::string_view frun::run_stop::id() const noexcept {
+std::string_view run_stop::id() const noexcept {
   auto const l = get_location_idx();
   auto const type = tt().locations_.types_.at(l);
   return tt()
@@ -35,7 +52,7 @@ std::string_view frun::run_stop::id() const noexcept {
       .view();
 }
 
-std::string_view frun::run_stop::track() const noexcept {
+std::string_view run_stop::track() const noexcept {
   auto const l = get_location_idx();
   return (tt().locations_.types_.at(l) == location_type::kTrack ||
           tt().locations_.types_.at(l) == location_type::kGeneratedTrack)
@@ -43,43 +60,46 @@ std::string_view frun::run_stop::track() const noexcept {
              : "";
 }
 
-location frun::run_stop::get_location() const noexcept {
+location run_stop::get_location() const noexcept {
   assert(fr_->size() > stop_idx_);
   return location{*fr_->tt_, get_stop().location_idx()};
 }
 
-geo::latlng frun::run_stop::pos() const noexcept {
+geo::latlng run_stop::pos() const noexcept {
   assert(fr_->size() > stop_idx_);
   return fr_->tt_->locations_.coordinates_[get_stop().location_idx()];
 }
 
-location_idx_t frun::run_stop::get_location_idx() const noexcept {
+location_idx_t run_stop::get_location_idx() const noexcept {
   assert(fr_->size() > stop_idx_);
   return get_stop().location_idx();
 }
 
-unixtime_t frun::run_stop::scheduled_time(
-    event_type const ev_type) const noexcept {
+location_idx_t run_stop::get_scheduled_location_idx() const noexcept {
+  assert(fr_->size() > stop_idx_);
+  return get_scheduled_stop().location_idx();
+}
+
+unixtime_t run_stop::scheduled_time(event_type const ev_type) const noexcept {
   assert(fr_->size() > stop_idx_);
   return fr_->is_scheduled()
              ? tt().event_time(fr_->t_, stop_idx_, ev_type)
              : rtt()->unix_event_time(fr_->rt_, stop_idx_, ev_type);
 }
 
-unixtime_t frun::run_stop::time(event_type const ev_type) const noexcept {
+unixtime_t run_stop::time(event_type const ev_type) const noexcept {
   assert(fr_->size() > stop_idx_);
   return (fr_->is_rt() && rtt() != nullptr)
              ? rtt()->unix_event_time(fr_->rt_, stop_idx_, ev_type)
              : tt().event_time(fr_->t_, stop_idx_, ev_type);
 }
 
-duration_t frun::run_stop::delay(event_type const ev_type) const noexcept {
+duration_t run_stop::delay(event_type const ev_type) const noexcept {
   assert(fr_->size() > stop_idx_);
   return time(ev_type) - scheduled_time(ev_type);
 }
 
-trip_idx_t frun::run_stop::get_trip_idx(
-    event_type const ev_type) const noexcept {
+trip_idx_t run_stop::get_trip_idx(event_type const ev_type) const noexcept {
   auto const sections = tt().transport_to_trip_section_.at(fr_->t_.t_idx_);
   return tt()
       .merged_trips_[sections.at(sections.size() == 1U ? 0U
@@ -87,18 +107,17 @@ trip_idx_t frun::run_stop::get_trip_idx(
       .at(0);
 }
 
-std::string_view frun::run_stop::trip_display_name(
+std::string_view run_stop::trip_display_name(
     event_type const ev_type) const noexcept {
   return tt().trip_display_names_[get_trip_idx(ev_type)].view();
 }
 
-stop_idx_t frun::run_stop::section_idx(
-    event_type const ev_type) const noexcept {
+stop_idx_t run_stop::section_idx(event_type const ev_type) const noexcept {
   return static_cast<stop_idx_t>(ev_type == event_type::kDep ? stop_idx_
                                                              : stop_idx_ - 1);
 }
 
-std::string_view frun::run_stop::line(event_type const ev_type) const noexcept {
+std::string_view run_stop::line(event_type const ev_type) const noexcept {
   if (fr_->is_rt() && rtt() != nullptr) {
     auto const rt_line = rtt()->rt_transport_line_.at(fr_->rt_);
     return rt_line.empty() ? scheduled_line(ev_type) : rt_line.view();
@@ -107,7 +126,7 @@ std::string_view frun::run_stop::line(event_type const ev_type) const noexcept {
   }
 }
 
-provider const& frun::run_stop::get_provider(
+provider const& run_stop::get_provider(
     event_type const ev_type) const noexcept {
   auto const provider_sections =
       tt().transport_section_providers_.at(fr_->t_.t_idx_);
@@ -116,8 +135,7 @@ provider const& frun::run_stop::get_provider(
   return tt().providers_.at(provider_idx);
 }
 
-std::string_view frun::run_stop::direction(
-    event_type const ev_type) const noexcept {
+std::string_view run_stop::direction(event_type const ev_type) const noexcept {
   if (!fr_->is_scheduled()) {
     return "";
   }
@@ -144,7 +162,7 @@ std::string_view frun::run_stop::direction(
   return direction;
 }
 
-std::string_view frun::run_stop::scheduled_line(
+std::string_view run_stop::scheduled_line(
     event_type const ev_type) const noexcept {
   if (!fr_->is_scheduled()) {
     return "";
@@ -161,7 +179,7 @@ std::string_view frun::run_stop::scheduled_line(
   }
 }
 
-clasz frun::run_stop::get_clasz(event_type const ev_type) const noexcept {
+clasz run_stop::get_clasz(event_type const ev_type) const noexcept {
   if (fr_->is_rt() && rtt() != nullptr) {
     auto const clasz_sections = rtt()->rt_transport_section_clasz_.at(fr_->rt_);
     return clasz_sections.at(
@@ -174,8 +192,7 @@ clasz frun::run_stop::get_clasz(event_type const ev_type) const noexcept {
   }
 }
 
-clasz frun::run_stop::get_scheduled_clasz(
-    event_type const ev_type) const noexcept {
+clasz run_stop::get_scheduled_clasz(event_type const ev_type) const noexcept {
   if (!fr_->is_scheduled()) {
     return clasz();
   }
@@ -185,7 +202,7 @@ clasz frun::run_stop::get_scheduled_clasz(
                                                        : section_idx(ev_type));
 }
 
-bool frun::run_stop::bikes_allowed(event_type const ev_type) const noexcept {
+bool run_stop::bikes_allowed(event_type const ev_type) const noexcept {
   if (fr_->is_rt() && rtt() != nullptr) {
     auto const bikes_allowed_seq =
         rtt()->rt_bikes_allowed_per_section_.at(fr_->rt_);
@@ -199,43 +216,39 @@ bool frun::run_stop::bikes_allowed(event_type const ev_type) const noexcept {
   }
 }
 
-route_color frun::run_stop::get_route_color(event_type ev_type) const noexcept {
+route_color run_stop::get_route_color(event_type ev_type) const noexcept {
   auto const color_sections =
       tt().transport_section_route_colors_.at(fr_->t_.t_idx_);
   return color_sections.at(color_sections.size() == 1U ? 0U
                                                        : section_idx(ev_type));
 }
 
-bool frun::run_stop::is_canceled() const noexcept {
+bool run_stop::is_canceled() const noexcept {
   return get_stop().is_cancelled();
 }
 
-bool frun::run_stop::in_allowed() const noexcept {
-  return get_stop().in_allowed();
-}
+bool run_stop::in_allowed() const noexcept { return get_stop().in_allowed(); }
 
-bool frun::run_stop::out_allowed() const noexcept {
-  return get_stop().out_allowed();
-}
+bool run_stop::out_allowed() const noexcept { return get_stop().out_allowed(); }
 
-bool frun::run_stop::in_allowed_wheelchair() const noexcept {
+bool run_stop::in_allowed_wheelchair() const noexcept {
   return get_stop().in_allowed_wheelchair();
 }
 
-bool frun::run_stop::out_allowed_wheelchair() const noexcept {
+bool run_stop::out_allowed_wheelchair() const noexcept {
   return get_stop().out_allowed_wheelchair();
 }
 
-bool frun::run_stop::in_allowed(bool const wheelchair) const noexcept {
+bool run_stop::in_allowed(bool const wheelchair) const noexcept {
   return wheelchair ? in_allowed_wheelchair() : in_allowed();
 }
 
-bool frun::run_stop::out_allowed(bool const wheelchair) const noexcept {
+bool run_stop::out_allowed(bool const wheelchair) const noexcept {
   return wheelchair ? out_allowed_wheelchair() : out_allowed();
 }
 
-timetable const& frun::run_stop::tt() const noexcept { return *fr_->tt_; }
-rt_timetable const* frun::run_stop::rtt() const noexcept { return fr_->rtt_; }
+timetable const& run_stop::tt() const noexcept { return *fr_->tt_; }
+rt_timetable const* run_stop::rtt() const noexcept { return fr_->rtt_; }
 
 frun::iterator& frun::iterator::operator++() noexcept {
   do {
@@ -273,7 +286,7 @@ bool frun::iterator::operator!=(iterator o) const noexcept {
   return !(*this == o);
 }
 
-frun::run_stop frun::iterator::operator*() const noexcept { return rs_; }
+run_stop frun::iterator::operator*() const noexcept { return rs_; }
 
 frun::frun(timetable const& tt, rt_timetable const* rtt, run r)
     : run{r}, tt_{&tt}, rtt_{rtt} {
@@ -356,7 +369,7 @@ stop_idx_t frun::size() const noexcept {
           : tt_->route_location_seq_[tt_->transport_route_[t_.t_idx_]].size());
 }
 
-frun::run_stop frun::operator[](stop_idx_t const i) const noexcept {
+run_stop frun::operator[](stop_idx_t const i) const noexcept {
   return run_stop{this, static_cast<stop_idx_t>(stop_range_.from_ + i)};
 }
 
@@ -366,6 +379,80 @@ clasz frun::get_clasz() const noexcept {
   } else {
     return rtt_->rt_transport_section_clasz_[rt_].at(0);
   }
+}
+
+void frun::for_each_trip(
+    std::function<void(trip_idx_t const, interval<stop_idx_t> const)> const&
+        callback) const {
+  auto curr_trip_idx = trip_idx_t::invalid();
+  auto curr_from = stop_idx_t{0U};
+  for (auto const [from, to] :
+       utl::pairwise(interval{stop_idx_t{0U}, stop_range_.to_})) {
+    auto const trip_idx =
+        (*this)[static_cast<stop_idx_t>(from - stop_range_.from_)]  //
+            .get_trip_idx(event_type::kDep);
+    if (trip_idx == curr_trip_idx) {
+      continue;
+    }
+    if (from != 0U) {
+      callback(curr_trip_idx, interval{curr_from, to});
+    }
+    curr_trip_idx = trip_idx;
+    curr_from = from;
+  }
+  callback(curr_trip_idx, interval{curr_from, stop_range_.to_});
+}
+
+void frun::for_each_shape_point(
+    shapes_storage const* shapes_data,
+    interval<stop_idx_t> const range,
+    std::function<void(geo::latlng const&)> const& callback) const {
+  utl::verify(range.size() >= 2, "Range must contain at least 2 stops. Is {}",
+              range.size());
+  assert(stop_range_.from_ + range.to_ <= stop_range_.to_);
+  auto const absolute_stop_range = range >> stop_range_.from_;
+  auto const get_subshape = [&](interval<stop_idx_t> absolute_range,
+                                trip_idx_t const trip_idx,
+                                stop_idx_t const absolute_trip_offset)
+      -> std::variant<std::span<geo::latlng const>, interval<stop_idx_t>> {
+    if (shapes_data != nullptr) {
+      auto const shape = shapes_data->get_shape(
+          trip_idx, absolute_range << absolute_trip_offset);
+      if (!shape.empty()) {
+        return shape;
+      }
+    }
+    return absolute_range << stop_range_.from_;
+  };
+  auto start_pos = (*this)[range.from_].pos();
+  callback(start_pos);
+  auto consume_pos = [&, last_pos = std::move(start_pos), changed = false](
+                         geo::latlng const& pos,
+                         bool const force_if_unchanged = false) mutable {
+    if (pos != last_pos || (force_if_unchanged && !changed)) {
+      callback(pos);
+      changed = true;
+    }
+    last_pos = pos;
+  };
+  for_each_trip([&](trip_idx_t const trip_idx,
+                    interval<stop_idx_t> const subrange) {
+    auto const common_stops = subrange.intersect(absolute_stop_range);
+    if (common_stops.size() > 1) {
+      std::visit(utl::overloaded{[&](std::span<geo::latlng const> shape) {
+                                   for (auto const& pos : shape) {
+                                     consume_pos(pos);
+                                   }
+                                 },
+                                 [&](interval<stop_idx_t> relative_range) {
+                                   for (auto const stop_idx : relative_range) {
+                                     consume_pos((*this)[stop_idx].pos());
+                                   }
+                                 }},
+                 get_subshape(common_stops, trip_idx, subrange.from_));
+    }
+  });
+  consume_pos((*this)[static_cast<stop_idx_t>(range.to_ - 1)].pos(), true);
 }
 
 trip_id frun::id() const noexcept {
@@ -396,9 +483,9 @@ trip_idx_t frun::trip_idx() const {
   throw utl::fail("trip idx only for scheduled trip");
 }
 
-void frun::run_stop::print(std::ostream& out,
-                           bool const first,
-                           bool const last) const {
+void run_stop::print(std::ostream& out,
+                     bool const first,
+                     bool const last) const {
   auto const& tz = tt().locations_.timezones_.at(
       get_transport_stop_tz(*fr_->tt_, fr_->t_.t_idx_, get_location().l_));
 
@@ -471,7 +558,7 @@ void frun::run_stop::print(std::ostream& out,
   }
 }
 
-std::ostream& operator<<(std::ostream& out, frun::run_stop const& stp) {
+std::ostream& operator<<(std::ostream& out, run_stop const& stp) {
   stp.print(out);
   return out;
 }
