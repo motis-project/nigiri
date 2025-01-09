@@ -1,10 +1,6 @@
 #pragma once
 
-#include "area.h"
 #include "booking_rule.h"
-
-#include <map>
-#include <string>
 
 #include "nigiri/loader/gtfs/trip.h"
 
