@@ -87,7 +87,7 @@ std::optional<unixtime_t> updater::get_opt_time(pugi::xml_node const& node,
   auto const xpath = node.select_node(str);
   if (xpath != nullptr) {
     try {
-      return std::optional{parse_time(xpath.node().child_value())};
+      return std::optional{parse_time_no_tz(xpath.node().child_value())};
     } catch (std::exception const& e) {
       log(log_lvl::error, "vdv_update.get_opt_time",
           "{}, invalid time input: {}", e.what(), xpath.node().child_value());

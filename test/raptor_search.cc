@@ -1,5 +1,6 @@
 #include "./raptor_search.h"
 
+#include "nigiri/common/parse_time.h"
 #include "nigiri/routing/limits.h"
 #include "nigiri/routing/raptor/raptor.h"
 #include "nigiri/routing/raptor_search.h"
@@ -7,18 +8,6 @@
 #include "nigiri/timetable.h"
 
 namespace nigiri::test {
-
-unixtime_t parse_time(std::string_view s, char const* format) {
-  std::stringstream in;
-  in << s;
-
-  date::local_seconds ls;
-  std::string tz;
-  in >> date::parse(format, ls, tz);
-
-  return std::chrono::time_point_cast<unixtime_t::duration>(
-      date::make_zoned(tz, ls).get_sys_time());
-}
 
 pareto_set<routing::journey> raptor_search(timetable const& tt,
                                            rt_timetable const* rtt,
@@ -64,8 +53,9 @@ pareto_set<routing::journey> raptor_search(timetable const& tt,
                                            direction const search_dir,
                                            routing::clasz_mask_t mask,
                                            bool const require_bikes_allowed) {
-  return raptor_search(tt, rtt, from, to, parse_time(time, "%Y-%m-%d %H:%M %Z"),
-                       search_dir, mask, require_bikes_allowed, 0U);
+  return raptor_search(tt, rtt, from, to,
+                       parse_time_tz(time, "%Y-%m-%d %H:%M %Z"), search_dir,
+                       mask, require_bikes_allowed, 0U);
 }
 
 pareto_set<routing::journey> raptor_search(timetable const& tt,
@@ -85,7 +75,7 @@ pareto_set<routing::journey> raptor_search(timetable const& tt,
         {tt.locations_.location_id_to_idx_.at({to, src}), 0_minutes, 0U}};
   }
   if (!time.empty()) {
-    q.start_time_ = parse_time(time, "%Y-%m-%d %H:%M %Z");
+    q.start_time_ = parse_time_tz(time, "%Y-%m-%d %H:%M %Z");
   }
   return raptor_search(tt, rtt, std::move(q), search_dir);
 }

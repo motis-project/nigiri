@@ -5,6 +5,8 @@
 
 #include "utl/erase_if.h"
 
+#include "nigiri/common/parse_time.h"
+
 #include "nigiri/loader/gtfs/agency.h"
 #include "nigiri/loader/gtfs/calendar.h"
 #include "nigiri/loader/gtfs/calendar_date.h"
@@ -26,7 +28,6 @@ using namespace nigiri;
 using namespace date;
 using namespace std::chrono_literals;
 using namespace std::string_view_literals;
-using nigiri::test::parse_time;
 using nigiri::test::raptor_search;
 
 namespace {
@@ -173,7 +174,7 @@ location_idx_t loc(timetable const& tt, std::string_view const id) {
 }
 
 unixtime_t time(std::string_view const time) {
-  return parse_time(time, "%Y-%m-%d %H:%M %Z");
+  return parse_time_tz(time, "%Y-%m-%d %H:%M %Z");
 }
 
 timetable load_timetable(std::string_view s) {
