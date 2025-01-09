@@ -196,9 +196,9 @@ TEST(gtfs, calculate_duration) {
   auto const geometries =
       read_location_geojson(tt, files.get_file(kLocationGeojsonFile).data());
 
-  read_stop_times(tt, src, trip_data, geometries, locations_map{},
-                  booking_rule_map_t{},
-                  files.get_file(kCalculateDurationStopTimesFile).data());
+  read_stop_times(
+      tt, src, trip_data, geometries, locations_map{}, booking_rule_map_t{},
+      files.get_file(kCalculateDurationStopTimesFile).data(), false);
 
   auto const kNumGeometries = tt.geometry_idx_to_trip_idxs_.size();
 

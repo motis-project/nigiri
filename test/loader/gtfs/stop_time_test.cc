@@ -158,7 +158,7 @@ TEST(gtfs, read_stop_times_gtfs_flex_example_data) {
       booking_rule_services, tt, files.get_file(kBookingRulesFile).data());
 
   read_stop_times(tt, src, trip_data, location_geojsons, stops, booking_rules,
-                  files.get_file(kStopTimesGTFSFlexFile).data());
+                  files.get_file(kStopTimesGTFSFlexFile).data(), false);
 
   auto const test_stop_time =
       [&](std::string const& geo_id, std::string const& trip_id,

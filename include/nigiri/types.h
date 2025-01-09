@@ -166,7 +166,7 @@ using timezone_idx_t = cista::strong<std::uint16_t, struct _timezone_idx>;
 using merged_trips_idx_t =
     cista::strong<std::uint32_t, struct _merged_trips_idx>;
 using footpath_idx_t = cista::strong<std::uint32_t, struct _footpath_idx>;
-using source_file_idx_t = cista::strong<std::uint16_t, struct _source_file_idx>;
+using source_file_idx_t = cista::strong<std::uint32_t, struct _source_file_idx>;
 
 using profile_idx_t = std::uint8_t;
 static constexpr auto const kMaxProfiles = profile_idx_t{8};

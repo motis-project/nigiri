@@ -70,11 +70,11 @@ std::ostream& operator<<(std::ostream& out, timetable const& tt) {
 }
 
 cista::wrapped<timetable> timetable::read(std::filesystem::path const& p) {
-  return cista::read<timetable>(p);
+  return cista::read<timetable, kMode>(p);
 }
 
 void timetable::write(std::filesystem::path const& p) const {
-  return cista::write(p, *this);
+  return cista::write<kMode, timetable>(p, *this);
 }
 
 }  // namespace nigiri
