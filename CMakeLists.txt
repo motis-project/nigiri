@@ -2,6 +2,9 @@ cmake_minimum_required(VERSION 3.22)
 project(nigiri)
 
 option(NIGIRI_CUDA "enable CUDA functions" OFF)
+if (NIGIRI_CUDA)
+  set(CMAKE_CUDA_ARCHITECTURES native)
+endif()
 
 if (NOT DEFINED CMAKE_MSVC_RUNTIME_LIBRARY)
   if (NIGIRI_MIMALLOC)
@@ -115,7 +118,7 @@ configure_file(
 file(GLOB_RECURSE nigiri-test-files test/*.cc)
 add_executable(nigiri-test ${nigiri-test-files})
 target_include_directories(nigiri-test PRIVATE include)
-target_link_libraries(nigiri-test nigiri gtest ianatzdb-res nigiri-generated)
+target_link_libraries(nigiri-test PRIVATE nigiri gtest ianatzdb-res nigiri-generated)
 target_compile_options(nigiri-test PRIVATE ${nigiri-compile-options})
 
 
@@ -136,25 +139,23 @@ if (NIGIRI_CUDA)
   enable_language(CUDA)
 
   find_package(CUDAToolkit REQUIRED)
-  find_package(CUDA REQUIRED)
   file(GLOB_RECURSE nigiri-gpu-files src/*.cu)
   add_library(nigiri-gpu OBJECT ${nigiri-gpu-files})
   set_target_properties(nigiri-gpu PROPERTIES
-          WINDOWS_EXPORT_ALL_SYMBOLS ON
-          CUDA_SEPARABLE_COMPILATION ON
-          CUDA_STANDARD 23
-          RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}
-          LIBRARY_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}
-          INSTALL_RPATH "$ORIGIN/../lib:$ORIGIN/"
+      WINDOWS_EXPORT_ALL_SYMBOLS ON
+      CUDA_SEPARABLE_COMPILATION ON
+      CUDA_ARCHITECTURES native
+      CUDA_STANDARD 26
+      RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}
+      LIBRARY_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}
+      INSTALL_RPATH "$ORIGIN/../lib:$ORIGIN/"
   )
-  include_directories(${CUDAToolkit_INCLUDE_DIRS})
-  target_include_directories(nigiri-gpu PUBLIC include)
+  target_include_directories(nigiri-gpu PUBLIC include ${CUDAToolkit_INCLUDE_DIRS})
   set_property(TARGET nigiri-gpu PROPERTY CUDA_ARCHITECTURES native)
-  target_link_libraries(nigiri-gpu ${CUDAToolkit_LIBRARIES})
-  target_link_libraries(nigiri-gpu PRIVATE cista fmt date unordered_dense geo utl)
+  target_link_libraries(nigiri-gpu PRIVATE CCCL::CCCL nigiri cista fmt date unordered_dense geo utl)
   target_compile_definitions(nigiri-gpu PRIVATE NIGIRI_CUDA=1)
-  set_property(TARGET nigiri-gpu PROPERTY CUDA_STANDARD 23)
 
-  target_link_libraries(nigiri PUBLIC nigiri-gpu)
+  target_link_libraries(nigiri-test PRIVATE nigiri-gpu)
   set_property(TARGET nigiri-test PROPERTY CUDA_SEPARABLE_COMPILATION ON)
+  set_property(TARGET nigiri PROPERTY CUDA_SEPARABLE_COMPILATION ON)
 endif()

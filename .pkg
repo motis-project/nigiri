@@ -5,7 +5,7 @@
 [cista]
   url=git@github.com:felixguendling/cista.git
   branch=master
-  commit=fabfc0cbcf07343a2e0c2def3009555b22f0ae46
+  commit=1bafc9a1d8a37c3f6f5660834475964f85742612
 [geo]
   url=git@github.com:motis-project/geo.git
   branch=master
@@ -54,3 +54,7 @@
   url=git@github.com:motis-project/pugixml.git
   branch=master
   commit=60175e80e2f5e97e027ac78f7e14c5acc009ce50
+[cccl]
+  url=git@github.com:NVIDIA/cccl.git
+  branch=master
+  commit=cc7c1bb7e888dcfc8665ca4936d8e99c7476a847
