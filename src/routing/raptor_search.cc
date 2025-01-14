@@ -14,40 +14,46 @@
 #include "utl/verify.h"
 
 #include "nigiri/get_otel_tracer.h"
+#include "nigiri/routing/gpu/raptor.h"
 #include "nigiri/routing/query.h"
 
 namespace nigiri::routing {
 
 namespace {
 
-template <direction SearchDir, via_offset_t Vias>
+template <direction SearchDir, via_offset_t Vias, typename AlgoState>
 routing_result<raptor_stats> raptor_search_with_vias(
     timetable const& tt,
     rt_timetable const* rtt,
     search_state& s_state,
-    raptor_state& r_state,
+    AlgoState& r_state,
     query q,
     std::optional<std::chrono::seconds> const timeout) {
-
   if (rtt == nullptr) {
-    using algo_t = raptor<SearchDir, false, Vias>;
+    using algo_t =
+        std::conditional_t<std::is_same_v<AlgoState, gpu::gpu_raptor_state>,
+                           gpu::gpu_raptor<SearchDir, false, Vias>,
+                           raptor<SearchDir, false, Vias>>;
     return search<SearchDir, algo_t>{tt,      rtt,          s_state,
                                      r_state, std::move(q), timeout}
         .execute();
   } else {
-    using algo_t = raptor<SearchDir, true, Vias>;
+    using algo_t =
+        std::conditional_t<std::is_same_v<AlgoState, gpu::gpu_raptor_state>,
+                           gpu::gpu_raptor<SearchDir, true, Vias>,
+                           raptor<SearchDir, true, Vias>>;
     return search<SearchDir, algo_t>{tt,      rtt,          s_state,
                                      r_state, std::move(q), timeout}
         .execute();
   }
 }
 
-template <direction SearchDir>
+template <direction SearchDir, typename AlgoState>
 routing_result<raptor_stats> raptor_search_with_dir(
     timetable const& tt,
     rt_timetable const* rtt,
     search_state& s_state,
-    raptor_state& r_state,
+    AlgoState& algo_state,
     query q,
     std::optional<std::chrono::seconds> const timeout) {
   q.sanitize(tt);
@@ -60,13 +66,13 @@ routing_result<raptor_stats> raptor_search_with_dir(
 
   switch (q.via_stops_.size()) {
     case 0:
-      return raptor_search_with_vias<SearchDir, 0>(tt, rtt, s_state, r_state,
+      return raptor_search_with_vias<SearchDir, 0>(tt, rtt, s_state, algo_state,
                                                    std::move(q), timeout);
     case 1:
-      return raptor_search_with_vias<SearchDir, 1>(tt, rtt, s_state, r_state,
+      return raptor_search_with_vias<SearchDir, 1>(tt, rtt, s_state, algo_state,
                                                    std::move(q), timeout);
     case 2:
-      return raptor_search_with_vias<SearchDir, 2>(tt, rtt, s_state, r_state,
+      return raptor_search_with_vias<SearchDir, 2>(tt, rtt, s_state, algo_state,
                                                    std::move(q), timeout);
   }
   std::unreachable();
@@ -85,11 +91,12 @@ std::string_view location_match_mode_str(location_match_mode const mode) {
 
 }  // namespace
 
+template <typename AlgoState>
 routing_result<raptor_stats> raptor_search(
     timetable const& tt,
     rt_timetable const* rtt,
     search_state& s_state,
-    raptor_state& r_state,
+    AlgoState& algo_state,
     query q,
     direction const search_dir,
     std::optional<std::chrono::seconds> const timeout) {
@@ -144,11 +151,29 @@ routing_result<raptor_stats> raptor_search(
 
   if (search_dir == direction::kForward) {
     return raptor_search_with_dir<direction::kForward>(
-        tt, rtt, s_state, r_state, std::move(q), timeout);
+        tt, rtt, s_state, algo_state, std::move(q), timeout);
   } else {
     return raptor_search_with_dir<direction::kBackward>(
-        tt, rtt, s_state, r_state, std::move(q), timeout);
+        tt, rtt, s_state, algo_state, std::move(q), timeout);
   }
 }
+
+template routing_result<raptor_stats> raptor_search(
+    timetable const&,
+    rt_timetable const*,
+    search_state&,
+    raptor_state&,
+    query,
+    direction,
+    std::optional<std::chrono::seconds>);
+
+template routing_result<raptor_stats> raptor_search(
+    timetable const&,
+    rt_timetable const*,
+    search_state&,
+    gpu::gpu_raptor_state&,
+    query,
+    direction,
+    std::optional<std::chrono::seconds>);
 
 }  // namespace nigiri::routing

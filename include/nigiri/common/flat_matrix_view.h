@@ -10,7 +10,7 @@ struct base_flat_matrix_view {
   using size_type = typename Span::size_type;
 
   struct row {
-    row(base_flat_matrix_view& matrix, size_type const i)
+    CISTA_CUDA_COMPAT row(base_flat_matrix_view& matrix, size_type const i)
         : matrix_(matrix), i_(i) {}
 
     using iterator = typename Span::iterator;
@@ -34,7 +34,7 @@ struct base_flat_matrix_view {
     friend iterator begin(row& r) { return r.begin(); }
     friend iterator end(row& r) { return r.end(); }
 
-    value_type& operator[](size_type const j) {
+    CISTA_CUDA_COMPAT value_type& operator[](size_type const j) {
       assert(j < matrix_.n_columns_);
       auto const pos = matrix_.n_columns_ * i_ + j;
       return matrix_.entries_[pos];
@@ -45,7 +45,8 @@ struct base_flat_matrix_view {
   };
 
   struct const_row {
-    const_row(base_flat_matrix_view const& matrix, size_type const i)
+    CISTA_CUDA_COMPAT const_row(base_flat_matrix_view const& matrix,
+                                size_type const i)
         : matrix_(matrix), i_(i) {}
 
     using iterator = typename Span::iterator;
@@ -59,7 +60,7 @@ struct base_flat_matrix_view {
     friend iterator begin(const_row const& r) { return r.begin(); }
     friend iterator end(const_row const& r) { return r.end(); }
 
-    value_type const& operator[](size_type const j) const {
+    CISTA_CUDA_COMPAT value_type const& operator[](size_type const j) const {
       assert(j < matrix_.n_columns_);
       auto const pos = matrix_.n_columns_ * i_ + j;
       return matrix_.entries_[pos];
@@ -76,11 +77,11 @@ struct base_flat_matrix_view {
     assert(entries_.size() == n_rows_ * n_columns_);
   }
 
-  row operator[](size_type i) {
+  CISTA_CUDA_COMPAT row operator[](size_type i) {
     assert(i < n_rows_);
     return {*this, i};
   }
-  const_row operator[](size_type i) const {
+  CISTA_CUDA_COMPAT const_row operator[](size_type i) const {
     assert(i < n_rows_);
     return {*this, i};
   }

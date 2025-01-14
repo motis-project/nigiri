@@ -5,6 +5,7 @@
 #include <span>
 #include <type_traits>
 
+#include "cista/cuda_check.h"
 #include "cista/memory_holder.h"
 #include "cista/reflection/printable.h"
 
@@ -435,7 +436,7 @@ struct timetable {
   vector_map<route_idx_t, interval<std::uint32_t>> route_stop_time_ranges_;
   vector<delta> route_stop_times_;
 
-  // Offset between the stored time and the time given in the GTFS timetable.
+  // Offset between the stored time and the time given in the GTFS timetable
   // Required to match GTFS-RT with GTFS-static trips.
   vector_map<transport_idx_t, duration_t> transport_first_dep_offset_;
 
