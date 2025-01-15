@@ -2,6 +2,8 @@
 
 #include <cassert>
 
+#include "cista/cuda_check.h"
+
 namespace nigiri {
 
 template <typename Span>

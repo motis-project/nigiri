@@ -18,7 +18,12 @@ struct gpu_raptor_state {
 
   gpu_raptor_state& resize(unsigned n_locations,
                            unsigned n_routes,
-                           unsigned n_rt_transports);
+                           unsigned n_rt_transports,
+                           std::array<bitvec, kMaxVias> const& is_via,
+                           std::vector<via_stop> const& via_stops,
+                           bitvec const& is_dest,
+                           std::vector<std::uint16_t> const& dist_to_dest,
+                           std::vector<std::uint16_t> const& lb);
 
   struct impl;
   std::unique_ptr<impl> impl_;
