@@ -5,6 +5,8 @@
 #include "cuda/std/span"
 #include "cuda_runtime.h"
 
+#include "nigiri/routing/gpu/stride.cuh"
+
 namespace nigiri::routing::gpu {
 
 struct bitvec {
@@ -17,6 +19,14 @@ struct bitvec {
   __device__ void mark(block_t const i) {
     atomicOr(&blocks_[i / bits_per_block], block_t{1U} << (i % bits_per_block));
   }
+
+  __device__ void zero_out() {
+    auto const global_t_id = get_global_thread_id();
+    auto const global_stride = get_global_stride();
+    for (auto i = global_t_id; i < blocks_.size(); i += global_stride) {
+      blocks_[i] = 0U;
+    }
+  };
 
   constexpr bool operator[](block_t const i) {
     auto const bit = i % bits_per_block;

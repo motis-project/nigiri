@@ -11,6 +11,7 @@
 #include "fmt/ostream.h"
 #include "fmt/ranges.h"
 
+#include "cista/cuda_check.h"
 #include "cista/reflection/comparable.h"
 #include "cista/strong.h"
 
@@ -101,7 +102,7 @@ struct interval {
     return r.end();
   }
 
-  auto size() const { return to_ - from_; }
+  CISTA_CUDA_COMPAT auto size() const { return to_ - from_; }
 
   T operator[](std::size_t const i) const {
     assert(contains(from_ + static_cast<T>(i)));

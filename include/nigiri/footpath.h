@@ -40,8 +40,12 @@ struct footpath {
     }
   }
 
-  location_idx_t target() const { return location_idx_t{target_}; }
-  duration_t duration() const { return duration_t{duration_}; }
+  CISTA_CUDA_COMPAT location_idx_t target() const {
+    return location_idx_t{target_};
+  }
+  CISTA_CUDA_COMPAT duration_t duration() const {
+    return duration_t{duration_};
+  }
 
   location_idx_t::value_t value() const {
     return *reinterpret_cast<location_idx_t::value_t const*>(this);

@@ -16,15 +16,6 @@ struct gpu_raptor_state {
   explicit gpu_raptor_state(gpu_timetable const&);
   ~gpu_raptor_state();
 
-  gpu_raptor_state& resize(unsigned n_locations,
-                           unsigned n_routes,
-                           unsigned n_rt_transports,
-                           std::array<bitvec, kMaxVias> const& is_via,
-                           std::vector<via_stop> const& via_stops,
-                           bitvec const& is_dest,
-                           std::vector<std::uint16_t> const& dist_to_dest,
-                           std::vector<std::uint16_t> const& lb);
-
   struct impl;
   std::unique_ptr<impl> impl_;
 };
@@ -73,12 +64,6 @@ struct gpu_raptor {
   void reconstruct(query const&, journey&);
 
 private:
-  date::sys_days base() const {
-    return tt_.internal_interval_days().from_ + as_int(base_) * date::days{1};
-  }
-
-  int as_int(day_idx_t const d) const { return static_cast<int>(d.v_); }
-
   timetable const& tt_;
   rt_timetable const* rtt_{nullptr};
   int n_days_;
