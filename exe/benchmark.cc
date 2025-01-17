@@ -8,12 +8,12 @@
 #include "utl/parallel_for.h"
 #include "utl/progress_tracker.h"
 
-#include "nigiri/logging.h"
 #include "nigiri/qa/qa.h"
 #include "nigiri/query_generator/generator.h"
 #include "nigiri/routing/raptor/raptor.h"
 #include "nigiri/routing/raptor_search.h"
 #include "nigiri/routing/search.h"
+#include "nigiri/scoped_timer.h"
 #include "nigiri/timetable.h"
 #include "nigiri/types.h"
 

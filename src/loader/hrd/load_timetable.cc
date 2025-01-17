@@ -25,7 +25,7 @@ bool applicable(config const& c, dir const& d) {
                      (c.prefix(d) / c.core_data_ / file).lexically_normal();
                  auto const exists = d.exists(path);
                  if (!exists) {
-                   log(log_lvl::info, "loader.hrd",
+                   utl::log_info("loader.hrd",
                        "input={}, missing file for config {}: {}",
                        d.path().generic_string(), c.version_.view(),
                        path.generic_string());
@@ -92,7 +92,7 @@ void load_timetable(source_idx_t const src,
       continue;
     }
 
-    log(log_lvl::info, "loader.hrd.services", "loading {}",
+    utl::log_info("loader.hrd.services", "loading {}",
         path.generic_string());
     auto const file = d.get_file(path);
     sb.add_services(

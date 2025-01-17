@@ -217,7 +217,7 @@ void service_builder::write_services(source_idx_t const src) {
               .stop_seq_numbers_ = stop_seq_numbers_,
               .route_colors_ = route_colors_});
         } catch (std::exception const& e) {
-          log(log_lvl::error, "loader.hrd.service",
+          utl::log_error("loader.hrd.service",
               "unable to load service {}: {}", ref.origin_, e.what());
           continue;
         }

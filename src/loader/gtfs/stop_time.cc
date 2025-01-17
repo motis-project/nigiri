@@ -4,20 +4,21 @@
 #include <tuple>
 
 #include "utl/enumerate.h"
+#include "utl/logging.h"
 #include "utl/parser/arg_parser.h"
 #include "utl/parser/buf_reader.h"
 #include "utl/parser/csv.h"
 #include "utl/parser/csv_range.h"
 #include "utl/parser/line_range.h"
+#include "utl/pipes/for_each.h"
 #include "utl/pipes/transform.h"
 #include "utl/pipes/vec.h"
 #include "utl/progress_tracker.h"
 
+#include "nigiri/common/cached_lookup.h"
 #include "nigiri/loader/gtfs/parse_time.h"
 #include "nigiri/loader/gtfs/trip.h"
-#include "nigiri/common/cached_lookup.h"
-#include "nigiri/logging.h"
-#include "utl/pipes/for_each.h"
+#include "nigiri/scoped_timer.h"
 
 namespace nigiri::loader::gtfs {
 
@@ -77,7 +78,7 @@ void read_stop_times(timetable& tt,
 
           auto const trip_it = trips.trips_.find(t_id);
           if (trip_it == end(trips.trips_)) {
-            log(log_lvl::error, "loader.gtfs.stop_time",
+            utl::log_error("loader.gtfs.stop_time",
                 "stop_times.txt:{} trip \"{}\" not found", i, t_id);
             return;
           }
@@ -119,7 +120,7 @@ void read_stop_times(timetable& tt,
                 });
           }
         } catch (...) {
-          log(log_lvl::error, "loader.gtfs.stop_time",
+          utl::log_error("loader.gtfs.stop_time",
               "stop_times.txt:{}: unknown stop \"{}\"", i, s.stop_id_->view());
         }
       });

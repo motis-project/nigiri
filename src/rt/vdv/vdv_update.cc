@@ -26,7 +26,7 @@ namespace nigiri::rt::vdv {
 
 // #define VDV_DEBUG
 #ifdef VDV_DEBUG
-#define vdv_trace(...) fmt::print(__VA_ARGS__)
+#define vdv_trace(...) utl::debug(__VA_ARGS__)
 #else
 #define vdv_trace(...)
 #endif
@@ -89,7 +89,7 @@ std::optional<unixtime_t> updater::get_opt_time(pugi::xml_node const& node,
     try {
       return std::optional{parse_time_no_tz(xpath.node().child_value())};
     } catch (std::exception const& e) {
-      log(log_lvl::error, "vdv_update.get_opt_time",
+      utl::log_error("vdv_update.get_opt_time",
           "{}, invalid time input: {}", e.what(), xpath.node().child_value());
     }
   }

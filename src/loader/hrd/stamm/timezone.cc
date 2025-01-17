@@ -1,9 +1,8 @@
-#include "nigiri/loader/hrd/stamm/timezone.h"
-
+#include "utl/logging.h"
 #include "utl/parser/arg_parser.h"
 
+#include "nigiri/loader/hrd/stamm/timezone.h"
 #include "nigiri/loader/hrd/util.h"
-#include "nigiri/logging.h"
 
 namespace nigiri::loader::hrd {
 
@@ -67,7 +66,7 @@ timezone_map_t parse_timezones(config const& c,
       if (it != end(tz)) {
         tz[parse_eva_number(line.substr(c.tz_.type1_eva_))] = it->second;
       } else {
-        log(log_lvl::error, "loader.hrd.timezone",
+        utl::log_error("loader.hrd.timezone",
             "no timezone for eva number: {}", first_valid_eva_number);
       }
       return;

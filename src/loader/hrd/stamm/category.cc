@@ -1,10 +1,8 @@
-#include "nigiri/loader/hrd/stamm/category.h"
-
 #include "utl/parser/arg_parser.h"
 
-#include "nigiri/loader/hrd/util.h"
 #include "nigiri/clasz.h"
-#include "nigiri/logging.h"
+#include "nigiri/loader/hrd/stamm/category.h"
+#include "nigiri/loader/hrd/util.h"
 
 namespace nigiri::loader::hrd {
 

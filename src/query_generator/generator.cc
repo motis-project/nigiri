@@ -1,7 +1,8 @@
+#include "utl/logging.h"
+
 #include "nigiri/query_generator/generator.h"
 
 #include "nigiri/location_match_mode.h"
-#include "nigiri/logging.h"
 #include "nigiri/routing/ontrip_train.h"
 #include "nigiri/special_stations.h"
 #include "nigiri/timetable.h"
@@ -167,7 +168,7 @@ std::optional<start_dest_query> generator::random_query() {
     return sdq;
   }
 
-  log(log_lvl::info, "query_generator.random_pretrip",
+  utl::log_info("query_generator.random_pretrip",
       "WARNING: failed to generate a valid query after {} attempts",
       kMaxGenAttempts);
 
@@ -196,7 +197,7 @@ location_idx_t generator::random_location() {
     if (!locs_in_bbox.empty()) {
       return location_idx_t{locs_in_bbox[locs_in_bbox_d_(rng_)]};
     }
-    log(log_lvl::info, "query_generator.random_location",
+    utl::log_info("query_generator.random_location",
         "no locations in bounding box: using all locations instead");
   }
   return location_idx_t{location_d_(rng_)};

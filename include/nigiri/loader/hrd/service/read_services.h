@@ -55,14 +55,14 @@ void parse_services(config const& c,
     }
 
     if (!spec.valid()) {
-      log(log_lvl::error, "loader.hrd.service",
+      utl::log_error("loader.hrd.service",
           "skipping invalid service at {}:{}", filename, line_number);
     } else if (!spec.ignore()) {
       // Store if relevant.
       try {
         expand_service(store.add(service{c, st, source_file_idx, spec}));
       } catch (std::exception const& e) {
-        log(log_lvl::error, "loader.hrd.service.expand",
+        utl::log_error("loader.hrd.service.expand",
             "unable to build service at {}:{}: {}", filename, line_number,
             e.what());
       }

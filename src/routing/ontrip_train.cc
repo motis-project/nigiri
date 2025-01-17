@@ -12,7 +12,7 @@ constexpr auto const kTracing = true;
 template <typename... Args>
 void trace(fmt::format_string<Args...> fmt_str, Args... args) {
   if constexpr (kTracing) {
-    fmt::print(std::cout, fmt_str, std::forward<Args&&>(args)...);
+    utl::debug(fmt_str, std::forward<Args&&>(args)...);
   }
 }
 

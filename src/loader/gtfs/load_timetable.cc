@@ -13,6 +13,7 @@
 
 #include "wyhash.h"
 
+#include "nigiri/common/sort_by.h"
 #include "nigiri/loader/get_index.h"
 #include "nigiri/loader/gtfs/agency.h"
 #include "nigiri/loader/gtfs/calendar.h"
@@ -30,8 +31,7 @@
 #include "nigiri/loader/gtfs/stop_time.h"
 #include "nigiri/loader/gtfs/trip.h"
 #include "nigiri/loader/loader_interface.h"
-#include "nigiri/common/sort_by.h"
-#include "nigiri/logging.h"
+#include "nigiri/scoped_timer.h"
 #include "nigiri/timetable.h"
 
 namespace fs = std::filesystem;

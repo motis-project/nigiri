@@ -2,6 +2,7 @@
 
 #include "geo/point_rtree.h"
 
+#include "utl/logging.h"
 #include "utl/parser/buf_reader.h"
 #include "utl/parser/csv_range.h"
 #include "utl/parser/line_range.h"
@@ -28,7 +29,7 @@ assistance_times read_assistance(std::string_view file_content) {
           try {
             a.rules_.emplace_back(oh::parse(x.time_->trim().view()));
           } catch (std::exception const& e) {
-            log(log_lvl::error, "loader.assistance",
+            utl::log_error("loader.assistance",
                 "bad assistance time \"{}\": {}", x.time_->view(), e.what());
           }
         });

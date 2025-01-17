@@ -316,7 +316,7 @@ stop_idx_t frun::first_valid(stop_idx_t const from) const {
       return i;
     }
   }
-  log(log_lvl::error, "frun", "no first valid found: id={}, name={}, dbg={}",
+  utl::log_error("frun", "no first valid found: id={}, name={}, dbg={}",
       fmt::streamed(id()), name(), fmt::streamed(dbg()));
   return stop_range_.to_;
 }
@@ -330,7 +330,7 @@ stop_idx_t frun::last_valid() const {
       return i;
     }
   }
-  log(log_lvl::error, "frun", "no last valid found: id={}, name={}, dbg={}",
+  utl::log_error("frun", "no last valid found: id={}, name={}, dbg={}",
       fmt::streamed(id()), name(), fmt::streamed(dbg()));
   return stop_range_.to_;
 }

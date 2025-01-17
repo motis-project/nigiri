@@ -10,6 +10,7 @@
 #include "utl/erase_if.h"
 #include "utl/get_or_create.h"
 #include "utl/helpers/algorithm.h"
+#include "utl/logging.h"
 #include "utl/parser/buf_reader.h"
 #include "utl/parser/csv.h"
 #include "utl/parser/csv_range.h"
@@ -20,7 +21,7 @@
 #include "utl/verify.h"
 
 #include "nigiri/loader/gtfs/parse_time.h"
-#include "nigiri/logging.h"
+#include "nigiri/scoped_timer.h"
 #include "nigiri/timetable.h"
 #include "nigiri/types.h"
 
@@ -33,7 +34,7 @@ block::rule_services(trip_data& trips) {
   utl::erase_if(trips_, [&](gtfs_trip_idx_t const& t) {
     auto const is_empty = trips.data_[t].stop_seq_.empty();
     if (is_empty) {
-      log(log_lvl::error, "loader.gtfs.trip", "trip \"{}\": no stop times",
+      utl::log_error("loader.gtfs.trip", "trip \"{}\": no stop times",
           trips.data_[t].id_);
     }
     return is_empty;
@@ -329,7 +330,7 @@ trip_data read_trips(
       | utl::for_each([&](csv_trip const& t) {
           auto const traffic_days_it = services.find(t.service_id_->view());
           if (traffic_days_it == end(services)) {
-            log(log_lvl::error, "loader.gtfs.trip",
+            utl::log_error("loader.gtfs.trip",
                 R"(trip "{}": service_id "{}" not found)", t.trip_id_->view(),
                 t.service_id_->view());
             return;
@@ -337,7 +338,7 @@ trip_data read_trips(
 
           auto const route_it = routes.find(t.route_id_->view());
           if (route_it == end(routes)) {
-            log(log_lvl::error, "loader.gtfs.trip",
+            utl::log_error("loader.gtfs.trip",
                 R"(trip "{}": route_id "{}" not found)", t.trip_id_->view(),
                 t.route_id_->view());
             return;
@@ -401,7 +402,7 @@ void read_frequencies(trip_data& trips, std::string_view file_content) {
            auto const t = freq.trip_id_->trim().view();
            auto const trip_it = trips.trips_.find(t);
            if (trip_it == end(trips.trips_)) {
-             log(log_lvl::error, "loader.gtfs.frequencies",
+             utl::log_error("loader.gtfs.frequencies",
                  "frequencies.txt: skipping frequency (trip \"{}\" not found)",
                  t);
              return;
@@ -410,7 +411,7 @@ void read_frequencies(trip_data& trips, std::string_view file_content) {
            auto const headway_secs_str = *freq.headway_secs_;
            auto const headway_secs = parse<int>(headway_secs_str, -1);
            if (headway_secs == -1) {
-             log(log_lvl::error, "loader.gtfs.frequencies",
+             utl::log_error("loader.gtfs.frequencies",
                  R"(frequencies.txt: skipping frequency (invalid headway secs "{}"))",
                  headway_secs_str.view());
              return;

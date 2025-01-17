@@ -13,7 +13,7 @@
 // #define NIGIRI_DIJKSTRA_TRACING
 
 #ifdef NIGIRI_DIJKSTRA_TRACING
-#define trace(...) fmt::print(__VA_ARGS__)
+#define trace(...) utl::debug(__VA_ARGS__)
 #else
 #define trace(...)
 #endif
