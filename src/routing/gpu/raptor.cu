@@ -10,6 +10,7 @@
 
 #include "thrust/device_vector.h"
 #include "thrust/fill.h"
+#include "thrust/host_vector.h"
 
 #include "nigiri/routing/gpu/device_timetable.cuh"
 #include "nigiri/routing/gpu/raptor_impl.cuh"
@@ -18,6 +19,10 @@
 namespace cg = cooperative_groups;
 
 namespace nigiri::routing::gpu {
+
+#define CUDA_CHECK(code)                                       \
+  utl_verify((code) == cudaSuccess, "CUDA error: {} at {}:{}", \
+             cudaGetErrorString(code), __FILE__, __LINE__);
 
 struct gpu_timetable::impl {
   using t = timetable;
@@ -30,6 +35,7 @@ struct gpu_timetable::impl {
         footpaths_in_{tt.locations_.footpaths_in_[0]},
         route_stop_times_{to_device(tt.route_stop_times_)},
         route_stop_time_ranges_{to_device(tt.route_stop_time_ranges_)},
+        route_transport_ranges_{to_device(tt.route_transport_ranges_)},
         route_clasz_{to_device(tt.route_clasz_)},
         route_bikes_allowed_{to_device(tt.route_bikes_allowed_)},
         route_bikes_allowed_per_section_{tt.route_bikes_allowed_per_section_},
@@ -49,7 +55,7 @@ struct gpu_timetable::impl {
             .route_stop_time_ranges_ = to_view(route_stop_time_ranges_),
             .route_transport_ranges_ = to_view(route_transport_ranges_),
             .route_clasz_ = to_view(route_clasz_),
-            .route_bikes_allowed_ = to_view(route_bikes_allowed_),
+            .route_bikes_allowed_ = {to_view(route_bikes_allowed_)},
             .route_bikes_allowed_per_section_ =
                 to_view(route_bikes_allowed_per_section_),
             .route_location_seq_ = to_view(route_location_seq_),
@@ -70,7 +76,7 @@ struct gpu_timetable::impl {
   thrust::device_vector<interval<std::uint32_t>> route_stop_time_ranges_;
   thrust::device_vector<interval<transport_idx_t>> route_transport_ranges_;
   thrust::device_vector<clasz> route_clasz_;
-  device_bitvec route_bikes_allowed_;
+  thrust::device_vector<std::uint64_t> route_bikes_allowed_;
   device_vecvec<decltype(t{}.route_bikes_allowed_per_section_)>
       route_bikes_allowed_per_section_;
 
@@ -101,11 +107,15 @@ struct gpu_raptor_state::impl {
               std::vector<std::uint16_t> const& dist_to_dest,
               std::vector<std::uint16_t> const& lb) {
     is_intermodal_dest_ = !dist_to_dest.empty();
-    n_locations_ = n_locations;
+    n_locations_ = host_state_.n_locations_ = n_locations;
+
+    time_at_dest_.resize(kMaxTransfers + 1);
+
     tmp_storage_.resize(n_locations * (kMaxVias + 1));
     best_storage_.resize(n_locations * (kMaxVias + 1));
     round_times_storage_.resize(n_locations * (kMaxVias + 1) *
                                 (kMaxTransfers + 1));
+    host_round_times_.resize(round_times_storage_.size());
     station_mark_.resize(n_locations);
     prev_station_mark_.resize(n_locations);
     route_mark_.resize(n_routes);
@@ -113,20 +123,35 @@ struct gpu_raptor_state::impl {
     end_reachable_.resize(n_locations);
 
     for (auto i = 0U; i != is_via.size(); ++i) {
-      is_via_[i].size_ = is_via[i].size_;
-      is_via_[i].blocks_.resize(is_via[i].blocks_.size());
+      is_via_[i].resize(is_via[i].blocks_.size());
       thrust::copy(thrust::cuda::par_nosync, begin(is_via[i].blocks_),
-                   end(is_via[i].blocks_), begin(is_via_[i].blocks_));
+                   end(is_via[i].blocks_), begin(is_via_[i]));
     }
 
     via_stops_.resize(via_stops.size());
     thrust::copy(thrust::cuda::par_nosync, begin(via_stops), end(via_stops),
                  begin(via_stops_));
 
-    is_dest_.size_ = is_dest.size_;
-    is_dest_.blocks_.resize(is_dest.blocks_.size());
-    thrust::copy(thrust::cuda::par_nosync, begin(is_dest.blocks_),
-                 end(is_dest.blocks_), begin(is_dest_.blocks_));
+    is_dest_.resize(is_dest.blocks_.size());
+    utl::verify(
+        cudaSuccess ==
+            cudaMemcpy(thrust::raw_pointer_cast(is_dest_.data()),
+                       is_dest.blocks_.data(),
+                       is_dest.blocks_.size() *
+                           sizeof(std::decay_t<decltype(is_dest)>::block_t),
+                       cudaMemcpyHostToDevice),
+        "could not copy is_dest bitvector");
+
+    dist_to_dest_.resize(dist_to_dest.size());
+    thrust::copy(thrust::cuda::par_nosync, begin(dist_to_dest),
+                 end(dist_to_dest), begin(dist_to_dest_));
+
+    lb_.resize(lb.size());
+    utl::verify(
+        cudaSuccess == cudaMemcpy(thrust::raw_pointer_cast(lb_.data()),
+                                  lb.data(), lb.size() * sizeof(std::uint16_t),
+                                  cudaMemcpyHostToDevice),
+        "could not copy lb bitvector");
   }
 
   template <via_offset_t Vias>
@@ -172,23 +197,26 @@ struct gpu_raptor_state::impl {
 
   unsigned n_locations_;
   bool is_intermodal_dest_;
-  thrust::device_vector<delta_t> time_at_dest_{kMaxTransfers};
+  thrust::device_vector<delta_t> time_at_dest_;
   thrust::device_vector<delta_t> tmp_storage_;
   thrust::device_vector<delta_t> best_storage_;
   thrust::device_vector<delta_t> round_times_storage_;
-  thrust::device_vector<bitvec::block_t> station_mark_;
-  thrust::device_vector<bitvec::block_t> prev_station_mark_;
-  thrust::device_vector<bitvec::block_t> route_mark_;
-  thrust::device_vector<bitvec::block_t> rt_transport_mark_;
+  thrust::device_vector<std::uint32_t> station_mark_;
+  thrust::device_vector<std::uint32_t> prev_station_mark_;
+  thrust::device_vector<std::uint32_t> route_mark_;
+  thrust::device_vector<std::uint32_t> rt_transport_mark_;
 
-  device_bitvec end_reachable_;
-  device_bitvec is_dest_;
-  std::array<device_bitvec, kMaxVias> is_via_;
+  thrust::device_vector<std::uint32_t> end_reachable_;
+  thrust::device_vector<std::uint64_t> is_dest_;
+  std::array<thrust::device_vector<std::uint64_t>, kMaxVias> is_via_;
   thrust::device_vector<via_stop> via_stops_;
   thrust::device_vector<std::uint16_t> dist_to_dest_;
   thrust::device_vector<std::uint16_t> lb_;
 
   device_timetable tt_;
+
+  thrust::host_vector<delta_t> host_round_times_;
+  raptor_state host_state_;
 };
 
 gpu_raptor_state::gpu_raptor_state(gpu_timetable const& gtt)
@@ -233,6 +261,7 @@ gpu_raptor<SearchDir, Rt, Vias>::gpu_raptor(
   state_.impl_->resize(tt.n_locations(), tt.n_routes(),
                        rtt ? rtt->n_rt_transports() : 0U, is_via, via_stops,
                        is_dest, dist_to_dest, lb);
+  reset_arrivals();
 }
 
 template <direction SearchDir, bool Rt, via_offset_t Vias>
@@ -249,40 +278,86 @@ void gpu_raptor<SearchDir, Rt, Vias>::execute(
     std::uint8_t const max_transfers,
     unixtime_t const worst_time_at_dest,
     profile_idx_t,
-    pareto_set<journey>&) {
+    pareto_set<journey>& results) {
   auto const starts =
       thrust::device_vector<std::pair<location_idx_t, unixtime_t>>{starts_};
   cudaDeviceSynchronize();
+  CUDA_CHECK(cudaPeekAtLastError());
 
   auto& s = *state_.impl_;
-  exec_raptor<SearchDir, Rt, Vias>
-      <<<1, 1>>>(start_time, max_transfers, worst_time_at_dest,
-                 raptor_impl<SearchDir, Rt, Vias>{
-                     .tt_ = s.tt_,
-                     .n_locations_ = s.tt_.n_locations_,
-                     .n_routes_ = s.tt_.n_routes_,
-                     .n_rt_transports_ = 0U,  // TODO
-                     .transfer_time_settings_ = transfer_time_settings_,
-                     .max_transfers_ = max_transfers,
-                     .allowed_claszes_ = allowed_claszes_,
-                     .require_bike_transport_ = require_bike_transport_,
-                     .base_ = base_,
-                     .worst_time_at_dest_ = worst_time_at_dest,
-                     .is_intermodal_dest_ = s.is_intermodal_dest_,
-                     .starts_ = to_view(starts),
-                     .is_via_ = to_view(s.is_via_),
-                     .via_stops_ = to_view(s.via_stops_),
-                     .is_dest_ = to_view(s.is_dest_),
-                     .end_reachable_ = to_view(s.end_reachable_),
-                     .dist_to_end_ = to_view(s.dist_to_dest_),
-                     .lb_ = to_view(s.lb_),
-                     .round_times_ = s.get_round_times<Vias>(),
-                     .best_ = s.get_best<Vias>(),
-                     .tmp_ = s.get_tmp<Vias>(),
-                     .time_at_dest_ = to_mutable_view(s.time_at_dest_),
-                     .station_mark_ = s.station_mark_,
-                     .prev_station_mark_ = s.prev_station_mark_,
-                     .route_mark_ = s.route_mark_});
+  exec_raptor<SearchDir, Rt, Vias><<<1, 1>>>(
+      start_time, max_transfers, worst_time_at_dest,
+      raptor_impl<SearchDir, Rt, Vias>{
+          .tt_ = s.tt_,
+          .n_locations_ = s.tt_.n_locations_,
+          .n_routes_ = s.tt_.n_routes_,
+          .n_rt_transports_ = 0U,  // TODO
+          .transfer_time_settings_ = transfer_time_settings_,
+          .max_transfers_ = max_transfers,
+          .allowed_claszes_ = allowed_claszes_,
+          .require_bike_transport_ = require_bike_transport_,
+          .base_ = base_,
+          .worst_time_at_dest_ = worst_time_at_dest,
+          .is_intermodal_dest_ = s.is_intermodal_dest_,
+          .starts_ = to_view(starts),
+          .is_via_ =
+              [&]() {
+                auto ret = cuda::std::array<device_bitvec<std::uint64_t const>,
+                                            kMaxVias>{};
+                for (auto i = 0U; i != kMaxVias; ++i) {
+                  ret[i] = {.blocks_ = to_view(s.is_via_[i])};
+                }
+                return ret;
+              }(),
+          .via_stops_ = to_view(s.via_stops_),
+          .is_dest_ = {to_view(s.is_dest_)},
+          .end_reachable_ = {to_mutable_view(s.end_reachable_)},
+          .dist_to_end_ = to_view(s.dist_to_dest_),
+          .lb_ = to_view(s.lb_),
+          .round_times_ = s.get_round_times<Vias>(),
+          .best_ = s.get_best<Vias>(),
+          .tmp_ = s.get_tmp<Vias>(),
+          .time_at_dest_ = to_mutable_view(s.time_at_dest_),
+          .station_mark_ = {to_mutable_view(s.station_mark_)},
+          .prev_station_mark_ = {to_mutable_view(s.prev_station_mark_)},
+          .route_mark_ = {to_mutable_view(s.route_mark_)}});
+
+  cudaDeviceSynchronize();
+  CUDA_CHECK(cudaPeekAtLastError());
+
+  utl::verify(
+      cudaSuccess ==
+          cudaMemcpy(thrust::raw_pointer_cast(s.host_round_times_.data()),
+                     thrust::raw_pointer_cast(s.round_times_storage_.data()),
+                     s.round_times_storage_.size() * sizeof(delta_t),
+                     cudaMemcpyDeviceToHost),
+      "could not copy is_dest bitvector");
+
+  sync_round_times();
+
+  auto const round_times = s.host_state_.get_round_times<Vias>();
+  auto const end_k = std::min(max_transfers, kMaxTransfers) + 1U;
+  is_dest_.for_each_set_bit([&](auto const i) {
+    for (auto k = 1U; k != end_k; ++k) {
+      auto const dest_time = round_times[k][i][Vias];
+      if (dest_time != kInvalid) {
+        auto const [optimal, it, dominated_by] = results.add(
+            journey{.legs_ = {},
+                    .start_time_ = start_time,
+                    .dest_time_ = delta_to_unix(base(), dest_time),
+                    .dest_ = location_idx_t{i},
+                    .transfers_ = static_cast<std::uint8_t>(k - 1)});
+      }
+    }
+  });
+}
+
+template <direction SearchDir, bool Rt, via_offset_t Vias>
+void gpu_raptor<SearchDir, Rt, Vias>::sync_round_times() {
+  auto& s = *state_.impl_;
+  s.host_state_.round_times_storage_.resize(s.host_round_times_.size());
+  std::copy(begin(s.host_round_times_), end(s.host_round_times_),
+            begin(s.host_state_.round_times_storage_));
 }
 
 template <direction SearchDir, bool Rt, via_offset_t Vias>
@@ -316,7 +391,10 @@ void gpu_raptor<SearchDir, Rt, Vias>::next_start_time() {
 }
 
 template <direction SearchDir, bool Rt, via_offset_t Vias>
-void gpu_raptor<SearchDir, Rt, Vias>::reconstruct(query const&, journey&) {}
+void gpu_raptor<SearchDir, Rt, Vias>::reconstruct(query const& q, journey& j) {
+  reconstruct_journey<SearchDir>(tt_, rtt_, q, state_.impl_->host_state_, j,
+                                 base(), base_);
+}
 
 template <direction SearchDir, bool Rt, via_offset_t Vias>
 void gpu_raptor<SearchDir, Rt, Vias>::add_start(location_idx_t const l,

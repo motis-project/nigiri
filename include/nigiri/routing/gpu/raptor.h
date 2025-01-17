@@ -64,6 +64,11 @@ struct gpu_raptor {
   void reconstruct(query const&, journey&);
 
 private:
+  void sync_round_times();
+  date::sys_days base() const {
+    return tt_.internal_interval_days().from_ + to_idx(base_) * date::days{1};
+  }
+
   timetable const& tt_;
   rt_timetable const* rtt_{nullptr};
   int n_days_;

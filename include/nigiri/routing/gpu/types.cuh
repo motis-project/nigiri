@@ -17,15 +17,6 @@ static constexpr auto const kUnreachable =
     std::numeric_limits<std::uint16_t>::max();
 
 template <typename T>
-using device_vec = thrust::device_vector<T>;
-
-using device_bitvec = cista::basic_bitvec<thrust::device_vector<std::uint64_t>>;
-using device_bitvec_view =
-    cista::basic_bitvec<cuda::std::span<std::uint64_t const>>;
-using device_mutable_bitvec_view =
-    cista::basic_bitvec<cuda::std::span<std::uint64_t>>;
-
-template <typename T>
 using device_flat_matrix_view = base_flat_matrix_view<cuda::std::span<T>>;
 
 template <typename T>
@@ -43,25 +34,8 @@ thrust::device_vector<typename T::value_type> to_device(T const& t) {
   return thrust::device_vector<typename T::value_type>(begin(t), end(t));
 }
 
-device_bitvec to_device(cista::raw::bitvec const& t) {
-  return {to_device(t.blocks_), t.size()};
-}
-
-device_bitvec_view to_view(device_bitvec const& x) {
-  return {to_view(x.blocks_), x.size_};
-}
-
-device_mutable_bitvec_view to_mutable_view(device_bitvec& x) {
-  return {to_mutable_view(x.blocks_), x.size_};
-}
-
-template <typename T, std::size_t N>
-auto to_view(std::array<T, N> const& a) {
-  auto ret = cuda::std::array<decltype(to_view(a[0U])), N>{};
-  for (auto i = 0U; i != N; ++i) {
-    ret[i] = to_view(a[i]);
-  }
-  return ret;
+thrust::device_vector<std::uint64_t> to_device(cista::raw::bitvec const& t) {
+  return to_device(t.blocks_);
 }
 
 template <typename Host>

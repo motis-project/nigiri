@@ -411,15 +411,15 @@ struct delta {
       : days_{static_cast<std::uint16_t>(minutes / 1440U)},
         mam_{static_cast<std::uint16_t>(minutes % 1440U)} {}
 
-  delta(std::uint16_t const day, std::uint16_t const mam)
+  constexpr delta(std::uint16_t const day, std::uint16_t const mam)
       : days_{day}, mam_{mam} {}
 
   std::uint16_t value() const {
     return *reinterpret_cast<std::uint16_t const*>(this);
   }
 
-  std::int16_t days() const { return days_; }
-  std::int16_t mam() const { return mam_; }
+  constexpr std::int16_t days() const { return days_; }
+  constexpr std::int16_t mam() const { return mam_; }
 
   friend std::ostream& operator<<(std::ostream& out, delta const& d) {
     return out << duration_t{static_cast<duration_t::rep>(d.mam_)} << "."
@@ -435,9 +435,11 @@ struct delta {
     return cista::hash_combine(cista::BASE_HASH, value());
   }
 
-  duration_t as_duration() const { return days() * 1_days + mam() * 1_minutes; }
+  constexpr duration_t as_duration() const {
+    return days() * 1_days + mam() * 1_minutes;
+  }
 
-  std::int16_t count() const { return days_ * 1440U + mam_; }
+  constexpr std::int16_t count() const { return days_ * 1440U + mam_; }
 
   friend bool operator<(delta const a, delta const b) {
     return a.value() < b.value();

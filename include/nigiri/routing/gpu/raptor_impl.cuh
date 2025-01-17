@@ -2,50 +2,73 @@
 
 #include "cooperative_groups.h"
 
+#include "nigiri/common/delta_t.h"
 #include "nigiri/routing/clasz_mask.h"
 #include "nigiri/routing/limits.h"
 #include "nigiri/types.h"
 
-#include "nigiri/routing/gpu/bitvec.cuh"
+#include "nigiri/routing/gpu/device_bitvec.cuh"
 #include "nigiri/routing/gpu/device_timetable.cuh"
 #include "nigiri/routing/gpu/stride.cuh"
 #include "nigiri/routing/gpu/types.cuh"
 
 namespace nigiri::routing::gpu {
 
+#define kInvalid (kInvalidDelta<SearchDir>)
+#define kFwd (SearchDir == direction::kForward)
+#define kBwd (SearchDir == direction::kBackward)
+#define kUnreachable (std::numeric_limits<std::uint16_t>::max())
+#define kIntermodalTarget (get_special_station(special_station::kEnd).v_)
+
 template <direction SearchDir, bool Rt, via_offset_t Vias>
 struct raptor_impl {
-  static constexpr auto const kFwd = (SearchDir == direction::kForward);
-  static constexpr auto const kBwd = (SearchDir == direction::kBackward);
-  static constexpr auto const kInvalid = kInvalidDelta<SearchDir>;
-  static constexpr auto const kUnreachable =
-      std::numeric_limits<std::uint16_t>::max();
-  static constexpr auto const kIntermodalTarget =
-      to_idx(get_special_station(special_station::kEnd));
-
-  constexpr static bool is_better(auto a, auto b) {
+  __device__ __forceinline__ bool is_better(auto a, auto b) {
     return kFwd ? a < b : a > b;
   }
-  constexpr static bool is_better_or_eq(auto a, auto b) {
+  __device__ __forceinline__ bool is_better_or_eq(auto a, auto b) {
     return kFwd ? a <= b : a >= b;
   }
-  constexpr static auto get_best(auto a, auto b) {
+  __device__ __forceinline__ auto get_best(auto a, auto b) {
     return is_better(a, b) ? a : b;
   }
-  constexpr static auto get_best(auto x, auto... y) {
+  __device__ __forceinline__ auto get_best(auto x, auto... y) {
     ((x = get_best(x, y)), ...);
     return x;
   }
-  constexpr auto min(auto x, auto y) { return x <= y ? x : y; }
-  constexpr static auto dir(auto a) { return (kFwd ? 1 : -1) * a; }
+  __device__ __forceinline__ auto min(auto x, auto y) { return x <= y ? x : y; }
+  __device__ __forceinline__ auto dir(auto a) { return (kFwd ? 1 : -1) * a; }
+
+  __device__ void print() {
+    printf("---- timetable start ----\n");
+    tt_.print();
+    printf("---- timetable end ----\n");
+    printf("n_locations=%u\n", n_locations_);
+    printf("n_routes=%u\n", n_routes_);
+    printf("n_routes=%u\n", n_routes_);
+    printf("n_starts=%" PRIu64 "\n", starts_.size());
+    printf("is_via=%" PRIu64 "\n", is_via_.size());
+    printf("via_stops=%" PRIu64 "\n", via_stops_.size());
+    printf("is_dest=%" PRIu64 "\n", is_dest_.size());
+    printf("end_reachable=%" PRIu64 "\n", end_reachable_.size());
+    printf("dist_to_end=%" PRIu64 "\n", dist_to_end_.size());
+    printf("lb=%" PRIu64 "\n", lb_.size());
+    printf("round_times=%" PRIu64 "\n", round_times_.entries_.size());
+    printf("best=%" PRIu64 "\n", best_.size());
+    printf("tmp=%" PRIu64 "\n", tmp_.size());
+    printf("time_at_dest=%" PRIu64 "\n", time_at_dest_.size());
+  }
 
   __device__ void execute(unixtime_t const start_time,
                           std::uint8_t const max_transfers,
                           unixtime_t const worst_time_at_dest) {
-    namespace cg = cooperative_groups;
-
     auto const global_t_id = get_global_thread_id();
     auto const global_stride = get_global_stride();
+
+    for (auto i = global_t_id; i < dist_to_end_.size(); i += global_stride) {
+      if (dist_to_end_[i] != kUnreachable) {
+        end_reachable_.mark(i);
+      }
+    }
 
     for (auto i = global_t_id; i < starts_.size(); i += global_stride) {
       auto const [l, t] = starts_[i];
@@ -62,10 +85,6 @@ struct raptor_impl {
 
     auto const end_k = min(max_transfers, kMaxTransfers) + 1U;
     for (auto k = 1U; k != end_k; ++k) {
-      // ==================
-      // RAPTOR ROUND START
-      // ------------------
-
       // Reuse best time from previous time at start (for range queries).
       for (auto i = global_t_id; i < tt_.n_locations_; i += global_stride) {
         for (auto v = 0U; v != Vias + 1; ++v) {
@@ -77,11 +96,16 @@ struct raptor_impl {
       }
 
       // Mark every route at all stations marked in the previous round.
-      auto any_marked = cuda::std::atomic_bool{false};
+      int __shared__ any_marked;
+      if (global_t_id == 0) {
+        any_marked = false;
+      }
+      __syncthreads();
+
       for (auto i = global_t_id; i < tt_.n_locations_; i += global_stride) {
         if (station_mark_[i]) {
           if (!any_marked) {
-            any_marked = true;
+            atomicOr(&any_marked, 1U);
           }
           for (auto r : tt_.location_routes_[location_idx_t{i}]) {
             route_mark_.mark(to_idx(r));
@@ -89,51 +113,47 @@ struct raptor_impl {
         }
       }
 
-      cg::this_grid().sync();
+      sync();
 
       if (!any_marked) {
         break;
       }
 
-      cuda::std::swap(prev_station_mark_, station_mark_);
-      station_mark_.zero_out();
+      if (global_t_id == 0) {
+        cuda::std::swap(prev_station_mark_, station_mark_);
+        station_mark_.zero_out();
+      }
 
-      any_marked =
+      sync();
+
+      auto const any_route_marked =
           (allowed_claszes_ == all_clasz_allowed())
               ? (require_bike_transport_ ? loop_routes<false, true>(k)
                                          : loop_routes<false, false>(k))
               : (require_bike_transport_ ? loop_routes<true, true>(k)
                                          : loop_routes<true, false>(k));
 
-      if (!any_marked) {
+      sync();
+      if (!any_route_marked) {
         break;
       }
 
-      route_mark_.zero_out();
+      if (global_t_id == 0) {
+        route_mark_.zero_out();
 
-      cuda::std::swap(prev_station_mark_, station_mark_);
-      station_mark_.zero_out();
+        cuda::std::swap(prev_station_mark_, station_mark_);
+        station_mark_.zero_out();
+      }
 
       update_transfers(k);
       update_intermodal_footpaths(k);
       update_footpaths(k);
-    }
 
-    // TODO
-    //    is_dest_.for_each_set_bit([&](auto const i) {
-    //      for (auto k = 1U; k != end_k; ++k) {
-    //        auto const dest_time = round_times_[k][i][Vias];
-    //        if (dest_time != kInvalid) {
-    //          auto const [optimal, it, dominated_by] = results.add(
-    //              journey{.legs_ = {},
-    //                      .start_time_ = start_time,
-    //                      .dest_time_ = delta_to_unix(base(), dest_time),
-    //                      .dest_ = location_idx_t{i},
-    //                      .transfers_ = static_cast<std::uint8_t>(k - 1)});
-    //        }
-    //      }
-    //    });
+      sync();
+    }
   }
+
+  __device__ __forceinline__ void sync() const { __syncthreads(); }
 
   __device__ date::sys_days base() const {
     return tt_.internal_interval_days().from_ + as_int(base_) * date::days{1};
@@ -143,7 +163,13 @@ struct raptor_impl {
   __device__ bool loop_routes(unsigned const k) {
     auto const global_t_id = get_global_thread_id();
     auto const global_stride = get_global_stride();
-    auto any_marked = cuda::std::atomic_bool{};
+
+    int __shared__ any_marked;
+    if (global_t_id == 0) {
+      any_marked = false;
+    }
+    __syncthreads();
+
     for (auto i = global_t_id; i < tt_.n_routes_; i += global_stride) {
       auto const r = route_idx_t{i};
 
@@ -167,8 +193,10 @@ struct raptor_impl {
         }
       }
 
-      any_marked |= section_bike_filter ? update_route<true>(k, r)
+      auto const route_any_marked = section_bike_filter
+                                        ? update_route<true>(k, r)
                                         : update_route<false>(k, r);
+      atomicOr(&any_marked, route_any_marked ? 1U : 0U);
     }
     return any_marked;
   }
@@ -202,7 +230,7 @@ struct raptor_impl {
             is_better(fp_target_time, time_at_dest_[k])) {
           if (lb_[i] == kUnreachable ||
               !is_better(fp_target_time + dir(lb_[i]), time_at_dest_[k])) {
-            return;
+            continue;
           }
 
           round_times_[k][i][target_v] = fp_target_time;
@@ -320,7 +348,7 @@ struct raptor_impl {
       auto const is_first = i == 0U;
       auto const is_last = i == stop_seq.size() - 1U;
 
-      auto current_best = std::array<delta_t, Vias + 1>{};
+      auto current_best = cuda::std::array<delta_t, Vias + 1>{};
       current_best.fill(kInvalid);
 
       // v = via state when entering the transport
@@ -574,19 +602,19 @@ struct raptor_impl {
   bool is_intermodal_dest_;
   bool is_wheelchair_;
   cuda::std::span<std::pair<location_idx_t, unixtime_t> const> starts_;
-  cuda::std::array<device_bitvec_view, kMaxVias> is_via_;
+  cuda::std::array<device_bitvec<std::uint64_t const>, kMaxVias> is_via_;
   cuda::std::span<via_stop const> via_stops_;
-  device_bitvec_view is_dest_;
-  device_bitvec_view end_reachable_;
+  device_bitvec<std::uint64_t const> is_dest_;
+  device_bitvec<std::uint32_t> end_reachable_;
   cuda::std::span<std::uint16_t const> dist_to_end_;
   cuda::std::span<std::uint16_t const> lb_;
   device_flat_matrix_view<cuda::std::array<delta_t, Vias + 1>> round_times_;
   cuda::std::span<cuda::std::array<delta_t, Vias + 1>> best_;
   cuda::std::span<cuda::std::array<delta_t, Vias + 1>> tmp_;
   cuda::std::span<delta_t> time_at_dest_;
-  bitvec station_mark_;
-  bitvec prev_station_mark_;
-  bitvec route_mark_;
+  device_bitvec<std::uint32_t> station_mark_;
+  device_bitvec<std::uint32_t> prev_station_mark_;
+  device_bitvec<std::uint32_t> route_mark_;
 };
 
 }  // namespace nigiri::routing::gpu

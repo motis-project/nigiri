@@ -3,13 +3,15 @@
 #include "nigiri/routing/raptor/debug.h"
 #include "nigiri/types.h"
 
+#include "cista/cuda_check.h"
+
 namespace nigiri {
 
 using delta_t = std::int16_t;
 static_assert(sizeof(delta_t) == 2);
 
 template <direction SearchDir>
-inline constexpr auto const kInvalidDelta =
+inline CISTA_CUDA_DEVICE_COMPAT constexpr auto const kInvalidDelta =
     SearchDir == direction::kForward ? std::numeric_limits<delta_t>::max()
                                      : std::numeric_limits<delta_t>::min();
 

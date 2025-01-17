@@ -104,8 +104,10 @@ struct interval {
 
   CISTA_CUDA_COMPAT auto size() const { return to_ - from_; }
 
-  T operator[](std::size_t const i) const {
+  CISTA_CUDA_COMPAT T operator[](std::size_t const i) const {
+#ifndef __CUDA_ARCH__
     assert(contains(from_ + static_cast<T>(i)));
+#endif
     return from_ + static_cast<T>(i);
   }
 

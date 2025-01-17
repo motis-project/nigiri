@@ -34,18 +34,18 @@ void raptor_state::print(timetable const& tt,
   auto invalid_array = std::array<delta_t, Vias + 1>{};
   invalid_array.fill(invalid);
 
-  auto const& tmp = get_tmp<Vias>();
-  auto const& best = get_best<Vias>();
+  //  auto const& tmp = get_tmp<Vias>();
+  //  auto const& best = get_best<Vias>();
   auto const& round_times = get_round_times<Vias>();
 
-  auto const has_empty_rounds = [&](std::uint32_t const l) {
-    for (auto k = 0U; k != kMaxTransfers + 1U; ++k) {
-      if (round_times[k][l] != invalid_array) {
-        return false;
-      }
-    }
-    return true;
-  };
+  //  auto const has_empty_rounds = [&](std::uint32_t const l) {
+  //    for (auto k = 0U; k != kMaxTransfers + 1U; ++k) {
+  //      if (round_times[k][l] != invalid_array) {
+  //        return false;
+  //      }
+  //    }
+  //    return true;
+  //  };
 
   auto const print_delta = [&](delta_t const d) {
     if (d == invalid) {
@@ -65,19 +65,19 @@ void raptor_state::print(timetable const& tt,
   };
 
   for (auto l = 0U; l != tt.n_locations(); ++l) {
-    if (best[l] == invalid_array && has_empty_rounds(l)) {
-      continue;
-    }
+    //    if (best[l] == invalid_array && has_empty_rounds(l)) {
+    //      continue;
+    //    }
 
     fmt::print("{:80}  ", location{tt, location_idx_t{l}});
 
-    fmt::print("tmp=");
-    print_deltas(tmp[l]);
-    fmt::print(", ");
+    //    fmt::print("tmp=");
+    //    print_deltas(tmp[l]);
+    //    fmt::print(", ");
 
-    auto const& b = best[l];
-    fmt::print("best=");
-    print_deltas(b);
+    //    auto const& b = best[l];
+    //    fmt::print("best=");
+    //    print_deltas(b);
     fmt::print(", round_times: ");
     for (auto i = 0U; i != kMaxTransfers + 1U; ++i) {
       auto const& t = round_times[i][l];
@@ -92,16 +92,8 @@ void raptor_state::print(timetable const& tt,
 static_assert(kMaxVias == 2,
               "raptor_state.cc needs to be adjusted for kMaxVias");
 
-template void raptor_state::print<0>(timetable const& tt,
-                                     date::sys_days const base,
-                                     delta_t const invalid);
-
-template void raptor_state::print<1>(timetable const& tt,
-                                     date::sys_days const base,
-                                     delta_t const invalid);
-
-template void raptor_state::print<2>(timetable const& tt,
-                                     date::sys_days const base,
-                                     delta_t const invalid);
+template void raptor_state::print<0>(timetable const&, date::sys_days, delta_t);
+template void raptor_state::print<1>(timetable const&, date::sys_days, delta_t);
+template void raptor_state::print<2>(timetable const&, date::sys_days, delta_t);
 
 }  // namespace nigiri::routing

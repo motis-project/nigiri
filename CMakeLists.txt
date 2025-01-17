@@ -142,6 +142,7 @@ if (NIGIRI_CUDA)
   file(GLOB_RECURSE nigiri-gpu-files src/*.cu)
   add_library(nigiri-gpu OBJECT ${nigiri-gpu-files})
   set_target_properties(nigiri-gpu PROPERTIES
+      COMPILE_OPTIONS -G
       WINDOWS_EXPORT_ALL_SYMBOLS ON
       CUDA_SEPARABLE_COMPILATION ON
       CUDA_ARCHITECTURES native

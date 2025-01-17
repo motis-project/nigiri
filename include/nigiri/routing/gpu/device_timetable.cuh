@@ -4,9 +4,11 @@
 
 #include <cuda/std/span>
 
-#include "nigiri/routing/gpu/types.cuh"
 #include "nigiri/timetable.h"
 #include "nigiri/types.h"
+
+#include "nigiri/routing/gpu/device_bitvec.cuh"
+#include "nigiri/routing/gpu/types.cuh"
 
 namespace nigiri::routing::gpu {
 
@@ -41,6 +43,26 @@ struct device_timetable {
     return internal_interval_days_;
   }
 
+  __device__ void print() {
+    printf("n_locations=%u\n", n_locations_);
+    printf("n_routes=%u\n", n_routes_);
+    printf("transfer_time=%" PRIu64 "\n", transfer_time_.data_.size());
+    printf("footpaths_out=%u\n", footpaths_out_.size());
+    printf("footpaths_out=%u\n", footpaths_in_.size());
+    printf("route_stop_times=%" PRIu64 "\n", route_stop_times_.size());
+    printf("route_stop_time_ranges=%" PRIu64 "\n",
+           route_stop_time_ranges_.data_.size());
+    printf("route_transport_ranges=%" PRIu64 "\n",
+           route_transport_ranges_.data_.size());
+    printf("route_clasz=%" PRIu64 "\n", route_clasz_.data_.size());
+    printf("route_bikes_allowed=%" PRIu64 "\n", route_bikes_allowed_.size());
+    printf("route_bikes_allowed_per_section=%u\n",
+           route_bikes_allowed_per_section_.size());
+    printf("transport_traffic_days=%" PRIu64 "\n",
+           transport_traffic_days_.data_.size());
+    printf("bitfields=%" PRIu64 "\n", bitfields_.data_.size());
+  }
+
   std::uint32_t n_locations_;
   std::uint32_t n_routes_;
 
@@ -52,7 +74,7 @@ struct device_timetable {
   d_vecmap_view<route_idx_t, interval<std::uint32_t>> route_stop_time_ranges_;
   d_vecmap_view<route_idx_t, interval<transport_idx_t>> route_transport_ranges_;
   d_vecmap_view<route_idx_t, clasz> route_clasz_;
-  device_bitvec_view route_bikes_allowed_;
+  device_bitvec<std::uint64_t const> route_bikes_allowed_;
   d_vecvec_view<decltype(t{}.route_bikes_allowed_per_section_)>
       route_bikes_allowed_per_section_;
 

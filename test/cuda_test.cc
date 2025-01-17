@@ -54,8 +54,6 @@ TEST(nigiri_cuda, test) {
   load_timetable(src, loader::hrd::hrd_5_20_26, files_abc(), tt);
   finalize(tt);
 
-  std::cout << "HOST: #locations=" << tt.n_locations() << "\n";
-
   auto const gpu_tt = ngpu::gpu_timetable{tt};
   auto algo_state = ngpu::gpu_raptor_state{gpu_tt};
   auto search_state = nr::search_state{};
