@@ -20,9 +20,12 @@ namespace cg = cooperative_groups;
 
 namespace nigiri::routing::gpu {
 
-#define CUDA_CHECK(code)                                       \
-  utl_verify((code) == cudaSuccess, "CUDA error: {} at {}:{}", \
-             cudaGetErrorString(code), __FILE__, __LINE__);
+#define CUDA_CHECK(code)                                              \
+  if ((code) != cudaSuccess) {                                        \
+    std::cerr << "CUDA error: " << cudaGetErrorString(code) << " at " \
+              << __FILE__ << ":" << __LINE__;                         \
+    std::terminate();                                                 \
+  }
 
 struct gpu_timetable::impl {
   using t = timetable;
@@ -96,7 +99,11 @@ gpu_timetable::~gpu_timetable() = default;
 
 struct gpu_raptor_state::impl {
   explicit impl(gpu_timetable const& gtt)
-      : tt_{gtt.impl_->to_device_timetable()} {}
+      : tt_{gtt.impl_->to_device_timetable()} {
+    cudaStreamCreate(&stream_);
+  }
+
+  ~impl() { cudaStreamDestroy(stream_); }
 
   void resize(unsigned n_locations,
               unsigned n_routes,
@@ -120,36 +127,38 @@ struct gpu_raptor_state::impl {
     rt_transport_mark_.resize(n_rt_transports / 32U + 1U);
     end_reachable_.resize(n_locations / 32U + 1U);
 
+    using bitvec_block_t = std::decay_t<decltype(is_via[0])>::block_t;
+
     for (auto i = 0U; i != is_via.size(); ++i) {
       is_via_[i].resize(is_via[i].blocks_.size());
-      thrust::copy(thrust::cuda::par_nosync, begin(is_via[i].blocks_),
+      thrust::copy(thrust::cuda::par.on(stream_), begin(is_via[i].blocks_),
                    end(is_via[i].blocks_), begin(is_via_[i]));
     }
 
     via_stops_.resize(via_stops.size());
-    thrust::copy(thrust::cuda::par_nosync, begin(via_stops), end(via_stops),
-                 begin(via_stops_));
+    thrust::copy(thrust::cuda::par.on(stream_), begin(via_stops),
+                 end(via_stops), begin(via_stops_));
 
     is_dest_.resize(is_dest.blocks_.size());
     utl::verify(
-        cudaSuccess ==
-            cudaMemcpy(thrust::raw_pointer_cast(is_dest_.data()),
-                       is_dest.blocks_.data(),
-                       is_dest.blocks_.size() *
-                           sizeof(std::decay_t<decltype(is_dest)>::block_t),
-                       cudaMemcpyHostToDevice),
+        cudaSuccess == cudaMemcpyAsync(
+                           thrust::raw_pointer_cast(is_dest_.data()),
+                           is_dest.blocks_.data(),
+                           is_dest.blocks_.size() *
+                               sizeof(std::decay_t<decltype(is_dest)>::block_t),
+                           cudaMemcpyHostToDevice, stream_),
         "could not copy is_dest");
 
     dist_to_dest_.resize(dist_to_dest.size());
-    thrust::copy(thrust::cuda::par_nosync, begin(dist_to_dest),
+    thrust::copy(thrust::cuda::par.on(stream_), begin(dist_to_dest),
                  end(dist_to_dest), begin(dist_to_dest_));
 
     lb_.resize(lb.size());
-    utl::verify(
-        cudaSuccess == cudaMemcpy(thrust::raw_pointer_cast(lb_.data()),
-                                  lb.data(), lb.size() * sizeof(std::uint16_t),
-                                  cudaMemcpyHostToDevice),
-        "could not copy lb");
+    utl::verify(cudaSuccess == cudaMemcpyAsync(
+                                   thrust::raw_pointer_cast(lb_.data()),
+                                   lb.data(), lb.size() * sizeof(std::uint16_t),
+                                   cudaMemcpyHostToDevice, stream_),
+                "could not copy lb");
   }
 
   std::uint32_t n_locations_;
@@ -174,6 +183,8 @@ struct gpu_raptor_state::impl {
 
   thrust::host_vector<delta_t> host_round_times_;
   raptor_state host_state_;
+
+  cudaStream_t stream_;
 };
 
 gpu_raptor_state::gpu_raptor_state(gpu_timetable const& gtt)
@@ -230,19 +241,19 @@ __global__ void exec_raptor(unixtime_t const start_time,
 }
 
 template <direction SearchDir, bool Rt, via_offset_t Vias>
-void gpu_raptor<SearchDir, Rt, Vias>::execute(
-    unixtime_t const start_time,
-    std::uint8_t const max_transfers,
-    unixtime_t const worst_time_at_dest,
-    profile_idx_t,
-    pareto_set<journey>& results) {
+void gpu_raptor<SearchDir, Rt, Vias>::execute(unixtime_t start_time,
+                                              std::uint8_t max_transfers,
+                                              unixtime_t worst_time_at_dest,
+                                              profile_idx_t,
+                                              pareto_set<journey>& results) {
   auto const starts =
       thrust::device_vector<std::pair<location_idx_t, unixtime_t>>{starts_};
-  cudaDeviceSynchronize();
-  CUDA_CHECK(cudaPeekAtLastError());
 
   auto& s = *state_.impl_;
-  auto const r = raptor_impl<SearchDir, Rt, Vias>{
+  cudaStreamSynchronize(s.stream_);
+  CUDA_CHECK(cudaPeekAtLastError());
+
+  auto r = raptor_impl<SearchDir, Rt, Vias>{
       .tt_ = s.tt_,
       .n_locations_ = s.tt_.n_locations_,
       .n_routes_ = s.tt_.n_routes_,
@@ -276,19 +287,20 @@ void gpu_raptor<SearchDir, Rt, Vias>::execute(
       .station_mark_ = {to_mutable_view(s.station_mark_)},
       .prev_station_mark_ = {to_mutable_view(s.prev_station_mark_)},
       .route_mark_ = {to_mutable_view(s.route_mark_)}};
-  exec_raptor<SearchDir, Rt, Vias>
-      <<<1, 1>>>(start_time, max_transfers, worst_time_at_dest, r);
 
-  cudaDeviceSynchronize();
+  auto blocks = 0;
+  auto threads = 0;
+  auto const kernel = reinterpret_cast<void*>(exec_raptor<SearchDir, Rt, Vias>);
+  cudaOccupancyMaxPotentialBlockSize(&blocks, &threads, kernel, 0, 0);
+
+  void* args[] = {reinterpret_cast<void*>(&start_time),
+                  reinterpret_cast<void*>(&max_transfers),
+                  reinterpret_cast<void*>(&worst_time_at_dest),
+                  reinterpret_cast<void*>(&r)};
+  cudaLaunchCooperativeKernel(kernel, 1, 1, args, 0, s.stream_);
+
+  cudaStreamSynchronize(s.stream_);
   CUDA_CHECK(cudaPeekAtLastError());
-
-  utl::verify(
-      cudaSuccess ==
-          cudaMemcpy(thrust::raw_pointer_cast(s.host_round_times_.data()),
-                     thrust::raw_pointer_cast(s.round_times_.data()),
-                     s.round_times_.size() * sizeof(delta_t),
-                     cudaMemcpyDeviceToHost),
-      "could not copy is_dest bitvector");
 
   sync_round_times();
 
@@ -312,6 +324,13 @@ void gpu_raptor<SearchDir, Rt, Vias>::execute(
 template <direction SearchDir, bool Rt, via_offset_t Vias>
 void gpu_raptor<SearchDir, Rt, Vias>::sync_round_times() {
   auto& s = *state_.impl_;
+  utl::verify(
+      cudaSuccess ==
+          cudaMemcpy(thrust::raw_pointer_cast(s.host_round_times_.data()),
+                     thrust::raw_pointer_cast(s.round_times_.data()),
+                     s.round_times_.size() * sizeof(delta_t),
+                     cudaMemcpyDeviceToHost),
+      "could not sync round times");
   s.host_state_.round_times_storage_.resize(s.host_round_times_.size());
   std::copy(begin(s.host_round_times_), end(s.host_round_times_),
             begin(s.host_state_.round_times_storage_));
@@ -319,28 +338,32 @@ void gpu_raptor<SearchDir, Rt, Vias>::sync_round_times() {
 
 template <direction SearchDir, bool Rt, via_offset_t Vias>
 void gpu_raptor<SearchDir, Rt, Vias>::reset_arrivals() {
-  thrust::fill(thrust::cuda::par_nosync, begin(state_.impl_->time_at_dest_),
+  thrust::fill(thrust::cuda::par.on(state_.impl_->stream_),
+               begin(state_.impl_->time_at_dest_),
                end(state_.impl_->time_at_dest_), kInvalid);
-  thrust::fill(thrust::cuda::par_nosync, begin(state_.impl_->round_times_),
+  thrust::fill(thrust::cuda::par.on(state_.impl_->stream_),
+               begin(state_.impl_->round_times_),
                end(state_.impl_->round_times_), kInvalid);
 }
 
 template <direction SearchDir, bool Rt, via_offset_t Vias>
 void gpu_raptor<SearchDir, Rt, Vias>::next_start_time() {
   starts_.clear();
-  thrust::fill(thrust::cuda::par_nosync, begin(state_.impl_->best_),
-               end(state_.impl_->best_), kInvalid);
-  thrust::fill(thrust::cuda::par_nosync, begin(state_.impl_->tmp_),
-               end(state_.impl_->tmp_), kInvalid);
-  thrust::fill(thrust::cuda::par_nosync,
+  thrust::fill(thrust::cuda::par.on(state_.impl_->stream_),
+               begin(state_.impl_->best_), end(state_.impl_->best_), kInvalid);
+  thrust::fill(thrust::cuda::par.on(state_.impl_->stream_),
+               begin(state_.impl_->tmp_), end(state_.impl_->tmp_), kInvalid);
+  thrust::fill(thrust::cuda::par.on(state_.impl_->stream_),
                begin(state_.impl_->prev_station_mark_),
                end(state_.impl_->prev_station_mark_), 0U);
-  thrust::fill(thrust::cuda::par_nosync, begin(state_.impl_->station_mark_),
+  thrust::fill(thrust::cuda::par.on(state_.impl_->stream_),
+               begin(state_.impl_->station_mark_),
                end(state_.impl_->station_mark_), 0U);
-  thrust::fill(thrust::cuda::par_nosync, begin(state_.impl_->route_mark_),
-               end(state_.impl_->route_mark_), 0U);
+  thrust::fill(thrust::cuda::par.on(state_.impl_->stream_),
+               begin(state_.impl_->route_mark_), end(state_.impl_->route_mark_),
+               0U);
   if constexpr (Rt) {
-    thrust::fill(thrust::cuda::par_nosync,
+    thrust::fill(thrust::cuda::par.on(state_.impl_->stream_),
                  begin(state_.impl_->rt_transport_mark_),
                  end(state_.impl_->rt_transport_mark_), 0U);
   }

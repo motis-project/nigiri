@@ -55,10 +55,10 @@ struct gpu_raptor {
 
   void add_start(location_idx_t, unixtime_t);
 
-  void execute(unixtime_t const start_time,
-               std::uint8_t const max_transfers,
-               unixtime_t const worst_time_at_dest,
-               profile_idx_t const prf_idx,
+  void execute(unixtime_t start_time,
+               std::uint8_t max_transfers,
+               unixtime_t worst_time_at_dest,
+               profile_idx_t prf_idx,
                pareto_set<journey>& results);
 
   void reconstruct(query const&, journey&);
