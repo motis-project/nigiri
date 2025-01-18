@@ -43,26 +43,6 @@ struct device_timetable {
     return internal_interval_days_;
   }
 
-  __device__ void print() {
-    printf("n_locations=%u\n", n_locations_);
-    printf("n_routes=%u\n", n_routes_);
-    printf("transfer_time=%" PRIu64 "\n", transfer_time_.data_.size());
-    printf("footpaths_out=%u\n", footpaths_out_.size());
-    printf("footpaths_out=%u\n", footpaths_in_.size());
-    printf("route_stop_times=%" PRIu64 "\n", route_stop_times_.size());
-    printf("route_stop_time_ranges=%" PRIu64 "\n",
-           route_stop_time_ranges_.data_.size());
-    printf("route_transport_ranges=%" PRIu64 "\n",
-           route_transport_ranges_.data_.size());
-    printf("route_clasz=%" PRIu64 "\n", route_clasz_.data_.size());
-    printf("route_bikes_allowed=%" PRIu64 "\n", route_bikes_allowed_.size());
-    printf("route_bikes_allowed_per_section=%u\n",
-           route_bikes_allowed_per_section_.size());
-    printf("transport_traffic_days=%" PRIu64 "\n",
-           transport_traffic_days_.data_.size());
-    printf("bitfields=%" PRIu64 "\n", bitfields_.data_.size());
-  }
-
   std::uint32_t n_locations_;
   std::uint32_t n_routes_;
 

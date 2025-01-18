@@ -110,12 +110,10 @@ struct gpu_raptor_state::impl {
     n_locations_ = host_state_.n_locations_ = n_locations;
 
     time_at_dest_.resize(kMaxTransfers + 1);
-
-    tmp_storage_.resize(n_locations * (kMaxVias + 1));
-    best_storage_.resize(n_locations * (kMaxVias + 1));
-    round_times_storage_.resize(n_locations * (kMaxVias + 1) *
-                                (kMaxTransfers + 1));
-    host_round_times_.resize(round_times_storage_.size());
+    tmp_.resize(n_locations * (kMaxVias + 1));
+    best_.resize(n_locations * (kMaxVias + 1));
+    round_times_.resize(n_locations * (kMaxVias + 1) * (kMaxTransfers + 1));
+    host_round_times_.resize(round_times_.size());
     station_mark_.resize(n_locations);
     prev_station_mark_.resize(n_locations);
     route_mark_.resize(n_routes);
@@ -154,53 +152,12 @@ struct gpu_raptor_state::impl {
         "could not copy lb bitvector");
   }
 
-  template <via_offset_t Vias>
-  cuda::std::span<cuda::std::array<delta_t, Vias + 1>> get_tmp() {
-    return {reinterpret_cast<cuda::std::array<delta_t, Vias + 1>*>(
-                thrust::raw_pointer_cast(tmp_storage_.data())),
-            n_locations_};
-  }
-
-  template <via_offset_t Vias>
-  cuda::std::span<cuda::std::array<delta_t, Vias + 1>> get_best() {
-    return {reinterpret_cast<cuda::std::array<delta_t, Vias + 1>*>(
-                thrust::raw_pointer_cast(best_storage_.data())),
-            n_locations_};
-  }
-
-  template <via_offset_t Vias>
-  cuda::std::span<cuda::std::array<delta_t, Vias + 1> const> get_best() const {
-    return {reinterpret_cast<cuda::std::array<delta_t, Vias + 1> const*>(
-                thrust::raw_pointer_cast(best_storage_.data())),
-            n_locations_};
-  }
-
-  template <via_offset_t Vias>
-  device_flat_matrix_view<cuda::std::array<delta_t, Vias + 1>>
-  get_round_times() {
-    return {{reinterpret_cast<cuda::std::array<delta_t, Vias + 1>*>(
-                 thrust::raw_pointer_cast(round_times_storage_.data())),
-             n_locations_ * (kMaxTransfers + 1)},
-            kMaxTransfers + 1U,
-            n_locations_};
-  }
-
-  template <via_offset_t Vias>
-  device_flat_matrix_view<cuda::std::array<delta_t, Vias + 1> const>
-  get_round_times() const {
-    return {{reinterpret_cast<cuda::std::array<delta_t, Vias + 1> const*>(
-                 thrust::raw_pointer_cast(round_times_storage_.data())),
-             n_locations_ * (kMaxTransfers + 1)},
-            kMaxTransfers + 1U,
-            n_locations_};
-  }
-
-  unsigned n_locations_;
+  std::uint32_t n_locations_;
   bool is_intermodal_dest_;
   thrust::device_vector<delta_t> time_at_dest_;
-  thrust::device_vector<delta_t> tmp_storage_;
-  thrust::device_vector<delta_t> best_storage_;
-  thrust::device_vector<delta_t> round_times_storage_;
+  thrust::device_vector<delta_t> tmp_;
+  thrust::device_vector<delta_t> best_;
+  thrust::device_vector<delta_t> round_times_;
   thrust::device_vector<std::uint32_t> station_mark_;
   thrust::device_vector<std::uint32_t> prev_station_mark_;
   thrust::device_vector<std::uint32_t> route_mark_;
@@ -305,7 +262,7 @@ void gpu_raptor<SearchDir, Rt, Vias>::execute(
                 auto ret = cuda::std::array<device_bitvec<std::uint64_t const>,
                                             kMaxVias>{};
                 for (auto i = 0U; i != kMaxVias; ++i) {
-                  ret[i] = {.blocks_ = to_view(s.is_via_[i])};
+                  ret[i] = {to_view(s.is_via_[i])};
                 }
                 return ret;
               }(),
@@ -314,10 +271,10 @@ void gpu_raptor<SearchDir, Rt, Vias>::execute(
           .end_reachable_ = {to_mutable_view(s.end_reachable_)},
           .dist_to_end_ = to_view(s.dist_to_dest_),
           .lb_ = to_view(s.lb_),
-          .round_times_ = s.get_round_times<Vias>(),
-          .best_ = s.get_best<Vias>(),
-          .tmp_ = s.get_tmp<Vias>(),
-          .time_at_dest_ = to_mutable_view(s.time_at_dest_),
+          .round_times_ = {to_mutable_view(s.round_times_), n_locations_},
+          .best_ = {to_mutable_view(s.best_), n_locations_},
+          .tmp_ = {to_mutable_view(s.tmp_), n_locations_},
+          .time_at_dest_ = {to_mutable_view(s.time_at_dest_), n_locations_},
           .station_mark_ = {to_mutable_view(s.station_mark_)},
           .prev_station_mark_ = {to_mutable_view(s.prev_station_mark_)},
           .route_mark_ = {to_mutable_view(s.route_mark_)}});
@@ -328,8 +285,8 @@ void gpu_raptor<SearchDir, Rt, Vias>::execute(
   utl::verify(
       cudaSuccess ==
           cudaMemcpy(thrust::raw_pointer_cast(s.host_round_times_.data()),
-                     thrust::raw_pointer_cast(s.round_times_storage_.data()),
-                     s.round_times_storage_.size() * sizeof(delta_t),
+                     thrust::raw_pointer_cast(s.round_times_.data()),
+                     s.round_times_.size() * sizeof(delta_t),
                      cudaMemcpyDeviceToHost),
       "could not copy is_dest bitvector");
 
@@ -364,18 +321,17 @@ template <direction SearchDir, bool Rt, via_offset_t Vias>
 void gpu_raptor<SearchDir, Rt, Vias>::reset_arrivals() {
   thrust::fill(thrust::cuda::par_nosync, begin(state_.impl_->time_at_dest_),
                end(state_.impl_->time_at_dest_), kInvalid);
-  thrust::fill(thrust::cuda::par_nosync,
-               begin(state_.impl_->round_times_storage_),
-               end(state_.impl_->round_times_storage_), kInvalid);
+  thrust::fill(thrust::cuda::par_nosync, begin(state_.impl_->round_times_),
+               end(state_.impl_->round_times_), kInvalid);
 }
 
 template <direction SearchDir, bool Rt, via_offset_t Vias>
 void gpu_raptor<SearchDir, Rt, Vias>::next_start_time() {
   starts_.clear();
-  thrust::fill(thrust::cuda::par_nosync, begin(state_.impl_->best_storage_),
-               end(state_.impl_->best_storage_), kInvalid);
-  thrust::fill(thrust::cuda::par_nosync, begin(state_.impl_->tmp_storage_),
-               end(state_.impl_->tmp_storage_), kInvalid);
+  thrust::fill(thrust::cuda::par_nosync, begin(state_.impl_->best_),
+               end(state_.impl_->best_), kInvalid);
+  thrust::fill(thrust::cuda::par_nosync, begin(state_.impl_->tmp_),
+               end(state_.impl_->tmp_), kInvalid);
   thrust::fill(thrust::cuda::par_nosync,
                begin(state_.impl_->prev_station_mark_),
                end(state_.impl_->prev_station_mark_), 0U);

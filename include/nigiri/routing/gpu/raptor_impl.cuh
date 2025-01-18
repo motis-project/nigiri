@@ -8,6 +8,7 @@
 #include "nigiri/types.h"
 
 #include "nigiri/routing/gpu/device_bitvec.cuh"
+#include "nigiri/routing/gpu/device_times.h"
 #include "nigiri/routing/gpu/device_timetable.cuh"
 #include "nigiri/routing/gpu/stride.cuh"
 #include "nigiri/routing/gpu/types.cuh"
@@ -18,7 +19,7 @@ namespace nigiri::routing::gpu {
 #define kFwd (SearchDir == direction::kForward)
 #define kBwd (SearchDir == direction::kBackward)
 #define kUnreachable (std::numeric_limits<std::uint16_t>::max())
-#define kIntermodalTarget (get_special_station(special_station::kEnd).v_)
+#define kIntermodalTarget (get_special_station(special_station::kEnd))
 
 template <direction SearchDir, bool Rt, via_offset_t Vias>
 struct raptor_impl {
@@ -38,26 +39,6 @@ struct raptor_impl {
   __device__ __forceinline__ auto min(auto x, auto y) { return x <= y ? x : y; }
   __device__ __forceinline__ auto dir(auto a) { return (kFwd ? 1 : -1) * a; }
 
-  __device__ void print() {
-    printf("---- timetable start ----\n");
-    tt_.print();
-    printf("---- timetable end ----\n");
-    printf("n_locations=%u\n", n_locations_);
-    printf("n_routes=%u\n", n_routes_);
-    printf("n_routes=%u\n", n_routes_);
-    printf("n_starts=%" PRIu64 "\n", starts_.size());
-    printf("is_via=%" PRIu64 "\n", is_via_.size());
-    printf("via_stops=%" PRIu64 "\n", via_stops_.size());
-    printf("is_dest=%" PRIu64 "\n", is_dest_.size());
-    printf("end_reachable=%" PRIu64 "\n", end_reachable_.size());
-    printf("dist_to_end=%" PRIu64 "\n", dist_to_end_.size());
-    printf("lb=%" PRIu64 "\n", lb_.size());
-    printf("round_times=%" PRIu64 "\n", round_times_.entries_.size());
-    printf("best=%" PRIu64 "\n", best_.size());
-    printf("tmp=%" PRIu64 "\n", tmp_.size());
-    printf("time_at_dest=%" PRIu64 "\n", time_at_dest_.size());
-  }
-
   __device__ void execute(unixtime_t const start_time,
                           std::uint8_t const max_transfers,
                           unixtime_t const worst_time_at_dest) {
@@ -73,25 +54,26 @@ struct raptor_impl {
     for (auto i = global_t_id; i < starts_.size(); i += global_stride) {
       auto const [l, t] = starts_[i];
       auto const v = (Vias != 0 && is_via_[0][to_idx(l)]) ? 1U : 0U;
-      best_[to_idx(l)][v] = unix_to_delta(base(), t);
-      round_times_[0U][to_idx(l)][v] = unix_to_delta(base(), t);
+      best_.update_min(l, v, unix_to_delta(base(), t));
+      round_times_.update_min(0U, l, v, unix_to_delta(base(), t));
       station_mark_.mark(to_idx(l));
     }
 
     auto const d_worst_at_dest = unix_to_delta(base(), worst_time_at_dest);
     for (auto i = global_t_id; i < kMaxTransfers + 1U; i += global_stride) {
-      time_at_dest_[i] = get_best(d_worst_at_dest, time_at_dest_[i]);
+      time_at_dest_.update_min(i, d_worst_at_dest);
     }
 
     auto const end_k = min(max_transfers, kMaxTransfers) + 1U;
     for (auto k = 1U; k != end_k; ++k) {
       // Reuse best time from previous time at start (for range queries).
       for (auto i = global_t_id; i < tt_.n_locations_; i += global_stride) {
+        auto const l = location_idx_t{i};
         for (auto v = 0U; v != Vias + 1; ++v) {
-          best_[i][v] = get_best(round_times_[k][i][v], best_[i][v]);
+          best_.update_min(l, v, round_times_.get(k, l, v));
         }
         if (is_dest_[i]) {
-          update_time_at_dest(k, best_[i][Vias]);
+          update_time_at_dest(k, best_.get(l, Vias));
         }
       }
 
@@ -205,8 +187,10 @@ struct raptor_impl {
     auto const global_t_id = get_global_thread_id();
     auto const global_stride = get_global_stride();
     for (auto i = global_t_id; i < n_locations_; i += global_stride) {
+      auto const l = location_idx_t{i};
+
       for (auto v = 0U; v != Vias + 1; ++v) {
-        auto const tmp_time = tmp_[i][v];
+        auto const tmp_time = tmp_.get(l, v);
         if (tmp_time == kInvalid) {
           continue;
         }
@@ -219,22 +203,21 @@ struct raptor_impl {
         auto const transfer_time =
             (!is_intermodal_dest() && is_dest)
                 ? 0
-                : dir(adjusted_transfer_time(
-                          transfer_time_settings_,
-                          tt_.transfer_time_[location_idx_t{i}].count()) +
+                : dir(adjusted_transfer_time(transfer_time_settings_,
+                                             tt_.transfer_time_[l].count()) +
                       stay.count());
         auto const fp_target_time =
             static_cast<delta_t>(tmp_time + transfer_time);
 
-        if (is_better(fp_target_time, best_[i][target_v]) &&
-            is_better(fp_target_time, time_at_dest_[k])) {
+        if (is_better(fp_target_time, best_.get(l, target_v)) &&
+            is_better(fp_target_time, time_at_dest_.get(k))) {
           if (lb_[i] == kUnreachable ||
-              !is_better(fp_target_time + dir(lb_[i]), time_at_dest_[k])) {
+              !is_better(fp_target_time + dir(lb_[i]), time_at_dest_.get(k))) {
             continue;
           }
 
-          round_times_[k][i][target_v] = fp_target_time;
-          best_[i][target_v] = fp_target_time;
+          round_times_.update_min(k, l, target_v, fp_target_time);
+          best_.update_min(l, target_v, fp_target_time);
           station_mark_.mark(i);
           if (is_dest) {
             update_time_at_dest(k, fp_target_time);
@@ -248,15 +231,14 @@ struct raptor_impl {
     auto const global_t_id = get_global_thread_id();
     auto const global_stride = get_global_stride();
     for (auto i = global_t_id; i < n_locations_; i += global_stride) {
-      auto const l_idx = location_idx_t{i};
-      auto const& fps =
-          kFwd ? tt_.footpaths_out_[l_idx] : tt_.footpaths_in_[l_idx];
+      auto const l = location_idx_t{i};
+      auto const& fps = kFwd ? tt_.footpaths_out_[l] : tt_.footpaths_in_[l];
 
       for (auto const& fp : fps) {
         auto const target = to_idx(fp.target());
 
         for (auto v = 0U; v != Vias + 1; ++v) {
-          auto const tmp_time = tmp_[i][v];
+          auto const tmp_time = tmp_.get(l, v);
           if (tmp_time == kInvalid) {
             continue;
           }
@@ -280,17 +262,17 @@ struct raptor_impl {
                                                     fp.duration().count()) +
                              stay.count()));
 
-          if (is_better(fp_target_time, best_[target][target_v]) &&
-              is_better(fp_target_time, time_at_dest_[k])) {
+          if (is_better(fp_target_time, best_.get(fp.target(), target_v)) &&
+              is_better(fp_target_time, time_at_dest_.get(k))) {
             auto const lower_bound = lb_[target];
             if (lower_bound == kUnreachable ||
                 !is_better(fp_target_time + dir(lower_bound),
-                           time_at_dest_[k])) {
+                           time_at_dest_.get(k))) {
               continue;
             }
 
-            round_times_[k][target][target_v] = fp_target_time;
-            best_[target][target_v] = fp_target_time;
+            round_times_.update_min(k, fp.target(), target_v, fp_target_time);
+            best_.update_min(fp.target(), target_v, fp_target_time);
             station_mark_.mark(target);
             if (target_v == Vias && is_dest_[target]) {
               update_time_at_dest(k, fp_target_time);
@@ -309,10 +291,11 @@ struct raptor_impl {
     auto const global_t_id = get_global_thread_id();
     auto const global_stride = get_global_stride();
     for (auto i = global_t_id; i < n_locations_; i += global_stride) {
+      auto const l = location_idx_t{i};
       if (prev_station_mark_[i] || station_mark_[i]) {
-        auto const l = location_idx_t{i};
         if (dist_to_end_[i] != std::numeric_limits<std::uint16_t>::max()) {
-          auto const best_time = get_best(best_[i][Vias], tmp_[i][Vias]);
+          auto const best_time =
+              get_best(best_.get(l, Vias), tmp_.get(l, Vias));
           if (best_time == kInvalid) {
             continue;
           }
@@ -322,9 +305,9 @@ struct raptor_impl {
           auto const end_time =
               clamp(best_time + stay.count() + dir(dist_to_end_[i]));
 
-          if (is_better(end_time, best_[kIntermodalTarget][Vias])) {
-            round_times_[k][kIntermodalTarget][Vias] = end_time;
-            best_[kIntermodalTarget][Vias] = end_time;
+          if (is_better(end_time, best_.get(kIntermodalTarget, Vias))) {
+            round_times_.update_min(k, kIntermodalTarget, Vias, end_time);
+            best_.update_min(kIntermodalTarget, Vias, end_time);
             update_time_at_dest(k, end_time);
           }
         }
@@ -344,7 +327,8 @@ struct raptor_impl {
       auto const stop_idx =
           static_cast<stop_idx_t>(kFwd ? i : stop_seq.size() - i - 1U);
       auto const stp = stop{stop_seq[stop_idx]};
-      auto const l_idx = cista::to_idx(stp.location_idx());
+      auto const l = stp.location_idx();
+      auto const l_idx = cista::to_idx(l);
       auto const is_first = i == 0U;
       auto const is_last = i == stop_seq.size() - 1U;
 
@@ -392,23 +376,22 @@ struct raptor_impl {
           }
 
           current_best[v] =
-              get_best(round_times_[k - 1][l_idx][target_v],
-                       tmp_[l_idx][target_v], best_[l_idx][target_v]);
+              get_best(round_times_.get(k - 1, l, target_v),
+                       tmp_.get(l, target_v), best_.get(l, target_v));
 
           auto higher_v_best = kInvalid;
           for (auto higher_v = Vias; higher_v != target_v; --higher_v) {
             higher_v_best =
-                get_best(higher_v_best, round_times_[k - 1][l_idx][higher_v],
-                         tmp_[l_idx][higher_v], best_[l_idx][higher_v]);
+                get_best(higher_v_best, round_times_.get(k - 1, l, higher_v),
+                         tmp_.get(l, higher_v), best_.get(l, higher_v));
           }
 
           if (is_better(by_transport, current_best[v]) &&
-              is_better(by_transport, time_at_dest_[k]) &&
+              is_better(by_transport, time_at_dest_.get(k)) &&
               is_better(by_transport, higher_v_best) &&
               lb_[l_idx] != kUnreachable &&
-              is_better(by_transport + dir(lb_[l_idx]), time_at_dest_[k])) {
-            tmp_[l_idx][target_v] =
-                get_best(by_transport, tmp_[l_idx][target_v]);
+              is_better(by_transport + dir(lb_[l_idx]), time_at_dest_.get(k))) {
+            tmp_.update_min(l, target_v, by_transport);
             station_mark_.mark(l_idx);
             current_best[v] = by_transport;
             any_marked = true;
@@ -418,15 +401,15 @@ struct raptor_impl {
             auto const dest_v = target_v + 1;
             assert(dest_v == Vias);
             auto const best_dest =
-                get_best(round_times_[k - 1][l_idx][dest_v],
-                         tmp_[l_idx][dest_v], best_[l_idx][dest_v]);
+                get_best(round_times_.get(k - 1, l, dest_v),
+                         tmp_.get(l, dest_v), best_.get(l, dest_v));
 
             if (is_better(by_transport, best_dest) &&
-                is_better(by_transport, time_at_dest_[k]) &&
+                is_better(by_transport, time_at_dest_.get(k)) &&
                 lb_[l_idx] != kUnreachable &&
-                is_better(by_transport + dir(lb_[l_idx]), time_at_dest_[k])) {
-
-              tmp_[l_idx][dest_v] = get_best(by_transport, tmp_[l_idx][dest_v]);
+                is_better(by_transport + dir(lb_[l_idx]),
+                          time_at_dest_.get(k))) {
+              tmp_.update_min(l, dest_v, by_transport);
               station_mark_.mark(l_idx);
               any_marked = true;
             }
@@ -454,14 +437,14 @@ struct raptor_impl {
                 ? time_at_stop(r, et[v], stop_idx,
                                kFwd ? event_type::kDep : event_type::kArr)
                 : kInvalid;
-        auto const prev_round_time = round_times_[k - 1][l_idx][target_v];
+        auto const prev_round_time = round_times_.get(k - 1, l, target_v);
         if (prev_round_time != kInvalid &&
             is_better_or_eq(prev_round_time, et_time_at_stop)) {
           auto const [day, mam] = split(prev_round_time);
           auto const new_et = get_earliest_transport(k, r, stop_idx, day, mam,
                                                      stp.location_idx());
-          current_best[v] = get_best(current_best[v], best_[l_idx][target_v],
-                                     tmp_[l_idx][target_v]);
+          current_best[v] = get_best(current_best[v], best_.get(l, target_v),
+                                     tmp_.get(l, target_v));
           if (new_et.is_valid() &&
               (current_best[v] == kInvalid ||
                is_better_or_eq(
@@ -511,7 +494,7 @@ struct raptor_impl {
         auto const ev = *it;
         auto const ev_mam = ev.mam();
 
-        if (is_better_or_eq(time_at_dest_[k],
+        if (is_better_or_eq(time_at_dest_.get(k),
                             to_delta(day, ev_mam) + dir(lb_[to_idx(l)]))) {
           return {transport_idx_t::invalid(), day_idx_t::invalid()};
         }
@@ -564,8 +547,8 @@ struct raptor_impl {
   }
 
   __device__ void update_time_at_dest(unsigned const k, delta_t const t) {
-    for (auto i = k; i != time_at_dest_.size(); ++i) {
-      time_at_dest_[i] = get_best(time_at_dest_[i], t);
+    for (auto i = k; i != max_transfers_ + 1U; ++i) {
+      time_at_dest_.update_min(i, t);
     }
   }
 
@@ -608,10 +591,10 @@ struct raptor_impl {
   device_bitvec<std::uint32_t> end_reachable_;
   cuda::std::span<std::uint16_t const> dist_to_end_;
   cuda::std::span<std::uint16_t const> lb_;
-  device_flat_matrix_view<cuda::std::array<delta_t, Vias + 1>> round_times_;
-  cuda::std::span<cuda::std::array<delta_t, Vias + 1>> best_;
-  cuda::std::span<cuda::std::array<delta_t, Vias + 1>> tmp_;
-  cuda::std::span<delta_t> time_at_dest_;
+  device_times<SearchDir, Vias + 1> round_times_;
+  device_times<SearchDir, Vias + 1> best_;
+  device_times<SearchDir, Vias + 1> tmp_;
+  device_times<SearchDir, 1U> time_at_dest_;
   device_bitvec<std::uint32_t> station_mark_;
   device_bitvec<std::uint32_t> prev_station_mark_;
   device_bitvec<std::uint32_t> route_mark_;
