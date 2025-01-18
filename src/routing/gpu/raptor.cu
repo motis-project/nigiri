@@ -242,42 +242,42 @@ void gpu_raptor<SearchDir, Rt, Vias>::execute(
   CUDA_CHECK(cudaPeekAtLastError());
 
   auto& s = *state_.impl_;
-  exec_raptor<SearchDir, Rt, Vias><<<1, 1>>>(
-      start_time, max_transfers, worst_time_at_dest,
-      raptor_impl<SearchDir, Rt, Vias>{
-          .tt_ = s.tt_,
-          .n_locations_ = s.tt_.n_locations_,
-          .n_routes_ = s.tt_.n_routes_,
-          .n_rt_transports_ = 0U,  // TODO
-          .transfer_time_settings_ = transfer_time_settings_,
-          .max_transfers_ = max_transfers,
-          .allowed_claszes_ = allowed_claszes_,
-          .require_bike_transport_ = require_bike_transport_,
-          .base_ = base_,
-          .worst_time_at_dest_ = worst_time_at_dest,
-          .is_intermodal_dest_ = s.is_intermodal_dest_,
-          .starts_ = to_view(starts),
-          .is_via_ =
-              [&]() {
-                auto ret = cuda::std::array<device_bitvec<std::uint64_t const>,
-                                            kMaxVias>{};
-                for (auto i = 0U; i != kMaxVias; ++i) {
-                  ret[i] = {to_view(s.is_via_[i])};
-                }
-                return ret;
-              }(),
-          .via_stops_ = to_view(s.via_stops_),
-          .is_dest_ = {to_view(s.is_dest_)},
-          .end_reachable_ = {to_mutable_view(s.end_reachable_)},
-          .dist_to_end_ = to_view(s.dist_to_dest_),
-          .lb_ = to_view(s.lb_),
-          .round_times_ = {to_mutable_view(s.round_times_), n_locations_},
-          .best_ = {to_mutable_view(s.best_), n_locations_},
-          .tmp_ = {to_mutable_view(s.tmp_), n_locations_},
-          .time_at_dest_ = {to_mutable_view(s.time_at_dest_), n_locations_},
-          .station_mark_ = {to_mutable_view(s.station_mark_)},
-          .prev_station_mark_ = {to_mutable_view(s.prev_station_mark_)},
-          .route_mark_ = {to_mutable_view(s.route_mark_)}});
+  auto const r = raptor_impl<SearchDir, Rt, Vias>{
+      .tt_ = s.tt_,
+      .n_locations_ = s.tt_.n_locations_,
+      .n_routes_ = s.tt_.n_routes_,
+      .n_rt_transports_ = 0U,  // TODO
+      .transfer_time_settings_ = transfer_time_settings_,
+      .max_transfers_ = max_transfers,
+      .allowed_claszes_ = allowed_claszes_,
+      .require_bike_transport_ = require_bike_transport_,
+      .base_ = base_,
+      .worst_time_at_dest_ = worst_time_at_dest,
+      .is_intermodal_dest_ = s.is_intermodal_dest_,
+      .starts_ = to_view(starts),
+      .is_via_ =
+          [&]() {
+            auto ret = cuda::std::array<device_bitvec<std::uint64_t const>,
+                                        kMaxVias>{};
+            for (auto i = 0U; i != kMaxVias; ++i) {
+              ret[i] = {to_view(s.is_via_[i])};
+            }
+            return ret;
+          }(),
+      .via_stops_ = to_view(s.via_stops_),
+      .is_dest_ = {to_view(s.is_dest_)},
+      .end_reachable_ = {to_mutable_view(s.end_reachable_)},
+      .dist_to_end_ = to_view(s.dist_to_dest_),
+      .lb_ = to_view(s.lb_),
+      .round_times_ = {to_mutable_view(s.round_times_), n_locations_},
+      .best_ = {to_mutable_view(s.best_), n_locations_},
+      .tmp_ = {to_mutable_view(s.tmp_), n_locations_},
+      .time_at_dest_ = {to_mutable_view(s.time_at_dest_), n_locations_},
+      .station_mark_ = {to_mutable_view(s.station_mark_)},
+      .prev_station_mark_ = {to_mutable_view(s.prev_station_mark_)},
+      .route_mark_ = {to_mutable_view(s.route_mark_)}};
+  exec_raptor<SearchDir, Rt, Vias>
+      <<<1, 1>>>(start_time, max_transfers, worst_time_at_dest, r);
 
   cudaDeviceSynchronize();
   CUDA_CHECK(cudaPeekAtLastError());
