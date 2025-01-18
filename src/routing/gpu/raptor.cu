@@ -114,11 +114,11 @@ struct gpu_raptor_state::impl {
     best_.resize(n_locations * (kMaxVias + 1));
     round_times_.resize(n_locations * (kMaxVias + 1) * (kMaxTransfers + 1));
     host_round_times_.resize(round_times_.size());
-    station_mark_.resize(n_locations);
-    prev_station_mark_.resize(n_locations);
-    route_mark_.resize(n_routes);
-    rt_transport_mark_.resize(n_rt_transports);
-    end_reachable_.resize(n_locations);
+    station_mark_.resize(n_locations / 32U + 1U);
+    prev_station_mark_.resize(n_locations / 32U + 1U);
+    route_mark_.resize(n_routes / 32U + 1U);
+    rt_transport_mark_.resize(n_rt_transports / 32U + 1U);
+    end_reachable_.resize(n_locations / 32U + 1U);
 
     for (auto i = 0U; i != is_via.size(); ++i) {
       is_via_[i].resize(is_via[i].blocks_.size());
@@ -138,7 +138,7 @@ struct gpu_raptor_state::impl {
                        is_dest.blocks_.size() *
                            sizeof(std::decay_t<decltype(is_dest)>::block_t),
                        cudaMemcpyHostToDevice),
-        "could not copy is_dest bitvector");
+        "could not copy is_dest");
 
     dist_to_dest_.resize(dist_to_dest.size());
     thrust::copy(thrust::cuda::par_nosync, begin(dist_to_dest),
@@ -149,7 +149,7 @@ struct gpu_raptor_state::impl {
         cudaSuccess == cudaMemcpy(thrust::raw_pointer_cast(lb_.data()),
                                   lb.data(), lb.size() * sizeof(std::uint16_t),
                                   cudaMemcpyHostToDevice),
-        "could not copy lb bitvector");
+        "could not copy lb");
   }
 
   std::uint32_t n_locations_;
