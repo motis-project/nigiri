@@ -152,10 +152,11 @@ if (NIGIRI_CUDA)
       INSTALL_RPATH "$ORIGIN/../lib:$ORIGIN/"
   )
   target_include_directories(nigiri-gpu PUBLIC include ${CUDAToolkit_INCLUDE_DIRS})
-  set_property(TARGET nigiri-gpu PROPERTY CUDA_ARCHITECTURES native)
   target_link_libraries(nigiri-gpu PRIVATE cista fmt date unordered_dense geo utl)
+  target_compile_definitions(nigiri-gpu PUBLIC NIGIRI_CUDA)
 
   target_link_libraries(nigiri-test PRIVATE nigiri-gpu)
+  target_compile_definitions(nigiri PUBLIC NIGIRI_CUDA)
   set_property(TARGET nigiri-test PROPERTY CUDA_SEPARABLE_COMPILATION ON)
   set_property(TARGET nigiri PROPERTY CUDA_SEPARABLE_COMPILATION ON)
 endif()

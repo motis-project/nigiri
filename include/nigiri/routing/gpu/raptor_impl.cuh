@@ -52,10 +52,11 @@ struct raptor_impl {
     }
 
     for (auto i = global_t_id; i < starts_.size(); i += global_stride) {
-      auto const [l, t] = starts_[i];
+      auto const l = starts_[i].first;
+      auto const t = unix_to_delta(base(), starts_[i].second);
       auto const v = (Vias != 0 && is_via_[0][to_idx(l)]) ? 1U : 0U;
-      best_.update_min(l, v, unix_to_delta(base(), t));
-      round_times_.update_min(0U, l, v, unix_to_delta(base(), t));
+      best_.update_min(l, v, t);
+      round_times_.update_min(0U, l, v, t);
       station_mark_.mark(to_idx(l));
     }
 
@@ -63,6 +64,8 @@ struct raptor_impl {
     for (auto i = global_t_id; i < kMaxTransfers + 1U; i += global_stride) {
       time_at_dest_.update_min(i, d_worst_at_dest);
     }
+
+    sync();
 
     auto const end_k = min(max_transfers, kMaxTransfers) + 1U;
     for (auto k = 1U; k != end_k; ++k) {
@@ -126,6 +129,8 @@ struct raptor_impl {
         cuda::std::swap(prev_station_mark_, station_mark_);
         station_mark_.zero_out();
       }
+
+      sync();
 
       update_transfers(k);
       update_intermodal_footpaths(k);

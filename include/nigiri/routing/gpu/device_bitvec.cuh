@@ -16,8 +16,7 @@ struct device_bitvec {
   using block_t = Block;
 
   __device__ void mark(block_t const i) {
-    atomicOr(&blocks_[i / sizeof(block_t) * 8U],
-             block_t{1U} << (i % BITS_PER_BLOCK));
+    atomicOr(&blocks_[i / BITS_PER_BLOCK], block_t{1U} << (i % BITS_PER_BLOCK));
   }
 
   __device__ void zero_out() {
@@ -26,7 +25,7 @@ struct device_bitvec {
     for (auto i = global_t_id; i < blocks_.size(); i += global_stride) {
       blocks_[i] = 0U;
     }
-  };
+  }
 
   __device__ bool test(block_t const i) const { return (*this)[i]; }
 

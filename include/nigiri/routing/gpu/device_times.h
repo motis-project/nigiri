@@ -35,29 +35,27 @@ struct device_times {
   }
 
   __device__ bool update_min(std::size_t const idx, delta_t const val) {
-    assert(idx < data_.size());
-    auto const addr = reinterpret_cast<std::uint32_t*>(&data_[idx]);
-    auto const base_address = reinterpret_cast<std::uint32_t*>(
-        reinterpret_cast<std::uintptr_t>(addr) &
-        ~static_cast<std::uintptr_t>(2U));
-    std::uint32_t old_value, new_value;
+    delta_t* const arr_address = &data_[idx];
+    auto* base_address = (int*)((size_t)arr_address & ~2);
+    std::int32_t old_value, new_value;
     do {
-      old_value = *base_address;
-      auto const is_in_upper_half = reinterpret_cast<std::uintptr_t>(addr) & 2U;
-      if (is_in_upper_half) {
-        auto const old_upper = static_cast<delta_t>(old_value >> 16U);
-        auto const new_upper = get_best(old_upper, val);
+      old_value = atomicCAS(base_address, *base_address, *base_address);
+      if ((size_t)arr_address & 2) {
+        std::int32_t old_upper = (old_value >> 16) & 0xFFFF;
+        old_upper = (old_upper << 16) >> 16;
+        std::int32_t new_upper = get_best(old_upper, val);
         if (new_upper == old_upper) {
           return false;
         }
-        new_value = (old_value & 0x0000FFFFU) | (new_upper << 16U);
+        new_value = (old_value & 0x0000FFFF) | (new_upper << 16);
       } else {
-        auto const old_lower = static_cast<delta_t>(old_value & 0xFFFF);
-        auto const new_lower = get_best(old_lower, val);
+        std::int32_t old_lower = old_value & 0xFFFF;
+        old_lower = (old_lower << 16) >> 16;
+        std::int32_t new_lower = get_best(old_lower, val);
         if (new_lower == old_lower) {
           return false;
         }
-        new_value = (old_value & 0xFFFF0000U) | new_lower;
+        new_value = (old_value & 0xFFFF0000) | (new_lower & 0xFFFF);
       }
     } while (atomicCAS(base_address, old_value, new_value) != old_value);
     return true;
