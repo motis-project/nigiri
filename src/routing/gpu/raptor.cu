@@ -97,6 +97,24 @@ gpu_timetable::gpu_timetable(timetable const& tt)
 
 gpu_timetable::~gpu_timetable() = default;
 
+struct gpu_rt_timetable::impl {
+  using rtt = rt_timetable;
+
+  thrust::device_vector<bitfield_idx_t> transport_traffic_days_;
+  thrust::device_vector<bitfield> bitfields_;
+  device_vecvec<decltype(rtt{}.rt_transport_stop_times_)>
+      rt_transport_stop_times_;
+  device_vecvec<decltype(rtt{}.rt_transport_location_seq_)>
+      rt_transport_location_seq_;
+  thrust::device_vector<std::uint64_t> rt_transport_bikes_allowed_;
+  device_vecvec<decltype(rtt{}.rt_bikes_allowed_per_section_)>
+      rt_bikes_allowed_per_section_;
+  device_vecvec<vecvec<location_idx_t, rt_transport_idx_t>>
+      location_rt_transports_;
+  date::sys_days base_day_;
+  day_idx_t base_day_idx_;
+};
+
 struct gpu_raptor_state::impl {
   explicit impl(gpu_timetable const& gtt)
       : tt_{gtt.impl_->to_device_timetable()} {

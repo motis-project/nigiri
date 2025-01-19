@@ -12,6 +12,14 @@ struct gpu_timetable {
   std::unique_ptr<impl> impl_;
 };
 
+struct gpu_rt_timetable {
+  explicit gpu_rt_timetable(rt_timetable const&);
+  ~gpu_rt_timetable();
+
+  struct impl;
+  std::unique_ptr<impl> impl;
+};
+
 struct gpu_raptor_state {
   explicit gpu_raptor_state(gpu_timetable const&);
   ~gpu_raptor_state();
