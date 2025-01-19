@@ -15,6 +15,7 @@
 #include "nigiri/routing/gpu/device_timetable.cuh"
 #include "nigiri/routing/gpu/raptor_impl.cuh"
 #include "nigiri/routing/gpu/types.cuh"
+#include "utl/timer.h"
 
 namespace cg = cooperative_groups;
 
@@ -149,13 +150,24 @@ struct gpu_raptor_state::impl {
 
     for (auto i = 0U; i != is_via.size(); ++i) {
       is_via_[i].resize(is_via[i].blocks_.size());
-      thrust::copy(thrust::cuda::par.on(stream_), begin(is_via[i].blocks_),
-                   end(is_via[i].blocks_), begin(is_via_[i]));
+      utl::verify(
+          cudaSuccess ==
+              cudaMemcpyAsync(
+                  thrust::raw_pointer_cast(is_via_[i].data()),
+                  is_via[i].blocks_.data(),
+                  is_via[i].blocks_.size() *
+                      sizeof(std::decay_t<decltype(is_via[0])>::block_t),
+                  cudaMemcpyHostToDevice, stream_),
+          "could not copy is_via[{}]", i);
     }
 
     via_stops_.resize(via_stops.size());
-    thrust::copy(thrust::cuda::par.on(stream_), begin(via_stops),
-                 end(via_stops), begin(via_stops_));
+    utl::verify(cudaSuccess ==
+                    cudaMemcpyAsync(thrust::raw_pointer_cast(via_stops_.data()),
+                                    via_stops.data(),
+                                    via_stops.size() * sizeof(via_stop),
+                                    cudaMemcpyHostToDevice, stream_),
+                "could not copy via_stops");
 
     is_dest_.resize(is_dest.blocks_.size());
     utl::verify(
@@ -168,8 +180,13 @@ struct gpu_raptor_state::impl {
         "could not copy is_dest");
 
     dist_to_dest_.resize(dist_to_dest.size());
-    thrust::copy(thrust::cuda::par.on(stream_), begin(dist_to_dest),
-                 end(dist_to_dest), begin(dist_to_dest_));
+    utl::verify(
+        cudaSuccess ==
+            cudaMemcpyAsync(thrust::raw_pointer_cast(dist_to_dest_.data()),
+                            dist_to_dest.data(),
+                            dist_to_dest.size() * sizeof(std::uint16_t),
+                            cudaMemcpyHostToDevice, stream_),
+        "could not copy dist to dest");
 
     lb_.resize(lb.size());
     utl::verify(cudaSuccess == cudaMemcpyAsync(
@@ -177,10 +194,13 @@ struct gpu_raptor_state::impl {
                                    lb.data(), lb.size() * sizeof(std::uint16_t),
                                    cudaMemcpyHostToDevice, stream_),
                 "could not copy lb");
+
+    any_marked_.resize(1U);
   }
 
   std::uint32_t n_locations_;
   bool is_intermodal_dest_;
+  thrust::device_vector<std::uint32_t> any_marked_;
   thrust::device_vector<delta_t> time_at_dest_;
   thrust::device_vector<delta_t> tmp_;
   thrust::device_vector<delta_t> best_;
@@ -272,6 +292,7 @@ void gpu_raptor<SearchDir, Rt, Vias>::execute(unixtime_t start_time,
   CUDA_CHECK(cudaPeekAtLastError());
 
   auto r = raptor_impl<SearchDir, Rt, Vias>{
+      .any_marked_ = thrust::raw_pointer_cast(s.any_marked_.data()),
       .tt_ = s.tt_,
       .n_locations_ = s.tt_.n_locations_,
       .n_routes_ = s.tt_.n_routes_,
@@ -321,6 +342,8 @@ void gpu_raptor<SearchDir, Rt, Vias>::execute(unixtime_t start_time,
   CUDA_CHECK(cudaPeekAtLastError());
 
   sync_round_times();
+  std::cout << "GPU RAPTOR STATE [start_time=" << start_time << "]\n";
+  s.host_state_.print<Vias>(tt_, base(), kInvalidDelta<SearchDir>);
 
   auto const round_times = s.host_state_.get_round_times<Vias>();
   auto const end_k = std::min(max_transfers, kMaxTransfers) + 1U;

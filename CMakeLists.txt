@@ -142,7 +142,7 @@ if (NIGIRI_CUDA)
   file(GLOB_RECURSE nigiri-gpu-files src/*.cu)
   add_library(nigiri-gpu OBJECT ${nigiri-gpu-files})
   set_target_properties(nigiri-gpu PROPERTIES
-      COMPILE_OPTIONS -G
+      COMPILE_OPTIONS "-O3;-DNDEBUG"
       WINDOWS_EXPORT_ALL_SYMBOLS ON
       CUDA_SEPARABLE_COMPILATION ON
       CUDA_ARCHITECTURES native
@@ -153,10 +153,15 @@ if (NIGIRI_CUDA)
   )
   target_include_directories(nigiri-gpu PUBLIC include ${CUDAToolkit_INCLUDE_DIRS})
   target_link_libraries(nigiri-gpu PRIVATE cista fmt date unordered_dense geo utl)
-  target_compile_definitions(nigiri-gpu PUBLIC NIGIRI_CUDA)
 
-  target_link_libraries(nigiri-test PRIVATE nigiri-gpu)
+  target_compile_definitions(nigiri-gpu PUBLIC NIGIRI_CUDA)
   target_compile_definitions(nigiri PUBLIC NIGIRI_CUDA)
-  set_property(TARGET nigiri-test PROPERTY CUDA_SEPARABLE_COMPILATION ON)
+
   set_property(TARGET nigiri PROPERTY CUDA_SEPARABLE_COMPILATION ON)
+
+  set_property(TARGET nigiri-test PROPERTY CUDA_SEPARABLE_COMPILATION ON)
+  target_link_libraries(nigiri-test PRIVATE nigiri-gpu)
+
+  set_property(TARGET nigiri-benchmark PROPERTY CUDA_SEPARABLE_COMPILATION ON)
+  target_link_libraries(nigiri-benchmark PRIVATE nigiri-gpu)
 endif()

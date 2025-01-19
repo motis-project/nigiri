@@ -52,9 +52,9 @@ pareto_set<routing::journey> raptor_search(timetable const& tt,
                                               gpu_state, q, search_dir)
                            .journeys_);
 
-  //  EXPECT_EQ(print_results(tt, results), print_results(tt, gpu_results));
+  EXPECT_EQ(print_results(tt, results), print_results(tt, gpu_results));
 
-  return gpu_results;
+  return results;
 }
 
 pareto_set<routing::journey> raptor_search(timetable const& tt,

@@ -17,6 +17,8 @@
 #include "nigiri/timetable.h"
 #include "nigiri/types.h"
 
+#include "nigiri/routing/gpu/raptor.h"
+
 #ifndef _WIN32
 #include <sys/resource.h>
 #endif
@@ -123,16 +125,15 @@ void generate_queries(
   std::cout << queries.size() << " queries generated successfully\n";
 }
 
-nigiri::pareto_set<nigiri::routing::journey> raptor_search(
-    nigiri::timetable const& tt, nigiri::routing::query q) {
-  using namespace nigiri;
-  using algo_state_t = routing::raptor_state;
-  static auto search_state = routing::search_state{};
-  static auto algo_state = algo_state_t{};
-
-  return *(routing::raptor_search(tt, nullptr, search_state, algo_state,
-                                  std::move(q), nigiri::direction::kForward)
-               .journeys_);
+std::string to_str(timetable const& tt,
+                   pareto_set<nigiri::routing::journey> const& results) {
+  std::stringstream ss;
+  ss << "\n";
+  for (auto const& x : results) {
+    x.print(ss, tt);
+    ss << "\n\n";
+  }
+  return ss.str();
 }
 
 void process_queries(
@@ -142,33 +143,68 @@ void process_queries(
   results.reserve(queries.size());
   std::mutex mutex;
   {
+    std::cout << "creating GPU timetable\n";
+    auto const gpu_tt = routing::gpu::gpu_timetable{tt};
+    std::cout << "creating GPU timetable finished\n";
+
     auto query_processing_timer =
         scoped_timer(fmt::format("processing of {} queries", queries.size()));
     auto const progress_tracker = utl::activate_progress_tracker("benchmark");
-    utl::get_global_progress_trackers().silent_ = false;
+    //    utl::get_global_progress_trackers().silent_ = false;
     progress_tracker->status("processing queries").in_high(queries.size());
     struct query_state {
       search_state ss_;
       raptor_state rs_;
-    };
-    utl::parallel_for_run_threadlocal<query_state>(
-        queries.size(), [&](auto& query_state, auto const q_idx) {
-          try {
-            auto const total_time_start = std::chrono::steady_clock::now();
-            auto const result = routing::raptor_search(
-                tt, nullptr, query_state.ss_, query_state.rs_,
-                queries[q_idx].q_, direction::kForward);
-            auto const total_time_stop = std::chrono::steady_clock::now();
-            auto const guard = std::lock_guard{mutex};
-            results.emplace_back(benchmark_result{
-                q_idx, result, *result.journeys_,
-                std::chrono::duration_cast<std::chrono::milliseconds>(
-                    total_time_stop - total_time_start)});
-            progress_tracker->increment();
-          } catch (const std::exception& e) {
-            std::cout << e.what();
-          }
-        });
+      std::unique_ptr<routing::gpu::gpu_raptor_state> gpu_rs_;
+    } query_state;
+    for (auto q_idx = 0U; q_idx != queries.size(); ++q_idx) {
+      if (query_state.gpu_rs_.get() == nullptr) {
+        query_state.gpu_rs_ =
+            std::make_unique<routing::gpu::gpu_raptor_state>(gpu_tt);
+      }
+      try {
+        auto const total_time_start = std::chrono::steady_clock::now();
+        auto const result = routing::raptor_search(
+            tt, nullptr, query_state.ss_, query_state.rs_, queries[q_idx].q_,
+            direction::kForward);
+        auto const total_time_stop = std::chrono::steady_clock::now();
+
+        auto const gpu_total_time_start = std::chrono::steady_clock::now();
+        auto const gpu_result = routing::raptor_search(
+            tt, nullptr, query_state.ss_, *query_state.gpu_rs_,
+            queries[q_idx].q_, direction::kForward);
+        auto const gpu_total_time_stop = std::chrono::steady_clock::now();
+
+        auto const total_ms =
+            std::chrono::duration_cast<std::chrono::milliseconds>(
+                total_time_stop - total_time_start);
+        auto const total_gpu_ms =
+            std::chrono::duration_cast<std::chrono::milliseconds>(
+                gpu_total_time_stop - gpu_total_time_start);
+
+        std::cout << "cpu=" << total_ms << ", gpu=" << total_gpu_ms << "\n";
+
+        auto const cpu_result_str = to_str(tt, *result.journeys_);
+        auto const gpu_result_str = to_str(tt, *gpu_result.journeys_);
+        if (cpu_result_str != gpu_result_str) {
+          std::cout << "query #" << q_idx
+                    << "\n"
+                       "CPU_STR:\n"
+                    << cpu_result_str
+                    << "\n"
+                       "GPU_STR:\n"
+                    << gpu_result_str << "\n";
+        }
+        auto const guard = std::lock_guard{mutex};
+        results.emplace_back(benchmark_result{
+            q_idx, result, *result.journeys_,
+            std::chrono::duration_cast<std::chrono::milliseconds>(
+                total_time_stop - total_time_start)});
+        progress_tracker->increment();
+      } catch (const std::exception& e) {
+        std::cout << e.what();
+      }
+    }
   }
 }
 
