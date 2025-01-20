@@ -166,8 +166,7 @@ struct raptor_impl {
   }
 
   __device__ __forceinline__ void sync() const {
-    __syncthreads();
-    //    cooperative_groups::this_grid().sync();
+    cooperative_groups::this_grid().sync();
   }
 
   __device__ date::sys_days base() const {
