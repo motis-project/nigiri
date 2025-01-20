@@ -15,6 +15,7 @@
 
 namespace nigiri::routing::gpu {
 
+#define debug(...)
 #define kInvalid (kInvalidDelta<SearchDir>)
 #define kFwd (SearchDir == direction::kForward)
 #define kBwd (SearchDir == direction::kBackward)
@@ -72,8 +73,8 @@ struct raptor_impl {
     auto const end_k = min(max_transfers, kMaxTransfers) + 1U;
     for (auto k = 1U; k != end_k; ++k) {
       // Reuse best time from previous time at start (for range queries).
-      for (auto i = global_t_id; i < tt_.n_locations_; i += global_stride) {
-        printf("round %u: location %d\n", k, i);
+      for (auto i = global_t_id; i < n_locations_; i += global_stride) {
+        debug("round %u: location %d / %u\n", k, i, n_locations_);
         auto const l = location_idx_t{i};
         for (auto v = 0U; v != Vias + 1; ++v) {
           best_.update_min(l, v, round_times_.get(k, l, v));
@@ -97,30 +98,22 @@ struct raptor_impl {
             atomicOr(any_marked_, 1U);
           }
           for (auto r : tt_.location_routes_[location_idx_t{i}]) {
-            printf("round %u: marking route %u\n", k, to_idx(r));
+            debug("round %u: marking route %u\n", k, to_idx(r));
             route_mark_.mark(to_idx(r));
           }
         }
       }
 
       sync();
-
       if (!*any_marked_) {
-        printf("round %d: no route marked -> break;\n", k);
+        debug("round %d: no route marked -> break;\n", k);
         break;
       }
 
+      prev_station_mark_.swap_reset(station_mark_);
       if (global_t_id == 0) {
-        cuda::std::swap(prev_station_mark_, station_mark_);
         *any_marked_ = false;
-
-        for (auto l = location_idx_t{0U}; l != n_locations_; ++l) {
-          printf("l=%u: %s\n", l.v_,
-                 prev_station_mark_.test(l.v_) ? "marked" : "-");
-        }
       }
-      sync();
-      station_mark_.zero_out();
       sync();
 
       (allowed_claszes_ == all_clasz_allowed())
@@ -130,24 +123,18 @@ struct raptor_impl {
                                      : loop_routes<true, false>(k));
 
       sync();
-
       if (!*any_marked_) {
-        printf("round %d: no location marked after loop_routes -> break;\n", k);
+        debug("round %d: no location marked after loop_routes -> break;\n", k);
         break;
       }
-
-      if (global_t_id == 0) {
-        cuda::std::swap(prev_station_mark_, station_mark_);
-      }
-      sync();
-      station_mark_.zero_out();
+      prev_station_mark_.swap_reset(station_mark_);
       sync();
 
       update_transfers(k);
       update_intermodal_footpaths(k);
       update_footpaths(k);
 
-      route_mark_.zero_out();
+      route_mark_.reset();
       sync();
     }
   }
@@ -168,7 +155,7 @@ struct raptor_impl {
     for (auto i = global_t_id; i < tt_.n_routes_; i += global_stride) {
       auto const r = route_idx_t{i};
 
-      printf("round %u: processing route %d\n", k, i);
+      debug("round %u: processing route %d\n", k, i);
       if constexpr (WithClaszFilter) {
         if (!is_allowed(allowed_claszes_, tt_.route_clasz_[r])) {
           continue;
@@ -193,7 +180,7 @@ struct raptor_impl {
                                         ? update_route<true>(k, r)
                                         : update_route<false>(k, r);
       if (route_any_marked && !*any_marked_) {
-        printf("round %u: route=%d -> any_marked=true\n", k, i);
+        debug("round %u: route=%d -> any_marked=true\n", k, i);
         atomicOr(any_marked_, 1U);
       }
     }
@@ -411,7 +398,7 @@ struct raptor_impl {
             station_mark_.mark(l_idx);
             current_best[v] = by_transport;
             any_marked = true;
-            printf("round %u: route=%u, marking l=%u\n", k, to_idx(r), l_idx);
+            debug("round %u: route=%u, marking l=%u\n", k, to_idx(r), l_idx);
           }
 
           if (is_via_and_dest) {
@@ -429,7 +416,7 @@ struct raptor_impl {
               tmp_.update_min(l, dest_v, by_transport);
               station_mark_.mark(l_idx);
               any_marked = true;
-              printf("round %u: route=%u, marking l=%u\n", k, to_idx(r), l_idx);
+              debug("round %u: route=%u, marking l=%u\n", k, to_idx(r), l_idx);
             }
           }
         }
@@ -437,7 +424,7 @@ struct raptor_impl {
 
       if (is_last || !stp.can_start<SearchDir>(is_wheelchair_) ||
           !prev_station_mark_[l_idx]) {
-        printf(
+        debug(
             "round %u: route=%u, stop=%u [l=%u] -> "
             "is_last=%s, can_start=%s, prev_station_mark=%s   => no new et\n",
             k, r.v_, stop_idx, l_idx, b2s(is_last),
@@ -452,7 +439,7 @@ struct raptor_impl {
 
       for (auto v = 0U; v != Vias + 1; ++v) {
         if (!et[v].is_valid() && !prev_station_mark_[l_idx]) {
-          printf(
+          debug(
               "round %u: route=%u, stop=%u [l=%u] -> et_valid=%s, "
               "prev_station_mark=%s   => no new et\n",
               k, r.v_, stop_idx, l_idx, b2s(et[v].is_valid()),
@@ -482,11 +469,11 @@ struct raptor_impl {
                    et_time_at_stop))) {
             et[v] = new_et;
             v_offset[v] = 0;
-            printf("round %u: route=%u, stop=%u [l=%u] -> transport=%u\n", k,
-                   r.v_, stop_idx, l_idx, new_et.t_idx_.v_);
+            debug("round %u: route=%u, stop=%u [l=%u] -> transport=%u\n", k,
+                  r.v_, stop_idx, l_idx, new_et.t_idx_.v_);
           }
         } else {
-          printf(
+          debug(
               "round %u: route=%u, stop=%u [l=%u] -> prev_round_time=%d, "
               "time_at_stop=%d => no new et\n",
               k, r.v_, stop_idx, l_idx, prev_round_time, et_time_at_stop);

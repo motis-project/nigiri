@@ -331,19 +331,21 @@ void gpu_raptor<SearchDir, Rt, Vias>::execute(unixtime_t start_time,
   auto threads = 0;
   auto const kernel = reinterpret_cast<void*>(exec_raptor<SearchDir, Rt, Vias>);
   cudaOccupancyMaxPotentialBlockSize(&blocks, &threads, kernel, 0, 0);
+  {
+    auto t = utl::scoped_timer{"kernel launch"};
+    void* args[] = {reinterpret_cast<void*>(&start_time),
+                    reinterpret_cast<void*>(&max_transfers),
+                    reinterpret_cast<void*>(&worst_time_at_dest),
+                    reinterpret_cast<void*>(&r)};
+    cudaLaunchCooperativeKernel(kernel, blocks, threads, args, 0, s.stream_);
 
-  void* args[] = {reinterpret_cast<void*>(&start_time),
-                  reinterpret_cast<void*>(&max_transfers),
-                  reinterpret_cast<void*>(&worst_time_at_dest),
-                  reinterpret_cast<void*>(&r)};
-  cudaLaunchCooperativeKernel(kernel, 1, 1, args, 0, s.stream_);
-
-  cudaStreamSynchronize(s.stream_);
+    cudaStreamSynchronize(s.stream_);
+  }
   CUDA_CHECK(cudaPeekAtLastError());
 
   sync_round_times();
-  std::cout << "GPU RAPTOR STATE [start_time=" << start_time << "]\n";
-  s.host_state_.print<Vias>(tt_, base(), kInvalidDelta<SearchDir>);
+  //  std::cout << "GPU RAPTOR STATE [start_time=" << start_time << "]\n";
+  //  s.host_state_.print<Vias>(tt_, base(), kInvalidDelta<SearchDir>);
 
   auto const round_times = s.host_state_.get_round_times<Vias>();
   auto const end_k = std::min(max_transfers, kMaxTransfers) + 1U;

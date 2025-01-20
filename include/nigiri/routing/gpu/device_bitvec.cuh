@@ -19,7 +19,16 @@ struct device_bitvec {
     atomicOr(&blocks_[i / BITS_PER_BLOCK], block_t{1U} << (i % BITS_PER_BLOCK));
   }
 
-  __device__ void zero_out() {
+  __device__ void swap_reset(device_bitvec& o) {
+    auto const t_id = get_global_thread_id();
+    auto const stride = get_global_stride();
+    for (auto idx = t_id; idx < blocks_.size(); idx += stride) {
+      blocks_[idx] = o.blocks_[idx];
+      o.blocks_[idx] = 0U;
+    }
+  }
+
+  __device__ void reset() {
     auto const global_t_id = get_global_thread_id();
     auto const global_stride = get_global_stride();
     for (auto i = global_t_id; i < blocks_.size(); i += global_stride) {
