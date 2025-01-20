@@ -410,16 +410,19 @@ private:
                                (std::min(fastest_direct_, q_.max_travel_time_) +
                                 duration_t{1});
 
-          auto const start = std::chrono::steady_clock::now();
+          //          auto const start = std::chrono::steady_clock::now();
           algo_.execute(start_time, q_.max_transfers_, worst_time_at_dest,
                         q_.prf_idx_, state_.results_);
-          auto const end = std::chrono::steady_clock::now();
-          std::cout << cista::type_str<Algo>() << ": start_time=" << start_time
-                    << ", #results=" << state_.results_.size() << ", exec_time "
-                    << std::chrono::duration_cast<std::chrono::milliseconds>(
-                           end - start)
-                           .count()
-                    << "ms\n";
+          //          auto const end = std::chrono::steady_clock::now();
+          //  std::cout << cista::type_str<Algo>() << ": start_time=" <<
+          //  start_time
+          //            << ", #results=" << state_.results_.size() << ",
+          //            exec_time "
+          //            <<
+          //            std::chrono::duration_cast<std::chrono::milliseconds>(
+          //                   end - start)
+          //                   .count()
+          //            << "ms\n";
 
           for (auto& j : state_.results_) {
             if (j.legs_.empty() &&

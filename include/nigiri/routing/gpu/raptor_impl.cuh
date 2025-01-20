@@ -15,7 +15,22 @@
 
 namespace nigiri::routing::gpu {
 
+#ifndef NIGIRI_CUDA_DEBUG
 #define debug(...)
+#else
+#define debug(...) printf(__VA_ARGS__)
+#endif
+
+#define start_timing() (void)0
+#define debug_timing(...)
+
+// #define start_timing() auto const round_start = clock64()
+// #define debug_timing(str, ...)                        \
+//  if (global_t_id == 0) {                             \
+//    printf(str ": %" PRIi64 " cycles\n", __VA_ARGS__, \
+//           clock64() - round_start);                  \
+//  }
+
 #define kInvalid (kInvalidDelta<SearchDir>)
 #define kFwd (SearchDir == direction::kForward)
 #define kBwd (SearchDir == direction::kBackward)
@@ -72,6 +87,8 @@ struct raptor_impl {
 
     auto const end_k = min(max_transfers, kMaxTransfers) + 1U;
     for (auto k = 1U; k != end_k; ++k) {
+      start_timing();
+
       // Reuse best time from previous time at start (for range queries).
       for (auto i = global_t_id; i < n_locations_; i += global_stride) {
         debug("round %u: location %d / %u\n", k, i, n_locations_);
@@ -90,6 +107,7 @@ struct raptor_impl {
       }
 
       sync();
+      debug_timing("round %u: after reuse times from prev start", k);
 
       for (auto i = global_t_id; i < tt_.n_locations_; i += global_stride) {
         if (station_mark_[i]) {
@@ -105,6 +123,8 @@ struct raptor_impl {
       }
 
       sync();
+      debug_timing("round %u: after station flags -> route flags", k);
+
       if (!*any_marked_) {
         debug("round %d: no route marked -> break;\n", k);
         break;
@@ -123,12 +143,15 @@ struct raptor_impl {
                                      : loop_routes<true, false>(k));
 
       sync();
+      debug_timing("round %u: after visit routes", k);
+
       if (!*any_marked_) {
         debug("round %d: no location marked after loop_routes -> break;\n", k);
         break;
       }
       prev_station_mark_.swap_reset(station_mark_);
       sync();
+      debug_timing("round %u: after swap station marks", k);
 
       update_transfers(k);
       update_intermodal_footpaths(k);
@@ -136,11 +159,13 @@ struct raptor_impl {
 
       route_mark_.reset();
       sync();
+      debug_timing("round %u: TOTAL", k);
     }
   }
 
   __device__ __forceinline__ void sync() const {
-    cooperative_groups::this_grid().sync();
+    __syncthreads();
+    //    cooperative_groups::this_grid().sync();
   }
 
   __device__ date::sys_days base() const {
@@ -153,8 +178,11 @@ struct raptor_impl {
     auto const global_stride = get_global_stride();
 
     for (auto i = global_t_id; i < tt_.n_routes_; i += global_stride) {
-      auto const r = route_idx_t{i};
+      if (!route_mark_.test(i)) {
+        continue;
+      }
 
+      auto const r = route_idx_t{i};
       debug("round %u: processing route %d\n", k, i);
       if constexpr (WithClaszFilter) {
         if (!is_allowed(allowed_claszes_, tt_.route_clasz_[r])) {
@@ -190,6 +218,10 @@ struct raptor_impl {
     auto const global_t_id = get_global_thread_id();
     auto const global_stride = get_global_stride();
     for (auto i = global_t_id; i < n_locations_; i += global_stride) {
+      if (!prev_station_mark_.test(i)) {
+        continue;
+      }
+
       auto const l = location_idx_t{i};
 
       for (auto v = 0U; v != Vias + 1; ++v) {
@@ -234,6 +266,10 @@ struct raptor_impl {
     auto const global_t_id = get_global_thread_id();
     auto const global_stride = get_global_stride();
     for (auto i = global_t_id; i < n_locations_; i += global_stride) {
+      if (!prev_station_mark_.test(i)) {
+        continue;
+      }
+
       auto const l = location_idx_t{i};
       auto const& fps = kFwd ? tt_.footpaths_out_[l] : tt_.footpaths_in_[l];
 
@@ -294,6 +330,10 @@ struct raptor_impl {
     auto const global_t_id = get_global_thread_id();
     auto const global_stride = get_global_stride();
     for (auto i = global_t_id; i < n_locations_; i += global_stride) {
+      if (!prev_station_mark_.test(i)) {
+        continue;
+      }
+
       auto const l = location_idx_t{i};
       if (prev_station_mark_[i] || station_mark_[i]) {
         if (dist_to_end_[i] != std::numeric_limits<std::uint16_t>::max()) {

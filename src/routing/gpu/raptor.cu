@@ -332,7 +332,7 @@ void gpu_raptor<SearchDir, Rt, Vias>::execute(unixtime_t start_time,
   auto const kernel = reinterpret_cast<void*>(exec_raptor<SearchDir, Rt, Vias>);
   cudaOccupancyMaxPotentialBlockSize(&blocks, &threads, kernel, 0, 0);
   {
-    auto t = utl::scoped_timer{"kernel launch"};
+    //    auto t = utl::scoped_timer{"kernel launch"};
     void* args[] = {reinterpret_cast<void*>(&start_time),
                     reinterpret_cast<void*>(&max_transfers),
                     reinterpret_cast<void*>(&worst_time_at_dest),
