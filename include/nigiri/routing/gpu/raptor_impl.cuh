@@ -25,7 +25,7 @@ namespace nigiri::routing::gpu {
 #define debug_timing(...)
 
 // #define start_timing() auto const round_start = clock64()
-// #define debug_timing(str, ...)                        \
+// #d ef ine deb ug_timing(str, ...)                        \
 //  if (global_t_id == 0) {                             \
 //    printf(str ": %" PRIi64 " cycles\n", __VA_ARGS__, \
 //           clock64() - round_start);                  \
@@ -127,6 +127,7 @@ struct raptor_impl {
 
       if (!*any_marked_) {
         debug("round %d: no route marked -> break;\n", k);
+        debug_timing("round %u: TOTAL", k);
         break;
       }
 
@@ -147,6 +148,7 @@ struct raptor_impl {
 
       if (!*any_marked_) {
         debug("round %d: no location marked after loop_routes -> break;\n", k);
+        debug_timing("round %u: TOTAL", k);
         break;
       }
       prev_station_mark_.swap_reset(station_mark_);
