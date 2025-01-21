@@ -26,7 +26,7 @@ namespace nigiri::rt::vdv {
 
 // #define VDV_DEBUG
 #ifdef VDV_DEBUG
-#define vdv_trace(...) utl::debug(__VA_ARGS__)
+#define vdv_trace(...) utl::debug("nigiri.vdv_trace", __VA_ARGS__)
 #else
 #define vdv_trace(...)
 #endif
