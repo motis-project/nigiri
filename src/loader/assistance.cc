@@ -23,16 +23,17 @@ assistance_times read_assistance(std::string_view file_content) {
   auto a = assistance_times{};
   utl::line_range{utl::make_buf_reader(file_content)}  //
       | utl::csv<assistance>()  //
-      | utl::for_each([&](assistance const& x) {
-          a.names_.emplace_back(x.name_->trim().view());
-          a.pos_.emplace_back(*x.lat_, *x.lng_);
-          try {
-            a.rules_.emplace_back(oh::parse(x.time_->trim().view()));
-          } catch (std::exception const& e) {
-            utl::log_error("loader.assistance",
-                "bad assistance time \"{}\": {}", x.time_->view(), e.what());
-          }
-        });
+      |
+      utl::for_each([&](assistance const& x) {
+        a.names_.emplace_back(x.name_->trim().view());
+        a.pos_.emplace_back(*x.lat_, *x.lng_);
+        try {
+          a.rules_.emplace_back(oh::parse(x.time_->trim().view()));
+        } catch (std::exception const& e) {
+          utl::log_error("loader.assistance", "bad assistance time \"{}\": {}",
+                         x.time_->view(), e.what());
+        }
+      });
   a.rtree_ = geo::make_point_rtree(a.pos_);
   return a;
 }

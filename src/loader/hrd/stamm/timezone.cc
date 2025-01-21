@@ -66,8 +66,8 @@ timezone_map_t parse_timezones(config const& c,
       if (it != end(tz)) {
         tz[parse_eva_number(line.substr(c.tz_.type1_eva_))] = it->second;
       } else {
-        utl::log_error("loader.hrd.timezone",
-            "no timezone for eva number: {}", first_valid_eva_number);
+        utl::log_error("loader.hrd.timezone", "no timezone for eva number: {}",
+                       first_valid_eva_number);
       }
       return;
     }

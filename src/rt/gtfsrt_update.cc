@@ -214,7 +214,8 @@ void update_run(
                                    s.in_allowed());
         } else {
           utl::log_error("gtfsrt.stop_assignment",
-              "stop assignment: src={}, stop_id=\"{}\" not found", src, new_id);
+                         "stop assignment: src={}, stop_id=\"{}\" not found",
+                         src, new_id);
         }
       } else {
         // Just reset in case a track change / skipped stop got reversed.
@@ -308,8 +309,8 @@ statistics gtfsrt_update_msg(timetable const& tt,
                                  int& stat) {
       if (is_set) {
         utl::log_error("rt.gtfs.unsupported",
-            R"(ignoring unsupported "{}" field (tag={}, id={}))", field, tag,
-            entity.id());
+                       R"(ignoring unsupported "{}" field (tag={}, id={}))",
+                       field, tag, entity.id());
         ++stat;
       }
     };
@@ -320,7 +321,8 @@ statistics gtfsrt_update_msg(timetable const& tt,
                 stats.unsupported_deleted_);
 
     if (!entity.has_trip_update()) {
-      utl::log_error("rt.gtfs.unsupported",
+      utl::log_error(
+          "rt.gtfs.unsupported",
           R"(unsupported: no "trip_update" field (tag={}, id={}), skipping message)",
           tag, entity.id());
       ++stats.no_trip_update_;
@@ -328,7 +330,8 @@ statistics gtfsrt_update_msg(timetable const& tt,
     }
 
     if (!entity.trip_update().has_trip()) {
-      utl::log_error("rt.gtfs.unsupported",
+      utl::log_error(
+          "rt.gtfs.unsupported",
           R"(unsupported: no "trip" field in "trip_update" field (tag={}, id={}), skipping message)",
           tag, entity.id());
       ++stats.trip_update_without_trip_;
@@ -336,7 +339,8 @@ statistics gtfsrt_update_msg(timetable const& tt,
     }
 
     if (!entity.trip_update().trip().has_trip_id()) {
-      utl::log_error("rt.gtfs.unsupported",
+      utl::log_error(
+          "rt.gtfs.unsupported",
           R"(unsupported: no "trip_id" field in "trip_update.trip" (tag={}, id={}), skipping message)",
           tag, entity.id());
       ++stats.unsupported_no_trip_id_;
@@ -347,7 +351,8 @@ statistics gtfsrt_update_msg(timetable const& tt,
             gtfsrt::TripDescriptor_ScheduleRelationship_SCHEDULED &&
         entity.trip_update().trip().schedule_relationship() !=
             gtfsrt::TripDescriptor_ScheduleRelationship_CANCELED) {
-      utl::log_error("rt.gtfs.unsupported",
+      utl::log_error(
+          "rt.gtfs.unsupported",
           "unsupported schedule relationship {} (tag={}, id={}), skipping "
           "message",
           TripDescriptor_ScheduleRelationship_Name(
@@ -362,8 +367,8 @@ statistics gtfsrt_update_msg(timetable const& tt,
       auto [r, trip] = gtfsrt_resolve_run(today, tt, &rtt, src, td);
 
       if (!r.valid()) {
-        utl::log_error("rt.gtfs.resolve", "could not resolve (tag={}) {}",
-            tag, remove_nl(td.DebugString()));
+        utl::log_error("rt.gtfs.resolve", "could not resolve (tag={}) {}", tag,
+                       remove_nl(td.DebugString()));
         span->AddEvent(
             "unresolved trip",
             {
@@ -394,7 +399,8 @@ statistics gtfsrt_update_msg(timetable const& tt,
       ++stats.total_entities_success_;
     } catch (const std::exception& e) {
       ++stats.total_entities_fail_;
-      utl::log_error("rt.gtfs",
+      utl::log_error(
+          "rt.gtfs",
           "GTFS-RT error (tag={}): time={}, entity={}, message={}, error={}",
           tag, date::format("%T", message_time), entity.id(),
           remove_nl(entity.DebugString()), e.what());
@@ -420,7 +426,8 @@ statistics gtfsrt_update_buf(timetable const& tt,
       msg.ParseFromArray(reinterpret_cast<void const*>(protobuf.data()),
                          static_cast<int>(protobuf.size()));
   if (!success) {
-    utl::log_error("rt.gtfs",
+    utl::log_error(
+        "rt.gtfs",
         "GTFS-RT error (tag={}): unable to parse protobuf message: {}", tag,
         protobuf.substr(0, std::min(protobuf.size(), size_t{1000U})));
     return {.parser_error_ = true};

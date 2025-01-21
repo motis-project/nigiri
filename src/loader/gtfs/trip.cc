@@ -35,7 +35,7 @@ block::rule_services(trip_data& trips) {
     auto const is_empty = trips.data_[t].stop_seq_.empty();
     if (is_empty) {
       utl::log_error("loader.gtfs.trip", "trip \"{}\": no stop times",
-          trips.data_[t].id_);
+                     trips.data_[t].id_);
     }
     return is_empty;
   });
@@ -331,16 +331,16 @@ trip_data read_trips(
           auto const traffic_days_it = services.find(t.service_id_->view());
           if (traffic_days_it == end(services)) {
             utl::log_error("loader.gtfs.trip",
-                R"(trip "{}": service_id "{}" not found)", t.trip_id_->view(),
-                t.service_id_->view());
+                           R"(trip "{}": service_id "{}" not found)",
+                           t.trip_id_->view(), t.service_id_->view());
             return;
           }
 
           auto const route_it = routes.find(t.route_id_->view());
           if (route_it == end(routes)) {
             utl::log_error("loader.gtfs.trip",
-                R"(trip "{}": route_id "{}" not found)", t.trip_id_->view(),
-                t.route_id_->view());
+                           R"(trip "{}": route_id "{}" not found)",
+                           t.trip_id_->view(), t.route_id_->view());
             return;
           }
 
@@ -402,7 +402,8 @@ void read_frequencies(trip_data& trips, std::string_view file_content) {
            auto const t = freq.trip_id_->trim().view();
            auto const trip_it = trips.trips_.find(t);
            if (trip_it == end(trips.trips_)) {
-             utl::log_error("loader.gtfs.frequencies",
+             utl::log_error(
+                 "loader.gtfs.frequencies",
                  "frequencies.txt: skipping frequency (trip \"{}\" not found)",
                  t);
              return;
@@ -411,7 +412,8 @@ void read_frequencies(trip_data& trips, std::string_view file_content) {
            auto const headway_secs_str = *freq.headway_secs_;
            auto const headway_secs = parse<int>(headway_secs_str, -1);
            if (headway_secs == -1) {
-             utl::log_error("loader.gtfs.frequencies",
+             utl::log_error(
+                 "loader.gtfs.frequencies",
                  R"(frequencies.txt: skipping frequency (invalid headway secs "{}"))",
                  headway_secs_str.view());
              return;

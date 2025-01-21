@@ -1,5 +1,7 @@
 #pragma once
 
+#include "utl/logging.h"
+
 #include "nigiri/loader/hrd/service/ref_service.h"
 #include "nigiri/loader/hrd/service/service.h"
 #include "nigiri/loader/hrd/stamm/timezone.h"
@@ -55,7 +57,8 @@ std::optional<duration_t> build_utc_time_seq(
       stop_timezones.front(), day, local_times.front(), true);
 
   if (!first_valid) {
-    utl::log_error("loader.hrd.service.utc",
+    utl::log_error(
+        "loader.hrd.service.utc",
         "first departure local to utc failed for {}: local_time={}, day={}",
         origin, local_times.front(), day);
     return std::nullopt;
@@ -67,7 +70,8 @@ std::optional<duration_t> build_utc_time_seq(
     auto const [utc_mam, day_offset, valid] = local_mam_to_utc_mam(
         tz, day + first_day_offset, local_time - first_day_offset);
     if (day_offset != 0_days || pred > utc_mam || !valid) {
-      utl::log_error("loader.hrd.service.utc",
+      utl::log_error(
+          "loader.hrd.service.utc",
           "local to utc failed, ignoring: {}, day={}, time={}, offset={}, "
           "pred={}, utc_mam={}, valid={}",
           origin, day, local_time, day_offset, pred, utc_mam, valid);

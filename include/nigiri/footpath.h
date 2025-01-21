@@ -2,12 +2,11 @@
 
 #include "fmt/ostream.h"
 
-#include "utl/verify.h"
 #include "utl/logging.h"
+#include "utl/verify.h"
 
 #include "cista/reflection/printable.h"
 
-#include "nigiri/footpath.h"
 #include "nigiri/types.h"
 
 namespace nigiri {

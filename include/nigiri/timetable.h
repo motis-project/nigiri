@@ -8,6 +8,7 @@
 #include "cista/memory_holder.h"
 #include "cista/reflection/printable.h"
 
+#include "utl/logging.h"
 #include "utl/verify.h"
 #include "utl/zip.h"
 

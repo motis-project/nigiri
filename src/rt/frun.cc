@@ -4,6 +4,7 @@
 #include <span>
 #include <variant>
 
+#include "utl/logging.h"
 #include "utl/overloaded.h"
 #include "utl/verify.h"
 
@@ -317,7 +318,7 @@ stop_idx_t frun::first_valid(stop_idx_t const from) const {
     }
   }
   utl::log_error("frun", "no first valid found: id={}, name={}, dbg={}",
-      fmt::streamed(id()), name(), fmt::streamed(dbg()));
+                 fmt::streamed(id()), name(), fmt::streamed(dbg()));
   return stop_range_.to_;
 }
 
@@ -331,7 +332,7 @@ stop_idx_t frun::last_valid() const {
     }
   }
   utl::log_error("frun", "no last valid found: id={}, name={}, dbg={}",
-      fmt::streamed(id()), name(), fmt::streamed(dbg()));
+                 fmt::streamed(id()), name(), fmt::streamed(dbg()));
   return stop_range_.to_;
 }
 

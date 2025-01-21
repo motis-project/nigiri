@@ -22,7 +22,7 @@ attribute_map_t parse_attributes(config const& c,
       return;
     } else if (line.len < 13 || (is_multiple_spaces(line) && line.len < 22)) {
       utl::log_error("loader.hrd.attribute",
-          "invalid attribute line - skipping {}", line_number);
+                     "invalid attribute line - skipping {}", line_number);
       return;
     }
 

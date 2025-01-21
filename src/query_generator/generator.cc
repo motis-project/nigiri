@@ -169,8 +169,8 @@ std::optional<start_dest_query> generator::random_query() {
   }
 
   utl::log_info("query_generator.random_pretrip",
-      "WARNING: failed to generate a valid query after {} attempts",
-      kMaxGenAttempts);
+                "WARNING: failed to generate a valid query after {} attempts",
+                kMaxGenAttempts);
 
   return std::nullopt;
 }
@@ -198,7 +198,7 @@ location_idx_t generator::random_location() {
       return location_idx_t{locs_in_bbox[locs_in_bbox_d_(rng_)]};
     }
     utl::log_info("query_generator.random_location",
-        "no locations in bounding box: using all locations instead");
+                  "no locations in bounding box: using all locations instead");
   }
   return location_idx_t{location_d_(rng_)};
 }

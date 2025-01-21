@@ -4,6 +4,7 @@
 #include "utl/erase_duplicates.h"
 #include "utl/get_or_create.h"
 #include "utl/helpers/algorithm.h"
+#include "utl/logging.h"
 
 #include "nigiri/loader/get_index.h"
 #include "nigiri/loader/hrd/service/read_services.h"
@@ -217,8 +218,8 @@ void service_builder::write_services(source_idx_t const src) {
               .stop_seq_numbers_ = stop_seq_numbers_,
               .route_colors_ = route_colors_});
         } catch (std::exception const& e) {
-          utl::log_error("loader.hrd.service",
-              "unable to load service {}: {}", ref.origin_, e.what());
+          utl::log_error("loader.hrd.service", "unable to load service {}: {}",
+                         ref.origin_, e.what());
           continue;
         }
       }

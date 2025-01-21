@@ -19,8 +19,8 @@
 #include "nigiri/common/day_list.h"
 #include "nigiri/constants.h"
 #include "nigiri/routing/dijkstra.h"
-#include "nigiri/scoped_timer.h"
 #include "nigiri/rt/frun.h"
+#include "nigiri/scoped_timer.h"
 #include "nigiri/types.h"
 
 namespace nigiri::loader {
@@ -303,7 +303,7 @@ void connect_components(timetable& tt,
                      static_cast<duration_t::rep>(distance / kWalkSpeed / 60));
         if (adjusted_int > std::numeric_limits<u8_minutes::rep>::max()) {
           utl::log_error("loader.footpath.adjust",
-              "too long after adjust: {}>256", adjusted_int);
+                         "too long after adjust: {}>256", adjusted_int);
         }
         adjusted = u8_minutes{adjusted_int};
       }

@@ -133,14 +133,14 @@ void read_transfers(stop_map_t& stops, std::string_view file_content) {
         auto const from_stop_it = stops.find(t.from_stop_id_->view());
         if (from_stop_it == end(stops)) {
           utl::log_error("loader.gtfs.transfers", "stop {} not found\n",
-              t.from_stop_id_->view());
+                         t.from_stop_id_->view());
           return;
         }
 
         auto const to_stop_it = stops.find(t.to_stop_id_->view());
         if (to_stop_it == end(stops)) {
           utl::log_error("loader.gtfs.transfers", "stop {} not found\n",
-              t.to_stop_id_->view());
+                         t.to_stop_id_->view());
           return;
         }
 

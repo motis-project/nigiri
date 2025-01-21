@@ -177,7 +177,8 @@ route_map_t read_routes(timetable& tt,
                agencies.size() == 1U
                    ? agencies.begin()->second
                    : utl::get_or_create(agencies, r.agency_id_->view(), [&]() {
-                       utl::log_error("gtfs.route",
+                       utl::log_error(
+                           "gtfs.route",
                            "agency {} not found, using UNKNOWN with local "
                            "timezone",
                            r.agency_id_->view());

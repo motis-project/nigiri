@@ -15,9 +15,9 @@
 #include "utl/pipes/vec.h"
 #include "utl/progress_tracker.h"
 
-#include "nigiri/common/cached_lookup.h"
 #include "nigiri/loader/gtfs/parse_time.h"
 #include "nigiri/loader/gtfs/trip.h"
+#include "nigiri/common/cached_lookup.h"
 #include "nigiri/scoped_timer.h"
 
 namespace nigiri::loader::gtfs {
@@ -79,7 +79,7 @@ void read_stop_times(timetable& tt,
           auto const trip_it = trips.trips_.find(t_id);
           if (trip_it == end(trips.trips_)) {
             utl::log_error("loader.gtfs.stop_time",
-                "stop_times.txt:{} trip \"{}\" not found", i, t_id);
+                           "stop_times.txt:{} trip \"{}\" not found", i, t_id);
             return;
           }
           t = &trips.data_[trip_it->second];
@@ -121,7 +121,8 @@ void read_stop_times(timetable& tt,
           }
         } catch (...) {
           utl::log_error("loader.gtfs.stop_time",
-              "stop_times.txt:{}: unknown stop \"{}\"", i, s.stop_id_->view());
+                         "stop_times.txt:{}: unknown stop \"{}\"", i,
+                         s.stop_id_->view());
         }
       });
 

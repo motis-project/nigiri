@@ -1,5 +1,7 @@
 #include "utl/logging.h"
 
+#include "nigiri/scoped_timer.h"
+
 namespace nigiri {
 
 scoped_timer::scoped_timer(std::string name)
@@ -13,8 +15,7 @@ scoped_timer::~scoped_timer() {
   auto const t =
       static_cast<double>(duration_cast<microseconds>(stop - start_).count()) /
       1000.0;
-  utl::log_info(name_.c_str(), "finished {} {}ms", std::string_view{name_},
-      t);
+  utl::log_info(name_.c_str(), "finished {} {}ms", std::string_view{name_}, t);
 }
 
 }  // namespace nigiri

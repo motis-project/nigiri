@@ -3,6 +3,7 @@
 #include "fmt/std.h"
 
 #include "utl/enumerate.h"
+#include "utl/logging.h"
 
 #include "nigiri/loader/dir.h"
 #include "nigiri/loader/gtfs/loader.h"

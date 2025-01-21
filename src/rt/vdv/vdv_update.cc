@@ -8,6 +8,7 @@
 
 #include "utl/enumerate.h"
 #include "utl/get_or_create.h"
+#include "utl/logging.h"
 #include "utl/parser/arg_parser.h"
 #include "utl/verify.h"
 
@@ -26,7 +27,7 @@ namespace nigiri::rt::vdv {
 
 // #define VDV_DEBUG
 #ifdef VDV_DEBUG
-#define vdv_trace(...) utl::debug("nigiri.vdv_trace", __VA_ARGS__)
+#define vdv_trace(...) utl::log_debug("nigiri.vdv_trace", __VA_ARGS__)
 #else
 #define vdv_trace(...)
 #endif
@@ -89,8 +90,8 @@ std::optional<unixtime_t> updater::get_opt_time(pugi::xml_node const& node,
     try {
       return std::optional{parse_time_no_tz(xpath.node().child_value())};
     } catch (std::exception const& e) {
-      utl::log_error("vdv_update.get_opt_time",
-          "{}, invalid time input: {}", e.what(), xpath.node().child_value());
+      utl::log_error("vdv_update.get_opt_time", "{}, invalid time input: {}",
+                     e.what(), xpath.node().child_value());
     }
   }
   return std::nullopt;
