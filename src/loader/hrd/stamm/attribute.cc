@@ -1,9 +1,9 @@
-#include "nigiri/loader/hrd/stamm/attribute.h"
-
-#include "nigiri/logging.h"
-
-#include "nigiri/loader/hrd/util.h"
+#include "utl/logging.h"
 #include "utl/parser/cstr.h"
+
+#include "nigiri/loader/hrd/stamm/attribute.h"
+#include "nigiri/loader/hrd/util.h"
+#include "nigiri/scoped_timer.h"
 
 namespace nigiri::loader::hrd {
 
@@ -21,8 +21,8 @@ attribute_map_t parse_attributes(config const& c,
     if (line.len == 0 || line.str[0] == '#') {
       return;
     } else if (line.len < 13 || (is_multiple_spaces(line) && line.len < 22)) {
-      log(log_lvl::error, "loader.hrd.attribute",
-          "invalid attribute line - skipping {}", line_number);
+      utl::log_error("loader.hrd.attribute",
+                     "invalid attribute line - skipping {}", line_number);
       return;
     }
 

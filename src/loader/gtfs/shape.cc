@@ -10,7 +10,6 @@
 #include "utl/sort_by.h"
 
 #include "nigiri/common/cached_lookup.h"
-#include "nigiri/logging.h"
 #include "nigiri/shapes_storage.h"
 
 namespace nigiri::loader::gtfs {

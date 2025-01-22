@@ -1,5 +1,6 @@
 #include "nigiri/routing/ontrip_train.h"
 
+#include "utl/logging.h"
 #include "utl/verify.h"
 
 #include "nigiri/routing/query.h"
@@ -12,7 +13,8 @@ constexpr auto const kTracing = true;
 template <typename... Args>
 void trace(fmt::format_string<Args...> fmt_str, Args... args) {
   if constexpr (kTracing) {
-    fmt::print(std::cout, fmt_str, std::forward<Args&&>(args)...);
+    utl::log_debug("nigiri.routing.ontrip_train", fmt_str,
+                   std::forward<Args&&>(args)...);
   }
 }
 
