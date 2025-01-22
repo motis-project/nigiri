@@ -13,6 +13,43 @@ using namespace date;
 
 namespace nigiri::loader::gtfs {
 
+TEST(gtfs, quoted_interpolate) {
+  constexpr auto const kStopTimes =
+      R"("trip_id","arrival_time","departure_time","stop_id","stop_sequence","stop_headsign","pickup_type","drop_off_type","continuous_pickup","continuous_drop_off","shape_dist_traveled","timepoint"
+"101255-L001I01S1LAB","06:20:00","06:20:00","101255-6","0","","0","0","","","","1"
+"101255-L001I01S1LAB","","","101255-48","1","","0","0","","","",""
+"101255-L001I01S1LAB","","","101255-219","2","","0","0","","","",""
+"101255-L001I01S1LAB","","","101255-1318","3","","0","0","","","",""
+"101255-L001I01S1LAB","","","101255-19","4","","0","0","","","",""
+"101255-L001I01S1LAB","","","101255-20","5","","0","0","","","",""
+"101255-L001I01S1LAB","","","101255-569","6","","0","0","","","",""
+"101255-L001I01S1LAB","","","101255-8","7","","0","0","","","",""
+"101255-L001I01S1LAB","","","101255-9","8","","0","0","","","",""
+"101255-L001I01S1LAB","","","101255-1986","9","","0","0","","","",""
+"101255-L001I01S1LAB","","","101255-10","10","","0","0","","","",""
+"101255-L001I01S1LAB","","","101255-11","11","","0","0","","","",""
+"101255-L001I01S1LAB","","","101255-12","12","","0","0","","","",""
+"101255-L001I01S1LAB","","","101255-925","13","","0","0","","","",""
+"101255-L001I01S1LAB","","","101255-14","14","","0","0","","","",""
+"101255-L001I01S1LAB","","","101255-15","15","","0","0","","","",""
+"101255-L001I01S1LAB","","","101255-16","16","","0","0","","","",""
+"101255-L001I01S1LAB","","","101255-17","17","","0","0","","","",""
+"101255-L001I01S1LAB","06:49:00","07:00:00","101255-23","18","","0","0","","","","1"
+)";
+
+  auto trips = trip_data{};
+  trips.trips_.emplace("101255-L001I01S1LAB", gtfs_trip_idx_t{0U});
+  auto& t0 =
+      trips.data_.emplace_back(nullptr, nullptr, nullptr, "101255-L001I01S1LAB",
+                               "", "", shape_idx_t::invalid(), false);
+  read_stop_times(tt, trip_data, stops, files.get_file(kStopTimesFile).data(),
+                  true);
+
+  for (auto const& s : t0.event_times_) {
+    std::cout << s.arr_ << ", " << s.dep_ << "\n";
+  }
+}
+
 TEST(gtfs, read_stop_times_example_data) {
   auto const files = example_files();
 
