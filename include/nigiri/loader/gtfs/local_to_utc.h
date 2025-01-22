@@ -220,6 +220,13 @@ void expand_local_to_utc(trip_data const& trip_data,
             to.arr_ - freq_offset - tz_offset - first_dep_day_offset;
       }
     }
+
+    auto pred = minutes_after_midnight_t{0U};
+    for (auto& x : utc_time_mem) {
+      x = std::max(pred, x);
+      pred = x;
+    }
+
     return utc_time_mem;
   };
 
