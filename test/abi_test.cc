@@ -2,13 +2,15 @@
 
 #include "date/date.h"
 
+#include <cstdint>
 #include "nigiri/loader/dir.h"
 #include "nigiri/abi.h"
 #include "nigiri/rt/util.h"
 
 nigiri_timetable_t* nigiri_load_from_dir(nigiri::loader::dir const& d,
                                          int64_t from_ts,
-                                         int64_t to_ts);
+                                         int64_t to_ts,
+                                         unsigned link_stop_distance);
 void nigiri_update_with_rt_from_buf(const nigiri_timetable_t* t,
                                     std::string_view protobuf,
                                     void (*callback)(nigiri_event_change_t,
@@ -299,7 +301,7 @@ auto const kTripUpdate =
        "departure": {
         "time": "1691661276"
        },
-       "stopId": "1916",
+       "stopId": "1918",
        "scheduleRelationship": "SCHEDULED"
       },
       {
@@ -311,7 +313,7 @@ auto const kTripUpdate =
         "time": "1691661366"
        },
        "stopId": "1918",
-       "scheduleRelationship": "SCHEDULED"
+       "scheduleRelationship": "SKIPPED"
       },
       {
        "stopSequence": 28,
@@ -332,13 +334,17 @@ auto const kTripUpdate =
 
 }  // namespace
 
-TEST(rt, abi_1) {
+TEST(rt, abi_timetable) {
 
   auto const t = nigiri_load_from_dir(
       test_files(),
       std::chrono::system_clock::to_time_t(date::sys_days{2023_y / August / 9}),
       std::chrono::system_clock::to_time_t(
-          date::sys_days{2023_y / August / 12}));
+          date::sys_days{2023_y / August / 12}),
+      0);
+
+  auto const route_count = nigiri_get_route_count(t);
+  EXPECT_EQ(1, route_count);
 
   auto const transport_count = nigiri_get_transport_count(t);
   EXPECT_EQ(1, transport_count);
@@ -349,6 +355,7 @@ TEST(rt, abi_1) {
   auto const l0 = nigiri_get_location(t, 0);
   auto const l0_name = std::string{l0->name, l0->name_len};
   EXPECT_EQ("START", l0_name);
+  EXPECT_EQ(0, l0->n_footpaths);
   nigiri_destroy_location(l0);
 
   auto const l9 = nigiri_get_location(t, 9);
@@ -356,28 +363,34 @@ TEST(rt, abi_1) {
   EXPECT_EQ("Block Line Station", l9_name);
   auto const l9_id = std::string{l9->id, l9->id_len};
   EXPECT_EQ("2351", l9_id);
+  EXPECT_EQ(0, l9->n_footpaths);
   EXPECT_FLOAT_EQ(43.422095, l9->lat);
   EXPECT_FLOAT_EQ(-80.462740, l9->lon);
   EXPECT_EQ(2, l9->transfer_time);
   EXPECT_EQ(0, l9->parent);
   nigiri_destroy_location(l9);
 
-  auto const l35 = nigiri_get_location(t, 35);
+  auto const l35 = nigiri_get_location_with_footpaths(t, 35, false);
   auto const l35_name = std::string{l35->name, l35->name_len};
   EXPECT_EQ("King / Manulife", l35_name);
   auto const l35_id = std::string{l35->id, l35->id_len};
   EXPECT_EQ("1918", l35_id);
+  EXPECT_EQ(1, l35->n_footpaths);
+  EXPECT_EQ(33, l35->footpaths[0].target_location_idx);
+  EXPECT_EQ(2, l35->footpaths[0].duration);
   EXPECT_FLOAT_EQ(43.491207, l35->lat);
   EXPECT_FLOAT_EQ(-80.528026, l35->lon);
   EXPECT_EQ(2, l35->transfer_time);
   EXPECT_EQ(33, l35->parent);
   nigiri_destroy_location(l35);
 
-  auto const l36 = nigiri_get_location(t, location_count - 1);
+  auto const l36 =
+      nigiri_get_location_with_footpaths(t, location_count - 1, true);
   auto const l36_name = std::string{l36->name, l36->name_len};
   EXPECT_EQ("Conestoga Station", l36_name);
   auto const l36_id = std::string{l36->id, l36->id_len};
   EXPECT_EQ("1127", l36_id);
+  EXPECT_EQ(0, l36->n_footpaths);
   EXPECT_FLOAT_EQ(43.498036, l36->lat);
   EXPECT_FLOAT_EQ(-80.528999, l36->lon);
   EXPECT_EQ(2, l36->transfer_time);
@@ -398,7 +411,7 @@ TEST(rt, abi_1) {
   EXPECT_EQ(596, transport->event_mams[transport->n_event_mams - 2]);
   EXPECT_EQ(598, transport->event_mams[transport->n_event_mams - 1]);
   auto const t_name = std::string{transport->name, transport->name_len};
-  EXPECT_EQ("Tram iXpress Fischer-Hallman", t_name);
+  EXPECT_EQ("iXpress Fischer-Hallman", t_name);
 
   auto const route = nigiri_get_route(t, transport->route_idx);
   EXPECT_EQ(28, route->n_stops);
@@ -432,39 +445,91 @@ TEST(rt, abi_1) {
 
     EXPECT_EQ(0, evt.transport_idx);
     EXPECT_EQ(6, evt.day_idx);
-    EXPECT_EQ(false, evt.cancelled);
 
     if (*test_event_change_counter_ptr == 0) {
+      EXPECT_EQ(false, evt.stop_change);
+      EXPECT_EQ(true, evt.stop_in_out_allowed);
+      EXPECT_EQ(UINT32_MAX, evt.stop_location_idx);
       EXPECT_EQ(14, evt.stop_idx);
       EXPECT_EQ(false, evt.is_departure);
       EXPECT_EQ(1, evt.delay);
     }
     if (*test_event_change_counter_ptr == 1) {
+      EXPECT_EQ(false, evt.stop_change);
+      EXPECT_EQ(true, evt.stop_in_out_allowed);
+      EXPECT_EQ(UINT32_MAX, evt.stop_location_idx);
       EXPECT_EQ(14, evt.stop_idx);
       EXPECT_EQ(true, evt.is_departure);
       EXPECT_EQ(1, evt.delay);
     }
     if (*test_event_change_counter_ptr == 8) {
+      EXPECT_EQ(false, evt.stop_change);
+      EXPECT_EQ(true, evt.stop_in_out_allowed);
+      EXPECT_EQ(UINT32_MAX, evt.stop_location_idx);
       EXPECT_EQ(18, evt.stop_idx);
       EXPECT_EQ(false, evt.is_departure);
       EXPECT_EQ(2, evt.delay);
     }
     if (*test_event_change_counter_ptr == 9) {
+      EXPECT_EQ(false, evt.stop_change);
+      EXPECT_EQ(true, evt.stop_in_out_allowed);
+      EXPECT_EQ(UINT32_MAX, evt.stop_location_idx);
       EXPECT_EQ(18, evt.stop_idx);
       EXPECT_EQ(true, evt.is_departure);
       EXPECT_EQ(2, evt.delay);
     }
     if (*test_event_change_counter_ptr == 22) {
+      EXPECT_EQ(true, evt.stop_change);
+      EXPECT_EQ(true, evt.stop_in_out_allowed);
+      EXPECT_EQ(35, evt.stop_location_idx);
+      EXPECT_EQ(25, evt.stop_idx);
+      EXPECT_EQ(false, evt.is_departure);
+      EXPECT_EQ(0, evt.delay);
+    }
+    if (*test_event_change_counter_ptr == 23) {
+      EXPECT_EQ(true, evt.stop_change);
+      EXPECT_EQ(true, evt.stop_in_out_allowed);
+      EXPECT_EQ(35, evt.stop_location_idx);
+      EXPECT_EQ(25, evt.stop_idx);
+      EXPECT_EQ(true, evt.is_departure);
+      EXPECT_EQ(0, evt.delay);
+    }
+    if (*test_event_change_counter_ptr == 24) {
+      EXPECT_EQ(false, evt.stop_change);
+      EXPECT_EQ(true, evt.stop_in_out_allowed);
+      EXPECT_EQ(UINT32_MAX, evt.stop_location_idx);
       EXPECT_EQ(25, evt.stop_idx);
       EXPECT_EQ(false, evt.is_departure);
       EXPECT_EQ(-1, evt.delay);
     }
-    if (*test_event_change_counter_ptr == 23) {
+    if (*test_event_change_counter_ptr == 25) {
+      EXPECT_EQ(false, evt.stop_change);
+      EXPECT_EQ(true, evt.stop_in_out_allowed);
+      EXPECT_EQ(UINT32_MAX, evt.stop_location_idx);
       EXPECT_EQ(25, evt.stop_idx);
       EXPECT_EQ(true, evt.is_departure);
       EXPECT_EQ(-1, evt.delay);
     }
     if (*test_event_change_counter_ptr == 26) {
+      EXPECT_EQ(true, evt.stop_change);
+      EXPECT_EQ(false, evt.stop_in_out_allowed);
+      EXPECT_EQ(35, evt.stop_location_idx);
+      EXPECT_EQ(26, evt.stop_idx);
+      EXPECT_EQ(false, evt.is_departure);
+      EXPECT_EQ(0, evt.delay);
+    }
+    if (*test_event_change_counter_ptr == 27) {
+      EXPECT_EQ(true, evt.stop_change);
+      EXPECT_EQ(false, evt.stop_in_out_allowed);
+      EXPECT_EQ(35, evt.stop_location_idx);
+      EXPECT_EQ(26, evt.stop_idx);
+      EXPECT_EQ(true, evt.is_departure);
+      EXPECT_EQ(0, evt.delay);
+    }
+    if (*test_event_change_counter_ptr == 30) {
+      EXPECT_EQ(false, evt.stop_change);
+      EXPECT_EQ(true, evt.stop_in_out_allowed);
+      EXPECT_EQ(UINT32_MAX, evt.stop_location_idx);
       EXPECT_EQ(27, evt.stop_idx);
       EXPECT_EQ(false, evt.is_departure);
       EXPECT_EQ(0, evt.delay);
@@ -474,7 +539,35 @@ TEST(rt, abi_1) {
 
   nigiri_update_with_rt_from_buf(t, msg, my_test_callback,
                                  &test_event_change_counter);
-  EXPECT_EQ(27, test_event_change_counter);
+  EXPECT_EQ(31, test_event_change_counter);
 
+  nigiri_destroy(t);
+}
+
+TEST(rt, abi_journeys) {
+
+  auto const t = nigiri_load_from_dir(
+      test_files(),
+      std::chrono::system_clock::to_time_t(date::sys_days{2023_y / August / 9}),
+      std::chrono::system_clock::to_time_t(
+          date::sys_days{2023_y / August / 12}),
+      0);
+
+  auto const journeys = nigiri_get_journeys(t, 10, 15, 1691660000, false);
+  EXPECT_EQ(1, journeys->n_journeys);
+  EXPECT_EQ(1, journeys->journeys[0].n_legs);
+  EXPECT_EQ(1691659980, journeys->journeys[0].start_time);
+  EXPECT_EQ(1691745840, journeys->journeys[0].dest_time);
+  auto const l0 = journeys->journeys[0].legs[0];
+  EXPECT_EQ(0, l0.is_footpath);
+  EXPECT_EQ(0, l0.transport_idx);
+  EXPECT_EQ(7, l0.day_idx);
+  EXPECT_EQ(1, l0.from_stop_idx);
+  EXPECT_EQ(10, l0.from_location_idx);
+  EXPECT_EQ(6, l0.to_stop_idx);
+  EXPECT_EQ(15, l0.to_location_idx);
+  EXPECT_EQ(8, l0.duration);
+
+  nigiri_destroy_journeys(journeys);
   nigiri_destroy(t);
 }

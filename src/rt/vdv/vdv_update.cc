@@ -87,7 +87,7 @@ std::optional<unixtime_t> updater::get_opt_time(pugi::xml_node const& node,
   auto const xpath = node.select_node(str);
   if (xpath != nullptr) {
     try {
-      return std::optional{parse_time(xpath.node().child_value())};
+      return std::optional{parse_time_no_tz(xpath.node().child_value())};
     } catch (std::exception const& e) {
       log(log_lvl::error, "vdv_update.get_opt_time",
           "{}, invalid time input: {}", e.what(), xpath.node().child_value());
@@ -332,7 +332,7 @@ void update_event(rt_timetable& rtt,
             et == event_type::kArr ? "ARR" : "DEP", rs.scheduled_time(et),
             delay.count() >= 0 ? "+" : "", delay.count());
   rtt.update_time(rs.fr_->rt_, rs.stop_idx_, et, new_time);
-  rtt.dispatch_event_change(rs.fr_->t_, rs.stop_idx_, et, delay, false);
+  rtt.dispatch_delay(*rs.fr_, rs.stop_idx_, et, delay);
   if (delay_propagation != nullptr) {
     *delay_propagation = delay;
   }
@@ -372,7 +372,7 @@ void updater::update_run(rt_timetable& rtt,
               et == event_type::kArr ? "ARR" : "DEP", rs.scheduled_time(et),
               delay->count() >= 0 ? "+" : "", delay->count());
     rtt.update_time(fr.rt_, rs.stop_idx_, et, rs.scheduled_time(et) + *delay);
-    rtt.dispatch_event_change(fr.t_, rs.stop_idx_, et, *delay, false);
+    rtt.dispatch_delay(fr, rs.stop_idx_, et, *delay);
     ++stats_.propagated_delays_;
   };
 

@@ -80,7 +80,8 @@ void expand_frequencies(trip_data const& trip_data,
                         bitfield const* traffic_days,
                         Consumer&& consumer) {
   auto const has_frequency = [&](gtfs_trip_idx_t const i) {
-    return trip_data.get(i).frequency_.has_value();
+    auto const& t = trip_data.get(i);
+    return !t.event_times_.empty() && t.frequency_.has_value();
   };
 
   if (utl::any_of(trips, has_frequency)) {
@@ -219,6 +220,13 @@ void expand_local_to_utc(trip_data const& trip_data,
             to.arr_ - freq_offset - tz_offset - first_dep_day_offset;
       }
     }
+
+    auto pred = minutes_after_midnight_t{0U};
+    for (auto& x : utc_time_mem) {
+      x = std::max(pred, x);
+      pred = x;
+    }
+
     return utc_time_mem;
   };
 

@@ -16,9 +16,9 @@
 #include "nigiri/routing/get_fastest_direct.h"
 #include "nigiri/routing/interval_estimate.h"
 #include "nigiri/routing/journey.h"
+#include "nigiri/routing/limits.h"
 #include "nigiri/routing/pareto_set.h"
 #include "nigiri/routing/query.h"
-#include "nigiri/routing/sanitize_via_stops.h"
 #include "nigiri/routing/start_times.h"
 #include "nigiri/timetable.h"
 #include "nigiri/types.h"
@@ -176,7 +176,7 @@ struct search {
         timeout_(timeout) {
     utl::sort(q_.start_);
     utl::sort(q_.destination_);
-    sanitize_via_stops(tt_, q_);
+    q.sanitize(tt);
   }
 
   routing_result<algo_stats_t> execute() {
@@ -296,7 +296,7 @@ struct search {
       utl::erase_if(state_.results_, [&](journey const& j) {
         return !search_interval_.contains(j.start_time_) ||
                j.travel_time() >= fastest_direct_ ||
-               j.travel_time() > kMaxTravelTime;
+               j.travel_time() > q_.max_travel_time_;
       });
       utl::sort(state_.results_, [](journey const& a, journey const& b) {
         return a.start_time_ < b.start_time_;
@@ -402,9 +402,14 @@ private:
             algo_.add_start(s.stop_, s.time_at_stop_);
           }
 
+          /*
+           * Upper bound: Search journeys faster than 'worst_time_at_dest'
+           * It will not find journeys with the same duration
+           */
           auto const worst_time_at_dest =
-              start_time +
-              (kFwd ? 1 : -1) * std::min(fastest_direct_, kMaxTravelTime);
+              start_time + (kFwd ? 1 : -1) *
+                               (std::min(fastest_direct_, q_.max_travel_time_) +
+                                duration_t{1});
 
 #ifdef NIGIRI_DUMP_ROUND_TIMES_DIR
           algo_.dbg_dir_ = fmt::format(
