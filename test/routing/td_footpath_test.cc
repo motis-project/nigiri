@@ -7,6 +7,7 @@
 #include "nigiri/rt/create_rt_timetable.h"
 #include "nigiri/rt/rt_timetable.h"
 #include "../raptor_search.h"
+#include "results_to_string.h"
 
 using namespace date;
 using namespace nigiri;
@@ -97,17 +98,6 @@ T5,15:00:00,15:00:00,C,2,0,0
 }
 
 }  // namespace
-
-std::string to_string(timetable const& tt,
-                      pareto_set<routing::journey> const& results) {
-  std::stringstream ss;
-  ss << "\n";
-  for (auto const& x : results) {
-    x.print(ss, tt);
-    ss << "\n";
-  }
-  return ss.str();
-}
 
 // clang-format-off
 constexpr auto const kEverythingWorks = R"(
