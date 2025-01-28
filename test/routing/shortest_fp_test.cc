@@ -6,6 +6,7 @@
 #include "nigiri/timetable.h"
 
 #include "../raptor_search.h"
+#include "results_to_string.h"
 
 using namespace date;
 using namespace nigiri;
@@ -138,7 +139,6 @@ leg 5: (C2, C2) [2024-06-08 02:20] -> (C5, C5) [2024-06-08 02:50]
 leg 6: (C5, C5) [2024-06-08 02:50] -> (END, END) [2024-06-08 03:00]
   MUMO (id=42, duration=10)
 
-
 )";
 
 TEST(routing, raptor_shortest_fp_forward) {
@@ -169,15 +169,7 @@ TEST(routing, raptor_shortest_fp_forward) {
                unixtime_t{sys_days{2024_y / June / 8}}},
       direction::kForward);
 
-  ASSERT_EQ(1U, results.size());
-
-  std::stringstream ss;
-  ss << "\n";
-  for (auto const& x : results) {
-    x.print(ss, tt);
-    ss << "\n\n";
-  }
-  EXPECT_EQ(std::string_view{exp_fwd_journey}, ss.str());
+  EXPECT_EQ(std::string_view{exp_fwd_journey}, to_string(tt, results));
 }
 
 constexpr auto const exp_bwd_journey = R"(
@@ -209,7 +201,6 @@ leg 5: (C2, C2) [2024-06-08 02:20] -> (C5, C5) [2024-06-08 02:50]
 leg 6: (C5, C5) [2024-06-08 02:50] -> (START, START) [2024-06-08 03:00]
   MUMO (id=42, duration=10)
 
-
 )";
 
 TEST(routing, raptor_shortest_fp_backward) {
@@ -240,16 +231,7 @@ TEST(routing, raptor_shortest_fp_backward) {
                unixtime_t{sys_days{2024_y / June / 9}}},
       direction::kBackward);
 
-  ASSERT_EQ(1U, results.size());
-
-  std::stringstream ss;
-  ss << "\n";
-  for (auto const& x : results) {
-    x.print(ss, tt);
-    ss << "\n\n";
-  }
-  std::cout << ss.str();
-  EXPECT_EQ(std::string_view{exp_bwd_journey}, ss.str());
+  EXPECT_EQ(std::string_view{exp_bwd_journey}, to_string(tt, results));
 }
 
 }  // namespace

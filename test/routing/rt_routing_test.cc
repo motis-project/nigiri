@@ -10,6 +10,7 @@
 #include "../loader/hrd/hrd_timetable.h"
 
 #include "../raptor_search.h"
+#include "results_to_string.h"
 
 using namespace date;
 using namespace nigiri;
@@ -69,7 +70,8 @@ T_RE2,01:00:00,01:00:00,D,3,0,0
 )");
 }
 
-constexpr auto const fwd_journeys = R"([2019-05-02 23:00, 2019-05-03 01:00]
+constexpr auto const fwd_journeys = R"(
+[2019-05-02 23:00, 2019-05-03 01:00]
 TRANSFERS: 1
      FROM: (A, A) [2019-05-02 23:00]
        TO: (D, D) [2019-05-03 01:00]
@@ -131,16 +133,12 @@ TEST(routing, rt_raptor_forward) {
 
   auto const results =
       raptor_search(tt, &rtt, "A", "D", sys_days{May / 2 / 2019} + 23h);
-  std::stringstream ss;
-  for (auto const& x : results) {
-    x.print(ss, tt, &rtt);
-    ss << "\n";
-  }
-  std::cout << ss.str() << "\n";
-  EXPECT_EQ(std::string_view{fwd_journeys}, ss.str());
+
+  EXPECT_EQ(std::string_view{fwd_journeys}, to_string(tt, &rtt, results));
 }
 
-constexpr auto const bwd_journeys = R"([2019-05-02 23:00, 2019-05-03 02:00]
+constexpr auto const bwd_journeys = R"(
+[2019-05-02 23:00, 2019-05-03 02:00]
 TRANSFERS: 1
      FROM: (A, A) [2019-05-02 23:00]
        TO: (D, D) [2019-05-03 01:00]
@@ -201,11 +199,6 @@ TEST(routing, rt_raptor_backward) {
   auto const results =
       raptor_search(tt, &rtt, "D", "A", sys_days{May / 3 / 2019} + 2h,
                     nigiri::direction::kBackward);
-  std::stringstream ss;
-  for (auto const& x : results) {
-    x.print(ss, tt, &rtt);
-    ss << "\n";
-  }
-  std::cout << ss.str() << "\n";
-  EXPECT_EQ(std::string_view{bwd_journeys}, ss.str());
+
+  EXPECT_EQ(std::string_view{bwd_journeys}, to_string(tt, &rtt, results));
 }
