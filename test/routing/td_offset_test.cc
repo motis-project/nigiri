@@ -49,7 +49,7 @@ T1,11:00:00,11:00:00,B,2,0,0
 
 }  // namespace
 
-constexpr auto const kExpStart = R"(
+constexpr auto const kExpStartFwd = R"(
 [2024-06-19 07:00, 2024-06-19 09:00]
 TRANSFERS: 0
      FROM: (START, START) [2024-06-19 07:45]
@@ -64,7 +64,7 @@ leg 2: (B, B) [2024-06-19 09:00] -> (END, END) [2024-06-19 09:00]
 
 )";
 
-TEST(routing, td_start) {
+TEST(routing, td_start_fwd) {
   timetable tt;
   tt.date_range_ = {date::sys_days{2024_y / June / 18},
                     date::sys_days{2024_y / June / 20}};
@@ -96,10 +96,10 @@ TEST(routing, td_start) {
         direction::kForward);
   };
 
-  EXPECT_EQ(kExpStart, to_string(tt, run_search()));
+  EXPECT_EQ(kExpStartFwd, to_string(tt, run_search()));
 }
 
-constexpr auto const kExpDest = R"(
+constexpr auto const kExpDestFwd = R"(
 [2024-06-19 07:00, 2024-06-19 09:15]
 TRANSFERS: 0
      FROM: (START, START) [2024-06-19 07:00]
@@ -114,7 +114,7 @@ leg 2: (B, B) [2024-06-19 09:05] -> (END, END) [2024-06-19 09:15]
 
 )";
 
-TEST(routing, td_dest) {
+TEST(routing, td_dest_fwd) {
   timetable tt;
   tt.date_range_ = {date::sys_days{2024_y / June / 18},
                     date::sys_days{2024_y / June / 20}};
@@ -146,5 +146,105 @@ TEST(routing, td_dest) {
         direction::kForward);
   };
 
-  EXPECT_EQ(kExpDest, to_string(tt, run_search()));
+  EXPECT_EQ(kExpDestFwd, to_string(tt, run_search()));
+}
+
+constexpr auto const kExpStartBwd [[maybe_unused]] = R"(
+[2024-06-19 08:00, 2024-06-19 10:00]
+TRANSFERS: 0
+     FROM: (END, END) [2024-06-19 08:00]
+       TO: (START, START) [2024-06-19 09:15]
+leg 0: (END, END) [2024-06-19 08:00] -> (A, A) [2024-06-19 08:00]
+  MUMO (id=0, duration=0)
+leg 1: (A, A) [2024-06-19 08:00] -> (B, B) [2024-06-19 09:00]
+   0: A       A...............................................                               d: 19.06 08:00 [19.06 10:00]  [{name=RE 1, day=2024-06-19, id=T1, src=0}]
+   1: B       B............................................... a: 19.06 09:00 [19.06 11:00]
+leg 2: (B, B) [2024-06-19 09:00] -> (START, START) [2024-06-19 09:15]
+  MUMO (id=5, duration=15)
+
+)";
+
+TEST(routing, td_start_bwd) {
+  timetable tt;
+  tt.date_range_ = {date::sys_days{2024_y / June / 18},
+                    date::sys_days{2024_y / June / 20}};
+  register_special_stations(tt);
+  load_timetable({}, source_idx_t{0}, test_files(), tt);
+  finalize(tt);
+
+  auto const A = tt.locations_.get({"A", {}}).l_;
+  auto const B = tt.locations_.get({"B", {}}).l_;
+
+  auto const run_search = [&]() {
+    return raptor_search(
+        tt, nullptr,
+        routing::query{
+            .start_time_ = unixtime_t{sys_days{2024_y / June / 19}} + 10h,
+            .start_match_mode_ = routing::location_match_mode::kIntermodal,
+            .dest_match_mode_ = routing::location_match_mode::kIntermodal,
+            .use_start_footpaths_ = false,
+            .destination_ = {{A, duration_t{0}, transport_mode_id_t{0}}},
+            .td_start_ =
+                {{{B,
+                   {{.valid_from_ = sys_days{2024_y / June / 19} + 9h + 5min,
+                     .duration_ = 10min,
+                     .transport_mode_id_ = 5},
+                    {.valid_from_ = sys_days{2024_y / June / 19} + 9h + 15min,
+                     .duration_ = footpath::kMaxDuration,
+                     .transport_mode_id_ = 5}}}}},
+            .prf_idx_ = 0U},
+        direction::kBackward);
+  };
+
+  EXPECT_EQ(kExpStartBwd, to_string(tt, run_search()));
+}
+
+constexpr auto const kExpDestBwd = R"(
+[2024-06-19 07:45, 2024-06-19 10:00]
+TRANSFERS: 0
+     FROM: (END, END) [2024-06-19 07:45]
+       TO: (START, START) [2024-06-19 10:00]
+leg 0: (END, END) [2024-06-19 07:45] -> (A, A) [2024-06-19 07:55]
+  MUMO (id=5, duration=10)
+leg 1: (A, A) [2024-06-19 08:00] -> (B, B) [2024-06-19 09:00]
+   0: A       A...............................................                               d: 19.06 08:00 [19.06 10:00]  [{name=RE 1, day=2024-06-19, id=T1, src=0}]
+   1: B       B............................................... a: 19.06 09:00 [19.06 11:00]
+leg 2: (B, B) [2024-06-19 10:00] -> (START, START) [2024-06-19 10:00]
+  MUMO (id=0, duration=0)
+
+)";
+
+TEST(routing, td_dest_bwd) {
+  timetable tt;
+  tt.date_range_ = {date::sys_days{2024_y / June / 18},
+                    date::sys_days{2024_y / June / 20}};
+  register_special_stations(tt);
+  load_timetable({}, source_idx_t{0}, test_files(), tt);
+  finalize(tt);
+
+  auto const A = tt.locations_.get({"A", {}}).l_;
+  auto const B = tt.locations_.get({"B", {}}).l_;
+
+  auto const run_search = [&]() {
+    return raptor_search(
+        tt, nullptr,
+        routing::query{
+            .start_time_ = unixtime_t{sys_days{2024_y / June / 19}} + 10h,
+            .start_match_mode_ = routing::location_match_mode::kIntermodal,
+            .dest_match_mode_ = routing::location_match_mode::kIntermodal,
+            .use_start_footpaths_ = false,
+            .start_ = {{B, duration_t{0}, transport_mode_id_t{0}}},
+            .td_dest_ =
+                {{{A,
+                   {{.valid_from_ = sys_days{2024_y / June / 19} + 7h + 45min,
+                     .duration_ = 10min,
+                     .transport_mode_id_ = 5},
+                    {.valid_from_ = sys_days{2024_y / June / 19} + 7h + 55min,
+                     .duration_ = footpath::kMaxDuration,
+                     .transport_mode_id_ = 5}}}}},
+            .prf_idx_ = 0U},
+        direction::kBackward);
+  };
+
+  EXPECT_EQ(kExpDestBwd, to_string(tt, run_search()));
 }
