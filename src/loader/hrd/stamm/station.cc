@@ -1,12 +1,11 @@
-#include "nigiri/loader/hrd/stamm/station.h"
-
+#include "utl/logging.h"
 #include "utl/parser/arg_parser.h"
 #include "utl/pipes.h"
 
 #include "nigiri/loader/hrd/stamm/stamm.h"
+#include "nigiri/loader/hrd/stamm/station.h"
 #include "nigiri/loader/hrd/stamm/timezone.h"
 #include "nigiri/loader/hrd/util.h"
-#include "nigiri/logging.h"
 
 namespace nigiri::loader::hrd {
 
@@ -18,7 +17,8 @@ void parse_station_names(config const& c,
         if (line.len == 0 || line[0] == '%') {
           return;
         } else if (line.len < 13) {
-          log(log_lvl::error, "loader.hrd.station.coordinates",
+          utl::log_error(
+              "loader.hrd.station.coordinates",
               "station name file unknown line format line={} content=\"{}\"",
               line_number, line.view());
           return;
@@ -45,7 +45,8 @@ void parse_station_coordinates(config const& c,
     if (line.len == 0 || line[0] == '%') {
       return;
     } else if (line.len < 30) {
-      log(log_lvl::error, "loader.hrd.station.coordinates",
+      utl::log_error(
+          "loader.hrd.station.coordinates",
           "station coordinate file unknown line format line={} content=\"{}\"",
           line_number, line.view());
       return;
@@ -62,46 +63,46 @@ void parse_equivilant_stations(config const& c,
                                std::string_view file_content) {
   auto const is_5_20_26 = c.version_ == "hrd_5_20_26";
 
-  utl::for_each_line_numbered(
-      file_content, [&](utl::cstr line, unsigned const line_number) {
-        if (line.length() < 16 || line[0] == '%' || line[0] == '*') {
+  utl::for_each_line_numbered(file_content, [&](utl::cstr line,
+                                                unsigned const line_number) {
+    if (line.length() < 16 || line[0] == '%' || line[0] == '*') {
+      return;
+    }
+
+    if (line[7] == ':') {  // equivalent stations
+      try {
+        auto const eva =
+            parse_eva_number(line.substr(c.meta_.meta_stations_.eva_));
+        auto const station_it = stations.find(eva);
+        if (station_it == end(stations)) {
+          utl::log_error("loader.hrd.meta", "line {}: {} not found",
+                         line_number, eva);
           return;
         }
-
-        if (line[7] == ':') {  // equivalent stations
-          try {
-            auto const eva =
-                parse_eva_number(line.substr(c.meta_.meta_stations_.eva_));
-            auto const station_it = stations.find(eva);
-            if (station_it == end(stations)) {
-              log(log_lvl::error, "loader.hrd.meta", "line {}: {} not found",
-                  line_number, eva);
-              return;
-            }
-            auto& station = station_it->second;
-            utl::for_each_token(line.substr(8), ' ', [&](utl::cstr token) {
-              if (token.empty() || (is_5_20_26 && token.starts_with("F"))) {
-                return;
-              }
-              if (token.starts_with("H")  // Hauptmast
-                  || token.starts_with("B")  // Bahnhofstafel
-                  || token.starts_with("V")  // Virtueller Umstieg
-                  || token.starts_with("S")  // Start-Ziel-Aequivalenz
-                  || token.starts_with("F")  // Fußweg-Aequivalenz
-              ) {
-                return;
-              }
-              if (auto const meta = parse_eva_number(token); meta != 0) {
-                station.equivalent_.emplace(meta);
-              }
-            });
-          } catch (std::exception const& e) {
-            log(log_lvl::error, "loader.hrd.equivalent",
-                "could not parse line {}: {}", line_number, e.what());
+        auto& station = station_it->second;
+        utl::for_each_token(line.substr(8), ' ', [&](utl::cstr token) {
+          if (token.empty() || (is_5_20_26 && token.starts_with("F"))) {
+            return;
           }
-        } else {  // footpaths
-        }
-      });
+          if (token.starts_with("H")  // Hauptmast
+              || token.starts_with("B")  // Bahnhofstafel
+              || token.starts_with("V")  // Virtueller Umstieg
+              || token.starts_with("S")  // Start-Ziel-Aequivalenz
+              || token.starts_with("F")  // Fußweg-Aequivalenz
+          ) {
+            return;
+          }
+          if (auto const meta = parse_eva_number(token); meta != 0) {
+            station.equivalent_.emplace(meta);
+          }
+        });
+      } catch (std::exception const& e) {
+        utl::log_error("loader.hrd.equivalent", "could not parse line {}: {}",
+                       line_number, e.what());
+      }
+    } else {  // footpaths
+    }
+  });
 }
 
 void parse_footpaths(config const& c,
@@ -134,8 +135,8 @@ void parse_footpaths(config const& c,
           parse_eva_number(line.substr(c.meta_.footpaths_.from_));
       auto const from_it = stations.find(from_eva);
       if (from_it == end(stations)) {
-        log(log_lvl::error, "loader.hrd.footpath",
-            "footpath line={}: {} not found", line_number, to_idx(from_eva));
+        utl::log_error("loader.hrd.footpath", "footpath line={}: {} not found",
+                       line_number, to_idx(from_eva));
         return;
       }
       auto& from = from_it->second;
@@ -143,8 +144,8 @@ void parse_footpaths(config const& c,
       auto const to_eva = parse_eva_number(line.substr(c.meta_.footpaths_.to_));
       auto const to_it = stations.find(to_eva);
       if (to_it == end(stations)) {
-        log(log_lvl::error, "loader.hrd.footpath",
-            "footpath line={}: {} not found", line_number, to_idx(to_eva));
+        utl::log_error("loader.hrd.footpath", "footpath line={}: {} not found",
+                       line_number, to_idx(to_eva));
         return;
       }
       auto& to = to_it->second;
@@ -203,7 +204,7 @@ location_map_t parse_stations(config const& c,
       if (auto const it = stations.find(e); it != end(stations)) {
         tt.locations_.equivalences_[s.idx_].emplace_back(it->second.idx_);
       } else {
-        log(log_lvl::error, "loader.hrd.meta", "station {} not found", e);
+        utl::log_error("loader.hrd.meta", "station {} not found", e);
       }
     }
 

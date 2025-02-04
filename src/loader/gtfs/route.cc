@@ -1,6 +1,7 @@
 #include "nigiri/loader/gtfs/route.h"
 
 #include "utl/get_or_create.h"
+#include "utl/logging.h"
 #include "utl/parser/buf_reader.h"
 #include "utl/parser/csv_range.h"
 #include "utl/parser/line_range.h"
@@ -8,7 +9,7 @@
 #include "utl/pipes/vec.h"
 #include "utl/progress_tracker.h"
 
-#include "nigiri/logging.h"
+#include "nigiri/scoped_timer.h"
 #include "nigiri/timetable.h"
 
 namespace nigiri::loader::gtfs {
@@ -176,7 +177,8 @@ route_map_t read_routes(timetable& tt,
                agencies.size() == 1U
                    ? agencies.begin()->second
                    : utl::get_or_create(agencies, r.agency_id_->view(), [&]() {
-                       log(log_lvl::error, "gtfs.route",
+                       utl::log_error(
+                           "gtfs.route",
                            "agency {} not found, using UNKNOWN with local "
                            "timezone",
                            r.agency_id_->view());

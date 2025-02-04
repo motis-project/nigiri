@@ -7,6 +7,7 @@
 #include "geo/point_rtree.h"
 
 #include "utl/get_or_create.h"
+#include "utl/logging.h"
 #include "utl/parallel_for.h"
 #include "utl/parser/buf_reader.h"
 #include "utl/parser/csv_range.h"
@@ -15,7 +16,7 @@
 #include "utl/progress_tracker.h"
 #include "utl/to_vec.h"
 
-#include "nigiri/logging.h"
+#include "nigiri/scoped_timer.h"
 #include "nigiri/timetable.h"
 
 namespace nigiri::loader::gtfs {
@@ -131,15 +132,15 @@ void read_transfers(stop_map_t& stops, std::string_view file_content) {
       utl::for_each([&](csv_transfer const& t) {
         auto const from_stop_it = stops.find(t.from_stop_id_->view());
         if (from_stop_it == end(stops)) {
-          log(log_lvl::error, "loader.gtfs.transfers", "stop {} not found\n",
-              t.from_stop_id_->view());
+          utl::log_error("loader.gtfs.transfers", "stop {} not found\n",
+                         t.from_stop_id_->view());
           return;
         }
 
         auto const to_stop_it = stops.find(t.to_stop_id_->view());
         if (to_stop_it == end(stops)) {
-          log(log_lvl::error, "loader.gtfs.transfers", "stop {} not found\n",
-              t.to_stop_id_->view());
+          utl::log_error("loader.gtfs.transfers", "stop {} not found\n",
+                         t.to_stop_id_->view());
           return;
         }
 

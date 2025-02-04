@@ -4,34 +4,32 @@
 #include <memory>
 #include <vector>
 
+#include "cista/memory_holder.h"
+
 #include "date/date.h"
 
 #include "utl/helpers/algorithm.h"
+#include "utl/logging.h"
 #include "utl/overloaded.h"
 #include "utl/progress_tracker.h"
 #include "utl/verify.h"
-
-#include "nigiri/abi.h"
 
 #include "nigiri/loader/dir.h"
 #include "nigiri/loader/gtfs/loader.h"
 #include "nigiri/loader/hrd/loader.h"
 #include "nigiri/loader/init_finish.h"
-#include "nigiri/logging.h"
+#include "nigiri/abi.h"
+#include "nigiri/common/interval.h"
+#include "nigiri/routing/journey.h"
+#include "nigiri/routing/raptor/raptor.h"
+#include "nigiri/routing/search.h"
 #include "nigiri/rt/create_rt_timetable.h"
+#include "nigiri/rt/frun.h"
 #include "nigiri/rt/gtfsrt_update.h"
 #include "nigiri/rt/rt_timetable.h"
 #include "nigiri/shapes_storage.h"
 #include "nigiri/timetable.h"
 #include "nigiri/types.h"
-
-#include "nigiri/routing/journey.h"
-#include "nigiri/routing/raptor/raptor.h"
-#include "nigiri/routing/search.h"
-#include "nigiri/rt/frun.h"
-
-#include "nigiri/common/interval.h"
-#include "cista/memory_holder.h"
 
 using namespace date;
 
@@ -61,8 +59,8 @@ nigiri_timetable_t* nigiri_load_from_dir(nigiri::loader::dir const& d,
   auto const c =
       utl::find_if(loaders, [&](auto&& l) { return l->applicable(d); });
   utl::verify(c != end(loaders), "no loader applicable to the given file(s)");
-  nigiri::log(nigiri::log_lvl::info, "main",
-              "loading nigiri timetable with configuration {}", (*c)->name());
+  utl::log_info("main", "loading nigiri timetable with configuration {}",
+                (*c)->name());
 
   auto t = new nigiri_timetable_t;
   t->tt = std::make_unique<nigiri::timetable>();
@@ -267,11 +265,9 @@ void nigiri_update_with_rt_from_buf(const nigiri_timetable_t* t,
   try {
     nigiri::rt::gtfsrt_update_buf(*t->tt, *t->rtt, src, tag, protobuf);
   } catch (std::exception const& e) {
-    nigiri::log(nigiri::log_lvl::error, "main",
-                "GTFS-RT update error (tag={}) {}", tag, e.what());
+    utl::log_error("main", "GTFS-RT update error (tag={}) {}", tag, e.what());
   } catch (...) {
-    nigiri::log(nigiri::log_lvl::error, "main",
-                "Unknown GTFS-RT update error (tag={})", tag);
+    utl::log_error("main", "Unknown GTFS-RT update error (tag={})", tag);
   }
   t->rtt->reset_change_callback();
 }

@@ -6,6 +6,7 @@
 #include "utl/enumerate.h"
 #include "utl/equal_ranges_linear.h"
 #include "utl/get_or_create.h"
+#include "utl/logging.h"
 #include "utl/overloaded.h"
 
 namespace nigiri::routing {
@@ -32,7 +33,8 @@ duration_t get_duration(direction const search_dir,
 template <typename... Args>
 void trace_start(char const* fmt_str, Args... args) {
   if constexpr (kTracing) {
-    fmt::print(std::cout, fmt::runtime(fmt_str), std::forward<Args&&>(args)...);
+    utl::log_debug("nigiri.routing.start_times", fmt::runtime(fmt_str),
+                   std::forward<Args&&>(args)...);
   }
 }
 

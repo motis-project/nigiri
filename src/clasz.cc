@@ -2,9 +2,8 @@
 
 #include "cista/hash.h"
 
+#include "utl/logging.h"
 #include "utl/verify.h"
-
-#include "nigiri/logging.h"
 
 namespace nigiri {
 
@@ -206,7 +205,7 @@ clasz get_clasz(std::string_view s) {
     case hash("Elevator"): [[fallthrough]];
     case hash("ASC"): return clasz::kOther;
     default:
-      log(log_lvl::error, "loader.hrd.clasz", "cannot assign {}", s);
+      utl::log_error("loader.hrd.clasz", "cannot assign {}", s);
       return clasz::kOther;
   }
 }

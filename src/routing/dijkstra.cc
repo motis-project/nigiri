@@ -1,6 +1,7 @@
 #include "nigiri/routing/dijkstra.h"
 
 #include "fmt/core.h"
+#include "utl/logging.h"
 
 #include "utl/get_or_create.h"
 
@@ -13,7 +14,7 @@
 // #define NIGIRI_DIJKSTRA_TRACING
 
 #ifdef NIGIRI_DIJKSTRA_TRACING
-#define trace(...) fmt::print(__VA_ARGS__)
+#define trace(...) utl::log_debug("nigiri.routing.dijkstra", __VA_ARGS__)
 #else
 #define trace(...)
 #endif

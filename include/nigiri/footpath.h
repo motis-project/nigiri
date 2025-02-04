@@ -2,11 +2,11 @@
 
 #include "fmt/ostream.h"
 
+#include "utl/logging.h"
 #include "utl/verify.h"
 
 #include "cista/reflection/printable.h"
 
-#include "nigiri/logging.h"
 #include "nigiri/types.h"
 
 namespace nigiri {
@@ -34,9 +34,9 @@ struct footpath {
                     kDurationBits,
                 "station index overflow");
     if (duration > kMaxDuration) {
-      [[unlikely]] nigiri::log(log_lvl::error, "footpath",
-                               "footpath overflow: {} > {} adjusted to {}",
-                               duration, kMaxDuration, this->duration());
+      [[unlikely]] utl::log_error("footpath",
+                                  "footpath overflow: {} > {} adjusted to {}",
+                                  duration, kMaxDuration, this->duration());
     }
   }
 

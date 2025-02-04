@@ -3,6 +3,7 @@
 #include "fmt/std.h"
 
 #include "utl/enumerate.h"
+#include "utl/logging.h"
 
 #include "nigiri/loader/dir.h"
 #include "nigiri/loader/gtfs/loader.h"
@@ -47,7 +48,7 @@ timetable load(std::vector<std::pair<std::string, loader_config>> const& paths,
         utl::find_if(loaders, [&](auto&& l) { return l->applicable(*dir); });
     if (it != end(loaders)) {
       if (!is_in_memory) {
-        log(log_lvl::info, "loader.load", "loading {}", path);
+        utl::log_info("loader.load", "loading {}", path);
       }
       try {
         (*it)->load(local_config, src, *dir, tt, bitfields, a, shapes);
@@ -57,7 +58,7 @@ timetable load(std::vector<std::pair<std::string, loader_config>> const& paths,
     } else if (!ignore) {
       throw utl::fail("no loader for {} found", path);
     } else {
-      log(log_lvl::error, "loader.load", "no loader for {} found", path);
+      utl::log_error("loader.load", "no loader for {} found", path);
     }
   }
 
