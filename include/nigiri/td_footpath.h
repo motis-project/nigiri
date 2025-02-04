@@ -10,6 +10,7 @@
 
 #include "nigiri/footpath.h"
 #include "nigiri/types.h"
+#include "routing/query.h"
 
 namespace nigiri {
 
@@ -35,6 +36,7 @@ std::optional<duration_t> get_td_duration(Collection const& c,
 
   if constexpr (SearchDir == direction::kForward) {
     Type const* pred = nullptr;
+    Type const* curr = nullptr;
 
     auto const get = [&]() -> std::optional<duration_t> {
       auto const start = std::max(pred->valid_from_, t);
@@ -48,12 +50,16 @@ std::optional<duration_t> get_td_duration(Collection const& c,
     };
 
     for (auto it = from; it != to; ++it) {
-      if (pred == nullptr || pred->duration_ == footpath::kMaxDuration ||
-          it->valid_from_ < t + pred->duration_) {
-        pred = &*it;
-      } else {
-        return get();
+      if (curr == nullptr || curr->duration_ == footpath::kMaxDuration ||
+          it->valid_from_ < t + curr->duration_) {
+        curr = &*it;
+      } else if (pred == nullptr || curr->duration_ < pred->duration_) {
+        pred = &*curr;
       }
+    }
+
+    if (pred == nullptr || curr->duration_ < pred->duration_) {
+      pred = &*curr;
     }
 
     if (pred != nullptr && pred->duration_ != footpath::kMaxDuration) {
@@ -62,34 +68,31 @@ std::optional<duration_t> get_td_duration(Collection const& c,
 
     return std::nullopt;
   } else /* (SearchDir == direction::kBackward) */ {
-    auto const get =
-        [&](unixtime_t const valid_from,
-            duration_t const duration) -> std::optional<duration_t> {
-      auto const start = std::min(valid_from, t);
-      auto const target_time = start - duration;
-      auto const duration_with_waiting = t - target_time;
-      if (duration_with_waiting < footpath::kMaxDuration) {
-        return duration_with_waiting;
-      } else {
-        return std::nullopt;
-      }
-    };
+    Type const* pred = nullptr;
+    auto dep = unixtime_t{};
 
-    if (from != to && from->valid_from_ <= t) {
-      if (from->duration_ != footpath::kMaxDuration) {
-        return get(t, from->duration_);
-      } else if (auto const next = std::next(from); next != to) {
-        return get(from->valid_from_, next->duration_);
-      }
+    if (from->duration_ != footpath::kMaxDuration &&
+        from->valid_from_ <= t - from->duration_) {
+      pred = &*from;
+      dep = t - from->duration_;
     }
 
     using namespace std::chrono_literals;
     for (auto const [a, b] : utl::pairwise(it_range{from, to})) {
       if (b.duration_ != footpath::kMaxDuration &&
-          (t >= a.valid_from_ ||
-           interval{b.valid_from_, a.valid_from_ + 1min}.contains(t))) {
-        return get(a.valid_from_, b.duration_);
+          std::max(b.valid_from_, dep) + b.duration_ <= t &&
+          interval{b.valid_from_, a.valid_from_ + 1min}.overlaps(
+              interval{dep + 1min, t + 1min})) {
+        const auto new_dep = std::min(a.valid_from_, t) - b.duration_;
+        if (dep < new_dep) {
+          dep = new_dep;
+          pred = &b;
+        }
       }
+    }
+
+    if (pred != nullptr && pred->duration_ != footpath::kMaxDuration) {
+      return t - dep;
     }
 
     return std::nullopt;

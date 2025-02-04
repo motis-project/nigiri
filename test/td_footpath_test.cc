@@ -106,6 +106,156 @@ TEST(td_footpath, backward_single) {
   EXPECT_EQ(10min, x.duration());
 }
 
+TEST(td_footpath, forward) {
+  auto const fps = std::vector<routing::td_offset>{
+      {.valid_from_ = sys_days{1970_y / January / 1},
+       .duration_ = 10min,
+       .transport_mode_id_ = 0},
+      {.valid_from_ = sys_days{2024_y / June / 19} + 12h + 00min,
+       .duration_ = 30min,
+       .transport_mode_id_ = 0},
+      {.valid_from_ = sys_days{2024_y / June / 19} + 14h + 00min,
+       .duration_ = 2h,
+       .transport_mode_id_ = 0}};
+
+  auto const d = get_td_duration<direction::kForward>(
+      fps, sys_days{2024_y / June / 19} + 13h + 50min);
+  ASSERT_TRUE(d.has_value());
+  EXPECT_EQ(2h + 10min, *d);
+}
+
+TEST(td_footpath, forward_parallel_trips) {
+  auto const fps = std::vector<routing::td_offset>{
+      {.valid_from_ = sys_days{1970_y / January / 1},
+       .duration_ = footpath::kMaxDuration,
+       .transport_mode_id_ = 0},
+      {.valid_from_ = sys_days{2024_y / June / 19} + 8h + 00min,
+       .duration_ = 1h,
+       .transport_mode_id_ = 0},
+      {.valid_from_ = sys_days{2024_y / June / 19} + 12h + 00min,
+       .duration_ = 30min,
+       .transport_mode_id_ = 0},
+      {.valid_from_ = sys_days{2024_y / June / 19} + 14h + 00min,
+       .duration_ = 2h,
+       .transport_mode_id_ = 0},
+      {.valid_from_ = sys_days{2024_y / June / 19} + 20h + 00min,
+       .duration_ = footpath::kMaxDuration,
+       .transport_mode_id_ = 0},
+      {.valid_from_ = sys_days{2024_y / June / 19} + 6h + 00min,
+       .duration_ = 30min,
+       .transport_mode_id_ = 1},
+      {.valid_from_ = sys_days{2024_y / June / 19} + 10h + 00min,
+       .duration_ = footpath::kMaxDuration,
+       .transport_mode_id_ = 1},
+      {.valid_from_ = sys_days{2024_y / June / 19} + 16h + 00min,
+       .duration_ = 15min,
+       .transport_mode_id_ = 2},
+      {.valid_from_ = sys_days{2024_y / June / 19} + 20h + 00min,
+       .duration_ = footpath::kMaxDuration,
+       .transport_mode_id_ = 2}
+
+  };
+
+  auto const d = get_td_duration<direction::kForward>(
+      fps, sys_days{2024_y / June / 19} + 15h + 40min);
+  ASSERT_TRUE(d.has_value());
+  EXPECT_EQ(35min, *d);
+
+  auto const d2 = get_td_duration<direction::kForward>(
+      fps, sys_days{2024_y / June / 19} + 8h + 10min);
+  ASSERT_TRUE(d2.has_value());
+  EXPECT_EQ(30min, *d2);
+
+  auto const d3 = get_td_duration<direction::kForward>(
+      fps, sys_days{2024_y / June / 19} + 19h + 00min);
+  ASSERT_TRUE(d3.has_value());
+  EXPECT_EQ(15min, *d3);
+}
+
+TEST(td_footpath, backwards_parallel_trips) {
+  auto const fps = std::vector<routing::td_offset>{
+      {.valid_from_ = sys_days{1970_y / January / 1},
+       .duration_ = footpath::kMaxDuration,
+       .transport_mode_id_ = 0},
+      {.valid_from_ = sys_days{2024_y / June / 19} + 8h + 00min,
+       .duration_ = 1h,
+       .transport_mode_id_ = 0},
+      {.valid_from_ = sys_days{2024_y / June / 19} + 12h + 00min,
+       .duration_ = 30min,
+       .transport_mode_id_ = 0},
+      {.valid_from_ = sys_days{2024_y / June / 19} + 14h + 00min,
+       .duration_ = 2h,
+       .transport_mode_id_ = 0},
+      {.valid_from_ = sys_days{2024_y / June / 19} + 20h + 00min,
+       .duration_ = footpath::kMaxDuration,
+       .transport_mode_id_ = 0},
+      {.valid_from_ = sys_days{2024_y / June / 19} + 6h + 00min,
+       .duration_ = 30min,
+       .transport_mode_id_ = 1},
+      {.valid_from_ = sys_days{2024_y / June / 19} + 10h + 00min,
+       .duration_ = footpath::kMaxDuration,
+       .transport_mode_id_ = 1},
+      {.valid_from_ = sys_days{2024_y / June / 19} + 16h + 00min,
+       .duration_ = 15min,
+       .transport_mode_id_ = 2},
+      {.valid_from_ = sys_days{2024_y / June / 19} + 20h + 00min,
+       .duration_ = footpath::kMaxDuration,
+       .transport_mode_id_ = 2}
+
+  };
+
+  auto const d = get_td_duration<direction::kBackward>(
+      fps, sys_days{2024_y / June / 19} + 16h + 20min);
+  ASSERT_TRUE(d.has_value());
+  EXPECT_EQ(15min, *d);
+
+  auto const d2 = get_td_duration<direction::kBackward>(
+      fps, sys_days{2024_y / June / 19} + 10h + 15min);
+  ASSERT_TRUE(d2.has_value());
+  EXPECT_EQ(45min, *d2);
+
+  auto const d3 = get_td_duration<direction::kBackward>(
+      fps, sys_days{2024_y / June / 19} + 20h + 15min);
+  ASSERT_TRUE(d3.has_value());
+  EXPECT_EQ(30min, *d3);
+}
+
+TEST(td_footpath, backward_last_too_large) {
+  auto const fps = std::vector<routing::td_offset>{
+      {.valid_from_ = sys_days{1970_y / January / 1},
+       .duration_ = 10min,
+       .transport_mode_id_ = 0},
+      {.valid_from_ = sys_days{2024_y / June / 19} + 19h + 00min,
+       .duration_ = footpath::kMaxDuration,
+       .transport_mode_id_ = 0},
+      {.valid_from_ = sys_days{2024_y / June / 19} + 20h + 00min,
+       .duration_ = 2h,
+       .transport_mode_id_ = 0}};
+
+  auto const d = get_td_duration<direction::kBackward>(
+      fps, sys_days{2024_y / June / 19} + 21h);
+  ASSERT_TRUE(d.has_value());
+  EXPECT_EQ(2h + 10min, *d);
+}
+
+TEST(td_footpath, backward_pick_within_interval) {
+  auto const fps = std::vector<routing::td_offset>{
+      {.valid_from_ = sys_days{1970_y / January / 1},
+       .duration_ = 10min,
+       .transport_mode_id_ = 0},
+      {.valid_from_ = sys_days{2024_y / June / 19} + 11h + 00min,
+       .duration_ = 1h + 30min,
+       .transport_mode_id_ = 0},
+      {.valid_from_ = sys_days{2024_y / June / 19} + 14h + 00min,
+       .duration_ = footpath::kMaxDuration,
+       .transport_mode_id_ = 0}};
+
+  auto const d = get_td_duration<direction::kBackward>(
+      fps, sys_days{2024_y / June / 19} + 12h);
+  ASSERT_TRUE(d.has_value());
+  EXPECT_EQ(1h + 10min, *d);
+}
+
 TEST(td_footpath, backward_1) {
   auto const fps = std::vector<routing::td_offset>{
       {.valid_from_ = sys_days{1970_y / January / 1},
