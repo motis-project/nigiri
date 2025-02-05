@@ -64,7 +64,7 @@ int main(int ac, char** av) {
        bpo::value(&finalize_opt.adjust_footpaths_)
            ->default_value(finalize_opt.adjust_footpaths_),
        "adjust footpath lengths")  //
-      ("max_foopath_length",
+      ("max_footpath_length",
        bpo::value(&finalize_opt.max_footpath_length_)
            ->default_value(finalize_opt.max_footpath_length_))  //
       ("assistance_times", bpo::value(&assistance_path))  //
