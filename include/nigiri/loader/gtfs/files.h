@@ -43,4 +43,8 @@ constexpr auto const kRtreeLocationGeojsonFile =
     std::string_view{"rtree_location.geojson"};
 constexpr auto const kCalculateDurationStopTimesFile =
     std::string_view{"calculate_duration_stop_times.txt"};
+constexpr auto const kLocationsWithinGeometriesStopFile =
+    std::string_view{"locations_within_geometries_stops.txt"};
+constexpr auto const kLocationsWithinGeometriesGeojsonFile =
+    std::string_view{"locations_within_geometries.geojson"};
 }  // namespace nigiri::loader::gtfs

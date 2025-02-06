@@ -104,6 +104,8 @@ struct multipolgyon {
 
   bool intersects(geo::box const& b) const;
 
+  geo::box bounding_box();
+
   auto cista_members() { return std::tie(polygons_, original_type_); }
   vector<polygon> polygons_;
   tg_geom_type original_type_;

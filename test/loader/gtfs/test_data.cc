@@ -268,6 +268,147 @@ a_3,S8
 // l_g_5,Wien-Umgebung2
 // )";
 
+constexpr auto const example_locations_in_geometries_stops_file_content =
+    std::string_view{
+        R"(stop_id,stop_name,stop_desc,stop_lat,stop_lon,stop_url,location_type,parent_station
+outside_berlin,,,52.610329253088594,13.20597275574309,,,
+inside_berlin,,,52.52382076496181,13.403639322418002,,,
+edge_berlin,,,52.406589559298396,13.340254133857854,,,
+way_outside_berlin,,,52.51106243823082,13.72059314902458,,,
+within_hole_hannover,,,52.30395481022279,9.648938978164438,,,
+inside_hannover,,,52.070567698004766,10.499473611847066,,,
+hole_edge_hannover,,,52.2668775457241,10.160283681204987,,,S8
+outside_hannover,,,51.740426496286176,9.032883031459278,,1,
+way_outside_hannover,,,51.52928071175947,9.934063502721187,,,
+)"};
+
+constexpr auto const example_locations_in_geometries_geojson_content = R"(
+{
+  "type": "FeatureCollection",
+  "features": [
+    {
+      "id" : "Berlin",
+      "type": "Feature",
+      "geometry": {
+        "coordinates": [
+          [
+            [
+              13.340254133857854,
+              52.406589559298396
+            ],
+            [
+              13.544231631740217,
+              52.38325139548613
+            ],
+            [
+              13.617536045041902,
+              52.43768791506821
+            ],
+            [
+              13.630280888682677,
+              52.54248348495642
+            ],
+            [
+              13.502791670144603,
+              52.62962145234465
+            ],
+            [
+              13.340253187670584,
+              52.645094638962945
+            ],
+            [
+              13.117154819508244,
+              52.55604844434933
+            ],
+            [
+              13.117155893432198,
+              52.41630523350611
+            ],
+            [
+              13.340254133857854,
+              52.406589559298396
+            ]
+          ]
+        ],
+        "type": "Polygon"
+      }
+    },
+    {
+      "id" : "Hannover-Umgebung",
+      "type": "Feature",
+      "geometry": {
+        "coordinates": [
+          [
+            [
+              9.532880033675838,
+              52.93273335420511
+            ],
+            [
+              8.371855897316948,
+              52.499939309925
+            ],
+            [
+              8.688560503630953,
+              51.95547048988425
+            ],
+            [
+              9.666648611873825,
+              51.63677885822122
+            ],
+            [
+              10.839565745618216,
+              51.87039432615745
+            ],
+            [
+              11.083511826984193,
+              52.36381048101677
+            ],
+            [
+              10.677579808585392,
+              52.70948056569932
+            ],
+            [
+              9.532880033675838,
+              52.93273335420511
+            ]
+          ],
+          [
+            [
+              9.553146324503018,
+              52.5458985252518
+            ],
+            [
+              9.229840568285681,
+              52.40660026525538
+            ],
+            [
+              9.358100429973064,
+              52.195757228800716
+            ],
+            [
+              9.815203542426588,
+              52.12315804941886
+            ],
+            [
+              10.160281199499337,
+              52.26687779897719
+            ],
+            [
+              10.042078423417308,
+              52.532710844853455
+            ],
+            [
+              9.553146324503018,
+              52.5458985252518
+            ]
+          ]
+        ],
+        "type": "Polygon"
+      }
+    }
+  ]
+})";
+
 constexpr auto const example_rtree_location_geojson_content = R"(
 {
   "type": "FeatureCollection",
@@ -539,7 +680,11 @@ loader::mem_dir example_files() {
        // {path{kRtreeLocationGroupFile},
        //  std::string{example_rtree_location_groups_content}}
        {{path{kCalculateDurationStopTimesFile}},
-        std::string{example_calculation_stop_times_content}}}};
+        std::string{example_calculation_stop_times_content}},
+       {{path{kLocationsWithinGeometriesStopFile}},
+        std::string{example_locations_in_geometries_stops_file_content}},
+       {{path{kLocationsWithinGeometriesGeojsonFile}},
+        std::string{example_locations_in_geometries_geojson_content}}}};
 }
 
 constexpr auto const berlin_agencies_file_content = std::string_view{

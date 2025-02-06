@@ -373,6 +373,8 @@ enum class location_type : std::uint8_t {
   kStation
 };
 
+enum stop_type { kPickup, kDropoff };
+
 enum pickup_dropoff_type : std::uint8_t {
   kRegularType = 0,
   kUnavailableType = 1,

@@ -163,6 +163,7 @@ TEST(gtfs, read_stop_times_gtfs_flex_example_data) {
   auto const test_stop_time =
       [&](std::string const& geo_id, std::string const& trip_id,
           std::initializer_list<std::string> const expected_trips,
+          std::initializer_list<std::string> const expected_geos,
           stop_window&& expected_window, booking_rule_idx_t expected_pickup,
           booking_rule_idx_t expected_dropoff,
           pickup_dropoff_type expected_pickup_type,
@@ -181,32 +182,38 @@ TEST(gtfs, read_stop_times_gtfs_flex_example_data) {
           EXPECT_EQ(tt.geometry_idx_to_trip_idxs_[geo_idx][i], t_idx);
         }
 
+        for (auto i = 0; i < expected_geos.size(); ++i) {
+          auto const id = *(expected_geos.begin() + i);
+          auto g_idx = location_geojsons.at(id);
+          EXPECT_EQ(tt.trip_idx_to_geometry_idxs_[trip_idx][i], g_idx);
+        }
+
         geometry_trip_idx gt_idx;
         gt_idx = geometry_trip_idx{trip_idx, geo_idx};
         auto idx = tt.geometry_trip_idxs_[gt_idx];
 
-        EXPECT_EQ(tt.window_times_.at(idx).start_, expected_window.start_);
-        EXPECT_EQ(tt.window_times_.at(idx).end_, expected_window.end_);
-        EXPECT_EQ(tt.pickup_booking_rules_.at(idx), expected_pickup);
-        EXPECT_EQ(tt.dropoff_booking_rules_.at(idx), expected_dropoff);
-        EXPECT_EQ(tt.pickup_types_.at(idx), expected_pickup_type);
-        EXPECT_EQ(tt.dropoff_types_.at(idx), expected_dropoff_type);
+        EXPECT_EQ(tt.window_times_.at(idx)[0].start_, expected_window.start_);
+        EXPECT_EQ(tt.window_times_.at(idx)[0].end_, expected_window.end_);
+        EXPECT_EQ(tt.pickup_booking_rules_.at(idx)[0], expected_pickup);
+        EXPECT_EQ(tt.dropoff_booking_rules_.at(idx)[0], expected_dropoff);
+        EXPECT_EQ(tt.pickup_types_.at(idx)[0], expected_pickup_type);
+        EXPECT_EQ(tt.dropoff_types_.at(idx)[0], expected_dropoff_type);
       };
   auto const br_idx_3 = booking_rules.at("3");
   auto const br_idx_4 = booking_rules.at("4");
   auto const br_idx_5 = booking_rules.at("5");
 
-  test_stop_time("l_geo_1", "AWE1", {"AWE1", "AWD1"},
+  test_stop_time("l_geo_1", "AWE1", {"AWE1", "AWD1"}, {"l_geo_1", "l_geo_2"},
                  stop_window{hhmm_to_min("06:00:00"), hhmm_to_min("19:00:00")},
                  booking_rule_idx_t::invalid(), booking_rule_idx_t::invalid(),
                  kPhoneAgencyType, kCoordinateWithDriverType);
-  test_stop_time("l_geo_2", "AWE1", {"AWE1"},
+  test_stop_time("l_geo_2", "AWE1", {"AWE1"}, {"l_geo_1", "l_geo_2"},
                  stop_window{hhmm_to_min("08:00:00"), hhmm_to_min("20:00:00")},
                  br_idx_3, br_idx_3, kPhoneAgencyType, kPhoneAgencyType);
-  test_stop_time("l_geo_3", "AWD1", {"AWD1"},
+  test_stop_time("l_geo_3", "AWD1", {"AWD1"}, {"l_geo_3", "l_geo_1"},
                  stop_window{hhmm_to_min("11:00:00"), hhmm_to_min("17:00:00")},
                  br_idx_3, br_idx_3, kPhoneAgencyType, kPhoneAgencyType);
-  test_stop_time("l_geo_1", "AWD1", {"AWE1", "AWD1"},
+  test_stop_time("l_geo_1", "AWD1", {"AWE1", "AWD1"}, {"l_geo_3", "l_geo_1"},
                  stop_window{hhmm_to_min("10:00:00"), hhmm_to_min("19:00:00")},
                  br_idx_4, br_idx_5, kPhoneAgencyType, kUnavailableType);
 }

@@ -92,6 +92,7 @@ void read_stop_times(timetable& tt,
       .out_bounds(43.F, 68.F)
       .in_high(file_content.size());
   auto lookup_direction = cached_lookup(trips.directions_);
+
   utl::line_range{
       utl::make_buf_reader(file_content, progress_tracker->update_fn())}  //
       | utl::csv<csv_stop_time>()  //

@@ -1,8 +1,14 @@
 #pragma once
 
+#include <utl/get_or_create.h>
+#include <utl/pipes/for_each.h>
 #include <filesystem>
+#include <ranges>
 #include <span>
 #include <type_traits>
+
+#include "utl/verify.h"
+#include "utl/zip.h"
 
 #include "cista/containers/rtree.h"
 #include "cista/memory_holder.h"
@@ -26,10 +32,6 @@
 #include "nigiri/stop.h"
 #include "nigiri/td_footpath.h"
 #include "nigiri/types.h"
-
-#include <utl/get_or_create.h>
-#include <utl/pipes/for_each.h>
-#include <ranges>
 
 namespace nigiri {
 
@@ -195,48 +197,72 @@ struct timetable {
     for (auto* p : points) {
       b.extend(geo::latlng{p->y_, p->x_});
     }
+
+    geometry_locations_within_.emplace_back(std::vector<location_idx_t>{});
+    // auto const b = geometry_[next_idx].bounding_box();
     geometry_rtree_.insert(b.min_.lnglat_float(), b.max_.lnglat_float(),
                            next_idx);
     return next_idx;
   }
 
-  template <typename Fn>
-  void calculate_geometry_durations(Fn& calc_duration) {
-    hash_map<trip_idx_t, std::vector<geometry_idx_t>> trip_to_geos;
-    auto const size = geometry_idx_to_trip_idxs_.size();
-    for (auto i = 0; i < size; ++i) {
-      auto const g_idx = geometry_idx_t{i};
-      for (auto t : geometry_idx_to_trip_idxs_[g_idx]) {
-        auto& el = utl::get_or_create(
-            trip_to_geos, t, [] { return std::vector<geometry_idx_t>{}; });
-        el.push_back(g_idx);
-      }
+  template <typename RT>
+  std::unique_ptr<RT> register_locations_in_geometries(
+      std::unique_ptr<RT> location_rtree) {
+    for (auto i = 0; i < geometry_.size(); i++) {
+      auto const idx = geometry_idx_t{i};
+      auto b = geometry_[idx].bounding_box();
+      auto const m = create_tg_multipoly(geometry_[idx]);
+      location_rtree->find(
+          b, [&](geo::latlng const& pos, location_idx_t const item) {
+            auto const point = tg_geom_new_point(tg_point(pos.lng_, pos.lat_));
+            if (tg_geom_coveredby(point, m)) {
+              geometry_locations_within_[idx].push_back(item);
+            }
+          });
+      tg_geom_free(m);
     }
-
-    geometry_duration_.clear();
-    geometry_duration_.resize(size);
-    for (auto i = 0; i < size; ++i) {
-      auto geo_idx = geometry_idx_t{i};
-      for (auto j = 0; j < size; ++j) {
-        geometry_duration_[geo_idx].push_back(duration_t::max());
-      }
-    }
-
-    for (const auto& geos : trip_to_geos.values() | std::views::values) {
-      std::for_each(geos.begin(), geos.end(), [&](auto const& start) {
-        for (auto i = 0; i < geos.size(); ++i) {
-          auto const& end = geos[i];
-          if (start == end) {
-            geometry_duration_[start][i] = duration_t::zero();
-          } else if (geometry_duration_.at(start).at(i) == duration_t::max()) {
-            auto const& startpoint = geometry_.at(start).get_center();
-            auto const& endpoint = geometry_.at(end).get_center();
-            geometry_duration_[start][i] = calc_duration(startpoint, endpoint);
-          }
-        }
-      });
-    }
+    return std::move(location_rtree);
   }
+
+  // template <typename Fn>
+  // void calculate_geometry_durations(Fn& calc_duration) {
+  //   hash_map<trip_idx_t, std::vector<geometry_idx_t>> trip_to_geos;
+  //   auto const size = geometry_idx_to_trip_idxs_.size();
+  //   for (auto i = 0; i < size; ++i) {
+  //     auto const g_idx = geometry_idx_t{i};
+  //     for (auto t : geometry_idx_to_trip_idxs_[g_idx]) {
+  //       auto& el = utl::get_or_create(
+  //           trip_to_geos, t, [] { return std::vector<geometry_idx_t>{}; });
+  //       el.push_back(g_idx);
+  //     }
+  //   }
+  //
+  //   geometry_duration_.clear();
+  //   geometry_duration_.resize(size);
+  //   for (auto i = 0; i < size; ++i) {
+  //     auto geo_idx = geometry_idx_t{i};
+  //     for (auto j = 0; j < size; ++j) {
+  //       geometry_duration_[geo_idx].push_back(duration_t::max());
+  //     }
+  //   }
+  //
+  //   for (const auto& geos : trip_to_geos.values() | std::views::values) {
+  //     std::for_each(geos.begin(), geos.end(), [&](auto const& start) {
+  //       for (auto i = 0; i < geos.size(); ++i) {
+  //         auto const& end = geos[i];
+  //         if (start == end) {
+  //           geometry_duration_[start][i] = duration_t::zero();
+  //         } else if (geometry_duration_.at(start).at(i) == duration_t::max())
+  //         {
+  //           auto const& startpoint = geometry_.at(start).get_center();
+  //           auto const& endpoint = geometry_.at(end).get_center();
+  //           geometry_duration_[start][i] = calc_duration(startpoint,
+  //           endpoint);
+  //         }
+  //       }
+  //     });
+  //   }
+  // }
 
   geometry_trip_idx_t register_geometry_trip(
       geometry_idx_t const geo_idx,
@@ -259,22 +285,60 @@ struct timetable {
       return geometry_trip_idx_t::invalid();
     }
 
-    auto const next_idx = geometry_trip_idx_t{window_times_.size()};
-    pickup_types_.emplace_back(pickup_type);
-    dropoff_types_.emplace_back(dropoff_type);
-    window_times_.emplace_back(stop_windows);
-    pickup_booking_rules_.emplace_back(pickup_booking_rule_id);
-    dropoff_booking_rules_.emplace_back(dropoff_booking_rule_id);
-    geometry_trip_idxs_.emplace(geometry_trip_idx{trip_idx, geo_idx}, next_idx);
+    auto idx = utl::get_or_create(
+        geometry_trip_idxs_, geometry_trip_idx{trip_idx, geo_idx}, [&]() {
+          auto next_idx = geometry_trip_idx_t{window_times_.size()};
+          pickup_types_.emplace_back(std::vector<pickup_dropoff_type>{});
+          dropoff_types_.emplace_back(std::vector<pickup_dropoff_type>{});
+          window_times_.emplace_back(std::vector<stop_window>{});
+          pickup_booking_rules_.emplace_back(std::vector<booking_rule_idx_t>{});
+          dropoff_booking_rules_.emplace_back(
+              std::vector<booking_rule_idx_t>{});
+          return next_idx;
+        });
 
-    // Should be improved by implementing .erase function to base_vec and using
-    // std::unique
+    pickup_types_[idx].push_back(pickup_type);
+    dropoff_types_[idx].push_back(dropoff_type);
+    window_times_[idx].push_back(stop_windows);
+    pickup_booking_rules_[idx].push_back(pickup_booking_rule_id);
+    dropoff_booking_rules_[idx].push_back(dropoff_booking_rule_id);
+
+    // Could be improved by implementing .erase function to base_vec and using
+    // std::unique afterwards
     if (std::find(geometry_idx_to_trip_idxs_[geo_idx].begin(),
                   geometry_idx_to_trip_idxs_[geo_idx].end(),
                   trip_idx) == geometry_idx_to_trip_idxs_[geo_idx].end()) {
       geometry_idx_to_trip_idxs_[geo_idx].push_back(trip_idx);
     }
-    return next_idx;
+
+    if (std::find(trip_idx_to_geometry_idxs_[trip_idx].begin(),
+                  trip_idx_to_geometry_idxs_[trip_idx].end(),
+                  geo_idx) == trip_idx_to_geometry_idxs_[trip_idx].end()) {
+      trip_idx_to_geometry_idxs_[trip_idx].push_back(geo_idx);
+    }
+    return idx;
+  }
+
+  std::optional<std::int32_t> get_geometry_trip_data_idx(
+      unixtime_t timestamp, geometry_trip_idx_t idx, stop_type stop_type) {
+    vecvec<geometry_trip_idx_t, booking_rule_idx_t> stop_type_booking_rule;
+    if (stop_type == kPickup) {
+      stop_type_booking_rule = pickup_booking_rules_;
+    } else {
+      stop_type_booking_rule = dropoff_booking_rules_;
+    }
+
+    for (auto i = 0; i < stop_type_booking_rule[idx].size(); i++) {
+      auto bitfield = bitfields_[booking_rules_[stop_type_booking_rule[idx][i]]
+                                     .bitfield_idx_];
+      auto const timestamp_days = date::sys_days(floor<date::days>(timestamp));
+      auto const start_date = internal_interval_days().from_;
+
+      if (bitfield[(timestamp_days - start_date).count()] == 1) {
+        return i;
+      }
+    }
+    return std::nullopt;
   }
 
   template <typename TripId>
@@ -293,6 +357,7 @@ struct timetable {
     trip_debug_.emplace_back().emplace_back(dbg);
     trip_ids_.emplace_back().emplace_back(trip_id_idx);
 
+    trip_idx_to_geometry_idxs_.emplace_back(std::vector<geometry_idx_t>{});
     return trip_idx;
   }
 
@@ -667,7 +732,9 @@ struct timetable {
 
   // location geojson
   vector_map<geometry_idx_t, multipolgyon> geometry_;
+  vecvec<geometry_idx_t, location_idx_t> geometry_locations_within_;
   vecvec<geometry_idx_t, trip_idx_t> geometry_idx_to_trip_idxs_;
+  vecvec<trip_idx_t, geometry_idx_t> trip_idx_to_geometry_idxs_;
   cista::raw::rtree<geometry_idx_t> geometry_rtree_;
   vecvec<geometry_idx_t, duration_t> geometry_duration_;
 
@@ -678,11 +745,10 @@ struct timetable {
 
   // stop times
   hash_map<geometry_trip_idx, geometry_trip_idx_t> geometry_trip_idxs_;
-  vector_map<geometry_trip_idx_t, stop_window> window_times_;
-  vector_map<geometry_trip_idx_t, booking_rule_idx_t> pickup_booking_rules_;
-  vector_map<geometry_trip_idx_t, booking_rule_idx_t> dropoff_booking_rules_;
-  vector_map<geometry_trip_idx_t, pickup_dropoff_type> pickup_types_;
-  vector_map<geometry_trip_idx_t, pickup_dropoff_type> dropoff_types_;
+  vecvec<geometry_trip_idx_t, stop_window> window_times_;
+  vecvec<geometry_trip_idx_t, booking_rule_idx_t> pickup_booking_rules_;
+  vecvec<geometry_trip_idx_t, booking_rule_idx_t> dropoff_booking_rules_;
+  vecvec<geometry_trip_idx_t, pickup_dropoff_type> pickup_types_;
+  vecvec<geometry_trip_idx_t, pickup_dropoff_type> dropoff_types_;
 };
-
 }  // namespace nigiri

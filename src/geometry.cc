@@ -184,6 +184,16 @@ bool multipolgyon::intersects(geo::box const& b) const {
   return result;
 }
 
+geo::box multipolgyon::bounding_box() {
+  std::vector<point*> points{};
+  as_points(points);
+  auto box = geo::box{};
+  for (auto const p : points) {
+    box.extend(geo::latlng{p->y_, p->x_});
+  }
+  return box;
+}
+
 geo::latlng multipolgyon::get_center() {
   auto const tg = to_tg_geom();
   auto [x, y] = tg_geom_point(tg);

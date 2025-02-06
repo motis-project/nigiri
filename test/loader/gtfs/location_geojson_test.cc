@@ -169,78 +169,147 @@ TEST(gtfs, rtree) {
   EXPECT_EQ(matches[1], geojson.at("Mainz"));
 }
 
-TEST(gtfs, calculate_duration) {
-  auto const files = example_files();
-
-  auto const src = source_idx_t{0};
-
+TEST(gtfs, register_locations_in_geometries) {
   timetable tt;
-  tt.date_range_ = interval{date::sys_days{date::July / 1 / 2006},
-                            date::sys_days{date::August / 1 / 2006}};
   tz_map timezones;
 
-  auto const config = loader::loader_config{};
-  auto agencies =
-      read_agencies(tt, timezones, files.get_file(kAgencyFile).data());
-  auto const routes = read_routes(tt, timezones, agencies,
-                                  files.get_file(kRoutesFile).data(), "CET");
-  auto const dates =
-      read_calendar_date(files.get_file(kCalendarDatesFile).data());
-  auto const calendar = read_calendar(files.get_file(kCalenderFile).data());
-  auto const services =
-      merge_traffic_days(tt.internal_interval_days(), calendar, dates);
-  auto trip_data =
-      read_trips(tt, routes, services, {}, files.get_file(kTripsFile).data(),
-                 config.bikes_allowed_default_);
+  auto const files = example_files();
 
-  auto const geometries =
-      read_location_geojson(tt, files.get_file(kLocationGeojsonFile).data());
+  auto const stops = read_stops(
+      source_idx_t{0}, tt, timezones,
+      files.get_file(kLocationsWithinGeometriesStopFile).data(), "", 0U);
 
-  read_stop_times(
-      tt, src, trip_data, geometries, locations_map{}, booking_rule_map_t{},
-      files.get_file(kCalculateDurationStopTimesFile).data(), false);
+  auto const geojson = read_location_geojson(
+      tt, files.get_file(kLocationsWithinGeometriesGeojsonFile).data());
 
-  auto const kNumGeometries = tt.geometry_idx_to_trip_idxs_.size();
+  auto const outside_berlin =
+      geo::latlng{52.610329253088594, 13.20597275574309};
+  auto const inside_berlin = geo::latlng{52.52382076496181, 13.403639322418002};
+  auto const edge_berlin = geo::latlng{52.406589559298396, 13.340254133857854};
+  auto const way_outside_berlin =
+      geo::latlng{52.51106243823082, 13.72059314902458};
 
-  hash_map<std::pair<geo::latlng, geo::latlng>, duration_t> durations;
-  std::vector<geo::latlng> points{};
-  for (auto i = 0; i < kNumGeometries; ++i) {
-    auto geo_idx = geometry_idx_t{i};
-    auto& geo = tt.geometry_.at(geo_idx);
-    auto center = geo.get_center();
-    points.push_back(center);
-  }
+  auto const within_hole_hannover =
+      geo::latlng{52.30395481022279, 9.648938978164438};
+  auto const inside_hannover =
+      geo::latlng{52.070567698004766, 10.499473611847066};
+  auto const hole_edge_hannover =
+      geo::latlng{52.2668775457241, 10.160283681204987};
+  auto const outside_hannover =
+      geo::latlng{51.740426496286176, 9.032883031459278};
+  auto const way_outside_hannover =
+      geo::latlng{51.52928071175947, 9.934063502721187};
 
-  std::vector<utl::cstr> hhmm = {"00:05:00", "00:10:00", "00:15:00"};
+  struct pointer_rtree {
+    pointer_rtree(timetable& tt) { tt_ = &tt; }
 
-  for (auto i = 0; i < points.size(); ++i) {
-    auto p1 = points.at(i);
-    std::for_each(points.begin(), points.end(), [&](auto p2) {
-      if (p1 == p2) {
-        durations.emplace(std::make_pair(p1, p2), duration_t::zero());
-      } else {
-        auto duration = hhmm_to_min(hhmm[i]);
-        durations.emplace(std::make_pair(p1, p2), duration);
+    timetable* tt_;
+
+    void find(geo::box const& b,
+              std::function<void(geo::latlng const&, location_idx_t const)> fn)
+        const {
+      for (auto i = 0; i < tt_->locations_.coordinates_.size(); ++i) {
+        auto const idx = location_idx_t{i};
+        if (b.contains(tt_->locations_.coordinates_[idx])) {
+          fn(tt_->locations_.coordinates_[idx], idx);
+        }
       }
-    });
-  }
-
-  auto func = [&](auto p1, auto p2) {
-    return durations.at(std::make_pair(p1, p2));
-  };
-  tt.calculate_geometry_durations(func);
-
-  ASSERT_EQ(kNumGeometries, tt.geometry_duration_.size());
-  for (auto i = 0; i < kNumGeometries; ++i) {
-    auto key1 = geometry_idx_t{i};
-    ASSERT_EQ(kNumGeometries, tt.geometry_duration_[key1].size());
-    auto point1 = tt.geometry_[key1].get_center();
-    for (auto j = 0; j < kNumGeometries; ++j) {
-      auto key2 = geometry_idx_t{j};
-      auto point2 = tt.geometry_[key2].get_center();
-      ASSERT_TRUE(durations.contains({point1, point2}));
-      EXPECT_EQ(tt.geometry_duration_[key1].at(j),
-                durations.at({point1, point2}));
     }
-  }
+  };
+
+  std::unique_ptr<pointer_rtree> rtree = std::make_unique<pointer_rtree>(tt);
+
+  tt.register_locations_in_geometries(std::move(rtree));
+
+  auto berlin_idx = geojson.at("Berlin");
+
+  auto hannover_idx = geojson.at("Hannover-Umgebung");
+
+  ASSERT_EQ(tt.geometry_locations_within_[berlin_idx].size(), 1);
+  EXPECT_EQ(tt.geometry_locations_within_[berlin_idx][0],
+            stops.at("inside_berlin"));
+  // EXPECT_EQ(tt.geometry_locations_within_[berlin_idx][1],
+  //           stops.at("edge_berlin"));
+
+  ASSERT_EQ(tt.geometry_locations_within_[hannover_idx].size(), 2);
+  EXPECT_EQ(tt.geometry_locations_within_[hannover_idx][0],
+            stops.at("inside_hannover"));
+  EXPECT_EQ(tt.geometry_locations_within_[hannover_idx][1],
+            stops.at("hole_edge_hannover"));
 }
+
+// TEST(gtfs, calculate_duration) {
+//   auto const files = example_files();
+//
+//   auto const src = source_idx_t{0};
+//
+//   timetable tt;
+//   tt.date_range_ = interval{date::sys_days{date::July / 1 / 2006},
+//                             date::sys_days{date::August / 1 / 2006}};
+//   tz_map timezones;
+//
+//   auto const config = loader::loader_config{};
+//   auto agencies =
+//       read_agencies(tt, timezones, files.get_file(kAgencyFile).data());
+//   auto const routes = read_routes(tt, timezones, agencies,
+//                                   files.get_file(kRoutesFile).data(), "CET");
+//   auto const dates =
+//       read_calendar_date(files.get_file(kCalendarDatesFile).data());
+//   auto const calendar = read_calendar(files.get_file(kCalenderFile).data());
+//   auto const services =
+//       merge_traffic_days(tt.internal_interval_days(), calendar, dates);
+//   auto trip_data =
+//       read_trips(tt, routes, services, {}, files.get_file(kTripsFile).data(),
+//                  config.bikes_allowed_default_);
+//
+//   auto const geometries =
+//       read_location_geojson(tt, files.get_file(kLocationGeojsonFile).data());
+//
+//   read_stop_times(
+//       tt, src, trip_data, geometries, locations_map{}, booking_rule_map_t{},
+//       files.get_file(kCalculateDurationStopTimesFile).data(), false);
+//
+//   auto const kNumGeometries = tt.geometry_idx_to_trip_idxs_.size();
+//
+//   hash_map<std::pair<geo::latlng, geo::latlng>, duration_t> durations;
+//   std::vector<geo::latlng> points{};
+//   for (auto i = 0; i < kNumGeometries; ++i) {
+//     auto geo_idx = geometry_idx_t{i};
+//     auto& geo = tt.geometry_.at(geo_idx);
+//     auto center = geo.get_center();
+//     points.push_back(center);
+//   }
+//
+//   std::vector<utl::cstr> hhmm = {"00:05:00", "00:10:00", "00:15:00"};
+//
+//   for (auto i = 0; i < points.size(); ++i) {
+//     auto p1 = points.at(i);
+//     std::for_each(points.begin(), points.end(), [&](auto p2) {
+//       if (p1 == p2) {
+//         durations.emplace(std::make_pair(p1, p2), duration_t::zero());
+//       } else {
+//         auto duration = hhmm_to_min(hhmm[i]);
+//         durations.emplace(std::make_pair(p1, p2), duration);
+//       }
+//     });
+//   }
+//
+//   auto func = [&](auto p1, auto p2) {
+//     return durations.at(std::make_pair(p1, p2));
+//   };
+//   tt.calculate_geometry_durations(func);
+//
+//   ASSERT_EQ(kNumGeometries, tt.geometry_duration_.size());
+//   for (auto i = 0; i < kNumGeometries; ++i) {
+//     auto key1 = geometry_idx_t{i};
+//     ASSERT_EQ(kNumGeometries, tt.geometry_duration_[key1].size());
+//     auto point1 = tt.geometry_[key1].get_center();
+//     for (auto j = 0; j < kNumGeometries; ++j) {
+//       auto key2 = geometry_idx_t{j};
+//       auto point2 = tt.geometry_[key2].get_center();
+//       ASSERT_TRUE(durations.contains({point1, point2}));
+//       EXPECT_EQ(tt.geometry_duration_[key1].at(j),
+//                 durations.at({point1, point2}));
+//     }
+//   }
+// }
