@@ -33,9 +33,10 @@ void forall_optimal_outgoing_connections(profile const& p,
     f(i);
     ++i;
   }
-  if (i == (std::end(p) - 1)) {
-    return;
-  }
+  // TODO remove
+  //if (i == (std::end(p) - 1)) {
+  //  return;
+  //}
   f(i);
 }
 }  // namespace
@@ -89,8 +90,8 @@ decision_graph_extractor<ProfileSet>::extract_relevant_entries(
             [&](walk const& w) {
               delta_t arr_time = pe->dep_time_ + w.fp_.duration().count();
               stack_.pop();
-              forall_optimal_outgoing_connections(
-                  profile_set_.for_stop(w.fp_.target()), arr_time, 0,
+              for_first_optimal_outgoing_connection(
+                  profile_set_.for_stop(w.fp_.target()), arr_time,
                   on_new_relevant_entry);
             },
             [&](ride const& r) {
