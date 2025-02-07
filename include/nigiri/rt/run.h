@@ -32,6 +32,10 @@ struct run {
     return t_.is_valid() || rt_ != rt_transport_idx_t::invalid();
   }
 
+  friend bool operator==(run const& a, run const& b) {
+    return a.t_ == b.t_ && a.stop_range_ == b.stop_range_;
+  }
+
   // from static timetable, not set for additional services
   transport t_{transport::invalid()};
   interval<stop_idx_t> stop_range_;
