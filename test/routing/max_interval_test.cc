@@ -84,10 +84,8 @@ TEST(routing, max_interval) {
       tt, nullptr,
       nigiri::routing::query{
           .start_time_ =
-              interval{.from_ = unixtime_t{date::sys_days{2019_y / May / 1} +
-                                           10_hours},
-                       .to_ = unixtime_t{date::sys_days{2019_y / May / 1} +
-                                         11_hours}},
+              interval{unixtime_t{date::sys_days{2019_y / May / 1} + 10_hours},
+                       unixtime_t{date::sys_days{2019_y / May / 1} + 11_hours}},
           .start_ = {{tt.locations_.location_id_to_idx_.at(
                           {.id_ = "A", .src_ = src}),
                       0_minutes, 0U}},
@@ -97,8 +95,8 @@ TEST(routing, max_interval) {
           .min_connection_count_ = 3U,
           .extend_interval_later_ = true,
           .max_interval_ = interval{
-              .from_ = unixtime_t{date::sys_days{2019_y / May / 1} + 10_hours},
-              .to_ = unixtime_t{date::sys_days{2019_y / May / 1} + 12_hours}}});
+              unixtime_t{date::sys_days{2019_y / May / 1} + 10_hours},
+              unixtime_t{date::sys_days{2019_y / May / 1} + 12_hours}}});
 
   EXPECT_EQ(expected_journeys, to_string(tt, nullptr, results));
 }
