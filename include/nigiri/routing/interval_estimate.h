@@ -127,6 +127,10 @@ private:
     itv.to_ = tt_.external_interval().clamp(itv.to_);
     itv.from_ = data_type_max_interval_.clamp(itv.from_);
     itv.to_ = data_type_max_interval_.clamp(itv.to_);
+    if (q_.max_interval_) {
+      itv.from_ = q_.max_interval_->clamp(itv.from_);
+      itv.to_ = q_.max_interval_->clamp(itv.to_);
+    }
   }
 
   timetable const& tt_;
