@@ -246,8 +246,8 @@ std::string trip::display_name(timetable const& tt) const {
                                std::string_view{route_->long_name_},
                                std::string_view{short_name_}};
 
-  // prefer route short name over route long name
-  // prefer route long name over trip short name,
+  // prefer route short name over route long name,
+  // prefer route long name over trip short name
   for (auto const candidate : precedence) {
     if (!candidate.empty()) {
       return std::string(candidate);
