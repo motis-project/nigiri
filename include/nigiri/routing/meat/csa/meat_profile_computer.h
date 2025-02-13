@@ -102,15 +102,14 @@ struct meat_profile_computer {
             (c.dep_time_.days() + n_th_search_day) %
             tt_.travel_duration_days_[c.transport_idx_]);
 
-        meat_t meat = trip[c.transport_idx_][trip_day_idx].meat_;
+        auto meat = meat_t{};
 
         if (stop{c.arr_stop_}.out_allowed()) {
           auto c_arr_stop_idx = stop{c.arr_stop_}.location_idx();
 
-          meat = std::min(
-              meat, profile_set_.fp_dis_to_target_[c_arr_stop_idx] +
-                        static_cast<meat_t>(
-                            c_arr_time) /*TODO add expected value to it?*/);
+          meat = profile_set_.fp_dis_to_target_[c_arr_stop_idx] +
+                 static_cast<meat_t>(
+                     c_arr_time) /*TODO add expected value to it?*/;
           // TODO add expected value to it? add final footpath in
           // graph_extractor would have to be changed
 
@@ -124,6 +123,8 @@ struct meat_profile_computer {
             trip[c.transport_idx_][trip_day_idx].exit_conn_ = con_idx;
           }
         }
+
+        meat = trip[c.transport_idx_][trip_day_idx].meat_;
 
         auto const c_dep_stop_idx = stop{c.dep_stop_}.location_idx();
         auto const faster_than_walk =

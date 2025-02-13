@@ -381,17 +381,17 @@ private:
       }
 
       //// TODO remove debug
-      //if (l_idx_v == 400791) {
-      //  std::cout << l_idx_v << std::endl;
-      //}
-      //if (r.v_ == 128397 && stop_idx == 37) {
-      //  std::cout << l_idx_v << std::endl;
-      //}
+      // if (l_idx_v == 400791) {
+      //   std::cout << l_idx_v << std::endl;
+      // }
+      // if (r.v_ == 128397 && stop_idx == 37) {
+      //   std::cout << l_idx_v << std::endl;
+      // }
       //// end debug
       //// TODO remove debug
-      //if (l_idx_v == 391917) {
-      //  std::cout << l_idx_v << std::endl;
-      //}
+      // if (l_idx_v == 391917) {
+      //   std::cout << l_idx_v << std::endl;
+      // }
       //// end debug
 
       // TODO remove all transports if dep_time < ea[l_idx_v], or use remove_if
@@ -475,12 +475,10 @@ private:
           //}
           continue;
         }
-        auto meat = td.meat_;
 
-        meat = std::min(meat,
-                        fp_dis_to_target +
-                            static_cast<meat_t>(
-                                arr_time) /*TODO add expected value to it?*/);
+        auto meat =
+            fp_dis_to_target +
+            static_cast<meat_t>(arr_time) /*TODO add expected value to it?*/;
         // TODO add expected value to it? add final footpath in
         // graph_extractor would have to be changed
 
