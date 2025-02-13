@@ -296,9 +296,11 @@ private:
     auto const ea = first_dim_accessor{state_.r_state_.get_best<vias>(), vias};
     state_.prev_station_mark_.for_each_set_bit([&](auto const i) {
       auto const l_idx = location_idx_t{i};
-      if (l_idx == start_location) {
-        return;
-      }
+      // TODO remove ?
+      (void)start_location;
+      // if (l_idx == start_location) {
+      //   return;
+      // }
       state_.station_mark_.set(i, true);
       auto const& fps = tt_.locations_.footpaths_in_[fp_prf_idx_][l_idx];
 
@@ -356,6 +358,8 @@ private:
                     location_idx_t target_location) {
     // TODO remove
     (void)target_location;
+    // TODO remove
+    (void)start_location;
     auto constexpr vias = 0U;
     auto const ea = first_dim_accessor{state_.r_state_.get_best<vias>(), vias};
     auto const stop_seq = tt_.route_location_seq_[r];
@@ -376,6 +380,20 @@ private:
         continue;
       }
 
+      //// TODO remove debug
+      //if (l_idx_v == 400791) {
+      //  std::cout << l_idx_v << std::endl;
+      //}
+      //if (r.v_ == 128397 && stop_idx == 37) {
+      //  std::cout << l_idx_v << std::endl;
+      //}
+      //// end debug
+      //// TODO remove debug
+      //if (l_idx_v == 391917) {
+      //  std::cout << l_idx_v << std::endl;
+      //}
+      //// end debug
+
       // TODO remove all transports if dep_time < ea[l_idx_v], or use remove_if
       // in get_transports_with_arr_in_range, for all transports that are not in
       // the range
@@ -389,7 +407,7 @@ private:
           auto const faster_than_walk =
               td.meat_ <
               state_.fp_dis_to_target_[l_idx] + static_cast<meat_t>(dep_time);
-          if (dep_time < ea[l_idx_v] || !std::isfinite(td.meat_) ||
+          if (!std::isfinite(td.meat_) || dep_time < ea[l_idx_v] ||
               !faster_than_walk) {
             // TODO remove dep_time < ea[l_idx_v], if those cases are removed
             // earlier
@@ -416,10 +434,6 @@ private:
         }
       }
 
-      if (l_idx == start_location) {
-        break;
-      }
-
       auto const update_transports =
           !is_last && stp.out_allowed() && state_.prev_station_mark_[l_idx_v];
       if (!update_transports) {
@@ -432,21 +446,33 @@ private:
       auto const range_begin = ea[l_idx_v];
       auto const range_end =
           std::isfinite(fp_dis_to_target)
-              ? static_cast<delta_t>(last_arr_ - fp_dis_to_target)
+              ? (state_.profile_set_.is_stop_empty(l_idx)
+                     ? static_cast<delta_t>(last_arr_ - fp_dis_to_target)
+                     : std::max(
+                           static_cast<delta_t>(last_arr_ - fp_dis_to_target),
+                           state_.profile_set_.last_dep(l_idx).dep_time_))
               : state_.profile_set_.last_dep(l_idx).dep_time_;
       get_transports_with_arr_in_range(r, stop_idx, range_begin, range_end,
                                        active_transports, outside_bounds);
+
+      if (active_transports.empty()) {
+        continue;
+      }
 
       // if state_.prev_station_mark_[l_idx_v] && out_allowed(): check all t
       // in active_transports if the meat value can be improved
       stats_.meat_n_active_transports_iterated_ += active_transports.size();
       auto const stop_not_empty = !state_.profile_set_.is_stop_empty(l_idx);
+      auto usable_trip_in_vec = false;
       for (auto& td : active_transports) {
         auto const arr_time =
             time_at_stop(r, td.trip_, stop_idx, event_type::kArr);
         if (arr_time < ea[l_idx_v]) {
           // TODO remove, if those cases are removed earlier
           // std::cout << "arr_time of transport < ea[l_idx_v]" << std::endl;
+          // if (std::isfinite(td.meat_)){
+          //  finite_meat_in_vec = true;
+          //}
           continue;
         }
         auto meat = td.meat_;
@@ -467,35 +493,15 @@ private:
           td.meat_ = meat;
           td.exit_stop_ = stop_idx;
         }
+        if (std::isfinite(td.meat_)) {
+          usable_trip_in_vec = true;
+        }
       }
 
-      // if (lb_[l_idx_v] == kUnreachable) {
-      //   break;
-      // }
-      //
-      // auto const et_time_at_stop =
-      //    et.is_valid()
-      //        ? time_at_stop(r, et, stop_idx,
-      //                       kFwd ? event_type::kDep : event_type::kArr)
-      //        : kInvalid;
-      // auto const prev_round_time = state_.round_times_[k - 1][l_idx_v];
-      // assert(prev_round_time != kInvalid);
-      // if (is_better_or_eq(prev_round_time, et_time_at_stop)) {
-      //  auto const [day, mam] = split(prev_round_time);
-      //  auto const new_et = get_earliest_transport(k, r, stop_idx, day, mam,
-      //                                             l_idx);
-      //  current_best =
-      //      get_best(current_best, state_.best_[l_idx_v],
-      //      state_.tmp_[l_idx_v]);
-      //  if (new_et.is_valid() &&
-      //      (current_best == kInvalid ||
-      //       is_better_or_eq(
-      //           time_at_stop(r, new_et, stop_idx,
-      //                        kFwd ? event_type::kDep : event_type::kArr),
-      //           et_time_at_stop))) {
-      //    et = new_et;
-      //  }
-      //}
+      if (!usable_trip_in_vec) {
+        active_transports.clear();
+        outside_bounds = std::pair<transport, transport>{};
+      }
     }
     return any_marked;
   }
@@ -563,7 +569,8 @@ private:
     auto ub_mam = start_mam;
     auto lb_day = end_day;
     auto lb_mam = end_mam;
-    if (!transports.empty()) {
+    auto const bounds_exist = !transports.empty();
+    if (bounds_exist) {
       auto const [lb, ub] = outside_old_bounds;
       if (lb.is_valid()) {
         auto const arr_lb = time_at_stop(r, lb, stop_idx, event_type::kArr);
@@ -598,14 +605,11 @@ private:
       return;
     }
 
-    // assumes that is_transport_active will be true, most of the times
-    // TODO passt dass mit der aktuellen version:
-    // eher nicht, geht davon aus, dass komplettes interval noch mal hinzugefügt
-    // wird, was sicher nicht der fall sein wird.
-    transports.reserve(transports.size() +
-                       (static_cast<size_t>(end_day.v_) -
-                        static_cast<size_t>(start_day.v_) + 1) *
-                           event_times.size());
+    if (!bounds_exist) {
+      transports.reserve((static_cast<size_t>(end_day.v_) -
+                          static_cast<size_t>(start_day.v_) + 1) *
+                         event_times.size());
+    }
 
     // auto const seek_first_day = [&]() {
     //   return linear_lb(event_times.begin(), event_times.end(), start_mam,
@@ -679,10 +683,10 @@ private:
 
         if ((day == end_day && ev.mam() > end_mam.count()) ||
             (day == start_day && ev.mam() < start_mam.count()) ||
-            (interval_extends_start && day == lb_day &&
-             ev.mam() > lb_mam.count()) ||
-            (interval_extends_end && day == ub_day &&
-             ev.mam() < ub_mam.count()) ||
+            (interval_extends_start && interval_extends_end &&
+             tt_to_delta(lb_day, lb_mam.count()) < tt_to_delta(day, ev.mam()) &&
+             tt_to_delta(day, ev.mam()) <
+                 tt_to_delta(ub_day, ub_mam.count())) ||
             !is_transport_active(t, t_start_day)) {
           continue;
         }
@@ -693,24 +697,30 @@ private:
       }
     }
 
-    if (low_outside_bound.t_idx_ == transport_idx_t::invalid()) {
-      if (start_day > 0) {
-        outside_old_bounds.first = transport{highest_mam.t_idx_, start_day - 1};
+    if (interval_extends_start || !bounds_exist) {
+      if (low_outside_bound.t_idx_ == transport_idx_t::invalid()) {
+        if (start_day > 0) {
+          outside_old_bounds.first =
+              transport{highest_mam.t_idx_, start_day - 1};
+        } else {
+          outside_old_bounds.first = transport::invalid();
+        }
       } else {
-        outside_old_bounds.first = transport::invalid();
+        outside_old_bounds.first =
+            transport{low_outside_bound.t_idx_, start_day};
       }
-    } else {
-      outside_old_bounds.first = transport{low_outside_bound.t_idx_, start_day};
     }
 
-    if (up_outside_bound.t_idx_ == transport_idx_t::invalid()) {
-      if (end_day < day_idx_t{n_days_ - 1}) {
-        outside_old_bounds.second = transport{lowest_mam.t_idx_, end_day + 1};
+    if (interval_extends_end || !bounds_exist) {
+      if (up_outside_bound.t_idx_ == transport_idx_t::invalid()) {
+        if (end_day < day_idx_t{n_days_ - 1}) {
+          outside_old_bounds.second = transport{lowest_mam.t_idx_, end_day + 1};
+        } else {
+          outside_old_bounds.second = transport::invalid();
+        }
       } else {
-        outside_old_bounds.second = transport::invalid();
+        outside_old_bounds.second = transport{up_outside_bound.t_idx_, end_day};
       }
-    } else {
-      outside_old_bounds.second = transport{up_outside_bound.t_idx_, end_day};
     }
   }
 
