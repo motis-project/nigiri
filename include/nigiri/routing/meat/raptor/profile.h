@@ -95,6 +95,7 @@ struct profile_set {
   }
 
   profile_entry const& last_dep(location_idx_t stop_id) {
+    assert(!is_stop_empty(stop_id));
     auto& ps = entry_[to_idx(stop_id)];
     if (!ps.is_sorted()) {
       ps.sort();
@@ -109,7 +110,9 @@ struct profile_set {
     }
     auto const [added, it1, it2] =
         entry_[to_idx(stop_id)].unsorted_add(std::move(e));
-    recompute_entry_amount_ = added;
+    if (added){
+      recompute_entry_amount_ = true;
+    }
     return added;
   }
 
