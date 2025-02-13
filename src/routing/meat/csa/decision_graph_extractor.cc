@@ -28,15 +28,15 @@ void forall_optimal_outgoing_connections(profile const& p,
   auto i = binary_find_first_true(
       std::begin(p), std::end(p),
       [&](profile_entry const& e) { return when <= e.dep_time_; });
+  if (i == (std::end(p) - 1)) {
+    // => "optimal outgoing connection" is a "final footpath"
+    return;
+  }
 
   while (i->dep_time_ <= when + dur) {
     f(i);
     ++i;
   }
-  // TODO remove
-  //if (i == (std::end(p) - 1)) {
-  //  return;
-  //}
   f(i);
 }
 }  // namespace
