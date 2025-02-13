@@ -93,6 +93,7 @@ struct raptor {
         td_dist_to_end_{td_dist_to_dest},
         lb_{lb},
         via_stops_{via_stops},
+        time_at_dest_(kMaxTransfers + 1),
         base_{base},
         allowed_claszes_{allowed_claszes},
         require_bike_transport_{require_bike_transport},
@@ -142,7 +143,9 @@ struct raptor {
                unixtime_t const worst_time_at_dest,
                profile_idx_t const prf_idx,
                pareto_set<journey>& results) {
-    auto const end_k = std::min(max_transfers, kMaxTransfers) + 1U;
+    auto const end_k = SearchType == search_type::kNormal
+                           ? (std::min(max_transfers, kMaxTransfers) + 1U)
+                           : std::numeric_limits<std::uint8_t>::max();
 
     auto const d_worst_at_dest = unix_to_delta(base(), worst_time_at_dest);
     for (auto& time_at_dest : time_at_dest_) {
@@ -152,6 +155,25 @@ struct raptor {
     trace_print_init_state();
 
     for (auto k = 1U; k != end_k; ++k) {
+      if constexpr (SearchType == search_type::kEA ||
+                    SearchType == search_type::kESA) {
+        if (round_times_.n_rows_ <= k) {
+          round_times_ = state_.increased_round_times<Vias>(
+              static_cast<std::uint8_t>(
+                  std::clamp(2 * k, 0U,
+                             static_cast<unsigned int>(
+                                 std::numeric_limits<std::uint8_t>::max()))),
+              n_locations_, kInvalid);
+        }
+        if (time_at_dest_.size() <= k) {
+          auto const l_el = time_at_dest_.back();
+          time_at_dest_.resize(
+              std::clamp(2 * k, 0U,
+                         static_cast<unsigned int>(
+                             std::numeric_limits<std::uint8_t>::max())),
+              l_el);
+        }
+      }
       for (auto i = 0U; i != n_locations_; ++i) {
         for (auto v = 0U; v != Vias + 1; ++v) {
           best_[i][v] = get_best(round_times_[k][i][v], best_[i][v]);
@@ -1109,7 +1131,7 @@ private:
   hash_map<location_idx_t, std::vector<td_offset>> const& td_dist_to_end_;
   std::vector<std::uint16_t> const& lb_;
   std::vector<via_stop> const& via_stops_;
-  std::array<delta_t, kMaxTransfers + 1> time_at_dest_;
+  std::vector<delta_t> time_at_dest_;
   day_idx_t base_;
   raptor_stats stats_;
   clasz_mask_t allowed_claszes_;

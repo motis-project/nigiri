@@ -59,8 +59,8 @@ struct raptor_state {
   flat_matrix_view<std::array<delta_t, Vias + 1>> get_round_times() {
     return {{reinterpret_cast<std::array<delta_t, Vias + 1>*>(
                  round_times_storage_.data()),
-             n_locations_ * (kMaxTransfers + 1)},
-            kMaxTransfers + 1U,
+             n_locations_ * (n_transfers_ + 1)},
+            n_transfers_ + 1U,
             n_locations_};
   }
 
@@ -69,8 +69,32 @@ struct raptor_state {
       const {
     return {{reinterpret_cast<std::array<delta_t, Vias + 1> const*>(
                  round_times_storage_.data()),
-             n_locations_ * (kMaxTransfers + 1)},
-            kMaxTransfers + 1U,
+             n_locations_ * (n_transfers_ + 1)},
+            n_transfers_ + 1U,
+            n_locations_};
+  }
+
+  template <via_offset_t Vias>
+  flat_matrix_view<std::array<delta_t, Vias + 1>> increased_round_times(
+      std::uint8_t const increase_to_n_transfers,
+      unsigned const n_locations,
+      delta_t const invalid) {
+    assert(increase_to_n_transfers > n_transfers_);
+    if constexpr (Vias < kMaxVias) {
+      auto is_first_increase = n_transfers_ == kMaxTransfers;
+      if (is_first_increase) {
+        std::fill(round_times_storage_.begin() +
+                      ((n_transfers_ + 1) * n_locations_ * (Vias + 1)),
+                  round_times_storage_.end(), invalid);
+      }
+    }
+    n_transfers_ = increase_to_n_transfers;
+    round_times_storage_.resize(n_locations * (Vias + 1) * (n_transfers_ + 1),
+                                invalid);
+    return {{reinterpret_cast<std::array<delta_t, Vias + 1>*>(
+                 round_times_storage_.data()),
+             n_locations_ * (n_transfers_ + 1)},
+            n_transfers_ + 1U,
             n_locations_};
   }
 
@@ -78,6 +102,7 @@ struct raptor_state {
   std::vector<delta_t> tmp_storage_;
   std::vector<delta_t> best_storage_;
   std::vector<delta_t> round_times_storage_;
+  std::uint8_t n_transfers_;
   bitvec station_mark_;
   bitvec prev_station_mark_;
   bitvec route_mark_;
