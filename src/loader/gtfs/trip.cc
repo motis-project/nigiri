@@ -242,28 +242,12 @@ std::string trip::display_name(timetable const& tt) const {
                        utl::parse<int>(short_name_));
   }
 
-  // take the first thing that starts with a letter and ends with a number
-  auto const starts_with_letter_and_ends_with_number =
-      [=](std::string_view line_id) {
-        return !is_digit(line_id.front()) && is_digit(line_id.back());
-      };
+  auto precedence = std::array{std::string_view{route_->short_name_},
+                               std::string_view{route_->long_name_},
+                               std::string_view{short_name_}};
 
-  auto precedence = std::array{std::string_view{short_name_},
-                               std::string_view{route_->short_name_},
-                               std::string_view{route_->long_name_}};
-
-  for (auto const candidate : precedence) {
-    if (candidate.empty()) {
-      continue;
-    }
-
-    if (starts_with_letter_and_ends_with_number(candidate)) {
-      return std::string(candidate);
-    }
-  }
-
-  // prefer trip name over route short name,
   // prefer route short name over route long name
+  // prefer route long name over trip short name,
   for (auto const candidate : precedence) {
     if (!candidate.empty()) {
       return std::string(candidate);
