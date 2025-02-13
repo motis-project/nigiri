@@ -31,6 +31,7 @@ struct run {
   bool valid() const noexcept {
     return t_.is_valid() || rt_ != rt_transport_idx_t::invalid();
   }
+  friend bool operator==(run const&, run const&) = default;
 
   // from static timetable, not set for additional services
   transport t_{transport::invalid()};

@@ -24,6 +24,9 @@ struct journey {
         : r_{std::move(r)},
           stop_range_{std::min(a, b),
                       static_cast<stop_idx_t>(std::max(a, b) + 1U)} {}
+    friend bool operator==(run_enter_exit const&,
+                           run_enter_exit const&) = default;
+
     rt::run r_;
     interval<stop_idx_t> stop_range_;
   };
