@@ -7,6 +7,7 @@
 
 #include "utl/enumerate.h"
 #include "utl/helpers/algorithm.h"
+#include "utl/logging.h"
 #include "utl/pipes.h"
 #include "utl/progress_tracker.h"
 
@@ -25,10 +26,10 @@ bool applicable(config const& c, dir const& d) {
                      (c.prefix(d) / c.core_data_ / file).lexically_normal();
                  auto const exists = d.exists(path);
                  if (!exists) {
-                   log(log_lvl::info, "loader.hrd",
-                       "input={}, missing file for config {}: {}",
-                       d.path().generic_string(), c.version_.view(),
-                       path.generic_string());
+                   utl::log_info("loader.hrd",
+                                 "input={}, missing file for config {}: {}",
+                                 d.path().generic_string(), c.version_.view(),
+                                 path.generic_string());
                  }
                  return exists;
                });
@@ -92,8 +93,7 @@ void load_timetable(source_idx_t const src,
       continue;
     }
 
-    log(log_lvl::info, "loader.hrd.services", "loading {}",
-        path.generic_string());
+    utl::log_info("loader.hrd.services", "loading {}", path.generic_string());
     auto const file = d.get_file(path);
     sb.add_services(
         c, relative(path, c.fplan_).string().c_str(), file.data(),

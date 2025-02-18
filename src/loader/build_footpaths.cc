@@ -8,6 +8,7 @@
 #include "utl/equal_ranges_linear.h"
 #include "utl/erase_duplicates.h"
 #include "utl/erase_if.h"
+#include "utl/logging.h"
 #include "utl/pairwise.h"
 #include "utl/parallel_for.h"
 #include "utl/progress_tracker.h"
@@ -17,9 +18,9 @@
 #include "nigiri/loader/merge_duplicates.h"
 #include "nigiri/common/day_list.h"
 #include "nigiri/constants.h"
-#include "nigiri/logging.h"
 #include "nigiri/routing/dijkstra.h"
 #include "nigiri/rt/frun.h"
+#include "nigiri/scoped_timer.h"
 #include "nigiri/types.h"
 
 namespace nigiri::loader {
@@ -301,8 +302,8 @@ void connect_components(timetable& tt,
             std::max(static_cast<duration_t::rep>(duration.count()),
                      static_cast<duration_t::rep>(distance / kWalkSpeed / 60));
         if (adjusted_int > std::numeric_limits<u8_minutes::rep>::max()) {
-          log(log_lvl::error, "loader.footpath.adjust",
-              "too long after adjust: {}>256", adjusted_int);
+          utl::log_error("loader.footpath.adjust",
+                         "too long after adjust: {}>256", adjusted_int);
         }
         adjusted = u8_minutes{adjusted_int};
       }

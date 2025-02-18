@@ -10,11 +10,11 @@
 
 #include "cista/mmap.h"
 
+#include "utl/logging.h"
 #include "utl/parser/cstr.h"
 #include "utl/to_vec.h"
 #include "utl/verify.h"
 
-#include "nigiri/logging.h"
 #include "wyhash.h"
 
 template <>
@@ -73,8 +73,8 @@ file fs_dir::get_file(std::filesystem::path const& p) const {
     mmap_content& operator=(mmap_content const&) = delete;
     explicit mmap_content(std::filesystem::path const& p)
         : mmap_{p.string().c_str(), cista::mmap::protection::READ} {
-      log(log_lvl::info, "loader.fs_dir", "loaded {}: {} bytes",
-          p.generic_string(), mmap_.size());
+      utl::log_info("loader.fs_dir", "loaded {}: {} bytes", p.generic_string(),
+                    mmap_.size());
     }
     ~mmap_content() final = default;
     std::string_view get() const final { return mmap_.view(); }

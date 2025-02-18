@@ -31,7 +31,7 @@
 #include "nigiri/loader/gtfs/trip.h"
 #include "nigiri/loader/loader_interface.h"
 #include "nigiri/common/sort_by.h"
-#include "nigiri/logging.h"
+#include "nigiri/scoped_timer.h"
 #include "nigiri/timetable.h"
 
 namespace fs = std::filesystem;

@@ -1,10 +1,8 @@
-#include "nigiri/loader/hrd/stamm/track.h"
-
 #include "utl/get_or_create.h"
 
 #include "nigiri/loader/hrd/stamm/stamm.h"
+#include "nigiri/loader/hrd/stamm/track.h"
 #include "nigiri/loader/hrd/util.h"
-#include "nigiri/logging.h"
 #include "nigiri/types.h"
 
 namespace nigiri::loader::hrd {

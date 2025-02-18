@@ -1,9 +1,8 @@
-#include "nigiri/loader/gtfs/services.h"
-
 #include "utl/get_or_create.h"
 #include "utl/progress_tracker.h"
 
-#include "nigiri/logging.h"
+#include "nigiri/loader/gtfs/services.h"
+#include "nigiri/scoped_timer.h"
 
 namespace nigiri::loader::gtfs {
 

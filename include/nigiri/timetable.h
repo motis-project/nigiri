@@ -8,6 +8,7 @@
 #include "cista/memory_holder.h"
 #include "cista/reflection/printable.h"
 
+#include "utl/logging.h"
 #include "utl/verify.h"
 #include "utl/zip.h"
 
@@ -16,7 +17,7 @@
 #include "nigiri/common/interval.h"
 #include "nigiri/footpath.h"
 #include "nigiri/location.h"
-#include "nigiri/logging.h"
+#include "nigiri/scoped_timer.h"
 #include "nigiri/stop.h"
 #include "nigiri/td_footpath.h"
 #include "nigiri/types.h"
@@ -52,8 +53,8 @@ struct timetable {
         transfer_time_.emplace_back(l.transfer_time_);
         parents_.emplace_back(l.parent_);
       } else {
-        log(log_lvl::error, "timetable.register_location",
-            "duplicate station {}", l.id_);
+        utl::log_error("timetable.register_location", "duplicate station {}",
+                       l.id_);
       }
 
       assert(names_.size() == next_idx + 1);

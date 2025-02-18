@@ -5,12 +5,12 @@
 #include "utl/enumerate.h"
 #include "utl/equal_ranges_linear.h"
 #include "utl/erase_if.h"
+#include "utl/logging.h"
 #include "utl/timing.h"
 #include "utl/to_vec.h"
 
 #include "nigiri/for_each_meta.h"
 #include "nigiri/get_otel_tracer.h"
-#include "nigiri/logging.h"
 #include "nigiri/routing/dijkstra.h"
 #include "nigiri/routing/get_fastest_direct.h"
 #include "nigiri/routing/interval_estimate.h"
@@ -420,8 +420,7 @@ private:
                 algo_.reconstruct(q_, j);
               } catch (std::exception const& e) {
                 j.error_ = true;
-                log(log_lvl::error, "search", "reconstruct failed: {}",
-                    e.what());
+                utl::log_error("search", "reconstruct failed: {}", e.what());
                 span->SetStatus(opentelemetry::trace::StatusCode::kError,
                                 "exception");
                 span->AddEvent(

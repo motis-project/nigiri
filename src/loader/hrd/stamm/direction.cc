@@ -1,10 +1,8 @@
-#include "nigiri/loader/hrd/stamm/direction.h"
-
 #include "utl/parser/cstr.h"
 #include "utl/verify.h"
 
+#include "nigiri/loader/hrd/stamm/direction.h"
 #include "nigiri/loader/hrd/util.h"
-#include "nigiri/logging.h"
 
 namespace nigiri::loader::hrd {
 

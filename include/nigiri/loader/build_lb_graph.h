@@ -2,7 +2,6 @@
 
 #include "utl/pairwise.h"
 
-#include "nigiri/logging.h"
 #include "nigiri/timetable.h"
 #include "nigiri/types.h"
 
