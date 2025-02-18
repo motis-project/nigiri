@@ -95,7 +95,8 @@ struct meat_profile_computer {
                      allowed_claszes_,
                      tt_.route_clasz_[tt_.transport_route_[c.transport_idx_]])
                : true) &&
-          ea[stop{c.dep_stop_}.location_idx()] <= c_dep_time &&
+          (ea[stop{c.dep_stop_}.location_idx()] <= c_dep_time ||
+           !stop{c.dep_stop_}.out_allowed()) &&
           c_arr_time <= last_arr && tt_.is_connection_active(c, day)) {
         auto const n_th_search_day = to_idx(conn_end.first - day);
         auto const trip_day_idx = static_cast<day_idx_t::value_t>(
@@ -131,7 +132,9 @@ struct meat_profile_computer {
             meat < profile_set_.fp_dis_to_target_[c_dep_stop_idx] +
                        static_cast<meat_t>(c_dep_time);
         auto const& early_entry = profile_set_.early_stop_entry(c_dep_stop_idx);
-        if (stop{c.dep_stop_}.in_allowed() && faster_than_walk &&
+        if (stop{c.dep_stop_}.in_allowed() &&
+            ea[stop{c.dep_stop_}.location_idx()] <= c_dep_time &&
+            faster_than_walk &&
             meat < early_entry.meat_ - fuzzy_dominance_offset) {
           auto const new_entry = profile_entry{
               c_dep_time, meat,
