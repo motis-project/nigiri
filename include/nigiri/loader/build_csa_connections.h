@@ -1,5 +1,7 @@
 #pragma once
 
+#include <tuple>
+
 #include "nigiri/timetable.h"
 #include "nigiri/types.h"
 
@@ -56,7 +58,8 @@ void build_csa_connections(timetable& tt) {
   assert(num_con == tt.fwd_connections_.size());
 
   utl::sort(tt.fwd_connections_, [](auto const& a, auto const& b) {
-    return a.dep_time_.mam() < b.dep_time_.mam();
+    return std::make_tuple(a.dep_time_.mam(), a.trip_con_idx_) <
+           std::make_tuple(b.dep_time_.mam(), b.trip_con_idx_);
   });
 
   tt.travel_duration_days_.reserve(tt.n_transports());
