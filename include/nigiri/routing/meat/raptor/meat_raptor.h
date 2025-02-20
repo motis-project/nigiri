@@ -17,15 +17,6 @@
 
 namespace nigiri::routing::meat::raptor {
 
-template <typename T, typename V>
-struct first_dim_accessor {
-  auto const& operator[](/*std::uint32_t*/ auto const index) const noexcept {
-    return array_[index][vias_];
-  }
-  T const& array_;
-  V const vias_;
-};
-
 struct transport_data {
   transport trip_;
   meat_t meat_;
@@ -33,8 +24,16 @@ struct transport_data {
 };
 
 struct meat_raptor {
+  static inline constexpr via_offset_t VIAS = 0;
   using algo_state_t = meat_raptor_state;
   using algo_stats_t = meat_raptor_stats;
+
+  struct vias_accessor {
+    auto const& operator[](auto const index) const noexcept {
+      return array_[index][VIAS];
+    }
+    std::span<std::array<delta_t, VIAS + 1>> array_;
+  };
 
   meat_raptor(timetable const& tt,
               meat_raptor_state& state,
@@ -85,7 +84,6 @@ struct meat_raptor {
 
     // - Run raptor that assumes all arrivals are max delayed (+transfer?) by
     // maxDc to determine esa(s,τ,t)
-    auto constexpr vias = 0;
     auto constexpr search_dir = direction::kForward;
     auto const q =
         query{.start_time_ = start_time,
@@ -107,9 +105,9 @@ struct meat_raptor {
               .transfer_time_settings_ = {},
               .via_stops_ = {}};
     using algo_esa_t =
-        nigiri::routing::raptor<search_dir, false, vias, search_type::kESA>;
+        nigiri::routing::raptor<search_dir, false, VIAS, search_type::kESA>;
     using algo_ea_t =
-        nigiri::routing::raptor<search_dir, false, vias, search_type::kEA>;
+        nigiri::routing::raptor<search_dir, false, VIAS, search_type::kEA>;
     // necessary, so that a connection exist where delay_prob() returns 1
     auto constexpr extra_delay = 1;
     auto const esa_static_arr_delay = clamp(max_delay_ + extra_delay);
@@ -124,7 +122,7 @@ struct meat_raptor {
     stats_.esa_duration_ = static_cast<std::uint64_t>(UTL_TIMING_MS(esa_time));
 
     auto const best_arr =
-        state_.r_state_.get_best<vias>()[to_idx(target_location)][vias];
+        state_.r_state_.get_best<VIAS>()[to_idx(target_location)][VIAS];
 
     static_assert(kInvalidDelta<search_dir> ==
                   std::numeric_limits<delta_t>::max());
@@ -241,8 +239,7 @@ private:
   template <bool WithClaszFilter>
   void compute_profile_set(location_idx_t start_location,
                            location_idx_t target_location) {
-    auto constexpr vias = 0U;
-    auto const ea = first_dim_accessor{state_.r_state_.get_best<vias>(), vias};
+    auto const ea = vias_accessor{state_.r_state_.get_best<VIAS>()};
     assert(ea[to_idx(target_location)] < std::numeric_limits<delta_t>::max());
 
     state_.station_mark_.set(to_idx(target_location), true);
@@ -292,8 +289,7 @@ private:
   }
 
   void update_footpaths(location_idx_t start_location) {
-    auto constexpr vias = 0U;
-    auto const ea = first_dim_accessor{state_.r_state_.get_best<vias>(), vias};
+    auto const ea = vias_accessor{state_.r_state_.get_best<VIAS>()};
     state_.prev_station_mark_.for_each_set_bit([&](auto const i) {
       auto const l_idx = location_idx_t{i};
       // TODO remove ?
@@ -360,8 +356,7 @@ private:
     (void)target_location;
     // TODO remove
     (void)start_location;
-    auto constexpr vias = 0U;
-    auto const ea = first_dim_accessor{state_.r_state_.get_best<vias>(), vias};
+    auto const ea = vias_accessor{state_.r_state_.get_best<VIAS>()};
     auto const stop_seq = tt_.route_location_seq_[r];
     bool any_marked = false;
 
