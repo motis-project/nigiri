@@ -2,6 +2,7 @@
 
 #include "geo/box.h"
 
+#include "nigiri/common/delta_t.h"
 #include "nigiri/query_generator/transport_mode.h"
 #include "nigiri/routing/clasz_mask.h"
 #include "nigiri/routing/limits.h"
@@ -45,7 +46,8 @@ struct generator_settings {
         << "\nmin_transfer_time: "
         << gs.transfer_time_settings_.min_transfer_time_
         << "\ntransfer_time_factor: " << gs.transfer_time_settings_.factor_
-        << "\nvias: " << gs.n_vias_;
+        << "\nvias: " << gs.n_vias_ << "\nmax_delay: " << gs.max_delay_
+        << "\nbound_parameter_: " << gs.bound_parameter_;
 
     auto const visit_loc = [](location_idx_t const loc_idx) {
       std::stringstream ss;
@@ -89,6 +91,8 @@ struct generator_settings {
   routing::clasz_mask_t allowed_claszes_{routing::all_clasz_allowed()};
   routing::transfer_time_settings transfer_time_settings_{};
   unsigned n_vias_{0U};
+  delta_t max_delay_{30};
+  double bound_parameter_{1.0};
 };
 
 }  // namespace nigiri::query_generation

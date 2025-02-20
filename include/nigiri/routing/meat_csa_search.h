@@ -31,12 +31,15 @@ mcsa_result meat_csa_search(timetable const& tt,
       q.start_time_);
 
   auto meat_csa = mcsa::meat_csa<ProfileSet>{
-      tt, m_state,
+      tt,
+      m_state,
       day_idx_t{std::chrono::duration_cast<date::days>(
                     std::chrono::round<std::chrono::days>(start_time) -
                     tt.internal_interval().from_)
                     .count()},
-      q.allowed_claszes_};
+      q.allowed_claszes_,
+      q.max_delay_,
+      q.bound_parameter_};
 
   auto add_ontrip = true;
   auto starts = std::vector<start>{};

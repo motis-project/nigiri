@@ -435,6 +435,8 @@ routing::query generator::make_query() const {
   q.prf_idx_ = s_.prf_idx_;
   q.allowed_claszes_ = s_.allowed_claszes_;
   q.transfer_time_settings_ = s_.transfer_time_settings_;
+  q.max_delay_ = s_.max_delay_;
+  q.bound_parameter_ = s_.bound_parameter_;
   return q;
 }
 

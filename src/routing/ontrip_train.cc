@@ -10,7 +10,7 @@ namespace nigiri::routing {
 constexpr auto const kTracing = true;
 
 template <typename... Args>
-void trace(fmt::format_string<Args...> fmt_str, Args... args) {
+void trace_ontrip(fmt::format_string<Args...> fmt_str, Args... args) {
   if constexpr (kTracing) {
     fmt::print(std::cout, fmt_str, std::forward<Args&&>(args)...);
   }
@@ -35,7 +35,7 @@ void generate_ontrip_train_query(timetable const& tt,
         tt.locations_.transfer_time_[l_idx];
     q.start_.emplace_back(l_idx, arrival_time_with_transfer - time_at_first,
                           static_cast<std::uint8_t>(i));
-    trace(
+    trace_ontrip(
         "first_arrival={}, stop={}, arrival={}, arrival_with_transfer={}, "
         "offset={}\n",
         time_at_first, location{tt, l_idx},

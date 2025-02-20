@@ -16,8 +16,8 @@ struct mraptor_result {
 };
 
 mraptor_result meat_raptor_search(timetable const& tt,
-                               mraptor::meat_raptor_state& m_state,
-                               query q) {
+                                  mraptor::meat_raptor_state& m_state,
+                                  query q) {
   auto g = m::decision_graph{};
 
   auto start_time = std::visit(
@@ -30,12 +30,15 @@ mraptor_result meat_raptor_search(timetable const& tt,
       q.start_time_);
 
   auto meat_raptor = mraptor::meat_raptor{
-      tt, m_state,
+      tt,
+      m_state,
       day_idx_t{std::chrono::duration_cast<date::days>(
                     std::chrono::round<std::chrono::days>(start_time) -
                     tt.internal_interval().from_)
                     .count()},
-      q.allowed_claszes_};
+      q.allowed_claszes_,
+      q.max_delay_,
+      q.bound_parameter_};
 
   auto add_ontrip = true;
   auto starts = std::vector<start>{};

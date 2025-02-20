@@ -5,6 +5,7 @@
 #include <variant>
 #include <vector>
 
+#include "nigiri/common/delta_t.h"
 #include "nigiri/common/interval.h"
 #include "nigiri/footpath.h"
 #include "nigiri/routing/clasz_mask.h"
@@ -79,6 +80,8 @@ struct query {
   bool require_bike_transport_{false};
   transfer_time_settings transfer_time_settings_{};
   std::vector<via_stop> via_stops_{};
+  delta_t max_delay_{30};
+  double bound_parameter_{1.0};
 };
 
 }  // namespace nigiri::routing
