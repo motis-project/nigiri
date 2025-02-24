@@ -532,7 +532,9 @@ private:
     while (assigned_prob < 1.0) {
       auto new_prob =
           delay_prob(clamp(i->dep_time_ - when), transfer_time, max_delay_);
-      meat += (new_prob - assigned_prob) * i->meat_;
+      // TODO remove
+      // meat += (new_prob - assigned_prob) * i->meat_;
+      meat += new_prob * i->meat_ - assigned_prob * i->meat_;
       assigned_prob = new_prob;
       ++i;
     }
