@@ -111,12 +111,11 @@ TEST(shape, single_trip_with_shape) {
   tt.date_range_ = {date::sys_days{2024_y / March / 1},
                     date::sys_days{2024_y / March / 2}};
   loader::register_special_stations(tt);
-  auto local_bitfield_indices = hash_map<bitfield, bitfield_idx_t>{};
   auto shapes_data = shapes_storage{"shape-route-trip-with-shape",
                                     cista::mmap::protection::WRITE};
   loader::gtfs::load_timetable({}, source_idx_t{1},
-                               loader::mem_dir::read(kWithShapes), tt,
-                               local_bitfield_indices, nullptr, &shapes_data);
+                               loader::mem_dir::read(kWithShapes), tt, nullptr,
+                               &shapes_data);
   loader::finalize(tt);
 
   // Testing shape 'Last', used by 'Trip 3' (index == 2)

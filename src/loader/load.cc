@@ -35,6 +35,10 @@ timetable load(std::vector<std::pair<std::string, loader_config>> const& paths,
   register_special_stations(tt);
 
   auto bitfields = hash_map<bitfield, bitfield_idx_t>{};
+  auto cache =
+      string_cache_t{std::size_t{0U}, string_idx_hash{tt.strings_.strings_},
+                     string_idx_equals{tt.strings_.strings_}};
+
   for (auto const [idx, in] : utl::enumerate(paths)) {
     auto const& [path, local_config] = in;
     auto const is_in_memory = path.starts_with("\n#");
@@ -50,7 +54,7 @@ timetable load(std::vector<std::pair<std::string, loader_config>> const& paths,
         log(log_lvl::info, "loader.load", "loading {}", path);
       }
       try {
-        (*it)->load(local_config, src, *dir, tt, bitfields, a, shapes);
+        (*it)->load(local_config, src, *dir, tt, bitfields, cache, a, shapes);
       } catch (std::exception const& e) {
         throw utl::fail("failed to load {}: {}", path, e.what());
       }

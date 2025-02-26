@@ -14,10 +14,12 @@
 #include "geo/latlng.h"
 
 #include "nigiri/common/interval.h"
+#include "nigiri/fares.h"
 #include "nigiri/footpath.h"
 #include "nigiri/location.h"
 #include "nigiri/logging.h"
 #include "nigiri/stop.h"
+#include "nigiri/string_store.h"
 #include "nigiri/td_footpath.h"
 #include "nigiri/types.h"
 
@@ -492,6 +494,12 @@ struct timetable {
 
   // profile name -> profile_idx_t
   hash_map<string, profile_idx_t> profiles_;
+
+  // Fares
+  vector_map<source_idx_t, fares> fares_;
+  vector_map<area_idx_t, area> areas_;
+  vecvec<location_idx_t, area_idx_t> location_areas_;
+  string_store strings_;
 };
 
 }  // namespace nigiri

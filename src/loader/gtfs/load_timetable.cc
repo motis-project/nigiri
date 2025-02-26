@@ -17,6 +17,7 @@
 #include "nigiri/loader/gtfs/agency.h"
 #include "nigiri/loader/gtfs/calendar.h"
 #include "nigiri/loader/gtfs/calendar_date.h"
+#include "nigiri/loader/gtfs/fares.h"
 #include "nigiri/loader/gtfs/files.h"
 #include "nigiri/loader/gtfs/local_to_utc.h"
 #include "nigiri/loader/gtfs/noon_offsets.h"
@@ -87,7 +88,10 @@ void load_timetable(loader_config const& config,
                     assistance_times* assistance,
                     shapes_storage* shapes_data) {
   auto local_bitfield_indices = hash_map<bitfield, bitfield_idx_t>{};
-  load_timetable(config, src, d, tt, local_bitfield_indices, assistance,
+  auto c =
+      string_cache_t{std::size_t{0U}, string_idx_hash{tt.strings_.strings_},
+                     string_idx_equals{tt.strings_.strings_}};
+  load_timetable(config, src, d, tt, local_bitfield_indices, c, assistance,
                  shapes_data);
 }
 
@@ -96,6 +100,7 @@ void load_timetable(loader_config const& config,
                     dir const& d,
                     timetable& tt,
                     hash_map<bitfield, bitfield_idx_t>& bitfield_indices,
+                    string_cache_t& c,
                     assistance_times* assistance,
                     shapes_storage* shapes_data) {
   nigiri::scoped_timer const global_timer{"gtfs parser"};
@@ -126,6 +131,7 @@ void load_timetable(loader_config const& config,
   read_frequencies(trip_data, load(kFrequenciesFile).data());
   read_stop_times(tt, trip_data, stops, load(kStopTimesFile).data(),
                   shapes_data != nullptr);
+  load_fares(tt, c, d, service, routes, stops);
 
   {
     auto const timer = scoped_timer{"loader.gtfs.trips.sort"};

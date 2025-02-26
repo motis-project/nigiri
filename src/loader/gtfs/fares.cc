@@ -1,5 +1,12 @@
 #include "nigiri/loader/gtfs/fares.h"
 
+#include "utl/parser/buf_reader.h"
+#include "utl/parser/csv_range.h"
+#include "utl/parser/line_range.h"
+#include "utl/pipes/for_each.h"
+#include "utl/pipes/transform.h"
+#include "utl/progress_tracker.h"
+
 #include "nigiri/loader/gtfs/parse_time.h"
 #include "nigiri/logging.h"
 #include "nigiri/timetable.h"
@@ -34,7 +41,8 @@ void for_each_row(std::string_view file_content, Fn&& fn) {
       | utl::for_each(std::forward<Fn>(fn));
 }
 
-media_map_t parse_media(std::string_view file_content,
+media_map_t parse_media(timetable& tt,
+                        std::string_view file_content,
                         string_cache_t& cache,
                         fares& f) {
   struct fare_media_record {
@@ -49,7 +57,7 @@ media_map_t parse_media(std::string_view file_content,
         m.emplace(r.fare_media_id_->view(), fare_media_idx_t{m.size()});
         f.fare_media_.push_back(
             {.name_ =
-                 f.strings_.register_string(cache, r.fare_media_name_->view()),
+                 tt.strings_.register_string(cache, r.fare_media_name_->view()),
              .type_ = static_cast<fares::fare_media::fare_media_type>(
                  *r.fare_media_type_)});
       });
@@ -57,6 +65,7 @@ media_map_t parse_media(std::string_view file_content,
 }
 
 hash_map<std::string, fare_product_idx_t> parse_products(
+    timetable& tt,
     std::string_view file_content,
     string_cache_t& cache,
     fares& f,
@@ -74,13 +83,13 @@ hash_map<std::string, fare_product_idx_t> parse_products(
       file_content, [&](fare_product_record const& r) {
         m.emplace(r.fare_product_id_->view(), fare_product_idx_t{m.size()});
         f.fare_products_.push_back(
-            {.name_ = f.strings_.register_string(cache,
-                                                 r.fare_product_name_->view()),
+            {.name_ = tt.strings_.register_string(cache,
+                                                  r.fare_product_name_->view()),
              .media_ = find(media, r.fare_media_id_->view())
                            .value_or(fare_media_idx_t::invalid()),
              .amount_ = static_cast<std::uint32_t>(*r.amount_ / 100U),
              .currency_code_ =
-                 f.strings_.register_string(cache, r.currency_->view())});
+                 tt.strings_.register_string(cache, r.currency_->view())});
       });
   return m;
 }
@@ -191,9 +200,9 @@ hash_map<std::string, timeframe_group_idx_t> parse_timeframes(
   return m;
 }
 
-hash_map<std::string, area_idx_t> parse_areas(std::string_view file_content,
-                                              string_cache_t& cache,
-                                              fares& f) {
+hash_map<std::string, area_idx_t> parse_areas(timetable& tt,
+                                              std::string_view file_content,
+                                              string_cache_t& cache) {
   struct area_record {
     utl::csv_col<utl::cstr, UTL_NAME("area_id")> area_id_;
     utl::csv_col<std::optional<utl::cstr>, UTL_NAME("area_name")> area_name_;
@@ -202,19 +211,22 @@ hash_map<std::string, area_idx_t> parse_areas(std::string_view file_content,
   auto m = hash_map<std::string, area_idx_t>{};
   for_each_row<area_record>(file_content, [&](area_record const& r) {
     m.emplace(r.area_id_->view(), area_idx_t{m.size()});
-    f.areas_.push_back(fares::area{
-        .name_ = r.area_name_
-                     ->and_then([&](utl::cstr const& x) {
-                       return std::optional{
-                           f.strings_.register_string(cache, x.view())};
-                     })
-                     .value_or(string_idx_t::invalid())});
+    tt.areas_.push_back(
+        area{.name_ = r.area_name_
+                          ->and_then([&](utl::cstr const& x) {
+                            return std::optional{
+                                tt.strings_.register_string(cache, x.view())};
+                          })
+                          .value_or(string_idx_t::invalid())});
   });
   return m;
 }
 
 hash_map<std::string, network_idx_t> parse_networks(
-    std::string_view file_content, string_cache_t& cache, fares& f) {
+    timetable& tt,
+    std::string_view file_content,
+    string_cache_t& cache,
+    fares& f) {
   struct network_record {
     utl::csv_col<utl::cstr, UTL_NAME("network_id")> network_id_;
     utl::csv_col<std::optional<utl::cstr>, UTL_NAME("network_name")>
@@ -228,7 +240,7 @@ hash_map<std::string, network_idx_t> parse_networks(
         .name_ = r.network_name_
                      ->and_then([&](utl::cstr const& x) {
                        return std::optional{
-                           f.strings_.register_string(cache, x.view())};
+                           tt.strings_.register_string(cache, x.view())};
                      })
                      .value_or(string_idx_t::invalid())});
   });
@@ -269,9 +281,8 @@ hash_map<std::string, route_idx_t> parse_route_networks(
 }
 
 hash_map<std::string, location_idx_t> parse_stop_areas(
-    timetable const& tt,
+    timetable& tt,
     std::string_view file_content,
-    fares& f,
     hash_map<std::string, area_idx_t> const& areas,
     locations_map const& stops) {
   struct stop_area_record {
@@ -279,7 +290,7 @@ hash_map<std::string, location_idx_t> parse_stop_areas(
     utl::csv_col<utl::cstr, UTL_NAME("stop_id")> stop_id_;
   };
 
-  f.location_areas_.resize(tt.n_locations());
+  tt.location_areas_.resize(tt.n_locations());
 
   auto m = hash_map<std::string, location_idx_t>{};
   for_each_row<stop_area_record>(file_content, [&](stop_area_record const& r) {
@@ -297,7 +308,7 @@ hash_map<std::string, location_idx_t> parse_stop_areas(
       return;
     }
 
-    f.location_areas_[*l_idx].push_back(*area_idx);
+    tt.location_areas_[*l_idx].push_back(*area_idx);
   });
   return m;
 }
@@ -408,23 +419,22 @@ void parse_fare_transfer_rules(
       });
 }
 
-void parse_fares(timetable const& tt,
-                 dir const& d,
-                 traffic_days_t const& services,
-                 route_map_t const& routes,
-                 locations_map const& stops) {
+void load_fares(timetable& tt,
+                string_cache_t& c,
+                dir const& d,
+                traffic_days_t const& services,
+                route_map_t const& routes,
+                locations_map const& stops) {
   auto const load = [&](std::string_view file_name) -> file {
     return d.exists(file_name) ? d.get_file(file_name) : file{};
   };
 
-  auto f = fares{};
-  auto c = string_cache_t{std::size_t{0U}, string_idx_hash{f.strings_.strings_},
-                          string_idx_equals{f.strings_.strings_}};
-  auto const media = parse_media(load(kFareMediaFile).data(), c, f);
+  auto& f = tt.fares_.emplace_back();
+  auto const media = parse_media(tt, load(kFareMediaFile).data(), c, f);
   auto const products =
-      parse_products(load(kFareProductsFile).data(), c, f, media);
-  auto const areas = parse_areas(load(kAreasFile).data(), c, f);
-  auto const networks = parse_networks(load(kNetworksFile).data(), c, f);
+      parse_products(tt, load(kFareProductsFile).data(), c, f, media);
+  auto const areas = parse_areas(tt, load(kAreasFile).data(), c);
+  auto const networks = parse_networks(tt, load(kNetworksFile).data(), c, f);
   auto const route_networks = parse_route_networks(
       load(kRouteNetworksFile).data(), f, routes, networks);
   auto const timeframes =
@@ -432,7 +442,7 @@ void parse_fares(timetable const& tt,
   auto const leg_groups = parse_leg_rules(
       load(kFareLegRulesFile).data(), f, networks, areas, timeframes, products);
   auto const stop_areas =
-      parse_stop_areas(tt, load(kStopAreasFile).data(), f, areas, stops);
+      parse_stop_areas(tt, load(kStopAreasFile).data(), areas, stops);
   parse_fare_leg_join_rules(load(kFareLegJoinRulesFile).data(), f, networks,
                             stops);
   parse_fare_transfer_rules(load(kFareTransferRulesFile).data(), f, products,
