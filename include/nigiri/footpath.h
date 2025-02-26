@@ -40,6 +40,12 @@ struct footpath {
     }
   }
 
+  static auto cmp_by_duration() {
+    return [](footpath const& a, footpath const& b) {
+      return a.duration() < b.duration();
+    };
+  }
+
   location_idx_t target() const { return location_idx_t{target_}; }
   duration_t duration() const { return duration_t{duration_}; }
 
