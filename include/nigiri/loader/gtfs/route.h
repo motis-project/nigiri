@@ -15,6 +15,7 @@ struct timetable;
 namespace nigiri::loader::gtfs {
 
 struct route {
+  route_id_idx_t route_id_idx_;
   provider_idx_t agency_;
   std::string id_;
   std::string short_name_;

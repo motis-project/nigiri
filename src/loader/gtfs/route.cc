@@ -191,6 +191,7 @@ route_map_t read_routes(timetable& tt,
            return std::pair{
                r.route_id_->to_str(),
                std::make_unique<route>(route{
+                   .route_id_idx_ = tt.next_route_id_idx_++,
                    .agency_ = agency,
                    .id_ = r.route_id_->to_str(),
                    .short_name_ = r.route_short_name_->to_str(),

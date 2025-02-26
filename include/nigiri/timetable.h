@@ -132,6 +132,7 @@ struct timetable {
 
   template <typename TripId>
   trip_idx_t register_trip_id(TripId const& trip_id_str,
+                              route_id_idx_t const route_id_idx,
                               source_idx_t const src,
                               std::string const& display_name,
                               trip_debug const dbg,
@@ -140,6 +141,7 @@ struct timetable {
     auto const trip_idx = trip_idx_t{trip_ids_.size()};
 
     auto const trip_id_idx = trip_id_idx_t{trip_id_strings_.size()};
+    trip_route_id_.emplace_back(route_id_idx);
     trip_id_strings_.emplace_back(trip_id_str);
     trip_id_src_.emplace_back(src);
 
@@ -382,6 +384,10 @@ struct timetable {
 
   // Trip train number, if available (otherwise 0)
   vector_map<trip_id_idx_t, std::uint32_t> trip_train_nr_;
+
+  // Trip -> route name
+  vector_map<trip_idx_t, route_id_idx_t> trip_route_id_;
+  route_id_idx_t next_route_id_idx_{0U};
 
   // Trip index -> all transports with a stop interval
   paged_vecvec<trip_idx_t, transport_range_t> trip_transport_ranges_;

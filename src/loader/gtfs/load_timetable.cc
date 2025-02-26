@@ -256,10 +256,10 @@ void load_timetable(loader_config const& config,
                         train_nr);
       }
       encode_seq_numbers(trp.seq_numbers_, stop_seq_numbers);
-      trp.trip_idx_ =
-          tt.register_trip_id(trp.id_, src, trp.display_name(tt),
-                              {source_file_idx, trp.from_line_, trp.to_line_},
-                              train_nr, stop_seq_numbers);
+      trp.trip_idx_ = tt.register_trip_id(
+          trp.id_, trp.route_->route_id_idx_, src, trp.display_name(tt),
+          {source_file_idx, trp.from_line_, trp.to_line_}, train_nr,
+          stop_seq_numbers);
     }
 
     auto const timer = scoped_timer{"loader.gtfs.routes.build"};
