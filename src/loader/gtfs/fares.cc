@@ -1,11 +1,11 @@
 #include "nigiri/loader/gtfs/fares.h"
 
+#include "utl/helpers/algorithm.h"
 #include "utl/parser/buf_reader.h"
 #include "utl/parser/csv_range.h"
 #include "utl/parser/line_range.h"
 #include "utl/pipes/for_each.h"
 #include "utl/pipes/transform.h"
-#include "utl/progress_tracker.h"
 
 #include "nigiri/loader/gtfs/parse_time.h"
 #include "nigiri/logging.h"
@@ -123,42 +123,43 @@ hash_map<std::string, leg_group_idx_t> parse_leg_rules(
         if (r.leg_group_id_->has_value()) {
           m.emplace((*r.leg_group_id_)->view(), leg_group_idx_t{m.size()});
         }
-        f.fare_leg_rules_.push_back(
-            {.leg_group_idx_ = r.leg_group_id_
-                                   ->and_then([&](utl::cstr const& x) {
-                                     return find(m, x.view());
-                                   })
-                                   .value_or(leg_group_idx_t::invalid()),
-             .network_id_ = r.network_id_
-                                ->and_then([&](utl::cstr const& x) {
-                                  return find(networks, x.view());
-                                })
-                                .value_or(network_idx_t::invalid()),
-             .from_area_id_ = r.from_area_id_
+        f.fare_leg_rules_.push_back({
+            .rule_priority_ = r.rule_priority_->value_or(0U),
+            .network_id_ = r.network_id_
+                               ->and_then([&](utl::cstr const& x) {
+                                 return find(networks, x.view());
+                               })
+                               .value_or(network_idx_t::invalid()),
+            .from_area_id_ = r.from_area_id_
+                                 ->and_then([&](utl::cstr const& x) {
+                                   return find(areas, x.view());
+                                 })
+                                 .value_or(area_idx_t::invalid()),
+            .to_area_id_ = r.to_area_id_
+                               ->and_then([&](utl::cstr const& x) {
+                                 return find(areas, x.view());
+                               })
+                               .value_or(area_idx_t::invalid()),
+            .from_timeframe_group_id_ =
+                r.from_timeframe_group_id_
+                    ->and_then([&](utl::cstr const& x) {
+                      return find(timeframes, x.view());
+                    })
+                    .value_or(timeframe_group_idx_t::invalid()),
+            .to_timeframe_group_id_ =
+                r.to_timeframe_group_id_
+                    ->and_then([&](utl::cstr const& x) {
+                      return find(timeframes, x.view());
+                    })
+                    .value_or(timeframe_group_idx_t::invalid()),
+            .fare_product_id_ =
+                find(products, r.fare_product_id_->view()).value(),
+            .leg_group_idx_ = r.leg_group_id_
                                   ->and_then([&](utl::cstr const& x) {
-                                    return find(areas, x.view());
+                                    return find(m, x.view());
                                   })
-                                  .value_or(area_idx_t::invalid()),
-             .to_area_id_ = r.to_area_id_
-                                ->and_then([&](utl::cstr const& x) {
-                                  return find(areas, x.view());
-                                })
-                                .value_or(area_idx_t::invalid()),
-             .from_timeframe_group_id_ =
-                 r.from_timeframe_group_id_
-                     ->and_then([&](utl::cstr const& x) {
-                       return find(timeframes, x.view());
-                     })
-                     .value_or(timeframe_group_idx_t::invalid()),
-             .to_timeframe_group_id_ =
-                 r.to_timeframe_group_id_
-                     ->and_then([&](utl::cstr const& x) {
-                       return find(timeframes, x.view());
-                     })
-                     .value_or(timeframe_group_idx_t::invalid()),
-             .fare_product_id_ =
-                 find(products, r.fare_product_id_->view()).value(),
-             .rule_priority_ = r.rule_priority_->value_or(0U)});
+                                  .value_or(leg_group_idx_t::invalid()),
+        });
       });
   return m;
 }
@@ -447,6 +448,12 @@ void load_fares(timetable& tt,
                             stops);
   parse_fare_transfer_rules(load(kFareTransferRulesFile).data(), f, products,
                             leg_groups);
+
+  utl::sort(f.fare_leg_rules_,
+            [](fares::fare_leg_rule const& a, fares::fare_leg_rule const& b) {
+              return a.rule_priority_ < b.rule_priority_;
+            });
+  utl::sort(f.fare_leg_join_rules_);
 }
 
 }  // namespace nigiri::loader::gtfs

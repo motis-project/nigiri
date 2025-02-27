@@ -1,5 +1,6 @@
 #pragma once
 
+#include "nigiri/routing/journey.h"
 #include "nigiri/string_store.h"
 #include "nigiri/types.h"
 
@@ -43,21 +44,44 @@ struct fares {
   };
 
   struct fare_leg_rule {
-    leg_group_idx_t leg_group_idx_;
+    auto match_members() const {
+      return std::tie(network_id_, from_area_id_, to_area_id_,
+                      from_timeframe_group_id_, to_timeframe_group_id_);
+    }
+
+    friend bool operator==(fare_leg_rule const& a, fare_leg_rule const& b) {
+      return a.match_members() == b.match_members();
+    }
+
+    bool fuzzy_matches(fare_leg_rule const& x) const {
+      return (network_id_ == network_idx_t ::invalid() ||
+              network_id_ == x.network_id_) &&
+             (from_area_id_ == area_idx_t::invalid() ||
+              from_area_id_ == x.from_area_id_) &&
+             (to_area_id_ == area_idx_t ::invalid() ||
+              to_area_id_ == x.to_area_id_) &&
+             (from_timeframe_group_id_ == timeframe_group_idx_t::invalid() ||
+              from_timeframe_group_id_ == x.from_timeframe_group_id_) &&
+             (to_timeframe_group_id_ == timeframe_group_idx_t::invalid() ||
+              to_timeframe_group_id_ == x.to_timeframe_group_id_);
+    }
+
+    unsigned rule_priority_{0U};
     network_idx_t network_id_;
     area_idx_t from_area_id_;
     area_idx_t to_area_id_;
     timeframe_group_idx_t from_timeframe_group_id_;
     timeframe_group_idx_t to_timeframe_group_id_;
-    fare_product_idx_t fare_product_id_;
-    unsigned rule_priority_;
+    fare_product_idx_t fare_product_id_{fare_product_idx_t::invalid()};
+    leg_group_idx_t leg_group_idx_{leg_group_idx_t::invalid()};
   };
 
   struct fare_leg_join_rule {
+    CISTA_FRIEND_COMPARABLE(fare_leg_join_rule)
     network_idx_t from_network_id_;
     network_idx_t to_network_id_;
-    location_idx_t from_stop_id_;
-    location_idx_t to_stop_id_;
+    location_idx_t from_stop_id_{location_idx_t::invalid()};
+    location_idx_t to_stop_id_{location_idx_t::invalid()};
   };
 
   struct fare_transfer_rule {
@@ -113,8 +137,15 @@ struct fares {
 struct timetable;
 
 namespace routing {
-struct journey;
-unsigned compute_price(timetable const&, journey const&);
+
+struct fare_leg {
+  source_idx_t src_;
+  std::vector<journey::leg> joined_leg_;
+  std::optional<fares::fare_leg_rule> rule_;
+};
+
+std::vector<fare_leg> compute_price(timetable const&, journey const&);
+
 }  // namespace routing
 
 }  // namespace nigiri

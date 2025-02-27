@@ -113,9 +113,8 @@ TEST(shape, single_trip_with_shape) {
   loader::register_special_stations(tt);
   auto shapes_data = shapes_storage{"shape-route-trip-with-shape",
                                     cista::mmap::protection::WRITE};
-  loader::gtfs::load_timetable({}, source_idx_t{1},
-                               loader::mem_dir::read(kWithShapes), tt, nullptr,
-                               &shapes_data);
+  loader::gtfs::load_timetable({}, {}, loader::mem_dir::read(kWithShapes), tt,
+                               nullptr, &shapes_data);
   loader::finalize(tt);
 
   // Testing shape 'Last', used by 'Trip 3' (index == 2)
