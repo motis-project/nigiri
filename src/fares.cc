@@ -26,13 +26,17 @@ network_idx_t get_network(rt::frun const& a) {
   return it == end(f.route_networks_) ? network_idx_t::invalid() : it->second;
 }
 
-vecvec<location_idx_t, area_idx_t>::const_bucket get_areas(
-    timetable const& tt, location_idx_t const l) {
+std::vector<area_idx_t> get_areas(timetable const& tt, location_idx_t const l) {
+  auto v = std::vector<area_idx_t>{};
   if (auto const l_areas = tt.location_areas_.at(l); !l_areas.empty()) {
-    return l_areas;
+    v = utl::to_vec(l_areas);
   } else {
-    return tt.location_areas_.at(parent(tt, l));
+    v = utl::to_vec(tt.location_areas_.at(parent(tt, l)));
   }
+  if (v.empty()) {
+    v.emplace_back(area_idx_t::invalid());
+  }
+  return v;
 }
 
 bool join(timetable const& tt,
@@ -105,7 +109,7 @@ joined_legs_t join_legs(timetable const& tt,
     auto const a_id_idx = tt.trip_ids_[a.trip_idx()].front();
     auto const b_id_idx = tt.trip_ids_[b.trip_idx()].front();
 
-    return tt.trip_id_src_[a_id_idx] != tt.trip_id_src_[b_id_idx];
+    return tt.trip_id_src_[a_id_idx] == tt.trip_id_src_[b_id_idx];
   };
 
   auto joined_legs = std::vector<std::vector<journey::leg>>{};
@@ -113,6 +117,9 @@ joined_legs_t join_legs(timetable const& tt,
       transit_legs, has_equal_src,
       [&](std::vector<journey::leg>::const_iterator const from_it,
           std::vector<journey::leg>::const_iterator const to_it) {
+        utl::verify(std::distance(from_it, to_it) != 0U,
+                    "invalid zero-size range");
+
         auto join_from = from_it;
         auto pred = from_it;
         for (auto it = std::next(from_it); it != to_it; ++it, ++pred) {
@@ -154,7 +161,7 @@ timeframe_group_idx_t match_timeframe(timetable const& tt,
   return timeframe_group_idx_t::invalid();
 }
 
-std::pair<source_idx_t, std::optional<fares::fare_leg_rule>> match_leg_rule(
+std::pair<source_idx_t, std::vector<fares::fare_leg_rule>> match_leg_rule(
     timetable const& tt, std::vector<journey::leg> const& joined_legs) {
   auto const& first = joined_legs.front();
   auto const& last = joined_legs.back();
@@ -182,55 +189,145 @@ std::pair<source_idx_t, std::optional<fares::fare_leg_rule>> match_leg_rule(
       match_timeframe(tt, fare, to.get_location_idx(), to.fr_->t_.t_idx_,
                       to.time(event_type::kArr));
 
-  auto const try_match = [&](auto&& fn) -> std::optional<fares::fare_leg_rule> {
-    for (auto const from_area : get_areas(tt, from.get_location_idx())) {
-      for (auto const to_area : get_areas(tt, to.get_location_idx())) {
-        auto const matched =
-            fn(fares::fare_leg_rule{.network_id_ = network,
-                                    .from_area_id_ = from_area,
-                                    .to_area_id_ = to_area,
-                                    .from_timeframe_group_id_ = from_tf,
-                                    .to_timeframe_group_id_ = to_tf});
-        if (matched.has_value()) {
-          return matched;
+  auto matching_rules = std::vector<fares::fare_leg_rule>{};
+  for (auto const from_area : get_areas(tt, from.get_location_idx())) {
+    for (auto const to_area : get_areas(tt, to.get_location_idx())) {
+      auto const x = fares::fare_leg_rule{.network_id_ = network,
+                                          .from_area_id_ = from_area,
+                                          .to_area_id_ = to_area,
+                                          .from_timeframe_group_id_ = from_tf,
+                                          .to_timeframe_group_id_ = to_tf};
+      for (auto const& r : fare.fare_leg_rules_) {
+        if (r.fuzzy_matches(x)) {
+          matching_rules.push_back(r);
         }
       }
     }
-    return std::nullopt;
-  };
-
-  auto const exact_match = try_match([&](fares::fare_leg_rule const& r) {
-    auto const it = utl::find(fare.fare_leg_rules_, r);
-    auto const exact_match_found = it != end(fare.fare_leg_rules_);
-    return exact_match_found ? std::optional{*it} : std::nullopt;
-  });
-
-  if (exact_match.has_value()) {
-    return {src, exact_match};
   }
-
-  auto const fuzzy_match =
-      try_match([&](fares::fare_leg_rule const& r)
-                    -> std::optional<fares::fare_leg_rule> {
-        for (auto const& rule : fare.fare_leg_rules_) {
-          if (rule.fuzzy_matches(r)) {
-            return std::optional{rule};
-          }
-        }
-        return std::nullopt;
-      });
-
-  return {src, fuzzy_match};
+  return {src, matching_rules};
 }
 
-std::vector<fare_leg> compute_price(timetable const& tt, journey const& j) {
-  auto const transit_legs = get_transit_legs(j);
-  auto const joined_legs = join_legs(tt, transit_legs);
-  return utl::to_vec(joined_legs,
-                     [&](std::vector<journey::leg> const& joined_leg) {
-                       auto const [src, rule] = match_leg_rule(tt, joined_leg);
-                       return fare_leg{src, joined_leg, rule};
-                     });
+bool matches(fares::fare_transfer_rule const& r,
+             fare_leg const& from,
+             fare_leg const& a,
+             fare_leg const& b) {
+  using duration_limit_type = fares::fare_transfer_rule::duration_limit_type;
+
+  utl::verify(!from.joined_leg_.empty(), "from no joined leg");
+  utl::verify(!a.joined_leg_.empty(), "a no joined leg");
+  utl::verify(!b.joined_leg_.empty(), "b no joined leg");
+
+  if (a.rule_.empty() || b.rule_.empty()) {
+    return false;
+  }
+
+  auto const& curr = a.rule_.front();
+  auto const& next = b.rule_.front();
+
+  auto const get_start_time = [&]() {
+    switch (r.duration_limit_type_) {
+      case duration_limit_type::kCurrDepNextDep:
+      case duration_limit_type::kCurrDepNextArr:
+        return from.joined_leg_.front().dep_time_;
+
+      case duration_limit_type::kCurrArrNextArr:
+      case duration_limit_type::kCurrArrNextDep:
+        return from.joined_leg_.back().arr_time_;
+    }
+    std::unreachable();
+  };
+
+  auto const get_end_time = [&]() {
+    switch (r.duration_limit_type_) {
+      case duration_limit_type::kCurrDepNextDep:
+      case duration_limit_type::kCurrArrNextDep:
+        return b.joined_leg_.front().dep_time_;
+
+      case duration_limit_type::kCurrArrNextArr:
+      case duration_limit_type::kCurrDepNextArr:
+        return b.joined_leg_.back().arr_time_;
+    }
+    std::unreachable();
+  };
+
+  return (r.duration_limit_ == fares::fare_transfer_rule::kNoDurationLimit ||
+          r.duration_limit_ >= (get_end_time() - get_start_time())) &&
+         (r.from_leg_group_ == leg_group_idx_t ::invalid() ||
+          r.from_leg_group_ == curr.leg_group_idx_) &&
+         (r.to_leg_group_ == leg_group_idx_t::invalid() ||
+          r.to_leg_group_ == next.leg_group_idx_);
+}
+
+std::vector<fare_transfer> join_transfers(
+    timetable const& tt, std::vector<fare_leg> const& fare_legs) {
+  auto transfers = std::vector<fare_transfer>{};
+  utl::equal_ranges_linear(
+      fare_legs,
+      [](fare_leg const& a, fare_leg const& b) { return a.src_ == b.src_; },
+      [&](std::vector<fare_leg>::const_iterator const from_it,
+          std::vector<fare_leg>::const_iterator const to_it) {
+        auto const size = static_cast<unsigned>(std::distance(from_it, to_it));
+        utl::verify(size != 0U, "invalid zero-size range");
+
+        if (size == 1U) {
+          transfers.push_back({std::nullopt, {*from_it}});
+          return;
+        }
+
+        auto const& fares = tt.fares_[from_it->src_];
+        auto last_matched = false;
+        for (auto it = from_it, next = std::next(from_it); next != to_it;
+             ++it, ++next) {
+          utl::verify(it >= from_it && it < to_it, "error 1");
+          utl::verify(next >= from_it && next < to_it, "error 2");
+          auto const match_it =
+              utl::find_if(fares.fare_transfer_rules_,
+                           [&](fares::fare_transfer_rule const& r) {
+                             return matches(r, *it, *it, *next);
+                           });
+          if (match_it == end(fares.fare_transfer_rules_)) {
+            last_matched = false;
+            transfers.push_back({std::nullopt, {*it}});
+            continue;
+          }
+
+          last_matched = true;
+          auto matched = std::vector<fare_leg>{*it};
+          auto remaining_transfers = match_it->transfer_count_;
+          auto const from = it;
+          for (; next != to_it &&
+                 remaining_transfers != 0;  // -1=infinite will not reach 0
+               ++it, ++next, --remaining_transfers) {
+            if (!matches(*match_it, *from, *it, *next)) {
+              break;
+            }
+            matched.emplace_back(*next);
+          }
+
+          transfers.push_back({*match_it, std::move(matched)});
+
+          // last one could not be matched by this rule
+          // -> go back and try with all rules again
+          --it;
+          --next;
+        }
+
+        if (!last_matched) {
+          transfers.push_back({std::nullopt, {*std::next(from_it, size - 1U)}});
+        }
+      });
+  return transfers;
+}
+
+std::vector<fare_transfer> compute_price(timetable const& tt,
+                                         journey const& j) {
+  return join_transfers(
+      tt, utl::to_vec(join_legs(tt, get_transit_legs(j)),
+                      [&](std::vector<journey::leg> const& joined_leg) {
+                        auto const [src, rules] =
+                            match_leg_rule(tt, joined_leg);
+                        return fare_leg{src, joined_leg, rules};
+                      }));
 }
 
 }  // namespace nigiri::routing

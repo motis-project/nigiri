@@ -11,8 +11,6 @@ using fare_product_idx_t =
     cista::strong<std::uint32_t, struct _fare_product_idx>;
 using fare_leg_join_rule_idx_t =
     cista::strong<std::uint32_t, struct _fare_leg_join_rule_idx>;
-using fare_transfer_rule_idx_t =
-    cista::strong<std::uint32_t, struct _fare_transfer_rule_idx>;
 using area_idx_t = cista::strong<std::uint32_t, struct _area_idx_t>;
 using network_idx_t = cista::strong<std::uint32_t, struct _network_idx_t>;
 using timeframe_group_idx_t =
@@ -37,9 +35,9 @@ struct fares {
   };
 
   struct fare_product {
+    float amount_;
     string_idx_t name_;
     fare_media_idx_t media_;
-    std::uint32_t amount_;
     string_idx_t currency_code_;
   };
 
@@ -64,6 +62,14 @@ struct fares {
               from_timeframe_group_id_ == x.from_timeframe_group_id_) &&
              (to_timeframe_group_id_ == timeframe_group_idx_t::invalid() ||
               to_timeframe_group_id_ == x.to_timeframe_group_id_);
+    }
+
+    friend std::ostream& operator<<(std::ostream& out, fare_leg_rule const& r) {
+      return out << "FROM_AREA=" << r.from_area_id_
+                 << ", TO_AREA=" << r.to_area_id_
+                 << ", NETWORK=" << r.network_id_
+                 << ", FROM_TIMEFRAME_GROUP=" << r.from_timeframe_group_id_
+                 << ", TO_TIMEFRAME_GROUP=" << r.to_timeframe_group_id_;
     }
 
     unsigned rule_priority_{0U};
@@ -134,6 +140,17 @@ struct fares {
   vector_map<network_idx_t, network> networks_;
 };
 
+inline std::ostream& operator<<(
+    std::ostream& out, fares::fare_transfer_rule::fare_transfer_type const t) {
+  using fare_transfer_type = fares::fare_transfer_rule::fare_transfer_type;
+  switch (t) {
+    case fare_transfer_type::kAPlusAB: return out << "APlusAB";
+    case fare_transfer_type::kAPlusABPlusB: return out << "APlusABPlusB";
+    case fare_transfer_type::kAB: return out << "AB";
+  }
+  std::unreachable();
+}
+
 struct timetable;
 
 namespace routing {
@@ -141,10 +158,15 @@ namespace routing {
 struct fare_leg {
   source_idx_t src_;
   std::vector<journey::leg> joined_leg_;
-  std::optional<fares::fare_leg_rule> rule_;
+  std::vector<fares::fare_leg_rule> rule_;
 };
 
-std::vector<fare_leg> compute_price(timetable const&, journey const&);
+struct fare_transfer {
+  std::optional<fares::fare_transfer_rule> rule_;
+  std::vector<fare_leg> legs_;
+};
+
+std::vector<fare_transfer> compute_price(timetable const&, journey const&);
 
 }  // namespace routing
 

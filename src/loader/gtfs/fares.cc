@@ -1,5 +1,6 @@
 #include "nigiri/loader/gtfs/fares.h"
 
+#include "utl/get_or_create.h"
 #include "utl/helpers/algorithm.h"
 #include "utl/parser/buf_reader.h"
 #include "utl/parser/csv_range.h"
@@ -74,7 +75,7 @@ hash_map<std::string, fare_product_idx_t> parse_products(
     utl::csv_col<utl::cstr, UTL_NAME("fare_product_id")> fare_product_id_;
     utl::csv_col<utl::cstr, UTL_NAME("fare_product_name")> fare_product_name_;
     utl::csv_col<utl::cstr, UTL_NAME("fare_media_id")> fare_media_id_;
-    utl::csv_col<double, UTL_NAME("amount")> amount_;
+    utl::csv_col<float, UTL_NAME("amount")> amount_;
     utl::csv_col<utl::cstr, UTL_NAME("currency")> currency_;
   };
 
@@ -83,11 +84,11 @@ hash_map<std::string, fare_product_idx_t> parse_products(
       file_content, [&](fare_product_record const& r) {
         m.emplace(r.fare_product_id_->view(), fare_product_idx_t{m.size()});
         f.fare_products_.push_back(
-            {.name_ = tt.strings_.register_string(cache,
+            {.amount_ = *r.amount_,
+             .name_ = tt.strings_.register_string(cache,
                                                   r.fare_product_name_->view()),
              .media_ = find(media, r.fare_media_id_->view())
                            .value_or(fare_media_idx_t::invalid()),
-             .amount_ = static_cast<std::uint32_t>(*r.amount_ / 100U),
              .currency_code_ =
                  tt.strings_.register_string(cache, r.currency_->view())});
       });
@@ -179,9 +180,13 @@ hash_map<std::string, timeframe_group_idx_t> parse_timeframes(
   for_each_row<timeframe_record>(file_content, [&](timeframe_record const& r) {
     try {
       auto const traffic_days = *services.at(r.service_id_->view());
-      auto const [it, _] = m.emplace(r.timeframe_group_id_->view(),
-                                     timeframe_group_idx_t{m.size()});
-      f.timeframes_[it->second].push_back(fares::timeframe{
+      auto const i =
+          utl::get_or_create(m, r.timeframe_group_id_->view(), [&]() {
+            auto const idx = timeframe_group_idx_t{f.timeframes_.size()};
+            f.timeframes_.add_back_sized(0U);
+            return idx;
+          });
+      f.timeframes_[i].push_back(fares::timeframe{
           .start_time_ = r.start_time_
                              ->and_then([](utl::cstr x) {
                                return std::optional{hhmm_to_min(x)};
@@ -388,6 +393,11 @@ void parse_fare_transfer_rules(
 
   for_each_row<fare_transfer_rule_record>(
       file_content, [&](fare_transfer_rule_record const& r) {
+        if (r.transfer_count_->value_or(-1) == 0) {
+          log(log_lvl::error, "gtfs.fares",
+              "fare transfer rule with 0 transfers not allowed");
+          return;
+        }
         f.fare_transfer_rules_.push_back(fares::fare_transfer_rule{
             .from_leg_group_ = r.from_leg_group_id_
                                    ->and_then([&](utl::cstr const& x) {
