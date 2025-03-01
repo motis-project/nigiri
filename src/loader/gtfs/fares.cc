@@ -126,21 +126,21 @@ hash_map<std::string, leg_group_idx_t> parse_leg_rules(
         }
         f.fare_leg_rules_.push_back({
             .rule_priority_ = r.rule_priority_->value_or(0U),
-            .network_id_ = r.network_id_
-                               ->and_then([&](utl::cstr const& x) {
-                                 return find(networks, x.view());
-                               })
-                               .value_or(network_idx_t::invalid()),
-            .from_area_id_ = r.from_area_id_
-                                 ->and_then([&](utl::cstr const& x) {
-                                   return find(areas, x.view());
-                                 })
-                                 .value_or(area_idx_t::invalid()),
-            .to_area_id_ = r.to_area_id_
-                               ->and_then([&](utl::cstr const& x) {
-                                 return find(areas, x.view());
-                               })
-                               .value_or(area_idx_t::invalid()),
+            .network_ = r.network_id_
+                            ->and_then([&](utl::cstr const& x) {
+                              return find(networks, x.view());
+                            })
+                            .value_or(network_idx_t::invalid()),
+            .from_area_ = r.from_area_id_
+                              ->and_then([&](utl::cstr const& x) {
+                                return find(areas, x.view());
+                              })
+                              .value_or(area_idx_t::invalid()),
+            .to_area_ = r.to_area_id_
+                            ->and_then([&](utl::cstr const& x) {
+                              return find(areas, x.view());
+                            })
+                            .value_or(area_idx_t::invalid()),
             .from_timeframe_group_id_ =
                 r.from_timeframe_group_id_
                     ->and_then([&](utl::cstr const& x) {
@@ -363,10 +363,10 @@ void parse_fare_leg_join_rules(
                                      .value_or(location_idx_t::invalid());
 
         f.fare_leg_join_rules_.push_back(
-            fares::fare_leg_join_rule{.from_network_id_ = *from_network_idx,
-                                      .to_network_id_ = *to_network_idx,
-                                      .from_stop_id_ = from_stop_idx,
-                                      .to_stop_id_ = to_stop_idx});
+            fares::fare_leg_join_rule{.from_network_ = *from_network_idx,
+                                      .to_network_ = *to_network_idx,
+                                      .from_stop_ = from_stop_idx,
+                                      .to_stop_ = to_stop_idx});
       });
 }
 

@@ -43,8 +43,8 @@ struct fares {
 
   struct fare_leg_rule {
     auto match_members() const {
-      return std::tie(network_id_, from_area_id_, to_area_id_,
-                      from_timeframe_group_id_, to_timeframe_group_id_);
+      return std::tie(network_, from_area_, to_area_, from_timeframe_group_id_,
+                      to_timeframe_group_id_);
     }
 
     friend bool operator==(fare_leg_rule const& a, fare_leg_rule const& b) {
@@ -52,12 +52,12 @@ struct fares {
     }
 
     bool fuzzy_matches(fare_leg_rule const& x) const {
-      return (network_id_ == network_idx_t ::invalid() ||
-              network_id_ == x.network_id_) &&
-             (from_area_id_ == area_idx_t::invalid() ||
-              from_area_id_ == x.from_area_id_) &&
-             (to_area_id_ == area_idx_t ::invalid() ||
-              to_area_id_ == x.to_area_id_) &&
+      // TODO do not match network/from_area/to_area if another rule has it
+      return (network_ == network_idx_t ::invalid() ||
+              network_ == x.network_) &&
+             (from_area_ == area_idx_t::invalid() ||
+              from_area_ == x.from_area_) &&
+             (to_area_ == area_idx_t ::invalid() || to_area_ == x.to_area_) &&
              (from_timeframe_group_id_ == timeframe_group_idx_t::invalid() ||
               from_timeframe_group_id_ == x.from_timeframe_group_id_) &&
              (to_timeframe_group_id_ == timeframe_group_idx_t::invalid() ||
@@ -65,17 +65,16 @@ struct fares {
     }
 
     friend std::ostream& operator<<(std::ostream& out, fare_leg_rule const& r) {
-      return out << "FROM_AREA=" << r.from_area_id_
-                 << ", TO_AREA=" << r.to_area_id_
-                 << ", NETWORK=" << r.network_id_
+      return out << "FROM_AREA=" << r.from_area_ << ", TO_AREA=" << r.to_area_
+                 << ", NETWORK=" << r.network_
                  << ", FROM_TIMEFRAME_GROUP=" << r.from_timeframe_group_id_
                  << ", TO_TIMEFRAME_GROUP=" << r.to_timeframe_group_id_;
     }
 
     unsigned rule_priority_{0U};
-    network_idx_t network_id_;
-    area_idx_t from_area_id_;
-    area_idx_t to_area_id_;
+    network_idx_t network_;
+    area_idx_t from_area_;
+    area_idx_t to_area_;
     timeframe_group_idx_t from_timeframe_group_id_;
     timeframe_group_idx_t to_timeframe_group_id_;
     fare_product_idx_t fare_product_id_{fare_product_idx_t::invalid()};
@@ -84,10 +83,10 @@ struct fares {
 
   struct fare_leg_join_rule {
     CISTA_FRIEND_COMPARABLE(fare_leg_join_rule)
-    network_idx_t from_network_id_;
-    network_idx_t to_network_id_;
-    location_idx_t from_stop_id_{location_idx_t::invalid()};
-    location_idx_t to_stop_id_{location_idx_t::invalid()};
+    network_idx_t from_network_;
+    network_idx_t to_network_;
+    location_idx_t from_stop_{location_idx_t::invalid()};
+    location_idx_t to_stop_{location_idx_t::invalid()};
   };
 
   struct fare_transfer_rule {

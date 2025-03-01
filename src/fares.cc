@@ -61,10 +61,10 @@ bool join(timetable const& tt,
   // Find first fare leg rule regarding both networks.
   auto const it = std::lower_bound(
       begin(fare.fare_leg_join_rules_), end(fare.fare_leg_join_rules_),
-      fares::fare_leg_join_rule{.from_network_id_ = network_a,
-                                .to_network_id_ = network_b,
-                                .from_stop_id_ = location_idx_t{0U},
-                                .to_stop_id_ = location_idx_t{0U}});
+      fares::fare_leg_join_rule{.from_network_ = network_a,
+                                .to_network_ = network_b,
+                                .from_stop_ = location_idx_t{0U},
+                                .to_stop_ = location_idx_t{0U}});
 
   // Search for matching stops.
   auto const from = a[r_a.stop_range_.to_ - 1U].get_location_idx();
@@ -72,12 +72,12 @@ bool join(timetable const& tt,
   auto const to = b[r_b.stop_range_.from_].get_location_idx();
   auto const to_station = parent(tt, to);
   while (it != end(fare.fare_leg_join_rules_) &&
-         it->from_network_id_ == network_a && it->to_network_id_ == network_b) {
+         it->from_network_ == network_a && it->to_network_ == network_b) {
     if ((from_station == to_station &&  //
-         it->from_stop_id_ == location_idx_t::invalid() &&
-         it->to_stop_id_ == location_idx_t::invalid()) ||
-        ((it->from_stop_id_ == from_station || it->from_stop_id_ == from) &&
-         (it->to_stop_id_ == to_station || it->to_stop_id_ == to))) {
+         it->from_stop_ == location_idx_t::invalid() &&
+         it->to_stop_ == location_idx_t::invalid()) ||
+        ((it->from_stop_ == from_station || it->from_stop_ == from) &&
+         (it->to_stop_ == to_station || it->to_stop_ == to))) {
       return true;
     }
   }
@@ -192,9 +192,9 @@ std::pair<source_idx_t, std::vector<fares::fare_leg_rule>> match_leg_rule(
   auto matching_rules = std::vector<fares::fare_leg_rule>{};
   for (auto const from_area : get_areas(tt, from.get_location_idx())) {
     for (auto const to_area : get_areas(tt, to.get_location_idx())) {
-      auto const x = fares::fare_leg_rule{.network_id_ = network,
-                                          .from_area_id_ = from_area,
-                                          .to_area_id_ = to_area,
+      auto const x = fares::fare_leg_rule{.network_ = network,
+                                          .from_area_ = from_area,
+                                          .to_area_ = to_area,
                                           .from_timeframe_group_id_ = from_tf,
                                           .to_timeframe_group_id_ = to_tf};
       for (auto const& r : fare.fare_leg_rules_) {
@@ -250,6 +250,7 @@ bool matches(fares::fare_transfer_rule const& r,
     std::unreachable();
   };
 
+  // TODO do not match from_leg_group/to_leg_group if another rule has it
   return (r.duration_limit_ == fares::fare_transfer_rule::kNoDurationLimit ||
           r.duration_limit_ >= (get_end_time() - get_start_time())) &&
          (r.from_leg_group_ == leg_group_idx_t ::invalid() ||
@@ -278,8 +279,9 @@ std::vector<fare_transfer> join_transfers(
         auto last_matched = false;
         for (auto it = from_it, next = std::next(from_it); next != to_it;
              ++it, ++next) {
-          utl::verify(it >= from_it && it < to_it, "error 1");
-          utl::verify(next >= from_it && next < to_it, "error 2");
+          utl::verify(it >= from_it && it < to_it, "curr it not in range");
+          utl::verify(next >= from_it && next < to_it, "next it not in range");
+
           auto const match_it =
               utl::find_if(fares.fare_transfer_rules_,
                            [&](fares::fare_transfer_rule const& r) {
