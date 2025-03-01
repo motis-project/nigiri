@@ -247,10 +247,10 @@ FARE LEG:
    0: C       C...............................................                               d: 30.03 01:05 [30.03 03:05]  [{name=Line 3, day=2022-03-30, id=T3, src=0}]
    1: D       D............................................... a: 30.03 02:00 [30.03 04:00]
 PRODUCTS
-Full Weekpass: 12 EUR
-Full Daypass: 5 EUR
 Full App: 3.5 EUR
 Full Paper Card: 4 EUR
+Full Daypass: 5 EUR
+Full Weekpass: 12 EUR
 
 
 FARE LEG:
@@ -283,10 +283,10 @@ FARE LEG:
    0: C       C...............................................                               d: 30.03 07:05 [30.03 09:05]  [{name=Line 3, day=2022-03-30, id=T3, src=0}]
    1: D       D............................................... a: 30.03 08:00 [30.03 10:00]
 PRODUCTS
-Peak Full Weekpass: 24 EUR
-Peak Full Daypass: 10 EUR
 Peak Full App: 7 EUR
 Peak Full Paper Card: 8 EUR
+Peak Full Daypass: 10 EUR
+Peak Full Weekpass: 24 EUR
 
 
 FARE LEG:

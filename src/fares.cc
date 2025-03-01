@@ -233,6 +233,15 @@ std::pair<source_idx_t, std::vector<fares::fare_leg_rule>> match_leg_rule(
       }
     }
   }
+  utl::sort(matching_rules, [&](fares::fare_leg_rule const& a,
+                                fares::fare_leg_rule const& b) {
+    return std::tuple{
+               fare.fare_products_[a.fare_product_id_].amount_,
+               tt.strings_.get(fare.fare_products_[a.fare_product_id_].name_)} <
+           std::tuple{
+               fare.fare_products_[b.fare_product_id_].amount_,
+               tt.strings_.get(fare.fare_products_[b.fare_product_id_].name_)};
+  });
   return {src, matching_rules};
 }
 
