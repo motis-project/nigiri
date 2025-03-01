@@ -124,10 +124,12 @@ std::vector<journey::leg> get_transit_legs(journey const& j) {
   return transit_legs;
 }
 
-using joined_legs_t = std::vector<std::vector<journey::leg>>;
+using joined_legs_t = std::vector<std::vector<journey::leg const*>>;
 
 joined_legs_t join_legs(timetable const& tt,
                         std::vector<journey::leg> const& transit_legs) {
+  auto const to_ptr = [](auto const& x) { return &x; };
+
   auto const has_equal_src = [&](journey::leg const& a_l,
                                  journey::leg const& b_l) {
     auto const a =
@@ -141,7 +143,7 @@ joined_legs_t join_legs(timetable const& tt,
     return tt.trip_id_src_[a_id_idx] == tt.trip_id_src_[b_id_idx];
   };
 
-  auto joined_legs = std::vector<std::vector<journey::leg>>{};
+  auto joined_legs = joined_legs_t{};
   utl::equal_ranges_linear(
       transit_legs, has_equal_src,
       [&](std::vector<journey::leg>::const_iterator const from_it,
@@ -155,10 +157,10 @@ joined_legs_t join_legs(timetable const& tt,
           if (join(tt, *pred, *it)) {
             continue;
           }
-          joined_legs.emplace_back(join_from, it);
+          joined_legs.push_back(utl::to_vec(it_range{join_from, it}, to_ptr));
           join_from = it;
         }
-        joined_legs.emplace_back(join_from, to_it);
+        joined_legs.push_back(utl::to_vec(it_range{join_from, to_it}, to_ptr));
       });
   return joined_legs;
 }
@@ -191,14 +193,14 @@ timeframe_group_idx_t match_timeframe(timetable const& tt,
 }
 
 std::pair<source_idx_t, std::vector<fares::fare_leg_rule>> match_leg_rule(
-    timetable const& tt, std::vector<journey::leg> const& joined_legs) {
+    timetable const& tt, effective_fare_leg_t const& joined_legs) {
   auto const& first = joined_legs.front();
   auto const& last = joined_legs.back();
 
-  auto const first_r = std::get<journey::run_enter_exit>(first.uses_).r_;
+  auto const first_r = std::get<journey::run_enter_exit>(first->uses_).r_;
   auto const first_trip = rt::frun{tt, nullptr, first_r};
 
-  auto const last_r = std::get<journey::run_enter_exit>(last.uses_).r_;
+  auto const last_r = std::get<journey::run_enter_exit>(last->uses_).r_;
   auto const last_trip = rt::frun{tt, nullptr, last_r};
 
   auto const from = first_trip[first_r.stop_range_.from_];
@@ -266,11 +268,11 @@ bool matches(fares::fare_transfer_rule const& r,
     switch (r.duration_limit_type_) {
       case duration_limit_type::kCurrDepNextDep:
       case duration_limit_type::kCurrDepNextArr:
-        return from.joined_leg_.front().dep_time_;
+        return from.joined_leg_.front()->dep_time_;
 
       case duration_limit_type::kCurrArrNextArr:
       case duration_limit_type::kCurrArrNextDep:
-        return from.joined_leg_.back().arr_time_;
+        return from.joined_leg_.back()->arr_time_;
     }
     std::unreachable();
   };
@@ -279,11 +281,11 @@ bool matches(fares::fare_transfer_rule const& r,
     switch (r.duration_limit_type_) {
       case duration_limit_type::kCurrDepNextDep:
       case duration_limit_type::kCurrArrNextDep:
-        return b.joined_leg_.front().dep_time_;
+        return b.joined_leg_.front()->dep_time_;
 
       case duration_limit_type::kCurrArrNextArr:
       case duration_limit_type::kCurrDepNextArr:
-        return b.joined_leg_.back().arr_time_;
+        return b.joined_leg_.back()->arr_time_;
     }
     std::unreachable();
   };
@@ -362,7 +364,7 @@ std::vector<fare_transfer> join_transfers(
 std::vector<fare_transfer> get_fares(timetable const& tt, journey const& j) {
   return join_transfers(
       tt, utl::to_vec(join_legs(tt, get_transit_legs(j)),
-                      [&](std::vector<journey::leg> const& joined_leg) {
+                      [&](effective_fare_leg_t const& joined_leg) {
                         auto const [src, rules] =
                             match_leg_rule(tt, joined_leg);
                         return fare_leg{src, joined_leg, rules};

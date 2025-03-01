@@ -120,8 +120,8 @@ inline std::ostream& operator<<(
     std::ostream& out, fares::fare_transfer_rule::fare_transfer_type const t) {
   using fare_transfer_type = fares::fare_transfer_rule::fare_transfer_type;
   switch (t) {
-    case fare_transfer_type::kAPlusAB: return out << "APlusAB";
-    case fare_transfer_type::kAPlusABPlusB: return out << "APlusABPlusB";
+    case fare_transfer_type::kAPlusAB: return out << "A+AB";
+    case fare_transfer_type::kAPlusABPlusB: return out << "A+AB+B";
     case fare_transfer_type::kAB: return out << "AB";
   }
   std::unreachable();
@@ -129,9 +129,11 @@ inline std::ostream& operator<<(
 
 struct timetable;
 
+using effective_fare_leg_t = std::vector<routing::journey::leg const*>;
+
 struct fare_leg {
   source_idx_t src_;
-  std::vector<routing::journey::leg> joined_leg_;
+  effective_fare_leg_t joined_leg_;
   std::vector<fares::fare_leg_rule> rule_;
 };
 

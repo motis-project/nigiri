@@ -204,7 +204,7 @@ std::string to_string(timetable const& tt,
         } else {
           ss << "** JOINED WITH\n";
         }
-        jl.print(ss, tt);
+        jl->print(ss, tt);
       }
       ss << "PRODUCTS\n";
       for (auto const& r : l.rule_) {
@@ -236,7 +236,7 @@ TEST(fares, simple_fares) {
     auto const fare_legs = get_fares(tt, *results.begin());
     constexpr auto const kExpected = R"(FARE TRANSFER START
 TRANSFER PRODUCT: Full Airport Extension Card
-RULE: APlusAB
+RULE: A+AB
 FARE LEG:
    0: A       A...............................................                               d: 30.03 00:00 [30.03 02:00]  [{name=Line 1, day=2022-03-30, id=T1, src=0}]
    1: B       B............................................... a: 30.03 00:30 [30.03 02:30]
@@ -272,7 +272,7 @@ FARE TRANSFER END
     auto const fare_legs = get_fares(tt, *results.begin());
     constexpr auto const kExpected = R"(FARE TRANSFER START
 TRANSFER PRODUCT: Full Airport Extension Card
-RULE: APlusAB
+RULE: A+AB
 FARE LEG:
    0: A       A...............................................                               d: 30.03 06:00 [30.03 08:00]  [{name=Line 1, day=2022-03-30, id=T1, src=0}]
    1: B       B............................................... a: 30.03 06:30 [30.03 08:30]
