@@ -233,7 +233,7 @@ TEST(fares, simple_fares) {
     auto const results = raptor_search(
         tt, nullptr, "A", "E", unixtime_t{sys_days{2022_y / March / 30}});
     ASSERT_EQ(1U, results.size());
-    auto const fare_legs = compute_price(tt, *results.begin());
+    auto const fare_legs = get_fares(tt, *results.begin());
     constexpr auto const kExpected = R"(FARE TRANSFER START
 TRANSFER PRODUCT: Full Airport Extension Card
 RULE: APlusAB
@@ -269,7 +269,7 @@ FARE TRANSFER END
     auto const results = raptor_search(
         tt, nullptr, "A", "E", unixtime_t{sys_days{2022_y / March / 30} + 6h});
     ASSERT_EQ(1U, results.size());
-    auto const fare_legs = compute_price(tt, *results.begin());
+    auto const fare_legs = get_fares(tt, *results.begin());
     constexpr auto const kExpected = R"(FARE TRANSFER START
 TRANSFER PRODUCT: Full Airport Extension Card
 RULE: APlusAB

@@ -350,8 +350,7 @@ std::vector<fare_transfer> join_transfers(
   return transfers;
 }
 
-std::vector<fare_transfer> compute_price(timetable const& tt,
-                                         journey const& j) {
+std::vector<fare_transfer> get_fares(timetable const& tt, journey const& j) {
   return join_transfers(
       tt, utl::to_vec(join_legs(tt, get_transit_legs(j)),
                       [&](std::vector<journey::leg> const& joined_leg) {

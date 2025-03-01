@@ -140,7 +140,6 @@ struct fare_transfer {
   std::vector<fare_leg> legs_;
 };
 
-std::vector<fare_transfer> compute_price(timetable const&,
-                                         routing::journey const&);
+std::vector<fare_transfer> get_fares(timetable const&, routing::journey const&);
 
 }  // namespace nigiri
