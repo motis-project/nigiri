@@ -33,7 +33,7 @@
 [unordered_dense]
   url=git@github.com:motis-project/unordered_dense.git
   branch=main
-  commit=77e91016354e6d8cba24a86c5abb807de2534c02
+  commit=2c7230ae7f9c30849a5b089fb4a5d11896b45dcf
 [protobuf]
   url=git@github.com:motis-project/protobuf.git
   branch=main
