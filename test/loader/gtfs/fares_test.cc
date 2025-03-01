@@ -179,8 +179,6 @@ T4,02:05:00,26:05:00,3600
 
 }  // namespace
 
-using namespace nigiri::routing;
-
 std::string to_string(timetable const& tt,
                       std::vector<fare_transfer> const& fare_transfers) {
   auto ss = std::stringstream{};

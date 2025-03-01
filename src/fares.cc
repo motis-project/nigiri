@@ -9,7 +9,36 @@
 #include "nigiri/rt/frun.h"
 #include "nigiri/timetable.h"
 
-namespace nigiri::routing {
+namespace nigiri {
+
+using routing::journey;
+
+std::ostream& operator<<(std::ostream& out, fares::fare_leg_rule const& r) {
+  return out << "FROM_AREA=" << r.from_area_ << ", TO_AREA=" << r.to_area_
+             << ", NETWORK=" << r.network_
+             << ", FROM_TIMEFRAME_GROUP=" << r.from_timeframe_group_id_
+             << ", TO_TIMEFRAME_GROUP=" << r.to_timeframe_group_id_;
+}
+
+bool fares::fare_leg_rule::fuzzy_matches(fare_leg_rule const& x) const {
+  // TODO do not match network/from_area/to_area if another rule has it
+  return (network_ == network_idx_t::invalid() || network_ == x.network_) &&
+         (from_area_ == area_idx_t::invalid() || from_area_ == x.from_area_) &&
+         (to_area_ == area_idx_t ::invalid() || to_area_ == x.to_area_) &&
+         (from_timeframe_group_id_ == timeframe_group_idx_t::invalid() ||
+          from_timeframe_group_id_ == x.from_timeframe_group_id_) &&
+         (to_timeframe_group_id_ == timeframe_group_idx_t::invalid() ||
+          to_timeframe_group_id_ == x.to_timeframe_group_id_);
+}
+
+auto fares::fare_leg_rule::match_members() const {
+  return std::tie(network_, from_area_, to_area_, from_timeframe_group_id_,
+                  to_timeframe_group_id_);
+}
+
+bool operator==(fares::fare_leg_rule const& a, fares::fare_leg_rule const& b) {
+  return a.match_members() == b.match_members();
+}
 
 location_idx_t parent(timetable const& tt, location_idx_t const l) {
   return tt.locations_.parents_[l] == location_idx_t::invalid()
@@ -40,10 +69,10 @@ std::vector<area_idx_t> get_areas(timetable const& tt, location_idx_t const l) {
 }
 
 bool join(timetable const& tt,
-          journey::leg const& a_l,
-          journey::leg const& b_l) {
-  auto const r_a = std::get<journey::run_enter_exit>(a_l.uses_);
-  auto const r_b = std::get<journey::run_enter_exit>(b_l.uses_);
+          routing::journey::leg const& a_l,
+          routing::journey::leg const& b_l) {
+  auto const r_a = std::get<routing::journey::run_enter_exit>(a_l.uses_);
+  auto const r_b = std::get<routing::journey::run_enter_exit>(b_l.uses_);
   auto const a = rt::frun{tt, nullptr, r_a.r_};
   auto const b = rt::frun{tt, nullptr, r_b.r_};
 
@@ -332,4 +361,4 @@ std::vector<fare_transfer> compute_price(timetable const& tt,
                       }));
 }
 
-}  // namespace nigiri::routing
+}  // namespace nigiri

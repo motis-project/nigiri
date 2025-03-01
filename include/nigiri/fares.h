@@ -42,34 +42,11 @@ struct fares {
   };
 
   struct fare_leg_rule {
-    auto match_members() const {
-      return std::tie(network_, from_area_, to_area_, from_timeframe_group_id_,
-                      to_timeframe_group_id_);
-    }
+    auto match_members() const;
+    friend bool operator==(fare_leg_rule const&, fare_leg_rule const&);
+    bool fuzzy_matches(fare_leg_rule const&) const;
 
-    friend bool operator==(fare_leg_rule const& a, fare_leg_rule const& b) {
-      return a.match_members() == b.match_members();
-    }
-
-    bool fuzzy_matches(fare_leg_rule const& x) const {
-      // TODO do not match network/from_area/to_area if another rule has it
-      return (network_ == network_idx_t ::invalid() ||
-              network_ == x.network_) &&
-             (from_area_ == area_idx_t::invalid() ||
-              from_area_ == x.from_area_) &&
-             (to_area_ == area_idx_t ::invalid() || to_area_ == x.to_area_) &&
-             (from_timeframe_group_id_ == timeframe_group_idx_t::invalid() ||
-              from_timeframe_group_id_ == x.from_timeframe_group_id_) &&
-             (to_timeframe_group_id_ == timeframe_group_idx_t::invalid() ||
-              to_timeframe_group_id_ == x.to_timeframe_group_id_);
-    }
-
-    friend std::ostream& operator<<(std::ostream& out, fare_leg_rule const& r) {
-      return out << "FROM_AREA=" << r.from_area_ << ", TO_AREA=" << r.to_area_
-                 << ", NETWORK=" << r.network_
-                 << ", FROM_TIMEFRAME_GROUP=" << r.from_timeframe_group_id_
-                 << ", TO_TIMEFRAME_GROUP=" << r.to_timeframe_group_id_;
-    }
+    friend std::ostream& operator<<(std::ostream&, fare_leg_rule const&);
 
     unsigned rule_priority_{0U};
     network_idx_t network_;
@@ -152,11 +129,9 @@ inline std::ostream& operator<<(
 
 struct timetable;
 
-namespace routing {
-
 struct fare_leg {
   source_idx_t src_;
-  std::vector<journey::leg> joined_leg_;
+  std::vector<routing::journey::leg> joined_leg_;
   std::vector<fares::fare_leg_rule> rule_;
 };
 
@@ -165,8 +140,7 @@ struct fare_transfer {
   std::vector<fare_leg> legs_;
 };
 
-std::vector<fare_transfer> compute_price(timetable const&, journey const&);
-
-}  // namespace routing
+std::vector<fare_transfer> compute_price(timetable const&,
+                                         routing::journey const&);
 
 }  // namespace nigiri
