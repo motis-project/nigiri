@@ -24,7 +24,7 @@ bool fares::fare_leg_rule::fuzzy_matches(fare_leg_rule const& x) const {
   // TODO do not match network/from_area/to_area if another rule has it
   return (network_ == network_idx_t::invalid() || network_ == x.network_) &&
          (from_area_ == area_idx_t::invalid() || from_area_ == x.from_area_) &&
-         (to_area_ == area_idx_t ::invalid() || to_area_ == x.to_area_) &&
+         (to_area_ == area_idx_t::invalid() || to_area_ == x.to_area_) &&
          (from_timeframe_group_id_ == timeframe_group_idx_t::invalid() ||
           from_timeframe_group_id_ == x.from_timeframe_group_id_) &&
          (to_timeframe_group_id_ == timeframe_group_idx_t::invalid() ||
@@ -114,11 +114,11 @@ bool join(timetable const& tt,
   return false;
 }
 
-std::vector<journey::leg> get_transit_legs(journey const& j) {
-  auto transit_legs = std::vector<journey::leg>{};
+std::vector<journey::leg const*> get_transit_legs(journey const& j) {
+  auto transit_legs = std::vector<journey::leg const*>{};
   for (auto const& l : j.legs_) {
     if (std::holds_alternative<journey::run_enter_exit>(l.uses_)) {
-      transit_legs.push_back(l);
+      transit_legs.push_back(&l);
     }
   }
   return transit_legs;
@@ -127,15 +127,13 @@ std::vector<journey::leg> get_transit_legs(journey const& j) {
 using joined_legs_t = std::vector<std::vector<journey::leg const*>>;
 
 joined_legs_t join_legs(timetable const& tt,
-                        std::vector<journey::leg> const& transit_legs) {
-  auto const to_ptr = [](auto const& x) { return &x; };
-
-  auto const has_equal_src = [&](journey::leg const& a_l,
-                                 journey::leg const& b_l) {
+                        std::vector<journey::leg const*> const& transit_legs) {
+  auto const has_equal_src = [&](journey::leg const* a_l,
+                                 journey::leg const* b_l) {
     auto const a =
-        rt::frun{tt, nullptr, std::get<journey::run_enter_exit>(a_l.uses_).r_};
+        rt::frun{tt, nullptr, std::get<journey::run_enter_exit>(a_l->uses_).r_};
     auto const b =
-        rt::frun{tt, nullptr, std::get<journey::run_enter_exit>(b_l.uses_).r_};
+        rt::frun{tt, nullptr, std::get<journey::run_enter_exit>(b_l->uses_).r_};
 
     auto const a_id_idx = tt.trip_ids_[a.trip_idx()].front();
     auto const b_id_idx = tt.trip_ids_[b.trip_idx()].front();
@@ -146,21 +144,21 @@ joined_legs_t join_legs(timetable const& tt,
   auto joined_legs = joined_legs_t{};
   utl::equal_ranges_linear(
       transit_legs, has_equal_src,
-      [&](std::vector<journey::leg>::const_iterator const from_it,
-          std::vector<journey::leg>::const_iterator const to_it) {
+      [&](std::vector<journey::leg const*>::const_iterator const from_it,
+          std::vector<journey::leg const*>::const_iterator const to_it) {
         utl::verify(std::distance(from_it, to_it) != 0U,
                     "invalid zero-size range");
 
         auto join_from = from_it;
         auto pred = from_it;
         for (auto it = std::next(from_it); it != to_it; ++it, ++pred) {
-          if (join(tt, *pred, *it)) {
+          if (join(tt, **pred, **it)) {
             continue;
           }
-          joined_legs.push_back(utl::to_vec(it_range{join_from, it}, to_ptr));
+          joined_legs.emplace_back(join_from, it);
           join_from = it;
         }
-        joined_legs.push_back(utl::to_vec(it_range{join_from, to_it}, to_ptr));
+        joined_legs.emplace_back(join_from, to_it);
       });
   return joined_legs;
 }
