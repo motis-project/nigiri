@@ -76,10 +76,13 @@ nigiri_timetable_t* nigiri_load_from_dir(nigiri::loader::dir const& d,
 
   auto local_bitfield_indices =
       nigiri::hash_map<nigiri::bitfield, nigiri::bitfield_idx_t>{};
+  auto cache = nigiri::string_cache_t{
+      std::size_t{0U}, nigiri::string_idx_hash{t->tt->strings_.strings_},
+      nigiri::string_idx_equals{t->tt->strings_.strings_}};
 
   (*c)->load({.link_stop_distance_ = link_stop_distance,
               .default_tz_ = "Europe/Berlin"},
-             src, d, *t->tt, local_bitfield_indices, nullptr, nullptr);
+             src, d, *t->tt, local_bitfield_indices, cache, nullptr, nullptr);
   nigiri::loader::finalize(*t->tt);
 
   t->rtt = std::make_shared<nigiri::rt_timetable>(

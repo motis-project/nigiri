@@ -28,6 +28,7 @@ struct loader_interface {
                     dir const&,
                     timetable&,
                     hash_map<bitfield, bitfield_idx_t>&,
+                    string_cache_t&,
                     assistance_times*,
                     shapes_storage*) const = 0;
   virtual cista::hash_t hash(dir const&) const = 0;

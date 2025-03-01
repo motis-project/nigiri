@@ -92,8 +92,8 @@ void service_builder::write_services(source_idx_t const src) {
               s.utc_times_.back().count(), s.line_info(store_));
 
           auto const id = tt_.register_trip_id(
-              trip_id_buf_, src, ref.display_name(tt_), ref.origin_.dbg_,
-              ref.initial_train_num_, {});
+              trip_id_buf_, route_id_idx_t{0U}, src, ref.display_name(tt_),
+              ref.origin_.dbg_, ref.initial_train_num_, {});
           tt_.trip_transport_ranges_.emplace_back({transport_range_t{
               tt_.next_transport_idx(),
               interval<stop_idx_t>{0U,

@@ -30,6 +30,7 @@ void load_timetable(loader_config const&,
                     dir const&,
                     timetable&,
                     hash_map<bitfield, bitfield_idx_t>&,
+                    string_cache_t&,
                     assistance_times* = nullptr,
                     shapes_storage* = nullptr);
 
