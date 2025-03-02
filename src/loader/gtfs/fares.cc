@@ -26,6 +26,7 @@ constexpr auto const kAreasFile = "areas.txt"sv;
 constexpr auto const kNetworksFile = "networks.txt"sv;
 constexpr auto const kFareLegJoinRulesFile = "fare_leg_join_rules.txt"sv;
 constexpr auto const kFareTransferRulesFile = "fare_transfer_rules.txt"sv;
+constexpr auto const kRiderCategoriesFile = "rider_categories.txt"sv;
 
 using media_map_t = hash_map<std::string, fare_media_idx_t>;
 
@@ -70,13 +71,16 @@ hash_map<std::string, fare_product_idx_t> parse_products(
     std::string_view file_content,
     string_cache_t& cache,
     fares& f,
-    media_map_t const& media) {
+    media_map_t const& media,
+    hash_map<std::string, rider_category_idx_t> const& rider_categories) {
   struct fare_product_record {
     utl::csv_col<utl::cstr, UTL_NAME("fare_product_id")> fare_product_id_;
     utl::csv_col<utl::cstr, UTL_NAME("fare_product_name")> fare_product_name_;
     utl::csv_col<utl::cstr, UTL_NAME("fare_media_id")> fare_media_id_;
     utl::csv_col<float, UTL_NAME("amount")> amount_;
     utl::csv_col<utl::cstr, UTL_NAME("currency")> currency_;
+    utl::csv_col<std::optional<utl::cstr>, UTL_NAME("rider_category_id")>
+        rider_category_id_;
   };
 
   auto m = hash_map<std::string, fare_product_idx_t>{};
@@ -90,7 +94,13 @@ hash_map<std::string, fare_product_idx_t> parse_products(
              .media_ = find(media, r.fare_media_id_->view())
                            .value_or(fare_media_idx_t::invalid()),
              .currency_code_ =
-                 tt.strings_.register_string(cache, r.currency_->view())});
+                 tt.strings_.register_string(cache, r.currency_->view()),
+             .rider_category_ =
+                 r.rider_category_id_
+                     ->and_then([&](utl::cstr const& x) {
+                       return find(rider_categories, x.view());
+                     })
+                     .value_or(rider_category_idx_t::invalid())});
       });
   return m;
 }
@@ -430,6 +440,40 @@ void parse_fare_transfer_rules(
       });
 }
 
+hash_map<std::string, rider_category_idx_t> parse_rider_categories(
+    std::string_view file_content,
+    string_cache_t& cache,
+    fares& f,
+    timetable& tt) {
+  struct rider_category_record {
+    utl::csv_col<utl::cstr, UTL_NAME("rider_category_id")> rider_category_id_;
+    utl::csv_col<utl::cstr, UTL_NAME("rider_category_name")>
+        rider_category_name_;
+    utl::csv_col<int, UTL_NAME("is_default_fare_category")>
+        is_default_fare_category_;
+    utl::csv_col<std::optional<utl::cstr>, UTL_NAME("eligibility_url")>
+        eligibility_url_;
+  };
+
+  auto m = hash_map<std::string, rider_category_idx_t>{};
+  for_each_row<rider_category_record>(
+      file_content, [&](rider_category_record const& r) {
+        m.emplace(r.rider_category_id_->view(), rider_category_idx_t{m.size()});
+        f.rider_categories_.push_back(fares::rider_category{
+            .name_ = tt.strings_.register_string(
+                cache, r.rider_category_name_->view()),
+            .eligibility_url_ = r.eligibility_url_
+                                    ->and_then([&](utl::cstr const& x) {
+                                      return std::optional{
+                                          tt.strings_.register_string(
+                                              cache, x.view())};
+                                    })
+                                    .value_or(string_idx_t::invalid()),
+            .is_default_fare_category_ = *r.is_default_fare_category_ == 1});
+      });
+  return m;
+}
+
 void load_fares(timetable& tt,
                 string_cache_t& c,
                 dir const& d,
@@ -442,8 +486,10 @@ void load_fares(timetable& tt,
 
   auto& f = tt.fares_.emplace_back();
   auto const media = parse_media(tt, load(kFareMediaFile).data(), c, f);
-  auto const products =
-      parse_products(tt, load(kFareProductsFile).data(), c, f, media);
+  auto const rider_categories =
+      parse_rider_categories(load(kRiderCategoriesFile).data(), c, f, tt);
+  auto const products = parse_products(tt, load(kFareProductsFile).data(), c, f,
+                                       media, rider_categories);
   auto const areas = parse_areas(tt, load(kAreasFile).data(), c);
   auto const networks = parse_networks(tt, load(kNetworksFile).data(), c, f);
   auto const route_networks = parse_route_networks(

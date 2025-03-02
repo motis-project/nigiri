@@ -13,6 +13,30 @@ namespace nigiri {
 
 using routing::journey;
 
+std::ostream& operator<<(
+    std::ostream& out, fares::fare_transfer_rule::fare_transfer_type const t) {
+  using fare_transfer_type = fares::fare_transfer_rule::fare_transfer_type;
+  switch (t) {
+    case fare_transfer_type::kAPlusAB: return out << "A+AB";
+    case fare_transfer_type::kAPlusABPlusB: return out << "A+AB+B";
+    case fare_transfer_type::kAB: return out << "AB";
+  }
+  std::unreachable();
+}
+
+std::ostream& operator<<(std::ostream& out,
+                         fares::fare_media::fare_media_type t) {
+  using fare_media_type = fares::fare_media::fare_media_type;
+  switch (t) {
+    case fare_media_type::kNone: return out << "NONE";
+    case fare_media_type::kPaper: return out << "PAPER";
+    case fare_media_type::kCard: return out << "CARD";
+    case fare_media_type::kContactless: return out << "CONTACTLESS";
+    case fare_media_type::kApp: return out << "APP";
+  }
+  std::unreachable();
+}
+
 std::ostream& operator<<(std::ostream& out, fares::fare_leg_rule const& r) {
   return out << "FROM_AREA=" << r.from_area_ << ", TO_AREA=" << r.to_area_
              << ", NETWORK=" << r.network_

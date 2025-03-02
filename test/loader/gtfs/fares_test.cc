@@ -20,39 +20,70 @@ using nigiri::test::raptor_search;
 namespace {
 
 constexpr auto const kTimetable = R"(
+# rider_categories.txt
+rider_category_id,rider_category_name,is_default_fare_category,eligibility_url
+adult,Adult,1,
+reduced,Students and seniors,0,
+
 # fare_media.txt
 fare_media_id,fare_media_name,fare_media_type
 paper-card,Paper Card,1
 app,App,4
 
 # fare_products.txt
-fare_product_id,fare_product_name,fare_media_id,amount,currency
-offpeak-pink-oneway-paper-card,Pink Paper Card,paper-card,3.00,EUR
-offpeak-pink-oneway-app,Pink App,app,2.50,EUR
-offpeak-pink-day-app,Pink Daypass,app,4.00,EUR
-offpeak-pink-week-app,Pink Weekpass,app,10.00,EUR
-offpeak-blue-oneway-paper-card,Blue Paper Card,paper-card,3.00,EUR
-offpeak-blue-oneway-app,Blue App,app,2.50,EUR
-offpeak-blue-day-app,Blue Daypass,app,4.00,EUR
-offpeak-blue-week-app,Blue Weekpass,app,10.00,EUR
-offpeak-full-oneway-paper-card,Full Paper Card,paper-card,4.00,EUR
-offpeak-full-oneway-app,Full App,app,3.50,EUR
-offpeak-full-day-app,Full Daypass,app,5.00,EUR
-offpeak-full-week-app,Full Weekpass,app,12.00,EUR
-peak-pink-oneway-paper-card,Peak Pink Paper Card,paper-card,6.00,EUR
-peak-pink-oneway-app,Peak Pink App,app,5.00,EUR
-peak-pink-day-app,Peak Pink Daypass,app,8.00,EUR
-peak-pink-week-app,Peak Pink Weekpass,app,20.00,EUR
-peak-blue-oneway-paper-card,Peak Blue Paper Card,paper-card,6.00,EUR
-peak-blue-oneway-app,Peak Blue App,app,5.00,EUR
-peak-blue-day-app,Peak Blue Daypass,app,8.00,EUR
-peak-blue-week-app,Peak Blue Weekpass,app,20.00,EUR
-peak-full-oneway-paper-card,Peak Full Paper Card,paper-card,8.00,EUR
-peak-full-oneway-app,Peak Full App,app,7.00,EUR
-peak-full-day-app,Peak Full Daypass,app,10.00,EUR
-peak-full-week-app,Peak Full Weekpass,app,24.00,EUR
-airport-card,Airport Card,paper-card,10.00,EUR
-peak-full-airport-ext,Full Airport Extension Card,paper-card,12.00,EUR
+fare_product_id,fare_product_name,fare_media_id,amount,currency,rider_category_id
+offpeak-pink-oneway-paper-card,Pink Paper Card,paper-card,3.00,EUR,adult
+offpeak-pink-oneway-app,Pink App,app,2.50,EUR,adult
+offpeak-pink-day-app,Pink Daypass,app,4.00,EUR,adult
+offpeak-pink-week-app,Pink Weekpass,app,10.00,EUR,adult
+offpeak-blue-oneway-paper-card,Blue Paper Card,paper-card,3.00,EUR,adult
+offpeak-blue-oneway-app,Blue App,app,2.50,EUR,adult
+offpeak-blue-day-app,Blue Daypass,app,4.00,EUR,adult
+offpeak-blue-week-app,Blue Weekpass,app,10.00,EUR,adult
+offpeak-full-oneway-paper-card,Full Paper Card,paper-card,4.00,EUR,adult
+offpeak-full-oneway-app,Full App,app,3.50,EUR,adult
+offpeak-full-day-app,Full Daypass,app,5.00,EUR,adult
+offpeak-full-week-app,Full Weekpass,app,12.00,EUR,adult
+peak-pink-oneway-paper-card,Peak Pink Paper Card,paper-card,6.00,EUR,adult
+peak-pink-oneway-app,Peak Pink App,app,5.00,EUR,adult
+peak-pink-day-app,Peak Pink Daypass,app,8.00,EUR,adult
+peak-pink-week-app,Peak Pink Weekpass,app,20.00,EUR,adult
+peak-blue-oneway-paper-card,Peak Blue Paper Card,paper-card,6.00,EUR,adult
+peak-blue-oneway-app,Peak Blue App,app,5.00,EUR,adult
+peak-blue-day-app,Peak Blue Daypass,app,8.00,EUR,adult
+peak-blue-week-app,Peak Blue Weekpass,app,20.00,EUR,adult
+peak-full-oneway-paper-card,Peak Full Paper Card,paper-card,8.00,EUR,adult
+peak-full-oneway-app,Peak Full App,app,7.00,EUR,adult
+peak-full-day-app,Peak Full Daypass,app,10.00,EUR,adult
+peak-full-week-app,Peak Full Weekpass,app,24.00,EUR,adult
+airport-card,Airport Card,paper-card,10.00,EUR,adult
+peak-full-airport-ext,Full Airport Extension Card,paper-card,12.00,EUR,adult
+offpeak-pink-oneway-paper-card,Pink Paper Card,paper-card,2.00,EUR,reduced
+offpeak-pink-oneway-app,Pink App,app,1.50,EUR,reduced
+offpeak-pink-day-app,Pink Daypass,app,2.50,EUR,reduced
+offpeak-pink-week-app,Pink Weekpass,app,6.00,EUR,reduced
+offpeak-blue-oneway-paper-card,Blue Paper Card,paper-card,2.00,EUR,reduced
+offpeak-blue-oneway-app,Blue App,app,1.50,EUR,reduced
+offpeak-blue-day-app,Blue Daypass,app,2.50,EUR,reduced
+offpeak-blue-week-app,Blue Weekpass,app,6.00,EUR,reduced
+offpeak-full-oneway-paper-card,Full Paper Card,paper-card,3.00,EUR,reduced
+offpeak-full-oneway-app,Full App,app,2.50,EUR,reduced
+offpeak-full-day-app,Full Daypass,app,3.50,EUR,reduced
+offpeak-full-week-app,Full Weekpass,app,8.00,EUR,reduced
+peak-pink-oneway-paper-card,Peak Pink Paper Card,paper-card,4.00,EUR,reduced
+peak-pink-oneway-app,Peak Pink App,app,3.50,EUR,reduced
+peak-pink-day-app,Peak Pink Daypass,app,5.00,EUR,reduced
+peak-pink-week-app,Peak Pink Weekpass,app,12.00,EUR,reduced
+peak-blue-oneway-paper-card,Peak Blue Paper Card,paper-card,4.00,EUR,reduced
+peak-blue-oneway-app,Peak Blue App,app,3.50,EUR,reduced
+peak-blue-day-app,Peak Blue Daypass,app,5.00,EUR,reduced
+peak-blue-week-app,Peak Blue Weekpass,app,12.00,EUR,reduced
+peak-full-oneway-paper-card,Peak Full Paper Card,paper-card,6.00,EUR,reduced
+peak-full-oneway-app,Peak Full App,app,5.50,EUR,reduced
+peak-full-day-app,Peak Full Daypass,app,7.00,EUR,reduced
+peak-full-week-app,Peak Full Weekpass,app,16.00,EUR,reduced
+airport-card,Airport Card,paper-card,8.00,EUR,reduced
+peak-full-airport-ext,Full Airport Extension Card,paper-card,10.00,EUR,reduced
 
 # calendar.txt
 service_id,monday,tuesday,wednesday,thursday,friday,saturday,sunday,start_date,end_date
@@ -210,8 +241,13 @@ std::string to_string(timetable const& tt,
       for (auto const& r : l.rule_) {
         auto const& f = tt.fares_[l.src_];
         auto const& p = f.fare_products_[r.fare_product_id_];
+        auto const& m = f.fare_media_[p.media_];
+        auto const& rider = f.rider_categories_[p.rider_category_];
         ss << tt.strings_.get(p.name_) << ": " << p.amount_ << " "
-           << tt.strings_.get(p.currency_code_) << "\n";
+           << tt.strings_.get(p.currency_code_)
+           << ", fare_media_name=" << tt.strings_.get(m.name_)
+           << ", fare_type=" << m.type_
+           << ", ride_category=" << tt.strings_.get(rider.name_) << "\n";
       }
       ss << "\n\n";
     }
