@@ -36,6 +36,10 @@ struct string_store {
     return strings_[x].view();
   }
 
+  std::optional<std::string_view> try_get(string_idx_t const s) const {
+    return s == string_idx_t::invalid() ? std::nullopt : std::optional{get(s)};
+  }
+
   string_idx_t register_string(string_cache_t& cache, std::string_view s) {
     if (auto const it = cache.find(s); it != end(cache)) {
       return *it;

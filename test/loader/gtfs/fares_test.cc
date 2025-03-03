@@ -82,8 +82,6 @@ reduced-peak-full-oneway-paper-card,Peak Full Paper Card,paper-card,6.00,EUR,red
 reduced-peak-full-oneway-app,Peak Full App,app,5.50,EUR,reduced
 reduced-peak-full-day-app,Peak Full Daypass,app,7.00,EUR,reduced
 reduced-peak-full-week-app,Peak Full Weekpass,app,16.00,EUR,reduced
-reduced-airport-card,Airport Card,paper-card,8.00,EUR,reduced
-reduced-peak-full-airport-ext,Full Airport Extension Card,paper-card,10.00,EUR,reduced
 
 # calendar.txt
 service_id,monday,tuesday,wednesday,thursday,friday,saturday,sunday,start_date,end_date
@@ -152,6 +150,30 @@ core,,1,2,peak,peak-full-oneway-paper-card,
 core,,1,2,peak,peak-full-oneway-app,
 core,,1,2,peak,peak-full-day-app,
 core,,1,2,peak,peak-full-week-app,
+core,,1,1,offpeak,reduced-offpeak-pink-oneway-paper-card,1
+core,,1,1,offpeak,reduced-offpeak-pink-oneway-app,1
+core,,1,1,offpeak,reduced-offpeak-pink-day-app,1
+core,,1,1,offpeak,reduced-offpeak-pink-week-app,1
+core,,1,1,peak,reduced-peak-pink-oneway-paper-card,1
+core,,1,1,peak,reduced-peak-pink-oneway-app,1
+core,,1,1,peak,reduced-peak-pink-day-app,1
+core,,1,1,peak,reduced-peak-pink-week-app,1
+core,,2,2,offpeak,reduced-offpeak-blue-oneway-paper-card,1
+core,,2,2,offpeak,reduced-offpeak-blue-oneway-app,1
+core,,2,2,offpeak,reduced-offpeak-blue-day-app,1
+core,,2,2,offpeak,reduced-offpeak-blue-week-app,1
+core,,2,2,peak,reduced-peak-blue-oneway-paper-card,1
+core,,2,2,peak,reduced-peak-blue-oneway-app,1
+core,,2,2,peak,reduced-peak-blue-day-app,1
+core,,2,2,peak,reduced-peak-blue-week-app,1
+core,,1,2,offpeak,reduced-offpeak-full-oneway-paper-card,
+core,,1,2,offpeak,reduced-offpeak-full-oneway-app,
+core,,1,2,offpeak,reduced-offpeak-full-day-app,
+core,,1,2,offpeak,reduced-offpeak-full-week-app,
+core,,1,2,peak,reduced-peak-full-oneway-paper-card,
+core,,1,2,peak,reduced-peak-full-oneway-app,
+core,,1,2,peak,reduced-peak-full-day-app,
+core,,1,2,peak,reduced-peak-full-week-app,
 air,air,2,3,,airport-card,
 
 # fare_transfer_rules.txt
@@ -289,6 +311,10 @@ Full App [priority=0]: 3.5 EUR, fare_media_name=App, fare_type=APP, ride_categor
 Full Paper Card [priority=0]: 4 EUR, fare_media_name=Paper Card, fare_type=PAPER, ride_category=Adult
 Full Daypass [priority=0]: 5 EUR, fare_media_name=App, fare_type=APP, ride_category=Adult
 Full Weekpass [priority=0]: 12 EUR, fare_media_name=App, fare_type=APP, ride_category=Adult
+Full App [priority=0]: 2.5 EUR, fare_media_name=App, fare_type=APP, ride_category=Students and seniors
+Full Paper Card [priority=0]: 3 EUR, fare_media_name=Paper Card, fare_type=PAPER, ride_category=Students and seniors
+Full Daypass [priority=0]: 3.5 EUR, fare_media_name=App, fare_type=APP, ride_category=Students and seniors
+Full Weekpass [priority=0]: 8 EUR, fare_media_name=App, fare_type=APP, ride_category=Students and seniors
 
 
 FARE LEG:
@@ -325,6 +351,10 @@ Peak Full App [priority=0]: 7 EUR, fare_media_name=App, fare_type=APP, ride_cate
 Peak Full Paper Card [priority=0]: 8 EUR, fare_media_name=Paper Card, fare_type=PAPER, ride_category=Adult
 Peak Full Daypass [priority=0]: 10 EUR, fare_media_name=App, fare_type=APP, ride_category=Adult
 Peak Full Weekpass [priority=0]: 24 EUR, fare_media_name=App, fare_type=APP, ride_category=Adult
+Peak Full App [priority=0]: 5.5 EUR, fare_media_name=App, fare_type=APP, ride_category=Students and seniors
+Peak Full Paper Card [priority=0]: 6 EUR, fare_media_name=Paper Card, fare_type=PAPER, ride_category=Students and seniors
+Peak Full Daypass [priority=0]: 7 EUR, fare_media_name=App, fare_type=APP, ride_category=Students and seniors
+Peak Full Weekpass [priority=0]: 16 EUR, fare_media_name=App, fare_type=APP, ride_category=Students and seniors
 
 
 FARE LEG:
@@ -355,6 +385,10 @@ Blue App [priority=1]: 2.5 EUR, fare_media_name=App, fare_type=APP, ride_categor
 Blue Paper Card [priority=1]: 3 EUR, fare_media_name=Paper Card, fare_type=PAPER, ride_category=Adult
 Blue Daypass [priority=1]: 4 EUR, fare_media_name=App, fare_type=APP, ride_category=Adult
 Blue Weekpass [priority=1]: 10 EUR, fare_media_name=App, fare_type=APP, ride_category=Adult
+Blue App [priority=1]: 1.5 EUR, fare_media_name=App, fare_type=APP, ride_category=Students and seniors
+Blue Paper Card [priority=1]: 2 EUR, fare_media_name=Paper Card, fare_type=PAPER, ride_category=Students and seniors
+Blue Daypass [priority=1]: 2.5 EUR, fare_media_name=App, fare_type=APP, ride_category=Students and seniors
+Blue Weekpass [priority=1]: 6 EUR, fare_media_name=App, fare_type=APP, ride_category=Students and seniors
 
 
 FARE LEG:

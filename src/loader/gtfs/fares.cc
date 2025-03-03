@@ -133,6 +133,12 @@ hash_map<std::string, leg_group_idx_t> parse_leg_rules(
         if (r.leg_group_id_->has_value()) {
           m.emplace((*r.leg_group_id_)->view(), leg_group_idx_t{m.size()});
         }
+        auto const fare_product = find(products, r.fare_product_id_->view());
+        if (!fare_product.has_value()) {
+          log(log_lvl::error, "gtfs.fares", "leg_rules: product {} not found",
+              r.fare_product_id_->view());
+          return;
+        }
         f.fare_leg_rules_.push_back({
             .rule_priority_ = r.rule_priority_->value_or(0U),
             .network_ = r.network_id_
@@ -162,7 +168,7 @@ hash_map<std::string, leg_group_idx_t> parse_leg_rules(
                       return find(timeframes, x.view());
                     })
                     .value_or(timeframe_group_idx_t::invalid()),
-            .fare_product_ = find(products, r.fare_product_id_->view()).value(),
+            .fare_product_ = *fare_product,
             .leg_group_idx_ = r.leg_group_id_
                                   ->and_then([&](utl::cstr const& x) {
                                     return find(m, x.view());
