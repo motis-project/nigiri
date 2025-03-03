@@ -1,5 +1,7 @@
 #include "nigiri/fares.h"
 
+#include <ranges>
+
 #include "utl/pairwise.h"
 #include "utl/parser/cstr.h"
 #include "utl/to_vec.h"
@@ -12,6 +14,10 @@
 namespace nigiri {
 
 using routing::journey;
+
+bool contains(auto&& range, auto&& needle) {
+  return std::ranges::find(range, needle) != std::end(range);
+}
 
 std::ostream& operator<<(
     std::ostream& out, fares::fare_transfer_rule::fare_transfer_type const t) {
@@ -40,24 +46,13 @@ std::ostream& operator<<(std::ostream& out,
 std::ostream& operator<<(std::ostream& out, fares::fare_leg_rule const& r) {
   return out << "FROM_AREA=" << r.from_area_ << ", TO_AREA=" << r.to_area_
              << ", NETWORK=" << r.network_
-             << ", FROM_TIMEFRAME_GROUP=" << r.from_timeframe_group_id_
-             << ", TO_TIMEFRAME_GROUP=" << r.to_timeframe_group_id_;
-}
-
-bool fares::fare_leg_rule::fuzzy_matches(fare_leg_rule const& x) const {
-  // TODO do not match network/from_area/to_area if another rule has it
-  return (network_ == network_idx_t::invalid() || network_ == x.network_) &&
-         (from_area_ == area_idx_t::invalid() || from_area_ == x.from_area_) &&
-         (to_area_ == area_idx_t::invalid() || to_area_ == x.to_area_) &&
-         (from_timeframe_group_id_ == timeframe_group_idx_t::invalid() ||
-          from_timeframe_group_id_ == x.from_timeframe_group_id_) &&
-         (to_timeframe_group_id_ == timeframe_group_idx_t::invalid() ||
-          to_timeframe_group_id_ == x.to_timeframe_group_id_);
+             << ", FROM_TIMEFRAME_GROUP=" << r.from_timeframe_group_
+             << ", TO_TIMEFRAME_GROUP=" << r.to_timeframe_group_;
 }
 
 auto fares::fare_leg_rule::match_members() const {
-  return std::tie(network_, from_area_, to_area_, from_timeframe_group_id_,
-                  to_timeframe_group_id_);
+  return std::tie(network_, from_area_, to_area_, from_timeframe_group_,
+                  to_timeframe_group_);
 }
 
 bool operator==(fares::fare_leg_rule const& a, fares::fare_leg_rule const& b) {
@@ -242,16 +237,45 @@ std::pair<source_idx_t, std::vector<fares::fare_leg_rule>> match_leg_rule(
       match_timeframe(tt, fare, to.get_location_idx(), to.fr_->t_.t_idx_,
                       to.time(event_type::kArr));
 
+  namespace sv = std::views;
+  auto concrete_network =
+      fare.fare_leg_rules_ |
+      sv::transform([](auto const& r) { return r.network_; }) |
+      sv::filter([](auto const n) { return n != network_idx_t::invalid(); });
+  auto concrete_from =
+      fare.fare_leg_rules_ |
+      sv::transform([](auto const& r) { return r.from_area_; }) |
+      sv::filter([](auto const a) { return a != area_idx_t::invalid(); });
+  auto concrete_to =
+      fare.fare_leg_rules_ |
+      sv::transform([](auto const& r) { return r.to_area_; }) |
+      sv::filter([](auto const a) { return a != area_idx_t::invalid(); });
+
   auto matching_rules = std::vector<fares::fare_leg_rule>{};
   for (auto const from_area : get_areas(tt, from.get_location_idx())) {
     for (auto const to_area : get_areas(tt, to.get_location_idx())) {
       auto const x = fares::fare_leg_rule{.network_ = network,
                                           .from_area_ = from_area,
                                           .to_area_ = to_area,
-                                          .from_timeframe_group_id_ = from_tf,
-                                          .to_timeframe_group_id_ = to_tf};
+                                          .from_timeframe_group_ = from_tf,
+                                          .to_timeframe_group_ = to_tf};
       for (auto const& r : fare.fare_leg_rules_) {
-        if (r.fuzzy_matches(x)) {
+        auto const matches =
+            ((r.network_ == network_idx_t::invalid() &&
+              !contains(concrete_network, x.network_)) ||
+             r.network_ == x.network_) &&
+            ((r.from_area_ == area_idx_t::invalid() &&
+              !contains(concrete_from, x.from_area_)) ||
+             r.from_area_ == x.from_area_) &&
+            ((r.to_area_ == area_idx_t::invalid() &&
+              !contains(concrete_to, x.to_area_)) ||
+             r.to_area_ == x.to_area_) &&
+            (r.from_timeframe_group_ == timeframe_group_idx_t::invalid() ||
+             r.from_timeframe_group_ == x.from_timeframe_group_) &&
+            (r.to_timeframe_group_ == timeframe_group_idx_t::invalid() ||
+             r.to_timeframe_group_ == x.to_timeframe_group_);
+
+        if (matches) {
           matching_rules.push_back(r);
         }
       }
@@ -260,19 +284,29 @@ std::pair<source_idx_t, std::vector<fares::fare_leg_rule>> match_leg_rule(
   utl::sort(matching_rules, [&](fares::fare_leg_rule const& a,
                                 fares::fare_leg_rule const& b) {
     return std::tuple{
-               fare.fare_products_[a.fare_product_id_].amount_,
-               tt.strings_.get(fare.fare_products_[a.fare_product_id_].name_)} <
+               -a.rule_priority_, fare.fare_products_[a.fare_product_].amount_,
+               tt.strings_.get(fare.fare_products_[a.fare_product_].name_)} <
            std::tuple{
-               fare.fare_products_[b.fare_product_id_].amount_,
-               tt.strings_.get(fare.fare_products_[b.fare_product_id_].name_)};
+               -b.rule_priority_, fare.fare_products_[b.fare_product_].amount_,
+               tt.strings_.get(fare.fare_products_[b.fare_product_].name_)};
   });
+
+  if (!matching_rules.empty()) {
+    auto const highest_prio = matching_rules.front().rule_priority_;
+    std::erase_if(matching_rules, [&](fares::fare_leg_rule const x) {
+      return x.rule_priority_ < highest_prio;
+    });
+  }
+
   return {src, matching_rules};
 }
 
 bool matches(fares::fare_transfer_rule const& r,
              fare_leg const& from,
              fare_leg const& a,
-             fare_leg const& b) {
+             fare_leg const& b,
+             auto&& concrete_from,
+             auto&& concrete_to) {
   using duration_limit_type = fares::fare_transfer_rule::duration_limit_type;
 
   utl::verify(!from.joined_leg_.empty(), "from no joined leg");
@@ -315,9 +349,11 @@ bool matches(fares::fare_transfer_rule const& r,
   // TODO do not match from_leg_group/to_leg_group if another rule has it
   return (r.duration_limit_ == fares::fare_transfer_rule::kNoDurationLimit ||
           r.duration_limit_ >= (get_end_time() - get_start_time())) &&
-         (r.from_leg_group_ == leg_group_idx_t ::invalid() ||
+         ((r.from_leg_group_ == leg_group_idx_t ::invalid() &&
+           !contains(concrete_from, curr.leg_group_idx_)) ||
           r.from_leg_group_ == curr.leg_group_idx_) &&
-         (r.to_leg_group_ == leg_group_idx_t::invalid() ||
+         ((r.to_leg_group_ == leg_group_idx_t::invalid() &&
+           !contains(concrete_to, next.leg_group_idx_)) ||
           r.to_leg_group_ == next.leg_group_idx_);
 }
 
@@ -338,17 +374,28 @@ std::vector<fare_transfer> join_transfers(
         }
 
         auto const& fares = tt.fares_[from_it->src_];
+
+        namespace sv = std::views;
+        auto concrete_from =
+            fares.fare_transfer_rules_ |
+            sv::transform([](auto const& r) { return r.from_leg_group_; }) |
+            sv::filter([](auto a) { return a != leg_group_idx_t::invalid(); });
+        auto concrete_to =
+            fares.fare_transfer_rules_ |
+            sv::transform([](auto const& r) { return r.to_leg_group_; }) |
+            sv::filter([](auto a) { return a != leg_group_idx_t::invalid(); });
+
         auto last_matched = false;
         for (auto it = from_it, next = std::next(from_it); next != to_it;
              ++it, ++next) {
           utl::verify(it >= from_it && it < to_it, "curr it not in range");
           utl::verify(next >= from_it && next < to_it, "next it not in range");
 
-          auto const match_it =
-              utl::find_if(fares.fare_transfer_rules_,
-                           [&](fares::fare_transfer_rule const& r) {
-                             return matches(r, *it, *it, *next);
-                           });
+          auto const match_it = utl::find_if(
+              fares.fare_transfer_rules_,
+              [&](fares::fare_transfer_rule const& r) {
+                return matches(r, *it, *it, *next, concrete_from, concrete_to);
+              });
           if (match_it == end(fares.fare_transfer_rules_)) {
             last_matched = false;
             transfers.push_back({std::nullopt, {*it}});
@@ -362,7 +409,8 @@ std::vector<fare_transfer> join_transfers(
           for (; next != to_it &&
                  remaining_transfers != 0;  // -1=infinite will not reach 0
                ++it, ++next, --remaining_transfers) {
-            if (!matches(*match_it, *from, *it, *next)) {
+            if (!matches(*match_it, *from, *it, *next, concrete_from,
+                         concrete_to)) {
               break;
             }
             matched.emplace_back(*next);

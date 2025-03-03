@@ -124,8 +124,7 @@ hash_map<std::string, leg_group_idx_t> parse_leg_rules(
     utl::csv_col<std::optional<utl::cstr>, UTL_NAME("to_timeframe_group_id")>
         to_timeframe_group_id_;
     utl::csv_col<utl::cstr, UTL_NAME("fare_product_id")> fare_product_id_;
-    utl::csv_col<std::optional<unsigned>, UTL_NAME("rule_priority")>
-        rule_priority_;
+    utl::csv_col<std::optional<int>, UTL_NAME("rule_priority")> rule_priority_;
   };
 
   auto m = hash_map<std::string, leg_group_idx_t>{};
@@ -151,20 +150,19 @@ hash_map<std::string, leg_group_idx_t> parse_leg_rules(
                               return find(areas, x.view());
                             })
                             .value_or(area_idx_t::invalid()),
-            .from_timeframe_group_id_ =
+            .from_timeframe_group_ =
                 r.from_timeframe_group_id_
                     ->and_then([&](utl::cstr const& x) {
                       return find(timeframes, x.view());
                     })
                     .value_or(timeframe_group_idx_t::invalid()),
-            .to_timeframe_group_id_ =
+            .to_timeframe_group_ =
                 r.to_timeframe_group_id_
                     ->and_then([&](utl::cstr const& x) {
                       return find(timeframes, x.view());
                     })
                     .value_or(timeframe_group_idx_t::invalid()),
-            .fare_product_id_ =
-                find(products, r.fare_product_id_->view()).value(),
+            .fare_product_ = find(products, r.fare_product_id_->view()).value(),
             .leg_group_idx_ = r.leg_group_id_
                                   ->and_then([&](utl::cstr const& x) {
                                     return find(m, x.view());

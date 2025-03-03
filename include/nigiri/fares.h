@@ -48,17 +48,16 @@ struct fares {
   struct fare_leg_rule {
     auto match_members() const;
     friend bool operator==(fare_leg_rule const&, fare_leg_rule const&);
-    bool fuzzy_matches(fare_leg_rule const&) const;
 
     friend std::ostream& operator<<(std::ostream&, fare_leg_rule const&);
 
-    unsigned rule_priority_{0U};
+    std::int32_t rule_priority_{0};
     network_idx_t network_;
     area_idx_t from_area_;
     area_idx_t to_area_;
-    timeframe_group_idx_t from_timeframe_group_id_;
-    timeframe_group_idx_t to_timeframe_group_id_;
-    fare_product_idx_t fare_product_id_{fare_product_idx_t::invalid()};
+    timeframe_group_idx_t from_timeframe_group_;
+    timeframe_group_idx_t to_timeframe_group_;
+    fare_product_idx_t fare_product_{fare_product_idx_t::invalid()};
     leg_group_idx_t leg_group_idx_{leg_group_idx_t::invalid()};
   };
 

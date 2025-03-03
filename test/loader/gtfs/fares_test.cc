@@ -58,32 +58,32 @@ peak-full-day-app,Peak Full Daypass,app,10.00,EUR,adult
 peak-full-week-app,Peak Full Weekpass,app,24.00,EUR,adult
 airport-card,Airport Card,paper-card,10.00,EUR,adult
 peak-full-airport-ext,Full Airport Extension Card,paper-card,12.00,EUR,adult
-offpeak-pink-oneway-paper-card,Pink Paper Card,paper-card,2.00,EUR,reduced
-offpeak-pink-oneway-app,Pink App,app,1.50,EUR,reduced
-offpeak-pink-day-app,Pink Daypass,app,2.50,EUR,reduced
-offpeak-pink-week-app,Pink Weekpass,app,6.00,EUR,reduced
-offpeak-blue-oneway-paper-card,Blue Paper Card,paper-card,2.00,EUR,reduced
-offpeak-blue-oneway-app,Blue App,app,1.50,EUR,reduced
-offpeak-blue-day-app,Blue Daypass,app,2.50,EUR,reduced
-offpeak-blue-week-app,Blue Weekpass,app,6.00,EUR,reduced
-offpeak-full-oneway-paper-card,Full Paper Card,paper-card,3.00,EUR,reduced
-offpeak-full-oneway-app,Full App,app,2.50,EUR,reduced
-offpeak-full-day-app,Full Daypass,app,3.50,EUR,reduced
-offpeak-full-week-app,Full Weekpass,app,8.00,EUR,reduced
-peak-pink-oneway-paper-card,Peak Pink Paper Card,paper-card,4.00,EUR,reduced
-peak-pink-oneway-app,Peak Pink App,app,3.50,EUR,reduced
-peak-pink-day-app,Peak Pink Daypass,app,5.00,EUR,reduced
-peak-pink-week-app,Peak Pink Weekpass,app,12.00,EUR,reduced
-peak-blue-oneway-paper-card,Peak Blue Paper Card,paper-card,4.00,EUR,reduced
-peak-blue-oneway-app,Peak Blue App,app,3.50,EUR,reduced
-peak-blue-day-app,Peak Blue Daypass,app,5.00,EUR,reduced
-peak-blue-week-app,Peak Blue Weekpass,app,12.00,EUR,reduced
-peak-full-oneway-paper-card,Peak Full Paper Card,paper-card,6.00,EUR,reduced
-peak-full-oneway-app,Peak Full App,app,5.50,EUR,reduced
-peak-full-day-app,Peak Full Daypass,app,7.00,EUR,reduced
-peak-full-week-app,Peak Full Weekpass,app,16.00,EUR,reduced
-airport-card,Airport Card,paper-card,8.00,EUR,reduced
-peak-full-airport-ext,Full Airport Extension Card,paper-card,10.00,EUR,reduced
+reduced-offpeak-pink-oneway-paper-card,Pink Paper Card,paper-card,2.00,EUR,reduced
+reduced-offpeak-pink-oneway-app,Pink App,app,1.50,EUR,reduced
+reduced-offpeak-pink-day-app,Pink Daypass,app,2.50,EUR,reduced
+reduced-offpeak-pink-week-app,Pink Weekpass,app,6.00,EUR,reduced
+reduced-offpeak-blue-oneway-paper-card,Blue Paper Card,paper-card,2.00,EUR,reduced
+reduced-offpeak-blue-oneway-app,Blue App,app,1.50,EUR,reduced
+reduced-offpeak-blue-day-app,Blue Daypass,app,2.50,EUR,reduced
+reduced-offpeak-blue-week-app,Blue Weekpass,app,6.00,EUR,reduced
+reduced-offpeak-full-oneway-paper-card,Full Paper Card,paper-card,3.00,EUR,reduced
+reduced-offpeak-full-oneway-app,Full App,app,2.50,EUR,reduced
+reduced-offpeak-full-day-app,Full Daypass,app,3.50,EUR,reduced
+reduced-offpeak-full-week-app,Full Weekpass,app,8.00,EUR,reduced
+reduced-peak-pink-oneway-paper-card,Peak Pink Paper Card,paper-card,4.00,EUR,reduced
+reduced-peak-pink-oneway-app,Peak Pink App,app,3.50,EUR,reduced
+reduced-peak-pink-day-app,Peak Pink Daypass,app,5.00,EUR,reduced
+reduced-peak-pink-week-app,Peak Pink Weekpass,app,12.00,EUR,reduced
+reduced-peak-blue-oneway-paper-card,Peak Blue Paper Card,paper-card,4.00,EUR,reduced
+reduced-peak-blue-oneway-app,Peak Blue App,app,3.50,EUR,reduced
+reduced-peak-blue-day-app,Peak Blue Daypass,app,5.00,EUR,reduced
+reduced-peak-blue-week-app,Peak Blue Weekpass,app,12.00,EUR,reduced
+reduced-peak-full-oneway-paper-card,Peak Full Paper Card,paper-card,6.00,EUR,reduced
+reduced-peak-full-oneway-app,Peak Full App,app,5.50,EUR,reduced
+reduced-peak-full-day-app,Peak Full Daypass,app,7.00,EUR,reduced
+reduced-peak-full-week-app,Peak Full Weekpass,app,16.00,EUR,reduced
+reduced-airport-card,Airport Card,paper-card,8.00,EUR,reduced
+reduced-peak-full-airport-ext,Full Airport Extension Card,paper-card,10.00,EUR,reduced
 
 # calendar.txt
 service_id,monday,tuesday,wednesday,thursday,friday,saturday,sunday,start_date,end_date
@@ -104,6 +104,7 @@ offpeak,,,weekend
 area_id,area_name
 1,Area 1
 2,Area 2
+3,Area Air
 
 # stop_areas.txt
 area_id,stop_id
@@ -112,6 +113,7 @@ area_id,stop_id
 1,C
 2,C
 2,D
+3,E
 
 # networks.txt
 network_id,network_name
@@ -125,32 +127,32 @@ pink,pink,,
 pink,blue,,
 
 # fare_leg_rules.txt
-leg_group_id,network_id,from_area_id,to_area_id,from_timeframe_group_id,fare_product_id
-core,,1,1,offpeak,offpeak-pink-oneway-paper-card
-core,,1,1,offpeak,offpeak-pink-oneway-app
-core,,1,1,offpeak,offpeak-pink-day-app
-core,,1,1,offpeak,offpeak-pink-week-app
-core,,1,1,peak,peak-pink-oneway-paper-card
-core,,1,1,peak,peak-pink-oneway-app
-core,,1,1,peak,peak-pink-day-app
-core,,1,1,peak,peak-pink-week-app
-core,,2,2,offpeak,offpeak-blue-oneway-paper-card
-core,,2,2,offpeak,offpeak-blue-oneway-app
-core,,2,2,offpeak,offpeak-blue-day-app
-core,,2,2,offpeak,offpeak-blue-week-app
-core,,2,2,peak,peak-blue-oneway-paper-card
-core,,2,2,peak,peak-blue-oneway-app
-core,,2,2,peak,peak-blue-day-app
-core,,2,2,peak,peak-blue-week-app
-core,,1,2,offpeak,offpeak-full-oneway-paper-card
-core,,1,2,offpeak,offpeak-full-oneway-app
-core,,1,2,offpeak,offpeak-full-day-app
-core,,1,2,offpeak,offpeak-full-week-app
-core,,1,2,peak,peak-full-oneway-paper-card
-core,,1,2,peak,peak-full-oneway-app
-core,,1,2,peak,peak-full-day-app
-core,,1,2,peak,peak-full-week-app
-air,air,,,,airport-card
+leg_group_id,network_id,from_area_id,to_area_id,from_timeframe_group_id,fare_product_id,rule_priority
+core,,1,1,offpeak,offpeak-pink-oneway-paper-card,1
+core,,1,1,offpeak,offpeak-pink-oneway-app,1
+core,,1,1,offpeak,offpeak-pink-day-app,1
+core,,1,1,offpeak,offpeak-pink-week-app,1
+core,,1,1,peak,peak-pink-oneway-paper-card,1
+core,,1,1,peak,peak-pink-oneway-app,1
+core,,1,1,peak,peak-pink-day-app,1
+core,,1,1,peak,peak-pink-week-app,1
+core,,2,2,offpeak,offpeak-blue-oneway-paper-card,1
+core,,2,2,offpeak,offpeak-blue-oneway-app,1
+core,,2,2,offpeak,offpeak-blue-day-app,1
+core,,2,2,offpeak,offpeak-blue-week-app,1
+core,,2,2,peak,peak-blue-oneway-paper-card,1
+core,,2,2,peak,peak-blue-oneway-app,1
+core,,2,2,peak,peak-blue-day-app,1
+core,,2,2,peak,peak-blue-week-app,1
+core,,1,2,offpeak,offpeak-full-oneway-paper-card,
+core,,1,2,offpeak,offpeak-full-oneway-app,
+core,,1,2,offpeak,offpeak-full-day-app,
+core,,1,2,offpeak,offpeak-full-week-app,
+core,,1,2,peak,peak-full-oneway-paper-card,
+core,,1,2,peak,peak-full-oneway-app,
+core,,1,2,peak,peak-full-day-app,
+core,,1,2,peak,peak-full-week-app,
+air,air,2,3,,airport-card,
 
 # fare_transfer_rules.txt
 from_leg_group_id,to_leg_group_id,transfer_count,duration_limit,duration_limit_type,fare_transfer_type,fare_product_id
@@ -240,11 +242,11 @@ std::string to_string(timetable const& tt,
       ss << "PRODUCTS\n";
       for (auto const& r : l.rule_) {
         auto const& f = tt.fares_[l.src_];
-        auto const& p = f.fare_products_[r.fare_product_id_];
+        auto const& p = f.fare_products_[r.fare_product_];
         auto const& m = f.fare_media_[p.media_];
         auto const& rider = f.rider_categories_[p.rider_category_];
-        ss << tt.strings_.get(p.name_) << ": " << p.amount_ << " "
-           << tt.strings_.get(p.currency_code_)
+        ss << tt.strings_.get(p.name_) << " [priority=" << r.rule_priority_
+           << "]: " << p.amount_ << " " << tt.strings_.get(p.currency_code_)
            << ", fare_media_name=" << tt.strings_.get(m.name_)
            << ", fare_type=" << m.type_
            << ", ride_category=" << tt.strings_.get(rider.name_) << "\n";
@@ -283,17 +285,17 @@ FARE LEG:
    0: C       C...............................................                               d: 30.03 01:05 [30.03 03:05]  [{name=Line 3, day=2022-03-30, id=T3, src=0}]
    1: D       D............................................... a: 30.03 02:00 [30.03 04:00]
 PRODUCTS
-Full App: 3.5 EUR
-Full Paper Card: 4 EUR
-Full Daypass: 5 EUR
-Full Weekpass: 12 EUR
+Full App [priority=0]: 3.5 EUR, fare_media_name=App, fare_type=APP, ride_category=Adult
+Full Paper Card [priority=0]: 4 EUR, fare_media_name=Paper Card, fare_type=PAPER, ride_category=Adult
+Full Daypass [priority=0]: 5 EUR, fare_media_name=App, fare_type=APP, ride_category=Adult
+Full Weekpass [priority=0]: 12 EUR, fare_media_name=App, fare_type=APP, ride_category=Adult
 
 
 FARE LEG:
    0: D       D...............................................                               d: 30.03 02:05 [30.03 04:05]  [{name=Line 4, day=2022-03-30, id=T4, src=0}]
    1: E       E............................................... a: 30.03 02:30 [30.03 04:30]
 PRODUCTS
-Airport Card: 10 EUR
+Airport Card [priority=0]: 10 EUR, fare_media_name=Paper Card, fare_type=PAPER, ride_category=Adult
 
 
 FARE TRANSFER END
@@ -319,17 +321,47 @@ FARE LEG:
    0: C       C...............................................                               d: 30.03 07:05 [30.03 09:05]  [{name=Line 3, day=2022-03-30, id=T3, src=0}]
    1: D       D............................................... a: 30.03 08:00 [30.03 10:00]
 PRODUCTS
-Peak Full App: 7 EUR
-Peak Full Paper Card: 8 EUR
-Peak Full Daypass: 10 EUR
-Peak Full Weekpass: 24 EUR
+Peak Full App [priority=0]: 7 EUR, fare_media_name=App, fare_type=APP, ride_category=Adult
+Peak Full Paper Card [priority=0]: 8 EUR, fare_media_name=Paper Card, fare_type=PAPER, ride_category=Adult
+Peak Full Daypass [priority=0]: 10 EUR, fare_media_name=App, fare_type=APP, ride_category=Adult
+Peak Full Weekpass [priority=0]: 24 EUR, fare_media_name=App, fare_type=APP, ride_category=Adult
 
 
 FARE LEG:
    0: D       D...............................................                               d: 30.03 08:05 [30.03 10:05]  [{name=Line 4, day=2022-03-30, id=T4, src=0}]
    1: E       E............................................... a: 30.03 08:30 [30.03 10:30]
 PRODUCTS
-Airport Card: 10 EUR
+Airport Card [priority=0]: 10 EUR, fare_media_name=Paper Card, fare_type=PAPER, ride_category=Adult
+
+
+FARE TRANSFER END
+)";
+    EXPECT_EQ(kExpected, to_string(tt, fare_legs));
+  }
+
+  {  // OFFPEAK TEST
+    auto const results = raptor_search(
+        tt, nullptr, "C", "E", unixtime_t{sys_days{2022_y / March / 30}});
+    ASSERT_EQ(1U, results.size());
+    auto const fare_legs = get_fares(tt, *results.begin());
+    constexpr auto const kExpected = R"(FARE TRANSFER START
+TRANSFER PRODUCT: Full Airport Extension Card
+RULE: A+AB
+FARE LEG:
+   0: C       C...............................................                               d: 30.03 00:05 [30.03 02:05]  [{name=Line 3, day=2022-03-30, id=T3, src=0}]
+   1: D       D............................................... a: 30.03 01:00 [30.03 03:00]
+PRODUCTS
+Blue App [priority=1]: 2.5 EUR, fare_media_name=App, fare_type=APP, ride_category=Adult
+Blue Paper Card [priority=1]: 3 EUR, fare_media_name=Paper Card, fare_type=PAPER, ride_category=Adult
+Blue Daypass [priority=1]: 4 EUR, fare_media_name=App, fare_type=APP, ride_category=Adult
+Blue Weekpass [priority=1]: 10 EUR, fare_media_name=App, fare_type=APP, ride_category=Adult
+
+
+FARE LEG:
+   0: D       D...............................................                               d: 30.03 01:05 [30.03 03:05]  [{name=Line 4, day=2022-03-30, id=T4, src=0}]
+   1: E       E............................................... a: 30.03 01:30 [30.03 03:30]
+PRODUCTS
+Airport Card [priority=0]: 10 EUR, fare_media_name=Paper Card, fare_type=PAPER, ride_category=Adult
 
 
 FARE TRANSFER END
