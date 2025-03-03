@@ -15,5 +15,4 @@ void load_fares(timetable& tt,
                 traffic_days_t const&,
                 route_map_t const&,
                 locations_map const&);
-
 }  // namespace nigiri::loader::gtfs

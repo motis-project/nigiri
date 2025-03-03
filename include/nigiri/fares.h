@@ -11,6 +11,8 @@ using fare_product_idx_t =
     cista::strong<std::uint32_t, struct _fare_product_idx>;
 using fare_leg_join_rule_idx_t =
     cista::strong<std::uint32_t, struct _fare_leg_join_rule_idx>;
+using rider_category_idx_t =
+    cista::strong<std::uint32_t, struct _rider_category_idx>;
 using area_idx_t = cista::strong<std::uint32_t, struct _area_idx_t>;
 using network_idx_t = cista::strong<std::uint32_t, struct _network_idx_t>;
 using timeframe_group_idx_t =
@@ -30,6 +32,7 @@ struct fares {
       kContactless,
       kApp
     };
+    friend std::ostream& operator<<(std::ostream&, fare_media_type);
     string_idx_t name_;
     fare_media_type type_;
   };
@@ -39,22 +42,22 @@ struct fares {
     string_idx_t name_;
     fare_media_idx_t media_;
     string_idx_t currency_code_;
+    rider_category_idx_t rider_category_{rider_category_idx_t::invalid()};
   };
 
   struct fare_leg_rule {
     auto match_members() const;
     friend bool operator==(fare_leg_rule const&, fare_leg_rule const&);
-    bool fuzzy_matches(fare_leg_rule const&) const;
 
     friend std::ostream& operator<<(std::ostream&, fare_leg_rule const&);
 
-    unsigned rule_priority_{0U};
+    std::int32_t rule_priority_{0};
     network_idx_t network_;
     area_idx_t from_area_;
     area_idx_t to_area_;
-    timeframe_group_idx_t from_timeframe_group_id_;
-    timeframe_group_idx_t to_timeframe_group_id_;
-    fare_product_idx_t fare_product_id_{fare_product_idx_t::invalid()};
+    timeframe_group_idx_t from_timeframe_group_;
+    timeframe_group_idx_t to_timeframe_group_;
+    fare_product_idx_t fare_product_{fare_product_idx_t::invalid()};
     leg_group_idx_t leg_group_idx_{leg_group_idx_t::invalid()};
   };
 
@@ -86,6 +89,9 @@ struct fares {
       kAB  // fare_transfer_rules.fare_product_id
     };
 
+    friend std::ostream& operator<<(
+        std::ostream& out, fares::fare_transfer_rule::fare_transfer_type);
+
     leg_group_idx_t from_leg_group_{leg_group_idx_t::invalid()};
     leg_group_idx_t to_leg_group_{leg_group_idx_t::invalid()};
     std::int8_t transfer_count_{-1};
@@ -94,6 +100,12 @@ struct fares {
         duration_limit_type::kCurrDepNextArr};
     fare_transfer_type fare_transfer_type_{fare_transfer_type::kAPlusAB};
     fare_product_idx_t fare_product_{fare_product_idx_t::invalid()};
+  };
+
+  struct rider_category {
+    string_idx_t name_;
+    string_idx_t eligibility_url_;
+    bool is_default_fare_category_;
   };
 
   struct timeframe {
@@ -111,21 +123,11 @@ struct fares {
   vector<fare_leg_rule> fare_leg_rules_;
   vector<fare_leg_join_rule> fare_leg_join_rules_;
   vector<fare_transfer_rule> fare_transfer_rules_;
+  vector_map<rider_category_idx_t, rider_category> rider_categories_;
   vecvec<timeframe_group_idx_t, timeframe> timeframes_;
   hash_map<route_id_idx_t, network_idx_t> route_networks_;
   vector_map<network_idx_t, network> networks_;
 };
-
-inline std::ostream& operator<<(
-    std::ostream& out, fares::fare_transfer_rule::fare_transfer_type const t) {
-  using fare_transfer_type = fares::fare_transfer_rule::fare_transfer_type;
-  switch (t) {
-    case fare_transfer_type::kAPlusAB: return out << "A+AB";
-    case fare_transfer_type::kAPlusABPlusB: return out << "A+AB+B";
-    case fare_transfer_type::kAB: return out << "AB";
-  }
-  std::unreachable();
-}
 
 struct timetable;
 
