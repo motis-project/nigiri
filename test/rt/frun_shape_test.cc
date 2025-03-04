@@ -1,5 +1,8 @@
 #include "gtest/gtest.h"
 
+#include <chrono>
+#include <initializer_list>
+#include <limits>
 #include <ranges>
 #include <stdexcept>
 #include <string_view>
@@ -8,15 +11,21 @@
 #include "geo/latlng.h"
 #include "geo/polyline.h"
 
+#include "date/date.h"
+
 #include "nigiri/loader/dir.h"
 #include "nigiri/loader/gtfs/load_timetable.h"
 #include "nigiri/loader/init_finish.h"
+#include "nigiri/common/delta_t.h"
+#include "nigiri/routing/one_to_all.h"
+#include "nigiri/routing/query.h"
 #include "nigiri/rt/create_rt_timetable.h"
 #include "nigiri/rt/frun.h"
 #include "nigiri/rt/gtfsrt_resolve_run.h"
 #include "nigiri/rt/run.h"
 #include "nigiri/shapes_storage.h"
 #include "nigiri/timetable.h"
+#include "nigiri/types.h"
 
 #include "../raptor_search.h"
 
@@ -73,6 +82,7 @@ ROUTE_6,AGENCY_1,Route 6,,3
 ROUTE_7,AGENCY_1,Route 7,,3
 ROUTE_8,AGENCY_1,Route 8,,3
 ROUTE_9,AGENCY_1,Route 9,,3
+ROUTE_10,AGENCY_1,Route 10,,3
 
 # trips.txt
 route_id,service_id,trip_id,trip_headsign,block_id,shape_id,
@@ -91,6 +101,7 @@ ROUTE_6,SERVICE_1,TRIP_10,E,BLOCK_5,SHAPE_6,
 ROUTE_7,SERVICE_1,TRIP_11,E,BLOCK_11,SHAPE_11,
 ROUTE_8,SERVICE_1,TRIP_12,E,BLOCK_12,SHAPE_12,
 ROUTE_9,SERVICE_1,TRIP_13,E,BLOCK_13,SHAPE_13,
+ROUTE_10,SERVICE_1,TRIP_14,E,BLOCK_14,,
 
 # shapes.txt
 "shape_id","shape_pt_lat","shape_pt_lon","shape_pt_sequence","shape_dist_traveled"
@@ -206,6 +217,9 @@ TRIP_13,11:00:00,11:00:00,M,2,0,0,
 TRIP_13,12:00:00,12:00:00,N,3,0,0,
 TRIP_13,13:00:00,13:00:00,O,4,0,0,
 TRIP_13,13:05:00,13:05:00,O,5,0,0,
+TRIP_14,11:15:00,11:15:00,F,1,0,0,
+TRIP_14,12:15:00,12:15:00,S,2,0,0,
+TRIP_14,13:15:00,13:15:00,W,3,0,0,
 
 )"sv;
 
@@ -227,10 +241,11 @@ TEST(
   auto rtt = rt::create_rt_timetable(tt, date::sys_days{2024_y / January / 1});
 
   auto leg_shape = std::vector<geo::latlng>{};
-  auto const plot_point = [&leg_shape](geo::latlng const& point) {
+  [[maybe_unused]] auto const plot_point = [&leg_shape](geo::latlng const& point) {
     leg_shape.push_back(point);
   };
 
+    /*
   // TRIP_1
   {
     // Create run
@@ -807,6 +822,111 @@ TEST(
       // On 1st trip
       ASSERT_FALSE(shapes_data.get_bounding_box(r, 0).has_value());
     }
+  }
+  */
+
+  {
+    constexpr auto const kSearchDir = direction::kForward;
+    constexpr auto const kViasUsed = via_offset_t{0U};
+    constexpr auto const kUnreachable = kInvalidDelta<kSearchDir>;
+
+    std::cout << "STARTING TEST!!\n";
+     auto const locs = [&](std::string_view x){
+  auto const src = source_idx_t{0};
+  return std::vector<routing::offset>{{tt.locations_.location_id_to_idx_.at({x, src}), 0_minutes,
+                  0U}};
+     };
+
+  //    auto const to_loc = [&](std::string_view x){
+  // auto const src = source_idx_t{0};
+  //     return routing::offset{tt.locations_.location_id_to_idx_.at({x, src}), 0_minutes,
+  //                 0U};
+  //    };
+    //  auto const to_locs = [&](std::initializer_list<std::string_view> ls) {
+    //   auto locs = std::vector<routing::offset>{};
+    //   for (auto const s : ls) {
+    //     locs.emplace_back(to_loc(s));
+    //   }
+    //   return locs;
+    //  };
+    // auto const results = nigiri::test::raptor_search(
+    //     tt, &rtt, routing::query{
+    //       .start_time_ = unixtime_t{sys_days{2024_y / January / 1}} + 9_hours,
+    //       .start_ = to_locs({"A"}),
+    //       .destination_ = to_locs({"A", "B", "C", "D", "F", "G", "H", "I"}),
+    //       // .search_mode_ = search_mode::reachable,
+    //     }, direction::kForward
+    // );
+     struct fastest {
+      delta_t duration_{std::numeric_limits<delta_t>::max()};
+      std::uint8_t k_{std::numeric_limits<std::uint8_t>::max()};
+     };
+
+     auto const start_time = unixtime_t{sys_days{2024_y / January / 1}} + 9_hours;
+     auto const q = routing::query{
+          .start_time_ = start_time,
+          .start_ = locs({"A"}),
+          .max_travel_time_ = std::chrono::hours{4},
+          // .destination_ = locs({"O"}),
+          // .destination_ = to_locs({"A", "B", "C", "D", "F", "G", "H", "I"}),
+          // .search_mode_ = search_mode::reachable,
+        };
+    // auto const state = nigiri::routing::one_to_all<direction::kForward>(
+    auto state = nigiri::routing::one_to_all<kSearchDir>(
+        tt, &rtt, q);
+
+    auto const round_times = state.get_round_times<kViasUsed>();
+     auto const get_best = [&](location_idx_t const l_idx) -> std::optional<fastest> {
+       auto const l = to_idx(l_idx);
+      for (auto const k : std::views::iota(std::uint8_t{0U}, q.max_transfers_ + 1U) \
+        | std::views::reverse) {
+        if (round_times[k][l][kViasUsed] != kUnreachable) {
+          return fastest{
+            .duration_ = round_times[k][l][0],
+            .k_ = k,
+          };
+        }
+      }
+      return std::nullopt;
+      // for (auto k = q.max_transfers_; k >)
+     };
+
+    std::cout << std::format("State locations: {}\n", state.n_locations_);
+    auto const x = state.get_round_times<0>();
+    std::cout << std::format("Round times: {}x{}\n", x.n_columns_, x.n_rows_);
+    auto day = std::chrono::time_point_cast<days>(start_time);
+    state.print<0>(tt, day, std::numeric_limits<delta_t>::max());
+    // std::cout << "State: " << state.n_locations_
+    // std::cout << "RESULTS: " << results.size() << "\n";
+    // for (auto const& result : results) {
+    //   std::cout << "Dest: " << result.dest_ << "\n";
+    //   std::cout << "Arr: " << result.arrival_time() << "\n";
+    // }
+    std::cout << "DONE!!\n";
+    auto const bests = state.get_best<0>();
+    for (auto const [i, best] : std::views::enumerate(bests)) {
+      std::cout << tt.locations_.get(location_idx_t{i}) << ", " << best[0] << std::endl;
+    }
+    auto s = locs("S")[0];
+    // auto const y = x.at(to_idx(tt.locations_.location_id_to_idx_.at({"S", source_idx_t{0}})));
+    std::cout << "S: " << s.target() << ", " << to_idx(s.target()) << std::endl;
+    // auto const y = x.at(to_idx(s.target()));
+    // std::cout << y.matrix_.n_rows_ << ", " << y.matrix_.n_columns_ << std::endl;
+    // std::cout << "y: ";
+    // for (auto z = 0U; z < x.n_columns_; ++z) {
+    //   std::cout << y[z][0] << ", ";
+    // }
+    // // for (auto const z : y) {
+    // //   std::cout << z[0] << ", ";
+    // // }
+    // std::cout << "\n";
+
+    auto fastest_s = get_best(s.target());
+    ASSERT_TRUE(fastest_s.has_value());
+    // ASSERT_EQ(fastest_s->duration_, delta_t{135});
+    ASSERT_EQ(fastest_s->k_, 2U);
+
+    // ASSERT_EQ(state.get_best<0>()[to_idx(s.target())][0], delta_t{135U});
   }
 }
 
