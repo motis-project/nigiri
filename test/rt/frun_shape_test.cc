@@ -842,21 +842,6 @@ TEST(
   //     return routing::offset{tt.locations_.location_id_to_idx_.at({x, src}), 0_minutes,
   //                 0U};
   //    };
-    //  auto const to_locs = [&](std::initializer_list<std::string_view> ls) {
-    //   auto locs = std::vector<routing::offset>{};
-    //   for (auto const s : ls) {
-    //     locs.emplace_back(to_loc(s));
-    //   }
-    //   return locs;
-    //  };
-    // auto const results = nigiri::test::raptor_search(
-    //     tt, &rtt, routing::query{
-    //       .start_time_ = unixtime_t{sys_days{2024_y / January / 1}} + 9_hours,
-    //       .start_ = to_locs({"A"}),
-    //       .destination_ = to_locs({"A", "B", "C", "D", "F", "G", "H", "I"}),
-    //       // .search_mode_ = search_mode::reachable,
-    //     }, direction::kForward
-    // );
      struct fastest {
       delta_t duration_{std::numeric_limits<delta_t>::max()};
       std::uint8_t k_{std::numeric_limits<std::uint8_t>::max()};
@@ -867,9 +852,6 @@ TEST(
           .start_time_ = start_time,
           .start_ = locs({"A"}),
           .max_travel_time_ = std::chrono::hours{4},
-          // .destination_ = locs({"O"}),
-          // .destination_ = to_locs({"A", "B", "C", "D", "F", "G", "H", "I"}),
-          // .search_mode_ = search_mode::reachable,
         };
     // auto const state = nigiri::routing::one_to_all<direction::kForward>(
     auto state = nigiri::routing::one_to_all<kSearchDir>(
@@ -888,7 +870,6 @@ TEST(
         }
       }
       return std::nullopt;
-      // for (auto k = q.max_transfers_; k >)
      };
 
     std::cout << std::format("State locations: {}\n", state.n_locations_);
@@ -902,24 +883,13 @@ TEST(
     //   std::cout << "Dest: " << result.dest_ << "\n";
     //   std::cout << "Arr: " << result.arrival_time() << "\n";
     // }
-    std::cout << "DONE!!\n";
+
     auto const bests = state.get_best<0>();
     for (auto const [i, best] : std::views::enumerate(bests)) {
       std::cout << tt.locations_.get(location_idx_t{i}) << ", " << best[0] << std::endl;
     }
     auto s = locs("S")[0];
-    // auto const y = x.at(to_idx(tt.locations_.location_id_to_idx_.at({"S", source_idx_t{0}})));
     std::cout << "S: " << s.target() << ", " << to_idx(s.target()) << std::endl;
-    // auto const y = x.at(to_idx(s.target()));
-    // std::cout << y.matrix_.n_rows_ << ", " << y.matrix_.n_columns_ << std::endl;
-    // std::cout << "y: ";
-    // for (auto z = 0U; z < x.n_columns_; ++z) {
-    //   std::cout << y[z][0] << ", ";
-    // }
-    // // for (auto const z : y) {
-    // //   std::cout << z[0] << ", ";
-    // // }
-    // std::cout << "\n";
 
     auto fastest_s = get_best(s.target());
     ASSERT_TRUE(fastest_s.has_value());

@@ -51,7 +51,10 @@ enum class search_mode {
   reachable,  // Search all reachable nodes
 };
 
-template <direction SearchDir, bool Rt, via_offset_t Vias, search_mode SearchMode = search_mode::path>
+template <direction SearchDir,
+          bool Rt,
+          via_offset_t Vias,
+          search_mode SearchMode = search_mode::path>
 // template <direction SearchDir, bool Rt, via_offset_t Vias>
 struct raptor {
   using algo_state_t = raptor_state;
