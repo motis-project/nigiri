@@ -11,6 +11,8 @@
 
 namespace nigiri::routing {
 
+constexpr auto const kVias = via_offset_t{0U};
+
 day_idx_t make_base(timetable const& tt, start_time_t start_time) {
   auto const midpoint =
       std::visit(utl::overloaded{
@@ -35,8 +37,8 @@ unixtime_t make_start_time(start_time_t start_time) {
       start_time);
 }
 
-template <direction SearchDir, via_offset_t Vias>
-void run_raptor(raptor<SearchDir, true, Vias, search_mode::reachable>&& algo,
+template <direction SearchDir>
+void run_raptor(raptor<SearchDir, true, kVias, search_mode::reachable>&& algo,
                 std::vector<start>&& starts,
                 query const& q) {
   auto results = pareto_set<journey>{};
@@ -69,10 +71,13 @@ void run_raptor(raptor<SearchDir, true, Vias, search_mode::reachable>&& algo,
       });
 }
 
-template <direction SearchDir, via_offset_t Vias>
+template <direction SearchDir>
 raptor_state one_to_all(timetable const& tt,
                         rt_timetable const* rtt,
                         query const& q) {
+  utl::verify(q.via_stops_.empty(),
+              "One-to-all search not supported with vias");
+
   auto state = raptor_state{};
 
   auto is_dest = bitvec::max(tt.n_locations());
@@ -81,7 +86,7 @@ raptor_state one_to_all(timetable const& tt,
   auto lb = std::vector<std::uint16_t>(tt.n_locations(), 0U);
   auto const base = make_base(tt, q.start_time_);
 
-  auto r = raptor<SearchDir, true, Vias, search_mode::reachable>{
+  auto r = raptor<SearchDir, true, kVias, search_mode::reachable>{
       tt,
       rtt,
       state,
@@ -110,35 +115,16 @@ raptor_state one_to_all(timetable const& tt,
   return state;
 }
 
-template <direction SearchDir>
-raptor_state one_to_all(timetable const& tt,
-                        rt_timetable const* rtt,
-                        query const& q) {
-  auto const via_count = q.via_stops_.size();
-  utl::verify(via_count <= kMaxVias, "too many via stops: {}, limit: {}",
-              via_count, kMaxVias);
-
-  static_assert(kMaxVias == 2,
-                "one_to_all.h needs to be adjusted for kMaxVias");
-
-  switch (via_count) {
-    case 0: return one_to_all<SearchDir, 0>(tt, rtt, q); break;
-    case 1: return one_to_all<SearchDir, 1>(tt, rtt, q); break;
-    case 2: return one_to_all<SearchDir, 2>(tt, rtt, q); break;
-  }
-  std::unreachable();
-}
-
 fastest_offset get_fastest_offset(timetable const& tt,
                                   raptor_state const& state,
                                   location_idx_t const l,
                                   unixtime_t const start_time,
                                   delta_t const unreachable,
                                   std::uint8_t const transfers) {
-  auto const& round_times = state.get_round_times<0>();
+  auto const& round_times = state.get_round_times<kVias>();
   for (auto const k : std::views::iota(std::uint8_t{0U}, transfers + 1U)  //
                           | std::views::reverse) {
-    if (round_times[k][to_idx(l)][0] != unreachable) {
+    if (round_times[k][to_idx(l)][kVias] != unreachable) {
       auto const base =
           tt.internal_interval_days().from_ +
           static_cast<int>(make_base(tt, start_time).v_) * date::days{1};

@@ -853,8 +853,8 @@ TEST(
     };
     auto state = nigiri::routing::one_to_all<kSearchDir>(tt, &rtt, q);
 
-    ASSERT_TRUE(
-        is_reachable(state, to_location_idx("I"), kUnreachable));  // 62 minutes
+    ASSERT_TRUE(is_reachable(state, to_location_idx("I"),
+                             kUnreachable));  // 122 minutes
     ASSERT_TRUE(
         is_reachable(state, to_location_idx("T"), kUnreachable));  // 4 hours
     ASSERT_FALSE(
@@ -875,7 +875,7 @@ TEST(
     auto state = nigiri::routing::one_to_all<kSearchDir>(tt, &rtt, q);
 
     ASSERT_TRUE(is_reachable(state, to_location_idx("I"),
-                             kUnreachable));  // 62 + 5 minutes
+                             kUnreachable));  // 122 + 5 minutes
     ASSERT_FALSE(is_reachable(state, to_location_idx("T"),
                               kUnreachable));  // 4 hours + 5 minutes
 
