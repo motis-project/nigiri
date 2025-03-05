@@ -15,17 +15,10 @@ namespace nigiri::routing {
 
 constexpr auto const kVias = via_offset_t{0U};
 
-day_idx_t make_base(timetable const& tt, start_time_t start_time) {
-  auto const midpoint =
-      std::visit(utl::overloaded{
-                     [](interval<unixtime_t> const start_interval) {
-                       return start_interval.from_ +
-                              ((start_interval.to_ - start_interval.from_) / 2);
-                     },
-                     [](unixtime_t const t) { return t; }},
-                 start_time);
+day_idx_t make_base(timetable const& tt, unixtime_t start_time) {
+  // Use day of midpoint for search interval
   return day_idx_t{std::chrono::duration_cast<date::days>(
-                       std::chrono::round<std::chrono::days>(midpoint) -
+                       std::chrono::round<std::chrono::days>(start_time) -
                        tt.internal_interval().from_)
                        .count()};
 }
@@ -70,7 +63,7 @@ raptor_state one_to_all(timetable const& tt,
   auto is_via = std::array<bitvec, kMaxVias>{};
   auto dist_to_dest = std::vector<std::uint16_t>{};
   auto lb = std::vector<std::uint16_t>(tt.n_locations(), 0U);
-  auto const base = make_base(tt, q.start_time_);
+  auto const base = make_base(tt, start_time);
   auto const is_wheelchair = true;
 
   auto r = raptor<SearchDir, true, kVias, search_mode::kOneToAll>{
