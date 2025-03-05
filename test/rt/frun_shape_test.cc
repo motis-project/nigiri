@@ -1,8 +1,5 @@
 #include "gtest/gtest.h"
 
-#include <chrono>
-#include <initializer_list>
-#include <ranges>
 #include <stdexcept>
 #include <string_view>
 #include <vector>
@@ -849,7 +846,7 @@ TEST(
     auto const q = routing::query{
         .start_time_ = start_time,
         .start_ = to_offsets("A"),
-        .max_travel_time_ = std::chrono::hours{4},
+        .max_travel_time_ = 4_hours,
     };
     auto state = nigiri::routing::one_to_all<kSearchDir>(tt, &rtt, q);
 
@@ -870,7 +867,7 @@ TEST(
     auto const q = routing::query{
         .start_time_ = start_time,
         .start_ = to_offsets("A"),
-        .max_travel_time_ = std::chrono::hours{4},
+        .max_travel_time_ = 4_hours,
     };
     auto state = nigiri::routing::one_to_all<kSearchDir>(tt, &rtt, q);
 
@@ -909,12 +906,12 @@ TEST(
     auto const q = routing::query{
         .start_time_ = start_time,
         .start_ = to_offsets("A"),
-        .max_travel_time_ = std::chrono::hours{4},
+        .max_travel_time_ = 4_hours,
     };
     auto state = nigiri::routing::one_to_all<kSearchDir>(tt, &rtt, q);
 
-    ASSERT_TRUE(
-        is_reachable(state, to_location_idx("I"), kUnreachable));  // 62 minutes
+    ASSERT_TRUE(is_reachable(state, to_location_idx("I"),
+                             kUnreachable));  // 122 minutes
     ASSERT_TRUE(
         is_reachable(state, to_location_idx("T"), kUnreachable));  // 4 hours
     ASSERT_FALSE(
@@ -930,7 +927,7 @@ TEST(
     auto const q = routing::query{
         .start_time_ = start_time,
         .start_ = to_offsets("D"),
-        .max_travel_time_ = std::chrono::hours{3},
+        .max_travel_time_ = 3_hours,
     };
     auto state = nigiri::routing::one_to_all<kSearchDir>(tt, &rtt, q);
 

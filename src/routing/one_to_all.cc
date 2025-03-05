@@ -28,15 +28,6 @@ day_idx_t make_base(timetable const& tt, start_time_t start_time) {
                        .count()};
 }
 
-unixtime_t make_start_time(start_time_t start_time) {
-  return std::visit(
-      utl::overloaded{[](interval<unixtime_t> const start_interval) {
-                        return start_interval.from_;
-                      },
-                      [](unixtime_t const t) { return t; }},
-      start_time);
-}
-
 template <direction SearchDir>
 void run_raptor(raptor<SearchDir, true, kVias, search_mode::one_to_many>&& algo,
                 std::vector<start>&& starts,
@@ -85,6 +76,7 @@ raptor_state one_to_all(timetable const& tt,
   auto dist_to_dest = std::vector<std::uint16_t>{};
   auto lb = std::vector<std::uint16_t>(tt.n_locations(), 0U);
   auto const base = make_base(tt, q.start_time_);
+  auto const is_wheelchair = true;
 
   auto r = raptor<SearchDir, true, kVias, search_mode::one_to_many>{
       tt,
@@ -99,7 +91,7 @@ raptor_state one_to_all(timetable const& tt,
       base,
       q.allowed_claszes_,
       q.require_bike_transport_,
-      true,  // is_wheelchair
+      is_wheelchair,
       q.transfer_time_settings_};
 
   auto starts = std::vector<start>{};
@@ -127,7 +119,7 @@ fastest_offset get_fastest_offset(timetable const& tt,
     if (round_times[k][to_idx(l)][kVias] != unreachable) {
       auto const base =
           tt.internal_interval_days().from_ +
-          static_cast<int>(make_base(tt, start_time).v_) * date::days{1};
+          static_cast<int>(to_idx(make_base(tt, start_time))) * date::days{1};
       auto end_time = delta_to_unix(base, round_times[k][to_idx(l)][0]);
       return {
           .duration_ = static_cast<delta_t>((end_time - start_time).count()),
