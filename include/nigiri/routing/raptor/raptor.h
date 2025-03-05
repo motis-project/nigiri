@@ -47,8 +47,8 @@ struct raptor_stats {
 };
 
 enum class search_mode {
-  preset,  // Default
-  one_to_many,  // Skips reconstruction and does not update time_at_dest
+  kOneToOne,
+  kOneToMany
 };
 
 template <direction SearchDir,
