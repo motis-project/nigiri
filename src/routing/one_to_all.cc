@@ -1,31 +1,29 @@
 #include "nigiri/routing/one_to_all.h"
 
+#include <ranges>
 #include <utility>
 #include <vector>
 
 #include "nigiri/routing/limits.h"
 #include "nigiri/routing/raptor/raptor.h"
 #include "nigiri/routing/start_times.h"
-#include "nigiri/types.h"
 #include "utl/verify.h"
 
 namespace nigiri::routing {
 
 day_idx_t make_base(timetable const& tt, start_time_t start_time) {
-  auto const search_interval = std::visit(
-      utl::overloaded{
-          [](interval<unixtime_t> const start_interval) {
-            return start_interval;
-          },
-          [](unixtime_t const t) { return interval<unixtime_t>{t, t}; }},
-      start_time);
-  return day_idx_t{
-      std::chrono::duration_cast<date::days>(
-          std::chrono::round<std::chrono::days>(
-              search_interval.from_ +
-              ((search_interval.to_ - search_interval.from_) / 2)) -
-          tt.internal_interval().from_)
-          .count()};
+  auto const midpoint =
+      std::visit(utl::overloaded{
+                     [](interval<unixtime_t> const start_interval) {
+                       return start_interval.from_ +
+                              ((start_interval.to_ - start_interval.from_) / 2);
+                     },
+                     [](unixtime_t const t) { return t; }},
+                 start_time);
+  return day_idx_t{std::chrono::duration_cast<date::days>(
+                       std::chrono::round<std::chrono::days>(midpoint) -
+                       tt.internal_interval().from_)
+                       .count()};
 }
 
 unixtime_t make_start_time(start_time_t start_time) {
@@ -130,6 +128,29 @@ raptor_state one_to_all(timetable const& tt,
   }
   std::unreachable();
 }
+
+fastest_offset get_fastest_offset(timetable const& tt,
+                                  raptor_state const& state,
+                                  location_idx_t const l,
+                                  unixtime_t const start_time,
+                                  delta_t const unreachable,
+                                  std::uint8_t const transfers) {
+  auto const& round_times = state.get_round_times<0>();
+  for (auto const k : std::views::iota(std::uint8_t{0U}, transfers + 1U)  //
+                          | std::views::reverse) {
+    if (round_times[k][to_idx(l)][0] != unreachable) {
+      auto const base =
+          tt.internal_interval_days().from_ +
+          static_cast<int>(make_base(tt, start_time).v_) * date::days{1};
+      auto end_time = delta_to_unix(base, round_times[k][to_idx(l)][0]);
+      return {
+          .duration_ = static_cast<delta_t>((end_time - start_time).count()),
+          .transfers_ = k,
+      };
+    }
+  }
+  return {};
+};
 
 template raptor_state one_to_all<direction::kForward>(timetable const&,
                                                       rt_timetable const*,

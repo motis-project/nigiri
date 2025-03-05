@@ -2,7 +2,6 @@
 
 #include <chrono>
 #include <initializer_list>
-#include <limits>
 #include <ranges>
 #include <stdexcept>
 #include <string_view>
@@ -242,24 +241,26 @@ TEST(
 
   // Helper functions
   auto leg_shape = std::vector<geo::latlng>{};
-  [[maybe_unused]] auto const plot_point = [&leg_shape](geo::latlng const& point) {
+  auto const plot_point = [&leg_shape](geo::latlng const& point) {
     leg_shape.push_back(point);
   };
 
-  auto const to_location_idx = [&](std::string_view x){
+  auto const to_location_idx = [&](std::string_view x) {
     auto const src = source_idx_t{0};
     return tt.locations_.location_id_to_idx_.at({x, src});
   };
 
-  auto const to_offsets = [&](std::string_view x) -> std::vector<routing::offset> {
+  auto const to_offsets =
+      [&](std::string_view x) -> std::vector<routing::offset> {
     return {{to_location_idx(x), 0_minutes, 0U}};
   };
 
-  auto const is_reachable = [](nigiri::routing::raptor_state const& state, location_idx_t const l, delta_t const unreachable) {
+  auto const is_reachable = [](nigiri::routing::raptor_state const& state,
+                               location_idx_t const l,
+                               delta_t const unreachable) {
     return state.get_best<0>()[to_idx(l)][0] != unreachable;
   };
 
-    /*
   // TRIP_1
   {
     // Create run
@@ -837,42 +838,64 @@ TEST(
       ASSERT_FALSE(shapes_data.get_bounding_box(r, 0).has_value());
     }
   }
-  */
 
   // One-to-All search for time point
   {
     constexpr auto const kSearchDir = direction::kForward;
     constexpr auto const kUnreachable = kInvalidDelta<kSearchDir>;
 
-    auto const start_time = unixtime_t{sys_days{2024_y / January / 1}} + 9_hours;
+    auto const start_time =
+        unixtime_t{sys_days{2024_y / January / 1}} + 9_hours;
     auto const q = routing::query{
-      .start_time_ = start_time,
-      .start_ = to_offsets("A"),
-      .max_travel_time_ = std::chrono::hours{4},
+        .start_time_ = start_time,
+        .start_ = to_offsets("A"),
+        .max_travel_time_ = std::chrono::hours{4},
     };
-    auto state = nigiri::routing::one_to_all<kSearchDir>(
-        tt, &rtt, q);
+    auto state = nigiri::routing::one_to_all<kSearchDir>(tt, &rtt, q);
 
-    ASSERT_TRUE(is_reachable(state, to_location_idx("I"), kUnreachable)); // 62 minutes
-    ASSERT_TRUE(is_reachable(state, to_location_idx("T"), kUnreachable));  // 4 hours
-    ASSERT_FALSE(is_reachable(state, to_location_idx("U"), kUnreachable));  // 5 hours
+    ASSERT_TRUE(
+        is_reachable(state, to_location_idx("I"), kUnreachable));  // 62 minutes
+    ASSERT_TRUE(
+        is_reachable(state, to_location_idx("T"), kUnreachable));  // 4 hours
+    ASSERT_FALSE(
+        is_reachable(state, to_location_idx("U"), kUnreachable));  // 5 hours
   }
   // One-to-All search for time point
   {
     constexpr auto const kSearchDir = direction::kForward;
     constexpr auto const kUnreachable = kInvalidDelta<kSearchDir>;
 
-    auto const start_time = unixtime_t{sys_days{2024_y / January / 1}} + 9_hours - 5_minutes;
+    auto const start_time =
+        unixtime_t{sys_days{2024_y / January / 1}} + 9_hours - 5_minutes;
     auto const q = routing::query{
-      .start_time_ = start_time,
-      .start_ = to_offsets("A"),
-      .max_travel_time_ = std::chrono::hours{4},
+        .start_time_ = start_time,
+        .start_ = to_offsets("A"),
+        .max_travel_time_ = std::chrono::hours{4},
     };
-    auto state = nigiri::routing::one_to_all<kSearchDir>(
-        tt, &rtt, q);
+    auto state = nigiri::routing::one_to_all<kSearchDir>(tt, &rtt, q);
 
-    ASSERT_TRUE(is_reachable(state, to_location_idx("I"), kUnreachable)); // 62 + 5 minutes
-    ASSERT_FALSE(is_reachable(state, to_location_idx("T"), kUnreachable));  // 4 hours + 5 minutes
+    ASSERT_TRUE(is_reachable(state, to_location_idx("I"),
+                             kUnreachable));  // 62 + 5 minutes
+    ASSERT_FALSE(is_reachable(state, to_location_idx("T"),
+                              kUnreachable));  // 4 hours + 5 minutes
+
+    // Test duration and number of transfers
+    {
+      auto const stats_s =
+          get_fastest_offset(tt, state, to_location_idx("S"), start_time,
+                             kUnreachable, q.max_transfers_);
+      ASSERT_EQ(stats_s.duration_, delta_t{140});
+      ASSERT_EQ(stats_s.transfers_, 2U);
+      auto const stats_w =
+          get_fastest_offset(tt, state, to_location_idx("W"), start_time,
+                             kUnreachable, q.max_transfers_);
+      ASSERT_EQ(stats_w.duration_, delta_t{200});
+      ASSERT_EQ(stats_w.transfers_, 2U);
+      auto const stats_s_direct = get_fastest_offset(
+          tt, state, to_location_idx("S"), start_time, kUnreachable, 1);
+      ASSERT_EQ(stats_s_direct.duration_, delta_t{185});
+      ASSERT_EQ(stats_s_direct.transfers_, 1U);
+    }
   }
   // One-to-All search for time point interval
   {
@@ -880,94 +903,46 @@ TEST(
     constexpr auto const kUnreachable = kInvalidDelta<kSearchDir>;
 
     auto const start_time = interval{
-      unixtime_t{sys_days{2024_y / January / 1}} + 9_hours - 5_minutes,
-      unixtime_t{sys_days{2024_y / January / 1}} + 9_hours + 5_minutes,
+        unixtime_t{sys_days{2024_y / January / 1}} + 9_hours - 5_minutes,
+        unixtime_t{sys_days{2024_y / January / 1}} + 9_hours + 5_minutes,
     };
     auto const q = routing::query{
-      .start_time_ = start_time,
-      .start_ = to_offsets("A"),
-      .max_travel_time_ = std::chrono::hours{4},
+        .start_time_ = start_time,
+        .start_ = to_offsets("A"),
+        .max_travel_time_ = std::chrono::hours{4},
     };
-    auto state = nigiri::routing::one_to_all<kSearchDir>(
-        tt, &rtt, q);
+    auto state = nigiri::routing::one_to_all<kSearchDir>(tt, &rtt, q);
 
-    ASSERT_TRUE(is_reachable(state, to_location_idx("I"), kUnreachable)); // 62 minutes
-    ASSERT_TRUE(is_reachable(state, to_location_idx("T"), kUnreachable));  // 4 hours
-    ASSERT_FALSE(is_reachable(state, to_location_idx("U"), kUnreachable));  // 5 hours
+    ASSERT_TRUE(
+        is_reachable(state, to_location_idx("I"), kUnreachable));  // 62 minutes
+    ASSERT_TRUE(
+        is_reachable(state, to_location_idx("T"), kUnreachable));  // 4 hours
+    ASSERT_FALSE(
+        is_reachable(state, to_location_idx("U"), kUnreachable));  // 5 hours
   }
-
+  // One-to-All backwards search for time point
   {
-    constexpr auto const kSearchDir = direction::kForward;
+    constexpr auto const kSearchDir = direction::kBackward;
     constexpr auto const kUnreachable = kInvalidDelta<kSearchDir>;
-    constexpr auto const kViasUsed = via_offset_t{0U};
 
-    std::cout << "STARTING TEST!!\n";
-     auto const locs = [&](std::string_view x){
-  auto const src = source_idx_t{0};
-  return std::vector<routing::offset>{{tt.locations_.location_id_to_idx_.at({x, src}), 0_minutes,
-                  0U}};
-     };
+    auto const start_time =
+        unixtime_t{sys_days{2024_y / January / 1}} + 12_hours + 30_minutes;
+    auto const q = routing::query{
+        .start_time_ = start_time,
+        .start_ = to_offsets("D"),
+        .max_travel_time_ = std::chrono::hours{3},
+    };
+    auto state = nigiri::routing::one_to_all<kSearchDir>(tt, &rtt, q);
 
-  //    auto const to_loc = [&](std::string_view x){
-  // auto const src = source_idx_t{0};
-  //     return routing::offset{tt.locations_.location_id_to_idx_.at({x, src}), 0_minutes,
-  //                 0U};
-  //    };
-     struct fastest {
-      delta_t duration_{std::numeric_limits<delta_t>::max()};
-      std::uint8_t k_{std::numeric_limits<std::uint8_t>::max()};
-     };
+    ASSERT_TRUE(
+        is_reachable(state, to_location_idx("B"), kUnreachable));  // 62 minutes
+    ASSERT_FALSE(
+        is_reachable(state, to_location_idx("A"), kUnreachable));  // 5 hours
 
-     auto const start_time = unixtime_t{sys_days{2024_y / January / 1}} + 9_hours;
-     auto const q = routing::query{
-          .start_time_ = start_time,
-          .start_ = locs({"A"}),
-          .max_travel_time_ = std::chrono::hours{4},
-        };
-    // auto const state = nigiri::routing::one_to_all<direction::kForward>(
-    auto state = nigiri::routing::one_to_all<kSearchDir>(
-        tt, &rtt, q);
-
-    auto const round_times = state.get_round_times<kViasUsed>();
-     auto const get_best = [&](location_idx_t const l_idx) -> std::optional<fastest> {
-       auto const l = to_idx(l_idx);
-      for (auto const k : std::views::iota(std::uint8_t{0U}, q.max_transfers_ + 1U) \
-        | std::views::reverse) {
-        if (round_times[k][l][kViasUsed] != kUnreachable) {
-          return fastest{
-            .duration_ = round_times[k][l][0],
-            .k_ = k,
-          };
-        }
-      }
-      return std::nullopt;
-     };
-
-    std::cout << std::format("State locations: {}\n", state.n_locations_);
-    auto const x = state.get_round_times<0>();
-    std::cout << std::format("Round times: {}x{}\n", x.n_columns_, x.n_rows_);
-    auto day = std::chrono::time_point_cast<days>(start_time);
-    state.print<0>(tt, day, std::numeric_limits<delta_t>::max());
-    // std::cout << "State: " << state.n_locations_
-    // std::cout << "RESULTS: " << results.size() << "\n";
-    // for (auto const& result : results) {
-    //   std::cout << "Dest: " << result.dest_ << "\n";
-    //   std::cout << "Arr: " << result.arrival_time() << "\n";
-    // }
-
-    auto const bests = state.get_best<0>();
-    for (auto const [i, best] : std::views::enumerate(bests)) {
-      std::cout << tt.locations_.get(location_idx_t{i}) << ", " << best[0] << std::endl;
-    }
-    auto s = locs("S")[0];
-    std::cout << "S: " << s.target() << ", " << to_idx(s.target()) << std::endl;
-
-    auto fastest_s = get_best(s.target());
-    ASSERT_TRUE(fastest_s.has_value());
-    // ASSERT_EQ(fastest_s->duration_, delta_t{135});
-    ASSERT_EQ(fastest_s->k_, 2U);
-
-    // ASSERT_EQ(state.get_best<0>()[to_idx(s.target())][0], delta_t{135U});
+    auto const stats_b =
+        get_fastest_offset(tt, state, to_location_idx("B"), start_time,
+                           kUnreachable, q.max_transfers_);
+    ASSERT_EQ(stats_b.duration_, delta_t{-150});
   }
 }
 
