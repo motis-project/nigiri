@@ -298,7 +298,7 @@ nigiri::pareto_set<nigiri::routing::journey> raptor_search(
   if (backward_search) {
     using algo_t =
         nigiri::routing::raptor<nigiri::direction::kBackward, true, 0,
-                                nigiri::routing::search_mode::preset>;
+                                nigiri::routing::search_mode::kOneToOne>;
     return *(nigiri::routing::search<nigiri::direction::kBackward, algo_t>{
         tt, rtt, search_state, algo_state, std::move(q)}
                  .execute()
@@ -306,7 +306,7 @@ nigiri::pareto_set<nigiri::routing::journey> raptor_search(
   } else {
     using algo_t =
         nigiri::routing::raptor<nigiri::direction::kForward, true, 0,
-                                nigiri::routing::search_mode::preset>;
+                                nigiri::routing::search_mode::kOneToOne>;
     return *(nigiri::routing::search<nigiri::direction::kForward, algo_t>{
         tt, rtt, search_state, algo_state, std::move(q)}
                  .execute()

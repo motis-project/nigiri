@@ -29,7 +29,7 @@ day_idx_t make_base(timetable const& tt, start_time_t start_time) {
 }
 
 template <direction SearchDir>
-void run_raptor(raptor<SearchDir, true, kVias, search_mode::one_to_many>&& algo,
+void run_raptor(raptor<SearchDir, true, kVias, search_mode::kOneToAll>&& algo,
                 std::vector<start>&& starts,
                 query const& q) {
   auto results = pareto_set<journey>{};
@@ -65,7 +65,7 @@ raptor_state one_to_all(timetable const& tt,
                         rt_timetable const* rtt,
                         query const& q) {
   utl::verify(q.via_stops_.empty(),
-              "One-to-all search not supported with vias");
+              "One-to-All search not supported with vias");
 
   auto state = raptor_state{};
 
@@ -76,7 +76,7 @@ raptor_state one_to_all(timetable const& tt,
   auto const base = make_base(tt, q.start_time_);
   auto const is_wheelchair = true;
 
-  auto r = raptor<SearchDir, true, kVias, search_mode::one_to_many>{
+  auto r = raptor<SearchDir, true, kVias, search_mode::kOneToAll>{
       tt,
       rtt,
       state,

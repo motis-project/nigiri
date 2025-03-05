@@ -46,10 +46,7 @@ struct raptor_stats {
   std::uint64_t route_update_prevented_by_lower_bound_{0ULL};
 };
 
-enum class search_mode {
-  kOneToOne,
-  kOneToMany
-};
+enum class search_mode { kOneToOne, kOneToAll };
 
 template <direction SearchDir,
           bool Rt,
@@ -235,7 +232,7 @@ struct raptor {
       trace_print_state_after_round();
     }
 
-    if constexpr (SearchMode == search_mode::one_to_many) {
+    if constexpr (SearchMode == search_mode::kOneToAll) {
       return;
     }
 
@@ -263,7 +260,7 @@ struct raptor {
   }
 
   void reconstruct(query const& q, journey& j) {
-    if constexpr (SearchMode == search_mode::one_to_many) {
+    if constexpr (SearchMode == search_mode::kOneToAll) {
       return;
     }
     reconstruct_journey<SearchDir>(tt_, rtt_, q, state_, j, base(), base_);
@@ -1145,7 +1142,7 @@ private:
   bool is_intermodal_dest() const { return !dist_to_end_.empty(); }
 
   void update_time_at_dest(unsigned const k, delta_t const t) {
-    if constexpr (SearchMode == search_mode::one_to_many) {
+    if constexpr (SearchMode == search_mode::kOneToAll) {
       return;
     }
     for (auto i = k; i != time_at_dest_.size(); ++i) {
