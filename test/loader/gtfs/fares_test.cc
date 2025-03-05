@@ -32,6 +32,9 @@ app,App,4
 
 # fare_products.txt
 fare_product_id,fare_product_name,fare_media_id,amount,currency,rider_category_id
+core-1-transfer,1 Transfer,paper-card,1.00,EUR,adult
+core-2-transfer,2 Transfer,paper-card,2.00,EUR,adult
+core-1h,1h Ticket,paper-card,2.00,EUR,adult
 offpeak-pink-oneway-paper-card,Pink Paper Card,paper-card,3.00,EUR,adult
 offpeak-pink-oneway-app,Pink App,app,2.50,EUR,adult
 offpeak-pink-day-app,Pink Daypass,app,4.00,EUR,adult
@@ -178,6 +181,9 @@ air,air,2,3,,airport-card,
 
 # fare_transfer_rules.txt
 from_leg_group_id,to_leg_group_id,transfer_count,duration_limit,duration_limit_type,fare_transfer_type,fare_product_id
+core,core,1,,0,core-1-transfer
+core,core,2,,0,core-2-transfer
+core,core,,7200,0,0,2,core-1h
 core,air,1,10800,1,0,peak-full-airport-ext
 
 # route_networks.txt
