@@ -125,7 +125,7 @@ float price(fares const& f, std::vector<fare_transfer> const& t) {
   for (auto const& x : t) {
     sum += x.cheapest_price(f);
   }
-  return sum;
+  return sum + static_cast<float>(t.size()) / 100.F;
 }
 
 auto fares::fare_leg_rule::match_members() const {
@@ -492,13 +492,18 @@ std::vector<fare_transfer> join_transfers(
           auto curr = q.back();
           q.resize(q.size() - 1U);
 
+          auto has_match = false;
           for_each_transfer_rule(
               fares, [&](std::span<fares::fare_transfer_rule const> rules) {
                 auto const& r = rules.front();
                 if (!matches(r, *curr.it_, *curr.it_, *std::next(curr.it_),
                              concrete_from, concrete_to)) {
+                  std::cout << "  NO MATCH\n";
                   return;
                 }
+
+                std::cout << "MATCH\n";
+                has_match = true;
 
                 auto const from = curr.it_;
                 auto it = from;
@@ -521,12 +526,26 @@ std::vector<fare_transfer> join_transfers(
 
                 if (next != to_it) {
                   // Didn't reach end -> try again from here on.
+                  std::cout << "NOT FINISHED -> ENQUEUE\n";
                   q.push_back({.transfers_ = std::move(copy), .it_ = it});
                 } else {
                   // End reached. Write alternative.
+                  std::cout << "FINISHED -> WRITE ALTERNATIVE\n";
                   alternatives.emplace_back(std::move(copy));
                 }
               });
+
+          if (!has_match) {
+            auto copy = curr.transfers_;
+            copy.push_back(fare_transfer{{}, {*curr.it_}});
+            if (std::next(curr.it_) == to_it) {
+              std::cout << "NO MATCH, FINISHED -> WRITE ALTERNATIVE\n";
+              alternatives.emplace_back(std::move(copy));
+            } else {
+              std::cout << "NO MATCH, FINISHED -> ENQUEUE\n";
+              q.push_back({.transfers_ = copy, .it_ = std::next(curr.it_)});
+            }
+          }
         }
 
         utl::verify(!alternatives.empty(), "no alternatives");
