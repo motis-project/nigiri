@@ -240,9 +240,23 @@ TEST(
   // Create empty RT timetable.
   auto rtt = rt::create_rt_timetable(tt, date::sys_days{2024_y / January / 1});
 
+  // Helper functions
   auto leg_shape = std::vector<geo::latlng>{};
   [[maybe_unused]] auto const plot_point = [&leg_shape](geo::latlng const& point) {
     leg_shape.push_back(point);
+  };
+
+  auto const to_location_idx = [&](std::string_view x){
+    auto const src = source_idx_t{0};
+    return tt.locations_.location_id_to_idx_.at({x, src});
+  };
+
+  auto const to_offsets = [&](std::string_view x) -> std::vector<routing::offset> {
+    return {{to_location_idx(x), 0_minutes, 0U}};
+  };
+
+  auto const is_reachable = [](nigiri::routing::raptor_state const& state, location_idx_t const l, delta_t const unreachable) {
+    return state.get_best<0>()[to_idx(l)][0] != unreachable;
   };
 
     /*
@@ -825,10 +839,67 @@ TEST(
   }
   */
 
+  // One-to-All search for time point
   {
     constexpr auto const kSearchDir = direction::kForward;
-    constexpr auto const kViasUsed = via_offset_t{0U};
     constexpr auto const kUnreachable = kInvalidDelta<kSearchDir>;
+
+    auto const start_time = unixtime_t{sys_days{2024_y / January / 1}} + 9_hours;
+    auto const q = routing::query{
+      .start_time_ = start_time,
+      .start_ = to_offsets("A"),
+      .max_travel_time_ = std::chrono::hours{4},
+    };
+    auto state = nigiri::routing::one_to_all<kSearchDir>(
+        tt, &rtt, q);
+
+    ASSERT_TRUE(is_reachable(state, to_location_idx("I"), kUnreachable)); // 62 minutes
+    ASSERT_TRUE(is_reachable(state, to_location_idx("T"), kUnreachable));  // 4 hours
+    ASSERT_FALSE(is_reachable(state, to_location_idx("U"), kUnreachable));  // 5 hours
+  }
+  // One-to-All search for time point
+  {
+    constexpr auto const kSearchDir = direction::kForward;
+    constexpr auto const kUnreachable = kInvalidDelta<kSearchDir>;
+
+    auto const start_time = unixtime_t{sys_days{2024_y / January / 1}} + 9_hours - 5_minutes;
+    auto const q = routing::query{
+      .start_time_ = start_time,
+      .start_ = to_offsets("A"),
+      .max_travel_time_ = std::chrono::hours{4},
+    };
+    auto state = nigiri::routing::one_to_all<kSearchDir>(
+        tt, &rtt, q);
+
+    ASSERT_TRUE(is_reachable(state, to_location_idx("I"), kUnreachable)); // 62 + 5 minutes
+    ASSERT_FALSE(is_reachable(state, to_location_idx("T"), kUnreachable));  // 4 hours + 5 minutes
+  }
+  // One-to-All search for time point interval
+  {
+    constexpr auto const kSearchDir = direction::kForward;
+    constexpr auto const kUnreachable = kInvalidDelta<kSearchDir>;
+
+    auto const start_time = interval{
+      unixtime_t{sys_days{2024_y / January / 1}} + 9_hours - 5_minutes,
+      unixtime_t{sys_days{2024_y / January / 1}} + 9_hours + 5_minutes,
+    };
+    auto const q = routing::query{
+      .start_time_ = start_time,
+      .start_ = to_offsets("A"),
+      .max_travel_time_ = std::chrono::hours{4},
+    };
+    auto state = nigiri::routing::one_to_all<kSearchDir>(
+        tt, &rtt, q);
+
+    ASSERT_TRUE(is_reachable(state, to_location_idx("I"), kUnreachable)); // 62 minutes
+    ASSERT_TRUE(is_reachable(state, to_location_idx("T"), kUnreachable));  // 4 hours
+    ASSERT_FALSE(is_reachable(state, to_location_idx("U"), kUnreachable));  // 5 hours
+  }
+
+  {
+    constexpr auto const kSearchDir = direction::kForward;
+    constexpr auto const kUnreachable = kInvalidDelta<kSearchDir>;
+    constexpr auto const kViasUsed = via_offset_t{0U};
 
     std::cout << "STARTING TEST!!\n";
      auto const locs = [&](std::string_view x){
