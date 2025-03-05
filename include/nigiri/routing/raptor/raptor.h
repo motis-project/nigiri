@@ -46,7 +46,12 @@ struct raptor_stats {
   std::uint64_t route_update_prevented_by_lower_bound_{0ULL};
 };
 
-template <direction SearchDir, bool Rt, via_offset_t Vias>
+enum class search_mode { kOneToOne, kOneToAll };
+
+template <direction SearchDir,
+          bool Rt,
+          via_offset_t Vias,
+          search_mode SearchMode>
 struct raptor {
   using algo_state_t = raptor_state;
   using algo_stats_t = raptor_stats;
@@ -227,6 +232,10 @@ struct raptor {
       trace_print_state_after_round();
     }
 
+    if constexpr (SearchMode == search_mode::kOneToAll) {
+      return;
+    }
+
     is_dest_.for_each_set_bit([&](auto const i) {
       for (auto k = 1U; k != end_k; ++k) {
         auto const dest_time = round_times_[k][i][Vias];
@@ -251,6 +260,9 @@ struct raptor {
   }
 
   void reconstruct(query const& q, journey& j) {
+    if constexpr (SearchMode == search_mode::kOneToAll) {
+      return;
+    }
     reconstruct_journey<SearchDir>(tt_, rtt_, q, state_, j, base(), base_);
   }
 
@@ -1130,6 +1142,9 @@ private:
   bool is_intermodal_dest() const { return !dist_to_end_.empty(); }
 
   void update_time_at_dest(unsigned const k, delta_t const t) {
+    if constexpr (SearchMode == search_mode::kOneToAll) {
+      return;
+    }
     for (auto i = k; i != time_at_dest_.size(); ++i) {
       time_at_dest_[i] = get_best(time_at_dest_[i], t);
     }
