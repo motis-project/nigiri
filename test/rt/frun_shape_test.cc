@@ -838,60 +838,61 @@ TEST(
 
   // One-to-All search for time point
   {
-    constexpr auto const kSearchDir = direction::kForward;
-    constexpr auto const kUnreachable = kInvalidDelta<kSearchDir>;
-
-    auto const start_time =
-        unixtime_t{sys_days{2024_y / January / 1}} + 9_hours;
-    auto const q = routing::query{
-        .start_time_ = start_time,
-        .start_ = to_offsets("A"),
-        .max_travel_time_ = 4_hours,
-    };
-    auto state = nigiri::routing::one_to_all<kSearchDir>(tt, &rtt, q);
-
-    ASSERT_TRUE(is_reachable(state, to_location_idx("I"),
-                             kUnreachable));  // 122 minutes
-    ASSERT_TRUE(
-        is_reachable(state, to_location_idx("T"), kUnreachable));  // 4 hours
-    ASSERT_FALSE(
-        is_reachable(state, to_location_idx("U"), kUnreachable));  // 5 hours
-  }
-  // One-to-All search for time point
-  {
-    constexpr auto const kSearchDir = direction::kForward;
-    constexpr auto const kUnreachable = kInvalidDelta<kSearchDir>;
-
-    auto const start_time =
-        unixtime_t{sys_days{2024_y / January / 1}} + 9_hours - 5_minutes;
-    auto const q = routing::query{
-        .start_time_ = start_time,
-        .start_ = to_offsets("A"),
-        .max_travel_time_ = 4_hours,
-    };
-    auto state = nigiri::routing::one_to_all<kSearchDir>(tt, &rtt, q);
-
-    ASSERT_TRUE(is_reachable(state, to_location_idx("I"),
-                             kUnreachable));  // 122 + 5 minutes
-    ASSERT_FALSE(is_reachable(state, to_location_idx("T"),
-                              kUnreachable));  // 4 hours + 5 minutes
-
-    // Test duration and number of transfers
+    // Exact start time
     {
-      auto const stats_s =
-          get_fastest_offset(tt, state, to_location_idx("S"), start_time,
-                             kUnreachable, q.max_transfers_);
-      ASSERT_EQ(stats_s.duration_, delta_t{140});
-      ASSERT_EQ(stats_s.transfers_, 2U);
-      auto const stats_w =
-          get_fastest_offset(tt, state, to_location_idx("W"), start_time,
-                             kUnreachable, q.max_transfers_);
-      ASSERT_EQ(stats_w.duration_, delta_t{200});
-      ASSERT_EQ(stats_w.transfers_, 2U);
-      auto const stats_s_direct = get_fastest_offset(
-          tt, state, to_location_idx("S"), start_time, kUnreachable, 1);
-      ASSERT_EQ(stats_s_direct.duration_, delta_t{185});
-      ASSERT_EQ(stats_s_direct.transfers_, 1U);
+      constexpr auto const kSearchDir = direction::kForward;
+      constexpr auto const kUnreachable = kInvalidDelta<kSearchDir>;
+
+      auto const start_time =
+          unixtime_t{sys_days{2024_y / January / 1}} + 9_hours;
+      auto const q = routing::query{
+          .start_time_ = start_time,
+          .start_ = to_offsets("A"),
+          .max_travel_time_ = 4_hours,
+      };
+      auto state = nigiri::routing::one_to_all<kSearchDir>(tt, &rtt, q);
+
+      ASSERT_TRUE(is_reachable(state, to_location_idx("I"),
+                               kUnreachable));  // 122 minutes
+      ASSERT_TRUE(
+          is_reachable(state, to_location_idx("T"), kUnreachable));  // 4 hours
+      ASSERT_FALSE(
+          is_reachable(state, to_location_idx("U"), kUnreachable));  // 5 hours
+    }
+    // Earlier start time
+    {
+      constexpr auto const kSearchDir = direction::kForward;
+      constexpr auto const kUnreachable = kInvalidDelta<kSearchDir>;
+
+      auto const start_time =
+          unixtime_t{sys_days{2024_y / January / 1}} + 9_hours - 5_minutes;
+      auto const q = routing::query{
+          .start_time_ = start_time,
+          .start_ = to_offsets("A"),
+          .max_travel_time_ = 4_hours,
+      };
+      auto state = nigiri::routing::one_to_all<kSearchDir>(tt, &rtt, q);
+
+      ASSERT_TRUE(is_reachable(state, to_location_idx("I"),
+                               kUnreachable));  // 122 + 5 minutes
+      ASSERT_FALSE(is_reachable(state, to_location_idx("T"),
+                                kUnreachable));  // 4 hours + 5 minutes
+
+      // Test duration and number of transfers
+      {
+        auto const stats_s = get_fastest_offset<kSearchDir>(
+            tt, state, to_location_idx("S"), start_time, q.max_transfers_);
+        ASSERT_EQ(stats_s.duration_, delta_t{140});
+        ASSERT_EQ(stats_s.transfers_, 2U);
+        auto const stats_w = get_fastest_offset<kSearchDir>(
+            tt, state, to_location_idx("W"), start_time, q.max_transfers_);
+        ASSERT_EQ(stats_w.duration_, delta_t{200});
+        ASSERT_EQ(stats_w.transfers_, 2U);
+        auto const stats_s_direct = get_fastest_offset<kSearchDir>(
+            tt, state, to_location_idx("S"), start_time, 1);
+        ASSERT_EQ(stats_s_direct.duration_, delta_t{185});
+        ASSERT_EQ(stats_s_direct.transfers_, 1U);
+      }
     }
   }
   // One-to-All search for time point interval
@@ -936,9 +937,8 @@ TEST(
     ASSERT_FALSE(
         is_reachable(state, to_location_idx("A"), kUnreachable));  // 5 hours
 
-    auto const stats_b =
-        get_fastest_offset(tt, state, to_location_idx("B"), start_time,
-                           kUnreachable, q.max_transfers_);
+    auto const stats_b = get_fastest_offset<kSearchDir>(
+        tt, state, to_location_idx("B"), start_time, q.max_transfers_);
     ASSERT_EQ(stats_b.duration_, delta_t{-150});
   }
 }
