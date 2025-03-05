@@ -2,8 +2,6 @@
 
 #include <cassert>
 
-#include "utl/verify.h"
-
 namespace nigiri {
 
 template <typename Span>
@@ -93,12 +91,12 @@ struct base_flat_matrix_view {
   }
 
   row at(size_type const i) {
-    utl::verify(i < n_rows_, "matrix::at: index out of range");
+    verify(i < n_rows_, "matrix::at: index out of range");
     return {*this, i};
   }
 
   const_row at(size_type const i) const {
-    utl::verify(i < n_rows_, "matrix::at: index out of range");
+    verify(i < n_rows_, "matrix::at: index out of range");
     return {*this, i};
   }
 
