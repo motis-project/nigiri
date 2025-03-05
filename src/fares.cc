@@ -2,6 +2,7 @@
 
 #include <ranges>
 
+#include "utl/concat.h"
 #include "utl/pairwise.h"
 #include "utl/parser/cstr.h"
 #include "utl/to_vec.h"
@@ -22,7 +23,7 @@ bool contains(auto&& range, auto&& needle) {
 auto key(fares::fare_transfer_rule const& x) {
   return std::tie(x.from_leg_group_, x.to_leg_group_, x.transfer_count_,
                   x.duration_limit_, x.duration_limit_type_,
-                  x.fare_transfer_type_, x.fare_product_);
+                  x.fare_transfer_type_);
 }
 
 bool operator<(fares::fare_transfer_rule const& a,
@@ -64,6 +65,67 @@ std::ostream& operator<<(std::ostream& out, fares::fare_leg_rule const& r) {
              << ", NETWORK=" << r.network_
              << ", FROM_TIMEFRAME_GROUP=" << r.from_timeframe_group_
              << ", TO_TIMEFRAME_GROUP=" << r.to_timeframe_group_;
+}
+
+float price(fares const& f, fare_product_idx_t const p) {
+  return p == fare_product_idx_t::invalid() ? 0.F : f.fare_products_[p].amount_;
+}
+
+float fare_leg::cheapest_price(fares const& f) const {
+  if (rule_.empty()) {
+    return 0.F;
+  }
+  return price(f, utl::min_element(rule_, [&](fares::fare_leg_rule const& a,
+                                              fares::fare_leg_rule const& b) {
+                    return price(f, a.fare_product_) <
+                           price(f, b.fare_product_);
+                  })->fare_product_);
+}
+
+float fare_transfer::cheapest_price(fares const& f) const {
+  using fare_transfer_type = fares::fare_transfer_rule::fare_transfer_type;
+
+  auto const leg_sum = [&]() {
+    auto sum = 0.F;
+    for (auto const& l : legs_) {
+      sum += l.cheapest_price(f);
+    }
+    return sum;
+  };
+
+  if (rules_.empty()) {
+    return leg_sum();
+  }
+
+  utl::verify(legs_.size() >= 2U, "rule requires >2 legs");
+
+  auto const& cheapest_rule =
+      *utl::min_element(rules_, [&](fares::fare_transfer_rule const& a,
+                                    fares::fare_transfer_rule const& b) {
+        return price(f, a.fare_product_) < price(f, b.fare_product_);
+      });
+  auto sum = price(f, cheapest_rule.fare_product_) *
+             static_cast<float>(legs_.size() - 1U);
+  switch (cheapest_rule.fare_transfer_type_) {
+    case fare_transfer_type::kAB: break;
+    case fare_transfer_type::kAPlusAB:
+      sum += legs_.front().cheapest_price(f);
+      break;
+    case fare_transfer_type::kAPlusABPlusB:
+      for (auto const& l : legs_) {
+        sum += l.cheapest_price(f);
+      }
+      break;
+  }
+  return sum;
+}
+
+float price(fares const& f, std::vector<fare_transfer> const& t) {
+  auto sum = 0.F;
+  for (auto const& x : t) {
+    sum += x.cheapest_price(f);
+  }
+  return sum;
 }
 
 auto fares::fare_leg_rule::match_members() const {
@@ -380,23 +442,15 @@ bool matches(fares::fare_transfer_rule const& r,
           r.to_leg_group_ == next.leg_group_idx_);
 }
 
-float cheapest_price(std::vector<fare_transfer> const& x) {
-  auto sum = 0.F;
-  for (auto const& t : x) {
-    for (auto const& r : t.rules_) {
-      r.fare_product_
-    }
-  }
-  return sum;
-}
-
 template <typename Fn>
 void for_each_transfer_rule(fares const& f, Fn&& fn) {
+  // fare_transfer_rule::operator== doesn't include fare product
+  // Get all products with the same matching rule.
   utl::equal_ranges_linear(
       f.fare_transfer_rules_,
-      [](vector<fares::fare_transfer_rule>::iterator const from_it,
-         vector<fares::fare_transfer_rule>::iterator const to_it) {
-
+      [&](vector<fares::fare_transfer_rule>::const_iterator const from_it,
+          vector<fares::fare_transfer_rule>::const_iterator const to_it) {
+        fn(std::span{from_it, to_it});
       });
 }
 
@@ -412,7 +466,7 @@ std::vector<fare_transfer> join_transfers(
         utl::verify(size != 0U, "invalid zero-size range");
 
         if (size == 1U) {
-          transfers.push_back({std::nullopt, {*from_it}});
+          transfers.push_back({{}, {*from_it}});
           return;
         }
 
@@ -438,50 +492,50 @@ std::vector<fare_transfer> join_transfers(
           auto curr = q.back();
           q.resize(q.size() - 1U);
 
-          for (auto const& r : fares.fare_transfer_rules_) {
-            if (!matches(r, *curr.it_, *curr.it_, *std::next(curr.it_),
-                         concrete_from, concrete_to)) {
-              continue;
-            }
+          for_each_transfer_rule(
+              fares, [&](std::span<fares::fare_transfer_rule const> rules) {
+                auto const& r = rules.front();
+                if (!matches(r, *curr.it_, *curr.it_, *std::next(curr.it_),
+                             concrete_from, concrete_to)) {
+                  return;
+                }
 
-            auto const from = curr.it_;
-            auto it = from;
-            auto next = std::next(it);
-            auto matched = std::vector<fare_leg>{*it};
-            auto remaining_transfers = r.transfer_count_;
-            for (; next != to_it &&
-                   remaining_transfers != 0;  // -1=infinite will not reach 0
-                 ++it, ++next, --remaining_transfers) {
-              if (!matches(r, *from, *it, *next, concrete_from, concrete_to)) {
-                --it;
-                --next;
-                break;
-              }
-              matched.emplace_back(*next);
-            }
+                auto const from = curr.it_;
+                auto it = from;
+                auto next = std::next(it);
+                auto matched = std::vector<fare_leg>{*it};
+                auto remaining_transfers = r.transfer_count_;
+                for (; next != to_it && remaining_transfers != 0;
+                     ++it, ++next, --remaining_transfers) {
+                  if (!matches(r, *from, *it, *next, concrete_from,
+                               concrete_to)) {
+                    --it;
+                    --next;
+                    break;
+                  }
+                  matched.emplace_back(*next);
+                }
 
-            auto copy = curr.transfers_;
-            copy.push_back({r, std::move(matched)});
+                auto copy = curr.transfers_;
+                copy.push_back(fare_transfer{rules, std::move(matched)});
 
-            if (next != to_it) {
-              // Didn't reach end -> try again from here on.
-              copy.push_back({.rule_ = r, .legs_ = matched});
-              q.push_back({.transfers_ = std::move(copy), .it_ = it});
-            } else {
-              // End reached. Write alternative.
-              alternatives.emplace_back(copy);
-            }
-          }
+                if (next != to_it) {
+                  // Didn't reach end -> try again from here on.
+                  q.push_back({.transfers_ = std::move(copy), .it_ = it});
+                } else {
+                  // End reached. Write alternative.
+                  alternatives.emplace_back(std::move(copy));
+                }
+              });
         }
 
-        // Finished. Select cheapest alternative for output.
-        utl::verify(!alternatives.empty(), "no pricing alternatives");
-        alternatives.push_back(
-            *std::min_element(begin(alternatives), end(alternatives),
-                              [](std::vector<fare_transfer> const& a,
-                                 std::vector<fare_transfer> const& b) {
-                                return cheapest_price(a) < cheapest_price(b);
-                              }));
+        utl::verify(!alternatives.empty(), "no alternatives");
+        auto const& cheapest = *utl::min_element(
+            alternatives, [&](std::vector<fare_transfer> const& a,
+                              std::vector<fare_transfer> const& b) {
+              return price(fares, a) < price(fares, b);
+            });
+        utl::concat(transfers, cheapest);
       });
   return transfers;
 }

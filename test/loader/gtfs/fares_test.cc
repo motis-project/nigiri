@@ -245,16 +245,17 @@ std::string to_string(timetable const& tt,
   auto ss = std::stringstream{};
 
   for (auto const& transfer : fare_transfers) {
-    if (transfer.rule_.has_value()) {
+    if (!transfer.rules_.empty()) {
       ss << "FARE TRANSFER START\n";
       auto const f = tt.fares_[transfer.legs_.front().src_];
-      auto const product =
-          transfer.rule_->fare_product_ == fare_product_idx_t::invalid()
-              ? ""
-              : tt.strings_.get(
-                    f.fare_products_[transfer.rule_->fare_product_].name_);
-      ss << "TRANSFER PRODUCT: " << product << "\n";
-      ss << "RULE: " << transfer.rule_->fare_transfer_type_ << "\n";
+      for (auto const& r : transfer.rules_) {
+        auto const product =
+            r.fare_product_ == fare_product_idx_t::invalid()
+                ? ""
+                : tt.strings_.get(f.fare_products_[r.fare_product_].name_);
+        ss << "TRANSFER PRODUCT: " << product << "\n";
+        ss << "RULE: " << r.fare_transfer_type_ << "\n";
+      }
     }
     for (auto const& l : transfer.legs_) {
       ss << "FARE LEG:\n";
@@ -281,7 +282,7 @@ std::string to_string(timetable const& tt,
       }
       ss << "\n\n";
     }
-    if (transfer.rule_.has_value()) {
+    if (!transfer.rules_.empty()) {
       ss << "FARE TRANSFER END\n";
     }
   }

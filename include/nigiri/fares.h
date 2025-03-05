@@ -136,13 +136,17 @@ struct timetable;
 using effective_fare_leg_t = std::vector<routing::journey::leg const*>;
 
 struct fare_leg {
+  float cheapest_price(fares const&) const;
+
   source_idx_t src_;
   effective_fare_leg_t joined_leg_;
   std::vector<fares::fare_leg_rule> rule_;
 };
 
 struct fare_transfer {
-  std::vector<fares::fare_transfer_rule> rules_;
+  float cheapest_price(fares const&) const;
+
+  std::span<fares::fare_transfer_rule const> rules_;
   std::vector<fare_leg> legs_;
 };
 
