@@ -1,7 +1,9 @@
 #include "nigiri/routing/one_to_all.h"
 
+#include <chrono>
 #include <ranges>
 #include <utility>
+#include <variant>
 #include <vector>
 
 #include "nigiri/routing/limits.h"
@@ -30,42 +32,37 @@ day_idx_t make_base(timetable const& tt, start_time_t start_time) {
 
 template <direction SearchDir>
 void run_raptor(raptor<SearchDir, true, kVias, search_mode::kOneToAll>&& algo,
-                std::vector<start>&& starts,
+                unixtime_t const& start_time,
                 query const& q) {
   auto results = pareto_set<journey>{};
-  utl::equal_ranges_linear(
-      starts,
-      [](start const& a, start const& b) {
-        return a.time_at_start_ == b.time_at_start_;
-      },
-      [&](auto&& from_it, auto&& to_it) {
-        algo.next_start_time();
-        auto const start_time = from_it->time_at_start_;
-        for (auto const& s : it_range{from_it, to_it}) {
-          trace("init: time_at_start={}, time_at_stop={} at {}\n",
-                s.time_at_start_, s.time_at_stop_, location_idx_t{s.stop_});
-          algo.add_start(s.stop_, s.time_at_stop_);
-        }
+  algo.next_start_time();
+  for (auto const& s : q.start_) {
+    auto const t = start_time + s.duration();
+    trace("init: time_at_stop={} at {}\n", t, location_idx_t{s.target()});
+    algo.add_start(s.target(), std::move(t));
+  }
 
-        // Upper bound: Search journeys faster than 'worst_time_at_dest'
-        // It will not find journeys with the same duration
-        constexpr auto const kEpsilon = duration_t{1};
-        auto const worst_time_at_dest =
-            start_time +
-            (SearchDir == direction::kForward ? 1 : -1) * (q.max_travel_time_) +
-            kEpsilon;
+  // Upper bound: Search journeys faster than 'worst_time_at_dest'
+  // It will not find journeys with the same duration
+  constexpr auto const kEpsilon = duration_t{1};
+  auto const worst_time_at_dest =
+      start_time +
+      (SearchDir == direction::kForward ? 1 : -1) * (q.max_travel_time_) +
+      kEpsilon;
 
-        algo.execute(start_time, q.max_transfers_, worst_time_at_dest,
-                     q.prf_idx_, results);
-      });
+  algo.execute(start_time, q.max_transfers_, worst_time_at_dest, q.prf_idx_,
+               results);
 }
 
 template <direction SearchDir>
 raptor_state one_to_all(timetable const& tt,
                         rt_timetable const* rtt,
                         query const& q) {
+  utl::verify(std::holds_alternative<unixtime_t>(q.start_time_),
+              "Start-time must be a time point (unixtime_t)");
   utl::verify(q.via_stops_.empty(),
               "One-to-All search not supported with vias");
+  auto const& start_time = std::get<unixtime_t>(q.start_time_);
 
   auto state = raptor_state{};
 
@@ -92,15 +89,7 @@ raptor_state one_to_all(timetable const& tt,
       is_wheelchair,
       q.transfer_time_settings_};
 
-  auto starts = std::vector<start>{};
-  {
-    auto const add_ontrip = true;
-    get_starts(SearchDir, tt, rtt, q.start_time_, q.start_, q.td_start_,
-               q.max_start_offset_, q.start_match_mode_, q.use_start_footpaths_,
-               starts, add_ontrip, q.prf_idx_, q.transfer_time_settings_);
-  }
-
-  run_raptor(std::move(r), std::move(starts), q);
+  run_raptor(std::move(r), start_time, q);
 
   return state;
 }

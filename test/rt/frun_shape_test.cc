@@ -895,29 +895,6 @@ TEST(
       }
     }
   }
-  // One-to-All search for time point interval
-  {
-    constexpr auto const kSearchDir = direction::kForward;
-    constexpr auto const kUnreachable = kInvalidDelta<kSearchDir>;
-
-    auto const start_time = interval{
-        unixtime_t{sys_days{2024_y / January / 1}} + 9_hours - 5_minutes,
-        unixtime_t{sys_days{2024_y / January / 1}} + 9_hours + 5_minutes,
-    };
-    auto const q = routing::query{
-        .start_time_ = start_time,
-        .start_ = to_offsets("A"),
-        .max_travel_time_ = 4_hours,
-    };
-    auto state = nigiri::routing::one_to_all<kSearchDir>(tt, &rtt, q);
-
-    ASSERT_TRUE(is_reachable(state, to_location_idx("I"),
-                             kUnreachable));  // 122 minutes
-    ASSERT_TRUE(
-        is_reachable(state, to_location_idx("T"), kUnreachable));  // 4 hours
-    ASSERT_FALSE(
-        is_reachable(state, to_location_idx("U"), kUnreachable));  // 5 hours
-  }
   // One-to-All backwards search for time point
   {
     constexpr auto const kSearchDir = direction::kBackward;
