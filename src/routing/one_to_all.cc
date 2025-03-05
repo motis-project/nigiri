@@ -47,10 +47,8 @@ void run_raptor(raptor<SearchDir, true, kVias, search_mode::one_to_many>&& algo,
           algo.add_start(s.stop_, s.time_at_stop_);
         }
 
-        /*
-         * Upper bound: Search journeys faster than 'worst_time_at_dest'
-         * It will not find journeys with the same duration
-         */
+        // Upper bound: Search journeys faster than 'worst_time_at_dest'
+        // It will not find journeys with the same duration
         constexpr auto const kEpsilon = duration_t{1};
         auto const worst_time_at_dest =
             start_time +
