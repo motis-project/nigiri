@@ -47,15 +47,14 @@ struct raptor_stats {
 };
 
 enum class search_mode {
-  path,  // Search route between to nodes
-  reachable,  // Search all reachable nodes
+  preset,  // Default
+  one_to_many,  // Skips reconstruction and does not update time_at_dest
 };
 
 template <direction SearchDir,
           bool Rt,
           via_offset_t Vias,
-          search_mode SearchMode = search_mode::path>
-// template <direction SearchDir, bool Rt, via_offset_t Vias>
+          search_mode SearchMode>
 struct raptor {
   using algo_state_t = raptor_state;
   using algo_stats_t = raptor_stats;
@@ -236,7 +235,7 @@ struct raptor {
       trace_print_state_after_round();
     }
 
-    if constexpr (SearchMode == search_mode::reachable) {
+    if constexpr (SearchMode == search_mode::one_to_many) {
       return;
     }
 
@@ -264,7 +263,7 @@ struct raptor {
   }
 
   void reconstruct(query const& q, journey& j) {
-    if constexpr (SearchMode == search_mode::reachable) {
+    if constexpr (SearchMode == search_mode::one_to_many) {
       return;
     }
     reconstruct_journey<SearchDir>(tt_, rtt_, q, state_, j, base(), base_);
@@ -1146,7 +1145,7 @@ private:
   bool is_intermodal_dest() const { return !dist_to_end_.empty(); }
 
   void update_time_at_dest(unsigned const k, delta_t const t) {
-    if constexpr (SearchMode == search_mode::reachable) {
+    if constexpr (SearchMode == search_mode::one_to_many) {
       return;
     }
     for (auto i = k; i != time_at_dest_.size(); ++i) {

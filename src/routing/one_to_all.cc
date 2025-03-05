@@ -38,7 +38,7 @@ unixtime_t make_start_time(start_time_t start_time) {
 }
 
 template <direction SearchDir>
-void run_raptor(raptor<SearchDir, true, kVias, search_mode::reachable>&& algo,
+void run_raptor(raptor<SearchDir, true, kVias, search_mode::one_to_many>&& algo,
                 std::vector<start>&& starts,
                 query const& q) {
   auto results = pareto_set<journey>{};
@@ -86,7 +86,7 @@ raptor_state one_to_all(timetable const& tt,
   auto lb = std::vector<std::uint16_t>(tt.n_locations(), 0U);
   auto const base = make_base(tt, q.start_time_);
 
-  auto r = raptor<SearchDir, true, kVias, search_mode::reachable>{
+  auto r = raptor<SearchDir, true, kVias, search_mode::one_to_many>{
       tt,
       rtt,
       state,
