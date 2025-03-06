@@ -836,7 +836,7 @@ TEST(
     }
   }
 
-  // One-to-All search for time point
+  // One-to-All search for time point and without Rt
   {
     // Exact start time
     {
@@ -850,7 +850,7 @@ TEST(
           .start_ = to_offsets("A"),
           .max_travel_time_ = 4_hours,
       };
-      auto state = nigiri::routing::one_to_all<kSearchDir>(tt, &rtt, q);
+      auto state = nigiri::routing::one_to_all<kSearchDir>(tt, nullptr, q);
 
       ASSERT_TRUE(is_reachable(state, to_location_idx("I"),
                                kUnreachable));  // 122 minutes

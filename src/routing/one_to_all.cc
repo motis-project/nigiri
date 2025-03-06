@@ -23,8 +23,8 @@ day_idx_t make_base(timetable const& tt, unixtime_t start_time) {
                        .count()};
 }
 
-template <direction SearchDir>
-void run_raptor(raptor<SearchDir, true, kVias, search_mode::kOneToAll>&& algo,
+template <direction SearchDir, bool Rt>
+void run_raptor(raptor<SearchDir, Rt, kVias, search_mode::kOneToAll>&& algo,
                 unixtime_t const& start_time,
                 query const& q) {
   auto results = pareto_set<journey>{};
@@ -47,7 +47,7 @@ void run_raptor(raptor<SearchDir, true, kVias, search_mode::kOneToAll>&& algo,
                results);
 }
 
-template <direction SearchDir>
+template <direction SearchDir, bool Rt>
 raptor_state one_to_all(timetable const& tt,
                         rt_timetable const* rtt,
                         query const& q) {
@@ -66,7 +66,7 @@ raptor_state one_to_all(timetable const& tt,
   auto const base = make_base(tt, start_time);
   auto const is_wheelchair = true;
 
-  auto r = raptor<SearchDir, true, kVias, search_mode::kOneToAll>{
+  auto r = raptor<SearchDir, Rt, kVias, search_mode::kOneToAll>{
       tt,
       rtt,
       state,
@@ -85,6 +85,17 @@ raptor_state one_to_all(timetable const& tt,
   run_raptor(std::move(r), start_time, q);
 
   return state;
+}
+
+template <direction SearchDir>
+raptor_state one_to_all(timetable const& tt,
+                        rt_timetable const* rtt,
+                        query const& q) {
+  if (rtt == nullptr) {
+    return one_to_all<SearchDir, false>(tt, rtt, q);
+  } else {
+    return one_to_all<SearchDir, true>(tt, rtt, q);
+  }
 }
 
 template <direction SearchDir>
