@@ -197,8 +197,9 @@ locations_map read_stops(source_idx_t const src,
 
         new_stop->id_ = s.id_->view();
         new_stop->name_ = std::move(*s.name_);
-        new_stop->coord_ = {utl::parse<double>(s.lat_->trim()),
-                            utl::parse<double>(s.lon_->trim())};
+        new_stop->coord_ = {
+            std::clamp(utl::parse<double>(s.lat_->trim()), -90.0, 90.0),
+            std::clamp(utl::parse<double>(s.lon_->trim()), -180.0, 180.0)};
         new_stop->platform_code_ = s.platform_code_->view();
         new_stop->timezone_ = s.timezone_->trim().view();
 
