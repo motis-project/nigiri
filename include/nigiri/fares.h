@@ -146,7 +146,7 @@ struct fare_leg {
 struct fare_transfer {
   float cheapest_price(fares const&) const;
 
-  std::span<fares::fare_transfer_rule const> rules_;
+  std::vector<fares::fare_transfer_rule> rules_;
   std::vector<fare_leg> legs_;
 };
 

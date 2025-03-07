@@ -99,6 +99,23 @@ float fare_transfer::cheapest_price(fares const& f) const {
 
   utl::verify(legs_.size() >= 2U, "rule requires >2 legs");
 
+  auto combinations =
+      hash_set<std::pair<rider_category_idx_t, fare_media_idx_t>>{};
+  for (auto const& r : rules_) {
+    if (r.fare_product_ != fare_product_idx_t::invalid()) {
+      auto const& p = f.fare_products_[r.fare_product_];
+      combinations.emplace(p.rider_category_, p.media_);
+    }
+  }
+  for (auto const& l : legs_) {
+    for (auto const& r : l.rule_) {
+      if (r.fare_product_ != fare_product_idx_t::invalid()) {
+        auto const& p = f.fare_products_[r.fare_product_];
+        combinations.emplace(p.rider_category_, p.media_);
+      }
+    }
+  }
+
   auto const& cheapest_rule =
       *utl::min_element(rules_, [&](fares::fare_transfer_rule const& a,
                                     fares::fare_transfer_rule const& b) {
@@ -492,6 +509,9 @@ std::vector<fare_transfer> join_transfers(
           auto curr = q.back();
           q.resize(q.size() - 1U);
 
+          utl::verify(curr.it_ != to_it && std::next(curr.it_) != to_it,
+                      "invalid iterator");
+
           auto has_match = false;
           for_each_transfer_rule(
               fares, [&](std::span<fares::fare_transfer_rule const> rules) {
@@ -538,11 +558,11 @@ std::vector<fare_transfer> join_transfers(
           if (!has_match) {
             auto copy = curr.transfers_;
             copy.push_back(fare_transfer{{}, {*curr.it_}});
-            if (std::next(curr.it_) == to_it) {
+            if (std::next(curr.it_, 2) == to_it) {
               std::cout << "NO MATCH, FINISHED -> WRITE ALTERNATIVE\n";
               alternatives.emplace_back(std::move(copy));
             } else {
-              std::cout << "NO MATCH, FINISHED -> ENQUEUE\n";
+              std::cout << "NO MATCH -> ENQUEUE\n";
               q.push_back({.transfers_ = copy, .it_ = std::next(curr.it_)});
             }
           }
