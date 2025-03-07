@@ -163,9 +163,6 @@ private:
     return unix_to_delta(base(), t);
   }
 
-  // unixtime_t to_unix(delta_t const t) const { return delta_to_unix(base(),
-  // t); }
-
   std::pair<day_idx_t, minutes_after_midnight_t> split(delta_t const x) const {
     return split_day_mam(base_, x);
   }
@@ -174,18 +171,6 @@ private:
     return nigiri::tt_to_delta(base_, day, duration_t{mam});
     // return clamp((as_int(day) - as_int(base_)) * 1440 + mam);
   }
-
-  // unixtime_t tt_to_unix(day_idx_t day, minutes_after_midnight_t mam) const {
-  //   return tt_.to_unixtime(day, mam);
-  // }
-  // unixtime_t tt_to_unix(day_idx_t day, std::int16_t mam) const {
-  //   return tt_.to_unixtime(day, duration_t{mam});
-  // }
-  // unixtime_t tt_to_unix(delta d) const {
-  //   return tt_.to_unixtime(0, d.as_duration());
-  // }
-  //  std::pair<day_idx_t, minutes_after_midnight_t> day_idx_mam(unixtime_t
-  //  const t){return tt_.day_idx_mam(t);}
 
   template <bool WithClaszFilter>
   std::pair<day_idx_t, connection_idx_t> first_conn_after(

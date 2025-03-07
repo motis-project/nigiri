@@ -239,6 +239,8 @@ struct raptor {
       trace_print_state_after_round();
     }
 
+    // TODO this "if" cloud be removed, so that search.h:n_results_in_interval()
+    // works for search_type::kEA and search_type::kESA
     if (SearchType == search_type::kNormal) {
       is_dest_.for_each_set_bit([&](auto const i) {
         for (auto k = 1U; k != end_k; ++k) {
@@ -1001,9 +1003,6 @@ private:
         auto const ev = *it;
         auto const ev_mam = ev.mam();
 
-        // TODO diese pruning schein mir falsch zu sein, da in der nächsten
-        // Iteration ev_mam wieder klein sein kann als das aktuelle ev_mam, und
-        // somit die Bedingung dann nicht wahr wird
         if (is_better_or_eq(time_at_dest_[k],
                             to_delta(day, ev_mam) + dir(lb_[to_idx(l)])) &&
             kUseLowerBounds) {

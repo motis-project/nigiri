@@ -42,8 +42,6 @@ struct meat_csa_state {
   vecvec<transport_idx_t, c_idx_t> first_con_reachable_;
   ProfileSet profile_set_;
   vecvec<transport_idx_t, trip_data> trip_;
-  //  TODO
-  //  add to_node_id_ from decision_graph_extractor ?
 };
 
 }  // namespace nigiri::routing::meat::csa

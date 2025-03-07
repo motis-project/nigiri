@@ -44,7 +44,6 @@ struct compact_representation {
         continue;
       }
       auto begin = x.begin(), end = x.end();
-      // TODO sort not needed, if g.arcs_ sorted by dep_time_ ?
       std::sort(begin, end, [](out_arrow l, out_arrow r) {
         return l.min_time_ < r.min_time_;
       });

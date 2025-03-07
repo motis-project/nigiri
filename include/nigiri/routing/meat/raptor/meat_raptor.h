@@ -55,7 +55,6 @@ struct meat_raptor {
         max_travel_time_{max_travel_time},
         fp_prf_idx_{0},
         state_{state.prepare_for_tt(tt_)},
-        // mpc_{tt_, state_, base_, allowed_claszes_, prf_idx_, stats_},
         dge_{tt_, base_, state_},
         last_arr_{0} {
     // max_travel_time_ > kMaxTravelTime not supported at the moment
@@ -65,7 +64,6 @@ struct meat_raptor {
   algo_stats_t get_stats() const { return stats_; }
 
   void next_start_time() {
-    // mpc_.reset();
     dge_.reset();
     state_.reset();
     stats_.reset();
@@ -82,7 +80,7 @@ struct meat_raptor {
     auto without_clasz_filter = allowed_claszes_ == all_clasz_allowed();
     auto s_time = to_delta(start_time);
 
-    // - Run raptor that assumes all arrivals are max delayed (+transfer?) by
+    // - Run raptor that assumes all arrivals are max delayed by
     // maxDc to determine esa(s,τ,t)
     auto constexpr search_dir = direction::kForward;
     auto const q =
@@ -158,7 +156,7 @@ struct meat_raptor {
 
     UTL_START_TIMING(ea_time);
     // - (one to all raptor with τlast as target pruning value, to determine
-    // all, ea (s, τ, ·)) ? ea
+    // all, ea (s, τ, ·))
     stats_.ea_stats_ =
         nigiri::routing::search<search_dir, algo_ea_t, search_type::kEA>{
             tt_,
@@ -176,9 +174,9 @@ struct meat_raptor {
 
     UTL_START_TIMING(meat_time);
     if (without_clasz_filter) {
-      compute_profile_set<false>(start_location, target_location);
+      compute_profile_set<false>(target_location);
     } else {
-      compute_profile_set<true>(start_location, target_location);
+      compute_profile_set<true>(target_location);
     }
     UTL_STOP_TIMING(meat_time);
     stats_.meat_duration_ =
@@ -212,9 +210,6 @@ private:
     return unix_to_delta(base(), t);
   }
 
-  // unixtime_t to_unix(delta_t const t) const { return delta_to_unix(base(),
-  // t); }
-
   std::pair<day_idx_t, minutes_after_midnight_t> split(delta_t const x) const {
     return split_day_mam(base_, x);
   }
@@ -224,21 +219,8 @@ private:
     // return clamp((as_int(day) - as_int(base_)) * 1440 + mam);
   }
 
-  // unixtime_t tt_to_unix(day_idx_t day, minutes_after_midnight_t mam) const {
-  //   return tt_.to_unixtime(day, mam);
-  // }
-  // unixtime_t tt_to_unix(day_idx_t day, std::int16_t mam) const {
-  //   return tt_.to_unixtime(day, duration_t{mam});
-  // }
-  // unixtime_t tt_to_unix(delta d) const {
-  //   return tt_.to_unixtime(0, d.as_duration());
-  // }
-  //  std::pair<day_idx_t, minutes_after_midnight_t> day_idx_mam(unixtime_t
-  //  const t){return tt_.day_idx_mam(t);}
-
   template <bool WithClaszFilter>
-  void compute_profile_set(location_idx_t start_location,
-                           location_idx_t target_location) {
+  void compute_profile_set(location_idx_t target_location) {
     auto const ea = vias_accessor{state_.r_state_.get_best<VIAS>()};
     assert(ea[to_idx(target_location)] < std::numeric_limits<delta_t>::max());
 
@@ -253,8 +235,6 @@ private:
       state_.fp_dis_to_target_[fp.target()] = fp.duration().count();
     }
 
-    // TODO k != kMaxTransfers + 1 abändern zu true
-    // for (auto k = 1U; k != kMaxTransfers + 1; ++k) {
     while (true) {
       auto any_marked = false;
       state_.station_mark_.for_each_set_bit([&](std::uint64_t const i) {
@@ -272,7 +252,7 @@ private:
       state_.station_mark_.zero_out();
 
       any_marked =
-          loop_routes<WithClaszFilter>(start_location, target_location);
+          loop_routes<WithClaszFilter>();
 
       if (!any_marked) {
         break;
@@ -283,20 +263,14 @@ private:
       std::swap(state_.prev_station_mark_, state_.station_mark_);
       state_.station_mark_.zero_out();
 
-      // update_transfers(k); do not need it
-      update_footpaths(start_location);
+      update_footpaths();
     }
   }
 
-  void update_footpaths(location_idx_t start_location) {
+  void update_footpaths() {
     auto const ea = vias_accessor{state_.r_state_.get_best<VIAS>()};
     state_.prev_station_mark_.for_each_set_bit([&](auto const i) {
       auto const l_idx = location_idx_t{i};
-      // TODO remove ?
-      (void)start_location;
-      // if (l_idx == start_location) {
-      //   return;
-      // }
       state_.station_mark_.set(i, true);
       auto const& fps = tt_.locations_.footpaths_in_[fp_prf_idx_][l_idx];
 
@@ -331,8 +305,7 @@ private:
   }
 
   template <bool WithClaszFilter>
-  bool loop_routes(location_idx_t start_location,
-                   location_idx_t target_location) {
+  bool loop_routes() {
     auto any_marked = false;
     state_.route_mark_.for_each_set_bit([&](auto const r_idx) {
       auto const r = route_idx_t{r_idx};
@@ -344,18 +317,12 @@ private:
       }
 
       //++stats_.n_routes_visited_;
-      any_marked |= update_route(r, start_location, target_location);
+      any_marked |= update_route(r);
     });
     return any_marked;
   }
 
-  bool update_route(route_idx_t const r,
-                    location_idx_t start_location,
-                    location_idx_t target_location) {
-    // TODO remove
-    (void)target_location;
-    // TODO remove
-    (void)start_location;
+  bool update_route(route_idx_t const r) {
     auto const ea = vias_accessor{state_.r_state_.get_best<VIAS>()};
     auto const stop_seq = tt_.route_location_seq_[r];
     bool any_marked = false;
@@ -375,24 +342,6 @@ private:
         continue;
       }
 
-      //// TODO remove debug
-      // if (l_idx_v == 400791) {
-      //   std::cout << l_idx_v << std::endl;
-      // }
-      // if (r.v_ == 128397 && stop_idx == 37) {
-      //   std::cout << l_idx_v << std::endl;
-      // }
-      //// end debug
-      //// TODO remove debug
-      // if (l_idx_v == 391917) {
-      //   std::cout << l_idx_v << std::endl;
-      // }
-      //// end debug
-
-      // TODO remove all transports if dep_time < ea[l_idx_v], or use remove_if
-      // in get_transports_with_arr_in_range, for all transports that are not in
-      // the range
-
       if (stp.in_allowed()) {
         auto entry_added_to_profile = false;
         stats_.meat_n_active_transports_iterated_ += active_transports.size();
@@ -404,10 +353,6 @@ private:
               state_.fp_dis_to_target_[l_idx] + static_cast<meat_t>(dep_time);
           if (!std::isfinite(td.meat_) || dep_time < ea[l_idx_v] ||
               !faster_than_walk) {
-            // TODO remove dep_time < ea[l_idx_v], if those cases are removed
-            // earlier
-            // TODO if this happens: run remove_if dep_time < ea[l_idx_v] after
-            // this loop (wahrscheinlich ist remove_if zu teuer)
             continue;
           }
           if (state_.profile_set_.add_entry(
@@ -421,11 +366,6 @@ private:
         if (entry_added_to_profile) {
           any_marked = true;
           state_.station_mark_.set(l_idx_v, true);
-        } else {
-          // TODO kann man hier sagen dass auch bei den nächsten
-          // entry_added_to_profile==false sein wird (auser der meat wert wird
-          // duchrch eine station[update_transports] verbessert)? ich galube der
-          // fall ist nicht immer gegeben. active_transports.clear();
         }
       }
 
@@ -435,8 +375,6 @@ private:
         continue;
       }
 
-      // TODO anstelle von min(last_arr_, end_of_tt): min(last_arr_,
-      // end_of_tt, (arr_time, so that the trip has a meat_ < inf))
       auto const fp_dis_to_target = state_.fp_dis_to_target_[l_idx];
       auto const range_begin = ea[l_idx_v];
       auto const range_end =
@@ -463,11 +401,6 @@ private:
         auto const arr_time =
             time_at_stop(r, td.trip_, stop_idx, event_type::kArr);
         if (arr_time < ea[l_idx_v]) {
-          // TODO remove, if those cases are removed earlier
-          // std::cout << "arr_time of transport < ea[l_idx_v]" << std::endl;
-          // if (std::isfinite(td.meat_)){
-          //  finite_meat_in_vec = true;
-          //}
           continue;
         }
 
@@ -499,30 +432,6 @@ private:
     return any_marked;
   }
 
-  // void update_meat(transport_data& td, route_idx_t const r, stop_idx_t const
-  // stop_idx, location_idx_t l_idx){
-  //   auto const arr_time =
-  //           time_at_stop(r, td.trip_, stop_idx, event_type::kArr);
-  //       auto meat = td.meat_;
-  //
-  //      meat = std::min(meat,
-  //                      state_.fp_dis_to_target_[l_idx] +
-  //                          static_cast<meat_t>(
-  //                              arr_time) /*TODO add expected value to it?*/);
-  //      // TODO add expected value to it? add final footpath in
-  //      // graph_extractor would have to be changed
-  //
-  //      if (!state_.profile_set_.is_stop_empty(l_idx)) {
-  //        meat = std::min(meat, evaluate_profile(l_idx, arr_time) +
-  //                                  meat_transfer_cost_);
-  //      }
-  //
-  //      if (meat < td.meat_) {
-  //        td.meat_ = meat;
-  //        td.exit_stop_ = stop_idx;
-  //      }
-  //}
-
   meat_t evaluate_profile(location_idx_t const stop, delta_t const when) const {
     auto meat = meat_t{0.0};
     auto assigned_prob = 0.0;
@@ -532,7 +441,7 @@ private:
     while (assigned_prob < 1.0) {
       auto new_prob =
           delay_prob(clamp(i->dep_time_ - when), transfer_time, max_delay_);
-      // TODO remove
+      // Doesn't seem to be as stable numerically.
       // meat += (new_prob - assigned_prob) * i->meat_;
       meat += new_prob * i->meat_ - assigned_prob * i->meat_;
       assigned_prob = new_prob;
@@ -606,19 +515,19 @@ private:
                          event_times.size());
     }
 
-    // auto const seek_first_day = [&]() {
+    // auto const seek_first_first_day = [&]() {
     //   return linear_lb(event_times.begin(), event_times.end(), start_mam,
     //                    [&](delta const a, minutes_after_midnight_t const b) {
     //                      return a.mam() < b.count();
     //                    });
     // };
-    //  auto const seek_last_day = [&]() {
-    //    return linear_lb(event_times.begin(), event_times.end(), end_mam,
-    //                     [&](delta const a, minutes_after_midnight_t const b)
-    //                     {
-    //                       return a.mam() <= b.count();
-    //                     });
-    //  };
+    // auto const seek_last_first_day = [&]() {
+    //   return linear_lb(event_times.rbegin(), event_times.rend(), start_mam,
+    //                    [&](delta const a, minutes_after_midnight_t const b) {
+    //                      return a.mam() < b.count();
+    //                    })
+    //       .base();
+    // };
 
     struct bound_info {
       transport_idx_t t_idx_;
@@ -637,12 +546,14 @@ private:
         day = ub_day;
         assert(day <= end_day);
       }
-      // auto const ev_time_range =
-      //  it_range{day == start_day ? seek_first_day() : event_times.begin(),
-      //           event_times.end()};
-      //   it_range{day == start_day ? seek_first_day() :
-      //   event_times.begin(),day
-      //   == end_day ? seek_last_day() : event_times.end()};
+      // auto ev_time_begin = event_times.begin();
+      // auto ev_time_end = event_times.end();
+      // if (day == start_day){
+      //  ev_time_begin = seek_first_first_day();
+      //  ev_time_end = ev_time_begin == event_times.end() ? event_times.end() :
+      //  seek_last_first_day();
+      // }
+      // auto const ev_time_range =it_range{ev_time_begin,ev_time_end};
       // if (ev_time_range.empty()) {
       //   continue;
       // }

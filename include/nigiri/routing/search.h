@@ -396,10 +396,6 @@ private:
             algo_.add_start(s.stop_, s.time_at_stop_);
           }
 
-          // TODO was ist mit dem worst_time_at_dest, bzw. was ist
-          // fastest_direct_? ist das nur schnellster Fußweg zum Ziel? aber
-          // warum ist das so kompliziert, das ist wahrscheinlich für
-          // intermodale suchen, wo es intermodale wege zum Ziel gibt
           auto const worst_time_at_dest =
               start_time +
               (kFwd ? 1 : -1) * std::min(fastest_direct_, kMaxTravelTime);

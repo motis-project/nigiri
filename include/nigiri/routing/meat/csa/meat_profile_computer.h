@@ -64,7 +64,7 @@ struct meat_profile_computer {
       while (assigned_prob < 1.0) {
         double new_prob =
             delay_prob(clamp(i->dep_time_ - when), transfer_time, max_delay);
-        // TODO remove
+        // Doesn't seem to be as stable numerically.
         // meat += (new_prob - assigned_prob) * i->meat_;
         meat += new_prob * i->meat_ - assigned_prob * i->meat_;
         assigned_prob = new_prob;
