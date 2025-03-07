@@ -200,11 +200,6 @@ void process_queries(
               std::chrono::duration_cast<std::chrono::milliseconds>(
                   total_time_stop - total_time_start)});
           progress_tracker->increment();
-          // TODO remove
-          // if (q_idx == 0) {
-          //  auto r = m::expanded_representation{result.g_};
-          //  m::write_dot(std::cout, tt, result.g_, r);
-          //}
         } catch (const std::exception& e) {
           std::cout << e.what();
         }
@@ -260,11 +255,6 @@ void process_queries(
               std::chrono::duration_cast<std::chrono::milliseconds>(
                   total_time_stop - total_time_start)});
           progress_tracker->increment();
-          // TODO remove
-          // if (q_idx == 0) {
-          //  auto r = m::expanded_representation{result.g_};
-          //  m::write_dot(std::cout, tt, result.g_, r);
-          //}
         } catch (const std::exception& e) {
           std::cout << e.what();
         }
@@ -283,8 +273,8 @@ void process_queries(
   results_raptor.reserve(queries.size());
   std::mutex mutex;
   {
-    auto query_processing_timer = scoped_timer(
-        fmt::format("processing of {} queries (MEAT CSA & RAPTOR)", queries.size()));
+    auto query_processing_timer = scoped_timer(fmt::format(
+        "processing of {} queries (MEAT CSA & RAPTOR)", queries.size()));
     auto const progress_tracker =
         utl::activate_progress_tracker("benchmark MEAT CSA & RAPTOR");
     utl::get_global_progress_trackers().silent_ = false;
@@ -307,18 +297,6 @@ void process_queries(
                   tt, query_state.ms_r_, queries[q_idx].q_);
               auto const total_time_r_stop = std::chrono::steady_clock::now();
 
-              auto er_c = m::expanded_representation{result_c.g_};
-              auto er_r = m::expanded_representation{result_r.g_};
-              auto ss_c = std::stringstream{};
-              auto ss_r = std::stringstream{};
-              m::write_dot(ss_c, tt, result_c.g_, er_c);
-              m::write_dot(ss_r, tt, result_r.g_, er_r);
-              if (ss_c.str() != ss_r.str() /*result_c.g_ != result_r.g_*/) {
-                std::cout << std::endl
-                          << ss_c.str() << std::endl
-                          << ss_r.str() << std::endl;
-              }
-
               auto const guard = std::lock_guard{mutex};
               results_csa.emplace_back(benchmark_result{
                   q_idx, result_c.stats_, result_c.g_,
@@ -339,6 +317,13 @@ void process_queries(
       mraptor::meat_raptor_state ms_r;
       for (auto const [q_idx, q] : utl::enumerate(queries)) {
         try {
+          //// TODO remove
+          // if (q_idx < 63) continue;
+          // if (q_idx == 63 || q_idx == 94){
+          //  std::cout << q_idx << std::endl;
+          //}
+          //// remove end
+
           auto const total_time_c_start = std::chrono::steady_clock::now();
           auto const result_c = routing::meat_csa_search(tt, ms_c, q.q_);
           auto const total_time_c_stop = std::chrono::steady_clock::now();
@@ -354,25 +339,49 @@ void process_queries(
               q_idx, result_r.stats_, result_r.g_,
               std::chrono::duration_cast<std::chrono::milliseconds>(
                   total_time_r_stop - total_time_r_start)});
-
-          auto er_c = m::expanded_representation{result_c.g_};
-          auto er_r = m::expanded_representation{result_r.g_};
-          auto ss_c = std::stringstream{};
-          auto ss_r = std::stringstream{};
-          m::write_dot(ss_c, tt, result_c.g_, er_c);
-          m::write_dot(ss_r, tt, result_r.g_, er_r);
-          if (ss_c.str() != ss_r.str() /*result_c.g_ != result_r.g_*/) {
+         
+          if (((result_c.g_.first_arc_ == dg_arc_idx_t::invalid() ||
+                result_r.g_.first_arc_ == dg_arc_idx_t::invalid()) &&
+               result_c.g_.first_arc_ != result_r.g_.first_arc_) ||
+              (result_c.g_.first_arc_ != dg_arc_idx_t::invalid() &&
+               result_r.g_.first_arc_ != dg_arc_idx_t::invalid() &&
+               result_c.g_.arcs_[result_c.g_.first_arc_].meat_ !=
+                   result_r.g_.arcs_[result_r.g_.first_arc_].meat_)) {
             std::cout << std::endl
-                      << ss_c.str() << std::endl
-                      << ss_r.str() << std::endl;
+                      << "!!!!!!!!!!!! csa.meat_ != raptor.meat_ !!!!!!!!!!!!"
+                      << std::endl
+                      << "q_idx: " << q_idx << std::endl << std::endl << std::endl;
           }
 
-          progress_tracker->increment();
           // TODO remove
-          // if (q_idx == 0) {
-          //  auto r = m::expanded_representation{result.g_};
-          //  m::write_dot(std::cout, tt, result.g_, r);
-          //}
+          // auto er_c = m::expanded_representation{result_c.g_};
+          // auto er_r = m::expanded_representation{result_r.g_};
+          // auto ss_c = std::stringstream{};
+          // auto ss_r = std::stringstream{};
+          // m::write_dot(ss_c, tt, result_c.g_, er_c);
+          // m::write_dot(ss_r, tt, result_r.g_, er_r);
+          // 
+          // if (ss_c.str() != ss_r.str() /*result_c.g_ != result_r.g_*/) {
+          //   std::cout << std::endl
+          //             << (result_c.g_.arcs_[result_c.g_.first_arc_].meat_ ==
+          //                 result_r.g_.arcs_[result_r.g_.first_arc_].meat_)
+          //             << std::endl
+          //             << (!semantically_equal(result_c.g_, result_r.g_))
+          //             << std::endl
+          //             << ss_c.str() << std::endl
+          //             << ss_r.str() << std::endl
+          //             << result_c.g_ << std::endl
+          //             << result_r.g_ << std::endl;
+          // }
+          // if (!semantically_equal(result_c.g_, result_r.g_)) {
+          //   std::cout << std::endl
+          //             << ss_c.str() << std::endl
+          //             << ss_r.str() << std::endl
+          //             << result_c.g_ << std::endl
+          //             << result_r.g_ << std::endl;
+          // }
+
+          progress_tracker->increment();
         } catch (const std::exception& e) {
           std::cout << e.what();
         }
@@ -407,6 +416,48 @@ void print_result(std::vector<T> const& var, std::string const& var_name) {
             << "\n  99%: " << quantile(var, 0.99)
             << "\n99.9%: " << quantile(var, 0.999) << "\n  max: " << var.back()
             << "\n----------------------------------\n";
+}
+
+void print_query_rerun(
+    size_t q_idx,
+    std::vector<nigiri::query_generation::start_dest_query> const& queries,
+    nigiri::query_generation::generator_settings const& gs,
+    std::filesystem::path const& tt_path) {
+  auto ss = std::stringstream{};
+  ss << "Re-run query " << q_idx << ":\n./nigiri-benchmark -p "
+     << tt_path.string() << " -n 1 -i " << gs.interval_size_.count()
+     << " --max_delay " << gs.max_delay_ << " --bound_parameter "
+     << gs.bound_parameter_;
+  if (gs.start_match_mode_ == location_match_mode::kIntermodal) {
+    ss << " --start_mode intermodal --intermodal_start "
+       << to_string(gs.start_mode_).value();
+  } else {
+    ss << " --start_mode station";
+  }
+  if (gs.dest_match_mode_ == location_match_mode::kIntermodal) {
+    ss << " --dest_mode intermodal --intermodal_dest "
+       << to_string(gs.dest_mode_).value();
+  } else {
+    ss << " --dest_mode station";
+  }
+  ss << " --use_start_footpaths " << gs.use_start_footpaths_ << " -t "
+     << std::uint32_t{gs.max_transfers_} << " -m " << gs.min_connection_count_
+     << " -e " << gs.extend_interval_earlier_ << " -l "
+     << gs.extend_interval_later_ << " --profile_idx "
+     << std::uint32_t{gs.prf_idx_} << " --allowed_claszes "
+     << gs.allowed_claszes_;
+  if (gs.start_match_mode_ == location_match_mode::kIntermodal) {
+    ss << " --start_coord \"" << get<geo::latlng>(queries[q_idx].start_)
+       << "\"";
+  } else {
+    ss << " --start_loc " << get<location_idx_t>(queries[q_idx].start_);
+  }
+  if (gs.dest_match_mode_ == location_match_mode::kIntermodal) {
+    ss << " --dest_coord \"" << get<geo::latlng>(queries[q_idx].dest_) << "\"";
+  } else {
+    ss << " --dest_loc " << get<location_idx_t>(queries[q_idx].dest_) << "\n";
+  }
+  std::cout << ss.str() << "\n";
 }
 
 template <typename MeatStats>
@@ -456,7 +507,9 @@ void print_results(
   auto ss = std::stringstream{};
   ss << "Re-run the slowest source-destination "
         "combination:\n./nigiri-benchmark -p "
-     << tt_path.string() << " -n 1 -i " << gs.interval_size_.count();
+     << tt_path.string() << " -n 1 -i " << gs.interval_size_.count()
+     << " --max_delay " << gs.max_delay_ << " --bound_parameter "
+     << gs.bound_parameter_;
   if (gs.start_match_mode_ == location_match_mode::kIntermodal) {
     ss << " --start_mode intermodal --intermodal_start "
        << to_string(gs.start_mode_).value();
@@ -546,6 +599,8 @@ int main(int argc, char* argv[]) {
   auto dest_loc_val = location_idx_t::value_t{0U};
   auto seed = std::int64_t{-1};
   auto min_transfer_time = duration_t::rep{};
+  auto max_delay = delta_t{30};
+  auto bound_parameter = 1.0;
 
   bpo::options_description desc("Allowed options");
   desc.add_options()("help,h", "produce this help message")  //
@@ -617,7 +672,13 @@ int main(int argc, char* argv[]) {
       ("start_loc", bpo::value<location_idx_t::value_t>(&start_loc_val),
        "start location for random queries")  //
       ("dest_loc", bpo::value<location_idx_t::value_t>(&dest_loc_val),
-       "destination location for random queries");
+       "destination location for random queries")  //
+      ("max_delay", bpo::value<delta_t>(&max_delay)->default_value(max_delay),
+       "maximum delay (in minutes) of a train (for meat-csa and "
+       "meat-raptor)")  //
+      ("bound_parameter",
+       bpo::value<double>(&bound_parameter)->default_value(bound_parameter),
+       "aka Alpha value (for meat-csa and meat-raptor)");
   bpo::variables_map vm;
   bpo::store(bpo::command_line_parser(argc, argv).options(desc).run(), vm);
 
@@ -635,6 +696,8 @@ int main(int argc, char* argv[]) {
   tt.locations_.resolve_timezones();
 
   gs.interval_size_ = duration_t{interval_size};
+  gs.max_delay_ = max_delay;
+  gs.bound_parameter_ = bound_parameter;
 
   if (!bbox_str.empty()) {
     gs.bbox_ = parse_bbox(bbox_str);
@@ -734,6 +797,8 @@ int main(int argc, char* argv[]) {
   auto queries = std::vector<nigiri::query_generation::start_dest_query>{};
   generate_queries(queries, n_queries, tt, gs, seed);
 
+  // print_query_rerun(4, queries,gs,tt_path);
+
   auto results_csa = std::vector<benchmark_result<mcsa::meat_csa_stats>>{};
   auto results_raptor =
       std::vector<benchmark_result<mraptor::meat_raptor_stats>>{};
@@ -741,7 +806,7 @@ int main(int argc, char* argv[]) {
 
   std::cout << std::endl << "Results for the MEAT CSA:" << std::endl;
   print_results(queries, results_csa, tt, gs, tt_path);
-  std::cout << std::endl << "Results for the MEAT RAPTRO:" << std::endl;
+  std::cout << std::endl << "Results for the MEAT RAPTOR:" << std::endl;
   print_results(queries, results_raptor, tt, gs, tt_path);
 
   print_memory_usage();
