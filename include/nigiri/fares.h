@@ -89,7 +89,9 @@ struct fares {
       kAB  // fare_transfer_rules.fare_product_id
     };
 
+    friend std::ostream& operator<<(std::ostream&, fare_transfer_rule const&);
     friend std::ostream& operator<<(std::ostream&, fare_transfer_type);
+    friend std::ostream& operator<<(std::ostream&, duration_limit_type);
     friend bool operator==(fare_transfer_rule const&,
                            fare_transfer_rule const&);
     friend bool operator<(fare_transfer_rule const&, fare_transfer_rule const&);
@@ -144,7 +146,7 @@ struct fare_leg {
 };
 
 struct fare_transfer {
-  float cheapest_price(fares const&) const;
+  float cheapest_price(timetable const&, fares const&) const;
 
   std::vector<fares::fare_transfer_rule> rules_;
   std::vector<fare_leg> legs_;

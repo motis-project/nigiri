@@ -60,6 +60,38 @@ std::ostream& operator<<(std::ostream& out,
   std::unreachable();
 }
 
+std::ostream& operator<<(std::ostream& out,
+                         fares::fare_transfer_rule::duration_limit_type t) {
+  using duration_limit_type = fares::fare_transfer_rule::duration_limit_type;
+  switch (t) {
+    case duration_limit_type::kCurrDepNextArr: return out << "CurrDepNextArr";
+    case duration_limit_type::kCurrDepNextDep: return out << "CurrDepNextDep";
+    case duration_limit_type::kCurrArrNextDep: return out << "CurrArrNextDep";
+    case duration_limit_type::kCurrArrNextArr: return out << "CurrArrNextArr";
+  }
+  std::unreachable();
+}
+
+std::ostream& operator<<(std::ostream& out,
+                         fares::fare_transfer_rule const& r) {
+  return out << "(from_leg_group="
+             << (r.to_leg_group_ == leg_group_idx_t::invalid()
+                     ? "ANY"
+                     : fmt::to_string(r.to_leg_group_))
+             << ", to_leg_group="
+             << (r.to_leg_group_ == leg_group_idx_t::invalid()
+                     ? "ANY"
+                     : fmt::to_string(r.to_leg_group_))
+             << ", duration_limit="
+             << (r.duration_limit_ ==
+                         fares::fare_transfer_rule::kNoDurationLimit
+                     ? "NO_LIMIT"
+                     : fmt::to_string(r.duration_limit_))
+             << ", duration_limit_type=" << r.duration_limit_type_
+             << ", transfer_count=" << static_cast<int>(r.transfer_count_)
+             << ")";
+}
+
 std::ostream& operator<<(std::ostream& out, fares::fare_leg_rule const& r) {
   return out << "FROM_AREA=" << r.from_area_ << ", TO_AREA=" << r.to_area_
              << ", NETWORK=" << r.network_
@@ -82,7 +114,7 @@ float fare_leg::cheapest_price(fares const& f) const {
                   })->fare_product_);
 }
 
-float fare_transfer::cheapest_price(fares const& f) const {
+float fare_transfer::cheapest_price(timetable const&, fares const& f) const {
   using fare_transfer_type = fares::fare_transfer_rule::fare_transfer_type;
 
   auto const leg_sum = [&]() {
@@ -98,23 +130,6 @@ float fare_transfer::cheapest_price(fares const& f) const {
   }
 
   utl::verify(legs_.size() >= 2U, "rule requires >2 legs");
-
-  auto combinations =
-      hash_set<std::pair<rider_category_idx_t, fare_media_idx_t>>{};
-  for (auto const& r : rules_) {
-    if (r.fare_product_ != fare_product_idx_t::invalid()) {
-      auto const& p = f.fare_products_[r.fare_product_];
-      combinations.emplace(p.rider_category_, p.media_);
-    }
-  }
-  for (auto const& l : legs_) {
-    for (auto const& r : l.rule_) {
-      if (r.fare_product_ != fare_product_idx_t::invalid()) {
-        auto const& p = f.fare_products_[r.fare_product_];
-        combinations.emplace(p.rider_category_, p.media_);
-      }
-    }
-  }
 
   auto const& cheapest_rule =
       *utl::min_element(rules_, [&](fares::fare_transfer_rule const& a,
@@ -137,10 +152,12 @@ float fare_transfer::cheapest_price(fares const& f) const {
   return sum;
 }
 
-float price(fares const& f, std::vector<fare_transfer> const& t) {
+float price(timetable const& tt,
+            fares const& f,
+            std::vector<fare_transfer> const& t) {
   auto sum = 0.F;
   for (auto const& x : t) {
-    sum += x.cheapest_price(f);
+    sum += x.cheapest_price(tt, f);
   }
   return sum + static_cast<float>(t.size()) / 100.F;
 }
@@ -449,14 +466,23 @@ bool matches(fares::fare_transfer_rule const& r,
     std::unreachable();
   };
 
-  return (r.duration_limit_ == fares::fare_transfer_rule::kNoDurationLimit ||
-          r.duration_limit_ >= (get_end_time() - get_start_time())) &&
-         ((r.from_leg_group_ == leg_group_idx_t ::invalid() &&
-           !contains(concrete_from, curr.leg_group_idx_)) ||
-          r.from_leg_group_ == curr.leg_group_idx_) &&
-         ((r.to_leg_group_ == leg_group_idx_t::invalid() &&
-           !contains(concrete_to, next.leg_group_idx_)) ||
-          r.to_leg_group_ == next.leg_group_idx_);
+  auto const limit_ok =
+      (r.duration_limit_ == fares::fare_transfer_rule::kNoDurationLimit ||
+       r.duration_limit_ >= (get_end_time() - get_start_time()));
+  auto const from_leg_group_matches =
+      ((r.from_leg_group_ == leg_group_idx_t ::invalid() &&
+        !contains(concrete_from, curr.leg_group_idx_)) ||
+       r.from_leg_group_ == curr.leg_group_idx_);
+  auto const to_leg_group_matches =
+      ((r.to_leg_group_ == leg_group_idx_t::invalid() &&
+        !contains(concrete_to, next.leg_group_idx_)) ||
+       r.to_leg_group_ == next.leg_group_idx_);
+
+  std::cout << "  LIMIT: " << std::boolalpha << limit_ok << "\n";
+  std::cout << "  FROM_GROUP_MATCH: " << from_leg_group_matches << "\n";
+  std::cout << "  TO_GROUP_MATCH: " << to_leg_group_matches << "\n";
+
+  return limit_ok && from_leg_group_matches && to_leg_group_matches;
 }
 
 template <typename Fn>
@@ -487,15 +513,15 @@ std::vector<fare_transfer> join_transfers(
           return;
         }
 
-        auto const& fares = tt.fares_[from_it->src_];
+        auto const& f = tt.fares_[from_it->src_];
 
         namespace sv = std::views;
         auto concrete_from =
-            fares.fare_transfer_rules_ |
+            f.fare_transfer_rules_ |
             sv::transform([](auto const& r) { return r.from_leg_group_; }) |
             sv::filter([](auto a) { return a != leg_group_idx_t::invalid(); });
         auto concrete_to =
-            fares.fare_transfer_rules_ |
+            f.fare_transfer_rules_ |
             sv::transform([](auto const& r) { return r.to_leg_group_; }) |
             sv::filter([](auto a) { return a != leg_group_idx_t::invalid(); });
 
@@ -514,7 +540,12 @@ std::vector<fare_transfer> join_transfers(
 
           auto has_match = false;
           for_each_transfer_rule(
-              fares, [&](std::span<fares::fare_transfer_rule const> rules) {
+              f, [&](std::span<fares::fare_transfer_rule const> rules) {
+                std::cout << "#rules: " << rules.size() << "\n";
+                for (auto const& r : rules) {
+                  std::cout << "  " << r << "\n";
+                }
+
                 auto const& r = rules.front();
                 if (!matches(r, *curr.it_, *curr.it_, *std::next(curr.it_),
                              concrete_from, concrete_to)) {
@@ -542,7 +573,8 @@ std::vector<fare_transfer> join_transfers(
                 }
 
                 auto copy = curr.transfers_;
-                copy.push_back(fare_transfer{rules, std::move(matched)});
+                copy.push_back(
+                    fare_transfer{utl::to_vec(rules), std::move(matched)});
 
                 if (next != to_it) {
                   // Didn't reach end -> try again from here on.
@@ -568,12 +600,47 @@ std::vector<fare_transfer> join_transfers(
           }
         }
 
+        auto combinations =
+            hash_set<std::pair<rider_category_idx_t, fare_media_idx_t>>{};
+        for (auto const& a : alternatives) {
+          for (auto const& x : a) {
+            for (auto const& r : x.rules_) {
+              if (r.fare_product_ != fare_product_idx_t::invalid()) {
+                auto const& p = f.fare_products_[r.fare_product_];
+                combinations.emplace(p.rider_category_, p.media_);
+              }
+            }
+            for (auto const& l : x.legs_) {
+              for (auto const& r : l.rule_) {
+                if (r.fare_product_ != fare_product_idx_t::invalid()) {
+                  auto const& p = f.fare_products_[r.fare_product_];
+                  combinations.emplace(p.rider_category_, p.media_);
+                }
+              }
+            }
+          }
+        }
+
+        std::cout << "COMBINATIONS\n";
+        for (auto const& [r, m] : combinations) {
+          std::cout << "combination: "
+                    << (r == rider_category_idx_t::invalid()
+                            ? "-"
+                            : tt.strings_.get(f.rider_categories_[r].name_))
+                    << " ++ "
+                    << (m == fare_media_idx_t::invalid()
+                            ? "-"
+                            : tt.strings_.get(f.fare_media_[m].name_))
+                    << "\n";
+        }
+
         utl::verify(!alternatives.empty(), "no alternatives");
         auto const& cheapest = *utl::min_element(
             alternatives, [&](std::vector<fare_transfer> const& a,
                               std::vector<fare_transfer> const& b) {
-              return price(fares, a) < price(fares, b);
+              return price(tt, f, a) < price(tt, f, b);
             });
+        std::cout << "#alternatives: " << alternatives.size() << "\n";
         utl::concat(transfers, cheapest);
       });
   return transfers;
