@@ -3,7 +3,6 @@
 #include "nigiri/timetable.h"
 #include "nigiri/types.h"
 
-#include "nigiri/routing/meat/compact_representation.h"
 #include "nigiri/routing/meat/expanded_representation.h"
 #include "nigiri/routing/meat/raptor/meat_raptor.h"
 

@@ -3,7 +3,6 @@
 #include "nigiri/timetable.h"
 #include "nigiri/types.h"
 
-#include "nigiri/routing/meat/compact_representation.h"
 #include "nigiri/routing/meat/csa/meat_csa.h"
 #include "nigiri/routing/meat/expanded_representation.h"
 
@@ -156,4 +155,15 @@ TEST(MeatCsa, TripsResets) {
   m::write_dot(ss, tt, g, r);
   EXPECT_EQ(ss.str(), expanded_dot_graph_s_t2)
       << ss.str() << "\n " << expanded_dot_graph_s_t2;
+
+  meat.next_start_time();
+  start_time = *tt.date_range_.begin() + 1_days;
+
+  meat.execute(start_time, start_location, end_location, prf_idx, g);
+
+  auto r2 = m::expanded_representation{g};
+  auto ss2 = std::stringstream{};
+  m::write_dot(ss2, tt, g, r2);
+  EXPECT_EQ(ss2.str(), expanded_dot_graph_s_t)
+      << ss2.str() << "\n " << expanded_dot_graph_s_t;
 }

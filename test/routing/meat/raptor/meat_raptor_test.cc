@@ -2,7 +2,6 @@
 
 #include "nigiri/timetable.h"
 
-#include "nigiri/routing/meat/compact_representation.h"
 #include "nigiri/routing/meat/expanded_representation.h"
 #include "nigiri/routing/meat/raptor/meat_raptor.h"
 
@@ -96,8 +95,7 @@ constexpr auto const expanded_dot_graph = R"(digraph decision_graph{
 
 }  // namespace
 
-// Tests if graph is found / indirect if con_end = compute_safe_connection_end()
-// is correct
+
 TEST(MeatRaptor, FinalConnOfStation) {
   auto tt = test::load_tt(test_tt, {date::sys_days{2024_y / March / 1},
                                     date::sys_days{2024_y / March / 2}});

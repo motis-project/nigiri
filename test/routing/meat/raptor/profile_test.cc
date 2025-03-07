@@ -15,7 +15,6 @@
 #include "nigiri/rt/rt_timetable.h"
 #include "nigiri/timetable.h"
 
-#include "nigiri/routing/meat/compact_representation.h"
 #include "nigiri/routing/meat/expanded_representation.h"
 #include "nigiri/routing/meat/raptor/meat_raptor.h"
 
@@ -219,7 +218,7 @@ TEST_F(MeatRaptorProfileTest, SameOnSeveralRuns) {
   EXPECT_EQ(ne, ne_3);
 }
 
-TEST_F(MeatRaptorProfileTest, SameOnNewMeatCsaRouter) {
+TEST_F(MeatRaptorProfileTest, SameOnNewMeatRaptorRouter) {
   auto g = meat_raptor_execute();
   auto ea = state_.profile_set_.compute_entry_amount();
   auto ne = state_.profile_set_.n_entry_idxs();
@@ -267,37 +266,4 @@ TEST_F(MeatRaptorProfileTest, SameProfileOnNewTT) {
   // auto ea_2 = state_.profile_set_.compute_entry_amount();
 
   expect_correct(g_2, test_tt_expanded_dot_graph, tt);
-}
-
-// TODO remove
-TEST(MeatRaptor, Simple) {
-  constexpr auto const src = source_idx_t{0U};
-
-  timetable tt;
-  tt.date_range_ = full_period();
-  load_timetable(src, loader::hrd::hrd_5_20_26, files_abc(), tt);
-  finalize(tt);
-
-  auto from = "0000001";
-  auto to = "0000003";
-  auto start_time = unixtime_t{sys_days{2020_y / March / 30}} + 5_hours;
-  auto start_location = tt.locations_.location_id_to_idx_.at({from, src});
-  auto end_location = tt.locations_.location_id_to_idx_.at({to, src});
-  auto prf_idx = profile_idx_t{0};
-  auto state = mraptor::meat_raptor_state{};
-  auto meat = mraptor::meat_raptor(tt, state, day_idx_t{4},
-                                   routing::all_clasz_allowed());
-  auto g = m::decision_graph{};
-  meat.execute(start_time, start_location, end_location, prf_idx, g);
-  meat.next_start_time();
-  meat.execute(start_time, start_location, end_location, prf_idx, g);
-  auto r = m::expanded_representation{g};
-  auto r2 = m::compact_representation{g};
-  auto ss1 = std::stringstream{};
-  m::write_dot(ss1, tt, g, r);
-  // m::write_dot(std::cout, tt, g, r);
-  (void)r2;
-  // m::write_dot(std::cout, tt, g, r2);
-
-  EXPECT_EQ(ss1.str(), ss1.str());
 }
