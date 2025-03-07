@@ -34,10 +34,9 @@ void run_raptor(raptor<SearchDir, Rt, kVias, search_mode::kOneToAll>&& algo,
   for (auto const& s : q.start_) {
     auto const t = start_time + s.duration();
     trace("init: time_at_stop={} at {}\n", t, location_idx_t{s.target()});
-    nigiri::routing::for_each_meta(tt, q.start_match_mode_, s.target(),
-                                   [&](nigiri::location_idx_t const l) {
-                                     algo.add_start(l, std::move(t));
-                                   });
+    nigiri::routing::for_each_meta(
+        tt, q.start_match_mode_, s.target(),
+        [&](nigiri::location_idx_t const l) { algo.add_start(l, t); });
   }
 
   // Upper bound: Search journeys faster than 'worst_time_at_dest'
