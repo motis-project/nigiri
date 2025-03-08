@@ -514,6 +514,7 @@ void load_fares(timetable& tt,
               return a.rule_priority_ < b.rule_priority_;
             });
   utl::sort(f.fare_leg_join_rules_);
+  utl::sort(f.fare_transfer_rules_);
 }
 
 }  // namespace nigiri::loader::gtfs

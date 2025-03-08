@@ -89,8 +89,12 @@ struct fares {
       kAB  // fare_transfer_rules.fare_product_id
     };
 
-    friend std::ostream& operator<<(
-        std::ostream& out, fares::fare_transfer_rule::fare_transfer_type);
+    friend std::ostream& operator<<(std::ostream&, fare_transfer_rule const&);
+    friend std::ostream& operator<<(std::ostream&, fare_transfer_type);
+    friend std::ostream& operator<<(std::ostream&, duration_limit_type);
+    friend bool operator==(fare_transfer_rule const&,
+                           fare_transfer_rule const&);
+    friend bool operator<(fare_transfer_rule const&, fare_transfer_rule const&);
 
     leg_group_idx_t from_leg_group_{leg_group_idx_t::invalid()};
     leg_group_idx_t to_leg_group_{leg_group_idx_t::invalid()};
@@ -134,13 +138,17 @@ struct timetable;
 using effective_fare_leg_t = std::vector<routing::journey::leg const*>;
 
 struct fare_leg {
+  float cheapest_price(fares const&) const;
+
   source_idx_t src_;
   effective_fare_leg_t joined_leg_;
   std::vector<fares::fare_leg_rule> rule_;
 };
 
 struct fare_transfer {
-  std::optional<fares::fare_transfer_rule> rule_;
+  float cheapest_price(timetable const&, fares const&) const;
+
+  std::vector<fares::fare_transfer_rule> rules_;
   std::vector<fare_leg> legs_;
 };
 
