@@ -262,64 +262,6 @@ air,air
 
 }  // namespace
 
-std::string to_string(timetable const& tt,
-                      std::vector<fare_transfer> const& fare_transfers) {
-  auto ss = std::stringstream{};
-
-  for (auto const& transfer : fare_transfers) {
-    if (!transfer.rules_.empty()) {
-      ss << "FARE TRANSFER START\n";
-      auto const f = tt.fares_[transfer.legs_.front().src_];
-      for (auto const& r : transfer.rules_) {
-        auto const product =
-            r.fare_product_ == fare_product_idx_t::invalid()
-                ? ""
-                : tt.strings_.get(f.fare_products_[r.fare_product_].name_);
-        ss << "TRANSFER PRODUCT: " << product << "\n";
-      }
-      ss << "RULE: " << transfer.rules_.front().fare_transfer_type_ << "\n";
-    }
-    for (auto const& l : transfer.legs_) {
-      ss << "FARE LEG:\n";
-      auto first = true;
-      for (auto const& jl : l.joined_leg_) {
-        if (first) {
-          first = false;
-        } else {
-          ss << "** JOINED WITH\n";
-        }
-        jl->print(ss, tt);
-      }
-      ss << "PRODUCTS\n";
-      for (auto const& r : l.rule_) {
-        auto const& f = tt.fares_[l.src_];
-        auto const& p = f.fare_products_[r.fare_product_];
-        ss << tt.strings_.get(p.name_) << " [priority=" << r.rule_priority_
-           << "]: " << p.amount_ << " " << tt.strings_.get(p.currency_code_)
-           << ", fare_media_name="
-           << (p.media_ == fare_media_idx_t::invalid()
-                   ? ""
-                   : tt.strings_.get(f.fare_media_[p.media_].name_))
-           << ", fare_type="
-           << (p.media_ == fare_media_idx_t::invalid()
-                   ? fares::fare_media::fare_media_type::kNone
-                   : f.fare_media_[p.media_].type_)
-           << ", ride_category="
-           << (p.rider_category_ == rider_category_idx_t::invalid()
-                   ? ""
-                   : tt.strings_.get(
-                         f.rider_categories_[p.rider_category_].name_))
-           << "\n";
-      }
-      ss << "\n\n";
-    }
-    if (!transfer.rules_.empty()) {
-      ss << "FARE TRANSFER END\n\n";
-    }
-  }
-  return ss.str();
-}
-
 TEST(fares, simple_fares) {
   auto tt = timetable{};
   tt.date_range_ = {date::sys_days{2022_y / January / 1},
@@ -366,7 +308,7 @@ Airport Card [priority=0]: 8 EUR, fare_media_name=Paper Card, fare_type=PAPER, r
 
 FARE TRANSFER END
 )";
-    EXPECT_EQ(kExpected, to_string(tt, fare_legs));
+    EXPECT_EQ(kExpected, to_string(tt, fare_legs.front()));
   }
 
   {  // PEAK TEST
@@ -408,7 +350,7 @@ Airport Card [priority=0]: 8 EUR, fare_media_name=Paper Card, fare_type=PAPER, r
 
 FARE TRANSFER END
 )";
-    EXPECT_EQ(kExpected, to_string(tt, fare_legs));
+    EXPECT_EQ(kExpected, to_string(tt, fare_legs.front()));
   }
 
   {  // OFFPEAK TEST
@@ -444,7 +386,7 @@ Airport Card [priority=0]: 8 EUR, fare_media_name=Paper Card, fare_type=PAPER, r
 
 FARE TRANSFER END
 )";
-    EXPECT_EQ(kExpected, to_string(tt, fare_legs));
+    EXPECT_EQ(kExpected, to_string(tt, fare_legs.front()));
   }
 }
 
@@ -462,13 +404,13 @@ core,line3
 # fare_products.txt
 fare_product_id,fare_product_name,fare_media_id,amount,currency,rider_category_id
 core-1-transfer,1 Transfer,paper-card,0.50,EUR,adult
-core-2-transfer,2 Transfer,paper-card,1.00,EUR,adult
+core-2-transfer,2 Transfer,paper-card,0.80,EUR,adult
 core-2h,2h Ticket,paper-card,0.75,EUR,adult
 app-core-1-transfer,1 Transfer,paper-card,0.40,EUR,adult
-app-core-2-transfer,2 Transfer,paper-card,0.80,EUR,adult
+app-core-2-transfer,2 Transfer,paper-card,0.60,EUR,adult
 app-core-2h,2h Ticket,paper-card,0.60,EUR,adult
 reduced-app-core-1-transfer,1 Transfer,paper-card,0.30,EUR,reduced
-reduced-app-core-2-transfer,2 Transfer,paper-card,0.60,EUR,reduced
+reduced-app-core-2-transfer,2 Transfer,paper-card,0.50,EUR,reduced
 reduced-app-core-2h,2h Ticket,paper-card,0.45,EUR,reduced
 
 # fare_leg_rules.txt
@@ -502,6 +444,6 @@ TEST(fares, no_leg_join) {
         tt, nullptr, "A", "E", unixtime_t{sys_days{2022_y / March / 30}});
     ASSERT_EQ(1U, results.size());
     auto const fare_legs = get_fares(tt, *results.begin());
-    std::cout << to_string(tt, fare_legs) << "\n";
+    std::cout << to_string(tt, fare_legs.front()) << "\n";
   }
 }
