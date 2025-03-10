@@ -291,7 +291,8 @@ trip_data read_trips(
     utl::csv_col<utl::cstr, UTL_NAME("route_id")> route_id_;
     utl::csv_col<utl::cstr, UTL_NAME("service_id")> service_id_;
     utl::csv_col<utl::cstr, UTL_NAME("trip_id")> trip_id_;
-    utl::csv_col<utl::cstr, UTL_NAME("trip_headsign")> trip_headsign_;
+    utl::csv_col<cista::raw::generic_string, UTL_NAME("trip_headsign")>
+        trip_headsign_;
     utl::csv_col<utl::cstr, UTL_NAME("trip_short_name")> trip_short_name_;
     utl::csv_col<utl::cstr, UTL_NAME("block_id")> block_id_;
     utl::csv_col<utl::cstr, UTL_NAME("shape_id")> shape_id_;
