@@ -188,72 +188,14 @@ void trip::interpolate() {
   }
 }
 
-std::string trip::display_name(timetable const& tt) const {
-  auto const is_digit = [](char const x) { return x >= '0' && x <= '9'; };
-
-  // Depending on the class, there are different expectations from users
-  // if the special case doesn't work based on available data, fall back to
-  // generic code afterwards
-  switch (route_->clasz_) {
-    // For subway / metro, only the line matters since it's frequent enough.
-    case clasz::kSubway:
-    case clasz::kMetro:
-      if (!route_->short_name_.empty()) {
-        return route_->short_name_;
-      }
-      break;
-    // Deutsche Bahn heuristics to classify ICEs and ICs
-    case clasz::kHighSpeed:
-    case clasz::kLongDistance: {
-      auto const trip_name_is_number =
-          !short_name_.empty() && utl::all_of(short_name_, is_digit);
-      if (!route_->short_name_.starts_with("IC") &&
-          route_->agency_ != provider_idx_t::invalid() &&
-          tt.providers_[route_->agency_].long_name_ == "DB Fernverkehr AG") {
-        if (route_->clasz_ == clasz::kHighSpeed) {
-          return trip_name_is_number
-                     ? fmt::format("ICE {}", utl::parse<int>(short_name_))
-                     : fmt::format("ICE {}", route_->short_name_);
-        } else if (route_->clasz_ == clasz::kLongDistance) {
-          return trip_name_is_number
-                     ? fmt::format("IC {}", utl::parse<int>(short_name_))
-                     : fmt::format("IC {}", route_->short_name_);
-        }
-      }
-
-      break;
-    }
-    default: {
+std::string trip::display_name() const {
+  for (auto const str :
+       {std::string_view{route_->short_name_},
+        std::string_view{route_->long_name_}, std::string_view{short_name_}}) {
+    if (!str.empty()) {
+      return std::string{str};
     }
   }
-
-  // route name looks like product name, trip name is number
-  auto const is_product_name = [=](std::string_view route) {
-    return utl::all_of(route, [=](char const c) { return !is_digit(c); });
-  };
-
-  auto const is_trip_number = [=](std::string_view trip_name) {
-    return utl::all_of(trip_name, is_digit);
-  };
-
-  if (!route_->short_name_.empty() && is_product_name(route_->short_name_) &&
-      !short_name_.empty() && is_trip_number(short_name_)) {
-    return fmt::format("{} {}", route_->short_name_,
-                       utl::parse<int>(short_name_));
-  }
-
-  auto precedence = std::array{std::string_view{route_->short_name_},
-                               std::string_view{route_->long_name_},
-                               std::string_view{short_name_}};
-
-  // prefer route short name over route long name,
-  // prefer route long name over trip short name
-  for (auto const candidate : precedence) {
-    if (!candidate.empty()) {
-      return std::string(candidate);
-    }
-  }
-
   return {};
 }
 
