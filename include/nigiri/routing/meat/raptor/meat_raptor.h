@@ -251,8 +251,7 @@ private:
       std::swap(state_.prev_station_mark_, state_.station_mark_);
       state_.station_mark_.zero_out();
 
-      any_marked =
-          loop_routes<WithClaszFilter>();
+      any_marked = loop_routes<WithClaszFilter>();
 
       if (!any_marked) {
         break;
@@ -385,6 +384,9 @@ private:
                            static_cast<delta_t>(last_arr_ - fp_dis_to_target),
                            state_.profile_set_.last_dep(l_idx).dep_time_))
               : state_.profile_set_.last_dep(l_idx).dep_time_;
+      assert(std::isfinite(fp_dis_to_target) ||
+             state_.profile_set_.last_dep(l_idx).dep_time_ !=
+                 std::numeric_limits<delta_t>::max());
       get_transports_with_arr_in_range(r, stop_idx, range_begin, range_end,
                                        active_transports, outside_bounds);
 
