@@ -353,7 +353,7 @@ void process_queries(
                       << "q_idx: " << q_idx << std::endl << std::endl << std::endl;
           }
 
-          // TODO remove
+          //// TODO remove
           // auto er_c = m::expanded_representation{result_c.g_};
           // auto er_r = m::expanded_representation{result_r.g_};
           // auto ss_c = std::stringstream{};
@@ -803,6 +803,9 @@ int main(int argc, char* argv[]) {
   auto results_raptor =
       std::vector<benchmark_result<mraptor::meat_raptor_stats>>{};
   process_queries(queries, results_csa, results_raptor, tt, false);
+
+  std::cout << "\n ----------- \nNumber of CSA connections: " << tt.fwd_connections_.size();
+  std::cout << "\nNumber of transports: " << tt.transport_route_.size() << "\n ----------- \n";
 
   std::cout << std::endl << "Results for the MEAT CSA:" << std::endl;
   print_results(queries, results_csa, tt, gs, tt_path);
