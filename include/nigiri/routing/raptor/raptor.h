@@ -239,9 +239,21 @@ struct raptor {
       trace_print_state_after_round();
     }
 
-    // TODO this "if" cloud be removed, so that search.h:n_results_in_interval()
-    // works for search_type::kEA and search_type::kESA
-    if (SearchType == search_type::kNormal) {
+    if constexpr (SearchType == search_type::kESA) {
+      auto const stay = 0_minutes;
+      is_dest_.for_each_set_bit([&](std::uint64_t const i) {
+        best_[i][Vias] = static_cast<delta_t>(
+            best_[i][Vias] -
+            dir(adjusted_transfer_time(
+                    transfer_time_settings_,
+                    tt_.locations_.transfer_time_[location_idx_t{i}].count()) +
+                stay.count()));
+      });
+    }
+    //  TODO this "if" cloud be removed, so that
+    //  search.h:n_results_in_interval() works for search_type::kEA and
+    //  search_type::kESA
+    if constexpr (SearchType == search_type::kNormal) {
       is_dest_.for_each_set_bit([&](auto const i) {
         for (auto k = 1U; k != end_k; ++k) {
           auto const dest_time = round_times_[k][i][Vias];
@@ -365,7 +377,8 @@ private:
             target_v, stay);
 
         auto const transfer_time =
-            ((!is_intermodal_dest() && is_dest) ||
+            ((!is_intermodal_dest() && is_dest &&
+              SearchType != search_type::kESA) ||
              SearchType == search_type::kEA)
                 ? 0
                 : dir(adjusted_transfer_time(
