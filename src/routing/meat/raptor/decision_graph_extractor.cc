@@ -37,6 +37,12 @@ void forall_optimal_outgoing_connections(profile const& p,
     f(i);
     ++i;
   }
+  if (i == (std::end(p) - 1)) {
+    // => "optimal outgoing connection" is a "final footpath"
+    // TODO remove/do not add f(i) from while loop above?
+    // or leave it there and thus show alternative journeys to the footpath
+    return;
+  }
   f(i);
 }
 }  // namespace
