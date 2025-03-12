@@ -228,7 +228,7 @@ private:
     state_.fp_dis_to_target_[target_location] = 0.0;
     for (auto const& fp :
          tt_.locations_.footpaths_in_[fp_prf_idx_][target_location]) {
-      if (ea[to_idx(fp.target())] == std::numeric_limits<delta_t>::max()) {
+      if (ea[to_idx(fp.target())] > last_arr_ - fp.duration().count()) {
         continue;
       }
       state_.station_mark_.set(to_idx(fp.target()), true);
@@ -385,8 +385,8 @@ private:
                            state_.profile_set_.last_dep(l_idx).dep_time_))
               : state_.profile_set_.last_dep(l_idx).dep_time_;
       assert(std::isfinite(fp_dis_to_target) ||
-             state_.profile_set_.last_dep(l_idx).dep_time_ !=
-                 std::numeric_limits<delta_t>::max());
+             !state_.profile_set_.is_stop_empty(l_idx));
+      assert(range_begin <= range_end);
       get_transports_with_arr_in_range(r, stop_idx, range_begin, range_end,
                                        active_transports, outside_bounds);
 
