@@ -46,12 +46,12 @@ struct meat_profile_computer {
   void compute_profile_set(
       std::pair<day_idx_t, connection_idx_t> const& conn_begin,
       std::pair<day_idx_t, connection_idx_t> const& conn_end,
-      location_idx_t target_stop,
-      delta_t source_time,
-      delta_t max_delay,
-      meat_t fuzzy_dominance_offset,
-      meat_t transfer_cost,
-      delta_t last_arr) {
+      location_idx_t const target_stop,
+      delta_t const source_time,
+      delta_t const max_delay,
+      meat_t const fuzzy_dominance_offset,
+      meat_t const transfer_cost,
+      delta_t const last_arr) {
     auto const& ea = state_.ea_;
     auto& trip = state_.trip_;
 
@@ -115,6 +115,10 @@ struct meat_profile_computer {
                      c_arr_time) /*TODO add expected value to it?*/;
           // TODO add expected value to it? add final footpath in
           // graph_extractor would have to be changed
+
+          if (meat /*- "expected value"*/ > last_arr) {
+            meat = std::numeric_limits<meat_t>::infinity();
+          }
 
           if (!profile_set_.is_stop_empty(c_arr_stop_idx)) {
             meat = std::min(meat, evaluate_profile(c_arr_stop_idx, c_arr_time) +
