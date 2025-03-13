@@ -3,7 +3,7 @@
 #include <variant>
 
 #include "nigiri/common/delta_t.h"
-#include "nigiri/routing/pareto_set.h"
+#include "nigiri/routing/meat/raptor/optional_sorted_pareto_set.h"
 #include "nigiri/timetable.h"
 #include "nigiri/types.h"
 
@@ -108,12 +108,11 @@ struct profile_set {
     if (is_stop_empty(stop_id)) {
       stop_reset_list_[stop_reset_list_end_++] = stop_id;
     }
-    auto const [added, it1, it2] =
-        entry_[to_idx(stop_id)].unsorted_add(std::move(e));
-    if (added){
-      recompute_entry_amount_ = true;
-    }
-    return added;
+    recompute_entry_amount_ = true;
+    return entry_[to_idx(stop_id)].unsorted_add(std::move(e));
+    // return entry_[to_idx(stop_id)].unsorted_add_on_sorted_set(std::move(e));
+    // return entry_[to_idx(stop_id)].sorted_add(std::move(e));
+    // return entry_[to_idx(stop_id)].sorted_add_on_sorted_set(std::move(e));
   }
 
   bool is_stop_empty(location_idx_t stop) const {
