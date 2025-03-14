@@ -119,14 +119,13 @@ struct meat_raptor {
     UTL_STOP_TIMING(esa_time);
     stats_.esa_duration_ = static_cast<std::uint64_t>(UTL_TIMING_MS(esa_time));
 
-    auto const best_arr =
+    auto const esa =
         state_.r_state_.get_best<VIAS>()[to_idx(target_location)][VIAS];
 
     static_assert(kInvalidDelta<search_dir> ==
                   std::numeric_limits<delta_t>::max());
-    auto const no_safe_arr_at_dest =
-        best_arr == kInvalidDelta<search_dir> ||
-        best_arr - s_time - esa_static_arr_delay > max_travel_time_.count();
+    auto const no_safe_arr_at_dest = esa == kInvalidDelta<search_dir> ||
+                                     (esa - s_time) > max_travel_time_.count();
     if (no_safe_arr_at_dest) {
       result_graph =
           decision_graph{{{start_location, {}, {}}, {target_location, {}, {}}},
@@ -141,7 +140,6 @@ struct meat_raptor {
     }
 
     // - τlast =τ+α·(esa(s,τ,t)−τ)
-    auto const esa = clamp(best_arr - esa_static_arr_delay);
     if (bound_parameter_ == std::numeric_limits<double>::max()) {
       last_arr_ = std::numeric_limits<delta_t>::max() - 1;
     } else if (bound_parameter_ == 1.0) {

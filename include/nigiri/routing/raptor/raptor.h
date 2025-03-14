@@ -240,14 +240,8 @@ struct raptor {
     }
 
     if constexpr (SearchType == search_type::kESA) {
-      auto const stay = 0_minutes;
       is_dest_.for_each_set_bit([&](std::uint64_t const i) {
-        best_[i][Vias] = static_cast<delta_t>(
-            best_[i][Vias] -
-            dir(adjusted_transfer_time(
-                    transfer_time_settings_,
-                    tt_.locations_.transfer_time_[location_idx_t{i}].count()) +
-                stay.count()));
+        best_[i][Vias] = best_[i][Vias] - static_arrival_delay_;
       });
     }
     //  TODO this "if" cloud be removed, so that
@@ -377,8 +371,7 @@ private:
             target_v, stay);
 
         auto const transfer_time =
-            ((!is_intermodal_dest() && is_dest &&
-              SearchType != search_type::kESA) ||
+            ((!is_intermodal_dest() && is_dest) ||
              SearchType == search_type::kEA)
                 ? 0
                 : dir(adjusted_transfer_time(
@@ -440,7 +433,9 @@ private:
 
         for (auto v = 0U; v != Vias + 1; ++v) {
           auto const tmp_time =
-              SearchType == search_type::kESA ? best_[i][v] : tmp_[i][v];
+              (SearchType == search_type::kESA && !is_dest_[target])
+                  ? best_[i][v]
+                  : tmp_[i][v];
           if (tmp_time == kInvalid) {
             continue;
           }

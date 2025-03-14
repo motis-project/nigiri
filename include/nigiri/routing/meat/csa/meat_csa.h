@@ -268,14 +268,38 @@ private:
     UTL_START_TIMING(esa_time);
     auto& esa = state_.ea_;  // earliest safe arrival
     auto& first_con_reachable = state_.first_con_reachable_;
-    update_arr_times(esa, source_time, source_stop,
-                     stats_.esa_n_update_arr_time_);
 
     // necessary, so that a connection exist where delay_prob() returns 1
     auto constexpr extra_delay = 1;
-    delta_t const target_offset =
-        tt_.locations_.transfer_time_[target_stop].count() + max_delay_ +
-        extra_delay;
+    auto const delay = clamp(max_delay_ + extra_delay);
+    delta_t target_offset =
+        tt_.locations_.transfer_time_[target_stop].count() + delay;
+
+    auto update_arr_times = [&](delta_t const arr_time,
+                                location_idx_t const arr_stop_idx) {
+      if (arr_time >= esa[arr_stop_idx]) {
+        return;
+      }
+      ++stats_.esa_n_update_arr_time_;
+      esa[arr_stop_idx] = arr_time;
+      if (arr_stop_idx == target_stop) {
+        target_offset =
+            tt_.locations_.transfer_time_[target_stop].count() + delay;
+      }
+      for (auto const& fp :
+           tt_.locations_.footpaths_out_[prf_idx_][arr_stop_idx]) {
+        if (clamp(arr_time + fp.duration().count()) >= esa[fp.target()]) {
+          continue;
+        }
+        esa[fp.target()] = clamp(arr_time + fp.duration().count());
+        if (fp.target() == target_stop) {
+          target_offset =
+              tt_.locations_.transfer_time_[arr_stop_idx].count() + delay;
+        }
+      }
+    };
+    update_arr_times(source_time, source_stop);
+    target_offset = delta_t{0};
 
     auto conn_end = conn_begin.second;
     auto day = conn_begin.first;
@@ -315,12 +339,10 @@ private:
                                                        conn->dep_time_.days()),
                           conn->arr_time_.mam());
           auto const c_arr_stop_idx = stop{conn->arr_stop_}.location_idx();
-          auto const conn_max_arr_time =
-              clamp(conn_arr_time +
-                    tt_.locations_.transfer_time_[c_arr_stop_idx].count() +
-                    max_delay_ + extra_delay);
-          update_arr_times(esa, conn_max_arr_time, c_arr_stop_idx,
-                           stats_.esa_n_update_arr_time_);
+          auto const conn_max_arr_time = clamp(
+              conn_arr_time +
+              tt_.locations_.transfer_time_[c_arr_stop_idx].count() + delay);
+          update_arr_times(conn_max_arr_time, c_arr_stop_idx);
         }
       }
 
