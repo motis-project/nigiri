@@ -24,8 +24,8 @@ raptor_state one_to_all(timetable const& tt,
 template <direction SearchDir>
 fastest_offset get_fastest_offset(timetable const& tt,
                                   raptor_state const& state,
-                                  location_idx_t const l,
-                                  unixtime_t const start_time,
-                                  std::uint8_t const transfers);
+                                  location_idx_t,
+                                  unixtime_t start_time,
+                                  std::uint8_t transfers);
 
 }  // namespace nigiri::routing
