@@ -17,7 +17,6 @@ namespace nigiri::routing {
 constexpr auto const kVias = via_offset_t{0U};
 
 day_idx_t make_base(timetable const& tt, unixtime_t start_time) {
-  // Use day of midpoint for search interval
   return day_idx_t{std::chrono::duration_cast<date::days>(
                        std::chrono::round<std::chrono::days>(start_time) -
                        tt.internal_interval().from_)
