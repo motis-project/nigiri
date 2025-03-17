@@ -6,11 +6,12 @@
 #include <variant>
 #include <vector>
 
+#include "utl/verify.h"
+
 #include "nigiri/for_each_meta.h"
 #include "nigiri/routing/limits.h"
 #include "nigiri/routing/raptor/raptor.h"
 #include "nigiri/routing/start_times.h"
-#include "utl/verify.h"
 
 namespace nigiri::routing {
 
