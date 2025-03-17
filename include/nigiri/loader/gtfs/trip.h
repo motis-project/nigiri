@@ -83,7 +83,7 @@ struct trip {
                         timetable const&,
                         unsigned indent = 0) const;
 
-  std::string display_name(timetable const&) const;
+  std::string display_name() const;
 
   clasz get_clasz(timetable const&) const;
 
