@@ -102,11 +102,11 @@ raptor_state one_to_all(timetable const& tt,
 }
 
 template <direction SearchDir>
-fastest_offset get_fastest_offset(timetable const& tt,
-                                  raptor_state const& state,
-                                  location_idx_t const l,
-                                  unixtime_t const start_time,
-                                  std::uint8_t const transfers) {
+fastest_offset get_fastest_one_to_all_offsets(timetable const& tt,
+                                              raptor_state const& state,
+                                              location_idx_t const l,
+                                              unixtime_t const start_time,
+                                              std::uint8_t const transfers) {
   auto const& round_times = state.get_round_times<kVias>();
   for (auto const k : std::views::iota(std::uint8_t{0U}, transfers + 1U)  //
                           | std::views::reverse) {
@@ -130,13 +130,13 @@ template raptor_state one_to_all<direction::kForward>(timetable const&,
 template raptor_state one_to_all<direction::kBackward>(timetable const&,
                                                        rt_timetable const*,
                                                        query const&);
-template fastest_offset get_fastest_offset<direction::kForward>(
+template fastest_offset get_fastest_one_to_all_offsets<direction::kForward>(
     timetable const&,
     raptor_state const&,
     location_idx_t const,
     unixtime_t const,
     std::uint8_t const);
-template fastest_offset get_fastest_offset<direction::kBackward>(
+template fastest_offset get_fastest_one_to_all_offsets<direction::kBackward>(
     timetable const&,
     raptor_state const&,
     location_idx_t const,
