@@ -68,7 +68,7 @@ raptor_state one_to_all(timetable const& tt,
   auto dist_to_dest = std::vector<std::uint16_t>{};
   auto lb = std::vector<std::uint16_t>(tt.n_locations(), 0U);
   auto const base = make_base(tt, start_time);
-  auto const is_wheelchair = true;
+  auto const is_wheelchair = q.prf_idx_ == kWheelchairProfile;
 
   auto r = raptor<SearchDir, Rt, kVias, search_mode::kOneToAll>{
       tt,
