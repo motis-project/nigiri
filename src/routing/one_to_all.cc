@@ -118,7 +118,7 @@ fastest_offset get_fastest_one_to_all_offsets(timetable const& tt,
       auto end_time = delta_to_unix(base, round_times[k][to_idx(l)][0]);
       return {
           .duration_ = static_cast<delta_t>((end_time - start_time).count()),
-          .transfers_ = k,
+          .k_ = k,
       };
     }
   }

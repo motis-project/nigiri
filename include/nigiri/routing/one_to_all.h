@@ -13,7 +13,10 @@ namespace nigiri::routing {
 
 struct fastest_offset {
   delta_t duration_{std::numeric_limits<delta_t>::max()};
-  std::uint8_t transfers_{std::numeric_limits<std::uint8_t>::max()};
+  // k == 0: Initial connection
+  // k == 1: Direct connection
+  // k == 2: Connection with 1 transfer
+  std::uint8_t k_{std::numeric_limits<std::uint8_t>::max()};
 };
 
 template <direction SearchDir>
