@@ -102,16 +102,19 @@ raptor_state one_to_all(timetable const& tt,
   }
 }
 
-template <direction SearchDir>
 fastest_offset get_fastest_one_to_all_offsets(timetable const& tt,
                                               raptor_state const& state,
+                                              direction const search_dir,
                                               location_idx_t const l,
                                               unixtime_t const start_time,
                                               std::uint8_t const transfers) {
+  auto const invalid_delta = search_dir == direction::kForward
+                                 ? kInvalidDelta<direction::kForward>
+                                 : kInvalidDelta<direction::kBackward>;
   auto const& round_times = state.get_round_times<kVias>();
   for (auto const k : std::views::iota(std::uint8_t{0U}, transfers + 1U)  //
                           | std::views::reverse) {
-    if (round_times[k][to_idx(l)][kVias] != kInvalidDelta<SearchDir>) {
+    if (round_times[k][to_idx(l)][kVias] != invalid_delta) {
       auto const base =
           tt.internal_interval_days().from_ +
           static_cast<int>(to_idx(make_base(tt, start_time))) * date::days{1};
@@ -131,17 +134,5 @@ template raptor_state one_to_all<direction::kForward>(timetable const&,
 template raptor_state one_to_all<direction::kBackward>(timetable const&,
                                                        rt_timetable const*,
                                                        query const&);
-template fastest_offset get_fastest_one_to_all_offsets<direction::kForward>(
-    timetable const&,
-    raptor_state const&,
-    location_idx_t const,
-    unixtime_t const,
-    std::uint8_t const);
-template fastest_offset get_fastest_one_to_all_offsets<direction::kBackward>(
-    timetable const&,
-    raptor_state const&,
-    location_idx_t const,
-    unixtime_t const,
-    std::uint8_t const);
 
 }  // namespace nigiri::routing
