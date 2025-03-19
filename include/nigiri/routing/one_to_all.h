@@ -24,9 +24,9 @@ raptor_state one_to_all(timetable const& tt,
                         rt_timetable const* rtt,
                         query const& q);
 
-template <direction SearchDir>
 fastest_offset get_fastest_one_to_all_offsets(timetable const& tt,
                                               raptor_state const& state,
+                                              direction,
                                               location_idx_t,
                                               unixtime_t start_time,
                                               std::uint8_t transfers);

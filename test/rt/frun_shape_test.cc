@@ -880,16 +880,18 @@ TEST(
 
       // Test duration and number of transfers
       {
-        auto const stats_s = get_fastest_one_to_all_offsets<kSearchDir>(
-            tt, state, to_location_idx("S"), start_time, q.max_transfers_);
+        auto const stats_s = get_fastest_one_to_all_offsets(
+            tt, state, kSearchDir, to_location_idx("S"), start_time,
+            q.max_transfers_);
         ASSERT_EQ(stats_s.duration_, delta_t{140});
         ASSERT_EQ(stats_s.k_, 2U);
-        auto const stats_w = get_fastest_one_to_all_offsets<kSearchDir>(
-            tt, state, to_location_idx("W"), start_time, q.max_transfers_);
+        auto const stats_w = get_fastest_one_to_all_offsets(
+            tt, state, kSearchDir, to_location_idx("W"), start_time,
+            q.max_transfers_);
         ASSERT_EQ(stats_w.duration_, delta_t{200});
         ASSERT_EQ(stats_w.k_, 2U);
-        auto const stats_s_direct = get_fastest_one_to_all_offsets<kSearchDir>(
-            tt, state, to_location_idx("S"), start_time, 1);
+        auto const stats_s_direct = get_fastest_one_to_all_offsets(
+            tt, state, kSearchDir, to_location_idx("S"), start_time, 1);
         ASSERT_EQ(stats_s_direct.duration_, delta_t{185});
         ASSERT_EQ(stats_s_direct.k_, 1U);
       }
@@ -914,8 +916,9 @@ TEST(
     ASSERT_FALSE(
         is_reachable(state, to_location_idx("A"), kUnreachable));  // 5 hours
 
-    auto const stats_b = get_fastest_one_to_all_offsets<kSearchDir>(
-        tt, state, to_location_idx("B"), start_time, q.max_transfers_);
+    auto const stats_b = get_fastest_one_to_all_offsets(
+        tt, state, kSearchDir, to_location_idx("B"), start_time,
+        q.max_transfers_);
     ASSERT_EQ(stats_b.duration_, delta_t{-150});
   }
 }
