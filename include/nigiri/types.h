@@ -165,6 +165,7 @@ using footpath_idx_t = cista::strong<std::uint32_t, struct _footpath_idx>;
 using source_file_idx_t = cista::strong<std::uint16_t, struct _source_file_idx>;
 
 using profile_idx_t = std::uint8_t;
+constexpr auto const kWheelchairProfile = profile_idx_t{2U};
 static constexpr auto const kMaxProfiles = profile_idx_t{8};
 
 using rt_trip_idx_t = cista::strong<std::uint32_t, struct _trip_idx>;
