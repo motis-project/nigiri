@@ -4,6 +4,7 @@
 
 #include "nigiri/common/delta_t.h"
 #include "nigiri/common/linear_lower_bound.h"
+#include "nigiri/routing/dump_round_times.h"
 #include "nigiri/routing/journey.h"
 #include "nigiri/routing/limits.h"
 #include "nigiri/routing/pareto_set.h"
@@ -128,6 +129,8 @@ struct raptor {
 
   algo_stats_t get_stats() const { return stats_; }
 
+  day_idx_t get_base() const { return base_; }
+
   void reset_arrivals() {
     utl::fill(time_at_dest_, kInvalid);
     round_times_.reset(kInvalidArray);
@@ -165,6 +168,7 @@ struct raptor {
     }
 
     trace_print_init_state();
+    dump_round_times(dbg_dir_, "init", state_, 0U, Vias);
 
     for (auto k = 1U; k != end_k; ++k) {
       for (auto i = 0U; i != n_locations_; ++i) {
@@ -265,6 +269,10 @@ struct raptor {
     }
     reconstruct_journey<SearchDir>(tt_, rtt_, q, state_, j, base(), base_);
   }
+
+#ifdef NIGIRI_DUMP_ROUND_TIMES_DIR
+  std::optional<std::string> dbg_dir_;
+#endif
 
 private:
   date::sys_days base() const {
@@ -394,6 +402,7 @@ private:
         }
       }
     });
+    dump_round_times(dbg_dir_, "1_update_transfers", state_, k, Vias);
   }
 
   void update_footpaths(unsigned const k, profile_idx_t const prf_idx) {
@@ -489,6 +498,7 @@ private:
         }
       }
     });
+    dump_round_times(dbg_dir_, "3_update_footpaths", state_, k, Vias);
   }
 
   void update_td_offsets(unsigned const k, profile_idx_t const prf_idx) {
@@ -588,6 +598,7 @@ private:
         });
       }
     });
+    dump_round_times(dbg_dir_, "4_update_td_offsets", state_, k, Vias);
   }
 
   void update_intermodal_footpaths(unsigned const k) {
@@ -644,6 +655,8 @@ private:
         }
       }
     });
+    dump_round_times(dbg_dir_, "2_update_intermodal_footpaths", state_, k,
+                     Vias);
   }
 
   template <bool WithSectionBikeFilter>
