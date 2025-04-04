@@ -104,6 +104,29 @@ auto const kTripUpdate =
  ]
 })"s;
 
+auto const kTripUpdateCanceled =
+    R"({
+ "header": {
+  "gtfsRealtimeVersion": "2.0",
+  "incrementality": "FULL_DATASET",
+  "timestamp": "1691660324"
+ },
+ "entity": [
+  {
+    "id": "3248651",
+    "isDeleted": false,
+    "tripUpdate": {
+     "trip": {
+      "tripId": "TRIP_1",
+      "startTime": "10:00:00",
+      "startDate": "20231126",
+      "scheduleRelationship": "CANCELED",
+     }
+    }
+  }
+ ]
+})"s;
+
 constexpr auto const expected = R"(
    2: C       C............................................... a: 26.11 11:00 [26.11 12:00]  RT 26.11 11:00 [26.11 12:00]  d: 26.11 11:00 [26.11 12:00]  RT 26.11 11:00 [26.11 12:00]  [{name=Route 1, day=2023-11-26, id=TRIP_1, src=0}]
    4: E       E............................................... a: 26.11 13:00 [26.11 14:00]  RT 26.11 13:00 [26.11 14:00]  d: 26.11 13:00 [26.11 14:00]  RT 26.11 13:00 [26.11 14:00]  [{name=Route 1, day=2023-11-26, id=TRIP_1, src=0}]
@@ -137,12 +160,50 @@ TEST(rt, gtfs_rt_skip) {
       date::sys_days{2023_y / November / 26}, tt, &rtt, source_idx_t{0}, td);
   ASSERT_TRUE(r.valid());
 
+  auto const fr = rt::frun{tt, &rtt, r};
   auto ss = std::stringstream{};
-  ss << "\n" << rt::frun{tt, &rtt, r};
+  ss << "\n" << fr;
   EXPECT_EQ(expected, ss.str());
+  ASSERT_FALSE(fr.is_cancelled());
 
-  for (auto const [from, to] : utl::pairwise(rt::frun{tt, &rtt, r})) {
+  for (auto const [from, to] : utl::pairwise(fr)) {
     EXPECT_EQ(from.id(), "C");
     EXPECT_EQ(to.id(), "E");
   }
+
+  // Update with canceled
+  auto const msgCanceled = rt::json_to_protobuf(kTripUpdateCanceled);
+  gtfsrt_update_buf(tt, rtt, source_idx_t{0}, "", msgCanceled);
+
+  ASSERT_TRUE(fr.is_cancelled());
+}
+
+TEST(rt, gtfs_rt_cancel) {
+  // Load static timetable.
+  timetable tt;
+  register_special_stations(tt);
+  tt.date_range_ = {date::sys_days{2023_y / November / 25},
+                    date::sys_days{2023_y / November / 27}};
+  load_timetable({}, source_idx_t{0}, test_files(), tt);
+  finalize(tt);
+
+  // Create empty RT timetable.
+  auto rtt =
+      rt::create_rt_timetable(tt, date::sys_days{2023_y / November / 26});
+
+  // Update.
+  auto const msg = rt::json_to_protobuf(kTripUpdateCanceled);
+  gtfsrt_update_buf(tt, rtt, source_idx_t{0}, "", msg);
+
+  // Print trip.
+  transit_realtime::TripDescriptor td;
+  td.set_start_date("20231126");
+  td.set_trip_id("TRIP_1");
+  td.set_start_time("10:00:00");
+  auto const [r, t] = rt::gtfsrt_resolve_run(
+      date::sys_days{2023_y / November / 26}, tt, &rtt, source_idx_t{0}, td);
+  ASSERT_TRUE(r.valid());
+
+  auto const fr = rt::frun{tt, &rtt, r};
+  ASSERT_TRUE(fr.is_cancelled());
 }

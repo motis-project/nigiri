@@ -223,7 +223,7 @@ route_color run_stop::get_route_color(event_type ev_type) const noexcept {
                                                        : section_idx(ev_type));
 }
 
-bool run_stop::is_canceled() const noexcept {
+bool run_stop::is_cancelled() const noexcept {
   return get_stop().is_cancelled();
 }
 
@@ -253,7 +253,7 @@ rt_timetable const* run_stop::rtt() const noexcept { return fr_->rtt_; }
 frun::iterator& frun::iterator::operator++() noexcept {
   do {
     ++rs_.stop_idx_;
-  } while (rs_.stop_idx_ != rs_.fr_->stop_range_.to_ && rs_.is_canceled());
+  } while (rs_.stop_idx_ != rs_.fr_->stop_range_.to_ && rs_.is_cancelled());
   return *this;
 }
 
@@ -268,7 +268,7 @@ frun::iterator& frun::iterator::operator--() noexcept {
     --rs_.stop_idx_;
   } while (rs_.stop_idx_ !=
                static_cast<stop_idx_t>(rs_.fr_->stop_range_.from_ - 1U) &&
-           rs_.is_canceled());
+           rs_.is_cancelled());
   return *this;
 }
 
@@ -472,6 +472,20 @@ trip_id frun::id() const noexcept {
   } else {
     return {};
   }
+}
+
+bool frun::is_cancelled() const {
+  if (rtt_ == nullptr) {
+    return false;
+  }
+  if (is_rt()) {
+    return rtt_->rt_transport_is_cancelled_[to_idx(rt_)];
+  }
+  if (is_scheduled()) {
+    return !rtt_->bitfields_[rtt_->transport_traffic_days_[t_.t_idx_]].test(
+        to_idx(t_.day_));
+  }
+  return false;
 }
 
 trip_idx_t frun::trip_idx() const {

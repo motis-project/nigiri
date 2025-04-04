@@ -386,7 +386,9 @@ TEST(rt, gtfs_rt_update_1) {
                                              &rtt, source_idx_t{0}, td);
   ASSERT_TRUE(r.valid());
 
+  auto const fr = rt::frun{tt, &rtt, r};
   auto ss = std::stringstream{};
-  ss << "\n" << rt::frun{tt, &rtt, r};
+  ss << "\n" << fr;
   EXPECT_EQ(expected, ss.str());
+  ASSERT_FALSE(fr.is_cancelled());
 }
