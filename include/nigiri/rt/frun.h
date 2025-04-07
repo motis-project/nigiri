@@ -56,7 +56,7 @@ struct run_stop {
   bool out_allowed() const noexcept;
   bool in_allowed_wheelchair() const noexcept;
   bool out_allowed_wheelchair() const noexcept;
-  bool is_canceled() const noexcept;
+  bool is_cancelled() const noexcept;
 
   bool in_allowed(bool const is_wheelchair) const noexcept;
   bool out_allowed(bool const is_wheelchair) const noexcept;
@@ -144,6 +144,7 @@ struct frun : public run {
   trip_id id() const noexcept;
   trip_idx_t trip_idx() const;
   clasz get_clasz() const noexcept;
+  bool is_cancelled() const;
 
   void for_each_trip(
       std::function<void(trip_idx_t const, interval<stop_idx_t> const)> const&)
