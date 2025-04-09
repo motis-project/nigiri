@@ -43,11 +43,15 @@ void resolve_static(date::sys_days const today,
                std::tuple(src, static_cast<std::string_view>(b));
       });
 
-  auto const start_date = td.has_start_date()
+  auto const duplicated =
+      td.schedule_relationship() ==
+      transit_realtime::
+          TripDescriptor_ScheduleRelationship_DUPLICATED;  // TODO REPL?
+  auto const start_date = td.has_start_date() && !duplicated
                               ? std::make_optional(parse_date(
                                     utl::parse<unsigned>(td.start_date())))
                               : std::nullopt;
-  auto const start_time = td.has_start_time()
+  auto const start_time = td.has_start_time() && !duplicated
                               ? std::make_optional(hhmm_to_min(td.start_time()))
                               : std::nullopt;
 
