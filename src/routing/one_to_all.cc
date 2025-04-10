@@ -9,7 +9,6 @@
 #include "utl/verify.h"
 
 #include "nigiri/for_each_meta.h"
-#include "nigiri/routing/limits.h"
 #include "nigiri/routing/raptor/raptor.h"
 #include "nigiri/routing/start_times.h"
 
@@ -32,7 +31,8 @@ void run_raptor(raptor<SearchDir, Rt, kVias, search_mode::kOneToAll>&& algo,
   auto results = pareto_set<journey>{};
   algo.next_start_time();
   for (auto const& s : q.start_) {
-    auto const t = start_time + s.duration();
+    auto const t = SearchDir == direction::kForward ? start_time + s.duration()
+                                                    : start_time - s.duration();
     trace("init: time_at_stop={} at {}\n", t, location_idx_t{s.target()});
     nigiri::routing::for_each_meta(
         tt, q.start_match_mode_, s.target(),
