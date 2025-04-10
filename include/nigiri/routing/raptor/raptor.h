@@ -742,8 +742,8 @@ private:
                     "time_by_transport={}, "
                     "BETTER THAN dest_best={} => update, {} marking station "
                     "{} (destination)!\n",
-                    k, v, dest_v, tt_.transport_name(et[v].t_idx_),
-                    tt_.dbg(et[v].t_idx_), to_unix(by_transport),
+                    k, v, dest_v, rtt_->transport_name(tt_, rt_t),
+                    rtt_->dbg(tt_, rt_t), to_unix(by_transport),
                     to_unix(best_dest),
                     !is_better(by_transport, best_dest) ? "NOT" : "",
                     location{tt_, stp.location_idx()});
