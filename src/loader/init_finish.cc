@@ -9,6 +9,21 @@
 
 namespace nigiri::loader {
 
+template <typename IdIdxT, typename IdxT>
+void sorted_ids(vector<pair<IdIdxT, IdxT>>& id_to_idx,
+                vecvec<IdIdxT, char> const& id_strings,
+                vector_map<IdIdxT, source_idx_t>& id_src) {
+  std::sort(
+#if __cpp_lib_execution
+      std::execution::par_unseq,
+#endif
+      begin(id_to_idx), end(id_to_idx),
+      [&](pair<IdIdxT, IdxT> const& a, pair<IdIdxT, IdxT> const& b) {
+        return std::tuple(id_src[a.first], id_strings[a.first].view()) <
+               std::tuple(id_src[b.first], id_strings[b.first].view());
+      });
+}
+
 void register_special_stations(timetable& tt) {
   auto empty_idx_vec = vector<location_idx_t>{};
   for (auto const& name : special_stations_names) {
@@ -27,22 +42,14 @@ void register_special_stations(timetable& tt) {
 }
 
 void finalize(timetable& tt, finalize_options const opt) {
+  assert(route_id_idx_t{tt.route_id_strings_.size()} == tt.next_route_id_idx_);
+  assert(route_id_idx_t{tt.route_id_src_.size()} == tt.next_route_id_idx_);
   tt.location_routes_.resize(tt.n_locations());
 
   {
-    auto const timer = scoped_timer{"loader.sort_trip_ids"};
-    std::sort(
-#if __cpp_lib_execution
-        std::execution::par_unseq,
-#endif
-        begin(tt.trip_id_to_idx_), end(tt.trip_id_to_idx_),
-        [&](pair<trip_id_idx_t, trip_idx_t> const& a,
-            pair<trip_id_idx_t, trip_idx_t> const& b) {
-          return std::tuple(tt.trip_id_src_[a.first],
-                            tt.trip_id_strings_[a.first].view()) <
-                 std::tuple(tt.trip_id_src_[b.first],
-                            tt.trip_id_strings_[b.first].view());
-        });
+    auto const timer = scoped_timer{"loader.sort_ids"};
+    sorted_ids(tt.route_id_to_idx_, tt.route_id_strings_, tt.route_id_src_);
+    sorted_ids(tt.trip_id_to_idx_, tt.trip_id_strings_, tt.trip_id_src_);
   }
   build_footpaths(tt, opt);
   build_lb_graph<direction::kForward>(tt);

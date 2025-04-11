@@ -2,6 +2,8 @@
 
 #include "utl/pairwise.h"
 
+#include <optional>
+
 #include "nigiri/common/delta_t.h"
 #include "nigiri/common/interval.h"
 #include "nigiri/rt/run.h"
@@ -38,7 +40,10 @@ struct rt_timetable {
       timetable const&,
       transport const,
       std::span<stop::value_type> const& stop_seq = {},
-      std::span<delta_t> const& time_seq = {});
+      std::span<delta_t> const& time_seq = {},
+      std::optional<std::string_view> new_trip_id = std::nullopt,
+      std::optional<std::string_view> route_id = std::nullopt,
+      delta_t offset = 0);
 
   delta_t unix_to_delta(unixtime_t const t) const {
     auto const d =
@@ -166,19 +171,24 @@ struct rt_timetable {
   // only works for transport that existed in the static timetable
   hash_map<transport, rt_transport_idx_t> static_trip_lookup_;
 
-  // Lookup: additional trip index -> realtime transport
-  hash_map<rt_add_trip_id_idx_t, rt_transport_idx_t> additional_trips_lookup_;
+  // Lookup: additional external trip id -> realtime transport
+  hash_map<string, rt_transport_idx_t> additional_trips_lookup_;
 
   // RT transport -> static transport (not for additional trips)
   vector_map<rt_transport_idx_t, variant<transport, rt_add_trip_id_idx_t>>
       rt_transport_static_transport_;
 
-  // RT trip ID index -> ID strings + source
-  vecvec<rt_add_trip_id_idx_t, char> trip_id_strings_;
+  // RT trip ID index -> ID strings + idx
+  vector_map<rt_add_trip_id_idx_t, hash_map<string, rt_transport_idx_t>::iterator> trip_id_strings_;
   vector_map<rt_transport_idx_t, source_idx_t> rt_transport_src_;
 
   // RT trip ID index -> train number, if available (otherwise 0)
   vector_map<rt_transport_idx_t, std::uint32_t> rt_transport_train_nr_;
+
+  // RT transport -> direction for each section
+  vecvec<trip_direction_string_idx_t, char> rt_transport_direction_strings_;
+  vecvec<rt_transport_idx_t, trip_direction_string_idx_t>
+      rt_transport_section_directions_;
 
   // RT transport -> event times (dep, arr, dep, arr, ...)
   vecvec<rt_transport_idx_t, delta_t> rt_transport_stop_times_;
@@ -202,6 +212,8 @@ struct rt_timetable {
   vecvec<rt_transport_idx_t, bool> rt_bikes_allowed_per_section_;
 
   change_callback_t change_callback_;
+
+  // TODO route colors?
 };
 
 }  // namespace nigiri

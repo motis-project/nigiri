@@ -4,6 +4,7 @@
 #include "nigiri/loader/gtfs/files.h"
 #include "nigiri/loader/gtfs/route.h"
 #include "nigiri/timetable.h"
+#include "nigiri/types.h"
 
 #include "./test_data.h"
 
@@ -18,7 +19,7 @@ TEST(gtfs, read_routes_example_data) {
   auto agencies = read_agencies(tt, timezones,
                                 example_files().get_file(kAgencyFile).data());
   auto const routes =
-      read_routes(tt, timezones, agencies,
+      read_routes(source_idx_t{0}, tt, timezones, agencies,
                   example_files().get_file(kRoutesFile).data(), "CET");
 
   EXPECT_EQ(1, routes.size());
@@ -27,6 +28,11 @@ TEST(gtfs, read_routes_example_data) {
   EXPECT_EQ("17", routes.at("A")->short_name_);
   EXPECT_EQ("Mission", routes.at("A")->long_name_);
   EXPECT_EQ(clasz::kBus, routes.at("A")->clasz_);
+  EXPECT_EQ(route_id_idx_t{1}, tt.next_route_id_idx_);
+  EXPECT_EQ(1, tt.route_id_strings_.size());
+  EXPECT_EQ("A", tt.route_id_strings_.at(route_id_idx_t{0}).view());
+  EXPECT_EQ(1, tt.route_id_src_.size());
+  EXPECT_EQ(source_idx_t{0}, tt.route_id_src_.at(route_id_idx_t{0}));
 }
 
 TEST(gtfs, read_routes_berlin_data) {
@@ -36,7 +42,7 @@ TEST(gtfs, read_routes_berlin_data) {
   auto agencies =
       read_agencies(tt, timezones, berlin_files().get_file(kAgencyFile).data());
   auto const routes =
-      read_routes(tt, timezones, agencies,
+      read_routes(source_idx_t{0}, tt, timezones, agencies,
                   berlin_files().get_file(kRoutesFile).data(), "CET");
 
   EXPECT_EQ(9, routes.size());

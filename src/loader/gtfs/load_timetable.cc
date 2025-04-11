@@ -34,6 +34,7 @@
 #include "nigiri/common/sort_by.h"
 #include "nigiri/logging.h"
 #include "nigiri/timetable.h"
+#include "nigiri/types.h"
 
 namespace fs = std::filesystem;
 
@@ -115,7 +116,7 @@ void load_timetable(loader_config const& config,
   auto const stops =
       read_stops(src, tt, timezones, load(kStopFile).data(),
                  load(kTransfersFile).data(), config.link_stop_distance_);
-  auto const routes = read_routes(tt, timezones, agencies,
+  auto const routes = read_routes(src, tt, timezones, agencies,
                                   load(kRoutesFile).data(), config.default_tz_);
   auto const calendar = read_calendar(load(kCalenderFile).data());
   auto const dates = read_calendar_date(load(kCalendarDatesFile).data());
@@ -155,8 +156,9 @@ void load_timetable(loader_config const& config,
     }
   }
 
-  hash_map<route_key_t, std::vector<std::vector<utc_trip>>, route_key_hash,
-           route_key_equals>
+  hash_map<route_key_t,
+           std::pair<route_id_idx_t, std::vector<std::vector<utc_trip>>>,
+           route_key_hash, route_key_equals>
       route_services;
 
   auto const noon_offsets = precompute_noon_offsets(tt, agencies);
@@ -191,23 +193,26 @@ void load_timetable(loader_config const& config,
         trip_data, noon_offsets, tt, trips, traffic_days, tt.date_range_,
         assistance, [&](utc_trip&& s) {
           auto const* stop_seq = get_stop_seq(trip_data, s, stop_seq_cache);
-          auto const clasz = trip_data.get(s.trips_.front()).get_clasz(tt);
+          auto const& canonical_trip = trip_data.get(s.trips_.front());
+          auto const clasz = canonical_trip.get_clasz(tt);
           auto const* bikes_allowed_seq = get_bikes_allowed_seq(s.trips_);
           auto const it = route_services.find(
               route_key_ptr_t{clasz, stop_seq, bikes_allowed_seq});
           if (it != end(route_services)) {
-            for (auto& r : it->second) {
+            for (auto& r : it->second.second) {
               auto const idx = get_index(r, s);
               if (idx.has_value()) {
                 r.insert(std::next(begin(r), static_cast<int>(*idx)), s);
                 return;
               }
             }
-            it->second.emplace_back(std::vector<utc_trip>{std::move(s)});
+            it->second.second.emplace_back(std::vector<utc_trip>{std::move(s)});
           } else {
             route_services.emplace(
                 route_key_t{clasz, *stop_seq, *bikes_allowed_seq},
-                std::vector<std::vector<utc_trip>>{{s}});
+                std::pair<route_id_idx_t, std::vector<std::vector<utc_trip>>>{
+                    canonical_trip.route_->route_id_idx_,
+                    {{s}}});  // TODO all route_id_idx_t
           }
         });
   };
@@ -279,9 +284,10 @@ void load_timetable(loader_config const& config,
     auto external_trip_ids = std::basic_string<merged_trips_idx_t>{};
     auto location_routes = mutable_fws_multimap<location_idx_t, route_idx_t>{};
     for (auto const& [key, sub_routes] : route_services) {
-      for (auto const& services : sub_routes) {
-        auto const route_idx =
-            tt.register_route(key.stop_seq_, {key.clasz_}, key.bikes_allowed_);
+      for (auto const& services : sub_routes.second) {
+
+        auto const route_idx = tt.register_route(
+            key.stop_seq_, {key.clasz_}, key.bikes_allowed_, sub_routes.first);
 
         for (auto const& s : key.stop_seq_) {
           auto s_routes = location_routes[stop{s}.location_idx()];

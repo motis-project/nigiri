@@ -467,7 +467,7 @@ trip_id frun::id() const noexcept {
                  rtt_->rt_transport_static_transport_[rt_])) {
     auto const add_idx =
         rtt_->rt_transport_static_transport_[rt_].as<rt_add_trip_id_idx_t>();
-    return {rtt_->trip_id_strings_[add_idx].view(),
+    return {rtt_->trip_id_strings_[add_idx]->first.view(),
             rtt_->rt_transport_src_[rt_]};
   } else {
     return {};

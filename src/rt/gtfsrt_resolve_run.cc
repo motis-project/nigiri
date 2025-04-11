@@ -43,15 +43,12 @@ void resolve_static(date::sys_days const today,
                std::tuple(src, static_cast<std::string_view>(b));
       });
 
-  auto const duplicated =
-      td.schedule_relationship() ==
-      transit_realtime::
-          TripDescriptor_ScheduleRelationship_DUPLICATED;  // TODO REPL?
-  auto const start_date = td.has_start_date() && !duplicated
+  // TODO REPL?
+  auto const start_date = td.has_start_date()
                               ? std::make_optional(parse_date(
                                     utl::parse<unsigned>(td.start_date())))
                               : std::nullopt;
-  auto const start_time = td.has_start_time() && !duplicated
+  auto const start_time = td.has_start_time()
                               ? std::make_optional(hhmm_to_min(td.start_time()))
                               : std::nullopt;
 
@@ -100,10 +97,18 @@ void resolve_static(date::sys_days const today,
   }
 }
 
-void resolve_rt(rt_timetable const& rtt, run& output) {
+void resolve_rt(rt_timetable const& rtt,
+                run& output,
+                std::string_view trip_id) {
   auto const it = rtt.static_trip_lookup_.find(output.t_);
   if (it != end(rtt.static_trip_lookup_)) {
     output.rt_ = it->second;
+    return;
+  }
+  auto const rtt_it =
+      rtt.additional_trips_lookup_.find(trip_id);  // TODO only check for added?
+  if (rtt_it != end(rtt.additional_trips_lookup_)) {
+    output.rt_ = rtt_it->second;
   }
 }
 
@@ -112,12 +117,13 @@ std::pair<run, trip_idx_t> gtfsrt_resolve_run(
     timetable const& tt,
     rt_timetable const* rtt,
     source_idx_t const src,
-    transit_realtime::TripDescriptor const& td) {
+    transit_realtime::TripDescriptor const& td,
+    std::optional<std::string_view> trip_id) {
   auto r = run{};
   trip_idx_t trip;
   resolve_static(today, tt, src, td, r, trip);
   if (rtt != nullptr) {
-    resolve_rt(*rtt, r);
+    resolve_rt(*rtt, r, trip_id.value_or(td.trip_id()));
   }
   return {r, trip};
 }
