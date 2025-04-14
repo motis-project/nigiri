@@ -5,11 +5,14 @@
 
 #include "nigiri/loader/gtfs/stop_seq_number_encoding.h"
 #include "nigiri/get_otel_tracer.h"
+#include "nigiri/location.h"
 #include "nigiri/logging.h"
 #include "nigiri/rt/frun.h"
 #include "nigiri/rt/gtfsrt_resolve_run.h"
 #include "nigiri/rt/run.h"
+#include "nigiri/types.h"
 #include <string_view>
+#include <vector>
 
 namespace gtfsrt = transit_realtime;
 namespace protob = google::protobuf;
@@ -72,7 +75,7 @@ delay_propagation update_delay(timetable const& tt,
                                event_type const ev_type,
                                duration_t const delay,
                                std::optional<unixtime_t> const min) {
-  auto const static_time = tt.event_time(r.t_, stop_idx, ev_type);
+  auto const static_time = tt.event_time(r.t_, stop_idx, ev_type);  // TODO dupl
   auto const lower_bounded_new_time = min.has_value()
                                           ? std::max(*min, static_time + delay)
                                           : static_time + delay;
@@ -95,10 +98,11 @@ delay_propagation update_event(timetable const& tt,
                             std::chrono::seconds{ev.delay()}),
                         pred_time);
   } else /* if (ev.has_time()) */ {
-    auto const static_time = tt.event_time(r.t_, stop_idx, ev_type);
     auto const new_time =
         unixtime_t{std::chrono::duration_cast<unixtime_t::duration>(
             std::chrono::seconds{ev.time()})};
+    auto const static_time =
+        r.is_scheduled() ? tt.event_time(r.t_, stop_idx, ev_type) : new_time;
     auto const lower_bounded_new_time =
         pred_time.has_value() ? std::max(*pred_time, new_time) : new_time;
     rtt.update_time(r.rt_, stop_idx, ev_type, lower_bounded_new_time);
@@ -161,6 +165,7 @@ void update_run(source_idx_t const src,
 
   auto const& stus = tripUpdate.stop_time_update();
 
+  // TODO check length for added?
   if (!r.is_rt()) {
     auto const sr = tripUpdate.trip().schedule_relationship();
     auto const added_or_replaced =
@@ -199,34 +204,55 @@ void update_run(source_idx_t const src,
       }
       return std::nullopt;
     };
+    std::optional<std::string_view> const display_name =
+        tripUpdate.has_trip_properties() &&
+                tripUpdate.trip_properties().has_trip_short_name()
+            ? std::make_optional(std::string_view{
+                  tripUpdate.trip_properties().trip_short_name()})
+            : std::nullopt;
     // auto const offset = 0;
     //  sr == gtfsrt::TripDescriptor_ScheduleRelationship_DUPLICATED
     //? tripUpdate.has_trip_properties() && tripUpdate.trip_properties().
     r.rt_ = rtt.add_rt_transport(src, tt, r.t_, stops, times, new_trip_id(),
-                                 route_id());
+                                 route_id(), display_name);
+    if (sr ==
+        transit_realtime::TripDescriptor_ScheduleRelationship_REPLACEMENT) {
+      r.t_ = transport::invalid();
+    }
   } else {
     rtt.rt_transport_is_cancelled_.set(to_idx(r.rt_), false);
   }
 
-  auto const location_seq =
-      tt.route_location_seq_[tt.transport_route_[r.t_.t_idx_]];
-  auto const seq_numbers = loader::gtfs::stop_seq_number_range{
-      {tt.trip_stop_seq_numbers_[trip]},
-      static_cast<stop_idx_t>(r.stop_range_.size())};
+  auto const& rtt_const = rtt;
+  auto location_seq =
+      r.is_scheduled()
+          ? std::span{tt.route_location_seq_[tt.transport_route_[r.t_.t_idx_]]}
+          : std::span{rtt_const.rt_transport_location_seq_[r.rt_]};
+  auto const seq_numbers =
+      r.is_scheduled()
+          ? loader::gtfs::
+                stop_seq_number_range{{tt.trip_stop_seq_numbers_[trip]},
+                                      static_cast<stop_idx_t>(
+                                          r.stop_range_.size())}
+          : loader::gtfs::stop_seq_number_range{
+                std::span<stop_idx_t>{},
+                static_cast<stop_idx_t>(location_seq.size())};
 
-  auto pred = r.stop_range_.from_ > 0U
+  auto pred = r.is_scheduled() && r.stop_range_.from_ > 0U
                   ? std::make_optional<delay_propagation>(delay_propagation{
                         .pred_time_ = rtt.unix_event_time(
                             r.rt_, r.stop_range_.from_, event_type::kArr),
                         .pred_delay_ = 0_minutes})
                   : std::nullopt;
-  auto stop_idx = r.stop_range_.from_;
+  unsigned short stop_idx = r.is_scheduled() ? r.stop_range_.from_ : 0U;
   auto seq_it = begin(seq_numbers);
   auto upd_it = begin(stus);
   for (; seq_it != end(seq_numbers); ++stop_idx, ++seq_it) {
     auto const matches =
         upd_it != end(stus) &&
-        ((upd_it->has_stop_sequence() && upd_it->stop_sequence() == *seq_it) ||
+        ((r.is_scheduled() && upd_it->has_stop_sequence() &&
+          upd_it->stop_sequence() == *seq_it) ||
+         (!r.is_scheduled() && stop_idx == *seq_it) ||
          (upd_it->has_stop_id() &&
           upd_it->stop_id() ==
               tt.locations_.ids_[stop{location_seq[stop_idx]}.location_idx()]
@@ -431,8 +457,8 @@ statistics gtfsrt_update_msg(timetable const& tt,
       std::optional<std::string_view> const trip_id =
           entity.trip_update().has_trip_properties() &&
                   entity.trip_update().trip_properties().has_trip_id()
-              ? std::optional{std::string_view{
-                    entity.trip_update().trip_properties().trip_id()}}
+              ? std::make_optional(std::string_view{
+                    entity.trip_update().trip_properties().trip_id()})
               : std::nullopt;
 
       auto [r, trip] = gtfsrt_resolve_run(today, tt, &rtt, src, td, trip_id);

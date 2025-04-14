@@ -10,8 +10,9 @@ rt_transport_idx_t rt_timetable::add_rt_transport(
     transport const t,
     std::span<stop::value_type> const& stop_seq,
     std::span<delta_t> const& time_seq,
-    std::optional<std::string_view> new_trip_id,
-    std::optional<std::string_view> route_id,
+    std::optional<std::string_view> const new_trip_id,
+    std::optional<std::string_view> const route_id,
+    std::optional<std::string_view> const display_name,
     delta_t offset) {
   auto const [t_idx, day] = t;
 
@@ -91,32 +92,34 @@ rt_transport_idx_t rt_timetable::add_rt_transport(
   }
 
   auto const bikes_allowed_default = false;  // TODO
-  rt_transport_display_names_.add_back_sized(0U);  // TODO outside
-  rt_transport_section_directions_.add_back_sized(0U);  // TODO outside
-  if (r != route_idx_t::invalid()) {
-    rt_transport_section_clasz_.emplace_back(tt.route_section_clasz_[r]);
-  } else {
-    rt_transport_section_clasz_.emplace_back(std::vector<clasz>{clasz::kOther});
-  }
+
   rt_transport_line_.add_back_sized(0U);
   rt_transport_is_cancelled_.resize(rt_transport_is_cancelled_.size() + 1U);
-
   rt_transport_bikes_allowed_.resize(rt_transport_bikes_allowed_.size() + 2U);
-  rt_transport_bikes_allowed_.set(rt_t_idx * 2,
-                                  r != route_idx_t::invalid()
-                                      ? tt.route_bikes_allowed_[r.v_ * 2]
-                                      : bikes_allowed_default);
-  rt_transport_bikes_allowed_.set(rt_t_idx * 2 + 1,
-                                  r != route_idx_t::invalid()
-                                      ? tt.route_bikes_allowed_[r.v_ * 2 + 1]
-                                      : bikes_allowed_default);
+  rt_transport_section_directions_.add_back_sized(0U);  // TODO outside
+  if (display_name.has_value()) {
+    rt_transport_display_names_.emplace_back(*display_name);
+  } else if (new_trip_id.has_value() && t.is_valid()) {
+    rt_transport_display_names_.emplace_back(tt.transport_name(t.t_idx_));
+  } else {
+    rt_transport_display_names_.add_back_sized(0);
+  }
   if (r != route_idx_t::invalid()) {
+    rt_transport_section_clasz_.emplace_back(tt.route_section_clasz_[r]);
+    rt_transport_bikes_allowed_.set(rt_t_idx * 2,
+                                    tt.route_bikes_allowed_[r.v_ * 2]);
+    rt_transport_bikes_allowed_.set(rt_t_idx * 2 + 1,
+                                    tt.route_bikes_allowed_[r.v_ * 2 + 1]);
     rt_bikes_allowed_per_section_.emplace_back(
         tt.route_bikes_allowed_per_section_[r]);
   } else {
+    rt_transport_section_clasz_.emplace_back(std::vector<clasz>{clasz::kOther});
+    rt_transport_bikes_allowed_.set(rt_t_idx * 2, bikes_allowed_default);
+    rt_transport_bikes_allowed_.set(rt_t_idx * 2 + 1, bikes_allowed_default);
     rt_bikes_allowed_per_section_.emplace_back(
         std::vector<bool>{bikes_allowed_default});
   }
+
   assert(static_trip_lookup_.contains(t) ||
          additional_trips_lookup_.contains(new_trip_id.value()));
   assert(rt_transport_static_transport_[rt_transport_idx_t{rt_t_idx}] == t ||

@@ -183,7 +183,8 @@ struct timetable {
     auto const idx = route_location_seq_.size();
 
     if (route_id_idx != route_id_idx_t::invalid()) {
-      route_id_to_idx_.emplace_back(pair<route_id_idx_t, route_idx_t>{route_id_idx, route_idx_t{idx}});
+      route_id_to_idx_.emplace_back(
+          pair<route_id_idx_t, route_idx_t>{route_id_idx, route_idx_t{idx}});
     }
 
     route_transport_ranges_.emplace_back(

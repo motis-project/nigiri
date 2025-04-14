@@ -41,8 +41,9 @@ struct rt_timetable {
       transport const,
       std::span<stop::value_type> const& stop_seq = {},
       std::span<delta_t> const& time_seq = {},
-      std::optional<std::string_view> new_trip_id = std::nullopt,
-      std::optional<std::string_view> route_id = std::nullopt,
+      std::optional<std::string_view> const new_trip_id = std::nullopt,
+      std::optional<std::string_view> const route_id = std::nullopt,
+      std::optional<std::string_view> const display_name = std::nullopt,
       delta_t offset = 0);
 
   delta_t unix_to_delta(unixtime_t const t) const {
@@ -179,7 +180,9 @@ struct rt_timetable {
       rt_transport_static_transport_;
 
   // RT trip ID index -> ID strings + idx
-  vector_map<rt_add_trip_id_idx_t, hash_map<string, rt_transport_idx_t>::iterator> trip_id_strings_;
+  vector_map<rt_add_trip_id_idx_t,
+             hash_map<string, rt_transport_idx_t>::iterator>
+      trip_id_strings_;
   vector_map<rt_transport_idx_t, source_idx_t> rt_transport_src_;
 
   // RT trip ID index -> train number, if available (otherwise 0)

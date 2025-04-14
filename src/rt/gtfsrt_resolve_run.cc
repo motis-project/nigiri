@@ -43,7 +43,6 @@ void resolve_static(date::sys_days const today,
                std::tuple(src, static_cast<std::string_view>(b));
       });
 
-  // TODO REPL?
   auto const start_date = td.has_start_date()
                               ? std::make_optional(parse_date(
                                     utl::parse<unsigned>(td.start_date())))
@@ -109,6 +108,12 @@ void resolve_rt(rt_timetable const& rtt,
       rtt.additional_trips_lookup_.find(trip_id);  // TODO only check for added?
   if (rtt_it != end(rtt.additional_trips_lookup_)) {
     output.rt_ = rtt_it->second;
+    if (output.stop_range_.size() == 0) {
+      output.stop_range_ = {
+          0U,
+          static_cast<stop_idx_t>(
+              rtt.rt_transport_location_seq_.at(output.rt_).size())};  // TODO
+    }
   }
 }
 
