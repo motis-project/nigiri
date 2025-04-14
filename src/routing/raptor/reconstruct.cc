@@ -327,9 +327,10 @@ void reconstruct_journey_with_vias(timetable const& tt,
               (kFwd && (i == 0U || !stp.out_allowed(is_wheelchair))) ||
               (!kFwd && (i == location_seq.size() - 1 ||
                          !stp.in_allowed(is_wheelchair))) ||
-              delta_to_unix(base, time) !=
-                  fr[stop_idx].time(kFwd ? event_type::kArr
-                                         : event_type::kDep)) {
+              // Allow earlier arrivals, e.g. if path was blocked
+              !is_better_or_eq(
+                  fr[stop_idx].time(kFwd ? event_type::kArr : event_type::kDep),
+                  delta_to_unix(base, time))) {
             continue;
           }
 
