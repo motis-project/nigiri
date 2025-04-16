@@ -87,7 +87,6 @@ rt_transport_idx_t rt_timetable::add_rt_transport(
       }
     }
   } else {
-    assert(time_seq.size() == location_seq.size() * 2U - 2U);
     rt_transport_stop_times_.emplace_back(time_seq);
   }
 
@@ -110,16 +109,20 @@ rt_transport_idx_t rt_timetable::add_rt_transport(
                                     tt.route_bikes_allowed_[r.v_ * 2]);
     rt_transport_bikes_allowed_.set(rt_t_idx * 2 + 1,
                                     tt.route_bikes_allowed_[r.v_ * 2 + 1]);
-    rt_bikes_allowed_per_section_.emplace_back(
-        tt.route_bikes_allowed_per_section_[r]);
   } else {
     rt_transport_section_clasz_.emplace_back(std::vector<clasz>{clasz::kOther});
     rt_transport_bikes_allowed_.set(rt_t_idx * 2, bikes_allowed_default);
-    rt_transport_bikes_allowed_.set(rt_t_idx * 2 + 1, bikes_allowed_default);
+    rt_transport_bikes_allowed_.set(rt_t_idx * 2 + 1, false);
+  }
+  if (r != route_idx_t::invalid() && stop_seq.empty()) {
+    rt_bikes_allowed_per_section_.emplace_back(
+        tt.route_bikes_allowed_per_section_[r]);
+  } else {
     rt_bikes_allowed_per_section_.emplace_back(
         std::vector<bool>{bikes_allowed_default});
   }
 
+  assert(time_seq.empty() || time_seq.size() == location_seq.size() * 2U - 2U);
   assert(static_trip_lookup_.contains(t) ||
          additional_trips_lookup_.contains(new_trip_id.value()));
   assert(rt_transport_static_transport_[rt_transport_idx_t{rt_t_idx}] == t ||

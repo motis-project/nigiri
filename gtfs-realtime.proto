@@ -836,7 +836,7 @@ message TripDescriptor {
     // This value has been deprecated as the behavior was unspecified. 
     // Use DUPLICATED for an extra trip that is the same as a scheduled trip except the start date or time, 
     // or NEW for an extra trip that is unrelated to an existing trip.
-    ADDED = 1 [deprecated = true];
+    ADDED = 1;
 
     // A trip that is running with no schedule associated to it (GTFS frequencies.txt exact_times=0).
     // Trips with ScheduleRelationship=UNSCHEDULED must also set all StopTimeUpdates.ScheduleRelationship=UNSCHEDULED.

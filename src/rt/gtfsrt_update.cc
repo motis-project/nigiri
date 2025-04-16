@@ -2,6 +2,7 @@
 
 #include "utl/pairwise.h"
 #include "utl/to_vec.h"
+#include "utl/verify.h"
 
 #include "nigiri/loader/gtfs/stop_seq_number_encoding.h"
 #include "nigiri/get_otel_tracer.h"
@@ -75,7 +76,8 @@ delay_propagation update_delay(timetable const& tt,
                                event_type const ev_type,
                                duration_t const delay,
                                std::optional<unixtime_t> const min) {
-  auto const static_time = tt.event_time(r.t_, stop_idx, ev_type);  // TODO dupl
+  auto const static_time =
+      r.is_scheduled() ? tt.event_time(r.t_, stop_idx, ev_type) : min.value();
   auto const lower_bounded_new_time = min.has_value()
                                           ? std::max(*min, static_time + delay)
                                           : static_time + delay;
@@ -92,7 +94,7 @@ delay_propagation update_event(timetable const& tt,
                                event_type const ev_type,
                                gtfsrt::TripUpdate_StopTimeEvent const& ev,
                                std::optional<unixtime_t> const pred_time) {
-  if (ev.has_delay()) {
+  if (ev.has_delay() && r.is_scheduled()) {
     return update_delay(tt, rtt, r, stop_idx, ev_type,
                         std::chrono::duration_cast<unixtime_t::duration>(
                             std::chrono::seconds{ev.delay()}),
@@ -145,7 +147,7 @@ unixtime_t fallback_pred(rt_timetable const& rtt,
 }
 
 bool is_added(gtfsrt::TripDescriptor_ScheduleRelationship const sr) {
-  return sr == 1 ||  // ADDED
+  return sr == gtfsrt::TripDescriptor_ScheduleRelationship_ADDED ||
          sr == gtfsrt::TripDescriptor_ScheduleRelationship_NEW;
 }
 
@@ -171,19 +173,39 @@ void update_run(source_idx_t const src,
     auto const added_or_replaced =
         is_added(sr) ||
         sr == transit_realtime::TripDescriptor_ScheduleRelationship_REPLACEMENT;
-    std::vector<stop::value_type> stops =
-        added_or_replaced
-            ? utl::to_vec(stus,
-                          [&](gtfsrt::TripUpdate_StopTimeUpdate const& stu) {
-                            return stop{tt.locations_.location_id_to_idx_.at(
-                                            {stu.stop_id(), src}),
-                                        true, true, true, true}
-                                .value();  // TODO in/outallowed, stop not found
-                          })
-            : std::vector<stop::value_type>();
+
+    auto stops = std::vector<stop::value_type>{};
+    stops.reserve(static_cast<std::size_t>(stus.size()));
+    if (added_or_replaced) {
+      for (auto& stu : stus) {
+        utl::verify((!stu.has_departure() || stu.departure().has_time()) &&
+                        (!stu.has_arrival() || stu.arrival().has_time()),
+                    "absolute times are required for unscheduled trips");
+        utl::verify(stu.has_stop_id(),
+                    "stop_id is required for unscheduled trips");
+        auto const it =
+            tt.locations_.location_id_to_idx_.find({stu.stop_id(), src});
+        utl::verify(it != end(tt.locations_.location_id_to_idx_),
+                    "stop_id must be contained in stops.txt");
+        auto in_allowed = true, out_allowed = true;
+        if (stu.has_stop_time_properties()) {
+          if (stu.stop_time_properties().has_pickup_type()) {
+            in_allowed = stu.stop_time_properties().pickup_type();
+          }
+          if (stu.stop_time_properties().has_drop_off_type()) {
+            out_allowed = stu.stop_time_properties().has_drop_off_type();
+          }
+        }
+        stops.emplace_back(
+            stop{it->second, in_allowed, out_allowed, false, false}
+                .value());  // TODO wheelchair
+      }
+      utl::verify(stops.size() > 1,
+                  "added trip must contain more than 1 valid stop");
+    }
     auto times = added_or_replaced
                      ? std::vector<delta_t>(stops.size() * 2U - 2U, 0)
-                     : std::vector<delta_t>();
+                     : std::vector<delta_t>{};
 
     auto const new_trip_id = [&]() -> std::optional<std::string_view> {
       if (is_added(sr) && tripUpdate.trip().has_trip_id()) {
@@ -210,9 +232,6 @@ void update_run(source_idx_t const src,
             ? std::make_optional(std::string_view{
                   tripUpdate.trip_properties().trip_short_name()})
             : std::nullopt;
-    // auto const offset = 0;
-    //  sr == gtfsrt::TripDescriptor_ScheduleRelationship_DUPLICATED
-    //? tripUpdate.has_trip_properties() && tripUpdate.trip_properties().
     r.rt_ = rtt.add_rt_transport(src, tt, r.t_, stops, times, new_trip_id(),
                                  route_id(), display_name);
     if (sr ==
@@ -252,7 +271,6 @@ void update_run(source_idx_t const src,
         upd_it != end(stus) &&
         ((r.is_scheduled() && upd_it->has_stop_sequence() &&
           upd_it->stop_sequence() == *seq_it) ||
-         (!r.is_scheduled() && stop_idx == *seq_it) ||
          (upd_it->has_stop_id() &&
           upd_it->stop_id() ==
               tt.locations_.ids_[stop{location_seq[stop_idx]}.location_idx()]
@@ -437,11 +455,10 @@ statistics gtfsrt_update_msg(timetable const& tt,
     }
 
     auto const added = is_added(sr);
-    auto const added_with_ref = is_added_with_ref(sr);
+    // auto const added_with_ref = is_added_with_ref(sr);
 
     if (sr != gtfsrt::TripDescriptor_ScheduleRelationship_SCHEDULED &&
-        sr != gtfsrt::TripDescriptor_ScheduleRelationship_CANCELED && !added &&
-        !added_with_ref) {
+        sr != gtfsrt::TripDescriptor_ScheduleRelationship_CANCELED && !added) {
       log(log_lvl::error, "rt.gtfs.unsupported",
           "unsupported schedule relationship {} (tag={}, id={}), skipping "
           "message",
@@ -484,6 +501,10 @@ statistics gtfsrt_update_msg(timetable const& tt,
             });
         ++stats.trip_resolve_error_;
         continue;
+      }
+      if (added) {
+        utl::verify(!r.is_scheduled(),
+                    "NEW/ADDED trip is required to have a new trip_id");
       }
 
       if (entity.trip_update().trip().schedule_relationship() ==

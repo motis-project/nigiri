@@ -89,10 +89,8 @@ auto const kTripAdded =
       {
        "stopSequence": 1,
        "arrival": {
-        "time": "1691660288"
-       },
-       "departure": {
-        "time": "1691660288"
+        "time": "1691658900",
+        "delay": 60
        },
        "stopId": "E",
        "scheduleRelationship": "SCHEDULED"
@@ -100,21 +98,15 @@ auto const kTripAdded =
       {
        "stopSequence": 2,
        "arrival": {
-        "time": "1691660351"
-       },
-       "departure": {
-        "time": "1691660351"
+        "time": "1691658960"
        },
        "stopId": "D",
-       "scheduleRelationship": "SKIPPED"
+       "scheduleRelationship": "SCHEDULED"
       },
       {
-       "stopSequence": 3,
+       "stopSequence": 4,
        "arrival": {
-        "time": "1691660431"
-       },
-       "departure": {
-        "time": "1691660431"
+        "time": "1691745480"
        },
        "stopId": "B",
        "scheduleRelationship": "SCHEDULED"
@@ -140,7 +132,7 @@ auto const kTripNew =
      "trip": {
       "tripId": "TRIP_NEW",
       "startTime": "10:00:00",
-      "startDate": "20230811",
+      "startDate": "20230810",
       "scheduleRelationship": "NEW",
       "routeId": "ROUTE_1"
      },
@@ -152,10 +144,10 @@ auto const kTripNew =
       {
        "stopSequence": 1,
        "arrival": {
-        "time": "1691660288"
+        "time": "1691658900"
        },
        "departure": {
-        "time": "1691660288"
+        "time": "1691658900"
        },
        "stopId": "E",
        "scheduleRelationship": "SCHEDULED"
@@ -163,10 +155,10 @@ auto const kTripNew =
       {
        "stopSequence": 2,
        "arrival": {
-        "time": "1691660351"
+        "time": "1691658960"
        },
        "departure": {
-        "time": "1691660351"
+        "time": "1691658960"
        },
        "stopId": "D",
        "scheduleRelationship": "SKIPPED"
@@ -174,10 +166,10 @@ auto const kTripNew =
       {
        "stopSequence": 3,
        "arrival": {
-        "time": "1691660431"
+        "time": "1691659080"
        },
        "departure": {
-        "time": "1691660431"
+        "time": "1691659080"
        },
        "stopId": "B",
        "scheduleRelationship": "SCHEDULED"
@@ -201,7 +193,7 @@ auto const kTripNewLonger =
     "isDeleted": false,
     "tripUpdate": {
      "trip": {
-      "tripId": "TRIP_1",
+      "tripId": "TRIP_NEW",
       "startTime": "10:00:00",
       "startDate": "20230810",
       "scheduleRelationship": "NEW"
@@ -214,21 +206,21 @@ auto const kTripNewLonger =
       {
        "stopSequence": 1,
        "arrival": {
-        "time": "1691660288"
+        "time": "1691658900"
        },
        "departure": {
-        "time": "1691660288"
+        "time": "1691658900"
        },
-       "stopId": "F",
+       "stopId": "E",
        "scheduleRelationship": "SCHEDULED"
       },
       {
        "stopSequence": 2,
        "arrival": {
-        "time": "1691660351"
+        "time": "1691658960"
        },
        "departure": {
-        "time": "1691660351"
+        "time": "1691658960"
        },
        "stopId": "D",
        "scheduleRelationship": "SKIPPED"
@@ -239,7 +231,7 @@ auto const kTripNewLonger =
         "time": "1691660531"
        },
        "departure": {
-        "time": "1691660431"
+        "time": "1691659080"
        },
        "stopId": "B",
        "scheduleRelationship": "SCHEDULED"
@@ -288,10 +280,10 @@ auto const kTripNewRouteNonExistent =
       {
        "stopSequence": 1,
        "arrival": {
-        "time": "1691660288"
+        "time": "1691658900"
        },
        "departure": {
-        "time": "1691660288"
+        "time": "1691658900"
        },
        "stopId": "E",
        "scheduleRelationship": "SCHEDULED"
@@ -299,10 +291,10 @@ auto const kTripNewRouteNonExistent =
       {
        "stopSequence": 2,
        "arrival": {
-        "time": "1691660351"
+        "time": "1691658960"
        },
        "departure": {
-        "time": "1691660351"
+        "time": "1691658960"
        },
        "stopId": "D",
        "scheduleRelationship": "SKIPPED"
@@ -310,10 +302,10 @@ auto const kTripNewRouteNonExistent =
       {
        "stopSequence": 3,
        "arrival": {
-        "time": "1691660431"
+        "time": "1691659080"
        },
        "departure": {
-        "time": "1691660431"
+        "time": "1691659080"
        },
        "stopId": "B",
        "scheduleRelationship": "SCHEDULED"
@@ -342,7 +334,123 @@ auto const kTripNewBare =
       "startDate": "20230810",
       "scheduleRelationship": "NEW"
      }
-    }
+    }    
+  }
+ ]
+})"s;
+
+auto const kTripNewNonExistingStops =
+    R"({
+ "header": {
+  "gtfsRealtimeVersion": "2.0",
+  "incrementality": "FULL_DATASET",
+  "timestamp": "1691660324"
+ },
+ "entity": [
+  {
+    "id": "3248651",
+    "isDeleted": false,
+    "tripUpdate": {
+     "trip": {
+      "tripId": "TRIP_NEW",
+      "startTime": "10:00:00",
+      "startDate": "20230810",
+      "scheduleRelationship": "NEW"
+     },
+     "stopTimeUpdate": [
+      {
+       "stopSequence": 1,
+       "arrival": {
+        "time": "1691658900"
+       },
+       "departure": {
+        "time": "1691658900"
+       },
+       "stopId": "NOT_EXISTING",
+       "scheduleRelationship": "SCHEDULED"
+      },
+      {
+       "stopSequence": 2,
+       "arrival": {
+        "time": "1691658960"
+       },
+       "departure": {
+        "time": "1691658960"
+       },
+       "stopId": "NOT_EXISTING",
+       "scheduleRelationship": "SCHEDULED"
+      },
+      {
+       "stopSequence": 3,
+       "arrival": {
+        "time": "1691745480"
+       },
+       "departure": {
+        "time": "1691745480"
+       },
+       "stopId": "NOT_EXISTING",
+       "scheduleRelationship": "SCHEDULED"
+      }
+     ]
+    }    
+  }
+ ]
+})"s;
+
+auto const kTripNewRelative =
+    R"({
+ "header": {
+  "gtfsRealtimeVersion": "2.0",
+  "incrementality": "FULL_DATASET",
+  "timestamp": "1691660324"
+ },
+ "entity": [
+  {
+    "id": "3248651",
+    "isDeleted": false,
+    "tripUpdate": {
+     "trip": {
+      "tripId": "TRIP_NEW",
+      "startTime": "10:00:00",
+      "startDate": "20230810",
+      "scheduleRelationship": "NEW"
+     },
+     "stopTimeUpdate": [
+      {
+       "stopSequence": 1,
+       "arrival": {
+        "delay": 60
+       },
+       "departure": {
+        "delay": 60
+       },
+       "stopId": "A",
+       "scheduleRelationship": "SCHEDULED"
+      },
+      {
+       "stopSequence": 2,
+       "arrival": {
+        "time": "1691658960"
+       },
+       "departure": {
+        "time": "1691658960"
+       },
+       "stopId": "B",
+       "scheduleRelationship": "SCHEDULED"
+      },
+      {
+       "stopSequence": 3,
+       "arrival": {
+        "time": "1691745480"
+       },
+       "departure": {
+        "time": "1691745480"
+       },
+       "stopId": "C",
+       "scheduleRelationship": "SCHEDULED"
+      }
+     ]
+    }    
   }
  ]
 })"s;
@@ -369,10 +477,10 @@ auto const kTripReplacement =
       {
        "stopSequence": 1,
        "arrival": {
-        "time": "1691660288"
+        "time": "1691658900"
        },
        "departure": {
-        "time": "1691660288"
+        "time": "1691658900"
        },
        "stopId": "E",
        "scheduleRelationship": "SCHEDULED"
@@ -380,10 +488,10 @@ auto const kTripReplacement =
       {
        "stopSequence": 2,
        "arrival": {
-        "time": "1691660351"
+        "time": "1691658960"
        },
        "departure": {
-        "time": "1691660351"
+        "time": "1691658960"
        },
        "stopId": "D",
        "scheduleRelationship": "SKIPPED"
@@ -391,10 +499,10 @@ auto const kTripReplacement =
       {
        "stopSequence": 3,
        "arrival": {
-        "time": "1691660431"
+        "time": "1691659080"
        },
        "departure": {
-        "time": "1691660431"
+        "time": "1691659080"
        },
        "stopId": "B",
        "scheduleRelationship": "SCHEDULED"
@@ -517,26 +625,28 @@ constexpr auto const expectedOriginal = R"(
    5: F       F............................................... a: 10.08 13:00 [10.08 15:00]
 )"sv;
 
+//[{name=Route 1, day=2023-08-11, id=TRIP_ADDED, src=0}]
 constexpr auto const expectedAdded = R"(
-   2: E       E...............................................                                                             d: 11.08 09:15 [10.08 05:15]  RT 11.08 09:15 [11.08 05:15]  [{name=Route 1, day=2023-08-11, id=TRIP_ADDED, src=0}]
-   4: B       B............................................... a: 11.08 09:18 [10.08 05:18]  RT 11.08 09:18 [11.08 05:18]
+   0: E       E...............................................                                                             d: 10.08 09:15 [10.08 11:15]  RT 10.08 09:15 [10.08 11:15]
+   1: D       D............................................... a: 10.08 09:16 [10.08 11:16]  RT 10.08 09:16 [10.08 11:16]  d: 10.08 09:16 [10.08 11:16]  RT 10.08 09:16 [10.08 11:16]
+   2: B       B............................................... a: 11.08 09:18 [11.08 11:18]  RT 11.08 09:18 [11.08 11:18]
 )"sv;
 
+//[{name=New Route, day=2023-08-10, id=TRIP_NEW, src=0}]
 constexpr auto const expectedNew = R"(
-   2: E       E...............................................                                                             d: 10.08 09:15 [10.08 05:15]  RT 10.08 09:15 [10.08 05:15]  [{name=New Route, day=2023-08-10, id=TRIP_NEW, src=0}]
-   4: B       B............................................... a: 10.08 09:18 [10.08 05:18]  RT 10.08 09:18 [10.08 05:18]
+   0: E       E...............................................                                                             d: 10.08 09:15 [10.08 11:15]  RT 10.08 09:15 [10.08 11:15]
+   2: B       B............................................... a: 10.08 09:18 [10.08 11:18]  RT 10.08 09:18 [10.08 11:18]
 )"sv;
 
-/*constexpr auto const expectedNewLonger = R"(
-   2: F       F............................................... d: 10.08 09:15
-[10.08 05:15]  RT 10.08 09:15 [10.08 05:15]  [{name=New Route, day=2023-08-10,
-id=TRIP_NEW, src=0}] 4: B       B...............................................
-a: 10.08 09:20 [10.08 05:20]  RT 10.08 09:20 [10.08 05:20]
-)"sv;*/
+//[{name=New Route, day=2023-08-10, id=TRIP_NEW, src=0}]
+constexpr auto const expectedNewLonger = R"(
+   0: E       E...............................................                                                             d: 10.08 09:15 [10.08 11:15]  RT 10.08 09:15 [10.08 11:15]
+   2: B       B............................................... a: 10.08 09:42 [10.08 11:42]  RT 10.08 09:42 [10.08 11:42]
+)"sv;
 
 constexpr auto const expectedReplacement = R"(
-   2: E       E...............................................                                                             d: 10.08 09:15 [10.08 05:15]  RT 10.08 09:15 [10.08 05:15]  [{name=Route 1, day=2023-08-10, id=TRIP_1, src=0}]
-   4: B       B............................................... a: 10.08 09:18 [10.08 05:18]  RT 10.08 09:18 [10.08 05:18]
+   0: E       E...............................................                                                             d: 10.08 09:15 [10.08 11:15]  RT 10.08 09:15 [10.08 11:15]  [{name=Route 1, day=2023-08-10, id=TRIP_1, src=0}]
+   2: B       B............................................... a: 10.08 09:18 [10.08 11:18]  RT 10.08 09:18 [10.08 11:18]
 )"sv;
 
 constexpr auto const expectedDuplicatedEmpty = R"(
@@ -559,7 +669,7 @@ constexpr auto const expectedDuplicated = R"(
 
 }  // namespace
 
-TEST(rt, DISABLED_gtfs_rt_added) {
+TEST(rt, gtfs_rt_added) {
   // Load static timetable.
   timetable tt;
   register_special_stations(tt);
@@ -572,23 +682,27 @@ TEST(rt, DISABLED_gtfs_rt_added) {
   auto rtt = rt::create_rt_timetable(tt, date::sys_days{2023_y / August / 11});
 
   // Update.
-  auto const msg = rt::json_to_protobuf(kTripNew);
+  auto const msg = rt::json_to_protobuf(kTripAdded);
   gtfsrt_update_buf(tt, rtt, source_idx_t{0}, "", msg);
 
   // Print trip.
   transit_realtime::TripDescriptor td;
-  td.set_start_date("20230811");
+  td.set_start_date("20230810");
   td.set_trip_id("TRIP_ADDED");
   td.set_start_time("10:00:00");
   auto const [r, t] = rt::gtfsrt_resolve_run(
-      date::sys_days{2023_y / August / 11}, tt, &rtt, source_idx_t{0}, td);
+      date::sys_days{2023_y / August / 10}, tt, &rtt, source_idx_t{0}, td);
   ASSERT_TRUE(r.valid());
 
   auto const fr = rt::frun{tt, &rtt, r};
-  EXPECT_EQ(2, fr.size());
+  EXPECT_EQ(3, fr.size());
   auto ss = std::stringstream{};
   ss << "\n" << fr;
   EXPECT_EQ(expectedAdded, ss.str());
+  // fr.trip_idx()
+  EXPECT_EQ("TRIP_ADDED", fr.id().id_);
+  EXPECT_EQ(source_idx_t{0}, fr.id().src_);
+  EXPECT_EQ("?", fr.name());
   EXPECT_EQ(nigiri::clasz::kBus, fr.get_clasz());
   ASSERT_FALSE(fr.is_cancelled());
 
@@ -627,35 +741,41 @@ TEST(rt, gtfs_rt_new) {
     EXPECT_EQ(expectedOriginal, ss.str());
     ASSERT_FALSE(fr.is_cancelled());
   }
+
   // Print trip.
   transit_realtime::TripDescriptor td;
   td.set_start_date("20230811");
   td.set_trip_id("TRIP_NEW");
   td.set_start_time("10:00:00");
+
   auto const [r, t] = rt::gtfsrt_resolve_run(
       date::sys_days{2023_y / August / 11}, tt, &rtt, source_idx_t{0}, td);
   ASSERT_TRUE(r.valid());
 
   auto const fr = rt::frun{tt, &rtt, r};
-  EXPECT_EQ(fr.size(), 3);
-  auto ss = std::stringstream{};
-  ss << "\n" << fr;
-  EXPECT_EQ(expectedNew, ss.str());
-  EXPECT_EQ(nigiri::clasz::kBus, fr.get_clasz());
-  ASSERT_FALSE(fr.is_cancelled());
+  EXPECT_EQ(3, fr.size());
+  {
+    auto ss = std::stringstream{};
+    ss << "\n" << fr;
+    EXPECT_EQ(expectedNew, ss.str());
+    EXPECT_EQ(nigiri::clasz::kBus, fr.get_clasz());
+    ASSERT_FALSE(fr.is_cancelled());
 
-  for (auto const [from, to] : utl::pairwise(fr)) {
-    EXPECT_EQ(from.id(), "E");
-    EXPECT_EQ(to.id(), "B");
+    for (auto const [from, to] : utl::pairwise(fr)) {
+      EXPECT_EQ(from.id(), "E");
+      EXPECT_EQ(to.id(), "B");
+    }
   }
-  /*
+
   // Update again.
+  // TODO different stops in second update
   auto const msg2 = rt::json_to_protobuf(kTripNewLonger);
   gtfsrt_update_buf(tt, rtt, source_idx_t{0}, "", msg2);
-  auto ss2 = std::stringstream{};
-  ss2 << "\n" << fr;
+  auto ss = std::stringstream{};
+
+  ss << "\n" << fr;
   EXPECT_EQ(1, rtt.rt_transport_location_seq_.size());
-  EXPECT_EQ(expectedNewLonger, ss.str());*/
+  EXPECT_EQ(expectedNewLonger, ss.str());
 }
 
 TEST(rt, gtfs_rt_new_no_route) {
@@ -714,7 +834,54 @@ TEST(rt, gtfs_rt_new_bare) {
   td.set_start_time("10:00:00");
   auto const [r, t] = rt::gtfsrt_resolve_run(
       date::sys_days{2023_y / August / 10}, tt, &rtt, source_idx_t{0}, td);
+  EXPECT_EQ(0, rtt.rt_transport_location_seq_.size());
   ASSERT_FALSE(r.valid());
+}
+
+TEST(rt, gtfs_rt_new_non_existing_stops) {
+  // Load static timetable.
+  timetable tt;
+  register_special_stations(tt);
+  tt.date_range_ = {date::sys_days{2023_y / August / 9},
+                    date::sys_days{2023_y / August / 12}};
+  load_timetable({}, source_idx_t{0}, test_files(), tt);
+  finalize(tt);
+
+  // Create empty RT timetable.
+  auto rtt = rt::create_rt_timetable(tt, date::sys_days{2023_y / August / 10});
+
+  // Update.
+  auto const msg = rt::json_to_protobuf(kTripNewNonExistingStops);
+  gtfsrt_update_buf(tt, rtt, source_idx_t{0}, "", msg);
+
+  // Check trip.
+  transit_realtime::TripDescriptor td;
+  td.set_start_date("20230810");
+  td.set_trip_id("TRIP_NEW");
+  td.set_start_time("10:00:00");
+  auto const [r, t] = rt::gtfsrt_resolve_run(
+      date::sys_days{2023_y / August / 10}, tt, &rtt, source_idx_t{0}, td);
+  EXPECT_EQ(0, rtt.rt_transport_location_seq_.size());
+  ASSERT_FALSE(r.valid());
+}
+
+TEST(rt, gtfs_rt_new_relative) {
+  // Load static timetable.
+  timetable tt;
+  register_special_stations(tt);
+  tt.date_range_ = {date::sys_days{2023_y / August / 9},
+                    date::sys_days{2023_y / August / 12}};
+  load_timetable({}, source_idx_t{0}, test_files(), tt);
+  finalize(tt);
+
+  // Create empty RT timetable.
+  auto rtt = rt::create_rt_timetable(tt, date::sys_days{2023_y / August / 10});
+
+  // Update.
+  auto const msg = rt::json_to_protobuf(kTripNewRelative);
+  gtfsrt_update_buf(tt, rtt, source_idx_t{0}, "", msg);
+
+  EXPECT_EQ(0, rtt.rt_transport_location_seq_.size());
 }
 
 TEST(rt, DISABLED_gtfs_rt_replacement) {
@@ -746,7 +913,7 @@ TEST(rt, DISABLED_gtfs_rt_replacement) {
   auto ss = std::stringstream{};
   ss << "\n" << fr;
   EXPECT_EQ(expectedReplacement, ss.str());
-  EXPECT_EQ(nigiri::clasz::kBus, fr.get_clasz());
+  /*EXPECT_EQ(nigiri::clasz::kBus, fr.get_clasz());
   ASSERT_FALSE(fr.is_cancelled());
 
   for (auto const [from, to] : utl::pairwise(fr)) {
@@ -761,7 +928,7 @@ TEST(rt, DISABLED_gtfs_rt_replacement) {
 
   ss2 << "\n" << fr;
   EXPECT_EQ(1, rtt.rt_transport_location_seq_.size());
-  EXPECT_EQ(expectedReplacement, ss2.str());
+  EXPECT_EQ(expectedReplacement, ss2.str());*/
 }
 
 TEST(rt, DISABLED_gtfs_rt_duplicated_empty) {
