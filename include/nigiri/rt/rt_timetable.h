@@ -5,6 +5,7 @@
 #include "nigiri/common/delta_t.h"
 #include "nigiri/common/interval.h"
 #include "nigiri/rt/run.h"
+#include "nigiri/rt/service_alert.h"
 #include "nigiri/stop.h"
 #include "nigiri/timetable.h"
 #include "nigiri/types.h"
@@ -200,6 +201,9 @@ struct rt_timetable {
 
   // RT transport -> bikes allowed for each section
   vecvec<rt_transport_idx_t, bool> rt_bikes_allowed_per_section_;
+
+  // Service alerts regarding RT transports
+  service_alerts service_alerts_;
 
   change_callback_t change_callback_;
 };

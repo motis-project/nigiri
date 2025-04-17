@@ -6,6 +6,7 @@
 #include "nigiri/get_otel_tracer.h"
 #include "nigiri/logging.h"
 #include "nigiri/rt/frun.h"
+#include "nigiri/rt/gtfsrt_alert.h"
 #include "nigiri/rt/gtfsrt_resolve_run.h"
 #include "nigiri/rt/run.h"
 
@@ -41,7 +42,6 @@ std::ostream& operator<<(std::ostream& out, statistics const& s) {
   print_if_no_empty("total_entities_fail", s.total_entities_fail_, true);
   print_if_no_empty("unsupported_deleted", s.unsupported_deleted_, true);
   print_if_no_empty("unsupported_vehicle", s.unsupported_vehicle_, true);
-  print_if_no_empty("unsupported_alert", s.unsupported_alert_, true);
   print_if_no_empty("unsupported_no_trip_id", s.unsupported_no_trip_id_, true);
   print_if_no_empty("no_trip_update", s.no_trip_update_, true);
   print_if_no_empty("trip_update_without_trip", s.trip_update_without_trip_,
@@ -304,6 +304,10 @@ statistics gtfsrt_update_msg(timetable const& tt,
                      msg.header().timestamp());
   span->SetAttribute("nigiri.gtfsrt.total_entities", msg.entity_size());
 
+  auto str_cache = nigiri::string_cache_t{
+      std::size_t{0U},
+      nigiri::string_idx_hash{rtt.service_alerts_.strings_.strings_},
+      nigiri::string_idx_equals{rtt.service_alerts_.strings_.strings_}};
   for (auto const& entity : msg.entity()) {
     auto const unsupported = [&](bool const is_set, char const* field,
                                  int& stat) {
@@ -316,9 +320,13 @@ statistics gtfsrt_update_msg(timetable const& tt,
     };
 
     unsupported(entity.has_vehicle(), "vehicle", stats.unsupported_vehicle_);
-    unsupported(entity.has_alert(), "alert", stats.unsupported_alert_);
     unsupported(entity.has_is_deleted() && entity.is_deleted(), "deleted",
                 stats.unsupported_deleted_);
+
+    if (entity.has_alert()) {
+      handle_alert(today, tt, rtt, str_cache, src, tag, entity.alert());
+      continue;
+    }
 
     if (!entity.has_trip_update()) {
       log(log_lvl::error, "rt.gtfs.unsupported",
