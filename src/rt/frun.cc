@@ -398,6 +398,10 @@ clasz frun::get_clasz() const noexcept {
 void frun::for_each_trip(
     std::function<void(trip_idx_t const, interval<stop_idx_t> const)> const&
         callback) const {
+  if (!is_scheduled()) {
+    callback(trip_idx_t::invalid(), stop_range_);
+    return;
+  }
   auto curr_trip_idx = trip_idx_t::invalid();
   auto curr_from = stop_idx_t{0U};
   for (auto const [from, to] :
@@ -429,7 +433,7 @@ void frun::for_each_shape_point(
                                 trip_idx_t const trip_idx,
                                 stop_idx_t const absolute_trip_offset)
       -> std::variant<std::span<geo::latlng const>, interval<stop_idx_t>> {
-    if (shapes_data != nullptr) {
+    if (shapes_data != nullptr && trip_idx != trip_idx_t::invalid()) {
       auto const shape = shapes_data->get_shape(
           trip_idx, absolute_range << absolute_trip_offset);
       if (!shape.empty()) {
@@ -481,7 +485,7 @@ trip_id frun::id() const noexcept {
                  rtt_->rt_transport_static_transport_[rt_])) {
     auto const add_idx =
         rtt_->rt_transport_static_transport_[rt_].as<rt_add_trip_id_idx_t>();
-    return {rtt_->trip_id_strings_[add_idx]->first.view(),
+    return {rtt_->rt_add_trip_ids_[add_idx]->first.view(),
             rtt_->rt_transport_src_[rt_]};
   } else {
     return {};

@@ -173,17 +173,17 @@ struct rt_timetable {
   // only works for transport that existed in the static timetable
   hash_map<transport, rt_transport_idx_t> static_trip_lookup_;
 
-  // Lookup: additional external trip id -> realtime transport
-  hash_map<string, rt_transport_idx_t> additional_trips_lookup_;
-
   // RT transport -> static transport (not for additional trips)
   vector_map<rt_transport_idx_t, variant<transport, rt_add_trip_id_idx_t>>
       rt_transport_static_transport_;
 
-  // RT trip ID index -> ID strings + idx
+  // Lookup: additional external trip ID -> realtime transport
+  hash_map<string, rt_transport_idx_t> additional_trips_lookup_;
+
+  // RT trip ID index -> external trip ID + transport idx
   vector_map<rt_add_trip_id_idx_t,
              hash_map<string, rt_transport_idx_t>::iterator>
-      trip_id_strings_;
+      rt_add_trip_ids_;
   vector_map<rt_transport_idx_t, source_idx_t> rt_transport_src_;
 
   // RT trip ID index -> train number, if available (otherwise 0)

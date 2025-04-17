@@ -157,6 +157,81 @@ bool is_added_with_ref(gtfsrt::TripDescriptor_ScheduleRelationship const sr) {
          sr == gtfsrt::TripDescriptor_ScheduleRelationship_DUPLICATED;
 }
 
+void add_rt_trip(source_idx_t const src,
+                 timetable const& tt,
+                 rt_timetable& rtt,
+                 run& r,
+                 gtfsrt::TripUpdate const& tripUpdate) {
+  auto const& stus = tripUpdate.stop_time_update();
+  auto const sr = tripUpdate.trip().schedule_relationship();
+  auto const added_or_replaced =
+      is_added(sr) ||
+      sr == transit_realtime::TripDescriptor_ScheduleRelationship_REPLACEMENT;
+
+  auto stops = std::vector<stop::value_type>{};
+  stops.reserve(static_cast<std::size_t>(stus.size()));
+  if (added_or_replaced) {
+    for (auto& stu : stus) {
+      utl::verify((!stu.has_departure() || stu.departure().has_time()) &&
+                      (!stu.has_arrival() || stu.arrival().has_time()),
+                  "absolute times are required for unscheduled trips");
+      utl::verify(stu.has_stop_id(),
+                  "stop_id is required for unscheduled trips");
+      auto const it =
+          tt.locations_.location_id_to_idx_.find({stu.stop_id(), src});
+      utl::verify(it != end(tt.locations_.location_id_to_idx_),
+                  "stop_id=\"{}\" must be contained in stops.txt",
+                  stu.stop_id());
+      auto in_allowed = true, out_allowed = true;
+      if (stu.has_stop_time_properties()) {
+        if (stu.stop_time_properties().has_pickup_type()) {
+          in_allowed = stu.stop_time_properties().pickup_type();
+        }
+        if (stu.stop_time_properties().has_drop_off_type()) {
+          out_allowed = stu.stop_time_properties().has_drop_off_type();
+        }
+      }
+      stops.emplace_back(stop{it->second, in_allowed, out_allowed, false, false}
+                             .value());  // TODO wheelchair
+    }
+    utl::verify(stops.size() > 1,
+                "added trip must contain more than 1 valid stop");
+  }
+  auto times = added_or_replaced
+                   ? std::vector<delta_t>(stops.size() * 2U - 2U, 0)
+                   : std::vector<delta_t>{};
+
+  auto const new_trip_id = [&]() -> std::string_view {
+    if (is_added(sr) && tripUpdate.trip().has_trip_id()) {
+      return std::string_view{tripUpdate.trip().trip_id()};
+    }
+    if (sr == gtfsrt::TripDescriptor_ScheduleRelationship_DUPLICATED &&
+        tripUpdate.has_trip_properties() &&
+        tripUpdate.trip_properties().has_trip_id()) {
+      return std::string_view{tripUpdate.trip_properties().trip_id()};
+    }
+    return {};
+  };
+  auto const route_id = [&]() -> std::string_view {
+    if ((is_added(sr) ||
+         sr == gtfsrt::TripDescriptor_ScheduleRelationship_DUPLICATED) &&
+        tripUpdate.trip().has_route_id()) {
+      return std::string_view{tripUpdate.trip().route_id()};
+    }
+    return {};
+  };
+  auto const display_name =
+      tripUpdate.has_trip_properties() &&
+              tripUpdate.trip_properties().has_trip_short_name()
+          ? std::string_view{tripUpdate.trip_properties().trip_short_name()}
+          : std::string_view{};
+  r.rt_ = rtt.add_rt_transport(src, tt, r.t_, stops, times, new_trip_id(),
+                               route_id(), display_name);
+  if (sr == transit_realtime::TripDescriptor_ScheduleRelationship_REPLACEMENT) {
+    r.t_ = transport::invalid();
+  }
+}
+
 void update_run(source_idx_t const src,
                 timetable const& tt,
                 rt_timetable& rtt,
@@ -166,80 +241,8 @@ void update_run(source_idx_t const src,
   using std::begin;
   using std::end;
 
-  auto const& stus = tripUpdate.stop_time_update();
-
-  // TODO check length for added?
   if (!r.is_rt()) {
-    auto const sr = tripUpdate.trip().schedule_relationship();
-    auto const added_or_replaced =
-        is_added(sr) ||
-        sr == transit_realtime::TripDescriptor_ScheduleRelationship_REPLACEMENT;
-
-    auto stops = std::vector<stop::value_type>{};
-    stops.reserve(static_cast<std::size_t>(stus.size()));
-    if (added_or_replaced) {
-      for (auto& stu : stus) {
-        utl::verify((!stu.has_departure() || stu.departure().has_time()) &&
-                        (!stu.has_arrival() || stu.arrival().has_time()),
-                    "absolute times are required for unscheduled trips");
-        utl::verify(stu.has_stop_id(),
-                    "stop_id is required for unscheduled trips");
-        auto const it =
-            tt.locations_.location_id_to_idx_.find({stu.stop_id(), src});
-        utl::verify(it != end(tt.locations_.location_id_to_idx_),
-                    "stop_id=\"{}\" must be contained in stops.txt",
-                    stu.stop_id());
-        auto in_allowed = true, out_allowed = true;
-        if (stu.has_stop_time_properties()) {
-          if (stu.stop_time_properties().has_pickup_type()) {
-            in_allowed = stu.stop_time_properties().pickup_type();
-          }
-          if (stu.stop_time_properties().has_drop_off_type()) {
-            out_allowed = stu.stop_time_properties().has_drop_off_type();
-          }
-        }
-        stops.emplace_back(
-            stop{it->second, in_allowed, out_allowed, false, false}
-                .value());  // TODO wheelchair
-      }
-      utl::verify(stops.size() > 1,
-                  "added trip must contain more than 1 valid stop");
-      std::cout << "yay" << tripUpdate.trip().trip_id() << "\n";
-    }
-    auto times = added_or_replaced
-                     ? std::vector<delta_t>(stops.size() * 2U - 2U, 0)
-                     : std::vector<delta_t>{};
-
-    auto const new_trip_id = [&]() -> std::string_view {
-      if (is_added(sr) && tripUpdate.trip().has_trip_id()) {
-        return std::string_view{tripUpdate.trip().trip_id()};
-      }
-      if (sr == gtfsrt::TripDescriptor_ScheduleRelationship_DUPLICATED &&
-          tripUpdate.has_trip_properties() &&
-          tripUpdate.trip_properties().has_trip_id()) {
-        return std::string_view{tripUpdate.trip_properties().trip_id()};
-      }
-      return {};
-    };
-    auto const route_id = [&]() -> std::string_view {
-      if ((is_added(sr) ||
-           sr == gtfsrt::TripDescriptor_ScheduleRelationship_DUPLICATED) &&
-          tripUpdate.trip().has_route_id()) {
-        return std::string_view{tripUpdate.trip().route_id()};
-      }
-      return {};
-    };
-    auto const display_name =
-        tripUpdate.has_trip_properties() &&
-                tripUpdate.trip_properties().has_trip_short_name()
-            ? std::string_view{tripUpdate.trip_properties().trip_short_name()}
-            : std::string_view{};
-    r.rt_ = rtt.add_rt_transport(src, tt, r.t_, stops, times, new_trip_id(),
-                                 route_id(), display_name);
-    if (sr ==
-        transit_realtime::TripDescriptor_ScheduleRelationship_REPLACEMENT) {
-      r.t_ = transport::invalid();
-    }
+    add_rt_trip(src, tt, rtt, r, tripUpdate);
   } else {
     rtt.rt_transport_is_cancelled_.set(to_idx(r.rt_), false);
   }
@@ -268,6 +271,7 @@ void update_run(source_idx_t const src,
   auto stop_idx =
       r.is_scheduled() ? r.stop_range_.from_ : static_cast<unsigned short>(0U);
   auto seq_it = begin(seq_numbers);
+  auto const& stus = tripUpdate.stop_time_update();
   auto upd_it = begin(stus);
   for (; seq_it != end(seq_numbers); ++stop_idx, ++seq_it) {
     auto const matches =
