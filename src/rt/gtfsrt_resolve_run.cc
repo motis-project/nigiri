@@ -123,12 +123,12 @@ std::pair<run, trip_idx_t> gtfsrt_resolve_run(
     rt_timetable const* rtt,
     source_idx_t const src,
     transit_realtime::TripDescriptor const& td,
-    std::optional<std::string_view> trip_id) {
+    std::string_view trip_id) {
   auto r = run{};
   trip_idx_t trip;
   resolve_static(today, tt, src, td, r, trip);
   if (rtt != nullptr) {
-    resolve_rt(*rtt, r, trip_id.value_or(td.trip_id()));
+    resolve_rt(*rtt, r, trip_id.empty() ? td.trip_id() : trip_id);
   }
   return {r, trip};
 }

@@ -3,6 +3,7 @@
 #include "utl/pairwise.h"
 
 #include <optional>
+#include <string_view>
 
 #include "nigiri/common/delta_t.h"
 #include "nigiri/common/interval.h"
@@ -36,14 +37,14 @@ using change_callback_t =
 //   up with their trip_id in the RT timetable.
 struct rt_timetable {
   rt_transport_idx_t add_rt_transport(
-      source_idx_t const,
+      source_idx_t,
       timetable const&,
-      transport const,
-      std::span<stop::value_type> const& stop_seq = {},
-      std::span<delta_t> const& time_seq = {},
-      std::optional<std::string_view> const new_trip_id = std::nullopt,
-      std::optional<std::string_view> const route_id = std::nullopt,
-      std::optional<std::string_view> const display_name = std::nullopt,
+      transport,
+      std::span<stop::value_type> const stop_seq = {},
+      std::span<delta_t> const time_seq = {},
+      std::string_view const new_trip_id = {},
+      std::string_view const route_id = {},
+      std::string_view const display_name = {},
       delta_t offset = 0);
 
   delta_t unix_to_delta(unixtime_t const t) const {

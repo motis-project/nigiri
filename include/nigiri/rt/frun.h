@@ -33,7 +33,7 @@ struct run_stop {
   std::string_view id() const noexcept;
 
   provider const& get_provider(event_type = event_type::kDep) const noexcept;
-  trip_idx_t get_trip_idx(event_type = event_type::kDep) const noexcept;
+  trip_idx_t get_trip_idx(event_type = event_type::kDep) const;
   std::string_view trip_display_name(
       event_type = event_type::kDep) const noexcept;
 

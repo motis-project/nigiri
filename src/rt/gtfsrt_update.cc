@@ -1,5 +1,8 @@
 #include "nigiri/rt/gtfsrt_update.h"
 
+#include <string_view>
+#include <vector>
+
 #include "utl/pairwise.h"
 #include "utl/to_vec.h"
 #include "utl/verify.h"
@@ -12,8 +15,6 @@
 #include "nigiri/rt/gtfsrt_resolve_run.h"
 #include "nigiri/rt/run.h"
 #include "nigiri/types.h"
-#include <string_view>
-#include <vector>
 
 namespace gtfsrt = transit_realtime;
 namespace protob = google::protobuf;
@@ -186,7 +187,8 @@ void update_run(source_idx_t const src,
         auto const it =
             tt.locations_.location_id_to_idx_.find({stu.stop_id(), src});
         utl::verify(it != end(tt.locations_.location_id_to_idx_),
-                    "stop_id must be contained in stops.txt");
+                    "stop_id=\"{}\" must be contained in stops.txt",
+                    stu.stop_id());
         auto in_allowed = true, out_allowed = true;
         if (stu.has_stop_time_properties()) {
           if (stu.stop_time_properties().has_pickup_type()) {
@@ -202,12 +204,13 @@ void update_run(source_idx_t const src,
       }
       utl::verify(stops.size() > 1,
                   "added trip must contain more than 1 valid stop");
+      std::cout << "yay" << tripUpdate.trip().trip_id() << "\n";
     }
     auto times = added_or_replaced
                      ? std::vector<delta_t>(stops.size() * 2U - 2U, 0)
                      : std::vector<delta_t>{};
 
-    auto const new_trip_id = [&]() -> std::optional<std::string_view> {
+    auto const new_trip_id = [&]() -> std::string_view {
       if (is_added(sr) && tripUpdate.trip().has_trip_id()) {
         return std::string_view{tripUpdate.trip().trip_id()};
       }
@@ -216,22 +219,21 @@ void update_run(source_idx_t const src,
           tripUpdate.trip_properties().has_trip_id()) {
         return std::string_view{tripUpdate.trip_properties().trip_id()};
       }
-      return std::nullopt;
+      return {};
     };
-    auto const route_id = [&]() -> std::optional<std::string_view> {
+    auto const route_id = [&]() -> std::string_view {
       if ((is_added(sr) ||
            sr == gtfsrt::TripDescriptor_ScheduleRelationship_DUPLICATED) &&
           tripUpdate.trip().has_route_id()) {
         return std::string_view{tripUpdate.trip().route_id()};
       }
-      return std::nullopt;
+      return {};
     };
-    std::optional<std::string_view> const display_name =
+    auto const display_name =
         tripUpdate.has_trip_properties() &&
                 tripUpdate.trip_properties().has_trip_short_name()
-            ? std::make_optional(std::string_view{
-                  tripUpdate.trip_properties().trip_short_name()})
-            : std::nullopt;
+            ? std::string_view{tripUpdate.trip_properties().trip_short_name()}
+            : std::string_view{};
     r.rt_ = rtt.add_rt_transport(src, tt, r.t_, stops, times, new_trip_id(),
                                  route_id(), display_name);
     if (sr ==
@@ -243,7 +245,7 @@ void update_run(source_idx_t const src,
   }
 
   auto const& rtt_const = rtt;
-  auto location_seq =
+  auto const location_seq =
       r.is_scheduled()
           ? std::span{tt.route_location_seq_[tt.transport_route_[r.t_.t_idx_]]}
           : std::span{rtt_const.rt_transport_location_seq_[r.rt_]};
@@ -263,7 +265,8 @@ void update_run(source_idx_t const src,
                             r.rt_, r.stop_range_.from_, event_type::kArr),
                         .pred_delay_ = 0_minutes})
                   : std::nullopt;
-  unsigned short stop_idx = r.is_scheduled() ? r.stop_range_.from_ : 0U;
+  auto stop_idx =
+      r.is_scheduled() ? r.stop_range_.from_ : static_cast<unsigned short>(0U);
   auto seq_it = begin(seq_numbers);
   auto upd_it = begin(stus);
   for (; seq_it != end(seq_numbers); ++stop_idx, ++seq_it) {
@@ -471,12 +474,13 @@ statistics gtfsrt_update_msg(timetable const& tt,
 
     try {
       auto const td = entity.trip_update().trip();
-      std::optional<std::string_view> const trip_id =
+      auto const trip_id =
           entity.trip_update().has_trip_properties() &&
                   entity.trip_update().trip_properties().has_trip_id()
-              ? std::make_optional(std::string_view{
-                    entity.trip_update().trip_properties().trip_id()})
-              : std::nullopt;
+              ? std::string_view{entity.trip_update()
+                                     .trip_properties()
+                                     .trip_id()}
+              : std::string_view{};
 
       auto [r, trip] = gtfsrt_resolve_run(today, tt, &rtt, src, td, trip_id);
 

@@ -1,6 +1,4 @@
 #include "nigiri/rt/rt_timetable.h"
-#include "nigiri/types.h"
-#include <optional>
 
 namespace nigiri {
 
@@ -8,18 +6,18 @@ rt_transport_idx_t rt_timetable::add_rt_transport(
     source_idx_t const src,
     timetable const& tt,
     transport const t,
-    std::span<stop::value_type> const& stop_seq,
-    std::span<delta_t> const& time_seq,
-    std::optional<std::string_view> const new_trip_id,
-    std::optional<std::string_view> const route_id,
-    std::optional<std::string_view> const display_name,
-    delta_t offset) {
+    std::span<stop::value_type> const stop_seq,
+    std::span<delta_t> const time_seq,
+    std::string_view const new_trip_id,
+    std::string_view const route_id,
+    std::string_view const display_name,
+    delta_t const offset) {
   auto const [t_idx, day] = t;
 
   auto const rt_t_idx = rt_transport_src_.size();
   auto const rt_t = rt_transport_idx_t{rt_t_idx};
   // ADDED/NEW stop+time+new_trip_id, REPLACEMENT stop+time, DUPL new_trip_id
-  if (!new_trip_id.has_value() && t.is_valid()) {  // REPL
+  if (new_trip_id.empty() && t.is_valid()) {  // REPL
     static_trip_lookup_.emplace(t, rt_t_idx);
     rt_transport_static_transport_.emplace_back(t);
 
@@ -30,23 +28,23 @@ rt_transport_idx_t rt_timetable::add_rt_transport(
     auto const rt_add_idx =
         rt_add_trip_id_idx_t{additional_trips_lookup_.size()};
     trip_id_strings_.emplace_back(
-        additional_trips_lookup_.emplace(new_trip_id.value(), rt_t_idx).first);
+        additional_trips_lookup_.emplace(new_trip_id, rt_t_idx).first);
     rt_transport_static_transport_.emplace_back(rt_add_idx);
   }
 
   auto const search_by_route_id = [&]() {
-    if (!route_id.has_value()) {
+    if (route_id.empty()) {
       return route_idx_t::invalid();
     }
     auto const lb = std::lower_bound(
-        begin(tt.route_id_to_idx_), end(tt.route_id_to_idx_), *route_id,
+        begin(tt.route_id_to_idx_), end(tt.route_id_to_idx_), route_id,
         [&](pair<route_id_idx_t, route_idx_t> const& a, std::string_view b) {
           return std::tuple(tt.route_id_src_[a.first],
                             tt.route_id_strings_[a.first].view()) <
                  std::tuple(src, b);
         });
     if (lb != end(tt.route_id_to_idx_) &&
-        *route_id == tt.route_id_strings_[lb->first].view()) {
+        route_id == tt.route_id_strings_[lb->first].view()) {
       return lb->second;
     }
     return route_idx_t::invalid();
@@ -96,9 +94,9 @@ rt_transport_idx_t rt_timetable::add_rt_transport(
   rt_transport_is_cancelled_.resize(rt_transport_is_cancelled_.size() + 1U);
   rt_transport_bikes_allowed_.resize(rt_transport_bikes_allowed_.size() + 2U);
   rt_transport_section_directions_.add_back_sized(0U);  // TODO outside
-  if (display_name.has_value()) {
-    rt_transport_display_names_.emplace_back(*display_name);
-  } else if (new_trip_id.has_value() && t.is_valid()) {
+  if (!display_name.empty()) {
+    rt_transport_display_names_.emplace_back(display_name);
+  } else if (!new_trip_id.empty() && t.is_valid()) {
     rt_transport_display_names_.emplace_back(tt.transport_name(t.t_idx_));
   } else {
     rt_transport_display_names_.add_back_sized(0);
@@ -124,7 +122,7 @@ rt_transport_idx_t rt_timetable::add_rt_transport(
 
   assert(time_seq.empty() || time_seq.size() == location_seq.size() * 2U - 2U);
   assert(static_trip_lookup_.contains(t) ||
-         additional_trips_lookup_.contains(new_trip_id.value()));
+         additional_trips_lookup_.contains(new_trip_id));
   assert(rt_transport_static_transport_[rt_transport_idx_t{rt_t_idx}] == t ||
          rt_transport_static_transport_[rt_transport_idx_t{rt_t_idx}] ==
              rt_add_trip_id_idx_t{additional_trips_lookup_.size() - 1U});

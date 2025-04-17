@@ -99,7 +99,9 @@ duration_t run_stop::delay(event_type const ev_type) const noexcept {
   return time(ev_type) - scheduled_time(ev_type);
 }
 
-trip_idx_t run_stop::get_trip_idx(event_type const ev_type) const noexcept {
+trip_idx_t run_stop::get_trip_idx(event_type const ev_type) const {
+  utl::verify(fr_->t_.t_idx_ != transport_idx_t::invalid(),
+              "can't get trip_idx for unscheduled trip");
   auto const sections = tt().transport_to_trip_section_.at(fr_->t_.t_idx_);
   return tt()
       .merged_trips_[sections.at(sections.size() == 1U ? 0U
@@ -109,7 +111,13 @@ trip_idx_t run_stop::get_trip_idx(event_type const ev_type) const noexcept {
 
 std::string_view run_stop::trip_display_name(
     event_type const ev_type) const noexcept {
-  return tt().trip_display_names_[get_trip_idx(ev_type)].view();
+  if (fr_->is_scheduled()) {
+    return tt().trip_display_names_[get_trip_idx(ev_type)].view();
+  }
+  if (rtt() != nullptr) {
+    return rtt()->transport_name(tt(), fr_->rt_);
+  }
+  return std::string_view{"?"};
 }
 
 stop_idx_t run_stop::section_idx(event_type const ev_type) const noexcept {
@@ -128,6 +136,9 @@ std::string_view run_stop::line(event_type const ev_type) const noexcept {
 
 provider const& run_stop::get_provider(
     event_type const ev_type) const noexcept {
+  if (!fr_->is_scheduled()) {
+    return tt().providers_.at(provider_idx_t{0});  // TODO
+  }
   auto const provider_sections =
       tt().transport_section_providers_.at(fr_->t_.t_idx_);
   auto const provider_idx = provider_sections.at(
@@ -137,7 +148,7 @@ provider const& run_stop::get_provider(
 
 std::string_view run_stop::direction(event_type const ev_type) const noexcept {
   if (!fr_->is_scheduled()) {
-    return "";
+    return "";  // TODO
   }
 
   auto const direction_sections =
@@ -194,7 +205,7 @@ clasz run_stop::get_clasz(event_type const ev_type) const noexcept {
 
 clasz run_stop::get_scheduled_clasz(event_type const ev_type) const noexcept {
   if (!fr_->is_scheduled()) {
-    return clasz();
+    return clasz::kOther;
   }
   auto const clasz_sections =
       tt().route_section_clasz_.at(tt().transport_route_.at(fr_->t_.t_idx_));
@@ -217,6 +228,9 @@ bool run_stop::bikes_allowed(event_type const ev_type) const noexcept {
 }
 
 route_color run_stop::get_route_color(event_type ev_type) const noexcept {
+  if (!fr_->is_scheduled()) {
+    return route_color{};
+  }
   auto const color_sections =
       tt().transport_section_route_colors_.at(fr_->t_.t_idx_);
   return color_sections.at(color_sections.size() == 1U ? 0U
