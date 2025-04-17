@@ -107,26 +107,81 @@ void handle_alert(date::sys_days const today,
     return x.translation() | std::views::transform(to_translation);
   };
 
-  auto const period = a.active_period() | std::views::transform(to_interval);
   auto const alert_idx =
       service_alert_idx_t{alerts.communication_period_.size()};
+
+  auto const period = a.active_period() | std::views::transform(to_interval);
   alerts.communication_period_.emplace_back(period);
   alerts.impact_period_.emplace_back(period);
-  alerts.cause_detail_.emplace_back(translate(a.cause_detail()));
-  alerts.effect_detail_.emplace_back(translate(a.effect_detail()));
-  alerts.url_.emplace_back(translate(a.url()));
-  alerts.header_text_.emplace_back(translate(a.header_text()));
-  alerts.description_text_.emplace_back(translate(a.description_text()));
-  alerts.tts_header_text_.emplace_back(translate(a.tts_header_text()));
-  alerts.tts_description_text_.emplace_back(
-      translate(a.tts_description_text()));
-  alerts.image_alternative_text_.emplace_back(
-      translate(a.image_alternative_text()));
-  alerts.image_.emplace_back(a.image().localized_image() |
-                             std::views::transform(to_localized_image));
-  alerts.cause_.emplace_back(convert(a.cause()));
-  alerts.effect_.emplace_back(convert(a.effect()));
-  alerts.severity_level_.emplace_back(convert(a.severity_level()));
+
+  if (a.has_cause_detail()) {
+    alerts.cause_detail_.emplace_back(translate(a.cause_detail()));
+  } else {
+    alerts.cause_detail_.emplace_back(std::initializer_list<translation>{});
+  }
+
+  if (a.has_effect_detail()) {
+    alerts.effect_detail_.emplace_back(translate(a.effect_detail()));
+  } else {
+    alerts.effect_detail_.emplace_back(std::initializer_list<translation>{});
+  }
+
+  if (a.has_url()) {
+    alerts.url_.emplace_back(translate(a.url()));
+  } else {
+    alerts.url_.emplace_back(std::initializer_list<translation>{});
+  }
+
+  if (a.has_header_text()) {
+    alerts.header_text_.emplace_back(translate(a.header_text()));
+  } else {
+    alerts.header_text_.emplace_back(std::initializer_list<translation>{});
+  }
+
+  if (a.has_description_text()) {
+    alerts.description_text_.emplace_back(translate(a.description_text()));
+  } else {
+    alerts.description_text_.emplace_back(std::initializer_list<translation>{});
+  }
+
+  if (a.has_tts_header_text()) {
+    alerts.tts_header_text_.emplace_back(translate(a.tts_header_text()));
+  } else {
+    alerts.tts_header_text_.emplace_back(std::initializer_list<translation>{});
+  }
+
+  if (a.has_tts_description_text()) {
+    alerts.tts_description_text_.emplace_back(
+        translate(a.tts_description_text()));
+  } else {
+    alerts.tts_description_text_.emplace_back(
+        std::initializer_list<translation>{});
+  }
+
+  if (a.has_image_alternative_text()) {
+    alerts.image_alternative_text_.emplace_back(
+        translate(a.image_alternative_text()));
+  } else {
+    alerts.image_alternative_text_.emplace_back(
+        std::initializer_list<translation>{});
+  }
+
+  if (a.has_image()) {
+    alerts.image_.emplace_back(a.image().localized_image() |
+                               std::views::transform(to_localized_image));
+  } else {
+    alerts.image_.emplace_back(std::initializer_list<localized_image>{});
+  }
+
+  alerts.cause_.emplace_back(convert(
+      a.has_cause() ? a.cause() : transit_realtime::Alert_Cause_UNKNOWN_CAUSE));
+  alerts.effect_.emplace_back(
+      convert(a.has_effect() ? a.effect()
+                             : transit_realtime::Alert_Effect_UNKNOWN_EFFECT));
+  alerts.severity_level_.emplace_back(
+      convert(a.has_severity_level()
+                  ? a.severity_level()
+                  : transit_realtime::Alert_SeverityLevel_UNKNOWN_SEVERITY));
 
   alerts.rt_service_alerts_.resize(rtt.n_rt_transports());
   for (auto const& x : a.informed_entity()) {
