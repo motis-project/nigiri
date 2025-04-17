@@ -183,7 +183,6 @@ void handle_alert(date::sys_days const today,
                   ? a.severity_level()
                   : transit_realtime::Alert_SeverityLevel_UNKNOWN_SEVERITY));
 
-  alerts.rt_service_alerts_.resize(rtt.n_rt_transports());
   for (auto const& x : a.informed_entity()) {
     if (x.has_trip()) {
       auto [r, trip] = gtfsrt_resolve_run(today, tt, &rtt, src, x.trip());
