@@ -172,20 +172,29 @@ struct timetable {
     return idx;
   }
 
+  route_id_idx_t register_route_id(std::string_view const route_id,
+                                   source_idx_t const src,
+                                   std::string_view const short_name,
+                                   std::string_view const long_name,
+                                   int const type) {
+    auto const idx = route_id_idx_t{sorted_route_id_idx_.size()};
+    sorted_route_id_idx_.emplace_back(idx);
+    route_id_strings_.emplace_back(route_id);
+    route_id_src_.emplace_back(src);
+    route_id_short_names_.emplace_back(short_name);
+    route_id_long_names_.emplace_back(long_name);
+    route_id_type_.emplace_back(type);
+    return idx;
+  }
+
   route_idx_t register_route(
       std::basic_string<stop::value_type> const& stop_seq,
       std::basic_string<clasz> const& clasz_sections,
-      bitvec const& bikes_allowed_per_section,
-      route_id_idx_t route_id_idx = route_id_idx_t::invalid()) {
+      bitvec const& bikes_allowed_per_section) {
     assert(stop_seq.size() > 1U);
     assert(!clasz_sections.empty());
 
     auto const idx = route_location_seq_.size();
-
-    if (route_id_idx != route_id_idx_t::invalid()) {
-      route_id_to_idx_.emplace_back(
-          pair<route_id_idx_t, route_idx_t>{route_id_idx, route_idx_t{idx}});
-    }
 
     route_transport_ranges_.emplace_back(
         transport_idx_t{transport_traffic_days_.size()},
@@ -397,12 +406,14 @@ struct timetable {
 
   // Trip -> route name
   vector_map<trip_idx_t, route_id_idx_t> trip_route_id_;
-  route_id_idx_t next_route_id_idx_{0U};
 
-  // External route id -> route idx
-  vector<pair<route_id_idx_t, route_idx_t>> route_id_to_idx_;
+  // External route id
+  vector<route_id_idx_t> sorted_route_id_idx_;
   vecvec<route_id_idx_t, char> route_id_strings_;
   vector_map<route_id_idx_t, source_idx_t> route_id_src_;
+  vecvec<route_id_idx_t, char> route_id_short_names_;
+  vecvec<route_id_idx_t, char> route_id_long_names_;
+  vector_map<route_id_idx_t, int> route_id_type_;
 
   // Trip index -> all transports with a stop interval
   paged_vecvec<trip_idx_t, transport_range_t> trip_transport_ranges_;

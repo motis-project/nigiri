@@ -398,7 +398,7 @@ clasz frun::get_clasz() const noexcept {
 void frun::for_each_trip(
     std::function<void(trip_idx_t const, interval<stop_idx_t> const)> const&
         callback) const {
-  if (!is_scheduled()) {
+  if (t_.t_idx_ == transport_idx_t::invalid()) {
     callback(trip_idx_t::invalid(), stop_range_);
     return;
   }

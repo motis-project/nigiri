@@ -9,7 +9,7 @@ rt_transport_idx_t rt_timetable::add_rt_transport(
     std::span<stop::value_type> const stop_seq,
     std::span<delta_t> const time_seq,
     std::string_view const new_trip_id,
-    std::string_view const route_id,
+    std::string_view const _,
     std::string_view const display_name,
     delta_t const offset) {
   auto const [t_idx, day] = t;
@@ -32,26 +32,28 @@ rt_transport_idx_t rt_timetable::add_rt_transport(
     rt_transport_static_transport_.emplace_back(rt_add_idx);
   }
 
-  auto const search_by_route_id = [&]() {
+  /*auto const search_by_route_id = [&]() {
     if (route_id.empty()) {
-      return route_idx_t::invalid();
+      return route_id_idx_t::invalid();
     }
     auto const lb = std::lower_bound(
-        begin(tt.route_id_to_idx_), end(tt.route_id_to_idx_), route_id,
-        [&](pair<route_id_idx_t, route_idx_t> const& a, std::string_view b) {
-          return std::tuple(tt.route_id_src_[a.first],
-                            tt.route_id_strings_[a.first].view()) <
+        begin(tt.sorted_route_id_idx_), end(tt.sorted_route_id_idx_), route_id,
+        [&](route_id_idx_t const& a, std::string_view b) {
+          return std::tuple(tt.route_id_src_[a],
+                            tt.route_id_strings_[a].view()) <
                  std::tuple(src, b);
         });
-    if (lb != end(tt.route_id_to_idx_) &&
-        route_id == tt.route_id_strings_[lb->first].view()) {
-      return lb->second;
+    if (lb != end(tt.sorted_route_id_idx_) &&
+        route_id == tt.route_id_strings_[*lb].view()) {
+      return *lb;
     }
-    return route_idx_t::invalid();
-  };
+    return route_id_idx_t::invalid();
+  };*/
 
   auto const r =
-      t.is_valid() ? tt.transport_route_[t_idx] : search_by_route_id();
+      t.is_valid() ? tt.transport_route_[t_idx] : route_idx_t::invalid();
+  // auto const fallback_r = r == route_idx_t::invalid() ? search_by_route_id()
+  // : route_id_idx_t::invalid(); TODO
   auto const location_seq = stop_seq.empty() && r != route_idx_t::invalid()
                                 ? std::span{tt.route_location_seq_[r]}
                                 : stop_seq;

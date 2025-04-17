@@ -190,13 +190,14 @@ route_map_t read_routes(source_idx_t const src,
                             get_tz_idx(tt, timezones, default_tz)});
                      });
 
-           tt.route_id_strings_.emplace_back(r.route_id_->to_str());
-           tt.route_id_src_.emplace_back(src);
+           auto const route_id_idx = tt.register_route_id(
+               r.route_id_->to_str(), src, r.route_short_name_->to_str(),
+               r.route_long_name_->to_str(), *r.route_type_);
 
            return std::pair{
                r.route_id_->to_str(),
                std::make_unique<route>(route{
-                   .route_id_idx_ = tt.next_route_id_idx_++,
+                   .route_id_idx_ = route_id_idx,
                    .agency_ = agency,
                    .id_ = r.route_id_->to_str(),
                    .short_name_ = r.route_short_name_->to_str(),

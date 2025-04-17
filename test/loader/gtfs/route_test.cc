@@ -28,7 +28,7 @@ TEST(gtfs, read_routes_example_data) {
   EXPECT_EQ("17", routes.at("A")->short_name_);
   EXPECT_EQ("Mission", routes.at("A")->long_name_);
   EXPECT_EQ(clasz::kBus, routes.at("A")->clasz_);
-  EXPECT_EQ(route_id_idx_t{1}, tt.next_route_id_idx_);
+  EXPECT_EQ(1, tt.sorted_route_id_idx_.size());
   EXPECT_EQ(1, tt.route_id_strings_.size());
   EXPECT_EQ("A", tt.route_id_strings_.at(route_id_idx_t{0}).view());
   EXPECT_EQ(1, tt.route_id_src_.size());
