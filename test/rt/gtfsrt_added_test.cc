@@ -706,7 +706,7 @@ TEST(rt, gtfs_rt_added) {
   EXPECT_EQ("?", fr.name());
   EXPECT_EQ("RT", fr.dbg().path_);
   // EXPECT_EQ(, fr.trip_idx());
-  EXPECT_EQ(nigiri::clasz::kBus, fr.get_clasz());
+  EXPECT_EQ(nigiri::clasz::kOther, fr.get_clasz());
   ASSERT_FALSE(fr.is_cancelled());
 
   EXPECT_EQ(location_idx_t{13}, fr[0].get_stop().location_idx());
@@ -730,7 +730,7 @@ TEST(rt, gtfs_rt_added) {
   EXPECT_EQ("", fr[0].line(event_type::kDep));
   EXPECT_EQ("", fr[0].scheduled_line(event_type::kDep));
   EXPECT_EQ("", fr[0].direction(event_type::kDep));
-  EXPECT_EQ(nigiri::clasz::kBus, fr[0].get_clasz(event_type::kDep));
+  EXPECT_EQ(nigiri::clasz::kOther, fr[0].get_clasz(event_type::kDep));
   EXPECT_EQ(nigiri::clasz::kOther, fr[0].get_scheduled_clasz(event_type::kDep));
   EXPECT_EQ(false, fr[0].bikes_allowed(event_type::kDep));
   EXPECT_EQ(std::nullopt,
@@ -793,7 +793,7 @@ TEST(rt, gtfs_rt_new) {
     auto ss = std::stringstream{};
     ss << "\n" << fr;
     EXPECT_EQ(expectedNew, ss.str());
-    EXPECT_EQ(nigiri::clasz::kBus, fr.get_clasz());
+    EXPECT_EQ(nigiri::clasz::kOther, fr.get_clasz());
     ASSERT_FALSE(fr.is_cancelled());
 
     for (auto const [from, to] : utl::pairwise(fr)) {
@@ -948,7 +948,7 @@ TEST(rt, DISABLED_gtfs_rt_replacement) {
   auto ss = std::stringstream{};
   ss << "\n" << fr;
   EXPECT_EQ(expectedReplacement, ss.str());
-  EXPECT_EQ(nigiri::clasz::kBus, fr.get_clasz());
+  EXPECT_EQ(nigiri::clasz::kOther, fr.get_clasz());
   ASSERT_FALSE(fr.is_cancelled());
 
   for (auto const [from, to] : utl::pairwise(fr)) {
@@ -1012,7 +1012,7 @@ TEST(rt, DISABLED_gtfs_rt_duplicated_empty) {
   auto ss = std::stringstream{};
   ss << "\n" << fr;
   EXPECT_EQ(expectedDuplicatedEmpty, ss.str());
-  EXPECT_EQ(nigiri::clasz::kBus, fr.get_clasz());
+  EXPECT_EQ(nigiri::clasz::kOther, fr.get_clasz());
   ASSERT_FALSE(fr.is_cancelled());
 
   // Update again.
@@ -1052,7 +1052,7 @@ TEST(rt, DISABLED_gtfs_rt_duplicated) {
     ASSERT_TRUE(r.valid());
 
     auto const fr = rt::frun{tt, &rtt, r};
-    EXPECT_EQ(nigiri::clasz::kBus, fr.get_clasz());
+    EXPECT_EQ(nigiri::clasz::kOther, fr.get_clasz());
     ASSERT_FALSE(fr.is_cancelled());
   }
 
@@ -1069,7 +1069,7 @@ TEST(rt, DISABLED_gtfs_rt_duplicated) {
   auto ss = std::stringstream{};
   ss << "\n" << fr;
   EXPECT_EQ(expectedDuplicated, ss.str());
-  EXPECT_EQ(nigiri::clasz::kBus, fr.get_clasz());
+  EXPECT_EQ(nigiri::clasz::kOther, fr.get_clasz());
   ASSERT_FALSE(fr.is_cancelled());
 }
 
