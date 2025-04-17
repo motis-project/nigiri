@@ -145,7 +145,8 @@ color_t to_color(std::string_view const color_str) {
                                    std::strtol(color_str.data(), nullptr, 16))};
 }
 
-route_map_t read_routes(timetable& tt,
+route_map_t read_routes(source_idx_t const src,
+                        timetable& tt,
                         tz_map& timezones,
                         agency_map_t& agencies,
                         std::string_view file_content,
@@ -188,10 +189,15 @@ route_map_t read_routes(timetable& tt,
                            {id, "UNKNOWN_AGENCY", "",
                             get_tz_idx(tt, timezones, default_tz)});
                      });
+
+           auto const route_id_idx = tt.register_route_id(
+               r.route_id_->to_str(), src, r.route_short_name_->to_str(),
+               r.route_long_name_->to_str(), *r.route_type_);
+
            return std::pair{
                r.route_id_->to_str(),
                std::make_unique<route>(route{
-                   .route_id_idx_ = tt.next_route_id_idx_++,
+                   .route_id_idx_ = route_id_idx,
                    .agency_ = agency,
                    .id_ = r.route_id_->to_str(),
                    .short_name_ = r.route_short_name_->to_str(),

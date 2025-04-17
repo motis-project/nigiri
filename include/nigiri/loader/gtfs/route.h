@@ -28,7 +28,8 @@ struct route {
 
 using route_map_t = hash_map<std::string, std::unique_ptr<route>>;
 
-route_map_t read_routes(timetable&,
+route_map_t read_routes(source_idx_t,
+                        timetable&,
                         tz_map&,
                         agency_map_t&,
                         std::string_view file_content,
