@@ -24,9 +24,11 @@ struct statistics {
   int total_entities_{0};
   int total_entities_success_{0};
   int total_entities_fail_{0};
+  int total_alerts_{0};
+  int alert_informed_entity_resolve_error_{0};
+  int alert_total_informed_entities_{0};
   int unsupported_deleted_{0};
   int unsupported_vehicle_{0};
-  int unsupported_alert_{0};
   int unsupported_no_trip_id_{0};
   int no_trip_update_{0};
   int trip_update_without_trip_{0};
