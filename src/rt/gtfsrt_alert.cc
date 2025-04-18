@@ -79,8 +79,54 @@ void handle_alert(date::sys_days const today,
                   string_cache_t& c,
                   source_idx_t const src,
                   std::string_view tag,
-                  transit_realtime::Alert const& a) {
+                  transit_realtime::Alert const& a,
+                  statistics& stats) {
+  ++stats.total_alerts_;
+
   auto& alerts = rtt.service_alerts_;
+
+  auto const alert_idx =
+      service_alert_idx_t{alerts.communication_period_.size()};
+
+  // =========================
+  // Resolve informed entities
+  // -------------------------
+  auto any_resolved = false;
+  stats.alert_total_informed_entities_ += a.informed_entity_size();
+  for (auto const& x : a.informed_entity()) {
+    if (x.has_trip()) {
+      auto [r, trip] = gtfsrt_resolve_run(today, tt, &rtt, src, x.trip());
+      if (!r.valid()) {
+        log(log_lvl::error, "rt.gtfs.resolve.alert",
+            "could not resolve (tag={}) {}", tag,
+            remove_nl(x.trip().DebugString()));
+        ++stats.alert_informed_entity_resolve_error_;
+        continue;
+      }
+      if (!r.is_rt()) {
+        r.rt_ = rtt.add_rt_transport(src, tt, r.t_);
+      }
+      auto const stop = x.has_stop_id()
+                            ? tt.locations_.find({x.stop_id(), src})
+                                  .and_then([](location const& l) {
+                                    return std::optional{l.l_};
+                                  })
+                                  .value_or(location_idx_t::invalid())
+                            : location_idx_t::invalid();
+      alerts.rt_service_alerts_[r.rt_].push_back({alert_idx, stop});
+      any_resolved = true;
+    } else {
+      ++stats.alert_informed_entity_resolve_error_;
+    }
+  }
+
+  if (!any_resolved) {
+    return;
+  }
+
+  // =============
+  // Create alert.
+  // -------------
   auto& s = alerts.strings_;
 
   auto const to_translation =
@@ -106,9 +152,6 @@ void handle_alert(date::sys_days const today,
   auto const translate = [&](auto&& x) {
     return x.translation() | std::views::transform(to_translation);
   };
-
-  auto const alert_idx =
-      service_alert_idx_t{alerts.communication_period_.size()};
 
   auto const period = a.active_period() | std::views::transform(to_interval);
   alerts.communication_period_.emplace_back(period);
@@ -182,27 +225,6 @@ void handle_alert(date::sys_days const today,
       convert(a.has_severity_level()
                   ? a.severity_level()
                   : transit_realtime::Alert_SeverityLevel_UNKNOWN_SEVERITY));
-
-  for (auto const& x : a.informed_entity()) {
-    if (x.has_trip()) {
-      auto [r, trip] = gtfsrt_resolve_run(today, tt, &rtt, src, x.trip());
-      if (!r.valid()) {
-        log(log_lvl::error, "rt.gtfs.resolve", "could not resolve (tag={}) {}",
-            tag, remove_nl(x.trip().DebugString()));
-      }
-      if (!r.is_rt()) {
-        r.rt_ = rtt.add_rt_transport(src, tt, r.t_);
-      }
-      auto const stop = x.has_stop_id()
-                            ? tt.locations_.find({x.stop_id(), src})
-                                  .and_then([](location const& l) {
-                                    return std::optional{l.l_};
-                                  })
-                                  .value_or(location_idx_t::invalid())
-                            : location_idx_t::invalid();
-      alerts.rt_service_alerts_[r.rt_].push_back({alert_idx, stop});
-    }
-  }
 }
 
 }  // namespace nigiri::rt
