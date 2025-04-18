@@ -15,6 +15,7 @@
 #include "nigiri/special_stations.h"
 #include "nigiri/timetable.h"
 #include "nigiri/types.h"
+#include "printable_transport.h"
 
 namespace nigiri::routing {
 
@@ -124,6 +125,9 @@ struct raptor {
     for (auto const& [l, _] : td_dist_to_end_) {
       state_.end_reachable_.set(to_idx(l), true);
     }
+    for (auto& r : state_.r_.route_transport_stops_) {
+      r.clear();
+    }
   }
 
   algo_stats_t get_stats() const { return stats_; }
@@ -166,7 +170,7 @@ struct raptor {
 
     trace_print_init_state();
 
-    for (auto k = 1U; k != end_k; ++k) {
+    for (auto k = std::uint8_t{1U}; k != end_k; ++k) {
       for (auto i = 0U; i != n_locations_; ++i) {
         for (auto v = 0U; v != Vias + 1; ++v) {
           best_[i][v] = get_best(round_times_[k][i][v], best_[i][v]);
@@ -272,7 +276,7 @@ private:
   }
 
   template <bool WithClaszFilter, bool WithBikeFilter>
-  bool loop_routes(unsigned const k) {
+  bool loop_routes(std::uint8_t const k) {
     auto any_marked = false;
     state_.route_mark_.for_each_set_bit([&](auto const r_idx) {
       auto const r = route_idx_t{r_idx};
@@ -784,7 +788,7 @@ private:
   }
 
   template <bool WithSectionBikeFilter>
-  bool update_route(unsigned const k, route_idx_t const r) {
+  bool update_route(std::uint8_t const k, route_idx_t const r) {
     auto const stop_seq = tt_.route_location_seq_[r];
     bool any_marked = false;
 
@@ -881,22 +885,38 @@ private:
               is_better(by_transport, higher_v_best) &&
               lb_[l_idx] != kUnreachable &&
               is_better(by_transport + dir(lb_[l_idx]), time_at_dest_[k])) {
-            trace_upd(
-                "┊ │k={} v={}->{}    name={}, dbg={}, time_by_transport={}, "
-                "BETTER THAN current_best={} => update, {} marking station "
-                "{}!\n",
-                k, v, target_v, tt_.transport_name(et[v].t_idx_),
-                tt_.dbg(et[v].t_idx_), to_unix(by_transport),
-                to_unix(current_best[v]),
-                !is_better(by_transport, current_best[v]) ? "NOT" : "",
-                location{tt_, stp.location_idx()});
 
-            ++stats_.n_earliest_arrival_updated_by_route_;
-            tmp_[l_idx][target_v] =
-                get_best(by_transport, tmp_[l_idx][target_v]);
-            state_.station_mark_.set(l_idx, true);
-            current_best[v] = by_transport;
-            any_marked = true;
+            auto const st = sorted_transport{base_, et[v]};
+            auto const [added, inserted_it, dominated_by_it] =
+                state_.r_.add<SearchDir>(r, st, stop_idx, k);
+            if (added) {
+
+              trace_upd(
+                  "┊ │k={} v={}->{}    name={}, dbg={}, time_by_transport={}, "
+                  "BETTER THAN current_best={} => update, {} marking station "
+                  "{}!\n",
+                  k, v, target_v, tt_.transport_name(et[v].t_idx_),
+                  tt_.dbg(et[v].t_idx_), to_unix(by_transport),
+                  to_unix(current_best[v]),
+                  !is_better(by_transport, current_best[v]) ? "NOT" : "",
+                  location{tt_, stp.location_idx()});
+
+              ++stats_.n_earliest_arrival_updated_by_route_;
+              tmp_[l_idx][target_v] =
+                  get_best(by_transport, tmp_[l_idx][target_v]);
+              state_.station_mark_.set(l_idx, true);
+              current_best[v] = by_transport;
+              any_marked = true;
+            } else {
+              trace(
+                  "┊ │k={}    *** NO REACH: "
+                  "      INSERT=(stop_idx={}, k={}, t={}), "
+                  "DOMINATED_BY=(stop_idx={}, k={}, t={})!\n",
+                  k,  //
+                  stop_idx, k, pt{tt_, et},  //
+                  dominated_by_it->stop_idx_, dominated_by_it->k_,
+                  pt{tt_, dominated_by_it->t_.get_transport(base_)});
+            }
           } else {
             trace(
                 "┊ │k={} v={}->{}    *** NO UPD: at={}, name={}, dbg={}, "
@@ -1009,6 +1029,11 @@ private:
         }
       }
     }
+
+    if (any_marked) {
+      state_.r_.activate(r);
+    }
+
     return any_marked;
   }
 
