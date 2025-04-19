@@ -1,5 +1,6 @@
 #include <algorithm>
 #include <filesystem>
+#include <fstream>
 #include <iostream>
 #include <regex>
 
@@ -118,17 +119,17 @@ std::ostream& operator<<(std::ostream& out,
       << "ms, t_ea: " << std::setw(9) << br.stats_.ea_duration_
       << "ms, t_meat: " << std::setw(9) << br.stats_.meat_duration_
       << "ms, t_ext_g: " << std::setw(9) << br.stats_.extract_graph_duration_
-      << "ms, esa_#con: " << std::setw(2)
-      << br.stats_.esa_n_connections_scanned_ << ", ea_#con: " << std::setw(2)
-      << br.stats_.ea_n_connections_scanned_ << ", meat_#con: " << std::setw(2)
+      << "ms, esa_#con: " << std::setw(9)
+      << br.stats_.esa_n_connections_scanned_ << ", ea_#con: " << std::setw(9)
+      << br.stats_.ea_n_connections_scanned_ << ", meat_#con: " << std::setw(9)
       << br.stats_.meat_n_connections_scanned_
-      << ", #fp_to_que: " << std::setw(2) << br.stats_.meat_n_fp_added_to_que_
-      << ", #fp_to_prof: " << std::setw(2)
+      << ", #fp_to_que: " << std::setw(9) << br.stats_.meat_n_fp_added_to_que_
+      << ", #fp_to_prof: " << std::setw(9)
       << br.stats_.meat_n_fp_added_to_profile_
-      << ", #con_to_prof: " << std::setw(2)
+      << ", #con_to_prof: " << std::setw(9)
       << br.stats_.meat_n_e_added_or_replaced_to_profile_
-      << ", #e_in_prof: " << std::setw(2) << br.stats_.meat_n_e_in_profile_
-      << ")";
+      << ", #e_in_prof: " << std::setw(9) << br.stats_.meat_n_e_in_profile_
+      << ", q_idx: " << br.q_idx_ << ")";
   return out;
 }
 std::ostream& operator<<(
@@ -141,15 +142,15 @@ std::ostream& operator<<(
       << "ms, t_ea: " << std::setw(9) << br.stats_.ea_duration_
       << "ms, t_meat: " << std::setw(9) << br.stats_.meat_duration_
       << "ms, t_ext_g: " << std::setw(9) << br.stats_.extract_graph_duration_
-      << "ms, meat_#tran_it: " << std::setw(2)
+      << "ms, meat_#tran_it: " << std::setw(9)
       << br.stats_.meat_n_active_transports_iterated_
-      << ", meat_#stops_it: " << std::setw(2)
-      << br.stats_.meat_n_stops_iterated_ << ", #fp_to_prof: " << std::setw(2)
+      << ", meat_#stops_it: " << std::setw(9)
+      << br.stats_.meat_n_stops_iterated_ << ", #fp_to_prof: " << std::setw(9)
       << br.stats_.meat_n_fp_added_to_profile_
-      << ", #con_to_prof: " << std::setw(2)
+      << ", #con_to_prof: " << std::setw(9)
       << br.stats_.meat_n_e_added_to_profile_
-      << ", #e_in_prof: " << std::setw(2) << br.stats_.meat_n_e_in_profile_
-      << ")";
+      << ", #e_in_prof: " << std::setw(9) << br.stats_.meat_n_e_in_profile_
+      << ", q_idx: " << br.q_idx_ << ")";
   return out;
 }
 
@@ -318,10 +319,11 @@ void process_queries(
       for (auto const [q_idx, q] : utl::enumerate(queries)) {
         try {
           //// TODO remove
-          // if (q_idx < 63) continue;
-          // if (q_idx == 63 || q_idx == 94){
-          //  std::cout << q_idx << std::endl;
-          //}
+          // if (q_idx != 26) continue;
+          // if (q_idx != 705) continue;
+          //  if (q_idx == 63 || q_idx == 94){
+          //   std::cout << q_idx << std::endl;
+          // }
           //// remove end
 
           auto const total_time_c_start = std::chrono::steady_clock::now();
@@ -339,7 +341,7 @@ void process_queries(
               q_idx, result_r.stats_, result_r.g_,
               std::chrono::duration_cast<std::chrono::milliseconds>(
                   total_time_r_stop - total_time_r_start)});
-         
+
           if (((result_c.g_.first_arc_ == dg_arc_idx_t::invalid() ||
                 result_r.g_.first_arc_ == dg_arc_idx_t::invalid()) &&
                result_c.g_.first_arc_ != result_r.g_.first_arc_) ||
@@ -350,7 +352,9 @@ void process_queries(
             std::cout << std::endl
                       << "!!!!!!!!!!!! csa.meat_ != raptor.meat_ !!!!!!!!!!!!"
                       << std::endl
-                      << "q_idx: " << q_idx << std::endl << std::endl << std::endl;
+                      << "q_idx: " << q_idx << std::endl
+                      << std::endl
+                      << std::endl;
           }
 
           //// TODO remove
@@ -360,7 +364,11 @@ void process_queries(
           // auto ss_r = std::stringstream{};
           // m::write_dot(ss_c, tt, result_c.g_, er_c);
           // m::write_dot(ss_r, tt, result_r.g_, er_r);
-          // 
+          //
+          // std::cout << std::endl
+          //           << ss_c.str() << std::endl
+          //           << ss_r.str() << std::endl;
+          //
           // if (ss_c.str() != ss_r.str() /*result_c.g_ != result_r.g_*/) {
           //   std::cout << std::endl
           //             << (result_c.g_.arcs_[result_c.g_.first_arc_].meat_ ==
@@ -402,27 +410,25 @@ T const& quantile(std::vector<T> const& v, double q) {
 }
 
 template <typename T>
-void print_result(std::vector<T> const& var, std::string const& var_name) {
-  std::cout << "\n--- " << var_name << " --- (n = " << var.size() << ")"
-            << "\n  10%: " << quantile(var, 0.1)
-            << "\n  20%: " << quantile(var, 0.2)
-            << "\n  30%: " << quantile(var, 0.3)
-            << "\n  40%: " << quantile(var, 0.4)
-            << "\n  50%: " << quantile(var, 0.5)
-            << "\n  60%: " << quantile(var, 0.6)
-            << "\n  70%: " << quantile(var, 0.7)
-            << "\n  80%: " << quantile(var, 0.8)
-            << "\n  90%: " << quantile(var, 0.9)
-            << "\n  99%: " << quantile(var, 0.99)
-            << "\n99.9%: " << quantile(var, 0.999) << "\n  max: " << var.back()
-            << "\n----------------------------------\n";
+void print_result(std::vector<T> const& var,
+                  std::string const& var_name,
+                  std::ostream& os = std::cout) {
+  os << "\n--- " << var_name << " --- (n = " << var.size() << ")"
+     << "\n  10%: " << quantile(var, 0.1) << "\n  20%: " << quantile(var, 0.2)
+     << "\n  30%: " << quantile(var, 0.3) << "\n  40%: " << quantile(var, 0.4)
+     << "\n  50%: " << quantile(var, 0.5) << "\n  60%: " << quantile(var, 0.6)
+     << "\n  70%: " << quantile(var, 0.7) << "\n  80%: " << quantile(var, 0.8)
+     << "\n  90%: " << quantile(var, 0.9) << "\n  99%: " << quantile(var, 0.99)
+     << "\n99.9%: " << quantile(var, 0.999) << "\n  max: " << var.back()
+     << "\n----------------------------------\n";
 }
 
 void print_query_rerun(
     size_t q_idx,
     std::vector<nigiri::query_generation::start_dest_query> const& queries,
     nigiri::query_generation::generator_settings const& gs,
-    std::filesystem::path const& tt_path) {
+    std::filesystem::path const& tt_path,
+    std::ostream& os = std::cout) {
   auto ss = std::stringstream{};
   ss << "Re-run query " << q_idx << ":\n./nigiri-benchmark -p "
      << tt_path.string() << " -n 1 -i " << gs.interval_size_.count()
@@ -457,7 +463,7 @@ void print_query_rerun(
   } else {
     ss << " --dest_loc " << get<location_idx_t>(queries[q_idx].dest_) << "\n";
   }
-  std::cout << ss.str() << "\n";
+  os << ss.str() << "\n";
 }
 
 template <typename MeatStats>
@@ -466,7 +472,8 @@ void print_results(
     std::vector<benchmark_result<MeatStats>>& results,
     nigiri::timetable const& tt,
     nigiri::query_generation::generator_settings const& gs,
-    std::filesystem::path const& tt_path) {
+    std::filesystem::path const& tt_path,
+    std::ostream& os = std::cout) {
   utl::sort(results, [](auto const& a, auto const& b) {
     return a.total_time_ < b.total_time_;
   });
@@ -488,21 +495,21 @@ void print_results(
   };
 
   auto const print_slow_result = [&](auto const& br) {
-    std::cout << br << "\nstart: "
-              << std::visit(utl::overloaded{visit_loc_idx, visit_coord},
-                            queries[br.q_idx_].start_)
-              << "\ndest: "
-              << std::visit(utl::overloaded{visit_loc_idx, visit_coord},
-                            queries[br.q_idx_].dest_)
-              << "\n";
+    os << br << "\nstart: "
+       << std::visit(utl::overloaded{visit_loc_idx, visit_coord},
+                     queries[br.q_idx_].start_)
+       << "\ndest: "
+       << std::visit(utl::overloaded{visit_loc_idx, visit_coord},
+                     queries[br.q_idx_].dest_)
+       << "\n";
   };
-  std::cout << "\nSlowest Queries:\n";
+  os << "\nSlowest Queries:\n";
   for (auto i = 0; i != results.size() && i != 10; ++i) {
-    std::cout << "\n--- " << i + 1
-              << " ---\nquery_idx: " << rbegin(results)[i].q_idx_ << '\n';
+    os << "\n--- " << i + 1 << " ---\nquery_idx: " << rbegin(results)[i].q_idx_
+       << '\n';
     print_slow_result(rbegin(results)[i]);
   }
-  std::cout << "\n";
+  os << "\n";
 
   auto ss = std::stringstream{};
   ss << "Re-run the slowest source-destination "
@@ -542,7 +549,7 @@ void print_results(
     ss << " --dest_loc "
        << get<location_idx_t>(queries[rbegin(results)[0].q_idx_].dest_) << "\n";
   }
-  std::cout << ss.str() << "\n";
+  os << ss.str() << "\n";
 
   utl::sort(results, [](auto const& a, auto const& b) {
     return a.stats_.total_duration_ < b.stats_.total_duration_;
@@ -570,12 +577,55 @@ void print_results(
   print_result(results, "extract_graph_duration_");
 }
 
-void print_memory_usage() {
+void print_all_results(
+    std::ostream& out,
+    std::vector<benchmark_result<mcsa::meat_csa_stats>>& results) {
+  using double_seconds_t = std::chrono::duration<double, std::ratio<1>>;
+  out << "t_total, t_exec, t_esa, t_ea, t_meat, t_ext_g, esa_num_con, ea_num_con, "
+         "meat_num_con, num_fp_to_que, num_fp_to_prof, num_con_to_prof, num_e_in_prof, "
+         "q_idx\n";
+  for (auto const& br : results) {
+    out << std::fixed << std::setprecision(3)
+        << std::chrono::duration_cast<double_seconds_t>(br.total_time_).count()
+        << ", " << br.stats_.total_duration_ << ", " << br.stats_.esa_duration_
+        << ", " << br.stats_.ea_duration_ << ", " << br.stats_.meat_duration_
+        << ", " << br.stats_.extract_graph_duration_ << ", "
+        << br.stats_.esa_n_connections_scanned_ << ", "
+        << br.stats_.ea_n_connections_scanned_ << ", "
+        << br.stats_.meat_n_connections_scanned_ << ", "
+        << br.stats_.meat_n_fp_added_to_que_ << ", "
+        << br.stats_.meat_n_fp_added_to_profile_ << ", "
+        << br.stats_.meat_n_e_added_or_replaced_to_profile_ << ", "
+        << br.stats_.meat_n_e_in_profile_ << ", " << br.q_idx_ << "\n";
+  }
+}
+
+void print_all_results(
+    std::ostream& out,
+    std::vector<benchmark_result<mraptor::meat_raptor_stats>>& results) {
+  using double_seconds_t = std::chrono::duration<double, std::ratio<1>>;
+  out << "t_total, t_exec, t_esa, t_ea, t_meat, t_ext_g, meat_num_tran_it, "
+         "meat_num_stops_it, num_fp_to_prof, num_con_to_prof, num_e_in_prof, q_idx\n";
+  for (auto const& br : results) {
+    out << std::fixed << std::setprecision(3)
+        << std::chrono::duration_cast<double_seconds_t>(br.total_time_).count()
+        << ", " << br.stats_.total_duration_ << ", " << br.stats_.esa_duration_
+        << ", " << br.stats_.ea_duration_ << ", " << br.stats_.meat_duration_
+        << ", " << br.stats_.extract_graph_duration_ << ", "
+        << br.stats_.meat_n_active_transports_iterated_ << ", "
+        << br.stats_.meat_n_stops_iterated_ << ", "
+        << br.stats_.meat_n_fp_added_to_profile_ << ", "
+        << br.stats_.meat_n_e_added_to_profile_ << ", "
+        << br.stats_.meat_n_e_in_profile_ << ", " << br.q_idx_ << "\n";
+  }
+}
+
+void print_memory_usage(std::ostream& os = std::cout) {
 #ifndef _WIN32
   auto r = rusage{};
   getrusage(RUSAGE_SELF, &r);
-  std::cout << "\n--- memory usage ---\nrusage.ru_maxrss: "
-            << static_cast<double>(r.ru_maxrss) / (1024 * 1024) << " GiB\n";
+  os << "\n--- memory usage ---\nrusage.ru_maxrss: "
+     << static_cast<double>(r.ru_maxrss) / (1024 * 1024) << " GiB\n";
 #endif
 }
 
@@ -601,6 +651,7 @@ int main(int argc, char* argv[]) {
   auto min_transfer_time = duration_t::rep{};
   auto max_delay = delta_t{30};
   auto bound_parameter = 1.0;
+  auto out_file_path = std::filesystem::path{"results.txt"};
 
   bpo::options_description desc("Allowed options");
   desc.add_options()("help,h", "produce this help message")  //
@@ -678,7 +729,11 @@ int main(int argc, char* argv[]) {
        "meat-raptor)")  //
       ("bound_parameter",
        bpo::value<double>(&bound_parameter)->default_value(bound_parameter),
-       "aka Alpha value (for meat-csa and meat-raptor)");
+       "aka Alpha value (for meat-csa and meat-raptor)")  //
+      ("out_file",
+       bpo::value<std::filesystem::path>(&out_file_path)
+           ->default_value(out_file_path),
+       "path to the output file to write the results to");
   bpo::variables_map vm;
   bpo::store(bpo::command_line_parser(argc, argv).options(desc).run(), vm);
 
@@ -804,8 +859,10 @@ int main(int argc, char* argv[]) {
       std::vector<benchmark_result<mraptor::meat_raptor_stats>>{};
   process_queries(queries, results_csa, results_raptor, tt, false);
 
-  std::cout << "\n ----------- \nNumber of CSA connections: " << tt.fwd_connections_.size();
-  std::cout << "\nNumber of transports: " << tt.transport_route_.size() << "\n ----------- \n";
+  std::cout << "\n ----------- \nNumber of CSA connections: "
+            << tt.fwd_connections_.size();
+  std::cout << "\nNumber of transports: " << tt.transport_route_.size()
+            << "\n ----------- \n";
 
   std::cout << std::endl << "Results for the MEAT CSA:" << std::endl;
   print_results(queries, results_csa, tt, gs, tt_path);
@@ -813,6 +870,19 @@ int main(int argc, char* argv[]) {
   print_results(queries, results_raptor, tt, gs, tt_path);
 
   print_memory_usage();
+
+  std::ofstream out_file;
+  out_file.open(out_file_path);
+  if (out_file.is_open()) {
+    out_file << "Results for the MEAT CSA:\n";
+    print_all_results(out_file, results_csa);
+    out_file << "\nResults for the MEAT RAPTOR:\n";
+    print_all_results(out_file, results_raptor);
+    std::cout << "Result file: " << out_file_path << "\n";
+  } else {
+    std::cout << "Unable to open file " << out_file_path << "\n";
+  }
+  out_file.close();
 
   return 0;
 }
