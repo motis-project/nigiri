@@ -1,4 +1,5 @@
 #include "nigiri/rt/rt_timetable.h"
+#include "nigiri/loader/gtfs/route.h"
 
 namespace nigiri {
 
@@ -9,7 +10,7 @@ rt_transport_idx_t rt_timetable::add_rt_transport(
     std::span<stop::value_type> const stop_seq,
     std::span<delta_t> const time_seq,
     std::string_view const new_trip_id,
-    std::string_view const _,
+    std::string_view const route_id,
     std::string_view const display_name,
     delta_t const offset) {
   auto const [t_idx, day] = t;
@@ -32,7 +33,7 @@ rt_transport_idx_t rt_timetable::add_rt_transport(
     rt_transport_static_transport_.emplace_back(rt_add_idx);
   }
 
-  /*auto const search_by_route_id = [&]() {
+  auto const search_by_route_id = [&]() {
     if (route_id.empty()) {
       return route_id_idx_t::invalid();
     }
@@ -48,12 +49,13 @@ rt_transport_idx_t rt_timetable::add_rt_transport(
       return *lb;
     }
     return route_id_idx_t::invalid();
-  };*/
+  };
 
   auto const r =
       t.is_valid() ? tt.transport_route_[t_idx] : route_idx_t::invalid();
-  // auto const fallback_r = r == route_idx_t::invalid() ? search_by_route_id()
-  // : route_id_idx_t::invalid(); TODO
+  auto const fallback_r = r == route_idx_t::invalid()
+                              ? search_by_route_id()
+                              : route_id_idx_t::invalid();
   auto const location_seq = stop_seq.empty() && r != route_idx_t::invalid()
                                 ? std::span{tt.route_location_seq_[r]}
                                 : stop_seq;
@@ -98,6 +100,9 @@ rt_transport_idx_t rt_timetable::add_rt_transport(
   rt_transport_section_directions_.add_back_sized(0U);  // TODO outside
   if (!display_name.empty()) {
     rt_transport_display_names_.emplace_back(display_name);
+  } else if (!new_trip_id.empty() && fallback_r != route_id_idx_t::invalid()) {
+    rt_transport_display_names_.emplace_back(
+        tt.route_id_short_names_[fallback_r].view());
   } else if (!new_trip_id.empty() && t.is_valid()) {
     rt_transport_display_names_.emplace_back(tt.transport_name(t.t_idx_));
   } else {
@@ -109,6 +114,12 @@ rt_transport_idx_t rt_timetable::add_rt_transport(
                                     tt.route_bikes_allowed_[r.v_ * 2]);
     rt_transport_bikes_allowed_.set(rt_t_idx * 2 + 1,
                                     tt.route_bikes_allowed_[r.v_ * 2 + 1]);
+  } else if (fallback_r != route_id_idx_t::invalid()) {
+    rt_transport_section_clasz_.emplace_back(
+        std::vector<clasz>{nigiri::loader::gtfs::to_clasz(
+            tt.route_id_type_[fallback_r])});  // TODO
+    rt_transport_bikes_allowed_.set(rt_t_idx * 2, bikes_allowed_default);
+    rt_transport_bikes_allowed_.set(rt_t_idx * 2 + 1, false);
   } else {
     rt_transport_section_clasz_.emplace_back(std::vector<clasz>{clasz::kOther});
     rt_transport_bikes_allowed_.set(rt_t_idx * 2, bikes_allowed_default);

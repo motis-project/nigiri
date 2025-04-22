@@ -340,6 +340,51 @@ auto const kTripNewBare =
  ]
 })"s;
 
+auto const kTripNewBareWithStops =
+    R"({
+ "header": {
+  "gtfsRealtimeVersion": "2.0",
+  "incrementality": "FULL_DATASET",
+  "timestamp": "1691660324"
+ },
+ "entity": [
+  {
+    "id": "3248651",
+    "isDeleted": false,
+    "tripUpdate": {
+     "trip": {
+      "tripId": "TRIP_NEW",
+      "scheduleRelationship": "NEW"
+     },
+     "stopTimeUpdate": [
+      {
+       "stopSequence": 1,
+       "arrival": {
+        "time": "1691658900"
+       },
+       "departure": {
+        "time": "1691658900"
+       },
+       "stopId": "E",
+       "scheduleRelationship": "SCHEDULED"
+      },
+      {
+       "stopSequence": 3,
+       "arrival": {
+        "time": "1691659080"
+       },
+       "departure": {
+        "time": "1691659080"
+       },
+       "stopId": "B",
+       "scheduleRelationship": "SCHEDULED"
+      }
+     ]
+    }
+  }
+ ]
+})"s;
+
 auto const kTripNewNonExistingStops =
     R"({
  "header": {
@@ -703,7 +748,7 @@ TEST(rt, gtfs_rt_added) {
   // fr.trip_idx()
   EXPECT_EQ("TRIP_ADDED", fr.id().id_);
   EXPECT_EQ(source_idx_t{0}, fr.id().src_);
-  EXPECT_EQ("?", fr.name());
+  EXPECT_EQ("Route 1", fr.name());
   EXPECT_EQ("RT", fr.dbg().path_);
   // EXPECT_EQ(, fr.trip_idx());
   EXPECT_EQ(nigiri::clasz::kBus, fr.get_clasz());
@@ -719,7 +764,7 @@ TEST(rt, gtfs_rt_added) {
   EXPECT_EQ("E", fr[0].id());
   EXPECT_EQ("AGENCY_1", fr[0].get_provider(event_type::kDep).short_name_);
   // EXPECT_EQ("", fr[0].get_trip_idx());
-  EXPECT_EQ("?", fr[0].trip_display_name(event_type::kDep));
+  EXPECT_EQ("Route 1", fr[0].trip_display_name(event_type::kDep));
   EXPECT_EQ(
       unixtime_t{date::sys_days{2023_y / August / 10} + 9_hours + 15_minutes},
       fr[0].scheduled_time(event_type::kDep));
@@ -858,19 +903,34 @@ TEST(rt, gtfs_rt_new_bare) {
   // Create empty RT timetable.
   auto rtt = rt::create_rt_timetable(tt, date::sys_days{2023_y / August / 10});
 
-  // Update.
-  auto const msg = rt::json_to_protobuf(kTripNewBare);
-  gtfsrt_update_buf(tt, rtt, source_idx_t{0}, "", msg);
+  {
+    // Update.
+    auto const msg = rt::json_to_protobuf(kTripNewBare);
+    gtfsrt_update_buf(tt, rtt, source_idx_t{0}, "", msg);
+  }
 
   // Print trip.
   transit_realtime::TripDescriptor td;
   td.set_start_date("20230810");
   td.set_trip_id("TRIP_NEW");
   td.set_start_time("10:00:00");
+  {
+    auto const [r, t] = rt::gtfsrt_resolve_run(
+        date::sys_days{2023_y / August / 10}, tt, &rtt, source_idx_t{0}, td);
+    EXPECT_EQ(0, rtt.rt_transport_location_seq_.size());
+    ASSERT_FALSE(r.valid());
+  }
+  {
+    // Update.
+    auto const msg = rt::json_to_protobuf(kTripNewBareWithStops);
+    gtfsrt_update_buf(tt, rtt, source_idx_t{0}, "", msg);
+  }
   auto const [r, t] = rt::gtfsrt_resolve_run(
       date::sys_days{2023_y / August / 10}, tt, &rtt, source_idx_t{0}, td);
-  EXPECT_EQ(0, rtt.rt_transport_location_seq_.size());
-  ASSERT_FALSE(r.valid());
+  EXPECT_EQ(1, rtt.rt_transport_location_seq_.size());
+  ASSERT_TRUE(r.valid());
+  auto const fr = rt::frun{tt, &rtt, r};
+  EXPECT_EQ("?", fr.name());
 }
 
 TEST(rt, gtfs_rt_new_non_existing_stops) {

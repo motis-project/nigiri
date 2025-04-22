@@ -45,7 +45,7 @@ struct rt_timetable {
       std::string_view const new_trip_id = {},
       std::string_view const route_id = {},
       std::string_view const display_name = {},
-      delta_t offset = 0);
+      delta_t = 0);
 
   delta_t unix_to_delta(unixtime_t const t) const {
     auto const d =
