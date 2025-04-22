@@ -73,20 +73,31 @@ alert_severity convert(transit_realtime::Alert_SeverityLevel x) {
   throw utl::fail("unknown Alert_SeverityLevel");
 }
 
+provider_idx_t get_provider_idx(timetable const& tt, std::string_view s) {
+  auto const it = std::lower_bound(
+      begin(tt.provider_id_to_idx_), end(tt.provider_id_to_idx_), s,
+      [&](provider_idx_t const a, std::string_view const b) {
+        return tt.strings_.get(tt.providers_[a].short_name_) < b;
+      });
+  if (it == end(tt.provider_id_to_idx_) ||
+      tt.strings_.get(tt.providers_[*it].short_name_) != s) {
+    return provider_idx_t::invalid();
+  }
+  return *it;
+}
+
 void handle_alert(date::sys_days const today,
                   timetable const& tt,
                   rt_timetable& rtt,
-                  string_cache_t& c,
                   source_idx_t const src,
                   std::string_view tag,
                   transit_realtime::Alert const& a,
                   statistics& stats) {
   ++stats.total_alerts_;
 
-  auto& alerts = rtt.service_alerts_;
+  auto& alerts = rtt.alerts_;
 
-  auto const alert_idx =
-      service_alert_idx_t{alerts.communication_period_.size()};
+  auto const alert_idx = alert_idx_t{alerts.communication_period_.size()};
 
   // =========================
   // Resolve informed entities
@@ -94,30 +105,85 @@ void handle_alert(date::sys_days const today,
   auto any_resolved = false;
   stats.alert_total_informed_entities_ += a.informed_entity_size();
   for (auto const& x : a.informed_entity()) {
+    auto const stop = x.has_stop_id() ? tt.locations_.find({x.stop_id(), src})
+                                            .and_then([](location const& l) {
+                                              return std::optional{l.l_};
+                                            })
+                                            .value_or(location_idx_t::invalid())
+                                      : location_idx_t::invalid();
+
+    if (x.has_stop_id() && stop == location_idx_t::invalid()) {
+      ++stats.alert_stop_not_found_;
+      log(log_lvl::error, "nigiri.gtfs.resolve.alert.stop",
+          "tag={}, stop_id={} not found", tag, x.stop_id());
+      continue;
+    }
+
+    auto const route_type = x.has_route_type() ? route_type_t{x.route_type()}
+                                               : route_type_t::invalid();
+
     if (x.has_trip()) {
       auto [r, trip] = gtfsrt_resolve_run(today, tt, &rtt, src, x.trip());
       if (!r.valid()) {
+        ++stats.alert_trip_not_found_;
         log(log_lvl::error, "rt.gtfs.resolve.alert",
             "could not resolve (tag={}) {}", tag,
             remove_nl(x.trip().DebugString()));
-        ++stats.alert_informed_entity_resolve_error_;
         continue;
       }
-      if (!r.is_rt()) {
-        r.rt_ = rtt.add_rt_transport(src, tt, r.t_);
+      alerts.trip_[trip].push_back({stop, alert_idx});
+    } else if (x.has_route_id()) {  // 1) by route_id / direction_id -> stop_id
+      if (x.has_direction_id() && !x.has_route_id()) {
+        ++stats.alert_direction_without_route_;
+        log(log_lvl::error, "nigiri.gtfs.resolve.alert.route_id",
+            "tag={}, direction without route: {}", tag, x.DebugString());
+        continue;
       }
-      auto const stop = x.has_stop_id()
-                            ? tt.locations_.find({x.stop_id(), src})
-                                  .and_then([](location const& l) {
-                                    return std::optional{l.l_};
-                                  })
-                                  .value_or(location_idx_t::invalid())
-                            : location_idx_t::invalid();
-      alerts.rt_service_alerts_[r.rt_].push_back({alert_idx, stop});
-      any_resolved = true;
+
+      auto const route_id = x.has_route_id()
+                                ? tt.route_ids_[src].ids_.find(x.route_id())
+                                : std::nullopt;
+      auto const direction = x.has_direction_id()
+                                 ? direction_id_t{x.direction_id()}
+                                 : direction_id_t::invalid();
+      if (!route_id.has_value()) {
+        ++stats.alert_route_id_not_found_;
+        log(log_lvl::error, "nigiri.gtfs.resolve.alert.route_id",
+            "tag={}, route_id={} not found", tag, x.route_id());
+        continue;
+      }
+
+      alerts.route_id_[src][*route_id].push_back({direction, stop, alert_idx});
+    } else if (x.has_agency_id()) {  // 2) by agency_id -> route_type -> stop_id
+      auto const agency = x.has_agency_id()
+                              ? get_provider_idx(tt, x.agency_id())
+                              : provider_idx_t::invalid();
+      if (agency == provider_idx_t::invalid()) {
+        ++stats.alert_agency_id_not_found_;
+        log(log_lvl::error, "nigiri.gtfs.resolve.alert.agency_id",
+            "tag={}, agency_id={} not found", tag, x.agency_id());
+        continue;
+      }
+      alerts.agency_[agency].push_back({route_type, stop, alert_idx});
+    } else if (x.has_route_type()) {  // 3) by route_type -> stop_id
+      if (x.route_type() > 1702 || x.route_type() < 0) {
+        ++stats.alert_invalid_route_type_;
+        log(log_lvl::error, "nigiri.gtfs.resolve.alert.route_type",
+            "tag={}, route_type={} invalid", tag, x.route_type());
+        continue;
+      }
+      alerts.route_type_[src].resize(to_idx(route_type) + 1U);
+      alerts.route_type_[src][route_type].push_back({stop, alert_idx});
+    } else if (x.has_stop_id()) {  // 4) by stop_id
+      rtt.alerts_.location_.at(stop).push_back(alert_idx);
     } else {
-      ++stats.alert_informed_entity_resolve_error_;
+      ++stats.alert_empty_selector_;
+      log(log_lvl::error, "nigiri.gtfs.resolve.alert.route_type",
+          "tag={}, empty alert selector: {}", tag, x.DebugString());
+      continue;
     }
+    ++stats.alert_total_resolve_success_;
+    any_resolved = true;
   }
 
   if (!any_resolved) {
@@ -132,21 +198,21 @@ void handle_alert(date::sys_days const today,
   auto const to_translation =
       [&](transit_realtime::TranslatedString_Translation const& x) {
         utl::verify(x.has_text(), "GTFS RT Translation requires text");
-        return translation{.text_ = s.register_string(c, x.text()),
+        return translation{.text_ = s.store(x.text()),
                            .language_ = x.has_language()
-                                            ? s.register_string(c, x.language())
-                                            : string_idx_t::invalid()};
+                                            ? s.store(x.language())
+                                            : alert_str_idx_t::invalid()};
       };
 
   auto const to_localized_image =
       [&](transit_realtime::TranslatedImage_LocalizedImage const& x) {
         utl::verify(x.has_url() && x.has_media_type(),
                     "GTFS RT LocatizedImage requires URL and media_type");
-        return localized_image{
-            .url_ = s.register_string(c, x.url()),
-            .media_type_ = s.register_string(c, x.media_type()),
-            .language_ = x.has_language() ? s.register_string(c, x.language())
-                                          : string_idx_t::invalid()};
+        return localized_image{.url_ = s.store(x.url()),
+                               .media_type_ = s.store(x.media_type()),
+                               .language_ = x.has_language()
+                                                ? s.store(x.language())
+                                                : alert_str_idx_t::invalid()};
       };
 
   auto const translate = [&](auto&& x) {

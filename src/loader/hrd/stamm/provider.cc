@@ -30,18 +30,18 @@ std::string_view parse_name(utl::cstr s) {
   return {region.str, static_cast<unsigned>(region.len)};
 }
 
-provider read_provider_names(utl::cstr line) {
+provider read_provider_names(timetable& tt, utl::cstr line) {
   auto const long_name = line.substr_offset(" L ");
   utl::verify(long_name != std::numeric_limits<size_t>::max(),
               "no long name found: {}", line.view());
   auto const full_name = line.substr_offset(" V ");
   utl::verify(long_name != std::numeric_limits<size_t>::max(),
               "no full name found: {}", line.view());
-  return provider{
-      .short_name_ =
-          iso_8859_1_to_utf8(parse_name(line.substr(long_name + 3U))),
-      .long_name_ = iso_8859_1_to_utf8(parse_name(line.substr(full_name + 3U))),
-      .url_ = "" /* Currently not supported */};
+  return provider{.short_name_ = tt.strings_.store(iso_8859_1_to_utf8(
+                      parse_name(line.substr(long_name + 3U)))),
+                  .long_name_ = tt.strings_.store(iso_8859_1_to_utf8(
+                      parse_name(line.substr(full_name + 3U)))),
+                  .url_ = tt.strings_.store("")};
 }
 
 provider_map_t parse_providers(config const& c,
@@ -57,7 +57,7 @@ provider_map_t parse_providers(config const& c,
       file_content, [&](utl::cstr line, unsigned const line_number) {
         auto provider_number = utl::parse<int>(line.substr(c.track_.prov_nr_));
         if (line.length() > 6 && line[6] == 'K') {
-          current_info = read_provider_names(line);
+          current_info = read_provider_names(tt, line);
           previous_provider_number = provider_number;
         } else if (line.length() > 8) {
           utl::verify(previous_provider_number == provider_number,

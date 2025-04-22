@@ -34,9 +34,10 @@ struct footpath {
                     kDurationBits,
                 "station index overflow");
     if (duration > kMaxDuration) {
-      [[unlikely]] nigiri::log(log_lvl::error, "footpath",
-                               "footpath overflow: {} > {} adjusted to {}",
-                               duration, kMaxDuration, this->duration());
+      //      [[unlikely]] nigiri::log(log_lvl::error, "footpath",
+      //                               "footpath overflow: {} > {} adjusted to
+      //                               {}", duration, kMaxDuration,
+      //                               this->duration());
     }
   }
 

@@ -203,7 +203,7 @@ struct rt_timetable {
   vecvec<rt_transport_idx_t, bool> rt_bikes_allowed_per_section_;
 
   // Service alerts regarding RT transports
-  service_alerts service_alerts_;
+  alerts alerts_;
 
   change_callback_t change_callback_;
 };

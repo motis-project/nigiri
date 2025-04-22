@@ -114,15 +114,17 @@ trip::trip(route const* route,
            std::string id,
            trip_direction_idx_t const headsign,
            std::string short_name,
-           shape_idx_t shape_idx,
+           bool const direction_id,
+           shape_idx_t const shape_idx,
            bool const bikes_allowed)
-    : route_(route),
-      service_(service),
+    : route_{route},
+      service_{service},
       block_{blk},
       id_{std::move(id)},
-      headsign_(headsign),
-      short_name_(std::move(short_name)),
-      shape_idx_(shape_idx),
+      headsign_{headsign},
+      direction_id_{direction_id},
+      short_name_{std::move(short_name)},
+      shape_idx_{shape_idx},
       bikes_allowed_{bikes_allowed} {}
 
 void trip::interpolate() {
@@ -236,6 +238,7 @@ trip_data read_trips(
     utl::csv_col<cista::raw::generic_string, UTL_NAME("trip_headsign")>
         trip_headsign_;
     utl::csv_col<utl::cstr, UTL_NAME("trip_short_name")> trip_short_name_;
+    utl::csv_col<utl::cstr, UTL_NAME("direction_id")> direction_id_;
     utl::csv_col<utl::cstr, UTL_NAME("block_id")> block_id_;
     utl::csv_col<utl::cstr, UTL_NAME("shape_id")> shape_id_;
     utl::csv_col<std::uint8_t, UTL_NAME("bikes_allowed")> bikes_allowed_;
@@ -294,7 +297,8 @@ trip_data read_trips(
               route_it->second.get(), traffic_days_it->second.get(), blk,
               t.trip_id_->to_str(),
               ret.get_or_create_direction(tt, t.trip_headsign_->view()),
-              t.trip_short_name_->to_str(), shape_idx, bikes_allowed);
+              t.trip_short_name_->to_str(), t.direction_id_->view() == "1",
+              shape_idx, bikes_allowed);
           ret.trips_.emplace(t.trip_id_->to_str(), trp_idx);
           if (blk != nullptr) {
             blk->trips_.emplace_back(trp_idx);
@@ -329,7 +333,8 @@ void read_frequencies(trip_data& trips, std::string_view file_content) {
            auto const trip_it = trips.trips_.find(t);
            if (trip_it == end(trips.trips_)) {
              log(log_lvl::error, "loader.gtfs.frequencies",
-                 "frequencies.txt: skipping frequency (trip \"{}\" not found)",
+                 "frequencies.txt: skipping frequency (trip \"{}\" not "
+                 "found)",
                  t);
              return;
            }
@@ -353,8 +358,8 @@ void read_frequencies(trip_data& trips, std::string_view file_content) {
              frequencies = std::vector<frequency>{};
            }
 
-           // If the service operates multiple times per minute, make sure not
-           // to end up with zero.
+           // If the service operates multiple times per minute, make sure
+           // not to end up with zero.
            auto const headway_minutes = duration_t{std::max(
                static_cast<int>(
                    std::round(static_cast<float>(headway_secs) / 60.F)),

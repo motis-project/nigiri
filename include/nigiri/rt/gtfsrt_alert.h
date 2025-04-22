@@ -19,7 +19,6 @@ namespace nigiri::rt {
 void handle_alert(date::sys_days const today,
                   timetable const&,
                   rt_timetable&,
-                  string_cache_t&,
                   source_idx_t const,
                   std::string_view tag,
                   transit_realtime::Alert const&,

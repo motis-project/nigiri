@@ -12,7 +12,6 @@ rt_transport_idx_t rt_timetable::add_rt_transport(
 
   auto const rt_t_idx = rt_transport_src_.size();
   auto const rt_t = rt_transport_idx_t{rt_t_idx};
-  service_alerts_.rt_service_alerts_.emplace_back_empty();
   static_trip_lookup_.emplace(t, rt_t_idx);
   rt_transport_static_transport_.emplace_back(t);
 

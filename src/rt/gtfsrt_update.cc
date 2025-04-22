@@ -49,11 +49,26 @@ std::ostream& operator<<(std::ostream& out, statistics const& s) {
   print_if_no_empty("total_entities_fail", s.total_entities_fail_, true);
   print_if_no_empty("unsupported_deleted", s.unsupported_deleted_, true);
   print_if_no_empty("total_alerts", s.total_alerts_, true);
-  print_if_no_empty("alert_informed_entity_resolve_error",
-                    s.alert_informed_entity_resolve_error_,
-                    s.alert_total_informed_entities_);
   print_if_no_empty("alert_total_informed_entities",
                     s.alert_total_informed_entities_, false);
+  print_if_no_empty("alert_total_resolve_success",
+                    s.alert_total_resolve_success_,
+                    s.alert_total_informed_entities_);
+  print_if_no_empty("alert_trip_not_found", s.alert_trip_not_found_,
+                    s.alert_total_informed_entities_);
+  print_if_no_empty("alert_empty_selector", s.alert_empty_selector_,
+                    s.alert_total_informed_entities_);
+  print_if_no_empty("alert_stop_not_found", s.alert_stop_not_found_,
+                    s.alert_total_informed_entities_);
+  print_if_no_empty("alert_direction_without_route",
+                    s.alert_direction_without_route_,
+                    s.alert_total_informed_entities_);
+  print_if_no_empty("alert_route_id_not_found", s.alert_route_id_not_found_,
+                    s.alert_total_informed_entities_);
+  print_if_no_empty("alert_agency_id_not_found", s.alert_agency_id_not_found_,
+                    s.alert_total_informed_entities_);
+  print_if_no_empty("alert_invalid_route_type", s.alert_invalid_route_type_,
+                    s.alert_total_informed_entities_);
   print_if_no_empty("unsupported_vehicle", s.unsupported_vehicle_, true);
   print_if_no_empty("unsupported_no_trip_id", s.unsupported_no_trip_id_, true);
   print_if_no_empty("no_trip_update", s.no_trip_update_, true);
@@ -317,10 +332,6 @@ statistics gtfsrt_update_msg(timetable const& tt,
                      msg.header().timestamp());
   span->SetAttribute("nigiri.gtfsrt.total_entities", msg.entity_size());
 
-  auto str_cache = nigiri::string_cache_t{
-      std::size_t{0U},
-      nigiri::string_idx_hash{rtt.service_alerts_.strings_.strings_},
-      nigiri::string_idx_equals{rtt.service_alerts_.strings_.strings_}};
   for (auto const& entity : msg.entity()) {
     auto const unsupported = [&](bool const is_set, char const* field,
                                  int& stat) {
@@ -337,7 +348,7 @@ statistics gtfsrt_update_msg(timetable const& tt,
                 stats.unsupported_deleted_);
 
     if (entity.has_alert()) {
-      handle_alert(today, tt, rtt, str_cache, src, tag, entity.alert(), stats);
+      handle_alert(today, tt, rtt, src, tag, entity.alert(), stats);
       continue;
     }
 

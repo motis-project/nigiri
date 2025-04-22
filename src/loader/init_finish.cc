@@ -44,6 +44,18 @@ void finalize(timetable& tt, finalize_options const opt) {
                             tt.trip_id_strings_[b.first].view());
         });
   }
+  {
+    auto const timer = scoped_timer{"loader.sort_providers"};
+    std::sort(
+#if __cpp_lib_execution
+        std::execution::par_unseq,
+#endif
+        begin(tt.provider_id_to_idx_), end(tt.provider_id_to_idx_),
+        [&](provider_idx_t const a, provider_idx_t const b) {
+          return tt.strings_.get(tt.providers_[a].short_name_) <
+                 tt.strings_.get(tt.providers_[b].short_name_);
+        });
+  }
   build_footpaths(tt, opt);
   build_lb_graph<direction::kForward>(tt);
   build_lb_graph<direction::kBackward>(tt);

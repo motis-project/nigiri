@@ -66,6 +66,7 @@ struct trip {
        std::string id,
        trip_direction_idx_t headsign,
        std::string short_name,
+       bool direction_id,
        shape_idx_t,
        bool bikes_allowed);
 
@@ -92,6 +93,7 @@ struct trip {
   block* block_{nullptr};
   std::string id_;
   trip_direction_idx_t headsign_;
+  bool direction_id_;
   std::string short_name_;
   shape_idx_t shape_idx_;
 
