@@ -148,7 +148,11 @@ provider const& run_stop::get_provider(
 
 std::string_view run_stop::direction(event_type const ev_type) const noexcept {
   if (!fr_->is_scheduled()) {
-    return "";  // TODO
+    auto const last_stop = fr_->last_valid();
+    if (last_stop != fr_->stop_range_.to_) {
+      return fr_->operator[](last_stop).name();
+    }
+    return "";
   }
 
   auto const direction_sections =
@@ -314,13 +318,23 @@ frun::frun(timetable const& tt, rt_timetable const* rtt, run r)
 }
 
 std::string_view frun::name() const noexcept {
-  return (is_rt() && rtt_ != nullptr) ? rtt_->transport_name(*tt_, rt_)
-                                      : tt_->transport_name(t_.t_idx_);
+  if (is_rt() && rtt_ != nullptr) {
+    return rtt_->transport_name(*tt_, rt_);
+  }
+  if (is_scheduled()) {
+    return tt_->transport_name(t_.t_idx_);
+  }
+  return "";
 }
 
 debug frun::dbg() const noexcept {
-  return (is_rt() && rtt_ != nullptr) ? rtt_->dbg(*tt_, rt_)
-                                      : tt_->dbg(t_.t_idx_);
+  if (is_rt() && rtt_ != nullptr) {
+    return rtt_->dbg(*tt_, rt_);
+  }
+  if (is_scheduled()) {
+    return tt_->dbg(t_.t_idx_);
+  }
+  return debug{};
 }
 
 stop_idx_t frun::first_valid(stop_idx_t const from) const {
@@ -380,7 +394,9 @@ stop_idx_t frun::size() const noexcept {
   return static_cast<stop_idx_t>(
       (is_rt() && rtt_ != nullptr)
           ? rtt_->rt_transport_location_seq_[rt_].size()
-          : tt_->route_location_seq_[tt_->transport_route_[t_.t_idx_]].size());
+      : is_scheduled()
+          ? tt_->route_location_seq_[tt_->transport_route_[t_.t_idx_]].size()
+          : 0U);
 }
 
 run_stop frun::operator[](stop_idx_t const i) const noexcept {
@@ -390,9 +406,11 @@ run_stop frun::operator[](stop_idx_t const i) const noexcept {
 clasz frun::get_clasz() const noexcept {
   if (is_scheduled()) {
     return tt_->route_section_clasz_[tt_->transport_route_[t_.t_idx_]].at(0);
-  } else {
+  }
+  if (rtt_ != nullptr) {
     return rtt_->rt_transport_section_clasz_[rt_].at(0);
   }
+  return clasz::kOther;
 }
 
 void frun::for_each_trip(
@@ -481,11 +499,12 @@ trip_id frun::id() const noexcept {
     auto const trip_id_idx = tt_->trip_ids_[trip_idx].at(0);
     return {tt_->trip_id_strings_[trip_id_idx].view(),
             tt_->trip_id_src_[trip_id_idx]};
-  } else if (holds_alternative<rt_add_trip_id_idx_t>(
+  } else if (rtt_ != nullptr &&
+             holds_alternative<rt_add_trip_id_idx_t>(
                  rtt_->rt_transport_static_transport_[rt_])) {
     auto const add_idx =
         rtt_->rt_transport_static_transport_[rt_].as<rt_add_trip_id_idx_t>();
-    return {rtt_->rt_add_trip_ids_[add_idx]->first.view(),
+    return {rtt_->rt_add_trip_ids_[add_idx].view(),
             rtt_->rt_transport_src_[rt_]};
   } else {
     return {};

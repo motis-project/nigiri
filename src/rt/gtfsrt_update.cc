@@ -157,7 +157,7 @@ bool is_added_with_ref(gtfsrt::TripDescriptor_ScheduleRelationship const sr) {
          sr == gtfsrt::TripDescriptor_ScheduleRelationship_DUPLICATED;
 }
 
-void add_rt_trip(source_idx_t const src,
+bool add_rt_trip(source_idx_t const src,
                  timetable const& tt,
                  rt_timetable& rtt,
                  run& r,
@@ -179,9 +179,13 @@ void add_rt_trip(source_idx_t const src,
                   "stop_id is required for unscheduled trips");
       auto const it =
           tt.locations_.location_id_to_idx_.find({stu.stop_id(), src});
-      utl::verify(it != end(tt.locations_.location_id_to_idx_),
-                  "stop_id=\"{}\" must be contained in stops.txt",
-                  stu.stop_id());
+      if (it == end(tt.locations_.location_id_to_idx_)) {
+        log(log_lvl::error, "rt.gtfs.unsupported",
+            "NEW/ADDED stop_id must be contained in stops.txt (src={}, id={}, "
+            "stop_id={}), skipping",
+            src, tripUpdate.trip().trip_id(), stu.stop_id());
+        return false;
+      }
       auto in_allowed = true, out_allowed = true;
       if (stu.has_stop_time_properties()) {
         if (stu.stop_time_properties().has_pickup_type()) {
@@ -230,6 +234,7 @@ void add_rt_trip(source_idx_t const src,
   if (sr == transit_realtime::TripDescriptor_ScheduleRelationship_REPLACEMENT) {
     r.t_ = transport::invalid();
   }
+  return true;
 }
 
 void update_run(source_idx_t const src,
@@ -242,7 +247,9 @@ void update_run(source_idx_t const src,
   using std::end;
 
   if (!r.is_rt()) {
-    add_rt_trip(src, tt, rtt, r, tripUpdate);
+    if (!add_rt_trip(src, tt, rtt, r, tripUpdate)) {
+      return;
+    }
   } else {
     rtt.rt_transport_is_cancelled_.set(to_idx(r.rt_), false);
   }

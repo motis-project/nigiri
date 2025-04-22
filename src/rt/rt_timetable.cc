@@ -28,8 +28,8 @@ rt_transport_idx_t rt_timetable::add_rt_transport(
   } else {
     auto const rt_add_idx =
         rt_add_trip_id_idx_t{additional_trips_lookup_.size()};
-    rt_add_trip_ids_.emplace_back(
-        additional_trips_lookup_.emplace(new_trip_id, rt_t_idx).first);
+    additional_trips_lookup_.emplace(new_trip_id, rt_t_idx);
+    rt_add_trip_ids_.emplace_back(new_trip_id);
     rt_transport_static_transport_.emplace_back(rt_add_idx);
   }
 

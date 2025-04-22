@@ -180,10 +180,8 @@ struct rt_timetable {
   // Lookup: additional external trip ID -> realtime transport
   hash_map<string, rt_transport_idx_t> additional_trips_lookup_;
 
-  // RT trip ID index -> external trip ID + transport idx
-  vector_map<rt_add_trip_id_idx_t,
-             hash_map<string, rt_transport_idx_t>::iterator>
-      rt_add_trip_ids_;
+  // RT trip ID index -> external trip ID
+  vecvec<rt_add_trip_id_idx_t, char> rt_add_trip_ids_;
   vector_map<rt_transport_idx_t, source_idx_t> rt_transport_src_;
 
   // RT trip ID index -> train number, if available (otherwise 0)

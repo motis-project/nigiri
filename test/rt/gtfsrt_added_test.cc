@@ -739,54 +739,66 @@ TEST(rt, gtfs_rt_added) {
   auto const [r, t] = rt::gtfsrt_resolve_run(
       date::sys_days{2023_y / August / 10}, tt, &rtt, source_idx_t{0}, td);
   ASSERT_TRUE(r.valid());
+  {
+    auto const fr = rt::frun{tt, &rtt, r};
+    EXPECT_EQ(3, fr.size());
+    auto ss = std::stringstream{};
+    ss << "\n" << fr;
+    EXPECT_EQ(expectedAdded, ss.str());
+    // fr.trip_idx()
+    EXPECT_EQ("TRIP_ADDED", fr.id().id_);
+    EXPECT_EQ(source_idx_t{0}, fr.id().src_);
+    EXPECT_EQ("Route 1", fr.name());
+    EXPECT_EQ("RT", fr.dbg().path_);
+    // EXPECT_EQ(, fr.trip_idx());
+    EXPECT_EQ(nigiri::clasz::kBus, fr.get_clasz());
+    ASSERT_FALSE(fr.is_cancelled());
 
-  auto const fr = rt::frun{tt, &rtt, r};
-  EXPECT_EQ(3, fr.size());
-  auto ss = std::stringstream{};
-  ss << "\n" << fr;
-  EXPECT_EQ(expectedAdded, ss.str());
-  // fr.trip_idx()
-  EXPECT_EQ("TRIP_ADDED", fr.id().id_);
-  EXPECT_EQ(source_idx_t{0}, fr.id().src_);
-  EXPECT_EQ("Route 1", fr.name());
-  EXPECT_EQ("RT", fr.dbg().path_);
-  // EXPECT_EQ(, fr.trip_idx());
-  EXPECT_EQ(nigiri::clasz::kBus, fr.get_clasz());
-  ASSERT_FALSE(fr.is_cancelled());
-
-  EXPECT_EQ(location_idx_t{13}, fr[0].get_stop().location_idx());
-  EXPECT_EQ(true, fr[0].get_stop().in_allowed());
-  EXPECT_EQ(true, fr[0].get_stop().out_allowed());
-  EXPECT_EQ(location_idx_t{13}, fr[0].get_scheduled_stop().location_idx());
-  EXPECT_FLOAT_EQ(0.05, fr[0].pos().lat());
-  EXPECT_FLOAT_EQ(0.05, fr[0].pos().lng());
-  EXPECT_EQ("", fr[0].track());
-  EXPECT_EQ("E", fr[0].id());
-  EXPECT_EQ("AGENCY_1", fr[0].get_provider(event_type::kDep).short_name_);
-  // EXPECT_EQ("", fr[0].get_trip_idx());
-  EXPECT_EQ("Route 1", fr[0].trip_display_name(event_type::kDep));
-  EXPECT_EQ(
-      unixtime_t{date::sys_days{2023_y / August / 10} + 9_hours + 15_minutes},
-      fr[0].scheduled_time(event_type::kDep));
-  EXPECT_EQ(
-      unixtime_t{date::sys_days{2023_y / August / 10} + 9_hours + 15_minutes},
-      fr[0].time(event_type::kDep));
-  EXPECT_EQ(duration_t{0}, fr[0].delay(event_type::kDep));
-  EXPECT_EQ("", fr[0].line(event_type::kDep));
-  EXPECT_EQ("", fr[0].scheduled_line(event_type::kDep));
-  EXPECT_EQ("", fr[0].direction(event_type::kDep));
-  EXPECT_EQ(nigiri::clasz::kBus, fr[0].get_clasz(event_type::kDep));
-  EXPECT_EQ(nigiri::clasz::kOther, fr[0].get_scheduled_clasz(event_type::kDep));
-  EXPECT_EQ(false, fr[0].bikes_allowed(event_type::kDep));
-  EXPECT_EQ(std::nullopt,
-            to_str(fr[0].get_route_color(event_type::kDep).color_));
-  EXPECT_EQ(std::nullopt,
-            to_str(fr[0].get_route_color(event_type::kDep).text_color_));
-  EXPECT_EQ(false, fr[0].in_allowed_wheelchair());
-  EXPECT_EQ(false, fr[0].out_allowed_wheelchair());
-  EXPECT_EQ(false, fr[0].is_cancelled());
-  EXPECT_EQ(0, fr[0].section_idx(event_type::kDep));
-  // for_each_trip
+    EXPECT_EQ(location_idx_t{13}, fr[0].get_stop().location_idx());
+    EXPECT_EQ(true, fr[0].get_stop().in_allowed());
+    EXPECT_EQ(true, fr[0].get_stop().out_allowed());
+    EXPECT_EQ(location_idx_t{13}, fr[0].get_scheduled_stop().location_idx());
+    EXPECT_FLOAT_EQ(0.05, fr[0].pos().lat());
+    EXPECT_FLOAT_EQ(0.05, fr[0].pos().lng());
+    EXPECT_EQ("", fr[0].track());
+    EXPECT_EQ("E", fr[0].id());
+    EXPECT_EQ("AGENCY_1", fr[0].get_provider(event_type::kDep).short_name_);
+    // EXPECT_EQ("", fr[0].get_trip_idx());
+    EXPECT_EQ("Route 1", fr[0].trip_display_name(event_type::kDep));
+    EXPECT_EQ(
+        unixtime_t{date::sys_days{2023_y / August / 10} + 9_hours + 15_minutes},
+        fr[0].scheduled_time(event_type::kDep));
+    EXPECT_EQ(
+        unixtime_t{date::sys_days{2023_y / August / 10} + 9_hours + 15_minutes},
+        fr[0].time(event_type::kDep));
+    EXPECT_EQ(duration_t{0}, fr[0].delay(event_type::kDep));
+    EXPECT_EQ("", fr[0].line(event_type::kDep));
+    EXPECT_EQ("", fr[0].scheduled_line(event_type::kDep));
+    EXPECT_EQ("B", fr[0].direction(event_type::kDep));
+    EXPECT_EQ(nigiri::clasz::kBus, fr[0].get_clasz(event_type::kDep));
+    EXPECT_EQ(nigiri::clasz::kOther,
+              fr[0].get_scheduled_clasz(event_type::kDep));
+    EXPECT_EQ(false, fr[0].bikes_allowed(event_type::kDep));
+    EXPECT_EQ(std::nullopt,
+              to_str(fr[0].get_route_color(event_type::kDep).color_));
+    EXPECT_EQ(std::nullopt,
+              to_str(fr[0].get_route_color(event_type::kDep).text_color_));
+    EXPECT_EQ(false, fr[0].in_allowed_wheelchair());
+    EXPECT_EQ(false, fr[0].out_allowed_wheelchair());
+    EXPECT_EQ(false, fr[0].is_cancelled());
+    EXPECT_EQ(0, fr[0].section_idx(event_type::kDep));
+  }
+  {
+    auto const fr = rt::frun{tt, nullptr, r};
+    EXPECT_EQ(0, fr.size());
+    EXPECT_EQ("", fr.id().id_);
+    EXPECT_EQ(source_idx_t{0}, fr.id().src_);
+    EXPECT_EQ("", fr.name());
+    EXPECT_EQ("", fr.dbg().path_);
+    // EXPECT_EQ(, fr.trip_idx());
+    EXPECT_EQ(nigiri::clasz::kOther, fr.get_clasz());
+    ASSERT_FALSE(fr.is_cancelled());
+  }
 }
 
 TEST(rt, gtfs_rt_new) {

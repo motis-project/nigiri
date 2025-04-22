@@ -4,7 +4,6 @@
 #include "nigiri/loader/gtfs/files.h"
 #include "nigiri/loader/gtfs/route.h"
 #include "nigiri/timetable.h"
-#include "nigiri/types.h"
 
 #include "./test_data.h"
 

@@ -191,8 +191,8 @@ route_map_t read_routes(source_idx_t const src,
                      });
 
            auto const route_id_idx = tt.register_route_id(
-               r.route_id_->to_str(), src, r.route_short_name_->to_str(),
-               r.route_long_name_->to_str(), *r.route_type_);
+               r.route_id_->view(), src, r.route_short_name_->view(),
+               r.route_long_name_->view(), *r.route_type_);
 
            return std::pair{
                r.route_id_->to_str(),
