@@ -25,8 +25,8 @@ TEST(gtfs, quoted_interpolate) {
   auto trips = trip_data{};
   trips.trips_.emplace("101255-L001I01S1LAB", gtfs_trip_idx_t{0U});
   trips.data_.emplace_back(nullptr, nullptr, nullptr, "101255-L001I01S1FES",
-                           trip_direction_idx_t{}, "", shape_idx_t::invalid(),
-                           false);
+                           trip_direction_idx_t{}, "", false,
+                           shape_idx_t::invalid(), false);
   auto tt = timetable{};
   auto stops = locations_map{};
   stops.emplace("101255-6", location_idx_t{0});
@@ -57,8 +57,8 @@ L001I01S1FES,08:31:00,08:37:00,23,19,,0,0,7.473
   auto trips = trip_data{};
   trips.trips_.emplace("L001I01S1FES", gtfs_trip_idx_t{0U});
   trips.data_.emplace_back(nullptr, nullptr, nullptr, "L001I01S1FES",
-                           trip_direction_idx_t{}, "", shape_idx_t::invalid(),
-                           false);
+                           trip_direction_idx_t{}, "", false,
+                           shape_idx_t::invalid(), false);
   auto tt = timetable{};
   auto stops = locations_map{};
   stops.emplace("6", location_idx_t{0});
@@ -90,7 +90,7 @@ TEST(gtfs, read_stop_times_example_data) {
   auto const config = loader_config{};
   auto agencies =
       read_agencies(tt, timezones, files.get_file(kAgencyFile).data());
-  auto const routes = read_routes(tt, timezones, agencies,
+  auto const routes = read_routes({}, tt, timezones, agencies,
                                   files.get_file(kRoutesFile).data(), "CET");
   auto const dates =
       read_calendar_date(files.get_file(kCalendarDatesFile).data());

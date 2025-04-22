@@ -30,7 +30,7 @@ TEST(gtfs, read_trips_example_data) {
   auto const config = loader_config{};
   auto agencies =
       read_agencies(tt, timezones, files.get_file(kAgencyFile).data());
-  auto const routes = read_routes(tt, timezones, agencies,
+  auto const routes = read_routes(source_idx_t{}, tt, timezones, agencies,
                                   files.get_file(kRoutesFile).data(), "CET");
   auto const dates =
       read_calendar_date(files.get_file(kCalendarDatesFile).data());
@@ -64,7 +64,7 @@ TEST(gtfs, read_trips_berlin_data) {
   auto const config = loader_config{};
   auto agencies =
       read_agencies(tt, timezones, files.get_file(kAgencyFile).data());
-  auto const routes = read_routes(tt, timezones, agencies,
+  auto const routes = read_routes({}, tt, timezones, agencies,
                                   files.get_file(kRoutesFile).data(), "CET");
   auto const dates =
       read_calendar_date(files.get_file(kCalendarDatesFile).data());

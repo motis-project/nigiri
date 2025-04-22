@@ -143,7 +143,9 @@ struct timetable {
 
     auto const trip_id_idx = trip_id_idx_t{trip_id_strings_.size()};
 
-    route_ids_[src].route_id_trips_[route_id_idx].push_back(trip_idx);
+    if (route_id_idx != route_id_idx_t::invalid()) {  // HRD
+      route_ids_[src].route_id_trips_[route_id_idx].push_back(trip_idx);
+    }
     trip_route_id_.emplace_back(route_id_idx);
 
     trip_id_strings_.emplace_back(trip_id_str);
