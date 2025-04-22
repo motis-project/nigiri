@@ -581,22 +581,24 @@ void print_all_results(
     std::ostream& out,
     std::vector<benchmark_result<mcsa::meat_csa_stats>>& results) {
   using double_seconds_t = std::chrono::duration<double, std::ratio<1>>;
-  out << "t_total, t_exec, t_esa, t_ea, t_meat, t_ext_g, esa_num_con, ea_num_con, "
-         "meat_num_con, num_fp_to_que, num_fp_to_prof, num_con_to_prof, num_e_in_prof, "
+  out << "t_total,t_exec,t_esa,t_ea,t_meat,t_ext_g,esa_num_con,"
+         "ea_num_con,"
+         "meat_num_con,num_fp_to_que,num_fp_to_prof,num_con_to_prof,"
+         "num_e_in_prof,"
          "q_idx\n";
   for (auto const& br : results) {
     out << std::fixed << std::setprecision(3)
         << std::chrono::duration_cast<double_seconds_t>(br.total_time_).count()
-        << ", " << br.stats_.total_duration_ << ", " << br.stats_.esa_duration_
-        << ", " << br.stats_.ea_duration_ << ", " << br.stats_.meat_duration_
-        << ", " << br.stats_.extract_graph_duration_ << ", "
-        << br.stats_.esa_n_connections_scanned_ << ", "
-        << br.stats_.ea_n_connections_scanned_ << ", "
-        << br.stats_.meat_n_connections_scanned_ << ", "
-        << br.stats_.meat_n_fp_added_to_que_ << ", "
-        << br.stats_.meat_n_fp_added_to_profile_ << ", "
-        << br.stats_.meat_n_e_added_or_replaced_to_profile_ << ", "
-        << br.stats_.meat_n_e_in_profile_ << ", " << br.q_idx_ << "\n";
+        << "," << br.stats_.total_duration_ << "," << br.stats_.esa_duration_
+        << "," << br.stats_.ea_duration_ << "," << br.stats_.meat_duration_
+        << "," << br.stats_.extract_graph_duration_ << ","
+        << br.stats_.esa_n_connections_scanned_ << ","
+        << br.stats_.ea_n_connections_scanned_ << ","
+        << br.stats_.meat_n_connections_scanned_ << ","
+        << br.stats_.meat_n_fp_added_to_que_ << ","
+        << br.stats_.meat_n_fp_added_to_profile_ << ","
+        << br.stats_.meat_n_e_added_or_replaced_to_profile_ << ","
+        << br.stats_.meat_n_e_in_profile_ << "," << br.q_idx_ << "\n";
   }
 }
 
@@ -604,19 +606,20 @@ void print_all_results(
     std::ostream& out,
     std::vector<benchmark_result<mraptor::meat_raptor_stats>>& results) {
   using double_seconds_t = std::chrono::duration<double, std::ratio<1>>;
-  out << "t_total, t_exec, t_esa, t_ea, t_meat, t_ext_g, meat_num_tran_it, "
-         "meat_num_stops_it, num_fp_to_prof, num_con_to_prof, num_e_in_prof, q_idx\n";
+  out << "t_total,t_exec,t_esa,t_ea,t_meat,t_ext_g,meat_num_tran_it,"
+         "meat_num_stops_it,num_fp_to_prof,num_con_to_prof,num_e_in_prof,"
+         "q_idx\n";
   for (auto const& br : results) {
     out << std::fixed << std::setprecision(3)
         << std::chrono::duration_cast<double_seconds_t>(br.total_time_).count()
-        << ", " << br.stats_.total_duration_ << ", " << br.stats_.esa_duration_
-        << ", " << br.stats_.ea_duration_ << ", " << br.stats_.meat_duration_
-        << ", " << br.stats_.extract_graph_duration_ << ", "
-        << br.stats_.meat_n_active_transports_iterated_ << ", "
-        << br.stats_.meat_n_stops_iterated_ << ", "
-        << br.stats_.meat_n_fp_added_to_profile_ << ", "
-        << br.stats_.meat_n_e_added_to_profile_ << ", "
-        << br.stats_.meat_n_e_in_profile_ << ", " << br.q_idx_ << "\n";
+        << "," << br.stats_.total_duration_ << "," << br.stats_.esa_duration_
+        << "," << br.stats_.ea_duration_ << "," << br.stats_.meat_duration_
+        << "," << br.stats_.extract_graph_duration_ << ","
+        << br.stats_.meat_n_active_transports_iterated_ << ","
+        << br.stats_.meat_n_stops_iterated_ << ","
+        << br.stats_.meat_n_fp_added_to_profile_ << ","
+        << br.stats_.meat_n_e_added_to_profile_ << ","
+        << br.stats_.meat_n_e_in_profile_ << "," << br.q_idx_ << "\n";
   }
 }
 
@@ -651,7 +654,7 @@ int main(int argc, char* argv[]) {
   auto min_transfer_time = duration_t::rep{};
   auto max_delay = delta_t{30};
   auto bound_parameter = 1.0;
-  auto out_file_path = std::filesystem::path{"results.txt"};
+  auto out_file_path_prefix = std::filesystem::path{"results"};
 
   bpo::options_description desc("Allowed options");
   desc.add_options()("help,h", "produce this help message")  //
@@ -731,9 +734,9 @@ int main(int argc, char* argv[]) {
        bpo::value<double>(&bound_parameter)->default_value(bound_parameter),
        "aka Alpha value (for meat-csa and meat-raptor)")  //
       ("out_file",
-       bpo::value<std::filesystem::path>(&out_file_path)
-           ->default_value(out_file_path),
-       "path to the output file to write the results to");
+       bpo::value<std::filesystem::path>(&out_file_path_prefix)
+           ->default_value(out_file_path_prefix),
+       "path to the output files prefix to write the results to");
   bpo::variables_map vm;
   bpo::store(bpo::command_line_parser(argc, argv).options(desc).run(), vm);
 
@@ -871,18 +874,32 @@ int main(int argc, char* argv[]) {
 
   print_memory_usage();
 
-  std::ofstream out_file;
-  out_file.open(out_file_path);
-  if (out_file.is_open()) {
-    out_file << "Results for the MEAT CSA:\n";
-    print_all_results(out_file, results_csa);
-    out_file << "\nResults for the MEAT RAPTOR:\n";
-    print_all_results(out_file, results_raptor);
-    std::cout << "Result file: " << out_file_path << "\n";
-  } else {
-    std::cout << "Unable to open file " << out_file_path << "\n";
+  {
+    auto file_path_csa = out_file_path_prefix;
+    file_path_csa += "csa.csv";
+    std::ofstream out_file_csa;
+    out_file_csa.open(file_path_csa);
+    if (out_file_csa.is_open()) {
+      print_all_results(out_file_csa, results_csa);
+      std::cout << "Result file meat_csa: " << file_path_csa << "\n";
+    } else {
+      std::cout << "Unable to open file " << file_path_csa << "\n";
+    }
+    out_file_csa.close();
   }
-  out_file.close();
+  {
+    auto file_path_raptor = out_file_path_prefix;
+    file_path_raptor += "raptor.csv";
+    std::ofstream out_file_raptor;
+    out_file_raptor.open(file_path_raptor);
+    if (out_file_raptor.is_open()) {
+      print_all_results(out_file_raptor, results_raptor);
+      std::cout << "Result file meat_raptor: " << file_path_raptor << "\n";
+    } else {
+      std::cout << "Unable to open file " << file_path_raptor << "\n";
+    }
+    out_file_raptor.close();
+  }
 
   return 0;
 }
