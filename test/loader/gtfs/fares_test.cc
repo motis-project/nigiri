@@ -232,9 +232,62 @@ T3,01:05:00,25:05:00,3600
 T4,02:05:00,26:05:00,3600
 )";
 
+constexpr auto const kTimetableWithoutFares = R"(
+# calendar.txt
+service_id,monday,tuesday,wednesday,thursday,friday,saturday,sunday,start_date,end_date
+weekday,1,1,1,1,1,0,0,20220101,20221231
+weekend,0,0,0,0,0,1,1,20220101,20221231
+everyday,1,1,1,1,1,1,1,20220101,20221231
+
+# agency.txt
+agency_id,agency_name,agency_url,agency_timezone
+DB,Deutsche Bahn,https://deutschebahn.com,Europe/Berlin
+
+# stops.txt
+stop_id,stop_name,stop_desc,stop_lat,stop_lon,stop_url,location_type,parent_station
+A,A,,0.0,1.0,,
+B,B,,2.0,3.0,,
+C,C,,4.0,5.0,,
+D,D,,6.0,7.0,,
+E,E,,8.0,9.0,,
+
+# routes.txt
+route_id,agency_id,route_short_name,route_long_name,route_desc,route_type
+line1,DB,Line 1,,,3
+line2,DB,Line 2,,,3
+line3,DB,Line 3,,,3
+air,DB,Line 4,,,3
+
+# trips.txt
+route_id,service_id,trip_id,trip_headsign,block_id
+line1,everyday,T1,T1,
+line2,everyday,T2,T2,
+line3,everyday,T3,T3,
+air,everyday,T4,T4,
+
+# stop_times.txt
+trip_id,arrival_time,departure_time,stop_id,stop_sequence,pickup_type,drop_off_type
+T1,00:00:00,00:00:00,A,1,0,0
+T1,00:30:00,00:30:00,B,2,0,0
+T2,00:35:00,00:35:00,B,1,0,0
+T2,01:00:00,01:00:00,C,2,0,0
+T3,01:05:00,01:05:00,C,1,0,0
+T3,02:00:00,02:00:00,D,2,0,0
+T4,02:05:00,02:05:00,D,1,0,0
+T4,02:30:00,02:30:00,E,2,0,0
+
+# frequencies.txt
+trip_id,start_time,end_time,headway_secs
+T1,00:00:00,24:00:00,3600
+T2,00:35:00,24:35:00,3600
+T3,01:05:00,25:05:00,3600
+T4,02:05:00,26:05:00,3600
+)";
+
 }  // namespace
 
 std::string to_string(timetable const& tt,
+                      rt_timetable const* rtt,
                       std::vector<fare_transfer> const& fare_transfers) {
   auto ss = std::stringstream{};
 
@@ -259,7 +312,7 @@ std::string to_string(timetable const& tt,
         } else {
           ss << "** JOINED WITH\n";
         }
-        jl->print(ss, tt);
+        jl->print(ss, tt, rtt);
       }
       ss << "PRODUCTS\n";
       for (auto const& r : l.rule_) {
@@ -293,7 +346,7 @@ TEST(fares, simple_fares) {
     auto const results = raptor_search(
         tt, nullptr, "A", "E", unixtime_t{sys_days{2022_y / March / 30}});
     ASSERT_EQ(1U, results.size());
-    auto const fare_legs = get_fares(tt, *results.begin());
+    auto const fare_legs = get_fares(tt, nullptr, *results.begin());
     constexpr auto const kExpected = R"(FARE TRANSFER START
 TRANSFER PRODUCT: Full Airport Extension Card
 RULE: A+AB
@@ -326,14 +379,14 @@ Airport Card [priority=0]: 10 EUR, fare_media_name=Paper Card, fare_type=PAPER, 
 
 FARE TRANSFER END
 )";
-    EXPECT_EQ(kExpected, to_string(tt, fare_legs));
+    EXPECT_EQ(kExpected, to_string(tt, nullptr, fare_legs));
   }
 
   {  // PEAK TEST
     auto const results = raptor_search(
         tt, nullptr, "A", "E", unixtime_t{sys_days{2022_y / March / 30} + 6h});
     ASSERT_EQ(1U, results.size());
-    auto const fare_legs = get_fares(tt, *results.begin());
+    auto const fare_legs = get_fares(tt, nullptr, *results.begin());
     constexpr auto const kExpected = R"(FARE TRANSFER START
 TRANSFER PRODUCT: Full Airport Extension Card
 RULE: A+AB
@@ -366,14 +419,14 @@ Airport Card [priority=0]: 10 EUR, fare_media_name=Paper Card, fare_type=PAPER, 
 
 FARE TRANSFER END
 )";
-    EXPECT_EQ(kExpected, to_string(tt, fare_legs));
+    EXPECT_EQ(kExpected, to_string(tt, nullptr, fare_legs));
   }
 
   {  // OFFPEAK TEST
     auto const results = raptor_search(
         tt, nullptr, "C", "E", unixtime_t{sys_days{2022_y / March / 30}});
     ASSERT_EQ(1U, results.size());
-    auto const fare_legs = get_fares(tt, *results.begin());
+    auto const fare_legs = get_fares(tt, nullptr, *results.begin());
     constexpr auto const kExpected = R"(FARE TRANSFER START
 TRANSFER PRODUCT: Full Airport Extension Card
 RULE: A+AB
@@ -400,6 +453,132 @@ Airport Card [priority=0]: 10 EUR, fare_media_name=Paper Card, fare_type=PAPER, 
 
 FARE TRANSFER END
 )";
-    EXPECT_EQ(kExpected, to_string(tt, fare_legs));
+    EXPECT_EQ(kExpected, to_string(tt, nullptr, fare_legs));
+  }
+}
+
+TEST(fares, rt_added_fares) {
+  auto const to_unix = [](auto&& x) {
+    return std::chrono::time_point_cast<std::chrono::seconds>(x)
+        .time_since_epoch()
+        .count();
+  };
+
+  auto tt = timetable{};
+  tt.date_range_ = {date::sys_days{2022_y / January / 1},
+                    date::sys_days{2022_y / December / 1}};
+  load_timetable({}, source_idx_t{0}, mem_dir::read(kTimetable), tt);
+  finalize(tt);
+
+  // Create empty RT timetable.
+  auto rtt = rt::create_rt_timetable(tt, date::sys_days{2022_y / March / 30});
+
+  transit_realtime::FeedMessage msg;
+
+  auto const hdr = msg.mutable_header();
+  hdr->set_gtfs_realtime_version("2.0");
+  hdr->set_incrementality(
+      transit_realtime::FeedHeader_Incrementality_FULL_DATASET);
+  hdr->set_timestamp(to_unix(date::sys_days{2022_y / March / 30} + 9h));
+
+  auto const e = msg.add_entity();
+  e->set_id("1");
+  e->set_is_deleted(false);
+
+  auto const tu = e->mutable_trip_update();
+  auto const td = tu->mutable_trip();
+  td->set_start_time("02:35:00");
+  td->set_start_date("20220330");
+  td->set_trip_id("NEW");
+  td->set_schedule_relationship(
+      transit_realtime::TripDescriptor_ScheduleRelationship_NEW);
+  tu->mutable_trip_properties()->set_trip_short_name("Additional");
+
+  {
+    auto const stop_update = tu->add_stop_time_update();
+    stop_update->set_stop_sequence(1U);
+    stop_update->set_stop_id("B");
+    stop_update->mutable_departure()->set_time(1648600500);
+  }
+  {
+    auto const stop_update = tu->add_stop_time_update();
+    stop_update->set_stop_sequence(2U);
+    stop_update->set_stop_id("E");
+    stop_update->mutable_arrival()->set_time(1648600800);
+  }
+
+  auto const stats =
+      rt::gtfsrt_update_msg(tt, rtt, source_idx_t{0}, "tag", msg);
+  EXPECT_EQ(stats.total_entities_success_, 1U);
+
+  {
+    auto const results = raptor_search(
+        tt, &rtt, "A", "E", unixtime_t{sys_days{2022_y / March / 30}});
+    ASSERT_EQ(1U, results.size());
+    auto const fare_legs = get_fares(tt, &rtt, *results.begin());
+    constexpr auto const kExpected = R"(FARE LEG:
+   0: A       A...............................................                               d: 30.03 00:00 [30.03 02:00]  [{name=Line 1, day=2022-03-30, id=T1, src=0}]
+   1: B       B............................................... a: 30.03 00:30 [30.03 02:30]
+PRODUCTS
+Pink App [priority=1]: 2.5 EUR, fare_media_name=App, fare_type=APP, ride_category=Adult
+Pink Paper Card [priority=1]: 3 EUR, fare_media_name=Paper Card, fare_type=PAPER, ride_category=Adult
+Pink Daypass [priority=1]: 4 EUR, fare_media_name=App, fare_type=APP, ride_category=Adult
+Pink Weekpass [priority=1]: 10 EUR, fare_media_name=App, fare_type=APP, ride_category=Adult
+Pink App [priority=1]: 1.5 EUR, fare_media_name=App, fare_type=APP, ride_category=Students and seniors
+Pink Paper Card [priority=1]: 2 EUR, fare_media_name=Paper Card, fare_type=PAPER, ride_category=Students and seniors
+Pink Daypass [priority=1]: 2.5 EUR, fare_media_name=App, fare_type=APP, ride_category=Students and seniors
+Pink Weekpass [priority=1]: 6 EUR, fare_media_name=App, fare_type=APP, ride_category=Students and seniors
+
+
+FARE LEG:
+   0: B       B...............................................                                                             d: 30.03 00:35 [30.03 02:35]  RT 30.03 00:35 [30.03 02:35]
+   1: E       E............................................... a: 30.03 00:40 [30.03 02:40]  RT 30.03 00:40 [30.03 02:40]
+PRODUCTS
+
+
+)";
+    EXPECT_EQ(kExpected, to_string(tt, &rtt, fare_legs));
+  }
+}
+
+TEST(fares, fares_without_fares) {
+  auto tt = timetable{};
+  tt.date_range_ = {date::sys_days{2022_y / January / 1},
+                    date::sys_days{2022_y / December / 1}};
+  load_timetable({}, source_idx_t{0}, mem_dir::read(kTimetableWithoutFares),
+                 tt);
+  finalize(tt);
+
+  {
+    auto const results = raptor_search(
+        tt, nullptr, "A", "E", unixtime_t{sys_days{2022_y / March / 30}});
+    ASSERT_EQ(1U, results.size());
+    auto const fare_legs = get_fares(tt, nullptr, *results.begin());
+    constexpr auto const kExpected = R"(FARE LEG:
+   0: A       A...............................................                               d: 30.03 00:00 [30.03 02:00]  [{name=Line 1, day=2022-03-30, id=T1, src=0}]
+   1: B       B............................................... a: 30.03 00:30 [30.03 02:30]
+PRODUCTS
+
+
+FARE LEG:
+   0: B       B...............................................                               d: 30.03 00:35 [30.03 02:35]  [{name=Line 2, day=2022-03-30, id=T2, src=0}]
+   1: C       C............................................... a: 30.03 01:00 [30.03 03:00]
+PRODUCTS
+
+
+FARE LEG:
+   0: C       C...............................................                               d: 30.03 01:05 [30.03 03:05]  [{name=Line 3, day=2022-03-30, id=T3, src=0}]
+   1: D       D............................................... a: 30.03 02:00 [30.03 04:00]
+PRODUCTS
+
+
+FARE LEG:
+   0: D       D...............................................                               d: 30.03 02:05 [30.03 04:05]  [{name=Line 4, day=2022-03-30, id=T4, src=0}]
+   1: E       E............................................... a: 30.03 02:30 [30.03 04:30]
+PRODUCTS
+
+
+)";
+    EXPECT_EQ(kExpected, to_string(tt, nullptr, fare_legs));
   }
 }
