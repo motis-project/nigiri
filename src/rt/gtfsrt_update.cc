@@ -14,7 +14,6 @@
 #include "nigiri/rt/frun.h"
 #include "nigiri/rt/gtfsrt_resolve_run.h"
 #include "nigiri/rt/run.h"
-#include "nigiri/types.h"
 
 namespace gtfsrt = transit_realtime;
 namespace protob = google::protobuf;
@@ -169,7 +168,6 @@ bool add_rt_trip(source_idx_t const src,
       sr == transit_realtime::TripDescriptor_ScheduleRelationship_REPLACEMENT;
 
   auto stops = std::vector<stop::value_type>{};
-  stops.reserve(static_cast<std::size_t>(stus.size()));
   if (added_or_replaced) {
     for (auto& stu : stus) {
       utl::verify((!stu.has_departure() || stu.departure().has_time()) &&
@@ -181,7 +179,8 @@ bool add_rt_trip(source_idx_t const src,
           tt.locations_.location_id_to_idx_.find({stu.stop_id(), src});
       if (it == end(tt.locations_.location_id_to_idx_)) {
         log(log_lvl::error, "rt.gtfs.unsupported",
-            "NEW/ADDED stop_id must be contained in stops.txt (src={}, id={}, "
+            "NEW/ADDED stop_id must be contained in stops.txt (src={}, "
+            "trip_id={}, "
             "stop_id={}), skipping",
             src, tripUpdate.trip().trip_id(), stu.stop_id());
         return false;
@@ -189,10 +188,16 @@ bool add_rt_trip(source_idx_t const src,
       auto in_allowed = true, out_allowed = true;
       if (stu.has_stop_time_properties()) {
         if (stu.stop_time_properties().has_pickup_type()) {
-          in_allowed = stu.stop_time_properties().pickup_type();
+          in_allowed =
+              stu.stop_time_properties().pickup_type() !=
+              transit_realtime::
+                  TripUpdate_StopTimeUpdate_StopTimeProperties_DropOffPickupType_NONE;
         }
         if (stu.stop_time_properties().has_drop_off_type()) {
-          out_allowed = stu.stop_time_properties().has_drop_off_type();
+          out_allowed =
+              stu.stop_time_properties().drop_off_type() !=
+              transit_realtime::
+                  TripUpdate_StopTimeUpdate_StopTimeProperties_DropOffPickupType_NONE;
         }
       }
       stops.emplace_back(stop{it->second, in_allowed, out_allowed, false, false}
@@ -201,6 +206,7 @@ bool add_rt_trip(source_idx_t const src,
     utl::verify(stops.size() > 1,
                 "added trip must contain more than 1 valid stop");
   }
+
   auto times = added_or_replaced
                    ? std::vector<delta_t>(stops.size() * 2U - 2U, 0)
                    : std::vector<delta_t>{};
@@ -229,6 +235,8 @@ bool add_rt_trip(source_idx_t const src,
               tripUpdate.trip_properties().has_trip_short_name()
           ? std::string_view{tripUpdate.trip_properties().trip_short_name()}
           : std::string_view{};
+  // ADDED/NEW stops+times+new_trip_id, REPLACEMENT stops+times, DUPL
+  // new_trip_id
   r.rt_ = rtt.add_rt_transport(src, tt, r.t_, stops, times, new_trip_id(),
                                route_id(), display_name);
   if (sr == transit_realtime::TripDescriptor_ScheduleRelationship_REPLACEMENT) {
@@ -462,7 +470,7 @@ statistics gtfsrt_update_msg(timetable const& tt,
         (!entity.trip_update().has_trip_properties() ||
          !entity.trip_update().trip_properties().has_trip_id())) {
       log(log_lvl::error, "rt.gtfs.unsupported",
-          R"(unsupported: no "trip_proprties.trip_id" field in "trip_update.trip" for DUPLICATED (tag={}, id={}), skipping message)",
+          R"(unsupported: no "trip_properties.trip_id" field in "trip_update.trip" for DUPLICATED (tag={}, id={}), skipping message)",
           tag, entity.id());
       ++stats.unsupported_no_trip_id_;
       continue;

@@ -18,6 +18,6 @@ std::pair<run, trip_idx_t> gtfsrt_resolve_run(
     rt_timetable const*,
     source_idx_t,
     transit_realtime::TripDescriptor const&,
-    std::string_view trip_id = {});
+    std::string_view rt_trip_id = {});
 
 }  // namespace nigiri::rt

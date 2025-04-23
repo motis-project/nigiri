@@ -117,7 +117,7 @@ std::string_view run_stop::trip_display_name(
   if (rtt() != nullptr) {
     return rtt()->transport_name(tt(), fr_->rt_);
   }
-  return std::string_view{"?"};
+  return "?";
 }
 
 stop_idx_t run_stop::section_idx(event_type const ev_type) const noexcept {

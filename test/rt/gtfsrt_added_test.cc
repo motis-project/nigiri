@@ -81,8 +81,6 @@ auto const kTripAdded =
     "tripUpdate": {
      "trip": {
       "tripId": "TRIP_ADDED",
-      "startTime": "10:00:00",
-      "startDate": "20230810",
       "scheduleRelationship": "ADDED",
       "routeId": "ROUTE_1"
      },
@@ -151,7 +149,11 @@ auto const kTripNew =
         "time": "1691658900"
        },
        "stopId": "E",
-       "scheduleRelationship": "SCHEDULED"
+       "scheduleRelationship": "SCHEDULED",
+       "stopTimeProperties": {
+          "dropOffType": "NONE",
+          "pickupType": "REGULAR",
+       }
       },
       {
        "stopSequence": 2,
@@ -173,7 +175,11 @@ auto const kTripNew =
         "time": "1691659080"
        },
        "stopId": "B",
-       "scheduleRelationship": "SCHEDULED"
+       "scheduleRelationship": "SCHEDULED",
+       "stopTimeProperties": {
+          "dropOffType": "REGULAR",
+          "pickupType": "NONE",
+       }
       }
      ]
     }
@@ -195,8 +201,6 @@ auto const kTripNewLonger =
     "tripUpdate": {
      "trip": {
       "tripId": "TRIP_NEW",
-      "startTime": "10:00:00",
-      "startDate": "20230810",
       "scheduleRelationship": "NEW"
      },
      "tripProperties": {
@@ -852,6 +856,12 @@ TEST(rt, gtfs_rt_new) {
     EXPECT_EQ(expectedNew, ss.str());
     EXPECT_EQ(nigiri::clasz::kBus, fr.get_clasz());
     ASSERT_FALSE(fr.is_cancelled());
+    EXPECT_EQ(true, fr[0].in_allowed());
+    EXPECT_EQ(false, fr[0].out_allowed());
+    EXPECT_EQ(false, fr[1].in_allowed());
+    EXPECT_EQ(false, fr[1].out_allowed());
+    EXPECT_EQ(false, fr[2].in_allowed());
+    EXPECT_EQ(true, fr[2].out_allowed());
 
     for (auto const [from, to] : utl::pairwise(fr)) {
       EXPECT_EQ(from.id(), "E");

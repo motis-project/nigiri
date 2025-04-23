@@ -110,9 +110,9 @@ void resolve_rt(rt_timetable const& rtt,
     output.rt_ = rtt_it->second;
     if (output.stop_range_.size() == 0) {
       output.stop_range_ = {
-          0U,
+          static_cast<stop_idx_t>(0U),
           static_cast<stop_idx_t>(
-              rtt.rt_transport_location_seq_.at(output.rt_).size())};  // TODO
+              rtt.rt_transport_location_seq_.at(output.rt_).size())};
     }
   }
 }
@@ -123,12 +123,12 @@ std::pair<run, trip_idx_t> gtfsrt_resolve_run(
     rt_timetable const* rtt,
     source_idx_t const src,
     transit_realtime::TripDescriptor const& td,
-    std::string_view trip_id) {
+    std::string_view rt_trip_id) {
   auto r = run{};
   trip_idx_t trip;
   resolve_static(today, tt, src, td, r, trip);
   if (rtt != nullptr) {
-    resolve_rt(*rtt, r, trip_id.empty() ? td.trip_id() : trip_id);
+    resolve_rt(*rtt, r, rt_trip_id.empty() ? td.trip_id() : rt_trip_id);
   }
   return {r, trip};
 }

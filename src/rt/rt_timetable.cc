@@ -17,8 +17,7 @@ rt_transport_idx_t rt_timetable::add_rt_transport(
 
   auto const rt_t_idx = rt_transport_src_.size();
   auto const rt_t = rt_transport_idx_t{rt_t_idx};
-  // ADDED/NEW stop+time+new_trip_id, REPLACEMENT stop+time, DUPL new_trip_id
-  if (new_trip_id.empty() && t.is_valid()) {  // REPL
+  if (new_trip_id.empty() && t.is_valid()) {
     static_trip_lookup_.emplace(t, rt_t_idx);
     rt_transport_static_transport_.emplace_back(t);
 
@@ -84,7 +83,7 @@ rt_transport_idx_t rt_timetable::add_rt_transport(
       times[i++] =
           unix_to_delta(tt.event_time(t, ++stop_idx, event_type::kArr)) +
           offset;
-      if (stop_idx + 1U >= static_location_seq_len) {  // TODO assert?
+      if (stop_idx + 1U >= static_location_seq_len) {
         break;
       }
     }
