@@ -245,7 +245,7 @@ bool add_rt_trip(source_idx_t const src,
   return true;
 }
 
-void update_run(source_idx_t const src,
+bool update_run(source_idx_t const src,
                 timetable const& tt,
                 rt_timetable& rtt,
                 trip_idx_t const trip,
@@ -256,7 +256,7 @@ void update_run(source_idx_t const src,
 
   if (!r.is_rt()) {
     if (!add_rt_trip(src, tt, rtt, r, tripUpdate)) {
-      return;
+      return false;
     }
   } else {
     rtt.rt_transport_is_cancelled_.set(to_idx(r.rt_), false);
@@ -398,6 +398,7 @@ void update_run(source_idx_t const src,
   if (n_not_cancelled_stops <= 1U) {
     cancel_run(tt, rtt, r);
   }
+  return true;
 }
 
 statistics gtfsrt_update_msg(timetable const& tt,
@@ -533,10 +534,12 @@ statistics gtfsrt_update_msg(timetable const& tt,
       if (entity.trip_update().trip().schedule_relationship() ==
           gtfsrt::TripDescriptor_ScheduleRelationship_CANCELED) {
         cancel_run(tt, rtt, r);
+        ++stats.total_entities_success_;
       } else {
-        update_run(src, tt, rtt, trip, r, entity.trip_update());
+        if (update_run(src, tt, rtt, trip, r, entity.trip_update())) {
+          ++stats.total_entities_success_;
+        }
       }
-      ++stats.total_entities_success_;
     } catch (const std::exception& e) {
       ++stats.total_entities_fail_;
       log(log_lvl::error, "rt.gtfs",

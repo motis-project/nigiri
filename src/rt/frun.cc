@@ -148,11 +148,7 @@ provider const& run_stop::get_provider(
 
 std::string_view run_stop::direction(event_type const ev_type) const noexcept {
   if (!fr_->is_scheduled()) {
-    auto const last_stop = fr_->last_valid();
-    if (last_stop != fr_->stop_range_.to_) {
-      return fr_->operator[](last_stop).name();
-    }
-    return "";
+    return fr_->operator[](fr_->size() - 1).name();
   }
 
   auto const direction_sections =
