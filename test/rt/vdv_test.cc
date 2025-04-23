@@ -1149,12 +1149,20 @@ TEST(vdv_update, cancel_run) {
   doc.load_string(cancel_rbo707);
   u.update(rtt, doc);
 
-  auto const fr = rt::frun{tt,
-                           &rtt,
-                           {{transport_idx_t{0U}, day_idx_t{27U}},
-                            {stop_idx_t{0U}, stop_idx_t{24U}}}};
-  
-  EXPECT_TRUE(fr.is_cancelled());
+  EXPECT_TRUE((rt::frun{tt,
+                        &rtt,
+                        {{transport_idx_t{0U}, day_idx_t{27U}},
+                         {stop_idx_t{0U}, stop_idx_t{24U}}}})
+                  .is_cancelled());
+
+  // uncancel
+  doc.load_string(update_rbo707);
+  u.update(rtt, doc);
+  EXPECT_FALSE((rt::frun{tt,
+                         &rtt,
+                         {{transport_idx_t{0U}, day_idx_t{27U}},
+                          {stop_idx_t{0U}, stop_idx_t{24U}}}})
+                   .is_cancelled());
 }
 
 namespace {

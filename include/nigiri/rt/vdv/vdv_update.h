@@ -20,7 +20,7 @@ struct statistics {
   friend statistics& operator+=(statistics&, statistics const&);
 
   std::uint32_t unsupported_additional_runs_{0U};
-  std::uint32_t unsupported_cancelled_runs_{0U};
+  std::uint32_t cancelled_runs_{0U};
   std::uint32_t total_stops_{0U};
   std::uint32_t resolved_stops_{0U};
   std::uint32_t unknown_stops_{0U};

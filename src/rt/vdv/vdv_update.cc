@@ -24,7 +24,7 @@
 
 namespace nigiri::rt::vdv {
 
-// #define VDV_DEBUG
+#define VDV_DEBUG
 #ifdef VDV_DEBUG
 #define vdv_trace(...) fmt::print(__VA_ARGS__)
 #else
@@ -33,7 +33,7 @@ namespace nigiri::rt::vdv {
 
 std::ostream& operator<<(std::ostream& out, statistics const& s) {
   out << "unsupported additional runs: " << s.unsupported_additional_runs_
-      << "\nunsupported cancelled runs: " << s.unsupported_cancelled_runs_
+      << "\ncancelled runs: " << s.cancelled_runs_
       << "\ntotal stops: " << s.total_stops_
       << "\nresolved stops: " << s.resolved_stops_
       << "\nunknown stops: " << s.unknown_stops_
@@ -55,7 +55,7 @@ std::ostream& operator<<(std::ostream& out, statistics const& s) {
 
 statistics& operator+=(statistics& lhs, statistics const& rhs) {
   lhs.unsupported_additional_runs_ += rhs.unsupported_additional_runs_;
-  lhs.unsupported_cancelled_runs_ += rhs.unsupported_cancelled_runs_;
+  lhs.cancelled_runs_ += rhs.cancelled_runs_;
   lhs.total_stops_ += rhs.total_stops_;
   lhs.resolved_stops_ += rhs.resolved_stops_;
   lhs.unknown_stops_ += rhs.unknown_stops_;
@@ -362,6 +362,8 @@ void updater::update_run(rt_timetable& rtt,
   auto fr = rt::frun(tt_, &rtt, r);
   if (!fr.is_rt()) {
     fr.rt_ = rtt.add_rt_transport(src_idx_, tt_, r.t_);
+  } else {
+    rtt.rt_transport_is_cancelled_.set(to_idx(r.rt_), false);
   }
 
   auto delay = std::optional<duration_t>{};
@@ -487,8 +489,12 @@ void updater::process_vdv_run(rt_timetable& rtt, pugi::xml_node const vdv_run) {
   }
   ++stats_.matched_runs_;
 
-  if (get_opt_bool(vdv_run.node(), "FaelltAus", false).value())
+  if (get_opt_bool(vdv_run, "FaelltAus", false).value()) {
+    rtt.cancel_run(*r);
+    ++stats_.cancelled_runs_;
+  } else {
     update_run(rtt, *r, vdv_stops, is_complete_run);
+  }
 }
 
 void updater::update(rt_timetable& rtt, pugi::xml_document const& doc) {
@@ -500,15 +506,7 @@ void updater::update(rt_timetable& rtt, pugi::xml_document const& doc) {
 #endif
       ++stats_.unsupported_additional_runs_;
       continue;
-    } else if (get_opt_bool(vdv_run.node(), "FaelltAus", false).value()) {
-#ifdef VDV_DEBUG
-      vdv_trace("unsupported canceled run:\n");
-      vdv_run.node().print(std::cout);
-#endif
-      ++stats_.unsupported_cancelled_runs_;
-      continue;
     }
-
     process_vdv_run(rtt, vdv_run.node());
   }
 }
