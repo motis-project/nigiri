@@ -1104,6 +1104,70 @@ constexpr auto const cancel_rbo707 = R"(
 </IstFahrt>
 )";
 
+constexpr auto const in_out_allowed_rbo707 = R"(
+<IstFahrt Zst="2024-08-23T13:12:24">
+	<LinienID>RBO707</LinienID>
+	<RichtungsID>1</RichtungsID>
+	<FahrtRef>
+		<FahrtID>
+			<FahrtBezeichner>RBO2732_vvorbl</FahrtBezeichner>
+			<Betriebstag>2024-08-23</Betriebstag>
+		</FahrtID>
+	</FahrtRef>
+	<Komplettfahrt>false</Komplettfahrt>
+	<BetreiberID>vvorbl</BetreiberID>
+        <IstHalt>
+                <HaltID>de:14625:7706:0:1</HaltID>
+                <Abfahrtszeit>2024-08-23T11:09:00</Abfahrtszeit>
+                <Ankunftszeit>2024-08-23T11:09:00</Ankunftszeit>
+                <AbfahrtssteigText>1</AbfahrtssteigText>
+                <RichtungsText>Caßlau</RichtungsText>
+                <Besetztgrad>Unbekannt</Besetztgrad>
+                <AnkunftFaelltAus>true</AnkunftFaelltAus>
+        </IstHalt>
+        <IstHalt>
+                <HaltID>de:14625:7699:0:2</HaltID>
+                <Abfahrtszeit>2024-08-23T11:11:00</Abfahrtszeit>
+                <Ankunftszeit>2024-08-23T11:11:00</Ankunftszeit>
+                <AbfahrtssteigText>2</AbfahrtssteigText>
+                <RichtungsText>Caßlau</RichtungsText>
+                <Besetztgrad>Unbekannt</Besetztgrad>
+                <AbfahrtFaelltAus>true</AbfahrtFaelltAus>
+        </IstHalt>
+	<IstHalt>
+		<HaltID>de:14625:7698:0:2</HaltID>
+		<Abfahrtszeit>2024-08-23T11:12:00</Abfahrtszeit>
+		<Ankunftszeit>2024-08-23T11:12:00</Ankunftszeit>
+		<AbfahrtssteigText>2</AbfahrtssteigText>
+		<RichtungsText>Caßlau</RichtungsText>
+		<Besetztgrad>Unbekannt</Besetztgrad>
+                <Einsteigeverbot>true</Einsteigeverbot>
+	</IstHalt>
+	<IstHalt>
+		<HaltID>de:14625:7695:0:1</HaltID>
+		<Abfahrtszeit>2024-08-23T11:14:00</Abfahrtszeit>
+		<Ankunftszeit>2024-08-23T11:14:00</Ankunftszeit>
+		<AbfahrtssteigText>1</AbfahrtssteigText>
+		<RichtungsText>Caßlau</RichtungsText>
+		<Besetztgrad>Unbekannt</Besetztgrad>
+                <Durchfahrt>true</Durchfahrt>
+	</IstHalt>
+	<IstHalt>
+		<HaltID>de:14625:7697:0:2</HaltID>
+		<Ankunftszeit>2024-08-23T11:18:00</Ankunftszeit>
+		<AnkunftssteigText>2</AnkunftssteigText>
+		<RichtungsText>Caßlau</RichtungsText>
+		<Besetztgrad>Unbekannt</Besetztgrad>
+                <Aussteigeverbot>true</Aussteigeverbot>
+	</IstHalt>
+	<LinienText>707</LinienText>
+	<ProduktID>RBO707</ProduktID>
+	<RichtungsText>Caßlau über Radibor - Neschwitz</RichtungsText>
+	<PrognoseMoeglich>true</PrognoseMoeglich>
+	<FaelltAus>false</FaelltAus>
+</IstFahrt>
+)";
+
 }  // namespace
 
 TEST(vdv_update, exact_match_1) {
@@ -1163,6 +1227,44 @@ TEST(vdv_update, cancel_run) {
                          {{transport_idx_t{0U}, day_idx_t{27U}},
                           {stop_idx_t{0U}, stop_idx_t{24U}}}})
                    .is_cancelled());
+}
+
+TEST(vdv_update, in_out_allowed) {
+  timetable tt;
+  register_special_stations(tt);
+  tt.date_range_ = {date::sys_days{2024_y / August / 1},
+                    date::sys_days{2024_y / August / 31}};
+  auto const src_idx = source_idx_t{0};
+  load_timetable({}, src_idx, rbo707_files(), tt);
+  finalize(tt);
+  auto rtt = rt::create_rt_timetable(tt, date::sys_days{2024_y / August / 23});
+  auto u = rt::vdv::updater{tt, src_idx};
+
+  auto doc = pugi::xml_document{};
+  doc.load_string(update_rbo707);
+  u.update(rtt, doc);
+  EXPECT_TRUE((rt::frun{tt,
+                        &rtt,
+                        {{transport_idx_t{0U}, day_idx_t{27U}},
+                         {stop_idx_t{0U}, stop_idx_t{24U}}}})
+                  .is_rt());
+
+  doc.load_string(in_out_allowed_rbo707);
+  u.update(rtt, doc);
+  auto const fr = rt::frun{tt,
+                           &rtt,
+                           {{transport_idx_t{0U}, day_idx_t{27U}},
+                            {stop_idx_t{0U}, stop_idx_t{24U}}}};
+  EXPECT_FALSE(fr[19].out_allowed());
+  EXPECT_TRUE(fr[19].in_allowed());
+  EXPECT_TRUE(fr[20].out_allowed());
+  EXPECT_FALSE(fr[20].in_allowed());
+  EXPECT_TRUE(fr[21].out_allowed());
+  EXPECT_FALSE(fr[21].in_allowed());
+  EXPECT_FALSE(fr[22].out_allowed());
+  EXPECT_FALSE(fr[22].in_allowed());
+  EXPECT_FALSE(fr[23].out_allowed());
+  EXPECT_TRUE(fr[23].in_allowed());
 }
 
 namespace {

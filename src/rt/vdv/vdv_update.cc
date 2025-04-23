@@ -113,7 +113,12 @@ updater::vdv_stop::vdv_stop(nigiri::location_idx_t const l,
       dep_{get_opt_time(n, "Abfahrtszeit")},
       arr_{get_opt_time(n, "Ankunftszeit")},
       rt_dep_{get_opt_time(n, "IstAbfahrtPrognose")},
-      rt_arr_{get_opt_time(n, "IstAnkunftPrognose")} {}
+      rt_arr_{get_opt_time(n, "IstAnkunftPrognose")},
+      in_forbidden_{*get_opt_bool(n, "Einsteigeverbot", false)},
+      out_forbidden_{*get_opt_bool(n, "Aussteigeverbot", false)},
+      passing_through_{*get_opt_bool(n, "Durchfahrt", false)},
+      arr_canceled_{*get_opt_bool(n, "AnkunftFaelltAus", false)},
+      dep_canceled_{*get_opt_bool(n, "AbfahrtFaelltAus", false)} {}
 
 std::optional<std::pair<unixtime_t, event_type>> updater::vdv_stop::get_event(
     event_type et) const {
@@ -361,9 +366,9 @@ void updater::update_run(rt_timetable& rtt,
                          bool const is_complete_run) {
   auto fr = rt::frun(tt_, &rtt, r);
   if (!fr.is_rt()) {
-    fr.rt_ = rtt.add_rt_transport(src_idx_, tt_, r.t_);
+    fr.rt_ = rtt.add_rt_transport(src_idx_, tt_, fr.t_);
   } else {
-    rtt.rt_transport_is_cancelled_.set(to_idx(r.rt_), false);
+    rtt.rt_transport_is_cancelled_.set(to_idx(fr.rt_), false);
   }
 
   auto delay = std::optional<duration_t>{};
@@ -422,6 +427,23 @@ void updater::update_run(rt_timetable& rtt,
           }
         }
         if (matched_arr || matched_dep) {
+
+          // stop change
+          auto& stp = rtt.rt_transport_location_seq_[fr.rt_][rs.stop_idx_];
+          auto const in_allowed_update = !vdv_stop->in_forbidden_ &&
+                                         !vdv_stop->passing_through_ &&
+                                         !vdv_stop->dep_canceled_;
+          auto const out_allowed_update = !vdv_stop->out_forbidden_ &&
+                                          !vdv_stop->passing_through_ &&
+                                          !vdv_stop->arr_canceled_;
+          stp = stop{stop{stp}.location_idx(), in_allowed_update,
+                     out_allowed_update,
+                     rs.get_scheduled_stop().in_allowed_wheelchair() &&
+                         in_allowed_update,
+                     rs.get_scheduled_stop().out_allowed_wheelchair() &&
+                         out_allowed_update}
+                    .value();
+
           cursor = vdv_stop + 1;
           print_skipped_stops();
           break;
