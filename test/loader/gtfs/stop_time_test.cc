@@ -49,7 +49,7 @@ TEST(gtfs, quoted_interpolate) {
 TEST(gtfs, unquoted_interpolate) {
   constexpr auto const kStopTimes =
       R"(trip_id,arrival_time,departure_time,stop_id,stop_sequence,stop_headsign,pickup_type,drop_off_type,shape_dist_traveled
-L001I01S1FES,08:00:00,08:00:00,6,1,,0,0,
+L001I01S1FES,08:00:00,,6,1,,0,0,
 L001I01S1FES, , ,48,2,,0,0,0.265
 L001I01S1FES,08:31:00,08:37:00,23,19,,0,0,7.473
 )";
@@ -71,12 +71,91 @@ L001I01S1FES,08:31:00,08:37:00,23,19,,0,0,7.473
   auto const& ev = trips.data_[gtfs_trip_idx_t{0}].event_times_;
   ASSERT_EQ(3U, ev.size());
   EXPECT_EQ(8h, ev[0].arr_);
-  EXPECT_EQ(8h, ev[0].arr_);
   EXPECT_EQ(8h, ev[0].dep_);
   EXPECT_EQ(8h + 16min, ev[1].arr_);
   EXPECT_EQ(8h + 16min, ev[1].dep_);
   EXPECT_EQ(8h + 31min, ev[2].arr_);
   EXPECT_EQ(8h + 37min, ev[2].dep_);
+}
+
+TEST(gtfs, start_end_interpolate) {
+  constexpr auto const kStopTimes =
+      R"(trip_id,arrival_time,departure_time,stop_id,stop_sequence,stop_headsign,pickup_type,drop_off_type,shape_dist_traveled
+L001I01S1FES,,08:00:00,6,1,,0,0,
+L001I01S1FES, , ,48,2,,0,0,0.265
+L001I01S1FES,08:31:00,,23,19,,0,0,7.473
+)";
+
+  auto trips = trip_data{};
+  trips.trips_.emplace("L001I01S1FES", gtfs_trip_idx_t{0U});
+  trips.data_.emplace_back(nullptr, nullptr, nullptr, "L001I01S1FES",
+                           trip_direction_idx_t{}, "", shape_idx_t::invalid(),
+                           false);
+  auto tt = timetable{};
+  auto stops = locations_map{};
+  stops.emplace("6", location_idx_t{0});
+  stops.emplace("48", location_idx_t{1});
+  stops.emplace("23", location_idx_t{2});
+  read_stop_times(tt, trips, stops, kStopTimes, true);
+
+  EXPECT_TRUE(trips.data_[gtfs_trip_idx_t{0}].requires_interpolation_);
+  trips.data_[gtfs_trip_idx_t{0}].interpolate();
+  auto const& ev = trips.data_[gtfs_trip_idx_t{0}].event_times_;
+  ASSERT_EQ(3U, ev.size());
+  EXPECT_EQ(0h, ev[0].arr_);
+  EXPECT_EQ(8h, ev[0].dep_);
+  EXPECT_EQ(8h + 16min, ev[1].arr_);
+  EXPECT_EQ(8h + 16min, ev[1].dep_);
+  EXPECT_EQ(8h + 31min, ev[2].arr_);
+  EXPECT_EQ(8h + 31min, ev[2].dep_);
+}
+
+TEST(gtfs, failed_first_interpolate) {
+  constexpr auto const kStopTimes =
+      R"(trip_id,arrival_time,departure_time,stop_id,stop_sequence,stop_headsign,pickup_type,drop_off_type,shape_dist_traveled
+L001I01S1FES,,,6,1,,0,0,
+L001I01S1FES, , ,48,2,,0,0,0.265
+L001I01S1FES,,08:31:00,23,19,,0,0,7.473
+)";
+
+  auto trips = trip_data{};
+  trips.trips_.emplace("L001I01S1FES", gtfs_trip_idx_t{0U});
+  trips.data_.emplace_back(nullptr, nullptr, nullptr, "L001I01S1FES",
+                           trip_direction_idx_t{}, "", shape_idx_t::invalid(),
+                           false);
+  auto tt = timetable{};
+  auto stops = locations_map{};
+  stops.emplace("6", location_idx_t{0});
+  stops.emplace("48", location_idx_t{1});
+  stops.emplace("23", location_idx_t{2});
+  read_stop_times(tt, trips, stops, kStopTimes, true);
+
+  EXPECT_TRUE(trips.data_[gtfs_trip_idx_t{0}].requires_interpolation_);
+  EXPECT_THROW(trips.data_[gtfs_trip_idx_t{0}].interpolate(), std::exception);
+}
+
+TEST(gtfs, failed_last_interpolate) {
+  constexpr auto const kStopTimes =
+      R"(trip_id,arrival_time,departure_time,stop_id,stop_sequence,stop_headsign,pickup_type,drop_off_type,shape_dist_traveled
+L001I01S1FES,,,6,1,,0,0,
+L001I01S1FES, , ,48,2,,0,0,0.265
+L001I01S1FES,,,23,19,,0,0,7.473
+)";
+
+  auto trips = trip_data{};
+  trips.trips_.emplace("L001I01S1FES", gtfs_trip_idx_t{0U});
+  trips.data_.emplace_back(nullptr, nullptr, nullptr, "L001I01S1FES",
+                           trip_direction_idx_t{}, "", shape_idx_t::invalid(),
+                           false);
+  auto tt = timetable{};
+  auto stops = locations_map{};
+  stops.emplace("6", location_idx_t{0});
+  stops.emplace("48", location_idx_t{1});
+  stops.emplace("23", location_idx_t{2});
+  read_stop_times(tt, trips, stops, kStopTimes, true);
+
+  EXPECT_TRUE(trips.data_[gtfs_trip_idx_t{0}].requires_interpolation_);
+  EXPECT_THROW(trips.data_[gtfs_trip_idx_t{0}].interpolate(), std::exception);
 }
 
 TEST(gtfs, read_stop_times_example_data) {
