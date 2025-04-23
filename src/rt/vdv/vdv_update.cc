@@ -487,7 +487,8 @@ void updater::process_vdv_run(rt_timetable& rtt, pugi::xml_node const vdv_run) {
   }
   ++stats_.matched_runs_;
 
-  update_run(rtt, *r, vdv_stops, is_complete_run);
+  if (get_opt_bool(vdv_run.node(), "FaelltAus", false).value())
+    update_run(rtt, *r, vdv_stops, is_complete_run);
 }
 
 void updater::update(rt_timetable& rtt, pugi::xml_document const& doc) {
