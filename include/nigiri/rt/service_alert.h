@@ -76,17 +76,18 @@ struct alerts {
     location_idx_t l_;
     alert_idx_t alert_;
   };
-  struct by_trip {
+  struct by_rt_transport {
     location_idx_t l_;
     alert_idx_t alert_;
   };
-  using by_route = by_trip;
-  using by_route_type = by_trip;
+  using by_route = by_rt_transport;
+  using by_route_type = by_rt_transport;
 
   template <typename Fn>
   void for_each_alert(timetable const& tt,
                       source_idx_t const src,
                       trip_idx_t const t,
+                      rt_transport_idx_t const rt_t,
                       location_idx_t const l,
                       Fn&& fn) const {
     auto const route_id_idx = tt.trip_route_id_[t];
@@ -94,9 +95,11 @@ struct alerts {
     auto const agency = tt.route_ids_[src].route_id_provider_[route_id_idx];
     auto const direction = tt.trip_direction_id_.test(t);
 
-    for (auto const& a : trip_[t]) {
-      if (a.l_ == l) {
-        fn(a.alert_);
+    if (rt_t != rt_transport_idx_t::invalid()) {
+      for (auto const& a : rt_transport_[rt_t]) {
+        if (a.l_ == l) {
+          fn(a.alert_);
+        }
       }
     }
 
@@ -123,7 +126,7 @@ struct alerts {
     }
   }
 
-  paged_vecvec<trip_idx_t, by_trip> trip_;
+  paged_vecvec<rt_transport_idx_t, by_rt_transport> rt_transport_;
   vector_map<source_idx_t, paged_vecvec<route_id_idx_t, by_route_id>> route_id_;
   paged_vecvec<provider_idx_t, by_agency> agency_;
   vector_map<source_idx_t, paged_vecvec<route_type_t, by_route_type>>

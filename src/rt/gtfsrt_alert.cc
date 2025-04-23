@@ -131,7 +131,10 @@ void handle_alert(date::sys_days const today,
             remove_nl(x.trip().DebugString()));
         continue;
       }
-      alerts.trip_[trip].push_back({stop, alert_idx});
+      if (!r.is_rt()) {
+        r.rt_ = rtt.add_rt_transport(src, tt, r.t_);
+      }
+      alerts.rt_transport_[r.rt_].push_back({stop, alert_idx});
     } else if (x.has_route_id()) {  // 1) by route_id / direction_id -> stop_id
       if (x.has_direction_id() && !x.has_route_id()) {
         ++stats.alert_direction_without_route_;
