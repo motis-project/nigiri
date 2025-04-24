@@ -44,6 +44,7 @@ TEST(gtfs, quoted_interpolate) {
   EXPECT_EQ(6h + 35min, ev[1].dep_);
   EXPECT_EQ(6h + 49min, ev[2].arr_);
   EXPECT_EQ(7h, ev[2].dep_);
+  EXPECT_FALSE(trips.data_[gtfs_trip_idx_t{0}].requires_interpolation_);
 }
 
 TEST(gtfs, unquoted_interpolate) {
@@ -76,6 +77,7 @@ L001I01S1FES,08:31:00,08:37:00,23,19,,0,0,7.473
   EXPECT_EQ(8h + 16min, ev[1].dep_);
   EXPECT_EQ(8h + 31min, ev[2].arr_);
   EXPECT_EQ(8h + 37min, ev[2].dep_);
+  EXPECT_FALSE(trips.data_[gtfs_trip_idx_t{0}].requires_interpolation_);
 }
 
 TEST(gtfs, start_end_interpolate) {
@@ -108,6 +110,7 @@ L001I01S1FES,08:31:00,,23,19,,0,0,7.473
   EXPECT_EQ(8h + 16min, ev[1].dep_);
   EXPECT_EQ(8h + 31min, ev[2].arr_);
   EXPECT_EQ(8h + 31min, ev[2].dep_);
+  EXPECT_FALSE(trips.data_[gtfs_trip_idx_t{0}].requires_interpolation_);
 }
 
 TEST(gtfs, failed_first_interpolate) {
@@ -131,7 +134,8 @@ L001I01S1FES,,08:31:00,23,19,,0,0,7.473
   read_stop_times(tt, trips, stops, kStopTimes, true);
 
   EXPECT_TRUE(trips.data_[gtfs_trip_idx_t{0}].requires_interpolation_);
-  EXPECT_THROW(trips.data_[gtfs_trip_idx_t{0}].interpolate(), std::exception);
+  trips.data_[gtfs_trip_idx_t{0}].interpolate();
+  EXPECT_TRUE(trips.data_[gtfs_trip_idx_t{0}].requires_interpolation_);
 }
 
 TEST(gtfs, failed_last_interpolate) {
@@ -155,7 +159,8 @@ L001I01S1FES,,,23,19,,0,0,7.473
   read_stop_times(tt, trips, stops, kStopTimes, true);
 
   EXPECT_TRUE(trips.data_[gtfs_trip_idx_t{0}].requires_interpolation_);
-  EXPECT_THROW(trips.data_[gtfs_trip_idx_t{0}].interpolate(), std::exception);
+  trips.data_[gtfs_trip_idx_t{0}].interpolate();
+  EXPECT_TRUE(trips.data_[gtfs_trip_idx_t{0}].requires_interpolation_);
 }
 
 TEST(gtfs, read_stop_times_example_data) {

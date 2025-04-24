@@ -161,8 +161,11 @@ void trip::interpolate() {
       max_idx = static_cast<unsigned>(&(*it) - &bounds.front()) / 2U;
     }
   }
-  utl::verify(bounds.size() > 1 && bounds[bounds.size() - 2].max_idx_ != 0,
-              "last arrival cannot be interpolated");
+  if (bounds.size() <= 1 || bounds[bounds.size() - 2].max_idx_ == 0) {
+    log(log_lvl::error, "loader.gtfs.trip",
+        R"(trip "{}": last arrival cannot be interpolated)", id_);
+    return;
+  }
 
   auto min = duration_t{0};
   auto const last = static_cast<int>(event_times_.size() - 1);
@@ -176,8 +179,11 @@ void trip::interpolate() {
       min_idx = static_cast<unsigned>(&(*it) - &bounds.front()) / 2U;
     }
   }
-  utl::verify(bounds[1].min_idx_ != last,
-              "first departure cannot be interpolated");
+  if (bounds[1].min_idx_ == last) {
+    log(log_lvl::error, "loader.gtfs.trip",
+        R"(trip "{}": first departure cannot be interpolated)", id_);
+    return;
+  }
 
   for (auto const [idx, entry] : utl::enumerate(event_times_)) {
     auto const& arr = bounds[2 * idx];
@@ -190,6 +196,7 @@ void trip::interpolate() {
       entry.dep_ = dep.interpolate(static_cast<int>(idx));
     }
   }
+  requires_interpolation_ = false;
 }
 
 std::string trip::display_name() const {
