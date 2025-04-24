@@ -45,7 +45,7 @@
 [oh]
   url=git@github.com:felixguendling/oh.git
   branch=master
-  commit=da2d5c7cb963935bbf0f5f9ad801f7a6accb4210
+  commit=d9eb908452e808179afeb7954e8beaa5b3626c36
 [opentelemetry-cpp]
   url=git@github.com:motis-project/opentelemetry-cpp.git
   branch=main
