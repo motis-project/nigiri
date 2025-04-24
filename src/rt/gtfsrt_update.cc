@@ -438,6 +438,8 @@ statistics gtfsrt_update_msg(timetable const& tt,
     }
   }
 
+  rtt.alerts_.strings_.cache_.clear();
+
   return stats;
 }
 
