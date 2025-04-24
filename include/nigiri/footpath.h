@@ -33,12 +33,6 @@ struct footpath {
                     std::numeric_limits<location_idx_t::value_t>::max() >>
                     kDurationBits,
                 "station index overflow");
-    if (duration > kMaxDuration) {
-      //      [[unlikely]] nigiri::log(log_lvl::error, "footpath",
-      //                               "footpath overflow: {} > {} adjusted to
-      //                               {}", duration, kMaxDuration,
-      //                               this->duration());
-    }
   }
 
   static auto cmp_by_duration() {

@@ -27,6 +27,7 @@ void register_special_stations(timetable& tt) {
 }
 
 void finalize(timetable& tt, finalize_options const opt) {
+  tt.strings_.cache_.clear();
   tt.location_routes_.resize(tt.n_locations());
 
   {

@@ -138,7 +138,7 @@ struct timetable {
                               trip_debug const dbg,
                               std::uint32_t const train_nr,
                               std::span<stop_idx_t> seq_numbers,
-                              bool const direction_id) {
+                              direction_id_t const direction_id) {
     auto const trip_idx = trip_idx_t{trip_ids_.size()};
 
     auto const trip_id_idx = trip_id_idx_t{trip_id_strings_.size()};
@@ -159,7 +159,7 @@ struct timetable {
     trip_stop_seq_numbers_.emplace_back(seq_numbers);
 
     trip_direction_id_.resize(trip_ids_.size());
-    trip_direction_id_.set(trip_idx, direction_id);
+    trip_direction_id_.set(trip_idx, direction_id == direction_id_t{1U});
 
     return trip_idx;
   }

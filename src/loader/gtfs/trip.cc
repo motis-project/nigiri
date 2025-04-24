@@ -113,7 +113,7 @@ trip::trip(route const* route,
            std::string id,
            trip_direction_idx_t const headsign,
            std::string short_name,
-           bool const direction_id,
+           direction_id_t const direction_id,
            shape_idx_t const shape_idx,
            bool const bikes_allowed)
     : route_{route},
@@ -296,7 +296,9 @@ trip_data read_trips(
               route_it->second.get(), traffic_days_it->second.get(), blk,
               t.trip_id_->to_str(),
               ret.get_or_create_direction(tt, t.trip_headsign_->view()),
-              t.trip_short_name_->to_str(), t.direction_id_->view() == "1",
+              t.trip_short_name_->to_str(),
+              (t.direction_id_->view() == "1") ? direction_id_t{1U}
+                                               : direction_id_t{0U},
               shape_idx, bikes_allowed);
           ret.trips_.emplace(t.trip_id_->to_str(), trp_idx);
           if (blk != nullptr) {
