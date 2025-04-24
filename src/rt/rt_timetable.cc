@@ -76,7 +76,7 @@ rt_transport_idx_t rt_timetable::add_rt_transport(
   return rt_transport_idx_t{rt_t_idx};
 }
 
-void rt_timetable::cancel_run(rt::run& r) {
+void rt_timetable::cancel_run(rt::run const& r) {
   if (r.is_rt()) {
     rt_transport_is_cancelled_.set(to_idx(r.rt_), true);
   }

@@ -60,7 +60,7 @@ struct rt_timetable {
         unix_to_delta(new_time);
   }
 
-  void cancel_run(rt::run&);
+  void cancel_run(rt::run const&);
 
   void set_change_callback(change_callback_t callback) {
     change_callback_ = callback;
