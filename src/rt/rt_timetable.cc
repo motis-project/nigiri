@@ -25,6 +25,7 @@ rt_transport_idx_t rt_timetable::add_rt_transport(
   rt_transport_location_seq_.emplace_back(location_seq);
   rt_transport_src_.emplace_back(src);
   rt_transport_train_nr_.emplace_back(0U);
+  alerts_.rt_transport_.emplace_back_empty();
 
   for (auto const s : location_seq) {
     auto rt_transports = location_rt_transports_[stop{s}.location_idx()];

@@ -102,7 +102,6 @@ geo::box shapes_storage::get_bounding_box(route_idx_t const route_idx) const {
 
 std::optional<geo::box> shapes_storage::get_bounding_box(
     nigiri::route_idx_t const route_idx, std::size_t const segment) const {
-
   utl::verify(cista::to_idx(route_idx) < route_segment_bboxes_.size(),
               "Route index {} is out of bounds", route_idx);
   auto const& bboxes = route_segment_bboxes_[route_idx];

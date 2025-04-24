@@ -404,11 +404,12 @@ std::string service::display_name(nigiri::timetable& tt) const {
             .to_str();
     auto const first =
         is(kOnlyTrainNr)
-            ? string{""}
-            : (is(kUseProvider) ? provider.short_name_ : cat.name_);
+            ? ""
+            : (is(kUseProvider) ? tt.strings_.get(provider.short_name_)
+                                : cat.name_);
     auto const second =
         is(kOnlyCategory)
-            ? string{""}
+            ? ""
             : (train_nr == 0U ? line_id : fmt::to_string(train_nr));
     return fmt::format("{}{}{}", first, first.empty() ? "" : " ", second);
   }

@@ -6,6 +6,7 @@
 #include "nigiri/get_otel_tracer.h"
 #include "nigiri/logging.h"
 #include "nigiri/rt/frun.h"
+#include "nigiri/rt/gtfsrt_alert.h"
 #include "nigiri/rt/gtfsrt_resolve_run.h"
 #include "nigiri/rt/run.h"
 
@@ -17,7 +18,8 @@ namespace nigiri::rt {
 std::ostream& operator<<(std::ostream& out, statistics const& s) {
   auto first = true;
   auto const print_if_no_empty = [&](char const* name, auto const& value,
-                                     bool print_percent = false) {
+                                     std::variant<bool, int> print_percent =
+                                         false) {
     if (!value) {
       return;
     }
@@ -26,7 +28,13 @@ std::ostream& operator<<(std::ostream& out, statistics const& s) {
     }
     first = false;
     out << name << "=" << value;
-    if (print_percent && value) {
+    if (std::holds_alternative<int>(print_percent)) {
+      out << " ("
+          << static_cast<float>(value) /
+                 static_cast<float>(std::get<int>(print_percent)) * 100
+          << "%)";
+    } else if (std::holds_alternative<bool>(print_percent) &&
+               std::get<bool>(print_percent)) {
       out << " ("
           << static_cast<float>(value) / static_cast<float>(s.total_entities_) *
                  100
@@ -40,8 +48,28 @@ std::ostream& operator<<(std::ostream& out, statistics const& s) {
   print_if_no_empty("total_entities_success", s.total_entities_success_, true);
   print_if_no_empty("total_entities_fail", s.total_entities_fail_, true);
   print_if_no_empty("unsupported_deleted", s.unsupported_deleted_, true);
+  print_if_no_empty("total_alerts", s.total_alerts_, true);
+  print_if_no_empty("alert_total_informed_entities",
+                    s.alert_total_informed_entities_, false);
+  print_if_no_empty("alert_total_resolve_success",
+                    s.alert_total_resolve_success_,
+                    s.alert_total_informed_entities_);
+  print_if_no_empty("alert_trip_not_found", s.alert_trip_not_found_,
+                    s.alert_total_informed_entities_);
+  print_if_no_empty("alert_empty_selector", s.alert_empty_selector_,
+                    s.alert_total_informed_entities_);
+  print_if_no_empty("alert_stop_not_found", s.alert_stop_not_found_,
+                    s.alert_total_informed_entities_);
+  print_if_no_empty("alert_direction_without_route",
+                    s.alert_direction_without_route_,
+                    s.alert_total_informed_entities_);
+  print_if_no_empty("alert_route_id_not_found", s.alert_route_id_not_found_,
+                    s.alert_total_informed_entities_);
+  print_if_no_empty("alert_agency_id_not_found", s.alert_agency_id_not_found_,
+                    s.alert_total_informed_entities_);
+  print_if_no_empty("alert_invalid_route_type", s.alert_invalid_route_type_,
+                    s.alert_total_informed_entities_);
   print_if_no_empty("unsupported_vehicle", s.unsupported_vehicle_, true);
-  print_if_no_empty("unsupported_alert", s.unsupported_alert_, true);
   print_if_no_empty("unsupported_no_trip_id", s.unsupported_no_trip_id_, true);
   print_if_no_empty("no_trip_update", s.no_trip_update_, true);
   print_if_no_empty("trip_update_without_trip", s.trip_update_without_trip_,
@@ -299,9 +327,13 @@ statistics gtfsrt_update_msg(timetable const& tt,
     };
 
     unsupported(entity.has_vehicle(), "vehicle", stats.unsupported_vehicle_);
-    unsupported(entity.has_alert(), "alert", stats.unsupported_alert_);
     unsupported(entity.has_is_deleted() && entity.is_deleted(), "deleted",
                 stats.unsupported_deleted_);
+
+    if (entity.has_alert()) {
+      handle_alert(today, tt, rtt, src, tag, entity.alert(), stats);
+      continue;
+    }
 
     if (!entity.has_trip_update()) {
       log(log_lvl::error, "rt.gtfs.unsupported",
@@ -388,6 +420,8 @@ statistics gtfsrt_update_msg(timetable const& tt,
                       {"message", remove_nl(entity.DebugString())}});
     }
   }
+
+  rtt.alerts_.strings_.cache_.clear();
 
   return stats;
 }

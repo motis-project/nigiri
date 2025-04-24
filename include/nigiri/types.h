@@ -50,6 +50,9 @@ namespace nigiri {
 constexpr auto const kTimetableOffset =
     std::chrono::days{1} + std::chrono::days{4};
 
+template <typename T>
+using ptr = cista::raw::ptr<T>;
+
 template <size_t Size>
 using bitset = cista::bitset<Size>;
 
@@ -90,6 +93,12 @@ using cista::holds_alternative;
 template <typename K, typename V, typename SizeType = cista::base_t<K>>
 using vecvec = cista::raw::vecvec<K, V, SizeType>;
 
+template <typename K,
+          typename V,
+          std::size_t N,
+          typename SizeType = std::uint32_t>
+using nvec = cista::raw::nvec<K, V, N, SizeType>;
+
 template <typename K, typename V>
 using mutable_fws_multimap = cista::raw::mutable_fws_multimap<K, V>;
 
@@ -109,10 +118,10 @@ using stop_idx_t = std::uint16_t;
 using string = cista::raw::string;
 
 template <typename T>
-using optional = cista::optional<T>;
+using unique_ptr = cista::raw::unique_ptr<T>;
 
-template <typename Key, typename T, std::size_t N>
-using nvec = cista::raw::nvec<Key, T, N>;
+template <typename T>
+using optional = cista::optional<T>;
 
 template <typename K, typename V>
 using mm_vec_map = cista::basic_mmap_vec<V, K>;
@@ -145,6 +154,7 @@ struct mm_paged_vecvec_helper {
 template <typename Key, typename T>
 using mm_paged_vecvec = mm_paged_vecvec_helper<Key, T>::type;
 
+using string_idx_t = cista::strong<std::uint32_t, struct _string_idx>;
 using bitfield_idx_t = cista::strong<std::uint32_t, struct _bitfield_idx>;
 using location_idx_t = cista::strong<std::uint32_t, struct _location_idx>;
 using route_idx_t = cista::strong<std::uint32_t, struct _route_idx>;
@@ -192,6 +202,8 @@ using attribute_idx_t = cista::strong<std::uint32_t, struct _attribute_idx>;
 using attribute_combination_idx_t =
     cista::strong<std::uint32_t, struct _attribute_combination>;
 using provider_idx_t = cista::strong<std::uint32_t, struct _provider_idx>;
+using direction_id_t = cista::strong<std::uint8_t, struct _direction_id>;
+using route_type_t = cista::strong<std::uint16_t, struct _route_type>;
 
 using transport_range_t = pair<transport_idx_t, interval<stop_idx_t>>;
 
@@ -209,7 +221,7 @@ struct attribute {
 struct provider {
   CISTA_COMPARABLE()
   CISTA_PRINTABLE(provider, "short_name", "long_name", "url")
-  string short_name_, long_name_, url_;
+  string_idx_t short_name_, long_name_, url_;
   timezone_idx_t tz_{timezone_idx_t::invalid()};
 };
 
