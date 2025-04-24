@@ -24,7 +24,7 @@
 
 namespace nigiri::rt::vdv {
 
-// #define VDV_DEBUG
+#define VDV_DEBUG
 #ifdef VDV_DEBUG
 #define vdv_trace(...) fmt::print(__VA_ARGS__)
 #else
@@ -360,6 +360,23 @@ void monotonize(frun& fr, rt_timetable& rtt) {
   }
 }
 
+void handle_first_last_cancelation(frun& fr, rt_timetable& rtt) {
+  auto const cancel_stop = [&](auto& rs) {
+    auto& stp = rtt.rt_transport_location_seq_[fr.rt_][rs.stop_idx_];
+    stp = stop{stop{stp}.location_idx(), false, false, false, false}.value();
+  };
+
+  auto first = *begin(fr);
+  if (!first.in_allowed()) {
+    cancel_stop(first);
+  }
+
+  auto last = *rbegin(fr);
+  if (!last.out_allowed()) {
+    cancel_stop(last);
+  }
+}
+
 void updater::update_run(rt_timetable& rtt,
                          run& r,
                          vector<vdv_stop> const& vdv_stops,
@@ -436,6 +453,7 @@ void updater::update_run(rt_timetable& rtt,
           auto const out_allowed_update = !vdv_stop->out_forbidden_ &&
                                           !vdv_stop->passing_through_ &&
                                           !vdv_stop->arr_canceled_;
+
           stp = stop{stop{stp}.location_idx(), in_allowed_update,
                      out_allowed_update,
                      rs.get_scheduled_stop().in_allowed_wheelchair() &&
@@ -475,7 +493,17 @@ void updater::update_run(rt_timetable& rtt,
     ++cursor;
   }
 
-  monotonize(fr, rtt);
+  handle_first_last_cancelation(fr, rtt);
+  auto const n_not_cancelled_stops = utl::count_if(
+      rtt.rt_transport_location_seq_[fr.rt_],
+      [](stop::value_type const s) { return !stop{s}.is_cancelled(); });
+  if (n_not_cancelled_stops <= 1U) {
+    rtt.cancel_run(fr);
+  }
+
+  if (!fr.is_cancelled()) {
+    monotonize(fr, rtt);
+  }
 }
 
 void updater::process_vdv_run(rt_timetable& rtt, pugi::xml_node const vdv_run) {

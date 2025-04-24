@@ -234,6 +234,69 @@ constexpr auto const vdv_update_msg2 = R"(
 </DatenAbrufenAntwort>
 )";
 
+constexpr auto const cancel_all_update = R"(
+<?xml version="1.0" encoding="iso-8859-1"?>
+<DatenAbrufenAntwort>
+  <Bestaetigung Zst="2024-07-10T00:00:00" Ergebnis="ok" Fehlernummer="0" />
+  <AUSNachricht AboID="1">
+    <IstFahrt Zst="2024-07-10T00:00:00">
+      <LinienID>AE</LinienID>
+      <RichtungsID>1</RichtungsID>
+      <FahrtRef>
+        <FahrtID>
+          <FahrtBezeichner>AE</FahrtBezeichner>
+          <Betriebstag>2024-07-10</Betriebstag>
+        </FahrtID>
+      </FahrtRef>
+      <BetreiberID>MTA</BetreiberID>
+      <IstHalt>
+        <HaltID>A</HaltID>
+        <Abfahrtszeit>2024-07-09T22:00:00</Abfahrtszeit>
+        <IstAbfahrtPrognose>2024-07-09T22:00:00</IstAbfahrtPrognose>
+        <AbfahrtFaelltAus>true</AbfahrtFaelltAus>
+      </IstHalt>
+      <IstHalt>
+        <HaltID>B</HaltID>
+        <Ankunftszeit>2024-07-09T23:00:00</Ankunftszeit>
+        <Abfahrtszeit>2024-07-09T23:00:00</Abfahrtszeit>
+        <IstAnkunftPrognose>2024-07-09T23:00:00</IstAnkunftPrognose>
+        <IstAbfahrtPrognose>2024-07-09T23:00:00</IstAbfahrtPrognose>
+        <AnkunftFaelltAus>true</AnkunftFaelltAus>
+        <AbfahrtFaelltAus>true</AbfahrtFaelltAus>
+      </IstHalt>
+      <IstHalt>
+        <HaltID>C</HaltID>
+        <Ankunftszeit>2024-07-10T00:00:00</Ankunftszeit>
+        <Abfahrtszeit>2024-07-10T00:00:00</Abfahrtszeit>
+        <IstAnkunftPrognose>2024-07-10T00:00:00</IstAnkunftPrognose>
+        <IstAbfahrtPrognose>2024-07-10T00:00:00</IstAbfahrtPrognose>
+        <AnkunftFaelltAus>true</AnkunftFaelltAus>
+        <AbfahrtFaelltAus>true</AbfahrtFaelltAus>
+      </IstHalt>
+      <IstHalt>
+        <HaltID>D</HaltID>
+        <Ankunftszeit>2024-07-10T01:00:00</Ankunftszeit>
+        <Abfahrtszeit>2024-07-10T01:00:00</Abfahrtszeit>
+        <IstAnkunftPrognose>2024-07-10T01:00:00</IstAnkunftPrognose>
+        <IstAbfahrtPrognose>2024-07-10T01:00:00</IstAbfahrtPrognose>
+        <AnkunftFaelltAus>true</AnkunftFaelltAus>
+        <AbfahrtFaelltAus>true</AbfahrtFaelltAus>
+      </IstHalt>
+      <IstHalt>
+        <HaltID>E</HaltID>
+        <Ankunftszeit>2024-07-10T02:00:00</Ankunftszeit>
+        <IstAnkunftPrognose>2024-07-10T02:00:00</IstAnkunftPrognose>
+        <AnkunftFaelltAus>true</AnkunftFaelltAus>
+      </IstHalt>
+      <LinienText>AE</LinienText>
+      <ProduktID>Space Train</ProduktID>
+      <RichtungsText>E</RichtungsText>
+      <Komplettfahrt>true</Komplettfahrt>
+    </IstFahrt>
+  </AUSNachricht>
+</DatenAbrufenAntwort>
+)";
+
 }  // namespace
 
 TEST(vdv_update, delay_propagation) {
@@ -373,6 +436,29 @@ TEST(vdv_update, delay_propagation) {
 
   EXPECT_EQ(u.get_stats().found_runs_, 1);
   EXPECT_EQ(u.get_stats().matched_runs_, 3);
+}
+
+TEST(vdv_update, all_stops_canceled) {
+  timetable tt;
+  register_special_stations(tt);
+  tt.date_range_ = {date::sys_days{2024_y / July / 1},
+                    date::sys_days{2024_y / July / 31}};
+  auto const src_idx = source_idx_t{0};
+  load_timetable({}, src_idx, vdv_test_files(), tt);
+  finalize(tt);
+
+  auto rtt = rt::create_rt_timetable(tt, date::sys_days{2024_y / July / 10});
+
+  auto doc = pugi::xml_document{};
+  doc.load_string(cancel_all_update);
+  auto u = rt::vdv::updater{tt, src_idx};
+  u.update(rtt, doc);
+
+  auto const fr = rt::frun(
+      tt, &rtt,
+      {{transport_idx_t{0}, day_idx_t{13}}, {stop_idx_t{0}, stop_idx_t{5}}});
+
+  EXPECT_TRUE(fr.is_cancelled());
 }
 
 namespace {
@@ -1264,7 +1350,7 @@ TEST(vdv_update, in_out_allowed) {
   EXPECT_FALSE(fr[22].out_allowed());
   EXPECT_FALSE(fr[22].in_allowed());
   EXPECT_FALSE(fr[23].out_allowed());
-  EXPECT_TRUE(fr[23].in_allowed());
+  EXPECT_FALSE(fr[23].in_allowed());
 }
 
 namespace {
