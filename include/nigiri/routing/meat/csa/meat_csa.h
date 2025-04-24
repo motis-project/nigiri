@@ -307,7 +307,7 @@ private:
     auto conn_dep_time = tt_to_delta(day, conn->dep_time_.mam());
     while (as_int(day) < n_days_ &&
            conn_dep_time - source_time < max_travel_time_.count() &&
-           esa[target_stop] > conn_dep_time + target_offset) {
+           esa[target_stop] >= conn_dep_time + target_offset) {
       stats_.esa_n_connections_scanned_++;
 
       auto const n_th_search_day = to_idx(day - conn_begin.first);
