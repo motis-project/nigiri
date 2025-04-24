@@ -13,6 +13,7 @@
 #include "nigiri/loader/gtfs/trip.h"
 #include "nigiri/common/day_list.h"
 #include "nigiri/common/split_duration.h"
+#include "nigiri/logging.h"
 #include "nigiri/timetable.h"
 
 namespace nigiri::loader::gtfs {
@@ -135,7 +136,10 @@ void expand_local_to_utc(trip_data const& trip_data,
   auto trip_it = begin(fet.trips_);
   auto offsets_it = begin(fet.offsets_);
   while (trip_it != end(fet.trips_)) {
-    if (trip_data.get(*trip_it).event_times_.size() <= 1U) {
+    auto const& t = trip_data.get(*trip_it);
+    if (t.event_times_.size() <= 1U || t.requires_interpolation_) {
+      log(log_lvl::error, "loader.gtfs.trip",
+          R"(trip "{}": invalid event times, skipping)", t.id_);
       trip_it = fet.trips_.erase(trip_it);
       offsets_it = fet.offsets_.erase(offsets_it);
     } else {

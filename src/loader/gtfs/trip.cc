@@ -134,8 +134,9 @@ void trip::interpolate() {
   struct bound {
     explicit bound(minutes_after_midnight_t t) : min_{t}, max_{t} {}
     minutes_after_midnight_t interpolate(int const idx) const {
+      auto const denom = max_idx_ - min_idx_;
       auto const p =
-          static_cast<double>(idx - min_idx_) / (max_idx_ - min_idx_);
+          denom > 0 ? static_cast<double>(idx - min_idx_) / denom : 0;
       return min_ + duration_t{static_cast<duration_t::rep>(
                         std::round((max_ - min_).count() * p))};
     }
@@ -161,10 +162,15 @@ void trip::interpolate() {
       max_idx = static_cast<unsigned>(&(*it) - &bounds.front()) / 2U;
     }
   }
-  utl::verify(max != kInterpolate, "last arrival cannot be interpolated");
+  if (bounds.size() <= 1 || bounds[bounds.size() - 2].max_idx_ == 0) {
+    log(log_lvl::error, "loader.gtfs.trip",
+        R"(trip "{}": last arrival cannot be interpolated)", id_);
+    return;
+  }
 
   auto min = duration_t{0};
-  auto min_idx = 0;
+  auto const last = static_cast<int>(event_times_.size() - 1);
+  auto min_idx = last;
   for (auto it = bounds.begin(); it != bounds.end(); ++it) {
     if (it->min_ == kInterpolate) {
       it->min_ = min;
@@ -174,7 +180,11 @@ void trip::interpolate() {
       min_idx = static_cast<unsigned>(&(*it) - &bounds.front()) / 2U;
     }
   }
-  utl::verify(min != kInterpolate, "first arrival cannot be interpolated");
+  if (bounds[1].min_idx_ == last) {
+    log(log_lvl::error, "loader.gtfs.trip",
+        R"(trip "{}": first departure cannot be interpolated)", id_);
+    return;
+  }
 
   for (auto const [idx, entry] : utl::enumerate(event_times_)) {
     auto const& arr = bounds[2 * idx];
@@ -187,6 +197,7 @@ void trip::interpolate() {
       entry.dep_ = dep.interpolate(static_cast<int>(idx));
     }
   }
+  requires_interpolation_ = false;
 }
 
 std::string trip::display_name() const {

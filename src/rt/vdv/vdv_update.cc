@@ -33,7 +33,7 @@ namespace nigiri::rt::vdv {
 
 std::ostream& operator<<(std::ostream& out, statistics const& s) {
   out << "unsupported additional runs: " << s.unsupported_additional_runs_
-      << "\nunsupported cancelled runs: " << s.unsupported_cancelled_runs_
+      << "\ncancelled runs: " << s.cancelled_runs_
       << "\ntotal stops: " << s.total_stops_
       << "\nresolved stops: " << s.resolved_stops_
       << "\nunknown stops: " << s.unknown_stops_
@@ -55,7 +55,7 @@ std::ostream& operator<<(std::ostream& out, statistics const& s) {
 
 statistics& operator+=(statistics& lhs, statistics const& rhs) {
   lhs.unsupported_additional_runs_ += rhs.unsupported_additional_runs_;
-  lhs.unsupported_cancelled_runs_ += rhs.unsupported_cancelled_runs_;
+  lhs.cancelled_runs_ += rhs.cancelled_runs_;
   lhs.total_stops_ += rhs.total_stops_;
   lhs.resolved_stops_ += rhs.resolved_stops_;
   lhs.unknown_stops_ += rhs.unknown_stops_;
@@ -113,7 +113,12 @@ updater::vdv_stop::vdv_stop(nigiri::location_idx_t const l,
       dep_{get_opt_time(n, "Abfahrtszeit")},
       arr_{get_opt_time(n, "Ankunftszeit")},
       rt_dep_{get_opt_time(n, "IstAbfahrtPrognose")},
-      rt_arr_{get_opt_time(n, "IstAnkunftPrognose")} {}
+      rt_arr_{get_opt_time(n, "IstAnkunftPrognose")},
+      in_forbidden_{*get_opt_bool(n, "Einsteigeverbot", false)},
+      out_forbidden_{*get_opt_bool(n, "Aussteigeverbot", false)},
+      passing_through_{*get_opt_bool(n, "Durchfahrt", false)},
+      arr_canceled_{*get_opt_bool(n, "AnkunftFaelltAus", false)},
+      dep_canceled_{*get_opt_bool(n, "AbfahrtFaelltAus", false)} {}
 
 std::optional<std::pair<unixtime_t, event_type>> updater::vdv_stop::get_event(
     event_type et) const {
@@ -355,13 +360,32 @@ void monotonize(frun& fr, rt_timetable& rtt) {
   }
 }
 
+void handle_first_last_cancelation(frun& fr, rt_timetable& rtt) {
+  auto const cancel_stop = [&](auto& rs) {
+    auto& stp = rtt.rt_transport_location_seq_[fr.rt_][rs.stop_idx_];
+    stp = stop{stop{stp}.location_idx(), false, false, false, false}.value();
+  };
+
+  auto first = *begin(fr);
+  if (!first.in_allowed()) {
+    cancel_stop(first);
+  }
+
+  auto last = *rbegin(fr);
+  if (!last.out_allowed()) {
+    cancel_stop(last);
+  }
+}
+
 void updater::update_run(rt_timetable& rtt,
                          run& r,
                          vector<vdv_stop> const& vdv_stops,
                          bool const is_complete_run) {
   auto fr = rt::frun(tt_, &rtt, r);
   if (!fr.is_rt()) {
-    fr.rt_ = rtt.add_rt_transport(src_idx_, tt_, r.t_);
+    fr.rt_ = rtt.add_rt_transport(src_idx_, tt_, fr.t_);
+  } else {
+    rtt.rt_transport_is_cancelled_.set(to_idx(fr.rt_), false);
   }
 
   auto delay = std::optional<duration_t>{};
@@ -420,6 +444,24 @@ void updater::update_run(rt_timetable& rtt,
           }
         }
         if (matched_arr || matched_dep) {
+
+          // stop change
+          auto& stp = rtt.rt_transport_location_seq_[fr.rt_][rs.stop_idx_];
+          auto const in_allowed_update = !vdv_stop->in_forbidden_ &&
+                                         !vdv_stop->passing_through_ &&
+                                         !vdv_stop->dep_canceled_;
+          auto const out_allowed_update = !vdv_stop->out_forbidden_ &&
+                                          !vdv_stop->passing_through_ &&
+                                          !vdv_stop->arr_canceled_;
+
+          stp = stop{stop{stp}.location_idx(), in_allowed_update,
+                     out_allowed_update,
+                     rs.get_scheduled_stop().in_allowed_wheelchair() &&
+                         in_allowed_update,
+                     rs.get_scheduled_stop().out_allowed_wheelchair() &&
+                         out_allowed_update}
+                    .value();
+
           cursor = vdv_stop + 1;
           print_skipped_stops();
           break;
@@ -451,7 +493,17 @@ void updater::update_run(rt_timetable& rtt,
     ++cursor;
   }
 
-  monotonize(fr, rtt);
+  handle_first_last_cancelation(fr, rtt);
+  auto const n_not_cancelled_stops = utl::count_if(
+      rtt.rt_transport_location_seq_[fr.rt_],
+      [](stop::value_type const s) { return !stop{s}.is_cancelled(); });
+  if (n_not_cancelled_stops <= 1U) {
+    rtt.cancel_run(fr);
+  }
+
+  if (!fr.is_cancelled()) {
+    monotonize(fr, rtt);
+  }
 }
 
 void updater::process_vdv_run(rt_timetable& rtt, pugi::xml_node const vdv_run) {
@@ -487,7 +539,12 @@ void updater::process_vdv_run(rt_timetable& rtt, pugi::xml_node const vdv_run) {
   }
   ++stats_.matched_runs_;
 
-  update_run(rtt, *r, vdv_stops, is_complete_run);
+  if (get_opt_bool(vdv_run, "FaelltAus", false).value()) {
+    rtt.cancel_run(*r);
+    ++stats_.cancelled_runs_;
+  } else {
+    update_run(rtt, *r, vdv_stops, is_complete_run);
+  }
 }
 
 void updater::update(rt_timetable& rtt, pugi::xml_document const& doc) {
@@ -499,15 +556,7 @@ void updater::update(rt_timetable& rtt, pugi::xml_document const& doc) {
 #endif
       ++stats_.unsupported_additional_runs_;
       continue;
-    } else if (get_opt_bool(vdv_run.node(), "FaelltAus", false).value()) {
-#ifdef VDV_DEBUG
-      vdv_trace("unsupported canceled run:\n");
-      vdv_run.node().print(std::cout);
-#endif
-      ++stats_.unsupported_cancelled_runs_;
-      continue;
     }
-
     process_vdv_run(rtt, vdv_run.node());
   }
 }

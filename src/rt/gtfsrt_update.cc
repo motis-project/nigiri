@@ -134,23 +134,6 @@ delay_propagation update_event(timetable const& tt,
   }
 }
 
-void cancel_run(timetable const&, rt_timetable& rtt, run& r) {
-  if (r.is_rt()) {
-    rtt.rt_transport_is_cancelled_.set(to_idx(r.rt_), true);
-  }
-  if (r.is_scheduled()) {
-    auto const bf = rtt.bitfields_[rtt.transport_traffic_days_[r.t_.t_idx_]];
-    rtt.bitfields_.emplace_back(bf).set(to_idx(r.t_.day_), false);
-    rtt.transport_traffic_days_[r.t_.t_idx_] =
-        bitfield_idx_t{rtt.bitfields_.size() - 1U};
-
-    for (auto i = r.stop_range_.from_; i != r.stop_range_.to_; ++i) {
-      rtt.dispatch_stop_change(r, i, event_type::kArr, std::nullopt, false);
-      rtt.dispatch_stop_change(r, i, event_type::kDep, std::nullopt, false);
-    }
-  }
-}
-
 unixtime_t fallback_pred(rt_timetable const& rtt,
                          run const& r,
                          std::optional<delay_propagation> const pred,
@@ -304,7 +287,7 @@ void update_run(
       rtt.rt_transport_location_seq_[r.rt_],
       [](stop::value_type const s) { return !stop{s}.is_cancelled(); });
   if (n_not_cancelled_stops <= 1U) {
-    cancel_run(tt, rtt, r);
+    rtt.cancel_run(r);
   }
 }
 
@@ -419,7 +402,7 @@ statistics gtfsrt_update_msg(timetable const& tt,
 
       if (entity.trip_update().trip().schedule_relationship() ==
           gtfsrt::TripDescriptor_ScheduleRelationship_CANCELED) {
-        cancel_run(tt, rtt, r);
+        rtt.cancel_run(r);
       } else {
         update_run(src, tt, rtt, trip, r,
                    entity.trip_update().stop_time_update());
