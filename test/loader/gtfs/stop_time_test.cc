@@ -90,9 +90,9 @@ L001I01S1FES,08:31:00,,23,19,,0,0,7.473
 
   auto trips = trip_data{};
   trips.trips_.emplace("L001I01S1FES", gtfs_trip_idx_t{0U});
-  trips.data_.emplace_back(nullptr, nullptr, nullptr, "L001I01S1FES",
-                           trip_direction_idx_t{}, "", shape_idx_t::invalid(),
-                           false);
+  trips.data_.emplace_back(
+      nullptr, nullptr, nullptr, "L001I01S1FES", trip_direction_idx_t{}, "",
+      direction_id_t::invalid(), shape_idx_t::invalid(), false);
   auto tt = timetable{};
   auto stops = locations_map{};
   stops.emplace("6", location_idx_t{0});
@@ -123,9 +123,9 @@ L001I01S1FES,,08:31:00,23,19,,0,0,7.473
 
   auto trips = trip_data{};
   trips.trips_.emplace("L001I01S1FES", gtfs_trip_idx_t{0U});
-  trips.data_.emplace_back(nullptr, nullptr, nullptr, "L001I01S1FES",
-                           trip_direction_idx_t{}, "", shape_idx_t::invalid(),
-                           false);
+  trips.data_.emplace_back(
+      nullptr, nullptr, nullptr, "L001I01S1FES", trip_direction_idx_t{}, "",
+      direction_id_t::invalid(), shape_idx_t::invalid(), false);
   auto tt = timetable{};
   auto stops = locations_map{};
   stops.emplace("6", location_idx_t{0});
@@ -148,9 +148,9 @@ L001I01S1FES,,,23,19,,0,0,7.473
 
   auto trips = trip_data{};
   trips.trips_.emplace("L001I01S1FES", gtfs_trip_idx_t{0U});
-  trips.data_.emplace_back(nullptr, nullptr, nullptr, "L001I01S1FES",
-                           trip_direction_idx_t{}, "", shape_idx_t::invalid(),
-                           false);
+  trips.data_.emplace_back(
+      nullptr, nullptr, nullptr, "L001I01S1FES", trip_direction_idx_t{}, "",
+      direction_id_t::invalid(), shape_idx_t::invalid(), false);
   auto tt = timetable{};
   auto stops = locations_map{};
   stops.emplace("6", location_idx_t{0});
