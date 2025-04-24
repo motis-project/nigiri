@@ -121,13 +121,13 @@ struct timetable {
     bitfield_idx_t bitfield_idx_;
     route_idx_t route_idx_;
     duration_t first_dep_offset_;
-    std::basic_string<merged_trips_idx_t> const& external_trip_ids_;
-    std::basic_string<attribute_combination_idx_t> const& section_attributes_;
-    std::basic_string<provider_idx_t> const& section_providers_;
-    std::basic_string<trip_direction_idx_t> const& section_directions_;
-    std::basic_string<trip_line_idx_t> const& section_lines_;
-    std::basic_string<stop_idx_t> const& stop_seq_numbers_;
-    std::basic_string<route_color> const& route_colors_;
+    basic_string<merged_trips_idx_t> const& external_trip_ids_;
+    basic_string<attribute_combination_idx_t> const& section_attributes_;
+    basic_string<provider_idx_t> const& section_providers_;
+    basic_string<trip_direction_idx_t> const& section_directions_;
+    basic_string<trip_line_idx_t> const& section_lines_;
+    basic_string<stop_idx_t> const& stop_seq_numbers_;
+    basic_string<route_color> const& route_colors_;
   };
 
   template <typename TripId>
@@ -180,10 +180,9 @@ struct timetable {
     return idx;
   }
 
-  route_idx_t register_route(
-      std::basic_string<stop::value_type> const& stop_seq,
-      std::basic_string<clasz> const& clasz_sections,
-      bitvec const& bikes_allowed_per_section) {
+  route_idx_t register_route(basic_string<stop::value_type> const& stop_seq,
+                             basic_string<clasz> const& clasz_sections,
+                             bitvec const& bikes_allowed_per_section) {
     assert(stop_seq.size() > 1U);
     assert(!clasz_sections.empty());
 
@@ -222,7 +221,7 @@ struct timetable {
   }
 
   merged_trips_idx_t register_merged_trip(
-      std::basic_string<trip_idx_t> const& trip_ids) {
+      basic_string<trip_idx_t> const& trip_ids) {
     auto const idx = merged_trips_.size();
     merged_trips_.emplace_back(trip_ids);
     return merged_trips_idx_t{static_cast<merged_trips_idx_t::value_t>(idx)};

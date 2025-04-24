@@ -160,7 +160,7 @@ void load_timetable(loader_config const& config,
   stop_seq_t stop_seq_cache;
   bitvec bikes_allowed_seq_cache;
   auto const get_bikes_allowed_seq =
-      [&](std::basic_string<gtfs_trip_idx_t> const& trips) -> bitvec const* {
+      [&](basic_string<gtfs_trip_idx_t> const& trips) -> bitvec const* {
     if (trips.size() == 1U) {
       return trip_data.get(trips.front()).bikes_allowed_
                  ? &kSingleTripBikesAllowed
@@ -181,7 +181,7 @@ void load_timetable(loader_config const& config,
     }
   };
 
-  auto const add_trip = [&](std::basic_string<gtfs_trip_idx_t> const& trips,
+  auto const add_trip = [&](basic_string<gtfs_trip_idx_t> const& trips,
                             bitfield const* traffic_days) {
     expand_trip(
         trip_data, noon_offsets, tt, trips, traffic_days, tt.date_range_,
@@ -247,7 +247,7 @@ void load_timetable(loader_config const& config,
       });
     };
 
-    auto stop_seq_numbers = std::basic_string<stop_idx_t>{};
+    auto stop_seq_numbers = basic_string<stop_idx_t>{};
     auto const source_file_idx =
         tt.register_source_file((d.path() / kStopTimesFile).generic_string());
     tt.src_trips_.emplace_back(trip_idx_t{tt.trip_ids_.size()},
@@ -270,12 +270,12 @@ void load_timetable(loader_config const& config,
     tt.src_trips_.back().to_ = trip_idx_t{tt.trip_ids_.size()};
 
     auto const timer = scoped_timer{"loader.gtfs.routes.build"};
-    auto const attributes = std::basic_string<attribute_combination_idx_t>{};
+    auto const attributes = basic_string<attribute_combination_idx_t>{};
     auto lines = hash_map<std::string, trip_line_idx_t>{};
-    auto section_directions = std::basic_string<trip_direction_idx_t>{};
-    auto section_lines = std::basic_string<trip_line_idx_t>{};
-    auto route_colors = std::basic_string<route_color>{};
-    auto external_trip_ids = std::basic_string<merged_trips_idx_t>{};
+    auto section_directions = basic_string<trip_direction_idx_t>{};
+    auto section_lines = basic_string<trip_line_idx_t>{};
+    auto route_colors = basic_string<route_color>{};
+    auto external_trip_ids = basic_string<merged_trips_idx_t>{};
     auto location_routes = mutable_fws_multimap<location_idx_t, route_idx_t>{};
     for (auto const& [key, sub_routes] : route_services) {
       for (auto const& services : sub_routes) {

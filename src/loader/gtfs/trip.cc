@@ -26,7 +26,7 @@
 
 namespace nigiri::loader::gtfs {
 
-std::vector<std::pair<std::basic_string<gtfs_trip_idx_t>, bitfield>>
+std::vector<std::pair<basic_string<gtfs_trip_idx_t>, bitfield>>
 block::rule_services(trip_data& trips) {
   utl::verify(!trips_.empty(), "empty block not allowed");
 
@@ -40,7 +40,7 @@ block::rule_services(trip_data& trips) {
   });
 
   if (trips_.size() == 1) {
-    return {{std::pair{std::basic_string<gtfs_trip_idx_t>{trips_.front()},
+    return {{std::pair{basic_string<gtfs_trip_idx_t>{trips_.front()},
                        *trips.get(trips_.front()).service_}}};
   }
 
@@ -64,8 +64,7 @@ block::rule_services(trip_data& trips) {
     bitfield traffic_days_;
   };
 
-  std::vector<std::pair<std::basic_string<gtfs_trip_idx_t>, bitfield>>
-      combinations;
+  std::vector<std::pair<basic_string<gtfs_trip_idx_t>, bitfield>> combinations;
   for (auto start_it = begin(rule_trips); start_it != end(rule_trips);
        ++start_it) {
     std::stack<queue_entry> q;
@@ -98,7 +97,7 @@ block::rule_services(trip_data& trips) {
         }
 
         combinations.emplace_back(
-            utl::transform_to<std::basic_string<gtfs_trip_idx_t>>(
+            utl::transform_to<basic_string<gtfs_trip_idx_t>>(
                 collected_trips, [](auto&& rt) { return rt->trip_; }),
             traffic_days);
       }

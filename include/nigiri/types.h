@@ -26,6 +26,8 @@
 #include "cista/reflection/printable.h"
 #include "cista/strong.h"
 
+#include "char_traits/char_traits.h"
+
 #include "geo/latlng.h"
 
 #include "nigiri/common/interval.h"
@@ -363,6 +365,9 @@ auto to_range(Collection const& c) {
 using transport_mode_id_t = std::int32_t;
 
 using via_offset_t = std::uint8_t;
+
+template <typename T>
+using basic_string = std::basic_string<T, char_traits::char_traits<T>>;
 
 }  // namespace nigiri
 
