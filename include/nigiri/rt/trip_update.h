@@ -12,9 +12,9 @@ struct timetable;
 struct rt_timetable;
 
 struct trip_info {
-  std::basic_string<stop::value_type> stop_seq_;
+  basic_string<stop::value_type> stop_seq_;
   std::vector<unixtime_t> event_times_;
-  std::basic_string<clasz> section_clasz_;
+  basic_string<clasz> section_clasz_;
 };
 
 struct trip_update {

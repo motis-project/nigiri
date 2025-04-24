@@ -154,7 +154,6 @@ struct stop_seq_number_range {
   stop_idx_t location_seq_size_;
 };
 
-void encode_seq_numbers(std::span<stop_idx_t>,
-                        std::basic_string<stop_idx_t>& out);
+void encode_seq_numbers(std::span<stop_idx_t>, basic_string<stop_idx_t>& out);
 
 }  // namespace nigiri::loader::gtfs
