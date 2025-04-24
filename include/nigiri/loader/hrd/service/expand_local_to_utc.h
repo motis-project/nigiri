@@ -12,7 +12,7 @@ void build_stop_seq(ref_service const& s,
                     stamm const& st,
                     std::size_t const hrd_local_day_idx,
                     std::vector<duration_t> const& local_times,
-                    std::basic_string<stop::value_type>& stop_seq) {
+                    basic_string<stop::value_type>& stop_seq) {
   auto const& ref = store.get(s.ref_);
   auto const n_stops = s.stops(store).size();
   for (auto i = 0U; i != n_stops; ++i) {
@@ -50,7 +50,7 @@ std::optional<duration_t> build_utc_time_seq(
     std::vector<duration_t> const& local_times,
     std::vector<tz_offsets> const& stop_timezones,
     std::chrono::sys_days const day,
-    std::basic_string<duration_t>& utc_times) {
+    basic_string<duration_t>& utc_times) {
   auto const [_, first_day_offset, first_valid] = local_mam_to_utc_mam(
       stop_timezones.front(), day, local_times.front(), true);
 
@@ -87,8 +87,8 @@ void to_utc(service_store const& store,
             interval<std::chrono::sys_days> const& selection,
             ref_service const& s,
             Fn&& consumer) {
-  using key_t = std::pair<std::basic_string<minutes_after_midnight_t>,
-                          std::basic_string<stop::value_type>>;
+  using key_t = std::pair<basic_string<minutes_after_midnight_t>,
+                          basic_string<stop::value_type>>;
   auto utc_time_traffic_days = hash_map<key_t, bitfield>{};
 
   auto const local_times = s.local_times(store);
