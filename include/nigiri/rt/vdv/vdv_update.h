@@ -20,7 +20,7 @@ struct statistics {
   friend statistics& operator+=(statistics&, statistics const&);
 
   std::uint32_t unsupported_additional_runs_{0U};
-  std::uint32_t unsupported_cancelled_runs_{0U};
+  std::uint32_t cancelled_runs_{0U};
   std::uint32_t total_stops_{0U};
   std::uint32_t resolved_stops_{0U};
   std::uint32_t unknown_stops_{0U};
@@ -70,6 +70,8 @@ private:
     location_idx_t l_;
     std::string_view id_;
     std::optional<unixtime_t> dep_, arr_, rt_dep_, rt_arr_;
+    bool in_forbidden_, out_forbidden_, passing_through_, arr_canceled_,
+        dep_canceled_;
   };
 
   vector<vdv_stop> resolve_stops(pugi::xml_node vdv_run);

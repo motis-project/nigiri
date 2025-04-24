@@ -76,4 +76,21 @@ rt_transport_idx_t rt_timetable::add_rt_transport(
   return rt_transport_idx_t{rt_t_idx};
 }
 
+void rt_timetable::cancel_run(rt::run const& r) {
+  if (r.is_rt()) {
+    rt_transport_is_cancelled_.set(to_idx(r.rt_), true);
+  }
+  if (r.is_scheduled()) {
+    auto const bf = bitfields_[transport_traffic_days_[r.t_.t_idx_]];
+    bitfields_.emplace_back(bf).set(to_idx(r.t_.day_), false);
+    transport_traffic_days_[r.t_.t_idx_] =
+        bitfield_idx_t{bitfields_.size() - 1U};
+
+    for (auto i = r.stop_range_.from_; i != r.stop_range_.to_; ++i) {
+      dispatch_stop_change(r, i, event_type::kArr, std::nullopt, false);
+      dispatch_stop_change(r, i, event_type::kDep, std::nullopt, false);
+    }
+  }
+}
+
 }  // namespace nigiri
