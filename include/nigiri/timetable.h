@@ -145,6 +145,7 @@ struct timetable {
 
     if (route_id_idx != route_id_idx_t::invalid()) {  // HRD
       route_ids_[src].route_id_trips_[route_id_idx].push_back(trip_idx);
+      trip_direction_id_.set(trip_idx, direction_id == direction_id_t{1U});
     }
     trip_route_id_.emplace_back(route_id_idx);
 
@@ -157,7 +158,6 @@ struct timetable {
     trip_ids_.emplace_back().emplace_back(trip_id_idx);
     trip_train_nr_.emplace_back(train_nr);
     trip_stop_seq_numbers_.emplace_back(seq_numbers);
-    trip_direction_id_.set(trip_idx, direction_id == direction_id_t{1U});
 
     return trip_idx;
   }
