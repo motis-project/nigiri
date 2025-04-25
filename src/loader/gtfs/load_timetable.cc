@@ -237,6 +237,8 @@ void load_timetable(loader_config const& config,
   }
 
   {
+    auto const timer = scoped_timer{"loader.gtfs.write_trips"};
+
     progress_tracker->status("Write Trips")
         .out_bounds(85.F, 98.F)
         .in_high(route_services.size());
@@ -252,6 +254,7 @@ void load_timetable(loader_config const& config,
         tt.register_source_file((d.path() / kStopTimesFile).generic_string());
     tt.src_trips_.emplace_back(trip_idx_t{tt.trip_ids_.size()},
                                trip_idx_t::invalid());
+    tt.trip_direction_id_.resize(tt.n_trips() + trip_data.data_.size());
     for (auto& trp : trip_data.data_) {
       std::uint32_t train_nr = 0U;
       if (is_train_number(trp.short_name_)) {
@@ -269,7 +272,6 @@ void load_timetable(loader_config const& config,
     }
     tt.src_trips_.back().to_ = trip_idx_t{tt.trip_ids_.size()};
 
-    auto const timer = scoped_timer{"loader.gtfs.routes.build"};
     auto const attributes = basic_string<attribute_combination_idx_t>{};
     auto lines = hash_map<std::string, trip_line_idx_t>{};
     auto section_directions = basic_string<trip_direction_idx_t>{};
