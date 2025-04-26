@@ -199,9 +199,9 @@ void read_stop_times(timetable& tt,
         }
 
         // Store common attributes of regular trips and flex trips.
-        t->seq_numbers_.push_back(*s.stop_sequence_);
         t->requires_sorting_ |= (!t->seq_numbers_.empty() &&
                                  t->seq_numbers_.back() > *s.stop_sequence_);
+        t->seq_numbers_.push_back(*s.stop_sequence_);
         if (!s.stop_headsign_->empty()) {
           t->stop_headsigns_.resize(t->seq_numbers_.size(),
                                     trip_direction_idx_t::invalid());
