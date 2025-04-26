@@ -59,6 +59,12 @@ struct stop_events {
   minutes_after_midnight_t arr_{kInterpolate}, dep_{kInterpolate};
 };
 
+struct stop_time_window {
+  booking_rule_idx_t pickup_booking_rule_{booking_rule_idx_t::invalid()};
+  booking_rule_idx_t drop_off_booking_rule_{booking_rule_idx_t::invalid()};
+  minutes_after_midnight_t start_, end_;
+};
+
 struct trip {
   trip(route const*,
        bitfield const*,
@@ -102,6 +108,9 @@ struct trip {
   std::vector<stop_events> event_times_;
   std::vector<trip_direction_idx_t> stop_headsigns_;
   std::vector<double> distance_traveled_;
+
+  std::vector<flex_stop_t> flex_stops_;
+  std::vector<stop_time_window> flex_time_windows_;
 
   std::optional<std::vector<frequency>> frequency_;
   bool requires_interpolation_{false};

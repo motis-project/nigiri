@@ -19,6 +19,7 @@
 #include "nigiri/loader/gtfs/calendar_date.h"
 #include "nigiri/loader/gtfs/fares.h"
 #include "nigiri/loader/gtfs/files.h"
+#include "nigiri/loader/gtfs/flex.h"
 #include "nigiri/loader/gtfs/local_to_utc.h"
 #include "nigiri/loader/gtfs/noon_offsets.h"
 #include "nigiri/loader/gtfs/route.h"
@@ -124,8 +125,16 @@ void load_timetable(loader_config const& config,
   auto trip_data =
       read_trips(tt, routes, service, shape_states, load(kTripsFile).data(),
                  config.bikes_allowed_default_);
+  auto const booking_rules = parse_booking_rules(
+      tt, load(kBookingRulesFile).data(), service, bitfield_indices);
+  auto const location_groups =
+      parse_location_groups(tt, load(kLocationGroupsFile).data());
+  auto const flex_areas = parse_flex_areas(tt, load(kLocationsFile).data());
+  parse_location_group_stops(tt, load(kLocationGroupStopsFile).data(),
+                             location_groups, stops);
   read_frequencies(trip_data, load(kFrequenciesFile).data());
-  read_stop_times(tt, trip_data, stops, load(kStopTimesFile).data(),
+  read_stop_times(tt, trip_data, stops, flex_areas, booking_rules,
+                  location_groups, load(kStopTimesFile).data(),
                   shapes_data != nullptr);
   load_fares(tt, d, service, routes, stops);
   utl::verify(tt.fares_.size() == to_idx(src) + 1U, "fares: size={} src={}",

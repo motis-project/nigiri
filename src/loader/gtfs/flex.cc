@@ -8,18 +8,12 @@
 #include "utl/pipes/for_each.h"
 #include "utl/pipes/transform.h"
 
+#include "nigiri/loader/gtfs/files.h"
 #include "nigiri/loader/gtfs/parse_time.h"
 #include "nigiri/logging.h"
 #include "nigiri/timetable.h"
 
-using namespace std::string_view_literals;
-
 namespace nigiri::loader::gtfs {
-
-constexpr auto const kBookingRulesFile = "booking_rules.txt"sv;
-
-using booking_rule_map_t = hash_map<std::string, flex_booking_rule_idx_t>;
-using location_group_map_t = hash_map<std::string, flex_location_group_idx_t>;
 
 string_idx_t to_str(timetable& tt, auto const& col) {
   return col
@@ -29,24 +23,64 @@ string_idx_t to_str(timetable& tt, auto const& col) {
       .value_or(string_idx_t::invalid());
 }
 
-location_group_map_t parse_location_groups(timetable& tt,
-                                           std::string_view file_content) {
+flex_areas_t parse_flex_areas(timetable& tt, std::string_view file_content) {
+  CISTA_UNUSED_PARAM(tt)
+  CISTA_UNUSED_PARAM(file_content)
+  // TODO
+  return {};
+}
+
+location_groups_t parse_location_groups(timetable& tt,
+                                        std::string_view file_content) {
   struct location_group_record {
     utl::csv_col<utl::cstr, UTL_NAME("location_group_id")> location_group_id_;
     utl::csv_col<std::optional<utl::cstr>, UTL_NAME("location_group_name")>
         location_group_name_;
   };
 
-  auto map = location_group_map_t{};
+  auto map = location_groups_t{};
   utl::for_each_row<location_group_record>(
       file_content, [&](location_group_record const& r) {
-        tt.location_group_names_.emplace_back(
+        auto const idx = location_group_idx_t{tt.location_group_name_.size()};
+        tt.location_group_name_.emplace_back(
             to_str(tt, r.location_group_name_));
+        tt.location_group_.emplace_back_empty();
+        map.emplace(r.location_group_id_->to_str(), idx);
       });
   return map;
 }
 
-booking_rule_map_t parse_booking_rules(
+void parse_location_group_stops(timetable& tt,
+                                std::string_view file_content,
+                                location_groups_t const& location_groups,
+                                stops_map_t const& stops) {
+  struct location_group_record {
+    utl::csv_col<utl::cstr, UTL_NAME("location_group_id")> location_group_id_;
+    utl::csv_col<utl::cstr, UTL_NAME("stop_id")> stop_id_;
+  };
+  utl::for_each_row<location_group_record>(
+      file_content, [&](location_group_record const& r) {
+        auto const location_group_it =
+            location_groups.find(r.location_group_id_->view());
+        if (location_group_it == end(location_groups)) {
+          log(log_lvl::error, "nigiri.loader.gtfs.flex",
+              "location_group_id={} not found", r.location_group_id_->view());
+          return;
+        }
+
+        auto const stop_it = stops.find(r.stop_id_->view());
+        if (stop_it == end(stops)) {
+          log(log_lvl::error, "nigiri.loader.gtfs.flex",
+              "location_group_id={} not found", r.location_group_id_->view());
+          return;
+        }
+
+        tt.location_group_[location_group_it->second].push_back(
+            stop_it->second);
+      });
+}
+
+booking_rules_t parse_booking_rules(
     timetable& tt,
     std::string_view file_content,
     traffic_days_t const& traffic_days,
@@ -80,81 +114,74 @@ booking_rule_map_t parse_booking_rules(
     csv_col<std::optional<utl::cstr>, UTL_NAME("booking_url")> booking_url_;
   };
 
-  auto map = booking_rule_map_t{};
-  utl::for_each_row<booking_rule_record>(
-      file_content, [&](booking_rule_record const& r) {
-        auto const get_type = [&]() -> booking_rule::booking_type {
-          switch (*r.booking_type_) {
-            case 0: return booking_rule::real_time{};
+  auto map = booking_rules_t{};
+  utl::for_each_row<
+      booking_rule_record>(file_content, [&](booking_rule_record const& r) {
+    auto const get_type = [&]() -> booking_rule::booking_type {
+      switch (*r.booking_type_) {
+        case 0: return booking_rule::real_time{};
 
-            case 1: {
-              auto prior_notice = booking_rule::prior_notice{};
-              if (r.prior_notice_duration_min_->has_value()) {
-                prior_notice.prior_notice_duration_min_ =
-                    i32_minutes{**r.prior_notice_duration_min_};
-              }
-              if (r.prior_notice_duration_max_->has_value()) {
-                prior_notice.prior_notice_duration_max_ =
-                    i32_minutes{**r.prior_notice_duration_max_};
-              }
-              return prior_notice;
-            }
-
-            case 2: {
-              auto prior_day = booking_rule::prior_day{};
-              if (r.prior_notice_last_day_->has_value()) {
-                prior_day.prior_notice_last_day_ = **r.prior_notice_last_day_;
-              }
-              if (r.prior_notice_last_time_->has_value()) {
-                prior_day.prior_notice_last_time_ =
-                    hhmm_to_min(**r.prior_notice_last_time_);
-              }
-              if (r.prior_notice_start_day_->has_value()) {
-                prior_day.prior_notice_start_day_ = **r.prior_notice_start_day_;
-              }
-              if (r.prior_notice_start_time_->has_value()) {
-                prior_day.prior_notice_start_time_ =
-                    hhmm_to_min(**r.prior_notice_start_time_);
-              }
-              if (r.prior_notice_service_id_->has_value()) {
-                auto const& bitfield =
-                    *traffic_days.at((*r.prior_notice_service_id_)->view());
-                prior_day.prior_notice_bitfield_ = utl::get_or_create(
-                    bitfield_indices, bitfield,
-                    [&]() { return tt.register_bitfield(bitfield); });
-              }
-              return prior_day;
-            }
+        case 1: {
+          auto prior_notice = booking_rule::prior_notice{};
+          if (r.prior_notice_duration_min_->has_value()) {
+            prior_notice.prior_notice_duration_min_ =
+                i32_minutes{**r.prior_notice_duration_min_};
           }
-          return booking_rule::real_time{};
-        };
+          if (r.prior_notice_duration_max_->has_value()) {
+            prior_notice.prior_notice_duration_max_ =
+                i32_minutes{**r.prior_notice_duration_max_};
+          }
+          return prior_notice;
+        }
 
-        auto const idx = flex_booking_rule_idx_t{tt.booking_rules_.size()};
-        tt.booking_rules_.emplace_back(
-            booking_rule{.id_ = tt.strings_.store(r.booking_rule_id_->view()),
-                         .type_ = get_type(),
-                         .message_ = to_str(tt, r.message_),
-                         .pickup_message_ = to_str(tt, r.pickup_message_),
-                         .drop_off_message_ = to_str(tt, r.drop_off_message_),
-                         .phone_number_ = to_str(tt, r.phone_number_),
-                         .info_url_ = to_str(tt, r.info_url_),
-                         .booking_url_ = to_str(tt, r.booking_url_)});
-        map.emplace(r.booking_rule_id_->to_str(), idx);
-      });
+        case 2: {
+          auto prior_day = booking_rule::prior_day{};
+          if (r.prior_notice_last_day_->has_value()) {
+            prior_day.prior_notice_last_day_ = **r.prior_notice_last_day_;
+          }
+          if (r.prior_notice_last_time_->has_value()) {
+            prior_day.prior_notice_last_time_ =
+                hhmm_to_min(**r.prior_notice_last_time_);
+          }
+          if (r.prior_notice_start_day_->has_value()) {
+            prior_day.prior_notice_start_day_ = **r.prior_notice_start_day_;
+          }
+          if (r.prior_notice_start_time_->has_value()) {
+            prior_day.prior_notice_start_time_ =
+                hhmm_to_min(**r.prior_notice_start_time_);
+          }
+          if (r.prior_notice_service_id_->has_value()) {
+            auto const bitfield_it =
+                traffic_days.find((*r.prior_notice_service_id_)->view());
+            if (bitfield_it == end(traffic_days)) {
+              log(log_lvl::error, "nigiri.loader.gtfs.flex",
+                  "service_id={} not found, falling back to real-time booking",
+                  (*r.prior_notice_service_id_)->view());
+              return booking_rule::real_time{};
+            }
+            prior_day.prior_notice_bitfield_ = utl::get_or_create(
+                bitfield_indices, *bitfield_it->second,
+                [&]() { return tt.register_bitfield(*bitfield_it->second); });
+          }
+          return prior_day;
+        }
+      }
+      return booking_rule::real_time{};
+    };
+
+    auto const idx = booking_rule_idx_t{tt.booking_rules_.size()};
+    tt.booking_rules_.emplace_back(
+        booking_rule{.id_ = tt.strings_.store(r.booking_rule_id_->view()),
+                     .type_ = get_type(),
+                     .message_ = to_str(tt, r.message_),
+                     .pickup_message_ = to_str(tt, r.pickup_message_),
+                     .drop_off_message_ = to_str(tt, r.drop_off_message_),
+                     .phone_number_ = to_str(tt, r.phone_number_),
+                     .info_url_ = to_str(tt, r.info_url_),
+                     .booking_url_ = to_str(tt, r.booking_url_)});
+    map.emplace(r.booking_rule_id_->to_str(), idx);
+  });
   return map;
-}
-
-void load_flex(timetable& tt,
-               dir const& d,
-               traffic_days_t const& traffic_days,
-               hash_map<bitfield, bitfield_idx_t>& bitfield_indices,
-               locations_map const&) {
-  auto const load = [&](std::string_view file_name) -> file {
-    return d.exists(file_name) ? d.get_file(file_name) : file{};
-  };
-
-  auto const booking_rules = parse_booking_rules(
-      tt, load(kBookingRulesFile).data(), traffic_days, bitfield_indices);
 }
 
 }  // namespace nigiri::loader::gtfs

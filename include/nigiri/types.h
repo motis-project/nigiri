@@ -175,12 +175,13 @@ using merged_trips_idx_t =
     cista::strong<std::uint32_t, struct _merged_trips_idx>;
 using footpath_idx_t = cista::strong<std::uint32_t, struct _footpath_idx>;
 using source_file_idx_t = cista::strong<std::uint16_t, struct _source_file_idx>;
-using flex_trip_idx_t = cista::strong<std::uint32_t, struct _flex_trip_idx>;
 using flex_area_idx_t = cista::strong<std::uint32_t, struct _flex_area_idx>;
-using flex_location_group_idx_t =
-    cista::strong<std::uint32_t, struct _flex_location_group_idx>;
-using flex_booking_rule_idx_t =
+using location_group_idx_t =
+    cista::strong<std::uint32_t, struct _location_group_idx>;
+using booking_rule_idx_t =
     cista::strong<std::uint32_t, struct _booking_rule_idx>;
+
+using flex_stop_t = variant<flex_area_idx_t, location_group_idx_t>;
 
 using profile_idx_t = std::uint8_t;
 constexpr auto const kWheelchairProfile = profile_idx_t{2U};
