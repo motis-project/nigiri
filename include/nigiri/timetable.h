@@ -145,6 +145,7 @@ struct timetable {
 
     if (route_id_idx != route_id_idx_t::invalid()) {  // HRD
       route_ids_[src].route_id_trips_[route_id_idx].push_back(trip_idx);
+      trip_direction_id_.set(trip_idx, direction_id == direction_id_t{1U});
     }
     trip_route_id_.emplace_back(route_id_idx);
 
@@ -157,9 +158,6 @@ struct timetable {
     trip_ids_.emplace_back().emplace_back(trip_id_idx);
     trip_train_nr_.emplace_back(train_nr);
     trip_stop_seq_numbers_.emplace_back(seq_numbers);
-
-    trip_direction_id_.resize(trip_ids_.size());
-    trip_direction_id_.set(trip_idx, direction_id == direction_id_t{1U});
 
     return trip_idx;
   }
@@ -435,7 +433,7 @@ struct timetable {
     vecvec<route_id_idx_t, char> route_id_long_names_;
     vector_map<route_id_idx_t, route_type_t> route_id_type_;
     vector_map<route_id_idx_t, provider_idx_t> route_id_provider_;
-    vecvec<route_id_idx_t, trip_idx_t> route_id_trips_;
+    paged_vecvec<route_id_idx_t, trip_idx_t> route_id_trips_;
     string_store<route_id_idx_t> ids_;
   };
   vector_map<source_idx_t, route_ids> route_ids_;
