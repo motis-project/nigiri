@@ -125,8 +125,9 @@ inline void write_dot(std::ostream& out,
                    [&](journey::run_enter_exit const& run) {
                      out << "label=\"" << tt.transport_name(run.r_.t_.t_idx_)
                          << "\",tooltip=\"probability of use="
-                         << g.arcs_[dg_arc_idx_t{i}].use_prob_
-                         << "\\nMEAT=" << g.arcs_[dg_arc_idx_t{i}].meat_
+                         << g.arcs_[dg_arc_idx_t{i}].use_prob_ << "\\nMEAT="
+                         << g.arcs_[dg_arc_idx_t{i}].meat_
+                         // << "\\nt_idx=" << run.r_.t_.t_idx_
                          << "\\n";
                      auto const fr = rt::frun{tt, nullptr, run.r_};
                      for (auto j = run.stop_range_.from_;

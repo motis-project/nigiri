@@ -532,13 +532,14 @@ private:
     struct bound_info {
       transport_idx_t t_idx_;
       std::int16_t mam_;
+      std::int16_t ev_day_offset_;
     };
-    auto low_outside_bound = bound_info{transport_idx_t::invalid(), -1};
+    auto low_outside_bound = bound_info{transport_idx_t::invalid(), -1, 0};
     auto up_outside_bound = bound_info{transport_idx_t::invalid(),
-                                       std::numeric_limits<int16_t>::max()};
+                                       std::numeric_limits<int16_t>::max(), 0};
     auto lowest_mam = bound_info{transport_idx_t::invalid(),
-                                 std::numeric_limits<int16_t>::max()};
-    auto highest_mam = bound_info{transport_idx_t::invalid(), -1};
+                                 std::numeric_limits<int16_t>::max(), 0};
+    auto highest_mam = bound_info{transport_idx_t::invalid(), -1, 0};
 
     for (auto day = start_day; day <= end_day; ++day) {
       if (interval_extends_start && interval_extends_end && lb_day < day &&
@@ -571,19 +572,23 @@ private:
           if (ev.mam() < lowest_mam.mam_) {
             lowest_mam.mam_ = ev.mam();
             lowest_mam.t_idx_ = t;
+            lowest_mam.ev_day_offset_ = ev_day_offset;
           }
           if (ev.mam() > highest_mam.mam_) {
             highest_mam.mam_ = ev.mam();
             highest_mam.t_idx_ = t;
+            highest_mam.ev_day_offset_ = ev_day_offset;
           }
           if (low_outside_bound.mam_ < ev.mam() &&
               ev.mam() < start_mam.count()) {
             low_outside_bound.mam_ = ev.mam();
             low_outside_bound.t_idx_ = t;
+            low_outside_bound.ev_day_offset_ = ev_day_offset;
           }
           if (end_mam.count() < ev.mam() && ev.mam() < up_outside_bound.mam_) {
             up_outside_bound.mam_ = ev.mam();
             up_outside_bound.t_idx_ = t;
+            up_outside_bound.ev_day_offset_ = ev_day_offset;
           }
         }
 
@@ -607,25 +612,35 @@ private:
       if (low_outside_bound.t_idx_ == transport_idx_t::invalid()) {
         if (start_day > 0) {
           outside_old_bounds.first =
-              transport{highest_mam.t_idx_, start_day - 1};
+              transport{highest_mam.t_idx_,
+                        static_cast<day_idx_t>((as_int(start_day) - 1) -
+                                               highest_mam.ev_day_offset_)};
         } else {
           outside_old_bounds.first = transport::invalid();
         }
       } else {
         outside_old_bounds.first =
-            transport{low_outside_bound.t_idx_, start_day};
+            transport{low_outside_bound.t_idx_,
+                      static_cast<day_idx_t>(as_int(start_day) -
+                                             low_outside_bound.ev_day_offset_)};
       }
     }
 
     if (interval_extends_end || !bounds_exist) {
       if (up_outside_bound.t_idx_ == transport_idx_t::invalid()) {
         if (end_day < day_idx_t{n_days_ - 1}) {
-          outside_old_bounds.second = transport{lowest_mam.t_idx_, end_day + 1};
+          outside_old_bounds.second =
+              transport{lowest_mam.t_idx_,
+                        static_cast<day_idx_t>((as_int(end_day) + 1) -
+                                               lowest_mam.ev_day_offset_)};
         } else {
           outside_old_bounds.second = transport::invalid();
         }
       } else {
-        outside_old_bounds.second = transport{up_outside_bound.t_idx_, end_day};
+        outside_old_bounds.second =
+            transport{up_outside_bound.t_idx_,
+                      static_cast<day_idx_t>(as_int(end_day) -
+                                             up_outside_bound.ev_day_offset_)};
       }
     }
   }
