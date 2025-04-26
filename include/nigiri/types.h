@@ -175,6 +175,12 @@ using merged_trips_idx_t =
     cista::strong<std::uint32_t, struct _merged_trips_idx>;
 using footpath_idx_t = cista::strong<std::uint32_t, struct _footpath_idx>;
 using source_file_idx_t = cista::strong<std::uint16_t, struct _source_file_idx>;
+using flex_trip_idx_t = cista::strong<std::uint32_t, struct _flex_trip_idx>;
+using flex_area_idx_t = cista::strong<std::uint32_t, struct _flex_area_idx>;
+using flex_location_group_idx_t =
+    cista::strong<std::uint32_t, struct _flex_location_group_idx>;
+using flex_booking_rule_idx_t =
+    cista::strong<std::uint32_t, struct _booking_rule_idx>;
 
 using profile_idx_t = std::uint8_t;
 constexpr auto const kWheelchairProfile = profile_idx_t{2U};
@@ -509,6 +515,52 @@ inline local_time to_local_time(timezone const& tz, unixtime_t const t) {
             reinterpret_cast<date::time_zone const*>(x.second), t);
       }});
 }
+
+struct booking_rule {
+  enum class type : std::uint8_t {
+    kRealTimeBooking,
+    kUpToSameDayBooking,
+    kUpToPrioDaysBooking
+  };
+
+  CISTA_COMPARABLE()
+
+  // booking_type = 0
+  struct real_time {};
+
+  // booking_type = 1
+  // Up to same-day booking with advanced notice.
+  struct prior_notice {
+    i32_minutes prior_notice_duration_min_{0U};
+    i32_minutes prior_notice_duration_max_{
+        std::numeric_limits<duration_t::rep>::max()};
+  };
+
+  // booking_type = 2
+  // Up to prior day(s) booking.
+  struct prior_day {
+    std::uint16_t prior_notice_last_day_{0U};
+    minutes_after_midnight_t prior_notice_last_time_{0U};
+
+    std::uint16_t prior_notice_start_day_{
+        std::numeric_limits<std::int16_t>::max()};
+    minutes_after_midnight_t prior_notice_start_time_{0U};
+
+    bitfield_idx_t prior_notice_service_id_{bitfield_idx_t::invalid()};
+  };
+
+  using booking_type = variant<real_time, prior_notice, prior_day>;
+
+  string_idx_t id_;
+  booking_type type_;
+
+  string_idx_t message_;
+  string_idx_t pickup_message_;
+  string_idx_t drop_off_message_;
+  string_idx_t phone_number_;
+  string_idx_t info_url_;
+  string_idx_t booking_url_;
+};
 
 }  // namespace nigiri
 

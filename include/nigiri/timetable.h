@@ -550,6 +550,15 @@ struct timetable {
   vector_map<area_idx_t, area> areas_;
   vecvec<location_idx_t, area_idx_t> location_areas_;
   string_store<string_idx_t> strings_;
+
+  // Flex
+  vecvec<flex_location_group_idx_t, location_idx_t> location_groups_;
+  nvec<flex_area_idx_t, geo::latlng, 2U> flex_area_outers_;
+  nvec<flex_area_idx_t, geo::latlng, 3U> flex_area_inners_;
+  vecvec<flex_trip_idx_t, interval<duration_t>> trip_stop_time_windows_;
+  vecvec<flex_trip_idx_t, variant<flex_location_group_idx_t, flex_area_idx_t>>
+      trip_stop_locations_;
+  vector_map<flex_booking_rule_idx_t, booking_rule> booking_rules_;
 };
 
 }  // namespace nigiri
