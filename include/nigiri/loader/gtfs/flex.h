@@ -10,6 +10,7 @@ namespace nigiri::loader::gtfs {
 void load_flex(timetable& tt,
                dir const&,
                traffic_days_t const&,
-               locations_map const&);
+               locations_map const&,
+               hash_map<bitfield, bitfield_idx_t>&);
 
 }  // namespace nigiri::loader::gtfs

@@ -18,9 +18,39 @@ namespace nigiri::loader::gtfs {
 
 constexpr auto const kBookingRulesFile = "booking_rules.txt"sv;
 
-void parse_booking_rules(timetable& tt,
-                         std::string_view file_content,
-                         traffic_days_t const& traffic_days) {
+using booking_rule_map_t = hash_map<std::string, flex_booking_rule_idx_t>;
+using location_group_map_t = hash_map<std::string, flex_location_group_idx_t>;
+
+string_idx_t to_str(timetable& tt, auto const& col) {
+  return col
+      ->and_then([&](utl::cstr const& x) {
+        return std::optional{tt.strings_.store(x.view())};
+      })
+      .value_or(string_idx_t::invalid());
+}
+
+location_group_map_t parse_location_groups(timetable& tt,
+                                           std::string_view file_content) {
+  struct location_group_record {
+    utl::csv_col<utl::cstr, UTL_NAME("location_group_id")> location_group_id_;
+    utl::csv_col<std::optional<utl::cstr>, UTL_NAME("location_group_name")>
+        location_group_name_;
+  };
+
+  auto map = location_group_map_t{};
+  utl::for_each_row<location_group_record>(
+      file_content, [&](location_group_record const& r) {
+        tt.location_group_names_.emplace_back(
+            to_str(tt, r.location_group_name_));
+      });
+  return map;
+}
+
+booking_rule_map_t parse_booking_rules(
+    timetable& tt,
+    std::string_view file_content,
+    traffic_days_t const& traffic_days,
+    hash_map<bitfield, bitfield_idx_t>& bitfield_indices) {
   using utl::csv_col;
 
   struct booking_rule_record {
@@ -50,20 +80,13 @@ void parse_booking_rules(timetable& tt,
     csv_col<std::optional<utl::cstr>, UTL_NAME("booking_url")> booking_url_;
   };
 
-  auto const to_str = [&](auto const& col) {
-    return col
-        ->and_then([&](utl::cstr const& x) {
-          return std::optional{tt.strings_.store(x.view())};
-        })
-        .value_or(string_idx_t::invalid());
-  };
-
+  auto map = booking_rule_map_t{};
   utl::for_each_row<booking_rule_record>(
       file_content, [&](booking_rule_record const& r) {
         auto const get_type = [&]() -> booking_rule::booking_type {
           switch (*r.booking_type_) {
             case 0: return booking_rule::real_time{};
-              
+
             case 1: {
               auto prior_notice = booking_rule::prior_notice{};
               if (r.prior_notice_duration_min_->has_value()) {
@@ -94,35 +117,44 @@ void parse_booking_rules(timetable& tt,
                     hhmm_to_min(**r.prior_notice_start_time_);
               }
               if (r.prior_notice_service_id_->has_value()) {
-                prior_day.prior_notice_service_id_ =
-                    traffic_days.at((*r.prior_notice_service_id_)->view());
+                auto const& bitfield =
+                    *traffic_days.at((*r.prior_notice_service_id_)->view());
+                prior_day.prior_notice_bitfield_ = utl::get_or_create(
+                    bitfield_indices, bitfield,
+                    [&]() { return tt.register_bitfield(bitfield); });
               }
+              return prior_day;
             }
           }
           return booking_rule::real_time{};
         };
 
+        auto const idx = flex_booking_rule_idx_t{tt.booking_rules_.size()};
         tt.booking_rules_.emplace_back(
             booking_rule{.id_ = tt.strings_.store(r.booking_rule_id_->view()),
                          .type_ = get_type(),
-                         .message_ = to_str(r.message_),
-                         .pickup_message_ = to_str(r.pickup_message_),
-                         .drop_off_message_ = to_str(r.drop_off_message_),
-                         .phone_number_ = to_str(r.phone_number_),
-                         .info_url_ = to_str(r.info_url_),
-                         .booking_url_ = to_str(r.booking_url_)});
+                         .message_ = to_str(tt, r.message_),
+                         .pickup_message_ = to_str(tt, r.pickup_message_),
+                         .drop_off_message_ = to_str(tt, r.drop_off_message_),
+                         .phone_number_ = to_str(tt, r.phone_number_),
+                         .info_url_ = to_str(tt, r.info_url_),
+                         .booking_url_ = to_str(tt, r.booking_url_)});
+        map.emplace(r.booking_rule_id_->to_str(), idx);
       });
+  return map;
 }
 
 void load_flex(timetable& tt,
                dir const& d,
                traffic_days_t const& traffic_days,
+               hash_map<bitfield, bitfield_idx_t>& bitfield_indices,
                locations_map const&) {
   auto const load = [&](std::string_view file_name) -> file {
     return d.exists(file_name) ? d.get_file(file_name) : file{};
   };
 
-  parse_booking_rules(tt, load(kBookingRulesFile).data(), traffic_days);
+  auto const booking_rules = parse_booking_rules(
+      tt, load(kBookingRulesFile).data(), traffic_days, bitfield_indices);
 }
 
 }  // namespace nigiri::loader::gtfs

@@ -546,7 +546,7 @@ struct booking_rule {
         std::numeric_limits<std::int16_t>::max()};
     minutes_after_midnight_t prior_notice_start_time_{0U};
 
-    bitfield_idx_t prior_notice_service_id_{bitfield_idx_t::invalid()};
+    bitfield_idx_t prior_notice_bitfield_{bitfield_idx_t::invalid()};
   };
 
   using booking_type = variant<real_time, prior_notice, prior_day>;
