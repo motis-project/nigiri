@@ -29,6 +29,10 @@ booking_rules_t parse_booking_rules(timetable&,
                                     traffic_days_t const&,
                                     hash_map<bitfield, bitfield_idx_t>&);
 
-void expand(timetable&, trip_data const&, gtfs_trip_idx_t);
+void expand_flex_trip(timetable&,
+                      hash_map<bitfield, bitfield_idx_t>&,
+                      noon_offset_hours_t const& noon_offsets,
+                      interval<date::sys_days> const& selection,
+                      trip const&);
 
 }  // namespace nigiri::loader::gtfs

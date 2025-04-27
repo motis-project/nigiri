@@ -100,7 +100,7 @@ void load_timetable(loader_config const& config,
                     hash_map<bitfield, bitfield_idx_t>& bitfield_indices,
                     assistance_times* assistance,
                     shapes_storage* shapes_data) {
-  nigiri::scoped_timer const global_timer{"gtfs parser"};
+  auto const global_timer = nigiri::scoped_timer{"gtfs parser"};
 
   auto const load = [&](std::string_view file_name) -> file {
     return d.exists(file_name) ? d.get_file(file_name) : file{};
@@ -246,11 +246,11 @@ void load_timetable(loader_config const& config,
   }
 
   {
-    auto const timer = scoped_timer{"loader.gtfs.write_trips"};
-
     progress_tracker->status("Write Trips")
-        .out_bounds(85.F, 98.F)
+        .out_bounds(85.F, 97.F)
         .in_high(route_services.size());
+
+    auto const timer = scoped_timer{"loader.gtfs.write_trips"};
 
     auto const is_train_number = [](auto const& s) {
       return !s.empty() && std::all_of(begin(s), end(s), [](auto&& c) -> bool {
@@ -393,6 +393,21 @@ void load_timetable(loader_config const& config,
     // Build transport ranges.
     for (auto const& t : trip_data.data_) {
       tt.trip_transport_ranges_.emplace_back(t.transport_ranges_);
+    }
+  }
+
+  {
+    progress_tracker->status("Flex")
+        .out_bounds(97.F, 98.F)
+        .in_high(route_services.size());
+
+    auto const timer = scoped_timer{"loader.gtfs.write_flex"};
+
+    for (auto const& trp : trip_data.data_) {
+      if (trp.flex_time_windows_.empty()) {
+        continue;
+      }
+      expand_flex_trip(tt, bitfield_indices, noon_offsets, tt.date_range_, trp);
     }
   }
 }

@@ -243,13 +243,11 @@ booking_rules_t parse_booking_rules(
   return map;
 }
 
-void expand(timetable& tt,
-            hash_map<bitfield, bitfield_idx_t>& bitfield_indices,
-            noon_offset_hours_t const& noon_offsets,
-            interval<date::sys_days> const& selection,
-            trip_data const& trips,
-            gtfs_trip_idx_t const t) {
-  auto const& trp = trips.get(t);
+void expand_flex_trip(timetable& tt,
+                      hash_map<bitfield, bitfield_idx_t>& bitfield_indices,
+                      noon_offset_hours_t const& noon_offsets,
+                      interval<date::sys_days> const& selection,
+                      trip const& trp) {
   if (trp.flex_time_windows_.empty()) {
     return;
   }
