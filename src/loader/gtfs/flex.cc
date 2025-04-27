@@ -48,15 +48,36 @@ flex_areas_t parse_flex_areas(timetable& tt, std::string_view file_content) {
       outer.clear();
       inner.clear();
 
-      auto const id = x.at("id").as_string();
-      auto const geometry = x.at("geometry").as_object();
+      auto const& area = x.as_object();
+      auto const& id = area.at("id").as_string();
+      auto const geometry = area.at("geometry").as_object();
       auto const geometry_type = geometry.at("type").as_string();
-      auto const rings = geometry.at("coordinates").as_array();
 
       utl::verify(geometry_type == "Polygon",
                   "only Polygon supported at the moment, type={}",
                   geometry_type);
 
+      auto const properties = area.find("properties");
+      if (properties != area.end() && properties->value().is_object()) {
+        auto const& props = properties->value().as_object();
+
+        auto const name = props.find("stop_name");
+        tt.flex_area_name_.emplace_back(
+            (name != props.end() && name->value().is_string())
+                ? name->value().as_string()
+                : "");
+
+        auto const desc = props.find("stop_desc");
+        tt.flex_area_desc_.emplace_back(
+            (desc != props.end() && desc->value().is_string())
+                ? desc->value().as_string()
+                : "");
+      } else {
+        tt.flex_area_name_.emplace_back("");
+        tt.flex_area_desc_.emplace_back("");
+      }
+
+      auto const rings = geometry.at("coordinates").as_array();
       outer.emplace_back(to_ring(rings.at(0).as_array()));
       auto& inners = inner.emplace_back();
       for (auto i = 1U; i < rings.size(); ++i) {

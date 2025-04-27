@@ -555,6 +555,8 @@ struct timetable {
   vecvec<flex_area_idx_t, location_idx_t> flex_area_locations_;
   nvec<flex_area_idx_t, geo::latlng, 2U> flex_area_outers_;
   nvec<flex_area_idx_t, geo::latlng, 3U> flex_area_inners_;
+  vecvec<flex_area_idx_t, char> flex_area_name_;
+  vecvec<flex_area_idx_t, char> flex_area_desc_;
   rtree<flex_area_idx_t> flex_area_rtree_;
   vector_map<flex_transport_idx_t, bitfield_idx_t> flex_traffic_days_;
   vecvec<flex_transport_idx_t, interval<duration_t>> flex_stop_time_windows_;
