@@ -73,9 +73,8 @@ flex_areas_t parse_flex_areas(timetable& tt, std::string_view file_content) {
       tt.flex_area_inners_.emplace_back(inner);
 
       auto box = geo::box{};
-      for (auto const& o : outer[0]) {
-        box.extend(o);
-      }
+      box.extend(outer[0]);
+      tt.flex_area_bbox_.emplace_back(box);
       tt.flex_area_rtree_.insert(box.min_.lnglat_float(),
                                  box.max_.lnglat_float(), idx);
 
@@ -242,6 +241,71 @@ booking_rules_t parse_booking_rules(
     map.emplace(r.booking_rule_id_->to_str(), idx);
   });
   return map;
+}
+
+void expand(timetable& tt,
+            hash_map<bitfield, bitfield_idx_t>& bitfield_indices,
+            noon_offset_hours_t const& noon_offsets,
+            interval<date::sys_days> const& selection,
+            trip_data const& trips,
+            gtfs_trip_idx_t const t) {
+  auto const& trp = trips.get(t);
+  if (trp.flex_time_windows_.empty()) {
+    return;
+  }
+
+  auto const tt_interval = tt.internal_interval_days();
+  auto utc_time_traffic_days = hash_map<duration_t /* tz offset */, bitfield>{};
+  for (auto day = tt_interval.from_; day != tt_interval.to_;
+       day += date::days{1}) {
+    if (!selection.contains(day)) {
+      continue;
+    }
+
+    auto const gtfs_local_day_idx =
+        static_cast<std::size_t>((day - tt_interval.from_).count());
+    if (!trp.service_->test(gtfs_local_day_idx)) {
+      continue;
+    }
+
+    auto const tz_offset =
+        noon_offsets.at(tt.providers_[trp.route_->agency_].tz_)
+            .value()
+            .at(gtfs_local_day_idx);
+
+    auto const first_dep_time = trp.flex_time_windows_.front().start_;
+    auto const first_dep_utc = first_dep_time - tz_offset;
+    auto const first_dep_day_offset = date::days{static_cast<date::days::rep>(
+        std::floor(static_cast<double>(first_dep_utc.count()) / 1440))};
+    auto const utc_traffic_day =
+        (day - tt_interval.from_ + first_dep_day_offset).count();
+
+    utc_time_traffic_days[tz_offset].set(
+        static_cast<std::size_t>(utc_traffic_day));
+  }
+
+  for (auto const& [tz_offset, traffic_days] : utc_time_traffic_days) {
+    using std::views::transform;
+    auto const first_time = trp.flex_time_windows_.front().start_;
+    auto const first_time_utc = first_time - tz_offset;
+    auto const first_day_offset = date::days{static_cast<date::days::rep>(
+        std::floor(static_cast<double>(first_time_utc.count()) / 1440))};
+    tt.flex_traffic_days_.push_back(utl::get_or_create(
+        bitfield_indices, traffic_days,
+        [&]() { return tt.register_bitfield(traffic_days); }));
+    tt.flex_stop_time_windows_.emplace_back(
+        trp.flex_time_windows_ |
+        transform([&](auto&& w) -> interval<duration_t> {
+          return {w.start_ - tz_offset - first_day_offset,
+                  w.end_ - tz_offset - first_day_offset};
+        }));
+    tt.flex_pickup_booking_rule_.emplace_back(
+        trp.flex_time_windows_ |
+        transform([&](auto&& w) { return w.pickup_booking_rule_; }));
+    tt.flex_drop_off_booking_rule_.emplace_back(
+        trp.flex_time_windows_ |
+        transform([&](auto&& w) { return w.drop_off_booking_rule_; }));
+  }
 }
 
 }  // namespace nigiri::loader::gtfs

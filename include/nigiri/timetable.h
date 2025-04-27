@@ -11,6 +11,7 @@
 #include "utl/verify.h"
 #include "utl/zip.h"
 
+#include "geo/box.h"
 #include "geo/latlng.h"
 
 #include "nigiri/common/interval.h"
@@ -115,6 +116,7 @@ struct timetable {
     array<vecvec<location_idx_t, footpath>, kMaxProfiles> footpaths_out_;
     array<vecvec<location_idx_t, footpath>, kMaxProfiles> footpaths_in_;
     vector_map<timezone_idx_t, timezone> timezones_;
+    rtree<location_idx_t> rtree_;
   } locations_;
 
   struct transport {
@@ -549,11 +551,16 @@ struct timetable {
   // Flex
   paged_vecvec<location_group_idx_t, location_idx_t> location_group_;
   vector_map<location_group_idx_t, string_idx_t> location_group_name_;
+  vector_map<flex_area_idx_t, geo::box> flex_area_bbox_;
+  vecvec<flex_area_idx_t, location_idx_t> flex_area_locations_;
   nvec<flex_area_idx_t, geo::latlng, 2U> flex_area_outers_;
   nvec<flex_area_idx_t, geo::latlng, 3U> flex_area_inners_;
   rtree<flex_area_idx_t> flex_area_rtree_;
-  vecvec<trip_idx_t, interval<duration_t>> flex_stop_time_windows_;
-  vecvec<trip_idx_t, flex_stop_t> flex_stops_;
+  vector_map<flex_transport_idx_t, bitfield_idx_t> flex_traffic_days_;
+  vecvec<flex_transport_idx_t, interval<duration_t>> flex_stop_time_windows_;
+  vecvec<flex_transport_idx_t, flex_stop_t> flex_stops_;
+  vecvec<flex_transport_idx_t, booking_rule_idx_t> flex_pickup_booking_rule_;
+  vecvec<flex_transport_idx_t, booking_rule_idx_t> flex_drop_off_booking_rule_;
   vector_map<booking_rule_idx_t, booking_rule> booking_rules_;
 };
 

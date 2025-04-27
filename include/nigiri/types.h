@@ -214,6 +214,8 @@ using attribute_combination_idx_t =
 using provider_idx_t = cista::strong<std::uint32_t, struct _provider_idx>;
 using direction_id_t = cista::strong<std::uint8_t, struct _direction_id>;
 using route_type_t = cista::strong<std::uint16_t, struct _route_type>;
+using flex_transport_idx_t =
+    cista::strong<std::uint32_t, struct _flex_transport_idx>;
 
 using transport_range_t = pair<transport_idx_t, interval<stop_idx_t>>;
 
