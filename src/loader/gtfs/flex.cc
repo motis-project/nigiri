@@ -91,6 +91,7 @@ flex_areas_t parse_flex_areas(timetable& tt, std::string_view file_content) {
       auto box = geo::box{};
       box.extend(outer[0]);
       tt.flex_area_bbox_.emplace_back(box);
+      tt.flex_area_transports_.emplace_back_empty();
       tt.flex_area_rtree_.insert(box.min_.lnglat_float(),
                                  box.max_.lnglat_float(), idx);
 
@@ -120,6 +121,7 @@ location_groups_t parse_location_groups(timetable& tt,
         tt.location_group_name_.emplace_back(
             to_str(tt, r.location_group_name_));
         tt.location_group_.emplace_back_empty();
+        tt.location_group_transports_.emplace_back_empty();
         map.emplace(r.location_group_id_->to_str(), idx);
       });
   return map;
@@ -304,21 +306,35 @@ void expand_flex_trip(timetable& tt,
     auto const first_time_utc = first_time - tz_offset;
     auto const first_day_offset = date::days{static_cast<date::days::rep>(
         std::floor(static_cast<double>(first_time_utc.count()) / 1440))};
-    tt.flex_traffic_days_.push_back(utl::get_or_create(
+
+    auto const idx =
+        flex_transport_idx_t{tt.flex_transport_traffic_days_.size()};
+
+    tt.flex_transport_traffic_days_.push_back(utl::get_or_create(
         bitfield_indices, traffic_days,
         [&]() { return tt.register_bitfield(traffic_days); }));
-    tt.flex_stop_time_windows_.emplace_back(
+    tt.flex_transport_stop_time_windows_.emplace_back(
         trp.flex_time_windows_ |
         transform([&](auto&& w) -> interval<duration_t> {
           return {w.start_ - tz_offset - first_day_offset,
                   w.end_ - tz_offset - first_day_offset};
         }));
-    tt.flex_pickup_booking_rule_.emplace_back(
+    tt.flex_transport_pickup_booking_rule_.emplace_back(
         trp.flex_time_windows_ |
         transform([&](auto&& w) { return w.pickup_booking_rule_; }));
-    tt.flex_drop_off_booking_rule_.emplace_back(
+    tt.flex_transport_drop_off_booking_rule_.emplace_back(
         trp.flex_time_windows_ |
         transform([&](auto&& w) { return w.drop_off_booking_rule_; }));
+    tt.flex_transport_stop_seq_.emplace_back(trp.flex_stops_);
+
+    for (auto const& s : trp.flex_stops_) {
+      if (holds_alternative<flex_area_idx_t>(s)) {
+        tt.flex_area_transports_[get<flex_area_idx_t>(s)].push_back(idx);
+      } else {
+        tt.location_group_transports_[get<location_group_idx_t>(s)].push_back(
+            idx);
+      }
+    }
   }
 }
 

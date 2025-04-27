@@ -561,11 +561,14 @@ struct timetable {
   paged_vecvec<location_group_idx_t, flex_transport_idx_t>
       location_group_transports_;
   paged_vecvec<flex_area_idx_t, flex_transport_idx_t> flex_area_transports_;
-  vector_map<flex_transport_idx_t, bitfield_idx_t> flex_traffic_days_;
-  vecvec<flex_transport_idx_t, interval<duration_t>> flex_stop_time_windows_;
-  vecvec<flex_transport_idx_t, flex_stop_t> flex_stops_;
-  vecvec<flex_transport_idx_t, booking_rule_idx_t> flex_pickup_booking_rule_;
-  vecvec<flex_transport_idx_t, booking_rule_idx_t> flex_drop_off_booking_rule_;
+  vector_map<flex_transport_idx_t, bitfield_idx_t> flex_transport_traffic_days_;
+  vecvec<flex_transport_idx_t, interval<duration_t>>
+      flex_transport_stop_time_windows_;
+  vecvec<flex_transport_idx_t, flex_stop_t> flex_transport_stop_seq_;
+  vecvec<flex_transport_idx_t, booking_rule_idx_t>
+      flex_transport_pickup_booking_rule_;
+  vecvec<flex_transport_idx_t, booking_rule_idx_t>
+      flex_transport_drop_off_booking_rule_;
   vector_map<booking_rule_idx_t, booking_rule> booking_rules_;
 };
 
