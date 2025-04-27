@@ -30,6 +30,10 @@ string_idx_t to_str(timetable& tt, auto const& col) {
 }
 
 flex_areas_t parse_flex_areas(timetable& tt, std::string_view file_content) {
+  if (file_content.empty()) {
+    return {};
+  }
+
   using tmp_ring_t = std::vector<geo::latlng>;
 
   auto const to_latlng = [](boost::json::array const& x) -> geo::latlng {

@@ -224,7 +224,7 @@ void load_timetable(loader_config const& config,
     auto const timer = scoped_timer{"loader.gtfs.trips.expand"};
 
     for (auto const [i, t] : utl::enumerate(trip_data.data_)) {
-      if (t.block_ != nullptr) {
+      if (t.block_ != nullptr || !t.flex_time_windows_.empty()) {
         continue;
       }
       add_trip({gtfs_trip_idx_t{i}}, t.service_);
@@ -261,8 +261,6 @@ void load_timetable(loader_config const& config,
     auto stop_seq_numbers = basic_string<stop_idx_t>{};
     auto const source_file_idx =
         tt.register_source_file((d.path() / kStopTimesFile).generic_string());
-    tt.src_trips_.emplace_back(trip_idx_t{tt.trip_ids_.size()},
-                               trip_idx_t::invalid());
     tt.trip_direction_id_.resize(tt.n_trips() + trip_data.data_.size());
     for (auto& trp : trip_data.data_) {
       std::uint32_t train_nr = 0U;
@@ -279,7 +277,6 @@ void load_timetable(loader_config const& config,
           {source_file_idx, trp.from_line_, trp.to_line_}, train_nr,
           stop_seq_numbers, trp.direction_id_);
     }
-    tt.src_trips_.back().to_ = trip_idx_t{tt.trip_ids_.size()};
 
     auto const attributes = basic_string<attribute_combination_idx_t>{};
     auto lines = hash_map<std::string, trip_line_idx_t>{};

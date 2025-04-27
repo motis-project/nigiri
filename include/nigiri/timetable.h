@@ -391,9 +391,6 @@ struct timetable {
   // Schedule range.
   interval<date::sys_days> date_range_;
 
-  // Source -> trips
-  vector_map<source_idx_t, interval<trip_idx_t>> src_trips_;
-
   // Trip access: external trip id -> internal trip index
   vector<pair<trip_id_idx_t, trip_idx_t>> trip_id_to_idx_;
 
