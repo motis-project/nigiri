@@ -16,7 +16,7 @@ using namespace std::chrono_literals;
 
 namespace {
 
-constexpr auto const kTimetable = R"(
+constexpr auto const kTimetable = R"__(
 # agency.txt
 agency_id,agency_name,agency_url,agency_timezone,agency_lang,agency_phone
 "801","PostAuto AG","https://www.postauto.ch","Europe/Zurich","DE",""
@@ -24,10 +24,14 @@ agency_id,agency_name,agency_url,agency_timezone,agency_lang,agency_phone
 # calendar.txt
 service_id,monday,tuesday,wednesday,thursday,friday,saturday,sunday,start_date,end_date
 "14-","1","1","1","1","0","0","0","20241215","20251213"
+"14-","1","1","1","1","0","0","0","20241215","20251213"
 "56-","0","0","0","0","1","1","0","20241215","20251213"
 "77+","0","0","0","0","0","0","1","20241215","20251213"
+"55-","0","0","0","0","1","0","0","20241215","20251213"
+"66-","0","0","0","0","0","1","0","20241215","20251213"
+"77+","0","0","0","0","0","0","1","20241215","20251213"
 
-#calendar_dates.txt
+# calendar_dates.txt
 service_id,date,exception_type
 "14-","20241225","2"
 "14-","20241226","2"
@@ -48,24 +52,33 @@ service_id,date,exception_type
 "77+","20250609","1"
 "77+","20250801","1"
 
-#stops.txt
-stop_id,stop_name,stop_desc,stop_lat,stop_lon,stop_url,location_type,parent_station
+# stops.txt
+stop_id,stop_name,stop_desc,stop_lat,stop_lon
+"ch:1:sloid:15735","Falkenhaus (Spw)","","46.90244423","7.48410718"
+"ch:1:sloid:7073","Thurnen","","46.81356469","7.51387735"
+"ch:1:sloid:7074","Kaufdorf","","46.83789233","7.50184890"
 
-#routes.txt
+# routes.txt
 route_id,agency_id,route_short_name,route_long_name,route_type
 "odv_j25_1","801","Publicar Appenzell","","715"
+"odv_j25_13","9039","myBuxi-Belp","","715"
 
-#trips.txt
+# trips.txt
 route_id,service_id,trip_id,trip_headsign,trip_short_name,direction_id,block_id
 "odv_j25_1","14-","odv_j25_1_1_29_29_14-_1","Publicar Appenzell","Innerhalb Publicar Appenzell","",""
 "odv_j25_1","56-","odv_j25_1_1_29_29_56-_3","Publicar Appenzell","Innerhalb Publicar Appenzell","",""
 "odv_j25_1","77+","odv_j25_1_1_29_29_77+_4","Publicar Appenzell","Innerhalb Publicar Appenzell","",""
+"odv_j25_13","14-","odv_j25_13_1_48_48_14-_54","mybuxi Belp 2025","myBuxi Belp","",""
+"odv_j25_13","55-","odv_j25_13_1_48_48_55-_55","mybuxi Belp 2025","myBuxi Belp","",""
+"odv_j25_13","66-","odv_j25_13_1_48_48_66-_56","mybuxi Belp 2025","myBuxi Belp","",""
+"odv_j25_13","77+","odv_j25_13_1_48_48_77+_57","mybuxi Belp 2025","myBuxi Belp","",""
 
 # booking_rules.txt
 booking_rule_id,booking_type,info_url,message,phone_number,prior_notice_duration_max,prior_notice_duration_min
 "booking_rule_j25_1","1","https://www.postauto.ch/de/publicar-appenzell-ai","","+41 848 55 30 60","43200","30"
+"booking_rule_j25_13","1","https://mybuxi.ch/fahrgaeste/regionen/belp/","Buchungen nur via App möglich","","20160","0"
 
-#stop_times.txt
+# stop_times.txt
 trip_id,arrival_time,departure_time,stop_id,location_group_id, location_id,stop_sequence,start_pickup_drop_off_window,end_pickup_drop_off_window,pickup_booking_rule_id,drop_off_booking_rule_id,stop_headsign,pickup_type,drop_off_type
 "odv_j25_1_1_29_29_14-_1","","","","","odv_29","2","06:00:00","19:00:00","booking_rule_j25_1","booking_rule_j25_1","","2","2"
 "odv_j25_1_1_29_29_14-_1","","","","","odv_29","1","06:00:00","19:00:00","booking_rule_j25_1","booking_rule_j25_1","","2","2"
@@ -73,10 +86,25 @@ trip_id,arrival_time,departure_time,stop_id,location_group_id, location_id,stop_
 "odv_j25_1_1_29_29_56-_3","","","","","odv_29","1","06:00:00","23:30:00","booking_rule_j25_1","booking_rule_j25_1","","2","2"
 "odv_j25_1_1_29_29_77+_4","","","","","odv_29","2","07:00:00","19:00:00","booking_rule_j25_1","booking_rule_j25_1","","2","2"
 "odv_j25_1_1_29_29_77+_4","","","","","odv_29","1","07:00:00","19:00:00","booking_rule_j25_1","booking_rule_j25_1","","2","2"
+"odv_j25_13_1_48_48_14-_54","","","","odv_location_group_48","","1","06:00:00","24:00:00","booking_rule_j25_13","booking_rule_j25_13","","2","2"
+"odv_j25_13_1_48_48_14-_54","","","","odv_location_group_48","","2","06:00:00","24:00:00","booking_rule_j25_13","booking_rule_j25_13","","2","2"
+"odv_j25_13_1_48_48_55-_55","","","","odv_location_group_48","","1","06:00:00","24:40:00","booking_rule_j25_13","booking_rule_j25_13","","2","2"
+"odv_j25_13_1_48_48_55-_55","","","","odv_location_group_48","","2","06:00:00","24:40:00","booking_rule_j25_13","booking_rule_j25_13","","2","2"
+"odv_j25_13_1_48_48_66-_56","","","","odv_location_group_48","","1","07:00:00","24:40:00","booking_rule_j25_13","booking_rule_j25_13","","2","2"
+"odv_j25_13_1_48_48_66-_56","","","","odv_location_group_48","","2","07:00:00","24:40:00","booking_rule_j25_13","booking_rule_j25_13","","2","2"
+"odv_j25_13_1_48_48_77+_57","","","","odv_location_group_48","","1","07:00:00","24:00:00","booking_rule_j25_13","booking_rule_j25_13","","2","2"
+"odv_j25_13_1_48_48_77+_57","","","","odv_location_group_48","","2","07:00:00","24:00:00","booking_rule_j25_13","booking_rule_j25_13","","2","2"
 
-#locations.geojson
+# locations.geojson
 {"type":"FeatureCollection","features":[{"id":"odv_29","type":"Feature","geometry":{"type":"Polygon","coordinates":[[[9.3890941,47.3906506],[9.3791592,47.3863287],[9.3529379,47.3830743],[9.3609631,47.3739349],[9.3577015,47.3717842],[9.3624222,47.3610731],[9.3523371,47.3662182],[9.3557918,47.3627155],[9.3469298,47.3537179],[9.3447411,47.349502],[9.3542469,47.3445443],[9.3544185,47.3439336],[9.3537533,47.3411565],[9.3443549,47.3381611],[9.3299353,47.3351946],[9.3297851,47.3316026],[9.3244421,47.326905],[9.3108809,47.3241706],[9.3099797,47.3214942],[9.3142283,47.3212615],[9.3190777,47.3154137],[9.4736803,47.3123659],[9.4682515,47.3202869],[9.4891298,47.3274576],[9.4873273,47.3291593],[9.4823062,47.3366342],[9.4756114,47.3447042],[9.4429851,47.356429],[9.4447714,47.3593852],[9.4467133,47.3597231],[9.4486392,47.3600992],[9.4500473,47.3607061],[9.4504201,47.3606152],[9.4514313,47.3610058],[9.4511765,47.3613638],[9.4524318,47.3618797],[9.452877,47.3622031],[9.4549531,47.3623194],[9.4558838,47.3621486],[9.4560957,47.3620396],[9.4712663,47.3679186],[9.4750857,47.3709704],[9.4602162,47.3650771],[9.4609321,47.365087],[9.4610363,47.3658694],[9.4618732,47.3659856],[9.4601163,47.3650664],[9.4595128,47.3648665],[9.4586465,47.3640835],[9.3890941,47.3906506]]]},"properties":{"stop_name":"Publicar Appenzell"}}]}
-)";
+
+# location_groups.txt
+location_group_id,location_group_name
+"odv_location_group_48","mybuxi Belp 2025"
+"odv_location_group_48","ch:1:sloid:15735"
+"odv_location_group_48","ch:1:sloid:7073"
+"odv_location_group_48","ch:1:sloid:7074"
+)__";
 
 }  // namespace
 

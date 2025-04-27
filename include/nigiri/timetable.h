@@ -546,7 +546,6 @@ struct timetable {
   vector_map<source_idx_t, fares> fares_;
   vector_map<area_idx_t, area> areas_;
   vecvec<location_idx_t, area_idx_t> location_areas_;
-  string_store<string_idx_t> strings_;
 
   // Flex
   paged_vecvec<location_group_idx_t, location_idx_t> location_group_;
@@ -571,6 +570,9 @@ struct timetable {
   vecvec<flex_transport_idx_t, booking_rule_idx_t>
       flex_transport_drop_off_booking_rule_;
   vector_map<booking_rule_idx_t, booking_rule> booking_rules_;
+
+  // Strings
+  string_store<string_idx_t> strings_;
 };
 
 }  // namespace nigiri
