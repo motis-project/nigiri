@@ -1,5 +1,9 @@
 #include "nigiri/loader/gtfs/flex.h"
 
+#include <ranges>
+
+#include "boost/json.hpp"
+
 #include "utl/get_or_create.h"
 #include "utl/helpers/algorithm.h"
 #include "utl/parser/buf_reader.h"
@@ -7,6 +11,8 @@
 #include "utl/parser/line_range.h"
 #include "utl/pipes/for_each.h"
 #include "utl/pipes/transform.h"
+
+#include "geo/box.h"
 
 #include "nigiri/loader/gtfs/files.h"
 #include "nigiri/loader/gtfs/parse_time.h"
@@ -24,10 +30,60 @@ string_idx_t to_str(timetable& tt, auto const& col) {
 }
 
 flex_areas_t parse_flex_areas(timetable& tt, std::string_view file_content) {
-  CISTA_UNUSED_PARAM(tt)
-  CISTA_UNUSED_PARAM(file_content)
-  // TODO
-  return {};
+  using tmp_ring_t = std::vector<geo::latlng>;
+
+  auto const to_latlng = [](boost::json::array const& x) -> geo::latlng {
+    return {x.at(1).as_double(), x.at(0).as_double()};
+  };
+  auto const to_ring = [&](boost::json::array const& x) -> tmp_ring_t {
+    return utl::to_vec(x, [&](auto&& y) { return to_latlng(y.as_array()); });
+  };
+
+  auto outer = std::vector<tmp_ring_t>{};
+  auto inner = std::vector<std::vector<tmp_ring_t>>{};
+
+  auto map = flex_areas_t{};
+  auto const json = boost::json::parse(file_content).as_object();
+  for (auto const& x : json.at("features").as_array()) {
+    try {
+      outer.clear();
+      inner.clear();
+
+      auto const id = x.at("id").as_string();
+      auto const geometry = x.at("geometry").as_object();
+      auto const geometry_type = geometry.at("type").as_string();
+      auto const rings = geometry.at("coordinates").as_array();
+
+      utl::verify(geometry_type == "Polygon",
+                  "only Polygon supported at the moment, type={}",
+                  geometry_type);
+
+      outer.emplace_back(to_ring(rings.at(0).as_array()));
+      auto& inners = inner.emplace_back();
+      for (auto i = 1U; i < rings.size(); ++i) {
+        inners.emplace_back(to_ring(rings.at(i).as_array()));
+      }
+
+      auto const idx = flex_area_idx_t{tt.flex_area_outers_.size()};
+      tt.flex_area_outers_.emplace_back(outer);
+      tt.flex_area_inners_.emplace_back(inner);
+
+      auto box = geo::box{};
+      for (auto const& o : outer[0]) {
+        box.extend(o);
+      }
+      tt.flex_area_rtree_.insert(box.min_.lnglat_float(),
+                                 box.max_.lnglat_float(), idx);
+
+      map.emplace(id, idx);
+    } catch (std::exception const& e) {
+      log(log_lvl::error, "loader.gtfs.flex.locations",
+          "GeoJSON parsing error: {}, json: {}", e.what(),
+          boost::json::serialize(x));
+      continue;
+    }
+  }
+  return map;
 }
 
 location_groups_t parse_location_groups(timetable& tt,

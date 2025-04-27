@@ -554,6 +554,7 @@ struct timetable {
   vector_map<location_group_idx_t, string_idx_t> location_group_name_;
   nvec<flex_area_idx_t, geo::latlng, 2U> flex_area_outers_;
   nvec<flex_area_idx_t, geo::latlng, 3U> flex_area_inners_;
+  rtree<flex_area_idx_t> flex_area_rtree_;
   vecvec<trip_idx_t, interval<duration_t>> flex_stop_time_windows_;
   vecvec<trip_idx_t, flex_stop_t> flex_stops_;
   vector_map<booking_rule_idx_t, booking_rule> booking_rules_;

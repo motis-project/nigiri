@@ -11,6 +11,7 @@
 
 #include "ankerl/cista_adapter.h"
 
+#include "cista/char_traits.h"
 #include "cista/containers/array.h"
 #include "cista/containers/bitset.h"
 #include "cista/containers/bitvec.h"
@@ -18,6 +19,7 @@
 #include "cista/containers/mutable_fws_multimap.h"
 #include "cista/containers/nvec.h"
 #include "cista/containers/optional.h"
+#include "cista/containers/rtree.h"
 #include "cista/containers/string.h"
 #include "cista/containers/tuple.h"
 #include "cista/containers/variant.h"
@@ -25,8 +27,6 @@
 #include "cista/containers/vecvec.h"
 #include "cista/reflection/printable.h"
 #include "cista/strong.h"
-
-#include "char_traits/char_traits.h"
 
 #include "geo/latlng.h"
 
@@ -131,6 +131,9 @@ using mm_vec = cista::basic_mmap_vec<T, std::uint64_t>;
 
 template <typename Key, typename V, typename SizeType = cista::base_t<Key>>
 using mm_vecvec = cista::basic_vecvec<Key, mm_vec<V>, mm_vec<SizeType>>;
+
+template <typename T>
+using rtree = cista::raw::rtree<T>;
 
 template <typename Key, typename T>
 struct paged_vecvec_helper {
@@ -374,7 +377,7 @@ using transport_mode_id_t = std::int32_t;
 using via_offset_t = std::uint8_t;
 
 template <typename T>
-using basic_string = std::basic_string<T, char_traits::char_traits<T>>;
+using basic_string = std::basic_string<T, cista::char_traits<T>>;
 
 }  // namespace nigiri
 
