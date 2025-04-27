@@ -562,6 +562,7 @@ struct timetable {
       location_group_transports_;
   paged_vecvec<flex_area_idx_t, flex_transport_idx_t> flex_area_transports_;
   vector_map<flex_transport_idx_t, bitfield_idx_t> flex_transport_traffic_days_;
+  vector_map<flex_transport_idx_t, trip_idx_t> flex_transport_trip_;
   vecvec<flex_transport_idx_t, interval<duration_t>>
       flex_transport_stop_time_windows_;
   vecvec<flex_transport_idx_t, flex_stop_t> flex_transport_stop_seq_;

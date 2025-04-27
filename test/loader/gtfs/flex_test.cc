@@ -106,4 +106,42 @@ TEST(flex, simple) {
   EXPECT_TRUE(is_within(tt, kArea, inside));
   EXPECT_EQ("Publicar Appenzell", tt.flex_area_name_[kArea].view());
   EXPECT_EQ("", tt.flex_area_desc_[kArea].view());
+
+  auto ss = std::stringstream{};
+  for (auto const& t : tt.flex_area_transports_[kArea]) {
+    auto const trip_id = tt.trip_ids_[tt.flex_transport_trip_[t]].front();
+    ss << "TRANSPORT " << t << " [" << tt.trip_id_strings_[trip_id].view()
+       << "]\n";
+    for (auto const [stop, window] :
+         utl::zip(tt.flex_transport_stop_seq_[t],
+                  tt.flex_transport_stop_time_windows_[t])) {
+      stop.apply(utl::overloaded{[&](flex_area_idx_t const area) {
+                                   ss << "  AREA "
+                                      << tt.flex_area_name_[area].view();
+                                 },
+                                 [](location_group_idx_t) {}});
+      ss << ": " << window << "\n";
+    }
+  }
+
+  EXPECT_EQ(R"(TRANSPORT 0 [odv_j25_1_1_29_29_14-_1]
+  AREA Publicar Appenzell: [05:00.0, 18:00.0[
+  AREA Publicar Appenzell: [05:00.0, 18:00.0[
+TRANSPORT 1 [odv_j25_1_1_29_29_14-_1]
+  AREA Publicar Appenzell: [04:00.0, 17:00.0[
+  AREA Publicar Appenzell: [04:00.0, 17:00.0[
+TRANSPORT 2 [odv_j25_1_1_29_29_56-_3]
+  AREA Publicar Appenzell: [05:00.0, 22:30.0[
+  AREA Publicar Appenzell: [05:00.0, 22:30.0[
+TRANSPORT 3 [odv_j25_1_1_29_29_56-_3]
+  AREA Publicar Appenzell: [04:00.0, 21:30.0[
+  AREA Publicar Appenzell: [04:00.0, 21:30.0[
+TRANSPORT 4 [odv_j25_1_1_29_29_77+_4]
+  AREA Publicar Appenzell: [06:00.0, 18:00.0[
+  AREA Publicar Appenzell: [06:00.0, 18:00.0[
+TRANSPORT 5 [odv_j25_1_1_29_29_77+_4]
+  AREA Publicar Appenzell: [05:00.0, 17:00.0[
+  AREA Publicar Appenzell: [05:00.0, 17:00.0[
+)",
+            ss.str());
 }

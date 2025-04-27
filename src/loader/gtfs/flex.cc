@@ -326,13 +326,20 @@ void expand_flex_trip(timetable& tt,
         trp.flex_time_windows_ |
         transform([&](auto&& w) { return w.drop_off_booking_rule_; }));
     tt.flex_transport_stop_seq_.emplace_back(trp.flex_stops_);
+    tt.flex_transport_trip_.emplace_back(trp.trip_idx_);
 
     for (auto const& s : trp.flex_stops_) {
       if (holds_alternative<flex_area_idx_t>(s)) {
-        tt.flex_area_transports_[get<flex_area_idx_t>(s)].push_back(idx);
+        auto transports = tt.flex_area_transports_[get<flex_area_idx_t>(s)];
+        if (transports.empty() || transports.back() != idx) {
+          transports.push_back(idx);
+        }
       } else {
-        tt.location_group_transports_[get<location_group_idx_t>(s)].push_back(
-            idx);
+        auto transports =
+            tt.location_group_transports_[get<location_group_idx_t>(s)];
+        if (transports.empty() || transports.back() != idx) {
+          transports.push_back(idx);
+        }
       }
     }
   }
