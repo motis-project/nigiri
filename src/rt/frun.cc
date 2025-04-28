@@ -147,30 +147,34 @@ provider const& run_stop::get_provider(
 }
 
 std::string_view run_stop::direction(event_type const ev_type) const noexcept {
-  if (!fr_->is_scheduled()) {
-    return fr_->operator[](fr_->size() - 1).name();
-  }
-
-  auto const direction_sections =
-      tt().transport_section_directions_.at(fr_->t_.t_idx_);
-  auto direction = std::string_view{};
-  if (!direction_sections.empty()) {
-    auto const direction_idx =
-        direction_sections.size() == 1U
-            ? direction_sections.at(0)
-            : direction_sections.at(section_idx(ev_type));
-    if (direction_idx != trip_direction_idx_t::invalid()) {
-      direction = tt().trip_directions_.at(direction_idx)
-                      .apply(utl::overloaded{
-                          [&](trip_direction_string_idx_t const i) {
-                            return tt().trip_direction_strings_.at(i).view();
-                          },
-                          [&](location_idx_t const i) {
-                            return tt().locations_.names_.at(i).view();
-                          }});
+  if (fr_->is_scheduled()) {
+    auto const direction_sections =
+        tt().transport_section_directions_.at(fr_->t_.t_idx_);
+    auto direction = std::string_view{};
+    if (!direction_sections.empty()) {
+      auto const direction_idx =
+          direction_sections.size() == 1U
+              ? direction_sections.at(0)
+              : direction_sections.at(section_idx(ev_type));
+      if (direction_idx != trip_direction_idx_t::invalid()) {
+        direction = tt().trip_directions_.at(direction_idx)
+                        .apply(utl::overloaded{
+                            [&](trip_direction_string_idx_t const i) {
+                              return tt().trip_direction_strings_.at(i).view();
+                            },
+                            [&](location_idx_t const i) {
+                              return tt().locations_.names_.at(i).view();
+                            }});
+      }
     }
+    return direction;
   }
-  return direction;
+  if (!fr_->is_scheduled() && rtt() != nullptr) {
+    return run_stop{.fr_ = fr_,
+                    .stop_idx_ = static_cast<stop_idx_t>(fr_->size() - 1U)}
+        .name();
+  }
+  return "";
 }
 
 std::string_view run_stop::scheduled_line(
