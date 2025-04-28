@@ -32,28 +32,11 @@ rt_transport_idx_t rt_timetable::add_rt_transport(
     rt_transport_static_transport_.emplace_back(rt_add_idx);
   }
 
-  auto const search_by_route_id = [&]() {
-    if (route_id.empty()) {
-      return route_id_idx_t::invalid();
-    }
-    auto const lb = std::lower_bound(
-        begin(tt.sorted_route_id_idx_), end(tt.sorted_route_id_idx_), route_id,
-        [&](route_id_idx_t const& a, std::string_view b) {
-          return std::tuple(tt.route_id_src_[a],
-                            tt.route_id_strings_[a].view()) <
-                 std::tuple(src, b);
-        });
-    if (lb != end(tt.sorted_route_id_idx_) &&
-        route_id == tt.route_id_strings_[*lb].view()) {
-      return *lb;
-    }
-    return route_id_idx_t::invalid();
-  };
-
   auto const r =
       t.is_valid() ? tt.transport_route_[t_idx] : route_idx_t::invalid();
   auto const fallback_r = r == route_idx_t::invalid()
-                              ? search_by_route_id()
+                              ? tt.route_ids_[src].ids_.find(route_id).value_or(
+                                    route_id_idx_t::invalid())
                               : route_id_idx_t::invalid();
   auto const location_seq = stop_seq.empty() && r != route_idx_t::invalid()
                                 ? std::span{tt.route_location_seq_[r]}
@@ -61,6 +44,7 @@ rt_transport_idx_t rt_timetable::add_rt_transport(
   rt_transport_location_seq_.emplace_back(location_seq);
   rt_transport_src_.emplace_back(src);
   rt_transport_train_nr_.emplace_back(0U);
+  alerts_.rt_transport_.emplace_back_empty();
 
   for (auto const s : location_seq) {
     auto rt_transports = location_rt_transports_[stop{s}.location_idx()];
@@ -101,7 +85,7 @@ rt_transport_idx_t rt_timetable::add_rt_transport(
     rt_transport_display_names_.emplace_back(display_name);
   } else if (!new_trip_id.empty() && fallback_r != route_id_idx_t::invalid()) {
     rt_transport_display_names_.emplace_back(
-        tt.route_id_short_names_[fallback_r].view());
+        tt.route_ids_[src].route_id_short_names_.at(fallback_r).view());
   } else if (!new_trip_id.empty() && t.is_valid()) {
     rt_transport_display_names_.emplace_back(tt.transport_name(t.t_idx_));
   } else {
@@ -115,8 +99,8 @@ rt_transport_idx_t rt_timetable::add_rt_transport(
                                     tt.route_bikes_allowed_[r.v_ * 2 + 1]);
   } else if (fallback_r != route_id_idx_t::invalid()) {
     rt_transport_section_clasz_.emplace_back(
-        std::vector<clasz>{nigiri::loader::gtfs::to_clasz(
-            tt.route_id_type_[fallback_r])});  // TODO
+        std::vector<clasz>{loader::gtfs::to_clasz(
+            tt.route_ids_[src].route_id_type_.at(fallback_r).v_)});  // TODO
     rt_transport_bikes_allowed_.set(rt_t_idx * 2, bikes_allowed_default);
     rt_transport_bikes_allowed_.set(rt_t_idx * 2 + 1, false);
   } else {
@@ -148,6 +132,23 @@ rt_transport_idx_t rt_timetable::add_rt_transport(
   assert(rt_bikes_allowed_per_section_.size() == rt_t_idx + 1U);
 
   return rt_transport_idx_t{rt_t_idx};
+}
+
+void rt_timetable::cancel_run(rt::run const& r) {
+  if (r.is_rt()) {
+    rt_transport_is_cancelled_.set(to_idx(r.rt_), true);
+  }
+  if (r.is_scheduled()) {
+    auto const bf = bitfields_[transport_traffic_days_[r.t_.t_idx_]];
+    bitfields_.emplace_back(bf).set(to_idx(r.t_.day_), false);
+    transport_traffic_days_[r.t_.t_idx_] =
+        bitfield_idx_t{bitfields_.size() - 1U};
+
+    for (auto i = r.stop_range_.from_; i != r.stop_range_.to_; ++i) {
+      dispatch_stop_change(r, i, event_type::kArr, std::nullopt, false);
+      dispatch_stop_change(r, i, event_type::kDep, std::nullopt, false);
+    }
+  }
 }
 
 }  // namespace nigiri

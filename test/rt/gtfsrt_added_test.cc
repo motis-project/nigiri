@@ -766,7 +766,9 @@ TEST(rt, gtfs_rt_added) {
     EXPECT_FLOAT_EQ(0.05, fr[0].pos().lng());
     EXPECT_EQ("", fr[0].track());
     EXPECT_EQ("E", fr[0].id());
-    EXPECT_EQ("AGENCY_1", fr[0].get_provider(event_type::kDep).short_name_);
+    EXPECT_EQ(
+        "AGENCY_1",
+        tt.strings_.get(fr[0].get_provider(event_type::kDep).short_name_));
     // EXPECT_EQ("", fr[0].get_trip_idx());
     EXPECT_EQ("Route 1", fr[0].trip_display_name(event_type::kDep));
     EXPECT_EQ(

@@ -356,8 +356,8 @@ private:
         trace(
             "  loc={}, v={}, tmp={}, is_dest={}, is_via={}, target_v={}, "
             "stay={}\n",
-            location{tt_, location_idx_t{i}}, v, tmp_time, is_dest, is_via,
-            target_v, stay);
+            location{tt_, location_idx_t{i}}, v, to_unix(tmp_time), is_dest,
+            is_via, target_v, stay);
 
         auto const transfer_time =
             (!is_intermodal_dest() && is_dest)
@@ -373,8 +373,8 @@ private:
         trace(
             "    transfer_time={}, fp_target_time={}, best@target={}, "
             "dest={}\n",
-            transfer_time, fp_target_time, best_[i][target_v],
-            time_at_dest_[k]);
+            transfer_time, fp_target_time, to_unix(best_[i][target_v]),
+            to_unix(time_at_dest_[k]));
 
         if (is_better(fp_target_time, best_[i][target_v]) &&
             is_better(fp_target_time, time_at_dest_[k])) {
@@ -638,8 +638,9 @@ private:
             trace(
                 "┊ │k={}  TD INTERMODAL FOOTPATH: location={}, "
                 "start_time={}, "
-                "dist_to_end={}\n",
-                k, location{tt_, l}, fp_start_time, *duration);
+                "dist_to_end={} --> time_at_dest is better or equals {}\n",
+                k, location{tt_, l}, to_unix(fp_start_time), *duration,
+                to_unix(end_time));
           }
         }
       }
@@ -714,7 +715,7 @@ private:
                   "BETTER THAN current_best={} => update, {} marking station "
                   "{}!\n",
                   k, rtt_->transport_name(tt_, rt_t), rtt_->dbg(tt_, rt_t),
-                  by_transport, current_best,
+                  to_unix(by_transport), to_unix(current_best),
                   !is_better(by_transport, current_best) ? "NOT" : "",
                   location{tt_, stp.location_idx()});
 
@@ -742,8 +743,8 @@ private:
                     "time_by_transport={}, "
                     "BETTER THAN dest_best={} => update, {} marking station "
                     "{} (destination)!\n",
-                    k, v, dest_v, tt_.transport_name(et[v].t_idx_),
-                    tt_.dbg(et[v].t_idx_), to_unix(by_transport),
+                    k, v, dest_v, rtt_->transport_name(tt_, rt_t),
+                    rtt_->dbg(tt_, rt_t), to_unix(by_transport),
                     to_unix(best_dest),
                     !is_better(by_transport, best_dest) ? "NOT" : "",
                     location{tt_, stp.location_idx()});

@@ -88,10 +88,7 @@ void load_timetable(loader_config const& config,
                     assistance_times* assistance,
                     shapes_storage* shapes_data) {
   auto local_bitfield_indices = hash_map<bitfield, bitfield_idx_t>{};
-  auto c =
-      string_cache_t{std::size_t{0U}, string_idx_hash{tt.strings_.strings_},
-                     string_idx_equals{tt.strings_.strings_}};
-  load_timetable(config, src, d, tt, local_bitfield_indices, c, assistance,
+  load_timetable(config, src, d, tt, local_bitfield_indices, assistance,
                  shapes_data);
 }
 
@@ -100,7 +97,6 @@ void load_timetable(loader_config const& config,
                     dir const& d,
                     timetable& tt,
                     hash_map<bitfield, bitfield_idx_t>& bitfield_indices,
-                    string_cache_t& str_cache,
                     assistance_times* assistance,
                     shapes_storage* shapes_data) {
   nigiri::scoped_timer const global_timer{"gtfs parser"};
@@ -131,7 +127,7 @@ void load_timetable(loader_config const& config,
   read_frequencies(trip_data, load(kFrequenciesFile).data());
   read_stop_times(tt, trip_data, stops, load(kStopTimesFile).data(),
                   shapes_data != nullptr);
-  load_fares(tt, str_cache, d, service, routes, stops);
+  load_fares(tt, d, service, routes, stops);
   utl::verify(tt.fares_.size() == to_idx(src) + 1U, "fares: size={} src={}",
               tt.fares_.size(), src);
 
@@ -164,7 +160,7 @@ void load_timetable(loader_config const& config,
   stop_seq_t stop_seq_cache;
   bitvec bikes_allowed_seq_cache;
   auto const get_bikes_allowed_seq =
-      [&](std::basic_string<gtfs_trip_idx_t> const& trips) -> bitvec const* {
+      [&](basic_string<gtfs_trip_idx_t> const& trips) -> bitvec const* {
     if (trips.size() == 1U) {
       return trip_data.get(trips.front()).bikes_allowed_
                  ? &kSingleTripBikesAllowed
@@ -185,7 +181,7 @@ void load_timetable(loader_config const& config,
     }
   };
 
-  auto const add_trip = [&](std::basic_string<gtfs_trip_idx_t> const& trips,
+  auto const add_trip = [&](basic_string<gtfs_trip_idx_t> const& trips,
                             bitfield const* traffic_days) {
     expand_trip(
         trip_data, noon_offsets, tt, trips, traffic_days, tt.date_range_,
@@ -251,9 +247,11 @@ void load_timetable(loader_config const& config,
       });
     };
 
-    auto stop_seq_numbers = std::basic_string<stop_idx_t>{};
+    auto stop_seq_numbers = basic_string<stop_idx_t>{};
     auto const source_file_idx =
         tt.register_source_file((d.path() / kStopTimesFile).generic_string());
+    tt.src_trips_.emplace_back(trip_idx_t{tt.trip_ids_.size()},
+                               trip_idx_t::invalid());
     for (auto& trp : trip_data.data_) {
       std::uint32_t train_nr = 0U;
       if (is_train_number(trp.short_name_)) {
@@ -267,16 +265,17 @@ void load_timetable(loader_config const& config,
       trp.trip_idx_ = tt.register_trip_id(
           trp.id_, trp.route_->route_id_idx_, src, trp.display_name(),
           {source_file_idx, trp.from_line_, trp.to_line_}, train_nr,
-          stop_seq_numbers);
+          stop_seq_numbers, trp.direction_id_);
     }
+    tt.src_trips_.back().to_ = trip_idx_t{tt.trip_ids_.size()};
 
     auto const timer = scoped_timer{"loader.gtfs.routes.build"};
-    auto const attributes = std::basic_string<attribute_combination_idx_t>{};
+    auto const attributes = basic_string<attribute_combination_idx_t>{};
     auto lines = hash_map<std::string, trip_line_idx_t>{};
-    auto section_directions = std::basic_string<trip_direction_idx_t>{};
-    auto section_lines = std::basic_string<trip_line_idx_t>{};
-    auto route_colors = std::basic_string<route_color>{};
-    auto external_trip_ids = std::basic_string<merged_trips_idx_t>{};
+    auto section_directions = basic_string<trip_direction_idx_t>{};
+    auto section_lines = basic_string<trip_line_idx_t>{};
+    auto route_colors = basic_string<route_color>{};
+    auto external_trip_ids = basic_string<merged_trips_idx_t>{};
     auto location_routes = mutable_fws_multimap<location_idx_t, route_idx_t>{};
     for (auto const& [key, sub_routes] : route_services) {
       for (auto const& services : sub_routes) {

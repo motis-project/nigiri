@@ -35,7 +35,9 @@ agency_map_t read_agencies(timetable& tt,
              return std::pair{
                  a.id_->to_str(),
                  tt.register_provider(
-                     {a.id_->view(), a.name_->view(), a.url_->view(),
+                     {tt.strings_.store(a.id_->view()),
+                      tt.strings_.store(a.name_->view()),
+                      tt.strings_.store(a.url_->view()),
                       get_tz_idx(tt, timezones, a.tz_name_->trim().view())})};
            })  //
          | utl::to<agency_map_t>();

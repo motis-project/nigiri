@@ -29,13 +29,13 @@ static auto const kSingleTripBikesAllowed = bitvec{"1"};
 static auto const kSingleTripBikesNotAllowed = bitvec{"0"};
 
 struct block {
-  std::vector<std::pair<std::basic_string<gtfs_trip_idx_t>, bitfield>>
-  rule_services(trip_data&);
+  std::vector<std::pair<basic_string<gtfs_trip_idx_t>, bitfield>> rule_services(
+      trip_data&);
 
   std::vector<gtfs_trip_idx_t> trips_;
 };
 
-using stop_seq_t = std::basic_string<stop::value_type>;
+using stop_seq_t = basic_string<stop::value_type>;
 
 struct frequency {
   unsigned number_of_iterations() const {
@@ -66,6 +66,7 @@ struct trip {
        std::string id,
        trip_direction_idx_t headsign,
        std::string short_name,
+       direction_id_t,
        shape_idx_t,
        bool bikes_allowed);
 
@@ -92,6 +93,7 @@ struct trip {
   block* block_{nullptr};
   std::string id_;
   trip_direction_idx_t headsign_;
+  direction_id_t direction_id_{direction_id_t::invalid()};
   std::string short_name_;
   shape_idx_t shape_idx_;
 

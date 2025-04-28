@@ -8,6 +8,7 @@
 #include "nigiri/common/delta_t.h"
 #include "nigiri/common/interval.h"
 #include "nigiri/rt/run.h"
+#include "nigiri/rt/service_alert.h"
 #include "nigiri/stop.h"
 #include "nigiri/timetable.h"
 #include "nigiri/types.h"
@@ -66,6 +67,8 @@ struct rt_timetable {
     rt_transport_stop_times_[rt_t][static_cast<std::size_t>(ev_idx)] =
         unix_to_delta(new_time);
   }
+
+  void cancel_run(rt::run const&);
 
   void set_change_callback(change_callback_t callback) {
     change_callback_ = callback;
@@ -212,6 +215,9 @@ struct rt_timetable {
 
   // RT transport -> bikes allowed for each section
   vecvec<rt_transport_idx_t, bool> rt_bikes_allowed_per_section_;
+
+  // Service alerts
+  alerts alerts_;
 
   change_callback_t change_callback_;
 

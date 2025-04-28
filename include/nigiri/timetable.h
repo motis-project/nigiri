@@ -99,8 +99,6 @@ struct timetable {
                                             : std::optional{get(it->second)};
     }
 
-    void resolve_timezones();
-
     // Station access: external station id -> internal station idx
     hash_map<location_id, location_idx_t> location_id_to_idx_;
     vecvec<location_idx_t, char> names_;
@@ -124,13 +122,13 @@ struct timetable {
     bitfield_idx_t bitfield_idx_;
     route_idx_t route_idx_;
     duration_t first_dep_offset_;
-    std::basic_string<merged_trips_idx_t> const& external_trip_ids_;
-    std::basic_string<attribute_combination_idx_t> const& section_attributes_;
-    std::basic_string<provider_idx_t> const& section_providers_;
-    std::basic_string<trip_direction_idx_t> const& section_directions_;
-    std::basic_string<trip_line_idx_t> const& section_lines_;
-    std::basic_string<stop_idx_t> const& stop_seq_numbers_;
-    std::basic_string<route_color> const& route_colors_;
+    basic_string<merged_trips_idx_t> const& external_trip_ids_;
+    basic_string<attribute_combination_idx_t> const& section_attributes_;
+    basic_string<provider_idx_t> const& section_providers_;
+    basic_string<trip_direction_idx_t> const& section_directions_;
+    basic_string<trip_line_idx_t> const& section_lines_;
+    basic_string<stop_idx_t> const& stop_seq_numbers_;
+    basic_string<route_color> const& route_colors_;
   };
 
   template <typename TripId>
@@ -140,11 +138,17 @@ struct timetable {
                               std::string const& display_name,
                               trip_debug const dbg,
                               std::uint32_t const train_nr,
-                              std::span<stop_idx_t> seq_numbers) {
+                              std::span<stop_idx_t> seq_numbers,
+                              direction_id_t const direction_id) {
     auto const trip_idx = trip_idx_t{trip_ids_.size()};
 
     auto const trip_id_idx = trip_id_idx_t{trip_id_strings_.size()};
+
+    if (route_id_idx != route_id_idx_t::invalid()) {  // HRD
+      route_ids_[src].route_id_trips_[route_id_idx].push_back(trip_idx);
+    }
     trip_route_id_.emplace_back(route_id_idx);
+
     trip_id_strings_.emplace_back(trip_id_str);
     trip_id_src_.emplace_back(src);
 
@@ -155,8 +159,13 @@ struct timetable {
     trip_train_nr_.emplace_back(train_nr);
     trip_stop_seq_numbers_.emplace_back(seq_numbers);
 
+    trip_direction_id_.resize(trip_ids_.size());
+    trip_direction_id_.set(trip_idx, direction_id == direction_id_t{1U});
+
     return trip_idx;
   }
+
+  void resolve();
 
   bitfield_idx_t register_bitfield(bitfield const& b) {
     auto const idx = bitfield_idx_t{bitfields_.size()};
@@ -172,25 +181,9 @@ struct timetable {
     return idx;
   }
 
-  route_id_idx_t register_route_id(std::string_view const route_id,
-                                   source_idx_t const src,
-                                   std::string_view const short_name,
-                                   std::string_view const long_name,
-                                   int const type) {
-    auto const idx = route_id_idx_t{sorted_route_id_idx_.size()};
-    sorted_route_id_idx_.emplace_back(idx);
-    route_id_strings_.emplace_back(route_id);
-    route_id_src_.emplace_back(src);
-    route_id_short_names_.emplace_back(short_name);
-    route_id_long_names_.emplace_back(long_name);
-    route_id_type_.emplace_back(type);
-    return idx;
-  }
-
-  route_idx_t register_route(
-      std::basic_string<stop::value_type> const& stop_seq,
-      std::basic_string<clasz> const& clasz_sections,
-      bitvec const& bikes_allowed_per_section) {
+  route_idx_t register_route(basic_string<stop::value_type> const& stop_seq,
+                             basic_string<clasz> const& clasz_sections,
+                             bitvec const& bikes_allowed_per_section) {
     assert(stop_seq.size() > 1U);
     assert(!clasz_sections.empty());
 
@@ -230,7 +223,7 @@ struct timetable {
   }
 
   merged_trips_idx_t register_merged_trip(
-      std::basic_string<trip_idx_t> const& trip_ids) {
+      basic_string<trip_idx_t> const& trip_ids) {
     auto const idx = merged_trips_.size();
     merged_trips_.emplace_back(trip_ids);
     return merged_trips_idx_t{static_cast<merged_trips_idx_t::value_t>(idx)};
@@ -245,6 +238,7 @@ struct timetable {
   provider_idx_t register_provider(provider&& p) {
     auto const idx = providers_.size();
     providers_.emplace_back(std::move(p));
+    provider_id_to_idx_.emplace_back(idx);
     return provider_idx_t{idx};
   }
 
@@ -331,6 +325,10 @@ struct timetable {
     return internal_interval_days().from_ + to_idx(d) * 1_days + m;
   }
 
+  cista::base_t<trip_idx_t> n_trips() const {
+    return trip_display_names_.size();
+  }
+
   cista::base_t<location_idx_t> n_locations() const {
     return locations_.names_.size();
   }
@@ -338,6 +336,12 @@ struct timetable {
   cista::base_t<route_idx_t> n_routes() const {
     return route_location_seq_.size();
   }
+
+  cista::base_t<source_idx_t> n_sources() const {
+    return source_file_names_.size();
+  }
+
+  cista::base_t<provider_idx_t> n_agencies() const { return providers_.size(); }
 
   interval<unixtime_t> external_interval() const {
     return {std::chrono::time_point_cast<i32_minutes>(date_range_.from_),
@@ -391,6 +395,9 @@ struct timetable {
   // Schedule range.
   interval<date::sys_days> date_range_;
 
+  // Source -> trips
+  vector_map<source_idx_t, interval<trip_idx_t>> src_trips_;
+
   // Trip access: external trip id -> internal trip index
   vector<pair<trip_id_idx_t, trip_idx_t>> trip_id_to_idx_;
 
@@ -401,6 +408,9 @@ struct timetable {
   vecvec<trip_id_idx_t, char> trip_id_strings_;
   vector_map<trip_id_idx_t, source_idx_t> trip_id_src_;
 
+  // Trip -> direction (valid options 0 or 1)
+  bitvec_map<trip_idx_t> trip_direction_id_;
+
   // Trip train number, if available (otherwise 0)
   vector_map<trip_id_idx_t, std::uint32_t> trip_train_nr_;
 
@@ -408,12 +418,29 @@ struct timetable {
   vector_map<trip_idx_t, route_id_idx_t> trip_route_id_;
 
   // External route id
-  vector<route_id_idx_t> sorted_route_id_idx_;
-  vecvec<route_id_idx_t, char> route_id_strings_;
-  vector_map<route_id_idx_t, source_idx_t> route_id_src_;
-  vecvec<route_id_idx_t, char> route_id_short_names_;
-  vecvec<route_id_idx_t, char> route_id_long_names_;
-  vector_map<route_id_idx_t, int> route_id_type_;
+  struct route_ids {
+    route_id_idx_t add(std::string_view id,
+                       std::string_view short_name,
+                       std::string_view long_name,
+                       provider_idx_t const provider,
+                       std::uint16_t const type) {
+      auto const idx = ids_.store(id);
+      route_id_short_names_.emplace_back(short_name);
+      route_id_long_names_.emplace_back(long_name);
+      route_id_type_.emplace_back(type);
+      route_id_provider_.emplace_back(provider);
+      route_id_trips_.emplace_back(std::initializer_list<trip_idx_t>{});
+      return idx;
+    }
+
+    vecvec<route_id_idx_t, char> route_id_short_names_;
+    vecvec<route_id_idx_t, char> route_id_long_names_;
+    vector_map<route_id_idx_t, route_type_t> route_id_type_;
+    vector_map<route_id_idx_t, provider_idx_t> route_id_provider_;
+    vecvec<route_id_idx_t, trip_idx_t> route_id_trips_;
+    string_store<route_id_idx_t> ids_;
+  };
+  vector_map<source_idx_t, route_ids> route_ids_;
 
   // Trip index -> all transports with a stop interval
   paged_vecvec<trip_idx_t, transport_range_t> trip_transport_ranges_;
@@ -498,6 +525,7 @@ struct timetable {
   vector_map<attribute_idx_t, attribute> attributes_;
   vecvec<attribute_combination_idx_t, attribute_idx_t> attribute_combinations_;
   vector_map<provider_idx_t, provider> providers_;
+  vector<provider_idx_t> provider_id_to_idx_;
   vecvec<trip_direction_string_idx_t, char> trip_direction_strings_;
   vector_map<trip_direction_idx_t, trip_direction_t> trip_directions_;
   vecvec<trip_line_idx_t, char> trip_lines_;
@@ -523,7 +551,7 @@ struct timetable {
   vector_map<source_idx_t, fares> fares_;
   vector_map<area_idx_t, area> areas_;
   vecvec<location_idx_t, area_idx_t> location_areas_;
-  string_store strings_;
+  string_store<string_idx_t> strings_;
 };
 
 }  // namespace nigiri

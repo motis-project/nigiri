@@ -27,10 +27,11 @@ void register_special_stations(timetable& tt) {
 }
 
 void finalize(timetable& tt, finalize_options const opt) {
+  tt.strings_.cache_.clear();
   tt.location_routes_.resize(tt.n_locations());
 
   {
-    auto const timer = scoped_timer{"loader.sort_ids"};
+    auto const timer = scoped_timer{"loader.sort_trip_ids"};
     std::sort(
 #if __cpp_lib_execution
         std::execution::par_unseq,
@@ -43,16 +44,17 @@ void finalize(timetable& tt, finalize_options const opt) {
                  std::tuple(tt.trip_id_src_[b.first],
                             tt.trip_id_strings_[b.first].view());
         });
+  }
+  {
+    auto const timer = scoped_timer{"loader.sort_providers"};
     std::sort(
 #if __cpp_lib_execution
         std::execution::par_unseq,
 #endif
-        begin(tt.sorted_route_id_idx_), end(tt.sorted_route_id_idx_),
-        [&](route_id_idx_t const& a, route_id_idx_t const& b) {
-          return std::tuple(tt.route_id_src_[a],
-                            tt.route_id_strings_[a].view()) <
-                 std::tuple(tt.route_id_src_[b],
-                            tt.route_id_strings_[b].view());
+        begin(tt.provider_id_to_idx_), end(tt.provider_id_to_idx_),
+        [&](provider_idx_t const a, provider_idx_t const b) {
+          return tt.strings_.get(tt.providers_[a].short_name_) <
+                 tt.strings_.get(tt.providers_[b].short_name_);
         });
   }
   build_footpaths(tt, opt);

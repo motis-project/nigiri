@@ -234,6 +234,69 @@ constexpr auto const vdv_update_msg2 = R"(
 </DatenAbrufenAntwort>
 )";
 
+constexpr auto const cancel_all_update = R"(
+<?xml version="1.0" encoding="iso-8859-1"?>
+<DatenAbrufenAntwort>
+  <Bestaetigung Zst="2024-07-10T00:00:00" Ergebnis="ok" Fehlernummer="0" />
+  <AUSNachricht AboID="1">
+    <IstFahrt Zst="2024-07-10T00:00:00">
+      <LinienID>AE</LinienID>
+      <RichtungsID>1</RichtungsID>
+      <FahrtRef>
+        <FahrtID>
+          <FahrtBezeichner>AE</FahrtBezeichner>
+          <Betriebstag>2024-07-10</Betriebstag>
+        </FahrtID>
+      </FahrtRef>
+      <BetreiberID>MTA</BetreiberID>
+      <IstHalt>
+        <HaltID>A</HaltID>
+        <Abfahrtszeit>2024-07-09T22:00:00</Abfahrtszeit>
+        <IstAbfahrtPrognose>2024-07-09T22:00:00</IstAbfahrtPrognose>
+        <AbfahrtFaelltAus>true</AbfahrtFaelltAus>
+      </IstHalt>
+      <IstHalt>
+        <HaltID>B</HaltID>
+        <Ankunftszeit>2024-07-09T23:00:00</Ankunftszeit>
+        <Abfahrtszeit>2024-07-09T23:00:00</Abfahrtszeit>
+        <IstAnkunftPrognose>2024-07-09T23:00:00</IstAnkunftPrognose>
+        <IstAbfahrtPrognose>2024-07-09T23:00:00</IstAbfahrtPrognose>
+        <AnkunftFaelltAus>true</AnkunftFaelltAus>
+        <AbfahrtFaelltAus>true</AbfahrtFaelltAus>
+      </IstHalt>
+      <IstHalt>
+        <HaltID>C</HaltID>
+        <Ankunftszeit>2024-07-10T00:00:00</Ankunftszeit>
+        <Abfahrtszeit>2024-07-10T00:00:00</Abfahrtszeit>
+        <IstAnkunftPrognose>2024-07-10T00:00:00</IstAnkunftPrognose>
+        <IstAbfahrtPrognose>2024-07-10T00:00:00</IstAbfahrtPrognose>
+        <AnkunftFaelltAus>true</AnkunftFaelltAus>
+        <AbfahrtFaelltAus>true</AbfahrtFaelltAus>
+      </IstHalt>
+      <IstHalt>
+        <HaltID>D</HaltID>
+        <Ankunftszeit>2024-07-10T01:00:00</Ankunftszeit>
+        <Abfahrtszeit>2024-07-10T01:00:00</Abfahrtszeit>
+        <IstAnkunftPrognose>2024-07-10T01:00:00</IstAnkunftPrognose>
+        <IstAbfahrtPrognose>2024-07-10T01:00:00</IstAbfahrtPrognose>
+        <AnkunftFaelltAus>true</AnkunftFaelltAus>
+        <AbfahrtFaelltAus>true</AbfahrtFaelltAus>
+      </IstHalt>
+      <IstHalt>
+        <HaltID>E</HaltID>
+        <Ankunftszeit>2024-07-10T02:00:00</Ankunftszeit>
+        <IstAnkunftPrognose>2024-07-10T02:00:00</IstAnkunftPrognose>
+        <AnkunftFaelltAus>true</AnkunftFaelltAus>
+      </IstHalt>
+      <LinienText>AE</LinienText>
+      <ProduktID>Space Train</ProduktID>
+      <RichtungsText>E</RichtungsText>
+      <Komplettfahrt>true</Komplettfahrt>
+    </IstFahrt>
+  </AUSNachricht>
+</DatenAbrufenAntwort>
+)";
+
 }  // namespace
 
 TEST(vdv_update, delay_propagation) {
@@ -373,6 +436,29 @@ TEST(vdv_update, delay_propagation) {
 
   EXPECT_EQ(u.get_stats().found_runs_, 1);
   EXPECT_EQ(u.get_stats().matched_runs_, 3);
+}
+
+TEST(vdv_update, all_stops_canceled) {
+  timetable tt;
+  register_special_stations(tt);
+  tt.date_range_ = {date::sys_days{2024_y / July / 1},
+                    date::sys_days{2024_y / July / 31}};
+  auto const src_idx = source_idx_t{0};
+  load_timetable({}, src_idx, vdv_test_files(), tt);
+  finalize(tt);
+
+  auto rtt = rt::create_rt_timetable(tt, date::sys_days{2024_y / July / 10});
+
+  auto doc = pugi::xml_document{};
+  doc.load_string(cancel_all_update);
+  auto u = rt::vdv::updater{tt, src_idx};
+  u.update(rtt, doc);
+
+  auto const fr = rt::frun(
+      tt, &rtt,
+      {{transport_idx_t{0}, day_idx_t{13}}, {stop_idx_t{0}, stop_idx_t{5}}});
+
+  EXPECT_TRUE(fr.is_cancelled());
 }
 
 namespace {
@@ -901,6 +987,273 @@ constexpr auto const update_rbo707 = R"(
 </IstFahrt>
 )";
 
+constexpr auto const cancel_rbo707 = R"(
+<IstFahrt Zst="2024-08-23T13:12:24">
+	<LinienID>RBO707</LinienID>
+	<RichtungsID>1</RichtungsID>
+	<FahrtRef>
+		<FahrtID>
+			<FahrtBezeichner>RBO2732_vvorbl</FahrtBezeichner>
+			<Betriebstag>2024-08-23</Betriebstag>
+		</FahrtID>
+	</FahrtRef>
+	<Komplettfahrt>true</Komplettfahrt>
+	<BetreiberID>vvorbl</BetreiberID>
+	<IstHalt>
+		<HaltID>de:14625:7501:0:7</HaltID>
+		<Abfahrtszeit>2024-08-23T10:15:00</Abfahrtszeit>
+		<AbfahrtssteigText>7</AbfahrtssteigText>
+		<Besetztgrad>Unbekannt</Besetztgrad>
+	</IstHalt>
+	<IstHalt>
+		<HaltID>de:14625:7502:0:1</HaltID>
+		<Abfahrtszeit>2024-08-23T10:19:00</Abfahrtszeit>
+		<Ankunftszeit>2024-08-23T10:19:00</Ankunftszeit>
+		<AbfahrtssteigText>1</AbfahrtssteigText>
+		<Besetztgrad>Unbekannt</Besetztgrad>
+	</IstHalt>
+	<IstHalt>
+		<HaltID>de:14625:7507:0:1</HaltID>
+		<Abfahrtszeit>2024-08-23T10:21:00</Abfahrtszeit>
+		<Ankunftszeit>2024-08-23T10:21:00</Ankunftszeit>
+		<AbfahrtssteigText>1</AbfahrtssteigText>
+		<Besetztgrad>Unbekannt</Besetztgrad>
+	</IstHalt>
+	<IstHalt>
+		<HaltID>de:14625:7578:0:1</HaltID>
+		<Abfahrtszeit>2024-08-23T10:23:00</Abfahrtszeit>
+		<Ankunftszeit>2024-08-23T10:23:00</Ankunftszeit>
+		<AbfahrtssteigText>1</AbfahrtssteigText>
+		<Besetztgrad>Unbekannt</Besetztgrad>
+	</IstHalt>
+	<IstHalt>
+		<HaltID>de:14625:7577:0:1</HaltID>
+		<Abfahrtszeit>2024-08-23T10:25:00</Abfahrtszeit>
+		<Ankunftszeit>2024-08-23T10:25:00</Ankunftszeit>
+		<AbfahrtssteigText>1</AbfahrtssteigText>
+		<Besetztgrad>Unbekannt</Besetztgrad>
+	</IstHalt>
+	<IstHalt>
+		<HaltID>de:14625:7652:0:1</HaltID>
+		<Abfahrtszeit>2024-08-23T10:28:00</Abfahrtszeit>
+		<Ankunftszeit>2024-08-23T10:28:00</Ankunftszeit>
+		<AbfahrtssteigText>1</AbfahrtssteigText>
+		<Besetztgrad>Unbekannt</Besetztgrad>
+	</IstHalt>
+	<IstHalt>
+		<HaltID>de:14625:7662:0:1</HaltID>
+		<Abfahrtszeit>2024-08-23T10:31:00</Abfahrtszeit>
+		<Ankunftszeit>2024-08-23T10:31:00</Ankunftszeit>
+		<AbfahrtssteigText>1</AbfahrtssteigText>
+		<Besetztgrad>Unbekannt</Besetztgrad>
+	</IstHalt>
+	<IstHalt>
+		<HaltID>de:14625:7776:0:2</HaltID>
+		<Abfahrtszeit>2024-08-23T10:33:00</Abfahrtszeit>
+		<Ankunftszeit>2024-08-23T10:33:00</Ankunftszeit>
+		<AbfahrtssteigText>2</AbfahrtssteigText>
+		<RichtungsText>Caßlau über Neschwitz</RichtungsText>
+		<Besetztgrad>Unbekannt</Besetztgrad>
+	</IstHalt>
+	<IstHalt>
+		<HaltID>de:14625:7772:0:1</HaltID>
+		<Abfahrtszeit>2024-08-23T10:37:00</Abfahrtszeit>
+		<Ankunftszeit>2024-08-23T10:37:00</Ankunftszeit>
+		<AbfahrtssteigText>1</AbfahrtssteigText>
+		<RichtungsText>Caßlau über Neschwitz</RichtungsText>
+		<Besetztgrad>Unbekannt</Besetztgrad>
+	</IstHalt>
+	<IstHalt>
+		<HaltID>de:14625:7683:0:1</HaltID>
+		<Abfahrtszeit>2024-08-23T10:41:00</Abfahrtszeit>
+		<Ankunftszeit>2024-08-23T10:41:00</Ankunftszeit>
+		<AbfahrtssteigText>1</AbfahrtssteigText>
+		<RichtungsText>Caßlau über Neschwitz</RichtungsText>
+		<Besetztgrad>Unbekannt</Besetztgrad>
+	</IstHalt>
+	<IstHalt>
+		<HaltID>de:14625:7684:0:1</HaltID>
+		<Abfahrtszeit>2024-08-23T10:42:00</Abfahrtszeit>
+		<Ankunftszeit>2024-08-23T10:42:00</Ankunftszeit>
+		<AbfahrtssteigText>1</AbfahrtssteigText>
+		<RichtungsText>Caßlau über Neschwitz</RichtungsText>
+		<Besetztgrad>Unbekannt</Besetztgrad>
+	</IstHalt>
+	<IstHalt>
+		<HaltID>de:14625:7686:0:1</HaltID>
+		<Abfahrtszeit>2024-08-23T10:46:00</Abfahrtszeit>
+		<Ankunftszeit>2024-08-23T10:46:00</Ankunftszeit>
+		<AbfahrtssteigText>1</AbfahrtssteigText>
+		<RichtungsText>Caßlau über Neschwitz</RichtungsText>
+		<Besetztgrad>Unbekannt</Besetztgrad>
+	</IstHalt>
+	<IstHalt>
+		<HaltID>de:14625:7677:0:1</HaltID>
+		<Abfahrtszeit>2024-08-23T10:48:00</Abfahrtszeit>
+		<Ankunftszeit>2024-08-23T10:48:00</Ankunftszeit>
+		<AbfahrtssteigText>1</AbfahrtssteigText>
+		<RichtungsText>Caßlau</RichtungsText>
+		<Besetztgrad>Unbekannt</Besetztgrad>
+	</IstHalt>
+	<IstHalt>
+		<HaltID>de:14625:7679:0:1</HaltID>
+		<Abfahrtszeit>2024-08-23T10:50:00</Abfahrtszeit>
+		<Ankunftszeit>2024-08-23T10:50:00</Ankunftszeit>
+		<AbfahrtssteigText>1</AbfahrtssteigText>
+		<RichtungsText>Caßlau</RichtungsText>
+		<Besetztgrad>Unbekannt</Besetztgrad>
+	</IstHalt>
+	<IstHalt>
+		<HaltID>de:14625:7704:0:1</HaltID>
+		<Abfahrtszeit>2024-08-23T10:56:00</Abfahrtszeit>
+		<Ankunftszeit>2024-08-23T10:56:00</Ankunftszeit>
+		<AbfahrtssteigText>1</AbfahrtssteigText>
+		<RichtungsText>Caßlau</RichtungsText>
+		<Besetztgrad>Unbekannt</Besetztgrad>
+	</IstHalt>
+	<IstHalt>
+		<HaltID>de:14625:7708:0:2</HaltID>
+		<Abfahrtszeit>2024-08-23T10:58:00</Abfahrtszeit>
+		<Ankunftszeit>2024-08-23T10:58:00</Ankunftszeit>
+		<AbfahrtssteigText>2</AbfahrtssteigText>
+		<RichtungsText>Caßlau</RichtungsText>
+		<Besetztgrad>Unbekannt</Besetztgrad>
+	</IstHalt>
+	<IstHalt>
+		<HaltID>de:14625:7705:0:1</HaltID>
+		<Abfahrtszeit>2024-08-23T11:00:00</Abfahrtszeit>
+		<Ankunftszeit>2024-08-23T11:00:00</Ankunftszeit>
+		<AbfahrtssteigText>1</AbfahrtssteigText>
+		<RichtungsText>Caßlau</RichtungsText>
+		<Besetztgrad>Unbekannt</Besetztgrad>
+	</IstHalt>
+	<IstHalt>
+		<HaltID>de:14625:7709:0:1</HaltID>
+		<Abfahrtszeit>2024-08-23T11:02:00</Abfahrtszeit>
+		<Ankunftszeit>2024-08-23T11:02:00</Ankunftszeit>
+		<AbfahrtssteigText>1</AbfahrtssteigText>
+		<RichtungsText>Caßlau</RichtungsText>
+		<Besetztgrad>Unbekannt</Besetztgrad>
+	</IstHalt>
+	<IstHalt>
+		<HaltID>de:14625:7707:0:1</HaltID>
+		<Abfahrtszeit>2024-08-23T11:04:00</Abfahrtszeit>
+		<Ankunftszeit>2024-08-23T11:04:00</Ankunftszeit>
+		<AbfahrtssteigText>1</AbfahrtssteigText>
+		<RichtungsText>Caßlau</RichtungsText>
+		<Besetztgrad>Unbekannt</Besetztgrad>
+	</IstHalt>
+	<IstHalt>
+		<HaltID>de:14625:7706:0:1</HaltID>
+		<Abfahrtszeit>2024-08-23T11:09:00</Abfahrtszeit>
+		<Ankunftszeit>2024-08-23T11:09:00</Ankunftszeit>
+		<AbfahrtssteigText>1</AbfahrtssteigText>
+		<RichtungsText>Caßlau</RichtungsText>
+		<Besetztgrad>Unbekannt</Besetztgrad>
+	</IstHalt>
+	<IstHalt>
+		<HaltID>de:14625:7699:0:2</HaltID>
+		<Abfahrtszeit>2024-08-23T11:11:00</Abfahrtszeit>
+		<Ankunftszeit>2024-08-23T11:11:00</Ankunftszeit>
+		<AbfahrtssteigText>2</AbfahrtssteigText>
+		<RichtungsText>Caßlau</RichtungsText>
+		<Besetztgrad>Unbekannt</Besetztgrad>
+	</IstHalt>
+	<IstHalt>
+		<HaltID>de:14625:7698:0:2</HaltID>
+		<Abfahrtszeit>2024-08-23T11:12:00</Abfahrtszeit>
+		<Ankunftszeit>2024-08-23T11:12:00</Ankunftszeit>
+		<AbfahrtssteigText>2</AbfahrtssteigText>
+		<RichtungsText>Caßlau</RichtungsText>
+		<Besetztgrad>Unbekannt</Besetztgrad>
+	</IstHalt>
+	<IstHalt>
+		<HaltID>de:14625:7695:0:1</HaltID>
+		<Abfahrtszeit>2024-08-23T11:14:00</Abfahrtszeit>
+		<Ankunftszeit>2024-08-23T11:14:00</Ankunftszeit>
+		<AbfahrtssteigText>1</AbfahrtssteigText>
+		<RichtungsText>Caßlau</RichtungsText>
+		<Besetztgrad>Unbekannt</Besetztgrad>
+	</IstHalt>
+	<IstHalt>
+		<HaltID>de:14625:7697:0:2</HaltID>
+		<Ankunftszeit>2024-08-23T11:18:00</Ankunftszeit>
+		<AnkunftssteigText>2</AnkunftssteigText>
+		<RichtungsText>Caßlau</RichtungsText>
+		<Besetztgrad>Unbekannt</Besetztgrad>
+	</IstHalt>
+	<LinienText>707</LinienText>
+	<ProduktID>RBO707</ProduktID>
+	<RichtungsText>Caßlau über Radibor - Neschwitz</RichtungsText>
+	<PrognoseMoeglich>true</PrognoseMoeglich>
+	<FaelltAus>true</FaelltAus>
+</IstFahrt>
+)";
+
+constexpr auto const in_out_allowed_rbo707 = R"(
+<IstFahrt Zst="2024-08-23T13:12:24">
+	<LinienID>RBO707</LinienID>
+	<RichtungsID>1</RichtungsID>
+	<FahrtRef>
+		<FahrtID>
+			<FahrtBezeichner>RBO2732_vvorbl</FahrtBezeichner>
+			<Betriebstag>2024-08-23</Betriebstag>
+		</FahrtID>
+	</FahrtRef>
+	<Komplettfahrt>false</Komplettfahrt>
+	<BetreiberID>vvorbl</BetreiberID>
+        <IstHalt>
+                <HaltID>de:14625:7706:0:1</HaltID>
+                <Abfahrtszeit>2024-08-23T11:09:00</Abfahrtszeit>
+                <Ankunftszeit>2024-08-23T11:09:00</Ankunftszeit>
+                <AbfahrtssteigText>1</AbfahrtssteigText>
+                <RichtungsText>Caßlau</RichtungsText>
+                <Besetztgrad>Unbekannt</Besetztgrad>
+                <AnkunftFaelltAus>true</AnkunftFaelltAus>
+        </IstHalt>
+        <IstHalt>
+                <HaltID>de:14625:7699:0:2</HaltID>
+                <Abfahrtszeit>2024-08-23T11:11:00</Abfahrtszeit>
+                <Ankunftszeit>2024-08-23T11:11:00</Ankunftszeit>
+                <AbfahrtssteigText>2</AbfahrtssteigText>
+                <RichtungsText>Caßlau</RichtungsText>
+                <Besetztgrad>Unbekannt</Besetztgrad>
+                <AbfahrtFaelltAus>true</AbfahrtFaelltAus>
+        </IstHalt>
+	<IstHalt>
+		<HaltID>de:14625:7698:0:2</HaltID>
+		<Abfahrtszeit>2024-08-23T11:12:00</Abfahrtszeit>
+		<Ankunftszeit>2024-08-23T11:12:00</Ankunftszeit>
+		<AbfahrtssteigText>2</AbfahrtssteigText>
+		<RichtungsText>Caßlau</RichtungsText>
+		<Besetztgrad>Unbekannt</Besetztgrad>
+                <Einsteigeverbot>true</Einsteigeverbot>
+	</IstHalt>
+	<IstHalt>
+		<HaltID>de:14625:7695:0:1</HaltID>
+		<Abfahrtszeit>2024-08-23T11:14:00</Abfahrtszeit>
+		<Ankunftszeit>2024-08-23T11:14:00</Ankunftszeit>
+		<AbfahrtssteigText>1</AbfahrtssteigText>
+		<RichtungsText>Caßlau</RichtungsText>
+		<Besetztgrad>Unbekannt</Besetztgrad>
+                <Durchfahrt>true</Durchfahrt>
+	</IstHalt>
+	<IstHalt>
+		<HaltID>de:14625:7697:0:2</HaltID>
+		<Ankunftszeit>2024-08-23T11:18:00</Ankunftszeit>
+		<AnkunftssteigText>2</AnkunftssteigText>
+		<RichtungsText>Caßlau</RichtungsText>
+		<Besetztgrad>Unbekannt</Besetztgrad>
+                <Aussteigeverbot>true</Aussteigeverbot>
+	</IstHalt>
+	<LinienText>707</LinienText>
+	<ProduktID>RBO707</ProduktID>
+	<RichtungsText>Caßlau über Radibor - Neschwitz</RichtungsText>
+	<PrognoseMoeglich>true</PrognoseMoeglich>
+	<FaelltAus>false</FaelltAus>
+</IstFahrt>
+)";
+
 }  // namespace
 
 TEST(vdv_update, exact_match_1) {
@@ -926,6 +1279,78 @@ TEST(vdv_update, exact_match_1) {
                             {stop_idx_t{0U}, stop_idx_t{24U}}}};
 
   EXPECT_TRUE(fr.is_rt());
+  EXPECT_FALSE(fr.is_cancelled());
+}
+
+TEST(vdv_update, cancel_run) {
+  timetable tt;
+  register_special_stations(tt);
+  tt.date_range_ = {date::sys_days{2024_y / August / 1},
+                    date::sys_days{2024_y / August / 31}};
+  auto const src_idx = source_idx_t{0};
+  load_timetable({}, src_idx, rbo707_files(), tt);
+  finalize(tt);
+
+  auto rtt = rt::create_rt_timetable(tt, date::sys_days{2024_y / August / 23});
+
+  auto u = rt::vdv::updater{tt, src_idx};
+
+  auto doc = pugi::xml_document{};
+  doc.load_string(cancel_rbo707);
+  u.update(rtt, doc);
+
+  EXPECT_TRUE((rt::frun{tt,
+                        &rtt,
+                        {{transport_idx_t{0U}, day_idx_t{27U}},
+                         {stop_idx_t{0U}, stop_idx_t{24U}}}})
+                  .is_cancelled());
+
+  // uncancel
+  doc.load_string(update_rbo707);
+  u.update(rtt, doc);
+  EXPECT_FALSE((rt::frun{tt,
+                         &rtt,
+                         {{transport_idx_t{0U}, day_idx_t{27U}},
+                          {stop_idx_t{0U}, stop_idx_t{24U}}}})
+                   .is_cancelled());
+}
+
+TEST(vdv_update, in_out_allowed) {
+  timetable tt;
+  register_special_stations(tt);
+  tt.date_range_ = {date::sys_days{2024_y / August / 1},
+                    date::sys_days{2024_y / August / 31}};
+  auto const src_idx = source_idx_t{0};
+  load_timetable({}, src_idx, rbo707_files(), tt);
+  finalize(tt);
+  auto rtt = rt::create_rt_timetable(tt, date::sys_days{2024_y / August / 23});
+  auto u = rt::vdv::updater{tt, src_idx};
+
+  auto doc = pugi::xml_document{};
+  doc.load_string(update_rbo707);
+  u.update(rtt, doc);
+  EXPECT_TRUE((rt::frun{tt,
+                        &rtt,
+                        {{transport_idx_t{0U}, day_idx_t{27U}},
+                         {stop_idx_t{0U}, stop_idx_t{24U}}}})
+                  .is_rt());
+
+  doc.load_string(in_out_allowed_rbo707);
+  u.update(rtt, doc);
+  auto const fr = rt::frun{tt,
+                           &rtt,
+                           {{transport_idx_t{0U}, day_idx_t{27U}},
+                            {stop_idx_t{0U}, stop_idx_t{24U}}}};
+  EXPECT_FALSE(fr[19].out_allowed());
+  EXPECT_TRUE(fr[19].in_allowed());
+  EXPECT_TRUE(fr[20].out_allowed());
+  EXPECT_FALSE(fr[20].in_allowed());
+  EXPECT_TRUE(fr[21].out_allowed());
+  EXPECT_FALSE(fr[21].in_allowed());
+  EXPECT_FALSE(fr[22].out_allowed());
+  EXPECT_FALSE(fr[22].in_allowed());
+  EXPECT_FALSE(fr[23].out_allowed());
+  EXPECT_FALSE(fr[23].in_allowed());
 }
 
 namespace {

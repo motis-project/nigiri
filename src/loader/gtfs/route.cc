@@ -13,7 +13,7 @@
 
 namespace nigiri::loader::gtfs {
 
-clasz to_clasz(int const route_type) {
+clasz to_clasz(std::uint16_t const route_type) {
   switch (route_type) {
     case 0 /* Tram, Streetcar, Light rail. Any light rail or street level system within a metropolitan area. */ :
       return clasz::kTram;
@@ -153,13 +153,18 @@ route_map_t read_routes(source_idx_t const src,
                         std::string_view default_tz) {
   auto const timer = nigiri::scoped_timer{"read routes"};
 
+  utl::verify(tt.route_ids_.size() == to_idx(src),
+              "unexpected tt.route_ids_.size={}, expected: {}",
+              tt.route_ids_.size(), src);
+  tt.route_ids_.emplace_back();
+
   struct csv_route {
     utl::csv_col<utl::cstr, UTL_NAME("route_id")> route_id_;
     utl::csv_col<utl::cstr, UTL_NAME("agency_id")> agency_id_;
     utl::csv_col<utl::cstr, UTL_NAME("route_short_name")> route_short_name_;
     utl::csv_col<utl::cstr, UTL_NAME("route_long_name")> route_long_name_;
     utl::csv_col<utl::cstr, UTL_NAME("route_desc")> route_desc_;
-    utl::csv_col<int, UTL_NAME("route_type")> route_type_;
+    utl::csv_col<std::uint16_t, UTL_NAME("route_type")> route_type_;
     utl::csv_col<utl::cstr, UTL_NAME("route_color")> route_color_;
     utl::csv_col<utl::cstr, UTL_NAME("route_text_color")> route_text_color_;
   };
@@ -186,13 +191,15 @@ route_map_t read_routes(source_idx_t const src,
                                            ? "UKN"
                                            : r.agency_id_->view();
                        return tt.register_provider(
-                           {id, "UNKNOWN_AGENCY", "",
+                           {tt.strings_.store(id),
+                            tt.strings_.store("UNKNOWN_AGENCY"),
+                            tt.strings_.store(""),
                             get_tz_idx(tt, timezones, default_tz)});
                      });
 
-           auto const route_id_idx = tt.register_route_id(
-               r.route_id_->view(), src, r.route_short_name_->view(),
-               r.route_long_name_->view(), *r.route_type_);
+           auto const route_id_idx = tt.route_ids_[src].add(
+               r.route_id_->view(), r.route_short_name_->view(),
+               r.route_long_name_->view(), agency, *r.route_type_);
 
            return std::pair{
                r.route_id_->to_str(),

@@ -26,7 +26,7 @@
 
 namespace nigiri::loader::gtfs {
 
-std::vector<std::pair<std::basic_string<gtfs_trip_idx_t>, bitfield>>
+std::vector<std::pair<basic_string<gtfs_trip_idx_t>, bitfield>>
 block::rule_services(trip_data& trips) {
   utl::verify(!trips_.empty(), "empty block not allowed");
 
@@ -40,7 +40,7 @@ block::rule_services(trip_data& trips) {
   });
 
   if (trips_.size() == 1) {
-    return {{std::pair{std::basic_string<gtfs_trip_idx_t>{trips_.front()},
+    return {{std::pair{basic_string<gtfs_trip_idx_t>{trips_.front()},
                        *trips.get(trips_.front()).service_}}};
   }
 
@@ -64,8 +64,7 @@ block::rule_services(trip_data& trips) {
     bitfield traffic_days_;
   };
 
-  std::vector<std::pair<std::basic_string<gtfs_trip_idx_t>, bitfield>>
-      combinations;
+  std::vector<std::pair<basic_string<gtfs_trip_idx_t>, bitfield>> combinations;
   for (auto start_it = begin(rule_trips); start_it != end(rule_trips);
        ++start_it) {
     std::stack<queue_entry> q;
@@ -98,7 +97,7 @@ block::rule_services(trip_data& trips) {
         }
 
         combinations.emplace_back(
-            utl::transform_to<std::basic_string<gtfs_trip_idx_t>>(
+            utl::transform_to<basic_string<gtfs_trip_idx_t>>(
                 collected_trips, [](auto&& rt) { return rt->trip_; }),
             traffic_days);
       }
@@ -114,15 +113,17 @@ trip::trip(route const* route,
            std::string id,
            trip_direction_idx_t const headsign,
            std::string short_name,
-           shape_idx_t shape_idx,
+           direction_id_t const direction_id,
+           shape_idx_t const shape_idx,
            bool const bikes_allowed)
-    : route_(route),
-      service_(service),
+    : route_{route},
+      service_{service},
       block_{blk},
       id_{std::move(id)},
-      headsign_(headsign),
-      short_name_(std::move(short_name)),
-      shape_idx_(shape_idx),
+      headsign_{headsign},
+      direction_id_{direction_id},
+      short_name_{std::move(short_name)},
+      shape_idx_{shape_idx},
       bikes_allowed_{bikes_allowed} {}
 
 void trip::interpolate() {
@@ -133,8 +134,9 @@ void trip::interpolate() {
   struct bound {
     explicit bound(minutes_after_midnight_t t) : min_{t}, max_{t} {}
     minutes_after_midnight_t interpolate(int const idx) const {
+      auto const denom = max_idx_ - min_idx_;
       auto const p =
-          static_cast<double>(idx - min_idx_) / (max_idx_ - min_idx_);
+          denom > 0 ? static_cast<double>(idx - min_idx_) / denom : 0;
       return min_ + duration_t{static_cast<duration_t::rep>(
                         std::round((max_ - min_).count() * p))};
     }
@@ -160,10 +162,15 @@ void trip::interpolate() {
       max_idx = static_cast<unsigned>(&(*it) - &bounds.front()) / 2U;
     }
   }
-  utl::verify(max != kInterpolate, "last arrival cannot be interpolated");
+  if (bounds.size() <= 1 || bounds[bounds.size() - 2].max_idx_ == 0) {
+    log(log_lvl::error, "loader.gtfs.trip",
+        R"(trip "{}": last arrival cannot be interpolated)", id_);
+    return;
+  }
 
   auto min = duration_t{0};
-  auto min_idx = 0;
+  auto const last = static_cast<int>(event_times_.size() - 1);
+  auto min_idx = last;
   for (auto it = bounds.begin(); it != bounds.end(); ++it) {
     if (it->min_ == kInterpolate) {
       it->min_ = min;
@@ -173,7 +180,11 @@ void trip::interpolate() {
       min_idx = static_cast<unsigned>(&(*it) - &bounds.front()) / 2U;
     }
   }
-  utl::verify(min != kInterpolate, "first arrival cannot be interpolated");
+  if (bounds[1].min_idx_ == last) {
+    log(log_lvl::error, "loader.gtfs.trip",
+        R"(trip "{}": first departure cannot be interpolated)", id_);
+    return;
+  }
 
   for (auto const [idx, entry] : utl::enumerate(event_times_)) {
     auto const& arr = bounds[2 * idx];
@@ -186,6 +197,7 @@ void trip::interpolate() {
       entry.dep_ = dep.interpolate(static_cast<int>(idx));
     }
   }
+  requires_interpolation_ = false;
 }
 
 std::string trip::display_name() const {
@@ -236,6 +248,7 @@ trip_data read_trips(
     utl::csv_col<cista::raw::generic_string, UTL_NAME("trip_headsign")>
         trip_headsign_;
     utl::csv_col<utl::cstr, UTL_NAME("trip_short_name")> trip_short_name_;
+    utl::csv_col<utl::cstr, UTL_NAME("direction_id")> direction_id_;
     utl::csv_col<utl::cstr, UTL_NAME("block_id")> block_id_;
     utl::csv_col<utl::cstr, UTL_NAME("shape_id")> shape_id_;
     utl::csv_col<std::uint8_t, UTL_NAME("bikes_allowed")> bikes_allowed_;
@@ -294,7 +307,10 @@ trip_data read_trips(
               route_it->second.get(), traffic_days_it->second.get(), blk,
               t.trip_id_->to_str(),
               ret.get_or_create_direction(tt, t.trip_headsign_->view()),
-              t.trip_short_name_->to_str(), shape_idx, bikes_allowed);
+              t.trip_short_name_->to_str(),
+              (t.direction_id_->view() == "1") ? direction_id_t{1U}
+                                               : direction_id_t{0U},
+              shape_idx, bikes_allowed);
           ret.trips_.emplace(t.trip_id_->to_str(), trp_idx);
           if (blk != nullptr) {
             blk->trips_.emplace_back(trp_idx);
@@ -329,7 +345,8 @@ void read_frequencies(trip_data& trips, std::string_view file_content) {
            auto const trip_it = trips.trips_.find(t);
            if (trip_it == end(trips.trips_)) {
              log(log_lvl::error, "loader.gtfs.frequencies",
-                 "frequencies.txt: skipping frequency (trip \"{}\" not found)",
+                 "frequencies.txt: skipping frequency (trip \"{}\" not "
+                 "found)",
                  t);
              return;
            }
@@ -353,8 +370,8 @@ void read_frequencies(trip_data& trips, std::string_view file_content) {
              frequencies = std::vector<frequency>{};
            }
 
-           // If the service operates multiple times per minute, make sure not
-           // to end up with zero.
+           // If the service operates multiple times per minute, make sure
+           // not to end up with zero.
            auto const headway_minutes = duration_t{std::max(
                static_cast<int>(
                    std::round(static_cast<float>(headway_secs) / 60.F)),
