@@ -80,7 +80,9 @@ updater::updater(nigiri::timetable const& tt, source_idx_t const src_idx)
 
 void updater::reset_vdv_run_ids_() { vdv_nigiri_.clear(); }
 
-statistics const& updater::get_stats() const { return stats_; }
+statistics updater::get_stats() const { return stats_; }
+
+source_idx_t updater::get_src() const { return src_idx_; }
 
 std::optional<unixtime_t> updater::get_opt_time(pugi::xml_node const& node,
                                                 char const* str) {
