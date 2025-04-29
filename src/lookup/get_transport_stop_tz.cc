@@ -12,7 +12,9 @@ timezone_idx_t get_transport_stop_tz(timetable const& tt,
     return location_tz;
   }
 
-  auto const provider_idx = tt.transport_section_providers_[t].front();
+  auto const provider_idx = t != transport_idx_t::invalid()
+                                ? tt.transport_section_providers_[t].front()
+                                : provider_idx_t{0};  // TODO
   utl::verify(provider_idx != provider_idx_t::invalid(),
               "provider of transport {} not set, no timezone at stop {}", t,
               location{tt, l});

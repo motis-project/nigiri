@@ -95,6 +95,10 @@ bool join(timetable const& tt,
   auto const a = rt::frun{tt, nullptr, r_a.r_};
   auto const b = rt::frun{tt, nullptr, r_b.r_};
 
+  if (!a.is_scheduled() || !b.is_scheduled()) {
+    return false;
+  }
+
   auto const src = tt.trip_id_src_[tt.trip_ids_[a.trip_idx()].front()];
   auto const& fare = tt.fares_[src];
 
@@ -154,6 +158,10 @@ joined_legs_t join_legs(timetable const& tt,
     auto const b =
         rt::frun{tt, nullptr, std::get<journey::run_enter_exit>(b_l->uses_).r_};
 
+    if (!a.is_scheduled() || !b.is_scheduled()) {
+      return a_l == b_l;
+    }
+
     auto const a_id_idx = tt.trip_ids_[a.trip_idx()].front();
     auto const b_id_idx = tt.trip_ids_[b.trip_idx()].front();
 
@@ -210,21 +218,30 @@ timeframe_group_idx_t match_timeframe(timetable const& tt,
 }
 
 std::pair<source_idx_t, std::vector<fares::fare_leg_rule>> match_leg_rule(
-    timetable const& tt, effective_fare_leg_t const& joined_legs) {
+    timetable const& tt,
+    rt_timetable const* rtt,
+    effective_fare_leg_t const& joined_legs) {
   auto const& first = joined_legs.front();
   auto const& last = joined_legs.back();
 
   auto const first_r = std::get<journey::run_enter_exit>(first->uses_).r_;
-  auto const first_trip = rt::frun{tt, nullptr, first_r};
+  auto const first_trip = rt::frun{tt, rtt, first_r};
 
   auto const last_r = std::get<journey::run_enter_exit>(last->uses_).r_;
-  auto const last_trip = rt::frun{tt, nullptr, last_r};
+  auto const last_trip = rt::frun{tt, rtt, last_r};
 
   auto const from = first_trip[first_r.stop_range_.from_];
   auto const to = last_trip[last_r.stop_range_.to_ - 1U];
 
-  auto const src = tt.trip_id_src_[tt.trip_ids_[first_trip.trip_idx()].front()];
+  auto const src =
+      first_trip.is_scheduled()
+          ? tt.trip_id_src_[tt.trip_ids_[first_trip.trip_idx()].front()]
+          : first_trip.id().src_;
   auto const& fare = tt.fares_[src];
+
+  if (!first_trip.is_scheduled() || !last_trip.is_scheduled()) {
+    return {src, std::vector<fares::fare_leg_rule>{}};
+  }
 
   auto const from_network = get_network(first_trip);
   auto const to_network = get_network(last_trip);
@@ -439,12 +456,14 @@ std::vector<fare_transfer> join_transfers(
   return transfers;
 }
 
-std::vector<fare_transfer> get_fares(timetable const& tt, journey const& j) {
+std::vector<fare_transfer> get_fares(timetable const& tt,
+                                     rt_timetable const* rtt,
+                                     journey const& j) {
   return join_transfers(
       tt, utl::to_vec(join_legs(tt, get_transit_legs(j)),
                       [&](effective_fare_leg_t const& joined_leg) {
                         auto const [src, rules] =
-                            match_leg_rule(tt, joined_leg);
+                            match_leg_rule(tt, rtt, joined_leg);
                         return fare_leg{src, joined_leg, rules};
                       }));
 }

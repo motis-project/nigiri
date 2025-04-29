@@ -1,9 +1,15 @@
 #include "nigiri/rt/gtfsrt_update.h"
 
+#include <string_view>
+#include <vector>
+
 #include "utl/pairwise.h"
+#include "utl/to_vec.h"
+#include "utl/verify.h"
 
 #include "nigiri/loader/gtfs/stop_seq_number_encoding.h"
 #include "nigiri/get_otel_tracer.h"
+#include "nigiri/location.h"
 #include "nigiri/logging.h"
 #include "nigiri/rt/frun.h"
 #include "nigiri/rt/gtfsrt_alert.h"
@@ -98,7 +104,8 @@ delay_propagation update_delay(timetable const& tt,
                                event_type const ev_type,
                                duration_t const delay,
                                std::optional<unixtime_t> const min) {
-  auto const static_time = tt.event_time(r.t_, stop_idx, ev_type);
+  auto const static_time =
+      r.is_scheduled() ? tt.event_time(r.t_, stop_idx, ev_type) : min.value();
   auto const lower_bounded_new_time = min.has_value()
                                           ? std::max(*min, static_time + delay)
                                           : static_time + delay;
@@ -115,16 +122,17 @@ delay_propagation update_event(timetable const& tt,
                                event_type const ev_type,
                                gtfsrt::TripUpdate_StopTimeEvent const& ev,
                                std::optional<unixtime_t> const pred_time) {
-  if (ev.has_delay()) {
+  if (ev.has_delay() && r.is_scheduled()) {
     return update_delay(tt, rtt, r, stop_idx, ev_type,
                         std::chrono::duration_cast<unixtime_t::duration>(
                             std::chrono::seconds{ev.delay()}),
                         pred_time);
   } else /* if (ev.has_time()) */ {
-    auto const static_time = tt.event_time(r.t_, stop_idx, ev_type);
     auto const new_time =
         unixtime_t{std::chrono::duration_cast<unixtime_t::duration>(
             std::chrono::seconds{ev.time()})};
+    auto const static_time =
+        r.is_scheduled() ? tt.event_time(r.t_, stop_idx, ev_type) : new_time;
     auto const lower_bounded_new_time =
         pred_time.has_value() ? std::max(*pred_time, new_time) : new_time;
     rtt.update_time(r.rt_, stop_idx, ev_type, lower_bounded_new_time);
@@ -149,41 +157,153 @@ unixtime_t fallback_pred(rt_timetable const& rtt,
       r.rt_, ev_type == event_type::kDep ? stop_idx - 1U : stop_idx, ev_type);
 }
 
-void update_run(
-    source_idx_t const src,
-    timetable const& tt,
-    rt_timetable& rtt,
-    trip_idx_t const trip,
-    run& r,
-    protob::RepeatedPtrField<gtfsrt::TripUpdate_StopTimeUpdate> const& stops) {
+bool is_added(gtfsrt::TripDescriptor_ScheduleRelationship const sr) {
+  return sr == gtfsrt::TripDescriptor_ScheduleRelationship_ADDED ||
+         sr == gtfsrt::TripDescriptor_ScheduleRelationship_NEW;
+}
+
+bool is_added_with_ref(gtfsrt::TripDescriptor_ScheduleRelationship const sr) {
+  return sr == gtfsrt::TripDescriptor_ScheduleRelationship_REPLACEMENT ||
+         sr == gtfsrt::TripDescriptor_ScheduleRelationship_DUPLICATED;
+}
+
+bool add_rt_trip(source_idx_t const src,
+                 timetable const& tt,
+                 rt_timetable& rtt,
+                 run& r,
+                 gtfsrt::TripUpdate const& tripUpdate) {
+  auto const& stus = tripUpdate.stop_time_update();
+  auto const sr = tripUpdate.trip().schedule_relationship();
+  auto const added_or_replaced =
+      is_added(sr) ||
+      sr == transit_realtime::TripDescriptor_ScheduleRelationship_REPLACEMENT;
+
+  auto stops = std::vector<stop::value_type>{};
+  if (added_or_replaced) {
+    for (auto const& stu : stus) {
+      utl::verify((!stu.has_departure() || stu.departure().has_time()) &&
+                      (!stu.has_arrival() || stu.arrival().has_time()),
+                  "absolute times are required for unscheduled trips");
+      utl::verify(stu.has_stop_id(),
+                  "stop_id is required for unscheduled trips");
+      auto const it =
+          tt.locations_.location_id_to_idx_.find({stu.stop_id(), src});
+      if (it == end(tt.locations_.location_id_to_idx_)) {
+        log(log_lvl::error, "rt.gtfs.unsupported",
+            "NEW/ADDED stop_id must be contained in stops.txt "
+            "(src={}, trip_id={}, stop_id={}), skipping",
+            src, tripUpdate.trip().trip_id(), stu.stop_id());
+        return false;
+      }
+      auto in_allowed = true, out_allowed = true;
+      if (stu.has_stop_time_properties()) {
+        if (stu.stop_time_properties().has_pickup_type()) {
+          in_allowed =
+              stu.stop_time_properties().pickup_type() !=
+              transit_realtime::
+                  TripUpdate_StopTimeUpdate_StopTimeProperties_DropOffPickupType_NONE;
+        }
+        if (stu.stop_time_properties().has_drop_off_type()) {
+          out_allowed =
+              stu.stop_time_properties().drop_off_type() !=
+              transit_realtime::
+                  TripUpdate_StopTimeUpdate_StopTimeProperties_DropOffPickupType_NONE;
+        }
+      }
+      stops.emplace_back(stop{it->second, in_allowed, out_allowed, false, false}
+                             .value());  // TODO wheelchair
+    }
+    utl::verify(stops.size() > 1,
+                "added trip must contain more than 1 valid stop");
+  }
+
+  auto times = added_or_replaced
+                   ? std::vector<delta_t>(stops.size() * 2U - 2U, 0)
+                   : std::vector<delta_t>{};
+
+  auto const new_trip_id = [&]() -> std::string_view {
+    if (is_added(sr) && tripUpdate.trip().has_trip_id()) {
+      return std::string_view{tripUpdate.trip().trip_id()};
+    }
+    if (sr == gtfsrt::TripDescriptor_ScheduleRelationship_DUPLICATED &&
+        tripUpdate.has_trip_properties() &&
+        tripUpdate.trip_properties().has_trip_id()) {
+      return std::string_view{tripUpdate.trip_properties().trip_id()};
+    }
+    return {};
+  };
+  auto const route_id = [&]() -> std::string_view {
+    if ((is_added(sr) ||
+         sr == gtfsrt::TripDescriptor_ScheduleRelationship_DUPLICATED) &&
+        tripUpdate.trip().has_route_id()) {
+      return std::string_view{tripUpdate.trip().route_id()};
+    }
+    return {};
+  };
+  auto const display_name =
+      tripUpdate.has_trip_properties() &&
+              tripUpdate.trip_properties().has_trip_short_name()
+          ? std::string_view{tripUpdate.trip_properties().trip_short_name()}
+          : std::string_view{};
+  // ADDED/NEW stops+times+new_trip_id
+  // REPLACEMENT stops+times
+  // DUPL new_trip_id
+  r.rt_ = rtt.add_rt_transport(src, tt, r.t_, stops, times, new_trip_id(),
+                               route_id(), display_name);
+  if (sr == transit_realtime::TripDescriptor_ScheduleRelationship_REPLACEMENT) {
+    r.t_ = transport::invalid();
+  }
+  return true;
+}
+
+bool update_run(source_idx_t const src,
+                timetable const& tt,
+                rt_timetable& rtt,
+                trip_idx_t const trip,
+                run& r,
+                gtfsrt::TripUpdate const& tripUpdate) {
   using std::begin;
   using std::end;
 
   if (!r.is_rt()) {
-    r.rt_ = rtt.add_rt_transport(src, tt, r.t_);
+    if (!add_rt_trip(src, tt, rtt, r, tripUpdate)) {
+      return false;
+    }
   } else {
     rtt.rt_transport_is_cancelled_.set(to_idx(r.rt_), false);
   }
 
+  auto const& rtt_const = rtt;
   auto const location_seq =
-      tt.route_location_seq_[tt.transport_route_[r.t_.t_idx_]];
-  auto const seq_numbers = loader::gtfs::stop_seq_number_range{
-      {tt.trip_stop_seq_numbers_[trip]},
-      static_cast<stop_idx_t>(r.stop_range_.size())};
+      r.is_scheduled()
+          ? std::span{tt.route_location_seq_[tt.transport_route_[r.t_.t_idx_]]}
+          : std::span{rtt_const.rt_transport_location_seq_[r.rt_]};
+  auto const seq_numbers =
+      r.is_scheduled()
+          ? loader::gtfs::
+                stop_seq_number_range{{tt.trip_stop_seq_numbers_[trip]},
+                                      static_cast<stop_idx_t>(
+                                          r.stop_range_.size())}
+          : loader::gtfs::stop_seq_number_range{
+                std::span<stop_idx_t>{},
+                static_cast<stop_idx_t>(location_seq.size())};
 
-  auto pred = r.stop_range_.from_ > 0U
+  auto pred = r.is_scheduled() && r.stop_range_.from_ > 0U
                   ? std::make_optional<delay_propagation>(delay_propagation{
                         .pred_time_ = rtt.unix_event_time(
                             r.rt_, r.stop_range_.from_, event_type::kArr),
                         .pred_delay_ = 0_minutes})
                   : std::nullopt;
-  auto stop_idx = r.stop_range_.from_;
+  auto stop_idx =
+      r.is_scheduled() ? r.stop_range_.from_ : static_cast<unsigned short>(0U);
   auto seq_it = begin(seq_numbers);
-  auto upd_it = begin(stops);
+  auto const& stus = tripUpdate.stop_time_update();
+  auto upd_it = begin(stus);
   for (; seq_it != end(seq_numbers); ++stop_idx, ++seq_it) {
     auto const matches =
-        upd_it != end(stops) &&
-        ((upd_it->has_stop_sequence() && upd_it->stop_sequence() == *seq_it) ||
+        upd_it != end(stus) &&
+        ((r.is_scheduled() && upd_it->has_stop_sequence() &&
+          upd_it->stop_sequence() == *seq_it) ||
          (upd_it->has_stop_id() &&
           upd_it->stop_id() ==
               tt.locations_.ids_[stop{location_seq[stop_idx]}.location_idx()]
@@ -289,6 +409,7 @@ void update_run(
   if (n_not_cancelled_stops <= 1U) {
     rtt.cancel_run(r);
   }
+  return true;
 }
 
 statistics gtfsrt_update_msg(timetable const& tt,
@@ -359,10 +480,23 @@ statistics gtfsrt_update_msg(timetable const& tt,
       continue;
     }
 
-    if (entity.trip_update().trip().schedule_relationship() !=
-            gtfsrt::TripDescriptor_ScheduleRelationship_SCHEDULED &&
-        entity.trip_update().trip().schedule_relationship() !=
-            gtfsrt::TripDescriptor_ScheduleRelationship_CANCELED) {
+    auto const sr = entity.trip_update().trip().schedule_relationship();
+
+    if (sr == gtfsrt::TripDescriptor_ScheduleRelationship_DUPLICATED &&
+        (!entity.trip_update().has_trip_properties() ||
+         !entity.trip_update().trip_properties().has_trip_id())) {
+      log(log_lvl::error, "rt.gtfs.unsupported",
+          R"(unsupported: no "trip_properties.trip_id" field in "trip_update.trip" for DUPLICATED (tag={}, id={}), skipping message)",
+          tag, entity.id());
+      ++stats.unsupported_no_trip_id_;
+      continue;
+    }
+
+    auto const added = is_added(sr);
+    // auto const added_with_ref = is_added_with_ref(sr);
+
+    if (sr != gtfsrt::TripDescriptor_ScheduleRelationship_SCHEDULED &&
+        sr != gtfsrt::TripDescriptor_ScheduleRelationship_CANCELED && !added) {
       log(log_lvl::error, "rt.gtfs.unsupported",
           "unsupported schedule relationship {} (tag={}, id={}), skipping "
           "message",
@@ -375,9 +509,17 @@ statistics gtfsrt_update_msg(timetable const& tt,
 
     try {
       auto const td = entity.trip_update().trip();
-      auto [r, trip] = gtfsrt_resolve_run(today, tt, &rtt, src, td);
+      auto const trip_id =
+          entity.trip_update().has_trip_properties() &&
+                  entity.trip_update().trip_properties().has_trip_id()
+              ? std::string_view{entity.trip_update()
+                                     .trip_properties()
+                                     .trip_id()}
+              : std::string_view{};
 
-      if (!r.valid()) {
+      auto [r, trip] = gtfsrt_resolve_run(today, tt, &rtt, src, td, trip_id);
+
+      if (!r.valid() && !added) {
         log(log_lvl::error, "rt.gtfs.resolve", "could not resolve (tag={}) {}",
             tag, remove_nl(td.DebugString()));
         span->AddEvent(
@@ -399,15 +541,20 @@ statistics gtfsrt_update_msg(timetable const& tt,
         ++stats.trip_resolve_error_;
         continue;
       }
+      if (added) {
+        utl::verify(!r.is_scheduled(),
+                    "NEW/ADDED trip is required to have a new trip_id");
+      }
 
       if (entity.trip_update().trip().schedule_relationship() ==
           gtfsrt::TripDescriptor_ScheduleRelationship_CANCELED) {
         rtt.cancel_run(r);
+        ++stats.total_entities_success_;
       } else {
-        update_run(src, tt, rtt, trip, r,
-                   entity.trip_update().stop_time_update());
+        if (update_run(src, tt, rtt, trip, r, entity.trip_update())) {
+          ++stats.total_entities_success_;
+        }
       }
-      ++stats.total_entities_success_;
     } catch (const std::exception& e) {
       ++stats.total_entities_fail_;
       log(log_lvl::error, "rt.gtfs",

@@ -2,6 +2,7 @@
 
 #include <compare>
 #include <filesystem>
+#include <optional>
 #include <span>
 #include <type_traits>
 
@@ -185,6 +186,7 @@ struct timetable {
     assert(!clasz_sections.empty());
 
     auto const idx = route_location_seq_.size();
+
     route_transport_ranges_.emplace_back(
         transport_idx_t{transport_traffic_days_.size()},
         transport_idx_t::invalid());
