@@ -28,7 +28,7 @@ struct route {
 
 using route_map_t = hash_map<std::string, std::unique_ptr<route>>;
 
-clasz to_clasz(std::uint16_t);
+clasz to_clasz(std::uint16_t route_type);
 
 route_map_t read_routes(source_idx_t,
                         timetable&,

@@ -10,6 +10,7 @@
 #include "nigiri/rt/run.h"
 #include "nigiri/rt/service_alert.h"
 #include "nigiri/stop.h"
+#include "nigiri/string_store.h"
 #include "nigiri/timetable.h"
 #include "nigiri/types.h"
 
@@ -37,16 +38,15 @@ using change_callback_t =
 // - All RT transports that did not exist in the static timetable, can be looked
 //   up with their trip_id in the RT timetable.
 struct rt_timetable {
-  rt_transport_idx_t add_rt_transport(
-      source_idx_t,
-      timetable const&,
-      transport,
-      std::span<stop::value_type> const stop_seq = {},
-      std::span<delta_t> const time_seq = {},
-      std::string_view const new_trip_id = {},
-      std::string_view const route_id = {},
-      std::string_view const display_name = {},
-      delta_t = 0);
+  rt_transport_idx_t add_rt_transport(source_idx_t,
+                                      timetable const&,
+                                      transport,
+                                      std::span<stop::value_type> stop_seq = {},
+                                      std::span<delta_t> time_seq = {},
+                                      std::string_view new_trip_id = {},
+                                      std::string_view route_id = {},
+                                      std::string_view display_name = {},
+                                      delta_t = 0);
 
   delta_t unix_to_delta(unixtime_t const t) const {
     auto const d =
@@ -176,15 +176,15 @@ struct rt_timetable {
   // only works for transport that existed in the static timetable
   hash_map<transport, rt_transport_idx_t> static_trip_lookup_;
 
+  // Lookup: additional trip index -> realtime transport
+  vector_map<rt_add_trip_id_idx_t, rt_transport_idx_t> additional_trips_lookup_;
+
   // RT transport -> static transport (not for additional trips)
   vector_map<rt_transport_idx_t, variant<transport, rt_add_trip_id_idx_t>>
       rt_transport_static_transport_;
 
-  // Lookup: additional external trip ID -> realtime transport
-  hash_map<string, rt_transport_idx_t> additional_trips_lookup_;
+  string_store<rt_add_trip_id_idx_t> additional_trip_ids_;
 
-  // RT trip ID index -> external trip ID
-  vecvec<rt_add_trip_id_idx_t, char> rt_add_trip_ids_;
   vector_map<rt_transport_idx_t, source_idx_t> rt_transport_src_;
 
   // RT trip ID index -> train number, if available (otherwise 0)

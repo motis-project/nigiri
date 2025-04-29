@@ -111,11 +111,11 @@ trip_idx_t run_stop::get_trip_idx(event_type const ev_type) const {
 
 std::string_view run_stop::trip_display_name(
     event_type const ev_type) const noexcept {
+  if (fr_->is_rt() && rtt() != nullptr) {
+    return rtt()->transport_name(tt(), fr_->rt_);
+  }
   if (fr_->is_scheduled()) {
     return tt().trip_display_names_[get_trip_idx(ev_type)].view();
-  }
-  if (rtt() != nullptr) {
-    return rtt()->transport_name(tt(), fr_->rt_);
   }
   return "?";
 }
@@ -504,7 +504,7 @@ trip_id frun::id() const noexcept {
                  rtt_->rt_transport_static_transport_[rt_])) {
     auto const add_idx =
         rtt_->rt_transport_static_transport_[rt_].as<rt_add_trip_id_idx_t>();
-    return {rtt_->rt_add_trip_ids_[add_idx].view(),
+    return {rtt_->additional_trip_ids_.get(add_idx),
             rtt_->rt_transport_src_[rt_]};
   } else {
     return {};

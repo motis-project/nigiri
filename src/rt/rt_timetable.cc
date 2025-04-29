@@ -7,11 +7,11 @@ rt_transport_idx_t rt_timetable::add_rt_transport(
     source_idx_t const src,
     timetable const& tt,
     transport const t,
-    std::span<stop::value_type> const stop_seq,
-    std::span<delta_t> const time_seq,
-    std::string_view const new_trip_id,
-    std::string_view const route_id,
-    std::string_view const display_name,
+    std::span<stop::value_type> stop_seq,
+    std::span<delta_t> time_seq,
+    std::string_view new_trip_id,
+    std::string_view route_id,
+    std::string_view display_name,
     delta_t const offset) {
   auto const [t_idx, day] = t;
 
@@ -27,8 +27,8 @@ rt_transport_idx_t rt_timetable::add_rt_transport(
   } else {
     auto const rt_add_idx =
         rt_add_trip_id_idx_t{additional_trips_lookup_.size()};
-    additional_trips_lookup_.emplace(new_trip_id, rt_t_idx);
-    rt_add_trip_ids_.emplace_back(new_trip_id);
+    additional_trips_lookup_.emplace_back(rt_t_idx);
+    additional_trip_ids_.store(new_trip_id);
     rt_transport_static_transport_.emplace_back(rt_add_idx);
   }
 
@@ -118,10 +118,12 @@ rt_transport_idx_t rt_timetable::add_rt_transport(
 
   assert(time_seq.empty() || time_seq.size() == location_seq.size() * 2U - 2U);
   assert(static_trip_lookup_.contains(t) ||
-         additional_trips_lookup_.contains(new_trip_id));
+         additional_trip_ids_.find(new_trip_id).has_value());
   assert(rt_transport_static_transport_[rt_transport_idx_t{rt_t_idx}] == t ||
          rt_transport_static_transport_[rt_transport_idx_t{rt_t_idx}] ==
              rt_add_trip_id_idx_t{additional_trips_lookup_.size() - 1U});
+  assert(additional_trips_lookup_.size() ==
+         additional_trip_ids_.strings_.size());
   assert(rt_transport_static_transport_.size() == rt_t_idx + 1U);
   assert(rt_transport_src_.size() == rt_t_idx + 1U);
   assert(rt_transport_stop_times_.size() == rt_t_idx + 1U);

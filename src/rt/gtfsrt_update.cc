@@ -180,7 +180,7 @@ bool add_rt_trip(source_idx_t const src,
 
   auto stops = std::vector<stop::value_type>{};
   if (added_or_replaced) {
-    for (auto& stu : stus) {
+    for (auto const& stu : stus) {
       utl::verify((!stu.has_departure() || stu.departure().has_time()) &&
                       (!stu.has_arrival() || stu.arrival().has_time()),
                   "absolute times are required for unscheduled trips");
@@ -190,9 +190,8 @@ bool add_rt_trip(source_idx_t const src,
           tt.locations_.location_id_to_idx_.find({stu.stop_id(), src});
       if (it == end(tt.locations_.location_id_to_idx_)) {
         log(log_lvl::error, "rt.gtfs.unsupported",
-            "NEW/ADDED stop_id must be contained in stops.txt (src={}, "
-            "trip_id={}, "
-            "stop_id={}), skipping",
+            "NEW/ADDED stop_id must be contained in stops.txt "
+            "(src={}, trip_id={}, stop_id={}), skipping",
             src, tripUpdate.trip().trip_id(), stu.stop_id());
         return false;
       }
@@ -246,8 +245,9 @@ bool add_rt_trip(source_idx_t const src,
               tripUpdate.trip_properties().has_trip_short_name()
           ? std::string_view{tripUpdate.trip_properties().trip_short_name()}
           : std::string_view{};
-  // ADDED/NEW stops+times+new_trip_id, REPLACEMENT stops+times, DUPL
-  // new_trip_id
+  // ADDED/NEW stops+times+new_trip_id
+  // REPLACEMENT stops+times
+  // DUPL new_trip_id
   r.rt_ = rtt.add_rt_transport(src, tt, r.t_, stops, times, new_trip_id(),
                                route_id(), display_name);
   if (sr == transit_realtime::TripDescriptor_ScheduleRelationship_REPLACEMENT) {

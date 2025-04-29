@@ -104,10 +104,9 @@ void resolve_rt(rt_timetable const& rtt,
     output.rt_ = it->second;
     return;
   }
-  auto const rtt_it =
-      rtt.additional_trips_lookup_.find(trip_id);  // TODO only check for added?
-  if (rtt_it != end(rtt.additional_trips_lookup_)) {
-    output.rt_ = rtt_it->second;
+  auto const rt_add_idx = rtt.additional_trip_ids_.find(trip_id);
+  if (rt_add_idx.has_value()) {
+    output.rt_ = rtt.additional_trips_lookup_[*rt_add_idx];
     if (output.stop_range_.size() == 0) {
       output.stop_range_ = {
           static_cast<stop_idx_t>(0U),
@@ -123,12 +122,13 @@ std::pair<run, trip_idx_t> gtfsrt_resolve_run(
     rt_timetable const* rtt,
     source_idx_t const src,
     transit_realtime::TripDescriptor const& td,
-    std::string_view rt_trip_id) {
+    std::string_view rt_changed_trip_id) {
   auto r = run{};
   trip_idx_t trip;
   resolve_static(today, tt, src, td, r, trip);
   if (rtt != nullptr) {
-    resolve_rt(*rtt, r, rt_trip_id.empty() ? td.trip_id() : rt_trip_id);
+    resolve_rt(*rtt, r,
+               rt_changed_trip_id.empty() ? td.trip_id() : rt_changed_trip_id);
   }
   return {r, trip};
 }
