@@ -297,14 +297,15 @@ void connect_components(timetable& tt,
       if (adjust_footpaths) {
         auto const distance = geo::distance(tt.locations_.coordinates_[from_l],
                                             tt.locations_.coordinates_[to_l]);
-        auto const adjusted_int =
-            std::max(static_cast<duration_t::rep>(duration.count()),
-                     static_cast<duration_t::rep>(distance / kWalkSpeed / 60));
+        auto const adjusted_int = static_cast<int>(distance / kWalkSpeed / 60);
         if (adjusted_int > std::numeric_limits<u8_minutes::rep>::max()) {
           log(log_lvl::error, "loader.footpath.adjust",
               "too long after adjust: {}>256", adjusted_int);
+        } else {
+          adjusted = u8_minutes{
+              std::max(static_cast<duration_t::rep>(duration.count()),
+                       static_cast<duration_t::rep>(adjusted_int))};
         }
-        adjusted = u8_minutes{adjusted_int};
       }
 
       tt.locations_.preprocessing_footpaths_out_[from_l].emplace_back(to_l,
