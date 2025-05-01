@@ -53,7 +53,9 @@ struct updater {
 
   void reset_vdv_run_ids_();
 
-  statistics const& get_stats() const;
+  statistics get_stats() const;
+
+  source_idx_t get_src() const;
 
   void update(rt_timetable&, pugi::xml_document const&);
 

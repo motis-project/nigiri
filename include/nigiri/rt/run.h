@@ -38,6 +38,7 @@ struct run {
 
   // from static timetable, not set for additional services
   transport t_{transport::invalid()};
+
   interval<stop_idx_t> stop_range_;
 
   // real-time instance, not set if no real-time info available

@@ -28,6 +28,19 @@ TEST(gtfs, read_routes_example_data) {
   EXPECT_EQ("17", routes.at("A")->short_name_);
   EXPECT_EQ("Mission", routes.at("A")->long_name_);
   EXPECT_EQ(clasz::kBus, routes.at("A")->clasz_);
+  EXPECT_EQ(1, tt.route_ids_.size());
+  EXPECT_EQ("A", tt.route_ids_[source_idx_t{}].ids_.get(route_id_idx_t{0}));
+  EXPECT_EQ("17", tt.route_ids_[source_idx_t{}]
+                      .route_id_short_names_.at(route_id_idx_t{0})
+                      .view());
+  EXPECT_EQ("Mission", tt.route_ids_[source_idx_t{}]
+                           .route_id_long_names_.at(route_id_idx_t{0})
+                           .view());
+  EXPECT_EQ(route_type_t{3},
+            tt.route_ids_[source_idx_t{}].route_id_type_.at(route_id_idx_t{0}));
+  EXPECT_EQ(
+      provider_idx_t{0},
+      tt.route_ids_[source_idx_t{}].route_id_provider_.at(route_id_idx_t{0}));
 }
 
 TEST(gtfs, read_routes_berlin_data) {

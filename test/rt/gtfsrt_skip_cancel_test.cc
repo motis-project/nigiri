@@ -120,7 +120,7 @@ auto const kTripUpdateCanceled =
       "tripId": "TRIP_1",
       "startTime": "10:00:00",
       "startDate": "20231126",
-      "scheduleRelationship": "CANCELED",
+      "scheduleRelationship": "CANCELED"
      }
     }
   }
