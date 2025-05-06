@@ -223,9 +223,9 @@ clasz to_clasz(std::string_view s) {
     case cista::hash("METRO"): return clasz::kMetro;
     case cista::hash("SUBWAY"): return clasz::kSubway;
     case cista::hash("TRAM"): return clasz::kTram;
-    case cista::hash("BUS "): return clasz::kBus;
-    case cista::hash("SHIP "): return clasz::kShip;
-    case cista::hash("OTHER "): return clasz::kOther;
+    case cista::hash("BUS"): return clasz::kBus;
+    case cista::hash("SHIP"): return clasz::kShip;
+    case cista::hash("OTHER"): return clasz::kOther;
   }
   throw utl::fail("{} is not a valid clasz", s);
 }

@@ -68,7 +68,8 @@ struct trip {
        std::string short_name,
        direction_id_t,
        shape_idx_t,
-       bool bikes_allowed);
+       bool bikes_allowed,
+       bool cars_allowed);
 
   trip(trip&&) = default;
   trip& operator=(trip&&) = default;
@@ -107,6 +108,7 @@ struct trip {
   bool requires_interpolation_{false};
   bool requires_sorting_{false};
   bool bikes_allowed_{false};
+  bool cars_allowed_{false};
   std::uint32_t from_line_{0U}, to_line_{0U};
 
   trip_idx_t trip_idx_{trip_idx_t::invalid()};
@@ -126,13 +128,13 @@ struct trip_data {
   vector_map<gtfs_trip_idx_t, trip> data_;
 };
 
-trip_data read_trips(
-    timetable&,
-    route_map_t const&,
-    traffic_days_t const&,
-    shape_loader_state const&,
-    std::string_view file_content,
-    std::array<bool, kNumClasses> const& bikes_allowed_default);
+trip_data read_trips(timetable&,
+                     route_map_t const&,
+                     traffic_days_t const&,
+                     shape_loader_state const&,
+                     std::string_view file_content,
+                     std::array<bool, kNumClasses> const& bikes_allowed_default,
+                     std::array<bool, kNumClasses> const& cars_allowed_default);
 
 void read_frequencies(trip_data&, std::string_view);
 

@@ -83,6 +83,7 @@ raptor_state one_to_all(timetable const& tt,
       base,
       q.allowed_claszes_,
       q.require_bike_transport_,
+      q.require_car_transport_,
       is_wheelchair,
       q.transfer_time_settings_};
 

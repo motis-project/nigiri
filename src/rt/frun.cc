@@ -231,6 +231,20 @@ bool run_stop::bikes_allowed(event_type const ev_type) const noexcept {
   }
 }
 
+bool run_stop::cars_allowed(event_type const ev_type) const noexcept {
+  if (fr_->is_rt() && rtt() != nullptr) {
+    auto const cars_allowed_seq =
+        rtt()->rt_cars_allowed_per_section_.at(fr_->rt_);
+    return cars_allowed_seq.at(
+        cars_allowed_seq.size() == 1U ? 0U : section_idx(ev_type));
+  } else {
+    auto const cars_allowed_seq = tt().route_cars_allowed_per_section_.at(
+        tt().transport_route_.at(fr_->t_.t_idx_));
+    return cars_allowed_seq.at(
+        cars_allowed_seq.size() == 1U ? 0U : section_idx(ev_type));
+  }
+}
+
 route_color run_stop::get_route_color(event_type ev_type) const noexcept {
   if (!fr_->is_scheduled()) {
     return route_color{};
