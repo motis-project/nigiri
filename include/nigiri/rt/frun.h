@@ -49,6 +49,7 @@ struct run_stop {
   clasz get_scheduled_clasz(event_type = event_type::kDep) const noexcept;
 
   bool bikes_allowed(event_type = event_type::kDep) const noexcept;
+  bool cars_allowed(event_type = event_type::kDep) const noexcept;
 
   route_color get_route_color(event_type = event_type::kDep) const noexcept;
 

@@ -213,8 +213,14 @@ struct rt_timetable {
   // RT transport * 2 + 1 -> bikes along parts of the transport
   bitvec rt_transport_bikes_allowed_;
 
+  // same for cars
+  bitvec rt_transport_cars_allowed_;
+
   // RT transport -> bikes allowed for each section
   vecvec<rt_transport_idx_t, bool> rt_bikes_allowed_per_section_;
+
+  // same for cars
+  vecvec<rt_transport_idx_t, bool> rt_cars_allowed_per_section_;
 
   // Service alerts
   alerts alerts_;

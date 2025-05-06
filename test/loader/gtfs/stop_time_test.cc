@@ -26,7 +26,7 @@ TEST(gtfs, quoted_interpolate) {
   trips.trips_.emplace("101255-L001I01S1LAB", gtfs_trip_idx_t{0U});
   trips.data_.emplace_back(
       nullptr, nullptr, nullptr, "101255-L001I01S1FES", trip_direction_idx_t{},
-      "", direction_id_t::invalid(), shape_idx_t::invalid(), false);
+      "", direction_id_t::invalid(), shape_idx_t::invalid(), false, false);
   auto tt = timetable{};
   auto stops = locations_map{};
   stops.emplace("101255-6", location_idx_t{0});
@@ -59,7 +59,7 @@ L001I01S1FES,08:31:00,08:37:00,23,19,,0,0,7.473
   trips.trips_.emplace("L001I01S1FES", gtfs_trip_idx_t{0U});
   trips.data_.emplace_back(
       nullptr, nullptr, nullptr, "L001I01S1FES", trip_direction_idx_t{}, "",
-      direction_id_t::invalid(), shape_idx_t::invalid(), false);
+      direction_id_t::invalid(), shape_idx_t::invalid(), false, false);
   auto tt = timetable{};
   auto stops = locations_map{};
   stops.emplace("6", location_idx_t{0});
@@ -92,7 +92,7 @@ L001I01S1FES,08:31:00,,23,19,,0,0,7.473
   trips.trips_.emplace("L001I01S1FES", gtfs_trip_idx_t{0U});
   trips.data_.emplace_back(
       nullptr, nullptr, nullptr, "L001I01S1FES", trip_direction_idx_t{}, "",
-      direction_id_t::invalid(), shape_idx_t::invalid(), false);
+      direction_id_t::invalid(), shape_idx_t::invalid(), false, false);
   auto tt = timetable{};
   auto stops = locations_map{};
   stops.emplace("6", location_idx_t{0});
@@ -125,7 +125,7 @@ L001I01S1FES,,08:31:00,23,19,,0,0,7.473
   trips.trips_.emplace("L001I01S1FES", gtfs_trip_idx_t{0U});
   trips.data_.emplace_back(
       nullptr, nullptr, nullptr, "L001I01S1FES", trip_direction_idx_t{}, "",
-      direction_id_t::invalid(), shape_idx_t::invalid(), false);
+      direction_id_t::invalid(), shape_idx_t::invalid(), false, false);
   auto tt = timetable{};
   auto stops = locations_map{};
   stops.emplace("6", location_idx_t{0});
@@ -150,7 +150,7 @@ L001I01S1FES,,,23,19,,0,0,7.473
   trips.trips_.emplace("L001I01S1FES", gtfs_trip_idx_t{0U});
   trips.data_.emplace_back(
       nullptr, nullptr, nullptr, "L001I01S1FES", trip_direction_idx_t{}, "",
-      direction_id_t::invalid(), shape_idx_t::invalid(), false);
+      direction_id_t::invalid(), shape_idx_t::invalid(), false, false);
   auto tt = timetable{};
   auto stops = locations_map{};
   stops.emplace("6", location_idx_t{0});
@@ -183,7 +183,7 @@ TEST(gtfs, read_stop_times_example_data) {
       merge_traffic_days(tt.internal_interval_days(), calendar, dates);
   auto trip_data =
       read_trips(tt, routes, services, {}, files.get_file(kTripsFile).data(),
-                 config.bikes_allowed_default_);
+                 config.bikes_allowed_default_, config.cars_allowed_default_);
   auto const stops = read_stops(source_idx_t{0}, tt, timezones,
                                 files.get_file(kStopFile).data(),
                                 files.get_file(kTransfersFile).data(), 0U);

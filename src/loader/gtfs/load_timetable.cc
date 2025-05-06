@@ -123,7 +123,7 @@ void load_timetable(loader_config const& config,
           : shape_loader_state{};
   auto trip_data =
       read_trips(tt, routes, service, shape_states, load(kTripsFile).data(),
-                 config.bikes_allowed_default_);
+                 config.bikes_allowed_default_, config.cars_allowed_default_);
   read_frequencies(trip_data, load(kFrequenciesFile).data());
   read_stop_times(tt, trip_data, stops, load(kStopTimesFile).data(),
                   shapes_data != nullptr);
@@ -181,6 +181,29 @@ void load_timetable(loader_config const& config,
     }
   };
 
+  bitvec cars_allowed_seq_cache;
+  auto const get_cars_allowed_seq =
+      [&](basic_string<gtfs_trip_idx_t> const& trips) -> bitvec const* {
+    if (trips.size() == 1U) {
+      return trip_data.get(trips.front()).cars_allowed_
+                 ? &kSingleTripBikesAllowed
+                 : &kSingleTripBikesNotAllowed;
+    } else {
+      cars_allowed_seq_cache.resize(0);
+      for (auto const [i, t_idx] : utl::enumerate(trips)) {
+        auto const& trp = trip_data.get(t_idx);
+        auto const stop_count = trp.stop_seq_.size();
+        auto const offset = cars_allowed_seq_cache.size();
+        cars_allowed_seq_cache.resize(
+            static_cast<bitvec::size_type>(offset + stop_count - 1));
+        for (auto j = 0U; j < stop_count - 1; ++j) {
+          cars_allowed_seq_cache.set(offset + j, trp.cars_allowed_);
+        }
+      }
+      return &cars_allowed_seq_cache;
+    }
+  };
+
   auto const add_trip = [&](basic_string<gtfs_trip_idx_t> const& trips,
                             bitfield const* traffic_days) {
     expand_trip(
@@ -189,8 +212,9 @@ void load_timetable(loader_config const& config,
           auto const* stop_seq = get_stop_seq(trip_data, s, stop_seq_cache);
           auto const clasz = trip_data.get(s.trips_.front()).get_clasz(tt);
           auto const* bikes_allowed_seq = get_bikes_allowed_seq(s.trips_);
-          auto const it = route_services.find(
-              route_key_ptr_t{clasz, stop_seq, bikes_allowed_seq});
+          auto const* cars_allowed_seq = get_cars_allowed_seq(s.trips_);
+          auto const it = route_services.find(route_key_ptr_t{
+              clasz, stop_seq, bikes_allowed_seq, cars_allowed_seq});
           if (it != end(route_services)) {
             for (auto& r : it->second) {
               auto const idx = get_index(r, s);
@@ -202,7 +226,8 @@ void load_timetable(loader_config const& config,
             it->second.emplace_back(std::vector<utc_trip>{std::move(s)});
           } else {
             route_services.emplace(
-                route_key_t{clasz, *stop_seq, *bikes_allowed_seq},
+                route_key_t{clasz, *stop_seq, *bikes_allowed_seq,
+                            *cars_allowed_seq},
                 std::vector<std::vector<utc_trip>>{{s}});
           }
         });
@@ -281,8 +306,8 @@ void load_timetable(loader_config const& config,
     auto location_routes = mutable_fws_multimap<location_idx_t, route_idx_t>{};
     for (auto const& [key, sub_routes] : route_services) {
       for (auto const& services : sub_routes) {
-        auto const route_idx =
-            tt.register_route(key.stop_seq_, {key.clasz_}, key.bikes_allowed_);
+        auto const route_idx = tt.register_route(
+            key.stop_seq_, {key.clasz_}, key.bikes_allowed_, key.cars_allowed_);
 
         for (auto const& s : key.stop_seq_) {
           auto s_routes = location_routes[stop{s}.location_idx()];

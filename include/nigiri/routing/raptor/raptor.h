@@ -92,6 +92,7 @@ struct raptor {
       day_idx_t const base,
       clasz_mask_t const allowed_claszes,
       bool const require_bike_transport,
+      bool const require_car_transport,
       bool const is_wheelchair,
       transfer_time_settings const& tts)
       : tt_{tt},
@@ -113,6 +114,7 @@ struct raptor {
         base_{base},
         allowed_claszes_{allowed_claszes},
         require_bike_transport_{require_bike_transport},
+        require_car_transport_{require_car_transport},
         is_wheelchair_{is_wheelchair},
         transfer_time_settings_{tts} {
     assert(Vias == via_stops_.size());
@@ -199,19 +201,39 @@ struct raptor {
       std::swap(state_.prev_station_mark_, state_.station_mark_);
       utl::fill(state_.station_mark_.blocks_, 0U);
 
-      any_marked =
-          (allowed_claszes_ == all_clasz_allowed())
-              ? (require_bike_transport_ ? loop_routes<false, true>(k)
-                                         : loop_routes<false, false>(k))
-              : (require_bike_transport_ ? loop_routes<true, true>(k)
-                                         : loop_routes<true, false>(k));
+      any_marked = (allowed_claszes_ == all_clasz_allowed())
+                       ? (require_bike_transport_
+                              ? (require_car_transport_
+                                     ? loop_routes<false, true, true>(k)
+                                     : loop_routes<false, true, false>(k))
+                              : (require_car_transport_
+                                     ? loop_routes<false, false, true>(k)
+                                     : loop_routes<false, false, false>(k)))
+                       : (require_bike_transport_
+                              ? (require_car_transport_
+                                     ? loop_routes<true, true, true>(k)
+                                     : loop_routes<true, true, false>(k))
+                              : (require_car_transport_
+                                     ? loop_routes<true, false, true>(k)
+                                     : loop_routes<true, false, false>(k)));
+
       if constexpr (Rt) {
         any_marked |=
             (allowed_claszes_ == all_clasz_allowed())
-                ? (require_bike_transport_ ? loop_rt_routes<false, true>(k)
-                                           : loop_rt_routes<false, false>(k))
-                : (require_bike_transport_ ? loop_rt_routes<true, true>(k)
-                                           : loop_rt_routes<true, false>(k));
+                ? (require_bike_transport_
+                       ? (require_car_transport_
+                              ? loop_rt_routes<false, true, true>(k)
+                              : loop_rt_routes<false, true, false>(k))
+                       : (require_car_transport_
+                              ? loop_rt_routes<false, false, true>(k)
+                              : loop_rt_routes<false, false, false>(k)))
+                : (require_bike_transport_
+                       ? (require_car_transport_
+                              ? loop_rt_routes<true, true, true>(k)
+                              : loop_rt_routes<true, true, false>(k))
+                       : (require_car_transport_
+                              ? loop_rt_routes<true, false, true>(k)
+                              : loop_rt_routes<true, false, false>(k)));
       }
 
       if (!any_marked) {
@@ -271,7 +293,7 @@ private:
     return tt_.internal_interval_days().from_ + as_int(base_) * date::days{1};
   }
 
-  template <bool WithClaszFilter, bool WithBikeFilter>
+  template <bool WithClaszFilter, bool WithBikeFilter, bool WithCarFilter>
   bool loop_routes(unsigned const k) {
     auto any_marked = false;
     state_.route_mark_.for_each_set_bit([&](auto const r_idx) {
@@ -297,15 +319,33 @@ private:
         }
       }
 
+      auto section_car_filter = false;
+      if constexpr (WithCarFilter) {
+        auto const cars_allowed_on_all_sections =
+            tt_.route_cars_allowed_.test(r_idx * 2);
+        if (!cars_allowed_on_all_sections) {
+          auto const cars_allowed_on_some_sections =
+              tt_.route_cars_allowed_.test(r_idx * 2 + 1);
+          if (!cars_allowed_on_some_sections) {
+            return;
+          }
+          section_car_filter = true;
+        }
+      }
+
       ++stats_.n_routes_visited_;
       trace("┊ ├k={} updating route {}\n", k, r);
-      any_marked |= section_bike_filter ? update_route<true>(k, r)
-                                        : update_route<false>(k, r);
+      any_marked |=
+          section_bike_filter
+              ? (section_car_filter ? update_route<true, true>(k, r)
+                                    : update_route<true, false>(k, r))
+              : (section_car_filter ? update_route<false, true>(k, r)
+                                    : update_route<false, false>(k, r));
     });
     return any_marked;
   }
 
-  template <bool WithClaszFilter, bool WithBikeFilter>
+  template <bool WithClaszFilter, bool WithBikeFilter, bool WithCarFilter>
   bool loop_rt_routes(unsigned const k) {
     auto any_marked = false;
     state_.rt_transport_mark_.for_each_set_bit([&](auto const rt_t_idx) {
@@ -332,10 +372,29 @@ private:
         }
       }
 
+      auto section_car_filter = false;
+      if constexpr (WithCarFilter) {
+        auto const cars_allowed_on_all_sections =
+            rtt_->rt_transport_cars_allowed_.test(rt_t_idx * 2);
+        if (!cars_allowed_on_all_sections) {
+          auto const cars_allowed_on_some_sections =
+              rtt_->rt_transport_cars_allowed_.test(rt_t_idx * 2 + 1);
+          if (!cars_allowed_on_some_sections) {
+            return;
+          }
+          section_car_filter = true;
+        }
+      }
+
       ++stats_.n_routes_visited_;
       trace("┊ ├k={} updating rt transport {}\n", k, rt_t);
-      any_marked |= section_bike_filter ? update_rt_transport<true>(k, rt_t)
-                                        : update_rt_transport<false>(k, rt_t);
+      any_marked |=
+          section_bike_filter
+              ? (section_car_filter ? update_rt_transport<true, true>(k, rt_t)
+                                    : update_rt_transport<true, false>(k, rt_t))
+              : (section_car_filter
+                     ? update_rt_transport<false, true>(k, rt_t)
+                     : update_rt_transport<false, false>(k, rt_t));
     });
     return any_marked;
   }
@@ -647,7 +706,7 @@ private:
     });
   }
 
-  template <bool WithSectionBikeFilter>
+  template <bool WithSectionBikeFilter, bool WithSectionCarFilter>
   bool update_rt_transport(unsigned const k, rt_transport_idx_t const rt_t) {
     auto const stop_seq = rtt_->rt_transport_location_seq_[rt_t];
     auto et = std::array<bool, Vias + 1>{};
@@ -666,6 +725,15 @@ private:
         if (!is_first &&
             !rtt_->rt_bikes_allowed_per_section_[rt_t][kFwd ? stop_idx - 1
                                                             : stop_idx]) {
+          et.fill(false);
+          v_offset.fill(0);
+        }
+      }
+
+      if constexpr (WithSectionCarFilter) {
+        if (!is_first &&
+            !rtt_->rt_cars_allowed_per_section_[rt_t][kFwd ? stop_idx - 1
+                                                           : stop_idx]) {
           et.fill(false);
           v_offset.fill(0);
         }
@@ -783,7 +851,7 @@ private:
     return any_marked;
   }
 
-  template <bool WithSectionBikeFilter>
+  template <bool WithSectionBikeFilter, bool WithSectionCarFilter>
   bool update_route(unsigned const k, route_idx_t const r) {
     auto const stop_seq = tt_.route_location_seq_[r];
     bool any_marked = false;
@@ -827,6 +895,15 @@ private:
           if (!is_first &&
               !tt_.route_bikes_allowed_per_section_[r][kFwd ? stop_idx - 1
                                                             : stop_idx]) {
+            et[v] = {};
+            v_offset[v] = 0;
+          }
+        }
+
+        if constexpr (WithSectionCarFilter) {
+          if (!is_first &&
+              !tt_.route_cars_allowed_per_section_[r][kFwd ? stop_idx - 1
+                                                           : stop_idx]) {
             et[v] = {};
             v_offset[v] = 0;
           }
@@ -900,7 +977,8 @@ private:
           } else {
             trace(
                 "┊ │k={} v={}->{}    *** NO UPD: at={}, name={}, dbg={}, "
-                "time_by_transport={}, current_best=min({}, {}, {})={} => {} - "
+                "time_by_transport={}, current_best=min({}, {}, {})={} => {} "
+                "- "
                 "LB={}, LB_AT_DEST={}, TIME_AT_DEST={}, higher_v_best={} "
                 "(is_better(by_transport={}={}, current_best={}={})={}, "
                 "is_better(by_transport={}={}, time_at_dest_={}={})={}, "
@@ -940,7 +1018,8 @@ private:
                 lb_[l_idx] != kUnreachable &&
                 is_better(by_transport + dir(lb_[l_idx]), time_at_dest_[k])) {
               trace_upd(
-                  "┊ │k={} v={}->{}    name={}, dbg={}, time_by_transport={}, "
+                  "┊ │k={} v={}->{}    name={}, dbg={}, "
+                  "time_by_transport={}, "
                   "BETTER THAN dest_best={} => update, {} marking station "
                   "{} (destination)!\n",
                   k, v, dest_v, tt_.transport_name(et[v].t_idx_),
@@ -1190,6 +1269,7 @@ private:
   raptor_stats stats_;
   clasz_mask_t allowed_claszes_;
   bool require_bike_transport_;
+  bool require_car_transport_;
   bool is_wheelchair_;
   transfer_time_settings transfer_time_settings_;
 };

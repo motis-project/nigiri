@@ -41,9 +41,9 @@ TEST(gtfs, read_trips_example_data) {
       shapes_storage{"example_shapes", cista::mmap::protection::WRITE};
   auto const shapes =
       parse_shapes(files.get_file(kShapesFile).data(), shapes_store);
-  auto const trip_data = read_trips(tt, routes, services, shapes,
-                                    files.get_file(kTripsFile).data(),
-                                    config.bikes_allowed_default_);
+  auto const trip_data = read_trips(
+      tt, routes, services, shapes, files.get_file(kTripsFile).data(),
+      config.bikes_allowed_default_, config.cars_allowed_default_);
 
   EXPECT_EQ(2U, trip_data.data_.size());
   EXPECT_NE(end(trip_data.trips_), trip_data.trips_.find("AWE1"));
@@ -75,9 +75,9 @@ TEST(gtfs, read_trips_berlin_data) {
       shapes_storage{"berlin_shapes", cista::mmap::protection::WRITE};
   auto const shapes =
       parse_shapes(files.get_file(kShapesFile).data(), shapes_store);
-  auto const trip_data = read_trips(tt, routes, services, shapes,
-                                    files.get_file(kTripsFile).data(),
-                                    config.bikes_allowed_default_);
+  auto const trip_data = read_trips(
+      tt, routes, services, shapes, files.get_file(kTripsFile).data(),
+      config.bikes_allowed_default_, config.cars_allowed_default_);
 
   EXPECT_EQ(3U, trip_data.data_.size());
 

@@ -76,10 +76,12 @@ rt_transport_idx_t rt_timetable::add_rt_transport(
   }
 
   auto const bikes_allowed_default = false;  // TODO
+  auto const cars_allowed_default = false;  // TODO
 
   rt_transport_line_.add_back_sized(0U);
   rt_transport_is_cancelled_.resize(rt_transport_is_cancelled_.size() + 1U);
   rt_transport_bikes_allowed_.resize(rt_transport_bikes_allowed_.size() + 2U);
+  rt_transport_cars_allowed_.resize(rt_transport_bikes_allowed_.size() + 2U);
   rt_transport_section_directions_.add_back_sized(0U);  // TODO outside
   if (!display_name.empty()) {
     rt_transport_display_names_.emplace_back(display_name);
@@ -97,23 +99,35 @@ rt_transport_idx_t rt_timetable::add_rt_transport(
                                     tt.route_bikes_allowed_[r.v_ * 2]);
     rt_transport_bikes_allowed_.set(rt_t_idx * 2 + 1,
                                     tt.route_bikes_allowed_[r.v_ * 2 + 1]);
+    rt_transport_cars_allowed_.set(rt_t_idx * 2,
+                                   tt.route_cars_allowed_[r.v_ * 2]);
+    rt_transport_cars_allowed_.set(rt_t_idx * 2 + 1,
+                                   tt.route_cars_allowed_[r.v_ * 2 + 1]);
   } else if (fallback_r != route_id_idx_t::invalid()) {
     rt_transport_section_clasz_.emplace_back(
         std::vector<clasz>{loader::gtfs::to_clasz(
             tt.route_ids_[src].route_id_type_.at(fallback_r).v_)});  // TODO
     rt_transport_bikes_allowed_.set(rt_t_idx * 2, bikes_allowed_default);
     rt_transport_bikes_allowed_.set(rt_t_idx * 2 + 1, false);
+    rt_transport_cars_allowed_.set(rt_t_idx * 2, cars_allowed_default);
+    rt_transport_cars_allowed_.set(rt_t_idx * 2 + 1, false);
   } else {
     rt_transport_section_clasz_.emplace_back(std::vector<clasz>{clasz::kOther});
     rt_transport_bikes_allowed_.set(rt_t_idx * 2, bikes_allowed_default);
     rt_transport_bikes_allowed_.set(rt_t_idx * 2 + 1, false);
+    rt_transport_cars_allowed_.set(rt_t_idx * 2, cars_allowed_default);
+    rt_transport_cars_allowed_.set(rt_t_idx * 2 + 1, false);
   }
   if (r != route_idx_t::invalid() && stop_seq.empty()) {
     rt_bikes_allowed_per_section_.emplace_back(
         tt.route_bikes_allowed_per_section_[r]);
+    rt_cars_allowed_per_section_.emplace_back(
+        tt.route_cars_allowed_per_section_[r]);
   } else {
     rt_bikes_allowed_per_section_.emplace_back(
         std::vector<bool>{bikes_allowed_default});
+    rt_cars_allowed_per_section_.emplace_back(
+        std::vector<bool>{cars_allowed_default});
   }
 
   assert(time_seq.empty() || time_seq.size() == location_seq.size() * 2U - 2U);
