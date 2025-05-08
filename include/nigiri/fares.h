@@ -20,6 +20,7 @@ using timeframe_group_idx_t =
 using leg_group_idx_t = cista::strong<std::uint32_t, struct _leg_group_idx_t>;
 
 struct area {
+  string_idx_t id_;
   string_idx_t name_;
 };
 
@@ -39,6 +40,7 @@ struct fares {
 
   struct fare_product {
     float amount_;
+    string_idx_t id_;
     string_idx_t name_;
     fare_media_idx_t media_;
     string_idx_t currency_code_;
@@ -89,8 +91,9 @@ struct fares {
       kAB  // fare_transfer_rules.fare_product_id
     };
 
-    friend std::ostream& operator<<(
-        std::ostream& out, fares::fare_transfer_rule::fare_transfer_type);
+    friend std::ostream& operator<<(std::ostream&, fare_transfer_rule const&);
+    friend std::ostream& operator<<(std::ostream&, fare_transfer_type);
+    friend std::ostream& operator<<(std::ostream&, duration_limit_type);
 
     leg_group_idx_t from_leg_group_{leg_group_idx_t::invalid()};
     leg_group_idx_t to_leg_group_{leg_group_idx_t::invalid()};
@@ -115,9 +118,11 @@ struct fares {
   };
 
   struct network {
+    string_idx_t id_;
     string_idx_t name_;
   };
 
+  vector_map<leg_group_idx_t, string_idx_t> leg_group_name_;
   vector_map<fare_media_idx_t, fare_media> fare_media_;
   vector_map<fare_product_idx_t, fare_product> fare_products_;
   vector<fare_leg_rule> fare_leg_rules_;
@@ -125,6 +130,7 @@ struct fares {
   vector<fare_transfer_rule> fare_transfer_rules_;
   vector_map<rider_category_idx_t, rider_category> rider_categories_;
   vecvec<timeframe_group_idx_t, timeframe> timeframes_;
+  vector_map<timeframe_group_idx_t, string_idx_t> timeframe_id_;
   hash_map<route_id_idx_t, network_idx_t> route_networks_;
   vector_map<network_idx_t, network> networks_;
 };

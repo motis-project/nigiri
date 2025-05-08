@@ -12,8 +12,93 @@
 #include "nigiri/timetable.h"
 
 namespace nigiri {
-
 using routing::journey;
+
+struct leg_group {
+  friend std::ostream& operator<<(std::ostream& out, leg_group const x) {
+    auto const& [tt, f, g] = x;
+    return out << (g == leg_group_idx_t::invalid()
+                       ? "ANY"
+                       : tt.strings_.get(f.leg_group_name_[g]));
+  }
+
+  timetable const& tt_;
+  fares const& f_;
+  leg_group_idx_t g_;
+};
+
+struct transfer_rule {
+  friend std::ostream& operator<<(std::ostream& out, transfer_rule const& x) {
+    auto const& [tt, f, r] = x;
+    return out << "(transfer_type=" << r.fare_transfer_type_
+               << ", from_leg_group=" << leg_group{tt, f, r.from_leg_group_}
+               << ", to_leg_group=" << leg_group{tt, f, r.to_leg_group_}
+               << ", duration_limit="
+               << (r.duration_limit_ ==
+                           fares::fare_transfer_rule::kNoDurationLimit
+                       ? "NO_LIMIT"
+                       : fmt::to_string(r.duration_limit_))
+               << ", duration_limit_type=" << r.duration_limit_type_
+               << ", transfer_count=" << static_cast<int>(r.transfer_count_)
+               << ", product="
+               << (r.fare_product_ == fare_product_idx_t::invalid()
+                       ? "NONE"
+                       : tt.strings_.get(f.fare_products_[r.fare_product_].id_))
+               << ")";
+  }
+
+  timetable const& tt_;
+  fares const& f_;
+  fares::fare_transfer_rule const& r_;
+};
+
+struct leg_rule {
+  friend std::ostream& operator<<(std::ostream& out, leg_rule const& x) {
+    auto const [tt, f, r] = x;
+    return out
+           << "(from_area="
+           << (r.from_area_ == area_idx_t::invalid()
+                   ? "ANY"
+                   : tt.strings_.get(tt.areas_[r.from_area_].id_))
+           << ", to_area="
+           << (r.to_area_ == area_idx_t::invalid()
+                   ? "ANY"
+                   : tt.strings_.get(tt.areas_[r.to_area_].id_))
+           << ", network="
+           << (r.network_ == network_idx_t::invalid()
+                   ? "ANY"
+                   : tt.strings_.get(f.networks_[r.network_].id_))
+           << ", from_timeframe_group="
+           << (r.from_timeframe_group_ == timeframe_group_idx_t::invalid()
+                   ? "ANY"
+                   : tt.strings_.get(f.timeframe_id_[r.from_timeframe_group_]))
+           << ", to_timeframe_group="
+           << (r.to_timeframe_group_ == timeframe_group_idx_t::invalid()
+                   ? "ANY"
+                   : tt.strings_.get(f.timeframe_id_[r.to_timeframe_group_]))
+           << ", product="
+           << (r.fare_product_ == fare_product_idx_t::invalid()
+                   ? "-"
+                   : tt.strings_.get(f.fare_products_[r.fare_product_].id_))
+           << ")";
+  }
+
+  timetable const& tt_;
+  fares const& f_;
+  fares::fare_leg_rule const& r_;
+};
+
+std::ostream& operator<<(std::ostream& out,
+                         fares::fare_transfer_rule::duration_limit_type t) {
+  using duration_limit_type = fares::fare_transfer_rule::duration_limit_type;
+  switch (t) {
+    case duration_limit_type::kCurrDepNextArr: return out << "CurrDepNextArr";
+    case duration_limit_type::kCurrDepNextDep: return out << "CurrDepNextDep";
+    case duration_limit_type::kCurrArrNextDep: return out << "CurrArrNextDep";
+    case duration_limit_type::kCurrArrNextArr: return out << "CurrArrNextArr";
+  }
+  std::unreachable();
+}
 
 bool contains(auto&& range, auto&& needle) {
   return std::ranges::find(range, needle) != std::end(range);
@@ -147,7 +232,7 @@ std::vector<journey::leg const*> get_transit_legs(journey const& j) {
   return transit_legs;
 }
 
-using joined_legs_t = std::vector<std::vector<journey::leg const*>>;
+using joined_legs_t = std::vector<std::vector<journey::leg const*> >;
 
 joined_legs_t join_legs(timetable const& tt,
                         std::vector<journey::leg const*> const& transit_legs) {
@@ -217,10 +302,17 @@ timeframe_group_idx_t match_timeframe(timetable const& tt,
   return timeframe_group_idx_t::invalid();
 }
 
-std::pair<source_idx_t, std::vector<fares::fare_leg_rule>> match_leg_rule(
+std::pair<source_idx_t, std::vector<fares::fare_leg_rule> > match_leg_rule(
     timetable const& tt,
     rt_timetable const* rtt,
     effective_fare_leg_t const& joined_legs) {
+  std::cout << "EFFECTIVE LEG:\n";
+  for (auto const& l : joined_legs) {
+    l->print(std::cout, tt, rtt);
+    std::cout << "\n";
+  }
+  std::cout << "\n";
+
   auto const& first = joined_legs.front();
   auto const& last = joined_legs.back();
 
@@ -237,7 +329,7 @@ std::pair<source_idx_t, std::vector<fares::fare_leg_rule>> match_leg_rule(
       first_trip.is_scheduled()
           ? tt.trip_id_src_[tt.trip_ids_[first_trip.trip_idx()].front()]
           : first_trip.id().src_;
-  auto const& fare = tt.fares_[src];
+  auto const& f = tt.fares_[src];
 
   if (!first_trip.is_scheduled() || !last_trip.is_scheduled()) {
     return {src, std::vector<fares::fare_leg_rule>{}};
@@ -248,23 +340,23 @@ std::pair<source_idx_t, std::vector<fares::fare_leg_rule>> match_leg_rule(
   auto const network =
       from_network == to_network ? from_network : network_idx_t::invalid();
   auto const from_tf =
-      match_timeframe(tt, fare, from.get_location_idx(), from.fr_->t_.t_idx_,
+      match_timeframe(tt, f, from.get_location_idx(), from.fr_->t_.t_idx_,
                       from.time(event_type::kDep));
   auto const to_tf =
-      match_timeframe(tt, fare, to.get_location_idx(), to.fr_->t_.t_idx_,
+      match_timeframe(tt, f, to.get_location_idx(), to.fr_->t_.t_idx_,
                       to.time(event_type::kArr));
 
   namespace sv = std::views;
   auto concrete_network =
-      fare.fare_leg_rules_ |
+      f.fare_leg_rules_ |
       sv::transform([](auto const& r) { return r.network_; }) |
       sv::filter([](auto const n) { return n != network_idx_t::invalid(); });
   auto concrete_from =
-      fare.fare_leg_rules_ |
+      f.fare_leg_rules_ |
       sv::transform([](auto const& r) { return r.from_area_; }) |
       sv::filter([](auto const a) { return a != area_idx_t::invalid(); });
   auto concrete_to =
-      fare.fare_leg_rules_ |
+      f.fare_leg_rules_ |
       sv::transform([](auto const& r) { return r.to_area_; }) |
       sv::filter([](auto const a) { return a != area_idx_t::invalid(); });
 
@@ -276,7 +368,7 @@ std::pair<source_idx_t, std::vector<fares::fare_leg_rule>> match_leg_rule(
                                           .to_area_ = to_area,
                                           .from_timeframe_group_ = from_tf,
                                           .to_timeframe_group_ = to_tf};
-      for (auto const& r : fare.fare_leg_rules_) {
+      for (auto const& r : f.fare_leg_rules_) {
         auto const matches =
             ((r.network_ == network_idx_t::invalid() &&
               !contains(concrete_network, x.network_)) ||
@@ -293,6 +385,8 @@ std::pair<source_idx_t, std::vector<fares::fare_leg_rule>> match_leg_rule(
              r.to_timeframe_group_ == x.to_timeframe_group_);
 
         if (matches) {
+          std::cout << "RULE MATCH\n\t\tRULE = " << leg_rule{tt, f, r}
+                    << "\n\t\tLEG = " << leg_rule{tt, f, x} << "\n";
           matching_rules.push_back(r);
         }
       }
@@ -300,14 +394,14 @@ std::pair<source_idx_t, std::vector<fares::fare_leg_rule>> match_leg_rule(
   }
   utl::sort(matching_rules, [&](fares::fare_leg_rule const& a,
                                 fares::fare_leg_rule const& b) {
-    auto const& ap = fare.fare_products_[a.fare_product_];
-    auto const& bp = fare.fare_products_[b.fare_product_];
+    auto const& ap = f.fare_products_[a.fare_product_];
+    auto const& bp = f.fare_products_[b.fare_product_];
     auto const a_rider_not_default =
         ap.rider_category_ == rider_category_idx_t::invalid() ||
-        !fare.rider_categories_[ap.rider_category_].is_default_fare_category_;
+        !f.rider_categories_[ap.rider_category_].is_default_fare_category_;
     auto const b_rider_not_default =
         bp.rider_category_ == rider_category_idx_t::invalid() ||
-        !fare.rider_categories_[bp.rider_category_].is_default_fare_category_;
+        !f.rider_categories_[bp.rider_category_].is_default_fare_category_;
     return std::tuple{-a.rule_priority_, a_rider_not_default,
                       ap.rider_category_, ap.amount_,
                       tt.strings_.get(ap.name_)} <
@@ -374,7 +468,7 @@ bool matches(fares::fare_transfer_rule const& r,
   // TODO do not match from_leg_group/to_leg_group if another rule has it
   return (r.duration_limit_ == fares::fare_transfer_rule::kNoDurationLimit ||
           r.duration_limit_ >= (get_end_time() - get_start_time())) &&
-         ((r.from_leg_group_ == leg_group_idx_t ::invalid() &&
+         ((r.from_leg_group_ == leg_group_idx_t::invalid() &&
            !contains(concrete_from, curr.leg_group_idx_)) ||
           r.from_leg_group_ == curr.leg_group_idx_) &&
          ((r.to_leg_group_ == leg_group_idx_t::invalid() &&
@@ -467,5 +561,4 @@ std::vector<fare_transfer> get_fares(timetable const& tt,
                         return fare_leg{src, joined_leg, rules};
                       }));
 }
-
 }  // namespace nigiri
