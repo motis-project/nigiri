@@ -75,20 +75,27 @@ hash_map<std::string, fare_product_idx_t> parse_products(
   auto m = hash_map<std::string, fare_product_idx_t>{};
   utl::for_each_row<fare_product_record>(
       file_content, [&](fare_product_record const& r) {
-        m.emplace(r.fare_product_id_->view(), fare_product_idx_t{m.size()});
-        f.fare_products_.push_back(
-            {.amount_ = *r.amount_,
-             .id_ = tt.strings_.store(r.fare_product_id_->view()),
-             .name_ = tt.strings_.store(r.fare_product_name_->view()),
-             .media_ = find(media, r.fare_media_id_->view())
-                           .value_or(fare_media_idx_t::invalid()),
-             .currency_code_ = tt.strings_.store(r.currency_->view()),
-             .rider_category_ =
-                 r.rider_category_id_
-                     ->and_then([&](utl::cstr const& x) {
-                       return find(rider_categories, x.view());
-                     })
-                     .value_or(rider_category_idx_t::invalid())});
+        auto const product_idx =
+            utl::get_or_create(m, r.fare_product_id_->view(), [&]() {
+              auto const idx = fare_product_idx_t{f.fare_products_.size()};
+              f.fare_products_.emplace_back(
+                  std::initializer_list<fares::fare_product>{});
+              f.fare_product_id_.push_back(
+                  tt.strings_.store(r.fare_product_id_->view()));
+              return idx;
+            });
+
+        f.fare_products_[product_idx].push_back(fares::fare_product{
+            .amount_ = *r.amount_,
+            .name_ = tt.strings_.store(r.fare_product_name_->view()),
+            .media_ = find(media, r.fare_media_id_->view())
+                          .value_or(fare_media_idx_t::invalid()),
+            .currency_code_ = tt.strings_.store(r.currency_->view()),
+            .rider_category_ = r.rider_category_id_
+                                   ->and_then([&](utl::cstr const& x) {
+                                     return find(rider_categories, x.view());
+                                   })
+                                   .value_or(rider_category_idx_t::invalid())});
       });
   return m;
 }
@@ -136,17 +143,6 @@ hash_map<std::string, leg_group_idx_t> parse_leg_rules(
               r.fare_product_id_->view());
           return;
         }
-
-        log(log_lvl::info, "gtfs.fares", "{} => {}",
-            r.network_id_
-                ->and_then([&](utl::cstr const& x) {
-                  return find(networks, x.view());
-                })
-                .and_then([&](network_idx_t const x) {
-                  return tt.strings_.try_get(f.networks_[x].name_);
-                })
-                .value_or(""),
-            tt.strings_.get(f.fare_products_[*fare_product].id_));
 
         f.fare_leg_rules_.push_back({
             .rule_priority_ = r.rule_priority_->value_or(0U),
@@ -220,7 +216,8 @@ hash_map<std::string, timeframe_group_idx_t> parse_timeframes(
                                  return std::optional{hhmm_to_min(x)};
                                })
                                .value_or(24_hours),
-              .service_ = traffic_days});
+              .service_ = traffic_days,
+              .service_id_ = tt.strings_.store(r.service_id_->view())});
         } catch (...) {
           log(log_lvl::error, "gtfs.fares", "timeframes: service {} not found",
               r.service_id_->view());

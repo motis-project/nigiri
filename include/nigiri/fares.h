@@ -40,7 +40,6 @@ struct fares {
 
   struct fare_product {
     float amount_;
-    string_idx_t id_;
     string_idx_t name_;
     fare_media_idx_t media_;
     string_idx_t currency_code_;
@@ -115,6 +114,7 @@ struct fares {
     duration_t start_time_;
     duration_t end_time_;
     bitfield service_;
+    string_idx_t service_id_;
   };
 
   struct network {
@@ -124,7 +124,8 @@ struct fares {
 
   vector_map<leg_group_idx_t, string_idx_t> leg_group_name_;
   vector_map<fare_media_idx_t, fare_media> fare_media_;
-  vector_map<fare_product_idx_t, fare_product> fare_products_;
+  vecvec<fare_product_idx_t, fare_product> fare_products_;
+  vector_map<fare_product_idx_t, string_idx_t> fare_product_id_;
   vector<fare_leg_rule> fare_leg_rules_;
   vector<fare_leg_join_rule> fare_leg_join_rules_;
   vector<fare_transfer_rule> fare_transfer_rules_;
