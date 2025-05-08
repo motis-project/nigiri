@@ -120,7 +120,7 @@ location_groups_t parse_location_groups(timetable& tt,
         auto const idx = location_group_idx_t{tt.location_group_name_.size()};
         tt.location_group_name_.emplace_back(
             to_str(tt, r.location_group_name_));
-        tt.location_group_.emplace_back_empty();
+        tt.location_group_locations_.emplace_back_empty();
         tt.location_group_transports_.emplace_back_empty();
         map.emplace(r.location_group_id_->to_str(), idx);
       });
@@ -131,6 +131,8 @@ void parse_location_group_stops(timetable& tt,
                                 std::string_view file_content,
                                 location_groups_t const& location_groups,
                                 stops_map_t const& stops) {
+  tt.location_group_locations_.resize(tt.n_locations());
+
   struct location_group_record {
     utl::csv_col<utl::cstr, UTL_NAME("location_group_id")> location_group_id_;
     utl::csv_col<utl::cstr, UTL_NAME("stop_id")> stop_id_;
@@ -152,7 +154,9 @@ void parse_location_group_stops(timetable& tt,
           return;
         }
 
-        tt.location_group_[location_group_it->second].push_back(
+        tt.location_location_groups_[stop_it->second].push_back(
+            location_group_it->second);
+        tt.location_group_locations_[location_group_it->second].push_back(
             stop_it->second);
       });
 }

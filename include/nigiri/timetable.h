@@ -550,7 +550,8 @@ struct timetable {
   vecvec<location_idx_t, area_idx_t> location_areas_;
 
   // Flex
-  paged_vecvec<location_group_idx_t, location_idx_t> location_group_;
+  paged_vecvec<location_group_idx_t, location_idx_t> location_group_locations_;
+  paged_vecvec<location_idx_t, location_group_idx_t> location_location_groups_;
   vector_map<location_group_idx_t, string_idx_t> location_group_name_;
   vector_map<flex_area_idx_t, geo::box> flex_area_bbox_;
   vecvec<flex_area_idx_t, location_idx_t> flex_area_locations_;
