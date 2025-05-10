@@ -19,6 +19,12 @@ constexpr auto const kFrequenciesFile = std::string_view{"frequencies.txt"};
 constexpr auto const kFareAttributesFile =
     std::string_view{"fare_attributes.txt"};
 constexpr auto const kFareRulesFile = std::string_view{"fare_rules.txt"};
+constexpr auto const kLocationGroupsFile =
+    std::string_view{"location_groups.txt"};
+constexpr auto const kLocationGroupStopsFile =
+    std::string_view{"location_group_stops.txt"};
+constexpr auto const kLocationsFile = std::string_view{"locations.geojson"};
+constexpr auto const kBookingRulesFile = std::string_view{"booking_rules.txt"};
 
 // GTFS Fares v2 Files
 

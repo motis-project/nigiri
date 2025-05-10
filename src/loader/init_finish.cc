@@ -2,8 +2,13 @@
 
 #include <execution>
 
+#include "utl/enumerate.h"
+
+#include "geo/box.h"
+
 #include "nigiri/loader/build_footpaths.h"
 #include "nigiri/loader/build_lb_graph.h"
+#include "nigiri/flex.h"
 #include "nigiri/special_stations.h"
 #include "nigiri/timetable.h"
 
@@ -24,6 +29,31 @@ void register_special_stations(timetable& tt) {
   }
   tt.location_routes_.resize(tt.n_locations());
   tt.bitfields_.emplace_back(bitfield{});  // bitfield_idx 0 = 000...00 bitfield
+}
+
+void build_location_tree(timetable& tt) {
+  for (auto l = location_idx_t{0U}; l != tt.n_locations(); ++l) {
+    auto box = geo::box{};
+    box.extend(tt.locations_.coordinates_[l]);
+    tt.locations_.rtree_.insert(box.min_.lnglat_float(),
+                                box.max_.lnglat_float(), l);
+  }
+}
+
+void assign_stops_to_flex_areas(timetable& tt) {
+  for (auto const [i, bbox] : utl::enumerate(tt.flex_area_bbox_)) {
+    auto const flex_area = flex_area_idx_t{i};
+    tt.flex_area_locations_.emplace_back(
+        std::initializer_list<location_idx_t>{});
+    tt.locations_.rtree_.search(
+        bbox.min_.lnglat_float(), bbox.max_.lnglat_float(),
+        [&](auto, auto, location_idx_t const l) {
+          if (is_within(tt, flex_area, tt.locations_.coordinates_[l])) {
+            tt.flex_area_locations_.back().push_back(l);
+          }
+          return true;
+        });
+  }
 }
 
 void finalize(timetable& tt, finalize_options const opt) {
@@ -60,6 +90,8 @@ void finalize(timetable& tt, finalize_options const opt) {
   build_footpaths(tt, opt);
   build_lb_graph<direction::kForward>(tt);
   build_lb_graph<direction::kBackward>(tt);
+  build_location_tree(tt);
+  assign_stops_to_flex_areas(tt);
 }
 
 void finalize(timetable& tt,
