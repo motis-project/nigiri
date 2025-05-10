@@ -115,7 +115,8 @@ trip::trip(route const* route,
            std::string short_name,
            direction_id_t const direction_id,
            shape_idx_t const shape_idx,
-           bool const bikes_allowed)
+           bool const bikes_allowed,
+           bool const cars_allowed)
     : route_{route},
       service_{service},
       block_{blk},
@@ -124,7 +125,8 @@ trip::trip(route const* route,
       direction_id_{direction_id},
       short_name_{std::move(short_name)},
       shape_idx_{shape_idx},
-      bikes_allowed_{bikes_allowed} {}
+      bikes_allowed_{bikes_allowed},
+      cars_allowed_{cars_allowed} {}
 
 void trip::interpolate() {
   if (!requires_interpolation_) {
@@ -240,7 +242,8 @@ trip_data read_trips(
     traffic_days_t const& services,
     shape_loader_state const& shape_states,
     std::string_view file_content,
-    std::array<bool, kNumClasses> const& bikes_allowed_default) {
+    std::array<bool, kNumClasses> const& bikes_allowed_default,
+    std::array<bool, kNumClasses> const& cars_allowed_default) {
   struct csv_trip {
     utl::csv_col<utl::cstr, UTL_NAME("route_id")> route_id_;
     utl::csv_col<utl::cstr, UTL_NAME("service_id")> service_id_;
@@ -252,6 +255,7 @@ trip_data read_trips(
     utl::csv_col<utl::cstr, UTL_NAME("block_id")> block_id_;
     utl::csv_col<utl::cstr, UTL_NAME("shape_id")> shape_id_;
     utl::csv_col<std::uint8_t, UTL_NAME("bikes_allowed")> bikes_allowed_;
+    utl::csv_col<std::uint8_t, UTL_NAME("cars_allowed")> cars_allowed_;
   };
   auto const& shapes = shape_states.id_map_;
 
@@ -296,6 +300,14 @@ trip_data read_trips(
             bikes_allowed = false;
           }
 
+          auto cars_allowed = cars_allowed_default[static_cast<std::size_t>(
+              route_it->second->clasz_)];
+          if (t.cars_allowed_.val() == 1) {
+            cars_allowed = true;
+          } else if (t.cars_allowed_.val() == 2) {
+            cars_allowed = false;
+          }
+
           auto const blk = t.block_id_->trim().empty()
                                ? nullptr
                                : utl::get_or_create(
@@ -310,7 +322,7 @@ trip_data read_trips(
               t.trip_short_name_->to_str(),
               (t.direction_id_->view() == "1") ? direction_id_t{1U}
                                                : direction_id_t{0U},
-              shape_idx, bikes_allowed);
+              shape_idx, bikes_allowed, cars_allowed);
           ret.trips_.emplace(t.trip_id_->to_str(), trp_idx);
           if (blk != nullptr) {
             blk->trips_.emplace_back(trp_idx);

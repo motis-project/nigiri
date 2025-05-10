@@ -97,7 +97,7 @@ TEST(routing, wheelchair_assistance) {
 
   auto const results_walk =
       raptor_search(tt, nullptr, "A", "C", iv, direction::kForward,
-                    routing::all_clasz_allowed(), false, 0U);
+                    routing::all_clasz_allowed(), false, false, 0U);
   ASSERT_FALSE(results_walk.begin() == results_walk.end());
   EXPECT_EQ((unixtime_t{sys_days{2024_y / June / 19} + 5_hours}),
             results_walk.begin()->start_time_);
@@ -106,7 +106,7 @@ TEST(routing, wheelchair_assistance) {
 
   auto const results_wheelchair =
       raptor_search(tt, nullptr, "A", "C", iv, direction::kForward,
-                    routing::all_clasz_allowed(), false, 2U);
+                    routing::all_clasz_allowed(), false, false, 2U);
   ASSERT_FALSE(results_wheelchair.begin() == results_wheelchair.end());
   EXPECT_EQ((unixtime_t{sys_days{2024_y / June / 19} + 6_hours}),
             results_wheelchair.begin()->start_time_);

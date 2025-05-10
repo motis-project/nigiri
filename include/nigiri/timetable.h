@@ -184,7 +184,8 @@ struct timetable {
 
   route_idx_t register_route(basic_string<stop::value_type> const& stop_seq,
                              basic_string<clasz> const& clasz_sections,
-                             bitvec const& bikes_allowed_per_section) {
+                             bitvec const& bikes_allowed_per_section,
+                             bitvec const& cars_allowed_per_section) {
     assert(stop_seq.size() > 1U);
     assert(!clasz_sections.empty());
 
@@ -197,10 +198,10 @@ struct timetable {
     route_section_clasz_.emplace_back(clasz_sections);
     route_clasz_.emplace_back(clasz_sections[0]);
 
-    auto const sections = bikes_allowed_per_section.size();
+    auto const bike_sections = bikes_allowed_per_section.size();
     auto const sections_with_bikes_allowed = bikes_allowed_per_section.count();
     auto const bikes_allowed_on_all_sections =
-        sections_with_bikes_allowed == sections && sections != 0;
+        sections_with_bikes_allowed == bike_sections && bike_sections != 0;
     auto const bikes_allowed_on_some_sections =
         sections_with_bikes_allowed != 0U;
     route_bikes_allowed_.resize(route_bikes_allowed_.size() + 2U);
@@ -212,6 +213,23 @@ struct timetable {
       auto bucket = route_bikes_allowed_per_section_[route_idx_t{idx}];
       for (auto i = 0U; i < bikes_allowed_per_section.size(); ++i) {
         bucket.push_back(bikes_allowed_per_section[i]);
+      }
+    }
+
+    auto const car_sections = cars_allowed_per_section.size();
+    auto const sections_with_cars_allowed = cars_allowed_per_section.count();
+    auto const cars_allowed_on_all_sections =
+        sections_with_cars_allowed == car_sections && car_sections != 0;
+    auto const cars_allowed_on_some_sections = sections_with_cars_allowed != 0U;
+    route_cars_allowed_.resize(route_cars_allowed_.size() + 2U);
+    route_cars_allowed_.set(idx * 2, cars_allowed_on_all_sections);
+    route_cars_allowed_.set(idx * 2 + 1, cars_allowed_on_some_sections);
+
+    route_cars_allowed_per_section_.resize(idx + 1);
+    if (cars_allowed_on_some_sections && !cars_allowed_on_all_sections) {
+      auto bucket = route_cars_allowed_per_section_[route_idx_t{idx}];
+      for (auto i = 0U; i < cars_allowed_per_section.size(); ++i) {
+        bucket.push_back(cars_allowed_per_section[i]);
       }
     }
 
@@ -474,10 +492,16 @@ struct timetable {
   // Route * 2 + 1 -> bikes along parts of the route
   bitvec route_bikes_allowed_;
 
+  // same for cars
+  bitvec route_cars_allowed_;
+
   // Route -> bikes allowed per section
   // Only set for routes where the entry in route_bikes_allowed_bitvec_
   // is set to "bikes along parts of the route"
   vecvec<route_idx_t, bool> route_bikes_allowed_per_section_;
+
+  // same for cars
+  vecvec<route_idx_t, bool> route_cars_allowed_per_section_;
 
   // Location -> list of routes
   vecvec<location_idx_t, route_idx_t> location_routes_;

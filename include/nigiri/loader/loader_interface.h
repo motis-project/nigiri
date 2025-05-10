@@ -18,6 +18,7 @@ struct loader_config {
   unsigned link_stop_distance_{100U};
   std::string default_tz_;
   std::array<bool, kNumClasses> bikes_allowed_default_{};
+  std::array<bool, kNumClasses> cars_allowed_default_{};
 };
 
 struct loader_interface {
