@@ -14,7 +14,9 @@ using booking_rules_t = hash_map<std::string, booking_rule_idx_t>;
 using location_groups_t = hash_map<std::string, location_group_idx_t>;
 using flex_areas_t = hash_map<std::string, flex_area_idx_t>;
 
-flex_areas_t parse_flex_areas(timetable&, std::string_view file_content);
+flex_areas_t parse_flex_areas(timetable&,
+                              source_idx_t,
+                              std::string_view file_content);
 
 void parse_location_group_stops(timetable&,
                                 std::string_view file_content,

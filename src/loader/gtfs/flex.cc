@@ -24,7 +24,9 @@ string_idx_t to_str(timetable& tt, auto const& col) {
       .value_or(string_idx_t::invalid());
 }
 
-flex_areas_t parse_flex_areas(timetable& tt, std::string_view file_content) {
+flex_areas_t parse_flex_areas(timetable& tt,
+                              source_idx_t const src,
+                              std::string_view file_content) {
   if (file_content.empty()) {
     return {};
   }
@@ -90,6 +92,8 @@ flex_areas_t parse_flex_areas(timetable& tt, std::string_view file_content) {
 
       auto box = geo::box{};
       box.extend(outer[0]);
+      tt.flex_area_id_.emplace_back(tt.strings_.store(id));
+      tt.flex_area_src_.emplace_back(src);
       tt.flex_area_bbox_.emplace_back(box);
       tt.flex_area_transports_.emplace_back_empty();
       tt.flex_area_rtree_.insert(box.min_.lnglat_float(),
@@ -131,7 +135,7 @@ void parse_location_group_stops(timetable& tt,
                                 std::string_view file_content,
                                 location_groups_t const& location_groups,
                                 stops_map_t const& stops) {
-  tt.location_group_locations_.resize(tt.n_locations());
+  tt.location_location_groups_.resize(tt.n_locations());
 
   struct location_group_record {
     utl::csv_col<utl::cstr, UTL_NAME("location_group_id")> location_group_id_;

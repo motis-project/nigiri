@@ -129,7 +129,8 @@ void load_timetable(loader_config const& config,
       tt, load(kBookingRulesFile).data(), service, bitfield_indices);
   auto const location_groups =
       parse_location_groups(tt, load(kLocationGroupsFile).data());
-  auto const flex_areas = parse_flex_areas(tt, load(kLocationsFile).data());
+  auto const flex_areas =
+      parse_flex_areas(tt, src, load(kLocationsFile).data());
   parse_location_group_stops(tt, load(kLocationGroupStopsFile).data(),
                              location_groups, stops);
   read_frequencies(trip_data, load(kFrequenciesFile).data());
