@@ -89,10 +89,7 @@ void load_timetable(loader_config const& config,
                     assistance_times* assistance,
                     shapes_storage* shapes_data) {
   auto local_bitfield_indices = hash_map<bitfield, bitfield_idx_t>{};
-  auto c =
-      string_cache_t{std::size_t{0U}, string_idx_hash{tt.strings_.strings_},
-                     string_idx_equals{tt.strings_.strings_}};
-  load_timetable(config, src, d, tt, local_bitfield_indices, c, assistance,
+  load_timetable(config, src, d, tt, local_bitfield_indices, assistance,
                  shapes_data);
 }
 
@@ -101,7 +98,6 @@ void load_timetable(loader_config const& config,
                     dir const& d,
                     timetable& tt,
                     hash_map<bitfield, bitfield_idx_t>& bitfield_indices,
-                    string_cache_t& str_cache,
                     assistance_times* assistance,
                     shapes_storage* shapes_data) {
   nigiri::scoped_timer const global_timer{"gtfs parser"};
@@ -117,7 +113,7 @@ void load_timetable(loader_config const& config,
   auto const stops =
       read_stops(src, tt, timezones, load(kStopFile).data(),
                  load(kTransfersFile).data(), config.link_stop_distance_);
-  auto const routes = read_routes(tt, timezones, agencies,
+  auto const routes = read_routes(src, tt, timezones, agencies,
                                   load(kRoutesFile).data(), config.default_tz_);
   auto const calendar = read_calendar(load(kCalenderFile).data());
   auto const dates = read_calendar_date(load(kCalendarDatesFile).data());
@@ -129,11 +125,11 @@ void load_timetable(loader_config const& config,
           : shape_loader_state{};
   auto trip_data =
       read_trips(tt, routes, service, shape_states, load(kTripsFile).data(),
-                 config.bikes_allowed_default_);
+                 config.bikes_allowed_default_, config.cars_allowed_default_);
   read_frequencies(trip_data, load(kFrequenciesFile).data());
   read_stop_times(tt, trip_data, stops, load(kStopTimesFile).data(),
                   shapes_data != nullptr);
-  load_fares(tt, str_cache, d, service, routes, stops);
+  load_fares(tt, d, service, routes, stops);
   utl::verify(tt.fares_.size() == to_idx(src) + 1U, "fares: size={} src={}",
               tt.fares_.size(), src);
 
@@ -166,7 +162,7 @@ void load_timetable(loader_config const& config,
   stop_seq_t stop_seq_cache;
   bitvec bikes_allowed_seq_cache;
   auto const get_bikes_allowed_seq =
-      [&](std::basic_string<gtfs_trip_idx_t> const& trips) -> bitvec const* {
+      [&](basic_string<gtfs_trip_idx_t> const& trips) -> bitvec const* {
     if (trips.size() == 1U) {
       return trip_data.get(trips.front()).bikes_allowed_
                  ? &kSingleTripBikesAllowed
@@ -187,7 +183,30 @@ void load_timetable(loader_config const& config,
     }
   };
 
-  auto const add_trip = [&](std::basic_string<gtfs_trip_idx_t> const& trips,
+  bitvec cars_allowed_seq_cache;
+  auto const get_cars_allowed_seq =
+      [&](basic_string<gtfs_trip_idx_t> const& trips) -> bitvec const* {
+    if (trips.size() == 1U) {
+      return trip_data.get(trips.front()).cars_allowed_
+                 ? &kSingleTripBikesAllowed
+                 : &kSingleTripBikesNotAllowed;
+    } else {
+      cars_allowed_seq_cache.resize(0);
+      for (auto const [i, t_idx] : utl::enumerate(trips)) {
+        auto const& trp = trip_data.get(t_idx);
+        auto const stop_count = trp.stop_seq_.size();
+        auto const offset = cars_allowed_seq_cache.size();
+        cars_allowed_seq_cache.resize(
+            static_cast<bitvec::size_type>(offset + stop_count - 1));
+        for (auto j = 0U; j < stop_count - 1; ++j) {
+          cars_allowed_seq_cache.set(offset + j, trp.cars_allowed_);
+        }
+      }
+      return &cars_allowed_seq_cache;
+    }
+  };
+
+  auto const add_trip = [&](basic_string<gtfs_trip_idx_t> const& trips,
                             bitfield const* traffic_days) {
     expand_trip(
         trip_data, noon_offsets, tt, trips, traffic_days, tt.date_range_,
@@ -195,8 +214,9 @@ void load_timetable(loader_config const& config,
           auto const* stop_seq = get_stop_seq(trip_data, s, stop_seq_cache);
           auto const clasz = trip_data.get(s.trips_.front()).get_clasz(tt);
           auto const* bikes_allowed_seq = get_bikes_allowed_seq(s.trips_);
-          auto const it = route_services.find(
-              route_key_ptr_t{clasz, stop_seq, bikes_allowed_seq});
+          auto const* cars_allowed_seq = get_cars_allowed_seq(s.trips_);
+          auto const it = route_services.find(route_key_ptr_t{
+              clasz, stop_seq, bikes_allowed_seq, cars_allowed_seq});
           if (it != end(route_services)) {
             for (auto& r : it->second) {
               auto const idx = get_index(r, s);
@@ -208,7 +228,8 @@ void load_timetable(loader_config const& config,
             it->second.emplace_back(std::vector<utc_trip>{std::move(s)});
           } else {
             route_services.emplace(
-                route_key_t{clasz, *stop_seq, *bikes_allowed_seq},
+                route_key_t{clasz, *stop_seq, *bikes_allowed_seq,
+                            *cars_allowed_seq},
                 std::vector<std::vector<utc_trip>>{{s}});
           }
         });
@@ -243,6 +264,8 @@ void load_timetable(loader_config const& config,
   }
 
   {
+    auto const timer = scoped_timer{"loader.gtfs.write_trips"};
+
     progress_tracker->status("Write Trips")
         .out_bounds(85.F, 98.F)
         .in_high(route_services.size());
@@ -253,9 +276,12 @@ void load_timetable(loader_config const& config,
       });
     };
 
-    auto stop_seq_numbers = std::basic_string<stop_idx_t>{};
+    auto stop_seq_numbers = basic_string<stop_idx_t>{};
     auto const source_file_idx =
         tt.register_source_file((d.path() / kStopTimesFile).generic_string());
+    tt.src_trips_.emplace_back(trip_idx_t{tt.trip_ids_.size()},
+                               trip_idx_t::invalid());
+    tt.trip_direction_id_.resize(tt.n_trips() + trip_data.data_.size());
     for (auto& trp : trip_data.data_) {
       std::uint32_t train_nr = 0U;
       if (is_train_number(trp.short_name_)) {
@@ -269,21 +295,21 @@ void load_timetable(loader_config const& config,
       trp.trip_idx_ = tt.register_trip_id(
           trp.id_, trp.route_->route_id_idx_, src, trp.display_name(),
           {source_file_idx, trp.from_line_, trp.to_line_}, train_nr,
-          stop_seq_numbers);
+          stop_seq_numbers, trp.direction_id_);
     }
+    tt.src_trips_.back().to_ = trip_idx_t{tt.trip_ids_.size()};
 
-    auto const timer = scoped_timer{"loader.gtfs.routes.build"};
-    auto const attributes = std::basic_string<attribute_combination_idx_t>{};
+    auto const attributes = basic_string<attribute_combination_idx_t>{};
     auto lines = hash_map<std::string, trip_line_idx_t>{};
-    auto section_directions = std::basic_string<trip_direction_idx_t>{};
-    auto section_lines = std::basic_string<trip_line_idx_t>{};
-    auto route_colors = std::basic_string<route_color>{};
-    auto external_trip_ids = std::basic_string<merged_trips_idx_t>{};
+    auto section_directions = basic_string<trip_direction_idx_t>{};
+    auto section_lines = basic_string<trip_line_idx_t>{};
+    auto route_colors = basic_string<route_color>{};
+    auto external_trip_ids = basic_string<merged_trips_idx_t>{};
     auto location_routes = mutable_fws_multimap<location_idx_t, route_idx_t>{};
     for (auto const& [key, sub_routes] : route_services) {
       for (auto const& services : sub_routes) {
-        auto const route_idx =
-            tt.register_route(key.stop_seq_, {key.clasz_}, key.bikes_allowed_);
+        auto const route_idx = tt.register_route(
+            key.stop_seq_, {key.clasz_}, key.bikes_allowed_, key.cars_allowed_);
 
         for (auto const& s : key.stop_seq_) {
           auto s_routes = location_routes[stop{s}.location_idx()];

@@ -2,6 +2,7 @@
 
 #include <compare>
 #include <filesystem>
+#include <optional>
 #include <span>
 #include <type_traits>
 
@@ -98,8 +99,6 @@ struct timetable {
                                             : std::optional{get(it->second)};
     }
 
-    void resolve_timezones();
-
     // Station access: external station id -> internal station idx
     hash_map<location_id, location_idx_t> location_id_to_idx_;
     vecvec<location_idx_t, char> names_;
@@ -123,13 +122,13 @@ struct timetable {
     bitfield_idx_t bitfield_idx_;
     route_idx_t route_idx_;
     duration_t first_dep_offset_;
-    std::basic_string<merged_trips_idx_t> const& external_trip_ids_;
-    std::basic_string<attribute_combination_idx_t> const& section_attributes_;
-    std::basic_string<provider_idx_t> const& section_providers_;
-    std::basic_string<trip_direction_idx_t> const& section_directions_;
-    std::basic_string<trip_line_idx_t> const& section_lines_;
-    std::basic_string<stop_idx_t> const& stop_seq_numbers_;
-    std::basic_string<route_color> const& route_colors_;
+    basic_string<merged_trips_idx_t> const& external_trip_ids_;
+    basic_string<attribute_combination_idx_t> const& section_attributes_;
+    basic_string<provider_idx_t> const& section_providers_;
+    basic_string<trip_direction_idx_t> const& section_directions_;
+    basic_string<trip_line_idx_t> const& section_lines_;
+    basic_string<stop_idx_t> const& stop_seq_numbers_;
+    basic_string<route_color> const& route_colors_;
   };
 
   template <typename TripId>
@@ -139,11 +138,18 @@ struct timetable {
                               std::string const& display_name,
                               trip_debug const dbg,
                               std::uint32_t const train_nr,
-                              std::span<stop_idx_t> seq_numbers) {
+                              std::span<stop_idx_t> seq_numbers,
+                              direction_id_t const direction_id) {
     auto const trip_idx = trip_idx_t{trip_ids_.size()};
 
     auto const trip_id_idx = trip_id_idx_t{trip_id_strings_.size()};
+
+    if (route_id_idx != route_id_idx_t::invalid()) {  // HRD
+      route_ids_[src].route_id_trips_[route_id_idx].push_back(trip_idx);
+      trip_direction_id_.set(trip_idx, direction_id == direction_id_t{1U});
+    }
     trip_route_id_.emplace_back(route_id_idx);
+
     trip_id_strings_.emplace_back(trip_id_str);
     trip_id_src_.emplace_back(src);
 
@@ -156,6 +162,8 @@ struct timetable {
 
     return trip_idx;
   }
+
+  void resolve();
 
   bitfield_idx_t register_bitfield(bitfield const& b) {
     auto const idx = bitfield_idx_t{bitfields_.size()};
@@ -171,14 +179,15 @@ struct timetable {
     return idx;
   }
 
-  route_idx_t register_route(
-      std::basic_string<stop::value_type> const& stop_seq,
-      std::basic_string<clasz> const& clasz_sections,
-      bitvec const& bikes_allowed_per_section) {
+  route_idx_t register_route(basic_string<stop::value_type> const& stop_seq,
+                             basic_string<clasz> const& clasz_sections,
+                             bitvec const& bikes_allowed_per_section,
+                             bitvec const& cars_allowed_per_section) {
     assert(stop_seq.size() > 1U);
     assert(!clasz_sections.empty());
 
     auto const idx = route_location_seq_.size();
+
     route_transport_ranges_.emplace_back(
         transport_idx_t{transport_traffic_days_.size()},
         transport_idx_t::invalid());
@@ -186,10 +195,10 @@ struct timetable {
     route_section_clasz_.emplace_back(clasz_sections);
     route_clasz_.emplace_back(clasz_sections[0]);
 
-    auto const sections = bikes_allowed_per_section.size();
+    auto const bike_sections = bikes_allowed_per_section.size();
     auto const sections_with_bikes_allowed = bikes_allowed_per_section.count();
     auto const bikes_allowed_on_all_sections =
-        sections_with_bikes_allowed == sections && sections != 0;
+        sections_with_bikes_allowed == bike_sections && bike_sections != 0;
     auto const bikes_allowed_on_some_sections =
         sections_with_bikes_allowed != 0U;
     route_bikes_allowed_.resize(route_bikes_allowed_.size() + 2U);
@@ -204,6 +213,23 @@ struct timetable {
       }
     }
 
+    auto const car_sections = cars_allowed_per_section.size();
+    auto const sections_with_cars_allowed = cars_allowed_per_section.count();
+    auto const cars_allowed_on_all_sections =
+        sections_with_cars_allowed == car_sections && car_sections != 0;
+    auto const cars_allowed_on_some_sections = sections_with_cars_allowed != 0U;
+    route_cars_allowed_.resize(route_cars_allowed_.size() + 2U);
+    route_cars_allowed_.set(idx * 2, cars_allowed_on_all_sections);
+    route_cars_allowed_.set(idx * 2 + 1, cars_allowed_on_some_sections);
+
+    route_cars_allowed_per_section_.resize(idx + 1);
+    if (cars_allowed_on_some_sections && !cars_allowed_on_all_sections) {
+      auto bucket = route_cars_allowed_per_section_[route_idx_t{idx}];
+      for (auto i = 0U; i < cars_allowed_per_section.size(); ++i) {
+        bucket.push_back(cars_allowed_per_section[i]);
+      }
+    }
+
     return route_idx_t{idx};
   }
 
@@ -213,7 +239,7 @@ struct timetable {
   }
 
   merged_trips_idx_t register_merged_trip(
-      std::basic_string<trip_idx_t> const& trip_ids) {
+      basic_string<trip_idx_t> const& trip_ids) {
     auto const idx = merged_trips_.size();
     merged_trips_.emplace_back(trip_ids);
     return merged_trips_idx_t{static_cast<merged_trips_idx_t::value_t>(idx)};
@@ -228,6 +254,7 @@ struct timetable {
   provider_idx_t register_provider(provider&& p) {
     auto const idx = providers_.size();
     providers_.emplace_back(std::move(p));
+    provider_id_to_idx_.emplace_back(idx);
     return provider_idx_t{idx};
   }
 
@@ -314,6 +341,10 @@ struct timetable {
     return internal_interval_days().from_ + to_idx(d) * 1_days + m;
   }
 
+  cista::base_t<trip_idx_t> n_trips() const {
+    return trip_display_names_.size();
+  }
+
   cista::base_t<location_idx_t> n_locations() const {
     return locations_.names_.size();
   }
@@ -321,6 +352,12 @@ struct timetable {
   cista::base_t<route_idx_t> n_routes() const {
     return route_location_seq_.size();
   }
+
+  cista::base_t<source_idx_t> n_sources() const {
+    return source_file_names_.size();
+  }
+
+  cista::base_t<provider_idx_t> n_agencies() const { return providers_.size(); }
 
   interval<unixtime_t> external_interval() const {
     return {std::chrono::time_point_cast<i32_minutes>(date_range_.from_),
@@ -374,6 +411,9 @@ struct timetable {
   // Schedule range.
   interval<date::sys_days> date_range_;
 
+  // Source -> trips
+  vector_map<source_idx_t, interval<trip_idx_t>> src_trips_;
+
   // Trip access: external trip id -> internal trip index
   vector<pair<trip_id_idx_t, trip_idx_t>> trip_id_to_idx_;
 
@@ -384,12 +424,39 @@ struct timetable {
   vecvec<trip_id_idx_t, char> trip_id_strings_;
   vector_map<trip_id_idx_t, source_idx_t> trip_id_src_;
 
+  // Trip -> direction (valid options 0 or 1)
+  bitvec_map<trip_idx_t> trip_direction_id_;
+
   // Trip train number, if available (otherwise 0)
   vector_map<trip_id_idx_t, std::uint32_t> trip_train_nr_;
 
   // Trip -> route name
   vector_map<trip_idx_t, route_id_idx_t> trip_route_id_;
-  route_id_idx_t next_route_id_idx_{0U};
+
+  // External route id
+  struct route_ids {
+    route_id_idx_t add(std::string_view id,
+                       std::string_view short_name,
+                       std::string_view long_name,
+                       provider_idx_t const provider,
+                       std::uint16_t const type) {
+      auto const idx = ids_.store(id);
+      route_id_short_names_.emplace_back(short_name);
+      route_id_long_names_.emplace_back(long_name);
+      route_id_type_.emplace_back(type);
+      route_id_provider_.emplace_back(provider);
+      route_id_trips_.emplace_back(std::initializer_list<trip_idx_t>{});
+      return idx;
+    }
+
+    vecvec<route_id_idx_t, char> route_id_short_names_;
+    vecvec<route_id_idx_t, char> route_id_long_names_;
+    vector_map<route_id_idx_t, route_type_t> route_id_type_;
+    vector_map<route_id_idx_t, provider_idx_t> route_id_provider_;
+    paged_vecvec<route_id_idx_t, trip_idx_t> route_id_trips_;
+    string_store<route_id_idx_t> ids_;
+  };
+  vector_map<source_idx_t, route_ids> route_ids_;
 
   // Trip index -> all transports with a stop interval
   paged_vecvec<trip_idx_t, transport_range_t> trip_transport_ranges_;
@@ -425,10 +492,16 @@ struct timetable {
   // Route * 2 + 1 -> bikes along parts of the route
   bitvec route_bikes_allowed_;
 
+  // same for cars
+  bitvec route_cars_allowed_;
+
   // Route -> bikes allowed per section
   // Only set for routes where the entry in route_bikes_allowed_bitvec_
   // is set to "bikes along parts of the route"
   vecvec<route_idx_t, bool> route_bikes_allowed_per_section_;
+
+  // same for cars
+  vecvec<route_idx_t, bool> route_cars_allowed_per_section_;
 
   // Location -> list of routes
   vecvec<location_idx_t, route_idx_t> location_routes_;
@@ -474,6 +547,7 @@ struct timetable {
   vector_map<attribute_idx_t, attribute> attributes_;
   vecvec<attribute_combination_idx_t, attribute_idx_t> attribute_combinations_;
   vector_map<provider_idx_t, provider> providers_;
+  vector<provider_idx_t> provider_id_to_idx_;
   vecvec<trip_direction_string_idx_t, char> trip_direction_strings_;
   vector_map<trip_direction_idx_t, trip_direction_t> trip_directions_;
   vecvec<trip_line_idx_t, char> trip_lines_;
@@ -499,7 +573,7 @@ struct timetable {
   vector_map<source_idx_t, fares> fares_;
   vector_map<area_idx_t, area> areas_;
   vecvec<location_idx_t, area_idx_t> location_areas_;
-  string_store strings_;
+  string_store<string_idx_t> strings_;
 };
 
 }  // namespace nigiri

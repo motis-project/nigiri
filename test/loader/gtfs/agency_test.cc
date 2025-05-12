@@ -23,8 +23,8 @@ TEST(gtfs, agency) {
 
   auto const& dta = tt.providers_.at(dta_it->second);
   auto const& sbb = tt.providers_.at(sbb_it->second);
-  EXPECT_EQ("Demo Transit Authority", dta.long_name_);
-  EXPECT_EQ("http://google.com", dta.url_);
-  EXPECT_EQ("Schweizerische Bundesbahnen SBB", sbb.long_name_);
-  EXPECT_EQ("http://www.sbb.ch/", sbb.url_);
+  EXPECT_EQ("Demo Transit Authority", tt.strings_.get(dta.long_name_));
+  EXPECT_EQ("http://google.com", tt.strings_.get(dta.url_));
+  EXPECT_EQ("Schweizerische Bundesbahnen SBB", tt.strings_.get(sbb.long_name_));
+  EXPECT_EQ("http://www.sbb.ch/", tt.strings_.get(sbb.url_));
 }

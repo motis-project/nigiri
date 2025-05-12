@@ -9,7 +9,7 @@
 [geo]
   url=git@github.com:motis-project/geo.git
   branch=master
-  commit=cee17208dba98f5f3ddaf78d0bfff9c083557ba3
+  commit=16d0a6389cd5dfe7d63927ea6e0b3fcd9c92cffc
 [utl]
   url=git@github.com:motis-project/utl.git
   branch=master
@@ -17,7 +17,7 @@
 [miniz]
   url=git@github.com:motis-project/miniz.git
   branch=master
-  commit=1edbdece9d71dc65c6ff405572ee37cbdcef7af4
+  commit=e857234a23de8e5a2d05d266e518220a495db0ce
 [fmt]
   url=git@github.com:motis-project/fmt.git
   branch=master
@@ -45,7 +45,7 @@
 [oh]
   url=git@github.com:felixguendling/oh.git
   branch=master
-  commit=d21c30f40e52a83d6dc09bcffd0067598b5ec069
+  commit=d9eb908452e808179afeb7954e8beaa5b3626c36
 [opentelemetry-cpp]
   url=git@github.com:motis-project/opentelemetry-cpp.git
   branch=main
@@ -54,3 +54,7 @@
   url=git@github.com:motis-project/pugixml.git
   branch=master
   commit=60175e80e2f5e97e027ac78f7e14c5acc009ce50
+[char_traits]
+  url=git@github.com:motis-project/char_traits.git
+  branch=master
+  commit=c06bd3c23ae11fca48ab4fe681e5b83987c2e8b5

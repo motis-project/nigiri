@@ -137,6 +137,7 @@ Miami-Dade Transit,27757,1,SO.MIAMI HTS-PERRINE VIA SOUTHLAND,3,FF00FF,FFFFFF,-9
 route_id,trip_id,service_id,trip_headsign,direction_id,block_id,shape_id,drt_advance_book_min,peak_offpeak
 27757,5456914,1,1 - SW 168 St,0,1484970,196385,0.0,0
 27757,5456915,1,1 - SW 168 St,0,1484970,196385,0.0,0
+27757,5456916,1,1 - SW 168 St,0,1484970,196385,0.0,0
 
 # stop_times.txt
 trip_id,stop_id,arrival_time,departure_time,timepoint,stop_sequence,shape_dist_traveled,continuous_pickup,continuous_drop_off,start_service_area_radius,end_service_area_radius,departure_buffer
@@ -146,6 +147,9 @@ trip_id,stop_id,arrival_time,departure_time,timepoint,stop_sequence,shape_dist_t
 5456915,1,47:15:00,47:15:00,1,1,,-999,-999,-999.0,-999.0,0
 5456915,3614,47:15:35,47:15:35,0,2,0.1548,-999,-999,-999.0,-999.0,0
 5456915,3213,47:16:20,47:16:20,0,3,0.354,-999,-999,-999.0,-999.0,0
+5456916,1,,,1,1,,-999,-999,-999.0,-999.0,0
+5456916,3614,,,0,2,0.1548,-999,-999,-999.0,-999.0,0
+5456916,3213,,,0,3,0.354,-999,-999,-999.0,-999.0,0
 
 # calendar_dates.txt
 service_id,date,exception_type
@@ -191,6 +195,16 @@ TEST(rt, resolve_tz) {
     auto const r = gtfsrt_resolve_run(date::sys_days{2023_y / August / 3}, tt,
                                       &rtt, source_idx_t{0U}, td);
     EXPECT_TRUE(r.first.valid());
+  }
+
+  {
+    auto td = transit_realtime::TripDescriptor();
+    td.set_start_date("20230803");
+    td.set_trip_id("5456916");
+
+    auto const r = gtfsrt_resolve_run(date::sys_days{2023_y / August / 3}, tt,
+                                      &rtt, source_idx_t{0U}, td);
+    EXPECT_FALSE(r.first.valid());
   }
 }
 

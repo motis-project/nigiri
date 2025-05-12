@@ -64,13 +64,16 @@ void service_builder::add_services(config const& c,
 }
 
 void service_builder::write_services(source_idx_t const src) {
+  tt_.route_ids_.emplace_back();
+
   auto const timer = scoped_timer{"loader.hrd.services.write"};
   auto const empty_bikes_allowed = bitvec{};  // not implemented for hrd
+  auto const empty_cars_allowed = bitvec{};  // not implemented for hrd
   for (auto const& [key, sub_routes] : route_services_) {
     for (auto const& services : sub_routes) {
       auto const& [stop_seq, sections_clasz] = key;
-      auto const route_idx =
-          tt_.register_route(stop_seq, sections_clasz, empty_bikes_allowed);
+      auto const route_idx = tt_.register_route(
+          stop_seq, sections_clasz, empty_bikes_allowed, empty_cars_allowed);
 
       for (auto const& s : stop_seq) {
         auto s_routes = location_routes_[stop{s}.location_idx()];
@@ -92,8 +95,9 @@ void service_builder::write_services(source_idx_t const src) {
               s.utc_times_.back().count(), s.line_info(store_));
 
           auto const id = tt_.register_trip_id(
-              trip_id_buf_, route_id_idx_t{0U}, src, ref.display_name(tt_),
-              ref.origin_.dbg_, ref.initial_train_num_, {});
+              trip_id_buf_, route_id_idx_t::invalid(), src,
+              ref.display_name(tt_), ref.origin_.dbg_, ref.initial_train_num_,
+              {}, direction_id_t::invalid());
           tt_.trip_transport_ranges_.emplace_back({transport_range_t{
               tt_.next_transport_idx(),
               interval<stop_idx_t>{0U,

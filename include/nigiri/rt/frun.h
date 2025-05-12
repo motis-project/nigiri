@@ -33,7 +33,7 @@ struct run_stop {
   std::string_view id() const noexcept;
 
   provider const& get_provider(event_type = event_type::kDep) const noexcept;
-  trip_idx_t get_trip_idx(event_type = event_type::kDep) const noexcept;
+  trip_idx_t get_trip_idx(event_type = event_type::kDep) const;
   std::string_view trip_display_name(
       event_type = event_type::kDep) const noexcept;
 
@@ -49,6 +49,7 @@ struct run_stop {
   clasz get_scheduled_clasz(event_type = event_type::kDep) const noexcept;
 
   bool bikes_allowed(event_type = event_type::kDep) const noexcept;
+  bool cars_allowed(event_type = event_type::kDep) const noexcept;
 
   route_color get_route_color(event_type = event_type::kDep) const noexcept;
 
@@ -56,7 +57,7 @@ struct run_stop {
   bool out_allowed() const noexcept;
   bool in_allowed_wheelchair() const noexcept;
   bool out_allowed_wheelchair() const noexcept;
-  bool is_canceled() const noexcept;
+  bool is_cancelled() const noexcept;
 
   bool in_allowed(bool const is_wheelchair) const noexcept;
   bool out_allowed(bool const is_wheelchair) const noexcept;
@@ -144,6 +145,7 @@ struct frun : public run {
   trip_id id() const noexcept;
   trip_idx_t trip_idx() const;
   clasz get_clasz() const noexcept;
+  bool is_cancelled() const;
 
   void for_each_trip(
       std::function<void(trip_idx_t const, interval<stop_idx_t> const)> const&)

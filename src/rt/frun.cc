@@ -99,7 +99,9 @@ duration_t run_stop::delay(event_type const ev_type) const noexcept {
   return time(ev_type) - scheduled_time(ev_type);
 }
 
-trip_idx_t run_stop::get_trip_idx(event_type const ev_type) const noexcept {
+trip_idx_t run_stop::get_trip_idx(event_type const ev_type) const {
+  utl::verify(fr_->t_.t_idx_ != transport_idx_t::invalid(),
+              "can't get trip_idx for unscheduled trip");
   auto const sections = tt().transport_to_trip_section_.at(fr_->t_.t_idx_);
   return tt()
       .merged_trips_[sections.at(sections.size() == 1U ? 0U
@@ -109,7 +111,13 @@ trip_idx_t run_stop::get_trip_idx(event_type const ev_type) const noexcept {
 
 std::string_view run_stop::trip_display_name(
     event_type const ev_type) const noexcept {
-  return tt().trip_display_names_[get_trip_idx(ev_type)].view();
+  if (fr_->is_rt() && rtt() != nullptr) {
+    return rtt()->transport_name(tt(), fr_->rt_);
+  }
+  if (fr_->is_scheduled()) {
+    return tt().trip_display_names_[get_trip_idx(ev_type)].view();
+  }
+  return "?";
 }
 
 stop_idx_t run_stop::section_idx(event_type const ev_type) const noexcept {
@@ -128,6 +136,9 @@ std::string_view run_stop::line(event_type const ev_type) const noexcept {
 
 provider const& run_stop::get_provider(
     event_type const ev_type) const noexcept {
+  if (!fr_->is_scheduled()) {
+    return tt().providers_.at(provider_idx_t{0});  // TODO
+  }
   auto const provider_sections =
       tt().transport_section_providers_.at(fr_->t_.t_idx_);
   auto const provider_idx = provider_sections.at(
@@ -136,30 +147,34 @@ provider const& run_stop::get_provider(
 }
 
 std::string_view run_stop::direction(event_type const ev_type) const noexcept {
-  if (!fr_->is_scheduled()) {
-    return "";
-  }
-
-  auto const direction_sections =
-      tt().transport_section_directions_.at(fr_->t_.t_idx_);
-  auto direction = std::string_view{};
-  if (!direction_sections.empty()) {
-    auto const direction_idx =
-        direction_sections.size() == 1U
-            ? direction_sections.at(0)
-            : direction_sections.at(section_idx(ev_type));
-    if (direction_idx != trip_direction_idx_t::invalid()) {
-      direction = tt().trip_directions_.at(direction_idx)
-                      .apply(utl::overloaded{
-                          [&](trip_direction_string_idx_t const i) {
-                            return tt().trip_direction_strings_.at(i).view();
-                          },
-                          [&](location_idx_t const i) {
-                            return tt().locations_.names_.at(i).view();
-                          }});
+  if (fr_->is_scheduled()) {
+    auto const direction_sections =
+        tt().transport_section_directions_.at(fr_->t_.t_idx_);
+    auto direction = std::string_view{};
+    if (!direction_sections.empty()) {
+      auto const direction_idx =
+          direction_sections.size() == 1U
+              ? direction_sections.at(0)
+              : direction_sections.at(section_idx(ev_type));
+      if (direction_idx != trip_direction_idx_t::invalid()) {
+        direction = tt().trip_directions_.at(direction_idx)
+                        .apply(utl::overloaded{
+                            [&](trip_direction_string_idx_t const i) {
+                              return tt().trip_direction_strings_.at(i).view();
+                            },
+                            [&](location_idx_t const i) {
+                              return tt().locations_.names_.at(i).view();
+                            }});
+      }
     }
+    return direction;
   }
-  return direction;
+  if (!fr_->is_scheduled() && rtt() != nullptr) {
+    return run_stop{.fr_ = fr_,
+                    .stop_idx_ = static_cast<stop_idx_t>(fr_->size() - 1U)}
+        .name();
+  }
+  return "";
 }
 
 std::string_view run_stop::scheduled_line(
@@ -194,7 +209,7 @@ clasz run_stop::get_clasz(event_type const ev_type) const noexcept {
 
 clasz run_stop::get_scheduled_clasz(event_type const ev_type) const noexcept {
   if (!fr_->is_scheduled()) {
-    return clasz();
+    return clasz::kOther;
   }
   auto const clasz_sections =
       tt().route_section_clasz_.at(tt().transport_route_.at(fr_->t_.t_idx_));
@@ -216,14 +231,31 @@ bool run_stop::bikes_allowed(event_type const ev_type) const noexcept {
   }
 }
 
+bool run_stop::cars_allowed(event_type const ev_type) const noexcept {
+  if (fr_->is_rt() && rtt() != nullptr) {
+    auto const cars_allowed_seq =
+        rtt()->rt_cars_allowed_per_section_.at(fr_->rt_);
+    return cars_allowed_seq.at(
+        cars_allowed_seq.size() == 1U ? 0U : section_idx(ev_type));
+  } else {
+    auto const cars_allowed_seq = tt().route_cars_allowed_per_section_.at(
+        tt().transport_route_.at(fr_->t_.t_idx_));
+    return cars_allowed_seq.at(
+        cars_allowed_seq.size() == 1U ? 0U : section_idx(ev_type));
+  }
+}
+
 route_color run_stop::get_route_color(event_type ev_type) const noexcept {
+  if (!fr_->is_scheduled()) {
+    return route_color{};
+  }
   auto const color_sections =
       tt().transport_section_route_colors_.at(fr_->t_.t_idx_);
   return color_sections.at(color_sections.size() == 1U ? 0U
                                                        : section_idx(ev_type));
 }
 
-bool run_stop::is_canceled() const noexcept {
+bool run_stop::is_cancelled() const noexcept {
   return get_stop().is_cancelled();
 }
 
@@ -253,7 +285,7 @@ rt_timetable const* run_stop::rtt() const noexcept { return fr_->rtt_; }
 frun::iterator& frun::iterator::operator++() noexcept {
   do {
     ++rs_.stop_idx_;
-  } while (rs_.stop_idx_ != rs_.fr_->stop_range_.to_ && rs_.is_canceled());
+  } while (rs_.stop_idx_ != rs_.fr_->stop_range_.to_ && rs_.is_cancelled());
   return *this;
 }
 
@@ -268,7 +300,7 @@ frun::iterator& frun::iterator::operator--() noexcept {
     --rs_.stop_idx_;
   } while (rs_.stop_idx_ !=
                static_cast<stop_idx_t>(rs_.fr_->stop_range_.from_ - 1U) &&
-           rs_.is_canceled());
+           rs_.is_cancelled());
   return *this;
 }
 
@@ -300,13 +332,23 @@ frun::frun(timetable const& tt, rt_timetable const* rtt, run r)
 }
 
 std::string_view frun::name() const noexcept {
-  return (is_rt() && rtt_ != nullptr) ? rtt_->transport_name(*tt_, rt_)
-                                      : tt_->transport_name(t_.t_idx_);
+  if (is_rt() && rtt_ != nullptr) {
+    return rtt_->transport_name(*tt_, rt_);
+  }
+  if (is_scheduled()) {
+    return tt_->transport_name(t_.t_idx_);
+  }
+  return "";
 }
 
 debug frun::dbg() const noexcept {
-  return (is_rt() && rtt_ != nullptr) ? rtt_->dbg(*tt_, rt_)
-                                      : tt_->dbg(t_.t_idx_);
+  if (is_rt() && rtt_ != nullptr) {
+    return rtt_->dbg(*tt_, rt_);
+  }
+  if (is_scheduled()) {
+    return tt_->dbg(t_.t_idx_);
+  }
+  return debug{};
 }
 
 stop_idx_t frun::first_valid(stop_idx_t const from) const {
@@ -366,7 +408,9 @@ stop_idx_t frun::size() const noexcept {
   return static_cast<stop_idx_t>(
       (is_rt() && rtt_ != nullptr)
           ? rtt_->rt_transport_location_seq_[rt_].size()
-          : tt_->route_location_seq_[tt_->transport_route_[t_.t_idx_]].size());
+      : is_scheduled()
+          ? tt_->route_location_seq_[tt_->transport_route_[t_.t_idx_]].size()
+          : 0U);
 }
 
 run_stop frun::operator[](stop_idx_t const i) const noexcept {
@@ -376,14 +420,20 @@ run_stop frun::operator[](stop_idx_t const i) const noexcept {
 clasz frun::get_clasz() const noexcept {
   if (is_scheduled()) {
     return tt_->route_section_clasz_[tt_->transport_route_[t_.t_idx_]].at(0);
-  } else {
+  }
+  if (rtt_ != nullptr) {
     return rtt_->rt_transport_section_clasz_[rt_].at(0);
   }
+  return clasz::kOther;
 }
 
 void frun::for_each_trip(
     std::function<void(trip_idx_t const, interval<stop_idx_t> const)> const&
         callback) const {
+  if (t_.t_idx_ == transport_idx_t::invalid()) {
+    callback(trip_idx_t::invalid(), stop_range_);
+    return;
+  }
   auto curr_trip_idx = trip_idx_t::invalid();
   auto curr_from = stop_idx_t{0U};
   for (auto const [from, to] :
@@ -415,7 +465,7 @@ void frun::for_each_shape_point(
                                 trip_idx_t const trip_idx,
                                 stop_idx_t const absolute_trip_offset)
       -> std::variant<std::span<geo::latlng const>, interval<stop_idx_t>> {
-    if (shapes_data != nullptr) {
+    if (shapes_data != nullptr && trip_idx != trip_idx_t::invalid()) {
       auto const shape = shapes_data->get_shape(
           trip_idx, absolute_range << absolute_trip_offset);
       if (!shape.empty()) {
@@ -463,15 +513,30 @@ trip_id frun::id() const noexcept {
     auto const trip_id_idx = tt_->trip_ids_[trip_idx].at(0);
     return {tt_->trip_id_strings_[trip_id_idx].view(),
             tt_->trip_id_src_[trip_id_idx]};
-  } else if (holds_alternative<rt_add_trip_id_idx_t>(
+  } else if (rtt_ != nullptr &&
+             holds_alternative<rt_add_trip_id_idx_t>(
                  rtt_->rt_transport_static_transport_[rt_])) {
     auto const add_idx =
         rtt_->rt_transport_static_transport_[rt_].as<rt_add_trip_id_idx_t>();
-    return {rtt_->trip_id_strings_[add_idx].view(),
+    return {rtt_->additional_trip_ids_.get(add_idx),
             rtt_->rt_transport_src_[rt_]};
   } else {
     return {};
   }
+}
+
+bool frun::is_cancelled() const {
+  if (rtt_ == nullptr) {
+    return false;
+  }
+  if (is_rt()) {
+    return rtt_->rt_transport_is_cancelled_[to_idx(rt_)];
+  }
+  if (is_scheduled()) {
+    return !rtt_->bitfields_[rtt_->transport_traffic_days_[t_.t_idx_]].test(
+        to_idx(t_.day_));
+  }
+  return false;
 }
 
 trip_idx_t frun::trip_idx() const {
