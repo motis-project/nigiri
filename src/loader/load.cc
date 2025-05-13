@@ -23,14 +23,12 @@ std::vector<std::unique_ptr<loader_interface>> get_loaders() {
   return loaders;
 }
 
-timetable load(
-    std::vector<std::tuple<std::string, std::string, loader_config>> const&
-        paths,
-    finalize_options const& finalize_opt,
-    interval<date::sys_days> const& date_range,
-    assistance_times* a,
-    shapes_storage* shapes,
-    bool ignore) {
+timetable load(std::vector<timetable_source> const& sources,
+               finalize_options const& finalize_opt,
+               interval<date::sys_days> const& date_range,
+               assistance_times* a,
+               shapes_storage* shapes,
+               bool ignore) {
   auto const loaders = get_loaders();
 
   auto tt = timetable{};
@@ -38,7 +36,7 @@ timetable load(
   register_special_stations(tt);
 
   auto bitfields = hash_map<bitfield, bitfield_idx_t>{};
-  for (auto const [idx, in] : utl::enumerate(paths)) {
+  for (auto const [idx, in] : utl::enumerate(sources)) {
     auto const& [tag, path, local_config] = in;
     auto const is_in_memory = path.starts_with("\n#");
     auto const src = source_idx_t{idx};

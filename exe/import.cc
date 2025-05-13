@@ -81,8 +81,7 @@ int main(int ac, char** av) {
     return 0;
   }
 
-  auto input_files =
-      std::vector<std::tuple<std::string, std::string, loader_config>>{};
+  auto input_files = std::vector<timetable_source>{};
   if (is_directory(in) && recursive) {
     for (auto const& e : fs::directory_iterator(in)) {
       if (is_directory(e) /* unpacked zip file */ ||
