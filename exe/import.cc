@@ -81,17 +81,20 @@ int main(int ac, char** av) {
     return 0;
   }
 
-  auto input_files = std::vector<std::pair<std::string, loader_config>>{};
+  auto input_files =
+      std::vector<std::tuple<std::string, std::string, loader_config>>{};
   if (is_directory(in) && recursive) {
     for (auto const& e : fs::directory_iterator(in)) {
       if (is_directory(e) /* unpacked zip file */ ||
           boost::algorithm::to_lower_copy(
               e.path().extension().generic_string()) == ".zip") {
-        input_files.emplace_back(e.path().generic_string(), c);
+        input_files.emplace_back(e.path().generic_string(),
+                                 e.path().filename().generic_string(), c);
       }
     }
   } else if (exists(in) && !recursive) {
-    input_files.emplace_back(in.generic_string(), c);
+    input_files.emplace_back(in.generic_string(),
+                             in.filename().generic_string(), c);
   }
 
   if (input_files.empty()) {
