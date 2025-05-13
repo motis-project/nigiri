@@ -87,14 +87,17 @@ int main(int ac, char** av) {
       if (is_directory(e) /* unpacked zip file */ ||
           boost::algorithm::to_lower_copy(
               e.path().extension().generic_string()) == ".zip") {
-        input_files.emplace_back(
-            timetable_source{e.path().filename().generic_string(),
-                             e.path().generic_string(), c});
+        input_files.push_back(
+            timetable_source{.tag_ = e.path().filename().generic_string(),
+                             .path_ = e.path().generic_string(),
+                             .loader_config_ = c});
       }
     }
   } else if (exists(in) && !recursive) {
-    input_files.emplace_back(timetable_source{in.filename().generic_string(),
-                                              in.generic_string(), c});
+    input_files.push_back(
+        timetable_source{.tag_ = in.filename().generic_string(),
+                         .path_ = in.generic_string(),
+                         .loader_config_ = c});
   }
 
   if (input_files.empty()) {
