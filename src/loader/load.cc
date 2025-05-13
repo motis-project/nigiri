@@ -56,11 +56,10 @@ timetable load(
       progress_tracker->context(std::string{tag});
       try {
         (*it)->load(local_config, src, *dir, tt, bitfields, a, shapes);
-        progress_tracker->context("");
       } catch (std::exception const& e) {
-        progress_tracker->context("");
         throw utl::fail("failed to load {}: {}", path, e.what());
       }
+      progress_tracker->context("");
     } else if (!ignore) {
       throw utl::fail("no loader for {} found", path);
     } else {
