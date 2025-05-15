@@ -1,5 +1,7 @@
 #include "nigiri/flex.h"
 
+#include "geo/detail/register_latlng.h"
+
 #include "boost/geometry/algorithms/within.hpp"
 #include "boost/geometry/core/cs.hpp"
 #include "boost/geometry/geometries/register/multi_polygon.hpp"
@@ -36,12 +38,6 @@ using multi_polygon = std::vector<polygon>;
 
 }  // namespace nigiri
 
-BOOST_GEOMETRY_REGISTER_POINT_2D(
-    geo::latlng,
-    double,
-    boost::geometry::cs::geographic<boost::geometry::degree>,
-    lat_,
-    lng_);
 BOOST_GEOMETRY_REGISTER_RING(nigiri::ring_t)
 BOOST_GEOMETRY_REGISTER_MULTI_POLYGON(nigiri::multi_polygon)
 
