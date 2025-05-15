@@ -161,7 +161,6 @@ struct timetable {
     trip_ids_.emplace_back().emplace_back(trip_id_idx);
     trip_train_nr_.emplace_back(train_nr);
     trip_stop_seq_numbers_.emplace_back(seq_numbers);
-    trip_direction_id_.set(trip_idx, direction_id == direction_id_t{1U});
 
     return trip_idx;
   }
