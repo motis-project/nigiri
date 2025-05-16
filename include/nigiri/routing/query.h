@@ -65,6 +65,8 @@ struct via_stop {
 
 using start_time_t = std::variant<unixtime_t, interval<unixtime_t>>;
 
+using td_offsets_t = hash_map<location_idx_t, std::vector<routing::td_offset>>;
+
 struct query {
   friend bool operator==(query const&, query const&) = default;
   void sanitize(timetable const&);
@@ -76,7 +78,7 @@ struct query {
       nigiri::routing::location_match_mode::kExact};
   bool use_start_footpaths_{false};
   std::vector<offset> start_{}, destination_{};
-  hash_map<location_idx_t, std::vector<td_offset>> td_start_{}, td_dest_{};
+  td_offsets_t td_start_{}, td_dest_{};
   duration_t max_start_offset_{kMaxTravelTime};
   std::uint8_t max_transfers_{kMaxTransfers};
   duration_t max_travel_time_{kMaxTravelTime};

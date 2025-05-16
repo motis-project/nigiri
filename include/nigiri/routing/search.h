@@ -178,7 +178,7 @@ struct search {
         timeout_(timeout) {
     utl::sort(q_.start_);
     utl::sort(q_.destination_);
-    q.sanitize(tt);
+    q_.sanitize(tt);
   }
 
   routing_result<algo_stats_t> execute() {
