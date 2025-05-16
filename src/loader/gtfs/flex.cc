@@ -122,6 +122,8 @@ location_groups_t parse_location_groups(timetable& tt,
   utl::for_each_row<location_group_record>(
       file_content, [&](location_group_record const& r) {
         auto const idx = location_group_idx_t{tt.location_group_name_.size()};
+        tt.location_group_id_.emplace_back(
+            tt.strings_.store(r.location_group_id_->view()));
         tt.location_group_name_.emplace_back(
             to_str(tt, r.location_group_name_));
         tt.location_group_locations_.emplace_back_empty();
