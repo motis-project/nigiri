@@ -594,7 +594,9 @@ struct timetable {
   vector_map<flex_transport_idx_t, trip_idx_t> flex_transport_trip_;
   vecvec<flex_transport_idx_t, interval<duration_t>>
       flex_transport_stop_time_windows_;
-  vecvec<flex_transport_idx_t, flex_stop_t> flex_transport_stop_seq_;
+  vector_map<flex_transport_idx_t, flex_stop_seq_idx_t>
+      flex_transport_stop_seq_;
+  vecvec<flex_stop_seq_idx_t, flex_stop_t> flex_stop_seq_;
   vecvec<flex_transport_idx_t, booking_rule_idx_t>
       flex_transport_pickup_booking_rule_;
   vecvec<flex_transport_idx_t, booking_rule_idx_t>
