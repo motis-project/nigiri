@@ -7,7 +7,7 @@
 
 #include "utl/get_or_create.h"
 #include "utl/progress_tracker.h"
-#include "utl/sort_permutation.h"
+//#include "utl/sort_permutation.h"
 
 #include "cista/hash.h"
 #include "cista/mmap.h"
@@ -32,6 +32,7 @@
 #include "nigiri/loader/gtfs/stop_time.h"
 #include "nigiri/loader/gtfs/trip.h"
 #include "nigiri/loader/loader_interface.h"
+#include "nigiri/loader/permutate_locations.h"
 #include "nigiri/common/sort_by.h"
 #include "nigiri/logging.h"
 #include "nigiri/timetable.h"
@@ -411,7 +412,6 @@ void load_timetable(loader_config const& config,
       tt.location_routes_.emplace_back(location_routes[location_idx_t{l}]);
       assert(tt.location_routes_.size() == l + 1U);
     }
-    std::cout << "Load Timetable!" << "\n";
     // 0. create permutation vector
     build_permutation_vec(location_routes, first_idx);
     vector<location_idx_t> location_permutation = get_permutation_vector();
