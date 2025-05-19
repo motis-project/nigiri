@@ -13,6 +13,7 @@ namespace nigiri::loader::gtfs {
 using booking_rules_t = hash_map<std::string, booking_rule_idx_t>;
 using location_groups_t = hash_map<std::string, location_group_idx_t>;
 using flex_areas_t = hash_map<std::string, flex_area_idx_t>;
+using stop_seq_map_t = hash_map<std::vector<flex_stop_t>, flex_stop_seq_idx_t>;
 
 flex_areas_t parse_flex_areas(timetable&,
                               source_idx_t,
@@ -33,6 +34,7 @@ booking_rules_t parse_booking_rules(timetable&,
 
 void expand_flex_trip(timetable&,
                       hash_map<bitfield, bitfield_idx_t>&,
+                      stop_seq_map_t&,
                       noon_offset_hours_t const& noon_offsets,
                       interval<date::sys_days> const& selection,
                       trip const&);

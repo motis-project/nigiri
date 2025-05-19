@@ -432,11 +432,13 @@ void load_timetable(loader_config const& config,
 
     auto const timer = scoped_timer{"loader.gtfs.write_flex"};
 
+    auto stop_seq = stop_seq_map_t{};
     for (auto const& trp : trip_data.data_) {
       if (trp.flex_time_windows_.empty()) {
         continue;
       }
-      expand_flex_trip(tt, bitfield_indices, noon_offsets, tt.date_range_, trp);
+      expand_flex_trip(tt, bitfield_indices, stop_seq, noon_offsets,
+                       tt.date_range_, trp);
     }
   }
 }

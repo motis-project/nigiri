@@ -273,6 +273,7 @@ booking_rules_t parse_booking_rules(
 
 void expand_flex_trip(timetable& tt,
                       hash_map<bitfield, bitfield_idx_t>& bitfield_indices,
+                      stop_seq_map_t& stop_seq,
                       noon_offset_hours_t const& noon_offsets,
                       interval<date::sys_days> const& selection,
                       trip const& trp) {
@@ -280,6 +281,12 @@ void expand_flex_trip(timetable& tt,
     return;
   }
 
+  auto const stop_seq_idx =
+      utl::get_or_create(stop_seq, trp.flex_stops_, [&]() {
+        auto idx = flex_stop_seq_idx_t{tt.flex_stop_seq_.size()};
+        tt.flex_stop_seq_.emplace_back(trp.flex_stops_);
+        return idx;
+      });
   auto const tt_interval = tt.internal_interval_days();
   auto utc_time_traffic_days = hash_map<duration_t /* tz offset */, bitfield>{};
   for (auto day = tt_interval.from_; day != tt_interval.to_;
@@ -335,7 +342,7 @@ void expand_flex_trip(timetable& tt,
     tt.flex_transport_drop_off_booking_rule_.emplace_back(
         trp.flex_time_windows_ |
         transform([&](auto&& w) { return w.drop_off_booking_rule_; }));
-    tt.flex_transport_stop_seq_.emplace_back(trp.flex_stops_);
+    tt.flex_transport_stop_seq_.emplace_back(stop_seq_idx);
     tt.flex_transport_trip_.emplace_back(trp.trip_idx_);
 
     for (auto const& s : trp.flex_stops_) {
