@@ -167,9 +167,11 @@ std::string_view run_stop::direction(event_type const ev_type) const noexcept {
                             }});
       }
     }
-    return direction;
+    if (!direction.empty()) {
+      return direction;
+    }
   }
-  if (!fr_->is_scheduled() && rtt() != nullptr) {
+  if (rtt() != nullptr || fr_->is_scheduled()) {
     return run_stop{.fr_ = fr_,
                     .stop_idx_ = static_cast<stop_idx_t>(fr_->size() - 1U)}
         .name();
