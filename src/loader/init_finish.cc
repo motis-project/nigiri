@@ -48,7 +48,7 @@ void assign_stops_to_flex_areas(timetable& tt) {
     tt.locations_.rtree_.search(
         bbox.min_.lnglat_float(), bbox.max_.lnglat_float(),
         [&](auto, auto, location_idx_t const l) {
-          if (is_within(tt, flex_area, tt.locations_.coordinates_[l])) {
+          if (is_in_flex_area(tt, flex_area, tt.locations_.coordinates_[l])) {
             tt.flex_area_locations_.back().push_back(l);
           }
           return true;

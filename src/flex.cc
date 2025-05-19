@@ -110,9 +110,9 @@ multi_polygon get_area(timetable const& tt, flex_area_idx_t const area) {
   return mp;
 }
 
-bool is_within(timetable const& tt,
-               flex_area_idx_t const a,
-               geo::latlng const& pos) {
+bool is_in_flex_area(timetable const& tt,
+                     flex_area_idx_t const a,
+                     geo::latlng const& pos) {
   return tt.flex_area_bbox_[a].contains(pos) &&
          boost::geometry::within(pos, get_area(tt, a));
 }

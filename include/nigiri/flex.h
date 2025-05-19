@@ -8,6 +8,6 @@ namespace nigiri {
 
 struct timetable;
 
-bool is_within(timetable const&, flex_area_idx_t, geo::latlng const&);
+bool is_in_flex_area(timetable const&, flex_area_idx_t, geo::latlng const&);
 
 }  // namespace nigiri

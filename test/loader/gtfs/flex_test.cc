@@ -130,8 +130,8 @@ TEST(flex, simple) {
   EXPECT_EQ(1U, found);
 
   ASSERT_EQ(1U, tt.flex_area_name_.size());
-  EXPECT_FALSE(is_within(tt, kArea, outside));
-  EXPECT_TRUE(is_within(tt, kArea, inside));
+  EXPECT_FALSE(is_in_flex_area(tt, kArea, outside));
+  EXPECT_TRUE(is_in_flex_area(tt, kArea, inside));
   EXPECT_EQ("Publicar Appenzell", tt.flex_area_name_[kArea].view());
   EXPECT_EQ("", tt.flex_area_desc_[kArea].view());
 
