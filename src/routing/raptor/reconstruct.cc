@@ -586,8 +586,8 @@ void reconstruct_journey_with_vias(timetable const& tt,
       }
 
       for (auto const& [from, td] : q.td_dest_) {
-        auto const d = get_td_duration<flip(SearchDir)>(
-            td, delta_to_unix(base, curr_time));
+        auto const d =
+            get_td_duration<SearchDir>(td, delta_to_unix(base, curr_time));
         if (d.has_value()) {
           auto const ret = find_dest_leg(
               k, l, {from, *d, td.back().transport_mode_id_}, true);
