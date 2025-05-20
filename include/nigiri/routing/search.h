@@ -305,6 +305,8 @@ struct search {
       });
     }
 
+    utl::erase_if(state_.results_, [&](auto&& j) { return j.legs_.empty(); });
+
     stats_.execute_time_ =
         std::chrono::duration_cast<std::chrono::milliseconds>(
             (std::chrono::steady_clock::now() - processing_start_time));
