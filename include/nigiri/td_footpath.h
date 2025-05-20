@@ -62,6 +62,18 @@ std::optional<duration_t> get_td_duration(Collection const& c,
 
     return std::nullopt;
   } else /* (SearchDir == direction::kBackward) */ {
+    auto const get_valid_from = [](auto const& x) {
+      // Example interval [10:00, 11:00], duration 10 min
+      // -> backward at 10:00 => result 10:00 - 10 min = 9:50 !! outside [10-11]
+      // -> fixed interval: [10:10, 11:10], duration 10 min **
+      //    so 10:00 is not possible
+      if (x.duration_ == footpath::kMaxDuration) {
+        return x.valid_from_;
+      } else {
+        return x.valid_from_ + x.duration_;
+      }
+    };
+
     auto const get =
         [&](unixtime_t const valid_from,
             duration_t const duration) -> std::optional<duration_t> {
@@ -75,11 +87,11 @@ std::optional<duration_t> get_td_duration(Collection const& c,
       }
     };
 
-    if (from != to && from->valid_from_ <= t) {
+    if (from != to && get_valid_from(*from) <= t) {
       if (from->duration_ != footpath::kMaxDuration) {
         return get(t, from->duration_);
       } else if (auto const next = std::next(from); next != to) {
-        return get(from->valid_from_, next->duration_);
+        return get(get_valid_from(*from), next->duration_);
       }
     }
 
@@ -87,8 +99,8 @@ std::optional<duration_t> get_td_duration(Collection const& c,
     for (auto const [a, b] : utl::pairwise(it_range{from, to})) {
       if (b.duration_ != footpath::kMaxDuration &&
           (t >= a.valid_from_ ||
-           interval{b.valid_from_, a.valid_from_ + 1min}.contains(t))) {
-        return get(a.valid_from_, b.duration_);
+           interval{get_valid_from(b), get_valid_from(a) + 1min}.contains(t))) {
+        return get(get_valid_from(a), b.duration_);
       }
     }
 

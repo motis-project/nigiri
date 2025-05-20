@@ -12,6 +12,7 @@
 #include "utl/verify.h"
 #include "utl/zip.h"
 
+#include "geo/box.h"
 #include "geo/latlng.h"
 
 #include "nigiri/common/interval.h"
@@ -116,6 +117,7 @@ struct timetable {
     array<vecvec<location_idx_t, footpath>, kMaxProfiles> footpaths_out_;
     array<vecvec<location_idx_t, footpath>, kMaxProfiles> footpaths_in_;
     vector_map<timezone_idx_t, timezone> timezones_;
+    rtree<location_idx_t> rtree_;
   } locations_;
 
   struct transport {
@@ -411,9 +413,6 @@ struct timetable {
   // Schedule range.
   interval<date::sys_days> date_range_;
 
-  // Source -> trips
-  vector_map<source_idx_t, interval<trip_idx_t>> src_trips_;
-
   // Trip access: external trip id -> internal trip index
   vector<pair<trip_id_idx_t, trip_idx_t>> trip_id_to_idx_;
 
@@ -573,6 +572,38 @@ struct timetable {
   vector_map<source_idx_t, fares> fares_;
   vector_map<area_idx_t, area> areas_;
   vecvec<location_idx_t, area_idx_t> location_areas_;
+
+  // Flex
+  paged_vecvec<location_group_idx_t, location_idx_t> location_group_locations_;
+  paged_vecvec<location_idx_t, location_group_idx_t> location_location_groups_;
+  vector_map<location_group_idx_t, string_idx_t> location_group_name_;
+  vector_map<location_group_idx_t, string_idx_t> location_group_id_;
+  vector_map<flex_area_idx_t, geo::box> flex_area_bbox_;
+  vector_map<flex_area_idx_t, string_idx_t> flex_area_id_;
+  vector_map<flex_area_idx_t, source_idx_t> flex_area_src_;
+  vecvec<flex_area_idx_t, location_idx_t> flex_area_locations_;
+  nvec<flex_area_idx_t, geo::latlng, 2U> flex_area_outers_;
+  nvec<flex_area_idx_t, geo::latlng, 3U> flex_area_inners_;
+  vecvec<flex_area_idx_t, char> flex_area_name_;
+  vecvec<flex_area_idx_t, char> flex_area_desc_;
+  rtree<flex_area_idx_t> flex_area_rtree_;
+  paged_vecvec<location_group_idx_t, flex_transport_idx_t>
+      location_group_transports_;
+  paged_vecvec<flex_area_idx_t, flex_transport_idx_t> flex_area_transports_;
+  vector_map<flex_transport_idx_t, bitfield_idx_t> flex_transport_traffic_days_;
+  vector_map<flex_transport_idx_t, trip_idx_t> flex_transport_trip_;
+  vecvec<flex_transport_idx_t, interval<duration_t>>
+      flex_transport_stop_time_windows_;
+  vector_map<flex_transport_idx_t, flex_stop_seq_idx_t>
+      flex_transport_stop_seq_;
+  vecvec<flex_stop_seq_idx_t, flex_stop_t> flex_stop_seq_;
+  vecvec<flex_transport_idx_t, booking_rule_idx_t>
+      flex_transport_pickup_booking_rule_;
+  vecvec<flex_transport_idx_t, booking_rule_idx_t>
+      flex_transport_drop_off_booking_rule_;
+  vector_map<booking_rule_idx_t, booking_rule> booking_rules_;
+
+  // Strings
   string_store<string_idx_t> strings_;
 };
 

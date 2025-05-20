@@ -69,6 +69,8 @@ std::optional<journey::leg> find_start_footpath(timetable const& tt,
   auto const fp_target_time = round_times[0][to_idx(leg_start_location)][0];
 
   if (q.start_match_mode_ == location_match_mode::kIntermodal) {
+    trace_reconstruct("  intermodal start mode\n");
+
     for (auto const& o : q.start_) {
       if (matches(tt, q.start_match_mode_, o.target(), leg_start_location) &&
           is_better_or_eq(j.start_time_,
@@ -95,20 +97,31 @@ std::optional<journey::leg> find_start_footpath(timetable const& tt,
         return journey::leg{SearchDir,
                             get_special_station(special_station::kStart),
                             leg_start_location,
-                            leg_start_time - (kFwd ? 1 : -1) * (*duration),
+                            leg_start_time - (kFwd ? 1 : -1) * *duration,
                             leg_start_time,
                             offset{leg_start_location, *duration,
                                    it->second.back().transport_mode_id_}};
       } else {
-        trace(
-            "excluded td journey start at leg_start_location={}: "
+#ifdef NIGIRI_TRACE_RECONSTRUCT
+        for (auto const& x : it->second) {
+          trace_reconstruct("    td_start {}: {}\n", x.valid_from_,
+                            x.duration());
+        }
+#endif
+        trace_reconstruct(
+            "  excluded td journey start at leg_start_location={}: "
             "leg_start_time={}, duration={}, start={}, journey_start={}\n",
             location{tt, leg_start_location}, leg_start_time,
             duration.has_value() ? *duration : kInfeasible,
             leg_start_time - (kFwd ? 1 : -1) * *duration, j.start_time_);
       }
+    } else {
+      trace_reconstruct("  no td start found for location: {}\n",
+                        location{tt, leg_start_location});
     }
   } else {
+    trace_reconstruct("  direct start mode\n");
+
     for (auto const& fp : footpaths) {
       auto const fp_duration = adjusted_transfer_time(q.transfer_time_settings_,
                                                       fp.duration().count());

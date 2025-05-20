@@ -104,6 +104,9 @@ TEST(td_footpath, backward_single) {
       });
   EXPECT_TRUE(called);
   EXPECT_EQ(10min, x.duration());
+
+  EXPECT_FALSE(get_td_duration<direction::kBackward>(
+      fps, sys_days{2020_y / March / 30} + 10h));
 }
 
 TEST(td_footpath, backward_1) {

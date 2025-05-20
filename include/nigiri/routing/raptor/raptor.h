@@ -1110,14 +1110,10 @@ private:
                        });
     };
 
-#if defined(NIGIRI_TRACING)
-    auto const l_idx =
-        stop{tt_.route_location_seq_[r][stop_idx]}.location_idx();
-
     trace("┊ │k={}    et: current_best_at_stop={}, stop_idx={}, location={}\n",
           k, tt_.to_unixtime(day_at_stop, mam_at_stop), stop_idx,
-          location{tt_, l_idx});
-#endif
+          location{tt_,
+                   stop{tt_.route_location_seq_[r][stop_idx]}.location_idx()});
 
     constexpr auto const kNDaysToIterate = day_idx_t::value_t{2U};
     for (auto i = day_idx_t::value_t{0U}; i != kNDaysToIterate; ++i) {

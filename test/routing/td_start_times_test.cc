@@ -55,8 +55,6 @@ start_time=2020-03-30 11:50
       {time_at_start=2020-03-30 11:50, time_at_stop=2020-03-30 12:00, stop=A}
 start_time=2020-03-30 10:50
       {time_at_start=2020-03-30 10:50, time_at_stop=2020-03-30 11:00, stop=A}
-start_time=2020-03-30 09:50
-      {time_at_start=2020-03-30 09:50, time_at_stop=2020-03-30 10:00, stop=A}
 )";
 
 }  // namespace
