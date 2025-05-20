@@ -218,7 +218,6 @@ TEST(routing, td_footpath) {
 
   // Base: elevator available, no real-time information.
   EXPECT_EQ(kEverythingWorks, to_string(tt, run_search()));
-  (void)kEverythingWorks;
 
   // Switch to real-time footpaths but don't add any footpaths.
   // Represents "elevator broken forever".

@@ -90,19 +90,19 @@ std::optional<journey::leg> find_start_footpath(timetable const& tt,
     if (auto const it = q.td_start_.find(leg_start_location);
         it != end(q.td_start_)) {
       auto const duration =
-          get_td_duration<SearchDir>(it->second, j.start_time_);
+          get_td_duration<flip(SearchDir)>(it->second, leg_start_time);
       if (duration.has_value() &&
           is_better_or_eq(j.start_time_,
                           leg_start_time - (kFwd ? 1 : -1) * *duration)) {
         return journey::leg{SearchDir,
                             get_special_station(special_station::kStart),
                             leg_start_location,
-                            j.start_time_,
+                            leg_start_time - (kFwd ? 1 : -1) * *duration,
                             leg_start_time,
                             offset{leg_start_location, *duration,
                                    it->second.back().transport_mode_id_}};
       } else {
-#if NIGIRI_TRACE_RECONSTRUCT
+#ifdef NIGIRI_TRACE_RECONSTRUCT
         for (auto const& x : it->second) {
           trace_reconstruct("    td_start {}: {}\n", x.valid_from_,
                             x.duration());

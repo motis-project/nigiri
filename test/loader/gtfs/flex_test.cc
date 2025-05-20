@@ -141,7 +141,7 @@ TEST(flex, simple) {
     ss << "TRANSPORT " << t << " [" << tt.trip_id_strings_[trip_id].view()
        << "]\n";
     for (auto const [stop, window] :
-         utl::zip(tt.flex_transport_stop_seq_[t],
+         utl::zip(tt.flex_stop_seq_[tt.flex_transport_stop_seq_[t]],
                   tt.flex_transport_stop_time_windows_[t])) {
       stop.apply(utl::overloaded{[&](flex_area_idx_t const area) {
                                    ss << "  AREA "
