@@ -692,14 +692,13 @@ private:
               round_times_[k][kIntermodalTarget][Vias] = end_time;
               best_[kIntermodalTarget][Vias] = end_time;
               update_time_at_dest(k, end_time);
-            }
 
-            trace(
-                "┊ │k={}  TD INTERMODAL FOOTPATH: location={}, "
-                "start_time={}, "
-                "dist_to_end={} --> time_at_dest is better or equals {}\n",
-                k, location{tt_, l}, to_unix(fp_start_time), *duration,
-                to_unix(end_time));
+              trace(
+                  "┊ │k={}  TD INTERMODAL FOOTPATH: location={}, "
+                  "start_time={}, dist_to_end={} --> update to {}\n",
+                  k, location{tt_, l}, to_unix(fp_start_time), *duration,
+                  to_unix(end_time));
+            }
           }
         }
       }

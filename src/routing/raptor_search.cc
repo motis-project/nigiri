@@ -28,7 +28,6 @@ routing_result<raptor_stats> raptor_search_with_vias(
     raptor_state& r_state,
     query q,
     std::optional<std::chrono::seconds> const timeout) {
-
   if (rtt == nullptr) {
     using algo_t = raptor<SearchDir, false, Vias, search_mode::kOneToOne>;
     return search<SearchDir, algo_t>{tt,      rtt,          s_state,

@@ -160,7 +160,6 @@ void reconstruct_journey_with_vias(timetable const& tt,
   auto const is_better_or_eq = [](auto a, auto b) {
     return kFwd ? a <= b : a >= b;
   };
-  auto const is_better = [](auto a, auto b) { return kFwd ? a < b : a > b; };
   auto const is_ontrip = holds_alternative<unixtime_t>(q.start_time_);
   auto const start_matches = [&](delta_t const a, delta_t const b) {
     return is_ontrip ? is_better_or_eq(a, b) : a == b;
@@ -274,24 +273,32 @@ void reconstruct_journey_with_vias(timetable const& tt,
         continue;
       }
 
-      auto const traffic_day = static_cast<std::size_t>(
-          static_cast<int>(to_idx(day)) - event_mam.count() / 1440);
-      if (!is_transport_active(t, traffic_day)) {
+      auto const traffic_day = to_idx(day) - event_mam.count() / 1440;
+      if (!is_transport_active(t, static_cast<std::size_t>(traffic_day))) {
         trace_rc_transport_no_traffic;
         continue;
       }
 
-      auto const tr = transport{t, day_idx_t{traffic_day}};
-      auto const ev_time = tt.event_time(
-          tr, stop_idx, kFwd ? event_type::kArr : event_type::kDep);
+      auto tr = transport{t, day_idx_t{traffic_day}};
+      auto ev_time = tt.event_time(tr, stop_idx,
+                                   kFwd ? event_type::kArr : event_type::kDep);
       if (is_td_footpath) {
         auto const fp_time = delta_to_unix(base, time);
-        if (is_better(fp_time, ev_time)) {
-          trace_rc_transport_invalid_td_footpath;
-          continue;
+
+        for (auto i = 0; i != 2; ++i) {
+          tr = transport{t, day_idx_t{traffic_day - (kFwd ? i : -i)}};
+          ev_time = tt.event_time(tr, stop_idx,
+                                  kFwd ? event_type::kArr : event_type::kDep);
+          if (is_better_or_eq(ev_time, fp_time)) {
+            trace_rc_transport_invalid_td_footpath;
+            goto found;
+          }
         }
+
+        continue;
       }
 
+    found:
       auto leg = find_entry_in_prev_round(
           k,
           {.t_ = tr,
@@ -586,16 +593,42 @@ void reconstruct_journey_with_vias(timetable const& tt,
       }
 
       for (auto const& [from, td] : q.td_dest_) {
-        auto const d =
-            get_td_duration<SearchDir>(td, delta_to_unix(base, curr_time));
+        auto const t = delta_to_unix(base, curr_time);
+        auto const d = get_td_duration<flip(SearchDir)>(td, t);
         if (d.has_value()) {
           auto const ret = find_dest_leg(
               k, l, {from, *d, td.back().transport_mode_id_}, true);
           if (ret.has_value()) {
             return std::move(*ret);
+          } else {
+            trace_reconstruct(
+                "intermodal td_footpath dest: no leg found for: {} at {}\n",
+                location{tt, from}, t);
+#ifdef NIGIRI_TRACE_RECONSTRUCT
+            for (auto const& x : td) {
+              trace_reconstruct("  valid_from={}, duration={}\n", x.valid_from_,
+                                x.duration_);
+            }
+#endif
           }
+        } else {
+          trace_reconstruct(
+              "intermodal td_footpath dest: no td duration for: {} at {}\n",
+              location{tt, from}, t);
+#ifdef NIGIRI_TRACE_RECONSTRUCT
+          for (auto const& x : td) {
+            trace_reconstruct("  valid_from={}, duration={}\n", x.valid_from_,
+                              x.duration_);
+          }
+#endif
         }
       }
+
+      trace_reconstruct(
+          "intermodal destination reconstruction failed at k={}, t={}, v={}, "
+          "stop={}, time={}, journey=[{}, {}]",
+          k, j.transfers_, v, location{tt, l}, delta_to_unix(base, curr_time),
+          j.start_time_, j.dest_time_);
 
       throw utl::fail(
           "intermodal destination reconstruction failed at k={}, t={}, v={}, "
