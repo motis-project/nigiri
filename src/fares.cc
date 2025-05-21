@@ -15,7 +15,7 @@ namespace nigiri {
 
 using routing::journey;
 
-#define NIGIRI_FARES_DEBUG
+// #define NIGIRI_FARES_DEBUG
 #ifdef NIGIRI_FARES_DEBUG
 #define trace(...) fmt::println(__VA_ARGS__)
 #else
