@@ -12,7 +12,10 @@
 #include "nigiri/timetable.h"
 
 namespace nigiri {
+
 using routing::journey;
+
+constexpr auto const kFaresDebug = false;
 
 struct leg_group {
   friend std::ostream& operator<<(std::ostream& out, leg_group const x) {
@@ -296,11 +299,14 @@ timeframe_group_idx_t match_timeframe(timetable const& tt,
           local_time < day + tf.end_time_ &&  //
           day_idx < tf.service_.size() && tf.service_.test(day_idx)) {
 
-        std::cout << "TIMEFRAME MATCH: " << time << ", day=" << day
-                  << ", day_idx=" << day_idx << ", timeframe_group_id="
-                  << tt.strings_.get(f.timeframe_id_[i])
-                  << ", service=" << tf.service_
-                  << ", service_id=" << tt.strings_.get(tf.service_id_) << "\n";
+        if constexpr (kFaresDebug) {
+          std::cout << "TIMEFRAME MATCH: " << time << ", day=" << day
+                    << ", day_idx=" << day_idx << ", timeframe_group_id="
+                    << tt.strings_.get(f.timeframe_id_[i])
+                    << ", service=" << tf.service_
+                    << ", service_id=" << tt.strings_.get(tf.service_id_)
+                    << "\n";
+        }
 
         return i;
       }
@@ -313,12 +319,14 @@ std::pair<source_idx_t, std::vector<fares::fare_leg_rule> > match_leg_rule(
     timetable const& tt,
     rt_timetable const* rtt,
     effective_fare_leg_t const& joined_legs) {
-  std::cout << "EFFECTIVE LEG:\n";
-  for (auto const& l : joined_legs) {
-    l->print(std::cout, tt, rtt);
+  if constexpr (kFaresDebug) {
+    std::cout << "EFFECTIVE LEG:\n";
+    for (auto const& l : joined_legs) {
+      l->print(std::cout, tt, rtt);
+      std::cout << "\n";
+    }
     std::cout << "\n";
   }
-  std::cout << "\n";
 
   auto const& first = joined_legs.front();
   auto const& last = joined_legs.back();
@@ -392,8 +400,10 @@ std::pair<source_idx_t, std::vector<fares::fare_leg_rule> > match_leg_rule(
              r.to_timeframe_group_ == x.to_timeframe_group_);
 
         if (matches) {
-          std::cout << "RULE MATCH\n\t\tRULE = " << leg_rule{tt, f, r}
-                    << "\n\t\tLEG = " << leg_rule{tt, f, x} << "\n";
+          if constexpr (kFaresDebug) {
+            std::cout << "RULE MATCH\n\t\tRULE = " << leg_rule{tt, f, r}
+                      << "\n\t\tLEG = " << leg_rule{tt, f, x} << "\n";
+          }
           matching_rules.push_back(r);
         }
       }
