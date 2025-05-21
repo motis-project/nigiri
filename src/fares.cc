@@ -119,6 +119,22 @@ std::ostream& operator<<(std::ostream& out,
   std::unreachable();
 }
 
+}  // namespace nigiri
+
+template <>
+struct fmt::formatter<nigiri::leg_group> : ostream_formatter {};
+
+template <>
+struct fmt::formatter<nigiri::leg_rule> : ostream_formatter {};
+
+template <>
+struct fmt::formatter<nigiri::transfer_rule> : ostream_formatter {};
+
+template <>
+struct fmt::formatter<nigiri::journey_leg> : ostream_formatter {};
+
+namespace nigiri {
+
 bool contains(auto&& range, auto&& needle) {
   return std::ranges::find(range, needle) != std::end(range);
 }
@@ -534,9 +550,8 @@ bool matches([[maybe_unused]] timetable const& tt,
         "        concrete_to: {}",
         fmt::streamed(leg_group{tt, f, r.to_leg_group_}),
         fmt::streamed(leg_group{tt, f, next_rule.leg_group_idx_}),
-        concrete_to | std::views::transform([&](auto&& x) {
-          return fmt::streamed(leg_group{tt, f, x});
-        }));
+        concrete_to | std::views::transform(
+                          [&](auto&& x) { return leg_group{tt, f, x}; }));
   }
   if (transfer_limit_ok && from_leg_group_matches && to_leg_group_matches) {
     trace("      rule matched!");
