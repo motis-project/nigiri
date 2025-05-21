@@ -19,6 +19,7 @@
 #include "nigiri/loader/gtfs/calendar_date.h"
 #include "nigiri/loader/gtfs/fares.h"
 #include "nigiri/loader/gtfs/files.h"
+#include "nigiri/loader/gtfs/flex.h"
 #include "nigiri/loader/gtfs/local_to_utc.h"
 #include "nigiri/loader/gtfs/noon_offsets.h"
 #include "nigiri/loader/gtfs/route.h"
@@ -99,7 +100,7 @@ void load_timetable(loader_config const& config,
                     hash_map<bitfield, bitfield_idx_t>& bitfield_indices,
                     assistance_times* assistance,
                     shapes_storage* shapes_data) {
-  nigiri::scoped_timer const global_timer{"gtfs parser"};
+  auto const global_timer = nigiri::scoped_timer{"gtfs parser"};
 
   auto const load = [&](std::string_view file_name) -> file {
     return d.exists(file_name) ? d.get_file(file_name) : file{};
@@ -124,8 +125,17 @@ void load_timetable(loader_config const& config,
   auto trip_data =
       read_trips(tt, routes, service, shape_states, load(kTripsFile).data(),
                  config.bikes_allowed_default_, config.cars_allowed_default_);
+  auto const booking_rules = parse_booking_rules(
+      tt, load(kBookingRulesFile).data(), service, bitfield_indices);
+  auto const location_groups =
+      parse_location_groups(tt, load(kLocationGroupsFile).data());
+  auto const flex_areas =
+      parse_flex_areas(tt, src, load(kLocationsFile).data());
+  parse_location_group_stops(tt, load(kLocationGroupStopsFile).data(),
+                             location_groups, stops);
   read_frequencies(trip_data, load(kFrequenciesFile).data());
-  read_stop_times(tt, trip_data, stops, load(kStopTimesFile).data(),
+  read_stop_times(tt, trip_data, stops, flex_areas, booking_rules,
+                  location_groups, load(kStopTimesFile).data(),
                   shapes_data != nullptr);
   load_fares(tt, d, service, routes, stops);
   utl::verify(tt.fares_.size() == to_idx(src) + 1U, "fares: size={} src={}",
@@ -134,12 +144,15 @@ void load_timetable(loader_config const& config,
   {
     auto const timer = scoped_timer{"loader.gtfs.trips.sort"};
     for (auto& t : trip_data.data_) {
-      if (t.requires_sorting_) {
+      if (t.requires_sorting_ &&
+          (t.event_times_.empty() || t.flex_time_windows_.empty())) {
         t.stop_headsigns_.resize(t.seq_numbers_.size());
-        std::tie(t.seq_numbers_, t.stop_seq_, t.event_times_, t.stop_headsigns_,
+        std::tie(t.seq_numbers_, t.stop_seq_, t.event_times_,
+                 t.flex_time_windows_, t.stop_headsigns_,
                  t.distance_traveled_) =
             sort_by(t.seq_numbers_, t.stop_seq_, t.event_times_,
-                    t.stop_headsigns_, t.distance_traveled_);
+                    t.flex_time_windows_, t.stop_headsigns_,
+                    t.distance_traveled_);
       }
     }
   }
@@ -240,7 +253,7 @@ void load_timetable(loader_config const& config,
     auto const timer = scoped_timer{"loader.gtfs.trips.expand"};
 
     for (auto const [i, t] : utl::enumerate(trip_data.data_)) {
-      if (t.block_ != nullptr) {
+      if (t.block_ != nullptr || !t.flex_time_windows_.empty()) {
         continue;
       }
       add_trip({gtfs_trip_idx_t{i}}, t.service_);
@@ -265,7 +278,7 @@ void load_timetable(loader_config const& config,
     auto const timer = scoped_timer{"loader.gtfs.write_trips"};
 
     progress_tracker->status("Write Trips")
-        .out_bounds(85.F, 98.F)
+        .out_bounds(85.F, 97.F)
         .in_high(route_services.size());
 
     auto const is_train_number = [](auto const& s) {
@@ -277,8 +290,6 @@ void load_timetable(loader_config const& config,
     auto stop_seq_numbers = basic_string<stop_idx_t>{};
     auto const source_file_idx =
         tt.register_source_file((d.path() / kStopTimesFile).generic_string());
-    tt.src_trips_.emplace_back(trip_idx_t{tt.trip_ids_.size()},
-                               trip_idx_t::invalid());
     tt.trip_direction_id_.resize(tt.n_trips() + trip_data.data_.size());
     for (auto& trp : trip_data.data_) {
       std::uint32_t train_nr = 0U;
@@ -295,7 +306,6 @@ void load_timetable(loader_config const& config,
           {source_file_idx, trp.from_line_, trp.to_line_}, train_nr,
           stop_seq_numbers, trp.direction_id_);
     }
-    tt.src_trips_.back().to_ = trip_idx_t{tt.trip_ids_.size()};
 
     auto const attributes = basic_string<attribute_combination_idx_t>{};
     auto lines = hash_map<std::string, trip_line_idx_t>{};
@@ -412,6 +422,23 @@ void load_timetable(loader_config const& config,
     // Build transport ranges.
     for (auto const& t : trip_data.data_) {
       tt.trip_transport_ranges_.emplace_back(t.transport_ranges_);
+    }
+  }
+
+  {
+    progress_tracker->status("Flex")
+        .out_bounds(97.F, 98.F)
+        .in_high(route_services.size());
+
+    auto const timer = scoped_timer{"loader.gtfs.write_flex"};
+
+    auto stop_seq = stop_seq_map_t{};
+    for (auto const& trp : trip_data.data_) {
+      if (trp.flex_time_windows_.empty()) {
+        continue;
+      }
+      expand_flex_trip(tt, bitfield_indices, stop_seq, noon_offsets,
+                       tt.date_range_, trp);
     }
   }
 }

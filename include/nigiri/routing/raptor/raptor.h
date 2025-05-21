@@ -692,14 +692,13 @@ private:
               round_times_[k][kIntermodalTarget][Vias] = end_time;
               best_[kIntermodalTarget][Vias] = end_time;
               update_time_at_dest(k, end_time);
-            }
 
-            trace(
-                "┊ │k={}  TD INTERMODAL FOOTPATH: location={}, "
-                "start_time={}, "
-                "dist_to_end={} --> time_at_dest is better or equals {}\n",
-                k, location{tt_, l}, to_unix(fp_start_time), *duration,
-                to_unix(end_time));
+              trace(
+                  "┊ │k={}  TD INTERMODAL FOOTPATH: location={}, "
+                  "start_time={}, dist_to_end={} --> update to {}\n",
+                  k, location{tt_, l}, to_unix(fp_start_time), *duration,
+                  to_unix(end_time));
+            }
           }
         }
       }
@@ -1110,14 +1109,10 @@ private:
                        });
     };
 
-#if defined(NIGIRI_TRACING)
-    auto const l_idx =
-        stop{tt_.route_location_seq_[r][stop_idx]}.location_idx();
-
     trace("┊ │k={}    et: current_best_at_stop={}, stop_idx={}, location={}\n",
           k, tt_.to_unixtime(day_at_stop, mam_at_stop), stop_idx,
-          location{tt_, l_idx});
-#endif
+          location{tt_,
+                   stop{tt_.route_location_seq_[r][stop_idx]}.location_idx()});
 
     constexpr auto const kNDaysToIterate = day_idx_t::value_t{2U};
     for (auto i = day_idx_t::value_t{0U}; i != kNDaysToIterate; ++i) {

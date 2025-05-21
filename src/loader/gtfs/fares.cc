@@ -139,8 +139,8 @@ hash_map<std::string, leg_group_idx_t> parse_leg_rules(
                 : leg_group_idx_t::invalid();
         auto const fare_product = find(products, r.fare_product_id_->view());
         if (!fare_product.has_value()) {
-          log(log_lvl::error, "gtfs.fares", "leg_rules: product {} not found",
-              r.fare_product_id_->view());
+          log(log_lvl::error, "nigiri.loader.gtfs.fares",
+              "leg_rules: product {} not found", r.fare_product_id_->view());
           return;
         }
 
@@ -219,7 +219,7 @@ hash_map<std::string, timeframe_group_idx_t> parse_timeframes(
               .service_ = traffic_days,
               .service_id_ = tt.strings_.store(r.service_id_->view())});
         } catch (...) {
-          log(log_lvl::error, "gtfs.fares", "timeframes: service {} not found",
+          log(log_lvl::error, "nigiri.loader.gtfs.fares", "timeframes: service {} not found",
               r.service_id_->view());
         }
       });
@@ -284,14 +284,14 @@ hash_map<std::string, route_idx_t> parse_route_networks(
       file_content, [&](route_network_record const& r) {
         auto const network_idx = find(networks, r.network_id_->view());
         if (!network_idx.has_value()) {
-          log(log_lvl::error, "gtfs.fares",
+          log(log_lvl::error, "nigiri.loader.gtfs.fares",
               "route_networks: network {} not found", r.network_id_->view());
           return;
         }
 
         auto const route_it = routes.find(r.route_id_->view());
         if (route_it == end(routes)) {
-          log(log_lvl::error, "gtfs.fares",
+          log(log_lvl::error, "nigiri.loader.gtfs.fares",
               "route_networks: route {} not found", r.route_id_->view());
           return;
         }
@@ -306,7 +306,7 @@ hash_map<std::string, location_idx_t> parse_stop_areas(
     timetable& tt,
     std::string_view file_content,
     hash_map<std::string, area_idx_t> const& areas,
-    locations_map const& stops) {
+    stops_map_t const& stops) {
   struct stop_area_record {
     utl::csv_col<utl::cstr, UTL_NAME("area_id")> area_id_;
     utl::csv_col<utl::cstr, UTL_NAME("stop_id")> stop_id_;
@@ -319,14 +319,14 @@ hash_map<std::string, location_idx_t> parse_stop_areas(
       file_content, [&](stop_area_record const& r) {
         auto const l_idx = find(stops, r.stop_id_->view());
         if (!l_idx.has_value()) {
-          log(log_lvl::error, "gtfs.fares", "stop_areas: stop {} not found",
+          log(log_lvl::error, "nigiri.loader.gtfs.fares", "stop_areas: stop {} not found",
               r.stop_id_->view());
           return;
         }
 
         auto const area_idx = find(areas, r.area_id_->view());
         if (!area_idx.has_value()) {
-          log(log_lvl::error, "gtfs.fares", "stop_areas: area {} not found",
+          log(log_lvl::error, "nigiri.loader.gtfs.fares", "stop_areas: area {} not found",
               r.area_id_->view());
           return;
         }
@@ -340,7 +340,7 @@ void parse_fare_leg_join_rules(
     std::string_view file_content,
     fares& f,
     hash_map<std::string, network_idx_t> const& networks,
-    locations_map const& stops) {
+    stops_map_t const& stops) {
   struct fare_leg_join_rule_record {
     utl::csv_col<utl::cstr, UTL_NAME("from_network_id")> from_network_id_;
     utl::csv_col<utl::cstr, UTL_NAME("to_network_id")> to_network_id_;
@@ -354,7 +354,7 @@ void parse_fare_leg_join_rules(
         auto const from_network_idx =
             find(networks, r.from_network_id_->view());
         if (!from_network_idx.has_value()) {
-          log(log_lvl::error, "gtfs.fares",
+          log(log_lvl::error, "nigiri.loader.gtfs.fares",
               "fare_leg_join_rules: network '{}' not found",
               r.from_network_id_->view());
           return;
@@ -362,7 +362,7 @@ void parse_fare_leg_join_rules(
 
         auto const to_network_idx = find(networks, r.to_network_id_->view());
         if (!to_network_idx.has_value()) {
-          log(log_lvl::error, "gtfs.fares",
+          log(log_lvl::error, "nigiri.loader.gtfs.fares",
               "fare_leg_join_rules: network '{}' not found",
               r.to_network_id_->view());
           return;
@@ -411,7 +411,7 @@ void parse_fare_transfer_rules(
   utl::for_each_row<fare_transfer_rule_record>(
       file_content, [&](fare_transfer_rule_record const& r) {
         if (r.transfer_count_->value_or(-1) == 0) {
-          log(log_lvl::error, "gtfs.fares",
+          log(log_lvl::error, "nigiri.loader.gtfs.fares",
               "fare transfer rule with 0 transfers not allowed");
           return;
         }
@@ -480,7 +480,7 @@ void load_fares(timetable& tt,
                 dir const& d,
                 traffic_days_t const& services,
                 route_map_t const& routes,
-                locations_map const& stops) {
+                stops_map_t const& stops) {
   auto const load = [&](std::string_view file_name) -> file {
     return d.exists(file_name) ? d.get_file(file_name) : file{};
   };

@@ -252,9 +252,8 @@ inline stop_seq_t const* get_stop_seq(trip_data const& trip_data,
   if (!t.stop_seq_.empty()) {
     return &t.stop_seq_;
   } else if (t.trips_.size() == 1U) {
-    if (trip_data.get(t.trips_.front()).stop_seq_.size() <= 1) {
-      std::terminate();
-    }
+    utl::verify(trip_data.get(t.trips_.front()).stop_seq_.size() > 1,
+                "trip must have at least two stops");
     return &trip_data.get(t.trips_.front()).stop_seq_;
   } else {
     stop_seq_cache.clear();

@@ -60,18 +60,6 @@ struct string_store {
     }
   }
 
-  template <typename Ctx>
-  friend void serialize(Ctx& c,
-                        string_store* origin,
-                        cista::offset_t const offset) {
-    cista::serialize(
-        c, &origin->strings_,
-        offset + cista::member_offset(origin, &string_store::strings_));
-    cista::serialize(
-        c, &origin->cache_,
-        offset + cista::member_offset(origin, &string_store::cache_));
-  }
-
   template <typename Ctx, typename Fn>
   friend void recurse(Ctx&, string_store* el, Fn&& fn) {
     fn(&el->cache_);
