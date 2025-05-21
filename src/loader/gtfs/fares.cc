@@ -219,8 +219,8 @@ hash_map<std::string, timeframe_group_idx_t> parse_timeframes(
               .service_ = traffic_days,
               .service_id_ = tt.strings_.store(r.service_id_->view())});
         } catch (...) {
-          log(log_lvl::error, "nigiri.loader.gtfs.fares", "timeframes: service {} not found",
-              r.service_id_->view());
+          log(log_lvl::error, "nigiri.loader.gtfs.fares",
+              "timeframes: service {} not found", r.service_id_->view());
         }
       });
   return m;
@@ -319,15 +319,15 @@ hash_map<std::string, location_idx_t> parse_stop_areas(
       file_content, [&](stop_area_record const& r) {
         auto const l_idx = find(stops, r.stop_id_->view());
         if (!l_idx.has_value()) {
-          log(log_lvl::error, "nigiri.loader.gtfs.fares", "stop_areas: stop {} not found",
-              r.stop_id_->view());
+          log(log_lvl::error, "nigiri.loader.gtfs.fares",
+              "stop_areas: stop {} not found", r.stop_id_->view());
           return;
         }
 
         auto const area_idx = find(areas, r.area_id_->view());
         if (!area_idx.has_value()) {
-          log(log_lvl::error, "nigiri.loader.gtfs.fares", "stop_areas: area {} not found",
-              r.area_id_->view());
+          log(log_lvl::error, "nigiri.loader.gtfs.fares",
+              "stop_areas: area {} not found", r.area_id_->view());
           return;
         }
 
