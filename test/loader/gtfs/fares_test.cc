@@ -298,8 +298,9 @@ std::string to_string(timetable const& tt,
       auto const product =
           transfer.rule_->fare_product_ == fare_product_idx_t::invalid()
               ? ""
-              : tt.strings_.get(
-                    f.fare_products_[transfer.rule_->fare_product_].name_);
+              : tt.strings_.get(f.fare_products_[transfer.rule_->fare_product_]
+                                    .front()
+                                    .name_);
       ss << "TRANSFER PRODUCT: " << product << "\n";
       ss << "RULE: " << transfer.rule_->fare_transfer_type_ << "\n";
     }
@@ -317,7 +318,7 @@ std::string to_string(timetable const& tt,
       ss << "PRODUCTS\n";
       for (auto const& r : l.rule_) {
         auto const& f = tt.fares_[l.src_];
-        auto const& p = f.fare_products_[r.fare_product_];
+        auto const& p = f.fare_products_[r.fare_product_].front();
         auto const& m = f.fare_media_[p.media_];
         auto const& rider = f.rider_categories_[p.rider_category_];
         ss << tt.strings_.get(p.name_) << " [priority=" << r.rule_priority_

@@ -399,10 +399,23 @@ std::pair<source_idx_t, std::vector<fares::fare_leg_rule> > match_leg_rule(
       }
     }
   }
-  utl::sort(matching_rules,
-            [&](fares::fare_leg_rule const& a, fares::fare_leg_rule const& b) {
-              return -a.rule_priority_ < -b.rule_priority_;
-            });
+  utl::sort(matching_rules, [&](fares::fare_leg_rule const& a,
+                                fares::fare_leg_rule const& b) {
+    auto const& ap = f.fare_products_[a.fare_product_].front();
+    auto const& bp = f.fare_products_[b.fare_product_].front();
+    auto const a_rider_not_default =
+        ap.rider_category_ == rider_category_idx_t::invalid() ||
+        !f.rider_categories_[ap.rider_category_].is_default_fare_category_;
+    auto const b_rider_not_default =
+        bp.rider_category_ == rider_category_idx_t::invalid() ||
+        !f.rider_categories_[bp.rider_category_].is_default_fare_category_;
+    return std::tuple{-a.rule_priority_, a_rider_not_default,
+                      ap.rider_category_, ap.amount_,
+                      tt.strings_.get(ap.name_)} <
+           std::tuple{-b.rule_priority_, b_rider_not_default,
+                      bp.rider_category_, bp.amount_,
+                      tt.strings_.get(bp.name_)};
+  });
 
   if (!matching_rules.empty()) {
     auto const highest_prio = matching_rules.front().rule_priority_;
