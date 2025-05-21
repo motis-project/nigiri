@@ -318,7 +318,7 @@ std::string to_string(timetable const& tt,
       ss << "PRODUCTS\n";
       for (auto const& r : l.rule_) {
         auto const& f = tt.fares_[l.src_];
-        auto const& p = f.fare_products_[r.fare_product_].front();
+        auto const p = f.fare_products_[r.fare_product_].front();
         auto const& m = f.fare_media_[p.media_];
         auto const& rider = f.rider_categories_[p.rider_category_];
         ss << tt.strings_.get(p.name_) << " [priority=" << r.rule_priority_
