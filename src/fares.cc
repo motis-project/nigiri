@@ -350,7 +350,7 @@ std::pair<source_idx_t, std::vector<fares::fare_leg_rule> > match_leg_rule(
 #ifdef NIGIRI_FARES_DEBUG
   trace("EFFECTIVE LEG");
   for (auto const& l : joined_legs) {
-    trace("{}", fmt::streamed(journey_leg{*l, tt, rtt}));
+    trace("{}", journey_leg{*l, tt, rtt});
   }
   trace("\n");
 #endif
@@ -427,9 +427,8 @@ std::pair<source_idx_t, std::vector<fares::fare_leg_rule> > match_leg_rule(
              r.to_timeframe_group_ == x.to_timeframe_group_);
 
         if (matches) {
-          trace("RULE MATCH\n\t\tRULE = {}\n\t\tLEG = {}\n",
-                fmt::streamed(leg_rule{tt, f, r}),
-                fmt::streamed(leg_rule{tt, f, x}));
+          trace("RULE MATCH\n\t\tRULE = {}\n\t\tLEG = {}\n", leg_rule{tt, f, r},
+                leg_rule{tt, f, x});
           matching_rules.push_back(r);
         }
       }
@@ -536,11 +535,10 @@ bool matches([[maybe_unused]] timetable const& tt,
         "        r.from_leg_group: {}\n"
         "        curr_rule.leg_group: {}\n"
         "        concrete_from: {}",
-        fmt::streamed(leg_group{tt, f, r.from_leg_group_}),
-        fmt::streamed(leg_group{tt, f, curr_rule.leg_group_idx_}),
-        concrete_from | std::views::transform([&](auto&& x) {
-          return fmt::streamed(leg_group{tt, f, x});
-        }));
+        leg_group{tt, f, r.from_leg_group_},
+        leg_group{tt, f, curr_rule.leg_group_idx_},
+        concrete_from | std::views::transform(
+                            [&](auto&& x) { return leg_group{tt, f, x}; }));
   }
   if (!to_leg_group_matches) {
     trace(
@@ -548,8 +546,8 @@ bool matches([[maybe_unused]] timetable const& tt,
         "        r.to_leg_group: {}\n"
         "        next_rule.leg_group: {}\n"
         "        concrete_to: {}",
-        fmt::streamed(leg_group{tt, f, r.to_leg_group_}),
-        fmt::streamed(leg_group{tt, f, next_rule.leg_group_idx_}),
+        leg_group{tt, f, r.to_leg_group_},
+        leg_group{tt, f, next_rule.leg_group_idx_},
         concrete_to | std::views::transform(
                           [&](auto&& x) { return leg_group{tt, f, x}; }));
   }
