@@ -16,13 +16,6 @@
 #define trace(...) fmt::print(__VA_ARGS__)
 #endif
 
-#define NIGIRI_TRACE_RECONSTRUCT
-#ifdef NIGIRI_TRACE_RECONSTRUCT
-#define trace_reconstruct(...) fmt::print(__VA_ARGS__)
-#else
-#define trace_reconstruct(...)
-#endif
-
 #define trace_print_state(...)               \
   fmt::print(__VA_ARGS__);                   \
   state_.print<Vias>(tt_, base(), kInvalid); \
@@ -32,6 +25,19 @@
   trace_print_state("STATE AFTER ROUND {}\n", k)
 
 #define trace_print_init_state(...) trace_print_state("INIT\n")
+
+#else
+
+#define trace_print_state_after_round()
+#define trace_print_init_state()
+#define trace_upd(...)
+#define trace(...)
+
+#endif
+
+// #define NIGIRI_TRACE_RECONSTRUCT
+#ifdef NIGIRI_TRACE_RECONSTRUCT
+#define trace_reconstruct(...) fmt::print(__VA_ARGS__)
 
 #define trace_rc_find_start_footpath \
   trace_reconstruct("find_start_footpath()\n")
@@ -198,6 +204,7 @@
       delta_to_unix(base, stay_start))
 
 #else
+
 #define trace_reconstruct(...)
 #define trace_rc_find_start_footpath
 #define trace_rc_direct_start_found
@@ -223,8 +230,4 @@
 #define trace_rc_legs_found
 #define trace_rc_check_fp
 
-#define trace_print_state_after_round()
-#define trace_print_init_state()
-#define trace_upd(...)
-#define trace(...)
 #endif

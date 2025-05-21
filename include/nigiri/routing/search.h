@@ -178,7 +178,7 @@ struct search {
         timeout_(timeout) {
     utl::sort(q_.start_);
     utl::sort(q_.destination_);
-    q.sanitize(tt);
+    q_.sanitize(tt);
   }
 
   routing_result<algo_stats_t> execute() {
@@ -304,6 +304,8 @@ struct search {
         return a.start_time_ < b.start_time_;
       });
     }
+
+    utl::erase_if(state_.results_, [&](auto&& j) { return j.legs_.empty(); });
 
     stats_.execute_time_ =
         std::chrono::duration_cast<std::chrono::milliseconds>(

@@ -160,12 +160,12 @@ void read_transfers(stop_map_t& stops, std::string_view file_content) {
       });
 }
 
-locations_map read_stops(source_idx_t const src,
-                         timetable& tt,
-                         tz_map& timezones,
-                         std::string_view stops_file_content,
-                         std::string_view transfers_file_content,
-                         unsigned link_stop_distance) {
+stops_map_t read_stops(source_idx_t const src,
+                       timetable& tt,
+                       tz_map& timezones,
+                       std::string_view stops_file_content,
+                       std::string_view transfers_file_content,
+                       unsigned link_stop_distance) {
   auto const timer = scoped_timer{"gtfs.loader.stops"};
 
   auto const progress_tracker = utl::get_active_progress_tracker();
@@ -183,7 +183,7 @@ locations_map read_stops(source_idx_t const src,
     utl::csv_col<utl::cstr, UTL_NAME("stop_lon")> lon_;
   };
 
-  locations_map locations;
+  stops_map_t locations;
   stop_map_t stops;
   hash_map<std::string_view, std::vector<stop*>> equal_names;
   utl::line_range{utl::make_buf_reader(stops_file_content,

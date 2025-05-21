@@ -11,6 +11,7 @@
 
 #include "ankerl/cista_adapter.h"
 
+#include "cista/char_traits.h"
 #include "cista/containers/array.h"
 #include "cista/containers/bitset.h"
 #include "cista/containers/bitvec.h"
@@ -18,6 +19,7 @@
 #include "cista/containers/mutable_fws_multimap.h"
 #include "cista/containers/nvec.h"
 #include "cista/containers/optional.h"
+#include "cista/containers/rtree.h"
 #include "cista/containers/string.h"
 #include "cista/containers/tuple.h"
 #include "cista/containers/variant.h"
@@ -25,8 +27,6 @@
 #include "cista/containers/vecvec.h"
 #include "cista/reflection/printable.h"
 #include "cista/strong.h"
-
-#include "char_traits/char_traits.h"
 
 #include "geo/latlng.h"
 
@@ -132,6 +132,9 @@ using mm_vec = cista::basic_mmap_vec<T, std::uint64_t>;
 template <typename Key, typename V, typename SizeType = cista::base_t<Key>>
 using mm_vecvec = cista::basic_vecvec<Key, mm_vec<V>, mm_vec<SizeType>>;
 
+template <typename T>
+using rtree = cista::raw::rtree<T>;
+
 template <typename Key, typename T>
 struct paged_vecvec_helper {
   using data_t =
@@ -175,6 +178,13 @@ using merged_trips_idx_t =
     cista::strong<std::uint32_t, struct _merged_trips_idx>;
 using footpath_idx_t = cista::strong<std::uint32_t, struct _footpath_idx>;
 using source_file_idx_t = cista::strong<std::uint16_t, struct _source_file_idx>;
+using flex_area_idx_t = cista::strong<std::uint32_t, struct _flex_area_idx>;
+using location_group_idx_t =
+    cista::strong<std::uint32_t, struct _location_group_idx>;
+using booking_rule_idx_t =
+    cista::strong<std::uint32_t, struct _booking_rule_idx>;
+
+using flex_stop_t = variant<flex_area_idx_t, location_group_idx_t>;
 
 using profile_idx_t = std::uint8_t;
 constexpr auto const kWheelchairProfile = profile_idx_t{2U};
@@ -206,6 +216,10 @@ using attribute_combination_idx_t =
 using provider_idx_t = cista::strong<std::uint32_t, struct _provider_idx>;
 using direction_id_t = cista::strong<std::uint8_t, struct _direction_id>;
 using route_type_t = cista::strong<std::uint16_t, struct _route_type>;
+using flex_transport_idx_t =
+    cista::strong<std::uint32_t, struct _flex_transport_idx>;
+using flex_stop_seq_idx_t =
+    cista::strong<std::uint32_t, struct _flex_stop_seq_idx>;
 
 using transport_range_t = pair<transport_idx_t, interval<stop_idx_t>>;
 
@@ -364,12 +378,12 @@ auto to_range(Collection const& c) {
   }
 }
 
-using transport_mode_id_t = std::int32_t;
+using transport_mode_id_t = std::uint32_t;
 
 using via_offset_t = std::uint8_t;
 
 template <typename T>
-using basic_string = std::basic_string<T, char_traits::char_traits<T>>;
+using basic_string = std::basic_string<T, cista::char_traits<T>>;
 
 }  // namespace nigiri
 
@@ -511,6 +525,52 @@ inline local_time to_local_time(timezone const& tz, unixtime_t const t) {
             reinterpret_cast<date::time_zone const*>(x.second), t);
       }});
 }
+
+struct booking_rule {
+  enum class type : std::uint8_t {
+    kRealTimeBooking,
+    kUpToSameDayBooking,
+    kUpToPrioDaysBooking
+  };
+
+  CISTA_COMPARABLE()
+
+  // booking_type = 0
+  struct real_time {};
+
+  // booking_type = 1
+  // Up to same-day booking with advanced notice.
+  struct prior_notice {
+    i32_minutes prior_notice_duration_min_{0U};
+    i32_minutes prior_notice_duration_max_{
+        std::numeric_limits<duration_t::rep>::max()};
+  };
+
+  // booking_type = 2
+  // Up to prior day(s) booking.
+  struct prior_day {
+    std::uint16_t prior_notice_last_day_{0U};
+    minutes_after_midnight_t prior_notice_last_time_{0U};
+
+    std::uint16_t prior_notice_start_day_{
+        std::numeric_limits<std::int16_t>::max()};
+    minutes_after_midnight_t prior_notice_start_time_{0U};
+
+    bitfield_idx_t prior_notice_bitfield_{bitfield_idx_t::invalid()};
+  };
+
+  using booking_type = variant<real_time, prior_notice, prior_day>;
+
+  string_idx_t id_;
+  booking_type type_;
+
+  string_idx_t message_;
+  string_idx_t pickup_message_;
+  string_idx_t drop_off_message_;
+  string_idx_t phone_number_;
+  string_idx_t info_url_;
+  string_idx_t booking_url_;
+};
 
 }  // namespace nigiri
 

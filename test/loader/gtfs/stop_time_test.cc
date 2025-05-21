@@ -28,11 +28,11 @@ TEST(gtfs, quoted_interpolate) {
       nullptr, nullptr, nullptr, "101255-L001I01S1FES", trip_direction_idx_t{},
       "", direction_id_t::invalid(), shape_idx_t::invalid(), false, false);
   auto tt = timetable{};
-  auto stops = locations_map{};
+  auto stops = stops_map_t{};
   stops.emplace("101255-6", location_idx_t{0});
   stops.emplace("101255-48", location_idx_t{1});
   stops.emplace("101255-23", location_idx_t{2});
-  read_stop_times(tt, trips, stops, kStopTimes, true);
+  read_stop_times(tt, trips, stops, {}, {}, {}, kStopTimes, true);
 
   EXPECT_TRUE(trips.data_[gtfs_trip_idx_t{0}].requires_interpolation_);
   trips.data_[gtfs_trip_idx_t{0}].interpolate();
@@ -61,11 +61,11 @@ L001I01S1FES,08:31:00,08:37:00,23,19,,0,0,7.473
       nullptr, nullptr, nullptr, "L001I01S1FES", trip_direction_idx_t{}, "",
       direction_id_t::invalid(), shape_idx_t::invalid(), false, false);
   auto tt = timetable{};
-  auto stops = locations_map{};
+  auto stops = stops_map_t{};
   stops.emplace("6", location_idx_t{0});
   stops.emplace("48", location_idx_t{1});
   stops.emplace("23", location_idx_t{2});
-  read_stop_times(tt, trips, stops, kStopTimes, true);
+  read_stop_times(tt, trips, stops, {}, {}, {}, kStopTimes, true);
 
   EXPECT_TRUE(trips.data_[gtfs_trip_idx_t{0}].requires_interpolation_);
   trips.data_[gtfs_trip_idx_t{0}].interpolate();
@@ -94,11 +94,11 @@ L001I01S1FES,08:31:00,,23,19,,0,0,7.473
       nullptr, nullptr, nullptr, "L001I01S1FES", trip_direction_idx_t{}, "",
       direction_id_t::invalid(), shape_idx_t::invalid(), false, false);
   auto tt = timetable{};
-  auto stops = locations_map{};
+  auto stops = stops_map_t{};
   stops.emplace("6", location_idx_t{0});
   stops.emplace("48", location_idx_t{1});
   stops.emplace("23", location_idx_t{2});
-  read_stop_times(tt, trips, stops, kStopTimes, true);
+  read_stop_times(tt, trips, stops, {}, {}, {}, kStopTimes, true);
 
   EXPECT_TRUE(trips.data_[gtfs_trip_idx_t{0}].requires_interpolation_);
   trips.data_[gtfs_trip_idx_t{0}].interpolate();
@@ -127,11 +127,11 @@ L001I01S1FES,,08:31:00,23,19,,0,0,7.473
       nullptr, nullptr, nullptr, "L001I01S1FES", trip_direction_idx_t{}, "",
       direction_id_t::invalid(), shape_idx_t::invalid(), false, false);
   auto tt = timetable{};
-  auto stops = locations_map{};
+  auto stops = stops_map_t{};
   stops.emplace("6", location_idx_t{0});
   stops.emplace("48", location_idx_t{1});
   stops.emplace("23", location_idx_t{2});
-  read_stop_times(tt, trips, stops, kStopTimes, true);
+  read_stop_times(tt, trips, stops, {}, {}, {}, kStopTimes, true);
 
   EXPECT_TRUE(trips.data_[gtfs_trip_idx_t{0}].requires_interpolation_);
   trips.data_[gtfs_trip_idx_t{0}].interpolate();
@@ -152,11 +152,11 @@ L001I01S1FES,,,23,19,,0,0,7.473
       nullptr, nullptr, nullptr, "L001I01S1FES", trip_direction_idx_t{}, "",
       direction_id_t::invalid(), shape_idx_t::invalid(), false, false);
   auto tt = timetable{};
-  auto stops = locations_map{};
+  auto stops = stops_map_t{};
   stops.emplace("6", location_idx_t{0});
   stops.emplace("48", location_idx_t{1});
   stops.emplace("23", location_idx_t{2});
-  read_stop_times(tt, trips, stops, kStopTimes, true);
+  read_stop_times(tt, trips, stops, {}, {}, {}, kStopTimes, true);
 
   EXPECT_TRUE(trips.data_[gtfs_trip_idx_t{0}].requires_interpolation_);
   trips.data_[gtfs_trip_idx_t{0}].interpolate();
@@ -188,8 +188,8 @@ TEST(gtfs, read_stop_times_example_data) {
                                 files.get_file(kStopFile).data(),
                                 files.get_file(kTransfersFile).data(), 0U);
 
-  read_stop_times(tt, trip_data, stops, files.get_file(kStopTimesFile).data(),
-                  true);
+  read_stop_times(tt, trip_data, stops, {}, {}, {},
+                  files.get_file(kStopTimesFile).data(), true);
 
   for (auto& t : trip_data.data_) {
     if (t.requires_sorting_) {
