@@ -411,8 +411,8 @@ std::pair<source_idx_t, std::vector<fares::fare_leg_rule> > match_leg_rule(
   }
   utl::sort(matching_rules, [&](fares::fare_leg_rule const& a,
                                 fares::fare_leg_rule const& b) {
-    auto const& ap = f.fare_products_[a.fare_product_].front();
-    auto const& bp = f.fare_products_[b.fare_product_].front();
+    auto const ap = f.fare_products_[a.fare_product_].front();
+    auto const bp = f.fare_products_[b.fare_product_].front();
     auto const a_rider_not_default =
         ap.rider_category_ == rider_category_idx_t::invalid() ||
         !f.rider_categories_[ap.rider_category_].is_default_fare_category_;
