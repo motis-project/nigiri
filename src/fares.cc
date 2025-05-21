@@ -15,7 +15,23 @@ namespace nigiri {
 
 using routing::journey;
 
-constexpr auto const kFaresDebug = false;
+#define NIGIRI_FARES_DEBUG
+#ifdef NIGIRI_FARES_DEBUG
+#define trace(...) fmt::println(__VA_ARGS__)
+#else
+#define trace(...)
+#endif
+
+struct journey_leg {
+  friend std::ostream& operator<<(std::ostream& out, journey_leg const& l) {
+    l.l_.print(out, l.tt_, l.rtt_);
+    return out;
+  }
+
+  journey::leg const& l_;
+  timetable const& tt_;
+  rt_timetable const* rtt_;
+};
 
 struct leg_group {
   friend std::ostream& operator<<(std::ostream& out, leg_group const x) {
@@ -298,16 +314,12 @@ timeframe_group_idx_t match_timeframe(timetable const& tt,
       if (day + tf.start_time_ <= local_time &&
           local_time < day + tf.end_time_ &&  //
           day_idx < tf.service_.size() && tf.service_.test(day_idx)) {
-
-        if constexpr (kFaresDebug) {
-          std::cout << "TIMEFRAME MATCH: " << time << ", day=" << day
-                    << ", day_idx=" << day_idx << ", timeframe_group_id="
-                    << tt.strings_.get(f.timeframe_id_[i])
-                    << ", service=" << tf.service_
-                    << ", service_id=" << tt.strings_.get(tf.service_id_)
-                    << "\n";
-        }
-
+        trace(
+            "TIMEFRAME MATCH: {}, day={}, day_idx={}, timeframe_group_id={}, "
+            "service={}, service_id={}",
+            fmt::streamed(time), fmt::streamed(day), day_idx,
+            tt.strings_.get(f.timeframe_id_[i]), tf.service_,
+            tt.strings_.get(tf.service_id_));
         return i;
       }
     }
@@ -319,14 +331,13 @@ std::pair<source_idx_t, std::vector<fares::fare_leg_rule> > match_leg_rule(
     timetable const& tt,
     rt_timetable const* rtt,
     effective_fare_leg_t const& joined_legs) {
-  if constexpr (kFaresDebug) {
-    std::cout << "EFFECTIVE LEG:\n";
-    for (auto const& l : joined_legs) {
-      l->print(std::cout, tt, rtt);
-      std::cout << "\n";
-    }
-    std::cout << "\n";
+#ifdef NIGIRI_FARES_DEBUG
+  trace("EFFECTIVE LEG");
+  for (auto const& l : joined_legs) {
+    trace("{}", fmt::streamed(journey_leg{*l, tt, rtt}));
   }
+  trace("\n");
+#endif
 
   auto const& first = joined_legs.front();
   auto const& last = joined_legs.back();
@@ -400,10 +411,9 @@ std::pair<source_idx_t, std::vector<fares::fare_leg_rule> > match_leg_rule(
              r.to_timeframe_group_ == x.to_timeframe_group_);
 
         if (matches) {
-          if constexpr (kFaresDebug) {
-            std::cout << "RULE MATCH\n\t\tRULE = " << leg_rule{tt, f, r}
-                      << "\n\t\tLEG = " << leg_rule{tt, f, x} << "\n";
-          }
+          trace("RULE MATCH\n\t\tRULE = {}\n\t\tLEG = {}\n",
+                fmt::streamed(leg_rule{tt, f, r}),
+                fmt::streamed(leg_rule{tt, f, x}));
           matching_rules.push_back(r);
         }
       }
@@ -437,7 +447,9 @@ std::pair<source_idx_t, std::vector<fares::fare_leg_rule> > match_leg_rule(
   return {src, matching_rules};
 }
 
-bool matches(fares::fare_transfer_rule const& r,
+bool matches([[maybe_unused]] timetable const& tt,
+             [[maybe_unused]] fares const& f,
+             fares::fare_transfer_rule const& r,
              fare_leg const& from,
              fare_leg const& a,
              fare_leg const& b,
@@ -453,8 +465,8 @@ bool matches(fares::fare_transfer_rule const& r,
     return false;
   }
 
-  auto const& curr = a.rule_.front();
-  auto const& next = b.rule_.front();
+  auto const& curr_rule = a.rule_.front();
+  auto const& next_rule = b.rule_.front();
 
   auto const get_start_time = [&]() {
     switch (r.duration_limit_type_) {
@@ -482,15 +494,55 @@ bool matches(fares::fare_transfer_rule const& r,
     std::unreachable();
   };
 
-  // TODO do not match from_leg_group/to_leg_group if another rule has it
-  return (r.duration_limit_ == fares::fare_transfer_rule::kNoDurationLimit ||
-          r.duration_limit_ >= (get_end_time() - get_start_time())) &&
-         ((r.from_leg_group_ == leg_group_idx_t::invalid() &&
-           !contains(concrete_from, curr.leg_group_idx_)) ||
-          r.from_leg_group_ == curr.leg_group_idx_) &&
-         ((r.to_leg_group_ == leg_group_idx_t::invalid() &&
-           !contains(concrete_to, next.leg_group_idx_)) ||
-          r.to_leg_group_ == next.leg_group_idx_);
+  auto const transfer_limit_ok =
+      (r.duration_limit_ == fares::fare_transfer_rule::kNoDurationLimit ||
+       r.duration_limit_ >= (get_end_time() - get_start_time()));
+  auto const from_leg_group_matches =
+      ((r.from_leg_group_ == leg_group_idx_t::invalid() &&
+        !contains(concrete_from, curr_rule.leg_group_idx_)) ||
+       r.from_leg_group_ == curr_rule.leg_group_idx_);
+  auto const to_leg_group_matches =
+      ((r.to_leg_group_ == leg_group_idx_t::invalid() &&
+        !contains(concrete_to, next_rule.leg_group_idx_)) ||
+       r.to_leg_group_ == next_rule.leg_group_idx_);
+
+  if (!transfer_limit_ok) {
+    trace(
+        "      transfer limit exceeded: end_time={}, start_time={}, "
+        "duration={}, limit={} (no_limit={})",
+        get_start_time(), get_end_time(), get_end_time() - get_start_time(),
+        r.duration_limit_,
+        r.duration_limit_ == fares::fare_transfer_rule::kNoDurationLimit);
+  }
+  if (!from_leg_group_matches) {
+    trace(
+        "      from leg group mismatch\n"
+        "        r.from_leg_group: {}\n"
+        "        curr_rule.leg_group: {}\n"
+        "        concrete_from: {}",
+        fmt::streamed(leg_group{tt, f, r.from_leg_group_}),
+        fmt::streamed(leg_group{tt, f, curr_rule.leg_group_idx_}),
+        concrete_from | std::views::transform([&](auto&& x) {
+          return fmt::streamed(leg_group{tt, f, x});
+        }));
+  }
+  if (!to_leg_group_matches) {
+    trace(
+        "      to leg group mismatch\n"
+        "        r.to_leg_group: {}\n"
+        "        next_rule.leg_group: {}\n"
+        "        concrete_to: {}",
+        fmt::streamed(leg_group{tt, f, r.to_leg_group_}),
+        fmt::streamed(leg_group{tt, f, next_rule.leg_group_idx_}),
+        concrete_to | std::views::transform([&](auto&& x) {
+          return fmt::streamed(leg_group{tt, f, x});
+        }));
+  }
+  if (transfer_limit_ok && from_leg_group_matches && to_leg_group_matches) {
+    trace("      rule matched!");
+  }
+
+  return transfer_limit_ok && from_leg_group_matches && to_leg_group_matches;
 }
 
 std::vector<fare_transfer> join_transfers(
@@ -509,15 +561,15 @@ std::vector<fare_transfer> join_transfers(
           return;
         }
 
-        auto const& fares = tt.fares_[from_it->src_];
+        auto const& f = tt.fares_[from_it->src_];
 
         namespace sv = std::views;
         auto concrete_from =
-            fares.fare_transfer_rules_ |
+            f.fare_transfer_rules_ |
             sv::transform([](auto const& r) { return r.from_leg_group_; }) |
             sv::filter([](auto a) { return a != leg_group_idx_t::invalid(); });
         auto concrete_to =
-            fares.fare_transfer_rules_ |
+            f.fare_transfer_rules_ |
             sv::transform([](auto const& r) { return r.to_leg_group_; }) |
             sv::filter([](auto a) { return a != leg_group_idx_t::invalid(); });
 
@@ -528,11 +580,11 @@ std::vector<fare_transfer> join_transfers(
           utl::verify(next >= from_it && next < to_it, "next it not in range");
 
           auto const match_it = utl::find_if(
-              fares.fare_transfer_rules_,
-              [&](fares::fare_transfer_rule const& r) {
-                return matches(r, *it, *it, *next, concrete_from, concrete_to);
+              f.fare_transfer_rules_, [&](fares::fare_transfer_rule const& r) {
+                return matches(tt, f, r, *it, *it, *next, concrete_from,
+                               concrete_to);
               });
-          if (match_it == end(fares.fare_transfer_rules_)) {
+          if (match_it == end(f.fare_transfer_rules_)) {
             last_matched = false;
             transfers.push_back({std::nullopt, {*it}});
             continue;
@@ -545,7 +597,7 @@ std::vector<fare_transfer> join_transfers(
           for (; next != to_it &&
                  remaining_transfers != 0;  // -1=infinite will not reach 0
                ++it, ++next, --remaining_transfers) {
-            if (!matches(*match_it, *from, *it, *next, concrete_from,
+            if (!matches(tt, f, *match_it, *from, *it, *next, concrete_from,
                          concrete_to)) {
               break;
             }
@@ -578,4 +630,5 @@ std::vector<fare_transfer> get_fares(timetable const& tt,
                         return fare_leg{src, joined_leg, rules};
                       }));
 }
+
 }  // namespace nigiri

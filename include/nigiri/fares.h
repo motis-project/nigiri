@@ -72,7 +72,7 @@ struct fares {
 
   struct fare_transfer_rule {
     static constexpr auto const kNoDurationLimit =
-        duration_t{std::numeric_limits<duration_t::rep>::max()};
+        i32_minutes{std::numeric_limits<i32_minutes::rep>::max()};
 
     enum class duration_limit_type : std::uint8_t {
       kCurrDepNextArr,
@@ -97,7 +97,7 @@ struct fares {
     leg_group_idx_t from_leg_group_{leg_group_idx_t::invalid()};
     leg_group_idx_t to_leg_group_{leg_group_idx_t::invalid()};
     std::int8_t transfer_count_{-1};
-    duration_t duration_limit_{kNoDurationLimit};
+    i32_minutes duration_limit_{kNoDurationLimit};
     duration_limit_type duration_limit_type_{
         duration_limit_type::kCurrDepNextArr};
     fare_transfer_type fare_transfer_type_{fare_transfer_type::kAPlusAB};

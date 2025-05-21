@@ -430,8 +430,9 @@ void parse_fare_transfer_rules(
                 static_cast<std::int8_t>(r.transfer_count_->value_or(-1)),
             .duration_limit_ =
                 r.duration_limit_
-                    ->and_then(
-                        [](int i) { return std::optional{duration_t{i / 60}}; })
+                    ->and_then([](int i) {
+                      return std::optional{i32_minutes{i / 60}};
+                    })
                     .value_or(fares::fare_transfer_rule::kNoDurationLimit),
             .duration_limit_type_ =
                 static_cast<fares::fare_transfer_rule::duration_limit_type>(
