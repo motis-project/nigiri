@@ -15,7 +15,6 @@
 using namespace std::string_view_literals;
 
 namespace nigiri::loader::gtfs {
-
 constexpr auto const kFareMediaFile = "fare_media.txt"sv;
 constexpr auto const kFareProductsFile = "fare_products.txt"sv;
 constexpr auto const kFareLegRulesFile = "fare_leg_rules.txt"sv;
@@ -76,24 +75,33 @@ hash_map<std::string, fare_product_idx_t> parse_products(
   auto m = hash_map<std::string, fare_product_idx_t>{};
   utl::for_each_row<fare_product_record>(
       file_content, [&](fare_product_record const& r) {
-        m.emplace(r.fare_product_id_->view(), fare_product_idx_t{m.size()});
-        f.fare_products_.push_back(
-            {.amount_ = *r.amount_,
-             .name_ = tt.strings_.store(r.fare_product_name_->view()),
-             .media_ = find(media, r.fare_media_id_->view())
-                           .value_or(fare_media_idx_t::invalid()),
-             .currency_code_ = tt.strings_.store(r.currency_->view()),
-             .rider_category_ =
-                 r.rider_category_id_
-                     ->and_then([&](utl::cstr const& x) {
-                       return find(rider_categories, x.view());
-                     })
-                     .value_or(rider_category_idx_t::invalid())});
+        auto const product_idx =
+            utl::get_or_create(m, r.fare_product_id_->view(), [&]() {
+              auto const idx = fare_product_idx_t{f.fare_products_.size()};
+              f.fare_products_.emplace_back(
+                  std::initializer_list<fares::fare_product>{});
+              f.fare_product_id_.push_back(
+                  tt.strings_.store(r.fare_product_id_->view()));
+              return idx;
+            });
+
+        f.fare_products_[product_idx].push_back(fares::fare_product{
+            .amount_ = *r.amount_,
+            .name_ = tt.strings_.store(r.fare_product_name_->view()),
+            .media_ = find(media, r.fare_media_id_->view())
+                          .value_or(fare_media_idx_t::invalid()),
+            .currency_code_ = tt.strings_.store(r.currency_->view()),
+            .rider_category_ = r.rider_category_id_
+                                   ->and_then([&](utl::cstr const& x) {
+                                     return find(rider_categories, x.view());
+                                   })
+                                   .value_or(rider_category_idx_t::invalid())});
       });
   return m;
 }
 
 hash_map<std::string, leg_group_idx_t> parse_leg_rules(
+    timetable& tt,
     std::string_view file_content,
     fares& f,
     hash_map<std::string, network_idx_t> const& networks,
@@ -116,17 +124,26 @@ hash_map<std::string, leg_group_idx_t> parse_leg_rules(
   };
 
   auto m = hash_map<std::string, leg_group_idx_t>{};
+  auto next_leg_group_idx = leg_group_idx_t{};
   utl::for_each_row<fare_leg_rule_record>(
       file_content, [&](fare_leg_rule_record const& r) {
-        if (r.leg_group_id_->has_value()) {
-          m.emplace((*r.leg_group_id_)->view(), leg_group_idx_t{m.size()});
-        }
+        auto const leg_group_idx =
+            r.leg_group_id_->has_value()
+                ? utl::get_or_create(
+                      m, (*r.leg_group_id_)->view(),
+                      [&]() {
+                        f.leg_group_name_.push_back(
+                            tt.strings_.store((*r.leg_group_id_)->view()));
+                        return next_leg_group_idx++;
+                      })
+                : leg_group_idx_t::invalid();
         auto const fare_product = find(products, r.fare_product_id_->view());
         if (!fare_product.has_value()) {
           log(log_lvl::error, "nigiri.loader.gtfs.fares",
               "leg_rules: product {} not found", r.fare_product_id_->view());
           return;
         }
+
         f.fare_leg_rules_.push_back({
             .rule_priority_ = r.rule_priority_->value_or(0U),
             .network_ = r.network_id_
@@ -157,20 +174,17 @@ hash_map<std::string, leg_group_idx_t> parse_leg_rules(
                     })
                     .value_or(timeframe_group_idx_t::invalid()),
             .fare_product_ = *fare_product,
-            .leg_group_idx_ = r.leg_group_id_
-                                  ->and_then([&](utl::cstr const& x) {
-                                    return find(m, x.view());
-                                  })
-                                  .value_or(leg_group_idx_t::invalid()),
+            .leg_group_idx_ = leg_group_idx,
         });
       });
   return m;
 }
 
 hash_map<std::string, timeframe_group_idx_t> parse_timeframes(
+    timetable& tt,
     std::string_view file_content,
     fares& f,
-    hash_map<std::string, std::unique_ptr<bitfield>> const& services) {
+    hash_map<std::string, std::unique_ptr<bitfield> > const& services) {
   struct timeframe_record {
     utl::csv_col<utl::cstr, UTL_NAME("timeframe_group_id")> timeframe_group_id_;
     utl::csv_col<std::optional<utl::cstr>, UTL_NAME("start_time")> start_time_;
@@ -187,6 +201,8 @@ hash_map<std::string, timeframe_group_idx_t> parse_timeframes(
               utl::get_or_create(m, r.timeframe_group_id_->view(), [&]() {
                 auto const idx = timeframe_group_idx_t{f.timeframes_.size()};
                 f.timeframes_.add_back_sized(0U);
+                f.timeframe_id_.emplace_back(
+                    tt.strings_.store(r.timeframe_group_id_->view()));
                 return idx;
               });
           f.timeframes_[i].push_back(fares::timeframe{
@@ -200,7 +216,8 @@ hash_map<std::string, timeframe_group_idx_t> parse_timeframes(
                                  return std::optional{hhmm_to_min(x)};
                                })
                                .value_or(24_hours),
-              .service_ = traffic_days});
+              .service_ = traffic_days,
+              .service_id_ = tt.strings_.store(r.service_id_->view())});
         } catch (...) {
           log(log_lvl::error, "nigiri.loader.gtfs.fares",
               "timeframes: service {} not found", r.service_id_->view());
@@ -219,7 +236,8 @@ hash_map<std::string, area_idx_t> parse_areas(timetable& tt,
   auto m = hash_map<std::string, area_idx_t>{};
   utl::for_each_row<area_record>(file_content, [&](area_record const& r) {
     m.emplace(r.area_id_->view(), area_idx_t{m.size()});
-    tt.areas_.push_back(area{.name_ = r.area_name_
+    tt.areas_.push_back(area{.id_ = tt.strings_.store(r.area_id_->view()),
+                             .name_ = r.area_name_
                                           ->and_then([&](utl::cstr const& x) {
                                             return std::optional{
                                                 tt.strings_.store(x.view())};
@@ -241,6 +259,7 @@ hash_map<std::string, network_idx_t> parse_networks(
   utl::for_each_row<network_record>(file_content, [&](network_record const& r) {
     m.emplace(r.network_id_->view(), network_idx_t{m.size()});
     f.networks_.push_back(fares::network{
+        .id_ = tt.strings_.store(r.network_id_->view()),
         .name_ = r.network_name_
                      ->and_then([&](utl::cstr const& x) {
                        return std::optional{tt.strings_.store(x.view())};
@@ -411,8 +430,9 @@ void parse_fare_transfer_rules(
                 static_cast<std::int8_t>(r.transfer_count_->value_or(-1)),
             .duration_limit_ =
                 r.duration_limit_
-                    ->and_then(
-                        [](int i) { return std::optional{duration_t{i}}; })
+                    ->and_then([](int i) {
+                      return std::optional{i32_minutes{i / 60}};
+                    })
                     .value_or(fares::fare_transfer_rule::kNoDurationLimit),
             .duration_limit_type_ =
                 static_cast<fares::fare_transfer_rule::duration_limit_type>(
@@ -477,9 +497,10 @@ void load_fares(timetable& tt,
   auto const route_networks = parse_route_networks(
       load(kRouteNetworksFile).data(), f, routes, networks);
   auto const timeframes =
-      parse_timeframes(load(kTimeframesFile).data(), f, services);
-  auto const leg_groups = parse_leg_rules(
-      load(kFareLegRulesFile).data(), f, networks, areas, timeframes, products);
+      parse_timeframes(tt, load(kTimeframesFile).data(), f, services);
+  auto const leg_groups =
+      parse_leg_rules(tt, load(kFareLegRulesFile).data(), f, networks, areas,
+                      timeframes, products);
   auto const stop_areas =
       parse_stop_areas(tt, load(kStopAreasFile).data(), areas, stops);
   parse_fare_leg_join_rules(load(kFareLegJoinRulesFile).data(), f, networks,
