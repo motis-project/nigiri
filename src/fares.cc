@@ -402,6 +402,44 @@ std::pair<source_idx_t, std::vector<fares::fare_leg_rule> > match_leg_rule(
       sv::transform([](auto const& r) { return r.to_area_; }) |
       sv::filter([](auto const a) { return a != area_idx_t::invalid(); });
 
+  auto const has_area = [&](area_idx_t const x) {
+    for (auto const& l : joined_legs) {
+      auto const r = std::get<journey::run_enter_exit>(l->uses_).r_;
+      auto const fr = rt::frun{tt, rtt, r};
+      auto const a = static_cast<stop_idx_t>(r.stop_range_.from_);
+      auto const b = static_cast<stop_idx_t>(r.stop_range_.to_);
+      for (auto i = a; i < b; ++i) {
+        auto const stop_areas = tt.location_areas_[fr[i].get_location_idx()];
+        if (utl::find(stop_areas, x) != end(stop_areas)) {
+          return true;
+        }
+      }
+    }
+    return false;
+  };
+
+  auto const has_other_area =
+      [&](vecvec<area_set_idx_t, area_idx_t>::const_bucket const& exact_areas) {
+        for (auto const& l : joined_legs) {
+          auto const r = std::get<journey::run_enter_exit>(l->uses_).r_;
+          auto const fr = rt::frun{tt, rtt, r};
+          auto const a = static_cast<stop_idx_t>(r.stop_range_.from_);
+          auto const b = static_cast<stop_idx_t>(r.stop_range_.to_);
+          for (auto i = a; i < b; ++i) {
+            auto const stop_areas =
+                tt.location_areas_[fr[i].get_location_idx()];
+            auto const contains_other_area =
+                utl::any_of(stop_areas, [&](area_idx_t const x) {
+                  return std::ranges::find(exact_areas, x) == end(exact_areas);
+                });
+            if (contains_other_area) {
+              return true;
+            }
+          }
+        }
+        return false;
+      };
+
   auto matching_rules = std::vector<fares::fare_leg_rule>{};
   for (auto const from_area : get_areas(tt, from.get_location_idx())) {
     for (auto const to_area : get_areas(tt, to.get_location_idx())) {
@@ -424,7 +462,13 @@ std::pair<source_idx_t, std::vector<fares::fare_leg_rule> > match_leg_rule(
             (r.from_timeframe_group_ == timeframe_group_idx_t::invalid() ||
              r.from_timeframe_group_ == x.from_timeframe_group_) &&
             (r.to_timeframe_group_ == timeframe_group_idx_t::invalid() ||
-             r.to_timeframe_group_ == x.to_timeframe_group_);
+             r.to_timeframe_group_ == x.to_timeframe_group_) &&
+            (r.contains_area_set_id_ == area_set_idx_t::invalid() ||
+             utl::all_of(f.area_sets_[r.contains_area_set_id_], has_area)) &&
+            (r.contains_exactly_area_set_id_ == area_set_idx_t::invalid() ||
+             (utl::all_of(f.area_sets_[r.contains_exactly_area_set_id_],
+                          has_area) &&
+              !has_other_area(f.area_sets_[r.contains_exactly_area_set_id_])));
 
         if (matches) {
           trace("RULE MATCH\n\t\tRULE = {}\n\t\tLEG = {}\n", leg_rule{tt, f, r},
