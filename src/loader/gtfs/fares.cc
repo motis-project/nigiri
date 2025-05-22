@@ -52,6 +52,7 @@ hash_map<std::string, area_set_idx_t> parse_area_sets(
         if (area_it == end(areas)) {
           log(log_lvl::error, "nigiri.loader.gtfs.fares",
               "area_sets: area {} not found", r.area_id_->view());
+          return;
         }
         auto const idx = utl::get_or_create(m, r.area_set_id_->view(), [&]() {
           auto const i = area_set_idx_t{m.size()};
