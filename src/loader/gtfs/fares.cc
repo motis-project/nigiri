@@ -15,6 +15,7 @@
 using namespace std::string_view_literals;
 
 namespace nigiri::loader::gtfs {
+
 constexpr auto const kFareMediaFile = "fare_media.txt"sv;
 constexpr auto const kFareProductsFile = "fare_products.txt"sv;
 constexpr auto const kFareLegRulesFile = "fare_leg_rules.txt"sv;
@@ -26,8 +27,7 @@ constexpr auto const kNetworksFile = "networks.txt"sv;
 constexpr auto const kFareLegJoinRulesFile = "fare_leg_join_rules.txt"sv;
 constexpr auto const kFareTransferRulesFile = "fare_transfer_rules.txt"sv;
 constexpr auto const kRiderCategoriesFile = "rider_categories.txt"sv;
-
-using media_map_t = hash_map<std::string, fare_media_idx_t>;
+constexpr auto const kAreaSetElementsFile = "area_set_elements.txt"sv;
 
 template <typename T, typename Key>
 auto find(T const& x, Key const& k) {
@@ -35,16 +35,44 @@ auto find(T const& x, Key const& k) {
   return it != end(x) ? std::optional{it->second} : std::nullopt;
 }
 
-media_map_t parse_media(timetable& tt,
-                        std::string_view file_content,
-                        fares& f) {
+hash_map<std::string, area_set_idx_t> parse_area_sets(
+    timetable& tt,
+    fares& f,
+    hash_map<std::string, area_idx_t> const& areas,
+    std::string_view file_content) {
+  struct fare_media_record {
+    utl::csv_col<utl::cstr, UTL_NAME("area_set_id")> area_set_id_;
+    utl::csv_col<utl::cstr, UTL_NAME("area_id")> area_id_;
+  };
+
+  auto m = hash_map<std::string, area_set_idx_t>{};
+  utl::for_each_row<fare_media_record>(
+      file_content, [&](fare_media_record const& r) {
+        auto const area_it = areas.find(r.area_id_->view());
+        if (area_it == end(areas)) {
+          log(log_lvl::error, "nigiri.loader.gtfs.fares",
+              "area_sets: area {} not found", r.area_id_->view());
+        }
+        auto const idx = utl::get_or_create(m, r.area_set_id_->view(), [&]() {
+          auto const i = area_set_idx_t{m.size()};
+          f.area_set_ids_.emplace_back(tt.strings_.store(r.area_id_->view()));
+          f.area_sets_.emplace_back(std::initializer_list<area_idx_t>{});
+          return i;
+        });
+        f.area_sets_[idx].push_back(area_it->second);
+      });
+  return m;
+}
+
+hash_map<std::string, fare_media_idx_t> parse_media(
+    timetable& tt, std::string_view file_content, fares& f) {
   struct fare_media_record {
     utl::csv_col<utl::cstr, UTL_NAME("fare_media_id")> fare_media_id_;
     utl::csv_col<utl::cstr, UTL_NAME("fare_media_name")> fare_media_name_;
     utl::csv_col<unsigned, UTL_NAME("fare_media_type")> fare_media_type_;
   };
 
-  auto m = media_map_t{};
+  auto m = hash_map<std::string, fare_media_idx_t>{};
   utl::for_each_row<fare_media_record>(
       file_content, [&](fare_media_record const& r) {
         m.emplace(r.fare_media_id_->view(), fare_media_idx_t{m.size()});
@@ -60,7 +88,7 @@ hash_map<std::string, fare_product_idx_t> parse_products(
     timetable& tt,
     std::string_view file_content,
     fares& f,
-    media_map_t const& media,
+    hash_map<std::string, fare_media_idx_t> const& media,
     hash_map<std::string, rider_category_idx_t> const& rider_categories) {
   struct fare_product_record {
     utl::csv_col<utl::cstr, UTL_NAME("fare_product_id")> fare_product_id_;
@@ -104,6 +132,7 @@ hash_map<std::string, leg_group_idx_t> parse_leg_rules(
     timetable& tt,
     std::string_view file_content,
     fares& f,
+    hash_map<std::string, area_set_idx_t> const& area_sets,
     hash_map<std::string, network_idx_t> const& networks,
     hash_map<std::string, area_idx_t> const& areas,
     hash_map<std::string, timeframe_group_idx_t> const& timeframes,
@@ -121,6 +150,11 @@ hash_map<std::string, leg_group_idx_t> parse_leg_rules(
         to_timeframe_group_id_;
     utl::csv_col<utl::cstr, UTL_NAME("fare_product_id")> fare_product_id_;
     utl::csv_col<std::optional<int>, UTL_NAME("rule_priority")> rule_priority_;
+    utl::csv_col<std::optional<utl::cstr>,
+                 UTL_NAME("contains_exactly_area_set_id")>
+        contains_exactly_area_set_id_;
+    utl::csv_col<std::optional<utl::cstr>, UTL_NAME("contains_area_set_id")>
+        contains_area_set_id_;
   };
 
   auto m = hash_map<std::string, leg_group_idx_t>{};
@@ -144,38 +178,49 @@ hash_map<std::string, leg_group_idx_t> parse_leg_rules(
           return;
         }
 
-        f.fare_leg_rules_.push_back({
-            .rule_priority_ = r.rule_priority_->value_or(0U),
-            .network_ = r.network_id_
-                            ->and_then([&](utl::cstr const& x) {
-                              return find(networks, x.view());
-                            })
-                            .value_or(network_idx_t::invalid()),
-            .from_area_ = r.from_area_id_
-                              ->and_then([&](utl::cstr const& x) {
-                                return find(areas, x.view());
-                              })
-                              .value_or(area_idx_t::invalid()),
-            .to_area_ = r.to_area_id_
-                            ->and_then([&](utl::cstr const& x) {
-                              return find(areas, x.view());
-                            })
-                            .value_or(area_idx_t::invalid()),
-            .from_timeframe_group_ =
-                r.from_timeframe_group_id_
-                    ->and_then([&](utl::cstr const& x) {
-                      return find(timeframes, x.view());
-                    })
-                    .value_or(timeframe_group_idx_t::invalid()),
-            .to_timeframe_group_ =
-                r.to_timeframe_group_id_
-                    ->and_then([&](utl::cstr const& x) {
-                      return find(timeframes, x.view());
-                    })
-                    .value_or(timeframe_group_idx_t::invalid()),
-            .fare_product_ = *fare_product,
-            .leg_group_idx_ = leg_group_idx,
-        });
+        f.fare_leg_rules_.push_back(
+            {.rule_priority_ = r.rule_priority_->value_or(0U),
+             .network_ = r.network_id_
+                             ->and_then([&](utl::cstr const& x) {
+                               return find(networks, x.view());
+                             })
+                             .value_or(network_idx_t::invalid()),
+             .from_area_ = r.from_area_id_
+                               ->and_then([&](utl::cstr const& x) {
+                                 return find(areas, x.view());
+                               })
+                               .value_or(area_idx_t::invalid()),
+             .to_area_ = r.to_area_id_
+                             ->and_then([&](utl::cstr const& x) {
+                               return find(areas, x.view());
+                             })
+                             .value_or(area_idx_t::invalid()),
+             .from_timeframe_group_ =
+                 r.from_timeframe_group_id_
+                     ->and_then([&](utl::cstr const& x) {
+                       return find(timeframes, x.view());
+                     })
+                     .value_or(timeframe_group_idx_t::invalid()),
+             .to_timeframe_group_ =
+                 r.to_timeframe_group_id_
+                     ->and_then([&](utl::cstr const& x) {
+                       return find(timeframes, x.view());
+                     })
+                     .value_or(timeframe_group_idx_t::invalid()),
+             .fare_product_ = *fare_product,
+             .leg_group_idx_ = leg_group_idx,
+             .contains_exactly_area_set_id_ =
+                 r.contains_exactly_area_set_id_
+                     ->and_then([&](utl::cstr const& x) {
+                       return find(area_sets, x.view());
+                     })
+                     .value_or(area_set_idx_t::invalid()),
+             .contains_area_set_id_ =
+                 r.contains_area_set_id_
+                     ->and_then([&](utl::cstr const& x) {
+                       return find(area_sets, x.view());
+                     })
+                     .value_or(area_set_idx_t::invalid())});
       });
   return m;
 }
@@ -493,14 +538,16 @@ void load_fares(timetable& tt,
   auto const products = parse_products(tt, load(kFareProductsFile).data(), f,
                                        media, rider_categories);
   auto const areas = parse_areas(tt, load(kAreasFile).data());
+  auto const area_sets =
+      parse_area_sets(tt, f, areas, load(kAreaSetElementsFile).data());
   auto const networks = parse_networks(tt, load(kNetworksFile).data(), f);
   auto const route_networks = parse_route_networks(
       load(kRouteNetworksFile).data(), f, routes, networks);
   auto const timeframes =
       parse_timeframes(tt, load(kTimeframesFile).data(), f, services);
   auto const leg_groups =
-      parse_leg_rules(tt, load(kFareLegRulesFile).data(), f, networks, areas,
-                      timeframes, products);
+      parse_leg_rules(tt, load(kFareLegRulesFile).data(), f, area_sets,
+                      networks, areas, timeframes, products);
   auto const stop_areas =
       parse_stop_areas(tt, load(kStopAreasFile).data(), areas, stops);
   parse_fare_leg_join_rules(load(kFareLegJoinRulesFile).data(), f, networks,
