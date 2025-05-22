@@ -432,15 +432,17 @@ std::string to_string(timetable const& tt,
       ss << "PRODUCTS\n";
       for (auto const& r : l.rule_) {
         auto const& f = tt.fares_[l.src_];
-        for (auto const& p : f.fare_products_[r.fare_product_]) {
+        auto const products = f.fare_products_[r.fare_product_];
+        for (auto const& p : products) {
           auto const id = f.fare_product_id_[r.fare_product_];
           auto const& m = f.fare_media_[p.media_];
-          ss << "id=" << tt.strings_.get(id)
-             << ", name=" << tt.strings_.get(p.name_)
-             << " [priority=" << r.rule_priority_ << "]: " << p.amount_ << " "
-             << tt.strings_.get(p.currency_code_)
+          if (products.size() != 1U) {
+            ss << "id=" << tt.strings_.get(id) << ", name=";
+          }
+          ss << tt.strings_.get(p.name_) << " [priority=" << r.rule_priority_
+             << "]: " << p.amount_ << " " << tt.strings_.get(p.currency_code_)
              << ", fare_media_name=" << tt.strings_.get(m.name_)
-             << ", fare_type=" << m.type_ << ", rider_category="
+             << ", fare_type=" << m.type_ << ", ride_category="
              << (p.rider_category_ == rider_category_idx_t::invalid()
                      ? "??"
                      : tt.strings_.get(
@@ -478,14 +480,14 @@ TEST(fares, area_sets) {
    0: B       B...............................................                               d: 30.03 00:35 [30.03 02:35]  [{name=Line 2, day=2022-03-30, id=T2, src=0}]
    1: C       C............................................... a: 30.03 01:00 [30.03 03:00]
 PRODUCTS
-id=three_zone_single_ticket, name=Three Zone Ticket [priority=0]: 4.4 EUR, fare_media_name=HSL Ticket, fare_type=PAPER, rider_category=??
-id=three_zone_single_ticket, name=Three Zone Ticket [priority=0]: 4.4 EUR, fare_media_name=HSL Card, fare_type=CARD, rider_category=??
-id=three_zone_single_ticket, name=Three Zone Ticket [priority=0]: 4.4 EUR, fare_media_name=HSL App, fare_type=APP, rider_category=??
-id=three_zone_single_ticket, name=Three Zone Contactless [priority=0]: 4.7 EUR, fare_media_name=Contactless CEMV, fare_type=CONTACTLESS, rider_category=??
-id=three_zone_single_ticket, name=Pensioner Three Zone Ticket [priority=0]: 2.2 EUR, fare_media_name=HSL Card, fare_type=CARD, rider_category=Pensioner with Kela
-id=three_zone_single_ticket, name=Reduced Mobility Three Zone Ticket [priority=0]: 2.2 EUR, fare_media_name=HSL Card, fare_type=CARD, rider_category=Reduced Mobility
-id=three_zone_single_ticket, name=Children Three Zone Ticket [priority=0]: 2.2 EUR, fare_media_name=HSL Card, fare_type=CARD, rider_category=Children 7 to 17
-id=three_zone_single_ticket, name=Children Three Zone Ticket [priority=0]: 2.2 EUR, fare_media_name=HSL App, fare_type=APP, rider_category=Children 7 to 17
+id=three_zone_single_ticket, name=Three Zone Ticket [priority=0]: 4.4 EUR, fare_media_name=HSL Ticket, fare_type=PAPER, ride_category=??
+id=three_zone_single_ticket, name=Three Zone Ticket [priority=0]: 4.4 EUR, fare_media_name=HSL Card, fare_type=CARD, ride_category=??
+id=three_zone_single_ticket, name=Three Zone Ticket [priority=0]: 4.4 EUR, fare_media_name=HSL App, fare_type=APP, ride_category=??
+id=three_zone_single_ticket, name=Three Zone Contactless [priority=0]: 4.7 EUR, fare_media_name=Contactless CEMV, fare_type=CONTACTLESS, ride_category=??
+id=three_zone_single_ticket, name=Pensioner Three Zone Ticket [priority=0]: 2.2 EUR, fare_media_name=HSL Card, fare_type=CARD, ride_category=Pensioner with Kela
+id=three_zone_single_ticket, name=Reduced Mobility Three Zone Ticket [priority=0]: 2.2 EUR, fare_media_name=HSL Card, fare_type=CARD, ride_category=Reduced Mobility
+id=three_zone_single_ticket, name=Children Three Zone Ticket [priority=0]: 2.2 EUR, fare_media_name=HSL Card, fare_type=CARD, ride_category=Children 7 to 17
+id=three_zone_single_ticket, name=Children Three Zone Ticket [priority=0]: 2.2 EUR, fare_media_name=HSL App, fare_type=APP, ride_category=Children 7 to 17
 
 
 )";
