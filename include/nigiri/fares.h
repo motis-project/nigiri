@@ -18,6 +18,7 @@ using network_idx_t = cista::strong<std::uint32_t, struct _network_idx_t>;
 using timeframe_group_idx_t =
     cista::strong<std::uint32_t, struct _timeframe_group_idx_t>;
 using leg_group_idx_t = cista::strong<std::uint32_t, struct _leg_group_idx_t>;
+using area_set_idx_t = cista::strong<std::uint32_t, struct _area_set_idx_t>;
 
 struct area {
   string_idx_t id_;
@@ -60,6 +61,8 @@ struct fares {
     timeframe_group_idx_t to_timeframe_group_;
     fare_product_idx_t fare_product_{fare_product_idx_t::invalid()};
     leg_group_idx_t leg_group_idx_{leg_group_idx_t::invalid()};
+    area_set_idx_t contains_exactly_area_set_id_{area_set_idx_t::invalid()};
+    area_set_idx_t contains_area_set_id_{area_set_idx_t::invalid()};
   };
 
   struct fare_leg_join_rule {
@@ -134,6 +137,8 @@ struct fares {
   vector_map<timeframe_group_idx_t, string_idx_t> timeframe_id_;
   hash_map<route_id_idx_t, network_idx_t> route_networks_;
   vector_map<network_idx_t, network> networks_;
+  vecvec<area_set_idx_t, area_idx_t> area_sets_;
+  vector_map<area_set_idx_t, string_idx_t> area_set_ids_;
 };
 
 struct timetable;
