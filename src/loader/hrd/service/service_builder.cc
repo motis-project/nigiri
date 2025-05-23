@@ -275,10 +275,12 @@ void service_builder::write_services(source_idx_t const src) {
 }
 
 void service_builder::write_location_routes() {
+  auto first_idx = tt_.location_routes_.size();
   for (auto l = tt_.location_routes_.size(); l != tt_.n_locations(); ++l) {
     tt_.location_routes_.emplace_back(location_routes_[location_idx_t{l}]);
     assert(tt_.location_routes_.size() == l + 1U);
   }
+  tt_.permutate_locations(first_idx);
 }
 
 }  // namespace nigiri::loader::hrd
