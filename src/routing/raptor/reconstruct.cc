@@ -617,8 +617,8 @@ void reconstruct_journey_with_vias(timetable const& tt,
               location{tt, from}, t);
 #ifdef NIGIRI_TRACE_RECONSTRUCT
           for (auto const& x : td) {
-            trace_reconstruct("  valid_from={}, duration={}\n", x.valid_from_,
-                              x.duration_);
+            trace_reconstruct("  valid_from={}, duration={}, id={}\n",
+                              x.valid_from_, x.duration_, x.transport_mode_id_);
           }
 #endif
         }
