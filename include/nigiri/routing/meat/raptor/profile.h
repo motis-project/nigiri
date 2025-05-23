@@ -71,7 +71,6 @@ struct profile_set {
     auto& ps = entry_[to_idx(stop_id)];
     if (!ps.is_sorted()) {
       ps.sort();
-      recompute_entry_amount_ = true;
     }
     return {ps.begin(), ps.end()};
   }
@@ -79,7 +78,6 @@ struct profile_set {
     auto& ps = entry_[to_idx(stop_id)];
     if (!ps.is_sorted()) {
       ps.sort();
-      recompute_entry_amount_ = true;
     }
     return ps.lower_bound(
         profile_entry{when, std::numeric_limits<meat_t>::infinity(),
@@ -99,7 +97,6 @@ struct profile_set {
     auto& ps = entry_[to_idx(stop_id)];
     if (!ps.is_sorted()) {
       ps.sort();
-      recompute_entry_amount_ = true;
     }
     return ps[ps.size() - 2];
   }
