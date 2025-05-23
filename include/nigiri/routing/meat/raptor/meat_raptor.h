@@ -515,51 +515,49 @@ private:
                          event_times.size());
     }
 
-    // auto const seek_first_first_day = [&]() {
-    //   return linear_lb(event_times.begin(), event_times.end(), start_mam,
-    //                    [&](delta const a, minutes_after_midnight_t const b) {
-    //                      return a.mam() < b.count();
-    //                    });
-    // };
-    // auto const seek_last_first_day = [&]() {
-    //   return linear_lb(event_times.rbegin(), event_times.rend(), start_mam,
-    //                    [&](delta const a, minutes_after_midnight_t const b) {
-    //                      return a.mam() < b.count();
-    //                    })
-    //       .base();
-    // };
-
-    struct bound_info {
-      transport_idx_t t_idx_;
-      std::int16_t mam_;
-      std::int16_t ev_day_offset_;
+    auto const seek_first_first_day = [&]() {
+      return linear_lb(event_times.begin(), event_times.end(), start_mam,
+                       [&](delta const a, minutes_after_midnight_t const b) {
+                         return a.mam() < b.count();
+                       });
     };
-    auto low_outside_bound = bound_info{transport_idx_t::invalid(), -1, 0};
-    auto up_outside_bound = bound_info{transport_idx_t::invalid(),
-                                       std::numeric_limits<int16_t>::max(), 0};
-    auto lowest_mam = bound_info{transport_idx_t::invalid(),
-                                 std::numeric_limits<int16_t>::max(), 0};
-    auto highest_mam = bound_info{transport_idx_t::invalid(), -1, 0};
 
+    auto ub_was_set = false;
     for (auto day = start_day; day <= end_day; ++day) {
       if (interval_extends_start && interval_extends_end && lb_day < day &&
           day < ub_day) {
         day = ub_day;
         assert(day <= end_day);
       }
-      // auto ev_time_begin = event_times.begin();
-      // auto ev_time_end = event_times.end();
-      // if (day == start_day){
-      //  ev_time_begin = seek_first_first_day();
-      //  ev_time_end = ev_time_begin == event_times.end() ? event_times.end() :
-      //  seek_last_first_day();
-      // }
-      // auto const ev_time_range =it_range{ev_time_begin,ev_time_end};
-      // if (ev_time_range.empty()) {
-      //   continue;
-      // }
-      // for (auto it = begin(ev_time_range); it != end(ev_time_range); ++it) {
-      for (auto it = event_times.begin(); it != event_times.end(); ++it) {
+      auto ev_time_begin = event_times.begin();
+      if (day == start_day) {
+        ev_time_begin = seek_first_first_day();
+        if (!bounds_exist || interval_extends_start) {
+          if (ev_time_begin != event_times.begin()) {
+            auto const lb_ev_it = ev_time_begin - 1;
+            outside_old_bounds.first = transport{
+                tt_.route_transport_ranges_[r][static_cast<std::size_t>(
+                    &*lb_ev_it - event_times.data())],
+                static_cast<day_idx_t>(as_int(start_day) - lb_ev_it->days())};
+          } else {
+            auto const lb_ev_it = event_times.end() - 1;
+            outside_old_bounds.first =
+                start_day > 0
+                    ? transport{tt_.route_transport_ranges_
+                                    [r][static_cast<std::size_t>(
+                                        &*lb_ev_it - event_times.data())],
+                                static_cast<day_idx_t>(as_int(start_day) - 1 -
+                                                       lb_ev_it->days())}
+                    : transport::invalid();
+          }
+        }
+      }
+      auto const ev_time_range = it_range{ev_time_begin, event_times.end()};
+      if (ev_time_range.empty()) {
+        continue;
+      }
+
+      for (auto it = begin(ev_time_range); it != end(ev_time_range); ++it) {
         auto const t_offset =
             static_cast<std::size_t>(&*it - event_times.data());
         auto const ev = *it;
@@ -568,33 +566,17 @@ private:
         auto const t_start_day =
             static_cast<std::size_t>(as_int(day) - ev_day_offset);
 
-        if (day == start_day) {
-          if (ev.mam() < lowest_mam.mam_) {
-            lowest_mam.mam_ = ev.mam();
-            lowest_mam.t_idx_ = t;
-            lowest_mam.ev_day_offset_ = ev_day_offset;
+        if (day == end_day && ev.mam() > end_mam.count()) {
+          if (!bounds_exist || interval_extends_end) {
+            outside_old_bounds.second = transport{
+                t, static_cast<day_idx_t>(as_int(day) - ev_day_offset)};
+            ub_was_set = true;
           }
-          if (ev.mam() > highest_mam.mam_) {
-            highest_mam.mam_ = ev.mam();
-            highest_mam.t_idx_ = t;
-            highest_mam.ev_day_offset_ = ev_day_offset;
-          }
-          if (low_outside_bound.mam_ < ev.mam() &&
-              ev.mam() < start_mam.count()) {
-            low_outside_bound.mam_ = ev.mam();
-            low_outside_bound.t_idx_ = t;
-            low_outside_bound.ev_day_offset_ = ev_day_offset;
-          }
-          if (end_mam.count() < ev.mam() && ev.mam() < up_outside_bound.mam_) {
-            up_outside_bound.mam_ = ev.mam();
-            up_outside_bound.t_idx_ = t;
-            up_outside_bound.ev_day_offset_ = ev_day_offset;
-          }
+          break;
         }
 
-        if ((day == end_day && ev.mam() > end_mam.count()) ||
-            (day == start_day && ev.mam() < start_mam.count()) ||
-            (interval_extends_start && interval_extends_end &&
+        // TODO break if in middel of not intervall
+        if ((interval_extends_start && interval_extends_end &&
              tt_to_delta(lb_day, lb_mam.count()) < tt_to_delta(day, ev.mam()) &&
              tt_to_delta(day, ev.mam()) <
                  tt_to_delta(ub_day, ub_mam.count())) ||
@@ -608,39 +590,16 @@ private:
       }
     }
 
-    if (interval_extends_start || !bounds_exist) {
-      if (low_outside_bound.t_idx_ == transport_idx_t::invalid()) {
-        if (start_day > 0) {
-          outside_old_bounds.first =
-              transport{highest_mam.t_idx_,
-                        static_cast<day_idx_t>((as_int(start_day) - 1) -
-                                               highest_mam.ev_day_offset_)};
-        } else {
-          outside_old_bounds.first = transport::invalid();
-        }
+    if (!ub_was_set && (interval_extends_end || !bounds_exist)) {
+      if (end_day < day_idx_t{n_days_ - 1}) {
+        auto const ev_it = event_times.begin();
+        auto const t_offset =
+            static_cast<std::size_t>(&*ev_it - event_times.data());
+        auto const t = tt_.route_transport_ranges_[r][t_offset];
+        outside_old_bounds.second = transport{
+            t, static_cast<day_idx_t>(as_int(end_day) + 1 - (ev_it->days()))};
       } else {
-        outside_old_bounds.first =
-            transport{low_outside_bound.t_idx_,
-                      static_cast<day_idx_t>(as_int(start_day) -
-                                             low_outside_bound.ev_day_offset_)};
-      }
-    }
-
-    if (interval_extends_end || !bounds_exist) {
-      if (up_outside_bound.t_idx_ == transport_idx_t::invalid()) {
-        if (end_day < day_idx_t{n_days_ - 1}) {
-          outside_old_bounds.second =
-              transport{lowest_mam.t_idx_,
-                        static_cast<day_idx_t>((as_int(end_day) + 1) -
-                                               lowest_mam.ev_day_offset_)};
-        } else {
-          outside_old_bounds.second = transport::invalid();
-        }
-      } else {
-        outside_old_bounds.second =
-            transport{up_outside_bound.t_idx_,
-                      static_cast<day_idx_t>(as_int(end_day) -
-                                             up_outside_bound.ev_day_offset_)};
+        outside_old_bounds.second = transport::invalid();
       }
     }
   }
