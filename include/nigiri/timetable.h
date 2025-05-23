@@ -15,8 +15,8 @@
 #include "geo/box.h"
 #include "geo/latlng.h"
 
-#include "nigiri/common/interval.h"
 #include "nigiri/loader/permutate_locations.h"
+#include "nigiri/common/interval.h"
 #include "nigiri/fares.h"
 #include "nigiri/footpath.h"
 #include "nigiri/location.h"
@@ -423,13 +423,12 @@ struct timetable {
       std::pair<location_id, location_idx_t> temp = {key, value};
       unsorted.emplace_back(temp);
     }
-    for (auto i = 0U; i < location_permutation.size(); ++i) 
-    {
+    for (auto i = 0U; i < location_permutation.size(); ++i) {
       auto temp2 = unsorted.at(location_permutation.at(i).v_);
-      sorted_loc_id_to_idx.insert({temp2.first, location_idx_t{i}}); 
+      sorted_loc_id_to_idx.insert({temp2.first, location_idx_t{i}});
     }
     auto sorted_loc_routes = apply_permutation_vec(location_routes_);
-    
+
     // 2. sort everything in locations_:
     // 2a vecvec
     auto sorted_names = apply_permutation_vec(locations_.names_);
@@ -438,17 +437,23 @@ struct timetable {
     auto sorted_coords = apply_permutation_vec(locations_.coordinates_);
     auto sorted_src = apply_permutation_vec(locations_.src_);
     auto sorted_transfertime = apply_permutation_vec(locations_.transfer_time_);
-    auto sorted_types = apply_permutation_vec(locations_.types_); 
-    auto sorted_timezones = apply_permutation_vec(locations_.location_timezones_);
-    auto sorted_parents = apply_permutation_and_mapping_vec(locations_.parents_);
+    auto sorted_types = apply_permutation_vec(locations_.types_);
+    auto sorted_timezones =
+        apply_permutation_vec(locations_.location_timezones_);
+    auto sorted_parents =
+        apply_permutation_and_mapping_vec(locations_.parents_);
     // 2c multimap
-    auto sorted_equivalences = apply_permutation_multimap(locations_.equivalences_);
+    auto sorted_equivalences =
+        apply_permutation_multimap(locations_.equivalences_);
     auto sorted_children = apply_permutation_multimap(locations_.children_);
-    auto sorted_pre_footpaths_out = apply_permutation_multimap_foot(locations_.preprocessing_footpaths_out_);
-    auto sorted_pre_footpaths_in = apply_permutation_multimap_foot(locations_.preprocessing_footpaths_in_);
-    // 3.  permute what is dependend on loc_idx 
+    auto sorted_pre_footpaths_out = apply_permutation_multimap_foot(
+        locations_.preprocessing_footpaths_out_);
+    auto sorted_pre_footpaths_in =
+        apply_permutation_multimap_foot(locations_.preprocessing_footpaths_in_);
+    // 3.  permute what is dependend on loc_idx
     auto sorted_loc_area = apply_permutation_vec(location_areas_);
-    auto sorted_route_loc_seq = apply_permutation_to_route_loc_seq(route_location_seq_);
+    auto sorted_route_loc_seq =
+        apply_permutation_to_route_loc_seq(route_location_seq_);
 
     // 4. override timetable
     locations_.location_id_to_idx_ = sorted_loc_id_to_idx;
@@ -463,7 +468,7 @@ struct timetable {
     locations_.parents_ = sorted_parents;
     locations_.equivalences_ = sorted_equivalences;
     locations_.children_ = sorted_children;
-    locations_.preprocessing_footpaths_out_ = sorted_pre_footpaths_out; 
+    locations_.preprocessing_footpaths_out_ = sorted_pre_footpaths_out;
     locations_.preprocessing_footpaths_in_ = sorted_pre_footpaths_in;
     location_areas_ = sorted_loc_area;
     route_location_seq_ = sorted_route_loc_seq;
