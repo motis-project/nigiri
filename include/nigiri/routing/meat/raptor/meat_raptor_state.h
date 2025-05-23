@@ -26,6 +26,8 @@ struct meat_raptor_state {
     prev_station_mark_.zero_out();
     route_mark_.zero_out();
     utl::fill(fp_dis_to_target_, std::numeric_limits<meat_t>::infinity());
+    utl::fill(latest_dep_added_last_round, std::numeric_limits<delta_t>::min());
+    utl::fill(latest_dep_added_current_round, std::numeric_limits<delta_t>::min());
   }
 
   profile_set profile_set_;
@@ -35,6 +37,8 @@ struct meat_raptor_state {
   bitvec prev_station_mark_;
   bitvec route_mark_;
   vector_map<location_idx_t, meat_t> fp_dis_to_target_;
+  vector_map<location_idx_t, delta_t> latest_dep_added_last_round;
+  vector_map<location_idx_t, delta_t> latest_dep_added_current_round;
 };
 
 }  // namespace nigiri::routing::meat::raptor

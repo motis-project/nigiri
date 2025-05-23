@@ -9,6 +9,8 @@ meat_raptor_state& meat_raptor_state::prepare_for_tt(timetable const& tt) {
   prev_station_mark_.resize(tt.n_locations());
   route_mark_.resize(tt.n_routes());
   fp_dis_to_target_.resize(tt.n_locations());
+  latest_dep_added_last_round.resize(tt.n_locations());
+  latest_dep_added_current_round.resize(tt.n_locations());
   reset();
 
   return *this;

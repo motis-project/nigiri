@@ -261,6 +261,11 @@ private:
       state_.station_mark_.zero_out();
 
       update_footpaths();
+
+      std::swap(state_.latest_dep_added_last_round,
+                state_.latest_dep_added_current_round);
+      utl::fill(state_.latest_dep_added_current_round,
+                std::numeric_limits<delta_t>::min());
     }
   }
 
@@ -271,7 +276,10 @@ private:
       state_.station_mark_.set(i, true);
       auto const& fps = tt_.locations_.footpaths_in_[fp_prf_idx_][l_idx];
 
-      for (auto const& pe : state_.profile_set_.for_unsorted_stop(l_idx)) {
+      for (auto const& pe : state_.profile_set_.for_sorted_stop(l_idx)) {
+        if (pe.dep_time_ > state_.latest_dep_added_current_round[l_idx]) {
+          break;
+        }
         for (auto const& fp : fps) {
           auto const fp_start_location = fp.target();
           auto const fp_dep_time = clamp(pe.dep_time_ - fp.duration().count());
@@ -293,6 +301,9 @@ private:
                   walk{fp_start_location, footpath{l_idx, fp.duration()}}});
           if (added) {
             state_.station_mark_.set(to_idx(fp_start_location), true);
+            state_.latest_dep_added_current_round[fp_start_location] = std::max(
+                state_.latest_dep_added_current_round[fp_start_location],
+                fp_dep_time);
             stats_.meat_n_e_added_to_profile_++;
             stats_.meat_n_fp_added_to_profile_++;
           }
@@ -356,6 +367,8 @@ private:
                   l_idx,
                   profile_entry{dep_time, td.meat_,
                                 ride(td.trip_, stop_idx, td.exit_stop_)})) {
+            state_.latest_dep_added_current_round[l_idx] = std::max(
+                state_.latest_dep_added_current_round[l_idx], dep_time);
             entry_added_to_profile = true;
             stats_.meat_n_e_added_to_profile_++;
           }
@@ -378,10 +391,10 @@ private:
           std::isfinite(fp_dis_to_target)
               ? (state_.profile_set_.is_stop_empty(l_idx)
                      ? static_cast<delta_t>(last_arr_ - fp_dis_to_target)
-                     : std::max(
-                           static_cast<delta_t>(last_arr_ - fp_dis_to_target),
-                           state_.profile_set_.last_dep(l_idx).dep_time_))
-              : state_.profile_set_.last_dep(l_idx).dep_time_;
+                     : std::max(state_.latest_dep_added_last_round[l_idx],
+                                state_.latest_dep_added_current_round[l_idx]))
+              : std::max(state_.latest_dep_added_last_round[l_idx],
+                         state_.latest_dep_added_current_round[l_idx]);
       assert(std::isfinite(fp_dis_to_target) ||
              !state_.profile_set_.is_stop_empty(l_idx));
       assert(range_begin <= range_end);
