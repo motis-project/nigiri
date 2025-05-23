@@ -7,7 +7,6 @@
 
 #include "utl/get_or_create.h"
 #include "utl/progress_tracker.h"
-//#include "utl/sort_permutation.h"
 
 #include "cista/hash.h"
 #include "cista/mmap.h"
@@ -33,7 +32,7 @@
 #include "nigiri/loader/gtfs/stop_time.h"
 #include "nigiri/loader/gtfs/trip.h"
 #include "nigiri/loader/loader_interface.h"
-#include "nigiri/loader/permutate_locations.h"
+//#include "nigiri/loader/permutate_locations.h"
 #include "nigiri/common/sort_by.h"
 #include "nigiri/logging.h"
 #include "nigiri/timetable.h"
@@ -422,61 +421,8 @@ void load_timetable(loader_config const& config,
       tt.location_routes_.emplace_back(location_routes[location_idx_t{l}]);
       assert(tt.location_routes_.size() == l + 1U);
     }
-    // 0. create permutation vector
-    build_permutation_vec(location_routes, first_idx);
-    vector<location_idx_t> location_permutation = get_permutation_vector();
 
-    // 1. create new hasmap for id to idx
-    hash_map<location_id, location_idx_t> sorted_loc_id_to_idx;
-    vector<std::pair<location_id, location_idx_t>> unsorted;
-    for (auto& [key, value] : tt.locations_.location_id_to_idx_) {
-      std::pair<location_id, location_idx_t> temp = {key, value};
-      unsorted.emplace_back(temp);
-    }
-    for (auto i = 0U; i < location_permutation.size(); ++i) 
-    {
-      auto temp2 = unsorted.at(location_permutation.at(i).v_);
-      sorted_loc_id_to_idx.insert({temp2.first, location_idx_t{i}}); 
-    }
-    auto sorted_loc_routes = apply_permutation_vec(tt.location_routes_);
-    
-    // 2. sort everything in locations_:
-    // 2a vecvec
-    auto sorted_names = apply_permutation_vec(tt.locations_.names_);
-    auto sorted_ids = apply_permutation_vec(tt.locations_.ids_);
-    // 2b vecmap
-    auto sorted_coords = apply_permutation_vec(tt.locations_.coordinates_);
-    auto sorted_src = apply_permutation_vec(tt.locations_.src_);
-    auto sorted_transfertime = apply_permutation_vec(tt.locations_.transfer_time_);
-    auto sorted_types = apply_permutation_vec(tt.locations_.types_); 
-    auto sorted_timezones = apply_permutation_vec(tt.locations_.location_timezones_);
-    auto sorted_parents = apply_permutation_and_mapping_vec(tt.locations_.parents_);
-    // 2c multimap
-    auto sorted_equivalences = apply_permutation_multimap(tt.locations_.equivalences_);
-    auto sorted_children = apply_permutation_multimap(tt.locations_.children_);
-    auto sorted_pre_footpaths_out = apply_permutation_multimap(tt.locations_.preprocessing_footpaths_out_);
-    auto sorted_pre_footpaths_in = apply_permutation_multimap(tt.locations_.preprocessing_footpaths_in_);
-    // 3.  permute what is dependend on loc_idx 
-    auto sorted_loc_area = apply_permutation_vec(tt.location_areas_);
-    auto sorted_route_loc_seq = apply_permutation_to_route_loc_seq(tt.route_location_seq_);
-
-    // 4. override timetable
-    tt.locations_.location_id_to_idx_ = sorted_loc_id_to_idx;
-    tt.location_routes_ = sorted_loc_routes;
-    tt.locations_.names_ = sorted_names;
-    tt.locations_.ids_ = sorted_ids;
-    tt.locations_.coordinates_ = sorted_coords;
-    tt.locations_.src_ = sorted_src;
-    tt.locations_.transfer_time_ = sorted_transfertime;
-    tt.locations_.types_ = sorted_types;
-    tt.locations_.location_timezones_ = sorted_timezones;
-    tt.locations_.parents_ = sorted_parents;
-    tt.locations_.equivalences_ = sorted_equivalences;
-    tt.locations_.children_ = sorted_children;
-    tt.locations_.preprocessing_footpaths_out_ = sorted_pre_footpaths_out; 
-    tt.locations_.preprocessing_footpaths_in_ = sorted_pre_footpaths_in;
-    tt.location_areas_ = sorted_loc_area;
-    tt.route_location_seq_ = sorted_route_loc_seq;
+    tt.permutate_locations(first_idx);
 
     // Build transport ranges.
     for (auto const& t : trip_data.data_) {

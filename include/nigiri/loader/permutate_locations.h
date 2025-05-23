@@ -1,3 +1,5 @@
+#pragma once
+
 #include "nigiri/types.h"
 #include "nigiri/stop.h"
 #include "nigiri/footpath.h"
@@ -11,7 +13,7 @@ namespace nigiri {
 static vector<location_idx_t> permutation_;
 static vector<location_idx_t> mapping_vec;
 
-vector<location_idx_t> create_mapping_vec(vector<location_idx_t> vec) 
+static vector<location_idx_t> create_mapping_vec(vector<location_idx_t> vec) 
 {
   auto n = vec.size();
   std::vector<location_idx_t> result(n);
@@ -25,7 +27,7 @@ vector<location_idx_t> create_mapping_vec(vector<location_idx_t> vec)
   return result_vec;
 }
 
-void build_permutation_vec(mutable_fws_multimap<location_idx_t, route_idx_t> order, uint32_t first_idx) 
+static void build_permutation_vec(vecvec<location_idx_t, route_idx_t> order, uint32_t first_idx) 
 {
   permutation_.resize(order.size());
     for (auto i = 0U; i != permutation_.size(); ++i) {
@@ -38,7 +40,7 @@ void build_permutation_vec(mutable_fws_multimap<location_idx_t, route_idx_t> ord
   mapping_vec = create_mapping_vec(permutation_);
 }
 
-vector<location_idx_t> get_permutation_vector()
+static vector<location_idx_t> get_permutation_vector()
 {
   return permutation_;
 }
@@ -56,7 +58,7 @@ T apply_permutation_vec(T input)
   return sorted;
 }
 
-vecvec<route_idx_t, stop::value_type> apply_permutation_to_route_loc_seq(vecvec<route_idx_t, stop::value_type> input) 
+static vecvec<route_idx_t, stop::value_type> apply_permutation_to_route_loc_seq(vecvec<route_idx_t, stop::value_type> input) 
 {
   vecvec<route_idx_t, stop::value_type> sorted;
   for(auto j = 0U; j < input.size(); ++j) 
@@ -75,7 +77,7 @@ vecvec<route_idx_t, stop::value_type> apply_permutation_to_route_loc_seq(vecvec<
   return sorted;
 }
 
-vector_map<location_idx_t, location_idx_t> apply_permutation_and_mapping_vec(vector_map<location_idx_t, location_idx_t> input) 
+static vector_map<location_idx_t, location_idx_t> apply_permutation_and_mapping_vec(vector_map<location_idx_t, location_idx_t> input) 
 {
   vector_map<location_idx_t, location_idx_t> sorted;
   for(auto i = 0U; i < input.size(); ++i) 
@@ -91,26 +93,8 @@ vector_map<location_idx_t, location_idx_t> apply_permutation_and_mapping_vec(vec
   return sorted;
 }
 
-vecvec<location_idx_t, footpath> apply_permutation_and_mapping_foot(vecvec<location_idx_t, footpath> input) {
-  vecvec<location_idx_t, footpath> sorted;
-  for(auto i = 0U; i < input.size(); ++i) 
-  {
-    vector<footpath> new_footpaths;
-    auto footpaths = input.at(permutation_[i]);
-    if(footpaths.size() > 0) {
-      for(auto j = 0U; j < footpaths.size(); ++j) {
-        auto old_footpath = footpaths.at(j);
-        footpath new_footpath = {mapping_vec.at(old_footpath.target().v_), old_footpath.duration()};
-        new_footpaths.emplace_back(new_footpath);
-      }
-    }
-   sorted.emplace_back(new_footpaths);
-  }
-  return sorted;
-}
 
-
-mutable_fws_multimap<location_idx_t, location_idx_t> apply_permutation_multimap(mutable_fws_multimap<location_idx_t, location_idx_t> input)
+static mutable_fws_multimap<location_idx_t, location_idx_t> apply_permutation_multimap(mutable_fws_multimap<location_idx_t, location_idx_t> input)
 {
     mutable_fws_multimap<location_idx_t, location_idx_t> sorted;
     for(auto i = 0U; i < input.size(); ++i) 
@@ -129,7 +113,7 @@ mutable_fws_multimap<location_idx_t, location_idx_t> apply_permutation_multimap(
     return sorted;
 }
 
-mutable_fws_multimap<location_idx_t, footpath> apply_permutation_multimap(mutable_fws_multimap<location_idx_t, footpath> input)
+static mutable_fws_multimap<location_idx_t, footpath> apply_permutation_multimap_foot(mutable_fws_multimap<location_idx_t, footpath> input)
 {
     mutable_fws_multimap<location_idx_t, footpath> sorted;
     for(auto i = 0U; i < input.size(); ++i) 
