@@ -194,17 +194,10 @@ network_idx_t get_network(rt::frun const& a) {
   return it == end(f.route_networks_) ? network_idx_t::invalid() : it->second;
 }
 
-std::vector<area_idx_t> get_areas(timetable const& tt, location_idx_t const l) {
-  auto v = std::vector<area_idx_t>{};
-  if (auto const l_areas = tt.location_areas_.at(l); !l_areas.empty()) {
-    v = utl::to_vec(l_areas);
-  } else {
-    v = utl::to_vec(tt.location_areas_.at(parent(tt, l)));
-  }
-  if (v.empty()) {
-    v.emplace_back(area_idx_t::invalid());
-  }
-  return v;
+vecvec<location_idx_t, area_idx_t>::const_bucket get_areas(
+    timetable const& tt, location_idx_t const l) {
+  auto const l_areas = tt.location_areas_.at(l);
+  return l_areas.empty() ? tt.location_areas_.at(parent(tt, l)) : l_areas;
 }
 
 bool join(timetable const& tt,
@@ -409,7 +402,7 @@ std::pair<source_idx_t, std::vector<fares::fare_leg_rule> > match_leg_rule(
       auto const a = static_cast<stop_idx_t>(r.stop_range_.from_);
       auto const b = static_cast<stop_idx_t>(r.stop_range_.to_);
       for (auto i = a; i < b; ++i) {
-        auto const stop_areas = tt.location_areas_[fr[i].get_location_idx()];
+        auto const stop_areas = get_areas(tt, fr[i].get_location_idx());
         if (utl::find(stop_areas, x) != end(stop_areas)) {
           return true;
         }
@@ -426,8 +419,7 @@ std::pair<source_idx_t, std::vector<fares::fare_leg_rule> > match_leg_rule(
           auto const a = static_cast<stop_idx_t>(r.stop_range_.from_);
           auto const b = static_cast<stop_idx_t>(r.stop_range_.to_);
           for (auto i = a; i < b; ++i) {
-            auto const stop_areas =
-                tt.location_areas_[fr[i].get_location_idx()];
+            auto const stop_areas = get_areas(tt, fr[i].get_location_idx());
             auto const contains_other_area =
                 utl::any_of(stop_areas, [&](area_idx_t const x) {
                   return std::ranges::find(exact_areas, x) == end(exact_areas);
@@ -440,9 +432,20 @@ std::pair<source_idx_t, std::vector<fares::fare_leg_rule> > match_leg_rule(
         return false;
       };
 
+  auto const for_each_area = [&](location_idx_t const l, auto&& fn) {
+    auto const areas = get_areas(tt, l);
+    if (areas.empty()) {
+      fn(area_idx_t::invalid());
+    } else {
+      for (auto const a : areas) {
+        fn(a);
+      }
+    }
+  };
+
   auto matching_rules = std::vector<fares::fare_leg_rule>{};
-  for (auto const from_area : get_areas(tt, from.get_location_idx())) {
-    for (auto const to_area : get_areas(tt, to.get_location_idx())) {
+  for_each_area(from.get_location_idx(), [&](area_idx_t const from_area) {
+    for_each_area(to.get_location_idx(), [&](area_idx_t const to_area) {
       auto const x = fares::fare_leg_rule{.network_ = network,
                                           .from_area_ = from_area,
                                           .to_area_ = to_area,
@@ -476,8 +479,8 @@ std::pair<source_idx_t, std::vector<fares::fare_leg_rule> > match_leg_rule(
           matching_rules.push_back(r);
         }
       }
-    }
-  }
+    });
+  });
   utl::sort(matching_rules, [&](fares::fare_leg_rule const& a,
                                 fares::fare_leg_rule const& b) {
     auto const ap = f.fare_products_[a.fare_product_].front();
