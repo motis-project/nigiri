@@ -1,3 +1,7 @@
+/*
+ * This code is based on the original version by Ben Strasser
+ */
+
 #include "nigiri/routing/meat/decision_graph.h"
 
 #include <variant>

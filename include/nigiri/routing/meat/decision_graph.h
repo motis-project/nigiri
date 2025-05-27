@@ -7,6 +7,10 @@
 
 namespace nigiri::routing::meat {
 
+/*
+ * This struct is based on the original version by Ben Strasser
+ + excluding semantically_equal()
+ */
 struct decision_graph {
   struct node {
     friend bool semantically_equal(node const& a, node const& b) {

@@ -2,6 +2,9 @@
 
 namespace nigiri::routing::meat {
 
+/*
+ * This code is from the original version by Ben Strasser
+ */
 template <class Iter, class Pred>
 Iter binary_find_first_true(Iter begin, Iter end, Pred p) {
   if (begin == end) return end;

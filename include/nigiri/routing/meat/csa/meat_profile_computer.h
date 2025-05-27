@@ -55,6 +55,9 @@ struct meat_profile_computer {
     auto const& ea = state_.ea_;
     auto& trip = state_.trip_;
 
+    /*
+     * This function is based on the original version by Ben Strasser
+     */
     auto evaluate_profile = [&](location_idx_t const stop, delta_t const when) {
       auto meat = meat_t{0.0};
       auto assigned_prob = 0.0;

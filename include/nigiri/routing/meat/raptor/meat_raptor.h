@@ -445,6 +445,9 @@ private:
     return any_marked;
   }
 
+  /*
+   * This function is based on the original version by Ben Strasser
+   */
   meat_t evaluate_profile(location_idx_t const stop, delta_t const when) const {
     auto meat = meat_t{0.0};
     auto assigned_prob = 0.0;
@@ -588,7 +591,6 @@ private:
           break;
         }
 
-        // TODO break if in middel of not intervall
         if ((interval_extends_start && interval_extends_end &&
              tt_to_delta(lb_day, lb_mam.count()) < tt_to_delta(day, ev.mam()) &&
              tt_to_delta(day, ev.mam()) <

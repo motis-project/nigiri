@@ -87,6 +87,9 @@ private:
   mutable vector_map<location_idx_t, dg_node_idx_t> to_node_id_;
 };
 
+/*
+ * This function is based on the original version by Ben Strasser
+ */
 inline std::pair<decision_graph, delta_t> extract_small_sub_decision_graph(
     decision_graph_extractor const& e,
     location_idx_t source_stop,

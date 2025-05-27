@@ -4,6 +4,9 @@
 
 namespace nigiri::routing::meat {
 
+/*
+ * This code is from the original version by Ben Strasser
+ */
 inline double delay_prob(delta_t x, delta_t change_time, double max_delay) {
   if (x <= 0)
     return 0.0;

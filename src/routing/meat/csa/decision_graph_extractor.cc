@@ -1,3 +1,7 @@
+/*
+ * This code is based on the original version by Ben Strasser
+ */
+
 #include "nigiri/routing/meat/csa/decision_graph_extractor.h"
 
 #include <cmath>
@@ -127,7 +131,6 @@ decision_graph decision_graph_extractor<ProfileSet>::operator()(
     location_idx_t target_stop,
     delta_t max_delay) const {
   if (profile_set_.is_stop_empty(source_stop)) {
-    // TODO remove
     assert(false && "Should not be empty (CSA)");
     std::cout << "Should not be empty (CSA)" << std::endl;
     return decision_graph{{{source_stop, {}, {}}, {target_stop, {}, {}}},
@@ -139,9 +142,6 @@ decision_graph decision_graph_extractor<ProfileSet>::operator()(
 
   auto entry_list = extract_relevant_entries(source_stop, source_time,
                                              target_stop, max_delay);
-
-  // TODO sort entry_list by e.dep_time_? then g.arcs_ and g.nodes_[x].out_
-  // are sorted by dep_time_, except the ones added by add_final_fps()
 
   auto g = decision_graph{};
   auto node_count = dg_node_idx_t{0};

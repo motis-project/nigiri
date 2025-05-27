@@ -1,3 +1,7 @@
+/*
+ * This code is based on the original version by Ben Strasser
+ */
+
 #pragma once
 
 #include <ostream>
