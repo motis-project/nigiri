@@ -25,8 +25,8 @@ struct td_footpath {
 };
 
 template <direction SearchDir, typename Collection>
-std::optional<duration_t> get_td_duration(Collection const& c,
-                                          unixtime_t const t) {
+std::optional<std::pair<duration_t, typename Collection::value_type>>
+get_td_duration(Collection const& c, unixtime_t const t) {
   auto const r = to_range<SearchDir>(c);
   auto const from = r.begin();
   auto const to = r.end();
@@ -36,12 +36,12 @@ std::optional<duration_t> get_td_duration(Collection const& c,
   if constexpr (SearchDir == direction::kForward) {
     Type const* pred = nullptr;
 
-    auto const get = [&]() -> std::optional<duration_t> {
+    auto const get = [&]() -> std::optional<std::pair<duration_t, Type>> {
       auto const start = std::max(pred->valid_from_, t);
       auto const target_time = start + pred->duration_;
       auto const duration_with_waiting = target_time - t;
       if (duration_with_waiting < footpath::kMaxDuration) {
-        return duration_with_waiting;
+        return std::pair{static_cast<duration_t>(duration_with_waiting), *pred};
       } else {
         return std::nullopt;
       }
@@ -76,12 +76,12 @@ std::optional<duration_t> get_td_duration(Collection const& c,
 
     auto const get =
         [&](unixtime_t const valid_from,
-            duration_t const duration) -> std::optional<duration_t> {
+            Type const& fp) -> std::optional<std::pair<duration_t, Type>> {
       auto const start = std::min(valid_from, t);
-      auto const target_time = start - duration;
+      auto const target_time = start - fp.duration_;
       auto const duration_with_waiting = t - target_time;
       if (duration_with_waiting < footpath::kMaxDuration) {
-        return duration_with_waiting;
+        return std::pair{duration_with_waiting, fp};
       } else {
         return std::nullopt;
       }
@@ -89,9 +89,9 @@ std::optional<duration_t> get_td_duration(Collection const& c,
 
     if (from != to && get_valid_from(*from) <= t) {
       if (from->duration_ != footpath::kMaxDuration) {
-        return get(t, from->duration_);
+        return get(t, *from);
       } else if (auto const next = std::next(from); next != to) {
-        return get(get_valid_from(*from), next->duration_);
+        return get(get_valid_from(*from), *next);
       }
     }
 
@@ -100,7 +100,7 @@ std::optional<duration_t> get_td_duration(Collection const& c,
       if (b.duration_ != footpath::kMaxDuration &&
           (t >= a.valid_from_ ||
            interval{get_valid_from(b), get_valid_from(a) + 1min}.contains(t))) {
-        return get(get_valid_from(a), b.duration_);
+        return get(get_valid_from(a), b);
       }
     }
 
@@ -109,9 +109,10 @@ std::optional<duration_t> get_td_duration(Collection const& c,
 }
 
 template <typename Collection>
-std::optional<duration_t> get_td_duration(direction const search_dir,
-                                          Collection const& c,
-                                          unixtime_t const t) {
+std::optional<std::pair<duration_t, typename Collection::value_type>>
+get_td_duration(direction const search_dir,
+                Collection const& c,
+                unixtime_t const t) {
   return search_dir == direction::kForward
              ? get_td_duration<direction::kForward>(c, t)
              : get_td_duration<direction::kBackward>(c, t);
@@ -125,10 +126,9 @@ void for_each_footpath(Collection const& c, unixtime_t const t, Fn&& f) {
         return a.target_ == b.target_;
       },
       [&](auto&& from, auto&& to) {
-        auto const duration =
-            get_td_duration<SearchDir>(std::span{from, to}, t);
-        if (duration.has_value()) {
-          f(footpath{from->target_, *duration});
+        auto const fp = get_td_duration<SearchDir>(std::span{from, to}, t);
+        if (fp.has_value()) {
+          f(footpath{from->target_, fp->first});
         }
       });
 }

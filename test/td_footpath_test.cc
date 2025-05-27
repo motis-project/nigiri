@@ -124,7 +124,7 @@ TEST(td_footpath, backward_1) {
   auto const d = get_td_duration<direction::kBackward>(
       fps, sys_days{2024_y / June / 19} + 8h);
   ASSERT_TRUE(d.has_value());
-  EXPECT_EQ(40min, *d);
+  EXPECT_EQ(40min, d->first);
 }
 
 TEST(td_footpath, backward) {
