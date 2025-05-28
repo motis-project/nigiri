@@ -19,13 +19,21 @@ struct rt_timetable;
 namespace nigiri::routing {
 
 struct journey {
+  CISTA_FRIEND_COMPARABLE(journey)
+
   struct run_enter_exit {
     run_enter_exit(rt::run r, stop_idx_t const a, stop_idx_t const b)
         : r_{std::move(r)},
           stop_range_{std::min(a, b),
                       static_cast<stop_idx_t>(std::max(a, b) + 1U)} {}
 
-    auto operator<=>(run_enter_exit const&) const = default;
+    friend bool operator==(run_enter_exit const& a, run_enter_exit const& b) {
+      return std::tie(a.r_, a.stop_range_) == std::tie(b.r_, b.stop_range_);
+    }
+
+    friend bool operator<(run_enter_exit const& a, run_enter_exit const& b) {
+      return std::tie(a.r_, a.stop_range_) < std::tie(b.r_, b.stop_range_);
+    }
 
     rt::run r_;
     interval<stop_idx_t> stop_range_;
@@ -51,7 +59,15 @@ struct journey {
                unsigned n_indent = 0U,
                bool debug = false) const;
 
-    auto operator<=>(leg const&) const = default;
+    friend bool operator==(leg const& a, leg const& b) {
+      return std::tie(a.from_, a.to_, a.dep_time_, a.arr_time_, a.uses_) ==
+             std::tie(b.from_, b.to_, b.dep_time_, b.arr_time_, b.uses_);
+    }
+
+    friend bool operator<(leg const& a, leg const& b) {
+      return std::tie(a.from_, a.to_, a.dep_time_, a.arr_time_, a.uses_) <
+             std::tie(b.from_, b.to_, b.dep_time_, b.arr_time_, b.uses_);
+    }
 
     location_idx_t from_, to_;
     unixtime_t dep_time_, arr_time_;
@@ -86,8 +102,6 @@ struct journey {
              timetable const&,
              rt_timetable const* = nullptr,
              bool debug = false) const;
-
-  auto operator<=>(journey const&) const = default;
 
   std::vector<leg> legs_{};
   unixtime_t start_time_{};
