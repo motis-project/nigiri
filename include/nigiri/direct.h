@@ -4,9 +4,9 @@
 
 #include "nigiri/for_each_meta.h"
 #include "nigiri/location_match_mode.h"
+#include "nigiri/rt/frun.h"
+#include "nigiri/rt/rt_timetable.h"
 #include "nigiri/timetable.h"
-
-#include "rt/rt_timetable.h"
 
 namespace nigiri {
 
@@ -19,6 +19,9 @@ void for_each_direct(timetable const& tt,
                      routing::location_match_mode const to_match_mode,
                      location_idx_t const from,
                      location_idx_t const to,
+                     bool const require_bike_transport,
+                     bool const require_car_transport,
+                     routing::clasz_mask_t const allowed_claszes,
                      interval<unixtime_t> const time,
                      Fn&& fn) {
   constexpr auto const kFwd = SearchDir == direction::kForward;
@@ -32,6 +35,35 @@ void for_each_direct(timetable const& tt,
     } else {
       return tt.bitfields_[tt.transport_traffic_days_[t]].test(day);
     }
+  };
+
+  auto const checked_fn = [&](routing::journey const& j) {
+    if (!require_bike_transport && !require_car_transport) {
+      fn(j);
+    }
+
+    auto const& l = j.legs_.front();
+    auto const& ree = std::get<routing::journey::run_enter_exit>(l.uses_);
+
+    if (require_bike_transport) {
+      auto const fr = rt::frun{tt, rtt, ree.r_};
+      for (auto const stop_idx : ree.stop_range_) {
+        if (!fr[stop_idx].bikes_allowed()) {
+          return;
+        }
+      }
+    }
+
+    if (require_car_transport) {
+      auto const fr = rt::frun{tt, rtt, ree.r_};
+      for (auto const stop_idx : ree.stop_range_) {
+        if (!fr[stop_idx].cars_allowed()) {
+          return;
+        }
+      }
+    }
+
+    fn(j);
   };
 
   auto const check_interval = utl::overloaded{
@@ -82,7 +114,7 @@ void for_each_direct(timetable const& tt,
                               .stop_range_ = {0U, static_cast<stop_idx_t>(
                                                       loc_seq.size())}},
                       start_stop_idx, end_stop_idx}};
-              fn(routing::journey{
+              checked_fn(routing::journey{
                   .legs_ = {leg},
                   .start_time_ = leg.dep_time_,
                   .dest_time_ = leg.arr_time_,
@@ -112,7 +144,7 @@ void for_each_direct(timetable const& tt,
                                                   loc_seq.size())},
                           .rt_ = rt},
                   start, end}};
-          fn(routing::journey{
+          checked_fn(routing::journey{
               .legs_ = {leg},
               .start_time_ = leg.dep_time_,
               .dest_time_ = leg.arr_time_,
@@ -167,7 +199,10 @@ void for_each_direct(timetable const& tt,
                       [&](route_idx_t const a, route_idx_t const b) {
                         utl::verify(a == b, "{} != {}", a, b);
                         trace_direct("  found route {} visiting", a);
-                        for_each_from_to(x, y, tt.route_location_seq_[a], a);
+                        if (routing::is_allowed(allowed_claszes,
+                                                tt.route_clasz_[a])) {
+                          for_each_from_to(x, y, tt.route_location_seq_[a], a);
+                        }
                       }});
 
               if (rtt == nullptr) {
@@ -189,8 +224,12 @@ void for_each_direct(timetable const& tt,
                           rt_transport_idx_t const b) {
                         utl::verify(a == b, "{} != {}", a, b);
                         trace_direct("  found rt_transport {} visiting", a);
-                        for_each_from_to(x, y,
-                                         rtt->rt_transport_location_seq_[a], a);
+                        if (routing::is_allowed(
+                                allowed_claszes,
+                                rtt->rt_transport_section_clasz_[a].front())) {
+                          for_each_from_to(
+                              x, y, rtt->rt_transport_location_seq_[a], a);
+                        }
                       }});
             });
       });

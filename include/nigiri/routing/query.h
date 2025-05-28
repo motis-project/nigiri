@@ -95,6 +95,7 @@ struct query {
   transfer_time_settings transfer_time_settings_{};
   std::vector<via_stop> via_stops_{};
   std::optional<duration_t> fastest_direct_{};
+  bool add_slow_direct_{false};
 };
 
 }  // namespace nigiri::routing

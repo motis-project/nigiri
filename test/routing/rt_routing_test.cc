@@ -141,7 +141,8 @@ TEST(routing, rt_raptor_forward) {
   auto const& l = results.begin()->legs_.back();
   for_each_direct<direction::kForward>(
       tt, &rtt, routing::location_match_mode::kEquivalent,
-      routing::location_match_mode::kEquivalent, l.from_, l.to_,
+      routing::location_match_mode::kEquivalent, l.from_, l.to_, false, false,
+      routing::all_clasz_allowed(),
       interval<unixtime_t>{l.dep_time_, l.dep_time_ + 1min},
       [&](routing::journey const& j) { j.print(ss, tt, &rtt); });
   EXPECT_EQ(R"([2019-05-03 00:30, 2019-05-03 01:00]
@@ -225,7 +226,8 @@ TEST(routing, rt_raptor_backward) {
   auto const& l = results.begin()->legs_.back();
   for_each_direct<direction::kBackward>(
       tt, &rtt, routing::location_match_mode::kEquivalent,
-      routing::location_match_mode::kEquivalent, l.to_, l.from_,
+      routing::location_match_mode::kEquivalent, l.to_, l.from_, false, false,
+      routing::all_clasz_allowed(),
       interval<unixtime_t>{l.arr_time_, l.arr_time_ + 1min},
       [&](routing::journey const& j) { j.print(ss, tt, &rtt); });
   EXPECT_EQ(R"([2019-05-03 00:30, 2019-05-03 01:00]

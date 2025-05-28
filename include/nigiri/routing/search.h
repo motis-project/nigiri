@@ -23,6 +23,7 @@
 #include "nigiri/timetable.h"
 #include "nigiri/types.h"
 
+#include "utl/concat.h"
 #include "utl/erase_duplicates.h"
 
 namespace nigiri::routing {
@@ -304,25 +305,24 @@ struct search {
                j.travel_time() > q_.max_travel_time_;
       });
 
-      struct direct {
-        bool operator==(direct const& o) const {
-          return from_ == o.from_ && to_ == o.to_;
+      if (q_.add_slow_direct_) {
+        auto direct = std::vector<journey>{};
+        for (auto const& j : state_.results_) {
+          if (j.transfers_ == 0 && j.legs_.size() == 1) {
+            auto const& l = j.legs_.front();
+            for_each_direct<SearchDir>(
+                tt_, rtt_, kFwd ? q_.start_match_mode_ : q_.dest_match_mode_,
+                kFwd ? q_.dest_match_mode_ : q_.start_match_mode_,
+                kFwd ? l.from_ : l.to_, kFwd ? l.to_ : l.from_,
+                q_.require_bike_transport_, q_.require_car_transport_,
+                q_.allowed_claszes_, search_interval_,
+                [&](journey const& d) { direct.push_back(d); });
+          }
         }
-        std::optional<offset> from_offset_, to_offset_;
-        location_idx_t from_, to_;
-      };
-      for (auto const& j : state_.results_) {
-        if (j.transfers_ == 0 && j.legs_.size() == 1) {
-          auto const& l = j.legs_.front();
-          for_each_direct<SearchDir>(
-              tt_, rtt_, location_match_mode::kEquivalent,
-              location_match_mode::kEquivalent, kFwd ? l.from_ : l.to_,
-              kFwd ? l.to_ : l.from_, search_interval_,
-              [&](journey const& d) { state_.results_.add_not_optimal(d); });
-        }
+        utl::concat(state_.results_.els_, direct);
+        utl::erase_duplicates(state_.results_);
       }
 
-      utl::erase_duplicates(state_.results_);
       utl::sort(state_.results_, [](journey const& a, journey const& b) {
         return a.start_time_ < b.start_time_;
       });
