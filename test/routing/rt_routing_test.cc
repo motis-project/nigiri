@@ -222,15 +222,16 @@ TEST(routing, rt_raptor_backward) {
 
   EXPECT_EQ(std::string_view{kBwdJourneys}, to_string(tt, &rtt, results));
 
-  auto ss = std::stringstream{};
   auto const& l = results.begin()->legs_.back();
+  auto direct = pareto_set<routing::journey>{};
   for_each_direct<direction::kBackward>(
       tt, &rtt, routing::location_match_mode::kEquivalent,
       routing::location_match_mode::kEquivalent, l.to_, l.from_, false, false,
       routing::all_clasz_allowed(),
       interval<unixtime_t>{l.arr_time_, l.arr_time_ + 1min},
-      [&](routing::journey const& j) { j.print(ss, tt, &rtt); });
-  EXPECT_EQ(R"([2019-05-03 00:30, 2019-05-03 01:00]
+      [&](routing::journey&& j) { direct.add(std::move(j)); });
+  EXPECT_EQ(R"(
+[2019-05-03 00:30, 2019-05-03 01:00]
 TRANSFERS: 0
      FROM: (B, B) [2019-05-03 00:30]
        TO: (D, D) [2019-05-03 01:00]
@@ -238,8 +239,9 @@ leg 0: (B, B) [2019-05-03 00:30] -> (D, D) [2019-05-03 01:00]
    0: B       B...............................................                                                             d: 02.05 22:30 [03.05 00:30]  RT 03.05 00:30 [03.05 02:30]  [{name=RE 2, day=2019-05-02, id=T_RE2, src=0}]
    1: C       C............................................... a: 02.05 22:45 [03.05 00:45]  RT 03.05 00:45 [03.05 02:45]  d: 02.05 22:45 [03.05 00:45]  RT 03.05 00:45 [03.05 02:45]  [{name=RE 2, day=2019-05-02, id=T_RE2, src=0}]
    2: D       D............................................... a: 02.05 23:00 [03.05 01:00]  RT 03.05 01:00 [03.05 03:00]
+
 )",
-            ss.str());
+            to_string(tt, &rtt, direct));
 }
 
 constexpr auto const unscheduled_journeys = R"(

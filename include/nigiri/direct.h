@@ -37,9 +37,10 @@ void for_each_direct(timetable const& tt,
     }
   };
 
-  auto const checked_fn = [&](routing::journey const& j) {
+  auto const checked_fn = [&](routing::journey&& j) {
     if (!require_bike_transport && !require_car_transport) {
-      fn(j);
+      fn(std::move(j));
+      return;
     }
 
     auto const& l = j.legs_.front();
@@ -63,7 +64,7 @@ void for_each_direct(timetable const& tt,
       }
     }
 
-    fn(j);
+    fn(std::move(j));
   };
 
   auto const check_interval = utl::overloaded{
