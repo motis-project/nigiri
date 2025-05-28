@@ -84,6 +84,7 @@ struct stop {
   std::string_view id_;
   cista::raw::generic_string name_;
   std::string_view platform_code_;
+  std::string_view desc_;
   geo::latlng coord_;
   std::string_view timezone_;
   std::set<stop*> same_name_, children_;
@@ -179,6 +180,7 @@ stops_map_t read_stops(source_idx_t const src,
     utl::csv_col<utl::cstr, UTL_NAME("stop_timezone")> timezone_;
     utl::csv_col<utl::cstr, UTL_NAME("parent_station")> parent_station_;
     utl::csv_col<utl::cstr, UTL_NAME("platform_code")> platform_code_;
+    utl::csv_col<utl::cstr, UTL_NAME("stop_desc")> stop_desc_;
     utl::csv_col<utl::cstr, UTL_NAME("stop_lat")> lat_;
     utl::csv_col<utl::cstr, UTL_NAME("stop_lon")> lon_;
   };
@@ -201,6 +203,7 @@ stops_map_t read_stops(source_idx_t const src,
             std::clamp(utl::parse<double>(s.lat_->trim()), -90.0, 90.0),
             std::clamp(utl::parse<double>(s.lon_->trim()), -180.0, 180.0)};
         new_stop->platform_code_ = s.platform_code_->view();
+        new_stop->desc_ = s.stop_desc_->view();
         new_stop->timezone_ = s.timezone_->trim().view();
 
         if (!s.parent_station_->trim().empty()) {
@@ -247,7 +250,7 @@ stops_map_t read_stops(source_idx_t const src,
     locations.emplace(
         std::string{id},
         s->location_ = tt.locations_.register_location(location{
-            id, is_track ? s->platform_code_ : s->name_, s->coord_, src,
+            id, is_track ? s->platform_code_ : s->name_, s->desc_, s->coord_, src,
             is_track ? location_type::kTrack : location_type::kStation,
             location_idx_t::invalid(),
             s->timezone_.empty() ? timezone_idx_t::invalid()

@@ -23,6 +23,7 @@ location::location(timetable const& tt, location_idx_t idx)
 location::location(
     std::string_view id,
     std::string_view name,
+    std::string_view desc,
     geo::latlng pos,
     source_idx_t src,
     location_type type,

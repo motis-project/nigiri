@@ -79,6 +79,7 @@ struct timetable {
     location get(location_idx_t const idx) const {
       auto l = location{ids_[idx].view(),
                         names_[idx].view(),
+                        descriptions_[idx].view(),
                         coordinates_[idx],
                         src_[idx],
                         types_[idx],
@@ -103,6 +104,7 @@ struct timetable {
     // Station access: external station id -> internal station idx
     hash_map<location_id, location_idx_t> location_id_to_idx_;
     vecvec<location_idx_t, char> names_;
+    vecvec<location_idx_t, char> descriptions_;
     vecvec<location_idx_t, char> ids_;
     vector_map<location_idx_t, geo::latlng> coordinates_;
     vector_map<location_idx_t, source_idx_t> src_;
