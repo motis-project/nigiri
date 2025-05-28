@@ -3,6 +3,7 @@
 #include "nigiri/loader/gtfs/load_timetable.h"
 #include "nigiri/loader/hrd/load_timetable.h"
 #include "nigiri/loader/init_finish.h"
+#include "nigiri/direct.h"
 #include "nigiri/rt/create_rt_timetable.h"
 #include "nigiri/rt/gtfsrt_update.h"
 #include "nigiri/rt/rt_timetable.h"
@@ -70,7 +71,7 @@ T_RE2,01:00:00,01:00:00,D,3,0,0
 )");
 }
 
-constexpr auto const fwd_journeys = R"(
+constexpr auto const kFwdJourneys = R"(
 [2019-05-02 23:00, 2019-05-03 01:00]
 TRANSFERS: 1
      FROM: (A, A) [2019-05-02 23:00]
@@ -134,10 +135,28 @@ TEST(routing, rt_raptor_forward) {
   auto const results =
       raptor_search(tt, &rtt, "A", "D", sys_days{May / 2 / 2019} + 23h);
 
-  EXPECT_EQ(std::string_view{fwd_journeys}, to_string(tt, &rtt, results));
+  EXPECT_EQ(std::string_view{kFwdJourneys}, to_string(tt, &rtt, results));
+
+  auto ss = std::stringstream{};
+  auto const& l = results.begin()->legs_.back();
+  for_each_direct<direction::kForward>(
+      tt, &rtt, routing::location_match_mode::kEquivalent,
+      routing::location_match_mode::kEquivalent, l.from_, l.to_,
+      interval<unixtime_t>{l.dep_time_, l.dep_time_ + 1min},
+      [&](routing::journey const& j) { j.print(ss, tt, &rtt); });
+  EXPECT_EQ(R"([2019-05-03 00:30, 2019-05-03 01:00]
+TRANSFERS: 0
+     FROM: (B, B) [2019-05-03 00:30]
+       TO: (D, D) [2019-05-03 01:00]
+leg 0: (B, B) [2019-05-03 00:30] -> (D, D) [2019-05-03 01:00]
+   0: B       B...............................................                                                             d: 02.05 22:30 [03.05 00:30]  RT 03.05 00:30 [03.05 02:30]  [{name=RE 2, day=2019-05-02, id=T_RE2, src=0}]
+   1: C       C............................................... a: 02.05 22:45 [03.05 00:45]  RT 03.05 00:45 [03.05 02:45]  d: 02.05 22:45 [03.05 00:45]  RT 03.05 00:45 [03.05 02:45]  [{name=RE 2, day=2019-05-02, id=T_RE2, src=0}]
+   2: D       D............................................... a: 02.05 23:00 [03.05 01:00]  RT 03.05 01:00 [03.05 03:00]
+)",
+            ss.str());
 }
 
-constexpr auto const bwd_journeys = R"(
+constexpr auto const kBwdJourneys = R"(
 [2019-05-02 23:00, 2019-05-03 02:00]
 TRANSFERS: 1
      FROM: (A, A) [2019-05-02 23:00]
@@ -200,7 +219,25 @@ TEST(routing, rt_raptor_backward) {
       raptor_search(tt, &rtt, "D", "A", sys_days{May / 3 / 2019} + 2h,
                     nigiri::direction::kBackward);
 
-  EXPECT_EQ(std::string_view{bwd_journeys}, to_string(tt, &rtt, results));
+  EXPECT_EQ(std::string_view{kBwdJourneys}, to_string(tt, &rtt, results));
+
+  auto ss = std::stringstream{};
+  auto const& l = results.begin()->legs_.back();
+  for_each_direct<direction::kBackward>(
+      tt, &rtt, routing::location_match_mode::kEquivalent,
+      routing::location_match_mode::kEquivalent, l.to_, l.from_,
+      interval<unixtime_t>{l.arr_time_, l.arr_time_ + 1min},
+      [&](routing::journey const& j) { j.print(ss, tt, &rtt); });
+  EXPECT_EQ(R"([2019-05-03 00:30, 2019-05-03 01:00]
+TRANSFERS: 0
+     FROM: (B, B) [2019-05-03 00:30]
+       TO: (D, D) [2019-05-03 01:00]
+leg 0: (B, B) [2019-05-03 00:30] -> (D, D) [2019-05-03 01:00]
+   0: B       B...............................................                                                             d: 02.05 22:30 [03.05 00:30]  RT 03.05 00:30 [03.05 02:30]  [{name=RE 2, day=2019-05-02, id=T_RE2, src=0}]
+   1: C       C............................................... a: 02.05 22:45 [03.05 00:45]  RT 03.05 00:45 [03.05 02:45]  d: 02.05 22:45 [03.05 00:45]  RT 03.05 00:45 [03.05 02:45]  [{name=RE 2, day=2019-05-02, id=T_RE2, src=0}]
+   2: D       D............................................... a: 02.05 23:00 [03.05 01:00]  RT 03.05 01:00 [03.05 03:00]
+)",
+            ss.str());
 }
 
 constexpr auto const unscheduled_journeys = R"(
