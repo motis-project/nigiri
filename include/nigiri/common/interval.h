@@ -118,7 +118,7 @@ struct interval {
   }
 
   friend bool operator==(interval const& a, interval const& b) {
-    return std::tie(a.from_, a.from_) < std::tie(b.from_, b.to_);
+    return std::tie(a.from_, a.from_) == std::tie(b.from_, b.to_);
   }
 
   friend bool operator<(interval const& a, interval const& b) {
