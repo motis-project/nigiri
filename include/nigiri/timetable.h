@@ -44,6 +44,7 @@ struct timetable {
 
       if (is_new) {
         names_.emplace_back(l.name_);
+        descriptions_.emplace_back(l.desc_);
         coordinates_.emplace_back(l.pos_);
         ids_.emplace_back(l.id_);
         src_.emplace_back(l.src_);
@@ -61,6 +62,7 @@ struct timetable {
       }
 
       assert(names_.size() == next_idx + 1);
+      assert(descriptions_.size() == next_idx + 1);
       assert(coordinates_.size() == next_idx + 1);
       assert(ids_.size() == next_idx + 1);
       assert(src_.size() == next_idx + 1);
