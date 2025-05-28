@@ -25,8 +25,7 @@ struct journey {
           stop_range_{std::min(a, b),
                       static_cast<stop_idx_t>(std::max(a, b) + 1U)} {}
 
-    friend bool operator==(run_enter_exit const&,
-                           run_enter_exit const&) = default;
+    auto operator<=>(run_enter_exit const&) const = default;
 
     rt::run r_;
     interval<stop_idx_t> stop_range_;
@@ -52,7 +51,7 @@ struct journey {
                unsigned n_indent = 0U,
                bool debug = false) const;
 
-    friend bool operator==(leg const&, leg const&) = default;
+    auto operator<=>(leg const&) const = default;
 
     location_idx_t from_, to_;
     unixtime_t dep_time_, arr_time_;
@@ -88,7 +87,7 @@ struct journey {
              rt_timetable const* = nullptr,
              bool debug = false) const;
 
-  friend bool operator==(journey const&, journey const&) = default;
+  auto operator<=>(journey const&) const = default;
 
   std::vector<leg> legs_{};
   unixtime_t start_time_{};

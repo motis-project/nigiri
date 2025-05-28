@@ -52,17 +52,18 @@ struct footpath {
     return out << "(" << fp.target() << ", " << fp.duration() << ")";
   }
 
-  friend bool operator==(footpath const& a, footpath const& b) {
-    return std::tie(a.target_, a.duration_) == std::tie(b.target_, b.duration_);
+  bool operator==(footpath const& o) const {
+    return target_ == o.target_ && duration_ == o.duration_;
   }
-
-  friend bool operator<(footpath const& a, footpath const& b) {
-    return std::tie(a.target_, a.duration_) < std::tie(b.target_, b.duration_);
+  auto operator<=>(footpath const& o) const {
+    return std::tie(target_, duration_) <=> std::tie(o.target_, o.duration_);
   }
 
   location_idx_t::value_t target_ : kTargetBits;
   location_idx_t::value_t duration_ : kDurationBits;
 };
+
+static_assert(std::three_way_comparable<footpath>);
 
 template <std::size_t NMaxTypes>
 constexpr auto static_type_hash(footpath const*,

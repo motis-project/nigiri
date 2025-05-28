@@ -8,6 +8,7 @@
 #include "utl/timing.h"
 #include "utl/to_vec.h"
 
+#include "nigiri/direct.h"
 #include "nigiri/for_each_meta.h"
 #include "nigiri/get_otel_tracer.h"
 #include "nigiri/logging.h"
@@ -21,6 +22,8 @@
 #include "nigiri/routing/start_times.h"
 #include "nigiri/timetable.h"
 #include "nigiri/types.h"
+
+#include "utl/erase_duplicates.h"
 
 namespace nigiri::routing {
 
@@ -300,6 +303,26 @@ struct search {
                j.travel_time() >= fastest_direct_ ||
                j.travel_time() > q_.max_travel_time_;
       });
+
+      struct direct {
+        bool operator==(direct const& o) const {
+          return from_ == o.from_ && to_ == o.to_;
+        }
+        std::optional<offset> from_offset_, to_offset_;
+        location_idx_t from_, to_;
+      };
+      for (auto const& j : state_.results_) {
+        if (j.transfers_ == 0 && j.legs_.size() == 1) {
+          auto const& l = j.legs_.front();
+          for_each_direct<SearchDir>(
+              tt_, rtt_, location_match_mode::kEquivalent,
+              location_match_mode::kEquivalent, kFwd ? l.from_ : l.to_,
+              kFwd ? l.to_ : l.from_, search_interval_,
+              [&](journey const& d) { state_.results_.add_not_optimal(d); });
+        }
+      }
+
+      utl::erase_duplicates(state_.results_);
       utl::sort(state_.results_, [](journey const& a, journey const& b) {
         return a.start_time_ < b.start_time_;
       });

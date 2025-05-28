@@ -35,6 +35,8 @@ struct offset {
   duration_t duration() const noexcept { return duration_; }
   transport_mode_id_t type() const noexcept { return transport_mode_id_; }
 
+  auto operator<=>(offset const&) const = default;
+
   friend bool operator<(offset const& a, offset const& b) {
     return a.duration_ < b.duration_;
   }

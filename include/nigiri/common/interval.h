@@ -118,6 +118,8 @@ struct interval {
   }
 
   friend bool operator==(interval const&, interval const&) = default;
+  friend bool operator<(interval const&, interval const&) = default;
+  auto operator<=>(interval const& interval) const = default;
 
   T from_{}, to_{};
 };

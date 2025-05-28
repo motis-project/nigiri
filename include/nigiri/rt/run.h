@@ -32,6 +32,10 @@ struct run {
     return t_.is_valid() || rt_ != rt_transport_idx_t::invalid();
   }
 
+  auto operator<=>(run const&) const = default;
+  friend bool operator<(run const& a, run const& b) {
+    return a.t_ < b.t_ || (a.t_ == b.t_ && a.stop_range_ < b.stop_range_);
+  }
   friend bool operator==(run const& a, run const& b) {
     return a.t_ == b.t_ && a.stop_range_ == b.stop_range_;
   }
