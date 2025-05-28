@@ -305,7 +305,7 @@ struct search {
                j.travel_time() > q_.max_travel_time_;
       });
 
-      if (q_.add_slow_direct_) {
+      if (q_.slow_direct_) {
         auto direct = std::vector<journey>{};
         for (auto const& j : state_.results_) {
           if (j.transfers_ == 0 && j.legs_.size() == 1) {
