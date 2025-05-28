@@ -2,8 +2,10 @@
 
 #include "fmt/format.h"
 
+#include "utl/concat.h"
 #include "utl/enumerate.h"
 #include "utl/equal_ranges_linear.h"
+#include "utl/erase_duplicates.h"
 #include "utl/erase_if.h"
 #include "utl/timing.h"
 #include "utl/to_vec.h"
@@ -22,9 +24,6 @@
 #include "nigiri/routing/start_times.h"
 #include "nigiri/timetable.h"
 #include "nigiri/types.h"
-
-#include "utl/concat.h"
-#include "utl/erase_duplicates.h"
 
 namespace nigiri::routing {
 
