@@ -229,10 +229,10 @@ stops_map_t read_stops(source_idx_t const src,
                                    []() { return std::make_unique<stop>(); })
                     .get();
             parent->id_ = new_stop->id_;
+            parent->name_ = new_stop->name_;
             parent->coord_ = new_stop->coord_;
             parent->desc_ = new_stop->desc_;
             parent->timezone_ = new_stop->timezone_;
-            parent->platform_code_ = "";
             parent->children_.emplace(new_stop);
             new_stop->parent_ = parent;
           }
