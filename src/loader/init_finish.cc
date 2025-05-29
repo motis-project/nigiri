@@ -19,6 +19,7 @@ void register_special_stations(timetable& tt) {
   for (auto const& name : special_stations_names) {
     tt.locations_.register_location(location{name,
                                              name,
+                                             "",
                                              {0.0, 0.0},
                                              source_idx_t::invalid(),
                                              location_type::kStation,
