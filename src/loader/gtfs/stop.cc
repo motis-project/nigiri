@@ -211,9 +211,10 @@ stops_map_t read_stops(source_idx_t const src,
 
           if (!s.parent_station_->trim().empty()) {
             auto const parent =
-                utl::get_or_create(stops,
-                                   std::make_pair(s.id_->trim().view(), false),
-                                   []() { return std::make_unique<stop>(); })
+                utl::get_or_create(
+                    stops,
+                    std::make_pair(s.parent_station_->trim().view(), false),
+                    []() { return std::make_unique<stop>(); })
                     .get();
             parent->id_ = s.parent_station_->trim().view();
             parent->children_.emplace(new_stop);
