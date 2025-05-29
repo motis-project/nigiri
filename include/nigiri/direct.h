@@ -6,27 +6,52 @@
 #include "nigiri/location_match_mode.h"
 #include "nigiri/rt/frun.h"
 #include "nigiri/rt/rt_timetable.h"
+#include "nigiri/special_stations.h"
 #include "nigiri/timetable.h"
 
 namespace nigiri {
 
-#define trace_direct(...)
+#define trace_direct(...) fmt::println(__VA_ARGS__)
 
 template <direction SearchDir, typename Fn>
 void for_each_direct(timetable const& tt,
                      rt_timetable const* rtt,
-                     routing::location_match_mode const from_match_mode,
-                     routing::location_match_mode const to_match_mode,
                      location_idx_t const from,
                      location_idx_t const to,
-                     bool const require_bike_transport,
-                     bool const require_car_transport,
-                     routing::clasz_mask_t const allowed_claszes,
+                     routing::query const& q,
                      interval<unixtime_t> const time,
+                     hash_set<std::pair<location_idx_t, location_idx_t>>& done,
                      Fn&& fn) {
   constexpr auto const kFwd = SearchDir == direction::kForward;
   auto const start_ev_type = kFwd ? event_type::kDep : event_type::kArr;
   auto const end_ev_type = kFwd ? event_type::kArr : event_type::kDep;
+
+  auto const get_offset =
+      [](direction const search_dir, location_idx_t const l,
+         std::vector<routing::offset> const& offsets,
+         routing::td_offsets_t const& td_offsets,
+         unixtime_t const t) -> std::optional<routing::offset> {
+    {  // Try to find normal offset.
+      auto const it = utl::find_if(
+          offsets, [&](routing::offset const& o) { return o.target() == l; });
+      if (it != end(offsets)) {
+        return *it;
+      }
+    }
+
+    {  // Try to find td-offset.
+      auto const it = td_offsets.find(l);
+      if (it != end(td_offsets)) {
+        auto const d = get_td_duration(search_dir, it->second, t);
+        if (d.has_value()) {
+          auto const& [duration, o] = *d;
+          return routing::offset{l, duration, o.transport_mode_id_};
+        }
+      }
+    }
+
+    return std::nullopt;
+  };
 
   auto const is_transport_active = [&](transport_idx_t const t,
                                        std::size_t const day) {
@@ -37,16 +62,65 @@ void for_each_direct(timetable const& tt,
     }
   };
 
+  auto const add_offsets_fn = [&](routing::journey&& j) {
+    auto const from_match = kFwd ? q.start_match_mode_ : q.dest_match_mode_;
+    auto const to_match = kFwd ? q.dest_match_mode_ : q.start_match_mode_;
+    auto const& from_offsets = kFwd ? q.start_ : q.destination_;
+    auto const& to_offsets = kFwd ? q.destination_ : q.start_;
+    auto const& from_td_offsets = kFwd ? q.td_start_ : q.td_dest_;
+    auto const& to_td_offsets = kFwd ? q.td_dest_ : q.td_start_;
+
+    if (from_match == routing::location_match_mode::kIntermodal) {
+      auto const& l = j.legs_.front();
+      auto const offset =
+          get_offset(direction::kBackward, l.from_, from_offsets,
+                     from_td_offsets, l.dep_time_);
+      if (!offset.has_value()) {
+        return;
+      }
+      j.start_time_ = l.dep_time_ - offset->duration();
+      j.legs_.insert(
+          begin(j.legs_),
+          routing::journey::leg{direction::kForward,
+                                get_special_station(special_station::kStart),
+                                l.from_, j.start_time_, l.dep_time_, *offset});
+
+      if (!kFwd) {
+        j.dest_ = get_special_station(special_station::kStart);
+      }
+    }
+
+    if (to_match == routing::location_match_mode::kIntermodal) {
+      auto const& l = j.legs_.back();
+      auto const offset = get_offset(direction::kForward, l.to_, to_offsets,
+                                     to_td_offsets, l.arr_time_);
+      if (!offset.has_value()) {
+        return;
+      }
+      j.dest_time_ = l.arr_time_ + offset->duration();
+      j.legs_.push_back(
+          routing::journey::leg{direction::kForward, l.to_,
+                                get_special_station(special_station::kEnd),
+                                l.arr_time_, j.dest_time_, *offset});
+
+      if (kFwd) {
+        j.dest_ = get_special_station(special_station::kEnd);
+      }
+    }
+
+    fn(std::move(j));
+  };
+
   auto const checked_fn = [&](routing::journey&& j) {
-    if (!require_bike_transport && !require_car_transport) {
-      fn(std::move(j));
+    if (!q.require_bike_transport_ && !q.require_car_transport_) {
+      add_offsets_fn(std::move(j));
       return;
     }
 
     auto const& l = j.legs_.front();
     auto const& ree = std::get<routing::journey::run_enter_exit>(l.uses_);
 
-    if (require_bike_transport) {
+    if (q.require_bike_transport_) {
       auto const fr = rt::frun{tt, rtt, ree.r_};
       for (auto const stop_idx : ree.stop_range_) {
         if (!fr[stop_idx].bikes_allowed()) {
@@ -55,7 +129,7 @@ void for_each_direct(timetable const& tt,
       }
     }
 
-    if (require_car_transport) {
+    if (q.require_car_transport_) {
       auto const fr = rt::frun{tt, rtt, ree.r_};
       for (auto const stop_idx : ree.stop_range_) {
         if (!fr[stop_idx].cars_allowed()) {
@@ -64,7 +138,7 @@ void for_each_direct(timetable const& tt,
       }
     }
 
-    fn(std::move(j));
+    add_offsets_fn(std::move(j));
   };
 
   auto const check_interval = utl::overloaded{
@@ -92,13 +166,18 @@ void for_each_direct(timetable const& tt,
                 static_cast<std::size_t>(to_idx(day) - ev_day_offset);
             if (!is_transport_active(t, start_day)) {
               trace_direct(
-                  "      transport {} not active on {} (ev_time={})",
+                  "      transport {} not inactive on {} (ev_time={})",
                   tt.transport_name(t),
                   tt.internal_interval_days().from_ + date::days{1} * start_day,
                   ev);
               continue;
             }
 
+            trace_direct(
+                "      transport {} operates on {} (ev_time={})",
+                tt.transport_name(t),
+                tt.internal_interval_days().from_ + date::days{1} * start_day,
+                ev);
             auto const tr = transport{t, day_idx_t{start_day}};
             auto const start_time =
                 tt.event_time(tr, start_stop_idx, start_ev_type);
@@ -111,10 +190,13 @@ void for_each_direct(timetable const& tt,
                   start_time,
                   end_time,
                   routing::journey::run_enter_exit{
-                      rt::run{.t_ = tr,
-                              .stop_range_ = {0U, static_cast<stop_idx_t>(
-                                                      loc_seq.size())}},
+                      rt::frun{
+                          tt, rtt,
+                          rt::run{.t_ = tr,
+                                  .stop_range_ = {0U, static_cast<stop_idx_t>(
+                                                          loc_seq.size())}}},
                       start_stop_idx, end_stop_idx}};
+              trace_direct("        time={} contains {}", time, start_time);
               checked_fn(routing::journey{
                   .legs_ = {leg},
                   .start_time_ = leg.dep_time_,
@@ -123,7 +205,8 @@ void for_each_direct(timetable const& tt,
                   .transfers_ = 0U,
               });
             } else {
-              trace_direct("      time={} does't contain {}", time, start_time);
+              trace_direct("        time={} doesn't contain {}", time,
+                           start_time);
             }
           }
         }
@@ -141,10 +224,13 @@ void for_each_direct(timetable const& tt,
               start_time,
               end_time,
               routing::journey::run_enter_exit{
-                  rt::run{.stop_range_ = {0U, static_cast<stop_idx_t>(
-                                                  loc_seq.size())},
-                          .rt_ = rt},
+                  rt::frun{tt, rtt,
+                           rt::run{.stop_range_ = {0U, static_cast<stop_idx_t>(
+                                                           loc_seq.size())},
+                                   .rt_ = rt}},
                   start, end}};
+          trace_direct("        time={} contains rt_transport={}, ev_time={}",
+                       time, rtt->transport_name(tt, rt), start_time);
           checked_fn(routing::journey{
               .legs_ = {leg},
               .start_time_ = leg.dep_time_,
@@ -180,11 +266,12 @@ void for_each_direct(timetable const& tt,
 
   trace_direct("direct from {} to {} in {}", location{tt, from},
                location{tt, to}, time);
-  auto done = hash_set<std::pair<location_idx_t, location_idx_t>>{};
   routing::for_each_meta(
-      tt, from_match_mode, from, [&](location_idx_t const x) {
+      tt, routing::location_match_mode::kEquivalent, from,
+      [&](location_idx_t const x) {
         routing::for_each_meta(
-            tt, to_match_mode, to, [&](location_idx_t const y) {
+            tt, routing::location_match_mode::kEquivalent, to,
+            [&](location_idx_t const y) {
               if (x == y || !done.emplace(x, y).second) {
                 return;
               }
@@ -200,7 +287,7 @@ void for_each_direct(timetable const& tt,
                       [&](route_idx_t const a, route_idx_t const b) {
                         utl::verify(a == b, "{} != {}", a, b);
                         trace_direct("  found route {} visiting", a);
-                        if (routing::is_allowed(allowed_claszes,
+                        if (routing::is_allowed(q.allowed_claszes_,
                                                 tt.route_clasz_[a])) {
                           for_each_from_to(x, y, tt.route_location_seq_[a], a);
                         }
@@ -226,7 +313,7 @@ void for_each_direct(timetable const& tt,
                         utl::verify(a == b, "{} != {}", a, b);
                         trace_direct("  found rt_transport {} visiting", a);
                         if (routing::is_allowed(
-                                allowed_claszes,
+                                q.allowed_claszes_,
                                 rtt->rt_transport_section_clasz_[a].front())) {
                           for_each_from_to(
                               x, y, rtt->rt_transport_location_seq_[a], a);

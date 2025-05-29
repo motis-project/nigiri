@@ -306,18 +306,25 @@ struct search {
 
       if (q_.slow_direct_) {
         auto direct = std::vector<journey>{};
+        auto done = hash_set<std::pair<location_idx_t, location_idx_t>>{};
         for (auto const& j : state_.results_) {
-          if (j.transfers_ == 0 && j.legs_.size() == 1) {
-            auto const& l = j.legs_.front();
-            for_each_direct<SearchDir>(
-                tt_, rtt_, kFwd ? q_.start_match_mode_ : q_.dest_match_mode_,
-                kFwd ? q_.dest_match_mode_ : q_.start_match_mode_,
-                kFwd ? l.from_ : l.to_, kFwd ? l.to_ : l.from_,
-                q_.require_bike_transport_, q_.require_car_transport_,
-                q_.allowed_claszes_, search_interval_,
-                [&](journey const& d) { direct.push_back(d); });
+          if (j.transfers_ != 0) {
+            continue;
           }
+          auto const transport_leg_it =
+              utl::find_if(j.legs_, [](journey::leg const& l) {
+                return holds_alternative<journey::run_enter_exit>(l.uses_);
+              });
+          if (transport_leg_it == end(j.legs_)) {
+            continue;
+          }
+          auto const& l = *transport_leg_it;
+          for_each_direct<SearchDir>(
+              tt_, rtt_, kFwd ? l.from_ : l.to_, kFwd ? l.to_ : l.from_, q_,
+              search_interval_, done,
+              [&](journey const& d) { direct.push_back(d); });
         }
+
         utl::concat(state_.results_.els_, direct);
         utl::erase_duplicates(state_.results_);
       }

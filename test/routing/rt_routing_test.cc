@@ -139,11 +139,10 @@ TEST(routing, rt_raptor_forward) {
 
   auto ss = std::stringstream{};
   auto const& l = results.begin()->legs_.back();
+  auto done = hash_set<std::pair<location_idx_t, location_idx_t>>{};
   for_each_direct<direction::kForward>(
-      tt, &rtt, routing::location_match_mode::kEquivalent,
-      routing::location_match_mode::kEquivalent, l.from_, l.to_, false, false,
-      routing::all_clasz_allowed(),
-      interval<unixtime_t>{l.dep_time_, l.dep_time_ + 1min},
+      tt, &rtt, l.from_, l.to_, routing::query{},
+      interval<unixtime_t>{l.dep_time_, l.dep_time_ + 1min}, done,
       [&](routing::journey const& j) { j.print(ss, tt, &rtt); });
   EXPECT_EQ(R"([2019-05-03 00:30, 2019-05-03 01:00]
 TRANSFERS: 0
@@ -224,11 +223,10 @@ TEST(routing, rt_raptor_backward) {
 
   auto const& l = results.begin()->legs_.back();
   auto direct = pareto_set<routing::journey>{};
+  auto done = hash_set<std::pair<location_idx_t, location_idx_t>>{};
   for_each_direct<direction::kBackward>(
-      tt, &rtt, routing::location_match_mode::kEquivalent,
-      routing::location_match_mode::kEquivalent, l.to_, l.from_, false, false,
-      routing::all_clasz_allowed(),
-      interval<unixtime_t>{l.arr_time_, l.arr_time_ + 1min},
+      tt, &rtt, l.to_, l.from_, routing::query{},
+      interval<unixtime_t>{l.arr_time_, l.arr_time_ + 1min}, done,
       [&](routing::journey&& j) { direct.add(std::move(j)); });
   EXPECT_EQ(R"(
 [2019-05-03 00:30, 2019-05-03 01:00]
