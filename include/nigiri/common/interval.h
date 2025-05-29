@@ -117,7 +117,13 @@ struct interval {
     return out << "[" << i.from_ << ", " << i.to_ << "[";
   }
 
-  friend bool operator==(interval const&, interval const&) = default;
+  friend bool operator==(interval const& a, interval const& b) {
+    return std::tie(a.from_, a.to_) == std::tie(b.from_, b.to_);
+  }
+
+  friend bool operator<(interval const& a, interval const& b) {
+    return std::tie(a.from_, a.to_) < std::tie(b.from_, b.to_);
+  }
 
   T from_{}, to_{};
 };

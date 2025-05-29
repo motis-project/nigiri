@@ -31,6 +31,8 @@ struct pareto_set {
             end()};
   }
 
+  void add_not_optimal(T j) { els_.emplace_back(std::move(j)); }
+
   friend const_iterator begin(pareto_set const& s) { return s.begin(); }
   friend const_iterator end(pareto_set const& s) { return s.end(); }
   friend iterator begin(pareto_set& s) { return s.begin(); }
@@ -45,7 +47,6 @@ struct pareto_set {
   }
   void clear() { els_.clear(); }
 
-private:
   std::vector<T> els_;
 };
 
