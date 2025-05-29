@@ -132,7 +132,7 @@ void read_transfers(stop_map_t& stops, std::string_view file_content) {
       |
       utl::for_each([&](csv_transfer const& t) {
         auto const from_stop_it =
-            stops.find(std::make_pair(t.from_stop_id_->view(), false));
+            stops.find(std::pair(t.from_stop_id_->view(), false));
         if (from_stop_it == end(stops)) {
           log(log_lvl::error, "loader.gtfs.transfers", "stop {} not found\n",
               t.from_stop_id_->view());
@@ -140,7 +140,7 @@ void read_transfers(stop_map_t& stops, std::string_view file_content) {
         }
 
         auto const to_stop_it =
-            stops.find(std::make_pair(t.to_stop_id_->view(), false));
+            stops.find(std::pair(t.to_stop_id_->view(), false));
         if (to_stop_it == end(stops)) {
           log(log_lvl::error, "loader.gtfs.transfers", "stop {} not found\n",
               t.to_stop_id_->view());
@@ -196,9 +196,9 @@ stops_map_t read_stops(source_idx_t const src,
       | utl::csv<csv_stop>()  //
       | utl::for_each([&](csv_stop& s) {
           auto const new_stop =
-              utl::get_or_create(stops, std::make_pair(s.id_->view(), false),
-                                 [&]() { return std::make_unique<stop>(); })
-                  .get();
+              utl::get_or_create(stops, std::pair(s.id_->view(), false), [&]() {
+                return std::make_unique<stop>();
+              }).get();
 
           new_stop->id_ = s.id_->view();
           new_stop->name_ = std::move(*s.name_);
@@ -212,8 +212,7 @@ stops_map_t read_stops(source_idx_t const src,
           if (!s.parent_station_->trim().empty()) {
             auto const parent =
                 utl::get_or_create(
-                    stops,
-                    std::make_pair(s.parent_station_->trim().view(), false),
+                    stops, std::pair(s.parent_station_->trim().view(), false),
                     []() { return std::make_unique<stop>(); })
                     .get();
             parent->id_ = s.parent_station_->trim().view();
@@ -225,8 +224,7 @@ stops_map_t read_stops(source_idx_t const src,
             // platform codes, as Motis only supports platform codes in the
             // name attribute of child stops.
             auto const parent =
-                utl::get_or_create(stops,
-                                   std::make_pair(s.id_->trim().view(), true),
+                utl::get_or_create(stops, std::pair(s.id_->trim().view(), true),
                                    []() { return std::make_unique<stop>(); })
                     .get();
             parent->id_ = new_stop->id_;
