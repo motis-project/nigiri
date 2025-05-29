@@ -203,14 +203,19 @@ void trip::interpolate() {
 }
 
 std::string trip::display_name() const {
-  for (auto const str :
-       {std::string_view{route_->short_name_},
-        std::string_view{route_->long_name_}, std::string_view{short_name_}}) {
-    if (!str.empty()) {
-      return std::string{str};
-    }
+  if (!route_->short_name_.empty() && !short_name_.empty()) {
+    return fmt::format("{} {}", route_->short_name_, short_name_);
   }
-  return {};
+
+  if (!route_->short_name_.empty()) {
+    return route_->short_name_;
+  }
+
+  if (!short_name_.empty()) {
+    return short_name_;
+  }
+
+  return route_->long_name_;
 }
 
 clasz trip::get_clasz(timetable const& tt) const {
