@@ -23,6 +23,21 @@ void timetable::resolve() {
   }
 }
 
+std::string_view timetable::route_short_name(const transport_idx_t t) const {
+  auto const trip_idx =
+      merged_trips_[transport_to_trip_section_[t].front()].front();
+  const auto source_idx = trip_id_src_[trip_ids_[trip_idx].front()];
+  return route_ids_[source_idx]
+      .route_id_short_names_[trip_route_id_[trip_idx]]
+      .view();
+}
+
+std::string_view timetable::trip_short_name(const transport_idx_t t) const {
+  return trip_short_names_[merged_trips_[transport_to_trip_section_[t].front()]
+                               .front()]
+      .view();
+}
+
 std::ostream& operator<<(std::ostream& out, timetable const& tt) {
   for (auto const [id, idx] : tt.trip_id_to_idx_) {
     auto const str = tt.trip_id_strings_[id].view();
