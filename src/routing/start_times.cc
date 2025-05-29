@@ -73,7 +73,7 @@ void add_start_times_at_stop(direction const search_dir,
     trace_start(
         "      interval=[{}, {}[, transport={}, name={}, stop_time={} "
         "(day_offset={}, stop_time_mam={})\n",
-        iv_at_stop.from_, iv_at_stop.to_, t, tt.transport_name(t), stop_time,
+        iv_at_stop.from_, iv_at_stop.to_, t, tt.trip_short_name(t), stop_time,
         day_offset, stop_time_mam);
     for (auto day = first_day_idx; day <= last_day_idx; ++day) {
       if (traffic_days.test(to_idx(day - day_offset)) &&

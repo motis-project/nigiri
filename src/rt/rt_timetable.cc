@@ -11,7 +11,7 @@ rt_transport_idx_t rt_timetable::add_rt_transport(
     std::span<delta_t> time_seq,
     std::string_view new_trip_id,
     std::string_view route_id,
-    std::string_view display_name,
+    std::string_view trip_short_name,
     delta_t const offset) {
   auto const [t_idx, day] = t;
 
@@ -83,15 +83,15 @@ rt_transport_idx_t rt_timetable::add_rt_transport(
   rt_transport_bikes_allowed_.resize(rt_transport_bikes_allowed_.size() + 2U);
   rt_transport_cars_allowed_.resize(rt_transport_bikes_allowed_.size() + 2U);
   rt_transport_section_directions_.add_back_sized(0U);  // TODO outside
-  if (!display_name.empty()) {
-    rt_transport_display_names_.emplace_back(display_name);
+  if (!trip_short_name.empty()) {
+    rt_transport_trip_short_names_.emplace_back(trip_short_name);
   } else if (!new_trip_id.empty() && fallback_r != route_id_idx_t::invalid()) {
-    rt_transport_display_names_.emplace_back(
+    rt_transport_trip_short_names_.emplace_back(
         tt.route_ids_[src].route_id_short_names_.at(fallback_r).view());
   } else if (!new_trip_id.empty() && t.is_valid()) {
-    rt_transport_display_names_.emplace_back(tt.transport_name(t.t_idx_));
+    rt_transport_trip_short_names_.emplace_back(tt.trip_short_name(t.t_idx_));
   } else {
-    rt_transport_display_names_.add_back_sized(0);
+    rt_transport_trip_short_names_.add_back_sized(0);
   }
   if (r != route_idx_t::invalid()) {
     rt_transport_section_clasz_.emplace_back(tt.route_section_clasz_[r]);

@@ -344,7 +344,7 @@ void load_timetable(loader_config const& config,
       }
       encode_seq_numbers(trp.seq_numbers_, stop_seq_numbers);
       trp.trip_idx_ = tt.register_trip_id(
-          trp.id_, trp.route_->route_id_idx_, src, trp.display_name(),
+          trp.id_, trp.route_->route_id_idx_, src, trp.short_name_,
           {source_file_idx, trp.from_line_, trp.to_line_}, train_nr,
           stop_seq_numbers, trp.direction_id_);
     }

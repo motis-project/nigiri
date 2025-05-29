@@ -149,7 +149,7 @@ struct timetable {
   trip_idx_t register_trip_id(TripId const& trip_id_str,
                               route_id_idx_t const route_id_idx,
                               source_idx_t const src,
-                              std::string const& display_name,
+                              std::string const& trip_short_name,
                               trip_debug const dbg,
                               std::uint32_t const train_nr,
                               std::span<stop_idx_t> seq_numbers,
@@ -168,7 +168,7 @@ struct timetable {
     trip_id_src_.emplace_back(src);
 
     trip_id_to_idx_.emplace_back(trip_id_idx, trip_idx);
-    trip_display_names_.emplace_back(display_name);
+    trip_short_names_.emplace_back(trip_short_name);
     trip_debug_.emplace_back().emplace_back(dbg);
     trip_ids_.emplace_back().emplace_back(trip_id_idx);
     trip_train_nr_.emplace_back(train_nr);
@@ -355,9 +355,7 @@ struct timetable {
     return internal_interval_days().from_ + to_idx(d) * 1_days + m;
   }
 
-  cista::base_t<trip_idx_t> n_trips() const {
-    return trip_display_names_.size();
-  }
+  cista::base_t<trip_idx_t> n_trips() const { return trip_short_names_.size(); }
 
   cista::base_t<location_idx_t> n_locations() const {
     return locations_.names_.size();
@@ -400,11 +398,9 @@ struct timetable {
                         }});
   }
 
-  std::string_view transport_name(transport_idx_t const t) const {
-    return trip_display_names_
-        [merged_trips_[transport_to_trip_section_[t].front()].front()]
-            .view();
-  }
+  std::string_view route_short_name(transport_idx_t const t) const;
+
+  std::string_view trip_short_name(transport_idx_t const t) const;
 
   debug dbg(transport_idx_t const t) const {
     auto const trip_idx =
@@ -494,8 +490,8 @@ struct timetable {
   mutable_fws_multimap<trip_idx_t, trip_debug> trip_debug_;
   vecvec<source_file_idx_t, char> source_file_names_;
 
-  // Trip index -> display name
-  vecvec<trip_idx_t, char> trip_display_names_;
+  // Trip index -> trip name
+  vecvec<trip_idx_t, char> trip_short_names_;
 
   // Route -> range of transports in this route (from/to transport_idx_t)
   vector_map<route_idx_t, interval<transport_idx_t>> route_transport_ranges_;
