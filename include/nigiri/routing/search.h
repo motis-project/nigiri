@@ -10,11 +10,11 @@
 #include "utl/timing.h"
 #include "utl/to_vec.h"
 
-#include "nigiri/direct.h"
 #include "nigiri/for_each_meta.h"
 #include "nigiri/get_otel_tracer.h"
 #include "nigiri/logging.h"
 #include "nigiri/routing/dijkstra.h"
+#include "nigiri/routing/direct.h"
 #include "nigiri/routing/get_fastest_direct.h"
 #include "nigiri/routing/interval_estimate.h"
 #include "nigiri/routing/journey.h"
@@ -319,10 +319,8 @@ struct search {
             continue;
           }
           auto const& l = *transport_leg_it;
-          for_each_direct<SearchDir>(
-              tt_, rtt_, kFwd ? l.from_ : l.to_, kFwd ? l.to_ : l.from_, q_,
-              search_interval_, done,
-              [&](journey const& d) { direct.push_back(d); });
+          get_direct(tt_, rtt_, kFwd ? l.from_ : l.to_, kFwd ? l.to_ : l.from_,
+                     q_, search_interval_, SearchDir, done, direct);
         }
 
         utl::concat(state_.results_.els_, direct);

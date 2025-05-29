@@ -3,10 +3,10 @@
 #include "nigiri/loader/gtfs/load_timetable.h"
 #include "nigiri/loader/hrd/load_timetable.h"
 #include "nigiri/loader/init_finish.h"
-#include "nigiri/direct.h"
 #include "nigiri/rt/create_rt_timetable.h"
 #include "nigiri/rt/gtfsrt_update.h"
 #include "nigiri/rt/rt_timetable.h"
+#include "../../include/nigiri/routing/direct.h"
 
 #include "../loader/hrd/hrd_timetable.h"
 
@@ -137,14 +137,14 @@ TEST(routing, rt_raptor_forward) {
 
   EXPECT_EQ(std::string_view{kFwdJourneys}, to_string(tt, &rtt, results));
 
-  auto ss = std::stringstream{};
   auto const& l = results.begin()->legs_.back();
   auto done = hash_set<std::pair<location_idx_t, location_idx_t>>{};
-  for_each_direct<direction::kForward>(
-      tt, &rtt, l.from_, l.to_, routing::query{},
-      interval<unixtime_t>{l.dep_time_, l.dep_time_ + 1min}, done,
-      [&](routing::journey const& j) { j.print(ss, tt, &rtt); });
-  EXPECT_EQ(R"([2019-05-03 00:30, 2019-05-03 01:00]
+  auto direct = std::vector<routing::journey>{};
+  get_direct(tt, &rtt, l.from_, l.to_, routing::query{},
+             interval<unixtime_t>{l.dep_time_, l.dep_time_ + 1min},
+             direction::kForward, done, direct);
+  EXPECT_EQ(R"(
+[2019-05-03 00:30, 2019-05-03 01:00]
 TRANSFERS: 0
      FROM: (B, B) [2019-05-03 00:30]
        TO: (D, D) [2019-05-03 01:00]
@@ -152,8 +152,9 @@ leg 0: (B, B) [2019-05-03 00:30] -> (D, D) [2019-05-03 01:00]
    0: B       B...............................................                                                             d: 02.05 22:30 [03.05 00:30]  RT 03.05 00:30 [03.05 02:30]  [{name=RE 2, day=2019-05-02, id=T_RE2, src=0}]
    1: C       C............................................... a: 02.05 22:45 [03.05 00:45]  RT 03.05 00:45 [03.05 02:45]  d: 02.05 22:45 [03.05 00:45]  RT 03.05 00:45 [03.05 02:45]  [{name=RE 2, day=2019-05-02, id=T_RE2, src=0}]
    2: D       D............................................... a: 02.05 23:00 [03.05 01:00]  RT 03.05 01:00 [03.05 03:00]
+
 )",
-            ss.str());
+            to_string(tt, &rtt, direct));
 }
 
 constexpr auto const kBwdJourneys = R"(
@@ -222,12 +223,11 @@ TEST(routing, rt_raptor_backward) {
   EXPECT_EQ(std::string_view{kBwdJourneys}, to_string(tt, &rtt, results));
 
   auto const& l = results.begin()->legs_.back();
-  auto direct = pareto_set<routing::journey>{};
   auto done = hash_set<std::pair<location_idx_t, location_idx_t>>{};
-  for_each_direct<direction::kBackward>(
-      tt, &rtt, l.to_, l.from_, routing::query{},
-      interval<unixtime_t>{l.arr_time_, l.arr_time_ + 1min}, done,
-      [&](routing::journey&& j) { direct.add(std::move(j)); });
+  auto direct = std::vector<routing::journey>{};
+  routing::get_direct(tt, &rtt, l.to_, l.from_, routing::query{},
+                      interval<unixtime_t>{l.arr_time_, l.arr_time_ + 1min},
+                      direction::kBackward, done, direct);
   EXPECT_EQ(R"(
 [2019-05-03 00:30, 2019-05-03 01:00]
 TRANSFERS: 0
