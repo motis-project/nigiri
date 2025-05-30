@@ -412,28 +412,23 @@ struct timetable {
   static cista::wrapped<timetable> read(std::filesystem::path const&);
 
   void permutate_locations(uint32_t first_idx) {
-    // 0. create permutation vector
-    build_permutation_vec(location_routes_, first_idx);
-    vector<location_idx_t> location_permutation = get_permutation_vector();
+    vector<location_idx_t> location_permutation =
+        build_permutation_vec(location_routes_, first_idx);
 
-    // 1. create new hasmap for id to idx
-    hash_map<location_id, location_idx_t> sorted_loc_id_to_idx;
     vector<std::pair<location_id, location_idx_t>> unsorted;
     for (auto& [key, value] : locations_.location_id_to_idx_) {
-      std::pair<location_id, location_idx_t> temp = {key, value};
-      unsorted.emplace_back(temp);
+      unsorted.emplace_back(key, value);
     }
+
+    hash_map<location_id, location_idx_t> sorted_loc_id_to_idx;
+    sorted_loc_id_to_idx.reserve(unsorted.size());
     for (auto i = 0U; i < location_permutation.size(); ++i) {
       auto temp2 = unsorted.at(location_permutation.at(i).v_);
       sorted_loc_id_to_idx.insert({temp2.first, location_idx_t{i}});
     }
     auto sorted_loc_routes = apply_permutation_vec(location_routes_);
-
-    // 2. sort everything in locations_:
-    // 2a vecvec
     auto sorted_names = apply_permutation_vec(locations_.names_);
     auto sorted_ids = apply_permutation_vec(locations_.ids_);
-    // 2b vecmap
     auto sorted_coords = apply_permutation_vec(locations_.coordinates_);
     auto sorted_src = apply_permutation_vec(locations_.src_);
     auto sorted_transfertime = apply_permutation_vec(locations_.transfer_time_);
@@ -442,7 +437,6 @@ struct timetable {
         apply_permutation_vec(locations_.location_timezones_);
     auto sorted_parents =
         apply_permutation_and_mapping_vec(locations_.parents_);
-    // 2c multimap
     auto sorted_equivalences =
         apply_permutation_multimap(locations_.equivalences_);
     auto sorted_children = apply_permutation_multimap(locations_.children_);
@@ -450,14 +444,11 @@ struct timetable {
         locations_.preprocessing_footpaths_out_);
     auto sorted_pre_footpaths_in =
         apply_permutation_multimap_foot(locations_.preprocessing_footpaths_in_);
-    // 3.  permute what is dependend on loc_idx
     auto sorted_loc_area = apply_permutation_vec(location_areas_);
     auto sorted_route_loc_seq =
         apply_permutation_to_route_loc_seq(route_location_seq_);
 
-    // 4. override timetable
-    locations_.location_id_to_idx_ = sorted_loc_id_to_idx;
-    location_routes_ = sorted_loc_routes;
+    locations_.location_id_to_idx_ = std::move(sorted_loc_id_to_idx);
     locations_.names_ = sorted_names;
     locations_.ids_ = sorted_ids;
     locations_.coordinates_ = sorted_coords;
@@ -472,6 +463,7 @@ struct timetable {
     locations_.preprocessing_footpaths_in_ = sorted_pre_footpaths_in;
     location_areas_ = sorted_loc_area;
     route_location_seq_ = sorted_route_loc_seq;
+    location_routes_ = sorted_loc_routes;
   }
 
   // Schedule range.
