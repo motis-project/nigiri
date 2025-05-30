@@ -416,13 +416,10 @@ void load_timetable(loader_config const& config,
     }
 
     // Build location_routes map
-    auto first_idx = tt.location_routes_.size();
     for (auto l = tt.location_routes_.size(); l != tt.n_locations(); ++l) {
       tt.location_routes_.emplace_back(location_routes[location_idx_t{l}]);
       assert(tt.location_routes_.size() == l + 1U);
     }
-
-    tt.permutate_locations(first_idx);
 
     // Build transport ranges.
     for (auto const& t : trip_data.data_) {

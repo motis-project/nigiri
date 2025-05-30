@@ -1,17 +1,9 @@
-#include "permutate_locations.h"
-
-//#include "footpath.h"
-//#include "stop.h"
-//#include "types.h"
-
-//#include <algorithm>
-//#include <ranges>
-//#include <vector>
+#include "nigiri/loader/permutate_locations.h"
 
 namespace nigiri {
 
 vector<location_idx_t> permutation_;
-vector<location_idx_t> mapping_vec;
+static vector<location_idx_t> mapping_vec;
 
 vector<location_idx_t> create_mapping_vec(vector<location_idx_t> const& vec) {
   auto n = vec.size();
@@ -40,16 +32,6 @@ vector<location_idx_t> build_permutation_vec(
                    });
   mapping_vec = create_mapping_vec(permutation_);
   return permutation_;
-}
-
-template <typename T>
-T apply_permutation_vec(T const& input) {
-  T sorted;
-  for (auto i = 0U; i < input.size(); ++i) {
-    auto temp = input.at(permutation_[i]);
-    sorted.emplace_back(temp);
-  }
-  return sorted;
 }
 
 vecvec<route_idx_t, stop::value_type> apply_permutation_to_route_loc_seq(
