@@ -449,21 +449,22 @@ struct timetable {
         apply_permutation_to_route_loc_seq(route_location_seq_);
 
     locations_.location_id_to_idx_ = std::move(sorted_loc_id_to_idx);
-    locations_.names_ = sorted_names;
-    locations_.ids_ = sorted_ids;
-    locations_.coordinates_ = sorted_coords;
-    locations_.src_ = sorted_src;
-    locations_.transfer_time_ = sorted_transfertime;
-    locations_.types_ = sorted_types;
-    locations_.location_timezones_ = sorted_timezones;
-    locations_.parents_ = sorted_parents;
-    locations_.equivalences_ = sorted_equivalences;
-    locations_.children_ = sorted_children;
-    locations_.preprocessing_footpaths_out_ = sorted_pre_footpaths_out;
-    locations_.preprocessing_footpaths_in_ = sorted_pre_footpaths_in;
-    location_areas_ = sorted_loc_area;
-    route_location_seq_ = sorted_route_loc_seq;
-    location_routes_ = sorted_loc_routes;
+    locations_.names_ = std::move(sorted_names);
+    locations_.ids_ = std::move(sorted_ids);
+    locations_.coordinates_ = std::move(sorted_coords);
+    locations_.src_ = std::move(sorted_src);
+    locations_.transfer_time_ = std::move(sorted_transfertime);
+    locations_.types_ = std::move(sorted_types);
+    locations_.location_timezones_ = std::move(sorted_timezones);
+    locations_.parents_ = std::move(sorted_parents);
+    locations_.equivalences_ = std::move(sorted_equivalences);
+    locations_.children_ = std::move(sorted_children);
+    locations_.preprocessing_footpaths_out_ =
+        std::move(sorted_pre_footpaths_out);
+    locations_.preprocessing_footpaths_in_ = std::move(sorted_pre_footpaths_in);
+    location_areas_ = std::move(sorted_loc_area);
+    route_location_seq_ = std::move(sorted_route_loc_seq);
+    location_routes_ = std::move(sorted_loc_routes);
   }
 
   // Schedule range.
