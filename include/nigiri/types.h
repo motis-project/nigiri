@@ -337,7 +337,10 @@ enum class clasz : std::uint8_t {
   kTram = 9,
   kBus = 10,
   kShip = 11,
-  kOther = 12,
+  kCableCar = 12,
+  kFunicular = 13,
+  kAreaLift = 14,
+  kOther = 15,
   kNumClasses
 };
 

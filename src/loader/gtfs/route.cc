@@ -26,10 +26,11 @@ clasz to_clasz(std::uint16_t const route_type) {
     case 4 /* Ferry. Used for short- and long-distance boat service. */:
       return clasz::kShip;
     case 5 /* Cable tram. Used for street-level rail cars where the cable runs beneath the vehicle, e.g., cable car in San Francisco. */ :
-      return clasz::kTram;
+      return clasz::kCableCar;
     case 6 /* Aerial lift, suspended cable car (e.g., gondola lift, aerial tramway). Cable transport where cabins, cars, gondolas or open chairs are suspended by means of one or more cables. */ :
+      return clasz::kAreaLift;
     case 7 /* Funicular. Any rail system designed for steep inclines. */:
-      return clasz::kOther;
+      return clasz::kFunicular;
     case 11 /* Trolleybus. Electric buses that draw power from overhead wires using poles. */ :
       return clasz::kBus;
     case 12 /* Monorail. Railway in which the track consists of a single rail or a beam. */ :
@@ -97,14 +98,14 @@ clasz to_clasz(std::uint16_t const route_type) {
     case 1100 /* Air Service */: return clasz::kAir;
     case 1200 /* Ferry Service */: return clasz::kShip;
     case 1300 /* Aerial Lift Service */:
-    case 1301 /* Telecabin Service */:
-    case 1302 /* Cable Car Service */:
-    case 1303 /* Elevator Service */:
-    case 1304 /* Chair Lift Service */:
-    case 1305 /* Drag Lift Service */:
+    case 1301 /* Telecabin Service */: return clasz::kAreaLift;
+    case 1302 /* Cable Car Service */: return clasz::kCableCar;
+    case 1303 /* Elevator Service */: return clasz::kOther;
+    case 1304 /* Chair Lift Service */: return clasz::kAreaLift;
+    case 1305 /* Drag Lift Service */: return clasz::kOther;
     case 1306 /* Small Telecabin Service */:
-    case 1307 /* All Telecabin Services */:
-    case 1400 /* Funicular Service */:
+    case 1307 /* All Telecabin Services */: return clasz::kAreaLift;
+    case 1400 /* Funicular Service */: return clasz::kFunicular;
     case 1500 /* Taxi Service */:
     case 1501 /* Communal Taxi Service */:
     case 1502 /* Water Taxi Service */:
