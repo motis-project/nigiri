@@ -47,12 +47,8 @@ void run_raptor(raptor<SearchDir, Rt, kVias, search_mode::kOneToAll>&& algo,
       (SearchDir == direction::kForward ? 1 : -1) * (q.max_travel_time_) +
       kEpsilon;
 
-  auto const start_loc = tt.locations_.coordinates_[q.start_.front().target()];
-  auto const dest_loc =
-      tt.locations_.coordinates_[q.destination_.front().target()];
-
   algo.execute(start_time, q.max_transfers_, worst_time_at_dest, q.prf_idx_,
-               start_loc, dest_loc, results);
+               results);
 }
 
 template <direction SearchDir, bool Rt>

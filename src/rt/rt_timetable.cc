@@ -85,12 +85,13 @@ rt_transport_idx_t rt_timetable::add_rt_transport(
   rt_transport_section_directions_.add_back_sized(0U);  // TODO outside
   if (!trip_short_name.empty()) {
     rt_transport_trip_short_names_.emplace_back(trip_short_name);
+    rt_transport_route_short_names_.add_back_sized(0);
   } else if (!new_trip_id.empty() && fallback_r != route_id_idx_t::invalid()) {
-    rt_transport_trip_short_names_.emplace_back(
+    rt_transport_trip_short_names_.add_back_sized(0);
+    rt_transport_route_short_names_.emplace_back(
         tt.route_ids_[src].route_id_short_names_.at(fallback_r).view());
-  } else if (!new_trip_id.empty() && t.is_valid()) {
-    rt_transport_trip_short_names_.emplace_back(std::string_view{});
   } else {
+    rt_transport_route_short_names_.add_back_sized(0);
     rt_transport_trip_short_names_.add_back_sized(0);
   }
   if (r != route_idx_t::invalid()) {
