@@ -398,9 +398,15 @@ struct timetable {
                         }});
   }
 
-  std::string_view route_short_name(transport_idx_t const t) const;
+  std::string_view route_short_name(trip_idx_t const trip_idx) const;
 
-  std::string_view trip_short_name(transport_idx_t const t) const;
+  std::string_view trip_short_name(trip_idx_t const trip_idx) const;
+
+  std::string_view transport_name(transport_idx_t const t) const {
+    auto const trip_idx =
+        merged_trips_[transport_to_trip_section_[t].front()].front();
+    return route_short_name(trip_idx);
+  }
 
   debug dbg(transport_idx_t const t) const {
     auto const trip_idx =

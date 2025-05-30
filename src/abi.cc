@@ -148,12 +148,9 @@ nigiri_transport_t* nigiri_get_transport(const nigiri_timetable_t* t,
   transport->route_idx = static_cast<nigiri::route_idx_t::value_t>(route_idx);
   transport->n_event_mams = (static_cast<uint16_t>(n_stops) - 1) * 2;
   transport->event_mams = event_mams;
-  transport->route_short_name = t->tt->route_short_name(tidx).data();
-  transport->route_short_name_len =
-      static_cast<uint32_t>(t->tt->route_short_name(tidx).length());
-  transport->trip_short_name = t->tt->trip_short_name(tidx).data();
-  transport->trip_short_name_len =
-      static_cast<uint32_t>(t->tt->trip_short_name(tidx).length());
+  transport->name = t->tt->transport_name(tidx).data();
+  transport->name_len =
+      static_cast<uint32_t>(t->tt->transport_name(tidx).length());
   return transport;
 }
 

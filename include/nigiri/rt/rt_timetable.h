@@ -123,7 +123,12 @@ struct rt_timetable {
   std::string_view route_short_name(timetable const& tt,
                                     rt_transport_idx_t const t) const {
     return rt_transport_static_transport_[t].apply(utl::overloaded{
-        [&](transport const x) { return tt.route_short_name(x.t_idx_); },
+        [&](transport const x) {
+          auto const trip_idx =
+              tt.merged_trips_[tt.transport_to_trip_section_[x.t_idx_].front()]
+                  .front();
+          return tt.route_short_name(trip_idx);
+        },
         [&](rt_add_trip_id_idx_t) {
           return std::string_view{"?"};
         }});  // TODO how are route names specified for ADDED trips?
@@ -133,7 +138,13 @@ struct rt_timetable {
                                    rt_transport_idx_t const t) const {
     if (rt_transport_trip_short_names_[t].empty()) {
       return rt_transport_static_transport_[t].apply(utl::overloaded{
-          [&](transport const x) { return tt.trip_short_name(x.t_idx_); },
+          [&](transport const x) {
+            auto const trip_idx =
+                tt.merged_trips_[tt.transport_to_trip_section_[x.t_idx_]
+                                     .front()]
+                    .front();
+            return tt.trip_short_name(trip_idx);
+          },
           [&](rt_add_trip_id_idx_t) { return std::string_view{"?"}; }});
     } else {
       return rt_transport_trip_short_names_[t].view();

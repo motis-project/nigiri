@@ -99,26 +99,23 @@ trip_idx_t run_stop::get_trip_idx(event_type const ev_type) const {
       .at(0);
 }
 
-std::string_view run_stop::trip_display_name(event_type const ev_type) const {
+std::string_view run_stop::route_short_name(event_type const ev_type) const {
   if (fr_->is_rt() && rtt() != nullptr) {
     return rtt()->route_short_name(tt(), fr_->rt_);
   }
   if (fr_->is_scheduled()) {
-    return tt().route_short_name(
-        fr_->t_.t_idx_);  // TODO what about the logic in
-                          // get_trip_idx that tt doesn't have?
+    return tt().route_short_name(get_trip_idx(event_type));
   }
   return {};
 }
 
-std::string_view run_stop::trip_short_name(event_type const) const noexcept {
+std::string_view run_stop::trip_short_name(
+    event_type const event_type) const noexcept {
   if (fr_->is_rt() && rtt() != nullptr) {
     return rtt()->trip_short_name(tt(), fr_->rt_);
   }
   if (fr_->is_scheduled()) {
-    return tt().trip_short_name(
-        fr_->t_.t_idx_);  // TODO what about the logic in
-                          // get_trip_idx that tt doesn't have?
+    return tt().trip_short_name(get_trip_idx(event_type));
   }
   return {};
 }
@@ -363,7 +360,7 @@ std::string_view frun::name() const {
     return rtt_->trip_short_name(*tt_, rt_);
   }
   if (is_scheduled()) {
-    return tt_->trip_short_name(t_.t_idx_);
+    return tt_->transport_name(t_.t_idx_);
   }
   return "";
 }

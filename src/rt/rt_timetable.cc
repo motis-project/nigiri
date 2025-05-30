@@ -89,7 +89,7 @@ rt_transport_idx_t rt_timetable::add_rt_transport(
     rt_transport_trip_short_names_.emplace_back(
         tt.route_ids_[src].route_id_short_names_.at(fallback_r).view());
   } else if (!new_trip_id.empty() && t.is_valid()) {
-    rt_transport_trip_short_names_.emplace_back(tt.trip_short_name(t.t_idx_));
+    rt_transport_trip_short_names_.emplace_back(std::string_view{});
   } else {
     rt_transport_trip_short_names_.add_back_sized(0);
   }

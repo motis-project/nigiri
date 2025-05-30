@@ -39,7 +39,7 @@ struct run_stop {
   std::string_view trip_display_name(event_type = event_type::kDep) const;
 =======
   std::string_view route_short_name(
-      event_type = event_type::kDep) const noexcept;
+      event_type event_type = event_type::kDep) const noexcept;
   std::string_view trip_short_name(
       event_type = event_type::kDep) const noexcept;
 >>>>>>> 790bd8e (Make route_short_name and trip_short_name available individually)
