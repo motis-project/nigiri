@@ -12,10 +12,8 @@ struct nigiri_transport {
   uint32_t route_idx;
   uint16_t n_event_mams;
   int16_t* event_mams;
-  const char* route_short_name;
-  uint32_t route_short_name_len;
-  const char* trip_short_name;
-  uint32_t trip_short_name_len;
+  const char* name;
+  uint32_t name_len;
 };
 typedef struct nigiri_transport nigiri_transport_t;
 
