@@ -94,8 +94,9 @@ struct stop {
   std::vector<footpath> footpaths_;
 };
 
+enum class stop_type { kRegular, kGeneratedParent };
 using stop_map_t =
-    hash_map<std::pair<std::string_view, bool>, std::unique_ptr<stop>>;
+    hash_map<std::pair<std::string_view, stop_type>, std::unique_ptr<stop>>;
 
 enum class transfer_type : std::uint8_t {
   kRecommended = 0U,
@@ -132,7 +133,7 @@ void read_transfers(stop_map_t& stops, std::string_view file_content) {
       |
       utl::for_each([&](csv_transfer const& t) {
         auto const from_stop_it =
-            stops.find(std::pair(t.from_stop_id_->view(), false));
+            stops.find({t.from_stop_id_->view(), stop_type::kRegular});
         if (from_stop_it == end(stops)) {
           log(log_lvl::error, "loader.gtfs.transfers", "stop {} not found\n",
               t.from_stop_id_->view());
@@ -140,7 +141,7 @@ void read_transfers(stop_map_t& stops, std::string_view file_content) {
         }
 
         auto const to_stop_it =
-            stops.find(std::pair(t.to_stop_id_->view(), false));
+            stops.find({t.to_stop_id_->view(), stop_type::kRegular});
         if (to_stop_it == end(stops)) {
           log(log_lvl::error, "loader.gtfs.transfers", "stop {} not found\n",
               t.to_stop_id_->view());
@@ -196,9 +197,10 @@ stops_map_t read_stops(source_idx_t const src,
       | utl::csv<csv_stop>()  //
       | utl::for_each([&](csv_stop& s) {
           auto const new_stop =
-              utl::get_or_create(stops, std::pair(s.id_->view(), false), [&]() {
-                return std::make_unique<stop>();
-              }).get();
+              utl::get_or_create(stops,
+                                 std::pair{s.id_->view(), stop_type::kRegular},
+                                 [&]() { return std::make_unique<stop>(); })
+                  .get();
 
           new_stop->id_ = s.id_->view();
           new_stop->name_ = std::move(*s.name_);
@@ -211,9 +213,10 @@ stops_map_t read_stops(source_idx_t const src,
 
           if (!s.parent_station_->trim().empty()) {
             auto const parent =
-                utl::get_or_create(
-                    stops, std::pair(s.parent_station_->trim().view(), false),
-                    []() { return std::make_unique<stop>(); })
+                utl::get_or_create(stops,
+                                   std::pair{s.parent_station_->trim().view(),
+                                             stop_type::kRegular},
+                                   []() { return std::make_unique<stop>(); })
                     .get();
             parent->id_ = s.parent_station_->trim().view();
             parent->children_.emplace(new_stop);
@@ -224,7 +227,9 @@ stops_map_t read_stops(source_idx_t const src,
             // platform codes, as Motis only supports platform codes in the
             // name attribute of child stops.
             auto const parent =
-                utl::get_or_create(stops, std::pair(s.id_->trim().view(), true),
+                utl::get_or_create(stops,
+                                   std::pair{s.id_->trim().view(),
+                                             stop_type::kGeneratedParent},
                                    []() { return std::make_unique<stop>(); })
                     .get();
             parent->id_ = new_stop->id_;
@@ -268,8 +273,9 @@ stops_map_t read_stops(source_idx_t const src,
   for (auto const& [id_pair, s] : stops) {
     auto const is_track = s->parent_ != nullptr && !s->platform_code_.empty();
     // if the second entry of the pair is true, we have an artificial parent
-    auto const id =
-        std::string{id_pair.first} + (id_pair.second ? "-motisparent" : "");
+    auto const id = id_pair.second == stop_type::kGeneratedParent
+                        ? fmt::format("{}-motisparent", id_pair.first)
+                        : std::string{id_pair.first};
     locations.emplace(
         std::string{id},
         s->location_ = tt.locations_.register_location(location{
