@@ -104,7 +104,7 @@ std::string_view run_stop::route_short_name(event_type const ev_type) const {
     return rtt()->route_short_name(tt(), fr_->rt_);
   }
   if (fr_->is_scheduled()) {
-    return tt().route_short_name(get_trip_idx(event_type));
+    return tt().route_short_name(get_trip_idx(ev_type));
   }
   return {};
 }
