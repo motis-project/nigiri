@@ -89,18 +89,18 @@ std::optional<journey::leg> find_start_footpath(timetable const& tt,
 
     if (auto const it = q.td_start_.find(leg_start_location);
         it != end(q.td_start_)) {
-      auto const duration =
+      auto const fp =
           get_td_duration<flip(SearchDir)>(it->second, leg_start_time);
-      if (duration.has_value() &&
+      if (fp.has_value() &&
           is_better_or_eq(j.start_time_,
-                          leg_start_time - (kFwd ? 1 : -1) * *duration)) {
+                          leg_start_time - (kFwd ? 1 : -1) * fp->first)) {
         return journey::leg{SearchDir,
                             get_special_station(special_station::kStart),
                             leg_start_location,
-                            leg_start_time - (kFwd ? 1 : -1) * *duration,
+                            leg_start_time - (kFwd ? 1 : -1) * fp->first,
                             leg_start_time,
-                            offset{leg_start_location, *duration,
-                                   it->second.back().transport_mode_id_}};
+                            offset{leg_start_location, fp->first,
+                                   fp->second.transport_mode_id_}};
       } else {
 #ifdef NIGIRI_TRACE_RECONSTRUCT
         for (auto const& x : it->second) {
@@ -594,10 +594,11 @@ void reconstruct_journey_with_vias(timetable const& tt,
 
       for (auto const& [from, td] : q.td_dest_) {
         auto const t = delta_to_unix(base, curr_time);
-        auto const d = get_td_duration<flip(SearchDir)>(td, t);
-        if (d.has_value()) {
-          auto const ret = find_dest_leg(
-              k, l, {from, *d, td.back().transport_mode_id_}, true);
+        auto const fp = get_td_duration<flip(SearchDir)>(td, t);
+        if (fp.has_value()) {
+          auto const [d, td_fp] = *fp;
+          auto const ret =
+              find_dest_leg(k, l, {from, d, td_fp.transport_mode_id_}, true);
           if (ret.has_value()) {
             return std::move(*ret);
           } else {

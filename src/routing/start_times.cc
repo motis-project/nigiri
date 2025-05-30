@@ -23,7 +23,7 @@ duration_t get_duration(direction const search_dir,
                       [&](std::span<td_offset const> td) {
                         auto duration = get_td_duration(
                             invert ? flip(search_dir) : search_dir, td, t);
-                        return duration.has_value() ? *duration
+                        return duration.has_value() ? duration->first
                                                     : footpath::kMaxDuration;
                       }},
       o);

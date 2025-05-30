@@ -25,6 +25,8 @@ TEST(gtfs, read_stations_example_data) {
   ASSERT_NE(s1_it, end(stops));
   EXPECT_EQ("Mission St. & Silver Ave.",
             tt.locations_.names_.at(s1_it->second).view());
+  EXPECT_EQ("The stop is located at the southwest corner of the intersection.",
+            tt.locations_.descriptions_.at(s1_it->second).view());
   EXPECT_FLOAT_EQ(37.728631, tt.locations_.coordinates_.at(s1_it->second).lat_);
   EXPECT_FLOAT_EQ(-122.431282,
                   tt.locations_.coordinates_.at(s1_it->second).lng_);
@@ -33,6 +35,8 @@ TEST(gtfs, read_stations_example_data) {
   ASSERT_NE(s6_it, end(stops));
   EXPECT_EQ("Mission St. & 15th St.",
             tt.locations_.names_.at(s6_it->second).view());
+  EXPECT_EQ("The stop is located 10 feet north of Mission St.",
+            tt.locations_.descriptions_.at(s6_it->second).view());
   EXPECT_FLOAT_EQ(37.766629, tt.locations_.coordinates_.at(s6_it->second).lat_);
   EXPECT_FLOAT_EQ(-122.419782,
                   tt.locations_.coordinates_.at(s6_it->second).lng_);
@@ -41,6 +45,7 @@ TEST(gtfs, read_stations_example_data) {
   ASSERT_NE(s8_it, end(stops));
   EXPECT_EQ("24th St. Mission Station",
             tt.locations_.names_.at(s8_it->second).view());
+  EXPECT_EQ("", tt.locations_.descriptions_.at(s8_it->second).view());
   EXPECT_FLOAT_EQ(37.752240, tt.locations_.coordinates_.at(s8_it->second).lat_);
   EXPECT_FLOAT_EQ(-122.418450,
                   tt.locations_.coordinates_.at(s8_it->second).lng_);

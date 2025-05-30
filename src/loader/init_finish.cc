@@ -19,6 +19,7 @@ void register_special_stations(timetable& tt) {
   for (auto const& name : special_stations_names) {
     tt.locations_.register_location(location{name,
                                              name,
+                                             "",
                                              {0.0, 0.0},
                                              source_idx_t::invalid(),
                                              location_type::kStation,
@@ -53,6 +54,46 @@ void assign_stops_to_flex_areas(timetable& tt) {
           }
           return true;
         });
+  }
+}
+
+void assign_importance(timetable& tt) {
+  auto& importance = tt.locations_.location_importance_;
+  importance.resize(tt.n_locations());
+
+  for (auto i = 0U; i != tt.n_locations(); ++i) {
+    auto const l = location_idx_t{i};
+
+    auto transport_counts = std::array<unsigned, kNumClasses>{};
+    for (auto const& r : tt.location_routes_[l]) {
+      for (auto const tr : tt.route_transport_ranges_[r]) {
+        auto const clasz = static_cast<std::underlying_type_t<nigiri::clasz>>(
+            tt.route_section_clasz_[r][0]);
+        transport_counts[clasz] +=
+            tt.bitfields_[tt.transport_traffic_days_[tr]].count();
+      }
+    }
+
+    constexpr auto const prio =
+        std::array<float, kNumClasses>{/* Air */ 20,
+                                       /* HighSpeed */ 20,
+                                       /* LongDistance */ 20,
+                                       /* Coach */ 20,
+                                       /* Night */ 20,
+                                       /* RegionalFast */ 16,
+                                       /* Regional */ 15,
+                                       /* Metro */ 10,
+                                       /* Subway */ 10,
+                                       /* Tram */ 3,
+                                       /* Bus  */ 2,
+                                       /* Ship  */ 10,
+                                       /* Other  */ 1};
+    auto const p = tt.locations_.parents_[l];
+    auto& x = importance[p == location_idx_t::invalid() ? l : p];
+    for (auto const [clasz, t_count] : utl::enumerate(transport_counts)) {
+      x += prio[clasz] * static_cast<float>(t_count);
+    }
+    tt.locations_.max_importance_ = std::max(tt.locations_.max_importance_, x);
   }
 }
 
@@ -97,6 +138,7 @@ void finalize(timetable& tt, finalize_options const opt) {
   build_lb_graph<direction::kBackward>(tt);
   build_location_tree(tt);
   assign_stops_to_flex_areas(tt);
+  assign_importance(tt);
 }
 
 void finalize(timetable& tt,

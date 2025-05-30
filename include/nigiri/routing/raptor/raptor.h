@@ -683,10 +683,11 @@ private:
           if (fp_start_time == kInvalid) {
             return;
           }
-          auto const duration =
+          auto const fp =
               get_td_duration<SearchDir>(it->second, to_unix(fp_start_time));
-          if (duration.has_value()) {
-            auto const end_time = clamp(fp_start_time + dir(duration->count()));
+          if (fp.has_value()) {
+            auto const& [duration, _] = *fp;
+            auto const end_time = clamp(fp_start_time + dir(duration.count()));
 
             if (is_better(end_time, best_[kIntermodalTarget][Vias])) {
               round_times_[k][kIntermodalTarget][Vias] = end_time;
@@ -696,7 +697,7 @@ private:
               trace(
                   "┊ │k={}  TD INTERMODAL FOOTPATH: location={}, "
                   "start_time={}, dist_to_end={} --> update to {}\n",
-                  k, location{tt_, l}, to_unix(fp_start_time), *duration,
+                  k, location{tt_, l}, to_unix(fp_start_time), duration,
                   to_unix(end_time));
             }
           }
