@@ -23,7 +23,7 @@ rt_timetable create_rt_timetable(timetable const& tt,
   }
   rtt.alerts_.location_.resize(tt.n_locations());
   rtt.alerts_.agency_.resize(tt.n_agencies());
-  for (auto i = 0U; i != kMaxProfiles; ++i) {
+  for (auto i = 0U; i != kNProfiles; ++i) {
     if (!tt.locations_.footpaths_out_[i].empty()) {
       rtt.has_td_footpaths_out_[i].resize(tt.n_locations());
       rtt.has_td_footpaths_in_[i].resize(tt.n_locations());

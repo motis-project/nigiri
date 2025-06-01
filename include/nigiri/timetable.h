@@ -118,8 +118,8 @@ struct timetable {
     mutable_fws_multimap<location_idx_t, location_idx_t> children_;
     mutable_fws_multimap<location_idx_t, footpath> preprocessing_footpaths_out_;
     mutable_fws_multimap<location_idx_t, footpath> preprocessing_footpaths_in_;
-    array<vecvec<location_idx_t, footpath>, kMaxProfiles> footpaths_out_;
-    array<vecvec<location_idx_t, footpath>, kMaxProfiles> footpaths_in_;
+    array<vecvec<location_idx_t, footpath>, kNProfiles> footpaths_out_;
+    array<vecvec<location_idx_t, footpath>, kNProfiles> footpaths_in_;
     vector_map<timezone_idx_t, timezone> timezones_;
     vector_map<location_idx_t, std::uint32_t> location_importance_;
     std::uint32_t max_importance_{0U};
@@ -416,6 +416,16 @@ struct timetable {
   void write(std::filesystem::path const&) const;
   static cista::wrapped<timetable> read(std::filesystem::path const&);
 
+  bool has_car_transport(route_idx_t const r) const {
+    return route_cars_allowed_[to_idx(r) * 2U] ||
+           route_cars_allowed_[to_idx(r) * 2U + 1U];
+  }
+
+  bool has_bike_transport(route_idx_t const r) const {
+    return route_bikes_allowed_[to_idx(r) * 2U] ||
+           route_bikes_allowed_[to_idx(r) * 2U + 1U];
+  }
+
   // Schedule range.
   interval<date::sys_days> date_range_;
 
@@ -568,8 +578,8 @@ struct timetable {
   vecvec<transport_idx_t, route_color> transport_section_route_colors_;
 
   // Lower bound graph.
-  vecvec<location_idx_t, footpath> fwd_search_lb_graph_;
-  vecvec<location_idx_t, footpath> bwd_search_lb_graph_;
+  std::array<vecvec<location_idx_t, footpath>, kNProfiles> fwd_search_lb_graph_;
+  std::array<vecvec<location_idx_t, footpath>, kNProfiles> bwd_search_lb_graph_;
 
   // profile name -> profile_idx_t
   hash_map<string, profile_idx_t> profiles_;

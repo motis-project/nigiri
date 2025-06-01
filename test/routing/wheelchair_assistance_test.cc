@@ -83,6 +83,11 @@ TEST(routing, wheelchair_assistance) {
   load_timetable({}, source_idx_t{0}, test_files(), tt, &assistance);
   finalize(tt);
 
+  tt.fwd_search_lb_graph_[kWheelchairProfile] =
+      tt.fwd_search_lb_graph_[kDefaultProfile];
+  tt.bwd_search_lb_graph_[kWheelchairProfile] =
+      tt.bwd_search_lb_graph_[kDefaultProfile];
+
   auto const B1 = tt.locations_.get({"B1", {}}).l_;
   auto const B2 = tt.locations_.get({"B2", {}}).l_;
   for (auto const profile : {0U, 2U}) {

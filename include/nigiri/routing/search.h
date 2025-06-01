@@ -108,7 +108,8 @@ struct search {
       auto lb_scope = opentelemetry::trace::Scope{lb_span};
       UTL_START_TIMING(lb);
       dijkstra(tt_, q_,
-               kFwd ? tt_.fwd_search_lb_graph_ : tt_.bwd_search_lb_graph_,
+               kFwd ? tt_.fwd_search_lb_graph_[q_.prf_idx_]
+                    : tt_.bwd_search_lb_graph_[q_.prf_idx_],
                state_.travel_time_lower_bound_);
       UTL_STOP_TIMING(lb);
       stats_.lb_time_ = static_cast<std::uint64_t>(UTL_TIMING_MS(lb));
