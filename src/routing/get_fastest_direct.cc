@@ -47,7 +47,9 @@ duration_t get_fastest_direct(timetable const& tt,
     }
   }
 
-  auto end_dist = label::dist_t{std::numeric_limits<duration_t::rep>::max()};
+  constexpr auto const kUnreachable =
+      label::dist_t{std::numeric_limits<duration_t::rep>::max()};
+  auto end_dist = kUnreachable;
   while (!pq.empty()) {
     auto l = pq.top();
     pq.pop();
@@ -92,8 +94,10 @@ duration_t get_fastest_direct(timetable const& tt,
     }
   }
 
-  return duration_t{static_cast<duration_t::rep>(
-      std::ceil(end_dist * q.fasted_direct_factor_))};
+  return duration_t{end_dist == kUnreachable
+                        ? kUnreachable
+                        : static_cast<duration_t::rep>(
+                              std::ceil(end_dist * q.fasted_direct_factor_))};
 }
 
 }  // namespace nigiri::routing
