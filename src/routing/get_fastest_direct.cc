@@ -97,7 +97,7 @@ duration_t get_fastest_direct(timetable const& tt,
   return duration_t{end_dist == kUnreachable
                         ? kUnreachable
                         : static_cast<duration_t::rep>(
-                              std::ceil(end_dist * q.fasted_direct_factor_))};
+                              std::ceil(end_dist * q.fastest_direct_factor_))};
 }
 
 }  // namespace nigiri::routing

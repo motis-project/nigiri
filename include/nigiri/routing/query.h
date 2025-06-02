@@ -93,7 +93,7 @@ struct query {
   transfer_time_settings transfer_time_settings_{};
   std::vector<via_stop> via_stops_{};
   std::optional<duration_t> fastest_direct_{};
-  double fasted_direct_factor_{1.0};
+  double fastest_direct_factor_{1.0};
   bool slow_direct_{false};
 };
 
