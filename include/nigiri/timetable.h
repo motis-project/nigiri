@@ -15,7 +15,6 @@
 #include "geo/box.h"
 #include "geo/latlng.h"
 
-#include "nigiri/loader/permutate_locations.h"
 #include "nigiri/common/interval.h"
 #include "nigiri/fares.h"
 #include "nigiri/footpath.h"
@@ -416,62 +415,6 @@ struct timetable {
   void write(cista::memory_holder&) const;
   void write(std::filesystem::path const&) const;
   static cista::wrapped<timetable> read(std::filesystem::path const&);
-
-  void permutate_locations(uint32_t first_idx) {
-    vector<location_idx_t> location_permutation =
-        build_permutation_vec(location_routes_, first_idx);
-
-    vector<std::pair<location_id, location_idx_t>> unsorted;
-    for (auto& [key, value] : locations_.location_id_to_idx_) {
-      unsorted.emplace_back(key, value);
-    }
-
-    hash_map<location_id, location_idx_t> sorted_loc_id_to_idx;
-    sorted_loc_id_to_idx.reserve(unsorted.size());
-    for (auto i = 0U; i < location_permutation.size(); ++i) {
-      auto temp2 = unsorted.at(location_permutation.at(i).v_);
-      sorted_loc_id_to_idx.insert({temp2.first, location_idx_t{i}});
-    }
-    auto sorted_loc_routes = apply_permutation_vec(location_routes_);
-    auto sorted_names = apply_permutation_vec(locations_.names_);
-    auto sorted_ids = apply_permutation_vec(locations_.ids_);
-    auto sorted_coords = apply_permutation_vec(locations_.coordinates_);
-    auto sorted_src = apply_permutation_vec(locations_.src_);
-    auto sorted_transfertime = apply_permutation_vec(locations_.transfer_time_);
-    auto sorted_types = apply_permutation_vec(locations_.types_);
-    auto sorted_timezones =
-        apply_permutation_vec(locations_.location_timezones_);
-    auto sorted_parents =
-        apply_permutation_and_mapping_vec(locations_.parents_);
-    auto sorted_equivalences =
-        apply_permutation_multimap(locations_.equivalences_);
-    auto sorted_children = apply_permutation_multimap(locations_.children_);
-    auto sorted_pre_footpaths_out = apply_permutation_multimap_foot(
-        locations_.preprocessing_footpaths_out_);
-    auto sorted_pre_footpaths_in =
-        apply_permutation_multimap_foot(locations_.preprocessing_footpaths_in_);
-    auto sorted_loc_area = apply_permutation_vec(location_areas_);
-    auto sorted_route_loc_seq =
-        apply_permutation_to_route_loc_seq(route_location_seq_);
-
-    locations_.location_id_to_idx_ = std::move(sorted_loc_id_to_idx);
-    locations_.names_ = std::move(sorted_names);
-    locations_.ids_ = std::move(sorted_ids);
-    locations_.coordinates_ = std::move(sorted_coords);
-    locations_.src_ = std::move(sorted_src);
-    locations_.transfer_time_ = std::move(sorted_transfertime);
-    locations_.types_ = std::move(sorted_types);
-    locations_.location_timezones_ = std::move(sorted_timezones);
-    locations_.parents_ = std::move(sorted_parents);
-    locations_.equivalences_ = std::move(sorted_equivalences);
-    locations_.children_ = std::move(sorted_children);
-    locations_.preprocessing_footpaths_out_ =
-        std::move(sorted_pre_footpaths_out);
-    locations_.preprocessing_footpaths_in_ = std::move(sorted_pre_footpaths_in);
-    location_areas_ = std::move(sorted_loc_area);
-    route_location_seq_ = std::move(sorted_route_loc_seq);
-    location_routes_ = std::move(sorted_loc_routes);
-  }
 
   // Schedule range.
   interval<date::sys_days> date_range_;

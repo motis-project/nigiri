@@ -2,40 +2,47 @@
 
 namespace nigiri {
 
-vector<location_idx_t> permutation_;
-static vector<location_idx_t> mapping_vec;
-
-vector<location_idx_t> create_mapping_vec(vector<location_idx_t> const& vec) {
-  auto n = vec.size();
+auto create_mapping_vec(vector<location_idx_t> const& permutation) {
+  auto n = permutation.size();
   std::vector<location_idx_t> result(n);
   for (auto i = 0U; i < n; ++i) {
-    result[vec[i].v_] = location_idx_t{i};
+    result[permutation[i].v_] = location_idx_t{i};
   }
-  vector<location_idx_t> result_vec;
+  vector<location_idx_t> mapping_vec;
   for (auto val : result) {
-    result_vec.push_back(val);
+    mapping_vec.push_back(val);
   }
-  return result_vec;
+  return mapping_vec;
 }
 
-vector<location_idx_t> build_permutation_vec(
-    vecvec<location_idx_t, route_idx_t> const& order,
-    uint32_t const first_idx) {
-  permutation_.resize(order.size());
-  for (auto i = 0U; i != permutation_.size(); ++i) {
-    permutation_[i] = location_idx_t{i};
+auto build_permutation_vec(vecvec<location_idx_t, route_idx_t> const& order,
+                           std::uint32_t const first_idx) {
+  vector<location_idx_t> permutation;
+  permutation.resize(order.size());
+  for (auto i = 0U; i != permutation.size(); ++i) {
+    permutation[i] = location_idx_t{i};
   }
-  std::stable_sort(begin(permutation_) + first_idx, end(permutation_),
+  std::stable_sort(begin(permutation) + first_idx, end(permutation),
                    [&](auto&& a, auto&& b) {
                      return order.at(location_idx_t{a}).size() > 0 &&
                             order.at(location_idx_t{b}).size() == 0;
                    });
-  mapping_vec = create_mapping_vec(permutation_);
-  return permutation_;
+  return permutation;
 }
 
-vecvec<route_idx_t, stop::value_type> apply_permutation_to_route_loc_seq(
-    vecvec<route_idx_t, stop::value_type> const& input) {
+template <typename T>
+inline T apply_permutation_vec(T const& input, auto permutation) {
+  auto sorted = T{};
+  for (auto i = 0U; i < input.size(); ++i) {
+    auto temp = input[permutation[i]];
+    sorted.emplace_back(temp);
+  }
+  return sorted;
+}
+
+auto apply_permutation_to_route_loc_seq(
+    vecvec<route_idx_t, stop::value_type> const& input,
+    vector<location_idx_t> mapping_vec) {
   vecvec<route_idx_t, stop::value_type> sorted;
   for (auto j = 0U; j < input.size(); ++j) {
     vector<stop::value_type> new_stop_v_types;
@@ -54,12 +61,14 @@ vecvec<route_idx_t, stop::value_type> apply_permutation_to_route_loc_seq(
   return sorted;
 }
 
-vector_map<location_idx_t, location_idx_t> apply_permutation_and_mapping_vec(
-    vector_map<location_idx_t, location_idx_t> const& input) {
+auto apply_permutation_and_mapping_vec(
+    vector_map<location_idx_t, location_idx_t> const& input,
+    vector<location_idx_t> permutation,
+    vector<location_idx_t> mapping_vec) {
   vector_map<location_idx_t, location_idx_t> sorted;
   for (auto i = 0U; i < input.size(); ++i) {
-    auto temp = input.at(permutation_[i]);
-    if (temp == std::numeric_limits<uint32_t>::max()) {
+    auto temp = input.at(permutation[i]);
+    if (temp == std::numeric_limits<std::uint32_t>::max()) {
       sorted.emplace_back(temp);
     } else {
       sorted.emplace_back(mapping_vec.at(temp.v_));
@@ -68,14 +77,16 @@ vector_map<location_idx_t, location_idx_t> apply_permutation_and_mapping_vec(
   return sorted;
 }
 
-mutable_fws_multimap<location_idx_t, location_idx_t> apply_permutation_multimap(
-    mutable_fws_multimap<location_idx_t, location_idx_t> const& input) {
+auto apply_permutation_multimap(
+    mutable_fws_multimap<location_idx_t, location_idx_t> const& input,
+    vector<location_idx_t> permutation,
+    vector<location_idx_t> mapping_vec) {
   mutable_fws_multimap<location_idx_t, location_idx_t> sorted;
   for (auto i = 0U; i < input.size(); ++i) {
     sorted.emplace_back();
   }
   for (auto i = 0U; i < input.size(); ++i) {
-    auto temp = input.at(permutation_[i]);
+    auto temp = input.at(permutation[i]);
     if (temp.size() > 0) {
       for (auto j = 0U; j < temp.size(); ++j) {
         sorted.emplace_back_entry(i, mapping_vec.at(temp.at(j).v_));
@@ -85,14 +96,16 @@ mutable_fws_multimap<location_idx_t, location_idx_t> apply_permutation_multimap(
   return sorted;
 }
 
-mutable_fws_multimap<location_idx_t, footpath> apply_permutation_multimap_foot(
-    mutable_fws_multimap<location_idx_t, footpath> const& input) {
+auto apply_permutation_multimap_foot(
+    mutable_fws_multimap<location_idx_t, footpath> const& input,
+    vector<location_idx_t> permutation,
+    vector<location_idx_t> mapping_vec) {
   mutable_fws_multimap<location_idx_t, footpath> sorted;
   for (auto i = 0U; i < input.size(); ++i) {
     sorted.emplace_back();
   }
   for (auto i = 0U; i < input.size(); ++i) {
-    auto temp = input.at(permutation_[i]);
+    auto temp = input.at(permutation[i]);
     if (temp.size() > 0) {
       for (auto j = 0U; j < temp.size(); ++j) {
         auto old_footpath = temp.at(j);
@@ -103,6 +116,58 @@ mutable_fws_multimap<location_idx_t, footpath> apply_permutation_multimap_foot(
     }
   }
   return sorted;
+}
+
+void permutate_locations(timetable& tt, std::uint32_t const first_idx) {
+  auto const location_permutation =
+      build_permutation_vec(tt.location_routes_, first_idx);
+  auto const location_mapping = create_mapping_vec(location_permutation);
+
+  auto unsorted = vector<std::pair<location_id, location_idx_t>>{};
+  for (auto& [key, value] : tt.locations_.location_id_to_idx_) {
+    unsorted.emplace_back(key, value);
+  }
+
+  auto sorted_loc_id_to_idx = hash_map<location_id, location_idx_t>{};
+  sorted_loc_id_to_idx.reserve(unsorted.size());
+  for (auto i = 0U; i < location_permutation.size(); ++i) {
+    auto temp = unsorted.at(location_permutation.at(i).v_);
+    sorted_loc_id_to_idx.insert({temp.first, location_idx_t{i}});
+  }
+  tt.locations_.location_id_to_idx_ = std::move(sorted_loc_id_to_idx);
+
+  tt.locations_.names_ =
+      apply_permutation_vec(tt.locations_.names_, location_permutation);
+  tt.locations_.ids_ =
+      apply_permutation_vec(tt.locations_.ids_, location_permutation);
+  tt.locations_.coordinates_ =
+      apply_permutation_vec(tt.locations_.coordinates_, location_permutation);
+  tt.locations_.src_ =
+      apply_permutation_vec(tt.locations_.src_, location_permutation);
+  tt.locations_.transfer_time_ =
+      apply_permutation_vec(tt.locations_.transfer_time_, location_permutation);
+  tt.locations_.types_ =
+      apply_permutation_vec(tt.locations_.types_, location_permutation);
+  tt.locations_.location_timezones_ = apply_permutation_vec(
+      tt.locations_.location_timezones_, location_permutation);
+  tt.locations_.parents_ = apply_permutation_and_mapping_vec(
+      tt.locations_.parents_, location_permutation, location_mapping);
+  tt.locations_.equivalences_ = apply_permutation_multimap(
+      tt.locations_.equivalences_, location_permutation, location_mapping);
+  tt.locations_.children_ = apply_permutation_multimap(
+      tt.locations_.children_, location_permutation, location_mapping);
+  tt.locations_.preprocessing_footpaths_out_ = apply_permutation_multimap_foot(
+      tt.locations_.preprocessing_footpaths_out_, location_permutation,
+      location_mapping);
+  tt.locations_.preprocessing_footpaths_in_ =
+      apply_permutation_multimap_foot(tt.locations_.preprocessing_footpaths_in_,
+                                      location_permutation, location_mapping);
+  tt.location_areas_ =
+      apply_permutation_vec(tt.location_areas_, location_permutation);
+  tt.route_location_seq_ = apply_permutation_to_route_loc_seq(
+      tt.route_location_seq_, location_mapping);
+  tt.location_routes_ =
+      apply_permutation_vec(tt.location_routes_, location_permutation);
 }
 
 }  // namespace nigiri
