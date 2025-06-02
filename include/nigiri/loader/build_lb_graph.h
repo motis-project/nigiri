@@ -9,7 +9,7 @@
 namespace nigiri::loader {
 
 template <direction SearchDir>
-void build_lb_graph(timetable& tt, profile_idx_t const prf_idx = 0) {
+void build_lb_graph(timetable& tt, profile_idx_t const prf_idx) {
   hash_map<location_idx_t, duration_t> weights;
 
   auto const update_weight = [&](location_idx_t const target,
@@ -39,6 +39,10 @@ void build_lb_graph(timetable& tt, profile_idx_t const prf_idx = 0) {
     }
 
     for (auto const& r : tt.location_routes_[l]) {
+      if ((prf_idx == kCarProfile && !tt.has_car_transport(r))) {
+        continue;
+      }
+
       auto const location_seq = tt.route_location_seq_[r];
       for (auto const [from, to] : utl::pairwise(interval{
                stop_idx_t{0U}, static_cast<stop_idx_t>(location_seq.size())})) {
@@ -72,8 +76,9 @@ void build_lb_graph(timetable& tt, profile_idx_t const prf_idx = 0) {
 
   auto const timer = scoped_timer{"nigiri.loader.lb"};
   std::vector<footpath> footpaths;
-  auto& lb_graph = SearchDir == direction::kForward ? tt.fwd_search_lb_graph_
-                                                    : tt.bwd_search_lb_graph_;
+  auto& lb_graph = SearchDir == direction::kForward
+                       ? tt.fwd_search_lb_graph_[prf_idx]
+                       : tt.bwd_search_lb_graph_[prf_idx];
   for (auto i = location_idx_t{0U}; i != tt.locations_.ids_.size(); ++i) {
     if (tt.locations_.parents_[i] != location_idx_t::invalid()) {
       lb_graph.emplace_back(std::vector<footpath>{});

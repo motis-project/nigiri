@@ -187,8 +187,11 @@ using booking_rule_idx_t =
 using flex_stop_t = variant<flex_area_idx_t, location_group_idx_t>;
 
 using profile_idx_t = std::uint8_t;
+constexpr auto const kDefaultProfile = profile_idx_t{0U};
+constexpr auto const kFootProfile = profile_idx_t{1U};
 constexpr auto const kWheelchairProfile = profile_idx_t{2U};
-static constexpr auto const kMaxProfiles = profile_idx_t{8};
+constexpr auto const kCarProfile = profile_idx_t{3U};
+static constexpr auto const kNProfiles = profile_idx_t{4U};
 
 using rt_trip_idx_t = cista::strong<std::uint32_t, struct _trip_idx>;
 using rt_add_trip_id_idx_t =

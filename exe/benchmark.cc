@@ -88,8 +88,7 @@ struct benchmark_result {
         << std::chrono::duration_cast<std::chrono::hours>(
                br.routing_result_.interval_.size())
                .count()
-        << "h"
-        << ", #jrny: " << std::setfill(' ') << std::setw(2)
+        << "h" << ", #jrny: " << std::setfill(' ') << std::setw(2)
         << br.journeys_.size() << ")";
     return out;
   }
@@ -481,7 +480,7 @@ int main(int argc, char* argv[]) {
       min_transfer_time == 0U && gs.transfer_time_settings_.factor_ == 1.0F;
 
   if (vm.count("profile_idx") != 0) {
-    if (prf_idx >= kMaxProfiles) {
+    if (prf_idx >= kNProfiles) {
       std::cout << "Error: profile idx exceeds numeric limits\n";
       return 1;
     }

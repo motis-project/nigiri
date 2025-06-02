@@ -20,10 +20,10 @@ TEST(routing, lb_graph_distances_check) {
       std::map<std::pair<std::string, std::string>, duration_t>;
   auto distances = distance_table_t{};
   for (auto i = location_idx_t{0U}; i != tt.locations_.ids_.size(); ++i) {
-    if (tt.fwd_search_lb_graph_.at(i).empty()) {
+    if (tt.fwd_search_lb_graph_.at(kDefaultProfile).at(i).empty()) {
       continue;
     }
-    for (auto const& fp : tt.fwd_search_lb_graph_[i]) {
+    for (auto const& fp : tt.fwd_search_lb_graph_.at(kDefaultProfile)[i]) {
       distances[{std::string{location{tt, i}.name_},
                  std::string{location{tt, fp.target()}.name_}}] = fp.duration();
     }

@@ -385,8 +385,8 @@ void sort_footpaths(timetable& tt) {
 }
 
 void write_footpaths(timetable& tt) {
-  assert(tt.locations_.footpaths_out_.size() == kMaxProfiles);
-  assert(tt.locations_.footpaths_in_.size() == kMaxProfiles);
+  assert(tt.locations_.footpaths_out_.size() == kNProfiles);
+  assert(tt.locations_.footpaths_in_.size() == kNProfiles);
   assert(tt.locations_.preprocessing_footpaths_out_.size() == tt.n_locations());
   assert(tt.locations_.preprocessing_footpaths_in_.size() == tt.n_locations());
 
