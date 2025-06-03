@@ -770,7 +770,7 @@ TEST(rt, gtfs_rt_added) {
         "AGENCY_1",
         tt.strings_.get(fr[0].get_provider(event_type::kDep).short_name_));
     // EXPECT_EQ("", fr[0].get_trip_idx());
-    EXPECT_EQ("Route 1", fr[0].trip_display_name(event_type::kDep));
+    EXPECT_EQ("Route 1", fr[0].trip_short_name(event_type::kDep));
     EXPECT_EQ(
         unixtime_t{date::sys_days{2023_y / August / 10} + 9_hours + 15_minutes},
         fr[0].scheduled_time(event_type::kDep));
