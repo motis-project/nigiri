@@ -129,11 +129,8 @@ void finalize(timetable& tt, finalize_options const opt) {
                  tt.strings_.get(tt.providers_[b].short_name_);
         });
   }
-  if (opt.permutate_loc_) {
-    auto first_idx_size_t = special_stations_names.size();
-    auto const first_idx = static_cast<std::uint32_t>(first_idx_size_t);
-    permutate_locations(tt, first_idx);
-  }
+
+  permutate_locations(tt, special_stations_names.size());
   build_footpaths(tt, opt);
   build_lb_graph<direction::kForward>(tt, kDefaultProfile);
   build_lb_graph<direction::kBackward>(tt, kDefaultProfile);
@@ -146,10 +143,9 @@ void finalize(timetable& tt,
               bool const adjust_footpaths,
               bool const merge_dupes_intra_src,
               bool const merge_dupes_inter_src,
-              bool const permutate_loc,
               std::uint16_t const max_footpath_length) {
   finalize(tt, {adjust_footpaths, merge_dupes_intra_src, merge_dupes_inter_src,
-                permutate_loc, max_footpath_length});
+                max_footpath_length});
 }
 
 }  // namespace nigiri::loader

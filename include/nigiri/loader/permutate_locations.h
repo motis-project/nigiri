@@ -1,16 +1,16 @@
 #pragma once
 
+#include <algorithm>
+#include <ranges>
+#include <vector>
+
 #include "nigiri/footpath.h"
 #include "nigiri/stop.h"
 #include "nigiri/timetable.h"
 #include "nigiri/types.h"
 
-#include <algorithm>
-#include <ranges>
-#include <vector>
-
 namespace nigiri {
 
-void permutate_locations(timetable& tt, std::uint32_t const first_idx);
+void permutate_locations(timetable& tt, std::size_t const first_idx);
 
 }  // namespace nigiri
