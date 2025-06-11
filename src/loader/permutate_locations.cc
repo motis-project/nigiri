@@ -1,4 +1,5 @@
 #include "nigiri/loader/permutate_locations.h"
+#include "nigiri/special_stations.h"
 
 namespace nigiri {
 
@@ -121,15 +122,19 @@ mutable_fws_multimap<location_idx_t, footpath> apply_permutation_multimap_foot(
   return sorted;
 }
 
-void permutate_locations(timetable& tt, std::size_t const first_idx) {
+void permutate_locations(timetable& tt) {
+  auto first_idx = 0U;
+  auto unsorted = vector<std::pair<location_id, location_idx_t>>{};
+  for (auto& [key, value] : tt.locations_.location_id_to_idx_) {
+    if (is_special(value)) {
+      first_idx++;
+    }
+    unsorted.emplace_back(key, value);
+  }
+
   auto const location_permutation =
       build_permutation_vec(tt.location_routes_, first_idx);
   auto const location_mapping = create_mapping_vec(location_permutation);
-
-  auto unsorted = vector<std::pair<location_id, location_idx_t>>{};
-  for (auto& [key, value] : tt.locations_.location_id_to_idx_) {
-    unsorted.emplace_back(key, value);
-  }
 
   auto sorted_loc_id_to_idx = hash_map<location_id, location_idx_t>{};
   sorted_loc_id_to_idx.reserve(unsorted.size());

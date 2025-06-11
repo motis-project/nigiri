@@ -11,6 +11,6 @@
 
 namespace nigiri {
 
-void permutate_locations(timetable& tt, std::size_t const first_idx);
+void permutate_locations(timetable& tt);
 
 }  // namespace nigiri

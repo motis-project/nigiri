@@ -130,7 +130,7 @@ void finalize(timetable& tt, finalize_options const opt) {
         });
   }
 
-  permutate_locations(tt, special_stations_names.size());
+  permutate_locations(tt);
   build_footpaths(tt, opt);
   build_lb_graph<direction::kForward>(tt, kDefaultProfile);
   build_lb_graph<direction::kBackward>(tt, kDefaultProfile);
