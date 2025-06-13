@@ -130,7 +130,9 @@ void finalize(timetable& tt, finalize_options const opt) {
         });
   }
 
-  permutate_locations(tt);
+  if (opt.permutate_locations_) {
+    permutate_locations(tt);
+  }
   build_footpaths(tt, opt);
   build_lb_graph<direction::kForward>(tt, kDefaultProfile);
   build_lb_graph<direction::kBackward>(tt, kDefaultProfile);
@@ -143,9 +145,10 @@ void finalize(timetable& tt,
               bool const adjust_footpaths,
               bool const merge_dupes_intra_src,
               bool const merge_dupes_inter_src,
+              bool const permutate_locations,
               std::uint16_t const max_footpath_length) {
   finalize(tt, {adjust_footpaths, merge_dupes_intra_src, merge_dupes_inter_src,
-                max_footpath_length});
+                permutate_locations, max_footpath_length});
 }
 
 }  // namespace nigiri::loader
