@@ -109,7 +109,7 @@ void load_timetable(loader_config const& config,
   auto const progress_tracker = utl::get_active_progress_tracker();
   auto timezones = tz_map{};
   auto agencies = read_agencies(tt, timezones, load(kAgencyFile).data());
-  auto const stops =
+  auto const [stops, seated_transfers] =
       read_stops(src, tt, timezones, load(kStopFile).data(),
                  load(kTransfersFile).data(), config.link_stop_distance_);
   auto const routes = read_routes(src, tt, timezones, agencies,
@@ -278,7 +278,7 @@ void load_timetable(loader_config const& config,
     auto const timer = scoped_timer{"loader.gtfs.write_trips"};
 
     progress_tracker->status("Write Trips")
-        .out_bounds(85.F, 97.F)
+        .out_bounds(85.F, 96.F)
         .in_high(route_services.size());
 
     auto const is_train_number = [](auto const& s) {
@@ -422,6 +422,34 @@ void load_timetable(loader_config const& config,
     // Build transport ranges.
     for (auto const& t : trip_data.data_) {
       tt.trip_transport_ranges_.emplace_back(t.transport_ranges_);
+    }
+  }
+
+  {
+    progress_tracker->status("Seated Transfers")
+        .out_bounds(96.F, 97.F)
+        .in_high(route_services.size());
+
+    for (auto const& [from_trip_id, to_trip_ids] : seated_transfers) {
+      auto const from_it = trip_data.trips_.find(from_trip_id);
+      if (from_it == end(trip_data.trips_)) {
+        log(log_lvl::error, "nigiri.loader.gtfs.seated", "trip {} not found",
+            from_trip_id);
+        continue;
+      }
+
+      auto const from_idx = trip_data.get(from_trip_id).trip_idx_;
+      for (auto const& to_trip_id : to_trip_ids) {
+        auto const to_it = trip_data.trips_.find(to_trip_id);
+        if (to_it == end(trip_data.trips_)) {
+          log(log_lvl::error, "nigiri.loader.gtfs.seated", "trip {} not found",
+              to_trip_id);
+          continue;
+        }
+
+        auto const to_idx = trip_data.data_[to_it->second].trip_idx_;
+        tt.stay_seated_in_[from_idx].push_back(to_idx);
+      }
     }
   }
 

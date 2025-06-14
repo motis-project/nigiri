@@ -484,6 +484,12 @@ struct timetable {
   // - more than one entry: exact sequence number for each stop
   vecvec<trip_idx_t, stop_idx_t> trip_stop_seq_numbers_;
 
+  // Outgoing stay seated transfers at the last stop.
+  vecvec<trip_idx_t, trip_idx_t> stay_seated_out_;
+
+  // Incoming stay seated transfers at the first stop.
+  vecvec<trip_idx_t, trip_idx_t> stay_seated_in_;
+
   // Trip -> debug info
   mutable_fws_multimap<trip_idx_t, trip_debug> trip_debug_;
   vecvec<source_file_idx_t, char> source_file_names_;
