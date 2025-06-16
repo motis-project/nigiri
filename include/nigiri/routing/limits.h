@@ -6,7 +6,7 @@
 
 namespace nigiri::routing {
 
-static constexpr auto const kMaxTransfers = std::uint8_t{15U};
+static constexpr auto const kMaxTransfers = std::uint8_t{14U};
 static constexpr auto const kMaxTravelTime = 5_days;
 static constexpr auto const kMaxSearchIntervalSize =
     date::days{std::numeric_limits<duration_t::rep>::max() / 1440} -

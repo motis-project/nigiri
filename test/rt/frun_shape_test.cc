@@ -891,7 +891,7 @@ TEST(
         ASSERT_EQ(stats_w.duration_, delta_t{200});
         ASSERT_EQ(stats_w.k_, 2U);
         auto const stats_s_direct = get_fastest_one_to_all_offsets(
-            tt, state, kSearchDir, to_location_idx("S"), start_time, 1);
+            tt, state, kSearchDir, to_location_idx("S"), start_time, 0);
         ASSERT_EQ(stats_s_direct.duration_, delta_t{185});
         ASSERT_EQ(stats_s_direct.k_, 1U);
       }
