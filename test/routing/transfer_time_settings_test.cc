@@ -317,24 +317,25 @@ TEST(routing, transfer_travel_test) {
     EXPECT_EQ(add_direct(expected_A_C_default, dir), to_string(tt, results));
   }
   {
-    // A -> C, max_transfers = 1
-    auto const results =
-        search(tt, "A", "C", direction::kForward,
-               {.start_time_ = tt.date_range_, .max_transfers_ = 1U});
-    EXPECT_EQ(expected_A_C_direct, to_string(tt, results));
-  }
-  {
     // A -> C, max_transfers = 0
     auto const results =
         search(tt, "A", "C", direction::kForward,
                {.start_time_ = tt.date_range_, .max_transfers_ = 0U});
+    EXPECT_EQ(expected_A_C_direct, to_string(tt, results));
+  }
+  {
+    // A -> C, no transit
+    auto const results = search(tt, "A", "C", direction::kForward,
+                                {.start_time_ = tt.date_range_,
+                                 .max_transfers_ = 0U,
+                                 .allowed_claszes_ = {}});
     EXPECT_EQ("\n", to_string(tt, results));
   }
   {
-    // A -> C, max_transfers = 1, max_travel_time = 35
+    // A -> C, max_transfers = 0, max_travel_time = 35
     auto const results = search(tt, "A", "C", direction::kForward,
                                 {.start_time_ = tt.date_range_,
-                                 .max_transfers_ = 1U,
+                                 .max_transfers_ = 0U,
                                  .max_travel_time_ = 35_minutes});
     EXPECT_EQ("\n", to_string(tt, results));
   }

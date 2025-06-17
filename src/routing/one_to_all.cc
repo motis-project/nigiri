@@ -113,7 +113,7 @@ fastest_offset get_fastest_one_to_all_offsets(timetable const& tt,
                                  ? kInvalidDelta<direction::kForward>
                                  : kInvalidDelta<direction::kBackward>;
   auto const& round_times = state.get_round_times<kVias>();
-  for (auto const k : std::views::iota(std::uint8_t{0U}, transfers + 1U)  //
+  for (auto const k : std::views::iota(std::uint8_t{0U}, transfers + 2U)  //
                           | std::views::reverse) {
     if (round_times[k][to_idx(l)][kVias] != invalid_delta) {
       auto const base =
