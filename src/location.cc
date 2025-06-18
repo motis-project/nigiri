@@ -28,6 +28,7 @@ location::location(
     std::string_view desc,
     geo::latlng pos,
     source_idx_t src,
+    location_type type,
     location_idx_t parent,
     timezone_idx_t timezone,
     duration_t transfer_time,

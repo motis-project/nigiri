@@ -258,6 +258,8 @@ stops_map_t read_stops(source_idx_t const src,
         std::string{id},
         s->location_ = tt.locations_.register_location(location{
             id, s->name_, s->platform_code_, s->desc_, s->coord_, src,
+            s->parent_ == nullptr ? location_type::kStation
+                                  : location_type::kTrack,
             location_idx_t::invalid(),
             s->timezone_.empty() ? timezone_idx_t::invalid()
                                  : get_tz_idx(tt, timezones, s->timezone_),
