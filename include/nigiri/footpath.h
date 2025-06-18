@@ -14,10 +14,12 @@ namespace nigiri {
 struct footpath {
   using value_type = location_idx_t::value_t;
   static constexpr auto const kTotalBits = 8 * sizeof(value_type);
-  static constexpr auto const kTargetBits = 22U;
+  static constexpr auto const kTargetBits = 23U;
   static constexpr auto const kDurationBits = kTotalBits - kTargetBits;
   static constexpr auto const kMaxDuration = duration_t{
       std::numeric_limits<location_idx_t::value_t>::max() >> kTargetBits};
+  static constexpr auto const kMaxTarget =
+      std::numeric_limits<location_idx_t::value_t>::max() >> kDurationBits;
 
   footpath() = default;
 
@@ -29,10 +31,7 @@ struct footpath {
       : target_{target},
         duration_{static_cast<value_type>(
             (duration > kMaxDuration ? kMaxDuration : duration).count())} {
-    utl::verify(to_idx(target) <
-                    std::numeric_limits<location_idx_t::value_t>::max() >>
-                    kDurationBits,
-                "station index overflow");
+    utl::verify(to_idx(target) < kMaxTarget, "station index overflow");
   }
 
   static auto cmp_by_duration() {

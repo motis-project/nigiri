@@ -241,33 +241,35 @@ hash_map<std::string, timeframe_group_idx_t> parse_timeframes(
   auto m = hash_map<std::string, timeframe_group_idx_t>{};
   utl::for_each_row<timeframe_record>(
       file_content, [&](timeframe_record const& r) {
-        try {
-          auto const traffic_days = *services.at(r.service_id_->view());
-          auto const i =
-              utl::get_or_create(m, r.timeframe_group_id_->view(), [&]() {
-                auto const idx = timeframe_group_idx_t{f.timeframes_.size()};
-                f.timeframes_.add_back_sized(0U);
-                f.timeframe_id_.emplace_back(
-                    tt.strings_.store(r.timeframe_group_id_->view()));
-                return idx;
-              });
-          f.timeframes_[i].push_back(fares::timeframe{
-              .start_time_ = r.start_time_
-                                 ->and_then([](utl::cstr x) {
-                                   return std::optional{hhmm_to_min(x)};
-                                 })
-                                 .value_or(0_hours),
-              .end_time_ = r.end_time_
+        auto const service_it = services.find(r.service_id_->view());
+        if (service_it == end(services)) {
+          log(log_lvl::error, "nigiri.loader.gtfs.fares",
+              "timeframes: service {} not found", r.service_id_->view());
+          return;
+        }
+
+        auto const traffic_days = *service_it->second;
+        auto const i =
+            utl::get_or_create(m, r.timeframe_group_id_->view(), [&]() {
+              auto const idx = timeframe_group_idx_t{f.timeframes_.size()};
+              f.timeframes_.add_back_sized(0U);
+              f.timeframe_id_.emplace_back(
+                  tt.strings_.store(r.timeframe_group_id_->view()));
+              return idx;
+            });
+        f.timeframes_[i].push_back(fares::timeframe{
+            .start_time_ = r.start_time_
                                ->and_then([](utl::cstr x) {
                                  return std::optional{hhmm_to_min(x)};
                                })
-                               .value_or(24_hours),
-              .service_ = traffic_days,
-              .service_id_ = tt.strings_.store(r.service_id_->view())});
-        } catch (...) {
-          log(log_lvl::error, "nigiri.loader.gtfs.fares",
-              "timeframes: service {} not found", r.service_id_->view());
-        }
+                               .value_or(0_hours),
+            .end_time_ = r.end_time_
+                             ->and_then([](utl::cstr x) {
+                               return std::optional{hhmm_to_min(x)};
+                             })
+                             .value_or(24_hours),
+            .service_ = traffic_days,
+            .service_id_ = tt.strings_.store(r.service_id_->view())});
       });
   return m;
 }

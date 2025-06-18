@@ -33,31 +33,21 @@ stop run_stop::get_scheduled_stop() const noexcept {
 
 std::string_view run_stop::name() const noexcept {
   auto const l = get_location_idx();
-  auto const type = tt().locations_.types_.at(l);
-  auto const p =
-      (type == location_type::kGeneratedTrack || type == location_type::kTrack)
-          ? tt().locations_.parents_.at(l)
-          : l;
-  return tt().locations_.names_.at(p).view();
+  auto const p = tt().locations_.parents_.at(l);
+  auto const x = p == location_idx_t::invalid() ? l : p;
+  return tt().locations_.names_.at(x).view();
 }
 
 std::string_view run_stop::id() const noexcept {
   auto const l = get_location_idx();
-  auto const type = tt().locations_.types_.at(l);
-  return tt()
-      .locations_.ids_
-      .at(type == location_type::kGeneratedTrack
-              ? tt().locations_.parents_.at(l)
-              : l)
-      .view();
+  auto const p = tt().locations_.parents_.at(l);
+  auto const x = p == location_idx_t::invalid() ? l : p;
+  return tt().locations_.ids_.at(x).view();
 }
 
 std::string_view run_stop::track() const noexcept {
   auto const l = get_location_idx();
-  return (tt().locations_.types_.at(l) == location_type::kTrack ||
-          tt().locations_.types_.at(l) == location_type::kGeneratedTrack)
-             ? tt().locations_.names_.at(l).view()
-             : "";
+  return tt().locations_.platform_codes_.at(l).view();
 }
 
 location run_stop::get_location() const noexcept {

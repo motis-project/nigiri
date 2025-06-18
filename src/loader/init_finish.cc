@@ -20,6 +20,7 @@ void register_special_stations(timetable& tt) {
     tt.locations_.register_location(location{name,
                                              name,
                                              "",
+                                             "",
                                              {0.0, 0.0},
                                              source_idx_t::invalid(),
                                              location_type::kStation,
@@ -134,6 +135,10 @@ void finalize(timetable& tt, finalize_options const opt) {
   build_location_tree(tt);
   assign_stops_to_flex_areas(tt);
   assign_importance(tt);
+
+  log(log_lvl::info, "nigiri.loader.finalize",
+      "{} locations ({}% of idx space used)", tt.n_locations(),
+      static_cast<double>(tt.n_locations()) / footpath::kMaxTarget * 100.0);
 }
 
 void finalize(timetable& tt,
