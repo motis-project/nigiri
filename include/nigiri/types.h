@@ -59,7 +59,11 @@ using bitset = cista::bitset<Size>;
 constexpr auto const kMaxDays = 512;
 using bitfield = bitset<kMaxDays>;
 
-using bitvec = cista::raw::bitvec;
+template <typename T>
+using vector = cista::raw::vector<T>;
+
+template <typename K>
+using bitvec = cista::basic_bitvec<vector<std::uint64_t>, K>;
 
 template <typename K = std::uint32_t>
 using bitvec_map = cista::basic_bitvec<cista::raw::vector<std::uint64_t>, K>;
@@ -75,9 +79,6 @@ using vector_map = cista::raw::vector_map<K, V>;
 
 template <typename V, std::size_t SIZE>
 using array = cista::raw::array<V, SIZE>;
-
-template <typename T>
-using vector = cista::raw::vector<T>;
 
 template <typename T>
 using matrix = cista::raw::flat_matrix<T>;
@@ -204,18 +205,12 @@ using rt_merged_trips_idx_t =
 using rt_transport_direction_string_idx_t =
     cista::strong<std::uint32_t, struct _rt_transport_direction_string>;
 
-using line_id_t = string;
-
 using trip_direction_string_idx_t =
     cista::strong<std::uint32_t, struct _trip_direction_string>;
 using trip_direction_t =
     cista::variant<location_idx_t, trip_direction_string_idx_t>;
 using trip_direction_idx_t =
     cista::strong<std::uint32_t, struct _trip_direction_idx>;
-using trip_line_idx_t = cista::strong<std::uint32_t, struct _trip_line_idx>;
-using attribute_idx_t = cista::strong<std::uint32_t, struct _attribute_idx>;
-using attribute_combination_idx_t =
-    cista::strong<std::uint32_t, struct _attribute_combination>;
 using provider_idx_t = cista::strong<std::uint32_t, struct _provider_idx>;
 using direction_id_t = cista::strong<std::uint8_t, struct _direction_id>;
 using route_type_t = cista::strong<std::uint16_t, struct _route_type>;
@@ -223,8 +218,6 @@ using flex_transport_idx_t =
     cista::strong<std::uint32_t, struct _flex_transport_idx>;
 using flex_stop_seq_idx_t =
     cista::strong<std::uint32_t, struct _flex_stop_seq_idx>;
-
-using transport_range_t = pair<transport_idx_t, interval<stop_idx_t>>;
 
 struct trip_debug {
   source_file_idx_t source_file_idx_;

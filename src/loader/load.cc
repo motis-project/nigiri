@@ -7,7 +7,6 @@
 
 #include "nigiri/loader/dir.h"
 #include "nigiri/loader/gtfs/loader.h"
-#include "nigiri/loader/hrd/loader.h"
 #include "nigiri/loader/init_finish.h"
 #include "nigiri/timetable.h"
 
@@ -16,10 +15,6 @@ namespace nigiri::loader {
 std::vector<std::unique_ptr<loader_interface>> get_loaders() {
   auto loaders = std::vector<std::unique_ptr<loader_interface>>{};
   loaders.emplace_back(std::make_unique<gtfs::gtfs_loader>());
-  loaders.emplace_back(std::make_unique<hrd::hrd_5_00_8_loader>());
-  loaders.emplace_back(std::make_unique<hrd::hrd_5_20_26_loader>());
-  loaders.emplace_back(std::make_unique<hrd::hrd_5_20_39_loader>());
-  loaders.emplace_back(std::make_unique<hrd::hrd_5_20_avv_loader>());
   return loaders;
 }
 

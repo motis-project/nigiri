@@ -11,15 +11,7 @@ timezone_idx_t get_transport_stop_tz(timetable const& tt,
   if (location_tz != timezone_idx_t::invalid()) {
     return location_tz;
   }
-
-  auto const provider_idx = t != transport_idx_t::invalid()
-                                ? tt.transport_section_providers_[t].front()
-                                : provider_idx_t{0};  // TODO
-  utl::verify(provider_idx != provider_idx_t::invalid(),
-              "provider of transport {} not set, no timezone at stop {}", t,
-              location{tt, l});
-
-  return tt.providers_[provider_idx].tz_;
+  return tt.get_provider(t).tz_;
 }
 
 }  // namespace nigiri

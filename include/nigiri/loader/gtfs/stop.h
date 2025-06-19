@@ -11,14 +11,8 @@ struct timetable;
 
 namespace nigiri::loader::gtfs {
 
-struct gtfs_seated_transfer {
-  location_idx_t from_{location_idx_t::invalid()};
-  location_idx_t to_{location_idx_t::invalid()};
-  std::string to_trip_id_;
-};
-
 using seated_transfers_map =
-    hash_map<std::string /* from_trip_id */, std::vector<gtfs_seated_transfer>>;
+    hash_map<std::string /* from_trip_id */, std::vector<std::string>>;
 
 using stops_map_t = hash_map<std::string, location_idx_t>;
 

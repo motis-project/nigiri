@@ -57,10 +57,9 @@ void resolve_static(date::sys_days const today,
   };
 
   for (auto i = lb; i != end(tt.trip_id_to_idx_) && id_matches(i->first); ++i) {
-    for (auto const [t, stop_range] : tt.trip_transport_ranges_[i->second]) {
+    for (auto const t : tt.trip_transports_[i->second]) {
       auto const o = tt.transport_first_dep_offset_[t];
-      auto const utc_dep =
-          tt.event_mam(t, stop_range.from_, event_type::kDep).as_duration();
+      auto const utc_dep = tt.event_mam(t, 0U, event_type::kDep).as_duration();
       auto const gtfs_static_dep = utc_dep + o;
 
       auto const [gtfs_static_dep_day, gtfs_static_dep_time] =
@@ -89,7 +88,6 @@ void resolve_static(date::sys_days const today,
       auto const& traffic_days = tt.bitfields_[tt.transport_traffic_days_[t]];
       if (traffic_days.test(static_cast<std::size_t>(day_idx))) {
         r.t_ = transport{t, day_idx_t{day_idx}};
-        r.stop_range_ = stop_range;
         trip = i->second;
       }
     }
@@ -107,12 +105,6 @@ void resolve_rt(rt_timetable const& rtt,
   auto const rt_add_idx = rtt.additional_trip_ids_.find(trip_id);
   if (rt_add_idx.has_value()) {
     output.rt_ = rtt.additional_trips_lookup_[*rt_add_idx];
-    if (output.stop_range_.size() == 0) {
-      output.stop_range_ = {
-          static_cast<stop_idx_t>(0U),
-          static_cast<stop_idx_t>(
-              rtt.rt_transport_location_seq_.at(output.rt_).size())};
-    }
   }
 }
 

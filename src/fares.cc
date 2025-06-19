@@ -310,9 +310,7 @@ timeframe_group_idx_t match_timeframe(timetable const& tt,
                                       unixtime_t const time) {
   auto const stop_tz = tt.locations_.location_timezones_.at(l);
   auto const& tz = tt.locations_.timezones_.at(
-      stop_tz == timezone_idx_t::invalid()
-          ? tt.providers_[tt.transport_section_providers_.at(t).at(0)].tz_
-          : stop_tz);
+      stop_tz == timezone_idx_t::invalid() ? tt.get_provider(t).tz_ : stop_tz);
   auto const base_day = std::chrono::time_point_cast<date::days>(
       to_local_time(tz, tt.internal_interval_days().from_));
   for (auto i = timeframe_group_idx_t{0U}; i != f.timeframes_.size(); ++i) {

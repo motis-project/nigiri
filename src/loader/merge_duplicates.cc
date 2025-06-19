@@ -33,58 +33,67 @@ bool merge(timetable& tt,
            stop_idx_t const size,
            transport_idx_t const a,
            transport_idx_t const b) {
-  assert(a != b);
+  CISTA_UNUSED_PARAM(tt)
+  CISTA_UNUSED_PARAM(size)
+  CISTA_UNUSED_PARAM(a)
+  CISTA_UNUSED_PARAM(b)
 
-  auto const bf_a = tt.bitfields_[tt.transport_traffic_days_[a]];
-  auto const bf_b = tt.bitfields_[tt.transport_traffic_days_[b]];
-  if ((bf_a & bf_b).none()) {
-    return false;
-  }
+  // assert(a != b);
+  //
+  // auto const bf_a = tt.bitfields_[tt.transport_traffic_days_[a]];
+  // auto const bf_b = tt.bitfields_[tt.transport_traffic_days_[b]];
+  // if ((bf_a & bf_b).none()) {
+  //   return false;
+  // }
+  //
+  // auto const merge_and_nullify = [&tt](transport_idx_t const x,
+  //                                      transport_idx_t const y) {
+  //   tt.transport_traffic_days_[x] = bitfield_idx_t{0U};  // disable transport
+  //   x
+  //
+  //   for (auto const merged_trips_idx_x : tt.transport_to_trip_section_[x]) {
+  //     for (auto const x_trp : tt.merged_trips_[merged_trips_idx_x]) {
+  //       for (auto& [t, range] : tt.trip_transport_ranges_[x_trp]) {
+  //         if (t == x) {
+  //           t = y;  // replace x with y in x's trip transport ranges
+  //         }
+  //       }
+  //     }
+  //   }
+  // };
+  //
+  // auto const is_superset = [](bitfield const& x, bitfield const& y) {
+  //   return (x & y) == x;
+  // };
+  //
+  // if (is_superset(bf_b, bf_a)) {
+  //   merge_and_nullify(a, b);
+  // } else if (is_superset(bf_a, bf_b)) {
+  //   merge_and_nullify(b, a);
+  // } else {
+  //   tt.transport_traffic_days_[a] = tt.register_bitfield(bf_a & ~(bf_a &
+  //   bf_b));
+  //
+  //   hash_set<trip_idx_t> b_trips;
+  //   for (auto const merged_trips_idx_b : tt.transport_trip_[b]) {
+  //     for (auto const b_trp : tt.merged_trips_[merged_trips_idx_b]) {
+  //       for (auto& [t, range] : tt.trip_transport_ranges_[b_trp]) {
+  //         if (t == b) {
+  //           b_trips.emplace(b_trp);
+  //         }
+  //       }
+  //     }
+  //   }
+  //
+  //   for (auto const b_trp : b_trips) {
+  //     tt.trip_transport_ranges_[b_trp].push_back(
+  //         transport_range_t{a, {0U, size}});
+  //   }
+  // }
+  //
+  // return true;
 
-  auto const merge_and_nullify = [&tt](transport_idx_t const x,
-                                       transport_idx_t const y) {
-    tt.transport_traffic_days_[x] = bitfield_idx_t{0U};  // disable transport x
-
-    for (auto const merged_trips_idx_x : tt.transport_to_trip_section_[x]) {
-      for (auto const x_trp : tt.merged_trips_[merged_trips_idx_x]) {
-        for (auto& [t, range] : tt.trip_transport_ranges_[x_trp]) {
-          if (t == x) {
-            t = y;  // replace x with y in x's trip transport ranges
-          }
-        }
-      }
-    }
-  };
-
-  auto const is_superset = [](bitfield const& x, bitfield const& y) {
-    return (x & y) == x;
-  };
-
-  if (is_superset(bf_b, bf_a)) {
-    merge_and_nullify(a, b);
-  } else if (is_superset(bf_a, bf_b)) {
-    merge_and_nullify(b, a);
-  } else {
-    tt.transport_traffic_days_[a] = tt.register_bitfield(bf_a & ~(bf_a & bf_b));
-
-    hash_set<trip_idx_t> b_trips;
-    for (auto const merged_trips_idx_b : tt.transport_to_trip_section_[b]) {
-      for (auto const b_trp : tt.merged_trips_[merged_trips_idx_b]) {
-        for (auto& [t, range] : tt.trip_transport_ranges_[b_trp]) {
-          if (t == b) {
-            b_trips.emplace(b_trp);
-          }
-        }
-      }
-    }
-
-    for (auto const b_trp : b_trips) {
-      tt.trip_transport_ranges_[b_trp].push_back(
-          transport_range_t{a, {0U, size}});
-    }
-  }
-
-  return true;
+  return false;
 }
 
 unsigned find_duplicates(timetable& tt,

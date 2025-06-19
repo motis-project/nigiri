@@ -1,7 +1,6 @@
 #include "gtest/gtest.h"
 
 #include "nigiri/loader/gtfs/load_timetable.h"
-#include "nigiri/loader/hrd/load_timetable.h"
 #include "nigiri/loader/init_finish.h"
 #include "nigiri/rt/create_rt_timetable.h"
 #include "nigiri/rt/gtfsrt_update.h"

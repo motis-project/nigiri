@@ -78,11 +78,11 @@ struct raptor_state {
   std::vector<delta_t> tmp_storage_;
   std::vector<delta_t> best_storage_;
   std::vector<delta_t> round_times_storage_;
-  bitvec station_mark_;
-  bitvec prev_station_mark_;
-  bitvec route_mark_;
-  bitvec rt_transport_mark_;
-  bitvec end_reachable_;
+  bitvec<location_idx_t> station_mark_;
+  bitvec<location_idx_t> prev_station_mark_;
+  bitvec<route_idx_t> route_mark_;
+  bitvec<rt_transport_idx_t> rt_transport_mark_;
+  bitvec<location_idx_t> end_reachable_;
 };
 
 }  // namespace nigiri::routing

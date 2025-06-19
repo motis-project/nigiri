@@ -1,3 +1,4 @@
+/*
 #include "gtest/gtest.h"
 
 #include "nigiri/loader/hrd/load_timetable.h"
@@ -79,3 +80,4 @@ TEST(query_generation, reproducibility) {
     }
   }
 }
+*/

@@ -15,7 +15,6 @@
 
 #include "nigiri/loader/dir.h"
 #include "nigiri/loader/gtfs/loader.h"
-#include "nigiri/loader/hrd/loader.h"
 #include "nigiri/loader/init_finish.h"
 #include "nigiri/logging.h"
 #include "nigiri/rt/create_rt_timetable.h"
@@ -47,14 +46,6 @@ nigiri_timetable_t* nigiri_load_from_dir(nigiri::loader::dir const& d,
   auto loaders =
       std::vector<std::unique_ptr<nigiri::loader::loader_interface>>{};
   loaders.emplace_back(std::make_unique<nigiri::loader::gtfs::gtfs_loader>());
-  loaders.emplace_back(
-      std::make_unique<nigiri::loader::hrd::hrd_5_00_8_loader>());
-  loaders.emplace_back(
-      std::make_unique<nigiri::loader::hrd::hrd_5_20_26_loader>());
-  loaders.emplace_back(
-      std::make_unique<nigiri::loader::hrd::hrd_5_20_39_loader>());
-  loaders.emplace_back(
-      std::make_unique<nigiri::loader::hrd::hrd_5_20_avv_loader>());
 
   auto const src = nigiri::source_idx_t{0U};
 

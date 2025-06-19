@@ -159,10 +159,8 @@ seated_transfers_map read_transfers(stop_map_t& stops,
 
         if (type == transfer_type::kStaySeated && !t.from_trip_id_->empty() &&
             !t.to_trip_id_->empty()) {
-          seated_transfers[t.from_trip_id_->to_str()].emplace_back(
-              gtfs_seated_transfer{.from_ = from_stop_it->second->location_,
-                                   .to_ = to_stop_it->second->location_,
-                                   .to_trip_id_ = t.to_trip_id_->to_str()});
+          seated_transfers[t.from_trip_id_->to_str()].push_back(
+              t.to_trip_id_->to_str());
           return;
         }
 

@@ -127,45 +127,35 @@ struct timetable {
   } locations_;
 
   struct transport {
-    bitfield_idx_t bitfield_idx_;
-    route_idx_t route_idx_;
+    trip_idx_t trip_;
+    bitfield_idx_t bitfield_;
+    route_idx_t route_;
     duration_t first_dep_offset_;
-    basic_string<merged_trips_idx_t> const& external_trip_ids_;
-    basic_string<attribute_combination_idx_t> const& section_attributes_;
-    basic_string<provider_idx_t> const& section_providers_;
-    basic_string<trip_direction_idx_t> const& section_directions_;
-    basic_string<trip_line_idx_t> const& section_lines_;
-    basic_string<stop_idx_t> const& stop_seq_numbers_;
-    basic_string<route_color> const& route_colors_;
   };
 
   template <typename TripId>
-  trip_idx_t register_trip_id(TripId const& trip_id_str,
-                              route_id_idx_t const route_id_idx,
-                              source_idx_t const src,
-                              std::string const& display_name,
-                              trip_debug const dbg,
-                              std::uint32_t const train_nr,
-                              std::span<stop_idx_t> seq_numbers,
-                              direction_id_t const direction_id) {
+  trip_idx_t register_trip(std::string_view id,
+                           std::string_view display_name,
+                           route_id_idx_t const route_id_idx,
+                           source_idx_t const src,
+                           trip_debug const& dbg,
+                           std::span<stop_idx_t> seq_numbers,
+                           direction_id_t const direction_id) {
     auto const trip_idx = trip_idx_t{trip_ids_.size()};
 
     auto const trip_id_idx = trip_id_idx_t{trip_id_strings_.size()};
 
-    if (route_id_idx != route_id_idx_t::invalid()) {  // HRD
-      route_ids_[src].route_id_trips_[route_id_idx].push_back(trip_idx);
-      trip_direction_id_.set(trip_idx, direction_id == direction_id_t{1U});
-    }
+    route_ids_[src].route_id_trips_[route_id_idx].push_back(trip_idx);
+    trip_direction_id_.set(trip_idx, direction_id == direction_id_t{1U});
     trip_route_id_.emplace_back(route_id_idx);
 
-    trip_id_strings_.emplace_back(trip_id_str);
+    trip_id_strings_.emplace_back(id);
     trip_id_src_.emplace_back(src);
 
     trip_id_to_idx_.emplace_back(trip_id_idx, trip_idx);
+    trip_ids_.emplace_back().emplace_back(trip_id_idx);
     trip_display_names_.emplace_back(display_name);
     trip_debug_.emplace_back().emplace_back(dbg);
-    trip_ids_.emplace_back().emplace_back(trip_id_idx);
-    trip_train_nr_.emplace_back(train_nr);
     trip_stop_seq_numbers_.emplace_back(seq_numbers);
 
     return trip_idx;
@@ -188,69 +178,31 @@ struct timetable {
   }
 
   route_idx_t register_route(basic_string<stop::value_type> const& stop_seq,
-                             basic_string<clasz> const& clasz_sections,
-                             bitvec const& bikes_allowed_per_section,
-                             bitvec const& cars_allowed_per_section) {
-    assert(stop_seq.size() > 1U);
-    assert(!clasz_sections.empty());
+                             clasz const clasz,
+                             bool const bikes_allowed,
+                             bool const cars_allowed) {
+    assert(stop_seq.size() >= 2U);
 
-    auto const idx = route_location_seq_.size();
+    auto const idx = route_idx_t{route_location_seq_.size()};
 
     route_transport_ranges_.emplace_back(
         transport_idx_t{transport_traffic_days_.size()},
         transport_idx_t::invalid());
     route_location_seq_.emplace_back(stop_seq);
-    route_section_clasz_.emplace_back(clasz_sections);
-    route_clasz_.emplace_back(clasz_sections[0]);
+    route_clasz_.emplace_back(clasz);
 
-    auto const bike_sections = bikes_allowed_per_section.size();
-    auto const sections_with_bikes_allowed = bikes_allowed_per_section.count();
-    auto const bikes_allowed_on_all_sections =
-        sections_with_bikes_allowed == bike_sections && bike_sections != 0;
-    auto const bikes_allowed_on_some_sections =
-        sections_with_bikes_allowed != 0U;
-    route_bikes_allowed_.resize(route_bikes_allowed_.size() + 2U);
-    route_bikes_allowed_.set(idx * 2, bikes_allowed_on_all_sections);
-    route_bikes_allowed_.set(idx * 2 + 1, bikes_allowed_on_some_sections);
+    route_bikes_allowed_.resize(route_bikes_allowed_.size() + 1U);
+    route_bikes_allowed_.set(idx, bikes_allowed);
 
-    route_bikes_allowed_per_section_.resize(idx + 1);
-    if (bikes_allowed_on_some_sections && !bikes_allowed_on_all_sections) {
-      auto bucket = route_bikes_allowed_per_section_[route_idx_t{idx}];
-      for (auto i = 0U; i < bikes_allowed_per_section.size(); ++i) {
-        bucket.push_back(bikes_allowed_per_section[i]);
-      }
-    }
+    route_cars_allowed_.resize(route_cars_allowed_.size() + 1U);
+    route_cars_allowed_.set(idx, cars_allowed);
 
-    auto const car_sections = cars_allowed_per_section.size();
-    auto const sections_with_cars_allowed = cars_allowed_per_section.count();
-    auto const cars_allowed_on_all_sections =
-        sections_with_cars_allowed == car_sections && car_sections != 0;
-    auto const cars_allowed_on_some_sections = sections_with_cars_allowed != 0U;
-    route_cars_allowed_.resize(route_cars_allowed_.size() + 2U);
-    route_cars_allowed_.set(idx * 2, cars_allowed_on_all_sections);
-    route_cars_allowed_.set(idx * 2 + 1, cars_allowed_on_some_sections);
-
-    route_cars_allowed_per_section_.resize(idx + 1);
-    if (cars_allowed_on_some_sections && !cars_allowed_on_all_sections) {
-      auto bucket = route_cars_allowed_per_section_[route_idx_t{idx}];
-      for (auto i = 0U; i < cars_allowed_per_section.size(); ++i) {
-        bucket.push_back(cars_allowed_per_section[i]);
-      }
-    }
-
-    return route_idx_t{idx};
+    return idx;
   }
 
   void finish_route() {
     route_transport_ranges_.back().to_ =
         transport_idx_t{transport_traffic_days_.size()};
-  }
-
-  merged_trips_idx_t register_merged_trip(
-      basic_string<trip_idx_t> const& trip_ids) {
-    auto const idx = merged_trips_.size();
-    merged_trips_.emplace_back(trip_ids);
-    return merged_trips_idx_t{static_cast<merged_trips_idx_t::value_t>(idx)};
   }
 
   source_file_idx_t register_source_file(std::string_view path) {
@@ -262,27 +214,13 @@ struct timetable {
   provider_idx_t register_provider(provider&& p) {
     auto const idx = providers_.size();
     providers_.emplace_back(std::move(p));
-    provider_id_to_idx_.emplace_back(idx);
     return provider_idx_t{idx};
   }
 
   void add_transport(transport&& t) {
     transport_first_dep_offset_.emplace_back(t.first_dep_offset_);
-    transport_traffic_days_.emplace_back(t.bitfield_idx_);
-    transport_route_.emplace_back(t.route_idx_);
-    transport_to_trip_section_.emplace_back(t.external_trip_ids_);
-    transport_section_attributes_.emplace_back(t.section_attributes_);
-    transport_section_providers_.emplace_back(t.section_providers_);
-    transport_section_directions_.emplace_back(t.section_directions_);
-    transport_section_lines_.emplace_back(t.section_lines_);
-    transport_section_route_colors_.emplace_back(t.route_colors_);
-
-    assert(transport_traffic_days_.size() == transport_route_.size());
-    assert(transport_traffic_days_.size() == transport_to_trip_section_.size());
-    assert(transport_section_directions_.back().size() == 0U ||
-           transport_section_directions_.back().size() == 1U ||
-           transport_section_directions_.back().size() ==
-               route_location_seq_.at(transport_route_.back()).size() - 1U);
+    transport_traffic_days_.emplace_back(t.bitfield_);
+    transport_route_.emplace_back(t.route_);
   }
 
   transport_idx_t next_transport_idx() const {
@@ -384,8 +322,8 @@ struct timetable {
         std::chrono::time_point_cast<i32_minutes>(date_range_.to_ + 1_days)};
   }
 
-  std::string_view trip_direction(trip_direction_idx_t const i) const {
-    return trip_directions_.at(i).apply(
+  std::string_view trip_direction(trip_idx_t const trp) const {
+    return trip_directions_.at(trp).apply(
         utl::overloaded{[&](trip_direction_string_idx_t s_idx) {
                           return trip_direction_strings_.at(s_idx).view();
                         },
@@ -395,14 +333,11 @@ struct timetable {
   }
 
   std::string_view transport_name(transport_idx_t const t) const {
-    return trip_display_names_
-        [merged_trips_[transport_to_trip_section_[t].front()].front()]
-            .view();
+    return trip_display_names_[transport_trip_.at(t)].view();
   }
 
   debug dbg(transport_idx_t const t) const {
-    auto const trip_idx =
-        merged_trips_[transport_to_trip_section_[t].front()].front();
+    auto const trip_idx = transport_trip_.at(t);
     return debug{
         source_file_names_[trip_debug_[trip_idx].front().source_file_idx_]
             .view(),
@@ -410,21 +345,18 @@ struct timetable {
         trip_debug_[trip_idx].front().line_number_to_};
   }
 
+  provider const& get_provider(transport_idx_t const t) const {
+    auto const trp = transport_trip_.at(t);
+    auto const src = trip_id_src_.at(trip_ids_.at(trp).front());
+    return providers_.at(
+        route_ids_.at(src).route_id_provider_.at(trip_route_id_[trp]));
+  }
+
   friend std::ostream& operator<<(std::ostream&, timetable const&);
 
   void write(cista::memory_holder&) const;
   void write(std::filesystem::path const&) const;
   static cista::wrapped<timetable> read(std::filesystem::path const&);
-
-  bool has_car_transport(route_idx_t const r) const {
-    return route_cars_allowed_[to_idx(r) * 2U] ||
-           route_cars_allowed_[to_idx(r) * 2U + 1U];
-  }
-
-  bool has_bike_transport(route_idx_t const r) const {
-    return route_bikes_allowed_[to_idx(r) * 2U] ||
-           route_bikes_allowed_[to_idx(r) * 2U + 1U];
-  }
 
   // Schedule range.
   interval<date::sys_days> date_range_;
@@ -442,9 +374,6 @@ struct timetable {
   // Trip -> direction (valid options 0 or 1)
   bitvec_map<trip_idx_t> trip_direction_id_;
 
-  // Trip train number, if available (otherwise 0)
-  vector_map<trip_id_idx_t, std::uint32_t> trip_train_nr_;
-
   // Trip -> route name
   vector_map<trip_idx_t, route_id_idx_t> trip_route_id_;
 
@@ -453,6 +382,7 @@ struct timetable {
     route_id_idx_t add(std::string_view id,
                        std::string_view short_name,
                        std::string_view long_name,
+                       route_color const colors,
                        provider_idx_t const provider,
                        std::uint16_t const type) {
       auto const idx = ids_.store(id);
@@ -460,6 +390,7 @@ struct timetable {
       route_id_long_names_.emplace_back(long_name);
       route_id_type_.emplace_back(type);
       route_id_provider_.emplace_back(provider);
+      route_id_colors_.emplace_back(colors);
       route_id_trips_.emplace_back(std::initializer_list<trip_idx_t>{});
       return idx;
     }
@@ -468,15 +399,16 @@ struct timetable {
     vecvec<route_id_idx_t, char> route_id_long_names_;
     vector_map<route_id_idx_t, route_type_t> route_id_type_;
     vector_map<route_id_idx_t, provider_idx_t> route_id_provider_;
+    vector_map<route_id_idx_t, route_color> route_id_colors_;
     paged_vecvec<route_id_idx_t, trip_idx_t> route_id_trips_;
     string_store<route_id_idx_t> ids_;
   };
   vector_map<source_idx_t, route_ids> route_ids_;
 
   // Trip index -> all transports with a stop interval
-  paged_vecvec<trip_idx_t, transport_range_t> trip_transport_ranges_;
+  paged_vecvec<trip_idx_t, transport_idx_t> trip_transports_;
 
-  // Transport -> stop sequence numbers (relevant for GTFS-RT stop matching)
+  // Transport -> stop sequence numbers for GTFS-RT stop matching
   // Compaction:
   // - empty = zero-based sequence 0,1,2,...
   // - only one '1' entry = one-based sequence 1,2,3,...
@@ -484,18 +416,18 @@ struct timetable {
   // - more than one entry: exact sequence number for each stop
   vecvec<trip_idx_t, stop_idx_t> trip_stop_seq_numbers_;
 
-  // Outgoing stay seated transfers at the last stop.
-  vecvec<trip_idx_t, trip_idx_t> stay_seated_out_;
-
-  // Incoming stay seated transfers at the first stop.
-  vecvec<trip_idx_t, trip_idx_t> stay_seated_in_;
-
   // Trip -> debug info
   mutable_fws_multimap<trip_idx_t, trip_debug> trip_debug_;
   vecvec<source_file_idx_t, char> source_file_names_;
 
-  // Trip index -> display name
+  // Trip -> meta data
   vecvec<trip_idx_t, char> trip_display_names_;
+  vector_map<trip_idx_t, trip_direction_t> trip_directions_;
+  vecvec<trip_direction_string_idx_t, char> trip_direction_strings_;
+  vector_map<trip_idx_t, route_color> trip_route_colors_;
+
+  // Agencies / Providers
+  vector_map<provider_idx_t, provider> providers_;
 
   // Route -> range of transports in this route (from/to transport_idx_t)
   vector_map<route_idx_t, interval<transport_idx_t>> route_transport_ranges_;
@@ -506,23 +438,11 @@ struct timetable {
   // Route -> clasz
   vector_map<route_idx_t, clasz> route_clasz_;
 
-  // Route -> clasz per section
-  vecvec<route_idx_t, clasz> route_section_clasz_;
+  // Route -> bike transport allowed
+  bitvec<route_idx_t> route_bikes_allowed_;
 
-  // Route * 2 -> bikes allowed along the route
-  // Route * 2 + 1 -> bikes along parts of the route
-  bitvec route_bikes_allowed_;
-
-  // same for cars
-  bitvec route_cars_allowed_;
-
-  // Route -> bikes allowed per section
-  // Only set for routes where the entry in route_bikes_allowed_bitvec_
-  // is set to "bikes along parts of the route"
-  vecvec<route_idx_t, bool> route_bikes_allowed_per_section_;
-
-  // same for cars
-  vecvec<route_idx_t, bool> route_cars_allowed_per_section_;
+  // Route -> car transport allowed
+  bitvec<route_idx_t> route_cars_allowed_;
 
   // Location -> list of routes
   vecvec<location_idx_t, route_idx_t> location_routes_;
@@ -559,29 +479,13 @@ struct timetable {
   vector_map<transport_idx_t, route_idx_t> transport_route_;
 
   // Trip index -> merged trips
-  vecvec<transport_idx_t, merged_trips_idx_t> transport_to_trip_section_;
+  vector_map<transport_idx_t, trip_idx_t> transport_trip_;
 
-  // Merged trips info
-  vecvec<merged_trips_idx_t, trip_idx_t> merged_trips_;
+  // Outgoing stay seated transfers at the last stop.
+  vecvec<transport_idx_t, transport_idx_t> stay_seated_out_;
 
-  // Section meta infos:
-  vector_map<attribute_idx_t, attribute> attributes_;
-  vecvec<attribute_combination_idx_t, attribute_idx_t> attribute_combinations_;
-  vector_map<provider_idx_t, provider> providers_;
-  vector<provider_idx_t> provider_id_to_idx_;
-  vecvec<trip_direction_string_idx_t, char> trip_direction_strings_;
-  vector_map<trip_direction_idx_t, trip_direction_t> trip_directions_;
-  vecvec<trip_line_idx_t, char> trip_lines_;
-
-  // Transport to section meta infos; Compaction:
-  // - only one value = value is valid for the whole run
-  // - multiple values = one value for each section
-  vecvec<transport_idx_t, attribute_combination_idx_t>
-      transport_section_attributes_;
-  vecvec<transport_idx_t, provider_idx_t> transport_section_providers_;
-  vecvec<transport_idx_t, trip_direction_idx_t> transport_section_directions_;
-  vecvec<transport_idx_t, trip_line_idx_t> transport_section_lines_;
-  vecvec<transport_idx_t, route_color> transport_section_route_colors_;
+  // Incoming stay seated transfers at the first stop.
+  vecvec<transport_idx_t, transport_idx_t> stay_seated_in_;
 
   // Lower bound graph.
   std::array<vecvec<location_idx_t, footpath>, kNProfiles> fwd_search_lb_graph_;

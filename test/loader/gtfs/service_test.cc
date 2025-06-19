@@ -4,8 +4,8 @@
 #include "nigiri/loader/gtfs/load_timetable.h"
 #include "nigiri/timetable.h"
 
-#include "nigiri/lookup/get_transport.h"
 #include "nigiri/lookup/get_transport_stop_tz.h"
+#include "nigiri/rt/gtfsrt_resolve_run.h"
 
 using namespace nigiri;
 using namespace nigiri::loader;
@@ -66,6 +66,15 @@ X2,01:00:00,01:00:00,D,3,0,0
 
 }  // namespace
 
+std::optional<transport> get_ref_transport(timetable const& tt,
+                                           trip_id const& id,
+                                           date::sys_days const date) {
+  auto td = transit_realtime::TripDescriptor{};
+  td.set_trip_id(id.id_);
+  auto const [r, t] = rt::gtfsrt_resolve_run(date, tt, nullptr, id.src_, td);
+  return r.valid() ? r.t_ : std::nullopt;
+}
+
 TEST(gtfs, local_to_unix_trip_test) {
   timetable tt;
   tt.date_range_ = {date::sys_days{2019_y / March / 25},
@@ -99,49 +108,48 @@ TEST(gtfs, local_to_unix_trip_test) {
   };
 
   auto const t_oct = get_ref_transport(tt, trip_id{"X1", source_idx_t{0}},
-                                       2019_y / October / 27, true);
+                                       2019_y / October / 27);
   ASSERT_TRUE(t_oct.has_value());
-  EXPECT_EQ(1572130800, unixtime(t_oct->first, 0, event_type::kDep));
-  EXPECT_EQ(1572134340, unixtime(t_oct->first, 1, event_type::kArr));
-  EXPECT_EQ(1572137940, unixtime(t_oct->first, 1, event_type::kDep));
-  EXPECT_EQ(1572138000, unixtime(t_oct->first, 2, event_type::kArr));
-  EXPECT_EQ(1572141540, unixtime(t_oct->first, 3, event_type::kArr));
-  EXPECT_EQ(1572141600, unixtime(t_oct->first, 3, event_type::kDep));
-  EXPECT_EQ("2019-10-27T01:00+02:00", iso(t_oct->first, 0, event_type::kDep));
-  EXPECT_EQ("2019-10-27T01:59+02:00", iso(t_oct->first, 1, event_type::kArr));
-  EXPECT_EQ("2019-10-27T02:59+02:00", iso(t_oct->first, 1, event_type::kDep));
-  EXPECT_EQ("2019-10-27T02:00+01:00", iso(t_oct->first, 2, event_type::kArr));
-  EXPECT_EQ("2019-10-27T02:59+01:00", iso(t_oct->first, 3, event_type::kArr));
-  EXPECT_EQ("2019-10-27T03:00+01:00", iso(t_oct->first, 3, event_type::kDep));
+  EXPECT_EQ(1572130800, unixtime(*t_oct, 0, event_type::kDep));
+  EXPECT_EQ(1572134340, unixtime(*t_oct, 1, event_type::kArr));
+  EXPECT_EQ(1572137940, unixtime(*t_oct, 1, event_type::kDep));
+  EXPECT_EQ(1572138000, unixtime(*t_oct, 2, event_type::kArr));
+  EXPECT_EQ(1572141540, unixtime(*t_oct, 3, event_type::kArr));
+  EXPECT_EQ(1572141600, unixtime(*t_oct, 3, event_type::kDep));
+  EXPECT_EQ("2019-10-27T01:00+02:00", iso(*t_oct, 0, event_type::kDep));
+  EXPECT_EQ("2019-10-27T01:59+02:00", iso(*t_oct, 1, event_type::kArr));
+  EXPECT_EQ("2019-10-27T02:59+02:00", iso(*t_oct, 1, event_type::kDep));
+  EXPECT_EQ("2019-10-27T02:00+01:00", iso(*t_oct, 2, event_type::kArr));
+  EXPECT_EQ("2019-10-27T02:59+01:00", iso(*t_oct, 3, event_type::kArr));
+  EXPECT_EQ("2019-10-27T03:00+01:00", iso(*t_oct, 3, event_type::kDep));
 
   auto const t_march = get_ref_transport(tt, trip_id{"X1", source_idx_t{0}},
-                                         2019_y / March / 30, true);
+                                         2019_y / March / 30);
   ASSERT_TRUE(t_march.has_value());
-  EXPECT_EQ(1553990400, unixtime(t_march->first, 2, event_type::kArr));
-  EXPECT_EQ(1553993940, unixtime(t_march->first, 3, event_type::kArr));
-  EXPECT_EQ(1553994000, unixtime(t_march->first, 3, event_type::kDep));
-  EXPECT_EQ("2019-03-31T01:00+01:00", iso(t_march->first, 2, event_type::kArr));
-  EXPECT_EQ("2019-03-31T01:59+01:00", iso(t_march->first, 3, event_type::kArr));
-  EXPECT_EQ("2019-03-31T03:00+02:00", iso(t_march->first, 3, event_type::kDep));
+  EXPECT_EQ(1553990400, unixtime(*t_march, 2, event_type::kArr));
+  EXPECT_EQ(1553993940, unixtime(*t_march, 3, event_type::kArr));
+  EXPECT_EQ(1553994000, unixtime(*t_march, 3, event_type::kDep));
+  EXPECT_EQ("2019-03-31T01:00+01:00",
+            iso(*t_march, 2, event_type::kArr));
+  EXPECT_EQ("2019-03-31T01:59+01:00",
+            iso(*t_march, 3, event_type::kArr));
+  EXPECT_EQ("2019-03-31T03:00+02:00",
+            iso(*t_march, 3, event_type::kDep));
 
   // Route with stop_id not contained in 'stops.txt'
   {
     auto const t_mm = get_ref_transport(tt, trip_id{"X2", source_idx_t{0}},
-                                        2019_y / March / 30, true);
+                                        2019_y / March / 30);
     ASSERT_TRUE(t_mm.has_value());
     constexpr auto kExpectedStops = 2U;
-    auto const r = tt.transport_route_[t_mm->first.t_idx_];
+    auto const r = tt.transport_route_[t_mm.value().t_idx_];
     auto trip_count = 0U;
 
     EXPECT_EQ(kExpectedStops, tt.route_location_seq_[r].size());
     for (auto const transport_idx : tt.route_transport_ranges_[r]) {
-      for (auto const& merged_trip_idx :
-           tt.transport_to_trip_section_[transport_idx]) {
-        for (auto const& trip_idx : tt.merged_trips_[merged_trip_idx]) {
-          EXPECT_EQ(kExpectedStops, tt.trip_stop_seq_numbers_[trip_idx].size());
-          ++trip_count;
-        }
-      }
+      auto const trip_idx = tt.transport_trip_[transport_idx];
+      EXPECT_EQ(kExpectedStops, tt.trip_stop_seq_numbers_[trip_idx].size());
+      ++trip_count;
     }
     EXPECT_TRUE(trip_count > 0U);
   }

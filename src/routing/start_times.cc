@@ -312,16 +312,17 @@ void get_starts(
   }
 }
 
-void collect_destinations(timetable const& tt,
-                          std::vector<offset> const& dest,
-                          location_match_mode const match_mode,
-                          bitvec& is_dest,
-                          std::vector<std::uint16_t>& dist_to_dest) {
+void collect_destinations(
+    timetable const& tt,
+    std::vector<offset> const& dest,
+    location_match_mode const match_mode,
+    bitvec<location_idx_t>& is_dest,
+    vector_map<location_idx_t, std::uint16_t>& dist_to_dest) {
   is_dest.resize(tt.n_locations());
   utl::fill(is_dest.blocks_, 0U);
 
   static constexpr auto const kIntermodalTarget =
-      to_idx(get_special_station(special_station::kEnd));
+      get_special_station(special_station::kEnd);
 
   if (match_mode == location_match_mode::kIntermodal) {
     is_dest.set(kIntermodalTarget, true);
@@ -335,10 +336,9 @@ void collect_destinations(timetable const& tt,
     trace_start("DEST METAS OF {}\n", location{tt, d.target_});
     for_each_meta(tt, match_mode, d.target_, [&](location_idx_t const l) {
       if (match_mode == location_match_mode::kIntermodal) {
-        dist_to_dest[to_idx(l)] =
-            static_cast<std::uint16_t>(d.duration_.count());
+        dist_to_dest[l] = static_cast<std::uint16_t>(d.duration_.count());
       } else {
-        is_dest.set(to_idx(l), true);
+        is_dest.set(l, true);
       }
       trace_start("  DEST META: {}, duration={}\n", location{tt, l},
                   d.duration_);
@@ -348,14 +348,14 @@ void collect_destinations(timetable const& tt,
 
 void collect_via_destinations(timetable const& tt,
                               location_idx_t const via,
-                              bitvec& is_destination) {
+                              bitvec<location_idx_t>& is_destination) {
   is_destination.resize(tt.n_locations());
   utl::fill(is_destination.blocks_, 0U);
 
   trace_start("VIA METAS OF {}\n", location{tt, via});
   for_each_meta(tt, location_match_mode::kEquivalent, via,
                 [&](location_idx_t const l) {
-                  is_destination.set(to_idx(l), true);
+                  is_destination.set(l, true);
                   trace_start("  VIA META: {}\n", location{tt, l});
                 });
 }

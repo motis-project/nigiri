@@ -82,9 +82,7 @@ struct rt_timetable {
                       std::optional<location_idx_t> const location_idx,
                       std::optional<bool> const in_out_allowed,
                       std::optional<duration_t> const delay) {
-    if (change_callback_ &&
-        ((ev_type == event_type::kArr && stop_idx != r.stop_range_.from_) ||
-         (ev_type == event_type::kDep && stop_idx != r.stop_range_.to_ - 1))) {
+    if (change_callback_) {
       change_callback_(r.t_, stop_idx, ev_type, location_idx, in_out_allowed,
                        delay);
     }
@@ -179,7 +177,7 @@ struct rt_timetable {
   // Lookup: additional trip index -> realtime transport
   vector_map<rt_add_trip_id_idx_t, rt_transport_idx_t> additional_trips_lookup_;
 
-  // RT transport -> static transport (not for additional trips)
+  // RT transport -> static transport / additional trip id
   vector_map<rt_transport_idx_t, variant<transport, rt_add_trip_id_idx_t>>
       rt_transport_static_transport_;
 
@@ -203,24 +201,17 @@ struct rt_timetable {
   vecvec<rt_transport_idx_t, char> rt_transport_display_names_;
   vecvec<rt_transport_idx_t, char> rt_transport_line_;
 
-  // RT transport -> vehicle clasz for each section
-  vecvec<rt_transport_idx_t, clasz> rt_transport_section_clasz_;
+  // RT transport -> clasz
+  vector_map<rt_transport_idx_t, clasz> rt_transport_clasz_;
 
   // RT transport -> canceled flag
-  bitvec rt_transport_is_cancelled_;
+  bitvec<rt_transport_idx_t> rt_transport_is_cancelled_;
 
-  // RT transport * 2 -> bikes allowed along the transport
-  // RT transport * 2 + 1 -> bikes along parts of the transport
-  bitvec rt_transport_bikes_allowed_;
+  // RT transport -> bikes allowed
+  bitvec<rt_transport_idx_t> rt_transport_bikes_allowed_;
 
-  // same for cars
-  bitvec rt_transport_cars_allowed_;
-
-  // RT transport -> bikes allowed for each section
-  vecvec<rt_transport_idx_t, bool> rt_bikes_allowed_per_section_;
-
-  // same for cars
-  vecvec<rt_transport_idx_t, bool> rt_cars_allowed_per_section_;
+  // RT transport -> cars allowed
+  bitvec<rt_transport_idx_t> rt_transport_cars_allowed_;
 
   // Service alerts
   alerts alerts_;

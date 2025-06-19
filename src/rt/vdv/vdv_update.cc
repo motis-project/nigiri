@@ -387,7 +387,7 @@ void updater::update_run(rt_timetable& rtt,
   if (!fr.is_rt()) {
     fr.rt_ = rtt.add_rt_transport(src_idx_, tt_, fr.t_);
   } else {
-    rtt.rt_transport_is_cancelled_.set(to_idx(fr.rt_), false);
+    rtt.rt_transport_is_cancelled_.set(fr.rt_, false);
   }
 
   auto delay = std::optional<duration_t>{};

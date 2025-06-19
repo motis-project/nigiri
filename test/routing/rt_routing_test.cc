@@ -1,14 +1,11 @@
 #include "gtest/gtest.h"
 
 #include "nigiri/loader/gtfs/load_timetable.h"
-#include "nigiri/loader/hrd/load_timetable.h"
 #include "nigiri/loader/init_finish.h"
 #include "nigiri/rt/create_rt_timetable.h"
 #include "nigiri/rt/gtfsrt_update.h"
 #include "nigiri/rt/rt_timetable.h"
 #include "../../include/nigiri/routing/direct.h"
-
-#include "../loader/hrd/hrd_timetable.h"
 
 #include "../raptor_search.h"
 #include "results_to_string.h"

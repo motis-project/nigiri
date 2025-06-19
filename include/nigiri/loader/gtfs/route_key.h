@@ -4,57 +4,86 @@
 
 namespace nigiri::loader::gtfs {
 
-struct route_key_t {
-  clasz clasz_{clasz::kOther};
-  stop_seq_t stop_seq_;
-  bitvec bikes_allowed_;
-  bitvec cars_allowed_;
-};
-
-struct route_key_ptr_t {
-  clasz clasz_{clasz::kOther};
-  stop_seq_t const* stop_seq_{nullptr};
-  bitvec const* bikes_allowed_{nullptr};
-  bitvec const* cars_allowed_{nullptr};
-};
-
 struct route_key_hash {
   using is_transparent = void;
 
-  static cista::hash_t hash(clasz const c,
-                            stop_seq_t const& seq,
-                            bitvec const& bikes_allowed,
-                            bitvec const& cars_allowed) {
+  static bool seated_hash(std::vector<trip const*> const& trips,
+                          hash_set<trip const*>& hashed) {
     auto h = cista::BASE_HASH;
-    h = cista::hash_combine(h, cista::hashing<stop_seq_t>{}(seq));
-    h = cista::hash_combine(h, c);
-    h = cista::hash_combine(h, cista::hashing<bitvec>{}(bikes_allowed));
-    h = cista::hash_combine(h, cista::hashing<bitvec>{}(cars_allowed));
+    for (auto const* trp : trips) {
+      h = cista::hash_combine(h, hash(trp, hashed));
+    }
     return h;
   }
 
-  cista::hash_t operator()(route_key_t const& x) const {
-    return hash(x.clasz_, x.stop_seq_, x.bikes_allowed_, x.cars_allowed_);
+  static bool hash(trip const* trp, hash_set<trip const*>& hashed) {
+    auto h = std::apply(
+        [](auto&&... k) {
+          return cista::hash_combine(cista::hashing<decltype(k)>{}(k)...);
+        },
+        trp->route_key());
+
+    if (!trp->seated_in_.empty()) {
+      [[unlikely]] h =
+          cista::hash_combine(h, seated_hash(trp->seated_in_, hashed));
+    }
+
+    if (!trp->seated_out_.empty()) {
+      [[unlikely]] h =
+          cista::hash_combine(h, seated_hash(trp->seated_out_, hashed));
+    }
+
+    return h;
   }
 
-  cista::hash_t operator()(route_key_ptr_t const& x) const {
-    return hash(x.clasz_, *x.stop_seq_, *x.bikes_allowed_, *x.cars_allowed_);
+  cista::hash_t operator()(trip const* trp) const {
+    auto hashed = hash_set<trip const*>{};
+    return hash(trp, hashed);
   }
+
+  trip_data const& trip_data_;
 };
 
 struct route_key_equals {
   using is_transparent = void;
 
-  cista::hash_t operator()(route_key_t const& a, route_key_t const& b) const {
-    return std::tie(a.clasz_, a.stop_seq_, a.bikes_allowed_, a.cars_allowed_) ==
-           std::tie(b.clasz_, b.stop_seq_, b.bikes_allowed_, b.cars_allowed_);
+  static bool seated_eq(
+      std::vector<trip const*> const& a,
+      std::vector<trip const*> const& b,
+      hash_set<std::pair<trip const*, trip const*>>& compared) {
+    if (a.size() != b.size()) {
+      return false;
+    }
+
+    return utl::all_of(utl::zip_no_size_check(a, b),
+                       [&](std::pair<trip const*, trip const*> const& x) {
+                         return eq(x.first, x.second, compared);
+                       });
   }
 
-  cista::hash_t operator()(route_key_ptr_t const& a,
-                           route_key_t const& b) const {
-    return std::tie(a.clasz_, *a.stop_seq_, *a.bikes_allowed_,
-                    *a.cars_allowed_) ==
-           std::tie(b.clasz_, b.stop_seq_, b.bikes_allowed_, b.cars_allowed_);
+  static bool eq(trip const* a,
+                 trip const* b,
+                 hash_set<std::pair<trip const*, trip const*>>& compared) {
+    if (a->route_key() != b->route_key()) {
+      return false;
+    }
+
+    if (a->seated_out_.empty() && b->seated_out_.empty() &&
+        a->seated_in_.empty() && b->seated_in_.empty()) {
+      [[likely]] return true;
+    }
+
+    if (!compared.emplace(a, b).second) {
+      return true;
+    }
+
+    return seated_eq(a->seated_in_, b->seated_in_, compared) &&
+           seated_eq(a->seated_out_, b->seated_out_, compared);
+  }
+
+  bool operator()(trip const* a, trip const* b) const {
+    auto compared = hash_set<std::pair<trip const*, trip const*>>{};
+    return eq(a, b, compared);
   }
 };
 

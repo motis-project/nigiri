@@ -61,8 +61,12 @@ TEST(gtfs, read_routes_berlin_data) {
   EXPECT_EQ("SXF2", routes.at("1")->short_name_);
   EXPECT_EQ("", routes.at("1")->long_name_);
   EXPECT_EQ(clasz::kBus, routes.at("1")->clasz_);
-  EXPECT_EQ(color_t{0}, routes.at("1")->color_);
-  EXPECT_EQ(color_t{0}, routes.at("1")->text_color_);
+  EXPECT_EQ(color_t{0}, tt.route_ids_.at({})
+                            .route_id_colors_[routes.at("1")->route_id_idx_]
+                            .color_);
+  EXPECT_EQ(color_t{0}, tt.route_ids_.at({})
+                            .route_id_colors_[routes.at("1")->route_id_idx_]
+                            .text_color_);
 
   ASSERT_NE(end(routes), routes.find("809"));
   EXPECT_EQ(
@@ -79,8 +83,14 @@ TEST(gtfs, read_routes_berlin_data) {
   EXPECT_EQ("RB14", routes.at("812")->short_name_);
   EXPECT_EQ("", routes.at("812")->long_name_);
   EXPECT_EQ(clasz::kRegional, routes.at("812")->clasz_);
-  EXPECT_EQ(color_t{0xFFB10093}, routes.at("812")->color_);
-  EXPECT_EQ(color_t{0xFFFFFFFF}, routes.at("812")->text_color_);
+  EXPECT_EQ(color_t{0xFFB10093},
+            tt.route_ids_.at({})
+                .route_id_colors_[routes.at("812")->route_id_idx_]
+                .color_);
+  EXPECT_EQ(color_t{0xFFFFFFFF},
+            tt.route_ids_.at({})
+                .route_id_colors_[routes.at("812")->route_id_idx_]
+                .text_color_);
 
   ASSERT_NE(end(routes), routes.find("F11"));
   EXPECT_EQ(clasz::kShip, routes.at("F11")->clasz_);

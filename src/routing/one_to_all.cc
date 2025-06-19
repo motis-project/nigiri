@@ -63,10 +63,10 @@ raptor_state one_to_all(timetable const& tt,
 
   auto state = raptor_state{};
 
-  auto is_dest = bitvec::max(tt.n_locations());
-  auto is_via = std::array<bitvec, kMaxVias>{};
-  auto dist_to_dest = std::vector<std::uint16_t>{};
-  auto lb = std::vector<std::uint16_t>(tt.n_locations(), 0U);
+  auto is_dest = bitvec<location_idx_t>::max(tt.n_locations());
+  auto is_via = std::array<bitvec<location_idx_t>, kMaxVias>{};
+  auto dist_to_dest = vector_map<location_idx_t, std::uint16_t>{};
+  auto lb = vector_map<location_idx_t, std::uint16_t>(tt.n_locations());
   auto const base = make_base(tt, start_time);
   auto const is_wheelchair = q.prf_idx_ == kWheelchairProfile;
 

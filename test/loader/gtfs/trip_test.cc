@@ -49,7 +49,7 @@ TEST(gtfs, read_trips_example_data) {
   EXPECT_NE(end(trip_data.trips_), trip_data.trips_.find("AWE1"));
   auto const& trip = trip_data.data_.at(trip_data.trips_.at("AWE1"));
   EXPECT_EQ("A", trip.route_->id_);
-  EXPECT_EQ("Downtown", tt.trip_direction(trip.headsign_));
+  EXPECT_EQ("Downtown", tt.trip_direction(trip.trip_idx_));
   EXPECT_EQ(shape_idx_t::invalid(), trip.shape_idx_);
 }
 
@@ -85,19 +85,19 @@ TEST(gtfs, read_trips_berlin_data) {
   auto const& trip1 = trip_data.data_[trip_data.trips_.at("1")];
   EXPECT_EQ("1", trip1.route_->id_);
   EXPECT_EQ("Flughafen Schönefeld Terminal (Airport)",
-            tt.trip_direction(trip1.headsign_));
+            tt.trip_direction(trip1.trip_idx_));
   EXPECT_NE(shape_idx_t::invalid(), trip1.shape_idx_);
 
   EXPECT_NE(end(trip_data.trips_), trip_data.trips_.find("2"));
   auto const& trip2 = trip_data.data_[trip_data.trips_.at("2")];
   EXPECT_EQ("1", trip2.route_->id_);
-  EXPECT_EQ("S Potsdam Hauptbahnhof", tt.trip_direction(trip2.headsign_));
+  EXPECT_EQ("S Potsdam Hauptbahnhof", tt.trip_direction(trip2.trip_idx_));
   EXPECT_NE(shape_idx_t::invalid(), trip2.shape_idx_);
 
   EXPECT_NE(end(trip_data.trips_), trip_data.trips_.find("3"));
   auto const& trip3 = trip_data.data_[trip_data.trips_.at("3")];
   EXPECT_EQ("2", trip3.route_->id_);
-  EXPECT_EQ("Golzow (PM), Schule", tt.trip_direction(trip3.headsign_));
+  EXPECT_EQ("Golzow (PM), Schule", tt.trip_direction(trip3.trip_idx_));
   EXPECT_NE(shape_idx_t::invalid(), trip3.shape_idx_);
 }
 

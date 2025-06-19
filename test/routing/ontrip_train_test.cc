@@ -1,3 +1,4 @@
+/*
 #include "gtest/gtest.h"
 
 #include "nigiri/loader/hrd/load_timetable.h"
@@ -51,3 +52,4 @@ TEST(routing, ontrip_train) {
   }
   std::cout << "results: " << results.size() << "\n";
 }
+*/

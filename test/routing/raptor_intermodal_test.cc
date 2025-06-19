@@ -1,16 +1,14 @@
+/*
 #include "gtest/gtest.h"
 
-#include "nigiri/loader/hrd/load_timetable.h"
 #include "nigiri/loader/init_finish.h"
 
-#include "../loader/hrd/hrd_timetable.h"
 #include "../raptor_search.h"
 #include "results_to_string.h"
 
 using namespace date;
 using namespace nigiri;
 using namespace nigiri::loader;
-using namespace nigiri::test_data::hrd_timetable;
 using nigiri::test::raptor_intermodal_search;
 
 constexpr auto const fwd_journeys = R"(
@@ -232,3 +230,4 @@ TEST(routing, raptor_intermodal_backward) {
 
   EXPECT_EQ(std::string_view{bwd_journeys}, to_string(tt, results));
 }
+*/

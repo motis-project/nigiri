@@ -118,19 +118,15 @@ void get_direct(timetable const& tt,
     auto const& ree = std::get<journey::run_enter_exit>(l.uses_);
     if (q.require_bike_transport_) {
       auto const fr = rt::frun{tt, rtt, ree.r_};
-      for (auto const stop_idx : ree.stop_range_) {
-        if (!fr[stop_idx].bikes_allowed()) {
-          return;
-        }
+      if (!fr.bikes_allowed()) {
+        return;
       }
     }
 
     if (q.require_car_transport_) {
       auto const fr = rt::frun{tt, rtt, ree.r_};
-      for (auto const stop_idx : ree.stop_range_) {
-        if (!fr[stop_idx].cars_allowed()) {
-          return;
-        }
+      if (!fr.cars_allowed()) {
+        return;
       }
     }
 
@@ -284,9 +280,8 @@ void get_direct(timetable const& tt,
                           rt_transport_idx_t const b) {
                         utl::verify(a == b, "{} != {}", a, b);
                         trace_direct("  found rt_transport {} visiting", a);
-                        if (is_allowed(
-                                q.allowed_claszes_,
-                                rtt->rt_transport_section_clasz_[a].front())) {
+                        if (is_allowed(q.allowed_claszes_,
+                                       rtt->rt_transport_clasz_[a])) {
                           for_each_from_to(
                               x, y, rtt->rt_transport_location_seq_[a], a);
                         }

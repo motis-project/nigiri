@@ -25,9 +25,6 @@ using gtfs_trip_idx_t = cista::strong<std::uint32_t, struct _gtfs_trip_idx>;
 
 struct trip_data;
 
-static auto const kSingleTripBikesAllowed = bitvec{"1"};
-static auto const kSingleTripBikesNotAllowed = bitvec{"0"};
-
 struct block {
   std::vector<std::pair<basic_string<gtfs_trip_idx_t>, bitfield>> rule_services(
       trip_data&);
@@ -41,11 +38,14 @@ struct frequency {
   unsigned number_of_iterations() const {
     return static_cast<unsigned>((end_time_ - start_time_) / headway_);
   }
+
   minutes_after_midnight_t get_iteration_start_time(
       unsigned const iteration) const {
     return start_time_ + iteration * headway_;
   }
+
   friend bool operator==(frequency const&, frequency const&) = default;
+
   minutes_after_midnight_t start_time_{0U};
   minutes_after_midnight_t end_time_{0U};
   duration_t headway_{0U};
@@ -95,6 +95,10 @@ struct trip {
 
   clasz get_clasz(timetable const&) const;
 
+  auto route_key() const {
+    return std::tie(route_->clasz_, stop_seq_, bikes_allowed_, cars_allowed_);
+  }
+
   route const* route_{nullptr};
   bitfield const* service_{nullptr};
   block* block_{nullptr};
@@ -113,6 +117,8 @@ struct trip {
   std::vector<flex_stop_t> flex_stops_;
   std::vector<stop_time_window> flex_time_windows_;
 
+  std::vector<trip const*> seated_out_, seated_in_;
+
   std::optional<std::vector<frequency>> frequency_;
   bool requires_interpolation_{false};
   bool requires_sorting_{false};
@@ -121,7 +127,6 @@ struct trip {
   std::uint32_t from_line_{0U}, to_line_{0U};
 
   trip_idx_t trip_idx_{trip_idx_t::invalid()};
-  std::vector<transport_range_t> transport_ranges_;
 };
 
 struct trip_data {
