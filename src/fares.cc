@@ -223,31 +223,23 @@ bool join(timetable const& tt,
     return false;
   }
 
-  // Find first fare leg rule regarding both networks.
-  auto const it = std::lower_bound(
-      begin(fare.fare_leg_join_rules_), end(fare.fare_leg_join_rules_),
-      fares::fare_leg_join_rule{.from_network_ = network_a,
-                                .to_network_ = network_b,
-                                .from_stop_ = location_idx_t{0U},
-                                .to_stop_ = location_idx_t{0U}});
-
-  // Search for matching stops.
+  // Search for matching join rule matching both stops.
   auto const from = a[r_a.stop_range_.to_ - 1U].get_location_idx();
   auto const from_station = parent(tt, from);
   auto const to = b[r_b.stop_range_.from_].get_location_idx();
   auto const to_station = parent(tt, to);
-  while (it != end(fare.fare_leg_join_rules_) &&
-         it->from_network_ == network_a && it->to_network_ == network_b) {
-    if ((from_station == to_station &&  //
-         it->from_stop_ == location_idx_t::invalid() &&
-         it->to_stop_ == location_idx_t::invalid()) ||
-        ((it->from_stop_ == from_station || it->from_stop_ == from) &&
-         (it->to_stop_ == to_station || it->to_stop_ == to))) {
-      return true;
-    }
-  }
-
-  return false;
+  return utl::find_if(
+             fare.fare_leg_join_rules_,
+             [&](fares::fare_leg_join_rule const& jr) {
+               auto const networks_match =
+                   jr.from_network_ == network_a && jr.to_network_ == network_b;
+               auto const stops_match =
+                   (jr.from_stop_ == location_idx_t::invalid() &&
+                    jr.to_stop_ == location_idx_t::invalid()) ||
+                   ((jr.from_stop_ == from_station || jr.from_stop_ == from) &&
+                    (jr.to_stop_ == to_station || jr.to_stop_ == to));
+               return networks_match && stops_match;
+             }) != end(fare.fare_leg_join_rules_);
 }
 
 std::vector<journey::leg const*> get_transit_legs(journey const& j) {
