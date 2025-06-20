@@ -184,9 +184,9 @@ TEST(gtfs, read_stop_times_example_data) {
   auto trip_data =
       read_trips(tt, routes, services, {}, files.get_file(kTripsFile).data(),
                  config.bikes_allowed_default_, config.cars_allowed_default_);
-  auto const stops = read_stops(source_idx_t{0}, tt, timezones,
-                                files.get_file(kStopFile).data(),
-                                files.get_file(kTransfersFile).data(), 0U);
+  auto const [stops, _] = read_stops(source_idx_t{0}, tt, timezones,
+                                     files.get_file(kStopFile).data(),
+                                     files.get_file(kTransfersFile).data(), 0U);
 
   read_stop_times(tt, trip_data, stops, {}, {}, {},
                   files.get_file(kStopTimesFile).data(), true);

@@ -107,6 +107,80 @@ block::rule_services(trip_data& trips) {
   return combinations;
 }
 
+std::vector<std::pair<trip const*, bitfield>> build_rule_services(
+    trip_data& trips) {
+  // Collect trips with seated transfers. Start with all traffic days.
+  auto remaining = hash_map<trip const*, bitfield>{};
+  for (auto const [i, trp] : utl::enumerate(trips.data_)) {
+    if (trp.has_seated_transfers()) {
+      remaining.emplace(&trp, *trp.service_);
+    }
+  }
+
+  auto const is_empty = [](std::pair<trip const*, bitfield> const& x) {
+    return x.second.none();
+  };
+  auto const is_not_empty = [](std::pair<trip const*, bitfield> const& x) {
+    return x.second.any();
+  };
+
+  auto q = hash_set<trip const*>{};
+  while (!utl::all_of(remaining, is_empty)) {
+    // Find first trip with unprocessed/remaining traffic days.
+    auto const non_empty_it = utl::find_if(remaining, is_not_empty);
+    assert(non_empty_it != end(remaining));
+
+    // Build a "maximum component":
+    // Collect all trips reachable from this trip connected by stay-seated
+    // transfers from here (forward+backward, direct + transitive) while
+    // building the traffic day intersection of all visited trips. Stop early if
+    // the intersection would be empty.
+    auto component = hash_set<trip const*>{};
+    q.insert(non_empty_it->first);
+    auto component_traffic_days = non_empty_it->second;
+    while (!q.empty()) {
+      // Extract next queue element.
+      auto const curr_it = q.begin();
+      auto const* current = *curr_it;
+      q.erase(curr_it);
+
+      // Intersect traffic days.
+      auto& curr_traffic_days = remaining.at(current);
+      auto const next_traffic_days = component_traffic_days & curr_traffic_days;
+      if (next_traffic_days.none()) {
+        continue;  // Nothing left, skip.
+      }
+
+      // Non-empty intersection!
+      // Add trip to component + update component traffic days.
+      component_traffic_days = next_traffic_days;
+      component.insert(current);
+
+      // Expand search to neighbors.
+      for (auto const& in : current->seated_in_) {
+        if (!component.contains(in)) {
+          q.insert(in);
+        }
+      }
+      for (auto const& out : current->seated_out_) {
+        if (!component.contains(out)) {
+          q.insert(out);
+        }
+      }
+    }
+
+    // Handle connected component.
+    fmt::println("COMPONENT: {}", component_traffic_days);
+    for (auto const& t : component) {
+      fmt::println("  {}", t->display_name());
+      remaining.at(t) &= ~component_traffic_days;
+    }
+    fmt::println("\n");
+  }
+
+  return {};
+}
+
 trip::trip(route const* route,
            bitfield const* service,
            block* blk,
@@ -213,7 +287,11 @@ std::string trip::display_name() const {
   return {};
 }
 
-clasz trip::get_clasz(timetable const& tt) const {
+bool trip::has_seated_transfers() const {
+  return !seated_in_.empty() || !seated_out_.empty();
+}
+
+clasz const& trip::get_clasz(timetable const& tt) const {
   if (route_->clasz_ != clasz::kBus) {
     return route_->clasz_;
   } else {
@@ -221,8 +299,9 @@ clasz trip::get_clasz(timetable const& tt) const {
     for (auto const& stp : stop_seq_) {
       box.extend(tt.locations_.coordinates_[stop{stp}.location_idx()]);
     }
-    return (geo::distance(box.min_, box.max_) / 1000) > 100 ? clasz::kCoach
-                                                            : clasz::kBus;
+    static auto const s_coach = clasz::kCoach;
+    static auto const s_bus = clasz::kBus;
+    return (geo::distance(box.min_, box.max_) / 1000) > 100 ? s_coach : s_bus;
   }
 }
 
