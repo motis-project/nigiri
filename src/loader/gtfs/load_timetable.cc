@@ -164,6 +164,34 @@ void load_timetable(loader_config const& config,
     }
   }
 
+  {  // Resolve stay-seated transfers (transfer_type=4).
+    auto const timer =
+        scoped_timer{"loader.gtfs.trips.resolve_seated_transfers"};
+
+    for (auto const& [from_trip_id, to_trip_ids] : seated_transfers) {
+      auto const from_it = trip_data.trips_.find(from_trip_id);
+      if (from_it == end(trip_data.trips_)) {
+        log(log_lvl::error, "nigiri.loader.gtfs.seated", "trip {} not found",
+            from_trip_id);
+        continue;
+      }
+
+      auto& from_trip = trip_data.get(from_trip_id);
+      for (auto const& to_trip_id : to_trip_ids) {
+        auto const to_it = trip_data.trips_.find(to_trip_id);
+        if (to_it == end(trip_data.trips_)) {
+          log(log_lvl::error, "nigiri.loader.gtfs.seated", "trip {} not found",
+              to_trip_id);
+          continue;
+        }
+
+        auto& to_trip = trip_data.data_[to_it->second];
+        to_trip.seated_out_.push_back(&from_trip);
+        from_trip.seated_in_.push_back(&to_trip);
+      }
+    }
+  }
+
   hash_map<route_key_t, std::vector<std::vector<utc_trip>>, route_key_hash,
            route_key_equals>
       route_services;
@@ -253,7 +281,8 @@ void load_timetable(loader_config const& config,
     auto const timer = scoped_timer{"loader.gtfs.trips.expand"};
 
     for (auto const [i, t] : utl::enumerate(trip_data.data_)) {
-      if (t.block_ != nullptr || !t.flex_time_windows_.empty()) {
+      if (t.block_ != nullptr || !t.has_seated_transfers() ||
+          !t.flex_time_windows_.empty()) {
         continue;
       }
       add_trip({gtfs_trip_idx_t{i}}, t.service_);
@@ -262,17 +291,35 @@ void load_timetable(loader_config const& config,
   }
 
   {
-    progress_tracker->status("Stay Seated")
+    progress_tracker->status("block_id Services")
         .out_bounds(83.F, 85.F)
         .in_high(route_services.size());
     auto const timer = scoped_timer{"loader.gtfs.trips.block_id"};
 
     for (auto const& [_, blk] : trip_data.blocks_) {
+      // If a trip has both block_id and transfer_type=4
+      // -> prefer transfer_type=4, ignore block_id
+      if (utl::any_of(blk->trips_, [&](gtfs_trip_idx_t const idx) {
+            return trip_data.data_[idx].has_seated_transfers();
+          })) {
+        for (auto const& trip : blk->trips_) {
+          auto const& trp = trip_data.get(trip);
+          if (!trp.has_seated_transfers()) {
+            // One of the block_id trips has no stay-seated transfer.
+            // -> build it separately
+            add_trip({trip}, trp.service_);
+          }
+        }
+        continue;
+      }
+
       for (auto const& [trips, traffic_days] : blk->rule_services(trip_data)) {
         add_trip(trips, &traffic_days);
       }
     }
   }
+
+  build_rule_services(trip_data);
 
   {
     auto const timer = scoped_timer{"loader.gtfs.write_trips"};

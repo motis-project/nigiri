@@ -25,6 +25,8 @@ using gtfs_trip_idx_t = cista::strong<std::uint32_t, struct _gtfs_trip_idx>;
 
 struct trip_data;
 
+std::vector<std::pair<trip const*, bitfield>> build_rule_services(trip_data&);
+
 static auto const kSingleTripBikesAllowed = bitvec{"1"};
 static auto const kSingleTripBikesNotAllowed = bitvec{"0"};
 
@@ -93,7 +95,18 @@ struct trip {
 
   std::string display_name() const;
 
-  clasz get_clasz(timetable const&) const;
+  clasz const& get_clasz(timetable const&) const;
+
+  bool has_seated_transfers() const;
+
+  auto route_key(timetable const& tt) const {
+    return std::tie(get_clasz(tt), stop_seq_, bikes_allowed_, cars_allowed_);
+  }
+
+  unsigned get_offset() const {
+    utl::verify(!event_times_.empty(), "no event times for trip {}", id_);
+    return event_times_.front().dep_ / date::days{1U};
+  }
 
   route const* route_{nullptr};
   bitfield const* service_{nullptr};
