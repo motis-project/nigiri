@@ -113,6 +113,8 @@ struct trip {
   std::vector<flex_stop_t> flex_stops_;
   std::vector<stop_time_window> flex_time_windows_;
 
+  std::vector<trip const*> seated_out_, seated_in_;
+
   std::optional<std::vector<frequency>> frequency_;
   bool requires_interpolation_{false};
   bool requires_sorting_{false};
