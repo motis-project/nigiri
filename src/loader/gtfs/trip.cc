@@ -209,7 +209,7 @@ std::vector<std::pair<trip const*, bitfield>> build_rule_services(
           q.emplace(in, o);
         }
       }
-    }
+    }  // END while (!q.empty())
 
     // Handle connected component.
     trace("\nCOMPONENT: {}",
@@ -225,7 +225,7 @@ std::vector<std::pair<trip const*, bitfield>> build_rule_services(
       before &= ~shift(component_traffic_days, offset);
     }
     trace("\n");
-  }
+  }  // END while (!utl::all_of(remaining, is_empty))
 
   return {};
 }
