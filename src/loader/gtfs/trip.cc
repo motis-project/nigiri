@@ -20,6 +20,7 @@
 #include "utl/verify.h"
 
 #include "nigiri/loader/gtfs/parse_time.h"
+#include "nigiri/common/day_list.h"
 #include "nigiri/logging.h"
 #include "nigiri/timetable.h"
 #include "nigiri/types.h"
@@ -108,7 +109,9 @@ block::rule_services(trip_data& trips) {
 }
 
 std::vector<std::pair<trip const*, bitfield>> build_rule_services(
-    trip_data& trips) {
+    timetable const& tt, trip_data& trips) {
+  auto const base = tt.internal_interval_days().from_;
+
   // Collect trips with seated transfers. Start with all traffic days.
   auto remaining = hash_map<trip const*, bitfield>{};
   for (auto const [i, trp] : utl::enumerate(trips.data_)) {
@@ -123,8 +126,12 @@ std::vector<std::pair<trip const*, bitfield>> build_rule_services(
   auto const is_not_empty = [](std::pair<trip const*, bitfield> const& x) {
     return x.second.any();
   };
+  auto const shift = [](bitfield const& b, int const offset) {
+    return offset > 0 ? b << static_cast<std::size_t>(offset)
+                      : b >> static_cast<std::size_t>(-offset);
+  };
 
-  auto q = hash_set<trip const*>{};
+  auto q = hash_map<trip const*, int>{};
   while (!utl::all_of(remaining, is_empty)) {
     // Find first trip with unprocessed/remaining traffic days.
     auto const non_empty_it = utl::find_if(remaining, is_not_empty);
@@ -135,45 +142,83 @@ std::vector<std::pair<trip const*, bitfield>> build_rule_services(
     // transfers from here (forward+backward, direct + transitive) while
     // building the traffic day intersection of all visited trips. Stop early if
     // the intersection would be empty.
-    auto component = hash_set<trip const*>{};
-    q.insert(non_empty_it->first);
+    auto component = hash_map<trip const*, int>{};
+    q.emplace(non_empty_it->first, 0U);
     auto component_traffic_days = non_empty_it->second;
     while (!q.empty()) {
       // Extract next queue element.
       auto const curr_it = q.begin();
-      auto const* current = *curr_it;
+      auto const [current, offset] = *curr_it;
       q.erase(curr_it);
+
+      fmt::println("\nEXTRACT {}, offset={}, curr.offset={}",
+                   current->display_name(), offset, current->offset());
 
       // Intersect traffic days.
       auto& curr_traffic_days = remaining.at(current);
-      auto const next_traffic_days = component_traffic_days & curr_traffic_days;
+      auto const next_traffic_days =
+          shift(curr_traffic_days, -offset) & component_traffic_days;
+      fmt::println(
+          "      current: {}\n"
+          "      shifted: {}\n"
+          "    component: {}\n"
+          "         next: {}",
+          fmt::streamed(day_list{curr_traffic_days, base}),
+          fmt::streamed(day_list{shift(curr_traffic_days, -offset), base}),
+          fmt::streamed(day_list{component_traffic_days, base}),
+          fmt::streamed(day_list{next_traffic_days, base}));
       if (next_traffic_days.none()) {
+        fmt::println("-> EMPTY INTERSECTION");
         continue;  // Nothing left, skip.
       }
 
       // Non-empty intersection!
       // Add trip to component + update component traffic days.
+      fmt::println("UPDATE: {}",
+                   fmt::streamed(day_list{next_traffic_days, base}));
       component_traffic_days = next_traffic_days;
-      component.insert(current);
+      component.emplace(current, offset);
 
       // Expand search to neighbors.
-      for (auto const& in : current->seated_in_) {
-        if (!component.contains(in)) {
-          q.insert(in);
-        }
-      }
       for (auto const& out : current->seated_out_) {
         if (!component.contains(out)) {
-          q.insert(out);
+          auto const o = offset + current->day_change_offset(out) +
+                         current->day_span() - out->offset() +
+                         current->offset();
+          fmt::println(
+              "    EXPAND OUT: {}, out_offset={}, current_offset={}, "
+              "day_change_offset={}, current.day_span={}  =>  {}",
+              out->display_name(), out->offset(), current->offset(),
+              current->day_change_offset(out), current->day_span(), o);
+          q.emplace(out, o);
+        }
+      }
+      for (auto const& in : current->seated_in_) {
+        if (!component.contains(in)) {
+          auto const o = offset - in->day_change_offset(current) -
+                         in->day_span() + in->offset() + current->offset();
+          fmt::println(
+              "    EXPAND IN: {}, in_offset={}, current_offset={}, "
+              "day_change_offset={}, in.day_span={}  =>  {}",
+              in->display_name(), in->offset(), current->offset(),
+              in->day_change_offset(current), in->day_span(), o);
+          q.emplace(in, o);
         }
       }
     }
 
     // Handle connected component.
-    fmt::println("COMPONENT: {}", component_traffic_days);
-    for (auto const& t : component) {
-      fmt::println("  {}", t->display_name());
-      remaining.at(t) &= ~component_traffic_days;
+    fmt::println("\nCOMPONENT: {}",
+                 fmt::streamed(day_list{component_traffic_days, base}));
+    for (auto const& [t, offset] : component) {
+      auto const before = remaining.at(t);
+      remaining.at(t) &= ~shift(component_traffic_days, offset);
+      fmt::println(
+          "  {} [offset={}]\n"
+          "    ->    before={}\n"
+          "    -> remaining={}",
+          t->display_name(), offset, fmt::streamed(day_list{before, base}),
+          fmt::streamed(day_list{remaining.at(t), base}));
     }
     fmt::println("\n");
   }

@@ -25,7 +25,8 @@ using gtfs_trip_idx_t = cista::strong<std::uint32_t, struct _gtfs_trip_idx>;
 
 struct trip_data;
 
-std::vector<std::pair<trip const*, bitfield>> build_rule_services(trip_data&);
+std::vector<std::pair<trip const*, bitfield>> build_rule_services(
+    timetable const&, trip_data&);
 
 static auto const kSingleTripBikesAllowed = bitvec{"1"};
 static auto const kSingleTripBikesNotAllowed = bitvec{"0"};
@@ -103,9 +104,20 @@ struct trip {
     return std::tie(get_clasz(tt), stop_seq_, bikes_allowed_, cars_allowed_);
   }
 
-  unsigned get_offset() const {
+  minutes_after_midnight_t first_dep() const {
     utl::verify(!event_times_.empty(), "no event times for trip {}", id_);
-    return event_times_.front().dep_ / date::days{1U};
+    return event_times_.front().dep_;
+  }
+  minutes_after_midnight_t last_arr() const {
+    utl::verify(!event_times_.empty(), "no event times for trip {}", id_);
+    return event_times_.back().arr_;
+  }
+  int day_span() const {
+    return last_arr() / date::days{1U} - first_dep() / date::days{1U};
+  }
+  int offset() const { return first_dep() / date::days{1U}; }
+  int day_change_offset(trip const* o) const {
+    return last_arr() % 1440 > o->first_dep() % 1440 ? 1 : 0;
   }
 
   route const* route_{nullptr};

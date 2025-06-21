@@ -15,13 +15,16 @@ using nigiri::test::raptor_search;
 
 namespace {
 
-// Mo-Th    We-Fr   Mo,Th-Sa
+// Days are relative to i, j.
+// That means that x|x1, j, l are +1 day.
 //
-// A --i-\         /-j-- E
-//       C1       D1
-//        C --x-- D
-//       C2       D2
-// B --k-/         \-l-- F
+// Mo-Th    We-Fr      Mo,Th-Sa
+//
+// A --i-\            /-j-- E
+//       C1          D1
+//        C --x|x1-- D
+//       C2          D2
+// B --k-/            \-l-- F
 //
 // Mo: X_X
 // Tu: X__
@@ -90,14 +93,14 @@ F,F,,10.0,11.0,,
 # calendar.txt
 service_id,monday,tuesday,wednesday,thursday,friday,saturday,sunday,start_date,end_date
 ik,1,1,1,1,0,0,0,20250101,20251231
-x,0,0,1,1,1,0,0,20250101,20251231
-jl,1,0,0,1,1,1,0,20250101,20251231
+x,0,0,0,1,1,1,0,20250101,20251231
+jl,0,1,0,0,1,1,1,20250101,20251231
 
 # calendar_dates.txt
 service_id,date,exception_type
-x,20250619,2
-x1,20250619,1
-x,20250622,1
+x,20250620,2
+x1,20250618,1
+x,20250623,1
 
 # routes.txt
 route_id,agency_id,route_short_name,route_long_name,route_desc,route_type
@@ -106,6 +109,7 @@ j,DB,j,,,2
 k,DB,k,,,2
 l,DB,l,,,2
 x,DB,x,,,2
+x1,DB,x1,,,2
 
 # trips.txt
 route_id,service_id,trip_id,trip_headsign,block_id
@@ -114,22 +118,22 @@ j,jl,j,j,
 k,ik,k,k,
 l,jl,l,l,
 x,x,x,x,
-x,x1,x1,x1,
+x1,x1,x1,x1,
 
 # stop_times.txt
 trip_id,arrival_time,departure_time,stop_id,stop_sequence,pickup_type,drop_off_type
-i,10:00:00,10:00:00,A,1,0,0
-i,11:00:00,11:00:00,C1,2,0,0
-k,10:00:00,10:00:00,B,1,0,0
-k,11:01:00,11:01:00,C2,2,0,0
-x,11:01:00,11:01:00,C,1,0,0
-x,15:00:00,15:00:00,D,2,0,0
-x1,11:02:00,11:02:00,C,1,0,0
-x1,15:01:00,15:01:00,D,2,0,0
-j,15:01:00,15:01:00,D1,1,0,0
-j,16:01:00,16:01:00,E,2,0,0
-l,15:01:00,15:01:00,D2,1,0,0
-l,16:00:00,16:00:00,F,2,0,0
+i,23:00:00,23:00:00,A,1,0,0
+i,23:59:00,23:59:00,C1,2,0,0
+k,23:00:00,23:00:00:00,B,1,0,0
+k,24:00:00,24:00:00:00,C2,2,0,0
+x,00:00:00,00:00:00,C,1,0,0
+x,01:00:00,01:00:00,D,2,0,0
+x1,48:00:00,48:00:00,C,1,0,0
+x1,49:00:00,49:00:00,D,2,0,0
+j,01:01:00,01:01:00,D1,1,0,0
+j,02:01:00,02:01:00,E,2,0,0
+l,01:00:00,01:00:00,D2,1,0,0
+l,02:00:00,02:00:00,F,2,0,0
 
 # transfers.txt
 transfer_type,from_trip_id,to_trip_id
@@ -148,8 +152,8 @@ transfer_type,from_trip_id,to_trip_id
 
 TEST(routing, join_split) {
   timetable tt;
-  tt.date_range_ = {date::sys_days{2025_y / June / 1},
-                    date::sys_days{2025_y / June / 30}};
+  tt.date_range_ = {date::sys_days{2025_y / June / 12},
+                    date::sys_days{2025_y / June / 22}};
   auto const src = source_idx_t{0};
   load_timetable({}, src, test_files(), tt);
   finalize(tt);

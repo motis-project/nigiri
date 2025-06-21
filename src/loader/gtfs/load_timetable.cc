@@ -186,8 +186,8 @@ void load_timetable(loader_config const& config,
         }
 
         auto& to_trip = trip_data.data_[to_it->second];
-        to_trip.seated_out_.push_back(&from_trip);
-        from_trip.seated_in_.push_back(&to_trip);
+        to_trip.seated_in_.push_back(&from_trip);
+        from_trip.seated_out_.push_back(&to_trip);
       }
     }
   }
@@ -319,7 +319,7 @@ void load_timetable(loader_config const& config,
     }
   }
 
-  build_rule_services(trip_data);
+  build_rule_services(tt, trip_data);
 
   {
     auto const timer = scoped_timer{"loader.gtfs.write_trips"};
