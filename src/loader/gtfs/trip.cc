@@ -27,6 +27,8 @@
 
 namespace nigiri::loader::gtfs {
 
+#define trace(...)
+
 std::vector<std::pair<basic_string<gtfs_trip_idx_t>, bitfield>>
 block::rule_services(trip_data& trips) {
   utl::verify(!trips_.empty(), "empty block not allowed");
@@ -110,7 +112,7 @@ block::rule_services(trip_data& trips) {
 
 std::vector<std::pair<trip const*, bitfield>> build_rule_services(
     timetable const& tt, trip_data& trips) {
-  auto const base = tt.internal_interval_days().from_;
+  [[maybe_unused]] auto const base = tt.internal_interval_days().from_;
 
   // Collect trips with seated transfers. Start with all traffic days.
   auto remaining = hash_map<trip const*, bitfield>{};
@@ -151,14 +153,14 @@ std::vector<std::pair<trip const*, bitfield>> build_rule_services(
       auto const [current, offset] = *curr_it;
       q.erase(curr_it);
 
-      fmt::println("\nEXTRACT {}, offset={}, curr.offset={}",
-                   current->display_name(), offset, current->offset());
+      trace("\nEXTRACT {}, offset={}, curr.offset={}", current->display_name(),
+            offset, current->offset());
 
       // Intersect traffic days.
       auto& curr_traffic_days = remaining.at(current);
       auto const next_traffic_days =
           shift(curr_traffic_days, -offset) & component_traffic_days;
-      fmt::println(
+      trace(
           "      current: {}\n"
           "      shifted: {}\n"
           "    component: {}\n"
@@ -168,14 +170,13 @@ std::vector<std::pair<trip const*, bitfield>> build_rule_services(
           fmt::streamed(day_list{component_traffic_days, base}),
           fmt::streamed(day_list{next_traffic_days, base}));
       if (next_traffic_days.none()) {
-        fmt::println("-> EMPTY INTERSECTION");
+        trace("-> EMPTY INTERSECTION");
         continue;  // Nothing left, skip.
       }
 
       // Non-empty intersection!
       // Add trip to component + update component traffic days.
-      fmt::println("UPDATE: {}",
-                   fmt::streamed(day_list{next_traffic_days, base}));
+      trace("UPDATE: {}", fmt::streamed(day_list{next_traffic_days, base}));
       component_traffic_days = next_traffic_days;
       component.emplace(current, offset);
 
@@ -185,7 +186,7 @@ std::vector<std::pair<trip const*, bitfield>> build_rule_services(
           auto const o = offset + current->day_change_offset(out) +
                          current->day_span() - out->offset() +
                          current->offset();
-          fmt::println(
+          trace(
               "    EXPAND OUT: {}, out_offset={}, current_offset={}, "
               "day_change_offset={}, current.day_span={}  =>  {}",
               out->display_name(), out->offset(), current->offset(),
@@ -197,7 +198,7 @@ std::vector<std::pair<trip const*, bitfield>> build_rule_services(
         if (!component.contains(in)) {
           auto const o = offset - in->day_change_offset(current) -
                          in->day_span() + in->offset() + current->offset();
-          fmt::println(
+          trace(
               "    EXPAND IN: {}, in_offset={}, current_offset={}, "
               "day_change_offset={}, in.day_span={}  =>  {}",
               in->display_name(), in->offset(), current->offset(),
@@ -208,19 +209,19 @@ std::vector<std::pair<trip const*, bitfield>> build_rule_services(
     }
 
     // Handle connected component.
-    fmt::println("\nCOMPONENT: {}",
-                 fmt::streamed(day_list{component_traffic_days, base}));
+    trace("\nCOMPONENT: {}",
+          fmt::streamed(day_list{component_traffic_days, base}));
     for (auto const& [t, offset] : component) {
-      auto const before = remaining.at(t);
-      remaining.at(t) &= ~shift(component_traffic_days, offset);
-      fmt::println(
+      auto& before = remaining.at(t);
+      trace(
           "  {} [offset={}]\n"
           "    ->    before={}\n"
           "    -> remaining={}",
           t->display_name(), offset, fmt::streamed(day_list{before, base}),
           fmt::streamed(day_list{remaining.at(t), base}));
+      before &= ~shift(component_traffic_days, offset);
     }
-    fmt::println("\n");
+    trace("\n");
   }
 
   return {};
