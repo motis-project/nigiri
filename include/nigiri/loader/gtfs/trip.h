@@ -112,12 +112,12 @@ struct trip {
     utl::verify(!event_times_.empty(), "no event times for trip {}", id_);
     return event_times_.back().arr_;
   }
-  int day_span() const {
-    return last_arr() / date::days{1U} - first_dep() / date::days{1U};
-  }
   int offset() const { return first_dep() / date::days{1U}; }
   int day_change_offset(trip const* o) const {
-    return last_arr() % 1440 > o->first_dep() % 1440 ? 1 : 0;
+    auto const day_span =
+        last_arr() / date::days{1U} - first_dep() / date::days{1U};
+    auto const day_change = last_arr() % 1440 > o->first_dep() % 1440 ? 1 : 0;
+    return day_span + day_change;
   }
 
   route const* route_{nullptr};

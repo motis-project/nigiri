@@ -27,6 +27,7 @@
 
 namespace nigiri::loader::gtfs {
 
+// #define trace(...) fmt::println(__VA_ARGS__)
 #define trace(...)
 
 std::vector<std::pair<basic_string<gtfs_trip_idx_t>, bitfield>>
@@ -180,29 +181,31 @@ std::vector<std::pair<trip const*, bitfield>> build_rule_services(
       component_traffic_days = next_traffic_days;
       component.emplace(current, offset);
 
+      // Offset relative to component traffic days, determined by initial trip.
+      auto const neutral_offset = offset + current->offset();
+
       // Expand search to neighbors.
       for (auto const& out : current->seated_out_) {
         if (!component.contains(out)) {
-          auto const o = offset + current->day_change_offset(out) +
-                         current->day_span() - out->offset() +
-                         current->offset();
+          auto const o =
+              neutral_offset + current->day_change_offset(out) - out->offset();
           trace(
               "    EXPAND OUT: {}, out_offset={}, current_offset={}, "
-              "day_change_offset={}, current.day_span={}  =>  {}",
+              "day_change_offset={}  =>  {}",
               out->display_name(), out->offset(), current->offset(),
-              current->day_change_offset(out), current->day_span(), o);
+              current->day_change_offset(out), o);
           q.emplace(out, o);
         }
       }
       for (auto const& in : current->seated_in_) {
         if (!component.contains(in)) {
-          auto const o = offset - in->day_change_offset(current) -
-                         in->day_span() + in->offset() + current->offset();
+          auto const o =
+              neutral_offset - in->day_change_offset(current) + in->offset();
           trace(
               "    EXPAND IN: {}, in_offset={}, current_offset={}, "
-              "day_change_offset={}, in.day_span={}  =>  {}",
+              "day_change_offset={}  =>  {}",
               in->display_name(), in->offset(), current->offset(),
-              in->day_change_offset(current), in->day_span(), o);
+              in->day_change_offset(current), o);
           q.emplace(in, o);
         }
       }
