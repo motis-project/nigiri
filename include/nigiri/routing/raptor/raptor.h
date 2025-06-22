@@ -294,53 +294,73 @@ private:
   }
 
   template <bool WithClaszFilter, bool WithBikeFilter, bool WithCarFilter>
+  bool update_route(unsigned const k,
+                    route_idx_t const r,
+                    std::array<transport, Vias + 1> et = {},
+                    std::array<std::size_t, Vias + 1> v_offset = {},
+                    bool any_marked = false) {
+    auto const r_idx = to_idx(r);
+
+    if constexpr (WithClaszFilter) {
+      if (!is_allowed(allowed_claszes_, tt_.route_clasz_[r])) {
+        return false;
+      }
+    }
+
+    auto section_bike_filter = false;
+    if constexpr (WithBikeFilter) {
+      auto const bikes_allowed_on_all_sections =
+          tt_.route_bikes_allowed_.test(r_idx * 2);
+      if (!bikes_allowed_on_all_sections) {
+        auto const bikes_allowed_on_some_sections =
+            tt_.route_bikes_allowed_.test(r_idx * 2 + 1);
+        if (!bikes_allowed_on_some_sections) {
+          return false;
+        }
+        section_bike_filter = true;
+      }
+    }
+
+    auto section_car_filter = false;
+    if constexpr (WithCarFilter) {
+      auto const cars_allowed_on_all_sections =
+          tt_.route_cars_allowed_.test(r_idx * 2);
+      if (!cars_allowed_on_all_sections) {
+        auto const cars_allowed_on_some_sections =
+            tt_.route_cars_allowed_.test(r_idx * 2 + 1);
+        if (!cars_allowed_on_some_sections) {
+          return false;
+        }
+        section_car_filter = true;
+      }
+    }
+
+    ++stats_.n_routes_visited_;
+    trace("┊ ├k={} updating route {}\n", k, r);
+    return section_bike_filter
+               ? (section_car_filter
+                      ? update_route<WithClaszFilter, WithBikeFilter,
+                                     WithCarFilter, true, true>(
+                            k, r, et, v_offset, any_marked)
+                      : update_route<WithClaszFilter, WithBikeFilter,
+                                     WithCarFilter, true, false>(
+                            k, r, et, v_offset, any_marked))
+               : (section_car_filter
+                      ? update_route<WithClaszFilter, WithBikeFilter,
+                                     WithCarFilter, false, true>(
+                            k, r, et, v_offset, any_marked)
+                      : update_route<WithClaszFilter, WithBikeFilter,
+                                     WithCarFilter, false, false>(
+                            k, r, et, v_offset, any_marked));
+  }
+
+  template <bool WithClaszFilter, bool WithBikeFilter, bool WithCarFilter>
   bool loop_routes(unsigned const k) {
     auto any_marked = false;
     state_.route_mark_.for_each_set_bit([&](auto const r_idx) {
-      auto const r = route_idx_t{r_idx};
-
-      if constexpr (WithClaszFilter) {
-        if (!is_allowed(allowed_claszes_, tt_.route_clasz_[r])) {
-          return;
-        }
-      }
-
-      auto section_bike_filter = false;
-      if constexpr (WithBikeFilter) {
-        auto const bikes_allowed_on_all_sections =
-            tt_.route_bikes_allowed_.test(r_idx * 2);
-        if (!bikes_allowed_on_all_sections) {
-          auto const bikes_allowed_on_some_sections =
-              tt_.route_bikes_allowed_.test(r_idx * 2 + 1);
-          if (!bikes_allowed_on_some_sections) {
-            return;
-          }
-          section_bike_filter = true;
-        }
-      }
-
-      auto section_car_filter = false;
-      if constexpr (WithCarFilter) {
-        auto const cars_allowed_on_all_sections =
-            tt_.route_cars_allowed_.test(r_idx * 2);
-        if (!cars_allowed_on_all_sections) {
-          auto const cars_allowed_on_some_sections =
-              tt_.route_cars_allowed_.test(r_idx * 2 + 1);
-          if (!cars_allowed_on_some_sections) {
-            return;
-          }
-          section_car_filter = true;
-        }
-      }
-
-      ++stats_.n_routes_visited_;
-      trace("┊ ├k={} updating route {}\n", k, r);
       any_marked |=
-          section_bike_filter
-              ? (section_car_filter ? update_route<true, true>(k, r)
-                                    : update_route<true, false>(k, r))
-              : (section_car_filter ? update_route<false, true>(k, r)
-                                    : update_route<false, false>(k, r));
+          update_route<WithClaszFilter, WithBikeFilter, WithCarFilter>(
+              k, route_idx_t{r_idx});
     });
     return any_marked;
   }
@@ -851,13 +871,17 @@ private:
     return any_marked;
   }
 
-  template <bool WithSectionBikeFilter, bool WithSectionCarFilter>
-  bool update_route(unsigned const k, route_idx_t const r) {
+  template <bool WithClaszFilter,
+            bool WithBikeFilter,
+            bool WithCarFilter,
+            bool WithSectionBikeFilter,
+            bool WithSectionCarFilter>
+  bool update_route(unsigned const k,
+                    route_idx_t const r,
+                    std::array<transport, Vias + 1> et = {},
+                    std::array<std::size_t, Vias + 1> v_offset = {},
+                    bool any_marked = false) {
     auto const stop_seq = tt_.route_location_seq_[r];
-    bool any_marked = false;
-
-    auto et = std::array<transport, Vias + 1>{};
-    auto v_offset = std::array<std::size_t, Vias + 1>{};
 
     for (auto i = 0U; i != stop_seq.size(); ++i) {
       auto const stop_idx =
@@ -1088,6 +1112,33 @@ private:
         }
       }
     }
+
+    if (utl::any_of(et, [](transport const& t) { return t.is_valid(); }) &&
+        (kFwd ? tt_.route_has_seated_out_ : tt_.route_has_seated_in_)
+            .test(to_idx(r))) {
+      [[unlikely]]
+      for (auto const& st : (kFwd ? tt_.route_seated_transfers_out_
+                                  : tt_.route_seated_transfers_in_)[r]) {
+        auto const transfer = seated_transfer{st};
+        auto const target_transport =
+            tt_.route_transport_ranges_[transfer.target()].from_;
+        assert(tt_.route_transport_ranges_[transfer.target()].size() == 1U);
+
+        auto next_et = std::array<transport, Vias + 1U>{};
+        for (auto const [curr, next] : utl::zip_unchecked(et, next_et)) {
+          if (curr.is_valid()) {
+            next = transport{
+                target_transport,
+                day_idx_t{to_idx(curr.day_) + dir(transfer.day_offset())}};
+          }
+        }
+
+        any_marked |=
+            update_route<WithClaszFilter, WithBikeFilter, WithCarFilter>(
+                k, transfer.target(), next_et, v_offset, any_marked);
+      }
+    }
+
     return any_marked;
   }
 

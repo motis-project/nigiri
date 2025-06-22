@@ -2,6 +2,7 @@
 
 #include "cista/io.h"
 
+#include "utl/enumerate.h"
 #include "utl/overloaded.h"
 
 #include "nigiri/common/day_list.h"
@@ -24,6 +25,12 @@ void timetable::resolve() {
 }
 
 std::ostream& operator<<(std::ostream& out, timetable const& tt) {
+  out << "location routes:\n";
+  for (auto const [l_idx, routes] : utl::enumerate(tt.location_routes_)) {
+    out << location{tt, location_idx_t{l_idx}} << ": " << routes.size() << "\n";
+  }
+  out << "\n\n";
+
   for (auto const [id, idx] : tt.trip_id_to_idx_) {
     auto const str = tt.trip_id_strings_[id].view();
     out << str << ":\n";

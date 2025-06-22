@@ -352,6 +352,7 @@ void load_timetable(loader_config const& config,
     }
   }
 
+  auto location_routes = mutable_fws_multimap<location_idx_t, route_idx_t>{};
   {
     auto const timer = scoped_timer{"loader.gtfs.write_seated"};
     auto expanded_seated = expand_seated_trips(
@@ -360,7 +361,8 @@ void load_timetable(loader_config const& config,
                       trip_data.get(i).service_, tt.date_range_, assistance,
                       [&](utc_trip&& s) { consume(std::move(s)); });
         });
-    build_seated_trips(tt, bitfield_indices, trip_data, expanded_seated);
+    build_seated_trips(tt, bitfield_indices, trip_data, expanded_seated,
+                       location_routes);
   }
 
   {
@@ -376,7 +378,6 @@ void load_timetable(loader_config const& config,
     auto section_lines = basic_string<trip_line_idx_t>{};
     auto route_colors = basic_string<route_color>{};
     auto external_trip_ids = basic_string<merged_trips_idx_t>{};
-    auto location_routes = mutable_fws_multimap<location_idx_t, route_idx_t>{};
     for (auto const& [key, sub_routes] : route_services) {
       for (auto const& services : sub_routes) {
         auto const route_idx = tt.register_route(

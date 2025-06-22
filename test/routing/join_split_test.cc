@@ -84,7 +84,7 @@ B,B,,2.0,3.0,,
 C,C,,4.0,5.0,,
 C1,C1,,4.0,5.0,,
 C2,C2,,4.0,5.0,,
-D,D,,5.0,7.0,,
+D,D,,6.0,7.0,,
 D1,D1,,6.0,7.0,,
 D2,D2,,6.0,7.0,,
 E,E,,8.0,9.0,,
@@ -158,11 +158,13 @@ TEST(routing, join_split) {
   load_timetable({}, src, test_files(), tt);
   finalize(tt);
 
-  std::cout << tt.n_routes() << "\n";
-
   // for (auto const [from, to, date, expected] : kTests) {
   auto const [from, to, date, expected] = *kTests.begin();
-  EXPECT_EQ(expected, !raptor_search(tt, nullptr, from, to, date).empty())
+  auto const results = raptor_search(tt, nullptr, from, to, date);
+
+  std::cout << to_string(tt, results) << "\n";
+
+  EXPECT_EQ(expected, !results.empty())
       << "from=" << from << ", to=" << to << ", on " << date << ", expected "
       << expected;
   //   break;
