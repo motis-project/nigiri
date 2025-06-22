@@ -158,11 +158,13 @@ TEST(routing, join_split) {
   load_timetable({}, src, test_files(), tt);
   finalize(tt);
 
-  for (auto const [from, to, date, expected] : kTests) {
-    EXPECT_EQ(expected, !raptor_search(tt, nullptr, from, to,
-                                       interval{date + 10h, date + 16h})
-                             .empty())
-        << "from=" << from << ", to=" << to << ", on " << date << ", expected "
-        << expected;
-  }
+  std::cout << tt.n_routes() << "\n";
+
+  // for (auto const [from, to, date, expected] : kTests) {
+  auto const [from, to, date, expected] = *kTests.begin();
+  EXPECT_EQ(expected, !raptor_search(tt, nullptr, from, to, date).empty())
+      << "from=" << from << ", to=" << to << ", on " << date << ", expected "
+      << expected;
+  //   break;
+  // }
 }

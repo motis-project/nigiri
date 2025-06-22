@@ -2,8 +2,8 @@
 
 #include <ranges>
 
-#define trace(...) fmt::println(__VA_ARGS__)
-// #define trace(...)
+// #define trace(...) fmt::println(__VA_ARGS__)
+#define trace(...)
 
 namespace nigiri::loader::gtfs {
 
