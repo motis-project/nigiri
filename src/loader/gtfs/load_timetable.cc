@@ -360,7 +360,7 @@ void load_timetable(loader_config const& config,
                       trip_data.get(i).service_, tt.date_range_, assistance,
                       [&](utc_trip&& s) { consume(std::move(s)); });
         });
-    build_seated_trips(tt, trip_data, expanded_seated);
+    build_seated_trips(tt, bitfield_indices, trip_data, expanded_seated);
   }
 
   {

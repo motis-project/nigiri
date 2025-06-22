@@ -15,7 +15,8 @@ struct expanded_seated {
   vecvec<seated_idx_t, utc_trip> expanded_;
 };
 
-std::vector<utc_trip> build_seated_trips(timetable const&,
+std::vector<utc_trip> build_seated_trips(timetable&,
+                                         hash_map<bitfield, bitfield_idx_t>&,
                                          trip_data const&,
                                          expanded_seated&);
 

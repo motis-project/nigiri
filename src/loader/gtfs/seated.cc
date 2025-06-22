@@ -7,9 +7,11 @@
 
 namespace nigiri::loader::gtfs {
 
-std::vector<utc_trip> build_seated_trips(timetable const& tt,
-                                         trip_data const& trip_data,
-                                         expanded_seated& seated) {
+std::vector<utc_trip> build_seated_trips(
+    timetable& tt,
+    hash_map<bitfield, bitfield_idx_t>& bitfield_indices,
+    trip_data const& trip_data,
+    expanded_seated& seated) {
   [[maybe_unused]] auto const base = tt.internal_interval_days().from_;
 
   auto const is_empty = [](utc_trip const& x) {
@@ -138,19 +140,27 @@ std::vector<utc_trip> build_seated_trips(timetable const& tt,
     trace("\n=> COMPONENT: {}",
           fmt::streamed(day_list{component_traffic_days, base}));
 
-    auto represented_by = hash_map<gtfs_trip_idx_t, remaining_idx_t>{};
+    struct represented {
+      remaining_idx_t remaining_idx_;
+      route_idx_t route_;
+    };
+    auto represented_by = hash_map<gtfs_trip_idx_t, represented>{};
     for (auto const& [remaining_idx, offset] : component) {
-      auto const [_, added] =
-          represented_by.emplace(get_trp_idx(remaining_idx), remaining_idx);
+      auto const [_, added] = represented_by.emplace(
+          get_trp_idx(remaining_idx),
+          represented{remaining_idx, route_idx_t::invalid()});
       assert(added);
     }
     auto const translate_represented = [&](gtfs_trip_idx_t const i) {
       auto const it = represented_by.find(i);
-      return it == end(represented_by) ? -1 : static_cast<int>(it->second);
+      return it == end(represented_by) ? std::nullopt
+                                       : std::optional{it->second};
     };
 
     for (auto const& [remaining_idx, offset] : component) {
-      auto& before = remaining.at(remaining_idx).utc_traffic_days_;
+      auto const& trp = get_trp(remaining_idx);
+      auto& utc_trp = remaining.at(remaining_idx);
+      auto& before = utc_trp.utc_traffic_days_;
       auto const active = before & shift(component_traffic_days, offset);
       trace(
           "  idx={}, {} [offset={}]\n"
@@ -161,15 +171,63 @@ std::vector<utc_trip> build_seated_trips(timetable const& tt,
           fmt::streamed(day_list{before, base}),
           fmt::streamed(day_list{active, base}),
           fmt::streamed(day_list{before & ~active, base}));
-      trace("    -> in={} out={}",
-            get_trp(remaining_idx).seated_in_ |
-                std::views::transform(translate_represented) |
-                std::views::filter([](int const i) { return i != -1; }),
-            get_trp(remaining_idx).seated_out_ |
-                std::views::transform(translate_represented) |
-                std::views::filter([](int const i) { return i != -1; }));
+      trace(
+          "    -> in={} out={}",
+          get_trp(remaining_idx).seated_in_ |
+              std::views::transform(translate_represented) |
+              std::views::filter([](auto&& x) { return x.has_value(); }) |
+              std::views::transform([](auto&& x) { return x->remaining_idx_; }),
+          get_trp(remaining_idx).seated_out_ |
+              std::views::transform(translate_represented) |
+              std::views::filter([](auto&& x) { return x.has_value(); }) |
+              std::views::transform(
+                  [](auto&& x) { return x->remaining_idx_; }));
+
+      auto const merged_trip = tt.register_merged_trip({trp.trip_idx_});
+      auto const route_idx =
+          tt.register_route(trp.stop_seq_, {trp.get_clasz(tt)},
+                            trp.bikes_allowed_ ? kSingleTripBikesAllowed
+                                               : kSingleTripBikesNotAllowed,
+                            trp.cars_allowed_ ? kSingleTripBikesAllowed
+                                              : kSingleTripBikesNotAllowed);
+      tt.add_transport(timetable::transport{
+          .bitfield_idx_ = utl::get_or_create(
+              bitfield_indices, active,
+              [&]() { return tt.register_bitfield(active); }),
+          .route_idx_ = route_idx,
+          .first_dep_offset_ = utc_trp.first_dep_offset_,
+          .external_trip_ids_ = {merged_trip},
+          .section_attributes_ = {},
+          .section_providers_ = {trp.route_->agency_},
+          .section_directions_ = {trp.headsign_},
+          .section_lines_ = {},
+          .route_colors_ = {{trp.route_->color_, trp.route_->text_color_}}});
+      tt.finish_route();
+
+      represented_by.at(get_trp_idx(remaining_idx)).route_ = route_idx;
+
       before &= ~active;
     }
+
+    for (auto const& [remaining_idx, offset] : component) {
+      auto const route_idx =
+          translate_represented(get_trp_idx(remaining_idx)).value().route_;
+      for (auto const& out_trp : get_trp(remaining_idx).seated_out_) {
+        auto const out = translate_represented(out_trp);
+        if (out.has_value()) {
+          auto const diff = component.at(out->remaining_idx_) - offset;
+          tt.route_has_seated_out_.set(to_idx(route_idx), true);
+          tt.route_has_seated_in_.set(to_idx(out->route_), true);
+          tt.route_seated_transfers_out_[route_idx].push_back(
+              seated_transfer{out->route_, static_cast<std::int8_t>(diff)}
+                  .value());
+          tt.route_seated_transfers_in_[out->route_].push_back(
+              seated_transfer{route_idx, static_cast<std::int8_t>(-diff)}
+                  .value());
+        }
+      }
+    }
+
     trace("------------\n");
   }  // END while (!utl::all_of(remaining, is_empty))
 
