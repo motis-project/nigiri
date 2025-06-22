@@ -60,13 +60,14 @@ constexpr auto const kTests =
                                      {"C", "E", 2025_y / June / 13, true},
                                      {"C", "F", 2025_y / June / 13, true},
 
-                                     {"C", "E", 2025_y / June / 14, false},
-                                     {"C", "F", 2025_y / June / 14, false},
+                                     //
+                                     {"C", "E", 2025_y / June / 14, true},
+                                     {"C", "F", 2025_y / June / 14, true},
 
-                                     {"A", "C", 2025_y / June / 16, true},
-                                     {"B", "C", 2025_y / June / 16, true},
-                                     {"D", "E", 2025_y / June / 16, true},
-                                     {"D", "F", 2025_y / June / 16, true},
+                                     {"A", "C", 2025_y / June / 17, true},
+                                     {"B", "C", 2025_y / June / 17, true},
+                                     {"D1", "E", 2025_y / June / 17, true},
+                                     {"D2", "F", 2025_y / June / 17, true},
 
                                      {"A", "D", 2025_y / June / 18, true},
                                      {"B", "D", 2025_y / June / 18, true}};
@@ -158,15 +159,10 @@ TEST(routing, join_split) {
   load_timetable({}, src, test_files(), tt);
   finalize(tt);
 
-  // for (auto const [from, to, date, expected] : kTests) {
-  auto const [from, to, date, expected] = *kTests.begin();
-  auto const results = raptor_search(tt, nullptr, from, to, date);
-
-  std::cout << to_string(tt, results) << "\n";
-
-  EXPECT_EQ(expected, !results.empty())
-      << "from=" << from << ", to=" << to << ", on " << date << ", expected "
-      << expected;
-  //   break;
-  // }
+  for (auto const [from, to, date, expected] : kTests) {
+    auto const results = raptor_search(tt, nullptr, from, to, date);
+    EXPECT_EQ(expected, !results.empty())
+        << "from=" << from << ", to=" << to << ", on " << date << ", expected "
+        << expected;
+  }
 }
