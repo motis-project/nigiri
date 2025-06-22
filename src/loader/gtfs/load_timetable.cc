@@ -284,7 +284,7 @@ void load_timetable(loader_config const& config,
     auto const timer = scoped_timer{"loader.gtfs.trips.expand"};
 
     for (auto const [i, t] : utl::enumerate(trip_data.data_)) {
-      if (t.block_ != nullptr || !t.has_seated_transfers() ||
+      if (t.block_ != nullptr || t.has_seated_transfers() ||
           !t.flex_time_windows_.empty()) {
         continue;
       }

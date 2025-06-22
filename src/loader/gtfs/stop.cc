@@ -166,6 +166,10 @@ seated_transfers_map_t read_transfers(stop_map_t& stops,
             return;
           }
 
+          if (from_stop_it == to_stop_it) {
+            return;
+          }
+
           auto& footpaths = from_stop_it->second->footpaths_;
           auto const it = std::find_if(
               begin(footpaths), end(footpaths), [&](footpath const& fp) {
