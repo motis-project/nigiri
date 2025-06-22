@@ -142,7 +142,6 @@ struct timetable {
     basic_string<provider_idx_t> const& section_providers_;
     basic_string<trip_direction_idx_t> const& section_directions_;
     basic_string<trip_line_idx_t> const& section_lines_;
-    basic_string<stop_idx_t> const& stop_seq_numbers_;
     basic_string<route_color> const& route_colors_;
   };
 

@@ -24,6 +24,7 @@
 #include "nigiri/loader/gtfs/noon_offsets.h"
 #include "nigiri/loader/gtfs/route.h"
 #include "nigiri/loader/gtfs/route_key.h"
+#include "nigiri/loader/gtfs/seated.h"
 #include "nigiri/loader/gtfs/services.h"
 #include "nigiri/loader/gtfs/shape.h"
 #include "nigiri/loader/gtfs/shape_prepare.h"
@@ -186,8 +187,10 @@ void load_timetable(loader_config const& config,
         }
 
         auto& to_trip = trip_data.data_[to_it->second];
-        to_trip.seated_in_.push_back(&from_trip);
-        from_trip.seated_out_.push_back(&to_trip);
+        to_trip.seated_in_.push_back(
+            gtfs_trip_idx_t{&from_trip - trip_data.data_.data()});
+        from_trip.seated_out_.push_back(
+            gtfs_trip_idx_t{&to_trip - trip_data.data_.data()});
       }
     }
   }
@@ -319,14 +322,8 @@ void load_timetable(loader_config const& config,
     }
   }
 
-  build_rule_services(tt, trip_data);
-
   {
-    auto const timer = scoped_timer{"loader.gtfs.write_trips"};
-
-    progress_tracker->status("Write Trips")
-        .out_bounds(85.F, 97.F)
-        .in_high(route_services.size());
+    auto const timer = scoped_timer{"loader.gtfs.register_trip_ids"};
 
     auto const is_train_number = [](auto const& s) {
       return !s.empty() && std::all_of(begin(s), end(s), [](auto&& c) -> bool {
@@ -353,6 +350,25 @@ void load_timetable(loader_config const& config,
           {source_file_idx, trp.from_line_, trp.to_line_}, train_nr,
           stop_seq_numbers, trp.direction_id_);
     }
+  }
+
+  {
+    auto const timer = scoped_timer{"loader.gtfs.write_seated"};
+    auto expanded_seated = expand_seated_trips(
+        trip_data, [&](gtfs_trip_idx_t const i, auto&& consume) {
+          expand_trip(trip_data, noon_offsets, tt, {i},
+                      trip_data.get(i).service_, tt.date_range_, assistance,
+                      [&](utc_trip&& s) { consume(std::move(s)); });
+        });
+    build_seated_trips(tt, trip_data, expanded_seated);
+  }
+
+  {
+    auto const timer = scoped_timer{"loader.gtfs.write_transports"};
+
+    progress_tracker->status("Write Transports")
+        .out_bounds(85.F, 97.F)
+        .in_high(route_services.size());
 
     auto const attributes = basic_string<attribute_combination_idx_t>{};
     auto lines = hash_map<std::string, trip_line_idx_t>{};
@@ -428,7 +444,6 @@ void load_timetable(loader_config const& config,
               .section_providers_ = {first.route_->agency_},
               .section_directions_ = section_directions,
               .section_lines_ = section_lines,
-              .stop_seq_numbers_ = stop_seq_numbers,
               .route_colors_ = route_colors});
         }
 

@@ -6,6 +6,8 @@
 #include <tuple>
 #include <vector>
 
+#include "utl/enumerate.h"
+
 #include "cista/reflection/comparable.h"
 
 #include "nigiri/loader/gtfs/flat_map.h"
@@ -24,9 +26,6 @@ struct trip;
 using gtfs_trip_idx_t = cista::strong<std::uint32_t, struct _gtfs_trip_idx>;
 
 struct trip_data;
-
-std::vector<std::pair<trip const*, bitfield>> build_rule_services(
-    timetable const&, trip_data&);
 
 static auto const kSingleTripBikesAllowed = bitvec{"1"};
 static auto const kSingleTripBikesNotAllowed = bitvec{"0"};
@@ -138,7 +137,7 @@ struct trip {
   std::vector<flex_stop_t> flex_stops_;
   std::vector<stop_time_window> flex_time_windows_;
 
-  std::vector<trip const*> seated_out_, seated_in_;
+  std::vector<gtfs_trip_idx_t> seated_out_, seated_in_;
 
   std::optional<std::vector<frequency>> frequency_;
   bool requires_interpolation_{false};
