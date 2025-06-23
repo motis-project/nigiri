@@ -148,7 +148,7 @@ std::vector<utc_trip> build_seated_trips(
     };
     auto represented_by = hash_map<gtfs_trip_idx_t, represented>{};
     for (auto const& [remaining_idx, offset] : component) {
-      auto const [_, added] = represented_by.emplace(
+      [[maybe_unused]] auto const [_, added] = represented_by.emplace(
           get_trp_idx(remaining_idx),
           represented{remaining_idx, route_idx_t::invalid()});
       assert(added);
