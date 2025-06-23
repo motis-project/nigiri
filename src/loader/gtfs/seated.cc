@@ -69,7 +69,8 @@ std::vector<utc_trip> build_seated_trips(
     // building the traffic day intersection of all visited trips. Stop early if
     // the intersection would be empty.
     auto component = hash_map<remaining_idx_t, int>{};
-    q.emplace(remaining.index_of(non_empty_it), 0U);
+    q.emplace(static_cast<remaining_idx_t>(remaining.index_of(non_empty_it)),
+              0U);
     auto component_traffic_days = non_empty_it->utc_traffic_days_;
     while (!q.empty()) {
       // Extract next queue element.
