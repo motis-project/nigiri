@@ -22,7 +22,7 @@ struct seated_transfer {
     return cista::hash_combine(cista::BASE_HASH, value());
   }
 
-  std::int8_t day_offset() const noexcept { return day_offset_; }
+  std::uint8_t day_offset() const noexcept { return day_offset_; }
   route_idx_t target() const noexcept { return route_idx_t{target_}; }
 
   route_idx_t::value_t target_ : 24;
