@@ -208,14 +208,21 @@ clasz run_stop::get_scheduled_clasz(event_type const ev_type) const {
 
 bool run_stop::bikes_allowed(event_type const ev_type) const {
   if (fr_->is_rt() && rtt() != nullptr) {
-    auto const bikes_allowed_seq =
-        rtt()->rt_bikes_allowed_per_section_.at(fr_->rt_);
-    return bikes_allowed_seq.at(
-        bikes_allowed_seq.size() == 1U ? 0U : section_idx(ev_type));
+    if (rtt()->rt_transport_bikes_allowed_[to_idx(fr_->rt_) * 2U]) {
+      return true;
+    } else if (!rtt()
+                    ->rt_transport_bikes_allowed_[to_idx(fr_->rt_) * 2U + 1U]) {
+      return false;
+    } else {
+      auto const bikes_allowed_seq =
+          rtt()->rt_bikes_allowed_per_section_.at(fr_->rt_);
+      return bikes_allowed_seq.at(
+          bikes_allowed_seq.size() == 1U ? 0U : section_idx(ev_type));
+    }
   } else {
     auto const r = tt().transport_route_.at(fr_->t_.t_idx_);
-    if (!tt().route_bikes_allowed_[to_idx(r) * 2U]) {
-      return false;
+    if (tt().route_bikes_allowed_[to_idx(r) * 2U]) {
+      return true;
     } else if (!tt().route_bikes_allowed_[to_idx(r) * 2U + 1U]) {
       return false;
     } else {
@@ -229,15 +236,28 @@ bool run_stop::bikes_allowed(event_type const ev_type) const {
 
 bool run_stop::cars_allowed(event_type const ev_type) const {
   if (fr_->is_rt() && rtt() != nullptr) {
-    auto const cars_allowed_seq =
-        rtt()->rt_cars_allowed_per_section_.at(fr_->rt_);
-    return cars_allowed_seq.at(
-        cars_allowed_seq.size() == 1U ? 0U : section_idx(ev_type));
+    if (rtt()->rt_transport_cars_allowed_[to_idx(fr_->rt_) * 2U]) {
+      return true;
+    } else if (!rtt()->rt_transport_cars_allowed_[to_idx(fr_->rt_) * 2U + 1U]) {
+      return false;
+    } else {
+      auto const cars_allowed_seq =
+          rtt()->rt_cars_allowed_per_section_.at(fr_->rt_);
+      return cars_allowed_seq.at(
+          cars_allowed_seq.size() == 1U ? 0U : section_idx(ev_type));
+    }
   } else {
-    auto const cars_allowed_seq = tt().route_cars_allowed_per_section_.at(
-        tt().transport_route_.at(fr_->t_.t_idx_));
-    return cars_allowed_seq.at(
-        cars_allowed_seq.size() == 1U ? 0U : section_idx(ev_type));
+    auto const r = tt().transport_route_.at(fr_->t_.t_idx_);
+    if (tt().route_cars_allowed_[to_idx(r) * 2U]) {
+      return true;
+    } else if (!tt().route_cars_allowed_[to_idx(r) * 2U + 1U]) {
+      return false;
+    } else {
+      auto const cars_allowed_seq = tt().route_cars_allowed_per_section_.at(
+          tt().transport_route_.at(fr_->t_.t_idx_));
+      return cars_allowed_seq.at(
+          cars_allowed_seq.size() == 1U ? 0U : section_idx(ev_type));
+    }
   }
 }
 
