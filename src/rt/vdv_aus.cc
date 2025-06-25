@@ -1,4 +1,4 @@
-#include "nigiri/rt/vdv/vdv_update.h"
+#include "nigiri/rt/vdv_aus.h"
 
 #include <sstream>
 #include <string>
@@ -22,7 +22,7 @@
 #include "nigiri/timetable.h"
 #include "nigiri/types.h"
 
-namespace nigiri::rt::vdv {
+namespace nigiri::rt::vdv_aus {
 
 #define VDV_DEBUG
 #ifdef VDV_DEBUG
@@ -316,6 +316,11 @@ void updater::match_run(std::string_view vdv_run_id,
         }
         print_candidate(c);
       }
+    } else {
+      fmt::println("[vdv_aus] candidates for {}:", vdv_run_id);
+      for (auto const& c : candidates) {
+        print_candidate(c);
+      }
     }
   }
 }
@@ -554,4 +559,4 @@ void updater::update(rt_timetable& rtt, pugi::xml_document const& doc) {
   }
 }
 
-}  // namespace nigiri::rt::vdv
+}  // namespace nigiri::rt::vdv_aus

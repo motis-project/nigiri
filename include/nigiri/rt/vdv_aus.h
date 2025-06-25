@@ -13,7 +13,7 @@ struct rt_timetable;
 struct timetable;
 }  // namespace nigiri
 
-namespace nigiri::rt::vdv {
+namespace nigiri::rt::vdv_aus {
 
 struct statistics {
   friend std::ostream& operator<<(std::ostream&, statistics const&);
@@ -98,4 +98,4 @@ private:
   hash_map<std::string, std::vector<run>> vdv_nigiri_{};
 };
 
-}  // namespace nigiri::rt::vdv
+}  // namespace nigiri::rt::vdv_aus
