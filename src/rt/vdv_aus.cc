@@ -236,7 +236,7 @@ void updater::match_run(std::string_view vdv_run_id,
             auto const tr = transport{
                 tt_.route_transport_ranges_[r][nigiri_ev_time_idx],
                 vdv_day_idx -
-                    day_idx_t{nigiri_ev_time.days() + day_shift.count()}};
+                    day_idx_t{nigiri_ev_time.days() - day_shift.count()}};
 
             if (tt_.bitfields_[tt_.transport_traffic_days_[tr.t_idx_]].test(
                     to_idx(tr.day_))) {
