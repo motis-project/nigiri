@@ -24,7 +24,18 @@
 
 namespace nigiri::rt::vdv_aus {
 
-#define VDV_DEBUG
+constexpr auto const kExactMatchScore = 1000;
+constexpr auto const kFirstMatchThreshold = 0.5;
+constexpr auto const kAdditionalMatchTreshold = 0.9;
+constexpr auto const kAllowedTimeDiscrepancy = []() {
+  auto error = 0;
+  while (kExactMatchScore - error * error > 0) {
+    ++error;
+  }
+  return error - 1;
+}();  // minutes
+
+// #define VDV_DEBUG
 #ifdef VDV_DEBUG
 #define vdv_trace(...) fmt::print(__VA_ARGS__)
 #else
@@ -278,18 +289,23 @@ void updater::match_run(std::string_view vdv_run_id,
 
   std::sort(begin(candidates), end(candidates));
 
+  auto const is_match = [&](auto const& c) {
+    return c.score_ > candidates.front().score_ * kAdditionalMatchTreshold;
+  };
+
   if (!candidates.empty() &&
-      candidates.front().score_ > vdv_stops.size() * kExactMatchScore / 2) {
+      candidates.front().score_ >
+          vdv_stops.size() * kExactMatchScore * kFirstMatchThreshold) {
     for (auto const& c : candidates) {
-      if (c.score_ < candidates.front().score_) {
+      if (!is_match(c)) {
         break;
       }
       vdv_nigiri_[vdv_run_id].emplace_back(c.r_);
     }
   }
 
-  auto const print_candidate = [&](auto const& c) {
-    fmt::println(
+  auto const candidate_str = [&](auto const& c) {
+    return fmt::format(
         "[line: {}, score: {}, length: {}], dbg: {}",
         tt_.trip_lines_
             [tt_.transport_section_lines_[c.r_.t_.t_idx_].size() == 1
@@ -301,25 +317,19 @@ void updater::match_run(std::string_view vdv_run_id,
   };
 
   if (vdv_nigiri_[vdv_run_id].empty()) {
-    fmt::println("[vdv_aus] no match for {}, best candidate:", vdv_run_id);
-    if (!candidates.empty()) {
-      print_candidate(candidates.front());
-    }
+    fmt::println(
+        "[vdv_aus] no match for {}, best candidate: {}", vdv_run_id,
+        candidates.empty() ? "none" : candidate_str(candidates.front()));
   } else {
     ++stats_.matched_runs_;
     if (vdv_nigiri_[vdv_run_id].size() > 1) {
       ++stats_.multiple_matches_;
       fmt::println("[vdv_aus] multiple matches for {}:", vdv_run_id);
       for (auto const& c : candidates) {
-        if (c.score_ < candidates.front().score_) {
+        if (!is_match(c)) {
           break;
         }
-        print_candidate(c);
-      }
-    } else {
-      fmt::println("[vdv_aus] candidates for {}:", vdv_run_id);
-      for (auto const& c : candidates) {
-        print_candidate(c);
+        fmt::println("{}", candidate_str(c));
       }
     }
   }

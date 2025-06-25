@@ -3708,7 +3708,7 @@ constexpr auto const update_ovo65 = R"(
 
 }  // namespace
 
-TEST(vdv_aus, probably_duplicate_match_only_one) {
+TEST(vdv_aus, partial_duplicate_1) {
   timetable tt;
   register_special_stations(tt);
   tt.date_range_ = {date::sys_days{2024_y / August / 1},
@@ -3730,7 +3730,7 @@ TEST(vdv_aus, probably_duplicate_match_only_one) {
       tt,
       &rtt,
       {{transport_idx_t{0U}, day_idx_t{27}}, {stop_idx_t{0}, stop_idx_t{31U}}}};
-  EXPECT_FALSE(fr0.is_rt());
+  EXPECT_TRUE(fr0.is_rt());
 
   auto const fr1 = rt::frun{
       tt,
@@ -4012,7 +4012,7 @@ constexpr auto const update_rbo512 = R"(
 
 }  // namespace
 
-TEST(vdv_aus, partial_duplicate_match_both) {
+TEST(vdv_aus, partial_duplicate_2) {
   timetable tt;
   register_special_stations(tt);
   tt.date_range_ = {date::sys_days{2024_y / August / 1},
