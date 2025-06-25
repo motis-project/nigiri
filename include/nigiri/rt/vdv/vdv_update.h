@@ -20,19 +20,24 @@ struct statistics {
   friend statistics& operator+=(statistics&, statistics const&);
 
   std::uint32_t unsupported_additional_runs_{0U};
-  std::uint32_t cancelled_runs_{0U};
+  std::uint32_t unsupported_additional_stops_{0U};
+
+  std::uint32_t total_runs_{0U};
+  std::uint32_t complete_runs_{0U};
+  std::uint32_t unique_runs_{0U};
+  std::uint32_t matched_runs_{0U};
+  std::uint32_t multiple_matches_{0U};
+  std::uint32_t incomplete_not_seen_before_{0U};
+  std::uint32_t no_transport_found_at_stop_{0U};
+
   std::uint32_t total_stops_{0U};
   std::uint32_t resolved_stops_{0U};
   std::uint32_t unknown_stops_{0U};
-  std::uint32_t unsupported_additional_stops_{0U};
-  std::uint32_t total_runs_{0U};
-  std::uint32_t no_transport_found_at_stop_{0U};
-  std::uint32_t search_on_incomplete_{0U};
-  std::uint32_t found_runs_{0U};
-  std::uint32_t multiple_matches_{0U};
-  std::uint32_t matched_runs_{0U};
-  std::uint32_t unmatchable_runs_{0U};
+
   std::uint32_t runs_without_stops_{0U};
+
+  std::uint32_t cancelled_runs_{0U};
+
   std::uint32_t skipped_vdv_stops_{0U};
   std::uint32_t excess_vdv_stops_{0U};
   std::uint32_t updated_events_{0U};
@@ -78,9 +83,7 @@ private:
 
   vector<vdv_stop> resolve_stops(pugi::xml_node vdv_run);
 
-  std::optional<rt::run> find_run(std::string_view vdv_run_id,
-                                  vector<vdv_stop> const&,
-                                  bool is_complete_run);
+  void match_run(std::string_view vdv_run_id, vector<vdv_stop> const&);
 
   void update_run(rt_timetable&,
                   run&,
@@ -92,7 +95,7 @@ private:
   timetable const& tt_;
   source_idx_t src_idx_;
   statistics stats_{};
-  hash_map<std::string, run> vdv_nigiri_{};
+  hash_map<std::string, std::vector<run>> vdv_nigiri_{};
 };
 
 }  // namespace nigiri::rt::vdv

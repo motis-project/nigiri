@@ -24,7 +24,7 @@
 
 namespace nigiri::rt::vdv {
 
-// #define VDV_DEBUG
+#define VDV_DEBUG
 #ifdef VDV_DEBUG
 #define vdv_trace(...) fmt::print(__VA_ARGS__)
 #else
@@ -33,19 +33,19 @@ namespace nigiri::rt::vdv {
 
 std::ostream& operator<<(std::ostream& out, statistics const& s) {
   out << "unsupported additional runs: " << s.unsupported_additional_runs_
-      << "\ncancelled runs: " << s.cancelled_runs_
+      << "\nunsupported additional stops: " << s.unsupported_additional_stops_
+      << "\ntotal runs: " << s.total_runs_
+      << "\ncomplete_runs: " << s.complete_runs_
+      << "\nunique runs: " << s.unique_runs_
+      << "\nmatched runs: " << s.matched_runs_
+      << "\nmultiple matches: " << s.multiple_matches_
+      << "\nincomplete not seen before: " << s.incomplete_not_seen_before_
+      << "\nno transport found at stop: " << s.no_transport_found_at_stop_
       << "\ntotal stops: " << s.total_stops_
       << "\nresolved stops: " << s.resolved_stops_
       << "\nunknown stops: " << s.unknown_stops_
-      << "\nunsupported additional stops: " << s.unsupported_additional_stops_
-      << "\nno transport found at stop: " << s.no_transport_found_at_stop_
-      << "\nsearches on incomplete runs: " << s.search_on_incomplete_
-      << "\nfound runs: " << s.found_runs_
-      << "\nmultiple matches: " << s.multiple_matches_
-      << "\ntotal runs: " << s.total_runs_
-      << "\nmatched runs: " << s.matched_runs_
-      << "\nunmatchable runs: " << s.unmatchable_runs_
       << "\nruns without stops: " << s.runs_without_stops_
+      << "\ncancelled runs: " << s.cancelled_runs_
       << "\nskipped vdv stops: " << s.skipped_vdv_stops_
       << "\nexcess vdv stops: " << s.excess_vdv_stops_
       << "\nupdated events: " << s.updated_events_
@@ -55,19 +55,19 @@ std::ostream& operator<<(std::ostream& out, statistics const& s) {
 
 statistics& operator+=(statistics& lhs, statistics const& rhs) {
   lhs.unsupported_additional_runs_ += rhs.unsupported_additional_runs_;
-  lhs.cancelled_runs_ += rhs.cancelled_runs_;
+  lhs.unsupported_additional_stops_ += rhs.unsupported_additional_stops_;
+  lhs.total_runs_ += rhs.total_runs_;
+  lhs.complete_runs_ += rhs.complete_runs_;
+  lhs.unique_runs_ += rhs.unique_runs_;
+  lhs.matched_runs_ += rhs.matched_runs_;
+  lhs.multiple_matches_ += rhs.multiple_matches_;
+  lhs.incomplete_not_seen_before_ += rhs.incomplete_not_seen_before_;
+  lhs.no_transport_found_at_stop_ += rhs.no_transport_found_at_stop_;
   lhs.total_stops_ += rhs.total_stops_;
   lhs.resolved_stops_ += rhs.resolved_stops_;
   lhs.unknown_stops_ += rhs.unknown_stops_;
-  lhs.unsupported_additional_stops_ += rhs.unsupported_additional_stops_;
-  lhs.total_runs_ += rhs.total_runs_;
-  lhs.no_transport_found_at_stop_ += rhs.no_transport_found_at_stop_;
-  lhs.search_on_incomplete_ += rhs.search_on_incomplete_;
-  lhs.found_runs_ += rhs.found_runs_;
-  lhs.multiple_matches_ += rhs.multiple_matches_;
-  lhs.matched_runs_ += rhs.matched_runs_;
-  lhs.unmatchable_runs_ += rhs.unmatchable_runs_;
   lhs.runs_without_stops_ += rhs.runs_without_stops_;
+  lhs.cancelled_runs_ += rhs.cancelled_runs_;
   lhs.skipped_vdv_stops_ += rhs.skipped_vdv_stops_;
   lhs.excess_vdv_stops_ += rhs.excess_vdv_stops_;
   lhs.updated_events_ += rhs.updated_events_;
@@ -193,14 +193,9 @@ struct candidate {
   std::uint32_t total_length_;
 };
 
-std::optional<rt::run> updater::find_run(std::string_view vdv_run_id,
-                                         vector<vdv_stop> const& vdv_stops,
-                                         bool const is_complete_run) {
-  if (!is_complete_run) {
-    ++stats_.search_on_incomplete_;
-    vdv_trace("Attempting to match an incomplete vdv run: {}\n", vdv_run_id);
-  }
-
+void updater::match_run(std::string_view vdv_run_id,
+                        vector<vdv_stop> const& vdv_stops) {
+  vdv_nigiri_[vdv_run_id] = std::vector<run>{};
   auto candidates = std::vector<candidate>{};
 
   for (auto const& vdv_stop : vdv_stops) {
@@ -280,52 +275,49 @@ std::optional<rt::run> updater::find_run(std::string_view vdv_run_id,
       c.finish_stop();
     }
   }
-  if (candidates.empty()) {
-    return std::nullopt;
-  }
 
   std::sort(begin(candidates), end(candidates));
 
-  if (candidates.front().score_ < vdv_stops.size() * kExactMatchScore / 2) {
-    return std::nullopt;
-  }
-
-  if (candidates.size() > 1 && candidates[0] == candidates[1]) {
-#ifdef VDV_DEBUG
-    vdv_trace("multiple match candidates for {}:\n", vdv_run_id);
+  if (!candidates.empty() &&
+      candidates.front().score_ > vdv_stops.size() * kExactMatchScore / 2) {
     for (auto const& c : candidates) {
-      vdv_trace("[line: {}, score: {}, length: {}]\n",
-                tt_.trip_lines_
-                    [tt_.transport_section_lines_[c.r_.t_.t_idx_].size() == 1
-                         ? tt_.transport_section_lines_[c.r_.t_.t_idx_].front()
-                         : tt_.transport_section_lines_[c.r_.t_.t_idx_]
-                                                       [c.r_.stop_range_.from_]]
-                        .view(),
-                c.score_, c.total_length_);
-    }
-#endif
-    ++stats_.multiple_matches_;
-    return std::nullopt;
-  }
-#ifdef VDV_DEBUG
-  else {
-    vdv_trace("match candidates for {}:\n", vdv_run_id);
-    for (auto const& c : candidates) {
-      vdv_trace("[line: {}, score: {}, length: {}]\n",
-                tt_.trip_lines_
-                    [tt_.transport_section_lines_[c.r_.t_.t_idx_].size() == 1
-                         ? tt_.transport_section_lines_[c.r_.t_.t_idx_].front()
-                         : tt_.transport_section_lines_[c.r_.t_.t_idx_]
-                                                       [c.r_.stop_range_.from_]]
-                        .view(),
-                c.score_, c.total_length_);
+      if (c.score_ < candidates.front().score_) {
+        break;
+      }
+      vdv_nigiri_[vdv_run_id].emplace_back(c.r_);
     }
   }
-#endif
 
-  ++stats_.found_runs_;
-  vdv_nigiri_[vdv_run_id] = candidates.front().r_;
-  return candidates.front().r_;
+  auto const print_candidate = [&](auto const& c) {
+    fmt::println(
+        "[line: {}, score: {}, length: {}], dbg: {}",
+        tt_.trip_lines_
+            [tt_.transport_section_lines_[c.r_.t_.t_idx_].size() == 1
+                 ? tt_.transport_section_lines_[c.r_.t_.t_idx_].front()
+                 : tt_.transport_section_lines_[c.r_.t_.t_idx_]
+                                               [c.r_.stop_range_.from_]]
+                .view(),
+        c.score_, c.total_length_, tt_.dbg(c.r_.t_.t_idx_));
+  };
+
+  if (vdv_nigiri_[vdv_run_id].empty()) {
+    fmt::println("[vdv_aus] no match for {}, best candidate:", vdv_run_id);
+    if (!candidates.empty()) {
+      print_candidate(candidates.front());
+    }
+  } else {
+    ++stats_.matched_runs_;
+    if (vdv_nigiri_[vdv_run_id].size() > 1) {
+      ++stats_.multiple_matches_;
+      fmt::println("[vdv_aus] multiple matches for {}:", vdv_run_id);
+      for (auto const& c : candidates) {
+        if (c.score_ < candidates.front().score_) {
+          break;
+        }
+        print_candidate(c);
+      }
+    }
+  }
 }
 
 void update_event(rt_timetable& rtt,
@@ -510,6 +502,10 @@ void updater::update_run(rt_timetable& rtt,
 
 void updater::process_vdv_run(rt_timetable& rtt, pugi::xml_node const vdv_run) {
   ++stats_.total_runs_;
+  auto const is_complete_run = *get_opt_bool(vdv_run, "Komplettfahrt", false);
+  if (is_complete_run) {
+    ++stats_.complete_runs_;
+  }
 
   auto vdv_stops = resolve_stops(vdv_run);
 
@@ -523,29 +519,24 @@ void updater::process_vdv_run(rt_timetable& rtt, pugi::xml_node const vdv_run) {
     return;
   }
 
-  auto const is_complete_run = *get_opt_bool(vdv_run, "Komplettfahrt", false);
-
-  auto r = vdv_nigiri_.contains(vdv_run_id)
-               ? std::optional{vdv_nigiri_.at(vdv_run_id)}
-               : find_run(vdv_run_id, vdv_stops, is_complete_run);
-  if (!r.has_value()) {
+  auto const seen_before = vdv_nigiri_.contains(vdv_run_id);
+  if (!seen_before) {
+    ++stats_.unique_runs_;
     if (is_complete_run) {
-#ifdef VDV_DEBUG
-      vdv_trace("unmatchable run:\n");
-      vdv_run.print(std::cout);
-      vdv_trace("\n");
-#endif
-      ++stats_.unmatchable_runs_;
+      match_run(vdv_run_id, vdv_stops);
+    } else {
+      ++stats_.incomplete_not_seen_before_;
+      return;
     }
-    return;
   }
-  ++stats_.matched_runs_;
 
-  if (get_opt_bool(vdv_run, "FaelltAus", false).value()) {
-    rtt.cancel_run(*r);
-    ++stats_.cancelled_runs_;
-  } else {
-    update_run(rtt, *r, vdv_stops, is_complete_run);
+  for (auto& r : vdv_nigiri_[vdv_run_id]) {
+    if (get_opt_bool(vdv_run, "FaelltAus", false).value()) {
+      rtt.cancel_run(r);
+      ++stats_.cancelled_runs_;
+    } else {
+      update_run(rtt, r, vdv_stops, is_complete_run);
+    }
   }
 }
 
