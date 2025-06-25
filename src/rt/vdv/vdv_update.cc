@@ -80,7 +80,7 @@ updater::updater(nigiri::timetable const& tt, source_idx_t const src_idx)
 
 void updater::reset_vdv_run_ids_() { vdv_nigiri_.clear(); }
 
-statistics updater::get_stats() const { return stats_; }
+statistics const& updater::get_stats() const { return stats_; }
 
 source_idx_t updater::get_src() const { return src_idx_; }
 

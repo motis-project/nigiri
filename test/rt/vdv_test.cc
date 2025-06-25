@@ -83,7 +83,7 @@ constexpr auto const vdv_update_msg0 = R"(
           <Betriebstag>2024-07-10</Betriebstag>
         </FahrtID>
       </FahrtRef>
-      <Komplettfahrt>false</Komplettfahrt>
+      <Komplettfahrt>true</Komplettfahrt>
       <BetreiberID>MTA</BetreiberID>
       <IstHalt>
         <HaltID>A</HaltID>
@@ -99,6 +99,17 @@ constexpr auto const vdv_update_msg0 = R"(
         <Abfahrtszeit>2024-07-09T23:00:00</Abfahrtszeit>
         <IstAnkunftPrognose>2024-07-09T23:30:00</IstAnkunftPrognose>
         <IstAbfahrtPrognose>2024-07-09T23:30:00</IstAbfahrtPrognose>
+        <Einsteigeverbot>false</Einsteigeverbot>
+        <Aussteigeverbot>false</Aussteigeverbot>
+        <Durchfahrt>false</Durchfahrt>
+        <Zusatzhalt>false</Zusatzhalt>
+      </IstHalt>
+      <IstHalt>
+        <HaltID>C</HaltID>
+        <Ankunftszeit>2024-07-10T00:00:00</Ankunftszeit>
+        <Abfahrtszeit>2024-07-10T00:00:00</Abfahrtszeit>
+        <IstAnkunftPrognose>2024-07-10T00:00:00</IstAnkunftPrognose>
+        <IstAbfahrtPrognose>2024-07-10T00:00:00</IstAbfahrtPrognose>
         <Einsteigeverbot>false</Einsteigeverbot>
         <Aussteigeverbot>false</Aussteigeverbot>
         <Durchfahrt>false</Durchfahrt>
@@ -335,12 +346,10 @@ TEST(vdv_update, delay_propagation) {
 
   EXPECT_EQ(fr[2].scheduled_time(event_type::kArr),
             date::sys_days{2024_y / July / 10});
-  EXPECT_EQ(fr[2].time(event_type::kArr),
-            date::sys_days{2024_y / July / 10} + 30_minutes);
+  EXPECT_EQ(fr[2].time(event_type::kArr), date::sys_days{2024_y / July / 10});
   EXPECT_EQ(fr[2].scheduled_time(event_type::kDep),
             date::sys_days{2024_y / July / 10});
-  EXPECT_EQ(fr[2].time(event_type::kDep),
-            date::sys_days{2024_y / July / 10} + 30_minutes);
+  EXPECT_EQ(fr[2].time(event_type::kDep), date::sys_days{2024_y / July / 10});
 
   EXPECT_EQ(fr[3].scheduled_time(event_type::kArr),
             date::sys_days{2024_y / July / 10} + 1_hours);
@@ -434,8 +443,9 @@ TEST(vdv_update, delay_propagation) {
   EXPECT_EQ(fr[4].time(event_type::kArr),
             date::sys_days{2024_y / July / 10} + 2_hours + 7_minutes);
 
-  EXPECT_EQ(u.get_stats().found_runs_, 1);
-  EXPECT_EQ(u.get_stats().matched_runs_, 3);
+  EXPECT_EQ(u.get_stats().matched_runs_, 1);
+  EXPECT_EQ(u.get_stats().updated_events_, 14);
+  EXPECT_EQ(u.get_stats().propagated_delays_, 9);
 }
 
 TEST(vdv_update, all_stops_canceled) {
@@ -508,7 +518,7 @@ constexpr auto const after_midnight_update = R"(
           <Betriebstag>2024-07-10</Betriebstag>
         </FahrtID>
       </FahrtRef>
-      <Komplettfahrt>false</Komplettfahrt>
+      <Komplettfahrt>true</Komplettfahrt>
       <BetreiberID>MTA</BetreiberID>
       <IstHalt>
         <HaltID>A</HaltID>
@@ -547,8 +557,6 @@ TEST(vdv_update, tt_before_midnight_update_after_midnight) {
   auto const src_idx = source_idx_t{0};
   load_timetable({}, src_idx, before_midnight_files(), tt);
   finalize(tt);
-
-  std::cout << tt << "\n";
 
   auto rtt = rt::create_rt_timetable(tt, date::sys_days{2024_y / July / 9});
 
@@ -611,7 +619,7 @@ constexpr auto const before_midnight_update = R"(
           <Betriebstag>2024-07-10</Betriebstag>
         </FahrtID>
       </FahrtRef>
-      <Komplettfahrt>false</Komplettfahrt>
+      <Komplettfahrt>true</Komplettfahrt>
       <BetreiberID>MTA</BetreiberID>
       <IstHalt>
         <HaltID>A</HaltID>
