@@ -208,7 +208,8 @@ hash_map<std::string, leg_group_idx_t> parse_leg_rules(
                        return find(timeframes, x.view());
                      })
                      .value_or(timeframe_group_idx_t::invalid()),
-             .fare_product_ = *fare_product,
+             .fare_product_ =
+                 fare_product.value_or(fare_product_idx_t::invalid()),
              .leg_group_idx_ = leg_group_idx,
              .contains_exactly_area_set_id_ =
                  r.contains_exactly_area_set_id_

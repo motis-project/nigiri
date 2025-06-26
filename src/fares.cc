@@ -505,6 +505,10 @@ std::pair<source_idx_t, std::vector<fares::fare_leg_rule> > match_leg_rule(
   });
   utl::sort(matching_rules, [&](fares::fare_leg_rule const& a,
                                 fares::fare_leg_rule const& b) {
+    if (a.fare_product_ == fare_product_idx_t::invalid() ||
+        b.fare_product_ == fare_product_idx_t::invalid()) {
+      return a.rule_priority_ > b.rule_priority_;
+    }
     auto const ap = f.fare_products_[a.fare_product_].front();
     auto const bp = f.fare_products_[b.fare_product_].front();
     auto const a_rider_not_default =
