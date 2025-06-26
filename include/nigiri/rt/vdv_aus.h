@@ -32,7 +32,6 @@ struct statistics {
 
   std::uint32_t total_stops_{0U};
   std::uint32_t resolved_stops_{0U};
-  std::uint32_t unknown_stops_{0U};
 
   std::uint32_t runs_without_stops_{0U};
 

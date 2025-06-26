@@ -54,7 +54,6 @@ std::ostream& operator<<(std::ostream& out, statistics const& s) {
       << "\nno transport found at stop: " << s.no_transport_found_at_stop_
       << "\ntotal stops: " << s.total_stops_
       << "\nresolved stops: " << s.resolved_stops_
-      << "\nunknown stops: " << s.unknown_stops_
       << "\nruns without stops: " << s.runs_without_stops_
       << "\ncancelled runs: " << s.cancelled_runs_
       << "\nskipped vdv stops: " << s.skipped_vdv_stops_
@@ -76,7 +75,6 @@ statistics& operator+=(statistics& lhs, statistics const& rhs) {
   lhs.no_transport_found_at_stop_ += rhs.no_transport_found_at_stop_;
   lhs.total_stops_ += rhs.total_stops_;
   lhs.resolved_stops_ += rhs.resolved_stops_;
-  lhs.unknown_stops_ += rhs.unknown_stops_;
   lhs.runs_without_stops_ += rhs.runs_without_stops_;
   lhs.cancelled_runs_ += rhs.cancelled_runs_;
   lhs.skipped_vdv_stops_ += rhs.skipped_vdv_stops_;
@@ -170,7 +168,6 @@ vector<updater::vdv_stop> updater::resolve_stops(pugi::xml_node const vdv_run) {
       ++stats_.resolved_stops_;
       vdv_stops.emplace_back(l->l_, vdv_stop_id, stop.node());
     } else {
-      ++stats_.unknown_stops_;
       vdv_stops.emplace_back(location_idx_t::invalid(), vdv_stop_id,
                              stop.node());
       vdv_trace("unresolvable stop: {}\n", vdv_stop_id);
