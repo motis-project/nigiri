@@ -79,9 +79,10 @@ struct area_set {
     out << "[";
     auto first = true;
     for (auto const& area : x.f_.area_sets_[x.area_set_]) {
-      if (!first) {
-        out << ", ";
+      if (first) {
         first = false;
+      } else {
+        out << ", ";
       }
       out << x.tt_.strings_.get(x.tt_.areas_[area].id_);
     }
@@ -414,10 +415,10 @@ std::pair<source_idx_t, std::vector<fares::fare_leg_rule> > match_leg_rule(
 
   auto const has_area = [&](area_idx_t const x) {
     for (auto const& l : joined_legs) {
-      auto const r = std::get<journey::run_enter_exit>(l->uses_).r_;
-      auto const fr = rt::frun{tt, rtt, r};
-      auto const a = static_cast<stop_idx_t>(r.stop_range_.from_);
-      auto const b = static_cast<stop_idx_t>(r.stop_range_.to_);
+      auto const ree = std::get<journey::run_enter_exit>(l->uses_);
+      auto const fr = rt::frun{tt, rtt, ree.r_};
+      auto const a = static_cast<stop_idx_t>(ree.stop_range_.from_);
+      auto const b = static_cast<stop_idx_t>(ree.stop_range_.to_);
       for (auto i = a; i < b; ++i) {
         auto const stop_areas = get_areas(tt, fr[i].get_location_idx());
         if (utl::find(stop_areas, x) != end(stop_areas)) {
