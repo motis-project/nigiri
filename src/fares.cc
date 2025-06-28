@@ -71,6 +71,29 @@ struct transfer_rule {
   fares::fare_transfer_rule const& r_;
 };
 
+struct area_set {
+  friend std::ostream& operator<<(std::ostream& out, area_set const& x) {
+    if (x.area_set_ == area_set_idx_t::invalid()) {
+      return out << "-";
+    }
+    out << "[";
+    auto first = true;
+    for (auto const& area : x.f_.area_sets_[x.area_set_]) {
+      if (first) {
+        first = false;
+      } else {
+        out << ", ";
+      }
+      out << x.tt_.strings_.get(x.tt_.areas_[area].id_);
+    }
+    return out << "]";
+  }
+
+  timetable const& tt_;
+  fares const& f_;
+  area_set_idx_t const& area_set_;
+};
+
 struct leg_rule {
   friend std::ostream& operator<<(std::ostream& out, leg_rule const& x) {
     auto const [tt, f, r] = x;
@@ -95,6 +118,9 @@ struct leg_rule {
            << (r.to_timeframe_group_ == timeframe_group_idx_t::invalid()
                    ? "ANY"
                    : tt.strings_.get(f.timeframe_id_[r.to_timeframe_group_]))
+           << ", contains_exactly_area_set="
+           << area_set{tt, f, r.contains_exactly_area_set_id_}
+           << ", contains_area_set=" << area_set{tt, f, r.contains_area_set_id_}
            << ", product="
            << (r.fare_product_ == fare_product_idx_t::invalid()
                    ? "-"
@@ -389,10 +415,10 @@ std::pair<source_idx_t, std::vector<fares::fare_leg_rule> > match_leg_rule(
 
   auto const has_area = [&](area_idx_t const x) {
     for (auto const& l : joined_legs) {
-      auto const r = std::get<journey::run_enter_exit>(l->uses_).r_;
-      auto const fr = rt::frun{tt, rtt, r};
-      auto const a = static_cast<stop_idx_t>(r.stop_range_.from_);
-      auto const b = static_cast<stop_idx_t>(r.stop_range_.to_);
+      auto const ree = std::get<journey::run_enter_exit>(l->uses_);
+      auto const fr = rt::frun{tt, rtt, ree.r_};
+      auto const a = static_cast<stop_idx_t>(ree.stop_range_.from_);
+      auto const b = static_cast<stop_idx_t>(ree.stop_range_.to_);
       for (auto i = a; i < b; ++i) {
         auto const stop_areas = get_areas(tt, fr[i].get_location_idx());
         if (utl::find(stop_areas, x) != end(stop_areas)) {
@@ -406,12 +432,16 @@ std::pair<source_idx_t, std::vector<fares::fare_leg_rule> > match_leg_rule(
   auto const has_other_area =
       [&](vecvec<area_set_idx_t, area_idx_t>::const_bucket const& exact_areas) {
         for (auto const& l : joined_legs) {
-          auto const r = std::get<journey::run_enter_exit>(l->uses_).r_;
-          auto const fr = rt::frun{tt, rtt, r};
-          auto const a = static_cast<stop_idx_t>(r.stop_range_.from_);
-          auto const b = static_cast<stop_idx_t>(r.stop_range_.to_);
+          auto const ree = std::get<journey::run_enter_exit>(l->uses_);
+          auto const fr = rt::frun{tt, rtt, ree.r_};
+          auto const a = static_cast<stop_idx_t>(ree.stop_range_.from_);
+          auto const b = static_cast<stop_idx_t>(ree.stop_range_.to_);
           for (auto i = a; i < b; ++i) {
             auto const stop_areas = get_areas(tt, fr[i].get_location_idx());
+            trace("areas of {}: {}", fr[i].get_location().name_,
+                  stop_areas | std::views::transform([&](area_idx_t const a) {
+                    return tt.strings_.get(tt.areas_[a].name_);
+                  }));
             auto const contains_other_area =
                 utl::any_of(stop_areas, [&](area_idx_t const x) {
                   return std::ranges::find(exact_areas, x) == end(exact_areas);
