@@ -264,11 +264,12 @@ void reconstruct_journey_with_vias(timetable const& tt,
           auto const tr = transport{
               target_transport,
               day_idx_t{to_idx(fr.t_.day_) - dir(transfer.day_offset())}};
-          auto const next =
-              rt::run{.t_ = tr,
-                      .stop_range_ = interval<stop_idx_t>{
-                          0, static_cast<stop_idx_t>(
-                                 tt.route_location_seq_[route_idx].size())}};
+          auto const next_route_idx = tt.transport_route_[target_transport];
+          auto const next = rt::run{
+              .t_ = tr,
+              .stop_range_ = interval<stop_idx_t>{
+                  0, static_cast<stop_idx_t>(
+                         tt.route_location_seq_[next_route_idx].size())}};
           auto legs =
               recurse(k, next, next.stop_range_.to_ - 1U, time, new_v, recurse);
           if (legs.has_value()) {
@@ -683,8 +684,11 @@ void reconstruct_journey_with_vias(timetable const& tt,
         fp_leg.dep_time_ != fp_leg.arr_time_) {
       j.add(std::move(fp_leg));
     }
-    for (auto& x : transport_leg) {
-      j.add(std::move(x));
+    for (auto const [i, leg] : utl::enumerate(transport_leg)) {
+      auto& l = j.add(std::move(leg));
+      if ((kFwd && i != transport_leg.size() - 1U) || (!kFwd && i != 0U)) {
+        l.interline_with_prev_ = true;
+      }
     }
   }
 

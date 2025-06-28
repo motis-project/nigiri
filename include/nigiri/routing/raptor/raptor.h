@@ -935,7 +935,8 @@ private:
 
         auto target_v = v + v_offset[v];
 
-        if (et[v].is_valid() && stp.can_finish<SearchDir>(is_wheelchair_)) {
+        if (!is_first && et[v].is_valid() &&
+            stp.can_finish<SearchDir>(is_wheelchair_)) {
           auto const by_transport = time_at_stop(
               r, et[v], stop_idx, kFwd ? event_type::kArr : event_type::kDep);
 
