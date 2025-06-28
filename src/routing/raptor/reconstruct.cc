@@ -684,10 +684,11 @@ void reconstruct_journey_with_vias(timetable const& tt,
         fp_leg.dep_time_ != fp_leg.arr_time_) {
       j.add(std::move(fp_leg));
     }
-    for (auto const [i, leg] : utl::enumerate(transport_leg)) {
-      auto& l = j.add(std::move(leg));
-      if ((kFwd && i != transport_leg.size() - 1U) || (!kFwd && i != 0U)) {
-        l.interline_with_prev_ = true;
+    for (auto const [leg_i, leg] : utl::enumerate(transport_leg)) {
+      auto& added_leg = j.add(std::move(leg));
+      if ((kFwd && leg_i != transport_leg.size() - 1U) ||
+          (!kFwd && leg_i != 0U)) {
+        added_leg.interline_with_prev_ = true;
       }
     }
   }
