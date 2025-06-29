@@ -34,7 +34,9 @@ struct run_stop {
 
   provider const& get_provider(event_type = event_type::kDep) const noexcept;
   trip_idx_t get_trip_idx(event_type = event_type::kDep) const;
-  std::string_view trip_display_name(
+  std::string_view route_short_name(
+      event_type event_type = event_type::kDep) const noexcept;
+  std::string_view trip_short_name(
       event_type = event_type::kDep) const noexcept;
 
   unixtime_t scheduled_time(event_type) const noexcept;
