@@ -289,6 +289,45 @@ void reconstruct_journey_with_vias(timetable const& tt,
           }
         }
       }
+    } else if (rtt != nullptr && fr.is_rt()) {
+      auto const rt_t = fr.rt_;
+      if ((kFwd ? rtt->rt_transport_has_seated_in_
+                : rtt->rt_transport_has_seated_out_)
+              .test(to_idx(rt_t))) {
+        for (auto const& target_rt_t :
+             (kFwd ? rtt->rt_transport_seated_transfers_in_
+                   : rtt->rt_transport_seated_transfers_out_)[rt_t]) {
+          auto const next = rt::run{
+              .t_ = holds_alternative<transport>(
+                        rtt->rt_transport_static_transport_[target_rt_t])
+                        ? get<transport>(
+                              rtt->rt_transport_static_transport_[target_rt_t])
+                        : transport{},
+              .stop_range_ =
+                  interval<stop_idx_t>{
+                      0,
+                      static_cast<stop_idx_t>(
+                          rtt->rt_transport_location_seq_[target_rt_t].size())},
+              .rt_ = target_rt_t};
+          auto legs =
+              recurse(k, next, next.stop_range_.to_ - 1U, time, new_v, recurse);
+          if (legs.has_value()) {
+            auto const to_stop_idx =
+                static_cast<stop_idx_t>(kFwd ? 0U : fr.size() - 1U);
+            auto const to_stop = fr[to_stop_idx];
+            legs->insert(
+                legs->begin(),
+                journey::leg{
+                    SearchDir, to_stop.get_location_idx(),
+                    fr[from_stop_idx].get_location_idx(),
+                    to_stop.time(kFwd ? event_type::kDep : event_type::kArr),
+                    fr[from_stop_idx].time(kFwd ? event_type::kArr
+                                                : event_type::kDep),
+                    journey::run_enter_exit{r, to_stop_idx, from_stop_idx}});
+            return legs;
+          }
+        }
+      }
     }
 
     return std::nullopt;

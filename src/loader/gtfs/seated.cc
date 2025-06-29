@@ -59,6 +59,10 @@ std::vector<utc_trip> build_seated_trips(
   auto q = hash_map<remaining_idx_t,
                     int /* offset relative to its traffic days */>{};
   while (!utl::all_of(remaining, is_empty)) {
+    // ==============================
+    // PART 1: find maximum component
+    // ------------------------------
+
     // Find first trip with unprocessed/remaining traffic days.
     auto const non_empty_it = utl::find_if(remaining, is_not_empty);
     assert(non_empty_it != end(remaining));
@@ -138,7 +142,9 @@ std::vector<utc_trip> build_seated_trips(
       }
     }  // END while (!q.empty())
 
-    // Handle connected component.
+    // ========================
+    // PART 2: Handle component
+    // ------------------------
     trace("\n=> COMPONENT: {}",
           fmt::streamed(day_list{component_traffic_days, base}));
 
@@ -246,7 +252,7 @@ std::vector<utc_trip> build_seated_trips(
               seated_transfer{out->route_, static_cast<std::int8_t>(diff)}
                   .value());
           tt.route_seated_transfers_in_[out->route_].push_back(
-              seated_transfer{route_idx, static_cast<std::int8_t>(-diff)}
+              seated_transfer{route_idx, static_cast<std::int8_t>(diff)}
                   .value());
         }
       }

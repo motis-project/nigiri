@@ -543,12 +543,6 @@ struct timetable {
   // Location -> list of routes
   vecvec<location_idx_t, route_idx_t> location_routes_;
 
-  // Outgoing stay seated transfers at the last stop.
-  vecvec<transport_idx_t, transport_idx_t> stay_seated_out_;
-
-  // Incoming stay seated transfers at the first stop.
-  vecvec<transport_idx_t, transport_idx_t> stay_seated_in_;
-
   // Route 1:
   //   stop-1-dep: [trip1, trip2, ..., tripN]
   //   stop-2-arr: [trip1, trip2, ..., tripN]

@@ -2,8 +2,13 @@
 
 #include "nigiri/loader/gtfs/load_timetable.h"
 #include "nigiri/loader/init_finish.h"
+#include "nigiri/rt/create_rt_timetable.h"
+#include "nigiri/rt/gtfsrt_resolve_run.h"
+#include "nigiri/rt/gtfsrt_update.h"
+#include "nigiri/rt/rt_timetable.h"
 
 #include "../raptor_search.h"
+#include "../rt/util.h"
 #include "results_to_string.h"
 
 using namespace date;
@@ -11,6 +16,7 @@ using namespace nigiri;
 using namespace nigiri::loader;
 using namespace nigiri::loader::gtfs;
 using namespace std::chrono_literals;
+using namespace nigiri::test;
 using nigiri::test::raptor_search;
 
 namespace {
@@ -159,10 +165,37 @@ TEST(routing, join_split) {
   load_timetable({}, src, test_files(), tt);
   finalize(tt);
 
-  for (auto const [from, to, date, expected] : kTests) {
-    auto const results = raptor_search(tt, nullptr, from, to, date);
-    EXPECT_EQ(expected, !results.empty())
-        << "from=" << from << ", to=" << to << ", on " << date << ", expected "
-        << expected;
-  }
+  auto rtt = rt::create_rt_timetable(tt, 2025_y / June / 12);
+
+  auto const run_test = [&]() {
+    for (auto const [from, to, date, expected] : kTests) {
+      auto const results = raptor_search(tt, &rtt, from, to, date);
+      EXPECT_EQ(expected, !results.empty())
+          << "from=" << from << ", to=" << to << ", on " << date
+          << ", expected " << expected;
+      EXPECT_TRUE(utl::all_of(results, [](routing::journey const& j) {
+        return j.transfers_ == 0U;
+      }));
+    }
+  };
+  run_test();
+
+  auto const msg1 =
+      test::to_feed_msg({trip{.trip_id_ = "i",
+                              .delays_ = {{.seq_ = 1,
+                                           .ev_type_ = nigiri::event_type::kArr,
+                                           .delay_minutes_ = 0U}}},
+                         trip{.trip_id_ = "k",
+                              .delays_ = {{.seq_ = 1,
+                                           .ev_type_ = event_type::kDep,
+                                           .delay_minutes_ = 0U}}},
+                         trip{.trip_id_ = "x",
+                              .delays_ = {{.seq_ = 1,
+                                           .ev_type_ = event_type::kDep,
+                                           .delay_minutes_ = 0U}}}},
+                        date::sys_days{2025_y / June / 12});
+
+  rt::gtfsrt_update_msg(tt, rtt, source_idx_t{0}, "tag", msg1);
+
+  run_test();
 }
