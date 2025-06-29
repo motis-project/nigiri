@@ -20,6 +20,7 @@
 #include "utl/verify.h"
 
 #include "nigiri/loader/gtfs/parse_time.h"
+#include "nigiri/common/day_list.h"
 #include "nigiri/logging.h"
 #include "nigiri/timetable.h"
 #include "nigiri/types.h"
@@ -213,7 +214,11 @@ std::string trip::display_name() const {
   return {};
 }
 
-clasz trip::get_clasz(timetable const& tt) const {
+bool trip::has_seated_transfers() const {
+  return !seated_in_.empty() || !seated_out_.empty();
+}
+
+clasz const& trip::get_clasz(timetable const& tt) const {
   if (route_->clasz_ != clasz::kBus) {
     return route_->clasz_;
   } else {
@@ -221,8 +226,9 @@ clasz trip::get_clasz(timetable const& tt) const {
     for (auto const& stp : stop_seq_) {
       box.extend(tt.locations_.coordinates_[stop{stp}.location_idx()]);
     }
-    return (geo::distance(box.min_, box.max_) / 1000) > 100 ? clasz::kCoach
-                                                            : clasz::kBus;
+    static auto const s_coach = clasz::kCoach;
+    static auto const s_bus = clasz::kBus;
+    return (geo::distance(box.min_, box.max_) / 1000) > 100 ? s_coach : s_bus;
   }
 }
 

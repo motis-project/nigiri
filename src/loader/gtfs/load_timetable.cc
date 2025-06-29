@@ -24,6 +24,7 @@
 #include "nigiri/loader/gtfs/noon_offsets.h"
 #include "nigiri/loader/gtfs/route.h"
 #include "nigiri/loader/gtfs/route_key.h"
+#include "nigiri/loader/gtfs/seated.h"
 #include "nigiri/loader/gtfs/services.h"
 #include "nigiri/loader/gtfs/shape.h"
 #include "nigiri/loader/gtfs/shape_prepare.h"
@@ -109,7 +110,7 @@ void load_timetable(loader_config const& config,
   auto const progress_tracker = utl::get_active_progress_tracker();
   auto timezones = tz_map{};
   auto agencies = read_agencies(tt, timezones, load(kAgencyFile).data());
-  auto const stops =
+  auto const [stops, seated_transfers] =
       read_stops(src, tt, timezones, load(kStopFile).data(),
                  load(kTransfersFile).data(), config.link_stop_distance_);
   auto const routes = read_routes(src, tt, timezones, agencies,
@@ -161,6 +162,36 @@ void load_timetable(loader_config const& config,
     auto const timer = scoped_timer{"loader.gtfs.trips.interpolate"};
     for (auto& t : trip_data.data_) {
       t.interpolate();
+    }
+  }
+
+  {  // Resolve stay-seated transfers (transfer_type=4).
+    auto const timer =
+        scoped_timer{"loader.gtfs.trips.resolve_seated_transfers"};
+
+    for (auto const& [from_trip_id, to_trip_ids] : seated_transfers) {
+      auto const from_it = trip_data.trips_.find(from_trip_id);
+      if (from_it == end(trip_data.trips_)) {
+        log(log_lvl::error, "nigiri.loader.gtfs.seated", "trip {} not found",
+            from_trip_id);
+        continue;
+      }
+
+      auto& from_trip = trip_data.get(from_trip_id);
+      for (auto const& to_trip_id : to_trip_ids) {
+        auto const to_it = trip_data.trips_.find(to_trip_id);
+        if (to_it == end(trip_data.trips_)) {
+          log(log_lvl::error, "nigiri.loader.gtfs.seated", "trip {} not found",
+              to_trip_id);
+          continue;
+        }
+
+        auto& to_trip = trip_data.data_[to_it->second];
+        to_trip.seated_in_.push_back(
+            gtfs_trip_idx_t{&from_trip - trip_data.data_.data()});
+        from_trip.seated_out_.push_back(
+            gtfs_trip_idx_t{&to_trip - trip_data.data_.data()});
+      }
     }
   }
 
@@ -253,7 +284,8 @@ void load_timetable(loader_config const& config,
     auto const timer = scoped_timer{"loader.gtfs.trips.expand"};
 
     for (auto const [i, t] : utl::enumerate(trip_data.data_)) {
-      if (t.block_ != nullptr || !t.flex_time_windows_.empty()) {
+      if (t.block_ != nullptr || t.has_seated_transfers() ||
+          !t.flex_time_windows_.empty()) {
         continue;
       }
       add_trip({gtfs_trip_idx_t{i}}, t.service_);
@@ -262,12 +294,28 @@ void load_timetable(loader_config const& config,
   }
 
   {
-    progress_tracker->status("Stay Seated")
+    progress_tracker->status("block_id Services")
         .out_bounds(83.F, 85.F)
         .in_high(route_services.size());
     auto const timer = scoped_timer{"loader.gtfs.trips.block_id"};
 
     for (auto const& [_, blk] : trip_data.blocks_) {
+      // If a trip has both block_id and transfer_type=4
+      // -> prefer transfer_type=4, ignore block_id
+      if (utl::any_of(blk->trips_, [&](gtfs_trip_idx_t const idx) {
+            return trip_data.data_[idx].has_seated_transfers();
+          })) {
+        for (auto const& trip : blk->trips_) {
+          auto const& trp = trip_data.get(trip);
+          if (!trp.has_seated_transfers()) {
+            // One of the block_id trips has no stay-seated transfer.
+            // -> build it separately
+            add_trip({trip}, trp.service_);
+          }
+        }
+        continue;
+      }
+
       for (auto const& [trips, traffic_days] : blk->rule_services(trip_data)) {
         add_trip(trips, &traffic_days);
       }
@@ -275,11 +323,7 @@ void load_timetable(loader_config const& config,
   }
 
   {
-    auto const timer = scoped_timer{"loader.gtfs.write_trips"};
-
-    progress_tracker->status("Write Trips")
-        .out_bounds(85.F, 97.F)
-        .in_high(route_services.size());
+    auto const timer = scoped_timer{"loader.gtfs.register_trip_ids"};
 
     auto const is_train_number = [](auto const& s) {
       return !s.empty() && std::all_of(begin(s), end(s), [](auto&& c) -> bool {
@@ -306,6 +350,27 @@ void load_timetable(loader_config const& config,
           {source_file_idx, trp.from_line_, trp.to_line_}, train_nr,
           stop_seq_numbers, trp.direction_id_);
     }
+  }
+
+  auto location_routes = mutable_fws_multimap<location_idx_t, route_idx_t>{};
+  {
+    auto const timer = scoped_timer{"loader.gtfs.write_seated"};
+    auto expanded_seated = expand_seated_trips(
+        trip_data, [&](gtfs_trip_idx_t const i, auto&& consume) {
+          expand_trip(trip_data, noon_offsets, tt, {i},
+                      trip_data.get(i).service_, tt.date_range_, assistance,
+                      [&](utc_trip&& s) { consume(std::move(s)); });
+        });
+    build_seated_trips(tt, bitfield_indices, trip_data, expanded_seated,
+                       location_routes);
+  }
+
+  {
+    auto const timer = scoped_timer{"loader.gtfs.write_transports"};
+
+    progress_tracker->status("Write Transports")
+        .out_bounds(85.F, 97.F)
+        .in_high(route_services.size());
 
     auto const attributes = basic_string<attribute_combination_idx_t>{};
     auto lines = hash_map<std::string, trip_line_idx_t>{};
@@ -313,7 +378,6 @@ void load_timetable(loader_config const& config,
     auto section_lines = basic_string<trip_line_idx_t>{};
     auto route_colors = basic_string<route_color>{};
     auto external_trip_ids = basic_string<merged_trips_idx_t>{};
-    auto location_routes = mutable_fws_multimap<location_idx_t, route_idx_t>{};
     for (auto const& [key, sub_routes] : route_services) {
       for (auto const& services : sub_routes) {
         auto const route_idx = tt.register_route(
@@ -381,7 +445,6 @@ void load_timetable(loader_config const& config,
               .section_providers_ = {first.route_->agency_},
               .section_directions_ = section_directions,
               .section_lines_ = section_lines,
-              .stop_seq_numbers_ = stop_seq_numbers,
               .route_colors_ = route_colors});
         }
 

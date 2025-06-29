@@ -136,7 +136,7 @@ TEST(routing, rt_raptor_forward) {
       raptor_search(tt, &rtt, "A", "D", sys_days{May / 2 / 2019} + 23h);
 
   EXPECT_EQ(std::string_view{kFwdJourneys}, to_string(tt, &rtt, results));
-
+  ASSERT_FALSE(results.empty());
   auto const& l = results.begin()->legs_.back();
   auto done = hash_set<std::pair<location_idx_t, location_idx_t>>{};
   auto direct = std::vector<routing::journey>{};
@@ -221,7 +221,7 @@ TEST(routing, rt_raptor_backward) {
                     nigiri::direction::kBackward);
 
   EXPECT_EQ(std::string_view{kBwdJourneys}, to_string(tt, &rtt, results));
-
+  ASSERT_FALSE(results.empty());
   auto const& l = results.begin()->legs_.back();
   auto done = hash_set<std::pair<location_idx_t, location_idx_t>>{};
   auto direct = std::vector<routing::journey>{};

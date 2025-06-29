@@ -1278,7 +1278,8 @@ TEST(vdv_update, exact_match_1) {
                            {{transport_idx_t{0U}, day_idx_t{27U}},
                             {stop_idx_t{0U}, stop_idx_t{24U}}}};
 
-  EXPECT_TRUE(fr.is_rt());
+  ASSERT_TRUE(fr.valid());
+  ASSERT_TRUE(fr.is_rt());
   EXPECT_FALSE(fr.is_cancelled());
 }
 
@@ -1298,6 +1299,8 @@ TEST(vdv_update, cancel_run) {
   auto doc = pugi::xml_document{};
   doc.load_string(cancel_rbo707);
   u.update(rtt, doc);
+
+  ASSERT_TRUE(tt.next_transport_idx() != 0U);
 
   EXPECT_TRUE((rt::frun{tt,
                         &rtt,
@@ -1325,6 +1328,8 @@ TEST(vdv_update, in_out_allowed) {
   finalize(tt);
   auto rtt = rt::create_rt_timetable(tt, date::sys_days{2024_y / August / 23});
   auto u = rt::vdv::updater{tt, src_idx};
+
+  ASSERT_TRUE(tt.next_transport_idx() != 0U);
 
   auto doc = pugi::xml_document{};
   doc.load_string(update_rbo707);
@@ -5240,6 +5245,8 @@ TEST(vdv_update, monotonize) {
   auto const src_idx = source_idx_t{0};
   load_timetable({}, src_idx, vgm418_files(), tt);
   finalize(tt);
+
+  ASSERT_TRUE(tt.next_transport_idx() != 0U);
 
   auto rtt = rt::create_rt_timetable(tt, date::sys_days{2024_y / August / 26});
 

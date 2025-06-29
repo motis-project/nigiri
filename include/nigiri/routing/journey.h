@@ -72,6 +72,7 @@ struct journey {
     location_idx_t from_, to_;
     unixtime_t dep_time_, arr_time_;
     std::variant<run_enter_exit, footpath, offset> uses_;
+    bool interline_with_prev_{false};
   };
 
   bool dominates(journey const& o) const {
@@ -84,7 +85,7 @@ struct journey {
     }
   }
 
-  void add(leg&& l) { legs_.emplace_back(l); }
+  leg& add(leg&& l) { return legs_.emplace_back(l); }
 
   duration_t travel_time() const {
     return duration_t{std::abs((dest_time_ - start_time_).count())};

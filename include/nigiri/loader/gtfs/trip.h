@@ -6,6 +6,8 @@
 #include <tuple>
 #include <vector>
 
+#include "utl/enumerate.h"
+
 #include "cista/reflection/comparable.h"
 
 #include "nigiri/loader/gtfs/flat_map.h"
@@ -93,7 +95,29 @@ struct trip {
 
   std::string display_name() const;
 
-  clasz get_clasz(timetable const&) const;
+  clasz const& get_clasz(timetable const&) const;
+
+  bool has_seated_transfers() const;
+
+  auto route_key(timetable const& tt) const {
+    return std::tie(get_clasz(tt), stop_seq_, bikes_allowed_, cars_allowed_);
+  }
+
+  minutes_after_midnight_t first_dep() const {
+    utl::verify(!event_times_.empty(), "no event times for trip {}", id_);
+    return event_times_.front().dep_;
+  }
+  minutes_after_midnight_t last_arr() const {
+    utl::verify(!event_times_.empty(), "no event times for trip {}", id_);
+    return event_times_.back().arr_;
+  }
+  int offset() const { return first_dep() / date::days{1U}; }
+  int day_change_offset(trip const* o) const {
+    auto const day_span =
+        last_arr() / date::days{1U} - first_dep() / date::days{1U};
+    auto const day_change = last_arr() % 1440 > o->first_dep() % 1440 ? 1 : 0;
+    return day_span + day_change;
+  }
 
   route const* route_{nullptr};
   bitfield const* service_{nullptr};
@@ -112,6 +136,8 @@ struct trip {
 
   std::vector<flex_stop_t> flex_stops_;
   std::vector<stop_time_window> flex_time_windows_;
+
+  std::vector<gtfs_trip_idx_t> seated_out_, seated_in_;
 
   std::optional<std::vector<frequency>> frequency_;
   bool requires_interpolation_{false};

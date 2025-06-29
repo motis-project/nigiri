@@ -183,8 +183,10 @@ struct rt_timetable {
   vector_map<rt_transport_idx_t, variant<transport, rt_add_trip_id_idx_t>>
       rt_transport_static_transport_;
 
+  // Additional trip ID lookup
   string_store<rt_add_trip_id_idx_t> additional_trip_ids_;
 
+  // RT transport -> source index
   vector_map<rt_transport_idx_t, source_idx_t> rt_transport_src_;
 
   // RT trip ID index -> train number, if available (otherwise 0)
@@ -198,6 +200,18 @@ struct rt_timetable {
   // RT transport -> event times (dep, arr, dep, arr, ...)
   vecvec<rt_transport_idx_t, delta_t> rt_transport_stop_times_;
   vecvec<rt_transport_idx_t, stop::value_type> rt_transport_location_seq_;
+
+  // RT transport -> has outgoing stay-seated transfers
+  bitvec rt_transport_has_seated_out_;
+
+  // RT transport -> has incoming stay-seated transfers
+  bitvec rt_transport_has_seated_in_;
+
+  // RT transport -> seated transfers
+  vecvec<rt_transport_idx_t, rt_transport_idx_t>
+      rt_transport_seated_transfers_out_;
+  vecvec<rt_transport_idx_t, rt_transport_idx_t>
+      rt_transport_seated_transfers_in_;
 
   // RT trip index -> display name (empty if not changed)
   vecvec<rt_transport_idx_t, char> rt_transport_display_names_;

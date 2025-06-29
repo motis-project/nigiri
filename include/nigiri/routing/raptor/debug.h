@@ -187,7 +187,9 @@
 
 #define trace_rc_legs_found                                             \
   trace_reconstruct("found:\n");                                        \
-  transport_leg->print(std::cout, tt, rtt, 1, true);                    \
+  for (auto const tr_leg : *transport_leg) {                            \
+    tr_leg.print(std::cout, tt, rtt, 1, true);                          \
+  }                                                                     \
   trace_reconstruct(                                                    \
       " fp leg: {} {} --{}--> {} {}\n", location{tt, l},                \
       delta_to_unix(base, fp_start),                                    \
