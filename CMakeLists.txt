@@ -134,3 +134,10 @@ add_executable(nigiri-test ${nigiri-test-files})
 target_include_directories(nigiri-test PRIVATE include)
 target_link_libraries(nigiri-test nigiri gtest ianatzdb-res nigiri-generated)
 target_compile_options(nigiri-test PRIVATE ${nigiri-compile-options})
+
+# --- GOOGLE BENCHMARK ---
+find_package(benchmark REQUIRED)
+file(GLOB_RECURSE nigiri-gbm-files exe/g_bm.cc)
+add_executable(nigiri-gbm ${nigiri-gbm-files})
+target_link_libraries(nigiri-gbm PRIVATE nigiri boost-program_options ianatzdb-res benchmark::benchmark pthread) 
+target_compile_features(nigiri-gbm PUBLIC cxx_std_23)
