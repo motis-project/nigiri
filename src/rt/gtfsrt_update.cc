@@ -500,9 +500,7 @@ statistics gtfsrt_update_msg(timetable const& tt,
       log(log_lvl::error, "rt.gtfs.unsupported",
           "unsupported schedule relationship {} (tag={}, id={}), skipping "
           "message",
-          TripDescriptor_ScheduleRelationship_Name(
-              entity.trip_update().trip().schedule_relationship()),
-          tag, entity.id());
+          TripDescriptor_ScheduleRelationship_Name(sr), tag, entity.id());
       ++stats.unsupported_schedule_relationship_;
       continue;
     }
@@ -517,9 +515,37 @@ statistics gtfsrt_update_msg(timetable const& tt,
                                      .trip_id()}
               : std::string_view{};
 
-      auto [r, trip] = gtfsrt_resolve_run(today, tt, &rtt, src, td, trip_id);
+      auto is_resolved_static = false;
+      resolve_static(today, tt, src, td, [&](run r, trip_idx_t const trip) {
+        is_resolved_static = true;
 
-      if (!r.valid() && !added) {
+        resolve_rt(rtt, r, trip_id);
+
+        if (sr == gtfsrt::TripDescriptor_ScheduleRelationship_CANCELED) {
+          rtt.cancel_run(r);
+          ++stats.total_entities_success_;
+        } else {
+          if (update_run(src, tt, rtt, trip, r, entity.trip_update())) {
+            ++stats.total_entities_success_;
+          }
+        }
+
+        return utl::continue_t::kContinue;
+      });
+
+      if (added) {
+        utl::verify(!is_resolved_static,
+                    "NEW/ADDED trip is required to have a new trip_id");
+        auto r = rt::run{};
+        resolve_rt(rtt, r, trip_id);
+        if (update_run(src, tt, rtt, trip_idx_t::invalid(), r,
+                       entity.trip_update())) {
+          ++stats.total_entities_success_;
+        }
+        continue;
+      }
+
+      if (!is_resolved_static) {
         log(log_lvl::error, "rt.gtfs.resolve", "could not resolve (tag={}) {}",
             tag, remove_nl(td.DebugString()));
         span->AddEvent(
@@ -539,23 +565,8 @@ statistics gtfsrt_update_msg(timetable const& tt,
                 {"trip.str", remove_nl(td.DebugString())},
             });
         ++stats.trip_resolve_error_;
-        continue;
       }
-      if (added) {
-        utl::verify(!r.is_scheduled(),
-                    "NEW/ADDED trip is required to have a new trip_id");
-      }
-
-      if (entity.trip_update().trip().schedule_relationship() ==
-          gtfsrt::TripDescriptor_ScheduleRelationship_CANCELED) {
-        rtt.cancel_run(r);
-        ++stats.total_entities_success_;
-      } else {
-        if (update_run(src, tt, rtt, trip, r, entity.trip_update())) {
-          ++stats.total_entities_success_;
-        }
-      }
-    } catch (const std::exception& e) {
+    } catch (std::exception const& e) {
       ++stats.total_entities_fail_;
       log(log_lvl::error, "rt.gtfs",
           "GTFS-RT error (tag={}): time={}, entity={}, message={}, error={}",
