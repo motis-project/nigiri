@@ -63,27 +63,6 @@ std::ostream& operator<<(std::ostream& out, statistics const& s) {
   return out;
 }
 
-statistics& operator+=(statistics& lhs, statistics const& rhs) {
-  lhs.unsupported_additional_runs_ += rhs.unsupported_additional_runs_;
-  lhs.unsupported_additional_stops_ += rhs.unsupported_additional_stops_;
-  lhs.total_runs_ += rhs.total_runs_;
-  lhs.complete_runs_ += rhs.complete_runs_;
-  lhs.unique_runs_ += rhs.unique_runs_;
-  lhs.matched_runs_ += rhs.matched_runs_;
-  lhs.multiple_matches_ += rhs.multiple_matches_;
-  lhs.incomplete_not_seen_before_ += rhs.incomplete_not_seen_before_;
-  lhs.no_transport_found_at_stop_ += rhs.no_transport_found_at_stop_;
-  lhs.total_stops_ += rhs.total_stops_;
-  lhs.resolved_stops_ += rhs.resolved_stops_;
-  lhs.runs_without_stops_ += rhs.runs_without_stops_;
-  lhs.cancelled_runs_ += rhs.cancelled_runs_;
-  lhs.skipped_vdv_stops_ += rhs.skipped_vdv_stops_;
-  lhs.excess_vdv_stops_ += rhs.excess_vdv_stops_;
-  lhs.updated_events_ += rhs.updated_events_;
-  lhs.propagated_delays_ += rhs.propagated_delays_;
-  return lhs;
-}
-
 updater::updater(nigiri::timetable const& tt, source_idx_t const src_idx)
     : tt_{tt}, src_idx_{src_idx} {}
 

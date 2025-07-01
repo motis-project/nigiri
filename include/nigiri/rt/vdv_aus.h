@@ -17,7 +17,6 @@ namespace nigiri::rt::vdv_aus {
 
 struct statistics {
   friend std::ostream& operator<<(std::ostream&, statistics const&);
-  friend statistics& operator+=(statistics&, statistics const&);
 
   std::uint32_t unsupported_additional_runs_{0U};
   std::uint32_t unsupported_additional_stops_{0U};
