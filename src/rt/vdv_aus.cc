@@ -523,18 +523,19 @@ void updater::process_vdv_run(rt_timetable& rtt, pugi::xml_node const vdv_run) {
   auto const seen_before = matches_.contains(vdv_run_id);
   if (!seen_before) {
     ++stats_.unique_runs_;
-    match_run(vdv_run_id, vdv_stops);
-    if (!is_complete_run) {
+    if (is_complete_run) {
+      match_run(vdv_run_id, vdv_stops);
+    } else {
       ++stats_.incomplete_not_seen_before_;
-      matches_[vdv_run_id].matched_on_incomplete_ = true;
+      matches_[vdv_run_id].only_saw_incomplete_ = true;
     }
   }
 
   if (seen_before && is_complete_run &&
-      matches_[vdv_run_id].matched_on_incomplete_) {
+      matches_[vdv_run_id].only_saw_incomplete_) {
     ++stats_.complete_after_incomplete_;
     match_run(vdv_run_id, vdv_stops);
-    matches_[vdv_run_id].matched_on_incomplete_ = false;
+    matches_[vdv_run_id].only_saw_incomplete_ = false;
   }
 
   for (auto& r : matches_[vdv_run_id].runs_) {

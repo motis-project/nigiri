@@ -92,7 +92,7 @@ private:
     std::chrono::sys_seconds last_accessed_{
         std::chrono::time_point_cast<std::chrono::seconds>(
             std::chrono::system_clock::now())};
-    bool matched_on_incomplete_{false};
+    bool only_saw_incomplete_{false};
     std::vector<run> runs_{};
   };
 
