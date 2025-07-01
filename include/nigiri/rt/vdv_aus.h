@@ -21,6 +21,9 @@ struct statistics {
   std::uint32_t unsupported_additional_runs_{0U};
   std::uint32_t unsupported_additional_stops_{0U};
 
+  size_t current_matches_total_{0U};
+  std::uint32_t current_matches_non_empty_{0U};
+
   std::uint32_t total_runs_{0U};
   std::uint32_t complete_runs_{0U};
   std::uint32_t unique_runs_{0U};

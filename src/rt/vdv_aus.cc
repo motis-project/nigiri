@@ -49,6 +49,8 @@ constexpr auto const kMatchRetention = 48h;
 std::ostream& operator<<(std::ostream& out, statistics const& s) {
   out << "unsupported additional runs: " << s.unsupported_additional_runs_
       << "\nunsupported additional stops: " << s.unsupported_additional_stops_
+      << "\ncurrent matches total: " << s.current_matches_total_
+      << "\ncurrent matches non-empty: " << s.current_matches_non_empty_
       << "\ntotal runs: " << s.total_runs_
       << "\ncomplete runs: " << s.complete_runs_
       << "\nunique runs: " << s.unique_runs_
@@ -575,6 +577,15 @@ void updater::update(rt_timetable& rtt, pugi::xml_document const& doc) {
     }
     process_vdv_run(rtt, vdv_run.node());
   }
+
+  stats_.current_matches_total_ = matches_.size();
+  stats_.current_matches_non_empty_ = [&]() {
+    auto n = 0U;
+    for (auto const& [_, m] : matches_) {
+      n += m.runs_.empty() ? 0U : 1U;
+    }
+    return n;
+  }();
 }
 
 }  // namespace nigiri::rt::vdv_aus
