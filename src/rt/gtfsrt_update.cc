@@ -537,7 +537,7 @@ statistics gtfsrt_update_msg(timetable const& tt,
         utl::verify(!is_resolved_static,
                     "NEW/ADDED trip is required to have a new trip_id");
         auto r = rt::run{};
-        resolve_rt(rtt, r, trip_id);
+        resolve_rt(rtt, r, trip_id.empty() ? td.trip_id() : trip_id);
         if (update_run(src, tt, rtt, trip_idx_t::invalid(), r,
                        entity.trip_update())) {
           ++stats.total_entities_success_;
