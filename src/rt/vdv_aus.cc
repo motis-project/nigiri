@@ -22,6 +22,8 @@
 #include "nigiri/timetable.h"
 #include "nigiri/types.h"
 
+using namespace std::chrono_literals;
+
 namespace nigiri::rt::vdv_aus {
 
 constexpr auto const kExactMatchScore = 1000;
@@ -34,6 +36,8 @@ constexpr auto const kAllowedTimeDiscrepancy = []() {
   }
   return error - 1;
 }();  // minutes
+constexpr auto const kCleanUpInterval = 12h;
+constexpr auto const kMatchRetention = 48h;
 
 // #define VDV_DEBUG
 #ifdef VDV_DEBUG
@@ -46,11 +50,13 @@ std::ostream& operator<<(std::ostream& out, statistics const& s) {
   out << "unsupported additional runs: " << s.unsupported_additional_runs_
       << "\nunsupported additional stops: " << s.unsupported_additional_stops_
       << "\ntotal runs: " << s.total_runs_
-      << "\ncomplete_runs: " << s.complete_runs_
+      << "\ncomplete runs: " << s.complete_runs_
       << "\nunique runs: " << s.unique_runs_
+      << "\nmatch attempts: " << s.match_attempts_
       << "\nmatched runs: " << s.matched_runs_
       << "\nmultiple matches: " << s.multiple_matches_
       << "\nincomplete not seen before: " << s.incomplete_not_seen_before_
+      << "\ncomplete after incomplete: " << s.complete_after_incomplete_
       << "\nno transport found at stop: " << s.no_transport_found_at_stop_
       << "\ntotal stops: " << s.total_stops_
       << "\nresolved stops: " << s.resolved_stops_
@@ -66,7 +72,7 @@ std::ostream& operator<<(std::ostream& out, statistics const& s) {
 updater::updater(nigiri::timetable const& tt, source_idx_t const src_idx)
     : tt_{tt}, src_idx_{src_idx} {}
 
-void updater::reset_vdv_run_ids_() { vdv_nigiri_.clear(); }
+void updater::reset_vdv_run_ids_() { matches_.clear(); }
 
 statistics const& updater::get_stats() const { return stats_; }
 
@@ -182,7 +188,9 @@ struct candidate {
 
 void updater::match_run(std::string_view vdv_run_id,
                         vector<vdv_stop> const& vdv_stops) {
-  vdv_nigiri_[vdv_run_id] = std::vector<run>{};
+  ++stats_.match_attempts_;
+
+  matches_[vdv_run_id] = match{};
   auto candidates = std::vector<candidate>{};
 
   for (auto const& vdv_stop : vdv_stops) {
@@ -276,7 +284,7 @@ void updater::match_run(std::string_view vdv_run_id,
       if (!is_match(c)) {
         break;
       }
-      vdv_nigiri_[vdv_run_id].emplace_back(c.r_);
+      matches_[vdv_run_id].runs_.emplace_back(c.r_);
     }
   }
 
@@ -292,13 +300,13 @@ void updater::match_run(std::string_view vdv_run_id,
         c.score_, c.total_length_, tt_.dbg(c.r_.t_.t_idx_));
   };
 
-  if (vdv_nigiri_[vdv_run_id].empty()) {
+  if (matches_[vdv_run_id].runs_.empty()) {
     fmt::println(
         "[vdv_aus] no match for {}, best candidate: {}", vdv_run_id,
         candidates.empty() ? "none" : candidate_str(candidates.front()));
   } else {
     ++stats_.matched_runs_;
-    if (vdv_nigiri_[vdv_run_id].size() > 1) {
+    if (matches_[vdv_run_id].runs_.size() > 1) {
       ++stats_.multiple_matches_;
       fmt::println("[vdv_aus] multiple matches for {}:", vdv_run_id);
       for (auto const& c : candidates) {
@@ -510,18 +518,24 @@ void updater::process_vdv_run(rt_timetable& rtt, pugi::xml_node const vdv_run) {
     return;
   }
 
-  auto const seen_before = vdv_nigiri_.contains(vdv_run_id);
+  auto const seen_before = matches_.contains(vdv_run_id);
   if (!seen_before) {
     ++stats_.unique_runs_;
-    if (is_complete_run) {
-      match_run(vdv_run_id, vdv_stops);
-    } else {
+    match_run(vdv_run_id, vdv_stops);
+    if (!is_complete_run) {
       ++stats_.incomplete_not_seen_before_;
-      return;
+      matches_[vdv_run_id].matched_on_incomplete_ = true;
     }
   }
 
-  for (auto& r : vdv_nigiri_[vdv_run_id]) {
+  if (seen_before && is_complete_run &&
+      matches_[vdv_run_id].matched_on_incomplete_) {
+    ++stats_.complete_after_incomplete_;
+    match_run(vdv_run_id, vdv_stops);
+    matches_[vdv_run_id].matched_on_incomplete_ = false;
+  }
+
+  for (auto& r : matches_[vdv_run_id].runs_) {
     if (get_opt_bool(vdv_run, "FaelltAus", false).value()) {
       rtt.cancel_run(r);
       ++stats_.cancelled_runs_;
@@ -529,9 +543,27 @@ void updater::process_vdv_run(rt_timetable& rtt, pugi::xml_node const vdv_run) {
       update_run(rtt, r, vdv_stops, is_complete_run);
     }
   }
+
+  matches_[vdv_run_id].last_accessed_ =
+      std::chrono::time_point_cast<std::chrono::seconds>(
+          std::chrono::system_clock::now());
+}
+
+void updater::clean_up() {
+  auto const now = std::chrono::time_point_cast<std::chrono::seconds>(
+      std::chrono::system_clock::now());
+  std::erase_if(matches_, [&](auto const& i) {
+    auto const& [vdv_id, match] = i;
+    return now - match.last_accessed_ > kMatchRetention;
+  });
+  last_cleanup = now;
 }
 
 void updater::update(rt_timetable& rtt, pugi::xml_document const& doc) {
+  if (std::chrono::system_clock::now() - last_cleanup > kCleanUpInterval) {
+    clean_up();
+  }
+
   for (auto const& vdv_run : doc.select_nodes("//IstFahrt")) {
     if (get_opt_bool(vdv_run.node(), "Zusatzfahrt", false).value()) {
 #ifdef VDV_DEBUG
