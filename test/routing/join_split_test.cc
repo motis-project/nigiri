@@ -120,12 +120,12 @@ x1,DB,x1,,,2
 
 # trips.txt
 route_id,service_id,trip_id,trip_headsign,block_id
-i,ik,i,i,
-j,jl,j,j,
-k,ik,k,k,
-l,jl,l,l,
 x,x,x,x,
 x1,x1,x1,x1,
+k,ik,k,k,
+l,jl,l,l,
+i,ik,i,i,
+j,jl,j,j,
 
 # stop_times.txt
 trip_id,arrival_time,departure_time,stop_id,stop_sequence,pickup_type,drop_off_type

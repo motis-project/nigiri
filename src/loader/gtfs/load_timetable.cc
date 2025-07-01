@@ -248,33 +248,33 @@ void load_timetable(loader_config const& config,
     }
   };
 
+  auto const add_expanded_trip = [&](utc_trip&& s) {
+    auto const* stop_seq = get_stop_seq(trip_data, s, stop_seq_cache);
+    auto const clasz = trip_data.get(s.trips_.front()).get_clasz(tt);
+    auto const* bikes_allowed_seq = get_bikes_allowed_seq(s.trips_);
+    auto const* cars_allowed_seq = get_cars_allowed_seq(s.trips_);
+    auto const it = route_services.find(
+        route_key_ptr_t{clasz, stop_seq, bikes_allowed_seq, cars_allowed_seq});
+    if (it != end(route_services)) {
+      for (auto& r : it->second) {
+        auto const idx = get_index(r, s);
+        if (idx.has_value()) {
+          r.insert(std::next(begin(r), static_cast<int>(*idx)), s);
+          return;
+        }
+      }
+      it->second.emplace_back(std::vector<utc_trip>{std::move(s)});
+    } else {
+      route_services.emplace(
+          route_key_t{clasz, *stop_seq, *bikes_allowed_seq, *cars_allowed_seq},
+          std::vector<std::vector<utc_trip>>{{s}});
+    }
+  };
+
   auto const add_trip = [&](basic_string<gtfs_trip_idx_t> const& trips,
                             bitfield const* traffic_days) {
-    expand_trip(
-        trip_data, noon_offsets, tt, trips, traffic_days, tt.date_range_,
-        assistance, [&](utc_trip&& s) {
-          auto const* stop_seq = get_stop_seq(trip_data, s, stop_seq_cache);
-          auto const clasz = trip_data.get(s.trips_.front()).get_clasz(tt);
-          auto const* bikes_allowed_seq = get_bikes_allowed_seq(s.trips_);
-          auto const* cars_allowed_seq = get_cars_allowed_seq(s.trips_);
-          auto const it = route_services.find(route_key_ptr_t{
-              clasz, stop_seq, bikes_allowed_seq, cars_allowed_seq});
-          if (it != end(route_services)) {
-            for (auto& r : it->second) {
-              auto const idx = get_index(r, s);
-              if (idx.has_value()) {
-                r.insert(std::next(begin(r), static_cast<int>(*idx)), s);
-                return;
-              }
-            }
-            it->second.emplace_back(std::vector<utc_trip>{std::move(s)});
-          } else {
-            route_services.emplace(
-                route_key_t{clasz, *stop_seq, *bikes_allowed_seq,
-                            *cars_allowed_seq},
-                std::vector<std::vector<utc_trip>>{{s}});
-          }
-        });
+    expand_trip(trip_data, noon_offsets, tt, trips, traffic_days,
+                tt.date_range_, assistance, add_expanded_trip);
   };
 
   {
@@ -361,8 +361,7 @@ void load_timetable(loader_config const& config,
                       trip_data.get(i).service_, tt.date_range_, assistance,
                       [&](utc_trip&& s) { consume(std::move(s)); });
         });
-    build_seated_trips(tt, bitfield_indices, trip_data, expanded_seated,
-                       location_routes);
+    build_seated_trips(tt, trip_data, expanded_seated, add_expanded_trip);
   }
 
   {
