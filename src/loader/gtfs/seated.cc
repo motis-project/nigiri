@@ -190,7 +190,7 @@ void build_seated_trips(timetable& tt,
     }
 
     // ============
-    // PART 4: DFS.
+    // PART 3: DFS.
     // ------------
     while (!q.empty()) {
       auto [curr, transport_offset] = std::move(q.back());
@@ -235,7 +235,7 @@ void build_seated_trips(timetable& tt,
     }
 
     // ===========================
-    // PART 5: Update Traffic Days
+    // PART 4: Update Traffic Days
     // ---------------------------
     for (auto const& [remaining_idx, offset] : component) {
       remaining.at(remaining_idx).utc_traffic_days_ &=
