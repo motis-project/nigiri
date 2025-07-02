@@ -213,6 +213,10 @@ std::string trip::display_name() const {
   return {};
 }
 
+bool trip::has_seated_transfers() const {
+  return !seated_in_.empty() || !seated_out_.empty();
+}
+
 clasz trip::get_clasz(timetable const& tt) const {
   if (route_->clasz_ != clasz::kBus) {
     return route_->clasz_;
