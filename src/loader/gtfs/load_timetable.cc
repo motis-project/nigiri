@@ -294,7 +294,7 @@ void load_timetable(loader_config const& config,
   }
 
   {
-    progress_tracker->status("block_id Services")
+    progress_tracker->status("Stay Seated")
         .out_bounds(83.F, 85.F)
         .in_high(route_services.size());
     auto const timer = scoped_timer{"loader.gtfs.trips.block_id"};
