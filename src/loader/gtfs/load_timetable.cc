@@ -323,12 +323,6 @@ void load_timetable(loader_config const& config,
   }
 
   {
-    auto const timer = scoped_timer{"loader.gtfs.write_trips"};
-
-    progress_tracker->status("Write Trips")
-        .out_bounds(85.F, 97.F)
-        .in_high(route_services.size());
-
     auto const is_train_number = [](auto const& s) {
       return !s.empty() && std::all_of(begin(s), end(s), [](auto&& c) -> bool {
         return std::isdigit(c);
