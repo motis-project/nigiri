@@ -323,7 +323,11 @@ void load_timetable(loader_config const& config,
   }
 
   {
-    auto const timer = scoped_timer{"loader.gtfs.register_trip_ids"};
+    auto const timer = scoped_timer{"loader.gtfs.write_trips"};
+
+    progress_tracker->status("Write Trips")
+        .out_bounds(85.F, 97.F)
+        .in_high(route_services.size());
 
     auto const is_train_number = [](auto const& s) {
       return !s.empty() && std::all_of(begin(s), end(s), [](auto&& c) -> bool {
@@ -352,7 +356,6 @@ void load_timetable(loader_config const& config,
     }
   }
 
-  auto location_routes = mutable_fws_multimap<location_idx_t, route_idx_t>{};
   {
     auto const timer = scoped_timer{"loader.gtfs.write_seated"};
     auto expanded_seated = expand_seated_trips(
@@ -365,9 +368,9 @@ void load_timetable(loader_config const& config,
   }
 
   {
-    auto const timer = scoped_timer{"loader.gtfs.write_transports"};
+    auto const timer = scoped_timer{"loader.gtfs.write_trips"};
 
-    progress_tracker->status("Write Transports")
+    progress_tracker->status("Write Trips")
         .out_bounds(85.F, 97.F)
         .in_high(route_services.size());
 
@@ -377,6 +380,7 @@ void load_timetable(loader_config const& config,
     auto section_lines = basic_string<trip_line_idx_t>{};
     auto route_colors = basic_string<route_color>{};
     auto external_trip_ids = basic_string<merged_trips_idx_t>{};
+    auto location_routes = mutable_fws_multimap<location_idx_t, route_idx_t>{};
     for (auto const& [key, sub_routes] : route_services) {
       for (auto const& services : sub_routes) {
         auto const route_idx = tt.register_route(
