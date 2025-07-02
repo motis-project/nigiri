@@ -150,13 +150,13 @@ void build_seated_trips(timetable& tt,
 
     // Finds the remaining_idx
     // that represents a given gtfs_trip_idx in this specific component.
-    auto const get_representative =
-        [&](gtfs_trip_idx_t const t) -> std::optional<remaining_idx_t> {
+    auto const get_representative = [&](gtfs_trip_idx_t const t)
+        -> std::optional<std::pair<remaining_idx_t, int>> {
       auto const it = utl::find_if(
           component, [&](std::pair<remaining_idx_t, int> const& x) {
             return remaining[x.first].trips_.front() == t;
           });
-      return it == end(component) ? std::nullopt : std::optional{it->first};
+      return it == end(component) ? std::nullopt : std::optional{*it};
     };
 
     // Initialize queue with all remaining_idx that do not have any incoming
@@ -172,9 +172,7 @@ void build_seated_trips(timetable& tt,
           get_trp(remaining_idx).seated_in_ |
           std::views::transform(
               [&](gtfs_trip_idx_t const t) { return get_representative(t); }) |
-          std::views::filter([](std::optional<remaining_idx_t> const& r) {
-            return r.has_value();
-          }));
+          std::views::filter([](auto&& r) { return r.has_value(); }));
       if (is_entry) {
         auto const transport_traffic_days =
             shift(component_traffic_days, offset);
@@ -202,25 +200,31 @@ void build_seated_trips(timetable& tt,
         auto const r = get_representative(next);
         if (r.has_value()) {
           auto copy = curr;
-          auto const& next_r = remaining.at(*r);
-          auto const next_stop_seq = get_trp(*r).stop_seq_;
+          auto const [remaining_idx, offset] = *r;
+          auto const& next_r = remaining.at(remaining_idx);
+          auto const next_stop_seq = get_trp(remaining_idx).stop_seq_;
           auto next_times = next_r.utc_times_;
           for (auto& t : next_times) {
-            t += transport_offset * date::days{1};
+            t += (transport_offset + offset) * date::days{1};
           }
-          copy.trips_.push_back(get_trp_idx(*r));
+          copy.trips_.push_back(get_trp_idx(remaining_idx));
           copy.utc_times_.insert(end(copy.utc_times_), begin(next_times),
                                  end(next_times));
           copy.stop_seq_.insert(end(copy.stop_seq_),
                                 std::next(begin(next_stop_seq)),
                                 end(next_stop_seq));
+          trace("append {} (offset={}): {}",
+                get_trp(remaining_idx).display_name(), offset,
+                copy.utc_times_ | std::views::transform(std::identity{}));
+          assert(std::ranges::is_sorted(copy.utc_times_));
           q.emplace_back(std::move(copy), transport_offset);
           has_next = true;
         }
       }
 
-      // No outgoing seated-transfer *in this component*.
-      if (!has_next) {
+      if (!has_next) {  // Terminal?
+        // No outgoing seated-transfer *in this component*.
+        // Pass finished transport to consumer.
         trace("adding trips={}, stops={}, times={}",
               curr.trips_ | std::views::transform([&](gtfs_trip_idx_t const t) {
                 return trip_data.get(t).display_name();

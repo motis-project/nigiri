@@ -79,8 +79,12 @@ constexpr auto const kTests =
                                      {"A", "D", 2025_y / June / 18, true},
                                      {"B", "D", 2025_y / June / 18, true}};
 
-mem_dir test_files() {
-  return mem_dir::read(R"(
+template <typename... Args>
+mem_dir test_files(Args... order) {
+  constexpr auto const kTrips =
+      std::array{"x,x,x,x,",  "x1,x1,x1,x1,", "k,ik,k,k,",
+                 "l,jl,l,l,", "i,ik,i,i,",    "j,jl,j,j,"};
+  return mem_dir::read(fmt::format(R"(
 # agency.txt
 agency_id,agency_name,agency_url,agency_timezone
 DB,Deutsche Bahn,https://deutschebahn.com,Europe/Berlin
@@ -121,12 +125,12 @@ x1,DB,x1,,,2
 
 # trips.txt
 route_id,service_id,trip_id,trip_headsign,block_id
-x,x,x,x,
-x1,x1,x1,x1,
-k,ik,k,k,
-l,jl,l,l,
-i,ik,i,i,
-j,jl,j,j,
+{}
+{}
+{}
+{}
+{}
+{}
 
 # stop_times.txt
 trip_id,arrival_time,departure_time,stop_id,stop_sequence,pickup_type,drop_off_type
@@ -153,69 +157,71 @@ transfer_type,from_trip_id,to_trip_id
 4,k,x1
 4,x1,j
 4,x1,l
-)");
+)",
+                                   kTrips[order]...));
 }
 
 }  // namespace
 
 TEST(routing, join_split) {
-  timetable tt;
-  tt.date_range_ = {date::sys_days{2025_y / June / 12},
-                    date::sys_days{2025_y / June / 22}};
-  auto const src = source_idx_t{0};
-  load_timetable({}, src, test_files(), tt);
-  finalize(tt);
+  auto const run = [](auto&&... trips) {
+    timetable tt;
+    tt.date_range_ = {date::sys_days{2025_y / June / 12},
+                      date::sys_days{2025_y / June / 22}};
+    auto const src = source_idx_t{0};
+    load_timetable({}, src, test_files(trips...), tt);
+    finalize(tt);
 
-  auto rtt = rt::create_rt_timetable(tt, 2025_y / June / 12);
+    auto rtt = rt::create_rt_timetable(tt, 2025_y / June / 12);
 
-  auto const run_test = [&]() {
-    for (auto const [from, to, date, expected] : kTests) {
-      auto const results = raptor_search(tt, &rtt, from, to, date);
-      EXPECT_EQ(expected, !results.empty())
-          << "from=" << from << ", to=" << to << ", on " << date
-          << ", expected " << expected;
-      EXPECT_TRUE(utl::all_of(results, [](routing::journey const& j) {
-        return j.transfers_ == 0U;
-      }));
-    }
-  };
-  run_test();
+    auto const run_test = [&]() {
+      for (auto const [from, to, date, expected] : kTests) {
+        auto const results = raptor_search(tt, &rtt, from, to, date);
+        EXPECT_EQ(expected, !results.empty())
+            << "from=" << from << ", to=" << to << ", on " << date
+            << ", expected " << expected;
+        EXPECT_TRUE(utl::all_of(results, [](routing::journey const& j) {
+          return j.transfers_ == 0U;
+        }));
+      }
+    };
+    run_test();
 
-  auto const msg1 =
-      test::to_feed_msg({trip{.trip_id_ = "i",
-                              .delays_ = {{.seq_ = 1,
-                                           .ev_type_ = nigiri::event_type::kArr,
-                                           .delay_minutes_ = 60U}}},
-                         trip{.trip_id_ = "k",
-                              .delays_ = {{.seq_ = 1,
-                                           .ev_type_ = event_type::kDep,
-                                           .delay_minutes_ = 0U}}},
-                         trip{.trip_id_ = "x",
-                              .delays_ = {{.seq_ = 1,
-                                           .ev_type_ = event_type::kDep,
-                                           .delay_minutes_ = 5U}}}},
-                        date::sys_days{2025_y / June / 12});
+    auto const msg1 = test::to_feed_msg(
+        {trip{.trip_id_ = "i",
+              .delays_ = {{.seq_ = 1,
+                           .ev_type_ = nigiri::event_type::kArr,
+                           .delay_minutes_ = 60U}}},
+         trip{.trip_id_ = "k",
+              .delays_ = {{.seq_ = 1,
+                           .ev_type_ = event_type::kDep,
+                           .delay_minutes_ = 0U}}},
+         trip{.trip_id_ = "x",
+              .delays_ = {{.seq_ = 1,
+                           .ev_type_ = event_type::kDep,
+                           .delay_minutes_ = 5U}}}},
+        date::sys_days{2025_y / June / 12});
 
-  rt::gtfsrt_update_msg(tt, rtt, source_idx_t{0}, "tag", msg1);
+    rt::gtfsrt_update_msg(tt, rtt, source_idx_t{0}, "tag", msg1);
 
-  auto td = transit_realtime::TripDescriptor{};
-  td.set_trip_id("x");
-  td.set_start_date("20250613");
-  td.set_start_time("02:00:00");
+    auto td = transit_realtime::TripDescriptor{};
+    td.set_trip_id("x");
+    td.set_start_date("20250613");
+    td.set_start_time("02:00:00");
 
-  auto ss = std::stringstream{};
-  rt::resolve_static(
-      2025_y / June / 13, tt, source_idx_t{0U}, td,
-      [&](rt::run r, trip_idx_t const) {
-        r.stop_range_.from_ = 0U;
-        r.stop_range_.to_ = static_cast<stop_idx_t>(
-            tt.route_location_seq_[tt.transport_route_[r.t_.t_idx_]].size());
-        ss << rt::frun{tt, &rtt, r} << "\n";
-        return utl::continue_t::kContinue;
-      });
+    auto ss = std::stringstream{};
+    rt::resolve_static(
+        2025_y / June / 13, tt, source_idx_t{0U}, td,
+        [&](rt::run r, trip_idx_t const) {
+          r.stop_range_.from_ = 0U;
+          r.stop_range_.to_ = static_cast<stop_idx_t>(
+              tt.route_location_seq_[tt.transport_route_[r.t_.t_idx_]].size());
+          ss << rt::frun{tt, &rtt, r} << "\n";
+          return utl::continue_t::kContinue;
+        });
 
-  constexpr auto const kExpected =
-      R"(   0: A       A...............................................                                                             d: 12.06 23:00 [13.06 01:00]  RT 13.06 00:00 [13.06 02:00]  [{name=i, day=2025-06-12, id=i, src=0}]
+    constexpr auto const kExpected =
+        R"(   0: A       A...............................................                                                             d: 12.06 23:00 [13.06 01:00]  RT 13.06 00:00 [13.06 02:00]  [{name=i, day=2025-06-12, id=i, src=0}]
    1: C1      C1.............................................. a: 12.06 23:59 [13.06 01:59]  RT 13.06 00:59 [13.06 02:59]  d: 13.06 00:00 [13.06 02:00]  RT 13.06 00:59 [13.06 02:59]  [{name=x, day=2025-06-12, id=x, src=0}]
    2: D       D............................................... a: 13.06 01:00 [13.06 03:00]  RT 13.06 01:05 [13.06 03:05]  d: 13.06 01:00 [13.06 03:00]  RT 13.06 01:05 [13.06 03:05]  [{name=l, day=2025-06-12, id=l, src=0}]
    3: F       F............................................... a: 13.06 02:00 [13.06 04:00]  RT 13.06 02:00 [13.06 04:00]
@@ -237,7 +243,11 @@ TEST(routing, join_split) {
 
 )";
 
-  EXPECT_EQ(kExpected, ss.str());
+    EXPECT_EQ(kExpected, ss.str());
 
-  run_test();
+    run_test();
+  };
+
+  run(0U, 1U, 2U, 3U, 4U, 5U);
+  run(5U, 4U, 3U, 2U, 1U, 0U);
 }
