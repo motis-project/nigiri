@@ -95,13 +95,9 @@ struct trip {
 
   std::string display_name() const;
 
-  clasz const& get_clasz(timetable const&) const;
+  clasz get_clasz(timetable const&) const;
 
   bool has_seated_transfers() const;
-
-  auto route_key(timetable const& tt) const {
-    return std::tie(get_clasz(tt), stop_seq_, bikes_allowed_, cars_allowed_);
-  }
 
   minutes_after_midnight_t first_dep() const {
     utl::verify(!event_times_.empty(), "no event times for trip {}", id_);
