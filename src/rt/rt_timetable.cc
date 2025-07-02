@@ -147,45 +147,6 @@ rt_transport_idx_t rt_timetable::add_rt_transport(
   assert(rt_transport_line_.size() == rt_t_idx + 1U);
   assert(rt_bikes_allowed_per_section_.size() == rt_t_idx + 1U);
 
-  rt_transport_has_seated_in_.resize(rt_transport_has_seated_in_.size() + 1U);
-  rt_transport_has_seated_out_.resize(rt_transport_has_seated_out_.size() + 1U);
-  rt_transport_seated_transfers_in_.emplace_back(
-      std::initializer_list<rt_transport_idx_t>{});
-  rt_transport_seated_transfers_out_.emplace_back(
-      std::initializer_list<rt_transport_idx_t>{});
-  if (t.is_valid()) {
-    auto const r_idx = to_idx(r);
-    rt_transport_has_seated_in_.set(rt_t_idx, tt.route_has_seated_in_[r_idx]);
-    rt_transport_has_seated_out_.set(rt_t_idx, tt.route_has_seated_out_[r_idx]);
-
-    auto const get_or_create = [&](transport const& tr) {
-      auto const it = static_trip_lookup_.find(tr);
-      return it == end(static_trip_lookup_) ? add_rt_transport(src, tt, tr)
-                                            : it->second;
-    };
-
-    auto const translate = [&](auto&& from, auto&& to, auto const sign) {
-      for (auto const& x : from) {
-        auto const seated = seated_transfer{x};
-        assert(tt.route_transport_ranges_[seated.target()].size() == 1U);
-        auto const target_transport =
-            tt.route_transport_ranges_[seated.target()].from_;
-        auto const target_day =
-            day_idx_t{static_cast<int>(to_idx(day)) +
-                      sign * static_cast<int>(seated.day_offset())};
-        to.push_back(get_or_create({target_transport, target_day}));
-      }
-    };
-
-    translate(tt.route_seated_transfers_in_[r],
-              rt_transport_seated_transfers_in_[rt_t], -1);
-    translate(tt.route_seated_transfers_out_[r],
-              rt_transport_seated_transfers_out_[rt_t], 1);
-  }
-
-  assert(rt_transport_has_seated_in_.size() >= rt_t_idx + 1U);
-  assert(rt_transport_has_seated_out_.size() >= rt_t_idx + 1U);
-
   return rt_transport_idx_t{rt_t_idx};
 }
 

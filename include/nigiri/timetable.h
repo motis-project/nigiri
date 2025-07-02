@@ -20,7 +20,6 @@
 #include "nigiri/footpath.h"
 #include "nigiri/location.h"
 #include "nigiri/logging.h"
-#include "nigiri/seated_transfer.h"
 #include "nigiri/stop.h"
 #include "nigiri/string_store.h"
 #include "nigiri/td_footpath.h"
@@ -244,11 +243,6 @@ struct timetable {
         bucket.push_back(cars_allowed_per_section[i]);
       }
     }
-
-    route_has_seated_in_.resize(route_has_seated_in_.size() + 1U);
-    route_has_seated_out_.resize(route_has_seated_out_.size() + 1U);
-    route_seated_transfers_in_.add_back_sized(0U);
-    route_seated_transfers_out_.add_back_sized(0U);
 
     return route_idx_t{idx};
   }
@@ -521,16 +515,6 @@ struct timetable {
 
   // same for cars
   bitvec route_cars_allowed_;
-
-  // Route -> has outgoing stay-seated transfers
-  bitvec route_has_seated_out_;
-
-  // Route -> has incoming stay-seated transfers
-  bitvec route_has_seated_in_;
-
-  // Route -> seated transfers
-  vecvec<route_idx_t, seated_transfer::value_t> route_seated_transfers_out_;
-  vecvec<route_idx_t, seated_transfer::value_t> route_seated_transfers_in_;
 
   // Route -> bikes allowed per section
   // Only set for routes where the entry in route_bikes_allowed_bitvec_
