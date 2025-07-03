@@ -17,6 +17,9 @@
 #include "nigiri/rt/gtfsrt_resolve_run.h"
 #include "nigiri/rt/run.h"
 
+// Anton war hier
+
+
 namespace gtfsrt = transit_realtime;
 namespace protob = google::protobuf;
 
