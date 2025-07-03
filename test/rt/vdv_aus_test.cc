@@ -8,7 +8,7 @@
 #include "nigiri/rt/create_rt_timetable.h"
 #include "nigiri/rt/frun.h"
 #include "nigiri/rt/rt_timetable.h"
-#include "nigiri/rt/vdv/vdv_update.h"
+#include "nigiri/rt/vdv_aus.h"
 #include "nigiri/special_stations.h"
 #include "nigiri/timetable.h"
 
@@ -69,7 +69,7 @@ BD_TRIP,03:00,03:00,D,2,0,0
 )__");
 }
 
-constexpr auto const vdv_update_msg0 = R"(
+constexpr auto const vdv_aus_msg0 = R"(
 <?xml version="1.0" encoding="iso-8859-1"?>
 <DatenAbrufenAntwort>
   <Bestaetigung Zst="2024-07-10T00:00:00" Ergebnis="ok" Fehlernummer="0" />
@@ -83,7 +83,7 @@ constexpr auto const vdv_update_msg0 = R"(
           <Betriebstag>2024-07-10</Betriebstag>
         </FahrtID>
       </FahrtRef>
-      <Komplettfahrt>false</Komplettfahrt>
+      <Komplettfahrt>true</Komplettfahrt>
       <BetreiberID>MTA</BetreiberID>
       <IstHalt>
         <HaltID>A</HaltID>
@@ -99,6 +99,17 @@ constexpr auto const vdv_update_msg0 = R"(
         <Abfahrtszeit>2024-07-09T23:00:00</Abfahrtszeit>
         <IstAnkunftPrognose>2024-07-09T23:30:00</IstAnkunftPrognose>
         <IstAbfahrtPrognose>2024-07-09T23:30:00</IstAbfahrtPrognose>
+        <Einsteigeverbot>false</Einsteigeverbot>
+        <Aussteigeverbot>false</Aussteigeverbot>
+        <Durchfahrt>false</Durchfahrt>
+        <Zusatzhalt>false</Zusatzhalt>
+      </IstHalt>
+      <IstHalt>
+        <HaltID>C</HaltID>
+        <Ankunftszeit>2024-07-10T00:00:00</Ankunftszeit>
+        <Abfahrtszeit>2024-07-10T00:00:00</Abfahrtszeit>
+        <IstAnkunftPrognose>2024-07-10T00:00:00</IstAnkunftPrognose>
+        <IstAbfahrtPrognose>2024-07-10T00:00:00</IstAbfahrtPrognose>
         <Einsteigeverbot>false</Einsteigeverbot>
         <Aussteigeverbot>false</Aussteigeverbot>
         <Durchfahrt>false</Durchfahrt>
@@ -134,7 +145,7 @@ constexpr auto const vdv_update_msg0 = R"(
 </DatenAbrufenAntwort>
 )";
 
-constexpr auto const vdv_update_msg1 = R"(
+constexpr auto const vdv_aus_msg1 = R"(
 <?xml version="1.0" encoding="iso-8859-1"?>
 <DatenAbrufenAntwort>
   <Bestaetigung Zst="2024-07-10T00:00:00" Ergebnis="ok" Fehlernummer="0" />
@@ -169,7 +180,7 @@ constexpr auto const vdv_update_msg1 = R"(
 </DatenAbrufenAntwort>
 )";
 
-constexpr auto const vdv_update_msg2 = R"(
+constexpr auto const vdv_aus_msg2 = R"(
 <?xml version="1.0" encoding="iso-8859-1"?>
 <DatenAbrufenAntwort>
   <Bestaetigung Zst="2024-07-10T00:00:00" Ergebnis="ok" Fehlernummer="0" />
@@ -299,7 +310,7 @@ constexpr auto const cancel_all_update = R"(
 
 }  // namespace
 
-TEST(vdv_update, delay_propagation) {
+TEST(vdv_aus, delay_propagation) {
   timetable tt;
   register_special_stations(tt);
   tt.date_range_ = {date::sys_days{2024_y / July / 1},
@@ -311,8 +322,8 @@ TEST(vdv_update, delay_propagation) {
   auto rtt = rt::create_rt_timetable(tt, date::sys_days{2024_y / July / 10});
 
   auto doc = pugi::xml_document{};
-  doc.load_string(vdv_update_msg0);
-  auto u = rt::vdv::updater{tt, src_idx};
+  doc.load_string(vdv_aus_msg0);
+  auto u = rt::vdv_aus::updater{tt, src_idx};
   u.update(rtt, doc);
 
   auto fr = rt::frun(
@@ -335,12 +346,10 @@ TEST(vdv_update, delay_propagation) {
 
   EXPECT_EQ(fr[2].scheduled_time(event_type::kArr),
             date::sys_days{2024_y / July / 10});
-  EXPECT_EQ(fr[2].time(event_type::kArr),
-            date::sys_days{2024_y / July / 10} + 30_minutes);
+  EXPECT_EQ(fr[2].time(event_type::kArr), date::sys_days{2024_y / July / 10});
   EXPECT_EQ(fr[2].scheduled_time(event_type::kDep),
             date::sys_days{2024_y / July / 10});
-  EXPECT_EQ(fr[2].time(event_type::kDep),
-            date::sys_days{2024_y / July / 10} + 30_minutes);
+  EXPECT_EQ(fr[2].time(event_type::kDep), date::sys_days{2024_y / July / 10});
 
   EXPECT_EQ(fr[3].scheduled_time(event_type::kArr),
             date::sys_days{2024_y / July / 10} + 1_hours);
@@ -356,7 +365,7 @@ TEST(vdv_update, delay_propagation) {
   EXPECT_EQ(fr[4].time(event_type::kArr),
             date::sys_days{2024_y / July / 10} + 2_hours);
 
-  doc.load_string(vdv_update_msg1);
+  doc.load_string(vdv_aus_msg1);
   u.update(rtt, doc);
 
   EXPECT_EQ(fr[0].scheduled_time(event_type::kDep),
@@ -394,7 +403,7 @@ TEST(vdv_update, delay_propagation) {
   EXPECT_EQ(fr[4].time(event_type::kArr),
             date::sys_days{2024_y / July / 10} + 3_hours);
 
-  doc.load_string(vdv_update_msg2);
+  doc.load_string(vdv_aus_msg2);
   u.update(rtt, doc);
 
   EXPECT_EQ(fr[0].scheduled_time(event_type::kDep),
@@ -434,11 +443,12 @@ TEST(vdv_update, delay_propagation) {
   EXPECT_EQ(fr[4].time(event_type::kArr),
             date::sys_days{2024_y / July / 10} + 2_hours + 7_minutes);
 
-  EXPECT_EQ(u.get_stats().found_runs_, 1);
-  EXPECT_EQ(u.get_stats().matched_runs_, 3);
+  EXPECT_EQ(u.get_stats().matched_runs_, 1);
+  EXPECT_EQ(u.get_stats().updated_events_, 14);
+  EXPECT_EQ(u.get_stats().propagated_delays_, 9);
 }
 
-TEST(vdv_update, all_stops_canceled) {
+TEST(vdv_aus, all_stops_canceled) {
   timetable tt;
   register_special_stations(tt);
   tt.date_range_ = {date::sys_days{2024_y / July / 1},
@@ -451,7 +461,7 @@ TEST(vdv_update, all_stops_canceled) {
 
   auto doc = pugi::xml_document{};
   doc.load_string(cancel_all_update);
-  auto u = rt::vdv::updater{tt, src_idx};
+  auto u = rt::vdv_aus::updater{tt, src_idx};
   u.update(rtt, doc);
 
   auto const fr = rt::frun(
@@ -508,7 +518,7 @@ constexpr auto const after_midnight_update = R"(
           <Betriebstag>2024-07-10</Betriebstag>
         </FahrtID>
       </FahrtRef>
-      <Komplettfahrt>false</Komplettfahrt>
+      <Komplettfahrt>true</Komplettfahrt>
       <BetreiberID>MTA</BetreiberID>
       <IstHalt>
         <HaltID>A</HaltID>
@@ -539,7 +549,7 @@ constexpr auto const after_midnight_update = R"(
 
 }  // namespace
 
-TEST(vdv_update, tt_before_midnight_update_after_midnight) {
+TEST(vdv_aus, tt_before_midnight_update_after_midnight) {
   timetable tt;
   register_special_stations(tt);
   tt.date_range_ = {date::sys_days{2024_y / July / 1},
@@ -548,13 +558,11 @@ TEST(vdv_update, tt_before_midnight_update_after_midnight) {
   load_timetable({}, src_idx, before_midnight_files(), tt);
   finalize(tt);
 
-  std::cout << tt << "\n";
-
   auto rtt = rt::create_rt_timetable(tt, date::sys_days{2024_y / July / 9});
 
   auto doc = pugi::xml_document{};
   doc.load_string(after_midnight_update);
-  auto u = rt::vdv::updater{tt, src_idx};
+  auto u = rt::vdv_aus::updater{tt, src_idx};
   u.update(rtt, doc);
 
   auto fr = rt::frun(
@@ -611,7 +619,7 @@ constexpr auto const before_midnight_update = R"(
           <Betriebstag>2024-07-10</Betriebstag>
         </FahrtID>
       </FahrtRef>
-      <Komplettfahrt>false</Komplettfahrt>
+      <Komplettfahrt>true</Komplettfahrt>
       <BetreiberID>MTA</BetreiberID>
       <IstHalt>
         <HaltID>A</HaltID>
@@ -642,7 +650,7 @@ constexpr auto const before_midnight_update = R"(
 
 }  // namespace
 
-TEST(vdv_update, tt_after_midnight_update_before_midnight) {
+TEST(vdv_aus, tt_after_midnight_update_before_midnight) {
   timetable tt;
   register_special_stations(tt);
   tt.date_range_ = {date::sys_days{2024_y / July / 1},
@@ -651,13 +659,11 @@ TEST(vdv_update, tt_after_midnight_update_before_midnight) {
   load_timetable({}, src_idx, after_midnight_files(), tt);
   finalize(tt);
 
-  std::cout << tt << "\n";
-
   auto rtt = rt::create_rt_timetable(tt, date::sys_days{2024_y / July / 10});
 
   auto doc = pugi::xml_document{};
   doc.load_string(before_midnight_update);
-  auto u = rt::vdv::updater{tt, src_idx};
+  auto u = rt::vdv_aus::updater{tt, src_idx};
   u.update(rtt, doc);
 
   auto fr = rt::frun(
@@ -1256,7 +1262,7 @@ constexpr auto const in_out_allowed_rbo707 = R"(
 
 }  // namespace
 
-TEST(vdv_update, exact_match_1) {
+TEST(vdv_aus, exact_match_1) {
   timetable tt;
   register_special_stations(tt);
   tt.date_range_ = {date::sys_days{2024_y / August / 1},
@@ -1267,7 +1273,7 @@ TEST(vdv_update, exact_match_1) {
 
   auto rtt = rt::create_rt_timetable(tt, date::sys_days{2024_y / August / 23});
 
-  auto u = rt::vdv::updater{tt, src_idx};
+  auto u = rt::vdv_aus::updater{tt, src_idx};
 
   auto doc = pugi::xml_document{};
   doc.load_string(update_rbo707);
@@ -1283,7 +1289,7 @@ TEST(vdv_update, exact_match_1) {
   EXPECT_FALSE(fr.is_cancelled());
 }
 
-TEST(vdv_update, cancel_run) {
+TEST(vdv_aus, cancel_run) {
   timetable tt;
   register_special_stations(tt);
   tt.date_range_ = {date::sys_days{2024_y / August / 1},
@@ -1294,7 +1300,7 @@ TEST(vdv_update, cancel_run) {
 
   auto rtt = rt::create_rt_timetable(tt, date::sys_days{2024_y / August / 23});
 
-  auto u = rt::vdv::updater{tt, src_idx};
+  auto u = rt::vdv_aus::updater{tt, src_idx};
 
   auto doc = pugi::xml_document{};
   doc.load_string(cancel_rbo707);
@@ -1318,7 +1324,7 @@ TEST(vdv_update, cancel_run) {
                    .is_cancelled());
 }
 
-TEST(vdv_update, in_out_allowed) {
+TEST(vdv_aus, in_out_allowed) {
   timetable tt;
   register_special_stations(tt);
   tt.date_range_ = {date::sys_days{2024_y / August / 1},
@@ -1327,7 +1333,7 @@ TEST(vdv_update, in_out_allowed) {
   load_timetable({}, src_idx, rbo707_files(), tt);
   finalize(tt);
   auto rtt = rt::create_rt_timetable(tt, date::sys_days{2024_y / August / 23});
-  auto u = rt::vdv::updater{tt, src_idx};
+  auto u = rt::vdv_aus::updater{tt, src_idx};
 
   ASSERT_TRUE(tt.next_transport_idx() != 0U);
 
@@ -1665,7 +1671,7 @@ constexpr auto const update_rbo920 = R"(
 
 }  // namespace
 
-TEST(vdv_update, exact_match_2) {
+TEST(vdv_aus, exact_match_2) {
   timetable tt;
   register_special_stations(tt);
   tt.date_range_ = {date::sys_days{2024_y / August / 1},
@@ -1676,7 +1682,7 @@ TEST(vdv_update, exact_match_2) {
 
   auto rtt = rt::create_rt_timetable(tt, date::sys_days{2024_y / August / 20});
 
-  auto u = rt::vdv::updater{tt, src_idx};
+  auto u = rt::vdv_aus::updater{tt, src_idx};
 
   auto doc = pugi::xml_document{};
   doc.load_string(update_rbo920);
@@ -1812,7 +1818,7 @@ constexpr auto const update_rvs347 = R"(
 
 }  // namespace
 
-TEST(vdv_update, match_despite_unresolvable_stops) {
+TEST(vdv_aus, match_despite_unresolvable_stops) {
   timetable tt;
   register_special_stations(tt);
   tt.date_range_ = {date::sys_days{2024_y / August / 1},
@@ -1823,7 +1829,7 @@ TEST(vdv_update, match_despite_unresolvable_stops) {
 
   auto rtt = rt::create_rt_timetable(tt, date::sys_days{2024_y / August / 26});
 
-  auto u = rt::vdv::updater{tt, src_idx};
+  auto u = rt::vdv_aus::updater{tt, src_idx};
 
   auto doc = pugi::xml_document{};
   doc.load_string(update_rvs347);
@@ -2259,7 +2265,7 @@ constexpr auto const update_vgm270 = R"(
 
 }  // namespace
 
-TEST(vdv_update, match_despite_time_discrepancy_1) {
+TEST(vdv_aus, match_despite_time_discrepancy_1) {
   timetable tt;
   register_special_stations(tt);
   tt.date_range_ = {date::sys_days{2024_y / August / 1},
@@ -2270,7 +2276,7 @@ TEST(vdv_update, match_despite_time_discrepancy_1) {
 
   auto rtt = rt::create_rt_timetable(tt, date::sys_days{2024_y / August / 20});
 
-  auto u = rt::vdv::updater{tt, src_idx};
+  auto u = rt::vdv_aus::updater{tt, src_idx};
 
   auto doc = pugi::xml_document{};
   doc.load_string(update_vgm270);
@@ -2608,7 +2614,7 @@ constexpr auto const update_rbo501 = R"(
 }  // namespace
 
 // Requires the matching to tolerate time discrepancies of up to 3 minutes
-TEST(vdv_update, match_despite_time_discrepancy_2) {
+TEST(vdv_aus, match_despite_time_discrepancy_2) {
   timetable tt;
   register_special_stations(tt);
   tt.date_range_ = {date::sys_days{2024_y / August / 1},
@@ -2619,7 +2625,7 @@ TEST(vdv_update, match_despite_time_discrepancy_2) {
 
   auto rtt = rt::create_rt_timetable(tt, date::sys_days{2024_y / August / 26});
 
-  auto u = rt::vdv::updater{tt, src_idx};
+  auto u = rt::vdv_aus::updater{tt, src_idx};
 
   auto doc = pugi::xml_document{};
   doc.load_string(update_rbo501);
@@ -2892,7 +2898,7 @@ constexpr auto const update_smd712 = R"(
 // timetable. However, the GTFS timetable contains different times due to the
 // line being redirected starting from June 29
 // the time differences is up to 4 minutes
-TEST(vdv_update, match_despite_unknown_route_diversion_1) {
+TEST(vdv_aus, match_despite_unknown_route_diversion_1) {
   timetable tt;
   register_special_stations(tt);
   tt.date_range_ = {date::sys_days{2024_y / August / 1},
@@ -2903,7 +2909,7 @@ TEST(vdv_update, match_despite_unknown_route_diversion_1) {
 
   auto rtt = rt::create_rt_timetable(tt, date::sys_days{2024_y / August / 20});
 
-  auto u = rt::vdv::updater{tt, src_idx};
+  auto u = rt::vdv_aus::updater{tt, src_idx};
 
   auto doc = pugi::xml_document{};
   doc.load_string(update_smd712);
@@ -3409,7 +3415,7 @@ constexpr auto const update_vgm456 = R"(
 
 }  // namespace
 
-TEST(vdv_update, match_despite_unknown_route_diversion_2) {
+TEST(vdv_aus, match_despite_unknown_route_diversion_2) {
   timetable tt;
   register_special_stations(tt);
   tt.date_range_ = {date::sys_days{2024_y / August / 1},
@@ -3420,7 +3426,7 @@ TEST(vdv_update, match_despite_unknown_route_diversion_2) {
 
   auto rtt = rt::create_rt_timetable(tt, date::sys_days{2024_y / August / 26});
 
-  auto u = rt::vdv::updater{tt, src_idx};
+  auto u = rt::vdv_aus::updater{tt, src_idx};
 
   auto doc = pugi::xml_document{};
   doc.load_string(update_vgm456);
@@ -3707,7 +3713,7 @@ constexpr auto const update_ovo65 = R"(
 
 }  // namespace
 
-TEST(vdv_update, match_shorter_transport_1) {
+TEST(vdv_aus, partial_duplicate_1) {
   timetable tt;
   register_special_stations(tt);
   tt.date_range_ = {date::sys_days{2024_y / August / 1},
@@ -3718,7 +3724,7 @@ TEST(vdv_update, match_shorter_transport_1) {
 
   auto rtt = rt::create_rt_timetable(tt, date::sys_days{2024_y / August / 23});
 
-  auto u = rt::vdv::updater{tt, src_idx};
+  auto u = rt::vdv_aus::updater{tt, src_idx};
 
   auto doc = pugi::xml_document{};
   doc.load_string(update_ovo65);
@@ -3729,7 +3735,7 @@ TEST(vdv_update, match_shorter_transport_1) {
       tt,
       &rtt,
       {{transport_idx_t{0U}, day_idx_t{27}}, {stop_idx_t{0}, stop_idx_t{31U}}}};
-  EXPECT_FALSE(fr0.is_rt());
+  EXPECT_TRUE(fr0.is_rt());
 
   auto const fr1 = rt::frun{
       tt,
@@ -4011,7 +4017,7 @@ constexpr auto const update_rbo512 = R"(
 
 }  // namespace
 
-TEST(vdv_update, match_shorter_transport_2) {
+TEST(vdv_aus, partial_duplicate_2) {
   timetable tt;
   register_special_stations(tt);
   tt.date_range_ = {date::sys_days{2024_y / August / 1},
@@ -4022,7 +4028,7 @@ TEST(vdv_update, match_shorter_transport_2) {
 
   auto rtt = rt::create_rt_timetable(tt, date::sys_days{2024_y / August / 26});
 
-  auto u = rt::vdv::updater{tt, src_idx};
+  auto u = rt::vdv_aus::updater{tt, src_idx};
 
   auto doc = pugi::xml_document{};
   doc.load_string(update_rbo512);
@@ -4032,7 +4038,7 @@ TEST(vdv_update, match_shorter_transport_2) {
                             &rtt,
                             {{transport_idx_t{0U}, day_idx_t{30U}},
                              {stop_idx_t{0U}, stop_idx_t{26U}}}};
-  EXPECT_FALSE(fr0.is_rt());
+  EXPECT_TRUE(fr0.is_rt());
 
   auto const fr1 = rt::frun{tt,
                             &rtt,
@@ -4217,7 +4223,7 @@ constexpr auto const update_rvs261 = R"(
 			<Betriebstag>2024-08-19</Betriebstag>
 		</FahrtID>
 	</FahrtRef>
-	<Komplettfahrt>false</Komplettfahrt>
+	<Komplettfahrt>true</Komplettfahrt>
 	<BetreiberID>vvorbl</BetreiberID>
 	<IstHalt>
 		<HaltID>de:14612:300:2:1</HaltID>
@@ -4317,7 +4323,7 @@ constexpr auto const update_rvs261 = R"(
 
 }  // namespace
 
-TEST(vdv_update, match_261_not_11) {
+TEST(vdv_aus, match_261_not_11) {
   timetable tt;
   register_special_stations(tt);
   tt.date_range_ = {date::sys_days{2024_y / August / 1},
@@ -4328,7 +4334,7 @@ TEST(vdv_update, match_261_not_11) {
 
   auto rtt = rt::create_rt_timetable(tt, date::sys_days{2024_y / August / 19});
 
-  auto u = rt::vdv::updater{tt, src_idx};
+  auto u = rt::vdv_aus::updater{tt, src_idx};
 
   auto doc = pugi::xml_document{};
   doc.load_string(update_rvs261);
@@ -4534,7 +4540,7 @@ constexpr auto const update_rvs360 = R"(
 
 }  // namespace
 
-TEST(vdv_update, match_360_not_66) {
+TEST(vdv_aus, match_360_not_66) {
   timetable tt;
   register_special_stations(tt);
   tt.date_range_ = {date::sys_days{2024_y / August / 1},
@@ -4545,7 +4551,7 @@ TEST(vdv_update, match_360_not_66) {
 
   auto rtt = rt::create_rt_timetable(tt, date::sys_days{2024_y / August / 27});
 
-  auto u = rt::vdv::updater{tt, src_idx};
+  auto u = rt::vdv_aus::updater{tt, src_idx};
 
   auto doc = pugi::xml_document{};
   doc.load_string(update_rvs360);
@@ -5237,7 +5243,7 @@ constexpr auto const update_vgm418_1 = R"(
 
 }  // namespace
 
-TEST(vdv_update, monotonize) {
+TEST(vdv_aus, monotonize) {
   timetable tt;
   register_special_stations(tt);
   tt.date_range_ = {date::sys_days{2024_y / August / 1},
@@ -5250,7 +5256,7 @@ TEST(vdv_update, monotonize) {
 
   auto rtt = rt::create_rt_timetable(tt, date::sys_days{2024_y / August / 26});
 
-  auto u = rt::vdv::updater{tt, src_idx};
+  auto u = rt::vdv_aus::updater{tt, src_idx};
 
   auto doc = pugi::xml_document{};
   doc.load_string(std::string{update_vgm418_0}.append(update_vgm418_1).c_str());

@@ -13,26 +13,34 @@ struct rt_timetable;
 struct timetable;
 }  // namespace nigiri
 
-namespace nigiri::rt::vdv {
+namespace nigiri::rt::vdv_aus {
 
 struct statistics {
   friend std::ostream& operator<<(std::ostream&, statistics const&);
-  friend statistics& operator+=(statistics&, statistics const&);
 
   std::uint32_t unsupported_additional_runs_{0U};
-  std::uint32_t cancelled_runs_{0U};
+  std::uint32_t unsupported_additional_stops_{0U};
+
+  size_t current_matches_total_{0U};
+  std::uint32_t current_matches_non_empty_{0U};
+
+  std::uint32_t total_runs_{0U};
+  std::uint32_t complete_runs_{0U};
+  std::uint32_t unique_runs_{0U};
+  std::uint32_t match_attempts_{0U};
+  std::uint32_t matched_runs_{0U};
+  std::uint32_t multiple_matches_{0U};
+  std::uint32_t incomplete_not_seen_before_{0U};
+  std::uint32_t complete_after_incomplete_{0U};
+  std::uint32_t no_transport_found_at_stop_{0U};
+
   std::uint32_t total_stops_{0U};
   std::uint32_t resolved_stops_{0U};
-  std::uint32_t unknown_stops_{0U};
-  std::uint32_t unsupported_additional_stops_{0U};
-  std::uint32_t total_runs_{0U};
-  std::uint32_t no_transport_found_at_stop_{0U};
-  std::uint32_t search_on_incomplete_{0U};
-  std::uint32_t found_runs_{0U};
-  std::uint32_t multiple_matches_{0U};
-  std::uint32_t matched_runs_{0U};
-  std::uint32_t unmatchable_runs_{0U};
+
   std::uint32_t runs_without_stops_{0U};
+
+  std::uint32_t cancelled_runs_{0U};
+
   std::uint32_t skipped_vdv_stops_{0U};
   std::uint32_t excess_vdv_stops_{0U};
   std::uint32_t updated_events_{0U};
@@ -40,20 +48,11 @@ struct statistics {
 };
 
 struct updater {
-  static constexpr auto const kExactMatchScore = 1000;
-  static constexpr auto const kAllowedTimeDiscrepancy = []() {
-    auto error = 0;
-    while (kExactMatchScore - error * error > 0) {
-      ++error;
-    }
-    return error - 1;
-  }();  // minutes
-
   updater(timetable const&, source_idx_t);
 
   void reset_vdv_run_ids_();
 
-  statistics get_stats() const;
+  statistics const& get_stats() const;
 
   source_idx_t get_src() const;
 
@@ -78,9 +77,7 @@ private:
 
   vector<vdv_stop> resolve_stops(pugi::xml_node vdv_run);
 
-  std::optional<rt::run> find_run(std::string_view vdv_run_id,
-                                  vector<vdv_stop> const&,
-                                  bool is_complete_run);
+  void match_run(std::string_view vdv_run_id, vector<vdv_stop> const&);
 
   void update_run(rt_timetable&,
                   run&,
@@ -89,10 +86,23 @@ private:
 
   void process_vdv_run(rt_timetable&, pugi::xml_node vdv_run);
 
+  void clean_up();
+
+  struct match {
+    std::chrono::sys_seconds last_accessed_{
+        std::chrono::time_point_cast<std::chrono::seconds>(
+            std::chrono::system_clock::now())};
+    bool only_saw_incomplete_{false};
+    std::vector<run> runs_{};
+  };
+
   timetable const& tt_;
   source_idx_t src_idx_;
   statistics stats_{};
-  hash_map<std::string, run> vdv_nigiri_{};
+  hash_map<std::string, match> matches_{};
+  std::chrono::sys_seconds last_cleanup{
+      std::chrono::time_point_cast<std::chrono::seconds>(
+          std::chrono::system_clock::now())};
 };
 
-}  // namespace nigiri::rt::vdv
+}  // namespace nigiri::rt::vdv_aus
