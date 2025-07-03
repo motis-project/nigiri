@@ -24,6 +24,7 @@
 #include "nigiri/loader/gtfs/noon_offsets.h"
 #include "nigiri/loader/gtfs/route.h"
 #include "nigiri/loader/gtfs/route_key.h"
+#include "nigiri/loader/gtfs/seated.h"
 #include "nigiri/loader/gtfs/services.h"
 #include "nigiri/loader/gtfs/shape.h"
 #include "nigiri/loader/gtfs/shape_prepare.h"
@@ -109,7 +110,7 @@ void load_timetable(loader_config const& config,
   auto const progress_tracker = utl::get_active_progress_tracker();
   auto timezones = tz_map{};
   auto agencies = read_agencies(tt, timezones, load(kAgencyFile).data());
-  auto const stops =
+  auto const [stops, seated_transfers] =
       read_stops(src, tt, timezones, load(kStopFile).data(),
                  load(kTransfersFile).data(), config.link_stop_distance_);
   auto const routes = read_routes(src, tt, timezones, agencies,
@@ -161,6 +162,36 @@ void load_timetable(loader_config const& config,
     auto const timer = scoped_timer{"loader.gtfs.trips.interpolate"};
     for (auto& t : trip_data.data_) {
       t.interpolate();
+    }
+  }
+
+  {  // Resolve stay-seated transfers (transfer_type=4).
+    auto const timer =
+        scoped_timer{"loader.gtfs.trips.resolve_seated_transfers"};
+
+    for (auto const& [from_trip_id, to_trip_ids] : seated_transfers) {
+      auto const from_it = trip_data.trips_.find(from_trip_id);
+      if (from_it == end(trip_data.trips_)) {
+        log(log_lvl::error, "nigiri.loader.gtfs.seated", "trip {} not found",
+            from_trip_id);
+        continue;
+      }
+
+      auto& from_trip = trip_data.get(from_trip_id);
+      for (auto const& to_trip_id : to_trip_ids) {
+        auto const to_it = trip_data.trips_.find(to_trip_id);
+        if (to_it == end(trip_data.trips_)) {
+          log(log_lvl::error, "nigiri.loader.gtfs.seated", "trip {} not found",
+              to_trip_id);
+          continue;
+        }
+
+        auto& to_trip = trip_data.data_[to_it->second];
+        to_trip.seated_in_.push_back(
+            gtfs_trip_idx_t{&from_trip - trip_data.data_.data()});
+        from_trip.seated_out_.push_back(
+            gtfs_trip_idx_t{&to_trip - trip_data.data_.data()});
+      }
     }
   }
 
@@ -217,33 +248,33 @@ void load_timetable(loader_config const& config,
     }
   };
 
+  auto const add_expanded_trip = [&](utc_trip&& s) {
+    auto const* stop_seq = get_stop_seq(trip_data, s, stop_seq_cache);
+    auto const clasz = trip_data.get(s.trips_.front()).get_clasz(tt);
+    auto const* bikes_allowed_seq = get_bikes_allowed_seq(s.trips_);
+    auto const* cars_allowed_seq = get_cars_allowed_seq(s.trips_);
+    auto const it = route_services.find(
+        route_key_ptr_t{clasz, stop_seq, bikes_allowed_seq, cars_allowed_seq});
+    if (it != end(route_services)) {
+      for (auto& r : it->second) {
+        auto const idx = get_index(r, s);
+        if (idx.has_value()) {
+          r.insert(std::next(begin(r), static_cast<int>(*idx)), s);
+          return;
+        }
+      }
+      it->second.emplace_back(std::vector<utc_trip>{std::move(s)});
+    } else {
+      route_services.emplace(
+          route_key_t{clasz, *stop_seq, *bikes_allowed_seq, *cars_allowed_seq},
+          std::vector<std::vector<utc_trip>>{{s}});
+    }
+  };
+
   auto const add_trip = [&](basic_string<gtfs_trip_idx_t> const& trips,
                             bitfield const* traffic_days) {
-    expand_trip(
-        trip_data, noon_offsets, tt, trips, traffic_days, tt.date_range_,
-        assistance, [&](utc_trip&& s) {
-          auto const* stop_seq = get_stop_seq(trip_data, s, stop_seq_cache);
-          auto const clasz = trip_data.get(s.trips_.front()).get_clasz(tt);
-          auto const* bikes_allowed_seq = get_bikes_allowed_seq(s.trips_);
-          auto const* cars_allowed_seq = get_cars_allowed_seq(s.trips_);
-          auto const it = route_services.find(route_key_ptr_t{
-              clasz, stop_seq, bikes_allowed_seq, cars_allowed_seq});
-          if (it != end(route_services)) {
-            for (auto& r : it->second) {
-              auto const idx = get_index(r, s);
-              if (idx.has_value()) {
-                r.insert(std::next(begin(r), static_cast<int>(*idx)), s);
-                return;
-              }
-            }
-            it->second.emplace_back(std::vector<utc_trip>{std::move(s)});
-          } else {
-            route_services.emplace(
-                route_key_t{clasz, *stop_seq, *bikes_allowed_seq,
-                            *cars_allowed_seq},
-                std::vector<std::vector<utc_trip>>{{s}});
-          }
-        });
+    expand_trip(trip_data, noon_offsets, tt, trips, traffic_days,
+                tt.date_range_, assistance, add_expanded_trip);
   };
 
   {
@@ -253,7 +284,8 @@ void load_timetable(loader_config const& config,
     auto const timer = scoped_timer{"loader.gtfs.trips.expand"};
 
     for (auto const [i, t] : utl::enumerate(trip_data.data_)) {
-      if (t.block_ != nullptr || !t.flex_time_windows_.empty()) {
+      if (t.block_ != nullptr || t.has_seated_transfers() ||
+          !t.flex_time_windows_.empty()) {
         continue;
       }
       add_trip({gtfs_trip_idx_t{i}}, t.service_);
@@ -268,6 +300,22 @@ void load_timetable(loader_config const& config,
     auto const timer = scoped_timer{"loader.gtfs.trips.block_id"};
 
     for (auto const& [_, blk] : trip_data.blocks_) {
+      // If a trip has both block_id and transfer_type=4
+      // -> prefer transfer_type=4, ignore block_id
+      if (utl::any_of(blk->trips_, [&](gtfs_trip_idx_t const idx) {
+            return trip_data.data_[idx].has_seated_transfers();
+          })) {
+        for (auto const& trip : blk->trips_) {
+          auto const& trp = trip_data.get(trip);
+          if (!trp.has_seated_transfers()) {
+            // One of the block_id trips has no stay-seated transfer.
+            // -> build it separately
+            add_trip({trip}, trp.service_);
+          }
+        }
+        continue;
+      }
+
       for (auto const& [trips, traffic_days] : blk->rule_services(trip_data)) {
         add_trip(trips, &traffic_days);
       }
@@ -275,12 +323,6 @@ void load_timetable(loader_config const& config,
   }
 
   {
-    auto const timer = scoped_timer{"loader.gtfs.write_trips"};
-
-    progress_tracker->status("Write Trips")
-        .out_bounds(85.F, 97.F)
-        .in_high(route_services.size());
-
     auto const is_train_number = [](auto const& s) {
       return !s.empty() && std::all_of(begin(s), end(s), [](auto&& c) -> bool {
         return std::isdigit(c);
@@ -306,6 +348,25 @@ void load_timetable(loader_config const& config,
           {source_file_idx, trp.from_line_, trp.to_line_}, train_nr,
           stop_seq_numbers, trp.direction_id_);
     }
+  }
+
+  {
+    auto const timer = scoped_timer{"loader.gtfs.write_seated"};
+    auto expanded_seated = expand_seated_trips(
+        trip_data, [&](gtfs_trip_idx_t const i, auto&& consume) {
+          expand_trip(trip_data, noon_offsets, tt, {i},
+                      trip_data.get(i).service_, tt.date_range_, assistance,
+                      [&](utc_trip&& s) { consume(std::move(s)); });
+        });
+    build_seated_trips(tt, trip_data, expanded_seated, add_expanded_trip);
+  }
+
+  {
+    auto const timer = scoped_timer{"loader.gtfs.write_trips"};
+
+    progress_tracker->status("Write Trips")
+        .out_bounds(85.F, 97.F)
+        .in_high(route_services.size());
 
     auto const attributes = basic_string<attribute_combination_idx_t>{};
     auto lines = hash_map<std::string, trip_line_idx_t>{};
@@ -381,7 +442,6 @@ void load_timetable(loader_config const& config,
               .section_providers_ = {first.route_->agency_},
               .section_directions_ = section_directions,
               .section_lines_ = section_lines,
-              .stop_seq_numbers_ = stop_seq_numbers,
               .route_colors_ = route_colors});
         }
 
