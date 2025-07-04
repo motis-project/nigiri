@@ -25,6 +25,7 @@
 using namespace std::chrono_literals;
 
 namespace nigiri::rt::vdv_aus {
+
 constexpr auto const kExactMatchScore = 1000;
 constexpr auto const kFirstMatchThreshold = 0.5;
 constexpr auto const kAdditionalMatchTreshold = 0.9;
@@ -153,7 +154,7 @@ updater::vdv_stop::vdv_stop(nigiri::location_idx_t const l,
       dep_canceled_{is_vdv(f) ? *get_opt_bool(n, "AbfahrtFaelltAus", false)
                               : arr_canceled_} {}
 
-std::optional<std::pair<unixtime_t, event_type> > updater::vdv_stop::get_event(
+std::optional<std::pair<unixtime_t, event_type>> updater::vdv_stop::get_event(
     event_type const et) const {
   if (et == event_type::kArr && arr_.has_value()) {
     return std::pair{*arr_, event_type::kArr};
@@ -453,7 +454,6 @@ void updater::update_run(rt_timetable& rtt,
 
   vdv_trace("---updating {}, stop_range: [{}, {}[\n", fr.name(),
             fr.stop_range_.from_, fr.stop_range_.to_);
-
   for (auto i = stop_idx_t{0U}; i != fr.stop_range_.size(); ++i) {
     auto const rs = fr[i];
     auto matched_arr = false;
@@ -650,4 +650,5 @@ void updater::update(rt_timetable& rtt, pugi::xml_document const& doc) {
     return n;
   }();
 }
+
 }  // namespace nigiri::rt::vdv_aus
