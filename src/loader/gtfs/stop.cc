@@ -87,7 +87,7 @@ struct stop {
   std::string_view desc_;
   geo::latlng coord_;
   std::string_view timezone_;
-  std::set<stop*> same_name_, children_;
+  hash_set<stop*> same_name_, children_;
   stop* parent_{nullptr};
   std::vector<unsigned> close_;
   location_idx_t location_{location_idx_t::invalid()};
@@ -246,12 +246,17 @@ std::pair<stops_map_t, seated_transfers_map_t> read_stops(
           new_stop->parent_ = parent;
         }
 
-        equal_names[new_stop->name_.view()].emplace_back(new_stop);
+        if (!new_stop->name_.empty()) {
+          equal_names[new_stop->name_.view()].emplace_back(new_stop);
+        }
       });
 
   auto const stop_vec =
       utl::to_vec(stops, [](auto const& s) { return s.second.get(); });
   for (auto const& [id, s] : stops) {
+    if (s->name_.empty()) {
+      continue;
+    }
     for (auto const& equal : equal_names[s->name_]) {
       if (equal != s.get()) {
         s->same_name_.emplace(equal);
