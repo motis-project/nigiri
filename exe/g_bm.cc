@@ -5,6 +5,8 @@
 #include "nigiri/routing/raptor_search.h"
 #include "nigiri/routing/search.h"
 
+static std::filesystem::path tt_path;
+
 void generate_queries(
     std::vector<nigiri::query_generation::start_dest_query>& queries,
     std::uint32_t n_queries,
@@ -14,14 +16,12 @@ void generate_queries(
   auto qg = nigiri::query_generation::generator{
       tt, gs, static_cast<std::uint32_t>(seed)};
   queries.reserve(n_queries);
-  // std::cout << "--- Starting query generation ---\n";
   for (auto i = 0U; i != n_queries; ++i) {
     auto const sdq = qg.random_query();
     if (sdq.has_value()) {
       queries.emplace_back(sdq.value());
     }
   }
-  // std::cout << "--- Finished query generation ---\n";
 }
 
 struct benchmark_result {
@@ -37,7 +37,6 @@ void process_queries(
     std::vector<benchmark_result>& results,
     nigiri::timetable const& tt) {
   results.reserve(queries.size());
-  // std::cout << "--- Start processing queries ---\n";
   std::mutex mutex;
   {
     struct query_state {
@@ -62,26 +61,22 @@ void process_queries(
       }
     }
   }
-  // std::cout << "--- Finished processing queries ---\n";
 }
 
 // benchmark code:
-
 static void benchmark_random_queries(benchmark::State& state) {
   std::vector<benchmark_result> results;
   std::vector<nigiri::query_generation::start_dest_query> queries;
   ::benchmark::DoNotOptimize(results);
   ::benchmark::DoNotOptimize(queries);
   for (auto _ : state) {
-    // erstmal so, ändern!!
-    std::filesystem::path tt_path = "/home/tmir/nigiri/build/tt.bin";
     auto tt = *nigiri::timetable::read(tt_path);
     ::benchmark::DoNotOptimize(tt);
     tt.resolve();
     ::benchmark::ClobberMemory();
     nigiri::query_generation::generator_settings gs;
     ::benchmark::DoNotOptimize(gs);
-    generate_queries(queries, 10U, tt, gs, 22);
+    generate_queries(queries, 5U, tt, gs, 22);
     ::benchmark::ClobberMemory();
     process_queries(queries, results, tt);
     ::benchmark::DoNotOptimize(results);
@@ -90,12 +85,18 @@ static void benchmark_random_queries(benchmark::State& state) {
     ::benchmark::DoNotOptimize(gs);
   }
 }
-BENCHMARK(benchmark_random_queries)->Repetitions(4);
+BENCHMARK(benchmark_random_queries)->Repetitions(5);
 
-// TODO: change ns to ms here
-// TODO: take path to tt as argv
 int main(int argc, char** argv) {
+  std::string arg = (argc == 2) ? argv[1] : "error";
+  if ("error" == arg) {
+    std::cout << "Bitte geben Sie den Pfad zum Timetable (tt.bin) an! \n";
+    return -1;
+  }
+  tt_path = arg;
+  ::benchmark::SetDefaultTimeUnit(benchmark::kMicrosecond);
   ::benchmark::MaybeReenterWithoutASLR(argc, argv);
   ::benchmark::Initialize(&argc, argv);
   ::benchmark::RunSpecifiedBenchmarks();
+  return 0;
 }
