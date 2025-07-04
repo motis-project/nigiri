@@ -28,6 +28,7 @@ namespace nigiri::rt::vdv_aus {
 
 constexpr auto const kExactMatchScore = 1000;
 constexpr auto const kFirstMatchThreshold = 0.5;
+constexpr auto const kFirstMatchThresholdIncomplete = 0.7;
 constexpr auto const kAdditionalMatchTreshold = 0.9;
 constexpr auto const kAllowedTimeDiscrepancy = []() {
   auto error = 0;
@@ -254,7 +255,8 @@ struct candidate {
 
 void updater::match_run(std::string_view vdv_run_id,
                         vector<vdv_stop> const& vdv_stops,
-                        statistics& stats) {
+                        statistics& stats,
+                        bool const is_complete_run) {
   ++stats.match_attempts_;
 
   matches_[vdv_run_id] = match{};
@@ -344,9 +346,11 @@ void updater::match_run(std::string_view vdv_run_id,
     return c.score_ > candidates.front().score_ * kAdditionalMatchTreshold;
   };
 
+  auto const match_threshold =
+      is_complete_run ? kFirstMatchThreshold : kFirstMatchThresholdIncomplete;
   if (!candidates.empty() &&
-      candidates.front().score_ >
-          vdv_stops.size() * kExactMatchScore * kFirstMatchThreshold) {
+      (candidates.front().score_ >
+       vdv_stops.size() * kExactMatchScore * match_threshold)) {
     for (auto const& c : candidates) {
       if (is_match(c)) {
         matches_[vdv_run_id].runs_.emplace_back(c.r_);
@@ -603,10 +607,10 @@ void updater::process_vdv_run(rt_timetable& rtt,
   if (!seen_before) {
     ++stats.unique_runs_;
     if (is_complete_run) {
-      match_run(vdv_run_id, vdv_stops, stats);
+      match_run(vdv_run_id, vdv_stops, stats, is_complete_run);
     } else {
       ++stats.incomplete_not_seen_before_;
-      match_run(vdv_run_id, vdv_stops, stats);
+      match_run(vdv_run_id, vdv_stops, stats, is_complete_run);
       matches_[vdv_run_id].only_saw_incomplete_ = true;
     }
   }
@@ -614,7 +618,7 @@ void updater::process_vdv_run(rt_timetable& rtt,
   if (seen_before && is_complete_run &&
       matches_[vdv_run_id].only_saw_incomplete_) {
     ++stats.complete_after_incomplete_;
-    match_run(vdv_run_id, vdv_stops, stats);
+    match_run(vdv_run_id, vdv_stops, stats, is_complete_run);
     matches_[vdv_run_id].only_saw_incomplete_ = false;
   }
 

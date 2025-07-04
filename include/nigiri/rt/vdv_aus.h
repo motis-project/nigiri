@@ -86,7 +86,8 @@ private:
 
   void match_run(std::string_view vdv_run_id,
                  vector<vdv_stop> const&,
-                 statistics&);
+                 statistics&,
+                 bool is_complete_run);
 
   void update_run(rt_timetable&,
                   run const&,
