@@ -453,7 +453,10 @@ void updater::update_run(rt_timetable& rtt,
 
   vdv_trace("---updating {}, stop_range: [{}, {}[\n", fr.name(),
             fr.stop_range_.from_, fr.stop_range_.to_);
-  for (auto const rs : fr) {
+  for (auto i = fr.stop_range_.from_; i != fr.stop_range_.to_; ++i) {
+    std::cout << "from: " << fr.stop_range_.from_
+              << ", to: " << fr.stop_range_.to_ << ", i: " << i << std::endl;
+    auto const rs = fr[i];
     auto matched_arr = false;
     auto matched_dep = false;
     skipped_stops.clear();
