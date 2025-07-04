@@ -486,8 +486,7 @@ void updater::update_run(rt_timetable& rtt,
           }
         }
 
-        if (matched_arr || matched_dep) {
-          // stop change
+        if (matched_arr || matched_dep) {  // stop change
           auto& stp = rtt.rt_transport_location_seq_[fr.rt_][rs.stop_idx_];
           auto const in_allowed_update = !vdv_stop->in_forbidden_ &&
                                          !vdv_stop->passing_through_ &&
