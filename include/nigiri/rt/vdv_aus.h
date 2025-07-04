@@ -57,6 +57,7 @@ struct updater {
   statistics const& get_stats() const;
 
   source_idx_t get_src() const;
+  xml_format get_format() const;
 
   void update(rt_timetable&, pugi::xml_document const&);
 

@@ -81,6 +81,7 @@ void updater::reset_vdv_run_ids_() { matches_.clear(); }
 statistics const& updater::get_stats() const { return stats_; }
 
 source_idx_t updater::get_src() const { return src_idx_; }
+updater::xml_format updater::get_format() const { return format_; }
 
 std::optional<unixtime_t> get_opt_time(pugi::xml_node const& node,
                                        char const* str,
