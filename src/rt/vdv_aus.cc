@@ -71,8 +71,10 @@ std::ostream& operator<<(std::ostream& out, statistics const& s) {
   return out;
 }
 
-updater::updater(nigiri::timetable const& tt, source_idx_t const src_idx)
-    : tt_{tt}, src_idx_{src_idx} {}
+updater::updater(nigiri::timetable const& tt,
+                 source_idx_t const src_idx,
+                 xml_format const format)
+    : tt_{tt}, src_idx_{src_idx}, format_{format} {}
 
 void updater::reset_vdv_run_ids_() { matches_.clear(); }
 
@@ -80,12 +82,13 @@ statistics const& updater::get_stats() const { return stats_; }
 
 source_idx_t updater::get_src() const { return src_idx_; }
 
-std::optional<unixtime_t> updater::get_opt_time(pugi::xml_node const& node,
-                                                char const* str) {
+std::optional<unixtime_t> get_opt_time(pugi::xml_node const& node,
+                                       char const* str,
+                                       char const* format) {
   auto const xpath = node.select_node(str);
   if (xpath != nullptr) {
     try {
-      return std::optional{parse_time_no_tz(xpath.node().child_value())};
+      return parse_time(xpath.node().child_value(), format);
     } catch (std::exception const& e) {
       log(log_lvl::error, "vdv_update.get_opt_time",
           "{}, invalid time input: {}", e.what(), xpath.node().child_value());
@@ -103,23 +106,55 @@ std::optional<bool> get_opt_bool(
                           : default_to;
 }
 
+std::optional<std::string_view> get_opt_str(
+    pugi::xml_node const& node,
+    char const* key,
+    std::optional<std::string_view> default_to = std::nullopt) {
+  auto const xpath = node.select_node(key);
+  return xpath != nullptr ? xpath.node().child_value() : default_to;
+}
+
+bool is_vdv(updater::xml_format const f) {
+  return f == updater::xml_format::kVdv;
+}
+
 updater::vdv_stop::vdv_stop(nigiri::location_idx_t const l,
                             std::string_view id,
-                            pugi::xml_node const n)
+                            pugi::xml_node const n,
+                            xml_format const f)
     : l_{l},
       id_{id},
-      dep_{get_opt_time(n, "Abfahrtszeit")},
-      arr_{get_opt_time(n, "Ankunftszeit")},
-      rt_dep_{get_opt_time(n, "IstAbfahrtPrognose")},
-      rt_arr_{get_opt_time(n, "IstAnkunftPrognose")},
-      in_forbidden_{*get_opt_bool(n, "Einsteigeverbot", false)},
-      out_forbidden_{*get_opt_bool(n, "Aussteigeverbot", false)},
-      passing_through_{*get_opt_bool(n, "Durchfahrt", false)},
-      arr_canceled_{*get_opt_bool(n, "AnkunftFaelltAus", false)},
-      dep_canceled_{*get_opt_bool(n, "AbfahrtFaelltAus", false)} {}
+      dep_{get_opt_time(n,
+                        is_vdv(f) ? "Abfahrtszeit" : "AimedDepartureTime",
+                        is_vdv(f) ? "%FT%T" : "%FT%T%Ez")},
+      arr_{get_opt_time(n,
+                        is_vdv(f) ? "Ankunftszeit" : "AimedArrivalTime",
+                        is_vdv(f) ? "%FT%T" : "%FT%T%Ez")},
+      rt_dep_{get_opt_time(
+          n,
+          is_vdv(f) ? "IstAbfahrtPrognose" : "ExpectedDepartureTime",
+          is_vdv(f) ? "%FT%T" : "%FT%T%Ez")},
+      rt_arr_{
+          get_opt_time(n,
+                       is_vdv(f) ? "IstAnkunftPrognose" : "AimedArrivalTime",
+                       is_vdv(f) ? "%FT%T" : "%FT%T%Ez")},
+      in_forbidden_{is_vdv(f) ? *get_opt_bool(n, "Einsteigeverbot", false)
+                              : *get_opt_str(n,
+                                             "DepartureBoardingActivity",
+                                             "boarding") != "boarding"},
+      out_forbidden_{is_vdv(f) ? *get_opt_bool(n, "Aussteigeverbot", false)
+                               : get_opt_str(n,
+                                             "ArrivalBoardingActivity",
+                                             "alighting") != "alighting"},
+      passing_through_{is_vdv(f) ? *get_opt_bool(n, "Durchfahrt", false)
+                                 : in_forbidden_ && out_forbidden_},
+      arr_canceled_{is_vdv(f) ? *get_opt_bool(n, "AnkunftFaelltAus", false)
+                              : *get_opt_bool(n, "Cancellation", false)},
+      dep_canceled_{is_vdv(f) ? *get_opt_bool(n, "AbfahrtFaelltAus", false)
+                              : arr_canceled_} {}
 
 std::optional<std::pair<unixtime_t, event_type>> updater::vdv_stop::get_event(
-    event_type et) const {
+    event_type const et) const {
   if (et == event_type::kArr && arr_.has_value()) {
     return std::pair{*arr_, event_type::kArr};
   } else if (et == event_type::kDep && dep_.has_value()) {
@@ -138,26 +173,35 @@ pugi::xml_node get(pugi::xml_node const& node, char const* str) {
 vector<updater::vdv_stop> updater::resolve_stops(pugi::xml_node const vdv_run) {
   auto vdv_stops = vector<vdv_stop>{};
 
-  for (auto const stop : vdv_run.select_nodes("IstHalt")) {
-    ++stats_.total_stops_;
+  for (auto const stop_selector :
+       is_vdv(format_) ? std::initializer_list<char const*>{"IstHalt"}
+                       : std::initializer_list<char const*>{
+                             "RecordedCalls/RecordedCall",
+                             "EstimatedCalls/EstimatedCall"}) {
+    for (auto const stop : vdv_run.select_nodes(stop_selector)) {
+      ++stats_.total_stops_;
 
-    auto const vdv_stop_id =
-        std::string_view{get(stop.node(), "HaltID").child_value()};
-    auto const l = tt_.locations_.find({vdv_stop_id, src_idx_});
+      auto const vdv_stop_id = std::string_view{
+          get(stop.node(), is_vdv(format_) ? "HaltID" : "StopPointRef")
+              .child_value()};
+      auto const l = tt_.locations_.find({vdv_stop_id, src_idx_});
 
-    if (get_opt_bool(stop.node(), "Zusatzhalt", false).value()) {
-      ++stats_.unsupported_additional_stops_;
-      vdv_trace("unsupported additional stop: [id: {}, name: {}]\n",
-                vdv_stop_id, l.has_value() ? l->name_ : "unresolvable");
-    }
+      if (get_opt_bool(stop.node(),
+                       is_vdv(format_) ? "Zusatzhalt" : "ExtraCall", false)
+              .value()) {
+        ++stats_.unsupported_additional_stops_;
+        vdv_trace("unsupported additional stop: [id: {}, name: {}]\n",
+                  vdv_stop_id, l.has_value() ? l->name_ : "unresolvable");
+      }
 
-    if (l.has_value()) {
-      ++stats_.resolved_stops_;
-      vdv_stops.emplace_back(l->l_, vdv_stop_id, stop.node());
-    } else {
-      vdv_stops.emplace_back(location_idx_t::invalid(), vdv_stop_id,
-                             stop.node());
-      vdv_trace("unresolvable stop: {}\n", vdv_stop_id);
+      if (l.has_value()) {
+        ++stats_.resolved_stops_;
+        vdv_stops.emplace_back(l->l_, vdv_stop_id, stop.node(), format_);
+      } else {
+        vdv_stops.emplace_back(location_idx_t::invalid(), vdv_stop_id,
+                               stop.node(), format_);
+        vdv_trace("unresolvable stop: {}\n", vdv_stop_id);
+      }
     }
   }
 
@@ -427,6 +471,7 @@ void updater::update_run(rt_timetable& rtt,
             ++stats_.updated_events_;
           }
         }
+
         if (rs.stop_idx_ != fr.stop_range_.to_ - 1 &&
             vdv_stop->dep_.has_value() &&
             static_cast<std::uint32_t>(std::abs(
@@ -438,9 +483,8 @@ void updater::update_run(rt_timetable& rtt,
             ++stats_.updated_events_;
           }
         }
-        if (matched_arr || matched_dep) {
 
-          // stop change
+        if (matched_arr || matched_dep) {  // stop change
           auto& stp = rtt.rt_transport_location_seq_[fr.rt_][rs.stop_idx_];
           auto const in_allowed_update = !vdv_stop->in_forbidden_ &&
                                          !vdv_stop->passing_through_ &&
@@ -503,16 +547,26 @@ void updater::update_run(rt_timetable& rtt,
 
 void updater::process_vdv_run(rt_timetable& rtt, pugi::xml_node const vdv_run) {
   ++stats_.total_runs_;
-  auto const is_complete_run = *get_opt_bool(vdv_run, "Komplettfahrt", false);
+  auto const is_complete_run = *get_opt_bool(
+      vdv_run,
+      format_ == xml_format::kVdv ? "Komplettfahrt" : "IsCompleteStopSequence",
+      false);
   if (is_complete_run) {
     ++stats_.complete_runs_;
   }
 
   auto vdv_stops = resolve_stops(vdv_run);
 
-  auto const vdv_run_id = fmt::format(
-      "{}{}", get(vdv_run, "./FahrtRef/FahrtID/FahrtBezeichner").child_value(),
-      get(vdv_run, "./FahrtRef/FahrtID/Betriebstag").child_value());
+  auto const run_ref_selector =
+      format_ == xml_format::kVdv
+          ? "./FahrtRef/FahrtID/FahrtBezeichner"
+          : "./FramedVehicleJourneyRef/DatedVehicleJourneyRef";
+  auto const operation_day_selector =
+      format_ == xml_format::kVdv ? "./FahrtRef/FahrtID/Betriebstag"
+                                  : "./FramedVehicleJourneyRef/DataFrameRef";
+  auto const vdv_run_id =
+      fmt::format("{}{}", get(vdv_run, run_ref_selector).child_value(),
+                  get(vdv_run, operation_day_selector).child_value());
 
   if (vdv_stops.empty()) {
     ++stats_.runs_without_stops_;
@@ -539,7 +593,9 @@ void updater::process_vdv_run(rt_timetable& rtt, pugi::xml_node const vdv_run) {
   }
 
   for (auto& r : matches_[vdv_run_id].runs_) {
-    if (get_opt_bool(vdv_run, "FaelltAus", false).value()) {
+    auto const cancelled_run_selector =
+        format_ == xml_format::kVdv ? "FaelltAus" : "Cancellation";
+    if (get_opt_bool(vdv_run, cancelled_run_selector, false).value()) {
       rtt.cancel_run(r);
       ++stats_.cancelled_runs_;
     } else {
@@ -567,8 +623,12 @@ void updater::update(rt_timetable& rtt, pugi::xml_document const& doc) {
     clean_up();
   }
 
-  for (auto const& vdv_run : doc.select_nodes("//IstFahrt")) {
-    if (get_opt_bool(vdv_run.node(), "Zusatzfahrt", false).value()) {
+  auto const run_node_selector =
+      is_vdv(format_) ? "//IstFahrt" : "//EstimatedVehicleJourney";
+  auto const extra_run_selector =
+      is_vdv(format_) ? "Zusatzfahrt" : "ExtraJourney";
+  for (auto const& vdv_run : doc.select_nodes(run_node_selector)) {
+    if (get_opt_bool(vdv_run.node(), extra_run_selector, false).value()) {
 #ifdef VDV_DEBUG
       vdv_trace("unsupported additional run:\n");
       vdv_run.node().print(std::cout);

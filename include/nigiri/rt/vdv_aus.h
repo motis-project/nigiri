@@ -48,7 +48,9 @@ struct statistics {
 };
 
 struct updater {
-  updater(timetable const&, source_idx_t);
+  enum class xml_format : std::uint8_t { kVdv, kSiri, kNumFormats };
+
+  updater(timetable const&, source_idx_t, xml_format format = xml_format::kVdv);
 
   void reset_vdv_run_ids_();
 
@@ -59,11 +61,11 @@ struct updater {
   void update(rt_timetable&, pugi::xml_document const&);
 
 private:
-  static std::optional<unixtime_t> get_opt_time(pugi::xml_node const&,
-                                                char const*);
-
   struct vdv_stop {
-    explicit vdv_stop(location_idx_t, std::string_view id, pugi::xml_node);
+    explicit vdv_stop(location_idx_t,
+                      std::string_view id,
+                      pugi::xml_node,
+                      xml_format);
 
     std::optional<std::pair<unixtime_t, event_type>> get_event(
         event_type et) const;
@@ -103,6 +105,7 @@ private:
   std::chrono::sys_seconds last_cleanup{
       std::chrono::time_point_cast<std::chrono::seconds>(
           std::chrono::system_clock::now())};
+  xml_format format_;
 };
 
 }  // namespace nigiri::rt::vdv_aus
