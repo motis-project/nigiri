@@ -387,7 +387,9 @@ void monotonize(frun& fr, rt_timetable& rtt) {
             fr.stop_range_.from_, fr.stop_range_.to_);
 
   auto upper_bound = unixtime_t::max();
-  for (auto const rs : it_range(rbegin(fr), rend(fr))) {
+  for (auto i = stop_idx_t{0U}; i != fr.stop_range_.size(); ++i) {
+    auto const rs =
+        fr[static_cast<stop_idx_t>(fr.stop_range_.size()) - stop_idx_t{1U} - i];
     if (rs.stop_idx_ != fr.stop_range_.to_ - 1) {
       upper_bound = std::min(rs.time(event_type::kDep), upper_bound);
       update_event(rtt, rs, event_type::kDep, upper_bound);
@@ -453,7 +455,8 @@ void updater::update_run(rt_timetable& rtt,
 
   vdv_trace("---updating {}, stop_range: [{}, {}[\n", fr.name(),
             fr.stop_range_.from_, fr.stop_range_.to_);
-  for (auto const rs : fr) {
+  for (auto i = stop_idx_t{0U}; i != fr.stop_range_.size(); ++i) {
+    auto const rs = fr[i];
     auto matched_arr = false;
     auto matched_dep = false;
     skipped_stops.clear();
