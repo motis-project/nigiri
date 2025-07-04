@@ -76,8 +76,13 @@ std::ostream& operator<<(std::ostream& out, statistics const& s) {
 statistics& statistics::operator+=(statistics const& o) {
   auto const x = cista::to_tuple(*this);
   auto const y = cista::to_tuple(o);
+  auto const add = [](auto& a, auto const b) {
+    if constexpr (std::is_same_v<std::uint32_t, std::decay_t<decltype(b)>>) {
+      a += b;
+    }
+  };
   [&]<std::size_t... I>(std::index_sequence<I...>) {
-    ((std::get<I>(x) += std::get<I>(y)), ...);
+    ((add(std::get<I>(x), std::get<I>(y))), ...);
   }(std::make_index_sequence<std::tuple_size_v<decltype(x)>>());
   return *this;
 }
