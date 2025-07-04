@@ -17,6 +17,7 @@ namespace nigiri::rt::vdv_aus {
 
 struct statistics {
   friend std::ostream& operator<<(std::ostream&, statistics const&);
+  statistics& operator+=(statistics const&);
 
   std::uint32_t unsupported_additional_runs_{0U};
   std::uint32_t unsupported_additional_stops_{0U};
@@ -29,6 +30,7 @@ struct statistics {
   std::uint32_t unique_runs_{0U};
   std::uint32_t match_attempts_{0U};
   std::uint32_t matched_runs_{0U};
+  std::uint32_t found_runs_{0U};
   std::uint32_t multiple_matches_{0U};
   std::uint32_t incomplete_not_seen_before_{0U};
   std::uint32_t complete_after_incomplete_{0U};
@@ -45,6 +47,8 @@ struct statistics {
   std::uint32_t excess_vdv_stops_{0U};
   std::uint32_t updated_events_{0U};
   std::uint32_t propagated_delays_{0U};
+
+  bool error_{false};
 };
 
 struct updater {
@@ -54,12 +58,12 @@ struct updater {
 
   void reset_vdv_run_ids_();
 
-  statistics const& get_stats() const;
+  statistics const& get_cumulative_stats() const;
 
   source_idx_t get_src() const;
   xml_format get_format() const;
 
-  void update(rt_timetable&, pugi::xml_document const&);
+  statistics update(rt_timetable&, pugi::xml_document const&);
 
 private:
   struct vdv_stop {
@@ -78,16 +82,19 @@ private:
         dep_canceled_;
   };
 
-  vector<vdv_stop> resolve_stops(pugi::xml_node vdv_run);
+  vector<vdv_stop> resolve_stops(pugi::xml_node vdv_run, statistics&);
 
-  void match_run(std::string_view vdv_run_id, vector<vdv_stop> const&);
+  void match_run(std::string_view vdv_run_id,
+                 vector<vdv_stop> const&,
+                 statistics&);
 
   void update_run(rt_timetable&,
-                  run&,
+                  run const&,
                   vector<vdv_stop> const&,
-                  bool is_complete_run);
+                  bool is_complete_run,
+                  statistics&);
 
-  void process_vdv_run(rt_timetable&, pugi::xml_node vdv_run);
+  void process_vdv_run(rt_timetable&, pugi::xml_node vdv_run, statistics&);
 
   void clean_up();
 
@@ -101,7 +108,7 @@ private:
 
   timetable const& tt_;
   source_idx_t src_idx_;
-  statistics stats_{};
+  statistics cumulative_stats_{};
   hash_map<std::string, match> matches_{};
   std::chrono::sys_seconds last_cleanup{
       std::chrono::time_point_cast<std::chrono::seconds>(

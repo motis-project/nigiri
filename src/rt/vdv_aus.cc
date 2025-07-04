@@ -47,7 +47,9 @@ constexpr auto const kMatchRetention = 48h;
 #endif
 
 std::ostream& operator<<(std::ostream& out, statistics const& s) {
-  out << "unsupported additional runs: " << s.unsupported_additional_runs_
+  out << "found runs: " << s.found_runs_ << " / " << s.total_runs_ << " ("
+      << (100.0 * static_cast<double>(s.found_runs_) / s.total_runs_) << "%)\n"
+      << "unsupported additional runs: " << s.unsupported_additional_runs_
       << "\nunsupported additional stops: " << s.unsupported_additional_stops_
       << "\ncurrent matches total: " << s.current_matches_total_
       << "\ncurrent matches non-empty: " << s.current_matches_non_empty_
@@ -71,6 +73,15 @@ std::ostream& operator<<(std::ostream& out, statistics const& s) {
   return out;
 }
 
+statistics& statistics::operator+=(statistics const& o) {
+  auto const x = cista::to_tuple(*this);
+  auto const y = cista::to_tuple(o);
+  [&]<std::size_t... I>(std::index_sequence<I...>) {
+    ((std::get<I>(x) += std::get<I>(y)), ...);
+  }(std::make_index_sequence<std::tuple_size_v<decltype(x)>>());
+  return *this;
+}
+
 updater::updater(nigiri::timetable const& tt,
                  source_idx_t const src_idx,
                  xml_format const format)
@@ -78,7 +89,9 @@ updater::updater(nigiri::timetable const& tt,
 
 void updater::reset_vdv_run_ids_() { matches_.clear(); }
 
-statistics const& updater::get_stats() const { return stats_; }
+statistics const& updater::get_cumulative_stats() const {
+  return cumulative_stats_;
+}
 
 source_idx_t updater::get_src() const { return src_idx_; }
 updater::xml_format updater::get_format() const { return format_; }
@@ -171,7 +184,8 @@ pugi::xml_node get(pugi::xml_node const& node, char const* str) {
   return xpath.node();
 }
 
-vector<updater::vdv_stop> updater::resolve_stops(pugi::xml_node const vdv_run) {
+vector<updater::vdv_stop> updater::resolve_stops(pugi::xml_node const vdv_run,
+                                                 statistics& stats) {
   auto vdv_stops = vector<vdv_stop>{};
 
   auto const vdv_stop_selectors = {"IstHalt"};
@@ -180,7 +194,7 @@ vector<updater::vdv_stop> updater::resolve_stops(pugi::xml_node const vdv_run) {
   for (auto const stop_selector :
        is_vdv(format_) ? vdv_stop_selectors : siri_stop_stop_selectors) {
     for (auto const stop : vdv_run.select_nodes(stop_selector)) {
-      ++stats_.total_stops_;
+      ++stats.total_stops_;
 
       auto const vdv_stop_id = std::string_view{
           get(stop.node(), is_vdv(format_) ? "HaltID" : "StopPointRef")
@@ -190,13 +204,13 @@ vector<updater::vdv_stop> updater::resolve_stops(pugi::xml_node const vdv_run) {
       if (get_opt_bool(stop.node(),
                        is_vdv(format_) ? "Zusatzhalt" : "ExtraCall", false)
               .value()) {
-        ++stats_.unsupported_additional_stops_;
+        ++stats.unsupported_additional_stops_;
         vdv_trace("unsupported additional stop: [id: {}, name: {}]\n",
                   vdv_stop_id, l.has_value() ? l->name_ : "unresolvable");
       }
 
       if (l.has_value()) {
-        ++stats_.resolved_stops_;
+        ++stats.resolved_stops_;
         vdv_stops.emplace_back(l->l_, vdv_stop_id, stop.node(), format_);
       } else {
         vdv_stops.emplace_back(location_idx_t::invalid(), vdv_stop_id,
@@ -234,8 +248,9 @@ struct candidate {
 };
 
 void updater::match_run(std::string_view vdv_run_id,
-                        vector<vdv_stop> const& vdv_stops) {
-  ++stats_.match_attempts_;
+                        vector<vdv_stop> const& vdv_stops,
+                        statistics& stats) {
+  ++stats.match_attempts_;
 
   matches_[vdv_run_id] = match{};
   auto candidates = std::vector<candidate>{};
@@ -311,14 +326,14 @@ void updater::match_run(std::string_view vdv_run_id,
       }
     }
     if (no_transport_found_at_stop) {
-      ++stats_.no_transport_found_at_stop_;
+      ++stats.no_transport_found_at_stop_;
     }
     for (auto& c : candidates) {
       c.finish_stop();
     }
   }
 
-  std::sort(begin(candidates), end(candidates));
+  utl::sort(candidates);
 
   auto const is_match = [&](auto const& c) {
     return c.score_ > candidates.front().score_ * kAdditionalMatchTreshold;
@@ -328,14 +343,13 @@ void updater::match_run(std::string_view vdv_run_id,
       candidates.front().score_ >
           vdv_stops.size() * kExactMatchScore * kFirstMatchThreshold) {
     for (auto const& c : candidates) {
-      if (!is_match(c)) {
-        break;
+      if (is_match(c)) {
+        matches_[vdv_run_id].runs_.emplace_back(c.r_);
       }
-      matches_[vdv_run_id].runs_.emplace_back(c.r_);
     }
   }
 
-  [[maybe_unused]] auto const candidate_str = [&](auto const& c) {
+  [[maybe_unused]] auto const candidate_str = [&](candidate const& c) {
     return fmt::format(
         "[line: {}, score: {}, length: {}], dbg: {}",
         tt_.trip_lines_
@@ -351,9 +365,9 @@ void updater::match_run(std::string_view vdv_run_id,
     vdv_trace("[vdv_aus] no match for {}, best candidate: {}", vdv_run_id,
               candidates.empty() ? "none" : candidate_str(candidates.front()));
   } else {
-    ++stats_.matched_runs_;
+    ++stats.matched_runs_;
     if (matches_[vdv_run_id].runs_.size() > 1) {
-      ++stats_.multiple_matches_;
+      ++stats.multiple_matches_;
       vdv_trace("[vdv_aus] multiple matches for {}:", vdv_run_id);
       for (auto const& c : candidates) {
         if (!is_match(c)) {
@@ -419,9 +433,10 @@ void handle_first_last_cancelation(frun& fr, rt_timetable& rtt) {
 }
 
 void updater::update_run(rt_timetable& rtt,
-                         run& r,
+                         run const& r,
                          vector<vdv_stop> const& vdv_stops,
-                         bool const is_complete_run) {
+                         bool const is_complete_run,
+                         statistics& stats) {
   auto fr = rt::frun(tt_, &rtt, r);
   if (!fr.is_rt()) {
     fr.rt_ = rtt.add_rt_transport(src_idx_, tt_, fr.t_);
@@ -438,14 +453,14 @@ void updater::update_run(rt_timetable& rtt,
               delay->count() >= 0 ? "+" : "", delay->count());
     rtt.update_time(fr.rt_, rs.stop_idx_, et, rs.scheduled_time(et) + *delay);
     rtt.dispatch_delay(fr, rs.stop_idx_, et, *delay);
-    ++stats_.propagated_delays_;
+    ++stats.propagated_delays_;
   };
 
   auto cursor = begin(vdv_stops);
   auto skipped_stops = std::vector<vdv_stop>{};
   auto const print_skipped_stops = [&]() {
     for (auto const& s [[maybe_unused]] : skipped_stops) {
-      ++stats_.skipped_vdv_stops_;
+      ++stats.skipped_vdv_stops_;
       vdv_trace("skipped vdv stop: [id: {}, name: {}]\n", s.id_,
                 s.l_ == location_idx_t::invalid()
                     ? "unresolvable"
@@ -471,7 +486,7 @@ void updater::update_run(rt_timetable& rtt,
           matched_arr = true;
           if (vdv_stop->rt_arr_.has_value()) {
             update_event(rtt, rs, event_type::kArr, *vdv_stop->rt_arr_, &delay);
-            ++stats_.updated_events_;
+            ++stats.updated_events_;
           }
         }
 
@@ -483,7 +498,7 @@ void updater::update_run(rt_timetable& rtt,
           matched_dep = true;
           if (vdv_stop->rt_dep_.has_value()) {
             update_event(rtt, rs, event_type::kDep, *vdv_stop->rt_dep_, &delay);
-            ++stats_.updated_events_;
+            ++stats.updated_events_;
           }
         }
 
@@ -531,7 +546,7 @@ void updater::update_run(rt_timetable& rtt,
               cursor->l_ == location_idx_t::invalid()
                   ? "unresolvable"
                   : tt_.locations_.get(cursor->l_).name_);
-    ++stats_.excess_vdv_stops_;
+    ++stats.excess_vdv_stops_;
     ++cursor;
   }
 
@@ -548,17 +563,19 @@ void updater::update_run(rt_timetable& rtt,
   }
 }
 
-void updater::process_vdv_run(rt_timetable& rtt, pugi::xml_node const vdv_run) {
-  ++stats_.total_runs_;
+void updater::process_vdv_run(rt_timetable& rtt,
+                              pugi::xml_node const vdv_run,
+                              statistics& stats) {
+  ++stats.total_runs_;
   auto const is_complete_run = *get_opt_bool(
       vdv_run,
       format_ == xml_format::kVdv ? "Komplettfahrt" : "IsCompleteStopSequence",
       false);
   if (is_complete_run) {
-    ++stats_.complete_runs_;
+    ++stats.complete_runs_;
   }
 
-  auto vdv_stops = resolve_stops(vdv_run);
+  auto vdv_stops = resolve_stops(vdv_run, stats);
 
   auto const run_ref_selector =
       format_ == xml_format::kVdv
@@ -572,39 +589,43 @@ void updater::process_vdv_run(rt_timetable& rtt, pugi::xml_node const vdv_run) {
                   get(vdv_run, operation_day_selector).child_value());
 
   if (vdv_stops.empty()) {
-    ++stats_.runs_without_stops_;
+    ++stats.runs_without_stops_;
     vdv_trace("vdv run without stops: {}\n", vdv_run_id);
     return;
   }
 
   auto const seen_before = matches_.contains(vdv_run_id);
   if (!seen_before) {
-    ++stats_.unique_runs_;
+    ++stats.unique_runs_;
     if (is_complete_run) {
-      match_run(vdv_run_id, vdv_stops);
+      match_run(vdv_run_id, vdv_stops, stats);
     } else {
-      ++stats_.incomplete_not_seen_before_;
+      ++stats.incomplete_not_seen_before_;
+      match_run(vdv_run_id, vdv_stops, stats);
       matches_[vdv_run_id].only_saw_incomplete_ = true;
     }
   }
 
   if (seen_before && is_complete_run &&
       matches_[vdv_run_id].only_saw_incomplete_) {
-    ++stats_.complete_after_incomplete_;
-    match_run(vdv_run_id, vdv_stops);
+    ++stats.complete_after_incomplete_;
+    match_run(vdv_run_id, vdv_stops, stats);
     matches_[vdv_run_id].only_saw_incomplete_ = false;
   }
 
-  for (auto& r : matches_[vdv_run_id].runs_) {
+  auto const& runs = matches_[vdv_run_id].runs_;
+  for (auto& r : runs) {
     auto const cancelled_run_selector =
         format_ == xml_format::kVdv ? "FaelltAus" : "Cancellation";
     if (get_opt_bool(vdv_run, cancelled_run_selector, false).value()) {
       rtt.cancel_run(r);
-      ++stats_.cancelled_runs_;
+      ++stats.cancelled_runs_;
     } else {
-      update_run(rtt, r, vdv_stops, is_complete_run);
+      update_run(rtt, r, vdv_stops, is_complete_run, stats);
     }
   }
+
+  stats.found_runs_ += runs.empty() ? 0U : 1U;
 
   matches_[vdv_run_id].last_accessed_ =
       std::chrono::time_point_cast<std::chrono::seconds>(
@@ -621,35 +642,38 @@ void updater::clean_up() {
   last_cleanup = now;
 }
 
-void updater::update(rt_timetable& rtt, pugi::xml_document const& doc) {
+statistics updater::update(rt_timetable& rtt, pugi::xml_document const& doc) {
   if (std::chrono::system_clock::now() - last_cleanup > kCleanUpInterval) {
     clean_up();
   }
 
-  auto const run_node_selector =
-      is_vdv(format_) ? "//IstFahrt" : "//EstimatedVehicleJourney";
-  auto const extra_run_selector =
-      is_vdv(format_) ? "Zusatzfahrt" : "ExtraJourney";
-  for (auto const& vdv_run : doc.select_nodes(run_node_selector)) {
-    if (get_opt_bool(vdv_run.node(), extra_run_selector, false).value()) {
+  auto stats = statistics{};
+  for (auto const& vdv_run : doc.select_nodes(
+           is_vdv(format_) ? "//IstFahrt" : "//EstimatedVehicleJourney")) {
+    if (*get_opt_bool(vdv_run.node(),
+                      is_vdv(format_) ? "Zusatzfahrt" : "ExtraJourney",
+                      false)) {
 #ifdef VDV_DEBUG
       vdv_trace("unsupported additional run:\n");
       vdv_run.node().print(std::cout);
 #endif
-      ++stats_.unsupported_additional_runs_;
+      ++stats.unsupported_additional_runs_;
       continue;
     }
-    process_vdv_run(rtt, vdv_run.node());
+    process_vdv_run(rtt, vdv_run.node(), stats);
   }
 
-  stats_.current_matches_total_ = matches_.size();
-  stats_.current_matches_non_empty_ = [&]() {
+  cumulative_stats_ += stats;
+  cumulative_stats_.current_matches_total_ = matches_.size();
+  cumulative_stats_.current_matches_non_empty_ = [&]() {
     auto n = 0U;
     for (auto const& [_, m] : matches_) {
       n += m.runs_.empty() ? 0U : 1U;
     }
     return n;
   }();
+
+  return stats;
 }
 
 }  // namespace nigiri::rt::vdv_aus

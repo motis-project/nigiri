@@ -310,6 +310,13 @@ constexpr auto const cancel_all_update = R"(
 
 }  // namespace
 
+TEST(vdv_aus, statistics_add) {
+  auto x = vdv_aus::statistics{.cancelled_runs_ = 2U};
+  auto y = vdv_aus::statistics{.cancelled_runs_ = 7U};
+  x += y;
+  EXPECT_EQ(9, x.cancelled_runs_);
+}
+
 TEST(vdv_aus, delay_propagation) {
   timetable tt;
   register_special_stations(tt);
@@ -443,9 +450,9 @@ TEST(vdv_aus, delay_propagation) {
   EXPECT_EQ(fr[4].time(event_type::kArr),
             date::sys_days{2024_y / July / 10} + 2_hours + 7_minutes);
 
-  EXPECT_EQ(u.get_stats().matched_runs_, 1);
-  EXPECT_EQ(u.get_stats().updated_events_, 14);
-  EXPECT_EQ(u.get_stats().propagated_delays_, 9);
+  EXPECT_EQ(u.get_cumulative_stats().matched_runs_, 1);
+  EXPECT_EQ(u.get_cumulative_stats().updated_events_, 14);
+  EXPECT_EQ(u.get_cumulative_stats().propagated_delays_, 9);
 }
 
 TEST(vdv_aus, all_stops_canceled) {
