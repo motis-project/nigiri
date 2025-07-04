@@ -213,7 +213,7 @@ vector<updater::vdv_stop> updater::resolve_stops(pugi::xml_node const vdv_run,
                    underscore_pos != std::string_view::npos) {
           // Extra matching code for VRR SIRI. Remove after data is fixed.
           return tt_.locations_.find(
-              {vdv_stop_id.substr(0, underscore_pos), src_idx_});
+              {vdv_stop_id.substr(0, underscore_pos + 1U), src_idx_});
         } else {
           return x;
         }
