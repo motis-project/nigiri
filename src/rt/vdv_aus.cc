@@ -205,7 +205,19 @@ vector<updater::vdv_stop> updater::resolve_stops(pugi::xml_node const vdv_run,
       auto const vdv_stop_id = std::string_view{
           get(stop.node(), is_vdv(format_) ? "HaltID" : "StopPointRef")
               .child_value()};
-      auto const l = tt_.locations_.find({vdv_stop_id, src_idx_});
+      auto const l = [&]() {
+        auto const x = tt_.locations_.find({vdv_stop_id, src_idx_});
+        if (x.has_value()) {
+          return x;
+        } else if (auto const underscore_pos = vdv_stop_id.find('_');
+                   underscore_pos != std::string_view::npos) {
+          // Extra matching code for VRR SIRI. Remove after data is fixed.
+          return tt_.locations_.find(
+              {vdv_stop_id.substr(0, underscore_pos), src_idx_});
+        } else {
+          return x;
+        }
+      }();
 
       if (get_opt_bool(stop.node(),
                        is_vdv(format_) ? "Zusatzhalt" : "ExtraCall", false)
