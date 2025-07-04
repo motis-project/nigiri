@@ -173,11 +173,11 @@ pugi::xml_node get(pugi::xml_node const& node, char const* str) {
 vector<updater::vdv_stop> updater::resolve_stops(pugi::xml_node const vdv_run) {
   auto vdv_stops = vector<vdv_stop>{};
 
+  auto const vdv_stop_selectors = {"IstHalt"};
+  auto const siri_stop_stop_selectors = {"RecordedCalls/RecordedCall",
+                                         "EstimatedCalls/EstimatedCall"};
   for (auto const stop_selector :
-       is_vdv(format_) ? std::initializer_list<char const*>{"IstHalt"}
-                       : std::initializer_list<char const*>{
-                             "RecordedCalls/RecordedCall",
-                             "EstimatedCalls/EstimatedCall"}) {
+       is_vdv(format_) ? vdv_stop_selectors : siri_stop_stop_selectors) {
     for (auto const stop : vdv_run.select_nodes(stop_selector)) {
       ++stats_.total_stops_;
 
