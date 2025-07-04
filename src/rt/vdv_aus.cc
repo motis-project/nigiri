@@ -83,13 +83,14 @@ statistics const& updater::get_stats() const { return stats_; }
 source_idx_t updater::get_src() const { return src_idx_; }
 updater::xml_format updater::get_format() const { return format_; }
 
+template <typename... Formats>
 std::optional<unixtime_t> get_opt_time(pugi::xml_node const& node,
                                        char const* str,
-                                       char const* format) {
+                                       Formats... formats) {
   auto const xpath = node.select_node(str);
   if (xpath != nullptr) {
     try {
-      return parse_time(xpath.node().child_value(), format);
+      return parse_time(xpath.node().child_value(), formats...);
     } catch (std::exception const& e) {
       log(log_lvl::error, "vdv_update.get_opt_time",
           "{}, invalid time input: {}", e.what(), xpath.node().child_value());
@@ -125,20 +126,19 @@ updater::vdv_stop::vdv_stop(nigiri::location_idx_t const l,
                             xml_format const f)
     : l_{l},
       id_{id},
-      dep_{get_opt_time(n,
-                        is_vdv(f) ? "Abfahrtszeit" : "AimedDepartureTime",
-                        is_vdv(f) ? "%FT%T" : "%FT%T%Ez")},
-      arr_{get_opt_time(n,
-                        is_vdv(f) ? "Ankunftszeit" : "AimedArrivalTime",
-                        is_vdv(f) ? "%FT%T" : "%FT%T%Ez")},
-      rt_dep_{get_opt_time(
-          n,
-          is_vdv(f) ? "IstAbfahrtPrognose" : "ExpectedDepartureTime",
-          is_vdv(f) ? "%FT%T" : "%FT%T%Ez")},
-      rt_arr_{
-          get_opt_time(n,
-                       is_vdv(f) ? "IstAnkunftPrognose" : "AimedArrivalTime",
-                       is_vdv(f) ? "%FT%T" : "%FT%T%Ez")},
+      dep_{is_vdv(f)
+               ? get_opt_time(n, "Abfahrtszeit", "%FT%T")
+               : get_opt_time(n, "AimedDepartureTime", "%FT%T%Ez", "%FT%TZ")},
+      arr_{is_vdv(f)
+               ? get_opt_time(n, "Ankunftszeit", "%FT%T")
+               : get_opt_time(n, "AimedArrivalTime", "%FT%T%Ez", "%FT%TZ")},
+      rt_dep_{
+          is_vdv(f)
+              ? get_opt_time(n, "IstAbfahrtPrognose", "%FT%T")
+              : get_opt_time(n, "ExpectedDepartureTime", "%FT%T%Ez", "%FT%TZ")},
+      rt_arr_{is_vdv(f)
+                  ? get_opt_time(n, "IstAnkunftPrognose", "%FT%T")
+                  : get_opt_time(n, "AimedArrivalTime", "%FT%T%Ez", "%FT%TZ")},
       in_forbidden_{is_vdv(f) ? *get_opt_bool(n, "Einsteigeverbot", false)
                               : *get_opt_str(n,
                                              "DepartureBoardingActivity",
