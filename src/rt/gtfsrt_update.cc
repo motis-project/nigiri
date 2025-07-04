@@ -454,6 +454,11 @@ statistics gtfsrt_update_msg(timetable const& tt,
     unsupported(entity.has_is_deleted() && entity.is_deleted(), "deleted",
                 stats.unsupported_deleted_);
 
+    if (entity.has_vehicle()) {
+      // work with VehiclePositions
+
+    }
+
     if (entity.has_alert()) {
       handle_alert(today, tt, rtt, src, tag, entity.alert(), stats);
       continue;
