@@ -335,7 +335,7 @@ void updater::match_run(std::string_view vdv_run_id,
     }
   }
 
-  auto const candidate_str = [&](auto const& c) {
+  [[maybe_unused]] auto const candidate_str = [&](auto const& c) {
     return fmt::format(
         "[line: {}, score: {}, length: {}], dbg: {}",
         tt_.trip_lines_
