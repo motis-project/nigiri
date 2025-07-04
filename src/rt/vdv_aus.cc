@@ -435,7 +435,7 @@ void handle_first_last_cancelation(frun& fr, rt_timetable& rtt) {
     cancel_stop(first);
   }
 
-  auto last = fr[static_cast<stop_idx_t>(fr.stop_range_.size() - 1U)];
+  auto last = fr[static_cast<stop_idx_t>(fr.stop_range_.size()) - 1U];
   if (!last.out_allowed()) {
     cancel_stop(last);
   }
