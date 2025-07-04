@@ -348,19 +348,18 @@ void updater::match_run(std::string_view vdv_run_id,
   };
 
   if (matches_[vdv_run_id].runs_.empty()) {
-    fmt::println(
-        "[vdv_aus] no match for {}, best candidate: {}", vdv_run_id,
-        candidates.empty() ? "none" : candidate_str(candidates.front()));
+    vdv_trace("[vdv_aus] no match for {}, best candidate: {}", vdv_run_id,
+              candidates.empty() ? "none" : candidate_str(candidates.front()));
   } else {
     ++stats_.matched_runs_;
     if (matches_[vdv_run_id].runs_.size() > 1) {
       ++stats_.multiple_matches_;
-      fmt::println("[vdv_aus] multiple matches for {}:", vdv_run_id);
+      vdv_trace("[vdv_aus] multiple matches for {}:", vdv_run_id);
       for (auto const& c : candidates) {
         if (!is_match(c)) {
           break;
         }
-        fmt::println("{}", candidate_str(c));
+        vdv_trace("{}", candidate_str(c));
       }
     }
   }
