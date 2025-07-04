@@ -652,3 +652,4 @@ void updater::update(rt_timetable& rtt, pugi::xml_document const& doc) {
 }
 
 }  // namespace nigiri::rt::vdv_aus
+
