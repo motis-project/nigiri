@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.22)
-project(nigiri)
+project(nigiri LANGUAGES C CXX ASM)
 
 if (NOT DEFINED CMAKE_MSVC_RUNTIME_LIBRARY)
   if (NIGIRI_MIMALLOC)
@@ -63,6 +63,7 @@ if ("${CMAKE_CXX_COMPILER_ID}" STREQUAL "Clang")
         -Wno-documentation-unknown-command
         -Wno-duplicate-enum
         -Wno-switch-default
+        -Wno-deprecated-declarations
         -Werror)
 elseif ("${CMAKE_CXX_COMPILER_ID}" STREQUAL "AppleClang")
   set(nigiri-compile-options -Wall -Wextra -Werror)
@@ -100,6 +101,7 @@ target_link_libraries(
   opentelemetry_api
   pugixml
   boost-json
+  Boost::fiber
 )
 target_compile_features(nigiri PUBLIC cxx_std_23)
 target_compile_options(nigiri PRIVATE ${nigiri-compile-options})
