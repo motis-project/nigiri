@@ -53,7 +53,7 @@ struct raptor_stats {
 enum class exec { kSequential, kParallel };
 enum class search_mode { kOneToOne, kOneToAll };
 
-constexpr auto const kNThreads = 16U;
+constexpr auto const kNThreads = 4U;
 
 template <direction SearchDir,
           bool Rt,
@@ -348,7 +348,7 @@ private:
         }
       }
 
-      ++stats_.n_routes_visited_;
+      // ++stats_.n_routes_visited_;
       trace("┊ ├k={} updating route {}\n", k, r);
       return section_bike_filter
                  ? (section_car_filter ? update_route<true, true>(k, r)
@@ -358,29 +358,31 @@ private:
     };
 
     if constexpr (Exec == exec::kParallel) {
-      auto fiber_any_marked =
-          std::array<boost::fibers::future<bool>, kNThreads>{};
+      auto barrier = std::make_shared<boost::fibers::barrier>(kNThreads + 1U);
+      auto any_marked = std::atomic_bool{false};
       auto next = std::atomic_size_t{0U};
       for (auto i = 0U; i != kNThreads; ++i) {
-        fiber_any_marked[i] = boost::fibers::async([&]() {
+        boost::fibers::fiber{[&, barrier]() {
           auto next_route_idx = std::optional<std::size_t>{};
-          auto any_marked = false;
           while ((next_route_idx = state_.route_mark_.get_next(next))
                      .has_value()) {
-            any_marked |= loop_route(route_idx_t{
+            assert(*next_route_idx < tt_.n_routes());
+            auto const marked = loop_route(route_idx_t{
                 static_cast<route_idx_t::value_t>(*next_route_idx)});
+            if (marked) {
+              any_marked.store(true);
+            }
           }
-          return any_marked;
-        });
+          barrier->wait();
+        }}.detach();
       }
-      return utl::any_of(fiber_any_marked, [](boost::fibers::future<bool>& f) {
-        f.wait();
-        return f.get();
-      });
+      barrier->wait();
+      return any_marked.load();
     } else {
       auto any_marked = false;
-      state_.route_mark_.for_each_set_bit(
-          [&]() { any_marked |= loop_route(); });
+      state_.route_mark_.for_each_set_bit([&](std::size_t const r) {
+        any_marked |= loop_route(route_idx_t{r});
+      });
       return any_marked;
     }
   }
