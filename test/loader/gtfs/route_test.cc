@@ -15,7 +15,7 @@ TEST(gtfs, read_routes_example_data) {
   timetable tt;
   tz_map timezones;
 
-  auto agencies = read_agencies(tt, timezones,
+  auto agencies = read_agencies(source_idx_t{0}, tt, timezones,
                                 example_files().get_file(kAgencyFile).data());
   auto const routes =
       read_routes(source_idx_t{}, tt, timezones, agencies,
@@ -47,8 +47,8 @@ TEST(gtfs, read_routes_berlin_data) {
   timetable tt;
   tz_map timezones;
 
-  auto agencies =
-      read_agencies(tt, timezones, berlin_files().get_file(kAgencyFile).data());
+  auto agencies = read_agencies(source_idx_t{0}, tt, timezones,
+                                berlin_files().get_file(kAgencyFile).data());
   auto const routes =
       read_routes(source_idx_t{}, tt, timezones, agencies,
                   berlin_files().get_file(kRoutesFile).data(), "CET");
