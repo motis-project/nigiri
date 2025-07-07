@@ -569,7 +569,6 @@ struct timetable {
   vecvec<attribute_combination_idx_t, attribute_idx_t> attribute_combinations_;
   vector_map<provider_idx_t, provider> providers_;
   vector<provider_idx_t> provider_id_to_idx_;
-  vector_map<provider_idx_t, source_idx_t> provider_src_;
   vecvec<trip_direction_string_idx_t, char> trip_direction_strings_;
   vector_map<trip_direction_idx_t, trip_direction_t> trip_directions_;
   vecvec<trip_line_idx_t, char> trip_lines_;

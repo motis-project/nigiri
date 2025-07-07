@@ -28,8 +28,8 @@ struct stop_seq_number_range {
 
     struct fully_specified {
       bool operator==(fully_specified const& o) const {
-        return std::tuple(idx_, seq_.data(), seq_.size()) ==
-               std::tuple(o.idx_, o.seq_.data(), seq_.size());
+        return std::tuple{idx_, seq_.data(), seq_.size()} ==
+               std::tuple{o.idx_, o.seq_.data(), seq_.size()};
       }
       stop_idx_t idx_;
       std::span<stop_idx_t const> seq_;
