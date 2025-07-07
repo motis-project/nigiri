@@ -63,7 +63,6 @@ void process_queries(
   }
 }
 
-// benchmark code:
 static void benchmark_random_queries(benchmark::State& state) {
   std::vector<benchmark_result> results;
   ::benchmark::DoNotOptimize(results);
@@ -87,7 +86,7 @@ static void benchmark_random_queries(benchmark::State& state) {
 BENCHMARK(benchmark_random_queries)->Repetitions(5);
 
 int main(int argc, char** argv) {
-  std::string arg = (argc == 2) ? argv[1] : "error";
+  std::string arg = (argc > 1) ? argv[1] : "error";
   if ("error" == arg) {
     std::cout << "Bitte geben Sie den Pfad zum Timetable (tt.bin) an! \n";
     return -1;
