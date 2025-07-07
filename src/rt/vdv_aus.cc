@@ -155,9 +155,9 @@ updater::vdv_stop::vdv_stop(nigiri::location_idx_t const l,
           is_vdv(f)
               ? get_opt_time(n, "IstAbfahrtPrognose", "%FT%T")
               : get_opt_time(n, "ExpectedDepartureTime", "%FT%T%Ez", "%FT%TZ")},
-      rt_arr_{is_vdv(f)
-                  ? get_opt_time(n, "IstAnkunftPrognose", "%FT%T")
-                  : get_opt_time(n, "AimedArrivalTime", "%FT%T%Ez", "%FT%TZ")},
+      rt_arr_{is_vdv(f) ? get_opt_time(n, "IstAnkunftPrognose", "%FT%T")
+                        : get_opt_time(
+                              n, "ExpectedArrivalTime", "%FT%T%Ez", "%FT%TZ")},
       in_forbidden_{is_vdv(f) ? *get_opt_bool(n, "Einsteigeverbot", false)
                               : *get_opt_str(n,
                                              "DepartureBoardingActivity",
