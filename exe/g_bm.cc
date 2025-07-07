@@ -66,18 +66,17 @@ void process_queries(
 // benchmark code:
 static void benchmark_random_queries(benchmark::State& state) {
   std::vector<benchmark_result> results;
-  std::vector<nigiri::query_generation::start_dest_query> queries;
   ::benchmark::DoNotOptimize(results);
+  std::vector<nigiri::query_generation::start_dest_query> queries;
   ::benchmark::DoNotOptimize(queries);
+  auto tt = *nigiri::timetable::read(tt_path);
+  tt.resolve();
+  ::benchmark::DoNotOptimize(tt);
+  nigiri::query_generation::generator_settings gs;
+  ::benchmark::DoNotOptimize(gs);
+  generate_queries(queries, 10U, tt, gs, 22);
+
   for (auto _ : state) {
-    auto tt = *nigiri::timetable::read(tt_path);
-    ::benchmark::DoNotOptimize(tt);
-    tt.resolve();
-    ::benchmark::ClobberMemory();
-    nigiri::query_generation::generator_settings gs;
-    ::benchmark::DoNotOptimize(gs);
-    generate_queries(queries, 5U, tt, gs, 22);
-    ::benchmark::ClobberMemory();
     process_queries(queries, results, tt);
     ::benchmark::DoNotOptimize(results);
     ::benchmark::DoNotOptimize(queries);
