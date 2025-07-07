@@ -21,9 +21,9 @@ void for_each_schedule_transport(timetable const& tt,
   auto const lb = std::lower_bound(
       begin(tt.trip_id_to_idx_), end(tt.trip_id_to_idx_), id,
       [&](pair<trip_id_idx_t, trip_idx_t> const& a, trip_id const& b) {
-        return std::tuple(tt.trip_id_src_[a.first],
-                          tt.trip_id_strings_[a.first].view()) <
-               std::tuple(b.src_, std::string_view{b.id_});
+        return std::tuple{tt.trip_id_src_[a.first],
+                          tt.trip_id_strings_[a.first].view()} <
+               std::tuple{b.src_, std::string_view{b.id_}};
       });
 
   // One trip can have several transports associated to it. Reasons:
