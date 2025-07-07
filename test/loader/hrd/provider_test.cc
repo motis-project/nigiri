@@ -16,7 +16,7 @@ TEST(hrd, parse_providers) {
       "00003 : A9____ XY____\n";
   for (auto const& c : configs) {
     auto tt = timetable{};
-    auto providers = parse_providers(c, tt, input);
+    auto providers = parse_providers(c, source_idx_t{0}, tt, input);
 
     EXPECT_EQ(4U, providers.size());
 

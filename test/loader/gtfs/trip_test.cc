@@ -28,8 +28,8 @@ TEST(gtfs, read_trips_example_data) {
   tz_map timezones;
 
   auto const config = loader_config{};
-  auto agencies =
-      read_agencies(tt, timezones, files.get_file(kAgencyFile).data());
+  auto agencies = read_agencies(source_idx_t{0}, tt, timezones,
+                                files.get_file(kAgencyFile).data());
   auto const routes = read_routes({}, tt, timezones, agencies,
                                   files.get_file(kRoutesFile).data(), "CET");
   auto const dates =
@@ -62,8 +62,8 @@ TEST(gtfs, read_trips_berlin_data) {
   tz_map timezones;
 
   auto const config = loader_config{};
-  auto agencies =
-      read_agencies(tt, timezones, files.get_file(kAgencyFile).data());
+  auto agencies = read_agencies(source_idx_t{0}, tt, timezones,
+                                files.get_file(kAgencyFile).data());
   auto const routes = read_routes({}, tt, timezones, agencies,
                                   files.get_file(kRoutesFile).data(), "CET");
   auto const dates =

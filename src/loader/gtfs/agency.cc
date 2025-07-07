@@ -14,7 +14,8 @@
 
 namespace nigiri::loader::gtfs {
 
-agency_map_t read_agencies(timetable& tt,
+agency_map_t read_agencies(source_idx_t const src,
+                           timetable& tt,
                            tz_map& timezones,
                            std::string_view file_content) {
   struct agency {
@@ -38,7 +39,8 @@ agency_map_t read_agencies(timetable& tt,
                      {tt.strings_.store(a.id_->view()),
                       tt.strings_.store(a.name_->view()),
                       tt.strings_.store(a.url_->view()),
-                      get_tz_idx(tt, timezones, a.tz_name_->trim().view())})};
+                      get_tz_idx(tt, timezones, a.tz_name_->trim().view()),
+                      src})};
            })  //
          | utl::to<agency_map_t>();
 }
