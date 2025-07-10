@@ -5287,3 +5287,214 @@ TEST(vdv_aus, monotonize) {
               rs_next.time(nigiri::event_type::kArr));
   }
 }
+
+mem_dir linie11_files() {
+  return mem_dir::read(R"__(
+# trips.txt
+"route_id","service_id","trip_id","trip_headsign","trip_short_name","direction_id","block_id","shape_id","wheelchair_accessible","bikes_allowed"
+"de:vvo:11-11_0",803,2869695489,"Zschertnitz","",0,,91204,0,0
+"de:vvo:11-11_0",803,2869695488,"Zschertnitz","",0,,91204,0,0
+"de:vvo:11-11_0",803,2869695487,"Zschertnitz","",0,,91204,0,0
+
+# routes.txt
+"route_id","agency_id","route_short_name","route_long_name","route_type","route_color","route_text_color","route_desc"
+"de:vvo:11-11_0",8190,"11","",0,"","",""
+
+# agency.txt
+"agency_id","agency_name","agency_url","agency_timezone","agency_lang","agency_phone"
+8190,"DVB-Straßenbahn","https://www.delfi.de","Europe/Berlin","",""
+
+# stop_times.txt
+"trip_id","arrival_time","departure_time","stop_id","stop_sequence","pickup_type","drop_off_type","stop_headsign"
+2869695489,12:36:00,12:36:00,"de:14612:33:1:1",0,0,0,""
+2869695489,12:38:00,12:38:00,"de:14612:3:1:2",1,0,0,""
+2869695489,12:40:00,12:40:00,"de:14612:29:1:2",2,0,0,""
+2869695489,12:41:00,12:41:00,"de:14612:32:1:2",3,0,0,""
+2869695489,12:43:00,12:43:00,"de:14612:30:1:1",4,0,0,""
+2869695489,12:45:00,12:45:00,"de:14612:111:2:4",5,0,0,""
+2869695489,12:46:00,12:46:00,"de:14612:111:1:2",6,0,0,""
+2869695489,12:48:00,12:48:00,"de:14612:311:1:2",7,0,0,""
+2869695489,12:49:00,12:49:00,"de:14612:312:2:2",8,0,0,""
+2869695489,12:51:00,12:51:00,"de:14612:313:1:2",9,0,0,""
+2869695489,12:53:00,12:53:00,"de:14612:314:1:1",10,0,0,""
+2869695488,12:46:00,12:46:00,"de:14612:33:1:1",0,0,0,""
+2869695488,12:48:00,12:48:00,"de:14612:3:1:2",1,0,0,""
+2869695488,12:50:00,12:50:00,"de:14612:29:1:2",2,0,0,""
+2869695488,12:51:00,12:51:00,"de:14612:32:1:2",3,0,0,""
+2869695488,12:53:00,12:53:00,"de:14612:30:1:1",4,0,0,""
+2869695488,12:55:00,12:55:00,"de:14612:111:2:4",5,0,0,""
+2869695488,12:56:00,12:56:00,"de:14612:111:1:2",6,0,0,""
+2869695488,12:58:00,12:58:00,"de:14612:311:1:2",7,0,0,""
+2869695488,12:59:00,12:59:00,"de:14612:312:2:2",8,0,0,""
+2869695488,13:01:00,13:01:00,"de:14612:313:1:2",9,0,0,""
+2869695488,13:03:00,13:03:00,"de:14612:314:1:1",10,0,0,""
+2869695487,12:56:00,12:56:00,"de:14612:33:1:1",0,0,0,""
+2869695487,12:58:00,12:58:00,"de:14612:3:1:2",1,0,0,""
+2869695487,13:00:00,13:00:00,"de:14612:29:1:2",2,0,0,""
+2869695487,13:01:00,13:01:00,"de:14612:32:1:2",3,0,0,""
+2869695487,13:03:00,13:03:00,"de:14612:30:1:1",4,0,0,""
+2869695487,13:05:00,13:05:00,"de:14612:111:2:4",5,0,0,""
+2869695487,13:06:00,13:06:00,"de:14612:111:1:2",6,0,0,""
+2869695487,13:08:00,13:08:00,"de:14612:311:1:2",7,0,0,""
+2869695487,13:09:00,13:09:00,"de:14612:312:2:2",8,0,0,""
+2869695487,13:11:00,13:11:00,"de:14612:313:1:2",9,0,0,""
+2869695487,13:13:00,13:13:00,"de:14612:314:1:1",10,0,0,""
+
+# stops.txt
+"stop_id","stop_code","stop_name","stop_desc","stop_lat","stop_lon","location_type","parent_station","wheelchair_boarding","platform_code","level_id"
+"de:14612:314:1:1","","Dresden Münzmeisterstraße","Zschertnitz Strab","51.019433000000","13.742194000000",0,,0,"1","2"
+"de:14612:313:1:2","","Dresden Räcknitzhöhe","Haltestelle","51.023564000000","13.742472000000",0,,0,"2","2"
+"de:14612:312:2:2","","Dresden Zellescher Weg","Paradiesstraße","51.027994000000","13.745598000000",0,,0,"2","2"
+"de:14612:111:2:4","","Dresden Lennéplatz","Gellertstraße","51.038100000000","13.746137000000",0,,0,"4","2"
+"de:14612:3:1:2","","Dresden Prager Straße","Zentralhst.","51.047115000000","13.738205000000",0,,0,"2","2"
+"de:14612:32:1:2","","Dresden Hauptbahnhof Nord","Straßenbahn","51.041292000000","13.734899000000",0,,0,"2","2"
+"de:14612:111:1:2","","Dresden Lennéplatz","Lennéplatz","51.037778000000","13.747853000000",0,,0,"2","2"
+"de:14612:30:1:1","","Dresden Gret-Palucca-Straße","Zentralhst.","51.038812000000","13.739759000000",0,,0,"1","2"
+"de:14612:29:1:2","","Dresden Walpurgisstraße","Walpurgis Strab","51.043703000000","13.737522000000",0,,0,"2","2"
+"de:14612:311:1:2","","Dresden Strehlener Platz","Ackermannstraße","51.033254000000","13.748913000000",0,,0,"2","2"
+"de:14612:33:1:1","","Dresden Webergasse","Marienstraße","51.047900000000","13.733390000000",0,,0,"1","2"
+
+# calendar.txt
+"service_id","monday","tuesday","wednesday","thursday","friday","saturday","sunday","start_date","end_date"
+803,0,0,0,0,0,0,0,20250621,20251213
+
+# calendar_dates.txt
+"service_id","date","exception_type"
+803,20250630,1
+803,20250707,1
+803,20250714,1
+803,20250701,1
+803,20250708,1
+803,20250715,1
+803,20250702,1
+803,20250709,1
+803,20250716,1
+803,20250703,1
+803,20250710,1
+803,20250717,1
+803,20250704,1
+803,20250711,1
+803,20250718,1
+
+)__");
+}
+
+constexpr auto const update_linie11_1046 = R"(
+<IstFahrt Zst="2025-07-10T12:49:13">
+	<LinienID>11</LinienID>
+	<RichtungsID>1</RichtungsID>
+	<FahrtRef>
+		<FahrtID>
+			<FahrtBezeichner>7661011001209001918_DVB</FahrtBezeichner>
+			<Betriebstag>2025-07-10</Betriebstag>
+		</FahrtID>
+	</FahrtRef>
+	<Komplettfahrt>true</Komplettfahrt>
+	<BetreiberID>DVB</BetreiberID>
+	<IstHalt>
+		<HaltID>de:14612:33:1:1</HaltID>
+		<Abfahrtszeit>2025-07-10T10:46:00</Abfahrtszeit>
+		<Besetztgrad>Schwach besetzt</Besetztgrad>
+	</IstHalt>
+	<IstHalt>
+		<HaltID>de:14612:3:1:2</HaltID>
+		<Abfahrtszeit>2025-07-10T10:48:00</Abfahrtszeit>
+		<Ankunftszeit>2025-07-10T10:48:00</Ankunftszeit>
+		<Besetztgrad>Schwach besetzt</Besetztgrad>
+	</IstHalt>
+	<IstHalt>
+		<HaltID>de:14612:29:1:2</HaltID>
+		<Abfahrtszeit>2025-07-10T10:50:00</Abfahrtszeit>
+		<Ankunftszeit>2025-07-10T10:50:00</Ankunftszeit>
+		<Besetztgrad>Schwach besetzt</Besetztgrad>
+	</IstHalt>
+	<IstHalt>
+		<HaltID>de:14612:32:1:2</HaltID>
+		<Abfahrtszeit>2025-07-10T10:51:00</Abfahrtszeit>
+		<Ankunftszeit>2025-07-10T10:51:00</Ankunftszeit>
+		<Besetztgrad>Schwach besetzt</Besetztgrad>
+	</IstHalt>
+	<IstHalt>
+		<HaltID>de:14612:30:1:1</HaltID>
+		<Abfahrtszeit>2025-07-10T10:53:00</Abfahrtszeit>
+		<Ankunftszeit>2025-07-10T10:53:00</Ankunftszeit>
+		<Besetztgrad>Schwach besetzt</Besetztgrad>
+	</IstHalt>
+	<IstHalt>
+		<HaltID>de:14612:111:2:4</HaltID>
+		<Abfahrtszeit>2025-07-10T10:55:00</Abfahrtszeit>
+		<Ankunftszeit>2025-07-10T10:55:00</Ankunftszeit>
+		<Besetztgrad>Schwach besetzt</Besetztgrad>
+	</IstHalt>
+	<IstHalt>
+		<HaltID>de:14612:111:1:2</HaltID>
+		<Abfahrtszeit>2025-07-10T10:56:00</Abfahrtszeit>
+		<Ankunftszeit>2025-07-10T10:56:00</Ankunftszeit>
+		<Besetztgrad>Schwach besetzt</Besetztgrad>
+	</IstHalt>
+	<IstHalt>
+		<HaltID>de:14612:311:1:2</HaltID>
+		<Abfahrtszeit>2025-07-10T10:58:00</Abfahrtszeit>
+		<Ankunftszeit>2025-07-10T10:58:00</Ankunftszeit>
+		<Besetztgrad>Schwach besetzt</Besetztgrad>
+	</IstHalt>
+	<IstHalt>
+		<HaltID>de:14612:312:2:2</HaltID>
+		<Abfahrtszeit>2025-07-10T10:59:00</Abfahrtszeit>
+		<Ankunftszeit>2025-07-10T10:59:00</Ankunftszeit>
+		<Besetztgrad>Schwach besetzt</Besetztgrad>
+	</IstHalt>
+	<IstHalt>
+		<HaltID>de:14612:313:1:2</HaltID>
+		<Abfahrtszeit>2025-07-10T11:01:00</Abfahrtszeit>
+		<Ankunftszeit>2025-07-10T11:01:00</Ankunftszeit>
+		<Besetztgrad>Schwach besetzt</Besetztgrad>
+	</IstHalt>
+	<IstHalt>
+		<HaltID>de:14612:314</HaltID>
+		<Ankunftszeit>2025-07-10T11:03:00</Ankunftszeit>
+		<Besetztgrad>Schwach besetzt</Besetztgrad>
+	</IstHalt>
+	<LinienText>11</LinienText>
+	<ProduktID>Tram</ProduktID>
+	<RichtungsText>Zschertnitz</RichtungsText>
+	<PrognoseMoeglich>true</PrognoseMoeglich>
+	<FaelltAus>false</FaelltAus>
+</IstFahrt>
+)";
+
+TEST(vdv_aus, match_headway_10min) {
+  timetable tt;
+  register_special_stations(tt);
+  tt.date_range_ = {date::sys_days{2025_y / July / 1},
+                    date::sys_days{2025_y / July / 31}};
+  auto const src_idx = source_idx_t{0};
+  load_timetable({}, src_idx, linie11_files(), tt);
+  finalize(tt);
+
+  auto rtt = rt::create_rt_timetable(tt, date::sys_days{2025_y / July / 10});
+
+  auto u = rt::vdv_aus::updater{tt, src_idx};
+
+  auto doc = pugi::xml_document{};
+  doc.load_string(update_linie11_1046);
+  u.update(rtt, doc);
+
+  auto const fr_1036 = rt::frun{tt,
+                                &rtt,
+                                {{transport_idx_t{0U}, day_idx_t{14U}},
+                                 {stop_idx_t{0U}, stop_idx_t{11U}}}};
+  EXPECT_FALSE(fr_1036.is_rt());
+
+  auto const fr_1046 = rt::frun{tt,
+                                &rtt,
+                                {{transport_idx_t{1U}, day_idx_t{14U}},
+                                 {stop_idx_t{0U}, stop_idx_t{11U}}}};
+  EXPECT_TRUE(fr_1046.is_rt());
+
+  auto const fr_1056 = rt::frun{tt,
+                                &rtt,
+                                {{transport_idx_t{2U}, day_idx_t{14U}},
+                                 {stop_idx_t{0U}, stop_idx_t{11U}}}};
+  EXPECT_FALSE(fr_1056.is_rt());
+}
