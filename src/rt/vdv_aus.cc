@@ -29,7 +29,7 @@ namespace nigiri::rt::vdv_aus {
 constexpr auto const kExactMatchScore = 1000;
 constexpr auto const kFirstMatchThreshold = 0.5;
 constexpr auto const kFirstMatchThresholdIncomplete = 0.7;
-constexpr auto const kAdditionalMatchTreshold = 0.9;
+constexpr auto const kAdditionalMatchThreshold = 0.975;
 constexpr auto const kAllowedTimeDiscrepancy = []() {
   auto error = 0;
   while (kExactMatchScore - error * error > 0) {
