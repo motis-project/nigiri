@@ -27,7 +27,7 @@ static log_lvl s_verbosity;
 inline std::string now() {
   using clock = std::chrono::system_clock;
   auto const now = clock::to_time_t(clock::now());
-  struct tm tmp {};
+  struct tm tmp{};
 #if _MSC_VER >= 1400
   gmtime_s(&tmp, &now);
 #else

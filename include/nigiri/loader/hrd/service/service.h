@@ -40,7 +40,7 @@ struct specification {
 };
 
 struct service {
-  static const constexpr auto kTimeNotSet = -1;  // NOLINT
+  static constexpr auto const kTimeNotSet = -1;  // NOLINT
 
   struct event {
     int time_;

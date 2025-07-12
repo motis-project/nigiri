@@ -53,7 +53,7 @@ service_builder::service_builder(
     : stamm_{s}, tt_{tt}, bitfield_indices_(bitfield_indices) {}
 
 void service_builder::add_services(config const& c,
-                                   const char* filename,
+                                   char const* filename,
                                    std::string_view file_content,
                                    progress_update_fn const& progress_update) {
   auto const timer = scoped_timer{"loader.hrd.services.read"};

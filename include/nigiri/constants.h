@@ -2,6 +2,6 @@
 
 namespace nigiri {
 
-constexpr const auto kWalkSpeed = 1.5;  // m/s
+constexpr auto const kWalkSpeed = 1.5;  // m/s
 
 }  // namespace nigiri

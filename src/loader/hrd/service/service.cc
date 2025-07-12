@@ -77,9 +77,9 @@ private:
       // eva_or_idx is not an index -> eva_or_idx is an eva number
       // hhmm_or_idx is empty -> search for first occurrence
       // hhmm_or_idx is an index -> search for nth occurrence
-      const auto eva_num = parse<unsigned>(eva_or_idx);
-      const auto n = is_index(hhmm_or_idx) ? parse_index(hhmm_or_idx) + 1 : 1;
-      const auto it = find_nth(
+      auto const eva_num = parse<unsigned>(eva_or_idx);
+      auto const n = is_index(hhmm_or_idx) ? parse_index(hhmm_or_idx) + 1 : 1;
+      auto const it = find_nth(
           begin(stops), end(stops), n,
           [&](service::stop const& s) { return s.eva_num_ == eva_num; });
       utl::verify(it != end(stops),
@@ -88,10 +88,10 @@ private:
     } else {
       // hhmm_or_idx must be a time
       // -> return stop where eva number and time matches
-      const auto eva_num = parse<unsigned>(eva_or_idx);
-      const auto time = hhmm_to_min(parse<int>(hhmm_or_idx.substr(1)));
+      auto const eva_num = parse<unsigned>(eva_or_idx);
+      auto const time = hhmm_to_min(parse<int>(hhmm_or_idx.substr(1)));
       if (ev_type == event_type::kDep) {
-        const auto it =
+        auto const it =
             std::find_if(begin(stops), end(stops), [&](service::stop const& s) {
               return s.eva_num_ == eva_num &&
                      (ev_type == event_type::kDep ? s.dep_.time_
@@ -102,7 +102,7 @@ private:
                     eva_num);
         return static_cast<std::size_t>(std::distance(begin(stops), it));
       } else {
-        const auto it = std::find_if(
+        auto const it = std::find_if(
             stops.rbegin(), stops.rend(), [&](service::stop const& s) {
               return s.eva_num_ == eva_num &&
                      (ev_type == event_type::kDep ? s.dep_.time_
@@ -139,7 +139,7 @@ void parse_range(std::vector<utl::cstr> const& spec_lines,
                  std::vector<service::stop> const& stops,
                  std::vector<service::section>& sections,
                  service::section& begin_to_end,
-                 TargetInformationType service::section::*member,
+                 TargetInformationType service::section::* member,
                  TargetInformationParserFun parse_target_info) {
   compute_ranges(spec_lines, stops, parse_info, [&](auto const& r) {
     TargetInformationType target_info = parse_target_info(r.first, r.second);
@@ -156,14 +156,14 @@ void parse_range(std::vector<utl::cstr> const& spec_lines,
 }
 
 template <typename TargetInformationType, typename TargetInformationParserFun>
-void parse_range(
-    std::vector<utl::cstr> const& spec_lines,
-    range_parse_information const& parse_info,
-    std::vector<service::stop> const& stops,
-    std::vector<service::section>& sections,
-    service::section& begin_to_end,
-    std::optional<std::vector<TargetInformationType>> service::section::*member,
-    TargetInformationParserFun parse_target_info) {
+void parse_range(std::vector<utl::cstr> const& spec_lines,
+                 range_parse_information const& parse_info,
+                 std::vector<service::stop> const& stops,
+                 std::vector<service::section>& sections,
+                 service::section& begin_to_end,
+                 std::optional<std::vector<TargetInformationType>>
+                     service::section::* member,
+                 TargetInformationParserFun parse_target_info) {
   compute_ranges(spec_lines, stops, parse_info, [&](auto const& r) {
     TargetInformationType target_info = parse_target_info(r.first, r.second);
 
