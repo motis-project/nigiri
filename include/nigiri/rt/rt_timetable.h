@@ -132,9 +132,6 @@ struct rt_timetable {
             return tt.route_short_name(trip_idx);
           },
           [&](rt_add_trip_id_idx_t) {
-            // ADDED trips should have an entry in
-            // rt_transport_route_short_names
-            assert(false);
             return std::string_view{"?"};
           }});
     } else {
@@ -154,9 +151,6 @@ struct rt_timetable {
             return tt.trip_short_name(trip_idx);
           },
           [&](rt_add_trip_id_idx_t) {
-            // ADDED trips should have an entry in
-            // rt_transport_trip_short_names
-            assert(false);
             return std::string_view{"?"};
           }});
     } else {

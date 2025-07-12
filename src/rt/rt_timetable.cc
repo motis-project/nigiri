@@ -143,7 +143,8 @@ rt_transport_idx_t rt_timetable::add_rt_transport(
   assert(rt_transport_src_.size() == rt_t_idx + 1U);
   assert(rt_transport_stop_times_.size() == rt_t_idx + 1U);
   assert(rt_transport_location_seq_.size() == rt_t_idx + 1U);
-  assert(rt_transport_display_names_.size() == rt_t_idx + 1U);
+  assert(rt_transport_route_short_names_.size() == rt_t_idx + 1U);
+  assert(rt_transport_trip_short_names_.size() == rt_t_idx + 1U);
   assert(rt_transport_section_clasz_.size() == rt_t_idx + 1U);
   assert(rt_transport_line_.size() == rt_t_idx + 1U);
   assert(rt_bikes_allowed_per_section_.size() == rt_t_idx + 1U);

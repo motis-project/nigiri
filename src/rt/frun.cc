@@ -357,7 +357,7 @@ frun::frun(timetable const& tt, rt_timetable const* rtt, run r)
 
 std::string_view frun::name() const {
   if (is_rt() && rtt_ != nullptr) {
-    return rtt_->trip_short_name(*tt_, rt_);
+    return rtt_->route_short_name(*tt_, rt_);
   }
   if (is_scheduled()) {
     return tt_->transport_name(t_.t_idx_);
@@ -631,8 +631,7 @@ void run_stop::print(std::ostream& out,
         if (j++ != 0) {
           out << ", ";
         }
-        out << "{name=" << route_short_name() << " " << trip_short_name()
-            << ", day=";
+        out << "{name=" << route_short_name() << ", day=";
         date::to_stream(
             out, "%F",
             tt.internal_interval_days().from_ + to_idx(fr_->t_.day_) * 1_days);
