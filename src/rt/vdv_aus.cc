@@ -424,14 +424,15 @@ void monotonize(frun& fr, rt_timetable& rtt) {
             fr.stop_range_.from_, fr.stop_range_.to_);
 
   auto upper_bound = unixtime_t::max();
-  for (auto i = stop_idx_t{0U}; i != fr.stop_range_.size(); ++i) {
-    auto const rs =
-        fr[static_cast<stop_idx_t>(fr.stop_range_.size()) - stop_idx_t{1U} - i];
-    if (rs.stop_idx_ != fr.stop_range_.to_ - 1) {
+  for (auto i = stop_idx_t{0U}; i != fr.size(); ++i) {
+    auto const rs = run_stop{
+        &fr,
+        static_cast<stop_idx_t>(static_cast<stop_idx_t>(fr.size()) - 1U - i)};
+    if (rs.stop_idx_ != fr.size() - 1) {
       upper_bound = std::min(rs.time(event_type::kDep), upper_bound);
       update_event(rtt, rs, event_type::kDep, upper_bound);
     }
-    if (rs.stop_idx_ != fr.stop_range_.from_) {
+    if (rs.stop_idx_ != 0) {
       upper_bound = std::min(rs.time(event_type::kArr), upper_bound);
       update_event(rtt, rs, event_type::kArr, upper_bound);
     }
