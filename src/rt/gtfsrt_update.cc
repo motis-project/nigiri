@@ -3,6 +3,7 @@
 #include <string_view>
 #include <vector>
 
+#include "utl/helpers/algorithm.h"
 #include "utl/pairwise.h"
 #include "utl/to_vec.h"
 #include "utl/verify.h"
@@ -300,14 +301,13 @@ bool update_run(source_idx_t const src,
   auto const& stus = tripUpdate.stop_time_update();
   auto upd_it = begin(stus);
   for (; seq_it != end(seq_numbers); ++stop_idx, ++seq_it) {
+    auto const loc_idx = stop{location_seq[stop_idx]}.location_idx();
     auto const matches =
         upd_it != end(stus) &&
         ((r.is_scheduled() && upd_it->has_stop_sequence() &&
           upd_it->stop_sequence() == *seq_it) ||
          (upd_it->has_stop_id() &&
-          upd_it->stop_id() ==
-              tt.locations_.ids_[stop{location_seq[stop_idx]}.location_idx()]
-                  .view()));
+          upd_it->stop_id() == tt.locations_.ids_[loc_idx].view()));
 
     if (matches) {
       auto& stp = rtt.rt_transport_location_seq_[r.rt_][stop_idx];
@@ -320,10 +320,7 @@ bool update_run(source_idx_t const src,
         rtt.dispatch_stop_change(r, stop_idx, event_type::kDep, l_idx, false);
       } else if (upd_it->stop_time_properties().has_assigned_stop_id() ||
                  (upd_it->has_stop_id() &&
-                  upd_it->stop_id() !=
-                      tt.locations_
-                          .ids_[stop{location_seq[stop_idx]}.location_idx()]
-                          .view())) {
+                  upd_it->stop_id() != tt.locations_.ids_[loc_idx].view())) {
         // Handle track change.
         auto const& new_id =
             upd_it->stop_time_properties().has_assigned_stop_id()
@@ -331,23 +328,33 @@ bool update_run(source_idx_t const src,
                 : upd_it->stop_id();
         auto const l_it = tt.locations_.location_id_to_idx_.find(
             {.id_ = new_id, .src_ = src});
-        if (l_it != end(tt.locations_.location_id_to_idx_)) {
-          auto const s = stop{stp};
-          stp = stop{l_it->second, s.in_allowed(), s.out_allowed(),
-                     s.in_allowed_wheelchair(), s.out_allowed_wheelchair()}
-                    .value();
-          auto transports = rtt.location_rt_transports_[l_it->second];
-          if (utl::find(transports, r.rt_) == end(transports)) {
-            transports.push_back(r.rt_);
-          }
-          rtt.dispatch_stop_change(r, stop_idx, event_type::kArr, l_it->second,
-                                   s.out_allowed());
-          rtt.dispatch_stop_change(r, stop_idx, event_type::kDep, l_it->second,
-                                   s.in_allowed());
-        } else {
+        if (l_it == end(tt.locations_.location_id_to_idx_)) {
           log(log_lvl::error, "gtfsrt.stop_assignment",
-              "stop assignment: src={}, stop_id=\"{}\" not found", src, new_id);
+              "stop assignment: src={}, old_stop_id=\"{}\", new_stop_id=\"{}\" "
+              "not found",
+              src, tt.locations_.ids_[loc_idx].view(), new_id);
+          continue;
         }
+        auto const& equiv_locs = tt.locations_.equivalences_.at(loc_idx);
+        if (utl::find(equiv_locs, l_it->second) == end(equiv_locs)) {
+          log(log_lvl::error, "gtfsrt.stop_assignment",
+              "stop assignment: src={}, old_stop_id=\"{}\", new_stop_id=\"{}\" "
+              "is not a mere track change, skipping",
+              src, tt.locations_.ids_[loc_idx].view(), new_id);
+          continue;
+        }
+        auto const s = stop{stp};
+        stp = stop{l_it->second, s.in_allowed(), s.out_allowed(),
+                   s.in_allowed_wheelchair(), s.out_allowed_wheelchair()}
+                  .value();
+        auto transports = rtt.location_rt_transports_[l_it->second];
+        if (utl::find(transports, r.rt_) == end(transports)) {
+          transports.push_back(r.rt_);
+        }
+        rtt.dispatch_stop_change(r, stop_idx, event_type::kArr, l_it->second,
+                                 s.out_allowed());
+        rtt.dispatch_stop_change(r, stop_idx, event_type::kDep, l_it->second,
+                                 s.in_allowed());
       } else {
         // Just reset in case a track change / skipped stop got reversed.
         if (location_seq[stop_idx] != stp) {
@@ -500,9 +507,7 @@ statistics gtfsrt_update_msg(timetable const& tt,
       log(log_lvl::error, "rt.gtfs.unsupported",
           "unsupported schedule relationship {} (tag={}, id={}), skipping "
           "message",
-          TripDescriptor_ScheduleRelationship_Name(
-              entity.trip_update().trip().schedule_relationship()),
-          tag, entity.id());
+          TripDescriptor_ScheduleRelationship_Name(sr), tag, entity.id());
       ++stats.unsupported_schedule_relationship_;
       continue;
     }
@@ -517,9 +522,37 @@ statistics gtfsrt_update_msg(timetable const& tt,
                                      .trip_id()}
               : std::string_view{};
 
-      auto [r, trip] = gtfsrt_resolve_run(today, tt, &rtt, src, td, trip_id);
+      auto is_resolved_static = false;
+      resolve_static(today, tt, src, td, [&](run r, trip_idx_t const trip) {
+        is_resolved_static = true;
 
-      if (!r.valid() && !added) {
+        resolve_rt(rtt, r, trip_id);
+
+        if (sr == gtfsrt::TripDescriptor_ScheduleRelationship_CANCELED) {
+          rtt.cancel_run(r);
+          ++stats.total_entities_success_;
+        } else {
+          if (update_run(src, tt, rtt, trip, r, entity.trip_update())) {
+            ++stats.total_entities_success_;
+          }
+        }
+
+        return utl::continue_t::kContinue;
+      });
+
+      if (added) {
+        utl::verify(!is_resolved_static,
+                    "NEW/ADDED trip is required to have a new trip_id");
+        auto r = rt::run{};
+        resolve_rt(rtt, r, trip_id.empty() ? td.trip_id() : trip_id);
+        if (update_run(src, tt, rtt, trip_idx_t::invalid(), r,
+                       entity.trip_update())) {
+          ++stats.total_entities_success_;
+        }
+        continue;
+      }
+
+      if (!is_resolved_static) {
         log(log_lvl::error, "rt.gtfs.resolve", "could not resolve (tag={}) {}",
             tag, remove_nl(td.DebugString()));
         span->AddEvent(
@@ -539,23 +572,8 @@ statistics gtfsrt_update_msg(timetable const& tt,
                 {"trip.str", remove_nl(td.DebugString())},
             });
         ++stats.trip_resolve_error_;
-        continue;
       }
-      if (added) {
-        utl::verify(!r.is_scheduled(),
-                    "NEW/ADDED trip is required to have a new trip_id");
-      }
-
-      if (entity.trip_update().trip().schedule_relationship() ==
-          gtfsrt::TripDescriptor_ScheduleRelationship_CANCELED) {
-        rtt.cancel_run(r);
-        ++stats.total_entities_success_;
-      } else {
-        if (update_run(src, tt, rtt, trip, r, entity.trip_update())) {
-          ++stats.total_entities_success_;
-        }
-      }
-    } catch (const std::exception& e) {
+    } catch (std::exception const& e) {
       ++stats.total_entities_fail_;
       log(log_lvl::error, "rt.gtfs",
           "GTFS-RT error (tag={}): time={}, entity={}, message={}, error={}",

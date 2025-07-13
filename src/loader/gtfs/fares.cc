@@ -208,7 +208,8 @@ hash_map<std::string, leg_group_idx_t> parse_leg_rules(
                        return find(timeframes, x.view());
                      })
                      .value_or(timeframe_group_idx_t::invalid()),
-             .fare_product_ = *fare_product,
+             .fare_product_ =
+                 fare_product.value_or(fare_product_idx_t::invalid()),
              .leg_group_idx_ = leg_group_idx,
              .contains_exactly_area_set_id_ =
                  r.contains_exactly_area_set_id_
@@ -241,33 +242,35 @@ hash_map<std::string, timeframe_group_idx_t> parse_timeframes(
   auto m = hash_map<std::string, timeframe_group_idx_t>{};
   utl::for_each_row<timeframe_record>(
       file_content, [&](timeframe_record const& r) {
-        try {
-          auto const traffic_days = *services.at(r.service_id_->view());
-          auto const i =
-              utl::get_or_create(m, r.timeframe_group_id_->view(), [&]() {
-                auto const idx = timeframe_group_idx_t{f.timeframes_.size()};
-                f.timeframes_.add_back_sized(0U);
-                f.timeframe_id_.emplace_back(
-                    tt.strings_.store(r.timeframe_group_id_->view()));
-                return idx;
-              });
-          f.timeframes_[i].push_back(fares::timeframe{
-              .start_time_ = r.start_time_
-                                 ->and_then([](utl::cstr x) {
-                                   return std::optional{hhmm_to_min(x)};
-                                 })
-                                 .value_or(0_hours),
-              .end_time_ = r.end_time_
+        auto const service_it = services.find(r.service_id_->view());
+        if (service_it == end(services)) {
+          log(log_lvl::error, "nigiri.loader.gtfs.fares",
+              "timeframes: service {} not found", r.service_id_->view());
+          return;
+        }
+
+        auto const traffic_days = *service_it->second;
+        auto const i =
+            utl::get_or_create(m, r.timeframe_group_id_->view(), [&]() {
+              auto const idx = timeframe_group_idx_t{f.timeframes_.size()};
+              f.timeframes_.add_back_sized(0U);
+              f.timeframe_id_.emplace_back(
+                  tt.strings_.store(r.timeframe_group_id_->view()));
+              return idx;
+            });
+        f.timeframes_[i].push_back(fares::timeframe{
+            .start_time_ = r.start_time_
                                ->and_then([](utl::cstr x) {
                                  return std::optional{hhmm_to_min(x)};
                                })
-                               .value_or(24_hours),
-              .service_ = traffic_days,
-              .service_id_ = tt.strings_.store(r.service_id_->view())});
-        } catch (...) {
-          log(log_lvl::error, "nigiri.loader.gtfs.fares",
-              "timeframes: service {} not found", r.service_id_->view());
-        }
+                               .value_or(0_hours),
+            .end_time_ = r.end_time_
+                             ->and_then([](utl::cstr x) {
+                               return std::optional{hhmm_to_min(x)};
+                             })
+                             .value_or(24_hours),
+            .service_ = traffic_days,
+            .service_id_ = tt.strings_.store(r.service_id_->view())});
       });
   return m;
 }
@@ -315,7 +318,7 @@ hash_map<std::string, network_idx_t> parse_networks(
   return m;
 }
 
-hash_map<std::string, route_idx_t> parse_route_networks(
+void parse_route_networks(
     std::string_view file_content,
     fares& f,
     route_map_t const& routes,
@@ -325,7 +328,19 @@ hash_map<std::string, route_idx_t> parse_route_networks(
     utl::csv_col<utl::cstr, UTL_NAME("route_id")> route_id_;
   };
 
-  auto m = hash_map<std::string, route_idx_t>{};
+  for (auto const& [_, route] : routes) {
+    if (!route->network_.empty()) {
+      auto const network_idx = find(networks, route->network_);
+      if (!network_idx.has_value()) {
+        log(log_lvl::error, "nigiri.loader.gtfs.fares",
+            "routes.txt: network {} not found", route->network_);
+        continue;
+      }
+
+      f.route_networks_.emplace(route->route_id_idx_, *network_idx);
+    }
+  }
+
   utl::for_each_row<route_network_record>(
       file_content, [&](route_network_record const& r) {
         auto const network_idx = find(networks, r.network_id_->view());
@@ -345,7 +360,6 @@ hash_map<std::string, route_idx_t> parse_route_networks(
         f.route_networks_.emplace(route_it->second->route_id_idx_,
                                   *network_idx);
       });
-  return m;
 }
 
 hash_map<std::string, location_idx_t> parse_stop_areas(
@@ -542,8 +556,7 @@ void load_fares(timetable& tt,
   auto const area_sets =
       parse_area_sets(tt, f, areas, load(kAreaSetElementsFile).data());
   auto const networks = parse_networks(tt, load(kNetworksFile).data(), f);
-  auto const route_networks = parse_route_networks(
-      load(kRouteNetworksFile).data(), f, routes, networks);
+  parse_route_networks(load(kRouteNetworksFile).data(), f, routes, networks);
   auto const timeframes =
       parse_timeframes(tt, load(kTimeframesFile).data(), f, services);
   auto const leg_groups =

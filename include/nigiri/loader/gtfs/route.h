@@ -21,6 +21,7 @@ struct route {
   std::string short_name_;
   std::string long_name_;
   std::string desc_;
+  std::string network_;
   clasz clasz_;
   color_t color_;
   color_t text_color_;

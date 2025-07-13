@@ -53,7 +53,7 @@ service_builder::service_builder(
     : stamm_{s}, tt_{tt}, bitfield_indices_(bitfield_indices) {}
 
 void service_builder::add_services(config const& c,
-                                   const char* filename,
+                                   char const* filename,
                                    std::string_view file_content,
                                    progress_update_fn const& progress_update) {
   auto const timer = scoped_timer{"loader.hrd.services.read"};
@@ -218,7 +218,6 @@ void service_builder::write_services(source_idx_t const src) {
               .section_providers_ = section_providers_,
               .section_directions_ = section_directions_,
               .section_lines_ = section_lines_,
-              .stop_seq_numbers_ = stop_seq_numbers_,
               .route_colors_ = route_colors_});
         } catch (std::exception const& e) {
           log(log_lvl::error, "loader.hrd.service",

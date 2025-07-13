@@ -51,7 +51,11 @@ struct timetable {
           location_id{.id_ = l.id_, .src_ = l.src_}, l_idx);
 
       if (is_new) {
+        utl::verify(next_idx <= footpath::kMaxTarget,
+                    "MAX={} locations reached", footpath::kMaxTarget);
+
         names_.emplace_back(l.name_);
+        platform_codes_.emplace_back(l.platform_code_);
         descriptions_.emplace_back(l.desc_);
         coordinates_.emplace_back(l.pos_);
         ids_.emplace_back(l.id_);
@@ -70,6 +74,7 @@ struct timetable {
       }
 
       assert(names_.size() == next_idx + 1);
+      assert(platform_codes_.size() == next_idx + 1);
       assert(descriptions_.size() == next_idx + 1);
       assert(coordinates_.size() == next_idx + 1);
       assert(ids_.size() == next_idx + 1);
@@ -89,6 +94,7 @@ struct timetable {
     location get(location_idx_t const idx) const {
       auto l = location{ids_[idx].view(),
                         names_[idx].view(),
+                        platform_codes_[idx].view(),
                         descriptions_[idx].view(),
                         coordinates_[idx],
                         src_[idx],
@@ -114,6 +120,7 @@ struct timetable {
     // Station access: external station id -> internal station idx
     hash_map<location_id, location_idx_t> location_id_to_idx_;
     vecvec<location_idx_t, char> names_;
+    vecvec<location_idx_t, char> platform_codes_;
     vecvec<location_idx_t, char> descriptions_;
     vecvec<location_idx_t, char> ids_;
     vector_map<location_idx_t, geo::latlng> coordinates_;
@@ -143,7 +150,6 @@ struct timetable {
     basic_string<provider_idx_t> const& section_providers_;
     basic_string<trip_direction_idx_t> const& section_directions_;
     basic_string<trip_line_idx_t> const& section_lines_;
-    basic_string<stop_idx_t> const& stop_seq_numbers_;
     basic_string<route_color> const& route_colors_;
   };
 

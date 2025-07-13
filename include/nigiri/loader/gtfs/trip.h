@@ -6,6 +6,8 @@
 #include <tuple>
 #include <vector>
 
+#include "utl/enumerate.h"
+
 #include "cista/reflection/comparable.h"
 
 #include "nigiri/loader/gtfs/flat_map.h"
@@ -95,6 +97,8 @@ struct trip {
 
   clasz get_clasz(timetable const&) const;
 
+  bool has_seated_transfers() const;
+
   route const* route_{nullptr};
   bitfield const* service_{nullptr};
   block* block_{nullptr};
@@ -112,6 +116,8 @@ struct trip {
 
   std::vector<flex_stop_t> flex_stops_;
   std::vector<stop_time_window> flex_time_windows_;
+
+  std::vector<gtfs_trip_idx_t> seated_out_, seated_in_;
 
   std::optional<std::vector<frequency>> frequency_;
   bool requires_interpolation_{false};

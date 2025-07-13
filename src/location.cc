@@ -24,6 +24,7 @@ location::location(timetable const& tt, location_idx_t idx)
 location::location(
     std::string_view id,
     std::string_view name,
+    std::string_view platform_code,
     std::string_view desc,
     geo::latlng pos,
     source_idx_t src,
@@ -35,6 +36,7 @@ location::location(
     : l_{location_idx_t::invalid()},
       id_{id},
       name_{name},
+      platform_code_{platform_code},
       desc_{desc},
       pos_{pos},
       src_{src},

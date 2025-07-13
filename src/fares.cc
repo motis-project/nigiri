@@ -71,6 +71,29 @@ struct transfer_rule {
   fares::fare_transfer_rule const& r_;
 };
 
+struct area_set {
+  friend std::ostream& operator<<(std::ostream& out, area_set const& x) {
+    if (x.area_set_ == area_set_idx_t::invalid()) {
+      return out << "-";
+    }
+    out << "[";
+    auto first = true;
+    for (auto const& area : x.f_.area_sets_[x.area_set_]) {
+      if (first) {
+        first = false;
+      } else {
+        out << ", ";
+      }
+      out << x.tt_.strings_.get(x.tt_.areas_[area].id_);
+    }
+    return out << "]";
+  }
+
+  timetable const& tt_;
+  fares const& f_;
+  area_set_idx_t const& area_set_;
+};
+
 struct leg_rule {
   friend std::ostream& operator<<(std::ostream& out, leg_rule const& x) {
     auto const [tt, f, r] = x;
@@ -95,6 +118,9 @@ struct leg_rule {
            << (r.to_timeframe_group_ == timeframe_group_idx_t::invalid()
                    ? "ANY"
                    : tt.strings_.get(f.timeframe_id_[r.to_timeframe_group_]))
+           << ", contains_exactly_area_set="
+           << area_set{tt, f, r.contains_exactly_area_set_id_}
+           << ", contains_area_set=" << area_set{tt, f, r.contains_area_set_id_}
            << ", product="
            << (r.fare_product_ == fare_product_idx_t::invalid()
                    ? "-"
@@ -223,31 +249,23 @@ bool join(timetable const& tt,
     return false;
   }
 
-  // Find first fare leg rule regarding both networks.
-  auto const it = std::lower_bound(
-      begin(fare.fare_leg_join_rules_), end(fare.fare_leg_join_rules_),
-      fares::fare_leg_join_rule{.from_network_ = network_a,
-                                .to_network_ = network_b,
-                                .from_stop_ = location_idx_t{0U},
-                                .to_stop_ = location_idx_t{0U}});
-
-  // Search for matching stops.
+  // Search for matching join rule matching both stops.
   auto const from = a[r_a.stop_range_.to_ - 1U].get_location_idx();
   auto const from_station = parent(tt, from);
   auto const to = b[r_b.stop_range_.from_].get_location_idx();
   auto const to_station = parent(tt, to);
-  while (it != end(fare.fare_leg_join_rules_) &&
-         it->from_network_ == network_a && it->to_network_ == network_b) {
-    if ((from_station == to_station &&  //
-         it->from_stop_ == location_idx_t::invalid() &&
-         it->to_stop_ == location_idx_t::invalid()) ||
-        ((it->from_stop_ == from_station || it->from_stop_ == from) &&
-         (it->to_stop_ == to_station || it->to_stop_ == to))) {
-      return true;
-    }
-  }
-
-  return false;
+  return utl::find_if(
+             fare.fare_leg_join_rules_,
+             [&](fares::fare_leg_join_rule const& jr) {
+               auto const networks_match =
+                   jr.from_network_ == network_a && jr.to_network_ == network_b;
+               auto const stops_match =
+                   (jr.from_stop_ == location_idx_t::invalid() &&
+                    jr.to_stop_ == location_idx_t::invalid()) ||
+                   ((jr.from_stop_ == from_station || jr.from_stop_ == from) &&
+                    (jr.to_stop_ == to_station || jr.to_stop_ == to));
+               return networks_match && stops_match;
+             }) != end(fare.fare_leg_join_rules_);
 }
 
 std::vector<journey::leg const*> get_transit_legs(journey const& j) {
@@ -397,10 +415,10 @@ std::pair<source_idx_t, std::vector<fares::fare_leg_rule> > match_leg_rule(
 
   auto const has_area = [&](area_idx_t const x) {
     for (auto const& l : joined_legs) {
-      auto const r = std::get<journey::run_enter_exit>(l->uses_).r_;
-      auto const fr = rt::frun{tt, rtt, r};
-      auto const a = static_cast<stop_idx_t>(r.stop_range_.from_);
-      auto const b = static_cast<stop_idx_t>(r.stop_range_.to_);
+      auto const ree = std::get<journey::run_enter_exit>(l->uses_);
+      auto const fr = rt::frun{tt, rtt, ree.r_};
+      auto const a = static_cast<stop_idx_t>(ree.stop_range_.from_);
+      auto const b = static_cast<stop_idx_t>(ree.stop_range_.to_);
       for (auto i = a; i < b; ++i) {
         auto const stop_areas = get_areas(tt, fr[i].get_location_idx());
         if (utl::find(stop_areas, x) != end(stop_areas)) {
@@ -414,12 +432,16 @@ std::pair<source_idx_t, std::vector<fares::fare_leg_rule> > match_leg_rule(
   auto const has_other_area =
       [&](vecvec<area_set_idx_t, area_idx_t>::const_bucket const& exact_areas) {
         for (auto const& l : joined_legs) {
-          auto const r = std::get<journey::run_enter_exit>(l->uses_).r_;
-          auto const fr = rt::frun{tt, rtt, r};
-          auto const a = static_cast<stop_idx_t>(r.stop_range_.from_);
-          auto const b = static_cast<stop_idx_t>(r.stop_range_.to_);
+          auto const ree = std::get<journey::run_enter_exit>(l->uses_);
+          auto const fr = rt::frun{tt, rtt, ree.r_};
+          auto const a = static_cast<stop_idx_t>(ree.stop_range_.from_);
+          auto const b = static_cast<stop_idx_t>(ree.stop_range_.to_);
           for (auto i = a; i < b; ++i) {
             auto const stop_areas = get_areas(tt, fr[i].get_location_idx());
+            trace("areas of {}: {}", fr[i].get_location().name_,
+                  stop_areas | std::views::transform([&](area_idx_t const a) {
+                    return tt.strings_.get(tt.areas_[a].name_);
+                  }));
             auto const contains_other_area =
                 utl::any_of(stop_areas, [&](area_idx_t const x) {
                   return std::ranges::find(exact_areas, x) == end(exact_areas);
@@ -483,6 +505,10 @@ std::pair<source_idx_t, std::vector<fares::fare_leg_rule> > match_leg_rule(
   });
   utl::sort(matching_rules, [&](fares::fare_leg_rule const& a,
                                 fares::fare_leg_rule const& b) {
+    if (a.fare_product_ == fare_product_idx_t::invalid() ||
+        b.fare_product_ == fare_product_idx_t::invalid()) {
+      return a.rule_priority_ > b.rule_priority_;
+    }
     auto const ap = f.fare_products_[a.fare_product_].front();
     auto const bp = f.fare_products_[b.fare_product_].front();
     auto const a_rider_not_default =

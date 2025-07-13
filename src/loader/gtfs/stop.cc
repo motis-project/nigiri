@@ -87,13 +87,14 @@ struct stop {
   std::string_view desc_;
   geo::latlng coord_;
   std::string_view timezone_;
-  std::set<stop*> same_name_, children_;
+  hash_set<stop*> same_name_, children_;
   stop* parent_{nullptr};
   std::vector<unsigned> close_;
   location_idx_t location_{location_idx_t::invalid()};
   std::vector<footpath> footpaths_;
 };
 
+enum class stop_type { kRegular, kGeneratedParent };
 using stop_map_t = hash_map<std::string_view, std::unique_ptr<stop>>;
 
 enum class transfer_type : std::uint8_t {
@@ -106,7 +107,8 @@ enum class transfer_type : std::uint8_t {
   kGenerated = std::numeric_limits<std::uint8_t>::max()
 };
 
-void read_transfers(stop_map_t& stops, std::string_view file_content) {
+seated_transfers_map_t read_transfers(stop_map_t& stops,
+                                      std::string_view file_content) {
   auto const timer = scoped_timer{"gtfs.loader.stops.transfers"};
 
   struct csv_transfer {
@@ -114,10 +116,12 @@ void read_transfers(stop_map_t& stops, std::string_view file_content) {
     utl::csv_col<utl::cstr, UTL_NAME("to_stop_id")> to_stop_id_;
     utl::csv_col<int, UTL_NAME("transfer_type")> transfer_type_;
     utl::csv_col<int, UTL_NAME("min_transfer_time")> min_transfer_time_;
+    utl::csv_col<utl::cstr, UTL_NAME("from_trip_id")> from_trip_id_;
+    utl::csv_col<utl::cstr, UTL_NAME("to_trip_id")> to_trip_id_;
   };
 
   if (file_content.empty()) {
-    return;
+    return {};
   }
 
   auto progress_tracker = utl::get_active_progress_tracker();
@@ -125,48 +129,67 @@ void read_transfers(stop_map_t& stops, std::string_view file_content) {
       .out_bounds(15.F, 17.F)
       .in_high(file_content.size());
 
+  auto seated_transfers = seated_transfers_map_t{};
   utl::line_range{
       utl::make_buf_reader(file_content, progress_tracker->update_fn())}  //
       | utl::csv<csv_transfer>()  //
-      |
-      utl::for_each([&](csv_transfer const& t) {
-        auto const from_stop_it = stops.find(t.from_stop_id_->view());
-        if (from_stop_it == end(stops)) {
-          log(log_lvl::error, "loader.gtfs.transfers", "stop {} not found\n",
-              t.from_stop_id_->view());
-          return;
-        }
+      | utl::for_each([&](csv_transfer const& t) {
+          auto const type = static_cast<transfer_type>(*t.transfer_type_);
+          if (type == transfer_type::kNotPossible) {
+            return;
+          }
 
-        auto const to_stop_it = stops.find(t.to_stop_id_->view());
-        if (to_stop_it == end(stops)) {
-          log(log_lvl::error, "loader.gtfs.transfers", "stop {} not found\n",
-              t.to_stop_id_->view());
-          return;
-        }
+          if (type == transfer_type::kStaySeated) {
+            if (t.from_trip_id_->empty() || t.to_trip_id_->empty()) {
+              log(log_lvl::error, "loader.gtfs.transfers",
+                  "stay seated transfers require from_trip_id and to_trip_id");
+              return;
+            }
 
-        auto const type = static_cast<transfer_type>(*t.transfer_type_);
-        if (type == transfer_type::kNotPossible || from_stop_it == to_stop_it) {
-          return;
-        }
+            seated_transfers[t.from_trip_id_->to_str()].push_back(
+                t.to_trip_id_->to_str());
 
-        auto& footpaths = from_stop_it->second->footpaths_;
-        auto const it = std::find_if(
-            begin(footpaths), end(footpaths), [&](footpath const& fp) {
-              return fp.target() == to_stop_it->second->location_;
-            });
-        if (it == end(footpaths)) {
-          footpaths.emplace_back(to_stop_it->second->location_,
-                                 duration_t{*t.min_transfer_time_ / 60});
-        }
-      });
+            return;
+          }
+
+          auto const from_stop_it = stops.find(t.from_stop_id_->view());
+          if (from_stop_it == end(stops)) {
+            log(log_lvl::error, "loader.gtfs.transfers",
+                "stop \"{}\" not found", t.from_stop_id_->view());
+            return;
+          }
+
+          auto const to_stop_it = stops.find(t.to_stop_id_->view());
+          if (to_stop_it == end(stops)) {
+            log(log_lvl::error, "loader.gtfs.transfers",
+                "stop \"{}\" not found", t.to_stop_id_->view());
+            return;
+          }
+
+          if (from_stop_it == to_stop_it) {
+            return;
+          }
+
+          auto& footpaths = from_stop_it->second->footpaths_;
+          auto const it = std::find_if(
+              begin(footpaths), end(footpaths), [&](footpath const& fp) {
+                return fp.target() == to_stop_it->second->location_;
+              });
+          if (it == end(footpaths)) {
+            footpaths.emplace_back(to_stop_it->second->location_,
+                                   duration_t{*t.min_transfer_time_ / 60});
+          }
+        });
+  return seated_transfers;
 }
 
-stops_map_t read_stops(source_idx_t const src,
-                       timetable& tt,
-                       tz_map& timezones,
-                       std::string_view stops_file_content,
-                       std::string_view transfers_file_content,
-                       unsigned link_stop_distance) {
+std::pair<stops_map_t, seated_transfers_map_t> read_stops(
+    source_idx_t const src,
+    timetable& tt,
+    tz_map& timezones,
+    std::string_view stops_file_content,
+    std::string_view transfers_file_content,
+    unsigned link_stop_distance) {
   auto const timer = scoped_timer{"gtfs.loader.stops"};
 
   auto const progress_tracker = utl::get_active_progress_tracker();
@@ -177,6 +200,7 @@ stops_map_t read_stops(source_idx_t const src,
   struct csv_stop {
     utl::csv_col<utl::cstr, UTL_NAME("stop_id")> id_;
     utl::csv_col<cista::raw::generic_string, UTL_NAME("stop_name")> name_;
+    utl::csv_col<unsigned, UTL_NAME("location_type")> location_type_;
     utl::csv_col<utl::cstr, UTL_NAME("stop_timezone")> timezone_;
     utl::csv_col<utl::cstr, UTL_NAME("parent_station")> parent_station_;
     utl::csv_col<utl::cstr, UTL_NAME("platform_code")> platform_code_;
@@ -193,6 +217,12 @@ stops_map_t read_stops(source_idx_t const src,
       | utl::csv<csv_stop>()  //
       |
       utl::for_each([&](csv_stop& s) {
+        if (*s.location_type_ == 2 ||  // entrance / exit
+            *s.location_type_ == 3  // generic node
+        ) {
+          return;
+        }
+
         auto const new_stop = utl::get_or_create(stops, s.id_->view(), [&]() {
                                 return std::make_unique<stop>();
                               }).get();
@@ -216,12 +246,17 @@ stops_map_t read_stops(source_idx_t const src,
           new_stop->parent_ = parent;
         }
 
-        equal_names[new_stop->name_.view()].emplace_back(new_stop);
+        if (!new_stop->name_.empty()) {
+          equal_names[new_stop->name_.view()].emplace_back(new_stop);
+        }
       });
 
   auto const stop_vec =
       utl::to_vec(stops, [](auto const& s) { return s.second.get(); });
   for (auto const& [id, s] : stops) {
+    if (s->name_.empty()) {
+      continue;
+    }
     for (auto const& equal : equal_names[s->name_]) {
       if (equal != s.get()) {
         s->same_name_.emplace(equal);
@@ -246,19 +281,19 @@ stops_map_t read_stops(source_idx_t const src,
 
   auto empty_idx_vec = vector<location_idx_t>{};
   for (auto const& [id, s] : stops) {
-    auto const is_track = s->parent_ != nullptr && !s->platform_code_.empty();
     locations.emplace(
         std::string{id},
         s->location_ = tt.locations_.register_location(location{
-            id, is_track ? s->platform_code_ : s->name_, s->desc_, s->coord_,
-            src, is_track ? location_type::kTrack : location_type::kStation,
+            id, s->name_, s->platform_code_, s->desc_, s->coord_, src,
+            s->parent_ == nullptr ? location_type::kStation
+                                  : location_type::kTrack,
             location_idx_t::invalid(),
             s->timezone_.empty() ? timezone_idx_t::invalid()
                                  : get_tz_idx(tt, timezones, s->timezone_),
             2_minutes, it_range{empty_idx_vec}}));
   }
 
-  read_transfers(stops, transfers_file_content);
+  auto transfers = read_transfers(stops, transfers_file_content);
 
   {
     auto const t = scoped_timer{"loader.gtfs.stop.metas"};
@@ -326,7 +361,7 @@ stops_map_t read_stops(source_idx_t const src,
     }
   }
 
-  return locations;
+  return std::pair{std::move(locations), std::move(transfers)};
 }
 
 }  // namespace nigiri::loader::gtfs

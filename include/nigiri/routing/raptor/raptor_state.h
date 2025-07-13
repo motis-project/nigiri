@@ -59,8 +59,8 @@ struct raptor_state {
   flat_matrix_view<std::array<delta_t, Vias + 1>> get_round_times() {
     return {{reinterpret_cast<std::array<delta_t, Vias + 1>*>(
                  round_times_storage_.data()),
-             n_locations_ * (kMaxTransfers + 1)},
-            kMaxTransfers + 1U,
+             n_locations_ * (kMaxTransfers + 2)},
+            kMaxTransfers + 2U,
             n_locations_};
   }
 
@@ -69,8 +69,8 @@ struct raptor_state {
       const {
     return {{reinterpret_cast<std::array<delta_t, Vias + 1> const*>(
                  round_times_storage_.data()),
-             n_locations_ * (kMaxTransfers + 1)},
-            kMaxTransfers + 1U,
+             n_locations_ * (kMaxTransfers + 2)},
+            kMaxTransfers + 2U,
             n_locations_};
   }
 
