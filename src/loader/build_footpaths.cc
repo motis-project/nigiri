@@ -207,11 +207,9 @@ void connect_components(timetable& tt,
   utl::sort(assignments);
 
   tt.locations_.preprocessing_footpaths_out_.clear();
-  tt.locations_.preprocessing_footpaths_out_[location_idx_t{
-      tt.locations_.src_.size() - 1}];
+  tt.locations_.preprocessing_footpaths_out_.resize(tt.n_locations());
   tt.locations_.preprocessing_footpaths_in_.clear();
-  tt.locations_.preprocessing_footpaths_in_[location_idx_t{
-      tt.locations_.src_.size() - 1}];
+  tt.locations_.preprocessing_footpaths_in_.resize(tt.n_locations());
 
   auto tmp_graph = cista::raw::mutable_fws_multimap<location_idx_t, footpath>{};
   auto components = std::vector<component>{};

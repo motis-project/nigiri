@@ -8,6 +8,7 @@
 
 #include "nigiri/loader/build_footpaths.h"
 #include "nigiri/loader/build_lb_graph.h"
+#include "nigiri/loader/permutate_locations.h"
 #include "nigiri/flex.h"
 #include "nigiri/special_stations.h"
 #include "nigiri/timetable.h"
@@ -129,6 +130,8 @@ void finalize(timetable& tt, finalize_options const opt) {
                  tt.strings_.get(tt.providers_[b].short_name_);
         });
   }
+
+  permutate_locations(tt);
   build_footpaths(tt, opt);
   build_lb_graph<direction::kForward>(tt, kDefaultProfile);
   build_lb_graph<direction::kBackward>(tt, kDefaultProfile);

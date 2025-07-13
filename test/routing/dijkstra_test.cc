@@ -106,6 +106,7 @@ TEST(routing, dijkstra) {
   finalize(tt);
 
   auto const d1_l = tt.locations_.location_id_to_idx_.at({"D1", src});
+  EXPECT_EQ("D1", (location{tt, d1_l}.name_));
   auto const q_d1_c2 = query{
       .start_time_ = unixtime_t{sys_days{2024_y / June / 8} + 7_hours},
       .start_match_mode_ = location_match_mode::kExact,
