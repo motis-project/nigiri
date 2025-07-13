@@ -1,6 +1,5 @@
-#include "utl/enumerate.h"
-
 #include "nigiri/loader/permutate_locations.h"
+
 #include "nigiri/special_stations.h"
 #include "nigiri/timetable.h"
 
