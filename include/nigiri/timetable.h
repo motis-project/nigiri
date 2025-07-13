@@ -27,6 +27,14 @@
 
 namespace nigiri {
 
+// Warning: for better data locality, locations will be reordered in a way that
+// locations with no traffic (not served by any route) are at the end (high
+// index) while locations with traffic will be at the start (low index).
+// This means that every added data field that (directly or indirectly)
+// references location_idx_t has to be handled in permutate_locations.cc
+// Don't forget to add handling to permutate_locations.cc when adding new fields
+// that either use location_idx_t as index (permutate) or as value
+// (re-reference).
 struct timetable {
   struct locations {
     timezone_idx_t register_timezone(timezone tz) {
@@ -114,10 +122,10 @@ struct timetable {
     vector_map<location_idx_t, location_type> types_;
     vector_map<location_idx_t, location_idx_t> parents_;
     vector_map<location_idx_t, timezone_idx_t> location_timezones_;
-    mutable_fws_multimap<location_idx_t, location_idx_t> equivalences_;
-    mutable_fws_multimap<location_idx_t, location_idx_t> children_;
-    mutable_fws_multimap<location_idx_t, footpath> preprocessing_footpaths_out_;
-    mutable_fws_multimap<location_idx_t, footpath> preprocessing_footpaths_in_;
+    paged_vecvec<location_idx_t, location_idx_t> equivalences_;
+    paged_vecvec<location_idx_t, location_idx_t> children_;
+    paged_vecvec<location_idx_t, footpath> preprocessing_footpaths_out_;
+    paged_vecvec<location_idx_t, footpath> preprocessing_footpaths_in_;
     array<vecvec<location_idx_t, footpath>, kNProfiles> footpaths_out_;
     array<vecvec<location_idx_t, footpath>, kNProfiles> footpaths_in_;
     vector_map<timezone_idx_t, timezone> timezones_;
