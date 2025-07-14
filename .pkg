@@ -1,3 +1,7 @@
+[benchmark]
+  url=git@github.com:motis-project/benchmark.git
+  branch=master
+  commit=94dc64692fa7e1feb361f5b6b3277fc982953afd
 [googletest]
   url=git@github.com:motis-project/googletest.git
   branch=master

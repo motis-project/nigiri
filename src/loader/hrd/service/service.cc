@@ -139,7 +139,7 @@ void parse_range(std::vector<utl::cstr> const& spec_lines,
                  std::vector<service::stop> const& stops,
                  std::vector<service::section>& sections,
                  service::section& begin_to_end,
-                 TargetInformationType service::section::* member,
+                 TargetInformationType service::section::*member,
                  TargetInformationParserFun parse_target_info) {
   compute_ranges(spec_lines, stops, parse_info, [&](auto const& r) {
     TargetInformationType target_info = parse_target_info(r.first, r.second);
@@ -156,14 +156,14 @@ void parse_range(std::vector<utl::cstr> const& spec_lines,
 }
 
 template <typename TargetInformationType, typename TargetInformationParserFun>
-void parse_range(std::vector<utl::cstr> const& spec_lines,
-                 range_parse_information const& parse_info,
-                 std::vector<service::stop> const& stops,
-                 std::vector<service::section>& sections,
-                 service::section& begin_to_end,
-                 std::optional<std::vector<TargetInformationType>>
-                     service::section::* member,
-                 TargetInformationParserFun parse_target_info) {
+void parse_range(
+    std::vector<utl::cstr> const& spec_lines,
+    range_parse_information const& parse_info,
+    std::vector<service::stop> const& stops,
+    std::vector<service::section>& sections,
+    service::section& begin_to_end,
+    std::optional<std::vector<TargetInformationType>> service::section::*member,
+    TargetInformationParserFun parse_target_info) {
   compute_ranges(spec_lines, stops, parse_info, [&](auto const& r) {
     TargetInformationType target_info = parse_target_info(r.first, r.second);
 
