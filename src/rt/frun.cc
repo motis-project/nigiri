@@ -123,15 +123,18 @@ std::string_view run_stop::line(event_type const ev_type) const {
   }
 }
 
-provider const& run_stop::get_provider(event_type const ev_type) const {
+provider_idx_t run_stop::get_provider_idx(event_type const ev_type) const {
   if (!fr_->is_scheduled()) {
-    return tt().providers_.at(provider_idx_t{0});  // TODO
+    return provider_idx_t{0};
   }
   auto const provider_sections =
       tt().transport_section_providers_.at(fr_->t_.t_idx_);
-  auto const provider_idx = provider_sections.at(
+  return provider_sections.at(
       provider_sections.size() == 1U ? 0U : section_idx(ev_type));
-  return tt().providers_.at(provider_idx);
+}
+
+provider const& run_stop::get_provider(event_type const ev_type) const {
+  return tt().providers_.at(get_provider_idx(ev_type));
 }
 
 std::string_view run_stop::direction(event_type const ev_type) const {
