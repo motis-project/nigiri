@@ -56,7 +56,7 @@ void process_queries(
             i, result, *result.journeys_,
             std::chrono::duration_cast<std::chrono::milliseconds>(
                 total_time_stop - total_time_start)});
-      } catch (const std::exception& e) {
+      } catch (std::exception const& e) {
         std::cout << e.what();
       }
     }
