@@ -73,7 +73,7 @@ static void benchmark_random_queries(benchmark::State& state) {
   ::benchmark::DoNotOptimize(tt);
   nigiri::query_generation::generator_settings gs;
   ::benchmark::DoNotOptimize(gs);
-  generate_queries(queries, 10U, tt, gs, 22);
+  generate_queries(queries, 1U, tt, gs, 22);
 
   for (auto _ : state) {
     process_queries(queries, results, tt);
@@ -83,16 +83,15 @@ static void benchmark_random_queries(benchmark::State& state) {
     ::benchmark::DoNotOptimize(gs);
   }
 }
-BENCHMARK(benchmark_random_queries)->Repetitions(5);
+BENCHMARK(benchmark_random_queries)->MinTime(20.0);
 
 int main(int argc, char** argv) {
-  std::string arg = (argc > 1) ? argv[1] : "error";
-  if ("error" == arg) {
-    std::cout << "Bitte geben Sie den Pfad zum Timetable (tt.bin) an! \n";
-    return -1;
+  if (argc <= 1) {
+    fmt::println("Usage: ./nigiri-gbm [TIMETABLE PATH]");
+    return 1;
   }
-  tt_path = arg;
-  ::benchmark::SetDefaultTimeUnit(benchmark::kMicrosecond);
+  tt_path = argv[1];
+  ::benchmark::SetDefaultTimeUnit(benchmark::kMillisecond);
   ::benchmark::MaybeReenterWithoutASLR(argc, argv);
   ::benchmark::Initialize(&argc, argv);
   ::benchmark::RunSpecifiedBenchmarks();
