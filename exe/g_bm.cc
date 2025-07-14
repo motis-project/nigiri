@@ -83,7 +83,9 @@ static void benchmark_random_queries(benchmark::State& state) {
     ::benchmark::DoNotOptimize(gs);
   }
 }
-BENCHMARK(benchmark_random_queries)->MinTime(20.0);
+BENCHMARK(benchmark_random_queries)
+    ->MinTime(20.0)
+    ->Unit(benchmark::kMillisecond);
 
 int main(int argc, char** argv) {
   if (argc <= 1) {
@@ -91,8 +93,7 @@ int main(int argc, char** argv) {
     return 1;
   }
   tt_path = argv[1];
-  ::benchmark::SetDefaultTimeUnit(benchmark::kMillisecond);
-  ::benchmark::MaybeReenterWithoutASLR(argc, argv);
+  //::benchmark::MaybeReenterWithoutASLR(argc, argv);
   ::benchmark::Initialize(&argc, argv);
   ::benchmark::RunSpecifiedBenchmarks();
   return 0;
