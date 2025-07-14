@@ -93,7 +93,6 @@ int main(int argc, char** argv) {
     return 1;
   }
   tt_path = argv[1];
-  //::benchmark::MaybeReenterWithoutASLR(argc, argv);
   ::benchmark::Initialize(&argc, argv);
   ::benchmark::RunSpecifiedBenchmarks();
   return 0;
