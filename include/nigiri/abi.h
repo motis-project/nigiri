@@ -17,7 +17,7 @@ struct nigiri_transport {
 };
 typedef struct nigiri_transport nigiri_transport_t;
 
-static uint32_t const kTargetBits = 22U;
+static uint32_t const kTargetBits = 23U;
 static uint32_t const kDurationBits = 8 * sizeof(uint32_t) - kTargetBits;
 struct nigiri_footpath {
   unsigned int target_location_idx : kTargetBits;
