@@ -18,6 +18,7 @@
 #include "nigiri/loader/gtfs/calendar.h"
 #include "nigiri/loader/gtfs/calendar_date.h"
 #include "nigiri/loader/gtfs/fares.h"
+#include "nigiri/loader/gtfs/feed_info_test.h"
 #include "nigiri/loader/gtfs/files.h"
 #include "nigiri/loader/gtfs/flex.h"
 #include "nigiri/loader/gtfs/local_to_utc.h"
@@ -33,6 +34,7 @@
 #include "nigiri/loader/gtfs/stop_time.h"
 #include "nigiri/loader/gtfs/trip.h"
 #include "nigiri/loader/loader_interface.h"
+
 #include "nigiri/common/sort_by.h"
 #include "nigiri/logging.h"
 #include "nigiri/timetable.h"
@@ -117,8 +119,10 @@ void load_timetable(loader_config const& config,
                                   load(kRoutesFile).data(), config.default_tz_);
   auto const calendar = read_calendar(load(kCalenderFile).data());
   auto const dates = read_calendar_date(load(kCalendarDatesFile).data());
-  auto const service =
-      merge_traffic_days(tt.internal_interval_days(), calendar, dates);
+  auto const feed_info = read_feed_info(load(kFeedInfoFile).data());
+  auto const service = merge_traffic_days(
+      tt.internal_interval_days(), calendar, dates,
+      config.extend_calendar_ ? feed_info.feed_end_date_ : std::nullopt);
   auto const shape_states =
       (shapes_data != nullptr)
           ? parse_shapes(load(kShapesFile).data(), *shapes_data)

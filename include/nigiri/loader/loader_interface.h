@@ -19,6 +19,7 @@ struct loader_config {
   std::string default_tz_;
   std::array<bool, kNumClasses> bikes_allowed_default_{};
   std::array<bool, kNumClasses> cars_allowed_default_{};
+  bool extend_calendar_{false};
 };
 
 struct loader_interface {
