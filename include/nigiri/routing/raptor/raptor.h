@@ -2,6 +2,10 @@
 
 #include <cassert>
 
+#include "boost/fiber/all.hpp"
+
+#include "cista/atomic.h"
+
 #include "nigiri/common/delta_t.h"
 #include "nigiri/common/linear_lower_bound.h"
 #include "nigiri/routing/journey.h"
@@ -46,17 +50,22 @@ struct raptor_stats {
   std::uint64_t route_update_prevented_by_lower_bound_{0ULL};
 };
 
+enum class exec { kSequential, kParallel };
 enum class search_mode { kOneToOne, kOneToAll };
+
+constexpr auto const kNThreads = 4U;
 
 template <direction SearchDir,
           bool Rt,
           via_offset_t Vias,
-          search_mode SearchMode>
+          search_mode SearchMode,
+          exec Exec = exec::kParallel>
 struct raptor {
   using algo_state_t = raptor_state;
   using algo_stats_t = raptor_stats;
 
-  static constexpr bool kUseLowerBounds = true;
+  static constexpr auto const Atomic = Exec == exec::kParallel;
+  static constexpr auto const kUseLowerBounds = true;
   static constexpr auto const kFwd = (SearchDir == direction::kForward);
   static constexpr auto const kBwd = (SearchDir == direction::kBackward);
   static constexpr auto const kInvalid = kInvalidDelta<SearchDir>;
@@ -70,6 +79,13 @@ struct raptor {
     return a;
   }();
 
+  static inline void update(delta_t& x, delta_t const new_value) {
+    if constexpr (Atomic) {
+      kFwd ? cista::fetch_min(x, new_value) : cista::fetch_max(x, new_value);
+    } else {
+      x = new_value;
+    }
+  }
   static bool is_better(auto a, auto b) { return kFwd ? a < b : a > b; }
   static bool is_better_or_eq(auto a, auto b) { return kFwd ? a <= b : a >= b; }
   static auto get_best(auto a, auto b) { return is_better(a, b) ? a : b; }
@@ -295,13 +311,12 @@ private:
 
   template <bool WithClaszFilter, bool WithBikeFilter, bool WithCarFilter>
   bool loop_routes(unsigned const k) {
-    auto any_marked = false;
-    state_.route_mark_.for_each_set_bit([&](auto const r_idx) {
-      auto const r = route_idx_t{r_idx};
+    auto const loop_route = [&](route_idx_t const r) {
+      auto const r_idx = to_idx(r);
 
       if constexpr (WithClaszFilter) {
         if (!is_allowed(allowed_claszes_, tt_.route_clasz_[r])) {
-          return;
+          return false;
         }
       }
 
@@ -313,7 +328,7 @@ private:
           auto const bikes_allowed_on_some_sections =
               tt_.route_bikes_allowed_.test(r_idx * 2 + 1);
           if (!bikes_allowed_on_some_sections) {
-            return;
+            return false;
           }
           section_bike_filter = true;
         }
@@ -327,22 +342,49 @@ private:
           auto const cars_allowed_on_some_sections =
               tt_.route_cars_allowed_.test(r_idx * 2 + 1);
           if (!cars_allowed_on_some_sections) {
-            return;
+            return false;
           }
           section_car_filter = true;
         }
       }
 
-      ++stats_.n_routes_visited_;
+      // ++stats_.n_routes_visited_;
       trace("┊ ├k={} updating route {}\n", k, r);
-      any_marked |=
-          section_bike_filter
-              ? (section_car_filter ? update_route<true, true>(k, r)
-                                    : update_route<true, false>(k, r))
-              : (section_car_filter ? update_route<false, true>(k, r)
-                                    : update_route<false, false>(k, r));
-    });
-    return any_marked;
+      return section_bike_filter
+                 ? (section_car_filter ? update_route<true, true>(k, r)
+                                       : update_route<true, false>(k, r))
+                 : (section_car_filter ? update_route<false, true>(k, r)
+                                       : update_route<false, false>(k, r));
+    };
+
+    if constexpr (Exec == exec::kParallel) {
+      auto barrier = std::make_shared<boost::fibers::barrier>(kNThreads + 1U);
+      auto any_marked = std::atomic_bool{false};
+      auto next = std::atomic_size_t{0U};
+      for (auto i = 0U; i != kNThreads; ++i) {
+        boost::fibers::fiber{[&, barrier]() {
+          auto next_route_idx = std::optional<std::size_t>{};
+          while ((next_route_idx = state_.route_mark_.get_next(next))
+                     .has_value()) {
+            assert(*next_route_idx < tt_.n_routes());
+            auto const marked = loop_route(route_idx_t{
+                static_cast<route_idx_t::value_t>(*next_route_idx)});
+            if (marked) {
+              any_marked.store(true);
+            }
+          }
+          barrier->wait();
+        }}.detach();
+      }
+      barrier->wait();
+      return any_marked.load();
+    } else {
+      auto any_marked = false;
+      state_.route_mark_.for_each_set_bit([&](std::size_t const r) {
+        any_marked |= loop_route(route_idx_t{r});
+      });
+      return any_marked;
+    }
   }
 
   template <bool WithClaszFilter, bool WithBikeFilter, bool WithCarFilter>
@@ -969,9 +1011,9 @@ private:
                 location{tt_, stp.location_idx()});
 
             ++stats_.n_earliest_arrival_updated_by_route_;
-            tmp_[l_idx][target_v] =
-                get_best(by_transport, tmp_[l_idx][target_v]);
-            state_.station_mark_.set(l_idx, true);
+            update(tmp_[l_idx][target_v],
+                   get_best(by_transport, tmp_[l_idx][target_v]));
+            state_.station_mark_.set<Atomic>(l_idx, true);
             current_best[v] = by_transport;
             any_marked = true;
           } else {
@@ -1029,8 +1071,9 @@ private:
                   location{tt_, stp.location_idx()});
 
               ++stats_.n_earliest_arrival_updated_by_route_;
-              tmp_[l_idx][dest_v] = get_best(by_transport, tmp_[l_idx][dest_v]);
-              state_.station_mark_.set(l_idx, true);
+              update(tmp_[l_idx][dest_v],
+                     get_best(by_transport, tmp_[l_idx][dest_v]));
+              state_.station_mark_.set<Atomic>(l_idx, true);
               any_marked = true;
             }
           }
