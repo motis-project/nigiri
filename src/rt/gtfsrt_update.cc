@@ -11,6 +11,7 @@
 #include "nigiri/get_otel_tracer.h"
 #include "nigiri/location.h"
 #include "nigiri/logging.h"
+#include "nigiri/lookup/get_transport.h"
 #include "nigiri/rt/frun.h"
 #include "nigiri/rt/gtfsrt_alert.h"
 #include "nigiri/rt/gtfsrt_resolve_run.h"
@@ -450,13 +451,94 @@ statistics gtfsrt_update_msg(timetable const& tt,
       }
     };
 
-    unsupported(entity.has_vehicle(), "vehicle", stats.unsupported_vehicle_);
+    //unsupported(entity.has_vehicle(), "vehicle", stats.unsupported_vehicle_);
     unsupported(entity.has_is_deleted() && entity.is_deleted(), "deleted",
                 stats.unsupported_deleted_);
 
-    if (entity.has_vehicle()) {
-      // work with VehiclePositions
+    if (entity.has_vehicle() && entity.vehicle().has_position() && entity.vehicle().position().has_latitude() && entity.vehicle().position().has_longitude()) {
+      auto const vp = entity.vehicle();
+      auto const vp_lat = vp.position().latitude();
+      auto const vp_lon = vp.position().longitude();
+      auto const td = vp.trip();
+      auto const gtfsrt_trip_id = td.trip_id();
 
+      auto [r, trip_idx] = gtfsrt_resolve_run(today, tt, &rtt, src, td, std::string_view{gtfsrt_trip_id});
+      auto const& rtt_const = rtt;
+      auto const location_seq =
+          r.is_scheduled()
+              ? std::span{tt.route_location_seq_[tt.transport_route_[r.t_.t_idx_]]}
+      : std::span{rtt_const.rt_transport_location_seq_[r.rt_]};
+      auto stops = std::vector<stop::value_type>{};
+
+      for (auto const loc : location_seq) {
+        stops.emplace_back(stop{loc}.value());
+      }
+
+      // add rt_transport if not existent
+      if (!r.is_rt()) {
+        auto const sr = td.schedule_relationship();
+        auto const added_or_replaced = is_added(sr) || sr == transit_realtime::TripDescriptor_ScheduleRelationship_REPLACEMENT;
+        auto times = added_or_replaced
+                   ? std::vector<delta_t>(location_seq.size() * 2U - 2U, 0)
+                   : std::vector<delta_t>{};
+        r.rt_ = rtt.add_rt_transport(src, tt, r.t_, stops, times, std::string_view{gtfsrt_trip_id}, td.route_id(), tt.trip_display_names_[trip_idx].view());
+      }
+
+      // match position to stop
+      bool at_stop = false;
+      int stopped_at_idx = 0;
+
+      for (auto const loc : location_seq) {
+        stop const stop_loc{loc};
+        location stop_position = tt.locations_.get(stop_loc.location_idx());
+        if (geo::distance(stop_position.pos_, geo::latlng{vp_lat, vp_lon}) < 10) {
+          at_stop = true;
+          break;
+        }
+        ++stopped_at_idx;
+      }
+      if (!at_stop) {
+        log(log_lvl::info, "rt.gtfs.unsupported",
+          R"(Position of Vehicle was not near stop. Skipping Message)",
+          tag, entity.id());
+        continue;
+      }
+
+      // get remaining stops
+      auto const seq_numbers =
+          r.is_scheduled()
+              ? loader::gtfs::
+                    stop_seq_number_range{{tt.trip_stop_seq_numbers_[trip_idx]},
+                                          static_cast<stop_idx_t>(
+                                              r.stop_range_.size())}
+      : loader::gtfs::
+            stop_seq_number_range{
+              std::span<stop_idx_t>{},
+              static_cast<stop_idx_t>(location_seq.size())};
+
+      // get delay
+      auto const now = vp.has_timestamp() ? unixtime_t{std::chrono::duration_cast<i32_minutes>(std::chrono::seconds{vp.timestamp()})} : std::chrono::floor<i32_minutes>(std::chrono::system_clock::now());
+      auto const delay = now - tt.event_time(r.t_, stopped_at_idx, event_type::kDep);
+      auto const delay_cast = std::chrono::duration_cast<duration_t>(delay);
+      // update delay for following stops
+      auto seq_it = begin(seq_numbers);
+      for (int i = 0; i <= stopped_at_idx; ++i) {
+        ++seq_it;
+      }
+
+      // update delay for remaining stops
+      for (auto stop_idx = stopped_at_idx + 1; seq_it != seq_numbers.end(); ++stop_idx) {
+        update_delay(tt, rtt, r, stop_idx, event_type::kArr, delay_cast, std::nullopt);
+        if (++seq_it != seq_numbers.end()) {
+          update_delay(tt, rtt, r, stop_idx, event_type::kDep, delay_cast, std::nullopt);
+        }
+      }
+    }
+    else if (entity.has_vehicle()) {
+      log(log_lvl::error, "rt.gtfs.unsupported",
+          R"(unsupported: VehiclePosition without GPS-data, skipping message)",
+          tag, entity.id());
+      continue;
     }
 
     if (entity.has_alert()) {
