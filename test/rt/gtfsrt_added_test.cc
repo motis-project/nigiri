@@ -754,6 +754,9 @@ TEST(rt, gtfs_rt_added) {
     EXPECT_EQ(source_idx_t{0}, fr.id().src_);
     EXPECT_EQ("Route 1", fr.name());
     EXPECT_EQ("RT", fr.dbg().path_);
+    EXPECT_EQ((std::pair{date::sys_days{2023_y / August / 10},
+                         duration_t{9h + 15min}}),
+              fr[0].get_trip_start());
     // EXPECT_EQ(, fr.trip_idx());
     EXPECT_EQ(nigiri::clasz::kBus, fr.get_clasz());
     ASSERT_FALSE(fr.is_cancelled());

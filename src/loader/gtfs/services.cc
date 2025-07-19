@@ -22,7 +22,6 @@ bitfield calendar_to_bitfield(
   auto const to = extend ? tt_interval.to_ : tt_interval.clamp(c.interval_.to_);
   auto bit = (from - tt_interval.from_).count();
   auto traffic_days = bitfield{};
-  std::cout << "TO=" << to << "\n";
   for (auto d = from; d < to && bit < kMaxDays; d = d + date::days{1}, ++bit) {
     traffic_days.set(
         static_cast<std::size_t>(bit),

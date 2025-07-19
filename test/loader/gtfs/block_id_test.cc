@@ -3,6 +3,7 @@
 #include "nigiri/loader/gtfs/files.h"
 #include "nigiri/loader/gtfs/load_timetable.h"
 #include "nigiri/loader/init_finish.h"
+#include "nigiri/rt/frun.h"
 #include "nigiri/timetable.h"
 
 #include "../../raptor_search.h"
@@ -127,7 +128,33 @@ TEST(gtfs, block_id) {
     ASSERT_EQ(1, res.size());
     expect_no_transfers(*res.begin());
 
-    std::stringstream ss;
+    ASSERT_TRUE(std::holds_alternative<routing::journey::run_enter_exit>(
+        res.begin()->legs_.at(0U).uses_));
+    auto const run = std::get<routing::journey::run_enter_exit>(
+        res.begin()->legs_.at(0U).uses_);
+
+    auto ss = std::stringstream{};
+    auto const fr = rt::frun{tt, nullptr, run.r_};
+    for (auto const s : fr) {
+      auto const ev_type =
+          s.stop_idx_ == fr.size() - 1U ? event_type::kArr : event_type::kDep;
+      auto const [start_day, start_time] = s.get_trip_start(ev_type);
+      ss << tt.trip_id_strings_[tt.trip_ids_[s.get_trip_idx(ev_type)].front()]
+                .view()
+         << ": " << start_day << ", " << start_time << "\n";
+    }
+    EXPECT_EQ(R"(T1: 2006-07-02, 23:00.0
+T3: 2006-07-02, 00:00.1
+T3: 2006-07-02, 00:00.1
+T6: 2006-07-02, 02:00.1
+T6: 2006-07-02, 02:00.1
+T6: 2006-07-02, 02:00.1
+T6: 2006-07-02, 02:00.1
+T6: 2006-07-02, 02:00.1
+)",
+              ss.str());
+
+    ss.str("");
     res.begin()->print(ss, tt, nullptr, false);
     EXPECT_EQ(result, ss.str());
   }

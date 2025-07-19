@@ -8,6 +8,7 @@
 #include "utl/verify.h"
 
 #include "nigiri/lookup/get_transport_stop_tz.h"
+#include "nigiri/rt/gtfsrt_resolve_run.h"
 #include "nigiri/rt/rt_timetable.h"
 #include "nigiri/shapes_storage.h"
 #include "nigiri/timetable.h"
@@ -43,6 +44,47 @@ std::string_view run_stop::id() const {
   auto const p = tt().locations_.parents_.at(l);
   auto const x = p == location_idx_t::invalid() ? l : p;
   return tt().locations_.ids_.at(x).view();
+}
+
+std::pair<date::sys_days, duration_t> run_stop::get_trip_start(
+    event_type const ev_type) const {
+  if (!fr_->is_scheduled()) {
+    // additional trip - return first departure
+    auto first = [&]() {
+      auto copy = *this;
+      copy.stop_idx_ = 0U;
+      return copy;
+    }();
+    auto const first_dep = first.time(event_type::kDep);
+    auto const day =
+        std::chrono::time_point_cast<date::sys_days::duration>(first_dep);
+    return {day, first_dep - day};
+  } else {
+    // go to first trip stop
+    auto first_trip_stop = [&]() {
+      auto const trip = get_trip_idx(ev_type);
+      auto copy = *this;
+      while (copy.stop_idx_ > 0 &&
+             copy.get_trip_idx(event_type::kArr) == trip) {
+        --copy.stop_idx_;
+      }
+      return copy;
+    }();
+
+    // service date + start time
+    auto const [static_transport, utc_start_day] = fr_->t_;
+    auto const o = tt().transport_first_dep_offset_[static_transport];
+    auto const utc_dep =
+        tt().event_mam(static_transport, first_trip_stop.stop_idx_,
+                       event_type::kDep)
+            .as_duration();
+    auto const gtfs_static_dep = utc_dep + o;
+    auto const [day_offset, _] = split_rounded(gtfs_static_dep - utc_dep);
+    auto const day = (tt().internal_interval_days().from_ +
+                      std::chrono::days{to_idx(utc_start_day)} - day_offset);
+
+    return {day, gtfs_static_dep};
+  }
 }
 
 std::string_view run_stop::track() const {
