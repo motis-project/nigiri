@@ -141,7 +141,7 @@ TEST(gtfs, block_id) {
       auto const [start_day, start_time] = s.get_trip_start(ev_type);
       ss << tt.trip_id_strings_[tt.trip_ids_[s.get_trip_idx(ev_type)].front()]
                 .view()
-         << ": " << start_day << ", " << start_time << "\n";
+         << ": " << date::format("%F", start_day) << ", " << start_time << "\n";
     }
     EXPECT_EQ(R"(T1: 2006-07-02, 23:00.0
 T3: 2006-07-02, 00:00.1
