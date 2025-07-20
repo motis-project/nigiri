@@ -53,3 +53,24 @@ nigiri is a very memory efficient and fast public transport routing core.
   can be discarded. Note that this also means that optimizing a new criterion
   such as occupancy or CO2  will require a change of the route definition in
   order for the routing to guarantee correctness.
+
+## Stay seated
+
+Formats like GTFS and NeTEx can model stay-seated transfers. This means that
+the trip changes but the passenger might not even notice. To model this, and
+make sure that the routing does not count a transfer in this case, we concatenate
+all stay seated trips into one transport.
+
+In the following example, we have five trips. The left two trips are joined into
+a middle trip which then splits again into two separate trips.
+
+![stay seated trips](docs/stay-seated-trips.png)
+
+The preprocessing first transforms each trip into transports by converting
+local times into UTC. After that from each entry point a depth first search
+finds all ways a passenger could travel.
+
+![stay seated transports](docs/stay-seated-transports.png)
+
+This means that a transport can contain several trips (as well a trip will
+usually result in several transports!).
