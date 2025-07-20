@@ -153,13 +153,29 @@ void load_timetable(loader_config const& config,
     for (auto& t : trip_data.data_) {
       if (t.requires_sorting_ &&
           (t.event_times_.empty() || t.flex_time_windows_.empty())) {
-        t.stop_headsigns_.resize(t.seq_numbers_.size());
-        std::tie(t.seq_numbers_, t.stop_seq_, t.event_times_,
-                 t.flex_time_windows_, t.stop_headsigns_,
-                 t.distance_traveled_) =
-            sort_by(t.seq_numbers_, t.stop_seq_, t.event_times_,
-                    t.flex_time_windows_, t.stop_headsigns_,
-                    t.distance_traveled_);
+        if (t.stop_headsigns_.empty()) {
+          // without stop headsigns
+          std::tie(t.seq_numbers_, t.stop_seq_, t.event_times_,
+                   t.flex_time_windows_, t.distance_traveled_) =
+              sort_by(t.seq_numbers_, t.stop_seq_, t.event_times_,
+                      t.flex_time_windows_, t.distance_traveled_);
+        } else {
+          // with stop headsigns
+          t.stop_headsigns_.resize(t.seq_numbers_.size(), t.headsign_);
+          std::tie(t.seq_numbers_, t.stop_seq_, t.event_times_,
+                   t.flex_time_windows_, t.stop_headsigns_,
+                   t.distance_traveled_) =
+              sort_by(t.seq_numbers_, t.stop_seq_, t.event_times_,
+                      t.flex_time_windows_, t.stop_headsigns_,
+                      t.distance_traveled_);
+
+          if (utl::all_of(t.stop_headsigns_,
+                          [&](auto x) { return x == t.headsign_; })) {
+            t.stop_headsigns_.clear();
+          } else {
+            t.stop_headsigns_.resize(t.seq_numbers_.size() - 1U);
+          }
+        }
       }
     }
   }
@@ -421,7 +437,13 @@ void load_timetable(loader_config const& config,
             auto const merged_trip = tt.register_merged_trip({trp.trip_idx_});
             if (s.trips_.size() == 1U) {
               external_trip_ids.push_back(merged_trip);
-              section_directions.push_back(trp.headsign_);
+              if (trp.stop_headsigns_.empty()) {
+                section_directions.push_back(trp.headsign_);
+              } else {
+                section_directions.insert(std::end(section_directions),
+                                          std::begin(trp.stop_headsigns_),
+                                          std::end(trp.stop_headsigns_));
+              }
               section_lines.push_back(line);
               route_colors.push_back(
                   {trp.route_->color_, trp.route_->text_color_});
@@ -429,7 +451,10 @@ void load_timetable(loader_config const& config,
               for (auto section = 0U; section != trp.stop_seq_.size() - 1;
                    ++section) {
                 external_trip_ids.push_back(merged_trip);
-                section_directions.push_back(trp.headsign_);
+                section_directions.push_back(
+                    trp.stop_headsigns_.empty()
+                        ? trp.headsign_
+                        : trp.stop_headsigns_.at(section));
                 section_lines.push_back(line);
                 route_colors.push_back(
                     {trp.route_->color_, trp.route_->text_color_});
