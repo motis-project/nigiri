@@ -151,6 +151,13 @@ void load_timetable(loader_config const& config,
   {
     auto const timer = scoped_timer{"loader.gtfs.trips.sort"};
     for (auto& t : trip_data.data_) {
+      if (utl::all_of(t.stop_headsigns_,
+                      [&](auto x) { return x == t.headsign_; })) {
+        t.stop_headsigns_.clear();
+      }
+      if (!t.stop_headsigns_.empty()) {
+        t.stop_headsigns_.resize(t.seq_numbers_.size(), t.headsign_);
+      }
       if (t.requires_sorting_ &&
           (t.event_times_.empty() || t.flex_time_windows_.empty())) {
         if (t.stop_headsigns_.empty()) {
@@ -161,21 +168,17 @@ void load_timetable(loader_config const& config,
                       t.flex_time_windows_, t.distance_traveled_);
         } else {
           // with stop headsigns
-          t.stop_headsigns_.resize(t.seq_numbers_.size(), t.headsign_);
           std::tie(t.seq_numbers_, t.stop_seq_, t.event_times_,
                    t.flex_time_windows_, t.stop_headsigns_,
                    t.distance_traveled_) =
               sort_by(t.seq_numbers_, t.stop_seq_, t.event_times_,
                       t.flex_time_windows_, t.stop_headsigns_,
                       t.distance_traveled_);
-
-          if (utl::all_of(t.stop_headsigns_,
-                          [&](auto x) { return x == t.headsign_; })) {
-            t.stop_headsigns_.clear();
-          } else {
-            t.stop_headsigns_.resize(t.seq_numbers_.size() - 1U);
-          }
         }
+      }
+
+      if (!t.stop_headsigns_.empty()) {
+        t.stop_headsigns_.resize(t.seq_numbers_.size() - 1U);
       }
     }
   }
