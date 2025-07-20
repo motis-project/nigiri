@@ -120,6 +120,8 @@ void load_timetable(loader_config const& config,
   auto const calendar = read_calendar(load(kCalenderFile).data());
   auto const dates = read_calendar_date(load(kCalendarDatesFile).data());
   auto const feed_info = read_feed_info(load(kFeedInfoFile).data());
+  tt.src_end_date_.push_back(
+      feed_info.feed_end_date_.value_or(date::sys_days::max()));
   auto const service = merge_traffic_days(
       tt.internal_interval_days(), calendar, dates,
       config.extend_calendar_ ? feed_info.feed_end_date_ : std::nullopt);
