@@ -4,6 +4,9 @@
 
 #include "utl/overloaded.h"
 
+#include "fmt/format.h"
+#include "fmt/ranges.h"
+
 #include "nigiri/common/day_list.h"
 #include "nigiri/rt/frun.h"
 
@@ -73,6 +76,25 @@ cista::wrapped<timetable> timetable::read(std::filesystem::path const& p) {
 
 void timetable::write(std::filesystem::path const& p) const {
   return cista::write(p, *this);
+}
+
+std::string timetable::json_stats() const {
+  auto ss = std::stringstream{};
+  ss << "[";
+  for (auto idx = source_file_idx_t{0}; idx < n_sources(); ++idx) {
+    ss << fmt::format("{}{{\"id\":{},\"name\":\"{}\",\"first_day\":\"{:%F}\",\"last_day\":\"{:%F}\"}}",
+                      idx > 0 ? "," : "",
+                      idx,
+                      source_file_names_[idx].view(),
+                      date_range_.begin().t_,
+                      date_range_.end().t_
+                      );
+  }
+  ss << "]";
+  return ss.str();
+  //auto x = fmt::join(source_file_names_, ",");
+  //return {x.begin(), x.end()};
+  //return "abc";
 }
 
 }  // namespace nigiri

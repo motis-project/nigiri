@@ -421,6 +421,7 @@ struct timetable {
   void write(cista::memory_holder&) const;
   void write(std::filesystem::path const&) const;
   static cista::wrapped<timetable> read(std::filesystem::path const&);
+  std::string json_stats() const;
 
   bool has_car_transport(route_idx_t const r) const {
     return route_cars_allowed_[to_idx(r) * 2U] ||
