@@ -462,7 +462,7 @@ constexpr auto const kMsg =
   </ServiceDelivery>
 </Siri>)";
 
-constexpr auto const kMultipleMatchesMsg =
+constexpr auto const kMultipleMatchesMsg1 =
     R"(<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
 <Siri xmlns:datex="http://datex2.eu/schema/2_0RC1/2_0" xmlns="http://www.siri.org.uk/siri" xmlns:acsb="http://www.ifopt.org.uk/acsb" xmlns:ifopt="http://www.ifopt.org.uk/ifopt" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xmlns:xs="http://www.w3.org/2001/XMLSchema" version="2.0">
   <ServiceDelivery>
@@ -473,132 +473,6 @@ constexpr auto const kMultipleMatchesMsg =
       <ResponseTimestamp>2025-07-21T12:58:55.126Z</ResponseTimestamp>
       <RequestMessageRef>49758e6c-ac3b-4778-aaca-5921ef0834d2</RequestMessageRef>
       <EstimatedJourneyVersionFrame>
-
-    <EstimatedVehicleJourney>
-      <LineRef>1</LineRef>
-      <DirectionRef>Rostock Hbf#Warnemünde</DirectionRef>
-      <FramedVehicleJourneyRef>
-        <DataFrameRef>2025-07-21</DataFrameRef>
-        <DatedVehicleJourneyRef>75814-800156-8010304-150600_x35__x33_ADD_x33__x35_DB-s</DatedVehicleJourneyRef>
-      </FramedVehicleJourneyRef>
-      <PublishedLineName>S1</PublishedLineName>
-      <DirectionName>Warnemünde</DirectionName>
-      <OriginRef>8010304</OriginRef>
-      <OriginName>Rostock Hbf</OriginName>
-      <DestinationRef>8013236</DestinationRef>
-      <OperatorRef>800156</OperatorRef>
-      <ProductCategoryRef>S</ProductCategoryRef>
-      <Monitored>true</Monitored>
-      <PredictionInaccurate>false</PredictionInaccurate>
-      <VehicleJourneyRef>75814-800156-8010304-150600#!ADD!#DB-s</VehicleJourneyRef>
-      <EstimatedCalls>
-        <EstimatedCall>
-          <StopPointRef>8010304</StopPointRef>
-          <VisitNumber>100</VisitNumber>
-          <PredictionInaccurate>false</PredictionInaccurate>
-          <AimedDepartureTime>2025-07-21T15:06:00+02:00</AimedDepartureTime>
-          <ExpectedDepartureTime>2025-07-21T15:06:00+02:00</ExpectedDepartureTime>
-          <DeparturePlatformName>3</DeparturePlatformName>
-        </EstimatedCall>
-        <EstimatedCall>
-          <StopPointRef>8012801</StopPointRef>
-          <VisitNumber>100</VisitNumber>
-          <PredictionInaccurate>false</PredictionInaccurate>
-          <AimedArrivalTime>2025-07-21T15:08:00+02:00</AimedArrivalTime>
-          <ExpectedArrivalTime>2025-07-21T15:08:00+02:00</ExpectedArrivalTime>
-          <ArrivalPlatformName>1</ArrivalPlatformName>
-          <AimedDepartureTime>2025-07-21T15:09:00+02:00</AimedDepartureTime>
-          <ExpectedDepartureTime>2025-07-21T15:09:00+02:00</ExpectedDepartureTime>
-          <DeparturePlatformName>1</DeparturePlatformName>
-        </EstimatedCall>
-        <EstimatedCall>
-          <StopPointRef>8012805</StopPointRef>
-          <VisitNumber>100</VisitNumber>
-          <PredictionInaccurate>false</PredictionInaccurate>
-          <AimedArrivalTime>2025-07-21T15:11:00+02:00</AimedArrivalTime>
-          <ExpectedArrivalTime>2025-07-21T15:11:00+02:00</ExpectedArrivalTime>
-          <ArrivalPlatformName>1</ArrivalPlatformName>
-          <AimedDepartureTime>2025-07-21T15:12:00+02:00</AimedDepartureTime>
-          <ExpectedDepartureTime>2025-07-21T15:12:00+02:00</ExpectedDepartureTime>
-          <DeparturePlatformName>1</DeparturePlatformName>
-        </EstimatedCall>
-        <EstimatedCall>
-          <StopPointRef>8012803</StopPointRef>
-          <VisitNumber>100</VisitNumber>
-          <PredictionInaccurate>false</PredictionInaccurate>
-          <AimedArrivalTime>2025-07-21T15:15:00+02:00</AimedArrivalTime>
-          <ExpectedArrivalTime>2025-07-21T15:13:00+02:00</ExpectedArrivalTime>
-          <ArrivalPlatformName>2</ArrivalPlatformName>
-          <AimedDepartureTime>2025-07-21T15:16:00+02:00</AimedDepartureTime>
-          <ExpectedDepartureTime>2025-07-21T15:16:00+02:00</ExpectedDepartureTime>
-          <DeparturePlatformName>2</DeparturePlatformName>
-        </EstimatedCall>
-        <EstimatedCall>
-          <StopPointRef>8012807</StopPointRef>
-          <VisitNumber>100</VisitNumber>
-          <PredictionInaccurate>false</PredictionInaccurate>
-          <AimedArrivalTime>2025-07-21T15:17:00+02:00</AimedArrivalTime>
-          <ExpectedArrivalTime>2025-07-21T15:18:00+02:00</ExpectedArrivalTime>
-          <ArrivalPlatformName>1</ArrivalPlatformName>
-          <AimedDepartureTime>2025-07-21T15:18:00+02:00</AimedDepartureTime>
-          <ExpectedDepartureTime>2025-07-21T15:18:00+02:00</ExpectedDepartureTime>
-          <DeparturePlatformName>1</DeparturePlatformName>
-        </EstimatedCall>
-        <EstimatedCall>
-          <StopPointRef>8011523</StopPointRef>
-          <VisitNumber>100</VisitNumber>
-          <PredictionInaccurate>false</PredictionInaccurate>
-          <AimedArrivalTime>2025-07-21T15:20:00+02:00</AimedArrivalTime>
-          <ExpectedArrivalTime>2025-07-21T15:20:00+02:00</ExpectedArrivalTime>
-          <ArrivalPlatformName>1</ArrivalPlatformName>
-          <AimedDepartureTime>2025-07-21T15:21:00+02:00</AimedDepartureTime>
-          <ExpectedDepartureTime>2025-07-21T15:21:00+02:00</ExpectedDepartureTime>
-          <DeparturePlatformName>1</DeparturePlatformName>
-        </EstimatedCall>
-               <EstimatedCall>
-          <StopPointRef>8012271</StopPointRef>
-          <VisitNumber>100</VisitNumber>
-          <PredictionInaccurate>false</PredictionInaccurate>
-          <AimedArrivalTime>2025-07-21T15:22:00+02:00</AimedArrivalTime>
-          <ExpectedArrivalTime>2025-07-21T15:23:00+02:00</ExpectedArrivalTime>
-          <ArrivalPlatformName>1</ArrivalPlatformName>
-          <AimedDepartureTime>2025-07-21T15:23:00+02:00</AimedDepartureTime>
-          <ExpectedDepartureTime>2025-07-21T15:23:00+02:00</ExpectedDepartureTime>
-          <DeparturePlatformName>1</DeparturePlatformName>
-        </EstimatedCall>
-        <EstimatedCall>
-          <StopPointRef>8012221</StopPointRef>
-          <VisitNumber>100</VisitNumber>
-          <PredictionInaccurate>false</PredictionInaccurate>
-          <AimedArrivalTime>2025-07-21T15:24:00+02:00</AimedArrivalTime>
-          <ExpectedArrivalTime>2025-07-21T15:25:00+02:00</ExpectedArrivalTime>
-          <ArrivalPlatformName>1</ArrivalPlatformName>
-          <AimedDepartureTime>2025-07-21T15:25:00+02:00</AimedDepartureTime>
-          <ExpectedDepartureTime>2025-07-21T15:26:00+02:00</ExpectedDepartureTime>
-          <DeparturePlatformName>1</DeparturePlatformName>
-        </EstimatedCall>
-        <EstimatedCall>
-          <StopPointRef>8013237</StopPointRef>
-          <VisitNumber>100</VisitNumber>
-          <PredictionInaccurate>false</PredictionInaccurate>
-          <AimedArrivalTime>2025-07-21T15:27:00+02:00</AimedArrivalTime>
-          <ExpectedArrivalTime>2025-07-21T15:28:00+02:00</ExpectedArrivalTime>
-          <ArrivalPlatformName>1</ArrivalPlatformName>
-          <AimedDepartureTime>2025-07-21T15:28:00+02:00</AimedDepartureTime>
-          <ExpectedDepartureTime>2025-07-21T15:28:00+02:00</ExpectedDepartureTime>
-          <DeparturePlatformName>1</DeparturePlatformName>
-        </EstimatedCall>
-        <EstimatedCall>
-          <StopPointRef>8013236</StopPointRef>
-          <VisitNumber>100</VisitNumber>
-          <PredictionInaccurate>false</PredictionInaccurate>
-          <AimedArrivalTime>2025-07-21T15:30:00+02:00</AimedArrivalTime>
-          <ExpectedArrivalTime>2025-07-21T15:30:00+02:00</ExpectedArrivalTime>
-          <ArrivalPlatformName>3</ArrivalPlatformName>
-        </EstimatedCall>
-      </EstimatedCalls>
-      <IsCompleteStopSequence>true</IsCompleteStopSequence>
-    </EstimatedVehicleJourney>
 
     <EstimatedVehicleJourney>
       <LineRef>1</LineRef>
@@ -855,6 +729,22 @@ constexpr auto const kMultipleMatchesMsg =
           </EstimatedCalls>
           <IsCompleteStopSequence>true</IsCompleteStopSequence>
         </EstimatedVehicleJourney>
+      </EstimatedJourneyVersionFrame>
+    </EstimatedTimetableDelivery>
+  </ServiceDelivery>
+</Siri>)";
+
+constexpr auto const kMultipleMatchesMsg2 =
+    R"(<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<Siri xmlns:datex="http://datex2.eu/schema/2_0RC1/2_0" xmlns="http://www.siri.org.uk/siri" xmlns:acsb="http://www.ifopt.org.uk/acsb" xmlns:ifopt="http://www.ifopt.org.uk/ifopt" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xmlns:xs="http://www.w3.org/2001/XMLSchema" version="2.0">
+  <ServiceDelivery>
+    <ResponseTimestamp>2025-07-21T12:58:55.126Z</ResponseTimestamp>
+    <ProducerRef>rcsued-siri-spnv</ProducerRef>
+    <RequestMessageRef>49758e6c-ac3b-4778-aaca-5921ef0834d2</RequestMessageRef>
+    <EstimatedTimetableDelivery version="2.0">
+      <ResponseTimestamp>2025-07-21T12:58:55.126Z</ResponseTimestamp>
+      <RequestMessageRef>49758e6c-ac3b-4778-aaca-5921ef0834d2</RequestMessageRef>
+      <EstimatedJourneyVersionFrame>
 
         <EstimatedVehicleJourney>
           <LineRef>1</LineRef>
@@ -1171,7 +1061,6 @@ TEST(siri_update, matching) {
   EXPECT_EQ(kExpected, (std::stringstream{} << rt::frun{tt, &rtt, r}).str());
 }
 
-
 TEST(siri_update, matching_multiple) {
   timetable tt;
   register_special_stations(tt);
@@ -1186,9 +1075,16 @@ TEST(siri_update, matching_multiple) {
   auto u = rt::vdv_aus::updater{tt, src_idx,
                                 rt::vdv_aus::updater::xml_format::kSiri};
 
-  auto doc = pugi::xml_document{};
-  doc.load_string(kMultipleMatchesMsg);
-  u.update(rtt, doc);
+  {
+    auto doc = pugi::xml_document{};
+    doc.load_string(kMultipleMatchesMsg1);
+    u.update(rtt, doc);
+  }
+  {
+    auto doc = pugi::xml_document{};
+    doc.load_string(kMultipleMatchesMsg2);
+    u.update(rtt, doc);
+  }
 
   {
     auto td = transit_realtime::TripDescriptor{};
