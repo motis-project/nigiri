@@ -438,6 +438,7 @@ struct timetable {
 
   // Source -> feed end date
   vector_map<source_idx_t, date::sys_days> src_end_date_;
+  vector_map<source_idx_t, service_range_t> service_ranges_;
 
   // Trip access: external trip id -> internal trip index
   vector<pair<trip_id_idx_t, trip_idx_t>> trip_id_to_idx_;

@@ -81,13 +81,16 @@ void timetable::write(std::filesystem::path const& p) const {
 std::string timetable::json_stats() const {
   auto ss = std::stringstream{};
   ss << "[";
-  for (auto idx = source_file_idx_t{0}; idx < n_sources(); ++idx) {
+  for (auto idx = source_idx_t{0}; idx < n_sources(); ++idx) {
     ss << fmt::format("{}{{\"id\":{},\"name\":\"{}\",\"first_day\":\"{:%F}\",\"last_day\":\"{:%F}\"}}",
                       idx > 0 ? "," : "",
                       idx,
-                      source_file_names_[idx].view(),
-                      date_range_.begin().t_,
-                      date_range_.end().t_
+                      source_file_names_[source_file_idx_t{to_idx(idx)}].view(),
+                      service_ranges_[idx].from_,
+                      service_ranges_[idx].to_
+                      //date_range_.begin().t_,
+                      //src_end_date_[source_idx_t{idx.v_}]
+                      //date_range_.end().t_
                       );
   }
   ss << "]";

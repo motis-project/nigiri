@@ -224,6 +224,7 @@ using flex_transport_idx_t =
 using flex_stop_seq_idx_t =
     cista::strong<std::uint32_t, struct _flex_stop_seq_idx>;
 
+using service_range_t = interval<date::sys_days>;
 using transport_range_t = pair<transport_idx_t, interval<stop_idx_t>>;
 
 struct trip_debug {

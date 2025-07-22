@@ -73,4 +73,38 @@ traffic_days_t merge_traffic_days(
   return s;
 }
 
+service_range_t max_service_range(
+    hash_map<std::string, calendar> const& base,
+    hash_map<std::string, std::vector<calendar_date>> const& exceptions,
+    std::optional<date::sys_days> const& feed_end_date) {
+  auto range = service_range_t{date::sys_days::max(), date::sys_days::min()};
+  auto const update = [&](date::sys_days const d) {
+    if (range.to_ == date::sys_days::min()) {
+      range = {d, d};
+    } else if (d < range.from_) {
+      range.from_ = d;
+    } else if (d > range.to_) {
+      range.to_ = d;
+    }
+  };
+  for (auto const& entry : base) {
+    update(entry.second.interval_.from_);
+    update(entry.second.interval_.to_);
+  }
+  for (auto const& entry : exceptions) {
+    for (auto const& day : entry.second) {
+      update(day.day_);
+    }
+  }
+  if (feed_end_date) {
+    update(feed_end_date.value());
+  }
+  /*
+  feed_end_date.and_then([&](date::sys_days const& day) {
+    update(day);
+  });
+  */
+  return range;
+}
+
 }  // namespace nigiri::loader::gtfs
