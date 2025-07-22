@@ -120,24 +120,7 @@ void load_timetable(loader_config const& config,
   auto const calendar = read_calendar(load(kCalenderFile).data());
   auto const dates = read_calendar_date(load(kCalendarDatesFile).data());
   auto const feed_info = read_feed_info(load(kFeedInfoFile).data());
-  // TODO Delete
-  std::cout << "Calendar:\n";
-  for (auto& x : calendar) {
-    std::cout << ">>" << x.second.interval_ << "<<, ";
-  }
-  std::cout << '\n';
-  std::cout << "Datas:\n";
-  for (auto& x : dates) {
-    for (auto& y : x.second) {
-    std::cout << y.day_ << ", ";
-    }
-    std::cout << '\n';
-    //std::cout << ">>" << x.second.data() << "<<, ";
-  }
-  std::cout << '\n';
-  std::cout << "Feed Info: " << feed_info.feed_end_date_.value_or(date::sys_days{std::chrono::days{123}}) << "\n";
   tt.src_end_date_.push_back(
-      //feed_info.feed_end_date_.value_or(date::sys_days{std::chrono::days{123456}}));
       feed_info.feed_end_date_.value_or(date::sys_days::max()));
   tt.service_ranges_.push_back(max_service_range(calendar, dates, feed_info.feed_end_date_));
   auto const service = merge_traffic_days(

@@ -99,11 +99,6 @@ service_range_t max_service_range(
   if (feed_end_date) {
     update(feed_end_date.value());
   }
-  /*
-  feed_end_date.and_then([&](date::sys_days const& day) {
-    update(day);
-  });
-  */
   return range;
 }
 

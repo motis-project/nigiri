@@ -88,16 +88,10 @@ std::string timetable::json_stats() const {
                       source_file_names_[source_file_idx_t{to_idx(idx)}].view(),
                       service_ranges_[idx].from_,
                       service_ranges_[idx].to_
-                      //date_range_.begin().t_,
-                      //src_end_date_[source_idx_t{idx.v_}]
-                      //date_range_.end().t_
                       );
   }
   ss << "]";
   return ss.str();
-  //auto x = fmt::join(source_file_names_, ",");
-  //return {x.begin(), x.end()};
-  //return "abc";
 }
 
 }  // namespace nigiri
