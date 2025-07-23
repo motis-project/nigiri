@@ -86,16 +86,24 @@ std::string timetable::json_stats() const {
       ++stop_buckets[src];
     }
   }
+  auto trip_buckets = vector_map<source_idx_t, std::uint16_t>{};
+  trip_buckets.resize(n_sources());
+  for (auto const& src : trip_id_src_) {
+    if (src < n_sources()) {
+      ++trip_buckets[src];
+    }
+  }
   auto ss = std::stringstream{};
   ss << "[";
   for (auto idx = source_idx_t{0}; idx < n_sources(); ++idx) {
-    ss << fmt::format("{}{{\"id\":{},\"name\":\"{}\",\"first_day\":\"{:%F}\",\"last_day\":\"{:%F}\",\"#locations\":{}}}",
+    ss << fmt::format("{}{{\"id\":{},\"name\":\"{}\",\"first_day\":\"{:%F}\",\"last_day\":\"{:%F}\",\"#locations\":{},\"#trips\":{}}}",
                       idx > 0 ? "," : "",
                       idx,
                       source_file_names_[source_file_idx_t{to_idx(idx)}].view(),
                       service_ranges_[idx].from_,
                       service_ranges_[idx].to_,
-                      stop_buckets[idx]
+                      stop_buckets[idx],
+                      trip_buckets[idx]
                       );
   }
   ss << "]";
