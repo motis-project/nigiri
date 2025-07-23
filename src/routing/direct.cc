@@ -300,7 +300,7 @@ void get_direct(timetable const& tt,
             });
       });
   if (q.fastest_slow_direct_factor_ >= 1.0) {
-    utl::erase_if(direct, [&](journey j) {
+    utl::erase_if(direct, [&](journey const& j) {
       return j.travel_time() >
              shortest_duration * q.fastest_slow_direct_factor_;
     });
