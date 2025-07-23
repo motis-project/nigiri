@@ -110,11 +110,13 @@ void load_timetable(loader_config const& config,
   };
 
   auto const progress_tracker = utl::get_active_progress_tracker();
+  auto stats = timetable::statistics{};
   auto timezones = tz_map{};
   auto agencies = read_agencies(src, tt, timezones, load(kAgencyFile).data());
   auto const [stops, seated_transfers] =
       read_stops(src, tt, timezones, load(kStopFile).data(),
                  load(kTransfersFile).data(), config.link_stop_distance_);
+  stats.locations_ = static_cast<std::uint32_t>(stops.size());
   auto const routes = read_routes(src, tt, timezones, agencies,
                                   load(kRoutesFile).data(), config.default_tz_);
   auto const calendar = read_calendar(load(kCalenderFile).data());
@@ -122,7 +124,7 @@ void load_timetable(loader_config const& config,
   auto const feed_info = read_feed_info(load(kFeedInfoFile).data());
   tt.src_end_date_.push_back(
       feed_info.feed_end_date_.value_or(date::sys_days::max()));
-  tt.service_ranges_.push_back(max_service_range(calendar, dates, feed_info.feed_end_date_));
+  stats.service_range_ = max_service_range(calendar, dates, feed_info.feed_end_date_);
   auto const service = merge_traffic_days(
       tt.internal_interval_days(), calendar, dates,
       config.extend_calendar_ ? feed_info.feed_end_date_ : std::nullopt);
@@ -133,6 +135,7 @@ void load_timetable(loader_config const& config,
   auto trip_data =
       read_trips(tt, routes, service, shape_states, load(kTripsFile).data(),
                  config.bikes_allowed_default_, config.cars_allowed_default_);
+  stats.trips_ = static_cast<std::uint32_t>(trip_data.trips_.size());
   auto const booking_rules = parse_booking_rules(
       tt, load(kBookingRulesFile).data(), service, bitfield_indices);
   auto const location_groups =
@@ -401,6 +404,7 @@ void load_timetable(loader_config const& config,
     auto route_colors = basic_string<route_color>{};
     auto external_trip_ids = basic_string<merged_trips_idx_t>{};
     auto location_routes = mutable_fws_multimap<location_idx_t, route_idx_t>{};
+    auto transport_days_count = std::size_t{0U};
     for (auto const& [key, sub_routes] : route_services) {
       for (auto const& services : sub_routes) {
         auto const route_idx = tt.register_route(
@@ -413,7 +417,6 @@ void load_timetable(loader_config const& config,
           }
         }
 
-        auto transport_count = std::size_t{0U};
         for (auto const& s : services) {
           auto const& first = trip_data.get(s.trips_.front());
 
@@ -480,9 +483,8 @@ void load_timetable(loader_config const& config,
               .section_lines_ = section_lines,
               .route_colors_ = route_colors});
 
-          transport_count += s.utc_traffic_days_.count();
+          transport_days_count += s.utc_traffic_days_.count();
         }
-        std::cout << "\n\nTransports × Days: " << transport_count << "\n\n\n";
 
         tt.finish_route();
 
@@ -506,6 +508,7 @@ void load_timetable(loader_config const& config,
 
       progress_tracker->increment();
     }
+    stats.transport_days_ = transport_days_count;
 
     if (shapes_data != nullptr) {
       calculate_shape_offsets_and_bboxes(tt, *shapes_data, shape_states,
@@ -523,6 +526,8 @@ void load_timetable(loader_config const& config,
       tt.trip_transport_ranges_.emplace_back(t.transport_ranges_);
     }
   }
+
+  tt.statistics_.push_back(std::move(stats));
 
   {
     progress_tracker->status("Flex")
