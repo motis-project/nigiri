@@ -413,6 +413,7 @@ void load_timetable(loader_config const& config,
           }
         }
 
+        auto transport_count = std::size_t{0U};
         for (auto const& s : services) {
           auto const& first = trip_data.get(s.trips_.front());
 
@@ -478,7 +479,10 @@ void load_timetable(loader_config const& config,
               .section_directions_ = section_directions,
               .section_lines_ = section_lines,
               .route_colors_ = route_colors});
+
+          transport_count += s.utc_traffic_days_.count();
         }
+        std::cout << "\n\nTransports × Days: " << transport_count << "\n\n\n";
 
         tt.finish_route();
 
