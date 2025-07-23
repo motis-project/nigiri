@@ -1,5 +1,6 @@
 #include "nigiri/routing/direct.h"
 
+#include "utl/erase_if.h"
 #include "utl/sorted_diff.h"
 
 #include "nigiri/for_each_meta.h"
@@ -25,6 +26,7 @@ void get_direct(timetable const& tt,
   auto const fwd = search_dir == direction::kForward;
   auto const start_ev_type = fwd ? event_type::kDep : event_type::kArr;
   auto const end_ev_type = fwd ? event_type::kArr : event_type::kDep;
+  auto shortest_duration = duration_t::max();
 
   auto const get_offset = [](direction const offset_dir, location_idx_t const l,
                              std::vector<offset> const& offsets,
@@ -111,6 +113,9 @@ void get_direct(timetable const& tt,
       std::reverse(begin(j.legs_), end(j.legs_));
     }
 
+    if (j.travel_time() < shortest_duration) {
+      shortest_duration = j.travel_time();
+    }
     direct.push_back(std::move(j));
   };
 
@@ -230,6 +235,7 @@ void get_direct(timetable const& tt,
       if (first.has_value()) {
         if (stp == y) {
           check_interval(r, *first, stop_idx);
+          first = std::nullopt;
         }
       } else if (stp == x) {
         first = stop_idx;
@@ -293,6 +299,12 @@ void get_direct(timetable const& tt,
                       }});
             });
       });
+  if (q.fastest_slow_direct_factor_ >= 1.0) {
+    utl::erase_if(direct, [&](journey j) {
+      return j.travel_time() >
+             shortest_duration * q.fastest_slow_direct_factor_;
+    });
+  }
 }
 
 }  // namespace nigiri::routing
