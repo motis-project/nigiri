@@ -73,11 +73,12 @@ traffic_days_t merge_traffic_days(
   return s;
 }
 
-service_range_t max_service_range(
+interval<date::sys_days> max_service_range(
     hash_map<std::string, calendar> const& base,
     hash_map<std::string, std::vector<calendar_date>> const& exceptions,
     std::optional<date::sys_days> const& feed_end_date) {
-  auto range = service_range_t{date::sys_days::max(), date::sys_days::min()};
+  auto range =
+      interval<date::sys_days>{date::sys_days::max(), date::sys_days::min()};
   auto const update = [&](date::sys_days const d) {
     if (range.to_ == date::sys_days::min()) {
       range = {d, d};

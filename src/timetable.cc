@@ -83,16 +83,20 @@ std::string timetable::json_stats() const {
   // TODO Better formatting
   ss << "[";
   for (auto idx = source_idx_t{0}; idx < n_sources(); ++idx) {
-    ss << fmt::format("{}{{\"id\":{},\"name\":\"{}\",\"first_day\":\"{:%F}\",\"last_day\":\"{:%F}\",\"#locations\":{},\"#trips\":{},\"transports x days\":{}}}",
-                      idx > 0 ? "," : "",
-                      idx,
-                      source_file_names_[source_file_idx_t{to_idx(idx)}].view(),
-                      statistics_[idx].service_range_.from_,
-                      statistics_[idx].service_range_.to_,
-                      statistics_[idx].locations_,
-                      statistics_[idx].trips_,
-                      statistics_[idx].transport_days_
-                      );
+    ss << fmt::format(
+        "{}{{"
+        "\"id\":{},"
+        "\"name\":\"{}\","
+        "\"first_day\":\"{:%F}\","
+        "\"last_day\":\"{:%F}\","
+        "\"#locations\":{},"
+        "\"#trips\":{},\"transports x days\":{}"
+        "}}",
+        idx > 0 ? "," : "", idx,
+        source_file_names_[source_file_idx_t{to_idx(idx)}].view(),
+        statistics_[idx].service_range_.from_,
+        statistics_[idx].service_range_.to_, statistics_[idx].locations_,
+        statistics_[idx].trips_, statistics_[idx].transport_days_);
   }
   ss << "]";
   return ss.str();
