@@ -146,6 +146,15 @@ struct timetable {
   };
 
   struct statistics {
+    std::string json(source_idx_t source_idx,
+                     std::string_view source_file) const {
+      return fmt::format(
+          R"({{"id":{},"name":"{}","first_day":"{:%F}","last_day":"{:%F}",)"
+          R"("#locations":{},"#trips":{},"transports x days":{}}})",
+          source_idx, source_file, service_range_.from_, service_range_.to_,
+          locations_, trips_, transport_days_);
+    }
+
     interval<date::sys_days> service_range_;
     std::uint32_t locations_;
     std::uint32_t trips_;
