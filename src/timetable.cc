@@ -79,15 +79,23 @@ void timetable::write(std::filesystem::path const& p) const {
 }
 
 std::string timetable::json_stats() const {
+  auto stop_buckets = vector_map<source_idx_t, std::uint16_t>{};
+  stop_buckets.resize(n_sources());
+  for (auto const& src : locations_.src_) {
+    if (src < n_sources()) {
+      ++stop_buckets[src];
+    }
+  }
   auto ss = std::stringstream{};
   ss << "[";
   for (auto idx = source_idx_t{0}; idx < n_sources(); ++idx) {
-    ss << fmt::format("{}{{\"id\":{},\"name\":\"{}\",\"first_day\":\"{:%F}\",\"last_day\":\"{:%F}\"}}",
+    ss << fmt::format("{}{{\"id\":{},\"name\":\"{}\",\"first_day\":\"{:%F}\",\"last_day\":\"{:%F}\",\"#locations\":{}}}",
                       idx > 0 ? "," : "",
                       idx,
                       source_file_names_[source_file_idx_t{to_idx(idx)}].view(),
                       service_ranges_[idx].from_,
-                      service_ranges_[idx].to_
+                      service_ranges_[idx].to_,
+                      stop_buckets[idx]
                       );
   }
   ss << "]";
