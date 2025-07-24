@@ -146,17 +146,15 @@ struct timetable {
   };
 
   struct statistics {
-    std::string json(timetable const& tt,
-                     source_idx_t source_idx,
-                     std::string_view source_file) const {
-      auto const int_days = tt.internal_interval_days();
+    std::string json(source_idx_t source_idx,
+                     std::string_view source_file,
+                     interval<date::sys_days> const& internal_days) const {
+      auto const days = internal_days.intersect(service_range_);
       return fmt::format(
           R"({{"id":{},"name":"{}","first_service_day":"{:%F}","last_service_day":"{:%F}","first_routing_day":"{:%F}","last_routing_day":"{:%F}","#locations":{},"#trips":{},"transports x days":{}}})",
           source_idx, source_file, service_range_.from_,
-          service_range_.to_ - date::days{1},
-          std::max(service_range_.from_, int_days.from_),
-          std::min(service_range_.to_, int_days.to_) - date::days{1},
-          locations_, trips_, transport_days_);
+          service_range_.to_ - date::days{1}, days.from_,
+          days.to_ - date::days{1}, locations_, trips_, transport_days_);
     }
 
     interval<date::sys_days> service_range_;

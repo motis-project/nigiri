@@ -86,7 +86,8 @@ std::string timetable::json_stats() const {
       ss << ',';
     }
     ss << statistics_[idx].json(
-        *this, idx, source_file_names_[source_file_idx_t{to_idx(idx)}].view());
+        idx, source_file_names_[source_file_idx_t{to_idx(idx)}].view(),
+        internal_interval_days());
   }
   ss << "]";
   return ss.str();
