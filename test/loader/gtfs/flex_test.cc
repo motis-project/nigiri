@@ -172,4 +172,7 @@ TRANSPORT 5 [odv_j25_1_1_29_29_77+_4]
   AREA Publicar Appenzell: [05:00.0, 17:00.0[
 )",
             ss.str());
+
+  // Transports x days: 0, because all trips are flex trips
+  EXPECT_EQ(R"([{"id":0,"name":"::memory::/stop_times.txt","first_service_day":"2024-12-15","last_service_day":"2025-12-13","first_routing_day":"2024-12-27","last_routing_day":"2025-12-01","#locations":3,"#trips":7,"transports x days":0}])", tt.json_stats());
 }

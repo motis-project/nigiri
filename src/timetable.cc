@@ -85,7 +85,7 @@ std::string timetable::json_stats() const {
     if (idx > 0) {
       ss << ',';
     }
-    ss << statistics_[idx].json(idx, source_file_names_[source_file_idx_t{to_idx(idx)}].view());
+    ss << statistics_[idx].json(this, idx, source_file_names_[source_file_idx_t{to_idx(idx)}].view());
   }
   ss << "]";
   return ss.str();

@@ -90,7 +90,8 @@ interval<date::sys_days> max_service_range(
   };
   for (auto const& entry : base) {
     update(entry.second.interval_.from_);
-    update(entry.second.interval_.to_);
+    // base intervals are exclusive, while new range is inclusive
+    update(entry.second.interval_.to_ - date::days{1});
   }
   for (auto const& entry : exceptions) {
     for (auto const& day : entry.second) {
