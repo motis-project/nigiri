@@ -679,7 +679,9 @@ TEST(vdv_aus, tt_after_midnight_update_before_midnight) {
 
   EXPECT_TRUE(fr.is_rt());
 
-  EXPECT_EQ(R"([{"id":0,"name":"::memory::/stop_times.txt","first_service_day":"2024-07-10","last_service_day":"2024-07-10","first_routing_day":"2024-07-10","last_routing_day":"2024-07-10","#locations":2,"#trips":1,"transports x days":1}])", tt.json_stats());
+  EXPECT_EQ(
+      R"([{"id":0,"name":"::memory::/stop_times.txt","first_service_day":"2024-07-10","last_service_day":"2024-07-10","first_routing_day":"2024-07-10","last_routing_day":"2024-07-10","#locations":2,"#trips":1,"transports x days":1}])",
+      tt.json_stats());
 }
 
 namespace {
@@ -1297,7 +1299,9 @@ TEST(vdv_aus, exact_match_1) {
   ASSERT_TRUE(fr.is_rt());
   EXPECT_FALSE(fr.is_cancelled());
 
-  EXPECT_EQ(R"([{"id":0,"name":"::memory::/stop_times.txt","first_service_day":"2024-08-05","last_service_day":"2024-12-14","first_routing_day":"2024-08-05","last_routing_day":"2024-08-31","#locations":41,"#trips":1,"transports x days":13}])", tt.json_stats());
+  EXPECT_EQ(
+      R"([{"id":0,"name":"::memory::/stop_times.txt","first_service_day":"2024-08-05","last_service_day":"2024-12-14","first_routing_day":"2024-08-05","last_routing_day":"2024-08-31","#locations":41,"#trips":1,"transports x days":13}])",
+      tt.json_stats());
 }
 
 TEST(vdv_aus, cancel_run) {

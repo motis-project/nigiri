@@ -247,8 +247,10 @@ TEST(routing, join_split) {
 
     run_test();
 
-  // Days: [from - 5, to]
-  EXPECT_EQ(R"([{"id":0,"name":"::memory::/stop_times.txt","first_service_day":"2025-01-01","last_service_day":"2025-12-31","first_routing_day":"2025-06-07","last_routing_day":"2025-06-22","#locations":10,"#trips":6,"transports x days":24}])", tt.json_stats());
+    // Days: [from - 5, to]
+    EXPECT_EQ(
+        R"([{"id":0,"name":"::memory::/stop_times.txt","first_service_day":"2025-01-01","last_service_day":"2025-12-31","first_routing_day":"2025-06-07","last_routing_day":"2025-06-22","#locations":10,"#trips":6,"transports x days":24}])",
+        tt.json_stats());
   };
 
   run(0U, 1U, 2U, 3U, 4U, 5U);
