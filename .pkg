@@ -53,4 +53,4 @@
 [pugixml]
   url=git@github.com:motis-project/pugixml.git
   branch=master
-  commit=60175e80e2f5e97e027ac78f7e14c5acc009ce50
+  commit=bb45e30c5bf21b3599eb5b4b7fa20547043c3e24

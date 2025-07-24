@@ -103,6 +103,7 @@ target_link_libraries(
 )
 target_compile_features(nigiri PUBLIC cxx_std_23)
 target_compile_options(nigiri PRIVATE ${nigiri-compile-options})
+target_compile_definitions(nigiri PUBLIC PUGIXML_COMPACT=1)
 
 # --- IMPORTER ---
 file(GLOB_RECURSE nigiri-import-files exe/import.cc)
