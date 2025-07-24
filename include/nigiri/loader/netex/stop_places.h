@@ -1,0 +1,17 @@
+#pragma once
+
+#include "nigiri/loader/loader_interface.h"
+
+#include "nigiri/loader/netex/data.h"
+
+#include "pugixml.hpp"
+
+namespace nigiri::loader::netex {
+
+void load_stop_places(netex_data&,
+                      loader_config const&,
+                      source_idx_t,
+                      timetable&,
+                      pugi::xml_document const&);
+
+}  // namespace nigiri::loader::netex
