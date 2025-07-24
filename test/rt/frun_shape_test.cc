@@ -969,7 +969,9 @@ TEST(
   }
   // Loading statistics
   {
-  EXPECT_EQ(R"([{"id":0,"name":"::memory::/stop_times.txt","first_service_day":"2024-01-01","last_service_day":"2024-01-01","first_routing_day":"2024-01-01","last_routing_day":"2024-01-01","#locations":22,"#trips":16,"transports x days":10}])", tt.json_stats());
+    EXPECT_EQ(
+        R"([{"id":0,"name":"::memory::/stop_times.txt","first_service_day":"2024-01-01","last_service_day":"2024-01-01","first_routing_day":"2024-01-01","last_routing_day":"2024-01-01","#locations":22,"#trips":16,"transports x days":10}])",
+        tt.json_stats());
   }
 }
 
