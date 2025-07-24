@@ -124,11 +124,18 @@ void load_timetable(loader_config const& config,
   auto const feed_info = read_feed_info(load(kFeedInfoFile).data());
   tt.src_end_date_.push_back(
       feed_info.feed_end_date_.value_or(date::sys_days::max()));
-  stats.service_range_ =
-      max_service_range(calendar, dates, feed_info.feed_end_date_);
   auto const service = merge_traffic_days(
       tt.internal_interval_days(), calendar, dates,
       config.extend_calendar_ ? feed_info.feed_end_date_ : std::nullopt);
+  {
+    // Find first and last service day
+    for (auto const& s : service) {
+      s.second->for_each_set_bit([&](std::uint16_t const i) {
+        stats.first_ = std::min(stats.first_, i);
+        stats.last_ = std::max(stats.last_, i);
+      });
+    }
+  }
   auto const shape_states =
       (shapes_data != nullptr)
           ? parse_shapes(load(kShapesFile).data(), *shapes_data)

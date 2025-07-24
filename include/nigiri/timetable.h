@@ -149,15 +149,15 @@ struct timetable {
     std::string json(source_idx_t source_idx,
                      std::string_view source_file,
                      interval<date::sys_days> const& internal_days) const {
-      auto const days = internal_days.intersect(service_range_);
       return fmt::format(
-          R"({{"id":{},"name":"{}","first_service_day":"{:%F}","last_service_day":"{:%F}","first_routing_day":"{:%F}","last_routing_day":"{:%F}","#locations":{},"#trips":{},"transports x days":{}}})",
-          source_idx, source_file, service_range_.from_,
-          service_range_.to_ - date::days{1}, days.from_,
-          days.to_ - date::days{1}, locations_, trips_, transport_days_);
+          R"({{"id":{},"name":"{}","first_day":"{:%F}","last_day":"{:%F}","#locations":{},"#trips":{},"transports x days":{}}})",
+          source_idx, source_file, internal_days.from_ + date::days{first_},
+          internal_days.from_ + date::days{last_}, locations_, trips_,
+          transport_days_);
     }
 
-    interval<date::sys_days> service_range_;
+    std::uint16_t first_ = std::numeric_limits<std::uint16_t>::max();
+    std::uint16_t last_ = std::numeric_limits<std::uint16_t>::min();
     std::uint32_t locations_;
     std::uint32_t trips_;
     std::uint64_t transport_days_;

@@ -396,8 +396,8 @@ TEST(loader, merge_inter_src) {
 
   EXPECT_EQ(
       "["
-      R"({"id":0,"name":"::memory::/stop_times.txt","first_service_day":"2024-08-05","last_service_day":"2024-12-14","first_routing_day":"2024-08-05","last_routing_day":"2024-12-14","#locations":16,"#trips":1,"transports x days":102},)"
-      R"({"id":1,"name":"::memory::/stop_times.txt","first_service_day":"2024-08-05","last_service_day":"2024-12-14","first_routing_day":"2024-08-05","last_routing_day":"2024-12-14","#locations":16,"#trips":1,"transports x days":102})"
+      R"({"id":0,"name":"::memory::/stop_times.txt","first_day":"2024-08-14","last_day":"2024-12-14","#locations":16,"#trips":1,"transports x days":102},)"
+      R"({"id":1,"name":"::memory::/stop_times.txt","first_day":"2024-08-14","last_day":"2024-12-14","#locations":16,"#trips":1,"transports x days":102})"
       "]",
       tt.json_stats());
 }
