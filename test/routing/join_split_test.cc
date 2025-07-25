@@ -247,12 +247,16 @@ TEST(routing, join_split) {
 
     run_test();
 
-    // Days: [from - 5, to]
+    // Contains all trips starting up to 5 days before
     // Possible bug: Entries in calendar_dates.txt might be included
+    // x: 7, 12, 13, 14, 19, 21, 23(!)
+    // x1: 18
+    // ik: 9, 10, 11, 12, 16, 17, 18, 19
+    // jl: 7, 8, 10, 13, 14, 15, 17, 20, 21, 22
     EXPECT_EQ(
-        R"([{"id":0,"name":"::memory::/stop_times.txt","first_day":"2025-06-07","last_day":"2025-06-23","#locations":10,"#trips":6,"transports x days":24}])",
+        R"([{"id":0,"name":"::memory::/stop_times.txt","first_day":"2025-06-07","last_day":"2025-06-23","#locations":10,"#trips":6,"transports x days":44}])",
         // R"([{"id":0,"name":"::memory::/stop_times.txt","first_day":"2025-06-07","last_day":"2025-06-22","#locations":10,"#trips":6,"transports
-        // x days":24}])",
+        // x days":43}])",
         tt.json_stats());
   };
 

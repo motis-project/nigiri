@@ -199,6 +199,10 @@ void load_timetable(loader_config const& config,
     auto const timer = scoped_timer{"loader.gtfs.trips.interpolate"};
     for (auto& t : trip_data.data_) {
       t.interpolate();
+      // Count service days per trip
+      if (t.service_) {
+        stats.transport_days_ += t.service_->count();
+      }
     }
   }
 
@@ -412,7 +416,6 @@ void load_timetable(loader_config const& config,
     auto route_colors = basic_string<route_color>{};
     auto external_trip_ids = basic_string<merged_trips_idx_t>{};
     auto location_routes = mutable_fws_multimap<location_idx_t, route_idx_t>{};
-    auto transport_days_count = std::size_t{0U};
     for (auto const& [key, sub_routes] : route_services) {
       for (auto const& services : sub_routes) {
         auto const route_idx = tt.register_route(
@@ -490,8 +493,6 @@ void load_timetable(loader_config const& config,
               .section_directions_ = section_directions,
               .section_lines_ = section_lines,
               .route_colors_ = route_colors});
-
-          transport_days_count += s.utc_traffic_days_.count();
         }
 
         tt.finish_route();
@@ -516,7 +517,6 @@ void load_timetable(loader_config const& config,
 
       progress_tracker->increment();
     }
-    stats.transport_days_ = transport_days_count;
 
     if (shapes_data != nullptr) {
       calculate_shape_offsets_and_bboxes(tt, *shapes_data, shape_states,

@@ -173,9 +173,9 @@ TRANSPORT 5 [odv_j25_1_1_29_29_77+_4]
 )",
             ss.str());
 
-  // Transports x days: 0, because all trips are flex trips
   // Starts before January 1st, to cover already running trips
+  // 2 x 188 (14-) + 96 (56-) + 2 x 56 (77+) + 49 (55-) + 49 (66-)
   EXPECT_EQ(
-      R"([{"id":0,"name":"::memory::/stop_times.txt","first_day":"2024-12-27","last_day":"2025-12-01","#locations":3,"#trips":7,"transports x days":0}])",
+      R"([{"id":0,"name":"::memory::/stop_times.txt","first_day":"2024-12-27","last_day":"2025-12-01","#locations":3,"#trips":7,"transports x days":682}])",
       tt.json_stats());
 }
