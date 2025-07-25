@@ -75,4 +75,19 @@ void timetable::write(std::filesystem::path const& p) const {
   return cista::write(p, *this);
 }
 
+std::string timetable::json_stats() const {
+  auto ss = std::stringstream{};
+  ss << "[";
+  for (auto idx = source_idx_t{0}; idx < n_sources(); ++idx) {
+    if (idx > 0) {
+      ss << ',';
+    }
+    ss << statistics_[idx].json(
+        idx, source_file_names_[source_file_idx_t{to_idx(idx)}].view(),
+        internal_interval_days());
+  }
+  ss << "]";
+  return ss.str();
+}
+
 }  // namespace nigiri

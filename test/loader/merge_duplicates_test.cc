@@ -393,6 +393,13 @@ TEST(loader, merge_inter_src) {
     EXPECT_FALSE(
         tt.bitfields_[tt.transport_traffic_days_[tr_range_a.first]].none());
   }
+
+  EXPECT_EQ(
+      "["
+      R"({"id":0,"name":"::memory::/stop_times.txt","first_day":"2024-08-14","last_day":"2024-12-14","#locations":16,"#trips":1,"transports x days":103},)"
+      R"({"id":1,"name":"::memory::/stop_times.txt","first_day":"2024-08-14","last_day":"2024-12-14","#locations":16,"#trips":1,"transports x days":103})"
+      "]",
+      tt.json_stats());
 }
 
 namespace {

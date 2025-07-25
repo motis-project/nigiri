@@ -145,6 +145,24 @@ struct timetable {
     basic_string<route_color> const& route_colors_;
   };
 
+  struct statistics {
+    std::string json(source_idx_t source_idx,
+                     std::string_view source_file,
+                     interval<date::sys_days> const& internal_days) const {
+      return fmt::format(
+          R"({{"id":{},"name":"{}","first_day":"{:%F}","last_day":"{:%F}","#locations":{},"#trips":{},"transports x days":{}}})",
+          source_idx, source_file, internal_days.from_ + date::days{first_},
+          internal_days.from_ + date::days{last_}, locations_, trips_,
+          transport_days_);
+    }
+
+    std::uint16_t first_ = std::numeric_limits<std::uint16_t>::max();
+    std::uint16_t last_ = std::numeric_limits<std::uint16_t>::min();
+    std::uint32_t locations_;
+    std::uint32_t trips_;
+    std::uint64_t transport_days_;
+  };
+
   template <typename TripId>
   trip_idx_t register_trip_id(TripId const& trip_id_str,
                               route_id_idx_t const route_id_idx,
@@ -421,6 +439,7 @@ struct timetable {
   void write(cista::memory_holder&) const;
   void write(std::filesystem::path const&) const;
   static cista::wrapped<timetable> read(std::filesystem::path const&);
+  std::string json_stats() const;
 
   bool has_car_transport(route_idx_t const r) const {
     return route_cars_allowed_[to_idx(r) * 2U] ||
@@ -437,6 +456,7 @@ struct timetable {
 
   // Source -> feed end date
   vector_map<source_idx_t, date::sys_days> src_end_date_;
+  vector_map<source_idx_t, statistics> statistics_;
 
   // Trip access: external trip id -> internal trip index
   vector<pair<trip_id_idx_t, trip_idx_t>> trip_id_to_idx_;
