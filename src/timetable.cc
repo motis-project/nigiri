@@ -4,9 +4,6 @@
 
 #include "utl/overloaded.h"
 
-#include "fmt/format.h"
-#include "fmt/ranges.h"
-
 #include "nigiri/common/day_list.h"
 #include "nigiri/rt/frun.h"
 
