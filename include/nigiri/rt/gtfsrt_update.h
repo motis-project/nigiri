@@ -37,6 +37,12 @@ struct statistics {
   int unsupported_deleted_{0};
   int unsupported_vehicle_{0};
   int unsupported_no_trip_id_{0};
+  int no_vehicle_position_{0};
+  int vehicle_position_without_position_{0};
+  int vehicle_position_position_without_latlon_{0};
+  int vehicle_position_without_trip_{0};
+  int vehicle_position_trip_without_trip_id_{0};
+  int vehicle_position_trip_without_route_id_{0};
   int no_trip_update_{0};
   int trip_update_without_trip_{0};
   int trip_resolve_error_{0};
