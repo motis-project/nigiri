@@ -12,7 +12,7 @@
 
 namespace nigiri::routing {
 
-#define trace_direct(...) fmt::println(__VA_ARGS__)
+#define trace_direct(...)
 
 void get_direct(timetable const& tt,
                 rt_timetable const* rtt,
