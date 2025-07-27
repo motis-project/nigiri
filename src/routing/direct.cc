@@ -12,7 +12,7 @@
 
 namespace nigiri::routing {
 
-#define trace_direct(...)
+#define trace_direct(...) fmt::println(__VA_ARGS__)
 
 void get_direct(timetable const& tt,
                 rt_timetable const* rtt,
@@ -183,6 +183,20 @@ void get_direct(timetable const& tt,
               continue;
             }
 
+            auto const start = stop{loc_seq[start_stop_idx]};
+            if (!start.in_allowed(q.prf_idx_)) {
+              trace_direct("      transport {} -> not in_allowed",
+                           tt.transport_name(t));
+              continue;
+            }
+
+            auto const end = stop{loc_seq[end_stop_idx]};
+            if (!end.out_allowed(q.prf_idx_)) {
+              trace_direct("      transport {} not out_allowed",
+                           tt.transport_name(t));
+              continue;
+            }
+
             trace_direct(
                 "      transport {} operates on {} (ev_time={})",
                 tt.transport_name(t),
@@ -194,9 +208,8 @@ void get_direct(timetable const& tt,
             auto const end_time = tt.event_time(tr, end_stop_idx, end_ev_type);
             trace_direct("        time={} contains {}", time, start_time);
             checked(journey::leg{
-                search_dir, stop{loc_seq[start_stop_idx]}.location_idx(),
-                stop{loc_seq[end_stop_idx]}.location_idx(), start_time,
-                end_time,
+                search_dir, start.location_idx(), end.location_idx(),
+                start_time, end_time,
                 journey::run_enter_exit{
                     rt::frun{
                         tt, rtt,
@@ -207,20 +220,37 @@ void get_direct(timetable const& tt,
           }
         }
       },
-      [&](rt_transport_idx_t const rt, stop_idx_t const start,
-          stop_idx_t const end) {
-        auto const start_time = rtt->unix_event_time(rt, start, start_ev_type);
-        auto const end_time = rtt->unix_event_time(rt, end, end_ev_type);
+      [&](rt_transport_idx_t const rt, stop_idx_t const start_stop_idx,
+          stop_idx_t const end_stop_idx) {
+        auto const start_time =
+            rtt->unix_event_time(rt, start_stop_idx, start_ev_type);
+        auto const end_time =
+            rtt->unix_event_time(rt, end_stop_idx, end_ev_type);
         auto const loc_seq = rtt->rt_transport_location_seq_[rt];
+
+        auto const start = stop{loc_seq[start_stop_idx]};
+        if (!start.in_allowed(q.prf_idx_)) {
+          trace_direct("      rt_transport {} -> not in_allowed",
+                       rtt->transport_name(tt, rt));
+          return;
+        }
+
+        auto const end = stop{loc_seq[end_stop_idx]};
+        if (!end.out_allowed(q.prf_idx_)) {
+          trace_direct("      rt_transport {} not out_allowed",
+                       rtt->transport_name(tt, rt));
+          return;
+        }
+
         checked(journey::leg{
-            search_dir, stop{loc_seq[start]}.location_idx(),
-            stop{loc_seq[end]}.location_idx(), start_time, end_time,
+            search_dir, stop{loc_seq[start_stop_idx]}.location_idx(),
+            stop{loc_seq[end_stop_idx]}.location_idx(), start_time, end_time,
             journey::run_enter_exit{
                 rt::frun{tt, rtt,
                          rt::run{.stop_range_ = {0U, static_cast<stop_idx_t>(
                                                          loc_seq.size())},
                                  .rt_ = rt}},
-                start, end}});
+                start_stop_idx, end_stop_idx}});
       }};
 
   auto const for_each_from_to = [&](location_idx_t const x,
