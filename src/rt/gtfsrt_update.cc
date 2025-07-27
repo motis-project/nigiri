@@ -18,9 +18,6 @@
 #include "nigiri/rt/gtfsrt_resolve_run.h"
 #include "nigiri/rt/run.h"
 
-// Anton war hier
-
-
 namespace gtfsrt = transit_realtime;
 namespace protob = google::protobuf;
 
@@ -80,8 +77,15 @@ std::ostream& operator<<(std::ostream& out, statistics const& s) {
                     s.alert_total_informed_entities_);
   print_if_no_empty("alert_invalid_route_type", s.alert_invalid_route_type_,
                     s.alert_total_informed_entities_);
-  print_if_no_empty("unsupported_vehicle", s.unsupported_vehicle_, true);
   print_if_no_empty("unsupported_no_trip_id", s.unsupported_no_trip_id_, true);
+  print_if_no_empty("no_trip_update", s.no_vehicle_position_, true);
+  print_if_no_empty("no_trip_update", s.vehicle_position_without_position_,
+                    true);
+  print_if_no_empty("no_trip_update", s.vehicle_position_without_trip_, true);
+  print_if_no_empty("no_trip_update", s.vehicle_position_trip_without_trip_id_,
+                    true);
+  print_if_no_empty("no_trip_update", s.vehicle_position_trip_without_route_id_,
+                    true);
   print_if_no_empty("no_trip_update", s.no_trip_update_, true);
   print_if_no_empty("trip_update_without_trip", s.trip_update_without_trip_,
                     true);
@@ -467,40 +471,30 @@ statistics gtfsrt_update_msg(timetable const& tt,
             R"(unsupported: no "position" field in "vehicle_position" field (tag={}, id={}), skipping message)",
             tag, entity.id());
         ++stats.vehicle_position_without_position_;
-      }
-      else if (!entity.vehicle().position().has_longitude() || !entity.vehicle().position().has_latitude()) {
-        log(log_lvl::error, "rt.gtfs.unsupported",
-            R"(unsupported: no "latitude" or "longitude" field in "location" field (tag={}, id={}), skipping message)",
-            tag, entity.id());
-        ++stats.vehicle_position_position_without_latlon_;
-      }
-      else if (!entity.vehicle().has_trip()) {
+      } else if (!entity.vehicle().has_trip()) {
         log(log_lvl::error, "rt.gtfs.unsupported",
             R"(unsupported: no "trip" field in "vehicle_position" field (tag={}, id={}), skipping message)",
             tag, entity.id());
         ++stats.vehicle_position_without_trip_;
-      }
-      else if (!entity.vehicle().trip().has_trip_id()) {
+      } else if (!entity.vehicle().trip().has_trip_id()) {
         log(log_lvl::error, "rt.gtfs.unsupported",
             R"(unsupported: no "trip_id" field in "trip" field (tag={}, id={}), skipping message)",
             tag, entity.id());
         ++stats.vehicle_position_trip_without_trip_id_;
-      }
-      else if (!entity.vehicle().trip().has_route_id()) {
+      } else if (!entity.vehicle().trip().has_route_id()) {
         log(log_lvl::error, "rt.gtfs.unsupported",
             R"(unsupported: no "route_id" field in "trip" field (tag={}, id={}), skipping message)",
             tag, entity.id());
         ++stats.vehicle_position_trip_without_route_id_;
-      }
-      else {
+      } else {
         auto const vp = entity.vehicle();
         auto const vp_lat = vp.position().latitude();
         auto const vp_lon = vp.position().longitude();
         auto const td = vp.trip();
         auto const gtfsrt_trip_id = td.trip_id();
 
-        auto [r, trip_idx] = gtfsrt_resolve_run(today, tt, &rtt, src, td,
-                                                std::string_view{gtfsrt_trip_id});
+        auto [r, trip_idx] = gtfsrt_resolve_run(
+            today, tt, &rtt, src, td, std::string_view{gtfsrt_trip_id});
         auto const& rtt_const = rtt;
         auto const location_seq =
             r.is_scheduled()
@@ -552,20 +546,21 @@ statistics gtfsrt_update_msg(timetable const& tt,
         // get remaining stops
         auto const seq_numbers =
             r.is_scheduled()
-                ? loader::gtfs::
-                      stop_seq_number_range{{tt.trip_stop_seq_numbers_[trip_idx]},
-                                            static_cast<stop_idx_t>(
-                                                r.stop_range_.size())}
+                ? loader::gtfs::stop_seq_number_range{{tt.trip_stop_seq_numbers_
+                                                           [trip_idx]},
+                                                      static_cast<stop_idx_t>(
+                                                          r.stop_range_.size())}
                 : loader::gtfs::stop_seq_number_range{
                       std::span<stop_idx_t>{},
                       static_cast<stop_idx_t>(location_seq.size())};
 
         // get delay
-        auto const now = vp.has_timestamp()
-                             ? unixtime_t{std::chrono::duration_cast<i32_minutes>(
-                                   std::chrono::seconds{vp.timestamp()})}
-                             : std::chrono::floor<i32_minutes>(
-                                   std::chrono::system_clock::now());
+        auto const now =
+            vp.has_timestamp()
+                ? unixtime_t{std::chrono::duration_cast<i32_minutes>(
+                      std::chrono::seconds{vp.timestamp()})}
+                : std::chrono::floor<i32_minutes>(
+                      std::chrono::system_clock::now());
         auto const delay =
             now - tt.event_time(r.t_, stopped_at_idx, event_type::kDep);
         auto const delay_cast = std::chrono::duration_cast<duration_t>(delay);
@@ -586,6 +581,7 @@ statistics gtfsrt_update_msg(timetable const& tt,
           }
         }
       }
+      continue;
     }
     log(log_lvl::error, "rt.gtfs.unsupported",
         R"(unsupported: no "vehicle_position" field (tag={}, id={}), skipping message)",

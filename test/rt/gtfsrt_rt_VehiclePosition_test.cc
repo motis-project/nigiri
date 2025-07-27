@@ -22,7 +22,6 @@ using namespace std::string_literals;
 using namespace std::string_view_literals;
 
 namespace {
-
 mem_dir test_files() {
   return mem_dir::read(R"(
      "(
@@ -184,6 +183,137 @@ auto const kVehilcePosition =
  ]
 })"s;
 
+auto const kVehilcePosition1 =
+    R"({
+ "header": {
+  "gtfsRealtimeVersion": "2.0",
+  "incrementality": "FULL_DATASET",
+  "timestamp": "1691659440"
+ },
+ "entity": [
+  {
+    "id": "32486511",
+    "isDeleted": false,
+  }
+ ]
+})"s;
+
+auto const kVehilcePosition2 =
+    R"({
+ "header": {
+  "gtfsRealtimeVersion": "2.0",
+  "incrementality": "FULL_DATASET",
+  "timestamp": "1691659440"
+ },
+ "entity": [
+  {
+    "id": "32486512",
+    "isDeleted": false,
+    "vehicle": {
+     "trip": {
+      "tripId": "3248651",
+      "startTime": "05:15:00",
+      "startDate": "20230810",
+      "routeId": "201"
+     },
+     "timestamp": "1691659440",
+     "vehicle": {
+      "id": "v1"
+     },
+     "occupancy_status": "MANY_SEATS_AVAILABLE"
+    }
+  }
+ ]
+})"s;
+
+auto const kVehilcePosition4 =
+    R"({
+ "header": {
+  "gtfsRealtimeVersion": "2.0",
+  "incrementality": "FULL_DATASET",
+  "timestamp": "1691659440"
+ },
+ "entity": [
+  {
+    "id": "32486514",
+    "isDeleted": false,
+    "vehicle": {
+     "position": {
+      "latitude": "43.415733",
+      "longitude": "-80.480340"
+     },
+     "timestamp": "1691659440",
+     "vehicle": {
+      "id": "v1"
+     },
+     "occupancy_status": "MANY_SEATS_AVAILABLE"
+    }
+  }
+ ]
+})"s;
+
+auto const kVehilcePosition5 =
+    R"({
+ "header": {
+  "gtfsRealtimeVersion": "2.0",
+  "incrementality": "FULL_DATASET",
+  "timestamp": "1691659440"
+ },
+ "entity": [
+  {
+    "id": "32486515",
+    "isDeleted": false,
+    "vehicle": {
+     "trip": {
+      "startTime": "05:15:00",
+      "startDate": "20230810",
+      "routeId": "201"
+     },
+     "position": {
+      "latitude": "43.415733",
+      "longitude": "-80.480340"
+     },
+     "timestamp": "1691659440",
+     "vehicle": {
+      "id": "v1"
+     },
+     "occupancy_status": "MANY_SEATS_AVAILABLE"
+    }
+  }
+ ]
+})"s;
+
+auto const kVehilcePosition6 =
+    R"({
+ "header": {
+  "gtfsRealtimeVersion": "2.0",
+  "incrementality": "FULL_DATASET",
+  "timestamp": "1691659440"
+ },
+ "entity": [
+  {
+    "id": "32486516",
+    "isDeleted": false,
+    "vehicle": {
+     "trip": {
+      "tripId": "3248651",
+      "startTime": "05:15:00",
+      "startDate": "20230810"
+     },
+     "position": {
+      "latitude": "43.415733",
+      "longitude": "-80.480340"
+     },
+     "timestamp": "1691659440",
+     "vehicle": {
+      "id": "v1"
+     },
+     "occupancy_status": "MANY_SEATS_AVAILABLE"
+    }
+  }
+ ]
+})"s;
+
 constexpr auto const expected = R"(
    0: 2351    Block Line Station..............................                                                             d: 10.08 09:15 [10.08 05:15]  RT 10.08 09:15 [10.08 05:15]  [{name=iXpress Fischer-Hallman, day=2023-08-10, id=3248651, src=0}]
    1: 1033    Block Line / Hanover............................ a: 10.08 09:16 [10.08 05:16]  RT 10.08 09:16 [10.08 05:16]  d: 10.08 09:16 [10.08 05:16]  RT 10.08 09:16 [10.08 05:16]  [{name=iXpress Fischer-Hallman, day=2023-08-10, id=3248651, src=0}]
@@ -234,7 +364,17 @@ TEST(rt, gtfs_rt_vp_update) {
 
   // Update.
   auto const msg = rt::json_to_protobuf(kVehilcePosition);
-  gtfsrt_update_buf(tt, rtt, source_idx_t{0}, "", msg);
+  auto const msg1 = rt::json_to_protobuf(kVehilcePosition1);
+  auto const msg2 = rt::json_to_protobuf(kVehilcePosition2);
+  auto const msg4 = rt::json_to_protobuf(kVehilcePosition4);
+  auto const msg5 = rt::json_to_protobuf(kVehilcePosition5);
+  auto const msg6 = rt::json_to_protobuf(kVehilcePosition6);
+  auto const stats = gtfsrt_update_buf(tt, rtt, source_idx_t{0}, "", msg);
+  auto const stats1 = gtfsrt_update_buf(tt, rtt, source_idx_t{0}, "", msg1);
+  auto const stats2 = gtfsrt_update_buf(tt, rtt, source_idx_t{0}, "", msg2);
+  auto const stats4 = gtfsrt_update_buf(tt, rtt, source_idx_t{0}, "", msg4);
+  auto const stats5 = gtfsrt_update_buf(tt, rtt, source_idx_t{0}, "", msg5);
+  auto const stats6 = gtfsrt_update_buf(tt, rtt, source_idx_t{0}, "", msg6);
 
   // Print trip.
   transit_realtime::TripDescriptor td;
@@ -248,6 +388,12 @@ TEST(rt, gtfs_rt_vp_update) {
   auto const fr = rt::frun{tt, &rtt, r};
   auto ss = std::stringstream{};
   ss << "\n" << fr;
-  //EXPECT_EQ(expected, ss.str());
+  EXPECT_EQ(expected, ss.str());
+  EXPECT_EQ(0, stats.no_vehicle_position_);
+  EXPECT_EQ(1, stats1.no_vehicle_position_);
+  EXPECT_EQ(1, stats2.vehicle_position_without_position_);
+  EXPECT_EQ(1, stats4.vehicle_position_without_trip_);
+  EXPECT_EQ(1, stats5.vehicle_position_trip_without_trip_id_);
+  EXPECT_EQ(1, stats6.vehicle_position_trip_without_route_id_);
   ASSERT_FALSE(fr.is_cancelled());
 }
