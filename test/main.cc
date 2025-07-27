@@ -17,9 +17,9 @@ int main(int argc, char** argv) {
 
   std::cout << "\n Starte Tests\n";
 
-  //test_gtfsrt_vp();
+  // test_gtfsrt_vp();
 
-  //Ab hier alter Code:
+  // Ab hier alter Code:
 
   std::clog.rdbuf(std::cout.rdbuf());
 
