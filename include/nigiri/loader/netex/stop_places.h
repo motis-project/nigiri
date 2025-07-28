@@ -8,10 +8,9 @@
 
 namespace nigiri::loader::netex {
 
-void load_stop_places(netex_data&,
-                      loader_config const&,
-                      source_idx_t,
-                      timetable&,
-                      pugi::xml_document const&);
+void handle_stop_place(netex_data&, netex_ctx const&, pugi::xml_node const&);
+void handle_quay(netex_data&, netex_ctx const&, pugi::xml_node const&);
+
+void finalize_stop_places(netex_data&);
 
 }  // namespace nigiri::loader::netex
