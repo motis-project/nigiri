@@ -75,13 +75,17 @@ void timetable::write(std::filesystem::path const& p) const {
   return cista::write(p, *this);
 }
 
-std::string timetable::json_stats() const {
+boost::json::array timetable::json_stats() const {
   auto feeds = boost::json::array{};
   feeds.reserve(n_sources());
   for (auto idx = source_idx_t{0}; idx < n_sources(); ++idx) {
     feeds.push_back(statistics_[idx].json(idx, internal_interval_days()));
   }
-  return boost::json::serialize(feeds);
+  return feeds;
+}
+
+std::string timetable::stats_string() const {
+  return boost::json::serialize(json_stats());
 }
 
 }  // namespace nigiri

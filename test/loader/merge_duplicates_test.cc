@@ -399,7 +399,7 @@ TEST(loader, merge_inter_src) {
       R"({"id":0,"first_day":"2024-08-14","last_day":"2024-12-14","#locations":16,"#trips":1,"transports x days":103},)"
       R"({"id":1,"first_day":"2024-08-14","last_day":"2024-12-14","#locations":16,"#trips":1,"transports x days":103})"
       "]",
-      tt.json_stats());
+      tt.stats_string());
 }
 
 namespace {

@@ -257,7 +257,7 @@ TEST(routing, join_split) {
         R"([{"id":0,"first_day":"2025-06-07","last_day":"2025-06-23","#locations":10,"#trips":6,"transports x days":44}])",
         // R"([{"id":0,"first_day":"2025-06-07","last_day":"2025-06-22","#locations":10,"#trips":6,"transports
         // x days":43}])",
-        tt.json_stats());
+        tt.stats_string());
   };
 
   run(0U, 1U, 2U, 3U, 4U, 5U);
