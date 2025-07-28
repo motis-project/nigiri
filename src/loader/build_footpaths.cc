@@ -15,6 +15,7 @@
 
 #include "nigiri/loader/link_nearby_stations.h"
 #include "nigiri/loader/merge_duplicates.h"
+#include "nigiri/loader/reduce_footpaths.h"
 #include "nigiri/common/day_list.h"
 #include "nigiri/constants.h"
 #include "nigiri/logging.h"
@@ -390,17 +391,20 @@ void write_footpaths(timetable& tt) {
   assert(tt.locations_.preprocessing_footpaths_out_.size() == tt.n_locations());
   assert(tt.locations_.preprocessing_footpaths_in_.size() == tt.n_locations());
 
-  profile_idx_t const prf_idx{0};
-
   for (auto i = location_idx_t{0U}; i != tt.n_locations(); ++i) {
-    tt.locations_.footpaths_out_[prf_idx].emplace_back(
+    tt.locations_.footpaths_full_out_[kDefaultProfile].emplace_back(
         tt.locations_.preprocessing_footpaths_out_[i]);
   }
 
   for (auto i = location_idx_t{0U}; i != tt.n_locations(); ++i) {
-    tt.locations_.footpaths_in_[prf_idx].emplace_back(
+    tt.locations_.footpaths_full_in_[kDefaultProfile].emplace_back(
         tt.locations_.preprocessing_footpaths_in_[i]);
   }
+
+  tt.locations_.footpaths_out_[kDefaultProfile] = reduce_footpaths(
+      tt, tt.locations_.footpaths_full_out_[kDefaultProfile], 2U);
+  tt.locations_.footpaths_in_[kDefaultProfile] = reduce_footpaths(
+      tt, tt.locations_.footpaths_full_in_[kDefaultProfile], 2U);
 
   tt.locations_.preprocessing_footpaths_in_.clear();
   tt.locations_.preprocessing_footpaths_out_.clear();

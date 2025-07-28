@@ -127,6 +127,8 @@ struct timetable {
     mutable_fws_multimap<location_idx_t, footpath> preprocessing_footpaths_in_;
     array<vecvec<location_idx_t, footpath>, kNProfiles> footpaths_out_;
     array<vecvec<location_idx_t, footpath>, kNProfiles> footpaths_in_;
+    array<vecvec<location_idx_t, footpath>, kNProfiles> footpaths_full_out_;
+    array<vecvec<location_idx_t, footpath>, kNProfiles> footpaths_full_in_;
     vector_map<timezone_idx_t, timezone> timezones_;
     vector_map<location_idx_t, std::uint32_t> location_importance_;
     std::uint32_t max_importance_{0U};
