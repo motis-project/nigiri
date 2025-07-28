@@ -76,18 +76,14 @@ void timetable::write(std::filesystem::path const& p) const {
 }
 
 std::string timetable::json_stats() const {
-  auto ss = std::stringstream{};
-  ss << "[";
+  auto feeds = boost::json::array{};
+  feeds.reserve(n_sources());
   for (auto idx = source_idx_t{0}; idx < n_sources(); ++idx) {
-    if (idx > 0) {
-      ss << ',';
-    }
-    ss << statistics_[idx].json(
+    feeds.push_back(statistics_[idx].json(
         idx, source_file_names_[source_file_idx_t{to_idx(idx)}].view(),
-        internal_interval_days());
+        internal_interval_days()));
   }
-  ss << "]";
-  return ss.str();
+  return boost::json::serialize(feeds);
 }
 
 }  // namespace nigiri

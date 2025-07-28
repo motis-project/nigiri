@@ -150,10 +150,11 @@ struct timetable {
   };
 
   struct statistics {
-    std::string json(source_idx_t source_idx,
-                     std::string_view source_file,
-                     interval<date::sys_days> const& internal_days) const {
-      return boost::json::serialize(boost::json::object{
+    boost::json::object json(
+        source_idx_t source_idx,
+        std::string_view source_file,
+        interval<date::sys_days> const& internal_days) const {
+      return boost::json::object{
           {"id", to_idx(source_idx)},
           {"name", source_file},
           {"first_day",
@@ -163,7 +164,7 @@ struct timetable {
           {"#locations", locations_},
           {"#trips", trips_},
           {"transports x days", transport_days_},
-      });
+      };
     }
 
     std::uint16_t first_ = std::numeric_limits<std::uint16_t>::max();
