@@ -23,6 +23,7 @@
 #include "nigiri/logging.h"
 #include "nigiri/timetable.h"
 
+#include "nigiri/loader/netex/parser.h"
 #include "nigiri/loader/netex/stop_places.h"
 
 namespace fs = std::filesystem;
@@ -94,7 +95,7 @@ void load_timetable(loader_config const& config,
       .out_bounds(0.F, 90.F)
       .in_high(xml_files.size());
 
-  auto data = netex_data{};
+  auto data = netex_data{.tt_ = tt};
 
   for (auto const& fp : xml_files) {
     auto const f = d.get_file(fp);
@@ -106,7 +107,7 @@ void load_timetable(loader_config const& config,
     utl::verify(result, "Unable to parse XML buffer: {} at offset {}",
                 result.description(), result.offset);
 
-    load_stop_places(data, config, src, tt, doc);
+    parse_netex_file(data, config, src, tt, doc);
 
     progress_tracker->increment();
   }
@@ -115,14 +116,35 @@ void load_timetable(loader_config const& config,
       .out_bounds(90.F, 100.F)
       .in_high(1);
 
+  finalize_stop_places(data);
+
   auto empty_idx_vec = vector<location_idx_t>{};
   for (auto& spp : data.stop_places_) {
     auto& sp = spp.second;
 
-    sp.location_idx_ = tt.locations_.register_location(nigiri::location{
-        sp.id_, sp.name_, "", "", sp.centroid_, src, location_type::kStation,
-        location_idx_t::invalid(), timezone_idx_t::invalid(), 2_minutes,
-        it_range{empty_idx_vec}});
+    sp.location_idx_ = tt.locations_.register_location(
+        location{sp.id_, sp.name_, "", sp.description_, sp.centroid_, src,
+                 location_type::kStation, location_idx_t::invalid(),
+                 sp.locale_.tz_idx_, 2_minutes, it_range{empty_idx_vec}});
+
+    for (auto& q : sp.quays_) {
+      q.location_idx_ = tt.locations_.register_location(
+          location{q.id_, q.name_, q.public_code_, "", q.centroid_, src,
+                   location_type::kTrack, sp.location_idx_, q.locale_.tz_idx_,
+                   2_minutes, it_range{empty_idx_vec}});
+    }
+
+    // TODO: children
+  }
+
+  // Add standalone quays as stations
+  for (auto& qp : data.standalone_quays_) {
+    auto& q = qp.second;
+
+    q.location_idx_ = tt.locations_.register_location(
+        location{q.id_, q.name_, "", "", q.centroid_, src,
+                 location_type::kStation, location_idx_t::invalid(),
+                 q.locale_.tz_idx_, 2_minutes, it_range{empty_idx_vec}});
   }
 
   progress_tracker->increment();
