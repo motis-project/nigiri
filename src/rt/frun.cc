@@ -15,6 +15,12 @@
 
 namespace nigiri::rt {
 
+constexpr auto const kUnknownProvider =
+    provider{.short_name_ = string_idx_t::invalid(),
+             .long_name_ = string_idx_t::invalid(),
+             .url_ = string_idx_t::invalid(),
+             .src_ = source_idx_t::invalid()};
+
 stop run_stop::get_stop() const {
   assert(fr_->size() > stop_idx_);
   return stop{
@@ -167,7 +173,13 @@ std::string_view run_stop::line(event_type const ev_type) const {
 
 provider_idx_t run_stop::get_provider_idx(event_type const ev_type) const {
   if (!fr_->is_scheduled()) {
-    return provider_idx_t{0};
+    auto const route_id_idx = rtt()->rt_transport_route_id_.at(fr_->rt_);
+    if (route_id_idx != route_id_idx_t::invalid()) {
+      return tt()
+          .route_ids_[rtt()->rt_transport_src_.at(fr_->rt_)]
+          .route_id_provider_.at(route_id_idx);
+    }
+    return provider_idx_t::invalid();
   }
   auto const provider_sections =
       tt().transport_section_providers_.at(fr_->t_.t_idx_);
@@ -176,7 +188,11 @@ provider_idx_t run_stop::get_provider_idx(event_type const ev_type) const {
 }
 
 provider const& run_stop::get_provider(event_type const ev_type) const {
-  return tt().providers_.at(get_provider_idx(ev_type));
+  auto const provider_idx = get_provider_idx(ev_type);
+  if (provider_idx != provider_idx_t::invalid()) {
+    return tt().providers_.at(provider_idx);
+  }
+  return kUnknownProvider;
 }
 
 std::string_view run_stop::direction(event_type const ev_type) const {

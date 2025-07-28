@@ -187,8 +187,7 @@ struct rt_timetable {
 
   vector_map<rt_transport_idx_t, source_idx_t> rt_transport_src_;
 
-  // RT trip ID index -> train number, if available (otherwise 0)
-  vector_map<rt_transport_idx_t, std::uint32_t> rt_transport_train_nr_;
+  vector_map<rt_transport_idx_t, route_id_idx_t> rt_transport_route_id_;
 
   // RT transport -> direction for each section
   vecvec<trip_direction_string_idx_t, char> rt_transport_direction_strings_;
