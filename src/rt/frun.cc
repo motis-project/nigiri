@@ -7,7 +7,6 @@
 #include "utl/overloaded.h"
 #include "utl/verify.h"
 
-#include "nigiri/lookup/get_transport_stop_tz.h"
 #include "nigiri/rt/gtfsrt_resolve_run.h"
 #include "nigiri/rt/rt_timetable.h"
 #include "nigiri/shapes_storage.h"
@@ -135,6 +134,31 @@ unixtime_t run_stop::time(event_type const ev_type) const {
 duration_t run_stop::delay(event_type const ev_type) const {
   assert(fr_->size() > stop_idx_);
   return time(ev_type) - scheduled_time(ev_type);
+}
+
+timezone_idx_t run_stop::get_tz(event_type const ev_type) const {
+  auto const location_tz =
+      tt().locations_.location_timezones_.at(get_location().l_);
+  if (location_tz != timezone_idx_t::invalid()) {
+    return location_tz;
+  }
+
+  auto const& p = get_provider(ev_type);
+  if (p.tz_ != timezone_idx_t::invalid()) {
+    return p.tz_;
+  }
+
+  if (fr_->is_rt()) {
+    auto const src_idx = rtt()->rt_transport_src_.at(fr_->rt_);
+    auto const it = std::lower_bound(
+        begin(tt().providers_), end(tt().providers_), src_idx,
+        [&](provider const& a, source_idx_t const b) { return a.src_ < b; });
+    if (it != end(tt().providers_) && it->src_ == src_idx &&
+        it->tz_ != timezone_idx_t::invalid()) {
+      return it->tz_;
+    }
+  }
+  return tt().providers_[provider_idx_t{0}].tz_;
 }
 
 trip_idx_t run_stop::get_trip_idx(event_type const ev_type) const {
@@ -620,8 +644,7 @@ trip_idx_t frun::trip_idx() const {
 void run_stop::print(std::ostream& out,
                      bool const first,
                      bool const last) const {
-  auto const& tz = tt().locations_.timezones_.at(
-      get_transport_stop_tz(*fr_->tt_, fr_->t_.t_idx_, get_location().l_));
+  auto const& tz = tt().locations_.timezones_.at(get_tz(event_type::kDep));
 
   // Print stop index, location name.
   fmt::print(out, "  {:2}: {:7} {:.<48}", stop_idx_, get_location().id_,
