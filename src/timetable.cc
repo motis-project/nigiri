@@ -79,9 +79,7 @@ std::string timetable::json_stats() const {
   auto feeds = boost::json::array{};
   feeds.reserve(n_sources());
   for (auto idx = source_idx_t{0}; idx < n_sources(); ++idx) {
-    feeds.push_back(statistics_[idx].json(
-        idx, source_file_names_[source_file_idx_t{to_idx(idx)}].view(),
-        internal_interval_days()));
+    feeds.push_back(statistics_[idx].json(idx, internal_interval_days()));
   }
   return boost::json::serialize(feeds);
 }

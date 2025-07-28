@@ -152,11 +152,9 @@ struct timetable {
   struct statistics {
     boost::json::object json(
         source_idx_t source_idx,
-        std::string_view source_file,
         interval<date::sys_days> const& internal_days) const {
       return boost::json::object{
           {"id", to_idx(source_idx)},
-          {"name", source_file},
           {"first_day",
            fmt::format("{:%F}", internal_days.from_ + date::days{first_})},
           {"last_day",
