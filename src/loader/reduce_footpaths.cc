@@ -20,10 +20,14 @@ vecvec<location_idx_t, footpath> reduce_footpaths(
     }
 
     // Group by route (duplicates footpaths).
+    // Skips routes that are already available at this stop.
     // This also eliminates footpaths to locations without scheduled traffic.
+    auto const l_routes = tt.location_routes_[l];
     for (auto const& fp : fps[l]) {
       for (auto const& r : tt.location_routes_[fp.target()]) {
-        reachable[r].emplace_back(fp);
+        if (utl::find(l_routes, r) == end(l_routes)) {
+          reachable[r].emplace_back(fp);
+        }
       }
     }
 
@@ -58,4 +62,4 @@ vecvec<location_idx_t, footpath> reduce_footpaths(
   return compact;
 }
 
-}  // namespace nigiri
+}  // namespace nigiri::loader
