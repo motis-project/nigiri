@@ -87,11 +87,9 @@ quay parse_quay(netex_data& data,
       parse_location(data, ctx, quay_node.child("Centroid").child("Location"));
   auto const locale = ctx.locale_.value_or(netex_locale{});
 
-  auto parent = std::optional<ref_version>{};
+  auto parent = std::optional<std::string>{};
   if (auto const pzr = quay_node.child("ParentZoneRef")) {
-    auto const ref = pzr.attribute("ref").value();
-    auto const version = pzr.attribute("version").value();
-    parent = ref_version{.ref_ = ref, .version_ = version};
+    parent = pzr.attribute("ref").value();
   }
 
   return {
@@ -135,10 +133,7 @@ void handle_stop_place(netex_data& data,
   };
 
   if (auto const psr = spn.child("ParentSiteRef"); psr) {
-    sp.parent_ref_ = ref_version{
-        .ref_ = psr.attribute("ref").value(),
-        .version_ = psr.attribute("version").value(),
-    };
+    sp.parent_ref_ = psr.attribute("ref").value();
   }
 
   if (auto const existing_it = data.stop_places_.find(sp.id_);
@@ -156,7 +151,7 @@ void handle_quay(netex_data& data,
                  pugi::xml_node const& qn) {
   auto quay = parse_quay(data, ctx, qn);
   if (quay.parent_ref_) {
-    if (auto it = data.stop_places_.find(quay.parent_ref_->ref_);
+    if (auto it = data.stop_places_.find(*quay.parent_ref_);
         it != data.stop_places_.end()) {
       auto& sp = it->second;
       if (utl::none_of(sp.quays_,
@@ -175,15 +170,13 @@ void finalize_stop_places(netex_data& data) {
   for (auto& spp : data.stop_places_) {
     auto& sp = spp.second;
     if (sp.parent_ref_) {
-      if (auto it = data.stop_places_.find(sp.parent_ref_->ref_);
+      if (auto it = data.stop_places_.find(*sp.parent_ref_);
           it != data.stop_places_.end()) {
         auto& parent_sp = it->second;
-        parent_sp.children_.emplace_back(
-            ref_version{.ref_ = sp.id_, .version_ = ""});
+        parent_sp.children_.emplace_back(sp.id_);
       } else {
         log(log_lvl::error, "nigiri.loader.netex.stop_places",
-            "stop place {} has missing parent {}", sp.id_,
-            sp.parent_ref_->ref_);
+            "stop place {} has missing parent {}", sp.id_, *sp.parent_ref_);
       }
     }
   }
@@ -194,7 +187,7 @@ void finalize_stop_places(netex_data& data) {
     for (auto it = data.quays_with_missing_parents_.begin();
          it != data.quays_with_missing_parents_.end();) {
       auto& q = it->second;
-      if (auto parent_it = data.stop_places_.find(q.parent_ref_->ref_);
+      if (auto parent_it = data.stop_places_.find(*q.parent_ref_);
           parent_it != data.stop_places_.end()) {
         auto& sp = parent_it->second;
         if (utl::none_of(sp.quays_,
@@ -216,7 +209,7 @@ void finalize_stop_places(netex_data& data) {
         data.quays_with_missing_parents_.size());
     for (auto const& [id, quay] : data.quays_with_missing_parents_) {
       log(log_lvl::error, "nigiri.loader.netex.stop_places",
-          "quay {} has missing parent {}", id, quay.parent_ref_->ref_);
+          "quay {} has missing parent {}", id, *quay.parent_ref_);
     }
   }
 }
