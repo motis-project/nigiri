@@ -4,65 +4,79 @@
 
 #include "utl/erase_duplicates.h"
 #include "utl/insert_sorted.h"
+#include "utl/parallel_for.h"
 
 namespace nigiri::loader {
 
-constexpr auto const N = 2U;
+constexpr auto const kN = 2U;
 
 vecvec<location_idx_t, footpath> reduce_footpaths(
     timetable& tt, vecvec<location_idx_t, footpath> const& fps) {
+  auto const init = []() {
+    auto x = std::array<footpath, kN>{};
+    x.fill(footpath{footpath::kMaxTarget, footpath::kMaxDuration});
+    return x;
+  }();
+
   auto reduced =
       vector_map<location_idx_t, std::vector<footpath>>(tt.n_locations());
 
-  auto init = std::array<footpath, N>{};
-  init.fill(footpath{footpath::kMaxTarget, footpath::kMaxDuration});
-  auto reachable =
-      vector_map<route_idx_t, std::array<footpath, N>>{tt.n_routes(), init};
-  auto reachable_bits = bitvec_map<route_idx_t>{tt.n_routes()};
+  struct state {
+    vector_map<route_idx_t, std::array<footpath, kN>> route_fps_;
+    bitvec_map<route_idx_t> route_is_reachable_;
+  };
 
-  for (auto l = location_idx_t{0U}; l != tt.n_locations(); ++l) {
-    reachable_bits.zero_out();
+  utl::parallel_for_run_threadlocal<state>(
+      tt.n_locations(), [&](state& s, std::size_t const l_idx) {
+        auto const l = location_idx_t{l_idx};
 
-    // Group by route (duplicates footpaths).
-    // Skips routes that are already available at this stop.
-    // This also eliminates footpaths to locations without scheduled traffic.
-    auto const l_routes = tt.location_routes_[l];
-    for (auto const& fp : fps[l]) {
-      for (auto const& r : tt.location_routes_[fp.target()]) {
-        if (utl::find(l_routes, r) != end(l_routes)) {
-          continue;
+        if (s.route_fps_.size() != tt.n_locations()) {
+          s.route_fps_ = vector_map<route_idx_t, std::array<footpath, kN>>{
+              tt.n_locations(), init};
+          s.route_is_reachable_.resize(tt.n_locations());
         }
 
-        reachable_bits.set(r, true);
+        // Group by route (duplicates footpaths).
+        // This eliminates footpaths to locations w/o scheduled traffic.
+        auto const l_routes = tt.location_routes_[l];
+        for (auto const& fp : fps[l]) {
+          for (auto const& r : tt.location_routes_[fp.target()]) {
+            if (utl::find(l_routes, r) != end(l_routes)) {
+              continue;  // Skip routes that are already available at this stop.
+            }
 
-        auto& r_reachable = reachable[r];
+            s.route_is_reachable_.set(r, true);
 
-        auto insert = fp;
-        for (auto i = 0U; i != r_reachable.size(); ++i) {
-          if (insert.duration() < r_reachable[i].duration()) {
-            std::swap(insert, r_reachable[i]);
+            auto& r_reachable = s.route_fps_[r];
+
+            auto insert = fp;
+            for (auto i = 0U; i != r_reachable.size(); ++i) {
+              if (insert.duration() < r_reachable[i].duration()) {
+                std::swap(insert, r_reachable[i]);
+              }
+            }
           }
         }
-      }
-    }
 
-    // Join fastest N footpaths per route.
-    reachable_bits.for_each_set_bit([&](route_idx_t const r) {
-      auto& r_reachable = reachable[r];
-      for (auto j = 0U; j != r_reachable.size(); ++j) {
-        if (r_reachable[j].target() != footpath::kMaxTarget) {
-          reduced[l].push_back(r_reachable[j]);
-        }
-      }
-      r_reachable = init;
-    });
+        // Join fastest N footpaths per route.
+        s.route_is_reachable_.for_each_set_bit([&](route_idx_t const r) {
+          auto& route_fps = s.route_fps_[r];
+          for (auto j = 0U; j != route_fps.size(); ++j) {
+            if (route_fps[j].target() != footpath::kMaxTarget) {
+              reduced[l].push_back(route_fps[j]);
+            }
+          }
+          route_fps = init;
+        });
+        s.route_is_reachable_.zero_out();
 
-    // Deduplicate and sort by duration.
-    utl::erase_duplicates(reduced[l], [](footpath const& a, footpath const& b) {
-      return std::tuple{a.duration(), a.target()} <
-             std::tuple{b.duration(), b.target()};
-    });
-  }
+        // Deduplicate and sort by duration.
+        utl::erase_duplicates(reduced[l],
+                              [](footpath const& a, footpath const& b) {
+                                return std::tuple{a.duration(), a.target()} <
+                                       std::tuple{b.duration(), b.target()};
+                              });
+      });
 
   // Copy to vecvec.
   auto compact = vecvec<location_idx_t, footpath>{};
