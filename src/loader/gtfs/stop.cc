@@ -4,6 +4,7 @@
 #include <string>
 #include <tuple>
 
+#include "geo/latlng.h"
 #include "geo/point_rtree.h"
 
 #include "utl/get_or_create.h"
@@ -37,6 +38,8 @@ struct stop {
     todo.clear();
     done.clear();
 
+    auto const lng_dist = geo::approx_distance_lng_degrees(coord_);
+
     todo.emplace(this);
     todo.insert(begin(same_name_), end(same_name_));
     for (auto const& idx : close_) {
@@ -63,9 +66,10 @@ struct stop {
       auto* meta = *it;
       auto const is_parent = parent_ == meta;
       auto const is_child = children_.find(meta) != end(children_);
-      auto const distance_in_m = geo::distance(meta->coord_, coord_);
-      if ((distance_in_m > 500 && !is_parent && !is_child) ||
-          distance_in_m > 2000) {
+      auto const distance_in_m =
+          geo::approx_squared_distance(meta->coord_, coord_, lng_dist);
+      if ((distance_in_m > std::pow(500, 2) && !is_parent && !is_child) ||
+          distance_in_m > std::pow(2000, 2)) {
         it = done.erase(it);
       } else {
         ++it;
