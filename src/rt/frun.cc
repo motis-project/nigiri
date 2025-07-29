@@ -148,7 +148,7 @@ timezone_idx_t run_stop::get_tz(event_type const ev_type) const {
     return p.tz_;
   }
 
-  if (fr_->is_rt()) {
+  if (fr_->is_rt() && fr_->rtt_ != nullptr) {
     auto const src_idx = rtt()->rt_transport_src_.at(fr_->rt_);
     auto const it = std::lower_bound(
         begin(tt().providers_), end(tt().providers_), src_idx,
