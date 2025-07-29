@@ -142,7 +142,7 @@ void load_timetable(loader_config const& config,
     auto& q = qp.second;
 
     q.location_idx_ = tt.locations_.register_location(
-        location{q.id_, q.name_, "", "", q.centroid_, src,
+        location{q.id_, q.name_, q.public_code_, "", q.centroid_, src,
                  location_type::kStation, location_idx_t::invalid(),
                  q.locale_.tz_idx_, 2_minutes, it_range{empty_idx_vec}});
   }

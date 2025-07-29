@@ -28,13 +28,6 @@ struct netex_ctx {
   std::optional<std::string> default_crs_;
 };
 
-struct ref_version {
-  std::string ref_;
-  std::string version_;
-
-  explicit operator bool() const { return !ref_.empty(); }
-};
-
 struct quay {
   std::string id_;
   std::string name_;
@@ -42,7 +35,7 @@ struct quay {
   std::string ssp_public_code_;  // from ScheduledStopPoint
   geo::latlng centroid_{};
 
-  std::optional<ref_version> parent_ref_;
+  std::optional<std::string> parent_ref_;
   netex_locale locale_;
 
   location_idx_t location_idx_{location_idx_t::invalid()};
@@ -55,8 +48,8 @@ struct stop_place {
   geo::latlng centroid_{};
   std::vector<quay> quays_;
 
-  std::vector<ref_version> children_;
-  std::optional<ref_version> parent_ref_;
+  std::vector<std::string> children_;
+  std::optional<std::string> parent_ref_;
 
   netex_locale locale_;
 
