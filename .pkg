@@ -9,7 +9,7 @@
 [geo]
   url=git@github.com:motis-project/geo.git
   branch=master
-  commit=4f4877c2e7a2caee73bd9f00d955c56835a12f05
+  commit=f070a3e4d7fb0a65f731364cffabe929220d4ec7
 [utl]
   url=git@github.com:motis-project/utl.git
   branch=master
