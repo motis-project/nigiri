@@ -7,13 +7,18 @@
 #include "utl/overloaded.h"
 #include "utl/verify.h"
 
-#include "nigiri/lookup/get_transport_stop_tz.h"
 #include "nigiri/rt/gtfsrt_resolve_run.h"
 #include "nigiri/rt/rt_timetable.h"
 #include "nigiri/shapes_storage.h"
 #include "nigiri/timetable.h"
 
 namespace nigiri::rt {
+
+constexpr auto const kUnknownProvider =
+    provider{.short_name_ = string_idx_t::invalid(),
+             .long_name_ = string_idx_t::invalid(),
+             .url_ = string_idx_t::invalid(),
+             .src_ = source_idx_t::invalid()};
 
 stop run_stop::get_stop() const {
   assert(fr_->size() > stop_idx_);
@@ -131,6 +136,31 @@ duration_t run_stop::delay(event_type const ev_type) const {
   return time(ev_type) - scheduled_time(ev_type);
 }
 
+timezone_idx_t run_stop::get_tz(event_type const ev_type) const {
+  auto const location_tz =
+      tt().locations_.location_timezones_.at(get_location().l_);
+  if (location_tz != timezone_idx_t::invalid()) {
+    return location_tz;
+  }
+
+  auto const& p = get_provider(ev_type);
+  if (p.tz_ != timezone_idx_t::invalid()) {
+    return p.tz_;
+  }
+
+  if (fr_->is_rt() && fr_->rtt_ != nullptr) {
+    auto const src_idx = rtt()->rt_transport_src_.at(fr_->rt_);
+    auto const it = std::lower_bound(
+        begin(tt().providers_), end(tt().providers_), src_idx,
+        [&](provider const& a, source_idx_t const b) { return a.src_ < b; });
+    if (it != end(tt().providers_) && it->src_ == src_idx &&
+        it->tz_ != timezone_idx_t::invalid()) {
+      return it->tz_;
+    }
+  }
+  return tt().providers_[provider_idx_t{0}].tz_;
+}
+
 trip_idx_t run_stop::get_trip_idx(event_type const ev_type) const {
   utl::verify(fr_->t_.t_idx_ != transport_idx_t::invalid(),
               "can't get trip_idx for unscheduled trip");
@@ -167,7 +197,13 @@ std::string_view run_stop::line(event_type const ev_type) const {
 
 provider_idx_t run_stop::get_provider_idx(event_type const ev_type) const {
   if (!fr_->is_scheduled()) {
-    return provider_idx_t{0};
+    auto const route_id_idx = rtt()->rt_transport_route_id_.at(fr_->rt_);
+    if (route_id_idx != route_id_idx_t::invalid()) {
+      return tt()
+          .route_ids_[rtt()->rt_transport_src_.at(fr_->rt_)]
+          .route_id_provider_.at(route_id_idx);
+    }
+    return provider_idx_t::invalid();
   }
   auto const provider_sections =
       tt().transport_section_providers_.at(fr_->t_.t_idx_);
@@ -176,7 +212,11 @@ provider_idx_t run_stop::get_provider_idx(event_type const ev_type) const {
 }
 
 provider const& run_stop::get_provider(event_type const ev_type) const {
-  return tt().providers_.at(get_provider_idx(ev_type));
+  auto const provider_idx = get_provider_idx(ev_type);
+  if (provider_idx != provider_idx_t::invalid()) {
+    return tt().providers_.at(provider_idx);
+  }
+  return kUnknownProvider;
 }
 
 std::string_view run_stop::direction(event_type const ev_type) const {
@@ -604,8 +644,7 @@ trip_idx_t frun::trip_idx() const {
 void run_stop::print(std::ostream& out,
                      bool const first,
                      bool const last) const {
-  auto const& tz = tt().locations_.timezones_.at(
-      get_transport_stop_tz(*fr_->tt_, fr_->t_.t_idx_, get_location().l_));
+  auto const& tz = tt().locations_.timezones_.at(get_tz(event_type::kDep));
 
   // Print stop index, location name.
   fmt::print(out, "  {:2}: {:7} {:.<48}", stop_idx_, get_location().id_,

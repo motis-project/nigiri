@@ -2,10 +2,10 @@
 
 #include "nigiri/loader/gtfs/files.h"
 #include "nigiri/loader/gtfs/load_timetable.h"
+#include "nigiri/rt/frun.h"
 #include "nigiri/timetable.h"
 
 #include "nigiri/lookup/get_transport.h"
-#include "nigiri/lookup/get_transport_stop_tz.h"
 
 using namespace nigiri;
 using namespace nigiri::loader;
@@ -81,10 +81,8 @@ TEST(gtfs, local_to_unix_trip_test) {
   };
 
   auto const get_tz = [&](transport const t, stop_idx_t const stop_idx) {
-    auto const r = tt.transport_route_[t.t_idx_];
-    auto const l = tt.route_location_seq_[r][stop_idx];
-    auto const tz_idx =
-        get_transport_stop_tz(tt, t.t_idx_, stop{l}.location_idx());
+    auto const fr = rt::frun::from_t(tt, nullptr, t);
+    auto const tz_idx = fr[stop_idx].get_tz(nigiri::event_type::kDep);
     auto const tz = tt.locations_.timezones_[tz_idx];
     utl::verify(holds_alternative<pair<string, void const*>>(tz), "bad tz");
     return reinterpret_cast<date::time_zone const*>(
