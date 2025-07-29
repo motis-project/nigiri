@@ -65,7 +65,7 @@ netex_locale parse_locale(netex_data& data,
 
   if (!locale.tz_name_.empty()) {
     locale.tz_idx_ = get_tz_idx(data, locale.tz_name_);
-  } else {
+  } else if (!locale.tz_offset_.empty() && !locale.tz_summer_offset_.empty()) {
     auto const guessed_tz_name =
         guess_time_zone(locale.tz_offset_, locale.tz_summer_offset_);
     locale.tz_idx_ = get_tz_idx(data, guessed_tz_name);
