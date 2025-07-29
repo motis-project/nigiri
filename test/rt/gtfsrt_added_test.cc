@@ -1013,7 +1013,7 @@ TEST(rt, gtfs_rt_new_relative) {
   EXPECT_EQ(0, rtt.rt_transport_location_seq_.size());
 }
 
-TEST(rt, DISABLED_gtfs_rt_replacement) {
+TEST(rt, gtfs_rt_replacement) {
   // Load static timetable.
   timetable tt;
   register_special_stations(tt);
@@ -1060,7 +1060,7 @@ TEST(rt, DISABLED_gtfs_rt_replacement) {
   EXPECT_EQ(expectedReplacement, ss2.str());
 }
 
-TEST(rt, DISABLED_gtfs_rt_duplicated_empty) {
+TEST(rt, gtfs_rt_duplicated_empty) {
   // Load static timetable.
   timetable tt;
   register_special_stations(tt);
@@ -1119,7 +1119,7 @@ TEST(rt, DISABLED_gtfs_rt_duplicated_empty) {
   EXPECT_EQ(expectedDuplicated, ss2.str());
 }
 
-TEST(rt, DISABLED_gtfs_rt_duplicated) {
+TEST(rt, gtfs_rt_duplicated) {
   // Load static timetable.
   timetable tt;
   register_special_stations(tt);
@@ -1167,7 +1167,7 @@ TEST(rt, DISABLED_gtfs_rt_duplicated) {
   ASSERT_FALSE(fr.is_cancelled());
 }
 
-TEST(rt, DISABLED_gtfs_rt_duplicated_non_existent) {
+TEST(rt, gtfs_rt_duplicated_non_existent) {
   // Load static timetable.
   timetable tt;
   register_special_stations(tt);
