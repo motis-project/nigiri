@@ -1,14 +1,17 @@
 #include "nigiri/loader/netex/stop_places.h"
 
+#include <cstdlib>
+#include <algorithm>
+#include <string_view>
+#include <utility>
+
 #include "utl/helpers/algorithm.h"
 #include "utl/parser/arg_parser.h"
 #include "utl/to_vec.h"
 #include "utl/verify.h"
 
-#include <cstdlib>
-#include <algorithm>
-#include <string_view>
-#include <utility>
+#include "geo/box.h"
+#include "geo/latlng.h"
 
 #include "nigiri/logging.h"
 
@@ -166,9 +169,49 @@ void handle_quay(netex_data& data,
   }
 }
 
+void calculate_missing_centroids(netex_data& data) {
+  auto const is_zero = [](geo::latlng const& loc) {
+    return loc.lat_ == 0.0 && loc.lng_ == 0.0;
+  };
+
+  for (auto rerun = true; rerun; rerun = false) {
+    for (auto& [_, sp] : data.stop_places_) {
+      if (is_zero(sp.centroid_)) {
+        auto box = geo::box{};
+        for (auto const& child_id : sp.children_) {
+          if (auto it = data.stop_places_.find(child_id);
+              it != data.stop_places_.end()) {
+            auto const& child_sp = it->second;
+            if (!is_zero(child_sp.centroid_)) {
+              box.extend(child_sp.centroid_);
+            }
+          }
+        }
+        for (auto const& quay : sp.quays_) {
+          if (!is_zero(quay.centroid_)) {
+            box.extend(quay.centroid_);
+          }
+        }
+        if (!box.empty()) {
+          sp.centroid_ = box.centroid();
+          rerun = true;
+        } else if (sp.parent_ref_) {
+          if (auto it = data.stop_places_.find(*sp.parent_ref_);
+              it != data.stop_places_.end()) {
+            auto const& parent_sp = it->second;
+            if (!is_zero(parent_sp.centroid_)) {
+              sp.centroid_ = parent_sp.centroid_;
+              rerun = true;
+            }
+          }
+        }
+      }
+    }
+  }
+}
+
 void finalize_stop_places(netex_data& data) {
-  for (auto& spp : data.stop_places_) {
-    auto& sp = spp.second;
+  for (auto& [_, sp] : data.stop_places_) {
     if (sp.parent_ref_) {
       if (auto it = data.stop_places_.find(*sp.parent_ref_);
           it != data.stop_places_.end()) {
@@ -212,6 +255,8 @@ void finalize_stop_places(netex_data& data) {
           "quay {} has missing parent {}", id, *quay.parent_ref_);
     }
   }
+
+  calculate_missing_centroids(data);
 }
 
 }  // namespace nigiri::loader::netex
