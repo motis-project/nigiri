@@ -401,10 +401,10 @@ void write_footpaths(timetable& tt) {
         tt.locations_.preprocessing_footpaths_in_[i]);
   }
 
-  tt.locations_.footpaths_out_[kDefaultProfile] = reduce_footpaths(
-      tt, tt.locations_.footpaths_full_out_[kDefaultProfile], 2U);
-  tt.locations_.footpaths_in_[kDefaultProfile] = reduce_footpaths(
-      tt, tt.locations_.footpaths_full_in_[kDefaultProfile], 2U);
+  tt.locations_.footpaths_out_[kDefaultProfile] =
+      reduce_footpaths(tt, tt.locations_.footpaths_full_out_[kDefaultProfile]);
+  tt.locations_.footpaths_in_[kDefaultProfile] =
+      reduce_footpaths(tt, tt.locations_.footpaths_full_in_[kDefaultProfile]);
 
   tt.locations_.preprocessing_footpaths_in_.clear();
   tt.locations_.preprocessing_footpaths_out_.clear();

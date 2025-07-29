@@ -10,6 +10,6 @@ struct timatable;
 namespace nigiri::loader {
 
 vecvec<location_idx_t, footpath> reduce_footpaths(
-    timetable&, vecvec<location_idx_t, footpath> const&, std::size_t n);
+    timetable&, vecvec<location_idx_t, footpath> const&);
 
 }

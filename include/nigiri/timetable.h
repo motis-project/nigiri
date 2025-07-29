@@ -43,7 +43,7 @@ struct timetable {
           location_id{.id_ = l.id_, .src_ = l.src_}, l_idx);
 
       if (is_new) {
-        utl::verify(next_idx <= footpath::kMaxTarget,
+        utl::verify(l_idx <= footpath::kMaxTarget,
                     "MAX={} locations reached", footpath::kMaxTarget);
 
         names_.emplace_back(l.name_);
