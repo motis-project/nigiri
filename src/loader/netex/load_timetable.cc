@@ -119,9 +119,7 @@ void load_timetable(loader_config const& config,
   finalize_stop_places(data);
 
   auto empty_idx_vec = vector<location_idx_t>{};
-  for (auto& spp : data.stop_places_) {
-    auto& sp = spp.second;
-
+  for (auto& [_, sp] : data.stop_places_) {
     sp.location_idx_ = tt.locations_.register_location(
         location{sp.id_, sp.name_, "", sp.description_, sp.centroid_, src,
                  location_type::kStation, location_idx_t::invalid(),
@@ -138,9 +136,7 @@ void load_timetable(loader_config const& config,
   }
 
   // Add standalone quays as stations
-  for (auto& qp : data.standalone_quays_) {
-    auto& q = qp.second;
-
+  for (auto& [_, q] : data.standalone_quays_) {
     q.location_idx_ = tt.locations_.register_location(
         location{q.id_, q.name_, q.public_code_, "", q.centroid_, src,
                  location_type::kStation, location_idx_t::invalid(),
