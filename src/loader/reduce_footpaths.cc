@@ -18,9 +18,7 @@ vecvec<location_idx_t, footpath> reduce_footpaths(
   init.fill(footpath{footpath::kMaxTarget, footpath::kMaxDuration});
   auto reachable =
       vector_map<route_idx_t, std::array<footpath, N>>{tt.n_routes(), init};
-
   auto reachable_bits = bitvec_map<route_idx_t>{tt.n_routes()};
-  reachable_bits.one_out();  // trigger reset
 
   for (auto l = location_idx_t{0U}; l != tt.n_locations(); ++l) {
     reachable_bits.zero_out();
