@@ -83,6 +83,20 @@ vecvec<location_idx_t, footpath> reduce_footpaths(
   for (auto const& r : reduced) {
     compact.emplace_back(r);
   }
+
+  // Count.
+  auto n_full = 0U;
+  for (auto const x : fps) {
+    n_full += x.size();
+  }
+  auto n_reduced = 0U;
+  for (auto const x : compact) {
+    n_reduced += x.size();
+  }
+
+  log(log_lvl::info, "nigiri.loader.reduce_footpaths",
+      "reduce footpaths: #full={}, #reduced={}", n_full, n_reduced);
+
   return compact;
 }
 
