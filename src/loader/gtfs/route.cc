@@ -196,7 +196,7 @@ route_map_t read_routes(source_idx_t const src,
                            {tt.strings_.store(id),
                             tt.strings_.store("UNKNOWN_AGENCY"),
                             tt.strings_.store(""),
-                            get_tz_idx(tt, timezones, default_tz)});
+                            get_tz_idx(tt, timezones, default_tz), src});
                      });
 
            auto const route_id_idx = tt.route_ids_[src].add(

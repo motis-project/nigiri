@@ -17,17 +17,6 @@ unixtime_t parse_time_tz(std::string_view s, char const* format) {
       date::make_zoned(tz, ls).get_sys_time());
 }
 
-unixtime_t parse_time(std::string_view s, char const* format) {
-  std::stringstream in;
-  in.exceptions(std::ios::badbit | std::ios::failbit);
-  in << s;
-
-  unixtime_t u;
-  in >> date::parse(format, u);
-
-  return u;
-}
-
 unixtime_t parse_time_no_tz(std::string_view s) {
   return parse_time(s, "%FT%T");
 }

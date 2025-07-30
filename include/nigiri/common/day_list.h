@@ -12,3 +12,6 @@ struct day_list {
 };
 
 }  // namespace nigiri
+
+template <>
+struct fmt::formatter<nigiri::day_list> : fmt::ostream_formatter {};

@@ -11,7 +11,7 @@ nigiri_timetable_t* nigiri_load_from_dir(nigiri::loader::dir const& d,
                                          int64_t from_ts,
                                          int64_t to_ts,
                                          unsigned link_stop_distance);
-void nigiri_update_with_rt_from_buf(const nigiri_timetable_t* t,
+void nigiri_update_with_rt_from_buf(nigiri_timetable_t const* t,
                                     std::string_view protobuf,
                                     void (*callback)(nigiri_event_change_t,
                                                      void* context),
@@ -61,7 +61,7 @@ stop_id,stop_code,stop_name,stop_desc,stop_lat,stop_lon,zone_id,stop_url,locatio
 3887,3887,Phillip / Columbia,,  43.476409, -80.539399,,,0,,1,
 2524,2524,Columbia / Hazel,,  43.480027, -80.531130,,,0,,1,
 4073,4073,King / Columbia,,  43.482448, -80.526106,,,0,,1,
-1916,1916,King / Weber,,  43.484988, -80.526677,,,0,,1,
+1916,1916,King / Weber,,  43.484988, -80.526677,,,0,4073,1,
 1918,1918,King / Manulife,,  43.491207, -80.528026,,,0,4073,1,
 1127,1127,Conestoga Station,,  43.498036, -80.528999,,
 
@@ -375,7 +375,7 @@ TEST(rt, abi_timetable) {
   EXPECT_EQ("King / Manulife", l35_name);
   auto const l35_id = std::string{l35->id, l35->id_len};
   EXPECT_EQ("1918", l35_id);
-  EXPECT_EQ(1, l35->n_footpaths);
+  EXPECT_EQ(2, l35->n_footpaths);
   EXPECT_EQ(33, l35->footpaths[0].target_location_idx);
   EXPECT_EQ(2, l35->footpaths[0].duration);
   EXPECT_FLOAT_EQ(43.491207, l35->lat);

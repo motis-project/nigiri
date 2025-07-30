@@ -142,7 +142,6 @@ struct timetable {
     basic_string<provider_idx_t> const& section_providers_;
     basic_string<trip_direction_idx_t> const& section_directions_;
     basic_string<trip_line_idx_t> const& section_lines_;
-    basic_string<stop_idx_t> const& stop_seq_numbers_;
     basic_string<route_color> const& route_colors_;
   };
 
@@ -435,6 +434,9 @@ struct timetable {
 
   // Schedule range.
   interval<date::sys_days> date_range_;
+
+  // Source -> feed end date
+  vector_map<source_idx_t, date::sys_days> src_end_date_;
 
   // Trip access: external trip id -> internal trip index
   vector<pair<trip_id_idx_t, trip_idx_t>> trip_id_to_idx_;

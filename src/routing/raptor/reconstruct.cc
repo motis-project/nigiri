@@ -112,8 +112,10 @@ std::optional<journey::leg> find_start_footpath(timetable const& tt,
             "  excluded td journey start at leg_start_location={}: "
             "leg_start_time={}, duration={}, start={}, journey_start={}\n",
             location{tt, leg_start_location}, leg_start_time,
-            duration.has_value() ? *duration : kInfeasible,
-            leg_start_time - (kFwd ? 1 : -1) * *duration, j.start_time_);
+            fp.has_value() ? fp->first : kInfeasible,
+            fp.has_value() ? leg_start_time - (kFwd ? 1 : -1) * fp->first
+                           : unixtime_t{0_minutes},
+            j.start_time_);
       }
     } else {
       trace_reconstruct("  no td start found for location: {}\n",
@@ -178,7 +180,7 @@ void reconstruct_journey_with_vias(timetable const& tt,
 
   auto const find_entry_in_prev_round =
       [&](unsigned const k, rt::run const& r, stop_idx_t const from_stop_idx,
-          delta_t const time, bool const section_bike_filter,
+          delta_t, bool const section_bike_filter,
           bool const section_car_filter) -> std::optional<journey::leg> {
     auto const fr = rt::frun{tt, rtt, r};
     auto const n_stops = kFwd ? from_stop_idx + 1U : fr.size() - from_stop_idx;
@@ -235,7 +237,7 @@ void reconstruct_journey_with_vias(timetable const& tt,
             fr[stop_idx].get_location_idx(),
             fr[from_stop_idx].get_location_idx(),
             delta_to_unix(base, event_time),
-            delta_to_unix(base, time),
+            fr[from_stop_idx].time(kFwd ? event_type::kArr : event_type::kDep),
             journey::run_enter_exit{r, stop_idx, from_stop_idx}};
       } else {
         trace_rc_transport_entry_not_possible;

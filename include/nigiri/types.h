@@ -242,6 +242,7 @@ struct provider {
   CISTA_PRINTABLE(provider, "short_name", "long_name", "url")
   string_idx_t short_name_, long_name_, url_;
   timezone_idx_t tz_{timezone_idx_t::invalid()};
+  source_idx_t src_;
 };
 
 // colors in ARGB layout, 0 thus indicates no color specified
