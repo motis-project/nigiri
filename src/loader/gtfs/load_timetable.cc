@@ -110,13 +110,11 @@ void load_timetable(loader_config const& config,
   };
 
   auto const progress_tracker = utl::get_active_progress_tracker();
-  auto stats = timetable::statistics{};
   auto timezones = tz_map{};
   auto agencies = read_agencies(src, tt, timezones, load(kAgencyFile).data());
   auto const [stops, seated_transfers] =
       read_stops(src, tt, timezones, load(kStopFile).data(),
                  load(kTransfersFile).data(), config.link_stop_distance_);
-  stats.locations_ = static_cast<std::uint32_t>(stops.size());
   auto const routes = read_routes(src, tt, timezones, agencies,
                                   load(kRoutesFile).data(), config.default_tz_);
   auto const calendar = read_calendar(load(kCalenderFile).data());
@@ -127,15 +125,6 @@ void load_timetable(loader_config const& config,
   auto const service = merge_traffic_days(
       tt.internal_interval_days(), calendar, dates,
       config.extend_calendar_ ? feed_info.feed_end_date_ : std::nullopt);
-  {
-    // Find first and last service day
-    for (auto const& s : service) {
-      s.second->for_each_set_bit([&](std::uint16_t const i) {
-        stats.first_ = std::min(stats.first_, i);
-        stats.last_ = std::max(stats.last_, i);
-      });
-    }
-  }
   auto const shape_states =
       (shapes_data != nullptr)
           ? parse_shapes(load(kShapesFile).data(), *shapes_data)
@@ -143,7 +132,6 @@ void load_timetable(loader_config const& config,
   auto trip_data =
       read_trips(tt, routes, service, shape_states, load(kTripsFile).data(),
                  config.bikes_allowed_default_, config.cars_allowed_default_);
-  stats.trips_ = static_cast<std::uint32_t>(trip_data.trips_.size());
   auto const booking_rules = parse_booking_rules(
       tt, load(kBookingRulesFile).data(), service, bitfield_indices);
   auto const location_groups =
@@ -199,10 +187,6 @@ void load_timetable(loader_config const& config,
     auto const timer = scoped_timer{"loader.gtfs.trips.interpolate"};
     for (auto& t : trip_data.data_) {
       t.interpolate();
-      // Count service days per trip
-      if (t.service_) {
-        stats.transport_days_ += t.service_->count();
-      }
     }
   }
 
@@ -534,8 +518,6 @@ void load_timetable(loader_config const& config,
       tt.trip_transport_ranges_.emplace_back(t.transport_ranges_);
     }
   }
-
-  tt.statistics_.push_back(std::move(stats));
 
   {
     progress_tracker->status("Flex")

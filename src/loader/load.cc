@@ -67,6 +67,8 @@ timetable load(std::vector<timetable_source> const& sources,
     }
   }
 
+  // TODO Compute metrics per feed and return these (somehow)
+  // Reminder: Calling `finalize` can remove duplicates, removing trips from feeds
   finalize(tt, finalize_opt);
 
   return tt;

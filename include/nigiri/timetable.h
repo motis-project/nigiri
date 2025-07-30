@@ -1,7 +1,5 @@
 #pragma once
 
-#include <boost/json.hpp>
-
 #include <chrono>
 #include <compare>
 #include <filesystem>
@@ -11,8 +9,6 @@
 
 #include "cista/memory_holder.h"
 #include "cista/reflection/printable.h"
-
-#include "fmt/format.h"
 
 #include "utl/verify.h"
 #include "utl/zip.h"
@@ -148,29 +144,6 @@ struct timetable {
     basic_string<trip_direction_idx_t> const& section_directions_;
     basic_string<trip_line_idx_t> const& section_lines_;
     basic_string<route_color> const& route_colors_;
-  };
-
-  struct statistics {
-    boost::json::object json(
-        source_idx_t source_idx,
-        interval<date::sys_days> const& internal_days) const {
-      return boost::json::object{
-          {"id", to_idx(source_idx)},
-          {"first_day",
-           fmt::format("{:%F}", internal_days.from_ + date::days{first_})},
-          {"last_day",
-           fmt::format("{:%F}", internal_days.from_ + date::days{last_})},
-          {"#locations", locations_},
-          {"#trips", trips_},
-          {"transports x days", transport_days_},
-      };
-    }
-
-    std::uint64_t transport_days_;
-    std::uint32_t locations_;
-    std::uint32_t trips_;
-    std::uint16_t first_ = std::numeric_limits<std::uint16_t>::max();
-    std::uint16_t last_ = std::numeric_limits<std::uint16_t>::min();
   };
 
   template <typename TripId>
@@ -449,8 +422,6 @@ struct timetable {
   void write(cista::memory_holder&) const;
   void write(std::filesystem::path const&) const;
   static cista::wrapped<timetable> read(std::filesystem::path const&);
-  boost::json::array json_stats() const;
-  std::string stats_string() const;
 
   bool has_car_transport(route_idx_t const r) const {
     return route_cars_allowed_[to_idx(r) * 2U] ||
@@ -467,7 +438,6 @@ struct timetable {
 
   // Source -> feed end date
   vector_map<source_idx_t, date::sys_days> src_end_date_;
-  vector_map<source_idx_t, statistics> statistics_;
 
   // Trip access: external trip id -> internal trip index
   vector<pair<trip_id_idx_t, trip_idx_t>> trip_id_to_idx_;

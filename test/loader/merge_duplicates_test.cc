@@ -6,6 +6,7 @@
 #include "nigiri/loader/init_finish.h"
 #include "nigiri/rt/gtfsrt_resolve_run.h"
 #include "nigiri/timetable.h"
+#include "nigiri/timetable_metrics.h"
 
 using namespace nigiri;
 using namespace nigiri::loader;
@@ -353,12 +354,26 @@ TEST(loader, merge_inter_src) {
                     date::sys_days{2024_y / December / 14}};
   register_special_stations(tt);
   load_timetable({}, source_idx_t{0}, line1_2593432458_files(), tt);
+  std::cout << "TEST 1: " << get_metrics(tt) << std::endl; 
   load_timetable({}, source_idx_t{1}, line1_2593402613_files(), tt);
+  std::cout << "TEST 2: " << get_metrics(tt) << std::endl; 
 
   ASSERT_TRUE(!tt.bitfields_.empty() &&
               tt.bitfields_[bitfield_idx_t{0U}].none());
 
+  EXPECT_EQ(
+      "["
+      R"({"id":0,"first_day":"2024-08-14","last_day":"2024-12-14","#locations":16,"#trips":1,"transports x days":103},)"
+      R"({"id":1,"first_day":"2024-08-14","last_day":"2024-12-14","#locations":16,"#trips":1,"transports x days":103})"
+      "]",
+      to_str(get_metrics(tt), tt));
   finalize(tt, false, false, true);
+  EXPECT_EQ(
+      "["
+      R"({"id":0,"first_day":"2024-08-14","last_day":"2024-12-14","#locations":16,"#trips":1,"transports x days":103},)"
+      R"({"id":1,"first_day":"2024-08-14","last_day":"2024-12-14","#locations":16,"#trips":1,"transports x days":103})"
+      "]",
+      to_str(get_metrics(tt), tt));
 
   for (auto a = transport_idx_t{0U}; a != tt.next_transport_idx(); ++a) {
     for (auto b = transport_idx_t{0U}; b != tt.next_transport_idx(); ++b) {
@@ -399,7 +414,15 @@ TEST(loader, merge_inter_src) {
       R"({"id":0,"first_day":"2024-08-14","last_day":"2024-12-14","#locations":16,"#trips":1,"transports x days":103},)"
       R"({"id":1,"first_day":"2024-08-14","last_day":"2024-12-14","#locations":16,"#trips":1,"transports x days":103})"
       "]",
+      to_str(get_metrics(tt), tt));
+  /*
+  EXPECT_EQ(
+      "["
+      R"({"id":0,"first_day":"2024-08-14","last_day":"2024-12-14","#locations":16,"#trips":1,"transports x days":103},)"
+      R"({"id":1,"first_day":"2024-08-14","last_day":"2024-12-14","#locations":16,"#trips":1,"transports x days":103})"
+      "]",
       tt.stats_string());
+  */
 }
 
 namespace {
