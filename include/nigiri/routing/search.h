@@ -150,7 +150,8 @@ struct search {
         allowed_claszes,
         require_bikes_allowed,
         require_cars_allowed,
-        q_.prf_idx_ == 2U,
+        q_.prf_idx_ == kWheelchairProfile,
+        q_.use_reduced_transfers_,
         tts};
   }
 

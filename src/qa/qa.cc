@@ -150,7 +150,7 @@ cista::wrapped<benchmark_criteria> benchmark_criteria::read(
   return std::visit(
       utl::overloaded{[&](cista::buf<cista::mmap>& b) {
                         auto const ptr = reinterpret_cast<benchmark_criteria*>(
-                            &b[cista::data_start(kMode)]);
+                            b.base() + cista::data_start(kMode));
                         return cista::wrapped{std::move(mem), ptr};
                       },
                       [&](cista::buffer& b) {

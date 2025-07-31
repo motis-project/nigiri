@@ -87,6 +87,7 @@ struct query {
   bool extend_interval_later_{false};
   std::optional<interval<unixtime_t>> max_interval_{};
   profile_idx_t prf_idx_{0};
+  bool use_reduced_transfers_{true};
   clasz_mask_t allowed_claszes_{all_clasz_allowed()};
   bool require_bike_transport_{false};
   bool require_car_transport_{false};
