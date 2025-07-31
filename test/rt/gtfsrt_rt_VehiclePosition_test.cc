@@ -349,8 +349,6 @@ constexpr auto const expected = R"(
 
 TEST(rt, gtfs_rt_vp_update) {
 
-  std::cout << "\n We are here! \n";
-
   // Load static timetable.
   timetable tt;
   register_special_stations(tt);
