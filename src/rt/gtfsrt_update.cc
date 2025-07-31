@@ -525,7 +525,8 @@ statistics gtfsrt_update_msg(timetable const& tt,
                              rt_timetable& rtt,
                              source_idx_t const src,
                              std::string_view tag,
-                             gtfsrt::FeedMessage const& msg) {
+                             gtfsrt::FeedMessage const& msg,
+                             bool use_vp) {
   auto span = get_otel_tracer()->StartSpan("gtfsrt_update_msg", {{"tag", tag}});
   auto scope = opentelemetry::trace::Scope{span};
 
@@ -565,7 +566,7 @@ statistics gtfsrt_update_msg(timetable const& tt,
     }
 
     // TODO: Wenn Flag gesetzt ist
-    if () {
+    if (use_vp) {
       if (!entity.has_vehicle()) {
         log(log_lvl::error, "rt.gtfs.unsupported",
             R"(unsupported: no "vehicle_position" field (tag={}, id={}), skipping message)",
@@ -731,7 +732,8 @@ statistics gtfsrt_update_buf(timetable const& tt,
                              source_idx_t const src,
                              std::string_view tag,
                              std::string_view protobuf,
-                             gtfsrt::FeedMessage& msg) {
+                             gtfsrt::FeedMessage& msg,
+                             bool use_vp) {
   msg.Clear();
 
   auto const success =
@@ -744,16 +746,17 @@ statistics gtfsrt_update_buf(timetable const& tt,
     return {.parser_error_ = true};
   }
 
-  return gtfsrt_update_msg(tt, rtt, src, tag, msg);
+  return gtfsrt_update_msg(tt, rtt, src, tag, msg, use_vp);
 }
 
 statistics gtfsrt_update_buf(timetable const& tt,
                              rt_timetable& rtt,
                              source_idx_t const src,
                              std::string_view tag,
-                             std::string_view protobuf) {
+                             std::string_view protobuf,
+                             bool use_vp) {
   auto msg = gtfsrt::FeedMessage{};
-  return gtfsrt_update_buf(tt, rtt, src, tag, protobuf, msg);
+  return gtfsrt_update_buf(tt, rtt, src, tag, protobuf, msg, use_vp);
 }
 
 }  // namespace nigiri::rt

@@ -264,7 +264,7 @@ void nigiri_update_with_rt_from_buf(nigiri_timetable_t const* t,
 
   t->rtt->set_change_callback(rtt_callback);
   try {
-    nigiri::rt::gtfsrt_update_buf(*t->tt, *t->rtt, src, tag, protobuf);
+    nigiri::rt::gtfsrt_update_buf(*t->tt, *t->rtt, src, tag, protobuf, false);
   } catch (std::exception const& e) {
     nigiri::log(nigiri::log_lvl::error, "main",
                 "GTFS-RT update error (tag={}) {}", tag, e.what());
