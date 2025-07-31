@@ -52,19 +52,22 @@ statistics gtfsrt_update_msg(timetable const&,
                              rt_timetable&,
                              source_idx_t const,
                              std::string_view tag,
-                             transit_realtime::FeedMessage const&);
+                             transit_realtime::FeedMessage const&,
+                             bool use_vp);
 
 statistics gtfsrt_update_buf(timetable const& tt,
                              rt_timetable& rtt,
                              source_idx_t const src,
                              std::string_view tag,
                              std::string_view protobuf,
-                             transit_realtime::FeedMessage& msg);
+                             transit_realtime::FeedMessage& msg,
+                             bool use_vp);
 
 statistics gtfsrt_update_buf(timetable const&,
                              rt_timetable&,
                              source_idx_t const,
                              std::string_view tag,
-                             std::string_view protobuf);
+                             std::string_view protobuf,
+                             bool use_vp);
 
 }  // namespace nigiri::rt

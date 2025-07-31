@@ -736,7 +736,7 @@ TEST(rt, gtfs_rt_added) {
 
   // Update.
   auto const msg = rt::json_to_protobuf(kTripAdded);
-  gtfsrt_update_buf(tt, rtt, source_idx_t{0}, "", msg);
+  gtfsrt_update_buf(tt, rtt, source_idx_t{0}, "", msg, false);
 
   // Print trip.
   transit_realtime::TripDescriptor td;
@@ -826,7 +826,7 @@ TEST(rt, gtfs_rt_new) {
 
   // Update.
   auto const msg = rt::json_to_protobuf(kTripNew);
-  gtfsrt_update_buf(tt, rtt, source_idx_t{0}, "", msg);
+  gtfsrt_update_buf(tt, rtt, source_idx_t{0}, "", msg, false);
 
   // Print original trip.
   {
@@ -879,7 +879,7 @@ TEST(rt, gtfs_rt_new) {
   // Update again.
   // TODO different stops in second update
   auto const msg2 = rt::json_to_protobuf(kTripNewLonger);
-  gtfsrt_update_buf(tt, rtt, source_idx_t{0}, "", msg2);
+  gtfsrt_update_buf(tt, rtt, source_idx_t{0}, "", msg2, false);
   auto ss = std::stringstream{};
 
   ss << "\n" << fr;
@@ -901,7 +901,7 @@ TEST(rt, gtfs_rt_new_no_route) {
 
   // Update.
   auto const msg = rt::json_to_protobuf(kTripNewRouteNonExistent);
-  gtfsrt_update_buf(tt, rtt, source_idx_t{0}, "", msg);
+  gtfsrt_update_buf(tt, rtt, source_idx_t{0}, "", msg, false);
 
   // Print trip.
   transit_realtime::TripDescriptor td;
@@ -936,7 +936,7 @@ TEST(rt, gtfs_rt_new_bare) {
   {
     // Update.
     auto const msg = rt::json_to_protobuf(kTripNewBare);
-    gtfsrt_update_buf(tt, rtt, source_idx_t{0}, "", msg);
+    gtfsrt_update_buf(tt, rtt, source_idx_t{0}, "", msg, false);
   }
 
   // Print trip.
@@ -953,7 +953,7 @@ TEST(rt, gtfs_rt_new_bare) {
   {
     // Update.
     auto const msg = rt::json_to_protobuf(kTripNewBareWithStops);
-    gtfsrt_update_buf(tt, rtt, source_idx_t{0}, "", msg);
+    gtfsrt_update_buf(tt, rtt, source_idx_t{0}, "", msg, false);
   }
   auto const [r, t] = rt::gtfsrt_resolve_run(
       date::sys_days{2023_y / August / 10}, tt, &rtt, source_idx_t{0}, td);
@@ -978,7 +978,7 @@ TEST(rt, gtfs_rt_new_non_existing_stops) {
 
   // Update.
   auto const msg = rt::json_to_protobuf(kTripNewNonExistingStops);
-  gtfsrt_update_buf(tt, rtt, source_idx_t{0}, "", msg);
+  gtfsrt_update_buf(tt, rtt, source_idx_t{0}, "", msg, false);
 
   // Check trip.
   transit_realtime::TripDescriptor td;
@@ -1005,7 +1005,7 @@ TEST(rt, gtfs_rt_new_relative) {
 
   // Update.
   auto const msg = rt::json_to_protobuf(kTripNewRelative);
-  gtfsrt_update_buf(tt, rtt, source_idx_t{0}, "", msg);
+  gtfsrt_update_buf(tt, rtt, source_idx_t{0}, "", msg, false);
 
   EXPECT_EQ(0, rtt.rt_transport_location_seq_.size());
 }
@@ -1024,7 +1024,7 @@ TEST(rt, DISABLED_gtfs_rt_replacement) {
 
   // Update.
   auto const msg = rt::json_to_protobuf(kTripReplacement);
-  gtfsrt_update_buf(tt, rtt, source_idx_t{0}, "", msg);
+  gtfsrt_update_buf(tt, rtt, source_idx_t{0}, "", msg, false);
 
   // Print trip.
   transit_realtime::TripDescriptor td;
@@ -1049,7 +1049,7 @@ TEST(rt, DISABLED_gtfs_rt_replacement) {
 
   // Update again.
   auto const msg2 = rt::json_to_protobuf(kTripReplacement);
-  gtfsrt_update_buf(tt, rtt, source_idx_t{0}, "", msg2);
+  gtfsrt_update_buf(tt, rtt, source_idx_t{0}, "", msg2, false);
   auto ss2 = std::stringstream{};
 
   ss2 << "\n" << fr;
@@ -1071,7 +1071,7 @@ TEST(rt, DISABLED_gtfs_rt_duplicated_empty) {
 
   // Update.
   auto const msg = rt::json_to_protobuf(kTripDuplicatedEmpty);
-  gtfsrt_update_buf(tt, rtt, source_idx_t{0}, "", msg);
+  gtfsrt_update_buf(tt, rtt, source_idx_t{0}, "", msg, false);
 
   // Print original trip.
   {
@@ -1108,7 +1108,7 @@ TEST(rt, DISABLED_gtfs_rt_duplicated_empty) {
 
   // Update again.
   auto const msg2 = rt::json_to_protobuf(kTripDuplicated);
-  gtfsrt_update_buf(tt, rtt, source_idx_t{0}, "", msg2);
+  gtfsrt_update_buf(tt, rtt, source_idx_t{0}, "", msg2, false);
 
   auto ss2 = std::stringstream{};
   ss2 << "\n" << fr;
@@ -1130,7 +1130,7 @@ TEST(rt, DISABLED_gtfs_rt_duplicated) {
 
   // Update.
   auto const msg = rt::json_to_protobuf(kTripDuplicated);
-  gtfsrt_update_buf(tt, rtt, source_idx_t{0}, "", msg);
+  gtfsrt_update_buf(tt, rtt, source_idx_t{0}, "", msg, false);
 
   // Print original trip.
   {
@@ -1178,7 +1178,7 @@ TEST(rt, DISABLED_gtfs_rt_duplicated_non_existent) {
 
   // Update.
   auto const msg = rt::json_to_protobuf(kTripDuplicatedNonExistent);
-  gtfsrt_update_buf(tt, rtt, source_idx_t{0}, "", msg);
+  gtfsrt_update_buf(tt, rtt, source_idx_t{0}, "", msg, false);
 
   EXPECT_EQ(0, rtt.rt_transport_location_seq_.size());
 }
@@ -1197,7 +1197,7 @@ TEST(rt, DISABLED_gtfs_rt_duplicated_bare) {
 
   // Update.
   auto const msg = rt::json_to_protobuf(kTripDuplicatedNonExistent);
-  gtfsrt_update_buf(tt, rtt, source_idx_t{0}, "", msg);
+  gtfsrt_update_buf(tt, rtt, source_idx_t{0}, "", msg, false);
 
   EXPECT_EQ(0, rtt.rt_transport_location_seq_.size());
 }
