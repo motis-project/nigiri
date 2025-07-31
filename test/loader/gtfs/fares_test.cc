@@ -673,7 +673,7 @@ TEST(fares, rt_added_fares) {
   }
 
   auto const stats =
-      rt::gtfsrt_update_msg(tt, rtt, source_idx_t{0}, "tag", msg);
+      rt::gtfsrt_update_msg(tt, rtt, source_idx_t{0}, "tag", msg, false);
   EXPECT_EQ(stats.total_entities_success_, 1U);
 
   {

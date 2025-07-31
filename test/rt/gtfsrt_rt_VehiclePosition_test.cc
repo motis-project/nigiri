@@ -367,12 +367,12 @@ TEST(rt, gtfs_rt_vp_update) {
   auto const msg4 = rt::json_to_protobuf(kVehilcePosition4);
   auto const msg5 = rt::json_to_protobuf(kVehilcePosition5);
   auto const msg6 = rt::json_to_protobuf(kVehilcePosition6);
-  auto const stats = gtfsrt_update_buf(tt, rtt, source_idx_t{0}, "", msg, false);
-  auto const stats1 = gtfsrt_update_buf(tt, rtt, source_idx_t{0}, "", msg1, false);
-  auto const stats2 = gtfsrt_update_buf(tt, rtt, source_idx_t{0}, "", msg2, false);
-  auto const stats4 = gtfsrt_update_buf(tt, rtt, source_idx_t{0}, "", msg4, false);
-  auto const stats5 = gtfsrt_update_buf(tt, rtt, source_idx_t{0}, "", msg5, false);
-  auto const stats6 = gtfsrt_update_buf(tt, rtt, source_idx_t{0}, "", msg6, false);
+  auto const stats = gtfsrt_update_buf(tt, rtt, source_idx_t{0}, "", msg, true);
+  auto const stats1 = gtfsrt_update_buf(tt, rtt, source_idx_t{0}, "", msg1, true);
+  auto const stats2 = gtfsrt_update_buf(tt, rtt, source_idx_t{0}, "", msg2, true);
+  auto const stats4 = gtfsrt_update_buf(tt, rtt, source_idx_t{0}, "", msg4, true);
+  auto const stats5 = gtfsrt_update_buf(tt, rtt, source_idx_t{0}, "", msg5, true);
+  auto const stats6 = gtfsrt_update_buf(tt, rtt, source_idx_t{0}, "", msg6, true);
 
   // Print trip.
   transit_realtime::TripDescriptor td;
