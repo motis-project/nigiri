@@ -1,11 +1,13 @@
-#include "nigiri/routing/mcraptor/mcraptor_search.h"
+#include "../nigiri/include/nigiri/routing/mcraptor/mcraptor_search.h"
 
 #include <string>
 #include <utility>
 #include "date/date.h"
 #include "utl/to_vec.h"
-#include "nigiri/routing/query.h"
-#include "nigiri/routing/mcraptor/mcraptor.h"
+#include "../nigiri/include/nigiri/routing/query.h"
+#include "../nigiri/include/nigiri/routing/mcraptor/mcraptor.h"
+#include "../nigiri/include/nigiri/routing/mcraptor/mcraptor.h"
+
 
 namespace nigiri::routing {
 
@@ -17,9 +19,9 @@ routing_result<raptor_stats> mcraptor_search(
     query q,
     direction const search_dir,
     std::optional<std::chrono::seconds> const timeout) {
-  if (rtt != nullptr) {
-    return {};
-  }
+//  if (rtt != nullptr) {
+//    return {};
+//  }
 
   using algo_t = mcraptor<>;
   return search<direction::kForward, algo_t>{

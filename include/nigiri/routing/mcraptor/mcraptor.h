@@ -14,6 +14,8 @@ struct mcraptor_label {
 
   location_idx_t trip_l_{};
   location_idx_t fp_l_{};
+  route_idx_t route_id{};
+  transport trip_id{};
 
   bool dominates(mcraptor_label const& l) const {
     return this->arr_t_ < l.arr_t_;
@@ -107,6 +109,7 @@ struct mcraptor {
                day_idx_t const base,
                clasz_mask_t const allowed_claszes,
                bool const require_bike_transport,
+               bool const require_car_transport,
                bool const is_wheelchair,
                transfer_time_settings const& tts)
       : tt_{tt},
@@ -298,7 +301,7 @@ private:
             !dest_bag_.dominates({.arr_t_ = static_cast<delta_t>(by_transport + lb_[l_idx])}, k)) {
 
           ++stats_.n_earliest_arrival_updated_by_route_;
-          tmp_[l_idx] = {by_transport, et_label.trip_l_, stp.location_idx()};
+          tmp_[l_idx] = {by_transport, et_label.trip_l_, stp.location_idx(), et_label.route_id, et_label.trip_id};
           tmp_station_mark_.set(l_idx, true);
           any_marked = true;
         }
@@ -334,6 +337,8 @@ private:
                    et_time_at_stop))) {
             et = new_et;
             et_label.trip_l_ = stp.location_idx();
+            et_label.route_id = r;
+            et_label.trip_id = new_et;
           }
         }
       }
@@ -361,6 +366,8 @@ private:
 
           mcraptor_label new_label = tmp_[i];
           new_label.arr_t_ = fp_target_time;
+          new_label.trip_id = tmp_label.trip_id;
+          new_label.route_id = tmp_label.route_id;
 
           location_bags_[i][k].add(new_label);
           station_mark_.set(i, true);
@@ -432,10 +439,11 @@ private:
     footpath footpath{};
 
     auto found_end_location = false;
-    for (auto const& r : tt_.location_routes_[trip_l_idx]) {
-      if (found_end_location) {
-        break;
-      }
+//    for (auto const& r : tt_.location_routes_[trip_l_idx]) {
+      auto r = label.route_id;
+//      if (found_end_location) {
+//        break;
+//      }
       auto const stop_seq = tt_.route_location_seq_[r];
       struct transport trip{};
 
@@ -461,7 +469,7 @@ private:
           trip_dep_time = time_at_stop(r, trip, stop_idx,event_type::kDep);
           from_stop_idx = stop_idx;
         }
-      }
+//      }
     }
 
     if (l == fp_l_idx) {

@@ -1,4 +1,5 @@
 #include "nigiri/routing/raptor_search.h"
+#include "nigiri/routing/mcraptor/mcraptor_search.h"
 
 #include <string>
 #include <string_view>
@@ -28,6 +29,7 @@ routing_result<raptor_stats> raptor_search_with_vias(
     raptor_state& r_state,
     query q,
     std::optional<std::chrono::seconds> const timeout) {
+  rtt = nullptr;
   if (rtt == nullptr) {
     using algo_t = raptor<SearchDir, false, Vias, search_mode::kOneToOne>;
     return search<SearchDir, algo_t>{tt,      rtt,          s_state,
@@ -92,6 +94,7 @@ routing_result<raptor_stats> raptor_search(
     query q,
     direction const search_dir,
     std::optional<std::chrono::seconds> const timeout) {
+  return mcraptor_search(tt, rtt, s_state, r_state, q, search_dir, timeout);
   auto span = get_otel_tracer()->StartSpan("raptor_search");
   auto scope = opentelemetry::trace::Scope{span};
   if (span->IsRecording()) {
