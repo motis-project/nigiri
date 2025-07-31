@@ -85,6 +85,7 @@ raptor_state one_to_all(timetable const& tt,
       q.require_bike_transport_,
       q.require_car_transport_,
       is_wheelchair,
+      q.use_reduced_transfers_,
       q.transfer_time_settings_};
 
   run_raptor(std::move(r), tt, start_time, q);

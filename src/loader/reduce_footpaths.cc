@@ -1,10 +1,11 @@
 #include "nigiri/loader/reduce_footpaths.h"
 
-#include "nigiri/timetable.h"
-
 #include "utl/erase_duplicates.h"
 #include "utl/insert_sorted.h"
 #include "utl/parallel_for.h"
+#include "utl/timer.h"
+
+#include "nigiri/timetable.h"
 
 namespace nigiri::loader {
 
@@ -12,6 +13,8 @@ constexpr auto const kN = 2U;
 
 vecvec<location_idx_t, footpath> reduce_footpaths(
     timetable& tt, vecvec<location_idx_t, footpath> const& fps) {
+  auto const timer = utl::scoped_timer{"reduce-footpaths"};
+
   auto const init = []() {
     auto x = std::array<footpath, kN>{};
     x.fill(footpath{footpath::kMaxTarget, footpath::kMaxDuration});
@@ -95,7 +98,8 @@ vecvec<location_idx_t, footpath> reduce_footpaths(
   }
 
   log(log_lvl::info, "nigiri.loader.reduce_footpaths",
-      "reduce footpaths: #full={}, #reduced={}", n_full, n_reduced);
+      "reduce footpaths: #full={}, #reduced={} ({}%)", n_full, n_reduced,
+      100.0 * n_reduced / n_full);
 
   return compact;
 }
