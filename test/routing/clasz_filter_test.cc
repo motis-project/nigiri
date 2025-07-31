@@ -186,7 +186,7 @@ TEST(routing, clasz_filter_test) {
                                .ev_type_ = event_type::kDep,
                                .delay_minutes_ = 10U}}}},
       date::sys_days{2024_y / March / 1} + 1h);
-  rt::gtfsrt_update_msg(tt, rtt, source_idx_t{0}, "", msg);
+  rt::gtfsrt_update_msg(tt, rtt, source_idx_t{0}, "", msg, false);
 
   {  // All available classes.
     auto const results = raptor_search(

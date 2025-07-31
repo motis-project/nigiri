@@ -71,7 +71,7 @@ void with_rt_trips(
       }
     }
     rt::gtfsrt_update_msg(tt, rtt, source_idx_t{0}, "",
-                          to_feed_msg(trip_delays, base_day + 1h));
+                          to_feed_msg(trip_delays, base_day + 1h), false);
     fn(&rtt, s.str());
   }
 }

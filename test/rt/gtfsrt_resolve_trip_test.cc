@@ -301,7 +301,7 @@ TEST(rt, gtfs_rt_update) {
     stop_update->mutable_arrival()->set_delay(900);
   }
 
-  auto stats = rt::gtfsrt_update_msg(tt, rtt, source_idx_t{0}, "tag", msg0);
+  auto stats = rt::gtfsrt_update_msg(tt, rtt, source_idx_t{0}, "tag", msg0, false);
   auto [r, t] = rt::gtfsrt_resolve_run(date::sys_days{2019_y / May / 4}, tt,
                                        &rtt, source_idx_t{0}, *td);
   EXPECT_EQ(1U, stats.total_entities_success_);
@@ -337,7 +337,7 @@ TEST(rt, gtfs_rt_update) {
     stop_update->mutable_arrival()->set_delay(600);
   }
 
-  stats = rt::gtfsrt_update_msg(tt, rtt, source_idx_t{0}, "tag", msg);
+  stats = rt::gtfsrt_update_msg(tt, rtt, source_idx_t{0}, "tag", msg, false);
   EXPECT_EQ(1U, stats.total_entities_success_);
 
   std::tie(r, t) = rt::gtfsrt_resolve_run(date::sys_days{2019_y / May / 4}, tt,

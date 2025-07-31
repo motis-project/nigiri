@@ -12,6 +12,7 @@
 #include "nigiri/get_otel_tracer.h"
 #include "nigiri/location.h"
 #include "nigiri/logging.h"
+#include "nigiri/lookup/get_transport.h"
 #include "nigiri/rt/frun.h"
 #include "nigiri/rt/gtfsrt_alert.h"
 #include "nigiri/rt/gtfsrt_resolve_run.h"
@@ -76,8 +77,15 @@ std::ostream& operator<<(std::ostream& out, statistics const& s) {
                     s.alert_total_informed_entities_);
   print_if_no_empty("alert_invalid_route_type", s.alert_invalid_route_type_,
                     s.alert_total_informed_entities_);
-  print_if_no_empty("unsupported_vehicle", s.unsupported_vehicle_, true);
   print_if_no_empty("unsupported_no_trip_id", s.unsupported_no_trip_id_, true);
+  print_if_no_empty("no_vehicle_position", s.no_vehicle_position_, true);
+  print_if_no_empty("vehicle_position_without_position", s.vehicle_position_without_position_,
+                    true);
+  print_if_no_empty("vehicle_position_without_trip", s.vehicle_position_without_trip_, true);
+  print_if_no_empty("vehicle_position_trip_without_trip_id", s.vehicle_position_trip_without_trip_id_,
+                    true);
+  print_if_no_empty("vehicle_position_trip_without_route_id", s.vehicle_position_trip_without_route_id_,
+                    true);
   print_if_no_empty("no_trip_update", s.no_trip_update_, true);
   print_if_no_empty("trip_update_without_trip", s.trip_update_without_trip_,
                     true);
@@ -419,11 +427,106 @@ bool update_run(source_idx_t const src,
   return true;
 }
 
+void handle_vehicle_position(timetable const& tt,
+                             rt_timetable& rtt,
+                             source_idx_t const src,
+                             std::string_view tag,
+                             gtfsrt::FeedEntity const& entity,
+                             std::chrono::time_point<date::sys_days::clock, date::sys_days::duration> today) {
+  auto const vp = entity.vehicle();
+  auto const vp_lat = vp.position().latitude();
+  auto const vp_lon = vp.position().longitude();
+  auto const td = vp.trip();
+  auto const gtfsrt_trip_id = td.trip_id();
+
+  auto [r, trip_idx] = gtfsrt_resolve_run(today, tt, &rtt, src, td,
+                                          std::string_view{gtfsrt_trip_id});
+  auto const& rtt_const = rtt;
+  auto const location_seq =
+      r.is_scheduled()
+          ? std::span{tt.route_location_seq_[tt.transport_route_[r.t_.t_idx_]]}
+          : std::span{rtt_const.rt_transport_location_seq_[r.rt_]};
+  auto stops = std::vector<stop::value_type>{};
+
+  for (auto const loc : location_seq) {
+    stops.emplace_back(stop{loc}.value());
+  }
+
+  // add rt_transport if not existent
+  if (!r.is_rt()) {
+    auto const sr = td.schedule_relationship();
+    auto const added_or_replaced =
+        is_added(sr) ||
+        sr == transit_realtime::TripDescriptor_ScheduleRelationship_REPLACEMENT;
+    auto times = added_or_replaced
+                     ? std::vector<delta_t>(location_seq.size() * 2U - 2U, 0)
+                     : std::vector<delta_t>{};
+    r.rt_ = rtt.add_rt_transport(
+        src, tt, r.t_, stops, times, std::string_view{gtfsrt_trip_id},
+        td.route_id(), tt.trip_display_names_[trip_idx].view());
+  }
+
+  // match position to stop
+  auto it = utl::find_if(location_seq, [&](auto const& loc) {
+    auto const stop_loc = stop{loc};
+    auto const stop_position = tt.locations_.get(stop_loc.location_idx());
+    auto const vehicle_position = geo::latlng{vp_lat, vp_lon};
+    return geo::approx_squared_distance(
+               stop_position.pos_, vehicle_position,
+               geo::approx_distance_lng_degrees(vehicle_position)) < 10;
+  });
+  auto stopped_at_idx = std::distance(begin(location_seq), it);
+
+  if (it == end(location_seq)) {
+    log(log_lvl::info, "rt.gtfs.unsupported",
+        R"(Position of Vehicle was not near stop. Skipping Message)", tag,
+        entity.id());
+  }
+
+  // get remaining stops
+  auto const seq_numbers =
+      r.is_scheduled()
+          ? loader::gtfs::
+                stop_seq_number_range{{tt.trip_stop_seq_numbers_[trip_idx]},
+                                      static_cast<stop_idx_t>(
+                                          r.stop_range_.size())}
+          : loader::gtfs::stop_seq_number_range{
+                std::span<stop_idx_t>{},
+                static_cast<stop_idx_t>(location_seq.size())};
+
+  // get delay
+  auto const now =
+      vp.has_timestamp()
+          ? unixtime_t{std::chrono::duration_cast<i32_minutes>(
+                std::chrono::seconds{vp.timestamp()})}
+          : std::chrono::floor<i32_minutes>(std::chrono::system_clock::now());
+  auto const delay =
+      now - tt.event_time(r.t_, stopped_at_idx, event_type::kDep);
+  auto const delay_cast = std::chrono::duration_cast<duration_t>(delay);
+  // update delay for following stops
+  auto seq_it = begin(seq_numbers);
+  for (int i = 0; i <= stopped_at_idx; ++i) {
+    ++seq_it;
+  }
+
+  // update delay for remaining stops
+  for (auto stop_idx = stopped_at_idx + 1; seq_it != seq_numbers.end();
+       ++stop_idx) {
+    update_delay(tt, rtt, r, stop_idx, event_type::kArr, delay_cast,
+                 std::nullopt);
+    if (++seq_it != seq_numbers.end()) {
+      update_delay(tt, rtt, r, stop_idx, event_type::kDep, delay_cast,
+                   std::nullopt);
+    }
+  }
+}
+
 statistics gtfsrt_update_msg(timetable const& tt,
                              rt_timetable& rtt,
                              source_idx_t const src,
                              std::string_view tag,
-                             gtfsrt::FeedMessage const& msg) {
+                             gtfsrt::FeedMessage const& msg,
+                             bool use_vp) {
   auto span = get_otel_tracer()->StartSpan("gtfsrt_update_msg", {{"tag", tag}});
   auto scope = opentelemetry::trace::Scope{span};
 
@@ -454,12 +557,45 @@ statistics gtfsrt_update_msg(timetable const& tt,
       }
     };
 
-    unsupported(entity.has_vehicle(), "vehicle", stats.unsupported_vehicle_);
     unsupported(entity.has_is_deleted() && entity.is_deleted(), "deleted",
                 stats.unsupported_deleted_);
 
     if (entity.has_alert()) {
       handle_alert(today, tt, rtt, src, tag, entity.alert(), stats);
+      continue;
+    }
+
+    // TODO: Wenn Flag gesetzt ist
+    if (use_vp) {
+      if (!entity.has_vehicle()) {
+        log(log_lvl::error, "rt.gtfs.unsupported",
+            R"(unsupported: no "vehicle_position" field (tag={}, id={}), skipping message)",
+            tag, entity.id());
+        ++stats.no_vehicle_position_;
+      } else if (!entity.vehicle().has_position()) {
+        log(log_lvl::error, "rt.gtfs.unsupported",
+            R"(unsupported: no "position" field in "vehicle_position" field (tag={}, id={}), skipping message)",
+            tag, entity.id());
+        ++stats.vehicle_position_without_position_;
+      } else if (!entity.vehicle().has_trip()) {
+        log(log_lvl::error, "rt.gtfs.unsupported",
+            R"(unsupported: no "trip" field in "vehicle_position" field (tag={}, id={}), skipping message)",
+            tag, entity.id());
+        ++stats.vehicle_position_without_trip_;
+      } else if (!entity.vehicle().trip().has_trip_id()) {
+        log(log_lvl::error, "rt.gtfs.unsupported",
+            R"(unsupported: no "trip_id" field in "trip" field (tag={}, id={}), skipping message)",
+            tag, entity.id());
+        ++stats.vehicle_position_trip_without_trip_id_;
+      } else if (!entity.vehicle().trip().has_route_id()) {
+        log(log_lvl::error, "rt.gtfs.unsupported",
+            R"(unsupported: no "route_id" field in "trip" field (tag={}, id={}), skipping message)",
+            tag, entity.id());
+        ++stats.vehicle_position_trip_without_route_id_;
+      } else {
+        handle_vehicle_position(tt, rtt, src, tag, entity, today);
+        ++stats.total_entities_success_;
+      }
       continue;
     }
 
@@ -596,7 +732,8 @@ statistics gtfsrt_update_buf(timetable const& tt,
                              source_idx_t const src,
                              std::string_view tag,
                              std::string_view protobuf,
-                             gtfsrt::FeedMessage& msg) {
+                             gtfsrt::FeedMessage& msg,
+                             bool use_vp) {
   msg.Clear();
 
   auto const success =
@@ -609,16 +746,17 @@ statistics gtfsrt_update_buf(timetable const& tt,
     return {.parser_error_ = true};
   }
 
-  return gtfsrt_update_msg(tt, rtt, src, tag, msg);
+  return gtfsrt_update_msg(tt, rtt, src, tag, msg, use_vp);
 }
 
 statistics gtfsrt_update_buf(timetable const& tt,
                              rt_timetable& rtt,
                              source_idx_t const src,
                              std::string_view tag,
-                             std::string_view protobuf) {
+                             std::string_view protobuf,
+                             bool use_vp) {
   auto msg = gtfsrt::FeedMessage{};
-  return gtfsrt_update_buf(tt, rtt, src, tag, protobuf, msg);
+  return gtfsrt_update_buf(tt, rtt, src, tag, protobuf, msg, use_vp);
 }
 
 }  // namespace nigiri::rt
