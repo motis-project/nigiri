@@ -1,3 +1,5 @@
+#include <optional>
+
 #include "geo/latlng.h"
 #include "gtest/gtest.h"
 
@@ -32,6 +34,7 @@ mem_dir test_files() {
      "(
 # agency.txt
 agency_name,agency_url,agency_timezone,agency_lang,agency_phone,agency_id
+invalid,https://test.com,Europe/London,DE,0800123456,INVALID_AGENCY
 test,https://test.com,Europe/Berlin,DE,0800123456,AGENCY_1
 
 # stops.txt
@@ -915,6 +918,8 @@ TEST(rt, gtfs_rt_new_no_route) {
   EXPECT_EQ(fr.size(), 3);
   EXPECT_EQ(nigiri::clasz::kOther, fr.get_clasz());
   EXPECT_EQ("New Route", fr.name());
+  EXPECT_EQ(string_idx_t::invalid(),
+            fr[0].get_provider(event_type::kDep).short_name_);
   ASSERT_FALSE(fr.is_cancelled());
 }
 
@@ -958,6 +963,8 @@ TEST(rt, gtfs_rt_new_bare) {
   ASSERT_TRUE(r.valid());
   auto const fr = rt::frun{tt, &rtt, r};
   EXPECT_EQ("?", fr.name());
+  EXPECT_EQ(string_idx_t::invalid(),
+            fr[0].get_provider(event_type::kDep).short_name_);
 }
 
 TEST(rt, gtfs_rt_new_non_existing_stops) {
