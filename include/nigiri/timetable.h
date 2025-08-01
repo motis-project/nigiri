@@ -1,5 +1,6 @@
 #pragma once
 
+#include <chrono>
 #include <compare>
 #include <filesystem>
 #include <optional>
@@ -630,6 +631,9 @@ struct timetable {
 
   // Strings
   string_store<string_idx_t> strings_;
+
+  // Statistics
+  unixtime_t import_time_;
 };
 
 }  // namespace nigiri

@@ -6,6 +6,7 @@
 #include "nigiri/loader/init_finish.h"
 #include "nigiri/rt/gtfsrt_resolve_run.h"
 #include "nigiri/timetable.h"
+#include "nigiri/timetable_metrics.h"
 
 using namespace nigiri;
 using namespace nigiri::loader;
@@ -358,7 +359,16 @@ TEST(loader, merge_inter_src) {
   ASSERT_TRUE(!tt.bitfields_.empty() &&
               tt.bitfields_[bitfield_idx_t{0U}].none());
 
+  auto const metrics = std::string_view{
+      "["
+      R"({"idx":0,"first_day":"2024-08-14","last_day":"2024-12-13","#locations":16,"#trips":1,"transports x days":102},)"
+      R"({"idx":1,"first_day":"2024-08-14","last_day":"2024-12-13","#locations":16,"#trips":1,"transports x days":102})"
+      "]"};
+  // No duplicates removed
+  EXPECT_EQ(metrics, to_str(get_metrics(tt), tt));
   finalize(tt, false, false, true);
+  // With duplicates removed
+  EXPECT_EQ(metrics, to_str(get_metrics(tt), tt));
 
   for (auto a = transport_idx_t{0U}; a != tt.next_transport_idx(); ++a) {
     for (auto b = transport_idx_t{0U}; b != tt.next_transport_idx(); ++b) {

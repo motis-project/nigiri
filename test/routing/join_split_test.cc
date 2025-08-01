@@ -7,6 +7,7 @@
 #include "nigiri/rt/gtfsrt_resolve_run.h"
 #include "nigiri/rt/gtfsrt_update.h"
 #include "nigiri/rt/rt_timetable.h"
+#include "nigiri/timetable_metrics.h"
 
 #include "../raptor_search.h"
 #include "../rt/util.h"
@@ -246,6 +247,16 @@ TEST(routing, join_split) {
     EXPECT_EQ(kExpected, ss.str());
 
     run_test();
+
+    // Contains all trips serving [12th, 22nd]
+    // As times for ik are +1 day, first trips need to start on 11nd
+    // x: 12, 13, 14, 19, 21
+    // x1: 18  // +2 days
+    // ik: 11, 12, 16, 17, 18, 19  // +1 day
+    // jl: 13, 14, 15, 17, 20, 21
+    EXPECT_EQ(
+        R"([{"idx":0,"first_day":"2025-06-11","last_day":"2025-06-21","#locations":10,"#trips":6,"transports x days":30}])",
+        to_str(get_metrics(tt), tt));
   };
 
   run(0U, 1U, 2U, 3U, 4U, 5U);

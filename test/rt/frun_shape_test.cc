@@ -21,6 +21,7 @@
 #include "nigiri/rt/run.h"
 #include "nigiri/shapes_storage.h"
 #include "nigiri/timetable.h"
+#include "nigiri/timetable_metrics.h"
 #include "nigiri/types.h"
 
 #include "../raptor_search.h"
@@ -966,6 +967,12 @@ TEST(
         tt, state, kSearchDir, to_location_idx("F"), start_time,
         q.max_transfers_);
     EXPECT_EQ(stats_f.duration_, delta_t{-110});
+  }
+  // Loading statistics
+  {
+    EXPECT_EQ(
+        R"([{"idx":0,"first_day":"2024-01-01","last_day":"2024-01-01","#locations":22,"#trips":16,"transports x days":16}])",
+        to_str(get_metrics(tt), tt));
   }
 }
 
