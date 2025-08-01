@@ -248,17 +248,14 @@ TEST(routing, join_split) {
 
     run_test();
 
-    // Contains all trips starting up to 5 days before
-    // Possible bug: Entries in calendar_dates.txt might be included
-    // x: 7, 12, 13, 14, 19, 21, 23(!)
-    // x1: 18
-    // ik: 9, 10, 11, 12, 16, 17, 18, 19
-    // jl: 7, 8, 10, 13, 14, 15, 17, 20, 21, 22
+    // Contains all trips serving [12th, 22nd]
+    // As times for ik are +1 day, first trips need to start on 11nd
+    // x: 12, 13, 14, 19, 21
+    // x1: 18  // +2 days
+    // ik: 11, 12, 16, 17, 18, 19  // +1 day
+    // jl: 13, 14, 15, 17, 20, 21
     EXPECT_EQ(
-        R"([{"idx":0,"first_day":"2025-06-07","last_day":"2025-06-23","#locations":10,"#trips":6,"transports
-x days":44}])",
-        // R"([{"idx":0,"first_day":"2025-06-07","last_day":"2025-06-22","#locations":10,"#trips":6,"transports
-        // x days":43}])",
+        R"([{"idx":0,"first_day":"2025-06-11","last_day":"2025-06-21","#locations":10,"#trips":6,"transports x days":30}])",
         to_str(get_metrics(tt), tt));
   };
 
