@@ -14,7 +14,6 @@
 namespace fs = std::filesystem;
 
 int main(int argc, char** argv) {
-
   std::cout << "\n Starte Tests\n";
 
   std::clog.rdbuf(std::cout.rdbuf());
