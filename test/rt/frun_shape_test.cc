@@ -21,6 +21,7 @@
 #include "nigiri/rt/run.h"
 #include "nigiri/shapes_storage.h"
 #include "nigiri/timetable.h"
+#include "nigiri/timetable_metrics.h"
 #include "nigiri/types.h"
 
 #include "../raptor_search.h"
@@ -969,11 +970,9 @@ TEST(
   }
   // Loading statistics
   {
-        /*
     EXPECT_EQ(
-        R"([{"id":0,"first_day":"2024-01-01","last_day":"2024-01-01","#locations":22,"#trips":16,"transports x days":16}])",
-        tt.stats_string());
-        */
+        R"([{"idx":0,"first_day":"2024-01-01","last_day":"2024-01-01","#locations":22,"#trips":16,"transports x days":16}])",
+        to_str(get_metrics(tt), tt));
   }
 }
 
