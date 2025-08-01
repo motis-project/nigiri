@@ -24,5 +24,4 @@ struct timetable_metrics {
 timetable_metrics get_metrics(timetable const&);
 std::string to_str(timetable_metrics const&, timetable const&);
 
-}
-
+}  // namespace nigiri
