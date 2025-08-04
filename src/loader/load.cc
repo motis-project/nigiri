@@ -32,8 +32,6 @@ timetable load(std::vector<timetable_source> const& sources,
   auto const loaders = get_loaders();
 
   auto tt = timetable{};
-  tt.import_time_ = std::chrono::time_point_cast<unixtime_t::duration>(
-      std::chrono::system_clock::now());
   tt.date_range_ = date_range;
   register_special_stations(tt);
 
