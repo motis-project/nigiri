@@ -971,7 +971,7 @@ TEST(
   // Loading statistics
   {
     EXPECT_EQ(
-        R"([{"idx":0,"first_day":"2024-01-01","last_day":"2024-01-01","#locations":22,"#trips":16,"transports x days":16}])",
+        R"([{"idx":0,"firstDay":"2024-01-01","lastDay":"2024-01-01","noLocations":22,"noTrips":16,"transportsXDays":16}])",
         to_str(get_metrics(tt), tt));
   }
 }

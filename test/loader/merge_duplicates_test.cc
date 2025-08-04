@@ -361,8 +361,8 @@ TEST(loader, merge_inter_src) {
 
   auto const metrics = std::string_view{
       "["
-      R"({"idx":0,"first_day":"2024-08-14","last_day":"2024-12-13","#locations":16,"#trips":1,"transports x days":102},)"
-      R"({"idx":1,"first_day":"2024-08-14","last_day":"2024-12-13","#locations":16,"#trips":1,"transports x days":102})"
+      R"({"idx":0,"firstDay":"2024-08-14","lastDay":"2024-12-13","noLocations":16,"noTrips":1,"transportsXDays":102},)"
+      R"({"idx":1,"firstDay":"2024-08-14","lastDay":"2024-12-13","noLocations":16,"noTrips":1,"transportsXDays":102})"
       "]"};
   // No duplicates removed
   EXPECT_EQ(metrics, to_str(get_metrics(tt), tt));

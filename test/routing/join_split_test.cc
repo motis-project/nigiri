@@ -258,7 +258,7 @@ TEST(routing, join_split) {
     // x1: 18  // > 48:00
     // jl: 13, 14, 15, 17, 20, 21
     EXPECT_EQ(
-        R"([{"idx":0,"first_day":"2025-06-11","last_day":"2025-06-21","#locations":10,"#trips":6,"transports x days":30}])",
+        R"([{"idx":0,"firstDay":"2025-06-11","lastDay":"2025-06-21","noLocations":10,"noTrips":6,"transportsXDays":30}])",
         to_str(get_metrics(tt), tt));
   };
 

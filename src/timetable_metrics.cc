@@ -80,7 +80,7 @@ std::string to_str(timetable_metrics const& m, timetable const& tt) {
       ss << ',';
     }
     ss << fmt::format(
-        R"({{"idx":{},"first_day":"{:%F}","last_day":"{:%F}","#locations":{},"#trips":{},"transports x days":{}}})",
+        R"({{"idx":{},"firstDay":"{:%F}","lastDay":"{:%F}","noLocations":{},"noTrips":{},"transportsXDays":{}}})",
         idx, from + date::days{fm.first_}, from + date::days{fm.last_},
         fm.locations_, fm.trips_, fm.transport_days_);
   }

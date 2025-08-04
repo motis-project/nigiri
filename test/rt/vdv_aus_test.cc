@@ -681,7 +681,7 @@ TEST(vdv_aus, tt_after_midnight_update_before_midnight) {
   EXPECT_TRUE(fr.is_rt());
 
   EXPECT_EQ(
-      R"([{"idx":0,"first_day":"2024-07-10","last_day":"2024-07-10","#locations":2,"#trips":1,"transports x days":1}])",
+      R"([{"idx":0,"firstDay":"2024-07-10","lastDay":"2024-07-10","noLocations":2,"noTrips":1,"transportsXDays":1}])",
       to_str(get_metrics(tt), tt));
 }
 
@@ -1301,7 +1301,7 @@ TEST(vdv_aus, exact_match_1) {
   EXPECT_FALSE(fr.is_cancelled());
 
   EXPECT_EQ(
-      R"([{"idx":0,"first_day":"2024-08-14","last_day":"2024-08-30","#locations":41,"#trips":1,"transports x days":13}])",
+      R"([{"idx":0,"firstDay":"2024-08-14","lastDay":"2024-08-30","noLocations":41,"noTrips":1,"transportsXDays":13}])",
       to_str(get_metrics(tt), tt));
 }
 
