@@ -246,11 +246,29 @@ bool add_rt_trip(source_idx_t const src,
               tripUpdate.trip_properties().has_trip_short_name()
           ? std::string_view{tripUpdate.trip_properties().trip_short_name()}
           : std::string_view{};
+  auto const offset = [&]() -> delta_t {
+    if (sr == gtfsrt::TripDescriptor_ScheduleRelationship_DUPLICATED &&
+        tripUpdate.has_trip_properties() &&
+        tripUpdate.trip_properties().has_start_date() &&
+        tripUpdate.trip_properties().has_start_time()) {
+      auto const fr = frun{tt, &rtt, r};
+      auto const [day, gtfs_static_dep] =
+          fr[0].get_trip_start(event_type::kDep);
+      auto const new_start_date = loader::gtfs::parse_date(
+          utl::parse<unsigned>(tripUpdate.trip_properties().start_date()));
+      auto const new_start_time =
+          loader::gtfs::hhmm_to_min(tripUpdate.trip_properties().start_date());
+      return static_cast<delta_t>(
+          (new_start_time - gtfs_static_dep + (new_start_date - day) * 1440)
+              .count());
+    }
+    return 0;
+  };
   // ADDED/NEW stops+times+new_trip_id
   // REPLACEMENT stops+times
-  // DUPL new_trip_id
+  // DUPL new_trip_id+offset
   r.rt_ = rtt.add_rt_transport(src, tt, r.t_, stops, times, new_trip_id(),
-                               route_id(), display_name);
+                               route_id(), display_name, offset());
   if (sr == transit_realtime::TripDescriptor_ScheduleRelationship_REPLACEMENT) {
     r.t_ = transport::invalid();
   }
@@ -500,10 +518,11 @@ statistics gtfsrt_update_msg(timetable const& tt,
     }
 
     auto const added = is_added(sr);
-    // auto const added_with_ref = is_added_with_ref(sr);
+    auto const added_with_ref = is_added_with_ref(sr);
 
     if (sr != gtfsrt::TripDescriptor_ScheduleRelationship_SCHEDULED &&
-        sr != gtfsrt::TripDescriptor_ScheduleRelationship_CANCELED && !added) {
+        sr != gtfsrt::TripDescriptor_ScheduleRelationship_CANCELED && !added &&
+        !added_with_ref) {
       log(log_lvl::error, "rt.gtfs.unsupported",
           "unsupported schedule relationship {} (tag={}, id={}), skipping "
           "message",
