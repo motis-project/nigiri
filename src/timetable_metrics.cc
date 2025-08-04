@@ -54,7 +54,7 @@ timetable_metrics get_metrics(timetable const& tt) {
   }
 
   // Count flex transports
-  for (auto ft = flex_transport_idx_t{0U}; ft < tt.flex_transport_trip_.size();
+  for (auto ft = flex_transport_idx_t{0U}; ft != tt.flex_transport_trip_.size();
        ++ft) {
     auto const trip_idx = tt.flex_transport_trip_[ft];
     auto const tdm = transport_day_metrics(
