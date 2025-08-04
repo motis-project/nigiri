@@ -38,6 +38,7 @@ timetable_metrics get_metrics(timetable const& tt) {
     ++m.feeds_[src].locations_;
   }
 
+  // Count regular trips / transports
   // TODO Approach might count duplicates with merged trips
   for (auto const [trip_id, trip_idx] : tt.trip_id_to_idx_) {
     auto const src = tt.trip_id_src_[trip_id];
@@ -50,6 +51,20 @@ timetable_metrics get_metrics(timetable const& tt) {
     m.feeds_[src].first_ = std::min(m.feeds_[src].first_, tdm.first_);
     m.feeds_[src].last_ = std::max(m.feeds_[src].last_, tdm.last_);
     m.feeds_[src].transport_days_ += tdm.count_;
+  }
+
+  // Count flex transports
+  for (auto ft = flex_transport_idx_t{0U}; ft < tt.flex_transport_trip_.size();
+       ++ft) {
+    auto const trip_idx = tt.flex_transport_trip_[ft];
+    auto days = tt.bitfields_[tt.flex_transport_traffic_days_[ft]];
+    auto const tdm = transport_day_metrics(days);
+    for (auto const trip_id : tt.trip_ids_[trip_idx]) {
+      auto const src = tt.trip_id_src_[trip_id];
+      m.feeds_[src].first_ = std::min(m.feeds_[src].first_, tdm.first_);
+      m.feeds_[src].last_ = std::max(m.feeds_[src].last_, tdm.last_);
+      m.feeds_[src].transport_days_ += tdm.count_;
+    }
   }
 
   return m;
