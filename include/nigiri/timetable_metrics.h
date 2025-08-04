@@ -1,5 +1,6 @@
 #include <cstdint>
 #include <limits>
+#include <string>
 
 #include "nigiri/timetable.h"
 #include "nigiri/types.h"
