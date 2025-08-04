@@ -23,7 +23,7 @@ using nigiri::test::raptor_search;
 
 namespace {
 
-// Days are relative to i, j.
+// Days are relative to i, k.
 // That means that x|x1, j, l are +1 day.
 //
 // Mo-Th    We-Fr      Mo,Th-Sa
@@ -33,6 +33,9 @@ namespace {
 //        C --x|x1-- D
 //       C2          D2
 // B --k-/            \-l-- F
+//
+//
+// Columns: i,k x|x1 j,l
 //
 // Mo: X_X
 // Tu: X__
@@ -64,16 +67,17 @@ constexpr auto const kTests =
                                      {"A", "F", 2025_y / June / 12, true},
                                      {"B", "E", 2025_y / June / 12, true},
                                      {"B", "F", 2025_y / June / 12, true},
-
+                                     // still 12.06.2025 in table; +1 day
                                      {"C", "E", 2025_y / June / 13, true},
                                      {"C", "F", 2025_y / June / 13, true},
 
-                                     //
+                                     // 13.06.2025 in table
                                      {"C", "E", 2025_y / June / 14, true},
                                      {"C", "F", 2025_y / June / 14, true},
 
                                      {"A", "C", 2025_y / June / 17, true},
                                      {"B", "C", 2025_y / June / 17, true},
+                                     // 16.06.2025 in table
                                      {"D1", "E", 2025_y / June / 17, true},
                                      {"D2", "F", 2025_y / June / 17, true},
 
@@ -248,11 +252,10 @@ TEST(routing, join_split) {
 
     run_test();
 
-    // Contains all trips serving [12th, 22nd]
-    // As times for ik are +1 day, first trips need to start on 11nd
+    // Service days per trip for [12th, 22nd[:
+    // ik: 11, 12, 16, 17, 18, 19  // > 24:00
     // x: 12, 13, 14, 19, 21
-    // x1: 18  // +2 days
-    // ik: 11, 12, 16, 17, 18, 19  // +1 day
+    // x1: 18  // > 48:00
     // jl: 13, 14, 15, 17, 20, 21
     EXPECT_EQ(
         R"([{"idx":0,"first_day":"2025-06-11","last_day":"2025-06-21","#locations":10,"#trips":6,"transports x days":30}])",
