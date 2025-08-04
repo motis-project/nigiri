@@ -42,6 +42,7 @@ struct run_stop {
   unixtime_t scheduled_time(event_type) const;
   unixtime_t time(event_type) const;
   duration_t delay(event_type) const;
+  timezone_idx_t get_tz(event_type) const;
 
   std::string_view line(event_type = event_type::kDep) const;
   std::string_view scheduled_line(event_type = event_type::kDep) const;
