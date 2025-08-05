@@ -17,6 +17,9 @@ struct mcraptor_label {
   route_idx_t route_id{};
   transport trip_id{};
 
+  float success_chance;
+  unsigned int label_id;
+
   bool dominates(mcraptor_label const& l) const {
     return this->arr_t_ < l.arr_t_;
   }
@@ -139,7 +142,7 @@ struct mcraptor {
       transfer_times_.emplace_back(transfer_time);
     }
 
-    tmp_ = {n_locations_, mcraptor_label{kInvalid}};
+    tmp_ = {n_locations_, mcraptor_bag{}};
     best_bag_ = std::vector<mcraptor_bag>{n_locations_, mcraptor_bag{}};
 
     round_bags_ = {n_locations_ * (kMaxTransfers + 1),
@@ -165,8 +168,9 @@ struct mcraptor {
     std::for_each(best_bag_.begin(), best_bag_.end(), [&](mcraptor_bag& bag) {
       bag.labels_.clear();
     });
-    std::for_each(tmp_.begin(), tmp_.end(), [&](mcraptor_label& label) {
-      label.arr_t_ = kInvalid;
+    std::for_each(tmp_.begin(), tmp_.end(), [&](mcraptor_bag& bag) {
+      bag.labels_.clear();
+      bag.add({kInvalid});
     });
     utl::fill(prev_round_station_mark_.blocks_, 0U);
     utl::fill(tmp_station_mark_.blocks_, 0U);
@@ -221,30 +225,43 @@ struct mcraptor {
       std::swap(prev_round_station_mark_, station_mark_);
       utl::fill(tmp_station_mark_.blocks_, 0U);
       utl::fill(station_mark_.blocks_, 0U);
+
+      std::for_each(tmp_.begin(), tmp_.end(), [&](mcraptor_bag& bag) {
+        bag.labels_.clear();
+        bag.add({kInvalid});
+      });
     }
 
     is_dest_.for_each_set_bit([&](auto const i) {
 
       for (auto k = 1U; k != end_k; ++k) {
-        auto const dest_time = get_round_time(i, k);
-        if (dest_time != kInvalid) {
-          results.add(
-              journey{.legs_ = {},
-                      .start_time_ = start_time,
-                      .dest_time_ = delta_to_unix(base(), dest_time),
-                      .dest_ = location_idx_t{i},
-                      .transfers_ = static_cast<std::uint8_t>(k - 1)});
+        auto const bag = get_round_bag(i, k);
+        for(unsigned int li = 0; li < bag.labels_.size(); ++li){
+          mcraptor_label label = bag.labels_[li];
+          if (label.arr_t_ != kInvalid) {
+            results.add(
+                journey{.legs_ = {},
+                        .start_time_ = start_time,
+                        .dest_time_ = delta_to_unix(base(), label.arr_t_),
+                        .success_chance = label.success_chance,
+                        .dest_ = location_idx_t{i},
+                        .transfers_ = static_cast<std::uint8_t>(k - 1),
+                        .label_index_ = li});
+          }
         }
+
       }
     });
   }
 
   void reconstruct(query const& q, journey& j) {
     auto l = j.dest_;
+    auto li = j.label_index_;
     for (auto i = 0U; i <= j.transfers_; ++i) {
       auto const k = j.transfers_ + 1 - i;
-      auto [fp_leg, transport_leg] = get_legs(k, l, q.prf_idx_);
+      auto [fp_leg, transport_leg, label_index] = get_legs(k, l, q.prf_idx_, li);
       l = kFwd ? transport_leg.from_ : transport_leg.to_;
+      li = label_index;
       // don't add a 0-minute footpath at the end (fwd) or beginning (bwd)
       if (i != 0 || fp_leg.from_ != fp_leg.to_ ||
           fp_leg.dep_time_ != fp_leg.arr_time_) {
@@ -268,20 +285,20 @@ private:
     return any_marked;
   }
 
-  bool update_route(unsigned const k, route_idx_t const r) {
-    auto const stop_seq = tt_.route_location_seq_[r];
+  float transferProbability(delta_t transfer_time){
+    return std::min(1.0f, 0.02f * transfer_time);
+  }
+
+  bool iterate_stops(unsigned const k, route_idx_t const r, mcraptor_label et_label, unsigned i, auto stop_seq){
     auto any_marked = false;
-
-    mcraptor_label et_label{};
-    transport et{};
-
-    for (auto i = 0U; i != stop_seq.size(); ++i) {
+    transport et = et_label.trip_id;
+    for (; i != stop_seq.size(); ++i) {
       auto const stop_idx = static_cast<stop_idx_t>(i);
       auto const stp = stop{stop_seq[stop_idx]};
       auto const l_idx = cista::to_idx(stp.location_idx());
       auto const is_last = i == stop_seq.size() - 1U;
 
-      auto current_best = kInvalid;
+//      auto current_best = kInvalid;
 
       if (!et.is_valid() && !prev_round_station_mark_[l_idx]) {
         continue;
@@ -291,17 +308,16 @@ private:
         auto const by_transport = time_at_stop(
             r, et, stop_idx, event_type::kArr);
 
-        current_best = get_best(get_round_time(l_idx, k - 1),
-                                tmp_[l_idx].arr_t_,
-                                get_best_time(l_idx));
+//        current_best = get_best(get_round_time(l_idx, k - 1),
+//                                tmp_[l_idx].arr_t_,
+//                                get_best_time(l_idx));
 
-        if(is_better(by_transport, current_best) &&
-            !dest_bag_.dominates({.arr_t_ = by_transport}, k) &&
+        if(!dest_bag_.dominates({.arr_t_ = by_transport}, k) &&
             lb_[l_idx] != kUnreachable &&
             !dest_bag_.dominates({.arr_t_ = static_cast<delta_t>(by_transport + lb_[l_idx])}, k)) {
 
           ++stats_.n_earliest_arrival_updated_by_route_;
-          tmp_[l_idx] = {by_transport, et_label.trip_l_, stp.location_idx(), et_label.route_id, et_label.trip_id};
+          tmp_[l_idx].add({by_transport, et_label.trip_l_, stp.location_idx(), et_label.route_id, et_label.trip_id, et_label.success_chance, et_label.label_id});
           tmp_station_mark_.set(l_idx, true);
           any_marked = true;
         }
@@ -315,30 +331,28 @@ private:
         break;
       }
 
+      //enter transport
       if(prev_round_station_mark_[l_idx]) {
         auto const et_time_at_stop =
             et.is_valid()
                 ? time_at_stop(r, et, stop_idx, event_type::kDep )
                 : kInvalid;
-        auto const prev_round_time = get_round_time(l_idx, k - 1);
-        if (prev_round_time != kInvalid &&
-            is_better_or_eq(prev_round_time, et_time_at_stop)) {
-          auto const [day, mam] = split(prev_round_time);
-          auto const new_et = get_earliest_transport(k, r, stop_idx, day, mam,
-                                                     stp.location_idx());
-          current_best = get_best(current_best,
-                                  get_best_time(l_idx),
-                                  tmp_[l_idx].arr_t_);
+        auto const prev_round_bag = get_round_bag(l_idx, k - 1);
+        for(unsigned int li = 0; li < prev_round_bag.labels_.size(); ++li){
+          mcraptor_label label= prev_round_bag.labels_[li];
+          auto const prev_round_time = label.arr_t_;
+          auto const prev_success_chance = label.success_chance;
+          if (prev_round_time != kInvalid &&
+              is_better_or_eq(prev_round_time, et_time_at_stop)) {
+            auto const [day, mam] = split(prev_round_time);
+            auto const new_et = get_earliest_transport(k, r, stop_idx, day, mam,
+                                                       stp.location_idx());
+            //          auto const [second_day, second_mam] = split(time_at_stop(r, new_et, stop_idx,event_type::kDep)+1);
+            //          auto const second_new_et = get_earliest_transport(k, r, stop_idx, second_day, second_mam ,
+            //                                                            stp.location_idx());
 
-          if (new_et.is_valid() &&
-              (current_best == kInvalid ||
-               is_better_or_eq(
-                   time_at_stop(r, new_et, stop_idx,event_type::kDep),
-                   et_time_at_stop))) {
-            et = new_et;
-            et_label.trip_l_ = stp.location_idx();
-            et_label.route_id = r;
-            et_label.trip_id = new_et;
+            if (new_et.is_valid() && et != new_et) any_marked = any_marked | iterate_with_transport(k, r, i, stop_seq, new_et, prev_round_time, prev_success_chance, stop_idx, stp, li);
+            // any_marked = any_marked | iterate_with_transport(k, r, i, stop_seq,second_new_et, prev_round_time, prev_success_chance, stop_idx, stp);
           }
         }
       }
@@ -346,33 +360,65 @@ private:
     return any_marked;
   }
 
+  bool iterate_with_transport(unsigned const k, route_idx_t const r, unsigned i, auto stop_seq, transport new_et
+                              , delta_t prev_round_time, float prev_success_chance, stop_idx_t stop_idx, stop stp, unsigned int li){
+    mcraptor_label et_label{};
+//    if (new_et.is_valid() &&
+//        (is_better_or_eq(
+//            time_at_stop(r, new_et, stop_idx,event_type::kDep),
+//            et_time_at_stop))) {
+      et_label.trip_l_ = stp.location_idx();
+      et_label.route_id = r;
+      et_label.trip_id = new_et;
+      et_label.label_id = li;
+      auto const transfer_time = time_at_stop(r, new_et, stop_idx,
+                                              kFwd ? event_type::kDep : event_type::kArr) - prev_round_time;
+      if(prev_success_chance != 0)
+        et_label.success_chance = transferProbability(transfer_time) * prev_success_chance;
+      else et_label.success_chance = transferProbability(transfer_time);
+
+      return iterate_stops(k, r, et_label, i + 1, stop_seq);
+//    }
+  }
+
+
+  bool update_route(unsigned const k, route_idx_t const r) {
+    auto const stop_seq = tt_.route_location_seq_[r];
+
+    mcraptor_label et_label{};
+
+    return iterate_stops(k, r, et_label, 0, stop_seq);
+  }
+
   void update_transfers(unsigned const k) {
     tmp_station_mark_.for_each_set_bit([&](auto&& i) {
-      mcraptor_label const tmp_label = tmp_[i];
-      auto const tmp_time = tmp_label.arr_t_;
-      if ((delta_t) tmp_time != kInvalid) {
+      for (mcraptor_label tmp_label :tmp_[i].labels_) {
+        auto const tmp_time = tmp_label.arr_t_;
+        if ((delta_t) tmp_time != kInvalid) {
 
-        auto const fp_target_time =
-            static_cast<delta_t>(tmp_time + transfer_times_[i]);
+          auto const fp_target_time =
+              static_cast<delta_t>(tmp_time + transfer_times_[i]);
 
-        if (is_better(fp_target_time, get_best_time(i)) &&
-            !dest_bag_.dominates({.arr_t_ = fp_target_time}, k)) {
-          if (lb_[i] == kUnreachable ||
-              dest_bag_.dominates({.arr_t_ = fp_target_time + lb_[i]}, k)) {
-            ++stats_.fp_update_prevented_by_lower_bound_;
-            return;
-          }
-          ++stats_.n_earliest_arrival_updated_by_footpath_;
+          if (is_better(fp_target_time, get_best_time(i)) &&
+              !dest_bag_.dominates({.arr_t_ = fp_target_time}, k)) {
+            if (lb_[i] == kUnreachable ||
+                dest_bag_.dominates({.arr_t_ = fp_target_time + lb_[i]}, k)) {
+              ++stats_.fp_update_prevented_by_lower_bound_;
+              return;
+            }
+            ++stats_.n_earliest_arrival_updated_by_footpath_;
 
-          mcraptor_label new_label = tmp_[i];
-          new_label.arr_t_ = fp_target_time;
-          new_label.trip_id = tmp_label.trip_id;
-          new_label.route_id = tmp_label.route_id;
+            mcraptor_label new_label = tmp_label;
+            new_label.arr_t_ = fp_target_time;
+            //TODO muss ich die überschreiben?
+            new_label.trip_id = tmp_label.trip_id;
+            new_label.route_id = tmp_label.route_id;
 
-          location_bags_[i][k].add(new_label);
-          station_mark_.set(i, true);
-          if (is_dest_[i]) {
-            dest_bag_.add({.arr_t_ = fp_target_time}, k);
+            location_bags_[i][k].add(new_label);
+            station_mark_.set(i, true);
+            if (is_dest_[i]) {
+              dest_bag_.add({.arr_t_ = fp_target_time}, k);
+            }
           }
         }
       }
@@ -381,53 +427,56 @@ private:
 
   void update_footpaths(unsigned const k, profile_idx_t const prf_idx) {
     tmp_station_mark_.for_each_set_bit([&](std::uint64_t const i) {
-      auto const l_idx = location_idx_t{i};
-      auto const& fps = tt_.locations_.footpaths_out_[prf_idx][l_idx];
+      for (mcraptor_label tmp_label :tmp_[i].labels_) {
+        auto const l_idx = location_idx_t{i};
+        auto const& fps = tt_.locations_.footpaths_out_[prf_idx][l_idx];
 
-      for (auto const& fp : fps) {
-        ++stats_.n_footpaths_visited_;
+        for (auto const& fp : fps) {
+          ++stats_.n_footpaths_visited_;
 
-        auto const target = to_idx(fp.target());
-        auto const tmp_time = tmp_[i].arr_t_;
-        if (tmp_time == kInvalid) {
-          continue;
-        }
-
-        auto const fp_target_time = clamp(
-            tmp_time + adjusted_transfer_time(transfer_time_settings_,
-                                              fp.duration().count()));
-
-        if (is_better(fp_target_time, get_best_time(target)) &&
-            !dest_bag_.dominates({.arr_t_ = fp_target_time}, k)) {
-          auto const lower_bound = lb_[target];
-
-          if (lower_bound == kUnreachable ||
-              dest_bag_.dominates({.arr_t_ = static_cast<delta_t>(fp_target_time + dir(lower_bound))}, k)) {
-            ++stats_.fp_update_prevented_by_lower_bound_;
+          auto const target = to_idx(fp.target());
+          auto const tmp_time = tmp_label.arr_t_;
+          if (tmp_time == kInvalid) {
             continue;
           }
 
-          ++stats_.n_earliest_arrival_updated_by_footpath_;
-          auto new_label = tmp_[i];
-          new_label.arr_t_ = fp_target_time;
+          auto const fp_target_time = clamp(
+              tmp_time + adjusted_transfer_time(transfer_time_settings_,
+                                                fp.duration().count()));
 
-          location_bags_[target][k].add(new_label);
-          station_mark_.set(target, true);
-          if (is_dest_[target]) {
-            dest_bag_.add({.arr_t_ = fp_target_time}, k);
+          if (is_better(fp_target_time, get_best_time(target)) &&
+              !dest_bag_.dominates({.arr_t_ = fp_target_time}, k)) {
+            auto const lower_bound = lb_[target];
+
+            if (lower_bound == kUnreachable ||
+                dest_bag_.dominates({.arr_t_ = static_cast<delta_t>(fp_target_time + dir(lower_bound))}, k)) {
+              ++stats_.fp_update_prevented_by_lower_bound_;
+              continue;
+            }
+
+            ++stats_.n_earliest_arrival_updated_by_footpath_;
+            auto new_label = tmp_label;
+            new_label.arr_t_ = fp_target_time;
+
+            location_bags_[target][k].add(new_label);
+            station_mark_.set(target, true);
+            if (is_dest_[target]) {
+              dest_bag_.add({.arr_t_ = fp_target_time}, k);
+            }
           }
         }
       }
     });
   }
 
-  std::pair<journey::leg, journey::leg> get_legs(unsigned const k,
+  std::tuple<journey::leg, journey::leg, unsigned int> get_legs(unsigned const k,
                                                  auto const l,
-                                                 auto const prf_idx) {
-    auto label = location_bags_[to_idx(l)][k].labels_[0];
+                                                 auto const prf_idx,
+                                                 auto const label_i) {
+    mcraptor_label label = location_bags_[to_idx(l)][k].labels_[label_i];
     auto const& trip_l_idx = label.trip_l_;
     auto const& fp_l_idx = label.fp_l_;
-    auto const& prev_stop_time = get_round_time(to_idx(trip_l_idx), k - 1);
+    auto const& prev_stop_time = get_round_bag(to_idx(trip_l_idx), k - 1).labels_[label.label_id].arr_t_; // get_round_time(to_idx(trip_l_idx), k - 1);
     auto const& arr_t = label.arr_t_;
 
     delta_t trip_dep_time;
@@ -499,12 +548,21 @@ private:
                                                                                          tt_.route_location_seq_[route_idx].size())}},
                                              from_stop_idx, to_stop_idx}};
 
-    return {fp_leg, transport_leg};
+    return {fp_leg, transport_leg, label.label_id};
+  }
+
+  mcraptor_bag const& get_round_bag(auto const l, unsigned const k) {
+    return location_bags_[l][k];
   }
 
   delta_t get_round_time(auto const l, unsigned const k) {
     auto const& rb = location_bags_[l][k];
     return rb.labels_.empty() ? kInvalid :  rb.labels_[0].arr_t_;
+  }
+
+  float get_success_chance(auto const l, unsigned const k) {
+    auto const& rb = location_bags_[l][k];
+    return rb.labels_.empty() ? kInvalid :  rb.labels_[0].success_chance;
   }
 
   delta_t get_best_time(auto const l) {
@@ -624,7 +682,7 @@ private:
   std::vector<mcraptor_bag> round_bags_;
   flat_matrix_view<mcraptor_bag> location_bags_;
   std::vector<mcraptor_bag> best_bag_;
-  std::vector<mcraptor_label> tmp_;
+  std::vector<mcraptor_bag> tmp_;
   bitvec station_mark_;
   bitvec tmp_station_mark_;
   bitvec prev_round_station_mark_;

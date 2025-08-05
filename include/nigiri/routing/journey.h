@@ -106,8 +106,11 @@ struct journey {
   std::vector<leg> legs_{};
   unixtime_t start_time_{};
   unixtime_t dest_time_{};
+  float success_chance{};
   location_idx_t dest_{};
   std::uint8_t transfers_{0U};
+  unsigned int label_index_{};
+
   bool error_{false};
 };
 
