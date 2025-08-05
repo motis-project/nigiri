@@ -12,8 +12,8 @@ struct timetable_metrics {
     std::uint64_t transport_days_;
     std::uint32_t locations_;
     std::uint32_t trips_;
-    std::uint16_t first_ = std::numeric_limits<std::uint16_t>::max();
-    std::uint16_t last_ = std::numeric_limits<std::uint16_t>::min();
+    std::uint16_t first_{std::numeric_limits<std::uint16_t>::max()};
+    std::uint16_t last_{std::numeric_limits<std::uint16_t>::min()};
   };
   vector_map<source_idx_t, feed_metrics> feeds_;
 };
