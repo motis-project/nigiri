@@ -11,9 +11,9 @@
 namespace nigiri {
 
 struct transport_day_metric {
-  std::uint16_t first_ = std::numeric_limits<std::uint16_t>::max();
-  std::uint16_t last_ = std::numeric_limits<std::uint16_t>::min();
-  std::size_t count_ = 0U;
+  std::uint16_t first_{std::numeric_limits<std::uint16_t>::max()};
+  std::uint16_t last_{std::numeric_limits<std::uint16_t>::min()};
+  std::size_t count_{0U};
 };
 
 timetable_metrics get_metrics(timetable const& tt) {
@@ -73,7 +73,7 @@ timetable_metrics get_metrics(timetable const& tt) {
 std::string to_str(timetable_metrics const& m, timetable const& tt) {
   auto const from = std::chrono::time_point_cast<date::sys_days::duration>(
       tt.internal_interval().from_);
-  std::stringstream ss{};
+  auto ss = std::stringstream{};
   ss << '[';
   for (auto const [idx, fm] : utl::enumerate(m.feeds_)) {
     if (idx > 0U) {
