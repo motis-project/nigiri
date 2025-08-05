@@ -18,6 +18,11 @@ struct dist_at {
     return squared_dist < std::pow(z, 2U);
   }
 
+  double get(geo::latlng const& y) const {
+    return std::sqrt(
+        geo::approx_squared_distance(x_, y, distance_lng_degrees_));
+  }
+
   geo::latlng x_;
   double distance_lng_degrees_;
 };
@@ -61,7 +66,7 @@ void link_nearby_stations(timetable& tt) {
       auto const to_transfer_time =
           duration_t{tt.locations_.transfer_time_[l_to_idx]};
       auto const walk_duration = duration_t{static_cast<unsigned>(
-          std::round(geo::distance(from_pos, to_pos) / (60 * kWalkSpeed)))};
+          std::round(dist.get(to_pos) / (60 * kWalkSpeed)))};
       auto const duration =
           std::max({from_transfer_time, to_transfer_time, walk_duration});
 
