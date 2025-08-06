@@ -73,7 +73,7 @@ private:
                       xml_format);
 
     std::optional<std::pair<unixtime_t, event_type>> get_event(
-        event_type et) const;
+        std::optional<event_type> et = std::nullopt) const;
 
     location_idx_t l_;
     std::string_view id_;

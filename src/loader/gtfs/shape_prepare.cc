@@ -32,10 +32,14 @@ std::size_t get_closest(geo::latlng const& pos,
   if (shape.size() < 2U) {
     return 0U;
   }
-  auto const best = geo::distance_to_polyline(pos, shape);
+  auto const lng_dist = geo::approx_distance_lng_degrees(pos);
+
+  auto const best =
+      geo::approx_squared_distance_to_polyline(pos, shape, lng_dist);
   auto const from = shape[best.segment_idx_];
   auto const to = shape[best.segment_idx_ + 1];
-  return geo::distance(pos, from) <= geo::distance(pos, to)
+  return geo::approx_squared_distance(pos, from, lng_dist) <=
+                 geo::approx_squared_distance(pos, to, lng_dist)
              ? best.segment_idx_
              : best.segment_idx_ + 1;
 }

@@ -7,12 +7,18 @@
 #include "utl/overloaded.h"
 #include "utl/verify.h"
 
-#include "nigiri/lookup/get_transport_stop_tz.h"
+#include "nigiri/rt/gtfsrt_resolve_run.h"
 #include "nigiri/rt/rt_timetable.h"
 #include "nigiri/shapes_storage.h"
 #include "nigiri/timetable.h"
 
 namespace nigiri::rt {
+
+constexpr auto const kUnknownProvider =
+    provider{.short_name_ = string_idx_t::invalid(),
+             .long_name_ = string_idx_t::invalid(),
+             .url_ = string_idx_t::invalid(),
+             .src_ = source_idx_t::invalid()};
 
 stop run_stop::get_stop() const {
   assert(fr_->size() > stop_idx_);
@@ -43,6 +49,47 @@ std::string_view run_stop::id() const {
   auto const p = tt().locations_.parents_.at(l);
   auto const x = p == location_idx_t::invalid() ? l : p;
   return tt().locations_.ids_.at(x).view();
+}
+
+std::pair<date::sys_days, duration_t> run_stop::get_trip_start(
+    event_type const ev_type) const {
+  if (!fr_->is_scheduled()) {
+    // additional trip - return first departure
+    auto first = [&]() {
+      auto copy = *this;
+      copy.stop_idx_ = 0U;
+      return copy;
+    }();
+    auto const first_dep = first.time(event_type::kDep);
+    auto const day =
+        std::chrono::time_point_cast<date::sys_days::duration>(first_dep);
+    return {day, first_dep - day};
+  } else {
+    // go to first trip stop
+    auto first_trip_stop = [&]() {
+      auto const trip = get_trip_idx(ev_type);
+      auto copy = *this;
+      while (copy.stop_idx_ > 0 &&
+             copy.get_trip_idx(event_type::kArr) == trip) {
+        --copy.stop_idx_;
+      }
+      return copy;
+    }();
+
+    // service date + start time
+    auto const [static_transport, utc_start_day] = fr_->t_;
+    auto const o = tt().transport_first_dep_offset_[static_transport];
+    auto const utc_dep =
+        tt().event_mam(static_transport, first_trip_stop.stop_idx_,
+                       event_type::kDep)
+            .as_duration();
+    auto const gtfs_static_dep = utc_dep + o;
+    auto const [day_offset, _] = split_rounded(gtfs_static_dep - utc_dep);
+    auto const day = (tt().internal_interval_days().from_ +
+                      std::chrono::days{to_idx(utc_start_day)} - day_offset);
+
+    return {day, gtfs_static_dep};
+  }
 }
 
 std::string_view run_stop::track() const {
@@ -87,6 +134,31 @@ unixtime_t run_stop::time(event_type const ev_type) const {
 duration_t run_stop::delay(event_type const ev_type) const {
   assert(fr_->size() > stop_idx_);
   return time(ev_type) - scheduled_time(ev_type);
+}
+
+timezone_idx_t run_stop::get_tz(event_type const ev_type) const {
+  auto const location_tz =
+      tt().locations_.location_timezones_.at(get_location().l_);
+  if (location_tz != timezone_idx_t::invalid()) {
+    return location_tz;
+  }
+
+  auto const& p = get_provider(ev_type);
+  if (p.tz_ != timezone_idx_t::invalid()) {
+    return p.tz_;
+  }
+
+  if (fr_->is_rt() && fr_->rtt_ != nullptr) {
+    auto const src_idx = rtt()->rt_transport_src_.at(fr_->rt_);
+    auto const it = std::lower_bound(
+        begin(tt().providers_), end(tt().providers_), src_idx,
+        [&](provider const& a, source_idx_t const b) { return a.src_ < b; });
+    if (it != end(tt().providers_) && it->src_ == src_idx &&
+        it->tz_ != timezone_idx_t::invalid()) {
+      return it->tz_;
+    }
+  }
+  return tt().providers_[provider_idx_t{0}].tz_;
 }
 
 trip_idx_t run_stop::get_trip_idx(event_type const ev_type) const {
@@ -136,7 +208,13 @@ std::string_view run_stop::line(event_type const ev_type) const {
 
 provider_idx_t run_stop::get_provider_idx(event_type const ev_type) const {
   if (!fr_->is_scheduled()) {
-    return provider_idx_t{0};
+    auto const route_id_idx = rtt()->rt_transport_route_id_.at(fr_->rt_);
+    if (route_id_idx != route_id_idx_t::invalid()) {
+      return tt()
+          .route_ids_[rtt()->rt_transport_src_.at(fr_->rt_)]
+          .route_id_provider_.at(route_id_idx);
+    }
+    return provider_idx_t::invalid();
   }
   auto const provider_sections =
       tt().transport_section_providers_.at(fr_->t_.t_idx_);
@@ -145,7 +223,11 @@ provider_idx_t run_stop::get_provider_idx(event_type const ev_type) const {
 }
 
 provider const& run_stop::get_provider(event_type const ev_type) const {
-  return tt().providers_.at(get_provider_idx(ev_type));
+  auto const provider_idx = get_provider_idx(ev_type);
+  if (provider_idx != provider_idx_t::invalid()) {
+    return tt().providers_.at(provider_idx);
+  }
+  return kUnknownProvider;
 }
 
 std::string_view run_stop::direction(event_type const ev_type) const {
@@ -573,8 +655,7 @@ trip_idx_t frun::trip_idx() const {
 void run_stop::print(std::ostream& out,
                      bool const first,
                      bool const last) const {
-  auto const& tz = tt().locations_.timezones_.at(
-      get_transport_stop_tz(*fr_->tt_, fr_->t_.t_idx_, get_location().l_));
+  auto const& tz = tt().locations_.timezones_.at(get_tz(event_type::kDep));
 
   // Print stop index, location name.
   fmt::print(out, "  {:2}: {:7} {:.<48}", stop_idx_, get_location().id_,

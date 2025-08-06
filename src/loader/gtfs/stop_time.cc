@@ -203,8 +203,7 @@ void read_stop_times(timetable& tt,
                                  t->seq_numbers_.back() > *s.stop_sequence_);
         t->seq_numbers_.push_back(*s.stop_sequence_);
         if (!s.stop_headsign_->empty()) {
-          t->stop_headsigns_.resize(t->seq_numbers_.size(),
-                                    trip_direction_idx_t::invalid());
+          t->stop_headsigns_.resize(t->seq_numbers_.size(), t->headsign_);
           t->stop_headsigns_.back() =
               lookup_direction(s.stop_headsign_->view(), [&]() {
                 return trips.get_or_create_direction(tt,

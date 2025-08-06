@@ -31,6 +31,8 @@ struct run_stop {
   std::string_view name() const;
   std::string_view track() const;
   std::string_view id() const;
+  std::pair<date::sys_days, duration_t> get_trip_start(
+      event_type = event_type::kDep) const;
 
   provider_idx_t get_provider_idx(event_type = event_type::kDep) const;
   provider const& get_provider(event_type = event_type::kDep) const;
@@ -43,6 +45,7 @@ struct run_stop {
   unixtime_t scheduled_time(event_type) const;
   unixtime_t time(event_type) const;
   duration_t delay(event_type) const;
+  timezone_idx_t get_tz(event_type) const;
 
   std::string_view line(event_type = event_type::kDep) const;
   std::string_view scheduled_line(event_type = event_type::kDep) const;

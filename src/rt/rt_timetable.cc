@@ -34,16 +34,16 @@ rt_transport_idx_t rt_timetable::add_rt_transport(
 
   auto const r =
       t.is_valid() ? tt.transport_route_[t_idx] : route_idx_t::invalid();
-  auto const fallback_r = r == route_idx_t::invalid()
-                              ? tt.route_ids_[src].ids_.find(route_id).value_or(
-                                    route_id_idx_t::invalid())
-                              : route_id_idx_t::invalid();
+  auto const given_r = r == route_idx_t::invalid()
+                           ? tt.route_ids_[src].ids_.find(route_id).value_or(
+                                 route_id_idx_t::invalid())
+                           : route_id_idx_t::invalid();
   auto const location_seq = stop_seq.empty() && r != route_idx_t::invalid()
                                 ? std::span{tt.route_location_seq_[r]}
                                 : stop_seq;
   rt_transport_location_seq_.emplace_back(location_seq);
   rt_transport_src_.emplace_back(src);
-  rt_transport_train_nr_.emplace_back(0U);
+  rt_transport_route_id_.emplace_back(given_r);
   alerts_.rt_transport_.emplace_back_empty();
 
   for (auto const s : location_seq) {
@@ -86,10 +86,10 @@ rt_transport_idx_t rt_timetable::add_rt_transport(
   if (!trip_short_name.empty()) {
     rt_transport_trip_short_names_.emplace_back(trip_short_name);
     rt_transport_route_short_names_.add_back_sized(0);
-  } else if (!new_trip_id.empty() && fallback_r != route_id_idx_t::invalid()) {
+  } else if (!new_trip_id.empty() && given_r != route_id_idx_t::invalid()) {
     rt_transport_trip_short_names_.add_back_sized(0);
     rt_transport_route_short_names_.emplace_back(
-        tt.route_ids_[src].route_id_short_names_.at(fallback_r).view());
+        tt.route_ids_[src].route_id_short_names_.at(given_r).view());
   } else {
     rt_transport_route_short_names_.add_back_sized(0);
     rt_transport_trip_short_names_.add_back_sized(0);
@@ -104,10 +104,10 @@ rt_transport_idx_t rt_timetable::add_rt_transport(
                                    tt.route_cars_allowed_[r.v_ * 2]);
     rt_transport_cars_allowed_.set(rt_t_idx * 2 + 1,
                                    tt.route_cars_allowed_[r.v_ * 2 + 1]);
-  } else if (fallback_r != route_id_idx_t::invalid()) {
+  } else if (given_r != route_id_idx_t::invalid()) {
     rt_transport_section_clasz_.emplace_back(
         std::vector<clasz>{loader::gtfs::to_clasz(
-            tt.route_ids_[src].route_id_type_.at(fallback_r).v_)});  // TODO
+            tt.route_ids_[src].route_id_type_.at(given_r).v_)});  // TODO
     rt_transport_bikes_allowed_.set(rt_t_idx * 2, bikes_allowed_default);
     rt_transport_bikes_allowed_.set(rt_t_idx * 2 + 1, false);
     rt_transport_cars_allowed_.set(rt_t_idx * 2, cars_allowed_default);
@@ -141,6 +141,7 @@ rt_transport_idx_t rt_timetable::add_rt_transport(
          additional_trip_ids_.strings_.size());
   assert(rt_transport_static_transport_.size() == rt_t_idx + 1U);
   assert(rt_transport_src_.size() == rt_t_idx + 1U);
+  assert(rt_transport_route_id_.size() == rt_t_idx + 1U);
   assert(rt_transport_stop_times_.size() == rt_t_idx + 1U);
   assert(rt_transport_location_seq_.size() == rt_t_idx + 1U);
   assert(rt_transport_route_short_names_.size() == rt_t_idx + 1U);

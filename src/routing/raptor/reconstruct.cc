@@ -112,8 +112,10 @@ std::optional<journey::leg> find_start_footpath(timetable const& tt,
             "  excluded td journey start at leg_start_location={}: "
             "leg_start_time={}, duration={}, start={}, journey_start={}\n",
             location{tt, leg_start_location}, leg_start_time,
-            duration.has_value() ? *duration : kInfeasible,
-            leg_start_time - (kFwd ? 1 : -1) * *duration, j.start_time_);
+            fp.has_value() ? fp->first : kInfeasible,
+            fp.has_value() ? leg_start_time - (kFwd ? 1 : -1) * fp->first
+                           : unixtime_t{0_minutes},
+            j.start_time_);
       }
     } else {
       trace_reconstruct("  no td start found for location: {}\n",

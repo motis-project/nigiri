@@ -7,6 +7,7 @@
 #include "nigiri/rt/gtfsrt_resolve_run.h"
 #include "nigiri/rt/gtfsrt_update.h"
 #include "nigiri/rt/rt_timetable.h"
+#include "nigiri/timetable_metrics.h"
 
 #include "../raptor_search.h"
 #include "../rt/util.h"
@@ -22,7 +23,7 @@ using nigiri::test::raptor_search;
 
 namespace {
 
-// Days are relative to i, j.
+// Days are relative to i, k.
 // That means that x|x1, j, l are +1 day.
 //
 // Mo-Th    We-Fr      Mo,Th-Sa
@@ -32,6 +33,9 @@ namespace {
 //        C --x|x1-- D
 //       C2          D2
 // B --k-/            \-l-- F
+//
+//
+// Columns: i,k x|x1 j,l
 //
 // Mo: X_X
 // Tu: X__
@@ -63,16 +67,17 @@ constexpr auto const kTests =
                                      {"A", "F", 2025_y / June / 12, true},
                                      {"B", "E", 2025_y / June / 12, true},
                                      {"B", "F", 2025_y / June / 12, true},
-
+                                     // still 12.06.2025 in table; +1 day
                                      {"C", "E", 2025_y / June / 13, true},
                                      {"C", "F", 2025_y / June / 13, true},
 
-                                     //
+                                     // 13.06.2025 in table
                                      {"C", "E", 2025_y / June / 14, true},
                                      {"C", "F", 2025_y / June / 14, true},
 
                                      {"A", "C", 2025_y / June / 17, true},
                                      {"B", "C", 2025_y / June / 17, true},
+                                     // 16.06.2025 in table
                                      {"D1", "E", 2025_y / June / 17, true},
                                      {"D2", "F", 2025_y / June / 17, true},
 
@@ -246,6 +251,15 @@ TEST(routing, join_split) {
     EXPECT_EQ(kExpected, ss.str());
 
     run_test();
+
+    // Service days per trip for [12th, 22nd[:
+    // ik: 11, 12, 16, 17, 18, 19  // > 24:00
+    // x: 12, 13, 14, 19, 21
+    // x1: 18  // > 48:00
+    // jl: 13, 14, 15, 17, 20, 21
+    EXPECT_EQ(
+        R"([{"idx":0,"firstDay":"2025-06-11","lastDay":"2025-06-21","noLocations":10,"noTrips":6,"transportsXDays":30}])",
+        to_str(get_metrics(tt), tt));
   };
 
   run(0U, 1U, 2U, 3U, 4U, 5U);

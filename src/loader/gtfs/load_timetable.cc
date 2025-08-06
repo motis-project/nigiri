@@ -18,6 +18,7 @@
 #include "nigiri/loader/gtfs/calendar.h"
 #include "nigiri/loader/gtfs/calendar_date.h"
 #include "nigiri/loader/gtfs/fares.h"
+#include "nigiri/loader/gtfs/feed_info_test.h"
 #include "nigiri/loader/gtfs/files.h"
 #include "nigiri/loader/gtfs/flex.h"
 #include "nigiri/loader/gtfs/local_to_utc.h"
@@ -33,6 +34,7 @@
 #include "nigiri/loader/gtfs/stop_time.h"
 #include "nigiri/loader/gtfs/trip.h"
 #include "nigiri/loader/loader_interface.h"
+
 #include "nigiri/common/sort_by.h"
 #include "nigiri/logging.h"
 #include "nigiri/timetable.h"
@@ -117,8 +119,12 @@ void load_timetable(loader_config const& config,
                                   load(kRoutesFile).data(), config.default_tz_);
   auto const calendar = read_calendar(load(kCalenderFile).data());
   auto const dates = read_calendar_date(load(kCalendarDatesFile).data());
-  auto const service =
-      merge_traffic_days(tt.internal_interval_days(), calendar, dates);
+  auto const feed_info = read_feed_info(load(kFeedInfoFile).data());
+  tt.src_end_date_.push_back(
+      feed_info.feed_end_date_.value_or(date::sys_days::max()));
+  auto const service = merge_traffic_days(
+      tt.internal_interval_days(), calendar, dates,
+      config.extend_calendar_ ? feed_info.feed_end_date_ : std::nullopt);
   auto const shape_states =
       (shapes_data != nullptr)
           ? parse_shapes(load(kShapesFile).data(), *shapes_data)
@@ -145,15 +151,34 @@ void load_timetable(loader_config const& config,
   {
     auto const timer = scoped_timer{"loader.gtfs.trips.sort"};
     for (auto& t : trip_data.data_) {
+      if (utl::all_of(t.stop_headsigns_,
+                      [&](auto x) { return x == t.headsign_; })) {
+        t.stop_headsigns_.clear();
+      }
+      if (!t.stop_headsigns_.empty()) {
+        t.stop_headsigns_.resize(t.seq_numbers_.size(), t.headsign_);
+      }
       if (t.requires_sorting_ &&
           (t.event_times_.empty() || t.flex_time_windows_.empty())) {
-        t.stop_headsigns_.resize(t.seq_numbers_.size());
-        std::tie(t.seq_numbers_, t.stop_seq_, t.event_times_,
-                 t.flex_time_windows_, t.stop_headsigns_,
-                 t.distance_traveled_) =
-            sort_by(t.seq_numbers_, t.stop_seq_, t.event_times_,
-                    t.flex_time_windows_, t.stop_headsigns_,
-                    t.distance_traveled_);
+        if (t.stop_headsigns_.empty()) {
+          // without stop headsigns
+          std::tie(t.seq_numbers_, t.stop_seq_, t.event_times_,
+                   t.flex_time_windows_, t.distance_traveled_) =
+              sort_by(t.seq_numbers_, t.stop_seq_, t.event_times_,
+                      t.flex_time_windows_, t.distance_traveled_);
+        } else {
+          // with stop headsigns
+          std::tie(t.seq_numbers_, t.stop_seq_, t.event_times_,
+                   t.flex_time_windows_, t.stop_headsigns_,
+                   t.distance_traveled_) =
+              sort_by(t.seq_numbers_, t.stop_seq_, t.event_times_,
+                      t.flex_time_windows_, t.stop_headsigns_,
+                      t.distance_traveled_);
+        }
+      }
+
+      if (!t.stop_headsigns_.empty()) {
+        t.stop_headsigns_.resize(t.seq_numbers_.size() - 1U);
       }
     }
   }
@@ -415,7 +440,13 @@ void load_timetable(loader_config const& config,
             auto const merged_trip = tt.register_merged_trip({trp.trip_idx_});
             if (s.trips_.size() == 1U) {
               external_trip_ids.push_back(merged_trip);
-              section_directions.push_back(trp.headsign_);
+              if (trp.stop_headsigns_.empty()) {
+                section_directions.push_back(trp.headsign_);
+              } else {
+                section_directions.insert(std::end(section_directions),
+                                          std::begin(trp.stop_headsigns_),
+                                          std::end(trp.stop_headsigns_));
+              }
               section_lines.push_back(line);
               route_colors.push_back(
                   {trp.route_->color_, trp.route_->text_color_});
@@ -423,7 +454,10 @@ void load_timetable(loader_config const& config,
               for (auto section = 0U; section != trp.stop_seq_.size() - 1;
                    ++section) {
                 external_trip_ids.push_back(merged_trip);
-                section_directions.push_back(trp.headsign_);
+                section_directions.push_back(
+                    trp.stop_headsigns_.empty()
+                        ? trp.headsign_
+                        : trp.stop_headsigns_.at(section));
                 section_lines.push_back(line);
                 route_colors.push_back(
                     {trp.route_->color_, trp.route_->text_color_});

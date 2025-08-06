@@ -11,7 +11,7 @@ nigiri_timetable_t* nigiri_load_from_dir(nigiri::loader::dir const& d,
                                          int64_t from_ts,
                                          int64_t to_ts,
                                          unsigned link_stop_distance);
-void nigiri_update_with_rt_from_buf(const nigiri_timetable_t* t,
+void nigiri_update_with_rt_from_buf(nigiri_timetable_t const* t,
                                     std::string_view protobuf,
                                     void (*callback)(nigiri_event_change_t,
                                                      void* context),

@@ -1,5 +1,6 @@
 #include "nigiri/routing/direct.h"
 
+#include "utl/erase_if.h"
 #include "utl/sorted_diff.h"
 
 #include "nigiri/for_each_meta.h"
@@ -25,6 +26,7 @@ void get_direct(timetable const& tt,
   auto const fwd = search_dir == direction::kForward;
   auto const start_ev_type = fwd ? event_type::kDep : event_type::kArr;
   auto const end_ev_type = fwd ? event_type::kArr : event_type::kDep;
+  auto shortest_duration = duration_t::max();
 
   auto const get_offset = [](direction const offset_dir, location_idx_t const l,
                              std::vector<offset> const& offsets,
@@ -111,6 +113,9 @@ void get_direct(timetable const& tt,
       std::reverse(begin(j.legs_), end(j.legs_));
     }
 
+    if (j.travel_time() < shortest_duration) {
+      shortest_duration = j.travel_time();
+    }
     direct.push_back(std::move(j));
   };
 
@@ -178,6 +183,20 @@ void get_direct(timetable const& tt,
               continue;
             }
 
+            auto const start = stop{loc_seq[start_stop_idx]};
+            if (!start.in_allowed(q.prf_idx_)) {
+              trace_direct("      transport {} -> not in_allowed",
+                           tt.transport_name(t));
+              continue;
+            }
+
+            auto const end = stop{loc_seq[end_stop_idx]};
+            if (!end.out_allowed(q.prf_idx_)) {
+              trace_direct("      transport {} not out_allowed",
+                           tt.transport_name(t));
+              continue;
+            }
+
             trace_direct(
                 "      transport {} operates on {} (ev_time={})",
                 tt.transport_name(t),
@@ -189,9 +208,8 @@ void get_direct(timetable const& tt,
             auto const end_time = tt.event_time(tr, end_stop_idx, end_ev_type);
             trace_direct("        time={} contains {}", time, start_time);
             checked(journey::leg{
-                search_dir, stop{loc_seq[start_stop_idx]}.location_idx(),
-                stop{loc_seq[end_stop_idx]}.location_idx(), start_time,
-                end_time,
+                search_dir, start.location_idx(), end.location_idx(),
+                start_time, end_time,
                 journey::run_enter_exit{
                     rt::frun{
                         tt, rtt,
@@ -202,20 +220,37 @@ void get_direct(timetable const& tt,
           }
         }
       },
-      [&](rt_transport_idx_t const rt, stop_idx_t const start,
-          stop_idx_t const end) {
-        auto const start_time = rtt->unix_event_time(rt, start, start_ev_type);
-        auto const end_time = rtt->unix_event_time(rt, end, end_ev_type);
+      [&](rt_transport_idx_t const rt, stop_idx_t const start_stop_idx,
+          stop_idx_t const end_stop_idx) {
+        auto const start_time =
+            rtt->unix_event_time(rt, start_stop_idx, start_ev_type);
+        auto const end_time =
+            rtt->unix_event_time(rt, end_stop_idx, end_ev_type);
         auto const loc_seq = rtt->rt_transport_location_seq_[rt];
+
+        auto const start = stop{loc_seq[start_stop_idx]};
+        if (!start.in_allowed(q.prf_idx_)) {
+          trace_direct("      rt_transport {} -> not in_allowed",
+                       rtt->transport_name(tt, rt));
+          return;
+        }
+
+        auto const end = stop{loc_seq[end_stop_idx]};
+        if (!end.out_allowed(q.prf_idx_)) {
+          trace_direct("      rt_transport {} not out_allowed",
+                       rtt->transport_name(tt, rt));
+          return;
+        }
+
         checked(journey::leg{
-            search_dir, stop{loc_seq[start]}.location_idx(),
-            stop{loc_seq[end]}.location_idx(), start_time, end_time,
+            search_dir, stop{loc_seq[start_stop_idx]}.location_idx(),
+            stop{loc_seq[end_stop_idx]}.location_idx(), start_time, end_time,
             journey::run_enter_exit{
                 rt::frun{tt, rtt,
                          rt::run{.stop_range_ = {0U, static_cast<stop_idx_t>(
                                                          loc_seq.size())},
                                  .rt_ = rt}},
-                start, end}});
+                start_stop_idx, end_stop_idx}});
       }};
 
   auto const for_each_from_to = [&](location_idx_t const x,
@@ -230,6 +265,7 @@ void get_direct(timetable const& tt,
       if (first.has_value()) {
         if (stp == y) {
           check_interval(r, *first, stop_idx);
+          first = std::nullopt;
         }
       } else if (stp == x) {
         first = stop_idx;
@@ -293,6 +329,12 @@ void get_direct(timetable const& tt,
                       }});
             });
       });
+  if (q.fastest_slow_direct_factor_ >= 1.0) {
+    utl::erase_if(direct, [&](journey const& j) {
+      return j.travel_time() >
+             shortest_duration * q.fastest_slow_direct_factor_;
+    });
+  }
 }
 
 }  // namespace nigiri::routing

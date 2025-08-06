@@ -26,10 +26,10 @@ using namespace std::chrono_literals;
 
 namespace nigiri::rt::vdv_aus {
 
-constexpr auto const kExactMatchScore = 1000;
+constexpr auto const kExactMatchScore = 230;
 constexpr auto const kFirstMatchThreshold = 0.5;
 constexpr auto const kFirstMatchThresholdIncomplete = 0.7;
-constexpr auto const kAdditionalMatchTreshold = 0.9;
+constexpr auto const kAdditionalMatchThreshold = 0.975;
 constexpr auto const kAllowedTimeDiscrepancy = []() {
   auto error = 0;
   while (kExactMatchScore - error * error > 0) {
@@ -174,11 +174,11 @@ updater::vdv_stop::vdv_stop(nigiri::location_idx_t const l,
                               : arr_canceled_} {}
 
 std::optional<std::pair<unixtime_t, event_type>> updater::vdv_stop::get_event(
-    event_type const et) const {
-  if (et == event_type::kArr && arr_.has_value()) {
-    return std::pair{*arr_, event_type::kArr};
-  } else if (et == event_type::kDep && dep_.has_value()) {
+    std::optional<event_type> const et) const {
+  if ((!et || et == event_type::kDep) && dep_) {
     return std::pair{*dep_, event_type::kDep};
+  } else if ((!et || et == event_type::kArr) && arr_) {
+    return std::pair{*arr_, event_type::kArr};
   } else {
     return std::nullopt;
   }
@@ -283,14 +283,14 @@ void updater::match_run(std::string_view vdv_run_id,
       for (auto const r : tt_.location_routes_[l]) {
         auto const location_seq = tt_.route_location_seq_[r];
         for (auto const [stop_idx, s] : utl::enumerate(location_seq)) {
-          if (!matches(tt_, routing::location_match_mode::kEquivalent,
-                       stop{s}.location_idx(), vdv_stop.l_)) {
+          if (stop{s}.location_idx() != l) {
             continue;
           }
-
-          auto const vdv_ev = stop_idx == location_seq.size() - 1
+          auto const vdv_ev = stop_idx == 0
+                                  ? vdv_stop.get_event(event_type::kDep)
+                              : stop_idx == location_seq.size() - 1
                                   ? vdv_stop.get_event(event_type::kArr)
-                                  : vdv_stop.get_event(event_type::kDep);
+                                  : vdv_stop.get_event();
           if (!vdv_ev.has_value()) {
             continue;
           }
@@ -355,7 +355,7 @@ void updater::match_run(std::string_view vdv_run_id,
   utl::sort(candidates);
 
   auto const is_match = [&](auto const& c) {
-    return c.score_ > candidates.front().score_ * kAdditionalMatchTreshold;
+    return c.score_ > candidates.front().score_ * kAdditionalMatchThreshold;
   };
 
   auto const match_threshold =
@@ -366,6 +366,8 @@ void updater::match_run(std::string_view vdv_run_id,
     for (auto const& c : candidates) {
       if (is_match(c)) {
         matches_[vdv_run_id].runs_.emplace_back(c.r_);
+      } else {
+        break;
       }
     }
   }
@@ -422,14 +424,15 @@ void monotonize(frun& fr, rt_timetable& rtt) {
             fr.stop_range_.from_, fr.stop_range_.to_);
 
   auto upper_bound = unixtime_t::max();
-  for (auto i = stop_idx_t{0U}; i != fr.stop_range_.size(); ++i) {
-    auto const rs =
-        fr[static_cast<stop_idx_t>(fr.stop_range_.size()) - stop_idx_t{1U} - i];
-    if (rs.stop_idx_ != fr.stop_range_.to_ - 1) {
+  for (auto i = stop_idx_t{0U}; i != fr.size(); ++i) {
+    auto const rs = run_stop{
+        &fr,
+        static_cast<stop_idx_t>(static_cast<stop_idx_t>(fr.size()) - 1U - i)};
+    if (rs.stop_idx_ != fr.size() - 1) {
       upper_bound = std::min(rs.time(event_type::kDep), upper_bound);
       update_event(rtt, rs, event_type::kDep, upper_bound);
     }
-    if (rs.stop_idx_ != fr.stop_range_.from_) {
+    if (rs.stop_idx_ != 0) {
       upper_bound = std::min(rs.time(event_type::kArr), upper_bound);
       update_event(rtt, rs, event_type::kArr, upper_bound);
     }
