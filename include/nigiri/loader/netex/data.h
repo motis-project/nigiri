@@ -28,6 +28,11 @@ struct netex_ctx {
   std::optional<std::string> default_crs_;
 };
 
+struct alt_name {
+  std::string name_;
+  std::string language_;
+};
+
 struct quay {
   std::string id_;
   std::string name_;
@@ -47,6 +52,7 @@ struct stop_place {
   std::string description_;
   geo::latlng centroid_{};
   std::vector<quay> quays_;
+  std::vector<alt_name> alt_names_;
 
   std::vector<std::string> children_;
   std::optional<std::string> parent_ref_;
