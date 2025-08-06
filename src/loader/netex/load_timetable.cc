@@ -118,12 +118,31 @@ void load_timetable(loader_config const& config,
 
   finalize_stop_places(data);
 
+  auto lang_map = hash_map<std::string, language_idx_t>{};
+  auto const get_lang_idx = [&](std::string const& lang) {
+    return utl::get_or_create(lang_map, lang, [&]() {
+      auto const lang_idx = language_idx_t{tt.languages_.size()};
+      tt.languages_.emplace_back(lang);
+      return lang_idx;
+    });
+  };
+
   auto empty_idx_vec = vector<location_idx_t>{};
   for (auto& [_, sp] : data.stop_places_) {
     sp.location_idx_ = tt.locations_.register_location(
         location{sp.id_, sp.name_, "", sp.description_, sp.centroid_, src,
                  location_type::kStation, location_idx_t::invalid(),
                  sp.locale_.tz_idx_, 2_minutes, it_range{empty_idx_vec}});
+    if (!sp.alt_names_.empty()) {
+      auto anb = tt.locations_.alt_names_[sp.location_idx_];
+      for (auto const& an : sp.alt_names_) {
+        auto const an_idx =
+            alt_name_idx_t{tt.locations_.alt_name_strings_.size()};
+        tt.locations_.alt_name_strings_.emplace_back(an.name_);
+        tt.locations_.alt_name_langs_.emplace_back(get_lang_idx(an.language_));
+        anb.push_back(an_idx);
+      }
+    }
 
     for (auto& q : sp.quays_) {
       q.location_idx_ = tt.locations_.register_location(

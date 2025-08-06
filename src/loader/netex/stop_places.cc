@@ -58,10 +58,11 @@ geo::latlng parse_location(netex_data& data,
                : geo::latlng{lat, lon};
   }
 
-  if (auto gml_pos =
-          loc_node.select_node("*[namespace-uri()='http://www.opengis.net/"
-                               "gml/3.2' and local-name()='pos']");
-      gml_pos) {
+  static auto const gml_pos_query = pugi::xpath_query{
+      "*[namespace-uri()='http://www.opengis.net/gml/3.2' and "
+      "local-name()='pos']"};
+
+  if (auto gml_pos = loc_node.select_node(gml_pos_query); gml_pos) {
     if (auto const srs_name = gml_pos.node().attribute("srsName"); srs_name) {
       crs = srs_name.value();
     }
@@ -121,8 +122,21 @@ void handle_stop_place(netex_data& data,
                              : ctx.locale_.value_or(netex_locale{}),
   };
 
-  for (auto const& xpqn : spn.select_nodes("quays/Quay")) {
-    sp.quays_.emplace_back(parse_quay(data, ctx, xpqn.node()));
+  for (auto quay = spn.first_element_by_path("quays/Quay"); quay;
+       quay = quay.next_sibling()) {
+    sp.quays_.emplace_back(parse_quay(data, ctx, quay));
+  }
+
+  for (auto an = spn.first_element_by_path("alternativeNames/AlternativeName");
+       an; an = an.next_sibling()) {
+    auto const name = an.child("Name");
+    if (!name) {
+      continue;
+    }
+    auto lang = std::string{name.attribute("lang").value()};
+    sp.alt_names_.emplace_back(
+        alt_name{name.child_value(),
+                 lang.empty() && ctx.locale_ ? ctx.locale_->language_ : lang});
   }
 
   auto const& merge_stop_place = [&](stop_place& existing_sp,
