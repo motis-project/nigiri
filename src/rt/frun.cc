@@ -187,6 +187,11 @@ std::string_view run_stop::trip_short_name(event_type const ev_type) const {
   }
 }
 
+std::string_view run_stop::display_name(event_type const ev_type) const {
+  auto const name = route_short_name(ev_type);
+  return name.empty() ? trip_short_name(ev_type) : name;
+}
+
 stop_idx_t run_stop::section_idx(event_type const ev_type) const {
   return static_cast<stop_idx_t>(ev_type == event_type::kDep ? stop_idx_
                                                              : stop_idx_ - 1);
@@ -707,11 +712,7 @@ void run_stop::print(std::ostream& out,
         if (j++ != 0) {
           out << ", ";
         }
-        auto name = route_short_name();
-        if (name.empty()) {
-          name = trip_short_name();
-        }
-        out << "{name=" << name << ", day=";
+        out << "{name=" << display_name() << ", day=";
         date::to_stream(
             out, "%F",
             tt.internal_interval_days().from_ + to_idx(fr_->t_.day_) * 1_days);
