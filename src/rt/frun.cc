@@ -171,14 +171,25 @@ trip_idx_t run_stop::get_trip_idx(event_type const ev_type) const {
       .at(0);
 }
 
-std::string_view run_stop::trip_display_name(event_type const ev_type) const {
-  if (fr_->is_rt() && rtt() != nullptr) {
-    return rtt()->transport_name(tt(), fr_->rt_);
-  }
+std::string_view run_stop::route_short_name(event_type const ev_type) const {
   if (fr_->is_scheduled()) {
-    return tt().trip_display_names_[get_trip_idx(ev_type)].view();
+    return tt().route_short_name(get_trip_idx(ev_type));
+  } else {
+    return rtt()->route_short_name(tt(), fr_->rt_);
   }
-  return "?";
+}
+
+std::string_view run_stop::trip_short_name(event_type const ev_type) const {
+  if (fr_->is_scheduled()) {
+    return tt().trip_short_name(get_trip_idx(ev_type));
+  } else {
+    return rtt()->trip_short_name(tt(), fr_->rt_);
+  }
+}
+
+std::string_view run_stop::display_name(event_type const ev_type) const {
+  auto const name = route_short_name(ev_type);
+  return name.empty() ? trip_short_name(ev_type) : name;
 }
 
 stop_idx_t run_stop::section_idx(event_type const ev_type) const {
@@ -428,7 +439,7 @@ frun::frun(timetable const& tt, rt_timetable const* rtt, run r)
 
 std::string_view frun::name() const {
   if (is_rt() && rtt_ != nullptr) {
-    return rtt_->transport_name(*tt_, rt_);
+    return rtt_->route_short_name(*tt_, rt_);
   }
   if (is_scheduled()) {
     return tt_->transport_name(t_.t_idx_);
@@ -701,8 +712,7 @@ void run_stop::print(std::ostream& out,
         if (j++ != 0) {
           out << ", ";
         }
-        out << "{name=" << tt.trip_display_names_.at(trip_idx).view()
-            << ", day=";
+        out << "{name=" << display_name() << ", day=";
         date::to_stream(
             out, "%F",
             tt.internal_interval_days().from_ + to_idx(fr_->t_.day_) * 1_days);
