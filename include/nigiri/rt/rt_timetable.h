@@ -131,9 +131,7 @@ struct rt_timetable {
                     .front();
             return tt.route_short_name(trip_idx);
           },
-          [&](rt_add_trip_id_idx_t) {
-            return std::string_view{"?"};
-          }});
+          [&](rt_add_trip_id_idx_t) { return std::string_view{"?"}; }});
     } else {
       return rt_transport_route_short_names_[t].view();
     }
@@ -150,9 +148,7 @@ struct rt_timetable {
                     .front();
             return tt.trip_short_name(trip_idx);
           },
-          [&](rt_add_trip_id_idx_t) {
-            return std::string_view{"?"};
-          }});
+          [&](rt_add_trip_id_idx_t) { return std::string_view{"?"}; }});
     } else {
       return rt_transport_trip_short_names_[t].view();
     }
