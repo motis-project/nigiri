@@ -27,7 +27,8 @@ struct location {
            location_idx_t parent,
            timezone_idx_t,
            duration_t transfer_time,
-           it_range<vector<location_idx_t>::const_iterator> equivalences);
+           it_range<vector<location_idx_t>::const_iterator> equivalences,
+           it_range<vector<alt_name_idx_t>::const_iterator> alt_names);
   location_idx_t l_{location_idx_t::invalid()};
   std::string_view id_;
   std::string_view name_;
@@ -40,6 +41,7 @@ struct location {
   timezone_idx_t timezone_idx_;
   duration_t transfer_time_;
   it_range<vector<location_idx_t>::const_iterator> equivalences_;
+  it_range<vector<alt_name_idx_t>::const_iterator> alt_names_;
 };
 
 }  // namespace nigiri

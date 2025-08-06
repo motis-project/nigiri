@@ -283,7 +283,8 @@ std::pair<stops_map_t, seated_transfers_map_t> read_stops(
         progress_tracker->update_fn());
   }
 
-  auto empty_idx_vec = vector<location_idx_t>{};
+  auto empty_location_idx_vec = vector<location_idx_t>{};
+  auto empty_alt_name_idx_vec = vector<alt_name_idx_t>{};
   for (auto const& [id, s] : stops) {
     locations.emplace(
         std::string{id},
@@ -294,7 +295,8 @@ std::pair<stops_map_t, seated_transfers_map_t> read_stops(
             location_idx_t::invalid(),
             s->timezone_.empty() ? timezone_idx_t::invalid()
                                  : get_tz_idx(tt, timezones, s->timezone_),
-            2_minutes, it_range{empty_idx_vec}}));
+            2_minutes, it_range{empty_location_idx_vec},
+            it_range{empty_alt_name_idx_vec}}));
   }
 
   auto transfers = read_transfers(stops, transfers_file_content);

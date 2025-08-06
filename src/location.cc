@@ -19,7 +19,8 @@ location::location(timetable const& tt, location_idx_t idx)
       parent_{tt.locations_.parents_[idx]},
       timezone_idx_{tt.locations_.location_timezones_[idx]},
       transfer_time_{tt.locations_.transfer_time_[idx]},
-      equivalences_{tt.locations_.equivalences_[idx]} {}
+      equivalences_{tt.locations_.equivalences_[idx]},
+      alt_names_{tt.locations_.alt_names_[idx]} {}
 
 location::location(
     std::string_view id,
@@ -32,7 +33,8 @@ location::location(
     location_idx_t parent,
     timezone_idx_t timezone,
     duration_t transfer_time,
-    it_range<vector<location_idx_t>::const_iterator> equivalences)
+    it_range<vector<location_idx_t>::const_iterator> equivalences,
+    it_range<vector<alt_name_idx_t>::const_iterator> alt_names)
     : l_{location_idx_t::invalid()},
       id_{id},
       name_{name},
@@ -44,6 +46,7 @@ location::location(
       parent_{parent},
       timezone_idx_{timezone},
       transfer_time_{transfer_time},
-      equivalences_{equivalences} {}
+      equivalences_{equivalences},
+      alt_names_{alt_names} {}
 
 }  // namespace nigiri
