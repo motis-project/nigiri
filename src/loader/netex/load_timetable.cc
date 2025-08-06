@@ -150,8 +150,18 @@ void load_timetable(loader_config const& config,
                    location_type::kTrack, sp.location_idx_, q.locale_.tz_idx_,
                    2_minutes, it_range{empty_idx_vec}});
     }
+  }
 
-    // TODO: children
+  for (auto const& [_, sp] : data.stop_places_) {
+    if (sp.parent_ref_) {
+      if (auto it = data.stop_places_.find(*sp.parent_ref_);
+          it != data.stop_places_.end()) {
+        auto& parent_sp = it->second;
+        tt.locations_.parents_[sp.location_idx_] = parent_sp.location_idx_;
+        tt.locations_.children_[parent_sp.location_idx_].emplace_back(
+            sp.location_idx_);
+      }
+    }
   }
 
   // Add standalone quays as stations
