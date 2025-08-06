@@ -85,7 +85,7 @@ void load_timetable(loader_config const& config,
   auto const global_timer = nigiri::scoped_timer{"netex parser"};
   auto const progress_tracker = utl::get_active_progress_tracker();
 
-  auto const xml_files = utl::all(d.list_files("/"))  //
+  auto const xml_files = utl::all(d.list_files(""))  //
                          | utl::remove_if([&](fs::path const& f) {
                              return !is_netex_file(d, f);
                            })  //
@@ -127,12 +127,14 @@ void load_timetable(loader_config const& config,
     });
   };
 
-  auto empty_idx_vec = vector<location_idx_t>{};
+  auto empty_location_idx_vec = vector<location_idx_t>{};
+  auto empty_alt_name_idx_vec = vector<alt_name_idx_t>{};
   for (auto& [_, sp] : data.stop_places_) {
-    sp.location_idx_ = tt.locations_.register_location(
-        location{sp.id_, sp.name_, "", sp.description_, sp.centroid_, src,
-                 location_type::kStation, location_idx_t::invalid(),
-                 sp.locale_.tz_idx_, 2_minutes, it_range{empty_idx_vec}});
+    sp.location_idx_ = tt.locations_.register_location(location{
+        sp.id_, sp.name_, "", sp.description_, sp.centroid_, src,
+        location_type::kStation, location_idx_t::invalid(), sp.locale_.tz_idx_,
+        2_minutes, it_range{empty_location_idx_vec},
+        it_range{empty_alt_name_idx_vec}});
     if (!sp.alt_names_.empty()) {
       auto anb = tt.locations_.alt_names_[sp.location_idx_];
       for (auto const& an : sp.alt_names_) {
@@ -145,10 +147,10 @@ void load_timetable(loader_config const& config,
     }
 
     for (auto& q : sp.quays_) {
-      q.location_idx_ = tt.locations_.register_location(
-          location{q.id_, q.name_, q.public_code_, "", q.centroid_, src,
-                   location_type::kTrack, sp.location_idx_, q.locale_.tz_idx_,
-                   2_minutes, it_range{empty_idx_vec}});
+      q.location_idx_ = tt.locations_.register_location(location{
+          q.id_, q.name_, q.public_code_, "", q.centroid_, src,
+          location_type::kTrack, sp.location_idx_, q.locale_.tz_idx_, 2_minutes,
+          it_range{empty_location_idx_vec}, it_range{empty_alt_name_idx_vec}});
     }
   }
 
@@ -169,7 +171,8 @@ void load_timetable(loader_config const& config,
     q.location_idx_ = tt.locations_.register_location(
         location{q.id_, q.name_, q.public_code_, "", q.centroid_, src,
                  location_type::kStation, location_idx_t::invalid(),
-                 q.locale_.tz_idx_, 2_minutes, it_range{empty_idx_vec}});
+                 q.locale_.tz_idx_, 2_minutes, it_range{empty_location_idx_vec},
+                 it_range{empty_alt_name_idx_vec}});
   }
 
   progress_tracker->increment();

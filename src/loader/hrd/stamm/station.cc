@@ -178,7 +178,8 @@ location_map_t parse_stations(config const& c,
                               std::string_view station_metabhf_file) {
   auto const timer = scoped_timer{"parse stations"};
 
-  auto empty_idx_vec = vector<location_idx_t>{};
+  auto empty_location_idx_vec = vector<location_idx_t>{};
+  auto empty_alt_name_idx_vec = vector<alt_name_idx_t>{};
 
   location_map_t stations;
   parse_station_names(c, stations, station_names_file);
@@ -191,10 +192,10 @@ location_map_t parse_stations(config const& c,
     auto const id =
         location_id{.id_ = fmt::format("{:07}", eva_int), .src_ = src};
     auto const transfer_time = duration_t{eva_int < 1000000 ? 2 : 5};
-    auto const idx = tt.locations_.register_location(
-        location{id.id_, s.name_, "", "", s.pos_, src, location_type::kStation,
-                 location_idx_t::invalid(), st.get_tz(s.id_).first,
-                 transfer_time, it_range{empty_idx_vec}});
+    auto const idx = tt.locations_.register_location(location{
+        id.id_, s.name_, "", "", s.pos_, src, location_type::kStation,
+        location_idx_t::invalid(), st.get_tz(s.id_).first, transfer_time,
+        it_range{empty_location_idx_vec}, it_range{empty_alt_name_idx_vec}});
     s.idx_ = idx;
   }
 

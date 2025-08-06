@@ -95,7 +95,8 @@ struct timetable {
                         parents_[idx],
                         location_timezones_[idx],
                         transfer_time_[idx],
-                        it_range{equivalences_[idx]}};
+                        it_range{equivalences_[idx]},
+                        it_range{alt_names_[idx]}};
       l.l_ = idx;
       return l;
     }
