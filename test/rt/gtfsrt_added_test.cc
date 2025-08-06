@@ -917,7 +917,7 @@ TEST(rt, gtfs_rt_new_no_route) {
   auto const fr = rt::frun{tt, &rtt, r};
   EXPECT_EQ(fr.size(), 3);
   EXPECT_EQ(nigiri::clasz::kOther, fr.get_clasz());
-  EXPECT_EQ("New Route", fr.name());
+  EXPECT_EQ("New Route", fr[0].trip_short_name());
   EXPECT_EQ(string_idx_t::invalid(),
             fr[0].get_provider(event_type::kDep).short_name_);
   ASSERT_FALSE(fr.is_cancelled());

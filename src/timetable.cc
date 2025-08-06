@@ -23,21 +23,15 @@ void timetable::resolve() {
   }
 }
 
-std::string_view timetable::route_short_name(const trip_idx_t trip_idx) const {
-  const auto source_idx = trip_id_src_[trip_ids_[trip_idx].front()];
-  if (source_idx == source_idx_t::invalid()) {
-    return "";
-  }
-  const auto& route = route_ids_[source_idx];
-  const auto route_id = trip_route_id_[trip_idx];
-  if (route_id == route_id_idx_t::invalid()) {
-    return "";
-  }
-  const auto short_name = route.route_id_short_names_[route_id].view();
-  return short_name;
+std::string_view timetable::route_short_name(trip_idx_t const trip_idx) const {
+  return trip_route_id_[trip_idx] == route_id_idx_t::invalid()
+             ? std::string_view{}
+             : route_ids_[trip_id_src_[trip_ids_[trip_idx].front()]]
+                   .route_id_short_names_[trip_route_id_[trip_idx]]
+                   .view();
 }
 
-std::string_view timetable::trip_short_name(const trip_idx_t trip_idx) const {
+std::string_view timetable::trip_short_name(trip_idx_t const trip_idx) const {
   return trip_short_names_[trip_idx].view();
 }
 

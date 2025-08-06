@@ -172,24 +172,19 @@ trip_idx_t run_stop::get_trip_idx(event_type const ev_type) const {
 }
 
 std::string_view run_stop::route_short_name(event_type const ev_type) const {
-  if (fr_->is_rt() && rtt() != nullptr) {
-    return rtt()->route_short_name(tt(), fr_->rt_);
-  }
   if (fr_->is_scheduled()) {
     return tt().route_short_name(get_trip_idx(ev_type));
+  } else {
+    return rtt()->route_short_name(tt(), fr_->rt_);
   }
-  return {};
 }
 
-std::string_view run_stop::trip_short_name(
-    event_type const event_type) const noexcept {
-  if (fr_->is_rt() && rtt() != nullptr) {
+std::string_view run_stop::trip_short_name(event_type const ev_type) const {
+  if (fr_->is_scheduled()) {
+    return tt().trip_short_name(get_trip_idx(ev_type));
+  } else {
     return rtt()->trip_short_name(tt(), fr_->rt_);
   }
-  if (fr_->is_scheduled()) {
-    return tt().trip_short_name(get_trip_idx(event_type));
-  }
-  return {};
 }
 
 stop_idx_t run_stop::section_idx(event_type const ev_type) const {
@@ -712,7 +707,11 @@ void run_stop::print(std::ostream& out,
         if (j++ != 0) {
           out << ", ";
         }
-        out << "{name=" << route_short_name() << ", day=";
+        auto name = route_short_name();
+        if (name.empty()) {
+          name = trip_short_name();
+        }
+        out << "{name=" << name << ", day=";
         date::to_stream(
             out, "%F",
             tt.internal_interval_days().from_ + to_idx(fr_->t_.day_) * 1_days);
