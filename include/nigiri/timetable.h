@@ -110,6 +110,15 @@ struct timetable {
                                             : std::optional{get(it->second)};
     }
 
+    location_idx_t get_root_idx(location_idx_t const idx) const {
+      auto l = idx;
+      for (auto p = parents_[l]; p != location_idx_t::invalid();
+           p = parents_[l]) {
+        l = p;
+      }
+      return l;
+    }
+
     // Station access: external station id -> internal station idx
     hash_map<location_id, location_idx_t> location_id_to_idx_;
     vecvec<location_idx_t, char> names_;
