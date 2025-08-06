@@ -944,18 +944,9 @@ private:
               get_best(round_times_[k - 1][l_idx][target_v],
                        tmp_[l_idx][target_v], best_[l_idx][target_v]);
 
-          auto higher_v_best = kInvalid;
-          for (auto higher_v = Vias; higher_v != target_v; --higher_v) {
-            higher_v_best =
-                get_best(higher_v_best, round_times_[k - 1][l_idx][higher_v],
-                         tmp_[l_idx][higher_v], best_[l_idx][higher_v]);
-          }
-
           assert(by_transport != std::numeric_limits<delta_t>::min() &&
                  by_transport != std::numeric_limits<delta_t>::max());
-          if (is_better(by_transport, current_best[v]) &&
-              is_better(by_transport, time_at_dest_[k]) &&
-              is_better(by_transport, higher_v_best) &&
+          if (is_better(by_transport, time_at_dest_[k]) &&
               lb_[l_idx] != kUnreachable &&
               is_better(by_transport + dir(lb_[l_idx]), time_at_dest_[k])) {
             trace_upd(
