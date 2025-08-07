@@ -488,9 +488,9 @@ void handle_vehicle_position(timetable const& tt,
 
   // get remaining stops
   auto const stopped_at_idx = std::distance(begin(location_seq), stop_it);
-  auto fr = r.is_scheduled() ? frun::from_t(tt, &rtt_const, r.t_)
+  auto const fr = r.is_scheduled() ? frun::from_t(tt, &rtt_const, r.t_)
                              : frun::from_rt(tt, &rtt_const, r.rt_);
-  auto seq_numbers = fr.stop_range_;
+  auto const seq_numbers = fr.stop_range_;
 
   // get delay
   auto const delay = unixtime_t{std::chrono::duration_cast<i32_minutes>(
