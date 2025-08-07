@@ -296,6 +296,7 @@ using u8_minutes = std::chrono::duration<std::uint8_t, std::ratio<60>>;
 using duration_t = i16_minutes;
 using unixtime_t = std::chrono::sys_time<i32_minutes>;
 using local_time = date::local_time<i32_minutes>;
+using time_point_t = std::chrono::time_point<date::sys_days::clock, date::sys_days::duration>;
 
 constexpr u8_minutes operator""_u8_minutes(unsigned long long n) {
   return duration_t{n};
