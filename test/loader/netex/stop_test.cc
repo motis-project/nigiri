@@ -48,7 +48,8 @@ std::vector<std::string_view> get_alt_names(timetable const& tt,
 TEST(netex, stops) {
   auto const fs = fs_dir{"test/test_data/netex"};
   auto tt = timetable{};
-  load_timetable(loader_config{}, source_idx_t{0}, fs, tt);
+  load_timetable(loader_config{.default_tz_ = "Europe/Paris"}, source_idx_t{0},
+                 fs, tt);
 
   // CH
 
@@ -162,4 +163,51 @@ TEST(netex, stops) {
       Each(ResultOf(
           [&](auto const& c) { return get_tz_name(tt, c.timezone_idx_); },
           Eq("Europe/Oslo"))));
+
+  // FR
+
+  auto const tour_eiffel_parent =
+      tt.locations_.get({"FR::multimodalStopPlace:73797:FR1", {}});
+  EXPECT_THAT(tour_eiffel_parent.name_, Eq("Tour Eiffel"));
+  // the netex data uses EPSG:2154
+  EXPECT_THAT(tour_eiffel_parent.pos_.lat_, DoubleNear(48.8597962, 0.00001));
+  EXPECT_THAT(tour_eiffel_parent.pos_.lng_, DoubleNear(2.2943612, 0.00001));
+  EXPECT_THAT(tour_eiffel_parent.type_, Eq(location_type::kStation));
+  EXPECT_THAT(tour_eiffel_parent.parent_, Eq(location_idx_t::invalid()));
+  // no timezone listed in the netex file, using the default
+  EXPECT_THAT(get_tz_name(tt, tour_eiffel_parent.timezone_idx_),
+              Eq("Europe/Paris"));
+
+  auto const tour_eiffel_bus =
+      tt.locations_.get({"FR::monomodalStopPlace:45122:FR1", {}});
+  EXPECT_THAT(tour_eiffel_bus.name_, Eq("Tour Eiffel"));
+  EXPECT_THAT(tour_eiffel_bus.pos_.lat_, DoubleNear(48.8597962, 0.00001));
+  EXPECT_THAT(tour_eiffel_bus.pos_.lng_, DoubleNear(2.2943612, 0.00001));
+  EXPECT_THAT(tour_eiffel_bus.type_, Eq(location_type::kStation));
+  EXPECT_THAT(tour_eiffel_bus.parent_, Eq(tour_eiffel_parent.l_));
+  EXPECT_THAT(get_tz_name(tt, tour_eiffel_bus.timezone_idx_),
+              Eq("Europe/Paris"));
+
+  // quays that have a parent stop place
+  auto const tour_eiffel_bus_children =
+      utl::to_vec(tt.locations_.children_[tour_eiffel_bus.l_],
+                  [&](location_idx_t const c) { return tt.locations_.get(c); });
+  EXPECT_THAT(utl::to_vec(tour_eiffel_bus_children,
+                          [&](location const& l) { return l.id_; }),
+              UnorderedElementsAre("FR::Quay:25775:FR1", "FR::Quay:23475:FR1",
+                                   "FR::Quay:23455:FR1", "FR::Quay:9107:FR1"));
+
+  // quays that don't have a parent (loaded as stations)
+  auto const tour_eiffel_standalone_quay_1 =
+      tt.locations_.get({"FR::Quay:50114645:FR1", {}});
+  EXPECT_THAT(tour_eiffel_standalone_quay_1.name_, Eq("Tour Eiffel"));
+  EXPECT_THAT(tour_eiffel_standalone_quay_1.pos_.lat_,
+              DoubleNear(48.8603442, 0.00001));
+  EXPECT_THAT(tour_eiffel_standalone_quay_1.pos_.lng_,
+              DoubleNear(2.295819, 0.00001));
+  EXPECT_THAT(tour_eiffel_standalone_quay_1.type_, Eq(location_type::kStation));
+  EXPECT_THAT(tour_eiffel_standalone_quay_1.parent_,
+              Eq(location_idx_t::invalid()));
+  EXPECT_THAT(get_tz_name(tt, tour_eiffel_standalone_quay_1.timezone_idx_),
+              Eq("Europe/Paris"));
 }
