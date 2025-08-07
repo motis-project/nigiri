@@ -57,7 +57,7 @@ bool merge(timetable& tt,
   };
 
   auto const is_superset = [](bitfield const& x, bitfield const& y) {
-    return (x & y) == x;
+    return (x & y) == y;
   };
 
   if (is_superset(bf_b, bf_a)) {

@@ -326,7 +326,7 @@ mem_dir line1_2593402613_files() {
 
 # calendar.txt
 "service_id","monday","tuesday","wednesday","thursday","friday","saturday","sunday","start_date","end_date"
-1194,1,1,1,1,1,1,0,20240805,20241214
+1194,1,1,1,0,1,1,0,20240805,20241214
 
 # calendar_dates.txt
 "service_id","date","exception_type"
@@ -353,22 +353,24 @@ TEST(loader, merge_inter_src) {
   tt.date_range_ = {date::sys_days{2024_y / August / 5},
                     date::sys_days{2024_y / December / 14}};
   register_special_stations(tt);
+  // 2593432458 and 2593402613 are mostly the same as, except no trips on
+  // Thursdays for 2593402613
   load_timetable({}, source_idx_t{0}, line1_2593432458_files(), tt);
   load_timetable({}, source_idx_t{1}, line1_2593402613_files(), tt);
 
   ASSERT_TRUE(!tt.bitfields_.empty() &&
               tt.bitfields_[bitfield_idx_t{0U}].none());
 
-  auto const metrics = std::string_view{
+  constexpr auto const kMetricTemplate = std::string_view{
       "["
-      R"({"idx":0,"firstDay":"2024-08-14","lastDay":"2024-12-13","noLocations":16,"noTrips":1,"transportsXDays":102},)"
-      R"({"idx":1,"firstDay":"2024-08-14","lastDay":"2024-12-13","noLocations":16,"noTrips":1,"transportsXDays":102})"
+      R"({{"idx":0,"firstDay":"2024-08-14","lastDay":"2024-12-13","noLocations":16,"noTrips":1,"transportsXDays":102}},)"
+      R"({{"idx":1,"firstDay":"2024-08-14","lastDay":"2024-12-13","noLocations":16,"noTrips":1,"transportsXDays":{0}}})"
       "]"};
-  // No duplicates removed
-  EXPECT_EQ(metrics, to_str(get_metrics(tt), tt));
+  // No duplicates removed; No transfers on Thursdays for 2593402613
+  EXPECT_EQ(fmt::format(kMetricTemplate, 86), to_str(get_metrics(tt), tt));
   finalize(tt, false, false, true);
-  // With duplicates removed
-  EXPECT_EQ(metrics, to_str(get_metrics(tt), tt));
+  // With duplicates removed; With transfers on Thursdays for both trips
+  EXPECT_EQ(fmt::format(kMetricTemplate, 102), to_str(get_metrics(tt), tt));
 
   for (auto a = transport_idx_t{0U}; a != tt.next_transport_idx(); ++a) {
     for (auto b = transport_idx_t{0U}; b != tt.next_transport_idx(); ++b) {
