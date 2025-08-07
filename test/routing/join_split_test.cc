@@ -207,7 +207,7 @@ TEST(routing, join_split) {
                            .delay_minutes_ = 5U}}}},
         date::sys_days{2025_y / June / 12});
 
-    rt::gtfsrt_update_msg(tt, rtt, source_idx_t{0}, "tag", msg1, false);
+    rt::gtfsrt_update_msg(tt, rtt, source_idx_t{0}, "tag", msg1);
 
     auto td = transit_realtime::TripDescriptor{};
     td.set_trip_id("x");

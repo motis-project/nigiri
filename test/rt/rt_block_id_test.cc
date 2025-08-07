@@ -115,7 +115,7 @@ TEST(rt, rt_block_id_test) {
       date::sys_days{May / 1 / 2019} + 22h);
 
   auto const stats =
-      rt::gtfsrt_update_msg(tt, rtt, source_idx_t{0}, "tag", msg1, false);
+      rt::gtfsrt_update_msg(tt, rtt, source_idx_t{0}, "tag", msg1);
 
   EXPECT_EQ(3U, stats.total_entities_success_);
 

@@ -126,7 +126,7 @@ TEST(rt, gtfs_rt_relative) {
 
   // Update.
   auto const msg = rt::json_to_protobuf(kTripUpdate);
-  gtfsrt_update_buf(tt, rtt, source_idx_t{0}, "", msg, false);
+  gtfsrt_update_buf(tt, rtt, source_idx_t{0}, "", msg);
 
   // Print trip.
   transit_realtime::TripDescriptor td;

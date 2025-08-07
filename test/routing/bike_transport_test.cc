@@ -470,7 +470,7 @@ TEST(routing, bike_transport_test_2) {
                                                  .ev_type_ = event_type::kDep,
                                                  .delay_minutes_ = 2}}}},
                         date::sys_days{2019_y / May / 1} + 1h);
-  rt::gtfsrt_update_msg(tt, rtt, source_idx_t{0}, "", msg, false);
+  rt::gtfsrt_update_msg(tt, rtt, source_idx_t{0}, "", msg);
 
   for (auto const dir : {direction::kForward, direction::kBackward}) {
     {  // A->D, without bike

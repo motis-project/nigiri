@@ -129,7 +129,7 @@ TEST(routing, rt_raptor_forward) {
   }
 
   auto const stats =
-      rt::gtfsrt_update_msg(tt, rtt, source_idx_t{0}, "tag", msg, false);
+      rt::gtfsrt_update_msg(tt, rtt, source_idx_t{0}, "tag", msg);
   EXPECT_EQ(stats.total_entities_success_, 1U);
 
   auto const results =
@@ -213,7 +213,7 @@ TEST(routing, rt_raptor_backward) {
   }
 
   auto const stats =
-      rt::gtfsrt_update_msg(tt, rtt, source_idx_t{0}, "tag", msg, false);
+      rt::gtfsrt_update_msg(tt, rtt, source_idx_t{0}, "tag", msg);
   EXPECT_EQ(stats.total_entities_success_, 1U);
 
   auto const results =
@@ -309,7 +309,7 @@ TEST(routing, rt_raptor_unscheduled) {
   }
 
   auto const stats =
-      rt::gtfsrt_update_msg(tt, rtt, source_idx_t{0}, "tag", msg, false);
+      rt::gtfsrt_update_msg(tt, rtt, source_idx_t{0}, "tag", msg);
   EXPECT_EQ(stats.total_entities_success_, 1U);
 
   auto const results =
