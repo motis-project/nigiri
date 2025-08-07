@@ -3,6 +3,7 @@
 
 #include <iostream>
 #include <string_view>
+#include <vector>
 
 #include "utl/to_vec.h"
 #include "utl/verify.h"
@@ -34,6 +35,14 @@ string get_tz_name(timetable const& tt, timezone_idx_t const tz_idx) {
   return tz.as<pair<string, void const*>>().first;
 }
 
+std::vector<std::string_view> get_alt_names(timetable const& tt,
+                                            location_idx_t const loc_idx) {
+  return utl::to_vec(tt.locations_.alt_names_[loc_idx],
+                     [&](alt_name_idx_t const ani) {
+                       return tt.locations_.alt_name_strings_[ani].view();
+                     });
+}
+
 }  // namespace
 
 TEST(netex, stops) {
@@ -51,10 +60,7 @@ TEST(netex, stops) {
   EXPECT_THAT(zurich.pos_.lng_, DoubleEq(8.540212));
   EXPECT_THAT(zurich.type_, Eq(location_type::kStation));
   EXPECT_THAT(zurich.parent_, Eq(location_idx_t::invalid()));
-  EXPECT_THAT(utl::to_vec(zurich.alt_names_,
-                          [&](alt_name_idx_t const ani) {
-                            return tt.locations_.alt_name_strings_[ani].view();
-                          }),
+  EXPECT_THAT(get_alt_names(tt, zurich_idx),
               UnorderedElementsAre("Tsüri", "ZH", "Züri", "Zurich", "Zürich",
                                    "Zurigo"));
   EXPECT_THAT(get_tz_name(tt, zurich.timezone_idx_), Eq("CET"));
@@ -82,4 +88,78 @@ TEST(netex, stops) {
   EXPECT_THAT(zurich_quay_10.platform_code_, Eq("10"));
   EXPECT_THAT(zurich_quay_10.pos_.lat_, DoubleEq(47.378833));
   EXPECT_THAT(zurich_quay_10.pos_.lng_, DoubleEq(8.536528));
+
+  // DE
+
+  auto const darmstadt_idx =
+      find_location_by_name(tt, "Darmstadt Hauptbahnhof");
+  ASSERT_NE(darmstadt_idx, location_idx_t::invalid());
+  auto const darmstadt = tt.locations_.get(darmstadt_idx);
+  EXPECT_THAT(darmstadt.name_, Eq("Darmstadt Hauptbahnhof"));
+  EXPECT_THAT(darmstadt.pos_.lat_, DoubleEq(49.871941));
+  EXPECT_THAT(darmstadt.pos_.lng_, DoubleEq(8.631148));
+  EXPECT_THAT(darmstadt.type_, Eq(location_type::kStation));
+  EXPECT_THAT(darmstadt.parent_, Eq(location_idx_t::invalid()));
+  EXPECT_THAT(get_tz_name(tt, darmstadt.timezone_idx_), Eq("Europe/Berlin"));
+
+  // NO
+
+  auto const oslo_s_parent = tt.locations_.get({"NSR:StopPlace:59872", {}});
+  EXPECT_THAT(oslo_s_parent.name_, Eq("Oslo S"));
+  EXPECT_THAT(oslo_s_parent.pos_.lat_, DoubleEq(59.910357));
+  EXPECT_THAT(oslo_s_parent.pos_.lng_, DoubleEq(10.753051));
+  EXPECT_THAT(oslo_s_parent.type_, Eq(location_type::kStation));
+  EXPECT_THAT(oslo_s_parent.parent_, Eq(location_idx_t::invalid()));
+  EXPECT_THAT(get_tz_name(tt, oslo_s_parent.timezone_idx_), Eq("Europe/Oslo"));
+  EXPECT_THAT(
+      get_alt_names(tt, oslo_s_parent.l_),
+      UnorderedElementsAre("Oslo Sentralstasjon", "Oslo Central Station"));
+
+  auto const oslo_s_rail = tt.locations_.get({"NSR:StopPlace:337", {}});
+  EXPECT_THAT(oslo_s_rail.name_, Eq("Oslo S"));
+  EXPECT_THAT(oslo_s_rail.pos_.lat_, DoubleEq(59.910925));
+  EXPECT_THAT(oslo_s_rail.pos_.lng_, DoubleEq(10.753276));
+  EXPECT_THAT(oslo_s_rail.type_, Eq(location_type::kStation));
+  EXPECT_THAT(oslo_s_rail.parent_, Eq(oslo_s_parent.l_));
+  EXPECT_THAT(get_tz_name(tt, oslo_s_rail.timezone_idx_), Eq("Europe/Oslo"));
+
+  auto const oslo_s_rail_children =
+      utl::to_vec(tt.locations_.children_[oslo_s_rail.l_],
+                  [&](location_idx_t const c) { return tt.locations_.get(c); });
+  EXPECT_THAT(oslo_s_rail_children,
+              Each(Field(&location::parent_, Eq(oslo_s_rail.l_))));
+  EXPECT_THAT(oslo_s_rail_children,
+              Each(Field(&location::type_, Eq(location_type::kTrack))));
+  EXPECT_THAT(
+      oslo_s_rail_children,
+      Each(ResultOf(
+          [&](auto const& c) { return get_tz_name(tt, c.timezone_idx_); },
+          Eq("Europe/Oslo"))));
+  EXPECT_THAT(utl::to_vec(oslo_s_rail_children,
+                          [&](location const& l) { return l.platform_code_; }),
+              UnorderedElementsAre("15", "2", "5", "7", "6", "11", "16", "13",
+                                   "14", "9", "8", "4", "19", "17", "12", "3",
+                                   "18", "10", "1"));
+
+  auto const oslo_s_bus_1 = tt.locations_.get({"NSR:StopPlace:2", {}});
+  EXPECT_THAT(oslo_s_bus_1.name_, Eq("Oslo S Trelastgata"));
+  EXPECT_THAT(oslo_s_bus_1.pos_.lat_, DoubleEq(59.909584));
+  EXPECT_THAT(oslo_s_bus_1.pos_.lng_, DoubleEq(10.755165));
+  EXPECT_THAT(oslo_s_bus_1.type_, Eq(location_type::kStation));
+  EXPECT_THAT(oslo_s_bus_1.parent_, Eq(oslo_s_parent.l_));
+  EXPECT_THAT(get_tz_name(tt, oslo_s_bus_1.timezone_idx_), Eq("Europe/Oslo"));
+
+  auto const oslo_s_bus_1_children =
+      utl::to_vec(tt.locations_.children_[oslo_s_bus_1.l_],
+                  [&](location_idx_t const c) { return tt.locations_.get(c); });
+  EXPECT_THAT(oslo_s_bus_1_children,
+              Each(Field(&location::parent_, Eq(oslo_s_bus_1.l_))));
+  EXPECT_THAT(oslo_s_bus_1_children,
+              Each(Field(&location::type_, Eq(location_type::kTrack))));
+  EXPECT_THAT(oslo_s_bus_1_children.size(), Eq(16));
+  EXPECT_THAT(
+      oslo_s_bus_1_children,
+      Each(ResultOf(
+          [&](auto const& c) { return get_tz_name(tt, c.timezone_idx_); },
+          Eq("Europe/Oslo"))));
 }
