@@ -151,6 +151,8 @@ void load_timetable(loader_config const& config,
           q.id_, q.name_, q.public_code_, "", q.centroid_, src,
           location_type::kTrack, sp.location_idx_, q.locale_.tz_idx_, 2_minutes,
           it_range{empty_location_idx_vec}, it_range{empty_alt_name_idx_vec}});
+      tt.locations_.parents_[q.location_idx_] = sp.location_idx_;
+      tt.locations_.children_[sp.location_idx_].emplace_back(q.location_idx_);
     }
   }
 
