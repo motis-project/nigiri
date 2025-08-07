@@ -77,7 +77,7 @@ struct journey {
   bool dominates(journey const& o) const {
     if (start_time_ <= dest_time_) {
       return transfers_ <= o.transfers_ && start_time_ >= o.start_time_ &&
-             dest_time_ <= o.dest_time_;
+             dest_time_ <= o.dest_time_ && success_chance >= o.success_chance;
     } else {
       return transfers_ <= o.transfers_ && start_time_ <= o.start_time_ &&
              dest_time_ >= o.dest_time_;

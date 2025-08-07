@@ -21,7 +21,7 @@ struct mcraptor_label {
   unsigned int label_id;
 
   bool dominates(mcraptor_label const& l) const {
-    return this->arr_t_ < l.arr_t_;
+    return this->arr_t_ < l.arr_t_ && this->success_chance >= l.success_chance;
   }
 };
 
@@ -179,7 +179,7 @@ struct mcraptor {
   }
 
   void add_start(location_idx_t const l, unixtime_t const t) {
-    location_bags_[to_idx(l)][0U].add({.arr_t_ = unix_to_delta(base(), t)});
+    location_bags_[to_idx(l)][0U].add({.arr_t_ = unix_to_delta(base(), t), .success_chance=1.0f});
     prev_round_station_mark_.set(to_idx(l), true);
   }
 
@@ -286,7 +286,7 @@ private:
   }
 
   float transferProbability(delta_t transfer_time){
-    return std::min(1.0f, 0.02f * transfer_time);
+    return std::min(1.0f, 0.02f * (transfer_time+1));
   }
 
   bool iterate_stops(unsigned const k, route_idx_t const r, mcraptor_label et_label, unsigned i, auto stop_seq){
@@ -347,12 +347,13 @@ private:
             auto const [day, mam] = split(prev_round_time);
             auto const new_et = get_earliest_transport(k, r, stop_idx, day, mam,
                                                        stp.location_idx());
-            //          auto const [second_day, second_mam] = split(time_at_stop(r, new_et, stop_idx,event_type::kDep)+1);
-            //          auto const second_new_et = get_earliest_transport(k, r, stop_idx, second_day, second_mam ,
-            //                                                            stp.location_idx());
+            if(!new_et.is_valid()) continue;
+            auto const [second_day, second_mam] = split(time_at_stop(r, new_et, stop_idx,event_type::kDep)+1);
+            auto const second_new_et = get_earliest_transport(k, r, stop_idx, second_day, second_mam ,
+                                                                        stp.location_idx());
 
             if (new_et.is_valid() && et != new_et) any_marked = any_marked | iterate_with_transport(k, r, i, stop_seq, new_et, prev_round_time, prev_success_chance, stop_idx, stp, li);
-            // any_marked = any_marked | iterate_with_transport(k, r, i, stop_seq,second_new_et, prev_round_time, prev_success_chance, stop_idx, stp);
+            if (second_new_et.is_valid() && et != second_new_et) any_marked = any_marked | iterate_with_transport(k, r, i, stop_seq,second_new_et, prev_round_time, prev_success_chance, stop_idx, stp, li);
           }
         }
       }
@@ -373,9 +374,10 @@ private:
       et_label.label_id = li;
       auto const transfer_time = time_at_stop(r, new_et, stop_idx,
                                               kFwd ? event_type::kDep : event_type::kArr) - prev_round_time;
-      if(prev_success_chance != 0)
-        et_label.success_chance = transferProbability(transfer_time) * prev_success_chance;
-      else et_label.success_chance = transferProbability(transfer_time);
+
+      if(k==1) et_label.success_chance = 1.0f;
+      else et_label.success_chance = transferProbability(transfer_time) * prev_success_chance;
+
 
       return iterate_stops(k, r, et_label, i + 1, stop_seq);
 //    }
@@ -417,7 +419,7 @@ private:
             location_bags_[i][k].add(new_label);
             station_mark_.set(i, true);
             if (is_dest_[i]) {
-              dest_bag_.add({.arr_t_ = fp_target_time}, k);
+              dest_bag_.add({.arr_t_ = fp_target_time, .success_chance=tmp_label.success_chance}, k);
             }
           }
         }
@@ -445,11 +447,11 @@ private:
                                                 fp.duration().count()));
 
           if (is_better(fp_target_time, get_best_time(target)) &&
-              !dest_bag_.dominates({.arr_t_ = fp_target_time}, k)) {
+              !dest_bag_.dominates({.arr_t_ = fp_target_time, .success_chance = tmp_label.success_chance}, k)) {
             auto const lower_bound = lb_[target];
 
             if (lower_bound == kUnreachable ||
-                dest_bag_.dominates({.arr_t_ = static_cast<delta_t>(fp_target_time + dir(lower_bound))}, k)) {
+                dest_bag_.dominates({.arr_t_ = static_cast<delta_t>(fp_target_time + dir(lower_bound)), .success_chance = tmp_label.success_chance}, k)) {
               ++stats_.fp_update_prevented_by_lower_bound_;
               continue;
             }
@@ -461,7 +463,7 @@ private:
             location_bags_[target][k].add(new_label);
             station_mark_.set(target, true);
             if (is_dest_[target]) {
-              dest_bag_.add({.arr_t_ = fp_target_time}, k);
+              dest_bag_.add({.arr_t_ = fp_target_time, .success_chance = tmp_label.success_chance}, k);
             }
           }
         }
