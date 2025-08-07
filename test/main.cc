@@ -14,8 +14,6 @@
 namespace fs = std::filesystem;
 
 int main(int argc, char** argv) {
-  std::cout << "\n Starte Tests\n";
-
   std::clog.rdbuf(std::cout.rdbuf());
 
   auto const progress_tracker = utl::activate_progress_tracker("test");
