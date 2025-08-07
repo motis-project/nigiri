@@ -149,7 +149,7 @@ TEST(rt, gtfs_rt_skip) {
 
   // Update.
   auto const msg = rt::json_to_protobuf(kTripUpdate);
-  gtfsrt_update_buf(tt, rtt, source_idx_t{0}, "", msg, false);
+  gtfsrt_update_buf(tt, rtt, source_idx_t{0}, "", msg);
 
   // Print trip.
   transit_realtime::TripDescriptor td;
@@ -173,7 +173,7 @@ TEST(rt, gtfs_rt_skip) {
 
   // Update with canceled
   auto const msgCanceled = rt::json_to_protobuf(kTripUpdateCanceled);
-  gtfsrt_update_buf(tt, rtt, source_idx_t{0}, "", msgCanceled, false);
+  gtfsrt_update_buf(tt, rtt, source_idx_t{0}, "", msgCanceled);
 
   ASSERT_TRUE(fr.is_cancelled());
 }
@@ -193,7 +193,7 @@ TEST(rt, gtfs_rt_cancel) {
 
   // Update.
   auto const msg = rt::json_to_protobuf(kTripUpdateCanceled);
-  gtfsrt_update_buf(tt, rtt, source_idx_t{0}, "", msg, false);
+  gtfsrt_update_buf(tt, rtt, source_idx_t{0}, "", msg);
 
   // Print trip.
   transit_realtime::TripDescriptor td;

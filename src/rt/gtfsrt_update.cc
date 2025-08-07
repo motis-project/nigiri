@@ -78,14 +78,21 @@ std::ostream& operator<<(std::ostream& out, statistics const& s) {
   print_if_no_empty("alert_invalid_route_type", s.alert_invalid_route_type_,
                     s.alert_total_informed_entities_);
   print_if_no_empty("unsupported_no_trip_id", s.unsupported_no_trip_id_, true);
-  print_if_no_empty("no_vehicle_position", s.no_vehicle_position_, true);
-  print_if_no_empty("vehicle_position_without_position", s.vehicle_position_without_position_,
-                    true);
-  print_if_no_empty("vehicle_position_without_trip", s.vehicle_position_without_trip_, true);
-  print_if_no_empty("vehicle_position_trip_without_trip_id", s.vehicle_position_trip_without_trip_id_,
-                    true);
-  print_if_no_empty("vehicle_position_trip_without_route_id", s.vehicle_position_trip_without_route_id_,
-                    true);
+  print_if_no_empty("total_vehicles", s.total_vehicles_, true);
+  print_if_no_empty("no_vehicle_position", s.no_vehicle_position_,
+                    s.total_vehicles_);
+  print_if_no_empty("vehicle_position_without_position",
+                    s.vehicle_position_without_position_, s.total_vehicles_);
+  print_if_no_empty("vehicle_position_without_timestamp",
+                    s.vehicle_position_without_timestamp_, s.total_vehicles_);
+  print_if_no_empty("vehicle_position_without_trip",
+                    s.vehicle_position_without_trip_, s.total_vehicles_);
+  print_if_no_empty("vehicle_position_trip_without_trip_id",
+                    s.vehicle_position_trip_without_trip_id_,
+                    s.total_vehicles_);
+  print_if_no_empty("vehicle_position_trip_without_route_id",
+                    s.vehicle_position_trip_without_route_id_,
+                    s.total_vehicles_);
   print_if_no_empty("no_trip_update", s.no_trip_update_, true);
   print_if_no_empty("trip_update_without_trip", s.trip_update_without_trip_,
                     true);
@@ -95,6 +102,8 @@ std::ostream& operator<<(std::ostream& out, statistics const& s) {
 
   return out;
 }
+
+std::map<trip_idx_t, uint64_t> trip_latest_vehicle_time_;
 
 struct delay_propagation {
   unixtime_t pred_time_;
@@ -432,7 +441,7 @@ void handle_vehicle_position(timetable const& tt,
                              source_idx_t const src,
                              std::string_view tag,
                              gtfsrt::FeedEntity const& entity,
-                             std::chrono::time_point<date::sys_days::clock, date::sys_days::duration> today) {
+                             time_point_t const today) {
   auto const vp = entity.vehicle();
   auto const vp_lat = vp.position().latitude();
   auto const vp_lon = vp.position().longitude();
@@ -446,70 +455,55 @@ void handle_vehicle_position(timetable const& tt,
       r.is_scheduled()
           ? std::span{tt.route_location_seq_[tt.transport_route_[r.t_.t_idx_]]}
           : std::span{rtt_const.rt_transport_location_seq_[r.rt_]};
-  auto stops = std::vector<stop::value_type>{};
-
-  for (auto const loc : location_seq) {
-    stops.emplace_back(stop{loc}.value());
-  }
 
   // add rt_transport if not existent
   if (!r.is_rt()) {
-    auto const sr = td.schedule_relationship();
-    auto const added_or_replaced =
-        is_added(sr) ||
-        sr == transit_realtime::TripDescriptor_ScheduleRelationship_REPLACEMENT;
-    auto times = added_or_replaced
-                     ? std::vector<delta_t>(location_seq.size() * 2U - 2U, 0)
-                     : std::vector<delta_t>{};
-    r.rt_ = rtt.add_rt_transport(
-        src, tt, r.t_, stops, times, std::string_view{gtfsrt_trip_id},
-        td.route_id(), tt.trip_display_names_[trip_idx].view());
+    r.rt_ = rtt.add_rt_transport(src, tt, r.t_);
   }
 
   // match position to stop
-  auto it = utl::find_if(location_seq, [&](auto const& loc) {
-    auto const stop_loc = stop{loc};
-    auto const stop_position = tt.locations_.get(stop_loc.location_idx());
+  auto const stop_it = utl::find_if(location_seq, [&](auto const& loc) {
+    auto const stop_position =
+        tt.locations_.get(location_idx_t{loc & 0x0FFFFFFF});
     auto const vehicle_position = geo::latlng{vp_lat, vp_lon};
     return geo::approx_squared_distance(
                stop_position.pos_, vehicle_position,
                geo::approx_distance_lng_degrees(vehicle_position)) < 10;
   });
-  auto stopped_at_idx = std::distance(begin(location_seq), it);
-
-  if (it == end(location_seq)) {
+  if (stop_it == end(location_seq)) {
     log(log_lvl::info, "rt.gtfs.unsupported",
         R"(Position of Vehicle was not near stop. Skipping Message)", tag,
         entity.id());
+    return;
   }
 
+  // check time
+  if (trip_latest_vehicle_time_.contains(trip_idx) &&
+      trip_latest_vehicle_time_[trip_idx] > vp.timestamp()) {
+    log(log_lvl::info, "rt.gtfs.unsupported",
+        R"(VehiclePosition is outdated. Skipping Message)", tag, entity.id());
+    return;
+  }
+  trip_latest_vehicle_time_[trip_idx] = vp.timestamp();
+
   // get remaining stops
-  auto const seq_numbers =
-      r.is_scheduled()
-          ? loader::gtfs::
-                stop_seq_number_range{{tt.trip_stop_seq_numbers_[trip_idx]},
-                                      static_cast<stop_idx_t>(
-                                          r.stop_range_.size())}
-          : loader::gtfs::stop_seq_number_range{
-                std::span<stop_idx_t>{},
-                static_cast<stop_idx_t>(location_seq.size())};
+  auto const stopped_at_idx = std::distance(begin(location_seq), stop_it);
+  auto fr = r.is_scheduled() ? frun::from_t(tt, &rtt_const, r.t_)
+                             : frun::from_rt(tt, &rtt_const, r.rt_);
+  auto seq_numbers = fr.stop_range_;
 
   // get delay
-  auto const now =
-      vp.has_timestamp()
-          ? unixtime_t{std::chrono::duration_cast<i32_minutes>(
-                std::chrono::seconds{vp.timestamp()})}
-          : std::chrono::floor<i32_minutes>(std::chrono::system_clock::now());
-  auto const delay =
-      now - tt.event_time(r.t_, stopped_at_idx, event_type::kDep);
+  auto const delay = unixtime_t{std::chrono::duration_cast<i32_minutes>(
+                         std::chrono::seconds{vp.timestamp()})} -
+                     tt.event_time(r.t_, stopped_at_idx, event_type::kArr);
   auto const delay_cast = std::chrono::duration_cast<duration_t>(delay);
-  // update delay for following stops
+
+  // update delay for remaining stops
   auto seq_it = begin(seq_numbers);
   for (int i = 0; i <= stopped_at_idx; ++i) {
     ++seq_it;
   }
 
-  // update delay for remaining stops
   for (auto stop_idx = stopped_at_idx + 1; seq_it != seq_numbers.end();
        ++stop_idx) {
     update_delay(tt, rtt, r, stop_idx, event_type::kArr, delay_cast,
@@ -565,8 +559,8 @@ statistics gtfsrt_update_msg(timetable const& tt,
       continue;
     }
 
-    // TODO: Wenn Flag gesetzt ist
     if (use_vp) {
+      ++stats.total_vehicles_;
       if (!entity.has_vehicle()) {
         log(log_lvl::error, "rt.gtfs.unsupported",
             R"(unsupported: no "vehicle_position" field (tag={}, id={}), skipping message)",
@@ -577,6 +571,11 @@ statistics gtfsrt_update_msg(timetable const& tt,
             R"(unsupported: no "position" field in "vehicle_position" field (tag={}, id={}), skipping message)",
             tag, entity.id());
         ++stats.vehicle_position_without_position_;
+      } else if (!entity.vehicle().has_timestamp()) {
+        log(log_lvl::error, "rt.gtfs.unsupported",
+            R"(unsupported: no "timestamp" field in "vehicle_position" field (tag={}, id={}), skipping message)",
+            tag, entity.id());
+        ++stats.vehicle_position_without_timestamp_;
       } else if (!entity.vehicle().has_trip()) {
         log(log_lvl::error, "rt.gtfs.unsupported",
             R"(unsupported: no "trip" field in "vehicle_position" field (tag={}, id={}), skipping message)",
