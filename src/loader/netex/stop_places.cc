@@ -219,6 +219,12 @@ void calculate_missing_centroids(netex_data& data) {
             }
           }
         }
+      } else {
+        for (auto& quay : sp.quays_) {
+          if (is_zero(quay.centroid_)) {
+            quay.centroid_ = sp.centroid_;
+          }
+        }
       }
     }
   }

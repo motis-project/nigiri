@@ -52,8 +52,8 @@ struct proj_transformers {
                 auth_factory_, nullptr, 0.0)},
         coord_op_factory_{
             osgeo::proj::operation::CoordinateOperationFactory::create()},
-        wgs84_crs_{auth_factory_epsg_->createCoordinateReferenceSystem("4326")}
-  {}
+        wgs84_crs_{
+            auth_factory_epsg_->createCoordinateReferenceSystem("4326")} {}
 
   geo::latlng transform(std::string const& input_crs_spec,
                         double const input_x,
@@ -109,4 +109,4 @@ struct proj_transformers {
       transformers_;
 };
 
-}
+}  // namespace nigiri::loader::netex
