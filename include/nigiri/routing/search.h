@@ -430,9 +430,10 @@ private:
           auto const start_time = from_it->time_at_start_;
           for (auto const& s : it_range{from_it, to_it}) {
             trace("init: time_at_start={}, time_at_stop={} at {}\n",
-                  s.time_at_start_, s.time_at_stop_, location_idx_t{s.stop_});
+                  s.time_at_start_, s.time_at_stop_, location{tt_, s.stop_});
             algo_.add_start(s.stop_, s.time_at_stop_);
           }
+          trace("RUN ALGO\n");
 
           /*
            * Upper bound: Search journeys faster than 'worst_time_at_dest'
