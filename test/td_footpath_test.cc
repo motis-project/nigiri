@@ -178,3 +178,49 @@ TEST(td_footpath, backward) {
   EXPECT_TRUE(called);
   EXPECT_EQ(1h + 10min, x.duration());
 }
+
+TEST(td_footpath, backward_last) {
+  auto const l = location_idx_t{0U};
+  auto const fps = std::vector<td_footpath>{
+      {l, date::sys_days{2025_y / August / 11} + 7h + 22min, 25min},
+      {l, date::sys_days{2025_y / August / 11} + 7h + 47min,
+       footpath::kMaxDuration},
+      {l, date::sys_days{2025_y / August / 11} + 8h + 14min, 25min},
+      {l, date::sys_days{2025_y / August / 11} + 8h + 47min,
+       footpath::kMaxDuration},
+      {l, date::sys_days{2025_y / August / 11} + 9h + 22min, 25min},
+      {l, date::sys_days{2025_y / August / 11} + 10h + 8min,
+       footpath::kMaxDuration},
+      {l, date::sys_days{2025_y / August / 11} + 10h + 22min, 25min},
+      {l, date::sys_days{2025_y / August / 11} + 11h + 17min,
+       footpath::kMaxDuration},
+      {l, date::sys_days{2025_y / August / 11} + 11h + 22min, 25min},
+      {l, date::sys_days{2025_y / August / 11} + 12h + 17min,
+       footpath::kMaxDuration},
+      {l, date::sys_days{2025_y / August / 11} + 12h + 22min, 25min},
+      {l, date::sys_days{2025_y / August / 11} + 13h + 8min,
+       footpath::kMaxDuration},
+      {l, date::sys_days{2025_y / August / 11} + 13h + 22min, 25min},
+      {l, date::sys_days{2025_y / August / 11} + 14h + 8min,
+       footpath::kMaxDuration},
+      {l, date::sys_days{2025_y / August / 11} + 14h + 22min, 25min},
+      {l, date::sys_days{2025_y / August / 11} + 15h + 8min,
+       footpath::kMaxDuration},
+      {l, date::sys_days{2025_y / August / 11} + 15h + 22min, 25min},
+      {l, date::sys_days{2025_y / August / 11} + 16h + 8min,
+       footpath::kMaxDuration},
+      {l, date::sys_days{2025_y / August / 11} + 16h + 22min, 25min},
+      {l, date::sys_days{2025_y / August / 11} + 16h + 47min,
+       footpath::kMaxDuration},
+      {l, date::sys_days{2025_y / August / 11} + 17h + 22min, 25min},
+      {l, date::sys_days{2025_y / August / 11} + 17h + 47min,
+       footpath::kMaxDuration},
+      {l, date::sys_days{2025_y / August / 11} + 18h + 22min, 25min},
+      {l, date::sys_days{2025_y / August / 11} + 18h + 47min,
+       footpath::kMaxDuration}};
+
+  auto const x = date::sys_days{2025_y / August / 12} + 4h + 8min;
+  auto const fp = get_td_duration<direction::kBackward>(fps, x);
+
+  ASSERT_TRUE(fp.has_value());
+}

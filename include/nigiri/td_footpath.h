@@ -14,8 +14,6 @@
 namespace nigiri {
 
 constexpr auto const kNull = unixtime_t{0_minutes};
-constexpr auto const kInfeasible =
-    duration_t{std::numeric_limits<duration_t::rep>::max()};
 
 struct td_footpath {
   CISTA_FRIEND_COMPARABLE(td_footpath)
@@ -80,11 +78,7 @@ get_td_duration(Collection const& c, unixtime_t const t) {
       auto const start = std::min(valid_from, t);
       auto const target_time = start - fp.duration_;
       auto const duration_with_waiting = t - target_time;
-      if (duration_with_waiting < footpath::kMaxDuration) {
-        return std::pair{duration_with_waiting, fp};
-      } else {
-        return std::nullopt;
-      }
+      return std::pair{duration_with_waiting, fp};
     };
 
     if (from != to && get_valid_from(*from) <= t) {
