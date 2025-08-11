@@ -1,0 +1,172 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- Based on extracts from the German NeTEx data provided by DELFI under CC-BY license (https://opendefinition.org/licenses/cc-by/) -->
+<!-- Original source: https://www.opendata-oepnv.de/ -->
+<PublicationDelivery xmlns="http://www.netex.org.uk/netex" version="ntx:1.1">
+
+    <PublicationTimestamp>2025-07-12T14:08:56</PublicationTimestamp>
+
+    <ParticipantRef>DE</ParticipantRef>
+
+    <dataObjects>
+        <CompositeFrame id="DE::CompositeFrame_EU_PI_LINE_OFFER:rbo_d-BUS-419" version="1752322136">
+            <ValidBetween>
+                <FromDate>2025-06-28T00:00:00</FromDate>
+                <ToDate>2025-12-13T00:00:00</ToDate>
+            </ValidBetween>
+            <TypeOfFrameRef ref="epip:EU_PI_LINE_OFFER" versionRef="1.0"/>
+            <codespaces>
+                <Codespace id="epip_data">
+                    <Xmlns>epd</Xmlns>
+                    <XmlnsUrl>http://netex-cen.eu/epip_data</XmlnsUrl>
+                    <Description>EPIP data</Description>
+                </Codespace>
+            </codespaces>
+            <FrameDefaults>
+                <DefaultCodespaceRef ref="epip_data"/>
+                <DefaultDataSourceRef ref="epip_data:DataSource:General"/>
+                <DefaultResponsibilitySetRef ref="DE::ResponsibilitySet:7541::" version="1752322136"/>
+                <DefaultLocale>
+                    <TimeZone>Europe/Berlin</TimeZone>
+                    <DefaultLanguage>de-DE</DefaultLanguage>
+                </DefaultLocale>
+                <DefaultLocationSystem>urn:ogc:def:crs:EPSG::4326</DefaultLocationSystem>
+            </FrameDefaults>
+            <frames>
+                <SiteFrame id="DE::SiteFrame_EU_PI_STOP:rbo_d-BUS-419" version="1752322136">
+                    <TypeOfFrameRef ref="epip:EU_PI_STOP" versionRef="1.0"/>
+                    <stopPlaces>
+                        <StopPlace id="DE::StopPlace:6989_rbo_d::" version="1752322136">
+                            <keyList>
+                                <KeyValue>
+                                    <Key>GlobalID</Key>
+                                    <Value>de:09277:6989</Value>
+                                </KeyValue>
+                            </keyList>
+                            <Name>Nürnberg</Name>
+                            <Centroid>
+                                <Location>
+                                    <Longitude>12.915564</Longitude>
+                                    <Latitude>48.362493</Latitude>
+                                </Location>
+                            </Centroid>
+                            <TopographicPlaceRef ref="DE::TopographicPlace:76853::" version="1752322136"/>
+                            <Locale>
+                                <TimeZone>Europe/Berlin</TimeZone>
+                            </Locale>
+                            <AuthorityRef ref="DE::Authority:467::" version="1752322136"/>
+                            <StopPlaceType>other</StopPlaceType>
+                        </StopPlace>
+                        <StopPlace id="DE::StopPlace:1069890000_rbo_d::" version="1752322136">
+                            <Name>Nürnberg</Name>
+                            <TopographicPlaceRef ref="DE::TopographicPlace:76853::" version="1752322136"/>
+                            <AuthorityRef ref="DE::Authority:467::" version="1752322136"/>
+                            <ParentSiteRef ref="DE::StopPlace:6989_rbo_d::" version="1752322136"/>
+                            <StopPlaceType>other</StopPlaceType>
+                            <quays>
+                                <Quay id="DE::Quay:10698902_rbo_d::" version="1752322136">
+                                    <keyList>
+                                        <KeyValue>
+                                            <Key>GlobalID</Key>
+                                            <Value>de:09277:6989:0:2</Value>
+                                        </KeyValue>
+                                    </keyList>
+                                    <Name>Nürnberg</Name>
+                                    <Centroid>
+                                        <Location>
+                                            <Longitude>12.915393</Longitude>
+                                            <Latitude>48.362451</Latitude>
+                                        </Location>
+                                    </Centroid>
+                                </Quay>
+                                <Quay id="DE::Quay:10698901_rbo_d::" version="1752322136">
+                                    <keyList>
+                                        <KeyValue>
+                                            <Key>GlobalID</Key>
+                                            <Value>de:09277:6989:0:1</Value>
+                                        </KeyValue>
+                                    </keyList>
+                                    <Name>Nürnberg</Name>
+                                    <Centroid>
+                                        <Location>
+                                            <Longitude>12.915735</Longitude>
+                                            <Latitude>48.362535</Latitude>
+                                        </Location>
+                                    </Centroid>
+                                </Quay>
+                            </quays>
+                        </StopPlace>
+                        <StopPlace id="DE::StopPlace:1069890000_rbo_d::" version="1752322136">
+                            <Name>Nürnberg</Name>
+                            <TopographicPlaceRef ref="DE::TopographicPlace:76853::" version="1752322136"/>
+                            <AuthorityRef ref="DE::Authority:467::" version="1752322136"/>
+                            <ParentSiteRef ref="DE::StopPlace:6989_rbo_d::" version="1752322136"/>
+                            <StopPlaceType>other</StopPlaceType>
+                            <quays>
+                                <Quay id="DE::Quay:10698902_rbo_d::" version="1752322136">
+                                    <keyList>
+                                        <KeyValue>
+                                            <Key>GlobalID</Key>
+                                            <Value>de:09277:6989:0:2</Value>
+                                        </KeyValue>
+                                    </keyList>
+                                    <Name>Nürnberg</Name>
+                                    <Centroid>
+                                        <Location>
+                                            <Longitude>12.915393</Longitude>
+                                            <Latitude>48.362451</Latitude>
+                                        </Location>
+                                    </Centroid>
+                                </Quay>
+                                <Quay id="DE::Quay:10698901_rbo_d::" version="1752322136">
+                                    <keyList>
+                                        <KeyValue>
+                                            <Key>GlobalID</Key>
+                                            <Value>de:09277:6989:0:1</Value>
+                                        </KeyValue>
+                                    </keyList>
+                                    <Name>Nürnberg</Name>
+                                    <Centroid>
+                                        <Location>
+                                            <Longitude>12.915735</Longitude>
+                                            <Latitude>48.362535</Latitude>
+                                        </Location>
+                                    </Centroid>
+                                </Quay>
+                            </quays>
+                        </StopPlace>
+
+                        <StopPlace id="DE::StopPlace:4113_GVH::" version="1752322136">
+                            <keyList>
+                                <KeyValue>
+                                    <Key>GlobalID</Key>
+                                    <Value>de:03241:4113</Value>
+                                </KeyValue>
+                            </keyList>
+                            <Name>Airport Business Park West</Name>
+                            <Centroid>
+                                <Location>
+                                    <Longitude>9.680919</Longitude>
+                                    <Latitude>52.461497</Latitude>
+                                </Location>
+                            </Centroid>
+                            <AuthorityRef ref="DE::Authority:754::" version="1752322136"/>
+                            <StopPlaceType>other</StopPlaceType>
+                            <quays>
+                                <Quay id="DE::Quay:1041130001_GVH::" version="1752322136">
+                                    <keyList>
+                                        <KeyValue>
+                                            <Key>GlobalID</Key>
+                                            <Value>de:03241:4113:1</Value>
+                                        </KeyValue>
+                                    </keyList>
+                                    <Name>Airport Business Park West | Bus</Name>
+                                </Quay>
+                            </quays>
+                        </StopPlace>
+                    </stopPlaces>
+                </SiteFrame>
+            </frames>
+        </CompositeFrame>
+    </dataObjects>
+
+</PublicationDelivery>

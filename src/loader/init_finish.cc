@@ -15,7 +15,8 @@
 namespace nigiri::loader {
 
 void register_special_stations(timetable& tt) {
-  auto empty_idx_vec = vector<location_idx_t>{};
+  auto empty_location_idx_vec = vector<location_idx_t>{};
+  auto empty_alt_name_idx_vec = vector<alt_name_idx_t>{};
   for (auto const& name : special_stations_names) {
     tt.locations_.register_location(location{name,
                                              name,
@@ -27,7 +28,8 @@ void register_special_stations(timetable& tt) {
                                              location_idx_t::invalid(),
                                              timezone_idx_t::invalid(),
                                              0_minutes,
-                                             it_range{empty_idx_vec}});
+                                             it_range{empty_location_idx_vec},
+                                             it_range{empty_alt_name_idx_vec}});
   }
   tt.location_routes_.resize(tt.n_locations());
   tt.bitfields_.emplace_back(bitfield{});  // bitfield_idx 0 = 000...00 bitfield

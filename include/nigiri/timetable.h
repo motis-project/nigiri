@@ -51,6 +51,7 @@ struct timetable {
         descriptions_.emplace_back(l.desc_);
         coordinates_.emplace_back(l.pos_);
         ids_.emplace_back(l.id_);
+        alt_names_.add_back_sized(0U);
         src_.emplace_back(l.src_);
         types_.emplace_back(l.type_);
         location_timezones_.emplace_back(l.timezone_idx_);
@@ -94,7 +95,8 @@ struct timetable {
                         parents_[idx],
                         location_timezones_[idx],
                         transfer_time_[idx],
-                        it_range{equivalences_[idx]}};
+                        it_range{equivalences_[idx]},
+                        it_range{alt_names_[idx]}};
       l.l_ = idx;
       return l;
     }
@@ -109,12 +111,22 @@ struct timetable {
                                             : std::optional{get(it->second)};
     }
 
+    location_idx_t get_root_idx(location_idx_t const idx) const {
+      auto l = idx;
+      for (auto p = parents_[l]; p != location_idx_t::invalid();
+           p = parents_[l]) {
+        l = p;
+      }
+      return l;
+    }
+
     // Station access: external station id -> internal station idx
     hash_map<location_id, location_idx_t> location_id_to_idx_;
     vecvec<location_idx_t, char> names_;
     vecvec<location_idx_t, char> platform_codes_;
     vecvec<location_idx_t, char> descriptions_;
     vecvec<location_idx_t, char> ids_;
+    vecvec<location_idx_t, alt_name_idx_t> alt_names_;
     vector_map<location_idx_t, geo::latlng> coordinates_;
     vector_map<location_idx_t, source_idx_t> src_;
     vector_map<location_idx_t, u8_minutes> transfer_time_;
@@ -129,6 +141,8 @@ struct timetable {
     array<vecvec<location_idx_t, footpath>, kNProfiles> footpaths_in_;
     vector_map<timezone_idx_t, timezone> timezones_;
     vector_map<location_idx_t, std::uint32_t> location_importance_;
+    vecvec<alt_name_idx_t, char> alt_name_strings_;
+    vector_map<alt_name_idx_t, language_idx_t> alt_name_langs_;
     std::uint32_t max_importance_{0U};
     rtree<location_idx_t> rtree_;
   } locations_;
@@ -367,9 +381,7 @@ struct timetable {
     return route_location_seq_.size();
   }
 
-  cista::base_t<source_idx_t> n_sources() const {
-    return source_file_names_.size();
-  }
+  cista::base_t<source_idx_t> n_sources() const { return n_sources_; }
 
   cista::base_t<provider_idx_t> n_agencies() const { return providers_.size(); }
 
@@ -630,6 +642,10 @@ struct timetable {
 
   // Strings
   string_store<string_idx_t> strings_;
+
+  vecvec<language_idx_t, char> languages_;
+
+  cista::base_t<source_idx_t> n_sources_{};
 };
 
 }  // namespace nigiri

@@ -70,7 +70,7 @@ void load_timetable(source_idx_t const src,
                     dir const& d,
                     timetable& tt,
                     hash_map<bitfield, bitfield_idx_t>& bitfield_indices) {
-  auto st = stamm{c, tt, d};
+  auto st = stamm{c, tt, d, src};
 
   auto progress_tracker = utl::get_active_progress_tracker();
   progress_tracker->status("Read Services")
