@@ -58,3 +58,8 @@
   url=git@github.com:motis-project/PROJ.git
   branch=master
   commit=95c46e1aa0a5fe824f2efc8fc9c8e99d27548390
+[zlib-ng]
+  url=git@github.com:motis-project/zlib-ng.git
+  branch=develop
+  commit=d68e1d908e789c31c1f2fafe4bd8e09cb91e21c5
+
