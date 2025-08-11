@@ -9,7 +9,6 @@ if (NOT DEFINED CMAKE_MSVC_RUNTIME_LIBRARY)
   endif ()
 endif ()
 
-set(CMAKE_CXX_STANDARD 23)
 include(cmake/buildcache.cmake)
 include(cmake/pkg.cmake)
 

@@ -1,7 +1,7 @@
 [googletest]
   url=git@github.com:motis-project/googletest.git
   branch=master
-  commit=7570a5ac03fdbe23a48e3494ef16144d4dbe601c
+  commit=9758d168fd1ccff2d76f3bd6ef802943d0f8f7e5
 [cista]
   url=git@github.com:felixguendling/cista.git
   branch=master
