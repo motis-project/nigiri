@@ -13,6 +13,8 @@ namespace nigiri::loader {
 struct agency {
   agency(timetable const&, provider_idx_t);
 
+  std::string_view get_id() const;
+
   std::string_view get_name() const;
   void set_name(std::string_view);
 
@@ -33,6 +35,8 @@ struct agency {
 
 struct location {
   location(timetable const&, location_idx_t);
+
+  std::string_view get_id() const;
 
   std::string_view get_name() const;
   void set_name(std::string_view);
@@ -128,6 +132,16 @@ struct trip {
   timetable* tt_{nullptr};
   hash_map<std::string, timezone_idx_t>* tz_map_{nullptr};
 };
+
+struct script_runner;
+
+std::unique_ptr<script_runner> make_script_runner(
+    std::string const& user_script);
+
+void process_location(std::string_view tag, script_runner const&, location&);
+void process_agency(std::string_view tag, script_runner const&, agency&);
+void process_route(std::string_view tag, script_runner const&, route&);
+void process_trip(std::string_view tag, script_runner const&, trip&);
 
 location_idx_t register_location(timetable&, location const&);
 route_id_idx_t register_route(timetable&, route const&);

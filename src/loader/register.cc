@@ -23,6 +23,8 @@ agency::agency(timetable const& tt, provider_idx_t const a)
       url_{tt.strings_.get(tt.providers_[a].url_), generic_string::non_owning},
       timezone_idx_{tt.providers_[a].tz_} {}
 
+std::string_view agency::get_id() const { return id_; }
+
 std::string_view agency::get_name() const { return name_; }
 void agency::set_name(std::string_view x) { name_.set_owning(x); }
 
@@ -53,6 +55,8 @@ location::location(timetable const& tt, location_idx_t const l)
       timezone_idx_{tt.locations_.location_timezones_[l]},
       transfer_time_{tt.locations_.transfer_time_[l]},
       equivalences_{tt.locations_.equivalences_[l]} {}
+
+std::string_view location::get_id() const { return id_; }
 
 std::string_view location::get_name() const { return name_; }
 void location::set_name(std::string_view x) { name_.set_owning(x); }
@@ -161,6 +165,7 @@ struct script_runner {
 
     lua_.new_usertype<agency>(  //
         "agency",  //
+        "get_id", &agency::get_id,  //
         "get_name", &agency::get_name,  //
         "set_name", &agency::set_name,  //
         "get_url", &agency::get_url,  //
@@ -171,6 +176,7 @@ struct script_runner {
 
     lua_.new_usertype<location>(
         "location",  //
+        "get_id", &location::get_id,  //
         "get_name", &location::get_name,  //
         "set_name", &location::set_name,  //
         "get_platform_code", &location::get_platform_code,  //
@@ -204,6 +210,7 @@ struct script_runner {
 
     lua_.new_usertype<trip>(  //
         "trip",  //
+        "get_id", &trip::get_id,  //
         "get_headsign", &trip::get_headsign,  //
         "set_headsign", &trip::set_headsign,  //
         "get_short_name", &trip::get_short_name,  //
@@ -226,6 +233,42 @@ struct script_runner {
   sol::protected_function process_route_;
   sol::protected_function process_trip_;
 };
+
+std::unique_ptr<script_runner> make_script_runner(
+    std::string const& user_script) {
+  return std::make_unique<script_runner>(user_script);
+}
+
+template <typename T>
+void process(std::string_view tag,
+             sol::protected_function const& process,
+             T& t) {
+  if (process.valid()) {
+    auto result = process(t);
+    if (!result.valid()) {
+      auto err = static_cast<sol::error>(result);
+      log(log_lvl::error, "nigiri.loader.user_script",
+          "user script failed: type={}, tag={}, error={}", cista::type_str<T>(),
+          tag, err.what());
+      return;
+    }
+  }
+}
+
+void process_location(std::string_view tag,
+                      script_runner const& r,
+                      location& x) {
+  process(tag, r.process_location_, x);
+}
+void process_agency(std::string_view tag, script_runner const& r, agency& x) {
+  process(tag, r.process_location_, x);
+}
+void process_route(std::string_view tag, script_runner const& r, route& x) {
+  process(tag, r.process_location_, x);
+}
+void process_trip(std::string_view tag, script_runner const& r, trip& x) {
+  process(tag, r.process_location_, x);
+}
 
 location_idx_t register_location(timetable& tt, location const& l) {
   auto& loc = tt.locations_;
