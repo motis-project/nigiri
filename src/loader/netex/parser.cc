@@ -12,27 +12,6 @@ netex_ctx get_frame_ctx(netex_data& data,
                         pugi::xml_node const& frame) {
   auto ctx = parent_ctx;
 
-  if (auto const valid_between = frame.child("ValidBetween")) {
-    if (auto const from_date = valid_between.child("FromDate")) {
-      ctx.valid_from_ = from_date.child_value();
-    }
-    if (auto const to_date = valid_between.child("ToDate")) {
-      ctx.valid_to_ = to_date.child_value();
-    }
-  } else if (auto const validity_conditions =
-                 frame.child("validityConditions")) {
-    // TODO: there could be multiple entries in validityConditions
-    if (auto const availability_condition =
-            validity_conditions.child("AvailabilityCondition")) {
-      if (auto const from_date = availability_condition.child("FromDate")) {
-        ctx.valid_from_ = from_date.child_value();
-      }
-      if (auto const to_date = availability_condition.child("ToDate")) {
-        ctx.valid_to_ = to_date.child_value();
-      }
-    }
-  }
-
   if (auto const frame_defaults = frame.child("FrameDefaults")) {
     if (auto const default_locale = frame_defaults.child("DefaultLocale")) {
       ctx.locale_ = parse_locale(data, parent_ctx, default_locale);

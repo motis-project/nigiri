@@ -22,8 +22,6 @@ struct netex_locale {
 };
 
 struct netex_ctx {
-  std::optional<std::string> valid_from_;
-  std::optional<std::string> valid_to_;
   std::optional<netex_locale> locale_;
   std::optional<std::string> default_crs_;
 };
@@ -37,7 +35,6 @@ struct quay {
   std::string id_;
   std::string name_;
   std::string public_code_;
-  std::string ssp_public_code_;  // from ScheduledStopPoint
   geo::latlng centroid_{};
 
   std::optional<std::string> parent_ref_;
