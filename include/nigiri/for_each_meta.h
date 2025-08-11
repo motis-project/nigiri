@@ -38,19 +38,10 @@ void for_each_meta(timetable const& tt,
     fn(l);
     handle_children(l);
   } else if (mode == location_match_mode::kEquivalent) {
-    fn(l);
-    handle_children(l);
-    handle_equivalences(l);
-    if (auto const parent = tt.locations_.parents_.at(l);
-        parent != location_idx_t::invalid()) {
-      fn(parent);
-      handle_equivalences(parent);
-    }
-
     auto const root = tt.locations_.get_root_idx(l);
     fn(root);
     handle_children(root);
-    handle_equivalences(root);
+    handle_equivalences(l);
   }
 }
 
