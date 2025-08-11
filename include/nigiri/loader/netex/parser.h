@@ -10,8 +10,6 @@ namespace nigiri::loader::netex {
 
 void parse_netex_file(netex_data&,
                       loader_config const&,
-                      source_idx_t,
-                      timetable&,
                       pugi::xml_document const&);
 
 }  // namespace nigiri::loader::netex

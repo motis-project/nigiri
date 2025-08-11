@@ -79,9 +79,9 @@ void load_timetable(loader_config const& config,
                     source_idx_t const src,
                     dir const& d,
                     timetable& tt,
-                    hash_map<bitfield, bitfield_idx_t>& bitfield_indices,
-                    assistance_times* assistance,
-                    shapes_storage* shapes_data) {
+                    hash_map<bitfield, bitfield_idx_t>& /*bitfield_indices*/,
+                    assistance_times* /*assistance*/,
+                    shapes_storage* /*shapes_data*/) {
   auto const global_timer = nigiri::scoped_timer{"netex parser"};
   auto const progress_tracker = utl::get_active_progress_tracker();
 
@@ -107,7 +107,7 @@ void load_timetable(loader_config const& config,
     utl::verify(result, "Unable to parse XML buffer: {} at offset {}",
                 result.description(), result.offset);
 
-    parse_netex_file(data, config, src, tt, doc);
+    parse_netex_file(data, config, doc);
 
     progress_tracker->increment();
   }

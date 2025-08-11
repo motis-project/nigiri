@@ -14,10 +14,10 @@
 namespace nigiri::loader::netex {
 
 struct netex_locale {
-  std::string language_;
-  std::string tz_name_;
-  std::string tz_offset_;
-  std::string tz_summer_offset_;
+  std::string language_{};
+  std::string tz_name_{};
+  std::string tz_offset_{};
+  std::string tz_summer_offset_{};
   timezone_idx_t tz_idx_{timezone_idx_t::invalid()};
 };
 

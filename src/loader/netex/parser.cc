@@ -63,8 +63,6 @@ void parse_composite_frame(netex_data& data,
 
 void parse_netex_file(netex_data& data,
                       loader_config const& config,
-                      source_idx_t src,
-                      timetable& tt,
                       pugi::xml_document const& doc) {
   auto default_locale = get_default_locale(data, config);
   auto default_ctx = netex_ctx{
