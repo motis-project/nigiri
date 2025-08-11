@@ -22,8 +22,8 @@ struct netex_locale {
 };
 
 struct netex_ctx {
-  std::optional<netex_locale> locale_;
-  std::optional<std::string> default_crs_;
+  std::optional<netex_locale> locale_{};
+  std::optional<std::string> default_crs_{};
 };
 
 struct alt_name {
@@ -37,8 +37,8 @@ struct quay {
   std::string public_code_;
   geo::latlng centroid_{};
 
-  std::optional<std::string> parent_ref_;
-  netex_locale locale_;
+  std::optional<std::string> parent_ref_{};
+  netex_locale locale_{};
 
   location_idx_t location_idx_{location_idx_t::invalid()};
 };
@@ -48,25 +48,25 @@ struct stop_place {
   std::string name_;
   std::string description_;
   geo::latlng centroid_{};
-  std::vector<quay> quays_;
-  std::vector<alt_name> alt_names_;
+  std::vector<quay> quays_{};
+  std::vector<alt_name> alt_names_{};
 
-  std::vector<std::string> children_;
-  std::optional<std::string> parent_ref_;
+  std::vector<std::string> children_{};
+  std::optional<std::string> parent_ref_{};
 
-  netex_locale locale_;
+  netex_locale locale_{};
 
   location_idx_t location_idx_{location_idx_t::invalid()};
 };
 
 struct netex_data {
-  hash_map<std::string, stop_place> stop_places_;
+  hash_map<std::string, stop_place> stop_places_{};
 
-  hash_map<std::string, quay> quays_with_missing_parents_;
-  hash_map<std::string, quay> standalone_quays_;
+  hash_map<std::string, quay> quays_with_missing_parents_{};
+  hash_map<std::string, quay> standalone_quays_{};
 
   proj_transformers proj_transformers_{};
-  hash_map<std::string, timezone_idx_t> timezones_;
+  hash_map<std::string, timezone_idx_t> timezones_{};
 
   timetable& tt_;
 };
