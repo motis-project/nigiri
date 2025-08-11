@@ -381,9 +381,7 @@ struct timetable {
     return route_location_seq_.size();
   }
 
-  cista::base_t<source_idx_t> n_sources() const {
-    return source_file_names_.size();
-  }
+  cista::base_t<source_idx_t> n_sources() const { return n_sources_; }
 
   cista::base_t<provider_idx_t> n_agencies() const { return providers_.size(); }
 
@@ -646,6 +644,8 @@ struct timetable {
   string_store<string_idx_t> strings_;
 
   vecvec<language_idx_t, char> languages_;
+
+  cista::base_t<source_idx_t> n_sources_{};
 };
 
 }  // namespace nigiri

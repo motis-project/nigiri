@@ -35,6 +35,7 @@ timetable load(std::vector<timetable_source> const& sources,
 
   auto tt = timetable{};
   tt.date_range_ = date_range;
+  tt.n_sources_ = static_cast<cista::base_t<source_idx_t>>(sources.size());
   register_special_stations(tt);
 
   auto bitfields = hash_map<bitfield, bitfield_idx_t>{};
