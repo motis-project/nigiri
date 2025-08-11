@@ -57,4 +57,4 @@
 [PROJ]
   url=git@github.com:motis-project/PROJ.git
   branch=master
-  commit=a797c29352dec34e595487ddeee2b002adabe571
+  commit=cbf50dff2ae554d24ac0039c0cc868a75c0151ff
