@@ -73,6 +73,8 @@ struct location {
 struct route {
   route(timetable const&, source_idx_t, route_id_idx_t);
 
+  std::string_view get_id() const;
+
   std::string_view get_short_name() const;
   void set_short_name(std::string_view);
 

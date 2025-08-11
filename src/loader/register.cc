@@ -110,6 +110,8 @@ route::route(timetable const& tt,
       color_{tt.route_ids_[src].route_id_colors_[r]},
       agency_{tt.route_ids_[src].route_id_provider_[r]} {}
 
+std::string_view route::get_id() const { return id_; }
+
 std::string_view route::get_short_name() const { return short_name_; }
 void route::set_short_name(std::string_view x) { short_name_.set_owning(x); }
 
@@ -186,6 +188,7 @@ struct script_runner {
 
     lua_.new_usertype<route>(  //
         "route",  //
+        "get_id", &route::get_id,  //
         "get_short_name", &route::get_short_name,  //
         "set_short_name", &route::set_short_name,  //
         "get_long_name", &route::get_long_name,  //
