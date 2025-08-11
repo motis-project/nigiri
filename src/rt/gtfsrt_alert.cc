@@ -74,17 +74,16 @@ alert_severity convert(transit_realtime::Alert_SeverityLevel x) {
 }
 
 provider_idx_t get_provider_idx(timetable const& tt,
-                                std::string_view s,
+                                std::string_view id,
                                 source_idx_t const src) {
   auto const it = std::lower_bound(
-      begin(tt.provider_id_to_idx_), end(tt.provider_id_to_idx_), s,
+      begin(tt.provider_id_to_idx_), end(tt.provider_id_to_idx_), id,
       [&](provider_idx_t const a, std::string_view const b) {
         auto const& p = tt.providers_[a];
-        return std::tuple{p.src_, tt.strings_.get(p.short_name_)} <
-               std::tuple{src, b};
+        return std::tuple{p.src_, tt.strings_.get(p.id_)} < std::tuple{src, b};
       });
   if (it == end(tt.provider_id_to_idx_) || tt.providers_[*it].src_ != src ||
-      tt.strings_.get(tt.providers_[*it].short_name_) != s) {
+      tt.strings_.get(tt.providers_[*it].id_) != id) {
     return provider_idx_t::invalid();
   }
   return *it;

@@ -180,6 +180,10 @@ route_map_t read_routes(source_idx_t const src,
          | utl::csv<csv_route>()  //
          |
          utl::transform([&](csv_route const& r) {
+           auto const color = route_color{
+               .color_ = to_color(r.route_color_->to_str()),
+               .text_color_ = to_color(r.route_text_color_->to_str())};
+
            auto const agency =
                agencies.size() == 1U
                    ? agencies.begin()->second
@@ -201,7 +205,7 @@ route_map_t read_routes(source_idx_t const src,
 
            auto const route_id_idx = tt.route_ids_[src].add(
                r.route_id_->view(), r.route_short_name_->view(),
-               r.route_long_name_->view(), agency, *r.route_type_);
+               r.route_long_name_->view(), agency, color, *r.route_type_);
 
            return std::pair{
                r.route_id_->to_str(),

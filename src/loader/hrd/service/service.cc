@@ -405,7 +405,7 @@ std::string service::display_name(nigiri::timetable& tt) const {
     auto const first =
         is(kOnlyTrainNr)
             ? ""
-            : (is(kUseProvider) ? tt.strings_.get(provider.short_name_)
+            : (is(kUseProvider) ? tt.strings_.get(provider.id_)
                                 : cat.name_);
     auto const second =
         is(kOnlyCategory)

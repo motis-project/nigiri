@@ -117,6 +117,8 @@ using stop_idx_t = std::uint16_t;
 
 using string = cista::raw::string;
 
+using generic_string = cista::raw::generic_string;
+
 template <typename T>
 using unique_ptr = cista::raw::unique_ptr<T>;
 
@@ -240,7 +242,7 @@ struct attribute {
 struct provider {
   CISTA_COMPARABLE()
   CISTA_PRINTABLE(provider, "short_name", "long_name", "url")
-  string_idx_t short_name_, long_name_, url_;
+  string_idx_t id_, name_, url_;
   timezone_idx_t tz_{timezone_idx_t::invalid()};
   source_idx_t src_;
 };

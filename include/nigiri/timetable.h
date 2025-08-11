@@ -465,10 +465,12 @@ struct timetable {
                        std::string_view short_name,
                        std::string_view long_name,
                        provider_idx_t const provider,
+                       route_color const color,
                        std::uint16_t const type) {
       auto const idx = ids_.store(id);
       route_id_short_names_.emplace_back(short_name);
       route_id_long_names_.emplace_back(long_name);
+      route_id_colors_.emplace_back(color);
       route_id_type_.emplace_back(type);
       route_id_provider_.emplace_back(provider);
       route_id_trips_.emplace_back(std::initializer_list<trip_idx_t>{});
@@ -479,6 +481,7 @@ struct timetable {
     vecvec<route_id_idx_t, char> route_id_long_names_;
     vector_map<route_id_idx_t, route_type_t> route_id_type_;
     vector_map<route_id_idx_t, provider_idx_t> route_id_provider_;
+    vector_map<route_id_idx_t, route_color> route_id_colors_;
     paged_vecvec<route_id_idx_t, trip_idx_t> route_id_trips_;
     string_store<route_id_idx_t> ids_;
   };

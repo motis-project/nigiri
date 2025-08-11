@@ -39,9 +39,9 @@ provider read_provider_names(timetable& tt,
   auto const full_name = line.substr_offset(" V ");
   utl::verify(long_name != std::numeric_limits<size_t>::max(),
               "no full name found: {}", line.view());
-  return provider{.short_name_ = tt.strings_.store(iso_8859_1_to_utf8(
+  return provider{.id_ = tt.strings_.store(iso_8859_1_to_utf8(
                       parse_name(line.substr(long_name + 3U)))),
-                  .long_name_ = tt.strings_.store(iso_8859_1_to_utf8(
+                  .name_ = tt.strings_.store(iso_8859_1_to_utf8(
                       parse_name(line.substr(full_name + 3U)))),
                   .url_ = tt.strings_.store(""),
                   .src_ = src};

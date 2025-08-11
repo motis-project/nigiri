@@ -15,8 +15,8 @@
 namespace nigiri::rt {
 
 constexpr auto const kUnknownProvider =
-    provider{.short_name_ = string_idx_t::invalid(),
-             .long_name_ = string_idx_t::invalid(),
+    provider{.id_ = string_idx_t::invalid(),
+             .name_ = string_idx_t::invalid(),
              .url_ = string_idx_t::invalid(),
              .src_ = source_idx_t::invalid()};
 
