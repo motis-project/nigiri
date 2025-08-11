@@ -94,6 +94,7 @@ struct raptor {
       bool const require_bike_transport,
       bool const require_car_transport,
       bool const is_wheelchair,
+      bool const use_reduced_transfers,
       transfer_time_settings const& tts)
       : tt_{tt},
         rtt_{rtt},
@@ -116,6 +117,7 @@ struct raptor {
         require_bike_transport_{require_bike_transport},
         require_car_transport_{require_car_transport},
         is_wheelchair_{is_wheelchair},
+        use_reduced_transfers_{use_reduced_transfers},
         transfer_time_settings_{tts} {
     assert(Vias == via_stops_.size());
     reset_arrivals();
@@ -468,8 +470,12 @@ private:
         }
       }
 
-      auto const& fps = kFwd ? tt_.locations_.footpaths_out_[prf_idx][l_idx]
-                             : tt_.locations_.footpaths_in_[prf_idx][l_idx];
+      auto const& fps =
+          (use_reduced_transfers_
+               ? (kFwd ? tt_.locations_.footpaths_out_
+                       : tt_.locations_.footpaths_in_)
+               : (kFwd ? tt_.locations_.footpaths_full_out_
+                       : tt_.locations_.footpaths_full_in_))[prf_idx][l_idx];
 
       for (auto const& fp : fps) {
         ++stats_.n_footpaths_visited_;
@@ -1255,6 +1261,7 @@ private:
   bool require_bike_transport_;
   bool require_car_transport_;
   bool is_wheelchair_;
+  bool use_reduced_transfers_;
   transfer_time_settings transfer_time_settings_;
 };
 

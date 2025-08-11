@@ -18,8 +18,8 @@ struct footpath {
   static constexpr auto const kDurationBits = kTotalBits - kTargetBits;
   static constexpr auto const kMaxDuration = duration_t{
       std::numeric_limits<location_idx_t::value_t>::max() >> kTargetBits};
-  static constexpr auto const kMaxTarget =
-      std::numeric_limits<location_idx_t::value_t>::max() >> kDurationBits;
+  static constexpr auto const kMaxTarget = location_idx_t{
+      std::numeric_limits<location_idx_t::value_t>::max() >> kDurationBits};
 
   footpath() = default;
 
@@ -31,7 +31,7 @@ struct footpath {
       : target_{target},
         duration_{static_cast<value_type>(
             (duration > kMaxDuration ? kMaxDuration : duration).count())} {
-    utl::verify(to_idx(target) < kMaxTarget, "station index overflow");
+    utl::verify(target <= kMaxTarget, "station index overflow");
   }
 
   static auto cmp_by_duration() {

@@ -138,7 +138,7 @@ void finalize(timetable& tt, finalize_options const opt) {
 
   log(log_lvl::info, "nigiri.loader.finalize",
       "{} locations ({}% of idx space used)", tt.n_locations(),
-      static_cast<double>(tt.n_locations()) / footpath::kMaxTarget * 100.0);
+      100.0 * tt.n_locations() / to_idx(footpath::kMaxTarget));
 }
 
 void finalize(timetable& tt,
