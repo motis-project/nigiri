@@ -67,6 +67,7 @@ nigiri_timetable_t* nigiri_load_from_dir(nigiri::loader::dir const& d,
   auto t = new nigiri_timetable_t;
   t->tt = std::make_unique<nigiri::timetable>();
 
+  t->tt->n_sources_ = 1U;
   t->tt->date_range_ = {floor<days>(std::chrono::system_clock::from_time_t(
                             static_cast<time_t>(from_ts))),
                         floor<days>(std::chrono::system_clock::from_time_t(
