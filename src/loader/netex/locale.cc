@@ -1,5 +1,6 @@
 #include "nigiri/loader/netex/locale.h"
 
+#include <functional>
 #include <string_view>
 
 #include "utl/get_or_create.h"
@@ -19,15 +20,15 @@ std::string_view guess_time_zone(std::string_view const offset,
 
   // European Time Zones
   // All these time zones (currently) have the same DST rules
-  if (wo == 0 && so == 0) {
+  if (std::equal_to<>()(wo, 0.0) && std::equal_to<>()(so, 0.0)) {
     return "UTC";
-  } else if (wo == 1 && so == 2) {
+  } else if (std::equal_to<>()(wo, 1.0) && std::equal_to<>()(so, 2.0)) {
     return "CET";
-  } else if (wo == 0 && so == 1) {
+  } else if (std::equal_to<>()(wo, 0.0) && std::equal_to<>()(so, 1.0)) {
     return "Europe/London";
-  } else if (wo == 2 && so == 3) {
+  } else if (std::equal_to<>()(wo, 2.0) && std::equal_to<>()(so, 3.0)) {
     return "Europe/Helsinki";
-  } else if (wo == -1 && so == 0) {
+  } else if (std::equal_to<>()(wo, -1.0) && std::equal_to<>()(so, 0.0)) {
     return "Atlantic/Azores";
   }
   throw utl::fail("Unknown timezone for offset {} and summer offset {}", offset,
