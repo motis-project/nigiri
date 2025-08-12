@@ -343,7 +343,7 @@ bool process(sol::protected_function const& process, T& t) {
   if (process.valid()) {
     auto result = process(t);
     if (!result.valid()) {
-      auto err = static_cast<sol::error>(result);
+      sol::error err = result;
       log(log_lvl::error, "nigiri.loader.user_script",
           "user script failed: type={}, error={}", cista::type_str<T>(),
           err.what());
