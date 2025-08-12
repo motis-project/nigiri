@@ -3,22 +3,20 @@
 #include "nigiri/loader/gtfs/load_timetable.h"
 #include "nigiri/loader/hrd/load_timetable.h"
 #include "nigiri/loader/init_finish.h"
+#include "nigiri/routing/direct.h"
 #include "nigiri/rt/create_rt_timetable.h"
+#include "nigiri/rt/frun.h"
+#include "nigiri/rt/gtfsrt_resolve_run.h"
 #include "nigiri/rt/gtfsrt_update.h"
 #include "nigiri/rt/rt_timetable.h"
-#include "../../../include/nigiri/routing/direct.h"
 
 #include "../hrd/hrd_timetable.h"
-
-#include "../../raptor_search.h"
-#include "../../routing/results_to_string.h"
 
 using namespace date;
 using namespace nigiri;
 using namespace nigiri::loader;
 using namespace nigiri::loader::gtfs;
 using namespace std::chrono_literals;
-using nigiri::test::raptor_search;
 
 namespace {
 
@@ -46,9 +44,9 @@ R_RE1,DB,1,,,3
 R_RE2,DB,2,,,3
 
 # trips.txt
-route_id,service_id,trip_id,trip_headsign,block_id
-R_RE1,S_RE1,T_RE1,RE 1,
-R_RE2,S_RE2,T_RE2,RE 2,
+route_id,service_id,trip_id,trip_short_name,trip_headsign,block_id
+R_RE1,S_RE1,T_RE1,00123,RE 1,1
+R_RE2,S_RE2,T_RE2,00456,RE 2,1
 
 # stop_times.txt
 trip_id,arrival_time,departure_time,stop_id,stop_sequence,pickup_type,drop_off_type
@@ -96,7 +94,7 @@ function process_route(route)
   end
 
   if route:get_agency():get_name() == 'Deutsche Bahn' and route:get_route_type() == 101 then
-    route:set_route_short_name('RE ' .. route:get_route_short_name())
+    route:set_short_name('RE ' .. route:get_short_name())
   end
 
   return true
@@ -115,10 +113,10 @@ end
 function process_trip(trip)
   if trip:get_route():get_route_type() == 101 then
     -- Prepend category and eliminate leading zeros (e.g. '00123' -> 'ICE 123')
-    trip:set_trip_short_name('ICE ' .. string.format("%d", trip:get_trip_short_name()))
+    trip:set_short_name('ICE ' .. string.format("%d", tonumber(trip:get_short_name())))
+    trip:set_display_name(trip:get_short_name())
   end
-
-  return true
+  return trip:get_id() == 'T_RE1'
 end
 )"},
                  source_idx_t{0}, test_files(), tt);
@@ -149,6 +147,32 @@ end
   EXPECT_EQ("j B YEAH", b->desc_);
   EXPECT_EQ(100min, b->transfer_time_);
   EXPECT_EQ("1A", b->platform_code_);
-
   EXPECT_EQ("Europe/Berlin", get_tz_name(b->timezone_idx_));
+
+  std::cout << tt << "\n";
+
+  {
+    auto td = transit_realtime::TripDescriptor();
+    td.set_trip_id("T_RE1");
+    td.set_start_date("20190501");
+    auto const [r, _] = rt::gtfsrt_resolve_run(date::sys_days{2019_y / May / 3},
+                                               tt, nullptr, {}, td);
+    ASSERT_TRUE(r.valid());
+
+    constexpr auto const kExpected =
+        R"(   0: A       A...............................................                               d: 02.05 23:00 [03.05 01:00]  [{name=ICE 123, day=2019-05-02, id=T_RE1, src=0}]
+   1: B       B............................................... a: 03.05 00:00 [03.05 02:00]
+)";
+    EXPECT_EQ(kExpected,
+              (std::stringstream{} << rt::frun{tt, nullptr, r}).view());
+  }
+
+  {
+    auto td = transit_realtime::TripDescriptor();
+    td.set_trip_id("T_RE2");
+    td.set_start_date("20190503");
+    auto const [r, _] = rt::gtfsrt_resolve_run(date::sys_days{2019_y / May / 3},
+                                               tt, nullptr, {}, td);
+    EXPECT_FALSE(r.valid());
+  }
 }

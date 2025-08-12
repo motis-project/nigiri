@@ -188,6 +188,9 @@ std::string_view run_stop::trip_short_name(event_type const ev_type) const {
 }
 
 std::string_view run_stop::display_name(event_type const ev_type) const {
+  if (fr_->is_scheduled()) {
+    return tt().trip_display_names_[get_trip_idx(ev_type)].view();
+  }
   auto const name = route_short_name(ev_type);
   return name.empty() ? trip_short_name(ev_type) : name;
 }

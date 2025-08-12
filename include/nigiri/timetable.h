@@ -417,6 +417,9 @@ struct timetable {
   // Trip index -> trip name
   vecvec<trip_idx_t, char> trip_short_names_;
 
+  // Trip index -> display name
+  vecvec<trip_idx_t, char> trip_display_names_;
+
   // Route -> range of transports in this route (from/to transport_idx_t)
   vector_map<route_idx_t, interval<transport_idx_t>> route_transport_ranges_;
 

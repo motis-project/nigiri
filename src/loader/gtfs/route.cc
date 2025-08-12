@@ -183,10 +183,6 @@ route_map_t read_routes(source_idx_t const src,
       utl::make_buf_reader(file_content, progress_tracker->update_fn())}  //
       | utl::csv<csv_route>()  //
       | utl::for_each([&](csv_route const& r) {
-          auto const color = route_color{
-              .color_ = to_color(r.route_color_->to_str()),
-              .text_color_ = to_color(r.route_text_color_->to_str())};
-
           auto const a =
               agencies.size() == 1U
                   ? agencies.begin()->second
@@ -209,28 +205,29 @@ route_map_t read_routes(source_idx_t const src,
             return;  // agency has been blacklisted by user script
           }
 
-          auto x = loader::route{src,
-                                 r.route_id_->view(),
-                                 r.route_short_name_->view(),
-                                 r.route_long_name_->view(),
-                                 route_type_t{*r.route_type_},
-                                 color,
-                                 a};
+          auto x = loader::route{
+              tt,
+              src,
+              r.route_id_->view(),
+              r.route_short_name_->view(),
+              r.route_long_name_->view(),
+              route_type_t{*r.route_type_},
+              {.color_ = to_color(r.route_color_->to_str()),
+               .text_color_ = to_color(r.route_text_color_->to_str())},
+              a};
           if (process_route(user_script, x)) {
             auto const route_id_idx = register_route(tt, x);
-            map.emplace(
-                r.route_id_->to_str(),
-                std::make_unique<route>(route{
-                    .route_id_idx_ = route_id_idx,
-                    .agency_ = a,
-                    .id_ = r.route_id_->to_str(),
-                    .short_name_ = r.route_short_name_->to_str(),
-                    .long_name_ = r.route_long_name_->to_str(),
-                    .desc_ = r.route_desc_->to_str(),
-                    .network_ = r.network_id_->to_str(),
-                    .clasz_ = to_clasz(*r.route_type_),
-                    .color_ = to_color(r.route_color_->to_str()),
-                    .text_color_ = to_color(r.route_text_color_->to_str())}));
+            map.emplace(r.route_id_->to_str(),
+                        std::make_unique<route>(
+                            route{.route_id_idx_ = route_id_idx,
+                                  .agency_ = a,
+                                  .id_ = std::string{x.id_},
+                                  .short_name_ = x.short_name_.str(),
+                                  .long_name_ = x.long_name_.str(),
+                                  .network_ = r.network_id_->to_str(),
+                                  .clasz_ = x.clasz_,
+                                  .color_ = x.color_.color_,
+                                  .text_color_ = x.color_.text_color_}));
           }
         });
   return map;

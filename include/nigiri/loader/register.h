@@ -99,7 +99,8 @@ struct location {
 };
 
 struct route {
-  route(source_idx_t,
+  route(timetable const&,
+        source_idx_t,
         std::string_view id,
         std::string_view short_name,
         std::string_view long_name,
@@ -125,7 +126,10 @@ struct route {
   color_t::value_t get_text_color() const;
   void set_text_color(color_t::value_t);
 
-  provider const& get_agency() const;
+  clasz get_clasz() const;
+  void set_clasz(clasz);
+
+  agency get_agency() const;
 
   source_idx_t src_;
   std::string_view id_;
@@ -133,18 +137,19 @@ struct route {
   cista::raw::generic_string long_name_;
   route_type_t route_type_;
   route_color color_;
+  clasz clasz_;
   provider_idx_t agency_;
+
+  timetable const& tt_;
 };
 
 struct trip {
-  trip(source_idx_t src_,
+  trip(source_idx_t,
        std::string_view id,
        std::string_view headsign,
        std::string_view short_name,
        std::string_view display_name,
-       std::span<stop_idx_t> seq_numbers,
        direction_id_t,
-       trip_debug,
        route_id_idx_t,
        timetable&);
 
@@ -166,9 +171,7 @@ struct trip {
   cista::raw::generic_string headsign_;
   cista::raw::generic_string short_name_;
   cista::raw::generic_string display_name_;
-  std::span<stop_idx_t> seq_numbers_;
   direction_id_t direction_;
-  trip_debug dbg_;
   route_id_idx_t route_;
 
   timetable* tt_{nullptr};

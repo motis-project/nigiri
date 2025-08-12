@@ -116,12 +116,14 @@ void load_timetable(loader_config const& config,
 
   auto const progress_tracker = utl::get_active_progress_tracker();
   auto timezones = tz_map{};
-  auto agencies = read_agencies(src, tt, timezones, load(kAgencyFile).data());
+  auto agencies =
+      read_agencies(src, tt, timezones, load(kAgencyFile).data(), user_script);
   auto const [stops, seated_transfers] = read_stops(
       src, tt, timezones, load(kStopFile).data(), load(kTransfersFile).data(),
       config.link_stop_distance_, user_script);
-  auto const routes = read_routes(src, tt, timezones, agencies,
-                                  load(kRoutesFile).data(), config.default_tz_);
+  auto const routes =
+      read_routes(src, tt, timezones, agencies, load(kRoutesFile).data(),
+                  config.default_tz_, user_script);
   auto const calendar = read_calendar(load(kCalenderFile).data());
   auto const dates = read_calendar_date(load(kCalendarDatesFile).data());
   auto const feed_info = read_feed_info(load(kFeedInfoFile).data());
@@ -134,9 +136,9 @@ void load_timetable(loader_config const& config,
       (shapes_data != nullptr)
           ? parse_shapes(load(kShapesFile).data(), *shapes_data)
           : shape_loader_state{};
-  auto trip_data =
-      read_trips(tt, routes, service, shape_states, load(kTripsFile).data(),
-                 config.bikes_allowed_default_, config.cars_allowed_default_);
+  auto trip_data = read_trips(
+      src, tt, routes, service, shape_states, load(kTripsFile).data(),
+      config.bikes_allowed_default_, config.cars_allowed_default_, user_script);
   auto const booking_rules = parse_booking_rules(
       tt, load(kBookingRulesFile).data(), service, bitfield_indices);
   auto const location_groups =
@@ -318,8 +320,10 @@ void load_timetable(loader_config const& config,
           !t.flex_time_windows_.empty()) {
         continue;
       }
-      add_trip({gtfs_trip_idx_t{i}}, t.service_);
-      progress_tracker->increment();
+      if (t.trip_idx_ != trip_idx_t::invalid()) {
+        add_trip({gtfs_trip_idx_t{i}}, t.service_);
+        progress_tracker->increment();
+      }
     }
   }
 
@@ -374,21 +378,10 @@ void load_timetable(loader_config const& config,
       }
       encode_seq_numbers(trp.seq_numbers_, stop_seq_numbers);
 
-      auto display_name = trp.display_name();
-      auto t = loader::trip{
-          src,
-          trp.id_,
-          tt.trip_direction(trp.headsign_),
-          trp.short_name_,
-          display_name,
-          trp.seq_numbers_,
-          trp.direction_id_,
-          trip_debug{source_file_idx, trp.from_line_, trp.to_line_},
-          trp.route_->route_id_idx_,
-          tt};
-
-      trp.trip_idx_ = process_trip(user_script, t) ? register_trip(tt, t)
-                                                   : trip_idx_t::invalid();
+      tt.trip_debug_.emplace_back().emplace_back(
+          trip_debug{source_file_idx, trp.from_line_, trp.to_line_});
+      tt.trip_stop_seq_numbers_.emplace_back(
+          std::initializer_list<stop_idx_t>{});
     }
   }
 

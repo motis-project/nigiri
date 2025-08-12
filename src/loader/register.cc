@@ -2,6 +2,7 @@
 
 #include <cassert>
 
+#include "nigiri/loader/gtfs/route.h"
 #include "nigiri/loader/gtfs/tz_map.h"
 
 #include "sol/sol.hpp"
@@ -130,7 +131,7 @@ void location::set_timezone(std::string_view tz_name) {
 duration_t::rep location::get_transfer_time() const {
   return transfer_time_.count();
 }
-void location::set_transfer_time(duration_t::rep x) {
+void location::set_transfer_time(duration_t::rep const x) {
   transfer_time_ = duration_t{x};
 }
 
@@ -138,7 +139,8 @@ void location::set_transfer_time(duration_t::rep x) {
 // Route
 // -----
 
-route::route(source_idx_t const src,
+route::route(timetable const& tt,
+             source_idx_t const src,
              std::string_view id,
              std::string_view short_name,
              std::string_view long_name,
@@ -151,7 +153,9 @@ route::route(source_idx_t const src,
       long_name_{long_name, cista::raw::generic_string::non_owning},
       route_type_{route_type},
       color_{color},
-      agency_{agency} {}
+      clasz_{gtfs::to_clasz(to_idx(route_type))},
+      agency_{agency},
+      tt_{tt} {}
 
 route::route(timetable const& tt,
              source_idx_t const src,
@@ -164,7 +168,8 @@ route::route(timetable const& tt,
                  generic_string::non_owning},
       route_type_{tt.route_ids_[src].route_id_type_[r]},
       color_{tt.route_ids_[src].route_id_colors_[r]},
-      agency_{tt.route_ids_[src].route_id_provider_[r]} {}
+      agency_{tt.route_ids_[src].route_id_provider_[r]},
+      tt_{tt} {}
 
 std::string_view route::get_id() const { return id_; }
 
@@ -182,14 +187,19 @@ void route::set_route_type(route_type_t::value_t x) {
 }
 
 std::uint32_t route::get_color() const { return to_idx(color_.color_); }
-void route::set_color(std::uint32_t x) { color_.color_ = color_t{x}; }
+void route::set_color(std::uint32_t const x) { color_.color_ = color_t{x}; }
 
 std::uint32_t route::get_text_color() const {
   return to_idx(color_.text_color_);
 }
-void route::set_text_color(std::uint32_t x) { color_.text_color_ = color_t{x}; }
+void route::set_text_color(std::uint32_t const x) {
+  color_.text_color_ = color_t{x};
+}
 
-provider const& route::get_agency() const { throw "not implemented"; }
+clasz route::get_clasz() const { return clasz_; }
+void route::set_clasz(clasz const x) { clasz_ = x; }
+
+agency route::get_agency() const { return agency{tt_, agency_}; }
 
 // ====
 // Trip
@@ -200,9 +210,7 @@ trip::trip(source_idx_t src,
            std::string_view headsign,
            std::string_view short_name,
            std::string_view display_name,
-           std::span<stop_idx_t> seq_numbers,
            direction_id_t direction,
-           trip_debug dbg,
            route_id_idx_t route,
            timetable& tt)
     : src_{src},
@@ -210,9 +218,7 @@ trip::trip(source_idx_t src,
       headsign_{headsign, cista::raw::generic_string::non_owning},
       short_name_{short_name, cista::raw::generic_string::non_owning},
       display_name_{display_name, cista::raw::generic_string::non_owning},
-      seq_numbers_{seq_numbers},
       direction_{direction},
-      dbg_{dbg},
       route_{route},
       tt_{&tt} {}
 
@@ -296,6 +302,8 @@ script_runner::script_runner(std::string const& user_script)
       "set_route_type", &route::set_route_type,  //
       "get_color", &route::get_color,  //
       "set_color", &route::set_color,  //
+      "get_clasz", &route::get_clasz,  //
+      "set_clasz", &route::set_clasz,  //
       "get_text_color", &route::get_text_color,  //
       "set_text_color", &route::set_text_color,  //
       "get_agency", &route::get_agency  //
@@ -317,6 +325,11 @@ script_runner::script_runner(std::string const& user_script)
   impl_->process_location_ = impl_->lua_["process_location"];
   impl_->process_route_ = impl_->lua_["process_route"];
   impl_->process_trip_ = impl_->lua_["process_trip"];
+
+  log(log_lvl::info, "nigiri.loader.user_script",
+      "user script handlers: agency={}, location={}, route={}, trip={}",
+      impl_->process_agency_.valid(), impl_->process_location_.valid(),
+      impl_->process_route_.valid(), impl_->process_trip_.valid());
 }
 
 script_runner::~script_runner() = default;
@@ -345,24 +358,28 @@ bool process_location(script_runner const& r, location& x) {
   }
   return process(r.impl_->process_location_, x);
 }
+
 bool process_agency(script_runner const& r, agency& x) {
   if (r.impl_ == nullptr) {
     return true;
   }
-  return process(r.impl_->process_location_, x);
+  return process(r.impl_->process_agency_, x);
 }
+
 bool process_route(script_runner const& r, route& x) {
   if (r.impl_ == nullptr) {
     return true;
   }
-  return process(r.impl_->process_location_, x);
+  return process(r.impl_->process_route_, x);
 }
+
 bool process_trip(script_runner const& r, trip& x) {
   if (r.impl_ == nullptr) {
     return true;
   }
-  return process(r.impl_->process_location_, x);
+  return process(r.impl_->process_trip_, x);
 }
+
 provider_idx_t register_agency(timetable& tt, agency const& a) {
   auto const idx = tt.providers_.size();
   tt.providers_.emplace_back(
@@ -440,6 +457,7 @@ trip_idx_t register_trip(timetable& tt, trip const& t) {
 
   if (t.route_ != route_id_idx_t::invalid()) {  // HRD
     tt.route_ids_[t.src_].route_id_trips_[t.route_].push_back(trip_idx);
+    tt.trip_direction_id_.resize(tt.n_trips() + to_idx(trip_id_idx) + 1U);
     tt.trip_direction_id_.set(trip_idx, t.direction_ == direction_id_t{1U});
   }
   tt.trip_route_id_.emplace_back(t.route_);
@@ -449,9 +467,8 @@ trip_idx_t register_trip(timetable& tt, trip const& t) {
 
   tt.trip_id_to_idx_.emplace_back(trip_id_idx, trip_idx);
   tt.trip_short_names_.emplace_back(t.short_name_);
-  tt.trip_debug_.emplace_back().emplace_back(t.dbg_);
+  tt.trip_display_names_.emplace_back(t.display_name_);
   tt.trip_ids_.emplace_back().emplace_back(trip_id_idx);
-  tt.trip_stop_seq_numbers_.emplace_back(t.seq_numbers_);
 
   return trip_idx;
 }

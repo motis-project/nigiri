@@ -31,6 +31,9 @@ block::rule_services(trip_data& trips) {
   utl::verify(!trips_.empty(), "empty block not allowed");
 
   utl::erase_if(trips_, [&](gtfs_trip_idx_t const& t) {
+    if (trips.data_[t].trip_idx_ == trip_idx_t::invalid()) {
+      return true;
+    }
     auto const is_empty = trips.data_[t].stop_seq_.empty();
     if (is_empty) {
       log(log_lvl::error, "loader.gtfs.trip", "trip \"{}\": no stop times",
@@ -202,17 +205,6 @@ void trip::interpolate() {
   requires_interpolation_ = false;
 }
 
-std::string trip::display_name() const {
-  for (auto const str :
-       {std::string_view{route_->short_name_},
-        std::string_view{route_->long_name_}, std::string_view{short_name_}}) {
-    if (!str.empty()) {
-      return std::string{str};
-    }
-  }
-  return {};
-}
-
 bool trip::has_seated_transfers() const {
   return !seated_in_.empty() || !seated_out_.empty();
 }
@@ -240,14 +232,15 @@ trip_direction_idx_t trip_data::get_or_create_direction(
   });
 }
 
-trip_data read_trips(
-    timetable& tt,
-    route_map_t const& routes,
-    traffic_days_t const& services,
-    shape_loader_state const& shape_states,
-    std::string_view file_content,
-    std::array<bool, kNumClasses> const& bikes_allowed_default,
-    std::array<bool, kNumClasses> const& cars_allowed_default) {
+trip_data read_trips(source_idx_t const src,
+                     timetable& tt,
+                     route_map_t const& routes,
+                     traffic_days_t const& services,
+                     shape_loader_state const& shape_states,
+                     std::string_view file_content,
+                     std::array<bool, kNumClasses> const& bikes_allowed_default,
+                     std::array<bool, kNumClasses> const& cars_allowed_default,
+                     script_runner const& user_script) {
   struct csv_trip {
     utl::csv_col<utl::cstr, UTL_NAME("route_id")> route_id_;
     utl::csv_col<utl::cstr, UTL_NAME("service_id")> service_id_;
@@ -312,24 +305,53 @@ trip_data read_trips(
             cars_allowed = false;
           }
 
+          auto const display_name = [&]() -> std::string_view {
+            for (auto const str :
+                 {std::string_view{route_it->second->short_name_},
+                  std::string_view{route_it->second->long_name_},
+                  t.trip_short_name_->view()}) {
+              if (!str.empty()) {
+                return str;
+              }
+            }
+            return "";
+          }();
+
+          auto x = loader::trip{src,
+                                t.trip_id_->view(),
+                                t.trip_headsign_->view(),
+                                t.trip_short_name_->view(),
+                                display_name,
+                                (t.direction_id_->view() == "1")
+                                    ? direction_id_t{1U}
+                                    : direction_id_t{0U},
+                                route_it->second->route_id_idx_,
+                                tt};
+
+          auto const keep = process_trip(user_script, x);
+          if (!keep) {
+            log(log_lvl::info, "nigiri.import.gtfs.trip",
+                "script removed trip {}", t.trip_id_->view());
+            return;
+          }
+
           auto const blk = t.block_id_->trim().empty()
                                ? nullptr
                                : utl::get_or_create(
                                      ret.blocks_, t.block_id_->trim().view(),
                                      []() { return std::make_unique<block>(); })
                                      .get();
-          auto const trp_idx = gtfs_trip_idx_t{ret.data_.size()};
+
+          auto const gtfs_trp_idx = gtfs_trip_idx_t{ret.data_.size()};
           ret.data_.emplace_back(
               route_it->second.get(), traffic_days_it->second.get(), blk,
               t.trip_id_->to_str(),
-              ret.get_or_create_direction(tt, t.trip_headsign_->view()),
-              t.trip_short_name_->to_str(),
-              (t.direction_id_->view() == "1") ? direction_id_t{1U}
-                                               : direction_id_t{0U},
-              shape_idx, bikes_allowed, cars_allowed);
-          ret.trips_.emplace(t.trip_id_->to_str(), trp_idx);
+              ret.get_or_create_direction(tt, x.headsign_), x.short_name_.str(),
+              x.direction_, shape_idx, bikes_allowed, cars_allowed);
+          ret.data_.back().trip_idx_ = register_trip(tt, x);
+          ret.trips_.emplace(t.trip_id_->to_str(), gtfs_trp_idx);
           if (blk != nullptr) {
-            blk->trips_.emplace_back(trp_idx);
+            blk->trips_.emplace_back(gtfs_trp_idx);
           }
         });
   return ret;
