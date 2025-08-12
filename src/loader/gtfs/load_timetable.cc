@@ -34,6 +34,7 @@
 #include "nigiri/loader/gtfs/stop_time.h"
 #include "nigiri/loader/gtfs/trip.h"
 #include "nigiri/loader/loader_interface.h"
+#include "nigiri/loader/register.h"
 
 #include "nigiri/common/sort_by.h"
 #include "nigiri/logging.h"
@@ -109,12 +110,16 @@ void load_timetable(loader_config const& config,
     return d.exists(file_name) ? d.get_file(file_name) : file{};
   };
 
+  auto const user_script = config.lua_user_script_.has_value()
+                               ? script_runner{*config.lua_user_script_}
+                               : script_runner{};
+
   auto const progress_tracker = utl::get_active_progress_tracker();
   auto timezones = tz_map{};
   auto agencies = read_agencies(src, tt, timezones, load(kAgencyFile).data());
-  auto const [stops, seated_transfers] =
-      read_stops(src, tt, timezones, load(kStopFile).data(),
-                 load(kTransfersFile).data(), config.link_stop_distance_);
+  auto const [stops, seated_transfers] = read_stops(
+      src, tt, timezones, load(kStopFile).data(), load(kTransfersFile).data(),
+      config.link_stop_distance_, user_script);
   auto const routes = read_routes(src, tt, timezones, agencies,
                                   load(kRoutesFile).data(), config.default_tz_);
   auto const calendar = read_calendar(load(kCalenderFile).data());
@@ -368,10 +373,22 @@ void load_timetable(loader_config const& config,
                         train_nr);
       }
       encode_seq_numbers(trp.seq_numbers_, stop_seq_numbers);
-      trp.trip_idx_ = tt.register_trip_id(
-          trp.id_, trp.route_->route_id_idx_, src, trp.short_name_,
-          {source_file_idx, trp.from_line_, trp.to_line_}, train_nr,
-          stop_seq_numbers, trp.direction_id_);
+
+      auto display_name = trp.display_name();
+      auto t = loader::trip{
+          src,
+          trp.id_,
+          tt.trip_direction(trp.headsign_),
+          trp.short_name_,
+          display_name,
+          trp.seq_numbers_,
+          trp.direction_id_,
+          trip_debug{source_file_idx, trp.from_line_, trp.to_line_},
+          trp.route_->route_id_idx_,
+          tt};
+
+      trp.trip_idx_ = process_trip(user_script, t) ? register_trip(tt, t)
+                                                   : trip_idx_t::invalid();
     }
   }
 

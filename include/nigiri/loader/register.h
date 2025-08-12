@@ -4,13 +4,24 @@
 
 #include "nigiri/types.h"
 
+#include "gtfs/tz_map.h"
+
 namespace nigiri {
 struct timetable;
 }
 
 namespace nigiri::loader {
 
+extern gtfs::tz_map dummy_tz_map;
+
 struct agency {
+  agency(source_idx_t,
+         std::string_view id,
+         std::string_view name,
+         std::string_view url,
+         timezone_idx_t,
+         timetable&,
+         gtfs::tz_map& = dummy_tz_map);
   agency(timetable const&, provider_idx_t);
 
   std::string_view get_id() const;
@@ -24,6 +35,8 @@ struct agency {
   std::optional<std::string_view> get_timezone() const;
   void set_timezone(std::string_view);
 
+  source_idx_t src_;
+
   std::string_view id_;
   cista::raw::generic_string name_;
   cista::raw::generic_string url_;
@@ -34,6 +47,19 @@ struct agency {
 };
 
 struct location {
+  location(std::string_view id,
+           std::string_view name,
+           std::string_view platform_code,
+           std::string_view desc,
+           geo::latlng pos,
+           source_idx_t,
+           location_type,
+           location_idx_t parent,
+           timezone_idx_t,
+           duration_t transfer_time,
+           std::span<location_idx_t const> equivalences,
+           timetable&,
+           gtfs::tz_map& = dummy_tz_map);
   location(timetable const&, location_idx_t);
 
   std::string_view get_id() const;
@@ -49,8 +75,6 @@ struct location {
 
   geo::latlng get_pos() const;
   void set_pos(geo::latlng);
-
-  std::optional<location> get_parent() const;
 
   std::optional<std::string_view> get_timezone() const;
   void set_timezone(std::string_view);
@@ -71,10 +95,17 @@ struct location {
   std::span<location_idx_t const> equivalences_;
 
   timetable* tt_{nullptr};
-  hash_map<std::string, timezone_idx_t>* tz_map_{nullptr};
+  gtfs::tz_map* tz_map_{nullptr};
 };
 
 struct route {
+  route(source_idx_t,
+        std::string_view id,
+        std::string_view short_name,
+        std::string_view long_name,
+        route_type_t,
+        route_color,
+        provider_idx_t);
   route(timetable const&, source_idx_t, route_id_idx_t);
 
   std::string_view get_id() const;
@@ -106,6 +137,17 @@ struct route {
 };
 
 struct trip {
+  trip(source_idx_t src_,
+       std::string_view id,
+       std::string_view headsign,
+       std::string_view short_name,
+       std::string_view display_name,
+       std::span<stop_idx_t> seq_numbers,
+       direction_id_t,
+       trip_debug,
+       route_id_idx_t,
+       timetable&);
+
   std::string_view get_id() const;
 
   std::string_view get_headsign() const;
@@ -130,19 +172,23 @@ struct trip {
   route_id_idx_t route_;
 
   timetable* tt_{nullptr};
-  hash_map<std::string, timezone_idx_t>* tz_map_{nullptr};
 };
 
-struct script_runner;
+struct script_runner {
+  script_runner();
+  explicit script_runner(std::string const&);
+  ~script_runner();
 
-std::unique_ptr<script_runner> make_script_runner(
-    std::string const& user_script);
+  struct impl;
+  std::unique_ptr<impl> impl_;
+};
 
-void process_location(std::string_view tag, script_runner const&, location&);
-void process_agency(std::string_view tag, script_runner const&, agency&);
-void process_route(std::string_view tag, script_runner const&, route&);
-void process_trip(std::string_view tag, script_runner const&, trip&);
+bool process_location(script_runner const&, location&);
+bool process_agency(script_runner const&, agency&);
+bool process_route(script_runner const&, route&);
+bool process_trip(script_runner const&, trip&);
 
+provider_idx_t register_agency(timetable&, agency const&);
 location_idx_t register_location(timetable&, location const&);
 route_id_idx_t register_route(timetable&, route const&);
 trip_idx_t register_trip(timetable&, trip const&);

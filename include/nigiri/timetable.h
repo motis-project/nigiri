@@ -36,53 +36,6 @@ struct timetable {
       return idx;
     }
 
-    location_idx_t register_location(location const& l) {
-      auto const next_idx = static_cast<location_idx_t::value_t>(names_.size());
-      auto const l_idx = location_idx_t{next_idx};
-      auto const [it, is_new] = location_id_to_idx_.emplace(
-          location_id{.id_ = l.id_, .src_ = l.src_}, l_idx);
-
-      if (is_new) {
-        utl::verify(next_idx <= footpath::kMaxTarget,
-                    "MAX={} locations reached", footpath::kMaxTarget);
-
-        names_.emplace_back(l.name_);
-        platform_codes_.emplace_back(l.platform_code_);
-        descriptions_.emplace_back(l.desc_);
-        coordinates_.emplace_back(l.pos_);
-        ids_.emplace_back(l.id_);
-        src_.emplace_back(l.src_);
-        types_.emplace_back(l.type_);
-        location_timezones_.emplace_back(l.timezone_idx_);
-        equivalences_.emplace_back();
-        children_.emplace_back();
-        preprocessing_footpaths_out_.emplace_back();
-        preprocessing_footpaths_in_.emplace_back();
-        transfer_time_.emplace_back(l.transfer_time_);
-        parents_.emplace_back(l.parent_);
-      } else {
-        log(log_lvl::error, "timetable.register_location",
-            "duplicate station {}", l.id_);
-      }
-
-      assert(names_.size() == next_idx + 1);
-      assert(platform_codes_.size() == next_idx + 1);
-      assert(descriptions_.size() == next_idx + 1);
-      assert(coordinates_.size() == next_idx + 1);
-      assert(ids_.size() == next_idx + 1);
-      assert(src_.size() == next_idx + 1);
-      assert(types_.size() == next_idx + 1);
-      assert(location_timezones_.size() == next_idx + 1);
-      assert(equivalences_.size() == next_idx + 1);
-      assert(children_.size() == next_idx + 1);
-      assert(preprocessing_footpaths_out_.size() == next_idx + 1);
-      assert(preprocessing_footpaths_in_.size() == next_idx + 1);
-      assert(transfer_time_.size() == next_idx + 1);
-      assert(parents_.size() == next_idx + 1);
-
-      return it->second;
-    }
-
     location get(location_idx_t const idx) const {
       auto l = location{ids_[idx].view(),
                         names_[idx].view(),
@@ -109,7 +62,6 @@ struct timetable {
                                             : std::optional{get(it->second)};
     }
 
-    // Station access: external station id -> internal station idx
     hash_map<location_id, location_idx_t> location_id_to_idx_;
     vecvec<location_idx_t, char> names_;
     vecvec<location_idx_t, char> platform_codes_;
@@ -144,38 +96,6 @@ struct timetable {
     basic_string<trip_line_idx_t> const& section_lines_;
     basic_string<route_color> const& route_colors_;
   };
-
-  template <typename TripId>
-  trip_idx_t register_trip_id(TripId const& trip_id_str,
-                              route_id_idx_t const route_id_idx,
-                              source_idx_t const src,
-                              std::string const& trip_short_name,
-                              trip_debug const dbg,
-                              std::uint32_t const train_nr,
-                              std::span<stop_idx_t> seq_numbers,
-                              direction_id_t const direction_id) {
-    auto const trip_idx = trip_idx_t{trip_ids_.size()};
-
-    auto const trip_id_idx = trip_id_idx_t{trip_id_strings_.size()};
-
-    if (route_id_idx != route_id_idx_t::invalid()) {  // HRD
-      route_ids_[src].route_id_trips_[route_id_idx].push_back(trip_idx);
-      trip_direction_id_.set(trip_idx, direction_id == direction_id_t{1U});
-    }
-    trip_route_id_.emplace_back(route_id_idx);
-
-    trip_id_strings_.emplace_back(trip_id_str);
-    trip_id_src_.emplace_back(src);
-
-    trip_id_to_idx_.emplace_back(trip_id_idx, trip_idx);
-    trip_short_names_.emplace_back(trip_short_name);
-    trip_debug_.emplace_back().emplace_back(dbg);
-    trip_ids_.emplace_back().emplace_back(trip_id_idx);
-    trip_train_nr_.emplace_back(train_nr);
-    trip_stop_seq_numbers_.emplace_back(seq_numbers);
-
-    return trip_idx;
-  }
 
   void resolve();
 
@@ -247,6 +167,21 @@ struct timetable {
     return route_idx_t{idx};
   }
 
+  provider_idx_t get_provider_idx(std::string_view id,
+                                  source_idx_t const src) const {
+    auto const it = std::lower_bound(
+        begin(provider_id_to_idx_), end(provider_id_to_idx_), id,
+        [&](provider_idx_t const a, std::string_view const b) {
+          auto const& p = providers_[a];
+          return std::tuple{p.src_, strings_.get(p.id_)} < std::tuple{src, b};
+        });
+    if (it == end(provider_id_to_idx_) || providers_[*it].src_ != src ||
+        strings_.get(providers_[*it].id_) != id) {
+      return provider_idx_t::invalid();
+    }
+    return *it;
+  }
+
   void finish_route() {
     route_transport_ranges_.back().to_ =
         transport_idx_t{transport_traffic_days_.size()};
@@ -263,13 +198,6 @@ struct timetable {
     auto const idx = source_file_idx_t{source_file_names_.size()};
     source_file_names_.emplace_back(path);
     return idx;
-  }
-
-  provider_idx_t register_provider(provider&& p) {
-    auto const idx = providers_.size();
-    providers_.emplace_back(std::move(p));
-    provider_id_to_idx_.emplace_back(idx);
-    return provider_idx_t{idx};
   }
 
   void add_transport(transport&& t) {
@@ -461,22 +389,6 @@ struct timetable {
 
   // External route id
   struct route_ids {
-    route_id_idx_t add(std::string_view id,
-                       std::string_view short_name,
-                       std::string_view long_name,
-                       provider_idx_t const provider,
-                       route_color const color,
-                       std::uint16_t const type) {
-      auto const idx = ids_.store(id);
-      route_id_short_names_.emplace_back(short_name);
-      route_id_long_names_.emplace_back(long_name);
-      route_id_colors_.emplace_back(color);
-      route_id_type_.emplace_back(type);
-      route_id_provider_.emplace_back(provider);
-      route_id_trips_.emplace_back(std::initializer_list<trip_idx_t>{});
-      return idx;
-    }
-
     vecvec<route_id_idx_t, char> route_id_short_names_;
     vecvec<route_id_idx_t, char> route_id_long_names_;
     vector_map<route_id_idx_t, route_type_t> route_id_type_;

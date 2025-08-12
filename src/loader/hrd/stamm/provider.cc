@@ -1,6 +1,7 @@
 #include "nigiri/loader/hrd/stamm/provider.h"
 
 #include "nigiri/loader/hrd/util.h"
+#include "nigiri/loader/register.h"
 #include "utl/parser/arg_parser.h"
 #include "utl/verify.h"
 
@@ -67,8 +68,10 @@ provider_map_t parse_providers(config const& c,
           utl::verify(previous_provider_number == provider_number,
                       "provider line format mismatch in line {}", line_number);
           for_each_token(line.substr(8), ' ', [&](utl::cstr token) {
-            providers[token.to_str()] =
-                tt.register_provider(provider{current_info});
+            providers[token.to_str()] = register_agency(
+                tt, agency{src, tt.strings_.get(current_info.id_),
+                           tt.strings_.get(current_info.name_), "",
+                           current_info.tz_, tt});
           });
         }
       });

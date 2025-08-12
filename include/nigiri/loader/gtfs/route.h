@@ -1,5 +1,7 @@
 #pragma once
 
+#include "nigiri/loader/register.h"
+
 #include <memory>
 #include <string>
 #include <string_view>
@@ -36,6 +38,7 @@ route_map_t read_routes(source_idx_t,
                         tz_map&,
                         agency_map_t&,
                         std::string_view file_content,
-                        std::string_view default_tz);
+                        std::string_view default_tz,
+                        script_runner const& = script_runner{});
 
 }  // namespace nigiri::loader::gtfs

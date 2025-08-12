@@ -1,5 +1,7 @@
 #include "nigiri/loader/gtfs/route.h"
 
+#include "nigiri/loader/register.h"
+
 #include "utl/get_or_create.h"
 #include "utl/parser/buf_reader.h"
 #include "utl/parser/csv_range.h"
@@ -151,7 +153,8 @@ route_map_t read_routes(source_idx_t const src,
                         tz_map& timezones,
                         agency_map_t& agencies,
                         std::string_view file_content,
-                        std::string_view default_tz) {
+                        std::string_view default_tz,
+                        script_runner const& user_script) {
   auto const timer = nigiri::scoped_timer{"read routes"};
 
   utl::verify(tt.route_ids_.size() == to_idx(src),
@@ -175,53 +178,62 @@ route_map_t read_routes(source_idx_t const src,
   progress_tracker->status("Parse Routes")
       .out_bounds(27.F, 29.F)
       .in_high(file_content.size());
-  return utl::line_range{utl::make_buf_reader(
-             file_content, progress_tracker->update_fn())}  //
-         | utl::csv<csv_route>()  //
-         |
-         utl::transform([&](csv_route const& r) {
-           auto const color = route_color{
-               .color_ = to_color(r.route_color_->to_str()),
-               .text_color_ = to_color(r.route_text_color_->to_str())};
+  auto map = route_map_t{};
+  utl::line_range{
+      utl::make_buf_reader(file_content, progress_tracker->update_fn())}  //
+      | utl::csv<csv_route>()  //
+      | utl::for_each([&](csv_route const& r) {
+          auto const color = route_color{
+              .color_ = to_color(r.route_color_->to_str()),
+              .text_color_ = to_color(r.route_text_color_->to_str())};
 
-           auto const agency =
-               agencies.size() == 1U
-                   ? agencies.begin()->second
-                   : utl::get_or_create(agencies, r.agency_id_->view(), [&]() {
-                       log(log_lvl::error, "gtfs.route",
-                           "agency {} not found, using UNKNOWN with local "
-                           "timezone",
-                           r.agency_id_->view());
+          auto const a =
+              agencies.size() == 1U
+                  ? agencies.begin()->second
+                  : utl::get_or_create(agencies, r.agency_id_->view(), [&]() {
+                      log(log_lvl::error, "gtfs.route",
+                          "agency {} not found, using UNKNOWN with default "
+                          "timezone",
+                          r.agency_id_->view());
 
-                       auto const id = r.agency_id_->view().empty()
-                                           ? "UKN"
-                                           : r.agency_id_->view();
-                       return tt.register_provider(
-                           {tt.strings_.store(id),
-                            tt.strings_.store("UNKNOWN_AGENCY"),
-                            tt.strings_.store(""),
-                            get_tz_idx(tt, timezones, default_tz), src});
-                     });
+                      auto const id = r.agency_id_->view().empty()
+                                          ? "UKN"
+                                          : r.agency_id_->view();
+                      return register_agency(
+                          tt, agency{src, id, "UNKNOWN_AGENCY", "",
+                                     get_tz_idx(tt, timezones, default_tz), tt,
+                                     timezones});
+                    });
 
-           auto const route_id_idx = tt.route_ids_[src].add(
-               r.route_id_->view(), r.route_short_name_->view(),
-               r.route_long_name_->view(), agency, color, *r.route_type_);
+          if (a == provider_idx_t::invalid()) {
+            return;  // agency has been blacklisted by user script
+          }
 
-           return std::pair{
-               r.route_id_->to_str(),
-               std::make_unique<route>(route{
-                   .route_id_idx_ = route_id_idx,
-                   .agency_ = agency,
-                   .id_ = r.route_id_->to_str(),
-                   .short_name_ = r.route_short_name_->to_str(),
-                   .long_name_ = r.route_long_name_->to_str(),
-                   .desc_ = r.route_desc_->to_str(),
-                   .network_ = r.network_id_->to_str(),
-                   .clasz_ = to_clasz(*r.route_type_),
-                   .color_ = to_color(r.route_color_->to_str()),
-                   .text_color_ = to_color(r.route_text_color_->to_str())})};
-         })  //
-         | utl::to<route_map_t>();
+          auto x = loader::route{src,
+                                 r.route_id_->view(),
+                                 r.route_short_name_->view(),
+                                 r.route_long_name_->view(),
+                                 route_type_t{*r.route_type_},
+                                 color,
+                                 a};
+          if (process_route(user_script, x)) {
+            auto const route_id_idx = register_route(tt, x);
+            map.emplace(
+                r.route_id_->to_str(),
+                std::make_unique<route>(route{
+                    .route_id_idx_ = route_id_idx,
+                    .agency_ = a,
+                    .id_ = r.route_id_->to_str(),
+                    .short_name_ = r.route_short_name_->to_str(),
+                    .long_name_ = r.route_long_name_->to_str(),
+                    .desc_ = r.route_desc_->to_str(),
+                    .network_ = r.network_id_->to_str(),
+                    .clasz_ = to_clasz(*r.route_type_),
+                    .color_ = to_color(r.route_color_->to_str()),
+                    .text_color_ = to_color(r.route_text_color_->to_str())}));
+          }
+        });
+  return map;
 }
 
 }  // namespace nigiri::loader::gtfs

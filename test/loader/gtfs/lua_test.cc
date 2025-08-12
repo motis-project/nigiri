@@ -29,11 +29,11 @@ agency_id,agency_name,agency_url,agency_timezone
 DB,Deutsche Bahn,https://deutschebahn.com,Europe/Paris
 
 # stops.txt
-stop_id,stop_name,stop_desc,stop_lat,stop_lon,stop_url,location_type,parent_station
-A,A,,0.0,1.0,,
-B,B,,2.0,3.0,,
-C,C,,4.0,5.0,,
-D,D,,6.0,7.0,,
+stop_id,stop_name,stop_desc,stop_lat,stop_lon,stop_url,location_type,parent_station,platform_code
+A,A Berlin,i,0.0,1.0,,,,1
+B,B Berlin,j,2.0,3.0,,,,1
+C,C Berlin,k,4.0,5.0,,,,1
+D,D Berlin,l,6.0,7.0,,,,1
 
 # calendar_dates.txt
 service_id,date,exception_type
@@ -67,36 +67,88 @@ TEST(gtfs, lua_test) {
   tt.date_range_ = {date::sys_days{2019_y / March / 25},
                     date::sys_days{2019_y / November / 1}};
   load_timetable({.lua_user_script_ = R"(
-function update_route(route)
-  if route:get_route_type() == 3:
+function process_location(stop)
+  local name = stop:get_name()
+  if string.sub(name, -7) == ' Berlin' then
+    stop:set_name(string.sub(name, 1, -8))
+  end
+
+  local pos = stop:get_pos()
+  pos:set_lat(stop:get_pos():get_lat() + 2.0)
+  pos:set_lng(stop:get_pos():get_lng() - 2.0)
+  stop:set_pos(pos)
+
+  stop:set_description(stop:get_description() .. ' ' .. stop:get_id() .. ' YEAH')
+  stop:set_timezone('Europe/Berlin')
+  stop:set_transfer_time(stop:get_transfer_time() + 98)
+  stop:set_platform_code(stop:get_platform_code() .. 'A')
+
+  return true
+end
+
+function process_route(route)
+  if route:get_route_type() == 3 then
     route:set_clasz(7)
     route:set_route_type(101)
-  elseif route:get_route_type() == 1:
+  elseif route:get_route_type() == 1 then
     route:set_clasz(8)
     route:set_route_type(400)
   end
 
-  if route:get_agency():get_name() == 'Deutsche Bahn' and route:get_route_type() == 101:
+  if route:get_agency():get_name() == 'Deutsche Bahn' and route:get_route_type() == 101 then
     route:set_route_short_name('RE ' .. route:get_route_short_name())
   end
+
+  return true
 end
 
-
-function update_agency(agency)
-  if agency == 'Deutsche Bahn':
+function process_agency(agency)
+  if agency:get_name() == 'Deutsche Bahn' and agency:get_id() == 'DB' then
+    agency:set_url(agency:get_timezone())
     agency:set_timezone('Europe/Berlin')
-    agency:set_url('https://bahn.de')
+    agency:set_name('SNCF')
+    return true
   end
+  return false
 end
 
-
-function update_trip(trip)
-  if trip:get_route():get_route_type() == 101:
+function process_trip(trip)
+  if trip:get_route():get_route_type() == 101 then
     -- Prepend category and eliminate leading zeros (e.g. '00123' -> 'ICE 123')
-    trip:set_trip_short_name('ICE ' .. string.format("%u", trip:get_short_name()))
+    trip:set_trip_short_name('ICE ' .. string.format("%d", trip:get_trip_short_name()))
   end
+
+  return true
 end
 )"},
                  source_idx_t{0}, test_files(), tt);
   finalize(tt);
+
+  auto const get_tz_name = [&](timezone_idx_t const tz) {
+    return tt.locations_.timezones_[tz].apply(utl::overloaded{
+        [](pair<string, void const*> const& x) -> std::string_view {
+          return x.first;
+        },
+        [](tz_offsets) -> std::string_view { return ""; }});
+  };
+
+  auto const p = tt.get_provider_idx("DB", {});
+  ASSERT_NE(provider_idx_t::invalid(), p);
+  auto const agency = tt.providers_[p];
+  EXPECT_EQ("Europe/Paris", tt.strings_.get(agency.url_));
+  EXPECT_EQ("Europe/Berlin", get_tz_name(agency.tz_));
+  EXPECT_EQ("SNCF", tt.strings_.get(agency.name_));
+
+  auto const a = tt.locations_.find({"A", {}});
+  ASSERT_TRUE(a.has_value());
+  EXPECT_EQ("A", a->name_);
+
+  auto const b = tt.locations_.find({"B", {}});
+  ASSERT_TRUE(b.has_value());
+  EXPECT_EQ((geo::latlng{4.0, 1.0}), b->pos_);
+  EXPECT_EQ("j B YEAH", b->desc_);
+  EXPECT_EQ(100min, b->transfer_time_);
+  EXPECT_EQ("1A", b->platform_code_);
+
+  EXPECT_EQ("Europe/Berlin", get_tz_name(b->timezone_idx_));
 }

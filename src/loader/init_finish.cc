@@ -8,6 +8,7 @@
 
 #include "nigiri/loader/build_footpaths.h"
 #include "nigiri/loader/build_lb_graph.h"
+#include "nigiri/loader/register.h"
 #include "nigiri/flex.h"
 #include "nigiri/special_stations.h"
 #include "nigiri/timetable.h"
@@ -17,17 +18,18 @@ namespace nigiri::loader {
 void register_special_stations(timetable& tt) {
   auto empty_idx_vec = vector<location_idx_t>{};
   for (auto const& name : special_stations_names) {
-    tt.locations_.register_location(location{name,
-                                             name,
-                                             "",
-                                             "",
-                                             {0.0, 0.0},
-                                             source_idx_t::invalid(),
-                                             location_type::kStation,
-                                             location_idx_t::invalid(),
-                                             timezone_idx_t::invalid(),
-                                             0_minutes,
-                                             it_range{empty_idx_vec}});
+    register_location(tt, location{name,
+                                   name,
+                                   "",
+                                   "",
+                                   {0.0, 0.0},
+                                   source_idx_t::invalid(),
+                                   location_type::kStation,
+                                   location_idx_t::invalid(),
+                                   timezone_idx_t::invalid(),
+                                   0_minutes,
+                                   {},
+                                   tt});
   }
   tt.location_routes_.resize(tt.n_locations());
   tt.bitfields_.emplace_back(bitfield{});  // bitfield_idx 0 = 000...00 bitfield

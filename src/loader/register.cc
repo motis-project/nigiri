@@ -12,9 +12,26 @@
 
 namespace nigiri::loader {
 
+gtfs::tz_map dummy_tz_map;
+
 // =======
 // Agency
 // -------
+
+agency::agency(source_idx_t const src,
+               std::string_view id,
+               std::string_view name,
+               std::string_view url,
+               timezone_idx_t const tz_idx,
+               timetable& tt,
+               gtfs::tz_map& tz_map)
+    : src_{src},
+      id_{id},
+      name_{name, generic_string::non_owning},
+      url_{url, generic_string::non_owning},
+      timezone_idx_{tz_idx},
+      tt_{&tt},
+      tz_map_{&tz_map} {}
 
 agency::agency(timetable const& tt, provider_idx_t const a)
     : id_{tt.strings_.get(tt.providers_[a].id_)},
@@ -56,6 +73,33 @@ location::location(timetable const& tt, location_idx_t const l)
       transfer_time_{tt.locations_.transfer_time_[l]},
       equivalences_{tt.locations_.equivalences_[l]} {}
 
+location::location(std::string_view id,
+                   std::string_view name,
+                   std::string_view platform_code,
+                   std::string_view desc,
+                   geo::latlng pos,
+                   source_idx_t src,
+                   location_type type,
+                   location_idx_t parent,
+                   timezone_idx_t timezone,
+                   duration_t transfer_time,
+                   std::span<location_idx_t const> equivalences,
+                   timetable& tt,
+                   gtfs::tz_map& tz_map)
+    : src_{src},
+      id_{id},
+      name_{name, generic_string::non_owning},
+      platform_code_{platform_code, generic_string::non_owning},
+      description_{desc, generic_string::non_owning},
+      pos_{pos},
+      type_{type},
+      parent_{parent},
+      timezone_idx_{timezone},
+      transfer_time_{transfer_time},
+      equivalences_{equivalences},
+      tt_{&tt},
+      tz_map_{&tz_map} {}
+
 std::string_view location::get_id() const { return id_; }
 
 std::string_view location::get_name() const { return name_; }
@@ -73,13 +117,6 @@ void location::set_description(std::string_view x) {
 
 geo::latlng location::get_pos() const { return pos_; }
 void location::set_pos(geo::latlng x) { pos_ = x; }
-
-std::optional<location> location::get_parent() const {
-  assert(tt_ != nullptr);
-  return parent_ == location_idx_t::invalid()
-             ? std::nullopt
-             : std::optional<location>{{*tt_, parent_}};
-}
 
 std::optional<std::string_view> location::get_timezone() const {
   return gtfs::get_timezone_name(*tt_, timezone_idx_);
@@ -100,6 +137,21 @@ void location::set_transfer_time(duration_t::rep x) {
 // =====
 // Route
 // -----
+
+route::route(source_idx_t const src,
+             std::string_view id,
+             std::string_view short_name,
+             std::string_view long_name,
+             route_type_t const route_type,
+             route_color const color,
+             provider_idx_t const agency)
+    : src_{src},
+      id_{id},
+      short_name_{short_name, cista::raw::generic_string::non_owning},
+      long_name_{long_name, cista::raw::generic_string::non_owning},
+      route_type_{route_type},
+      color_{color},
+      agency_{agency} {}
 
 route::route(timetable const& tt,
              source_idx_t const src,
@@ -143,6 +195,29 @@ provider const& route::get_agency() const { throw "not implemented"; }
 // Trip
 // ----
 
+trip::trip(source_idx_t src,
+           std::string_view id,
+           std::string_view headsign,
+           std::string_view short_name,
+           std::string_view display_name,
+           std::span<stop_idx_t> seq_numbers,
+           direction_id_t direction,
+           trip_debug dbg,
+           route_id_idx_t route,
+           timetable& tt)
+    : src_{src},
+      id_{id},
+      headsign_{headsign, cista::raw::generic_string::non_owning},
+      short_name_{short_name, cista::raw::generic_string::non_owning},
+      display_name_{display_name, cista::raw::generic_string::non_owning},
+      seq_numbers_{seq_numbers},
+      direction_{direction},
+      dbg_{dbg},
+      route_{route},
+      tt_{&tt} {}
+
+std::string_view trip::get_id() const { return id_; }
+
 std::string_view trip::get_headsign() const { return headsign_; }
 void trip::set_headsign(std::string_view x) { headsign_.set_owning(x); }
 
@@ -158,74 +233,7 @@ route trip::get_route() const { return route{*tt_, src_, route_}; }
 // User Script
 // -----------
 
-struct script_runner {
-  explicit script_runner(std::string const& user_script) {
-    lua_.script_file(user_script);
-    lua_.open_libraries(sol::lib::base, sol::lib::string, sol::lib::package);
-
-    lua_.new_usertype<agency>(  //
-        "agency",  //
-        "get_id", &agency::get_id,  //
-        "get_name", &agency::get_name,  //
-        "set_name", &agency::set_name,  //
-        "get_url", &agency::get_url,  //
-        "set_url", &agency::set_url,  //
-        "get_timezone", &agency::get_timezone,  //
-        "set_timezone", &agency::set_timezone  //
-    );
-
-    lua_.new_usertype<location>(
-        "location",  //
-        "get_id", &location::get_id,  //
-        "get_name", &location::get_name,  //
-        "set_name", &location::set_name,  //
-        "get_platform_code", &location::get_platform_code,  //
-        "set_platform_code", &location::set_platform_code,  //
-        "get_description", &location::get_description,  //
-        "set_description", &location::set_description,  //
-        "get_pos", &location::get_pos,  //
-        "set_pos", &location::set_pos,  //
-        "get_parent", &location::get_parent,  //
-        "get_timezone", &location::get_timezone,  //
-        "set_timezone", &location::set_timezone,  //
-        "get_transfer_time", &location::get_transfer_time,  //
-        "set_transfer_time", &location::set_transfer_time  //
-    );
-
-    lua_.new_usertype<route>(  //
-        "route",  //
-        "get_id", &route::get_id,  //
-        "get_short_name", &route::get_short_name,  //
-        "set_short_name", &route::set_short_name,  //
-        "get_long_name", &route::get_long_name,  //
-        "set_long_name", &route::set_long_name,  //
-        "get_route_type", &route::get_route_type,  //
-        "set_route_type", &route::set_route_type,  //
-        "get_color", &route::get_color,  //
-        "set_color", &route::set_color,  //
-        "get_text_color", &route::get_text_color,  //
-        "set_text_color", &route::set_text_color,  //
-        "get_agency", &route::get_agency  //
-    );
-
-    lua_.new_usertype<trip>(  //
-        "trip",  //
-        "get_id", &trip::get_id,  //
-        "get_headsign", &trip::get_headsign,  //
-        "set_headsign", &trip::set_headsign,  //
-        "get_short_name", &trip::get_short_name,  //
-        "set_short_name", &trip::set_short_name,  //
-        "get_display_name", &trip::get_display_name,  //
-        "set_display_name", &trip::set_display_name,  //
-        "get_route", &trip::get_route  //
-    );
-
-    process_agency_ = lua_["process_agency"];
-    process_location_ = lua_["process_location"];
-    process_route_ = lua_["process_route"];
-    process_trip_ = lua_["process_trip"];
-  }
-
+struct script_runner::impl {
   sol::state lua_;
 
   sol::protected_function process_agency_;
@@ -234,40 +242,134 @@ struct script_runner {
   sol::protected_function process_trip_;
 };
 
-std::unique_ptr<script_runner> make_script_runner(
-    std::string const& user_script) {
-  return std::make_unique<script_runner>(user_script);
+script_runner::script_runner() = default;
+
+script_runner::script_runner(std::string const& user_script)
+    : impl_{std::make_unique<impl>()} {
+  impl_->lua_.script(user_script);
+  impl_->lua_.open_libraries(sol::lib::base, sol::lib::string,
+                             sol::lib::package);
+
+  impl_->lua_.new_usertype<geo::latlng>(
+      "latlng",  //
+      "get_lat", &geo::latlng::lat,  //
+      "get_lng", &geo::latlng::lng,  //
+      "set_lat", [](geo::latlng& x, double lat) { x.lat_ = lat; },  //
+      "set_lng", [](geo::latlng& x, double lng) { x.lng_ = lng; });
+
+  impl_->lua_.new_usertype<agency>(  //
+      "agency",  //
+      "get_id", &agency::get_id,  //
+      "get_name", &agency::get_name,  //
+      "set_name", &agency::set_name,  //
+      "get_url", &agency::get_url,  //
+      "set_url", &agency::set_url,  //
+      "get_timezone", &agency::get_timezone,  //
+      "set_timezone", &agency::set_timezone  //
+  );
+
+  impl_->lua_.new_usertype<location>(
+      "location",  //
+      "get_id", &location::get_id,  //
+      "get_name", &location::get_name,  //
+      "set_name", &location::set_name,  //
+      "get_platform_code", &location::get_platform_code,  //
+      "set_platform_code", &location::set_platform_code,  //
+      "get_description", &location::get_description,  //
+      "set_description", &location::set_description,  //
+      "get_pos", &location::get_pos,  //
+      "set_pos", &location::set_pos,  //
+      "get_timezone", &location::get_timezone,  //
+      "set_timezone", &location::set_timezone,  //
+      "get_transfer_time", &location::get_transfer_time,  //
+      "set_transfer_time", &location::set_transfer_time  //
+  );
+
+  impl_->lua_.new_usertype<route>(  //
+      "route",  //
+      "get_id", &route::get_id,  //
+      "get_short_name", &route::get_short_name,  //
+      "set_short_name", &route::set_short_name,  //
+      "get_long_name", &route::get_long_name,  //
+      "set_long_name", &route::set_long_name,  //
+      "get_route_type", &route::get_route_type,  //
+      "set_route_type", &route::set_route_type,  //
+      "get_color", &route::get_color,  //
+      "set_color", &route::set_color,  //
+      "get_text_color", &route::get_text_color,  //
+      "set_text_color", &route::set_text_color,  //
+      "get_agency", &route::get_agency  //
+  );
+
+  impl_->lua_.new_usertype<trip>(  //
+      "trip",  //
+      "get_id", &trip::get_id,  //
+      "get_headsign", &trip::get_headsign,  //
+      "set_headsign", &trip::set_headsign,  //
+      "get_short_name", &trip::get_short_name,  //
+      "set_short_name", &trip::set_short_name,  //
+      "get_display_name", &trip::get_display_name,  //
+      "set_display_name", &trip::set_display_name,  //
+      "get_route", &trip::get_route  //
+  );
+
+  impl_->process_agency_ = impl_->lua_["process_agency"];
+  impl_->process_location_ = impl_->lua_["process_location"];
+  impl_->process_route_ = impl_->lua_["process_route"];
+  impl_->process_trip_ = impl_->lua_["process_trip"];
 }
 
+script_runner::~script_runner() = default;
+
 template <typename T>
-void process(std::string_view tag,
-             sol::protected_function const& process,
-             T& t) {
+bool process(sol::protected_function const& process, T& t) {
   if (process.valid()) {
     auto result = process(t);
     if (!result.valid()) {
       auto err = static_cast<sol::error>(result);
       log(log_lvl::error, "nigiri.loader.user_script",
-          "user script failed: type={}, tag={}, error={}", cista::type_str<T>(),
-          tag, err.what());
-      return;
+          "user script failed: type={}, error={}", cista::type_str<T>(),
+          err.what());
+      return true;
+    }
+    if (result.get_type() == sol::type::boolean) {
+      return result.template get<bool>();
     }
   }
+  return true;
 }
 
-void process_location(std::string_view tag,
-                      script_runner const& r,
-                      location& x) {
-  process(tag, r.process_location_, x);
+bool process_location(script_runner const& r, location& x) {
+  if (r.impl_ == nullptr) {
+    return true;
+  }
+  return process(r.impl_->process_location_, x);
 }
-void process_agency(std::string_view tag, script_runner const& r, agency& x) {
-  process(tag, r.process_location_, x);
+bool process_agency(script_runner const& r, agency& x) {
+  if (r.impl_ == nullptr) {
+    return true;
+  }
+  return process(r.impl_->process_location_, x);
 }
-void process_route(std::string_view tag, script_runner const& r, route& x) {
-  process(tag, r.process_location_, x);
+bool process_route(script_runner const& r, route& x) {
+  if (r.impl_ == nullptr) {
+    return true;
+  }
+  return process(r.impl_->process_location_, x);
 }
-void process_trip(std::string_view tag, script_runner const& r, trip& x) {
-  process(tag, r.process_location_, x);
+bool process_trip(script_runner const& r, trip& x) {
+  if (r.impl_ == nullptr) {
+    return true;
+  }
+  return process(r.impl_->process_location_, x);
+}
+provider_idx_t register_agency(timetable& tt, agency const& a) {
+  auto const idx = tt.providers_.size();
+  tt.providers_.emplace_back(
+      provider{tt.strings_.store(a.id_), tt.strings_.store(a.name_),
+               tt.strings_.store(a.url_), a.timezone_idx_, a.src_});
+  tt.provider_id_to_idx_.emplace_back(idx);
+  return provider_idx_t{idx};
 }
 
 location_idx_t register_location(timetable& tt, location const& l) {
@@ -317,6 +419,41 @@ location_idx_t register_location(timetable& tt, location const& l) {
   assert(loc.parents_.size() == next_idx + 1);
 
   return it->second;
+}
+
+route_id_idx_t register_route(timetable& tt, route const& r) {
+  auto& route_id = tt.route_ids_[r.src_];
+  auto const idx = route_id.ids_.store(r.id_);
+  route_id.route_id_short_names_.emplace_back(r.short_name_);
+  route_id.route_id_long_names_.emplace_back(r.long_name_);
+  route_id.route_id_colors_.emplace_back(r.color_);
+  route_id.route_id_type_.emplace_back(r.route_type_);
+  route_id.route_id_provider_.emplace_back(r.agency_);
+  route_id.route_id_trips_.emplace_back(std::initializer_list<trip_idx_t>{});
+  return idx;
+}
+
+trip_idx_t register_trip(timetable& tt, trip const& t) {
+  auto const trip_idx = trip_idx_t{tt.trip_ids_.size()};
+
+  auto const trip_id_idx = trip_id_idx_t{tt.trip_id_strings_.size()};
+
+  if (t.route_ != route_id_idx_t::invalid()) {  // HRD
+    tt.route_ids_[t.src_].route_id_trips_[t.route_].push_back(trip_idx);
+    tt.trip_direction_id_.set(trip_idx, t.direction_ == direction_id_t{1U});
+  }
+  tt.trip_route_id_.emplace_back(t.route_);
+
+  tt.trip_id_strings_.emplace_back(t.id_);
+  tt.trip_id_src_.emplace_back(t.src_);
+
+  tt.trip_id_to_idx_.emplace_back(trip_id_idx, trip_idx);
+  tt.trip_short_names_.emplace_back(t.short_name_);
+  tt.trip_debug_.emplace_back().emplace_back(t.dbg_);
+  tt.trip_ids_.emplace_back().emplace_back(trip_id_idx);
+  tt.trip_stop_seq_numbers_.emplace_back(t.seq_numbers_);
+
+  return trip_idx;
 }
 
 }  // namespace nigiri::loader
