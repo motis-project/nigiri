@@ -15,7 +15,6 @@ struct timetable;
 namespace nigiri::loader {
 
 struct loader_config {
-  std::string_view tag_{};
   unsigned link_stop_distance_{100U};
   std::string default_tz_{};
   std::array<bool, kNumClasses> bikes_allowed_default_{};

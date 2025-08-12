@@ -354,24 +354,10 @@ void load_timetable(loader_config const& config,
   }
 
   {
-    auto const is_train_number = [](auto const& s) {
-      return !s.empty() && std::all_of(begin(s), end(s), [](auto&& c) -> bool {
-        return std::isdigit(c);
-      });
-    };
-
     auto stop_seq_numbers = basic_string<stop_idx_t>{};
     auto const source_file_idx =
         tt.register_source_file((d.path() / kStopTimesFile).generic_string());
     for (auto& trp : trip_data.data_) {
-      std::uint32_t train_nr = 0U;
-      if (is_train_number(trp.short_name_)) {
-        train_nr = static_cast<std::uint32_t>(std::stoul(trp.short_name_));
-      } else if (auto const headsign = tt.trip_direction(trp.headsign_);
-                 is_train_number(headsign)) {
-        std::from_chars(headsign.data(), headsign.data() + headsign.size(),
-                        train_nr);
-      }
       encode_seq_numbers(trp.seq_numbers_, stop_seq_numbers);
 
       tt.trip_debug_.emplace_back().emplace_back(
