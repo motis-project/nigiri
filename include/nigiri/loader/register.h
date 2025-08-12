@@ -2,9 +2,8 @@
 
 #include <span>
 
+#include "nigiri/loader/gtfs/tz_map.h"
 #include "nigiri/types.h"
-
-#include "gtfs/tz_map.h"
 
 namespace nigiri {
 struct timetable;

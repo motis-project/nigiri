@@ -1,10 +1,9 @@
 #pragma once
 
-#include "nigiri/loader/register.h"
-
 #include <string_view>
 
 #include "nigiri/loader/gtfs/tz_map.h"
+#include "nigiri/loader/register.h"
 #include "nigiri/types.h"
 
 namespace nigiri {

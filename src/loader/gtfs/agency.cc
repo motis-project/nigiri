@@ -1,7 +1,5 @@
 #include "nigiri/loader/gtfs/agency.h"
 
-#include "nigiri/loader/register.h"
-
 #include "date/tz.h"
 
 #include "utl/get_or_create.h"
@@ -12,6 +10,7 @@
 #include "utl/pipes/vec.h"
 #include "utl/progress_tracker.h"
 
+#include "nigiri/loader/register.h"
 #include "nigiri/timetable.h"
 
 namespace nigiri::loader::gtfs {
