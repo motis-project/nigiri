@@ -21,7 +21,7 @@ struct loader_config {
   std::array<bool, kNumClasses> bikes_allowed_default_{};
   std::array<bool, kNumClasses> cars_allowed_default_{};
   bool extend_calendar_{false};
-  std::optional<std::string> lua_user_script_{};
+  std::string lua_user_script_{};
 };
 
 struct loader_interface {

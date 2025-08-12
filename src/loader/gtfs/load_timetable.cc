@@ -110,10 +110,7 @@ void load_timetable(loader_config const& config,
     return d.exists(file_name) ? d.get_file(file_name) : file{};
   };
 
-  auto const user_script = config.lua_user_script_.has_value()
-                               ? script_runner{*config.lua_user_script_}
-                               : script_runner{};
-
+  auto const user_script = script_runner{config.lua_user_script_};
   auto const progress_tracker = utl::get_active_progress_tracker();
   auto timezones = tz_map{};
   auto agencies =
@@ -366,7 +363,6 @@ void load_timetable(loader_config const& config,
     auto stop_seq_numbers = basic_string<stop_idx_t>{};
     auto const source_file_idx =
         tt.register_source_file((d.path() / kStopTimesFile).generic_string());
-    tt.trip_direction_id_.resize(tt.n_trips() + trip_data.data_.size());
     for (auto& trp : trip_data.data_) {
       std::uint32_t train_nr = 0U;
       if (is_train_number(trp.short_name_)) {
@@ -380,8 +376,7 @@ void load_timetable(loader_config const& config,
 
       tt.trip_debug_.emplace_back().emplace_back(
           trip_debug{source_file_idx, trp.from_line_, trp.to_line_});
-      tt.trip_stop_seq_numbers_.emplace_back(
-          std::initializer_list<stop_idx_t>{});
+      tt.trip_stop_seq_numbers_.emplace_back(trp.seq_numbers_);
     }
   }
 

@@ -251,7 +251,11 @@ struct script_runner::impl {
 script_runner::script_runner() = default;
 
 script_runner::script_runner(std::string const& user_script)
-    : impl_{std::make_unique<impl>()} {
+    : impl_{user_script.empty() ? nullptr : std::make_unique<impl>()} {
+  if (user_script.empty()) {
+    return;
+  }
+
   impl_->lua_.script(user_script);
   impl_->lua_.open_libraries(sol::lib::base, sol::lib::string,
                              sol::lib::package);
