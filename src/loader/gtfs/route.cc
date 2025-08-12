@@ -1,7 +1,5 @@
 #include "nigiri/loader/gtfs/route.h"
 
-#include "nigiri/loader/register.h"
-
 #include "utl/get_or_create.h"
 #include "utl/parser/buf_reader.h"
 #include "utl/parser/csv_range.h"
@@ -10,6 +8,7 @@
 #include "utl/pipes/vec.h"
 #include "utl/progress_tracker.h"
 
+#include "nigiri/loader/register.h"
 #include "nigiri/logging.h"
 #include "nigiri/timetable.h"
 

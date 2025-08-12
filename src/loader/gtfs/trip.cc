@@ -31,9 +31,6 @@ block::rule_services(trip_data& trips) {
   utl::verify(!trips_.empty(), "empty block not allowed");
 
   utl::erase_if(trips_, [&](gtfs_trip_idx_t const& t) {
-    if (trips.data_[t].trip_idx_ == trip_idx_t::invalid()) {
-      return true;
-    }
     auto const is_empty = trips.data_[t].stop_seq_.empty();
     if (is_empty) {
       log(log_lvl::error, "loader.gtfs.trip", "trip \"{}\": no stop times",

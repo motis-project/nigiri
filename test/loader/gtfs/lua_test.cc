@@ -18,6 +18,7 @@ mem_dir test_files() {
 # agency.txt
 agency_id,agency_name,agency_url,agency_timezone
 DB,Deutsche Bahn,https://deutschebahn.com,Europe/Paris
+TT,Tischtennis,https://deutschebahn.com,Europe/Paris
 
 # stops.txt
 stop_id,stop_name,stop_desc,stop_lat,stop_lon,stop_url,location_type,parent_station,platform_code
@@ -30,16 +31,22 @@ D,D Berlin,l,6.0,7.0,,,,1
 service_id,date,exception_type
 S_RE1,20190501,1
 S_RE2,20190503,1
+S_RE3,20190504,1
+S_RE3,20190505,1
 
 # routes.txt
 route_id,agency_id,route_short_name,route_long_name,route_desc,route_type
 R_RE1,DB,1,,,3
 R_RE2,DB,2,,,3
+R_RE3,TT,2,,,3
+R_RE4,DB,2,,,3
 
 # trips.txt
 route_id,service_id,trip_id,trip_short_name,trip_headsign,block_id
 R_RE1,S_RE1,T_RE1,00123,RE 1,1
 R_RE2,S_RE2,T_RE2,00456,RE 2,1
+R_RE3,S_RE3,T_RE3,00789,RE 3,1
+R_RE4,S_RE4,T_RE4,00555,RE 4,1
 
 # stop_times.txt
 trip_id,arrival_time,departure_time,stop_id,stop_sequence,pickup_type,drop_off_type
@@ -48,6 +55,10 @@ T_RE1,50:00:00,50:00:00,B,2,0,0
 T_RE2,00:30:00,00:30:00,B,1,0,0
 T_RE2,00:45:00,00:45:00,C,2,0,0
 T_RE2,01:00:00,01:00:00,D,3,0,0
+T_RE3,00:30:00,00:30:00,B,1,0,0
+T_RE3,00:45:00,00:45:00,C,2,0,0
+T_RE4,00:30:00,00:30:00,B,1,0,0
+T_RE4,00:45:00,00:45:00,C,2,0,0
 )");
 }
 
@@ -78,6 +89,10 @@ function process_location(stop)
 end
 
 function process_route(route)
+  if route:get_id() == 'R_RE4' then
+    return false
+  end
+
   if route:get_route_type() == 3 then
     route:set_clasz(7)
     route:set_route_type(101)
@@ -94,6 +109,10 @@ function process_route(route)
 end
 
 function process_agency(agency)
+  if agency:get_id() == 'TT' then
+    return false
+  end
+
   if agency:get_name() == 'Deutsche Bahn' and agency:get_id() == 'DB' then
     agency:set_url(agency:get_timezone())
     agency:set_timezone('Europe/Berlin')
@@ -144,7 +163,7 @@ end
 
   std::cout << tt << "\n";
 
-  {
+  {  // Renamed to "ICE 123".
     auto td = transit_realtime::TripDescriptor();
     td.set_trip_id("T_RE1");
     td.set_start_date("20190501");
@@ -160,11 +179,29 @@ end
               (std::stringstream{} << rt::frun{tt, nullptr, r}).view());
   }
 
-  {
+  {  // Filtered by trip.
     auto td = transit_realtime::TripDescriptor();
     td.set_trip_id("T_RE2");
     td.set_start_date("20190503");
     auto const [r, _] = rt::gtfsrt_resolve_run(date::sys_days{2019_y / May / 3},
+                                               tt, nullptr, {}, td);
+    EXPECT_FALSE(r.valid());
+  }
+
+  {  // Filtered by agency.
+    auto td = transit_realtime::TripDescriptor();
+    td.set_trip_id("T_RE3");
+    td.set_start_date("20190504");
+    auto const [r, _] = rt::gtfsrt_resolve_run(date::sys_days{2019_y / May / 4},
+                                               tt, nullptr, {}, td);
+    EXPECT_FALSE(r.valid());
+  }
+
+  {  // Filtered by route.
+    auto td = transit_realtime::TripDescriptor();
+    td.set_trip_id("T_RE4");
+    td.set_start_date("20190505");
+    auto const [r, _] = rt::gtfsrt_resolve_run(date::sys_days{2019_y / May / 5},
                                                tt, nullptr, {}, td);
     EXPECT_FALSE(r.valid());
   }
