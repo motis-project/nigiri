@@ -687,7 +687,7 @@ private:
                  it != end(td_dist_to_end_)) {
         [[unlikely]];
 
-        auto const fp_start_time = get_best(best_[i][Vias], tmp_[i][Vias]);
+        auto const fp_start_time = tmp_[i][Vias];
         if (fp_start_time == kInvalid) {
           return;
         }
