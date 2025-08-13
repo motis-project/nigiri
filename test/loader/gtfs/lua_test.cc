@@ -68,7 +68,7 @@ TEST(gtfs, lua_test) {
   timetable tt;
   tt.date_range_ = {date::sys_days{2019_y / March / 25},
                     date::sys_days{2019_y / November / 1}};
-  load_timetable({.lua_user_script_ = R"(
+  load_timetable({.user_script_ = R"(
 function process_location(stop)
   local name = stop:get_name()
   if string.sub(name, -7) == ' Berlin' then

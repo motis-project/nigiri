@@ -110,7 +110,7 @@ void load_timetable(loader_config const& config,
     return d.exists(file_name) ? d.get_file(file_name) : file{};
   };
 
-  auto const user_script = script_runner{config.lua_user_script_};
+  auto const user_script = script_runner{config.user_script_};
   auto const progress_tracker = utl::get_active_progress_tracker();
   auto timezones = tz_map{};
   auto agencies =

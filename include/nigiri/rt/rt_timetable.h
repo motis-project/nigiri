@@ -129,7 +129,7 @@ struct rt_timetable {
                 tt.merged_trips_[tt.transport_to_trip_section_[x.t_idx_]
                                      .front()]
                     .front();
-            return tt.trip_short_name(trip_idx);
+            return tt.trip_display_names_[trip_idx].view();
           },
           [&](rt_add_trip_id_idx_t) { return std::string_view{"?"}; }});
     } else {

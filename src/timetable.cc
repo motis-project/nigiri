@@ -23,26 +23,6 @@ void timetable::resolve() {
   }
 }
 
-std::string_view timetable::route_short_name(trip_idx_t const trip_idx) const {
-  return trip_route_id_[trip_idx] == route_id_idx_t::invalid()
-             ? std::string_view{}
-             : route_ids_[trip_id_src_[trip_ids_[trip_idx].front()]]
-                   .route_id_short_names_[trip_route_id_[trip_idx]]
-                   .view();
-}
-
-std::string_view timetable::route_long_name(trip_idx_t const trip_idx) const {
-  return trip_route_id_[trip_idx] == route_id_idx_t::invalid()
-             ? std::string_view{}
-             : route_ids_[trip_id_src_[trip_ids_[trip_idx].front()]]
-                   .route_id_short_names_[trip_route_id_[trip_idx]]
-                   .view();
-}
-
-std::string_view timetable::trip_short_name(trip_idx_t const trip_idx) const {
-  return trip_short_names_[trip_idx].view();
-}
-
 std::ostream& operator<<(std::ostream& out, timetable const& tt) {
   for (auto const [id, idx] : tt.trip_id_to_idx_) {
     auto const str = tt.trip_id_strings_[id].view();
