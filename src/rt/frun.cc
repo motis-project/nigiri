@@ -206,7 +206,7 @@ std::string_view run_stop::route_short_name(event_type const ev_type) const {
         .route_id_short_names_[route_id]
         .view();
   } else {
-    return {};
+    return "?";
   }
 }
 
