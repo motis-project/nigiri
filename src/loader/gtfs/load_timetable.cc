@@ -34,6 +34,7 @@
 #include "nigiri/loader/gtfs/stop_time.h"
 #include "nigiri/loader/gtfs/trip.h"
 #include "nigiri/loader/loader_interface.h"
+#include "nigiri/loader/register.h"
 
 #include "nigiri/common/sort_by.h"
 #include "nigiri/logging.h"
@@ -109,14 +110,17 @@ void load_timetable(loader_config const& config,
     return d.exists(file_name) ? d.get_file(file_name) : file{};
   };
 
+  auto const user_script = script_runner{config.user_script_};
   auto const progress_tracker = utl::get_active_progress_tracker();
   auto timezones = tz_map{};
-  auto agencies = read_agencies(src, tt, timezones, load(kAgencyFile).data());
-  auto const [stops, seated_transfers] =
-      read_stops(src, tt, timezones, load(kStopFile).data(),
-                 load(kTransfersFile).data(), config.link_stop_distance_);
-  auto const routes = read_routes(src, tt, timezones, agencies,
-                                  load(kRoutesFile).data(), config.default_tz_);
+  auto agencies =
+      read_agencies(src, tt, timezones, load(kAgencyFile).data(), user_script);
+  auto const [stops, seated_transfers] = read_stops(
+      src, tt, timezones, load(kStopFile).data(), load(kTransfersFile).data(),
+      config.link_stop_distance_, user_script);
+  auto const routes =
+      read_routes(src, tt, timezones, agencies, load(kRoutesFile).data(),
+                  config.default_tz_, user_script);
   auto const calendar = read_calendar(load(kCalenderFile).data());
   auto const dates = read_calendar_date(load(kCalendarDatesFile).data());
   auto const feed_info = read_feed_info(load(kFeedInfoFile).data());
@@ -129,9 +133,9 @@ void load_timetable(loader_config const& config,
       (shapes_data != nullptr)
           ? parse_shapes(load(kShapesFile).data(), *shapes_data)
           : shape_loader_state{};
-  auto trip_data =
-      read_trips(tt, routes, service, shape_states, load(kTripsFile).data(),
-                 config.bikes_allowed_default_, config.cars_allowed_default_);
+  auto trip_data = read_trips(
+      src, tt, routes, service, shape_states, load(kTripsFile).data(),
+      config.bikes_allowed_default_, config.cars_allowed_default_, user_script);
   auto const booking_rules = parse_booking_rules(
       tt, load(kBookingRulesFile).data(), service, bitfield_indices);
   auto const location_groups =
@@ -313,8 +317,10 @@ void load_timetable(loader_config const& config,
           !t.flex_time_windows_.empty()) {
         continue;
       }
-      add_trip({gtfs_trip_idx_t{i}}, t.service_);
-      progress_tracker->increment();
+      if (t.trip_idx_ != trip_idx_t::invalid()) {
+        add_trip({gtfs_trip_idx_t{i}}, t.service_);
+        progress_tracker->increment();
+      }
     }
   }
 
@@ -348,30 +354,15 @@ void load_timetable(loader_config const& config,
   }
 
   {
-    auto const is_train_number = [](auto const& s) {
-      return !s.empty() && std::all_of(begin(s), end(s), [](auto&& c) -> bool {
-        return std::isdigit(c);
-      });
-    };
-
     auto stop_seq_numbers = basic_string<stop_idx_t>{};
     auto const source_file_idx =
         tt.register_source_file((d.path() / kStopTimesFile).generic_string());
-    tt.trip_direction_id_.resize(tt.n_trips() + trip_data.data_.size());
     for (auto& trp : trip_data.data_) {
-      std::uint32_t train_nr = 0U;
-      if (is_train_number(trp.short_name_)) {
-        train_nr = static_cast<std::uint32_t>(std::stoul(trp.short_name_));
-      } else if (auto const headsign = tt.trip_direction(trp.headsign_);
-                 is_train_number(headsign)) {
-        std::from_chars(headsign.data(), headsign.data() + headsign.size(),
-                        train_nr);
-      }
       encode_seq_numbers(trp.seq_numbers_, stop_seq_numbers);
-      trp.trip_idx_ = tt.register_trip_id(
-          trp.id_, trp.route_->route_id_idx_, src, trp.display_name(),
-          {source_file_idx, trp.from_line_, trp.to_line_}, train_nr,
-          stop_seq_numbers, trp.direction_id_);
+
+      tt.trip_debug_.emplace_back().emplace_back(
+          trip_debug{source_file_idx, trp.from_line_, trp.to_line_});
+      tt.trip_stop_seq_numbers_.emplace_back(trp.seq_numbers_);
     }
   }
 

@@ -6,6 +6,7 @@
 
 #include "nigiri/loader/gtfs/agency.h"
 #include "nigiri/loader/gtfs/tz_map.h"
+#include "nigiri/loader/register.h"
 #include "nigiri/types.h"
 
 namespace nigiri {
@@ -20,7 +21,6 @@ struct route {
   std::string id_;
   std::string short_name_;
   std::string long_name_;
-  std::string desc_;
   std::string network_;
   clasz clasz_;
   color_t color_;
@@ -36,6 +36,7 @@ route_map_t read_routes(source_idx_t,
                         tz_map&,
                         agency_map_t&,
                         std::string_view file_content,
-                        std::string_view default_tz);
+                        std::string_view default_tz,
+                        script_runner const& = script_runner{});
 
 }  // namespace nigiri::loader::gtfs

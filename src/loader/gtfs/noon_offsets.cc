@@ -17,6 +17,10 @@ noon_offset_hours_t precompute_noon_offsets(timetable const& tt,
   auto ret = noon_offset_hours_t{};
 
   for (auto const& [id, provider_idx] : agencies) {
+    if (provider_idx == provider_idx_t::invalid()) {
+      continue;
+    }
+
     auto const tz_idx = tt.providers_[provider_idx].tz_;
     if (ret.size() <= to_idx(tz_idx)) {
       ret.resize(static_cast<timezone_idx_t::value_t>(to_idx(tz_idx) + 1U));

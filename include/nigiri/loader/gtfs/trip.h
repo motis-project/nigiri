@@ -143,13 +143,15 @@ struct trip_data {
   vector_map<gtfs_trip_idx_t, trip> data_;
 };
 
-trip_data read_trips(timetable&,
+trip_data read_trips(source_idx_t,
+                     timetable&,
                      route_map_t const&,
                      traffic_days_t const&,
                      shape_loader_state const&,
                      std::string_view file_content,
                      std::array<bool, kNumClasses> const& bikes_allowed_default,
-                     std::array<bool, kNumClasses> const& cars_allowed_default);
+                     std::array<bool, kNumClasses> const& cars_allowed_default,
+                     script_runner const& = script_runner{});
 
 void read_frequencies(trip_data&, std::string_view);
 

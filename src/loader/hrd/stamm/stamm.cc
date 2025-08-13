@@ -106,11 +106,10 @@ provider_idx_t stamm::resolve_provider(utl::cstr s) {
     log(log_lvl::error, "nigiri.loader.hrd.provider",
         "creating new provider for missing {}", s.view());
     auto const idx = provider_idx_t{tt_.providers_.size()};
-    tt_.providers_.emplace_back(
-        provider{.short_name_ = tt_.strings_.store(s.view()),
-                 .long_name_ = tt_.strings_.store(s.view()),
-                 .url_ = tt_.strings_.store(""),
-                 .src_ = source_idx_t{0}});
+    tt_.providers_.push_back(provider{.id_ = tt_.strings_.store(s.view()),
+                                      .name_ = tt_.strings_.store(s.view()),
+                                      .url_ = tt_.strings_.store(""),
+                                      .src_ = source_idx_t{0}});
     providers_[s.to_str()] = idx;
     return idx;
   } else {

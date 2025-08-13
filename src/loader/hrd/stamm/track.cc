@@ -1,5 +1,7 @@
 #include "nigiri/loader/hrd/stamm/track.h"
 
+#include "nigiri/loader/register.h"
+
 #include "utl/get_or_create.h"
 
 #include "nigiri/loader/hrd/stamm/stamm.h"
@@ -44,13 +46,13 @@ tracks parse_track_rules(config const& c,
         track_at_station{.parent_station_ = parent,
                          .track_name_ = track_name_str},
         [&]() {
-          auto l = location{tt, parent};
+          auto l = loader::location{tt, parent};
           auto const id = fmt::format("T:{}:{}", l.id_, track_name_str);
           l.id_ = id;
-          l.name_ = track_name_str;
+          l.name_ = generic_string{track_name_str, generic_string::non_owning};
           l.type_ = location_type::kGeneratedTrack;
           l.parent_ = parent;
-          auto const child = tt.locations_.register_location(l);
+          auto const child = register_location(tt, l);
           tt.locations_.children_[parent].emplace_back(child);
           return child;
         });
