@@ -963,7 +963,9 @@ private:
             tmp_[l_idx][target_v] =
                 get_best(by_transport, tmp_[l_idx][target_v]);
             state_.station_mark_.set(l_idx, true);
-            current_best[v] = by_transport;
+            if (is_better(by_transport, current_best[v])) {
+              current_best[v] = by_transport;
+            }
             any_marked = true;
           } else {
             trace(

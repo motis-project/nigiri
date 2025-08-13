@@ -629,7 +629,7 @@ void reconstruct_journey_with_vias(timetable const& tt,
 
       trace_reconstruct(
           "intermodal destination reconstruction failed at k={}, t={}, v={}, "
-          "stop={}, time={}, journey=[{}, {}]",
+          "stop={}, time={}, journey=[{}, {}]\n",
           k, j.transfers_, v, location{tt, l}, delta_to_unix(base, curr_time),
           j.start_time_, j.dest_time_);
 

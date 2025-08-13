@@ -174,8 +174,28 @@ trip_idx_t run_stop::get_trip_idx(event_type const ev_type) const {
 std::string_view run_stop::route_short_name(event_type const ev_type) const {
   if (fr_->is_scheduled()) {
     return tt().route_short_name(get_trip_idx(ev_type));
+  } else if (auto const route_id = rtt()->rt_transport_route_id_[fr_->rt_];
+             route_id != route_id_idx_t::invalid()) {
+    return tt()
+        .route_ids_[rtt()->rt_transport_src_[fr_->rt_]]
+        .route_id_short_names_[route_id]
+        .view();
   } else {
-    return rtt()->route_short_name(tt(), fr_->rt_);
+    return {};
+  }
+}
+
+std::string_view run_stop::route_long_name(event_type const ev_type) const {
+  if (fr_->is_scheduled()) {
+    return tt().route_long_name(get_trip_idx(ev_type));
+  } else if (auto const route_id = rtt()->rt_transport_route_id_[fr_->rt_];
+             route_id != route_id_idx_t::invalid()) {
+    return tt()
+        .route_ids_[rtt()->rt_transport_src_[fr_->rt_]]
+        .route_id_long_names_[route_id]
+        .view();
+  } else {
+    return {};
   }
 }
 
@@ -442,7 +462,7 @@ frun::frun(timetable const& tt, rt_timetable const* rtt, run r)
 
 std::string_view frun::name() const {
   if (is_rt() && rtt_ != nullptr) {
-    return rtt_->route_short_name(*tt_, rt_);
+    return operator[](0U).route_short_name(event_type::kDep);
   }
   if (is_scheduled()) {
     return tt_->transport_name(t_.t_idx_);

@@ -120,23 +120,6 @@ struct rt_timetable {
     return rt_transport_stop_times_[rt_t][static_cast<unsigned>(ev_idx)];
   }
 
-  std::string_view route_short_name(timetable const& tt,
-                                    rt_transport_idx_t const t) const {
-    if (rt_transport_route_short_names_[t].empty()) {
-      return rt_transport_static_transport_[t].apply(utl::overloaded{
-          [&](transport const x) {
-            auto const trip_idx =
-                tt.merged_trips_[tt.transport_to_trip_section_[x.t_idx_]
-                                     .front()]
-                    .front();
-            return tt.route_short_name(trip_idx);
-          },
-          [&](rt_add_trip_id_idx_t) { return std::string_view{"?"}; }});
-    } else {
-      return rt_transport_route_short_names_[t].view();
-    }
-  }
-
   std::string_view trip_short_name(timetable const& tt,
                                    rt_transport_idx_t const t) const {
     if (rt_transport_trip_short_names_[t].empty()) {
@@ -222,7 +205,6 @@ struct rt_timetable {
   vecvec<rt_transport_idx_t, stop::value_type> rt_transport_location_seq_;
 
   // RT trip index -> display name (empty if not changed)
-  vecvec<rt_transport_idx_t, char> rt_transport_route_short_names_;
   vecvec<rt_transport_idx_t, char> rt_transport_trip_short_names_;
   vecvec<rt_transport_idx_t, char> rt_transport_line_;
 
