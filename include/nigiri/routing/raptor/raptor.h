@@ -656,52 +656,57 @@ private:
       return;
     }
 
-    state_.end_reachable_.for_each_set_bit([&](auto const i) {
-      if (state_.prev_station_mark_[i] || state_.station_mark_[i]) {
+    state_.prev_station_mark_.for_each_set_bit([&](auto const i) {
+      auto const l = location_idx_t{i};
+      if (dist_to_end_[i] != std::numeric_limits<std::uint16_t>::max()) {
+        [[unlikely]];
 
-        auto const l = location_idx_t{i};
-        if (dist_to_end_[i] != std::numeric_limits<std::uint16_t>::max()) {
-          auto const best_time = get_best(best_[i][Vias], tmp_[i][Vias]);
-          if (best_time == kInvalid) {
-            return;
-          }
-          auto const stay = Vias != 0 && is_via_[Vias - 1U][i]
-                                ? via_stops_[Vias - 1U].stay_
-                                : 0_minutes;
-          auto const end_time =
-              clamp(best_time + stay.count() + dir(dist_to_end_[i]));
+        auto const tmp_time = tmp_[i][Vias];
+        if (tmp_time == kInvalid) {
+          return;
+        }
+        auto const stay = Vias != 0 && is_via_[Vias - 1U][i]
+                              ? via_stops_[Vias - 1U].stay_
+                              : 0_minutes;
+        auto const end_time =
+            clamp(tmp_time + stay.count() + dir(dist_to_end_[i]));
+
+        if (is_better(end_time, best_[kIntermodalTarget][Vias])) {
+          trace_upd(
+              "┊ ├k={}   INTERMODAL FOOTPATH: ({}, tmp={}) --{}--> "
+              "({}, best={}) --> update => {}, stay={}\n",
+              k, location{tt_, l}, to_unix(tmp_[to_idx(l)][Vias]),
+              dist_to_end_[i], location{tt_, location_idx_t{kIntermodalTarget}},
+              to_unix(best_[kIntermodalTarget][Vias]), to_unix(end_time), stay);
+
+          round_times_[k][kIntermodalTarget][Vias] = end_time;
+          best_[kIntermodalTarget][Vias] = end_time;
+          update_time_at_dest(k, end_time);
+        }
+      } else if (auto const it = td_dist_to_end_.find(l);
+                 it != end(td_dist_to_end_)) {
+        [[unlikely]];
+
+        auto const fp_start_time = get_best(best_[i][Vias], tmp_[i][Vias]);
+        if (fp_start_time == kInvalid) {
+          return;
+        }
+        auto const fp =
+            get_td_duration<SearchDir>(it->second, to_unix(fp_start_time));
+        if (fp.has_value()) {
+          auto const& [duration, _] = *fp;
+          auto const end_time = clamp(fp_start_time + dir(duration.count()));
 
           if (is_better(end_time, best_[kIntermodalTarget][Vias])) {
             round_times_[k][kIntermodalTarget][Vias] = end_time;
             best_[kIntermodalTarget][Vias] = end_time;
             update_time_at_dest(k, end_time);
-          }
 
-          trace("┊ │k={}  INTERMODAL FOOTPATH: location={}, dist_to_end={}\n",
-                k, location{tt_, l}, dist_to_end_[i]);
-        } else if (auto const it = td_dist_to_end_.find(l);
-                   it != end(td_dist_to_end_)) {
-          auto const fp_start_time = get_best(best_[i][Vias], tmp_[i][Vias]);
-          if (fp_start_time == kInvalid) {
-            return;
-          }
-          auto const fp =
-              get_td_duration<SearchDir>(it->second, to_unix(fp_start_time));
-          if (fp.has_value()) {
-            auto const& [duration, _] = *fp;
-            auto const end_time = clamp(fp_start_time + dir(duration.count()));
-
-            if (is_better(end_time, best_[kIntermodalTarget][Vias])) {
-              round_times_[k][kIntermodalTarget][Vias] = end_time;
-              best_[kIntermodalTarget][Vias] = end_time;
-              update_time_at_dest(k, end_time);
-
-              trace(
-                  "┊ │k={}  TD INTERMODAL FOOTPATH: location={}, "
-                  "start_time={}, dist_to_end={} --> update to {}\n",
-                  k, location{tt_, l}, to_unix(fp_start_time), duration,
-                  to_unix(end_time));
-            }
+            trace(
+                "┊ │k={}  TD INTERMODAL FOOTPATH: location={}, "
+                "start_time={}, dist_to_end={} --> update to {}\n",
+                k, location{tt_, l}, to_unix(fp_start_time), duration,
+                to_unix(end_time));
           }
         }
       }

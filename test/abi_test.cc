@@ -554,10 +554,12 @@ TEST(rt, abi_journeys) {
       0);
 
   auto const journeys = nigiri_get_journeys(t, 10, 15, 1691660000, false);
-  EXPECT_EQ(1, journeys->n_journeys);
-  EXPECT_EQ(1, journeys->journeys[0].n_legs);
+
+  ASSERT_EQ(1, journeys->n_journeys);
   EXPECT_EQ(1691659980, journeys->journeys[0].start_time);
   EXPECT_EQ(1691745840, journeys->journeys[0].dest_time);
+
+  ASSERT_EQ(1, journeys->journeys[0].n_legs);
   auto const l0 = journeys->journeys[0].legs[0];
   EXPECT_EQ(0, l0.is_footpath);
   EXPECT_EQ(0, l0.transport_idx);
