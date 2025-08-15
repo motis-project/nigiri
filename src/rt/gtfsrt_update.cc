@@ -525,7 +525,7 @@ void handle_vehicle_position(timetable const& tt,
       }
 
       // check if stop is "new" or the first one in the sequence
-      auto const stopped_at_idx = std::distance(begin(location_seq), stop_it);
+      auto const stopped_at_idx = stop_idx_t(std::distance(begin(location_seq), stop_it));
       if ((rtt.rt_transport_latest_stop_.contains(r.rt_) &&
            rtt.rt_transport_latest_stop_[r.rt_] > stopped_at_idx) ||
           stopped_at_idx == 0) {
