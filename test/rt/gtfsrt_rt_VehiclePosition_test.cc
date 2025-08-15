@@ -148,9 +148,15 @@ trip_id,arrival_time,departure_time,stop_id,stop_sequence,pickup_type,drop_off_t
 )");
 }
 
-// Test VP
-// Position: At Stop 2885 (Strasburg)
+// Test: one correct VehiclePosition
+// Position: at Stop 2885 (Strasburg)
 // Timestamp: 5min after scheduled arrival
+
+// Test: one VehiclePosition with each one field not set:
+// vehicle_position_position, vehicle_position_timestamp, vehicle_position_trip,
+// vehicle_position_trip_trip_id, vehicle_position_trip_route_id,
+// outdated_or_illegal_vehicle_position_timestamps=1 (14.2857%) Test: one with
+// outdated timestamp
 auto const kVehiclePosition =
     R"({
  "header": {
@@ -166,8 +172,7 @@ auto const kVehiclePosition =
      "trip": {
       "tripId": "3248651",
       "startTime": "05:15:00",
-      "startDate": "20230810",
-      "routeId": "201"
+      "startDate": "20230810"
      },
      "position": {
       "latitude": "43.415733",
@@ -194,39 +199,13 @@ auto const kVehiclePosition =
       "latitude": "43.415733",
       "longitude": "-80.480340"
     },
-    "timestamp": "1691658440",
+    "timestamp": "1691658331",
     "vehicle": {
       "id": "v1"
     },
     "occupancy_status": "MANY_SEATS_AVAILABLE"
     }
-  }
- ]
-})"s;
-
-auto const kVehiclePosition1 =
-    R"({
- "header": {
-  "gtfsRealtimeVersion": "2.0",
-  "incrementality": "FULL_DATASET",
-  "timestamp": "1691659440"
- },
- "entity": [
-  {
-    "id": "32486511",
-    "isDeleted": false,
-  }
- ]
-})"s;
-
-auto const kVehiclePosition2 =
-    R"({
- "header": {
-  "gtfsRealtimeVersion": "2.0",
-  "incrementality": "FULL_DATASET",
-  "timestamp": "1691659440"
- },
- "entity": [
+  },
   {
     "id": "32486512",
     "isDeleted": false,
@@ -237,24 +216,33 @@ auto const kVehiclePosition2 =
       "startDate": "20230810",
       "routeId": "201"
      },
-     "timestamp": "1691659440",
+     "timestamp": "1691659442",
      "vehicle": {
       "id": "v1"
      },
      "occupancy_status": "MANY_SEATS_AVAILABLE"
     }
-  }
- ]
-})"s;
-
-auto const kVehiclePosition4 =
-    R"({
- "header": {
-  "gtfsRealtimeVersion": "2.0",
-  "incrementality": "FULL_DATASET",
-  "timestamp": "1691659440"
- },
- "entity": [
+  },
+  {
+    "id": "3248651",
+    "isDeleted": false,
+    "vehicle": {
+     "trip": {
+      "tripId": "3248651",
+      "startTime": "05:15:00",
+      "startDate": "20230810",
+      "routeId": "201"
+     },
+     "position": {
+      "latitude": "43.415733",
+      "longitude": "-80.480340"
+     },
+     "vehicle": {
+      "id": "v1"
+     },
+     "occupancy_status": "MANY_SEATS_AVAILABLE"
+    }
+  },
   {
     "id": "32486514",
     "isDeleted": false,
@@ -263,24 +251,13 @@ auto const kVehiclePosition4 =
       "latitude": "43.415733",
       "longitude": "-80.480340"
      },
-     "timestamp": "1691659440",
+     "timestamp": "1691659443",
      "vehicle": {
       "id": "v1"
      },
      "occupancy_status": "MANY_SEATS_AVAILABLE"
     }
-  }
- ]
-})"s;
-
-auto const kVehiclePosition5 =
-    R"({
- "header": {
-  "gtfsRealtimeVersion": "2.0",
-  "incrementality": "FULL_DATASET",
-  "timestamp": "1691659440"
- },
- "entity": [
+  },
   {
     "id": "32486515",
     "isDeleted": false,
@@ -294,7 +271,7 @@ auto const kVehiclePosition5 =
       "latitude": "43.415733",
       "longitude": "-80.480340"
      },
-     "timestamp": "1691659440",
+     "timestamp": "1691659444",
      "vehicle": {
       "id": "v1"
      },
@@ -304,34 +281,19 @@ auto const kVehiclePosition5 =
  ]
 })"s;
 
-auto const kVehiclePosition6 =
+// Test: entity without VehiclePosition
+auto const kVehiclePosition1 =
     R"({
  "header": {
   "gtfsRealtimeVersion": "2.0",
   "incrementality": "FULL_DATASET",
-  "timestamp": "1691659440"
+  "timestamp": "1691659441"
  },
  "entity": [
   {
-    "id": "32486516",
+    "id": "32486511",
     "isDeleted": false,
-    "vehicle": {
-     "trip": {
-      "tripId": "3248651",
-      "startTime": "05:15:00",
-      "startDate": "20230810"
-     },
-     "position": {
-      "latitude": "43.415733",
-      "longitude": "-80.480340"
-     },
-     "timestamp": "1691659440",
-     "vehicle": {
-      "id": "v1"
-     },
-     "occupancy_status": "MANY_SEATS_AVAILABLE"
-    }
-  },
+  }
  ]
 })"s;
 
@@ -366,6 +328,14 @@ constexpr auto const expected = R"(
   27: 1127    Conestoga Station............................... a: 10.08 09:58 [10.08 05:58]  RT 10.08 10:03 [10.08 06:03]
 )"sv;
 
+constexpr auto const expected_stats = R"(
+   total_entities=6, total_entities_success=1 (16.6667%), total_vehicles=6 (100%), vehicle_position_without_position=1 (16.6667%), vehicle_position_without_timestamp=1 (16.6667%), vehicle_position_without_trip=1 (16.6667%), vehicle_position_trip_without_trip_id=1 (16.6667%), outdated_or_illegal_vehicle_position_timestamps=1 (16.6667%)
+)"sv;
+
+constexpr auto const expected_stats1 = R"(
+   total_entities=1, total_vehicles=1 (100%), no_vehicle_position=1 (100%)
+)"sv;
+
 }  // namespace
 
 TEST(rt, gtfs_rt_vp_update) {
@@ -384,21 +354,9 @@ TEST(rt, gtfs_rt_vp_update) {
   // Update.
   auto const msg = rt::json_to_protobuf(kVehiclePosition);
   auto const msg1 = rt::json_to_protobuf(kVehiclePosition1);
-  auto const msg2 = rt::json_to_protobuf(kVehiclePosition2);
-  auto const msg4 = rt::json_to_protobuf(kVehiclePosition4);
-  auto const msg5 = rt::json_to_protobuf(kVehiclePosition5);
-  auto const msg6 = rt::json_to_protobuf(kVehiclePosition6);
   auto const stats = gtfsrt_update_buf(tt, rtt, source_idx_t{0}, "", msg, true);
-  /**auto const stats1 =
+  auto const stats1 =
       gtfsrt_update_buf(tt, rtt, source_idx_t{0}, "", msg1, true);
-  auto const stats2 =
-      gtfsrt_update_buf(tt, rtt, source_idx_t{0}, "", msg2, true);
-  auto const stats4 =
-      gtfsrt_update_buf(tt, rtt, source_idx_t{0}, "", msg4, true);
-  auto const stats5 =
-      gtfsrt_update_buf(tt, rtt, source_idx_t{0}, "", msg5, true);
-  auto const stats6 =
-      gtfsrt_update_buf(tt, rtt, source_idx_t{0}, "", msg6, true);**/
 
   // Print trip.
   transit_realtime::TripDescriptor td;
@@ -409,15 +367,27 @@ TEST(rt, gtfs_rt_vp_update) {
                                              &rtt, source_idx_t{0}, td);
   ASSERT_TRUE(r.valid());
 
+  // Test: correct VehiclePosition (5min delay)
   auto const fr = rt::frun{tt, &rtt, r};
   auto ss = std::stringstream{};
   ss << "\n" << fr;
   EXPECT_EQ(expected, ss.str());
-  EXPECT_EQ(0, stats.no_vehicle_position_);
-  /**EXPECT_EQ(1, stats1.no_vehicle_position_);
-  EXPECT_EQ(1, stats2.vehicle_position_without_position_);
-  EXPECT_EQ(1, stats4.vehicle_position_without_trip_);
-  EXPECT_EQ(1, stats5.vehicle_position_trip_without_trip_id_);
-  EXPECT_EQ(1, stats6.vehicle_position_trip_without_route_id_);**/
+
+  // Test: one correct VehiclePosition;
+  // Test: one VehiclePosition with each one field not set:
+  // vehicle_position_position, vehicle_position_timestamp,
+  // vehicle_position_trip, vehicle_position_trip_trip_id,
+  // vehicle_position_trip_route_id,
+  // outdated_or_illegal_vehicle_position_timestamps=1 (14.2857%) Test: one with
+  // outdated timestamp
+  auto stats_ss = std::stringstream{};
+  stats_ss << "\n   " << stats << "\n";
+  EXPECT_EQ(expected_stats, stats_ss.str());
+
+  // Test: entity without VehiclePosition
+  auto stats_ss1 = std::stringstream{};
+  stats_ss1 << "\n   " << stats1 << "\n";
+  EXPECT_EQ(expected_stats1, stats_ss1.str());
+
   ASSERT_FALSE(fr.is_cancelled());
 }

@@ -42,7 +42,10 @@ struct statistics {
   int vehicle_position_without_timestamp_{0};
   int vehicle_position_without_trip_{0};
   int vehicle_position_trip_without_trip_id_{0};
-  int vehicle_position_trip_without_route_id_{0};
+  int duplicate_vehicle_position_timestamps_{0};
+  int outdated_or_illegal_vehicle_position_timestamps_{0};
+  int illegal_stop_{0};
+  int vehicle_position_position_not_at_stop_{0};
   int no_trip_update_{0};
   int trip_update_without_trip_{0};
   int trip_resolve_error_{0};
