@@ -22,7 +22,7 @@ constexpr char const* to_str(log_lvl const lvl) {
   return "";
 }
 
-static log_lvl s_verbosity;
+extern log_lvl s_verbosity;
 
 inline std::string now() {
   using clock = std::chrono::system_clock;
