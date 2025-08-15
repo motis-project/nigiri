@@ -90,8 +90,15 @@ std::ostream& operator<<(std::ostream& out, statistics const& s) {
   print_if_no_empty("vehicle_position_trip_without_trip_id",
                     s.vehicle_position_trip_without_trip_id_,
                     s.total_vehicles_);
-  print_if_no_empty("vehicle_position_trip_without_route_id",
-                    s.vehicle_position_trip_without_route_id_,
+  print_if_no_empty("duplicate_vehicle_position_timestamps",
+                    s.duplicate_vehicle_position_timestamps_,
+                    s.total_vehicles_);
+  print_if_no_empty("outdated_or_illegal_vehicle_position_timestamps",
+                    s.outdated_or_illegal_vehicle_position_timestamps_,
+                    s.total_vehicles_);
+  print_if_no_empty("illegal_stop", s.illegal_stop_, s.total_vehicles_);
+  print_if_no_empty("vehicle_position_position_not_at_stop",
+                    s.vehicle_position_position_not_at_stop_,
                     s.total_vehicles_);
   print_if_no_empty("no_trip_update", s.no_trip_update_, true);
   print_if_no_empty("trip_update_without_trip", s.trip_update_without_trip_,
@@ -102,8 +109,6 @@ std::ostream& operator<<(std::ostream& out, statistics const& s) {
 
   return out;
 }
-
-std::map<trip_idx_t, uint64_t> trip_latest_vehicle_time_;
 
 struct delay_propagation {
   unixtime_t pred_time_;
@@ -440,77 +445,135 @@ void handle_vehicle_position(timetable const& tt,
                              rt_timetable& rtt,
                              source_idx_t const src,
                              std::string_view tag,
-                             gtfsrt::FeedEntity const& entity,
-                             time_point_t const today) {
-  auto const vp = entity.vehicle();
-  auto const vp_lat = vp.position().latitude();
-  auto const vp_lon = vp.position().longitude();
-  auto const td = vp.trip();
-  auto const gtfsrt_trip_id = td.trip_id();
-
-  auto [r, trip_idx] = gtfsrt_resolve_run(today, tt, &rtt, src, td,
-                                          std::string_view{gtfsrt_trip_id});
-  auto const& rtt_const = rtt;
-  auto const location_seq =
-      r.is_scheduled()
-          ? std::span{tt.route_location_seq_[tt.transport_route_[r.t_.t_idx_]]}
-          : std::span{rtt_const.rt_transport_location_seq_[r.rt_]};
-
-  // add rt_transport if not existent
-  if (!r.is_rt()) {
-    r.rt_ = rtt.add_rt_transport(src, tt, r.t_);
+                             vector<gtfsrt::FeedEntity> const& entities,
+                             time_point_t const today,
+                             date::sys_seconds message_time,
+                             std::shared_ptr<opentelemetry::trace::Span>& span,
+                             statistics& stats) {
+  // check for duplicate timestamps
+  hash_map<uint64_t, int> counts;
+  for (auto const& ent : entities) {
+    ++counts[ent.vehicle().timestamp()];
   }
-
-  // match position to stop
-  auto const stop_it = utl::find_if(location_seq, [&](auto const& loc) {
-    auto const stop_position =
-        tt.locations_.get(location_idx_t{loc & 0x0FFFFFFF});
-    auto const vehicle_position = geo::latlng{vp_lat, vp_lon};
-    return geo::approx_squared_distance(
-               stop_position.pos_, vehicle_position,
-               geo::approx_distance_lng_degrees(vehicle_position)) < 10;
-  });
-  if (stop_it == end(location_seq)) {
-    log(log_lvl::info, "rt.gtfs.unsupported",
-        R"(Position of Vehicle was not near stop. Skipping Message)", tag,
-        entity.id());
-    return;
+  vector<gtfsrt::FeedEntity> accepted_entities;
+  for (auto const& ent2 : entities) {
+    if (counts[ent2.vehicle().timestamp()] == 1) {
+      accepted_entities.emplace_back(ent2);
+    } else {
+      ++stats.duplicate_vehicle_position_timestamps_;
+    }
   }
+  // handle accepted entities
+  for (auto const& entity : accepted_entities) {
+    try {
+      auto const vp = entity.vehicle();
+      auto const vp_lat = vp.position().latitude();
+      auto const vp_lon = vp.position().longitude();
+      auto const& td = vp.trip();
+      auto const& gtfsrt_trip_id = td.trip_id();
 
-  // check time
-  if (trip_latest_vehicle_time_.contains(trip_idx) &&
-      trip_latest_vehicle_time_[trip_idx] > vp.timestamp()) {
-    log(log_lvl::info, "rt.gtfs.unsupported",
-        R"(VehiclePosition is outdated. Skipping Message)", tag, entity.id());
-    return;
-  }
-  trip_latest_vehicle_time_[trip_idx] = vp.timestamp();
+      auto [r, trip_idx] = gtfsrt_resolve_run(today, tt, &rtt, src, td,
+                                              std::string_view{gtfsrt_trip_id});
+      if (!r.valid()) {
+        log(log_lvl::error, "rt.gtfs.unsupported",
+            R"(Run could not be resolved. Skipping Message)", tag, entity.id());
+        continue;
+      }
 
-  // get remaining stops
-  auto const stopped_at_idx = std::distance(begin(location_seq), stop_it);
-  auto const fr = r.is_scheduled() ? frun::from_t(tt, &rtt_const, r.t_)
-                             : frun::from_rt(tt, &rtt_const, r.rt_);
-  auto const seq_numbers = fr.stop_range_;
+      auto const& rtt_const = rtt;
+      auto const location_seq =
+          r.is_scheduled()
+              ? std::span{tt.route_location_seq_
+                              [tt.transport_route_[r.t_.t_idx_]]}
+              : std::span{rtt_const.rt_transport_location_seq_[r.rt_]};
 
-  // get delay
-  auto const delay = unixtime_t{std::chrono::duration_cast<i32_minutes>(
-                         std::chrono::seconds{vp.timestamp()})} -
-                     tt.event_time(r.t_, stopped_at_idx, event_type::kArr);
-  auto const delay_cast = std::chrono::duration_cast<duration_t>(delay);
+      // add rt_transport if not existent
+      if (!r.is_rt()) {
+        r.rt_ = rtt.add_rt_transport(src, tt, r.t_);
+      }
 
-  // update delay for remaining stops
-  auto seq_it = begin(seq_numbers);
-  for (int i = 0; i <= stopped_at_idx; ++i) {
-    ++seq_it;
-  }
+      // match position to stop
+      auto const stop_it = utl::find_if(location_seq, [&](auto const& loc) {
+        auto const stop_position =
+            tt.locations_.get(location_idx_t{loc & 0x0FFFFFFF});
+        auto const vehicle_position = geo::latlng{vp_lat, vp_lon};
+        return geo::approx_squared_distance(
+                   stop_position.pos_, vehicle_position,
+                   geo::approx_distance_lng_degrees(vehicle_position)) < 10;
+      });
+      if (stop_it == end(location_seq)) {
+        log(log_lvl::info, "rt.gtfs.unsupported",
+            R"(Position of Vehicle was not near stop. Skipping Message)", tag,
+            entity.id());
+        ++stats.vehicle_position_position_not_at_stop_;
+        continue;
+      }
 
-  for (auto stop_idx = stopped_at_idx + 1; seq_it != seq_numbers.end();
-       ++stop_idx) {
-    update_delay(tt, rtt, r, stop_idx, event_type::kArr, delay_cast,
-                 std::nullopt);
-    if (++seq_it != seq_numbers.end()) {
-      update_delay(tt, rtt, r, stop_idx, event_type::kDep, delay_cast,
-                   std::nullopt);
+      // check for outdated or illegal timestamp
+      auto const vp_ts_utt = unixtime_t{std::chrono::duration_cast<i32_minutes>(
+          std::chrono::seconds{vp.timestamp()})};
+      if ((rtt.rt_transport_latest_vehicle_time_.contains(r.rt_)
+               ? rtt.rt_transport_latest_vehicle_time_[r.rt_] > vp_ts_utt
+               : tt.event_time(r.t_, 0, event_type::kDep) > vp_ts_utt) ||
+          vp_ts_utt > std::chrono::time_point_cast<i32_minutes>(
+                          std::chrono::system_clock::now())) {
+        log(log_lvl::info, "rt.gtfs.unsupported",
+            R"(Outdated or illegal timestamp. Skipping Message)", tag,
+            entity.id());
+        ++stats.outdated_or_illegal_vehicle_position_timestamps_;
+        continue;
+      }
+
+      // check if stop is "new" or the first one in the sequence
+      auto const stopped_at_idx = std::distance(begin(location_seq), stop_it);
+      if ((rtt.rt_transport_latest_stop_.contains(r.rt_) &&
+           rtt.rt_transport_latest_stop_[r.rt_] > stopped_at_idx) ||
+          stopped_at_idx == 0) {
+        log(log_lvl::info, "rt.gtfs.unsupported",
+            R"(Illegal stop. Skipping Message)", tag, entity.id());
+        ++stats.illegal_stop_;
+        continue;
+      }
+
+      rtt.rt_transport_latest_vehicle_time_[r.rt_] = vp_ts_utt;
+      rtt.rt_transport_latest_stop_[r.rt_] = stopped_at_idx;
+
+      // get remaining stops
+      auto const fr = r.is_scheduled() ? frun::from_t(tt, &rtt_const, r.t_)
+                                       : frun::from_rt(tt, &rtt_const, r.rt_);
+      auto const seq_numbers = fr.stop_range_;
+
+      // get delay
+      auto const et = tt.event_time(r.t_, stopped_at_idx, event_type::kArr);
+      auto const delay = vp_ts_utt - et;
+      auto const delay_cast = std::chrono::duration_cast<duration_t>(delay);
+
+      // update delay for remaining stops
+      auto seq_it = begin(seq_numbers);
+      for (int i = 0; i <= stopped_at_idx; ++i) {
+        ++seq_it;
+      }
+
+      for (auto stop_idx = stopped_at_idx + 1; seq_it != seq_numbers.end();
+           ++stop_idx) {
+        update_delay(tt, rtt, r, stop_idx, event_type::kArr, delay_cast,
+                     std::nullopt);
+        if (++seq_it != seq_numbers.end()) {
+          update_delay(tt, rtt, r, stop_idx, event_type::kDep, delay_cast,
+                       std::nullopt);
+        }
+      }
+      ++stats.total_entities_success_;
+    } catch (std::exception const& e) {
+      ++stats.total_entities_fail_;
+      log(log_lvl::error, "rt.gtfs",
+          "GTFS-RT error (tag={}): time={}, entity={}, message={}, error={}",
+          tag, date::format("%T", message_time), entity.id(),
+          remove_nl(entity.DebugString()), e.what());
+      span->AddEvent("exception",
+                     {{"exception.message", e.what()},
+                      {"entity.id", entity.id()},
+                      {"message", remove_nl(entity.DebugString())}});
     }
   }
 }
@@ -528,6 +591,8 @@ statistics gtfsrt_update_msg(timetable const& tt,
     span->SetStatus(opentelemetry::trace::StatusCode::kError, "missing header");
     return {.no_header_ = true};
   }
+
+  vector<gtfsrt::FeedEntity> entities_to_check_;
 
   auto const message_time =
       date::sys_seconds{std::chrono::seconds{msg.header().timestamp()}};
@@ -586,14 +651,8 @@ statistics gtfsrt_update_msg(timetable const& tt,
             R"(unsupported: no "trip_id" field in "trip" field (tag={}, id={}), skipping message)",
             tag, entity.id());
         ++stats.vehicle_position_trip_without_trip_id_;
-      } else if (!entity.vehicle().trip().has_route_id()) {
-        log(log_lvl::error, "rt.gtfs.unsupported",
-            R"(unsupported: no "route_id" field in "trip" field (tag={}, id={}), skipping message)",
-            tag, entity.id());
-        ++stats.vehicle_position_trip_without_route_id_;
       } else {
-        handle_vehicle_position(tt, rtt, src, tag, entity, today);
-        ++stats.total_entities_success_;
+        entities_to_check_.emplace_back(entity);
       }
       continue;
     }
@@ -719,6 +778,11 @@ statistics gtfsrt_update_msg(timetable const& tt,
                       {"entity.id", entity.id()},
                       {"message", remove_nl(entity.DebugString())}});
     }
+  }
+
+  if (use_vp) {
+    handle_vehicle_position(tt, rtt, src, tag, entities_to_check_, today,
+                            message_time, span, stats);
   }
 
   rtt.alerts_.strings_.cache_.clear();
