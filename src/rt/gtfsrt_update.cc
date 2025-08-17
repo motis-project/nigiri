@@ -488,7 +488,7 @@ void handle_vehicle_position(timetable const& tt,
     }
 
     // get remaining stops
-    auto const stopped_at_idx = std::distance(begin(location_seq), stop_it);
+    auto const stopped_at_idx = stop_idx_t(std::distance(begin(location_seq), stop_it));
     auto const fr = r.is_scheduled() ? frun::from_t(tt, &rtt_const, r.t_)
                                      : frun::from_rt(tt, &rtt_const, r.rt_);
     auto const seq_numbers = fr.stop_range_;
