@@ -117,6 +117,8 @@ using stop_idx_t = std::uint16_t;
 
 using string = cista::raw::string;
 
+using generic_string = cista::raw::generic_string;
+
 template <typename T>
 using unique_ptr = cista::raw::unique_ptr<T>;
 
@@ -240,7 +242,7 @@ struct attribute {
 struct provider {
   CISTA_COMPARABLE()
   CISTA_PRINTABLE(provider, "short_name", "long_name", "url")
-  string_idx_t short_name_, long_name_, url_;
+  string_idx_t id_, name_, url_;
   timezone_idx_t tz_{timezone_idx_t::invalid()};
   source_idx_t src_;
 };
@@ -296,6 +298,7 @@ using u8_minutes = std::chrono::duration<std::uint8_t, std::ratio<60>>;
 using duration_t = i16_minutes;
 using unixtime_t = std::chrono::sys_time<i32_minutes>;
 using local_time = date::local_time<i32_minutes>;
+using time_point_t = std::chrono::time_point<date::sys_days::clock, date::sys_days::duration>;
 
 constexpr u8_minutes operator""_u8_minutes(unsigned long long n) {
   return duration_t{n};

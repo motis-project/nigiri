@@ -4,6 +4,7 @@
 #include <string>
 #include <tuple>
 
+#include "geo/latlng.h"
 #include "geo/point_rtree.h"
 
 #include "utl/get_or_create.h"
@@ -15,6 +16,7 @@
 #include "utl/progress_tracker.h"
 #include "utl/to_vec.h"
 
+#include "nigiri/loader/register.h"
 #include "nigiri/logging.h"
 #include "nigiri/timetable.h"
 
@@ -36,6 +38,8 @@ struct stop {
                              hash_set<stop*>& done) {
     todo.clear();
     done.clear();
+
+    auto const lng_dist = geo::approx_distance_lng_degrees(coord_);
 
     todo.emplace(this);
     todo.insert(begin(same_name_), end(same_name_));
@@ -63,9 +67,10 @@ struct stop {
       auto* meta = *it;
       auto const is_parent = parent_ == meta;
       auto const is_child = children_.find(meta) != end(children_);
-      auto const distance_in_m = geo::distance(meta->coord_, coord_);
-      if ((distance_in_m > 500 && !is_parent && !is_child) ||
-          distance_in_m > 2000) {
+      auto const distance_in_m =
+          geo::approx_squared_distance(meta->coord_, coord_, lng_dist);
+      if ((distance_in_m > std::pow(500, 2) && !is_parent && !is_child) ||
+          distance_in_m > std::pow(2000, 2)) {
         it = done.erase(it);
       } else {
         ++it;
@@ -189,7 +194,8 @@ std::pair<stops_map_t, seated_transfers_map_t> read_stops(
     tz_map& timezones,
     std::string_view stops_file_content,
     std::string_view transfers_file_content,
-    unsigned link_stop_distance) {
+    unsigned link_stop_distance,
+    script_runner const& r) {
   auto const timer = scoped_timer{"gtfs.loader.stops"};
 
   auto const progress_tracker = utl::get_active_progress_tracker();
@@ -281,16 +287,24 @@ std::pair<stops_map_t, seated_transfers_map_t> read_stops(
 
   auto empty_idx_vec = vector<location_idx_t>{};
   for (auto const& [id, s] : stops) {
-    locations.emplace(
-        std::string{id},
-        s->location_ = tt.locations_.register_location(location{
-            id, s->name_, s->platform_code_, s->desc_, s->coord_, src,
-            s->parent_ == nullptr ? location_type::kStation
-                                  : location_type::kTrack,
-            location_idx_t::invalid(),
-            s->timezone_.empty() ? timezone_idx_t::invalid()
-                                 : get_tz_idx(tt, timezones, s->timezone_),
-            2_minutes, it_range{empty_idx_vec}}));
+    auto loc = location{
+        id,
+        s->name_,
+        s->platform_code_,
+        s->desc_,
+        s->coord_,
+        src,
+        s->parent_ == nullptr ? location_type::kStation : location_type::kTrack,
+        location_idx_t::invalid(),
+        s->timezone_.empty() ? timezone_idx_t::invalid()
+                             : get_tz_idx(tt, timezones, s->timezone_),
+        2_minutes,
+        {},
+        tt,
+        timezones};
+    if (process_location(r, loc)) {
+      locations.emplace(id, s->location_ = register_location(tt, loc));
+    }
   }
 
   auto transfers = read_transfers(stops, transfers_file_content);

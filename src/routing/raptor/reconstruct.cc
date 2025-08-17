@@ -110,9 +110,10 @@ std::optional<journey::leg> find_start_footpath(timetable const& tt,
 #endif
         trace_reconstruct(
             "  excluded td journey start at leg_start_location={}: "
-            "leg_start_time={}, duration={}, start={}, journey_start={}\n",
-            location{tt, leg_start_location}, leg_start_time,
-            fp.has_value() ? fp->first : kInfeasible,
+            "search_dir={}, leg_start_time={}, duration={}, start={}, "
+            "journey_start={}\n",
+            to_str(flip(SearchDir)), location{tt, leg_start_location},
+            leg_start_time, fp.has_value() ? fp->first : footpath::kMaxDuration,
             fp.has_value() ? leg_start_time - (kFwd ? 1 : -1) * fp->first
                            : unixtime_t{0_minutes},
             j.start_time_);
@@ -629,7 +630,7 @@ void reconstruct_journey_with_vias(timetable const& tt,
 
       trace_reconstruct(
           "intermodal destination reconstruction failed at k={}, t={}, v={}, "
-          "stop={}, time={}, journey=[{}, {}]",
+          "stop={}, time={}, journey=[{}, {}]\n",
           k, j.transfers_, v, location{tt, l}, delta_to_unix(base, curr_time),
           j.start_time_, j.dest_time_);
 

@@ -772,11 +772,10 @@ TEST(rt, gtfs_rt_added) {
     EXPECT_FLOAT_EQ(0.05, fr[0].pos().lng());
     EXPECT_EQ("", fr[0].track());
     EXPECT_EQ("E", fr[0].id());
-    EXPECT_EQ(
-        "AGENCY_1",
-        tt.strings_.get(fr[0].get_provider(event_type::kDep).short_name_));
+    EXPECT_EQ("AGENCY_1",
+              tt.strings_.get(fr[0].get_provider(event_type::kDep).id_));
     // EXPECT_EQ("", fr[0].get_trip_idx());
-    EXPECT_EQ("Route 1", fr[0].trip_display_name(event_type::kDep));
+    EXPECT_EQ("Route 1", fr[0].route_short_name(event_type::kDep));
     EXPECT_EQ(
         unixtime_t{date::sys_days{2023_y / August / 10} + 9_hours + 15_minutes},
         fr[0].scheduled_time(event_type::kDep));
@@ -917,9 +916,8 @@ TEST(rt, gtfs_rt_new_no_route) {
   auto const fr = rt::frun{tt, &rtt, r};
   EXPECT_EQ(fr.size(), 3);
   EXPECT_EQ(nigiri::clasz::kOther, fr.get_clasz());
-  EXPECT_EQ("New Route", fr.name());
-  EXPECT_EQ(string_idx_t::invalid(),
-            fr[0].get_provider(event_type::kDep).short_name_);
+  EXPECT_EQ("New Route", fr[0].trip_short_name());
+  EXPECT_EQ(string_idx_t::invalid(), fr[0].get_provider(event_type::kDep).id_);
   ASSERT_FALSE(fr.is_cancelled());
 }
 
@@ -963,8 +961,7 @@ TEST(rt, gtfs_rt_new_bare) {
   ASSERT_TRUE(r.valid());
   auto const fr = rt::frun{tt, &rtt, r};
   EXPECT_EQ("?", fr.name());
-  EXPECT_EQ(string_idx_t::invalid(),
-            fr[0].get_provider(event_type::kDep).short_name_);
+  EXPECT_EQ(string_idx_t::invalid(), fr[0].get_provider(event_type::kDep).id_);
 }
 
 TEST(rt, gtfs_rt_new_non_existing_stops) {

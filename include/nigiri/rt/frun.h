@@ -37,7 +37,12 @@ struct run_stop {
   provider_idx_t get_provider_idx(event_type = event_type::kDep) const;
   provider const& get_provider(event_type = event_type::kDep) const;
   trip_idx_t get_trip_idx(event_type = event_type::kDep) const;
-  std::string_view trip_display_name(event_type = event_type::kDep) const;
+  route_id_idx_t get_route_id(event_type = event_type::kDep) const;
+  std::optional<route_type_t> route_type(event_type = event_type::kDep) const;
+  std::string_view route_short_name(event_type = event_type::kDep) const;
+  std::string_view route_long_name(event_type = event_type::kDep) const;
+  std::string_view trip_short_name(event_type = event_type::kDep) const;
+  std::string_view display_name(event_type = event_type::kDep) const;
 
   unixtime_t scheduled_time(event_type) const;
   unixtime_t time(event_type) const;
