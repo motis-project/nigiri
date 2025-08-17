@@ -608,7 +608,6 @@ TEST(rt, rt_VP_block_id_test) {
   EXPECT_EQ(expected, ss.str());
 
   // Test: correct VehiclePosition for delay beyond trip borders
-  // Test: one VehiclePosition with illegal stop
   // Test: arr/dep times > 24:00:00; > 48:00:00
   auto stats_ss = std::stringstream{};
   stats_ss << stats;
