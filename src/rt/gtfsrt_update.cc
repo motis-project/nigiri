@@ -88,8 +88,6 @@ std::ostream& operator<<(std::ostream& out, statistics const& s) {
   print_if_no_empty("vehicle_position_trip_without_trip_id",
                     s.vehicle_position_trip_without_trip_id_,
                     s.total_vehicles_);
-  print_if_no_empty("vehicle_position_illegal_stop",
-                    s.vehicle_position_illegal_stop_, s.total_vehicles_);
   print_if_no_empty("vehicle_position_position_not_at_stop",
                     s.vehicle_position_position_not_at_stop_,
                     s.total_vehicles_);
@@ -489,16 +487,8 @@ void handle_vehicle_position(timetable const& tt,
       return;
     }
 
-    // check if stop is the first one in the sequence
-    auto const stopped_at_idx = std::distance(begin(location_seq), stop_it);
-    if (stopped_at_idx == 0) {
-      log(log_lvl::info, "rt.gtfs.unsupported",
-          R"(Illegal stop. Skipping Message)", tag, entity.id());
-      ++stats.vehicle_position_illegal_stop_;
-      return;
-    }
-
     // get remaining stops
+    auto const stopped_at_idx = std::distance(begin(location_seq), stop_it);
     auto const fr = r.is_scheduled() ? frun::from_t(tt, &rtt_const, r.t_)
                                      : frun::from_rt(tt, &rtt_const, r.rt_);
     auto const seq_numbers = fr.stop_range_;
@@ -508,7 +498,9 @@ void handle_vehicle_position(timetable const& tt,
                            ? unixtime_t{std::chrono::duration_cast<i32_minutes>(
                                  std::chrono::seconds{vp.timestamp()})}
                            : std::chrono::system_clock::now();
-    auto const et = tt.event_time(r.t_, stopped_at_idx, event_type::kArr);
+    auto const et = stopped_at_idx == 0
+                        ? tt.event_time(r.t_, stopped_at_idx, event_type::kDep)
+                        : tt.event_time(r.t_, stopped_at_idx, event_type::kArr);
     auto const delay_cast = std::chrono::duration_cast<duration_t>(vp_ts - et);
 
     // update delay for every stop

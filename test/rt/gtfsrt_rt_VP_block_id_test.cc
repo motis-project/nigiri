@@ -78,7 +78,6 @@ S1,20190501,1
 )"sv;
 
 // Test: correct VehiclePosition for delay beyond trip borders
-// Test: one VehiclePosition with illegal stop
 // Test: arr/dep times > 24:00:00; > 48:00:00
 // Position: At Stop B
 // Timestamp: 5min after scheduled arrival
@@ -101,10 +100,10 @@ auto const kVehiclePosition =
       "routeId": "R1"
      },
      "position": {
-      "latitude": "3.0",
-      "longitude": "4.0"
+      "latitude": "1.0",
+      "longitude": "2.0"
      },
-     "timestamp": "1556697900",
+     "timestamp": "1556698000",
      "vehicle": {
       "id": "v1"
      },
@@ -122,10 +121,10 @@ auto const kVehiclePosition =
       "routeId": "R1"
      },
      "position": {
-      "latitude": "1.0",
-      "longitude": "2.0"
+      "latitude": "3.0",
+      "longitude": "4.0"
      },
-     "timestamp": "1556698000",
+     "timestamp": "1556697900",
      "vehicle": {
       "id": "v1"
      },
@@ -537,16 +536,16 @@ constexpr auto const expected4 =
 )";
 
 constexpr auto const expected_stats =
-    R"(total_entities=2, total_entities_success=1 (50%), total_vehicles=2 (100%), vehicle_position_illegal_stop=1 (50%))";
+    R"(total_entities=2, total_entities_success=2 (100%), total_vehicles=2 (100%))";
 
 constexpr auto const expected_stats2 =
-    R"(total_entities=5, total_entities_success=4 (80%), total_vehicles=5 (100%), vehicle_position_illegal_stop=1 (20%))";
+    R"(total_entities=5, total_entities_success=5 (100%), total_vehicles=5 (100%))";
 
 constexpr auto const expected_stats3 =
-    R"(total_entities=2, total_entities_success=1 (50%), total_vehicles=2 (100%), vehicle_position_illegal_stop=1 (50%))";
+    R"(total_entities=2, total_entities_success=2 (100%), total_vehicles=2 (100%))";
 
 constexpr auto const expected_stats4 =
-    R"(total_entities=6, total_entities_success=4 (66.6667%), total_vehicles=6 (100%), vehicle_position_illegal_stop=1 (16.6667%), vehicle_position_position_not_at_stop=1 (16.6667%))";
+    R"(total_entities=6, total_entities_success=5 (83.3333%), total_vehicles=6 (100%), vehicle_position_position_not_at_stop=1 (16.6667%))";
 
 }  // namespace
 
@@ -582,8 +581,6 @@ TEST(rt, rt_VP_block_id_test) {
   td4.set_start_time("29:00:00");
 
   auto const stats = gtfsrt_update_buf(tt, rtt, source_idx_t{0}, "", msg, true);
-
-  EXPECT_EQ(1U, stats.total_entities_success_);
 
   auto const [r1, t1] = rt::gtfsrt_resolve_run(date::sys_days{May / 1 / 2019},
                                                tt, &rtt, source_idx_t{0}, td1);
