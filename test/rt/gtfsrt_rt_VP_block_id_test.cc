@@ -391,23 +391,6 @@ auto const kVehiclePosition4 =
     "isDeleted": false,
     "vehicle": {
      "trip": {
-      "tripId": "T4",
-      "startTime": "29:00:00",
-      "startDate": "20190501",
-      "routeId": "R4"
-     },
-     "position": {
-      "latitude": "11.0",
-      "longitude": "12.0"
-     },
-     "timestamp": "1556790900"
-    }
-  },
-  {
-    "id": "3248653",
-    "isDeleted": false,
-    "vehicle": {
-     "trip": {
       "tripId": "T3",
       "startTime": "28:35:00",
       "startDate": "20190501",
@@ -419,11 +402,29 @@ auto const kVehiclePosition4 =
      },
      "timestamp": "1556791000"
     }
+  },
+  {
+    "id": "3248653",
+    "isDeleted": false,
+    "vehicle": {
+     "trip": {
+      "tripId": "T4",
+      "startTime": "29:00:00",
+      "startDate": "20190501",
+      "routeId": "R4"
+     },
+     "position": {
+      "latitude": "11.0",
+      "longitude": "12.0"
+     },
+     "timestamp": "1556790900"
+    }
   }
  ]
 })"s;
 
 // Test: Invalid TripDescriptors -> expected not to crash
+// Test: no timestamp -> expected not to crash
 auto const kVehiclePosition5 =
     R"({
  "header": {
@@ -481,15 +482,31 @@ auto const kVehiclePosition5 =
      },
      "timestamp": "1556791000"
     }
+  },
+  {
+    "id": "3248653",
+    "isDeleted": false,
+    "vehicle": {
+     "trip": {
+      "tripId": "T4",
+      "startTime": "29:00:00",
+      "startDate": "20190501",
+      "routeId": "R4"
+     },
+     "position": {
+      "latitude": "11.0",
+      "longitude": "12.0"
+     }
+    }
   }
  ]
 })"s;
 
 constexpr auto const expected =
-    R"(   0: A       A...............................................                                                             d: 30.04 22:30 [01.05 00:30]  RT 30.04 22:30 [01.05 00:30]  [{name=RE 1, day=2019-04-30, id=T1, src=0}]
-   1: B       B............................................... a: 01.05 08:00 [01.05 10:00]  RT 01.05 08:00 [01.05 10:00]
+    R"(   0: A       A...............................................                                                             d: 30.04 22:30 [01.05 00:30]  RT 30.04 22:35 [01.05 00:35]  [{name=RE 1, day=2019-04-30, id=T1, src=0}]
+   1: B       B............................................... a: 01.05 08:00 [01.05 10:00]  RT 01.05 08:05 [01.05 10:05]
 
-   1: B       B...............................................                                                             d: 02.05 00:10 [02.05 02:10]  RT 02.05 00:10 [02.05 02:10]  [{name=RE 2, day=2019-04-30, id=T2, src=0}]
+   1: B       B...............................................                                                             d: 02.05 00:10 [02.05 02:10]  RT 02.05 00:15 [02.05 02:15]  [{name=RE 2, day=2019-04-30, id=T2, src=0}]
    2: C       C............................................... a: 02.05 01:00 [02.05 03:00]  RT 02.05 01:05 [02.05 03:05]  d: 02.05 01:00 [02.05 03:00]  RT 02.05 01:05 [02.05 03:05]  [{name=RE 2, day=2019-04-30, id=T2, src=0}]
    3: D       D............................................... a: 02.05 02:00 [02.05 04:00]  RT 02.05 02:05 [02.05 04:05]
 
@@ -503,33 +520,33 @@ constexpr auto const expected =
 )";
 
 constexpr auto const expected4 =
-    R"(   0: A       A...............................................                                                             d: 30.04 22:30 [01.05 00:30]  RT 30.04 22:30 [01.05 00:30]  [{name=RE 1, day=2019-04-30, id=T1, src=0}]
-   1: B       B............................................... a: 01.05 08:00 [01.05 10:00]  RT 01.05 08:00 [01.05 10:00]
+    R"(   0: A       A...............................................                                                             d: 30.04 22:30 [01.05 00:30]  RT 30.04 22:25 [01.05 00:25]  [{name=RE 1, day=2019-04-30, id=T1, src=0}]
+   1: B       B............................................... a: 01.05 08:00 [01.05 10:00]  RT 01.05 07:55 [01.05 09:55]
 
-   1: B       B...............................................                                                             d: 02.05 00:10 [02.05 02:10]  RT 02.05 00:10 [02.05 02:10]  [{name=RE 2, day=2019-04-30, id=T2, src=0}]
-   2: C       C............................................... a: 02.05 01:00 [02.05 03:00]  RT 02.05 01:05 [02.05 03:05]  d: 02.05 01:00 [02.05 03:00]  RT 02.05 01:05 [02.05 03:05]  [{name=RE 2, day=2019-04-30, id=T2, src=0}]
-   3: D       D............................................... a: 02.05 02:00 [02.05 04:00]  RT 02.05 02:05 [02.05 04:05]
+   1: B       B...............................................                                                             d: 02.05 00:10 [02.05 02:10]  RT 02.05 00:05 [02.05 02:05]  [{name=RE 2, day=2019-04-30, id=T2, src=0}]
+   2: C       C............................................... a: 02.05 01:00 [02.05 03:00]  RT 02.05 00:55 [02.05 02:55]  d: 02.05 01:00 [02.05 03:00]  RT 02.05 00:55 [02.05 02:55]  [{name=RE 2, day=2019-04-30, id=T2, src=0}]
+   3: D       D............................................... a: 02.05 02:00 [02.05 04:00]  RT 02.05 01:55 [02.05 03:55]
 
-   3: D       D...............................................                                                             d: 02.05 02:35 [02.05 04:35]  RT 02.05 02:40 [02.05 04:40]  [{name=RE 3, day=2019-04-30, id=T3, src=0}]
-   4: E       E............................................... a: 02.05 02:40 [02.05 04:40]  RT 02.05 03:00 [02.05 05:00]
+   3: D       D...............................................                                                             d: 02.05 02:35 [02.05 04:35]  RT 02.05 02:30 [02.05 04:30]  [{name=RE 3, day=2019-04-30, id=T3, src=0}]
+   4: E       E............................................... a: 02.05 02:40 [02.05 04:40]  RT 02.05 02:35 [02.05 04:35]
 
-   4: E       E...............................................                                                             d: 02.05 03:00 [02.05 05:00]  RT 02.05 03:20 [02.05 05:20]  [{name=RE 4, day=2019-04-30, id=T4, src=0}]
-   5: F       F............................................... a: 02.05 10:00 [02.05 12:00]  RT 02.05 10:20 [02.05 12:20]  d: 02.05 10:10 [02.05 12:10]  RT 02.05 10:30 [02.05 12:30]  [{name=RE 4, day=2019-04-30, id=T4, src=0}]
+   4: E       E...............................................                                                             d: 02.05 03:00 [02.05 05:00]  RT 02.05 02:55 [02.05 04:55]  [{name=RE 4, day=2019-04-30, id=T4, src=0}]
+   5: F       F............................................... a: 02.05 10:00 [02.05 12:00]  RT 02.05 09:55 [02.05 11:55]  d: 02.05 10:10 [02.05 12:10]  RT 02.05 10:05 [02.05 12:05]  [{name=RE 4, day=2019-04-30, id=T4, src=0}]
    6: G       G............................................... a: 02.05 23:00 [03.05 01:00]  RT 02.05 22:55 [03.05 00:55]
 
 )";
 
 constexpr auto const expected_stats =
-    R"(total_entities=2, total_entities_success=1 (50%), total_vehicles=2 (100%), illegal_stop=1 (50%))";
+    R"(total_entities=2, total_entities_success=1 (50%), total_vehicles=2 (100%), vehicle_position_illegal_stop=1 (50%))";
 
 constexpr auto const expected_stats2 =
-    R"(total_entities=5, total_vehicles=5 (100%), duplicate_vehicle_position_timestamps=5 (100%))";
+    R"(total_entities=5, total_entities_success=4 (80%), total_vehicles=5 (100%), vehicle_position_illegal_stop=1 (20%))";
 
 constexpr auto const expected_stats3 =
-    R"(total_entities=2, total_vehicles=2 (100%), outdated_or_illegal_vehicle_position_timestamps=2 (100%))";
+    R"(total_entities=2, total_entities_success=1 (50%), total_vehicles=2 (100%), vehicle_position_illegal_stop=1 (50%))";
 
 constexpr auto const expected_stats4 =
-    R"(total_entities=6, total_entities_success=2 (33.3333%), total_vehicles=6 (100%), outdated_or_illegal_vehicle_position_timestamps=1 (16.6667%), illegal_stop=2 (33.3333%), vehicle_position_position_not_at_stop=1 (16.6667%))";
+    R"(total_entities=6, total_entities_success=4 (66.6667%), total_vehicles=6 (100%), vehicle_position_illegal_stop=1 (16.6667%), vehicle_position_position_not_at_stop=1 (16.6667%))";
 
 }  // namespace
 

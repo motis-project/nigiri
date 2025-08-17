@@ -155,8 +155,7 @@ trip_id,arrival_time,departure_time,stop_id,stop_sequence,pickup_type,drop_off_t
 // Test: one VehiclePosition with each one field not set:
 // vehicle_position_position, vehicle_position_timestamp, vehicle_position_trip,
 // vehicle_position_trip_trip_id, vehicle_position_trip_route_id,
-// outdated_or_illegal_vehicle_position_timestamps=1 (14.2857%) Test: one with
-// outdated timestamp
+// Test: one with outdated timestamp
 auto const kVehiclePosition =
     R"({
  "header": {
@@ -165,26 +164,6 @@ auto const kVehiclePosition =
   "timestamp": "1691659440"
  },
  "entity": [
-  {
-    "id": "3248651",
-    "isDeleted": false,
-    "vehicle": {
-     "trip": {
-      "tripId": "3248651",
-      "startTime": "05:15:00",
-      "startDate": "20230810"
-     },
-     "position": {
-      "latitude": "43.415733",
-      "longitude": "-80.480340"
-     },
-     "timestamp": "1691659440",
-     "vehicle": {
-      "id": "v1"
-     },
-     "occupancy_status": "MANY_SEATS_AVAILABLE"
-    }
-  },
   {
     "id": "32486517",
     "isDeleted": false,
@@ -207,6 +186,26 @@ auto const kVehiclePosition =
     }
   },
   {
+    "id": "3248651",
+    "isDeleted": false,
+    "vehicle": {
+     "trip": {
+      "tripId": "3248651",
+      "startTime": "05:15:00",
+      "startDate": "20230810"
+     },
+     "position": {
+      "latitude": "43.415733",
+      "longitude": "-80.480340"
+     },
+     "timestamp": "1691659440",
+     "vehicle": {
+      "id": "v1"
+     },
+     "occupancy_status": "MANY_SEATS_AVAILABLE"
+    }
+  },
+  {
     "id": "32486512",
     "isDeleted": false,
     "vehicle": {
@@ -217,26 +216,6 @@ auto const kVehiclePosition =
       "routeId": "201"
      },
      "timestamp": "1691659442",
-     "vehicle": {
-      "id": "v1"
-     },
-     "occupancy_status": "MANY_SEATS_AVAILABLE"
-    }
-  },
-  {
-    "id": "3248651",
-    "isDeleted": false,
-    "vehicle": {
-     "trip": {
-      "tripId": "3248651",
-      "startTime": "05:15:00",
-      "startDate": "20230810",
-      "routeId": "201"
-     },
-     "position": {
-      "latitude": "43.415733",
-      "longitude": "-80.480340"
-     },
      "vehicle": {
       "id": "v1"
      },
@@ -298,10 +277,10 @@ auto const kVehiclePosition1 =
 })"s;
 
 constexpr auto const expected = R"(
-   0: 2351    Block Line Station..............................                                                             d: 10.08 09:15 [10.08 05:15]  RT 10.08 09:15 [10.08 05:15]  [{name=iXpress Fischer-Hallman, day=2023-08-10, id=3248651, src=0}]
-   1: 1033    Block Line / Hanover............................ a: 10.08 09:16 [10.08 05:16]  RT 10.08 09:16 [10.08 05:16]  d: 10.08 09:16 [10.08 05:16]  RT 10.08 09:16 [10.08 05:16]  [{name=iXpress Fischer-Hallman, day=2023-08-10, id=3248651, src=0}]
-   2: 2086    Block Line / Kingswood.......................... a: 10.08 09:18 [10.08 05:18]  RT 10.08 09:18 [10.08 05:18]  d: 10.08 09:18 [10.08 05:18]  RT 10.08 09:18 [10.08 05:18]  [{name=iXpress Fischer-Hallman, day=2023-08-10, id=3248651, src=0}]
-   3: 2885    Block Line / Strasburg.......................... a: 10.08 09:19 [10.08 05:19]  RT 10.08 09:19 [10.08 05:19]  d: 10.08 09:19 [10.08 05:19]  RT 10.08 09:19 [10.08 05:19]  [{name=iXpress Fischer-Hallman, day=2023-08-10, id=3248651, src=0}]
+   0: 2351    Block Line Station..............................                                                             d: 10.08 09:15 [10.08 05:15]  RT 10.08 09:20 [10.08 05:20]  [{name=iXpress Fischer-Hallman, day=2023-08-10, id=3248651, src=0}]
+   1: 1033    Block Line / Hanover............................ a: 10.08 09:16 [10.08 05:16]  RT 10.08 09:21 [10.08 05:21]  d: 10.08 09:16 [10.08 05:16]  RT 10.08 09:21 [10.08 05:21]  [{name=iXpress Fischer-Hallman, day=2023-08-10, id=3248651, src=0}]
+   2: 2086    Block Line / Kingswood.......................... a: 10.08 09:18 [10.08 05:18]  RT 10.08 09:23 [10.08 05:23]  d: 10.08 09:18 [10.08 05:18]  RT 10.08 09:23 [10.08 05:23]  [{name=iXpress Fischer-Hallman, day=2023-08-10, id=3248651, src=0}]
+   3: 2885    Block Line / Strasburg.......................... a: 10.08 09:19 [10.08 05:19]  RT 10.08 09:24 [10.08 05:24]  d: 10.08 09:19 [10.08 05:19]  RT 10.08 09:24 [10.08 05:24]  [{name=iXpress Fischer-Hallman, day=2023-08-10, id=3248651, src=0}]
    4: 2888    Block Line / Laurentian......................... a: 10.08 09:21 [10.08 05:21]  RT 10.08 09:26 [10.08 05:26]  d: 10.08 09:21 [10.08 05:21]  RT 10.08 09:26 [10.08 05:26]  [{name=iXpress Fischer-Hallman, day=2023-08-10, id=3248651, src=0}]
    5: 3189    Block Line / Westmount.......................... a: 10.08 09:22 [10.08 05:22]  RT 10.08 09:27 [10.08 05:27]  d: 10.08 09:22 [10.08 05:22]  RT 10.08 09:27 [10.08 05:27]  [{name=iXpress Fischer-Hallman, day=2023-08-10, id=3248651, src=0}]
    6: 3895    Fischer-Hallman / Westmount..................... a: 10.08 09:24 [10.08 05:24]  RT 10.08 09:29 [10.08 05:29]  d: 10.08 09:24 [10.08 05:24]  RT 10.08 09:29 [10.08 05:29]  [{name=iXpress Fischer-Hallman, day=2023-08-10, id=3248651, src=0}]
@@ -329,7 +308,7 @@ constexpr auto const expected = R"(
 )"sv;
 
 constexpr auto const expected_stats = R"(
-   total_entities=6, total_entities_success=1 (16.6667%), total_vehicles=6 (100%), vehicle_position_without_position=1 (16.6667%), vehicle_position_without_timestamp=1 (16.6667%), vehicle_position_without_trip=1 (16.6667%), vehicle_position_trip_without_trip_id=1 (16.6667%), outdated_or_illegal_vehicle_position_timestamps=1 (16.6667%)
+   total_entities=5, total_entities_success=2 (40%), total_vehicles=5 (100%), vehicle_position_without_position=1 (20%), vehicle_position_without_trip=1 (20%), vehicle_position_trip_without_trip_id=1 (20%)
 )"sv;
 
 constexpr auto const expected_stats1 = R"(
@@ -378,8 +357,7 @@ TEST(rt, gtfs_rt_vp_update) {
   // vehicle_position_position, vehicle_position_timestamp,
   // vehicle_position_trip, vehicle_position_trip_trip_id,
   // vehicle_position_trip_route_id,
-  // outdated_or_illegal_vehicle_position_timestamps=1 (14.2857%) Test: one with
-  // outdated timestamp
+  // // Test: one with outdated timestamp
   auto stats_ss = std::stringstream{};
   stats_ss << "\n   " << stats << "\n";
   EXPECT_EQ(expected_stats, stats_ss.str());

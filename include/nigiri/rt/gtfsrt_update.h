@@ -39,12 +39,9 @@ struct statistics {
   int unsupported_no_trip_id_{0};
   int no_vehicle_position_{0};
   int vehicle_position_without_position_{0};
-  int vehicle_position_without_timestamp_{0};
   int vehicle_position_without_trip_{0};
   int vehicle_position_trip_without_trip_id_{0};
-  int duplicate_vehicle_position_timestamps_{0};
-  int outdated_or_illegal_vehicle_position_timestamps_{0};
-  int illegal_stop_{0};
+  int vehicle_position_illegal_stop_{0};
   int vehicle_position_position_not_at_stop_{0};
   int no_trip_update_{0};
   int trip_update_without_trip_{0};
@@ -58,7 +55,7 @@ statistics gtfsrt_update_msg(timetable const&,
                              source_idx_t const,
                              std::string_view tag,
                              transit_realtime::FeedMessage const&,
-                             bool use_vp = false);
+                             bool use_vehicle_position = false);
 
 statistics gtfsrt_update_buf(timetable const& tt,
                              rt_timetable& rtt,
@@ -66,13 +63,13 @@ statistics gtfsrt_update_buf(timetable const& tt,
                              std::string_view tag,
                              std::string_view protobuf,
                              transit_realtime::FeedMessage& msg,
-                             bool use_vp = false);
+                             bool use_vehicle_position = false);
 
 statistics gtfsrt_update_buf(timetable const&,
                              rt_timetable&,
                              source_idx_t const,
                              std::string_view tag,
                              std::string_view protobuf,
-                             bool use_vp = false);
+                             bool use_vehicle_position = false);
 
 }  // namespace nigiri::rt
