@@ -256,9 +256,9 @@ script_runner::script_runner(std::string const& user_script)
     return;
   }
 
-  impl_->lua_.script(user_script);
   impl_->lua_.open_libraries(sol::lib::base, sol::lib::string,
                              sol::lib::package);
+  impl_->lua_.script(user_script);
 
   impl_->lua_.new_usertype<geo::latlng>(
       "latlng",  //
