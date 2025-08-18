@@ -94,7 +94,13 @@ routing_result<raptor_stats> raptor_search(
     query q,
     direction const search_dir,
     std::optional<std::chrono::seconds> const timeout) {
-  return mcraptor_search(tt, rtt, s_state, r_state, q, search_dir, timeout);
+
+  if (search_dir == direction::kForward) {
+    return mcraptor_search<direction::kForward>(tt, rtt, s_state, r_state, q, timeout);
+  } else {
+    return mcraptor_search<direction::kBackward>(tt, rtt, s_state, r_state, q, timeout);
+  }
+
   auto span = get_otel_tracer()->StartSpan("raptor_search");
   auto scope = opentelemetry::trace::Scope{span};
   if (span->IsRecording()) {

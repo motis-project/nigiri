@@ -9,74 +9,6 @@
 
 namespace nigiri::routing {
 
-struct mcraptor_label {
-  delta_t arr_t_{};
-
-  location_idx_t trip_l_{};
-  location_idx_t fp_l_{};
-  route_idx_t route_id{};
-  transport trip_id{};
-
-  float success_chance;
-  unsigned int label_id;
-
-  bool dominates(mcraptor_label const& l) const {
-    return this->arr_t_ < l.arr_t_ && this->success_chance >= l.success_chance;
-  }
-};
-
-struct mcraptor_bag {
-  std::vector<mcraptor_label> labels_{};
-
-  bool dominates(mcraptor_label const& other_label) const {
-    return std::any_of(labels_.begin(), labels_.end(),
-                       [&](mcraptor_label l) {
-                         return l.dominates(other_label);
-                       });
-  }
-
-  void add(mcraptor_label const& new_label) {
-    if (this->dominates(new_label)) {
-      return;
-    }
-    auto new_end = std::remove_if(labels_.begin(), labels_.end(),
-                                  [&](auto l) {
-                                    return new_label.dominates(l);
-                                  });
-    labels_.erase(new_end, labels_.end());
-    labels_.emplace_back(new_label);
-  }
-};
-
-struct mcraptor_dest_bag {
-  std::vector<std::pair<unsigned, mcraptor_label>> labels_;
-
-  bool dominates(mcraptor_label const& other_label,
-                 unsigned const& k) const {
-    return std::any_of(labels_.begin(),
-                       labels_.end(),
-                       [&](std::pair<unsigned, mcraptor_label> pair) {
-                         return pair.first <= k &&
-                                pair.second.dominates(other_label);
-                       });
-  }
-
-  void add(mcraptor_label const& new_label, unsigned const& k) {
-    if (this->dominates(new_label, k)) {
-      return;
-    }
-    auto new_end = std::remove_if(
-        labels_.begin(),
-        labels_.end(),
-        [&](std::pair<unsigned, mcraptor_label> pair) {
-          return k <= pair.first &&
-                 new_label.dominates(pair.second);
-        });
-    labels_.erase(new_end, labels_.end());
-    labels_.emplace_back(k, new_label);
-  }
-};
-
 template <direction SearchDir = direction::kForward, bool Rt = false, via_offset_t Vias = 0>
 struct mcraptor {
   using algo_state_t = raptor_state;
@@ -89,13 +21,81 @@ struct mcraptor {
       std::numeric_limits<std::uint16_t>::max();
   static constexpr auto const kInvalid = kInvalidDelta<SearchDir>;
 
-  static bool is_better(auto a, auto b) { return a < b;}
-  static bool is_better_or_eq(auto a, auto b) { return a <= b;}
+  static bool is_better(auto a, auto b) { return kFwd ? a < b : a > b; }
+  static bool is_better_or_eq(auto a, auto b) { return kFwd ? a <= b : a >= b; }
   static auto get_best(auto a, auto b) { return is_better(a, b) ? a : b; }
   static auto get_best(auto x, auto... y) {
     ((x = get_best(x, y)), ...);
     return x;
   }
+
+  struct mcraptor_label {
+    delta_t arr_t_{};
+
+    location_idx_t trip_l_{};
+    location_idx_t fp_l_{};
+    route_idx_t route_id{};
+    transport trip_id{};
+
+    float success_chance;
+    unsigned int label_id;
+
+    bool dominates(mcraptor_label const& l) const {
+      return (kFwd ? this->arr_t_ < l.arr_t_ : this->arr_t_ > l.arr_t_) && this->success_chance >= l.success_chance;
+    }
+  };
+
+  struct mcraptor_bag {
+    std::vector<mcraptor_label> labels_{};
+
+    bool dominates(mcraptor_label const& other_label) const {
+      return std::any_of(labels_.begin(), labels_.end(),
+                         [&](mcraptor_label l) {
+                           return l.dominates(other_label);
+                         });
+    }
+
+    void add(mcraptor_label const& new_label) {
+      if (this->dominates(new_label)) {
+        return;
+      }
+      auto new_end = std::remove_if(labels_.begin(), labels_.end(),
+                                    [&](auto l) {
+                                      return new_label.dominates(l);
+                                    });
+      labels_.erase(new_end, labels_.end());
+      labels_.emplace_back(new_label);
+    }
+  };
+
+  struct mcraptor_dest_bag {
+    std::vector<std::pair<unsigned, mcraptor_label>> labels_;
+
+    bool dominates(mcraptor_label const& other_label,
+                   unsigned const& k) const {
+      return std::any_of(labels_.begin(),
+                         labels_.end(),
+                         [&](std::pair<unsigned, mcraptor_label> pair) {
+                           return pair.first <= k &&
+                                  pair.second.dominates(other_label);
+                         });
+    }
+
+    void add(mcraptor_label const& new_label, unsigned const& k) {
+      if (this->dominates(new_label, k)) {
+        return;
+      }
+      auto new_end = std::remove_if(
+          labels_.begin(),
+          labels_.end(),
+          [&](std::pair<unsigned, mcraptor_label> pair) {
+            return k <= pair.first &&
+                   new_label.dominates(pair.second);
+          });
+      labels_.erase(new_end, labels_.end());
+      labels_.emplace_back(k, new_label);
+    }
+  };
 
   static auto dir(auto a) { return (kFwd ? 1 : -1) * a; }
 
@@ -269,7 +269,7 @@ struct mcraptor {
       }
       j.add(std::move(transport_leg));
     }
-    std::reverse(begin(j.legs_), end(j.legs_));
+    if(kFwd) std::reverse(begin(j.legs_), end(j.legs_));
   }
 
 
@@ -293,7 +293,7 @@ private:
     auto any_marked = false;
     transport et = et_label.trip_id;
     for (; i != stop_seq.size(); ++i) {
-      auto const stop_idx = static_cast<stop_idx_t>(i);
+      auto const stop_idx = static_cast<stop_idx_t>(kFwd ? i : stop_seq.size() - i - 1U);
       auto const stp = stop{stop_seq[stop_idx]};
       auto const l_idx = cista::to_idx(stp.location_idx());
       auto const is_last = i == stop_seq.size() - 1U;
@@ -306,7 +306,7 @@ private:
 
       if(et.is_valid() && stp.can_finish<SearchDir>(false)) {
         auto const by_transport = time_at_stop(
-            r, et, stop_idx, event_type::kArr);
+            r, et, stop_idx, kFwd ? event_type::kArr : event_type::kDep);
 
 //        current_best = get_best(get_round_time(l_idx, k - 1),
 //                                tmp_[l_idx].arr_t_,
@@ -335,7 +335,7 @@ private:
       if(prev_round_station_mark_[l_idx]) {
         auto const et_time_at_stop =
             et.is_valid()
-                ? time_at_stop(r, et, stop_idx, event_type::kDep )
+                ? time_at_stop(r, et, stop_idx, kFwd ? event_type::kDep : event_type::kArr )
                 : kInvalid;
         auto const prev_round_bag = get_round_bag(l_idx, k - 1);
         for(unsigned int li = 0; li < prev_round_bag.labels_.size(); ++li){
@@ -348,7 +348,7 @@ private:
             auto const new_et = get_earliest_transport(k, r, stop_idx, day, mam,
                                                        stp.location_idx());
             if(!new_et.is_valid()) continue;
-            auto const [second_day, second_mam] = split(time_at_stop(r, new_et, stop_idx,event_type::kDep)+1);
+            auto const [second_day, second_mam] = split(time_at_stop(r, new_et, stop_idx,kFwd ? event_type::kDep : event_type::kArr)+1);
             auto const second_new_et = get_earliest_transport(k, r, stop_idx, second_day, second_mam ,
                                                                         stp.location_idx());
 
@@ -372,8 +372,8 @@ private:
       et_label.route_id = r;
       et_label.trip_id = new_et;
       et_label.label_id = li;
-      auto const transfer_time = time_at_stop(r, new_et, stop_idx,
-                                              kFwd ? event_type::kDep : event_type::kArr) - prev_round_time;
+      auto const transfer_time = dir(time_at_stop(r, new_et, stop_idx,
+                                              kFwd ? event_type::kDep : event_type::kArr) - prev_round_time);
 
       if(k==1) et_label.success_chance = 1.0f;
       else et_label.success_chance = transferProbability(transfer_time) * prev_success_chance;
@@ -431,7 +431,9 @@ private:
     tmp_station_mark_.for_each_set_bit([&](std::uint64_t const i) {
       for (mcraptor_label tmp_label :tmp_[i].labels_) {
         auto const l_idx = location_idx_t{i};
-        auto const& fps = tt_.locations_.footpaths_out_[prf_idx][l_idx];
+        auto const& fps = kFwd ? tt_.locations_.footpaths_out_[prf_idx][l_idx]
+                               : tt_.locations_.footpaths_in_[prf_idx][l_idx];
+
 
         for (auto const& fp : fps) {
           ++stats_.n_footpaths_visited_;
@@ -499,7 +501,7 @@ private:
       struct transport trip{};
 
       for (auto i = 0U; i != stop_seq.size(); ++i) {
-        auto const stop_idx = static_cast<stop_idx_t>(i);
+        auto const stop_idx = static_cast<stop_idx_t>(kFwd ? i : stop_seq.size() - i - 1U);
         auto const stp = stop{stop_seq[stop_idx]};
         auto const l_idx = stp.location_idx();
 
@@ -508,7 +510,7 @@ private:
           transport = trip;
           route_idx = r;
           trip_arr_fp_dep_time = time_at_stop(
-              r, trip, stop_idx, event_type::kArr);
+              r, trip, stop_idx, kFwd ? event_type::kArr : event_type::kDep);
           found_end_location = true;
           break;
         }
@@ -517,7 +519,7 @@ private:
           auto const [day, mam] = split(prev_stop_time);
           trip = get_earliest_transport(k - 1, r, stop_idx, day, mam,
                                         stp.location_idx());
-          trip_dep_time = time_at_stop(r, trip, stop_idx,event_type::kDep);
+          trip_dep_time = time_at_stop(r, trip, stop_idx,kFwd ? event_type::kDep : event_type::kArr);
           from_stop_idx = stop_idx;
         }
 //      }

@@ -6,13 +6,13 @@
 
 namespace nigiri::routing {
 
+template <direction SearchDir>
 routing_result<raptor_stats> mcraptor_search(
     timetable const& tt,
     rt_timetable const* rtt,
     search_state& s_state,
     raptor_state& r_state,
     query q,
-    direction search_dir,
     std::optional<std::chrono::seconds> timeout = std::nullopt);
 
 bool results_are_equal(timetable const& tt,

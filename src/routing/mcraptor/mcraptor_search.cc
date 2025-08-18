@@ -10,23 +10,32 @@
 
 namespace nigiri::routing {
 
+template <direction SearchDir>
 routing_result<raptor_stats> mcraptor_search(
     timetable const& tt,
     rt_timetable const* rtt,
     search_state& s_state,
     raptor_state& r_state,
     query q,
-    direction const search_dir,
     std::optional<std::chrono::seconds> const timeout) {
 //  if (rtt != nullptr) {
 //    return {};
 //  }
 
-  using algo_t = mcraptor<>;
-  return search<direction::kForward, algo_t>{
+  using algo_t = mcraptor<SearchDir>;
+  return search<SearchDir, algo_t>{
       tt, rtt, s_state,r_state, std::move(q), timeout}
         .execute();
 }
+
+
+template routing_result<raptor_stats> mcraptor_search<direction::kForward>(
+    timetable const&, rt_timetable const*, search_state&, raptor_state&,
+    query, std::optional<std::chrono::seconds>);
+
+template routing_result<raptor_stats> mcraptor_search<direction::kBackward>(
+    timetable const&, rt_timetable const*, search_state&, raptor_state&,
+    query, std::optional<std::chrono::seconds>);
 
 bool results_are_equal(timetable const& tt, routing_result<raptor_stats> const& result_1, routing_result<raptor_stats> const& result_2) {
 
