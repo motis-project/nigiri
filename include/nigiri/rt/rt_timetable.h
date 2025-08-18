@@ -204,12 +204,6 @@ struct rt_timetable {
   vecvec<rt_transport_idx_t, delta_t> rt_transport_stop_times_;
   vecvec<rt_transport_idx_t, stop::value_type> rt_transport_location_seq_;
 
-  // RT Transport -> latest known VehiclePosition timestamp
-  hash_map<rt_transport_idx_t, unixtime_t> rt_transport_latest_vehicle_time_;
-
-  // RT Transport -> latest known stop through VehiclePosition
-  hash_map<rt_transport_idx_t, stop_idx_t> rt_transport_latest_stop_;
-
   // RT trip index -> display name (empty if not changed)
   vecvec<rt_transport_idx_t, char> rt_transport_trip_short_names_;
   vecvec<rt_transport_idx_t, char> rt_transport_line_;

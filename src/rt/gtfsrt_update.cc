@@ -452,18 +452,16 @@ void handle_vehicle_position(timetable const& tt,
 
     auto [r, trip_idx] = gtfsrt_resolve_run(today, tt, &rtt, src, td,
                                             std::string_view{gtfsrt_trip_id});
-    if (!r.valid()) {
-      log(log_lvl::error, "rt.gtfs.unsupported",
-          R"(Run could not be resolved. Skipping Message)", tag, entity.id());
+
+    if (!r.is_scheduled()) {
+      log(log_lvl::info, "rt.gtfs.unsupported",
+          R"(Run is not scheduled. Skipping Message)", tag, entity.id());
       return;
     }
 
     auto const& rtt_const = rtt;
     auto const location_seq =
-        r.is_scheduled()
-            ? std::
-                  span{tt.route_location_seq_[tt.transport_route_[r.t_.t_idx_]]}
-            : std::span{rtt_const.rt_transport_location_seq_[r.rt_]};
+        std::span{tt.route_location_seq_[tt.transport_route_[r.t_.t_idx_]]};
 
     // add rt_transport if not existent
     if (!r.is_rt()) {
@@ -475,20 +473,21 @@ void handle_vehicle_position(timetable const& tt,
     auto const app_dist_lng_deg_vp =
         geo::approx_distance_lng_degrees(vp_position);
     auto const stop_it = utl::find_if(location_seq, [&](auto const& loc) {
-      auto const stop_position = tt.locations_.get(stop{loc}.location_idx());
-      return geo::approx_squared_distance(stop_position.pos_, vp_position,
+      auto const stp = tt.locations_.get(stop{loc}.location_idx());
+      return geo::approx_squared_distance(stp.pos_, vp_position,
                                           app_dist_lng_deg_vp) < 10;
     });
     if (stop_it == end(location_seq)) {
-      log(log_lvl::info, "rt.gtfs.unsupported",
-          R"(Position of Vehicle was not near stop. Skipping Message)", tag,
+      log(log_lvl::debug, "rt.gtfs.vehicle_update",
+          "Position of Vehicle was not near stop. Skipping message.", tag,
           entity.id());
       ++stats.vehicle_position_position_not_at_stop_;
       return;
     }
 
     // get remaining stops
-    auto const stopped_at_idx = stop_idx_t(std::distance(begin(location_seq), stop_it));
+    auto const stopped_at_idx =
+        stop_idx_t(std::distance(begin(location_seq), stop_it));
     auto const fr = r.is_scheduled() ? frun::from_t(tt, &rtt_const, r.t_)
                                      : frun::from_rt(tt, &rtt_const, r.rt_);
     auto const seq_numbers = fr.stop_range_;
@@ -503,11 +502,45 @@ void handle_vehicle_position(timetable const& tt,
                         : tt.event_time(r.t_, stopped_at_idx, event_type::kArr);
     auto const delay_cast = std::chrono::duration_cast<duration_t>(vp_ts - et);
 
-    // update delay for every stop
-    for (auto const& pr : utl::pairwise(seq_numbers)) {
-      auto const& [first, second] = pr;
-      update_delay(tt, rtt, r, second, event_type::kArr, delay_cast, std::nullopt);
-      update_delay(tt, rtt, r, first, event_type::kDep, delay_cast, std::nullopt);
+    // update delay for remaining stops
+    if (stopped_at_idx != *seq_numbers.begin()) {
+      update_delay(tt, rtt, r, stopped_at_idx, event_type::kArr, delay_cast,
+                   std::nullopt);
+    }
+    auto const stops_after = interval{stopped_at_idx, seq_numbers.to_};
+    for (auto const& [first, second] : utl::pairwise(stops_after)) {
+      update_delay(tt, rtt, r, first, event_type::kDep, delay_cast,
+                   std::nullopt);
+      update_delay(tt, rtt, r, second, event_type::kArr, delay_cast,
+                   std::nullopt);
+    }
+    if (stops_after.size() == 2) {
+      update_delay(tt, rtt, r, stopped_at_idx, event_type::kArr, delay_cast,
+                   std::nullopt);
+    }
+
+    // update delay for previous stops if necessary
+    auto const stops_before = interval{seq_numbers.from_, stopped_at_idx + 1};
+    if (stops_before.size() > 1) {
+      for (auto it = stops_before.rbegin();
+           it != std::prev(stops_before.rend()); ++it) {
+        auto prev = it;
+        ++prev;
+
+        if (rtt.unix_event_time(r.rt_, *prev, event_type::kDep) >
+            rtt.unix_event_time(r.rt_, *it, event_type::kArr)) {
+          update_delay(tt, rtt, r, *prev, event_type::kDep, delay_cast,
+                       std::nullopt);
+          if (prev != std::prev(stops_before.rend()) &&
+              rtt.unix_event_time(r.rt_, *prev, event_type::kArr) >
+                  rtt.unix_event_time(r.rt_, *prev, event_type::kDep)) {
+            update_delay(tt, rtt, r, *prev, event_type::kArr, delay_cast,
+                         std::nullopt);
+            continue;
+          }
+        }
+        break;
+      }
     }
     ++stats.total_entities_success_;
   } catch (std::exception const& e) {

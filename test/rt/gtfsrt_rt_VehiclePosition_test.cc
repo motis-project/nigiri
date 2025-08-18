@@ -192,7 +192,8 @@ auto const kVehiclePosition =
      "trip": {
       "tripId": "3248651",
       "startTime": "05:15:00",
-      "startDate": "20230810"
+      "startDate": "20230810",
+      "scheduleRelationship": "SCHEDULED"
      },
      "position": {
       "latitude": "43.415733",
@@ -276,10 +277,87 @@ auto const kVehiclePosition1 =
  ]
 })"s;
 
+// Test: several VehiclePositions with scheduled relationships != scheduled
+// expected not to crash anything
+auto const kVehiclePosition2 =
+    R"({
+ "header": {
+  "gtfsRealtimeVersion": "2.0",
+  "incrementality": "FULL_DATASET",
+  "timestamp": "1691659440"
+ },
+ "entity": [
+  {
+    "id": "32486517",
+    "isDeleted": false,
+    "vehicle": {
+    "trip": {
+      "tripId": "0",
+      "startTime": "05:14:00",
+      "startDate": "20230810",
+      "scheduleRelationship": "ADDED",
+      "routeId": "201"
+    },
+    "position": {
+      "latitude": "43.415733",
+      "longitude": "-80.480340"
+    },
+    "timestamp": "1691658331",
+    "vehicle": {
+      "id": "v1"
+    },
+    "occupancy_status": "MANY_SEATS_AVAILABLE"
+    }
+  },
+  {
+    "id": "3248651",
+    "isDeleted": false,
+    "vehicle": {
+     "trip": {
+      "tripId": "1",
+      "startTime": "05:14:00",
+      "startDate": "20230810",
+      "scheduleRelationship": "UNSCHEDULED"
+     },
+     "position": {
+      "latitude": "43.415733",
+      "longitude": "-80.480340"
+     },
+     "timestamp": "1691659440",
+     "vehicle": {
+      "id": "v1"
+     },
+     "occupancy_status": "MANY_SEATS_AVAILABLE"
+    }
+  },
+  {
+    "id": "3248651",
+    "isDeleted": false,
+    "vehicle": {
+     "trip": {
+      "tripId": "2",
+      "startTime": "05:14:00",
+      "startDate": "20230810",
+      "scheduleRelationship": "NEW"
+     },
+     "position": {
+      "latitude": "43.415733",
+      "longitude": "-80.480340"
+     },
+     "timestamp": "1691659440",
+     "vehicle": {
+      "id": "v1"
+     },
+     "occupancy_status": "MANY_SEATS_AVAILABLE"
+    }
+  }
+ ]
+})"s;
+
 constexpr auto const expected = R"(
-   0: 2351    Block Line Station..............................                                                             d: 10.08 09:15 [10.08 05:15]  RT 10.08 09:20 [10.08 05:20]  [{name=iXpress Fischer-Hallman, day=2023-08-10, id=3248651, src=0}]
-   1: 1033    Block Line / Hanover............................ a: 10.08 09:16 [10.08 05:16]  RT 10.08 09:21 [10.08 05:21]  d: 10.08 09:16 [10.08 05:16]  RT 10.08 09:21 [10.08 05:21]  [{name=iXpress Fischer-Hallman, day=2023-08-10, id=3248651, src=0}]
-   2: 2086    Block Line / Kingswood.......................... a: 10.08 09:18 [10.08 05:18]  RT 10.08 09:23 [10.08 05:23]  d: 10.08 09:18 [10.08 05:18]  RT 10.08 09:23 [10.08 05:23]  [{name=iXpress Fischer-Hallman, day=2023-08-10, id=3248651, src=0}]
+   0: 2351    Block Line Station..............................                                                             d: 10.08 09:15 [10.08 05:15]  RT 10.08 09:01 [10.08 05:01]  [{name=iXpress Fischer-Hallman, day=2023-08-10, id=3248651, src=0}]
+   1: 1033    Block Line / Hanover............................ a: 10.08 09:16 [10.08 05:16]  RT 10.08 09:02 [10.08 05:02]  d: 10.08 09:16 [10.08 05:16]  RT 10.08 09:02 [10.08 05:02]  [{name=iXpress Fischer-Hallman, day=2023-08-10, id=3248651, src=0}]
+   2: 2086    Block Line / Kingswood.......................... a: 10.08 09:18 [10.08 05:18]  RT 10.08 09:04 [10.08 05:04]  d: 10.08 09:18 [10.08 05:18]  RT 10.08 09:04 [10.08 05:04]  [{name=iXpress Fischer-Hallman, day=2023-08-10, id=3248651, src=0}]
    3: 2885    Block Line / Strasburg.......................... a: 10.08 09:19 [10.08 05:19]  RT 10.08 09:24 [10.08 05:24]  d: 10.08 09:19 [10.08 05:19]  RT 10.08 09:24 [10.08 05:24]  [{name=iXpress Fischer-Hallman, day=2023-08-10, id=3248651, src=0}]
    4: 2888    Block Line / Laurentian......................... a: 10.08 09:21 [10.08 05:21]  RT 10.08 09:26 [10.08 05:26]  d: 10.08 09:21 [10.08 05:21]  RT 10.08 09:26 [10.08 05:26]  [{name=iXpress Fischer-Hallman, day=2023-08-10, id=3248651, src=0}]
    5: 3189    Block Line / Westmount.......................... a: 10.08 09:22 [10.08 05:22]  RT 10.08 09:27 [10.08 05:27]  d: 10.08 09:22 [10.08 05:22]  RT 10.08 09:27 [10.08 05:27]  [{name=iXpress Fischer-Hallman, day=2023-08-10, id=3248651, src=0}]
@@ -333,9 +411,11 @@ TEST(rt, gtfs_rt_vp_update) {
   // Update.
   auto const msg = rt::json_to_protobuf(kVehiclePosition);
   auto const msg1 = rt::json_to_protobuf(kVehiclePosition1);
+  auto const msg2 = rt::json_to_protobuf(kVehiclePosition2);
   auto const stats = gtfsrt_update_buf(tt, rtt, source_idx_t{0}, "", msg, true);
   auto const stats1 =
       gtfsrt_update_buf(tt, rtt, source_idx_t{0}, "", msg1, true);
+  gtfsrt_update_buf(tt, rtt, source_idx_t{0}, "", msg2, true);
 
   // Print trip.
   transit_realtime::TripDescriptor td;
