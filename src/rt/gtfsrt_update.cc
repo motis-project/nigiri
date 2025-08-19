@@ -487,7 +487,9 @@ statistics gtfsrt_update_msg(timetable const& tt,
       continue;
     }
 
-    auto const sr = entity.trip_update().trip().schedule_relationship();
+    auto const sr = entity.trip_update().trip().has_schedule_relationship()
+                        ? entity.trip_update().trip().schedule_relationship()
+                        : gtfsrt::TripDescriptor_ScheduleRelationship_SCHEDULED;
 
     if (sr == gtfsrt::TripDescriptor_ScheduleRelationship_DUPLICATED &&
         (!entity.trip_update().has_trip_properties() ||
@@ -565,10 +567,7 @@ statistics gtfsrt_update_msg(timetable const& tt,
                 {"trip.start_time", td.has_start_time() ? td.start_time() : ""},
                 {"trip.start_date", td.has_start_date() ? td.start_date() : ""},
                 {"trip.schedule_relationship",
-                 td.has_schedule_relationship()
-                     ? TripDescriptor_ScheduleRelationship_Name(
-                           td.schedule_relationship())
-                     : ""},
+                 TripDescriptor_ScheduleRelationship_Name(sr)},
                 {"trip.str", remove_nl(td.DebugString())},
             });
         ++stats.trip_resolve_error_;
