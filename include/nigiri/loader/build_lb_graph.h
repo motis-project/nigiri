@@ -39,7 +39,8 @@ void build_lb_graph(timetable& tt, profile_idx_t const prf_idx) {
     }
 
     for (auto const& r : tt.location_routes_[l]) {
-      if ((prf_idx == kCarProfile && !tt.has_car_transport(r))) {
+      if ((prf_idx == kCarProfile && !tt.has_car_transport(r)) ||
+          (prf_idx == kBikeProfile && !tt.has_bike_transport(r))) {
         continue;
       }
 
