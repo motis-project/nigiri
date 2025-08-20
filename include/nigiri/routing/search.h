@@ -201,11 +201,12 @@ struct search {
     }
 
     state_.starts_.clear();
-    if (search_interval_.size() != 0_minutes) {
-      add_start_labels(search_interval_, true);
-    } else {
-      add_start_labels(q_.start_time_, true);
-    }
+//    if (search_interval_.size() != 0_minutes) {
+//      add_start_labels(search_interval_, true);
+//    } else {
+//      add_start_labels(q_.start_time_, true);
+//    }
+    add_start_labels(q_.start_time_, true);
 
     auto const processing_start_time = std::chrono::steady_clock::now();
     auto const is_timeout_reached = [&]() {
