@@ -254,7 +254,7 @@ bool add_rt_trip(source_idx_t const src,
     }
     return {};
   };
-  auto const display_name =
+  auto const trip_short_name =
       tripUpdate.has_trip_properties() &&
               tripUpdate.trip_properties().has_trip_short_name()
           ? std::string_view{tripUpdate.trip_properties().trip_short_name()}
@@ -263,7 +263,7 @@ bool add_rt_trip(source_idx_t const src,
   // REPLACEMENT stops+times
   // DUPL new_trip_id
   r.rt_ = rtt.add_rt_transport(src, tt, r.t_, stops, times, new_trip_id(),
-                               route_id(), display_name);
+                               route_id(), trip_short_name);
   if (sr == transit_realtime::TripDescriptor_ScheduleRelationship_REPLACEMENT) {
     r.t_ = transport::invalid();
   }
@@ -442,7 +442,6 @@ void handle_vehicle_position(timetable const& tt,
                              std::shared_ptr<opentelemetry::trace::Span>& span,
                              statistics& stats) {
 
-  // handle accepted entities
   try {
     auto const& vp = entity.vehicle();
     auto const vp_lat = vp.position().latitude();
@@ -472,9 +471,9 @@ void handle_vehicle_position(timetable const& tt,
     auto const vp_position = geo::latlng{vp_lat, vp_lon};
     auto const app_dist_lng_deg_vp =
         geo::approx_distance_lng_degrees(vp_position);
-    auto const stop_it = utl::find_if(location_seq, [&](auto const& loc) {
-      auto const stp = tt.locations_.get(stop{loc}.location_idx());
-      return geo::approx_squared_distance(stp.pos_, vp_position,
+    auto const stop_it = utl::find_if(location_seq, [&](auto const& stp) {
+      auto const loc = tt.locations_.get(stop{stp}.location_idx());
+      return geo::approx_squared_distance(loc.pos_, vp_position,
                                           app_dist_lng_deg_vp) < 10;
     });
     if (stop_it == end(location_seq)) {
@@ -487,27 +486,26 @@ void handle_vehicle_position(timetable const& tt,
 
     // get remaining stops
     auto const stopped_at_idx =
-        stop_idx_t(std::distance(begin(location_seq), stop_it));
-    auto const fr = r.is_scheduled() ? frun::from_t(tt, &rtt_const, r.t_)
-                                     : frun::from_rt(tt, &rtt_const, r.rt_);
-    auto const seq_numbers = fr.stop_range_;
+        stop_idx_t{static_cast<unsigned short int>(
+        std::distance(begin(location_seq), stop_it))};
+    auto const fr = frun::from_t(tt, &rtt_const, r.t_);
 
     // get delay
     auto const vp_ts = vp.has_timestamp()
                            ? unixtime_t{std::chrono::duration_cast<i32_minutes>(
                                  std::chrono::seconds{vp.timestamp()})}
                            : std::chrono::system_clock::now();
-    auto const et = stopped_at_idx == 0
+    auto const ev_time = stopped_at_idx == 0
                         ? tt.event_time(r.t_, stopped_at_idx, event_type::kDep)
                         : tt.event_time(r.t_, stopped_at_idx, event_type::kArr);
-    auto const delay_cast = std::chrono::duration_cast<duration_t>(vp_ts - et);
+    auto const delay_cast = std::chrono::duration_cast<duration_t>(vp_ts - ev_time);
 
     // update delay for remaining stops
-    if (stopped_at_idx != *seq_numbers.begin()) {
+    if (stopped_at_idx != *fr.stop_range_.begin()) {
       update_delay(tt, rtt, r, stopped_at_idx, event_type::kArr, delay_cast,
                    std::nullopt);
     }
-    auto const stops_after = interval{stopped_at_idx, seq_numbers.to_};
+    auto const stops_after = interval{stopped_at_idx, fr.stop_range_.to_};
     for (auto const& [first, second] : utl::pairwise(stops_after)) {
       update_delay(tt, rtt, r, first, event_type::kDep, delay_cast,
                    std::nullopt);
@@ -520,7 +518,7 @@ void handle_vehicle_position(timetable const& tt,
     }
 
     // update delay for previous stops if necessary
-    auto const stops_before = interval{seq_numbers.from_, stopped_at_idx + 1};
+    auto const stops_before = interval{fr.stop_range_.from_, stopped_at_idx + 1};
     if (stops_before.size() > 1) {
       for (auto it = stops_before.rbegin();
            it != std::prev(stops_before.rend()); ++it) {

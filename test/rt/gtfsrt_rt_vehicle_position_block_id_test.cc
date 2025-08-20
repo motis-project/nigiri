@@ -515,7 +515,7 @@ constexpr auto const expected_stats4 =
 
 }  // namespace
 
-TEST(rt, rt_VP_block_id_test) {
+TEST(rt, rt_vehicle_position_block_id_test) {
   auto tt = timetable{};
   tt.date_range_ = {date::sys_days{2019_y / March / 25},
                     date::sys_days{2019_y / November / 1}};

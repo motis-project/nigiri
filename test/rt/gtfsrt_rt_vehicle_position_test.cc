@@ -395,7 +395,7 @@ constexpr auto const expected_stats1 = R"(
 
 }  // namespace
 
-TEST(rt, gtfs_rt_vp_update) {
+TEST(rt, gtfs_rt_vehicle_position_update) {
 
   // Load static timetable.
   timetable tt;
