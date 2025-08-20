@@ -494,50 +494,46 @@ void handle_vehicle_position(timetable const& tt,
     auto const vp_ts = vp.has_timestamp()
                            ? unixtime_t{std::chrono::duration_cast<i32_minutes>(
                                  std::chrono::seconds{vp.timestamp()})}
-                           : std::chrono::system_clock::now();
+    : std::chrono::system_clock::now();
     auto const ev_time = stopped_at_idx == 0
                         ? tt.event_time(r.t_, stopped_at_idx, event_type::kDep)
                         : tt.event_time(r.t_, stopped_at_idx, event_type::kArr);
     auto const delay_cast = std::chrono::duration_cast<duration_t>(vp_ts - ev_time);
 
     // update delay for remaining stops
-    if (stopped_at_idx != *fr.stop_range_.begin()) {
-      update_delay(tt, rtt, r, stopped_at_idx, event_type::kArr, delay_cast,
-                   std::nullopt);
-    }
     auto const stops_after = interval{stopped_at_idx, fr.stop_range_.to_};
-    for (auto const& [first, second] : utl::pairwise(stops_after)) {
-      update_delay(tt, rtt, r, first, event_type::kDep, delay_cast,
-                   std::nullopt);
-      update_delay(tt, rtt, r, second, event_type::kArr, delay_cast,
-                   std::nullopt);
-    }
-    if (stops_after.size() == 2) {
+    if (stopped_at_idx == stops_after.to_) {
       update_delay(tt, rtt, r, stopped_at_idx, event_type::kArr, delay_cast,
                    std::nullopt);
+    } else {
+      for (auto const& [first, second] : utl::pairwise(stops_after)) {
+        update_delay(tt, rtt, r, first, event_type::kDep, delay_cast,
+                     std::nullopt);
+        update_delay(tt, rtt, r, second, event_type::kArr, delay_cast,
+                     std::nullopt);
+      }
     }
 
     // update delay for previous stops if necessary
-    auto const stops_before = interval{fr.stop_range_.from_, stopped_at_idx + 1};
-    if (stops_before.size() > 1) {
-      for (auto it = stops_before.rbegin();
-           it != std::prev(stops_before.rend()); ++it) {
-        auto prev = it;
-        ++prev;
-
-        if (rtt.unix_event_time(r.rt_, *prev, event_type::kDep) >
-            rtt.unix_event_time(r.rt_, *it, event_type::kArr)) {
-          update_delay(tt, rtt, r, *prev, event_type::kDep, delay_cast,
+    auto const stops_before =
+        interval{fr.stop_range_.from_, stopped_at_idx + 1};
+    if (stopped_at_idx == stops_before.from_) {
+      update_delay(tt, rtt, r, stopped_at_idx, event_type::kDep, delay_cast,
+                   std::nullopt);
+    } else {
+      for (auto const& [curr, prev] :
+           utl::pairwise(it_range(stops_after.rbegin(), stops_after.rend()))) {
+        if (rtt.unix_event_time(r.rt_, curr, event_type::kArr) >
+            rtt.unix_event_time(r.rt_, prev, event_type::kDep)) {
+          update_delay(tt, rtt, r, prev, event_type::kDep, delay_cast,
                        std::nullopt);
-          if (prev != std::prev(stops_before.rend()) &&
-              rtt.unix_event_time(r.rt_, *prev, event_type::kArr) >
-                  rtt.unix_event_time(r.rt_, *prev, event_type::kDep)) {
-            update_delay(tt, rtt, r, *prev, event_type::kArr, delay_cast,
+          if (prev != stops_before.from_ &&
+              rtt.unix_event_time(r.rt_, prev, event_type::kDep) >
+                  rtt.unix_event_time(r.rt_, prev, event_type::kArr)) {
+            update_delay(tt, rtt, r, prev, event_type::kDep, delay_cast,
                          std::nullopt);
-            continue;
           }
         }
-        break;
       }
     }
     ++stats.total_entities_success_;
