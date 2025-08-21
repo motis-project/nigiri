@@ -228,6 +228,15 @@ struct mcraptor {
       update_transfers(k);
       update_footpaths(k, prf_idx);
 
+      for(int i = 9; i < n_locations_; i++){
+        auto const bag = get_round_bag(i, k);
+        std::cout << k << " " << std::string_view{tt_.locations_.names_[location_idx_t{i}]} << " ";
+        for(mcraptor_label label: bag.labels_){
+          std::cout << label.arr_t_ << " ";
+        }
+        std::cout << std::endl;
+      }
+
       utl::fill(route_mark_.blocks_, 0U);
       std::swap(prev_round_station_mark_, station_mark_);
       utl::fill(tmp_station_mark_.blocks_, 0U);
@@ -319,7 +328,7 @@ private:
                                 tmp_[l_idx]).merge(best_bag_[l_idx]);
 
         et_label.arr_t_ = by_transport;
-        if(!current_best_bag.dominates(et_label) &&
+        if( //!current_best_bag.dominates(et_label) &&
             !dest_bag_.dominates({.arr_t_ = by_transport}, k) &&
             lb_[l_idx] != kUnreachable &&
             !dest_bag_.dominates({.arr_t_ = static_cast<delta_t>(by_transport + lb_[l_idx])}, k)) {
@@ -353,16 +362,18 @@ private:
           auto const prev_success_chance = label.success_chance;
           if (prev_round_time != kInvalid &&
               is_better_or_eq(prev_round_time, et_time_at_stop)) {
-            auto const [day, mam] = split(prev_round_time);
-            auto const new_et = get_earliest_transport(k, r, stop_idx, day, mam,
-                                                       stp.location_idx());
-            if(!new_et.is_valid()) continue;
-            auto const [second_day, second_mam] = split(time_at_stop(r, new_et, stop_idx,kFwd ? event_type::kDep : event_type::kArr)+1);
-            auto const second_new_et = get_earliest_transport(k, r, stop_idx, second_day, second_mam ,
-                                                                        stp.location_idx());
 
-            if (new_et.is_valid() && et != new_et) any_marked = any_marked | iterate_with_transport(k, r, i, stop_seq, new_et, prev_round_time, prev_success_chance, stop_idx, stp, li);
-            if (second_new_et.is_valid() && et != second_new_et) any_marked = any_marked | iterate_with_transport(k, r, i, stop_seq,second_new_et, prev_round_time, prev_success_chance, stop_idx, stp, li);
+            auto time = prev_round_time;
+            auto prev_et = et;
+            for(int prev = 0; prev < 3; ++prev){
+              auto const [day, mam] = split(time);
+              auto const new_et = get_earliest_transport(k, r, stop_idx, day, mam,
+                                                         stp.location_idx());
+              if (!new_et.is_valid() || prev_et == new_et) break;
+              any_marked = any_marked | iterate_with_transport(k, r, i, stop_seq, new_et, prev_round_time, prev_success_chance, stop_idx, stp, li);
+              prev_et = new_et;
+              time = time_at_stop(r, new_et, stop_idx,kFwd ? event_type::kDep : event_type::kArr) + dir(1);
+            }
           }
         }
       }
@@ -421,7 +432,7 @@ private:
             if (lb_[i] == kUnreachable ||
                 dest_bag_.dominates({.arr_t_ = new_label.arr_t_ + lb_[i]}, k)) {
               ++stats_.fp_update_prevented_by_lower_bound_;
-              return;
+              continue;
             }
             ++stats_.n_earliest_arrival_updated_by_footpath_;
 
@@ -500,7 +511,7 @@ private:
     transport transport;
     footpath footpath{};
 
-    auto found_end_location = false;
+//    auto found_end_location = false;
 //    for (auto const& r : tt_.location_routes_[trip_l_idx]) {
     auto r = label.route_id;
 //      if (found_end_location) {
@@ -520,14 +531,15 @@ private:
         route_idx = r;
         trip_arr_fp_dep_time = time_at_stop(
             r, trip, stop_idx, kFwd ? event_type::kArr : event_type::kDep);
-        found_end_location = true;
+//        found_end_location = true;
         break;
       }
 
       if (trip_l_idx.v_ == l_idx.v_) {
         auto const [day, mam] = split(prev_stop_time);
-        trip = get_earliest_transport(k - 1, r, stop_idx, day, mam,
-                                      stp.location_idx());
+        trip = label.trip_id;
+//        trip = get_earliest_transport(k - 1, r, stop_idx, day, mam,
+//                                      stp.location_idx());
         trip_dep_time = time_at_stop(r, trip, stop_idx,kFwd ? event_type::kDep : event_type::kArr);
         from_stop_idx = stop_idx;
       }
