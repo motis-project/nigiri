@@ -5,7 +5,6 @@
 
 #include "utl/helpers/algorithm.h"
 #include "utl/pairwise.h"
-#include "utl/to_vec.h"
 #include "utl/verify.h"
 
 #include "nigiri/loader/gtfs/stop_seq_number_encoding.h"
@@ -507,7 +506,7 @@ void handle_vehicle_position(timetable const& tt,
       update_delay(tt, rtt, r, stopped_at_idx, event_type::kArr, delay_cast,
                    std::nullopt);
     }
-    for (auto const& [first, second] : utl::pairwise(stops_after)) {
+    for (auto const [first, second] : utl::pairwise(stops_after)) {
       update_delay(tt, rtt, r, first, event_type::kDep, delay_cast,
                    std::nullopt);
       update_delay(tt, rtt, r, second, event_type::kArr, delay_cast,
@@ -517,17 +516,20 @@ void handle_vehicle_position(timetable const& tt,
     // update delay for previous stops if necessary
     auto const stops_before =
         interval{fr.stop_range_.from_, stopped_at_idx + 1};
-    for (auto const& [curr, prev] :
+    for (auto const [curr, prev] :
          utl::pairwise(it_range(stops_before.rbegin(), stops_before.rend()))) {
-      if (rtt.unix_event_time(r.rt_, curr, event_type::kArr) <
-          rtt.unix_event_time(r.rt_, prev, event_type::kDep)) {
-        update_delay(tt, rtt, r, prev, event_type::kDep, delay_cast,
+      auto const curr_stop = stop_idx_t{static_cast<unsigned short int>(curr)};
+      auto const prev_stop = stop_idx_t{static_cast<unsigned short int>(prev)};
+
+      if (rtt.unix_event_time(r.rt_, curr_stop, event_type::kArr) <
+          rtt.unix_event_time(r.rt_, prev_stop, event_type::kDep)) {
+        update_delay(tt, rtt, r, prev_stop, event_type::kDep, delay_cast,
                      std::nullopt);
 
         if (prev != *stops_before.begin() &&
-            rtt.unix_event_time(r.rt_, prev, event_type::kDep) <
-                rtt.unix_event_time(r.rt_, prev, event_type::kArr)) {
-          update_delay(tt, rtt, r, prev, event_type::kArr, delay_cast,
+            rtt.unix_event_time(r.rt_, prev_stop, event_type::kDep) <
+                rtt.unix_event_time(r.rt_, prev_stop, event_type::kArr)) {
+          update_delay(tt, rtt, r, prev_stop, event_type::kArr, delay_cast,
                        std::nullopt);
           continue;
         }
