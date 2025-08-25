@@ -301,8 +301,8 @@ private:
     return any_marked;
   }
 
-  float transferProbability(delta_t transfer_time){
-    return std::min(1.0f, 0.02f * (transfer_time+1));
+  float transferProbability(delta_t from, delta_t to){
+    return std::min(1.0f, 0.02f * (to)) - std::min(1.0f, 0.02f * (from));
   }
 
   bool iterate_stops(unsigned const k, route_idx_t const r, mcraptor_label et_label, unsigned i, auto stop_seq){
@@ -359,7 +359,6 @@ private:
         for(unsigned int li = 0; li < prev_round_bag.labels_.size(); ++li){
           mcraptor_label label= prev_round_bag.labels_[li];
           auto const prev_round_time = label.arr_t_;
-          auto const prev_success_chance = label.success_chance;
           if (prev_round_time != kInvalid &&
               is_better_or_eq(prev_round_time, et_time_at_stop)) {
 
@@ -370,7 +369,17 @@ private:
               auto const new_et = get_earliest_transport(k, r, stop_idx, day, mam,
                                                          stp.location_idx());
               if (!new_et.is_valid() || prev_et == new_et) break;
-              any_marked = any_marked | iterate_with_transport(k, r, i, stop_seq, new_et, prev_round_time, prev_success_chance, stop_idx, stp, li);
+
+              mcraptor_label et_label{};
+              et_label.trip_l_ = stp.location_idx();
+              et_label.route_id = r;
+              et_label.trip_id = new_et;
+              et_label.label_id = li;
+              et_label.arr_t_ = time_at_stop(r, new_et, stop_idx,
+                                             kFwd ? event_type::kDep : event_type::kArr);
+              et_label.success_chance = cum_success_chance(l_idx, k-1, et_label.arr_t_);
+
+              any_marked = any_marked | iterate_stops(k, r, et_label, i + 1, stop_seq);
               prev_et = new_et;
               time = time_at_stop(r, new_et, stop_idx,kFwd ? event_type::kDep : event_type::kArr) + dir(1);
             }
@@ -381,32 +390,25 @@ private:
     return any_marked;
   }
 
-  bool iterate_with_transport(unsigned const k, route_idx_t const r, unsigned i, auto stop_seq, transport new_et
-                              , delta_t prev_round_time, float prev_success_chance, stop_idx_t stop_idx, stop stp, unsigned int li){
-    mcraptor_label et_label{};
-//    if (new_et.is_valid() &&
-//        (is_better_or_eq(
-//            time_at_stop(r, new_et, stop_idx,event_type::kDep),
-//            et_time_at_stop))) {
-      et_label.trip_l_ = stp.location_idx();
-      et_label.route_id = r;
-      et_label.trip_id = new_et;
-      et_label.label_id = li;
-      auto const transfer_time = dir(time_at_stop(r, new_et, stop_idx,
-                                              kFwd ? event_type::kDep : event_type::kArr) - prev_round_time);
-
-      et_label.success_chance = transferProbability(transfer_time) * prev_success_chance;
-
-//      current_best = get_best(current_best,
-//                              get_best_time(l_idx),
-//                              tmp_[l_idx].arr_t_);
-//
-//      if (current_best == kInvalid ||
-//           is_better_or_eq(
-//               time_at_stop(r, new_et, stop_idx,event_type::kDep),
-//               et_time_at_stop))
-      return iterate_stops(k, r, et_label, i + 1, stop_seq);
-//    }
+  float cum_success_chance(auto l, auto k, delta_t possible_start_t){
+    vector<mcraptor_label> labels = {};
+    for (int ik = 0; ik <= k; ++ik) {
+      labels.insert(labels.end(), location_bags_[l][ik].labels_.begin(), location_bags_[l][ik].labels_.end());
+    }
+    std::sort(labels.begin(), labels.end(),[](mcraptor_label a, mcraptor_label b){
+      return a.arr_t_ < b.arr_t_;
+    });
+    auto new_begin = std::lower_bound(labels.begin(), labels.end(), possible_start_t, [](mcraptor_label a, delta_t t){
+      return a.arr_t_ < t;
+    });
+    labels.erase(labels.begin(), new_begin);
+    auto result = 0.0f;
+    auto prev = 0;
+    for (int i = 0; i < labels.size(); ++i) {
+      result += transferProbability(prev, labels[i].arr_t_ - possible_start_t) * labels[i].success_chance;
+      prev = labels[i].arr_t_ - possible_start_t;
+    }
+    return result;
   }
 
 
