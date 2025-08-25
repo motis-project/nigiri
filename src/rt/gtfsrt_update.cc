@@ -464,7 +464,8 @@ void handle_vehicle_position(timetable const& tt,
     }
 
     // match position to stop
-    auto const vp_position = geo::latlng{vp.position().latitude(), vp.position().longitude()};
+    auto const vp_position =
+        geo::latlng{vp.position().latitude(), vp.position().longitude()};
     auto const app_dist_lng_deg_vp =
         geo::approx_distance_lng_degrees(vp_position);
     auto const stop_it = utl::find_if(location_seq, [&](auto const& stp) {
@@ -481,8 +482,8 @@ void handle_vehicle_position(timetable const& tt,
     }
 
     // get remaining stops
-    auto const stopped_at_idx = static_cast<stop_idx_t>(
-        std::distance(begin(location_seq), stop_it));
+    auto const stopped_at_idx =
+        static_cast<stop_idx_t>(std::distance(begin(location_seq), stop_it));
     auto const fr = frun::from_t(tt, &rtt_const, r.t_);
 
     // get delay
