@@ -443,13 +443,10 @@ void handle_vehicle_position(timetable const& tt,
 
   try {
     auto const& vp = entity.vehicle();
-    auto const vp_lat = vp.position().latitude();
-    auto const vp_lon = vp.position().longitude();
     auto const& td = vp.trip();
-    auto const& gtfsrt_trip_id = td.trip_id();
 
     auto [r, trip_idx] = gtfsrt_resolve_run(today, tt, &rtt, src, td,
-                                            std::string_view{gtfsrt_trip_id});
+                                            std::string_view{td.trip_id()});
 
     if (!r.is_scheduled()) {
       log(log_lvl::info, "rt.gtfs.unsupported",
@@ -467,7 +464,7 @@ void handle_vehicle_position(timetable const& tt,
     }
 
     // match position to stop
-    auto const vp_position = geo::latlng{vp_lat, vp_lon};
+    auto const vp_position = geo::latlng{vp.position().latitude(), vp.position().longitude()};
     auto const app_dist_lng_deg_vp =
         geo::approx_distance_lng_degrees(vp_position);
     auto const stop_it = utl::find_if(location_seq, [&](auto const& stp) {
@@ -484,8 +481,8 @@ void handle_vehicle_position(timetable const& tt,
     }
 
     // get remaining stops
-    auto const stopped_at_idx = stop_idx_t{static_cast<unsigned short int>(
-        std::distance(begin(location_seq), stop_it))};
+    auto const stopped_at_idx = static_cast<stop_idx_t>(
+        std::distance(begin(location_seq), stop_it));
     auto const fr = frun::from_t(tt, &rtt_const, r.t_);
 
     // get delay
@@ -518,8 +515,8 @@ void handle_vehicle_position(timetable const& tt,
         interval{fr.stop_range_.from_, stopped_at_idx + 1};
     for (auto const [curr, prev] :
          utl::pairwise(it_range(stops_before.rbegin(), stops_before.rend()))) {
-      auto const curr_stop = stop_idx_t{static_cast<unsigned short int>(curr)};
-      auto const prev_stop = stop_idx_t{static_cast<unsigned short int>(prev)};
+      auto const curr_stop = static_cast<stop_idx_t>(curr);
+      auto const prev_stop = static_cast<stop_idx_t>(prev);
 
       if (rtt.unix_event_time(r.rt_, curr_stop, event_type::kArr) <
           rtt.unix_event_time(r.rt_, prev_stop, event_type::kDep)) {
