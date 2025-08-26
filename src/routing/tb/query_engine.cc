@@ -3,16 +3,16 @@
 #include <ranges>
 
 #include "nigiri/for_each_meta.h"
+#include "nigiri/routing/get_earliest_transport.h"
 #include "nigiri/routing/journey.h"
 #include "nigiri/routing/tb/query_engine.h"
 #include "nigiri/routing/tb/settings.h"
-#include "nigiri/routing/tb/transport_segment.h"
 #include "nigiri/rt/frun.h"
 #include "nigiri/special_stations.h"
 
-#define TB_CACHE_PRESSURE_REDUCTION
-
 namespace nigiri::routing::tb {
+
+constexpr auto const kNoParent = std::numeric_limits<std::uint32_t>::max();
 
 template <bool UseLowerBounds>
 query_engine<UseLowerBounds>::query_engine(
@@ -42,7 +42,7 @@ query_engine<UseLowerBounds>::query_engine(
       is_dest_{is_dest},
       dist_to_dest_{dist_to_dest},
       lb_{lb},
-      base_{base} {
+      base_{base - QUERY_DAY_SHIFT} {
   stats_.lower_bound_pruning_ = UseLowerBounds;
 
   // reset state for new query
@@ -129,28 +129,32 @@ void query_engine<UseLowerBounds>::execute(unixtime_t const start_time,
 
   // process all Q_n in ascending order, i.e., transport segments reached after
   // n transfers
-  std::uint8_t n = 0U;
-  for (; n != state_.q_n_.start_.size() && n < max_transfers; ++n) {
+  auto k = std::uint8_t{0U};
+  auto round =
+      interval{queue_idx_t{0U}, static_cast<queue_idx_t>(state_.q_n_.size())};
+  for (; k != kMaxTransfers && !round.empty(); ++k) {
     // (1)  destination reached?
-    for (auto q_cur = state_.q_n_.start_[n]; q_cur != state_.q_n_.end_[n];
-         ++q_cur) {
-      seg_dest(start_time, results, worst_time_at_dest, n, state_.q_n_[q_cur]);
+    for (auto const i : round) {
+      seg_dest(start_time, results, worst_time_at_dest, k, state_.q_n_[i]);
     }
+
     // (2) pruning?
-    for (auto q_cur = state_.q_n_.start_[n]; q_cur != state_.q_n_.end_[n];
-         ++q_cur) {
-      seg_prune(worst_time_at_dest, n, state_.q_n_[q_cur]);
+    for (auto const i : round) {
+      seg_prune(worst_time_at_dest, k, state_.q_n_[i]);
     }
+
     // (3) process transfers & enqueue segments
-    for (auto q_cur = state_.q_n_.start_[n]; q_cur != state_.q_n_.end_[n];
-         ++q_cur) {
-      seg_transfers(n, q_cur);
+    for (auto const i : round) {
+      seg_transfers(k, i);
     }
+
+    round.from_ = round.to_;
+    round.to_ = static_cast<queue_idx_t>(state_.q_n_.size());
   }
 
   stats_.n_segments_enqueued_ += state_.q_n_.size();
-  stats_.empty_n_ = n;
-  stats_.max_transfers_reached_ = n == max_transfers;
+  stats_.n_rounds_ = k - 1U;
+  stats_.max_transfers_reached_ = k == max_transfers;
 }
 
 template <bool UseLowerBounds>
@@ -158,8 +162,7 @@ void query_engine<UseLowerBounds>::seg_dest(unixtime_t const start_time,
                                             pareto_set<journey>& results,
                                             unixtime_t worst_time_at_dest,
                                             std::uint8_t const n,
-                                            transport_segment& seg) {
-
+                                            queue_entry& seg) {
   // departure time at the start of the transport segment
   auto const tau_dep_t_b = tt_.event_mam(seg.get_transport_idx(),
                                          seg.stop_idx_start_, event_type::kDep)
@@ -245,7 +248,7 @@ template <bool UseLowerBounds>
 void query_engine<UseLowerBounds>::seg_prune(
     unixtime_t const worst_time_at_dest,
     std::uint8_t const n,
-    transport_segment& seg) {
+    queue_entry& seg) {
   bool no_prune = seg.time_prune_ < worst_time_at_dest;
   seg.no_prune_ = no_prune && seg.time_prune_ < state_.t_min_[n];
 }
@@ -304,88 +307,34 @@ void query_engine<UseLowerBounds>::seg_transfers(std::uint8_t const n,
 }
 
 template <bool UseLowerBounds>
-void query_engine<UseLowerBounds>::handle_start(query_start const& start) {
-  // start day and time
-  auto const day_idx_mam = tt_.day_idx_mam(start.time_);
-  // start day
-  std::int32_t const d = day_idx_mam.first.v_;
-  // start time
-  std::int32_t const tau = day_idx_mam.second.count();
+void query_engine<UseLowerBounds>::add_start(location_idx_t const l,
+                                             unixtime_t const t) {
+  auto const [day, mam] = tt_.day_idx_mam(t);
+  auto const fp_arr_mam = mam.count();
 
-  // virtual reflexive footpath
-  handle_start_footpath(d, tau, footpath{start.location_, duration_t{0U}});
-  // iterate outgoing footpaths of source location
-  for (auto const fp :
-       tt_.locations_.footpaths_out_[profile_idx_t{0U}][start.location_]) {
-    handle_start_footpath(d, tau, fp);
-  }
-}
-
-template <bool UseLowerBounds>
-void query_engine<UseLowerBounds>::handle_start_footpath(std::int32_t const d,
-                                                         std::int32_t const tau,
-                                                         footpath const fp) {
-  // arrival time after walking the footpath
-  auto const alpha = tau + fp.duration().count();
-  auto const alpha_d = alpha / 1440;
-  auto const alpha_tod = alpha % 1440;
-
-  // iterate routes at target stop of footpath
-  for (auto const route_idx : tt_.location_routes_[fp.target()]) {
+  for (auto const r : tt_.location_routes_[l]) {
     // iterate stop sequence of route, skip last stop
-    for (std::uint16_t i = 0U;
-         i < tt_.route_location_seq_[route_idx].size() - 1; ++i) {
-      auto const route_stop = stop{tt_.route_location_seq_[route_idx][i]};
-      if (route_stop.location_idx() == fp.target() && route_stop.in_allowed()) {
-        // departure times of this route at this q
-        auto const event_times =
-            tt_.event_times_at_stop(route_idx, i, event_type::kDep);
-        // iterator to departure time of connecting transport at this
-        // q
-        auto tau_dep_t_i =
-            std::lower_bound(event_times.begin(), event_times.end(), alpha_tod,
-                             [&](auto&& x, auto&& y) { return x.mam() < y; });
-        // shift amount due to walking the footpath
-        auto sigma = alpha_d;
-        // no departure found on the day of alpha
-        if (tau_dep_t_i == event_times.end()) {
-          // start looking at the following day
-          ++sigma;
-          tau_dep_t_i = event_times.begin();
-        }
-        // iterate departures until maximum waiting time is reached
-        while (sigma <= 1) {
-          // shift amount due to travel time of transport
-          std::int32_t const sigma_t = tau_dep_t_i->days();
-          // day index of the transport segment
-          auto const d_seg = d + sigma - sigma_t;
-          // offset of connecting transport in route_transport_ranges
-          auto const k = static_cast<std::size_t>(
-              std::distance(event_times.begin(), tau_dep_t_i));
-          // transport_idx_t of the connecting transport
-          auto const t = tt_.route_transport_ranges_[route_idx][k];
-          // bitfield of the connecting transport
-          auto const& beta_t = tt_.bitfields_[tt_.transport_traffic_days_[t]];
+    auto const stop_seq = tt_.route_location_seq_[r];
+    for (auto i = stop_idx_t{0U}; i < stop_seq.size() - 1; ++i) {
+      auto const stp = stop{stop_seq[i]};
+      if (!stp.in_allowed() || stp.location_idx() != l) {
+        continue;
+      }
 
-          if (beta_t.test(static_cast<std::size_t>(d_seg))) {
-            // enqueue segment if matching bit is found
-            state_.q_n_.enqueue(static_cast<std::uint16_t>(d_seg), t, i, 0U,
-                                TRANSFERRED_FROM_NULL);
-            break;
-          }
-          // passing midnight?
-          if (tau_dep_t_i + 1 == event_times.end()) {
-            ++sigma;
-            // start with the earliest transport on the next day
-            tau_dep_t_i = event_times.begin();
-          } else {
-            ++tau_dep_t_i;
-          }
-        }
+      auto const et = get_earliest_transport<direction::kForward>(
+          tt_, tt_, 0U, r, i, day, mam, stp.location_idx(),
+          [](day_idx_t, minutes_after_midnight_t) { return false; });
+
+      if (et.is_valid()) {
+        state_.q_n_.enqueue(to_idx(et.day_), et.t_idx_, i, 0U, kNoParent);
       }
     }
   }
 }
+
+template <bool UseLowerBounds>
+void query_engine<UseLowerBounds>::handle_start_footpath(
+    day_idx_t const d, minutes_after_midnight_t const tau, footpath const fp) {}
 
 template struct query_engine<true>;
 template struct query_engine<false>;

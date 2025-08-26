@@ -24,6 +24,7 @@ struct tb_data {
                     transport_first_segment_[t + 1]};
   }
 
+  profile_idx_t prf_idx_;
   vector_map<transport_idx_t, segment_idx_t> transport_first_segment_;
   vecvec<segment_idx_t, segment_idx_t> segment_transfers_;
   vecvec<segment_idx_t, transfer> segment_traffic_days_;

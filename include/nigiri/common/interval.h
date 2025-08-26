@@ -108,6 +108,8 @@ struct interval {
 
   auto size() const { return to_ - from_; }
 
+  bool empty() const { return to_ - from_ == 0U; }
+
   T operator[](std::size_t const i) const {
     assert(contains(from_ + static_cast<T>(i)));
     return from_ + static_cast<T>(i);

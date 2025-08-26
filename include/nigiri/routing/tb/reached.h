@@ -1,63 +1,61 @@
 #pragma once
 
-#include "nigiri/routing/pareto_set.h"
-#include "nigiri/routing/tb/settings.h"
-#include "nigiri/routing/tb/transport_segment.h"
 #include "nigiri/timetable.h"
-#include "nigiri/types.h"
+
+#include "nigiri/routing/tb/settings.h"
 
 namespace nigiri::routing::tb {
 
-struct reached_entry {
-  bool dominates(reached_entry const& o) const {
-    return transport_segment_idx_ <= o.transport_segment_idx_ &&
-           stop_idx_ <= o.stop_idx_ && n_transfers_ <= o.n_transfers_;
-  }
-  transport_segment_idx_t transport_segment_idx_;
-  std::uint16_t stop_idx_;
-  std::uint16_t n_transfers_;
-};
+using query_day_idx_t = std::int32_t;
+
+inline query_day_idx_t compute_day_offset(day_idx_t const base,
+                                          day_idx_t const transport_day) {
+  return to_idx(transport_day) - to_idx(base);
+}
 
 struct reached {
-  reached() = delete;
-  explicit reached(timetable const& tt) : tt_(tt) {
-    data_.resize(tt.n_routes());
-  }
+  explicit reached(timetable const& tt)
+      : tt_{tt}, earliest_stop_{to_idx(tt.next_transport_idx())} {}
 
-  void reset();
-
-  void update(transport_segment_idx_t const transport_segment_idx,
-              std::uint16_t const stop_idx,
-              std::uint16_t const n_transfers) {
-    data_[tt_.transport_route_[transport_idx(transport_segment_idx)].v_].add(
-        reached_entry{transport_segment_idx, stop_idx, n_transfers});
-  }
-
-  std::uint16_t query(transport_segment_idx_t const transport_segment_idx,
-                      std::uint16_t const n_transfers) {
-    auto const route_idx =
-        tt_.transport_route_[transport_idx(transport_segment_idx)];
-
-    auto stop_idx_min =
-        static_cast<uint16_t>(tt_.route_location_seq_[route_idx].size() - 1);
-    // find minimal stop index among relevant entries
-    for (auto const& re : data_[route_idx.v_]) {
-      // only entries with less or equal n_transfers and less or equal
-      // transport_segment_idx are relevant
-      if (re.n_transfers_ <= n_transfers &&
-          re.transport_segment_idx_ <= transport_segment_idx &&
-          re.stop_idx_ < stop_idx_min) {
-        stop_idx_min = re.stop_idx_;
+  void reset() {
+    for (auto r = route_idx_t{0}; r != tt_.n_routes(); ++r) {
+      auto const n_stops = tt_.route_location_seq_[r].size();
+      for (auto const t : tt_.route_transport_ranges_[r]) {
+        earliest_stop_[t].fill(static_cast<stop_idx_t>(n_stops));
       }
     }
+  }
 
-    return stop_idx_min;
+  void update(transport_idx_t const t,
+              query_day_idx_t const day_offset,
+              stop_idx_t const stop_idx) {
+    assert(day_offset >= 0 && day_offset < kTBMaxDayOffset);
+    for (auto const x : tt_.route_transport_ranges_[tt_.transport_route_[t]]) {
+      // Earlier trips are reachable on the following day.
+      auto const off = x < t ? 1U : 0U;
+      for (auto i = static_cast<std::uint32_t>(day_offset) + off;
+           i != kTBMaxDayOffset; ++i) {
+        if (earliest_stop_[x][i] > stop_idx) {
+          earliest_stop_[x][i] = stop_idx;
+        }
+      }
+    }
+  }
+
+  stop_idx_t query(transport_idx_t const t, query_day_idx_t const day_offset) {
+    assert(day_offset >= 0 && day_offset < kTBMaxDayOffset);
+    auto best = std::numeric_limits<stop_idx_t>::max();
+    for (auto i = 0U; i <= static_cast<std::uint32_t>(day_offset); ++i) {
+      if (earliest_stop_[t][i] < best) {
+        best = earliest_stop_[t][i];
+      }
+    }
+    return best;
   }
 
   timetable const& tt_;
-
-  // reached stops per route
-  std::vector<pareto_set<reached_entry>> data_;
+  vector_map<transport_idx_t, std::array<stop_idx_t, kTBMaxDayOffset>>
+      earliest_stop_;
 };
 
 }  // namespace nigiri::routing::tb

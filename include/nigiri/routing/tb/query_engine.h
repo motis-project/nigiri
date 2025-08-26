@@ -16,7 +16,7 @@ struct timetable;
 
 namespace nigiri::routing::tb {
 
-struct transport_segment;
+struct queue_entry;
 
 // a route that reaches the destination
 struct route_dest {
@@ -43,8 +43,6 @@ struct query_state {
       : ts_{tbd}, r_{tt}, q_n_{r_} {
     route_dest_.reserve(128);
     t_min_.resize(kNumTransfersMax, unixtime_t::max());
-    q_n_.start_.reserve(kNumTransfersMax);
-    q_n_.end_.reserve(kNumTransfersMax);
     q_n_.segments_.reserve(10000);
     query_starts_.reserve(20);
     route_dest_.resize(tt.n_routes());
@@ -60,7 +58,7 @@ struct query_state {
   }
 
   // transfer set built by preprocessor
-  tb_data const& ts_;
+  tb_data const& tbd_;
 
   // routes that reach the target stop
   std::vector<std::vector<route_dest>> route_dest_;
@@ -83,7 +81,7 @@ struct query_stats {
   std::uint64_t n_segments_pruned_{0U};
   std::uint64_t n_enqueue_prevented_by_reached_{0U};
   std::uint64_t n_journeys_found_{0U};
-  std::uint64_t empty_n_{0U};
+  std::uint64_t n_rounds_{0U};
   bool max_transfers_reached_{false};
 };
 
@@ -127,9 +125,7 @@ struct query_engine {
     state_.query_starts_.clear();
   }
 
-  void add_start(location_idx_t const l, unixtime_t const t) {
-    state_.query_starts_.emplace_back(l, t);
-  }
+  void add_start(location_idx_t, unixtime_t);
 
   void execute(unixtime_t const start_time,
                std::uint8_t const max_transfers,
@@ -140,21 +136,19 @@ struct query_engine {
   void reconstruct(query const& q, journey& j) const;
 
 private:
-  void handle_start(query_start const&);
-
-  void handle_start_footpath(std::int32_t const,
-                             std::int32_t const,
+  void handle_start_footpath(day_idx_t,
+                             minutes_after_midnight_t,
                              footpath const);
 
   void seg_dest(unixtime_t const start_time,
                 pareto_set<journey>& results,
                 unixtime_t worst_time_at_dest,
                 std::uint8_t const n,
-                transport_segment& seg);
+                queue_entry& seg);
 
   void seg_prune(unixtime_t const worst_time_at_dest,
                  std::uint8_t const n,
-                 transport_segment& seg);
+                 queue_entry& seg);
 
   void seg_transfers(std::uint8_t const n, queue_idx_t const q_cur);
 
@@ -185,12 +179,13 @@ private:
                           journey& j,
                           journey_end const& je) const;
 
-  void add_segment_leg(journey& j, transport_segment const& seg) const;
+  void add_segment_leg(journey& j, queue_entry const& seg) const;
 
   // reconstruct the transfer from the given segment to the last journey leg
   // returns the stop idx at which the segment is exited
-  std::optional<transport_segment> reconstruct_transfer(
-      journey& j, transport_segment const& seg_next, std::uint8_t n) const;
+  std::optional<queue_entry> reconstruct_transfer(journey& j,
+                                                  queue_entry const& seg_next,
+                                                  std::uint8_t n) const;
 
   void add_initial_footpath(query const& q, journey& j) const;
 

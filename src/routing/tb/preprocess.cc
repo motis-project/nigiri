@@ -503,8 +503,10 @@ tb_data transform_to_tb_data(
     timetable const& tt,
     vector_map<transport_idx_t,
                std::vector<std::vector<expanded_transfer>>> const&
-        transport_stop_transfers) {
+        transport_stop_transfers,
+    profile_idx_t const prf_idx) {
   auto d = tb_data{};
+  d.prf_idx_ = prf_idx;
 
   auto bitfields = hash_map<bitfield, tb_bitfield_idx_t>{};
   auto const get_or_create_bf = [&](bitfield const& bf) {
@@ -561,7 +563,7 @@ tb_data preprocess(timetable const& tt, profile_idx_t const prf_idx) {
                          transport_stop_transfers, stats);
       });
 
-  return transform_to_tb_data(tt, transport_stop_transfers);
+  return transform_to_tb_data(tt, transport_stop_transfers, prf_idx);
 }
 
 }  // namespace nigiri::routing::tb
