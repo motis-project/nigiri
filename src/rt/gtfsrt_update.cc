@@ -515,7 +515,7 @@ void handle_vehicle_position(timetable const& tt,
     auto const stops_before =
         interval{fr.stop_range_.from_, stopped_at_idx + 1};
     for (auto const [curr, prev] :
-         utl::pairwise(it_range(stops_before.rbegin(), stops_before.rend()))) {
+         utl::pairwise(it_range{stops_before.rbegin(), stops_before.rend()})) {
       auto const curr_stop = static_cast<stop_idx_t>(curr);
       auto const prev_stop = static_cast<stop_idx_t>(prev);
 
