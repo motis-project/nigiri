@@ -110,7 +110,6 @@ struct journey {
   float success_chance{};
   location_idx_t dest_{};
   std::uint8_t transfers_{0U};
-  unsigned int label_index_{};
 
   bool error_{false};
 };
