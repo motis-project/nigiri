@@ -88,7 +88,7 @@ struct timetable {
   struct transport {
     bitfield_idx_t bitfield_idx_;
     route_idx_t route_idx_;
-    duration_t first_dep_offset_;
+    delta first_dep_offset_;
     basic_string<merged_trips_idx_t> const& external_trip_ids_;
     basic_string<attribute_combination_idx_t> const& section_attributes_;
     basic_string<provider_idx_t> const& section_providers_;
@@ -459,7 +459,7 @@ struct timetable {
 
   // Offset between the stored time and the time given in the GTFS timetable.
   // Required to match GTFS-RT with GTFS-static trips.
-  vector_map<transport_idx_t, duration_t> transport_first_dep_offset_;
+  vector_map<transport_idx_t, delta> transport_first_dep_offset_;
 
   // Services in GTFS can start with a first departure time > 24:00:00
   // The loader transforms this into a time <24:00:00 and shifts the bits in the

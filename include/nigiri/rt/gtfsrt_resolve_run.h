@@ -50,30 +50,29 @@ void resolve_static(date::sys_days const today,
 
   for (auto i = lb; i != end(tt.trip_id_to_idx_) && id_matches(i->first); ++i) {
     for (auto const [t, stop_range] : tt.trip_transport_ranges_[i->second]) {
-      auto const o = tt.transport_first_dep_offset_[t];
+      auto const offset = tt.transport_first_dep_offset_[t];
       auto const utc_dep =
           tt.event_mam(t, stop_range.from_, event_type::kDep).as_duration();
-      auto const gtfs_static_dep = utc_dep + o;
-
-      auto const [gtfs_static_dep_day, gtfs_static_dep_time] =
-          split(gtfs_static_dep);
-      auto const [start_time_day, start_time_time] =
+      auto const gtfs_static_dep = utc_dep +
+                                   std::chrono::days{offset.days() - 1} +
+                                   std::chrono::minutes{offset.mam() - 720};
+      std::cout << utc_dep << " " << offset.mam() << " " << offset.days()
+                << std::endl;
+      auto const [_, gtfs_static_dep_time] = split(gtfs_static_dep);
+      auto const [_1, start_time_time] =
           start_time.has_value() ? split(*start_time)
                                  : std::pair{date::days{0U}, duration_t{0U}};
+      std::cout << gtfs_static_dep_time << " " << start_time_time << std::endl;
       if (start_time.has_value() && gtfs_static_dep_time != start_time_time) {
         continue;
       }
 
-      auto const start_time_day_offset =
-          start_time.has_value() ? gtfs_static_dep_day - start_time_day
-                                 : date::days{0U};
-      auto const [day_offset, tz_offset_minutes] = split_rounded(o);
+      auto const day_idx = ((start_date.has_value() ? *start_date : today) +
+                            std::chrono::days{offset.days() - 1} -
+                            tt.internal_interval_days().from_)
+                               .count();
 
-      auto const day_idx =
-          ((start_date.has_value() ? *start_date : today) + day_offset -
-           start_time_day_offset - tt.internal_interval_days().from_)
-              .count();
-
+      std::cout << day_idx << " end " << std::endl;
       if (day_idx > kMaxDays || day_idx < 0) {
         continue;
       }

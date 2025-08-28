@@ -25,7 +25,8 @@ struct frequency_expanded_trip {
 };
 
 struct utc_trip {
-  duration_t first_dep_offset_;
+  date::days first_dep_offset_;
+  duration_t tz_offset_;
   basic_string<gtfs_trip_idx_t> trips_;
   basic_string<duration_t> utc_times_;
   bitfield utc_traffic_days_;
@@ -235,14 +236,12 @@ void expand_local_to_utc(trip_data const& trip_data,
   };
 
   for (auto& [key, traffic_days] : utc_time_traffic_days) {
-    consumer(utc_trip{
-        .first_dep_offset_ =
-            std::chrono::duration_cast<duration_t>(key.first_dep_day_offset_) +
-            key.tz_offset_,
-        .trips_ = fet.trips_,
-        .utc_times_ = build_time_string(key),
-        .utc_traffic_days_ = traffic_days,
-        .stop_seq_ = {}});
+    consumer(utc_trip{.first_dep_offset_ = key.first_dep_day_offset_,
+                      .tz_offset_ = key.tz_offset_,
+                      .trips_ = fet.trips_,
+                      .utc_times_ = build_time_string(key),
+                      .utc_traffic_days_ = traffic_days,
+                      .stop_seq_ = {}});
   }
 }
 
@@ -295,10 +294,13 @@ void expand_assistance(timetable const& tt,
     auto stop_seq = *get_stop_seq(trip_data, ut, stop_seq_cache);
     auto stop_times_it = begin(ut.utc_times_);
     for (auto [a, b] : utl::pairwise(stop_seq)) {
+      auto const offset =
+          std::chrono::duration_cast<duration_t>(ut.first_dep_offset_) +
+          ut.tz_offset_;
       auto const [dep_day_offset, dep] =
-          split_time_mod(*stop_times_it++ + ut.first_dep_offset_);
+          split_time_mod(*stop_times_it++ + offset);
       auto const [arr_day_offset, arr] =
-          split_time_mod(*stop_times_it++ + ut.first_dep_offset_);
+          split_time_mod(*stop_times_it++ + offset);
 
       auto from = stop{a};
       auto to = stop{b};
@@ -329,6 +331,7 @@ void expand_assistance(timetable const& tt,
   });
   for (auto const& [stop_seq, traffic_days] : assistance_traffic_days) {
     consumer(utc_trip{.first_dep_offset_ = ut.first_dep_offset_,
+                      .tz_offset_ = ut.tz_offset_,
                       .trips_ = ut.trips_,
                       .utc_times_ = ut.utc_times_,
                       .utc_traffic_days_ = traffic_days,
