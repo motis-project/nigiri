@@ -126,6 +126,7 @@ TEST(tb_preprocess, same_day_transfer) {
   EXPECT_EQ(transport_idx_t{1U}, t.to_transport_);
   EXPECT_EQ(bitfield{"100000"}, tbd.bitfields_[t.traffic_days_]);
   EXPECT_EQ(stop_idx_t{0U}, t.to_stop_idx_);
+  EXPECT_EQ(0, t.day_offset_);
 }
 
 mem_dir next_day_transfer_files() {
@@ -172,6 +173,19 @@ R1_TUE,08:00:00,08:00:00,S2,1,0,0
 )");
 }
 
+TEST(tb_preprocess, next_day_transfer) {
+  auto const tt = load(next_day_transfer_files);
+  auto const tbd = tb::preprocess(tt, profile_idx_t{0});
+  auto const s = tbd.transport_first_segment_[transport_idx_t{0U}];
+  ASSERT_TRUE(tbd.segment_transfers_[s].size() == 1U);
+  auto const& t = tbd.segment_transfers_[s][0];
+  EXPECT_EQ(tbd.transport_first_segment_[transport_idx_t{1U}], t.to_segment_);
+  EXPECT_EQ(transport_idx_t{1U}, t.to_transport_);
+  EXPECT_EQ(bitfield{"100000"}, tbd.bitfields_[t.traffic_days_]);
+  EXPECT_EQ(stop_idx_t{0U}, t.to_stop_idx_);
+  EXPECT_EQ(1, t.day_offset_);
+}
+
 mem_dir long_transfer_files() {
   return mem_dir::read(R"(
 # agency.txt
@@ -214,6 +228,19 @@ R0_MON,76:00:00,76:00:00,S1,1,0,0
 R1_THU,06:00:00,06:00:00,S1,0,0,0
 R1_THU,07:00:00,07:00:00,S2,1,0,0
 )");
+}
+
+TEST(tb_preprocess, long_transfer) {
+  auto const tt = load(long_transfer_files);
+  auto const tbd = tb::preprocess(tt, profile_idx_t{0});
+  auto const s = tbd.transport_first_segment_[transport_idx_t{0U}];
+  ASSERT_TRUE(tbd.segment_transfers_[s].size() == 1U);
+  auto const& t = tbd.segment_transfers_[s][0];
+  EXPECT_EQ(tbd.transport_first_segment_[transport_idx_t{1U}], t.to_segment_);
+  EXPECT_EQ(transport_idx_t{1U}, t.to_transport_);
+  EXPECT_EQ(bitfield{"100000"}, tbd.bitfields_[t.traffic_days_]);
+  EXPECT_EQ(stop_idx_t{0U}, t.to_stop_idx_);
+  EXPECT_EQ(3, t.day_offset_);
 }
 
 mem_dir weekday_transfer_files() {
@@ -260,6 +287,19 @@ R1_WD,03:00:00,03:00:00,S2,1,0,0
 )");
 }
 
+TEST(tb_preprocess, weekday_transfer) {
+  auto const tt = load(weekday_transfer_files);
+  auto const tbd = tb::preprocess(tt, profile_idx_t{0});
+  auto const s = tbd.transport_first_segment_[transport_idx_t{0U}];
+  ASSERT_TRUE(tbd.segment_transfers_[s].size() == 1U);
+  auto const& t = tbd.segment_transfers_[s][0];
+  EXPECT_EQ(tbd.transport_first_segment_[transport_idx_t{1U}], t.to_segment_);
+  EXPECT_EQ(transport_idx_t{1U}, t.to_transport_);
+  EXPECT_EQ(bitfield{"0111100000"}, tbd.bitfields_[t.traffic_days_]);
+  EXPECT_EQ(stop_idx_t{0U}, t.to_stop_idx_);
+  EXPECT_EQ(1, t.day_offset_);
+}
+
 mem_dir daily_transfer_files() {
   return mem_dir::read(R"(
 # agency.txt
@@ -302,6 +342,19 @@ R0_DLY,02:00:00,02:00:00,S1,1,0,0
 R1_DLY,03:00:00,03:00:00,S1,0,0,0
 R1_DLY,04:00:00,04:00:00,S2,1,0,0
 )");
+}
+
+TEST(tb_preprocess, daily_transfer) {
+  auto const tt = load(daily_transfer_files);
+  auto const tbd = tb::preprocess(tt, profile_idx_t{0});
+  auto const s = tbd.transport_first_segment_[transport_idx_t{0U}];
+  ASSERT_TRUE(tbd.segment_transfers_[s].size() == 1U);
+  auto const& t = tbd.segment_transfers_[s][0];
+  EXPECT_EQ(tbd.transport_first_segment_[transport_idx_t{1U}], t.to_segment_);
+  EXPECT_EQ(transport_idx_t{1U}, t.to_transport_);
+  EXPECT_EQ(bitfield{"111111100000"}, tbd.bitfields_[t.traffic_days_]);
+  EXPECT_EQ(stop_idx_t{0U}, t.to_stop_idx_);
+  EXPECT_EQ(0, t.day_offset_);
 }
 
 mem_dir earlier_stop_transfer_files() {
@@ -357,6 +410,19 @@ R0_MON1,09:00:00,09:00:00,S4,5,0,0
 )");
 }
 
+TEST(tb_preprocess, earlier_stop_transfer) {
+  auto const tt = load(earlier_stop_transfer_files);
+  auto const tbd = tb::preprocess(tt, profile_idx_t{0});
+  auto const s = tbd.transport_first_segment_[transport_idx_t{0U}] + 3U;
+  ASSERT_TRUE(tbd.segment_transfers_[s].size() == 1U);
+  auto const& t = tbd.segment_transfers_[s][0];
+  EXPECT_EQ(tbd.transport_first_segment_[transport_idx_t{1U}], t.to_segment_);
+  EXPECT_EQ(transport_idx_t{1U}, t.to_transport_);
+  EXPECT_EQ(bitfield{"100000"}, tbd.bitfields_[t.traffic_days_]);
+  EXPECT_EQ(stop_idx_t{0U}, t.to_stop_idx_);
+  EXPECT_EQ(0, t.day_offset_);
+}
+
 mem_dir earlier_transport_transfer_files() {
   return mem_dir::read(R"(
 # agency.txt
@@ -410,6 +476,19 @@ R0_MON1,06:00:00,06:00:00,S4,5,0,0
 )");
 }
 
+TEST(tb_preprocess, earlier_transport_transfer) {
+  auto const tt = load(earlier_transport_transfer_files);
+  auto const tbd = tb::preprocess(tt, profile_idx_t{0});
+  auto const s = tbd.transport_first_segment_[transport_idx_t{1U}];
+  ASSERT_TRUE(tbd.segment_transfers_[s].size() == 1U);
+  auto const& t = tbd.segment_transfers_[s][0];
+  EXPECT_EQ(tbd.transport_first_segment_[transport_idx_t{0U}], t.to_segment_);
+  EXPECT_EQ(transport_idx_t{0U}, t.to_transport_);
+  EXPECT_EQ(bitfield{"100000"}, tbd.bitfields_[t.traffic_days_]);
+  EXPECT_EQ(stop_idx_t{4U}, t.to_stop_idx_);
+  EXPECT_EQ(0, t.day_offset_);
+}
+
 mem_dir uturn_transfer_files() {
   return mem_dir::read(R"(
 # agency.txt
@@ -458,7 +537,15 @@ R1_MON,05:00:00,05:00:00,S3,2,0,0
 )");
 }
 
-mem_dir unnecessary0_transfer_files() {
+TEST(tb_preprocess, uturn_transfer) {
+  auto const tt = load(uturn_transfer_files);
+  auto const tbd = tb::preprocess(tt, profile_idx_t{0});
+  for (auto const transfers : tbd.segment_transfers_) {
+    EXPECT_TRUE(transfers.empty());
+  }
+}
+
+mem_dir unnecessary_transfer_1_files() {
   return mem_dir::read(R"(
 # agency.txt
 agency_id,agency_name,agency_url,agency_timezone
@@ -505,7 +592,15 @@ R1_MON,04:00:00,04:00:00,S2,1,0,0
 )");
 }
 
-mem_dir unnecessary1_transfer_files() {
+TEST(tb_preprocess, unnecessary_transfer_1) {
+  auto const tt = load(unnecessary_transfer_1_files);
+  auto const tbd = tb::preprocess(tt, profile_idx_t{0});
+  for (auto const transfers : tbd.segment_transfers_) {
+    EXPECT_TRUE(transfers.empty());
+  }
+}
+
+mem_dir unnecessary_transfer_2_files() {
   return mem_dir::read(R"(
 # agency.txt
 agency_id,agency_name,agency_url,agency_timezone
@@ -556,148 +651,15 @@ R1_MON,03:10:00,03:10:00,S5,3,0,0
 )");
 }
 
-mem_dir enqueue_files() {
-  return mem_dir::read(R"(
-# agency.txt
-agency_id,agency_name,agency_url,agency_timezone
-DTA,Demo Transit Authority,,Europe/London
-
-# stops.txt
-stop_id,stop_name,stop_desc,stop_lat,stop_lon,stop_url,location_type,parent_station
-S0,S0,,,,,,
-S1,S1,,,,,,
-S2,S2,,,,,,
-S3,S3,,,,,,
-S4,S4,,,,,,
-S5,S5,,,,,,
-
-# calendar.txt
-service_id,monday,tuesday,wednesday,thursday,friday,saturday,sunday,start_date,end_date
-DLY,1,1,1,1,1,1,1,20210301,20210307
-WE,0,0,0,0,0,1,1,20210301,20210307
-WD,1,1,1,1,1,0,0,20210301,20210307
-MON,1,0,0,0,0,0,0,20210301,20210307
-TUE,0,1,0,0,0,0,0,20210301,20210307
-WED,0,0,1,0,0,0,0,20210301,20210307
-THU,0,0,0,1,0,0,0,20210301,20210307
-FRI,0,0,0,0,1,0,0,20210301,20210307
-SAT,0,0,0,0,0,1,0,20210301,20210307
-SUN,0,0,0,0,0,0,1,20210301,20210307
-
-# routes.txt
-route_id,agency_id,route_short_name,route_long_name,route_desc,route_type
-R0,DTA,R0,R0,R0,2
-
-# trips.txt
-route_id,service_id,trip_id,trip_headsign,block_id
-R0,DLY,R0_0,R0_0,0
-R0,DLY,R0_1,R0_1,1
-
-# stop_times.txt
-trip_id,arrival_time,departure_time,stop_id,stop_sequence,pickup_type,drop_off_type
-R0_0,00:00:00,00:00:00,S0,0,0,0
-R0_0,01:00:00,01:00:00,S1,1,0,0
-R0_0,02:00:00,02:00:00,S2,2,0,0
-R0_0,03:00:00,03:00:00,S3,3,0,0
-R0_0,04:00:00,04:00:00,S4,4,0,0
-R0_0,05:00:00,05:00:00,S5,5,0,0
-R0_1,01:00:00,01:00:00,S0,0,0,0
-R0_1,02:00:00,02:00:00,S1,1,0,0
-R0_1,03:00:00,03:00:00,S2,2,0,0
-R0_1,04:00:00,04:00:00,S3,3,0,0
-R0_1,05:00:00,05:00:00,S4,4,0,0
-R0_1,06:00:00,06:00:00,S5,5,0,0
-)");
-}
-
-mem_dir footpath_files() {
-  return mem_dir::read(R"(
-# agency.txt
-agency_id,agency_name,agency_url,agency_timezone
-DTA,Demo Transit Authority,,Europe/London
-
-# stops.txt
-stop_id,stop_name,stop_desc,stop_lat,stop_lon,stop_url,location_type,parent_station
-S0,S0,,49.931555,8.650017,,,
-S1,S1,footpath_start,49.87296,8.65152,,,
-S2,S2,footpath_end,49.87269, 8.65078,,,
-S3,S3,,49.816721,8.644180,,,
-
-# calendar.txt
-service_id,monday,tuesday,wednesday,thursday,friday,saturday,sunday,start_date,end_date
-DLY,1,1,1,1,1,1,1,20210301,20210307
-WE,0,0,0,0,0,1,1,20210301,20210307
-WD,1,1,1,1,1,0,0,20210301,20210307
-MON,1,0,0,0,0,0,0,20210301,20210307
-TUE,0,1,0,0,0,0,0,20210301,20210307
-WED,0,0,1,0,0,0,0,20210301,20210307
-THU,0,0,0,1,0,0,0,20210301,20210307
-FRI,0,0,0,0,1,0,0,20210301,20210307
-SAT,0,0,0,0,0,1,0,20210301,20210307
-SUN,0,0,0,0,0,0,1,20210301,20210307
-
-# routes.txt
-route_id,agency_id,route_short_name,route_long_name,route_desc,route_type
-R0,DTA,R0,R0,"S0 -> S1",2
-R1,DTA,R1,R1,"S2 -> S3",2
-
-# trips.txt
-route_id,service_id,trip_id,trip_headsign,block_id
-R0,MON,R0_MON,R0_MON,1
-R1,MON,R1_MON,R1_MON,2
-
-# stop_times.txt
-trip_id,arrival_time,departure_time,stop_id,stop_sequence,pickup_type,drop_off_type
-R0_MON,00:00:00,00:00:00,S0,0,0,0
-R0_MON,06:00:00,06:00:00,S1,1,0,0
-R1_MON,12:00:00,12:00:00,S2,0,0,0
-R1_MON,13:00:00,13:00:00,S3,1,0,0
-)");
-}
-
-mem_dir early_train_files() {
-  return mem_dir::read(R"(
-# agency.txt
-agency_id,agency_name,agency_url,agency_timezone
-DTA,Demo Transit Authority,,Europe/London
-
-# stops.txt
-stop_id,stop_name,stop_desc,stop_lat,stop_lon,stop_url,location_type,parent_station
-S0,S0,,,,,,
-S1,S1,,,,,,
-S2,S2,,,,,,
-S3,S3,,,,,,
-S4,S4,,,,,,
-
-# calendar.txt
-service_id,monday,tuesday,wednesday,thursday,friday,saturday,sunday,start_date,end_date
-DLY,1,1,1,1,1,1,1,20210301,20210307
-WE,0,0,0,0,0,1,1,20210301,20210307
-WD,1,1,1,1,1,0,0,20210301,20210307
-MON,1,0,0,0,0,0,0,20210301,20210307
-TUE,0,1,0,0,0,0,0,20210301,20210307
-WED,0,0,1,0,0,0,0,20210301,20210307
-THU,0,0,0,1,0,0,0,20210301,20210307
-FRI,0,0,0,0,1,0,0,20210301,20210307
-SAT,0,0,0,0,0,1,0,20210301,20210307
-SUN,0,0,0,0,0,0,1,20210301,20210307
-
-# routes.txt
-route_id,agency_id,route_short_name,route_long_name,route_desc,route_type
-R0,DTA,R0,R0,"S0 -> S2 -> S3",2
-R1,DTA,R1,R1,"S1 -> S2",2
-
-# trips.txt
-route_id,service_id,trip_id,trip_headsign,block_id
-R0,MON,R0_MON,R0_MON,1
-R1,THU,R1_THU,R1_THU,2
-
-# stop_times.txt
-trip_id,arrival_time,departure_time,stop_id,stop_sequence,pickup_type,drop_off_type
-R0_MON,00:00:00,00:00:00,S0,0,0,0
-R0_MON,76:00:00,80:00:00,S2,1,0,0
-R0_MON,81:00:00,81:00:00,S3,2,0,0
-R1_THU,06:00:00,06:00:00,S1,0,0,0
-R1_THU,07:00:00,07:00:00,S2,1,0,0
-)");
+TEST(tb_preprocess, unnecessary_transfer_2) {
+  auto const tt = load(unnecessary_transfer_2_files);
+  auto const tbd = tb::preprocess(tt, profile_idx_t{0});
+  auto const s = tbd.transport_first_segment_[transport_idx_t{0U}] + 1U;
+  ASSERT_EQ(1U, tbd.segment_transfers_[s].size());
+  auto const& t = tbd.segment_transfers_[s][0];
+  EXPECT_EQ(tbd.transport_first_segment_[transport_idx_t{1U}], t.to_segment_);
+  EXPECT_EQ(transport_idx_t{1U}, t.to_transport_);
+  EXPECT_EQ(bitfield{"100000"}, tbd.bitfields_[t.traffic_days_]);
+  EXPECT_EQ(stop_idx_t{2U}, t.to_stop_idx_);
+  EXPECT_EQ(0, t.day_offset_);
 }
