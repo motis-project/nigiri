@@ -94,6 +94,7 @@ struct query_engine {
       day_idx_t const base,
       std::optional<clasz_mask_t> allowed_claszes,  // unsupported
       std::optional<bool> require_bike_transport,  // unsupported
+      std::optional<bool> require_car_transport,  // unsupported
       std::optional<bool> is_wheelchair,  // unsupported
       std::optional<transfer_time_settings> tts);  // unsupported
 
