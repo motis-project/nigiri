@@ -341,9 +341,11 @@ private:
                                 tmp_[l_idx]).merge(best_bag_[l_idx]);
         //TODO best bag werden nicht dominierende labels gespiechert, wenn ein neues hinzugefügt wird, welches ein anderes dominiert, das andere löschen. löscht damit referenz auf spätere labels und die labels davor werden aktualisiert da diese dann auch dominiert werden
         // in die dominazprüfung muss Anzahl der umstiege mit berücksichtigt werden. Dominaz nur wenn auch weniger umstiege
+
+        //TODO Dominanz für dest_bag auch nicht korrekt
         et_label.arr_t_ = by_transport;
         if( //!current_best_bag.dominates(et_label) &&
-            !dest_bag_.dominates({.arr_t_ = by_transport}, k) &&
+            !dest_bag_.dominates({.arr_t_ = by_transport}, k) && //TODO dominaz nicht richtig
             lb_[l_idx] != kUnreachable &&
             !dest_bag_.dominates({.arr_t_ = static_cast<delta_t>(by_transport + lb_[l_idx])}, k)) {
 
@@ -370,39 +372,31 @@ private:
                 ? time_at_stop(r, et, stop_idx, kFwd ? event_type::kDep : event_type::kArr )
                 : kInvalid;
         auto prev_round_bag = get_round_bag(l_idx, k - 1);
-        std::sort(prev_round_bag.labels_.begin(), prev_round_bag.labels_.end(), [](auto a, auto b){
+
+
+        auto start = (*std::max_element(prev_round_bag.labels_.begin(), prev_round_bag.labels_.end(), [](auto a, auto b){
           return a.arr_t_ < b.arr_t_;
-        });
-        //TODO skippen wenn der frühste transport vor dem bereits in einem anderen berücksichtigt wurde
-        auto prev_prev_et = et;
-        for(mcraptor_label label: prev_round_bag.labels_){
-          auto const prev_round_time = label.arr_t_;
-          if (prev_round_time != kInvalid &&
-              is_better_or_eq(prev_round_time, et_time_at_stop)) {
+        })).arr_t_;
+        auto end = (*std::min_element(prev_round_bag.labels_.begin(), prev_round_bag.labels_.end(), [](auto a, auto b){
+          return a.arr_t_ < b.arr_t_;
+        })).arr_t_;
 
-            auto time = prev_round_time;
-            auto prev_et = et;
-            for(int prev = 0; prev < 3; ++prev){
-              auto const [day, mam] = split(time);
-              auto const new_et = get_earliest_transport(k, r, stop_idx, day, mam,
-                                                         stp.location_idx());
-              if(new_et == prev_prev_et) break;
-              if(prev==0) prev_prev_et = new_et;
-              if (!new_et.is_valid() || prev_et == new_et) break;
+        if (start != kInvalid ) { // && is_better_or_eq(prev_round_time, et_time_at_stop)
+          auto prev_et = et;
+          auto max_delay = 3000;
+          while(true){
+            auto const [day, mam] = split(start);
+            auto const new_et = get_earliest_transport(k, r, stop_idx, day, mam,
+                                                       stp.location_idx());
+            if (!new_et.is_valid() || prev_et == new_et) break;
 
-              mcraptor_label new_et_label{};
-              new_et_label.arr_t_ = time_at_stop(r, new_et, stop_idx,
-                                                 kFwd ? event_type::kDep : event_type::kArr);
-              new_et_label.trip_l_ = stp.location_idx();
-              new_et_label.route_id = r;
-              new_et_label.trip_id = new_et;
+            mcraptor_label new_et_label = {.arr_t_ = time_at_stop(r, new_et, stop_idx,kFwd ? event_type::kDep : event_type::kArr), .trip_l_ = stp.location_idx(),
+            .route_id = r, .trip_id = new_et, .success_chance = cum_success_chance(l_idx, k-1, new_et_label.arr_t_)};
 
-              new_et_label.success_chance = cum_success_chance(l_idx, k-1, new_et_label.arr_t_);
-
-              any_marked = any_marked | iterate_stops(k, r, new_et_label, i + 1, stop_seq);
-              prev_et = new_et;
-              time = time_at_stop(r, new_et, stop_idx,kFwd ? event_type::kDep : event_type::kArr) + dir(1);
-            }
+            any_marked = any_marked | iterate_stops(k, r, new_et_label, i + 1, stop_seq);
+            if(start < end + dir(max_delay)) break;
+            prev_et = new_et;
+            start = new_et_label.arr_t_ + dir(1);
           }
         }
       }
@@ -455,11 +449,16 @@ private:
           //is_better(fp_target_time, get_best_time(i))
 //          if (!best_bag_[i].dominates(new_label) &&
 //              !dest_bag_.dominates(new_label, k)) {
-            if (lb_[i] == kUnreachable ||
-                dest_bag_.dominates({.arr_t_ = new_label.arr_t_ + lb_[i]}, k)) {
+            if (lb_[i] == kUnreachable) {
               ++stats_.fp_update_prevented_by_lower_bound_;
               continue;
             }
+            new_label.arr_t_ = new_label.arr_t_ + lb_[i];
+            if(dest_bag_.dominates(new_label, k)){
+              ++stats_.fp_update_prevented_by_lower_bound_;
+              continue;
+            }
+            new_label.arr_t_ = new_label.arr_t_ - lb_[i];
             ++stats_.n_earliest_arrival_updated_by_footpath_;
 
 
