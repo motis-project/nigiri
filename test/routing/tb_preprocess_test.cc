@@ -2,9 +2,23 @@
 
 #include "nigiri/loader/gtfs/load_timetable.h"
 #include "nigiri/loader/init_finish.h"
+#include "nigiri/routing/tb/preprocess.h"
 
+using namespace date;
 using namespace nigiri;
+using namespace nigiri::routing;
 using namespace nigiri::loader;
+using namespace nigiri::loader::gtfs;
+
+nigiri::timetable load(auto const& files) {
+  timetable tt;
+  tt.date_range_ = {date::sys_days{2021_y / March / 1},
+                    date::sys_days{2021_y / March / 8}};
+  register_special_stations(tt);
+  load_timetable({}, source_idx_t{0}, files(), tt);
+  finalize(tt);
+  return tt;
+}
 
 mem_dir no_transfer_files() {
   return mem_dir::read(R"(
@@ -50,6 +64,14 @@ R1_THU,07:00:00,07:00:00,S2,1,0,0
 )");
 }
 
+TEST(tb_preprocess, no_transfer) {
+  auto const tt = load(no_transfer_files);
+  auto const tbd = tb::preprocess(tt, profile_idx_t{0});
+  for (auto const transfers : tbd.segment_transfers_) {
+    EXPECT_TRUE(transfers.empty());
+  }
+}
+
 mem_dir same_day_transfer_files() {
   return mem_dir::read(R"(
 # agency.txt
@@ -92,6 +114,18 @@ R0_MON,06:00:00,06:00:00,S1,1,0,0
 R1_MON,12:00:00,12:00:00,S1,0,0,0
 R1_MON,13:00:00,13:00:00,S2,1,0,0
 )");
+}
+
+TEST(tb_preprocess, same_day_transfer) {
+  auto const tt = load(same_day_transfer_files);
+  auto const tbd = tb::preprocess(tt, profile_idx_t{0});
+  auto const s = tbd.transport_first_segment_[transport_idx_t{0U}];
+  ASSERT_TRUE(tbd.segment_transfers_[s].size() == 1U);
+  auto const& t = tbd.segment_transfers_[s][0];
+  EXPECT_EQ(tbd.transport_first_segment_[transport_idx_t{1U}], t.to_segment_);
+  EXPECT_EQ(transport_idx_t{1U}, t.to_transport_);
+  EXPECT_EQ(bitfield{"100000"}, tbd.bitfields_[t.traffic_days_]);
+  EXPECT_EQ(stop_idx_t{0U}, t.to_stop_idx_);
 }
 
 mem_dir next_day_transfer_files() {
