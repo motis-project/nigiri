@@ -1,0 +1,324 @@
+#include "gtest/gtest.h"
+
+#include "nigiri/loader/gtfs/load_timetable.h"
+#include "nigiri/loader/init_finish.h"
+
+using namespace nigiri;
+using namespace nigiri::loader;
+
+mem_dir no_transfer_files() {
+  return mem_dir::read(R"(
+# agency.txt
+agency_id,agency_name,agency_url,agency_timezone
+DTA,Demo Transit Authority,,Europe/London
+
+# stops.txt
+stop_id,stop_name,stop_desc,stop_lat,stop_lon,stop_url,location_type,parent_station
+S0,S0,,,,,,
+S1,S1,,,,,,
+S2,S2,,,,,,
+
+# calendar.txt
+service_id,monday,tuesday,wednesday,thursday,friday,saturday,sunday,start_date,end_date
+DLY,1,1,1,1,1,1,1,20210301,20210307
+WE,0,0,0,0,0,1,1,20210301,20210307
+WD,1,1,1,1,1,0,0,20210301,20210307
+MON,1,0,0,0,0,0,0,20210301,20210307
+TUE,0,1,0,0,0,0,0,20210301,20210307
+WED,0,0,1,0,0,0,0,20210301,20210307
+THU,0,0,0,1,0,0,0,20210301,20210307
+FRI,0,0,0,0,1,0,0,20210301,20210307
+SAT,0,0,0,0,0,1,0,20210301,20210307
+SUN,0,0,0,0,0,0,1,20210301,20210307
+
+# routes.txt
+route_id,agency_id,route_short_name,route_long_name,route_desc,route_type
+R0,DTA,R0,R0,"S0 -> S1",2
+R1,DTA,R1,R1,"S1 -> S2",2
+
+# trips.txt
+route_id,service_id,trip_id,trip_headsign,block_id
+R0,MON,R0_MON,R0_MON,1
+R1,THU,R1_THU,R1_THU,2
+
+# stop_times.txt
+trip_id,arrival_time,departure_time,stop_id,stop_sequence,pickup_type,drop_off_type
+R0_MON,00:00:00,00:00:00,S0,0,0,0
+R0_MON,12:00:00,12:00:00,S1,1,0,0
+R1_THU,06:00:00,06:00:00,S1,0,0,0
+R1_THU,07:00:00,07:00:00,S2,1,0,0
+)");
+}
+
+mem_dir same_day_transfer_files() {
+  return mem_dir::read(R"(
+# agency.txt
+agency_id,agency_name,agency_url,agency_timezone
+DTA,Demo Transit Authority,,Europe/London
+
+# stops.txt
+stop_id,stop_name,stop_desc,stop_lat,stop_lon,stop_url,location_type,parent_station
+S0,S0,,,,,,
+S1,S1,,,,,,
+S2,S2,,,,,,
+
+# calendar.txt
+service_id,monday,tuesday,wednesday,thursday,friday,saturday,sunday,start_date,end_date
+DLY,1,1,1,1,1,1,1,20210301,20210307
+WE,0,0,0,0,0,1,1,20210301,20210307
+WD,1,1,1,1,1,0,0,20210301,20210307
+MON,1,0,0,0,0,0,0,20210301,20210307
+TUE,0,1,0,0,0,0,0,20210301,20210307
+WED,0,0,1,0,0,0,0,20210301,20210307
+THU,0,0,0,1,0,0,0,20210301,20210307
+FRI,0,0,0,0,1,0,0,20210301,20210307
+SAT,0,0,0,0,0,1,0,20210301,20210307
+SUN,0,0,0,0,0,0,1,20210301,20210307
+
+# routes.txt
+route_id,agency_id,route_short_name,route_long_name,route_desc,route_type
+R0,DTA,R0,R0,"S0 -> S1",2
+R1,DTA,R1,R1,"S1 -> S2",2
+
+# trips.txt
+route_id,service_id,trip_id,trip_headsign,block_id
+R0,MON,R0_MON,R0_MON,1
+R1,MON,R1_MON,R1_MON,2
+
+# stop_times.txt
+trip_id,arrival_time,departure_time,stop_id,stop_sequence,pickup_type,drop_off_type
+R0_MON,00:00:00,00:00:00,S0,0,0,0
+R0_MON,06:00:00,06:00:00,S1,1,0,0
+R1_MON,12:00:00,12:00:00,S1,0,0,0
+R1_MON,13:00:00,13:00:00,S2,1,0,0
+)");
+}
+
+mem_dir next_day_transfer_files() {
+  return mem_dir::read(R"(
+# agency.txt
+agency_id,agency_name,agency_url,agency_timezone
+DTA,Demo Transit Authority,,Europe/London
+
+# stops.txt
+stop_id,stop_name,stop_desc,stop_lat,stop_lon,stop_url,location_type,parent_station
+S0,S0,,,,,,
+S1,S1,,,,,,
+S2,S2,,,,,,
+
+# calendar.txt
+service_id,monday,tuesday,wednesday,thursday,friday,saturday,sunday,start_date,end_date
+DLY,1,1,1,1,1,1,1,20210301,20210307
+WE,0,0,0,0,0,1,1,20210301,20210307
+WD,1,1,1,1,1,0,0,20210301,20210307
+MON,1,0,0,0,0,0,0,20210301,20210307
+TUE,0,1,0,0,0,0,0,20210301,20210307
+WED,0,0,1,0,0,0,0,20210301,20210307
+THU,0,0,0,1,0,0,0,20210301,20210307
+FRI,0,0,0,0,1,0,0,20210301,20210307
+SAT,0,0,0,0,0,1,0,20210301,20210307
+SUN,0,0,0,0,0,0,1,20210301,20210307
+
+# routes.txt
+route_id,agency_id,route_short_name,route_long_name,route_desc,route_type
+R0,DTA,R0,R0,"S0 -> S1",2
+R1,DTA,R1,R1,"S1 -> S2",2
+
+# trips.txt
+route_id,service_id,trip_id,trip_headsign,block_id
+R0,MON,R0_MON,R0_MON,1
+R1,TUE,R1_TUE,R1_TUE,2
+
+# stop_times.txt
+trip_id,arrival_time,departure_time,stop_id,stop_sequence,pickup_type,drop_off_type
+R0_MON,00:00:00,00:00:00,S0,0,0,0
+R0_MON,12:00:00,12:00:00,S1,1,0,0
+R1_TUE,06:00:00,06:00:00,S1,0,0,0
+R1_TUE,08:00:00,08:00:00,S2,1,0,0
+)");
+}
+
+mem_dir long_transfer_files() {
+  return mem_dir::read(R"(
+# agency.txt
+agency_id,agency_name,agency_url,agency_timezone
+DTA,Demo Transit Authority,,Europe/London
+
+# stops.txt
+stop_id,stop_name,stop_desc,stop_lat,stop_lon,stop_url,location_type,parent_station
+S0,S0,,,,,,
+S1,S1,,,,,,
+S2,S2,,,,,,
+
+# calendar.txt
+service_id,monday,tuesday,wednesday,thursday,friday,saturday,sunday,start_date,end_date
+DLY,1,1,1,1,1,1,1,20210301,20210307
+WE,0,0,0,0,0,1,1,20210301,20210307
+WD,1,1,1,1,1,0,0,20210301,20210307
+MON,1,0,0,0,0,0,0,20210301,20210307
+TUE,0,1,0,0,0,0,0,20210301,20210307
+WED,0,0,1,0,0,0,0,20210301,20210307
+THU,0,0,0,1,0,0,0,20210301,20210307
+FRI,0,0,0,0,1,0,0,20210301,20210307
+SAT,0,0,0,0,0,1,0,20210301,20210307
+SUN,0,0,0,0,0,0,1,20210301,20210307
+
+# routes.txt
+route_id,agency_id,route_short_name,route_long_name,route_desc,route_type
+R0,DTA,R0,R0,"S0 -> S1",2
+R1,DTA,R1,R1,"S1 -> S2",2
+
+# trips.txt
+route_id,service_id,trip_id,trip_headsign,block_id
+R0,MON,R0_MON,R0_MON,1
+R1,THU,R1_THU,R1_THU,2
+
+# stop_times.txt
+trip_id,arrival_time,departure_time,stop_id,stop_sequence,pickup_type,drop_off_type
+R0_MON,00:00:00,00:00:00,S0,0,0,0
+R0_MON,76:00:00,76:00:00,S1,1,0,0
+R1_THU,06:00:00,06:00:00,S1,0,0,0
+R1_THU,07:00:00,07:00:00,S2,1,0,0
+)");
+}
+
+mem_dir weekday_transfer_files() {
+  return mem_dir::read(R"(
+# agency.txt
+agency_id,agency_name,agency_url,agency_timezone
+DTA,Demo Transit Authority,,Europe/London
+
+# stops.txt
+stop_id,stop_name,stop_desc,stop_lat,stop_lon,stop_url,location_type,parent_station
+S0,S0,,,,,,
+S1,S1,,,,,,
+S2,S2,,,,,,
+
+# calendar.txt
+service_id,monday,tuesday,wednesday,thursday,friday,saturday,sunday,start_date,end_date
+DLY,1,1,1,1,1,1,1,20210301,20210307
+WE,0,0,0,0,0,1,1,20210301,20210307
+WD,1,1,1,1,1,0,0,20210301,20210307
+MON,1,0,0,0,0,0,0,20210301,20210307
+TUE,0,1,0,0,0,0,0,20210301,20210307
+WED,0,0,1,0,0,0,0,20210301,20210307
+THU,0,0,0,1,0,0,0,20210301,20210307
+FRI,0,0,0,0,1,0,0,20210301,20210307
+SAT,0,0,0,0,0,1,0,20210301,20210307
+SUN,0,0,0,0,0,0,1,20210301,20210307
+
+# routes.txt
+route_id,agency_id,route_short_name,route_long_name,route_desc,route_type
+R0,DTA,R0,R0,"S0 -> S1",2
+R1,DTA,R1,R1,"S1 -> S2",2
+
+# trips.txt
+route_id,service_id,trip_id,trip_headsign,block_id
+R0,WD,R0_WD,R0_WD,1
+R1,WD,R1_WD,R1_WD,2
+
+# stop_times.txt
+trip_id,arrival_time,departure_time,stop_id,stop_sequence,pickup_type,drop_off_type
+R0_WD,00:00:00,00:00:00,S0,0,0,0
+R0_WD,02:00:00,02:00:00,S1,1,0,0
+R1_WD,01:00:00,01:00:00,S1,0,0,0
+R1_WD,03:00:00,03:00:00,S2,1,0,0
+)");
+}
+
+mem_dir daily_transfer_files() {
+  return mem_dir::read(R"(
+# agency.txt
+agency_id,agency_name,agency_url,agency_timezone
+DTA,Demo Transit Authority,,Europe/London
+
+# stops.txt
+stop_id,stop_name,stop_desc,stop_lat,stop_lon,stop_url,location_type,parent_station
+S0,S0,,,,,,
+S1,S1,,,,,,
+S2,S2,,,,,,
+
+# calendar.txt
+service_id,monday,tuesday,wednesday,thursday,friday,saturday,sunday,start_date,end_date
+DLY,1,1,1,1,1,1,1,20210301,20210307
+WE,0,0,0,0,0,1,1,20210301,20210307
+WD,1,1,1,1,1,0,0,20210301,20210307
+MON,1,0,0,0,0,0,0,20210301,20210307
+TUE,0,1,0,0,0,0,0,20210301,20210307
+WED,0,0,1,0,0,0,0,20210301,20210307
+THU,0,0,0,1,0,0,0,20210301,20210307
+FRI,0,0,0,0,1,0,0,20210301,20210307
+SAT,0,0,0,0,0,1,0,20210301,20210307
+SUN,0,0,0,0,0,0,1,20210301,20210307
+
+# routes.txt
+route_id,agency_id,route_short_name,route_long_name,route_desc,route_type
+R0,DTA,R0,R0,"S0 -> S1",2
+R1,DTA,R1,R1,"S1 -> S2",2
+
+# trips.txt
+route_id,service_id,trip_id,trip_headsign,block_id
+R0,DLY,R0_DLY,R0_DLY,1
+R1,DLY,R1_DLY,R1_DLY,2
+
+# stop_times.txt
+trip_id,arrival_time,departure_time,stop_id,stop_sequence,pickup_type,drop_off_type
+R0_DLY,00:00:00,00:00:00,S0,0,0,0
+R0_DLY,02:00:00,02:00:00,S1,1,0,0
+R1_DLY,03:00:00,03:00:00,S1,0,0,0
+R1_DLY,04:00:00,04:00:00,S2,1,0,0
+)");
+}
+
+mem_dir earlier_stop_transfer_files() {
+  return mem_dir::read(R"(
+# agency.txt
+agency_id,agency_name,agency_url,agency_timezone
+DTA,Demo Transit Authority,,Europe/London
+
+# stops.txt
+stop_id,stop_name,stop_desc,stop_lat,stop_lon,stop_url,location_type,parent_station
+S0,S0,,,,,,
+S1,S1,,,,,,
+S2,S2,,,,,,
+S3,S3,,,,,,
+S4,S4,,,,,,
+
+# calendar.txt
+service_id,monday,tuesday,wednesday,thursday,friday,saturday,sunday,start_date,end_date
+DLY,1,1,1,1,1,1,1,20210301,20210307
+WE,0,0,0,0,0,1,1,20210301,20210307
+WD,1,1,1,1,1,0,0,20210301,20210307
+MON,1,0,0,0,0,0,0,20210301,20210307
+TUE,0,1,0,0,0,0,0,20210301,20210307
+WED,0,0,1,0,0,0,0,20210301,20210307
+THU,0,0,0,1,0,0,0,20210301,20210307
+FRI,0,0,0,0,1,0,0,20210301,20210307
+SAT,0,0,0,0,0,1,0,20210301,20210307
+SUN,0,0,0,0,0,0,1,20210301,20210307
+
+# routes.txt
+route_id,agency_id,route_short_name,route_long_name,route_desc,route_type
+R0,DTA,R0,R0,"S0 -> S4",2
+
+# trips.txt
+route_id,service_id,trip_id,trip_headsign,block_id
+R0,MON,R0_MON0,R0_MON0,0
+R0,MON,R0_MON1,R0_MON1,1
+
+# stop_times.txt
+trip_id,arrival_time,departure_time,stop_id,stop_sequence,pickup_type,drop_off_type
+R0_MON0,00:00:00,00:00:00,S0,0,0,0
+R0_MON0,01:00:00,01:00:00,S1,1,0,0
+R0_MON0,02:00:00,02:00:00,S2,2,0,0
+R0_MON0,03:00:00,03:00:00,S3,3,0,0
+R0_MON0,04:00:00,04:00:00,S1,4,0,0
+R0_MON0,05:00:00,05:00:00,S4,5,0,0
+R0_MON1,04:00:00,04:00:00,S0,0,0,0
+R0_MON1,05:00:00,05:00:00,S1,1,0,0
+R0_MON1,06:00:00,06:00:00,S2,2,0,0
+R0_MON1,07:00:00,07:00:00,S3,3,0,0
+R0_MON1,08:00:00,08:00:00,S1,4,0,0
+R0_MON1,09:00:00,09:00:00,S4,5,0,0
+)");
+}
