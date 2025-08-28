@@ -65,7 +65,7 @@ struct expanded_transfer {
   bitfield bf_;
   transport_idx_t transport_idx_to_;
   stop_idx_t stop_idx_to_;
-  std::uint16_t passes_midnight_;
+  std::int8_t day_offset_;
 };
 
 struct route_transfer {
@@ -337,17 +337,17 @@ void preprocess_transport(
         remaining_traffic_days &= ~common_traffic_days;
 
         // update earliest transport data structure
-        s.reached_.update(
-            neighbor.stop_idx_to_,
-            t_arr_day_offset + transfer_day_offset - u_dep_day_offset,
-            tt.event_mam(u, 0, event_type::kDep).mam_, common_traffic_days);
+        auto const day_offset = static_cast<std::int8_t>(
+            t_arr_day_offset + transfer_day_offset - u_dep_day_offset);
+        s.reached_.update(neighbor.stop_idx_to_, day_offset,
+                          tt.event_mam(u, 0, event_type::kDep).mam_,
+                          common_traffic_days);
 
-        // recheck theta
+        // recheck common days
         if (common_traffic_days.any()) {
           // add transfer to set
-          stop_transfers[neighbor.stop_idx_from_].emplace_back(
-              common_traffic_days, u, neighbor.stop_idx_to_,
-              transfer_day_offset);
+          stop_transfers[neighbor.stop_idx_from_].push_back(expanded_transfer{
+              common_traffic_days, u, neighbor.stop_idx_to_, day_offset});
 
           ++stats.n_transfers_initial_;
 
@@ -359,15 +359,15 @@ void preprocess_transport(
           // update subsequent stops
           for (stop_idx_t j_prime = neighbor.stop_idx_to_ + 1U;
                j_prime < stop_seq_to.size(); ++j_prime) {
-            auto theta_prime = common_traffic_days;
+            auto improvement = common_traffic_days;
             s.reached_.update(
                 j_prime,
                 t_arr_day_offset + transfer_day_offset - u_dep_day_offset,
-                tt.event_mam(u, 0, event_type::kDep).mam_, theta_prime);
-            if (theta_prime.any()) {
+                tt.event_mam(u, 0, event_type::kDep).mam_, improvement);
+            if (improvement.any()) {
               s.reached_.transports_[j_prime].emplace_back(
                   t_arr_day_offset + transfer_day_offset - u_dep_day_offset,
-                  tt.event_mam(u, 0, event_type::kDep).mam_, theta_prime);
+                  tt.event_mam(u, 0, event_type::kDep).mam_, improvement);
             }
           }
         }
@@ -425,40 +425,29 @@ void preprocess_transport(
          transfer != stop_transfers[from_stop_idx].end();) {
       auto improvement = bitfield{};
 
-      // get route of transport that we transfer to
+      // update subsequent stops of route we transfer to (transfer + travel)
       auto const route_u = tt.transport_route_[transfer->transport_idx_to_];
-
-      // convert departure into timescale of transport t
-      auto const u_dep = tt.event_mam(transfer->transport_idx_to_,
-                                      transfer->stop_idx_to_, event_type::kDep);
-      auto const u_dep_rel_t_arr = static_cast<std::uint16_t>(
-          transfer->passes_midnight_ * 1440U + u_dep.mam_);
-      auto const u_dep_rel_t_first_dep =
-          static_cast<std::uint16_t>(t_arr + (u_dep_rel_t_arr - t_arr_mam));
-
-      // update subsequent stops (transfer + travel)
       for (auto stop_idx = static_cast<stop_idx_t>(transfer->stop_idx_to_ + 1U);
            stop_idx != tt.route_location_seq_[route_u].size(); ++stop_idx) {
-        auto const u_arr_rel_t_first_dep = static_cast<std::uint16_t>(
-            u_dep_rel_t_first_dep +
-            static_cast<std::uint16_t>(tt.event_mam(transfer->transport_idx_to_,
+        auto const u_arr_rel_t_first_dep =
+            static_cast<std::uint16_t>(transfer->day_offset_ * 1440 +
+                                       tt.event_mam(transfer->transport_idx_to_,
                                                     stop_idx, event_type::kArr)
-                                           .count() -
-                                       u_dep.count()));
+                                           .count());
 
         // locations after p_u_j
-        auto const p_u_l =
+        auto const u_stp =
             stop{tt.route_location_seq_[route_u][stop_idx]}.location_idx();
 
-        s.rr_arr_.update(p_u_l, u_arr_rel_t_first_dep, transfer->bf_,
+        s.rr_arr_.update(u_stp, u_arr_rel_t_first_dep, transfer->bf_,
                          &improvement);
         s.rr_ch_.update(
-            p_u_l,
-            u_arr_rel_t_first_dep + tt.locations_.transfer_time_[p_u_l].count(),
+            u_stp,
+            u_arr_rel_t_first_dep + tt.locations_.transfer_time_[u_stp].count(),
             transfer->bf_, &improvement);
 
         for (auto const& fp_r :
-             tt.locations_.footpaths_out_[profile_idx_t{0U}][p_u_l]) {
+             tt.locations_.footpaths_out_[profile_idx_t{0U}][u_stp]) {
           auto const eta = static_cast<std::uint16_t>(u_arr_rel_t_first_dep +
                                                       fp_r.duration_);
           s.rr_arr_.update(fp_r.target(), eta, transfer->bf_, &improvement);
@@ -517,27 +506,32 @@ tb_data transform_to_tb_data(
     });
   };
 
+  // Allocate space.
   auto start = segment_idx_t{0U};
   for (auto const& stops : transport_stop_transfers) {
     d.transport_first_segment_.push_back(start);
     for (auto const& transfers : stops) {
       d.segment_transfers_.add_back_sized(transfers.size());
-      d.segment_traffic_days_.add_back_sized(transfers.size());
       start += static_cast<segment_idx_t::value_t>(transfers.size());
     }
   }
   d.transport_first_segment_.push_back(start);
+  d.segment_transports_.resize(d.segment_transfers_.size());
 
+  // Generate segment transfers.
   for (auto t = transport_idx_t{0U}; t != tt.next_transport_idx(); ++t) {
     for (auto const [segment_idx, transfers] :
          utl::zip(d.get_segment_range(t), transport_stop_transfers[t])) {
-      for (auto const [to_segment, traffic_days, src] :
-           utl::zip(d.segment_transfers_[segment_idx],
-                    d.segment_traffic_days_[segment_idx], transfers)) {
-        traffic_days.traffic_days_ = to_idx(get_or_create_bf(src.bf_));
-        traffic_days.crosses_midnight_ = src.passes_midnight_;
-        to_segment = d.transport_first_segment_[src.transport_idx_to_] +
-                     src.stop_idx_to_;
+      d.segment_transports_[segment_idx] = t;
+      for (auto const [transfer, src] :
+           utl::zip(d.segment_transfers_[segment_idx], transfers)) {
+        transfer.to_segment_ =
+            d.transport_first_segment_[src.transport_idx_to_] +
+            src.stop_idx_to_;
+        transfer.to_transport_ = src.transport_idx_to_;
+        transfer.traffic_days_ = get_or_create_bf(src.bf_);
+        transfer.to_stop_idx_ = src.stop_idx_to_;
+        transfer.day_offset_ = src.day_offset_;
       }
     }
   }
@@ -562,6 +556,13 @@ tb_data preprocess(timetable const& tt, profile_idx_t const prf_idx) {
         preprocess_route(tt, s, route_idx_t{i}, prf_idx,
                          transport_stop_transfers, stats);
       });
+
+  // Map stops to segments: first stop has no transfers.
+  // Segment i contains transfers that start at stop i+1.
+  for (auto& x : transport_stop_transfers) {
+    assert(x.size() > 1 && x[0].empty());
+    x.erase(begin(x));
+  }
 
   return transform_to_tb_data(tt, transport_stop_transfers, prf_idx);
 }

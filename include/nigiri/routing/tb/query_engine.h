@@ -6,7 +6,7 @@
 #include "nigiri/routing/pareto_set.h"
 #include "nigiri/routing/query.h"
 #include "nigiri/routing/tb/preprocess.h"
-#include "nigiri/routing/tb/q_n.h"
+#include "nigiri/routing/tb/queue.h"
 #include "nigiri/routing/tb/reached.h"
 #include "nigiri/routing/tb/settings.h"
 
@@ -29,50 +29,36 @@ struct route_dest {
   std::uint16_t time_;
 };
 
-struct query_start {
-  query_start(location_idx_t const l, unixtime_t const t)
-      : location_(l), time_(t) {}
-
-  location_idx_t location_;
-  unixtime_t time_;
-};
-
 struct query_state {
-  query_state() = delete;
   query_state(timetable const& tt, tb_data const& tbd)
-      : ts_{tbd}, r_{tt}, q_n_{r_} {
-    route_dest_.reserve(128);
+      : tbd_{tbd}, r_{tt}, q_n_{r_} {
     t_min_.resize(kNumTransfersMax, unixtime_t::max());
-    q_n_.segments_.reserve(10000);
-    query_starts_.reserve(20);
-    route_dest_.resize(tt.n_routes());
+    q_n_.q_.reserve(10'000'000);
+    end_reachable_.resize(tbd.segment_transfers_.size());
   }
 
-  void reset(day_idx_t new_base) {
-    std::fill(t_min_.begin(), t_min_.end(), unixtime_t::max());
+  void reset() {
+    utl::fill(parent_, queue_entry::kNoParent);
     r_.reset();
-    q_n_.reset(new_base);
-    for (auto& inner_vec : route_dest_) {
-      inner_vec.clear();
-    }
+    q_n_.reset();
+    end_reachable_.zero_out();
   }
 
   // transfer set built by preprocessor
   tb_data const& tbd_;
-
-  // routes that reach the target stop
-  std::vector<std::vector<route_dest>> route_dest_;
 
   // reached stops per transport
   reached r_;
 
   // minimum arrival times per number of transfers
   std::vector<unixtime_t> t_min_;
+  std::vector<queue_idx_t> parent_;
 
   // queues of transport segments
-  q_n q_n_;
+  queue q_n_;
 
-  std::vector<query_start> query_starts_;
+  bitvec_map<segment_idx_t> end_reachable_;
+  hash_map<segment_idx_t, duration_t> dist_to_dest_;
 };
 
 struct query_stats {
@@ -117,13 +103,11 @@ struct query_engine {
 
   void reset_arrivals() {
     state_.r_.reset();
-    std::fill(state_.t_min_.begin(), state_.t_min_.end(), unixtime_t::max());
+    utl::fill(state_.t_min_, unixtime_t::max());
+    utl::fill(state_.parent_, queue_entry::kNoParent);
   }
 
-  void next_start_time() {
-    state_.q_n_.reset(base_);
-    state_.query_starts_.clear();
-  }
+  void next_start_time() { state_.q_n_.reset(); }
 
   void add_start(location_idx_t, unixtime_t);
 
@@ -140,17 +124,9 @@ private:
                              minutes_after_midnight_t,
                              footpath const);
 
-  void seg_dest(unixtime_t const start_time,
-                pareto_set<journey>& results,
-                unixtime_t worst_time_at_dest,
-                std::uint8_t const n,
-                queue_entry& seg);
-
-  void seg_prune(unixtime_t const worst_time_at_dest,
-                 std::uint8_t const n,
-                 queue_entry& seg);
-
-  void seg_transfers(std::uint8_t const n, queue_idx_t const q_cur);
+  void seg_dest(std::uint8_t k, queue_idx_t);
+  void seg_prune(std::uint8_t k, queue_entry&);
+  void seg_transfers(std::uint8_t k, queue_idx_t);
 
   struct journey_end {
     journey_end(queue_idx_t const seg_idx,
