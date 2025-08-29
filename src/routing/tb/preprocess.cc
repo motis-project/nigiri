@@ -366,7 +366,8 @@ void preprocess_transport(
 
           // add earliest transport entry
           s.reached_.transports_[neighbor.stop_idx_to_].emplace_back(
-              t_arr_day_offset + transfer_day_offset - u_dep_day_offset,
+              static_cast<std::int8_t>(t_arr_day_offset + transfer_day_offset -
+                                       u_dep_day_offset),
               tt.event_mam(u, 0, event_type::kDep).mam_, common_traffic_days);
 
           // update subsequent stops

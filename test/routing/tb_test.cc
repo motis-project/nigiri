@@ -178,7 +178,7 @@ TEST(tb_preprocess, same_day_transfer) {
   auto const tbd = tb::preprocess(tt, profile_idx_t{0});
   auto const s = tbd.transport_first_segment_[transport_idx_t{0U}];
   ASSERT_EQ(1U, tbd.segment_transfers_[s].size());
-  auto const& t = tbd.segment_transfers_[s][0];
+  auto const t = tbd.segment_transfers_[s][0];
   EXPECT_EQ(tbd.transport_first_segment_[transport_idx_t{1U}], t.to_segment_);
   EXPECT_EQ(transport_idx_t{1U}, t.to_transport_);
   EXPECT_EQ(bitfield{"100000"}, tbd.bitfields_[t.traffic_days_]);
@@ -253,7 +253,7 @@ TEST(tb_preprocess, next_day_transfer) {
   auto const tbd = tb::preprocess(tt, profile_idx_t{0});
   auto const s = tbd.transport_first_segment_[transport_idx_t{0U}];
   ASSERT_TRUE(tbd.segment_transfers_[s].size() == 1U);
-  auto const& t = tbd.segment_transfers_[s][0];
+  auto const t = tbd.segment_transfers_[s][0];
   EXPECT_EQ(tbd.transport_first_segment_[transport_idx_t{1U}], t.to_segment_);
   EXPECT_EQ(transport_idx_t{1U}, t.to_transport_);
   EXPECT_EQ(bitfield{"100000"}, tbd.bitfields_[t.traffic_days_]);
@@ -301,7 +301,7 @@ TEST(tb_preprocess, long_transfer) {
   auto const tbd = tb::preprocess(tt, profile_idx_t{0});
   auto const s = tbd.transport_first_segment_[transport_idx_t{0U}];
   ASSERT_TRUE(tbd.segment_transfers_[s].size() == 1U);
-  auto const& t = tbd.segment_transfers_[s][0];
+  auto const t = tbd.segment_transfers_[s][0];
   EXPECT_EQ(tbd.transport_first_segment_[transport_idx_t{1U}], t.to_segment_);
   EXPECT_EQ(transport_idx_t{1U}, t.to_transport_);
   EXPECT_EQ(bitfield{"100000"}, tbd.bitfields_[t.traffic_days_]);
@@ -348,7 +348,7 @@ TEST(tb_preprocess, weekday_transfer) {
   auto const tbd = tb::preprocess(tt, profile_idx_t{0});
   auto const s = tbd.transport_first_segment_[transport_idx_t{0U}];
   ASSERT_TRUE(tbd.segment_transfers_[s].size() == 1U);
-  auto const& t = tbd.segment_transfers_[s][0];
+  auto const t = tbd.segment_transfers_[s][0];
   EXPECT_EQ(tbd.transport_first_segment_[transport_idx_t{1U}], t.to_segment_);
   EXPECT_EQ(transport_idx_t{1U}, t.to_transport_);
   EXPECT_EQ(bitfield{"0111100000"}, tbd.bitfields_[t.traffic_days_]);
@@ -395,7 +395,7 @@ TEST(tb_preprocess, daily_transfer) {
   auto const tbd = tb::preprocess(tt, profile_idx_t{0});
   auto const s = tbd.transport_first_segment_[transport_idx_t{0U}];
   ASSERT_TRUE(tbd.segment_transfers_[s].size() == 1U);
-  auto const& t = tbd.segment_transfers_[s][0];
+  auto const t = tbd.segment_transfers_[s][0];
   EXPECT_EQ(tbd.transport_first_segment_[transport_idx_t{1U}], t.to_segment_);
   EXPECT_EQ(transport_idx_t{1U}, t.to_transport_);
   EXPECT_EQ(bitfield{"111111100000"}, tbd.bitfields_[t.traffic_days_]);
@@ -451,7 +451,7 @@ TEST(tb_preprocess, earlier_stop_transfer) {
   auto const tbd = tb::preprocess(tt, profile_idx_t{0});
   auto const s = tbd.transport_first_segment_[transport_idx_t{0U}] + 3U;
   ASSERT_TRUE(tbd.segment_transfers_[s].size() == 1U);
-  auto const& t = tbd.segment_transfers_[s][0];
+  auto const t = tbd.segment_transfers_[s][0];
   EXPECT_EQ(tbd.transport_first_segment_[transport_idx_t{1U}] + 1U,
             t.to_segment_);
   EXPECT_EQ(transport_idx_t{1U}, t.to_transport_);
@@ -543,7 +543,7 @@ TEST(tb_preprocess, earlier_transport_transfer) {
   auto const tbd = tb::preprocess(tt, profile_idx_t{0});
   auto const s = tbd.transport_first_segment_[transport_idx_t{1U}];
   ASSERT_EQ(1U, tbd.segment_transfers_[s].size());
-  auto const& t = tbd.segment_transfers_[s][0];
+  auto const t = tbd.segment_transfers_[s][0];
   EXPECT_EQ(tbd.transport_first_segment_[transport_idx_t{0U}] + 4U,
             t.to_segment_);
   EXPECT_EQ(transport_idx_t{0U}, t.to_transport_);
@@ -597,7 +597,7 @@ TEST(tb_preprocess, uturn_transfer) {
     EXPECT_TRUE(tbd.segment_transfers_[s].empty());
   }
   ASSERT_EQ(1U, tbd.segment_transfers_[tb::segment_idx_t{0U}].size());
-  auto const& t = tbd.segment_transfers_[tb::segment_idx_t{0U}][0];
+  auto const t = tbd.segment_transfers_[tb::segment_idx_t{0U}][0];
   EXPECT_EQ(tb::segment_idx_t{3U}, t.to_segment_);
   EXPECT_EQ(transport_idx_t{1U}, t.to_transport_);
   EXPECT_EQ(bitfield{"100000"}, tbd.bitfields_[t.traffic_days_]);
@@ -697,7 +697,7 @@ TEST(tb_preprocess, unnecessary_transfer_2) {
   auto const tbd = tb::preprocess(tt, profile_idx_t{0});
   auto const s = tbd.transport_first_segment_[transport_idx_t{0U}] + 1U;
   ASSERT_EQ(1U, tbd.segment_transfers_[s].size());
-  auto const& t = tbd.segment_transfers_[s][0];
+  auto const t = tbd.segment_transfers_[s][0];
   EXPECT_EQ(tbd.transport_first_segment_[transport_idx_t{1U}] + 2U,
             t.to_segment_);
   EXPECT_EQ(transport_idx_t{1U}, t.to_transport_);
