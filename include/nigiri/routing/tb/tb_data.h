@@ -1,6 +1,12 @@
 #pragma once
 
+#include <iosfwd>
+
 #include "nigiri/types.h"
+
+namespace nigiri {
+struct timetable;
+}
 
 namespace nigiri::routing::tb {
 
@@ -12,6 +18,7 @@ struct transfer {
   segment_idx_t to_segment_;
   transport_idx_t to_transport_;
   tb_bitfield_idx_t traffic_days_;
+  std::uint16_t to_segment_offset_;
 
   // Shift amount between trip t and trip u:
   // This includes:
@@ -26,6 +33,8 @@ struct tb_data {
     return interval{transport_first_segment_[t],
                     transport_first_segment_[t + 1]};
   }
+
+  void print(std::ostream&, timetable const&) const;
 
   profile_idx_t prf_idx_;
   vector_map<transport_idx_t, segment_idx_t> transport_first_segment_;

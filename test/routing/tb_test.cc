@@ -452,7 +452,8 @@ TEST(tb_preprocess, earlier_stop_transfer) {
   auto const s = tbd.transport_first_segment_[transport_idx_t{0U}] + 3U;
   ASSERT_TRUE(tbd.segment_transfers_[s].size() == 1U);
   auto const& t = tbd.segment_transfers_[s][0];
-  EXPECT_EQ(tbd.transport_first_segment_[transport_idx_t{1U}] + 1U, t.to_segment_);
+  EXPECT_EQ(tbd.transport_first_segment_[transport_idx_t{1U}] + 1U,
+            t.to_segment_);
   EXPECT_EQ(transport_idx_t{1U}, t.to_transport_);
   EXPECT_EQ(bitfield{"100000"}, tbd.bitfields_[t.traffic_days_]);
   EXPECT_EQ(0, t.day_offset_);
@@ -543,7 +544,8 @@ TEST(tb_preprocess, earlier_transport_transfer) {
   auto const s = tbd.transport_first_segment_[transport_idx_t{1U}];
   ASSERT_EQ(1U, tbd.segment_transfers_[s].size());
   auto const& t = tbd.segment_transfers_[s][0];
-  EXPECT_EQ(tbd.transport_first_segment_[transport_idx_t{0U}] + 4U, t.to_segment_);
+  EXPECT_EQ(tbd.transport_first_segment_[transport_idx_t{0U}] + 4U,
+            t.to_segment_);
   EXPECT_EQ(transport_idx_t{0U}, t.to_transport_);
   EXPECT_EQ(bitfield{"100000"}, tbd.bitfields_[t.traffic_days_]);
   EXPECT_EQ(0, t.day_offset_);
@@ -696,7 +698,8 @@ TEST(tb_preprocess, unnecessary_transfer_2) {
   auto const s = tbd.transport_first_segment_[transport_idx_t{0U}] + 1U;
   ASSERT_EQ(1U, tbd.segment_transfers_[s].size());
   auto const& t = tbd.segment_transfers_[s][0];
-  EXPECT_EQ(tbd.transport_first_segment_[transport_idx_t{1U}] + 2U, t.to_segment_);
+  EXPECT_EQ(tbd.transport_first_segment_[transport_idx_t{1U}] + 2U,
+            t.to_segment_);
   EXPECT_EQ(transport_idx_t{1U}, t.to_transport_);
   EXPECT_EQ(bitfield{"100000"}, tbd.bitfields_[t.traffic_days_]);
   EXPECT_EQ(0, t.day_offset_);
@@ -714,7 +717,6 @@ S0,S0,,,,,,
 S1,S1,,,,,,
 S2,S2,,,,,,
 S3,S3,,,,,,
-S4,S4,,,,,,
 
 # calendar.txt
 service_id,monday,tuesday,wednesday,thursday,friday,saturday,sunday,start_date,end_date
@@ -758,6 +760,15 @@ leg 3: (S3, S3) [2021-03-04 09:00] -> (S3, S3) [2021-03-04 09:00]
   FOOTPATH (duration=0)
 
 )";
+
+TEST(tb_preprocess, early_train_journeys) {
+  auto const tt = load_gtfs(early_train_files);
+  auto const tbd = tb::preprocess(tt, profile_idx_t{0});
+  tbd.print(std::cout, tt);
+  ASSERT_EQ("R1", tt.transport_name(transport_idx_t{1U}));
+  // auto const s = tbd.transport_first_segment_[transport_idx_t{1U}];
+  // ASSERT_EQ(1U, tbd.segment_transfers_[s].size());
+}
 
 TEST(tb_query, early_train) {
   auto const tt = load_gtfs(early_train_files);

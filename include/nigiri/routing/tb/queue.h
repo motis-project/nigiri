@@ -33,38 +33,50 @@ struct queue {
         q_[parent].transport_query_day_offset_ + transfer.day_offset_;
 
     if (day_offset <= 0 || day_offset >= kTBMaxDayOffset) {
+      fmt::println("  day_offset out of range: {}", day_offset);
       return false;
     }
 
-    auto const min_segment = r_.query(transfer.to_transport_, day_offset);
-    if (transfer.to_segment_ >= min_segment) {
+    auto const min_segment_offset =
+        r_.query(transfer.to_transport_, day_offset);
+    if (transfer.to_segment_offset_ >= min_segment_offset) {
+      fmt::println(
+          "  already reached: transfer.to_segment={} >= {}=min_segment",
+          transfer.to_segment_, min_segment_offset);
       return false;
     }
 
     q_.push_back(queue_entry{
-        .segment_range_ = {transfer.to_segment_, min_segment},
+        .segment_range_ = {transfer.to_segment_,
+                           transfer.to_segment_ - transfer.to_segment_offset_ +
+                               min_segment_offset},
         .parent_ = parent,
         .transport_query_day_offset_ = static_cast<queue_idx_t>(day_offset)});
-    r_.update(transfer.to_transport_, day_offset, transfer.to_segment_);
+    r_.update(transfer.to_transport_, day_offset, transfer.to_segment_offset_);
 
     return true;
   }
 
   void initial_enqueue([[maybe_unused]] tb_data const& tbd,
+                       segment_idx_t const transport_first_segment,
                        segment_idx_t const segment,
                        transport_idx_t const t,
                        std::int8_t const day_offset) {
-    auto const min_segment = r_.query(t, day_offset);
-    if (segment >= min_segment) {
+    auto const min_segment_offset = r_.query(t, day_offset);
+    auto const segment_offset =
+        static_cast<std::uint16_t>(to_idx(segment - transport_first_segment));
+    if (segment_offset >= min_segment_offset) {
       return;
     }
 
-    assert(tbd.get_segment_range(t).contains(interval{segment, min_segment}));
+    assert(tbd.get_segment_range(t).contains(
+        interval{segment, transport_first_segment + min_segment_offset}));
     q_.push_back(queue_entry{
-        .segment_range_ = {segment, min_segment},
+        .segment_range_ = {segment,
+                           transport_first_segment + min_segment_offset},
         .parent_ = queue_entry::kNoParent,
         .transport_query_day_offset_ = static_cast<queue_idx_t>(day_offset)});
-    r_.update(t, day_offset, segment);
+    r_.update(t, day_offset, segment_offset);
   }
 
   queue_entry& operator[](queue_idx_t const pos) { return q_[pos]; }

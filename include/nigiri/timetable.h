@@ -27,6 +27,8 @@
 
 namespace nigiri {
 
+struct day_list;
+
 struct timetable {
   struct locations {
     timezone_idx_t register_timezone(timezone tz) {
@@ -309,7 +311,9 @@ struct timetable {
             date_range_.to_ + date::days{1}};
   }
 
-  constexpr interval<unixtime_t> internal_interval() const {
+  day_list days(bitfield const&) const;
+
+  interval<unixtime_t> internal_interval() const {
     return {
         std::chrono::time_point_cast<i32_minutes>(date_range_.from_ -
                                                   kTimetableOffset),

@@ -7,6 +7,7 @@
 #include "nigiri/routing/journey.h"
 #include "nigiri/routing/raptor/reconstruct.h"
 #include "nigiri/routing/tb/query_engine.h"
+#include "nigiri/routing/tb/segment_info.h"
 #include "nigiri/routing/tb/settings.h"
 #include "nigiri/rt/frun.h"
 #include "nigiri/special_stations.h"
@@ -44,12 +45,22 @@ query_engine<UseLowerBounds>::query_engine(
   auto const mark_dest_segments = [&](location_idx_t const l,
                                       duration_t const d) {
     for (auto const r : tt_.location_routes_[l]) {
-      for (auto i = stop_idx_t{1U}; i != tt_.route_location_seq_[r].size();
-           ++i) {
+      auto const stop_seq = tt_.route_location_seq_[r];
+      for (auto i = stop_idx_t{1U}; i != stop_seq.size(); ++i) {
+        auto const stp = stop{stop_seq[i]};
+        if (stp.location_idx() != l || !stp.out_allowed()) {
+          continue;
+        }
+
         for (auto const t : tt_.route_transport_ranges_[r]) {
           auto const segment = state_.tbd_.transport_first_segment_[t] + i - 1;
           state_.end_reachable_.set(segment, true);
           state_.dist_to_dest_.emplace(segment, d);
+          std::cout << "  dest reachable from stop_idx=" << i
+                    << ", stop=" << location{tt_, stp.location_idx()}
+                    << ", segment " << segment.v_
+                    << ", transport_first_segment="
+                    << state_.tbd_.transport_first_segment_[t] << "\n";
         }
       }
     }
@@ -60,6 +71,7 @@ query_engine<UseLowerBounds>::query_engine(
       if (!is_dest_[to_idx(l)]) {
         continue;
       }
+      fmt::println("{} is dest!", location{tt_, l});
       mark_dest_segments(l, duration_t{0U});
       for (auto const fp :
            tt_.locations_.footpaths_in_[state_.tbd_.prf_idx_][l]) {
@@ -103,6 +115,7 @@ void query_engine<UseLowerBounds>::execute(unixtime_t const start_time,
     }
     round.from_ = round.to_;
     round.to_ = static_cast<queue_idx_t>(state_.q_n_.size());
+    fmt::println("next round: {}", round);
   }
 
   for (auto n = 0U; n != kMaxTransfers; ++n) {
@@ -126,9 +139,12 @@ void query_engine<UseLowerBounds>::seg_dest(std::uint8_t const k,
   auto const& qe = state_.q_n_[q];
   for (auto const segment : qe.segment_range_) {
     if (!state_.end_reachable_.test(segment)) {
+      fmt::println("reached segment {}  => dest not reachable",
+                   seg(segment, qe));
       [[likely]] continue;
     }
 
+    fmt::println("reached segment {}  => dest reachable!", seg(segment, qe));
     auto const t = state_.tbd_.segment_transports_[segment];
     auto const i = static_cast<stop_idx_t>(
         to_idx(segment - state_.tbd_.transport_first_segment_[t] + 1));
@@ -157,6 +173,7 @@ void query_engine<UseLowerBounds>::seg_prune(std::uint8_t const k,
     arr_time += duration_t{lb_[to_idx(l)]};
   }
   if (arr_time > state_.t_min_[k]) {
+    fmt::println("PRUNING {}", seg(segment, qe));
     qe.segment_range_.to_ = qe.segment_range_.from_;
     ++stats_.n_segments_pruned_;
   }
@@ -166,11 +183,19 @@ template <bool UseLowerBounds>
 void query_engine<UseLowerBounds>::seg_transfers(queue_idx_t const q) {
   auto const qe = state_.q_n_[q];
   for (auto const s : qe.segment_range_) {
+    fmt::println("handling queue entry {}: #transfers={}", seg(s, qe),
+                 state_.tbd_.segment_transfers_[s].size());
     assert(s < state_.tbd_.segment_transfers_.size());
     for (auto const transfer : state_.tbd_.segment_transfers_[s]) {
       auto const day = to_idx(base_ + qe.transport_query_day_offset_);
       if (state_.tbd_.bitfields_[transfer.traffic_days_].test(day)) {
+        fmt::println("  -> enqueue transfer to {}",
+                     seg(transfer.to_segment_, qe));
         state_.q_n_.enqueue(transfer, q);
+      } else {
+        fmt::println("  transfer {} - {} not active on {}", seg(s, qe),
+                     seg(transfer.to_segment_, day_idx_t{day}),
+                     tt_.to_unixtime(day_idx_t{day}));
       }
     }
   }
@@ -194,8 +219,10 @@ void query_engine<UseLowerBounds>::add_start(location_idx_t const l,
           [](day_idx_t, std::int16_t) { return false; });
 
       if (et.is_valid()) {
+        auto const transport_first_segment =
+            state_.tbd_.transport_first_segment_[et.t_idx_];
         state_.q_n_.initial_enqueue(
-            state_.tbd_, state_.tbd_.transport_first_segment_[et.t_idx_] + i,
+            state_.tbd_, transport_first_segment, transport_first_segment + i,
             et.t_idx_, static_cast<std::int8_t>(to_idx(et.day_ - base_)));
       }
     }
@@ -205,6 +232,9 @@ void query_engine<UseLowerBounds>::add_start(location_idx_t const l,
 template <bool UseLowerBounds>
 void query_engine<UseLowerBounds>::reconstruct(query const& q,
                                                journey& j) const {
+  fmt::println("reconstruct journey: transfers={}, dep={} arr={}", j.transfers_,
+               j.departure_time(), j.arrival_time());
+
   auto parent = state_.parent_[j.transfers_];
   auto departure_segment = state_.q_n_[parent].segment_range_.from_;
 
@@ -229,6 +259,9 @@ void query_engine<UseLowerBounds>::reconstruct(query const& q,
   };
 
   auto const get_fp = [&](location_idx_t const from, location_idx_t const to) {
+    if (from == to) {
+      return footpath{to, tt_.locations_.transfer_time_[from]};
+    }
     auto const from_fps =
         tt_.locations_.footpaths_out_[state_.tbd_.prf_idx_][from];
     auto const it = utl::find_if(
@@ -256,6 +289,10 @@ void query_engine<UseLowerBounds>::reconstruct(query const& q,
 
   auto const get_run_leg =
       [&](segment_idx_t const arrival_segment) -> journey::leg {
+    fmt::println("run leg:\n\tdeparture segment: {}\n\tarrival segment: {}",
+                 seg(departure_segment, state_.q_n_[parent]),
+                 seg(arrival_segment, state_.q_n_[parent]));
+
     auto const [transport, arr_stop_idx, arr_l, arr_time] =
         get_transport_info(arrival_segment, event_type::kArr);
     auto const [_, dep_stop_idx, dep_l, dep_time] =
@@ -273,74 +310,75 @@ void query_engine<UseLowerBounds>::reconstruct(query const& q,
   // ============
   // (1) Last leg
   // ------------
-  if (q.dest_match_mode_ == location_match_mode::kIntermodal) {
-    for (auto const arr_candidate_segment :
-         state_.q_n_[parent].segment_range_) {
-      if (!state_.end_reachable_.test(arr_candidate_segment)) {
-        continue;
-      }
-
-      auto const offset = state_.dist_to_dest_.at(arr_candidate_segment);
-      auto const [_, _1, arr_l, arr_time] =
-          get_transport_info(arr_candidate_segment, event_type::kArr);
-      if (arr_time + offset != j.arrival_time()) {
-        continue;
-      }
-
-      auto const offset_it =
-          utl::find_if(q.destination_, [&](routing::offset const& o) {
-            return o.target() == arr_l && o.duration() == offset;
-          });
-      utl::verify(offset_it != end(q.destination_), "offset not found");
-      j.legs_.push_back({direction::kForward, arr_l,
-                         get_special_station(special_station::kEnd), arr_time,
-                         j.arrival_time(), *offset_it});
-      j.legs_.push_back(get_run_leg(arr_candidate_segment));
-      break;
-    }
-  } else /* Stop destination -> footpath or direct arrival */ {
-    for (auto const arr_candidate_segment :
-         state_.q_n_[parent].segment_range_) {
-      if (!state_.end_reachable_.test(arr_candidate_segment)) {
-        continue;
-      }
-
-      auto const [_, _1, arr_l, arr_time] =
-          get_transport_info(arr_candidate_segment, event_type::kArr);
-
-      auto const handle_fp = [&](footpath const& fp) {
-        if (arr_time + fp.duration() != j.arrival_time() ||
-            !has_offset(q.destination_, q.dest_match_mode_, fp.target())) {
-          return false;
+  auto const find_last_leg = [&]() {
+    if (q.dest_match_mode_ == location_match_mode::kIntermodal) {
+      for (auto const arr_candidate_segment :
+           state_.q_n_[parent].segment_range_) {
+        if (!state_.end_reachable_.test(arr_candidate_segment)) {
+          continue;
         }
+
+        auto const offset = state_.dist_to_dest_.at(arr_candidate_segment);
+        auto const [_, _1, arr_l, arr_time] =
+            get_transport_info(arr_candidate_segment, event_type::kArr);
+        if (arr_time + offset != j.arrival_time()) {
+          continue;
+        }
+
+        auto const offset_it =
+            utl::find_if(q.destination_, [&](routing::offset const& o) {
+              return o.target() == arr_l && o.duration() == offset;
+            });
+        utl::verify(offset_it != end(q.destination_), "offset not found");
         j.legs_.push_back({direction::kForward, arr_l,
                            get_special_station(special_station::kEnd), arr_time,
-                           j.arrival_time(), fp});
+                           j.arrival_time(), *offset_it});
         j.legs_.push_back(get_run_leg(arr_candidate_segment));
         return true;
-      };
-
-      if (handle_fp(footpath{arr_l, duration_t{0}})) {
-        break;
       }
+    } else /* Stop destination -> footpath or direct arrival */ {
+      for (auto const arr_candidate_segment :
+           state_.q_n_[parent].segment_range_) {
+        if (!state_.end_reachable_.test(arr_candidate_segment)) {
+          continue;
+        }
 
-      for (auto const fp :
-           tt_.locations_.footpaths_out_[state_.tbd_.prf_idx_][arr_l]) {
-        if (handle_fp(fp)) {
-          goto stop;  // break out of outer loop
+        auto const [_, _1, arr_l, arr_time] =
+            get_transport_info(arr_candidate_segment, event_type::kArr);
+
+        auto const handle_fp = [&](footpath const& fp) {
+          if (arr_time + fp.duration() != j.arrival_time() ||
+              !has_offset(q.destination_, q.dest_match_mode_, fp.target())) {
+            return false;
+          }
+          j.legs_.push_back({direction::kForward, arr_l, fp.target(), arr_time,
+                             j.arrival_time(), fp});
+          j.legs_.push_back(get_run_leg(arr_candidate_segment));
+          return true;
+        };
+
+        if (handle_fp(footpath{arr_l, duration_t{0}})) {
+          return true;
+        }
+
+        for (auto const fp :
+             tt_.locations_.footpaths_out_[state_.tbd_.prf_idx_][arr_l]) {
+          if (handle_fp(fp)) {
+            return true;
+          }
         }
       }
-
-      continue;
-
-    stop:
-      break;
     }
+    return false;
+  };
+  if (!find_last_leg()) {
+    throw utl::fail("no last leg found");
   }
 
   // ==================
   // (2) Transport legs
   // ------------------
+  parent = state_.q_n_[parent].parent_;
   while (parent != queue_entry::kNoParent) {
     auto const arrival_segment = get_arrival_segment(parent, departure_segment);
     auto const [transport, arr_stop_idx, arr_l, arr_time] =
@@ -364,6 +402,7 @@ void query_engine<UseLowerBounds>::reconstruct(query const& q,
   // =============
   // (3) First leg
   // -------------
+  assert(!j.legs_.empty());
   auto const start_time = j.start_time_;
   auto const first_dep_l = j.legs_.front().from_;
   auto const first_dep_time = j.legs_.front().dep_time_;
@@ -390,7 +429,19 @@ void query_engine<UseLowerBounds>::reconstruct(query const& q,
     }
   }
 
-  std::reverse(begin(j.legs_), begin(j.legs_));
+  std::reverse(begin(j.legs_), end(j.legs_));
+}
+
+template <bool UseLowerBounds>
+segment_info query_engine<UseLowerBounds>::seg(segment_idx_t const s,
+                                               queue_entry const& qe) const {
+  return {tt_, state_.tbd_, s, base_ + qe.transport_query_day_offset_};
+}
+
+template <bool UseLowerBounds>
+segment_info query_engine<UseLowerBounds>::seg(segment_idx_t const s,
+                                               day_idx_t const day) const {
+  return {tt_, state_.tbd_, s, day};
 }
 
 template struct query_engine<true>;

@@ -14,9 +14,11 @@ struct timetable;
 namespace nigiri::routing::tb {
 
 struct queue_entry;
+struct segment_info;
 
 struct query_state {
-  query_state(timetable const& tt, tb_data const& tbd) : tbd_{tbd}, r_{tt} {
+  query_state(timetable const& tt, tb_data const& tbd)
+      : tbd_{tbd}, r_{tt, tbd} {
     t_min_.fill(unixtime_t::max());
     q_n_.q_.reserve(10'000'000);
     end_reachable_.resize(tbd.segment_transfers_.size());
@@ -103,6 +105,9 @@ private:
   void seg_dest(std::uint8_t k, queue_idx_t);
   void seg_prune(std::uint8_t k, queue_entry&);
   void seg_transfers(queue_idx_t);
+
+  segment_info seg(segment_idx_t, queue_entry const&) const;
+  segment_info seg(segment_idx_t, day_idx_t) const;
 
   timetable const& tt_;
   query_state& state_;

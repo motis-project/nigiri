@@ -7,6 +7,7 @@
 #include "utl/parallel_for.h"
 #include "utl/progress_tracker.h"
 
+#include "nigiri/common/day_list.h"
 #include "nigiri/common/linear_lower_bound.h"
 #include "nigiri/timetable.h"
 
@@ -62,6 +63,16 @@ struct stats {
 };
 
 struct expanded_transfer {
+  void print(std::ostream& out, timetable const& tt) const {
+    out << tt.dbg(transport_idx_to_)
+        << ", name=" << tt.transport_name(transport_idx_to_) << ", to="
+        << location{tt, stop{tt.route_location_seq_
+                                 [tt.transport_route_[transport_idx_to_]]
+                                 [stop_idx_to_]}
+                            .location_idx()}
+        << ", days=" << tt.days(bf_) << ", day_offset=" << day_offset_;
+  }
+
   bitfield bf_;
   transport_idx_t transport_idx_to_;
   stop_idx_t stop_idx_to_;
@@ -191,6 +202,10 @@ void add_non_uturn_transfers(timetable const& tt,
               fp.duration();
 
       if (!is_uturn && !is_uturn_target_route_terminates) {
+        fmt::println(
+            "adding neighborhood: from_stop_idx={}, route_to={}, "
+            "to_stop_idx={}, duration={}",
+            from_stop_idx, route_to, j, fp.duration());
         neighborhood.emplace_back(from_stop_idx, route_to, j, fp.duration());
       } else {
         ++stats.n_uturn_transfers_;
@@ -250,7 +265,7 @@ void preprocess_transport(
   auto const& traffic_days = tt.bitfields_[tt.transport_traffic_days_[t]];
 
   // the previous target route
-  route_idx_t route_to_prev = s.neighborhood_[0].route_idx_to_;
+  auto route_to_prev = s.neighborhood_[0].route_idx_to_;
 
   // stop sequence of the route we are transferring to
   auto stop_seq_to = tt.route_location_seq_[route_to_prev];
@@ -331,6 +346,10 @@ void preprocess_transport(
                             : neighbor_traffic_days
                                   << static_cast<unsigned>(total_day_offset));
 
+      fmt::println("common days t={} {}, u={} {}: {}", tt.transport_name(t),
+                   tt.days(traffic_days), tt.transport_name(u),
+                   tt.days(traffic_days), tt.days(common_traffic_days));
+
       // check for match
       if (common_traffic_days.any()) {
         // remove days that are covered by this transport from omega
@@ -384,6 +403,18 @@ void preprocess_transport(
       } else {
         ++earliest_dep;
       }
+    }
+  }
+
+  fmt::println("transfers after line-based pruning for {}:",
+               tt.transport_name(t));
+  auto const stop_seq = tt.route_location_seq_[tt.transport_route_[t]];
+  for (auto const [x, transfers] : utl::zip(stop_seq, stop_transfers)) {
+    fmt::println("  {}", location{tt, stop{x}.location_idx()});
+    for (auto const& transfer : transfers) {
+      std::cout << "    -> ";
+      transfer.print(std::cout, tt);
+      std::cout << "\n";
     }
   }
 
@@ -528,6 +559,7 @@ tb_data transform_to_tb_data(
             src.stop_idx_to_;
         transfer.to_transport_ = src.transport_idx_to_;
         transfer.traffic_days_ = get_or_create_bf(src.bf_);
+        transfer.to_segment_offset_ = src.stop_idx_to_;
         transfer.day_offset_ = src.day_offset_;
       }
     }
@@ -548,11 +580,19 @@ tb_data preprocess(timetable const& tt, profile_idx_t const prf_idx) {
         tt.route_location_seq_[tt.transport_route_[t]].size());
   }
 
-  utl::parallel_for_run_threadlocal<state>(
-      tt.n_routes(), [&](state& s, std::size_t const i) {
-        preprocess_route(tt, s, route_idx_t{i}, prf_idx,
-                         transport_stop_transfers, stats);
-      });
+  auto const parallel = false;
+  if (parallel) {
+    utl::parallel_for_run_threadlocal<state>(
+        tt.n_routes(), [&](state& s, std::size_t const i) {
+          preprocess_route(tt, s, route_idx_t{i}, prf_idx,
+                           transport_stop_transfers, stats);
+        });
+  } else {
+    auto s = state{};
+    for (auto r = route_idx_t{0U}; r != tt.n_routes(); ++r) {
+      preprocess_route(tt, s, r, prf_idx, transport_stop_transfers, stats);
+    }
+  }
 
   // Map stops to segments: first stop has no transfers.
   // Segment i contains transfers that start at stop i+1.
