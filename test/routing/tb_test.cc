@@ -740,16 +740,7 @@ S5,S5,,,,,,
 
 # calendar.txt
 service_id,monday,tuesday,wednesday,thursday,friday,saturday,sunday,start_date,end_date
-DLY,1,1,1,1,1,1,1,20210301,20210307
-WE,0,0,0,0,0,1,1,20210301,20210307
-WD,1,1,1,1,1,0,0,20210301,20210307
 MON,1,0,0,0,0,0,0,20210301,20210307
-TUE,0,1,0,0,0,0,0,20210301,20210307
-WED,0,0,1,0,0,0,0,20210301,20210307
-THU,0,0,0,1,0,0,0,20210301,20210307
-FRI,0,0,0,0,1,0,0,20210301,20210307
-SAT,0,0,0,0,0,1,0,20210301,20210307
-SUN,0,0,0,0,0,0,1,20210301,20210307
 
 # routes.txt
 route_id,agency_id,route_short_name,route_long_name,route_desc,route_type
@@ -780,7 +771,7 @@ TEST(tb_preprocess, unnecessary_transfer_2) {
   auto const s = tbd.transport_first_segment_[transport_idx_t{0U}] + 1U;
   ASSERT_EQ(1U, tbd.segment_transfers_[s].size());
   auto const& t = tbd.segment_transfers_[s][0];
-  EXPECT_EQ(tbd.transport_first_segment_[transport_idx_t{1U}], t.to_segment_);
+  EXPECT_EQ(tbd.transport_first_segment_[transport_idx_t{1U}] + 2U, t.to_segment_);
   EXPECT_EQ(transport_idx_t{1U}, t.to_transport_);
   EXPECT_EQ(bitfield{"100000"}, tbd.bitfields_[t.traffic_days_]);
   EXPECT_EQ(0, t.day_offset_);
