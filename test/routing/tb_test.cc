@@ -199,7 +199,6 @@ TEST(tb_preprocess, same_day_transfer) {
   EXPECT_EQ(tbd.transport_first_segment_[transport_idx_t{1U}], t.to_segment_);
   EXPECT_EQ(transport_idx_t{1U}, t.to_transport_);
   EXPECT_EQ(bitfield{"100000"}, tbd.bitfields_[t.traffic_days_]);
-  EXPECT_EQ(stop_idx_t{0U}, t.to_stop_idx_);
   EXPECT_EQ(0, t.day_offset_);
 }
 
@@ -283,7 +282,6 @@ TEST(tb_preprocess, next_day_transfer) {
   EXPECT_EQ(tbd.transport_first_segment_[transport_idx_t{1U}], t.to_segment_);
   EXPECT_EQ(transport_idx_t{1U}, t.to_transport_);
   EXPECT_EQ(bitfield{"100000"}, tbd.bitfields_[t.traffic_days_]);
-  EXPECT_EQ(stop_idx_t{0U}, t.to_stop_idx_);
   EXPECT_EQ(1, t.day_offset_);
 }
 
@@ -340,7 +338,6 @@ TEST(tb_preprocess, long_transfer) {
   EXPECT_EQ(tbd.transport_first_segment_[transport_idx_t{1U}], t.to_segment_);
   EXPECT_EQ(transport_idx_t{1U}, t.to_transport_);
   EXPECT_EQ(bitfield{"100000"}, tbd.bitfields_[t.traffic_days_]);
-  EXPECT_EQ(stop_idx_t{0U}, t.to_stop_idx_);
   EXPECT_EQ(3, t.day_offset_);
 }
 
@@ -397,7 +394,6 @@ TEST(tb_preprocess, weekday_transfer) {
   EXPECT_EQ(tbd.transport_first_segment_[transport_idx_t{1U}], t.to_segment_);
   EXPECT_EQ(transport_idx_t{1U}, t.to_transport_);
   EXPECT_EQ(bitfield{"0111100000"}, tbd.bitfields_[t.traffic_days_]);
-  EXPECT_EQ(stop_idx_t{0U}, t.to_stop_idx_);
   EXPECT_EQ(1, t.day_offset_);
 }
 
@@ -454,7 +450,6 @@ TEST(tb_preprocess, daily_transfer) {
   EXPECT_EQ(tbd.transport_first_segment_[transport_idx_t{1U}], t.to_segment_);
   EXPECT_EQ(transport_idx_t{1U}, t.to_transport_);
   EXPECT_EQ(bitfield{"111111100000"}, tbd.bitfields_[t.traffic_days_]);
-  EXPECT_EQ(stop_idx_t{0U}, t.to_stop_idx_);
   EXPECT_EQ(0, t.day_offset_);
 }
 
@@ -520,7 +515,6 @@ TEST(tb_preprocess, earlier_stop_transfer) {
   EXPECT_EQ(tbd.transport_first_segment_[transport_idx_t{1U}], t.to_segment_);
   EXPECT_EQ(transport_idx_t{1U}, t.to_transport_);
   EXPECT_EQ(bitfield{"100000"}, tbd.bitfields_[t.traffic_days_]);
-  EXPECT_EQ(stop_idx_t{0U}, t.to_stop_idx_);
   EXPECT_EQ(0, t.day_offset_);
 }
 
@@ -621,7 +615,6 @@ TEST(tb_preprocess, earlier_transport_transfer) {
   EXPECT_EQ(tbd.transport_first_segment_[transport_idx_t{0U}], t.to_segment_);
   EXPECT_EQ(transport_idx_t{0U}, t.to_transport_);
   EXPECT_EQ(bitfield{"100000"}, tbd.bitfields_[t.traffic_days_]);
-  EXPECT_EQ(stop_idx_t{4U}, t.to_stop_idx_);
   EXPECT_EQ(0, t.day_offset_);
 }
 
@@ -796,7 +789,6 @@ TEST(tb_preprocess, unnecessary_transfer_2) {
   EXPECT_EQ(tbd.transport_first_segment_[transport_idx_t{1U}], t.to_segment_);
   EXPECT_EQ(transport_idx_t{1U}, t.to_transport_);
   EXPECT_EQ(bitfield{"100000"}, tbd.bitfields_[t.traffic_days_]);
-  EXPECT_EQ(stop_idx_t{2U}, t.to_stop_idx_);
   EXPECT_EQ(0, t.day_offset_);
 }
 

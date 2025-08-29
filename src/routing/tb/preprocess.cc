@@ -528,7 +528,6 @@ tb_data transform_to_tb_data(
             src.stop_idx_to_;
         transfer.to_transport_ = src.transport_idx_to_;
         transfer.traffic_days_ = get_or_create_bf(src.bf_);
-        transfer.to_stop_idx_ = src.stop_idx_to_;
         transfer.day_offset_ = src.day_offset_;
       }
     }

@@ -12,7 +12,6 @@ struct transfer {
   segment_idx_t to_segment_;
   transport_idx_t to_transport_;
   tb_bitfield_idx_t traffic_days_;
-  stop_idx_t to_stop_idx_;
 
   // Shift amount between trip t and trip u:
   // This includes:
@@ -23,7 +22,7 @@ struct transfer {
 };
 
 struct tb_data {
-  interval<segment_idx_t> get_segment_range(transport_idx_t const t) {
+  interval<segment_idx_t> get_segment_range(transport_idx_t const t) const {
     return interval{transport_first_segment_[t],
                     transport_first_segment_[t + 1]};
   }
