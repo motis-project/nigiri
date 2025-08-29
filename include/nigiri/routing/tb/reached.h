@@ -1,5 +1,6 @@
 #pragma once
 
+#include "nigiri/routing/raptor/debug.h"
 #include "nigiri/routing/tb/settings.h"
 #include "nigiri/routing/tb/tb_data.h"
 #include "nigiri/timetable.h"
@@ -27,17 +28,16 @@ struct reached {
               query_day_idx_t const day_offset,
               std::uint16_t const to_segment_offset) {
     assert(day_offset >= 0 && day_offset < kTBMaxDayOffset);
-    fmt::println(
-        "  reached update: transport={}, day_offset={}, to_segment_offset={}",
-        t, day_offset, to_segment_offset);
+    trace("  reached update: transport={}, day_offset={}, to_segment_offset={}",
+          t, day_offset, to_segment_offset);
     for (auto const x : tt_.route_transport_ranges_[tt_.transport_route_[t]]) {
       // Earlier trips are reachable on the following day.
       auto const off = x < t ? 1U : 0U;
       for (auto i = static_cast<std::uint32_t>(day_offset) + off;
            i != kTBMaxDayOffset; ++i) {
         if (earliest_segment_offset_[x][i] > to_segment_offset) {
-          fmt::println("    -> update: transport={}, day={}, previous={} -> {}",
-                       x, i, earliest_segment_offset_[x][i], to_segment_offset);
+          trace("    -> update: transport={}, day={}, previous={} -> {}", x, i,
+                earliest_segment_offset_[x][i], to_segment_offset);
           earliest_segment_offset_[x][i] = to_segment_offset;
         }
       }

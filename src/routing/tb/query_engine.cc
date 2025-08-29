@@ -2,6 +2,9 @@
 
 #include <ranges>
 
+#include "utl/enumerate.h"
+#include "utl/raii.h"
+
 #include "nigiri/for_each_meta.h"
 #include "nigiri/routing/get_earliest_transport.h"
 #include "nigiri/routing/journey.h"
@@ -11,8 +14,6 @@
 #include "nigiri/routing/tb/settings.h"
 #include "nigiri/rt/frun.h"
 #include "nigiri/special_stations.h"
-
-#include "utl/enumerate.h"
 
 namespace nigiri::routing::tb {
 
@@ -56,11 +57,6 @@ query_engine<UseLowerBounds>::query_engine(
           auto const segment = state_.tbd_.transport_first_segment_[t] + i - 1;
           state_.end_reachable_.set(segment, true);
           state_.dist_to_dest_.emplace(segment, d);
-          std::cout << "  dest reachable from stop_idx=" << i
-                    << ", stop=" << location{tt_, stp.location_idx()}
-                    << ", segment " << segment.v_
-                    << ", transport_first_segment="
-                    << state_.tbd_.transport_first_segment_[t] << "\n";
         }
       }
     }
@@ -71,7 +67,7 @@ query_engine<UseLowerBounds>::query_engine(
       if (!is_dest_[to_idx(l)]) {
         continue;
       }
-      fmt::println("{} is dest!", location{tt_, l});
+      trace("{} is dest!", location{tt_, l});
       mark_dest_segments(l, duration_t{0U});
       for (auto const fp :
            tt_.locations_.footpaths_in_[state_.tbd_.prf_idx_][l]) {
@@ -115,7 +111,7 @@ void query_engine<UseLowerBounds>::execute(unixtime_t const start_time,
     }
     round.from_ = round.to_;
     round.to_ = static_cast<queue_idx_t>(state_.q_n_.size());
-    fmt::println("next round: {}", round);
+    trace("next round: {}", round);
   }
 
   for (auto n = 0U; n != kMaxTransfers; ++n) {
@@ -139,12 +135,11 @@ void query_engine<UseLowerBounds>::seg_dest(std::uint8_t const k,
   auto const& qe = state_.q_n_[q];
   for (auto const segment : qe.segment_range_) {
     if (!state_.end_reachable_.test(segment)) {
-      fmt::println("reached segment {}  => dest not reachable",
-                   seg(segment, qe));
+      trace("reached segment {}  => dest not reachable", seg(segment, qe));
       [[likely]] continue;
     }
 
-    fmt::println("reached segment {}  => dest reachable!", seg(segment, qe));
+    trace("reached segment {}  => dest reachable!", seg(segment, qe));
     auto const t = state_.tbd_.segment_transports_[segment];
     auto const i = static_cast<stop_idx_t>(
         to_idx(segment - state_.tbd_.transport_first_segment_[t] + 1));
@@ -173,7 +168,7 @@ void query_engine<UseLowerBounds>::seg_prune(std::uint8_t const k,
     arr_time += duration_t{lb_[to_idx(l)]};
   }
   if (arr_time > state_.t_min_[k]) {
-    fmt::println("PRUNING {}", seg(segment, qe));
+    trace("PRUNING {}", seg(segment, qe));
     qe.segment_range_.to_ = qe.segment_range_.from_;
     ++stats_.n_segments_pruned_;
   }
@@ -183,19 +178,18 @@ template <bool UseLowerBounds>
 void query_engine<UseLowerBounds>::seg_transfers(queue_idx_t const q) {
   auto const qe = state_.q_n_[q];
   for (auto const s : qe.segment_range_) {
-    fmt::println("handling queue entry {}: #transfers={}", seg(s, qe),
-                 state_.tbd_.segment_transfers_[s].size());
+    trace("handling queue entry {}: #transfers={}", seg(s, qe),
+          state_.tbd_.segment_transfers_[s].size());
     assert(s < state_.tbd_.segment_transfers_.size());
     for (auto const transfer : state_.tbd_.segment_transfers_[s]) {
       auto const day = to_idx(base_ + qe.transport_query_day_offset_);
       if (state_.tbd_.bitfields_[transfer.traffic_days_].test(day)) {
-        fmt::println("  -> enqueue transfer to {}",
-                     seg(transfer.to_segment_, qe));
+        trace("  -> enqueue transfer to {}", seg(transfer.to_segment_, qe));
         state_.q_n_.enqueue(transfer, q);
       } else {
-        fmt::println("  transfer {} - {} not active on {}", seg(s, qe),
-                     seg(transfer.to_segment_, day_idx_t{day}),
-                     tt_.to_unixtime(day_idx_t{day}));
+        trace("  transfer {} - {} not active on {}", seg(s, qe),
+              seg(transfer.to_segment_, day_idx_t{day}),
+              tt_.to_unixtime(day_idx_t{day}));
       }
     }
   }
@@ -232,8 +226,10 @@ void query_engine<UseLowerBounds>::add_start(location_idx_t const l,
 template <bool UseLowerBounds>
 void query_engine<UseLowerBounds>::reconstruct(query const& q,
                                                journey& j) const {
-  fmt::println("reconstruct journey: transfers={}, dep={} arr={}", j.transfers_,
-               j.departure_time(), j.arrival_time());
+  UTL_FINALLY([&]() { std::reverse(begin(j.legs_), end(j.legs_)); })
+
+  trace("reconstruct journey: transfers={}, dep={} arr={}", j.transfers_,
+        j.departure_time(), j.arrival_time());
 
   auto parent = state_.parent_[j.transfers_];
   auto departure_segment = state_.q_n_[parent].segment_range_.from_;
@@ -289,9 +285,9 @@ void query_engine<UseLowerBounds>::reconstruct(query const& q,
 
   auto const get_run_leg =
       [&](segment_idx_t const arrival_segment) -> journey::leg {
-    fmt::println("run leg:\n\tdeparture segment: {}\n\tarrival segment: {}",
-                 seg(departure_segment, state_.q_n_[parent]),
-                 seg(arrival_segment, state_.q_n_[parent]));
+    trace("run leg:\n\tdeparture segment: {}\n\tarrival segment: {}",
+          seg(departure_segment, state_.q_n_[parent]),
+          seg(arrival_segment, state_.q_n_[parent]));
 
     auto const [transport, arr_stop_idx, arr_l, arr_time] =
         get_transport_info(arrival_segment, event_type::kArr);
@@ -404,15 +400,21 @@ void query_engine<UseLowerBounds>::reconstruct(query const& q,
   // -------------
   assert(!j.legs_.empty());
   auto const start_time = j.start_time_;
-  auto const first_dep_l = j.legs_.front().from_;
-  auto const first_dep_time = j.legs_.front().dep_time_;
+  auto const first_dep_l = j.legs_.back().from_;
+  auto const first_dep_time = j.legs_.back().dep_time_;
   if (q.start_match_mode_ == location_match_mode::kIntermodal) {
     auto const offset_it =
         utl::find_if(q.start_, [&](routing::offset const& o) {
           return o.target() == first_dep_l &&
                  start_time + o.duration() <= first_dep_time;
         });
-    utl::verify(offset_it != end(q.start_), "no start offset found");
+    utl::verify(
+        offset_it != end(q.start_),
+        "no start offset found start_time={}, first_dep={}@{}, offsets={}",
+        start_time, first_dep_time, location{tt_, first_dep_l},
+        q.start_ | std::views::transform([&](offset const& x) {
+          return std::pair{location{tt_, x.target_}, x.duration()};
+        }));
     j.legs_.push_back(journey::leg{
         direction::kForward, get_special_station(special_station::kStart),
         first_dep_l, first_dep_time - offset_it->duration(), first_dep_time,
@@ -428,8 +430,6 @@ void query_engine<UseLowerBounds>::reconstruct(query const& q,
       }
     }
   }
-
-  std::reverse(begin(j.legs_), end(j.legs_));
 }
 
 template <bool UseLowerBounds>

@@ -202,10 +202,6 @@ void add_non_uturn_transfers(timetable const& tt,
               fp.duration();
 
       if (!is_uturn && !is_uturn_target_route_terminates) {
-        fmt::println(
-            "adding neighborhood: from_stop_idx={}, route_to={}, "
-            "to_stop_idx={}, duration={}",
-            from_stop_idx, route_to, j, fp.duration());
         neighborhood.emplace_back(from_stop_idx, route_to, j, fp.duration());
       } else {
         ++stats.n_uturn_transfers_;
@@ -339,16 +335,14 @@ void preprocess_transport(
           tt.bitfields_[tt.transport_traffic_days_[u]];
 
       // init theta
+      auto const u_shifted_traffic_days =
+          (total_day_offset < 0)
+              ? (neighbor_traffic_days >>
+                 static_cast<unsigned>(-1 * total_day_offset))
+              : (neighbor_traffic_days
+                 << static_cast<unsigned>(total_day_offset));
       auto common_traffic_days =
-          remaining_traffic_days &
-          (total_day_offset ? neighbor_traffic_days >>
-                                  static_cast<unsigned>(-1 * total_day_offset)
-                            : neighbor_traffic_days
-                                  << static_cast<unsigned>(total_day_offset));
-
-      fmt::println("common days t={} {}, u={} {}: {}", tt.transport_name(t),
-                   tt.days(traffic_days), tt.transport_name(u),
-                   tt.days(traffic_days), tt.days(common_traffic_days));
+          remaining_traffic_days & u_shifted_traffic_days;
 
       // check for match
       if (common_traffic_days.any()) {
@@ -403,18 +397,6 @@ void preprocess_transport(
       } else {
         ++earliest_dep;
       }
-    }
-  }
-
-  fmt::println("transfers after line-based pruning for {}:",
-               tt.transport_name(t));
-  auto const stop_seq = tt.route_location_seq_[tt.transport_route_[t]];
-  for (auto const [x, transfers] : utl::zip(stop_seq, stop_transfers)) {
-    fmt::println("  {}", location{tt, stop{x}.location_idx()});
-    for (auto const& transfer : transfers) {
-      std::cout << "    -> ";
-      transfer.print(std::cout, tt);
-      std::cout << "\n";
     }
   }
 
