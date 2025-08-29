@@ -50,20 +50,17 @@ void resolve_static(date::sys_days const today,
 
   for (auto i = lb; i != end(tt.trip_id_to_idx_) && id_matches(i->first); ++i) {
     for (auto const [t, stop_range] : tt.trip_transport_ranges_[i->second]) {
-      auto const offset = tt.transport_first_dep_offset_[t];
+      auto const [first_dep_offset, tz_offset] =
+          tt.transport_first_dep_offset_[t].to_offset();
       auto const utc_dep =
           tt.event_mam(t, stop_range.from_, event_type::kDep).as_duration();
-      auto const gtfs_static_dep = utc_dep +
-                                   std::chrono::days{offset.days() - 1} +
-                                   std::chrono::minutes{offset.mam() - 720};
-      std::cout << utc_dep << " " << offset.mam() << " " << offset.days()
-                << std::endl;
-                auto const [gtfs_static_dep_day, gtfs_static_dep_time] =
-                split(gtfs_static_dep);
-            auto const [start_time_day, start_time_time] =
-                start_time.has_value() ? split(*start_time)
-                                       : std::pair{date::days{0U}, duration_t{0U}};
-      std::cout << gtfs_static_dep_time << " " << utc_dep << " " << *start_time - std::chrono::minutes{offset.mam() - 720} - start_time_day << std::endl;
+      auto const gtfs_static_dep = utc_dep + first_dep_offset + tz_offset;
+      auto const [gtfs_static_dep_day, gtfs_static_dep_time] =
+          split(gtfs_static_dep);
+      auto const [start_time_day, start_time_time] =
+          start_time.has_value() ? split(*start_time)
+                                 : std::pair{date::days{0U}, duration_t{0U}};
+
       if (start_time.has_value() && gtfs_static_dep_time != start_time_time) {
         continue;
       }
@@ -72,10 +69,8 @@ void resolve_static(date::sys_days const today,
           start_time.has_value() ? gtfs_static_dep_day - start_time_day
                                  : date::days{0U};
 
-
-      auto const day_offset = std::chrono::days{offset.days() - 1};
       auto const day_idx =
-          ((start_date.has_value() ? *start_date : today) + day_offset -
+          ((start_date.has_value() ? *start_date : today) + first_dep_offset -
            start_time_day_offset - tt.internal_interval_days().from_)
               .count();
 
