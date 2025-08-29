@@ -618,7 +618,7 @@ TEST(tb_preprocess, earlier_transport_transfer) {
   auto const s = tbd.transport_first_segment_[transport_idx_t{1U}];
   ASSERT_EQ(1U, tbd.segment_transfers_[s].size());
   auto const& t = tbd.segment_transfers_[s][0];
-  EXPECT_EQ(tbd.transport_first_segment_[transport_idx_t{0U}], t.to_segment_);
+  EXPECT_EQ(tbd.transport_first_segment_[transport_idx_t{0U}] + 4U, t.to_segment_);
   EXPECT_EQ(transport_idx_t{0U}, t.to_transport_);
   EXPECT_EQ(bitfield{"100000"}, tbd.bitfields_[t.traffic_days_]);
   EXPECT_EQ(stop_idx_t{4U}, t.to_stop_idx_);
