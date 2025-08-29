@@ -461,8 +461,10 @@ struct delta {
   delta(date::days const day_offset, duration_t const minutes_offset)
       : days_{static_cast<std::uint16_t>(day_offset.count() + 1)},
         mam_{static_cast<std::uint16_t>(minutes_offset.count() + 720)} {
-    assert(day_offset_.count() >= -1);
+    assert(day_offset.count() >= -1);
+    assert(day_offset.count() < 30);
     assert(minutes_offset.count() >= -720);
+    assert(minutes_offset.count() < 1320);
   }
 
   std::uint16_t value() const {

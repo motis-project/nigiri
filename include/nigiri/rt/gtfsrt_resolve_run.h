@@ -14,7 +14,6 @@
 
 namespace nigiri::rt {
 
-std::pair<date::days, duration_t> split_rounded(duration_t);
 std::pair<date::days, duration_t> split(duration_t);
 
 template <typename Fn>
