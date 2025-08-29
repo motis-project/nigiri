@@ -380,7 +380,9 @@ void preprocess_transport(
                 tt.event_mam(u, 0, event_type::kDep).mam_, improvement);
             if (improvement.any()) {
               s.reached_.transports_[j_prime].emplace_back(
-                  t_arr_day_offset + transfer_day_offset - u_dep_day_offset,
+                  static_cast<std::int8_t>(t_arr_day_offset +
+                                           transfer_day_offset -
+                                           u_dep_day_offset),
                   tt.event_mam(u, 0, event_type::kDep).mam_, improvement);
             }
           }
