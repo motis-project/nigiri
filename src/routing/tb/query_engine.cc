@@ -105,13 +105,13 @@ void query_engine<UseLowerBounds>::execute(unixtime_t const start_time,
     round.to_ = static_cast<queue_idx_t>(state_.q_n_.size());
   }
 
-  for (auto n = 1U; n != kMaxTransfers; ++n) {
+  for (auto n = 0U; n != kMaxTransfers; ++n) {
     if (state_.parent_[n] != queue_entry::kNoParent) {
       results.add({.legs_ = {},
                    .start_time_ = start_time,
                    .dest_time_ = state_.t_min_[n],
                    .dest_ = location_idx_t::invalid(),
-                   .transfers_ = static_cast<std::uint8_t>(n - 1U)});
+                   .transfers_ = static_cast<std::uint8_t>(n)});
     }
   }
 
@@ -166,6 +166,7 @@ template <bool UseLowerBounds>
 void query_engine<UseLowerBounds>::seg_transfers(queue_idx_t const q) {
   auto const qe = state_.q_n_[q];
   for (auto const s : qe.segment_range_) {
+    assert(s < state_.tbd_.segment_transfers_.size());
     for (auto const transfer : state_.tbd_.segment_transfers_[s]) {
       auto const day = to_idx(base_ + qe.transport_query_day_offset_);
       if (state_.tbd_.bitfields_[transfer.traffic_days_].test(day)) {
@@ -194,8 +195,8 @@ void query_engine<UseLowerBounds>::add_start(location_idx_t const l,
 
       if (et.is_valid()) {
         state_.q_n_.initial_enqueue(
-            state_.tbd_.transport_first_segment_[et.t_idx_] + i, et.t_idx_, i,
-            static_cast<std::int8_t>(to_idx(et.day_ - base_)));
+            state_.tbd_, state_.tbd_.transport_first_segment_[et.t_idx_] + i,
+            et.t_idx_, static_cast<std::int8_t>(to_idx(et.day_ - base_)));
       }
     }
   }
@@ -204,7 +205,7 @@ void query_engine<UseLowerBounds>::add_start(location_idx_t const l,
 template <bool UseLowerBounds>
 void query_engine<UseLowerBounds>::reconstruct(query const& q,
                                                journey& j) const {
-  auto parent = state_.parent_[j.transfers_ + 1U];
+  auto parent = state_.parent_[j.transfers_];
   auto departure_segment = state_.q_n_[parent].segment_range_.from_;
 
   auto const has_offset = [&](std::vector<offset> const& offsets,

@@ -76,6 +76,10 @@ struct interval {
 
   bool contains(T const t) const { return t >= from_ && t < to_; }
 
+  bool contains(interval const& o) const {
+    return from_ <= o.from_ && to_ >= o.to_;
+  }
+
   bool overlaps(interval const& o) const {
     return from_ < o.to_ && to_ > o.from_;
   }
