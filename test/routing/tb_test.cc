@@ -108,16 +108,8 @@ S2,S2,,,,,,
 
 # calendar.txt
 service_id,monday,tuesday,wednesday,thursday,friday,saturday,sunday,start_date,end_date
-DLY,1,1,1,1,1,1,1,20210301,20210307
-WE,0,0,0,0,0,1,1,20210301,20210307
-WD,1,1,1,1,1,0,0,20210301,20210307
 MON,1,0,0,0,0,0,0,20210301,20210307
-TUE,0,1,0,0,0,0,0,20210301,20210307
-WED,0,0,1,0,0,0,0,20210301,20210307
 THU,0,0,0,1,0,0,0,20210301,20210307
-FRI,0,0,0,0,1,0,0,20210301,20210307
-SAT,0,0,0,0,0,1,0,20210301,20210307
-SUN,0,0,0,0,0,0,1,20210301,20210307
 
 # routes.txt
 route_id,agency_id,route_short_name,route_long_name,route_desc,route_type
@@ -160,16 +152,7 @@ S2,S2,,,,,,
 
 # calendar.txt
 service_id,monday,tuesday,wednesday,thursday,friday,saturday,sunday,start_date,end_date
-DLY,1,1,1,1,1,1,1,20210301,20210307
-WE,0,0,0,0,0,1,1,20210301,20210307
-WD,1,1,1,1,1,0,0,20210301,20210307
 MON,1,0,0,0,0,0,0,20210301,20210307
-TUE,0,1,0,0,0,0,0,20210301,20210307
-WED,0,0,1,0,0,0,0,20210301,20210307
-THU,0,0,0,1,0,0,0,20210301,20210307
-FRI,0,0,0,0,1,0,0,20210301,20210307
-SAT,0,0,0,0,0,1,0,20210301,20210307
-SUN,0,0,0,0,0,0,1,20210301,20210307
 
 # routes.txt
 route_id,agency_id,route_short_name,route_long_name,route_desc,route_type
@@ -243,16 +226,8 @@ S2,S2,,,,,,
 
 # calendar.txt
 service_id,monday,tuesday,wednesday,thursday,friday,saturday,sunday,start_date,end_date
-DLY,1,1,1,1,1,1,1,20210301,20210307
-WE,0,0,0,0,0,1,1,20210301,20210307
-WD,1,1,1,1,1,0,0,20210301,20210307
 MON,1,0,0,0,0,0,0,20210301,20210307
 TUE,0,1,0,0,0,0,0,20210301,20210307
-WED,0,0,1,0,0,0,0,20210301,20210307
-THU,0,0,0,1,0,0,0,20210301,20210307
-FRI,0,0,0,0,1,0,0,20210301,20210307
-SAT,0,0,0,0,0,1,0,20210301,20210307
-SUN,0,0,0,0,0,0,1,20210301,20210307
 
 # routes.txt
 route_id,agency_id,route_short_name,route_long_name,route_desc,route_type
@@ -299,16 +274,8 @@ S2,S2,,,,,,
 
 # calendar.txt
 service_id,monday,tuesday,wednesday,thursday,friday,saturday,sunday,start_date,end_date
-DLY,1,1,1,1,1,1,1,20210301,20210307
-WE,0,0,0,0,0,1,1,20210301,20210307
-WD,1,1,1,1,1,0,0,20210301,20210307
 MON,1,0,0,0,0,0,0,20210301,20210307
-TUE,0,1,0,0,0,0,0,20210301,20210307
-WED,0,0,1,0,0,0,0,20210301,20210307
 THU,0,0,0,1,0,0,0,20210301,20210307
-FRI,0,0,0,0,1,0,0,20210301,20210307
-SAT,0,0,0,0,0,1,0,20210301,20210307
-SUN,0,0,0,0,0,0,1,20210301,20210307
 
 # routes.txt
 route_id,agency_id,route_short_name,route_long_name,route_desc,route_type
@@ -355,16 +322,7 @@ S2,S2,,,,,,
 
 # calendar.txt
 service_id,monday,tuesday,wednesday,thursday,friday,saturday,sunday,start_date,end_date
-DLY,1,1,1,1,1,1,1,20210301,20210307
-WE,0,0,0,0,0,1,1,20210301,20210307
 WD,1,1,1,1,1,0,0,20210301,20210307
-MON,1,0,0,0,0,0,0,20210301,20210307
-TUE,0,1,0,0,0,0,0,20210301,20210307
-WED,0,0,1,0,0,0,0,20210301,20210307
-THU,0,0,0,1,0,0,0,20210301,20210307
-FRI,0,0,0,0,1,0,0,20210301,20210307
-SAT,0,0,0,0,0,1,0,20210301,20210307
-SUN,0,0,0,0,0,0,1,20210301,20210307
 
 # routes.txt
 route_id,agency_id,route_short_name,route_long_name,route_desc,route_type
@@ -412,15 +370,6 @@ S2,S2,,,,,,
 # calendar.txt
 service_id,monday,tuesday,wednesday,thursday,friday,saturday,sunday,start_date,end_date
 DLY,1,1,1,1,1,1,1,20210301,20210307
-WE,0,0,0,0,0,1,1,20210301,20210307
-WD,1,1,1,1,1,0,0,20210301,20210307
-MON,1,0,0,0,0,0,0,20210301,20210307
-TUE,0,1,0,0,0,0,0,20210301,20210307
-WED,0,0,1,0,0,0,0,20210301,20210307
-THU,0,0,0,1,0,0,0,20210301,20210307
-FRI,0,0,0,0,1,0,0,20210301,20210307
-SAT,0,0,0,0,0,1,0,20210301,20210307
-SUN,0,0,0,0,0,0,1,20210301,20210307
 
 # routes.txt
 route_id,agency_id,route_short_name,route_long_name,route_desc,route_type
@@ -469,16 +418,7 @@ S4,S4,,,,,,
 
 # calendar.txt
 service_id,monday,tuesday,wednesday,thursday,friday,saturday,sunday,start_date,end_date
-DLY,1,1,1,1,1,1,1,20210301,20210307
-WE,0,0,0,0,0,1,1,20210301,20210307
-WD,1,1,1,1,1,0,0,20210301,20210307
 MON,1,0,0,0,0,0,0,20210301,20210307
-TUE,0,1,0,0,0,0,0,20210301,20210307
-WED,0,0,1,0,0,0,0,20210301,20210307
-THU,0,0,0,1,0,0,0,20210301,20210307
-FRI,0,0,0,0,1,0,0,20210301,20210307
-SAT,0,0,0,0,0,1,0,20210301,20210307
-SUN,0,0,0,0,0,0,1,20210301,20210307
 
 # routes.txt
 route_id,agency_id,route_short_name,route_long_name,route_desc,route_type
@@ -569,16 +509,7 @@ S4,S4,,,,,,
 
 # calendar.txt
 service_id,monday,tuesday,wednesday,thursday,friday,saturday,sunday,start_date,end_date
-DLY,1,1,1,1,1,1,1,20210301,20210307
-WE,0,0,0,0,0,1,1,20210301,20210307
-WD,1,1,1,1,1,0,0,20210301,20210307
 MON,1,0,0,0,0,0,0,20210301,20210307
-TUE,0,1,0,0,0,0,0,20210301,20210307
-WED,0,0,1,0,0,0,0,20210301,20210307
-THU,0,0,0,1,0,0,0,20210301,20210307
-FRI,0,0,0,0,1,0,0,20210301,20210307
-SAT,0,0,0,0,0,1,0,20210301,20210307
-SUN,0,0,0,0,0,0,1,20210301,20210307
 
 # routes.txt
 route_id,agency_id,route_short_name,route_long_name,route_desc,route_type
@@ -664,8 +595,11 @@ TEST(tb_preprocess, uturn_transfer) {
     EXPECT_TRUE(tbd.segment_transfers_[s].empty());
   }
   ASSERT_EQ(1U, tbd.segment_transfers_[tb::segment_idx_t{0U}].size());
-  EXPECT_EQ(tb::segment_idx_t{3U}, tbd.segment_transfers_[tb::segment_idx_t{0U}][0].to_segment_);
-  EXPECT_EQ(transport_idx_t{1U}, tbd.segment_transfers_[tb::segment_idx_t{0U}][0].to_transport_);
+  auto const& t = tbd.segment_transfers_[tb::segment_idx_t{0U}][0];
+  EXPECT_EQ(tb::segment_idx_t{3U}, t.to_segment_);
+  EXPECT_EQ(transport_idx_t{1U}, t.to_transport_);
+  EXPECT_EQ(bitfield{"100000"}, tbd.bitfields_[t.traffic_days_]);
+  EXPECT_EQ(0, t.day_offset_);
 }
 
 mem_dir unnecessary_transfer_1_files() {
@@ -684,16 +618,7 @@ S4,S4,,,,,,
 
 # calendar.txt
 service_id,monday,tuesday,wednesday,thursday,friday,saturday,sunday,start_date,end_date
-DLY,1,1,1,1,1,1,1,20210301,20210307
-WE,0,0,0,0,0,1,1,20210301,20210307
-WD,1,1,1,1,1,0,0,20210301,20210307
 MON,1,0,0,0,0,0,0,20210301,20210307
-TUE,0,1,0,0,0,0,0,20210301,20210307
-WED,0,0,1,0,0,0,0,20210301,20210307
-THU,0,0,0,1,0,0,0,20210301,20210307
-FRI,0,0,0,0,1,0,0,20210301,20210307
-SAT,0,0,0,0,0,1,0,20210301,20210307
-SUN,0,0,0,0,0,0,1,20210301,20210307
 
 # routes.txt
 route_id,agency_id,route_short_name,route_long_name,route_desc,route_type
@@ -793,16 +718,8 @@ S4,S4,,,,,,
 
 # calendar.txt
 service_id,monday,tuesday,wednesday,thursday,friday,saturday,sunday,start_date,end_date
-DLY,1,1,1,1,1,1,1,20210301,20210307
-WE,0,0,0,0,0,1,1,20210301,20210307
-WD,1,1,1,1,1,0,0,20210301,20210307
 MON,1,0,0,0,0,0,0,20210301,20210307
-TUE,0,1,0,0,0,0,0,20210301,20210307
-WED,0,0,1,0,0,0,0,20210301,20210307
 THU,0,0,0,1,0,0,0,20210301,20210307
-FRI,0,0,0,0,1,0,0,20210301,20210307
-SAT,0,0,0,0,0,1,0,20210301,20210307
-SUN,0,0,0,0,0,0,1,20210301,20210307
 
 # routes.txt
 route_id,agency_id,route_short_name,route_long_name,route_desc,route_type
