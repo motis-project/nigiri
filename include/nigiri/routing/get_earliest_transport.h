@@ -22,6 +22,9 @@ transport get_earliest_transport(timetable const& tt,
   constexpr auto const is_better = [](auto a, auto b) {
     return kFwd ? a < b : a > b;
   };
+  constexpr auto const is_better_or_eq = [](auto a, auto b) {
+    return kFwd ? a <= b : a >= b;
+  };
 
   auto const as_int = [](auto const x) { return static_cast<int>(x.v_); };
 

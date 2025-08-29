@@ -102,7 +102,7 @@ struct query_engine {
 private:
   void seg_dest(std::uint8_t k, queue_idx_t);
   void seg_prune(std::uint8_t k, queue_entry&);
-  void seg_transfers(std::uint8_t k, queue_idx_t);
+  void seg_transfers(queue_idx_t);
 
   timetable const& tt_;
   query_state& state_;

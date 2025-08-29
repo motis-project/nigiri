@@ -106,7 +106,7 @@ struct interval {
     return r.end();
   }
 
-  auto size() const { return to_ - from_; }
+  auto size() const { return cista::to_idx(to_ - from_); }
 
   bool empty() const { return to_ - from_ == 0U; }
 

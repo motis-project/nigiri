@@ -14,8 +14,6 @@ struct search_state;
 struct raptor_state;
 struct journey;
 
-bool is_journey_start(timetable const&, query const&, location_idx_t);
-
 template <direction SearchDir>
 void reconstruct_journey(timetable const&,
                          rt_timetable const*,

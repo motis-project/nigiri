@@ -194,7 +194,7 @@ TEST(tb_preprocess, same_day_transfer) {
   auto const tt = load_gtfs(same_day_transfer_files);
   auto const tbd = tb::preprocess(tt, profile_idx_t{0});
   auto const s = tbd.transport_first_segment_[transport_idx_t{0U}];
-  ASSERT_TRUE(tbd.segment_transfers_[s].size() == 1U);
+  ASSERT_EQ(1U, tbd.segment_transfers_[s].size());
   auto const& t = tbd.segment_transfers_[s][0];
   EXPECT_EQ(tbd.transport_first_segment_[transport_idx_t{1U}], t.to_segment_);
   EXPECT_EQ(transport_idx_t{1U}, t.to_transport_);
@@ -616,7 +616,7 @@ TEST(tb_preprocess, earlier_transport_transfer) {
   auto const tt = load_gtfs(earlier_transport_transfer_files);
   auto const tbd = tb::preprocess(tt, profile_idx_t{0});
   auto const s = tbd.transport_first_segment_[transport_idx_t{1U}];
-  ASSERT_TRUE(tbd.segment_transfers_[s].size() == 1U);
+  ASSERT_EQ(1U, tbd.segment_transfers_[s].size());
   auto const& t = tbd.segment_transfers_[s][0];
   EXPECT_EQ(tbd.transport_first_segment_[transport_idx_t{0U}], t.to_segment_);
   EXPECT_EQ(transport_idx_t{0U}, t.to_transport_);

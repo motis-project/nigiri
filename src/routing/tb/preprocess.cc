@@ -393,7 +393,7 @@ void preprocess_transport(
 
   // reverse iteration
   auto const stop_seq_from = tt.route_location_seq_[tt.transport_route_[t]];
-  for (auto j = 0U; j != stop_seq_from.size(); ++j) {
+  for (auto j = 0U; j != stop_seq_from.size() - 1U; ++j) {
     auto const from_stop_idx =
         static_cast<stop_idx_t>(stop_seq_from.size() - j - 1);
 
@@ -408,7 +408,6 @@ void preprocess_transport(
     // tau_arr(t,i)
     auto const arr = tt.event_mam(t, from_stop_idx, event_type::kArr);
     auto const t_arr = static_cast<std::uint16_t>(arr.count());
-    auto const t_arr_mam = static_cast<std::uint16_t>(arr.mam_);
 
     // init the reached reduction data structure
     s.rr_arr_.update(from_stop, t_arr, traffic_days);
@@ -478,11 +477,10 @@ void preprocess_route(
         transport_stop_transfers,
     stats& stats) {
   get_route_neighborhood(tt, current_route, prf_idx, s.neighborhood_, stats);
-  if (!s.neighborhood_.empty()) {
+  if (s.neighborhood_.empty()) {
     return;
   }
 
-  auto const stop_seq_from = tt.route_location_seq_[current_route];
   for (auto const t : tt.route_transport_ranges_[current_route]) {
     preprocess_transport(tt, s, t, prf_idx, transport_stop_transfers[t], stats);
   }
@@ -512,8 +510,8 @@ tb_data transform_to_tb_data(
     d.transport_first_segment_.push_back(start);
     for (auto const& transfers : stops) {
       d.segment_transfers_.add_back_sized(transfers.size());
-      start += static_cast<segment_idx_t::value_t>(transfers.size());
     }
+    start += static_cast<segment_idx_t::value_t>(stops.size());
   }
   d.transport_first_segment_.push_back(start);
   d.segment_transports_.resize(d.segment_transfers_.size());

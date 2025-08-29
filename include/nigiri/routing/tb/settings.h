@@ -16,7 +16,7 @@ namespace nigiri::routing::tb {
 
 constexpr auto const kTBMaxTravelTimeDays = 3U;
 constexpr auto const kTBMaxDayOffset =
-    kTimetableOffset / 1_days + kTBMaxTravelTimeDays;
+    std::int8_t{kTimetableOffset / 1_days + kTBMaxTravelTimeDays};
 
 constexpr unsigned const kBitfieldIdxMax = 1U << BITFIELD_IDX_BITS;
 constexpr unsigned const kTransportIdxMax = 1U << TRANSPORT_IDX_BITS;
