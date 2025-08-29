@@ -14,7 +14,6 @@
 
 namespace nigiri::rt {
 
-std::pair<date::days, duration_t> split_rounded(duration_t);
 std::pair<date::days, duration_t> split(duration_t);
 
 template <typename Fn>
@@ -50,16 +49,17 @@ void resolve_static(date::sys_days const today,
 
   for (auto i = lb; i != end(tt.trip_id_to_idx_) && id_matches(i->first); ++i) {
     for (auto const [t, stop_range] : tt.trip_transport_ranges_[i->second]) {
-      auto const o = tt.transport_first_dep_offset_[t];
+      auto const [first_dep_offset, tz_offset] =
+          tt.transport_first_dep_offset_[t].to_offset();
       auto const utc_dep =
           tt.event_mam(t, stop_range.from_, event_type::kDep).as_duration();
-      auto const gtfs_static_dep = utc_dep + o;
-
+      auto const gtfs_static_dep = utc_dep + first_dep_offset + tz_offset;
       auto const [gtfs_static_dep_day, gtfs_static_dep_time] =
           split(gtfs_static_dep);
       auto const [start_time_day, start_time_time] =
           start_time.has_value() ? split(*start_time)
                                  : std::pair{date::days{0U}, duration_t{0U}};
+
       if (start_time.has_value() && gtfs_static_dep_time != start_time_time) {
         continue;
       }
@@ -67,10 +67,9 @@ void resolve_static(date::sys_days const today,
       auto const start_time_day_offset =
           start_time.has_value() ? gtfs_static_dep_day - start_time_day
                                  : date::days{0U};
-      auto const [day_offset, tz_offset_minutes] = split_rounded(o);
 
       auto const day_idx =
-          ((start_date.has_value() ? *start_date : today) + day_offset -
+          ((start_date.has_value() ? *start_date : today) + first_dep_offset -
            start_time_day_offset - tt.internal_interval_days().from_)
               .count();
 

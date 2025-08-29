@@ -9,12 +9,6 @@
 
 namespace nigiri::rt {
 
-std::pair<date::days, duration_t> split_rounded(duration_t const i) {
-  auto const a = static_cast<int>(std::round(i.count() / 1440.));
-  auto const b = i.count() - a * 1440;
-  return {date::days{a}, duration_t{b}};
-}
-
 std::pair<date::days, duration_t> split(duration_t const i) {
   auto const a = i.count() / 1440;
   auto const b = i.count() % 1440;
