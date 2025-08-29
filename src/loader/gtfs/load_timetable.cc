@@ -456,6 +456,7 @@ void load_timetable(loader_config const& config,
             }
           }
 
+          assert(s.first_dep_offset_.count() >= -1);
           tt.add_transport(timetable::transport{
               .bitfield_idx_ = utl::get_or_create(
                   bitfield_indices, s.utc_traffic_days_,

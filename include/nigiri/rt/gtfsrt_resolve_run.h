@@ -58,19 +58,26 @@ void resolve_static(date::sys_days const today,
                                    std::chrono::minutes{offset.mam() - 720};
       std::cout << utc_dep << " " << offset.mam() << " " << offset.days()
                 << std::endl;
-      auto const [_, gtfs_static_dep_time] = split(gtfs_static_dep);
-      auto const [_1, start_time_time] =
-          start_time.has_value() ? split(*start_time)
-                                 : std::pair{date::days{0U}, duration_t{0U}};
-      std::cout << gtfs_static_dep_time << " " << start_time_time << std::endl;
+                auto const [gtfs_static_dep_day, gtfs_static_dep_time] =
+                split(gtfs_static_dep);
+            auto const [start_time_day, start_time_time] =
+                start_time.has_value() ? split(*start_time)
+                                       : std::pair{date::days{0U}, duration_t{0U}};
+      std::cout << gtfs_static_dep_time << " " << utc_dep << " " << *start_time - std::chrono::minutes{offset.mam() - 720} - start_time_day << std::endl;
       if (start_time.has_value() && gtfs_static_dep_time != start_time_time) {
         continue;
       }
 
-      auto const day_idx = ((start_date.has_value() ? *start_date : today) +
-                            std::chrono::days{offset.days() - 1} -
-                            tt.internal_interval_days().from_)
-                               .count();
+      auto const start_time_day_offset =
+          start_time.has_value() ? gtfs_static_dep_day - start_time_day
+                                 : date::days{0U};
+
+
+      auto const day_offset = std::chrono::days{offset.days() - 1};
+      auto const day_idx =
+          ((start_date.has_value() ? *start_date : today) + day_offset -
+           start_time_day_offset - tt.internal_interval_days().from_)
+              .count();
 
       std::cout << day_idx << " end " << std::endl;
       if (day_idx > kMaxDays || day_idx < 0) {

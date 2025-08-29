@@ -93,7 +93,7 @@ constexpr auto const kTransport1AfterUpdate = std::string_view{
 )"};
 
 constexpr auto const kTransport1SummerAfterUpdate = std::string_view{
-  R"(
+    R"(
    0: A       A...............................................                                                             d: 03.11 00:00 [03.11 13:00]  RT 03.11 00:01 [03.11 13:01]  [{name=RE 1, day=2019-11-03, id=T_RE1_summer, src=0}]
    1: B       B............................................... a: 03.11 00:30 [03.11 13:30]  RT 03.11 00:31 [03.11 13:31]
 )"};
@@ -118,7 +118,7 @@ constexpr auto const kTransport2AfterUpdate = std::string_view{
 )"};
 
 constexpr auto const kTransport2SummerAfterUpdate = std::string_view{
-  R"(
+    R"(
    0: B       B...............................................                                                             d: 03.11 11:30 [04.11 00:30]  RT 03.11 11:30 [04.11 00:30]  [{name=RE 2, day=2019-11-03, id=T_RE2_summer, src=0}]
    1: C       C............................................... a: 03.11 11:45 [04.11 00:45]  RT 03.11 11:45 [04.11 00:45]  d: 03.11 11:45 [04.11 00:45]  RT 03.11 11:45 [04.11 00:45]  [{name=RE 2, day=2019-11-03, id=T_RE2_summer, src=0}]
    2: D       D............................................... a: 03.11 23:30 [04.11 12:30]  RT 03.11 23:30 [04.11 12:30]
@@ -140,28 +140,6 @@ auto const kTripUpdate =
   "tripId": "T_RE1",
   "startTime": "13:00:00",
   "startDate": "20190503",
-  "routeId": "T_RE1"
- },
- "stopTimeUpdate": [
-  {
-   "stopSequence": 1,
-   "departure": {
-    "delay": 60
-   },
-   "stopId": "A",
-   "scheduleRelationship": "SCHEDULED"
-  }
- ]
-}
-},
-{
-"id": "2",
-"isDeleted": false,
-"tripUpdate": {
- "trip": {
-  "tripId": "T_RE1_summer",
-  "startTime": "13:00:00",
-  "startDate": "20191103",
   "routeId": "T_RE1"
  },
  "stopTimeUpdate": [
@@ -239,6 +217,39 @@ auto const kTripUpdate =
    "departure": {
     "delay": 0
    },
+   "stopId": "B",
+   "scheduleRelationship": "SCHEDULED"
+  }
+ ]
+}
+},
+]
+})"s;
+
+auto const kTripUpdateSummer =
+    R"({
+"header": {
+"gtfsRealtimeVersion": "2.0",
+"incrementality": "FULL_DATASET",
+"timestamp": "1691660324"
+},
+"entity": [
+{
+"id": "2",
+"isDeleted": false,
+"tripUpdate": {
+ "trip": {
+  "tripId": "T_RE1_summer",
+  "startTime": "13:00:00",
+  "startDate": "20191103",
+  "routeId": "T_RE1"
+ },
+ "stopTimeUpdate": [
+  {
+   "stopSequence": 1,
+   "departure": {
+    "delay": 60
+   },
    "stopId": "A",
    "scheduleRelationship": "SCHEDULED"
   }
@@ -264,7 +275,7 @@ auto const kTripUpdate =
    "departure": {
     "delay": 0
    },
-   "stopId": "A",
+   "stopId": "B",
    "scheduleRelationship": "SCHEDULED"
   }
  ]
@@ -303,22 +314,6 @@ TEST(rt, gtfs_rt_utc_12) {
     auto ss = std::stringstream{};
     ss << "\n" << fr;
     EXPECT_EQ(kTransport1AfterUpdate, ss.str());
-  }
-
-  {
-    // Print trip.
-    transit_realtime::TripDescriptor td;
-    td.set_start_date("20191103");
-    td.set_trip_id("T_RE1_summer");
-    td.set_start_time("13:00:00");
-    auto const [r, t] = rt::gtfsrt_resolve_run(date::sys_days{2019_y / November / 3},
-                                               tt, &rtt, source_idx_t{0}, td);
-    ASSERT_TRUE(r.valid());
-
-    auto const fr = rt::frun{tt, &rtt, r};
-    auto ss = std::stringstream{};
-    ss << "\n" << fr;
-    EXPECT_EQ(kTransport1SummerAfterUpdate, ss.str());
   }
 
   {
@@ -368,6 +363,39 @@ TEST(rt, gtfs_rt_utc_12) {
     ss << "\n" << fr;
     EXPECT_EQ(kTransport2AfterUpdate, ss.str());
   }
+}
+
+TEST(rt, gtfs_rt_utc_13) {
+  // Load static timetable.
+  timetable tt;
+  register_special_stations(tt);
+  tt.date_range_ = {date::sys_days{2019_y / May / 2},
+                    date::sys_days{2019_y / November / 12}};
+  load_timetable({}, source_idx_t{0}, test_files(), tt);
+  finalize(tt);
+
+  // Create empty RT timetable.
+  auto rtt = rt::create_rt_timetable(tt, date::sys_days{2019_y / November / 3});
+
+  // Update.
+  auto const msg = rt::json_to_protobuf(kTripUpdateSummer);
+  gtfsrt_update_buf(tt, rtt, source_idx_t{0}, "", msg);
+
+  {
+    // Print trip.
+    transit_realtime::TripDescriptor td;
+    td.set_start_date("20191103");
+    td.set_trip_id("T_RE1_summer");
+    td.set_start_time("13:00:00");
+    auto const [r, t] = rt::gtfsrt_resolve_run(
+        date::sys_days{2019_y / November / 3}, tt, &rtt, source_idx_t{0}, td);
+    ASSERT_TRUE(r.valid());
+
+    auto const fr = rt::frun{tt, &rtt, r};
+    auto ss = std::stringstream{};
+    ss << "\n" << fr;
+    EXPECT_EQ(kTransport1SummerAfterUpdate, ss.str());
+  }
 
   {
     // Print trip.
@@ -375,8 +403,9 @@ TEST(rt, gtfs_rt_utc_12) {
     td.set_start_date("20191104");
     td.set_trip_id("T_RE2_summer");
     td.set_start_time("00:30:00");
-    auto const [r, t] = rt::gtfsrt_resolve_run(date::sys_days{2019_y / November / 3},
-                                               tt, nullptr, source_idx_t{0}, td);
+    auto const [r, t] =
+        rt::gtfsrt_resolve_run(date::sys_days{2019_y / November / 3}, tt,
+                               nullptr, source_idx_t{0}, td);
     ASSERT_TRUE(r.valid());
 
     auto const fr = rt::frun{tt, &rtt, r};
