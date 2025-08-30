@@ -562,21 +562,27 @@ tb_data preprocess(timetable const& tt,
       vector_map<transport_idx_t,
                  std::vector<std::vector<expanded_transfer>>>{};
   transport_stop_transfers.resize(to_idx(tt.next_transport_idx()));
+
   for (auto t = transport_idx_t{0U}; t != tt.next_transport_idx(); ++t) {
     transport_stop_transfers[t].resize(
         tt.route_location_seq_[tt.transport_route_[t]].size());
   }
 
+  auto const pt = utl::get_active_progress_tracker();
+  pt->status("Compute Transfers").in_high(tt.n_routes());
   if (mode == parallelization::kParallel) {
     utl::parallel_for_run_threadlocal<state>(
-        tt.n_routes(), [&](state& s, std::size_t const i) {
+        tt.n_routes(),
+        [&](state& s, std::size_t const i) {
           preprocess_route(tt, s, route_idx_t{i}, prf_idx,
                            transport_stop_transfers, stats);
-        });
+        },
+        pt->update_fn());
   } else {
     auto s = state{};
     for (auto r = route_idx_t{0U}; r != tt.n_routes(); ++r) {
       preprocess_route(tt, s, r, prf_idx, transport_stop_transfers, stats);
+      pt->increment();
     }
   }
 
