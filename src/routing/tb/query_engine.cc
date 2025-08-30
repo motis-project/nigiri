@@ -293,14 +293,21 @@ void query_engine<UseLowerBounds>::reconstruct(query const& q,
         get_transport_info(arrival_segment, event_type::kArr);
     auto const [_, dep_stop_idx, dep_l, dep_time] =
         get_transport_info(departure_segment, event_type::kDep);
-    return {direction::kForward,
-            dep_l,
-            arr_l,
-            dep_time,
-            arr_time,
-            journey::run_enter_exit{
-                rt::run{.t_ = transport, .stop_range_ = {0U, 0U}}, dep_stop_idx,
-                arr_stop_idx}};
+    return {
+        direction::kForward,
+        dep_l,
+        arr_l,
+        dep_time,
+        arr_time,
+        journey::run_enter_exit{
+            rt::run{
+                .t_ = transport,
+                .stop_range_ = {static_cast<stop_idx_t>(0U),
+                                static_cast<stop_idx_t>(
+                                    tt_.route_location_seq_
+                                        [tt_.transport_route_[transport.t_idx_]]
+                                            .size())}},
+            dep_stop_idx, arr_stop_idx}};
   };
 
   // ============
@@ -370,6 +377,7 @@ void query_engine<UseLowerBounds>::reconstruct(query const& q,
   if (!find_last_leg()) {
     throw utl::fail("no last leg found");
   }
+  j.dest_ = j.legs_.back().to_;
 
   // ==================
   // (2) Transport legs
@@ -385,12 +393,7 @@ void query_engine<UseLowerBounds>::reconstruct(query const& q,
                                       arr_time + fp.duration(), fp});
 
     departure_segment = state_.q_n_[parent].segment_range_.from_;
-    auto const [_, dep_stop_idx, dep_l, dep_time] =
-        get_transport_info(departure_segment, event_type::kDep);
-    j.legs_.push_back({direction::kForward, dep_l, arr_l, dep_time, arr_time,
-                       journey::run_enter_exit{
-                           rt::run{.t_ = transport, .stop_range_ = {0U, 0U}},
-                           dep_stop_idx, arr_stop_idx}});
+    j.legs_.push_back(get_run_leg(arrival_segment));
 
     parent = state_.q_n_[parent].parent_;
   }

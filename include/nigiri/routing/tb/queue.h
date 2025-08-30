@@ -1,5 +1,6 @@
 #pragma once
 
+#include "nigiri/routing/raptor/debug.h"
 #include "nigiri/routing/tb/reached.h"
 #include "nigiri/routing/tb/settings.h"
 #include "nigiri/routing/tb/tb_data.h"
@@ -33,16 +34,15 @@ struct queue {
         q_[parent].transport_query_day_offset_ + transfer.day_offset_;
 
     if (day_offset <= 0 || day_offset >= kTBMaxDayOffset) {
-      fmt::println("  day_offset out of range: {}", day_offset);
+      trace("  day_offset out of range: {}", day_offset);
       return false;
     }
 
     auto const min_segment_offset =
         r_.query(transfer.to_transport_, day_offset);
     if (transfer.to_segment_offset_ >= min_segment_offset) {
-      fmt::println(
-          "  already reached: transfer.to_segment={} >= {}=min_segment",
-          transfer.to_segment_, min_segment_offset);
+      trace("  already reached: transfer.to_segment={} >= {}=min_segment",
+            transfer.to_segment_, min_segment_offset);
       return false;
     }
 

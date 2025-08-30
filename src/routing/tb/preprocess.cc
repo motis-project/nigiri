@@ -553,7 +553,9 @@ tb_data transform_to_tb_data(
   return d;
 }
 
-tb_data preprocess(timetable const& tt, profile_idx_t const prf_idx) {
+tb_data preprocess(timetable const& tt,
+                   profile_idx_t const prf_idx,
+                   parallelization const mode) {
   stats stats;
 
   auto transport_stop_transfers =
@@ -565,8 +567,7 @@ tb_data preprocess(timetable const& tt, profile_idx_t const prf_idx) {
         tt.route_location_seq_[tt.transport_route_[t]].size());
   }
 
-  auto const parallel = false;
-  if (parallel) {
+  if (mode == parallelization::kParallel) {
     utl::parallel_for_run_threadlocal<state>(
         tt.n_routes(), [&](state& s, std::size_t const i) {
           preprocess_route(tt, s, route_idx_t{i}, prf_idx,

@@ -45,6 +45,18 @@ struct query_state {
 };
 
 struct query_stats {
+  std::map<std::string, std::uint64_t> to_map() const {
+    return {
+        {"lower_bound_pruning", lower_bound_pruning_},
+        {"n_segments_enqueued", n_segments_enqueued_},
+        {"n_segments_pruned", n_segments_pruned_},
+        {"n_enqueue_prevented_by_reached", n_enqueue_prevented_by_reached_},
+        {"n_journeys_found", n_journeys_found_},
+        {"n_rounds", n_rounds_},
+        {"max_transfers_reached", max_transfers_reached_},
+    };
+  }
+
   bool lower_bound_pruning_{false};
   std::uint64_t n_segments_enqueued_{0U};
   std::uint64_t n_segments_pruned_{0U};
