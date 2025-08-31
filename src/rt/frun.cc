@@ -78,15 +78,17 @@ std::pair<date::sys_days, duration_t> run_stop::get_trip_start(
 
     // service date + start time
     auto const [static_transport, utc_start_day] = fr_->t_;
-    auto const o = tt().transport_first_dep_offset_[static_transport];
+    auto const [first_dep_offset, tz_offset] =
+        tt().transport_first_dep_offset_[static_transport].to_offset();
     auto const utc_dep =
         tt().event_mam(static_transport, first_trip_stop.stop_idx_,
                        event_type::kDep)
             .as_duration();
-    auto const gtfs_static_dep = utc_dep + o;
-    auto const [day_offset, _] = split_rounded(gtfs_static_dep - utc_dep);
-    auto const day = (tt().internal_interval_days().from_ +
-                      std::chrono::days{to_idx(utc_start_day)} - day_offset);
+    auto const gtfs_static_dep = utc_dep + first_dep_offset + tz_offset;
+
+    auto const day =
+        (tt().internal_interval_days().from_ +
+         std::chrono::days{to_idx(utc_start_day)} - first_dep_offset);
 
     return {day, gtfs_static_dep};
   }

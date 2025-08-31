@@ -456,12 +456,13 @@ void load_timetable(loader_config const& config,
             }
           }
 
+          assert(s.first_dep_offset_.count() >= -1);
           tt.add_transport(timetable::transport{
               .bitfield_idx_ = utl::get_or_create(
                   bitfield_indices, s.utc_traffic_days_,
                   [&]() { return tt.register_bitfield(s.utc_traffic_days_); }),
               .route_idx_ = route_idx,
-              .first_dep_offset_ = s.first_dep_offset_,
+              .first_dep_offset_ = {s.first_dep_offset_, s.tz_offset_},
               .external_trip_ids_ = external_trip_ids,
               .section_attributes_ = attributes,
               .section_providers_ = {first.route_->agency_},
