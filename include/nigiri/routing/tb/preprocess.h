@@ -9,10 +9,6 @@ struct timetable;
 
 namespace nigiri::routing::tb {
 
-enum class parallelization : std::uint8_t { kParallel, kSequential };
-
-tb_data preprocess(timetable const&,
-                   profile_idx_t,
-                   parallelization = parallelization::kSequential);
+tb_data preprocess(timetable const&, profile_idx_t);
 
 }  // namespace nigiri::routing::tb

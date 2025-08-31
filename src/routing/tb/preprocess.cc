@@ -5,6 +5,7 @@
 #include "utl/enumerate.h"
 #include "utl/get_or_create.h"
 #include "utl/parallel_for.h"
+#include "utl/pool.h"
 #include "utl/progress_tracker.h"
 
 #include "nigiri/common/day_list.h"
@@ -78,6 +79,9 @@ struct expanded_transfer {
   stop_idx_t stop_idx_to_;
   std::int8_t day_offset_;
 };
+
+// [transport_idx - route_first_transport_idx][stop_idx][transfer]
+using transfers_t = std::vector<std::vector<std::vector<expanded_transfer>>>;
 
 struct route_transfer {
   stop_idx_t stop_idx_from_;
@@ -250,13 +254,12 @@ void get_route_neighborhood(timetable const& tt,
   });
 }
 
-void preprocess_transport(
-    timetable const& tt,
-    state& s,
-    transport_idx_t const t,
-    profile_idx_t const prf_idx,
-    std::vector<std::vector<expanded_transfer>>& stop_transfers,
-    stats& stats) {
+void preprocess_transport(timetable const& tt,
+                          state& s,
+                          transport_idx_t const t,
+                          profile_idx_t const prf_idx,
+                          transfers_t::value_type& segment_transfers,
+                          stats& stats) {
   // the bitfield of the transport we are transferring from
   auto const& traffic_days = tt.bitfields_[tt.transport_traffic_days_[t]];
 
@@ -269,7 +272,9 @@ void preprocess_transport(
   // initial reset of earliest transport
   s.reached_.reset(stop_seq_to.size());
 
-  // iterate entries in route neighborhood
+  // ==========
+  // Line Based
+  // ----------
   for (auto const& neighbor : s.neighborhood_) {
     // handle change of target line
     if (route_to_prev != neighbor.route_idx_to_) {
@@ -359,8 +364,9 @@ void preprocess_transport(
         // recheck common days
         if (common_traffic_days.any()) {
           // add transfer to set
-          stop_transfers[neighbor.stop_idx_from_].push_back(expanded_transfer{
-              common_traffic_days, u, neighbor.stop_idx_to_, day_offset});
+          segment_transfers[neighbor.stop_idx_from_ - 1U].push_back(
+              expanded_transfer{common_traffic_days, u, neighbor.stop_idx_to_,
+                                day_offset});
 
           ++stats.n_transfers_initial_;
 
@@ -407,7 +413,9 @@ void preprocess_transport(
   s.rr_arr_.reset();
   s.rr_ch_.reset();
 
-  // reverse iteration
+  // ==================
+  // Transfer Reduction
+  // ------------------
   auto const stop_seq_from = tt.route_location_seq_[tt.transport_route_[t]];
   for (auto j = 0U; j != stop_seq_from.size() - 1U; ++j) {
     auto const from_stop_idx =
@@ -436,8 +444,8 @@ void preprocess_transport(
     }
 
     // iterate transfers found by line-based pruning
-    for (auto transfer = stop_transfers[from_stop_idx].begin();
-         transfer != stop_transfers[from_stop_idx].end();) {
+    for (auto transfer = segment_transfers[from_stop_idx - 1U].begin();
+         transfer != segment_transfers[from_stop_idx - 1U].end();) {
       auto improvement = bitfield{};
 
       // update subsequent stops of route we transfer to (transfer + travel)
@@ -475,7 +483,7 @@ void preprocess_transport(
       // if the transfer offers no improvement
       if (transfer->bf_.none()) {
         // remove it
-        transfer = stop_transfers[from_stop_idx].erase(transfer);
+        transfer = segment_transfers[from_stop_idx - 1U].erase(transfer);
         ++stats.n_transfers_reduced_;
       } else {
         ++transfer;
@@ -484,33 +492,38 @@ void preprocess_transport(
   }
 }
 
-void preprocess_route(
-    timetable const& tt,
-    state& s,
-    route_idx_t const current_route,
-    profile_idx_t const prf_idx,
-    vector_map<transport_idx_t, std::vector<std::vector<expanded_transfer>>>&
-        transport_stop_transfers,
-    stats& stats) {
-  get_route_neighborhood(tt, current_route, prf_idx, s.neighborhood_, stats);
+void preprocess_route(timetable const& tt,
+                      state& s,
+                      route_idx_t const r,
+                      profile_idx_t const prf_idx,
+                      transfers_t& transfers,
+                      stats& stats) {
+  transfers.resize(
+      std::max(transfers.size(),
+               static_cast<std::size_t>(tt.route_transport_ranges_[r].size())));
+  for (auto& x : transfers) {
+    x.clear();
+    x.resize(std::max(x.size(), static_cast<std::size_t>(
+                                    tt.route_location_seq_[r].size() - 1U)));
+  }
+
+  get_route_neighborhood(tt, r, prf_idx, s.neighborhood_, stats);
   if (s.neighborhood_.empty()) {
     return;
   }
 
-  for (auto const t : tt.route_transport_ranges_[current_route]) {
-    preprocess_transport(tt, s, t, prf_idx, transport_stop_transfers[t], stats);
+  for (auto const [i, t] : utl::enumerate(tt.route_transport_ranges_[r])) {
+    preprocess_transport(tt, s, t, prf_idx, transfers[i], stats);
   }
 }
 
-tb_data transform_to_tb_data(
-    timetable const& tt,
-    vector_map<transport_idx_t,
-               std::vector<std::vector<expanded_transfer>>> const&
-        transport_stop_transfers,
-    profile_idx_t const prf_idx) {
+tb_data preprocess(timetable const& tt, profile_idx_t const prf_idx) {
+  stats stats;
+
   auto d = tb_data{};
   d.prf_idx_ = prf_idx;
 
+  // Bitfield deduplication
   auto bitfields = hash_map<bitfield, tb_bitfield_idx_t>{};
   auto const get_or_create_bf = [&](bitfield const& bf) {
     return utl::get_or_create(bitfields, bf, [&]() {
@@ -522,78 +535,61 @@ tb_data transform_to_tb_data(
 
   // Allocate space.
   auto start = segment_idx_t{0U};
-  for (auto const& stops : transport_stop_transfers) {
-    d.transport_first_segment_.push_back(start);
-    for (auto const& transfers : stops) {
-      d.segment_transfers_.add_back_sized(transfers.size());
+  for (auto r = route_idx_t{0U}; r != tt.n_routes(); ++r) {
+    auto const stops = tt.route_location_seq_[r];
+    auto const transports = tt.route_transport_ranges_[r];
+    for (auto const t : transports) {
+      d.transport_first_segment_.push_back(start);
+      for (auto i = 0U; i != stops.size() - 1U; ++i) {
+        d.segment_transports_.push_back(t);
+      }
+      start += static_cast<segment_idx_t::value_t>(stops.size() - 1U);
     }
-    start += static_cast<segment_idx_t::value_t>(stops.size());
   }
   d.transport_first_segment_.push_back(start);
-  d.segment_transports_.resize(d.segment_transfers_.size());
 
-  // Generate segment transfers.
-  for (auto t = transport_idx_t{0U}; t != tt.next_transport_idx(); ++t) {
-    for (auto const [segment_idx, transfers] :
-         utl::zip(d.get_segment_range(t), transport_stop_transfers[t])) {
-      d.segment_transports_[segment_idx] = t;
-      for (auto const [transfer, src] :
-           utl::zip(d.segment_transfers_[segment_idx], transfers)) {
-        transfer.to_segment_ =
-            d.transport_first_segment_[src.transport_idx_to_] +
-            src.stop_idx_to_;
-        transfer.to_transport_ = src.transport_idx_to_;
-        transfer.traffic_days_ = get_or_create_bf(src.bf_);
-        transfer.to_segment_offset_ = src.stop_idx_to_;
-        transfer.day_offset_ = src.day_offset_;
-      }
-    }
-  }
-
-  return d;
-}
-
-tb_data preprocess(timetable const& tt,
-                   profile_idx_t const prf_idx,
-                   parallelization const mode) {
-  stats stats;
-
-  auto transport_stop_transfers =
-      vector_map<transport_idx_t,
-                 std::vector<std::vector<expanded_transfer>>>{};
-  transport_stop_transfers.resize(to_idx(tt.next_transport_idx()));
-
-  for (auto t = transport_idx_t{0U}; t != tt.next_transport_idx(); ++t) {
-    transport_stop_transfers[t].resize(
-        tt.route_location_seq_[tt.transport_route_[t]].size());
-  }
-
+  auto pool = utl::pool<transfers_t>{};
   auto const pt = utl::get_active_progress_tracker();
   pt->status("Compute Transfers").in_high(tt.n_routes());
-  if (mode == parallelization::kParallel) {
-    utl::parallel_for_run_threadlocal<state>(
-        tt.n_routes(),
-        [&](state& s, std::size_t const i) {
-          preprocess_route(tt, s, route_idx_t{i}, prf_idx,
-                           transport_stop_transfers, stats);
-        },
-        pt->update_fn());
-  } else {
-    auto s = state{};
-    for (auto r = route_idx_t{0U}; r != tt.n_routes(); ++r) {
-      preprocess_route(tt, s, r, prf_idx, transport_stop_transfers, stats);
-      pt->increment();
-    }
-  }
+  utl::parallel_ordered_collect_threadlocal<state>(
+      tt.n_routes(),
 
-  // Map stops to segments: first stop has no transfers.
-  // Segment i contains transfers that start at stop i+1.
-  for (auto& x : transport_stop_transfers) {
-    assert(x.size() > 1 && x[0].empty());
-    x.erase(begin(x));
-  }
+      // Parallel: computation of route transfers
+      [&](state& s, std::size_t const i) {
+        auto const r = route_idx_t{i};
+        auto route_transfers = pool.get();
+        preprocess_route(tt, s, r, prf_idx, route_transfers, stats);
+        return route_transfers;
+      },
 
-  return transform_to_tb_data(tt, transport_stop_transfers, prf_idx);
+      // Sequential: ordered collect of route transfers
+      [&](std::size_t const i, transfers_t&& route_transfers) {
+        auto const r = route_idx_t{i};
+        auto const transports = tt.route_transport_ranges_[r];
+        for (auto const [t, transport_segments] :
+             utl::zip(transports,
+                      std::span{begin(route_transfers), transports.size()})) {
+          auto const segments = d.get_segment_range(t);
+          for (auto const [segment_idx, src] : utl::zip(
+                   segments,
+                   std::span{begin(transport_segments), segments.size()})) {
+            auto const dst = d.segment_transfers_.add_back_sized(src.size());
+            for (auto const [to, from] : utl::zip(dst, src)) {
+              to.to_segment_ =
+                  d.transport_first_segment_[from.transport_idx_to_] +
+                  from.stop_idx_to_;
+              to.to_transport_ = from.transport_idx_to_;
+              to.traffic_days_ = get_or_create_bf(from.bf_);
+              to.to_segment_offset_ = from.stop_idx_to_;
+              to.day_offset_ = from.day_offset_;
+            }
+          }
+        }
+        pool.put(std::move(route_transfers));
+      },
+      pt->update_fn());
+
+  return d;
 }
 
 }  // namespace nigiri::routing::tb
