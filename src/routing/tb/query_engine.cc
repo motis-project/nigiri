@@ -22,11 +22,11 @@ query_engine<UseLowerBounds>::query_engine(
     timetable const& tt,
     rt_timetable const*,
     query_state& state,
-    bitvec& is_dest,
-    std::array<bitvec, kMaxVias>&,
-    std::vector<std::uint16_t>& dist_to_dest,
+    bitvec const& is_dest,
+    std::array<bitvec, kMaxVias> const&,
+    std::vector<std::uint16_t> const& dist_to_dest,
     hash_map<location_idx_t, std::vector<td_offset>> const&,
-    std::vector<std::uint16_t>& lb,
+    std::vector<std::uint16_t> const& lb,
     std::vector<via_stop> const&,
     day_idx_t const base,
     clasz_mask_t,
@@ -56,24 +56,28 @@ query_engine<UseLowerBounds>::query_engine(
         for (auto const t : tt_.route_transport_ranges_[r]) {
           auto const segment = state_.tbd_.transport_first_segment_[t] + i - 1;
           state_.end_reachable_.set(segment, true);
-          state_.dist_to_dest_.emplace(segment, d);
+
+          auto const it = state_.dist_to_dest_.find(segment);
+          if (it == end(state_.dist_to_dest_)) {
+            state_.dist_to_dest_.emplace_hint(it, segment, d);
+          } else {
+            it->second = std::min(it->second, d);
+          }
         }
       }
     }
   };
 
   if (dist_to_dest.empty()) /* Destination is stop. */ {
-    for (auto l = location_idx_t{0U}; l != is_dest_.size(); ++l) {
-      if (!is_dest_[to_idx(l)]) {
-        continue;
-      }
+    is_dest_.for_each_set_bit([&](std::size_t const i) {
+      auto const l = location_idx_t{i};
       trace("{} is dest!", location{tt_, l});
       mark_dest_segments(l, duration_t{0U});
       for (auto const fp :
            tt_.locations_.footpaths_in_[state_.tbd_.prf_idx_][l]) {
         mark_dest_segments(fp.target(), fp.duration());
       }
-    }
+    });
   } else /* Destination is coordinate. */ {
     for (auto const [l_idx, dist] : utl::enumerate(dist_to_dest_)) {
       if (dist != kUnreachable) {

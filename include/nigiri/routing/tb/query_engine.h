@@ -78,13 +78,13 @@ struct query_engine {
   query_engine(timetable const&,
                rt_timetable const*,
                query_state&,
-               bitvec& is_dest,
-               std::array<bitvec, kMaxVias>&,
-               std::vector<std::uint16_t>& dist_to_dest,
+               bitvec const& is_dest,
+               std::array<bitvec, kMaxVias> const&,
+               std::vector<std::uint16_t> const& dist_to_dest,
                hash_map<location_idx_t, std::vector<td_offset>> const&,
-               std::vector<std::uint16_t>& lb,
+               std::vector<std::uint16_t> const& lb,
                std::vector<via_stop> const&,
-               day_idx_t const base,
+               day_idx_t base,
                clasz_mask_t,
                bool,
                bool,
@@ -123,10 +123,10 @@ private:
 
   timetable const& tt_;
   query_state& state_;
-  bitvec& is_dest_;
-  std::vector<std::uint16_t>& dist_to_dest_;
-  std::vector<std::uint16_t>& lb_;
-  day_idx_t const base_;
+  bitvec const& is_dest_;
+  std::vector<std::uint16_t> const& dist_to_dest_;
+  std::vector<std::uint16_t> const& lb_;
+  day_idx_t base_;
   query_stats stats_;
 };
 

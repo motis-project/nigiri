@@ -62,6 +62,11 @@ struct queue {
                        segment_idx_t const segment,
                        transport_idx_t const t,
                        std::int8_t const day_offset) {
+    if (day_offset < 0 || day_offset >= kTBMaxDayOffset) {
+      trace("  initial_enqueue day_offset out of range: {}", day_offset);
+      return;
+    }
+
     auto const min_segment_offset = r_.query(t, day_offset);
     auto const segment_offset =
         static_cast<std::uint16_t>(to_idx(segment - transport_first_segment));
