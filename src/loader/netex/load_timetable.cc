@@ -140,7 +140,8 @@ void load_timetable(loader_config const& config,
                                                       sp.locale_.tz_idx_,
                                                       2_minutes,
                                                       {},
-                                                      tt});
+                                                      tt,
+                                                      data.timezones_});
 
     if (!sp.alt_names_.empty()) {
       auto anb = tt.locations_.alt_names_[sp.location_idx_];
@@ -165,7 +166,8 @@ void load_timetable(loader_config const& config,
                                                        q.locale_.tz_idx_,
                                                        2_minutes,
                                                        {},
-                                                       tt});
+                                                       tt,
+                                                       data.timezones_});
 
       tt.locations_.parents_[q.location_idx_] = sp.location_idx_;
       tt.locations_.children_[sp.location_idx_].emplace_back(q.location_idx_);
@@ -197,7 +199,8 @@ void load_timetable(loader_config const& config,
                                                      q.locale_.tz_idx_,
                                                      2_minutes,
                                                      {},
-                                                     tt});
+                                                     tt,
+                                                     data.timezones_});
   }
 
   progress_tracker->increment();

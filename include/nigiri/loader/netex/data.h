@@ -9,6 +9,8 @@
 #include "nigiri/timetable.h"
 #include "nigiri/types.h"
 
+#include "nigiri/loader/gtfs/tz_map.h"
+
 #include "nigiri/loader/netex/proj_transformers.h"
 
 namespace nigiri::loader::netex {
@@ -66,7 +68,7 @@ struct netex_data {
   hash_map<std::string, quay> standalone_quays_{};
 
   proj_transformers proj_transformers_{};
-  hash_map<std::string, timezone_idx_t> timezones_{};
+  gtfs::tz_map timezones_{};
 
   timetable& tt_;
 };
