@@ -15,6 +15,9 @@
 #include "nigiri/rt/frun.h"
 #include "nigiri/special_stations.h"
 
+// #define tb_debug fmt::println
+#define tb_debug(...)
+
 namespace nigiri::routing::tb {
 
 template <bool UseLowerBounds>
@@ -71,7 +74,7 @@ query_engine<UseLowerBounds>::query_engine(
   if (dist_to_dest.empty()) /* Destination is stop. */ {
     is_dest_.for_each_set_bit([&](std::size_t const i) {
       auto const l = location_idx_t{i};
-      trace("{} is dest!", location{tt_, l});
+      tb_debug("{} is dest!", location{tt_, l});
       mark_dest_segments(l, duration_t{0U});
       for (auto const fp :
            tt_.locations_.footpaths_in_[state_.tbd_.prf_idx_][l]) {
@@ -111,11 +114,11 @@ void query_engine<UseLowerBounds>::execute(unixtime_t const start_time,
       seg_prune(k, state_.q_n_[i]);
     }
     for (auto const i : round) {
-      seg_transfers(i);
+      seg_transfers(i, k);
     }
     round.from_ = round.to_;
     round.to_ = static_cast<queue_idx_t>(state_.q_n_.size());
-    trace("next round: {}", round);
+    tb_debug("next round: {}", round);
   }
 
   for (auto n = 0U; n != kMaxTransfers; ++n) {
@@ -139,11 +142,11 @@ void query_engine<UseLowerBounds>::seg_dest(std::uint8_t const k,
   auto const& qe = state_.q_n_[q];
   for (auto const segment : qe.segment_range_) {
     if (!state_.end_reachable_.test(segment)) {
-      trace("reached segment {}  => dest not reachable", seg(segment, qe));
+      tb_debug("reached segment {}  => dest not reachable", seg(segment, qe));
       [[likely]] continue;
     }
 
-    trace("reached segment {}  => dest reachable!", seg(segment, qe));
+    tb_debug("reached segment {}  => dest reachable!", seg(segment, qe));
     auto const t = state_.tbd_.segment_transports_[segment];
     auto const i = static_cast<stop_idx_t>(
         to_idx(segment - state_.tbd_.transport_first_segment_[t] + 1));
@@ -172,28 +175,29 @@ void query_engine<UseLowerBounds>::seg_prune(std::uint8_t const k,
     arr_time += duration_t{lb_[to_idx(l)]};
   }
   if (arr_time > state_.t_min_[k]) {
-    trace("PRUNING {}", seg(segment, qe));
+    tb_debug("PRUNING {}", seg(segment, qe));
     qe.segment_range_.to_ = qe.segment_range_.from_;
     ++stats_.n_segments_pruned_;
   }
 }
 
 template <bool UseLowerBounds>
-void query_engine<UseLowerBounds>::seg_transfers(queue_idx_t const q) {
+void query_engine<UseLowerBounds>::seg_transfers(queue_idx_t const q,
+                                                 std::uint8_t const k) {
   auto const qe = state_.q_n_[q];
   for (auto const s : qe.segment_range_) {
-    trace("handling queue entry {}: #transfers={}", seg(s, qe),
-          state_.tbd_.segment_transfers_[s].size());
+    tb_debug("handling queue entry {}: #transfers={}", seg(s, qe),
+             state_.tbd_.segment_transfers_[s].size());
     assert(s < state_.tbd_.segment_transfers_.size());
     for (auto const transfer : state_.tbd_.segment_transfers_[s]) {
       auto const day = to_idx(base_ + qe.transport_query_day_offset_);
       if (state_.tbd_.bitfields_[transfer.traffic_days_].test(day)) {
-        trace("  -> enqueue transfer to {}", seg(transfer.to_segment_, qe));
-        state_.q_n_.enqueue(transfer, q);
+        tb_debug("  -> enqueue transfer to {}", seg(transfer.to_segment_, qe));
+        state_.q_n_.enqueue(transfer, q, k);
       } else {
-        trace("  transfer {} - {} not active on {}", seg(s, qe),
-              seg(transfer.to_segment_, day_idx_t{day}),
-              tt_.to_unixtime(day_idx_t{day}));
+        tb_debug("  transfer {} - {} not active on {}", seg(s, qe),
+                 seg(transfer.to_segment_, day_idx_t{day}),
+                 tt_.to_unixtime(day_idx_t{day}));
       }
     }
   }
@@ -232,8 +236,8 @@ void query_engine<UseLowerBounds>::reconstruct(query const& q,
                                                journey& j) const {
   UTL_FINALLY([&]() { std::reverse(begin(j.legs_), end(j.legs_)); })
 
-  trace("reconstruct journey: transfers={}, dep={} arr={}", j.transfers_,
-        j.departure_time(), j.arrival_time());
+  tb_debug("reconstruct journey: transfers={}, dep={} arr={}", j.transfers_,
+           j.departure_time(), j.arrival_time());
 
   auto parent = state_.parent_[j.transfers_];
   auto departure_segment = state_.q_n_[parent].segment_range_.from_;
@@ -289,9 +293,9 @@ void query_engine<UseLowerBounds>::reconstruct(query const& q,
 
   auto const get_run_leg =
       [&](segment_idx_t const arrival_segment) -> journey::leg {
-    trace("run leg:\n\tdeparture segment: {}\n\tarrival segment: {}",
-          seg(departure_segment, state_.q_n_[parent]),
-          seg(arrival_segment, state_.q_n_[parent]));
+    tb_debug("run leg:\n\tdeparture segment: {}\n\tarrival segment: {}",
+             seg(departure_segment, state_.q_n_[parent]),
+             seg(arrival_segment, state_.q_n_[parent]));
 
     auto const [transport, arr_stop_idx, arr_l, arr_time] =
         get_transport_info(arrival_segment, event_type::kArr);

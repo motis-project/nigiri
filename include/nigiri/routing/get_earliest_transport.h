@@ -55,11 +55,6 @@ transport get_earliest_transport(timetable const& tt,
                      });
   };
 
-  trace(
-      "┊ │k={}    et: current_best_at_stop={}, stop_idx={}, location={}\n", k,
-      tt_.to_unixtime(day_at_stop, mam_at_stop), stop_idx,
-      location{tt_, stop{tt_.route_location_seq_[r][stop_idx]}.location_idx()});
-
   constexpr auto const kNDaysToIterate = day_idx_t::value_t{2U};
   for (auto i = day_idx_t::value_t{0U}; i != kNDaysToIterate; ++i) {
     auto const ev_time_range =
@@ -76,26 +71,11 @@ transport get_earliest_transport(timetable const& tt,
       auto const ev_mam = ev.mam();
 
       if (worse_than_dest(day, ev_mam)) {
-        trace(
-            "┊ │k={}      => name={}, dbg={}, day={}={}, best_mam={}, "
-            "transport_mam={}, transport_time={} => TIME AT DEST {} IS "
-            "BETTER!\n",
-            k, tt_.transport_name(tt_.route_transport_ranges_[r][t_offset]),
-            tt_.dbg(tt_.route_transport_ranges_[r][t_offset]), day,
-            tt_.to_unixtime(day, 0_minutes), mam_at_stop, ev_mam,
-            tt_.to_unixtime(day, duration_t{ev_mam}),
-            to_unix(time_at_dest_[k]));
         return {transport_idx_t::invalid(), day_idx_t::invalid()};
       }
 
       auto const t = tt.route_transport_ranges_[r][t_offset];
       if (i == 0U && !is_better_or_eq(mam_at_stop.count(), ev_mam)) {
-        trace(
-            "┊ │k={}      => transport={}, name={}, dbg={}, day={}/{}, "
-            "best_mam={}, "
-            "transport_mam={}, transport_time={} => NO REACH!\n",
-            k, t, tt_.transport_name(t), tt_.dbg(t), i, day, mam_at_stop,
-            ev_mam, ev);
         continue;
       }
 
@@ -105,21 +85,9 @@ transport get_earliest_transport(timetable const& tt,
       if (!traffic_day_src
                .bitfields_[traffic_day_src.transport_traffic_days_[t]]
                .test(start_day)) {
-        trace(
-            "┊ │k={}      => transport={}, name={}, dbg={}, day={}/{}, "
-            "ev_day_offset={}, "
-            "best_mam={}, "
-            "transport_mam={}, transport_time={} => NO TRAFFIC!\n",
-            k, t, tt_.transport_name(t), tt_.dbg(t), i, day, ev_day_offset,
-            mam_at_stop, ev_mam, ev);
         continue;
       }
 
-      trace(
-          "┊ │k={}      => ET FOUND: name={}, dbg={}, at day {} "
-          "(day_offset={}) - ev_mam={}, ev_time={}, ev={}\n",
-          k, tt_.transport_name(t), tt_.dbg(t), day, ev_day_offset, ev_mam, ev,
-          tt_.to_unixtime(day, duration_t{ev_mam}));
       return {t, static_cast<day_idx_t>(as_int(day) - ev_day_offset)};
     }
   }

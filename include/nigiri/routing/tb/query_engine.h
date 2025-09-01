@@ -116,7 +116,7 @@ struct query_engine {
 private:
   void seg_dest(std::uint8_t k, queue_idx_t);
   void seg_prune(std::uint8_t k, queue_entry&);
-  void seg_transfers(queue_idx_t);
+  void seg_transfers(queue_idx_t, std::uint8_t k);
 
   segment_info seg(segment_idx_t, queue_entry const&) const;
   segment_info seg(segment_idx_t, day_idx_t) const;
