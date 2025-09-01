@@ -880,7 +880,7 @@ private:
               "┊ │k={} v={}  stop_idx={} {}: not marked, no et - "
               "skip\n",
               k, v, stop_idx, location{tt_, location_idx_t{l_idx}});
-          continue;
+          goto stop_skip;
         }
 
         trace(
@@ -960,8 +960,7 @@ private:
                 location{tt_, stp.location_idx()});
 
             ++stats_.n_earliest_arrival_updated_by_route_;
-            tmp_[l_idx][target_v] =
-                get_best(by_transport, tmp_[l_idx][target_v]);
+            tmp_[l_idx][target_v] = by_transport;
             state_.station_mark_.set(l_idx, true);
             if (is_better(by_transport, current_best[v])) {
               current_best[v] = by_transport;
@@ -1080,6 +1079,7 @@ private:
           }
         }
       }
+    stop_skip:
     }
     return any_marked;
   }
@@ -1139,15 +1139,6 @@ private:
         }
 
         auto const t = tt_.route_transport_ranges_[r][t_offset];
-        if (i == 0U && !is_better_or_eq(mam_at_stop.count(), ev_mam)) {
-          trace(
-              "┊ │k={}      => transport={}, name={}, dbg={}, day={}/{}, "
-              "best_mam={}, "
-              "transport_mam={}, transport_time={} => NO REACH!\n",
-              k, t, tt_.transport_name(t), tt_.dbg(t), i, day, mam_at_stop,
-              ev_mam, ev);
-          continue;
-        }
 
         auto const ev_day_offset = ev.days();
         auto const start_day =
