@@ -117,6 +117,8 @@ using stop_idx_t = std::uint16_t;
 
 using string = cista::raw::string;
 
+using generic_string = cista::raw::generic_string;
+
 template <typename T>
 using unique_ptr = cista::raw::unique_ptr<T>;
 
@@ -193,7 +195,8 @@ constexpr auto const kDefaultProfile = profile_idx_t{0U};
 constexpr auto const kFootProfile = profile_idx_t{1U};
 constexpr auto const kWheelchairProfile = profile_idx_t{2U};
 constexpr auto const kCarProfile = profile_idx_t{3U};
-static constexpr auto const kNProfiles = profile_idx_t{4U};
+constexpr auto const kBikeProfile = profile_idx_t{4U};
+static constexpr auto const kNProfiles = profile_idx_t{5U};
 
 using rt_trip_idx_t = cista::strong<std::uint32_t, struct _trip_idx>;
 using rt_add_trip_id_idx_t =
@@ -242,7 +245,7 @@ struct attribute {
 struct provider {
   CISTA_COMPARABLE()
   CISTA_PRINTABLE(provider, "short_name", "long_name", "url")
-  string_idx_t short_name_, long_name_, url_;
+  string_idx_t id_, name_, url_;
   timezone_idx_t tz_{timezone_idx_t::invalid()};
   source_idx_t src_;
 };
@@ -458,6 +461,15 @@ struct delta {
   delta(std::uint16_t const day, std::uint16_t const mam)
       : days_{day}, mam_{mam} {}
 
+  delta(date::days const day_offset, duration_t const minutes_offset)
+      : days_{static_cast<std::uint16_t>(day_offset.count() + 1)},
+        mam_{static_cast<std::uint16_t>(minutes_offset.count() + 720)} {
+    assert(day_offset.count() >= -1);
+    assert(day_offset.count() < 30);
+    assert(minutes_offset.count() >= -720);
+    assert(minutes_offset.count() < 1320);
+  }
+
   std::uint16_t value() const {
     return *reinterpret_cast<std::uint16_t const*>(this);
   }
@@ -480,6 +492,10 @@ struct delta {
   }
 
   duration_t as_duration() const { return days() * 1_days + mam() * 1_minutes; }
+
+  std::pair<date::days, duration_t> to_offset() const {
+    return {date::days{days() - 1}, duration_t{mam() - 720}};
+  }
 
   std::int16_t count() const { return days_ * 1440U + mam_; }
 

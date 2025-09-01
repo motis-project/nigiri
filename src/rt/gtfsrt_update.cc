@@ -241,7 +241,7 @@ bool add_rt_trip(source_idx_t const src,
     }
     return {};
   };
-  auto const display_name =
+  auto const trip_short_name =
       tripUpdate.has_trip_properties() &&
               tripUpdate.trip_properties().has_trip_short_name()
           ? std::string_view{tripUpdate.trip_properties().trip_short_name()}
@@ -250,7 +250,7 @@ bool add_rt_trip(source_idx_t const src,
   // REPLACEMENT stops+times
   // DUPL new_trip_id
   r.rt_ = rtt.add_rt_transport(src, tt, r.t_, stops, times, new_trip_id(),
-                               route_id(), display_name);
+                               route_id(), trip_short_name);
   if (sr == transit_realtime::TripDescriptor_ScheduleRelationship_REPLACEMENT) {
     r.t_ = transport::invalid();
   }
@@ -487,7 +487,9 @@ statistics gtfsrt_update_msg(timetable const& tt,
       continue;
     }
 
-    auto const sr = entity.trip_update().trip().schedule_relationship();
+    auto const sr = entity.trip_update().trip().has_schedule_relationship()
+                        ? entity.trip_update().trip().schedule_relationship()
+                        : gtfsrt::TripDescriptor_ScheduleRelationship_SCHEDULED;
 
     if (sr == gtfsrt::TripDescriptor_ScheduleRelationship_DUPLICATED &&
         (!entity.trip_update().has_trip_properties() ||
@@ -565,10 +567,7 @@ statistics gtfsrt_update_msg(timetable const& tt,
                 {"trip.start_time", td.has_start_time() ? td.start_time() : ""},
                 {"trip.start_date", td.has_start_date() ? td.start_date() : ""},
                 {"trip.schedule_relationship",
-                 td.has_schedule_relationship()
-                     ? TripDescriptor_ScheduleRelationship_Name(
-                           td.schedule_relationship())
-                     : ""},
+                 TripDescriptor_ScheduleRelationship_Name(sr)},
                 {"trip.str", remove_nl(td.DebugString())},
             });
         ++stats.trip_resolve_error_;

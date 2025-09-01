@@ -7,6 +7,7 @@
 
 #include "nigiri/loader/get_index.h"
 #include "nigiri/loader/hrd/service/read_services.h"
+#include "nigiri/loader/register.h"
 
 namespace nigiri::loader::hrd {
 
@@ -94,10 +95,15 @@ void service_builder::write_services(source_idx_t const src) {
               s.utc_times_.front().count(), to_idx(stops.back().eva_num_),
               s.utc_times_.back().count(), s.line_info(store_));
 
-          auto const id = tt_.register_trip_id(
-              trip_id_buf_, route_id_idx_t::invalid(), src,
-              ref.display_name(tt_), ref.origin_.dbg_, ref.initial_train_num_,
-              {}, direction_id_t::invalid());
+          auto const id = register_trip(
+              tt_,
+              trip{src,
+                   std::string_view{trip_id_buf_.data(), trip_id_buf_.size()},
+                   "", "", ref.display_name(tt_), direction_id_t::invalid(),
+                   route_id_idx_t::invalid(), tt_});
+          tt_.trip_debug_.emplace_back().emplace_back(ref.origin_.dbg_);
+          tt_.trip_stop_seq_numbers_.emplace_back(
+              std::initializer_list<stop_idx_t>{});
           tt_.trip_transport_ranges_.emplace_back({transport_range_t{
               tt_.next_transport_idx(),
               interval<stop_idx_t>{0U,
@@ -212,7 +218,7 @@ void service_builder::write_services(source_idx_t const src) {
                   bitfield_indices_, s.utc_traffic_days_,
                   [&]() { return tt_.register_bitfield(s.utc_traffic_days_); }),
               .route_idx_ = route_idx,
-              .first_dep_offset_ = 0_minutes,
+              .first_dep_offset_ = {0, 0},
               .external_trip_ids_ = {merged_trip},
               .section_attributes_ = section_attributes_,
               .section_providers_ = section_providers_,

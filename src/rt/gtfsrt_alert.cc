@@ -73,23 +73,6 @@ alert_severity convert(transit_realtime::Alert_SeverityLevel x) {
   throw utl::fail("unknown Alert_SeverityLevel");
 }
 
-provider_idx_t get_provider_idx(timetable const& tt,
-                                std::string_view s,
-                                source_idx_t const src) {
-  auto const it = std::lower_bound(
-      begin(tt.provider_id_to_idx_), end(tt.provider_id_to_idx_), s,
-      [&](provider_idx_t const a, std::string_view const b) {
-        auto const& p = tt.providers_[a];
-        return std::tuple{p.src_, tt.strings_.get(p.short_name_)} <
-               std::tuple{src, b};
-      });
-  if (it == end(tt.provider_id_to_idx_) || tt.providers_[*it].src_ != src ||
-      tt.strings_.get(tt.providers_[*it].short_name_) != s) {
-    return provider_idx_t::invalid();
-  }
-  return *it;
-}
-
 void handle_alert(date::sys_days const today,
                   timetable const& tt,
                   rt_timetable& rtt,
@@ -163,7 +146,7 @@ void handle_alert(date::sys_days const today,
       alerts.route_id_[src][*route_id].push_back({direction, stop, alert_idx});
     } else if (x.has_agency_id()) {  // 2) by agency_id -> route_type -> stop_id
       auto const agency = x.has_agency_id()
-                              ? get_provider_idx(tt, x.agency_id(), src)
+                              ? tt.get_provider_idx(x.agency_id(), src)
                               : provider_idx_t::invalid();
       if (agency == provider_idx_t::invalid()) {
         ++stats.alert_agency_id_not_found_;

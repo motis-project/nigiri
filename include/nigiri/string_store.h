@@ -69,7 +69,9 @@ struct string_store {
 
   auto cista_members() { return std::tie(cache_, strings_); }
 
-  std::string_view get(idx_t const x) const { return strings_[x].view(); }
+  std::string_view get(idx_t const x) const {
+    return x == idx_t::invalid() ? "" : strings_[x].view();
+  }
 
   std::optional<std::string_view> try_get(idx_t const s) const {
     return s == idx_t::invalid() ? std::nullopt : std::optional{get(s)};

@@ -16,6 +16,7 @@
 #include "utl/progress_tracker.h"
 #include "utl/to_vec.h"
 
+#include "nigiri/loader/register.h"
 #include "nigiri/logging.h"
 #include "nigiri/timetable.h"
 
@@ -193,7 +194,8 @@ std::pair<stops_map_t, seated_transfers_map_t> read_stops(
     tz_map& timezones,
     std::string_view stops_file_content,
     std::string_view transfers_file_content,
-    unsigned link_stop_distance) {
+    unsigned link_stop_distance,
+    script_runner const& r) {
   auto const timer = scoped_timer{"gtfs.loader.stops"};
 
   auto const progress_tracker = utl::get_active_progress_tracker();
@@ -286,17 +288,24 @@ std::pair<stops_map_t, seated_transfers_map_t> read_stops(
   auto empty_location_idx_vec = vector<location_idx_t>{};
   auto empty_alt_name_idx_vec = vector<alt_name_idx_t>{};
   for (auto const& [id, s] : stops) {
-    locations.emplace(
-        std::string{id},
-        s->location_ = tt.locations_.register_location(location{
-            id, s->name_, s->platform_code_, s->desc_, s->coord_, src,
-            s->parent_ == nullptr ? location_type::kStation
-                                  : location_type::kTrack,
-            location_idx_t::invalid(),
-            s->timezone_.empty() ? timezone_idx_t::invalid()
-                                 : get_tz_idx(tt, timezones, s->timezone_),
-            2_minutes, it_range{empty_location_idx_vec},
-            it_range{empty_alt_name_idx_vec}}));
+    auto loc = location{
+        id,
+        s->name_,
+        s->platform_code_,
+        s->desc_,
+        s->coord_,
+        src,
+        s->parent_ == nullptr ? location_type::kStation : location_type::kTrack,
+        location_idx_t::invalid(),
+        s->timezone_.empty() ? timezone_idx_t::invalid()
+                             : get_tz_idx(tt, timezones, s->timezone_),
+        2_minutes,
+        {},
+        tt,
+        timezones};
+    if (process_location(r, loc)) {
+      locations.emplace(id, s->location_ = register_location(tt, loc));
+    }
   }
 
   auto transfers = read_transfers(stops, transfers_file_content);

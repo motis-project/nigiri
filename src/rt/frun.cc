@@ -15,8 +15,8 @@
 namespace nigiri::rt {
 
 constexpr auto const kUnknownProvider =
-    provider{.short_name_ = string_idx_t::invalid(),
-             .long_name_ = string_idx_t::invalid(),
+    provider{.id_ = string_idx_t::invalid(),
+             .name_ = string_idx_t::invalid(),
              .url_ = string_idx_t::invalid(),
              .src_ = source_idx_t::invalid()};
 
@@ -78,15 +78,17 @@ std::pair<date::sys_days, duration_t> run_stop::get_trip_start(
 
     // service date + start time
     auto const [static_transport, utc_start_day] = fr_->t_;
-    auto const o = tt().transport_first_dep_offset_[static_transport];
+    auto const [first_dep_offset, tz_offset] =
+        tt().transport_first_dep_offset_[static_transport].to_offset();
     auto const utc_dep =
         tt().event_mam(static_transport, first_trip_stop.stop_idx_,
                        event_type::kDep)
             .as_duration();
-    auto const gtfs_static_dep = utc_dep + o;
-    auto const [day_offset, _] = split_rounded(gtfs_static_dep - utc_dep);
-    auto const day = (tt().internal_interval_days().from_ +
-                      std::chrono::days{to_idx(utc_start_day)} - day_offset);
+    auto const gtfs_static_dep = utc_dep + first_dep_offset + tz_offset;
+
+    auto const day =
+        (tt().internal_interval_days().from_ +
+         std::chrono::days{to_idx(utc_start_day)} - first_dep_offset);
 
     return {day, gtfs_static_dep};
   }
@@ -171,14 +173,79 @@ trip_idx_t run_stop::get_trip_idx(event_type const ev_type) const {
       .at(0);
 }
 
-std::string_view run_stop::trip_display_name(event_type const ev_type) const {
-  if (fr_->is_rt() && rtt() != nullptr) {
-    return rtt()->transport_name(tt(), fr_->rt_);
+route_id_idx_t run_stop::get_route_id(event_type const ev_type) const {
+  auto const trip = get_trip_idx(ev_type);
+  return tt().trip_route_id_[trip];
+}
+
+std::optional<route_type_t> run_stop::route_type(
+    event_type const ev_type) const {
+  if (fr_->is_scheduled()) {
+    auto const trip_idx = get_trip_idx(ev_type);
+    return tt().trip_route_id_[trip_idx] == route_id_idx_t::invalid()
+               ? std::nullopt
+               : std::optional{
+                     tt().route_ids_
+                         [tt().trip_id_src_[tt().trip_ids_[trip_idx].front()]]
+                             .route_id_type_[tt().trip_route_id_[trip_idx]]};
   }
+  return std::nullopt;
+}
+
+std::string_view run_stop::route_short_name(event_type const ev_type) const {
+  if (fr_->is_scheduled()) {
+    auto const trip_idx = get_trip_idx(ev_type);
+    return tt().trip_route_id_[trip_idx] == route_id_idx_t::invalid()
+               ? std::string_view{}
+               : tt().route_ids_
+                     [tt().trip_id_src_[tt().trip_ids_[trip_idx].front()]]
+                         .route_id_short_names_[tt().trip_route_id_[trip_idx]]
+                         .view();
+  } else if (auto const route_id = rtt()->rt_transport_route_id_[fr_->rt_];
+             route_id != route_id_idx_t::invalid()) {
+    return tt()
+        .route_ids_[rtt()->rt_transport_src_[fr_->rt_]]
+        .route_id_short_names_[route_id]
+        .view();
+  } else {
+    return "?";
+  }
+}
+
+std::string_view run_stop::route_long_name(event_type const ev_type) const {
+  if (fr_->is_scheduled()) {
+    auto const trip_idx = get_trip_idx(ev_type);
+    return tt().trip_route_id_[trip_idx] == route_id_idx_t::invalid()
+               ? std::string_view{}
+               : tt().route_ids_
+                     [tt().trip_id_src_[tt().trip_ids_[trip_idx].front()]]
+                         .route_id_long_names_[tt().trip_route_id_[trip_idx]]
+                         .view();
+  } else if (auto const route_id = rtt()->rt_transport_route_id_[fr_->rt_];
+             route_id != route_id_idx_t::invalid()) {
+    return tt()
+        .route_ids_[rtt()->rt_transport_src_[fr_->rt_]]
+        .route_id_long_names_[route_id]
+        .view();
+  } else {
+    return {};
+  }
+}
+
+std::string_view run_stop::trip_short_name(event_type const ev_type) const {
+  if (fr_->is_scheduled()) {
+    return tt().trip_short_names_[get_trip_idx(ev_type)].view();
+  } else {
+    return rtt()->trip_short_name(tt(), fr_->rt_);
+  }
+}
+
+std::string_view run_stop::display_name(event_type const ev_type) const {
   if (fr_->is_scheduled()) {
     return tt().trip_display_names_[get_trip_idx(ev_type)].view();
   }
-  return "?";
+  auto const name = route_short_name(ev_type);
+  return name.empty() ? trip_short_name(ev_type) : name;
 }
 
 stop_idx_t run_stop::section_idx(event_type const ev_type) const {
@@ -428,7 +495,7 @@ frun::frun(timetable const& tt, rt_timetable const* rtt, run r)
 
 std::string_view frun::name() const {
   if (is_rt() && rtt_ != nullptr) {
-    return rtt_->transport_name(*tt_, rt_);
+    return operator[](0U).route_short_name(event_type::kDep);
   }
   if (is_scheduled()) {
     return tt_->transport_name(t_.t_idx_);
@@ -701,8 +768,7 @@ void run_stop::print(std::ostream& out,
         if (j++ != 0) {
           out << ", ";
         }
-        out << "{name=" << tt.trip_display_names_.at(trip_idx).view()
-            << ", day=";
+        out << "{name=" << display_name() << ", day=";
         date::to_stream(
             out, "%F",
             tt.internal_interval_days().from_ + to_idx(fr_->t_.day_) * 1_days);

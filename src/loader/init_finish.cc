@@ -8,6 +8,7 @@
 
 #include "nigiri/loader/build_footpaths.h"
 #include "nigiri/loader/build_lb_graph.h"
+#include "nigiri/loader/register.h"
 #include "nigiri/flex.h"
 #include "nigiri/special_stations.h"
 #include "nigiri/timetable.h"
@@ -18,18 +19,18 @@ void register_special_stations(timetable& tt) {
   auto empty_location_idx_vec = vector<location_idx_t>{};
   auto empty_alt_name_idx_vec = vector<alt_name_idx_t>{};
   for (auto const& name : special_stations_names) {
-    tt.locations_.register_location(location{name,
-                                             name,
-                                             "",
-                                             "",
-                                             {0.0, 0.0},
-                                             source_idx_t::invalid(),
-                                             location_type::kStation,
-                                             location_idx_t::invalid(),
-                                             timezone_idx_t::invalid(),
-                                             0_minutes,
-                                             it_range{empty_location_idx_vec},
-                                             it_range{empty_alt_name_idx_vec}});
+    register_location(tt, location{name,
+                                   name,
+                                   "",
+                                   "",
+                                   {0.0, 0.0},
+                                   source_idx_t::invalid(),
+                                   location_type::kStation,
+                                   location_idx_t::invalid(),
+                                   timezone_idx_t::invalid(),
+                                   0_minutes,
+                                   {},
+                                   tt});
   }
   tt.location_routes_.resize(tt.n_locations());
   tt.bitfields_.emplace_back(bitfield{});  // bitfield_idx 0 = 000...00 bitfield
@@ -127,8 +128,8 @@ void finalize(timetable& tt, finalize_options const opt) {
 #endif
         begin(tt.provider_id_to_idx_), end(tt.provider_id_to_idx_),
         [&](provider_idx_t const a, provider_idx_t const b) {
-          return tt.strings_.get(tt.providers_[a].short_name_) <
-                 tt.strings_.get(tt.providers_[b].short_name_);
+          return tt.strings_.get(tt.providers_[a].id_) <
+                 tt.strings_.get(tt.providers_[b].id_);
         });
   }
   build_footpaths(tt, opt);

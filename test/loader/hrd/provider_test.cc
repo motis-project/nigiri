@@ -21,24 +21,24 @@ TEST(hrd, parse_providers) {
     EXPECT_EQ(4U, providers.size());
 
     auto const& first = tt.providers_.at(providers["AM____"]);
-    EXPECT_EQ("ABR", tt.strings_.get(first.short_name_));
+    EXPECT_EQ("ABR", tt.strings_.get(first.id_));
     EXPECT_EQ("ABELLIO Rail Mitteldeutschland GmbH",
-              tt.strings_.get(first.long_name_));
+              tt.strings_.get(first.name_));
     EXPECT_EQ("", tt.strings_.get(first.url_));
 
     auto const& second = tt.providers_.at(providers["AR____"]);
-    EXPECT_EQ("ABR", tt.strings_.get(second.short_name_));
-    EXPECT_EQ("ABELLIO Rail NRW GmbH", tt.strings_.get(second.long_name_));
+    EXPECT_EQ("ABR", tt.strings_.get(second.id_));
+    EXPECT_EQ("ABELLIO Rail NRW GmbH", tt.strings_.get(second.name_));
     EXPECT_EQ("", tt.strings_.get(second.url_));
 
     auto const& third = tt.providers_.at(providers["A9____"]);
-    EXPECT_EQ("ag ", tt.strings_.get(third.short_name_));
-    EXPECT_EQ("agilis", tt.strings_.get(third.long_name_));
+    EXPECT_EQ("ag ", tt.strings_.get(third.id_));
+    EXPECT_EQ("agilis", tt.strings_.get(third.name_));
     EXPECT_EQ("", tt.strings_.get(third.url_));
 
     auto const& fourth = tt.providers_.at(providers["XY____"]);
-    EXPECT_EQ("ag ", tt.strings_.get(fourth.short_name_));
-    EXPECT_EQ("agilis", tt.strings_.get(fourth.long_name_));
+    EXPECT_EQ("ag ", tt.strings_.get(fourth.id_));
+    EXPECT_EQ("agilis", tt.strings_.get(fourth.name_));
     EXPECT_EQ("", tt.strings_.get(fourth.url_));
   }
 }
