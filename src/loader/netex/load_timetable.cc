@@ -96,7 +96,8 @@ void load_timetable(loader_config const& config,
       .out_bounds(0.F, 90.F)
       .in_high(xml_files.size());
 
-  auto data = netex_data{.tt_ = tt};
+  auto data = netex_data{.tt_ = tt,
+                         .script_runner_ = script_runner{config.user_script_}};
 
   for (auto const& fp : xml_files) {
     auto const f = d.get_file(fp);
@@ -129,19 +130,24 @@ void load_timetable(loader_config const& config,
   };
 
   for (auto& [_, sp] : data.stop_places_) {
-    sp.location_idx_ = register_location(tt, location{sp.id_,
-                                                      sp.name_,
-                                                      "",
-                                                      sp.description_,
-                                                      sp.centroid_,
-                                                      src,
-                                                      location_type::kStation,
-                                                      location_idx_t::invalid(),
-                                                      sp.locale_.tz_idx_,
-                                                      2_minutes,
-                                                      {},
-                                                      tt,
-                                                      data.timezones_});
+    auto loc = location{sp.id_,
+                        sp.name_,
+                        "",
+                        sp.description_,
+                        sp.centroid_,
+                        src,
+                        location_type::kStation,
+                        location_idx_t::invalid(),
+                        sp.locale_.tz_idx_,
+                        2_minutes,
+                        {},
+                        tt,
+                        data.timezones_};
+    if (!process_location(data.script_runner_, loc)) {
+      continue;
+    }
+
+    sp.location_idx_ = register_location(tt, loc);
 
     if (!sp.alt_names_.empty()) {
       auto anb = tt.locations_.alt_names_[sp.location_idx_];
@@ -155,19 +161,24 @@ void load_timetable(loader_config const& config,
     }
 
     for (auto& q : sp.quays_) {
-      q.location_idx_ = register_location(tt, location{q.id_,
-                                                       q.name_,
-                                                       q.public_code_,
-                                                       "",
-                                                       q.centroid_,
-                                                       src,
-                                                       location_type::kTrack,
-                                                       sp.location_idx_,
-                                                       q.locale_.tz_idx_,
-                                                       2_minutes,
-                                                       {},
-                                                       tt,
-                                                       data.timezones_});
+      auto quay_loc = location{q.id_,
+                               q.name_,
+                               q.public_code_,
+                               "",
+                               q.centroid_,
+                               src,
+                               location_type::kTrack,
+                               sp.location_idx_,
+                               q.locale_.tz_idx_,
+                               2_minutes,
+                               {},
+                               tt,
+                               data.timezones_};
+      if (!process_location(data.script_runner_, quay_loc)) {
+        continue;
+      }
+
+      q.location_idx_ = register_location(tt, quay_loc);
 
       tt.locations_.parents_[q.location_idx_] = sp.location_idx_;
       tt.locations_.children_[sp.location_idx_].emplace_back(q.location_idx_);
@@ -179,6 +190,10 @@ void load_timetable(loader_config const& config,
       if (auto it = data.stop_places_.find(*sp.parent_ref_);
           it != data.stop_places_.end()) {
         auto& parent_sp = it->second;
+        if (sp.location_idx_ == location_idx_t::invalid() ||
+            parent_sp.location_idx_ == location_idx_t::invalid()) {
+          continue;
+        }
         tt.locations_.parents_[sp.location_idx_] = parent_sp.location_idx_;
         tt.locations_.children_[parent_sp.location_idx_].emplace_back(
             sp.location_idx_);
@@ -188,19 +203,22 @@ void load_timetable(loader_config const& config,
 
   // Add standalone quays as stations
   for (auto& [_, q] : data.standalone_quays_) {
-    q.location_idx_ = register_location(tt, location{q.id_,
-                                                     q.name_,
-                                                     q.public_code_,
-                                                     "",
-                                                     q.centroid_,
-                                                     src,
-                                                     location_type::kStation,
-                                                     location_idx_t::invalid(),
-                                                     q.locale_.tz_idx_,
-                                                     2_minutes,
-                                                     {},
-                                                     tt,
-                                                     data.timezones_});
+    auto loc = location{q.id_,
+                        q.name_,
+                        q.public_code_,
+                        "",
+                        q.centroid_,
+                        src,
+                        location_type::kStation,
+                        location_idx_t::invalid(),
+                        q.locale_.tz_idx_,
+                        2_minutes,
+                        {},
+                        tt,
+                        data.timezones_};
+    if (process_location(data.script_runner_, loc)) {
+      q.location_idx_ = register_location(tt, loc);
+    }
   }
 
   progress_tracker->increment();

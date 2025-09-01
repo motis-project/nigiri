@@ -10,6 +10,7 @@
 #include "nigiri/types.h"
 
 #include "nigiri/loader/gtfs/tz_map.h"
+#include "nigiri/loader/register.h"
 
 #include "nigiri/loader/netex/proj_transformers.h"
 
@@ -71,6 +72,7 @@ struct netex_data {
   gtfs::tz_map timezones_{};
 
   timetable& tt_;
+  script_runner script_runner_;
 };
 
 }  // namespace nigiri::loader::netex
