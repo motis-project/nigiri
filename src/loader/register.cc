@@ -410,6 +410,7 @@ location_idx_t register_location(timetable& tt, location const& l) {
     loc.descriptions_.emplace_back(l.description_);
     loc.coordinates_.emplace_back(l.pos_);
     loc.ids_.emplace_back(l.id_);
+    loc.alt_names_.add_back_sized(0U);
     loc.src_.emplace_back(l.src_);
     loc.types_.emplace_back(l.type_);
     loc.location_timezones_.emplace_back(l.timezone_idx_);
@@ -429,6 +430,7 @@ location_idx_t register_location(timetable& tt, location const& l) {
   assert(loc.descriptions_.size() == next_idx + 1);
   assert(loc.coordinates_.size() == next_idx + 1);
   assert(loc.ids_.size() == next_idx + 1);
+  assert(loc.alt_names_.size() == next_idx + 1);
   assert(loc.src_.size() == next_idx + 1);
   assert(loc.types_.size() == next_idx + 1);
   assert(loc.location_timezones_.size() == next_idx + 1);
