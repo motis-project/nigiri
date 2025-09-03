@@ -15,6 +15,8 @@
 #include "nigiri/loader/netex/loader.h"
 #include "nigiri/timetable.h"
 
+namespace fs = std::filesystem;
+
 namespace nigiri::loader {
 
 std::vector<std::unique_ptr<loader_interface>> get_loaders() {
@@ -35,6 +37,7 @@ timetable load(std::vector<timetable_source> const& sources,
                shapes_storage* shapes,
                bool ignore) {
   auto const loaders = get_loaders();
+  auto cache_path = fs::path{"cache"};
 
   auto tt = timetable{};
   tt.date_range_ = date_range;
@@ -42,6 +45,7 @@ timetable load(std::vector<timetable_source> const& sources,
   register_special_stations(tt);
   auto const progress_tracker = utl::get_active_progress_tracker();
   for (auto const [idx, in] : utl::enumerate(sources)) {
+    auto const local_cache_path = cache_path / fmt::format("tt{:d}", idx);
     auto const& [tag, path, local_config] = in;
     auto const is_in_memory = path.starts_with("\n#");
     auto const src = source_idx_t{idx};
@@ -67,6 +71,8 @@ timetable load(std::vector<timetable_source> const& sources,
       } catch (std::exception const& e) {
         throw utl::fail("failed to load {}: {}", path, e.what());
       }
+      fs::create_directories(local_cache_path);
+      tt.write(local_cache_path / "tt.bin");
       progress_tracker->context("");
     } else if (!ignore) {
       throw utl::fail("no loader for {} found", path);
