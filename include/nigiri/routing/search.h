@@ -222,12 +222,13 @@ struct search {
 
       search_interval();
 
-      if (is_ontrip() || n_results_in_interval() >= q_.min_connection_count_ ||
+      if (state_.results_.empty() || is_ontrip() ||
+          n_results_in_interval() >= q_.min_connection_count_ ||
           is_timeout_reached()) {
         trace(
-            "  finished: is_ontrip={}, "
-            "extend_earlier={}, extend_later={}, initial={}, interval={}, "
-            "timetable={}, number_of_results_in_interval={}, "
+            "  finished: is_ontrip={}, extend_earlier={}, extend_later={}, "
+            "initial={}, interval={}, timetable={}, "
+            "number_of_results_in_interval={}, results_with_+1_ontrip={}, "
             "timeout_reached={}\n",
             is_ontrip(), q_.extend_interval_earlier_, q_.extend_interval_later_,
             std::visit(
@@ -240,7 +241,7 @@ struct search {
                                 }},
                 q_.start_time_),
             search_interval_, tt_.external_interval(), n_results_in_interval(),
-            is_timeout_reached());
+            state_.results_.size(), is_timeout_reached());
         span->SetAttribute("nigiri.search.timeout_reached",
                            is_timeout_reached());
         break;
