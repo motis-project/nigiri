@@ -1,6 +1,9 @@
 #include <cassert>
+#include <chrono>
 
 #include "nigiri/loader/load.h"
+
+#include "cista/hash.h"
 
 #include "fmt/std.h"
 
@@ -15,6 +18,7 @@
 #include "nigiri/loader/netex/loader.h"
 #include "nigiri/shapes_storage.h"
 #include "nigiri/timetable.h"
+#include "nigiri/types.h"
 
 namespace fs = std::filesystem;
 
@@ -31,6 +35,15 @@ std::vector<std::unique_ptr<loader_interface>> get_loaders() {
   return loaders;
 }
 
+using last_write_time_t = cista::strong<std::int64_t, struct _last_write_time>;
+using source_path_t = cista::basic_string<char const*>;
+
+struct change_detector {
+  vector_map<source_idx_t, source_path_t> source_paths_;
+  vector_map<source_idx_t, std::uint64_t> source_config_hashes_;
+  vector_map<source_idx_t, last_write_time_t> last_write_times_;
+};
+
 timetable load(std::vector<timetable_source> const& sources,
                finalize_options const& finalize_opt,
                interval<date::sys_days> const& date_range,
@@ -38,7 +51,31 @@ timetable load(std::vector<timetable_source> const& sources,
                shapes_storage* shapes,
                bool ignore) {
   auto const loaders = get_loaders();
-  auto cache_path = fs::path{"cache"};
+  auto const cache_path = fs::path{"cache"};
+  auto const cache_metadata_path = cache_path / "meta.bin";
+
+  fs::create_directories(cache_path);
+  auto chg = change_detector{};
+  for (auto const& in : sources) {
+    auto const& [tag, path, local_config] = in;
+
+    auto const last_write_time = fs::last_write_time(path);
+    auto const timestamp =
+        std::chrono::duration_cast<std::chrono::nanoseconds>(
+            std::chrono::file_clock::to_sys(last_write_time).time_since_epoch())
+            .count();
+    chg.source_paths_.emplace_back(path);
+    chg.source_config_hashes_.emplace_back(
+        cista::hashing<loader_config>{}(local_config));
+    chg.last_write_times_.emplace_back(last_write_time_t{timestamp});
+  }
+
+  try {
+    cista::write(cache_metadata_path, chg);
+  } catch (std::exception const& e) {
+    log(log_lvl::error, "loader.load", "couldn't write cache metadata to {}",
+        cache_metadata_path);
+  }
 
   auto tt = timetable{};
   tt.date_range_ = date_range;
