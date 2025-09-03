@@ -320,10 +320,6 @@ private:
     return any_marked;
   }
 
-  float transferProbability(delta_t from, delta_t to){
-    return std::min(1.0f, 0.02f * (to+1)) - std::min(1.0f, 0.02f * (from));
-  }
-
   bool iterate_without_enter(auto et_label, auto i, auto r, auto k){
     auto stop_seq = tt_.route_location_seq_[r];
     auto any_marked = false;
@@ -367,6 +363,22 @@ private:
       return a.arr_t_ < t;
     });
     labels.erase(labels.begin(), new_begin);
+  }
+
+  float delay_distribution_paper(delta_t x){
+    auto xf = static_cast<float>(x);
+    return std::min(1.0f, (31 * xf + 60) / (30 * (xf + 3)));
+  }
+
+  float delay_distribution_linear(delta_t x){
+    float gradient = 0.02f;
+    float on_time_probability = 0.6;
+    return std::min(1.0f, gradient * static_cast<float>(x) + on_time_probability);
+  }
+
+  float transferProbability(delta_t from, delta_t to){
+    auto function = [this](auto x){return this->delay_distribution_paper(x);};
+    return function(to) - (from != 0 ? function(from): 0);
   }
 
   float cum_success_chance(auto l, auto k, delta_t possible_start_t){
