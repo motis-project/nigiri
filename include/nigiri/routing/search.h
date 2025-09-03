@@ -306,7 +306,7 @@ struct search {
                j.travel_time() > q_.max_travel_time_;
       });
 
-      if (q_.slow_direct_) {
+      if (false) {//if (q_.slow_direct_) {
         auto direct = std::vector<journey>{};
         auto done = hash_set<std::pair<location_idx_t, location_idx_t>>{};
         for (auto const& j : state_.results_) {
