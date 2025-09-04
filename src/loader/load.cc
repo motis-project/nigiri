@@ -69,6 +69,78 @@ timetable load(std::vector<timetable_source> const& sources,
         cista::hashing<loader_config>{}(local_config));
     chg.last_write_times_.emplace_back(last_write_time_t{timestamp});
   }
+  auto saved_changes = change_detector{};
+  try {
+    saved_changes = *cista::read<change_detector>(cache_metadata_path);
+  } catch (std::exception const& e) {
+    log(log_lvl::info, "loader.load", "no cache metadata at {} found",
+        cache_metadata_path);
+  }
+  auto first_recomputed_source = source_idx_t{chg.source_paths_.size()};
+  for (auto const [idx, path] : utl::enumerate(chg.source_paths_)) {
+    auto const src = source_idx_t{idx};
+    if (chg.source_paths_.size() != saved_changes.source_paths_.size()) {
+      first_recomputed_source = src;
+      break;
+    }
+    if (path != saved_changes.source_paths_[src] ||
+        chg.last_write_times_[src] != saved_changes.last_write_times_[src]) {
+      first_recomputed_source = src;
+      break;
+    }
+    if (chg.source_config_hashes_[src] !=
+        saved_changes.source_config_hashes_[src]) {
+      first_recomputed_source = src;
+      break;
+    }
+  }
+
+  auto tt = timetable{};
+  auto const progress_tracker = utl::get_active_progress_tracker();
+  for (auto i = first_recomputed_source; i >= 0; --i) {
+    if (i == 0) {
+      tt.date_range_ = date_range;
+      tt.n_sources_ = static_cast<cista::base_t<source_idx_t>>(sources.size());
+      register_special_stations(tt);
+      break;
+    }
+    auto const prev = i - 1;
+    auto const local_cache_path =
+        cache_path / fmt::format("tt{:d}", to_idx(prev));
+    auto cached_timetable = timetable{};
+    try {
+      cached_timetable = *cista::read<timetable>(local_cache_path / "tt.bin");
+    } catch (std::exception const& e) {
+      log(log_lvl::info, "loader.load", "no cached timetable at {} found",
+          local_cache_path / "tt.bin");
+      continue;
+    }
+    cached_timetable.resolve();
+    if (cached_timetable.date_range_ != date_range) {
+      continue;
+    }
+    first_recomputed_source = i;
+    tt = cached_timetable;
+    auto cached_shape_store = std::make_unique<shapes_storage>(
+        local_cache_path, cista::mmap::protection::READ);
+    for (auto i = 0U; i < cached_shape_store->data_.size(); ++i) {
+      auto const idx = shape_idx_t{i};
+      shapes->data_.emplace_back(cached_shape_store->data_[idx]);
+    }
+    for (auto e : cached_shape_store->offsets_) {
+      shapes->offsets_.emplace_back(e);
+    }
+    for (auto e : cached_shape_store->trip_offset_indices_) {
+      shapes->trip_offset_indices_.emplace_back(e);
+    }
+    for (auto e : cached_shape_store->route_bboxes_) {
+      shapes->route_bboxes_.emplace_back(e);
+    }
+    for (auto e : cached_shape_store->route_segment_bboxes_) {
+      shapes->route_segment_bboxes_.emplace_back(e);
+    }
+    break;
+  }
 
   try {
     cista::write(cache_metadata_path, chg);
@@ -77,16 +149,14 @@ timetable load(std::vector<timetable_source> const& sources,
         cache_metadata_path);
   }
 
-  auto tt = timetable{};
-  tt.date_range_ = date_range;
-  tt.n_sources_ = static_cast<cista::base_t<source_idx_t>>(sources.size());
-  register_special_stations(tt);
-  auto const progress_tracker = utl::get_active_progress_tracker();
   for (auto const [idx, in] : utl::enumerate(sources)) {
     auto const local_cache_path = cache_path / fmt::format("tt{:d}", idx);
+    auto const src = source_idx_t{idx};
+    if (src < first_recomputed_source) {
+      continue;
+    }
     auto const& [tag, path, local_config] = in;
     auto const is_in_memory = path.starts_with("\n#");
-    auto const src = source_idx_t{idx};
     auto const dir = is_in_memory
                          // hack to load strings in integration tests
                          ? std::make_unique<mem_dir>(mem_dir::read(path))
