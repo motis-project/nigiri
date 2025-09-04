@@ -15,8 +15,4 @@ routing_result<raptor_stats> mcraptor_search(
     direction search_dir,
     std::optional<std::chrono::seconds> timeout = std::nullopt);
 
-bool results_are_equal(timetable const& tt,
-                       routing_result<raptor_stats> const& result_1,
-                       routing_result<raptor_stats> const& result_2);
-
 }  // namespace nigiri::routing
