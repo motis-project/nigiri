@@ -18,4 +18,18 @@ timezone_idx_t get_tz_idx(timetable& tt,
   });
 }
 
+std::optional<std::string_view> get_timezone_name(timetable const& tt,
+                                                  timezone_idx_t const i) {
+  return i == timezone_idx_t::invalid()
+             ? std::nullopt
+             : std::optional{tt.locations_.timezones_[i].apply(
+                   utl::overloaded{[](tz_offsets const&) {
+                                     assert(false);
+                                     return "";
+                                   },
+                                   [](pair<string, void const*> const& x) {
+                                     return x.first.view();
+                                   }})};
+}
+
 }  // namespace nigiri::loader::gtfs

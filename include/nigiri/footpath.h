@@ -14,10 +14,12 @@ namespace nigiri {
 struct footpath {
   using value_type = location_idx_t::value_t;
   static constexpr auto const kTotalBits = 8 * sizeof(value_type);
-  static constexpr auto const kTargetBits = 22U;
+  static constexpr auto const kTargetBits = 23U;
   static constexpr auto const kDurationBits = kTotalBits - kTargetBits;
   static constexpr auto const kMaxDuration = duration_t{
       std::numeric_limits<location_idx_t::value_t>::max() >> kTargetBits};
+  static constexpr auto const kMaxTarget =
+      std::numeric_limits<location_idx_t::value_t>::max() >> kDurationBits;
 
   footpath() = default;
 
@@ -29,15 +31,7 @@ struct footpath {
       : target_{target},
         duration_{static_cast<value_type>(
             (duration > kMaxDuration ? kMaxDuration : duration).count())} {
-    utl::verify(to_idx(target) <
-                    std::numeric_limits<location_idx_t::value_t>::max() >>
-                    kDurationBits,
-                "station index overflow");
-    if (duration > kMaxDuration) {
-      [[unlikely]] nigiri::log(log_lvl::error, "footpath",
-                               "footpath overflow: {} > {} adjusted to {}",
-                               duration, kMaxDuration, this->duration());
-    }
+    utl::verify(to_idx(target) < kMaxTarget, "station index overflow");
   }
 
   static auto cmp_by_duration() {
@@ -57,17 +51,18 @@ struct footpath {
     return out << "(" << fp.target() << ", " << fp.duration() << ")";
   }
 
-  friend bool operator==(footpath const& a, footpath const& b) {
-    return std::tie(a.target_, a.duration_) == std::tie(b.target_, b.duration_);
+  bool operator==(footpath const& o) const {
+    return target_ == o.target_ && duration_ == o.duration_;
   }
-
-  friend bool operator<(footpath const& a, footpath const& b) {
-    return std::tie(a.target_, a.duration_) < std::tie(b.target_, b.duration_);
+  auto operator<=>(footpath const& o) const {
+    return std::tie(target_, duration_) <=> std::tie(o.target_, o.duration_);
   }
 
   location_idx_t::value_t target_ : kTargetBits;
   location_idx_t::value_t duration_ : kDurationBits;
 };
+
+static_assert(std::three_way_comparable<footpath>);
 
 template <std::size_t NMaxTypes>
 constexpr auto static_type_hash(footpath const*,

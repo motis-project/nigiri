@@ -13,26 +13,28 @@
 #include "nigiri/loader/gtfs/trip.h"
 #include "nigiri/common/day_list.h"
 #include "nigiri/common/split_duration.h"
+#include "nigiri/logging.h"
 #include "nigiri/timetable.h"
 
 namespace nigiri::loader::gtfs {
 
 struct frequency_expanded_trip {
-  std::basic_string<gtfs_trip_idx_t> trips_;
-  std::basic_string<duration_t> offsets_;
+  basic_string<gtfs_trip_idx_t> trips_;
+  basic_string<duration_t> offsets_;
   bitfield const* traffic_days_;
 };
 
 struct utc_trip {
-  duration_t first_dep_offset_;
-  std::basic_string<gtfs_trip_idx_t> trips_;
-  std::basic_string<duration_t> utc_times_;
+  date::days first_dep_offset_;
+  duration_t tz_offset_;
+  basic_string<gtfs_trip_idx_t> trips_;
+  basic_string<duration_t> utc_times_;
   bitfield utc_traffic_days_;
   stop_seq_t stop_seq_;
 };
 
 inline bool headways_match(trip_data const& trip_data,
-                           std::basic_string<gtfs_trip_idx_t> const& trips) {
+                           basic_string<gtfs_trip_idx_t> const& trips) {
   if (trips.size() <= 1) {
     return true;
   }
@@ -53,7 +55,7 @@ inline bool headways_match(trip_data const& trip_data,
 };
 
 inline bool stays_sorted(trip_data const& trip_data,
-                         std::basic_string<gtfs_trip_idx_t> const& trips) {
+                         basic_string<gtfs_trip_idx_t> const& trips) {
   if (trips.size() <= 1) {
     return true;
   }
@@ -76,7 +78,7 @@ inline bool stays_sorted(trip_data const& trip_data,
 
 template <typename Consumer>
 void expand_frequencies(trip_data const& trip_data,
-                        std::basic_string<gtfs_trip_idx_t> const& trips,
+                        basic_string<gtfs_trip_idx_t> const& trips,
                         bitfield const* traffic_days,
                         Consumer&& consumer) {
   auto const has_frequency = [&](gtfs_trip_idx_t const i) {
@@ -94,7 +96,7 @@ void expand_frequencies(trip_data const& trip_data,
         for (auto it = 0U; it < freq.number_of_iterations(); ++it) {
           consumer(frequency_expanded_trip{
               .trips_ = trips,
-              .offsets_ = utl::transform_to<std::basic_string<duration_t>>(
+              .offsets_ = utl::transform_to<basic_string<duration_t>>(
                   trips,
                   [&](gtfs_trip_idx_t const t_idx) {
                     auto const& t = trip_data.get(t_idx);
@@ -113,7 +115,7 @@ void expand_frequencies(trip_data const& trip_data,
   } else {
     consumer(frequency_expanded_trip{
         .trips_ = trips,
-        .offsets_ = std::basic_string<duration_t>{trips.size(), 0_minutes},
+        .offsets_ = basic_string<duration_t>{trips.size(), 0_minutes},
         .traffic_days_ = traffic_days});
   }
 }
@@ -135,7 +137,10 @@ void expand_local_to_utc(trip_data const& trip_data,
   auto trip_it = begin(fet.trips_);
   auto offsets_it = begin(fet.offsets_);
   while (trip_it != end(fet.trips_)) {
-    if (trip_data.get(*trip_it).event_times_.size() <= 1U) {
+    auto const& t = trip_data.get(*trip_it);
+    if (t.event_times_.size() <= 1U || t.requires_interpolation_) {
+      log(log_lvl::error, "loader.gtfs.trip",
+          R"(trip "{}": invalid event times, skipping)", t.id_);
       trip_it = fet.trips_.erase(trip_it);
       offsets_it = fet.offsets_.erase(offsets_it);
     } else {
@@ -207,7 +212,7 @@ void expand_local_to_utc(trip_data const& trip_data,
   }
 
   auto const build_time_string = [&](conversion_key const key) {
-    std::basic_string<minutes_after_midnight_t> utc_time_mem;
+    basic_string<minutes_after_midnight_t> utc_time_mem;
     utc_time_mem.resize(n_stops * 2U - fet.trips_.size() * 2U);
     auto const [first_dep_day_offset, tz_offset] = key;
     auto i = 0U;
@@ -231,14 +236,12 @@ void expand_local_to_utc(trip_data const& trip_data,
   };
 
   for (auto& [key, traffic_days] : utc_time_traffic_days) {
-    consumer(utc_trip{
-        .first_dep_offset_ =
-            std::chrono::duration_cast<duration_t>(key.first_dep_day_offset_) +
-            key.tz_offset_,
-        .trips_ = fet.trips_,
-        .utc_times_ = build_time_string(key),
-        .utc_traffic_days_ = traffic_days,
-        .stop_seq_ = {}});
+    consumer(utc_trip{.first_dep_offset_ = key.first_dep_day_offset_,
+                      .tz_offset_ = key.tz_offset_,
+                      .trips_ = fet.trips_,
+                      .utc_times_ = build_time_string(key),
+                      .utc_traffic_days_ = traffic_days,
+                      .stop_seq_ = {}});
   }
 }
 
@@ -248,9 +251,8 @@ inline stop_seq_t const* get_stop_seq(trip_data const& trip_data,
   if (!t.stop_seq_.empty()) {
     return &t.stop_seq_;
   } else if (t.trips_.size() == 1U) {
-    if (trip_data.get(t.trips_.front()).stop_seq_.size() <= 1) {
-      std::terminate();
-    }
+    utl::verify(trip_data.get(t.trips_.front()).stop_seq_.size() > 1,
+                "trip must have at least two stops");
     return &trip_data.get(t.trips_.front()).stop_seq_;
   } else {
     stop_seq_cache.clear();
@@ -292,10 +294,13 @@ void expand_assistance(timetable const& tt,
     auto stop_seq = *get_stop_seq(trip_data, ut, stop_seq_cache);
     auto stop_times_it = begin(ut.utc_times_);
     for (auto [a, b] : utl::pairwise(stop_seq)) {
+      auto const offset =
+          std::chrono::duration_cast<duration_t>(ut.first_dep_offset_) +
+          ut.tz_offset_;
       auto const [dep_day_offset, dep] =
-          split_time_mod(*stop_times_it++ + ut.first_dep_offset_);
+          split_time_mod(*stop_times_it++ + offset);
       auto const [arr_day_offset, arr] =
-          split_time_mod(*stop_times_it++ + ut.first_dep_offset_);
+          split_time_mod(*stop_times_it++ + offset);
 
       auto from = stop{a};
       auto to = stop{b};
@@ -326,6 +331,7 @@ void expand_assistance(timetable const& tt,
   });
   for (auto const& [stop_seq, traffic_days] : assistance_traffic_days) {
     consumer(utc_trip{.first_dep_offset_ = ut.first_dep_offset_,
+                      .tz_offset_ = ut.tz_offset_,
                       .trips_ = ut.trips_,
                       .utc_times_ = ut.utc_times_,
                       .utc_traffic_days_ = traffic_days,
@@ -337,7 +343,7 @@ template <typename Consumer>
 void expand_trip(trip_data& trip_data,
                  noon_offset_hours_t const& noon_offsets,
                  timetable const& tt,
-                 std::basic_string<gtfs_trip_idx_t> const& trips,
+                 basic_string<gtfs_trip_idx_t> const& trips,
                  bitfield const* traffic_days,
                  interval<date::sys_days> const& selection,
                  assistance_times* assist,

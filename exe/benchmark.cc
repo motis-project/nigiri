@@ -93,8 +93,7 @@ struct benchmark_result {
         << std::chrono::duration_cast<std::chrono::hours>(
                br.routing_result_.interval_.size())
                .count()
-        << "h"
-        << ", #jrny: " << std::setfill(' ') << std::setw(2)
+        << "h" << ", #jrny: " << std::setfill(' ') << std::setw(2)
         << br.journeys_.size() << ")";
     return out;
   }
@@ -460,7 +459,7 @@ int main(int argc, char* argv[]) {
 
   std::cout << "loading timetable...\n";
   auto tt = *nigiri::timetable::read(tt_path);
-  tt.locations_.resolve_timezones();
+  tt.resolve();
 
   if (set_start_mode_to_station && start_mode_str != std::string{"station"}) {
     start_mode_str = std::string{"station"};
@@ -526,7 +525,7 @@ int main(int argc, char* argv[]) {
       min_transfer_time == 0U && gs.transfer_time_settings_.factor_ == 1.0F;
 
   if (vm.count("profile_idx") != 0) {
-    if (prf_idx >= kMaxProfiles) {
+    if (prf_idx >= kNProfiles) {
       std::cout << "Error: profile idx exceeds numeric limits\n";
       return 1;
     }

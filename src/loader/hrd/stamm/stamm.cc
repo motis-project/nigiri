@@ -36,7 +36,8 @@ stamm::stamm(config const& c, timetable& tt, dir const& d) : tt_{tt} {
                      files.at(COORDINATES).data(), files.at(FOOTPATHS).data());
   bitfields_ = parse_bitfields(c, files.at(BITFIELDS).data());
   categories_ = parse_categories(c, files.at(CATEGORIES).data());
-  providers_ = parse_providers(c, tt, files.at(PROVIDERS).data());
+  providers_ =
+      parse_providers(c, source_idx_t{0U}, tt, files.at(PROVIDERS).data());
   attributes_ = parse_attributes(c, tt, files.at(ATTRIBUTES).data());
   directions_ = parse_directions(c, tt, files.at(DIRECTIONS).data());
   date_range_ = parse_interval(files.at(BASIC_DATA).data());
@@ -105,8 +106,10 @@ provider_idx_t stamm::resolve_provider(utl::cstr s) {
     log(log_lvl::error, "nigiri.loader.hrd.provider",
         "creating new provider for missing {}", s.view());
     auto const idx = provider_idx_t{tt_.providers_.size()};
-    tt_.providers_.emplace_back(
-        provider{.short_name_ = s.view(), .long_name_ = s.view(), .url_ = ""});
+    tt_.providers_.push_back(provider{.id_ = tt_.strings_.store(s.view()),
+                                      .name_ = tt_.strings_.store(s.view()),
+                                      .url_ = tt_.strings_.store(""),
+                                      .src_ = source_idx_t{0}});
     providers_[s.to_str()] = idx;
     return idx;
   } else {

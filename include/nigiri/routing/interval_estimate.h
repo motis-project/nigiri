@@ -23,12 +23,18 @@ struct interval_estimator {
     auto const interval =
         q.fastest_direct_ ? std::chrono::days{1} : std::chrono::days{2};
     data_type_max_interval_ = {
-        std::chrono::round<std::chrono::days>(
-            start_itv.from_ + ((start_itv.to_ - start_itv.from_) / 2)) -
-            interval,
-        std::chrono::round<std::chrono::days>(
-            start_itv.from_ + ((start_itv.to_ - start_itv.from_) / 2)) +
-            interval};
+        std::max(
+            std::chrono::round<std::chrono::days>(start_itv.from_ - interval),
+            std::chrono::round<std::chrono::days>(
+                start_itv.from_ +
+                (start_itv.to_ - start_itv.from_ - kMaxSearchIntervalSize) /
+                    2)),
+        std::min(
+            std::chrono::round<std::chrono::days>(start_itv.to_ + interval),
+            std::chrono::round<std::chrono::days>(
+                start_itv.from_ +
+                (start_itv.to_ - start_itv.from_ + kMaxSearchIntervalSize) /
+                    2))};
   }
 
   interval<unixtime_t> initial(interval<unixtime_t> const& itv) const {

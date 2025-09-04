@@ -1,6 +1,7 @@
 #include "nigiri/loader/hrd/stamm/provider.h"
 
 #include "nigiri/loader/hrd/util.h"
+#include "nigiri/loader/register.h"
 #include "utl/parser/arg_parser.h"
 #include "utl/verify.h"
 
@@ -30,21 +31,25 @@ std::string_view parse_name(utl::cstr s) {
   return {region.str, static_cast<unsigned>(region.len)};
 }
 
-provider read_provider_names(utl::cstr line) {
+provider read_provider_names(timetable& tt,
+                             utl::cstr line,
+                             source_idx_t const src) {
   auto const long_name = line.substr_offset(" L ");
   utl::verify(long_name != std::numeric_limits<size_t>::max(),
               "no long name found: {}", line.view());
   auto const full_name = line.substr_offset(" V ");
   utl::verify(long_name != std::numeric_limits<size_t>::max(),
               "no full name found: {}", line.view());
-  return provider{
-      .short_name_ =
-          iso_8859_1_to_utf8(parse_name(line.substr(long_name + 3U))),
-      .long_name_ = iso_8859_1_to_utf8(parse_name(line.substr(full_name + 3U))),
-      .url_ = "" /* Currently not supported */};
+  return provider{.id_ = tt.strings_.store(iso_8859_1_to_utf8(
+                      parse_name(line.substr(long_name + 3U)))),
+                  .name_ = tt.strings_.store(iso_8859_1_to_utf8(
+                      parse_name(line.substr(full_name + 3U)))),
+                  .url_ = tt.strings_.store(""),
+                  .src_ = src};
 }
 
 provider_map_t parse_providers(config const& c,
+                               source_idx_t const src,
                                timetable& tt,
                                std::string_view file_content) {
   auto const timer = scoped_timer{"parse providers"};
@@ -57,14 +62,16 @@ provider_map_t parse_providers(config const& c,
       file_content, [&](utl::cstr line, unsigned const line_number) {
         auto provider_number = utl::parse<int>(line.substr(c.track_.prov_nr_));
         if (line.length() > 6 && line[6] == 'K') {
-          current_info = read_provider_names(line);
+          current_info = read_provider_names(tt, line, src);
           previous_provider_number = provider_number;
         } else if (line.length() > 8) {
           utl::verify(previous_provider_number == provider_number,
                       "provider line format mismatch in line {}", line_number);
           for_each_token(line.substr(8), ' ', [&](utl::cstr token) {
-            providers[token.to_str()] =
-                tt.register_provider(provider{current_info});
+            providers[token.to_str()] = register_agency(
+                tt, agency{src, tt.strings_.get(current_info.id_),
+                           tt.strings_.get(current_info.name_), "",
+                           current_info.tz_, tt});
           });
         }
       });

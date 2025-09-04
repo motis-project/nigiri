@@ -77,9 +77,9 @@ private:
       // eva_or_idx is not an index -> eva_or_idx is an eva number
       // hhmm_or_idx is empty -> search for first occurrence
       // hhmm_or_idx is an index -> search for nth occurrence
-      const auto eva_num = parse<unsigned>(eva_or_idx);
-      const auto n = is_index(hhmm_or_idx) ? parse_index(hhmm_or_idx) + 1 : 1;
-      const auto it = find_nth(
+      auto const eva_num = parse<unsigned>(eva_or_idx);
+      auto const n = is_index(hhmm_or_idx) ? parse_index(hhmm_or_idx) + 1 : 1;
+      auto const it = find_nth(
           begin(stops), end(stops), n,
           [&](service::stop const& s) { return s.eva_num_ == eva_num; });
       utl::verify(it != end(stops),
@@ -88,10 +88,10 @@ private:
     } else {
       // hhmm_or_idx must be a time
       // -> return stop where eva number and time matches
-      const auto eva_num = parse<unsigned>(eva_or_idx);
-      const auto time = hhmm_to_min(parse<int>(hhmm_or_idx.substr(1)));
+      auto const eva_num = parse<unsigned>(eva_or_idx);
+      auto const time = hhmm_to_min(parse<int>(hhmm_or_idx.substr(1)));
       if (ev_type == event_type::kDep) {
-        const auto it =
+        auto const it =
             std::find_if(begin(stops), end(stops), [&](service::stop const& s) {
               return s.eva_num_ == eva_num &&
                      (ev_type == event_type::kDep ? s.dep_.time_
@@ -102,7 +102,7 @@ private:
                     eva_num);
         return static_cast<std::size_t>(std::distance(begin(stops), it));
       } else {
-        const auto it = std::find_if(
+        auto const it = std::find_if(
             stops.rbegin(), stops.rend(), [&](service::stop const& s) {
               return s.eva_num_ == eva_num &&
                      (ev_type == event_type::kDep ? s.dep_.time_
@@ -404,11 +404,11 @@ std::string service::display_name(nigiri::timetable& tt) const {
             .to_str();
     auto const first =
         is(kOnlyTrainNr)
-            ? string{""}
-            : (is(kUseProvider) ? provider.short_name_ : cat.name_);
+            ? ""
+            : (is(kUseProvider) ? tt.strings_.get(provider.id_) : cat.name_);
     auto const second =
         is(kOnlyCategory)
-            ? string{""}
+            ? ""
             : (train_nr == 0U ? line_id : fmt::to_string(train_nr));
     return fmt::format("{}{}{}", first, first.empty() ? "" : " ", second);
   }

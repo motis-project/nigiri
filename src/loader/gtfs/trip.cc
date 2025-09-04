@@ -26,7 +26,7 @@
 
 namespace nigiri::loader::gtfs {
 
-std::vector<std::pair<std::basic_string<gtfs_trip_idx_t>, bitfield>>
+std::vector<std::pair<basic_string<gtfs_trip_idx_t>, bitfield>>
 block::rule_services(trip_data& trips) {
   utl::verify(!trips_.empty(), "empty block not allowed");
 
@@ -40,7 +40,7 @@ block::rule_services(trip_data& trips) {
   });
 
   if (trips_.size() == 1) {
-    return {{std::pair{std::basic_string<gtfs_trip_idx_t>{trips_.front()},
+    return {{std::pair{basic_string<gtfs_trip_idx_t>{trips_.front()},
                        *trips.get(trips_.front()).service_}}};
   }
 
@@ -64,8 +64,7 @@ block::rule_services(trip_data& trips) {
     bitfield traffic_days_;
   };
 
-  std::vector<std::pair<std::basic_string<gtfs_trip_idx_t>, bitfield>>
-      combinations;
+  std::vector<std::pair<basic_string<gtfs_trip_idx_t>, bitfield>> combinations;
   for (auto start_it = begin(rule_trips); start_it != end(rule_trips);
        ++start_it) {
     std::stack<queue_entry> q;
@@ -98,7 +97,7 @@ block::rule_services(trip_data& trips) {
         }
 
         combinations.emplace_back(
-            utl::transform_to<std::basic_string<gtfs_trip_idx_t>>(
+            utl::transform_to<basic_string<gtfs_trip_idx_t>>(
                 collected_trips, [](auto&& rt) { return rt->trip_; }),
             traffic_days);
       }
@@ -114,16 +113,20 @@ trip::trip(route const* route,
            std::string id,
            trip_direction_idx_t const headsign,
            std::string short_name,
-           shape_idx_t shape_idx,
-           bool const bikes_allowed)
-    : route_(route),
-      service_(service),
+           direction_id_t const direction_id,
+           shape_idx_t const shape_idx,
+           bool const bikes_allowed,
+           bool const cars_allowed)
+    : route_{route},
+      service_{service},
       block_{blk},
       id_{std::move(id)},
-      headsign_(headsign),
-      short_name_(std::move(short_name)),
-      shape_idx_(shape_idx),
-      bikes_allowed_{bikes_allowed} {}
+      headsign_{headsign},
+      direction_id_{direction_id},
+      short_name_{std::move(short_name)},
+      shape_idx_{shape_idx},
+      bikes_allowed_{bikes_allowed},
+      cars_allowed_{cars_allowed} {}
 
 void trip::interpolate() {
   if (!requires_interpolation_) {
@@ -133,8 +136,9 @@ void trip::interpolate() {
   struct bound {
     explicit bound(minutes_after_midnight_t t) : min_{t}, max_{t} {}
     minutes_after_midnight_t interpolate(int const idx) const {
+      auto const denom = max_idx_ - min_idx_;
       auto const p =
-          static_cast<double>(idx - min_idx_) / (max_idx_ - min_idx_);
+          denom > 0 ? static_cast<double>(idx - min_idx_) / denom : 0;
       return min_ + duration_t{static_cast<duration_t::rep>(
                         std::round((max_ - min_).count() * p))};
     }
@@ -160,10 +164,15 @@ void trip::interpolate() {
       max_idx = static_cast<unsigned>(&(*it) - &bounds.front()) / 2U;
     }
   }
-  utl::verify(max != kInterpolate, "last arrival cannot be interpolated");
+  if (bounds.size() <= 1 || bounds[bounds.size() - 2].max_idx_ == 0) {
+    log(log_lvl::error, "loader.gtfs.trip",
+        R"(trip "{}": last arrival cannot be interpolated)", id_);
+    return;
+  }
 
   auto min = duration_t{0};
-  auto min_idx = 0;
+  auto const last = static_cast<int>(event_times_.size() - 1);
+  auto min_idx = last;
   for (auto it = bounds.begin(); it != bounds.end(); ++it) {
     if (it->min_ == kInterpolate) {
       it->min_ = min;
@@ -173,7 +182,11 @@ void trip::interpolate() {
       min_idx = static_cast<unsigned>(&(*it) - &bounds.front()) / 2U;
     }
   }
-  utl::verify(min != kInterpolate, "first arrival cannot be interpolated");
+  if (bounds[1].min_idx_ == last) {
+    log(log_lvl::error, "loader.gtfs.trip",
+        R"(trip "{}": first departure cannot be interpolated)", id_);
+    return;
+  }
 
   for (auto const [idx, entry] : utl::enumerate(event_times_)) {
     auto const& arr = bounds[2 * idx];
@@ -186,17 +199,11 @@ void trip::interpolate() {
       entry.dep_ = dep.interpolate(static_cast<int>(idx));
     }
   }
+  requires_interpolation_ = false;
 }
 
-std::string trip::display_name() const {
-  for (auto const str :
-       {std::string_view{route_->short_name_},
-        std::string_view{route_->long_name_}, std::string_view{short_name_}}) {
-    if (!str.empty()) {
-      return std::string{str};
-    }
-  }
-  return {};
+bool trip::has_seated_transfers() const {
+  return !seated_in_.empty() || !seated_out_.empty();
 }
 
 clasz trip::get_clasz(timetable const& tt) const {
@@ -222,13 +229,15 @@ trip_direction_idx_t trip_data::get_or_create_direction(
   });
 }
 
-trip_data read_trips(
-    timetable& tt,
-    route_map_t const& routes,
-    traffic_days_t const& services,
-    shape_loader_state const& shape_states,
-    std::string_view file_content,
-    std::array<bool, kNumClasses> const& bikes_allowed_default) {
+trip_data read_trips(source_idx_t const src,
+                     timetable& tt,
+                     route_map_t const& routes,
+                     traffic_days_t const& services,
+                     shape_loader_state const& shape_states,
+                     std::string_view file_content,
+                     std::array<bool, kNumClasses> const& bikes_allowed_default,
+                     std::array<bool, kNumClasses> const& cars_allowed_default,
+                     script_runner const& user_script) {
   struct csv_trip {
     utl::csv_col<utl::cstr, UTL_NAME("route_id")> route_id_;
     utl::csv_col<utl::cstr, UTL_NAME("service_id")> service_id_;
@@ -236,9 +245,11 @@ trip_data read_trips(
     utl::csv_col<cista::raw::generic_string, UTL_NAME("trip_headsign")>
         trip_headsign_;
     utl::csv_col<utl::cstr, UTL_NAME("trip_short_name")> trip_short_name_;
+    utl::csv_col<utl::cstr, UTL_NAME("direction_id")> direction_id_;
     utl::csv_col<utl::cstr, UTL_NAME("block_id")> block_id_;
     utl::csv_col<utl::cstr, UTL_NAME("shape_id")> shape_id_;
     utl::csv_col<std::uint8_t, UTL_NAME("bikes_allowed")> bikes_allowed_;
+    utl::csv_col<std::uint8_t, UTL_NAME("cars_allowed")> cars_allowed_;
   };
   auto const& shapes = shape_states.id_map_;
 
@@ -283,21 +294,61 @@ trip_data read_trips(
             bikes_allowed = false;
           }
 
+          auto cars_allowed = cars_allowed_default[static_cast<std::size_t>(
+              route_it->second->clasz_)];
+          if (t.cars_allowed_.val() == 1) {
+            cars_allowed = true;
+          } else if (t.cars_allowed_.val() == 2) {
+            cars_allowed = false;
+          }
+
+          auto const display_name = [&]() -> std::string_view {
+            for (auto const str :
+                 {std::string_view{route_it->second->short_name_},
+                  std::string_view{route_it->second->long_name_},
+                  t.trip_short_name_->view()}) {
+              if (!str.empty()) {
+                return str;
+              }
+            }
+            return "";
+          }();
+
+          auto x = loader::trip{src,
+                                t.trip_id_->view(),
+                                t.trip_headsign_->view(),
+                                t.trip_short_name_->view(),
+                                display_name,
+                                (t.direction_id_->view() == "1")
+                                    ? direction_id_t{1U}
+                                    : direction_id_t{0U},
+                                route_it->second->route_id_idx_,
+                                tt};
+
+          auto const keep = process_trip(user_script, x);
+          if (!keep) {
+            log(log_lvl::info, "nigiri.import.gtfs.trip",
+                "script removed trip {}", t.trip_id_->view());
+            return;
+          }
+
           auto const blk = t.block_id_->trim().empty()
                                ? nullptr
                                : utl::get_or_create(
                                      ret.blocks_, t.block_id_->trim().view(),
                                      []() { return std::make_unique<block>(); })
                                      .get();
-          auto const trp_idx = gtfs_trip_idx_t{ret.data_.size()};
+
+          auto const gtfs_trp_idx = gtfs_trip_idx_t{ret.data_.size()};
           ret.data_.emplace_back(
               route_it->second.get(), traffic_days_it->second.get(), blk,
               t.trip_id_->to_str(),
-              ret.get_or_create_direction(tt, t.trip_headsign_->view()),
-              t.trip_short_name_->to_str(), shape_idx, bikes_allowed);
-          ret.trips_.emplace(t.trip_id_->to_str(), trp_idx);
+              ret.get_or_create_direction(tt, x.headsign_), x.short_name_.str(),
+              x.direction_, shape_idx, bikes_allowed, cars_allowed);
+          ret.data_.back().trip_idx_ = register_trip(tt, x);
+          ret.trips_.emplace(t.trip_id_->to_str(), gtfs_trp_idx);
           if (blk != nullptr) {
-            blk->trips_.emplace_back(trp_idx);
+            blk->trips_.emplace_back(gtfs_trp_idx);
           }
         });
   return ret;
@@ -329,7 +380,8 @@ void read_frequencies(trip_data& trips, std::string_view file_content) {
            auto const trip_it = trips.trips_.find(t);
            if (trip_it == end(trips.trips_)) {
              log(log_lvl::error, "loader.gtfs.frequencies",
-                 "frequencies.txt: skipping frequency (trip \"{}\" not found)",
+                 "frequencies.txt: skipping frequency (trip \"{}\" not "
+                 "found)",
                  t);
              return;
            }
@@ -353,8 +405,8 @@ void read_frequencies(trip_data& trips, std::string_view file_content) {
              frequencies = std::vector<frequency>{};
            }
 
-           // If the service operates multiple times per minute, make sure not
-           // to end up with zero.
+           // If the service operates multiple times per minute, make sure
+           // not to end up with zero.
            auto const headway_minutes = duration_t{std::max(
                static_cast<int>(
                    std::round(static_cast<float>(headway_secs) / 60.F)),

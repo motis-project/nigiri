@@ -12,6 +12,7 @@ struct pareto_set {
   using const_iterator = typename std::vector<T>::const_iterator;
 
   size_t size() const { return els_.size(); }
+  bool empty() const { return els_.empty(); }
 
   std::tuple<bool, iterator, iterator> add(T&& el) {
     auto n_removed = std::size_t{0};
@@ -31,6 +32,8 @@ struct pareto_set {
             end()};
   }
 
+  void add_not_optimal(T j) { els_.emplace_back(std::move(j)); }
+
   friend const_iterator begin(pareto_set const& s) { return s.begin(); }
   friend const_iterator end(pareto_set const& s) { return s.end(); }
   friend iterator begin(pareto_set& s) { return s.begin(); }
@@ -45,7 +48,6 @@ struct pareto_set {
   }
   void clear() { els_.clear(); }
 
-private:
   std::vector<T> els_;
 };
 

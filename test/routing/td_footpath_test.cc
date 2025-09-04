@@ -170,6 +170,11 @@ TEST(routing, td_footpath) {
   load_timetable({}, source_idx_t{0}, test_files(), tt);
   finalize(tt);
 
+  tt.fwd_search_lb_graph_[kWheelchairProfile] =
+      tt.fwd_search_lb_graph_[kDefaultProfile];
+  tt.bwd_search_lb_graph_[kWheelchairProfile] =
+      tt.bwd_search_lb_graph_[kDefaultProfile];
+
   auto const A = tt.locations_.get({"A", {}}).l_;
   auto const C = tt.locations_.get({"C", {}}).l_;
   auto const B1 = tt.locations_.get({"B1", {}}).l_;
@@ -218,7 +223,6 @@ TEST(routing, td_footpath) {
 
   // Base: elevator available, no real-time information.
   EXPECT_EQ(kEverythingWorks, to_string(tt, run_search()));
-  (void)kEverythingWorks;
 
   // Switch to real-time footpaths but don't add any footpaths.
   // Represents "elevator broken forever".

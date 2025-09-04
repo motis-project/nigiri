@@ -4,54 +4,102 @@
 
 namespace nigiri {
 
-using string_idx_t = cista::strong<std::uint32_t, struct _string_idx>;
-
-struct string_idx_hash {
-  using is_transparent = void;
-  explicit string_idx_hash(vecvec<string_idx_t, char> const& s) : s_{s} {}
-  cista::hash_t operator()(string_idx_t const i) const {
-    return cista::hash(s_[i].view());
-  }
-  cista::hash_t operator()(std::string_view s) const { return cista::hash(s); }
-  vecvec<string_idx_t, char> const& s_;
-};
-
-struct string_idx_equals {
-  using is_transparent = void;
-  explicit string_idx_equals(vecvec<string_idx_t, char> const& s) : s_{s} {}
-  cista::hash_t operator()(std::string_view a, string_idx_t const b) const {
-    return a == s_[b].view();
-  }
-  cista::hash_t operator()(string_idx_t const a, string_idx_t const b) const {
-    return s_[a].view() == s_[b].view();
-  }
-  vecvec<string_idx_t, char> const& s_;
-};
-
-using string_cache_t =
-    hash_set<string_idx_t, string_idx_hash, string_idx_equals>;
-
+template <typename Idx>
 struct string_store {
-  std::string_view get(string_idx_t const x) const {
-    return strings_[x].view();
+  using idx_t = Idx;
+
+  struct hash {
+    using is_transparent = void;
+    cista::hash_t operator()(idx_t const i) const {
+      return cista::hash((*s_)[i].view());
+    }
+    cista::hash_t operator()(std::string_view s) const {
+      return cista::hash(s);
+    }
+    ptr<vecvec<idx_t, char> const> s_;
+  };
+
+  struct equals {
+    using is_transparent = void;
+    cista::hash_t operator()(std::string_view a, idx_t const b) const {
+      return a == (*s_)[b].view();
+    }
+    cista::hash_t operator()(idx_t const a, idx_t const b) const {
+      return (*s_)[a].view() == (*s_)[b].view();
+    }
+    ptr<vecvec<idx_t, char> const> s_;
+  };
+
+  string_store() = default;
+  string_store(string_store const& o) {
+    if (&o != this) {
+      strings_ = o.strings_;
+      cache_ = o.cache_;
+      resolve();
+    }
+  }
+  string_store(string_store&& o) {
+    if (&o != this) {
+      strings_ = std::move(o.strings_);
+      cache_ = std::move(o.cache_);
+      resolve();
+    }
+  }
+  string_store& operator=(string_store const& o) {
+    if (&o != this) {
+      strings_ = o.strings_;
+      cache_ = o.cache_;
+      resolve();
+    }
+  }
+  string_store& operator=(string_store&& o) {
+    if (&o != this) {
+      strings_ = std::move(o.strings_);
+      cache_ = std::move(o.cache_);
+      resolve();
+    }
   }
 
-  std::optional<std::string_view> try_get(string_idx_t const s) const {
-    return s == string_idx_t::invalid() ? std::nullopt : std::optional{get(s)};
+  template <typename Ctx, typename Fn>
+  friend void recurse(Ctx&, string_store* el, Fn&& fn) {
+    fn(&el->cache_);
+    fn(&el->strings_);
+    el->resolve();
   }
 
-  string_idx_t register_string(string_cache_t& cache, std::string_view s) {
-    if (auto const it = cache.find(s); it != end(cache)) {
+  auto cista_members() { return std::tie(cache_, strings_); }
+
+  std::string_view get(idx_t const x) const {
+    return x == idx_t::invalid() ? "" : strings_[x].view();
+  }
+
+  std::optional<std::string_view> try_get(idx_t const s) const {
+    return s == idx_t::invalid() ? std::nullopt : std::optional{get(s)};
+  }
+
+  idx_t store(std::string_view s) {
+    if (auto const it = cache_.find(s); it != end(cache_)) {
       return *it;
     } else {
-      auto next = string_idx_t{strings_.size()};
+      auto next = idx_t{strings_.size()};
       strings_.emplace_back(s);
-      cache.emplace(next);
+      cache_.emplace(next);
       return next;
     }
   }
 
-  vecvec<string_idx_t, char> strings_;
+  std::optional<idx_t> find(std::string_view s) const {
+    auto const it = cache_.find(s);
+    return it == end(cache_) ? std::nullopt : std::optional{*it};
+  }
+
+  void resolve() {
+    cache_.hash_function().s_ = &strings_;
+    cache_.key_eq().s_ = &strings_;
+  }
+
+  vecvec<idx_t, char> strings_;
+  hash_set<idx_t, hash, equals> cache_{0U, {&strings_}, {&strings_}};
 };
 
 }  // namespace nigiri

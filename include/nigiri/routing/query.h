@@ -65,9 +65,11 @@ struct via_stop {
 
 using start_time_t = std::variant<unixtime_t, interval<unixtime_t>>;
 
+using td_offsets_t = hash_map<location_idx_t, std::vector<routing::td_offset>>;
+
 struct query {
-  friend bool operator==(query const&, query const&) = default;
   void sanitize(timetable const&);
+  bool operator==(query const& o) const;
 
   start_time_t start_time_;
   location_match_mode start_match_mode_{
@@ -76,7 +78,7 @@ struct query {
       nigiri::routing::location_match_mode::kExact};
   bool use_start_footpaths_{false};
   std::vector<offset> start_{}, destination_{};
-  hash_map<location_idx_t, std::vector<td_offset>> td_start_{}, td_dest_{};
+  td_offsets_t td_start_{}, td_dest_{};
   duration_t max_start_offset_{kMaxTravelTime};
   std::uint8_t max_transfers_{kMaxTransfers};
   duration_t max_travel_time_{kMaxTravelTime};
@@ -87,9 +89,13 @@ struct query {
   profile_idx_t prf_idx_{0};
   clasz_mask_t allowed_claszes_{all_clasz_allowed()};
   bool require_bike_transport_{false};
+  bool require_car_transport_{false};
   transfer_time_settings transfer_time_settings_{};
   std::vector<via_stop> via_stops_{};
   std::optional<duration_t> fastest_direct_{};
+  double fastest_direct_factor_{1.0};
+  bool slow_direct_{false};
+  double fastest_slow_direct_factor_{2.0};
 };
 
 }  // namespace nigiri::routing

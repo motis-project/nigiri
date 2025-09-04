@@ -3,6 +3,7 @@
 #include "fmt/std.h"
 
 #include "utl/enumerate.h"
+#include "utl/progress_tracker.h"
 
 #include "nigiri/loader/dir.h"
 #include "nigiri/loader/gtfs/loader.h"
@@ -22,7 +23,7 @@ std::vector<std::unique_ptr<loader_interface>> get_loaders() {
   return loaders;
 }
 
-timetable load(std::vector<std::pair<std::string, loader_config>> const& paths,
+timetable load(std::vector<timetable_source> const& sources,
                finalize_options const& finalize_opt,
                interval<date::sys_days> const& date_range,
                assistance_times* a,
@@ -35,12 +36,8 @@ timetable load(std::vector<std::pair<std::string, loader_config>> const& paths,
   register_special_stations(tt);
 
   auto bitfields = hash_map<bitfield, bitfield_idx_t>{};
-  auto cache =
-      string_cache_t{std::size_t{0U}, string_idx_hash{tt.strings_.strings_},
-                     string_idx_equals{tt.strings_.strings_}};
-
-  for (auto const [idx, in] : utl::enumerate(paths)) {
-    auto const& [path, local_config] = in;
+  for (auto const [idx, in] : utl::enumerate(sources)) {
+    auto const& [tag, path, local_config] = in;
     auto const is_in_memory = path.starts_with("\n#");
     auto const src = source_idx_t{idx};
     auto const dir = is_in_memory
@@ -53,11 +50,14 @@ timetable load(std::vector<std::pair<std::string, loader_config>> const& paths,
       if (!is_in_memory) {
         log(log_lvl::info, "loader.load", "loading {}", path);
       }
+      auto const progress_tracker = utl::get_active_progress_tracker();
+      progress_tracker->context(std::string{tag});
       try {
-        (*it)->load(local_config, src, *dir, tt, bitfields, cache, a, shapes);
+        (*it)->load(local_config, src, *dir, tt, bitfields, a, shapes);
       } catch (std::exception const& e) {
         throw utl::fail("failed to load {}: {}", path, e.what());
       }
+      progress_tracker->context("");
     } else if (!ignore) {
       throw utl::fail("no loader for {} found", path);
     } else {

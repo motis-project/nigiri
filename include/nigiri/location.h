@@ -19,6 +19,8 @@ struct location {
   location(timetable const&, location_idx_t);
   location(std::string_view id,
            std::string_view name,
+           std::string_view platform_code,
+           std::string_view desc,
            geo::latlng pos,
            source_idx_t,
            location_type,
@@ -29,6 +31,8 @@ struct location {
   location_idx_t l_{location_idx_t::invalid()};
   std::string_view id_;
   std::string_view name_;
+  std::string_view platform_code_;
+  std::string_view desc_;
   geo::latlng pos_;
   source_idx_t src_;
   location_type type_;

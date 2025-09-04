@@ -76,13 +76,9 @@ nigiri_timetable_t* nigiri_load_from_dir(nigiri::loader::dir const& d,
 
   auto local_bitfield_indices =
       nigiri::hash_map<nigiri::bitfield, nigiri::bitfield_idx_t>{};
-  auto cache = nigiri::string_cache_t{
-      std::size_t{0U}, nigiri::string_idx_hash{t->tt->strings_.strings_},
-      nigiri::string_idx_equals{t->tt->strings_.strings_}};
-
   (*c)->load({.link_stop_distance_ = link_stop_distance,
               .default_tz_ = "Europe/Berlin"},
-             src, d, *t->tt, local_bitfield_indices, cache, nullptr, nullptr);
+             src, d, *t->tt, local_bitfield_indices, nullptr, nullptr);
   nigiri::loader::finalize(*t->tt);
 
   t->rtt = std::make_shared<nigiri::rt_timetable>(
@@ -90,13 +86,13 @@ nigiri_timetable_t* nigiri_load_from_dir(nigiri::loader::dir const& d,
   return t;
 }
 
-nigiri_timetable_t* nigiri_load(const char* path,
+nigiri_timetable_t* nigiri_load(char const* path,
                                 int64_t from_ts,
                                 int64_t to_ts) {
   return nigiri_load_linking_stops(path, from_ts, to_ts, 0);
 }
 
-nigiri_timetable_t* nigiri_load_linking_stops(const char* path,
+nigiri_timetable_t* nigiri_load_linking_stops(char const* path,
                                               int64_t from_ts,
                                               int64_t to_ts,
                                               unsigned link_stop_distance) {
@@ -108,22 +104,22 @@ nigiri_timetable_t* nigiri_load_linking_stops(const char* path,
   return nigiri_load_from_dir(*d, from_ts, to_ts, link_stop_distance);
 }
 
-void nigiri_destroy(const nigiri_timetable_t* t) { delete t; }
+void nigiri_destroy(nigiri_timetable_t const* t) { delete t; }
 
-int64_t nigiri_get_start_day_ts(const nigiri_timetable_t* t) {
+int64_t nigiri_get_start_day_ts(nigiri_timetable_t const* t) {
   return std::chrono::system_clock::to_time_t(
       t->tt->internal_interval_days().from_);
 }
 
-uint16_t nigiri_get_day_count(const nigiri_timetable_t* t) {
+uint16_t nigiri_get_day_count(nigiri_timetable_t const* t) {
   return static_cast<uint16_t>(t->tt->internal_interval_days().size().count());
 }
 
-uint32_t nigiri_get_transport_count(const nigiri_timetable_t* t) {
+uint32_t nigiri_get_transport_count(nigiri_timetable_t const* t) {
   return t->tt->transport_route_.size();
 }
 
-nigiri_transport_t* nigiri_get_transport(const nigiri_timetable_t* t,
+nigiri_transport_t* nigiri_get_transport(nigiri_timetable_t const* t,
                                          uint32_t idx) {
   auto const tidx = nigiri::transport_idx_t{idx};
   auto transport = new nigiri_transport_t;
@@ -158,23 +154,23 @@ nigiri_transport_t* nigiri_get_transport(const nigiri_timetable_t* t,
   return transport;
 }
 
-void nigiri_destroy_transport(const nigiri_transport_t* transport) {
+void nigiri_destroy_transport(nigiri_transport_t const* transport) {
   delete[] transport->event_mams;
   delete transport;
 }
 
-bool nigiri_is_transport_active(const nigiri_timetable_t* t,
-                                const uint32_t transport_idx,
+bool nigiri_is_transport_active(nigiri_timetable_t const* t,
+                                uint32_t const transport_idx,
                                 uint16_t day_idx) {
   auto const tidx = nigiri::transport_idx_t{transport_idx};
   return t->tt->bitfields_[t->tt->transport_traffic_days_[tidx]].test(day_idx);
 }
 
-uint32_t nigiri_get_route_count(const nigiri_timetable_t* t) {
+uint32_t nigiri_get_route_count(nigiri_timetable_t const* t) {
   return t->tt->n_routes();
 }
 
-nigiri_route_t* nigiri_get_route(const nigiri_timetable_t* t, uint32_t idx) {
+nigiri_route_t* nigiri_get_route(nigiri_timetable_t const* t, uint32_t idx) {
   auto const ridx = nigiri::route_idx_t{idx};
   auto stops = t->tt->route_location_seq_[ridx];
   auto route = new nigiri_route_t;
@@ -190,17 +186,17 @@ nigiri_route_t* nigiri_get_route(const nigiri_timetable_t* t, uint32_t idx) {
   return route;
 }
 
-void nigiri_destroy_route(const nigiri_route_t* route) {
+void nigiri_destroy_route(nigiri_route_t const* route) {
   delete[] route->stops;
   delete route;
 }
 
-uint32_t nigiri_get_location_count(const nigiri_timetable_t* t) {
+uint32_t nigiri_get_location_count(nigiri_timetable_t const* t) {
   return t->tt->n_locations();
 }
 
 nigiri_location_t* nigiri_get_location_with_footpaths(
-    const nigiri_timetable_t* t, uint32_t idx, bool incoming_footpaths) {
+    nigiri_timetable_t const* t, uint32_t idx, bool incoming_footpaths) {
   auto const lidx = nigiri::location_idx_t{idx};
   auto location = new nigiri_location_t;
   auto l = t->tt->locations_.get(lidx);
@@ -228,17 +224,17 @@ nigiri_location_t* nigiri_get_location_with_footpaths(
   return location;
 }
 
-nigiri_location_t* nigiri_get_location(const nigiri_timetable_t* t,
+nigiri_location_t* nigiri_get_location(nigiri_timetable_t const* t,
                                        uint32_t idx) {
   return nigiri_get_location_with_footpaths(t, idx, false);
 }
 
-void nigiri_destroy_location(const nigiri_location_t* location) {
+void nigiri_destroy_location(nigiri_location_t const* location) {
   delete[] location->footpaths;
   delete location;
 }
 
-void nigiri_update_with_rt_from_buf(const nigiri_timetable_t* t,
+void nigiri_update_with_rt_from_buf(nigiri_timetable_t const* t,
                                     std::string_view protobuf,
                                     void (*callback)(nigiri_event_change_t,
                                                      void* context),
@@ -279,8 +275,8 @@ void nigiri_update_with_rt_from_buf(const nigiri_timetable_t* t,
   t->rtt->reset_change_callback();
 }
 
-void nigiri_update_with_rt(const nigiri_timetable_t* t,
-                           const char* gtfsrt_pb_path,
+void nigiri_update_with_rt(nigiri_timetable_t const* t,
+                           char const* gtfsrt_pb_path,
                            void (*callback)(nigiri_event_change_t,
                                             void* context),
                            void* context) {
@@ -314,7 +310,7 @@ nigiri::pareto_set<nigiri::routing::journey> raptor_search(
   }
 }
 
-nigiri_pareto_set_t* nigiri_get_journeys(const nigiri_timetable_t* t,
+nigiri_pareto_set_t* nigiri_get_journeys(nigiri_timetable_t const* t,
                                          uint32_t start_location_idx,
                                          uint32_t destination_location_idx,
                                          int64_t time,
@@ -404,7 +400,7 @@ nigiri_pareto_set_t* nigiri_get_journeys(const nigiri_timetable_t* t,
   return pareto_set;
 }
 
-void nigiri_destroy_journeys(const nigiri_pareto_set_t* journeys) {
+void nigiri_destroy_journeys(nigiri_pareto_set_t const* journeys) {
   for (int i = 0; i < journeys->n_journeys; i++) {
     delete[] journeys->journeys[i].legs;
   }

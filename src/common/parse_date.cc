@@ -2,7 +2,7 @@
 
 namespace nigiri {
 
-date::sys_days parse_date(std::string const& str) {
+date::sys_days parse_date(std::string_view str) {
   if (str == "TODAY") {
     return std::chrono::time_point_cast<date::days>(
         std::chrono::system_clock::now());

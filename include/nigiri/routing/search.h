@@ -2,8 +2,10 @@
 
 #include "fmt/format.h"
 
+#include "utl/concat.h"
 #include "utl/enumerate.h"
 #include "utl/equal_ranges_linear.h"
+#include "utl/erase_duplicates.h"
 #include "utl/erase_if.h"
 #include "utl/timing.h"
 #include "utl/to_vec.h"
@@ -12,6 +14,7 @@
 #include "nigiri/get_otel_tracer.h"
 #include "nigiri/logging.h"
 #include "nigiri/routing/dijkstra.h"
+#include "nigiri/routing/direct.h"
 #include "nigiri/routing/get_fastest_direct.h"
 #include "nigiri/routing/interval_estimate.h"
 #include "nigiri/routing/journey.h"
@@ -73,6 +76,7 @@ struct search {
 
   Algo init(clasz_mask_t const allowed_claszes,
             bool const require_bikes_allowed,
+            bool const require_cars_allowed,
             transfer_time_settings& tts,
             algo_state_t& algo_state) {
     auto span = get_otel_tracer()->StartSpan("search::init");
@@ -104,7 +108,8 @@ struct search {
       auto lb_scope = opentelemetry::trace::Scope{lb_span};
       UTL_START_TIMING(lb);
       dijkstra(tt_, q_,
-               kFwd ? tt_.fwd_search_lb_graph_ : tt_.bwd_search_lb_graph_,
+               kFwd ? tt_.fwd_search_lb_graph_[q_.prf_idx_]
+                    : tt_.bwd_search_lb_graph_[q_.prf_idx_],
                state_.travel_time_lower_bound_);
       UTL_STOP_TIMING(lb);
       stats_.lb_time_ = static_cast<std::uint64_t>(UTL_TIMING_MS(lb));
@@ -144,6 +149,7 @@ struct search {
                 .count()},
         allowed_claszes,
         require_bikes_allowed,
+        require_cars_allowed,
         q_.prf_idx_ == 2U,
         tts};
   }
@@ -170,12 +176,13 @@ struct search {
         fastest_direct_{get_fastest_direct(tt_, q_, SearchDir)},
         algo_{init(q_.allowed_claszes_,
                    q_.require_bike_transport_,
+                   q_.require_car_transport_,
                    q_.transfer_time_settings_,
                    algo_state)},
         timeout_(timeout) {
     utl::sort(q_.start_);
     utl::sort(q_.destination_);
-    q.sanitize(tt);
+    q_.sanitize(tt);
   }
 
   routing_result<algo_stats_t> execute() {
@@ -215,12 +222,13 @@ struct search {
 
       search_interval();
 
-      if (is_ontrip() || n_results_in_interval() >= q_.min_connection_count_ ||
+      if (state_.results_.empty() || is_ontrip() ||
+          n_results_in_interval() >= q_.min_connection_count_ ||
           is_timeout_reached()) {
         trace(
-            "  finished: is_ontrip={}, "
-            "extend_earlier={}, extend_later={}, initial={}, interval={}, "
-            "timetable={}, number_of_results_in_interval={}, "
+            "  finished: is_ontrip={}, extend_earlier={}, extend_later={}, "
+            "initial={}, interval={}, timetable={}, "
+            "number_of_results_in_interval={}, results_with_+1_ontrip={}, "
             "timeout_reached={}\n",
             is_ontrip(), q_.extend_interval_earlier_, q_.extend_interval_later_,
             std::visit(
@@ -233,7 +241,7 @@ struct search {
                                 }},
                 q_.start_time_),
             search_interval_, tt_.external_interval(), n_results_in_interval(),
-            is_timeout_reached());
+            state_.results_.size(), is_timeout_reached());
         span->SetAttribute("nigiri.search.timeout_reached",
                            is_timeout_reached());
         break;
@@ -297,10 +305,36 @@ struct search {
                j.travel_time() >= fastest_direct_ ||
                j.travel_time() > q_.max_travel_time_;
       });
+
+      if (q_.slow_direct_) {
+        auto direct = std::vector<journey>{};
+        auto done = hash_set<std::pair<location_idx_t, location_idx_t>>{};
+        for (auto const& j : state_.results_) {
+          if (j.transfers_ != 0) {
+            continue;
+          }
+          auto const transport_leg_it =
+              utl::find_if(j.legs_, [](journey::leg const& l) {
+                return holds_alternative<journey::run_enter_exit>(l.uses_);
+              });
+          if (transport_leg_it == end(j.legs_)) {
+            continue;
+          }
+          auto const& l = *transport_leg_it;
+          get_direct(tt_, rtt_, kFwd ? l.from_ : l.to_, kFwd ? l.to_ : l.from_,
+                     q_, search_interval_, SearchDir, done, direct);
+        }
+
+        utl::concat(state_.results_.els_, direct);
+        utl::erase_duplicates(state_.results_);
+      }
+
       utl::sort(state_.results_, [](journey const& a, journey const& b) {
         return a.start_time_ < b.start_time_;
       });
     }
+
+    utl::erase_if(state_.results_, [&](auto&& j) { return j.legs_.empty(); });
 
     stats_.execute_time_ =
         std::chrono::duration_cast<std::chrono::milliseconds>(
@@ -397,9 +431,10 @@ private:
           auto const start_time = from_it->time_at_start_;
           for (auto const& s : it_range{from_it, to_it}) {
             trace("init: time_at_start={}, time_at_stop={} at {}\n",
-                  s.time_at_start_, s.time_at_stop_, location_idx_t{s.stop_});
+                  s.time_at_start_, s.time_at_stop_, location{tt_, s.stop_});
             algo_.add_start(s.stop_, s.time_at_stop_);
           }
+          trace("RUN ALGO\n");
 
           /*
            * Upper bound: Search journeys faster than 'worst_time_at_dest'

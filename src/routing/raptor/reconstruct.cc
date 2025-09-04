@@ -69,6 +69,8 @@ std::optional<journey::leg> find_start_footpath(timetable const& tt,
   auto const fp_target_time = round_times[0][to_idx(leg_start_location)][0];
 
   if (q.start_match_mode_ == location_match_mode::kIntermodal) {
+    trace_reconstruct("  intermodal start mode\n");
+
     for (auto const& o : q.start_) {
       if (matches(tt, q.start_match_mode_, o.target(), leg_start_location) &&
           is_better_or_eq(j.start_time_,
@@ -87,28 +89,42 @@ std::optional<journey::leg> find_start_footpath(timetable const& tt,
 
     if (auto const it = q.td_start_.find(leg_start_location);
         it != end(q.td_start_)) {
-      auto const duration =
+      auto const fp =
           get_td_duration<flip(SearchDir)>(it->second, leg_start_time);
-      if (duration.has_value() &&
+      if (fp.has_value() &&
           is_better_or_eq(j.start_time_,
-                          leg_start_time - (kFwd ? 1 : -1) * *duration)) {
+                          leg_start_time - (kFwd ? 1 : -1) * fp->first)) {
         return journey::leg{SearchDir,
                             get_special_station(special_station::kStart),
                             leg_start_location,
-                            leg_start_time - (kFwd ? 1 : -1) * (*duration),
+                            leg_start_time - (kFwd ? 1 : -1) * fp->first,
                             leg_start_time,
-                            offset{leg_start_location, *duration,
-                                   it->second.back().transport_mode_id_}};
+                            offset{leg_start_location, fp->first,
+                                   fp->second.transport_mode_id_}};
       } else {
-        trace(
-            "excluded td journey start at leg_start_location={}: "
-            "leg_start_time={}, duration={}, start={}, journey_start={}\n",
-            location{tt, leg_start_location}, leg_start_time,
-            duration.has_value() ? *duration : kInfeasible,
-            leg_start_time - (kFwd ? 1 : -1) * *duration, j.start_time_);
+#ifdef NIGIRI_TRACE_RECONSTRUCT
+        for (auto const& x : it->second) {
+          trace_reconstruct("    td_start {}: {}\n", x.valid_from_,
+                            x.duration());
+        }
+#endif
+        trace_reconstruct(
+            "  excluded td journey start at leg_start_location={}: "
+            "search_dir={}, leg_start_time={}, duration={}, start={}, "
+            "journey_start={}\n",
+            to_str(flip(SearchDir)), location{tt, leg_start_location},
+            leg_start_time, fp.has_value() ? fp->first : footpath::kMaxDuration,
+            fp.has_value() ? leg_start_time - (kFwd ? 1 : -1) * fp->first
+                           : unixtime_t{0_minutes},
+            j.start_time_);
       }
+    } else {
+      trace_reconstruct("  no td start found for location: {}\n",
+                        location{tt, leg_start_location});
     }
   } else {
+    trace_reconstruct("  direct start mode\n");
+
     for (auto const& fp : footpaths) {
       auto const fp_duration = adjusted_transfer_time(q.transfer_time_settings_,
                                                       fp.duration().count());
@@ -147,7 +163,6 @@ void reconstruct_journey_with_vias(timetable const& tt,
   auto const is_better_or_eq = [](auto a, auto b) {
     return kFwd ? a <= b : a >= b;
   };
-  auto const is_better = [](auto a, auto b) { return kFwd ? a < b : a > b; };
   auto const is_ontrip = holds_alternative<unixtime_t>(q.start_time_);
   auto const start_matches = [&](delta_t const a, delta_t const b) {
     return is_ontrip ? is_better_or_eq(a, b) : a == b;
@@ -166,8 +181,8 @@ void reconstruct_journey_with_vias(timetable const& tt,
 
   auto const find_entry_in_prev_round =
       [&](unsigned const k, rt::run const& r, stop_idx_t const from_stop_idx,
-          delta_t const time,
-          bool const section_bike_filter) -> std::optional<journey::leg> {
+          delta_t, bool const section_bike_filter,
+          bool const section_car_filter) -> std::optional<journey::leg> {
     auto const fr = rt::frun{tt, rtt, r};
     auto const n_stops = kFwd ? from_stop_idx + 1U : fr.size() - from_stop_idx;
     auto new_v = v;
@@ -179,6 +194,11 @@ void reconstruct_journey_with_vias(timetable const& tt,
 
       if (section_bike_filter &&
           !stp.bikes_allowed(kFwd ? event_type::kDep : event_type::kArr)) {
+        break;
+      }
+
+      if (section_car_filter &&
+          !stp.cars_allowed(kFwd ? event_type::kDep : event_type::kArr)) {
         break;
       }
 
@@ -218,7 +238,7 @@ void reconstruct_journey_with_vias(timetable const& tt,
             fr[stop_idx].get_location_idx(),
             fr[from_stop_idx].get_location_idx(),
             delta_to_unix(base, event_time),
-            delta_to_unix(base, time),
+            fr[from_stop_idx].time(kFwd ? event_type::kArr : event_type::kDep),
             journey::run_enter_exit{r, stop_idx, from_stop_idx}};
       } else {
         trace_rc_transport_entry_not_possible;
@@ -241,6 +261,7 @@ void reconstruct_journey_with_vias(timetable const& tt,
   auto const get_route_transport =
       [&](unsigned const k, delta_t const time, route_idx_t const r,
           stop_idx_t const stop_idx, bool const section_bike_filter,
+          bool const section_car_filter,
           bool const is_td_footpath) -> std::optional<journey::leg> {
     auto const [day, mam] = split_day_mam(base_day_idx, time);
 
@@ -255,31 +276,40 @@ void reconstruct_journey_with_vias(timetable const& tt,
         continue;
       }
 
-      auto const traffic_day = static_cast<std::size_t>(
-          static_cast<int>(to_idx(day)) - event_mam.count() / 1440);
-      if (!is_transport_active(t, traffic_day)) {
+      auto const traffic_day = to_idx(day) - event_mam.count() / 1440;
+      if (!is_transport_active(t, static_cast<std::size_t>(traffic_day))) {
         trace_rc_transport_no_traffic;
         continue;
       }
 
-      auto const tr = transport{t, day_idx_t{traffic_day}};
-      auto const ev_time = tt.event_time(
-          tr, stop_idx, kFwd ? event_type::kArr : event_type::kDep);
+      auto tr = transport{t, day_idx_t{traffic_day}};
+      auto ev_time = tt.event_time(tr, stop_idx,
+                                   kFwd ? event_type::kArr : event_type::kDep);
       if (is_td_footpath) {
         auto const fp_time = delta_to_unix(base, time);
-        if (is_better(fp_time, ev_time)) {
-          trace_rc_transport_invalid_td_footpath;
-          continue;
+
+        for (auto i = 0; i != 2; ++i) {
+          tr = transport{t, day_idx_t{traffic_day - (kFwd ? i : -i)}};
+          ev_time = tt.event_time(tr, stop_idx,
+                                  kFwd ? event_type::kArr : event_type::kDep);
+          if (is_better_or_eq(ev_time, fp_time)) {
+            trace_rc_transport_invalid_td_footpath;
+            goto found;
+          }
         }
+
+        continue;
       }
 
+    found:
       auto leg = find_entry_in_prev_round(
           k,
           {.t_ = tr,
            .stop_range_ =
                interval<stop_idx_t>{0, static_cast<stop_idx_t>(
                                            tt.route_location_seq_[r].size())}},
-          stop_idx, unix_to_delta(base, ev_time), section_bike_filter);
+          stop_idx, unix_to_delta(base, ev_time), section_bike_filter,
+          section_car_filter);
       if (leg.has_value()) {
         return leg;
       }
@@ -318,6 +348,23 @@ void reconstruct_journey_with_vias(timetable const& tt,
           }
         }
 
+        auto section_car_filter = false;
+        if (q.require_car_transport_) {
+          auto const cars_allowed_on_all_sections =
+              rtt->rt_transport_cars_allowed_.test(rt_t.v_ * 2);
+          auto const cars_allowed_on_some_sections =
+              rtt->rt_transport_cars_allowed_.test(rt_t.v_ * 2 + 1);
+          trace_reconstruct(
+              "  rt_t={}: cars allowed on_all={} on_some={} (RT)\n", rt_t,
+              cars_allowed_on_all_sections, cars_allowed_on_some_sections);
+          if (!cars_allowed_on_all_sections) {
+            if (!cars_allowed_on_some_sections) {
+              continue;
+            }
+            section_car_filter = true;
+          }
+        }
+
         auto const location_seq = rtt->rt_transport_location_seq_[rt_t];
         for (auto const [i, s] : utl::enumerate(location_seq)) {
           auto const stp = stop{s};
@@ -327,14 +374,15 @@ void reconstruct_journey_with_vias(timetable const& tt,
               (kFwd && (i == 0U || !stp.out_allowed(is_wheelchair))) ||
               (!kFwd && (i == location_seq.size() - 1 ||
                          !stp.in_allowed(is_wheelchair))) ||
-              delta_to_unix(base, time) !=
-                  fr[stop_idx].time(kFwd ? event_type::kArr
-                                         : event_type::kDep)) {
+              // Allow earlier arrivals, e.g. if path was blocked
+              !is_better_or_eq(
+                  fr[stop_idx].time(kFwd ? event_type::kArr : event_type::kDep),
+                  delta_to_unix(base, time))) {
             continue;
           }
 
-          auto leg = find_entry_in_prev_round(k, fr, stop_idx, time,
-                                              section_bike_filter);
+          auto leg = find_entry_in_prev_round(
+              k, fr, stop_idx, time, section_bike_filter, section_car_filter);
           if (leg.has_value()) {
             return leg;
           }
@@ -364,6 +412,23 @@ void reconstruct_journey_with_vias(timetable const& tt,
         }
       }
 
+      auto section_car_filter = false;
+      if (q.require_car_transport_) {
+        auto const cars_allowed_on_all_sections =
+            tt.route_cars_allowed_.test(r.v_ * 2);
+        auto const cars_allowed_on_some_sections =
+            tt.route_cars_allowed_.test(r.v_ * 2 + 1);
+        trace_reconstruct("  r={}: cars allowed on_all={} on_some={}\n", r,
+                          cars_allowed_on_all_sections,
+                          cars_allowed_on_some_sections);
+        if (!cars_allowed_on_all_sections) {
+          if (!cars_allowed_on_some_sections) {
+            continue;
+          }
+          section_car_filter = true;
+        }
+      }
+
       auto const location_seq = tt.route_location_seq_[r];
       for (auto const [i, s] : utl::enumerate(location_seq)) {
         auto const stp = stop{s};
@@ -375,7 +440,8 @@ void reconstruct_journey_with_vias(timetable const& tt,
         }
 
         auto leg = get_route_transport(k, time, r, static_cast<stop_idx_t>(i),
-                                       section_bike_filter, is_td_footpath);
+                                       section_bike_filter, section_car_filter,
+                                       is_td_footpath);
         if (leg.has_value()) {
           return leg;
         }
@@ -530,16 +596,43 @@ void reconstruct_journey_with_vias(timetable const& tt,
       }
 
       for (auto const& [from, td] : q.td_dest_) {
-        auto const d = get_td_duration<flip(SearchDir)>(
-            td, delta_to_unix(base, curr_time));
-        if (d.has_value()) {
-          auto const ret = find_dest_leg(
-              k, l, {from, *d, td.back().transport_mode_id_}, true);
+        auto const t = delta_to_unix(base, curr_time);
+        auto const fp = get_td_duration<flip(SearchDir)>(td, t);
+        if (fp.has_value()) {
+          auto const [d, td_fp] = *fp;
+          auto const ret =
+              find_dest_leg(k, l, {from, d, td_fp.transport_mode_id_}, true);
           if (ret.has_value()) {
             return std::move(*ret);
+          } else {
+            trace_reconstruct(
+                "intermodal td_footpath dest: no leg found for: {} at {}\n",
+                location{tt, from}, t);
+#ifdef NIGIRI_TRACE_RECONSTRUCT
+            for (auto const& x : td) {
+              trace_reconstruct("  valid_from={}, duration={}\n", x.valid_from_,
+                                x.duration_);
+            }
+#endif
           }
+        } else {
+          trace_reconstruct(
+              "intermodal td_footpath dest: no td duration for: {} at {}\n",
+              location{tt, from}, t);
+#ifdef NIGIRI_TRACE_RECONSTRUCT
+          for (auto const& x : td) {
+            trace_reconstruct("  valid_from={}, duration={}, id={}\n",
+                              x.valid_from_, x.duration_, x.transport_mode_id_);
+          }
+#endif
         }
       }
+
+      trace_reconstruct(
+          "intermodal destination reconstruction failed at k={}, t={}, v={}, "
+          "stop={}, time={}, journey=[{}, {}]\n",
+          k, j.transfers_, v, location{tt, l}, delta_to_unix(base, curr_time),
+          j.start_time_, j.dest_time_);
 
       throw utl::fail(
           "intermodal destination reconstruction failed at k={}, t={}, v={}, "

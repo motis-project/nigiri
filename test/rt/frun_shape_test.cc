@@ -21,6 +21,7 @@
 #include "nigiri/rt/run.h"
 #include "nigiri/shapes_storage.h"
 #include "nigiri/timetable.h"
+#include "nigiri/timetable_metrics.h"
 #include "nigiri/types.h"
 
 #include "../raptor_search.h"
@@ -891,7 +892,7 @@ TEST(
         ASSERT_EQ(stats_w.duration_, delta_t{200});
         ASSERT_EQ(stats_w.k_, 2U);
         auto const stats_s_direct = get_fastest_one_to_all_offsets(
-            tt, state, kSearchDir, to_location_idx("S"), start_time, 1);
+            tt, state, kSearchDir, to_location_idx("S"), start_time, 0);
         ASSERT_EQ(stats_s_direct.duration_, delta_t{185});
         ASSERT_EQ(stats_s_direct.k_, 1U);
       }
@@ -920,6 +921,58 @@ TEST(
         tt, state, kSearchDir, to_location_idx("B"), start_time,
         q.max_transfers_);
     ASSERT_EQ(stats_b.duration_, delta_t{-150});
+  }
+  // One-to-All forwards with nontrivial offsets at F
+  {
+    constexpr auto const kSearchDir = direction::kForward;
+    constexpr auto const kUnreachable = kInvalidDelta<kSearchDir>;
+
+    auto const start_time =
+        unixtime_t{sys_days{2024_y / January / 1}} + 9_hours + 55_minutes;
+    auto const q = routing::query{
+        .start_time_ = start_time,
+        .start_ = {{to_location_idx("F"), 10_minutes, 0U}},
+    };
+    auto state = nigiri::routing::one_to_all<kSearchDir>(tt, &rtt, q);
+
+    // F -> S leaves 11:15
+    EXPECT_TRUE(is_reachable(state, to_location_idx("S"), kUnreachable));
+    // F -> G leaves 11:00
+    EXPECT_FALSE(is_reachable(state, to_location_idx("G"), kUnreachable));
+
+    auto const stats_s = get_fastest_one_to_all_offsets(
+        tt, state, kSearchDir, to_location_idx("S"), start_time,
+        q.max_transfers_);
+    EXPECT_EQ(stats_s.duration_, delta_t{80});
+  }
+  // One-to-All backwards with nontrivial offsets at S
+  {
+    constexpr auto const kSearchDir = direction::kBackward;
+    constexpr auto const kUnreachable = kInvalidDelta<kSearchDir>;
+
+    auto const start_time =
+        unixtime_t{sys_days{2024_y / January / 1}} + 12_hours + 5_minutes;
+    auto const q = routing::query{
+        .start_time_ = start_time,
+        .start_ = {{to_location_idx("S"), 10_minutes, 0U}},
+    };
+    auto state = nigiri::routing::one_to_all<kSearchDir>(tt, &rtt, q);
+
+    // F -> S arrives 12:15
+    EXPECT_TRUE(is_reachable(state, to_location_idx("F"), kUnreachable));
+    // G -> S arrives 13:00
+    EXPECT_FALSE(is_reachable(state, to_location_idx("G"), kUnreachable));
+
+    auto const stats_f = get_fastest_one_to_all_offsets(
+        tt, state, kSearchDir, to_location_idx("F"), start_time,
+        q.max_transfers_);
+    EXPECT_EQ(stats_f.duration_, delta_t{-110});
+  }
+  // Loading statistics
+  {
+    EXPECT_EQ(
+        R"([{"idx":0,"firstDay":"2024-01-01","lastDay":"2024-01-01","noLocations":22,"noTrips":16,"transportsXDays":16}])",
+        to_str(get_metrics(tt), tt));
   }
 }
 

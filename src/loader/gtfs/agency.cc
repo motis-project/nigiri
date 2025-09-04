@@ -10,35 +10,39 @@
 #include "utl/pipes/vec.h"
 #include "utl/progress_tracker.h"
 
+#include "nigiri/loader/register.h"
 #include "nigiri/timetable.h"
 
 namespace nigiri::loader::gtfs {
 
-agency_map_t read_agencies(timetable& tt,
+agency_map_t read_agencies(source_idx_t const src,
+                           timetable& tt,
                            tz_map& timezones,
-                           std::string_view file_content) {
-  struct agency {
+                           std::string_view file_content,
+                           script_runner const& r) {
+  struct agency_row {
     utl::csv_col<utl::cstr, UTL_NAME("agency_id")> id_;
     utl::csv_col<cista::raw::generic_string, UTL_NAME("agency_name")> name_;
     utl::csv_col<utl::cstr, UTL_NAME("agency_url")> url_;
     utl::csv_col<utl::cstr, UTL_NAME("agency_timezone")> tz_name_;
   };
 
-  auto const progress_tracker = utl::get_active_progress_tracker();
-  progress_tracker->status("Parse Agencies")
-      .out_bounds(0.F, 1.F)
-      .in_high(file_content.size());
-  return utl::line_range{utl::make_buf_reader(
-             file_content, progress_tracker->update_fn())}  //
-         | utl::csv<agency>()  //
-         | utl::transform([&](agency const& a) {
-             return std::pair{
-                 a.id_->to_str(),
-                 tt.register_provider(
-                     {a.id_->view(), a.name_->view(), a.url_->view(),
-                      get_tz_idx(tt, timezones, a.tz_name_->trim().view())})};
-           })  //
-         | utl::to<agency_map_t>();
+  utl::get_active_progress_tracker()->status("Parse Agencies");
+
+  auto map = agency_map_t{};
+  utl::for_each_row<agency_row>(file_content, [&](agency_row const& a) {
+    auto x = agency{src,
+                    a.id_->view(),
+                    a.name_->view(),
+                    a.url_->view(),
+                    get_tz_idx(tt, timezones, a.tz_name_->view()),
+                    tt,
+                    timezones};
+    map.emplace(a.id_->view(), process_agency(r, x)
+                                   ? register_agency(tt, x)
+                                   : provider_idx_t::invalid());
+  });
+  return map;
 }
 
 }  // namespace nigiri::loader::gtfs

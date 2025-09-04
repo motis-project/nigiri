@@ -2,10 +2,15 @@
 
 #include "utl/pairwise.h"
 
+#include <optional>
+#include <string_view>
+
 #include "nigiri/common/delta_t.h"
 #include "nigiri/common/interval.h"
 #include "nigiri/rt/run.h"
+#include "nigiri/rt/service_alert.h"
 #include "nigiri/stop.h"
+#include "nigiri/string_store.h"
 #include "nigiri/timetable.h"
 #include "nigiri/types.h"
 
@@ -33,12 +38,15 @@ using change_callback_t =
 // - All RT transports that did not exist in the static timetable, can be looked
 //   up with their trip_id in the RT timetable.
 struct rt_timetable {
-  rt_transport_idx_t add_rt_transport(
-      source_idx_t const,
-      timetable const&,
-      transport const,
-      std::span<stop::value_type> const& stop_seq = {},
-      std::span<delta_t> const& time_seq = {});
+  rt_transport_idx_t add_rt_transport(source_idx_t,
+                                      timetable const&,
+                                      transport,
+                                      std::span<stop::value_type> stop_seq = {},
+                                      std::span<delta_t> time_seq = {},
+                                      std::string_view new_trip_id = {},
+                                      std::string_view route_id = {},
+                                      std::string_view trip_short_name = {},
+                                      delta_t = 0);
 
   delta_t unix_to_delta(unixtime_t const t) const {
     auto const d =
@@ -59,6 +67,8 @@ struct rt_timetable {
     rt_transport_stop_times_[rt_t][static_cast<std::size_t>(ev_idx)] =
         unix_to_delta(new_time);
   }
+
+  void cancel_run(rt::run const&);
 
   void set_change_callback(change_callback_t callback) {
     change_callback_ = callback;
@@ -110,14 +120,20 @@ struct rt_timetable {
     return rt_transport_stop_times_[rt_t][static_cast<unsigned>(ev_idx)];
   }
 
-  std::string_view transport_name(timetable const& tt,
-                                  rt_transport_idx_t const t) const {
-    if (rt_transport_display_names_[t].empty()) {
+  std::string_view trip_short_name(timetable const& tt,
+                                   rt_transport_idx_t const t) const {
+    if (rt_transport_trip_short_names_[t].empty()) {
       return rt_transport_static_transport_[t].apply(utl::overloaded{
-          [&](transport const x) { return tt.transport_name(x.t_idx_); },
+          [&](transport const x) {
+            auto const trip_idx =
+                tt.merged_trips_[tt.transport_to_trip_section_[x.t_idx_]
+                                     .front()]
+                    .front();
+            return tt.trip_display_names_[trip_idx].view();
+          },
           [&](rt_add_trip_id_idx_t) { return std::string_view{"?"}; }});
     } else {
-      return rt_transport_display_names_[t].view();
+      return rt_transport_trip_short_names_[t].view();
     }
   }
 
@@ -142,10 +158,10 @@ struct rt_timetable {
     return rt_transport_src_.size();
   }
 
-  array<bitvec_map<location_idx_t>, kMaxProfiles> has_td_footpaths_out_;
-  array<bitvec_map<location_idx_t>, kMaxProfiles> has_td_footpaths_in_;
-  array<vecvec<location_idx_t, td_footpath>, kMaxProfiles> td_footpaths_out_;
-  array<vecvec<location_idx_t, td_footpath>, kMaxProfiles> td_footpaths_in_;
+  array<bitvec_map<location_idx_t>, kNProfiles> has_td_footpaths_out_;
+  array<bitvec_map<location_idx_t>, kNProfiles> has_td_footpaths_in_;
+  array<vecvec<location_idx_t, td_footpath>, kNProfiles> td_footpaths_out_;
+  array<vecvec<location_idx_t, td_footpath>, kNProfiles> td_footpaths_in_;
 
   // Updated transport traffic days from the static timetable.
   // Initial: 100% copy from static, then adapted according to real-time
@@ -167,25 +183,29 @@ struct rt_timetable {
   hash_map<transport, rt_transport_idx_t> static_trip_lookup_;
 
   // Lookup: additional trip index -> realtime transport
-  hash_map<rt_add_trip_id_idx_t, rt_transport_idx_t> additional_trips_lookup_;
+  vector_map<rt_add_trip_id_idx_t, rt_transport_idx_t> additional_trips_lookup_;
 
   // RT transport -> static transport (not for additional trips)
   vector_map<rt_transport_idx_t, variant<transport, rt_add_trip_id_idx_t>>
       rt_transport_static_transport_;
 
-  // RT trip ID index -> ID strings + source
-  vecvec<rt_add_trip_id_idx_t, char> trip_id_strings_;
+  string_store<rt_add_trip_id_idx_t> additional_trip_ids_;
+
   vector_map<rt_transport_idx_t, source_idx_t> rt_transport_src_;
 
-  // RT trip ID index -> train number, if available (otherwise 0)
-  vector_map<rt_transport_idx_t, std::uint32_t> rt_transport_train_nr_;
+  vector_map<rt_transport_idx_t, route_id_idx_t> rt_transport_route_id_;
+
+  // RT transport -> direction for each section
+  vecvec<trip_direction_string_idx_t, char> rt_transport_direction_strings_;
+  vecvec<rt_transport_idx_t, trip_direction_string_idx_t>
+      rt_transport_section_directions_;
 
   // RT transport -> event times (dep, arr, dep, arr, ...)
   vecvec<rt_transport_idx_t, delta_t> rt_transport_stop_times_;
   vecvec<rt_transport_idx_t, stop::value_type> rt_transport_location_seq_;
 
   // RT trip index -> display name (empty if not changed)
-  vecvec<rt_transport_idx_t, char> rt_transport_display_names_;
+  vecvec<rt_transport_idx_t, char> rt_transport_trip_short_names_;
   vecvec<rt_transport_idx_t, char> rt_transport_line_;
 
   // RT transport -> vehicle clasz for each section
@@ -198,10 +218,21 @@ struct rt_timetable {
   // RT transport * 2 + 1 -> bikes along parts of the transport
   bitvec rt_transport_bikes_allowed_;
 
+  // same for cars
+  bitvec rt_transport_cars_allowed_;
+
   // RT transport -> bikes allowed for each section
   vecvec<rt_transport_idx_t, bool> rt_bikes_allowed_per_section_;
 
+  // same for cars
+  vecvec<rt_transport_idx_t, bool> rt_cars_allowed_per_section_;
+
+  // Service alerts
+  alerts alerts_;
+
   change_callback_t change_callback_;
+
+  // TODO route colors?
 };
 
 }  // namespace nigiri
