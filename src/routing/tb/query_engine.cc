@@ -2,6 +2,8 @@
 
 #include <ranges>
 
+#include "fmt/ranges.h"
+
 #include "utl/enumerate.h"
 #include "utl/raii.h"
 
@@ -161,6 +163,7 @@ void query_engine<UseLowerBounds>::seg_dest(std::uint8_t const k,
     if (state_.t_min_[k] > time_at_dest) {
       state_.t_min_[k] = time_at_dest;
       state_.parent_[k] = q;
+      // TODO update subsequent t-min
     }
   }
 }
@@ -179,7 +182,7 @@ void query_engine<UseLowerBounds>::seg_prune(std::uint8_t const k,
                        .location_idx();
     arr_time += duration_t{lb_[to_idx(l)]};
   }
-  if (arr_time > state_.t_min_[k]) {
+  if (arr_time > state_.t_min_[k + 1]) {
     tb_debug("PRUNING {}", seg(segment, qe));
     qe.segment_range_.to_ = qe.segment_range_.from_;
     ++stats_.n_segments_pruned_;
@@ -198,7 +201,7 @@ void query_engine<UseLowerBounds>::seg_transfers(queue_idx_t const q,
       auto const day = to_idx(base_ + qe.transport_query_day_offset_);
       if (state_.tbd_.bitfields_[transfer.traffic_days_].test(day)) {
         tb_debug("  -> enqueue transfer to {}", seg(transfer.to_segment_, qe));
-        state_.q_n_.enqueue(transfer, q, k);
+        state_.q_n_.enqueue(transfer, q, k + 1);
       } else {
         tb_debug("  transfer {} - {} not active on {}", seg(s, qe),
                  seg(transfer.to_segment_, day_idx_t{day}),
@@ -256,9 +259,15 @@ void query_engine<UseLowerBounds>::reconstruct(query const& q,
     });
   };
 
+  auto const get_full_segment_range = [&](queue_entry const& qe) {
+    auto const transport_segments = state_.tbd_.get_segment_range(
+        state_.tbd_.segment_transports_[qe.segment_range_.from_]);
+    return interval{qe.segment_range_.from_, transport_segments.to_};
+  };
+
   auto const get_arrival_segment = [&](queue_idx_t const x,
                                        segment_idx_t const to) {
-    for (auto const segment : state_.q_n_[x].segment_range_) {
+    for (auto const segment : get_full_segment_range(state_.q_n_[x])) {
       for (auto const transfer : state_.tbd_.segment_transfers_[segment]) {
         if (transfer.to_segment_ == to) {
           return segment;
@@ -330,7 +339,7 @@ void query_engine<UseLowerBounds>::reconstruct(query const& q,
   auto const find_last_leg = [&]() {
     if (q.dest_match_mode_ == location_match_mode::kIntermodal) {
       for (auto const arr_candidate_segment :
-           state_.q_n_[parent].segment_range_) {
+           get_full_segment_range(state_.q_n_[parent])) {
         if (!state_.end_reachable_.test(arr_candidate_segment)) {
           continue;
         }
@@ -355,8 +364,13 @@ void query_engine<UseLowerBounds>::reconstruct(query const& q,
       }
     } else /* Stop destination -> footpath or direct arrival */ {
       for (auto const arr_candidate_segment :
-           state_.q_n_[parent].segment_range_) {
+           get_full_segment_range(state_.q_n_[parent])) {
+        tb_debug("dest candidate {}",
+                 seg(arr_candidate_segment, state_.q_n_[parent]));
+
         if (!state_.end_reachable_.test(arr_candidate_segment)) {
+          tb_debug("no dest candidate {} => end not reachable",
+                   seg(arr_candidate_segment, state_.q_n_[parent]));
           continue;
         }
 
@@ -366,8 +380,15 @@ void query_engine<UseLowerBounds>::reconstruct(query const& q,
         auto const handle_fp = [&](footpath const& fp) {
           if (arr_time + fp.duration() != j.arrival_time() ||
               !has_offset(q.destination_, q.dest_match_mode_, fp.target())) {
+            tb_debug(
+                "no dest candidate {} arr_l={}: arr_time={} + fp.duration={} = "
+                "{} != j.arrival_time={}",
+                seg(arr_candidate_segment, state_.q_n_[parent]),
+                location{tt_, arr_l}, arr_time, fp.duration(),
+                arr_time + fp.duration(), j.arrival_time());
             return false;
           }
+          tb_debug("FOUND!");
           j.legs_.push_back({direction::kForward, arr_l, fp.target(), arr_time,
                              j.arrival_time(), fp});
           j.legs_.push_back(get_run_leg(arr_candidate_segment));
@@ -389,7 +410,9 @@ void query_engine<UseLowerBounds>::reconstruct(query const& q,
     return false;
   };
   if (!find_last_leg()) {
-    throw utl::fail("no last leg found");
+    throw utl::fail(
+        "no last leg found for: transfers={}, start_time={}, dest_time={}",
+        j.transfers_, j.departure_time(), j.arrival_time());
   }
   j.dest_ = j.legs_.back().to_;
 

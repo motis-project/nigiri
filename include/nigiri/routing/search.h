@@ -447,7 +447,7 @@ private:
                         q_.prf_idx_, state_.results_);
 
           for (auto& j : state_.results_) {
-            if (j.legs_.empty() &&
+            if (j.legs_.empty() && !j.error_ &&
                 (is_ontrip() || search_interval_.contains(j.start_time_)) &&
                 j.travel_time() < fastest_direct_) {
               try {
