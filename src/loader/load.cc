@@ -166,9 +166,12 @@ timetable load(std::vector<timetable_source> const& sources,
       auto const old_flex_transport_traffic_days_ =
           tt.flex_transport_traffic_days_;
       tt.flex_transport_traffic_days_ = old_flex_transport_traffic_days_;
+      auto const old_source_end_date = tt.src_end_date_;
+      tt.src_end_date_ = old_source_end_date;
       /* Prepare timetable by emptying corrected fields */
       tt.bitfields_.reset();
       auto bitfields = hash_map<bitfield, bitfield_idx_t>{};
+      tt.src_end_date_.reset();
       /* Load file */
       try {
         (*it)->load(local_config, src, *dir, tt, bitfields, a, shapes);
@@ -191,10 +194,12 @@ timetable load(std::vector<timetable_source> const& sources,
         new_flex_transport_traffic_days_.push_back(
             tt.flex_transport_traffic_days_[flex_transport_idx_t{i}]);
       }
+      auto const new_source_end_date = tt.src_end_date_;
       /* Restore old timetable */
       tt.bitfields_ = old_bitfields;
       tt.transport_traffic_days_ = old_transport_traffic_days_;
       tt.flex_transport_traffic_days_ = old_flex_transport_traffic_days_;
+      tt.src_end_date_ = old_source_end_date;
       /* Add new data and adjust references */
       /*	bitfields	*/
       auto corrected_indices = vector_map<bitfield_idx_t, bitfield_idx_t>{};
@@ -208,6 +213,9 @@ timetable load(std::vector<timetable_source> const& sources,
       }
       for (auto const& i : new_flex_transport_traffic_days_) {
         tt.flex_transport_traffic_days_.push_back(corrected_indices[i]);
+      }
+      for (auto const& i : new_source_end_date) {
+        tt.src_end_date_.push_back(i);
       }
 
       /* Save snapshot */
