@@ -67,6 +67,10 @@ std::ostream& operator<<(std::ostream& out, timetable const& tt) {
   return out;
 }
 
+day_list timetable::days(bitfield const& bf) const {
+  return day_list{bf, internal_interval_days().from_};
+}
+
 cista::wrapped<timetable> timetable::read(std::filesystem::path const& p) {
   return cista::read<timetable>(p);
 }

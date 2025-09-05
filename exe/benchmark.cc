@@ -94,7 +94,7 @@ struct benchmark_result {
   }
 
   std::uint64_t q_idx_;
-  routing_result<raptor_stats> routing_result_;
+  routing_result routing_result_;
   pareto_set<journey> journeys_;
   std::chrono::milliseconds total_time_;
 };
@@ -164,7 +164,7 @@ void process_queries(
                 std::chrono::duration_cast<std::chrono::milliseconds>(
                     total_time_stop - total_time_start)});
             progress_tracker->increment();
-          } catch (const std::exception& e) {
+          } catch (std::exception const& e) {
             std::cout << e.what();
           }
         });
