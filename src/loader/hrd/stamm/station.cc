@@ -180,8 +180,6 @@ location_map_t parse_stations(config const& c,
                               std::string_view station_metabhf_file) {
   auto const timer = scoped_timer{"parse stations"};
 
-  auto empty_idx_vec = vector<location_idx_t>{};
-
   location_map_t stations;
   parse_station_names(c, stations, station_names_file);
   parse_station_coordinates(c, stations, station_coordinates_file);

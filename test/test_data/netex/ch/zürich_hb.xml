@@ -1,0 +1,497 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- Based on extracts from the Swiss NeTEx data provided by https://opentransportdata.swiss/ -->
+<PublicationDelivery xmlns:gml="http://www.opengis.net/gml/3.2" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+                     xmlns:siri="http://www.siri.org.uk/siri" xmlns="http://www.netex.org.uk/netex"
+                     xsi:schemaLocation="http://www.netex.org.uk/netex http://netex.uk/netex/schema/1.10/xsd/NeTEx_publication.xsd" version="1.10">
+    <dataObjects>
+        <CompositeFrame id="ch:1:CompositeFrame:j25" version="any">
+            <ValidBetween>
+                <FromDate>2024-12-15T00:00:00</FromDate>
+                <ToDate>2025-12-13T23:59:59</ToDate>
+            </ValidBetween>
+            <FrameDefaults>
+                <DefaultLocale>
+                    <TimeZoneOffset>1</TimeZoneOffset>
+                    <SummerTimeZoneOffset>2</SummerTimeZoneOffset>
+                    <DefaultLanguage>de</DefaultLanguage>
+                </DefaultLocale>
+            </FrameDefaults>
+            <frames>
+                <SiteFrame id="ch:1:SiteFrame:j25" version="any">
+                    <stopPlaces>
+                        <StopPlace id="ch:2:StopPlace:8503000" version="any">
+                            <ValidBetween>
+                                <FromDate>1978-10-01T00:00:00</FromDate>
+                            </ValidBetween>
+                            <alternativeTexts>
+                                <AlternativeText attributeName="Text">
+                                    <Text lang="de">ZUE</Text>
+                                </AlternativeText>
+                            </alternativeTexts>
+                            <keyList>
+                                <KeyValue>
+                                    <Key>DIDOK</Key>
+                                    <Value>8503000</Value>
+                                </KeyValue>
+                            </keyList>
+                            <Extensions>
+                                <HafasPriority>
+                                    <Value>4</Value>
+                                </HafasPriority>
+                                <HafasKMInfo>
+                                    <Value>1000</Value>
+                                </HafasKMInfo>
+                            </Extensions>
+                            <Name>Zürich HB</Name>
+                            <ShortName lang="de">8503000</ShortName>
+                            <PrivateCode>8503000</PrivateCode>
+                            <Centroid>
+                                <Location>
+                                    <Longitude>8.540212</Longitude>
+                                    <Latitude>47.378176</Latitude>
+                                    <Altitude>407</Altitude>
+                                </Location>
+                            </Centroid>
+                            <alternativeNames>
+                                <AlternativeName id="ch:1:AlternativeName:StopPlace:8503000_7" version="any">
+                                    <NameType>alias</NameType>
+                                    <TypeOfName>offical</TypeOfName>
+                                    <Name lang="de">Tsüri</Name>
+                                </AlternativeName>
+                                <AlternativeName id="ch:1:AlternativeName:StopPlace:8503000_8" version="any">
+                                    <NameType>alias</NameType>
+                                    <TypeOfName>offical</TypeOfName>
+                                    <Name lang="de">ZH</Name>
+                                </AlternativeName>
+                                <AlternativeName id="ch:1:AlternativeName:StopPlace:8503000_9" version="any">
+                                    <NameType>alias</NameType>
+                                    <TypeOfName>offical</TypeOfName>
+                                    <Name lang="de">Züri</Name>
+                                </AlternativeName>
+                                <AlternativeName id="ch:1:AlternativeName:StopPlace:8503000_10" version="any">
+                                    <NameType>alias</NameType>
+                                    <TypeOfName>offical</TypeOfName>
+                                    <Name lang="de">Zurich</Name>
+                                </AlternativeName>
+                                <AlternativeName id="ch:1:AlternativeName:StopPlace:8503000_11" version="any">
+                                    <NameType>alias</NameType>
+                                    <TypeOfName>offical</TypeOfName>
+                                    <Name lang="de">Zürich</Name>
+                                </AlternativeName>
+                                <AlternativeName id="ch:1:AlternativeName:StopPlace:8503000_12" version="any">
+                                    <NameType>alias</NameType>
+                                    <TypeOfName>offical</TypeOfName>
+                                    <Name lang="de">Zurigo</Name>
+                                </AlternativeName>
+                            </alternativeNames>
+                            <TopographicPlaceRef ref="ch:1:TopographicPlace:CHZH" version="any"/>
+                            <Weighting>preferredInterchange</Weighting>
+                            <quays>
+                                <Quay id="ch:2:Quay:8503000:10" version="any">
+                                    <keyList>
+                                        <KeyValue>
+                                            <Key>SLOID</Key>
+                                            <Value>ch:1:sloid:3000:6:10</Value>
+                                        </KeyValue>
+                                    </keyList>
+                                    <Centroid>
+                                        <Location>
+                                            <Longitude>8.536528</Longitude>
+                                            <Latitude>47.378833</Latitude>
+                                            <Altitude>407</Altitude>
+                                        </Location>
+                                    </Centroid>
+                                    <PublicCode>10</PublicCode>
+                                </Quay>
+                                <Quay id="ch:2:Quay:8503000:11" version="any">
+                                    <keyList>
+                                        <KeyValue>
+                                            <Key>SLOID</Key>
+                                            <Value>ch:1:sloid:3000:6:11</Value>
+                                        </KeyValue>
+                                    </keyList>
+                                    <Centroid>
+                                        <Location>
+                                            <Longitude>8.536573</Longitude>
+                                            <Latitude>47.378912</Latitude>
+                                            <Altitude>408</Altitude>
+                                        </Location>
+                                    </Centroid>
+                                    <PublicCode>11</PublicCode>
+                                </Quay>
+                                <Quay id="ch:2:Quay:8503000:12" version="any">
+                                    <keyList>
+                                        <KeyValue>
+                                            <Key>SLOID</Key>
+                                            <Value>ch:1:sloid:3000:7:12</Value>
+                                        </KeyValue>
+                                    </keyList>
+                                    <Centroid>
+                                        <Location>
+                                            <Longitude>8.536555</Longitude>
+                                            <Latitude>47.378997</Latitude>
+                                            <Altitude>408</Altitude>
+                                        </Location>
+                                    </Centroid>
+                                    <PublicCode>12</PublicCode>
+                                </Quay>
+                                <Quay id="ch:2:Quay:8503000:13" version="any">
+                                    <keyList>
+                                        <KeyValue>
+                                            <Key>SLOID</Key>
+                                            <Value>ch:1:sloid:3000:7:13</Value>
+                                        </KeyValue>
+                                    </keyList>
+                                    <Centroid>
+                                        <Location>
+                                            <Longitude>8.5366</Longitude>
+                                            <Latitude>47.37907</Latitude>
+                                            <Altitude>408</Altitude>
+                                        </Location>
+                                    </Centroid>
+                                    <PublicCode>13</PublicCode>
+                                </Quay>
+                                <Quay id="ch:2:Quay:8503000:14" version="any">
+                                    <keyList>
+                                        <KeyValue>
+                                            <Key>SLOID</Key>
+                                            <Value>ch:1:sloid:3000:8:14</Value>
+                                        </KeyValue>
+                                    </keyList>
+                                    <Centroid>
+                                        <Location>
+                                            <Longitude>8.536672</Longitude>
+                                            <Latitude>47.379131</Latitude>
+                                            <Altitude>407</Altitude>
+                                        </Location>
+                                    </Centroid>
+                                    <PublicCode>14</PublicCode>
+                                </Quay>
+                                <Quay id="ch:2:Quay:8503000:15" version="any">
+                                    <keyList>
+                                        <KeyValue>
+                                            <Key>SLOID</Key>
+                                            <Value>ch:1:sloid:3000:8:15</Value>
+                                        </KeyValue>
+                                    </keyList>
+                                    <Centroid>
+                                        <Location>
+                                            <Longitude>8.536726</Longitude>
+                                            <Latitude>47.379204</Latitude>
+                                            <Altitude>408</Altitude>
+                                        </Location>
+                                    </Centroid>
+                                    <PublicCode>15</PublicCode>
+                                </Quay>
+                                <Quay id="ch:2:Quay:8503000:16" version="any">
+                                    <keyList>
+                                        <KeyValue>
+                                            <Key>SLOID</Key>
+                                            <Value>ch:1:sloid:3000:9:16</Value>
+                                        </KeyValue>
+                                    </keyList>
+                                    <Centroid>
+                                        <Location>
+                                            <Longitude>8.536834</Longitude>
+                                            <Latitude>47.379253</Latitude>
+                                            <Altitude>407</Altitude>
+                                        </Location>
+                                    </Centroid>
+                                    <PublicCode>16</PublicCode>
+                                </Quay>
+                                <Quay id="ch:2:Quay:8503000:17" version="any">
+                                    <keyList>
+                                        <KeyValue>
+                                            <Key>SLOID</Key>
+                                            <Value>ch:1:sloid:3000:9:17</Value>
+                                        </KeyValue>
+                                    </keyList>
+                                    <Centroid>
+                                        <Location>
+                                            <Longitude>8.53687</Longitude>
+                                            <Latitude>47.379338</Latitude>
+                                            <Altitude>408</Altitude>
+                                        </Location>
+                                    </Centroid>
+                                    <PublicCode>17</PublicCode>
+                                </Quay>
+                                <Quay id="ch:2:Quay:8503000:18" version="any">
+                                    <keyList>
+                                        <KeyValue>
+                                            <Key>SLOID</Key>
+                                            <Value>ch:1:sloid:3000:10:18</Value>
+                                        </KeyValue>
+                                    </keyList>
+                                    <Centroid>
+                                        <Location>
+                                            <Longitude>8.536834</Longitude>
+                                            <Latitude>47.379417</Latitude>
+                                            <Altitude>408</Altitude>
+                                        </Location>
+                                    </Centroid>
+                                    <PublicCode>18</PublicCode>
+                                </Quay>
+                                <Quay id="ch:2:Quay:8503000:21" version="any">
+                                    <keyList>
+                                        <KeyValue>
+                                            <Key>SLOID</Key>
+                                            <Value>ch:1:sloid:3088:0:99992</Value>
+                                        </KeyValue>
+                                    </keyList>
+                                    <Centroid>
+                                        <Location>
+                                            <Longitude>8.539502</Longitude>
+                                            <Latitude>47.377282</Latitude>
+                                            <Altitude>408</Altitude>
+                                        </Location>
+                                    </Centroid>
+                                    <PublicCode>21</PublicCode>
+                                </Quay>
+                                <Quay id="ch:2:Quay:8503000:22" version="any">
+                                    <keyList>
+                                        <KeyValue>
+                                            <Key>SLOID</Key>
+                                            <Value>ch:1:sloid:3088:0:82204</Value>
+                                        </KeyValue>
+                                    </keyList>
+                                    <Centroid>
+                                        <Location>
+                                            <Longitude>8.539574</Longitude>
+                                            <Latitude>47.377404</Latitude>
+                                            <Altitude>409</Altitude>
+                                        </Location>
+                                    </Centroid>
+                                    <PublicCode>22</PublicCode>
+                                </Quay>
+                                <Quay id="ch:2:Quay:8503000:3" version="any">
+                                    <keyList>
+                                        <KeyValue>
+                                            <Key>SLOID</Key>
+                                            <Value>ch:1:sloid:3000:2:3</Value>
+                                        </KeyValue>
+                                    </keyList>
+                                    <Centroid>
+                                        <Location>
+                                            <Longitude>8.536214</Longitude>
+                                            <Latitude>47.378347</Latitude>
+                                            <Altitude>408</Altitude>
+                                        </Location>
+                                    </Centroid>
+                                    <PublicCode>3</PublicCode>
+                                </Quay>
+                                <Quay id="ch:2:Quay:8503000:31" version="any">
+                                    <keyList>
+                                        <KeyValue>
+                                            <Key>SLOID</Key>
+                                            <Value>ch:1:sloid:3000:500:31</Value>
+                                        </KeyValue>
+                                    </keyList>
+                                    <Centroid>
+                                        <Location>
+                                            <Longitude>8.536654</Longitude>
+                                            <Latitude>47.378347</Latitude>
+                                            <Altitude>408</Altitude>
+                                        </Location>
+                                    </Centroid>
+                                    <PublicCode>31</PublicCode>
+                                </Quay>
+                                <Quay id="ch:2:Quay:8503000:32" version="any">
+                                    <keyList>
+                                        <KeyValue>
+                                            <Key>SLOID</Key>
+                                            <Value>ch:1:sloid:3000:500:32</Value>
+                                        </KeyValue>
+                                    </keyList>
+                                    <Centroid>
+                                        <Location>
+                                            <Longitude>8.536717</Longitude>
+                                            <Latitude>47.378456</Latitude>
+                                            <Altitude>408</Altitude>
+                                        </Location>
+                                    </Centroid>
+                                    <PublicCode>32</PublicCode>
+                                </Quay>
+                                <Quay id="ch:2:Quay:8503000:33" version="any">
+                                    <keyList>
+                                        <KeyValue>
+                                            <Key>SLOID</Key>
+                                            <Value>ch:1:sloid:3000:501:33</Value>
+                                        </KeyValue>
+                                    </keyList>
+                                    <Centroid>
+                                        <Location>
+                                            <Longitude>8.536753</Longitude>
+                                            <Latitude>47.378523</Latitude>
+                                            <Altitude>408</Altitude>
+                                        </Location>
+                                    </Centroid>
+                                    <PublicCode>33</PublicCode>
+                                </Quay>
+                                <Quay id="ch:2:Quay:8503000:34" version="any">
+                                    <keyList>
+                                        <KeyValue>
+                                            <Key>SLOID</Key>
+                                            <Value>ch:1:sloid:3000:501:34</Value>
+                                        </KeyValue>
+                                    </keyList>
+                                    <Centroid>
+                                        <Location>
+                                            <Longitude>8.536825</Longitude>
+                                            <Latitude>47.378639</Latitude>
+                                            <Altitude>408</Altitude>
+                                        </Location>
+                                    </Centroid>
+                                    <PublicCode>34</PublicCode>
+                                </Quay>
+                                <Quay id="ch:2:Quay:8503000:34AB" version="any">
+                                    <keyList>
+                                        <KeyValue>
+                                            <Key>SLOID</Key>
+                                            <Value>ch:1:sloid:3000:501:34</Value>
+                                        </KeyValue>
+                                    </keyList>
+                                    <Centroid>
+                                        <Location>
+                                            <Longitude>8.536825</Longitude>
+                                            <Latitude>47.378639</Latitude>
+                                            <Altitude>408</Altitude>
+                                        </Location>
+                                    </Centroid>
+                                    <PublicCode>34AB</PublicCode>
+                                </Quay>
+                                <Quay id="ch:2:Quay:8503000:4" version="any">
+                                    <keyList>
+                                        <KeyValue>
+                                            <Key>SLOID</Key>
+                                            <Value>ch:1:sloid:3000:3:4</Value>
+                                        </KeyValue>
+                                    </keyList>
+                                    <Centroid>
+                                        <Location>
+                                            <Longitude>8.536259</Longitude>
+                                            <Latitude>47.378407</Latitude>
+                                            <Altitude>408</Altitude>
+                                        </Location>
+                                    </Centroid>
+                                    <PublicCode>4</PublicCode>
+                                </Quay>
+                                <Quay id="ch:2:Quay:8503000:41/42" version="any">
+                                    <keyList>
+                                        <KeyValue>
+                                            <Key>SLOID</Key>
+                                            <Value>ch:1:sloid:3000:502:41</Value>
+                                        </KeyValue>
+                                    </keyList>
+                                    <Centroid>
+                                        <Location>
+                                            <Longitude>8.538756</Longitude>
+                                            <Latitude>47.378821</Latitude>
+                                            <Altitude>407</Altitude>
+                                        </Location>
+                                    </Centroid>
+                                    <PublicCode>41/42</PublicCode>
+                                </Quay>
+                                <Quay id="ch:2:Quay:8503000:43/44" version="any">
+                                    <keyList>
+                                        <KeyValue>
+                                            <Key>SLOID</Key>
+                                            <Value>ch:1:sloid:3000:503:43</Value>
+                                        </KeyValue>
+                                    </keyList>
+                                    <Centroid>
+                                        <Location>
+                                            <Longitude>8.538846</Longitude>
+                                            <Latitude>47.378967</Latitude>
+                                            <Altitude>407</Altitude>
+                                        </Location>
+                                    </Centroid>
+                                    <PublicCode>43/44</PublicCode>
+                                </Quay>
+                                <Quay id="ch:2:Quay:8503000:5" version="any">
+                                    <keyList>
+                                        <KeyValue>
+                                            <Key>SLOID</Key>
+                                            <Value>ch:1:sloid:3000:3:5</Value>
+                                        </KeyValue>
+                                    </keyList>
+                                    <Centroid>
+                                        <Location>
+                                            <Longitude>8.536313</Longitude>
+                                            <Latitude>47.37848</Latitude>
+                                            <Altitude>407</Altitude>
+                                        </Location>
+                                    </Centroid>
+                                    <PublicCode>5</PublicCode>
+                                </Quay>
+                                <Quay id="ch:2:Quay:8503000:6" version="any">
+                                    <keyList>
+                                        <KeyValue>
+                                            <Key>SLOID</Key>
+                                            <Value>ch:1:sloid:3000:4:6</Value>
+                                        </KeyValue>
+                                    </keyList>
+                                    <Centroid>
+                                        <Location>
+                                            <Longitude>8.536331</Longitude>
+                                            <Latitude>47.378553</Latitude>
+                                            <Altitude>408</Altitude>
+                                        </Location>
+                                    </Centroid>
+                                    <PublicCode>6</PublicCode>
+                                </Quay>
+                                <Quay id="ch:2:Quay:8503000:7" version="any">
+                                    <keyList>
+                                        <KeyValue>
+                                            <Key>SLOID</Key>
+                                            <Value>ch:1:sloid:3000:4:7</Value>
+                                        </KeyValue>
+                                    </keyList>
+                                    <Centroid>
+                                        <Location>
+                                            <Longitude>8.536394</Longitude>
+                                            <Latitude>47.378626</Latitude>
+                                            <Altitude>407</Altitude>
+                                        </Location>
+                                    </Centroid>
+                                    <PublicCode>7</PublicCode>
+                                </Quay>
+                                <Quay id="ch:2:Quay:8503000:8" version="any">
+                                    <keyList>
+                                        <KeyValue>
+                                            <Key>SLOID</Key>
+                                            <Value>ch:1:sloid:3000:5:8</Value>
+                                        </KeyValue>
+                                    </keyList>
+                                    <Centroid>
+                                        <Location>
+                                            <Longitude>8.53643</Longitude>
+                                            <Latitude>47.378693</Latitude>
+                                            <Altitude>407</Altitude>
+                                        </Location>
+                                    </Centroid>
+                                    <PublicCode>8</PublicCode>
+                                </Quay>
+                                <Quay id="ch:2:Quay:8503000:9" version="any">
+                                    <keyList>
+                                        <KeyValue>
+                                            <Key>SLOID</Key>
+                                            <Value>ch:1:sloid:3000:5:9</Value>
+                                        </KeyValue>
+                                    </keyList>
+                                    <Centroid>
+                                        <Location>
+                                            <Longitude>8.536484</Longitude>
+                                            <Latitude>47.378772</Latitude>
+                                            <Altitude>408</Altitude>
+                                        </Location>
+                                    </Centroid>
+                                    <PublicCode>9</PublicCode>
+                                </Quay>
+                            </quays>
+                        </StopPlace>
+                    </stopPlaces>
+                </SiteFrame>
+            </frames>
+        </CompositeFrame>
+    </dataObjects>
+</PublicationDelivery>

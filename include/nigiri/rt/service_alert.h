@@ -96,8 +96,12 @@ struct alerts {
     auto const direction = tt.trip_direction_id_.test(t);
     auto const parent =
         l == location_idx_t::invalid() ? l : tt.locations_.parents_[l];
+    auto const grandparent = parent == location_idx_t::invalid()
+                                 ? location_idx_t::invalid()
+                                 : tt.locations_.parents_[parent];
     auto const matches_location = [&](location_idx_t const x) {
-      return x == l || (parent != location_idx_t::invalid() && parent == x);
+      return x == l || (parent != location_idx_t::invalid() && parent == x) ||
+             (grandparent != location_idx_t::invalid() && grandparent == x);
     };
 
     if (rt_t != rt_transport_idx_t::invalid()) {

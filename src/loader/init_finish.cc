@@ -16,7 +16,6 @@
 namespace nigiri::loader {
 
 void register_special_stations(timetable& tt) {
-  auto empty_idx_vec = vector<location_idx_t>{};
   for (auto const& name : special_stations_names) {
     register_location(tt, location{name,
                                    name,
