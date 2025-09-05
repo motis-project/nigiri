@@ -153,17 +153,64 @@ timetable load(std::vector<timetable_source> const& sources,
         log(log_lvl::info, "loader.load", "loading {}", path);
       }
       progress_tracker->context(std::string{tag});
-      auto bitfields = hash_map<bitfield, bitfield_idx_t>{};
+      auto bitfields_ = hash_map<bitfield, bitfield_idx_t>{};
       for (auto const [idx_, bf] : utl::enumerate(tt.bitfields_)) {
         auto new_idx =
-            utl::get_or_create(bitfields, bf, [&]() { return idx_; });
+            utl::get_or_create(bitfields_, bf, [&]() { return idx_; });
         assert(new_idx == idx_);  // bitfields must be unique in the timetable
       }
+      /* Save data to restore later */
+      auto const old_bitfields = tt.bitfields_;
+      auto const old_transport_traffic_days_ = tt.transport_traffic_days_;
+      tt.transport_traffic_days_ = old_transport_traffic_days_;
+      auto const old_flex_transport_traffic_days_ =
+          tt.flex_transport_traffic_days_;
+      tt.flex_transport_traffic_days_ = old_flex_transport_traffic_days_;
+      /* Prepare timetable by emptying corrected fields */
+      tt.bitfields_.reset();
+      auto bitfields = hash_map<bitfield, bitfield_idx_t>{};
+      /* Load file */
       try {
         (*it)->load(local_config, src, *dir, tt, bitfields, a, shapes);
       } catch (std::exception const& e) {
         throw utl::fail("failed to load {}: {}", path, e.what());
       }
+      /* Save new data */
+      auto const new_bitfields = tt.bitfields_;
+      auto new_transport_traffic_days_ =
+          vector_map<transport_idx_t, bitfield_idx_t>{};
+      for (auto i = old_transport_traffic_days_.size();
+           i < tt.transport_traffic_days_.size(); ++i) {
+        new_transport_traffic_days_.push_back(
+            tt.transport_traffic_days_[transport_idx_t{i}]);
+      }
+      auto new_flex_transport_traffic_days_ =
+          vector_map<flex_transport_idx_t, bitfield_idx_t>{};
+      for (auto i = old_flex_transport_traffic_days_.size();
+           i < tt.flex_transport_traffic_days_.size(); ++i) {
+        new_flex_transport_traffic_days_.push_back(
+            tt.flex_transport_traffic_days_[flex_transport_idx_t{i}]);
+      }
+      /* Restore old timetable */
+      tt.bitfields_ = old_bitfields;
+      tt.transport_traffic_days_ = old_transport_traffic_days_;
+      tt.flex_transport_traffic_days_ = old_flex_transport_traffic_days_;
+      /* Add new data and adjust references */
+      /*	bitfields	*/
+      auto corrected_indices = vector_map<bitfield_idx_t, bitfield_idx_t>{};
+      for (auto const& [idx_, bf] : utl::enumerate(new_bitfields)) {
+        auto adjusted_idx = utl::get_or_create(
+            bitfields_, bf, [&]() { return tt.register_bitfield(bf); });
+        corrected_indices.emplace_back(adjusted_idx);
+      }
+      for (auto const& i : new_transport_traffic_days_) {
+        tt.transport_traffic_days_.push_back(corrected_indices[i]);
+      }
+      for (auto const& i : new_flex_transport_traffic_days_) {
+        tt.flex_transport_traffic_days_.push_back(corrected_indices[i]);
+      }
+
+      /* Save snapshot */
       fs::create_directories(local_cache_path);
       if (shapes != nullptr) {
         auto shape_store =
