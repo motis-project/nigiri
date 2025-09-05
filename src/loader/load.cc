@@ -123,22 +123,7 @@ timetable load(std::vector<timetable_source> const& sources,
     tt = cached_timetable;
     auto cached_shape_store = std::make_unique<shapes_storage>(
         local_cache_path, cista::mmap::protection::READ);
-    for (auto i = 0U; i < cached_shape_store->data_.size(); ++i) {
-      auto const idx = shape_idx_t{i};
-      shapes->data_.emplace_back(cached_shape_store->data_[idx]);
-    }
-    for (auto e : cached_shape_store->offsets_) {
-      shapes->offsets_.emplace_back(e);
-    }
-    for (auto e : cached_shape_store->trip_offset_indices_) {
-      shapes->trip_offset_indices_.emplace_back(e);
-    }
-    for (auto e : cached_shape_store->route_bboxes_) {
-      shapes->route_bboxes_.emplace_back(e);
-    }
-    for (auto e : cached_shape_store->route_segment_bboxes_) {
-      shapes->route_segment_bboxes_.emplace_back(e);
-    }
+    shapes->add(cached_shape_store.get());
     break;
   }
 
@@ -183,22 +168,7 @@ timetable load(std::vector<timetable_source> const& sources,
       if (shapes != nullptr) {
         auto shape_store =
             std::make_unique<shapes_storage>(local_cache_path, shapes->mode_);
-        for (auto i = 0U; i < shapes->data_.size(); ++i) {
-          auto const idx = shape_idx_t{i};
-          shape_store->data_.emplace_back(shapes->data_[idx]);
-        }
-        for (auto const& e : shapes->offsets_) {
-          shape_store->offsets_.emplace_back(e);
-        }
-        for (auto const& e : shapes->trip_offset_indices_) {
-          shape_store->trip_offset_indices_.emplace_back(e);
-        }
-        for (auto const& e : shapes->route_bboxes_) {
-          shape_store->route_bboxes_.emplace_back(e);
-        }
-        for (auto const& e : shapes->route_segment_bboxes_) {
-          shape_store->route_segment_bboxes_.emplace_back(e);
-        }
+        shape_store->add(shapes);
       }
       tt.write(local_cache_path / "tt.bin");
       progress_tracker->context("");

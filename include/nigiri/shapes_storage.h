@@ -18,6 +18,7 @@ struct shapes_storage {
 
   cista::mmap mm(char const* file);
 
+  void add(shapes_storage* other);
   std::span<geo::latlng const> get_shape(shape_idx_t) const;
   std::span<geo::latlng const> get_shape(trip_idx_t) const;
   std::span<geo::latlng const> get_shape(trip_idx_t,
