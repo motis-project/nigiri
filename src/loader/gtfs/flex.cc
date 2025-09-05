@@ -57,7 +57,7 @@ flex_areas_t parse_flex_areas(timetable& tt,
 
       utl::verify(geometry_type == "Polygon",
                   "only Polygon supported at the moment, type={}",
-                  geometry_type);
+                  std::string_view{geometry_type});
 
       auto const properties = area.find("properties");
       if (properties != area.end() && properties->value().is_object()) {

@@ -262,6 +262,12 @@ TEST(rt, gtfs_rt_update) {
                                         &rtt, source_idx_t{0}, *td)
                      .first};
   ASSERT_TRUE(fr.valid());
+
+  EXPECT_EQ("RE 2", tt.transport_name(fr.t_.t_idx_));
+  EXPECT_EQ("", fr[0].trip_short_name(event_type::kDep));
+  EXPECT_EQ("RE 2", fr[0].route_short_name(event_type::kDep));
+  EXPECT_EQ("RE 2", fr[0].display_name(event_type::kDep));
+
   for (auto const [from, to] : utl::pairwise(fr)) {
     EXPECT_EQ(scheduled[i++], from.scheduled_time(nigiri::event_type::kDep));
     EXPECT_EQ(scheduled[i++], to.scheduled_time(nigiri::event_type::kArr));
@@ -355,6 +361,13 @@ TEST(rt, gtfs_rt_update) {
 
   i = j = 0U;
   fr = frun{tt, &rtt, r};
+
+  EXPECT_EQ("RE 2", rtt.transport_name(tt, fr.rt_));
+  EXPECT_EQ("RE 2", tt.transport_name(fr.t_.t_idx_));
+  EXPECT_EQ("", fr[0].trip_short_name(event_type::kDep));
+  EXPECT_EQ("RE 2", fr[0].route_short_name(event_type::kDep));
+  EXPECT_EQ("RE 2", fr[0].display_name(event_type::kDep));
+
   for (auto const [from, to] : utl::pairwise(fr)) {
     EXPECT_EQ(scheduled[i++], from.scheduled_time(nigiri::event_type::kDep));
     EXPECT_EQ(scheduled[i++], to.scheduled_time(nigiri::event_type::kArr));
