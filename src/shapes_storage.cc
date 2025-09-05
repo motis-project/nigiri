@@ -38,6 +38,8 @@ cista::mmap shapes_storage::mm(char const* file) {
 }
 
 void shapes_storage::add(shapes_storage* other) {
+  auto const shape_size = shape_idx_t{this->data_.size()};
+  auto const shape_offset_size = shape_offset_idx_t{this->offsets_.size()};
   for (auto i = 0U; i < other->data_.size(); ++i) {
     auto const idx = shape_idx_t{i};
     this->data_.emplace_back(other->data_[idx]);
@@ -46,7 +48,17 @@ void shapes_storage::add(shapes_storage* other) {
     this->offsets_.emplace_back(e);
   }
   for (auto const& e : other->trip_offset_indices_) {
-    this->trip_offset_indices_.emplace_back(e);
+    auto const mapped_shape_idx = e.first != shape_idx_t::invalid()
+                                      ? e.first + shape_size
+                                      : shape_idx_t::invalid();
+    auto const mapped_shape_offset_idx =
+        e.second != shape_offset_idx_t::invalid()
+            ? e.second + shape_offset_size
+            : shape_offset_idx_t::invalid();
+    auto const mapped_trip_offset_index =
+        cista::pair<shape_idx_t, shape_offset_idx_t>{mapped_shape_idx,
+                                                     mapped_shape_offset_idx};
+    this->trip_offset_indices_.emplace_back(mapped_trip_offset_index);
   }
   for (auto const& e : other->route_bboxes_) {
     this->route_bboxes_.emplace_back(e);
