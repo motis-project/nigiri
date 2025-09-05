@@ -18,7 +18,8 @@ struct segment_info {
     auto const loc_seq = tt.route_location_seq_[tt.transport_route_[t]];
 
     out << "[dbg=" << tt.dbg(t) << ", trip=" << tt.transport_name(t)
-        << ", segment=" << s << ", rel_segment=" << rel
+        << ", segment=" << s << ", rel_segment=" << rel << "/"
+        << tbd.get_segment_range(t).size()
         << ", from=" << location{tt, stop{loc_seq[from]}.location_idx()};
 
     if (day.has_value()) {

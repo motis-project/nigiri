@@ -5,7 +5,8 @@
 #include "nigiri/routing/tb/tb_data.h"
 #include "nigiri/timetable.h"
 
-#define reached_dbg fmt::println
+#define reached_dbg(...)
+// #define reached_dbg fmt::println
 
 namespace nigiri::routing::tb {
 
@@ -33,8 +34,8 @@ struct reached {
               std::uint8_t const k) {
     assert(day_offset >= 0 && day_offset < kTBMaxDayOffset);
     reached_dbg(
-        "  reached update: transport={}, day_offset={}, to_segment_offset={}",
-        t, day_offset, to_segment_offset);
+        "  reached update: k={}, dbg={}, trip={}, day={}, to_segment_offset={}",
+        k, tt_.dbg(t), tt_.transport_name(t), day_offset, to_segment_offset);
     for (auto const x : tt_.route_transport_ranges_[tt_.transport_route_[t]]) {
       // Earlier trips are reachable on the following day.
       auto const off = x < t ? 1U : 0U;
@@ -43,7 +44,9 @@ struct reached {
         for (auto j = k; j != kMaxTransfers; ++j) {
           if (earliest_segment_offset_[x][i][k] > to_segment_offset) {
             reached_dbg(
-                "    -> update: transport={}, day={}, previous={} -> {}", x, i,
+                "    -> update: k={}, dbg={}, trip={}, day={}, previous={} -> "
+                "{}",
+                k, tt_.dbg(x), tt_.transport_name(x), i,
                 earliest_segment_offset_[x][i][k], to_segment_offset);
             earliest_segment_offset_[x][i][k] = to_segment_offset;
           }

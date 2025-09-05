@@ -1,11 +1,13 @@
 #pragma once
 
 #include "nigiri/routing/tb/reached.h"
+#include "nigiri/routing/tb/segment_info.h"
 #include "nigiri/routing/tb/settings.h"
 #include "nigiri/routing/tb/tb_data.h"
 #include "nigiri/types.h"
 
 #define tb_queue_dbg(...)
+// #define tb_queue_dbg fmt::println
 
 namespace nigiri::routing::tb {
 
@@ -66,7 +68,8 @@ struct queue {
                        segment_idx_t const transport_first_segment,
                        segment_idx_t const segment,
                        transport_idx_t const t,
-                       std::int8_t const day_offset) {
+                       std::int8_t const day_offset,
+                       [[maybe_unused]] day_idx_t const day) {
     if (day_offset < 0 || day_offset >= kTBMaxDayOffset) {
       tb_queue_dbg("  initial_enqueue day_offset out of range: {}", day_offset);
       return;
@@ -76,6 +79,11 @@ struct queue {
     auto const segment_offset =
         static_cast<std::uint16_t>(to_idx(segment - transport_first_segment));
     if (segment_offset >= min_segment_offset) {
+      tb_queue_dbg(
+          "  initial_enqueue already "
+          "reached:\n\tsegment_offset={}\n\tmin_segment_offset={}",
+          seg(transport_first_segment + segment_offset, day),
+          seg(transport_first_segment + min_segment_offset, day));
       return;
     }
 
@@ -87,11 +95,18 @@ struct queue {
         .parent_ = queue_entry::kNoParent,
         .transport_query_day_offset_ = static_cast<queue_idx_t>(day_offset)});
     r_.update(t, day_offset, segment_offset, 0);
+    tb_queue_dbg("  initial enqueue:\n\t\t{}\n\t\t{} [exlusive]",
+                 seg(segment, day),
+                 seg(transport_first_segment + min_segment_offset, day));
   }
 
   queue_entry& operator[](queue_idx_t const pos) { return q_[pos]; }
 
   std::size_t size() const { return q_.size(); }
+
+  segment_info seg(segment_idx_t const s, day_idx_t const day) const {
+    return {r_.tt_, r_.tbd_, s, day};
+  }
 
   reached& r_;
   std::vector<queue_entry> q_;

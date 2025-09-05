@@ -96,6 +96,8 @@ void query_engine<UseLowerBounds>::execute(unixtime_t const start_time,
                                            unixtime_t const worst_time_at_dest,
                                            profile_idx_t const,
                                            pareto_set<journey>& results) {
+  tb_queue_dbg("--- EXECUTE START_TIME={}", start_time);
+
   for (auto k = 0U; k != kMaxTransfers; ++k) {
     if (state_.t_min_[k] >= worst_time_at_dest) {
       state_.t_min_[k] = worst_time_at_dest;
@@ -107,6 +109,7 @@ void query_engine<UseLowerBounds>::execute(unixtime_t const start_time,
   auto round =  // Queue element indices from previous round.
       interval{queue_idx_t{0U}, static_cast<queue_idx_t>(state_.q_n_.size())};
   for (; k != kMaxTransfers && !round.empty(); ++k) {
+    tb_debug("ROUND start_time={}, k={}", start_time, k);
     for (auto const i : round) {
       seg_dest(k, i);
     }
@@ -142,11 +145,13 @@ void query_engine<UseLowerBounds>::seg_dest(std::uint8_t const k,
   auto const& qe = state_.q_n_[q];
   for (auto const segment : qe.segment_range_) {
     if (!state_.end_reachable_.test(segment)) {
-      tb_debug("reached segment {}  => dest not reachable", seg(segment, qe));
+      tb_debug("[k={}] reached segment {}  => dest not reachable", k,
+               seg(segment, qe));
       [[likely]] continue;
     }
 
-    tb_debug("reached segment {}  => dest reachable!", seg(segment, qe));
+    tb_debug("[k={}] reached segment {}  => dest reachable!", k,
+             seg(segment, qe));
     auto const t = state_.tbd_.segment_transports_[segment];
     auto const i = static_cast<stop_idx_t>(
         to_idx(segment - state_.tbd_.transport_first_segment_[t] + 1));
@@ -186,7 +191,7 @@ void query_engine<UseLowerBounds>::seg_transfers(queue_idx_t const q,
                                                  std::uint8_t const k) {
   auto const qe = state_.q_n_[q];
   for (auto const s : qe.segment_range_) {
-    tb_debug("handling queue entry {}: #transfers={}", seg(s, qe),
+    tb_debug("[k={}] handling queue entry {}: #transfers={}", k, seg(s, qe),
              state_.tbd_.segment_transfers_[s].size());
     assert(s < state_.tbd_.segment_transfers_.size());
     for (auto const transfer : state_.tbd_.segment_transfers_[s]) {
@@ -225,7 +230,8 @@ void query_engine<UseLowerBounds>::add_start(location_idx_t const l,
             state_.tbd_.transport_first_segment_[et.t_idx_];
         state_.q_n_.initial_enqueue(
             state_.tbd_, transport_first_segment, transport_first_segment + i,
-            et.t_idx_, static_cast<std::int8_t>(to_idx(et.day_ - base_)));
+            et.t_idx_, static_cast<std::int8_t>(to_idx(et.day_ - base_)),
+            et.day_);
       }
     }
   }
