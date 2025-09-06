@@ -45,6 +45,7 @@ query_engine<UseLowerBounds>::query_engine(
       dist_to_dest_{dist_to_dest},
       lb_{lb},
       base_{base - QUERY_DAY_SHIFT} {
+  state_.q_n_.base_ = base_;
   stats_.lower_bound_pruning_ = UseLowerBounds;
   state_.reset();
 
@@ -227,15 +228,21 @@ void query_engine<UseLowerBounds>::add_start(location_idx_t const l,
       auto const et = get_earliest_transport<direction::kForward>(
           tt_, tt_, 0U, r, i, day, mam, stp.location_idx(),
           [](day_idx_t, std::int16_t) { return false; });
-
-      if (et.is_valid()) {
-        auto const transport_first_segment =
-            state_.tbd_.transport_first_segment_[et.t_idx_];
-        state_.q_n_.initial_enqueue(
-            state_.tbd_, transport_first_segment, transport_first_segment + i,
-            et.t_idx_, static_cast<std::int8_t>(to_idx(et.day_ - base_)),
-            et.day_);
+      if (!et.is_valid()) {
+        continue;
       }
+
+      auto const query_day_offset = to_idx(et.day_) - to_idx(base_);
+      if (query_day_offset < 0 || query_day_offset >= kTBMaxDayOffset) {
+        continue;
+      }
+
+      auto const transport_first_segment =
+          state_.tbd_.transport_first_segment_[et.t_idx_];
+      state_.q_n_.initial_enqueue(
+          state_.tbd_, transport_first_segment, transport_first_segment + i, r,
+          et.t_idx_, static_cast<query_day_offset_t>(query_day_offset),
+          et.day_);
     }
   }
 }

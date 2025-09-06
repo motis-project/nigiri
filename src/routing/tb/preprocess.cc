@@ -578,10 +578,13 @@ tb_data preprocess(timetable const& tt, profile_idx_t const prf_idx) {
               to.to_segment_ =
                   d.transport_first_segment_[from.transport_idx_to_] +
                   from.stop_idx_to_;
-              to.to_transport_ = from.transport_idx_to_;
               to.traffic_days_ = get_or_create_bf(from.bf_);
+              to.route_ = tt.transport_route_[from.transport_idx_to_];
+              to.transport_offset_ = static_cast<std::uint16_t>(
+                  to_idx(from.transport_idx_to_ -
+                         tt.route_transport_ranges_[to.route_].from_));
               to.to_segment_offset_ = from.stop_idx_to_;
-              to.day_offset_ = from.day_offset_;
+              to.set_day_offset(from.day_offset_);
             }
           }
         }

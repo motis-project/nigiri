@@ -10,65 +10,86 @@
 
 namespace nigiri::routing::tb {
 
-using query_day_idx_t = std::int32_t;
+using query_day_offset_t = std::uint16_t;
+
+using transport_t = std::uint16_t;
+
+inline transport_t to_transport(std::uint16_t const transport_offset,
+                                query_day_offset_t const query_day_offset) {
+  assert((0xF000 & transport_offset) == 0);
+  assert((0xFFF0 & query_day_offset) == 0);
+  return static_cast<std::uint16_t>(query_day_offset << 12U) | transport_offset;
+}
+
+inline std::uint16_t get_transport_offset(transport_t const x) {
+  return x & 0x0FFF;
+}
+
+inline std::uint16_t get_query_day(transport_t const x) { return x >> 12U; }
+
+struct entry {
+  inline bool dominates(entry const& o) const {
+    return k_ <= o.k_ && transport_ <= o.transport_ &&
+           segment_offset_ <= o.segment_offset_;
+  }
+
+  transport_t transport_;
+  std::uint16_t segment_offset_ : 12;
+  std::uint16_t k_ : 4;
+};
 
 struct reached {
   explicit reached(timetable const& tt, tb_data const& tbd)
-      : tt_{tt},
-        tbd_{tbd},
-        earliest_segment_offset_{to_idx(tt.next_transport_idx())} {}
+      : tt_{tt}, tbd_{tbd}, data_{tt.n_routes()} {
+    for (auto& x : data_) {
+      x.els_.reserve(8);
+    }
+  }
 
   void reset() {
-    for (auto r = route_idx_t{0}; r != tt_.n_routes(); ++r) {
-      for (auto const t : tt_.route_transport_ranges_[r]) {
-        auto x = std::array<std::uint16_t, kMaxTransfers>{};
-        x.fill(static_cast<std::uint16_t>(tbd_.get_segment_range(t).size()));
-        earliest_segment_offset_[t].fill(x);
-      }
+    for (auto r = route_idx_t{0U}; r != tt_.n_routes(); ++r) {
+      data_[r].clear();
     }
   }
 
-  void update(transport_idx_t const t,
-              query_day_idx_t const day_offset,
-              std::uint16_t const to_segment_offset,
+  void update(route_idx_t const r,
+              std::uint16_t const transport_offset,
+              std::uint16_t const segment_offset,
+              query_day_offset_t const query_day_offset,
               std::uint8_t const k) {
-    assert(day_offset >= 0 && day_offset < kTBMaxDayOffset);
+    assert(query_day_offset >= 0 && query_day_offset < kTBMaxDayOffset);
     reached_dbg(
-        "  reached update: k={}, dbg={}, trip={}, day={}, to_segment_offset={}",
-        k, tt_.dbg(t), tt_.transport_name(t), day_offset, to_segment_offset);
-    for (auto const x : tt_.route_transport_ranges_[tt_.transport_route_[t]]) {
-      // Earlier trips are reachable on the following day.
-      auto const off = x < t ? 1U : 0U;
-      for (auto i = static_cast<std::uint32_t>(day_offset) + off;
-           i != kTBMaxDayOffset; ++i) {
-        for (auto j = k; j != kMaxTransfers; ++j) {
-          if (earliest_segment_offset_[x][i][k] > to_segment_offset) {
-            reached_dbg(
-                "    -> update: k={}, dbg={}, trip={}, day={}, previous={} -> "
-                "{}",
-                k, tt_.dbg(x), tt_.transport_name(x), i,
-                earliest_segment_offset_[x][i][k], to_segment_offset);
-            earliest_segment_offset_[x][i][k] = to_segment_offset;
-          }
-        }
-      }
-    }
+        "  reached update: k={}, r={}, dbg={}, trip={}, day={}, "
+        "to_segment_offset={}",
+        k, r, tt_.dbg(tt_.route_transport_ranges_[r][transport_offset]),
+        tt_.transport_name(tt_.route_transport_ranges_[r][transport_offset]),
+        query_day_offset, segment_offset);
+    auto const transport = to_transport(transport_offset, query_day_offset);
+    data_[r].add(
+        {.transport_ = transport, .segment_offset_ = segment_offset, .k_ = k});
   }
 
-  std::uint16_t query(transport_idx_t const t,
-                      query_day_idx_t const day_offset,
+  std::uint16_t query(route_idx_t const r,
+                      std::uint16_t const transport_offset,
+                      query_day_offset_t const query_day_offset,
                       std::uint8_t const k) {
-    assert(day_offset >= 0 && day_offset < kTBMaxDayOffset);
-    return earliest_segment_offset_[t][static_cast<std::uint32_t>(day_offset)]
-                                   [k];
+    auto const transport = to_transport(transport_offset, query_day_offset);
+
+    auto min_segment =
+        static_cast<std::uint16_t>(tt_.route_location_seq_[r].size() - 1);
+    for (auto const& re : data_[r]) {
+      if (re.k_ <= k && re.transport_ <= transport &&
+          re.segment_offset_ < min_segment) {
+        min_segment = re.segment_offset_;
+      }
+    }
+
+    return min_segment;
   }
 
   timetable const& tt_;
   tb_data const& tbd_;
-  vector_map<
-      transport_idx_t,
-      std::array<std::array<std::uint16_t, kMaxTransfers>, kTBMaxDayOffset>>
-      earliest_segment_offset_;
+  vector_map<route_idx_t, pareto_set<entry>> data_;
 };
 
 }  // namespace nigiri::routing::tb
