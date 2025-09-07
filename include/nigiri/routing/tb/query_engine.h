@@ -33,11 +33,11 @@ struct query_state {
 
   tb_data const& tbd_;
 
-  avx_reached r_;
-  queue<avx_reached> q_n_{r_};
+  // avx_reached r_;
+  // queue<avx_reached> q_n_{r_};
 
-  // reached r_;
-  // queue<reached> q_n_{r_};
+  reached r_;
+  queue<reached> q_n_{r_};
 
   // minimum arrival times per round
   std::array<unixtime_t, kMaxTransfers + 1U> t_min_;
