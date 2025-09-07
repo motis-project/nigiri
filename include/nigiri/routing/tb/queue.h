@@ -4,7 +4,7 @@
 
 #include "fmt/ranges.h"
 
-#include "nigiri/routing/tb/reached.h"
+#include "nigiri/routing/tb/avx_reached.h"
 #include "nigiri/routing/tb/segment_info.h"
 #include "nigiri/routing/tb/settings.h"
 #include "nigiri/routing/tb/tb_data.h"
@@ -31,19 +31,22 @@ struct queue_entry {
   queue_idx_t transport_query_day_offset_ : kQueryDayOffsetBits;
 };
 
+template <typename Reached>
 struct queue {
-  explicit queue(reached& r) : r_(r) {}
+  explicit queue(Reached& r) : r_(r) {}
 
   void reset() { q_.clear(); }
 
   bool enqueue(transfer const& transfer,
                queue_idx_t const parent,
-               std::uint8_t const k) {
+               std::uint8_t const k,
+               std::uint64_t& max_pareto_set_size) {
     auto const day_offset =
         q_[parent].transport_query_day_offset_ + transfer.get_day_offset();
 
     if (day_offset <= 0 || day_offset >= kTBMaxDayOffset) {
-      tb_queue_dbg("  day_offset out of range: {}", day_offset);
+      tb_queue_dbg("  day_offset out of range: {}",
+                   static_cast<query_day_offset_t>(day_offset));
       return false;
     }
 
@@ -55,20 +58,11 @@ struct queue {
           "  already reached: transfer.route={}, transfer.to_segment={} >= "
           "{}=min_segment, reached_segments={}",
           transfer.route_, transfer.to_segment_, min_segment_offset,
-          r_.data_[transfer.route_] |
-              std::views::transform([&](entry const& e) {
-                auto const t =
-                    r_.tt_.route_transport_ranges_[transfer.route_].from_ +
-                    get_transport_offset(e.transport_);
-                auto const segment =
-                    r_.tbd_.get_segment_range(t).from_ + e.segment_offset_;
-                auto const day = base_ + get_query_day(e.transport_);
-                return std::pair{e.k_,
-                                 segment_info{r_.tt_, r_.tbd_, segment, day}};
-              }));
+          r_.to_str(base_, transfer.route_));
       return false;
     }
 
+    tb_queue_dbg("    enqueue");
     q_.push_back(queue_entry{
         .segment_range_ = {transfer.to_segment_,
                            transfer.to_segment_ - transfer.to_segment_offset_ +
@@ -77,7 +71,8 @@ struct queue {
         .transport_query_day_offset_ = static_cast<queue_idx_t>(day_offset)});
     r_.update(transfer.route_, transfer.transport_offset_,
               transfer.to_segment_offset_,
-              static_cast<query_day_offset_t>(day_offset), k);
+              static_cast<query_day_offset_t>(day_offset), k,
+              max_pareto_set_size);
 
     return true;
   }
@@ -88,7 +83,8 @@ struct queue {
                        route_idx_t const r,
                        transport_idx_t const t,
                        query_day_offset_t const query_day_offset,
-                       [[maybe_unused]] day_idx_t const day) {
+                       [[maybe_unused]] day_idx_t const day,
+                       std::uint64_t& max_pareto_set_size) {
     auto const transport_offset = static_cast<std::uint16_t>(
         to_idx(t - r_.tt_.route_transport_ranges_[r].from_));
     auto const min_segment_offset =
@@ -111,7 +107,8 @@ struct queue {
                            transport_first_segment + min_segment_offset},
         .parent_ = queue_entry::kNoParent,
         .transport_query_day_offset_ = query_day_offset});
-    r_.update(r, transport_offset, segment_offset, query_day_offset, 0);
+    r_.update(r, transport_offset, segment_offset, query_day_offset, 0,
+              max_pareto_set_size);
     tb_queue_dbg("  initial enqueue:\n\t\t{}\n\t\t{}", seg(segment, day),
                  seg(transport_first_segment + min_segment_offset - 1, day));
   }
@@ -125,7 +122,8 @@ struct queue {
   }
 
   day_idx_t base_;
-  reached& r_;
+  Reached& r_;
+
   std::vector<queue_entry> q_;
 };
 

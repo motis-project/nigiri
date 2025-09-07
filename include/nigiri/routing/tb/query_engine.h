@@ -33,8 +33,11 @@ struct query_state {
 
   tb_data const& tbd_;
 
-  reached r_;
-  queue q_n_{r_};
+  avx_reached r_;
+  queue<avx_reached> q_n_{r_};
+
+  // reached r_;
+  // queue<reached> q_n_{r_};
 
   // minimum arrival times per round
   std::array<unixtime_t, kMaxTransfers + 1U> t_min_;
@@ -54,6 +57,7 @@ struct query_stats {
         {"n_journeys_found", n_journeys_found_},
         {"n_rounds", n_rounds_},
         {"max_transfers_reached", max_transfers_reached_},
+        {"max_pareto_set_size", max_pareto_set_size_},
     };
   }
 
@@ -63,6 +67,7 @@ struct query_stats {
   std::uint64_t n_enqueue_prevented_by_reached_{0U};
   std::uint64_t n_journeys_found_{0U};
   std::uint64_t n_rounds_{0U};
+  std::uint64_t max_pareto_set_size_{0U};
   bool max_transfers_reached_{false};
 };
 

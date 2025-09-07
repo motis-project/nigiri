@@ -1,6 +1,7 @@
 #pragma once
 
 #include "nigiri/routing/raptor/debug.h"
+#include "nigiri/routing/tb/segment_info.h"
 #include "nigiri/routing/tb/settings.h"
 #include "nigiri/routing/tb/tb_data.h"
 #include "nigiri/timetable.h"
@@ -56,7 +57,8 @@ struct reached {
               std::uint16_t const transport_offset,
               std::uint16_t const segment_offset,
               query_day_offset_t const query_day_offset,
-              std::uint8_t const k) {
+              std::uint8_t const k,
+              std::uint64_t& max_size) {
     assert(query_day_offset >= 0 && query_day_offset < kTBMaxDayOffset);
     reached_dbg(
         "  reached update: k={}, r={}, dbg={}, trip={}, day={}, "
@@ -67,6 +69,10 @@ struct reached {
     auto const transport = to_transport(transport_offset, query_day_offset);
     data_[r].add(
         {.transport_ = transport, .segment_offset_ = segment_offset, .k_ = k});
+
+    if (data_[r].size() > max_size) {
+      max_size = data_[r].size();
+    }
   }
 
   std::uint16_t query(route_idx_t const r,
@@ -85,6 +91,19 @@ struct reached {
     }
 
     return min_segment;
+  }
+
+  std::string to_str(day_idx_t const base, route_idx_t const r) const {
+    return fmt::format(
+        "route[{}]={}", r,
+        data_[r] | std::views::transform([&](entry const& e) {
+          auto const t = tt_.route_transport_ranges_[r].from_ +
+                         get_transport_offset(e.transport_);
+          auto const segment =
+              tbd_.get_segment_range(t).from_ + e.segment_offset_;
+          auto const day = base + get_query_day(e.transport_);
+          return std::pair{e.k_, segment_info{tt_, tbd_, segment, day}};
+        }));
   }
 
   timetable const& tt_;

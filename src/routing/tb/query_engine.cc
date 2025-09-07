@@ -161,10 +161,14 @@ void query_engine<UseLowerBounds>::seg_dest(std::uint8_t const k,
     auto const arr_time = tt_.event_time(
         {t, base_ + qe.transport_query_day_offset_}, i, event_type::kArr);
     auto const time_at_dest = arr_time + state_.dist_to_dest_.at(segment);
-    if (state_.t_min_[k] > time_at_dest) {
-      state_.t_min_[k] = time_at_dest;
-      state_.parent_[k] = q;
-      // TODO update subsequent t-min
+
+    for (auto j = k; j != state_.t_min_.size(); ++j) {
+      if (state_.t_min_[j] > time_at_dest) {
+        state_.t_min_[j] = time_at_dest;
+        if (j == k) {
+          state_.parent_[j] = q;
+        }
+      }
     }
   }
 }
@@ -194,7 +198,9 @@ template <bool UseLowerBounds>
 void query_engine<UseLowerBounds>::seg_transfers(queue_idx_t const q,
                                                  std::uint8_t const k) {
   auto const qe = state_.q_n_[q];
-  for (auto const s : qe.segment_range_) {
+  for (auto s = qe.segment_range_.from_; s != qe.segment_range_.to_; ++s) {
+    __builtin_prefetch(&(state_.tbd_.segment_transfers_[s + 4][0]));
+
     tb_debug("[k={}] handling queue entry {}: #transfers={}", k, seg(s, qe),
              state_.tbd_.segment_transfers_[s].size());
     assert(s < state_.tbd_.segment_transfers_.size());
@@ -202,7 +208,7 @@ void query_engine<UseLowerBounds>::seg_transfers(queue_idx_t const q,
       auto const day = to_idx(base_ + qe.transport_query_day_offset_);
       if (state_.tbd_.bitfields_[transfer.traffic_days_].test(day)) {
         tb_debug("  -> enqueue transfer to {}", seg(transfer.to_segment_, qe));
-        state_.q_n_.enqueue(transfer, q, k + 1);
+        state_.q_n_.enqueue(transfer, q, k + 1, stats_.max_pareto_set_size_);
       } else {
         tb_debug("  transfer {} - {} not active on {}", seg(s, qe),
                  seg(transfer.to_segment_, day_idx_t{day}),
@@ -241,8 +247,8 @@ void query_engine<UseLowerBounds>::add_start(location_idx_t const l,
           state_.tbd_.transport_first_segment_[et.t_idx_];
       state_.q_n_.initial_enqueue(
           state_.tbd_, transport_first_segment, transport_first_segment + i, r,
-          et.t_idx_, static_cast<query_day_offset_t>(query_day_offset),
-          et.day_);
+          et.t_idx_, static_cast<query_day_offset_t>(query_day_offset), et.day_,
+          stats_.max_pareto_set_size_);
     }
   }
 }
