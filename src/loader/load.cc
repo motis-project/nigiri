@@ -13,6 +13,7 @@
 #include "nigiri/loader/hrd/loader.h"
 #include "nigiri/loader/init_finish.h"
 #include "nigiri/loader/netex/loader.h"
+#include "nigiri/shapes_storage.h"
 #include "nigiri/timetable.h"
 
 namespace fs = std::filesystem;
@@ -72,6 +73,26 @@ timetable load(std::vector<timetable_source> const& sources,
         throw utl::fail("failed to load {}: {}", path, e.what());
       }
       fs::create_directories(local_cache_path);
+      if (shapes != nullptr) {
+        auto shape_store =
+            std::make_unique<shapes_storage>(local_cache_path, shapes->mode_);
+        for (auto i = 0U; i < shapes->data_.size(); ++i) {
+          auto const idx = shape_idx_t{i};
+          shape_store->data_.emplace_back(shapes->data_[idx]);
+        }
+        for (auto const& e : shapes->offsets_) {
+          shape_store->offsets_.emplace_back(e);
+        }
+        for (auto const& e : shapes->trip_offset_indices_) {
+          shape_store->trip_offset_indices_.emplace_back(e);
+        }
+        for (auto const& e : shapes->route_bboxes_) {
+          shape_store->route_bboxes_.emplace_back(e);
+        }
+        for (auto const& e : shapes->route_segment_bboxes_) {
+          shape_store->route_segment_bboxes_.emplace_back(e);
+        }
+      }
       tt.write(local_cache_path / "tt.bin");
       progress_tracker->context("");
     } else if (!ignore) {
