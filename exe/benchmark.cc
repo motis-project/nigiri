@@ -355,8 +355,8 @@ int main(int argc, char* argv[]) {
   auto gs = query_generation::generator_settings{};
   auto interval_size = duration_t::rep{};
   auto bbox_str = std::string{};
-  auto start_mode_str = std::string{"station"};
-  auto dest_mode_str = std::string{"station"};
+  auto start_mode_str = std::string{};
+  auto dest_mode_str = std::string{};
   auto intermodal_start_str = std::string{};
   auto intermodal_dest_str = std::string{};
   auto max_transfers = std::uint32_t{kMaxTransfers};
@@ -365,11 +365,15 @@ int main(int argc, char* argv[]) {
   auto dest_coord_str = std::string{};
   auto start_loc_val = location_idx_t::value_t{0U};
   auto dest_loc_val = location_idx_t::value_t{0U};
-  auto seed = std::int64_t{148975013};
+  auto seed = std::int64_t{-1};
   auto min_transfer_time = duration_t::rep{};
   auto qa_path = std::filesystem::path{};
-  auto const algorithm = benchmark_algorithm::mc_raptor;
+  auto const algorithm = benchmark_algorithm::raptor;
 
+  if (algorithm == benchmark_algorithm::mc_raptor) {
+    start_mode_str = std::string{"station"};
+    dest_mode_str = std::string{"station"};
+  }
   auto const set_start_mode_to_station = start_mode_str == std::string{"station"};
   auto const set_dest_mode_to_station = dest_mode_str == std::string{"station"};
 
