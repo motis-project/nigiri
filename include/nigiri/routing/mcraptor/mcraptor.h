@@ -186,6 +186,7 @@ struct mcraptor {
 
   void add_start(location_idx_t const l, unixtime_t const t) {
     location_bags_[to_idx(l)][0U].add({.arr_t_ = unix_to_delta(base(), t), .success_chance=1.0f});
+    best_bag_[to_idx(l)].add({.arr_t_ = unix_to_delta(base(), t), .success_chance=1.0f});
     prev_round_station_mark_.set(to_idx(l), true);
   }
 
@@ -227,14 +228,14 @@ struct mcraptor {
       update_transfers(k);
       update_footpaths(k, prf_idx);
 
-      for(int i = 9; i < n_locations_; i++){
-        auto const bag = get_round_bag(i, k);
-        std::cout << k << " " << std::string_view{tt_.locations_.names_[location_idx_t{i}]} << " ";
-        for(mcraptor_label label: bag.labels_){
-          std::cout << label.arr_t_ << " ";
-        }
-        std::cout << std::endl;
-      }
+//      for(int i = 9; i < n_locations_; i++){
+//        auto const bag = get_round_bag(i, k);
+//        std::cout << k << " " << std::string_view{tt_.locations_.names_[location_idx_t{i}]} << " ";
+//        for(mcraptor_label label: bag.labels_){
+//          std::cout << label.arr_t_ << " ";
+//        }
+//        std::cout << std::endl;
+//      }
 
       utl::fill(route_mark_.blocks_, 0U);
       std::swap(prev_round_station_mark_, station_mark_);
@@ -277,16 +278,18 @@ struct mcraptor {
     auto [fp_leg, transport_leg] = get_legs(k, l, q.prf_idx_, label);
     auto next_l = kFwd ? transport_leg.from_ : transport_leg.to_;
     // don't add a 0-minute footpath at the end (fwd) or beginning (bwd)
+    auto possible_start_t = unix_to_delta(base(), transport_leg.arr_time_);
     if (i != 0 || fp_leg.from_ != fp_leg.to_ ||
         fp_leg.dep_time_ != fp_leg.arr_time_) {
       j.add(std::move(fp_leg));
+      possible_start_t = unix_to_delta(base(), fp_leg.arr_time_);
     }
     j.add(std::move(transport_leg));
     print_leg(transport_leg, i);
     if(i<j.transfers_ && !std::any_of(q.start_.begin(), q.start_.end(),[next_l](offset loc){return loc.target_ == next_l;})) {
       k = j.transfers_ + 1 - (i+1);
       vector<mcraptor_label> labels = {};
-      get_labels_after_(cista::to_idx(next_l), k, unix_to_delta(base(), fp_leg.arr_time_), labels);
+      get_labels_after_(cista::to_idx(next_l), k, possible_start_t, labels, 1);
       for(auto new_label: labels){
         reconstruct_leg(q, j, i+1, next_l, new_label);
       }
@@ -352,8 +355,8 @@ private:
     return any_marked;
   }
 
-  void get_labels_after_(auto l, auto k, delta_t possible_start_t, vector<mcraptor_label>& labels){
-    for (int ik = 0; ik <= k; ++ik) {
+  void get_labels_after_(auto l, auto k, delta_t possible_start_t, vector<mcraptor_label>& labels, int ik){
+    for (; ik <= k; ++ik) {
       labels.insert(labels.end(), location_bags_[l][ik].labels_.begin(), location_bags_[l][ik].labels_.end());
     }
     std::sort(labels.begin(), labels.end(),[](mcraptor_label a, mcraptor_label b){
@@ -383,12 +386,12 @@ private:
 
   float cum_success_chance(auto l, auto k, delta_t possible_start_t){
     vector<mcraptor_label> labels = {};
-    get_labels_after_(l, k, possible_start_t, labels);
+    get_labels_after_(l, k, possible_start_t, labels, 0);
     auto result = 0.0f;
     auto prev = 0;
     for (int i = 0; i < labels.size(); ++i) {
-      result += transferProbability(prev, labels[i].arr_t_ - possible_start_t) * labels[i].success_chance;
-      prev = labels[i].arr_t_ - possible_start_t;
+      result += transferProbability(prev, labels[i].arr_t_ - possible_start_t + 1) * labels[i].success_chance;
+      prev = labels[i].arr_t_ - possible_start_t + 1;
     }
     return result;
   }
@@ -504,8 +507,8 @@ private:
 
           mcraptor_label new_label = tmp_label;
           new_label.arr_t_ = clamp(
-              tmp_time + adjusted_transfer_time(transfer_time_settings_,
-                                                fp.duration().count()));
+              tmp_time + dir(adjusted_transfer_time(transfer_time_settings_,
+                                                fp.duration().count())));
 
 //          if (!best_bag_[i].dominates(new_label) &&
 //              !dest_bag_.dominates(new_label, k)) {
