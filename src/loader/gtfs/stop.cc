@@ -285,7 +285,6 @@ std::pair<stops_map_t, seated_transfers_map_t> read_stops(
         progress_tracker->update_fn());
   }
 
-  auto empty_idx_vec = vector<location_idx_t>{};
   for (auto const& [id, s] : stops) {
     auto loc = location{
         id,

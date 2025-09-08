@@ -93,6 +93,7 @@ void load_timetable(loader_config const& config,
                     assistance_times* assistance,
                     shapes_storage* shapes_data) {
   auto local_bitfield_indices = hash_map<bitfield, bitfield_idx_t>{};
+  tt.n_sources_ = std::max(tt.n_sources_, to_idx(src + 1U));
   load_timetable(config, src, d, tt, local_bitfield_indices, assistance,
                  shapes_data);
 }

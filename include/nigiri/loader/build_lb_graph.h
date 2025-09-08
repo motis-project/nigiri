@@ -22,17 +22,13 @@ void build_lb_graph(timetable& tt, profile_idx_t const prf_idx) {
   };
 
   auto const add_edges = [&](location_idx_t const l) {
-    auto const parent_l = tt.locations_.parents_[l] == location_idx_t::invalid()
-                              ? l
-                              : tt.locations_.parents_[l];
+    auto const parent_l = tt.locations_.get_root_idx(l);
 
     auto const& footpaths = SearchDir == direction::kForward
                                 ? tt.locations_.footpaths_in_[prf_idx][l]
                                 : tt.locations_.footpaths_out_[prf_idx][l];
     for (auto const& fp : footpaths) {
-      auto const parent = tt.locations_.parents_[fp.target()];
-      auto const target =
-          parent == location_idx_t::invalid() ? fp.target() : parent;
+      auto const target = tt.locations_.get_root_idx(fp.target());
       if (target != parent_l) {
         update_weight(target, fp.duration());
       }
@@ -56,10 +52,7 @@ void build_lb_graph(timetable& tt, profile_idx_t const prf_idx) {
 
         auto const target_l =
             (SearchDir == direction::kForward ? from_l : to_l);
-        auto const target_parent = tt.locations_.parents_[target_l];
-        auto const target = target_parent == location_idx_t::invalid()
-                                ? target_l
-                                : target_parent;
+        auto const target = tt.locations_.get_root_idx(target_l);
         if (target == parent_l) {
           continue;
         }
@@ -88,6 +81,9 @@ void build_lb_graph(timetable& tt, profile_idx_t const prf_idx) {
 
     for (auto const& c : tt.locations_.children_[i]) {
       add_edges(c);
+      for (auto const& cc : tt.locations_.children_[c]) {
+        add_edges(cc);
+      }
     }
     add_edges(i);
 

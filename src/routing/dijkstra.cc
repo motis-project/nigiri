@@ -29,8 +29,7 @@ void dijkstra(timetable const& tt,
 
   std::map<location_idx_t, label::dist_t> min;
   auto const update_min = [&](location_idx_t const x, duration_t const d) {
-    auto const p = tt.locations_.parents_[x];
-    auto const l = (p == location_idx_t::invalid()) ? x : p;
+    auto const l = tt.locations_.get_root_idx(x);
     auto& m = utl::get_or_create(min, l, [&]() { return dists[to_idx(l)]; });
     m = std::min(static_cast<label::dist_t>(d.count()), m);
   };

@@ -9,6 +9,7 @@
 #include "nigiri/loader/gtfs/loader.h"
 #include "nigiri/loader/hrd/loader.h"
 #include "nigiri/loader/init_finish.h"
+#include "nigiri/loader/netex/loader.h"
 #include "nigiri/timetable.h"
 
 namespace nigiri::loader {
@@ -20,6 +21,7 @@ std::vector<std::unique_ptr<loader_interface>> get_loaders() {
   loaders.emplace_back(std::make_unique<hrd::hrd_5_20_26_loader>());
   loaders.emplace_back(std::make_unique<hrd::hrd_5_20_39_loader>());
   loaders.emplace_back(std::make_unique<hrd::hrd_5_20_avv_loader>());
+  loaders.emplace_back(std::make_unique<netex::netex_loader>());
   return loaders;
 }
 
@@ -33,6 +35,7 @@ timetable load(std::vector<timetable_source> const& sources,
 
   auto tt = timetable{};
   tt.date_range_ = date_range;
+  tt.n_sources_ = static_cast<cista::base_t<source_idx_t>>(sources.size());
   register_special_stations(tt);
 
   auto bitfields = hash_map<bitfield, bitfield_idx_t>{};

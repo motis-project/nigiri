@@ -20,8 +20,8 @@ using direction_info_t =
     variant<utl::cstr /* custom string */, eva_number /* eva number */>;
 
 struct stamm {
-  stamm(config const&, timetable&, dir const&);
-  stamm(timetable&, timezone_map_t&&);
+  stamm(config const&, timetable&, dir const&, source_idx_t);
+  stamm(timetable&, timezone_map_t&&, source_idx_t);
 
   interval<std::chrono::sys_days> get_date_range() const;
   location_idx_t resolve_location(eva_number) const;
@@ -52,6 +52,7 @@ private:
   timezone_map_t timezones_;
   interval<std::chrono::sys_days> date_range_;
   timetable& tt_;
+  source_idx_t src_;
 
   hash_map<string, trip_direction_idx_t> string_directions_;
   hash_map<eva_number, trip_direction_idx_t> eva_directions_;
