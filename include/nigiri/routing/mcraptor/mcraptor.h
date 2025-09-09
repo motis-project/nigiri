@@ -211,6 +211,7 @@ struct mcraptor {
       prev_round_station_mark_.for_each_set_bit([&](std::uint64_t const i) {
         for (auto const& r : tt_.location_routes_[location_idx_t{i}]) {
           any_marked = true;
+          //TODO ich muss doch nicht die ganze Route durchgehen. Reicht doch ab dem Punkt wo es änderung gab?
           route_mark_.set(to_idx(r), true);
         }
       });
@@ -279,8 +280,8 @@ struct mcraptor {
     auto next_l = kFwd ? transport_leg.from_ : transport_leg.to_;
     // don't add a 0-minute footpath at the end (fwd) or beginning (bwd)
     auto possible_start_t = unix_to_delta(base(), transport_leg.arr_time_);
-    if (i != 0 || fp_leg.from_ != fp_leg.to_ ||
-        fp_leg.dep_time_ != fp_leg.arr_time_) {
+    if (i != 0 && (fp_leg.from_ != fp_leg.to_ ||
+        fp_leg.dep_time_ != fp_leg.arr_time_)) {
       j.add(std::move(fp_leg));
       possible_start_t = unix_to_delta(base(), fp_leg.arr_time_);
     }
@@ -461,9 +462,8 @@ private:
 
           new_label.arr_t_ = static_cast<delta_t>(new_label.arr_t_ + transfer_times_[i]);
 
-          //is_better(fp_target_time, get_best_time(i))
-//          if (!best_bag_[i].dominates(new_label) &&
-//              !dest_bag_.dominates(new_label, k)) {
+          if (!best_bag_[i].dominates(new_label) &&
+              !dest_bag_.dominates(new_label, k)) {
             if (lb_[i] == kUnreachable) {
               ++stats_.fp_update_prevented_by_lower_bound_;
               continue;
@@ -482,7 +482,7 @@ private:
             if (is_dest_[i]) {
               dest_bag_.add({.arr_t_ = new_label.arr_t_, .success_chance=tmp_label.success_chance}, k);
             }
-          //}
+          }
         }
       }
     });
@@ -510,8 +510,8 @@ private:
               tmp_time + dir(adjusted_transfer_time(transfer_time_settings_,
                                                 fp.duration().count())));
 
-//          if (!best_bag_[i].dominates(new_label) &&
-//              !dest_bag_.dominates(new_label, k)) {
+          if (!best_bag_[target].dominates(new_label) &&
+              !dest_bag_.dominates(new_label, k)) {
             auto const lower_bound = lb_[target];
 
             if (lower_bound == kUnreachable ||
@@ -527,7 +527,7 @@ private:
             if (is_dest_[target]) {
               dest_bag_.add({.arr_t_ = new_label.arr_t_, .success_chance = tmp_label.success_chance}, k);
             }
-          //}
+          }
         }
       }
     });
