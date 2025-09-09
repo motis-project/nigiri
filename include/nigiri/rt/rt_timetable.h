@@ -120,6 +120,11 @@ struct rt_timetable {
     return rt_transport_stop_times_[rt_t][static_cast<unsigned>(ev_idx)];
   }
 
+  std::string_view transport_name(timetable const& tt,
+                                  rt_transport_idx_t const t) const {
+    return trip_short_name(tt, t);
+  }
+
   std::string_view trip_short_name(timetable const& tt,
                                    rt_transport_idx_t const t) const {
     if (rt_transport_trip_short_names_[t].empty()) {

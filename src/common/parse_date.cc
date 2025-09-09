@@ -7,6 +7,11 @@ date::sys_days parse_date(std::string_view str) {
     return std::chrono::time_point_cast<date::days>(
         std::chrono::system_clock::now());
   }
+  if (str.size() > 0 && str[0] == '-') {
+    return std::chrono::time_point_cast<date::days>(
+        std::chrono::system_clock::now() +
+        std::chrono::days{stoi(std::string{str})});
+  }
 
   date::sys_days parsed;
   std::stringstream ss;
