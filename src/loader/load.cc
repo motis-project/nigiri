@@ -153,6 +153,7 @@ timetable load(std::vector<timetable_source> const& sources,
         log(log_lvl::info, "loader.load", "loading {}", path);
       }
       progress_tracker->context(std::string{tag});
+      progress_tracker->status("Merging...");
       auto bitfields_ = hash_map<bitfield, bitfield_idx_t>{};
       for (auto const [idx_, bf] : utl::enumerate(tt.bitfields_)) {
         auto new_idx =
@@ -259,6 +260,7 @@ timetable load(std::vector<timetable_source> const& sources,
           new_location_group_locations.back().push_back(j);
         }
       }
+      progress_tracker->status("Saved new data");
       /* Restore old timetable */
       tt.bitfields_ = old_bitfields;
       tt.transport_traffic_days_ = old_transport_traffic_days_;
