@@ -249,24 +249,36 @@ struct mcraptor {
       });
     }
 
-    is_dest_.for_each_set_bit([&](auto const i) {
-
-      for (auto k = 1U; k != end_k; ++k) {
-        auto const bag = get_round_bag(i, k);
-        for(unsigned int li = 0; li < bag.labels_.size(); ++li){
-          mcraptor_label label = bag.labels_[li];
-          if (label.arr_t_ != kInvalid) {
-            results.add(
-                journey{.legs_ = {},
-                        .start_time_ = start_time,
-                        .dest_time_ = delta_to_unix(base(), label.arr_t_),
-                        .success_chance = label.success_chance,
-                        .dest_ = location_idx_t{i},
-                        .transfers_ = static_cast<std::uint8_t>(k - 1)});
-          }
-        }
+//    is_dest_.for_each_set_bit([&](auto const i) {
+//
+//      for (auto k = 1U; k != end_k; ++k) {
+//        auto const bag = get_round_bag(i, k);
+//        for(unsigned int li = 0; li < bag.labels_.size(); ++li){
+//          mcraptor_label label = bag.labels_[li];
+//          if (label.arr_t_ != kInvalid) {
+//            results.add(
+//                journey{.legs_ = {},
+//                        .start_time_ = start_time,
+//                        .dest_time_ = delta_to_unix(base(), label.arr_t_),
+//                        .success_chance = label.success_chance,
+//                        .dest_ = location_idx_t{i},
+//                        .transfers_ = static_cast<std::uint8_t>(k - 1)});
+//          }
+//        }
+//      }
+//    });
+    for(std::pair<unsigned, mcraptor_label> pair: dest_bag_.labels_){
+      auto label = pair.second;
+      if(pair.first > 0){
+        results.add(
+          journey{.legs_ = {},
+                  .start_time_ = start_time,
+                  .dest_time_ = delta_to_unix(base(), label.arr_t_),
+                  .success_chance = label.success_chance,
+                  .dest_ = location_idx_t{label.fp_l_},
+                  .transfers_ = static_cast<std::uint8_t>(pair.first - 1)});
       }
-    });
+    }
   }
 
   void print_leg(auto leg, auto indent){
@@ -333,22 +345,20 @@ private:
       auto const stp = stop{stop_seq[stop_idx]};
       auto const l_idx = cista::to_idx(stp.location_idx());
 
-      auto current_best_bag = mcraptor_bag{};
       if (stp.can_finish<SearchDir>(false)) {
         auto const by_transport = time_at_stop(
             r, et_label.trip_id, stop_idx, kFwd ? event_type::kArr : event_type::kDep);
 
-        current_best_bag = best_bag_[l_idx];  // mcraptor_bag{}.merge(get_round_bag(l_idx, k - 1)).merge(tmp_[l_idx]).merge(best_bag_[l_idx]);
-
         et_label.arr_t_ = by_transport;
-        if (!current_best_bag.dominates(et_label) &&
+        if (!best_bag_[l_idx].dominates(et_label) &&
+            !tmp_[l_idx].dominates(et_label) &&
             !dest_bag_.dominates({.arr_t_ = by_transport, .success_chance = et_label.success_chance}, k) &&
             lb_[l_idx] != kUnreachable &&
             !dest_bag_.dominates({.arr_t_ = static_cast<delta_t>(by_transport + lb_[l_idx]), .success_chance = et_label.success_chance}, k)) {
           ++stats_.n_earliest_arrival_updated_by_route_;
           tmp_[l_idx].add({by_transport, et_label.trip_l_, stp.location_idx(), et_label.route_id, et_label.trip_id, et_label.success_chance});
           tmp_station_mark_.set(l_idx, true);
-          best_bag_[l_idx].add(et_label);
+          //best_bag_[l_idx].add(et_label);
           any_marked = true;
         }
       }
@@ -407,8 +417,6 @@ private:
       auto const l_idx = cista::to_idx(stp.location_idx());
       auto const is_last = i == stop_seq.size() - 1U;
 
-      auto current_best_bag = mcraptor_bag{};
-
       if (!prev_round_station_mark_[l_idx]) {
         continue;
       }
@@ -434,7 +442,7 @@ private:
                    })).arr_t_;
 
         if (start != kInvalid ) { // && is_better_or_eq(prev_round_time, et_time_at_stop)
-          auto max_delay = 1400;
+          auto max_delay = 30;
           while(true){
             auto const [day, mam] = split(start);
             auto const new_et = get_earliest_transport(k, r, stop_idx, day, mam,
@@ -476,11 +484,11 @@ private:
             new_label.arr_t_ = new_label.arr_t_ - lb_[i];
             ++stats_.n_earliest_arrival_updated_by_footpath_;
 
-
             location_bags_[i][k].add(new_label);
+            best_bag_[i].add(new_label);
             station_mark_.set(i, true);
             if (is_dest_[i]) {
-              dest_bag_.add({.arr_t_ = new_label.arr_t_, .success_chance=tmp_label.success_chance}, k);
+              dest_bag_.add(new_label, k);
             }
           }
         }
@@ -523,9 +531,10 @@ private:
             ++stats_.n_earliest_arrival_updated_by_footpath_;
 
             location_bags_[target][k].add(new_label);
+            best_bag_[target].add(new_label);
             station_mark_.set(target, true);
             if (is_dest_[target]) {
-              dest_bag_.add({.arr_t_ = new_label.arr_t_, .success_chance = tmp_label.success_chance}, k);
+              dest_bag_.add(new_label, k);
             }
           }
         }
