@@ -419,7 +419,7 @@ struct timetable {
 
   // Trip -> debug info
   mutable_fws_multimap<trip_idx_t, trip_debug> trip_debug_;
-  vecvec<source_file_idx_t, char> source_file_names_;
+  vecvec<source_file_idx_t, char, std::uint32_t> source_file_names_;
 
   // Trip index -> trip name
   vecvec<trip_idx_t, char> trip_short_names_;
