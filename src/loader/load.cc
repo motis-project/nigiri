@@ -203,6 +203,30 @@ timetable load(std::vector<timetable_source> const& sources,
                  old_location_group_locations_size &&
              tt.location_group_locations_.size() ==
                  old_location_group_locations_size);
+      auto const old_flex_area_id = tt.flex_area_id_;
+      tt.flex_area_id_ = old_flex_area_id;
+      auto const old_flex_area_src = tt.flex_area_src_;
+      tt.flex_area_src_ = old_flex_area_src;
+      auto const old_flex_area_name = tt.flex_area_name_;
+      tt.flex_area_name_ = old_flex_area_name;
+      auto const old_flex_area_desc = tt.flex_area_desc_;
+      tt.flex_area_desc_ = old_flex_area_desc;
+      auto const old_flex_transport_trip = tt.flex_transport_trip_;
+      tt.flex_transport_trip_ = old_flex_transport_trip;
+      auto const old_flex_transport_stop_time_windows =
+          tt.flex_transport_stop_time_windows_;
+      tt.flex_transport_stop_time_windows_ =
+          old_flex_transport_stop_time_windows;
+      auto const old_flex_transport_stop_seq = tt.flex_transport_stop_seq_;
+      tt.flex_transport_stop_seq_ = old_flex_transport_stop_seq;
+      auto const old_flex_transport_pickup_booking_rule =
+          tt.flex_transport_pickup_booking_rule_;
+      tt.flex_transport_pickup_booking_rule_ =
+          old_flex_transport_pickup_booking_rule;
+      auto const old_flex_transport_drop_off_booking_rule =
+          tt.flex_transport_drop_off_booking_rule_;
+      tt.flex_transport_drop_off_booking_rule_ =
+          old_flex_transport_drop_off_booking_rule;
       /* Prepare timetable by emptying corrected fields */
       tt.bitfields_.reset();
       auto bitfields = hash_map<bitfield, bitfield_idx_t>{};
@@ -214,6 +238,15 @@ timetable load(std::vector<timetable_source> const& sources,
       tt.location_routes_.clear();
       tt.location_areas_.clear();
       tt.location_location_groups_.clear();
+      tt.flex_area_id_.reset();
+      tt.flex_area_src_.reset();
+      tt.flex_area_name_.clear();
+      tt.flex_area_desc_.clear();
+      tt.flex_transport_trip_.reset();
+      tt.flex_transport_stop_time_windows_.clear();
+      tt.flex_transport_stop_seq_.reset();
+      tt.flex_transport_pickup_booking_rule_.clear();
+      tt.flex_transport_drop_off_booking_rule_.clear();
       // Fields not used during loading
       assert(tt.locations_.footpaths_out_.size() == kNProfiles);
       for (auto const& i : tt.locations_.footpaths_out_) {
@@ -287,6 +320,18 @@ timetable load(std::vector<timetable_source> const& sources,
           new_location_group_locations.back().push_back(j);
         }
       }
+      auto const new_flex_area_id = tt.flex_area_id_;
+      auto const new_flex_area_src = tt.flex_area_src_;
+      auto const new_flex_area_name = tt.flex_area_name_;
+      auto const new_flex_area_desc = tt.flex_area_desc_;
+      auto const new_flex_transport_trip = tt.flex_transport_trip_;
+      auto const new_flex_transport_stop_time_windows =
+          tt.flex_transport_stop_time_windows_;
+      auto const new_flex_transport_stop_seq = tt.flex_transport_stop_seq_;
+      auto const new_flex_transport_pickup_booking_rule =
+          tt.flex_transport_pickup_booking_rule_;
+      auto const new_flex_transport_drop_off_booking_rule =
+          tt.flex_transport_drop_off_booking_rule_;
       progress_tracker->status("Saved new data");
       /* Restore old timetable */
       tt.bitfields_ = old_bitfields;
@@ -313,6 +358,19 @@ timetable load(std::vector<timetable_source> const& sources,
                  old_location_group_locations_size &&
              tt.location_group_locations_.size() ==
                  old_location_group_locations_size);
+
+      tt.flex_area_id_ = old_flex_area_id;
+      tt.flex_area_src_ = old_flex_area_src;
+      tt.flex_area_name_ = old_flex_area_name;
+      tt.flex_area_desc_ = old_flex_area_desc;
+      tt.flex_transport_trip_ = old_flex_transport_trip;
+      tt.flex_transport_stop_time_windows_ =
+          old_flex_transport_stop_time_windows;
+      tt.flex_transport_stop_seq_ = old_flex_transport_stop_seq;
+      tt.flex_transport_pickup_booking_rule_ =
+          old_flex_transport_pickup_booking_rule;
+      tt.flex_transport_drop_off_booking_rule_ =
+          old_flex_transport_drop_off_booking_rule;
       /* Add new data and adjust references */
       /*	bitfields	*/
       auto corrected_indices = vector_map<bitfield_idx_t, bitfield_idx_t>{};
@@ -515,8 +573,6 @@ timetable load(std::vector<timetable_source> const& sources,
       for (auto const& i : tt.bwd_search_lb_graph_) {
         assert(i.size() == 0);
       }
-      // tt.flex_area_locations_ not used during loading
-      assert(tt.flex_area_locations_.size() == 0);
       /*        route_idx_t	*/
       for (auto const& i : new_route_location_seq) {
         auto vec = tt.route_location_seq_.add_back_sized(0U);
@@ -575,6 +631,36 @@ timetable load(std::vector<timetable_source> const& sources,
                                            : timezone_idx_t::invalid(),
                                 .src_ = i.src_};
         tt.providers_.push_back(p);
+      }
+      /*	  Flex		*/
+      for (auto const& i : new_flex_area_id) {
+        tt.flex_area_id_.push_back(i);
+      }
+      for (auto const& i : new_flex_area_src) {
+        tt.flex_area_src_.push_back(i);
+      }
+      // tt.flex_area_locations_ not used during loading
+      assert(tt.flex_area_locations_.size() == 0);
+      for (auto const& i : new_flex_area_name) {
+        tt.flex_area_name_.emplace_back(i);
+      }
+      for (auto const& i : new_flex_area_desc) {
+        tt.flex_area_desc_.emplace_back(i);
+      }
+      for (auto const& i : new_flex_transport_trip) {
+        tt.flex_transport_trip_.push_back(i);
+      }
+      for (auto const& i : new_flex_transport_stop_time_windows) {
+        tt.flex_transport_stop_time_windows_.emplace_back(i);
+      }
+      for (auto const& i : new_flex_transport_stop_seq) {
+        tt.flex_transport_stop_seq_.push_back(i);
+      }
+      for (auto const& i : new_flex_transport_pickup_booking_rule) {
+        tt.flex_transport_pickup_booking_rule_.emplace_back(i);
+      }
+      for (auto const& i : new_flex_transport_drop_off_booking_rule) {
+        tt.flex_transport_drop_off_booking_rule_.emplace_back(i);
       }
       /* Save snapshot */
       fs::create_directories(local_cache_path);
