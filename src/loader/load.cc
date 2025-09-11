@@ -187,10 +187,22 @@ timetable load(std::vector<timetable_source> const& sources,
       tt.fares_ = old_fares;
       auto const old_location_areas = tt.location_areas_;
       tt.location_areas_ = old_location_areas;
+      auto const old_location_location_groups_size =
+          tt.location_location_groups_.size();
       auto const old_location_location_groups = tt.location_location_groups_;
       tt.location_location_groups_ = old_location_location_groups;
+      assert(old_location_location_groups.size() ==
+                 old_location_location_groups_size &&
+             tt.location_location_groups_.size() ==
+                 old_location_location_groups_size);
+      auto const old_location_group_locations_size =
+          tt.location_group_locations_.size();
       auto const old_location_group_locations = tt.location_group_locations_;
       tt.location_group_locations_ = old_location_group_locations;
+      assert(old_location_group_locations.size() ==
+                 old_location_group_locations_size &&
+             tt.location_group_locations_.size() ==
+                 old_location_group_locations_size);
       /* Prepare timetable by emptying corrected fields */
       tt.bitfields_.reset();
       auto bitfields = hash_map<bitfield, bitfield_idx_t>{};
@@ -202,9 +214,24 @@ timetable load(std::vector<timetable_source> const& sources,
       tt.location_routes_.clear();
       tt.location_areas_.clear();
       tt.location_location_groups_.clear();
-      // tt.fwd_search_lb_graph_ not used during loading
-      // tt.bwd_search_lb_graph_ not used during loading
-      // tt.flex_area_locations not used during loading
+      // Fields not used during loading
+      assert(tt.locations_.footpaths_out_.size() == kNProfiles);
+      for (auto const& i : tt.locations_.footpaths_out_) {
+        assert(i.size() == 0);
+      }
+      assert(tt.locations_.footpaths_in_.size() == kNProfiles);
+      for (auto const& i : tt.locations_.footpaths_in_) {
+        assert(i.size() == 0);
+      }
+      assert(tt.fwd_search_lb_graph_.size() == kNProfiles);
+      for (auto const& i : tt.fwd_search_lb_graph_) {
+        assert(i.size() == 0);
+      }
+      assert(tt.bwd_search_lb_graph_.size() == kNProfiles);
+      for (auto const& i : tt.bwd_search_lb_graph_) {
+        assert(i.size() == 0);
+      }
+      assert(tt.flex_area_locations_.size() == 0);
       /* Load file */
       try {
         (*it)->load(local_config, src, *dir, tt, bitfields, a, shapes);
@@ -277,6 +304,15 @@ timetable load(std::vector<timetable_source> const& sources,
       tt.location_areas_ = old_location_areas;
       tt.location_location_groups_ = old_location_location_groups;
       tt.location_group_locations_ = old_location_group_locations;
+
+      assert(old_location_location_groups.size() ==
+                 old_location_location_groups_size &&
+             tt.location_location_groups_.size() ==
+                 old_location_location_groups_size);
+      assert(old_location_group_locations.size() ==
+                 old_location_group_locations_size &&
+             tt.location_group_locations_.size() ==
+                 old_location_group_locations_size);
       /* Add new data and adjust references */
       /*	bitfields	*/
       auto corrected_indices = vector_map<bitfield_idx_t, bitfield_idx_t>{};
@@ -317,8 +353,6 @@ timetable load(std::vector<timetable_source> const& sources,
         tt.languages_.emplace_back(i);
       }
       /*       location_idx_t	*/
-      // fwd_search_lb_graph_ and bwd_search_lb_graph_ aren't filled during
-      // import
       auto const locations_offset = location_idx_t{tt.n_locations()};
       auto const alt_name_idx_offset =
           alt_name_idx_t{tt.locations_.alt_name_strings_.size()};
@@ -422,6 +456,14 @@ timetable load(std::vector<timetable_source> const& sources,
           loc.footpaths_out_ and loc.footpaths_in_ don't get used during loading
           and are thus skipped
         */
+        assert(new_locations.footpaths_out_.size() == kNProfiles);
+        for (auto const& i : new_locations.footpaths_out_) {
+          assert(i.size() == 0);
+        }
+        assert(new_locations.footpaths_in_.size() == kNProfiles);
+        for (auto const& i : new_locations.footpaths_in_) {
+          assert(i.size() == 0);
+        }
         for (auto const& i : new_locations.timezones_) {
           loc.timezones_.push_back(i);
         }
@@ -429,6 +471,7 @@ timetable load(std::vector<timetable_source> const& sources,
           loc.location_importance_ doesn't get used during loading and is thus
           skipped
         */
+        assert(loc.location_importance_.size() == 0);
         for (auto const& i : new_locations.alt_name_strings_) {
           loc.alt_name_strings_.emplace_back(i);
         }
@@ -441,6 +484,7 @@ timetable load(std::vector<timetable_source> const& sources,
           loc.max_importance_ and loc.rtree_ don't get used during loading
           and are thus skipped
         */
+        assert(loc.max_importance_ == 0U);
       }  // end of locations struct
       for (auto const& i : new_location_routes) {
         tt.location_routes_.emplace_back(i);
@@ -461,6 +505,18 @@ timetable load(std::vector<timetable_source> const& sources,
                                              : location_idx_t::invalid());
         }
       }
+      // tt.fwd_search_lb_graph_ not used during loading
+      assert(tt.fwd_search_lb_graph_.size() == kNProfiles);
+      for (auto const& i : tt.fwd_search_lb_graph_) {
+        assert(i.size() == 0);
+      }
+      // tt.bwd_search_lb_graph_ not used during loading
+      assert(tt.bwd_search_lb_graph_.size() == kNProfiles);
+      for (auto const& i : tt.bwd_search_lb_graph_) {
+        assert(i.size() == 0);
+      }
+      // tt.flex_area_locations_ not used during loading
+      assert(tt.flex_area_locations_.size() == 0);
       /*        route_idx_t	*/
       for (auto const& i : new_route_location_seq) {
         auto vec = tt.route_location_seq_.add_back_sized(0U);
