@@ -69,7 +69,7 @@ struct timetable {
       for (auto p = parents_[l]; p != location_idx_t::invalid();
            p = parents_[l]) {
         if (p == idx || i > 20) {
-          return idx;
+          return parents_[idx];
         }
         l = p;
         ++i;
