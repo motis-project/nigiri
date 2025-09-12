@@ -67,9 +67,14 @@ struct timetable {
 
     location_idx_t get_root_idx(location_idx_t const idx) const {
       auto l = idx;
+      auto i = 0;
       for (auto p = parents_[l]; p != location_idx_t::invalid();
            p = parents_[l]) {
+        if (p == idx || i > 20) {
+          return parents_[idx];
+        }
         l = p;
+        ++i;
       }
       return l;
     }
