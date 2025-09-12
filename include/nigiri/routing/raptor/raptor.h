@@ -780,7 +780,7 @@ private:
                   "┊ │k={}    RT | name={}, dbg={}, time_by_transport={}, "
                   "BETTER THAN current_best={} => update, {} marking station "
                   "{}!\n",
-                  k, rtt_->transport_name(tt_, rt_t), rtt_->dbg(tt_, rt_t),
+                  k, rtt_->trip_short_name(tt_, rt_t), rtt_->dbg(tt_, rt_t),
                   to_unix(by_transport), to_unix(current_best),
                   !is_better(by_transport, current_best) ? "NOT" : "",
                   location{tt_, stp.location_idx()});
@@ -811,7 +811,7 @@ private:
                     "time_by_transport={}, "
                     "BETTER THAN dest_best={} => update, {} marking station "
                     "{} (destination)!\n",
-                    k, v, dest_v, rtt_->transport_name(tt_, rt_t),
+                    k, v, dest_v, rtt_->trip_short_name(tt_, rt_t),
                     rtt_->dbg(tt_, rt_t), to_unix(by_transport),
                     to_unix(best_dest),
                     !is_better(by_transport, best_dest) ? "NOT" : "",

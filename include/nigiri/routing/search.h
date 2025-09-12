@@ -21,6 +21,7 @@
 #include "nigiri/routing/limits.h"
 #include "nigiri/routing/pareto_set.h"
 #include "nigiri/routing/query.h"
+#include "nigiri/routing/raptor/debug.h"
 #include "nigiri/routing/start_times.h"
 #include "nigiri/timetable.h"
 #include "nigiri/types.h"
@@ -59,18 +60,16 @@ struct search_stats {
   std::chrono::milliseconds execute_time_{0LL};
 };
 
-template <typename AlgoStats>
 struct routing_result {
   pareto_set<journey> const* journeys_{nullptr};
   interval<unixtime_t> interval_;
   search_stats search_stats_;
-  AlgoStats algo_stats_;
+  std::map<std::string, std::uint64_t> algo_stats_;
 };
 
 template <direction SearchDir, typename Algo>
 struct search {
   using algo_state_t = typename Algo::algo_state_t;
-  using algo_stats_t = typename Algo::algo_stats_t;
   static constexpr auto const kFwd = (SearchDir == direction::kForward);
   static constexpr auto const kBwd = (SearchDir == direction::kBackward);
 
@@ -185,14 +184,15 @@ struct search {
     q_.sanitize(tt);
   }
 
-  routing_result<algo_stats_t> execute() {
+  routing_result execute() {
     auto span = get_otel_tracer()->StartSpan("search::execute");
     auto scope = opentelemetry::trace::Scope{span};
 
     state_.results_.clear();
 
     if (start_dest_overlap()) {
-      return {&state_.results_, search_interval_, stats_, algo_.get_stats()};
+      return {&state_.results_, search_interval_, stats_,
+              algo_.get_stats().to_map()};
     }
 
     auto const itv_est = interval_estimator<SearchDir>{tt_, q_};
@@ -342,7 +342,7 @@ struct search {
     return {.journeys_ = &state_.results_,
             .interval_ = search_interval_,
             .search_stats_ = stats_,
-            .algo_stats_ = algo_.get_stats()};
+            .algo_stats_ = algo_.get_stats().to_map()};
   }
 
 private:
@@ -448,7 +448,7 @@ private:
                         q_.prf_idx_, state_.results_);
 
           for (auto& j : state_.results_) {
-            if (j.legs_.empty() &&
+            if (j.legs_.empty() && !j.error_ &&
                 (is_ontrip() || search_interval_.contains(j.start_time_)) &&
                 j.travel_time() < fastest_direct_) {
               try {
