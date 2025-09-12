@@ -198,22 +198,26 @@ template <bool UseLowerBounds>
 void query_engine<UseLowerBounds>::seg_transfers(queue_idx_t const q,
                                                  std::uint8_t const k) {
   auto const qe = state_.q_n_[q];
-  for (auto s = qe.segment_range_.from_; s != qe.segment_range_.to_; ++s) {
-    __builtin_prefetch(&(state_.tbd_.segment_transfers_[s + 4][0]));
+
+  auto const from =
+      state_.tbd_.segment_transfers_[qe.segment_range_.from_].begin();
+  auto const to = state_.tbd_.segment_transfers_[qe.segment_range_.to_].begin();
+  for (auto it = from; it != to; ++it) {
+    __builtin_prefetch(&*(it + 4));
+
+    auto const& transfer = *it;
 
     tb_debug("[k={}] handling queue entry {}: #transfers={}", k, seg(s, qe),
              state_.tbd_.segment_transfers_[s].size());
     assert(s < state_.tbd_.segment_transfers_.size());
-    for (auto const transfer : state_.tbd_.segment_transfers_[s]) {
-      auto const day = to_idx(base_ + qe.transport_query_day_offset_);
-      if (state_.tbd_.bitfields_[transfer.traffic_days_].test(day)) {
-        tb_debug("  -> enqueue transfer to {}", seg(transfer.to_segment_, qe));
-        state_.q_n_.enqueue(transfer, q, k + 1, stats_.max_pareto_set_size_);
-      } else {
-        tb_debug("  transfer {} - {} not active on {}", seg(s, qe),
-                 seg(transfer.to_segment_, day_idx_t{day}),
-                 tt_.to_unixtime(day_idx_t{day}));
-      }
+    auto const day = to_idx(base_ + qe.transport_query_day_offset_);
+    if (state_.tbd_.bitfields_[transfer.traffic_days_].test(day)) {
+      tb_debug("  -> enqueue transfer to {}", seg(transfer.to_segment_, qe));
+      state_.q_n_.enqueue(transfer, q, k + 1, stats_.max_pareto_set_size_);
+    } else {
+      tb_debug("  transfer {} - {} not active on {}", seg(s, qe),
+               seg(transfer.to_segment_, day_idx_t{day}),
+               tt_.to_unixtime(day_idx_t{day}));
     }
   }
 }
