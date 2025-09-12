@@ -203,14 +203,23 @@ timetable load(std::vector<timetable_source> const& sources,
                  old_location_group_locations_size &&
              tt.location_group_locations_.size() ==
                  old_location_group_locations_size);
+      auto const old_flex_area_bbox = tt.flex_area_bbox_;
+      tt.flex_area_bbox_ = old_flex_area_bbox;
       auto const old_flex_area_id = tt.flex_area_id_;
       tt.flex_area_id_ = old_flex_area_id;
       auto const old_flex_area_src = tt.flex_area_src_;
       tt.flex_area_src_ = old_flex_area_src;
+
+      auto const old_flex_area_outers = tt.flex_area_outers_;
+      tt.flex_area_outers_ = old_flex_area_outers;
+      auto const old_flex_area_inners = tt.flex_area_inners_;
+      tt.flex_area_inners_ = old_flex_area_inners;
       auto const old_flex_area_name = tt.flex_area_name_;
       tt.flex_area_name_ = old_flex_area_name;
       auto const old_flex_area_desc = tt.flex_area_desc_;
       tt.flex_area_desc_ = old_flex_area_desc;
+      auto const old_flex_area_transports = tt.flex_area_transports_;
+      tt.flex_area_transports_ = old_flex_area_transports;
       auto const old_flex_transport_trip = tt.flex_transport_trip_;
       tt.flex_transport_trip_ = old_flex_transport_trip;
       auto const old_flex_transport_stop_time_windows =
@@ -238,10 +247,14 @@ timetable load(std::vector<timetable_source> const& sources,
       tt.location_routes_.clear();
       tt.location_areas_.clear();
       tt.location_location_groups_.clear();
+      tt.flex_area_bbox_.reset();
       tt.flex_area_id_.reset();
       tt.flex_area_src_.reset();
+      tt.flex_area_outers_ = nvec<flex_area_idx_t, geo::latlng, 2U>{};
+      tt.flex_area_inners_ = nvec<flex_area_idx_t, geo::latlng, 3U>{};
       tt.flex_area_name_.clear();
       tt.flex_area_desc_.clear();
+      tt.flex_area_transports_.clear();
       tt.flex_transport_trip_.reset();
       tt.flex_transport_stop_time_windows_.clear();
       tt.flex_transport_stop_seq_.reset();
@@ -320,10 +333,14 @@ timetable load(std::vector<timetable_source> const& sources,
           new_location_group_locations.back().push_back(j);
         }
       }
+      auto const new_flex_area_bbox = tt.flex_area_bbox_;
       auto const new_flex_area_id = tt.flex_area_id_;
       auto const new_flex_area_src = tt.flex_area_src_;
+      auto const new_flex_area_outers = tt.flex_area_outers_;
+      auto const new_flex_area_inners = tt.flex_area_inners_;
       auto const new_flex_area_name = tt.flex_area_name_;
       auto const new_flex_area_desc = tt.flex_area_desc_;
+      auto const new_flex_area_transports = tt.flex_area_transports_;
       auto const new_flex_transport_trip = tt.flex_transport_trip_;
       auto const new_flex_transport_stop_time_windows =
           tt.flex_transport_stop_time_windows_;
@@ -359,10 +376,14 @@ timetable load(std::vector<timetable_source> const& sources,
              tt.location_group_locations_.size() ==
                  old_location_group_locations_size);
 
+      tt.flex_area_bbox_ = old_flex_area_bbox;
       tt.flex_area_id_ = old_flex_area_id;
       tt.flex_area_src_ = old_flex_area_src;
+      tt.flex_area_outers_ = old_flex_area_outers;
+      tt.flex_area_inners_ = old_flex_area_inners;
       tt.flex_area_name_ = old_flex_area_name;
       tt.flex_area_desc_ = old_flex_area_desc;
+      tt.flex_area_transports_ = old_flex_area_transports;
       tt.flex_transport_trip_ = old_flex_transport_trip;
       tt.flex_transport_stop_time_windows_ =
           old_flex_transport_stop_time_windows;
@@ -633,6 +654,9 @@ timetable load(std::vector<timetable_source> const& sources,
         tt.providers_.push_back(p);
       }
       /*	  Flex		*/
+      for (auto const& i : new_flex_area_bbox) {
+        tt.flex_area_bbox_.push_back(i);
+      }
       for (auto const& i : new_flex_area_id) {
         tt.flex_area_id_.push_back(i);
       }
@@ -641,11 +665,24 @@ timetable load(std::vector<timetable_source> const& sources,
       }
       // tt.flex_area_locations_ not used during loading
       assert(tt.flex_area_locations_.size() == 0);
+      for (auto const& i : new_flex_area_outers) {
+        tt.flex_area_outers_.emplace_back(i);
+      }
+      for (auto const& i : new_flex_area_inners) {
+        tt.flex_area_inners_.emplace_back(i);
+      }
       for (auto const& i : new_flex_area_name) {
         tt.flex_area_name_.emplace_back(i);
       }
       for (auto const& i : new_flex_area_desc) {
         tt.flex_area_desc_.emplace_back(i);
+      }
+      for (flex_area_idx_t i = flex_area_idx_t{0};
+           i < flex_area_idx_t{new_flex_area_transports.size()}; ++i) {
+        tt.flex_area_transports_.emplace_back_empty();
+        for (auto const& j : new_flex_area_transports[i]) {
+          tt.flex_area_transports_.back().push_back(j);
+        }
       }
       for (auto const& i : new_flex_transport_trip) {
         tt.flex_transport_trip_.push_back(i);
