@@ -4,7 +4,7 @@
 
 #include "fmt/ranges.h"
 
-#include "nigiri/routing/tb/avx_reached.h"
+#include "nigiri/routing/tb/reached.h"
 #include "nigiri/routing/tb/segment_info.h"
 #include "nigiri/routing/tb/settings.h"
 #include "nigiri/routing/tb/tb_data.h"
