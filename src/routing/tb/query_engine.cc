@@ -203,13 +203,14 @@ void query_engine<UseLowerBounds>::seg_transfers(queue_idx_t const q,
       state_.tbd_.segment_transfers_[qe.segment_range_.from_].begin();
   auto const to = state_.tbd_.segment_transfers_[qe.segment_range_.to_].begin();
   for (auto it = from; it != to; ++it) {
-    __builtin_prefetch(&*(it + 4));
+    if (it + 4 < to) {
+      __builtin_prefetch(&*(it + 4));
+    }
 
     auto const& transfer = *it;
 
     tb_debug("[k={}] handling queue entry {}: #transfers={}", k, seg(s, qe),
              state_.tbd_.segment_transfers_[s].size());
-    assert(s < state_.tbd_.segment_transfers_.size());
     auto const day = to_idx(base_ + qe.transport_query_day_offset_);
     if (state_.tbd_.bitfields_[transfer.traffic_days_].test(day)) {
       tb_debug("  -> enqueue transfer to {}", seg(transfer.to_segment_, qe));
