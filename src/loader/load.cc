@@ -218,6 +218,8 @@ timetable load(std::vector<timetable_source> const& sources,
       tt.flex_area_name_ = old_flex_area_name;
       auto const old_flex_area_desc = tt.flex_area_desc_;
       tt.flex_area_desc_ = old_flex_area_desc;
+      auto const old_flex_area_rtree = tt.flex_area_rtree_;
+      tt.flex_area_rtree_ = old_flex_area_rtree;
       auto const old_flex_area_transports = tt.flex_area_transports_;
       tt.flex_area_transports_ = old_flex_area_transports;
       auto const old_flex_transport_trip = tt.flex_transport_trip_;
@@ -254,6 +256,7 @@ timetable load(std::vector<timetable_source> const& sources,
       tt.flex_area_inners_ = nvec<flex_area_idx_t, geo::latlng, 3U>{};
       tt.flex_area_name_.clear();
       tt.flex_area_desc_.clear();
+      tt.flex_area_rtree_ = rtree<flex_area_idx_t>{};
       tt.flex_area_transports_.clear();
       tt.flex_transport_trip_.reset();
       tt.flex_transport_stop_time_windows_.clear();
@@ -340,6 +343,7 @@ timetable load(std::vector<timetable_source> const& sources,
       auto const new_flex_area_inners = tt.flex_area_inners_;
       auto const new_flex_area_name = tt.flex_area_name_;
       auto const new_flex_area_desc = tt.flex_area_desc_;
+      auto const new_flex_area_rtree = tt.flex_area_rtree_;
       auto const new_flex_area_transports = tt.flex_area_transports_;
       auto const new_flex_transport_trip = tt.flex_transport_trip_;
       auto const new_flex_transport_stop_time_windows =
@@ -383,6 +387,7 @@ timetable load(std::vector<timetable_source> const& sources,
       tt.flex_area_inners_ = old_flex_area_inners;
       tt.flex_area_name_ = old_flex_area_name;
       tt.flex_area_desc_ = old_flex_area_desc;
+      tt.flex_area_rtree_ = old_flex_area_rtree;
       tt.flex_area_transports_ = old_flex_area_transports;
       tt.flex_transport_trip_ = old_flex_transport_trip;
       tt.flex_transport_stop_time_windows_ =
@@ -676,6 +681,14 @@ timetable load(std::vector<timetable_source> const& sources,
       }
       for (auto const& i : new_flex_area_desc) {
         tt.flex_area_desc_.emplace_back(i);
+      }
+      for (auto const& n : new_flex_area_rtree.nodes_) {
+        if (n.kind_ == rtree<flex_area_idx_t>::kind::kLeaf) {
+          for (size_t i = 0; i < n.count_; ++i) {
+            tt.flex_area_rtree_.insert(n.rects_[i].min_, n.rects_[i].max_,
+                                       n.data_[i]);
+          }
+        }
       }
       for (flex_area_idx_t i = flex_area_idx_t{0};
            i < flex_area_idx_t{new_flex_area_transports.size()}; ++i) {
