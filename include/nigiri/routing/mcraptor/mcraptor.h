@@ -158,7 +158,6 @@ struct mcraptor {
                        n_locations_ * (kMaxTransfers + 1)},
                       n_locations_,
                       kMaxTransfers + 1U};
-
   }
 
   [[nodiscard]] algo_stats_t get_stats() const { return stats_; }
@@ -211,7 +210,6 @@ struct mcraptor {
       prev_round_station_mark_.for_each_set_bit([&](std::uint64_t const i) {
         for (auto const& r : tt_.location_routes_[location_idx_t{i}]) {
           any_marked = true;
-          //TODO ich muss doch nicht die ganze Route durchgehen. Reicht doch ab dem Punkt wo es änderung gab?
           route_mark_.set(to_idx(r), true);
         }
       });
@@ -312,12 +310,14 @@ struct mcraptor {
   void reconstruct(query const& q, journey& j) {
     std::vector<unsigned int> li = {0};
     auto l = j.dest_;
-    mcraptor_bag bag = get_round_bag(cista::to_idx(l), j.transfers_ + 1);
     delta_t possible_start_t = unix_to_delta(base(), j.dest_time_);
-    mcraptor_label label = *std::find_if(bag.labels_.begin(), bag.labels_.end(), [possible_start_t](mcraptor_label l){
-      return l.arr_t_ == possible_start_t;
-    });
-    reconstruct_leg(q, j, 0, l, label);
+
+    vector<mcraptor_label> labels = {};
+    get_labels_after_(cista::to_idx(l), j.transfers_ + 1, possible_start_t, labels, 1);
+    std::cout << "Gesamtwahrscheinlichkeit: " << j.success_chance << std::endl;
+    for(auto label: labels){
+      reconstruct_leg(q, j, 0, l, label);
+    }
     if(kFwd) std::reverse(begin(j.legs_), end(j.legs_));
     //j.print(std::cout, tt_);
     std::cout << std::endl;
@@ -381,7 +381,8 @@ private:
 
   float delay_distribution_paper(delta_t x){
     auto xf = static_cast<float>(x);
-    return std::min(1.0f, (31 * xf + 60) / (30 * (xf + 3)));
+    auto cancelation_probability = 0.95f;
+    return std::min(cancelation_probability, (31 * xf + 60) / (30 * (xf + 3)));
   }
 
   float delay_distribution_linear(delta_t x){
@@ -390,23 +391,31 @@ private:
     return std::min(1.0f, gradient * static_cast<float>(x) + on_time_probability);
   }
 
-  float transferProbability(delta_t from, delta_t to){
+  float transferProbability(delta_t to){
     auto function = [this](auto x){return this->delay_distribution_paper(x);};
-    return function(to) - (from != 0 ? function(from): 0);
+    return function(to);
   }
 
-  float cum_success_chance(auto l, auto k, delta_t possible_start_t){
+  template <bool transfer=true>
+  float cum_prob(auto l, auto k, delta_t possible_start_t, float success_rate = 0.0f){
     vector<mcraptor_label> labels = {};
     get_labels_after_(l, k, possible_start_t, labels, 0);
-    auto result = 0.0f;
-    auto prev = 0;
-    for (int i = 0; i < labels.size(); ++i) {
-      result += transferProbability(prev, labels[i].arr_t_ - possible_start_t + 1) * labels[i].success_chance;
-      prev = labels[i].arr_t_ - possible_start_t + 1;
+    auto result = (transfer ? transferProbability(labels[0].arr_t_ - possible_start_t) : 1) * labels[0].success_chance;
+    auto counterprob = 1 - (transfer ? transferProbability(labels[0].arr_t_ - possible_start_t) : success_rate);
+    for (int i = 1; i < labels.size(); ++i) {
+      result += counterprob * (transfer ? transferProbability(labels[i].arr_t_ - possible_start_t) : 1) * labels[i].success_chance;
+      counterprob = counterprob * (1 - (transfer ? transferProbability(labels[i].arr_t_ - possible_start_t): success_rate));
     }
     return result;
   }
 
+  float cum_success_chance(auto l, auto k, delta_t possible_start_t){
+    return cum_prob(l, k, possible_start_t);
+  }
+
+  float cum_enter_probability(auto l, auto k, delta_t possible_start_t){
+    return cum_prob<false>(l, k, possible_start_t, 0.95f);
+  }
 
   bool update_route(unsigned const k, route_idx_t const r) {
     auto stop_seq = tt_.route_location_seq_[r];
@@ -442,7 +451,7 @@ private:
                    })).arr_t_;
 
         if (start != kInvalid ) { // && is_better_or_eq(prev_round_time, et_time_at_stop)
-          auto max_delay = 30;
+          auto max_delay = 3000;
           while(true){
             auto const [day, mam] = split(start);
             auto const new_et = get_earliest_transport(k, r, stop_idx, day, mam,
@@ -460,6 +469,16 @@ private:
       }
     }
     return any_marked;
+  }
+  
+  void update_dest_bag(auto k){
+    is_dest_.for_each_set_bit([&](std::uint64_t const i) {
+      for (mcraptor_label tmp_label :tmp_[i].labels_) {
+        if(tmp_label.arr_t_ == kInvalid) continue;
+        tmp_label.success_chance = cum_enter_probability(i, k, tmp_label.arr_t_);
+        dest_bag_.add(tmp_label, k);
+      }
+    });
   }
 
   void update_transfers(unsigned const k) {
@@ -487,13 +506,11 @@ private:
             location_bags_[i][k].add(new_label);
             best_bag_[i].add(new_label);
             station_mark_.set(i, true);
-            if (is_dest_[i]) {
-              dest_bag_.add(new_label, k);
-            }
           }
         }
       }
     });
+    update_dest_bag(k);
   }
 
   void update_footpaths(unsigned const k, profile_idx_t const prf_idx) {
@@ -533,13 +550,11 @@ private:
             location_bags_[target][k].add(new_label);
             best_bag_[target].add(new_label);
             station_mark_.set(target, true);
-            if (is_dest_[target]) {
-              dest_bag_.add(new_label, k);
-            }
           }
         }
       }
     });
+    update_dest_bag(k);
   }
 
   std::tuple<journey::leg, journey::leg> get_legs(unsigned const k,
