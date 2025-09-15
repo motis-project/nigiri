@@ -525,12 +525,14 @@ struct timetable {
     location_idx_t target_;
     duration_t min_dur_;
     duration_t max_dur_;
-    hash_set<location_idx_t> transfers_;
-    hash_set<route_idx_t> routes_;
+    size_t transfer_list_idx_;
   };
-  std::array<paged_vecvec<location_idx_t, ch_edge>, kNProfiles> fwd_search_ch_graph_;
-  std::array<paged_vecvec<location_idx_t, ch_edge>, kNProfiles> bwd_search_ch_graph_;
-  std::array<vecvec<location_idx_t, vec<location_idx_t>>, kNProfiles> transfers_;
+  std::array<paged_vecvec<location_idx_t, ch_edge>, kNProfiles>
+      fwd_search_ch_graph_;
+  std::array<paged_vecvec<location_idx_t, ch_edge>, kNProfiles>
+      bwd_search_ch_graph_;
+  std::array<paged_vecvec<size_t, location_idx_t>, kNProfiles>
+      ch_graph_transfers_;
 
   // profile name -> profile_idx_t
   hash_map<string, profile_idx_t> profiles_;
