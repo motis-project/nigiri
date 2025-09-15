@@ -166,6 +166,14 @@ timetable load(std::vector<timetable_source> const& sources,
       tt.transport_traffic_days_ = old_transport_traffic_days_;
       auto const old_source_end_date = tt.src_end_date_;
       tt.src_end_date_ = old_source_end_date;
+      auto const old_trip_id_to_idx = tt.trip_id_to_idx_;
+      tt.trip_id_to_idx_ = old_trip_id_to_idx;
+      auto const old_trip_ids = tt.trip_ids_;
+      tt.trip_ids_ = old_trip_ids;
+      auto const old_trip_id_strings = tt.trip_id_strings_;
+      tt.trip_id_strings_ = old_trip_id_strings;
+      auto const old_trip_id_src = tt.trip_id_src_;
+      tt.trip_id_src_ = old_trip_id_src;
       auto const old_source_file_names = tt.source_file_names_;
       tt.source_file_names_ = old_source_file_names;
       auto const old_trip_debug = tt.trip_debug_;
@@ -253,6 +261,9 @@ timetable load(std::vector<timetable_source> const& sources,
       auto bitfields = hash_map<bitfield, bitfield_idx_t>{};
       tt.src_end_date_.reset();
       tt.source_file_names_.clear();
+      tt.trip_id_to_idx_.clear();
+      tt.trip_id_strings_.clear();
+      tt.trip_id_src_.reset();
       tt.trip_debug_ = mutable_fws_multimap<trip_idx_t, trip_debug>{};
       tt.languages_.clear();
       tt.locations_ = timetable::locations{};
@@ -298,6 +309,7 @@ timetable load(std::vector<timetable_source> const& sources,
         assert(i.size() == 0);
       }
       assert(tt.flex_area_locations_.size() == 0);
+      assert(tt.trip_train_nr_.size() == 0);
       /* Load file */
       try {
         (*it)->load(local_config, src, *dir, tt, bitfields, a, shapes);
@@ -314,6 +326,16 @@ timetable load(std::vector<timetable_source> const& sources,
             tt.transport_traffic_days_[transport_idx_t{i}]);
       }
       auto const new_source_end_date = tt.src_end_date_;
+      auto const new_trip_id_to_idx = tt.trip_id_to_idx_;
+      auto new_trip_ids = mutable_fws_multimap<trip_idx_t, trip_id_idx_t>{};
+      for (auto i = old_trip_ids.size(); i < tt.trip_ids_.size(); ++i) {
+        auto entry = new_trip_ids.emplace_back();
+        for (auto j : tt.trip_ids_[trip_idx_t{i}]) {
+          entry.emplace_back(j);
+        }
+      }
+      auto const new_trip_id_strings = tt.trip_id_strings_;
+      auto const new_trip_id_src = tt.trip_id_src_;
       auto const new_source_file_names = tt.source_file_names_;
       auto const new_trip_debug = tt.trip_debug_;
       auto new_route_location_seq = vecvec<route_idx_t, stop::value_type>{};
@@ -366,6 +388,10 @@ timetable load(std::vector<timetable_source> const& sources,
       tt.bitfields_ = old_bitfields;
       tt.transport_traffic_days_ = old_transport_traffic_days_;
       tt.src_end_date_ = old_source_end_date;
+      tt.trip_id_to_idx_ = old_trip_id_to_idx;
+      tt.trip_ids_ = old_trip_ids;
+      tt.trip_id_strings_ = old_trip_id_strings;
+      tt.trip_id_src_ = old_trip_id_src;
       tt.source_file_names_ = old_source_file_names;
       tt.trip_debug_ = old_trip_debug;
       tt.route_location_seq_ = old_route_location_seq;
@@ -779,6 +805,31 @@ timetable load(std::vector<timetable_source> const& sources,
       for (auto const& i : new_booking_rules) {
         tt.booking_rules_.push_back(i);
       }
+      /*      trip_id_idx_t	*/
+      auto trip_id_offset = trip_id_idx_t{tt.trip_id_strings_.size()};
+      for (auto const& i : new_trip_id_to_idx) {
+        tt.trip_id_to_idx_.push_back(pair<trip_id_idx_t, trip_idx_t>{
+            i.first != trip_id_idx_t::invalid() ? i.first + trip_id_offset
+                                                : trip_id_idx_t::invalid(),
+            i.second});
+      }
+      for (auto const& i : new_trip_ids) {
+        auto entry = tt.trip_ids_.emplace_back();
+        for (auto const& j : i) {
+          auto trip_id = trip_id_idx_t{j != trip_id_idx_t::invalid()
+                                           ? j + trip_id_offset
+                                           : trip_id_idx_t::invalid()};
+          entry.emplace_back(trip_id);
+        }
+      }
+      for (auto const& i : new_trip_id_src) {
+        tt.trip_id_src_.push_back(i);
+      }
+      for (auto const& i : new_trip_id_strings) {
+        tt.trip_id_strings_.emplace_back(i);
+      }
+      // tt.trip_train_nr_ not used during loading
+      assert(tt.trip_train_nr_.size() == 0);
       /* Save snapshot */
       fs::create_directories(local_cache_path);
       if (shapes != nullptr) {
