@@ -5,12 +5,35 @@
 #include "nigiri/logging.h"
 #include "nigiri/timetable.h"
 #include "nigiri/types.h"
+#include <vector>
 
 namespace nigiri::loader {
+
+static constexpr auto const kEnableCh = true;
+
+struct departure {
+  bool operator<(departure const& o) const {
+    return dep_ < o.dep_;
+  }
+  location_idx_t to_;
+  delta dep_;
+  delta arr_;
+  route_idx_t r_;
+};
+
+struct arrival {
+  duration_t min_;
+  duration_t max_;
+  delta last_dep_;
+  hash_set<route_idx_t> routes_;
+};
 
 template <direction SearchDir>
 void build_lb_graph(timetable& tt, profile_idx_t const prf_idx) {
   hash_map<location_idx_t, duration_t> weights;
+  hash_map<location_idx_t, arrival> arrivals;
+  std::vector<departure> departures;
+  hash_map<std::pair<location_idx_t, location_idx_t>, size_t> edges_map;
 
   auto const update_weight = [&](location_idx_t const target,
                                  duration_t const d) {
@@ -18,6 +41,25 @@ void build_lb_graph(timetable& tt, profile_idx_t const prf_idx) {
       it->second = std::min(it->second, d);
     } else {
       weights.emplace_hint(it, target, d);
+    }
+  };
+
+  auto const compute_ch_edges = [&](location_idx_t const from_l) {
+    std::sort(begin(departures), end(departures));
+    for (auto& dep : departures) {
+      auto const dur = (dep.arr_-dep.dep_).as_duration();
+      if (auto const it = arrivals.find(dep.to_); it != end(arrivals)) {
+        it->second.min_ = std::min(it->second.min_, dur);
+        it->second.max_ = std::max(it->second.max_, (dep.arr_-it->second.last_dep_).as_duration()); 
+        it->second.last_dep_ = dep.dep_; // TODO overtaking connections
+        it->second.routes_.emplace(dep.r_);
+      } else {
+        arrivals.emplace_hint(it, dur, dep.dep_, dep.r_);
+      }
+    }
+    departures.clear();
+    for (auto const& entry : arrivals) {
+      tt.fwd_search_ch_graph_[prf_idx].at(from_l).push_back({entry.first, entry.second.min_, entry.second.max_, {}, entry.second.routes_})
     }
   };
 
@@ -61,11 +103,15 @@ void build_lb_graph(timetable& tt, profile_idx_t const prf_idx) {
         for (auto const t : tt.route_transport_ranges_[r]) {
           auto const from_time = tt.event_mam(t, from, event_type::kDep);
           auto const to_time = tt.event_mam(t, to, event_type::kArr);
+          if (kEnableCh) {
+            departures.emplace_back(to_l, from_time, to_time, r);
+          }
           min = std::min((to_time - from_time).as_duration(), min);
         }
         update_weight(target, min);
       }
     }
+    compute_ch_edges(l);
   };
 
   auto const timer = scoped_timer{"nigiri.loader.lb"};

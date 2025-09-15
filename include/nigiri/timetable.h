@@ -521,6 +521,17 @@ struct timetable {
   std::array<vecvec<location_idx_t, footpath>, kNProfiles> fwd_search_lb_graph_;
   std::array<vecvec<location_idx_t, footpath>, kNProfiles> bwd_search_lb_graph_;
 
+  struct ch_edge {
+    location_idx_t target_;
+    duration_t min_dur_;
+    duration_t max_dur_;
+    hash_set<location_idx_t> transfers_;
+    hash_set<route_idx_t> routes_;
+  };
+  std::array<paged_vecvec<location_idx_t, ch_edge>, kNProfiles> fwd_search_ch_graph_;
+  std::array<paged_vecvec<location_idx_t, ch_edge>, kNProfiles> bwd_search_ch_graph_;
+  std::array<vecvec<location_idx_t, vec<location_idx_t>>, kNProfiles> transfers_;
+
   // profile name -> profile_idx_t
   hash_map<string, profile_idx_t> profiles_;
 
