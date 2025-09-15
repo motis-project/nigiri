@@ -367,16 +367,21 @@ private:
   }
 
   void get_labels_after_(auto l, auto k, delta_t possible_start_t, vector<mcraptor_label>& labels, int ik){
-    for (; ik <= k; ++ik) {
-      labels.insert(labels.end(), location_bags_[l][ik].labels_.begin(), location_bags_[l][ik].labels_.end());
+    for (int i = k; ik <= i; --i) {
+      std::copy_if(location_bags_[l][i].labels_.begin(), location_bags_[l][i].labels_.end(), std::back_inserter(labels),
+                   [&](mcraptor_label val){
+                     return std::none_of(labels.begin(), labels.end(), [&](mcraptor_label contained){
+                       return contained.dominates(val);
+                     });
+                   });
     }
     std::sort(labels.begin(), labels.end(),[](mcraptor_label a, mcraptor_label b){
       return a.arr_t_ < b.arr_t_;
     });
-    auto new_begin = std::lower_bound(labels.begin(), labels.end(), possible_start_t, [](mcraptor_label a, delta_t t){
+    auto new_end = std::lower_bound(labels.begin(), labels.end(), possible_start_t, [](mcraptor_label a, delta_t t){
       return a.arr_t_ < t;
     });
-    labels.erase(labels.begin(), new_begin);
+    labels.erase(labels.begin(), new_end);
   }
 
   float delay_distribution_paper(delta_t x){
