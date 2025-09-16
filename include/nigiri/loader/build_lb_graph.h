@@ -1,5 +1,6 @@
 #pragma once
 
+#include "utl/insert_sorted.h"
 #include "utl/pairwise.h"
 
 #include "nigiri/logging.h"
@@ -27,6 +28,11 @@ struct arrival {
   hash_set<route_idx_t> routes_;
 };
 
+struct ch_stats {
+  size_t inserts_;
+  size_t replacements_;
+  size_t updates_;
+};
 
 template <direction SearchDir>
 void build_lb_graph(timetable& tt, profile_idx_t const prf_idx) {
@@ -34,7 +40,9 @@ void build_lb_graph(timetable& tt, profile_idx_t const prf_idx) {
   hash_map<location_idx_t, arrival> arrivals;
   std::vector<departure> departures;
   hash_map<std::pair<location_idx_t, location_idx_t>, size_t> edges_map;
-  paged_vecvec<size_t, route_idx_t> routes;
+  std::vector<std::vector<route_idx_t>> routes;
+  std::vector<std::vector<location_idx_t>> transfers;
+  ch_stats stats;
 
   auto const update_weight = [&](location_idx_t const target,
                                  duration_t const d) {
@@ -45,7 +53,20 @@ void build_lb_graph(timetable& tt, profile_idx_t const prf_idx) {
     }
   };
 
-  auto const compute_ch_edges = [&](location_idx_t const from_l) {
+  auto const insert_ch_edge = [&](location_idx_t const from_l,
+                                  location_idx_t const to_l,
+                                  duration_t const min, duration_t const max) {
+    auto const edge_idx = tt.ch_graph_edges_[prf_idx].size();
+    edges_map.emplace(from_l, to_l, edge_idx);
+    tt.ch_graph_edges_[prf_idx].emplace_back(from_l, to_l, min, max);
+    tt.fwd_search_ch_graph_[prf_idx].at(from_l).push_back(edge_idx);
+    tt.bwd_search_ch_graph_[prf_idx].at(to_l).push_back(edge_idx);
+    transfers.emplace_back();
+    routes.emplace_back();
+    return edge_idx;
+  };
+
+  auto const compute_initial_ch_edges = [&](location_idx_t const from_l) {
     std::sort(begin(departures), end(departures));
     for (auto& dep : departures) {
       auto const dur = (dep.arr_ - dep.dep_).as_duration();
@@ -61,67 +82,135 @@ void build_lb_graph(timetable& tt, profile_idx_t const prf_idx) {
     }
     departures.clear();
     for (auto const& entry : arrivals) {
-      edges_map.emplace(from_l, entry.first,
-                        tt.fwd_search_ch_graph_[prf_idx].at(from_l).size());
-                        auto const list_idx = tt.ch_graph_transfers_[prf_idx].size();
-      tt.fwd_search_ch_graph_[prf_idx].at(from_l).push_back(
-          {entry.first, entry.second.min_, entry.second.max_,
-           list_idx});
-      tt.bwd_search_ch_graph_[prf_idx]
-          .at(entry.first)
-          .push_back({from_l, entry.second.min_, entry.second.max_,
-            list_idx});
-      tt.ch_graph_transfers_[prf_idx].emplace_back_empty();
-      routes.emplace_back_empty();
+      auto const edge_idx = insert_ch_edge(
+          from_l, entry.first, entry.second.min_, entry.second.max_);
       for (auto r : entry.second.routes_) {
-        routes.at(list_idx).push_back(r); // TODO direct insertion?
+        routes.at(edge_idx).push_back(r);  // TODO direct insertion?
       }
+      std::sort(begin(routes.at(edge_idx)), end(routes.at(edge_idx)));
     }
   };
 
-  auto const create_ch_edge = [&](nigiri::timetable::ch_edge const& dep, nigiri::timetable::ch_edge const& arr) {
-    auto const routes_intersection = std::set_intersection(routes[dep.transfer_list_idx_], routes[arr.transfer_list_idx_])
+  auto const update_ch_shortcut = [&](location_idx_t contracted,
+                                      size_t const dep_idx,
+                                      size_t const arr_idx,
+                                      size_t shortcut_idx) {
+    auto const& dep = tt.ch_graph_edges_[prf_idx][dep_idx];
+    auto const& arr = tt.ch_graph_edges_[prf_idx][arr_idx];
+    auto& shortcut = tt.ch_graph_edges_[prf_idx][shortcut_idx];
 
+    std::vector<route_idx_t> routes_merged;
+    std::set_intersection(begin(routes[dep_idx]), end(routes[dep_idx]),
+                          begin(routes[arr_idx]), end(routes[arr_idx]),
+                          std::back_inserter(routes_merged));
+
+    std::vector<location_idx_t> transfers_union;
+    std::set_union(begin(transfers[dep_idx]), end(transfers[dep_idx]),
+                   begin(transfers[arr_idx]), end(transfers[arr_idx]),
+                   std::back_inserter(transfers_union));
+
+    auto max_dur =
+        dep.min_dur_ +
+        arr.max_dur_;  // TODO dwell time, slow/fast cross, one route set larger
+    if (routes_merged.size() != routes[dep_idx].size() ||
+        routes_merged.size() != routes[arr_idx].size()) {
+      utl::insert_sorted(transfers_union,
+                         contracted);  // TODO use level because it will
+                                       // automatically be sorted?
+      routes_merged.clear();
+      std::set_union(begin(routes[dep_idx]), end(routes[dep_idx]),
+                     begin(routes[arr_idx]), end(routes[arr_idx]),
+                     std::back_inserter(routes_merged));
+      max_dur = dep.max_dur_ + arr.max_dur_;
+    }
+    shortcut.min_dur_ =
+        std::min(dep.min_dur_ + arr.min_dur_, shortcut.min_dur_);
+    shortcut.max_dur_ = std::max(max_dur, shortcut.max_dur_);
+
+    std::vector<route_idx_t> routes_new;
+    std::set_union(begin(routes_merged), end(routes_merged),
+                   begin(routes[shortcut_idx]), end(routes[shortcut_idx]),
+                   std::back_inserter(routes_new));  // TODO inplace
+    routes[shortcut_idx] = std::move(routes_new);
+
+    std::vector<location_idx_t> transfers_new;
+    std::set_union(begin(transfers_union), end(transfers_union),
+                   begin(transfers[shortcut_idx]), end(transfers[shortcut_idx]),
+                   std::back_inserter(transfers_new));  // TODO inplace
+    transfers[shortcut_idx] = std::move(transfers_new);
   };
 
-  auto const compute_ch =
-      [&]() {
-        auto location_ids = std::vector<location_idx_t>{100};
-        std::iota(begin(location_ids), end(location_ids), location_idx_t{0});
-        std::sort(begin(location_ids), end(location_ids), [&](auto a, auto b) {
-          return tt.location_routes_[a].size() < tt.location_routes_[b].size();
-        });
-        auto location_levels = std::vector<size_t>{location_ids.size()};
-        for (auto location_id : location_ids) {
-          auto const& deps = tt.fwd_search_ch_graph_[prf_idx].at(location_id);
-          auto const& arrs = tt.bwd_search_ch_graph_[prf_idx].at(location_id);
-          for (auto dep : deps) {
-            auto const to = dep.target_;
-            if (location_levels[to.v_] > 0U) {
-              continue;
+  auto const compute_ch = [&]() {
+    auto location_ids = std::vector<location_idx_t>{tt.n_locations()};
+    std::iota(begin(location_ids), end(location_ids), location_idx_t{0});
+    std::sort(begin(location_ids), end(location_ids), [&](auto a, auto b) {
+      return tt.location_routes_[a].size() < tt.location_routes_[b].size();
+    });
+    auto location_levels = std::vector<size_t>{location_ids.size()};
+    auto level = 0U;
+    for (auto location_id : location_ids) {
+      ++level;
+      auto const& deps = tt.fwd_search_ch_graph_[prf_idx].at(location_id);
+      auto const& arrs = tt.bwd_search_ch_graph_[prf_idx].at(location_id);
+      for (auto dep_idx : deps) {
+        auto const& dep = tt.ch_graph_edges_[prf_idx][dep_idx];
+        auto const to = dep.to_;
+        if (location_levels[to.v_] > 0U) {
+          continue;
+        }
+        for (auto arr_idx : arrs) {
+          auto const& arr = tt.ch_graph_edges_[prf_idx][arr_idx];
+          auto const from = arr.from_;
+          if (location_levels[from.v_] > 0U || from == to) {
+            continue;
+          }
+          if (auto const it = edges_map.find({from, to});
+              it != end(edges_map)) {
+            auto& shortcut = tt.ch_graph_edges_[prf_idx][it->second];
+            auto const min_dur = dep.min_dur_ + arr.min_dur_;
+            auto const max_dur = dep.max_dur_ + arr.max_dur_;
+            if (max_dur < shortcut.min_dur_) {
+              // replace
+              shortcut.min_dur_ = std::numeric_limits<duration_t>::max();
+              shortcut.max_dur_ = std::numeric_limits<duration_t>::max();
+              routes[it->second].clear();
+              transfers[it->second].clear();
+              update_ch_shortcut(location_id, dep_idx, arr_idx, it->second);
+              stats.replacements_++;
+            } else if (min_dur <= shortcut.max_dur_) {
+              // update
+              update_ch_shortcut(location_id, dep_idx, arr_idx, it->second);
+              stats.updates_++;
             }
-            for (auto arr : arrs) {
-              auto const from = arr.target_;
-              if (location_levels[from.v_] > 0U || from == to) {
-                continue;
-              }
-              if (auto const it = edges_map.find({from, to});
-                  it != end(edges_map)) {
-                auto const& ch_edge =
-                    tt.fwd_search_ch_graph_[prf_idx].at(from).at(it->second);
-                auto const min_dur = dep.min_dur_ + arr.min_dur_;
-                auto const max_dur = dep.max_dur_ + arr.max_dur_;
-                if (max_dur < ch_edge.min_dur_) {
-                  // replace
-
-                } else if (min_dur < ch_edge.max_dur_) {
-                  // update
-                }
-              }
-            }
+          } else {
+            // new
+            auto const edge_idx =
+                insert_ch_edge(from, to, std::numeric_limits<duration_t>::max(),
+                               std::numeric_limits<duration_t>::max());
+            update_ch_shortcut(location_id, dep_idx, arr_idx, edge_idx);
+            stats.inserts_++;
           }
         }
-      };
+      }
+      location_levels[location_id.v_] = level;
+      if (level % 100 == 0) {
+        std::cout << level << " " << deps.size() << " " << arrs.size() << " "
+                  << location_id << " "
+                  << tt.locations_.names_[location_id].view() << std::endl;
+      }
+    }
+    auto transfer_count = 0U;
+    for (auto t : transfers) {
+      transfer_count += t.size();
+      tt.ch_graph_transfers_[prf_idx].emplace_back(std::move(t));
+    }
+    std::cout << "inserts: " << stats.inserts_
+              << " replacements: " << stats.replacements_
+              << " updates: " << stats.updates_ << std::endl;
+    std::cout << "edges: " << tt.ch_graph_edges_[prf_idx].size()
+              << " stations: " << tt.n_locations()
+              << " transfers: " << transfer_count << std::endl;
+  };
 
   auto const add_edges = [&](location_idx_t const l) {
     auto const parent_l = tt.locations_.get_root_idx(l);
@@ -171,7 +260,9 @@ void build_lb_graph(timetable& tt, profile_idx_t const prf_idx) {
         update_weight(target, min);
       }
     }
-    compute_ch_edges(l);
+    if (kEnableCh) {
+      compute_initial_ch_edges(l);
+    }
   };
 
   auto const timer = scoped_timer{"nigiri.loader.lb"};
@@ -202,7 +293,11 @@ void build_lb_graph(timetable& tt, profile_idx_t const prf_idx) {
     footpaths.clear();
     weights.clear();
 
-    compute_ch();
+    if (kEnableCh) {
+      std::cout << "lb done." << std::endl;
+      compute_ch();
+      std::cout << "ch done." << std::endl;
+    }
   }
 }
 

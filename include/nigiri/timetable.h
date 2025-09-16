@@ -2,6 +2,7 @@
 
 #include <compare>
 #include <filesystem>
+#include <limits>
 #include <optional>
 #include <span>
 #include <type_traits>
@@ -522,17 +523,17 @@ struct timetable {
   std::array<vecvec<location_idx_t, footpath>, kNProfiles> bwd_search_lb_graph_;
 
   struct ch_edge {
-    location_idx_t target_;
-    duration_t min_dur_;
-    duration_t max_dur_;
-    size_t transfer_list_idx_;
+    location_idx_t from_;
+    location_idx_t to_;
+    duration_t min_dur_{std::numeric_limits<duration_t>::max()};
+    duration_t max_dur_{std::numeric_limits<duration_t>::max()};
   };
-  std::array<paged_vecvec<location_idx_t, ch_edge>, kNProfiles>
+  std::array<paged_vecvec<location_idx_t, size_t>, kNProfiles>
       fwd_search_ch_graph_;
-  std::array<paged_vecvec<location_idx_t, ch_edge>, kNProfiles>
+  std::array<paged_vecvec<location_idx_t, size_t>, kNProfiles>
       bwd_search_ch_graph_;
-  std::array<paged_vecvec<size_t, location_idx_t>, kNProfiles>
-      ch_graph_transfers_;
+  std::array<std::vector<ch_edge>, kNProfiles> ch_graph_edges_;
+  std::array<vecvec<size_t, location_idx_t>, kNProfiles> ch_graph_transfers_;
 
   // profile name -> profile_idx_t
   hash_map<string, profile_idx_t> profiles_;
