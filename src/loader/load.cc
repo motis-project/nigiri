@@ -174,10 +174,20 @@ timetable load(std::vector<timetable_source> const& sources,
       tt.trip_id_strings_ = old_trip_id_strings;
       auto const old_trip_id_src = tt.trip_id_src_;
       tt.trip_id_src_ = old_trip_id_src;
+      auto const old_trip_direction_id = tt.trip_direction_id_;
+      tt.trip_direction_id_ = old_trip_direction_id;
+      auto const old_trip_route_id = tt.trip_route_id_;
+      tt.trip_route_id_ = old_trip_route_id;
+      auto const old_trip_transport_ranges = tt.trip_transport_ranges_;
+      tt.trip_transport_ranges_ = old_trip_transport_ranges;
+      auto const old_trip_stop_seq_numbers = tt.trip_stop_seq_numbers_;
+      tt.trip_stop_seq_numbers_ = old_trip_stop_seq_numbers;
       auto const old_source_file_names = tt.source_file_names_;
       tt.source_file_names_ = old_source_file_names;
       auto const old_trip_debug = tt.trip_debug_;
       tt.trip_debug_ = old_trip_debug;
+      auto const old_trip_display_names = tt.trip_display_names_;
+      tt.trip_display_names_ = old_trip_display_names;
       auto const old_route_location_seq = tt.route_location_seq_;
       tt.route_location_seq_ = old_route_location_seq;
       auto const old_languages = tt.languages_;
@@ -264,7 +274,12 @@ timetable load(std::vector<timetable_source> const& sources,
       tt.trip_id_to_idx_.clear();
       tt.trip_id_strings_.clear();
       tt.trip_id_src_.reset();
+      tt.trip_direction_id_.resize(0U);
+      tt.trip_route_id_.reset();
+      tt.trip_transport_ranges_.clear();
+      tt.trip_stop_seq_numbers_.clear();
       tt.trip_debug_ = mutable_fws_multimap<trip_idx_t, trip_debug>{};
+      tt.trip_display_names_.clear();
       tt.languages_.clear();
       tt.locations_ = timetable::locations{};
       tt.location_routes_.clear();
@@ -336,8 +351,13 @@ timetable load(std::vector<timetable_source> const& sources,
       }
       auto const new_trip_id_strings = tt.trip_id_strings_;
       auto const new_trip_id_src = tt.trip_id_src_;
+      auto const new_trip_direction_id = tt.trip_direction_id_;
+      auto const new_trip_route_id = tt.trip_route_id_;
+      auto const new_trip_transport_ranges = tt.trip_transport_ranges_;
+      auto const new_trip_stop_seq_numbers = tt.trip_stop_seq_numbers_;
       auto const new_source_file_names = tt.source_file_names_;
       auto const new_trip_debug = tt.trip_debug_;
+      auto const new_trip_display_names = tt.trip_display_names_;
       auto new_route_location_seq = vecvec<route_idx_t, stop::value_type>{};
       for (auto idx = old_route_location_seq.size();
            idx < tt.route_location_seq_.size(); ++idx) {
@@ -392,8 +412,13 @@ timetable load(std::vector<timetable_source> const& sources,
       tt.trip_ids_ = old_trip_ids;
       tt.trip_id_strings_ = old_trip_id_strings;
       tt.trip_id_src_ = old_trip_id_src;
+      tt.trip_direction_id_ = old_trip_direction_id;
+      tt.trip_route_id_ = old_trip_route_id;
+      tt.trip_transport_ranges_ = old_trip_transport_ranges;
+      tt.trip_stop_seq_numbers_ = old_trip_stop_seq_numbers;
       tt.source_file_names_ = old_source_file_names;
       tt.trip_debug_ = old_trip_debug;
+      tt.trip_display_names_ = old_trip_display_names;
       tt.route_location_seq_ = old_route_location_seq;
       tt.languages_ = old_languages;
       tt.locations_ = old_locations;
@@ -830,6 +855,27 @@ timetable load(std::vector<timetable_source> const& sources,
       }
       // tt.trip_train_nr_ not used during loading
       assert(tt.trip_train_nr_.size() == 0);
+      /* 	 trip_idx_t	 */
+      auto const trip_direction_offset =
+          trip_idx_t{tt.trip_direction_id_.size()};
+      auto const add_size = trip_idx_t{new_trip_direction_id.size()};
+      tt.trip_direction_id_.resize(to_idx(add_size));
+      for (auto i = trip_direction_offset; i < add_size; ++i) {
+        tt.trip_direction_id_.set(i, new_trip_direction_id.test(i));
+      }
+      for (auto const& i : new_trip_route_id) {
+        tt.trip_route_id_.push_back(i);
+      }
+      for (auto i = trip_idx_t{0};
+           i < trip_idx_t{new_trip_transport_ranges.size()}; ++i) {
+        tt.trip_transport_ranges_.emplace_back(new_trip_transport_ranges[i]);
+      }
+      for (auto const& i : new_trip_stop_seq_numbers) {
+        tt.trip_stop_seq_numbers_.emplace_back(i);
+      }
+      for (auto const& i : new_trip_display_names) {
+        tt.trip_display_names_.emplace_back(i);
+      }
       /* Save snapshot */
       fs::create_directories(local_cache_path);
       if (shapes != nullptr) {
