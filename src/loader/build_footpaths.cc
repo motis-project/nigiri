@@ -300,7 +300,10 @@ void connect_components(timetable& tt,
         auto const adjusted_int = static_cast<int>(distance / kWalkSpeed / 60);
         if (adjusted_int > std::numeric_limits<u8_minutes::rep>::max()) {
           log(log_lvl::error, "loader.footpath.adjust",
-              "too long after adjust: {}>256", adjusted_int);
+              "too long after adjust: from={} at {}, to={} at {} {}>256",
+              location{tt, from_l}, tt.locations_.coordinates_[from_l],
+              location{tt, to_l}, tt.locations_.coordinates_[to_l],
+              adjusted_int);
         } else {
           adjusted = u8_minutes{
               std::max(static_cast<duration_t::rep>(duration.count()),
