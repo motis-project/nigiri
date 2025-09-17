@@ -120,8 +120,12 @@ location_idx_t run_stop::get_scheduled_location_idx() const {
 }
 
 run_stop run_stop::get_last_trip_stop(event_type const ev_type) const {
-  auto const trip = get_trip_idx(ev_type);
   auto const end = fr_->size();
+  if (!fr_->is_scheduled()) {
+    return run_stop{fr_, static_cast<stop_idx_t>(end - 1)};
+  }
+
+  auto const trip = get_trip_idx(ev_type);
   auto copy = *this;
   if (copy.stop_idx_ == end - 1) {
     return copy;
