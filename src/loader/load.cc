@@ -1,5 +1,6 @@
 #include <cassert>
 #include <chrono>
+#include <ranges>
 
 #include "nigiri/loader/load.h"
 
@@ -21,6 +22,7 @@
 #include "nigiri/types.h"
 
 namespace fs = std::filesystem;
+namespace vw = std::views;
 
 namespace nigiri::loader {
 
@@ -190,6 +192,24 @@ timetable load(std::vector<timetable_source> const& sources,
       tt.trip_display_names_ = old_trip_display_names;
       auto const old_route_location_seq = tt.route_location_seq_;
       tt.route_location_seq_ = old_route_location_seq;
+      auto const old_route_clasz = tt.route_clasz_;
+      tt.route_clasz_ = old_route_clasz;
+      auto const old_route_section_clasz = tt.route_section_clasz_;
+      tt.route_section_clasz_ = old_route_section_clasz;
+      auto const old_route_bikes_allowed = tt.route_bikes_allowed_;
+      tt.route_bikes_allowed_ = old_route_bikes_allowed;
+      auto const old_route_cars_allowed = tt.route_cars_allowed_;
+      tt.route_cars_allowed_ = old_route_cars_allowed;
+      auto const old_route_bikes_allowed_per_section =
+          tt.route_bikes_allowed_per_section_;
+      tt.route_bikes_allowed_per_section_ = old_route_bikes_allowed_per_section;
+      auto const old_route_cars_allowed_per_section =
+          tt.route_cars_allowed_per_section_;
+      tt.route_cars_allowed_per_section_ = old_route_cars_allowed_per_section;
+      auto const old_route_stop_time_ranges = tt.route_stop_time_ranges_;
+      tt.route_stop_time_ranges_ = old_route_stop_time_ranges;
+      auto const old_route_stop_times = tt.route_stop_times_;
+      tt.route_stop_times_ = old_route_stop_times;
       auto const old_languages = tt.languages_;
       tt.languages_ = old_languages;
       auto const old_locations = tt.locations_;
@@ -280,6 +300,21 @@ timetable load(std::vector<timetable_source> const& sources,
       tt.trip_stop_seq_numbers_.clear();
       tt.trip_debug_ = mutable_fws_multimap<trip_idx_t, trip_debug>{};
       tt.trip_display_names_.clear();
+      tt.route_clasz_.clear();
+      tt.route_section_clasz_.clear();
+      // length must correspond to route_idx_t
+      for (auto const& i : vw::iota(0U, tt.route_bikes_allowed_.size())) {
+        tt.route_bikes_allowed_.set(i);
+      }
+      for (auto const& i : vw::iota(0U, tt.route_cars_allowed_.size())) {
+        tt.route_cars_allowed_.set(i);
+      }
+      tt.route_bikes_allowed_per_section_.clear();
+      tt.route_bikes_allowed_per_section_.resize(tt.route_location_seq_.size());
+      tt.route_cars_allowed_per_section_.clear();
+      tt.route_cars_allowed_per_section_.resize(tt.route_location_seq_.size());
+      tt.route_stop_time_ranges_.reset();
+      tt.route_stop_times_.clear();
       tt.languages_.clear();
       tt.locations_ = timetable::locations{};
       tt.location_routes_.clear();
@@ -366,6 +401,50 @@ timetable load(std::vector<timetable_source> const& sources,
           vec.push_back(j);
         }
       }
+      auto const new_route_clasz = tt.route_clasz_;
+      auto const new_route_section_clasz = tt.route_section_clasz_;
+      auto new_route_bikes_allowed = bitvec{};
+      new_route_bikes_allowed.resize(tt.route_bikes_allowed_.size());
+      assert(old_route_bikes_allowed.size() <= tt.route_bikes_allowed_.size());
+      for (auto const& i : vw::iota(old_route_bikes_allowed.size(),
+                                    tt.route_bikes_allowed_.size())) {
+        new_route_bikes_allowed.set(i, tt.route_bikes_allowed_.test(i));
+      }
+      auto new_route_cars_allowed = bitvec{};
+      new_route_cars_allowed.resize(tt.route_cars_allowed_.size());
+      assert(old_route_cars_allowed.size() <= tt.route_cars_allowed_.size());
+      for (auto const& i : vw::iota(old_route_cars_allowed.size(),
+                                    tt.route_cars_allowed_.size())) {
+        new_route_cars_allowed.set(i, tt.route_cars_allowed_.test(i));
+      }
+      auto new_route_bikes_allowed_per_section = vecvec<route_idx_t, bool>{};
+      assert(tt.route_bikes_allowed_per_section_.size() ==
+             tt.route_location_seq_.size());
+      assert(old_route_bikes_allowed_per_section.size() ==
+             old_route_location_seq.size());
+      assert(old_route_bikes_allowed_per_section.size() <=
+             tt.route_bikes_allowed_per_section_.size());
+      for (auto const& i :
+           vw::iota(old_route_bikes_allowed_per_section.size(),
+                    tt.route_bikes_allowed_per_section_.size())) {
+        new_route_bikes_allowed_per_section.emplace_back(
+            tt.route_bikes_allowed_per_section_[route_idx_t{i}]);
+      }
+      auto new_route_cars_allowed_per_section = vecvec<route_idx_t, bool>{};
+      assert(tt.route_cars_allowed_per_section_.size() ==
+             tt.route_location_seq_.size());
+      assert(old_route_cars_allowed_per_section.size() ==
+             old_route_location_seq.size());
+      assert(old_route_cars_allowed_per_section.size() <=
+             tt.route_cars_allowed_per_section_.size());
+      for (auto const& i :
+           vw::iota(old_route_cars_allowed_per_section.size(),
+                    tt.route_cars_allowed_per_section_.size())) {
+        new_route_cars_allowed_per_section.emplace_back(
+            tt.route_cars_allowed_per_section_[route_idx_t{i}]);
+      }
+      auto const new_route_stop_time_ranges = tt.route_stop_time_ranges_;
+      auto const new_route_stop_times = tt.route_stop_times_;
       auto const new_languages = tt.languages_;
       auto const new_locations = tt.locations_;
       auto const new_location_routes = tt.location_routes_;
@@ -420,6 +499,14 @@ timetable load(std::vector<timetable_source> const& sources,
       tt.trip_debug_ = old_trip_debug;
       tt.trip_display_names_ = old_trip_display_names;
       tt.route_location_seq_ = old_route_location_seq;
+      tt.route_clasz_ = old_route_clasz;
+      tt.route_section_clasz_ = old_route_section_clasz;
+      tt.route_bikes_allowed_ = old_route_bikes_allowed;
+      tt.route_cars_allowed_ = old_route_cars_allowed;
+      tt.route_bikes_allowed_per_section_ = old_route_bikes_allowed_per_section;
+      tt.route_cars_allowed_per_section_ = old_route_cars_allowed_per_section;
+      tt.route_stop_time_ranges_ = old_route_stop_time_ranges;
+      tt.route_stop_times_ = old_route_stop_times;
       tt.languages_ = old_languages;
       tt.locations_ = old_locations;
       tt.location_routes_ = old_location_routes;
@@ -689,6 +776,42 @@ timetable load(std::vector<timetable_source> const& sources,
                    s.in_allowed_wheelchair_, s.out_allowed_wheelchair_};
           vec.push_back(mapped_stop.value());
         }
+      }
+      for (auto const& i : new_route_clasz) {
+        tt.route_clasz_.emplace_back(i);
+      }
+      for (auto const& i : new_route_section_clasz) {
+        tt.route_section_clasz_.emplace_back(i);
+      }
+      for (auto const& i : new_route_bikes_allowed_per_section) {
+        tt.route_bikes_allowed_per_section_.emplace_back(i);
+      }
+      for (auto const& i : new_route_cars_allowed_per_section) {
+        tt.route_cars_allowed_per_section_.emplace_back(i);
+      }
+      auto const new_route_bikes_allowed_size = new_route_bikes_allowed.size();
+      auto const route_offset_bikes = tt.route_bikes_allowed_.size();
+      tt.route_bikes_allowed_.resize(new_route_bikes_allowed_size);
+      for (auto const& i :
+           vw::iota(route_offset_bikes, new_route_bikes_allowed_size)) {
+        tt.route_bikes_allowed_.set(i, new_route_bikes_allowed.test(i));
+      }
+      auto const new_route_cars_allowed_size = new_route_cars_allowed.size();
+      auto const route_offset_cars = tt.route_cars_allowed_.size();
+      assert(route_offset_cars == route_offset_bikes);
+      tt.route_cars_allowed_.resize(new_route_cars_allowed_size);
+      for (auto const& i :
+           vw::iota(route_offset_cars, new_route_cars_allowed_size)) {
+        tt.route_cars_allowed_.set(i, new_route_cars_allowed.test(i));
+      }
+      auto const route_stop_times_offset = tt.route_stop_times_.size();
+      for (auto const& i : new_route_stop_time_ranges) {
+        tt.route_stop_time_ranges_.push_back(
+            interval{i.from_ + route_stop_times_offset,
+                     i.to_ + route_stop_times_offset});
+      }
+      for (auto const& i : new_route_stop_times) {
+        tt.route_stop_times_.push_back(i);
       }
       /*          fares		*/
       for (auto const& i : new_fares) {
