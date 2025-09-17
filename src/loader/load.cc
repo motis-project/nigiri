@@ -188,8 +188,12 @@ timetable load(std::vector<timetable_source> const& sources,
       tt.source_file_names_ = old_source_file_names;
       auto const old_trip_debug = tt.trip_debug_;
       tt.trip_debug_ = old_trip_debug;
+      auto const old_trip_short_names = tt.trip_short_names_;
+      tt.trip_short_names_ = old_trip_short_names;
       auto const old_trip_display_names = tt.trip_display_names_;
       tt.trip_display_names_ = old_trip_display_names;
+      auto const old_route_transport_ranges = tt.route_transport_ranges_;
+      tt.route_transport_ranges_ = old_route_transport_ranges;
       auto const old_route_location_seq = tt.route_location_seq_;
       tt.route_location_seq_ = old_route_location_seq;
       auto const old_route_clasz = tt.route_clasz_;
@@ -210,10 +214,14 @@ timetable load(std::vector<timetable_source> const& sources,
       tt.route_stop_time_ranges_ = old_route_stop_time_ranges;
       auto const old_route_stop_times = tt.route_stop_times_;
       tt.route_stop_times_ = old_route_stop_times;
+      auto const old_transport_route = tt.transport_route_;
+      tt.transport_route_ = old_transport_route;
       auto const old_languages = tt.languages_;
       tt.languages_ = old_languages;
       auto const old_locations = tt.locations_;
       tt.locations_ = old_locations;
+      auto const old_merged_trips = tt.merged_trips_;
+      tt.merged_trips_ = old_merged_trips;
       auto const old_location_routes = tt.location_routes_;
       tt.location_routes_ = old_location_routes;
       auto const old_providers = tt.providers_;
@@ -289,9 +297,14 @@ timetable load(std::vector<timetable_source> const& sources,
       /* Prepare timetable by emptying corrected fields */
       tt.bitfields_.reset();
       auto bitfields = hash_map<bitfield, bitfield_idx_t>{};
+      auto shape_store = shapes != nullptr
+                             ? std::make_unique<shapes_storage>(
+                                   local_cache_path, shapes->mode_)
+                             : nullptr;
       tt.src_end_date_.reset();
       tt.source_file_names_.clear();
       tt.trip_id_to_idx_.clear();
+      tt.trip_ids_ = mutable_fws_multimap<trip_idx_t, trip_id_idx_t>{};
       tt.trip_id_strings_.clear();
       tt.trip_id_src_.reset();
       tt.trip_direction_id_.resize(0U);
@@ -299,20 +312,16 @@ timetable load(std::vector<timetable_source> const& sources,
       tt.trip_transport_ranges_.clear();
       tt.trip_stop_seq_numbers_.clear();
       tt.trip_debug_ = mutable_fws_multimap<trip_idx_t, trip_debug>{};
+      tt.trip_short_names_.clear();
       tt.trip_display_names_.clear();
+      tt.route_transport_ranges_.reset();
+      tt.route_location_seq_.clear();
       tt.route_clasz_.clear();
       tt.route_section_clasz_.clear();
-      // length must correspond to route_idx_t
-      for (auto const& i : vw::iota(0U, tt.route_bikes_allowed_.size())) {
-        tt.route_bikes_allowed_.set(i);
-      }
-      for (auto const& i : vw::iota(0U, tt.route_cars_allowed_.size())) {
-        tt.route_cars_allowed_.set(i);
-      }
+      tt.route_bikes_allowed_.resize(0U);
+      tt.route_cars_allowed_.resize(0U);
       tt.route_bikes_allowed_per_section_.clear();
-      tt.route_bikes_allowed_per_section_.resize(tt.route_location_seq_.size());
       tt.route_cars_allowed_per_section_.clear();
-      tt.route_cars_allowed_per_section_.resize(tt.route_location_seq_.size());
       tt.route_stop_time_ranges_.reset();
       tt.route_stop_times_.clear();
       tt.languages_.clear();
@@ -362,7 +371,8 @@ timetable load(std::vector<timetable_source> const& sources,
       assert(tt.trip_train_nr_.size() == 0);
       /* Load file */
       try {
-        (*it)->load(local_config, src, *dir, tt, bitfields, a, shapes);
+        (*it)->load(local_config, src, *dir, tt, bitfields, a,
+                    shape_store.get());
       } catch (std::exception const& e) {
         throw utl::fail("failed to load {}: {}", path, e.what());
       }
@@ -377,13 +387,7 @@ timetable load(std::vector<timetable_source> const& sources,
       }
       auto const new_source_end_date = tt.src_end_date_;
       auto const new_trip_id_to_idx = tt.trip_id_to_idx_;
-      auto new_trip_ids = mutable_fws_multimap<trip_idx_t, trip_id_idx_t>{};
-      for (auto i = old_trip_ids.size(); i < tt.trip_ids_.size(); ++i) {
-        auto entry = new_trip_ids.emplace_back();
-        for (auto j : tt.trip_ids_[trip_idx_t{i}]) {
-          entry.emplace_back(j);
-        }
-      }
+      auto const new_trip_ids = tt.trip_ids_;
       auto const new_trip_id_strings = tt.trip_id_strings_;
       auto const new_trip_id_src = tt.trip_id_src_;
       auto const new_trip_direction_id = tt.trip_direction_id_;
@@ -392,61 +396,31 @@ timetable load(std::vector<timetable_source> const& sources,
       auto const new_trip_stop_seq_numbers = tt.trip_stop_seq_numbers_;
       auto const new_source_file_names = tt.source_file_names_;
       auto const new_trip_debug = tt.trip_debug_;
+      auto const new_trip_short_names = tt.trip_short_names_;
       auto const new_trip_display_names = tt.trip_display_names_;
-      auto new_route_location_seq = vecvec<route_idx_t, stop::value_type>{};
-      for (auto idx = old_route_location_seq.size();
-           idx < tt.route_location_seq_.size(); ++idx) {
-        auto vec = new_route_location_seq.add_back_sized(0U);
-        for (auto const& j : tt.route_location_seq_[route_idx_t{idx}]) {
-          vec.push_back(j);
-        }
-      }
+      auto const new_route_transport_ranges = tt.route_transport_ranges_;
+      auto const new_route_location_seq = tt.route_location_seq_;
       auto const new_route_clasz = tt.route_clasz_;
       auto const new_route_section_clasz = tt.route_section_clasz_;
-      auto new_route_bikes_allowed = bitvec{};
-      new_route_bikes_allowed.resize(tt.route_bikes_allowed_.size());
-      assert(old_route_bikes_allowed.size() <= tt.route_bikes_allowed_.size());
-      for (auto const& i : vw::iota(old_route_bikes_allowed.size(),
-                                    tt.route_bikes_allowed_.size())) {
-        new_route_bikes_allowed.set(i, tt.route_bikes_allowed_.test(i));
-      }
-      auto new_route_cars_allowed = bitvec{};
-      new_route_cars_allowed.resize(tt.route_cars_allowed_.size());
-      assert(old_route_cars_allowed.size() <= tt.route_cars_allowed_.size());
-      for (auto const& i : vw::iota(old_route_cars_allowed.size(),
-                                    tt.route_cars_allowed_.size())) {
-        new_route_cars_allowed.set(i, tt.route_cars_allowed_.test(i));
-      }
-      auto new_route_bikes_allowed_per_section = vecvec<route_idx_t, bool>{};
-      assert(tt.route_bikes_allowed_per_section_.size() ==
-             tt.route_location_seq_.size());
-      assert(old_route_bikes_allowed_per_section.size() ==
-             old_route_location_seq.size());
-      assert(old_route_bikes_allowed_per_section.size() <=
-             tt.route_bikes_allowed_per_section_.size());
-      for (auto const& i :
-           vw::iota(old_route_bikes_allowed_per_section.size(),
-                    tt.route_bikes_allowed_per_section_.size())) {
-        new_route_bikes_allowed_per_section.emplace_back(
-            tt.route_bikes_allowed_per_section_[route_idx_t{i}]);
-      }
-      auto new_route_cars_allowed_per_section = vecvec<route_idx_t, bool>{};
-      assert(tt.route_cars_allowed_per_section_.size() ==
-             tt.route_location_seq_.size());
-      assert(old_route_cars_allowed_per_section.size() ==
-             old_route_location_seq.size());
-      assert(old_route_cars_allowed_per_section.size() <=
-             tt.route_cars_allowed_per_section_.size());
-      for (auto const& i :
-           vw::iota(old_route_cars_allowed_per_section.size(),
-                    tt.route_cars_allowed_per_section_.size())) {
-        new_route_cars_allowed_per_section.emplace_back(
-            tt.route_cars_allowed_per_section_[route_idx_t{i}]);
-      }
+      auto const new_route_bikes_allowed = tt.route_bikes_allowed_;
+      auto const new_route_cars_allowed = tt.route_cars_allowed_;
+      auto const new_route_bikes_allowed_per_section =
+          tt.route_bikes_allowed_per_section_;
+      auto const new_route_cars_allowed_per_section =
+          tt.route_cars_allowed_per_section_;
       auto const new_route_stop_time_ranges = tt.route_stop_time_ranges_;
       auto const new_route_stop_times = tt.route_stop_times_;
+      auto new_transport_route = vector_map<transport_idx_t, route_idx_t>{};
+      for (auto i = old_transport_route.size(); i < tt.transport_route_.size();
+           ++i) {
+        new_transport_route.push_back(tt.transport_route_[transport_idx_t{i}]);
+      }
       auto const new_languages = tt.languages_;
       auto const new_locations = tt.locations_;
+      auto new_merged_trips = vecvec<merged_trips_idx_t, trip_idx_t>{};
+      for (auto i = old_merged_trips.size(); i < tt.merged_trips_.size(); ++i) {
+        new_merged_trips.emplace_back(tt.merged_trips_[merged_trips_idx_t{i}]);
+      }
       auto const new_location_routes = tt.location_routes_;
       auto new_providers = vector_map<provider_idx_t, provider>{};
       for (auto i = old_providers.size(); i < tt.providers_.size(); ++i) {
@@ -497,7 +471,9 @@ timetable load(std::vector<timetable_source> const& sources,
       tt.trip_stop_seq_numbers_ = old_trip_stop_seq_numbers;
       tt.source_file_names_ = old_source_file_names;
       tt.trip_debug_ = old_trip_debug;
+      tt.trip_short_names_ = old_trip_short_names;
       tt.trip_display_names_ = old_trip_display_names;
+      tt.route_transport_ranges_ = old_route_transport_ranges;
       tt.route_location_seq_ = old_route_location_seq;
       tt.route_clasz_ = old_route_clasz;
       tt.route_section_clasz_ = old_route_section_clasz;
@@ -507,6 +483,8 @@ timetable load(std::vector<timetable_source> const& sources,
       tt.route_cars_allowed_per_section_ = old_route_cars_allowed_per_section;
       tt.route_stop_time_ranges_ = old_route_stop_time_ranges;
       tt.route_stop_times_ = old_route_stop_times;
+      tt.transport_route_ = old_transport_route;
+      tt.merged_trips_ = old_merged_trips;
       tt.languages_ = old_languages;
       tt.locations_ = old_locations;
       tt.location_routes_ = old_location_routes;
@@ -592,6 +570,8 @@ timetable load(std::vector<timetable_source> const& sources,
           alt_name_idx_t{tt.locations_.alt_name_strings_.size()};
       auto const timezones_offset =
           timezone_idx_t{tt.locations_.timezones_.size()};
+      auto const trip_offset = trip_idx_t{tt.trip_ids_.size()};
+      auto const route_idx_offset = route_idx_t{tt.n_routes()};
       {  // merge locations struct
         auto&& loc = tt.locations_;
         for (auto const& i : new_locations.location_id_to_idx_) {
@@ -721,7 +701,11 @@ timetable load(std::vector<timetable_source> const& sources,
         assert(loc.max_importance_ == 0U);
       }  // end of locations struct
       for (auto const& i : new_location_routes) {
-        tt.location_routes_.emplace_back(i);
+        auto vec = tt.location_routes_.add_back_sized(0U);
+        for (auto const& j : i) {
+          vec.push_back(j != route_idx_t::invalid() ? j + route_idx_offset
+                                                    : route_idx_t::invalid());
+        }
       }
       for (auto const& i : new_location_areas) {
         tt.location_areas_.emplace_back(i);
@@ -763,6 +747,9 @@ timetable load(std::vector<timetable_source> const& sources,
         assert(i.size() == 0);
       }
       /*        route_idx_t	*/
+      for (auto const& i : new_route_transport_ranges) {
+        tt.route_transport_ranges_.push_back(i);
+      }
       for (auto const& i : new_route_location_seq) {
         auto vec = tt.route_location_seq_.add_back_sized(0U);
         for (auto const& j : i) {
@@ -790,19 +777,20 @@ timetable load(std::vector<timetable_source> const& sources,
         tt.route_cars_allowed_per_section_.emplace_back(i);
       }
       auto const new_route_bikes_allowed_size = new_route_bikes_allowed.size();
-      auto const route_offset_bikes = tt.route_bikes_allowed_.size();
-      tt.route_bikes_allowed_.resize(new_route_bikes_allowed_size);
-      for (auto const& i :
-           vw::iota(route_offset_bikes, new_route_bikes_allowed_size)) {
-        tt.route_bikes_allowed_.set(i, new_route_bikes_allowed.test(i));
+      auto const route_bikes_allowed_size = tt.route_bikes_allowed_.size();
+      tt.route_bikes_allowed_.resize(route_bikes_allowed_size +
+                                     new_route_bikes_allowed_size);
+      for (auto const& i : vw::iota(0U, new_route_bikes_allowed_size)) {
+        tt.route_bikes_allowed_.set(route_bikes_allowed_size + i,
+                                    new_route_bikes_allowed.test(i));
       }
       auto const new_route_cars_allowed_size = new_route_cars_allowed.size();
-      auto const route_offset_cars = tt.route_cars_allowed_.size();
-      assert(route_offset_cars == route_offset_bikes);
-      tt.route_cars_allowed_.resize(new_route_cars_allowed_size);
-      for (auto const& i :
-           vw::iota(route_offset_cars, new_route_cars_allowed_size)) {
-        tt.route_cars_allowed_.set(i, new_route_cars_allowed.test(i));
+      auto const route_cars_allowed_size = tt.route_cars_allowed_.size();
+      tt.route_cars_allowed_.resize(route_cars_allowed_size +
+                                    new_route_cars_allowed_size);
+      for (auto const& i : vw::iota(0U, new_route_cars_allowed_size)) {
+        tt.route_cars_allowed_.set(route_cars_allowed_size + i,
+                                   new_route_cars_allowed.test(i));
       }
       auto const route_stop_times_offset = tt.route_stop_times_.size();
       for (auto const& i : new_route_stop_time_ranges) {
@@ -812,6 +800,11 @@ timetable load(std::vector<timetable_source> const& sources,
       }
       for (auto const& i : new_route_stop_times) {
         tt.route_stop_times_.push_back(i);
+      }
+      for (auto const& i : new_transport_route) {
+        tt.transport_route_.push_back(i != route_idx_t::invalid()
+                                          ? i + route_idx_offset
+                                          : route_idx_t::invalid());
       }
       /*          fares		*/
       for (auto const& i : new_fares) {
@@ -918,7 +911,9 @@ timetable load(std::vector<timetable_source> const& sources,
                                            : bitfield_idx_t::invalid());
       }
       for (auto const& i : new_flex_transport_trip) {
-        tt.flex_transport_trip_.push_back(i);
+        tt.flex_transport_trip_.push_back(i != trip_idx_t::invalid()
+                                              ? i + trip_offset
+                                              : trip_idx_t::invalid());
       }
       for (auto const& i : new_flex_transport_stop_time_windows) {
         tt.flex_transport_stop_time_windows_.emplace_back(i);
@@ -959,7 +954,8 @@ timetable load(std::vector<timetable_source> const& sources,
         tt.trip_id_to_idx_.push_back(pair<trip_id_idx_t, trip_idx_t>{
             i.first != trip_id_idx_t::invalid() ? i.first + trip_id_offset
                                                 : trip_id_idx_t::invalid(),
-            i.second});
+            i.second != trip_idx_t::invalid() ? i.second + trip_offset
+                                              : trip_idx_t::invalid()});
       }
       for (auto const& i : new_trip_ids) {
         auto entry = tt.trip_ids_.emplace_back();
@@ -979,12 +975,12 @@ timetable load(std::vector<timetable_source> const& sources,
       // tt.trip_train_nr_ not used during loading
       assert(tt.trip_train_nr_.size() == 0);
       /* 	 trip_idx_t	 */
-      auto const trip_direction_offset =
-          trip_idx_t{tt.trip_direction_id_.size()};
       auto const add_size = trip_idx_t{new_trip_direction_id.size()};
-      tt.trip_direction_id_.resize(to_idx(add_size));
-      for (auto i = trip_direction_offset; i < add_size; ++i) {
-        tt.trip_direction_id_.set(i, new_trip_direction_id.test(i));
+      tt.trip_direction_id_.resize(to_idx(trip_offset + add_size));
+      for (auto const& i : vw::iota(0U, to_idx(add_size))) {
+        auto const idx = trip_idx_t{i};
+        tt.trip_direction_id_.set(idx + trip_offset,
+                                  new_trip_direction_id.test(idx));
       }
       for (auto const& i : new_trip_route_id) {
         tt.trip_route_id_.push_back(i);
@@ -996,13 +992,24 @@ timetable load(std::vector<timetable_source> const& sources,
       for (auto const& i : new_trip_stop_seq_numbers) {
         tt.trip_stop_seq_numbers_.emplace_back(i);
       }
+      for (auto const& i : new_trip_short_names) {
+        tt.trip_short_names_.emplace_back(i);
+      }
       for (auto const& i : new_trip_display_names) {
         tt.trip_display_names_.emplace_back(i);
+      }
+      for (auto const& i : new_merged_trips) {
+        auto vec = tt.merged_trips_.add_back_sized(0U);
+        for (auto const& j : i) {
+          vec.push_back(j != trip_idx_t::invalid() ? j + trip_offset
+                                                   : trip_idx_t::invalid());
+        }
       }
       /* Save snapshot */
       fs::create_directories(local_cache_path);
       if (shapes != nullptr) {
-        auto shape_store =
+        shapes->add(shape_store.get());
+        shape_store =
             std::make_unique<shapes_storage>(local_cache_path, shapes->mode_);
         shape_store->add(shapes);
       }
