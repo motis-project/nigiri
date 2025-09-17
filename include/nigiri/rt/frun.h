@@ -43,6 +43,7 @@ struct run_stop {
   std::string_view route_long_name(event_type = event_type::kDep) const;
   std::string_view trip_short_name(event_type = event_type::kDep) const;
   std::string_view display_name(event_type = event_type::kDep) const;
+  run_stop get_last_trip_stop(event_type = event_type::kDep) const;
 
   unixtime_t scheduled_time(event_type) const;
   unixtime_t time(event_type) const;

@@ -119,6 +119,30 @@ location_idx_t run_stop::get_scheduled_location_idx() const {
   return get_scheduled_stop().location_idx();
 }
 
+run_stop run_stop::get_last_trip_stop(event_type const ev_type) const {
+  auto const end = fr_->size();
+  if (!fr_->is_scheduled()) {
+    return run_stop{fr_, static_cast<stop_idx_t>(end - 1)};
+  }
+
+  auto const trip = get_trip_idx(ev_type);
+  auto copy = *this;
+  if (copy.stop_idx_ == end - 1) {
+    return copy;
+  }
+
+  // Can't be (end-1), so ++stop_idx is fine.
+  ++copy.stop_idx_;
+
+  // Can't be 0 after ++stop_idx, so get_trip_idx(kArr) is fine.
+  while (copy.stop_idx_ < end - 1 &&
+         copy.get_trip_idx(event_type::kArr) == trip) {
+    ++copy.stop_idx_;
+  }
+
+  return copy;
+}
+
 unixtime_t run_stop::scheduled_time(event_type const ev_type) const {
   assert(fr_->size() > stop_idx_);
   return fr_->is_scheduled()
