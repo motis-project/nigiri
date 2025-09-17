@@ -22,14 +22,10 @@
 
 namespace nigiri::loader::gtfs {
 
-bool is_on_null_island(geo::latlng const& c) {
-  return std::abs(c.lat_) < 2.0 && std::abs(c.lng_) < 2.0;
-}
-
 struct stop {
   void compute_close_stations(geo::point_rtree const& stop_rtree,
                               unsigned const link_stop_distance) {
-    if (is_on_null_island(coord_)) {
+    if (std::abs(coord_.lat_) < 2.0 && std::abs(coord_.lng_) < 2.0) {
       return;
     }
     close_ = utl::to_vec(
@@ -361,21 +357,18 @@ std::pair<stops_map_t, seated_transfers_map_t> read_stops(
     for (auto const& [id, s] : stops) {
       for (auto const& eq : s->get_metas(stop_vec, todo, done)) {
         tt.locations_.equivalences_[s->location_].emplace_back(eq->location_);
-
-        if (!is_on_null_island(s->coord_) && !is_on_null_island(eq->coord_)) {
-          add_if_not_exists(
-              tt.locations_.preprocessing_footpaths_out_[s->location_],
-              {eq->location_, 2_minutes});
-          add_if_not_exists(
-              tt.locations_.preprocessing_footpaths_in_[eq->location_],
-              {s->location_, 2_minutes});
-          add_if_not_exists(
-              tt.locations_.preprocessing_footpaths_out_[eq->location_],
-              {s->location_, 2_minutes});
-          add_if_not_exists(
-              tt.locations_.preprocessing_footpaths_in_[s->location_],
-              {eq->location_, 2_minutes});
-        }
+        add_if_not_exists(
+            tt.locations_.preprocessing_footpaths_out_[s->location_],
+            {eq->location_, 2_minutes});
+        add_if_not_exists(
+            tt.locations_.preprocessing_footpaths_in_[eq->location_],
+            {s->location_, 2_minutes});
+        add_if_not_exists(
+            tt.locations_.preprocessing_footpaths_out_[eq->location_],
+            {s->location_, 2_minutes});
+        add_if_not_exists(
+            tt.locations_.preprocessing_footpaths_in_[s->location_],
+            {eq->location_, 2_minutes});
       }
       progress_tracker->increment();
     }
