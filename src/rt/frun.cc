@@ -131,7 +131,8 @@ run_stop run_stop::get_last_trip_stop(event_type const ev_type) const {
   ++copy.stop_idx_;
 
   // Can't be 0 after ++stop_idx, so get_trip_idx(kArr) is fine.
-  while (copy.stop_idx_ < end && copy.get_trip_idx(event_type::kArr) == trip) {
+  while (copy.stop_idx_ < end - 1 &&
+         copy.get_trip_idx(event_type::kArr) == trip) {
     ++copy.stop_idx_;
   }
 
