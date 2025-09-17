@@ -180,6 +180,8 @@ timetable load(std::vector<timetable_source> const& sources,
       tt.trip_direction_id_ = old_trip_direction_id;
       auto const old_trip_route_id = tt.trip_route_id_;
       tt.trip_route_id_ = old_trip_route_id;
+      auto const old_route_ids = tt.route_ids_;
+      tt.route_ids_ = old_route_ids;
       auto const old_trip_transport_ranges = tt.trip_transport_ranges_;
       tt.trip_transport_ranges_ = old_trip_transport_ranges;
       auto const old_trip_stop_seq_numbers = tt.trip_stop_seq_numbers_;
@@ -309,6 +311,9 @@ timetable load(std::vector<timetable_source> const& sources,
       tt.trip_id_src_.reset();
       tt.trip_direction_id_.resize(0U);
       tt.trip_route_id_.reset();
+      // length must correspond to src
+      tt.route_ids_.reset();
+      tt.route_ids_.resize(to_idx(src));
       tt.trip_transport_ranges_.clear();
       tt.trip_stop_seq_numbers_.clear();
       tt.trip_debug_ = mutable_fws_multimap<trip_idx_t, trip_debug>{};
@@ -392,6 +397,8 @@ timetable load(std::vector<timetable_source> const& sources,
       auto const new_trip_id_src = tt.trip_id_src_;
       auto const new_trip_direction_id = tt.trip_direction_id_;
       auto const new_trip_route_id = tt.trip_route_id_;
+      auto new_route_ids = vector_map<source_idx_t, timetable::route_ids>{};
+      new_route_ids.emplace_back(tt.route_ids_[src]);
       auto const new_trip_transport_ranges = tt.trip_transport_ranges_;
       auto const new_trip_stop_seq_numbers = tt.trip_stop_seq_numbers_;
       auto const new_source_file_names = tt.source_file_names_;
@@ -467,6 +474,7 @@ timetable load(std::vector<timetable_source> const& sources,
       tt.trip_id_src_ = old_trip_id_src;
       tt.trip_direction_id_ = old_trip_direction_id;
       tt.trip_route_id_ = old_trip_route_id;
+      tt.route_ids_ = old_route_ids;
       tt.trip_transport_ranges_ = old_trip_transport_ranges;
       tt.trip_stop_seq_numbers_ = old_trip_stop_seq_numbers;
       tt.source_file_names_ = old_source_file_names;
@@ -1004,6 +1012,26 @@ timetable load(std::vector<timetable_source> const& sources,
           vec.push_back(j != trip_idx_t::invalid() ? j + trip_offset
                                                    : trip_idx_t::invalid());
         }
+      }
+      /*      route_id_idx_t	 */
+      for (auto const& i : new_route_ids) {
+        auto vec = paged_vecvec<route_id_idx_t, trip_idx_t>{};
+        for (route_id_idx_t j = route_id_idx_t{0};
+             j < route_id_idx_t{i.route_id_trips_.size()}; ++j) {
+          vec.emplace_back_empty();
+          for (auto const& k : i.route_id_trips_[j]) {
+            vec.back().push_back(k + trip_offset);
+          }
+        }
+        auto const mapped_route_ids = timetable::route_ids{
+            .route_id_short_names_ = i.route_id_short_names_,
+            .route_id_long_names_ = i.route_id_long_names_,
+            .route_id_type_ = i.route_id_type_,
+            .route_id_provider_ = i.route_id_provider_,
+            .route_id_colors_ = i.route_id_colors_,
+            .route_id_trips_ = vec,
+            .ids_ = i.ids_};
+        tt.route_ids_.push_back(mapped_route_ids);
       }
       /* Save snapshot */
       fs::create_directories(local_cache_path);
