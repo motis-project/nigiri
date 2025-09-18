@@ -4,6 +4,7 @@
 #include "utl/pairwise.h"
 
 #include "nigiri/logging.h"
+#include "nigiri/td_footpath.h"
 #include "nigiri/timetable.h"
 #include "nigiri/types.h"
 #include <algorithm>
@@ -66,6 +67,44 @@ void build_lb_graph(timetable& tt, profile_idx_t const prf_idx) {
     return edge_idx;
   };
 
+  auto const upsert_ch_footpath_edge =
+      [&](location_idx_t const from_l, location_idx_t const to_l,
+          duration_t const min_dur, duration_t const max_dur,
+          hash_set<route_idx_t> const& new_routes) {
+        if (auto const it = edges_map.find({from_l, to_l});
+            it != end(edges_map)) {
+          auto& shortcut = tt.ch_graph_edges_[prf_idx][it->second];
+          if (max_dur < shortcut.min_dur_) {
+            // replace
+            shortcut.min_dur_ = min_dur;
+            shortcut.max_dur_ = max_dur;
+            for (auto r : new_routes) {
+              routes.at(it->second).push_back(r);  // TODO direct insertion?
+            }
+            std::sort(begin(routes.at(it->second)), end(routes.at(it->second)));
+            stats.replacements_++;
+          } else if (min_dur <= shortcut.max_dur_) {
+            // update
+            shortcut.min_dur_ = std::min(shortcut.min_dur_, min_dur);
+            shortcut.max_dur_ = std::min(shortcut.max_dur_, max_dur);
+
+            for (auto r : new_routes) {
+              utl::insert_sorted(routes.at(it->second),
+                                 r);  // TODO direct insertion?
+            }
+            stats.updates_++;
+          }
+        } else {
+          // insert
+          auto const edge_idx = insert_ch_edge(from_l, to_l, min_dur, max_dur);
+          for (auto r : new_routes) {
+            routes.at(edge_idx).push_back(r);  // TODO direct insertion?
+          }
+          std::sort(begin(routes.at(edge_idx)), end(routes.at(edge_idx)));
+          stats.inserts_++;
+        }
+      };
+
   auto const compute_initial_ch_edges = [&](location_idx_t const from_l) {
     std::sort(begin(departures), end(departures));
     for (auto& dep : departures) {
@@ -82,12 +121,13 @@ void build_lb_graph(timetable& tt, profile_idx_t const prf_idx) {
     }
     departures.clear();
     for (auto const& entry : arrivals) {
-      auto const edge_idx = insert_ch_edge(
-          from_l, entry.first, entry.second.min_, entry.second.max_);
-      for (auto r : entry.second.routes_) {
-        routes.at(edge_idx).push_back(r);  // TODO direct insertion?
+      upsert_ch_footpath_edge(from_l, entry.first, entry.second.min_,
+                              entry.second.max_, entry.second.routes_);
+      for (auto fp : tt.locations_.footpaths_out_[prf_idx][entry.first]) {
+        upsert_ch_footpath_edge(from_l, fp.target(),
+                                entry.second.min_ + fp.duration(),
+                                entry.second.max_ + fp.duration());
       }
-      std::sort(begin(routes.at(edge_idx)), end(routes.at(edge_idx)));
     }
   };
 
@@ -141,12 +181,15 @@ void build_lb_graph(timetable& tt, profile_idx_t const prf_idx) {
   };
 
   auto const compute_ch = [&]() {
+    std::cout << "original inserts: " << stats.inserts_
+              << " replacements: " << stats.replacements_
+              << " updates: " << stats.updates_ << std::endl;
     auto location_ids = std::vector<location_idx_t>{tt.n_locations()};
     std::iota(begin(location_ids), end(location_ids), location_idx_t{0});
     std::sort(begin(location_ids), end(location_ids), [&](auto a, auto b) {
       return tt.location_routes_[a].size() < tt.location_routes_[b].size();
     });
-    auto location_levels = std::vector<size_t>{location_ids.size()};
+    tt.ch_levels_.resize(static_cast<unsigned>(location_ids.size()));
     auto level = 0U;
     for (auto location_id : location_ids) {
       ++level;
@@ -155,13 +198,13 @@ void build_lb_graph(timetable& tt, profile_idx_t const prf_idx) {
       for (auto dep_idx : deps) {
         auto const& dep = tt.ch_graph_edges_[prf_idx][dep_idx];
         auto const to = dep.to_;
-        if (location_levels[to.v_] > 0U) {
+        if (tt.ch_levels_[to] > 0U) {
           continue;
         }
         for (auto arr_idx : arrs) {
           auto const& arr = tt.ch_graph_edges_[prf_idx][arr_idx];
           auto const from = arr.from_;
-          if (location_levels[from.v_] > 0U || from == to) {
+          if (tt.ch_levels_[from] > 0U || from == to) {
             continue;
           }
           if (auto const it = edges_map.find({from, to});
@@ -183,7 +226,7 @@ void build_lb_graph(timetable& tt, profile_idx_t const prf_idx) {
               stats.updates_++;
             }
           } else {
-            // new
+            // insert
             auto const edge_idx =
                 insert_ch_edge(from, to, std::numeric_limits<duration_t>::max(),
                                std::numeric_limits<duration_t>::max());
@@ -192,7 +235,7 @@ void build_lb_graph(timetable& tt, profile_idx_t const prf_idx) {
           }
         }
       }
-      location_levels[location_id.v_] = level;
+      tt.ch_levels_[location_id] = level;
       if (level % 100 == 0) {
         std::cout << level << " " << deps.size() << " " << arrs.size() << " "
                   << location_id << " "
@@ -299,6 +342,91 @@ void build_lb_graph(timetable& tt, profile_idx_t const prf_idx) {
       std::cout << "ch done." << std::endl;
     }
   }
+}
+
+constexpr int FORWARD = 0;
+constexpr int REVERSE = 1;
+
+using DistTuple =
+    std::tuple<int, size_t, bool>;  // (distance, edge_idx, visited)
+
+// Priority queue comparator for min-heap based on distance
+struct Compare {
+  bool operator()(std::tuple<int, size_t, int> const& a,
+                  std::tuple<int, size_t, int> const& b) const {
+    return std::get<0>(a) > std::get<0>(b);
+  }
+};
+
+std::unordered_set<size_t> bidijkstra(timetable const& tt,
+  std::array<std::vector<typename Label::dist_t>& dists,
+                                      location_idx_t const source_idx,
+                                      location_idx_t const target_idx) {
+  std::vector<typename Label::dist_t>&dists,
+      int INF = std::numeric_limits<int>::max();
+
+  // distances[dir][station] = (dist, edge_idx, visited)
+  std::vector<std::vector<DistTuple>> distances(
+      2,
+      std::vector<DistTuple>(stations.size(),
+                             {INF, std::numeric_limits<size_t>::max(), false}));
+
+  std::priority_queue<std::tuple<int, size_t, int>,
+                      std::vector<std::tuple<int, size_t, int>>, Compare>
+      pq;
+
+  distances[FORWARD][source_idx] = {0, std::numeric_limits<size_t>::max(),
+                                    true};
+  distances[REVERSE][target_idx] = {0, std::numeric_limits<size_t>::max(),
+                                    true};
+
+  pq.push({0, source_idx, FORWARD});
+  pq.push({0, target_idx, REVERSE});
+
+  int min_dist = INF;
+  std::unordered_set<size_t> transfers;
+  int steps = 0;
+
+  while (!pq.empty()) {
+    auto [d, v, dir] = pq.top();
+    pq.pop();
+
+    int dist = -d;  // negate because Rust used BinaryHeap (max-heap)
+    if (dist > std::get<0>(distances[dir][v])) {
+      continue;
+    }
+
+    transfers.insert(v);
+    int other_dir = dir ^ 1;
+
+    if (std::get<0>(distances[other_dir][v]) != INF &&
+        dist + std::get<0>(distances[other_dir][v]) < min_dist) {
+      min_dist = dist + std::get<0>(distances[other_dir][v]);
+    }
+
+    std::vector<size_t> const& es =
+        (dir == FORWARD) ? stations[v].departures : stations[v].arrivals;
+
+    for (size_t e_idx : es) {
+      Edge const& e = edges[e_idx];
+      size_t w = (dir == FORWARD) ? e.to_idx : e.from_idx;
+
+      if (station_levels[v] >= station_levels[w]) {
+        continue;
+      }
+
+      int new_dist = dist + e.max_dur;
+      if (std::get<0>(distances[dir][w]) > dist + e.min_dur) {
+        transfers.insert(e.transfers.begin(), e.transfers.end());
+        distances[dir][w] = {new_dist, e_idx, false};
+        pq.push({-new_dist, w, dir});
+        steps++;
+      }
+    }
+  }
+
+  std::cout << "Steps: " << steps << std::endl;
+  return transfers;
 }
 
 }  // namespace nigiri::loader

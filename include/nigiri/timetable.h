@@ -532,8 +532,9 @@ struct timetable {
       fwd_search_ch_graph_;
   std::array<paged_vecvec<location_idx_t, size_t>, kNProfiles>
       bwd_search_ch_graph_;
-  std::array<std::vector<ch_edge>, kNProfiles> ch_graph_edges_;
+  std::array<vector_map<size_t, ch_edge>, kNProfiles> ch_graph_edges_;
   std::array<vecvec<size_t, location_idx_t>, kNProfiles> ch_graph_transfers_;
+  vector_map<location_idx_t, size_t> ch_levels_;
 
   // profile name -> profile_idx_t
   hash_map<string, profile_idx_t> profiles_;
