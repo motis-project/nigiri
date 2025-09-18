@@ -229,6 +229,8 @@ timetable load(std::vector<timetable_source> const& sources,
       tt.locations_ = old_locations;
       auto const old_merged_trips = tt.merged_trips_;
       tt.merged_trips_ = old_merged_trips;
+      auto const old_trip_lines = tt.trip_lines_;
+      tt.trip_lines_ = old_trip_lines;
       auto const old_transport_section_attributes =
           tt.transport_section_attributes_;
       tt.transport_section_attributes_ = old_transport_section_attributes;
@@ -352,6 +354,7 @@ timetable load(std::vector<timetable_source> const& sources,
       tt.transport_traffic_days_.reset();
       tt.transport_route_.reset();
       tt.transport_to_trip_section_.clear();
+      tt.trip_lines_.clear();
       tt.transport_section_attributes_.clear();
       tt.transport_section_providers_.clear();
       tt.transport_section_directions_.clear();
@@ -450,6 +453,7 @@ timetable load(std::vector<timetable_source> const& sources,
       for (auto i = old_merged_trips.size(); i < tt.merged_trips_.size(); ++i) {
         new_merged_trips.emplace_back(tt.merged_trips_[merged_trips_idx_t{i}]);
       }
+      auto const new_trip_lines = tt.trip_lines_;
       auto const new_transport_section_attributes =
           tt.transport_section_attributes_;
       auto const new_transport_section_providers =
@@ -526,6 +530,7 @@ timetable load(std::vector<timetable_source> const& sources,
       tt.transport_route_ = old_transport_route;
       tt.transport_to_trip_section_ = old_transport_to_trip_section;
       tt.merged_trips_ = old_merged_trips;
+      tt.trip_lines_ = old_trip_lines;
       tt.transport_section_attributes_ = old_transport_section_attributes;
       tt.transport_section_providers_ = old_transport_section_providers;
       tt.transport_section_directions_ = old_transport_section_directions;
@@ -1098,11 +1103,21 @@ timetable load(std::vector<timetable_source> const& sources,
       for (auto const& i : new_transport_section_directions) {
         tt.transport_section_directions_.emplace_back(i);
       }
+      auto const trip_lines_offset = trip_line_idx_t{tt.trip_lines_.size()};
       for (auto const& i : new_transport_section_lines) {
-        tt.transport_section_lines_.emplace_back(i);
+        auto vec = tt.transport_section_lines_.add_back_sized(0U);
+        for (auto const& j : i) {
+          vec.push_back(j != trip_line_idx_t::invalid()
+                            ? j + trip_lines_offset
+                            : trip_line_idx_t::invalid());
+        }
       }
       for (auto const& i : new_transport_section_route_colors) {
         tt.transport_section_route_colors_.emplace_back(i);
+      }
+      /*        Meta infos	*/
+      for (auto const& i : new_trip_lines) {
+        tt.trip_lines_.emplace_back(i);
       }
       /* Save snapshot */
       fs::create_directories(local_cache_path);
