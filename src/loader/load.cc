@@ -216,6 +216,9 @@ timetable load(std::vector<timetable_source> const& sources,
       tt.route_stop_time_ranges_ = old_route_stop_time_ranges;
       auto const old_route_stop_times = tt.route_stop_times_;
       tt.route_stop_times_ = old_route_stop_times;
+      auto const old_transport_first_dep_offset =
+          tt.transport_first_dep_offset_;
+      tt.transport_first_dep_offset_ = old_transport_first_dep_offset;
       auto const old_transport_route = tt.transport_route_;
       tt.transport_route_ = old_transport_route;
       auto const old_languages = tt.languages_;
@@ -224,6 +227,20 @@ timetable load(std::vector<timetable_source> const& sources,
       tt.locations_ = old_locations;
       auto const old_merged_trips = tt.merged_trips_;
       tt.merged_trips_ = old_merged_trips;
+      auto const old_transport_section_attributes =
+          tt.transport_section_attributes_;
+      tt.transport_section_attributes_ = old_transport_section_attributes;
+      auto const old_transport_section_providers =
+          tt.transport_section_providers_;
+      tt.transport_section_providers_ = old_transport_section_providers;
+      auto const old_transport_section_directions =
+          tt.transport_section_directions_;
+      tt.transport_section_directions_ = old_transport_section_directions;
+      auto const old_transport_section_lines = tt.transport_section_lines_;
+      tt.transport_section_lines_ = old_transport_section_lines;
+      auto const old_transport_section_route_colors =
+          tt.transport_section_route_colors_;
+      tt.transport_section_route_colors_ = old_transport_section_route_colors;
       auto const old_location_routes = tt.location_routes_;
       tt.location_routes_ = old_location_routes;
       auto const old_providers = tt.providers_;
@@ -329,6 +346,12 @@ timetable load(std::vector<timetable_source> const& sources,
       tt.route_cars_allowed_per_section_.clear();
       tt.route_stop_time_ranges_.reset();
       tt.route_stop_times_.clear();
+      tt.transport_first_dep_offset_.reset();
+      tt.transport_section_attributes_.clear();
+      tt.transport_section_providers_.clear();
+      tt.transport_section_directions_.clear();
+      tt.transport_section_lines_.clear();
+      tt.transport_section_route_colors_.clear();
       tt.languages_.clear();
       tt.locations_ = timetable::locations{};
       tt.location_routes_.clear();
@@ -374,6 +397,7 @@ timetable load(std::vector<timetable_source> const& sources,
       }
       assert(tt.flex_area_locations_.size() == 0);
       assert(tt.trip_train_nr_.size() == 0);
+      assert(tt.initial_day_offset_.size() == 0);
       /* Load file */
       try {
         (*it)->load(local_config, src, *dir, tt, bitfields, a,
@@ -417,6 +441,8 @@ timetable load(std::vector<timetable_source> const& sources,
           tt.route_cars_allowed_per_section_;
       auto const new_route_stop_time_ranges = tt.route_stop_time_ranges_;
       auto const new_route_stop_times = tt.route_stop_times_;
+      auto const new_transport_first_dep_offset =
+          tt.transport_first_dep_offset_;
       auto new_transport_route = vector_map<transport_idx_t, route_idx_t>{};
       for (auto i = old_transport_route.size(); i < tt.transport_route_.size();
            ++i) {
@@ -428,6 +454,15 @@ timetable load(std::vector<timetable_source> const& sources,
       for (auto i = old_merged_trips.size(); i < tt.merged_trips_.size(); ++i) {
         new_merged_trips.emplace_back(tt.merged_trips_[merged_trips_idx_t{i}]);
       }
+      auto const new_transport_section_attributes =
+          tt.transport_section_attributes_;
+      auto const new_transport_section_providers =
+          tt.transport_section_providers_;
+      auto const new_transport_section_directions =
+          tt.transport_section_directions_;
+      auto const new_transport_section_lines = tt.transport_section_lines_;
+      auto const new_transport_section_route_colors =
+          tt.transport_section_route_colors_;
       auto const new_location_routes = tt.location_routes_;
       auto new_providers = vector_map<provider_idx_t, provider>{};
       for (auto i = old_providers.size(); i < tt.providers_.size(); ++i) {
@@ -491,8 +526,14 @@ timetable load(std::vector<timetable_source> const& sources,
       tt.route_cars_allowed_per_section_ = old_route_cars_allowed_per_section;
       tt.route_stop_time_ranges_ = old_route_stop_time_ranges;
       tt.route_stop_times_ = old_route_stop_times;
+      tt.transport_first_dep_offset_ = old_transport_first_dep_offset;
       tt.transport_route_ = old_transport_route;
       tt.merged_trips_ = old_merged_trips;
+      tt.transport_section_attributes_ = old_transport_section_attributes;
+      tt.transport_section_providers_ = old_transport_section_providers;
+      tt.transport_section_directions_ = old_transport_section_directions;
+      tt.transport_section_lines_ = old_transport_section_lines;
+      tt.transport_section_route_colors_ = old_transport_section_route_colors;
       tt.languages_ = old_languages;
       tt.locations_ = old_locations;
       tt.location_routes_ = old_location_routes;
@@ -1032,6 +1073,27 @@ timetable load(std::vector<timetable_source> const& sources,
             .route_id_trips_ = vec,
             .ids_ = i.ids_};
         tt.route_ids_.push_back(mapped_route_ids);
+      }
+      /*     transport_idx_t	*/
+      for (auto const& i : new_transport_first_dep_offset) {
+        tt.transport_first_dep_offset_.push_back(i);
+      }
+      // tt.initial_day_offset_ not used during loading
+      assert(tt.initial_day_offset_.size() == 0);
+      for (auto const& i : new_transport_section_attributes) {
+        tt.transport_section_attributes_.emplace_back(i);
+      }
+      for (auto const& i : new_transport_section_providers) {
+        tt.transport_section_providers_.emplace_back(i);
+      }
+      for (auto const& i : new_transport_section_directions) {
+        tt.transport_section_directions_.emplace_back(i);
+      }
+      for (auto const& i : new_transport_section_lines) {
+        tt.transport_section_lines_.emplace_back(i);
+      }
+      for (auto const& i : new_transport_section_route_colors) {
+        tt.transport_section_route_colors_.emplace_back(i);
       }
       /* Save snapshot */
       fs::create_directories(local_cache_path);
