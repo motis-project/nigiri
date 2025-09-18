@@ -278,7 +278,7 @@ std::vector<journey::leg const*> get_transit_legs(journey const& j) {
   return transit_legs;
 }
 
-using joined_legs_t = std::vector<std::vector<journey::leg const*> >;
+using joined_legs_t = std::vector<std::vector<journey::leg const*>>;
 
 joined_legs_t join_legs(timetable const& tt,
                         std::vector<journey::leg const*> const& transit_legs) {
@@ -342,10 +342,10 @@ timeframe_group_idx_t match_timeframe(timetable const& tt,
           local_time < day + tf.end_time_ &&  //
           day_idx < tf.service_.size() && tf.service_.test(day_idx)) {
         trace(
-            "TIMEFRAME MATCH: {}, day={}, day_idx={}, timeframe_group_id={}, "
-            "service={}, service_id={}",
-            fmt::streamed(time), fmt::streamed(day), day_idx,
-            tt.strings_.get(f.timeframe_id_[i]), tf.service_,
+            "TIMEFRAME MATCH: local_time={}, time={}, day={}, day_idx={}, "
+            "timeframe_group_id={}, service={}, service_id={}",
+            fmt::streamed(local_time), fmt::streamed(time), fmt::streamed(day),
+            day_idx, tt.strings_.get(f.timeframe_id_[i]), tf.service_,
             tt.strings_.get(tf.service_id_));
         return i;
       }
@@ -354,7 +354,7 @@ timeframe_group_idx_t match_timeframe(timetable const& tt,
   return timeframe_group_idx_t::invalid();
 }
 
-std::pair<source_idx_t, std::vector<fares::fare_leg_rule> > match_leg_rule(
+std::pair<source_idx_t, std::vector<fares::fare_leg_rule>> match_leg_rule(
     timetable const& tt,
     rt_timetable const* rtt,
     effective_fare_leg_t const& joined_legs) {
@@ -369,14 +369,16 @@ std::pair<source_idx_t, std::vector<fares::fare_leg_rule> > match_leg_rule(
   auto const& first = joined_legs.front();
   auto const& last = joined_legs.back();
 
-  auto const first_r = std::get<journey::run_enter_exit>(first->uses_).r_;
+  auto const [first_r, first_stop_range] =
+      std::get<journey::run_enter_exit>(first->uses_);
   auto const first_trip = rt::frun{tt, rtt, first_r};
 
-  auto const last_r = std::get<journey::run_enter_exit>(last->uses_).r_;
+  auto const [last_r, last_stop_range] =
+      std::get<journey::run_enter_exit>(last->uses_);
   auto const last_trip = rt::frun{tt, rtt, last_r};
 
-  auto const from = first_trip[first_r.stop_range_.from_];
-  auto const to = last_trip[last_r.stop_range_.to_ - 1U];
+  auto const from = first_trip[first_stop_range.from_];
+  auto const to = last_trip[last_stop_range.to_ - 1];
 
   auto const src =
       first_trip.is_scheduled()
@@ -392,9 +394,13 @@ std::pair<source_idx_t, std::vector<fares::fare_leg_rule> > match_leg_rule(
   auto const to_network = get_network(last_trip);
   auto const network =
       from_network == to_network ? from_network : network_idx_t::invalid();
+
+  trace("from: {}", fmt::streamed(from));
   auto const from_tf =
       match_timeframe(tt, f, from.get_location_idx(), from.fr_->t_.t_idx_,
                       from.time(event_type::kDep));
+
+  trace("  to: {}", fmt::streamed(to));
   auto const to_tf =
       match_timeframe(tt, f, to.get_location_idx(), to.fr_->t_.t_idx_,
                       to.time(event_type::kArr));
@@ -439,8 +445,8 @@ std::pair<source_idx_t, std::vector<fares::fare_leg_rule> > match_leg_rule(
           for (auto i = a; i < b; ++i) {
             auto const stop_areas = get_areas(tt, fr[i].get_location_idx());
             trace("areas of {}: {}", fr[i].get_location().name_,
-                  stop_areas | std::views::transform([&](area_idx_t const a) {
-                    return tt.strings_.get(tt.areas_[a].name_);
+                  stop_areas | std::views::transform([&](area_idx_t const x) {
+                    return tt.strings_.get(tt.areas_[x].name_);
                   }));
             auto const contains_other_area =
                 utl::any_of(stop_areas, [&](area_idx_t const x) {
@@ -499,6 +505,51 @@ std::pair<source_idx_t, std::vector<fares::fare_leg_rule> > match_leg_rule(
           trace("RULE MATCH\n\t\tRULE = {}\n\t\tLEG = {}\n", leg_rule{tt, f, r},
                 leg_rule{tt, f, x});
           matching_rules.push_back(r);
+        } else {
+          trace("NO MATCH\n\t\tRULE = {}\n\t\tLEG = {}", leg_rule{tt, f, r},
+                leg_rule{tt, f, x});
+
+          auto const criteria =
+              std::initializer_list<std::pair<char const*, bool>>{
+                  {"network", (r.network_ == network_idx_t::invalid() &&
+                               !contains(concrete_network, x.network_)) ||
+                                  r.network_ == x.network_},
+                  {
+                      "from_area",
+                      (r.from_area_ == area_idx_t::invalid() &&
+                       !contains(concrete_from, x.from_area_)) ||
+                          r.from_area_ == x.from_area_,
+                  },
+                  {
+                      "to_area",
+                      (r.to_area_ == area_idx_t::invalid() &&
+                       !contains(concrete_from, x.to_area_)) ||
+                          r.to_area_ == x.to_area_,
+                  },
+                  {"from_timeframe",
+                   r.from_timeframe_group_ ==
+                           timeframe_group_idx_t::invalid() ||
+                       r.from_timeframe_group_ == x.from_timeframe_group_},
+                  {"to_timeframe",
+                   r.to_timeframe_group_ == timeframe_group_idx_t::invalid() ||
+                       r.to_timeframe_group_ == x.to_timeframe_group_},
+                  {"contains_area_set",
+                   r.contains_area_set_id_ == area_set_idx_t::invalid() ||
+                       utl::all_of(f.area_sets_[r.contains_area_set_id_],
+                                   has_area)},
+                  {"contains_exactly_area_set",
+                   r.contains_exactly_area_set_id_ ==
+                           area_set_idx_t::invalid() ||
+                       (utl::all_of(
+                            f.area_sets_[r.contains_exactly_area_set_id_],
+                            has_area) &&
+                        !has_other_area(
+                            f.area_sets_[r.contains_exactly_area_set_id_]))}};
+          for (auto const& [criterion, matched] : criteria) {
+            if (!matched) {
+              trace("    {} -> NO MATCH", criterion);
+            }
+          }
         }
       }
     });
