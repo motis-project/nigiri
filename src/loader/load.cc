@@ -411,6 +411,9 @@ timetable load(std::vector<timetable_source> const& sources,
       tt.location_routes_.clear();
       tt.providers_.reset();
       tt.provider_id_to_idx_.reset();
+      // length must correspond to src
+      tt.fares_.reset();
+      tt.fares_.resize(to_idx(src));
       tt.areas_.reset();
       tt.location_areas_.clear();
       tt.location_group_locations_.clear();
