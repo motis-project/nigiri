@@ -458,6 +458,8 @@ timetable load(std::vector<timetable_source> const& sources,
       assert(tt.flex_area_locations_.size() == 0);
       assert(tt.trip_train_nr_.size() == 0);
       assert(tt.initial_day_offset_.size() == 0);
+      assert(tt.profiles_.size() == 0);
+      assert(tt.date_range_ == date_range);
       /* Load file */
       try {
         (*it)->load(local_config, src, *dir, tt, bitfields, a,
@@ -1255,6 +1257,11 @@ timetable load(std::vector<timetable_source> const& sources,
       for (auto const& i : new_trip_directions) {
         tt.trip_directions_.push_back(im.map(i));
       }
+      /*     Other	*/
+      // tt.profiles_ not used during loading
+      assert(tt.profiles_.size() == 0);
+      // tt.date_range_ not changed
+      assert(tt.date_range_ == date_range);
       /* Save snapshot */
       fs::create_directories(local_cache_path);
       if (shapes != nullptr) {
