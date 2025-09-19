@@ -396,6 +396,7 @@ timetable load(std::vector<timetable_source> const& sources,
       tt.transport_traffic_days_.reset();
       tt.transport_route_.reset();
       tt.transport_to_trip_section_.clear();
+      tt.merged_trips_.clear();
       tt.attributes_.reset();
       tt.attribute_combinations_.clear();
       tt.trip_direction_strings_.clear();
@@ -503,10 +504,7 @@ timetable load(std::vector<timetable_source> const& sources,
       auto const new_transport_to_trip_section = tt.transport_to_trip_section_;
       auto const new_languages = tt.languages_;
       auto const new_locations = tt.locations_;
-      auto new_merged_trips = vecvec<merged_trips_idx_t, trip_idx_t>{};
-      for (auto i = old_merged_trips.size(); i < tt.merged_trips_.size(); ++i) {
-        new_merged_trips.emplace_back(tt.merged_trips_[merged_trips_idx_t{i}]);
-      }
+      auto const new_merged_trips = tt.merged_trips_;
       auto const new_attributes = tt.attributes_;
       auto const new_attribute_combinations = tt.attribute_combinations_;
       auto const new_trip_direction_strings = tt.trip_direction_strings_;
@@ -1156,6 +1154,8 @@ timetable load(std::vector<timetable_source> const& sources,
       for (auto const& i : new_trip_display_names) {
         tt.trip_display_names_.emplace_back(i);
       }
+      auto const merged_trips_idx_offset =
+          merged_trips_idx_t{tt.merged_trips_.size()};
       for (auto const& i : new_merged_trips) {
         auto vec = tt.merged_trips_.add_back_sized(0U);
         for (auto const& j : i) {
@@ -1201,7 +1201,12 @@ timetable load(std::vector<timetable_source> const& sources,
                                                  : bitfield_idx_t::invalid());
       }
       for (auto const& i : new_transport_to_trip_section) {
-        tt.transport_to_trip_section_.emplace_back(i);
+        auto vec = tt.transport_to_trip_section_.add_back_sized(0U);
+        for (auto const& j : i) {
+          vec.push_back(j != merged_trips_idx_t::invalid()
+                            ? j + merged_trips_idx_offset
+                            : merged_trips_idx_t::invalid());
+        }
       }
       for (auto const& i : new_transport_section_attributes) {
         tt.transport_section_attributes_.emplace_back(i);
