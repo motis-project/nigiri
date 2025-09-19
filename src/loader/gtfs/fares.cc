@@ -158,6 +158,11 @@ hash_map<std::string, leg_group_idx_t> parse_leg_rules(
         contains_area_set_id_;
   };
 
+  f.has_priority_ =
+      utl::read_header<fare_leg_rule_record>(
+          utl::buf_reader<utl::noop_progress_consumer>{file_content}
+              .read_line())[7] != utl::NO_COLUMN_IDX;
+
   auto m = hash_map<std::string, leg_group_idx_t>{};
   auto next_leg_group_idx = leg_group_idx_t{};
   utl::for_each_row<fare_leg_rule_record>(

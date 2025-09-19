@@ -482,13 +482,13 @@ std::pair<source_idx_t, std::vector<fares::fare_leg_rule>> match_leg_rule(
       for (auto const& r : f.fare_leg_rules_) {
         auto const matches =
             ((r.network_ == network_idx_t::invalid() &&
-              !contains(concrete_network, x.network_)) ||
+              (f.has_priority_ || !contains(concrete_network, x.network_))) ||
              r.network_ == x.network_) &&
             ((r.from_area_ == area_idx_t::invalid() &&
-              !contains(concrete_from, x.from_area_)) ||
+              (f.has_priority_ || !contains(concrete_from, x.from_area_))) ||
              r.from_area_ == x.from_area_) &&
             ((r.to_area_ == area_idx_t::invalid() &&
-              !contains(concrete_to, x.to_area_)) ||
+              (f.has_priority_ || !contains(concrete_to, x.to_area_))) ||
              r.to_area_ == x.to_area_) &&
             (r.from_timeframe_group_ == timeframe_group_idx_t::invalid() ||
              r.from_timeframe_group_ == x.from_timeframe_group_) &&
@@ -509,42 +509,36 @@ std::pair<source_idx_t, std::vector<fares::fare_leg_rule>> match_leg_rule(
           trace("NO MATCH\n\t\tRULE = {}\n\t\tLEG = {}", leg_rule{tt, f, r},
                 leg_rule{tt, f, x});
 
-          auto const criteria =
-              std::initializer_list<std::pair<char const*, bool>>{
-                  {"network", (r.network_ == network_idx_t::invalid() &&
-                               !contains(concrete_network, x.network_)) ||
-                                  r.network_ == x.network_},
-                  {
-                      "from_area",
-                      (r.from_area_ == area_idx_t::invalid() &&
-                       !contains(concrete_from, x.from_area_)) ||
-                          r.from_area_ == x.from_area_,
-                  },
-                  {
-                      "to_area",
-                      (r.to_area_ == area_idx_t::invalid() &&
-                       !contains(concrete_from, x.to_area_)) ||
-                          r.to_area_ == x.to_area_,
-                  },
-                  {"from_timeframe",
-                   r.from_timeframe_group_ ==
-                           timeframe_group_idx_t::invalid() ||
-                       r.from_timeframe_group_ == x.from_timeframe_group_},
-                  {"to_timeframe",
-                   r.to_timeframe_group_ == timeframe_group_idx_t::invalid() ||
-                       r.to_timeframe_group_ == x.to_timeframe_group_},
-                  {"contains_area_set",
-                   r.contains_area_set_id_ == area_set_idx_t::invalid() ||
-                       utl::all_of(f.area_sets_[r.contains_area_set_id_],
-                                   has_area)},
-                  {"contains_exactly_area_set",
-                   r.contains_exactly_area_set_id_ ==
-                           area_set_idx_t::invalid() ||
-                       (utl::all_of(
-                            f.area_sets_[r.contains_exactly_area_set_id_],
-                            has_area) &&
-                        !has_other_area(
-                            f.area_sets_[r.contains_exactly_area_set_id_]))}};
+          auto const criteria = std::initializer_list<
+              std::pair<char const*, bool>>{
+              {"network",
+               (r.network_ == network_idx_t::invalid() &&
+                (f.has_priority_ || !contains(concrete_network, x.network_))) ||
+                   r.network_ == x.network_},
+              {"from_area",
+               (r.from_area_ == area_idx_t::invalid() &&
+                (f.has_priority_ || !contains(concrete_from, x.from_area_))) ||
+                   r.from_area_ == x.from_area_},
+              {"to_area",
+               (r.to_area_ == area_idx_t::invalid() &&
+                (f.has_priority_ || !contains(concrete_to, x.to_area_))) ||
+                   r.to_area_ == x.to_area_},
+              {"from_timeframe",
+               r.from_timeframe_group_ == timeframe_group_idx_t::invalid() ||
+                   r.from_timeframe_group_ == x.from_timeframe_group_},
+              {"to_timeframe",
+               r.to_timeframe_group_ == timeframe_group_idx_t::invalid() ||
+                   r.to_timeframe_group_ == x.to_timeframe_group_},
+              {"contains_area_set",
+               r.contains_area_set_id_ == area_set_idx_t::invalid() ||
+                   utl::all_of(f.area_sets_[r.contains_area_set_id_],
+                               has_area)},
+              {"contains_exactly_area_set",
+               r.contains_exactly_area_set_id_ == area_set_idx_t::invalid() ||
+                   (utl::all_of(f.area_sets_[r.contains_exactly_area_set_id_],
+                                has_area) &&
+                    !has_other_area(
+                        f.area_sets_[r.contains_exactly_area_set_id_]))}};
           for (auto const& [criterion, matched] : criteria) {
             if (!matched) {
               trace("    {} -> NO MATCH", criterion);
