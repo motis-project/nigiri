@@ -376,9 +376,7 @@ timetable load(std::vector<timetable_source> const& sources,
       tt.trip_id_src_.reset();
       tt.trip_direction_id_.resize(0U);
       tt.trip_route_id_.reset();
-      // length must correspond to src
       tt.route_ids_.reset();
-      tt.route_ids_.resize(to_idx(src));
       tt.trip_transport_ranges_.clear();
       tt.trip_stop_seq_numbers_.clear();
       tt.trip_debug_ = mutable_fws_multimap<trip_idx_t, trip_debug>{};
@@ -414,9 +412,7 @@ timetable load(std::vector<timetable_source> const& sources,
       tt.location_routes_.clear();
       tt.providers_.reset();
       tt.provider_id_to_idx_.reset();
-      // length must correspond to src
       tt.fares_.reset();
-      tt.fares_.resize(to_idx(src));
       tt.areas_.reset();
       tt.location_areas_.clear();
       tt.location_group_locations_.clear();
@@ -466,7 +462,7 @@ timetable load(std::vector<timetable_source> const& sources,
       assert(tt.date_range_ == date_range);
       /* Load file */
       try {
-        (*it)->load(local_config, src, *dir, tt, bitfields, a,
+        (*it)->load(local_config, source_idx_t{0}, *dir, tt, bitfields, a,
                     shape_store.get());
       } catch (std::exception const& e) {
         throw utl::fail("failed to load {}: {}", path, e.what());
@@ -480,8 +476,7 @@ timetable load(std::vector<timetable_source> const& sources,
       auto const new_trip_id_src = tt.trip_id_src_;
       auto const new_trip_direction_id = tt.trip_direction_id_;
       auto const new_trip_route_id = tt.trip_route_id_;
-      auto new_route_ids = vector_map<source_idx_t, timetable::route_ids>{};
-      new_route_ids.emplace_back(tt.route_ids_[src]);
+      auto const new_route_ids = tt.route_ids_;
       auto const new_trip_transport_ranges = tt.trip_transport_ranges_;
       auto const new_trip_stop_seq_numbers = tt.trip_stop_seq_numbers_;
       auto const new_source_file_names = tt.source_file_names_;
@@ -525,9 +520,7 @@ timetable load(std::vector<timetable_source> const& sources,
       auto const new_location_routes = tt.location_routes_;
       auto const new_providers = tt.providers_;
       auto const new_provider_id_to_idx = tt.provider_id_to_idx_;
-      // last fares are new
-      auto new_fares = vector_map<source_idx_t, fares>{};
-      new_fares.push_back(tt.fares_[src]);
+      auto const new_fares = tt.fares_;
       auto const new_areas = tt.areas_;
       auto const new_location_areas = tt.location_areas_;
       auto const new_location_location_groups = tt.location_location_groups_;
@@ -659,6 +652,7 @@ timetable load(std::vector<timetable_source> const& sources,
         string_map.push_back(new_idx);
       }
       /*	 sources	*/
+      auto const source_idx_offset = source_idx_t{tt.src_end_date_.size()};
       for (auto const& i : new_source_end_date) {
         tt.src_end_date_.push_back(i);
       }
@@ -696,7 +690,10 @@ timetable load(std::vector<timetable_source> const& sources,
       {  // merge locations struct
         auto&& loc = tt.locations_;
         for (auto const& i : new_locations.location_id_to_idx_) {
-          auto const loc_id = i.first;
+          auto loc_id = i.first;
+          loc_id.src_ = loc_id.src_ != source_idx_t::invalid()
+                            ? loc_id.src_ + source_idx_offset
+                            : source_idx_t::invalid();
           auto const loc_idx = i.second != location_idx_t::invalid()
                                    ? i.second + locations_offset
                                    : location_idx_t::invalid();
@@ -731,7 +728,9 @@ timetable load(std::vector<timetable_source> const& sources,
           loc.coordinates_.push_back(i);
         }
         for (auto const& i : new_locations.src_) {
-          loc.src_.push_back(i);
+          loc.src_.push_back(i != source_idx_t::invalid()
+                                 ? i + source_idx_offset
+                                 : source_idx_t::invalid());
         }
         for (auto const& i : new_locations.transfer_time_) {
           loc.transfer_time_.push_back(i);
@@ -1079,7 +1078,9 @@ timetable load(std::vector<timetable_source> const& sources,
                                 .tz_ = i.tz_ != timezone_idx_t::invalid()
                                            ? i.tz_ + timezones_offset
                                            : timezone_idx_t::invalid(),
-                                .src_ = i.src_};
+                                .src_ = i.src_ != source_idx_t::invalid()
+                                            ? i.src_ + source_idx_offset
+                                            : source_idx_t::invalid()};
         tt.providers_.push_back(p);
       }
       for (auto const& i : new_provider_id_to_idx) {
@@ -1095,7 +1096,9 @@ timetable load(std::vector<timetable_source> const& sources,
         tt.flex_area_id_.push_back(string_map[i]);
       }
       for (auto const& i : new_flex_area_src) {
-        tt.flex_area_src_.push_back(i);
+        tt.flex_area_src_.push_back(i != source_idx_t::invalid()
+                                        ? i + source_idx_offset
+                                        : source_idx_t::invalid());
       }
       // tt.flex_area_locations_ not used during loading
       assert(tt.flex_area_locations_.size() == 0);
@@ -1213,7 +1216,9 @@ timetable load(std::vector<timetable_source> const& sources,
         }
       }
       for (auto const& i : new_trip_id_src) {
-        tt.trip_id_src_.push_back(i);
+        tt.trip_id_src_.push_back(i != source_idx_t::invalid()
+                                      ? i + source_idx_offset
+                                      : source_idx_t::invalid());
       }
       for (auto const& i : new_trip_id_strings) {
         tt.trip_id_strings_.emplace_back(i);
