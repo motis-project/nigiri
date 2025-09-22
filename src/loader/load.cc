@@ -364,83 +364,6 @@ timetable load(std::vector<timetable_source> const& sources,
       auto const old_n_sources = tt.n_sources_;
       tt.n_sources_ = old_n_sources;
       /* Prepare timetable by emptying corrected fields */
-      tt.bitfields_.reset();
-      auto bitfields = hash_map<bitfield, bitfield_idx_t>{};
-      auto shape_store = shapes != nullptr
-                             ? std::make_unique<shapes_storage>(
-                                   local_cache_path, shapes->mode_)
-                             : nullptr;
-      tt.src_end_date_.reset();
-      tt.source_file_names_.clear();
-      tt.trip_id_to_idx_.clear();
-      tt.trip_ids_ = mutable_fws_multimap<trip_idx_t, trip_id_idx_t>{};
-      tt.trip_id_strings_.clear();
-      tt.trip_id_src_.reset();
-      tt.trip_direction_id_.resize(0U);
-      tt.trip_route_id_.reset();
-      tt.route_ids_.reset();
-      tt.trip_transport_ranges_.clear();
-      tt.trip_stop_seq_numbers_.clear();
-      tt.trip_debug_ = mutable_fws_multimap<trip_idx_t, trip_debug>{};
-      tt.trip_short_names_.clear();
-      tt.trip_display_names_.clear();
-      tt.route_transport_ranges_.reset();
-      tt.route_location_seq_.clear();
-      tt.route_clasz_.clear();
-      tt.route_section_clasz_.clear();
-      tt.route_bikes_allowed_.resize(0U);
-      tt.route_cars_allowed_.resize(0U);
-      tt.route_bikes_allowed_per_section_.clear();
-      tt.route_cars_allowed_per_section_.clear();
-      tt.route_stop_time_ranges_.reset();
-      tt.route_stop_times_.clear();
-      tt.transport_first_dep_offset_.reset();
-      tt.transport_traffic_days_.reset();
-      tt.transport_route_.reset();
-      tt.transport_to_trip_section_.clear();
-      tt.merged_trips_.clear();
-      tt.attributes_.reset();
-      tt.attribute_combinations_.clear();
-      tt.trip_direction_strings_.clear();
-      tt.trip_directions_.reset();
-      tt.trip_lines_.clear();
-      tt.transport_section_attributes_.clear();
-      tt.transport_section_providers_.clear();
-      tt.transport_section_directions_.clear();
-      tt.transport_section_lines_.clear();
-      tt.transport_section_route_colors_.clear();
-      tt.languages_.clear();
-      tt.locations_ = timetable::locations{};
-      tt.location_routes_.clear();
-      tt.providers_.reset();
-      tt.provider_id_to_idx_.reset();
-      tt.fares_.reset();
-      tt.areas_.reset();
-      tt.location_areas_.clear();
-      tt.location_group_locations_.clear();
-      tt.location_location_groups_.clear();
-      tt.location_group_name_.reset();
-      tt.location_group_id_.reset();
-      tt.flex_area_bbox_.reset();
-      tt.flex_area_id_.reset();
-      tt.flex_area_src_.reset();
-      tt.flex_area_outers_ = nvec<flex_area_idx_t, geo::latlng, 2U>{};
-      tt.flex_area_inners_ = nvec<flex_area_idx_t, geo::latlng, 3U>{};
-      tt.flex_area_name_.clear();
-      tt.flex_area_desc_.clear();
-      tt.flex_area_rtree_ = rtree<flex_area_idx_t>{};
-      tt.location_group_transports_.clear();
-      tt.flex_area_transports_.clear();
-      tt.flex_transport_traffic_days_.reset();
-      tt.flex_transport_trip_.reset();
-      tt.flex_transport_stop_time_windows_.clear();
-      tt.flex_transport_stop_seq_.reset();
-      tt.flex_stop_seq_.clear();
-      tt.flex_transport_pickup_booking_rule_.clear();
-      tt.flex_transport_drop_off_booking_rule_.clear();
-      tt.booking_rules_.reset();
-      tt.strings_ = string_store<string_idx_t>{};
-      tt.n_sources_ = 1U;
       // Fields not used during loading
       assert(tt.locations_.footpaths_out_.size() == kNProfiles);
       for (auto const& i : tt.locations_.footpaths_out_) {
@@ -463,6 +386,15 @@ timetable load(std::vector<timetable_source> const& sources,
       assert(tt.initial_day_offset_.size() == 0);
       assert(tt.profiles_.size() == 0);
       assert(tt.date_range_ == date_range);
+      // create local state
+      auto bitfields = hash_map<bitfield, bitfield_idx_t>{};
+      auto shape_store = shapes != nullptr
+                             ? std::make_unique<shapes_storage>(
+                                   local_cache_path, shapes->mode_)
+                             : nullptr;
+      tt = timetable{};
+      tt.date_range_ = date_range;
+      tt.n_sources_ = 1U;
       /* Load file */
       try {
         (*it)->load(local_config, source_idx_t{0}, *dir, tt, bitfields, a,
