@@ -387,10 +387,12 @@ timetable load(std::vector<timetable_source> const& sources,
       assert(tt.profiles_.size() == 0);
       assert(tt.date_range_ == date_range);
       // create local state
+      auto const load_local_cache_path =
+          cache_path / fmt::format("tt{:d}", idx + sources.size());
       auto bitfields = hash_map<bitfield, bitfield_idx_t>{};
       auto shape_store = shapes != nullptr
                              ? std::make_unique<shapes_storage>(
-                                   local_cache_path, shapes->mode_)
+                                   load_local_cache_path, shapes->mode_)
                              : nullptr;
       tt = timetable{};
       tt.date_range_ = date_range;
@@ -402,6 +404,7 @@ timetable load(std::vector<timetable_source> const& sources,
       } catch (std::exception const& e) {
         throw utl::fail("failed to load {}: {}", path, e.what());
       }
+      tt.write(load_local_cache_path / "tt.bin");
       /* Save new data */
       auto const new_bitfields = tt.bitfields_;
       auto const new_source_end_date = tt.src_end_date_;
