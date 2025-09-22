@@ -27,7 +27,6 @@ void register_special_stations(timetable& tt) {
                                    location_idx_t::invalid(),
                                    timezone_idx_t::invalid(),
                                    0_minutes,
-                                   {},
                                    tt});
   }
   tt.location_routes_.resize(tt.n_locations());
