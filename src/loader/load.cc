@@ -84,6 +84,7 @@ struct index_mapping {
   language_idx_t const language_idx_offset_;
   location_group_idx_t const location_group_idx_offset_;
   location_idx_t const location_idx_offset_;
+  provider_idx_t const provider_idx_offset_;
   route_idx_t const route_idx_offset_;
   source_file_idx_t const source_file_idx_offset_;
   source_idx_t const source_idx_offset_;
@@ -98,6 +99,7 @@ struct index_mapping {
         language_idx_offset_{first_tt.languages_.size()},
         location_group_idx_offset_{first_tt.location_group_name_.size()},
         location_idx_offset_{first_tt.n_locations()},
+        provider_idx_offset_{first_tt.providers_.size()},
         route_idx_offset_{first_tt.n_routes()},
         source_file_idx_offset_{first_tt.source_file_names_.size()},
         source_idx_offset_{first_tt.src_end_date_.size()},
@@ -127,6 +129,10 @@ struct index_mapping {
   auto map(location_idx_t const& i) const {
     return i != location_idx_t::invalid() ? i + location_idx_offset_
                                           : location_idx_t::invalid();
+  }
+  auto map(provider_idx_t const& i) const {
+    return i != provider_idx_t::invalid() ? i + provider_idx_offset_
+                                          : provider_idx_t::invalid();
   }
   auto map(route_idx_t const& i) const {
     return i != route_idx_t::invalid() ? i + route_idx_offset_
@@ -776,7 +782,6 @@ timetable load(std::vector<timetable_source> const& sources,
         tt.fares_.push_back(mapped_fares);
       }
       /*      provider_idx_t	*/
-      auto const provider_idx_offset = provider_idx_t{tt.providers_.size()};
       for (auto const& i : new_providers) {
         auto const p = provider{.id_ = string_map[i.id_],
                                 .name_ = string_map[i.name_],
@@ -786,9 +791,7 @@ timetable load(std::vector<timetable_source> const& sources,
         tt.providers_.push_back(p);
       }
       for (auto const& i : new_provider_id_to_idx) {
-        tt.provider_id_to_idx_.push_back(i != provider_idx_t::invalid()
-                                             ? i + provider_idx_offset
-                                             : provider_idx_t::invalid());
+        tt.provider_id_to_idx_.push_back(im.map(i));
       }
       /*	  Flex		*/
       for (auto const& i : new_flex_area_bbox) {
@@ -963,9 +966,7 @@ timetable load(std::vector<timetable_source> const& sources,
         }
         auto mapped_providers = vector_map<route_id_idx_t, provider_idx_t>{};
         for (auto const& j : i.route_id_provider_) {
-          mapped_providers.push_back(j != provider_idx_t::invalid()
-                                         ? j + provider_idx_offset
-                                         : provider_idx_t::invalid());
+          mapped_providers.push_back(im.map(j));
         }
         auto const mapped_route_ids = timetable::route_ids{
             .route_id_short_names_ = i.route_id_short_names_,
@@ -1002,9 +1003,7 @@ timetable load(std::vector<timetable_source> const& sources,
       for (auto const& i : new_transport_section_providers) {
         auto vec = tt.transport_section_providers_.add_back_sized(0U);
         for (auto const& j : i) {
-          vec.push_back(j != provider_idx_t::invalid()
-                            ? j + provider_idx_offset
-                            : provider_idx_t::invalid());
+          vec.push_back(im.map(j));
         }
       }
       for (auto const& i : new_transport_section_directions) {
