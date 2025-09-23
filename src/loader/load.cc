@@ -218,12 +218,6 @@ timetable load(std::vector<timetable_source> const& sources,
       }
       progress_tracker->context(std::string{tag});
       progress_tracker->status("Merging...");
-      auto bitfields_ = hash_map<bitfield, bitfield_idx_t>{};
-      for (auto const [idx_, bf] : utl::enumerate(tt.bitfields_)) {
-        auto new_idx =
-            utl::get_or_create(bitfields_, bf, [&]() { return idx_; });
-        assert(new_idx == idx_);  // bitfields must be unique in the timetable
-      }
       /* Prepare timetable by emptying corrected fields */
       // Fields not used during loading
       assert(tt.locations_.footpaths_out_.size() == kNProfiles);
@@ -346,6 +340,12 @@ timetable load(std::vector<timetable_source> const& sources,
       auto const im = index_mapping(tt);
       /*	bitfields	*/
       auto corrected_indices = vector_map<bitfield_idx_t, bitfield_idx_t>{};
+      auto bitfields_ = hash_map<bitfield, bitfield_idx_t>{};
+      for (auto const [idx_, bf] : utl::enumerate(tt.bitfields_)) {
+        auto new_idx =
+            utl::get_or_create(bitfields_, bf, [&]() { return idx_; });
+        assert(new_idx == idx_);  // bitfields must be unique in the timetable
+      }
       for (auto const& [idx_, bf] : utl::enumerate(new_bitfields)) {
         auto adjusted_idx = utl::get_or_create(
             bitfields_, bf, [&]() { return tt.register_bitfield(bf); });
