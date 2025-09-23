@@ -80,12 +80,14 @@ struct change_detector {
 
 struct index_mapping {
   language_idx_t const language_idx_offset_;
+  location_group_idx_t const location_group_idx_offset_;
   location_idx_t const location_idx_offset_;
   source_file_idx_t const source_file_idx_offset_;
   trip_direction_string_idx_t const trip_direction_string_idx_offset_;
 
   index_mapping(timetable const& first_tt)
       : language_idx_offset_{first_tt.languages_.size()},
+        location_group_idx_offset_{first_tt.location_group_name_.size()},
         location_idx_offset_{first_tt.n_locations()},
         source_file_idx_offset_{first_tt.source_file_names_.size()},
         trip_direction_string_idx_offset_{
@@ -94,6 +96,11 @@ struct index_mapping {
   auto map(language_idx_t const& i) const {
     return i != language_idx_t::invalid() ? i + language_idx_offset_
                                           : language_idx_t::invalid();
+  }
+  auto map(location_group_idx_t const& i) const {
+    return i != location_group_idx_t::invalid()
+               ? i + location_group_idx_offset_
+               : location_group_idx_t::invalid();
   }
   auto map(location_idx_t const& i) const {
     return i != location_idx_t::invalid() ? i + location_idx_offset_
@@ -404,8 +411,6 @@ timetable load(std::vector<timetable_source> const& sources,
         tt.languages_.emplace_back(i);
       }
       /*       location_idx_t	*/
-      auto const location_group_offset =
-          location_group_idx_t{tt.location_group_name_.size()};
       auto const alt_name_idx_offset =
           alt_name_idx_t{tt.locations_.alt_name_strings_.size()};
       auto const timezones_offset =
@@ -544,10 +549,7 @@ timetable load(std::vector<timetable_source> const& sources,
            i < location_idx_t{new_location_location_groups.size()}; ++i) {
         tt.location_location_groups_.emplace_back_empty();
         for (auto const& j : new_location_location_groups[i]) {
-          tt.location_location_groups_.back().push_back(
-              j != location_group_idx_t::invalid()
-                  ? j + location_group_offset
-                  : location_group_idx_t::invalid());
+          tt.location_location_groups_.back().push_back(im.map(j));
         }
       }
       for (location_group_idx_t i = location_group_idx_t{0};
