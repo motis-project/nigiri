@@ -88,6 +88,7 @@ struct index_mapping {
   source_file_idx_t const source_file_idx_offset_;
   source_idx_t const source_idx_offset_;
   timezone_idx_t const timezone_idx_offset_;
+  transport_idx_t const transport_idx_offset_;
   trip_direction_string_idx_t const trip_direction_string_idx_offset_;
   trip_idx_t const trip_idx_offset_;
 
@@ -101,6 +102,7 @@ struct index_mapping {
         source_file_idx_offset_{first_tt.source_file_names_.size()},
         source_idx_offset_{first_tt.src_end_date_.size()},
         timezone_idx_offset_{first_tt.locations_.timezones_.size()},
+        transport_idx_offset_{first_tt.transport_traffic_days_.size()},
         trip_direction_string_idx_offset_{
             first_tt.trip_direction_strings_.size()},
         trip_idx_offset_{first_tt.trip_ids_.size()} {}
@@ -146,6 +148,10 @@ struct index_mapping {
     return i != timezone_idx_t::invalid() ? i + timezone_idx_offset_
                                           : timezone_idx_t::invalid();
   }
+  auto map(transport_idx_t const& i) const {
+    return i != transport_idx_t::invalid() ? i + transport_idx_offset_
+                                           : transport_idx_t::invalid();
+  }
   auto map(trip_debug const& i) const {
     return trip_debug{map(i.source_file_idx_), i.line_number_from_,
                       i.line_number_to_};
@@ -187,6 +193,11 @@ struct index_mapping {
   }
   auto map(location_id const& i) const {
     return location_id{i.id_, map(i.src_)};
+  }
+
+  template <typename T>
+  auto map(interval<T> const& i) const {
+    return interval{map(i.from_), map(i.to_)};
   }
 
   template <typename T>
@@ -610,15 +621,8 @@ timetable load(std::vector<timetable_source> const& sources,
         assert(i.size() == 0);
       }
       /*        route_idx_t	*/
-      auto const transport_idx_offset =
-          transport_idx_t{tt.transport_traffic_days_.size()};
       for (auto const& i : new_route_transport_ranges) {
-        tt.route_transport_ranges_.push_back(interval{
-            i.from_ != transport_idx_t::invalid()
-                ? i.from_ + transport_idx_offset
-                : transport_idx_t::invalid(),
-            i.to_ != transport_idx_t::invalid() ? i.to_ + transport_idx_offset
-                                                : transport_idx_t::invalid()});
+        tt.route_transport_ranges_.push_back(im.map(i));
       }
       for (auto const& i : new_route_location_seq) {
         auto vec = tt.route_location_seq_.add_back_sized(0U);
