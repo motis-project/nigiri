@@ -79,6 +79,7 @@ struct change_detector {
 };
 
 struct index_mapping {
+  alt_name_idx_t const alt_name_idx_offset_;
   language_idx_t const language_idx_offset_;
   location_group_idx_t const location_group_idx_offset_;
   location_idx_t const location_idx_offset_;
@@ -86,13 +87,18 @@ struct index_mapping {
   trip_direction_string_idx_t const trip_direction_string_idx_offset_;
 
   index_mapping(timetable const& first_tt)
-      : language_idx_offset_{first_tt.languages_.size()},
+      : alt_name_idx_offset_{first_tt.locations_.alt_name_strings_.size()},
+        language_idx_offset_{first_tt.languages_.size()},
         location_group_idx_offset_{first_tt.location_group_name_.size()},
         location_idx_offset_{first_tt.n_locations()},
         source_file_idx_offset_{first_tt.source_file_names_.size()},
         trip_direction_string_idx_offset_{
             first_tt.trip_direction_strings_.size()} {}
 
+  auto map(alt_name_idx_t const& i) const {
+    return i != alt_name_idx_t::invalid() ? i + alt_name_idx_offset_
+                                          : alt_name_idx_t::invalid();
+  }
   auto map(language_idx_t const& i) const {
     return i != language_idx_t::invalid() ? i + language_idx_offset_
                                           : language_idx_t::invalid();
@@ -411,8 +417,6 @@ timetable load(std::vector<timetable_source> const& sources,
         tt.languages_.emplace_back(i);
       }
       /*       location_idx_t	*/
-      auto const alt_name_idx_offset =
-          alt_name_idx_t{tt.locations_.alt_name_strings_.size()};
       auto const timezones_offset =
           timezone_idx_t{tt.locations_.timezones_.size()};
       auto const trip_offset = trip_idx_t{tt.trip_ids_.size()};
@@ -447,9 +451,7 @@ timetable load(std::vector<timetable_source> const& sources,
         for (auto const& i : new_locations.alt_names_) {
           auto vec = loc.alt_names_.add_back_sized(0U);
           for (auto const& j : i) {
-            vec.push_back(j != alt_name_idx_t::invalid()
-                              ? j + alt_name_idx_offset
-                              : alt_name_idx_t::invalid());
+            vec.push_back(im.map(j));
           }
         }
         for (auto const& i : new_locations.coordinates_) {
