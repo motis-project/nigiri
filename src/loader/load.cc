@@ -79,16 +79,22 @@ struct change_detector {
 };
 
 struct index_mapping {
+  language_idx_t const language_idx_offset_;
   location_idx_t const location_idx_offset_;
   source_file_idx_t const source_file_idx_offset_;
   trip_direction_string_idx_t const trip_direction_string_idx_offset_;
 
   index_mapping(timetable const& first_tt)
-      : location_idx_offset_{first_tt.n_locations()},
+      : language_idx_offset_{first_tt.languages_.size()},
+        location_idx_offset_{first_tt.n_locations()},
         source_file_idx_offset_{first_tt.source_file_names_.size()},
         trip_direction_string_idx_offset_{
             first_tt.trip_direction_strings_.size()} {}
 
+  auto map(language_idx_t const& i) const {
+    return i != language_idx_t::invalid() ? i + language_idx_offset_
+                                          : language_idx_t::invalid();
+  }
   auto map(location_idx_t const& i) const {
     return i != location_idx_t::invalid() ? i + location_idx_offset_
                                           : location_idx_t::invalid();
@@ -382,7 +388,6 @@ timetable load(std::vector<timetable_source> const& sources,
         }
       }
       /*	 languages	*/
-      auto const language_offset = language_idx_t{tt.languages_.size()};
       for (auto const& i : new_languages) {
         tt.languages_.emplace_back(i);
       }
@@ -519,9 +524,7 @@ timetable load(std::vector<timetable_source> const& sources,
           loc.alt_name_strings_.emplace_back(i);
         }
         for (auto const& i : new_locations.alt_name_langs_) {
-          loc.alt_name_langs_.push_back(i != language_idx_t::invalid()
-                                            ? i + language_offset
-                                            : language_idx_t::invalid());
+          loc.alt_name_langs_.push_back(im.map(i));
         }
         /*
           loc.max_importance_ and loc.rtree_ don't get used during loading
