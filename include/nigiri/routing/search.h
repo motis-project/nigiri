@@ -300,11 +300,11 @@ struct search {
     }
 
     if (is_pretrip()) {
-      utl::erase_if(state_.results_, [&](journey const& j) {
-        return !search_interval_.contains(j.start_time_) ||
-               j.travel_time() >= fastest_direct_ ||
-               j.travel_time() > q_.max_travel_time_;
-      });
+//      utl::erase_if(state_.results_, [&](journey const& j) {
+//        return !search_interval_.contains(j.start_time_) ||
+//               j.travel_time() >= fastest_direct_ ||
+//               j.travel_time() > q_.max_travel_time_;
+//      });
 
       if (false) {//if (q_.slow_direct_) {
         auto direct = std::vector<journey>{};

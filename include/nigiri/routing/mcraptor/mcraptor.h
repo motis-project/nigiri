@@ -40,7 +40,7 @@ struct mcraptor {
     float success_chance;
 
     bool dominates(mcraptor_label const& l) const {
-      return (kFwd ? this->arr_t_ <= l.arr_t_ : this->arr_t_ >= l.arr_t_) && this->success_chance >= l.success_chance;
+      return ((kFwd ? this->arr_t_ < l.arr_t_ : this->arr_t_ > l.arr_t_) && this->success_chance > l.success_chance) || this->trip_id == l.trip_id;
     }
   };
 
@@ -279,9 +279,12 @@ struct mcraptor {
     }
   }
 
-  void print_leg(auto leg, auto indent){
+  void print_leg(journey::leg leg, auto indent){
     for(int i = 0; i<indent; ++i) std::cout <<"\t";
-    std::cout << location{tt_, leg.from_} << " ["<< leg.dep_time_ << "] TO: " << location{tt_, leg.to_} << " ["<< leg.arr_time_ << "] - " << leg.success_chance << std::endl;
+    std::cout << location{tt_, leg.from_} << " ["<< leg.dep_time_ << "] TO: " << location{tt_, leg.to_} << " ["<< leg.arr_time_ << "] - " << leg.success_chance;
+
+    leg.print(std::cout, tt_);
+    std::cout << std::endl;
   }
 
   void reconstruct_leg(query const& q, journey& j, auto i, auto l, mcraptor_label label){
@@ -352,9 +355,9 @@ private:
         et_label.arr_t_ = by_transport;
         if (!best_bag_[l_idx].dominates(et_label) &&
             !tmp_[l_idx].dominates(et_label) &&
-            !dest_bag_.dominates({.arr_t_ = by_transport, .success_chance = et_label.success_chance}, k) &&
+            !dest_bag_.dominates(et_label, k) &&
             lb_[l_idx] != kUnreachable &&
-            !dest_bag_.dominates({.arr_t_ = static_cast<delta_t>(by_transport + lb_[l_idx]), .success_chance = et_label.success_chance}, k)) {
+            !dest_bag_.dominates({.arr_t_ = static_cast<delta_t>(by_transport + lb_[l_idx]), .trip_id = et_label.trip_id, .success_chance = et_label.success_chance}, k)) {
           ++stats_.n_earliest_arrival_updated_by_route_;
           tmp_[l_idx].add({by_transport, et_label.trip_l_, stp.location_idx(), et_label.route_id, et_label.trip_id, et_label.success_chance});
           tmp_station_mark_.set(l_idx, true);
@@ -466,6 +469,7 @@ private:
             mcraptor_label new_et_label = {.arr_t_ = time_at_stop(r, new_et, stop_idx,kFwd ? event_type::kDep : event_type::kArr), .trip_l_ = stp.location_idx(),
                                            .route_id = r, .trip_id = new_et, .success_chance = cum_success_chance(l_idx, k-1, new_et_label.arr_t_)};
 
+            //TODO ich iteriere ja hier bis zum ende. kann ja aber auf der Route auch noch weiter vorne einsteigen und würde dann den selben Transport zweimal iterieren?
             any_marked = any_marked | iterate_without_enter(new_et_label, i + 1, r, k);
             if(start < end + dir(max_delay)) break;
             start = new_et_label.arr_t_ + dir(1);
@@ -545,7 +549,7 @@ private:
             auto const lower_bound = lb_[target];
 
             if (lower_bound == kUnreachable ||
-                dest_bag_.dominates({.arr_t_ = static_cast<delta_t>(new_label.arr_t_ + dir(lower_bound)), .success_chance = tmp_label.success_chance}, k)) {
+                dest_bag_.dominates({.arr_t_ = static_cast<delta_t>(new_label.arr_t_ + dir(lower_bound)), .trip_id = tmp_label.trip_id, .success_chance = tmp_label.success_chance}, k)) {
               ++stats_.fp_update_prevented_by_lower_bound_;
               continue;
             }
@@ -694,6 +698,7 @@ private:
     return tt_.bitfields_[tt_.transport_traffic_days_[t]].test(day);
   }
 
+  //TODO zu transports machen. zwei Transports die gleichzeitig abfahren
   transport get_earliest_transport(unsigned const k,
                                    route_idx_t const r,
                                    stop_idx_t const stop_idx,

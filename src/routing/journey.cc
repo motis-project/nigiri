@@ -18,13 +18,13 @@ void journey::leg::print(std::ostream& out,
       utl::overloaded{
           [&](run_enter_exit const& t) {
             auto const fr = rt::frun{tt, rtt, t.r_};
-            for (auto i = t.stop_range_.from_; i != t.stop_range_.to_; ++i) {
-              if (!fr[i].is_cancelled()) {
-                fr[i].print(out, i == t.stop_range_.from_,
-                            i == t.stop_range_.to_ - 1U);
-                out << "\n";
+            //for (auto i = t.stop_range_.from_; i != t.stop_range_.to_; ++i) {
+              if (!fr[0].is_cancelled()) {
+                fr[0].print(out, 0 == t.stop_range_.from_,
+                            0 == t.stop_range_.to_ - 1U);
+//                out << "\n";
               }
-            }
+            //}
           },
           [&](footpath const x) {
             indent(out, n_indent);
