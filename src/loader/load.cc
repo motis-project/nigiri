@@ -80,6 +80,7 @@ struct change_detector {
 
 struct index_mapping {
   alt_name_idx_t const alt_name_idx_offset_;
+  area_idx_t const area_idx_offset_;
   language_idx_t const language_idx_offset_;
   location_group_idx_t const location_group_idx_offset_;
   location_idx_t const location_idx_offset_;
@@ -92,6 +93,7 @@ struct index_mapping {
 
   index_mapping(timetable const& first_tt)
       : alt_name_idx_offset_{first_tt.locations_.alt_name_strings_.size()},
+        area_idx_offset_{first_tt.areas_.size()},
         language_idx_offset_{first_tt.languages_.size()},
         location_group_idx_offset_{first_tt.location_group_name_.size()},
         location_idx_offset_{first_tt.n_locations()},
@@ -106,6 +108,10 @@ struct index_mapping {
   auto map(alt_name_idx_t const& i) const {
     return i != alt_name_idx_t::invalid() ? i + alt_name_idx_offset_
                                           : alt_name_idx_t::invalid();
+  }
+  auto map(area_idx_t const& i) const {
+    return i != area_idx_t::invalid() ? i + area_idx_offset_
+                                      : area_idx_t::invalid();
   }
   auto map(language_idx_t const& i) const {
     return i != language_idx_t::invalid() ? i + language_idx_offset_
@@ -162,6 +168,19 @@ struct index_mapping {
   auto map(fares::fare_leg_join_rule const& i) const {
     return fares::fare_leg_join_rule{i.from_network_, i.to_network_,
                                      map(i.from_stop_), map(i.to_stop_)};
+  }
+  auto map(fares::fare_leg_rule const& i) const {
+    return fares::fare_leg_rule{
+        .rule_priority_ = i.rule_priority_,
+        .network_ = i.network_,
+        .from_area_ = map(i.from_area_),
+        .to_area_ = map(i.to_area_),
+        .from_timeframe_group_ = i.from_timeframe_group_,
+        .to_timeframe_group_ = i.to_timeframe_group_,
+        .fare_product_ = i.fare_product_,
+        .leg_group_idx_ = i.leg_group_idx_,
+        .contains_exactly_area_set_id_ = i.contains_exactly_area_set_id_,
+        .contains_area_set_id_ = i.contains_area_set_id_};
   }
   auto map(footpath const& i) const {
     return footpath{map(i.target()), i.duration()};
@@ -553,12 +572,10 @@ timetable load(std::vector<timetable_source> const& sources,
           vec.push_back(im.map(j));
         }
       }
-      auto const area_idx_offset = area_idx_t{tt.areas_.size()};
       for (auto const& i : new_location_areas) {
         auto vec = tt.location_areas_.add_back_sized(0U);
         for (auto const& j : i) {
-          vec.push_back(j != area_idx_t::invalid() ? j + area_idx_offset
-                                                   : area_idx_t::invalid());
+          vec.push_back(im.map(j));
         }
       }
       for (location_idx_t i = location_idx_t{0};
@@ -684,23 +701,7 @@ timetable load(std::vector<timetable_source> const& sources,
         }
         auto mapped_fare_leg_rules = vector<fares::fare_leg_rule>{};
         for (auto const& j : i.fare_leg_rules_) {
-          auto const mapped_rule = fares::fare_leg_rule{
-              .rule_priority_ = j.rule_priority_,
-              .network_ = j.network_,
-              .from_area_ = j.from_area_ != area_idx_t::invalid()
-                                ? j.from_area_ + area_idx_offset
-                                : area_idx_t::invalid(),
-              .to_area_ = j.to_area_ != area_idx_t::invalid()
-                              ? j.to_area_ + area_idx_offset
-                              : area_idx_t::invalid(),
-              .from_timeframe_group_ = j.from_timeframe_group_,
-              .to_timeframe_group_ = j.to_timeframe_group_,
-              .fare_product_ = j.fare_product_,
-              .leg_group_idx_ = j.leg_group_idx_,
-              .contains_exactly_area_set_id_ = j.contains_exactly_area_set_id_,
-              .contains_area_set_id_ = j.contains_area_set_id_,
-          };
-          mapped_fare_leg_rules.push_back(mapped_rule);
+          mapped_fare_leg_rules.push_back(im.map(j));
         }
         auto mapped_fare_leg_join_rules = vector<fares::fare_leg_join_rule>{};
         for (auto const& j : i.fare_leg_join_rules_) {
@@ -745,8 +746,7 @@ timetable load(std::vector<timetable_source> const& sources,
         for (auto const& j : i.area_sets_) {
           auto vec = mapped_area_sets.add_back_sized(0U);
           for (auto const& k : j) {
-            vec.push_back(k != area_idx_t::invalid() ? k + area_idx_offset
-                                                     : area_idx_t::invalid());
+            vec.push_back(im.map(k));
           }
         }
         auto mapped_area_set_ids = vector_map<area_set_idx_t, string_idx_t>{};
