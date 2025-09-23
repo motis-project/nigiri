@@ -86,6 +86,7 @@ struct index_mapping {
   source_file_idx_t const source_file_idx_offset_;
   timezone_idx_t const timezone_idx_offset_;
   trip_direction_string_idx_t const trip_direction_string_idx_offset_;
+  trip_idx_t const trip_idx_offset_;
 
   index_mapping(timetable const& first_tt)
       : alt_name_idx_offset_{first_tt.locations_.alt_name_strings_.size()},
@@ -95,7 +96,8 @@ struct index_mapping {
         source_file_idx_offset_{first_tt.source_file_names_.size()},
         timezone_idx_offset_{first_tt.locations_.timezones_.size()},
         trip_direction_string_idx_offset_{
-            first_tt.trip_direction_strings_.size()} {}
+            first_tt.trip_direction_strings_.size()},
+        trip_idx_offset_{first_tt.trip_ids_.size()} {}
 
   auto map(alt_name_idx_t const& i) const {
     return i != alt_name_idx_t::invalid() ? i + alt_name_idx_offset_
@@ -139,6 +141,10 @@ struct index_mapping {
     return i.apply([&](auto const& d) -> trip_direction_t {
       return trip_direction_t{map(d)};
     });
+  }
+  auto map(trip_idx_t const& i) const {
+    return i != trip_idx_t::invalid() ? i + trip_idx_offset_
+                                      : trip_idx_t::invalid();
   }
 
   auto map(fares::fare_leg_join_rule const& i) const {
@@ -423,7 +429,6 @@ timetable load(std::vector<timetable_source> const& sources,
         tt.languages_.emplace_back(i);
       }
       /*       location_idx_t	*/
-      auto const trip_offset = trip_idx_t{tt.trip_ids_.size()};
       auto const route_idx_offset = route_idx_t{tt.n_routes()};
       {  // merge locations struct
         auto&& loc = tt.locations_;
@@ -841,9 +846,7 @@ timetable load(std::vector<timetable_source> const& sources,
                                            : bitfield_idx_t::invalid());
       }
       for (auto const& i : new_flex_transport_trip) {
-        tt.flex_transport_trip_.push_back(i != trip_idx_t::invalid()
-                                              ? i + trip_offset
-                                              : trip_idx_t::invalid());
+        tt.flex_transport_trip_.push_back(im.map(i));
       }
       for (auto const& i : new_flex_transport_stop_time_windows) {
         tt.flex_transport_stop_time_windows_.emplace_back(i);
@@ -893,8 +896,7 @@ timetable load(std::vector<timetable_source> const& sources,
         tt.trip_id_to_idx_.push_back(pair<trip_id_idx_t, trip_idx_t>{
             i.first != trip_id_idx_t::invalid() ? i.first + trip_id_offset
                                                 : trip_id_idx_t::invalid(),
-            i.second != trip_idx_t::invalid() ? i.second + trip_offset
-                                              : trip_idx_t::invalid()});
+            im.map(i.second)});
       }
       for (auto const& i : new_trip_ids) {
         auto entry = tt.trip_ids_.emplace_back();
@@ -917,11 +919,10 @@ timetable load(std::vector<timetable_source> const& sources,
       assert(tt.trip_train_nr_.size() == 0);
       /* 	 trip_idx_t	 */
       auto const add_size = trip_idx_t{new_trip_direction_id.size()};
-      tt.trip_direction_id_.resize(to_idx(trip_offset + add_size));
+      tt.trip_direction_id_.resize(to_idx(im.map(add_size)));
       for (auto const& i : vw::iota(0U, to_idx(add_size))) {
         auto const idx = trip_idx_t{i};
-        tt.trip_direction_id_.set(idx + trip_offset,
-                                  new_trip_direction_id.test(idx));
+        tt.trip_direction_id_.set(im.map(idx), new_trip_direction_id.test(idx));
       }
       for (auto const& i : new_trip_route_id) {
         tt.trip_route_id_.push_back(i);
@@ -944,8 +945,7 @@ timetable load(std::vector<timetable_source> const& sources,
       for (auto const& i : new_merged_trips) {
         auto vec = tt.merged_trips_.add_back_sized(0U);
         for (auto const& j : i) {
-          vec.push_back(j != trip_idx_t::invalid() ? j + trip_offset
-                                                   : trip_idx_t::invalid());
+          vec.push_back(im.map(j));
         }
       }
       /*      route_id_idx_t	 */
@@ -955,7 +955,7 @@ timetable load(std::vector<timetable_source> const& sources,
              j < route_id_idx_t{i.route_id_trips_.size()}; ++j) {
           vec.emplace_back_empty();
           for (auto const& k : i.route_id_trips_[j]) {
-            vec.back().push_back(k + trip_offset);
+            vec.back().push_back(im.map(k));
           }
         }
         auto mapped_providers = vector_map<route_id_idx_t, provider_idx_t>{};
