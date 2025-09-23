@@ -81,6 +81,7 @@ struct change_detector {
 struct index_mapping {
   alt_name_idx_t const alt_name_idx_offset_;
   area_idx_t const area_idx_offset_;
+  attribute_idx_t const attribute_idx_offset_;
   booking_rule_idx_t const booking_rule_idx_offset_;
   flex_stop_seq_idx_t const flex_stop_seq_idx_offset_;
   flex_transport_idx_t const flex_transport_idx_offset_;
@@ -102,6 +103,7 @@ struct index_mapping {
   index_mapping(timetable const& first_tt)
       : alt_name_idx_offset_{first_tt.locations_.alt_name_strings_.size()},
         area_idx_offset_{first_tt.areas_.size()},
+        attribute_idx_offset_{first_tt.attributes_.size()},
         booking_rule_idx_offset_{first_tt.booking_rules_.size()},
         flex_stop_seq_idx_offset_{first_tt.flex_stop_seq_.size()},
         flex_transport_idx_offset_{
@@ -129,6 +131,10 @@ struct index_mapping {
   auto map(area_idx_t const& i) const {
     return i != area_idx_t::invalid() ? i + area_idx_offset_
                                       : area_idx_t::invalid();
+  }
+  auto map(attribute_idx_t const& i) const {
+    return i != attribute_idx_t::invalid() ? i + attribute_idx_offset_
+                                           : attribute_idx_t::invalid();
   }
   auto map(booking_rule_idx_t const& i) const {
     return i != booking_rule_idx_t::invalid() ? i + booking_rule_idx_offset_
@@ -1043,16 +1049,13 @@ timetable load(std::vector<timetable_source> const& sources,
         tt.areas_.push_back(area{string_map[i.id_], string_map[i.name_]});
       }
       /*      attribute_idx_t	*/
-      auto const attribute_idx_offset = attribute_idx_t{tt.attributes_.size()};
       for (auto const& i : new_attributes) {
         tt.attributes_.push_back(i);
       }
       for (auto const& i : new_attribute_combinations) {
         auto vec = tt.attribute_combinations_.add_back_sized(0U);
         for (auto const& j : i) {
-          vec.push_back(j != attribute_idx_t::invalid()
-                            ? j + attribute_idx_offset
-                            : attribute_idx_t::invalid());
+          vec.push_back(im.map(j));
         }
       }
       /*  trip_direction_string_idx_t	*/
