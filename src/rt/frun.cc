@@ -735,7 +735,8 @@ trip_idx_t frun::trip_idx() const {
 void run_stop::print(std::ostream& out,
                      bool const first,
                      bool const last) const {
-  auto const& tz = tt().locations_.timezones_.at(get_tz(event_type::kDep));
+  auto const& tz = tt().locations_.timezones_.at(
+      get_tz(last ? event_type::kArr : event_type::kDep));
 
   // Print stop index, location name.
   fmt::print(out, "  {:2}: {:7} {:.<48}", stop_idx_, get_location().id_,
@@ -792,7 +793,9 @@ void run_stop::print(std::ostream& out,
         if (j++ != 0) {
           out << ", ";
         }
-        out << "{name=" << display_name() << ", day=";
+        out << "{name="
+            << display_name(last ? event_type::kArr : event_type::kDep)
+            << ", day=";
         date::to_stream(
             out, "%F",
             tt.internal_interval_days().from_ + to_idx(fr_->t_.day_) * 1_days);

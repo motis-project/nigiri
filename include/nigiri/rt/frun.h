@@ -31,36 +31,35 @@ struct run_stop {
   std::string_view name() const;
   std::string_view track() const;
   std::string_view id() const;
-  std::pair<date::sys_days, duration_t> get_trip_start(
-      event_type = event_type::kDep) const;
+  std::pair<date::sys_days, duration_t> get_trip_start(event_type) const;
 
-  provider_idx_t get_provider_idx(event_type = event_type::kDep) const;
-  provider const& get_provider(event_type = event_type::kDep) const;
-  trip_idx_t get_trip_idx(event_type = event_type::kDep) const;
-  route_id_idx_t get_route_id(event_type = event_type::kDep) const;
-  std::optional<route_type_t> route_type(event_type = event_type::kDep) const;
-  std::string_view route_short_name(event_type = event_type::kDep) const;
-  std::string_view route_long_name(event_type = event_type::kDep) const;
-  std::string_view trip_short_name(event_type = event_type::kDep) const;
-  std::string_view display_name(event_type = event_type::kDep) const;
-  run_stop get_last_trip_stop(event_type = event_type::kDep) const;
+  provider_idx_t get_provider_idx(event_type) const;
+  provider const& get_provider(event_type) const;
+  trip_idx_t get_trip_idx(event_type) const;
+  route_id_idx_t get_route_id(event_type) const;
+  std::optional<route_type_t> route_type(event_type) const;
+  std::string_view route_short_name(event_type) const;
+  std::string_view route_long_name(event_type) const;
+  std::string_view trip_short_name(event_type) const;
+  std::string_view display_name(event_type) const;
+  run_stop get_last_trip_stop(event_type) const;
 
   unixtime_t scheduled_time(event_type) const;
   unixtime_t time(event_type) const;
   duration_t delay(event_type) const;
   timezone_idx_t get_tz(event_type) const;
 
-  std::string_view line(event_type = event_type::kDep) const;
-  std::string_view scheduled_line(event_type = event_type::kDep) const;
-  std::string_view direction(event_type = event_type::kDep) const;
+  std::string_view line(event_type) const;
+  std::string_view scheduled_line(event_type) const;
+  std::string_view direction(event_type) const;
 
-  clasz get_clasz(event_type = event_type::kDep) const;
-  clasz get_scheduled_clasz(event_type = event_type::kDep) const;
+  clasz get_clasz(event_type) const;
+  clasz get_scheduled_clasz(event_type) const;
 
-  bool bikes_allowed(event_type = event_type::kDep) const;
-  bool cars_allowed(event_type = event_type::kDep) const;
+  bool bikes_allowed(event_type) const;
+  bool cars_allowed(event_type) const;
 
-  route_color get_route_color(event_type = event_type::kDep) const;
+  route_color get_route_color(event_type) const;
 
   bool in_allowed() const;
   bool out_allowed() const;
