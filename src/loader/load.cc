@@ -182,10 +182,6 @@ struct index_mapping {
     return i != source_idx_t::invalid() ? i + source_idx_offset_
                                         : source_idx_t::invalid();
   }
-  auto map(stop const& i) const {
-    return stop{map(i.location_idx()), i.in_allowed_, i.out_allowed_,
-                i.in_allowed_wheelchair_, i.out_allowed_wheelchair_};
-  }
   auto map(timezone_idx_t const& i) const {
     return i != timezone_idx_t::invalid() ? i + timezone_idx_offset_
                                           : timezone_idx_t::invalid();
@@ -194,19 +190,10 @@ struct index_mapping {
     return i != transport_idx_t::invalid() ? i + transport_idx_offset_
                                            : transport_idx_t::invalid();
   }
-  auto map(trip_debug const& i) const {
-    return trip_debug{map(i.source_file_idx_), i.line_number_from_,
-                      i.line_number_to_};
-  }
   auto map(trip_direction_string_idx_t const& i) const {
     return i != trip_direction_string_idx_t::invalid()
                ? i + trip_direction_string_idx_offset_
                : trip_direction_string_idx_t::invalid();
-  }
-  auto map(trip_direction_t const& i) const {
-    return i.apply([&](auto const& d) -> trip_direction_t {
-      return trip_direction_t{map(d)};
-    });
   }
   auto map(trip_id_idx_t const& i) const {
     return i != trip_id_idx_t::invalid() ? i + trip_id_idx_offset_
@@ -219,6 +206,16 @@ struct index_mapping {
   auto map(trip_line_idx_t const& i) const {
     return i != trip_line_idx_t::invalid() ? i + trip_line_idx_offset_
                                            : trip_line_idx_t::invalid();
+  }
+
+  auto map(stop const& i) const {
+    return stop{map(i.location_idx()), i.in_allowed_, i.out_allowed_,
+                i.in_allowed_wheelchair_, i.out_allowed_wheelchair_};
+  }
+  auto map(trip_direction_t const& i) const {
+    return i.apply([&](auto const& d) -> trip_direction_t {
+      return trip_direction_t{map(d)};
+    });
   }
 
   auto map(fares::fare_leg_join_rule const& i) const {
@@ -243,6 +240,10 @@ struct index_mapping {
   }
   auto map(location_id const& i) const {
     return location_id{i.id_, map(i.src_)};
+  }
+  auto map(trip_debug const& i) const {
+    return trip_debug{map(i.source_file_idx_), i.line_number_from_,
+                      i.line_number_to_};
   }
 
   template <typename T>
