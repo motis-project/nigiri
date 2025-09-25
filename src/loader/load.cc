@@ -82,6 +82,7 @@ struct index_mapping {
   alt_name_idx_t const alt_name_idx_offset_;
   area_idx_t const area_idx_offset_;
   attribute_idx_t const attribute_idx_offset_;
+  vector_map<bitfield_idx_t, bitfield_idx_t> const bitfield_idx_map_;
   booking_rule_idx_t const booking_rule_idx_offset_;
   flex_stop_seq_idx_t const flex_stop_seq_idx_offset_;
   flex_transport_idx_t const flex_transport_idx_offset_;
@@ -101,11 +102,14 @@ struct index_mapping {
   trip_idx_t const trip_idx_offset_;
   trip_line_idx_t const trip_line_idx_offset_;
 
-  index_mapping(timetable const& first_tt,
-                vector_map<string_idx_t, string_idx_t> const& string_idx_map)
+  index_mapping(
+      timetable const& first_tt,
+      vector_map<bitfield_idx_t, bitfield_idx_t> const& bitfield_idx_map,
+      vector_map<string_idx_t, string_idx_t> const& string_idx_map)
       : alt_name_idx_offset_{first_tt.locations_.alt_name_strings_.size()},
         area_idx_offset_{first_tt.areas_.size()},
         attribute_idx_offset_{first_tt.attributes_.size()},
+        bitfield_idx_map_{bitfield_idx_map},
         booking_rule_idx_offset_{first_tt.booking_rules_.size()},
         flex_stop_seq_idx_offset_{first_tt.flex_stop_seq_.size()},
         flex_transport_idx_offset_{
@@ -138,6 +142,10 @@ struct index_mapping {
   auto map(attribute_idx_t const& i) const {
     return i != attribute_idx_t::invalid() ? i + attribute_idx_offset_
                                            : attribute_idx_t::invalid();
+  }
+  auto map(bitfield_idx_t const& i) const {
+    return i != bitfield_idx_t::invalid() ? bitfield_idx_map_[i]
+                                          : bitfield_idx_t::invalid();
   }
   auto map(booking_rule_idx_t const& i) const {
     return i != booking_rule_idx_t::invalid() ? i + booking_rule_idx_offset_
@@ -544,7 +552,7 @@ timetable load(std::vector<timetable_source> const& sources,
       progress_tracker->status("Saved new data");
       /* Add new data and adjust references */
       /*	bitfields	*/
-      auto corrected_indices = vector_map<bitfield_idx_t, bitfield_idx_t>{};
+      auto bitfield_idx_map = vector_map<bitfield_idx_t, bitfield_idx_t>{};
       auto bitfields_ = hash_map<bitfield, bitfield_idx_t>{};
       for (auto const [idx_, bf] : utl::enumerate(tt.bitfields_)) {
         auto new_idx =
@@ -554,7 +562,7 @@ timetable load(std::vector<timetable_source> const& sources,
       for (auto const& [idx_, bf] : utl::enumerate(new_bitfields)) {
         auto adjusted_idx = utl::get_or_create(
             bitfields_, bf, [&]() { return tt.register_bitfield(bf); });
-        corrected_indices.emplace_back(adjusted_idx);
+        bitfield_idx_map.emplace_back(adjusted_idx);
       }
       /*       string_idx_t	*/
       auto string_idx_map = vector_map<string_idx_t, string_idx_t>{};
@@ -562,7 +570,7 @@ timetable load(std::vector<timetable_source> const& sources,
         auto new_idx = tt.strings_.store(s.view());
         string_idx_map.push_back(new_idx);
       }
-      auto const im = index_mapping(tt, string_idx_map);
+      auto const im = index_mapping(tt, bitfield_idx_map, string_idx_map);
       /*	 sources	*/
       for (auto const& i : new_source_end_date) {
         tt.src_end_date_.push_back(i);
@@ -917,9 +925,7 @@ timetable load(std::vector<timetable_source> const& sources,
         }
       }
       for (auto const& i : new_flex_transport_traffic_days) {
-        tt.flex_transport_traffic_days_.push_back(
-            i != bitfield_idx_t::invalid() ? corrected_indices[i]
-                                           : bitfield_idx_t::invalid());
+        tt.flex_transport_traffic_days_.push_back(im.map(i));
       }
       for (auto const& i : new_flex_transport_trip) {
         tt.flex_transport_trip_.push_back(im.map(i));
@@ -1027,9 +1033,7 @@ timetable load(std::vector<timetable_source> const& sources,
       // tt.initial_day_offset_ not used during loading
       assert(tt.initial_day_offset_.size() == 0);
       for (auto const& i : new_transport_traffic_days) {
-        tt.transport_traffic_days_.push_back(i != bitfield_idx_t::invalid()
-                                                 ? corrected_indices[i]
-                                                 : bitfield_idx_t::invalid());
+        tt.transport_traffic_days_.push_back(im.map(i));
       }
       for (auto const& i : new_transport_to_trip_section) {
         auto vec = tt.transport_to_trip_section_.add_back_sized(0U);
