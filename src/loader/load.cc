@@ -93,6 +93,7 @@ struct index_mapping {
   route_idx_t const route_idx_offset_;
   source_file_idx_t const source_file_idx_offset_;
   source_idx_t const source_idx_offset_;
+  vector_map<string_idx_t, string_idx_t> const string_idx_map_;
   timezone_idx_t const timezone_idx_offset_;
   transport_idx_t const transport_idx_offset_;
   trip_direction_string_idx_t const trip_direction_string_idx_offset_;
@@ -100,7 +101,8 @@ struct index_mapping {
   trip_idx_t const trip_idx_offset_;
   trip_line_idx_t const trip_line_idx_offset_;
 
-  index_mapping(timetable const& first_tt)
+  index_mapping(timetable const& first_tt,
+                vector_map<string_idx_t, string_idx_t> const& string_idx_map)
       : alt_name_idx_offset_{first_tt.locations_.alt_name_strings_.size()},
         area_idx_offset_{first_tt.areas_.size()},
         attribute_idx_offset_{first_tt.attributes_.size()},
@@ -116,6 +118,7 @@ struct index_mapping {
         route_idx_offset_{first_tt.n_routes()},
         source_file_idx_offset_{first_tt.source_file_names_.size()},
         source_idx_offset_{first_tt.src_end_date_.size()},
+        string_idx_map_{string_idx_map},
         timezone_idx_offset_{first_tt.locations_.timezones_.size()},
         transport_idx_offset_{first_tt.transport_traffic_days_.size()},
         trip_direction_string_idx_offset_{
@@ -182,6 +185,10 @@ struct index_mapping {
     return i != source_idx_t::invalid() ? i + source_idx_offset_
                                         : source_idx_t::invalid();
   }
+  auto map(string_idx_t const& i) const {
+    return i != string_idx_t::invalid() ? string_idx_map_[i]
+                                        : string_idx_t::invalid();
+  }
   auto map(timezone_idx_t const& i) const {
     return i != timezone_idx_t::invalid() ? i + timezone_idx_offset_
                                           : timezone_idx_t::invalid();
@@ -218,6 +225,19 @@ struct index_mapping {
     });
   }
 
+  auto map(area const& i) const {
+    return area{.id_ = map(i.id_), .name_ = map(i.name_)};
+  }
+  auto map(booking_rule const& i) const {
+    return booking_rule{.id_ = map(i.id_),
+                        .type_ = i.type_,
+                        .message_ = map(i.message_),
+                        .pickup_message_ = map(i.pickup_message_),
+                        .drop_off_message_ = map(i.drop_off_message_),
+                        .phone_number_ = map(i.phone_number_),
+                        .info_url_ = map(i.info_url_),
+                        .booking_url_ = map(i.booking_url_)};
+  }
   auto map(fares::fare_leg_join_rule const& i) const {
     return fares::fare_leg_join_rule{i.from_network_, i.to_network_,
                                      map(i.from_stop_), map(i.to_stop_)};
@@ -235,11 +255,43 @@ struct index_mapping {
         .contains_exactly_area_set_id_ = i.contains_exactly_area_set_id_,
         .contains_area_set_id_ = i.contains_area_set_id_};
   }
+  auto map(fares::fare_media const& i) const {
+    return fares::fare_media{.name_ = map(i.name_), .type_ = i.type_};
+  }
+  auto map(fares::fare_product const& i) const {
+    return fares::fare_product{.amount_ = i.amount_,
+                               .name_ = map(i.name_),
+                               .media_ = i.media_,
+                               .currency_code_ = map(i.currency_code_),
+                               .rider_category_ = i.rider_category_};
+  }
+  auto map(fares::rider_category const& i) const {
+    return fares::rider_category{
+        .name_ = map(i.name_),
+        .eligibility_url_ = map(i.eligibility_url_),
+        .is_default_fare_category_ = i.is_default_fare_category_};
+  }
+  auto map(fares::timeframe const& i) const {
+    return fares::timeframe{.start_time_ = i.start_time_,
+                            .end_time_ = i.end_time_,
+                            .service_ = i.service_,
+                            .service_id_ = map(i.service_id_)};
+  }
+  auto map(fares::network const& i) const {
+    return fares::network{.id_ = map(i.id_), .name_ = map(i.name_)};
+  }
   auto map(footpath const& i) const {
     return footpath{map(i.target()), i.duration()};
   }
   auto map(location_id const& i) const {
     return location_id{i.id_, map(i.src_)};
+  }
+  auto map(provider const& i) const {
+    return provider{.id_ = map(i.id_),
+                    .name_ = map(i.name_),
+                    .url_ = map(i.url_),
+                    .tz_ = map(i.tz_),
+                    .src_ = map(i.src_)};
   }
   auto map(trip_debug const& i) const {
     return trip_debug{map(i.source_file_idx_), i.line_number_from_,
@@ -491,7 +543,6 @@ timetable load(std::vector<timetable_source> const& sources,
       auto const new_n_sources = other_tt.n_sources_;
       progress_tracker->status("Saved new data");
       /* Add new data and adjust references */
-      auto const im = index_mapping(tt);
       /*	bitfields	*/
       auto corrected_indices = vector_map<bitfield_idx_t, bitfield_idx_t>{};
       auto bitfields_ = hash_map<bitfield, bitfield_idx_t>{};
@@ -506,11 +557,12 @@ timetable load(std::vector<timetable_source> const& sources,
         corrected_indices.emplace_back(adjusted_idx);
       }
       /*       string_idx_t	*/
-      auto string_map = vector_map<string_idx_t, string_idx_t>{};
+      auto string_idx_map = vector_map<string_idx_t, string_idx_t>{};
       for (auto const& [idx_, s] : utl::enumerate(new_strings.strings_)) {
         auto new_idx = tt.strings_.store(s.view());
-        string_map.push_back(new_idx);
+        string_idx_map.push_back(new_idx);
       }
+      auto const im = index_mapping(tt, string_idx_map);
       /*	 sources	*/
       for (auto const& i : new_source_end_date) {
         tt.src_end_date_.push_back(i);
@@ -661,10 +713,10 @@ timetable load(std::vector<timetable_source> const& sources,
         }
       }
       for (auto const& i : new_location_group_name) {
-        tt.location_group_name_.emplace_back(string_map[i]);
+        tt.location_group_name_.emplace_back(im.map(i));
       }
       for (auto const& i : new_location_group_id) {
-        tt.location_group_id_.emplace_back(string_map[i]);
+        tt.location_group_id_.emplace_back(im.map(i));
       }
       // tt.fwd_search_lb_graph_ not used during loading
       assert(tt.fwd_search_lb_graph_.size() == kNProfiles);
@@ -731,33 +783,25 @@ timetable load(std::vector<timetable_source> const& sources,
         auto mapped_leg_group_name =
             vector_map<leg_group_idx_t, string_idx_t>{};
         for (auto const& j : i.leg_group_name_) {
-          mapped_leg_group_name.push_back(string_map[j]);
+          mapped_leg_group_name.push_back(im.map(j));
         }
         auto mapped_fare_media =
             vector_map<fare_media_idx_t, fares::fare_media>{};
         for (auto const& j : i.fare_media_) {
-          auto const mapped_media =
-              fares::fare_media{.name_ = string_map[j.name_], .type_ = j.type_};
-          mapped_fare_media.push_back(mapped_media);
+          mapped_fare_media.push_back(im.map(j));
         }
         auto mapped_fare_products =
             vecvec<fare_product_idx_t, fares::fare_product>{};
         for (auto const& j : i.fare_products_) {
           auto vec = mapped_fare_products.add_back_sized(0U);
           for (auto const& k : j) {
-            auto const mapped_product = fares::fare_product{
-                .amount_ = k.amount_,
-                .name_ = string_map[k.name_],
-                .media_ = k.media_,
-                .currency_code_ = string_map[k.currency_code_],
-                .rider_category_ = k.rider_category_};
-            vec.push_back(mapped_product);
+            vec.push_back(im.map(k));
           }
         }
         auto mapped_fare_product_id =
             vector_map<fare_product_idx_t, string_idx_t>{};
         for (auto const& j : i.fare_product_id_) {
-          mapped_fare_product_id.push_back(string_map[j]);
+          mapped_fare_product_id.push_back(im.map(j));
         }
         auto mapped_fare_leg_rules = vector<fares::fare_leg_rule>{};
         for (auto const& j : i.fare_leg_rules_) {
@@ -770,37 +814,24 @@ timetable load(std::vector<timetable_source> const& sources,
         auto mapped_rider_categories =
             vector_map<rider_category_idx_t, fares::rider_category>{};
         for (auto const& j : i.rider_categories_) {
-          auto const mapped_rider_category = fares::rider_category{
-              .name_ = string_map[j.name_],
-              .eligibility_url_ = string_map[j.eligibility_url_],
-              .is_default_fare_category_ = j.is_default_fare_category_};
-          mapped_rider_categories.push_back(mapped_rider_category);
+          mapped_rider_categories.push_back(im.map(j));
         }
         auto mapped_timeframes =
             vecvec<timeframe_group_idx_t, fares::timeframe>{};
         for (auto const& j : i.timeframes_) {
           auto vec = mapped_timeframes.add_back_sized(0U);
           for (auto const& k : j) {
-            auto const mapped_timeframe =
-                fares::timeframe{.start_time_ = k.start_time_,
-                                 .end_time_ = k.end_time_,
-                                 .service_ = k.service_,
-                                 .service_id_ = string_map[k.service_id_]};
-            vec.push_back(mapped_timeframe);
+            vec.push_back(im.map(k));
           }
         }
         auto mapped_timeframe_id =
             vector_map<timeframe_group_idx_t, string_idx_t>{};
         for (auto const& j : i.timeframe_id_) {
-          mapped_timeframe_id.push_back(string_map[j]);
+          mapped_timeframe_id.push_back(im.map(j));
         }
         auto mapped_networks = vector_map<network_idx_t, fares::network>{};
         for (auto const& j : i.networks_) {
-          auto const mapped_network = fares::network{
-              .id_ = string_map[j.id_],
-              .name_ = string_map[j.name_],
-          };
-          mapped_networks.push_back(mapped_network);
+          mapped_networks.push_back(im.map(j));
         }
         auto mapped_area_sets = vecvec<area_set_idx_t, area_idx_t>{};
         for (auto const& j : i.area_sets_) {
@@ -811,7 +842,7 @@ timetable load(std::vector<timetable_source> const& sources,
         }
         auto mapped_area_set_ids = vector_map<area_set_idx_t, string_idx_t>{};
         for (auto const& j : i.area_set_ids_) {
-          mapped_area_set_ids.push_back(string_map[j]);
+          mapped_area_set_ids.push_back(im.map(j));
         }
         auto const mapped_fares =
             fares{.leg_group_name_ = mapped_leg_group_name,
@@ -833,12 +864,7 @@ timetable load(std::vector<timetable_source> const& sources,
       }
       /*      provider_idx_t	*/
       for (auto const& i : new_providers) {
-        auto const p = provider{.id_ = string_map[i.id_],
-                                .name_ = string_map[i.name_],
-                                .url_ = string_map[i.url_],
-                                .tz_ = im.map(i.tz_),
-                                .src_ = im.map(i.src_)};
-        tt.providers_.push_back(p);
+        tt.providers_.push_back(im.map(i));
       }
       for (auto const& i : new_provider_id_to_idx) {
         tt.provider_id_to_idx_.push_back(im.map(i));
@@ -848,7 +874,7 @@ timetable load(std::vector<timetable_source> const& sources,
         tt.flex_area_bbox_.push_back(i);
       }
       for (auto const& i : new_flex_area_id) {
-        tt.flex_area_id_.push_back(string_map[i]);
+        tt.flex_area_id_.push_back(im.map(i));
       }
       for (auto const& i : new_flex_area_src) {
         tt.flex_area_src_.push_back(im.map(i));
@@ -920,16 +946,7 @@ timetable load(std::vector<timetable_source> const& sources,
         }
       }
       for (auto const& i : new_booking_rules) {
-        auto const b =
-            booking_rule{.id_ = string_map[i.id_],
-                         .type_ = i.type_,
-                         .message_ = string_map[i.message_],
-                         .pickup_message_ = string_map[i.pickup_message_],
-                         .drop_off_message_ = string_map[i.drop_off_message_],
-                         .phone_number_ = string_map[i.phone_number_],
-                         .info_url_ = string_map[i.info_url_],
-                         .booking_url_ = string_map[i.booking_url_]};
-        tt.booking_rules_.push_back(b);
+        tt.booking_rules_.push_back(im.map(i));
       }
       /*      trip_id_idx_t	*/
       for (auto const& i : new_trip_id_to_idx) {
@@ -1047,7 +1064,7 @@ timetable load(std::vector<timetable_source> const& sources,
       }
       /*        area_idx_t	*/
       for (auto const& i : new_areas) {
-        tt.areas_.push_back(area{string_map[i.id_], string_map[i.name_]});
+        tt.areas_.push_back(im.map(i));
       }
       /*      attribute_idx_t	*/
       for (auto const& i : new_attributes) {
