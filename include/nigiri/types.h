@@ -551,6 +551,14 @@ inline local_time to_local_time(timezone const& tz, unixtime_t const t) {
       }});
 }
 
+inline date::time_zone const* to_time_zone(timezone const& tz) {
+  return tz.apply(utl::overloaded{
+      [](tz_offsets const&) { return nullptr; },
+      [](pair<string, void const*> const& x) {
+        return reinterpret_cast<date::time_zone const*>(x.second);
+      }});
+}
+
 struct booking_rule {
   enum class type : std::uint8_t {
     kRealTimeBooking,

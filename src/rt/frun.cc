@@ -1,6 +1,7 @@
 #include "nigiri/rt/frun.h"
 
 #include <iterator>
+#include <optional>
 #include <span>
 #include <variant>
 
@@ -184,7 +185,18 @@ timezone_idx_t run_stop::get_tz(event_type const ev_type) const {
       return it->tz_;
     }
   }
-  return tt().providers_[provider_idx_t{0}].tz_;
+  return timezone_idx_t::invalid();
+}
+
+std::optional<std::string> run_stop::get_tz_name(
+    event_type const ev_type) const {
+  auto const tz_idx = get_tz(ev_type);
+  if (tz_idx == timezone_idx_t::invalid()) {
+    return std::nullopt;
+  }
+  auto const& tz = fr_->tt_->locations_.timezones_.at(tz_idx);
+  auto const* date_tz = to_time_zone(tz);
+  return date_tz == nullptr ? std::nullopt : std::optional{date_tz->name()};
 }
 
 trip_idx_t run_stop::get_trip_idx(event_type const ev_type) const {
