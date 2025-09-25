@@ -341,14 +341,14 @@ enum class clasz : std::uint8_t {
   kNight = 4,
   kRegionalFast = 5,
   kRegional = 6,
-  kMetro = 7,
+  kSuburban = 7,
   kSubway = 8,
   kTram = 9,
   kBus = 10,
   kShip = 11,
   kCableCar = 12,
   kFunicular = 13,
-  kAreaLift = 14,
+  kAerialLift = 14,
   kOther = 15,
   kNumClasses
 };
