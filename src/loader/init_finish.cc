@@ -83,7 +83,7 @@ void assign_importance(timetable& tt) {
                                        /* Night */ 20,
                                        /* RegionalFast */ 16,
                                        /* Regional */ 15,
-                                       /* Metro */ 10,
+                                       /* Suburban */ 10,
                                        /* Subway */ 10,
                                        /* Tram */ 3,
                                        /* Bus  */ 2,
