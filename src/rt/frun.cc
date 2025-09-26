@@ -825,7 +825,7 @@ void run_stop::print(std::ostream& out,
 }
 
 std::ostream& operator<<(std::ostream& out, run_stop const& stp) {
-  stp.print(out);
+  stp.print(out, stp.stop_idx_ == 0U, stp.stop_idx_ == stp.fr_->size() - 1);
   return out;
 }
 
