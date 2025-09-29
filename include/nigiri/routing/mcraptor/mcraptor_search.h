@@ -13,7 +13,8 @@ routing_result<raptor_stats> mcraptor_search(
     search_state& s_state,
     raptor_state& r_state,
     query q,
-    std::optional<std::chrono::seconds> timeout = std::nullopt);
+    std::optional<std::chrono::seconds> timeout = std::nullopt,
+    std::map<int, boost::function<double(double)>> arr_dist = {});
 
 bool results_are_equal(timetable const& tt,
                        routing_result<raptor_stats> const& result_1,

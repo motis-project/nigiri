@@ -16,6 +16,8 @@
 #include "nigiri/timetable.h"
 #include "nigiri/types.h"
 
+#include "boost/function.hpp"
+
 namespace nigiri::routing {
 
 struct raptor_stats {
@@ -101,7 +103,8 @@ struct raptor {
       bool const require_bike_transport,
       bool const require_car_transport,
       bool const is_wheelchair,
-      transfer_time_settings const& tts)
+      transfer_time_settings const& tts,
+      std::map<int, boost::function<double(double)>> const& arr_dist = {})
       : tt_{tt},
         rtt_{rtt},
         n_days_{tt_.internal_interval_days().size().count()},

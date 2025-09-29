@@ -17,25 +17,28 @@ routing_result<raptor_stats> mcraptor_search(
     search_state& s_state,
     raptor_state& r_state,
     query q,
-    std::optional<std::chrono::seconds> const timeout) {
+    std::optional<std::chrono::seconds> const timeout,
+    std::map<int, boost::function<double(double)>> arr_dist) {
 //  if (rtt != nullptr) {
 //    return {};
 //  }
 
   using algo_t = mcraptor<SearchDir>;
   return search<SearchDir, algo_t>{
-      tt, rtt, s_state,r_state, std::move(q), timeout}
+      tt, rtt, s_state,r_state, std::move(q), timeout, arr_dist}
         .execute();
 }
 
 
 template routing_result<raptor_stats> mcraptor_search<direction::kForward>(
     timetable const&, rt_timetable const*, search_state&, raptor_state&,
-    query, std::optional<std::chrono::seconds>);
+    query, std::optional<std::chrono::seconds>,
+    std::map<int, boost::function<double(double)>> arr_dist);
 
 template routing_result<raptor_stats> mcraptor_search<direction::kBackward>(
     timetable const&, rt_timetable const*, search_state&, raptor_state&,
-    query, std::optional<std::chrono::seconds>);
+    query, std::optional<std::chrono::seconds>,
+    std::map<int, boost::function<double(double)>> arr_dist);
 
 bool results_are_equal(timetable const& tt, routing_result<raptor_stats> const& result_1, routing_result<raptor_stats> const& result_2) {
 

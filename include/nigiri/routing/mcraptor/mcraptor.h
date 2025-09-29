@@ -125,7 +125,8 @@ struct mcraptor {
                bool const require_bike_transport,
                bool const require_car_transport,
                bool const is_wheelchair,
-               transfer_time_settings const& tts)
+               transfer_time_settings const& tts,
+               std::map<int, boost::function<double(double)>> const& arr_dist)
       : tt_{tt},
         n_days_{tt_.internal_interval_days().size().count()},
         n_locations_{tt_.n_locations()},
@@ -134,7 +135,8 @@ struct mcraptor {
         is_dest_{is_dest},
         lb_{lb},
         base_{base},
-        transfer_time_settings_{tts} {
+        transfer_time_settings_{tts},
+        arr_dist_{arr_dist}{
 
     prev_round_station_mark_.resize(n_locations_);
     tmp_station_mark_.resize(n_locations_);
@@ -516,6 +518,22 @@ private:
     labels.erase(labels.begin(), new_end);
   }
 
+  int get_class_id(){
+    return -1;
+  }
+
+  int classification(route_idx_t r_idx){
+    return static_cast<int>(tt_.route_clasz_[nigiri::route_idx_t{r_idx}]);
+  }
+
+  float delay_distribution_real(delta_t x, route_idx_t r_idx){
+    int id = classification(r_idx);
+    if (auto it = arr_dist_.find(id); it != arr_dist_.end()) {
+      auto f = it->second;
+      return f(x);
+    }
+    return delay_distribution_paper(x);
+  }
 
   const delta_t max_delay = delta_t{30};
   float delay_distribution_paper(delta_t x){
@@ -530,8 +548,8 @@ private:
     return std::min(1.0f, gradient * static_cast<float>(x) + on_time_probability);
   }
 
-  float transferProbability(delta_t to){
-    auto function = [this](auto x){return this->delay_distribution_paper(x);};
+  float transferProbability(delta_t to, route_idx_t r_idx){
+    auto function = [this](auto x){return this->delay_distribution_real(x, r_idx);};
     return function(to);
   }
 
@@ -980,6 +998,7 @@ private:
   day_idx_t base_;
   raptor_stats stats_;
   transfer_time_settings transfer_time_settings_;
+  std::map<int, boost::function<double(double)>> const& arr_dist_;
 };
 
 }  // namespace nigiri::routing
