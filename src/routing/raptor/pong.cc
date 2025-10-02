@@ -118,6 +118,8 @@ routing_result pong(timetable const& tt,
     // PING
     // ----
 
+    fmt::println("START_TIME={}", start_time);
+
     starts.clear();
     get_starts(SearchDir, tt, rtt, start_time, q.start_, q.td_start_,
                q.max_start_offset_, q.start_match_mode_, q.use_start_footpaths_,
@@ -134,6 +136,11 @@ routing_result pong(timetable const& tt,
     auto ping_results = pareto_set<journey>{};
     ping.execute(start_time, q.max_transfers_, worst_time_at_dest, q.prf_idx_,
                  ping_results);
+
+    if (ping_results.empty()) {
+      fmt::println("EMPTY PING RESULTS -> QUIT");
+      break;
+    }
 
     // --
     // UB
@@ -169,23 +176,31 @@ routing_result pong(timetable const& tt,
 
     q.flip_dir();
     pong.reset_arrivals();
-    for (auto const& j : ping_results) {
+    for (auto& ping_j : ping_results) {
+      fmt::println("-- PING RESULT: {} - {}, {}", ping_j.departure_time(),
+                   ping_j.arrival_time(), ping_j.transfers_);
       pong.next_start_time();
-      pong.add_start(j.dest_, j.dest_time_);
-      pong.execute(j.dest_time_, j.transfers_,
-                   j.start_time_ - duration_t{kFwd ? 1 : -1}, q.prf_idx_,
+      pong.add_start(ping_j.dest_, ping_j.dest_time_);
+      pong.execute(ping_j.dest_time_, ping_j.transfers_,
+                   ping_j.start_time_ - duration_t{kFwd ? 1 : -1}, q.prf_idx_,
                    s_state.results_);
-      for (auto& r : s_state.results_) {
-        if (r.transfers_ == j.transfers_ && r.start_time_ == j.dest_time_) {
-          pong.reconstruct(q, r);
+      for (auto& pong_j : s_state.results_) {
+        fmt::println("-- PONG: {} - {}, {}", pong_j.departure_time(),
+                     pong_j.arrival_time(), pong_j.transfers_);
+        if (pong_j.transfers_ == ping_j.transfers_ &&
+            pong_j.start_time_ == ping_j.dest_time_) {
+          fmt::println("---- HIT [updating ping start time {} -> {}\n",
+                       ping_j.start_time_, pong_j.dest_time_);
+          pong.reconstruct(q, pong_j);
+          ping_j.start_time_ = pong_j.dest_time_;
         }
       }
     }
     q.flip_dir();
 
-    // ----
-    // PONG
-    // ----
+    // NEXT
+    start_time =
+        ping_results.els_.back().start_time_ + duration_t{kFwd ? 1 : -1};
   }
   return result;
 }
