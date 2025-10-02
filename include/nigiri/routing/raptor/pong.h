@@ -117,6 +117,10 @@ routing_result ping_pong(timetable const& tt,
                         : search_interval.to_ - duration_t{1};
   while (result.journeys_->size() < q.min_connection_count_ &&
          tt.external_interval().contains(start_time)) {
+    // ----
+    // PING
+    // ----
+
     starts.clear();
     get_starts(SearchDir, tt, rtt, start_time, q.start_, q.td_start_,
                q.max_start_offset_, q.start_match_mode_, q.use_start_footpaths_,
@@ -132,6 +136,13 @@ routing_result ping_pong(timetable const& tt,
     auto ping_results = pareto_set<journey>{};
     ping.execute(start_time, q.max_transfers_, worst_time_at_dest, q.prf_idx_,
                  ping_results);
+
+    // ----
+    // PONG
+    // ----
+
+    for (auto const& j : ping_results) {
+    }
   }
   return result;
 }
