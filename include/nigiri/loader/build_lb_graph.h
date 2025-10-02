@@ -3,8 +3,12 @@
 #include "utl/insert_sorted.h"
 #include "utl/pairwise.h"
 
+#include "nigiri/common/dial.h"
+#include "nigiri/for_each_meta.h"
 #include "nigiri/logging.h"
+#include "nigiri/routing/limits.h"
 #include "nigiri/td_footpath.h"
+
 #include "nigiri/timetable.h"
 #include "nigiri/types.h"
 #include <algorithm>
@@ -344,89 +348,143 @@ void build_lb_graph(timetable& tt, profile_idx_t const prf_idx) {
   }
 }
 
-constexpr int FORWARD = 0;
-constexpr int REVERSE = 1;
+static constexpr auto const kForward = 0U;
+static constexpr auto const kReverse = 1U;
+static constexpr auto const kMax = 0U;
+static constexpr auto const kMin = 1U;
+static constexpr auto const kModeOffset = 2U;
 
-using DistTuple =
-    std::tuple<int, size_t, bool>;  // (distance, edge_idx, visited)
+struct label {
+  using dist_t = std::uint16_t;
+  friend bool operator>(label const& a, label const& b) {
+    return a.d_[kMax] > b.d_[kMax];
+  }
+  location_idx_t l_;
+  std::array<dist_t, 2> d_;
+  std::uint8_t dir_;
+};
 
-// Priority queue comparator for min-heap based on distance
-struct Compare {
-  bool operator()(std::tuple<int, size_t, int> const& a,
-                  std::tuple<int, size_t, int> const& b) const {
-    return std::get<0>(a) > std::get<0>(b);
+struct get_bucket {
+  label::dist_t operator()(label const& l) const {
+    return l.d_[l.dir_ / kModeOffset];
   }
 };
 
-std::unordered_set<size_t> bidijkstra(timetable const& tt,
-  std::array<std::vector<typename Label::dist_t>& dists,
-                                      location_idx_t const source_idx,
-                                      location_idx_t const target_idx) {
-  std::vector<typename Label::dist_t>&dists,
-      int INF = std::numeric_limits<int>::max();
+struct dist {
+  using dist_t = std::uint16_t;
+  std::array<dist_t, 2> d_{std::numeric_limits<dist::dist_t>::max(),
+                           std::numeric_limits<dist::dist_t>::max()};
+};
 
-  // distances[dir][station] = (dist, edge_idx, visited)
-  std::vector<std::vector<DistTuple>> distances(
-      2,
-      std::vector<DistTuple>(stations.size(),
-                             {INF, std::numeric_limits<size_t>::max(), false}));
+void dijkstra(timetable const& tt,
+              routing::query const& q,
+              profile_idx_t const prf_idx) {
 
-  std::priority_queue<std::tuple<int, size_t, int>,
-                      std::vector<std::tuple<int, size_t, int>>, Compare>
-      pq;
+  std::array<vector_map<location_idx_t, dist>, 2> dists;
+  dists[0].resize(tt.n_locations());
+  dists[1].resize(tt.n_locations());
+  auto pq = dial<label, get_bucket>{routing::kMaxTravelTime.count()};
 
-  distances[FORWARD][source_idx] = {0, std::numeric_limits<size_t>::max(),
-                                    true};
-  distances[REVERSE][target_idx] = {0, std::numeric_limits<size_t>::max(),
-                                    true};
-
-  pq.push({0, source_idx, FORWARD});
-  pq.push({0, target_idx, REVERSE});
-
-  int min_dist = INF;
-  std::unordered_set<size_t> transfers;
-  int steps = 0;
-
+  auto const init = [&](std::vector<routing::offset> offsets,
+                        std::uint8_t dir) {
+    for (auto const& start : offsets) {  // TODO correct offsets
+      for_each_meta(
+          tt, q.dest_match_mode_, start.target_, [&](location_idx_t const x) {
+            auto const d = static_cast<dist::dist_t>(start.duration().count());
+            dists[dir][x].d_[kMax] = d;
+            dists[dir][x].d_[kMin] = d;
+            pq.push(label{x, {d, d}, dir});
+          });
+    }
+  };
+  init(q.start_, 0);
+  init(q.destination_, 1);
+  auto min_max_dist = std::numeric_limits<dist::dist_t>::max();
+  auto mode = kMax;
+  auto meetpoints = std::vector<location_idx_t>{};
   while (!pq.empty()) {
-    auto [d, v, dir] = pq.top();
+    auto l = pq.top();
     pq.pop();
+    auto const l_dir = l.dir_ % kModeOffset;
+    auto const other_dir = (l_dir) ^ 1U;
 
-    int dist = -d;  // negate because Rust used BinaryHeap (max-heap)
-    if (dist > std::get<0>(distances[dir][v])) {
+    if (dists[l_dir][l.l_].d_[kMax] < l.d_[kMax] &&
+        dists[l_dir][l.l_].d_[kMin] < l.d_[kMin]) {
       continue;
     }
-
-    transfers.insert(v);
-    int other_dir = dir ^ 1;
-
-    if (std::get<0>(distances[other_dir][v]) != INF &&
-        dist + std::get<0>(distances[other_dir][v]) < min_dist) {
-      min_dist = dist + std::get<0>(distances[other_dir][v]);
+    if (dists[other_dir][l.l_].d_[kMax] !=
+        std::numeric_limits<dist::dist_t>::max()) {
+      if (l.d_[kMax] + dists[other_dir][l.l_].d_[kMax] < min_max_dist) {
+        min_max_dist = l.d_[kMax] + dists[other_dir][l.l_].d_[kMax];
+        meetpoints.emplace_back(l.l_);
+      } else if (l.d_[kMin] + dists[other_dir][l.l_].d_[kMin] <= min_max_dist) {
+        meetpoints.emplace_back(l.l_);
+      }
+    }
+    if (l.d_[mode] > min_max_dist) {
+      if (mode == kMax) {
+        auto buffer = std::vector<label>{};
+        while (!pq.empty()) {
+          auto b = pq.top();
+          b.dir_ += kModeOffset;
+          buffer.emplace_back(b);
+          pq.pop();
+        }
+        l.dir_ += kModeOffset;
+        pq.push(l);
+        for (auto const& b : buffer) {
+          pq.push(b);
+        }
+        mode = kMin;
+        continue;
+      } else {
+        break;
+      }
     }
 
-    std::vector<size_t> const& es =
-        (dir == FORWARD) ? stations[v].departures : stations[v].arrivals;
+    auto const& graph = l_dir == 0 ? tt.fwd_search_ch_graph_[prf_idx]
+                                   : tt.bwd_search_ch_graph_[prf_idx];
 
-    for (size_t e_idx : es) {
-      Edge const& e = edges[e_idx];
-      size_t w = (dir == FORWARD) ? e.to_idx : e.from_idx;
-
-      if (station_levels[v] >= station_levels[w]) {
+    for (auto const& e_idx : graph[l.l_]) {
+      auto const e = tt.ch_graph_edges_[prf_idx][e_idx];
+      auto const edge_target = l_dir == 0 ? e.to_ : e.from_;
+      if (tt.ch_levels_[l.l_] > tt.ch_levels_[edge_target]) {
         continue;
       }
-
-      int new_dist = dist + e.max_dur;
-      if (std::get<0>(distances[dir][w]) > dist + e.min_dur) {
-        transfers.insert(e.transfers.begin(), e.transfers.end());
-        distances[dir][w] = {new_dist, e_idx, false};
-        pq.push({-new_dist, w, dir});
-        steps++;
+      auto const new_max_dist = l.d_[kMax] + e.max_dur_.count();
+      auto const new_min_dist = l.d_[kMin] + e.min_dur_.count();
+      if ((new_max_dist < dists[l_dir][edge_target].d_[kMax] ||
+           new_min_dist < dists[l_dir][edge_target].d_[kMin]) &&
+          new_max_dist < pq.n_buckets() &&
+          new_max_dist < routing::kMaxTravelTime.count()) {
+        dists[l_dir][edge_target].d_[kMax] =
+            std::min(static_cast<dist::dist_t>(new_max_dist),
+                     dists[l_dir][edge_target].d_[kMax]);
+        dists[l_dir][edge_target].d_[kMin] =
+            std::min(static_cast<dist::dist_t>(new_min_dist),
+                     dists[l_dir][edge_target].d_[kMin]);
+        pq.push(label{edge_target,
+                      {static_cast<dist::dist_t>(new_max_dist),
+                       static_cast<dist::dist_t>(new_min_dist)},
+                      static_cast<std::uint8_t>(l_dir)});
       }
     }
   }
-
-  std::cout << "Steps: " << steps << std::endl;
-  return transfers;
+  auto marked_stops = bitvec{};
+  marked_stops.resize(tt.n_locations());
+  auto stack = std::vector<location_idx_t>{};
+  for (auto const m : meetpoints) {
+    if (dists[kForward][m].d_[kMin] + dists[kReverse][m].d_[kMin] >
+        min_max_dist) {
+      continue;
+    }
+    stack.emplace_back(m);
+  }
 }
+
+void dijkstra(timetable const&,
+              query const&,
+              vecvec<location_idx_t, footpath> const& lb_graph,
+              std::vector<std::uint16_t>& dists);
 
 }  // namespace nigiri::loader
