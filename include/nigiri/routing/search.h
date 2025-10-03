@@ -330,7 +330,8 @@ struct search {
       }
 
       utl::sort(state_.results_, [](journey const& a, journey const& b) {
-        return a.start_time_ < b.start_time_;
+        return std::tuple{a.start_time_, a.transfers_} <
+               std::tuple{b.start_time_, b.transfers_};
       });
     }
 
