@@ -712,7 +712,7 @@ statistics gtfsrt_update_msg(timetable const& tt,
       }
 
       if (!is_resolved_static) {
-        log(log_lvl::error, "rt.gtfs.resolve", "could not resolve (tag={}) {}",
+        log(log_lvl::debug, "rt.gtfs.resolve", "could not resolve (tag={}) {}",
             tag, remove_nl(td.DebugString()));
         span->AddEvent(
             "unresolved trip",
