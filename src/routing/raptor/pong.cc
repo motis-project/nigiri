@@ -2,8 +2,8 @@
 
 #include <ranges>
 
-#define trace_pong(...)
-// #define trace_pong fmt::println
+// #define trace_pong(...)
+#define trace_pong fmt::println
 
 namespace nigiri::routing {
 
@@ -53,22 +53,23 @@ routing_result pong(timetable const& tt,
     collect_via_destinations(tt, via.location_, ping_is_via[i]);
   }
 
-  auto ping = raptor<SearchDir, Rt, Vias, search_mode::kOneToOne>{
-      tt,
-      rtt,
-      r_state,
-      ping_is_dest,
-      ping_is_via,
-      ping_dist_to_dest,
-      q.td_dest_,
-      ping_travel_time_lb,
-      q.via_stops_,
-      base_day,
-      q.allowed_claszes_,
-      q.require_bike_transport_,
-      q.require_car_transport_,
-      q.prf_idx_ == 2U,
-      q.transfer_time_settings_};
+  using ping_raptor_t =
+      raptor<SearchDir, Rt, Vias, search_mode::kOneToOne, false>;
+  auto ping = ping_raptor_t{tt,
+                            rtt,
+                            r_state,
+                            ping_is_dest,
+                            ping_is_via,
+                            ping_dist_to_dest,
+                            q.td_dest_,
+                            ping_travel_time_lb,
+                            q.via_stops_,
+                            base_day,
+                            q.allowed_claszes_,
+                            q.require_bike_transport_,
+                            q.require_car_transport_,
+                            q.prf_idx_ == 2U,
+                            q.transfer_time_settings_};
 
   // ====
   // PONG
@@ -89,22 +90,23 @@ routing_result pong(timetable const& tt,
     collect_via_destinations(tt, via.location_, pong_is_via[i]);
   }
 
-  auto pong = raptor<flip(SearchDir), Rt, Vias, search_mode::kOneToOne>{
-      tt,
-      rtt,
-      r_state,
-      pong_is_dest,
-      pong_is_via,
-      pong_dist_to_dest,
-      q.td_dest_,
-      pong_travel_time_lb,
-      q.via_stops_,
-      base_day,
-      q.allowed_claszes_,
-      q.require_bike_transport_,
-      q.require_car_transport_,
-      q.prf_idx_ == 2U,
-      q.transfer_time_settings_};
+  using pong_raptor_t =
+      raptor<flip(SearchDir), Rt, Vias, search_mode::kOneToOne, true>;
+  auto pong = pong_raptor_t{tt,
+                            rtt,
+                            r_state,
+                            pong_is_dest,
+                            pong_is_via,
+                            pong_dist_to_dest,
+                            q.td_dest_,
+                            pong_travel_time_lb,
+                            q.via_stops_,
+                            base_day,
+                            q.allowed_claszes_,
+                            q.require_bike_transport_,
+                            q.require_car_transport_,
+                            q.prf_idx_ == 2U,
+                            q.transfer_time_settings_};
 
   // ========
   // >> PLAY!
@@ -162,17 +164,10 @@ routing_result pong(timetable const& tt,
     // --
 
     for (auto& i : r_state.round_times_storage_) {
-      if constexpr (kFwd) {
-        i -= 1;
+      if (i == ping_raptor_t::kInvalid) {
+        i = pong_raptor_t::kInvalid;
       } else {
-        i += 1;
-      }
-    }
-    for (auto& i : r_state.best_storage_) {
-      if constexpr (kFwd) {
-        i -= 1;
-      } else {
-        i += 1;
+        i = pong_raptor_t::kNotLavaArray[0];
       }
     }
 
@@ -180,18 +175,14 @@ routing_result pong(timetable const& tt,
     // PONG
     // ----
 
-    assert(utl::is_sorted(ping_results,
-                          [](journey const& a, journey const& b) {
-                            // Journeys are found sorted by transfers:
-                            // -> more transfers = shorter travel time
-                            // -> longest travel time will be found first
-                            return a.travel_time() > b.travel_time();
-                          }) &&
-           "ping results not sorted");
-
     q.flip_dir();
-    pong.reset_arrivals();
+    auto max = ping_results.els_.front().transfers_ + 2U;
+    pong.prepare_pong(max);
     for (auto& ping_j : ping_results) {
+      auto const new_max = ping_j.transfers_ + 2U;
+      pong.next_pong(max, new_max);
+      max = new_max;
+
       trace_pong("-- PING RESULT: {} - {}, {}", ping_j.departure_time(),
                  ping_j.arrival_time(), ping_j.transfers_);
 
@@ -216,7 +207,9 @@ routing_result pong(timetable const& tt,
                    pong_j.start_time_ == ping_j.dest_time_;
           });
       utl::verify(
-          match != end(s_state.results_), "no pong found, journeys={}",
+          match != end(s_state.results_),
+          "no pong found, needle=[{}, transfers={}], journeys={}",
+          ping_j.dest_time_, ping_j.transfers_,
           s_state.results_.els_ | std::views::transform([](journey const& j) {
             return std::tuple{j.departure_time(), j.arrival_time(),
                               j.transfers_};

@@ -24,7 +24,7 @@ day_idx_t make_base(timetable const& tt, unixtime_t start_time) {
 }
 
 template <direction SearchDir, bool Rt>
-void run_raptor(raptor<SearchDir, Rt, kVias, search_mode::kOneToAll>&& algo,
+void run_raptor(raptor<SearchDir, Rt, kVias, search_mode::kOneToAll, false>&& algo,
                 timetable const& tt,
                 unixtime_t const& start_time,
                 query const& q) {
@@ -70,7 +70,7 @@ raptor_state one_to_all(timetable const& tt,
   auto const base = make_base(tt, start_time);
   auto const is_wheelchair = q.prf_idx_ == kWheelchairProfile;
 
-  auto r = raptor<SearchDir, Rt, kVias, search_mode::kOneToAll>{
+  auto r = raptor<SearchDir, Rt, kVias, search_mode::kOneToAll, false>{
       tt,
       rtt,
       state,

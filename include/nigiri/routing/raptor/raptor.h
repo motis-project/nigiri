@@ -51,7 +51,8 @@ enum class search_mode { kOneToOne, kOneToAll };
 template <direction SearchDir,
           bool Rt,
           via_offset_t Vias,
-          search_mode SearchMode>
+          search_mode SearchMode,
+          bool Lava>
 struct raptor {
   using algo_state_t = raptor_state;
   using algo_stats_t = raptor_stats;
@@ -67,6 +68,15 @@ struct raptor {
   static constexpr auto const kInvalidArray = []() {
     auto a = std::array<delta_t, Vias + 1>{};
     a.fill(kInvalid);
+    return a;
+  }();
+  static constexpr auto const kNotLavaArray = []() {
+    auto a = std::array<delta_t, Vias + 1>{};
+    if constexpr (kFwd) {
+      a.fill(kInvalid - 1);
+    } else {
+      a.fill(kInvalid + 1);
+    }
     return a;
   }();
 
@@ -130,6 +140,41 @@ struct raptor {
 
   algo_stats_t get_stats() const { return stats_; }
 
+  void prepare_pong(unsigned const max) {
+    utl::fill(time_at_dest_, kInvalid);
+
+    auto last = static_cast<int>(max);
+    auto first = 0;
+    for (--last; first < last; ++first, --last) {
+      trace("swap {} vs {}\n", first, last);
+      for (auto i = 0U; i != n_locations_; ++i) {
+        auto& f = round_times_[static_cast<unsigned>(first)][i];
+        auto& l = round_times_[static_cast<unsigned>(last)][i];
+        std::swap(f, l);
+        if (is_dest_[i]) {
+          f = kNotLavaArray;
+          l = kNotLavaArray;
+        }
+      }
+    }
+  }
+
+  void next_pong(unsigned const max, unsigned const k) {
+    if (max == k) {
+      return;
+    }
+    auto const diff = max - k;
+    for (auto from = diff, to = 0U; to != k; ++from, ++to) {
+      trace("move {} to {}\n", from, to);
+      for (auto i = 0U; i != n_locations_; ++i) {
+        round_times_[to][i] = round_times_[from][i];
+        if (is_dest_[i]) {
+          round_times_[to][i] = kNotLavaArray;
+        }
+      }
+    }
+  }
+
   void reset_arrivals() {
     utl::fill(time_at_dest_, kInvalid);
     round_times_.reset(kInvalidArray);
@@ -161,6 +206,7 @@ struct raptor {
                pareto_set<journey>& results) {
     auto const end_k = std::min(max_transfers, kMaxTransfers) + 2U;
 
+    trace("worst at dest: {}\n", worst_time_at_dest);
     auto const d_worst_at_dest = unix_to_delta(base(), worst_time_at_dest);
     for (auto& time_at_dest : time_at_dest_) {
       time_at_dest = get_best(d_worst_at_dest, time_at_dest);
@@ -414,6 +460,15 @@ private:
         auto const is_dest = target_v == Vias && is_dest_[i];
         auto const stay = is_via ? via_stops_[v].stay_ : 0_minutes;
 
+        if constexpr (Lava) {
+          if (!is_dest && round_times_[k][i][target_v] == kInvalid) {
+            trace("┊ │k={} TRANSFER loc={}, best={} => LAVA\n", k,
+                  location{tt_, location_idx_t{i}},
+                  to_unix(round_times_[k][i][target_v]));
+            continue;
+          }
+        }
+
         trace(
             "  loc={}, v={}, tmp={}, is_dest={}, is_via={}, target_v={}, "
             "stay={}\n",
@@ -489,6 +544,17 @@ private:
           auto const target_is_via =
               start_v != Vias && is_via_[start_v][target];
           auto const target_v = target_is_via ? start_v + 1 : start_v;
+          auto const is_dest = is_dest_[target];
+
+          if constexpr (Lava) {
+            if (!is_dest && round_times_[k][i][target_v] == kInvalid) {
+              trace("┊ │k={} FOOTPATH loc={}, best={} => LAVA\n", k,
+                    location{tt_, location_idx_t{i}},
+                    to_unix(round_times_[k][i][target_v]));
+              continue;
+            }
+          }
+
           auto stay = 0_minutes;
           if (start_is_via) {
             stay += via_stops_[v].stay_;
@@ -534,18 +600,21 @@ private:
             round_times_[k][target][target_v] = fp_target_time;
             best_[target][target_v] = fp_target_time;
             state_.station_mark_.set(target, true);
-            if (target_v == Vias && is_dest_[target]) {
+            if (target_v == Vias && is_dest) {
               update_time_at_dest(k, fp_target_time);
             }
           } else {
             trace(
                 "┊ ├k={}   NO FP UPDATE: {} [best={}] --{}--> {} "
-                "[best={}, time_at_dest={}]\n",
+                "[best={}, time_at_dest={}]: fp_target_time={} (beats_best={}, "
+                "beats_dest={})\n",
                 k, location{tt_, l_idx},
                 to_unix(best_[to_idx(l_idx)][target_v]),
                 adjusted_transfer_time(transfer_time_settings_, fp.duration()),
                 location{tt_, fp.target()}, to_unix(best_[target][target_v]),
-                to_unix(time_at_dest_[k]));
+                to_unix(time_at_dest_[k]), to_unix(fp_target_time),
+                is_better(fp_target_time, best_[target][target_v]),
+                is_better(fp_target_time, time_at_dest_[k]));
           }
         }
       }
@@ -582,6 +651,7 @@ private:
           ++stats_.n_footpaths_visited_;
 
           auto const target = to_idx(fp.target());
+          auto const is_dest = is_dest_[target];
 
           auto const start_is_via =
               v != Vias && is_via_[v][static_cast<bitvec::size_type>(i)];
@@ -590,6 +660,16 @@ private:
           auto const target_is_via =
               start_v != Vias && is_via_[start_v][target];
           auto const target_v = target_is_via ? start_v + 1 : start_v;
+
+          if constexpr (Lava) {
+            if (!is_dest && round_times_[k][i][target_v] == kInvalid) {
+              trace("┊ │k={} TD_FOOTPATH loc={}, best={} => LAVA\n", k,
+                    location{tt_, location_idx_t{i}},
+                    to_unix(round_times_[k][i][target_v]));
+              return utl::cflow::kContinue;
+            }
+          }
+
           auto stay = 0_minutes;
           if (start_is_via) {
             stay += via_stops_[v].stay_;
@@ -632,7 +712,7 @@ private:
             round_times_[k][target][target_v] = fp_target_time;
             best_[target][target_v] = fp_target_time;
             state_.station_mark_.set(target, true);
-            if (is_dest_[target]) {
+            if (is_dest) {
               update_time_at_dest(k, fp_target_time);
             }
           } else {
@@ -1103,10 +1183,13 @@ private:
                        });
     };
 
-    trace("┊ │k={}    et: current_best_at_stop={}, stop_idx={}, location={}\n",
-          k, tt_.to_unixtime(day_at_stop, mam_at_stop), stop_idx,
-          location{tt_,
-                   stop{tt_.route_location_seq_[r][stop_idx]}.location_idx()});
+    trace(
+        "┊ │k={}    et: current_best_at_stop={}, day={}={}, stop_idx={}, "
+        "location={}\n",
+        k, tt_.to_unixtime(day_at_stop, mam_at_stop), day_at_stop,
+        tt_.to_unixtime(day_at_stop), stop_idx,
+        location{tt_,
+                 stop{tt_.route_location_seq_[r][stop_idx]}.location_idx()});
 
     constexpr auto const kNDaysToIterate = day_idx_t::value_t{2U};
     for (auto i = day_idx_t::value_t{0U}; i != kNDaysToIterate; ++i) {
@@ -1118,6 +1201,7 @@ private:
       }
 
       auto const day = kFwd ? day_at_stop + i : day_at_stop - i;
+      trace("┊ │k={}      => day={}, i={}", k, tt_.to_unixtime(day), i);
       for (auto it = begin(ev_time_range); it != end(ev_time_range); ++it) {
         auto const t_offset =
             static_cast<std::size_t>(&*it - event_times.data());
@@ -1132,7 +1216,7 @@ private:
               "BETTER!\n",
               k, tt_.transport_name(tt_.route_transport_ranges_[r][t_offset]),
               tt_.dbg(tt_.route_transport_ranges_[r][t_offset]), day,
-              tt_.to_unixtime(day, 0_minutes), mam_at_stop, ev_mam,
+              tt_.to_unixtime(day), mam_at_stop, ev_mam,
               tt_.to_unixtime(day, duration_t{ev_mam}),
               to_unix(time_at_dest_[k]));
           return {transport_idx_t::invalid(), day_idx_t::invalid()};

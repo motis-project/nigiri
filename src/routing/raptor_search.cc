@@ -29,12 +29,13 @@ routing_result raptor_search_with_vias(
     query q,
     std::optional<std::chrono::seconds> const timeout) {
   if (rtt == nullptr) {
-    using algo_t = raptor<SearchDir, false, Vias, search_mode::kOneToOne>;
+    using algo_t =
+        raptor<SearchDir, false, Vias, search_mode::kOneToOne, false>;
     return search<SearchDir, algo_t>{tt,      rtt,          s_state,
                                      r_state, std::move(q), timeout}
         .execute();
   } else {
-    using algo_t = raptor<SearchDir, true, Vias, search_mode::kOneToOne>;
+    using algo_t = raptor<SearchDir, true, Vias, search_mode::kOneToOne, false>;
     return search<SearchDir, algo_t>{tt,      rtt,          s_state,
                                      r_state, std::move(q), timeout}
         .execute();
