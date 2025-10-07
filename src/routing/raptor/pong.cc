@@ -7,6 +7,10 @@
 
 namespace nigiri::routing {
 
+auto to_tuple(journey const& j) {
+  return std::tuple{j.departure_time(), j.arrival_time(), j.transfers_};
+}
+
 template <direction SearchDir, bool Rt, via_offset_t Vias>
 routing_result pong(timetable const& tt,
                     rt_timetable const* rtt,
@@ -135,11 +139,14 @@ routing_result pong(timetable const& tt,
   auto const is_validated = [&](journey const& j) {
     return is_better(j.dest_time_, start_time);
   };
-  auto const get_validated_journey_count = [&]() {
-    return utl::count_if(*result.journeys_,
-                         [&](journey const& j) { return is_validated(j); });
+  auto const get_result_count = [&]() {
+    return utl::count_if(*result.journeys_, [&](journey const& j) {
+      return is_validated(j) &&  //
+             j.travel_time() < fastest_direct &&
+             j.travel_time() < q.max_travel_time_;
+    });
   };
-  while (get_validated_journey_count() < q.min_connection_count_ &&
+  while (get_result_count() < q.min_connection_count_ &&
          tt.external_interval().contains(start_time)) {
     // ----
     // PING
@@ -154,14 +161,12 @@ routing_result pong(timetable const& tt,
     ping.reset_arrivals();
     ping.next_start_time();
     for (auto const& s : starts) {
-      trace_pong("---- PING START: {} at time_at_start={} time_at_stop={}",
+      trace_pong("--- PING START: {} at time_at_start={} time_at_stop={}",
                  location{tt, s.stop_}, s.time_at_start_, s.time_at_stop_);
       ping.add_start(s.stop_, s.time_at_stop_);
     }
     auto const worst_time_at_dest =
-        start_time +
-        (kFwd ? 1 : -1) *
-            (std::min(fastest_direct, q.max_travel_time_) + duration_t{1});
+        start_time + (kFwd ? 1 : -1) * (q.max_travel_time_ + duration_t{1});
     auto ping_results = pareto_set<journey>{};
     ping.execute(start_time, q.max_transfers_, worst_time_at_dest, q.prf_idx_,
                  ping_results);
@@ -172,6 +177,13 @@ routing_result pong(timetable const& tt,
           q.max_transfers_, worst_time_at_dest);
       break;
     }
+    utl::erase_if(ping_results, [&](journey const& x) {
+      auto const dominated = result.journeys_->is_dominated(x);
+      if (dominated) {
+        trace_pong("DELETE DOMINATED {}", to_tuple(x));
+      }
+      return dominated;
+    });
     utl::sort(ping_results, [](journey const& a, journey const& b) {
       return a.transfers_ > b.transfers_;
     });
@@ -215,14 +227,10 @@ routing_result pong(timetable const& tt,
             return pong_j.transfers_ == ping_j.transfers_ &&
                    pong_j.start_time_ == ping_j.dest_time_;
           });
-      utl::verify(
-          match != end(s_state.results_),
-          "no pong for transfers={}, start_time={} found, journeys={}",
-          ping_j.transfers_, ping_j.dest_time_,
-          s_state.results_.els_ | std::views::transform([](journey const& j) {
-            return std::tuple{j.departure_time(), j.arrival_time(),
-                              j.transfers_};
-          }));
+      utl::verify(match != end(s_state.results_),
+                  "no pong for transfers={}, start_time={} found, journeys={}",
+                  ping_j.transfers_, ping_j.dest_time_,
+                  s_state.results_.els_ | std::views::transform(to_tuple));
 
       trace_pong("---- HIT [updating ping start time {} -> {}]\n",
                  ping_j.start_time_, match->dest_time_);
@@ -234,17 +242,48 @@ routing_result pong(timetable const& tt,
     q.flip_dir();
 
     // NEXT
-    start_time =
-        ping_results.els_.front().start_time_ + duration_t{kFwd ? 1 : -1};
+    auto const no_journey_before =
+        utl::find_if(ping_results, [&](journey const& x) {
+          return x.start_time_ < ping_results.els_.front().start_time_;
+        }) == end(ping_results);
+    auto const offset = duration_t{no_journey_before ? 1 : 0};
+    auto const next = start_time =
+        ping_results.els_.front().start_time_ + (kFwd ? 1 : -1) * offset;
+
+    trace_pong(
+        "AFTER {} [offset={}, next={}]:\n\t{}", start_time, offset, next,
+        fmt::join(s_state.results_.els_ | std::views::transform(to_tuple),
+                  "\n\t"));
+
+    start_time = next;
   }
 
   utl::erase_if(s_state.results_, [&](journey const& j) {
-    return j.legs_.empty() || !is_validated(j);
+    auto const erase = j.legs_.empty() || !is_validated(j) ||
+                       j.travel_time() >= fastest_direct ||
+                       j.travel_time() >= q.max_travel_time_;
+    if (erase) {
+      trace_pong(
+          "ERASE not_reconstructed={}, not_validated={}, "
+          "slower_than_direct={}, slower_than_query_max_travel_time={} {}",
+          j.legs_.empty(), !is_validated(j), j.travel_time() >= fastest_direct,
+          j.travel_time() >= q.max_travel_time_ to_tuple(j));
+    }
+    return erase;
   });
+
+  for (auto& x : s_state.results_) {
+    std::swap(x.start_time_, x.dest_time_);
+  }
+
   utl::sort(s_state.results_, [](journey const& a, journey const& b) {
     return std::tuple{a.start_time_, a.transfers_} <
            std::tuple{b.start_time_, b.transfers_};
   });
+
+  trace_pong("RESULT:\n\t{}",
+             fmt::join(s_state.results_.els_ | std::views::transform(to_tuple),
+                       "\n\t"));
 
   return result;
 }

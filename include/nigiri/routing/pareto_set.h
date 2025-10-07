@@ -14,6 +14,10 @@ struct pareto_set {
   size_t size() const { return els_.size(); }
   bool empty() const { return els_.empty(); }
 
+  bool is_dominated(T const& el) const {
+    return utl::any_of(els_, [&](T const& x) { return x.dominates(el); });
+  }
+
   std::tuple<bool, iterator, iterator> add(T&& el) {
     auto n_removed = std::size_t{0};
     for (auto i = 0U; i < els_.size(); ++i) {
