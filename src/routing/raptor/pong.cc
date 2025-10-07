@@ -37,12 +37,17 @@ routing_result pong(timetable const& tt,
   // ====
   // PING
   // ----
-  auto ping_travel_time_lb = std::vector<std::uint16_t>{};
+  auto ping_lb = std::vector<std::uint16_t>{};
   dijkstra(tt, q,
-           SearchDir == direction::kForward
-               ? tt.fwd_search_lb_graph_[q.prf_idx_]
-               : tt.bwd_search_lb_graph_[q.prf_idx_],
-           ping_travel_time_lb);
+           kFwd ? tt.fwd_search_lb_graph_[q.prf_idx_]
+                : tt.bwd_search_lb_graph_[q.prf_idx_],
+           ping_lb);
+  for (auto const [l, lb] : utl::enumerate(ping_lb)) {
+    if (lb != std::numeric_limits<std::decay_t<decltype(lb)>>::max()) {
+      trace_pong("ping lb {}: {}", location{tt, location_idx_t{l}}, lb);
+    }
+  }
+  trace_pong("\n");
 
   auto ping_dist_to_dest = std::vector<std::uint16_t>{};
   auto ping_is_dest = bitvec{};
@@ -61,7 +66,7 @@ routing_result pong(timetable const& tt,
       ping_is_via,
       ping_dist_to_dest,
       q.td_dest_,
-      ping_travel_time_lb,
+      ping_lb,
       q.via_stops_,
       base_day,
       q.allowed_claszes_,
@@ -73,9 +78,19 @@ routing_result pong(timetable const& tt,
   // ====
   // PONG
   // ----
-  auto pong_travel_time_lb = std::vector<std::uint16_t>{};
-  pong_travel_time_lb.resize(tt.n_locations());
-  utl::fill(pong_travel_time_lb, 0U);
+  q.flip_dir();
+  auto pong_lb = std::vector<std::uint16_t>{};
+  dijkstra(tt, q,
+           kFwd ? tt.bwd_search_lb_graph_[q.prf_idx_]
+                : tt.fwd_search_lb_graph_[q.prf_idx_],
+           pong_lb);
+  for (auto const [l, lb] : utl::enumerate(pong_lb)) {
+    if (lb != std::numeric_limits<std::decay_t<decltype(lb)>>::max()) {
+      trace_pong("pong lb {}: {}", location{tt, location_idx_t{l}}, lb);
+    }
+  }
+  trace_pong("\n");
+  q.flip_dir();
 
   auto pong_dist_to_dest = std::vector<std::uint16_t>{};
   auto pong_is_dest = bitvec{};
@@ -97,7 +112,7 @@ routing_result pong(timetable const& tt,
       pong_is_via,
       pong_dist_to_dest,
       q.td_dest_,
-      pong_travel_time_lb,
+      pong_lb,
       q.via_stops_,
       base_day,
       q.allowed_claszes_,
@@ -114,9 +129,8 @@ routing_result pong(timetable const& tt,
                                .interval_ = search_interval,
                                .search_stats_ = {},
                                .algo_stats_ = {}};
-  auto start_time = SearchDir == direction::kForward
-                        ? search_interval.from_
-                        : search_interval.to_ - duration_t{1};
+  auto start_time =
+      kFwd ? search_interval.from_ : search_interval.to_ - duration_t{1};
   auto const is_better = [](auto a, auto b) { return kFwd ? a < b : a > b; };
   auto const is_validated = [&](journey const& j) {
     return is_better(j.dest_time_, start_time);
@@ -140,6 +154,8 @@ routing_result pong(timetable const& tt,
     ping.reset_arrivals();
     ping.next_start_time();
     for (auto const& s : starts) {
+      trace_pong("---- PING START: {} at time_at_start={} time_at_stop={}",
+                 location{tt, s.stop_}, s.time_at_start_, s.time_at_stop_);
       ping.add_start(s.stop_, s.time_at_stop_);
     }
     auto const worst_time_at_dest =
@@ -150,31 +166,15 @@ routing_result pong(timetable const& tt,
     ping.execute(start_time, q.max_transfers_, worst_time_at_dest, q.prf_idx_,
                  ping_results);
     if (ping_results.empty()) {
-      trace_pong("EMPTY PING RESULTS -> QUIT");
+      trace_pong(
+          "EMPTY PING RESULTS -> QUIT (max_transfers={}, "
+          "worst_time_at_dest={})",
+          q.max_transfers_, worst_time_at_dest);
       break;
     }
     utl::sort(ping_results, [](journey const& a, journey const& b) {
       return a.transfers_ > b.transfers_;
     });
-
-    // --
-    // UB
-    // --
-
-    for (auto& i : r_state.round_times_storage_) {
-      if constexpr (kFwd) {
-        i -= 1;
-      } else {
-        i += 1;
-      }
-    }
-    for (auto& i : r_state.best_storage_) {
-      if constexpr (kFwd) {
-        i -= 1;
-      } else {
-        i += 1;
-      }
-    }
 
     // ----
     // PONG
@@ -216,7 +216,9 @@ routing_result pong(timetable const& tt,
                    pong_j.start_time_ == ping_j.dest_time_;
           });
       utl::verify(
-          match != end(s_state.results_), "no pong found, journeys={}",
+          match != end(s_state.results_),
+          "no pong for transfers={}, start_time={} found, journeys={}",
+          ping_j.transfers_, ping_j.dest_time_,
           s_state.results_.els_ | std::views::transform([](journey const& j) {
             return std::tuple{j.departure_time(), j.arrival_time(),
                               j.transfers_};
