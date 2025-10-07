@@ -1108,8 +1108,8 @@ private:
           location{tt_,
                    stop{tt_.route_location_seq_[r][stop_idx]}.location_idx()});
 
-    constexpr auto const kNDaysToIterate = day_idx_t::value_t{2U};
-    for (auto i = day_idx_t::value_t{0U}; i != kNDaysToIterate; ++i) {
+    auto const n_days_to_iterate = kMaxTravelTime / std::chrono::days{1} + 1U;
+    for (auto i = day_idx_t::value_t{0U}; i != n_days_to_iterate; ++i) {
       auto const ev_time_range =
           it_range{i == 0U ? seek_first_day() : get_begin_it(event_times),
                    get_end_it(event_times)};
