@@ -242,13 +242,11 @@ routing_result pong(timetable const& tt,
     q.flip_dir();
 
     // NEXT
-    auto const no_journey_before =
-        utl::find_if(ping_results, [&](journey const& x) {
-          return x.start_time_ < ping_results.els_.front().start_time_;
-        }) == end(ping_results);
-    auto const offset = duration_t{no_journey_before ? 1 : 0};
-    auto const next = start_time =
-        ping_results.els_.front().start_time_ + (kFwd ? 1 : -1) * offset;
+    auto const first_it =
+        utl::min_element(ping_results, [&](journey const& a, journey const& b) {
+          return is_better(a.start_time_, b.start_time_);
+        });
+    auto const next = first_it->start_time_ + duration_t{kFwd ? 1 : -1};
 
     trace_pong(
         "AFTER {} [offset={}, next={}]:\n\t{}", start_time, offset, next,
