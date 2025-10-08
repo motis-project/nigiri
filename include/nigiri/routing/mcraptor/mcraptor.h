@@ -450,31 +450,53 @@ private:
       if(prev_round_station_mark_[l_idx]) {
         auto prev_round_bag = get_round_bag(l_idx, k - 1);
 
+        auto max_delay = delta_t{30};
 
-        auto start = (*std::max_element(prev_round_bag.labels_.begin(), prev_round_bag.labels_.end(), [](auto a, auto b){
-                       return a.arr_t_ < b.arr_t_;
-                     })).arr_t_;
-        auto end = (*std::min_element(prev_round_bag.labels_.begin(), prev_round_bag.labels_.end(), [](auto a, auto b){
-                     return a.arr_t_ < b.arr_t_;
-                   })).arr_t_;
+        std::vector<pair<delta_t , delta_t>> intervals;
+        std::sort(prev_round_bag.labels_.begin(), prev_round_bag.labels_.end(), [](auto a, auto b){
+          return a.arr_t_ > b.arr_t_;
+        });
 
-        if (start != kInvalid ) { // && is_better_or_eq(prev_round_time, et_time_at_stop)
-          auto max_delay = 3000;
-          while(true){
-            auto const [day, mam] = split(start);
-            auto const new_et = get_earliest_transport(k, r, stop_idx, day, mam,
-                                                       stp.location_idx());
-            if (!new_et.is_valid()) break;
-
-            mcraptor_label new_et_label = {.arr_t_ = time_at_stop(r, new_et, stop_idx,kFwd ? event_type::kDep : event_type::kArr), .trip_l_ = stp.location_idx(),
-                                           .route_id = r, .trip_id = new_et, .success_chance = cum_success_chance(l_idx, k-1, new_et_label.arr_t_)};
-
-            //TODO ich iteriere ja hier bis zum ende. kann ja aber auf der Route auch noch weiter vorne einsteigen und würde dann den selben Transport zweimal iterieren?
-            any_marked = any_marked | iterate_without_enter(new_et_label, i + 1, r, k);
-            if(start < end + dir(max_delay)) break;
-            start = new_et_label.arr_t_ + dir(1);
+        intervals.push_back({prev_round_bag.labels_[0].arr_t_, prev_round_bag.labels_[0].arr_t_ - max_delay});
+        for (int j = 1; j < prev_round_bag.labels_.size(); ++j) {
+          if(intervals.back().second <= prev_round_bag.labels_[j].arr_t_){
+            intervals.back().second = prev_round_bag.labels_[j].arr_t_ - max_delay;
+          }else{
+            intervals.push_back({prev_round_bag.labels_[j].arr_t_, prev_round_bag.labels_[j].arr_t_ - max_delay});
           }
         }
+
+//        auto start = (*std::max_element(prev_round_bag.labels_.begin(), prev_round_bag.labels_.end(), [](auto a, auto b){
+//                       return a.arr_t_ < b.arr_t_;
+//                     })).arr_t_;
+//        auto end = (*std::min_element(prev_round_bag.labels_.begin(), prev_round_bag.labels_.end(), [](auto a, auto b){
+//                     return a.arr_t_ < b.arr_t_;
+//                   })).arr_t_;
+
+        auto start = intervals.begin()->first;
+        for(pair<delta_t, delta_t>& interval: intervals){
+          if(start < interval.first) continue;
+          start = interval.first;
+          auto end = interval.second;
+
+          if (start != kInvalid ) { // && is_better_or_eq(prev_round_time, et_time_at_stop)
+            while(true){
+              auto const [day, mam] = split(start);
+              auto const new_et = get_earliest_transport(k, r, stop_idx, day, mam,
+                                                         stp.location_idx());
+              if (!new_et.is_valid()) break;
+
+              mcraptor_label new_et_label = {.arr_t_ = time_at_stop(r, new_et, stop_idx,kFwd ? event_type::kDep : event_type::kArr), .trip_l_ = stp.location_idx(),
+                                             .route_id = r, .trip_id = new_et, .success_chance = cum_success_chance(l_idx, k-1, new_et_label.arr_t_)};
+
+              //TODO ich iteriere ja hier bis zum ende. kann ja aber auf der Route auch noch weiter vorne einsteigen und würde dann den selben Transport zweimal iterieren?
+              any_marked = any_marked | iterate_without_enter(new_et_label, i + 1, r, k);
+              start = new_et_label.arr_t_ + dir(1);
+              if(start < end) break;
+            }
+          }
+        }
+
       }
     }
     return any_marked;
