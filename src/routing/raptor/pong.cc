@@ -249,7 +249,7 @@ routing_result pong(timetable const& tt,
     auto const next = first_it->start_time_ + duration_t{kFwd ? 1 : -1};
 
     trace_pong(
-        "AFTER {} [offset={}, next={}]:\n\t{}", start_time, offset, next,
+        "AFTER {} [next={}]:\n\t{}", start_time, next,
         fmt::join(s_state.results_.els_ | std::views::transform(to_tuple),
                   "\n\t"));
 
@@ -265,7 +265,7 @@ routing_result pong(timetable const& tt,
           "ERASE not_reconstructed={}, not_validated={}, "
           "slower_than_direct={}, slower_than_query_max_travel_time={} {}",
           j.legs_.empty(), !is_validated(j), j.travel_time() >= fastest_direct,
-          j.travel_time() >= q.max_travel_time_ to_tuple(j));
+          j.travel_time() >= q.max_travel_time_, to_tuple(j));
     }
     return erase;
   });
