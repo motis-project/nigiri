@@ -83,12 +83,23 @@ struct alerts {
   using by_route = by_rt_transport;
   using by_route_type = by_rt_transport;
 
+  // fuzzy_stop parameter:
+  //   - true: alert.l_=invalid matches everything
+  //     => used for stop times
+  //   - false: alert.l_=invalid matches iff l=invalid
+  //     => used for itineraries
+  //     - leg (overall trip):
+  //         l == invalid => matches only not stop specific alerts
+  //         (addressing route/trip/agency)
+  //     - from/to/intermediateStop:
+  //         l != invalid => matches only concrete stop
   template <typename Fn>
   void for_each_alert(timetable const& tt,
                       source_idx_t const src,
                       trip_idx_t const t,
                       rt_transport_idx_t const rt_t,
                       location_idx_t const l,
+                      bool const fuzzy_stop,
                       Fn&& fn) const {
     auto const route_id_idx = tt.trip_route_id_[t];
     auto const route_type = tt.route_ids_[src].route_id_type_[route_id_idx];
@@ -100,7 +111,9 @@ struct alerts {
                                  ? location_idx_t::invalid()
                                  : tt.locations_.parents_[parent];
     auto const matches_location = [&](location_idx_t const x) {
-      return x == l || (parent != location_idx_t::invalid() && parent == x) ||
+      return (fuzzy_stop ? (x == location_idx_t::invalid() || x == l)
+                         : (x == l)) ||
+             (parent != location_idx_t::invalid() && parent == x) ||
              (grandparent != location_idx_t::invalid() && grandparent == x);
     };
 
