@@ -363,7 +363,8 @@ private:
           tmp_station_mark_.set(l_idx, true);
           //best_bag_[l_idx].add(et_label);
           any_marked = true;
-        }
+        }else
+          break;
       }
     }
     return any_marked;
@@ -466,25 +467,23 @@ private:
           }
         }
 
-//        auto start = (*std::max_element(prev_round_bag.labels_.begin(), prev_round_bag.labels_.end(), [](auto a, auto b){
-//                       return a.arr_t_ < b.arr_t_;
-//                     })).arr_t_;
-//        auto end = (*std::min_element(prev_round_bag.labels_.begin(), prev_round_bag.labels_.end(), [](auto a, auto b){
-//                     return a.arr_t_ < b.arr_t_;
-//                   })).arr_t_;
-
         auto start = intervals.begin()->first;
+        auto bre = false;
         for(pair<delta_t, delta_t>& interval: intervals){
+          if(bre) break;
           if(start < interval.first) continue;
           start = interval.first;
           auto end = interval.second;
 
-          if (start != kInvalid ) { // && is_better_or_eq(prev_round_time, et_time_at_stop)
+          if (start != kInvalid ) { // && is_better_or_eq(prev_round_time, et_time_at_stop) //TODO dominiert frühere roundtime?
             while(true){
               auto const [day, mam] = split(start);
               auto const new_et = get_earliest_transport(k, r, stop_idx, day, mam,
                                                          stp.location_idx());
-              if (!new_et.is_valid()) break;
+              if (!new_et.is_valid()) {
+                bre = true;
+                break;
+              }
 
               mcraptor_label new_et_label = {.arr_t_ = time_at_stop(r, new_et, stop_idx,kFwd ? event_type::kDep : event_type::kArr), .trip_l_ = stp.location_idx(),
                                              .route_id = r, .trip_id = new_et, .success_chance = cum_success_chance(l_idx, k-1, new_et_label.arr_t_)};
