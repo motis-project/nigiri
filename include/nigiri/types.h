@@ -356,6 +356,15 @@ enum class clasz : std::uint8_t {
 constexpr auto const kNumClasses =
     static_cast<std::underlying_type_t<clasz>>(clasz::kNumClasses);
 
+constexpr std::string_view to_str(clasz const c) {
+  constexpr auto const clasz_str =
+      std::array{"AIR",       "HIGHSPEED",     "LONG_DISTANCE", "COACH",
+                 "NIGHT",     "REGIONAL_FAST", "REGIONAL",      "SUBURBAN",
+                 "SUBWAY",    "TRAM",          "BUS",           "SHIP",
+                 "CABLE_CAR", "FUNICULAR",     "AERIAL_LIFT",   "OTHER"};
+  return clasz_str[static_cast<unsigned>(c)];
+}
+
 enum class location_type : std::uint8_t {
   kGeneratedTrack,  // track generated from track number (i.e. HRD), no separate
                     // coordinate from parent. Has to be connected manually in
