@@ -16,7 +16,8 @@ routing_result pong(timetable const& tt,
                     rt_timetable const* rtt,
                     search_state& s_state,
                     raptor_state& r_state,
-                    query q) {
+                    query q,
+                    std::optional<std::chrono::seconds> timeout) {
   constexpr auto const kFwd = (SearchDir == direction::kForward);
 
   q.sanitize(tt);
@@ -146,8 +147,16 @@ routing_result pong(timetable const& tt,
              j.travel_time() < q.max_travel_time_;
     });
   };
+  auto const processing_start_time = std::chrono::steady_clock::now();
+  auto const is_timeout_reached = [&]() {
+    if (timeout) {
+      return (std::chrono::steady_clock::now() - processing_start_time) >=
+             *timeout;
+    }
+    return false;
+  };
   while (get_result_count() < q.min_connection_count_ &&
-         tt.external_interval().contains(start_time)) {
+         tt.external_interval().contains(start_time) && !is_timeout_reached()) {
     // ----
     // PING
     // ----
@@ -298,49 +307,52 @@ routing_result pong_with_vias(timetable const& tt,
                               rt_timetable const* rtt,
                               search_state& s_state,
                               raptor_state& r_state,
-                              query q) {
+                              query q,
+                              std::optional<std::chrono::seconds> timeout) {
   if (rtt == nullptr) {
-    return pong<SearchDir, true, Vias>(tt, rtt, s_state, r_state, std::move(q));
+    return pong<SearchDir, true, Vias>(tt, rtt, s_state, r_state, std::move(q),
+                                       timeout);
   } else {
-    return pong<SearchDir, true, Vias>(tt, rtt, s_state, r_state, std::move(q));
+    return pong<SearchDir, true, Vias>(tt, rtt, s_state, r_state, std::move(q),
+                                       timeout);
   }
 }
 
 template <direction SearchDir>
-routing_result pong_search_with_dir(timetable const& tt,
-                                    rt_timetable const* rtt,
-                                    search_state& s_state,
-                                    raptor_state& r_state,
-                                    query q) {
-  switch (q.via_stops_.size()) {
-    case 0:
-      return pong_with_vias<SearchDir, 0>(tt, rtt, s_state, r_state,
-                                          std::move(q));
-    case 1:
-      return pong_with_vias<SearchDir, 1>(tt, rtt, s_state, r_state,
-                                          std::move(q));
-    case 2:
-      return pong_with_vias<SearchDir, 2>(tt, rtt, s_state, r_state,
-                                          std::move(q));
-  }
-  throw utl::fail("{} vias not supported (max={})", kMaxVias);
-}
-
-routing_result pong_search(
+routing_result pong_search_with_dir(
     timetable const& tt,
     rt_timetable const* rtt,
     search_state& s_state,
     raptor_state& r_state,
     query q,
-    direction search_dir,
-    std::optional<std::chrono::seconds>  // TODO(felix) maybe reuse?
-) {
+    std::optional<std::chrono::seconds> timeout) {
+  switch (q.via_stops_.size()) {
+    case 0:
+      return pong_with_vias<SearchDir, 0>(tt, rtt, s_state, r_state,
+                                          std::move(q), timeout);
+    case 1:
+      return pong_with_vias<SearchDir, 1>(tt, rtt, s_state, r_state,
+                                          std::move(q), timeout);
+    case 2:
+      return pong_with_vias<SearchDir, 2>(tt, rtt, s_state, r_state,
+                                          std::move(q), timeout);
+  }
+  throw utl::fail("{} vias not supported (max={})", kMaxVias);
+}
+
+routing_result pong_search(timetable const& tt,
+                           rt_timetable const* rtt,
+                           search_state& s_state,
+                           raptor_state& r_state,
+                           query q,
+                           direction search_dir,
+                           std::optional<std::chrono::seconds> timeout) {
   if (search_dir == direction::kForward) {
     return pong_search_with_dir<direction::kForward>(tt, rtt, s_state, r_state,
-                                                     std::move(q));
+                                                     std::move(q), timeout);
   } else {
     return pong_search_with_dir<direction::kBackward>(tt, rtt, s_state, r_state,
-                                                      std::move(q));
+                                                      std::move(q), timeout);
   }
 }
 
