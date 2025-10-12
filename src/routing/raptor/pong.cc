@@ -225,10 +225,14 @@ routing_result pong(timetable const& tt,
             return pong_j.transfers_ == ping_j.transfers_ &&
                    pong_j.start_time_ == ping_j.dest_time_;
           });
-      utl::verify(match != end(s_state.results_),
-                  "no pong for transfers={}, start_time={} found, journeys={}",
-                  ping_j.transfers_, ping_j.dest_time_,
-                  s_state.results_.els_ | std::views::transform(to_tuple));
+
+      if (match == end(s_state.results_)) {
+        fmt::println(
+            "no pong for transfers={}, start_time={} found, journeys={}",
+            ping_j.transfers_, ping_j.dest_time_,
+            s_state.results_.els_ | std::views::transform(to_tuple));
+        continue;
+      }
 
       trace_pong("---- HIT [updating ping start time {} -> {}]\n",
                  ping_j.start_time_, match->dest_time_);
@@ -310,8 +314,8 @@ routing_result pong_with_vias(timetable const& tt,
                               query q,
                               std::optional<std::chrono::seconds> timeout) {
   if (rtt == nullptr) {
-    return pong<SearchDir, true, Vias>(tt, rtt, s_state, r_state, std::move(q),
-                                       timeout);
+    return pong<SearchDir, false, Vias>(tt, rtt, s_state, r_state, std::move(q),
+                                        timeout);
   } else {
     return pong<SearchDir, true, Vias>(tt, rtt, s_state, r_state, std::move(q),
                                        timeout);
