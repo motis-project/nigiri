@@ -191,21 +191,10 @@ routing_result pong(timetable const& tt,
     // ----
     // PONG
     // ----
-
-    assert(utl::is_sorted(ping_results,
-                          [](journey const& a, journey const& b) {
-                            // Journeys are found sorted by transfers:
-                            // -> more transfers = shorter travel time
-                            // -> longest travel time will be found first
-                            return a.travel_time() > b.travel_time();
-                          }) &&
-           "ping results not sorted");
-
     q.flip_dir();
     pong.reset_arrivals();
     for (auto& ping_j : ping_results) {
-      trace_pong("-- PING RESULT: {} - {}, {}", ping_j.departure_time(),
-                 ping_j.arrival_time(), ping_j.transfers_);
+      trace_pong("-- PING RESULT: {}", to_tuple(ping_j));
 
       starts.clear();
       get_starts(flip(SearchDir), tt, rtt, ping_j.dest_time_, q.start_,
@@ -283,8 +272,23 @@ routing_result pong(timetable const& tt,
              fmt::join(s_state.results_.els_ | std::views::transform(to_tuple),
                        "\n\t"));
 
-  result.interval_ = {search_interval.from_, start_time};
+  result.interval_ = {kFwd ? search_interval.from_ : start_time - duration_t{1},
+                      kFwd ? start_time : search_interval.to_};
   result.algo_stats_ = (ping.get_stats() + pong.get_stats()).to_map();
+
+  for (auto& j : s_state.results_) {
+    auto const swap = [](location_idx_t const l) -> location_idx_t {
+      switch (to_idx(l)) {
+        case to_idx(get_special_station(special_station::kStart)):
+          return get_special_station(special_station::kEnd);
+        case to_idx(get_special_station(special_station::kEnd)):
+          return get_special_station(special_station::kStart);
+        default: return l;
+      }
+    };
+    j.legs_.front().from_ = swap(j.legs_.front().from_);
+    j.legs_.back().to_ = swap(j.legs_.front().to_);
+  }
 
   return result;
 }
