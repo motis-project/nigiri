@@ -272,7 +272,7 @@ routing_result pong(timetable const& tt,
              fmt::join(s_state.results_.els_ | std::views::transform(to_tuple),
                        "\n\t"));
 
-  result.interval_ = {kFwd ? search_interval.from_ : start_time - duration_t{1},
+  result.interval_ = {kFwd ? search_interval.from_ : start_time + duration_t{1},
                       kFwd ? start_time : search_interval.to_};
   result.algo_stats_ = (ping.get_stats() + pong.get_stats()).to_map();
 
