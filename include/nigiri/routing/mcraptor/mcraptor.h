@@ -66,6 +66,10 @@ struct mcraptor {
       labels_.emplace_back(new_label);
     }
 
+    void unchecked_add(mcraptor_label const& new_label){
+      labels_.emplace_back(new_label);
+    }
+
     mcraptor_bag& merge(mcraptor_bag const& other_bag){
       for(mcraptor_label label: other_bag.labels_){
         if(!dominates(label)) add(label);
@@ -227,6 +231,15 @@ struct mcraptor {
       update_transfers(k);
       update_footpaths(k, prf_idx);
 
+      station_mark_.for_each_set_bit([&](std::uint64_t const i) {
+        std::sort(best_bag_[i].labels_.begin(), best_bag_[i].labels_.end(),
+                  [](mcraptor_label a, mcraptor_label b) {
+                    return a.arr_t_ < b.arr_t_;
+                  });
+      });
+
+      update_dest_bag(k);
+
 //      for(int i = 9; i < n_locations_; i++){
 //        auto const bag = get_round_bag(i, k);
 //        std::cout << k << " " << std::string_view{tt_.locations_.names_[location_idx_t{i}]} << " ";
@@ -299,7 +312,7 @@ struct mcraptor {
       possible_start_t = unix_to_delta(base(), fp_leg.arr_time_);
     }
     j.add(std::move(transport_leg));
-    print_leg(transport_leg, i);
+    //print_leg(transport_leg, i);
     if(i<j.transfers_ && !std::any_of(q.start_.begin(), q.start_.end(),[next_l](offset loc){return loc.target_ == next_l;})) {
       k = j.transfers_ + 1 - (i+1);
       vector<mcraptor_label> labels = {};
@@ -311,6 +324,8 @@ struct mcraptor {
   }
 
   void reconstruct(query const& q, journey& j) {
+    std::cout << "done: " << std::endl;
+    return;
     std::vector<unsigned int> li = {0};
     auto l = j.dest_;
     delta_t possible_start_t = unix_to_delta(base(), j.dest_time_);
@@ -318,6 +333,7 @@ struct mcraptor {
     vector<mcraptor_label> labels = {};
     get_labels_after_(cista::to_idx(l), j.transfers_ + 1, possible_start_t, labels, 1);
     std::cout << "Gesamtwahrscheinlichkeit: " << j.success_chance << std::endl;
+    std::cout << labels.size() << std::endl;
     for(auto label: labels){
       reconstruct_leg(q, j, 0, l, label);
     }
@@ -388,6 +404,16 @@ private:
     labels.erase(labels.begin(), new_end);
   }
 
+  void get_labels_after_opt_(auto l, auto k, delta_t possible_start_t, std::vector<mcraptor_label>& labels, int ik){
+    labels = best_bag_[l].labels_;
+
+    //nach update wurde die liste sortiert
+    auto new_end = std::lower_bound(labels.begin(), labels.end(), possible_start_t, [](mcraptor_label a, delta_t t){
+      return a.arr_t_ < t;
+    });
+    labels.erase(labels.begin(), new_end);
+  }
+
   float delay_distribution_paper(delta_t x){
     auto xf = static_cast<float>(x);
     auto cancelation_probability = 0.95f;
@@ -407,8 +433,8 @@ private:
 
   template <bool transfer=true>
   float cum_prob(auto l, auto k, delta_t possible_start_t, float success_rate = 0.0f){
-    vector<mcraptor_label> labels = {};
-    get_labels_after_(l, k, possible_start_t, labels, 0);
+    std::vector<mcraptor_label> labels = {};
+    get_labels_after_opt_(l, k, possible_start_t, labels, 0);
     auto result = (transfer ? transferProbability(labels[0].arr_t_ - possible_start_t) : 1) * labels[0].success_chance;
     auto counterprob = 1 - (transfer ? transferProbability(labels[0].arr_t_ - possible_start_t) : success_rate);
     for (int i = 1; i < labels.size(); ++i) {
@@ -454,6 +480,7 @@ private:
         auto max_delay = delta_t{30};
 
         std::vector<pair<delta_t , delta_t>> intervals;
+        //TODO sort ist teuer
         std::sort(prev_round_bag.labels_.begin(), prev_round_bag.labels_.end(), [](auto a, auto b){
           return a.arr_t_ > b.arr_t_;
         });
@@ -488,7 +515,7 @@ private:
               mcraptor_label new_et_label = {.arr_t_ = time_at_stop(r, new_et, stop_idx,kFwd ? event_type::kDep : event_type::kArr), .trip_l_ = stp.location_idx(),
                                              .route_id = r, .trip_id = new_et, .success_chance = cum_success_chance(l_idx, k-1, new_et_label.arr_t_)};
 
-              //TODO ich iteriere ja hier bis zum ende. kann ja aber auf der Route auch noch weiter vorne einsteigen und würde dann den selben Transport zweimal iterieren?
+              //oldTODO ich iteriere ja hier bis zum ende. kann ja aber auf der Route auch noch weiter vorne einsteigen und würde dann den selben Transport zweimal iterieren?
               any_marked = any_marked | iterate_without_enter(new_et_label, i + 1, r, k);
               start = new_et_label.arr_t_ + dir(1);
               if(start < end) break;
@@ -534,13 +561,12 @@ private:
             ++stats_.n_earliest_arrival_updated_by_footpath_;
 
             location_bags_[i][k].add(new_label);
-            best_bag_[i].add(new_label);
+            best_bag_[i].unchecked_add(new_label);
             station_mark_.set(i, true);
           }
         }
       }
     });
-    update_dest_bag(k);
   }
 
   void update_footpaths(unsigned const k, profile_idx_t const prf_idx) {
@@ -561,6 +587,7 @@ private:
           }
 
           mcraptor_label new_label = tmp_label;
+          //TODO transfer für is_dest muss 0 sein
           new_label.arr_t_ = clamp(
               tmp_time + dir(adjusted_transfer_time(transfer_time_settings_,
                                                 fp.duration().count())));
@@ -578,13 +605,13 @@ private:
             ++stats_.n_earliest_arrival_updated_by_footpath_;
 
             location_bags_[target][k].add(new_label);
-            best_bag_[target].add(new_label);
+            //TODO haben geschaut, dass das laben nicht dominiert wird. können hier einfügen ohne zu prüfen
+            best_bag_[target].unchecked_add(new_label);
             station_mark_.set(target, true);
           }
         }
       }
     });
-    update_dest_bag(k);
   }
 
   std::tuple<journey::leg, journey::leg> get_legs(unsigned const k,
@@ -673,23 +700,6 @@ private:
 
   mcraptor_bag const& get_round_bag(auto const l, unsigned const k) {
     return location_bags_[l][k];
-  }
-
-  delta_t get_round_time(auto const l, unsigned const k) {
-    auto const& rb = location_bags_[l][k];
-    return rb.labels_.empty() ? kInvalid :  rb.labels_[0].arr_t_;
-  }
-
-  float get_success_chance(auto const l, unsigned const k) {
-    auto const& rb = location_bags_[l][k];
-    return rb.labels_.empty() ? kInvalid :  rb.labels_[0].success_chance;
-  }
-
-  delta_t get_best_time(auto const l) {
-    auto const& bb = best_bag_[l];
-    return bb.labels_.empty() ? kInvalid : (*std::max_element(bb.labels_.begin(), bb.labels_.end(), [](mcraptor_label a, auto b){
-          return a.arr_t_ < b.arr_t_;
-        })).arr_t_;
   }
 
   [[nodiscard]] date::sys_days base() const {
