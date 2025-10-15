@@ -428,7 +428,7 @@ bool update_run(source_idx_t const src,
     if (curr < pred_time) {
       curr = pred_time;
 
-      auto const stop = static_cast<stop_idx_t>(i / 2U);
+      auto const stop = static_cast<stop_idx_t>((i + 1U) / 2U);
       auto const ev_type = i % 2U == 0U ? event_type::kDep : event_type::kArr;
       auto const curr_unix_time = rtt.base_day_ + duration_t{curr};
       auto const static_time = r.is_scheduled()
