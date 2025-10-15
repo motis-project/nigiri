@@ -422,6 +422,24 @@ bool update_run(source_idx_t const src,
     }
   }
 
+  auto pred_time = std::numeric_limits<delta_t>::min();
+  auto i = 0U;
+  for (auto& curr : rtt.rt_transport_stop_times_[r.rt_]) {
+    if (curr < pred_time) {
+      curr = pred_time;
+
+      auto const stop = static_cast<stop_idx_t>(i / 2U);
+      auto const ev_type = i % 2U == 0U ? event_type::kDep : event_type::kArr;
+      auto const curr_unix_time = rtt.base_day_ + duration_t{curr};
+      auto const static_time = r.is_scheduled()
+                                   ? tt.event_time(r.t_, stop, ev_type)
+                                   : curr_unix_time;
+      rtt.dispatch_delay(r, stop, ev_type, curr_unix_time - static_time);
+    }
+    pred_time = curr;
+    ++i;
+  }
+
   auto const n_not_cancelled_stops = utl::count_if(
       rtt.rt_transport_location_seq_[r.rt_],
       [](stop::value_type const s) { return !stop{s}.is_cancelled(); });
