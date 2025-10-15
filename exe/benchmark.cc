@@ -120,6 +120,10 @@ void generate_queries(
     }
   }
   std::cout << queries.size() << " queries generated successfully\n";
+
+  std::cout << queries.front().q_.start_.front().target_ << " " << queries.front().q_.destination_.front().target_
+            << " " << get<geo::latlng>(queries.front().start_)  << " " << get<geo::latlng>(queries.front().dest_)
+                << " " << location{tt, queries.front().q_.start_.front().target_} << " " << location{tt, queries.front().q_.destination_.front().target_ } << std::endl;
 }
 
 nigiri::pareto_set<nigiri::routing::journey> raptor_search(
@@ -156,7 +160,7 @@ void process_queries(
             auto const total_time_start = std::chrono::steady_clock::now();
             auto const result = routing::raptor_search(
                 tt, nullptr, query_state.ss_, query_state.rs_,
-                queries[q_idx].q_, direction::kForward);
+                queries[q_idx].q_, direction::kBackward);
             auto const total_time_stop = std::chrono::steady_clock::now();
             auto const guard = std::lock_guard{mutex};
             results.emplace_back(benchmark_result{
@@ -164,7 +168,7 @@ void process_queries(
                 std::chrono::duration_cast<std::chrono::milliseconds>(
                     total_time_stop - total_time_start)});
             progress_tracker->increment();
-          } catch (const std::exception& e) {
+          } catch (std::exception const& e) {
             std::cout << e.what();
           }
         });

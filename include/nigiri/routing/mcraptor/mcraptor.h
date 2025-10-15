@@ -312,7 +312,7 @@ struct mcraptor {
       possible_start_t = unix_to_delta(base(), fp_leg.arr_time_);
     }
     j.add(std::move(transport_leg));
-    //print_leg(transport_leg, i);
+    print_leg(transport_leg, i);
     if(i<j.transfers_ && !std::any_of(q.start_.begin(), q.start_.end(),[next_l](offset loc){return loc.target_ == next_l;})) {
       k = j.transfers_ + 1 - (i+1);
       vector<mcraptor_label> labels = {};
@@ -324,8 +324,8 @@ struct mcraptor {
   }
 
   void reconstruct(query const& q, journey& j) {
-    std::cout << "done: " << std::endl;
-    return;
+//    std::cout << "done: " << std::endl;
+//    return;
     std::vector<unsigned int> li = {0};
     auto l = j.dest_;
     delta_t possible_start_t = unix_to_delta(base(), j.dest_time_);
@@ -352,37 +352,6 @@ private:
       ++stats_.n_routes_visited_;
       any_marked |= update_route(k, r);
     });
-    return any_marked;
-  }
-
-  bool iterate_without_enter(auto et_label, auto i, auto r, auto k){
-    auto stop_seq = tt_.route_location_seq_[r];
-    auto any_marked = false;
-    for (; i != stop_seq.size(); ++i) {
-      auto const stop_idx =
-          static_cast<stop_idx_t>(kFwd ? i : stop_seq.size() - i - 1U);
-      auto const stp = stop{stop_seq[stop_idx]};
-      auto const l_idx = cista::to_idx(stp.location_idx());
-
-      if (stp.can_finish<SearchDir>(false)) {
-        auto const by_transport = time_at_stop(
-            r, et_label.trip_id, stop_idx, kFwd ? event_type::kArr : event_type::kDep);
-
-        et_label.arr_t_ = by_transport;
-        if (!best_bag_[l_idx].dominates(et_label) &&
-            !tmp_[l_idx].dominates(et_label) &&
-            !dest_bag_.dominates(et_label, k) &&
-            lb_[l_idx] != kUnreachable &&
-            !dest_bag_.dominates({.arr_t_ = static_cast<delta_t>(by_transport + lb_[l_idx]), .trip_id = et_label.trip_id, .success_chance = et_label.success_chance}, k)) {
-          ++stats_.n_earliest_arrival_updated_by_route_;
-          tmp_[l_idx].add({by_transport, et_label.trip_l_, stp.location_idx(), et_label.route_id, et_label.trip_id, et_label.success_chance});
-          tmp_station_mark_.set(l_idx, true);
-          //best_bag_[l_idx].add(et_label);
-          any_marked = true;
-        }else
-          break;
-      }
-    }
     return any_marked;
   }
 
@@ -450,6 +419,36 @@ private:
 
   float cum_enter_probability(auto l, auto k, delta_t possible_start_t){
     return cum_prob<false>(l, k, possible_start_t, 0.95f);
+  }
+
+  bool iterate_without_enter(auto et_label, auto i, auto r, auto k){
+    auto stop_seq = tt_.route_location_seq_[r];
+    auto any_marked = false;
+    for (; i != stop_seq.size(); ++i) {
+      auto const stop_idx =
+          static_cast<stop_idx_t>(kFwd ? i : stop_seq.size() - i - 1U);
+      auto const stp = stop{stop_seq[stop_idx]};
+      auto const l_idx = cista::to_idx(stp.location_idx());
+
+      if (stp.can_finish<SearchDir>(false)) {
+        auto const by_transport = time_at_stop(
+            r, et_label.trip_id, stop_idx, kFwd ? event_type::kArr : event_type::kDep);
+
+        et_label.arr_t_ = by_transport;
+        if (!best_bag_[l_idx].dominates(et_label) &&
+            !tmp_[l_idx].dominates(et_label) &&
+            !dest_bag_.dominates(et_label, k) &&
+            lb_[l_idx] != kUnreachable &&
+            !dest_bag_.dominates({.arr_t_ = static_cast<delta_t>(by_transport + lb_[l_idx]), .trip_id = et_label.trip_id, .success_chance = et_label.success_chance}, k)) {
+          ++stats_.n_earliest_arrival_updated_by_route_;
+          tmp_[l_idx].add({by_transport, et_label.trip_l_, stp.location_idx(), et_label.route_id, et_label.trip_id, et_label.success_chance});
+          tmp_station_mark_.set(l_idx, true);
+          any_marked = true;
+        }else
+          break;
+      }
+    }
+    return any_marked;
   }
 
   bool update_route(unsigned const k, route_idx_t const r) {
@@ -522,7 +521,6 @@ private:
             }
           }
         }
-
       }
     }
     return any_marked;
@@ -543,8 +541,15 @@ private:
       for (mcraptor_label tmp_label :tmp_[i].labels_) {
         mcraptor_label new_label = tmp_label;
         if ((delta_t) new_label.arr_t_ != kInvalid) {
+          auto const is_dest = is_dest_[i];
 
-          new_label.arr_t_ = static_cast<delta_t>(new_label.arr_t_ + transfer_times_[i]);
+          auto const transfer_time = is_dest ? 0
+                  : dir(adjusted_transfer_time(
+                            transfer_time_settings_,
+                            tt_.locations_.transfer_time_[location_idx_t{i}]
+                                .count()));
+
+          new_label.arr_t_ = static_cast<delta_t>(new_label.arr_t_ + transfer_time);
 
           if (!best_bag_[i].dominates(new_label) &&
               !dest_bag_.dominates(new_label, k)) {
@@ -587,7 +592,6 @@ private:
           }
 
           mcraptor_label new_label = tmp_label;
-          //TODO transfer für is_dest muss 0 sein
           new_label.arr_t_ = clamp(
               tmp_time + dir(adjusted_transfer_time(transfer_time_settings_,
                                                 fp.duration().count())));
@@ -605,7 +609,6 @@ private:
             ++stats_.n_earliest_arrival_updated_by_footpath_;
 
             location_bags_[target][k].add(new_label);
-            //TODO haben geschaut, dass das laben nicht dominiert wird. können hier einfügen ohne zu prüfen
             best_bag_[target].unchecked_add(new_label);
             station_mark_.set(target, true);
           }
