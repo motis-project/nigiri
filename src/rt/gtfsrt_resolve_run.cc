@@ -36,6 +36,9 @@ void resolve_rt(rt_timetable const& rtt,
     output.rt_ = it->second;
     return;
   }
+  if (output.is_scheduled()) {
+    return;
+  }
   auto const rt_add_idx = rtt.additional_trip_ids_.find(rt_changed_trip_id);
   if (rt_add_idx.has_value()) {
     output.rt_ = rtt.additional_trips_lookup_[*rt_add_idx];
