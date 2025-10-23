@@ -40,7 +40,8 @@ struct mcraptor {
     float success_chance;
 
     bool dominates(mcraptor_label const& l) const {
-      return ((kFwd ? this->arr_t_ < l.arr_t_ : this->arr_t_ > l.arr_t_) && this->success_chance > l.success_chance) || this->trip_id == l.trip_id;
+      return (this->arr_t_ >= l.arr_t_ && this->success_chance > l.success_chance) ||
+             (this->arr_t_ == l.arr_t_ && this->success_chance == l.success_chance);
     }
   };
 
@@ -303,6 +304,7 @@ struct mcraptor {
   void reconstruct_leg(query const& q, journey& j, auto i, auto l, mcraptor_label label){
     auto k = j.transfers_ + 1 - i;
     auto [fp_leg, transport_leg] = get_legs(k, l, q.prf_idx_, label);
+    std::cout << "route id: " << label.route_id << std::endl;
     auto next_l = kFwd ? transport_leg.from_ : transport_leg.to_;
     // don't add a 0-minute footpath at the end (fwd) or beginning (bwd)
     auto possible_start_t = unix_to_delta(base(), transport_leg.arr_time_);
@@ -421,47 +423,39 @@ private:
     return cum_prob<false>(l, k, possible_start_t, 0.95f);
   }
 
-  bool iterate_without_enter(auto et_label, auto i, auto r, auto k){
-    auto stop_seq = tt_.route_location_seq_[r];
-    auto any_marked = false;
-    for (; i != stop_seq.size(); ++i) {
-      auto const stop_idx =
-          static_cast<stop_idx_t>(kFwd ? i : stop_seq.size() - i - 1U);
-      auto const stp = stop{stop_seq[stop_idx]};
-      auto const l_idx = cista::to_idx(stp.location_idx());
-
-      if (stp.can_finish<SearchDir>(false)) {
-        auto const by_transport = time_at_stop(
-            r, et_label.trip_id, stop_idx, kFwd ? event_type::kArr : event_type::kDep);
-
-        et_label.arr_t_ = by_transport;
-        if (!best_bag_[l_idx].dominates(et_label) &&
-            !tmp_[l_idx].dominates(et_label) &&
-            !dest_bag_.dominates(et_label, k) &&
-            lb_[l_idx] != kUnreachable &&
-            !dest_bag_.dominates({.arr_t_ = static_cast<delta_t>(by_transport + lb_[l_idx]), .trip_id = et_label.trip_id, .success_chance = et_label.success_chance}, k)) {
-          ++stats_.n_earliest_arrival_updated_by_route_;
-          tmp_[l_idx].add({by_transport, et_label.trip_l_, stp.location_idx(), et_label.route_id, et_label.trip_id, et_label.success_chance});
-          tmp_station_mark_.set(l_idx, true);
-          any_marked = true;
-        }else
-          break;
-      }
-    }
-    return any_marked;
-  }
-
   bool update_route(unsigned const k, route_idx_t const r) {
     auto stop_seq = tt_.route_location_seq_[r];
     auto any_marked = false;
+    auto ets = std::vector<mcraptor_label>{};
     for (int i = 0; i != stop_seq.size(); ++i) {
       auto const stop_idx = static_cast<stop_idx_t>(kFwd ? i : stop_seq.size() - i - 1U);
       auto const stp = stop{stop_seq[stop_idx]};
       auto const l_idx = cista::to_idx(stp.location_idx());
       auto const is_last = i == stop_seq.size() - 1U;
 
-      if (!prev_round_station_mark_[l_idx]) {
-        continue;
+      if (!ets.empty() && stp.can_finish<SearchDir>(false)) {
+        auto it = ets.begin();
+        while (it != ets.end()) {
+          auto& et_label = (*it);
+          auto const by_transport = time_at_stop(
+              r, et_label.trip_id, stop_idx, kFwd ? event_type::kArr : event_type::kDep);
+
+          et_label.arr_t_ = by_transport;
+          if (!best_bag_[l_idx].dominates(et_label) &&
+              !dest_bag_.dominates(et_label, k) &&
+              lb_[l_idx] != kUnreachable &&
+              !dest_bag_.dominates({.arr_t_ = static_cast<delta_t>(by_transport + lb_[l_idx]), .trip_id = et_label.trip_id, .success_chance = et_label.success_chance}, k)) {
+            if(!tmp_[l_idx].dominates(et_label)) {
+              ++stats_.n_earliest_arrival_updated_by_route_;
+              tmp_[l_idx].add({by_transport, et_label.trip_l_, stp.location_idx(), et_label.route_id, et_label.trip_id, et_label.success_chance});
+              tmp_station_mark_.set(l_idx, true);
+              any_marked = true;
+            }
+            ++it;
+          }else{
+            it = ets.erase(it);
+          }
+        }
       }
 
       if (is_last || !stp.can_start<SearchDir>(false) || !prev_round_station_mark_[l_idx]) {
@@ -479,7 +473,7 @@ private:
         auto max_delay = delta_t{30};
 
         std::vector<pair<delta_t , delta_t>> intervals;
-        //TODO sort ist teuer
+        //TODO sort ist teuer und kann verschoben werden
         std::sort(prev_round_bag.labels_.begin(), prev_round_bag.labels_.end(), [](auto a, auto b){
           return a.arr_t_ > b.arr_t_;
         });
@@ -495,15 +489,18 @@ private:
 
         auto start = intervals.begin()->first;
         auto bre = false;
+        auto old_size = ets.size();
         for(pair<delta_t, delta_t>& interval: intervals){
           if(bre) break;
           if(start < interval.first) continue;
           start = interval.first;
           auto end = interval.second;
 
-          if (start != kInvalid ) { // && is_better_or_eq(prev_round_time, et_time_at_stop) //TODO dominiert frühere roundtime?
+          if (start != kInvalid) { // && is_better_or_eq(prev_round_time, et_time_at_stop) //TODO checken ob die prev_round_time von der route schon "überschrieben" wurde. Heißt allgemein keine valide option über diesen transport zu fahren
             while(true){
               auto const [day, mam] = split(start);
+              //TODO ich möchte eine liste an Transports. die wird dann auf einen schlag itteriert. Sollte wärend dem itterieren ein transport dominiert werden, werden automatisch alle früheren dominiert.
+              //dominzprüfung von spät nach früh => wenn spätester domineirt wird, dann werden alle bis zu dem Eintrag der für dominanz verantwortlich ist dominiert
               auto const new_et = get_earliest_transport(k, r, stop_idx, day, mam,
                                                          stp.location_idx());
               if (!new_et.is_valid()) {
@@ -513,14 +510,36 @@ private:
 
               mcraptor_label new_et_label = {.arr_t_ = time_at_stop(r, new_et, stop_idx,kFwd ? event_type::kDep : event_type::kArr), .trip_l_ = stp.location_idx(),
                                              .route_id = r, .trip_id = new_et, .success_chance = cum_success_chance(l_idx, k-1, new_et_label.arr_t_)};
-
-              //oldTODO ich iteriere ja hier bis zum ende. kann ja aber auf der Route auch noch weiter vorne einsteigen und würde dann den selben Transport zweimal iterieren?
-              any_marked = any_marked | iterate_without_enter(new_et_label, i + 1, r, k);
+              ets.push_back(new_et_label);
               start = new_et_label.arr_t_ + dir(1);
               if(start < end) break;
             }
           }
         }
+        if(ets.size() > 1) {
+          std::inplace_merge(
+              ets.begin(), ets.begin() + old_size, ets.end(),
+              [](auto const& a, auto const& b) { return a.arr_t_ > b.arr_t_; });
+
+          auto it = ets.begin();
+          while (it + 1 != ets.end()) {
+            if (it->arr_t_ != (it + 1)->arr_t_) {
+              if (it->success_chance > (it + 1)->success_chance) {
+                it = ets.erase(it + 1) - 1;
+              } else {
+                ++it;
+              }
+            } else {
+              if (it->success_chance > (it + 1)->success_chance) {
+                it = ets.erase(it + 1) - 1;
+              } else {
+                it = ets.erase(it);
+              }
+            }
+          }
+        }
+        //TODO Wenn ein trip schon drinne ist und ich den nochmal hinzufüge dominiert einer den andern. Gleiche Zeit => einer bessere wahrscheinlichkeit
+        //TODO füge das erste am Anfang hinzu. zweite wäre hinter dem, aber noch vor der anderen list
       }
     }
     return any_marked;
@@ -528,6 +547,12 @@ private:
   
   void update_dest_bag(auto k){
     is_dest_.for_each_set_bit([&](std::uint64_t const i) {
+      for (std::pair<unsigned, mcraptor_label> pair :dest_bag_.labels_) {
+        if(pair.first == 0 || pair.first >=k || pair.second.fp_l_ != i) continue;
+        auto tmp_label = pair.second;
+        tmp_label.success_chance = cum_enter_probability(i, k, tmp_label.arr_t_);
+        dest_bag_.add(tmp_label, k);
+      }
       for (mcraptor_label tmp_label :tmp_[i].labels_) {
         if(tmp_label.arr_t_ == kInvalid) continue;
         tmp_label.success_chance = cum_enter_probability(i, k, tmp_label.arr_t_);
@@ -732,7 +757,6 @@ private:
     return tt_.bitfields_[tt_.transport_traffic_days_[t]].test(day);
   }
 
-  //TODO zu transports machen. zwei Transports die gleichzeitig abfahren
   transport get_earliest_transport(unsigned const k,
                                    route_idx_t const r,
                                    stop_idx_t const stop_idx,
