@@ -37,7 +37,8 @@ struct mcraptor {
     route_idx_t route_id{};
     transport trip_id{};
 
-    float success_chance;
+    float success_chance{};
+    bool over_limit{};
 
     bool dominates(mcraptor_label const& l) const {
       return (this->arr_t_ >= l.arr_t_ && this->success_chance > l.success_chance) ||
@@ -229,6 +230,8 @@ struct mcraptor {
         break;
       }
 
+      prun_flaged();
+
       update_transfers(k);
       update_footpaths(k, prf_idx);
 
@@ -293,18 +296,16 @@ struct mcraptor {
     }
   }
 
-  void print_leg(journey::leg leg, auto indent){
+  void print_leg(journey::leg leg, auto indent, auto r){
     for(int i = 0; i<indent; ++i) std::cout <<"\t";
-    std::cout << location{tt_, leg.from_} << " ["<< leg.dep_time_ << "] TO: " << location{tt_, leg.to_} << " ["<< leg.arr_time_ << "] - " << leg.success_chance;
-
+    std::cout << location{tt_, leg.from_} << " id: " << leg.from_ << " ["<< leg.dep_time_ << "] TO: " << location{tt_, leg.to_} << " id: " << leg.to_ << " ["<< leg.arr_time_ << "] - " << leg.success_chance;
     leg.print(std::cout, tt_);
-    std::cout << std::endl;
+    std::cout << "route id: " << r << std::endl;
   }
 
   void reconstruct_leg(query const& q, journey& j, auto i, auto l, mcraptor_label label){
     auto k = j.transfers_ + 1 - i;
     auto [fp_leg, transport_leg] = get_legs(k, l, q.prf_idx_, label);
-    std::cout << "route id: " << label.route_id << std::endl;
     auto next_l = kFwd ? transport_leg.from_ : transport_leg.to_;
     // don't add a 0-minute footpath at the end (fwd) or beginning (bwd)
     auto possible_start_t = unix_to_delta(base(), transport_leg.arr_time_);
@@ -314,7 +315,7 @@ struct mcraptor {
       possible_start_t = unix_to_delta(base(), fp_leg.arr_time_);
     }
     j.add(std::move(transport_leg));
-    print_leg(transport_leg, i);
+    print_leg(transport_leg, i, label.route_id);
     if(i<j.transfers_ && !std::any_of(q.start_.begin(), q.start_.end(),[next_l](offset loc){return loc.target_ == next_l;})) {
       k = j.transfers_ + 1 - (i+1);
       vector<mcraptor_label> labels = {};
@@ -447,7 +448,7 @@ private:
               !dest_bag_.dominates({.arr_t_ = static_cast<delta_t>(by_transport + lb_[l_idx]), .trip_id = et_label.trip_id, .success_chance = et_label.success_chance}, k)) {
             if(!tmp_[l_idx].dominates(et_label)) {
               ++stats_.n_earliest_arrival_updated_by_route_;
-              tmp_[l_idx].add({by_transport, et_label.trip_l_, stp.location_idx(), et_label.route_id, et_label.trip_id, et_label.success_chance});
+              tmp_[l_idx].add({by_transport, et_label.trip_l_, stp.location_idx(), et_label.route_id, et_label.trip_id, et_label.success_chance, et_label.over_limit});
               tmp_station_mark_.set(l_idx, true);
               any_marked = true;
             }
@@ -473,7 +474,7 @@ private:
         auto max_delay = delta_t{30};
 
         std::vector<pair<delta_t , delta_t>> intervals;
-        //TODO sort ist teuer und kann verschoben werden
+        //TODO sort ist teuer und kann verschoben werden. Es wird in prun_flaged auch schon vorsortiert.
         std::sort(prev_round_bag.labels_.begin(), prev_round_bag.labels_.end(), [](auto a, auto b){
           return a.arr_t_ > b.arr_t_;
         });
@@ -509,7 +510,7 @@ private:
               }
 
               mcraptor_label new_et_label = {.arr_t_ = time_at_stop(r, new_et, stop_idx,kFwd ? event_type::kDep : event_type::kArr), .trip_l_ = stp.location_idx(),
-                                             .route_id = r, .trip_id = new_et, .success_chance = cum_success_chance(l_idx, k-1, new_et_label.arr_t_)};
+                                             .route_id = r, .trip_id = new_et, .success_chance = cum_success_chance(l_idx, k-1, new_et_label.arr_t_), .over_limit = new_et_label.arr_t_ < end};
               ets.push_back(new_et_label);
               start = new_et_label.arr_t_ + dir(1);
               if(start < end) break;
@@ -638,6 +639,28 @@ private:
             station_mark_.set(target, true);
           }
         }
+      }
+    });
+  }
+
+  void prun_flaged(){
+    tmp_station_mark_.for_each_set_bit([&](std::uint64_t const i) {
+      std::sort(tmp_[i].labels_.begin(), tmp_[i].labels_.end(), [](auto a, auto b){
+        return a.arr_t_ < b.arr_t_;
+      });
+      auto last_unflagged = std::find_if(tmp_[i].labels_.begin(), tmp_[i].labels_.end(), [](auto a){return !a.over_limit;});
+      if(last_unflagged == tmp_[i].labels_.end()) --last_unflagged;
+      auto value = last_unflagged->arr_t_ - 30;
+
+      if(i == 453 || i == 300){
+        auto a = 1;
+      }
+
+      auto it = tmp_[i].labels_.begin();
+      while (it+1 != tmp_[i].labels_.end()) {
+        if(!it->over_limit) break;
+        if(it->arr_t_ < value) it = tmp_[i].labels_.erase(it);
+        else ++it;
       }
     });
   }
