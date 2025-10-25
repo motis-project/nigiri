@@ -121,7 +121,22 @@ pugi::xml_document to_xml(std::string_view s) {
   utl::verify(root.is_object(), "json_to_xml: root must be an object");
 
   auto doc = pugi::xml_document{};
-  auto service_delivery = doc.append_child("ServiceDelivery");
+  auto siri = doc.append_child("Siri");
+  siri.append_attribute("xmlns:datex")
+      .set_value("http://datex2.eu/schema/2_0RC1/2_0");
+  siri.append_attribute("xmlns")
+      .set_value("http://www.siri.org.uk/siri");
+  siri.append_attribute("xmlns:acsb")
+      .set_value("http://www.ifopt.org.uk/acsb");
+  siri.append_attribute("xmlns:ifopt")
+      .set_value("http://www.ifopt.org.uk/ifopt");
+  siri.append_attribute("xmlns:xsi")
+      .set_value("http://www.w3.org/2001/XMLSchema-instance");
+  siri.append_attribute("xmlns:xs")
+      .set_value("http://www.w3.org/2001/XMLSchema");
+  siri.append_attribute("version").set_value("2.0");
+
+  auto service_delivery = siri.append_child("ServiceDelivery");
   for (auto const& [key, value] : root.as_object()) {
     append_value(service_delivery, key, value);
   }
