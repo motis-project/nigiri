@@ -648,19 +648,14 @@ private:
       std::sort(tmp_[i].labels_.begin(), tmp_[i].labels_.end(), [](auto a, auto b){
         return a.arr_t_ < b.arr_t_;
       });
-      auto last_unflagged = std::find_if(tmp_[i].labels_.begin(), tmp_[i].labels_.end(), [](auto a){return !a.over_limit;});
-      if(last_unflagged == tmp_[i].labels_.end()) --last_unflagged;
-      auto value = last_unflagged->arr_t_ - 30;
-
-      if(i == 453 || i == 300){
-        auto a = 1;
-      }
+      auto first_flagged = std::find_if(tmp_[i].labels_.rbegin(), tmp_[i].labels_.rend(), [](auto a){return a.over_limit;});
+      if(first_flagged == tmp_[i].labels_.rend()) --first_flagged;
+      auto value = first_flagged->arr_t_ - 30;
 
       auto it = tmp_[i].labels_.begin();
       while (it+1 != tmp_[i].labels_.end()) {
-        if(!it->over_limit) break;
         if(it->arr_t_ < value) it = tmp_[i].labels_.erase(it);
-        else ++it;
+        else break;
       }
     });
   }
