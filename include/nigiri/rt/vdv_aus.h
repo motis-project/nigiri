@@ -52,7 +52,7 @@ struct statistics {
 };
 
 struct updater {
-  enum class xml_format : std::uint8_t { kVdv, kSiri, kNumFormats };
+  enum class xml_format : std::uint8_t { kVdv, kSiri, kSiriJson, kNumFormats };
 
   updater(timetable const&, source_idx_t, xml_format format = xml_format::kVdv);
 
