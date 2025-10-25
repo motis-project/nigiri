@@ -7,6 +7,7 @@
 #include "boost/system/error_code.hpp"
 
 #include "pugixml.hpp"
+
 #include "utl/verify.h"
 
 namespace nigiri::rt {
@@ -16,16 +17,15 @@ namespace {
 std::string to_pascal_case(std::string_view name) {
   auto out = std::string{name};
   if (!out.empty()) {
-    out.front() =
-        static_cast<char>(std::toupper(static_cast<unsigned char>(out.front())));
+    out.front() = static_cast<char>(
+        std::toupper(static_cast<unsigned char>(out.front())));
   }
   return out;
 }
 
 std::string scalar_to_string(boost::json::value const& v) {
   switch (v.kind()) {
-    case boost::json::kind::string:
-      return std::string{v.as_string()};
+    case boost::json::kind::string: return std::string{v.as_string()};
     case boost::json::kind::int64:
     case boost::json::kind::uint64:
     case boost::json::kind::double_:
@@ -103,11 +103,8 @@ void fill_node(pugi::xml_node parent, boost::json::value const& value) {
         fill_node(parent, element);
       }
       break;
-    case boost::json::kind::null:
-      break;
-    default:
-      parent.text().set(scalar_to_string(value).c_str());
-      break;
+    case boost::json::kind::null: break;
+    default: parent.text().set(scalar_to_string(value).c_str()); break;
   }
 }
 
@@ -124,10 +121,8 @@ pugi::xml_document to_xml(std::string_view s) {
   auto siri = doc.append_child("Siri");
   siri.append_attribute("xmlns:datex")
       .set_value("http://datex2.eu/schema/2_0RC1/2_0");
-  siri.append_attribute("xmlns")
-      .set_value("http://www.siri.org.uk/siri");
-  siri.append_attribute("xmlns:acsb")
-      .set_value("http://www.ifopt.org.uk/acsb");
+  siri.append_attribute("xmlns").set_value("http://www.siri.org.uk/siri");
+  siri.append_attribute("xmlns:acsb").set_value("http://www.ifopt.org.uk/acsb");
   siri.append_attribute("xmlns:ifopt")
       .set_value("http://www.ifopt.org.uk/ifopt");
   siri.append_attribute("xmlns:xsi")
