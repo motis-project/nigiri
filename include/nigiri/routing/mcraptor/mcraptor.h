@@ -240,6 +240,11 @@ struct mcraptor {
                   [](mcraptor_label a, mcraptor_label b) {
                     return a.arr_t_ < b.arr_t_;
                   });
+        //TODO Es wird in prun_flaged auch schon vorsortiert.
+        std::sort(location_bags_[i][k].labels_.begin(), location_bags_[i][k].labels_.end(),
+                  [](mcraptor_label a, mcraptor_label b) {
+                    return a.arr_t_ > b.arr_t_;
+                  });
       });
 
       update_dest_bag(k);
@@ -405,13 +410,16 @@ private:
 
   template <bool transfer=true>
   float cum_prob(auto l, auto k, delta_t possible_start_t, float success_rate = 0.0f){
-    std::vector<mcraptor_label> labels = {};
-    get_labels_after_opt_(l, k, possible_start_t, labels, 0);
-    auto result = (transfer ? transferProbability(labels[0].arr_t_ - possible_start_t) : 1) * labels[0].success_chance;
-    auto counterprob = 1 - (transfer ? transferProbability(labels[0].arr_t_ - possible_start_t) : success_rate);
-    for (int i = 1; i < labels.size(); ++i) {
-      result += counterprob * (transfer ? transferProbability(labels[i].arr_t_ - possible_start_t) : 1) * labels[i].success_chance;
-      counterprob = counterprob * (1 - (transfer ? transferProbability(labels[i].arr_t_ - possible_start_t): success_rate));
+    auto it = std::lower_bound(best_bag_[l].labels_.begin(), best_bag_[l].labels_.end(), possible_start_t, [](mcraptor_label a, delta_t t){
+      return a.arr_t_ < t;
+    });
+
+    auto result = (transfer ? transferProbability(it->arr_t_ - possible_start_t) : 1) * it->success_chance;
+    auto counterprob = 1 - (transfer ? transferProbability(it->arr_t_ - possible_start_t) : success_rate);
+    ++it;
+    for (; it != best_bag_[l].labels_.end(); ++it) {
+      result += counterprob * (transfer ? transferProbability(it->arr_t_ - possible_start_t) : 1) * it->success_chance;
+      counterprob = counterprob * (1 - (transfer ? transferProbability(it->arr_t_ - possible_start_t): success_rate));
     }
     return result;
   }
@@ -428,6 +436,7 @@ private:
     auto stop_seq = tt_.route_location_seq_[r];
     auto any_marked = false;
     auto ets = std::vector<mcraptor_label>{};
+    std::vector<pair<delta_t , delta_t>> intervals;
     for (int i = 0; i != stop_seq.size(); ++i) {
       auto const stop_idx = static_cast<stop_idx_t>(kFwd ? i : stop_seq.size() - i - 1U);
       auto const stp = stop{stop_seq[stop_idx]};
@@ -469,16 +478,11 @@ private:
 
       //enter transport
       if(prev_round_station_mark_[l_idx]) {
-        auto prev_round_bag = get_round_bag(l_idx, k - 1);
+        auto const& prev_round_bag = get_round_bag(l_idx, k - 1);
 
         auto max_delay = delta_t{30};
 
-        std::vector<pair<delta_t , delta_t>> intervals;
-        //TODO sort ist teuer und kann verschoben werden. Es wird in prun_flaged auch schon vorsortiert.
-        std::sort(prev_round_bag.labels_.begin(), prev_round_bag.labels_.end(), [](auto a, auto b){
-          return a.arr_t_ > b.arr_t_;
-        });
-
+        intervals.clear();
         intervals.push_back({prev_round_bag.labels_[0].arr_t_, prev_round_bag.labels_[0].arr_t_ - max_delay});
         for (int j = 1; j < prev_round_bag.labels_.size(); ++j) {
           if(intervals.back().second <= prev_round_bag.labels_[j].arr_t_){
