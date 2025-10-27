@@ -381,16 +381,6 @@ private:
     labels.erase(labels.begin(), new_end);
   }
 
-  void get_labels_after_opt_(auto l, auto k, delta_t possible_start_t, std::vector<mcraptor_label>& labels, int ik){
-    labels = best_bag_[l].labels_;
-
-    //nach update wurde die liste sortiert
-    auto new_end = std::lower_bound(labels.begin(), labels.end(), possible_start_t, [](mcraptor_label a, delta_t t){
-      return a.arr_t_ < t;
-    });
-    labels.erase(labels.begin(), new_end);
-  }
-
   float delay_distribution_paper(delta_t x){
     auto xf = static_cast<float>(x);
     auto cancelation_probability = 0.95f;
@@ -436,7 +426,6 @@ private:
     auto stop_seq = tt_.route_location_seq_[r];
     auto any_marked = false;
     auto ets = std::vector<mcraptor_label>{};
-    std::vector<pair<delta_t , delta_t>> intervals;
     for (int i = 0; i != stop_seq.size(); ++i) {
       auto const stop_idx = static_cast<stop_idx_t>(kFwd ? i : stop_seq.size() - i - 1U);
       auto const stp = stop{stop_seq[stop_idx]};
@@ -482,30 +471,23 @@ private:
 
         auto max_delay = delta_t{30};
 
-        intervals.clear();
-        intervals.push_back({prev_round_bag.labels_[0].arr_t_, prev_round_bag.labels_[0].arr_t_ - max_delay});
-        for (int j = 1; j < prev_round_bag.labels_.size(); ++j) {
-          if(intervals.back().second <= prev_round_bag.labels_[j].arr_t_){
-            intervals.back().second = prev_round_bag.labels_[j].arr_t_ - max_delay;
-          }else{
-            intervals.push_back({prev_round_bag.labels_[j].arr_t_, prev_round_bag.labels_[j].arr_t_ - max_delay});
-          }
-        }
-
-        auto start = intervals.begin()->first;
+        auto start = prev_round_bag.labels_[0].arr_t_;
+        delta_t end;
         auto bre = false;
         auto old_size = ets.size();
-        for(pair<delta_t, delta_t>& interval: intervals){
-          if(bre) break;
-          if(start < interval.first) continue;
-          start = interval.first;
-          auto end = interval.second;
+        for (int j = 0; j < prev_round_bag.labels_.size(); ++j){
+          if(start > prev_round_bag.labels_[j].arr_t_){
+            start = prev_round_bag.labels_[j].arr_t_;
+          }
+          end = prev_round_bag.labels_[j].arr_t_ - max_delay;
 
-          if (start != kInvalid) { // && is_better_or_eq(prev_round_time, et_time_at_stop) //TODO checken ob die prev_round_time von der route schon "überschrieben" wurde. Heißt allgemein keine valide option über diesen transport zu fahren
+          if(start < end) continue;
+          if(bre) break;
+          if((j+1)<prev_round_bag.labels_.size() && end <= prev_round_bag.labels_[j+1].arr_t_) continue;
+
+          if (start != kInvalid) { // && is_better_or_eq(prev_round_time, et_time_at_stop)
             while(true){
               auto const [day, mam] = split(start);
-              //TODO ich möchte eine liste an Transports. die wird dann auf einen schlag itteriert. Sollte wärend dem itterieren ein transport dominiert werden, werden automatisch alle früheren dominiert.
-              //dominzprüfung von spät nach früh => wenn spätester domineirt wird, dann werden alle bis zu dem Eintrag der für dominanz verantwortlich ist dominiert
               auto const new_et = get_earliest_transport(k, r, stop_idx, day, mam,
                                                          stp.location_idx());
               if (!new_et.is_valid()) {
@@ -543,8 +525,6 @@ private:
             }
           }
         }
-        //TODO Wenn ein trip schon drinne ist und ich den nochmal hinzufüge dominiert einer den andern. Gleiche Zeit => einer bessere wahrscheinlichkeit
-        //TODO füge das erste am Anfang hinzu. zweite wäre hinter dem, aber noch vor der anderen list
       }
     }
     return any_marked;
