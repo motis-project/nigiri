@@ -51,7 +51,7 @@ struct mcraptor {
 
     bool dominates(mcraptor_label const& other_label) const {
       return std::any_of(labels_.begin(), labels_.end(),
-                         [&](mcraptor_label l) {
+                         [&](auto const& l) {
                            return l.dominates(other_label);
                          });
     }
@@ -61,7 +61,7 @@ struct mcraptor {
         return;
       }
       auto new_end = std::remove_if(labels_.begin(), labels_.end(),
-                                    [&](auto l) {
+                                    [&](auto const& l) {
                                       return new_label.dominates(l);
                                     });
       labels_.erase(new_end, labels_.end());
@@ -408,8 +408,9 @@ private:
     auto counterprob = 1 - (transfer ? transferProbability(it->arr_t_ - possible_start_t) : success_rate);
     ++it;
     for (; it != best_bag_[l].labels_.end(); ++it) {
-      result += counterprob * (transfer ? transferProbability(it->arr_t_ - possible_start_t) : 1) * it->success_chance;
-      counterprob = counterprob * (1 - (transfer ? transferProbability(it->arr_t_ - possible_start_t): success_rate));
+      auto prob = transferProbability(it->arr_t_ - possible_start_t);
+      result += counterprob * (transfer ? prob : 1) * it->success_chance;
+      counterprob = counterprob * (1 - (transfer ? prob: success_rate));
     }
     return result;
   }
