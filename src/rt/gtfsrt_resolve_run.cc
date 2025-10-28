@@ -41,9 +41,9 @@ void resolve_rt(rt_timetable const& rtt,
     return;
   }
   auto const rt_add_idx =
-      rtt.additional_trip_ids_.find(rt_changed_trip_id, src);
+      rtt.additional_trips_.at(src).ids_.find(rt_changed_trip_id);
   if (rt_add_idx.has_value()) {
-    output.rt_ = rtt.additional_trips_lookup_[*rt_add_idx];
+    output.rt_ = rtt.additional_trips_.at(src).transports_[*rt_add_idx];
     if (output.stop_range_.size() == 0) {
       output.stop_range_ = {
           static_cast<stop_idx_t>(0U),

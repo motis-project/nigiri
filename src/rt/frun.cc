@@ -718,8 +718,8 @@ trip_id frun::id() const {
                  rtt_->rt_transport_static_transport_[rt_])) {
     auto const add_idx =
         rtt_->rt_transport_static_transport_[rt_].as<rt_add_trip_id_idx_t>();
-    return {rtt_->additional_trip_ids_.get(add_idx),
-            rtt_->rt_transport_src_[rt_]};
+    auto const src = rtt_->rt_transport_src_[rt_];
+    return {rtt_->additional_trips_.at(src).ids_.get(add_idx), src};
   } else {
     return {};
   }
