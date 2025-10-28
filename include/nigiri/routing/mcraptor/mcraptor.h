@@ -331,10 +331,7 @@ struct mcraptor {
     }
   }
 
-  void reconstruct(query const& q, journey& j) {
-//    std::cout << "done: " << std::endl;
-//    return;
-    std::vector<unsigned int> li = {0};
+  void reconstruct_trip_based(query const& q, journey& j) {
     auto l = j.dest_;
     delta_t possible_start_t = unix_to_delta(base(), j.dest_time_);
 
@@ -350,6 +347,125 @@ struct mcraptor {
     std::cout << std::endl;
   }
 
+  void reconstruct(query const& q, journey& j) {
+//    std::cout << "done: " << std::endl;
+//    return;
+    reconstruct_station_based(q, j);
+  }
+
+  void reconstruct_leg_station_based(query const& q, journey& j, auto i, auto l, mcraptor_label label, auto& trips){
+    auto k = j.transfers_ + 1 - i;
+    auto [fp_leg, transport_leg] = get_legs(k, l, q.prf_idx_, label);
+    auto next_l = kFwd ? transport_leg.from_ : transport_leg.to_;
+    auto possible_start_t = unix_to_delta(base(), transport_leg.arr_time_);
+    if (i != 0 && (fp_leg.from_ != fp_leg.to_ ||
+                   fp_leg.dep_time_ != fp_leg.arr_time_)) {
+      j.add(std::move(fp_leg));
+      if(fp_leg.from_ != fp_leg.to_) trips.insert(fp_leg);
+      possible_start_t = unix_to_delta(base(), fp_leg.arr_time_);
+    }
+    j.add(std::move(transport_leg));
+    trips.insert(transport_leg);
+    if(i<j.transfers_ && !std::any_of(q.start_.begin(), q.start_.end(),[next_l](offset loc){return loc.target_ == next_l;})) {
+      k = j.transfers_ + 1 - (i+1);
+      vector<mcraptor_label> labels = {};
+      get_labels_after_(cista::to_idx(next_l), k, possible_start_t, labels, 1);
+      for(auto new_label: labels){
+        reconstruct_leg_station_based(q, j, i+1, next_l, new_label, trips);
+      }
+    }
+  }
+
+  int colum_width = 6;
+  void reconstruct_station_based(query const& q, journey& j) {
+    auto cmp = [](journey::leg a, journey::leg b){
+      return a.arr_time_ < b.arr_time_;
+    };
+    std::set<journey::leg, decltype(cmp)> trips;
+    auto l = j.dest_;
+    delta_t possible_start_t = unix_to_delta(base(), j.dest_time_);
+
+    vector<mcraptor_label> labels = {};
+    get_labels_after_(cista::to_idx(l), j.transfers_ + 1, possible_start_t, labels, 1);
+    std::cout << "Gesamtwahrscheinlichkeit: " << j.success_chance << std::endl;
+
+    for(auto label: labels){
+      reconstruct_leg_station_based(q, j, 0, l, label, trips);
+    }
+
+    std::vector<location_idx_t> locations{};
+    for(journey::leg leg: trips){
+      auto from_i = std::find_if(locations.begin(), locations.end(), [&](location_idx_t l){ return l == leg.from_;}) - locations.begin();
+      if(from_i == locations.size()){
+        locations.push_back(leg.from_);
+      }
+      auto to_i = std::find_if(locations.begin(), locations.end(), [&](location_idx_t l){ return l == leg.to_;}) - locations.begin();
+      if(to_i == locations.size()){
+        locations.push_back(leg.to_);
+      }
+    }
+    for(location_idx_t lo: locations){
+      std::stringstream stringstream;
+      stringstream << location{tt_, lo};
+      auto string = stringstream.str() + " id: " + std::to_string(lo.v_);
+      str_to_length(string, colum_width * 2);
+      std::cout << string << "|";
+    }
+    std::cout << std::endl;
+    for(journey::leg leg: trips){
+      auto from_i = std::find_if(locations.begin(), locations.end(), [&](location_idx_t l){ return l == leg.from_;}) - locations.begin();
+      auto to_i = std::find_if(locations.begin(), locations.end(), [&](location_idx_t l){ return l == leg.to_;}) - locations.begin();
+
+      print_leg_station_based(leg, from_i, to_i, locations.size());
+    }
+    if(kFwd) std::reverse(begin(j.legs_), end(j.legs_));
+    std::cout << std::endl;
+  }
+
+  template <bool cut_front = false>
+  void str_to_length(std::string& str, auto length){
+    for(int i = 0; str.length() < length; ++i) str += " ";
+    str = !cut_front ? str.substr(0, length) : str.substr(str.length() - length, str.length());
+  }
+
+  void print_unixtime(auto t, bool left){
+    if(left){
+      for (int j = 0; j < colum_width; ++j) {
+        std::cout << " ";
+      }
+    }
+    std::stringstream stringstream;
+    stringstream << t;
+    auto str = stringstream.str();
+    str_to_length<true>(str, colum_width);
+    std::cout << str;
+    if(!left){
+      for (int j = 0; j < colum_width; ++j) {
+        std::cout << " ";
+      }
+    }
+    std::cout << "|";
+  }
+
+  void print_column_spaces(int n){
+    for (int i = 0; i < n; ++i){
+      for (int j = 0; j < colum_width * 2; ++j) {
+        std::cout << " ";
+      }
+      std::cout << "|";
+    }
+  }
+
+  void print_leg_station_based(journey::leg leg, auto from_i, auto to_i, auto max){
+    int f = from_i < to_i ? from_i : to_i;
+    int t = (from_i < to_i ? to_i : from_i) - f;
+    print_column_spaces(f);
+    print_unixtime(from_i < to_i ? leg.dep_time_ : leg.arr_time_, from_i < to_i);
+    print_column_spaces(t - 1);
+    print_unixtime(from_i < to_i ? leg.arr_time_ : leg.dep_time_, from_i > to_i);
+    print_column_spaces(max - (from_i < to_i ? to_i : from_i) - 1);
+    std::cout << std::endl;
+  }
 
 private:
   bool loop_routes(unsigned const k) {
