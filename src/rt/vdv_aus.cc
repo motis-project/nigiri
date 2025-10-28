@@ -602,12 +602,14 @@ void updater::process_vdv_run(rt_timetable& rtt,
   auto vdv_stops = resolve_stops(vdv_run, stats);
 
   auto const run_ref_selector =
-      format_ == xml_format::kVdv
-          ? "./FahrtRef/FahrtID/FahrtBezeichner"
-          : "./FramedVehicleJourneyRef/DatedVehicleJourneyRef";
+      format_ == xml_format::kVdv ? "./FahrtRef/FahrtID/FahrtBezeichner"
+      : format_ == xml_format::kSiri
+          ? "./FramedVehicleJourneyRef/DatedVehicleJourneyRef"
+          : "./DatedVehicleJourneyRef";
   auto const operation_day_selector =
-      format_ == xml_format::kVdv ? "./FahrtRef/FahrtID/Betriebstag"
-                                  : "./FramedVehicleJourneyRef/DataFrameRef";
+      format_ == xml_format::kVdv    ? "./FahrtRef/FahrtID/Betriebstag"
+      : format_ == xml_format::kSiri ? "./FramedVehicleJourneyRef/DataFrameRef"
+                                     : "./DatedVehicleJourneyRef";
   auto const vdv_run_id =
       fmt::format("{}{}", get(vdv_run, run_ref_selector).child_value(),
                   get(vdv_run, operation_day_selector).child_value());
