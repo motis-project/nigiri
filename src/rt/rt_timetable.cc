@@ -28,7 +28,7 @@ rt_transport_idx_t rt_timetable::add_rt_transport(
     auto const rt_add_idx =
         rt_add_trip_id_idx_t{additional_trips_lookup_.size()};
     additional_trips_lookup_.emplace_back(rt_t_idx);
-    additional_trip_ids_.store(new_trip_id);
+    additional_trip_ids_.store(new_trip_id, src);
     rt_transport_static_transport_.emplace_back(rt_add_idx);
   }
 
@@ -122,12 +122,13 @@ rt_transport_idx_t rt_timetable::add_rt_transport(
 
   assert(time_seq.empty() || time_seq.size() == location_seq.size() * 2U - 2U);
   assert(static_trip_lookup_.contains(t) ||
-         additional_trip_ids_.find(new_trip_id).has_value());
+         additional_trip_ids_.find(new_trip_id, src).has_value());
   assert(rt_transport_static_transport_[rt_transport_idx_t{rt_t_idx}] == t ||
          rt_transport_static_transport_[rt_transport_idx_t{rt_t_idx}] ==
              rt_add_trip_id_idx_t{additional_trips_lookup_.size() - 1U});
   assert(additional_trips_lookup_.size() ==
          additional_trip_ids_.strings_.size());
+  assert(additional_trips_lookup_.size() == additional_trip_ids_.tags_.size());
   assert(rt_transport_static_transport_.size() == rt_t_idx + 1U);
   assert(rt_transport_src_.size() == rt_t_idx + 1U);
   assert(rt_transport_route_id_.size() == rt_t_idx + 1U);

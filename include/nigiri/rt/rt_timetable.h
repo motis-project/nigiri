@@ -194,7 +194,7 @@ struct rt_timetable {
   vector_map<rt_transport_idx_t, variant<transport, rt_add_trip_id_idx_t>>
       rt_transport_static_transport_;
 
-  string_store<rt_add_trip_id_idx_t> additional_trip_ids_;
+  string_store<rt_add_trip_id_idx_t, source_idx_t> additional_trip_ids_;
 
   vector_map<rt_transport_idx_t, source_idx_t> rt_transport_src_;
 
