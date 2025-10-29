@@ -703,12 +703,12 @@ statistics gtfsrt_update_msg(timetable const& tt,
       resolve_static(today, tt, src, td, [&](run r, trip_idx_t const trip) {
         is_resolved_static = true;
 
-        resolve_rt(rtt, r, trip_id);
+        resolve_rt(rtt, r, trip_id, src);
 
         if (sr == gtfsrt::TripDescriptor_ScheduleRelationship_CANCELED) {
           rtt.cancel_run(r);
           ++stats.total_entities_success_;
-        } else {
+        } else if (!added) {
           if (update_run(src, tt, rtt, trip, r, entity.trip_update())) {
             ++stats.total_entities_success_;
           }
@@ -721,7 +721,7 @@ statistics gtfsrt_update_msg(timetable const& tt,
         utl::verify(!is_resolved_static,
                     "NEW/ADDED trip is required to have a new trip_id");
         auto r = rt::run{};
-        resolve_rt(rtt, r, trip_id.empty() ? td.trip_id() : trip_id);
+        resolve_rt(rtt, r, trip_id.empty() ? td.trip_id() : trip_id, src);
         if (update_run(src, tt, rtt, trip_idx_t::invalid(), r,
                        entity.trip_update())) {
           ++stats.total_entities_success_;

@@ -230,6 +230,7 @@ TEST(rt, gtfs_rt_update) {
   rtt.base_day_ = date::sys_days{2019_y / May / 3};
   rtt.base_day_idx_ = tt.day_idx(rtt.base_day_);
   rtt.location_rt_transports_[location_idx_t{tt.n_locations() - 1U}];
+  rtt.additional_trips_.resize(tt.n_sources());
 
   // Create basic update message.
   transit_realtime::FeedMessage msg;

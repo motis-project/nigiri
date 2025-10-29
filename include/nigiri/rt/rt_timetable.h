@@ -187,14 +187,15 @@ struct rt_timetable {
   // only works for transport that existed in the static timetable
   hash_map<transport, rt_transport_idx_t> static_trip_lookup_;
 
-  // Lookup: additional trip index -> realtime transport
-  vector_map<rt_add_trip_id_idx_t, rt_transport_idx_t> additional_trips_lookup_;
-
   // RT transport -> static transport (not for additional trips)
   vector_map<rt_transport_idx_t, variant<transport, rt_add_trip_id_idx_t>>
       rt_transport_static_transport_;
 
-  string_store<rt_add_trip_id_idx_t> additional_trip_ids_;
+  struct additional_trips {
+    string_store<rt_add_trip_id_idx_t> ids_;
+    vector_map<rt_add_trip_id_idx_t, rt_transport_idx_t> transports_;
+  };
+  vector_map<source_idx_t, additional_trips> additional_trips_;
 
   vector_map<rt_transport_idx_t, source_idx_t> rt_transport_src_;
 
