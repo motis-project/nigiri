@@ -379,7 +379,9 @@ struct mcraptor {
   int colum_width = 20;
   void reconstruct_station_based(query const& q, journey& j) {
     auto cmp = [](journey::leg a, journey::leg b){
-      return a.dep_time_ < b.dep_time_;
+      if (a.dep_time_ != b.dep_time_) return a.dep_time_ < b.dep_time_;
+      if (a.from_ != b.from_) return a.from_ < b.from_;
+      return a.to_ < b.to_;
     };
     std::set<journey::leg, decltype(cmp)> trips;
     auto l = j.dest_;
