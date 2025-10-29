@@ -28,7 +28,7 @@ void journey::leg::print(std::ostream& out,
           },
           [&](footpath const x) {
             indent(out, n_indent);
-            out << "FOOTPATH (duration=" << x.duration().count() << ")\n";
+            out << "FOOTPATH (duration=" << x.duration().count() << ")";
           },
           [&](offset const x) {
             indent(out, n_indent);
