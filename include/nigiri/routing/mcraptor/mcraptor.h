@@ -42,7 +42,8 @@ struct mcraptor {
 
     bool dominates(mcraptor_label const& l) const {
       return (this->arr_t_ >= l.arr_t_ && this->success_chance > l.success_chance) ||
-             (this->arr_t_ == l.arr_t_ && this->success_chance == l.success_chance);
+             (this->arr_t_ == l.arr_t_ && this->success_chance == l.success_chance) ||
+             (this->arr_t_ > l.arr_t_ && this->success_chance >= l.success_chance);
     }
   };
 
@@ -69,6 +70,11 @@ struct mcraptor {
     }
 
     void unchecked_add(mcraptor_label const& new_label){
+      auto new_end = std::remove_if(labels_.begin(), labels_.end(),
+                                    [&](auto const& l) {
+                                      return new_label.dominates(l);
+                                    });
+      labels_.erase(new_end, labels_.end());
       labels_.emplace_back(new_label);
     }
 
@@ -267,6 +273,12 @@ struct mcraptor {
         bag.labels_.clear();
         bag.add({kInvalid});
       });
+
+//      std::cout << "round: " << k << std::endl;
+//
+//      for (const auto& pair : stats_.to_map()) {
+//        std::cout << pair.first << " : " << pair.second << std::endl;
+//      }
     }
 
 //    is_dest_.for_each_set_bit([&](auto const i) {
