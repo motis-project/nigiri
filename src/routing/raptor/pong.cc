@@ -300,7 +300,7 @@ routing_result pong(timetable const& tt,
       }
     };
     j.legs_.front().from_ = swap(j.legs_.front().from_);
-    j.legs_.back().to_ = swap(j.legs_.front().to_);
+    j.legs_.back().to_ = swap(j.legs_.back().to_);
   }
 
   return result;

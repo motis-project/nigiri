@@ -52,8 +52,6 @@ struct rt_timetable {
     auto const d =
         (t - std::chrono::time_point_cast<unixtime_t::duration>(base_day_))
             .count();
-    assert(d >= std::numeric_limits<delta_t>::min());
-    assert(d <= std::numeric_limits<delta_t>::max());
     return clamp(d);
   }
 
