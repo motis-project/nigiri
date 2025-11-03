@@ -236,6 +236,9 @@ void print_results(
               << "\ndest: "
               << std::visit(utl::overloaded{visit_loc_idx, visit_coord},
                             queries[br.q_idx_].dest_)
+              <<"\num:" << std::get<unixtime_t>(queries[br.q_idx_].q_.start_time_)
+              << "\nfrom: " << location{tt, queries[br.q_idx_].q_.start_.front().target_}
+              << "\nto: " << location{tt, queries[br.q_idx_].q_.destination_.front().target_}
               << "\n";
   };
   std::cout << "\nSlowest Queries:\n";
