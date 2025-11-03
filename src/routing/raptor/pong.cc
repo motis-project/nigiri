@@ -366,14 +366,15 @@ routing_result pong(timetable const& tt,
       earlier.add_start(
           from.get_location_idx(),
           from.time(event_type::kArr) +
-              tt.locations_.transfer_time_[from.get_location_idx()]);
+              adjusted_transfer_time(
+                  q.transfer_time_settings_,
+                  tt.locations_.transfer_time_[from.get_location_idx()]));
       for (auto const& fp :
            tt.locations_.footpaths_out_[q.prf_idx_][from.get_location_idx()]) {
-        earlier.add_start(
-            fp.target(), from.time(event_type::kArr) +
-                             (kFwd ? 1 : -1) *
-                                 adjusted_transfer_time(
-                                     q.transfer_time_settings_, fp.duration()));
+        earlier.add_start(fp.target(),
+                          from.time(event_type::kArr) +
+                              adjusted_transfer_time(q.transfer_time_settings_,
+                                                     fp.duration()));
       }
 
       earlier.execute(start_time, 1U, to.time(event_type::kDep), q.prf_idx_,
