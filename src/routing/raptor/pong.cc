@@ -306,6 +306,17 @@ routing_result pong(timetable const& tt,
     j.legs_.back().to_ = swap(j.legs_.back().to_);
   }
 
+  if constexpr (!kFwd) {
+    return result;
+  }
+
+  auto no_td_dest = td_offsets_t{};
+  auto no_vias = std::vector<via_stop>{};
+  utl::fill(ping_lb, 0U);
+  for (auto& v : ping_is_via) {
+    v.zero_out();
+  }
+
   auto results = pareto_set<journey>{};
   for (auto& j : s_state.results_) {
     for (auto const [transit_1, transfer_1, transit_2, transfer_2, transit_3] :
@@ -316,12 +327,8 @@ routing_result pong(timetable const& tt,
         continue;
       }
 
-      [[maybe_unused]] auto& middle =
-          std::get<journey::run_enter_exit>(transit_2.uses_);
-      [[maybe_unused]] auto const& front =
-          std::get<journey::run_enter_exit>(transit_1.uses_);
-      [[maybe_unused]] auto const& back =
-          std::get<journey::run_enter_exit>(transit_3.uses_);
+      auto const& front = std::get<journey::run_enter_exit>(transit_1.uses_);
+      auto const& back = std::get<journey::run_enter_exit>(transit_3.uses_);
 
       auto const front_r = rt::frun{tt, rtt, front.r_};
       auto const from = front_r[front.stop_range_.to_ - 1U];
@@ -331,16 +338,22 @@ routing_result pong(timetable const& tt,
 
       results.clear();
 
-      auto earlier = raptor<SearchDir, Rt, Vias, search_mode::kOneToOne>{
+      auto const dest =
+          std::vector<offset>{{{to.get_location_idx(), 0_minutes, 0U}}};
+      auto start =
+          std::vector<offset>{{{from.get_location_idx(), 0_minutes, 0U}}};
+      collect_destinations(tt, dest, location_match_mode::kExact, ping_is_dest,
+                           ping_dist_to_dest);
+      auto earlier = raptor<SearchDir, Rt, 0U, search_mode::kOneToOne>{
           tt,
           rtt,
           r_state,
           ping_is_dest,
           ping_is_via,
           ping_dist_to_dest,
-          q.td_dest_,
+          no_td_dest,
           ping_lb,
-          q.via_stops_,
+          no_vias,
           base_day,
           q.allowed_claszes_,
           q.require_bike_transport_,
@@ -352,32 +365,35 @@ routing_result pong(timetable const& tt,
 
       earlier.add_start(
           from.get_location_idx(),
-          start_time + tt.locations_.transfer_time_[from.get_location_idx()]);
-      std::cout << "SEARCH FROM " << location{tt, from.get_location_idx()}
-                << " @ " << from.time(event_type::kArr) << "\n";
+          from.time(event_type::kArr) +
+              tt.locations_.transfer_time_[from.get_location_idx()]);
       for (auto const& fp :
            tt.locations_.footpaths_out_[q.prf_idx_][from.get_location_idx()]) {
-        std::cout << "  -> FP: " << location{tt, fp.target()} << " @ "
-                  << from.time(event_type::kArr) + fp.duration() << "\n";
-        earlier.add_start(fp.target(),
-                          from.time(event_type::kArr) + fp.duration());
+        earlier.add_start(
+            fp.target(), from.time(event_type::kArr) +
+                             (kFwd ? 1 : -1) *
+                                 adjusted_transfer_time(
+                                     q.transfer_time_settings_, fp.duration()));
       }
 
       earlier.execute(start_time, 1U, to.time(event_type::kDep), q.prf_idx_,
                       results);
 
-      std::cout << " -> ALTERNATIVES : # = " << results.size() << "\n ";
-      for (auto const& x : results) {
-        x.print(std::cout, tt, rtt);
-      }
+      auto q1 = q;
+      q1.start_time_ = from.time(event_type::kArr);
+      q1.start_ = std::move(start);
+      q1.start_match_mode_ = location_match_mode::kExact;
+      q1.dest_match_mode_ = location_match_mode::kExact;
+      for (auto& x : results) {
+        earlier.reconstruct(q1, x);
 
-      std::cout << "FRONT:\n";
-      transit_1.print(std::cout, tt, rtt);
-      std::cout << "MIDDLE:\n";
-      transit_2.print(std::cout, tt, rtt);
-      std::cout << "BACK:\n";
-      transit_3.print(std::cout, tt, rtt);
-      std::cout << "\n\n";
+        utl::verify(x.legs_.size() == 3U, "expected 3 legs, got {}",
+                    x.legs_.size());
+
+        transfer_1 = x.legs_[0];
+        transit_2 = x.legs_[1];
+        transfer_2 = x.legs_[2];
+      }
     }
   }
 

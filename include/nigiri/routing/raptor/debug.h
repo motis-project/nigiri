@@ -108,13 +108,14 @@
       j.start_time_, fp_target_time,                                       \
       adjusted_transfer_time(q.transfer_time_settings_, fp.duration()))
 
-#define trace_rc_fp_start_no_match                                        \
-  trace_reconstruct(                                                      \
-      "    no start: {} -> {}  is_journey_start(fp.target())={}, "        \
-      "fp_start_time={}, j_start_time={}, fp_duration={}\n",              \
-      location{tt, fp.target()}, location{tt, leg_start_location},        \
-      is_journey_start(tt, q, fp.target()), fp_target_time, j_start_time, \
-      adjusted_transfer_time(q.transfer_time_settings_,                   \
+#define trace_rc_fp_start_no_match                                            \
+  trace_reconstruct(                                                          \
+      "    no start: {} -> {}  ontrip={}, is_journey_start(fp.target())={}, " \
+      "fp_start_time={}, j_start_time={}, fp_duration={}\n",                  \
+      location{tt, fp.target()}, location{tt, leg_start_location}, is_ontrip, \
+      is_journey_start(tt, q, fp.target()),                                   \
+      delta_to_unix(base, fp_target_time), delta_to_unix(base, j_start_time), \
+      adjusted_transfer_time(q.transfer_time_settings_,                       \
                              fp.duration().count()))
 
 #define trace_rc_transport                                                    \
