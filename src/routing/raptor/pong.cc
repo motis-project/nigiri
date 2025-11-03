@@ -2,6 +2,9 @@
 
 #include <ranges>
 
+#include "nigiri/routing/direct.h"
+#include "nigiri/rt/frun.h"
+
 #define trace_pong(...)
 // #define trace_pong fmt::println
 
@@ -301,6 +304,81 @@ routing_result pong(timetable const& tt,
     };
     j.legs_.front().from_ = swap(j.legs_.front().from_);
     j.legs_.back().to_ = swap(j.legs_.back().to_);
+  }
+
+  auto results = pareto_set<journey>{};
+  for (auto& j : s_state.results_) {
+    for (auto const [transit_1, transfer_1, transit_2, transfer_2, transit_3] :
+         utl::nwise<5>(j.legs_)) {
+      if (!std::holds_alternative<journey::run_enter_exit>(transit_1.uses_) ||
+          !std::holds_alternative<journey::run_enter_exit>(transit_2.uses_) ||
+          !std::holds_alternative<journey::run_enter_exit>(transit_3.uses_)) {
+        continue;
+      }
+
+      [[maybe_unused]] auto& middle =
+          std::get<journey::run_enter_exit>(transit_2.uses_);
+      [[maybe_unused]] auto const& front =
+          std::get<journey::run_enter_exit>(transit_1.uses_);
+      [[maybe_unused]] auto const& back =
+          std::get<journey::run_enter_exit>(transit_3.uses_);
+
+      auto const front_r = rt::frun{tt, rtt, front.r_};
+      auto const from = front_r[front.stop_range_.to_ - 1U];
+
+      auto const back_r = rt::frun{tt, rtt, back.r_};
+      auto const to = back_r[back.stop_range_.from_];
+
+      results.clear();
+
+      auto earlier = raptor<SearchDir, Rt, Vias, search_mode::kOneToOne>{
+          tt,
+          rtt,
+          r_state,
+          ping_is_dest,
+          ping_is_via,
+          ping_dist_to_dest,
+          q.td_dest_,
+          ping_lb,
+          q.via_stops_,
+          base_day,
+          q.allowed_claszes_,
+          q.require_bike_transport_,
+          q.require_car_transport_,
+          q.prf_idx_ == 2U,
+          q.transfer_time_settings_};
+      earlier.reset_arrivals();
+      earlier.next_start_time();
+
+      earlier.add_start(
+          from.get_location_idx(),
+          start_time + tt.locations_.transfer_time_[from.get_location_idx()]);
+      std::cout << "SEARCH FROM " << location{tt, from.get_location_idx()}
+                << " @ " << from.time(event_type::kArr) << "\n";
+      for (auto const& fp :
+           tt.locations_.footpaths_out_[q.prf_idx_][from.get_location_idx()]) {
+        std::cout << "  -> FP: " << location{tt, fp.target()} << " @ "
+                  << from.time(event_type::kArr) + fp.duration() << "\n";
+        earlier.add_start(fp.target(),
+                          from.time(event_type::kArr) + fp.duration());
+      }
+
+      earlier.execute(start_time, 1U, to.time(event_type::kDep), q.prf_idx_,
+                      results);
+
+      std::cout << " -> ALTERNATIVES : # = " << results.size() << "\n ";
+      for (auto const& x : results) {
+        x.print(std::cout, tt, rtt);
+      }
+
+      std::cout << "FRONT:\n";
+      transit_1.print(std::cout, tt, rtt);
+      std::cout << "MIDDLE:\n";
+      transit_2.print(std::cout, tt, rtt);
+      std::cout << "BACK:\n";
+      transit_3.print(std::cout, tt, rtt);
+      std::cout << "\n\n";
+    }
   }
 
   return result;
