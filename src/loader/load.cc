@@ -164,10 +164,13 @@ timetable load(std::vector<timetable_source> const& sources,
         cache_metadata_path);
   }
 
+  auto results =
+      vector_map<source_idx_t,
+                 std::pair<timetable, std::unique_ptr<shapes_storage>>>{};
   for (auto const [idx, in] : utl::enumerate(sources)) {
-    auto const local_cache_path = cache_path / fmt::format("tt{:d}", idx);
     auto const src = source_idx_t{idx};
     if (src < first_recomputed_source) {
+      results.emplace_back(std::make_pair(timetable{}, nullptr));
       continue;
     }
     auto const& [tag, path, local_config] = in;
@@ -185,31 +188,40 @@ timetable load(std::vector<timetable_source> const& sources,
       progress_tracker->context(std::string{tag});
       progress_tracker->status("Loading timetable data...");
 
-      auto result = load_from_source(idx, dir.get(), a, it, sources, date_range,
-                                     cache_path, shapes);
+      results.emplace_back(load_from_source(idx, dir.get(), a, it, sources,
+                                            date_range, cache_path, shapes));
 
-      auto other_tt = result.first;
-      auto shape_store = std::move(result.second);
-
-      progress_tracker->status("Merging timetables...");
-      tt.merge(other_tt);
-
-      /* Save snapshot */
-      progress_tracker->status("Saving cache...");
-      fs::create_directories(local_cache_path);
-      if (shapes != nullptr) {
-        shapes->add(shape_store.get());
-        shape_store =
-            std::make_unique<shapes_storage>(local_cache_path, shapes->mode_);
-        shape_store->add(shapes);
-      }
-      tt.write(local_cache_path / "tt.bin");
       progress_tracker->context("");
     } else if (!ignore) {
       throw utl::fail("no loader for {} found", path);
     } else {
       log(log_lvl::error, "loader.load", "no loader for {} found", path);
     }
+  }
+
+  for (auto const [idx, result] : utl::enumerate(results)) {
+    auto const src = source_idx_t{idx};
+    if (src < first_recomputed_source) {
+      continue;
+    }
+    auto const local_cache_path = cache_path / fmt::format("tt{:d}", idx);
+    auto other_tt = result.first;
+    auto shape_store = std::move(result.second);
+
+    progress_tracker->status(
+        fmt::format("Merging timetables ({:d}/{:d})...", idx, sources.size()));
+    tt.merge(other_tt);
+
+    /* Save snapshot */
+    progress_tracker->status("Saving cache...");
+    fs::create_directories(local_cache_path);
+    if (shapes != nullptr) {
+      shapes->add(shape_store.get());
+      shape_store =
+          std::make_unique<shapes_storage>(local_cache_path, shapes->mode_);
+      shape_store->add(shapes);
+    }
+    tt.write(local_cache_path / "tt.bin");
   }
 
   progress_tracker->status("Finalizing").out_bounds(98.F, 100.F).in_high(1);
