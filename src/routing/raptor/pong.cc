@@ -32,7 +32,7 @@ std::optional<std::array<journey::leg, 3U>> get_earliest_alternatve(
     std::copy(begin(src), end(src), begin(dst) + original_size);
     std::inplace_merge(begin(dst), begin(dst) + original_size, end(dst));
     assert(std::is_sorted(dst));
-    dst.erase(std::unique(begin(dst), end(dst)));
+    dst.erase(std::unique(begin(dst), end(dst)), end(dst));
   };
 
   auto const add = [&](auto& dst, auto& marker, auto& copy_from,
