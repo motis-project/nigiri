@@ -1,11 +1,10 @@
 #include "nigiri/routing/raptor/pong.h"
 
-#include "nigiri/routing/get_earliest_transport.h"
-
 #include <ranges>
 
 #include "utl/sorted_diff.h"
 
+#include "nigiri/routing/get_earliest_transport.h"
 #include "nigiri/rt/frun.h"
 
 #define trace_pong(...)
