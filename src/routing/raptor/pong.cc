@@ -28,7 +28,7 @@ std::optional<std::array<journey::leg, 3U>> get_earliest_alternatve(
     bitvec& is_dst) {
   auto const merge_sorted = [](auto& dst, auto const& src) {
     auto const original_size = static_cast<int>(dst.size());
-    dst.resize(original_size + src.size());
+    dst.resize(dst.size() + src.size());
     std::copy(begin(src), end(src), begin(dst) + original_size);
     std::inplace_merge(begin(dst), begin(dst) + original_size, end(dst));
     dst.erase(std::unique(begin(dst), end(dst)), end(dst));
