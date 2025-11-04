@@ -4,6 +4,7 @@
 #include "nigiri/timetable.h"
 
 #include "cista/io.h"
+#include "cista/strong.h"
 
 #include "utl/enumerate.h"
 #include "utl/get_or_create.h"
@@ -58,7 +59,7 @@ std::ostream& operator<<(std::ostream& out, timetable const& tt) {
          d += std::chrono::days{1}) {
       auto const day_idx = day_idx_t{
           static_cast<day_idx_t::value_t>((d - internal.from_) / 1_days)};
-      if (traffic_days.test(to_idx(day_idx))) {
+      if (traffic_days.test(cista::to_idx(day_idx))) {
         date::to_stream(out, "%F", d);
         out << " (day_idx=" << day_idx << ")\n";
         out << rt::frun{
@@ -863,8 +864,8 @@ void timetable::merge(timetable const& other_tt) {
   assert(this->trip_train_nr_.size() == 0);
   /*      trip_idx_t	*/
   auto const add_size = trip_idx_t{new_trip_direction_id.size()};
-  this->trip_direction_id_.resize(to_idx(im.map(add_size)));
-  for (auto const& i : vw::iota(0U, to_idx(add_size))) {
+  this->trip_direction_id_.resize(cista::to_idx(im.map(add_size)));
+  for (auto const& i : vw::iota(0U, cista::to_idx(add_size))) {
     auto const idx = trip_idx_t{i};
     this->trip_direction_id_.set(im.map(idx), new_trip_direction_id.test(idx));
   }

@@ -2,7 +2,9 @@
 
 #include "nigiri/loader/load.h"
 
+#include "cista/containers/string.h"
 #include "cista/hash.h"
+#include "cista/strong.h"
 
 #include "fmt/std.h"
 
@@ -136,7 +138,7 @@ timetable load(std::vector<timetable_source> const& sources,
     }
     auto const prev = i - 1;
     auto const local_cache_path =
-        cache_path / fmt::format("tt{:d}", to_idx(prev));
+        cache_path / fmt::format("tt{:d}", cista::to_idx(prev));
     auto cached_timetable = timetable{};
     try {
       cached_timetable = *cista::read<timetable>(local_cache_path / "tt.bin");
