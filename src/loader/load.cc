@@ -1,4 +1,5 @@
 #include <chrono>
+#include <iterator>
 
 #include "nigiri/loader/load.h"
 
@@ -108,24 +109,18 @@ timetable load(std::vector<timetable_source> const& sources,
     log(log_lvl::info, "loader.load", "no cache metadata at {} found",
         cache_metadata_path);
   }
-  auto first_recomputed_source = source_idx_t{chg.source_paths_.size()};
+  auto needs_recomputation = vector_map<source_idx_t, bool>{};
   for (auto const [idx, path] : utl::enumerate(chg.source_paths_)) {
     auto const src = source_idx_t{idx};
-    if (chg.source_paths_.size() != saved_changes.source_paths_.size()) {
-      first_recomputed_source = src;
-      break;
-    }
-    if (path != saved_changes.source_paths_[src] ||
-        chg.last_write_times_[src] != saved_changes.last_write_times_[src]) {
-      first_recomputed_source = src;
-      break;
-    }
-    if (chg.source_config_hashes_[src] !=
-        saved_changes.source_config_hashes_[src]) {
-      first_recomputed_source = src;
-      break;
-    }
+    needs_recomputation.emplace_back(
+        chg.source_paths_.size() != saved_changes.source_paths_.size() ||
+        path != saved_changes.source_paths_[src] ||
+        chg.last_write_times_[src] != saved_changes.last_write_times_[src] ||
+        chg.source_config_hashes_[src] !=
+            saved_changes.source_config_hashes_[src]);
   }
+  auto first_recomputed_source = std::distance(
+      needs_recomputation.begin(), utl::find(needs_recomputation, true));
 
   auto tt = timetable{};
   auto const progress_tracker = utl::get_active_progress_tracker();
