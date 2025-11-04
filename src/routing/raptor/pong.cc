@@ -31,6 +31,8 @@ std::optional<std::array<journey::leg, 3U>> get_earliest_alternatve(
     dst.resize(original_size + src.size());
     std::copy(begin(src), end(src), begin(dst) + original_size);
     std::inplace_merge(begin(dst), begin(dst) + original_size, end(dst));
+    assert(std::is_sorted(dst));
+    dst.erase(std::unique(begin(dst), end(dst)));
   };
 
   auto const add = [&](auto& dst, auto& marker, auto& copy_from,
@@ -67,11 +69,13 @@ std::optional<std::array<journey::leg, 3U>> get_earliest_alternatve(
     }
   }
 
+  // Join all relevent routes.
   auto from_routes = std::vector<route_idx_t>{},
        to_routes = std::vector<route_idx_t>{};
   add(from_routes, is_src, tt.location_routes_, from, direction::kForward);
   add(to_routes, is_dst, tt.location_routes_, to, direction::kBackward);
 
+  // Join all relevent rt transports.
   auto from_rt_transports = std::vector<rt_transport_idx_t>{},
        to_rt_transports = std::vector<rt_transport_idx_t>{};
   if (rtt != nullptr) {
@@ -81,8 +85,11 @@ std::optional<std::array<journey::leg, 3U>> get_earliest_alternatve(
         direction::kBackward);
   }
 
+  // Visit route in RAPTOR without updating intermediate stops that are not the
+  // destination  because there's no next round (no dynamic programming).
   auto const get_earliest =
-      [&]<typename T>(T const x, stop_idx_t const stop_idx,
+      [&]<typename T>(T const x,  // route_idx_t | rt_transport_t
+                      stop_idx_t const stop_idx,
                       unixtime_t const time) -> std::optional<rt::frun> {
     if constexpr (std::is_same_v<T, rt_transport_idx_t>) {
       auto const dep = rtt->unix_event_time(x, stop_idx, event_type::kDep);
