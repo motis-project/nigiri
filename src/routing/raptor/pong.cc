@@ -189,7 +189,7 @@ std::optional<std::array<journey::leg, 3U>> get_earliest_alternatve(
                          .enter_time_ = (*candidate)[i].time(event_type::kDep)};
         }
       }
-    };
+    }
   };
 
   utl::sorted_diff(
