@@ -164,7 +164,6 @@ struct frun : public run {
       interval<stop_idx_t> const,
       std::function<void(geo::latlng const&)> const&) const;
 
-  void print(std::ostream&, interval<stop_idx_t>);
   friend std::ostream& operator<<(std::ostream&, frun const&);
 
   static frun from_rt(timetable const&,
