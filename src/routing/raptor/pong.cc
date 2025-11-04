@@ -30,7 +30,8 @@ std::optional<std::array<journey::leg, 3U>> get_earliest_alternatve(
     auto const original_size = dst.size();
     dst.resize(original_size + src.size());
     std::copy(begin(src), end(src), begin(dst) + original_size);
-    std::inplace_merge(begin(dst), begin(dst) + original_size, end(dst));
+    std::inplace_merge(begin(dst), begin(dst) + static_cast<int>(original_size),
+                       end(dst));
     assert(std::is_sorted(dst));
     dst.erase(std::unique(begin(dst), end(dst)), end(dst));
   };
