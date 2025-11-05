@@ -187,7 +187,7 @@ struct mcraptor {
     });
     std::for_each(tmp_.begin(), tmp_.end(), [&](mcraptor_bag& bag) {
       bag.labels_.clear();
-      bag.add({kInvalid});
+      //bag.add({kInvalid});
     });
     utl::fill(prev_round_station_mark_.blocks_, 0U);
     utl::fill(tmp_station_mark_.blocks_, 0U);
@@ -264,15 +264,16 @@ struct mcraptor {
 //        std::cout << std::endl;
 //      }
 
+      tmp_station_mark_.for_each_set_bit([&](std::uint64_t const i) {
+        tmp_[i].labels_.clear();
+        //tmp_[i].add({kInvalid});
+      });
+
       utl::fill(route_mark_.blocks_, 0U);
       std::swap(prev_round_station_mark_, station_mark_);
       utl::fill(tmp_station_mark_.blocks_, 0U);
       utl::fill(station_mark_.blocks_, 0U);
 
-      std::for_each(tmp_.begin(), tmp_.end(), [&](mcraptor_bag& bag) {
-        bag.labels_.clear();
-        bag.add({kInvalid});
-      });
 
 //      std::cout << "round: " << k << std::endl;
 //
@@ -651,8 +652,9 @@ private:
                 break;
               }
 
-              mcraptor_label new_et_label = {.arr_t_ = time_at_stop(r, new_et, stop_idx,kFwd ? event_type::kDep : event_type::kArr), .trip_l_ = stp.location_idx(),
-                                             .route_id = r, .trip_id = new_et, .success_chance = cum_success_chance(l_idx, k-1, new_et_label.arr_t_), .over_limit = new_et_label.arr_t_ < end};
+              delta_t time = time_at_stop(r, new_et, stop_idx,kFwd ? event_type::kDep : event_type::kArr);
+              mcraptor_label new_et_label = {.arr_t_ = time, .trip_l_ = stp.location_idx(),
+                                             .route_id = r, .trip_id = new_et, .success_chance = cum_success_chance(l_idx, k-1, time), .over_limit = time < end};
               ets.push_back(new_et_label);
               start = new_et_label.arr_t_ + dir(1);
               if(start < end) break;

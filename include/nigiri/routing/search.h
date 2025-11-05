@@ -297,6 +297,7 @@ struct search {
       search_interval_ = new_interval;
 
       ++stats_.interval_extensions_;
+      break;
     }
 
     if (is_pretrip()) {
