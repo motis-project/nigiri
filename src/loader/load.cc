@@ -170,6 +170,26 @@ timetable load(std::vector<timetable_source> const& sources,
       results.emplace_back(std::make_pair(timetable{}, nullptr));
       continue;
     }
+    if (!needs_recomputation[src]) {
+      auto const local_cache_path =
+          cache_path /
+          fmt::format("tt{:d}", idx + saved_changes.source_paths_.size());
+      auto cached_timetable = timetable{};
+      try {
+        cached_timetable = *cista::read<timetable>(local_cache_path / "tt.bin");
+        cached_timetable.resolve();
+        if (cached_timetable.date_range_ == date_range) {
+          results.emplace_back(std::make_pair(
+              cached_timetable,
+              std::make_unique<shapes_storage>(local_cache_path,
+                                               cista::mmap::protection::READ)));
+          continue;
+        }
+      } catch (std::exception const& e) {
+        log(log_lvl::info, "loader.load", "no cached timetable at {} found",
+            local_cache_path / "tt.bin");
+      }
+    }
     auto const& [tag, path, local_config] = in;
     auto const is_in_memory = path.starts_with("\n#");
     auto const dir = is_in_memory
