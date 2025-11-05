@@ -378,7 +378,8 @@ struct dist {
 
 void dijkstra(timetable const& tt,
               routing::query const& q,
-              profile_idx_t const prf_idx) {
+              profile_idx_t const prf_idx,
+              bitvec& relevant_stops) {
 
   std::array<vector_map<location_idx_t, dist>, 2> dists;
   dists[0].resize(tt.n_locations());
@@ -442,12 +443,12 @@ void dijkstra(timetable const& tt,
       }
     }
 
-    auto const& graph = l_dir == 0 ? tt.fwd_search_ch_graph_[prf_idx]
-                                   : tt.bwd_search_ch_graph_[prf_idx];
+    auto const& graph = l_dir == kForward ? tt.fwd_search_ch_graph_[prf_idx]
+                                          : tt.bwd_search_ch_graph_[prf_idx];
 
     for (auto const& e_idx : graph[l.l_]) {
       auto const e = tt.ch_graph_edges_[prf_idx][e_idx];
-      auto const edge_target = l_dir == 0 ? e.to_ : e.from_;
+      auto const edge_target = l_dir == kForward ? e.to_ : e.from_;
       if (tt.ch_levels_[l.l_] > tt.ch_levels_[edge_target]) {
         continue;
       }
@@ -470,21 +471,45 @@ void dijkstra(timetable const& tt,
       }
     }
   }
-  auto marked_stops = bitvec{};
-  marked_stops.resize(tt.n_locations());
-  auto stack = std::vector<location_idx_t>{};
+  pq.clear();
   for (auto const m : meetpoints) {
     if (dists[kForward][m].d_[kMin] + dists[kReverse][m].d_[kMin] >
         min_max_dist) {
       continue;
     }
-    stack.emplace_back(m);
+    for (auto const dir : {kForward, kReverse}) {
+      pq.push(label{m,
+        {static_cast<dist::dist_t>(-dists[dir][m].d_[kMax]),
+         static_cast<dist::dist_t>(-dists[dir][m].d_[kMin])},
+        static_cast<std::uint8_t>(dir)});
+    }
   }
-}
+  while (!pq.empty()) {
+    auto l = pq.top();
+    pq.pop();
+    relevant_stops.set(l.l_.v_);
+    auto const& graph = l.dir_ == kReverse ? tt.fwd_search_ch_graph_[prf_idx]
+                                        : tt.bwd_search_ch_graph_[prf_idx];
 
-void dijkstra(timetable const&,
-              query const&,
-              vecvec<location_idx_t, footpath> const& lb_graph,
-              std::vector<std::uint16_t>& dists);
+    for (auto const& e_idx : graph[l.l_]) {
+      auto const e = tt.ch_graph_edges_[prf_idx][e_idx];
+      auto const edge_target = l.dir_ == kReverse ? e.to_ : e.from_;
+      if (tt.ch_levels_[l.l_] < tt.ch_levels_[edge_target]) {
+        continue;
+      }
+      auto const& prev_label = dists[l.dir_][edge_target];
+      auto const min_dist_via_prev = prev_label.d_[kMin] + e.min_dur_.count();
+      if (min_dist_via_prev <= -l.d_[kMax]) { // todo stopping criterion, cutoff?
+        pq.push(label{edge_target,
+          {static_cast<dist::dist_t>(l.d_[kMax]+e.min_dur_.count()),
+           static_cast<dist::dist_t>(0)},
+          static_cast<std::uint8_t>(l.dir_)});
+      }
+    }
+  }
+
+  void dijkstra(timetable const&, query const&,
+                vecvec<location_idx_t, footpath> const& lb_graph,
+                std::vector<std::uint16_t>& dists);
 
 }  // namespace nigiri::loader
