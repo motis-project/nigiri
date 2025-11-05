@@ -77,6 +77,25 @@ cache_result load_from_source(uint64_t const idx,
   return cache_result(tt, std::move(shape_store));
 }
 
+cache_result load_from_cache(fs::path local_cache_path,
+                             interval<date::sys_days> const& date_range) {
+  auto cached_timetable = timetable{};
+  try {
+    cached_timetable = *cista::read<timetable>(local_cache_path / "tt.bin");
+  } catch (std::exception const& e) {
+    log(log_lvl::info, "loader.load", "no cached timetable at {} found",
+        local_cache_path / "tt.bin");
+    return cache_result();
+  }
+  cached_timetable.resolve();
+  if (cached_timetable.date_range_ != date_range) {
+    return cache_result();
+  }
+  auto cached_shape_store = std::make_unique<shapes_storage>(
+      local_cache_path, cista::mmap::protection::READ);
+  return cache_result(cached_timetable, std::move(cached_shape_store));
+}
+
 using last_write_time_t = cista::strong<std::int64_t, struct _last_write_time>;
 using source_path_t = cista::basic_string<char const*>;
 
@@ -143,23 +162,13 @@ timetable load(std::vector<timetable_source> const& sources,
     auto const prev = i - 1;
     auto const local_cache_path =
         cache_path / fmt::format("tt{:d}", cista::to_idx(prev));
-    auto cached_timetable = timetable{};
-    try {
-      cached_timetable = *cista::read<timetable>(local_cache_path / "tt.bin");
-    } catch (std::exception const& e) {
-      log(log_lvl::info, "loader.load", "no cached timetable at {} found",
-          local_cache_path / "tt.bin");
-      continue;
-    }
-    cached_timetable.resolve();
-    if (cached_timetable.date_range_ != date_range) {
+    auto result = load_from_cache(local_cache_path, date_range);
+    if (result.is_invalid) {
       continue;
     }
     first_recomputed_source = i;
-    tt = cached_timetable;
-    auto cached_shape_store = std::make_unique<shapes_storage>(
-        local_cache_path, cista::mmap::protection::READ);
-    shapes->add(cached_shape_store.get());
+    tt = result.tt;
+    shapes->add(result.shapes.get());
     break;
   }
 
@@ -182,19 +191,10 @@ timetable load(std::vector<timetable_source> const& sources,
           cache_path /
           fmt::format("tt{:d}", idx + saved_changes.source_paths_.size());
       auto cached_timetable = timetable{};
-      try {
-        cached_timetable = *cista::read<timetable>(local_cache_path / "tt.bin");
-        cached_timetable.resolve();
-        if (cached_timetable.date_range_ == date_range) {
-          results.emplace_back(cache_result(
-              cached_timetable,
-              std::make_unique<shapes_storage>(local_cache_path,
-                                               cista::mmap::protection::READ)));
-          continue;
-        }
-      } catch (std::exception const& e) {
-        log(log_lvl::info, "loader.load", "no cached timetable at {} found",
-            local_cache_path / "tt.bin");
+      auto result = load_from_cache(local_cache_path, date_range);
+      if (!result.is_invalid) {
+        results.emplace_back(std::move(result));
+        continue;
       }
     }
     auto const& [tag, path, local_config] = in;
