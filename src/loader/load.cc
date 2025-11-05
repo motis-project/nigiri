@@ -36,24 +36,19 @@ std::vector<std::unique_ptr<loader_interface>> get_loaders() {
   return loaders;
 }
 
-struct cache_result {
+struct load_result {
   timetable tt;
   std::unique_ptr<shapes_storage> shapes;
-  bool is_invalid = false;
-
-  cache_result() { this->is_invalid = true; }
-  cache_result(timetable tt, std::unique_ptr<shapes_storage> shapes)
-      : tt{tt}, shapes{std::move(shapes)}, is_invalid{false} {}
 };
 
-cache_result load_from_source(uint64_t const idx,
-                              dir* const dir,
-                              assistance_times* a,
-                              auto const it,
-                              std::vector<timetable_source> const& sources,
-                              interval<date::sys_days> const& date_range,
-                              fs::path const cache_path,
-                              shapes_storage const* shapes) {
+load_result load_from_source(uint64_t const idx,
+                             dir* const dir,
+                             assistance_times* a,
+                             auto const it,
+                             std::vector<timetable_source> const& sources,
+                             interval<date::sys_days> const& date_range,
+                             fs::path const cache_path,
+                             shapes_storage const* shapes) {
   // create local state
   auto const& [tag, path, local_config] = sources[idx];
   auto const load_local_cache_path =
@@ -74,26 +69,28 @@ cache_result load_from_source(uint64_t const idx,
     throw utl::fail("failed to load {}: {}", path, e.what());
   }
   tt.write(load_local_cache_path / "tt.bin");
-  return cache_result(tt, std::move(shape_store));
+  return load_result{.tt = tt, .shapes = std::move(shape_store)};
 }
 
-cache_result load_from_cache(fs::path local_cache_path,
-                             interval<date::sys_days> const& date_range) {
+std::optional<load_result> load_from_cache(
+    fs::path const local_cache_path,
+    interval<date::sys_days> const& date_range) {
   auto cached_timetable = timetable{};
   try {
     cached_timetable = *cista::read<timetable>(local_cache_path / "tt.bin");
   } catch (std::exception const& e) {
     log(log_lvl::info, "loader.load", "no cached timetable at {} found",
         local_cache_path / "tt.bin");
-    return cache_result();
+    return std::optional<load_result>{};
   }
   cached_timetable.resolve();
   if (cached_timetable.date_range_ != date_range) {
-    return cache_result();
+    return std::optional<load_result>{};
   }
   auto cached_shape_store = std::make_unique<shapes_storage>(
       local_cache_path, cista::mmap::protection::READ);
-  return cache_result(cached_timetable, std::move(cached_shape_store));
+  return load_result{.tt = cached_timetable,
+                     .shapes = std::move(cached_shape_store)};
 }
 
 using last_write_time_t = cista::strong<std::int64_t, struct _last_write_time>;
@@ -163,12 +160,12 @@ timetable load(std::vector<timetable_source> const& sources,
     auto const local_cache_path =
         cache_path / fmt::format("tt{:d}", cista::to_idx(prev));
     auto result = load_from_cache(local_cache_path, date_range);
-    if (result.is_invalid) {
+    if (!result.has_value()) {
       continue;
     }
     first_recomputed_source = i;
-    tt = result.tt;
-    shapes->add(result.shapes.get());
+    tt = result.value().tt;
+    shapes->add(result.value().shapes.get());
     break;
   }
 
@@ -179,11 +176,11 @@ timetable load(std::vector<timetable_source> const& sources,
         cache_metadata_path);
   }
 
-  auto results = vector_map<source_idx_t, cache_result>{};
+  auto results = vector_map<source_idx_t, load_result>{};
   for (auto const [idx, in] : utl::enumerate(sources)) {
     auto const src = source_idx_t{idx};
     if (src < first_recomputed_source) {
-      results.emplace_back(cache_result());
+      results.emplace_back(load_result{.tt = timetable{}, .shapes = nullptr});
       continue;
     }
     if (!needs_recomputation[src]) {
@@ -192,8 +189,8 @@ timetable load(std::vector<timetable_source> const& sources,
           fmt::format("tt{:d}", idx + saved_changes.source_paths_.size());
       auto cached_timetable = timetable{};
       auto result = load_from_cache(local_cache_path, date_range);
-      if (!result.is_invalid) {
-        results.emplace_back(std::move(result));
+      if (result.has_value()) {
+        results.emplace_back(std::move(result.value()));
         continue;
       }
     }
