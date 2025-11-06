@@ -136,19 +136,20 @@ std::optional<std::array<journey::leg, 3U>> get_earliest_alternatve(
 
       // Check for earlier arrival at destination.
       // -> update arrival + legs
-      if (et.has_value() && is_dst[to_idx(stp.location_idx())]) {
+      if (et.has_value() && is_dst[to_idx(stp.location_idx())] &&
+          stp.out_allowed()) {
         auto const trip_arr = et->fr_[i].time(event_type::kArr);
-        for (auto const& fp :
-             tt.locations_.footpaths_out_[q.prf_idx_][stp.location_idx()]) {
+
+        auto const check_fp = [&](footpath const& fp) {
           if (fp.target() != to) {
-            continue;
+            return;
           }
 
           auto const adjusted_fp_time =
               adjusted_transfer_time(q.transfer_time_settings_, fp.duration());
           auto const dst_arr = trip_arr + adjusted_fp_time;
           if (dst_arr > earliest_arr) {
-            continue;
+            return;
           }
 
           earliest_arr = dst_arr;
@@ -170,6 +171,15 @@ std::optional<std::array<journey::leg, 3U>> get_earliest_alternatve(
                   dst_arr,
                   footpath{fp.target(), adjusted_fp_time},
               }};
+        };
+
+        check_fp({stp.location_idx(),
+                  adjusted_transfer_time(
+                      q.transfer_time_settings_,
+                      tt.locations_.transfer_time_[stp.location_idx()])});
+        for (auto const& fp :
+             tt.locations_.footpaths_out_[q.prf_idx_][stp.location_idx()]) {
+          check_fp(fp);
         }
       }
 
