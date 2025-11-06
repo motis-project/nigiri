@@ -630,35 +630,25 @@ private:
 
         auto start = prev_round_bag.labels_[0].arr_t_;
         delta_t end;
-        auto bre = false;
         auto old_size = ets.size();
+        auto new_ets = std::vector<transport>{};
         for (int j = 0; j < prev_round_bag.labels_.size(); ++j){
+          new_ets.clear();
           if(start > prev_round_bag.labels_[j].arr_t_){
             start = prev_round_bag.labels_[j].arr_t_;
           }
           end = prev_round_bag.labels_[j].arr_t_ - max_delay;
 
           if(start < end) continue;
-          if(bre) break;
           if((j+1)<prev_round_bag.labels_.size() && end <= prev_round_bag.labels_[j+1].arr_t_) continue;
 
           if (start != kInvalid) { // && is_better_or_eq(prev_round_time, et_time_at_stop)
-            while(true){
-              auto const [day, mam] = split(start);
-              auto const new_et = get_earliest_transport(k, r, stop_idx, day, mam,
-                                                         stp.location_idx());
-              if (!new_et.is_valid()) {
-                bre = true;
-                break;
-              }
 
-              delta_t time = time_at_stop(r, new_et, stop_idx,kFwd ? event_type::kDep : event_type::kArr);
-              mcraptor_label new_et_label = {.arr_t_ = time, .trip_l_ = stp.location_idx(),
-                                             .route_id = r, .trip_id = new_et, .success_chance = cum_success_chance(l_idx, k-1, time), .over_limit = time < end};
-              ets.push_back(new_et_label);
-              start = new_et_label.arr_t_ + dir(1);
-              if(start < end) break;
-            }
+            auto const [day_from, mam_from] = split(start);
+
+            if(!get_earliest_transports(k, r, stop_idx, day_from, mam_from,
+                                                       stp.location_idx(), ets, end)) break;
+            start = ets.back().arr_t_ + dir(1);
           }
         }
         if(ets.size() > 1) {
@@ -917,20 +907,22 @@ private:
     return tt_.bitfields_[tt_.transport_traffic_days_[t]].test(day);
   }
 
-  transport get_earliest_transport(unsigned const k,
+  bool get_earliest_transports(unsigned const k,
                                    route_idx_t const r,
                                    stop_idx_t const stop_idx,
-                                   day_idx_t const day_at_stop,
-                                   minutes_after_midnight_t const mam_at_stop,
-                                   location_idx_t const l) {
+                                   day_idx_t const day_at_stop_from,
+                                   minutes_after_midnight_t const mam_at_stop_from,
+                                   location_idx_t const l,
+                                    std::vector<mcraptor_label> & ets,
+                                    delta_t end) {
     ++stats_.n_earliest_trip_calls_;
-
+    auto const [day_at_stop_to, mam_at_stop_to] = split(end);
     auto const event_times = tt_.event_times_at_stop(
         r, stop_idx, kFwd ? event_type::kDep : event_type::kArr);
 
     auto const seek_first_day = [&]() {
       return linear_lb(get_begin_it(event_times), get_end_it(event_times),
-                       mam_at_stop,
+                       mam_at_stop_from,
                        [&](delta const a, minutes_after_midnight_t const b) {
                          return is_better(a.mam(), b.count());
                        });
@@ -945,22 +937,15 @@ private:
         continue;
       }
 
-      auto const day = kFwd ? day_at_stop + i : day_at_stop - i;
-      for (auto it = begin(ev_time_range); it != end(ev_time_range); ++it) {
+      auto const day = kFwd ? day_at_stop_from + i : day_at_stop_from - i;
+      for (auto it = ev_time_range.begin(); it != ev_time_range.end(); ++it) {
         auto const t_offset =
             static_cast<std::size_t>(&*it - event_times.data());
         auto const ev = *it;
         auto const ev_mam = ev.mam();
 
-//        if(dest_bag_.dominates({.arr_t_ = static_cast<delta_t>(
-//                                     to_delta(day, ev_mam)
-//                                     + dir(lb_[to_idx(l)]))},
-//                                k)) {
-//          return {transport_idx_t::invalid(), day_idx_t::invalid()};
-//        }
-
         auto const t = tt_.route_transport_ranges_[r][t_offset];
-        if (i == 0U && !is_better_or_eq(mam_at_stop.count(), ev_mam)) {
+        if (i == 0U && !is_better_or_eq(mam_at_stop_from.count(), ev_mam)) {
           continue;
         }
 
@@ -971,10 +956,16 @@ private:
           continue;
         }
 
-        return {t, static_cast<day_idx_t>(as_int(day) - ev_day_offset)};
+        transport new_et = {t, static_cast<day_idx_t>(as_int(day) - ev_day_offset)};
+        delta_t time = time_at_stop(r, new_et, stop_idx,kFwd ? event_type::kDep : event_type::kArr);
+        //TODO cummulierter wert nicht jedes mal neu bestimmen sondern alte berechnung wieder verwenden
+        mcraptor_label new_et_label = {.arr_t_ = time, .trip_l_ = l,
+                                       .route_id = r, .trip_id = new_et, .success_chance = cum_success_chance(cista::to_idx(l), k-1, time), .over_limit = time < end};
+        ets.push_back(new_et_label);
+        if(static_cast<day_idx_t>(as_int(day) - ev_day_offset) <= day_at_stop_to && ev_mam <= mam_at_stop_to.count()) return true;
       }
     }
-    return {};
+    return false;
   }
 
   delta_t time_at_stop(route_idx_t const r,
