@@ -34,7 +34,6 @@ struct mcraptor {
 
     location_idx_t trip_l_{};
     location_idx_t fp_l_{};
-    route_idx_t route_id{};
     transport trip_id{};
 
     float success_chance{};
@@ -314,11 +313,10 @@ struct mcraptor {
     }
   }
 
-  void print_leg(journey::leg leg, auto indent, auto r){
+  void print_leg(journey::leg leg, auto indent){
     for(int i = 0; i<indent; ++i) std::cout <<"\t";
     std::cout << location{tt_, leg.from_} << " id: " << leg.from_ << " ["<< leg.dep_time_ << "] TO: " << location{tt_, leg.to_} << " id: " << leg.to_ << " ["<< leg.arr_time_ << "] - " << leg.success_chance;
     leg.print(std::cout, tt_);
-    std::cout << "route id: " << r << std::endl;
   }
 
   void reconstruct_leg(query const& q, journey& j, auto i, auto l, mcraptor_label label){
@@ -333,7 +331,7 @@ struct mcraptor {
       possible_start_t = unix_to_delta(base(), fp_leg.arr_time_);
     }
     j.add(std::move(transport_leg));
-    print_leg(transport_leg, i, label.route_id);
+    print_leg(transport_leg, i);
     if(i<j.transfers_ && !std::any_of(q.start_.begin(), q.start_.end(),[next_l](offset loc){return loc.target_ == next_l;})) {
       k = j.transfers_ + 1 - (i+1);
       std::vector<mcraptor_label> labels = {};
@@ -603,7 +601,7 @@ private:
               !dest_bag_.dominates({.arr_t_ = static_cast<delta_t>(by_transport + lb_[l_idx]), .trip_id = et_label.trip_id, .success_chance = et_label.success_chance}, k)) {
             if(!tmp_[l_idx].dominates(et_label)) {
               ++stats_.n_earliest_arrival_updated_by_route_;
-              tmp_[l_idx].add({by_transport, et_label.trip_l_, stp.location_idx(), et_label.route_id, et_label.trip_id, et_label.success_chance, et_label.over_limit});
+              tmp_[l_idx].add({by_transport, et_label.trip_l_, stp.location_idx(), et_label.trip_id, et_label.success_chance, et_label.over_limit});
               tmp_station_mark_.set(l_idx, true);
               any_marked = true;
             }
@@ -798,7 +796,6 @@ private:
                                                   mcraptor_label label) {
     auto const& trip_l_idx = label.trip_l_;
     auto const& fp_l_idx = label.fp_l_;
-//    auto const& prev_stop_time = get_round_bag(to_idx(trip_l_idx), k - 1).labels_[label.label_id].arr_t_; // get_round_time(to_idx(trip_l_idx), k - 1);
     auto const& arr_t = label.arr_t_;
 
     delta_t trip_dep_time;
@@ -809,12 +806,8 @@ private:
     transport transport;
     footpath footpath{};
 
-//    auto found_end_location = false;
-//    for (auto const& r : tt_.location_routes_[trip_l_idx]) {
-    auto r = label.route_id;
-//      if (found_end_location) {
-//        break;
-//      }
+    auto r = tt_.transport_route_[label.trip_id.t_idx_];
+
     auto const stop_seq = tt_.route_location_seq_[r];
     struct transport trip{};
 
@@ -960,7 +953,7 @@ private:
         delta_t time = time_at_stop(r, new_et, stop_idx,kFwd ? event_type::kDep : event_type::kArr);
         //TODO cummulierter wert nicht jedes mal neu bestimmen sondern alte berechnung wieder verwenden
         mcraptor_label new_et_label = {.arr_t_ = time, .trip_l_ = l,
-                                       .route_id = r, .trip_id = new_et, .success_chance = cum_success_chance(cista::to_idx(l), k-1, time), .over_limit = time < end};
+                                        .trip_id = new_et, .success_chance = cum_success_chance(cista::to_idx(l), k-1, time), .over_limit = time < end};
         ets.push_back(new_et_label);
         if(static_cast<day_idx_t>(as_int(day) - ev_day_offset) <= day_at_stop_to && ev_mam <= mam_at_stop_to.count()) return true;
       }
