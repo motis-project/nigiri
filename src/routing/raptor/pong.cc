@@ -87,7 +87,7 @@ std::optional<std::array<journey::leg, 3U>> get_earliest_alternatve(
   // Visit route in RAPTOR without updating intermediate stops that are not the
   // destination  because there's no next round (no dynamic programming).
   auto const get_earliest =
-      [&]<typename T>(T const x,  // route_idx_t | rt_transport_t
+      [&]<typename T>(T const x,  // route_idx_t | rt_transport_idx_t
                       stop_idx_t const stop_idx,
                       unixtime_t const time) -> std::optional<rt::frun> {
     if constexpr (std::is_same_v<T, rt_transport_idx_t>) {
@@ -127,21 +127,29 @@ std::optional<std::array<journey::leg, 3U>> get_earliest_alternatve(
     for (auto i = stop_idx_t{0U}; i != loc_seq.size(); ++i) {
       auto stp = stop{loc_seq[i]};
 
+      if (et.has_value() && ((q.require_bike_transport_ &&
+                              !et->fr_[i].bikes_allowed(event_type::kArr)) ||
+                             (q.require_car_transport_ &&
+                              !et->fr_[i].cars_allowed(event_type::kArr)))) {
+        et = std::nullopt;
+      }
+
       // Check for earlier arrival at destination.
       // -> update arrival + legs
-      if (et.has_value() && is_dst[to_idx(stp.location_idx())]) {
+      if (et.has_value() && is_dst[to_idx(stp.location_idx())] &&
+          stp.out_allowed()) {
         auto const trip_arr = et->fr_[i].time(event_type::kArr);
-        for (auto const& fp :
-             tt.locations_.footpaths_out_[q.prf_idx_][stp.location_idx()]) {
+
+        auto const check_fp = [&](footpath const& fp) {
           if (fp.target() != to) {
-            continue;
+            return;
           }
 
           auto const adjusted_fp_time =
               adjusted_transfer_time(q.transfer_time_settings_, fp.duration());
           auto const dst_arr = trip_arr + adjusted_fp_time;
           if (dst_arr > earliest_arr) {
-            continue;
+            return;
           }
 
           earliest_arr = dst_arr;
@@ -163,6 +171,15 @@ std::optional<std::array<journey::leg, 3U>> get_earliest_alternatve(
                   dst_arr,
                   footpath{fp.target(), adjusted_fp_time},
               }};
+        };
+
+        check_fp({stp.location_idx(),
+                  adjusted_transfer_time(
+                      q.transfer_time_settings_,
+                      tt.locations_.transfer_time_[stp.location_idx()])});
+        for (auto const& fp :
+             tt.locations_.footpaths_out_[q.prf_idx_][stp.location_idx()]) {
+          check_fp(fp);
         }
       }
 
@@ -195,23 +212,27 @@ std::optional<std::array<journey::leg, 3U>> get_earliest_alternatve(
   utl::sorted_diff(
       from_routes, to_routes, std::less<route_idx_t>{},
       [](auto&&, auto&&) { return false; },
-      utl::overloaded{[](utl::op, route_idx_t) {},
-                      [&](route_idx_t const a, route_idx_t) {
-                        if (is_allowed(q.allowed_claszes_,
-                                       tt.route_clasz_[a])) {
-                          update_earliest(tt.route_location_seq_[a], a);
-                        }
-                      }});
+      utl::overloaded{
+          [](utl::op, route_idx_t) {},
+          [&](route_idx_t const r, route_idx_t) {
+            if (is_allowed(q.allowed_claszes_, tt.route_clasz_[r]) &&
+                (!q.require_bike_transport_ || tt.has_bike_transport(r)) &&
+                (!q.require_car_transport_ || tt.has_car_transport(r))) {
+              update_earliest(tt.route_location_seq_[r], r);
+            }
+          }});
 
   utl::sorted_diff(
       from_rt_transports, to_rt_transports, std::less<rt_transport_idx_t>{},
       [](auto&&, auto&&) { return false; },
       utl::overloaded{
           [](utl::op, rt_transport_idx_t) {},
-          [&](rt_transport_idx_t const a, rt_transport_idx_t) {
+          [&](rt_transport_idx_t const rt_t, rt_transport_idx_t) {
             if (is_allowed(q.allowed_claszes_,
-                           rtt->rt_transport_section_clasz_[a].front())) {
-              update_earliest(rtt->rt_transport_location_seq_[a], a);
+                           rtt->rt_transport_section_clasz_[rt_t].front()) &&
+                (!q.require_bike_transport_ || rtt->has_bike_transport(rt_t)) &&
+                (!q.require_car_transport_ || rtt->has_car_transport(rt_t))) {
+              update_earliest(rtt->rt_transport_location_seq_[rt_t], rt_t);
             }
           }});
 
