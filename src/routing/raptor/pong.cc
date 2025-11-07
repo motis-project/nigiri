@@ -177,9 +177,17 @@ std::optional<std::array<journey::leg, 3U>> get_earliest_alternatve(
                   adjusted_transfer_time(
                       q.transfer_time_settings_,
                       tt.locations_.transfer_time_[stp.location_idx()])});
-        for (auto const& fp :
-             tt.locations_.footpaths_out_[q.prf_idx_][stp.location_idx()]) {
-          check_fp(fp);
+
+        if (q.prf_idx_ != 0U &&
+            rtt->has_td_footpaths_out_[q.prf_idx_][stp.location_idx()]) {
+          for_each_footpath<direction::kForward>(
+              rtt->td_footpaths_out_[q.prf_idx_][stp.location_idx()], trip_arr,
+              [&](footpath const fp) { check_fp(fp); });
+        } else {
+          for (auto const& fp :
+               tt.locations_.footpaths_out_[q.prf_idx_][stp.location_idx()]) {
+            check_fp(fp);
+          }
         }
       }
 
@@ -533,6 +541,16 @@ routing_result pong(timetable const& tt,
 
   if constexpr (!kFwd) {
     return result;
+  }
+
+  if constexpr (Vias != 0U) {
+    if (utl::any_of(q.via_stops_, [](via_stop const& v) {
+          return v.stay_ == duration_t{0};
+        })) {
+      // Stay duration == 0 means via-stop doesn't require a transfer.
+      // => The via stop could be "optimized away" by get_earliest_alternative!
+      return result;
+    }
   }
 
   auto results = pareto_set<journey>{};
