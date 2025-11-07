@@ -262,12 +262,12 @@ TEST(routing, td_start_fwd_1min_validity) {
 
   auto const td_start = [&]() {
     auto td_offsets = routing::td_offsets_t{};
-    auto tdo_ride =
-        routing::td_offset{.valid_from_ = sys_days{2024_y / June / 19} + 6h,
-                           .duration_ = 7min,
-                           .transport_mode_id_ = 5};
+    auto tdo_ride = routing::td_offset{
+        .valid_from_ = sys_days{2024_y / June / 19} + 7h + 30min,
+        .duration_ = 7min,
+        .transport_mode_id_ = 5};
     auto tdo_off = routing::td_offset{
-        .valid_from_ = sys_days{2024_y / June / 19} + 6h + 1min,
+        .valid_from_ = tdo_ride.valid_from_ + duration_t{1min},
         .duration_ = footpath::kMaxDuration,
         .transport_mode_id_ = 5};
 
@@ -276,7 +276,7 @@ TEST(routing, td_start_fwd_1min_validity) {
       tdo_off.valid_from_ += step;
     };
 
-    for (; tdo_ride.valid_from_ < sys_days{2024_y / June / 19} + 9h;
+    for (; tdo_ride.valid_from_ < sys_days{2024_y / June / 19} + 7h + 31min;
          inc(5min)) {
       td_offsets[A].emplace_back(tdo_ride);
       td_offsets[A].emplace_back(tdo_off);
@@ -284,6 +284,11 @@ TEST(routing, td_start_fwd_1min_validity) {
 
     return td_offsets;
   }();
+
+  for (auto const& tdo : td_start.at(A)) {
+    fmt::println("(valid_from: {}, duration: {})", tdo.valid_from_,
+                 tdo.duration_);
+  }
 
   auto const run_search = [&]() {
     return raptor_search(
