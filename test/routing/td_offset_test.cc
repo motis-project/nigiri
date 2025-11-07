@@ -249,6 +249,21 @@ TEST(routing, td_dest_bwd) {
   EXPECT_EQ(kExpDestBwd, to_string(tt, run_search()));
 }
 
+constexpr auto const kExpStartFwd1minValidity = R"(
+[2024-06-19 07:30, 2024-06-19 09:00]
+TRANSFERS: 0
+     FROM: (START, START) [2024-06-19 07:30]
+       TO: (END, END) [2024-06-19 09:00]
+leg 0: (START, START) [2024-06-19 07:30] -> (A, A) [2024-06-19 07:30]
+  MUMO (id=5, duration=10)
+leg 1: (A, A) [2024-06-19 08:00] -> (B, B) [2024-06-19 09:00]
+   0: A       A...............................................                               d: 19.06 08:00 [19.06 10:00]  [{name=RE 1, day=2024-06-19, id=T1, src=0}]
+   1: B       B............................................... a: 19.06 09:00 [19.06 11:00]
+leg 2: (B, B) [2024-06-19 09:00] -> (END, END) [2024-06-19 09:00]
+  MUMO (id=0, duration=0)
+
+)";
+
 TEST(routing, td_start_fwd_1min_validity) {
   timetable tt;
   tt.date_range_ = {date::sys_days{2024_y / June / 18},
@@ -260,51 +275,33 @@ TEST(routing, td_start_fwd_1min_validity) {
   auto const A = tt.locations_.get({"A", {}}).l_;
   auto const B = tt.locations_.get({"B", {}}).l_;
 
-  auto const td_start = [&]() {
-    auto td_offsets = routing::td_offsets_t{};
-    auto tdo_ride = routing::td_offset{
-        .valid_from_ = sys_days{2024_y / June / 19} + 7h + 30min,
-        .duration_ = 7min,
-        .transport_mode_id_ = 5};
-    auto tdo_off = routing::td_offset{
-        .valid_from_ = tdo_ride.valid_from_ + duration_t{1min},
-        .duration_ = footpath::kMaxDuration,
-        .transport_mode_id_ = 5};
-
-    auto const inc = [&](auto const step) {
-      tdo_ride.valid_from_ += step;
-      tdo_off.valid_from_ += step;
-    };
-
-    for (; tdo_ride.valid_from_ < sys_days{2024_y / June / 19} + 7h + 31min;
-         inc(5min)) {
-      td_offsets[A].emplace_back(tdo_ride);
-      td_offsets[A].emplace_back(tdo_off);
-    }
-
-    return td_offsets;
-  }();
-
-  for (auto const& tdo : td_start.at(A)) {
-    fmt::println("(valid_from: {}, duration: {})", tdo.valid_from_,
-                 tdo.duration_);
-  }
-
   auto const run_search = [&]() {
     return raptor_search(
         tt, nullptr,
         routing::query{
-            .start_time_ = unixtime_t{sys_days{2024_y / June / 19}} + 7h,
+            .start_time_ =
+                interval<unixtime_t>{{sys_days{2024_y / June / 19} + 7h},
+                                     {sys_days{2024_y / June / 19} + 9h}},
             .start_match_mode_ = routing::location_match_mode::kIntermodal,
             .dest_match_mode_ = routing::location_match_mode::kIntermodal,
             .use_start_footpaths_ = false,
             .destination_ = {{B, duration_t{0}, transport_mode_id_t{0}}},
-            .td_start_ = td_start,
+            .td_start_ =
+                {{{A,
+                   {{.valid_from_ = unixtime_t{0h},
+                     .duration_ = footpath::kMaxDuration,
+                     .transport_mode_id_ = 5},
+                    {.valid_from_ = sys_days{2024_y / June / 19} + 7h + 30min,
+                     .duration_ = 10min,
+                     .transport_mode_id_ = 5},
+                    {.valid_from_ = sys_days{2024_y / June / 19} + 7h + 31min,
+                     .duration_ = footpath::kMaxDuration,
+                     .transport_mode_id_ = 5}}}}},
             .prf_idx_ = 0U},
         direction::kForward);
   };
 
   std::cout << "\n" << to_string(tt, run_search()) << "\n";
 
-  // EXPECT_EQ(kExpStartFwd, to_string(tt, run_search()));
+  EXPECT_EQ(kExpStartFwd1minValidity, to_string(tt, run_search()));
 }
