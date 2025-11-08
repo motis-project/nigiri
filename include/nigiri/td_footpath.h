@@ -26,6 +26,7 @@ struct td_footpath {
 template <direction SearchDir, typename Collection>
 std::optional<std::pair<duration_t, typename Collection::value_type>>
 get_td_duration(Collection const& c, unixtime_t const t) {
+  using namespace std::chrono_literals;
 
   if constexpr (SearchDir == direction::kForward) {
     for (auto i = cbegin(c); i != cend(c); ++i) {
@@ -43,7 +44,24 @@ get_td_duration(Collection const& c, unixtime_t const t) {
     }
 
   } else /* (SearchDir == direction::kBackward) */ {
-    return std::nullopt;
+    for (auto i = crbegin(c); i != crend(c); ++i) {
+      if (i->duration_ == footpath::kMaxDuration ||
+          i->valid_from_ + i->duration_ > t) {
+        continue;
+      }
+
+      auto const latest_arr =
+          i == crbegin(c)
+              ? t
+              : std::min(
+                    t, unixtime_t{(i - 1)->valid_from_ - 1min + i->duration_});
+
+      if (t - latest_arr > std::chrono::minutes{kMaxTransferTime}) {
+        break;
+      }
+
+      return std::pair{t - (latest_arr - i->duration_), *i};
+    }
   }
 
   return std::nullopt;

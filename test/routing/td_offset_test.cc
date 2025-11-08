@@ -52,10 +52,10 @@ T1,11:00:00,11:00:00,B,2,0,0
 constexpr auto kExpStartFwd = R"(
 [2024-06-19 07:00, 2024-06-19 09:00]
 TRANSFERS: 0
-     FROM: (START, START) [2024-06-19 07:45]
+     FROM: (START, START) [2024-06-19 07:50]
        TO: (END, END) [2024-06-19 09:00]
-leg 0: (START, START) [2024-06-19 07:45] -> (A, A) [2024-06-19 08:00]
-  MUMO (id=5, duration=15)
+leg 0: (START, START) [2024-06-19 07:50] -> (A, A) [2024-06-19 08:00]
+  MUMO (id=5, duration=10)
 leg 1: (A, A) [2024-06-19 08:00] -> (B, B) [2024-06-19 09:00]
    0: A       A...............................................                               d: 19.06 08:00 [19.06 10:00]  [{name=RE 1, day=2024-06-19, id=T1, src=0}]
    1: B       B............................................... a: 19.06 09:00 [19.06 11:00]
@@ -95,6 +95,8 @@ TEST(routing, td_start_fwd) {
             .prf_idx_ = 0U},
         direction::kForward);
   };
+
+  std::cout << "\n" << to_string(tt, run_search()) << "\n";
 
   EXPECT_EQ(kExpStartFwd, to_string(tt, run_search()));
 }
@@ -146,6 +148,8 @@ TEST(routing, td_dest_fwd) {
         direction::kForward);
   };
 
+  std::cout << "\n" << to_string(tt, run_search()) << "\n";
+
   EXPECT_EQ(kExpDestFwd, to_string(tt, run_search()));
 }
 
@@ -159,8 +163,8 @@ leg 0: (END, END) [2024-06-19 08:00] -> (A, A) [2024-06-19 08:00]
 leg 1: (A, A) [2024-06-19 08:00] -> (B, B) [2024-06-19 09:00]
    0: A       A...............................................                               d: 19.06 08:00 [19.06 10:00]  [{name=RE 1, day=2024-06-19, id=T1, src=0}]
    1: B       B............................................... a: 19.06 09:00 [19.06 11:00]
-leg 2: (B, B) [2024-06-19 09:00] -> (START, START) [2024-06-19 09:15]
-  MUMO (id=5, duration=15)
+leg 2: (B, B) [2024-06-19 09:05] -> (START, START) [2024-06-19 09:15]
+  MUMO (id=5, duration=10)
 
 )";
 
@@ -196,15 +200,17 @@ TEST(routing, td_start_bwd) {
         direction::kBackward);
   };
 
+  std::cout << "\n" << to_string(tt, run_search()) << "\n";
+
   EXPECT_EQ(kExpStartBwd, to_string(tt, run_search()));
 }
 
 constexpr auto kExpDestBwd = R"(
-[2024-06-19 07:45, 2024-06-19 10:00]
+[2024-06-19 07:50, 2024-06-19 10:00]
 TRANSFERS: 0
-     FROM: (END, END) [2024-06-19 07:45]
+     FROM: (END, END) [2024-06-19 07:50]
        TO: (START, START) [2024-06-19 10:00]
-leg 0: (END, END) [2024-06-19 07:45] -> (A, A) [2024-06-19 07:55]
+leg 0: (END, END) [2024-06-19 07:50] -> (A, A) [2024-06-19 08:00]
   MUMO (id=5, duration=10)
 leg 1: (A, A) [2024-06-19 08:00] -> (B, B) [2024-06-19 09:00]
    0: A       A...............................................                               d: 19.06 08:00 [19.06 10:00]  [{name=RE 1, day=2024-06-19, id=T1, src=0}]
@@ -245,6 +251,8 @@ TEST(routing, td_dest_bwd) {
             .prf_idx_ = 0U},
         direction::kBackward);
   };
+
+  std::cout << "\n" << to_string(tt, run_search()) << "\n";
 
   EXPECT_EQ(kExpDestBwd, to_string(tt, run_search()));
 }
@@ -448,7 +456,7 @@ TEST(routing, last_mile_bwd_1min_validity) {
         tt, nullptr,
         routing::query{
             .start_time_ = interval<unixtime_t>{{sys_days{2024_y / June / 19}},
-                                                {sys_days{2024_y / June / 19}}},
+                                                {sys_days{2024_y / June / 20}}},
             .start_match_mode_ = routing::location_match_mode::kIntermodal,
             .dest_match_mode_ = routing::location_match_mode::kIntermodal,
             .use_start_footpaths_ = false,
@@ -465,7 +473,7 @@ TEST(routing, last_mile_bwd_1min_validity) {
                      .duration_ = footpath::kMaxDuration,
                      .transport_mode_id_ = 5}}}}},
             .prf_idx_ = 0U},
-        direction::kForward);
+        direction::kBackward);
   };
 
   std::cout << "\n" << to_string(tt, run_search()) << "\n";
