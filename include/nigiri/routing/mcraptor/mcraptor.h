@@ -77,12 +77,6 @@ struct mcraptor {
       labels_.emplace_back(new_label);
     }
 
-    mcraptor_bag& merge(mcraptor_bag const& other_bag){
-      for(mcraptor_label label: other_bag.labels_){
-        if(!dominates(label)) add(label);
-      }
-      return *this;
-    }
   };
 
   struct mcraptor_dest_bag {
@@ -601,9 +595,12 @@ private:
         auto start = prev_round_bag.labels_[0].arr_t_;
         delta_t end;
         auto old_size = ets.size();
-        auto new_ets = std::vector<transport>{};
         for (int j = 0; j < prev_round_bag.labels_.size(); ++j){
-          new_ets.clear();
+          if(std::any_of(ets.begin(), ets.end(), [&](mcraptor_label label_of_vector){
+                return label_of_vector.dominates(prev_round_bag.labels_[j]);
+              })){
+            continue;
+          }
           if(start > prev_round_bag.labels_[j].arr_t_){
             start = prev_round_bag.labels_[j].arr_t_;
           }
@@ -612,14 +609,11 @@ private:
           if(start < end) continue;
           if((j+1)<prev_round_bag.labels_.size() && end <= prev_round_bag.labels_[j+1].arr_t_) continue;
 
-          if (start != kInvalid) { // && is_better_or_eq(prev_round_time, et_time_at_stop)
+          auto const [day_from, mam_from] = split(start);
 
-            auto const [day_from, mam_from] = split(start);
-
-            if(!get_earliest_transports(k, r, stop_idx, day_from, mam_from,
-                                                       stp.location_idx(), ets, end)) break;
-            start = ets.back().arr_t_ + dir(1);
-          }
+          if(!get_earliest_transports(k, r, stop_idx, day_from, mam_from,
+                                                     stp.location_idx(), ets, end)) break;
+          start = ets.back().arr_t_ + dir(1);
         }
         if(ets.size() > 1) {
           std::inplace_merge(
