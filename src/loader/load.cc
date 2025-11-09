@@ -41,36 +41,60 @@ struct load_result {
   std::unique_ptr<shapes_storage> shapes;
 };
 
-load_result load_from_source(uint64_t const idx,
-                             dir* const dir,
-                             assistance_times* a,
-                             auto const it,
-                             std::vector<timetable_source> const& sources,
-                             interval<date::sys_days> const& date_range,
-                             fs::path const cache_path,
-                             shapes_storage const* shapes) {
-  // create local state
-  auto const& [tag, path, local_config] = sources[idx];
-  auto const load_local_cache_path =
-      cache_path / fmt::format("tt{:d}", idx + sources.size());
-  auto bitfields = hash_map<bitfield, bitfield_idx_t>{};
-  auto shape_store = shapes != nullptr
-                         ? std::make_unique<shapes_storage>(
-                               load_local_cache_path, shapes->mode_)
-                         : nullptr;
-  auto tt = timetable{};
-  tt.date_range_ = date_range;
-  tt.n_sources_ = 1U;
-  /* Load file */
-  try {
-    (*it)->load(local_config, source_idx_t{0}, *dir, tt, bitfields, a,
-                shape_store.get());
-  } catch (std::exception const& e) {
-    throw utl::fail("failed to load {}: {}", path, e.what());
+struct loading_source_node {
+  load_result load_from_source(dir* const dir, auto const it) const {
+    // create local state
+    auto const& [tag, path, local_config] = source_;
+    auto bitfields = hash_map<bitfield, bitfield_idx_t>{};
+    auto shape_store =
+        has_shapes_ ? std::make_unique<shapes_storage>(
+                          tmp_shapes_dir_, cista::mmap::protection::WRITE)
+                    : nullptr;
+    auto tt = timetable{};
+    tt.date_range_ = date_range_;
+    tt.n_sources_ = 1U;
+    /* Load file */
+    try {
+      (*it)->load(local_config, source_idx_t{0}, *dir, tt, bitfields, a_,
+                  shape_store.get());
+    } catch (std::exception const& e) {
+      throw utl::fail("failed to load {}: {}", path, e.what());
+    }
+    return load_result{.tt = tt, .shapes = std::move(shape_store)};
   }
-  tt.write(load_local_cache_path / "tt.bin");
-  return load_result{.tt = tt, .shapes = std::move(shape_store)};
-}
+
+  std::optional<load_result> load() const {
+    auto const loaders = get_loaders();
+    auto const& [tag, path, local_config] = source_;
+    auto const is_in_memory = path.starts_with("\n#");
+    auto const dir = is_in_memory
+                         // hack to load strings in integration tests
+                         ? std::make_unique<mem_dir>(mem_dir::read(path))
+                         : make_dir(path);
+    auto const it =
+        utl::find_if(loaders, [&](auto&& l) { return l->applicable(*dir); });
+    if (it != std::end(loaders)) {
+      if (!is_in_memory) {
+        log(log_lvl::info, "loader.load", "loading {}", path);
+      }
+
+      return load_from_source(dir.get(), it);
+
+    } else if (!ignore_missing_loader_) {
+      throw utl::fail("no loader for {} found", path);
+    } else {
+      log(log_lvl::error, "loader.load", "no loader for {} found", path);
+    }
+    return std::optional<load_result>{};
+  }
+
+  fs::path const tmp_shapes_dir_;
+  timetable_source const source_;
+  assistance_times* const a_;
+  interval<date::sys_days> const date_range_;
+  bool const has_shapes_;
+  bool const ignore_missing_loader_;
+};
 
 std::optional<load_result> load_from_cache(
     fs::path const local_cache_path,
@@ -108,7 +132,6 @@ timetable load(std::vector<timetable_source> const& sources,
                assistance_times* a,
                shapes_storage* shapes,
                bool ignore) {
-  auto const loaders = get_loaders();
   auto const cache_path = fs::path{"cache"};
   auto const cache_metadata_path = cache_path / "meta.bin";
 
@@ -194,30 +217,23 @@ timetable load(std::vector<timetable_source> const& sources,
         continue;
       }
     }
-    auto const& [tag, path, local_config] = in;
-    auto const is_in_memory = path.starts_with("\n#");
-    auto const dir = is_in_memory
-                         // hack to load strings in integration tests
-                         ? std::make_unique<mem_dir>(mem_dir::read(path))
-                         : make_dir(path);
-    auto const it =
-        utl::find_if(loaders, [&](auto&& l) { return l->applicable(*dir); });
-    if (it != end(loaders)) {
-      if (!is_in_memory) {
-        log(log_lvl::info, "loader.load", "loading {}", path);
-      }
-      progress_tracker->context(std::string{tag});
-      progress_tracker->status("Loading timetable data...");
+    auto const local_cache_path =
+        cache_path / fmt::format("tt{:d}", idx + chg.source_paths_.size());
+    auto const& node = loading_source_node{.tmp_shapes_dir_ = local_cache_path,
+                                           .source_ = in,
+                                           .a_ = a,
+                                           .date_range_ = date_range,
+                                           .has_shapes_ = shapes != nullptr,
+                                           .ignore_missing_loader_ = ignore};
+    progress_tracker->context(std::string{node.source_.tag_});
+    progress_tracker->status("Loading timetable data...");
 
-      results.emplace_back(load_from_source(idx, dir.get(), a, it, sources,
-                                            date_range, cache_path, shapes));
-
-      progress_tracker->context("");
-    } else if (!ignore) {
-      throw utl::fail("no loader for {} found", path);
-    } else {
-      log(log_lvl::error, "loader.load", "no loader for {} found", path);
+    auto result = node.load();
+    if (result.has_value()) {
+      results.emplace_back(std::move(result.value()));
+      results.back().tt.write(local_cache_path / "tt.bin");
     }
+    progress_tracker->context("");
   }
 
   for (auto const [idx, result] : utl::enumerate(results)) {
