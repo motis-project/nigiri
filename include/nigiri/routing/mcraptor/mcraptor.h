@@ -216,6 +216,7 @@ struct mcraptor {
 //      is_dest_.for_each_set_bit([&](std::uint64_t const i) {
 //        dest_bag_.add({.arr_t_ = get_best_time(i)}, k);
 //      });
+      stats_.n_rounds = k;
 
       auto any_marked = false;
       prev_round_station_mark_.for_each_set_bit([&](std::uint64_t const i) {
@@ -254,18 +255,8 @@ struct mcraptor {
 
       update_dest_bag(k);
 
-//      for(int i = 9; i < n_locations_; i++){
-//        auto const bag = get_round_bag(i, k);
-//        std::cout << k << " " << std::string_view{tt_.locations_.names_[location_idx_t{i}]} << " ";
-//        for(mcraptor_label label: bag.labels_){
-//          std::cout << label.arr_t_ << " ";
-//        }
-//        std::cout << std::endl;
-//      }
-
       tmp_station_mark_.for_each_set_bit([&](std::uint64_t const i) {
         tmp_[i].labels_.clear();
-        //tmp_[i].add({kInvalid});
       });
 
       utl::fill(route_mark_.blocks_, 0U);
@@ -273,32 +264,13 @@ struct mcraptor {
       utl::fill(tmp_station_mark_.blocks_, 0U);
       utl::fill(station_mark_.blocks_, 0U);
 
+      for(auto const & [_, label]: dest_bag_.labels_){
+        if(stats_.n_rounds_to_percantage == 0 && label.success_chance >= stats_.percantage) stats_.n_rounds_to_percantage = k;
+      }
 
-//      std::cout << "round: " << k << std::endl;
-//
-//      for (const auto& pair : stats_.to_map()) {
-//        std::cout << pair.first << " : " << pair.second << std::endl;
-//      }
     }
 
-//    is_dest_.for_each_set_bit([&](auto const i) {
-//
-//      for (auto k = 1U; k != end_k; ++k) {
-//        auto const bag = get_round_bag(i, k);
-//        for(unsigned int li = 0; li < bag.labels_.size(); ++li){
-//          mcraptor_label label = bag.labels_[li];
-//          if (label.arr_t_ != kInvalid) {
-//            results.add(
-//                journey{.legs_ = {},
-//                        .start_time_ = start_time,
-//                        .dest_time_ = delta_to_unix(base(), label.arr_t_),
-//                        .success_chance = label.success_chance,
-//                        .dest_ = location_idx_t{i},
-//                        .transfers_ = static_cast<std::uint8_t>(k - 1)});
-//          }
-//        }
-//      }
-//    });
+
     for(std::pair<unsigned, mcraptor_label> pair: dest_bag_.labels_){
       auto label = pair.second;
       if(pair.first > 0){
