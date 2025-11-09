@@ -508,6 +508,53 @@ auto const kTripNewRelative =
  ]
 })"s;
 
+auto const kTripNewWithSameId =
+    R"({
+ "header": {
+  "gtfsRealtimeVersion": "2.0",
+  "incrementality": "FULL_DATASET",
+  "timestamp": "1691660324"
+ },
+ "entity": [
+  {
+    "id": "3248651",
+    "isDeleted": false,
+    "tripUpdate": {
+     "trip": {
+      "tripId": "TRIP_1",
+      "startTime": "10:00:00",
+      "startDate": "20230810",
+      "scheduleRelationship": "NEW"
+     },
+     "stopTimeUpdate": [
+      {
+       "stopSequence": 1,
+       "arrival": {
+        "time": "1691658900"
+       },
+       "departure": {
+        "time": "1691658900"
+       },
+       "stopId": "E",
+       "scheduleRelationship": "SCHEDULED"
+      },
+      {
+       "stopSequence": 2,
+       "arrival": {
+        "time": "1691658960"
+       },
+       "departure": {
+        "time": "1691658960"
+       },
+       "stopId": "D",
+       "scheduleRelationship": "SKIPPED"
+      }
+     ]
+    }
+  }
+ ]
+})"s;
+
 auto const kTripReplacement =
     R"({
  "header": {
@@ -759,7 +806,7 @@ TEST(rt, gtfs_rt_added) {
     EXPECT_EQ("RT", fr.dbg().path_);
     EXPECT_EQ((std::pair{date::sys_days{2023_y / August / 10},
                          duration_t{9h + 15min}}),
-              fr[0].get_trip_start());
+              fr[0].get_trip_start(event_type::kDep));
     // EXPECT_EQ(, fr.trip_idx());
     EXPECT_EQ(nigiri::clasz::kBus, fr.get_clasz());
     ASSERT_FALSE(fr.is_cancelled());
@@ -890,6 +937,70 @@ TEST(rt, gtfs_rt_new) {
   EXPECT_EQ(expectedNewLonger, ss.str());
 }
 
+TEST(rt, gtfs_rt_new_different_source) {
+  // Load static timetable.
+  timetable tt;
+  register_special_stations(tt);
+  tt.date_range_ = {date::sys_days{2023_y / August / 9},
+                    date::sys_days{2023_y / August / 12}};
+  load_timetable({}, source_idx_t{0}, test_files(), tt);
+  load_timetable({}, source_idx_t{1}, test_files(), tt);
+  finalize(tt);
+
+  // Create empty RT timetable.
+  auto rtt = rt::create_rt_timetable(tt, date::sys_days{2023_y / August / 10});
+
+  // Update.
+  auto const msg = rt::json_to_protobuf(kTripNew);
+  gtfsrt_update_buf(tt, rtt, source_idx_t{1}, "", msg);
+
+  // Print trip.
+  transit_realtime::TripDescriptor td;
+  td.set_start_date("20230811");
+  td.set_trip_id("TRIP_NEW");
+  td.set_start_time("10:00:00");
+
+  {
+    auto const [r, t] = rt::gtfsrt_resolve_run(
+        date::sys_days{2023_y / August / 11}, tt, &rtt, source_idx_t{0}, td);
+    ASSERT_FALSE(r.valid());
+  }
+  {
+    auto const [r, t] = rt::gtfsrt_resolve_run(
+        date::sys_days{2023_y / August / 11}, tt, &rtt, source_idx_t{1}, td);
+    ASSERT_TRUE(r.valid());
+  }
+}
+
+TEST(rt, gtfs_rt_new_with_existing_trip_id) {
+  // Load static timetable.
+  timetable tt;
+  register_special_stations(tt);
+  tt.date_range_ = {date::sys_days{2023_y / August / 9},
+                    date::sys_days{2023_y / August / 12}};
+  load_timetable({}, source_idx_t{0}, test_files(), tt);
+  finalize(tt);
+
+  // Create empty RT timetable.
+  auto rtt = rt::create_rt_timetable(tt, date::sys_days{2023_y / August / 10});
+
+  // Update.
+  auto const msg = rt::json_to_protobuf(kTripNewWithSameId);
+  gtfsrt_update_buf(tt, rtt, source_idx_t{0}, "", msg);
+
+  // Print trip.
+  transit_realtime::TripDescriptor td;
+  td.set_start_date("20230810");
+  td.set_trip_id("TRIP_1");
+  td.set_start_time("10:00:00");
+
+  auto const [r, t] = rt::gtfsrt_resolve_run(
+      date::sys_days{2023_y / August / 10}, tt, &rtt, source_idx_t{0}, td);
+  ASSERT_TRUE(r.valid());
+  auto const fr = rt::frun{tt, &rtt, r};
+  EXPECT_FALSE(fr.is_rt());
+}
+
 TEST(rt, gtfs_rt_new_no_route) {
   // Load static timetable.
   timetable tt;
@@ -919,7 +1030,7 @@ TEST(rt, gtfs_rt_new_no_route) {
   auto const fr = rt::frun{tt, &rtt, r};
   EXPECT_EQ(fr.size(), 3);
   EXPECT_EQ(nigiri::clasz::kOther, fr.get_clasz());
-  EXPECT_EQ("New Route", fr[0].trip_short_name());
+  EXPECT_EQ("New Route", fr[0].trip_short_name(event_type::kDep));
   EXPECT_EQ(string_idx_t::invalid(), fr[0].get_provider(event_type::kDep).id_);
   ASSERT_FALSE(fr.is_cancelled());
 }

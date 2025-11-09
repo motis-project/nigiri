@@ -102,19 +102,21 @@ void get_direct(timetable const& tt,
 
   auto const checked = [&](journey::leg const& l) {
     auto const& ree = std::get<journey::run_enter_exit>(l.uses_);
+    auto const stop_range_without_arrival = interval<stop_idx_t>{
+        ree.stop_range_.from_,
+        static_cast<unsigned short>(ree.stop_range_.to_ - 1U)};
+    auto const fr = rt::frun{tt, rtt, ree.r_};
     if (q.require_bike_transport_) {
-      auto const fr = rt::frun{tt, rtt, ree.r_};
-      for (auto const stop_idx : ree.stop_range_) {
-        if (!fr[stop_idx].bikes_allowed()) {
+      for (auto const stop_idx : stop_range_without_arrival) {
+        if (!fr[stop_idx].bikes_allowed(event_type::kDep)) {
           return;
         }
       }
     }
 
     if (q.require_car_transport_) {
-      auto const fr = rt::frun{tt, rtt, ree.r_};
-      for (auto const stop_idx : ree.stop_range_) {
-        if (!fr[stop_idx].cars_allowed()) {
+      for (auto const stop_idx : stop_range_without_arrival) {
+        if (!fr[stop_idx].cars_allowed(event_type::kDep)) {
           return;
         }
       }

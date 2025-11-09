@@ -83,13 +83,22 @@ struct alerts {
   using by_route = by_rt_transport;
   using by_route_type = by_rt_transport;
 
-  template <typename Fn>
-  void for_each_alert(timetable const& tt,
-                      source_idx_t const src,
-                      trip_idx_t const t,
-                      rt_transport_idx_t const rt_t,
-                      location_idx_t const l,
-                      Fn&& fn) const {
+  // fuzzy_stop parameter:
+  //   - true: alert.l_=invalid matches everything
+  //     => used for stop times
+  //   - false: alert.l_=invalid matches iff l=invalid
+  //     => used for itineraries
+  //     - leg (overall trip):
+  //         l == invalid => matches only not stop specific alerts
+  //         (addressing route/trip/agency)
+  //     - from/to/intermediateStop:
+  //         l != invalid => matches only concrete stop
+  hash_set<alert_idx_t> get_alerts(timetable const& tt,
+                                   source_idx_t const src,
+                                   trip_idx_t const t,
+                                   rt_transport_idx_t const rt_t,
+                                   location_idx_t const l,
+                                   bool const fuzzy_stop) const {
     auto const route_id_idx = tt.trip_route_id_[t];
     auto const route_type = tt.route_ids_[src].route_id_type_[route_id_idx];
     auto const agency = tt.route_ids_[src].route_id_provider_[route_id_idx];
@@ -100,14 +109,18 @@ struct alerts {
                                  ? location_idx_t::invalid()
                                  : tt.locations_.parents_[parent];
     auto const matches_location = [&](location_idx_t const x) {
-      return x == l || (parent != location_idx_t::invalid() && parent == x) ||
+      return (fuzzy_stop ? (x == location_idx_t::invalid() || x == l)
+                         : (x == l)) ||
+             (parent != location_idx_t::invalid() && parent == x) ||
              (grandparent != location_idx_t::invalid() && grandparent == x);
     };
+
+    auto alerts = hash_set<alert_idx_t>{};
 
     if (rt_t != rt_transport_idx_t::invalid()) {
       for (auto const& a : rt_transport_[rt_t]) {
         if (matches_location(a.l_)) {
-          fn(a.alert_);
+          alerts.insert(a.alert_);
         }
       }
     }
@@ -116,7 +129,7 @@ struct alerts {
       if ((a.direction_ == direction_id_t::invalid() ||
            a.direction_ == direction) &&
           matches_location(a.l_)) {
-        fn(a.alert_);
+        alerts.insert(a.alert_);
       }
     }
 
@@ -124,20 +137,22 @@ struct alerts {
       if ((a.route_type_ == route_type_t::invalid() ||
            a.route_type_ == route_type) &&
           matches_location(a.l_)) {
-        fn(a.alert_);
+        alerts.insert(a.alert_);
       }
     }
 
     if (l != location_idx_t::invalid()) {
       for (auto const& a : location_[l]) {
-        fn(a);
+        alerts.insert(a);
       }
       if (parent != location_idx_t::invalid()) {
         for (auto const& a : location_[parent]) {
-          fn(a);
+          alerts.insert(a);
         }
       }
     }
+
+    return alerts;
   }
 
   paged_vecvec<rt_transport_idx_t, by_rt_transport> rt_transport_;

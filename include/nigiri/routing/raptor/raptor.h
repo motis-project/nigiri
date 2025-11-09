@@ -36,6 +36,23 @@ struct raptor_stats {
     };
   }
 
+  raptor_stats operator+(raptor_stats const& o) const {
+    auto copy = *this;
+    copy.n_routing_time_ += o.n_routing_time_;
+    copy.n_footpaths_visited_ += o.n_footpaths_visited_;
+    copy.n_routes_visited_ += o.n_routes_visited_;
+    copy.n_earliest_trip_calls_ += o.n_earliest_trip_calls_;
+    copy.n_earliest_arrival_updated_by_route_ +=
+        o.n_earliest_arrival_updated_by_route_;
+    copy.n_earliest_arrival_updated_by_footpath_ +=
+        o.n_earliest_arrival_updated_by_footpath_;
+    copy.fp_update_prevented_by_lower_bound_ +=
+        o.fp_update_prevented_by_lower_bound_;
+    copy.route_update_prevented_by_lower_bound_ +=
+        o.route_update_prevented_by_lower_bound_;
+    return copy;
+  }
+
   std::uint64_t n_routing_time_{0ULL};
   std::uint64_t n_footpaths_visited_{0ULL};
   std::uint64_t n_routes_visited_{0ULL};
@@ -780,7 +797,7 @@ private:
                   "┊ │k={}    RT | name={}, dbg={}, time_by_transport={}, "
                   "BETTER THAN current_best={} => update, {} marking station "
                   "{}!\n",
-                  k, rtt_->transport_name(tt_, rt_t), rtt_->dbg(tt_, rt_t),
+                  k, rtt_->trip_short_name(tt_, rt_t), rtt_->dbg(tt_, rt_t),
                   to_unix(by_transport), to_unix(current_best),
                   !is_better(by_transport, current_best) ? "NOT" : "",
                   location{tt_, stp.location_idx()});
@@ -811,7 +828,7 @@ private:
                     "time_by_transport={}, "
                     "BETTER THAN dest_best={} => update, {} marking station "
                     "{} (destination)!\n",
-                    k, v, dest_v, rtt_->transport_name(tt_, rt_t),
+                    k, v, dest_v, rtt_->trip_short_name(tt_, rt_t),
                     rtt_->dbg(tt_, rt_t), to_unix(by_transport),
                     to_unix(best_dest),
                     !is_better(by_transport, best_dest) ? "NOT" : "",
@@ -1108,8 +1125,8 @@ private:
           location{tt_,
                    stop{tt_.route_location_seq_[r][stop_idx]}.location_idx()});
 
-    constexpr auto const kNDaysToIterate = day_idx_t::value_t{2U};
-    for (auto i = day_idx_t::value_t{0U}; i != kNDaysToIterate; ++i) {
+    auto const n_days_to_iterate = kMaxTravelTime / std::chrono::days{1} + 1U;
+    for (auto i = day_idx_t::value_t{0U}; i != n_days_to_iterate; ++i) {
       auto const ev_time_range =
           it_range{i == 0U ? seek_first_day() : get_begin_it(event_times),
                    get_end_it(event_times)};

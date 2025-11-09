@@ -29,7 +29,7 @@ clasz to_clasz(std::uint16_t const route_type) {
     case 5 /* Cable tram. Used for street-level rail cars where the cable runs beneath the vehicle, e.g., cable car in San Francisco. */ :
       return clasz::kCableCar;
     case 6 /* Aerial lift, suspended cable car (e.g., gondola lift, aerial tramway). Cable transport where cabins, cars, gondolas or open chairs are suspended by means of one or more cables. */ :
-      return clasz::kAreaLift;
+      return clasz::kAerialLift;
     case 7 /* Funicular. Any rail system designed for steep inclines. */:
       return clasz::kFunicular;
     case 11 /* Trolleybus. Electric buses that draw power from overhead wires using poles. */ :
@@ -45,7 +45,7 @@ clasz to_clasz(std::uint16_t const route_type) {
     case 106 /* Regional Rail Service */:
     case 107 /* Tourist Railway Service */:
     case 108 /* Rail Shuttle (Within Complex) */: return clasz::kRegional;
-    case 109 /* Suburban Railway */: return clasz::kMetro;
+    case 109 /* Suburban Railway */: return clasz::kSuburban;
     case 110 /* Replacement Rail Service */:
     case 111 /* Special Rail Service */:
     case 112 /* Lorry Transport Rail Service */:
@@ -64,12 +64,12 @@ clasz to_clasz(std::uint16_t const route_type) {
     case 207 /* Tourist Coach Service */:
     case 208 /* Commuter Coach Service */:
     case 209 /* All Coach Services */: return clasz::kCoach;
-    case 400 /* Urban Railway Service */: return clasz::kSubway;
-    case 401 /* Metro Service */: return clasz::kMetro;
+    case 400 /* Urban Railway Service */:
+    case 401 /* Metro Service */:
     case 402 /* Underground Service */: return clasz::kSubway;
     case 403 /* Urban Railway Service */:
-    case 404 /* All Urban Railway Services */:
-    case 405 /* Monorail */: return clasz::kMetro;
+    case 404 /* All Urban Railway Services */: return clasz::kSuburban;
+    case 405 /* Monorail */: return clasz::kOther;
     case 700 /* Bus Service */:
     case 701 /* Regional Bus Service */:
     case 702 /* Express Bus Service */:
@@ -99,13 +99,13 @@ clasz to_clasz(std::uint16_t const route_type) {
     case 1100 /* Air Service */: return clasz::kAir;
     case 1200 /* Ferry Service */: return clasz::kShip;
     case 1300 /* Aerial Lift Service */:
-    case 1301 /* Telecabin Service */: return clasz::kAreaLift;
-    case 1302 /* Cable Car Service */: return clasz::kCableCar;
+    case 1301 /* Telecabin Service */: return clasz::kAerialLift;
+    case 1302 /* Cable Car Service */: return clasz::kAerialLift;
     case 1303 /* Elevator Service */: return clasz::kOther;
-    case 1304 /* Chair Lift Service */: return clasz::kAreaLift;
+    case 1304 /* Chair Lift Service */: return clasz::kAerialLift;
     case 1305 /* Drag Lift Service */: return clasz::kOther;
     case 1306 /* Small Telecabin Service */:
-    case 1307 /* All Telecabin Services */: return clasz::kAreaLift;
+    case 1307 /* All Telecabin Services */: return clasz::kAerialLift;
     case 1400 /* Funicular Service */: return clasz::kFunicular;
     case 1500 /* Taxi Service */:
     case 1501 /* Communal Taxi Service */:
