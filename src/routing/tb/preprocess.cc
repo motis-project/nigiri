@@ -10,11 +10,10 @@
 
 #include "nigiri/common/day_list.h"
 #include "nigiri/common/linear_lower_bound.h"
+#include "nigiri/constants.h"
 #include "nigiri/timetable.h"
 
 namespace nigiri::routing::tb {
-
-constexpr auto const kMaxTransferTime = 1440;
 
 struct reached_line_based {
   struct rlb_entry {
