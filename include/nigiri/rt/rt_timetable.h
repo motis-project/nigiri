@@ -52,8 +52,6 @@ struct rt_timetable {
     auto const d =
         (t - std::chrono::time_point_cast<unixtime_t::duration>(base_day_))
             .count();
-    assert(d >= std::numeric_limits<delta_t>::min());
-    assert(d <= std::numeric_limits<delta_t>::max());
     return clamp(d);
   }
 
@@ -120,6 +118,11 @@ struct rt_timetable {
     return rt_transport_stop_times_[rt_t][static_cast<unsigned>(ev_idx)];
   }
 
+  std::string_view transport_name(timetable const& tt,
+                                  rt_transport_idx_t const t) const {
+    return trip_short_name(tt, t);
+  }
+
   std::string_view trip_short_name(timetable const& tt,
                                    rt_transport_idx_t const t) const {
     if (rt_transport_trip_short_names_[t].empty()) {
@@ -158,6 +161,16 @@ struct rt_timetable {
     return rt_transport_src_.size();
   }
 
+  bool has_car_transport(rt_transport_idx_t const r) const {
+    return rt_transport_cars_allowed_[to_idx(r) * 2U] ||
+           rt_transport_cars_allowed_[to_idx(r) * 2U + 1U];
+  }
+
+  bool has_bike_transport(rt_transport_idx_t const r) const {
+    return rt_transport_bikes_allowed_[to_idx(r) * 2U] ||
+           rt_transport_bikes_allowed_[to_idx(r) * 2U + 1U];
+  }
+
   array<bitvec_map<location_idx_t>, kNProfiles> has_td_footpaths_out_;
   array<bitvec_map<location_idx_t>, kNProfiles> has_td_footpaths_in_;
   array<vecvec<location_idx_t, td_footpath>, kNProfiles> td_footpaths_out_;
@@ -182,14 +195,15 @@ struct rt_timetable {
   // only works for transport that existed in the static timetable
   hash_map<transport, rt_transport_idx_t> static_trip_lookup_;
 
-  // Lookup: additional trip index -> realtime transport
-  vector_map<rt_add_trip_id_idx_t, rt_transport_idx_t> additional_trips_lookup_;
-
   // RT transport -> static transport (not for additional trips)
   vector_map<rt_transport_idx_t, variant<transport, rt_add_trip_id_idx_t>>
       rt_transport_static_transport_;
 
-  string_store<rt_add_trip_id_idx_t> additional_trip_ids_;
+  struct additional_trips {
+    string_store<rt_add_trip_id_idx_t> ids_;
+    vector_map<rt_add_trip_id_idx_t, rt_transport_idx_t> transports_;
+  };
+  vector_map<source_idx_t, additional_trips> additional_trips_;
 
   vector_map<rt_transport_idx_t, source_idx_t> rt_transport_src_;
 

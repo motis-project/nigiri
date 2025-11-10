@@ -27,6 +27,8 @@
 
 namespace nigiri {
 
+struct day_list;
+
 struct timetable {
   struct locations {
     timezone_idx_t register_timezone(timezone tz) {
@@ -65,9 +67,14 @@ struct timetable {
 
     location_idx_t get_root_idx(location_idx_t const idx) const {
       auto l = idx;
+      auto i = 0;
       for (auto p = parents_[l]; p != location_idx_t::invalid();
            p = parents_[l]) {
+        if (p == idx || i > 20) {
+          return parents_[idx];
+        }
         l = p;
+        ++i;
       }
       return l;
     }
@@ -320,7 +327,9 @@ struct timetable {
             date_range_.to_ + date::days{1}};
   }
 
-  constexpr interval<unixtime_t> internal_interval() const {
+  day_list days(bitfield const&) const;
+
+  interval<unixtime_t> internal_interval() const {
     return {
         std::chrono::time_point_cast<i32_minutes>(date_range_.from_ -
                                                   kTimetableOffset),
@@ -419,7 +428,7 @@ struct timetable {
 
   // Trip -> debug info
   mutable_fws_multimap<trip_idx_t, trip_debug> trip_debug_;
-  vecvec<source_file_idx_t, char> source_file_names_;
+  vecvec<source_file_idx_t, char, std::uint32_t> source_file_names_;
 
   // Trip index -> trip name
   vecvec<trip_idx_t, char> trip_short_names_;

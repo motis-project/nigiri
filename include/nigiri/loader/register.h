@@ -56,7 +56,6 @@ struct location {
            location_idx_t parent,
            timezone_idx_t,
            duration_t transfer_time,
-           std::span<location_idx_t const> equivalences,
            timetable&,
            gtfs::tz_map& = dummy_tz_map);
   location(timetable const&, location_idx_t);
@@ -91,7 +90,6 @@ struct location {
   location_idx_t parent_;
   timezone_idx_t timezone_idx_;
   duration_t transfer_time_;
-  std::span<location_idx_t const> equivalences_;
 
   timetable* tt_{nullptr};
   gtfs::tz_map* tz_map_{nullptr};

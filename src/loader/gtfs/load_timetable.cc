@@ -387,6 +387,7 @@ void load_timetable(loader_config const& config,
 
     auto const attributes = basic_string<attribute_combination_idx_t>{};
     auto lines = hash_map<std::string, trip_line_idx_t>{};
+    auto section_providers = basic_string<provider_idx_t>{};
     auto section_directions = basic_string<trip_direction_idx_t>{};
     auto section_lines = basic_string<trip_line_idx_t>{};
     auto route_colors = basic_string<route_color>{};
@@ -405,12 +406,12 @@ void load_timetable(loader_config const& config,
         }
 
         for (auto const& s : services) {
-          auto const& first = trip_data.get(s.trips_.front());
-
           external_trip_ids.clear();
           section_directions.clear();
+          section_providers.clear();
           section_lines.clear();
           route_colors.clear();
+
           auto prev_end = std::uint16_t{0U};
           for (auto const [i, t] : utl::enumerate(s.trips_)) {
             auto& trp = trip_data.get(t);
@@ -442,6 +443,7 @@ void load_timetable(loader_config const& config,
               section_lines.push_back(line);
               route_colors.push_back(
                   {trp.route_->color_, trp.route_->text_color_});
+              section_providers.push_back(trp.route_->agency_);
             } else {
               for (auto section = 0U; section != trp.stop_seq_.size() - 1;
                    ++section) {
@@ -453,6 +455,7 @@ void load_timetable(loader_config const& config,
                 section_lines.push_back(line);
                 route_colors.push_back(
                     {trp.route_->color_, trp.route_->text_color_});
+                section_providers.push_back(trp.route_->agency_);
               }
             }
           }
@@ -466,7 +469,7 @@ void load_timetable(loader_config const& config,
               .first_dep_offset_ = {s.first_dep_offset_, s.tz_offset_},
               .external_trip_ids_ = external_trip_ids,
               .section_attributes_ = attributes,
-              .section_providers_ = {first.route_->agency_},
+              .section_providers_ = section_providers,
               .section_directions_ = section_directions,
               .section_lines_ = section_lines,
               .route_colors_ = route_colors});

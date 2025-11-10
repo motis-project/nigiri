@@ -27,7 +27,6 @@ void register_special_stations(timetable& tt) {
                                    location_idx_t::invalid(),
                                    timezone_idx_t::invalid(),
                                    0_minutes,
-                                   {},
                                    tt});
   }
   tt.location_routes_.resize(tt.n_locations());
@@ -84,7 +83,7 @@ void assign_importance(timetable& tt) {
                                        /* Night */ 20,
                                        /* RegionalFast */ 16,
                                        /* Regional */ 15,
-                                       /* Metro */ 10,
+                                       /* Suburban */ 10,
                                        /* Subway */ 10,
                                        /* Tram */ 3,
                                        /* Bus  */ 2,

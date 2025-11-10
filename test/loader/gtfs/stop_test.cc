@@ -49,6 +49,10 @@ TEST(gtfs, read_stations_example_data) {
   EXPECT_FLOAT_EQ(37.752240, tt.locations_.coordinates_.at(s8_it->second).lat_);
   EXPECT_FLOAT_EQ(-122.418450,
                   tt.locations_.coordinates_.at(s8_it->second).lng_);
+
+  auto const s7_it = stops.find("S7");
+  ASSERT_NE(s7_it, end(stops));
+  EXPECT_EQ(15_minutes, tt.locations_.transfer_time_.at(s7_it->second));
 }
 
 TEST(gtfs, read_stations_berlin_data) {
