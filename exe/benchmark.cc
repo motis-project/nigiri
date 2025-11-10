@@ -11,6 +11,7 @@
 #include "nigiri/logging.h"
 #include "nigiri/qa/qa.h"
 #include "nigiri/query_generator/generator.h"
+#include "nigiri/routing/mcraptor/mcraptor.h"
 #include "nigiri/routing/mcraptor/mcraptor_search.h"
 #include "nigiri/routing/raptor/raptor.h"
 #include "nigiri/routing/raptor_search.h"
@@ -149,14 +150,14 @@ routing_result<raptor_stats> run_algorithm(
     direction search_dir) {
   switch (algorithm) {
     case benchmark_algorithm::raptor:
-      return routing::raptor_search(tt, nullptr,
-                                    s_state, r_state,q,
-                                    direction::kForward);
+      return routing::raptor_search(tt, rtt,
+                                    s_state, r_state, q,
+                                    search_dir);
 
     case benchmark_algorithm::mc_raptor:
-      return routing::mcraptor_search(tt, nullptr,
-                                      s_state, r_state,q,
-                                      direction::kForward);
+      return routing::mcraptor_search(tt, rtt,
+                                      s_state, r_state, q,
+                                      search_dir);
 
     default:
       return {};
