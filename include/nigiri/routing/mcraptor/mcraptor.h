@@ -6,8 +6,10 @@
 #include "nigiri/common/linear_lower_bound.h"
 #include "nigiri/routing/journey.h"
 #include "nigiri/routing/limits.h"
+#include "nigiri/routing/mcraptor/mcraptor_bag.h"
 #include "nigiri/routing/pareto_set.h"
 #include "nigiri/routing/raptor/debug.h"
+#include "nigiri/routing/raptor/raptor.h"
 #include "nigiri/routing/raptor/raptor_state.h"
 #include "nigiri/routing/raptor/reconstruct.h"
 #include "nigiri/routing/transfer_time_settings.h"
@@ -15,7 +17,6 @@
 #include "nigiri/special_stations.h"
 #include "nigiri/timetable.h"
 #include "nigiri/types.h"
-#include "nigiri/routing/mcraptor/mcraptor_bag.h"
 
 namespace nigiri::routing {
 
@@ -55,6 +56,7 @@ struct mcraptor {
       day_idx_t const base,
       clasz_mask_t const allowed_claszes,
       bool const require_bike_transport,
+      bool const require_car_transport,
       bool const is_wheelchair,
       transfer_time_settings const& tts)
       : tt_{tt},
@@ -73,6 +75,7 @@ struct mcraptor {
         base_{base},
         allowed_claszes_{allowed_claszes},
         require_bike_transport_{require_bike_transport},
+        require_car_transport_{require_car_transport},
         is_wheelchair_{is_wheelchair},
         transfer_time_settings_{tts} {
     assert(Vias == via_stops_.size());
@@ -620,6 +623,7 @@ private:
   raptor_stats stats_;
   clasz_mask_t allowed_claszes_;
   bool require_bike_transport_;
+  bool require_car_transport_;
   bool is_wheelchair_;
   transfer_time_settings transfer_time_settings_;
 };
