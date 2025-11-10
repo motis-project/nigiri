@@ -8,6 +8,7 @@
 #include "utl/equal_ranges_linear.h"
 #include "utl/pairwise.h"
 
+#include "nigiri/constants.h"
 #include "nigiri/footpath.h"
 #include "nigiri/types.h"
 
@@ -25,81 +26,45 @@ struct td_footpath {
 template <direction SearchDir, typename Collection>
 std::optional<std::pair<duration_t, typename Collection::value_type>>
 get_td_duration(Collection const& c, unixtime_t const t) {
-  auto const r = to_range<SearchDir>(c);
-  auto const from = r.begin();
-  auto const to = r.end();
-
-  using Type = std::decay_t<decltype(*from)>;
+  using namespace std::chrono_literals;
 
   if constexpr (SearchDir == direction::kForward) {
-    Type const* pred = nullptr;
-
-    auto const get = [&]() -> std::optional<std::pair<duration_t, Type>> {
-      auto const start = std::max(pred->valid_from_, t);
-      auto const target_time = start + pred->duration_;
-      auto const duration_with_waiting = target_time - t;
-      if (duration_with_waiting < footpath::kMaxDuration) {
-        return std::pair{static_cast<duration_t>(duration_with_waiting), *pred};
-      } else {
-        return std::nullopt;
+    for (auto i = cbegin(c); i != cend(c); ++i) {
+      if (i->duration_ == footpath::kMaxDuration ||
+          (i->valid_from_ < t && (i + 1) != cend(c) &&
+           (i + 1)->valid_from_ <= t)) {
+        continue;
       }
-    };
 
-    for (auto it = from; it != to; ++it) {
-      if (pred == nullptr || pred->duration_ == footpath::kMaxDuration ||
-          it->valid_from_ < t + pred->duration_) {
-        pred = &*it;
-      } else {
-        return get();
+      if (i->valid_from_ - t > std::chrono::minutes{kMaxTransferTime}) {
+        break;
       }
+
+      return std::pair{std::max(i->valid_from_, t) + i->duration_ - t, *i};
     }
 
-    if (pred != nullptr && pred->duration_ != footpath::kMaxDuration) {
-      return get();
-    }
-
-    return std::nullopt;
   } else /* (SearchDir == direction::kBackward) */ {
-    auto const get_valid_from = [](auto const& x) {
-      // Example interval [10:00, 11:00], duration 10 min
-      // -> backward at 10:00 => result 10:00 - 10 min = 9:50 !! outside [10-11]
-      // -> fixed interval: [10:10, 11:10], duration 10 min **
-      //    so 10:00 is not possible
-      if (x.duration_ == footpath::kMaxDuration) {
-        return x.valid_from_;
-      } else {
-        return x.valid_from_ + x.duration_;
+    for (auto i = crbegin(c); i != crend(c); ++i) {
+      if (i->duration_ == footpath::kMaxDuration ||
+          i->valid_from_ + i->duration_ > t) {
+        continue;
       }
-    };
 
-    auto const get =
-        [&](unixtime_t const valid_from,
-            Type const& fp) -> std::optional<std::pair<duration_t, Type>> {
-      auto const start = std::min(valid_from, t);
-      auto const target_time = start - fp.duration_;
-      auto const duration_with_waiting = t - target_time;
-      return std::pair{duration_with_waiting, fp};
-    };
+      auto const latest_arr =
+          i == crbegin(c)
+              ? t
+              : std::min(
+                    t, unixtime_t{(i - 1)->valid_from_ - 1min + i->duration_});
 
-    if (from != to && get_valid_from(*from) <= t) {
-      if (from->duration_ != footpath::kMaxDuration) {
-        return get(t, *from);
-      } else if (auto const next = std::next(from); next != to) {
-        return get(get_valid_from(*from), *next);
+      if (t - latest_arr > std::chrono::minutes{kMaxTransferTime}) {
+        break;
       }
+
+      return std::pair{t - (latest_arr - i->duration_), *i};
     }
-
-    using namespace std::chrono_literals;
-    for (auto const [a, b] : utl::pairwise(it_range{from, to})) {
-      if (b.duration_ != footpath::kMaxDuration &&
-          (t >= a.valid_from_ ||
-           interval{get_valid_from(b), get_valid_from(a) + 1min}.contains(t))) {
-        return get(get_valid_from(a), b);
-      }
-    }
-
-    return std::nullopt;
   }
+
+  return std::nullopt;
 }
 
 template <typename Collection>

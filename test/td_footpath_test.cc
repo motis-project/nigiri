@@ -124,7 +124,7 @@ TEST(td_footpath, backward_1) {
   auto const d = get_td_duration<direction::kBackward>(
       fps, sys_days{2024_y / June / 19} + 8h);
   ASSERT_TRUE(d.has_value());
-  EXPECT_EQ(40min, d->first);
+  EXPECT_EQ(31min, d->first);
 }
 
 TEST(td_footpath, backward) {
@@ -176,7 +176,7 @@ TEST(td_footpath, backward) {
         return utl::cflow::kBreak;
       });
   EXPECT_TRUE(called);
-  EXPECT_EQ(1h + 10min, x.duration());
+  EXPECT_EQ(1h + 1min, x.duration());
 }
 
 TEST(td_footpath, backward_last) {

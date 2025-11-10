@@ -50,7 +50,9 @@ X,00:00:00,24:00:00,3600
 )");
 }
 
-constexpr auto const expected = R"(
+constexpr auto expected = R"(
+start_time=2020-03-30 11:59
+      {time_at_start=2020-03-30 11:59, time_at_stop=2020-03-30 13:00, stop=A}
 start_time=2020-03-30 11:50
       {time_at_start=2020-03-30 11:50, time_at_stop=2020-03-30 12:00, stop=A}
 start_time=2020-03-30 10:50
