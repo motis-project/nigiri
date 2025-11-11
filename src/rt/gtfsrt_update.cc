@@ -253,6 +253,14 @@ bool add_rt_trip(source_idx_t const src,
     }
     return {};
   };
+  auto const direction_id = [&]() -> direction_id_t {
+    if ((is_added(sr) ||
+         sr == gtfsrt::TripDescriptor_ScheduleRelationship_DUPLICATED) &&
+        tripUpdate.trip().has_direction_id()) {
+      return direction_id_t{tripUpdate.trip().direction_id() != 0U};
+    }
+    return direction_id_t{};
+  };
   auto const trip_short_name =
       tripUpdate.has_trip_properties() &&
               tripUpdate.trip_properties().has_trip_short_name()
@@ -262,7 +270,7 @@ bool add_rt_trip(source_idx_t const src,
   // REPLACEMENT stops+times
   // DUPL new_trip_id
   r.rt_ = rtt.add_rt_transport(src, tt, r.t_, stops, times, new_trip_id(),
-                               route_id(), trip_short_name);
+                               route_id(), direction_id(), trip_short_name);
   if (sr == transit_realtime::TripDescriptor_ScheduleRelationship_REPLACEMENT) {
     r.t_ = transport::invalid();
   }

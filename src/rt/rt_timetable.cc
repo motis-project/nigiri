@@ -11,6 +11,7 @@ rt_transport_idx_t rt_timetable::add_rt_transport(
     std::span<delta_t> time_seq,
     std::string_view new_trip_id,
     std::string_view route_id,
+    direction_id_t const direction_id,
     std::string_view trip_short_name,
     delta_t const offset) {
   auto const [t_idx, day] = t;
@@ -82,6 +83,9 @@ rt_transport_idx_t rt_timetable::add_rt_transport(
   rt_transport_cars_allowed_.resize(rt_transport_bikes_allowed_.size() + 2U);
   rt_transport_section_directions_.add_back_sized(0U);  // TODO outside
   rt_transport_trip_short_names_.emplace_back(trip_short_name);
+
+  rt_transport_direction_id_.resize(rt_transport_direction_id_.size() + 1U);
+  rt_transport_direction_id_.set(rt_t, direction_id != direction_id_t{});
 
   if (r != route_idx_t::invalid()) {
     rt_transport_section_clasz_.emplace_back(tt.route_section_clasz_[r]);

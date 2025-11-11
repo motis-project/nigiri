@@ -45,6 +45,7 @@ struct rt_timetable {
                                       std::span<delta_t> time_seq = {},
                                       std::string_view new_trip_id = {},
                                       std::string_view route_id = {},
+                                      direction_id_t = {},
                                       std::string_view trip_short_name = {},
                                       delta_t = 0);
 
@@ -207,6 +208,7 @@ struct rt_timetable {
 
   vector_map<rt_transport_idx_t, source_idx_t> rt_transport_src_;
 
+  bitvec_map<rt_transport_idx_t> rt_transport_direction_id_;
   vector_map<rt_transport_idx_t, route_id_idx_t> rt_transport_route_id_;
 
   // RT transport -> direction for each section

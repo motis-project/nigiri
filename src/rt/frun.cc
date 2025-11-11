@@ -213,9 +213,35 @@ trip_idx_t run_stop::get_trip_idx(event_type const ev_type) const {
       .at(0);
 }
 
-route_id_idx_t run_stop::get_route_id(event_type const ev_type) const {
+route_id_idx_t run_stop::get_route_id_idx(event_type const ev_type) const {
   auto const trip = get_trip_idx(ev_type);
   return tt().trip_route_id_[trip];
+}
+
+std::string_view run_stop::get_route_id(event_type const ev_type) const {
+  if (fr_->is_scheduled()) {
+    auto const trip_idx = get_trip_idx(ev_type);
+    return tt().trip_route_id_[trip_idx] == route_id_idx_t::invalid()
+               ? std::string_view{}
+               : tt().route_ids_
+                     [tt().trip_id_src_[tt().trip_ids_[trip_idx].front()]]
+                         .ids_.get(tt().trip_route_id_[trip_idx]);
+  } else if (auto const route_id = rtt()->rt_transport_route_id_[fr_->rt_];
+             route_id != route_id_idx_t::invalid()) {
+    return tt().route_ids_[rtt()->rt_transport_src_[fr_->rt_]].ids_.get(
+        route_id);
+  } else {
+    return "?";
+  }
+}
+
+direction_id_t run_stop::get_direction_id(event_type const ev_type) const {
+  if (fr_->is_scheduled()) {
+    auto const trip_idx = get_trip_idx(ev_type);
+    return direction_id_t{tt().trip_direction_id_.test(trip_idx)};
+  } else {
+    return direction_id_t{rtt()->rt_transport_direction_id_[fr_->rt_] ? 1 : 0};
+  }
 }
 
 std::optional<route_type_t> run_stop::route_type(
