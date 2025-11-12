@@ -65,4 +65,4 @@
 [luajit]
   url=git@github.com:motis-project/LuaJIT.git
   branch=v2.1
-  commit=f4bc3f109a4cc5bc262b2a2c683dae5a75f61377
+  commit=dfa894a9c571bedc26f3a45573917a8af07603e4
