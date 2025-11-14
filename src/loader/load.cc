@@ -37,8 +37,8 @@ std::vector<std::unique_ptr<loader_interface>> get_loaders() {
 }
 
 struct load_result {
-  timetable tt;
-  std::unique_ptr<shapes_storage> shapes;
+  timetable tt_;
+  std::unique_ptr<shapes_storage> shapes_;
 };
 
 struct loading_source_node {
@@ -60,7 +60,7 @@ struct loading_source_node {
     } catch (std::exception const& e) {
       throw utl::fail("failed to load {}: {}", path, e.what());
     }
-    return load_result{.tt = tt, .shapes = std::move(shape_store)};
+    return load_result{.tt_ = tt, .shapes_ = std::move(shape_store)};
   }
 
   std::optional<load_result> load() const {
@@ -113,8 +113,8 @@ std::optional<load_result> load_from_cache(
   }
   auto cached_shape_store = std::make_unique<shapes_storage>(
       local_cache_path, cista::mmap::protection::READ);
-  return load_result{.tt = cached_timetable,
-                     .shapes = std::move(cached_shape_store)};
+  return load_result{.tt_ = cached_timetable,
+                     .shapes_ = std::move(cached_shape_store)};
 }
 
 using last_write_time_t = cista::strong<std::int64_t, struct _last_write_time>;
@@ -187,8 +187,8 @@ timetable load(std::vector<timetable_source> const& sources,
       continue;
     }
     first_recomputed_source = i;
-    tt = result.value().tt;
-    shapes->add(result.value().shapes.get());
+    tt = result.value().tt_;
+    shapes->add(result.value().shapes_.get());
     break;
   }
 
@@ -203,7 +203,7 @@ timetable load(std::vector<timetable_source> const& sources,
   for (auto const [idx, in] : utl::enumerate(sources)) {
     auto const src = source_idx_t{idx};
     if (src < first_recomputed_source) {
-      results.emplace_back(load_result{.tt = timetable{}, .shapes = nullptr});
+      results.emplace_back(load_result{.tt_ = timetable{}, .shapes_ = nullptr});
       continue;
     }
     if (!needs_recomputation[src]) {
@@ -231,7 +231,7 @@ timetable load(std::vector<timetable_source> const& sources,
     auto result = node.load();
     if (result.has_value()) {
       results.emplace_back(std::move(result.value()));
-      results.back().tt.write(local_cache_path / "tt.bin");
+      results.back().tt_.write(local_cache_path / "tt.bin");
     }
     progress_tracker->context("");
   }
@@ -242,8 +242,8 @@ timetable load(std::vector<timetable_source> const& sources,
       continue;
     }
     auto const local_cache_path = cache_path / fmt::format("tt{:d}", idx);
-    auto other_tt = result.tt;
-    auto shape_store = std::move(result.shapes);
+    auto other_tt = result.tt_;
+    auto shape_store = std::move(result.shapes_);
 
     progress_tracker->status(
         fmt::format("Merging timetables ({:d}/{:d})...", idx, sources.size()));
