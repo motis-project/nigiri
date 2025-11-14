@@ -44,6 +44,23 @@ std::size_t get_closest(geo::latlng const& pos,
              : best.segment_idx_ + 1;
 }
 
+void bisect(auto const& match_one,
+            auto const stop_left,
+            auto const stop_right,
+            shape_offset_t const shape_left,
+            shape_offset_t const shape_right) {
+  if (stop_left > stop_right) {
+    return;
+  }
+  auto const stop_middle = (stop_left + stop_right) / 2;
+  auto const shape_middle =
+      match_one(stop_middle, shape_left.v_ + (stop_middle - stop_left),
+                shape_right.v_ - shape_left.v_ + 1 - (stop_right - stop_left));
+
+  bisect(match_one, stop_left, stop_middle - 1, shape_left, shape_middle - 1);
+  bisect(match_one, stop_middle + 1, stop_right, shape_middle + 1, shape_right);
+};
+
 std::vector<shape_offset_t> get_offsets_by_stops(
     timetable const& tt,
     std::span<geo::latlng const> shape,
@@ -62,23 +79,6 @@ std::vector<shape_offset_t> get_offsets_by_stops(
     auto const shape_offset = shape_offset_t{subshape_offset + offset};
     offsets[stop_idx] = shape_offset;
     return shape_offset;
-  };
-
-  // Pass match_one explicitly, due to bug in Clang 18
-  auto const bisect = [](this auto const& self, auto const& match,
-                         auto const stop_left, auto const stop_right,
-                         shape_offset_t const shape_left,
-                         shape_offset_t const shape_right) -> void {
-    if (stop_left > stop_right) {
-      return;
-    }
-    auto const stop_middle = (stop_left + stop_right) / 2;
-    auto const shape_middle =
-        match(stop_middle, shape_left.v_ + (stop_middle - stop_left),
-              shape_right.v_ - shape_left.v_ + 1 - (stop_right - stop_left));
-
-    self(match, stop_left, stop_middle - 1, shape_left, shape_middle - 1);
-    self(match, stop_middle + 1, stop_right, shape_middle + 1, shape_right);
   };
 
   // First and last offsets are fixed
