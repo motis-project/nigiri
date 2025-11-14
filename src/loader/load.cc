@@ -1,5 +1,7 @@
 #include <cassert>
 #include <chrono>
+#include <algorithm>
+#include <bit>
 #include <iterator>
 
 #include "nigiri/loader/load.h"
@@ -315,6 +317,15 @@ timetable load(std::vector<timetable_source> const& sources,
   for (auto const& in : sources) {
     chg.insert_source_node(in);
   }
+
+  // Rotate the sources to the left such that the default timetable is always
+  // the left-most one
+  auto const rotator = std::bit_ceil(chg.parent_.size()) - chg.parent_.size();
+  std::rotate(chg.node_sources_.begin(), chg.node_sources_.begin() + rotator,
+              chg.node_sources_.end());
+  std::rotate(chg.cache_indices_.begin(), chg.cache_indices_.begin() + rotator,
+              chg.cache_indices_.end());
+
   auto saved_changes = loading_tree{};
   try {
     saved_changes = *cista::read<loading_tree>(cache_metadata_path);
@@ -336,11 +347,11 @@ timetable load(std::vector<timetable_source> const& sources,
                 saved_changes.source_config_hashes_[src]);
   }
 
-  auto root = node_idx_t{0};
-  for (auto const [idx, in] : utl::enumerate(chg.source_paths_)) {
-    auto const src = source_idx_t{idx};
-    auto const left = root;
-    auto const right = chg.leaf_index(src);
+  // Complete binary tree stored in breadth-last order
+  auto root = node_idx_t{chg.parent_.size()};
+  for (auto i = 0; node_idx_t{i} < root; i += 2) {
+    auto const left = node_idx_t{i};
+    auto const right = node_idx_t{i + 1};
     root = chg.insert_node(left, right);
     needs_recomputation.set(
         root, needs_recomputation[left] || needs_recomputation[right]);
