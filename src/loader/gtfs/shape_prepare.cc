@@ -48,25 +48,45 @@ std::vector<shape_offset_t> get_offsets_by_stops(
     timetable const& tt,
     std::span<geo::latlng const> shape,
     stop_seq_t const& stop_seq) {
-  auto offsets = std::vector<shape_offset_t>(stop_seq.size());
-  auto remaining_start = cista::base_t<shape_offset_t>{1U};
-  // Reserve space to map each stop to a different point
-  auto max_width = shape.size() - stop_seq.size();
+  auto const stop_size = stop_seq.size();
+  auto const shape_size = shape.size();
+  auto offsets = std::vector<shape_offset_t>(stop_size);
 
-  for (auto const [i, s] : utl::enumerate(stop_seq)) {
-    if (i == 0U) {
-      offsets[0] = shape_offset_t{0U};
-    } else if (i == stop_seq.size() - 1U) {
-      offsets[i] = shape_offset_t{shape.size() - 1U};
-    } else {
-      auto const pos = tt.locations_.coordinates_[stop{s}.location_idx()];
-      auto const offset =
-          get_closest(pos, shape.subspan(remaining_start, max_width + 1U));
-      offsets[i] = shape_offset_t{remaining_start + offset};
-      remaining_start += offset + 1U;
-      max_width -= offset;
+  auto const match_one =
+      [&](auto const stop_idx, shape_offset_t::value_t subshape_offset,
+          shape_offset_t::value_t subshape_length) -> shape_offset_t {
+    auto const pos =
+        tt.locations_.coordinates_[stop{stop_seq[stop_idx]}.location_idx()];
+    auto const offset =
+        get_closest(pos, shape.subspan(subshape_offset, subshape_length));
+    auto const shape_offset = shape_offset_t{subshape_offset + offset};
+    offsets[stop_idx] = shape_offset;
+    return shape_offset;
+  };
+
+  // Pass match_one explicitly, due to bug in Clang 18
+  auto const bisect = [](this auto const& self, auto const& match,
+                         auto const stop_left, auto const stop_right,
+                         shape_offset_t const shape_left,
+                         shape_offset_t const shape_right) -> void {
+    if (stop_left > stop_right) {
+      return;
     }
-  }
+    auto const stop_middle = (stop_left + stop_right) / 2;
+    auto const shape_middle =
+        match(stop_middle, shape_left.v_ + (stop_middle - stop_left),
+              shape_right.v_ - shape_left.v_ + 1 - (stop_right - stop_left));
+
+    self(match, stop_left, stop_middle - 1, shape_left, shape_middle - 1);
+    self(match, stop_middle + 1, stop_right, shape_middle + 1, shape_right);
+  };
+
+  // First and last offsets are fixed
+  offsets[0] = shape_offset_t{0U};
+  offsets[stop_size - 1] = shape_offset_t{shape_size - 1U};
+
+  bisect(match_one, 1U, static_cast<unsigned int>(stop_size - 2),
+         shape_offset_t{1}, shape_offset_t{shape_size - 2});
 
   return offsets;
 }
