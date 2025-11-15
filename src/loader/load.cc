@@ -220,16 +220,16 @@ std::optional<load_result> run_loading(
   if (is_merge_node) {
     auto const left = l.left_[root];
     auto const right = l.right_[root];
-    auto left_result =
+    auto&& left_result =
         run_loading(l, left, needs_recomputation, source_loading_nodes,
                     cache_path, date_range, progress_tracker);
-    auto right_result =
+    auto&& right_result =
         run_loading(l, right, needs_recomputation, source_loading_nodes,
                     cache_path, date_range, progress_tracker);
     if (!left_result.has_value()) {
-      return right_result;
+      return std::move(right_result);
     } else if (!right_result.has_value()) {
-      return left_result;
+      return std::move(left_result);
     }
     auto& left_tt = left_result.value().tt_;
     auto left_shapes = std::move(left_result.value().shapes_);
@@ -247,7 +247,7 @@ std::optional<load_result> run_loading(
     left_tt.write(local_cache_path / "tt.bin");
     assert((left_shapes == nullptr) == (right_shapes == nullptr));
     if (left_shapes == nullptr || right_shapes == nullptr) {
-      return load_result{.tt_ = left_tt, .shapes_ = nullptr};
+      return load_result{.tt_ = std::move(left_tt), .shapes_ = nullptr};
     }
 
     auto shape_store = std::make_unique<shapes_storage>(
@@ -255,7 +255,8 @@ std::optional<load_result> run_loading(
     shape_store->add(left_shapes.get());
     shape_store->add(right_shapes.get());
 
-    return load_result{.tt_ = left_tt, .shapes_ = std::move(shape_store)};
+    return load_result{.tt_ = std::move(left_tt),
+                       .shapes_ = std::move(shape_store)};
   }
   auto const src = source_idx_t{cista::to_idx(root) - 1};
   auto const node = source_loading_nodes[src];
