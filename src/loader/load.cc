@@ -1,5 +1,6 @@
 #include <cassert>
 #include <chrono>
+#include <iterator>
 
 #include "nigiri/loader/load.h"
 
@@ -128,10 +129,29 @@ struct loading_tree {
   }
 
   node_idx_t leaf_index(source_idx_t const& src) const {
-    // Index 0 is the default timetable
-    // After that, the source nodes follow
-    // Then all intermediate nodes
-    return node_idx_t{cista::to_idx(src) + 1};
+    auto const it = utl::find(node_sources_, src);
+    if (it == std::end(node_sources_)) {
+      return node_idx_t::invalid();
+    }
+    return node_idx_t{std::distance(node_sources_.begin(), it)};
+  }
+
+  node_idx_t insert_source_node(timetable_source const& in,
+                                uint64_t cache_idx = 0) {
+    auto const source_idx = source_idx_t{source_paths_.size()};
+    auto const& [tag, path, local_config] = in;
+
+    auto const last_write_time = fs::last_write_time(path);
+    auto const timestamp =
+        std::chrono::duration_cast<std::chrono::nanoseconds>(
+            std::chrono::file_clock::to_sys(last_write_time).time_since_epoch())
+            .count();
+    source_paths_.emplace_back(path);
+    source_config_hashes_.emplace_back(
+        cista::hashing<loader_config>{}(local_config));
+    last_write_times_.emplace_back(last_write_time_t{timestamp});
+    return insert_node(node_idx_t::invalid(), node_idx_t::invalid(), cache_idx,
+                       node_idx_t::invalid(), source_idx);
   }
 
   node_idx_t insert_node(uint64_t cache_idx = 0) {
@@ -141,12 +161,15 @@ struct loading_tree {
   node_idx_t insert_node(node_idx_t left,
                          node_idx_t right,
                          uint64_t cache_idx = 0,
-                         node_idx_t parent = node_idx_t::invalid()) {
+                         node_idx_t parent = node_idx_t::invalid(),
+                         source_idx_t source_idx = source_idx_t::invalid()) {
     auto node_idx = node_idx_t{parent_.size()};
 
     parent_.emplace_back(parent);
     left_.emplace_back(left);
     right_.emplace_back(right);
+
+    node_sources_.emplace_back(source_idx);
 
     // Avoid accidental duplication
     cache_idx = cache_idx < cista::to_idx(n_nodes()) ? cista::to_idx(node_idx)
@@ -182,6 +205,7 @@ struct loading_tree {
   vector_map<source_idx_t, source_path_t> source_paths_;
   vector_map<source_idx_t, std::uint64_t> source_config_hashes_;
   vector_map<source_idx_t, last_write_time_t> last_write_times_;
+  vector_map<node_idx_t, source_idx_t> node_sources_;
 
   vector_map<node_idx_t, node_idx_t> parent_;
   vector_map<node_idx_t, node_idx_t> left_;
@@ -200,7 +224,11 @@ std::optional<load_result> run_loading(
     auto& progress_tracker) {
   auto const local_cache_path =
       cache_path / fmt::format("tt{:d}", l.cache_indices_[root]);
-  if (root == node_idx_t{0}) {
+  assert((l.left_[root] == node_idx_t::invalid()) ==
+         (l.right_[root] == node_idx_t::invalid()));
+  if (l.left_[root] == node_idx_t::invalid() &&
+      l.right_[root] == node_idx_t::invalid() &&
+      l.node_sources_[root] == source_idx_t::invalid()) {
     auto tt = timetable{};
     tt.date_range_ = date_range;
     tt.n_sources_ = 0U;
@@ -258,7 +286,7 @@ std::optional<load_result> run_loading(
     return load_result{.tt_ = std::move(left_tt),
                        .shapes_ = std::move(shape_store)};
   }
-  auto const src = source_idx_t{cista::to_idx(root) - 1};
+  auto const src = l.node_sources_[root];
   auto const node = source_loading_nodes[src];
   progress_tracker->context(std::string{node.source_.tag_});
   progress_tracker->status("Loading timetable data...");
@@ -285,18 +313,7 @@ timetable load(std::vector<timetable_source> const& sources,
   auto chg = loading_tree{};
   chg.insert_node();  // default timetable node
   for (auto const& in : sources) {
-    auto const& [tag, path, local_config] = in;
-
-    auto const last_write_time = fs::last_write_time(path);
-    auto const timestamp =
-        std::chrono::duration_cast<std::chrono::nanoseconds>(
-            std::chrono::file_clock::to_sys(last_write_time).time_since_epoch())
-            .count();
-    chg.source_paths_.emplace_back(path);
-    chg.source_config_hashes_.emplace_back(
-        cista::hashing<loader_config>{}(local_config));
-    chg.last_write_times_.emplace_back(last_write_time_t{timestamp});
-    chg.insert_node();
+    chg.insert_source_node(in);
   }
   auto saved_changes = loading_tree{};
   try {
