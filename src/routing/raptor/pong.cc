@@ -372,6 +372,8 @@ routing_result pong(timetable const& tt,
                                .algo_stats_ = {}};
   auto start_time =
       kFwd ? search_interval.from_ : search_interval.to_ - duration_t{1};
+  auto const end_time =
+      kFwd ? search_interval.to_ : search_interval.from_ - duration_t{1};
   auto const is_better = [](auto a, auto b) { return kFwd ? a < b : a > b; };
   auto const is_validated = [&](journey const& j) {
     return is_better(j.dest_time_, start_time);
@@ -391,7 +393,8 @@ routing_result pong(timetable const& tt,
     }
     return false;
   };
-  while (get_result_count() < q.min_connection_count_ &&
+  while ((is_better(start_time, end_time) ||
+          get_result_count() < q.min_connection_count_) &&
          tt.external_interval().contains(start_time) && !is_timeout_reached()) {
     // ----
     // PING
