@@ -361,91 +361,91 @@ void timetable::merge(timetable const& other_tt) {
   assert(this->date_range_ == other_tt.date_range_);
 
   /* Save new data */
-  auto const new_bitfields = other_tt.bitfields_;
-  auto const new_source_end_date = other_tt.src_end_date_;
-  auto const new_trip_id_to_idx = other_tt.trip_id_to_idx_;
-  auto const new_trip_ids = other_tt.trip_ids_;
-  auto const new_trip_id_strings = other_tt.trip_id_strings_;
-  auto const new_trip_id_src = other_tt.trip_id_src_;
-  auto const new_trip_direction_id = other_tt.trip_direction_id_;
-  auto const new_trip_route_id = other_tt.trip_route_id_;
-  auto const new_route_ids = other_tt.route_ids_;
-  auto const new_trip_transport_ranges = other_tt.trip_transport_ranges_;
-  auto const new_trip_stop_seq_numbers = other_tt.trip_stop_seq_numbers_;
-  auto const new_source_file_names = other_tt.source_file_names_;
-  auto const new_trip_debug = other_tt.trip_debug_;
-  auto const new_trip_short_names = other_tt.trip_short_names_;
-  auto const new_trip_display_names = other_tt.trip_display_names_;
-  auto const new_route_transport_ranges = other_tt.route_transport_ranges_;
-  auto const new_route_location_seq = other_tt.route_location_seq_;
-  auto const new_route_clasz = other_tt.route_clasz_;
-  auto const new_route_section_clasz = other_tt.route_section_clasz_;
-  auto const new_route_bikes_allowed = other_tt.route_bikes_allowed_;
-  auto const new_route_cars_allowed = other_tt.route_cars_allowed_;
-  auto const new_route_bikes_allowed_per_section =
+  auto const& new_bitfields = other_tt.bitfields_;
+  auto const& new_source_end_date = other_tt.src_end_date_;
+  auto const& new_trip_id_to_idx = other_tt.trip_id_to_idx_;
+  auto const& new_trip_ids = other_tt.trip_ids_;
+  auto const& new_trip_id_strings = other_tt.trip_id_strings_;
+  auto const& new_trip_id_src = other_tt.trip_id_src_;
+  auto const& new_trip_direction_id = other_tt.trip_direction_id_;
+  auto const& new_trip_route_id = other_tt.trip_route_id_;
+  auto const& new_route_ids = other_tt.route_ids_;
+  auto const& new_trip_transport_ranges = other_tt.trip_transport_ranges_;
+  auto const& new_trip_stop_seq_numbers = other_tt.trip_stop_seq_numbers_;
+  auto const& new_source_file_names = other_tt.source_file_names_;
+  auto const& new_trip_debug = other_tt.trip_debug_;
+  auto const& new_trip_short_names = other_tt.trip_short_names_;
+  auto const& new_trip_display_names = other_tt.trip_display_names_;
+  auto const& new_route_transport_ranges = other_tt.route_transport_ranges_;
+  auto const& new_route_location_seq = other_tt.route_location_seq_;
+  auto const& new_route_clasz = other_tt.route_clasz_;
+  auto const& new_route_section_clasz = other_tt.route_section_clasz_;
+  auto const& new_route_bikes_allowed = other_tt.route_bikes_allowed_;
+  auto const& new_route_cars_allowed = other_tt.route_cars_allowed_;
+  auto const& new_route_bikes_allowed_per_section =
       other_tt.route_bikes_allowed_per_section_;
-  auto const new_route_cars_allowed_per_section =
+  auto const& new_route_cars_allowed_per_section =
       other_tt.route_cars_allowed_per_section_;
-  auto const new_route_stop_time_ranges = other_tt.route_stop_time_ranges_;
-  auto const new_route_stop_times = other_tt.route_stop_times_;
-  auto const new_transport_first_dep_offset =
+  auto const& new_route_stop_time_ranges = other_tt.route_stop_time_ranges_;
+  auto const& new_route_stop_times = other_tt.route_stop_times_;
+  auto const& new_transport_first_dep_offset =
       other_tt.transport_first_dep_offset_;
-  auto const new_transport_traffic_days = other_tt.transport_traffic_days_;
-  auto const new_transport_route = other_tt.transport_route_;
-  auto const new_transport_to_trip_section =
+  auto const& new_transport_traffic_days = other_tt.transport_traffic_days_;
+  auto const& new_transport_route = other_tt.transport_route_;
+  auto const& new_transport_to_trip_section =
       other_tt.transport_to_trip_section_;
-  auto const new_languages = other_tt.languages_;
-  auto const new_locations = other_tt.locations_;
-  auto const new_merged_trips = other_tt.merged_trips_;
-  auto const new_attributes = other_tt.attributes_;
-  auto const new_attribute_combinations = other_tt.attribute_combinations_;
-  auto const new_trip_direction_strings = other_tt.trip_direction_strings_;
-  auto const new_trip_directions = other_tt.trip_directions_;
-  auto const new_trip_lines = other_tt.trip_lines_;
-  auto const new_transport_section_attributes =
+  auto const& new_languages = other_tt.languages_;
+  auto const& new_locations = other_tt.locations_;
+  auto const& new_merged_trips = other_tt.merged_trips_;
+  auto const& new_attributes = other_tt.attributes_;
+  auto const& new_attribute_combinations = other_tt.attribute_combinations_;
+  auto const& new_trip_direction_strings = other_tt.trip_direction_strings_;
+  auto const& new_trip_directions = other_tt.trip_directions_;
+  auto const& new_trip_lines = other_tt.trip_lines_;
+  auto const& new_transport_section_attributes =
       other_tt.transport_section_attributes_;
-  auto const new_transport_section_providers =
+  auto const& new_transport_section_providers =
       other_tt.transport_section_providers_;
-  auto const new_transport_section_directions =
+  auto const& new_transport_section_directions =
       other_tt.transport_section_directions_;
-  auto const new_transport_section_lines = other_tt.transport_section_lines_;
-  auto const new_transport_section_route_colors =
+  auto const& new_transport_section_lines = other_tt.transport_section_lines_;
+  auto const& new_transport_section_route_colors =
       other_tt.transport_section_route_colors_;
-  auto const new_location_routes = other_tt.location_routes_;
-  auto const new_providers = other_tt.providers_;
-  auto const new_provider_id_to_idx = other_tt.provider_id_to_idx_;
-  auto const new_fares = other_tt.fares_;
-  auto const new_areas = other_tt.areas_;
-  auto const new_location_areas = other_tt.location_areas_;
-  auto const new_location_location_groups = other_tt.location_location_groups_;
-  auto const new_location_group_locations = other_tt.location_group_locations_;
-  auto const new_location_group_name = other_tt.location_group_name_;
-  auto const new_location_group_id = other_tt.location_group_id_;
-  auto const new_flex_area_bbox = other_tt.flex_area_bbox_;
-  auto const new_flex_area_id = other_tt.flex_area_id_;
-  auto const new_flex_area_src = other_tt.flex_area_src_;
-  auto const new_flex_area_outers = other_tt.flex_area_outers_;
-  auto const new_flex_area_inners = other_tt.flex_area_inners_;
-  auto const new_flex_area_name = other_tt.flex_area_name_;
-  auto const new_flex_area_desc = other_tt.flex_area_desc_;
-  auto const new_flex_area_rtree = other_tt.flex_area_rtree_;
-  auto const new_location_group_transports =
+  auto const& new_location_routes = other_tt.location_routes_;
+  auto const& new_providers = other_tt.providers_;
+  auto const& new_provider_id_to_idx = other_tt.provider_id_to_idx_;
+  auto const& new_fares = other_tt.fares_;
+  auto const& new_areas = other_tt.areas_;
+  auto const& new_location_areas = other_tt.location_areas_;
+  auto const& new_location_location_groups = other_tt.location_location_groups_;
+  auto const& new_location_group_locations = other_tt.location_group_locations_;
+  auto const& new_location_group_name = other_tt.location_group_name_;
+  auto const& new_location_group_id = other_tt.location_group_id_;
+  auto const& new_flex_area_bbox = other_tt.flex_area_bbox_;
+  auto const& new_flex_area_id = other_tt.flex_area_id_;
+  auto const& new_flex_area_src = other_tt.flex_area_src_;
+  auto const& new_flex_area_outers = other_tt.flex_area_outers_;
+  auto const& new_flex_area_inners = other_tt.flex_area_inners_;
+  auto const& new_flex_area_name = other_tt.flex_area_name_;
+  auto const& new_flex_area_desc = other_tt.flex_area_desc_;
+  auto const& new_flex_area_rtree = other_tt.flex_area_rtree_;
+  auto const& new_location_group_transports =
       other_tt.location_group_transports_;
-  auto const new_flex_area_transports = other_tt.flex_area_transports_;
-  auto const new_flex_transport_traffic_days =
+  auto const& new_flex_area_transports = other_tt.flex_area_transports_;
+  auto const& new_flex_transport_traffic_days =
       other_tt.flex_transport_traffic_days_;
-  auto const new_flex_transport_trip = other_tt.flex_transport_trip_;
-  auto const new_flex_transport_stop_time_windows =
+  auto const& new_flex_transport_trip = other_tt.flex_transport_trip_;
+  auto const& new_flex_transport_stop_time_windows =
       other_tt.flex_transport_stop_time_windows_;
-  auto const new_flex_transport_stop_seq = other_tt.flex_transport_stop_seq_;
-  auto const new_flex_stop_seq = other_tt.flex_stop_seq_;
-  auto const new_flex_transport_pickup_booking_rule =
+  auto const& new_flex_transport_stop_seq = other_tt.flex_transport_stop_seq_;
+  auto const& new_flex_stop_seq = other_tt.flex_stop_seq_;
+  auto const& new_flex_transport_pickup_booking_rule =
       other_tt.flex_transport_pickup_booking_rule_;
-  auto const new_flex_transport_drop_off_booking_rule =
+  auto const& new_flex_transport_drop_off_booking_rule =
       other_tt.flex_transport_drop_off_booking_rule_;
-  auto const new_booking_rules = other_tt.booking_rules_;
-  auto const new_strings = other_tt.strings_;
-  auto const new_n_sources = other_tt.n_sources_;
+  auto const& new_booking_rules = other_tt.booking_rules_;
+  auto const& new_strings = other_tt.strings_;
+  auto const& new_n_sources = other_tt.n_sources_;
   /* Add new data and adjust references */
   /*	  bitfields	*/
   auto bitfield_idx_map = vector_map<bitfield_idx_t, bitfield_idx_t>{};
