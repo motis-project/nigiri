@@ -1,6 +1,5 @@
 #include "nigiri/routing/mcraptor/mcraptor_search.h"
 
-#include <string>
 #include <utility>
 #include "date/date.h"
 #include "utl/to_vec.h"
@@ -9,7 +8,7 @@
 
 namespace nigiri::routing {
 
-routing_result<raptor_stats> mcraptor_search(
+routing_result mcraptor_search(
     timetable const& tt,
     rt_timetable const* rtt,
     search_state& s_state,

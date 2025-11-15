@@ -11,7 +11,6 @@
 #include "nigiri/logging.h"
 #include "nigiri/qa/qa.h"
 #include "nigiri/query_generator/generator.h"
-#include "nigiri/routing/mcraptor/mcraptor.h"
 #include "nigiri/routing/mcraptor/mcraptor_search.h"
 #include "nigiri/routing/raptor/raptor.h"
 #include "nigiri/routing/raptor_search.h"
@@ -140,7 +139,7 @@ nigiri::pareto_set<nigiri::routing::journey> raptor_search(
                .journeys_);
 }
 
-routing_result<raptor_stats> run_algorithm(
+routing_result run_algorithm(
     timetable const& tt,
     rt_timetable const* rtt,
     search_state& s_state,
@@ -380,7 +379,7 @@ int main(int argc, char* argv[]) {
 
   bpo::options_description desc("Allowed options");
   desc.add_options()("help,h", "produce this help message")  //
-      ("tt_path,p", bpo::value(&tt_path),
+      ("tt_path,p", bpo::value(&tt_path)->required(),
        "path to a binary file containing a serialized nigiri timetable")  //
       ("seed,s", bpo::value<std::int64_t>(&seed),
        "value to seed the RNG of the query generator with, "

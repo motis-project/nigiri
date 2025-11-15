@@ -6,7 +6,7 @@
 
 namespace nigiri::routing {
 
-routing_result<raptor_stats> mcraptor_search(
+routing_result mcraptor_search(
     timetable const& tt,
     rt_timetable const* rtt,
     search_state& s_state,
