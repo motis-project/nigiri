@@ -258,6 +258,8 @@ routing_result pong(timetable const& tt,
 
   q.sanitize(tt);
 
+  auto const processing_start_time = std::chrono::steady_clock::now();
+
   auto const fastest_direct = get_fastest_direct(tt, q, SearchDir);
   auto const search_interval = std::visit(
       utl::overloaded{[](interval<unixtime_t> const start_interval) {
@@ -385,7 +387,6 @@ routing_result pong(timetable const& tt,
              j.travel_time() < q.max_travel_time_;
     });
   };
-  auto const processing_start_time = std::chrono::steady_clock::now();
   auto const is_timeout_reached = [&]() {
     if (timeout) {
       return (std::chrono::steady_clock::now() - processing_start_time) >=
@@ -527,6 +528,9 @@ routing_result pong(timetable const& tt,
   result.interval_ = {kFwd ? search_interval.from_ : start_time + duration_t{1},
                       kFwd ? start_time : search_interval.to_};
   result.algo_stats_ = (ping.get_stats() + pong.get_stats()).to_map();
+  result.search_stats_.execute_time_ =
+      std::chrono::duration_cast<std::chrono::milliseconds>(
+          (std::chrono::steady_clock::now() - processing_start_time));
 
   for (auto& j : s_state.results_) {
     auto const swap = [](location_idx_t const l) -> location_idx_t {
