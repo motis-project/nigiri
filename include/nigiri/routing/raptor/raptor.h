@@ -165,9 +165,16 @@ struct raptor {
 
   void add_start(location_idx_t const l, unixtime_t const t) {
     auto const v = (Vias != 0 && is_via_[0][to_idx(l)]) ? 1U : 0U;
-    trace_upd("adding start {}: {}, v={}\n", location{tt_, l}, t, v);
-    best_[to_idx(l)][v] = unix_to_delta(base(), t);
-    round_times_[0U][to_idx(l)][v] = unix_to_delta(base(), t);
+    trace_upd(
+        "adding start [fwd={}] {}: {}, v={} [current: best={}, round={} => "
+        "best={}]\n",
+        kFwd, location{tt_, l}, t, v, to_unix(best_[to_idx(l)][v]),
+        to_unix(round_times_[0U][to_idx(l)][v]),
+        get_best(t, to_unix(best_[to_idx(l)][v])));
+    best_[to_idx(l)][v] =
+        get_best(unix_to_delta(base(), t), best_[to_idx(l)][v]);
+    round_times_[0U][to_idx(l)][v] =
+        get_best(unix_to_delta(base(), t), round_times_[0U][to_idx(l)][v]);
     state_.station_mark_.set(to_idx(l), true);
   }
 

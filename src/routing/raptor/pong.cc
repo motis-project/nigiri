@@ -450,7 +450,7 @@ routing_result pong(timetable const& tt,
       for (auto const& s : starts) {
         trace_pong("---- PONG START: {} at time_at_start={} time_at_stop={}",
                    location{tt, s.stop_}, s.time_at_start_, s.time_at_stop_);
-        ping.add_start(s.stop_, s.time_at_stop_);
+        pong.add_start(s.stop_, s.time_at_stop_);
       }
       pong.execute(ping_j.dest_time_, ping_j.transfers_,
                    ping_j.start_time_ - duration_t{kFwd ? 1 : -1}, q.prf_idx_,
