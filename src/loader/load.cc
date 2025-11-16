@@ -333,18 +333,81 @@ timetable load(std::vector<timetable_source> const& sources,
     log(log_lvl::info, "loader.load", "no cache metadata at {} found",
         cache_metadata_path);
   }
+
+  auto saved_nodes = vector_map<node_idx_t, std::vector<node_idx_t>>{};
+  saved_nodes.resize(cista::to_idx(saved_changes.n_nodes()));
+  for (auto const [idx_, par] : utl::enumerate(saved_changes.parent_)) {
+    auto const node = node_idx_t{idx_};
+    if (saved_changes.left_[node] != node_idx_t::invalid() ||
+        saved_changes.right_[node] != node_idx_t::invalid()) {
+      continue;
+    }
+    for (auto ancestor = par; ancestor != node_idx_t::invalid();
+         ancestor = saved_changes.parent_[ancestor]) {
+      saved_nodes[ancestor].emplace_back(node);
+    }
+  }
+  auto saved_caches = hash_map<std::vector<node_idx_t>, uint64_t>{};
+  for (auto [idx_, node_set] : utl::enumerate(saved_nodes)) {
+    if (node_set.empty()) {
+      continue;
+    }
+    auto node = node_idx_t{idx_};
+    auto cache_idx = saved_changes.cache_indices_[node];
+    std::sort(node_set.begin(), node_set.end());
+    auto new_idx =
+        utl::get_or_create(saved_caches, node_set, [&]() { return cache_idx; });
+    assert(new_idx == cache_idx);  // Node sets are unique
+  }
+
   auto needs_recomputation = bitvec_map<node_idx_t>{};
   needs_recomputation.resize(cista::to_idx(chg.n_nodes()));
+  auto saved_idx_mapping = hash_map<node_idx_t, node_idx_t>{};
   for (auto const [idx, path] : utl::enumerate(chg.source_paths_)) {
     auto const src = source_idx_t{idx};
-    needs_recomputation.set(
-        chg.leaf_index(src),
-        chg.source_paths_.size() != saved_changes.source_paths_.size() ||
-            path != saved_changes.source_paths_[src] ||
-            chg.last_write_times_[src] !=
-                saved_changes.last_write_times_[src] ||
-            chg.source_config_hashes_[src] !=
-                saved_changes.source_config_hashes_[src]);
+    auto const node = chg.leaf_index(src);
+    auto has_changed = true;
+    auto saved_node_idx = node_idx_t::invalid();
+    auto it = utl::find(saved_changes.source_paths_, path);
+    if (it != std::end(saved_changes.source_paths_)) {
+      auto const saved_src =
+          source_idx_t{std::distance(saved_changes.source_paths_.begin(), it)};
+      has_changed = chg.last_write_times_[src] !=
+                        saved_changes.last_write_times_[saved_src] ||
+                    chg.source_config_hashes_[src] !=
+                        saved_changes.source_config_hashes_[saved_src];
+      if (!has_changed) {
+        saved_node_idx = saved_changes.leaf_index(saved_src);
+        auto const saved_cache_idx =
+            saved_changes.cache_indices_[saved_node_idx];
+        auto it_ = utl::find(chg.cache_indices_, saved_cache_idx);
+        if (it_ != std::end(chg.cache_indices_)) {
+          // Cache index already taken; swap them
+          *it_ = chg.cache_indices_[node];
+        }
+        chg.cache_indices_[node] = saved_cache_idx;
+      }
+    }
+    needs_recomputation.set(chg.leaf_index(src), has_changed);
+    saved_idx_mapping[node] = saved_node_idx;
+  }
+
+  auto source_sets = vector_map<node_idx_t, std::vector<node_idx_t>>{};
+  for (auto const [idx, path] : utl::enumerate(chg.parent_)) {
+    auto const cur_idx = node_idx_t{idx};
+    auto saved_idx = node_idx_t::invalid();
+    if (chg.node_sources_[cur_idx] != source_idx_t::invalid()) {
+      saved_idx = saved_idx_mapping[cur_idx];
+    } else {
+      // default timetable node
+      // the cache index 0 is reserved for the default timetable node
+      auto const it = utl::find(saved_changes.cache_indices_, 0U);
+      if (it != std::end(saved_changes.cache_indices_)) {
+        saved_idx =
+            node_idx_t{std::distance(saved_changes.cache_indices_.begin(), it)};
+      }
+    }
+    source_sets.emplace_back(std::vector<node_idx_t>{saved_idx});
   }
 
   // Complete binary tree stored in breadth-last order
@@ -353,8 +416,25 @@ timetable load(std::vector<timetable_source> const& sources,
     auto const left = node_idx_t{i};
     auto const right = node_idx_t{i + 1};
     root = chg.insert_node(left, right);
-    needs_recomputation.set(
-        root, needs_recomputation[left] || needs_recomputation[right]);
+
+    auto node_set = source_sets[left];
+    auto right_node_set = source_sets[right];
+    node_set.insert(node_set.end(), right_node_set.begin(),
+                    right_node_set.end());
+    std::sort(node_set.begin(), node_set.end());
+    source_sets.emplace_back(node_set);
+    auto const saved_cache_idx = saved_caches.find(node_set);
+    auto const has_changed = saved_cache_idx == std::end(saved_caches);
+    if (!has_changed) {
+      auto it = utl::find(chg.cache_indices_, saved_cache_idx->second);
+      if (it != std::end(chg.cache_indices_)) {
+        // Cache index already taken; swap them
+        *it = chg.cache_indices_[root];
+      }
+      chg.cache_indices_[root] = saved_cache_idx->second;
+    }
+    needs_recomputation.set(root, has_changed || needs_recomputation[left] ||
+                                      needs_recomputation[right]);
   }
 
   try {
