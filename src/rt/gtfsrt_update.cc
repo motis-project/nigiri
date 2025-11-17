@@ -7,6 +7,8 @@
 #include "utl/pairwise.h"
 #include "utl/verify.h"
 
+#include "geo/latlng.h"
+
 #include "nigiri/loader/gtfs/stop_seq_number_encoding.h"
 #include "nigiri/get_otel_tracer.h"
 #include "nigiri/location.h"
@@ -16,6 +18,7 @@
 #include "nigiri/rt/gtfsrt_alert.h"
 #include "nigiri/rt/gtfsrt_resolve_run.h"
 #include "nigiri/rt/run.h"
+#include "nigiri/types.h"
 
 namespace gtfsrt = transit_realtime;
 namespace protob = google::protobuf;
@@ -193,10 +196,19 @@ bool add_rt_trip(source_idx_t const src,
 
   auto stops = std::vector<stop::value_type>{};
   if (added_or_replaced) {
+    auto last_pos = geo::latlng{};
+    auto last_time = unixtime_t{};
     for (auto const& stu : stus) {
-      utl::verify((!stu.has_departure() || stu.departure().has_time()) &&
-                      (!stu.has_arrival() || stu.arrival().has_time()),
-                  "absolute times are required for unscheduled trips");
+      auto new_time = unixtime_t{};
+      if (stu.has_departure() && stu.departure().has_time()) {
+        new_time = unixtime_t{std::chrono::duration_cast<unixtime_t::duration>(
+            std::chrono::seconds{stu.departure().time()})};
+      } else if (stu.has_arrival() && stu.arrival().has_time()) {
+        new_time = unixtime_t{std::chrono::duration_cast<unixtime_t::duration>(
+            std::chrono::seconds{stu.arrival().time()})};
+      } else {
+        utl::fail("absolute times are required for unscheduled trips");
+      }
       utl::verify(stu.has_stop_id(),
                   "stop_id is required for unscheduled trips");
       auto const it =
@@ -208,6 +220,22 @@ bool add_rt_trip(source_idx_t const src,
             src, tripUpdate.trip().trip_id(), stu.stop_id());
         return false;
       }
+      if (last_time != unixtime_t{}) {
+        auto const time_between_stops = (new_time - last_time).count();
+        auto const dist_between_stops =
+            geo::distance(tt.locations_.coordinates_.at(it->second), last_pos);
+        if (dist_between_stops / std::max(time_between_stops, 1) / 60 >
+            kMaxTransitSpeed) {
+          log(log_lvl::error, "rt.gtfs.invalid",
+              "NEW/ADDED trip is travelling too fast "
+              "(src={}, trip_id={}, stop_id={}, dist={}, delta={}), skipping",
+              src, tripUpdate.trip().trip_id(), stu.stop_id(),
+              dist_between_stops, time_between_stops);
+          return false;
+        }
+      }
+      last_pos = tt.locations_.coordinates_.at(it->second);
+      last_time = new_time;
       auto in_allowed = true, out_allowed = true;
       if (stu.has_stop_time_properties()) {
         if (stu.stop_time_properties().has_pickup_type()) {
