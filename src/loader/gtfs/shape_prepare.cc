@@ -82,12 +82,20 @@ std::vector<shape_offset_t> get_offsets_by_stops(
   };
 
   // First and last offsets are fixed
-  offsets[0] = shape_offset_t{0U};
-  offsets[stop_size - 1] = shape_offset_t{shape_size - 1U};
+  if (stop_size < 3) {
+    if (stop_size == 1) {
+      offsets[0] = shape_offset_t{0U};
+    } else if (stop_size == 2) {
+      offsets[0] = shape_offset_t{0U};
+      offsets[stop_size - 1] = shape_offset_t{shape_size - 1U};
+    }
+  } else {
+    offsets[0] = shape_offset_t{0U};
+    offsets[stop_size - 1] = shape_offset_t{shape_size - 1U};
 
-  bisect(match_one, 1U, static_cast<unsigned int>(stop_size - 2),
-         shape_offset_t{1}, shape_offset_t{shape_size - 2});
-
+    bisect(match_one, 1U, static_cast<unsigned int>(stop_size - 2),
+           shape_offset_t{1}, shape_offset_t{shape_size - 2});
+  }
   return offsets;
 }
 
