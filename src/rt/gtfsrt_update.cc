@@ -207,7 +207,7 @@ bool add_rt_trip(source_idx_t const src,
         new_time = unixtime_t{std::chrono::duration_cast<unixtime_t::duration>(
             std::chrono::seconds{stu.arrival().time()})};
       } else {
-        utl::fail("absolute times are required for unscheduled trips");
+        throw utl::fail("absolute times are required for unscheduled trips");
       }
       utl::verify(stu.has_stop_id(),
                   "stop_id is required for unscheduled trips");
