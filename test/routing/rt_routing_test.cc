@@ -42,9 +42,9 @@ DB,Deutsche Bahn,https://deutschebahn.com,Europe/Berlin
 # stops.txt
 stop_id,stop_name,stop_desc,stop_lat,stop_lon,stop_url,location_type,parent_station
 A,A,,0.0,1.0,,
-B,B,,2.0,3.0,,
-C,C,,4.0,5.0,,
-D,D,,6.0,7.0,,
+B,B,,0.02,1.03,,
+C,C,,0.04,1.05,,
+D,D,,0.06,1.07,,
 
 # calendar_dates.txt
 service_id,date,exception_type
