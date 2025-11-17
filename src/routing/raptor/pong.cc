@@ -467,11 +467,10 @@ routing_result pong(timetable const& tt,
           });
 
       if (match == end(s_state.results_)) {
-        fmt::println(
+        throw utl::fail(
             "no pong for transfers={}, start_time={} found, journeys={}",
             ping_j.transfers_, ping_j.dest_time_,
             s_state.results_.els_ | std::views::transform(to_tuple));
-        continue;
       }
 
       trace_pong("---- HIT [updating ping start time {} -> {}]\n",
