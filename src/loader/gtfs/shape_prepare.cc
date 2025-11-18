@@ -69,8 +69,8 @@ std::vector<shape_offset_t> get_offsets_by_stops(
     stop_seq_t const& stop_seq) {
   auto const stop_seq_size = stop_seq.size();
   if (stop_seq_size < 2) {
-    // Match first stop with first shape point, if exists
-    return std::vector(stop_seq_size, shape_offset_t{0U});
+    // Trivial offsets for at most 1 stop
+    return std::vector<shape_offset_t>{};
   }
 
   auto const shape_size = shape.size();
