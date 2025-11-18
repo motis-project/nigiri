@@ -44,58 +44,56 @@ std::size_t get_closest(geo::latlng const& pos,
              : best.segment_idx_ + 1;
 }
 
-void bisect(auto const& match_one,
-            auto const stop_left,
-            auto const stop_right,
-            shape_offset_t const shape_left,
-            shape_offset_t const shape_right) {
-  if (stop_left > stop_right) {
+void bisect(auto const& match_stop,
+            unsigned int const seg_start,
+            unsigned int const seg_end,
+            shape_offset_t const shape_start,
+            shape_offset_t const shape_end) {
+  if (seg_start > seg_end) {
     return;
   }
-  auto const stop_middle = (stop_left + stop_right) / 2;
-  auto const shape_middle =
-      match_one(stop_middle, shape_left.v_ + (stop_middle - stop_left),
-                shape_right.v_ - shape_left.v_ + 1 - (stop_right - stop_left));
+  auto const seg_center = (seg_start + seg_end) / 2;
+  auto const subshape_start = shape_start + (seg_center - seg_start);
+  auto const subshape_length =
+      shape_end.v_ - shape_start.v_ + 1 - (seg_end - seg_start);
+  auto const match_offset =
+      match_stop(seg_center, subshape_start, subshape_length);
 
-  bisect(match_one, stop_left, stop_middle - 1, shape_left, shape_middle - 1);
-  bisect(match_one, stop_middle + 1, stop_right, shape_middle + 1, shape_right);
+  bisect(match_stop, seg_start, seg_center - 1, shape_start, match_offset - 1);
+  bisect(match_stop, seg_center + 1, seg_end, match_offset + 1, shape_end);
 };
 
 std::vector<shape_offset_t> get_offsets_by_stops(
     timetable const& tt,
     std::span<geo::latlng const> shape,
     stop_seq_t const& stop_seq) {
-  auto const stop_size = stop_seq.size();
-  auto const shape_size = shape.size();
-  auto offsets = std::vector<shape_offset_t>(stop_size);
+  auto const stop_seq_size = stop_seq.size();
+  if (stop_seq_size < 2) {
+    // Match first stop with first shape point, if exists
+    return std::vector(stop_seq_size, shape_offset_t{0U});
+  }
 
-  auto const match_one =
-      [&](auto const stop_idx, shape_offset_t::value_t subshape_offset,
-          shape_offset_t::value_t subshape_length) -> shape_offset_t {
+  auto const shape_size = shape.size();
+  auto offsets = std::vector<shape_offset_t>(stop_seq_size);
+
+  auto const match_stop = [&](unsigned int const s, shape_offset_t shape_start,
+                              unsigned int shape_length) -> shape_offset_t {
     auto const pos =
-        tt.locations_.coordinates_[stop{stop_seq[stop_idx]}.location_idx()];
-    auto const offset =
-        get_closest(pos, shape.subspan(subshape_offset, subshape_length));
-    auto const shape_offset = shape_offset_t{subshape_offset + offset};
-    offsets[stop_idx] = shape_offset;
+        tt.locations_.coordinates_[stop{stop_seq[s]}.location_idx()];
+    auto const subshape = shape.subspan(shape_start.v_, shape_length);
+    auto const offset = get_closest(pos, subshape);
+    auto const shape_offset = shape_start + static_cast<unsigned int>(offset);
+    offsets[s] = shape_offset;
     return shape_offset;
   };
 
-  // First and last offsets are fixed
-  if (stop_size < 3) {
-    if (stop_size == 1) {
-      offsets[0] = shape_offset_t{0U};
-    } else if (stop_size == 2) {
-      offsets[0] = shape_offset_t{0U};
-      offsets[stop_size - 1] = shape_offset_t{shape_size - 1U};
-    }
-  } else {
-    offsets[0] = shape_offset_t{0U};
-    offsets[stop_size - 1] = shape_offset_t{shape_size - 1U};
+  // Offsets for first and last stop are always fixed
+  offsets[0] = shape_offset_t{0U};
+  offsets[stop_seq_size - 1] = shape_offset_t{shape_size - 1U};
 
-    bisect(match_one, 1U, static_cast<unsigned int>(stop_size - 2),
-           shape_offset_t{1}, shape_offset_t{shape_size - 2});
-  }
+  bisect(match_stop, 1U, static_cast<unsigned int>(stop_seq_size - 2),
+         shape_offset_t{1}, shape_offset_t{shape_size - 2});
+
   return offsets;
 }
 
