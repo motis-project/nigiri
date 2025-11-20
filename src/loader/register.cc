@@ -71,8 +71,7 @@ location::location(timetable const& tt, location_idx_t const l)
       type_{tt.locations_.types_[l]},
       parent_{tt.locations_.parents_[l]},
       timezone_idx_{tt.locations_.location_timezones_[l]},
-      transfer_time_{tt.locations_.transfer_time_[l]},
-      equivalences_{tt.locations_.equivalences_[l]} {}
+      transfer_time_{tt.locations_.transfer_time_[l]} {}
 
 location::location(std::string_view id,
                    std::string_view name,
@@ -84,7 +83,6 @@ location::location(std::string_view id,
                    location_idx_t parent,
                    timezone_idx_t timezone,
                    duration_t transfer_time,
-                   std::span<location_idx_t const> equivalences,
                    timetable& tt,
                    gtfs::tz_map& tz_map)
     : src_{src},
@@ -97,7 +95,6 @@ location::location(std::string_view id,
       parent_{parent},
       timezone_idx_{timezone},
       transfer_time_{transfer_time},
-      equivalences_{equivalences},
       tt_{&tt},
       tz_map_{&tz_map} {}
 

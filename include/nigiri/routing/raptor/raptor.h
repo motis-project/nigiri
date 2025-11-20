@@ -36,6 +36,23 @@ struct raptor_stats {
     };
   }
 
+  raptor_stats operator+(raptor_stats const& o) const {
+    auto copy = *this;
+    copy.n_routing_time_ += o.n_routing_time_;
+    copy.n_footpaths_visited_ += o.n_footpaths_visited_;
+    copy.n_routes_visited_ += o.n_routes_visited_;
+    copy.n_earliest_trip_calls_ += o.n_earliest_trip_calls_;
+    copy.n_earliest_arrival_updated_by_route_ +=
+        o.n_earliest_arrival_updated_by_route_;
+    copy.n_earliest_arrival_updated_by_footpath_ +=
+        o.n_earliest_arrival_updated_by_footpath_;
+    copy.fp_update_prevented_by_lower_bound_ +=
+        o.fp_update_prevented_by_lower_bound_;
+    copy.route_update_prevented_by_lower_bound_ +=
+        o.route_update_prevented_by_lower_bound_;
+    return copy;
+  }
+
   std::uint64_t n_routing_time_{0ULL};
   std::uint64_t n_footpaths_visited_{0ULL};
   std::uint64_t n_routes_visited_{0ULL};
@@ -148,9 +165,16 @@ struct raptor {
 
   void add_start(location_idx_t const l, unixtime_t const t) {
     auto const v = (Vias != 0 && is_via_[0][to_idx(l)]) ? 1U : 0U;
-    trace_upd("adding start {}: {}, v={}\n", location{tt_, l}, t, v);
-    best_[to_idx(l)][v] = unix_to_delta(base(), t);
-    round_times_[0U][to_idx(l)][v] = unix_to_delta(base(), t);
+    trace_upd(
+        "adding start [fwd={}] {}: {}, v={} [current: best={}, round={} => "
+        "best={}]\n",
+        kFwd, location{tt_, l}, t, v, to_unix(best_[to_idx(l)][v]),
+        to_unix(round_times_[0U][to_idx(l)][v]),
+        get_best(t, to_unix(best_[to_idx(l)][v])));
+    best_[to_idx(l)][v] =
+        get_best(unix_to_delta(base(), t), best_[to_idx(l)][v]);
+    round_times_[0U][to_idx(l)][v] =
+        get_best(unix_to_delta(base(), t), round_times_[0U][to_idx(l)][v]);
     state_.station_mark_.set(to_idx(l), true);
   }
 
@@ -1108,8 +1132,8 @@ private:
           location{tt_,
                    stop{tt_.route_location_seq_[r][stop_idx]}.location_idx()});
 
-    constexpr auto const kNDaysToIterate = day_idx_t::value_t{2U};
-    for (auto i = day_idx_t::value_t{0U}; i != kNDaysToIterate; ++i) {
+    auto const n_days_to_iterate = kMaxTravelTime / std::chrono::days{1} + 1U;
+    for (auto i = day_idx_t::value_t{0U}; i != n_days_to_iterate; ++i) {
       auto const ev_time_range =
           it_range{i == 0U ? seek_first_day() : get_begin_it(event_times),
                    get_end_it(event_times)};

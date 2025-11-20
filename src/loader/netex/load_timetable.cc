@@ -140,7 +140,6 @@ void load_timetable(loader_config const& config,
                         location_idx_t::invalid(),
                         sp.locale_.tz_idx_,
                         2_minutes,
-                        {},
                         tt,
                         data.timezones_};
     if (!process_location(data.script_runner_, loc)) {
@@ -171,7 +170,6 @@ void load_timetable(loader_config const& config,
                                sp.location_idx_,
                                q.locale_.tz_idx_,
                                2_minutes,
-                               {},
                                tt,
                                data.timezones_};
       if (!process_location(data.script_runner_, quay_loc)) {
@@ -213,7 +211,6 @@ void load_timetable(loader_config const& config,
                         location_idx_t::invalid(),
                         q.locale_.tz_idx_,
                         2_minutes,
-                        {},
                         tt,
                         data.timezones_};
     if (process_location(data.script_runner_, loc)) {

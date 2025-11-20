@@ -342,20 +342,29 @@ enum class clasz : std::uint8_t {
   kNight = 4,
   kRegionalFast = 5,
   kRegional = 6,
-  kMetro = 7,
+  kSuburban = 7,
   kSubway = 8,
   kTram = 9,
   kBus = 10,
   kShip = 11,
   kCableCar = 12,
   kFunicular = 13,
-  kAreaLift = 14,
+  kAerialLift = 14,
   kOther = 15,
   kNumClasses
 };
 
 constexpr auto const kNumClasses =
     static_cast<std::underlying_type_t<clasz>>(clasz::kNumClasses);
+
+constexpr std::string_view to_str(clasz const c) {
+  constexpr auto const clasz_str =
+      std::array{"AIR",       "HIGHSPEED",     "LONG_DISTANCE", "COACH",
+                 "NIGHT",     "REGIONAL_FAST", "REGIONAL",      "SUBURBAN",
+                 "SUBWAY",    "TRAM",          "BUS",           "SHIP",
+                 "CABLE_CAR", "FUNICULAR",     "AERIAL_LIFT",   "OTHER"};
+  return clasz_str[static_cast<unsigned>(c)];
+}
 
 enum class location_type : std::uint8_t {
   kGeneratedTrack,  // track generated from track number (i.e. HRD), no separate
@@ -549,6 +558,14 @@ inline local_time to_local_time(timezone const& tz, unixtime_t const t) {
       [t](pair<string, void const*> const& x) {
         return to_local_time_tz(
             reinterpret_cast<date::time_zone const*>(x.second), t);
+      }});
+}
+
+inline date::time_zone const* to_time_zone(timezone const& tz) {
+  return tz.apply(utl::overloaded{
+      [](tz_offsets const&) { return nullptr; },
+      [](pair<string, void const*> const& x) {
+        return reinterpret_cast<date::time_zone const*>(x.second);
       }});
 }
 

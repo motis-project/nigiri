@@ -191,19 +191,10 @@ location_map_t parse_stations(config const& c,
     auto const id =
         location_id{.id_ = fmt::format("{:07}", eva_int), .src_ = src};
     auto const transfer_time = duration_t{eva_int < 1000000 ? 2 : 5};
-    auto const idx =
-        register_location(tt, loader::location{id.id_,
-                                               s.name_,
-                                               "",
-                                               "",
-                                               s.pos_,
-                                               src,
-                                               location_type::kStation,
-                                               location_idx_t::invalid(),
-                                               st.get_tz(s.id_).first,
-                                               transfer_time,
-                                               {},
-                                               tt});
+    auto const idx = register_location(
+        tt, loader::location{id.id_, s.name_, "", "", s.pos_, src,
+                             location_type::kStation, location_idx_t::invalid(),
+                             st.get_tz(s.id_).first, transfer_time, tt});
     s.idx_ = idx;
   }
 

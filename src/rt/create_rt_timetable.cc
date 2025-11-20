@@ -31,6 +31,7 @@ rt_timetable create_rt_timetable(timetable const& tt,
       rtt.td_footpaths_in_[i].resize(tt.n_locations());
     }
   }
+  rtt.additional_trips_.resize(tt.n_sources());
   return rtt;
 }
 

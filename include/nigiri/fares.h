@@ -139,6 +139,7 @@ struct fares {
   vector_map<network_idx_t, network> networks_;
   vecvec<area_set_idx_t, area_idx_t> area_sets_;
   vector_map<area_set_idx_t, string_idx_t> area_set_ids_;
+  bool has_priority_{false};
 };
 
 struct timetable;

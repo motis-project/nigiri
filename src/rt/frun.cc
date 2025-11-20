@@ -1,6 +1,7 @@
 #include "nigiri/rt/frun.h"
 
 #include <iterator>
+#include <optional>
 #include <span>
 #include <variant>
 
@@ -119,6 +120,34 @@ location_idx_t run_stop::get_scheduled_location_idx() const {
   return get_scheduled_stop().location_idx();
 }
 
+run_stop run_stop::get_last_trip_stop(event_type const ev_type) const {
+  auto const end = fr_->size();
+  if (!fr_->is_scheduled()) {
+    return run_stop{fr_, static_cast<stop_idx_t>(end - 1)};
+  }
+
+  auto const trip = get_trip_idx(ev_type);
+  auto copy = *this;
+  if (copy.stop_idx_ == end - 1) {
+    return copy;
+  }
+
+  // Can't be (end-1), so ++stop_idx is fine.
+  ++copy.stop_idx_;
+
+  // Can't be 0 after ++stop_idx, so get_trip_idx(kArr) is fine.
+  while (copy.stop_idx_ < end - 1 &&
+         copy.get_trip_idx(event_type::kArr) == trip) {
+    ++copy.stop_idx_;
+  }
+
+  if (copy.get_trip_idx(event_type::kArr) != trip) {
+    copy.stop_idx_ -= 1;
+  }
+
+  return copy;
+}
+
 unixtime_t run_stop::scheduled_time(event_type const ev_type) const {
   assert(fr_->size() > stop_idx_);
   return fr_->is_scheduled()
@@ -160,7 +189,18 @@ timezone_idx_t run_stop::get_tz(event_type const ev_type) const {
       return it->tz_;
     }
   }
-  return tt().providers_[provider_idx_t{0}].tz_;
+  return timezone_idx_t::invalid();
+}
+
+std::optional<std::string> run_stop::get_tz_name(
+    event_type const ev_type) const {
+  auto const tz_idx = get_tz(ev_type);
+  if (tz_idx == timezone_idx_t::invalid()) {
+    return std::nullopt;
+  }
+  auto const& tz = fr_->tt_->locations_.timezones_.at(tz_idx);
+  auto const* date_tz = to_time_zone(tz);
+  return date_tz == nullptr ? std::nullopt : std::optional{date_tz->name()};
 }
 
 trip_idx_t run_stop::get_trip_idx(event_type const ev_type) const {
@@ -173,9 +213,35 @@ trip_idx_t run_stop::get_trip_idx(event_type const ev_type) const {
       .at(0);
 }
 
-route_id_idx_t run_stop::get_route_id(event_type const ev_type) const {
+route_id_idx_t run_stop::get_route_id_idx(event_type const ev_type) const {
   auto const trip = get_trip_idx(ev_type);
   return tt().trip_route_id_[trip];
+}
+
+std::string_view run_stop::get_route_id(event_type const ev_type) const {
+  if (fr_->is_scheduled()) {
+    auto const trip_idx = get_trip_idx(ev_type);
+    return tt().trip_route_id_[trip_idx] == route_id_idx_t::invalid()
+               ? std::string_view{}
+               : tt().route_ids_
+                     [tt().trip_id_src_[tt().trip_ids_[trip_idx].front()]]
+                         .ids_.get(tt().trip_route_id_[trip_idx]);
+  } else if (auto const route_id = rtt()->rt_transport_route_id_[fr_->rt_];
+             route_id != route_id_idx_t::invalid()) {
+    return tt().route_ids_[rtt()->rt_transport_src_[fr_->rt_]].ids_.get(
+        route_id);
+  } else {
+    return "?";
+  }
+}
+
+direction_id_t run_stop::get_direction_id(event_type const ev_type) const {
+  if (fr_->is_scheduled()) {
+    auto const trip_idx = get_trip_idx(ev_type);
+    return direction_id_t{tt().trip_direction_id_.test(trip_idx)};
+  } else {
+    return direction_id_t{rtt()->rt_transport_direction_id_[fr_->rt_] ? 1 : 0};
+  }
 }
 
 std::optional<route_type_t> run_stop::route_type(
@@ -678,8 +744,8 @@ trip_id frun::id() const {
                  rtt_->rt_transport_static_transport_[rt_])) {
     auto const add_idx =
         rtt_->rt_transport_static_transport_[rt_].as<rt_add_trip_id_idx_t>();
-    return {rtt_->additional_trip_ids_.get(add_idx),
-            rtt_->rt_transport_src_[rt_]};
+    auto const src = rtt_->rt_transport_src_[rt_];
+    return {rtt_->additional_trips_.at(src).ids_.get(add_idx), src};
   } else {
     return {};
   }
@@ -711,7 +777,8 @@ trip_idx_t frun::trip_idx() const {
 void run_stop::print(std::ostream& out,
                      bool const first,
                      bool const last) const {
-  auto const& tz = tt().locations_.timezones_.at(get_tz(event_type::kDep));
+  auto const& tz = tt().locations_.timezones_.at(
+      get_tz(last ? event_type::kArr : event_type::kDep));
 
   // Print stop index, location name.
   fmt::print(out, "  {:2}: {:7} {:.<48}", stop_idx_, get_location().id_,
@@ -768,7 +835,9 @@ void run_stop::print(std::ostream& out,
         if (j++ != 0) {
           out << ", ";
         }
-        out << "{name=" << display_name() << ", day=";
+        out << "{name="
+            << display_name(last ? event_type::kArr : event_type::kDep)
+            << ", day=";
         date::to_stream(
             out, "%F",
             tt.internal_interval_days().from_ + to_idx(fr_->t_.day_) * 1_days);
@@ -782,7 +851,7 @@ void run_stop::print(std::ostream& out,
 }
 
 std::ostream& operator<<(std::ostream& out, run_stop const& stp) {
-  stp.print(out);
+  stp.print(out, stp.stop_idx_ == 0U, stp.stop_idx_ == stp.fr_->size() - 1);
   return out;
 }
 

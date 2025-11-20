@@ -97,6 +97,9 @@ std::pair<run, trip_idx_t> gtfsrt_resolve_run(
     transit_realtime::TripDescriptor const&,
     std::string_view rt_changed_trip_id = {});
 
-void resolve_rt(rt_timetable const&, run&, std::string_view trip_id);
+void resolve_rt(rt_timetable const&,
+                run&,
+                std::string_view trip_id,
+                source_idx_t src);
 
 }  // namespace nigiri::rt

@@ -23,6 +23,11 @@
 namespace nigiri::loader::gtfs {
 
 struct stop {
+  struct footpath {
+    stop const* to_;
+    duration_t duration_;
+  };
+
   void compute_close_stations(geo::point_rtree const& stop_rtree,
                               unsigned const link_stop_distance) {
     if (std::abs(coord_.lat_) < 2.0 && std::abs(coord_.lng_) < 2.0) {
@@ -97,6 +102,7 @@ struct stop {
   std::vector<unsigned> close_;
   location_idx_t location_{location_idx_t::invalid()};
   std::vector<footpath> footpaths_;
+  std::optional<duration_t> transfer_time_;
 };
 
 enum class stop_type { kRegular, kGeneratedParent };
@@ -171,17 +177,24 @@ seated_transfers_map_t read_transfers(stop_map_t& stops,
             return;
           }
 
+          auto const transfer_time = duration_t{*t.min_transfer_time_ / 60};
           if (from_stop_it == to_stop_it) {
+            if (from_stop_it->second->transfer_time_.has_value()) {
+              from_stop_it->second->transfer_time_ = std::min(
+                  transfer_time, *from_stop_it->second->transfer_time_);
+            } else {
+              from_stop_it->second->transfer_time_ = transfer_time;
+            }
             return;
           }
 
           auto& footpaths = from_stop_it->second->footpaths_;
           auto const it = std::find_if(
-              begin(footpaths), end(footpaths), [&](footpath const& fp) {
-                return fp.target() == to_stop_it->second->location_;
+              begin(footpaths), end(footpaths), [&](stop::footpath const& fp) {
+                return fp.to_ == to_stop_it->second.get();
               });
           if (it == end(footpaths)) {
-            footpaths.emplace_back(to_stop_it->second->location_,
+            footpaths.emplace_back(to_stop_it->second.get(),
                                    duration_t{*t.min_transfer_time_ / 60});
           }
         });
@@ -285,6 +298,7 @@ std::pair<stops_map_t, seated_transfers_map_t> read_stops(
         progress_tracker->update_fn());
   }
 
+  auto transfers = read_transfers(stops, transfers_file_content);
   for (auto const& [id, s] : stops) {
     auto loc = location{
         id,
@@ -297,16 +311,13 @@ std::pair<stops_map_t, seated_transfers_map_t> read_stops(
         location_idx_t::invalid(),
         s->timezone_.empty() ? timezone_idx_t::invalid()
                              : get_tz_idx(tt, timezones, s->timezone_),
-        2_minutes,
-        {},
+        s->transfer_time_.value_or(2_minutes),
         tt,
         timezones};
     if (process_location(r, loc)) {
       locations.emplace(id, s->location_ = register_location(tt, loc));
     }
   }
-
-  auto transfers = read_transfers(stops, transfers_file_content);
 
   {
     auto const t = scoped_timer{"loader.gtfs.stop.metas"};
@@ -315,9 +326,8 @@ std::pair<stops_map_t, seated_transfers_map_t> read_stops(
         .in_high(stops.size());
 
     auto const add_if_not_exists = [](auto bucket, footpath fp) {
-      auto const it = std::find_if(begin(bucket), end(bucket), [&](auto&& x) {
-        return fp.target() == x.target_;
-      });
+      auto const it = utl::find_if(
+          bucket, [&](auto&& x) { return fp.target() == x.target_; });
       if (it == end(bucket)) {
         bucket.emplace_back(fp);
       }
@@ -334,9 +344,9 @@ std::pair<stops_map_t, seated_transfers_map_t> read_stops(
       // GTFS footpaths
       for (auto const& fp : s->footpaths_) {
         tt.locations_.preprocessing_footpaths_out_[s->location_].emplace_back(
-            fp);
-        tt.locations_.preprocessing_footpaths_in_[fp.target()].emplace_back(
-            s->location_, fp.duration());
+            fp.to_->location_, fp.duration_);
+        tt.locations_.preprocessing_footpaths_in_[fp.to_->location_]
+            .emplace_back(s->location_, fp.duration_);
       }
     }
 
@@ -344,11 +354,11 @@ std::pair<stops_map_t, seated_transfers_map_t> read_stops(
     for (auto const& [id, s] : stops) {
       for (auto const& fp : s->footpaths_) {
         add_if_not_exists(
-            tt.locations_.preprocessing_footpaths_out_[fp.target()],
-            {s->location_, fp.duration()});
+            tt.locations_.preprocessing_footpaths_out_[fp.to_->location_],
+            {s->location_, fp.duration_});
         add_if_not_exists(
             tt.locations_.preprocessing_footpaths_in_[s->location_],
-            {fp.target(), fp.duration()});
+            {fp.to_->location_, fp.duration_});
       }
     }
 

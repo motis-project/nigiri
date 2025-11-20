@@ -45,6 +45,7 @@ constexpr auto const example_transfers_file_content =
     std::string_view{R"(from_stop_id,to_stop_id,transfer_type,min_transfer_time
 S6,S7,2,300
 S7,S6,3,
+S7,S7,2,900
 )"};
 
 constexpr auto const example_shapes_file_content =

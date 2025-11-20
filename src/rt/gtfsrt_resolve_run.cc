@@ -30,15 +30,20 @@ void resolve_static(date::sys_days const today,
 
 void resolve_rt(rt_timetable const& rtt,
                 run& output,
-                std::string_view rt_changed_trip_id) {
+                std::string_view rt_changed_trip_id,
+                source_idx_t const src) {
   auto const it = rtt.static_trip_lookup_.find(output.t_);
   if (it != end(rtt.static_trip_lookup_)) {
     output.rt_ = it->second;
     return;
   }
-  auto const rt_add_idx = rtt.additional_trip_ids_.find(rt_changed_trip_id);
+  if (output.is_scheduled()) {
+    return;
+  }
+  auto const rt_add_idx =
+      rtt.additional_trips_.at(src).ids_.find(rt_changed_trip_id);
   if (rt_add_idx.has_value()) {
-    output.rt_ = rtt.additional_trips_lookup_[*rt_add_idx];
+    output.rt_ = rtt.additional_trips_.at(src).transports_[*rt_add_idx];
     if (output.stop_range_.size() == 0) {
       output.stop_range_ = {
           static_cast<stop_idx_t>(0U),
@@ -60,7 +65,8 @@ std::pair<run, trip_idx_t> gtfsrt_resolve_run(
   resolve_static(today, tt, src, td, r, trip);
   if (rtt != nullptr) {
     resolve_rt(*rtt, r,
-               rt_changed_trip_id.empty() ? td.trip_id() : rt_changed_trip_id);
+               rt_changed_trip_id.empty() ? td.trip_id() : rt_changed_trip_id,
+               src);
   }
   return {r, trip};
 }

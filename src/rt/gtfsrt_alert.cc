@@ -113,7 +113,7 @@ void handle_alert(date::sys_days const today,
       auto [r, trip] = gtfsrt_resolve_run(today, tt, &rtt, src, x.trip());
       if (!r.valid()) {
         ++stats.alert_trip_not_found_;
-        log(log_lvl::error, "rt.gtfs.resolve.alert",
+        log(log_lvl::debug, "rt.gtfs.resolve.alert",
             "could not resolve (tag={}) {}", tag,
             remove_nl(x.trip().DebugString()));
         continue;
