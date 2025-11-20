@@ -44,9 +44,9 @@ void build_lb_graph(timetable& tt, profile_idx_t const prf_idx) {
   hash_map<location_idx_t, duration_t> weights;
   hash_map<location_idx_t, arrival> arrivals;
   std::vector<departure> departures;
-  hash_map<std::pair<location_idx_t, location_idx_t>, size_t> edges_map;
-  std::vector<std::vector<route_idx_t>> routes;
-  std::vector<std::vector<location_idx_t>> transfers;
+  hash_map<std::pair<location_idx_t, location_idx_t>, ch_edge_idx_t> edges_map;
+  vector_map<ch_edge_idx_t, std::vector<route_idx_t>> routes;
+  vector_map<ch_edge_idx_t, std::vector<location_idx_t>> transfers;
   ch_stats stats;
 
   auto const update_weight = [&](location_idx_t const target,
@@ -61,7 +61,7 @@ void build_lb_graph(timetable& tt, profile_idx_t const prf_idx) {
   auto const insert_ch_edge = [&](location_idx_t const from_l,
                                   location_idx_t const to_l,
                                   duration_t const min, duration_t const max) {
-    auto const edge_idx = tt.ch_graph_edges_[prf_idx].size();
+    auto const edge_idx = ch_edge_idx_t{tt.ch_graph_edges_[prf_idx].size()};
     edges_map.emplace(from_l, to_l, edge_idx);
     tt.ch_graph_edges_[prf_idx].emplace_back(from_l, to_l, min, max);
     tt.fwd_search_ch_graph_[prf_idx].at(from_l).push_back(edge_idx);
@@ -136,9 +136,9 @@ void build_lb_graph(timetable& tt, profile_idx_t const prf_idx) {
   };
 
   auto const update_ch_shortcut = [&](location_idx_t contracted,
-                                      size_t const dep_idx,
-                                      size_t const arr_idx,
-                                      size_t shortcut_idx) {
+                                      ch_edge_idx_t const dep_idx,
+                                      ch_edge_idx_t const arr_idx,
+                                      ch_edge_idx_t shortcut_idx) {
     auto const& dep = tt.ch_graph_edges_[prf_idx][dep_idx];
     auto const& arr = tt.ch_graph_edges_[prf_idx][arr_idx];
     auto& shortcut = tt.ch_graph_edges_[prf_idx][shortcut_idx];
@@ -299,7 +299,7 @@ void build_lb_graph(timetable& tt, profile_idx_t const prf_idx) {
         for (auto const t : tt.route_transport_ranges_[r]) {
           auto const from_time = tt.event_mam(t, from, event_type::kDep);
           auto const to_time = tt.event_mam(t, to, event_type::kArr);
-          if (kEnableCh) {
+          if (SearchDir == direction::kForward && kEnableCh) {
             departures.emplace_back(to_l, from_time, to_time, r);
           }
           min = std::min((to_time - from_time).as_duration(), min);
@@ -307,7 +307,7 @@ void build_lb_graph(timetable& tt, profile_idx_t const prf_idx) {
         update_weight(target, min);
       }
     }
-    if (kEnableCh) {
+    if (SearchDir == direction::kForward && kEnableCh) {
       compute_initial_ch_edges(l);
     }
   };
@@ -339,177 +339,12 @@ void build_lb_graph(timetable& tt, profile_idx_t const prf_idx) {
 
     footpaths.clear();
     weights.clear();
-
-    if (kEnableCh) {
-      std::cout << "lb done." << std::endl;
-      compute_ch();
-      std::cout << "ch done." << std::endl;
-    }
+  }
+  if (SearchDir == direction::kForward && kEnableCh) {
+    std::cout << "lb done." << std::endl;
+    compute_ch();
+    std::cout << "ch done." << std::endl;
   }
 }
-
-static constexpr auto const kForward = 0U;
-static constexpr auto const kReverse = 1U;
-static constexpr auto const kMax = 0U;
-static constexpr auto const kMin = 1U;
-static constexpr auto const kModeOffset = 2U;
-
-struct label {
-  using dist_t = std::uint16_t;
-  friend bool operator>(label const& a, label const& b) {
-    return a.d_[kMax] > b.d_[kMax];
-  }
-  location_idx_t l_;
-  std::array<dist_t, 2> d_;
-  std::uint8_t dir_;
-};
-
-struct get_bucket {
-  label::dist_t operator()(label const& l) const {
-    return l.d_[l.dir_ / kModeOffset];
-  }
-};
-
-struct dist {
-  using dist_t = std::uint16_t;
-  std::array<dist_t, 2> d_{std::numeric_limits<dist::dist_t>::max(),
-                           std::numeric_limits<dist::dist_t>::max()};
-};
-
-void dijkstra(timetable const& tt,
-              routing::query const& q,
-              profile_idx_t const prf_idx,
-              bitvec& relevant_stops) {
-
-  std::array<vector_map<location_idx_t, dist>, 2> dists;
-  dists[0].resize(tt.n_locations());
-  dists[1].resize(tt.n_locations());
-  auto pq = dial<label, get_bucket>{routing::kMaxTravelTime.count()};
-
-  auto const init = [&](std::vector<routing::offset> offsets,
-                        std::uint8_t dir) {
-    for (auto const& start : offsets) {  // TODO correct offsets
-      for_each_meta(
-          tt, q.dest_match_mode_, start.target_, [&](location_idx_t const x) {
-            auto const d = static_cast<dist::dist_t>(start.duration().count());
-            dists[dir][x].d_[kMax] = d;
-            dists[dir][x].d_[kMin] = d;
-            pq.push(label{x, {d, d}, dir});
-          });
-    }
-  };
-  init(q.start_, 0);
-  init(q.destination_, 1);
-  auto min_max_dist = std::numeric_limits<dist::dist_t>::max();
-  auto mode = kMax;
-  auto meetpoints = std::vector<location_idx_t>{};
-  while (!pq.empty()) {
-    auto l = pq.top();
-    pq.pop();
-    auto const l_dir = l.dir_ % kModeOffset;
-    auto const other_dir = (l_dir) ^ 1U;
-
-    if (dists[l_dir][l.l_].d_[kMax] < l.d_[kMax] &&
-        dists[l_dir][l.l_].d_[kMin] < l.d_[kMin]) {
-      continue;
-    }
-    if (dists[other_dir][l.l_].d_[kMax] !=
-        std::numeric_limits<dist::dist_t>::max()) {
-      if (l.d_[kMax] + dists[other_dir][l.l_].d_[kMax] < min_max_dist) {
-        min_max_dist = l.d_[kMax] + dists[other_dir][l.l_].d_[kMax];
-        meetpoints.emplace_back(l.l_);
-      } else if (l.d_[kMin] + dists[other_dir][l.l_].d_[kMin] <= min_max_dist) {
-        meetpoints.emplace_back(l.l_);
-      }
-    }
-    if (l.d_[mode] > min_max_dist) {
-      if (mode == kMax) {
-        auto buffer = std::vector<label>{};
-        while (!pq.empty()) {
-          auto b = pq.top();
-          b.dir_ += kModeOffset;
-          buffer.emplace_back(b);
-          pq.pop();
-        }
-        l.dir_ += kModeOffset;
-        pq.push(l);
-        for (auto const& b : buffer) {
-          pq.push(b);
-        }
-        mode = kMin;
-        continue;
-      } else {
-        break;
-      }
-    }
-
-    auto const& graph = l_dir == kForward ? tt.fwd_search_ch_graph_[prf_idx]
-                                          : tt.bwd_search_ch_graph_[prf_idx];
-
-    for (auto const& e_idx : graph[l.l_]) {
-      auto const e = tt.ch_graph_edges_[prf_idx][e_idx];
-      auto const edge_target = l_dir == kForward ? e.to_ : e.from_;
-      if (tt.ch_levels_[l.l_] > tt.ch_levels_[edge_target]) {
-        continue;
-      }
-      auto const new_max_dist = l.d_[kMax] + e.max_dur_.count();
-      auto const new_min_dist = l.d_[kMin] + e.min_dur_.count();
-      if ((new_max_dist < dists[l_dir][edge_target].d_[kMax] ||
-           new_min_dist < dists[l_dir][edge_target].d_[kMin]) &&
-          new_max_dist < pq.n_buckets() &&
-          new_max_dist < routing::kMaxTravelTime.count()) {
-        dists[l_dir][edge_target].d_[kMax] =
-            std::min(static_cast<dist::dist_t>(new_max_dist),
-                     dists[l_dir][edge_target].d_[kMax]);
-        dists[l_dir][edge_target].d_[kMin] =
-            std::min(static_cast<dist::dist_t>(new_min_dist),
-                     dists[l_dir][edge_target].d_[kMin]);
-        pq.push(label{edge_target,
-                      {static_cast<dist::dist_t>(new_max_dist),
-                       static_cast<dist::dist_t>(new_min_dist)},
-                      static_cast<std::uint8_t>(l_dir)});
-      }
-    }
-  }
-  pq.clear();
-  for (auto const m : meetpoints) {
-    if (dists[kForward][m].d_[kMin] + dists[kReverse][m].d_[kMin] >
-        min_max_dist) {
-      continue;
-    }
-    for (auto const dir : {kForward, kReverse}) {
-      pq.push(label{m,
-        {static_cast<dist::dist_t>(-dists[dir][m].d_[kMax]),
-         static_cast<dist::dist_t>(-dists[dir][m].d_[kMin])},
-        static_cast<std::uint8_t>(dir)});
-    }
-  }
-  while (!pq.empty()) {
-    auto l = pq.top();
-    pq.pop();
-    relevant_stops.set(l.l_.v_);
-    auto const& graph = l.dir_ == kReverse ? tt.fwd_search_ch_graph_[prf_idx]
-                                        : tt.bwd_search_ch_graph_[prf_idx];
-
-    for (auto const& e_idx : graph[l.l_]) {
-      auto const e = tt.ch_graph_edges_[prf_idx][e_idx];
-      auto const edge_target = l.dir_ == kReverse ? e.to_ : e.from_;
-      if (tt.ch_levels_[l.l_] < tt.ch_levels_[edge_target]) {
-        continue;
-      }
-      auto const& prev_label = dists[l.dir_][edge_target];
-      auto const min_dist_via_prev = prev_label.d_[kMin] + e.min_dur_.count();
-      if (min_dist_via_prev <= -l.d_[kMax]) { // todo stopping criterion, cutoff?
-        pq.push(label{edge_target,
-          {static_cast<dist::dist_t>(l.d_[kMax]+e.min_dur_.count()),
-           static_cast<dist::dist_t>(0)},
-          static_cast<std::uint8_t>(l.dir_)});
-      }
-    }
-  }
-
-  void dijkstra(timetable const&, query const&,
-                vecvec<location_idx_t, footpath> const& lb_graph,
-                std::vector<std::uint16_t>& dists);
 
 }  // namespace nigiri::loader
