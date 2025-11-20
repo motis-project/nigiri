@@ -15,26 +15,26 @@ static constexpr auto const kMax = 0U;
 static constexpr auto const kMin = 1U;
 static constexpr auto const kModeOffset = 2U;
 
-struct label {
+struct ch_label {
   using dist_t = std::uint16_t;
-  friend bool operator>(label const& a, label const& b) {
-    return a.d_[kMax] > b.d_[kMax];
+  friend bool operator>(ch_label const& a, ch_label const& b) {
+    return a.d_[a.dir_ / kModeOffset] > b.d_[b.dir_ / kModeOffset];
   }
   location_idx_t l_;
   std::array<dist_t, 2> d_;
   std::uint8_t dir_;
 };
 
-struct get_bucket {
-  label::dist_t operator()(label const& l) const {
+struct ch_get_bucket {
+  ch_label::dist_t operator()(ch_label const& l) const {
     return l.d_[l.dir_ / kModeOffset];
   }
 };
 
-struct dist {
+struct ch_dist {
   using dist_t = std::uint16_t;
-  std::array<dist_t, 2> d_{std::numeric_limits<dist::dist_t>::max(),
-                           std::numeric_limits<dist::dist_t>::max()};
+  std::array<dist_t, 2> d_{std::numeric_limits<ch_dist::dist_t>::max(),
+                           std::numeric_limits<ch_dist::dist_t>::max()};
 };
 
 void obtain_relevant_stops(timetable const& tt,

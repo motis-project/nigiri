@@ -13,6 +13,7 @@
 #include "nigiri/for_each_meta.h"
 #include "nigiri/get_otel_tracer.h"
 #include "nigiri/logging.h"
+#include "nigiri/routing/ch_query.h"
 #include "nigiri/routing/dijkstra.h"
 #include "nigiri/routing/direct.h"
 #include "nigiri/routing/get_fastest_direct.h"
@@ -101,6 +102,11 @@ struct search {
     for (auto const [i, via] : utl::enumerate(q_.via_stops_)) {
       collect_via_destinations(tt_, via.location_, state_.is_via_[i]);
     }
+
+
+    auto relevant_stops = bitvec{};
+    relevant_stops.resize(tt_.n_locations());
+    obtain_relevant_stops(tt_, q_, q_.prf_idx_, relevant_stops);
 
     if constexpr (Algo::kUseLowerBounds) {
       auto lb_span = get_otel_tracer()->StartSpan("lower bounds");
