@@ -23,6 +23,7 @@
 #include "nigiri/routing/query.h"
 #include "nigiri/routing/raptor/debug.h"
 #include "nigiri/routing/start_times.h"
+#include "nigiri/rt/rt_timetable.h"
 #include "nigiri/timetable.h"
 #include "nigiri/types.h"
 
@@ -107,8 +108,11 @@ struct search {
       auto lb_scope = opentelemetry::trace::Scope{lb_span};
       UTL_START_TIMING(lb);
       dijkstra(tt_, q_,
-               kFwd ? tt_.fwd_search_lb_graph_[q_.prf_idx_]
-                    : tt_.bwd_search_lb_graph_[q_.prf_idx_],
+               rtt_ == nullptr
+                   ? (kFwd ? tt_.fwd_search_lb_graph_[q_.prf_idx_]
+                           : tt_.bwd_search_lb_graph_[q_.prf_idx_])
+                   : (kFwd ? rtt_->fwd_search_lb_graph_[q_.prf_idx_]
+                           : rtt_->bwd_search_lb_graph_[q_.prf_idx_]),
                state_.travel_time_lower_bound_);
       UTL_STOP_TIMING(lb);
       stats_.lb_time_ = static_cast<std::uint64_t>(UTL_TIMING_MS(lb));

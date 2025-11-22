@@ -67,6 +67,12 @@ struct rt_timetable {
         unix_to_delta(new_time);
   }
 
+  void update_lbs(timetable const& tt,
+                  rt_transport_idx_t,
+                  stop_idx_t,
+                  event_type);
+  void update_lbs(timetable const& tt);
+
   void cancel_run(rt::run const&);
 
   void set_change_callback(change_callback_t callback) {
@@ -247,6 +253,10 @@ struct rt_timetable {
   alerts alerts_;
 
   change_callback_t change_callback_;
+
+  // Lower bound graph.
+  std::array<vecvec<location_idx_t, footpath>, kNProfiles> fwd_search_lb_graph_;
+  std::array<vecvec<location_idx_t, footpath>, kNProfiles> bwd_search_lb_graph_;
 
   // TODO route colors?
 };
