@@ -282,8 +282,10 @@ routing_result pong(timetable const& tt,
   // ----
   auto ping_lb = std::vector<std::uint16_t>{};
   dijkstra(tt, q,
-           kFwd ? tt.fwd_search_lb_graph_[q.prf_idx_]
-                : tt.bwd_search_lb_graph_[q.prf_idx_],
+           rtt == nullptr ? (kFwd ? tt.fwd_search_lb_graph_[q.prf_idx_]
+                                  : tt.bwd_search_lb_graph_[q.prf_idx_])
+                          : (kFwd ? rtt->fwd_search_lb_graph_[q.prf_idx_]
+                                  : rtt->bwd_search_lb_graph_[q.prf_idx_]),
            ping_lb);
   for (auto const [l, lb] : utl::enumerate(ping_lb)) {
     if (lb != std::numeric_limits<std::decay_t<decltype(lb)>>::max()) {
@@ -322,10 +324,13 @@ routing_result pong(timetable const& tt,
   // PONG
   // ----
   q.flip_dir();
+
   auto pong_lb = std::vector<std::uint16_t>{};
   dijkstra(tt, q,
-           kFwd ? tt.bwd_search_lb_graph_[q.prf_idx_]
-                : tt.fwd_search_lb_graph_[q.prf_idx_],
+           rtt == nullptr ? (kFwd ? tt.bwd_search_lb_graph_[q.prf_idx_]
+                                  : tt.fwd_search_lb_graph_[q.prf_idx_])
+                          : (kFwd ? rtt->bwd_search_lb_graph_[q.prf_idx_]
+                                  : rtt->fwd_search_lb_graph_[q.prf_idx_]),
            pong_lb);
   for (auto const [l, lb] : utl::enumerate(pong_lb)) {
     if (lb != std::numeric_limits<std::decay_t<decltype(lb)>>::max()) {
