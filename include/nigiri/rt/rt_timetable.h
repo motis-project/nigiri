@@ -70,7 +70,11 @@ struct rt_timetable {
   void update_lbs(timetable const& tt,
                   rt_transport_idx_t,
                   stop_idx_t,
-                  event_type);
+                  event_type,
+                  std::array<paged_vecvec<location_idx_t, footpath>,
+                             kNProfiles>& fwd_search_lb_graph,
+                  std::array<paged_vecvec<location_idx_t, footpath>,
+                             kNProfiles>& bwd_search_lb_graph);
   void update_lbs(timetable const& tt);
 
   void cancel_run(rt::run const&);

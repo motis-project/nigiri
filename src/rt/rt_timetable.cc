@@ -1,5 +1,6 @@
 #include "nigiri/rt/rt_timetable.h"
 
+#include "utl/enumerate.h"
 #include "utl/timer.h"
 
 #include "nigiri/loader/gtfs/route.h"
@@ -152,7 +153,11 @@ rt_transport_idx_t rt_timetable::add_rt_transport(
 void rt_timetable::update_lbs(timetable const& tt,
                               rt_transport_idx_t const rt_t,
                               stop_idx_t const stop_idx,
-                              event_type const ev_type) {
+                              event_type const ev_type,
+                              std::array<paged_vecvec<location_idx_t, footpath>,
+                                         kNProfiles>& fwd_search_lb_graph,
+                              std::array<paged_vecvec<location_idx_t, footpath>,
+                                         kNProfiles>& bwd_search_lb_graph) {
   auto const from_stop_idx = ev_type == event_type::kDep
                                  ? stop_idx
                                  : static_cast<stop_idx_t>(stop_idx - 1);
@@ -180,31 +185,30 @@ void rt_timetable::update_lbs(timetable const& tt,
   auto const to =
       tt.locations_.get_root_idx(stop{loc_seq[to_stop_idx]}.location_idx());
 
-  auto const update = [&](vecvec<location_idx_t, footpath>& lbs,
-                          direction const dir) {
-    auto const bucket = lbs.at(dir == direction::kForward ? from : to);
-    auto const it = utl::find_if(bucket, [&](footpath const& fp) {
-      return fp.target() == (dir == direction::kForward ? to : from);
-    });
-    if (it == end(bucket)) {
-      log(log_lvl::error, "nigiri.rt.lb_update",
-          "lb update: no connection found {} {} {} in {}", location{tt, from},
-          dir == direction::kForward ? "->" : "<-", location{tt, to}, bucket);
-      return;
-    }
+  if (from == to) {
+    return;  // e.g. from one child to another within the same parent
+  }
 
-    if (it->duration() > travel_time) {
+  auto const update = [&](paged_vecvec<location_idx_t, footpath>& lbs,
+                          direction const dir) {
+    auto bucket = lbs.at(dir == direction::kForward ? from : to);
+    auto const target = dir == direction::kForward ? to : from;
+    auto const it = utl::find_if(
+        bucket, [&](footpath const& fp) { return fp.target() == target; });
+    if (it == end(bucket)) {
+      bucket.push_back(footpath{target, travel_time});
+    } else if (it->duration() > travel_time) {
       it->duration_ = static_cast<location_idx_t::value_t>(travel_time.count());
     }
   };
 
-  for (auto& lbs : fwd_search_lb_graph_) {
+  for (auto& lbs : fwd_search_lb_graph) {
     if (!lbs.empty()) {
       update(lbs, direction::kBackward);
     }
   }
 
-  for (auto& lbs : bwd_search_lb_graph_) {
+  for (auto& lbs : bwd_search_lb_graph) {
     if (!lbs.empty()) {
       update(lbs, direction::kForward);
     }
@@ -214,12 +218,33 @@ void rt_timetable::update_lbs(timetable const& tt,
 void rt_timetable::update_lbs(timetable const& tt) {
   auto timer = utl::scoped_timer{"update_lbs"};
 
+  auto const copy = [](auto&& to, auto&& from) {
+    for (auto const [i, x] : utl::enumerate(from)) {
+      for (auto const y : x) {
+        to[i].emplace_back(y);
+      }
+    }
+  };
+
+  auto fwd_search_lb_graph =
+      std::array<paged_vecvec<location_idx_t, footpath>, kNProfiles>{};
+  auto bwd_search_lb_graph =
+      std::array<paged_vecvec<location_idx_t, footpath>, kNProfiles>{};
+
+  copy(fwd_search_lb_graph, tt.fwd_search_lb_graph_);
+  copy(bwd_search_lb_graph, tt.bwd_search_lb_graph_);
+
   for (auto rt_t = rt_transport_idx_t{0U}; rt_t != n_rt_transports(); ++rt_t) {
-    for (auto i = 0U; i != rt_transport_stop_times_[rt_t].size(); i += 2U) {
-      auto const stop_idx = static_cast<stop_idx_t>(i + 1U / 2U);
-      update_lbs(tt, rt_t, stop_idx, event_type::kDep);
+    auto const n_events = rt_transport_stop_times_[rt_t].size();
+    auto const n_segments = static_cast<stop_idx_t>(n_events / 2U);
+    for (auto i = stop_idx_t{0U}; i != n_segments; ++i) {
+      update_lbs(tt, rt_t, i, event_type::kDep, fwd_search_lb_graph,
+                 bwd_search_lb_graph);
     }
   }
+
+  copy(fwd_search_lb_graph_, fwd_search_lb_graph);
+  copy(bwd_search_lb_graph_, bwd_search_lb_graph);
 }
 
 void rt_timetable::cancel_run(rt::run const& r) {
