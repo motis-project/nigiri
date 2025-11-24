@@ -368,7 +368,7 @@ std::pair<stops_map_t, seated_transfers_map_t> read_stops(
       for (auto const& eq : s->get_metas(stop_vec, todo, done)) {
         auto const dist = geo::distance(s->coord_, eq->coord_);
         auto const duration = duration_t{
-            std::max(2, static_cast<int>(std::ceil((dist / 0.7) / 60.0)))};
+            std::max(2, static_cast<int>(std::ceil((dist / 1.4) / 60.0)))};
 
         if (duration > footpath::kMaxDuration) {
           continue;

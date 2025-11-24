@@ -377,7 +377,7 @@ TEST(rt, abi_timetable) {
   EXPECT_EQ("1918", l35_id);
   EXPECT_EQ(2, l35->n_footpaths);
   EXPECT_EQ(34, l35->footpaths[0].target_location_idx);
-  EXPECT_EQ(17, l35->footpaths[0].duration);
+  EXPECT_EQ(9, l35->footpaths[0].duration);
   EXPECT_FLOAT_EQ(43.491207, l35->lat);
   EXPECT_FLOAT_EQ(-80.528026, l35->lon);
   EXPECT_EQ(2, l35->transfer_time);
