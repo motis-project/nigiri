@@ -376,8 +376,8 @@ TEST(rt, abi_timetable) {
   auto const l35_id = std::string{l35->id, l35->id_len};
   EXPECT_EQ("1918", l35_id);
   EXPECT_EQ(2, l35->n_footpaths);
-  EXPECT_EQ(33, l35->footpaths[0].target_location_idx);
-  EXPECT_EQ(2, l35->footpaths[0].duration);
+  EXPECT_EQ(34, l35->footpaths[0].target_location_idx);
+  EXPECT_EQ(8, l35->footpaths[0].duration);
   EXPECT_FLOAT_EQ(43.491207, l35->lat);
   EXPECT_FLOAT_EQ(-80.528026, l35->lon);
   EXPECT_EQ(2, l35->transfer_time);
