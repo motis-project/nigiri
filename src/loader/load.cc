@@ -132,7 +132,7 @@ timetable load(std::vector<timetable_source> const& sources,
   for (auto i = first_recomputed_source; i >= 0; --i) {
     if (i == 0) {
       tt.date_range_ = date_range;
-      tt.n_sources_ = static_cast<cista::base_t<source_idx_t>>(sources.size());
+      tt.n_sources_ = 0U;
       register_special_stations(tt);
       break;
     }
@@ -361,6 +361,8 @@ timetable load(std::vector<timetable_source> const& sources,
       tt.booking_rules_ = old_booking_rules;
       auto const old_strings = tt.strings_;
       tt.strings_ = old_strings;
+      auto const old_n_sources = tt.n_sources_;
+      tt.n_sources_ = old_n_sources;
       /* Prepare timetable by emptying corrected fields */
       tt.bitfields_.reset();
       auto bitfields = hash_map<bitfield, bitfield_idx_t>{};
@@ -438,6 +440,7 @@ timetable load(std::vector<timetable_source> const& sources,
       tt.flex_transport_drop_off_booking_rule_.clear();
       tt.booking_rules_.reset();
       tt.strings_ = string_store<string_idx_t>{};
+      tt.n_sources_ = 1U;
       // Fields not used during loading
       assert(tt.locations_.footpaths_out_.size() == kNProfiles);
       for (auto const& i : tt.locations_.footpaths_out_) {
@@ -550,6 +553,7 @@ timetable load(std::vector<timetable_source> const& sources,
           tt.flex_transport_drop_off_booking_rule_;
       auto const new_booking_rules = tt.booking_rules_;
       auto const new_strings = tt.strings_;
+      auto const new_n_sources = tt.n_sources_;
       progress_tracker->status("Saved new data");
       /* Restore old timetable */
       tt.bitfields_ = old_bitfields;
@@ -636,6 +640,7 @@ timetable load(std::vector<timetable_source> const& sources,
           old_flex_transport_drop_off_booking_rule;
       tt.booking_rules_ = old_booking_rules;
       tt.strings_ = old_strings;
+      tt.n_sources_ = old_n_sources;
       /* Add new data and adjust references */
       auto const im = index_mapping(tt);
       /*	bitfields	*/
@@ -1358,6 +1363,8 @@ timetable load(std::vector<timetable_source> const& sources,
         tt.trip_directions_.push_back(im.map(i));
       }
       /*     Other	*/
+      tt.n_sources_ += new_n_sources;
+      assert(tt.n_sources_ == tt.src_end_date_.size());
       // tt.profiles_ not used during loading
       assert(tt.profiles_.size() == 0);
       // tt.date_range_ not changed
