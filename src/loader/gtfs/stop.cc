@@ -365,20 +365,30 @@ std::pair<stops_map_t, seated_transfers_map_t> read_stops(
     // Generate footpaths to connect stops in close proximity.
     hash_set<stop*> todo, done;
     for (auto const& [id, s] : stops) {
+      auto const dist_lng_degrees = geo::approx_distance_lng_degrees(s->coord_);
       for (auto const& eq : s->get_metas(stop_vec, todo, done)) {
+        auto const dist = std::sqrt(geo::approx_squared_distance(
+            s->coord_, eq->coord_, dist_lng_degrees));
+        auto const duration = duration_t{std::max(
+            2, static_cast<int>(std::ceil((dist / kWalkSpeed) / 60.0)))};
+
+        if (duration > footpath::kMaxDuration) {
+          continue;
+        }
+
         tt.locations_.equivalences_[s->location_].emplace_back(eq->location_);
         add_if_not_exists(
             tt.locations_.preprocessing_footpaths_out_[s->location_],
-            {eq->location_, 2_minutes});
+            {eq->location_, duration});
         add_if_not_exists(
             tt.locations_.preprocessing_footpaths_in_[eq->location_],
-            {s->location_, 2_minutes});
+            {s->location_, duration});
         add_if_not_exists(
             tt.locations_.preprocessing_footpaths_out_[eq->location_],
-            {s->location_, 2_minutes});
+            {s->location_, duration});
         add_if_not_exists(
             tt.locations_.preprocessing_footpaths_in_[s->location_],
-            {eq->location_, 2_minutes});
+            {eq->location_, duration});
       }
       progress_tracker->increment();
     }
