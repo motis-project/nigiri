@@ -17,6 +17,8 @@
 #include "nigiri/timetable.h"
 #include "nigiri/types.h"
 
+#include <nlohmann/json.hpp>
+
 #ifndef _WIN32
 #include <sys/resource.h>
 #endif
@@ -121,9 +123,9 @@ void generate_queries(
   }
   std::cout << queries.size() << " queries generated successfully\n";
 
-  std::cout << queries.front().q_.start_.front().target_ << " " << queries.front().q_.destination_.front().target_
-            << " " << get<geo::latlng>(queries.front().start_)  << " " << get<geo::latlng>(queries.front().dest_)
-                << " " << location{tt, queries.front().q_.start_.front().target_} << " " << location{tt, queries.front().q_.destination_.front().target_ } << std::endl;
+//  std::cout << queries.front().q_.start_.front().target_ << " " << queries.front().q_.destination_.front().target_
+//            << " " << get<geo::latlng>(queries.front().start_)  << " " << get<geo::latlng>(queries.front().dest_)
+//                << " " << location{tt, queries.front().q_.start_.front().target_} << " " << location{tt, queries.front().q_.destination_.front().target_ } << std::endl;
 }
 
 nigiri::pareto_set<nigiri::routing::journey> raptor_search(
@@ -311,6 +313,76 @@ void print_results(
   print_result(results, "#journeys");
 }
 
+template<typename T>
+std::string to_string(T obj){
+  std::stringstream stringstream;
+  stringstream << obj;
+  return stringstream.str();
+}
+
+void save_results(std::vector<nigiri::query_generation::start_dest_query> const& queries,
+                  std::vector<benchmark_result>& results,
+                  nigiri::timetable const& tt,
+                  nigiri::query_generation::generator_settings const& gs,
+                  std::filesystem::path const& tt_path){
+  using namespace nlohmann;
+
+  json list;
+
+  for(int i = 0; i<queries.size(); ++i){
+    const benchmark_result & result = results[i];
+    const nigiri::query_generation::start_dest_query & query = queries[i];
+
+    json ob = {
+        {"from", to_string(location{tt, queries[result.q_idx_].q_.start_.front().target_})},
+        {"to", to_string(location{tt, queries[result.q_idx_].q_.destination_.front().target_})},
+        {"at", to_string(std::get<unixtime_t>(queries[result.q_idx_].q_.start_time_))},
+        {"total", result.total_time_.count()},
+        {"exec", result.routing_result_.search_stats_.execute_time_.count()},
+        {"stats", result.routing_result_.algo_stats_.to_map()},
+    };
+    for(auto journey: result.journeys_){
+      json jr;
+      for(auto leg: journey.legs_){
+        json l = {
+            {"from", to_string(location{tt, leg.from_})},
+            {"to", to_string(location{tt, leg.to_})},
+            {"dep_time_", to_string(leg.dep_time_)},
+            {"arr_time_", to_string(leg.arr_time_)},
+            {"success_chance", to_string(leg.success_chance)}
+        };
+        jr["legs"].push_back(l);
+      }
+      jr["success_chance"] = journey.success_chance;
+      ob["journeys"].push_back(jr);
+    }
+    list.push_back(ob);
+  }
+
+  std::ofstream myfile;
+  myfile.open ("C:\\MasterMotis\\motis\\result.json");
+  myfile << list;
+  myfile.close();
+
+  // write to a stream, or the same file
+  //std::cout << list; // print the json
+//  from
+//  to
+//  at
+//  verbindung{
+//    von
+//                  nach
+//                  start_t
+//                  stop_t
+//                  name
+//                  kürzel
+//
+//  }
+//  total
+//  exec
+//  sicherheit
+}
+
 void print_memory_usage() {
 #ifndef _WIN32
   auto r = rusage{};
@@ -360,10 +432,10 @@ int main(int argc, char* argv[]) {
        "format: lat_min,lon_min,lat_max,lon_max\ne.g., 36.0,-11.0,72.0,32.0\n"
        "(available via \"-b europe\")")  //
       ("start_mode",
-       bpo::value<std::string>(&start_mode_str)->default_value("intermodal"),
+       bpo::value<std::string>(&start_mode_str)->default_value("station"),
        "intermodal | station")  //
       ("dest_mode",
-       bpo::value<std::string>(&dest_mode_str)->default_value("intermodal"),
+       bpo::value<std::string>(&dest_mode_str)->default_value("station"),
        "intermodal | station")  //
       ("intermodal_start",
        bpo::value<std::string>(&intermodal_start_str)->default_value("walk"),
@@ -534,6 +606,8 @@ int main(int argc, char* argv[]) {
   process_queries(queries, results, tt);
 
   print_results(queries, results, tt, gs, tt_path);
+
+  save_results(queries, results, tt, gs, tt_path);
 
   print_memory_usage();
 
