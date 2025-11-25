@@ -206,7 +206,7 @@ struct mcraptor {
 
 
 
-    for (auto k = 1U; k != end_k; ++k) {
+    for (auto k = 1U; k != end_k+1; ++k) {
 //      is_dest_.for_each_set_bit([&](std::uint64_t const i) {
 //        dest_bag_.add({.arr_t_ = get_best_time(i)}, k);
 //      });
@@ -324,6 +324,7 @@ struct mcraptor {
     std::cout << std::endl;
   }
 
+  const bool should_print = false;
   void reconstruct(query const& q, journey& j) {
 //    std::cout << "done: " << std::endl;
 //    return;
@@ -366,7 +367,7 @@ struct mcraptor {
 
     std::vector<mcraptor_label> labels = {};
     get_labels_after_dest_bag(cista::to_idx(l), j.transfers_ + 1, possible_start_t, labels, 1);
-    std::cout << "Gesamtwahrscheinlichkeit: " << j.success_chance << " Umstiege: " << static_cast<int>(j.transfers_) << std::endl;
+    if(should_print) std::cout << "Gesamtwahrscheinlichkeit: " << j.success_chance << " Umstiege: " << static_cast<int>(j.transfers_) << std::endl;
 
     for(auto label: labels){
       reconstruct_leg_station_based(q, j, 0, l, label, trips);
@@ -377,33 +378,47 @@ struct mcraptor {
       j.add(std::move(copy));
     }
 
-    std::vector<location_idx_t> locations{};
-    for(journey::leg leg: trips){
-      auto from_i = std::find_if(locations.begin(), locations.end(), [&](location_idx_t l){ return l == leg.from_;}) - locations.begin();
-      if(from_i == locations.size()){
-        locations.push_back(leg.from_);
+    if(should_print){
+      std::vector<location_idx_t> locations{};
+      for (journey::leg leg : trips) {
+        auto from_i =
+            std::find_if(locations.begin(), locations.end(),
+                         [&](location_idx_t l) { return l == leg.from_; }) -
+            locations.begin();
+        if (from_i == locations.size()) {
+          locations.push_back(leg.from_);
+        }
+        auto to_i =
+            std::find_if(locations.begin(), locations.end(),
+                         [&](location_idx_t l) { return l == leg.to_; }) -
+            locations.begin();
+        if (to_i == locations.size()) {
+          locations.push_back(leg.to_);
+        }
       }
-      auto to_i = std::find_if(locations.begin(), locations.end(), [&](location_idx_t l){ return l == leg.to_;}) - locations.begin();
-      if(to_i == locations.size()){
-        locations.push_back(leg.to_);
+      for (location_idx_t lo : locations) {
+        std::stringstream stringstream;
+        stringstream << location{tt_, lo};
+        auto string = stringstream.str() + " id: " + std::to_string(lo.v_);
+        str_to_length(string, colum_width * 2);
+        std::cout << string << "|";
       }
-    }
-    for(location_idx_t lo: locations){
-      std::stringstream stringstream;
-      stringstream << location{tt_, lo};
-      auto string = stringstream.str() + " id: " + std::to_string(lo.v_);
-      str_to_length(string, colum_width * 2);
-      std::cout << string << "|";
-    }
-    std::cout << std::endl;
-    for(journey::leg leg: trips){
-      auto from_i = std::find_if(locations.begin(), locations.end(), [&](location_idx_t l){ return l == leg.from_;}) - locations.begin();
-      auto to_i = std::find_if(locations.begin(), locations.end(), [&](location_idx_t l){ return l == leg.to_;}) - locations.begin();
+      std::cout << std::endl;
+      for (journey::leg leg : trips) {
+        auto from_i =
+            std::find_if(locations.begin(), locations.end(),
+                         [&](location_idx_t l) { return l == leg.from_; }) -
+            locations.begin();
+        auto to_i =
+            std::find_if(locations.begin(), locations.end(),
+                         [&](location_idx_t l) { return l == leg.to_; }) -
+            locations.begin();
 
-      print_leg_station_based(leg, from_i, to_i, locations.size());
+        print_leg_station_based(leg, from_i, to_i, locations.size());
+      }
+      if (kFwd) std::reverse(begin(j.legs_), end(j.legs_));
+      std::cout << std::endl;
     }
-    if(kFwd) std::reverse(begin(j.legs_), end(j.legs_));
-    std::cout << std::endl;
   }
 
   template <bool cut_front = false>
@@ -487,7 +502,7 @@ private:
         dest_bag_.labels_.begin(),
         dest_bag_.labels_.end(),
         [&](const std::pair<unsigned, mcraptor_label>& pair) {
-          if (pair.first <= k && possible_start_t <= pair.second.arr_t_) {
+          if (pair.first <= k && possible_start_t <= pair.second.arr_t_ && pair.second.arr_t_ != kInvalid) {
             labels.push_back(pair.second);
           }
         }
@@ -501,10 +516,12 @@ private:
     labels.erase(labels.begin(), new_end);
   }
 
+
+  const delta_t max_delay = delta_t{30};
   float delay_distribution_paper(delta_t x){
     auto xf = static_cast<float>(x);
     auto cancelation_probability = 0.95f;
-    return std::min(cancelation_probability, (31 * xf + 60) / (30 * (xf + 3)));
+    return std::min(cancelation_probability, (31 * xf + 2 * max_delay) / (30 * xf + 3 * max_delay));
   }
 
   float delay_distribution_linear(delta_t x){
@@ -590,7 +607,6 @@ private:
       if(prev_round_station_mark_[l_idx]) {
         auto const& prev_round_bag = get_round_bag(l_idx, k - 1);
 
-        auto max_delay = delta_t{30};
 
         auto start = prev_round_bag.labels_[0].arr_t_;
         delta_t end;
@@ -600,9 +616,6 @@ private:
                 return label_of_vector.dominates(prev_round_bag.labels_[j]);
               })){
             continue;
-          }
-          if(start > prev_round_bag.labels_[j].arr_t_){
-            start = prev_round_bag.labels_[j].arr_t_;
           }
           end = prev_round_bag.labels_[j].arr_t_ - max_delay;
 
@@ -614,6 +627,9 @@ private:
           if(!get_earliest_transports(k, r, stop_idx, day_from, mam_from,
                                                      stp.location_idx(), ets, end)) break;
           start = ets.back().arr_t_ + dir(1);
+          if((j+1)<prev_round_bag.labels_.size() && start > prev_round_bag.labels_[j+1].arr_t_){
+            start = prev_round_bag.labels_[j+1].arr_t_;
+          }
         }
         if(ets.size() > 1) {
           std::inplace_merge(
@@ -746,7 +762,7 @@ private:
       });
       auto first_flagged = std::find_if(tmp_[i].labels_.rbegin(), tmp_[i].labels_.rend(), [](auto a){return a.over_limit;});
       if(first_flagged == tmp_[i].labels_.rend()) --first_flagged;
-      auto value = first_flagged->arr_t_ - 30;
+      auto value = first_flagged->arr_t_ - max_delay;
 
       auto it = tmp_[i].labels_.begin();
       while (it+1 != tmp_[i].labels_.end()) {
