@@ -16,7 +16,7 @@ auto to_tuple(journey const& j) {
   return std::tuple{j.departure_time(), j.arrival_time(), j.transfers_};
 }
 
-std::optional<std::array<journey::leg, 3U>> get_earliest_alternatve(
+std::optional<std::array<journey::leg, 3U>> get_earliest_alternative(
     timetable const& tt,
     rt_timetable const* rtt,
     query const& q,
@@ -385,11 +385,11 @@ routing_result pong(timetable const& tt,
   auto const is_validated = [&](journey const& j) {
     return is_better(j.dest_time_, start_time);
   };
-  auto const get_result_count = [&]() {
+  auto const get_result_count = [&](bool const include_too_slow) {
     return utl::count_if(*result.journeys_, [&](journey const& j) {
-      return is_validated(j) &&  //
-             j.travel_time() < fastest_direct &&
-             j.travel_time() < q.max_travel_time_;
+      return is_validated(j) &&
+             (include_too_slow || (j.travel_time() < fastest_direct &&
+                                   j.travel_time() < q.max_travel_time_));
     });
   };
   auto const is_timeout_reached = [&]() {
@@ -400,7 +400,8 @@ routing_result pong(timetable const& tt,
     return false;
   };
   while ((is_better(start_time, end_time) ||
-          get_result_count() < q.min_connection_count_) &&
+          get_result_count(true) + get_result_count(false) <
+              2 * q.min_connection_count_) &&
          tt.external_interval().contains(start_time) && !is_timeout_reached()) {
     // ----
     // PING
@@ -583,7 +584,7 @@ routing_result pong(timetable const& tt,
       auto const back_r = rt::frun{tt, rtt, back.r_};
       auto const to = back_r[back.stop_range_.from_];
 
-      auto const earlier = get_earliest_alternatve(
+      auto const earlier = get_earliest_alternative(
           tt, rtt, q, from.get_location_idx(), to.get_location_idx(),
           from.time(event_type::kArr), to.time(event_type::kDep),
           r_state.prev_station_mark_, r_state.station_mark_);

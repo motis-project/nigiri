@@ -220,6 +220,7 @@ void rt_timetable::update_lbs(timetable const& tt) {
 
   auto const copy = [](auto&& to, auto&& from) {
     for (auto const [i, x] : utl::enumerate(from)) {
+      to[i].clear();
       for (auto const y : x) {
         to[i].emplace_back(y);
       }
