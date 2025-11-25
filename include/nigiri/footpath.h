@@ -31,6 +31,7 @@ struct footpath {
       : target_{target},
         duration_{static_cast<value_type>(
             (duration > kMaxDuration ? kMaxDuration : duration).count())} {
+    assert(duration <= kMaxDuration);
     utl::verify(to_idx(target) < kMaxTarget, "station index overflow");
   }
 
