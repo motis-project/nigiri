@@ -70,9 +70,6 @@ struct netex_data {
 
   proj_transformers proj_transformers_{};
   gtfs::tz_map timezones_{};
-
-  timetable& tt_;
-  script_runner script_runner_;
 };
 
 }  // namespace nigiri::loader::netex

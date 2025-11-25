@@ -7,14 +7,15 @@
 
 namespace nigiri::loader::netex {
 
-netex_ctx get_frame_ctx(netex_data& data,
+netex_ctx get_frame_ctx(timetable& tt,
+                        netex_data& data,
                         netex_ctx const& parent_ctx,
                         pugi::xml_node const& frame) {
   auto ctx = parent_ctx;
 
   if (auto const frame_defaults = frame.child("FrameDefaults")) {
     if (auto const default_locale = frame_defaults.child("DefaultLocale")) {
-      ctx.locale_ = parse_locale(data, parent_ctx, default_locale);
+      ctx.locale_ = parse_locale(tt, data, parent_ctx, default_locale);
     }
     if (auto const default_crs =
             frame_defaults.child("DefaultLocationSystem")) {
@@ -44,11 +45,12 @@ void parse_site_frame(netex_data& data,
   }
 }
 
-void parse_composite_frame(netex_data& data,
+void parse_composite_frame(timetable& tt,
+                           netex_data& data,
                            netex_ctx const& ctx,
                            pugi::xml_node const& comp_frame) {
   for (auto const frame : comp_frame.child("frames").children()) {
-    auto child_ctx = get_frame_ctx(data, ctx, frame);
+    auto child_ctx = get_frame_ctx(tt, data, ctx, frame);
     switch (cista::hash(std::string_view{frame.name()})) {
       case cista::hash("SiteFrame"):
         parse_site_frame(data, child_ctx, frame);
@@ -61,7 +63,8 @@ void parse_composite_frame(netex_data& data,
   }
 }
 
-void parse_netex_file(netex_data& data,
+void parse_netex_file(timetable& tt,
+                      netex_data& data,
                       loader_config const& config,
                       pugi::xml_document const& doc) {
   auto default_locale = get_default_locale(data, config);
@@ -71,14 +74,14 @@ void parse_netex_file(netex_data& data,
 
   auto const root = doc.document_element();
   for (auto const frame : root.child("dataObjects").children()) {
-    auto ctx = get_frame_ctx(data, default_ctx, frame);
+    auto ctx = get_frame_ctx(tt, data, default_ctx, frame);
     switch (cista::hash(std::string_view{frame.name()})) {
       case cista::hash("CompositeFrame"):
-        parse_composite_frame(data, ctx, frame);
+        parse_composite_frame(tt, data, ctx, frame);
         break;
       case cista::hash("SiteFrame"): parse_site_frame(data, ctx, frame); break;
       case cista::hash("GeneralFrame"):
-        parse_general_frame(data, ctx, frame);
+        parse_general_frame(tt, data, ctx, frame);
         break;
       default: break;
     }

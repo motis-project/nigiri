@@ -9,7 +9,10 @@
 
 namespace nigiri::loader::netex {
 
-netex_locale parse_locale(netex_data&, netex_ctx const&, pugi::xml_node const&);
+netex_locale parse_locale(timetable&,
+                          netex_data&,
+                          netex_ctx const&,
+                          pugi::xml_node const&);
 std::optional<netex_locale> get_default_locale(netex_data&,
                                                loader_config const&);
 
