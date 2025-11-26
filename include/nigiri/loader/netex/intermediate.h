@@ -2,8 +2,10 @@
 
 namespace nigiri::loader::netex {
 
+using str_idx_t = cista::strong<std::uint32_t, struct _str_idx>;
+
 template <typename T>
-using ref_t = std::variant<T, std::string>;
+using ref_t = std::variant<T, str_idx_t>;
 
 enum class transport_mode {
   all,
@@ -52,9 +54,42 @@ struct service_journey {
   std::uint32_t trip_nr_;
 };
 
-struct intermediate {
+// Stop Point in Journey Pattern
+using stop_point_in_journey_pattern_idx_t =
+    cista::strong<std::uint32_t, struct _stop_point_in_journey_pattern_idx>;
+using scheduled_stop_point_idx_t =
+    cista::strong<std::uint32_t, struct _scheduled_stop_point_idx>;
+using stop_place_idx_t = cista::strong<std::uint32_t, struct _stop_place_idx>;
 
-  std::vector <
+struct stop_place {
+  str_idx_t global_id_;
+  str_idx_t name_;
+  geo::latlng coord_;
+};
+
+struct stop_point_in_journey_pattern {
+  ref_t<scheduled_stop_point_idx_t> scheduled_stop_point_;
+};
+
+template <typename Idx, typename T>
+struct lookup {
+  vector_map<Idx, T> storage_;
+  string_store<Idx> lookup_;
+};
+
+// Mapping stops from ServiceJourney to stop_idx_t:
+// TimetabledPassingTime.StopPointInJourneyPatternRef
+// -> StopPointInJourneyPattern
+// -> ScheduledStopPointRef
+// -> PassengerStopAssignment [between ScheduledStopPointRef vs StopPlaceRef]
+// -> StopPlaceRef
+// -> stop_idx_t
+struct intermediate {
+  lookup<stop_point_in_journey_pattern_idx_t, stop_point_in_journey_pattern>
+      stop_point_in_journey_pattern_;
+  lookup<scheduled_stop_point_idx_t, > x_;
+  lookup<stop_place_idx_t, stop_place> stop_places_;
+  string_store<str_idx_t> str_;
 };
 
 }  // namespace nigiri::loader::netex
