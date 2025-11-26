@@ -676,8 +676,8 @@ statistics gtfsrt_update_msg(timetable const& tt,
 
     if (!entity.has_trip_update()) {
       log(log_lvl::error, "rt.gtfs.unsupported",
-          R"(unsupported: no "trip_update" field (tag={}, id={}), skipping message)",
-          tag, entity.id());
+          R"(unsupported: no "trip_update" field (tag={}, id={}, vehicle={}), skipping message)",
+          tag, entity.id(), entity.has_vehicle());
       ++stats.no_trip_update_;
       continue;
     }
@@ -690,10 +690,21 @@ statistics gtfsrt_update_msg(timetable const& tt,
       continue;
     }
 
-    if (!entity.trip_update().trip().has_trip_id()) {
+    if (!entity.trip_update().trip().has_trip_id() &&
+        !(entity.trip_update().trip().has_schedule_relationship() &&
+          (entity.trip_update().trip().schedule_relationship() ==
+               transit_realtime::
+                   TripDescriptor_ScheduleRelationship_SCHEDULED ||
+           entity.trip_update().trip().schedule_relationship() ==
+               transit_realtime::
+                   TripDescriptor_ScheduleRelationship_CANCELED) &&
+          entity.trip_update().trip().has_start_date() &&
+          entity.trip_update().trip().has_start_time() &&
+          entity.trip_update().trip().has_route_id() &&
+          entity.trip_update().trip().has_direction_id())) {
       log(log_lvl::error, "rt.gtfs.unsupported",
-          R"(unsupported: no "trip_id" field in "trip_update.trip" (tag={}, id={}), skipping message)",
-          tag, entity.id());
+          R"(unsupported: no "trip_id" field in "trip_update.trip" (tag={}, td={}), skipping message)",
+          tag, entity.trip_update().trip().DebugString());
       ++stats.unsupported_no_trip_id_;
       continue;
     }
