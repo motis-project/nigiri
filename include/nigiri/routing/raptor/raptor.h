@@ -104,7 +104,7 @@ struct raptor {
       bool const require_car_transport,
       bool const is_wheelchair,
       transfer_time_settings const& tts,
-      std::map<int, boost::function<double(double)>> const& arr_dist = {})
+      std::vector<std::vector<std::pair<int, double>>> const& arr_dist = {})
       : tt_{tt},
         rtt_{rtt},
         n_days_{tt_.internal_interval_days().size().count()},

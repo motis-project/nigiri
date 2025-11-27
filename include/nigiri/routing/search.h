@@ -163,7 +163,7 @@ struct search {
          algo_state_t& algo_state,
          query q,
          std::optional<std::chrono::seconds> timeout = std::nullopt,
-         std::map<int, boost::function<double(double)>> arr_dist = {})
+         std::vector<std::vector<std::pair<int, double>>> arr_dist = {})
       : tt_{tt},
         rtt_{rtt},
         state_{s},
@@ -483,7 +483,7 @@ private:
   duration_t fastest_direct_;
   Algo algo_;
   std::optional<std::chrono::seconds> timeout_;
-  std::map<int, boost::function<double(double)>> arr_dist_;
+  std::vector<std::vector<std::pair<int, double>>> arr_dist_;
 };
 
 }  // namespace nigiri::routing

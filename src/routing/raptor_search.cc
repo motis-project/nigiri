@@ -94,7 +94,7 @@ routing_result<raptor_stats> raptor_search(
     query q,
     direction const search_dir,
     std::optional<std::chrono::seconds> const timeout,
-    std::map<int, boost::function<double(double)>> arr_dist) {
+    std::vector<std::vector<std::pair<int, double>>> arr_dist) {
 
   if (search_dir == direction::kForward) {
     return mcraptor_search<direction::kForward>(tt, rtt, s_state, r_state, q, timeout, arr_dist);

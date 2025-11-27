@@ -126,7 +126,7 @@ struct mcraptor {
                bool const require_car_transport,
                bool const is_wheelchair,
                transfer_time_settings const& tts,
-               std::map<int, boost::function<double(double)>> const& arr_dist)
+               std::vector<std::vector<std::pair<int, double>>> const& arr_dist)
       : tt_{tt},
         n_days_{tt_.internal_interval_days().size().count()},
         n_locations_{tt_.n_locations()},
@@ -326,7 +326,7 @@ struct mcraptor {
     std::cout << std::endl;
   }
 
-  const bool should_print = false;
+  const bool should_print = true;
   void reconstruct(query const& q, journey& j) {
 //    std::cout << "done: " << std::endl;
 //    return;
@@ -518,21 +518,21 @@ private:
     labels.erase(labels.begin(), new_end);
   }
 
-  int get_class_id(){
-    return -1;
-  }
-
-  int classification(route_idx_t r_idx){
-    return static_cast<int>(tt_.route_clasz_[nigiri::route_idx_t{r_idx}]);
-  }
-
-  float delay_distribution_real(delta_t x, route_idx_t r_idx){
-    int id = classification(r_idx);
-    if (auto it = arr_dist_.find(id); it != arr_dist_.end()) {
-      auto f = it->second;
-      return f(x);
+  float delay_distribution_real(delta_t x, clasz c){
+    int id = static_cast<int>(c);
+    std::vector<std::pair<int, double>> delays = arr_dist_[id];
+    if (delays.empty()) {
+      delays = arr_dist_[static_cast<int>(clasz::kOther)];
     }
-    return delay_distribution_paper(x);
+    auto it = std::lower_bound(delays.begin(), delays.end(), x,[](std::pair<int, double> pair, delta_t value){
+      return pair.first <= value;
+    });
+    --it;
+    if(it == delays.end()) {
+      it--;
+      return 1;
+    }
+    return (*it).second;
   }
 
   const delta_t max_delay = delta_t{30};
@@ -548,34 +548,35 @@ private:
     return std::min(1.0f, gradient * static_cast<float>(x) + on_time_probability);
   }
 
-  float transferProbability(delta_t to, route_idx_t r_idx){
-    auto function = [this](auto x){return this->delay_distribution_real(x, r_idx);};
+  float transferProbability(delta_t to, clasz c){
+    auto function = [&](auto x){return this->delay_distribution_real(x, c);};
     return function(to);
   }
 
   template <bool transfer=true>
-  float cum_prob(auto l, auto k, delta_t possible_start_t, float success_rate = 0.0f){
+  float cum_prob(auto l, auto k, delta_t possible_start_t, clasz const c){
     auto it = std::lower_bound(best_bag_[l].labels_.begin(), best_bag_[l].labels_.end(), possible_start_t, [](mcraptor_label a, delta_t t){
       return a.arr_t_ < t;
     });
 
-    auto result = (transfer ? transferProbability(it->arr_t_ - possible_start_t) : 1) * it->success_chance;
-    auto counterprob = 1 - (transfer ? transferProbability(it->arr_t_ - possible_start_t) : success_rate);
+    auto result = (transfer ? transferProbability(it->arr_t_ - possible_start_t, c) : 1) * it->success_chance;
+    auto counterprob = 1 - (transfer ? transferProbability(it->arr_t_ - possible_start_t, c) : transferProbability(std::numeric_limits<nigiri::delta_t>::max(), c));
     ++it;
     for (; it != best_bag_[l].labels_.end(); ++it) {
-      auto prob = transferProbability(it->arr_t_ - possible_start_t);
+      auto prob = transferProbability(it->arr_t_ - possible_start_t, c);
       result += counterprob * (transfer ? prob : 1) * it->success_chance;
-      counterprob = counterprob * (1 - (transfer ? prob: success_rate));
+      counterprob = counterprob * (1 - (transfer ? prob: std::numeric_limits<nigiri::delta_t>::max()));
     }
     return result;
   }
 
-  float cum_success_chance(auto l, auto k, delta_t possible_start_t){
-    return cum_prob(l, k, possible_start_t);
+  float cum_success_chance(auto l, auto k, delta_t possible_start_t, clasz const c){
+    return cum_prob(l, k, possible_start_t, c);
   }
 
-  float cum_enter_probability(auto l, auto k, delta_t possible_start_t){
-    return cum_prob<false>(l, k, possible_start_t, 0.95f);
+  float cum_enter_probability(auto l, auto k, delta_t possible_start_t, clasz const c){
+    //TODO ordentlich machen. Es werden hier nur ausfälle berücksichtigt. ist gemacht?
+    return cum_prob<false>(l, k, possible_start_t, c);
   }
 
   bool update_route(unsigned const k, route_idx_t const r) {
@@ -681,12 +682,12 @@ private:
       for (std::pair<unsigned, mcraptor_label> pair :dest_bag_.labels_) {
         if(pair.first == 0 || pair.first >=k || pair.second.fp_l_ != i) continue;
         auto tmp_label = pair.second;
-        tmp_label.success_chance = cum_enter_probability(i, k, tmp_label.arr_t_);
+        tmp_label.success_chance = cum_enter_probability(i, k, tmp_label.arr_t_, tt_.route_clasz_[tt_.transport_route_[tmp_label.trip_id.t_idx_]]);
         dest_bag_.add(tmp_label, k);
       }
       for (mcraptor_label tmp_label :tmp_[i].labels_) {
         if(tmp_label.arr_t_ == kInvalid) continue;
-        tmp_label.success_chance = cum_enter_probability(i, k, tmp_label.arr_t_);
+        tmp_label.success_chance = cum_enter_probability(i, k, tmp_label.arr_t_, tt_.route_clasz_[tt_.transport_route_[tmp_label.trip_id.t_idx_]]);
         dest_bag_.add(tmp_label, k);
       }
     });
@@ -953,7 +954,7 @@ private:
         delta_t time = time_at_stop(r, new_et, stop_idx,kFwd ? event_type::kDep : event_type::kArr);
         //TODO cummulierter wert nicht jedes mal neu bestimmen sondern alte berechnung wieder verwenden
         mcraptor_label new_et_label = {.arr_t_ = time, .trip_l_ = l,
-                                        .trip_id = new_et, .success_chance = cum_success_chance(cista::to_idx(l), k-1, time), .over_limit = time < end};
+                                        .trip_id = new_et, .success_chance = cum_success_chance(cista::to_idx(l), k-1, time, tt_.route_clasz_[r]), .over_limit = time < end};
         ets.push_back(new_et_label);
         if(static_cast<day_idx_t>(as_int(day) - ev_day_offset) <= day_at_stop_to && ev_mam <= mam_at_stop_to.count()) return true;
       }
@@ -998,7 +999,7 @@ private:
   day_idx_t base_;
   raptor_stats stats_;
   transfer_time_settings transfer_time_settings_;
-  std::map<int, boost::function<double(double)>> const& arr_dist_;
+  std::vector<std::vector<std::pair<int, double>>> const& arr_dist_;
 };
 
 }  // namespace nigiri::routing
