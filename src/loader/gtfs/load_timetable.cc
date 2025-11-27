@@ -114,8 +114,8 @@ void load_timetable(loader_config const& config,
   auto const user_script = script_runner{config.user_script_};
   auto const progress_tracker = utl::get_active_progress_tracker();
   auto timezones = tz_map{};
-  auto agencies =
-      read_agencies(src, tt, timezones, load(kAgencyFile).data(), user_script);
+  auto agencies = read_agencies(src, tt, timezones, load(kAgencyFile).data(),
+                                config.default_tz_, user_script);
   auto const [stops, seated_transfers] = read_stops(
       src, tt, timezones, load(kStopFile).data(), load(kTransfersFile).data(),
       config.link_stop_distance_, user_script);
