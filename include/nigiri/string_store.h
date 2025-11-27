@@ -51,6 +51,7 @@ struct string_store {
       cache_ = o.cache_;
       resolve();
     }
+    return *this;
   }
   string_store& operator=(string_store&& o) {
     if (&o != this) {
@@ -58,6 +59,7 @@ struct string_store {
       cache_ = std::move(o.cache_);
       resolve();
     }
+    return *this;
   }
 
   template <typename Ctx, typename Fn>
