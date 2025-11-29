@@ -87,7 +87,7 @@ struct lookup {
 struct intermediate {
   lookup<stop_point_in_journey_pattern_idx_t, stop_point_in_journey_pattern>
       stop_point_in_journey_pattern_;
-  lookup<scheduled_stop_point_idx_t, > x_;
+  // lookup<scheduled_stop_point_idx_t, > x_;
   lookup<stop_place_idx_t, stop_place> stop_places_;
   string_store<str_idx_t> str_;
 };
