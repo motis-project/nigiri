@@ -7,6 +7,7 @@
 
 #include "utl/get_or_create.h"
 #include "utl/helpers/algorithm.h"
+#include "utl/parallel_for.h"
 #include "utl/pipes.h"
 #include "utl/progress_tracker.h"
 
@@ -24,14 +25,35 @@
 #include "nigiri/logging.h"
 #include "nigiri/timetable.h"
 
-#include "nigiri/loader/netex/parser.h"
-#include "nigiri/loader/netex/stop_places.h"
+#include "nigiri/loader/netex/intermediate.h"
+
+#include "utl/parser/arg_parser.h"
 
 namespace fs = std::filesystem;
 
 namespace nigiri::loader::netex {
 
-bool is_netex_file(dir const& /*d*/, fs::path const& p) {
+struct none {};
+
+struct stop {
+  std::string_view parent_;
+  std::string_view id_;
+  std::string_view name_;
+  geo::latlng pos_;
+};
+
+struct stop_point {
+  std::string_view stop_id_;
+  bool out_allowed_;
+  bool in_allowed_;
+};
+
+std::tuple<std::string_view, std::string_view, std::string_view, geo::latlng>
+format_as(stop const& x) {
+  return {x.parent_, x.id_, x.name_, x.pos_};
+}
+
+bool is_xml_file(fs::path const& p) {
   return p.extension() == ".xml" || p.extension() == ".XML";
 }
 
@@ -52,7 +74,7 @@ cista::hash_t hash(dir const& d) {
   };
 
   for (auto const& f : d.list_files("/")) {
-    if (is_netex_file(d, f)) {
+    if (is_xml_file(f)) {
       hash_file(f);
     }
   }
@@ -61,164 +83,127 @@ cista::hash_t hash(dir const& d) {
 }
 
 bool applicable(dir const& d) {
-  return utl::any_of(d.list_files("/"),
-                     [&](fs::path const& p) { return is_netex_file(d, p); });
+  return utl::any_of(d.list_files("/"), is_xml_file);
 }
 
-void load_timetable(loader_config const& config,
-                    source_idx_t const src,
-                    dir const& d,
-                    timetable& tt,
-                    assistance_times* assistance,
-                    shapes_storage* shapes_data) {
-  auto local_bitfield_indices = hash_map<bitfield, bitfield_idx_t>{};
-  load_timetable(config, src, d, tt, local_bitfield_indices, assistance,
-                 shapes_data);
+std::string_view child_attr(pugi::xml_node n,
+                            char const* child,
+                            char const* attr) {
+  auto const str = n.child(child).attribute(attr).as_string();
+  return str == nullptr ? std::string_view{} : std::string_view{str};
 }
 
-void load_timetable(loader_config const& config,
-                    source_idx_t const src,
+void load_timetable(loader_config const&,
+                    source_idx_t const,
                     dir const& d,
-                    timetable& tt,
+                    timetable&,
                     hash_map<bitfield, bitfield_idx_t>& /*bitfield_indices*/,
                     assistance_times* /*assistance*/,
                     shapes_storage* /*shapes_data*/) {
   auto const global_timer = nigiri::scoped_timer{"netex parser"};
-  auto const progress_tracker = utl::get_active_progress_tracker();
 
-  auto const xml_files = utl::all(d.list_files(""))  //
-                         | utl::remove_if([&](fs::path const& f) {
-                             return !is_netex_file(d, f);
-                           })  //
-                         | utl::vec();
+  auto const pt = utl::get_active_progress_tracker();
 
-  progress_tracker->status("Parse Files")
-      .out_bounds(0.F, 90.F)
-      .in_high(xml_files.size());
+  auto const xml_files =
+      utl::all(d.list_files(""))  //
+      | utl::remove_if([&](fs::path const& f) { return !is_xml_file(f); })  //
+      | utl::vec();
 
-  auto data = netex_data{.tt_ = tt,
-                         .script_runner_ = script_runner{config.user_script_}};
+  pt->status("Parse Files").out_bounds(0.F, 90.F).in_high(xml_files.size());
 
-  for (auto const& fp : xml_files) {
-    auto const f = d.get_file(fp);
-    auto const file_content = f.data();
-    auto doc = pugi::xml_document{};
-    auto const result =
-        doc.load_buffer(file_content.data(), file_content.size(),
-                        pugi::parse_default | pugi::parse_trim_pcdata);
-    utl::verify(result, "Unable to parse XML buffer: {} at offset {}",
-                result.description(), result.offset);
+  utl::parallel_ordered_collect_threadlocal<none>(
+      xml_files.size(),
+      [&](none&, std::size_t const i) {
+        CISTA_UNUSED_PARAM(i)
 
-    parse_netex_file(data, config, doc);
+        auto const f = d.get_file(xml_files.at(i));
+        auto const file_content = f.data();
+        auto doc = pugi::xml_document{};
+        auto const result =
+            doc.load_buffer(file_content.data(), file_content.size(),
+                            pugi::parse_default | pugi::parse_trim_pcdata);
+        utl::verify(result, "Unable to parse XML buffer: {} at offset {}",
+                    result.description(), result.offset);
 
-    progress_tracker->increment();
-  }
+        auto stops = hash_map<std::string_view, stop>{};
+        for (auto const s :
+             doc.select_nodes("//SiteFrame/stopPlaces/StopPlace | "
+                              "//SiteFrame/stopPlaces/Quay")) {
+          auto const n = s.node();
 
-  progress_tracker->status("Building Timetable")
-      .out_bounds(90.F, 100.F)
-      .in_high(1);
+          auto const get_global_id = [](pugi::xml_node const x) {
+            return x.select_node("keyList/KeyValue/Key[text() = 'GlobalID']")
+                .parent()
+                .child("Value")
+                .child_value();
+          };
 
-  finalize_stop_places(data);
+          auto const get_pos = [](pugi::xml_node const x) {
+            return geo::latlng{
+                utl::parse<double>(x.select_node("Centroid/Location/Latitude")
+                                       .node()
+                                       .child_value()),
+                utl::parse<double>(x.select_node("Centroid/Location/Longitude")
+                                       .node()
+                                       .child_value())};
+          };
 
-  auto lang_map = hash_map<std::string, language_idx_t>{};
-  auto const get_lang_idx = [&](std::string const& lang) {
-    return utl::get_or_create(lang_map, lang, [&]() {
-      auto const lang_idx = language_idx_t{tt.languages_.size()};
-      tt.languages_.emplace_back(lang);
-      return lang_idx;
-    });
-  };
+          auto const stop_id = n.attribute("id").as_string();
+          auto const global_stop_id = get_global_id(n);
+          stops.emplace(stop_id,
+                        stop{.parent_ = {},
+                             .id_ = global_stop_id ? global_stop_id : stop_id,
+                             .name_ = n.child("Name").child_value(),
+                             .pos_ = get_pos(n)});
 
-  for (auto& [_, sp] : data.stop_places_) {
-    auto loc = location{sp.id_,
-                        sp.name_,
-                        "",
-                        sp.description_,
-                        sp.centroid_,
-                        src,
-                        location_type::kStation,
-                        location_idx_t::invalid(),
-                        sp.locale_.tz_idx_,
-                        2_minutes,
-                        tt,
-                        data.timezones_};
-    if (!process_location(data.script_runner_, loc)) {
-      continue;
-    }
-
-    sp.location_idx_ = register_location(tt, loc);
-
-    if (!sp.alt_names_.empty()) {
-      auto anb = tt.locations_.alt_names_[sp.location_idx_];
-      for (auto const& an : sp.alt_names_) {
-        auto const an_idx =
-            alt_name_idx_t{tt.locations_.alt_name_strings_.size()};
-        tt.locations_.alt_name_strings_.emplace_back(an.name_);
-        tt.locations_.alt_name_langs_.emplace_back(get_lang_idx(an.language_));
-        anb.push_back(an_idx);
-      }
-    }
-
-    for (auto& q : sp.quays_) {
-      auto quay_loc = location{q.id_,
-                               q.name_,
-                               q.public_code_,
-                               "",
-                               q.centroid_,
-                               src,
-                               location_type::kTrack,
-                               sp.location_idx_,
-                               q.locale_.tz_idx_,
-                               2_minutes,
-                               tt,
-                               data.timezones_};
-      if (!process_location(data.script_runner_, quay_loc)) {
-        continue;
-      }
-
-      q.location_idx_ = register_location(tt, quay_loc);
-
-      tt.locations_.parents_[q.location_idx_] = sp.location_idx_;
-      tt.locations_.children_[sp.location_idx_].emplace_back(q.location_idx_);
-    }
-  }
-
-  for (auto const& [_, sp] : data.stop_places_) {
-    if (sp.parent_ref_) {
-      if (auto it = data.stop_places_.find(*sp.parent_ref_);
-          it != data.stop_places_.end()) {
-        auto& parent_sp = it->second;
-        if (sp.location_idx_ == location_idx_t::invalid() ||
-            parent_sp.location_idx_ == location_idx_t::invalid()) {
-          continue;
+          for (auto const q : n.select_nodes("quays/Quay")) {
+            auto const qn = q.node();
+            auto const quay_id = qn.attribute("id").as_string();
+            auto const global_quay_id = get_global_id(qn);
+            stops.emplace(quay_id,
+                          stop{.parent_ = stop_id,
+                               .id_ = global_quay_id ? global_quay_id : quay_id,
+                               .name_ = qn.child("Name").child_value(),
+                               .pos_ = get_pos(qn)});
+          }
         }
-        tt.locations_.parents_[sp.location_idx_] = parent_sp.location_idx_;
-        tt.locations_.children_[parent_sp.location_idx_].emplace_back(
-            sp.location_idx_);
-      }
-    }
-  }
 
-  // Add standalone quays as stations
-  for (auto& [_, q] : data.standalone_quays_) {
-    auto loc = location{q.id_,
-                        q.name_,
-                        q.public_code_,
-                        "",
-                        q.centroid_,
-                        src,
-                        location_type::kStation,
-                        location_idx_t::invalid(),
-                        q.locale_.tz_idx_,
-                        2_minutes,
-                        tt,
-                        data.timezones_};
-    if (process_location(data.script_runner_, loc)) {
-      q.location_idx_ = register_location(tt, loc);
-    }
-  }
+        auto psa = hash_map<std::string_view, stop const*>{};
+        for (auto const& a : doc.select_nodes("//ServiceFrame/stopAssignments/"
+                                              "PassengerStopAssignment")) {
+          auto const n = a.node();
+          auto const sstop = child_attr(n, "ScheduledStopPointRef", "ref");
+          auto const quay = child_attr(n, "QuayRef", "ref");
+          auto const stop_place = child_attr(n, "StopPlaceRef", "ref");
+          if (!sstop.empty() && (!quay.empty() || !stop_place.empty())) {
+            auto s = end(stops);
 
-  progress_tracker->increment();
+            if (!quay.empty()) {
+              s = stops.find(quay);
+            }
+            if (s == end(stops) && !stop_place.empty()) {
+              s = stops.find(stop_place);
+            }
+
+            if (s != end(stops)) {
+              psa[sstop] = &s->second;
+            }
+          }
+        }
+
+        fmt::println("Stops:\n\t{}", fmt::join(stops, "\n\t"));
+        for (auto const& [from, to] : psa) {
+          fmt::println("{} -> {}", from, format_as(*to));
+        }
+
+        auto im = intermediate{};
+        return im;
+      },
+      [](std::size_t const i, intermediate const& im) {
+        CISTA_UNUSED_PARAM(i)
+        CISTA_UNUSED_PARAM(im)
+      },
+      pt->update_fn());
 }
 
 }  // namespace nigiri::loader::netex
