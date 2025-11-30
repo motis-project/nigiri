@@ -813,13 +813,16 @@ void load_timetable(loader_config const& config,
 
             // Create and register trip.
             auto const short_name = fmt::to_string(sj.trip_nr_);
-            auto t = trip{src,
-                          sj.id_,
-                          short_name,
-                          short_name,
-                          sj.journey_pattern_->direction_,
-                          route_id,
-                          tt};
+            auto t = trip{
+                src,
+                sj.id_,
+                tt.trip_direction(sj.journey_pattern_->stop_points_.front()
+                                      .destination_display_->trip_direction_),
+                short_name,
+                short_name,
+                sj.journey_pattern_->direction_,
+                route_id,
+                tt};
             auto const trip_idx = process_trip(r, t) ? register_trip(tt, t)
                                                      : trip_idx_t::invalid();
             if (trip_idx == trip_idx_t::invalid()) {

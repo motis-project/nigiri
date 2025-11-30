@@ -143,6 +143,7 @@ struct route {
 struct trip {
   trip(source_idx_t,
        std::string_view id,
+       std::string_view headsign,
        std::string_view short_name,
        std::string_view display_name,
        direction_id_t,
@@ -150,6 +151,9 @@ struct trip {
        timetable&);
 
   std::string_view get_id() const;
+
+  std::string_view get_headsign() const;
+  void set_headsign(std::string_view);
 
   std::string_view get_short_name() const;
   void set_short_name(std::string_view);
