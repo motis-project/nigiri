@@ -78,6 +78,9 @@ file fs_dir::get_file(std::filesystem::path const& p) const {
     }
     ~mmap_content() final = default;
     std::string_view get() const final { return mmap_.view(); }
+    void* get_mutable() override { throw utl::fail("not mutable"); }
+    bool is_mutable() const override { return false; }
+    std::size_t size() const override { return mmap_.size(); }
     cista::mmap mmap_;
   };
   return file{(path_ / p).string(), std::make_unique<mmap_content>(path_ / p)};
@@ -146,6 +149,9 @@ struct zip_file_content final : public file::content {
   std::string_view get() const final {
     return {reinterpret_cast<char const*>(buf_.data()), buf_.size()};
   }
+  void* get_mutable() override { return reinterpret_cast<void*>(buf_.data()); }
+  bool is_mutable() const override { return true; }
+  std::size_t size() const override { return buf_.size(); }
   std::vector<std::uint8_t> buf_;
 };
 zip_file_content::~zip_file_content() = default;
@@ -270,6 +276,9 @@ file mem_dir::get_file(std::filesystem::path const& p) const {
   struct mem_file_content : public file::content {
     explicit mem_file_content(std::string const& b) : buf_{b} {}
     std::string_view get() const final { return buf_; }
+    void* get_mutable() override { throw utl::fail("not mutable"); }
+    bool is_mutable() const override { return false; }
+    std::size_t size() const override { return buf_.size(); }
     std::string const& buf_;
   };
   return file{p.string(),
