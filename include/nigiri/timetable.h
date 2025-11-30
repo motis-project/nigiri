@@ -113,7 +113,6 @@ struct timetable {
     basic_string<attribute_combination_idx_t> const& section_attributes_;
     basic_string<provider_idx_t> const& section_providers_;
     basic_string<trip_direction_idx_t> const& section_directions_;
-    basic_string<trip_line_idx_t> const& section_lines_;
     basic_string<route_color> const& route_colors_;
   };
 
@@ -228,7 +227,6 @@ struct timetable {
     transport_section_attributes_.emplace_back(t.section_attributes_);
     transport_section_providers_.emplace_back(t.section_providers_);
     transport_section_directions_.emplace_back(t.section_directions_);
-    transport_section_lines_.emplace_back(t.section_lines_);
     transport_section_route_colors_.emplace_back(t.route_colors_);
 
     assert(transport_traffic_days_.size() == transport_route_.size());
@@ -510,7 +508,6 @@ struct timetable {
   vector<provider_idx_t> provider_id_to_idx_;
   vecvec<trip_direction_string_idx_t, char> trip_direction_strings_;
   vector_map<trip_direction_idx_t, trip_direction_t> trip_directions_;
-  vecvec<trip_line_idx_t, char> trip_lines_;
 
   // Transport to section meta infos; Compaction:
   // - only one value = value is valid for the whole run
@@ -519,7 +516,6 @@ struct timetable {
       transport_section_attributes_;
   vecvec<transport_idx_t, provider_idx_t> transport_section_providers_;
   vecvec<transport_idx_t, trip_direction_idx_t> transport_section_directions_;
-  vecvec<transport_idx_t, trip_line_idx_t> transport_section_lines_;
   vecvec<transport_idx_t, route_color> transport_section_route_colors_;
 
   // Lower bound graph.

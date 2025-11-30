@@ -316,7 +316,6 @@ trip_data read_trips(source_idx_t const src,
 
           auto x = loader::trip{src,
                                 t.trip_id_->view(),
-                                t.trip_headsign_->view(),
                                 t.trip_short_name_->view(),
                                 display_name,
                                 (t.direction_id_->view() == "1")

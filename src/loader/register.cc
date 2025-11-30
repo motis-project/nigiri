@@ -204,7 +204,6 @@ agency route::get_agency() const { return agency{tt_, agency_}; }
 
 trip::trip(source_idx_t src,
            std::string_view id,
-           std::string_view headsign,
            std::string_view short_name,
            std::string_view display_name,
            direction_id_t direction,
@@ -212,7 +211,6 @@ trip::trip(source_idx_t src,
            timetable& tt)
     : src_{src},
       id_{id},
-      headsign_{headsign, cista::raw::generic_string::non_owning},
       short_name_{short_name, cista::raw::generic_string::non_owning},
       display_name_{display_name, cista::raw::generic_string::non_owning},
       direction_{direction},
@@ -220,9 +218,6 @@ trip::trip(source_idx_t src,
       tt_{&tt} {}
 
 std::string_view trip::get_id() const { return id_; }
-
-std::string_view trip::get_headsign() const { return headsign_; }
-void trip::set_headsign(std::string_view x) { headsign_.set_owning(x); }
 
 std::string_view trip::get_short_name() const { return short_name_; }
 void trip::set_short_name(std::string_view x) { short_name_.set_owning(x); }
@@ -313,8 +308,6 @@ script_runner::script_runner(std::string const& user_script)
   impl_->lua_.new_usertype<trip>(  //
       "trip",  //
       "get_id", &trip::get_id,  //
-      "get_headsign", &trip::get_headsign,  //
-      "set_headsign", &trip::set_headsign,  //
       "get_short_name", &trip::get_short_name,  //
       "set_short_name", &trip::set_short_name,  //
       "get_display_name", &trip::get_display_name,  //

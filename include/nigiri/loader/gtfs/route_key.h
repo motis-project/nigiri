@@ -5,15 +5,15 @@
 namespace nigiri::loader::gtfs {
 
 struct route_key_t {
-  clasz clasz_{clasz::kOther};
+  clasz clasz_;
   stop_seq_t stop_seq_;
   bitvec bikes_allowed_;
   bitvec cars_allowed_;
 };
 
 struct route_key_ptr_t {
-  clasz clasz_{clasz::kOther};
-  stop_seq_t const* stop_seq_{nullptr};
+  clasz clasz_;
+  stop_seq_t const* stop_seq_;
   bitvec const* bikes_allowed_{nullptr};
   bitvec const* cars_allowed_{nullptr};
 };
@@ -23,22 +23,26 @@ struct route_key_hash {
 
   static cista::hash_t hash(clasz const c,
                             stop_seq_t const& seq,
-                            bitvec const& bikes_allowed,
-                            bitvec const& cars_allowed) {
+                            bitvec const* bikes_allowed,
+                            bitvec const* cars_allowed) {
     auto h = cista::BASE_HASH;
     h = cista::hash_combine(h, cista::hashing<stop_seq_t>{}(seq));
     h = cista::hash_combine(h, c);
-    h = cista::hash_combine(h, cista::hashing<bitvec>{}(bikes_allowed));
-    h = cista::hash_combine(h, cista::hashing<bitvec>{}(cars_allowed));
+    if (bikes_allowed != nullptr) {
+      h = cista::hash_combine(h, cista::hashing<bitvec>{}(*bikes_allowed));
+    }
+    if (cars_allowed != nullptr) {
+      h = cista::hash_combine(h, cista::hashing<bitvec>{}(*cars_allowed));
+    }
     return h;
   }
 
   cista::hash_t operator()(route_key_t const& x) const {
-    return hash(x.clasz_, x.stop_seq_, x.bikes_allowed_, x.cars_allowed_);
+    return hash(x.clasz_, x.stop_seq_, &x.bikes_allowed_, &x.cars_allowed_);
   }
 
   cista::hash_t operator()(route_key_ptr_t const& x) const {
-    return hash(x.clasz_, *x.stop_seq_, *x.bikes_allowed_, *x.cars_allowed_);
+    return hash(x.clasz_, *x.stop_seq_, x.bikes_allowed_, x.cars_allowed_);
   }
 };
 

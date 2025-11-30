@@ -319,15 +319,6 @@ stop_idx_t run_stop::section_idx(event_type const ev_type) const {
                                                              : stop_idx_ - 1);
 }
 
-std::string_view run_stop::line(event_type const ev_type) const {
-  if (fr_->is_rt() && rtt() != nullptr) {
-    auto const rt_line = rtt()->rt_transport_line_.at(fr_->rt_);
-    return rt_line.empty() ? scheduled_line(ev_type) : rt_line.view();
-  } else {
-    return scheduled_line(ev_type);
-  }
-}
-
 provider_idx_t run_stop::get_provider_idx(event_type const ev_type) const {
   if (!fr_->is_scheduled()) {
     auto const route_id_idx = rtt()->rt_transport_route_id_.at(fr_->rt_);
@@ -383,22 +374,6 @@ std::string_view run_stop::direction(event_type const ev_type) const {
         .name();
   }
   return "";
-}
-
-std::string_view run_stop::scheduled_line(event_type const ev_type) const {
-  if (!fr_->is_scheduled()) {
-    return "";
-  }
-
-  auto const section_lines = tt().transport_section_lines_.at(fr_->t_.t_idx_);
-  if (section_lines.empty()) {
-    return "";
-  } else {
-    auto const line_idx = section_lines.size() == 1U
-                              ? section_lines[0]
-                              : section_lines.at(section_idx(ev_type));
-    return tt().trip_lines_.at(line_idx).view();
-  }
 }
 
 clasz run_stop::get_clasz(event_type const ev_type) const {
