@@ -20,9 +20,12 @@
 #include "pugixml.hpp"
 
 #include "nigiri/loader/gtfs/route_key.h"
+#include "nigiri/loader/gtfs/shape.h"
+#include "nigiri/loader/gtfs/shape_prepare.h"
 #include "nigiri/loader/gtfs/trip.h"
 #include "nigiri/loader/loader_interface.h"
 #include "nigiri/logging.h"
+#include "nigiri/shapes_storage.h"
 #include "nigiri/timetable.h"
 
 #include "utl/progress_tracker.h"
@@ -83,6 +86,12 @@ std::string_view val(pugi::xml_node n, char const* child) {
 std::string_view id(pugi::xml_node n) {
   auto const str = n.attribute("id").as_string();
   return str == nullptr ? std::string_view{} : std::string_view{str};
+}
+
+geo::latlng get_pos(pugi::xml_node const x) {
+  auto const loc = x.child("Location");
+  return geo::latlng{utl::parse<double>(val(loc, "Latitude")),
+                     utl::parse<double>(val(loc, "Longitude"))};
 }
 
 std::uint16_t get_route_type(std::string_view transport_mode,
@@ -236,6 +245,8 @@ using destination_display_map_t =
 destination_display_map_t get_destination_displays(
     pugi::xml_document const& doc) {
   auto destination_displays = destination_display_map_t{};
+  destination_displays.emplace(std::string_view{},
+                               uniq(destination_display{.direction_ = ""}));
   for (auto const display : doc.select_nodes(
            "//ServiceFrame/destinationDisplays/DestinationDisplay")) {
     auto const n = display.node();
@@ -270,15 +281,6 @@ stop_map_t get_stops(pugi::xml_document const& doc) {
           "Value");
     };
 
-    auto const get_pos = [](pugi::xml_node const x) {
-      return geo::latlng{
-          utl::parse<double>(
-              x.select_node("Centroid/Location/Latitude").node().child_value()),
-          utl::parse<double>(x.select_node("Centroid/Location/Longitude")
-                                 .node()
-                                 .child_value())};
-    };
-
     auto const stop_id = id(n);
     auto const global_stop_id = get_global_id(n);
     auto const parent =
@@ -287,7 +289,7 @@ stop_map_t get_stops(pugi::xml_document const& doc) {
                      uniq(stop{.id_ = !global_stop_id.empty() ? global_stop_id
                                                               : stop_id,
                                .name_ = val(n, "Name"),
-                               .pos_ = get_pos(n)}))
+                               .pos_ = get_pos(n.child("Centroid"))}))
             .first->second.get();
 
     for (auto const q : n.select_nodes("quays/Quay")) {
@@ -299,7 +301,7 @@ stop_map_t get_stops(pugi::xml_document const& doc) {
           uniq(stop{.parent_ = parent,
                     .id_ = !global_quay_id.empty() ? global_quay_id : quay_id,
                     .name_ = val(qn, "Name"),
-                    .pos_ = get_pos(qn)}));
+                    .pos_ = get_pos(qn.child("Centroid"))}));
     }
   }
   return stops;
@@ -384,17 +386,8 @@ day_type_assignment_map_t get_day_type_assignments(
            "//ServiceCalendarFrame/ServiceCalendar/dayTypeAssignments/"
            "DayTypeAssignment")) {
     auto const n = x.node();
-    auto const op_period = ref(n, "OperatingPeriodRef");
-    auto const day_type = ref(n, "DayTypeRef");
-
-    auto const it = operating_periods.find(op_period);
-    if (it == end(operating_periods)) {
-      log(log_lvl::error, "netex.DayTypeAssignment",
-          "OperatingPeriodRef=\"{}\" not found", op_period);
-      continue;
-    }
-
-    days.emplace(day_type, it->second.get());
+    days.emplace(ref(n, "DayTypeRef"),
+                 operating_periods.at(ref(n, "OperatingPeriodRef")).get());
   }
   return days;
 }
@@ -422,9 +415,33 @@ journey_pattern_map_t get_journey_patterns(
     pugi::xml_document const& doc,
     stop_assignment_map_t const& stop_assignments,
     destination_display_map_t const& destination_displays,
-    line_map_t const& lines) {
-
+    line_map_t const& lines,
+    stop_map_t& stops) {
   auto journey_patterns = journey_pattern_map_t{};
+
+  auto const get_stop =
+      [&](std::string_view stop_point_ref) -> netex::stop const* {
+    auto const it = stop_assignments.find(stop_point_ref);
+    if (it != end(stop_assignments)) {
+      return it->second;
+    }
+
+    // Invalid - fall back to information from ScheduledStopPoint
+    return utl::get_or_create(
+               stops, stop_point_ref,
+               [&]() {
+                 auto const stop_point = doc.select_node(
+                     fmt::format("//ServiceFrame/scheduledStopPoints/"
+                                 "ScheduledStopPoint[id='{}']",
+                                 stop_point_ref)
+                         .c_str());
+                 return uniq(stop{.id_ = stop_point_ref,
+                                  .name_ = val(stop_point.node(), "Name"),
+                                  .pos_ = get_pos(stop_point.node())});
+               })
+        .get();
+  };
+
   for (auto const j : doc.select_nodes(
            "//ServiceFrame/journeyPatterns/ServiceJourneyPattern")) {
     auto const n = j.node();
@@ -435,7 +452,7 @@ journey_pattern_map_t get_journey_patterns(
       auto const out = val(sp, "ForAlighting");
       stop_points.push_back(journey_pattern::stop_point{
           .id_ = id(sp),
-          .stop_ = stop_assignments.at(ref(sp, "ScheduledStopPointRef")),
+          .stop_ = get_stop(ref(sp, "ScheduledStopPointRef")),
           .destination_display_ =
               destination_displays.at(ref(sp, "DestinationDisplayRef")).get(),
           .in_allowed_ = in.empty() || in == "true"sv,
@@ -594,27 +611,27 @@ cista::hash_t hash(dir const& d) {
   }
 
   auto h = std::uint64_t{0U};
-  auto const hash_file = [&](fs::path const& p) {
-    if (!d.exists(p)) {
-      h = wyhash64(h, _wyp[0]);
-    } else {
-      auto const f = d.get_file(p);
-      auto const data = f.data();
-      h = wyhash(data.data(), data.size(), h, _wyp);
-    }
-  };
-
-  for (auto const& f : d.list_files("/")) {
-    if (is_xml_file(f)) {
-      hash_file(f);
-    }
-  }
+  // auto const hash_file = [&](fs::path const& p) {
+  //   if (!d.exists(p)) {
+  //     h = wyhash64(h, _wyp[0]);
+  //   } else {
+  //     auto const f = d.get_file(p);
+  //     auto const data = f.data();
+  //     h = wyhash(data.data(), data.size(), h, _wyp);
+  //   }
+  // };
+  //
+  // for (auto const& f : d.list_files("/")) {
+  //   if (is_xml_file(f)) {
+  //     hash_file(f);
+  //   }
+  // }
 
   return h;
 }
 
 bool applicable(dir const& d) {
-  return utl::any_of(d.list_files("/"), is_xml_file);
+  return utl::any_of(d.list_files("."), is_xml_file);
 }
 
 void load_timetable(loader_config const& config,
@@ -623,8 +640,10 @@ void load_timetable(loader_config const& config,
                     timetable& tt,
                     hash_map<bitfield, bitfield_idx_t>& bitfield_indices,
                     assistance_times* /*assistance*/,
-                    shapes_storage* /*shapes_data*/) {
+                    shapes_storage* shapes_data) {
   auto const global_timer = nigiri::scoped_timer{"netex parser"};
+
+  auto const locations_start = location_idx_t{tt.n_locations()};
 
   tt.n_sources_ = std::max(tt.n_sources_, to_idx(src + 1U));
   tt.fares_.emplace_back();
@@ -632,7 +651,7 @@ void load_timetable(loader_config const& config,
   tt.route_ids_.emplace_back();
 
   auto const xml_files =
-      utl::all(d.list_files(""))  //
+      utl::all(d.list_files("."))  //
       | utl::remove_if([&](fs::path const& f) { return !is_xml_file(f); })  //
       | utl::vec();
 
@@ -693,7 +712,7 @@ void load_timetable(loader_config const& config,
       [&](fs::path const& path) {
         auto im = intermediate{};
 
-        {
+        try {
           auto f = d.get_file(path);
           auto doc = pugi::xml_document{};
           auto const result =
@@ -715,9 +734,9 @@ void load_timetable(loader_config const& config,
           im.stops_ = get_stops(doc);
           im.lines_ = get_lines(doc, im.authorities_);
           im.destination_displays_ = get_destination_displays(doc);
-          im.journey_patterns_ =
-              get_journey_patterns(doc, get_stop_assignments(doc, im.stops_),
-                                   im.destination_displays_, im.lines_);
+          im.journey_patterns_ = get_journey_patterns(
+              doc, get_stop_assignments(doc, im.stops_),
+              im.destination_displays_, im.lines_, im.stops_);
           im.operating_periods_ =
               get_operating_periods(doc, tt.internal_interval_days());
           im.service_journeys_ = get_service_journeys(
@@ -725,6 +744,9 @@ void load_timetable(loader_config const& config,
               im.journey_patterns_);
           im.f_ = std::move(f);
           im.doc_ = std::move(doc);
+        } catch (std::exception const& e) {
+          std::cout << "ERROR: " << e.what() << " IN " << path << "\n";
+          return;
         }
 
         {
@@ -742,6 +764,13 @@ void load_timetable(loader_config const& config,
           }
 
           auto const add_stop = [&](stop* stop) {
+            auto const existing =
+                tt.locations_.find(location_id{stop->id_, src});
+            if (existing.has_value()) {
+              stop->location_ = existing->l_;
+              return;
+            }
+
             auto s = loader::location{stop->id_,
                                       stop->name_,
                                       "",
@@ -835,6 +864,11 @@ void load_timetable(loader_config const& config,
                 source_file_idx, static_cast<unsigned>(sj.dbg_offset_),
                 static_cast<unsigned>(sj.dbg_offset_)});
             tt.trip_stop_seq_numbers_.add_back_sized(0U);
+            if (shapes_data != nullptr) {
+              shapes_data->add_trip_shape_offsets(
+                  trip_idx, cista::pair{shape_idx_t::invalid(),
+                                        shape_offset_idx_t::invalid()});
+            }
 
             auto const c = gtfs::to_clasz(sj.route_type_);
             auto const stops = stop_seq(sj);
@@ -956,6 +990,64 @@ void load_timetable(loader_config const& config,
       assert(tt.location_routes_.size() == l + 1U);
     }
   }
+
+  // Generate default footpaths.
+  auto const locations_end = location_idx_t{tt.n_locations()};
+  auto const new_locations = interval{locations_start, locations_end};
+  auto const get_location = [&](std::size_t const i) {
+    return new_locations.from_ + static_cast<unsigned>(i);
+  };
+  auto const get_new_location = [&](location_idx_t const l) {
+    return to_idx(l - new_locations.from_);
+  };
+
+  auto const stop_rtree = geo::make_point_rtree(
+      new_locations,
+      [&](location_idx_t const l) { return tt.locations_.coordinates_[l]; });
+
+  auto metas = std::vector<std::vector<footpath>>{};
+  metas.resize(new_locations.size());
+
+  utl::parallel_for_run(
+      new_locations.size(),
+      [&](std::size_t const new_l) {
+        auto const l = get_location(new_l);
+        auto const pos = tt.locations_.coordinates_[l];
+        if (std::abs(pos.lat_) < 2.0 && std::abs(pos.lng_) < 2.0) {
+          return;
+        }
+        auto const dist_lng_degrees = geo::approx_distance_lng_degrees(pos);
+        for (auto const& eq :
+             stop_rtree.in_radius(pos, config.link_stop_distance_)) {
+          auto const neighbor = get_location(eq);
+          auto const neighbor_pos = tt.locations_.coordinates_[neighbor];
+          auto const dist = std::sqrt(geo::approx_squared_distance(
+              pos, neighbor_pos, dist_lng_degrees));
+          auto const duration = duration_t{std::max(
+              2, static_cast<int>(std::ceil((dist / kWalkSpeed) / 60.0)))};
+          metas[get_new_location(l)].emplace_back(neighbor, duration);
+        }
+      },
+      pt->update_fn());
+
+  for (auto const [i, fps] : utl::enumerate(metas)) {
+    auto const from = get_location(i);
+    for (auto const fp : fps) {
+      tt.locations_.equivalences_[from].emplace_back(fp.target());
+      tt.locations_.preprocessing_footpaths_out_[from].emplace_back(fp);
+      tt.locations_.preprocessing_footpaths_in_[fp.target()].emplace_back(
+          footpath{from, fp.duration()});
+    }
+  }
+
+  if (shapes_data != nullptr) {
+    auto const trips = vector_map<gtfs::gtfs_trip_idx_t, gtfs::trip>{};
+    auto const shape_states = gtfs::shape_loader_state{};
+    gtfs::calculate_shape_offsets_and_bboxes(tt, *shapes_data, shape_states,
+                                             trips);
+  }
+
+  tt.location_areas_.resize(tt.n_locations());
 }
 
 }  // namespace nigiri::loader::netex

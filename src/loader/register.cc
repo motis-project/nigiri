@@ -418,6 +418,7 @@ location_idx_t register_location(timetable& tt, location const& l) {
     loc.transfer_time_.emplace_back(l.transfer_time_);
     loc.parents_.emplace_back(l.parent_);
   } else {
+    assert(false && "duplicate station");
     log(log_lvl::error, "timetable.register_location", "duplicate station {}",
         l.id_);
   }
