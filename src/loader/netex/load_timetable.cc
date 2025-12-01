@@ -790,9 +790,10 @@ void load_timetable(loader_config const& config,
             auto const route_it = line.routes_.find(sj.route_type_);
             auto route_id = route_id_idx_t::invalid();
             if (route_it == end(line.routes_)) {
+              auto const id = fmt::format("{}-{}", line.id_, sj.route_type_);
               auto rout = route{tt,
                                 src,
-                                fmt::format("{}-{}", line.id_, sj.route_type_),
+                                id,
                                 line.name_,
                                 "",
                                 route_type_t{sj.route_type_},
