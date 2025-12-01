@@ -177,11 +177,12 @@ date::sys_days parse_date(utl::cstr s) {
 }
 
 // Parses HH:MM
-duration_t parse_time(utl::cstr s) {
+duration_t parse_time(utl::cstr s, utl::cstr day_offset) {
   if (s.len < 5) {
     return duration_t{0};
   }
-  return duration_t{60 * utl::parse_verify<int>(s.substr(0, utl::size(2))) +
+  return duration_t{utl::parse<int>(day_offset) * 1440 +
+                    60 * utl::parse_verify<int>(s.substr(0, utl::size(2))) +
                     utl::parse_verify<int>(s.substr(3, utl::size(2)))};
 }
 
@@ -432,7 +433,7 @@ journey_pattern_map_t get_journey_patterns(
                [&]() {
                  auto const stop_point = doc.select_node(
                      fmt::format("//ServiceFrame/scheduledStopPoints/"
-                                 "ScheduledStopPoint[id='{}']",
+                                 "ScheduledStopPoint[@id='{}']",
                                  stop_point_ref)
                          .c_str());
                  return uniq(stop{.id_ = stop_point_ref,
@@ -512,7 +513,7 @@ std::vector<service_journey> get_service_journeys(
             "Value")),
         .route_type_ =
             get_route_type(val(n, "TransportMode"),
-                           val(n.child("TransportSubmode"), "RailSubmodule")),
+                           val(n.child("TransportSubmode"), "RailSubmode")),
         .journey_pattern_ =
             journey_patterns.at(ref(n, "ServiceJourneyPatternRef")).get(),
         .traffic_days_ = day_type_assignments.at(
@@ -530,8 +531,11 @@ std::vector<service_journey> get_service_journeys(
                   "got TimetabledPassingTime.StopPointInJourneyPatternRef={}",
                   stop_point.id_, stop_point_id);
 
-      sj.stop_times_.push_back({.arr_ = parse_time(val(pn, "ArrivalTime")),
-                                .dep_ = parse_time(val(pn, "DepartureTime"))});
+      sj.stop_times_.push_back(
+          {.arr_ =
+               parse_time(val(pn, "ArrivalTime"), val(pn, "ArrivalDayOffset")),
+           .dep_ = parse_time(val(pn, "DepartureTime"),
+                              val(pn, "DepartureDayOffset"))});
     }
 
     service_journeys.emplace_back(std::move(sj));
