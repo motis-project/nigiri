@@ -521,10 +521,7 @@ private:
 
   float delay_distribution_real(delta_t x, clasz c){
     int id = static_cast<int>(c);
-    std::vector<std::pair<int, double>> delays = arr_dist_[id];
-    if (delays.empty()) {
-      delays = arr_dist_[static_cast<int>(clasz::kOther)];
-    }
+    const std::vector<std::pair<int, double>> & delays = arr_dist_[id].empty() ? arr_dist_[static_cast<int>(clasz::kOther)] : arr_dist_[id];
     auto it = std::lower_bound(delays.begin(), delays.end(), x,[](std::pair<int, double> pair, delta_t value){
       return pair.first <= value;
     });
@@ -566,7 +563,7 @@ private:
     for (; it != best_bag_[l].labels_.end(); ++it) {
       auto prob = transferProbability(it->arr_t_ - possible_start_t, c);
       result += counterprob * (transfer ? prob : 1) * it->success_chance;
-      counterprob = counterprob * (1 - (transfer ? prob: std::numeric_limits<nigiri::delta_t>::max()));
+      counterprob = counterprob * (1 - (transfer ? prob: transferProbability(std::numeric_limits<nigiri::delta_t>::max(), c)));
     }
     return result;
   }
