@@ -562,6 +562,18 @@ hash_map<key, bitfield> expand_local_to_utc(timetable const& tt,
   auto const last_day_offset =
       (sj.stop_times_.back().arr_ / 1_days) * date::days{1};
 
+  auto to_utc = [&, info = std::optional<date::local_info>{}](
+                    date::sys_days const day,
+                    minutes_after_midnight_t const x) mutable {
+    if (!info || !interval{info->first.begin, info->first.end}.contains(
+                     std::chrono::time_point_cast<date::sys_seconds::duration>(
+                         day + x - info->first.offset))) {
+      info = tz->get_info(
+          date::local_time<i32_minutes>{day.time_since_epoch() + x});
+    }
+    return x - std::chrono::duration_cast<duration_t>(info->first.offset);
+  };
+
   for (auto day = tt.internal_interval_days().from_;
        day != tt.internal_interval_days().to_; day += date::days{1}) {
     auto const service_days =
@@ -572,14 +584,7 @@ hash_map<key, bitfield> expand_local_to_utc(timetable const& tt,
       continue;
     }
 
-    auto const to_utc = [&](minutes_after_midnight_t const x) {
-      return x - std::chrono::duration_cast<duration_t>(
-                     tz->get_info(date::local_time<i32_minutes>{
-                                      day.time_since_epoch() + x})
-                         .first.offset);
-    };
-
-    auto const first_dep_utc = to_utc(sj.stop_times_.front().dep_);
+    auto const first_dep_utc = to_utc(day, sj.stop_times_.front().dep_);
     auto const first_dep_day_offset = date::days{static_cast<date::days::rep>(
         std::floor(static_cast<double>(first_dep_utc.count()) / 1440))};
 
@@ -587,9 +592,9 @@ hash_map<key, bitfield> expand_local_to_utc(timetable const& tt,
                  .tz_offset_ = sj.stop_times_.front().dep_ - first_dep_utc};
     for (auto const [dep, arr] :
          utl::pairwise(interval{0U, sj.stop_times_.size()})) {
-      k.utc_times_.push_back(to_utc(sj.stop_times_[dep].dep_) +
+      k.utc_times_.push_back(to_utc(day, sj.stop_times_[dep].dep_) +
                              first_dep_day_offset);
-      k.utc_times_.push_back(to_utc(sj.stop_times_[arr].arr_) +
+      k.utc_times_.push_back(to_utc(day, sj.stop_times_[arr].arr_) +
                              first_dep_day_offset);
     }
 
