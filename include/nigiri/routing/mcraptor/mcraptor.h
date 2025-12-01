@@ -87,6 +87,7 @@ struct mcraptor {
       return std::any_of(labels_.begin(),
                          labels_.end(),
                          [&](std::pair<unsigned, mcraptor_label> pair) {
+                           //TODO kommt des jemals vor, dass pair.first <= k ???
                            return pair.first <= k &&
                                   pair.second.dominates(other_label);
                          });

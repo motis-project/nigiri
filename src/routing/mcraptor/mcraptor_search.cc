@@ -4,7 +4,6 @@
 #include <utility>
 #include "date/date.h"
 #include "utl/to_vec.h"
-#include "../nigiri/include/nigiri/routing/query.h"
 #include "nigiri/routing/mcraptor/mcraptor.h"
 
 
