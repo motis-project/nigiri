@@ -47,36 +47,6 @@ namespace nigiri::loader::gtfs {
 constexpr auto const required_files = {kAgencyFile, kStopFile, kRoutesFile,
                                        kTripsFile, kStopTimesFile};
 
-cista::hash_t hash(dir const& d) {
-  if (d.type() == dir_type::kZip) {
-    return d.hash();
-  }
-
-  auto h = std::uint64_t{0U};
-  auto const hash_file = [&](fs::path const& p) {
-    if (!d.exists(p)) {
-      h = wyhash64(h, _wyp[0]);
-    } else {
-      auto const f = d.get_file(p);
-      auto const data = f.data();
-      h = wyhash(data.data(), data.size(), h, _wyp);
-    }
-  };
-
-  hash_file(kAgencyFile);
-  hash_file(kStopFile);
-  hash_file(kRoutesFile);
-  hash_file(kTripsFile);
-  hash_file(kStopTimesFile);
-  hash_file(kCalenderFile);
-  hash_file(kCalendarDatesFile);
-  hash_file(kTransfersFile);
-  hash_file(kFeedInfoFile);
-  hash_file(kFrequenciesFile);
-
-  return h;
-}
-
 bool applicable(dir const& d) {
   for (auto const& file_name : required_files) {
     if (!d.exists(file_name)) {

@@ -24,7 +24,6 @@
 #include "nigiri/loader/gtfs/shape_prepare.h"
 #include "nigiri/loader/gtfs/trip.h"
 #include "nigiri/loader/loader_interface.h"
-#include "nigiri/logging.h"
 #include "nigiri/shapes_storage.h"
 #include "nigiri/timetable.h"
 
@@ -107,7 +106,7 @@ std::uint16_t get_route_type(std::string_view transport_mode,
       switch (cista::hash(rail_sub_mode)) {
         case cista::hash("highSpeedRail"): return 101;
         case cista::hash("rackAndPinionRailway"): return 1400;  // ?
-        case cista::hash("regionalRail"): return 113;
+        case cista::hash("regionalRail"): return 106;
         case cista::hash("interregionalRail"): return 2;
         case cista::hash("crossCountryRail"):
         case cista::hash("longDistance"):
@@ -190,7 +189,6 @@ duration_t parse_time(utl::cstr s, utl::cstr day_offset) {
 // AUTHORITY
 // ---------
 struct authority {
-  provider_idx_t provider_{provider_idx_t::invalid()};
   std::string_view name_;
   std::string_view short_name_;
 };
@@ -199,6 +197,7 @@ using authority_map_t = hash_map<std::string_view, std::unique_ptr<authority>>;
 
 authority_map_t get_authorities(pugi::xml_document const& doc) {
   auto authorities = authority_map_t{};
+  authorities.emplace("", uniq(authority{}));
   for (auto const s :
        doc.select_nodes("//ResourceFrame/organisations/Authority")) {
     auto const n = s.node();
@@ -209,6 +208,53 @@ authority_map_t get_authorities(pugi::xml_document const& doc) {
   return authorities;
 }
 
+// =========
+// OPERATORS
+// ---------
+struct operätor {
+  std::string_view code_;
+  std::string_view name_;
+  provider_idx_t provider_{provider_idx_t::invalid()};
+};
+
+using operator_map_t = hash_map<std::string_view, std::unique_ptr<operätor>>;
+
+operator_map_t get_operators(pugi::xml_document const& doc) {
+  auto operators = operator_map_t{};
+  operators.emplace("", uniq(operätor{}));
+  for (auto const s :
+       doc.select_nodes("//ResourceFrame/organisations/Operator")) {
+    auto const n = s.node();
+    operators.emplace(id(n), uniq(operätor{.code_ = val(n, "PublicCode"),
+                                           .name_ = val(n, "Name")}));
+  }
+  return operators;
+}
+
+// =============
+// VEHICLE TYPES
+// -------------
+struct vehicle_type {
+  std::string_view name_;
+  std::string_view short_name_;
+};
+
+using vehicle_type_map_t =
+    hash_map<std::string_view, std::unique_ptr<vehicle_type>>;
+
+vehicle_type_map_t get_vehicle_types(pugi::xml_document const& doc) {
+  auto vehicle_types = vehicle_type_map_t{};
+  vehicle_types.emplace("", uniq(vehicle_type{}));
+  for (auto const v :
+       doc.select_nodes("//ResourceFrame/vehicleTypes/VehicleType")) {
+    auto const n = v.node();
+    vehicle_types.emplace(
+        id(n), uniq(vehicle_type{.name_ = val(n, "Name"),
+                                 .short_name_ = val(n, "ShortName")}));
+  }
+  return vehicle_types;
+}
+
 // =====
 // LINES
 // -----
@@ -217,19 +263,24 @@ struct line {
   std::string_view id_;
   std::string_view name_;
   authority const* authority_;
+  operätor const* operator_;
 };
 using line_map_t = hash_map<std::string_view, std::unique_ptr<line>>;
 line_map_t get_lines(pugi::xml_document const& doc,
-                     authority_map_t const& authorities) {
+                     authority_map_t const& authorities,
+                     operator_map_t const& operators) {
   auto lines = line_map_t{};
   for (auto const l : doc.select_nodes("//ServiceFrame/lines/Line")) {
     auto const n = l.node();
-    auto const it = authorities.find(ref(n, "AuthorityRef"));
-    lines.emplace(id(n), uniq(line{.id_ = id(n),
-                                   .name_ = val(n, "Name"),
-                                   .authority_ = it == end(authorities)
-                                                     ? nullptr
-                                                     : it->second.get()}));
+    lines.emplace(
+        id(n),
+        uniq(line{
+            .id_ = id(n),
+            .name_ = val(n, "Name"),
+            .authority_ = authorities.at(ref(n, "AuthorityRef")).get(),
+            .operator_ =
+                operators.at(ref(n.child("additionalOperators"), "OperatorRef"))
+                    .get()}));
   }
   return lines;
 }
@@ -272,6 +323,7 @@ using stop_map_t = hash_map<std::string_view, std::unique_ptr<stop>>;
 
 stop_map_t get_stops(pugi::xml_document const& doc) {
   auto stops = stop_map_t{};
+  auto parents = hash_map<stop*, std::string_view>{};
   for (auto const s : doc.select_nodes("//SiteFrame/stopPlaces/StopPlace | "
                                        "//SiteFrame/stopPlaces/Quay")) {
     auto const n = s.node();
@@ -293,17 +345,26 @@ stop_map_t get_stops(pugi::xml_document const& doc) {
                                .pos_ = get_pos(n.child("Centroid"))}))
             .first->second.get();
 
+    auto const parent_ref = ref(n, "ParentSiteRef");
+    if (!parent_ref.empty()) {
+      parents.emplace(parent, parent_ref);
+    }
+
     for (auto const q : n.select_nodes("quays/Quay")) {
       auto const qn = q.node();
       auto const quay_id = id(qn);
       auto const global_quay_id = get_global_id(qn);
+      auto const pos = get_pos(qn.child("Centroid"));
       stops.emplace(
           quay_id,
           uniq(stop{.parent_ = parent,
                     .id_ = !global_quay_id.empty() ? global_quay_id : quay_id,
                     .name_ = val(qn, "Name"),
-                    .pos_ = get_pos(qn.child("Centroid"))}));
+                    .pos_ = pos == geo::latlng{} ? parent->pos_ : pos}));
     }
+  }
+  for (auto& [stop, parent_ref] : parents) {
+    stop->parent_ = stops.at(parent_ref).get();
   }
   return stops;
 }
@@ -366,7 +427,7 @@ operating_period_map_t get_operating_periods(
       auto const tt_day_idx = (day - interval.from_).count();
       if (tt_day_idx >= 0 && tt_day_idx < static_cast<int>(bf.size())) {
         bf.set(static_cast<unsigned>(tt_day_idx),
-               bits.at(static_cast<unsigned>((day - from).count())));
+               bits.at(static_cast<unsigned>((day - from).count())) != '0');
       }
     }
 
@@ -481,6 +542,7 @@ struct service_journey {
   std::string_view id_;
   std::uint32_t trip_nr_;
   std::uint16_t route_type_;
+  vehicle_type const* vehicle_type_{};
   journey_pattern const* journey_pattern_{};
   bitfield const* traffic_days_;
   std::vector<stop_times> stop_times_{};
@@ -500,6 +562,7 @@ gtfs::stop_seq_t stop_seq(service_journey const& sj) {
 std::vector<service_journey> get_service_journeys(
     pugi::xml_document const& doc,
     day_type_assignment_map_t const& day_type_assignments,
+    vehicle_type_map_t const& vehicle_types,
     journey_pattern_map_t const& journey_patterns) {
   auto service_journeys = std::vector<service_journey>{};
   for (auto const s :
@@ -514,6 +577,7 @@ std::vector<service_journey> get_service_journeys(
         .route_type_ =
             get_route_type(val(n, "TransportMode"),
                            val(n.child("TransportSubmode"), "RailSubmode")),
+        .vehicle_type_ = vehicle_types.at(ref(n, "VehicleTypeRef")).get(),
         .journey_pattern_ =
             journey_patterns.at(ref(n, "ServiceJourneyPatternRef")).get(),
         .traffic_days_ = day_type_assignments.at(
@@ -614,31 +678,6 @@ bool is_xml_file(fs::path const& p) {
   return p.extension() == ".xml" || p.extension() == ".XML";
 }
 
-cista::hash_t hash(dir const& d) {
-  if (d.type() == dir_type::kZip) {
-    return d.hash();
-  }
-
-  auto h = std::uint64_t{0U};
-  // auto const hash_file = [&](fs::path const& p) {
-  //   if (!d.exists(p)) {
-  //     h = wyhash64(h, _wyp[0]);
-  //   } else {
-  //     auto const f = d.get_file(p);
-  //     auto const data = f.data();
-  //     h = wyhash(data.data(), data.size(), h, _wyp);
-  //   }
-  // };
-  //
-  // for (auto const& f : d.list_files("/")) {
-  //   if (is_xml_file(f)) {
-  //     hash_file(f);
-  //   }
-  // }
-
-  return h;
-}
-
 bool applicable(dir const& d) {
   return utl::any_of(d.list_files("."), is_xml_file);
 }
@@ -664,19 +703,18 @@ void load_timetable(loader_config const& config,
       | utl::remove_if([&](fs::path const& f) { return !is_xml_file(f); })  //
       | utl::vec();
 
-  auto const pt = utl::get_active_progress_tracker();
-  pt->status("Parse Files").out_bounds(0.F, 95.F).in_high(xml_files.size());
-
   struct intermediate {
     file f_;
     pugi::xml_document doc_;
     date::time_zone const* tz_;
     stop_map_t stops_;
+    vehicle_type_map_t vehicle_types_;
     journey_pattern_map_t journey_patterns_;
     operating_period_map_t operating_periods_;
     destination_display_map_t destination_displays_;
     line_map_t lines_;
     authority_map_t authorities_;
+    operator_map_t operators_;
     std::vector<service_journey> service_journeys_;
   };
 
@@ -716,6 +754,9 @@ void load_timetable(loader_config const& config,
     }
   };
 
+  auto const pt = utl::get_active_progress_tracker();
+  pt->status("Parse Files").out_bounds(0.F, 94.F).in_high(xml_files.size());
+
   utl::parallel_for(
       xml_files,
       [&](fs::path const& path) {
@@ -740,17 +781,19 @@ void load_timetable(loader_config const& config,
                   .node()
                   .child_value());
           im.authorities_ = get_authorities(doc);
+          im.operators_ = get_operators(doc);
           im.stops_ = get_stops(doc);
-          im.lines_ = get_lines(doc, im.authorities_);
+          im.lines_ = get_lines(doc, im.authorities_, im.operators_);
           im.destination_displays_ = get_destination_displays(doc);
           im.journey_patterns_ = get_journey_patterns(
               doc, get_stop_assignments(doc, im.stops_),
               im.destination_displays_, im.lines_, im.stops_);
           im.operating_periods_ =
               get_operating_periods(doc, tt.internal_interval_days());
+          im.vehicle_types_ = get_vehicle_types(doc);
           im.service_journeys_ = get_service_journeys(
               doc, get_day_type_assignments(doc, im.operating_periods_),
-              im.journey_patterns_);
+              im.vehicle_types_, im.journey_patterns_);
           im.f_ = std::move(f);
           im.doc_ = std::move(doc);
         } catch (std::exception const& e) {
@@ -765,10 +808,10 @@ void load_timetable(loader_config const& config,
               tt.register_source_file((d.path() / path).generic_string());
           auto const tz = gtfs::get_tz_idx(tt, tz_map, im.tz_->name());
 
-          for (auto& [id, authority] : im.authorities_) {
-            auto a = agency{src, id, authority->name_, "", tz, tt, tz_map};
+          for (auto& [id, o] : im.operators_) {
+            auto a = agency{src, id, o->name_, "", tz, tt, tz_map};
             if (process_agency(r, a)) {
-              authority->provider_ = register_agency(tt, a);
+              o->provider_ = register_agency(tt, a);
             }
           }
 
@@ -818,7 +861,7 @@ void load_timetable(loader_config const& config,
 
           for (auto& sj : im.service_journeys_) {
             // Check if provider got filtered by script.
-            if (sj.journey_pattern_->line_->authority_->provider_ ==
+            if (sj.journey_pattern_->line_->operator_->provider_ ==
                 provider_idx_t::invalid()) {
               continue;
             }
@@ -836,7 +879,7 @@ void load_timetable(loader_config const& config,
                                 "",
                                 route_type_t{sj.route_type_},
                                 route_color{},
-                                line.authority_->provider_};
+                                line.operator_->provider_};
               route_id = line.routes_
                              .emplace_hint(route_it, sj.route_type_,
                                            process_route(r, rout)
@@ -858,7 +901,9 @@ void load_timetable(loader_config const& config,
                 tt.trip_direction(sj.journey_pattern_->stop_points_.front()
                                       .destination_display_->trip_direction_),
                 short_name,
-                short_name,
+                line.name_,
+                sj.vehicle_type_->name_,
+                sj.vehicle_type_->short_name_,
                 sj.journey_pattern_->direction_,
                 route_id,
                 tt};
@@ -879,7 +924,6 @@ void load_timetable(loader_config const& config,
                                         shape_offset_idx_t::invalid()});
             }
 
-            auto const c = gtfs::to_clasz(sj.route_type_);
             auto const stops = stop_seq(sj);
             auto const all_destinations_equal =
                 utl::all_of(sj.journey_pattern_->stop_points_,
@@ -901,14 +945,17 @@ void load_timetable(loader_config const& config,
             }
             for (auto const& [k, traffic_days] :
                  expand_local_to_utc(tt, im.tz_, sj)) {
-              add_expanded_trip(c, stops,
-                                {.first_dep_offset_ = k.first_dep_day_offset_,
-                                 .tz_offset_ = k.tz_offset_,
-                                 .utc_times_ = k.utc_times_,
-                                 .utc_traffic_days_ = traffic_days,
-                                 .trip_ = trip_idx,
-                                 .trip_direction_ = trip_direction,
-                                 .route_id_ = route_id});
+              add_expanded_trip(
+                  gtfs::to_clasz(
+                      to_idx(tt.route_ids_[src].route_id_type_[route_id])),
+                  stops,
+                  {.first_dep_offset_ = k.first_dep_day_offset_,
+                   .tz_offset_ = k.tz_offset_,
+                   .utc_times_ = k.utc_times_,
+                   .utc_traffic_days_ = traffic_days,
+                   .trip_ = trip_idx,
+                   .trip_direction_ = trip_direction,
+                   .route_id_ = route_id});
             }
           }
         }
@@ -919,7 +966,7 @@ void load_timetable(loader_config const& config,
     auto const timer = scoped_timer{"loader.gtfs.write_trips"};
 
     pt->status("Write Trips")
-        .out_bounds(85.F, 97.F)
+        .out_bounds(94.F, 96.F)
         .in_high(route_services.size());
 
     auto const attributes = basic_string<attribute_combination_idx_t>{};
@@ -1017,6 +1064,9 @@ void load_timetable(loader_config const& config,
   auto metas = std::vector<std::vector<footpath>>{};
   metas.resize(new_locations.size());
 
+  pt->status("Stop Neighbors")
+      .out_bounds(96.F, 98.F)
+      .in_high(new_locations.size());
   utl::parallel_for_run(
       new_locations.size(),
       [&](std::size_t const new_l) {

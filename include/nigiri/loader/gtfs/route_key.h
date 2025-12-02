@@ -28,10 +28,10 @@ struct route_key_hash {
     auto h = cista::BASE_HASH;
     h = cista::hash_combine(h, cista::hashing<stop_seq_t>{}(seq));
     h = cista::hash_combine(h, c);
-    if (bikes_allowed != nullptr) {
+    if (bikes_allowed != nullptr && !bikes_allowed->empty()) {
       h = cista::hash_combine(h, cista::hashing<bitvec>{}(*bikes_allowed));
     }
-    if (cars_allowed != nullptr) {
+    if (cars_allowed != nullptr && !cars_allowed->empty()) {
       h = cista::hash_combine(h, cista::hashing<bitvec>{}(*cars_allowed));
     }
     return h;
@@ -56,6 +56,17 @@ struct route_key_equals {
 
   cista::hash_t operator()(route_key_ptr_t const& a,
                            route_key_t const& b) const {
+    assert((a.bikes_allowed_ == nullptr) == (a.cars_allowed_ == nullptr));
+    if ((a.bikes_allowed_ == nullptr || a.bikes_allowed_->empty()) !=
+            b.bikes_allowed_.empty() ||
+        (a.cars_allowed_ == nullptr || a.bikes_allowed_->empty()) !=
+            b.cars_allowed_.empty()) {
+      return false;
+    }
+    if (a.bikes_allowed_ == nullptr) {
+      return std::tie(a.clasz_, *a.stop_seq_) ==
+             std::tie(b.clasz_, b.stop_seq_);
+    }
     return std::tie(a.clasz_, *a.stop_seq_, *a.bikes_allowed_,
                     *a.cars_allowed_) ==
            std::tie(b.clasz_, b.stop_seq_, b.bikes_allowed_, b.cars_allowed_);

@@ -20,10 +20,6 @@ void netex_loader::load(
       c, src, d, tt, global_bitfield_indices, assistance, shapes_data);
 }
 
-cista::hash_t netex_loader::hash(dir const& d) const {
-  return ::nigiri::loader::netex::hash(d);
-}
-
 std::string_view netex_loader::name() const { return "netex"; }
 
 }  // namespace nigiri::loader::netex
