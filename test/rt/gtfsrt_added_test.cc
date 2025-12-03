@@ -833,8 +833,6 @@ TEST(rt, gtfs_rt_added) {
         unixtime_t{date::sys_days{2023_y / August / 10} + 9_hours + 15_minutes},
         fr[0].time(event_type::kDep));
     EXPECT_EQ(duration_t{0}, fr[0].delay(event_type::kDep));
-    EXPECT_EQ("", fr[0].line(event_type::kDep));
-    EXPECT_EQ("", fr[0].scheduled_line(event_type::kDep));
     EXPECT_EQ("B", fr[0].direction(event_type::kDep));
     EXPECT_EQ(nigiri::clasz::kBus, fr[0].get_clasz(event_type::kDep));
     EXPECT_EQ(nigiri::clasz::kOther,

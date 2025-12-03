@@ -47,36 +47,6 @@ namespace nigiri::loader::gtfs {
 constexpr auto const required_files = {kAgencyFile, kStopFile, kRoutesFile,
                                        kTripsFile, kStopTimesFile};
 
-cista::hash_t hash(dir const& d) {
-  if (d.type() == dir_type::kZip) {
-    return d.hash();
-  }
-
-  auto h = std::uint64_t{0U};
-  auto const hash_file = [&](fs::path const& p) {
-    if (!d.exists(p)) {
-      h = wyhash64(h, _wyp[0]);
-    } else {
-      auto const f = d.get_file(p);
-      auto const data = f.data();
-      h = wyhash(data.data(), data.size(), h, _wyp);
-    }
-  };
-
-  hash_file(kAgencyFile);
-  hash_file(kStopFile);
-  hash_file(kRoutesFile);
-  hash_file(kTripsFile);
-  hash_file(kStopTimesFile);
-  hash_file(kCalenderFile);
-  hash_file(kCalendarDatesFile);
-  hash_file(kTransfersFile);
-  hash_file(kFeedInfoFile);
-  hash_file(kFrequenciesFile);
-
-  return h;
-}
-
 bool applicable(dir const& d) {
   for (auto const& file_name : required_files) {
     if (!d.exists(file_name)) {
@@ -389,7 +359,6 @@ void load_timetable(loader_config const& config,
     auto lines = hash_map<std::string, trip_line_idx_t>{};
     auto section_providers = basic_string<provider_idx_t>{};
     auto section_directions = basic_string<trip_direction_idx_t>{};
-    auto section_lines = basic_string<trip_line_idx_t>{};
     auto route_colors = basic_string<route_color>{};
     auto external_trip_ids = basic_string<merged_trips_idx_t>{};
     auto location_routes = mutable_fws_multimap<location_idx_t, route_idx_t>{};
@@ -409,7 +378,6 @@ void load_timetable(loader_config const& config,
           external_trip_ids.clear();
           section_directions.clear();
           section_providers.clear();
-          section_lines.clear();
           route_colors.clear();
 
           auto prev_end = std::uint16_t{0U};
@@ -423,13 +391,6 @@ void load_timetable(loader_config const& config,
                 transport_range_t{tt.next_transport_idx(), {prev_end, end}});
             prev_end = end - 1;
 
-            auto const line =
-                utl::get_or_create(lines, trp.route_->short_name_, [&]() {
-                  auto const idx = trip_line_idx_t{tt.trip_lines_.size()};
-                  tt.trip_lines_.emplace_back(trp.route_->short_name_);
-                  return idx;
-                });
-
             auto const merged_trip = tt.register_merged_trip({trp.trip_idx_});
             if (s.trips_.size() == 1U) {
               external_trip_ids.push_back(merged_trip);
@@ -440,7 +401,6 @@ void load_timetable(loader_config const& config,
                                           std::begin(trp.stop_headsigns_),
                                           std::end(trp.stop_headsigns_));
               }
-              section_lines.push_back(line);
               route_colors.push_back(
                   {trp.route_->color_, trp.route_->text_color_});
               section_providers.push_back(trp.route_->agency_);
@@ -452,7 +412,6 @@ void load_timetable(loader_config const& config,
                     trp.stop_headsigns_.empty()
                         ? trp.headsign_
                         : trp.stop_headsigns_.at(section));
-                section_lines.push_back(line);
                 route_colors.push_back(
                     {trp.route_->color_, trp.route_->text_color_});
                 section_providers.push_back(trp.route_->agency_);
@@ -471,7 +430,6 @@ void load_timetable(loader_config const& config,
               .section_attributes_ = attributes,
               .section_providers_ = section_providers,
               .section_directions_ = section_directions,
-              .section_lines_ = section_lines,
               .route_colors_ = route_colors});
         }
 

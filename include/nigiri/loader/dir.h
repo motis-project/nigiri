@@ -14,6 +14,9 @@ struct file {
   struct content {
     virtual ~content();
     virtual std::string_view get() const = 0;
+    virtual void* get_mutable() = 0;
+    virtual std::size_t size() const = 0;
+    virtual bool is_mutable() const = 0;
   };
 
   bool has_value() const noexcept { return content_ != nullptr; }
@@ -21,6 +24,9 @@ struct file {
     return content_ == nullptr ? "" : content_->get();
   }
   char const* filename() const { return name_.c_str(); }
+  std::size_t size() const { return content_->size(); }
+  bool is_mutable() const { return content_->is_mutable(); }
+  void* get_mutable() { return content_->get_mutable(); }
 
   std::string name_;
   std::unique_ptr<content> content_;

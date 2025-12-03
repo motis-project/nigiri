@@ -319,6 +319,8 @@ trip_data read_trips(source_idx_t const src,
                                 t.trip_headsign_->view(),
                                 t.trip_short_name_->view(),
                                 display_name,
+                                "",
+                                "",
                                 (t.direction_id_->view() == "1")
                                     ? direction_id_t{1U}
                                     : direction_id_t{0U},

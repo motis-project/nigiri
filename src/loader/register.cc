@@ -207,6 +207,8 @@ trip::trip(source_idx_t src,
            std::string_view headsign,
            std::string_view short_name,
            std::string_view display_name,
+           std::string_view vehicle_type_name,
+           std::string_view vehicle_type_short_name,
            direction_id_t direction,
            route_id_idx_t route,
            timetable& tt)
@@ -215,6 +217,8 @@ trip::trip(source_idx_t src,
       headsign_{headsign, cista::raw::generic_string::non_owning},
       short_name_{short_name, cista::raw::generic_string::non_owning},
       display_name_{display_name, cista::raw::generic_string::non_owning},
+      vehicle_type_name_{vehicle_type_name},
+      vehicle_type_short_name_{vehicle_type_short_name},
       direction_{direction},
       route_{route},
       tt_{&tt} {}
@@ -226,6 +230,14 @@ void trip::set_headsign(std::string_view x) { headsign_.set_owning(x); }
 
 std::string_view trip::get_short_name() const { return short_name_; }
 void trip::set_short_name(std::string_view x) { short_name_.set_owning(x); }
+
+std::string_view trip::get_vehicle_type_name() const {
+  return vehicle_type_name_;
+}
+
+std::string_view trip::get_vehicle_type_short_name() const {
+  return vehicle_type_short_name_;
+}
 
 std::string_view trip::get_display_name() const { return display_name_; }
 void trip::set_display_name(std::string_view x) { display_name_.set_owning(x); }
@@ -317,6 +329,8 @@ script_runner::script_runner(std::string const& user_script)
       "set_headsign", &trip::set_headsign,  //
       "get_short_name", &trip::get_short_name,  //
       "set_short_name", &trip::set_short_name,  //
+      "get_vehicle_type_name", &trip::get_vehicle_type_name,  //
+      "get_vehicle_type_short_name", &trip::get_vehicle_type_short_name,  //
       "get_display_name", &trip::get_display_name,  //
       "set_display_name", &trip::set_display_name,  //
       "get_route", &trip::get_route  //
@@ -418,6 +432,7 @@ location_idx_t register_location(timetable& tt, location const& l) {
     loc.transfer_time_.emplace_back(l.transfer_time_);
     loc.parents_.emplace_back(l.parent_);
   } else {
+    assert(false && "duplicate station");
     log(log_lvl::error, "timetable.register_location", "duplicate station {}",
         l.id_);
   }

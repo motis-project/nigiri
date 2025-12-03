@@ -373,15 +373,9 @@ void updater::match_run(std::string_view vdv_run_id,
   }
 
   [[maybe_unused]] auto const candidate_str = [&](candidate const& c) {
-    return fmt::format(
-        "[line: {}, score: {}, length: {}], dbg: {}",
-        tt_.trip_lines_
-            [tt_.transport_section_lines_[c.r_.t_.t_idx_].size() == 1
-                 ? tt_.transport_section_lines_[c.r_.t_.t_idx_].front()
-                 : tt_.transport_section_lines_[c.r_.t_.t_idx_]
-                                               [c.r_.stop_range_.from_]]
-                .view(),
-        c.score_, c.total_length_, tt_.dbg(c.r_.t_.t_idx_));
+    return fmt::format("[line: {}, score: {}, length: {}], dbg: {}",
+                       tt_.transport_name(c.r_.t_.t_idx_), c.score_,
+                       c.total_length_, tt_.dbg(c.r_.t_.t_idx_));
   };
 
   if (matches_[vdv_run_id].runs_.empty()) {

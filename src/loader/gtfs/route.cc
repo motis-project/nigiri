@@ -27,7 +27,7 @@ clasz to_clasz(std::uint16_t const route_type) {
     case 4 /* Ferry. Used for short- and long-distance boat service. */:
       return clasz::kShip;
     case 5 /* Cable tram. Used for street-level rail cars where the cable runs beneath the vehicle, e.g., cable car in San Francisco. */ :
-      return clasz::kCableCar;
+      return clasz::kFunicular;
     case 6 /* Aerial lift, suspended cable car (e.g., gondola lift, aerial tramway). Cable transport where cabins, cars, gondolas or open chairs are suspended by means of one or more cables. */ :
       return clasz::kAerialLift;
     case 7 /* Funicular. Any rail system designed for steep inclines. */:
@@ -52,7 +52,8 @@ clasz to_clasz(std::uint16_t const route_type) {
     case 113 /* All Rail Services */: return clasz::kRegional;
     case 114 /* Cross-Country Rail Service */: return clasz::kLongDistance;
     case 115 /* Vehicle Transport Rail Service */:
-    case 116 /* Rack and Pinion Railway */:
+      return clasz::kRegional;  // TODO(felix) car allowed?
+    case 116 /* Rack and Pinion Railway */: return clasz::kFunicular;
     case 117 /* Additional Rail Service */: return clasz::kRegional;
     case 200 /* Coach Service */:
     case 201 /* International Coach Service */:
@@ -84,8 +85,8 @@ clasz to_clasz(std::uint16_t const route_type) {
     case 711 /* Shuttle Bus */:
     case 712 /* School Bus */:
     case 713 /* School and Public Service Bus */:
-    case 714 /* Rail Replacement Bus Service */:
-    case 715 /* Demand and Response Bus Service */:
+    case 714 /* Rail Replacement Bus Service */: return clasz::kBus;
+    case 715 /* Demand and Response Bus Service */: return clasz::kODM;
     case 716 /* All Bus Services */:
     case 800 /* Trolleybus Service */: return clasz::kBus;
     case 900 /* Tram Service */:
@@ -114,7 +115,7 @@ clasz to_clasz(std::uint16_t const route_type) {
     case 1504 /* Bike Taxi Service */:
     case 1505 /* Licensed Taxi Service */:
     case 1506 /* Private Hire Service Vehicle */:
-    case 1507 /* All Taxi Services */:
+    case 1507 /* All Taxi Services */: return clasz::kODM;
     case 1700 /* Miscellaneous Service */:
     case 1702 /* Horse-drawn Carriage */: return clasz::kOther;
   }

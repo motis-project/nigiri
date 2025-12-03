@@ -52,8 +52,6 @@ struct run_stop {
   timezone_idx_t get_tz(event_type) const;
   std::optional<std::string> get_tz_name(event_type) const;
 
-  std::string_view line(event_type) const;
-  std::string_view scheduled_line(event_type) const;
   std::string_view direction(event_type) const;
 
   clasz get_clasz(event_type) const;

@@ -22,13 +22,6 @@ void load_timetable(loader_config const&,
                     source_idx_t,
                     dir const&,
                     timetable&,
-                    assistance_times* = nullptr,
-                    shapes_storage* = nullptr);
-
-void load_timetable(loader_config const&,
-                    source_idx_t,
-                    dir const&,
-                    timetable&,
                     hash_map<bitfield, bitfield_idx_t>&,
                     assistance_times* = nullptr,
                     shapes_storage* = nullptr);

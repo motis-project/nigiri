@@ -146,6 +146,8 @@ struct trip {
        std::string_view headsign,
        std::string_view short_name,
        std::string_view display_name,
+       std::string_view vehicle_type_name,
+       std::string_view vehicle_type_short_name,
        direction_id_t,
        route_id_idx_t,
        timetable&);
@@ -158,6 +160,9 @@ struct trip {
   std::string_view get_short_name() const;
   void set_short_name(std::string_view);
 
+  std::string_view get_vehicle_type_name() const;
+  std::string_view get_vehicle_type_short_name() const;
+
   std::string_view get_display_name() const;
   void set_display_name(std::string_view);
 
@@ -168,6 +173,8 @@ struct trip {
   cista::raw::generic_string headsign_;
   cista::raw::generic_string short_name_;
   cista::raw::generic_string display_name_;
+  std::string_view vehicle_type_name_;
+  std::string_view vehicle_type_short_name_;
   direction_id_t direction_;
   route_id_idx_t route_;
 
