@@ -1,4 +1,5 @@
 #include "nigiri/routing/ch_query.h"
+#include "utl/helpers/algorithm.h"
 #include "utl/insert_sorted.h"
 #include "utl/pairwise.h"
 
@@ -11,14 +12,44 @@
 #include "nigiri/timetable.h"
 #include "nigiri/types.h"
 #include <algorithm>
+#include <limits>
 #include <vector>
 
 namespace nigiri::routing {
+
+static constexpr auto const kChMaxTravelTime = kMaxTravelTime * 5;  // TODO
 
 void obtain_relevant_stops(timetable const& tt,
                            routing::query const& q,
                            profile_idx_t const prf_idx,
                            bitvec& relevant_stops) {
+
+  std::cout << "max max: "
+            << utl::max_element(tt.ch_graph_edges_[prf_idx],
+                                [](auto const& a, auto const& b) {
+                                  return a.max_dur_ < b.max_dur_;
+                                })
+                   ->max_dur_
+            << " max min: "
+            << utl::max_element(tt.ch_graph_edges_[prf_idx],
+                                [](auto const& a, auto const& b) {
+                                  return a.min_dur_ < b.min_dur_;
+                                })
+                   ->min_dur_
+            << std::endl;
+  std::cout << "min max: "
+            << utl::max_element(tt.ch_graph_edges_[prf_idx],
+                                [](auto const& a, auto const& b) {
+                                  return a.max_dur_ > b.max_dur_;
+                                })
+                   ->max_dur_
+            << " min min: "
+            << utl::max_element(tt.ch_graph_edges_[prf_idx],
+                                [](auto const& a, auto const& b) {
+                                  return a.min_dur_ > b.min_dur_;
+                                })
+                   ->min_dur_
+            << std::endl;
 
   if (tt.fwd_search_ch_graph_[prf_idx].size() != tt.n_locations()) {
     std::cout << "no ch for profile, skipping" << std::endl;
@@ -31,18 +62,21 @@ void obtain_relevant_stops(timetable const& tt,
   std::array<vector_map<location_idx_t, ch_dist>, 2> dists;
   dists[0].resize(tt.n_locations());
   dists[1].resize(tt.n_locations());
-  auto pq = dial<ch_label, ch_get_bucket>{kMaxTravelTime.count()};
+
+  auto pq = dial<ch_label, ch_get_bucket>{kChMaxTravelTime.count()};
 
   auto const init = [&](std::vector<routing::offset> offsets,
                         std::uint8_t dir) {
     for (auto const& start : offsets) {  // TODO correct offsets
       for_each_meta(
-          tt, q.dest_match_mode_, start.target_, [&](location_idx_t const x) {
+          tt, dir == kForward ? q.start_match_mode_ : q.dest_match_mode_,
+          start.target_, [&](location_idx_t const x) {
             auto const d =
                 static_cast<ch_dist::dist_t>(start.duration().count());
             dists[dir].at(x).d_[kMax] = d;
             dists[dir].at(x).d_[kMin] = d;
             pq.push(ch_label{x, {d, d}, dir});
+            std::cout << "input" <<  x << " " << d << " " << (dir == kForward ? "fw" :"bw") << std::endl;
           });
     }
   };
@@ -63,6 +97,9 @@ void obtain_relevant_stops(timetable const& tt,
         dists[l_dir].at(l.l_).d_[kMin] < l.d_[kMin]) {
       continue;
     }
+    std::cout << "steop " << l.l_ << " " << l.d_[kMax] << " "
+              << dists[other_dir][l.l_].d_[kMax] << " " << other_dir
+              << std::endl;
     if (dists[other_dir][l.l_].d_[kMax] !=
         std::numeric_limits<ch_dist::dist_t>::max()) {
       if (l.d_[kMax] + dists[other_dir][l.l_].d_[kMax] < min_max_dist) {
@@ -72,6 +109,7 @@ void obtain_relevant_stops(timetable const& tt,
         meetpoints.emplace_back(l.l_);
       }
     }
+    std::cout << "mmd" << min_max_dist << std::endl;
     if (l.d_[mode] > min_max_dist) {
       if (mode == kMax) {
         auto buffer = std::vector<ch_label>{};
@@ -86,7 +124,8 @@ void obtain_relevant_stops(timetable const& tt,
         for (auto const& b : buffer) {
           pq.push(b);
         }
-        std::cout << "switching to min mode " << counter << std::endl;
+        std::cout << "switching to min mode " << counter << " " << min_max_dist
+                  << std::endl;
         mode = kMin;
         continue;
       } else {
@@ -106,10 +145,11 @@ void obtain_relevant_stops(timetable const& tt,
       }
       auto const new_max_dist = l.d_[kMax] + e.max_dur_.count();
       auto const new_min_dist = l.d_[kMin] + e.min_dur_.count();
+      //std::cout << "tar" << edge_target << " " << new_max_dist << " ld " << l.d_[kMax] << " em " << e.max_dur_.count() << " " << new_min_dist << std::endl;
       if ((new_max_dist < dists[l_dir].at(edge_target).d_[kMax] ||
            new_min_dist < dists[l_dir].at(edge_target).d_[kMin]) &&
-          new_max_dist < kMaxTravelTime.count() &&
-          new_min_dist < kMaxTravelTime.count()) {
+          new_max_dist < kChMaxTravelTime.count() &&
+          new_min_dist < kChMaxTravelTime.count()) {
         dists[l_dir][edge_target].d_[kMax] =
             std::min(static_cast<ch_dist::dist_t>(new_max_dist),
                      dists[l_dir][edge_target].d_[kMax]);
@@ -120,16 +160,17 @@ void obtain_relevant_stops(timetable const& tt,
                          {static_cast<ch_dist::dist_t>(new_max_dist),
                           static_cast<ch_dist::dist_t>(new_min_dist)},
                          static_cast<std::uint8_t>(l_dir)});
-      } else if (new_max_dist >= kMaxTravelTime.count() ||
-                 new_min_dist >= kMaxTravelTime.count()) {
-        std::cout << "weird" << new_max_dist << " " << new_min_dist
-                  << std::endl;
+      } else if (new_max_dist >= kChMaxTravelTime.count() ||
+                 new_min_dist >= kChMaxTravelTime.count()) {
+        std::cout << "extra weird" << new_max_dist << " " << new_min_dist << " "
+                  << dists[l_dir][edge_target].d_[kMax] << " "
+                  << dists[l_dir][edge_target].d_[kMin] << std::endl;
       }
     }
   }
   pq.clear();
   auto const invert = [&](ch_dist::dist_t d) {
-    return static_cast<ch_dist::dist_t>(kMaxTravelTime.count() - d);
+    return static_cast<ch_dist::dist_t>(kChMaxTravelTime.count() - d);
   };
   std::cout << "downsearch " << counter << std::endl;
   for (auto const m : meetpoints) {
@@ -172,7 +213,7 @@ void obtain_relevant_stops(timetable const& tt,
         continue;
       }
       auto const min_dist_via_prev = prev_label.d_[kMin] + e.min_dur_.count();
-      if (min_dist_via_prev >= routing::kMaxTravelTime.count()) {
+      if (min_dist_via_prev >= kChMaxTravelTime.count()) {
         std::cout << "weird" << min_dist_via_prev << " " << l_d_max << " "
                   << e.min_dur_.count() << std::endl;
         continue;
@@ -189,9 +230,9 @@ void obtain_relevant_stops(timetable const& tt,
             static_cast<std::uint8_t>(l.dir_)});
       }
     }
-    std::cout << "marked stops: " << relevant_stops.count() << "/"
-              << relevant_stops.size() << std::endl;
   }
+  std::cout << "marked stops: " << relevant_stops.count() << "/"
+            << relevant_stops.size() << std::endl;
 }
 
 }  // namespace nigiri::routing

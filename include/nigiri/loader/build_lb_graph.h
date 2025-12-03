@@ -1,6 +1,7 @@
 #pragma once
 
 #include "nigiri/loader/dir.h"
+#include "utl/helpers/algorithm.h"
 #include "utl/insert_sorted.h"
 #include "utl/pairwise.h"
 
@@ -179,7 +180,7 @@ void build_lb_graph(timetable& tt, profile_idx_t const prf_idx) {
     }
     shortcut.min_dur_ =
         std::min(dep.min_dur_ + arr.min_dur_, shortcut.min_dur_);
-    shortcut.max_dur_ = std::max(max_dur, shortcut.max_dur_);
+    shortcut.max_dur_ = std::min(max_dur, shortcut.max_dur_);
 
     std::vector<route_idx_t> routes_new;
     std::set_union(begin(routes_merged), end(routes_merged),
@@ -246,6 +247,7 @@ void build_lb_graph(timetable& tt, profile_idx_t const prf_idx) {
                 insert_ch_edge(from, to, std::numeric_limits<duration_t>::max(),
                                std::numeric_limits<duration_t>::max(), true);
             update_ch_shortcut(location_id, dep_idx, arr_idx, edge_idx);
+            write_ahead_edges.push_back(edge_idx);
             stats.inserts_++;
           }
         }
@@ -257,8 +259,12 @@ void build_lb_graph(timetable& tt, profile_idx_t const prf_idx) {
                   << tt.locations_.names_[location_id].view() << std::endl;
       }
       for (auto const e_idx : write_ahead_edges) {
-        tt.fwd_search_ch_graph_[prf_idx].at(tt.ch_graph_edges_[prf_idx].at(e_idx).from_).push_back(e_idx);
-        tt.bwd_search_ch_graph_[prf_idx].at(tt.ch_graph_edges_[prf_idx].at(e_idx).from_).push_back(e_idx);
+        tt.fwd_search_ch_graph_[prf_idx]
+            .at(tt.ch_graph_edges_[prf_idx].at(e_idx).from_)
+            .push_back(e_idx);
+        tt.bwd_search_ch_graph_[prf_idx]
+            .at(tt.ch_graph_edges_[prf_idx].at(e_idx).from_)
+            .push_back(e_idx);
       }
       write_ahead_edges.clear();
     }
@@ -267,12 +273,24 @@ void build_lb_graph(timetable& tt, profile_idx_t const prf_idx) {
       transfer_count += t.size();
       tt.ch_graph_transfers_[prf_idx].emplace_back(std::move(t));
     }
+
     std::cout << "inserts: " << stats.inserts_
               << " replacements: " << stats.replacements_
               << " updates: " << stats.updates_ << std::endl;
     std::cout << "edges: " << tt.ch_graph_edges_[prf_idx].size()
               << " stations: " << tt.n_locations()
               << " transfers: " << transfer_count << std::endl;
+    std::cout << "max max: "
+              << utl::max_element(tt.ch_graph_edges_[prf_idx],
+                                  [](auto const& a, auto const& b) {
+                                    return a.max_dur_ < b.max_dur_;
+                                  })->max_dur_
+              << " max min: "
+              << utl::max_element(tt.ch_graph_edges_[prf_idx],
+                                  [](auto const& a, auto const& b) {
+                                    return a.min_dur_ < b.min_dur_;
+                                  })->min_dur_
+              << std::endl;
   };
 
   auto const add_edges = [&](location_idx_t const l) {
@@ -356,9 +374,21 @@ void build_lb_graph(timetable& tt, profile_idx_t const prf_idx) {
     footpaths.clear();
     weights.clear();
   }
+  std::cout << "max max: "
+              << utl::max_element(tt.ch_graph_edges_[prf_idx],
+                                  [](auto const& a, auto const& b) {
+                                    return a.max_dur_ < b.max_dur_;
+                                  })->max_dur_
+              << " max min: "
+              << utl::max_element(tt.ch_graph_edges_[prf_idx],
+                                  [](auto const& a, auto const& b) {
+                                    return a.min_dur_ < b.min_dur_;
+                                  })->min_dur_
+              << std::endl;
   if (SearchDir == direction::kForward && kEnableCh) {
     std::cout << "lb done." << std::endl;
     compute_ch();
+    //tt.ch_levels_.resize(static_cast<unsigned>(tt.n_locations()));
     std::cout << "ch done." << std::endl;
   }
 }
