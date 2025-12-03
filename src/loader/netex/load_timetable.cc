@@ -94,9 +94,27 @@ geo::latlng get_pos(pugi::xml_node const x) {
 }
 
 std::uint16_t get_route_type(std::string_view transport_mode,
-                             std::string_view rail_sub_mode) {
+                             std::string_view rail_sub_mode,
+                             std::string_view bus_sub_mode) {
   switch (cista::hash(transport_mode)) {
-    case cista::hash("bus"): return 3;
+    case cista::hash("bus"):
+      switch (cista::hash(bus_sub_mode)) {
+        case cista::hash("regionalBus"): return 701;
+        case cista::hash("expressBus"): return 702;
+        case cista::hash("localBus"): return 704;
+        case cista::hash("nightBus"): return 705;
+        case cista::hash("postBus"): return 706;
+        case cista::hash("specialNeedsBus"): return 707;
+        case cista::hash("mobilityBus"): return 708;
+        case cista::hash("mobilityBusForRegisteredDisabled"): return 709;
+        case cista::hash("sightseeingBus"): return 710;
+        case cista::hash("shuttleBus"): return 711;
+        case cista::hash("schoolAndPublicBus"): return 713;
+        case cista::hash("railReplacementBus"): return 714;
+        case cista::hash("demandAndResponseBus"): return 715;
+        default: return 3;
+      }
+
     // Bus with two overhead wires using spring-loaded trolley poles.
     case cista::hash("trolleyBus"): return 11;
 
@@ -105,7 +123,7 @@ std::uint16_t get_route_type(std::string_view transport_mode,
     case cista::hash("rail"):
       switch (cista::hash(rail_sub_mode)) {
         case cista::hash("highSpeedRail"): return 101;
-        case cista::hash("rackAndPinionRailway"): return 1400;  // ?
+        case cista::hash("rackAndPinionRailway"): return 116;
         case cista::hash("regionalRail"): return 106;
         case cista::hash("interregionalRail"): return 2;
         case cista::hash("crossCountryRail"):
@@ -118,7 +136,7 @@ std::uint16_t get_route_type(std::string_view transport_mode,
         case cista::hash("airportLinkRail"):
         case cista::hash("railShuttle"):
         case cista::hash("suburbanRailway"): return 404;
-        case cista::hash("replacementRailService"): return 714;  // bus?
+        case cista::hash("replacementRailService"): return 110;
         case cista::hash("specialTrain"): return 111;
         default: return 2;
       }
@@ -569,14 +587,15 @@ std::vector<service_journey> get_service_journeys(
        doc.select_nodes("//TimetableFrame/vehicleJourneys/ServiceJourney")) {
     auto const n = s.node();
 
+    auto const submode = n.child("TransportSubmode");
     auto sj = service_journey{
         .id_ = id(n),
         .trip_nr_ = utl::parse<std::uint32_t>(val(
             n.select_node("keyList/KeyValue/Key[text() = 'TripNr']").parent(),
             "Value")),
         .route_type_ =
-            get_route_type(val(n, "TransportMode"),
-                           val(n.child("TransportSubmode"), "RailSubmode")),
+            get_route_type(val(n, "TransportMode"), val(submode, "RailSubmode"),
+                           val(submode, "BusSubmode")),
         .vehicle_type_ = vehicle_types.at(ref(n, "VehicleTypeRef")).get(),
         .journey_pattern_ =
             journey_patterns.at(ref(n, "ServiceJourneyPatternRef")).get(),
