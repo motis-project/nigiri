@@ -94,11 +94,23 @@ geo::latlng get_pos(pugi::xml_node const x) {
 }
 
 std::uint16_t get_route_type(std::string_view transport_mode,
-                             std::string_view rail_sub_mode,
-                             std::string_view bus_sub_mode) {
+                             pugi::xml_node const submode) {
   switch (cista::hash(transport_mode)) {
+    case cista::hash("coach"):
+      switch (cista::hash(val(submode, "CoachSubmode"))) {
+        case cista::hash("internationalCoach"): return 201;
+        case cista::hash("nationalCoach"): return 202;
+        case cista::hash("shuttleCoach"): return 203;
+        case cista::hash("regionalCoach"): return 204;
+        case cista::hash("specialCoach"): return 205;
+        case cista::hash("sightseeingCoach"): return 206;
+        case cista::hash("touristCoach"): return 207;
+        case cista::hash("commuterCoach"): return 208;
+        default: return 200;
+      }
+
     case cista::hash("bus"):
-      switch (cista::hash(bus_sub_mode)) {
+      switch (cista::hash(val(submode, "BusSubmode"))) {
         case cista::hash("regionalBus"): return 701;
         case cista::hash("expressBus"): return 702;
         case cista::hash("localBus"): return 704;
@@ -109,19 +121,28 @@ std::uint16_t get_route_type(std::string_view transport_mode,
         case cista::hash("mobilityBusForRegisteredDisabled"): return 709;
         case cista::hash("sightseeingBus"): return 710;
         case cista::hash("shuttleBus"): return 711;
-        case cista::hash("schoolAndPublicBus"): return 713;
+        case cista::hash("schoolBus"): return 712;
+        case cista::hash("schoolAndPublicServiceBus"): return 713;
         case cista::hash("railReplacementBus"): return 714;
         case cista::hash("demandAndResponseBus"): return 715;
-        default: return 3;
+        default: return 700;
       }
 
     // Bus with two overhead wires using spring-loaded trolley poles.
     case cista::hash("trolleyBus"): return 11;
 
-    case cista::hash("tram"): return 0;
+    case cista::hash("tram"):
+      switch (cista::hash(val(submode, "TramSubmode"))) {
+        case cista::hash("cityTram"): return 901;
+        case cista::hash("localTram"): return 902;
+        case cista::hash("regionalTram"): return 903;
+        case cista::hash("sightseeingTram"): return 904;
+        case cista::hash("shuttleTram"): return 905;
+        default: return 900;
+      }
 
     case cista::hash("rail"):
-      switch (cista::hash(rail_sub_mode)) {
+      switch (cista::hash(val(submode, "RailSubmode"))) {
         case cista::hash("highSpeedRail"): return 101;
         case cista::hash("rackAndPinionRailway"): return 116;
         case cista::hash("regionalRail"): return 106;
@@ -148,28 +169,49 @@ std::uint16_t get_route_type(std::string_view transport_mode,
     // cases rail with RailSubmode local).
     case cista::hash("urbanRail"):
     case cista::hash("metro"):
-      // Within an urban area. For underground and railway.
-      return 400;
+      switch (cista::hash(val(submode, "MetroSubmode"))) {
+        case cista::hash("metro"): return 401;
+        case cista::hash("tube"): return 402;
+        case cista::hash("urbanRailway"): return 400;
+        default: return 401;
+      }
 
     // All air related mode. No special distinction is made.
     case cista::hash("air"): return 1100;
 
     // Most water related modes. The only specialisation is the mode ferry. In
     // Transmodel also ship was used for this mode.
-    case cista::hash("water"): return 1200;
+    case cista::hash("water"): return 1000;
 
     // Can be only two cabines or multiple.
-    case cista::hash("cableway"): return 1300;
+    case cista::hash("cableway"):
+    case cista::hash("telecabin"):
+      switch (cista::hash(val(submode, "TelecabinSubmode"))) {
+        case cista::hash("telecabin"): return 1301;
+        case cista::hash("cableCar"): return 1302;
+        case cista::hash("lift"): return 1307;
+        case cista::hash("chairLift"): return 1304;
+        case cista::hash("dragLift"): return 1305;
+        default: return 1300;
+      }
 
     // Cable railway on steep slope using two counterbalanced carriages.
     case cista::hash("funicular"): return 1400;
 
-    case cista::hash("taxi"): return 1507;
+    case cista::hash("taxi"):
+      switch (cista::hash(val(submode, "TaxiSubmode"))) {
+        case cista::hash("communalTaxi"): return 1501;
+        case cista::hash("waterTaxi"): return 1502;
+        case cista::hash("railTaxi"): return 1503;
+        case cista::hash("bikeTaxi"): return 1504;
+        case cista::hash("allTaxiServices"): return 1507;
+        default: return 1500;
+      }
 
     // Ferry can be passenger ferries and/or car ferries. The specialisation
     // from water is the detailed schedule and usually the very rigid pattern
     // with only a few stops on the route.
-    case cista::hash("ferry"): return 4;
+    case cista::hash("ferry"): return 1000;
 
     // General Mode for elevators and for Modes moved by cable. Especially
     // lifts are not only vertical elevators. If a better specialisation
@@ -593,9 +635,7 @@ std::vector<service_journey> get_service_journeys(
         .trip_nr_ = utl::parse<std::uint32_t>(val(
             n.select_node("keyList/KeyValue/Key[text() = 'TripNr']").parent(),
             "Value")),
-        .route_type_ =
-            get_route_type(val(n, "TransportMode"), val(submode, "RailSubmode"),
-                           val(submode, "BusSubmode")),
+        .route_type_ = get_route_type(val(n, "TransportMode"), submode),
         .vehicle_type_ = vehicle_types.at(ref(n, "VehicleTypeRef")).get(),
         .journey_pattern_ =
             journey_patterns.at(ref(n, "ServiceJourneyPatternRef")).get(),
