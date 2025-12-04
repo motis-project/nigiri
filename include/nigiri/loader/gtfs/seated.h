@@ -15,12 +15,10 @@ struct expanded_seated {
   vecvec<seated_idx_t, utc_trip> expanded_;
 };
 
-std::vector<utc_trip> build_seated_trips(
-    timetable&,
-    hash_map<bitfield, bitfield_idx_t>&,
-    trip_data&,
-    expanded_seated&,
-    mutable_fws_multimap<location_idx_t, route_idx_t>&);
+void build_seated_trips(timetable&,
+                        trip_data&,
+                        expanded_seated&,
+                        std::function<void(utc_trip&&)> const& consumer);
 
 template <typename Fn>
 expanded_seated expand_seated_trips(trip_data const& trip_data, Fn&& expand) {
