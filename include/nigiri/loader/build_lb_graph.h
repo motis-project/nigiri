@@ -18,6 +18,9 @@
 
 namespace nigiri::loader {
 
+static constexpr auto const kChMaxTravelTime =
+    routing::kMaxTravelTime * 5;  // TODO
+
 static constexpr auto const kEnableCh = true;
 
 struct departure {
@@ -51,7 +54,7 @@ void build_lb_graph(timetable& tt, profile_idx_t const prf_idx) {
   vector_map<ch_edge_idx_t, std::vector<location_idx_t>> transfers;
   ch_stats stats;
 
-  if (SearchDir == direction::kForward && kEnableCh) {
+  if (SearchDir == direction::kBackward && kEnableCh) {
     tt.fwd_search_ch_graph_[prf_idx].resize(tt.n_locations());
     tt.bwd_search_ch_graph_[prf_idx].resize(tt.n_locations());
   }
@@ -71,7 +74,9 @@ void build_lb_graph(timetable& tt, profile_idx_t const prf_idx) {
                                   bool const defer_graph_insertion = false) {
     auto const edge_idx = ch_edge_idx_t{tt.ch_graph_edges_[prf_idx].size()};
     edges_map.emplace(std::pair{from_l, to_l}, edge_idx);
-    tt.ch_graph_edges_[prf_idx].emplace_back(from_l, to_l, min, max);
+    tt.ch_graph_edges_[prf_idx].push_back({from_l, to_l, min, max});
+    utl::verify(min.count() > 0, "weird 0 min ");
+    utl::verify(max.count() > 0, "weird 0 max ");
     if (!defer_graph_insertion) {
       tt.fwd_search_ch_graph_[prf_idx].at(from_l).push_back(edge_idx);
       tt.bwd_search_ch_graph_[prf_idx].at(to_l).push_back(edge_idx);
@@ -92,6 +97,8 @@ void build_lb_graph(timetable& tt, profile_idx_t const prf_idx) {
             // replace
             shortcut.min_dur_ = min_dur;
             shortcut.max_dur_ = max_dur;
+            // TODO clear routes?
+            routes.at(it->second).clear();
             for (auto r : new_routes) {
               routes.at(it->second).push_back(r);  // TODO direct insertion?
             }
@@ -126,7 +133,8 @@ void build_lb_graph(timetable& tt, profile_idx_t const prf_idx) {
       if (auto const it = arrivals.find(dep.to_); it != end(arrivals)) {
         it->second.min_ = std::min(it->second.min_, dur);
         it->second.max_ = std::max(
-            it->second.max_, (dep.arr_ - it->second.last_dep_).as_duration());
+            it->second.max_,
+            (dep.arr_.as_duration() - it->second.last_dep_.as_duration()));
         it->second.last_dep_ = dep.dep_;  // TODO overtaking connections
         it->second.routes_.emplace(dep.r_);
       } else {
@@ -144,6 +152,7 @@ void build_lb_graph(timetable& tt, profile_idx_t const prf_idx) {
             entry.second.max_ + fp.duration(), entry.second.routes_);
       }
     }
+    arrivals.clear();
   };
 
   auto const update_ch_shortcut = [&](location_idx_t contracted,
@@ -181,6 +190,16 @@ void build_lb_graph(timetable& tt, profile_idx_t const prf_idx) {
     shortcut.min_dur_ =
         std::min(dep.min_dur_ + arr.min_dur_, shortcut.min_dur_);
     shortcut.max_dur_ = std::min(max_dur, shortcut.max_dur_);
+    utl::verify(shortcut.min_dur_.count() > 0, "weird 0 min {} {} {} {}",
+                dep.min_dur_, arr.min_dur_, shortcut.min_dur_, shortcut_idx);
+    utl::verify(shortcut.min_dur_.count() < kChMaxTravelTime.count(),
+                "overfl 0 min {} {} {} {}", dep.min_dur_, arr.min_dur_,
+                shortcut.min_dur_, shortcut_idx);
+    utl::verify(shortcut.max_dur_.count() > 0, "weird 0 max {} {} {} {}",
+                dep.max_dur_, arr.max_dur_, shortcut.max_dur_, shortcut_idx);
+    utl::verify(shortcut.max_dur_.count() < kChMaxTravelTime.count(),
+                "overfl 0 max {} {} {} {}", dep.max_dur_, arr.max_dur_,
+                shortcut.max_dur_, shortcut_idx);
 
     std::vector<route_idx_t> routes_new;
     std::set_union(begin(routes_merged), end(routes_merged),
@@ -230,8 +249,8 @@ void build_lb_graph(timetable& tt, profile_idx_t const prf_idx) {
             auto const max_dur = dep.max_dur_ + arr.max_dur_;
             if (max_dur < shortcut.min_dur_) {
               // replace
-              shortcut.min_dur_ = std::numeric_limits<duration_t>::max();
-              shortcut.max_dur_ = std::numeric_limits<duration_t>::max();
+              shortcut.min_dur_ = duration_t::max();
+              shortcut.max_dur_ = duration_t::max();
               routes.at(it->second).clear();
               transfers.at(it->second).clear();
               update_ch_shortcut(location_id, dep_idx, arr_idx, it->second);
@@ -243,9 +262,8 @@ void build_lb_graph(timetable& tt, profile_idx_t const prf_idx) {
             }
           } else {
             // insert
-            auto const edge_idx =
-                insert_ch_edge(from, to, std::numeric_limits<duration_t>::max(),
-                               std::numeric_limits<duration_t>::max(), true);
+            auto const edge_idx = insert_ch_edge(from, to, duration_t::max(),
+                                                 duration_t::max(), true);
             update_ch_shortcut(location_id, dep_idx, arr_idx, edge_idx);
             write_ahead_edges.push_back(edge_idx);
             stats.inserts_++;
@@ -263,7 +281,7 @@ void build_lb_graph(timetable& tt, profile_idx_t const prf_idx) {
             .at(tt.ch_graph_edges_[prf_idx].at(e_idx).from_)
             .push_back(e_idx);
         tt.bwd_search_ch_graph_[prf_idx]
-            .at(tt.ch_graph_edges_[prf_idx].at(e_idx).from_)
+            .at(tt.ch_graph_edges_[prf_idx].at(e_idx).to_)
             .push_back(e_idx);
       }
       write_ahead_edges.clear();
@@ -280,17 +298,35 @@ void build_lb_graph(timetable& tt, profile_idx_t const prf_idx) {
     std::cout << "edges: " << tt.ch_graph_edges_[prf_idx].size()
               << " stations: " << tt.n_locations()
               << " transfers: " << transfer_count << std::endl;
-    std::cout << "max max: "
-              << utl::max_element(tt.ch_graph_edges_[prf_idx],
-                                  [](auto const& a, auto const& b) {
-                                    return a.max_dur_ < b.max_dur_;
-                                  })->max_dur_
-              << " max min: "
-              << utl::max_element(tt.ch_graph_edges_[prf_idx],
-                                  [](auto const& a, auto const& b) {
-                                    return a.min_dur_ < b.min_dur_;
-                                  })->min_dur_
+    std::cout << "num edges after contr: " << tt.ch_graph_edges_[prf_idx].size()
               << std::endl;
+    if (tt.ch_graph_edges_[prf_idx].size() > 0) {
+      std::cout
+          << "max max: "
+          << utl::max_element(tt.ch_graph_edges_[prf_idx],
+                              [](auto const& a, auto const& b) {
+                                return a.max_dur_ < b.max_dur_;
+                              })
+                 ->max_dur_
+          << " max min: "
+          << utl::max_element(tt.ch_graph_edges_[prf_idx],
+                              [](auto const& a, auto const& b) {
+                                return a.min_dur_ < b.min_dur_;
+                              })
+                 ->min_dur_
+          << " Lorem ipsum dolor sit amet, \n consetetur sadipscing elitr, \n "
+             "sed diam nonumy eirmod tempor invidunt \n ut labore et dolore "
+             "magna aliquyam erat, \n sed diam voluptua. At vero eos\n  et "
+             "accusam et justo duo dolores et ea rebum. Stet clita kasd\n  "
+             "gubergren, no sea takimata sanctus est Lorem ipsum dolor sit "
+             "amet. Lorem ipsum dolor\n  sit amet, consetetur sadipscing "
+             "elitr, sed \n diam nonumy eirmod tempor invidunt ut labore et "
+             "dolore magna aliquyam erat, sed diam voluptua. At vero eos et "
+             "accusam et justo duo dolores et ea rebum. Stet clita kasd "
+             "gubergren, no sea takimata sanctus est Lorem ipsum dolor sit "
+             "amet."
+          << std::endl;
+    }
   };
 
   auto const add_edges = [&](location_idx_t const l) {
@@ -325,23 +361,26 @@ void build_lb_graph(timetable& tt, profile_idx_t const prf_idx) {
         auto const target_l =
             (SearchDir == direction::kForward ? from_l : to_l);
         auto const target = tt.locations_.get_root_idx(target_l);
-        if (target == parent_l) {
+        if (target == parent_l &&
+            (SearchDir != direction::kBackward || !kEnableCh)) {
           continue;
         }
 
-        auto min = duration_t{std::numeric_limits<duration_t::rep>::max()};
+        auto min = duration_t::max();
         for (auto const t : tt.route_transport_ranges_[r]) {
           auto const from_time = tt.event_mam(t, from, event_type::kDep);
           auto const to_time = tt.event_mam(t, to, event_type::kArr);
-          if (SearchDir == direction::kForward && kEnableCh) {
+          if (SearchDir == direction::kBackward && kEnableCh) {
             departures.emplace_back(to_l, from_time, to_time, r);
           }
           min = std::min((to_time - from_time).as_duration(), min);
         }
-        update_weight(target, min);
+        if (target != parent_l) {
+          update_weight(target, min);
+        }
       }
     }
-    if (SearchDir == direction::kForward && kEnableCh) {
+    if (SearchDir == direction::kBackward && kEnableCh) {
       compute_initial_ch_edges(l);
     }
   };
@@ -374,21 +413,31 @@ void build_lb_graph(timetable& tt, profile_idx_t const prf_idx) {
     footpaths.clear();
     weights.clear();
   }
-  std::cout << "max max: "
-              << utl::max_element(tt.ch_graph_edges_[prf_idx],
-                                  [](auto const& a, auto const& b) {
-                                    return a.max_dur_ < b.max_dur_;
-                                  })->max_dur_
-              << " max min: "
-              << utl::max_element(tt.ch_graph_edges_[prf_idx],
-                                  [](auto const& a, auto const& b) {
-                                    return a.min_dur_ < b.min_dur_;
-                                  })->min_dur_
+  if (SearchDir == direction::kBackward && kEnableCh) {
+    std::cout << "num edges: " << tt.ch_graph_edges_[prf_idx].size()
               << std::endl;
-  if (SearchDir == direction::kForward && kEnableCh) {
+    if (tt.ch_graph_edges_[prf_idx].size() > 0) {
+      std::cout << "max max: "
+                << utl::max_element(tt.ch_graph_edges_[prf_idx],
+                                    [](auto const& a, auto const& b) {
+                                      return a.max_dur_ < b.max_dur_;
+                                    })
+                       ->max_dur_
+                << " max min: "
+                << utl::max_element(tt.ch_graph_edges_[prf_idx],
+                                    [](auto const& a, auto const& b) {
+                                      return a.min_dur_ < b.min_dur_;
+                                    })
+                       ->min_dur_
+                << std::endl;
+    }
     std::cout << "lb done." << std::endl;
     compute_ch();
-    //tt.ch_levels_.resize(static_cast<unsigned>(tt.n_locations()));
+
+    /*tt.ch_levels_.resize(static_cast<unsigned>(tt.n_locations()));
+    for (auto t : transfers) {
+      tt.ch_graph_transfers_[prf_idx].emplace_back(std::move(t));
+    }*/
     std::cout << "ch done." << std::endl;
   }
 }

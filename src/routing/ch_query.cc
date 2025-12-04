@@ -24,6 +24,12 @@ void obtain_relevant_stops(timetable const& tt,
                            profile_idx_t const prf_idx,
                            bitvec& relevant_stops) {
 
+  if (tt.fwd_search_ch_graph_[prf_idx].size() != tt.n_locations()) {
+    std::cout << "no ch for profile, skipping" << std::endl;
+    relevant_stops.one_out();
+    return;
+  }
+
   std::cout << "max max: "
             << utl::max_element(tt.ch_graph_edges_[prf_idx],
                                 [](auto const& a, auto const& b) {
@@ -51,12 +57,6 @@ void obtain_relevant_stops(timetable const& tt,
                    ->min_dur_
             << std::endl;
 
-  if (tt.fwd_search_ch_graph_[prf_idx].size() != tt.n_locations()) {
-    std::cout << "no ch for profile, skipping" << std::endl;
-    relevant_stops.one_out();
-    return;
-  }
-
   std::cout << "upsearch" << std::endl;
 
   std::array<vector_map<location_idx_t, ch_dist>, 2> dists;
@@ -76,12 +76,13 @@ void obtain_relevant_stops(timetable const& tt,
             dists[dir].at(x).d_[kMax] = d;
             dists[dir].at(x).d_[kMin] = d;
             pq.push(ch_label{x, {d, d}, dir});
-            std::cout << "input" <<  x << " " << d << " " << (dir == kForward ? "fw" :"bw") << std::endl;
+            std::cout << "input" << x << " " << d << " "
+                      << (dir == kForward ? "fw" : "bw") << std::endl;
           });
     }
   };
-  init(q.start_, 0);
-  init(q.destination_, 1);
+  init(q.start_, kForward);
+  init(q.destination_, kReverse);
   auto min_max_dist = std::numeric_limits<ch_dist::dist_t>::max();
   auto mode = kMax;
   auto meetpoints = std::vector<location_idx_t>{};
@@ -97,8 +98,8 @@ void obtain_relevant_stops(timetable const& tt,
         dists[l_dir].at(l.l_).d_[kMin] < l.d_[kMin]) {
       continue;
     }
-    std::cout << "steop " << l.l_ << " " << l.d_[kMax] << " "
-              << dists[other_dir][l.l_].d_[kMax] << " " << other_dir
+    std::cout << "steop " << l.l_ << " " << tt.locations_.names_[l.l_].view() << " " << l.d_[kMax] << " "
+              << dists[other_dir][l.l_].d_[kMax] << " " << l_dir
               << std::endl;
     if (dists[other_dir][l.l_].d_[kMax] !=
         std::numeric_limits<ch_dist::dist_t>::max()) {
@@ -145,7 +146,9 @@ void obtain_relevant_stops(timetable const& tt,
       }
       auto const new_max_dist = l.d_[kMax] + e.max_dur_.count();
       auto const new_min_dist = l.d_[kMin] + e.min_dur_.count();
-      //std::cout << "tar" << edge_target << " " << new_max_dist << " ld " << l.d_[kMax] << " em " << e.max_dur_.count() << " " << new_min_dist << std::endl;
+      //std::cout << "tar" << edge_target << " " << new_max_dist << " ld " <<
+      // l.d_[kMax] << " em " << e.max_dur_.count() << " " << new_min_dist <<
+      // std::endl;
       if ((new_max_dist < dists[l_dir].at(edge_target).d_[kMax] ||
            new_min_dist < dists[l_dir].at(edge_target).d_[kMin]) &&
           new_max_dist < kChMaxTravelTime.count() &&
@@ -219,7 +222,7 @@ void obtain_relevant_stops(timetable const& tt,
         continue;
       }
       if (min_dist_via_prev <= l_d_max) {  // todo stopping criterion, cutoff?
-        for (auto const mark : tt.ch_graph_transfers_[prf_idx][e_idx]) {
+        for (auto const mark : tt.ch_graph_transfers_[prf_idx].at(e_idx)) {
           relevant_stops.set(mark.v_);
         }
         pq.push(ch_label{
