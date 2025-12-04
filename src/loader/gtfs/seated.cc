@@ -57,7 +57,6 @@ void build_seated_trips(timetable& tt,
     return day_span + day_change;
   };
 
-  auto combinations = std::vector<utc_trip>{};
   while (!utl::all_of(remaining, is_empty)) {
     // Find first trip with unprocessed/remaining traffic days.
     auto const non_empty_it = utl::find_if(remaining, is_not_empty);
