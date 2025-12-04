@@ -93,8 +93,6 @@ struct trip {
                         timetable const&,
                         unsigned indent = 0) const;
 
-  std::string display_name() const;
-
   clasz get_clasz(timetable const&) const;
 
   bool has_seated_transfers() const;
