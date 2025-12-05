@@ -98,9 +98,9 @@ void obtain_relevant_stops(timetable const& tt,
         dists[l_dir].at(l.l_).d_[kMin] < l.d_[kMin]) {
       continue;
     }
-    std::cout << "steop " << l.l_ << " " << tt.locations_.names_[l.l_].view() << " " << l.d_[kMax] << " "
-              << dists[other_dir][l.l_].d_[kMax] << " " << l_dir
-              << std::endl;
+    //std::cout << "steop " << l.l_ << " " << tt.locations_.names_[l.l_].view() << " " << l.d_[kMax] << " "
+    //          << dists[other_dir][l.l_].d_[kMax] << " " << l_dir
+    //          << std::endl;
     if (dists[other_dir][l.l_].d_[kMax] !=
         std::numeric_limits<ch_dist::dist_t>::max()) {
       if (l.d_[kMax] + dists[other_dir][l.l_].d_[kMax] < min_max_dist) {
@@ -110,7 +110,7 @@ void obtain_relevant_stops(timetable const& tt,
         meetpoints.emplace_back(l.l_);
       }
     }
-    std::cout << "mmd" << min_max_dist << std::endl;
+    //std::cout << "mmd" << min_max_dist << std::endl;
     if (l.d_[mode] > min_max_dist) {
       if (mode == kMax) {
         auto buffer = std::vector<ch_label>{};

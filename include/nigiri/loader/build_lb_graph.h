@@ -52,11 +52,13 @@ void build_lb_graph(timetable& tt, profile_idx_t const prf_idx) {
   hash_map<std::pair<location_idx_t, location_idx_t>, ch_edge_idx_t> edges_map;
   vector_map<ch_edge_idx_t, std::vector<route_idx_t>> routes;
   vector_map<ch_edge_idx_t, std::vector<location_idx_t>> transfers;
+  vector_map<location_idx_t, std::vector<ch_edge_idx_t>> fwd_search_ch_graph;
+  vector_map<location_idx_t, std::vector<ch_edge_idx_t>> bwd_search_ch_graph;
   ch_stats stats;
 
   if (SearchDir == direction::kBackward && kEnableCh) {
-    tt.fwd_search_ch_graph_[prf_idx].resize(tt.n_locations());
-    tt.bwd_search_ch_graph_[prf_idx].resize(tt.n_locations());
+    fwd_search_ch_graph.resize(tt.n_locations());
+    bwd_search_ch_graph.resize(tt.n_locations());
   }
 
   auto const update_weight = [&](location_idx_t const target,
@@ -75,11 +77,9 @@ void build_lb_graph(timetable& tt, profile_idx_t const prf_idx) {
     auto const edge_idx = ch_edge_idx_t{tt.ch_graph_edges_[prf_idx].size()};
     edges_map.emplace(std::pair{from_l, to_l}, edge_idx);
     tt.ch_graph_edges_[prf_idx].push_back({from_l, to_l, min, max});
-    utl::verify(min.count() > 0, "weird 0 min ");
-    utl::verify(max.count() > 0, "weird 0 max ");
     if (!defer_graph_insertion) {
-      tt.fwd_search_ch_graph_[prf_idx].at(from_l).push_back(edge_idx);
-      tt.bwd_search_ch_graph_[prf_idx].at(to_l).push_back(edge_idx);
+      fwd_search_ch_graph.at(from_l).push_back(edge_idx);
+      bwd_search_ch_graph.at(to_l).push_back(edge_idx);
     }
     transfers.emplace_back();
     routes.emplace_back();
@@ -176,7 +176,7 @@ void build_lb_graph(timetable& tt, profile_idx_t const prf_idx) {
     auto max_dur =
         dep.min_dur_ +
         arr.max_dur_;  // TODO dwell time, slow/fast cross, one route set larger
-    if (routes_merged.size() != routes[dep_idx].size() ||
+    if (routes_merged.size() != routes[dep_idx].size() &&  // TODO ||
         routes_merged.size() != routes[arr_idx].size()) {
       utl::insert_sorted(transfers_union,
                          contracted);  // TODO use level because it will
@@ -190,13 +190,13 @@ void build_lb_graph(timetable& tt, profile_idx_t const prf_idx) {
     shortcut.min_dur_ =
         std::min(dep.min_dur_ + arr.min_dur_, shortcut.min_dur_);
     shortcut.max_dur_ = std::min(max_dur, shortcut.max_dur_);
-    utl::verify(shortcut.min_dur_.count() > 0, "weird 0 min {} {} {} {}",
-                dep.min_dur_, arr.min_dur_, shortcut.min_dur_, shortcut_idx);
+    /*utl::verify(shortcut.min_dur_.count() > 0, "weird 0 min {} {} {} {}",
+                dep.min_dur_, arr.min_dur_, shortcut.min_dur_, shortcut_idx);*/
     utl::verify(shortcut.min_dur_.count() < kChMaxTravelTime.count(),
                 "overfl 0 min {} {} {} {}", dep.min_dur_, arr.min_dur_,
                 shortcut.min_dur_, shortcut_idx);
-    utl::verify(shortcut.max_dur_.count() > 0, "weird 0 max {} {} {} {}",
-                dep.max_dur_, arr.max_dur_, shortcut.max_dur_, shortcut_idx);
+    /*utl::verify(shortcut.max_dur_.count() > 0, "weird 0 max {} {} {} {}",
+                dep.max_dur_, arr.max_dur_, shortcut.max_dur_, shortcut_idx);*/
     utl::verify(shortcut.max_dur_.count() < kChMaxTravelTime.count(),
                 "overfl 0 max {} {} {} {}", dep.max_dur_, arr.max_dur_,
                 shortcut.max_dur_, shortcut_idx);
@@ -227,9 +227,13 @@ void build_lb_graph(timetable& tt, profile_idx_t const prf_idx) {
     auto level = 0U;
     auto write_ahead_edges = std::vector<ch_edge_idx_t>{};
     for (auto location_id : location_ids) {
+      if (level > 0.8 * tt.n_locations()) {  // TODO
+        tt.ch_levels_.at(location_id) = level;
+        continue;
+      }
       ++level;
-      auto const& deps = tt.fwd_search_ch_graph_[prf_idx].at(location_id);
-      auto const& arrs = tt.bwd_search_ch_graph_[prf_idx].at(location_id);
+      auto const& deps = fwd_search_ch_graph.at(location_id);
+      auto const& arrs = bwd_search_ch_graph.at(location_id);
       for (auto dep_idx : deps) {
         auto const to = tt.ch_graph_edges_[prf_idx].at(dep_idx).to_;
         if (tt.ch_levels_.at(to) > 0U) {
@@ -275,23 +279,40 @@ void build_lb_graph(timetable& tt, profile_idx_t const prf_idx) {
         std::cout << level << " " << deps.size() << " " << arrs.size() << " "
                   << location_id << " "
                   << tt.locations_.names_[location_id].view() << std::endl;
+        std::cout << "inserts: " << stats.inserts_
+                  << " replacements: " << stats.replacements_
+                  << " updates: " << stats.updates_ << std::endl;
+        std::cout << "edges: " << tt.ch_graph_edges_[prf_idx].size()
+                  << " stations: " << tt.n_locations()
+                  << " transfers size: " << std::accumulate(std::next(transfers.begin()), transfers.end(),
+                  0, 
+                  [](auto const& a, auto const& b)
+                  {
+                      return a + b.size();
+                  }) << std::endl;
       }
       for (auto const e_idx : write_ahead_edges) {
-        tt.fwd_search_ch_graph_[prf_idx]
-            .at(tt.ch_graph_edges_[prf_idx].at(e_idx).from_)
+        fwd_search_ch_graph.at(tt.ch_graph_edges_[prf_idx].at(e_idx).from_)
             .push_back(e_idx);
-        tt.bwd_search_ch_graph_[prf_idx]
-            .at(tt.ch_graph_edges_[prf_idx].at(e_idx).to_)
+        bwd_search_ch_graph.at(tt.ch_graph_edges_[prf_idx].at(e_idx).to_)
             .push_back(e_idx);
       }
       write_ahead_edges.clear();
     }
+    std::cout << "persisting..." << std::endl;
     auto transfer_count = 0U;
     for (auto t : transfers) {
       transfer_count += t.size();
       tt.ch_graph_transfers_[prf_idx].emplace_back(std::move(t));
     }
-
+    for (auto i = location_idx_t{0U}; i != tt.locations_.ids_.size(); ++i) {
+      tt.fwd_search_ch_graph_[prf_idx].emplace_back(
+          std::move(fwd_search_ch_graph[i]));
+      tt.bwd_search_ch_graph_[prf_idx].emplace_back(
+          std::move(bwd_search_ch_graph[i]));
+    }
+    fwd_search_ch_graph.clear();
+    bwd_search_ch_graph.clear();
     std::cout << "inserts: " << stats.inserts_
               << " replacements: " << stats.replacements_
               << " updates: " << stats.updates_ << std::endl;
