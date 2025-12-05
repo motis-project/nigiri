@@ -21,6 +21,7 @@ struct loader_config {
   std::array<bool, kNumClasses> cars_allowed_default_{};
   bool extend_calendar_{false};
   std::string user_script_{};
+  hash_set<std::string> base_paths_{};
 };
 
 struct loader_interface {
