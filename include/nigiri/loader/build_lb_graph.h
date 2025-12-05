@@ -221,7 +221,7 @@ void build_lb_graph(timetable& tt, profile_idx_t const prf_idx) {
     auto location_ids = std::vector<location_idx_t>{tt.n_locations()};
     std::iota(begin(location_ids), end(location_ids), location_idx_t{0});
     std::sort(begin(location_ids), end(location_ids), [&](auto a, auto b) {
-      return tt.location_routes_[a].size() < tt.location_routes_[b].size();
+      return fwd_search_ch_graph[a].size() < fwd_search_ch_graph[b].size();
     });
     tt.ch_levels_.resize(static_cast<unsigned>(location_ids.size()));
     auto level = 0U;
