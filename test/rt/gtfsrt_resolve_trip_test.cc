@@ -115,6 +115,21 @@ TEST(rt, gtfsrt_resolve_static_trip) {
                                                tt, &rtt, source_idx_t{0}, td);
     ASSERT_TRUE(r.valid());
   }
+
+  {  // test with route_id + start_date + start_time + direction_id
+    auto td = transit_realtime::TripDescriptor();
+    *td.mutable_start_time() = "00:30:00";
+    *td.mutable_start_date() = "20190504";
+    *td.mutable_route_id() = "R_RE2";
+    td.set_schedule_relationship(
+        transit_realtime::TripDescriptor_ScheduleRelationship_SCHEDULED);
+    td.set_direction_id(0);
+    // *td.mutable_trip_id() = "T_RE2";
+
+    auto const [r, t] = rt::gtfsrt_resolve_run(date::sys_days{2019_y / May / 4},
+                                               tt, &rtt, source_idx_t{0}, td);
+    ASSERT_TRUE(r.valid());
+  }
 }
 
 mem_dir miami_test_files() {

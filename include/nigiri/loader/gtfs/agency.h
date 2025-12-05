@@ -18,6 +18,7 @@ agency_map_t read_agencies(source_idx_t,
                            timetable&,
                            tz_map&,
                            std::string_view file_content,
+                           std::string_view default_tz,
                            script_runner const& = script_runner{});
 
 }  // namespace nigiri::loader::gtfs

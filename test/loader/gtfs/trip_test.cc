@@ -28,10 +28,12 @@ TEST(gtfs, read_trips_example_data) {
   tz_map timezones;
 
   auto const config = loader_config{};
-  auto agencies = read_agencies(source_idx_t{}, tt, timezones,
-                                files.get_file(kAgencyFile).data());
-  auto const routes = read_routes({}, tt, timezones, agencies,
-                                  files.get_file(kRoutesFile).data(), "CET");
+  auto agencies =
+      read_agencies(source_idx_t{}, tt, timezones,
+                    files.get_file(kAgencyFile).data(), "Europe/Berlin");
+  auto const routes =
+      read_routes({}, tt, timezones, agencies,
+                  files.get_file(kRoutesFile).data(), "Europe/Berlin");
   auto const dates =
       read_calendar_date(files.get_file(kCalendarDatesFile).data());
   auto const calendar = read_calendar(files.get_file(kCalenderFile).data());
@@ -63,10 +65,12 @@ TEST(gtfs, read_trips_berlin_data) {
   tz_map timezones;
 
   auto const config = loader_config{};
-  auto agencies = read_agencies(source_idx_t{0}, tt, timezones,
-                                files.get_file(kAgencyFile).data());
-  auto const routes = read_routes({}, tt, timezones, agencies,
-                                  files.get_file(kRoutesFile).data(), "CET");
+  auto agencies =
+      read_agencies(source_idx_t{0}, tt, timezones,
+                    files.get_file(kAgencyFile).data(), "Europe/Berlin");
+  auto const routes =
+      read_routes({}, tt, timezones, agencies,
+                  files.get_file(kRoutesFile).data(), "Europe/Berlin");
   auto const dates =
       read_calendar_date(files.get_file(kCalendarDatesFile).data());
   auto const calendar = read_calendar(files.get_file(kCalenderFile).data());

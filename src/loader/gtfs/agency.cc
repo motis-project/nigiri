@@ -19,6 +19,7 @@ agency_map_t read_agencies(source_idx_t const src,
                            timetable& tt,
                            tz_map& timezones,
                            std::string_view file_content,
+                           std::string_view default_tz,
                            script_runner const& r) {
   struct agency_row {
     utl::csv_col<utl::cstr, UTL_NAME("agency_id")> id_;
@@ -35,7 +36,9 @@ agency_map_t read_agencies(source_idx_t const src,
                     a.id_->view(),
                     a.name_->view(),
                     a.url_->view(),
-                    get_tz_idx(tt, timezones, a.tz_name_->view()),
+                    get_tz_idx(tt, timezones,
+                               a.tz_name_->view().empty() ? default_tz
+                                                          : a.tz_name_->view()),
                     tt,
                     timezones};
     map.emplace(a.id_->view(), process_agency(r, x)
