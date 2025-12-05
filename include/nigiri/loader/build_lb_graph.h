@@ -382,7 +382,8 @@ void build_lb_graph(timetable& tt, profile_idx_t const prf_idx) {
         auto const target_l =
             (SearchDir == direction::kForward ? from_l : to_l);
         auto const target = tt.locations_.get_root_idx(target_l);
-        if (target == parent_l) {
+        if (target == parent_l &&
+            (SearchDir != direction::kBackward || !kEnableCh)) {
           continue;
         }
 
@@ -391,7 +392,7 @@ void build_lb_graph(timetable& tt, profile_idx_t const prf_idx) {
           auto const from_time = tt.event_mam(t, from, event_type::kDep);
           auto const to_time = tt.event_mam(t, to, event_type::kArr);
           if (SearchDir == direction::kBackward && kEnableCh) {
-            departures.emplace_back(target, from_time, to_time, r);
+            departures.emplace_back(to_l, from_time, to_time, r);
           }
           min = std::min((to_time - from_time).as_duration(), min);
         }
@@ -399,6 +400,9 @@ void build_lb_graph(timetable& tt, profile_idx_t const prf_idx) {
           update_weight(target, min);
         }
       }
+    }
+    if (SearchDir == direction::kBackward && kEnableCh) {
+      compute_initial_ch_edges(l);
     }
   };
 
@@ -420,9 +424,6 @@ void build_lb_graph(timetable& tt, profile_idx_t const prf_idx) {
       }
     }
     add_edges(i);
-    if (SearchDir == direction::kBackward && kEnableCh) {
-      compute_initial_ch_edges(i);
-    }
 
     for (auto const& [target, duration] : weights) {
       footpaths.emplace_back(footpath{target, duration});

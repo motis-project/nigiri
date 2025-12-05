@@ -73,12 +73,10 @@ void obtain_relevant_stops(timetable const& tt,
           start.target_, [&](location_idx_t const x) {
             auto const d =
                 static_cast<ch_dist::dist_t>(start.duration().count());
-            auto const p = tt.locations_.get_root_idx(x);
-
-            dists[dir].at(p).d_[kMax] = d;
-            dists[dir].at(p).d_[kMin] = d;
-            pq.push(ch_label{p, {d, d}, dir});
-            std::cout << "input" << x << " " << p << " " << d << " "
+            dists[dir].at(x).d_[kMax] = d;
+            dists[dir].at(x).d_[kMin] = d;
+            pq.push(ch_label{x, {d, d}, dir});
+            std::cout << "input" << x << " " << d << " "
                       << (dir == kForward ? "fw" : "bw") << std::endl;
           });
     }
@@ -100,10 +98,9 @@ void obtain_relevant_stops(timetable const& tt,
         dists[l_dir].at(l.l_).d_[kMin] < l.d_[kMin]) {
       continue;
     }
-    // std::cout << "steop " << l.l_ << " " << tt.locations_.names_[l.l_].view()
-    // << " " << l.d_[kMax] << " "
-    //           << dists[other_dir][l.l_].d_[kMax] << " " << l_dir
-    //           << std::endl;
+    //std::cout << "steop " << l.l_ << " " << tt.locations_.names_[l.l_].view() << " " << l.d_[kMax] << " "
+    //          << dists[other_dir][l.l_].d_[kMax] << " " << l_dir
+    //          << std::endl;
     if (dists[other_dir][l.l_].d_[kMax] !=
         std::numeric_limits<ch_dist::dist_t>::max()) {
       if (l.d_[kMax] + dists[other_dir][l.l_].d_[kMax] < min_max_dist) {
@@ -113,7 +110,7 @@ void obtain_relevant_stops(timetable const& tt,
         meetpoints.emplace_back(l.l_);
       }
     }
-    // std::cout << "mmd" << min_max_dist << std::endl;
+    //std::cout << "mmd" << min_max_dist << std::endl;
     if (l.d_[mode] > min_max_dist) {
       if (mode == kMax) {
         auto buffer = std::vector<ch_label>{};
@@ -149,9 +146,9 @@ void obtain_relevant_stops(timetable const& tt,
       }
       auto const new_max_dist = l.d_[kMax] + e.max_dur_.count();
       auto const new_min_dist = l.d_[kMin] + e.min_dur_.count();
-      // std::cout << "tar" << edge_target << " " << new_max_dist << " ld " <<
-      //  l.d_[kMax] << " em " << e.max_dur_.count() << " " << new_min_dist <<
-      //  std::endl;
+      //std::cout << "tar" << edge_target << " " << new_max_dist << " ld " <<
+      // l.d_[kMax] << " em " << e.max_dur_.count() << " " << new_min_dist <<
+      // std::endl;
       if ((new_max_dist < dists[l_dir].at(edge_target).d_[kMax] ||
            new_min_dist < dists[l_dir].at(edge_target).d_[kMin]) &&
           new_max_dist < kChMaxTravelTime.count() &&
@@ -204,15 +201,7 @@ void obtain_relevant_stops(timetable const& tt,
       continue;
     }
     dists[l.dir_][l.l_].d_[kMin] = l_d_max;
-    
     relevant_stops.set(l.l_.v_);
-    for (auto const& c : tt.locations_.children_[l.l_]) {
-      relevant_stops.set(c.v_);
-      for (auto const& cc : tt.locations_.children_[c]) {
-        relevant_stops.set(cc.v_);
-      }
-    }
-
     auto const& graph = l.dir_ == kReverse ? tt.fwd_search_ch_graph_[prf_idx]
                                            : tt.bwd_search_ch_graph_[prf_idx];
 
@@ -234,14 +223,7 @@ void obtain_relevant_stops(timetable const& tt,
       }
       if (min_dist_via_prev <= l_d_max) {  // todo stopping criterion, cutoff?
         for (auto const mark : tt.ch_graph_transfers_[prf_idx].at(e_idx)) {
-
           relevant_stops.set(mark.v_);
-          for (auto const& c : tt.locations_.children_[mark]) {
-            relevant_stops.set(c.v_);
-            for (auto const& cc : tt.locations_.children_[c]) {
-              relevant_stops.set(cc.v_);
-            }
-          }
         }
         pq.push(ch_label{
             edge_target,
