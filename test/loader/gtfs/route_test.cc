@@ -71,14 +71,14 @@ TEST(gtfs, read_routes_berlin_data) {
             tt.strings_.get(tt.providers_[routes.at("809")->agency_].id_));
   EXPECT_EQ("", routes.at("809")->short_name_);
   EXPECT_EQ("Leisnig -- Leipzig, Hauptbahnhof", routes.at("809")->long_name_);
-  EXPECT_EQ(clasz::kRegional, routes.at("809")->clasz_);
+  EXPECT_EQ(clasz::kRegionalFast, routes.at("809")->clasz_);
 
   ASSERT_NE(end(routes), routes.find("812"));
   EXPECT_EQ("N04---",
             tt.strings_.get(tt.providers_[routes.at("812")->agency_].id_));
   EXPECT_EQ("RB14", routes.at("812")->short_name_);
   EXPECT_EQ("", routes.at("812")->long_name_);
-  EXPECT_EQ(clasz::kRegional, routes.at("812")->clasz_);
+  EXPECT_EQ(clasz::kRegionalFast, routes.at("812")->clasz_);
   EXPECT_EQ(color_t{0xFFB10093}, routes.at("812")->color_);
   EXPECT_EQ(color_t{0xFFFFFFFF}, routes.at("812")->text_color_);
 
