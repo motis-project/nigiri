@@ -287,11 +287,71 @@ routing_result pong(timetable const& tt,
                           : (kFwd ? rtt->fwd_search_lb_graph_[q.prf_idx_]
                                   : rtt->bwd_search_lb_graph_[q.prf_idx_]),
            ping_lb);
+
+  auto of = std::ofstream{"out.geojson"};
+  of << R"({
+  "type": "FeatureCollection",
+  "features": [)";
+
+  auto first = true;
   for (auto const [l, lb] : utl::enumerate(ping_lb)) {
+    auto const loc_idx = location_idx_t{l};
+    auto const parent = tt.locations_.parents_[loc_idx];
+
+    if (parent != location_idx_t::invalid()) {
+      if (!first) {
+        of << ",\n";
+      }
+      first = false;
+      auto const& p1 = tt.locations_.coordinates_[loc_idx];
+      auto const& p2 = tt.locations_.coordinates_[parent];
+      of << R"({"type": "Feature", "properties": {"type": "parent"}, "geometry": {"type": "LineString", "coordinates": [[)"
+         << fmt::format("{},{}", p1.lng_, p1.lat_) << "], ["
+         << fmt::format("{},{}", p2.lng_, p2.lat_) << "]]}}";
+    }
+
+    if (!first) {
+      of << ",\n";
+    }
+    first = false;
+
+    of << R"({"type": "Feature", "properties": {)";
     if (lb != std::numeric_limits<std::decay_t<decltype(lb)>>::max()) {
-      trace_pong("ping lb {}: {}", location{tt, location_idx_t{l}}, lb);
+      of << R"("color": "#26a269")";
+      trace_pong("ping lb {}: {}", location{tt, loc_idx}, lb);
+    } else {
+      of << R"("color": "#e01b24")";
+    }
+
+    if (parent == location_idx_t::invalid()) {
+      of << R"(, "name": ")" << tt.locations_.names_[loc_idx].view() << R"(")";
+    }
+    of << "},";
+
+    of << R"("geometry":{"coordinates":[)"
+       << fmt::format("{},{}", tt.locations_.coordinates_[loc_idx].lng_,
+                      tt.locations_.coordinates_[loc_idx].lat_)
+       << R"(],"type": "Point"}})";
+  }
+
+  for (auto i = location_idx_t{0U}; i != tt.n_locations(); ++i) {
+    for (auto const& fp : tt.fwd_search_lb_graph_[0][i]) {
+      if (!first) {
+        of << ",\n";
+      }
+      first = false;
+
+      auto const& p1 = tt.locations_.coordinates_[i];
+      auto const& p2 = tt.locations_.coordinates_[fp.target()];
+      of << R"({"type": "Feature", "properties": {"cost": )" << fp.duration().count() << R"(}, "geometry": {"type": "LineString", "coordinates": [[)"
+         << fmt::format("{},{}", p1.lng_, p1.lat_) << "], ["
+         << fmt::format("{},{}", p2.lng_, p2.lat_) << "]]}}";
     }
   }
+  of << R"(
+  ]
+})";
+
   trace_pong("\n");
 
   auto ping_dist_to_dest = std::vector<std::uint16_t>{};

@@ -122,8 +122,9 @@ geo::latlng get_pos(pugi::xml_node const x) {
                      utl::parse<double>(val(loc, "Longitude"))};
 }
 
-std::uint16_t get_route_type(std::string_view transport_mode,
-                             pugi::xml_node const submode) {
+std::uint16_t get_route_type(pugi::xml_node const n) {
+  auto const transport_mode = val(n, "TransportMode");
+  auto const submode = n.child("TransportSubmode");
   switch (cista::hash(transport_mode)) {
     case cista::hash("coach"):
       switch (cista::hash(val(submode, "CoachSubmode"))) {
@@ -184,7 +185,7 @@ std::uint16_t get_route_type(std::string_view transport_mode,
         case cista::hash("suburbanRailway"): return 404;
         case cista::hash("replacementRailService"): return 714;  // bus?
         case cista::hash("specialTrain"): return 111;
-        default: return 2;
+        default: return 100;
       }
 
     // DEPRECATED. Use mode rail with RailSubmode longDistance.
@@ -251,6 +252,20 @@ std::uint16_t get_route_type(std::string_view transport_mode,
   }
 }
 
+std::uint16_t get_more_precise_route_type(std::uint16_t const a,
+                                          std::uint16_t const b) {
+  if (a == 1700) {
+    return b;
+  } else if (b == 1700) {
+    return a;
+  } else if (a % 100 == 0 || a < 100) {
+    return b;
+  } else if (b % 100 == 0 || b < 100) {
+    return a;
+  }
+  return a;
+}
+
 // Parses YYYY-MM-DD
 date::sys_days parse_date(utl::cstr s) {
   utl::verify(s.len >= 10, "invalid date {}", s.view());
@@ -298,6 +313,7 @@ authority_map_t get_authorities(pugi::xml_document const& doc) {
 // OPERATORS
 // ---------
 struct operätor {
+  std::string_view id_;
   std::string_view code_;
   std::string_view name_;
   provider_idx_t provider_{provider_idx_t::invalid()};
@@ -311,7 +327,8 @@ operator_map_t get_operators(pugi::xml_document const& doc) {
   for (auto const s :
        doc.select_nodes("//ResourceFrame/organisations/Operator")) {
     auto const n = s.node();
-    operators.emplace(id(n), uniq(operätor{.code_ = val(n, "PublicCode"),
+    operators.emplace(id(n), uniq(operätor{.id_ = id(n),
+                                           .code_ = val(n, "PublicCode"),
                                            .name_ = val(n, "Name")}));
   }
   return operators;
@@ -348,13 +365,16 @@ struct line {
   hash_map<std::uint16_t /* GTFS route type */, route_id_idx_t> routes_{};
   std::string_view id_;
   std::string_view name_;
+  std::string_view product_;
   authority const* authority_;
   operätor const* operator_;
+  std::uint16_t route_type_;
 };
 using line_map_t = hash_map<std::string_view, std::unique_ptr<line>>;
 line_map_t get_lines(pugi::xml_document const& doc,
                      lookup<authority_map_t> const& authorities,
-                     lookup<operator_map_t> const& operators) {
+                     lookup<operator_map_t> const& operators,
+                     lookup<product_map_t> const& products) {
   auto lines = line_map_t{};
   for (auto const l : doc.select_nodes("//ServiceFrame/lines/Line")) {
     auto const n = l.node();
@@ -366,7 +386,8 @@ line_map_t get_lines(pugi::xml_document const& doc,
             .authority_ = authorities.at(ref(n, "AuthorityRef")).get(),
             .operator_ =
                 operators.at(ref(n.child("additionalOperators"), "OperatorRef"))
-                    .get()}));
+                    .get(),
+            .route_type_ = get_route_type(n)}));
   }
   return lines;
 }
@@ -541,7 +562,7 @@ using day_type_assignment_map_t = hash_map<std::string_view, bitfield const*>;
 day_type_assignment_map_t get_day_type_assignments(
     pugi::xml_document const& doc,
     lookup<operating_period_map_t> operating_periods) {
-  auto days = hash_map<std::string_view, bitfield const*>{};
+  auto days = day_type_assignment_map_t{};
   for (auto const x : doc.select_nodes(
            "//ServiceCalendarFrame/ServiceCalendar/dayTypeAssignments/"
            "DayTypeAssignment")) {
@@ -550,6 +571,21 @@ day_type_assignment_map_t get_day_type_assignments(
                  operating_periods.at(ref(n, "OperatingPeriodRef")).get());
   }
   return days;
+}
+
+// =========
+// TRAIN NRS
+// ---------
+using train_nr_map_t = hash_map<std::string_view, unsigned>;
+train_nr_map_t get_train_numbers(pugi::xml_document const& doc) {
+  auto train_nrs = train_nr_map_t{};
+  for (auto const x :
+       doc.select_nodes("//TimetableFrame/trainNumbers/TrainNumber")) {
+    auto const n = x.node();
+    train_nrs.emplace(id(n),
+                      utl::parse<unsigned>(n.child_value("ForAdvertisement")));
+  }
+  return train_nrs;
 }
 
 // ===============
@@ -657,6 +693,7 @@ struct service_journey {
   vehicle_type const* vehicle_type_{};
   std::variant<journey_pattern const*, journey_pattern> journey_pattern_{};
   bitfield const* traffic_days_;
+  operätor const* operator_;
   std::vector<stop_times> stop_times_{};
   ptrdiff_t dbg_offset_;
 };
@@ -679,19 +716,24 @@ std::vector<service_journey> get_service_journeys(
     lookup<destination_display_map_t> destination_displays,
     lookup<vehicle_type_map_t> vehicle_types,
     lookup<line_map_t> lines,
-    lookup<journey_pattern_map_t> journey_patterns) {
+    lookup<operator_map_t> operators,
+    lookup<journey_pattern_map_t> journey_patterns,
+    train_nr_map_t const& train_nrs) {
   auto service_journeys = std::vector<service_journey>{};
   for (auto const s :
        doc.select_nodes("//TimetableFrame/vehicleJourneys/ServiceJourney")) {
     auto const n = s.node();
-
+    auto const train_nr_ref = ref(n.child("trainNumbers"), "TrainNumberRef");
     auto sj = service_journey{
         .id_ = id(n),
-        .trip_nr_ = utl::parse<std::uint32_t>(val(
-            n.select_node("keyList/KeyValue/Key[text() = 'TripNr']").parent(),
-            "Value")),
-        .route_type_ = get_route_type(val(n, "TransportMode"),
-                                      n.child("TransportSubmode")),
+        .trip_nr_ =
+            train_nr_ref.empty()
+                ? utl::parse<std::uint32_t>(val(
+                      n.select_node("keyList/KeyValue/Key[text() = 'TripNr']")
+                          .parent(),
+                      "Value"))
+                : train_nrs.at(train_nr_ref),
+        .route_type_ = get_route_type(n),
         .vehicle_type_ = vehicle_types.at(ref(n, "VehicleTypeRef")).get(),
         .journey_pattern_ =
             n.child("ServiceJourneyPatternRef")
@@ -706,6 +748,7 @@ std::vector<service_journey> get_service_journeys(
                                    n.select_node("dayTypes/DayTypeRef/@ref")
                                        .attribute()
                                        .as_string()),
+        .operator_ = operators.at(ref(n, "OperatorRef")).get(),
         .dbg_offset_ = n.offset_debug()};
 
     auto const calls = n.child("calls");
@@ -933,7 +976,8 @@ std::optional<intermediate> get_intermediate(intermediate const& base,
         {base.day_type_assignments_, im.day_type_assignments_},
         {base.destination_displays_, im.destination_displays_},
         {base.vehicle_types_, im.vehicle_types_}, {base.lines_, im.lines_},
-        {base.journey_patterns_, im.journey_patterns_});
+        {base.operators_, im.operators_},
+        {base.journey_patterns_, im.journey_patterns_}, get_train_numbers(doc));
     im.f_ = std::move(f);
     im.doc_ = std::move(doc);
   } catch (std::exception const& e) {
@@ -1057,6 +1101,10 @@ void load_timetable(loader_config const& config,
                            tz_map};
       if (process_location(r, s)) {
         stop->location_ = register_location(tt, s);
+        if (stop->parent_ != nullptr) {
+          tt.locations_.children_[stop->parent_->location_].emplace_back(
+              stop->location_);
+        }
       }
     };
     for (auto& [id, stop] : im.stops_) {
@@ -1081,24 +1129,27 @@ void load_timetable(loader_config const& config,
       auto const& jp = *sj.get_journey_pattern();
 
       // Check if provider got filtered by script.
-      if (jp.line_->operator_->provider_ == provider_idx_t::invalid()) {
+      auto& line = *jp.line_;
+      auto const op = sj.operator_->id_.empty() ? line.operator_ : sj.operator_;
+      if (op->provider_ == provider_idx_t::invalid()) {
         continue;
       }
 
       // Create and register route from (line + route_type).
-      auto& line = *jp.line_;
       auto const route_it = line.routes_.find(sj.route_type_);
       auto route_id = route_id_idx_t::invalid();
       if (route_it == end(line.routes_)) {
-        auto const id = fmt::format("{}-{}", line.id_, sj.route_type_);
+        auto const id =
+            fmt::format("{}-{}-{}", line.id_, op->id_, sj.route_type_);
         auto rout = route{tt,
                           src,
                           id,
                           line.name_,
                           "",
-                          route_type_t{sj.route_type_},
+                          route_type_t{get_more_precise_route_type(
+                              sj.route_type_, line.route_type_)},
                           route_color{},
-                          line.operator_->provider_};
+                          op->provider_};
         route_id = line.routes_
                        .emplace_hint(route_it, sj.route_type_,
                                      process_route(r, rout)
