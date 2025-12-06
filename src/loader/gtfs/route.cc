@@ -36,7 +36,7 @@ clasz to_clasz(std::uint16_t const route_type) {
       return clasz::kBus;
     case 12 /* Monorail. Railway in which the track consists of a single rail or a beam. */ :
       return clasz::kOther;
-    case 100 /* Railway Service */: return clasz::kRegional;
+    case 100 /* Railway Service */: return clasz::kRegionalFast;
     case 101 /* High Speed Rail Service */: return clasz::kHighSpeed;
     case 102 /* Long Distance Trains */: return clasz::kLongDistance;
     case 103 /* Inter Regional Rail Service */: return clasz::kRegional;
