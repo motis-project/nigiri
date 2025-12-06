@@ -1047,7 +1047,6 @@ void load_timetable(loader_config const& config,
   utl::sort(base_files, [&](fs::path const& a, fs::path const& b) {
     return ch_prio(a.generic_string()) < ch_prio(b.generic_string());
   });
-  fmt::println(std::clog, "BASE:\n\t{}", fmt::join(base_files, "\n\t"));
 
   auto const r = script_runner{config.user_script_};
 
