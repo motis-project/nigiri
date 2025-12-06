@@ -13,7 +13,7 @@
 [utl]
   url=git@github.com:motis-project/utl.git
   branch=master
-  commit=9081181d194c45fb0c6840cefa7a3be7017d9dbc
+  commit=a63d8c1822293b8f18dc0418905c3c21067aa051
 [miniz]
   url=git@github.com:motis-project/miniz.git
   branch=master
