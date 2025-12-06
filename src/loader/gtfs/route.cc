@@ -134,20 +134,6 @@ clasz to_clasz(std::uint16_t const route_type) {
   return clasz::kOther;
 }
 
-color_t to_color(std::string_view const color_str) {
-  auto const is_hex = [](uint8_t c) {
-    return std::isdigit(c) != 0 || (c >= 'a' && c <= 'f') ||
-           (c >= 'A' && c <= 'F');
-  };
-
-  if (color_str.size() != 6 ||
-      !std::all_of(color_str.begin(), color_str.end(), is_hex)) {
-    return color_t{0};
-  }
-  return color_t{0xFF000000U | static_cast<std::uint32_t>(
-                                   std::strtol(color_str.data(), nullptr, 16))};
-}
-
 route_map_t read_routes(source_idx_t const src,
                         timetable& tt,
                         tz_map& timezones,
@@ -212,8 +198,8 @@ route_map_t read_routes(source_idx_t const src,
               r.route_short_name_->view(),
               r.route_long_name_->view(),
               route_type_t{*r.route_type_},
-              {.color_ = to_color(r.route_color_->to_str()),
-               .text_color_ = to_color(r.route_text_color_->to_str())},
+              {.color_ = to_color(r.route_color_->view()),
+               .text_color_ = to_color(r.route_text_color_->view())},
               a};
           if (process_route(user_script, x)) {
             auto const route_id_idx = register_route(tt, x);

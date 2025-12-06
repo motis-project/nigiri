@@ -28,6 +28,8 @@
 #include "cista/reflection/printable.h"
 #include "cista/strong.h"
 
+#include "utl/helpers/algorithm.h"
+
 #include "geo/latlng.h"
 
 #include "nigiri/common/interval.h"
@@ -256,6 +258,17 @@ struct route_color {
   color_t color_;
   color_t text_color_;
 };
+inline color_t to_color(std::string_view s) {
+  auto const is_hex = [](uint8_t c) {
+    return std::isdigit(c) != 0 || (c >= 'a' && c <= 'f') ||
+           (c >= 'A' && c <= 'F');
+  };
+  if (s.size() != 6 || !utl::all_of(s, is_hex)) {
+    return color_t{0};
+  }
+  return color_t{0xFF000000U | static_cast<std::uint32_t>(
+                                   std::strtol(s.data(), nullptr, 16))};
+}
 inline std::optional<std::string> to_str(color_t const c) {
   return c == 0U ? std::nullopt
                  : std::optional{fmt::format("{:06x}", to_idx(c) & 0x00ffffff)};
