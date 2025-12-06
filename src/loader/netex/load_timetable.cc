@@ -90,7 +90,7 @@ struct lookup {
       return base_.at(k);
     } catch (std::exception const&) {
       throw std::runtime_error{fmt::format(
-          "{} key \"{}\" not found\nBASE:\n\t{}\n\tTIMETABLE:\n\t{}\n",
+          "{:?} key {:?} not found\nBASE:\n\t{:?}\nTIMETABLE:\n\t{:?}\n",
           cista::type_str<value_t>(), k,
           fmt::join(base_ | std::views::keys, "\n\t"),
           fmt::join(timetable_ | std::views::keys, "\n\t"))};
@@ -172,7 +172,7 @@ std::uint16_t get_route_type(pugi::xml_node const n) {
         case cista::hash("highSpeedRail"): return 101;
         case cista::hash("rackAndPinionRailway"): return 1400;  // ?
         case cista::hash("regionalRail"): return 106;
-        case cista::hash("interregionalRail"): return 2;
+        case cista::hash("interregionalRail"): return 103;
         case cista::hash("crossCountryRail"):
         case cista::hash("longDistance"):
         case cista::hash("international"): return 102;
@@ -181,9 +181,9 @@ std::uint16_t get_route_type(pugi::xml_node const n) {
         case cista::hash("carTransportRailService"): return 104;
         case cista::hash("touristRailway"): return 107;
         case cista::hash("airportLinkRail"):
-        case cista::hash("railShuttle"):
-        case cista::hash("suburbanRailway"): return 404;
-        case cista::hash("replacementRailService"): return 714;  // bus?
+        case cista::hash("railShuttle"): return 108;
+        case cista::hash("suburbanRailway"): return 109;
+        case cista::hash("replacementRailService"): return 110;  // bus?
         case cista::hash("specialTrain"): return 111;
         default: return 100;
       }
@@ -385,6 +385,7 @@ struct line {
   authority const* authority_;
   operätor const* operator_;
   std::uint16_t route_type_;
+  route_color color_;
 };
 using line_map_t = hash_map<std::string_view, std::unique_ptr<line>>;
 line_map_t get_lines(pugi::xml_document const& doc,
@@ -392,8 +393,18 @@ line_map_t get_lines(pugi::xml_document const& doc,
                      lookup<operator_map_t> const& operators,
                      lookup<product_map_t> const& products) {
   auto lines = line_map_t{};
+  lines.emplace("", uniq(line{
+                        .id_ = "",
+                        .name_ = "",
+                        .product_ = "",
+                        .authority_ = authorities.at(std::string_view{}).get(),
+                        .operator_ = operators.at(std::string_view{}).get(),
+                        .route_type_ = {},
+                        .color_ = route_color{},
+                    }));
   for (auto const l : doc.select_nodes("//ServiceFrame/lines/Line")) {
     auto const n = l.node();
+    auto const ppt = n.child("Presentation");
     lines.emplace(
         id(n),
         uniq(line{
@@ -404,7 +415,10 @@ line_map_t get_lines(pugi::xml_document const& doc,
             .operator_ =
                 operators.at(ref(n.child("additionalOperators"), "OperatorRef"))
                     .get(),
-            .route_type_ = get_route_type(n)}));
+            .route_type_ = get_route_type(n),
+            .color_ = {.color_ = to_color(val(ppt, "Colour")),
+                       .text_color_ = to_color(val(ppt, "TextColour"))},
+        }));
   }
   return lines;
 }
@@ -545,8 +559,7 @@ operating_period_map_t get_operating_periods(
     pugi::xml_document const& doc, interval<date::sys_days> const& interval) {
   auto operating_periods = operating_period_map_t{};
   for (auto const s : doc.select_nodes(
-           "//ServiceCalendarFrame/ServiceCalendar/operatingPeriods/"
-           "UicOperatingPeriod |"
+           "//ServiceCalendarFrame//operatingPeriods/UicOperatingPeriod |"
            "//ServiceCalendarFrame/validityConditions/AvailabilityCondition")) {
     auto const sn = s.node();
     auto const from = parse_date(val(sn, "FromDate"));
@@ -580,9 +593,9 @@ day_type_assignment_map_t get_day_type_assignments(
     pugi::xml_document const& doc,
     lookup<operating_period_map_t> operating_periods) {
   auto days = day_type_assignment_map_t{};
-  for (auto const x : doc.select_nodes(
-           "//ServiceCalendarFrame/ServiceCalendar/dayTypeAssignments/"
-           "DayTypeAssignment")) {
+  for (auto const x :
+       doc.select_nodes("//ServiceCalendarFrame//dayTypeAssignments/"
+                        "DayTypeAssignment")) {
     auto const n = x.node();
     days.emplace(ref(n, "DayTypeRef"),
                  operating_periods.at(ref(n, "OperatingPeriodRef")).get());
@@ -705,6 +718,7 @@ struct service_journey {
   }
 
   std::string_view id_;
+  std::string_view branding_ref_;  // ref because SNCF ref links to nothing
   std::uint32_t trip_nr_;
   std::uint16_t route_type_;
   vehicle_type const* vehicle_type_{};
@@ -743,6 +757,7 @@ std::vector<service_journey> get_service_journeys(
     auto const train_nr_ref = ref(n.child("trainNumbers"), "TrainNumberRef");
     auto sj = service_journey{
         .id_ = id(n),
+        .branding_ref_ = ref(n, "BrandingRef"),
         .trip_nr_ =
             train_nr_ref.empty()
                 ? utl::parse<std::uint32_t>(val(
@@ -753,9 +768,11 @@ std::vector<service_journey> get_service_journeys(
         .route_type_ = get_route_type(n),
         .vehicle_type_ = vehicle_types.at(ref(n, "VehicleTypeRef")).get(),
         .journey_pattern_ =
-            n.child("ServiceJourneyPatternRef")
+            n.child("ServiceJourneyPatternRef")  // DE-DELFI
                 ? journey_patterns.at(ref(n, "ServiceJourneyPatternRef")).get()
-                : nullptr,
+                : n.child("JourneyPatternRef")  // FR-SNCF
+                      ? journey_patterns.at(ref(n, "JourneyPatternRef")).get()
+                      : nullptr,
         .traffic_days_ = n.child("validityConditions")
                              ? operating_periods
                                    .at(ref(n.child("validityConditions"),
@@ -777,6 +794,7 @@ std::vector<service_journey> get_service_journeys(
           .stop_points_ = {},
       };
       for (auto const call : calls.children("Call")) {
+        // CH-SKI
         auto const arr = call.child("Arrival");
         auto const dep = call.child("Departure");
         jp.stop_points_.push_back({
@@ -794,8 +812,10 @@ std::vector<service_journey> get_service_journeys(
       }
       sj.journey_pattern_ = std::move(jp);
     } else {
+      // DE-DELFI / FR-SNCF
       utl::verify(
-          std::holds_alternative<journey_pattern const*>(sj.journey_pattern_),
+          std::holds_alternative<journey_pattern const*>(sj.journey_pattern_) &&
+              std::get<journey_pattern const*>(sj.journey_pattern_) != nullptr,
           "journey pattern required");
 
       auto const& jp = *std::get<journey_pattern const*>(sj.journey_pattern_);
@@ -804,7 +824,11 @@ std::vector<service_journey> get_service_journeys(
            utl::zip(n.select_nodes("passingTimes/TimetabledPassingTime"),
                     jp.stop_points_)) {
         auto const pn = passing_time.node();
-        auto const stop_point_id = ref(pn, "StopPointInJourneyPatternRef");
+
+        auto stop_point_id = ref(pn, "StopPointInJourneyPatternRef");  // DELFI
+        if (stop_point_id.empty()) {
+          stop_point_id = ref(pn, "PointInJourneyPatternRef");  // SNCF
+        }
 
         utl::verify(
             stop_point.id_ == stop_point_id,
@@ -960,7 +984,7 @@ std::optional<intermediate> get_intermediate(intermediate const& base,
                   pugi::parse_default | pugi::parse_trim_pcdata)
             : doc.load_buffer(f.data().data(), f.size(),
                               pugi::parse_default | pugi::parse_trim_pcdata);
-    utl::verify(result, "Unable to parse XML buffer: {} at offset {}",
+    utl::verify(result, "Unable to parse XML buffer {}: {} at offset {}", path,
                 result.description(), result.offset);
 
     im.tz_ = date::locate_zone(
@@ -1027,6 +1051,9 @@ void load_timetable(loader_config const& config,
   auto base_files = std::vector<fs::path>{};
   auto timetable_files = std::vector<fs::path>{};
   for (auto const& f : d.list_files(".")) {
+    if (!is_xml_file(f)) {
+      continue;
+    }
     if (config.base_paths_.contains(f.filename()) ||
         (f.generic_string().contains("SCHWEIZ") &&
          f.generic_string().contains("_1_1_"))) {
@@ -1168,7 +1195,7 @@ void load_timetable(loader_config const& config,
                           line.product_,
                           route_type_t{get_more_precise_route_type(
                               sj.route_type_, line.route_type_)},
-                          route_color{},
+                          line.color_,
                           op->provider_};
         route_id = line.routes_
                        .emplace_hint(route_it, sj.route_type_,
@@ -1194,7 +1221,8 @@ void load_timetable(loader_config const& config,
                short_name,
                tt.route_ids_[src].route_id_short_names_[route_id].view(),
                sj.vehicle_type_->name_,
-               sj.vehicle_type_->short_name_,
+               !sj.branding_ref_.empty() ? sj.branding_ref_
+                                         : sj.vehicle_type_->short_name_,
                jp.direction_,
                route_id,
                tt};
