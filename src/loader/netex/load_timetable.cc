@@ -358,6 +358,22 @@ vehicle_type_map_t get_vehicle_types(pugi::xml_document const& doc) {
   return vehicle_types;
 }
 
+// ========
+// PRODUCTS
+// --------
+using product_map_t = hash_map<std::string_view, std::string_view>;
+
+product_map_t get_products(pugi::xml_document const& doc) {
+  auto products = product_map_t{};
+  products.emplace("", "");
+  for (auto const v : doc.select_nodes("//ResourceFrame/typesOfValue/ValueSet/"
+                                       "values/TypeOfProductCategory")) {
+    auto const n = v.node();
+    products.emplace(id(n), val(n, "ShortName"));
+  }
+  return products;
+}
+
 // =====
 // LINES
 // -----
@@ -383,6 +399,7 @@ line_map_t get_lines(pugi::xml_document const& doc,
         uniq(line{
             .id_ = id(n),
             .name_ = val(n, "Name"),
+            .product_ = products.at(ref(n, "TypeOfProductCategoryRef")),
             .authority_ = authorities.at(ref(n, "AuthorityRef")).get(),
             .operator_ =
                 operators.at(ref(n.child("additionalOperators"), "OperatorRef"))
@@ -905,6 +922,7 @@ struct intermediate {
     merge(day_type_assignments_, o.day_type_assignments_);
     merge(stop_assignments_, o.stop_assignments_);
     merge(destination_displays_, o.destination_displays_);
+    merge(products_, o.products_);
     merge(lines_, o.lines_);
     merge(authorities_, o.authorities_);
     merge(operators_, o.operators_);
@@ -920,6 +938,7 @@ struct intermediate {
   day_type_assignment_map_t day_type_assignments_;
   stop_assignment_map_t stop_assignments_;
   destination_display_map_t destination_displays_;
+  product_map_t products_;
   line_map_t lines_;
   authority_map_t authorities_;
   operator_map_t operators_;
@@ -957,8 +976,10 @@ std::optional<intermediate> get_intermediate(intermediate const& base,
     im.authorities_ = get_authorities(doc);
     im.operators_ = get_operators(doc);
     im.stops_ = get_stops(doc);
+    im.products_ = get_products(doc);
     im.lines_ = get_lines(doc, {base.authorities_, im.authorities_},
-                          {base.operators_, im.operators_});
+                          {base.operators_, im.operators_},
+                          {base.products_, im.products_});
     im.destination_displays_ = get_destination_displays(doc);
     im.stop_assignments_ = get_stop_assignments(doc, {base.stops_, im.stops_});
     im.journey_patterns_ = get_journey_patterns(
@@ -1145,7 +1166,7 @@ void load_timetable(loader_config const& config,
                           src,
                           id,
                           line.name_,
-                          "",
+                          line.product_,
                           route_type_t{get_more_precise_route_type(
                               sj.route_type_, line.route_type_)},
                           route_color{},
@@ -1172,7 +1193,7 @@ void load_timetable(loader_config const& config,
                                      ->stop_points_.front()
                                      .destination_display_->trip_direction_),
                short_name,
-               line.name_,
+               tt.route_ids_[src].route_id_short_names_[route_id].view(),
                sj.vehicle_type_->name_,
                sj.vehicle_type_->short_name_,
                jp.direction_,
