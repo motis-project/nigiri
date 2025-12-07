@@ -378,7 +378,11 @@ product_map_t get_products(pugi::xml_document const& doc) {
 // LINES
 // -----
 struct line {
-  hash_map<std::uint16_t /* GTFS route type */, route_id_idx_t> routes_{};
+  struct route_key {
+    std::uint16_t route_type_;
+    operätor const* operator_;
+  };
+  hash_map<route_key, route_id_idx_t> routes_{};
   std::string_view id_;
   std::string_view name_;
   std::string_view product_;
@@ -1183,7 +1187,7 @@ void load_timetable(loader_config const& config,
       }
 
       // Create and register route from (line + route_type).
-      auto const route_it = line.routes_.find(sj.route_type_);
+      auto const route_it = line.routes_.find({sj.route_type_, op});
       auto route_id = route_id_idx_t::invalid();
       if (route_it == end(line.routes_)) {
         auto const id =
@@ -1198,10 +1202,10 @@ void load_timetable(loader_config const& config,
                           line.color_,
                           op->provider_};
         route_id = line.routes_
-                       .emplace_hint(route_it, sj.route_type_,
-                                     process_route(r, rout)
-                                         ? register_route(tt, rout)
-                                         : route_id_idx_t::invalid())
+                       .emplace_hint(
+                           route_it, line::route_key{sj.route_type_, op},
+                           process_route(r, rout) ? register_route(tt, rout)
+                                                  : route_id_idx_t::invalid())
                        ->second;
       } else {
         route_id = route_it->second;
