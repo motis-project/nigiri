@@ -320,9 +320,7 @@ trip_data read_trips(source_idx_t const src,
                                     ? direction_id_t{1U}
                                     : direction_id_t{0U},
                                 route_it->second->route_id_idx_,
-                                trip_debug{// line numbers will be
-                                           // updated from stop_times.txt
-                                           .source_file_idx_ = source_file},
+                                trip_debug{.source_file_idx_ = source_file},
                                 tt};
 
           auto const keep = process_trip(user_script, x);
