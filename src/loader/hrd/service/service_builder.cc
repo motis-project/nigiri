@@ -100,14 +100,14 @@ void service_builder::write_services(source_idx_t const src) {
               trip{src,
                    std::string_view{trip_id_buf_.data(), trip_id_buf_.size()},
                    "", "", ref.display_name(tt_), "", "",
-                   direction_id_t::invalid(), route_id_idx_t::invalid(), tt_});
-          tt_.trip_debug_.emplace_back().emplace_back(ref.origin_.dbg_);
+                   direction_id_t::invalid(), route_id_idx_t::invalid(),
+                   ref.origin_.dbg_, tt_});
           tt_.trip_stop_seq_numbers_.emplace_back(
               std::initializer_list<stop_idx_t>{});
-          tt_.trip_transport_ranges_.emplace_back({transport_range_t{
+          tt_.trip_transport_ranges_[id].emplace_back(transport_range_t{
               tt_.next_transport_idx(),
               interval<stop_idx_t>{0U,
-                                   static_cast<stop_idx_t>(stop_seq.size())}}});
+                                   static_cast<stop_idx_t>(stop_seq.size())}});
 
           auto const get_attribute_combination_idx =
               [&](std::optional<std::vector<service::attribute>> const& a,

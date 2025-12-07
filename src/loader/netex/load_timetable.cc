@@ -1216,30 +1216,29 @@ void load_timetable(loader_config const& config,
 
       // Create and register trip.
       auto const short_name = fmt::to_string(sj.trip_nr_);
-      auto t =
-          trip{src,
-               sj.id_,
-               tt.trip_direction(sj.get_journey_pattern()
-                                     ->stop_points_.front()
-                                     .destination_display_->trip_direction_),
-               short_name,
-               tt.route_ids_[src].route_id_short_names_[route_id].view(),
-               sj.vehicle_type_->name_,
-               !sj.branding_ref_.empty() ? sj.branding_ref_
-                                         : sj.vehicle_type_->short_name_,
-               jp.direction_,
-               route_id,
-               tt};
+      auto t = trip{
+          src,
+
+          sj.id_,
+          tt.trip_direction(sj.get_journey_pattern()
+                                ->stop_points_.front()
+                                .destination_display_->trip_direction_),
+          short_name,
+          tt.route_ids_[src].route_id_short_names_[route_id].view(),
+          sj.vehicle_type_->name_,
+          !sj.branding_ref_.empty() ? sj.branding_ref_
+                                    : sj.vehicle_type_->short_name_,
+          jp.direction_,
+          route_id,
+          trip_debug{source_file_idx, static_cast<unsigned>(sj.dbg_offset_),
+                     static_cast<unsigned>(sj.dbg_offset_)},
+          tt};
       auto const trip_idx =
           process_trip(r, t) ? register_trip(tt, t) : trip_idx_t::invalid();
       if (trip_idx == trip_idx_t::invalid()) {
         continue;
       }
 
-      tt.trip_transport_ranges_.emplace_back();
-      tt.trip_debug_.emplace_back().emplace_back(
-          trip_debug{source_file_idx, static_cast<unsigned>(sj.dbg_offset_),
-                     static_cast<unsigned>(sj.dbg_offset_)});
       tt.trip_stop_seq_numbers_.add_back_sized(0U);
       if (shapes_data != nullptr) {
         shapes_data->add_trip_shape_offsets(

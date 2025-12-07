@@ -211,6 +211,7 @@ trip::trip(source_idx_t src,
            std::string_view vehicle_type_short_name,
            direction_id_t direction,
            route_id_idx_t route,
+           trip_debug dbg,
            timetable& tt)
     : src_{src},
       id_{id},
@@ -221,6 +222,7 @@ trip::trip(source_idx_t src,
       vehicle_type_short_name_{vehicle_type_short_name},
       direction_{direction},
       route_{route},
+      dbg_{dbg},
       tt_{&tt} {}
 
 std::string_view trip::get_id() const { return id_; }
@@ -487,6 +489,8 @@ trip_idx_t register_trip(timetable& tt, trip const& t) {
   tt.trip_short_names_.emplace_back(t.short_name_);
   tt.trip_display_names_.emplace_back(t.display_name_);
   tt.trip_ids_.emplace_back().emplace_back(trip_id_idx);
+  tt.trip_debug_.emplace_back().emplace_back(t.dbg_);
+  tt.trip_transport_ranges_.emplace_back_empty();
 
   return trip_idx;
 }

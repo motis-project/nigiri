@@ -235,7 +235,7 @@ using transport_range_t = pair<transport_idx_t, interval<stop_idx_t>>;
 
 struct trip_debug {
   source_file_idx_t source_file_idx_;
-  std::uint32_t line_number_from_, line_number_to_;
+  std::uint32_t line_number_from_{}, line_number_to_{};
 };
 
 struct attribute {
