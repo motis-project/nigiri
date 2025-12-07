@@ -150,6 +150,7 @@ struct trip {
        std::string_view vehicle_type_short_name,
        direction_id_t,
        route_id_idx_t,
+       trip_debug,
        timetable&);
 
   std::string_view get_id() const;
@@ -177,6 +178,7 @@ struct trip {
   std::string_view vehicle_type_short_name_;
   direction_id_t direction_;
   route_id_idx_t route_;
+  trip_debug dbg_;
 
   timetable* tt_{nullptr};
 };

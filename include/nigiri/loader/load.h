@@ -22,7 +22,7 @@ struct assistance_times;
 struct timetable_source {
   std::string tag_;
   std::string path_;
-  loader_config loader_config_;
+  loader_config loader_config_{};
 };
 
 timetable load(std::vector<timetable_source> const&,

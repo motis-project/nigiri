@@ -87,8 +87,6 @@ struct trip {
 
   ~trip() = default;
 
-  void interpolate();
-
   void print_stop_times(std::ostream&,
                         timetable const&,
                         unsigned indent = 0) const;
@@ -127,7 +125,6 @@ struct trip {
   std::uint32_t from_line_{0U}, to_line_{0U};
 
   trip_idx_t trip_idx_{trip_idx_t::invalid()};
-  std::vector<transport_range_t> transport_ranges_;
 };
 
 struct trip_data {
@@ -143,7 +140,12 @@ struct trip_data {
   vector_map<gtfs_trip_idx_t, trip> data_;
 };
 
+enum class interpolate_result { kOk, kErrorLastMissing, kErrorFirstMissing };
+
+interpolate_result interpolate(std::vector<stop_events>&);
+
 trip_data read_trips(source_idx_t,
+                     source_file_idx_t,
                      timetable&,
                      route_map_t const&,
                      traffic_days_t const&,

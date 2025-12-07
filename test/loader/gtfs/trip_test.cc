@@ -44,8 +44,8 @@ TEST(gtfs, read_trips_example_data) {
   auto const shapes =
       parse_shapes(files.get_file(kShapesFile).data(), shapes_store);
   auto const trip_data =
-      read_trips(source_idx_t{}, tt, routes, services, shapes,
-                 files.get_file(kTripsFile).data(),
+      read_trips(source_idx_t{}, source_file_idx_t{}, tt, routes, services,
+                 shapes, files.get_file(kTripsFile).data(),
                  config.bikes_allowed_default_, config.cars_allowed_default_);
 
   EXPECT_EQ(2U, trip_data.data_.size());
@@ -81,8 +81,8 @@ TEST(gtfs, read_trips_berlin_data) {
   auto const shapes =
       parse_shapes(files.get_file(kShapesFile).data(), shapes_store);
   auto const trip_data =
-      read_trips(source_idx_t{}, tt, routes, services, shapes,
-                 files.get_file(kTripsFile).data(),
+      read_trips(source_idx_t{}, source_file_idx_t{}, tt, routes, services,
+                 shapes, files.get_file(kTripsFile).data(),
                  config.bikes_allowed_default_, config.cars_allowed_default_);
 
   EXPECT_EQ(3U, trip_data.data_.size());

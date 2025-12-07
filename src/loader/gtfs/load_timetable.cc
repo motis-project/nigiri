@@ -83,6 +83,8 @@ void load_timetable(loader_config const& config,
 
   auto const user_script = script_runner{config.user_script_};
   auto const progress_tracker = utl::get_active_progress_tracker();
+  auto const source_file_idx =
+      tt.register_source_file((d.path() / kStopTimesFile).generic_string());
   auto timezones = tz_map{};
   auto agencies = read_agencies(src, tt, timezones, load(kAgencyFile).data(),
                                 config.default_tz_, user_script);
@@ -104,9 +106,10 @@ void load_timetable(loader_config const& config,
       (shapes_data != nullptr)
           ? parse_shapes(load(kShapesFile).data(), *shapes_data)
           : shape_loader_state{};
-  auto trip_data = read_trips(
-      src, tt, routes, service, shape_states, load(kTripsFile).data(),
-      config.bikes_allowed_default_, config.cars_allowed_default_, user_script);
+  auto trip_data =
+      read_trips(src, source_file_idx, tt, routes, service, shape_states,
+                 load(kTripsFile).data(), config.bikes_allowed_default_,
+                 config.cars_allowed_default_, user_script);
   auto const booking_rules = parse_booking_rules(
       tt, load(kBookingRulesFile).data(), service, bitfield_indices);
   auto const location_groups =
@@ -122,6 +125,14 @@ void load_timetable(loader_config const& config,
   load_fares(tt, d, service, routes, stops);
   utl::verify(tt.fares_.size() == to_idx(src) + 1U, "fares: size={} src={}",
               tt.fares_.size(), src);
+
+  {
+    for (auto const& t : trip_data.data_) {
+      auto& dbg = tt.trip_debug_[t.trip_idx_][0];
+      dbg.line_number_from_ = t.from_line_;
+      dbg.line_number_to_ = t.to_line_;
+    }
+  }
 
   {
     auto const timer = scoped_timer{"loader.gtfs.trips.sort"};
@@ -161,7 +172,21 @@ void load_timetable(loader_config const& config,
   {
     auto const timer = scoped_timer{"loader.gtfs.trips.interpolate"};
     for (auto& t : trip_data.data_) {
-      t.interpolate();
+      if (!t.requires_interpolation_) {
+        continue;
+      }
+
+      switch (interpolate(t.event_times_)) {
+        case interpolate_result::kOk: t.requires_interpolation_ = false; break;
+        case interpolate_result::kErrorFirstMissing:
+          log(log_lvl::error, "loader.gtfs.trip",
+              "trip {:?}: first departure cannot be interpolated", t.id_);
+          break;
+        case interpolate_result::kErrorLastMissing:
+          log(log_lvl::error, "loader.gtfs.trip",
+              "trip {:?}: last arrival cannot be interpolated", t.id_);
+          break;
+      }
     }
   }
 
@@ -326,13 +351,8 @@ void load_timetable(loader_config const& config,
 
   {
     auto stop_seq_numbers = basic_string<stop_idx_t>{};
-    auto const source_file_idx =
-        tt.register_source_file((d.path() / kStopTimesFile).generic_string());
     for (auto& trp : trip_data.data_) {
       encode_seq_numbers(trp.seq_numbers_, stop_seq_numbers);
-
-      tt.trip_debug_.emplace_back().emplace_back(
-          trip_debug{source_file_idx, trp.from_line_, trp.to_line_});
       tt.trip_stop_seq_numbers_.emplace_back(trp.seq_numbers_);
     }
   }
@@ -387,7 +407,7 @@ void load_timetable(loader_config const& config,
             auto const end =
                 static_cast<std::uint16_t>(prev_end + trp.stop_seq_.size());
 
-            trp.transport_ranges_.emplace_back(
+            tt.trip_transport_ranges_[trp.trip_idx_].emplace_back(
                 transport_range_t{tt.next_transport_idx(), {prev_end, end}});
             prev_end = end - 1;
 
@@ -465,11 +485,6 @@ void load_timetable(loader_config const& config,
     for (auto l = tt.location_routes_.size(); l != tt.n_locations(); ++l) {
       tt.location_routes_.emplace_back(location_routes[location_idx_t{l}]);
       assert(tt.location_routes_.size() == l + 1U);
-    }
-
-    // Build transport ranges.
-    for (auto const& t : trip_data.data_) {
-      tt.trip_transport_ranges_.emplace_back(t.transport_ranges_);
     }
   }
 

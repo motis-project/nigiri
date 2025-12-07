@@ -128,11 +128,7 @@ trip::trip(route const* route,
       bikes_allowed_{bikes_allowed},
       cars_allowed_{cars_allowed} {}
 
-void trip::interpolate() {
-  if (!requires_interpolation_) {
-    return;
-  }
-
+interpolate_result interpolate(std::vector<stop_events>& event_times) {
   struct bound {
     explicit bound(minutes_after_midnight_t t) : min_{t}, max_{t} {}
     minutes_after_midnight_t interpolate(int const idx) const {
@@ -146,9 +142,10 @@ void trip::interpolate() {
     int min_idx_{-1};
     int max_idx_{-1};
   };
+
   auto bounds = std::vector<bound>{};
-  bounds.reserve(stop_seq_.size());
-  for (auto const [i, x] : utl::enumerate(event_times_)) {
+  bounds.reserve(event_times.size() * 2U);
+  for (auto const [i, x] : utl::enumerate(event_times)) {
     bounds.emplace_back(x.arr_);
     bounds.emplace_back(x.dep_);
   }
@@ -165,13 +162,11 @@ void trip::interpolate() {
     }
   }
   if (bounds.size() <= 1 || bounds[bounds.size() - 2].max_idx_ == 0) {
-    log(log_lvl::error, "loader.gtfs.trip",
-        R"(trip "{}": last arrival cannot be interpolated)", id_);
-    return;
+    return interpolate_result::kErrorLastMissing;
   }
 
   auto min = duration_t{0};
-  auto const last = static_cast<int>(event_times_.size() - 1);
+  auto const last = static_cast<int>(event_times.size() - 1);
   auto min_idx = last;
   for (auto it = bounds.begin(); it != bounds.end(); ++it) {
     if (it->min_ == kInterpolate) {
@@ -183,12 +178,10 @@ void trip::interpolate() {
     }
   }
   if (bounds[1].min_idx_ == last) {
-    log(log_lvl::error, "loader.gtfs.trip",
-        R"(trip "{}": first departure cannot be interpolated)", id_);
-    return;
+    return interpolate_result::kErrorFirstMissing;
   }
 
-  for (auto const [idx, entry] : utl::enumerate(event_times_)) {
+  for (auto const [idx, entry] : utl::enumerate(event_times)) {
     auto const& arr = bounds[2 * idx];
     auto const& dep = bounds[2 * idx + 1];
 
@@ -199,7 +192,8 @@ void trip::interpolate() {
       entry.dep_ = dep.interpolate(static_cast<int>(idx));
     }
   }
-  requires_interpolation_ = false;
+
+  return interpolate_result::kOk;
 }
 
 bool trip::has_seated_transfers() const {
@@ -230,6 +224,7 @@ trip_direction_idx_t trip_data::get_or_create_direction(
 }
 
 trip_data read_trips(source_idx_t const src,
+                     source_file_idx_t const source_file,
                      timetable& tt,
                      route_map_t const& routes,
                      traffic_days_t const& services,
@@ -325,6 +320,7 @@ trip_data read_trips(source_idx_t const src,
                                     ? direction_id_t{1U}
                                     : direction_id_t{0U},
                                 route_it->second->route_id_idx_,
+                                trip_debug{.source_file_idx_ = source_file},
                                 tt};
 
           auto const keep = process_trip(user_script, x);
