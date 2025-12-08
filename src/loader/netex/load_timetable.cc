@@ -706,6 +706,46 @@ journey_pattern_map_t get_journey_patterns(
   return journey_patterns;
 }
 
+// ==============
+// Meeting Points
+// --------------
+struct journey_meeting {
+  std::string_view from_, to_;
+  bitfield const* bitfield_;
+  stop const* stop_;
+};
+
+using journey_meeting_map_t = hash_map<std::string_view /* ServiceJourney.id */,
+                                       std::vector<journey_meeting>>;
+
+journey_meeting_map_t get_journey_meetings(
+    pugi::xml_document const& doc,
+    lookup<stop_assignment_map_t> stops,
+    lookup<operating_period_map_t> operating_periods) {
+  auto journey_meetings = journey_meeting_map_t{};
+  for (auto const x : doc.select_nodes(
+           "//TimetableFrame/journeyMeetings/JourneyMeeting | "
+           "//TimetableFrame/journeyInterchanges/ServiceJourneyInterchange")) {
+    auto const n = x.node();
+    if (!is_true(val(n, "StaySeated"))) {
+      continue;
+    }
+
+    auto const m = journey_meeting{
+        .from_ = ref(n, "FromJourneyRef"),
+        .to_ = ref(n, "ToJourneyRef"),
+        .bitfield_ = operating_periods
+                         .at(ref(n.child("validityConditions"),
+                                 "AvailabilityConditionRef"))
+                         .get(),
+        .stop_ = stops.at(ref(n, "AtStopPointRef")),
+    };
+    journey_meetings[m.from_].push_back(m);
+    journey_meetings[m.to_].push_back(m);
+  }
+  return journey_meetings;
+}
+
 // ===============
 // SERVICE_JOURNEY
 // ---------------
@@ -753,6 +793,7 @@ std::vector<service_journey> get_service_journeys(
     lookup<line_map_t> lines,
     lookup<operator_map_t> operators,
     lookup<journey_pattern_map_t> journey_patterns,
+    lookup<journey_meeting_map_t> journey_meetings,
     train_nr_map_t const& train_nrs) {
   auto service_journeys = std::vector<service_journey>{};
   for (auto const s :
@@ -1019,6 +1060,9 @@ std::optional<intermediate> get_intermediate(intermediate const& base,
     im.vehicle_types_ = get_vehicle_types(doc);
     im.day_type_assignments_ = get_day_type_assignments(
         doc, {base.operating_periods_, im.operating_periods_});
+    im.journey_meetings_ = get_journey_meetings(
+        doc, {base.stop_assignments_, im.stop_assignments_},
+        {base.operating_periods_, im.operating_periods_});
     im.service_journeys_ = get_service_journeys(
         doc, {base.stop_assignments_, im.stop_assignments_},
         {base.operating_periods_, im.operating_periods_},
@@ -1026,7 +1070,8 @@ std::optional<intermediate> get_intermediate(intermediate const& base,
         {base.destination_displays_, im.destination_displays_},
         {base.vehicle_types_, im.vehicle_types_}, {base.lines_, im.lines_},
         {base.operators_, im.operators_},
-        {base.journey_patterns_, im.journey_patterns_}, get_train_numbers(doc));
+        {base.journey_patterns_, im.journey_patterns_},
+        {base.journey_meetings_, im.journey_meetings_}, get_train_numbers(doc));
     im.f_ = std::move(f);
     im.doc_ = std::move(doc);
   } catch (std::exception const& e) {
