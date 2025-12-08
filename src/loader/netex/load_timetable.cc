@@ -23,10 +23,13 @@
 #include "utl/visit.h"
 
 #include "nigiri/loader/gtfs/route_key.h"
+#include "nigiri/loader/gtfs/seated.h"
 #include "nigiri/loader/gtfs/shape.h"
 #include "nigiri/loader/gtfs/shape_prepare.h"
 #include "nigiri/loader/gtfs/trip.h"
 #include "nigiri/loader/loader_interface.h"
+#include "nigiri/loader/netex/utc_trip.h"
+
 #include "nigiri/shapes_storage.h"
 #include "nigiri/timetable.h"
 
@@ -562,6 +565,11 @@ using operating_period_map_t =
 operating_period_map_t get_operating_periods(
     pugi::xml_document const& doc, interval<date::sys_days> const& interval) {
   auto operating_periods = operating_period_map_t{};
+
+  auto always = bitfield{};
+  always.one_out();
+  operating_periods.emplace("", uniq(std::move(always)));
+
   for (auto const s : doc.select_nodes(
            "//ServiceCalendarFrame//operatingPeriods/UicOperatingPeriod |"
            "//ServiceCalendarFrame/validityConditions/AvailabilityCondition")) {
@@ -1007,6 +1015,7 @@ struct intermediate {
   day_type_assignment_map_t day_type_assignments_;
   stop_assignment_map_t stop_assignments_;
   destination_display_map_t destination_displays_;
+  journey_meeting_map_t journey_meetings_;
   product_map_t products_;
   line_map_t lines_;
   authority_map_t authorities_;
@@ -1126,19 +1135,10 @@ void load_timetable(loader_config const& config,
 
   auto const r = script_runner{config.user_script_};
 
-  struct utc_trip {
-    date::days first_dep_offset_;
-    duration_t tz_offset_;
-    basic_string<duration_t> utc_times_;
-    bitfield utc_traffic_days_;
-    trip_idx_t trip_;
-    basic_string<trip_direction_idx_t> trip_direction_;
-    route_id_idx_t route_id_;
-  };
-
   auto route_services =
       hash_map<gtfs::route_key_t, std::vector<std::vector<utc_trip>>,
                gtfs::route_key_hash, gtfs::route_key_equals>{};
+  auto rule_services = gtfs::expanded_seated<utc_trip>{};
   auto const add_expanded_trip = [&](clasz const c,
                                      gtfs::stop_seq_t const& stop_seq,
                                      utc_trip const& s) {
