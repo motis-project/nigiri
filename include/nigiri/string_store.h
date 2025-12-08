@@ -7,6 +7,8 @@ namespace nigiri {
 template <typename Idx>
 struct string_store {
   using idx_t = Idx;
+  using iterator = vecvec<idx_t, char>::iterator;
+  using const_iterator = vecvec<idx_t, char>::const_iterator;
 
   struct hash {
     using is_transparent = void;
@@ -78,7 +80,7 @@ struct string_store {
   }
 
   idx_t store(std::string_view s) {
-    if (auto const it = cache_.find(s); it != end(cache_)) {
+    if (auto const it = cache_.find(s); it != cache_.end()) {
       return *it;
     } else {
       auto next = idx_t{strings_.size()};
@@ -90,13 +92,17 @@ struct string_store {
 
   std::optional<idx_t> find(std::string_view s) const {
     auto const it = cache_.find(s);
-    return it == end(cache_) ? std::nullopt : std::optional{*it};
+    return it == cache_.end() ? std::nullopt : std::optional{*it};
   }
 
   void resolve() {
     cache_.hash_function().s_ = &strings_;
     cache_.key_eq().s_ = &strings_;
   }
+
+  auto begin() const { return strings_.begin(); }
+  auto end() const { return strings_.end(); }
+  std::size_t size() const { return strings_.size(); }
 
   vecvec<idx_t, char> strings_;
   hash_set<idx_t, hash, equals> cache_{0U, {&strings_}, {&strings_}};

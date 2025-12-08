@@ -11,9 +11,10 @@ namespace sv = std::views;
 
 namespace nigiri::loader::gtfs {
 
-template <typename UtcTrip, typename OriginIdx>
+template <typename UtcTrip, typename TripIdx>
 void build_seated_trips(timetable& tt,
-                        expanded_seated<UtcTrip, OriginIdx>& seated,
+                        expanded_seated<UtcTrip>& seated,
+                        std::function<std::string_view(TripIdx)> const& dbg,
                         std::function<void(UtcTrip&&)> const& consumer) {
   [[maybe_unused]] auto const base = tt.internal_interval_days().from_;
 
@@ -28,7 +29,7 @@ void build_seated_trips(timetable& tt,
                       : b >> static_cast<std::size_t>(-offset);
   };
 
-  auto& remaining = seated.expanded_.data_;
+  vector<UtcTrip>& remaining = seated.expanded_.data_;
   auto const get_remaining = [&](rule_trip_idx_t const i) {
     return seated.expanded_.at(i) | sv::transform([&](UtcTrip const& x) {
              return static_cast<remaining_idx_t>(remaining.index_of(&x));
@@ -40,11 +41,8 @@ void build_seated_trips(timetable& tt,
   auto const outgoing = [&](remaining_idx_t const i) {
     return seated.seated_out_[seated.remaining_rule_trip_[i]];
   };
-  auto const get_trp_idx = [&](remaining_idx_t const i) {
-    return remaining.at(i).trips_.at(0);
-  };
-  auto const display_name = [&](remaining_idx_t const) -> std::string_view {
-    return "";  // TODO
+  [[maybe_unused]] auto const name = [&](remaining_idx_t const i) {
+    return dbg(remaining[i].trips_[0]);
   };
   auto const first_dep =
       [&](remaining_idx_t const x) -> minutes_after_midnight_t {
@@ -67,8 +65,7 @@ void build_seated_trips(timetable& tt,
     // Find first trip with unprocessed/remaining traffic days.
     auto const non_empty_it = utl::find_if(remaining, is_not_empty);
     assert(non_empty_it != end(remaining));
-    trace("ORIGIN {}",
-          trip_data.get(non_empty_it->trips_.front()).display_name());
+    trace("ORIGIN {}", dbg(non_empty_it->trips_[0]));
 
     // ===============================
     // PART 1: Find maximum component.
@@ -91,8 +88,7 @@ void build_seated_trips(timetable& tt,
         auto& current = remaining[current_idx];
         q.erase(curr_it);
 
-        trace("\nEXTRACT {}, offset={}", get_trp(current_idx).display_name(),
-              offset);
+        trace("\nEXTRACT {}, offset={}", name(current_idx), offset);
 
         // Intersect traffic days.
         auto const next_traffic_days =
@@ -125,8 +121,7 @@ void build_seated_trips(timetable& tt,
               trace(
                   "    EXPAND OUT: {}, day_change_offset={} (curr_dep={}, "
                   "curr_arr={}, next_dep={})  =>  {}",
-                  trip_data.get(out_trp).display_name(),
-                  get_day_change_offset(current_idx, out),
+                  name(out), get_day_change_offset(current_idx, out),
                   first_dep(current_idx), last_arr(current_idx), first_dep(out),
                   o);
               q.emplace(out, o);
@@ -141,9 +136,9 @@ void build_seated_trips(timetable& tt,
               trace(
                   "    EXPAND IN: {}, day_change_offset={} (pred_dep={}, "
                   "pred_arr={}, curr_dep={})  =>  {}",
-                  trip_data.get(in_trp).display_name(),
-                  get_day_change_offset(in, current_idx), first_dep(in),
-                  last_arr(current_idx), first_dep(current_idx), o);
+                  name(in), get_day_change_offset(in, current_idx),
+                  first_dep(in), last_arr(current_idx), first_dep(current_idx),
+                  o);
               q.emplace(in, o);
             }
           }
@@ -169,29 +164,30 @@ void build_seated_trips(timetable& tt,
 
     // Initialize queue with all remaining_idx that do not have any incoming
     // seated transfers *in this component*.
-    auto q = std::vector<
-        std::pair<UtcTrip /* concatenated transport */,
-                  int /* transport offset relative to component */>>{};
+    auto q =
+        std::vector<std::tuple<UtcTrip,  // concatenated transport
+                               rule_trip_idx_t,  // last rule trip in chain
+                               int  // transport offset relative to component
+                               >>{};
     for (auto const& [remaining_idx, offset] : component) {
-      trace("  -> {}: {} on {}", display_name(remaining_idx), offset,
+      trace("  -> {}: {} on {}", name(remaining_idx), offset,
             day_list{shift(component_traffic_days, offset), base});
       auto const is_entry = std::ranges::empty(
-          incoming(remaining_idx) | sv::transform([&](rule_trip_idx_t const t) {
-            return get_representative(t);
-          }) |
-          sv::filter([](auto&& r) { return r.has_value(); }));
+          incoming(remaining_idx)  //
+          | sv::transform(get_representative)  //
+          | sv::filter([](auto&& r) { return r.has_value(); }));
       if (is_entry) {
         auto const transport_traffic_days =
             shift(component_traffic_days, offset);
         assert((remaining.at(remaining_idx).utc_traffic_days_ &
                 transport_traffic_days) == transport_traffic_days);
         trace("    -> PUSH {}, on={} (transport_offset={})",
-              display_name(remaining_idx),
-              day_list{transport_traffic_days, base}, -offset);
+              name(remaining_idx), day_list{transport_traffic_days, base},
+              -offset);
         auto start = remaining.at(remaining_idx);
         start.utc_traffic_days_ = transport_traffic_days;
-        start.stop_seq_ = get_trp(remaining_idx).stop_seq_;
-        q.emplace_back(std::move(start), -offset);
+        q.emplace_back(std::move(start),
+                       seated.remaining_rule_trip_[remaining_idx], -offset);
       }
     }
 
@@ -199,33 +195,33 @@ void build_seated_trips(timetable& tt,
     // PART 3: DFS.
     // ------------
     while (!q.empty()) {
-      auto [curr, transport_offset] = std::move(q.back());
+      auto [curr, prev_rule_trip, transport_offset] = std::move(q.back());
       q.resize(q.size() - 1U);
 
       // Expand search.
       auto has_next = false;
-      for (auto const& next : trip_data.get(curr.trips_.back()).seated_out_) {
+      for (auto const& next : seated.seated_out_[prev_rule_trip]) {
         auto const r = get_representative(next);
         if (r.has_value()) {
           auto copy = curr;
           auto const [remaining_idx, offset] = *r;
           auto const& next_r = remaining.at(remaining_idx);
-          auto const next_stop_seq = get_trp(remaining_idx).stop_seq_;
           auto next_times = next_r.utc_times_;
           for (auto& t : next_times) {
             t += (transport_offset + offset) * date::days{1};
           }
-          copy.trips_.push_back(get_trp_idx(remaining_idx));
+          copy.trips_.push_back(remaining[remaining_idx].trips_[0]);
           copy.utc_times_.insert(end(copy.utc_times_), begin(next_times),
                                  end(next_times));
           copy.stop_seq_.insert(end(copy.stop_seq_),
-                                std::next(begin(next_stop_seq)),
-                                end(next_stop_seq));
-          trace("append {} (offset={}): {}",
-                get_trp(remaining_idx).display_name(), offset,
+                                std::next(begin(next_r.stop_seq_)),
+                                end(next_r.stop_seq_));
+          trace("append {} (offset={}): {}", name(remaining_idx), offset,
                 copy.utc_times_ | sv::transform(std::identity{}));
           assert(std::ranges::is_sorted(copy.utc_times_));
-          q.emplace_back(std::move(copy), transport_offset);
+          q.emplace_back(std::move(copy),
+                         seated.remaining_rule_trip_[remaining_idx],
+                         transport_offset);
           has_next = true;
         }
       }
@@ -234,11 +230,9 @@ void build_seated_trips(timetable& tt,
         // No outgoing seated-transfer *in this component*.
         // Pass finished transport to consumer.
         trace("adding trips={}, stops={}, times={}",
-              curr.trips_ | sv::transform([&](gtfs_trip_idx_t const t) {
-                return trip_data.get(t).display_name();
-              }),
+              curr.trips_ | sv::transform(dbg),
               curr.stop_seq_ | sv::transform([&](stop::value_type const& s) {
-                return location{tt, stop{s}.location_idx()};
+                return nigiri::location{tt, stop{s}.location_idx()};
               }),
               curr.utc_times_ | sv::transform(std::identity{}));
         consumer(std::move(curr));
@@ -257,14 +251,16 @@ void build_seated_trips(timetable& tt,
   }  // END while (!utl::all_of(remaining, is_empty))
 }
 
-template void build_seated_trips<gtfs::utc_trip, gtfs::gtfs_trip_idx_t>(
+template void build_seated_trips<gtfs::utc_trip, gtfs_trip_idx_t>(
     timetable&,
-    expanded_seated<gtfs::utc_trip, gtfs::gtfs_trip_idx_t>&,
-    std::function<void(utc_trip&&)> const&);
+    expanded_seated<gtfs::utc_trip>&,
+    std::function<std::string_view(gtfs_trip_idx_t)> const&,
+    std::function<void(gtfs::utc_trip&&)> const&);
 
-template void build_seated_trips<netex::utc_trip, netex::service_journey_idx_t>(
+template void build_seated_trips<netex::utc_trip, trip_idx_t>(
     timetable&,
-    expanded_seated<netex::utc_trip, netex::service_journey_idx_t>&,
+    expanded_seated<netex::utc_trip>&,
+    std::function<std::string_view(trip_idx_t)> const&,
     std::function<void(netex::utc_trip&&)> const&);
 
 }  // namespace nigiri::loader::gtfs

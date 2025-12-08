@@ -365,7 +365,12 @@ void load_timetable(loader_config const& config,
                       trip_data.get(i).service_, tt.date_range_, assistance,
                       [&](utc_trip&& s) { consume(std::move(s)); });
         });
-    build_seated_trips(tt, trip_data, expanded_seated, add_expanded_trip);
+    build_seated_trips<gtfs::utc_trip, gtfs_trip_idx_t>(
+        tt, expanded_seated,
+        [&](gtfs_trip_idx_t const& t) {
+          return tt.trip_display_names_[trip_data.get(t).trip_idx_].view();
+        },
+        add_expanded_trip);
   }
 
   {
