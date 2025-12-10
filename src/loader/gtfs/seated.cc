@@ -4,8 +4,8 @@
 
 #include <ranges>
 
-// #define trace(...) fmt::println(__VA_ARGS__)
-#define trace(...)
+#define trace(...) fmt::println(std::clog, __VA_ARGS__)
+// #define trace(...)
 
 namespace sv = std::views;
 
@@ -14,7 +14,7 @@ namespace nigiri::loader::gtfs {
 template <typename UtcTrip, typename TripIdx>
 void build_seated_trips(timetable& tt,
                         expanded_seated<UtcTrip>& seated,
-                        std::function<std::string_view(TripIdx)> const& dbg,
+                        std::function<std::string(TripIdx)> const& dbg,
                         std::function<void(UtcTrip&&)> const& consumer) {
   [[maybe_unused]] auto const base = tt.internal_interval_days().from_;
 
@@ -54,10 +54,21 @@ void build_seated_trips(timetable& tt,
   };
   auto const get_day_change_offset = [&](remaining_idx_t const a,
                                          remaining_idx_t const b) {
+    assert(first_dep(b) < 1440_minutes);
     auto const day_span =
         last_arr(a) / date::days{1U} - first_dep(a) / date::days{1U};
     auto const day_change = last_arr(a) % 1440 > first_dep(b) ? 1 : 0;
     return day_span + day_change;
+  };
+  auto const is_valid_dwell_time = [&](remaining_idx_t const a,
+                                       remaining_idx_t const b) {
+    // examples:
+    // 1) 23:59 - 00:01 => 00:01 - 23:59 = 1 - 1339 = -1338 => -1338+1440 = 2
+    // 2) 10:00 - 11:00 => 11:00 - 10:00 = 660 - 600 => 60
+    assert(first_dep(b) < 1440_minutes);
+    auto const diff = first_dep(b) - last_arr(a) % 1440;
+    auto const dwell = diff < duration_t{0} ? diff + 1440_minutes : diff;
+    return dwell < 120_minutes;
   };
 
   auto combinations = std::vector<utc_trip>{};
@@ -84,11 +95,11 @@ void build_seated_trips(timetable& tt,
       while (!q.empty()) {
         // Extract next queue element.
         auto const curr_it = q.begin();
-        auto const [current_idx, offset] = *curr_it;
-        auto& current = remaining[current_idx];
+        auto const [curr, offset] = *curr_it;
+        auto& current = remaining[curr];
         q.erase(curr_it);
 
-        trace("\nEXTRACT {}, offset={}", name(current_idx), offset);
+        trace("\nEXTRACT {}, offset={}", name(curr), offset);
 
         // Intersect traffic days.
         auto const next_traffic_days =
@@ -111,36 +122,38 @@ void build_seated_trips(timetable& tt,
         // Add trip to component + update component traffic days.
         trace("UPDATE: {}", day_list{next_traffic_days, base});
         component_traffic_days = next_traffic_days;
-        component.emplace(current_idx, offset);
+        component.emplace(curr, offset);
 
         // Expand search to neighbors.
-        for (auto const& out_trp : outgoing(current_idx)) {
+        for (auto const& out_trp : outgoing(curr)) {
           for (auto const out : get_remaining(out_trp)) {
-            if (!component.contains(out)) {
-              auto const o = offset + get_day_change_offset(current_idx, out);
-              trace(
-                  "    EXPAND OUT: {}, day_change_offset={} (curr_dep={}, "
-                  "curr_arr={}, next_dep={})  =>  {}",
-                  name(out), get_day_change_offset(current_idx, out),
-                  first_dep(current_idx), last_arr(current_idx), first_dep(out),
-                  o);
-              q.emplace(out, o);
+            if (component.contains(out) || !is_valid_dwell_time(curr, out)) {
+              continue;
             }
+
+            auto const o = offset + get_day_change_offset(curr, out);
+            trace(
+                "    EXPAND OUT: {}, day_change_offset={} "
+                "(last_arr(curr)={}, first_dep(out)={}) => offset={}",
+                name(out), get_day_change_offset(curr, out), last_arr(curr),
+                first_dep(out), o);
+            q.emplace(out, o);
           }
         }
 
-        for (auto const& in_trp : incoming(current_idx)) {
+        for (auto const& in_trp : incoming(curr)) {
           for (auto const in : get_remaining(in_trp)) {
-            if (!component.contains(in)) {
-              auto const o = offset - get_day_change_offset(in, current_idx);
-              trace(
-                  "    EXPAND IN: {}, day_change_offset={} (pred_dep={}, "
-                  "pred_arr={}, curr_dep={})  =>  {}",
-                  name(in), get_day_change_offset(in, current_idx),
-                  first_dep(in), last_arr(current_idx), first_dep(current_idx),
-                  o);
-              q.emplace(in, o);
+            if (component.contains(in) || !is_valid_dwell_time(in, curr)) {
+              continue;
             }
+
+            auto const o = offset - get_day_change_offset(in, curr);
+            trace(
+                "    EXPAND IN: {}, day_change_offset={} (last_arr(in)={}, "
+                "first_dep(curr)={}) => offset={}",
+                name(in), get_day_change_offset(in, curr), last_arr(in),
+                first_dep(curr), o);
+            q.emplace(in, o);
           }
         }
       }  // END while (!q.empty())
@@ -209,6 +222,7 @@ void build_seated_trips(timetable& tt,
           auto next_times = next_r.utc_times_;
           for (auto& t : next_times) {
             t += (transport_offset + offset) * date::days{1};
+            assert(t >= duration_t{0});
           }
           copy.trips_.push_back(remaining[remaining_idx].trips_[0]);
           copy.utc_times_.insert(end(copy.utc_times_), begin(next_times),
@@ -219,6 +233,25 @@ void build_seated_trips(timetable& tt,
           trace("append {} (offset={}): {}", name(remaining_idx), offset,
                 copy.utc_times_ | sv::transform(std::identity{}));
           assert(std::ranges::is_sorted(copy.utc_times_));
+          if (!std::ranges::is_sorted(copy.utc_times_)) {
+            fmt::println(
+                std::clog,
+                "ERROR! NOT SORTED: transport_offset={}, offset={}"
+                "\ntrips:\n\t{}\nstops:\n\t{}\ntimes:\n\t{}\nnext_times:\n\t{}"
+                "\n",
+                transport_offset, offset,
+                fmt::join(copy.trips_ | sv::transform(dbg), "\n\t"),
+                fmt::join(copy.stop_seq_ |
+                              sv::transform([&](stop::value_type const& s) {
+                                return nigiri::location{tt,
+                                                        stop{s}.location_idx()};
+                              }),
+                          "\n\t"),
+                fmt::join(copy.utc_times_ | sv::transform(std::identity{}),
+                          "\n\t"),
+                fmt::join(next_r.utc_times_ | sv::transform(std::identity{}),
+                          "\n\t"));
+          }
           q.emplace_back(std::move(copy),
                          seated.remaining_rule_trip_[remaining_idx],
                          transport_offset);
@@ -254,13 +287,13 @@ void build_seated_trips(timetable& tt,
 template void build_seated_trips<gtfs::utc_trip, gtfs_trip_idx_t>(
     timetable&,
     expanded_seated<gtfs::utc_trip>&,
-    std::function<std::string_view(gtfs_trip_idx_t)> const&,
+    std::function<std::string(gtfs_trip_idx_t)> const&,
     std::function<void(gtfs::utc_trip&&)> const&);
 
 template void build_seated_trips<netex::utc_trip, trip_idx_t>(
     timetable&,
     expanded_seated<netex::utc_trip>&,
-    std::function<std::string_view(trip_idx_t)> const&,
+    std::function<std::string(trip_idx_t)> const&,
     std::function<void(netex::utc_trip&&)> const&);
 
 }  // namespace nigiri::loader::gtfs

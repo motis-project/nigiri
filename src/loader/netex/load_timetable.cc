@@ -739,6 +739,7 @@ struct journey_meeting {
     return a.to_journey_id_ == b.to_journey_id_;
   }
   cista::hash_t hash() const { return cista::hash(to_journey_id_); }
+
   std::string to_journey_id_;
   bitfield const* bitfield_;
   stop const* stop_;
@@ -982,9 +983,9 @@ hash_map<key, bitfield> expand_local_to_utc(timetable const& tt,
                  .tz_offset_ = sj.stop_times_.front().dep_ - first_dep_utc};
     for (auto const [dep, arr] :
          utl::pairwise(interval{0U, sj.stop_times_.size()})) {
-      k.utc_times_.push_back(to_utc(day, sj.stop_times_[dep].dep_) +
+      k.utc_times_.push_back(to_utc(day, sj.stop_times_[dep].dep_) -
                              first_dep_day_offset);
-      k.utc_times_.push_back(to_utc(day, sj.stop_times_[arr].arr_) +
+      k.utc_times_.push_back(to_utc(day, sj.stop_times_[arr].arr_) -
                              first_dep_day_offset);
     }
 
@@ -1392,6 +1393,13 @@ void load_timetable(loader_config const& config,
       },
       pt->update_fn());
 
+  for (auto const& [from, to] : global_journey_meetings) {
+    fmt::println(std::clog, "from={}, to={}", from,
+                 to | std::views::transform([](journey_meeting const& x) {
+                   return x.to_journey_id_;
+                 }));
+  }
+
   auto sj_rule_trip =
       vector_map<service_journey_idx_t, gtfs::rule_trip_idx_t>{};
   auto rule_trip_sj =
@@ -1442,7 +1450,11 @@ void load_timetable(loader_config const& config,
 
   gtfs::build_seated_trips<netex::utc_trip, trip_idx_t>(
       tt, ret,
-      [&](trip_idx_t const x) { return tt.trip_display_names_[x].view(); },
+      [&](trip_idx_t const trip_idx) {
+        return fmt::format(
+            "({}, {})", tt.trip_id_strings_[tt.trip_ids_[trip_idx][0]].view(),
+            tt.trip_display_names_[trip_idx].view());
+      },
       [&](netex::utc_trip&& x) { add_expanded_trip(std::move(x)); });
 
   {

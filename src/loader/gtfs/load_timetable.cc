@@ -368,7 +368,10 @@ void load_timetable(loader_config const& config,
     build_seated_trips<gtfs::utc_trip, gtfs_trip_idx_t>(
         tt, expanded_seated,
         [&](gtfs_trip_idx_t const& t) {
-          return tt.trip_display_names_[trip_data.get(t).trip_idx_].view();
+          auto const trip_idx = trip_data.get(t).trip_idx_;
+          return fmt::format(
+              "({}, {})", tt.trip_id_strings_[tt.trip_ids_[trip_idx][0]].view(),
+              tt.trip_display_names_[trip_idx].view());
         },
         add_expanded_trip);
   }

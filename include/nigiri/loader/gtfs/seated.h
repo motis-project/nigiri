@@ -23,7 +23,7 @@ struct expanded_seated {
 template <typename UtcTrip, typename TripIdx>
 void build_seated_trips(timetable&,
                         expanded_seated<UtcTrip>&,
-                        std::function<std::string_view(TripIdx)> const& dbg,
+                        std::function<std::string(TripIdx)> const& dbg,
                         std::function<void(UtcTrip&&)> const& consumer);
 
 template <typename Fn>
