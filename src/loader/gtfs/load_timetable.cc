@@ -387,7 +387,6 @@ void load_timetable(loader_config const& config,
     auto lines = hash_map<std::string, trip_line_idx_t>{};
     auto section_providers = basic_string<provider_idx_t>{};
     auto section_directions = basic_string<trip_direction_idx_t>{};
-    auto route_colors = basic_string<route_color>{};
     auto external_trip_ids = basic_string<merged_trips_idx_t>{};
     auto location_routes = mutable_fws_multimap<location_idx_t, route_idx_t>{};
     for (auto const& [key, sub_routes] : route_services) {
@@ -406,7 +405,6 @@ void load_timetable(loader_config const& config,
           external_trip_ids.clear();
           section_directions.clear();
           section_providers.clear();
-          route_colors.clear();
 
           auto prev_end = std::uint16_t{0U};
           for (auto const [i, t] : utl::enumerate(s.trips_)) {
@@ -429,8 +427,6 @@ void load_timetable(loader_config const& config,
                                           std::begin(trp.stop_headsigns_),
                                           std::end(trp.stop_headsigns_));
               }
-              route_colors.push_back(
-                  {trp.route_->color_, trp.route_->text_color_});
               section_providers.push_back(trp.route_->agency_);
             } else {
               for (auto section = 0U; section != trp.stop_seq_.size() - 1;
@@ -440,8 +436,6 @@ void load_timetable(loader_config const& config,
                     trp.stop_headsigns_.empty()
                         ? trp.headsign_
                         : trp.stop_headsigns_.at(section));
-                route_colors.push_back(
-                    {trp.route_->color_, trp.route_->text_color_});
                 section_providers.push_back(trp.route_->agency_);
               }
             }
@@ -457,8 +451,7 @@ void load_timetable(loader_config const& config,
               .external_trip_ids_ = external_trip_ids,
               .section_attributes_ = attributes,
               .section_providers_ = section_providers,
-              .section_directions_ = section_directions,
-              .route_colors_ = route_colors});
+              .section_directions_ = section_directions});
         }
 
         tt.finish_route();

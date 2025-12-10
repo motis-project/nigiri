@@ -459,8 +459,7 @@ using destination_display_map_t =
 destination_display_map_t get_destination_displays(
     pugi::xml_document const& doc) {
   auto destination_displays = destination_display_map_t{};
-  destination_displays.emplace(std::string_view{},
-                               uniq(destination_display{.direction_ = ""}));
+  destination_displays.emplace("", uniq(destination_display{.direction_ = ""}));
   for (auto const display : doc.select_nodes(
            "//ServiceFrame/destinationDisplays/DestinationDisplay")) {
     auto const n = display.node();
@@ -720,6 +719,10 @@ journey_pattern_map_t get_journey_patterns(
       });
     }
 
+    if (stop_points.size() < 2U) {
+      continue;
+    }
+
     journey_patterns.emplace(
         id(n),
         uniq(journey_pattern{
@@ -728,6 +731,7 @@ journey_pattern_map_t get_journey_patterns(
                 direction_id_t{ref(n, "DirectionRef").ends_with("1::") ? 0 : 1},
             .stop_points_ = std::move(stop_points)}));
   }
+
   return journey_patterns;
 }
 
@@ -742,7 +746,7 @@ struct journey_meeting {
 
   std::string to_journey_id_;
   bitfield const* bitfield_;
-  stop const* stop_;
+  std::string_view stop_;
 };
 
 using journey_meeting_map_t =
@@ -750,8 +754,6 @@ using journey_meeting_map_t =
 
 journey_meeting_map_t get_journey_meetings(
     pugi::xml_document const& doc,
-    lookup<stop_map_t> stops,
-    lookup<stop_assignment_map_t> stop_assignments,
     lookup<operating_period_map_t> operating_periods) {
   auto journey_meetings = journey_meeting_map_t{};
   for (auto const x : doc.select_nodes(
@@ -761,28 +763,15 @@ journey_meeting_map_t get_journey_meetings(
     if (!is_true_or_empty(val(n, "StaySeated"))) {
       continue;
     }
-
-    auto const from = ref(n, "FromJourneyRef");
-    auto const to = ref(n, "ToJourneyRef");
-    auto const stop = ref(n, "FromPointRef") || ref(n, "AtStopPointRef");
     auto const m = journey_meeting{
-        .to_journey_id_ = std::string{to},
+        .to_journey_id_ = std::string{ref(n, "ToJourneyRef")},
         .bitfield_ = operating_periods
                          .at(ref(n.child("validityConditions"),
                                  "AvailabilityConditionRef"))
                          .get(),
-        .stop_ =
-            stop_assignments.find(stop)
-                .transform([](auto&& s) -> netex::stop const* { return *s; })
-                .or_else([&]() {
-                  return stops.find(stop).transform(
-                      [](auto&& s) -> netex::stop const* { return s->get(); });
-                })
-                .value_or(nullptr),
+        .stop_ = ref(n, "FromPointRef") || ref(n, "AtStopPointRef"),
     };
-    if (m.stop_ != nullptr) {
-      journey_meetings[from].insert(m);
-    }
+    journey_meetings[ref(n, "FromJourneyRef")].insert(m);
   }
   return journey_meetings;
 }
@@ -927,6 +916,10 @@ std::vector<service_journey> get_service_journeys(
              .dep_ = parse_time(val(pn, "DepartureTime"),
                                 val(pn, "DepartureDayOffset"))});
       }
+    }
+
+    if (sj.get_journey_pattern()->stop_points_.size() < 2U) {
+      continue;
     }
 
     service_journeys.emplace_back(std::move(sj));
@@ -1101,10 +1094,8 @@ std::optional<intermediate> get_intermediate(intermediate const& base,
     im.vehicle_types_ = get_vehicle_types(doc);
     im.day_type_assignments_ = get_day_type_assignments(
         doc, {base.operating_periods_, im.operating_periods_});
-    im.journey_meetings_ =
-        get_journey_meetings(doc, {base.stops_, im.stops_},
-                             {base.stop_assignments_, im.stop_assignments_},
-                             {base.operating_periods_, im.operating_periods_});
+    im.journey_meetings_ = get_journey_meetings(
+        doc, {base.operating_periods_, im.operating_periods_});
     im.service_journeys_ = get_service_journeys(
         doc, {base.stop_assignments_, im.stop_assignments_},
         {base.operating_periods_, im.operating_periods_},
@@ -1155,9 +1146,9 @@ void load_timetable(loader_config const& config,
 
   auto const ch_prio = [](std::string const& s) {
     if (s.contains("SITE")) return 0;
-    if (s.contains("COMMON")) return 1;
-    if (s.contains("RESOURCE")) return 2;
-    if (s.contains("SERVICECALENDAR")) return 3;
+    if (s.contains("SERVICECALENDAR")) return 1;
+    if (s.contains("COMMON")) return 2;
+    if (s.contains("RESOURCE")) return 3;
     if (s.contains("SERVICE")) return 4;
     return 99;
   };
@@ -1167,34 +1158,12 @@ void load_timetable(loader_config const& config,
 
   auto const r = script_runner{config.user_script_};
 
-  auto route_services =
-      hash_map<gtfs::route_key_t, std::vector<std::vector<utc_trip>>,
-               gtfs::route_key_hash, gtfs::route_key_equals>{};
-  auto rule_services = gtfs::expanded_seated<utc_trip>{};
-  auto const add_expanded_trip = [&](utc_trip const& s) {
-    auto const c =
-        gtfs::to_clasz(to_idx(tt.route_ids_[src].route_id_type_[s.route_id_]));
-    auto const it = route_services.find(gtfs::route_key_ptr_t{c, &s.stop_seq_});
-    if (it != end(route_services)) {
-      for (auto& route : it->second) {
-        auto const idx = get_index(route, s);
-        if (idx.has_value()) {
-          route.insert(std::next(begin(route), static_cast<int>(*idx)), s);
-          return;
-        }
-      }
-      it->second.emplace_back(std::vector<utc_trip>{std::move(s)});
-    } else {
-      route_services.emplace(gtfs::route_key_t{c, s.stop_seq_, {}, {}},
-                             std::vector<std::vector<utc_trip>>{{s}});
-    }
-  };
-
   auto tt_mtx = std::mutex{};
   auto tz_map = gtfs::tz_map{};
   auto global_journey_meetings = journey_meeting_map_t{};
   auto sj_utc_trips = vecvec<service_journey_idx_t, utc_trip>{};
   auto sj_ids = string_store<service_journey_idx_t>{};
+  auto sj_trips = vector_map<service_journey_idx_t, trip_idx_t>{};
   auto const add_to_tt = [&](fs::path const& path, intermediate& im) {
     auto lock = std::scoped_lock{tt_mtx};
 
@@ -1349,8 +1318,17 @@ void load_timetable(loader_config const& config,
         trip_direction.pop_back();
       }
 
+      utl::verify(trip_direction.size() == 1U ||
+                      trip_direction.size() ==
+                          sj.get_journey_pattern()->stop_points_.size() - 1U,
+                  "#trip_direction={}, #stop_points, ServiceJourney.id=",
+                  trip_direction.size(),
+                  sj.get_journey_pattern()->stop_points_.size());
+
       [[maybe_unused]] auto const sj_idx = sj_ids.store(sj.id_);
       assert(sj_idx == sj_utc_trips.size());
+      assert(sj_idx == sj_trips.size());
+      sj_trips.push_back(trip_idx);
       auto bucket = sj_utc_trips.add_back_sized(0U);
       for (auto const& [k, traffic_days] :
            expand_local_to_utc(tt, im.tz_, sj)) {
@@ -1360,7 +1338,7 @@ void load_timetable(loader_config const& config,
             .utc_times_ = k.utc_times_,
             .utc_traffic_days_ = traffic_days,
             .stop_seq_ = stops,
-            .trips_ = {trip_idx},
+            .trips_ = {sj_idx},
             .trip_direction_ = trip_direction,
             .route_id_ = route_id,
         });
@@ -1393,12 +1371,36 @@ void load_timetable(loader_config const& config,
       },
       pt->update_fn());
 
+  fmt::println(std::clog, "GLOBAL JOURNEY MEETINGS");
   for (auto const& [from, to] : global_journey_meetings) {
     fmt::println(std::clog, "from={}, to={}", from,
                  to | std::views::transform([](journey_meeting const& x) {
                    return x.to_journey_id_;
                  }));
   }
+  fmt::println(std::clog, "----");
+
+  auto route_services =
+      hash_map<gtfs::route_key_t, std::vector<std::vector<utc_trip>>,
+               gtfs::route_key_hash, gtfs::route_key_equals>{};
+  auto const add_expanded_trip = [&](utc_trip const& s) {
+    auto const c =
+        gtfs::to_clasz(to_idx(tt.route_ids_[src].route_id_type_[s.route_id_]));
+    auto const it = route_services.find(gtfs::route_key_ptr_t{c, &s.stop_seq_});
+    if (it != end(route_services)) {
+      for (auto& route : it->second) {
+        auto const idx = get_index(route, s);
+        if (idx.has_value()) {
+          route.insert(std::next(begin(route), static_cast<int>(*idx)), s);
+          return;
+        }
+      }
+      it->second.emplace_back(std::vector<utc_trip>{s});
+    } else {
+      route_services.emplace(gtfs::route_key_t{c, s.stop_seq_, {}, {}},
+                             std::vector<std::vector<utc_trip>>{{s}});
+    }
+  };
 
   auto sj_rule_trip =
       vector_map<service_journey_idx_t, gtfs::rule_trip_idx_t>{};
@@ -1440,17 +1442,19 @@ void load_timetable(loader_config const& config,
     auto const to_rule_trip_idx = [&](service_journey_idx_t const x) {
       return sj_rule_trip.at(x);
     };
-    ret.expanded_.emplace_back(sj_utc_trips[sj]);
-    for (auto const& _ : sj_utc_trips[sj]) {
+    auto bucket = ret.expanded_.add_back_sized(0U);
+    for (auto const& utc_trip : sj_utc_trips[sj]) {
+      bucket.push_back(utc_trip);
       ret.remaining_rule_trip_.push_back(gtfs::rule_trip_idx_t{rule_trip});
     }
     ret.seated_out_.emplace_back(seated_out[sj] | transform(to_rule_trip_idx));
     ret.seated_in_.emplace_back(seated_in[sj] | transform(to_rule_trip_idx));
   }
 
-  gtfs::build_seated_trips<netex::utc_trip, trip_idx_t>(
+  gtfs::build_seated_trips<utc_trip, service_journey_idx_t>(
       tt, ret,
-      [&](trip_idx_t const trip_idx) {
+      [&](service_journey_idx_t const sj_idx) {
+        auto const trip_idx = sj_trips[sj_idx];
         return fmt::format(
             "({}, {})", tt.trip_id_strings_[tt.trip_ids_[trip_idx][0]].view(),
             tt.trip_display_names_[trip_idx].view());
@@ -1469,6 +1473,7 @@ void load_timetable(loader_config const& config,
     auto section_providers = basic_string<provider_idx_t>{};
     auto route_colors = basic_string<route_color>{};
     auto external_trip_ids = basic_string<merged_trips_idx_t>{};
+    auto section_directions = basic_string<trip_direction_idx_t>{};
     auto location_routes = mutable_fws_multimap<location_idx_t, route_idx_t>{};
     for (auto const& [key, sub_routes] : route_services) {
       for (auto const& services : sub_routes) {
@@ -1485,19 +1490,44 @@ void load_timetable(loader_config const& config,
         for (auto const& s : services) {
           external_trip_ids.clear();
           section_providers.clear();
+          section_directions.clear();
           route_colors.clear();
 
-          tt.trip_transport_ranges_[s.trips_[0]].emplace_back(transport_range_t{
-              tt.next_transport_idx(),
-              {static_cast<stop_idx_t>(0U),
-               static_cast<stop_idx_t>(key.stop_seq_.size())}});
+          auto prev_end = std::uint16_t{0U};
+          for (auto const [i, sj_idx] : utl::enumerate(s.trips_)) {
+            auto& trp = sj_utc_trips[sj_idx].front();
+            auto const trip_idx = sj_trips[sj_idx];
 
-          auto const merged_trip = tt.register_merged_trip({s.trips_[0]});
-          external_trip_ids.push_back(merged_trip);
-          route_colors.push_back({});
-          section_providers.push_back(
-              tt.route_ids_[src].route_id_provider_[s.route_id_]);
+            auto const end =
+                static_cast<std::uint16_t>(prev_end + trp.stop_seq_.size());
 
+            tt.trip_transport_ranges_[trip_idx].emplace_back(
+                transport_range_t{tt.next_transport_idx(), {prev_end, end}});
+            prev_end = end - 1;
+
+            auto const merged_trip = tt.register_merged_trip({trip_idx});
+            if (s.trips_.size() == 1U) {
+              external_trip_ids.push_back(merged_trip);
+              section_directions.insert(std::end(section_directions),
+                                        std::begin(trp.trip_direction_),
+                                        std::end(trp.trip_direction_));
+              section_providers.push_back(
+                  tt.route_ids_[src].route_id_provider_[trp.route_id_]);
+            } else {
+              for (auto section = 0U; section != trp.stop_seq_.size() - 1;
+                   ++section) {
+                external_trip_ids.push_back(merged_trip);
+                section_directions.push_back(
+                    trp.trip_direction_.size() == 1U
+                        ? trp.trip_direction_[0]
+                        : trp.trip_direction_.at(section));
+                section_providers.push_back(
+                    tt.route_ids_[src].route_id_provider_[trp.route_id_]);
+              }
+            }
+          }
+
+          assert(!section_directions.empty());
           assert(s.first_dep_offset_.count() >= -1);
           tt.add_transport(timetable::transport{
               .bitfield_idx_ = utl::get_or_create(
@@ -1508,8 +1538,7 @@ void load_timetable(loader_config const& config,
               .external_trip_ids_ = external_trip_ids,
               .section_attributes_ = attributes,
               .section_providers_ = section_providers,
-              .section_directions_ = s.trip_direction_,
-              .route_colors_ = route_colors});
+              .section_directions_ = section_directions});
         }
 
         tt.finish_route();

@@ -290,10 +290,10 @@ template void build_seated_trips<gtfs::utc_trip, gtfs_trip_idx_t>(
     std::function<std::string(gtfs_trip_idx_t)> const&,
     std::function<void(gtfs::utc_trip&&)> const&);
 
-template void build_seated_trips<netex::utc_trip, trip_idx_t>(
+template void build_seated_trips<netex::utc_trip, netex::service_journey_idx_t>(
     timetable&,
     expanded_seated<netex::utc_trip>&,
-    std::function<std::string(trip_idx_t)> const&,
+    std::function<std::string(netex::service_journey_idx_t)> const&,
     std::function<void(netex::utc_trip&&)> const&);
 
 }  // namespace nigiri::loader::gtfs

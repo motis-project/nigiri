@@ -113,7 +113,6 @@ struct timetable {
     basic_string<attribute_combination_idx_t> const& section_attributes_;
     basic_string<provider_idx_t> const& section_providers_;
     basic_string<trip_direction_idx_t> const& section_directions_;
-    basic_string<route_color> const& route_colors_;
   };
 
   void resolve();
@@ -227,7 +226,6 @@ struct timetable {
     transport_section_attributes_.emplace_back(t.section_attributes_);
     transport_section_providers_.emplace_back(t.section_providers_);
     transport_section_directions_.emplace_back(t.section_directions_);
-    transport_section_route_colors_.emplace_back(t.route_colors_);
 
     assert(transport_traffic_days_.size() == transport_route_.size());
     assert(transport_traffic_days_.size() == transport_to_trip_section_.size());
@@ -516,7 +514,6 @@ struct timetable {
       transport_section_attributes_;
   vecvec<transport_idx_t, provider_idx_t> transport_section_providers_;
   vecvec<transport_idx_t, trip_direction_idx_t> transport_section_directions_;
-  vecvec<transport_idx_t, route_color> transport_section_route_colors_;
 
   // Lower bound graph.
   std::array<vecvec<location_idx_t, footpath>, kNProfiles> fwd_search_lb_graph_;
