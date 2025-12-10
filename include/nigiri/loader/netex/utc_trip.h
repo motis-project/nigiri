@@ -16,6 +16,7 @@ struct utc_trip {
   basic_string<service_journey_idx_t> trips_;
   basic_string<trip_direction_idx_t> trip_direction_;
   route_id_idx_t route_id_;
+  attribute_combination_idx_t attributes_;
 };
 
 }  // namespace nigiri::loader::netex

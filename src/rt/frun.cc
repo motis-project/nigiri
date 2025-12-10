@@ -336,6 +336,17 @@ std::string_view run_stop::direction(event_type const ev_type) const {
   return "";
 }
 
+attribute_combination_idx_t run_stop::get_attribute_combination(
+    event_type ev_type) const {
+  if (!fr_->is_scheduled()) {
+    return attribute_combination_idx_t{0};
+  }
+  auto const attribute_sections =
+      tt().transport_section_attributes_[fr_->t_.t_idx_];
+  return attribute_sections.at(
+      attribute_sections.size() == 1U ? 0U : section_idx(ev_type));
+}
+
 clasz run_stop::get_clasz(event_type const ev_type) const {
   if (fr_->is_rt() && rtt() != nullptr) {
     auto const clasz_sections = rtt()->rt_transport_section_clasz_.at(fr_->rt_);

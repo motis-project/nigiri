@@ -33,6 +33,8 @@
 #include "nigiri/shapes_storage.h"
 #include "nigiri/timetable.h"
 
+#include "utl/erase_duplicates.h"
+
 using namespace std::string_view_literals;
 namespace fs = std::filesystem;
 
@@ -776,6 +778,54 @@ journey_meeting_map_t get_journey_meetings(
   return journey_meetings;
 }
 
+struct translation {
+  std::string_view language_;
+  std::string_view text_;
+};
+
+// =======
+// Notices
+// -------
+struct notice {
+  attribute_idx_t attribute_idx_{attribute_idx_t::invalid()};
+  std::string_view code_;
+  std::vector<translation> translations_;
+};
+
+using notice_map_t = hash_map<std::string_view, std::unique_ptr<notice>>;
+
+notice_map_t get_notices(pugi::xml_document const& doc) {
+  auto notices = notice_map_t{};
+  notices.emplace(
+      "", uniq(notice{.code_ = "",
+                      .translations_ = {{.language_ = "", .text_ = ""}}}));
+  for (auto const x : doc.select_nodes("//ServiceFrame/notices/Notice")) {
+    auto const n = x.node();
+    if (!is_true_or_empty(val(n, "CanBeAdvertised"))) {
+      continue;
+    }
+
+    auto const parse_text = [](pugi::xml_node const notice) {
+      auto const text = notice.child("Text");
+      return translation{
+          .language_ = text.attribute("lang").as_string(),
+          .text_ = text.child_value(),
+      };
+    };
+
+    auto translations = std::vector<translation>{parse_text(n)};
+    for (auto const alt :
+         n.child("alternativeTexts").children("AlternativeText")) {
+      translations.push_back(parse_text(alt));
+    }
+
+    notices.emplace(id(n),
+                    uniq(notice{.code_ = val(n, "ShortCode"),
+                                .translations_ = std::move(translations)}));
+  }
+  return notices;
+}
+
 // ===============
 // SERVICE_JOURNEY
 // ---------------
@@ -799,6 +849,7 @@ struct service_journey {
   std::variant<journey_pattern const*, journey_pattern> journey_pattern_{};
   bitfield const* traffic_days_;
   operätor const* operator_;
+  std::vector<notice const*> notices_;
   std::vector<stop_times> stop_times_{};
   ptrdiff_t dbg_offset_;
 };
@@ -822,6 +873,7 @@ std::vector<service_journey> get_service_journeys(
     lookup<vehicle_type_map_t> vehicle_types,
     lookup<line_map_t> lines,
     lookup<operator_map_t> operators,
+    lookup<notice_map_t> notices,
     lookup<journey_pattern_map_t> journey_patterns,
     train_nr_map_t const& train_nrs) {
   auto service_journeys = std::vector<service_journey>{};
@@ -857,6 +909,17 @@ std::vector<service_journey> get_service_journeys(
                                        .attribute()
                                        .as_string()),
         .operator_ = operators.at(ref(n, "OperatorRef")).get(),
+        .notices_ =
+            utl::all(
+                n.child("noticeAssignments").children("NoticeAssignment"))  //
+            | utl::transform([&](pugi::xml_node const na) {
+                return notices.find(ref(na, "NoticeRef"));
+              })  //
+            | utl::remove_if([](auto&& opt) { return !opt.has_value(); })  //
+            | utl::transform([](auto&& opt) -> notice const* {
+                return opt.value()->get();
+              })  //
+            | utl::vec(),
         .dbg_offset_ = n.offset_debug()};
 
     auto const calls = n.child("calls");
@@ -1017,6 +1080,7 @@ struct intermediate {
       source = {};
     };
 
+    merge(notices_, o.notices_);
     merge(stops_, o.stops_);
     merge(vehicle_types_, o.vehicle_types_);
     merge(journey_patterns_, o.journey_patterns_);
@@ -1033,6 +1097,7 @@ struct intermediate {
   file f_;
   pugi::xml_document doc_;
   date::time_zone const* tz_;
+  notice_map_t notices_;
   stop_map_t stops_;
   vehicle_type_map_t vehicle_types_;
   journey_pattern_map_t journey_patterns_;
@@ -1076,6 +1141,7 @@ std::optional<intermediate> get_intermediate(intermediate const& base,
             : doc.select_node("//FrameDefaults/DefaultLocale/TimeZone")
                   .node()
                   .child_value());
+    im.notices_ = get_notices(doc);
     im.authorities_ = get_authorities(doc);
     im.operators_ = get_operators(doc);
     im.stops_ = get_stops(doc);
@@ -1102,7 +1168,7 @@ std::optional<intermediate> get_intermediate(intermediate const& base,
         {base.day_type_assignments_, im.day_type_assignments_},
         {base.destination_displays_, im.destination_displays_},
         {base.vehicle_types_, im.vehicle_types_}, {base.lines_, im.lines_},
-        {base.operators_, im.operators_},
+        {base.operators_, im.operators_}, {base.notices_, im.notices_},
         {base.journey_patterns_, im.journey_patterns_}, get_train_numbers(doc));
     im.f_ = std::move(f);
     im.doc_ = std::move(doc);
@@ -1160,6 +1226,27 @@ void load_timetable(loader_config const& config,
 
   auto tt_mtx = std::mutex{};
   auto tz_map = gtfs::tz_map{};
+
+  auto get_attribute_combination_idx =
+      [&tt,
+       combis = hash_map<basic_string<attribute_idx_t>,
+                         attribute_combination_idx_t>{},
+       cache = basic_string<attribute_idx_t>{}](
+          std::vector<notice const*> const& attributes) mutable {
+        cache.clear();
+        cache.resize(attributes.size());
+        for (auto const [x, y] : utl::zip(cache, attributes)) {
+          x = y->attribute_idx_;
+        }
+        utl::erase_duplicates(cache);
+        return utl::get_or_create(combis, cache, [&]() {
+          auto const combination_idx =
+              attribute_combination_idx_t{tt.attribute_combinations_.size()};
+          tt.attribute_combinations_.emplace_back(cache);
+          return combination_idx;
+        });
+      };
+
   auto global_journey_meetings = journey_meeting_map_t{};
   auto sj_utc_trips = vecvec<service_journey_idx_t, utc_trip>{};
   auto sj_ids = string_store<service_journey_idx_t>{};
@@ -1227,6 +1314,13 @@ void load_timetable(loader_config const& config,
       tt.trip_directions_.emplace_back(
           tt.register_trip_direction_string(dd->direction_));
       dd->trip_direction_ = trip_direction_idx_t{idx};
+    }
+
+    for (auto& [id, attr] : im.notices_) {
+      auto const idx = attribute_idx_t{tt.attributes_.size()};
+      tt.attributes_.emplace_back(attribute{
+          .code_ = attr->code_, .text_ = attr->translations_.at(0).text_});
+      attr->attribute_idx_ = idx;
     }
 
     for (auto& sj : im.service_journeys_) {
@@ -1341,6 +1435,7 @@ void load_timetable(loader_config const& config,
             .trips_ = {sj_idx},
             .trip_direction_ = trip_direction,
             .route_id_ = route_id,
+            .attributes_ = get_attribute_combination_idx(sj.notices_),
         });
       }
     }
@@ -1468,13 +1563,13 @@ void load_timetable(loader_config const& config,
         .out_bounds(94.F, 96.F)
         .in_high(route_services.size());
 
-    auto const attributes = basic_string<attribute_combination_idx_t>{};
     auto lines = hash_map<std::string, trip_line_idx_t>{};
     auto section_providers = basic_string<provider_idx_t>{};
     auto route_colors = basic_string<route_color>{};
     auto external_trip_ids = basic_string<merged_trips_idx_t>{};
     auto section_directions = basic_string<trip_direction_idx_t>{};
     auto location_routes = mutable_fws_multimap<location_idx_t, route_idx_t>{};
+    auto section_attributes = basic_string<attribute_combination_idx_t>{};
     for (auto const& [key, sub_routes] : route_services) {
       for (auto const& services : sub_routes) {
         auto const route_idx = tt.register_route(
@@ -1489,6 +1584,7 @@ void load_timetable(loader_config const& config,
 
         for (auto const& s : services) {
           external_trip_ids.clear();
+          section_attributes.clear();
           section_providers.clear();
           section_directions.clear();
           route_colors.clear();
@@ -1513,6 +1609,7 @@ void load_timetable(loader_config const& config,
                                         std::end(trp.trip_direction_));
               section_providers.push_back(
                   tt.route_ids_[src].route_id_provider_[trp.route_id_]);
+              section_attributes.push_back(trp.attributes_);
             } else {
               for (auto section = 0U; section != trp.stop_seq_.size() - 1;
                    ++section) {
@@ -1523,6 +1620,7 @@ void load_timetable(loader_config const& config,
                         : trp.trip_direction_.at(section));
                 section_providers.push_back(
                     tt.route_ids_[src].route_id_provider_[trp.route_id_]);
+                section_attributes.push_back(trp.attributes_);
               }
             }
           }
@@ -1536,7 +1634,7 @@ void load_timetable(loader_config const& config,
               .route_idx_ = route_idx,
               .first_dep_offset_ = {s.first_dep_offset_, s.tz_offset_},
               .external_trip_ids_ = external_trip_ids,
-              .section_attributes_ = attributes,
+              .section_attributes_ = section_attributes,
               .section_providers_ = section_providers,
               .section_directions_ = section_directions});
         }
