@@ -840,7 +840,7 @@ TEST(rt, gtfs_rt_added) {
     EXPECT_EQ(false, fr[0].bikes_allowed(event_type::kDep));
     EXPECT_EQ(std::nullopt,
               to_str(fr[0].get_route_color(event_type::kDep).color_));
-    EXPECT_EQ(std::nullopt,
+    EXPECT_EQ("ffffff",
               to_str(fr[0].get_route_color(event_type::kDep).text_color_));
     EXPECT_EQ(false, fr[0].in_allowed_wheelchair());
     EXPECT_EQ(false, fr[0].out_allowed_wheelchair());

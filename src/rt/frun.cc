@@ -427,8 +427,9 @@ bool run_stop::cars_allowed(event_type const ev_type) const {
 
 route_color run_stop::get_route_color(event_type ev_type) const {
   auto const [routes, route_id_idx] = get_route(ev_type);
-  return routes == nullptr ? route_color{to_color("000000"), to_color("FFFFFF")}
-                           : routes->route_id_colors_[route_id_idx];
+  return routes == nullptr
+             ? route_color{.color_ = color_t{0}, .text_color_ = color_t{0}}
+             : routes->route_id_colors_[route_id_idx];
 }
 
 bool run_stop::is_cancelled() const { return get_stop().is_cancelled(); }
