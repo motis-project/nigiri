@@ -18,12 +18,6 @@ void build_seated_trips(timetable& tt,
                         std::function<void(UtcTrip&&)> const& consumer) {
   [[maybe_unused]] auto const base = tt.internal_interval_days().from_;
 
-  auto const is_empty = [](UtcTrip const& x) {
-    return x.utc_traffic_days_.none();
-  };
-  auto const is_not_empty = [](UtcTrip const& x) {
-    return x.utc_traffic_days_.any();
-  };
   auto const shift = [](bitfield const& b, int const offset) {
     return offset > 0 ? b << static_cast<std::size_t>(offset)
                       : b >> static_cast<std::size_t>(-offset);
@@ -71,18 +65,18 @@ void build_seated_trips(timetable& tt,
     return dwell < 120_minutes;
   };
 
-  auto combinations = std::vector<utc_trip>{};
-  while (!utl::all_of(remaining, is_empty)) {
-    // Find first trip with unprocessed/remaining traffic days.
-    auto const non_empty_it = utl::find_if(remaining, is_not_empty);
-    assert(non_empty_it != end(remaining));
-    trace("ORIGIN {}", dbg(non_empty_it->trips_[0]));
+  auto remaining_has_bits = bitvec_map<remaining_idx_t>{};
+  remaining_has_bits.resize(remaining.size());
+  remaining_has_bits.one_out();
 
+  auto combinations = std::vector<utc_trip>{};
+  auto next_remaining = remaining_has_bits.next_set_bit(0U);
+  while (next_remaining.has_value()) {
     // ===============================
     // PART 1: Find maximum component.
     // -------------------------------
     auto component = hash_map<remaining_idx_t, int>{};
-    auto component_traffic_days = non_empty_it->utc_traffic_days_;
+    auto component_traffic_days = remaining[*next_remaining].utc_traffic_days_;
     {
       // Collect all trips reachable from this trip connected by stay-seated
       // transfers from here (forward+backward, direct + transitive) while
@@ -90,7 +84,8 @@ void build_seated_trips(timetable& tt,
       // if the intersection would be empty.
       auto q = hash_map<remaining_idx_t,
                         int /* offset relative to its traffic days */>{};
-      q.emplace(static_cast<remaining_idx_t>(remaining.index_of(non_empty_it)),
+      q.emplace(static_cast<remaining_idx_t>(
+                    remaining.index_of(&remaining[*next_remaining])),
                 0U);
       while (!q.empty()) {
         // Extract next queue element.
@@ -278,9 +273,15 @@ void build_seated_trips(timetable& tt,
     for (auto const& [remaining_idx, offset] : component) {
       remaining.at(remaining_idx).utc_traffic_days_ &=
           ~shift(component_traffic_days, offset);
+
+      if (remaining.at(remaining_idx).utc_traffic_days_.none()) {
+        remaining_has_bits.set(remaining_idx, false);
+      }
     }
 
     trace("------------\n");
+
+    next_remaining = remaining_has_bits.next_set_bit(*next_remaining);
   }  // END while (!utl::all_of(remaining, is_empty))
 }
 
