@@ -15,6 +15,35 @@ namespace nigiri::loader {
 
 gtfs::tz_map dummy_tz_map;
 
+// ==========
+// Attributes
+// ----------
+
+translation::translation(std::string_view language, std::string_view text)
+    : language_{language, generic_string::non_owning},
+      text_{text, generic_string::non_owning} {}
+
+std::string_view translation::get_language() const { return language_; }
+void translation::set_language(std::string_view s) { language_.set_owning(s); }
+
+std::string_view translation::get_text() const { return text_; }
+void translation::set_text(std::string_view s) { text_.set_owning(s); }
+
+attribute::attribute(std::string_view code,
+                     std::vector<translation> translations)
+    : code_{code, generic_string::non_owning},
+      translations_{std::move(translations)} {}
+
+std::string_view attribute::get_code() const { return code_; }
+void attribute::set_code(std::string_view s) { code_.set_owning(s); }
+
+std::vector<translation> attribute::get_translations() const {
+  return translations_;
+}
+void attribute::set_translations(std::vector<translation> t) {
+  translations_ = std::move(t);
+}
+
 // =======
 // Agency
 // -------
@@ -253,6 +282,7 @@ route trip::get_route() const { return route{*tt_, src_, route_}; }
 struct script_runner::impl {
   sol::state lua_;
 
+  sol::protected_function process_attribute_;
   sol::protected_function process_agency_;
   sol::protected_function process_location_;
   sol::protected_function process_route_;
@@ -277,6 +307,21 @@ script_runner::script_runner(std::string const& user_script)
       "get_lng", &geo::latlng::lng,  //
       "set_lat", [](geo::latlng& x, double lat) { x.lat_ = lat; },  //
       "set_lng", [](geo::latlng& x, double lng) { x.lng_ = lng; });
+
+  impl_->lua_.new_usertype<translation>(
+      "translation",  //
+      sol::constructors<translation(std::string_view, std::string_view)>(),  //
+      "get_language", &translation::get_language,  //
+      "set_language", &translation::set_language,  //
+      "get_text", &translation::get_text,  //
+      "set_text", &translation::set_text);
+
+  impl_->lua_.new_usertype<attribute>(
+      "attribute",  //
+      "get_code", &attribute::get_code,  //
+      "set_code", &attribute::set_code,  //
+      "get_translations", &attribute::get_translations,  //
+      "set_translations", &attribute::set_translations);
 
   impl_->lua_.new_usertype<agency>(  //
       "agency",  //
@@ -338,15 +383,18 @@ script_runner::script_runner(std::string const& user_script)
       "get_route", &trip::get_route  //
   );
 
+  impl_->process_attribute_ = impl_->lua_["process_attribute"];
   impl_->process_agency_ = impl_->lua_["process_agency"];
   impl_->process_location_ = impl_->lua_["process_location"];
   impl_->process_route_ = impl_->lua_["process_route"];
   impl_->process_trip_ = impl_->lua_["process_trip"];
 
   log(log_lvl::info, "nigiri.loader.user_script",
-      "user script handlers: agency={}, location={}, route={}, trip={}",
-      impl_->process_agency_.valid(), impl_->process_location_.valid(),
-      impl_->process_route_.valid(), impl_->process_trip_.valid());
+      "user script handlers: "
+      "attribute={}, agency={}, location={}, route={}, trip={}",
+      impl_->process_attribute_.valid(), impl_->process_agency_.valid(),
+      impl_->process_location_.valid(), impl_->process_route_.valid(),
+      impl_->process_trip_.valid());
 }
 
 script_runner::~script_runner() = default;
@@ -367,6 +415,13 @@ bool process(sol::protected_function const& process, T& t) {
     }
   }
   return true;
+}
+
+bool process_attribute(script_runner const& r, attribute& x) {
+  if (r.impl_ == nullptr) {
+    return true;
+  }
+  return process(r.impl_->process_attribute_, x);
 }
 
 bool process_location(script_runner const& r, location& x) {
@@ -395,6 +450,15 @@ bool process_trip(script_runner const& r, trip& x) {
     return true;
   }
   return process(r.impl_->process_trip_, x);
+}
+
+attribute_idx_t register_attribute(timetable& tt, attribute const& a) {
+  auto const idx = tt.attributes_.size();
+  tt.attributes_.push_back(nigiri::attribute{
+      .code_ = a.get_code(),
+      .text_ = a.get_translations().front().get_text(),
+  });
+  return attribute_idx_t{idx};
 }
 
 provider_idx_t register_agency(timetable& tt, agency const& a) {

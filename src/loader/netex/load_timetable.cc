@@ -651,24 +651,11 @@ train_nr_map_t get_train_numbers(pugi::xml_document const& doc) {
 // =======
 // Notices
 // -------
-struct translation {
-  std::string_view language_;
-  std::string_view text_;
-};
-
-struct notice {
-  attribute_idx_t attribute_idx_{attribute_idx_t::invalid()};
-  std::string_view code_;
-  std::vector<translation> translations_;
-};
-
-using notice_map_t = hash_map<std::string_view, std::unique_ptr<notice>>;
+using notice_map_t = hash_map<std::string_view, std::unique_ptr<attribute>>;
 
 notice_map_t get_notices(pugi::xml_document const& doc) {
   auto notices = notice_map_t{};
-  notices.emplace(
-      "", uniq(notice{.code_ = "",
-                      .translations_ = {{.language_ = "", .text_ = ""}}}));
+  notices.emplace("", uniq(attribute{"", {translation{"", ""}}}));
   // DE-DELFI
   // ServiceFrame/journeyPatterns/ServiceJourneyPattern/StopPointInJourneyPattern/NoticeAssignment/Notice
   // CH-SKI
@@ -681,10 +668,8 @@ notice_map_t get_notices(pugi::xml_document const& doc) {
 
     auto const parse_text = [](pugi::xml_node const notice) {
       auto const text = notice.child("Text");
-      return translation{
-          .language_ = text.attribute("lang").as_string(),
-          .text_ = text.child_value(),
-      };
+      return translation{text.attribute("lang").as_string(),
+                         text.child_value()};
     };
 
     auto translations = std::vector<translation>{parse_text(n)};
@@ -693,21 +678,20 @@ notice_map_t get_notices(pugi::xml_document const& doc) {
       translations.push_back(parse_text(alt));
     }
 
-    notices.emplace(id(n),
-                    uniq(notice{.code_ = val(n, "ShortCode"),
-                                .translations_ = std::move(translations)}));
+    notices.emplace(
+        id(n), uniq(attribute{val(n, "ShortCode"), std::move(translations)}));
   }
   return notices;
 }
 
-std::vector<notice const*> get_notice_assignments(lookup<notice_map_t> notices,
-                                                  pugi::xml_node n) {
+std::vector<attribute const*> get_notice_assignments(
+    lookup<notice_map_t> notices, pugi::xml_node n) {
   return utl::all(n.child("noticeAssignments").children("NoticeAssignment"))  //
          | utl::transform([&](pugi::xml_node const na) {
              return notices.find(ref(na, "NoticeRef"));
            })  //
          | utl::remove_if([](auto&& opt) { return !opt.has_value(); })  //
-         | utl::transform([](auto&& opt) -> notice const* {
+         | utl::transform([](auto&& opt) -> attribute const* {
              return opt.value()->get();
            })  //
          | utl::vec();
@@ -723,7 +707,7 @@ struct journey_pattern {
     destination_display const* destination_display_;
     bool in_allowed_;
     bool out_allowed_;
-    std::vector<notice const*> notices_;
+    std::vector<attribute const*> notices_;
   };
   line* line_;
   direction_id_t direction_;
@@ -1246,11 +1230,12 @@ void load_timetable(loader_config const& config,
        combis = hash_map<basic_string<attribute_idx_t>,
                          attribute_combination_idx_t>{},
        cache = basic_string<attribute_idx_t>{}](
-          std::vector<notice const*> const& attributes) mutable {
+          std::vector<attribute const*> const& attributes) mutable {
         cache.clear();
-        cache.resize(attributes.size());
-        for (auto const [x, y] : utl::zip(cache, attributes)) {
-          x = y->attribute_idx_;
+        for (auto const& a : attributes) {
+          if (a->idx_ != attribute_idx_t::invalid()) {
+            cache.push_back(a->idx_);
+          }
         }
         utl::erase_duplicates(cache);
         return utl::get_or_create(combis, cache, [&]() {
@@ -1331,10 +1316,8 @@ void load_timetable(loader_config const& config,
     }
 
     for (auto& [id, attr] : im.notices_) {
-      auto const idx = attribute_idx_t{tt.attributes_.size()};
-      tt.attributes_.emplace_back(attribute{
-          .code_ = attr->code_, .text_ = attr->translations_.at(0).text_});
-      attr->attribute_idx_ = idx;
+      attr->idx_ = process_attribute(r, *attr) ? register_attribute(tt, *attr)
+                                               : attribute_idx_t::invalid();
     }
 
     for (auto& sj : im.service_journeys_) {
@@ -1432,7 +1415,7 @@ void load_timetable(loader_config const& config,
       if (utl::all_of(attr, [&](auto&& x) { return x == attr.front(); })) {
         attr = {attr.front()};
       } else {
-        attr.resize(attr.size() - 1U);
+        attr.pop_back();
       }
 
       [[maybe_unused]] auto const sj_idx = sj_ids.store(sj.id_);
