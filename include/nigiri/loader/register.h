@@ -13,6 +13,33 @@ namespace nigiri::loader {
 
 extern gtfs::tz_map dummy_tz_map;
 
+struct translation {
+  translation(std::string_view language, std::string_view text);
+
+  std::string_view get_language() const;
+  void set_language(std::string_view);
+
+  std::string_view get_text() const;
+  void set_text(std::string_view);
+
+  cista::raw::generic_string language_;
+  cista::raw::generic_string text_;
+};
+
+struct attribute {
+  attribute(std::string_view code, std::vector<translation> translations);
+
+  std::string_view get_code() const;
+  void set_code(std::string_view);
+
+  std::vector<translation> get_translations() const;
+  void set_translations(std::vector<translation>);
+
+  attribute_idx_t idx_;
+  cista::raw::generic_string code_;
+  std::vector<translation> translations_;
+};
+
 struct agency {
   agency(source_idx_t,
          std::string_view id,
@@ -167,6 +194,9 @@ struct trip {
   std::string_view get_display_name() const;
   void set_display_name(std::string_view);
 
+  std::vector<attribute> get_attributes() const;
+  void set_attributes(std::vector<attribute> const&);
+
   route get_route() const;
 
   source_idx_t src_;
@@ -192,11 +222,13 @@ struct script_runner {
   std::unique_ptr<impl> impl_;
 };
 
+bool process_attribute(script_runner const&, attribute&);
 bool process_location(script_runner const&, location&);
 bool process_agency(script_runner const&, agency&);
 bool process_route(script_runner const&, route&);
 bool process_trip(script_runner const&, trip&);
 
+attribute_idx_t register_attribute(timetable&, attribute const&);
 provider_idx_t register_agency(timetable&, agency const&);
 location_idx_t register_location(timetable&, location const&);
 route_id_idx_t register_route(timetable&, route const&);
