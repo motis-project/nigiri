@@ -379,7 +379,7 @@ void updater::match_run(std::string_view vdv_run_id,
   };
 
   if (matches_[vdv_run_id].runs_.empty()) {
-    vdv_trace("[vdv_aus] no match for {}, best candidate: {}", vdv_run_id,
+    vdv_trace("[vdv_aus] no match for {}, best candidate: {}\n", vdv_run_id,
               candidates.empty() ? "none" : candidate_str(candidates.front()));
   } else {
     ++stats.matched_runs_;
@@ -392,6 +392,7 @@ void updater::match_run(std::string_view vdv_run_id,
         }
         vdv_trace("{}", candidate_str(c));
       }
+      vdv_trace("\n");
     }
   }
 }

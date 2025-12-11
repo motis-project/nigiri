@@ -494,7 +494,9 @@ stop_map_t get_stops(pugi::xml_document const& doc) {
 
     auto const get_global_id = [](pugi::xml_node const x) {
       return val(
-          x.select_node("keyList/KeyValue/Key[text() = 'GlobalID']").parent(),
+          x.select_node(
+               R"(keyList/KeyValue/Key[text() = 'GlobalID' or text() = 'SLOID'])")
+              .parent(),
           "Value");
     };
 
@@ -502,12 +504,10 @@ stop_map_t get_stops(pugi::xml_document const& doc) {
     auto const global_stop_id = get_global_id(n);
     auto const parent =
         stops
-            .emplace(stop_id,
-                     uniq(stop{.id_ = !global_stop_id.empty() ? global_stop_id
-                                                              : stop_id,
-                               .name_ = val(n, "Name"),
-                               .public_code_ = {},
-                               .pos_ = get_pos(n.child("Centroid"))}))
+            .emplace(stop_id, uniq(stop{.id_ = global_stop_id || stop_id,
+                                        .name_ = val(n, "Name"),
+                                        .public_code_ = {},
+                                        .pos_ = get_pos(n.child("Centroid"))}))
             .first->second.get();
 
     auto const parent_ref = ref(n, "ParentSiteRef");
@@ -515,6 +515,7 @@ stop_map_t get_stops(pugi::xml_document const& doc) {
       parents.emplace(parent, parent_ref);
     }
 
+    auto parent_added = false;
     for (auto const q : n.select_nodes("quays/Quay")) {
       auto const qn = q.node();
       auto const quay_id = id(qn);
@@ -528,6 +529,21 @@ stop_map_t get_stops(pugi::xml_document const& doc) {
                     .name_ = name.empty() ? parent->name_ : name,
                     .public_code_ = val(qn, "PublicCode"),
                     .pos_ = pos == geo::latlng{} ? parent->pos_ : pos}));
+
+      // hack for CH
+      constexpr auto kSloidPrefix = "ch:1:sloid:"sv;
+      if (global_quay_id.starts_with(kSloidPrefix) && !parent_added) {
+        auto const x = global_quay_id.substr(kSloidPrefix.length());
+        if (auto const end = x.find(':'); end != std::string_view::npos) {
+          auto const parent_id =
+              global_quay_id.substr(0, kSloidPrefix.size() + end);
+          stops.emplace(parent_id, uniq(stop{.id_ = parent_id,
+                                             .name_ = parent->name_,
+                                             .public_code_ = {},
+                                             .pos_ = parent->pos_}));
+          parent_added = true;
+        }
+      }
     }
   }
   for (auto& [stop, parent_ref] : parents) {
@@ -1496,64 +1512,70 @@ void load_timetable(loader_config const& config,
     }
   };
 
-  auto sj_rule_trip =
-      vector_map<service_journey_idx_t, gtfs::rule_trip_idx_t>{};
-  auto rule_trip_sj =
-      vector_map<gtfs::rule_trip_idx_t, service_journey_idx_t>{};
-  sj_rule_trip.resize(sj_utc_trips.size(), gtfs::rule_trip_idx_t::invalid());
-  auto seated_out =
-      paged_vecvec<service_journey_idx_t, service_journey_idx_t>{};
-  auto seated_in = paged_vecvec<service_journey_idx_t, service_journey_idx_t>{};
-  seated_out.resize(sj_utc_trips.size());
-  seated_in.resize(sj_utc_trips.size());
-  for (auto i = service_journey_idx_t{0U}; i != sj_utc_trips.size(); ++i) {
-    auto const id = sj_ids.get(i);
-    auto const meeting_it = global_journey_meetings.find(id);
-    if (meeting_it != end(global_journey_meetings)) {
-      for (auto const& out : meeting_it->second) {
-        auto const to = sj_ids.find(out.to_journey_id_).value();
-        seated_out[i].emplace_back(to);
-        seated_in[to].emplace_back(i);
+  {
+    auto const timer = scoped_timer{"loader.gtfs.seated_trips"};
+
+    auto sj_rule_trip =
+        vector_map<service_journey_idx_t, gtfs::rule_trip_idx_t>{};
+    auto rule_trip_sj =
+        vector_map<gtfs::rule_trip_idx_t, service_journey_idx_t>{};
+    sj_rule_trip.resize(sj_utc_trips.size(), gtfs::rule_trip_idx_t::invalid());
+    auto seated_out =
+        paged_vecvec<service_journey_idx_t, service_journey_idx_t>{};
+    auto seated_in =
+        paged_vecvec<service_journey_idx_t, service_journey_idx_t>{};
+    seated_out.resize(sj_utc_trips.size());
+    seated_in.resize(sj_utc_trips.size());
+    for (auto i = service_journey_idx_t{0U}; i != sj_utc_trips.size(); ++i) {
+      auto const id = sj_ids.get(i);
+      auto const meeting_it = global_journey_meetings.find(id);
+      if (meeting_it != end(global_journey_meetings)) {
+        for (auto const& out : meeting_it->second) {
+          auto const to = sj_ids.find(out.to_journey_id_).value();
+          seated_out[i].emplace_back(to);
+          seated_in[to].emplace_back(i);
+        }
+      } else {
+        for (auto const& t : sj_utc_trips[i]) {
+          add_expanded_trip(t);
+        }
       }
-    } else {
-      for (auto const& t : sj_utc_trips[i]) {
-        add_expanded_trip(t);
+    }
+
+    for (auto i = service_journey_idx_t{0U}; i != sj_utc_trips.size(); ++i) {
+      if (seated_out[i].empty() && seated_in[i].empty()) {
+        continue;
       }
+      sj_rule_trip[i] = gtfs::rule_trip_idx_t{rule_trip_sj.size()};
+      rule_trip_sj.emplace_back(i);
     }
-  }
 
-  for (auto i = service_journey_idx_t{0U}; i != sj_utc_trips.size(); ++i) {
-    if (seated_out[i].empty() && seated_in[i].empty()) {
-      continue;
+    auto ret = gtfs::expanded_seated<netex::utc_trip>{};
+    for (auto const [rule_trip, sj] : utl::enumerate(rule_trip_sj)) {
+      using std::views::transform;
+      auto const to_rule_trip_idx = [&](service_journey_idx_t const x) {
+        return sj_rule_trip.at(x);
+      };
+      auto bucket = ret.expanded_.add_back_sized(0U);
+      for (auto const& utc_trip : sj_utc_trips[sj]) {
+        bucket.push_back(utc_trip);
+        ret.remaining_rule_trip_.push_back(gtfs::rule_trip_idx_t{rule_trip});
+      }
+      ret.seated_out_.emplace_back(seated_out[sj] |
+                                   transform(to_rule_trip_idx));
+      ret.seated_in_.emplace_back(seated_in[sj] | transform(to_rule_trip_idx));
     }
-    sj_rule_trip[i] = gtfs::rule_trip_idx_t{rule_trip_sj.size()};
-    rule_trip_sj.emplace_back(i);
-  }
 
-  auto ret = gtfs::expanded_seated<netex::utc_trip>{};
-  for (auto const [rule_trip, sj] : utl::enumerate(rule_trip_sj)) {
-    using std::views::transform;
-    auto const to_rule_trip_idx = [&](service_journey_idx_t const x) {
-      return sj_rule_trip.at(x);
-    };
-    auto bucket = ret.expanded_.add_back_sized(0U);
-    for (auto const& utc_trip : sj_utc_trips[sj]) {
-      bucket.push_back(utc_trip);
-      ret.remaining_rule_trip_.push_back(gtfs::rule_trip_idx_t{rule_trip});
-    }
-    ret.seated_out_.emplace_back(seated_out[sj] | transform(to_rule_trip_idx));
-    ret.seated_in_.emplace_back(seated_in[sj] | transform(to_rule_trip_idx));
+    gtfs::build_seated_trips<utc_trip, service_journey_idx_t>(
+        tt, ret,
+        [&](service_journey_idx_t const sj_idx) {
+          auto const trip_idx = sj_trips[sj_idx];
+          return fmt::format(
+              "({}, {})", tt.trip_id_strings_[tt.trip_ids_[trip_idx][0]].view(),
+              tt.trip_display_names_[trip_idx].view());
+        },
+        [&](netex::utc_trip&& x) { add_expanded_trip(std::move(x)); });
   }
-
-  gtfs::build_seated_trips<utc_trip, service_journey_idx_t>(
-      tt, ret,
-      [&](service_journey_idx_t const sj_idx) {
-        auto const trip_idx = sj_trips[sj_idx];
-        return fmt::format(
-            "({}, {})", tt.trip_id_strings_[tt.trip_ids_[trip_idx][0]].view(),
-            tt.trip_display_names_[trip_idx].view());
-      },
-      [&](netex::utc_trip&& x) { add_expanded_trip(std::move(x)); });
 
   {
     auto const timer = scoped_timer{"loader.gtfs.write_trips"};

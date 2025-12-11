@@ -506,7 +506,8 @@ frun::frun(timetable const& tt, rt_timetable const* rtt, run r)
 
 std::string_view frun::name() const {
   if (is_rt() && rtt_ != nullptr) {
-    return operator[](0U).route_short_name(event_type::kDep);
+    return operator[](0U).route_short_name(
+        stop_range_.from_ == size() - 1U ? event_type::kArr : event_type::kDep);
   }
   if (is_scheduled()) {
     return tt_->transport_name(t_.t_idx_);
