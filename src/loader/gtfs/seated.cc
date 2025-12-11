@@ -4,8 +4,8 @@
 
 #include <ranges>
 
-#define trace(...) fmt::println(std::clog, __VA_ARGS__)
-// #define trace(...)
+// #define trace(...) fmt::println(std::clog, __VA_ARGS__)
+#define trace(...)
 
 namespace sv = std::views;
 
