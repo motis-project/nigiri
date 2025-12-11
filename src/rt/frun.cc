@@ -213,26 +213,28 @@ trip_idx_t run_stop::get_trip_idx(event_type const ev_type) const {
       .at(0);
 }
 
-route_id_idx_t run_stop::get_route_id_idx(event_type const ev_type) const {
-  auto const trip = get_trip_idx(ev_type);
-  return tt().trip_route_id_[trip];
+std::pair<timetable::route_ids const*, route_id_idx_t> run_stop::get_route(
+    event_type const ev_type) const {
+  if (fr_->is_scheduled()) {
+    auto const trip_idx = get_trip_idx(ev_type);
+    auto const r =
+        tt().trip_route_id_[trip_idx] == route_id_idx_t::invalid()
+            ? nullptr
+            : &tt().route_ids_
+                   [tt().trip_id_src_[tt().trip_ids_[trip_idx].front()]];
+    return {r, tt().trip_route_id_[trip_idx]};
+  } else if (auto const route_id = rtt()->rt_transport_route_id_[fr_->rt_];
+             route_id != route_id_idx_t::invalid()) {
+    auto const& r = tt().route_ids_[rtt()->rt_transport_src_[fr_->rt_]];
+    return std::pair{&r, route_id};
+  } else {
+    return {nullptr, route_id_idx_t::invalid()};
+  }
 }
 
 std::string_view run_stop::get_route_id(event_type const ev_type) const {
-  if (fr_->is_scheduled()) {
-    auto const trip_idx = get_trip_idx(ev_type);
-    return tt().trip_route_id_[trip_idx] == route_id_idx_t::invalid()
-               ? std::string_view{}
-               : tt().route_ids_
-                     [tt().trip_id_src_[tt().trip_ids_[trip_idx].front()]]
-                         .ids_.get(tt().trip_route_id_[trip_idx]);
-  } else if (auto const route_id = rtt()->rt_transport_route_id_[fr_->rt_];
-             route_id != route_id_idx_t::invalid()) {
-    return tt().route_ids_[rtt()->rt_transport_src_[fr_->rt_]].ids_.get(
-        route_id);
-  } else {
-    return "?";
-  }
+  auto const [route_ids, route_id_idx] = get_route(ev_type);
+  return route_ids == nullptr ? "?" : route_ids->ids_.get(route_id_idx);
 }
 
 direction_id_t run_stop::get_direction_id(event_type const ev_type) const {
@@ -246,56 +248,24 @@ direction_id_t run_stop::get_direction_id(event_type const ev_type) const {
 
 std::optional<route_type_t> run_stop::route_type(
     event_type const ev_type) const {
-  if (fr_->is_scheduled()) {
-    auto const trip_idx = get_trip_idx(ev_type);
-    return tt().trip_route_id_[trip_idx] == route_id_idx_t::invalid()
-               ? std::nullopt
-               : std::optional{
-                     tt().route_ids_
-                         [tt().trip_id_src_[tt().trip_ids_[trip_idx].front()]]
-                             .route_id_type_[tt().trip_route_id_[trip_idx]]};
-  }
-  return std::nullopt;
+  auto const [route_ids, route_id_idx] = get_route(ev_type);
+  return route_ids == nullptr
+             ? std::nullopt
+             : std::optional{route_ids->route_id_type_.at(route_id_idx)};
 }
 
 std::string_view run_stop::route_short_name(event_type const ev_type) const {
-  if (fr_->is_scheduled()) {
-    auto const trip_idx = get_trip_idx(ev_type);
-    return tt().trip_route_id_[trip_idx] == route_id_idx_t::invalid()
-               ? std::string_view{}
-               : tt().route_ids_
-                     [tt().trip_id_src_[tt().trip_ids_[trip_idx].front()]]
-                         .route_id_short_names_[tt().trip_route_id_[trip_idx]]
-                         .view();
-  } else if (auto const route_id = rtt()->rt_transport_route_id_[fr_->rt_];
-             route_id != route_id_idx_t::invalid()) {
-    return tt()
-        .route_ids_[rtt()->rt_transport_src_[fr_->rt_]]
-        .route_id_short_names_[route_id]
-        .view();
-  } else {
-    return "?";
-  }
+  auto const [route_ids, route_id_idx] = get_route(ev_type);
+  return route_ids == nullptr
+             ? "?"
+             : route_ids->route_id_short_names_.at(route_id_idx).view();
 }
 
 std::string_view run_stop::route_long_name(event_type const ev_type) const {
-  if (fr_->is_scheduled()) {
-    auto const trip_idx = get_trip_idx(ev_type);
-    return tt().trip_route_id_[trip_idx] == route_id_idx_t::invalid()
-               ? std::string_view{}
-               : tt().route_ids_
-                     [tt().trip_id_src_[tt().trip_ids_[trip_idx].front()]]
-                         .route_id_long_names_[tt().trip_route_id_[trip_idx]]
-                         .view();
-  } else if (auto const route_id = rtt()->rt_transport_route_id_[fr_->rt_];
-             route_id != route_id_idx_t::invalid()) {
-    return tt()
-        .route_ids_[rtt()->rt_transport_src_[fr_->rt_]]
-        .route_id_long_names_[route_id]
-        .view();
-  } else {
-    return {};
-  }
+  auto const [route_ids, route_id_idx] = get_route(ev_type);
+  return route_ids == nullptr
+             ? "?"
+             : route_ids->route_id_long_names_.at(route_id_idx).view();
 }
 
 std::string_view run_stop::trip_short_name(event_type const ev_type) const {
@@ -320,19 +290,9 @@ stop_idx_t run_stop::section_idx(event_type const ev_type) const {
 }
 
 provider_idx_t run_stop::get_provider_idx(event_type const ev_type) const {
-  if (!fr_->is_scheduled()) {
-    auto const route_id_idx = rtt()->rt_transport_route_id_.at(fr_->rt_);
-    if (route_id_idx != route_id_idx_t::invalid()) {
-      return tt()
-          .route_ids_[rtt()->rt_transport_src_.at(fr_->rt_)]
-          .route_id_provider_.at(route_id_idx);
-    }
-    return provider_idx_t::invalid();
-  }
-  auto const provider_sections =
-      tt().transport_section_providers_.at(fr_->t_.t_idx_);
-  return provider_sections.at(
-      provider_sections.size() == 1U ? 0U : section_idx(ev_type));
+  auto const [route_ids, route_id_idx] = get_route(ev_type);
+  return route_ids == nullptr ? provider_idx_t::invalid()
+                              : route_ids->route_id_provider_.at(route_id_idx);
 }
 
 provider const& run_stop::get_provider(event_type const ev_type) const {
@@ -374,6 +334,17 @@ std::string_view run_stop::direction(event_type const ev_type) const {
         .name();
   }
   return "";
+}
+
+attribute_combination_idx_t run_stop::get_attribute_combination(
+    event_type ev_type) const {
+  if (!fr_->is_scheduled()) {
+    return attribute_combination_idx_t{0};
+  }
+  auto const attribute_sections =
+      tt().transport_section_attributes_[fr_->t_.t_idx_];
+  return attribute_sections.at(
+      attribute_sections.size() == 1U ? 0U : section_idx(ev_type));
 }
 
 clasz run_stop::get_clasz(event_type const ev_type) const {
@@ -455,13 +426,10 @@ bool run_stop::cars_allowed(event_type const ev_type) const {
 }
 
 route_color run_stop::get_route_color(event_type ev_type) const {
-  if (!fr_->is_scheduled()) {
-    return route_color{};
-  }
-  auto const color_sections =
-      tt().transport_section_route_colors_.at(fr_->t_.t_idx_);
-  return color_sections.at(color_sections.size() == 1U ? 0U
-                                                       : section_idx(ev_type));
+  auto const [routes, route_id_idx] = get_route(ev_type);
+  return routes == nullptr
+             ? route_color{.color_ = color_t{0}, .text_color_ = color_t{0}}
+             : routes->route_id_colors_[route_id_idx];
 }
 
 bool run_stop::is_cancelled() const { return get_stop().is_cancelled(); }

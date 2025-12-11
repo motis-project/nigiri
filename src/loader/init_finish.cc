@@ -31,6 +31,7 @@ void register_special_stations(timetable& tt) {
   }
   tt.location_routes_.resize(tt.n_locations());
   tt.bitfields_.emplace_back(bitfield{});  // bitfield_idx 0 = 000...00 bitfield
+  tt.attribute_combinations_.add_back_sized(0U);  // combination 0 = empty
 }
 
 void build_location_tree(timetable& tt) {
@@ -128,8 +129,8 @@ float contrast_ratio(color_t a, color_t b) {
 }
 
 void correct_color_contrast(timetable& tt) {
-  for (auto const bucket : tt.transport_section_route_colors_) {
-    for (auto& colors : bucket) {
+  for (auto& ids : tt.route_ids_) {
+    for (auto& colors : ids.route_id_colors_) {
       auto const ratio = contrast_ratio(colors.color_, colors.text_color_);
 
       if (ratio < 4.5f) {

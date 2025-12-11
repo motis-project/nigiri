@@ -9,6 +9,7 @@
 #include "nigiri/location.h"
 #include "nigiri/rt/run.h"
 #include "nigiri/stop.h"
+#include "nigiri/timetable.h"
 #include "nigiri/types.h"
 
 namespace nigiri {
@@ -32,11 +33,12 @@ struct run_stop {
   std::string_view track() const;
   std::string_view id() const;
   std::pair<date::sys_days, duration_t> get_trip_start(event_type) const;
-
   provider_idx_t get_provider_idx(event_type) const;
   provider const& get_provider(event_type) const;
   trip_idx_t get_trip_idx(event_type) const;
   route_id_idx_t get_route_id_idx(event_type) const;
+  std::pair<timetable::route_ids const*, route_id_idx_t> get_route(
+      event_type) const;
   std::string_view get_route_id(event_type) const;
   direction_id_t get_direction_id(event_type) const;
   std::optional<route_type_t> route_type(event_type) const;
@@ -53,6 +55,8 @@ struct run_stop {
   std::optional<std::string> get_tz_name(event_type) const;
 
   std::string_view direction(event_type) const;
+
+  attribute_combination_idx_t get_attribute_combination(event_type) const;
 
   clasz get_clasz(event_type) const;
   clasz get_scheduled_clasz(event_type) const;
