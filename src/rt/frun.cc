@@ -343,8 +343,10 @@ attribute_combination_idx_t run_stop::get_attribute_combination(
   }
   auto const attribute_sections =
       tt().transport_section_attributes_[fr_->t_.t_idx_];
-  return attribute_sections.at(
-      attribute_sections.size() == 1U ? 0U : section_idx(ev_type));
+  return attribute_sections.empty()
+             ? attribute_combination_idx_t{0}
+             : attribute_sections.at(
+                   attribute_sections.size() == 1U ? 0U : section_idx(ev_type));
 }
 
 clasz run_stop::get_clasz(event_type const ev_type) const {

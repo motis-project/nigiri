@@ -15,6 +15,8 @@
 
 #include "pugixml.hpp"
 
+#include "utl/concat.h"
+#include "utl/erase_duplicates.h"
 #include "utl/helpers/algorithm.h"
 #include "utl/parallel_for.h"
 #include "utl/parser/arg_parser.h"
@@ -32,8 +34,6 @@
 
 #include "nigiri/shapes_storage.h"
 #include "nigiri/timetable.h"
-
-#include "utl/erase_duplicates.h"
 
 using namespace std::string_view_literals;
 namespace fs = std::filesystem;
@@ -648,6 +648,71 @@ train_nr_map_t get_train_numbers(pugi::xml_document const& doc) {
   return train_nrs;
 }
 
+// =======
+// Notices
+// -------
+struct translation {
+  std::string_view language_;
+  std::string_view text_;
+};
+
+struct notice {
+  attribute_idx_t attribute_idx_{attribute_idx_t::invalid()};
+  std::string_view code_;
+  std::vector<translation> translations_;
+};
+
+using notice_map_t = hash_map<std::string_view, std::unique_ptr<notice>>;
+
+notice_map_t get_notices(pugi::xml_document const& doc) {
+  auto notices = notice_map_t{};
+  notices.emplace(
+      "", uniq(notice{.code_ = "",
+                      .translations_ = {{.language_ = "", .text_ = ""}}}));
+  // DE-DELFI
+  // ServiceFrame/journeyPatterns/ServiceJourneyPattern/StopPointInJourneyPattern/NoticeAssignment/Notice
+  // CH-SKI
+  // ServiceFrame/notices/Notice
+  for (auto const x : doc.select_nodes("//Notice")) {
+    auto const n = x.node();
+    if (!is_true_or_empty(val(n, "CanBeAdvertised"))) {
+      continue;
+    }
+
+    auto const parse_text = [](pugi::xml_node const notice) {
+      auto const text = notice.child("Text");
+      return translation{
+          .language_ = text.attribute("lang").as_string(),
+          .text_ = text.child_value(),
+      };
+    };
+
+    auto translations = std::vector<translation>{parse_text(n)};
+    for (auto const alt :
+         n.child("alternativeTexts").children("AlternativeText")) {
+      translations.push_back(parse_text(alt));
+    }
+
+    notices.emplace(id(n),
+                    uniq(notice{.code_ = val(n, "ShortCode"),
+                                .translations_ = std::move(translations)}));
+  }
+  return notices;
+}
+
+std::vector<notice const*> get_notice_assignments(lookup<notice_map_t> notices,
+                                                  pugi::xml_node n) {
+  return utl::all(n.child("noticeAssignments").children("NoticeAssignment"))  //
+         | utl::transform([&](pugi::xml_node const na) {
+             return notices.find(ref(na, "NoticeRef"));
+           })  //
+         | utl::remove_if([](auto&& opt) { return !opt.has_value(); })  //
+         | utl::transform([](auto&& opt) -> notice const* {
+             return opt.value()->get();
+           })  //
+         | utl::vec();
+}
+
 // ===============
 // JOURNEY PATTERN
 // ---------------
@@ -658,6 +723,7 @@ struct journey_pattern {
     destination_display const* destination_display_;
     bool in_allowed_;
     bool out_allowed_;
+    std::vector<notice const*> notices_;
   };
   line* line_;
   direction_id_t direction_;
@@ -672,7 +738,8 @@ journey_pattern_map_t get_journey_patterns(
     lookup<stop_assignment_map_t> stop_assignments,
     lookup<destination_display_map_t> destination_displays,
     lookup<line_map_t> lines,
-    lookup<stop_map_t> stops) {
+    lookup<stop_map_t> stops,
+    lookup<notice_map_t> notices) {
   auto journey_patterns = journey_pattern_map_t{};
 
   auto const get_stop =
@@ -696,11 +763,12 @@ journey_pattern_map_t get_journey_patterns(
                                  "ScheduledStopPoint[@id='{}']",
                                  stop_point_ref)
                          .c_str());
-                 return uniq(
-                     stop{.id_ = stop_point_ref,
-                          .name_ = val(stop_point.node(), "Name"),
-                          .public_code_ = val(stop_point.node(), "PublicCode"),
-                          .pos_ = get_pos(stop_point.node())});
+                 return uniq(stop{
+                     .id_ = stop_point_ref,
+                     .name_ = val(stop_point.node(), "Name"),
+                     .public_code_ = val(stop_point.node(), "PublicCode"),
+                     .pos_ = get_pos(stop_point.node()),
+                 });
                })
         .get();
   };
@@ -718,6 +786,7 @@ journey_pattern_map_t get_journey_patterns(
               destination_displays.at(ref(sp, "DestinationDisplayRef")).get(),
           .in_allowed_ = is_true_or_empty(val(sp, "ForBoarding")),
           .out_allowed_ = is_true_or_empty(val(sp, "ForAlighting")),
+          .notices_ = get_notice_assignments(notices, sp),
       });
     }
 
@@ -731,7 +800,8 @@ journey_pattern_map_t get_journey_patterns(
             .line_ = lines.at(ref(n.child("RouteView"), "LineRef")).get(),
             .direction_ =
                 direction_id_t{ref(n, "DirectionRef").ends_with("1::") ? 0 : 1},
-            .stop_points_ = std::move(stop_points)}));
+            .stop_points_ = std::move(stop_points),
+        }));
   }
 
   return journey_patterns;
@@ -778,54 +848,6 @@ journey_meeting_map_t get_journey_meetings(
   return journey_meetings;
 }
 
-struct translation {
-  std::string_view language_;
-  std::string_view text_;
-};
-
-// =======
-// Notices
-// -------
-struct notice {
-  attribute_idx_t attribute_idx_{attribute_idx_t::invalid()};
-  std::string_view code_;
-  std::vector<translation> translations_;
-};
-
-using notice_map_t = hash_map<std::string_view, std::unique_ptr<notice>>;
-
-notice_map_t get_notices(pugi::xml_document const& doc) {
-  auto notices = notice_map_t{};
-  notices.emplace(
-      "", uniq(notice{.code_ = "",
-                      .translations_ = {{.language_ = "", .text_ = ""}}}));
-  for (auto const x : doc.select_nodes("//ServiceFrame/notices/Notice")) {
-    auto const n = x.node();
-    if (!is_true_or_empty(val(n, "CanBeAdvertised"))) {
-      continue;
-    }
-
-    auto const parse_text = [](pugi::xml_node const notice) {
-      auto const text = notice.child("Text");
-      return translation{
-          .language_ = text.attribute("lang").as_string(),
-          .text_ = text.child_value(),
-      };
-    };
-
-    auto translations = std::vector<translation>{parse_text(n)};
-    for (auto const alt :
-         n.child("alternativeTexts").children("AlternativeText")) {
-      translations.push_back(parse_text(alt));
-    }
-
-    notices.emplace(id(n),
-                    uniq(notice{.code_ = val(n, "ShortCode"),
-                                .translations_ = std::move(translations)}));
-  }
-  return notices;
-}
-
 // ===============
 // SERVICE_JOURNEY
 // ---------------
@@ -849,14 +871,13 @@ struct service_journey {
   std::variant<journey_pattern const*, journey_pattern> journey_pattern_{};
   bitfield const* traffic_days_;
   operätor const* operator_;
-  std::vector<notice const*> notices_;
   std::vector<stop_times> stop_times_{};
   ptrdiff_t dbg_offset_;
 };
 
 gtfs::stop_seq_t stop_seq(service_journey const& sj) {
   auto seq = gtfs::stop_seq_t{};
-  for (auto const x : sj.get_journey_pattern()->stop_points_) {
+  for (auto const& x : sj.get_journey_pattern()->stop_points_) {
     seq.push_back(nigiri::stop{x.stop_->location_, x.in_allowed_,
                                x.out_allowed_, x.in_allowed_, x.out_allowed_}
                       .value());
@@ -909,17 +930,6 @@ std::vector<service_journey> get_service_journeys(
                                        .attribute()
                                        .as_string()),
         .operator_ = operators.at(ref(n, "OperatorRef")).get(),
-        .notices_ =
-            utl::all(
-                n.child("noticeAssignments").children("NoticeAssignment"))  //
-            | utl::transform([&](pugi::xml_node const na) {
-                return notices.find(ref(na, "NoticeRef"));
-              })  //
-            | utl::remove_if([](auto&& opt) { return !opt.has_value(); })  //
-            | utl::transform([](auto&& opt) -> notice const* {
-                return opt.value()->get();
-              })  //
-            | utl::vec(),
         .dbg_offset_ = n.offset_debug()};
 
     auto const calls = n.child("calls");
@@ -930,6 +940,7 @@ std::vector<service_journey> get_service_journeys(
               direction_id_t{val(n, "DirectionType") == "outbound"sv ? 1 : 2},
           .stop_points_ = {},
       };
+      auto const notice_assignments = get_notice_assignments(notices, n);
       for (auto const call : calls.children("Call")) {
         // CH-SKI
         auto const arr = call.child("Arrival");
@@ -941,6 +952,8 @@ std::vector<service_journey> get_service_journeys(
                     .get(),
             .in_allowed_ = is_true_or_empty(val(dep, "ForBoarding")),
             .out_allowed_ = is_true_or_empty(val(arr, "ForAlighting")),
+            .notices_ = utl::merge(notice_assignments,
+                                   get_notice_assignments(notices, call)),
         });
         sj.stop_times_.push_back({
             .arr_ = parse_time(val(arr, "Time"), val(arr, "DayOffset")),
@@ -1154,7 +1167,8 @@ std::optional<intermediate> get_intermediate(intermediate const& base,
     im.journey_patterns_ = get_journey_patterns(
         doc, {base.stop_assignments_, im.stop_assignments_},
         {base.destination_displays_, im.destination_displays_},
-        {base.lines_, im.lines_}, {base.stops_, im.stops_});
+        {base.lines_, im.lines_}, {base.stops_, im.stops_},
+        {base.notices_, im.notices_});
     im.operating_periods_ =
         get_operating_periods(doc, tt.internal_interval_days());
     im.vehicle_types_ = get_vehicle_types(doc);
@@ -1392,7 +1406,6 @@ void load_timetable(loader_config const& config,
             cista::pair{shape_idx_t::invalid(), shape_offset_idx_t::invalid()});
       }
 
-      auto const stops = stop_seq(sj);
       auto const all_destinations_equal = utl::all_of(
           jp.stop_points_, [&](journey_pattern::stop_point const& sp) {
             return sp.destination_display_->trip_direction_ ==
@@ -1412,12 +1425,15 @@ void load_timetable(loader_config const& config,
         trip_direction.pop_back();
       }
 
-      utl::verify(trip_direction.size() == 1U ||
-                      trip_direction.size() ==
-                          sj.get_journey_pattern()->stop_points_.size() - 1U,
-                  "#trip_direction={}, #stop_points, ServiceJourney.id=",
-                  trip_direction.size(),
-                  sj.get_journey_pattern()->stop_points_.size());
+      auto attr = basic_string<attribute_combination_idx_t>{};
+      for (auto const& s : jp.stop_points_) {
+        attr.push_back(get_attribute_combination_idx(s.notices_));
+      }
+      if (utl::all_of(attr, [&](auto&& x) { return x == attr.front(); })) {
+        attr = {attr.front()};
+      } else {
+        attr.resize(attr.size() - 1U);
+      }
 
       [[maybe_unused]] auto const sj_idx = sj_ids.store(sj.id_);
       assert(sj_idx == sj_utc_trips.size());
@@ -1431,11 +1447,11 @@ void load_timetable(loader_config const& config,
             .tz_offset_ = k.tz_offset_,
             .utc_times_ = k.utc_times_,
             .utc_traffic_days_ = traffic_days,
-            .stop_seq_ = stops,
+            .stop_seq_ = stop_seq(sj),
             .trips_ = {sj_idx},
-            .trip_direction_ = trip_direction,
+            .trip_direction_ = std::move(trip_direction),
+            .attributes_ = std::move(attr),
             .route_id_ = route_id,
-            .attributes_ = get_attribute_combination_idx(sj.notices_),
         });
       }
     }
@@ -1609,7 +1625,7 @@ void load_timetable(loader_config const& config,
                                         std::end(trp.trip_direction_));
               section_providers.push_back(
                   tt.route_ids_[src].route_id_provider_[trp.route_id_]);
-              section_attributes.push_back(trp.attributes_);
+              section_attributes = trp.attributes_;
             } else {
               for (auto section = 0U; section != trp.stop_seq_.size() - 1;
                    ++section) {
@@ -1618,9 +1634,11 @@ void load_timetable(loader_config const& config,
                     trp.trip_direction_.size() == 1U
                         ? trp.trip_direction_[0]
                         : trp.trip_direction_.at(section));
+                section_attributes.push_back(trp.attributes_.size() == 1U
+                                                 ? trp.attributes_[0]
+                                                 : trp.attributes_.at(section));
                 section_providers.push_back(
                     tt.route_ids_[src].route_id_provider_[trp.route_id_]);
-                section_attributes.push_back(trp.attributes_);
               }
             }
           }
