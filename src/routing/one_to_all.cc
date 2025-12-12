@@ -70,6 +70,10 @@ raptor_state one_to_all(timetable const& tt,
   auto const base = make_base(tt, start_time);
   auto const is_wheelchair = q.prf_idx_ == kWheelchairProfile;
 
+  auto relevant_stops = bitvec{};
+  relevant_stops.resize(tt.n_locations());
+  relevant_stops.one_out();
+
   auto r = raptor<SearchDir, Rt, kVias, search_mode::kOneToAll>{
       tt,
       rtt,
@@ -85,7 +89,8 @@ raptor_state one_to_all(timetable const& tt,
       q.require_bike_transport_,
       q.require_car_transport_,
       is_wheelchair,
-      q.transfer_time_settings_};
+      q.transfer_time_settings_,
+      relevant_stops};
 
   run_raptor(std::move(r), tt, start_time, q);
 

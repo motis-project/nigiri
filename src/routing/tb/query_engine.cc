@@ -38,7 +38,8 @@ query_engine<UseLowerBounds>::query_engine(
     bool,
     bool,
     bool,
-    transfer_time_settings)
+    transfer_time_settings,
+    bitvec const&)
     : tt_{tt},
       state_{state},
       is_dest_{is_dest},

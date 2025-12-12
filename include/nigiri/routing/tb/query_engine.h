@@ -77,6 +77,7 @@ struct query_engine {
   using algo_stats_t = query_stats;
 
   static constexpr bool kUseLowerBounds = UseLowerBounds;
+  static constexpr bool kUseCh = false;
   static constexpr auto const kUnreachable =
       std::numeric_limits<std::uint16_t>::max();
 
@@ -94,7 +95,8 @@ struct query_engine {
                bool,
                bool,
                bool,
-               transfer_time_settings);
+               transfer_time_settings,
+               bitvec const&);
 
   algo_stats_t get_stats() const { return stats_; }
 

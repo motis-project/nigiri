@@ -50,6 +50,9 @@ struct search_stats {
   std::map<std::string, std::uint64_t> to_map() const {
     return {
         {"lb_time", lb_time_},
+        {"ch_time", ch_time_},
+        {"ch_relevant_stops", ch_relevant_stops_},
+        {"total_stops", total_stops_},
         {"fastest_direct", fastest_direct_},
         {"interval_extensions", interval_extensions_},
         {"execute_time", execute_time_.count()},
@@ -57,6 +60,9 @@ struct search_stats {
   }
 
   std::uint64_t lb_time_{0ULL};
+  std::uint64_t ch_time_{0ULL};
+  std::uint64_t ch_relevant_stops_{0ULL};
+  std::uint64_t total_stops_{0ULL};
   std::uint64_t fastest_direct_{0ULL};
   std::uint64_t interval_extensions_{0ULL};
   std::chrono::milliseconds execute_time_{0LL};
@@ -104,10 +110,17 @@ struct search {
       collect_via_destinations(tt_, via.location_, state_.is_via_[i]);
     }
 
-
     auto relevant_stops = bitvec{};
-    relevant_stops.resize(tt_.n_locations());
-    obtain_relevant_stops(tt_, q_, q_.prf_idx_, relevant_stops);
+    if (Algo::kUseCh) {
+      UTL_START_TIMING(ch);
+      relevant_stops.resize(tt_.n_locations());
+      obtain_relevant_stops(tt_, q_, q_.prf_idx_, relevant_stops);
+      UTL_STOP_TIMING(ch);
+
+      stats_.ch_time_ = static_cast<std::uint64_t>(UTL_TIMING_MS(ch));
+      stats_.ch_relevant_stops_ = relevant_stops.count();
+      stats_.total_stops_ = tt_.locations_.ids_.size();
+    }
 
     if constexpr (Algo::kUseLowerBounds) {
       auto lb_span = get_otel_tracer()->StartSpan("lower bounds");
@@ -160,7 +173,8 @@ struct search {
         require_bikes_allowed,
         require_cars_allowed,
         q_.prf_idx_ == 2U,
-        tts};
+        tts,
+        relevant_stops};
   }
 
   search(timetable const& tt,

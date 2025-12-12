@@ -98,9 +98,10 @@ void obtain_relevant_stops(timetable const& tt,
         dists[l_dir].at(l.l_).d_[kMin] < l.d_[kMin]) {
       continue;
     }
-    //std::cout << "steop " << l.l_ << " " << tt.locations_.names_[l.l_].view() << " " << l.d_[kMax] << " "
-    //          << dists[other_dir][l.l_].d_[kMax] << " " << l_dir
-    //          << std::endl;
+    // std::cout << "steop " << l.l_ << " " << tt.locations_.names_[l.l_].view()
+    // << " " << l.d_[kMax] << " "
+    //           << dists[other_dir][l.l_].d_[kMax] << " " << l_dir
+    //           << std::endl;
     if (dists[other_dir][l.l_].d_[kMax] !=
         std::numeric_limits<ch_dist::dist_t>::max()) {
       if (l.d_[kMax] + dists[other_dir][l.l_].d_[kMax] < min_max_dist) {
@@ -110,7 +111,7 @@ void obtain_relevant_stops(timetable const& tt,
         meetpoints.emplace_back(l.l_);
       }
     }
-    //std::cout << "mmd" << min_max_dist << std::endl;
+    // std::cout << "mmd" << min_max_dist << std::endl;
     if (l.d_[mode] > min_max_dist) {
       if (mode == kMax) {
         auto buffer = std::vector<ch_label>{};
@@ -146,9 +147,9 @@ void obtain_relevant_stops(timetable const& tt,
       }
       auto const new_max_dist = l.d_[kMax] + e.max_dur_.count();
       auto const new_min_dist = l.d_[kMin] + e.min_dur_.count();
-      //std::cout << "tar" << edge_target << " " << new_max_dist << " ld " <<
-      // l.d_[kMax] << " em " << e.max_dur_.count() << " " << new_min_dist <<
-      // std::endl;
+      // std::cout << "tar" << edge_target << " " << new_max_dist << " ld " <<
+      //  l.d_[kMax] << " em " << e.max_dur_.count() << " " << new_min_dist <<
+      //  std::endl;
       if ((new_max_dist < dists[l_dir].at(edge_target).d_[kMax] ||
            new_min_dist < dists[l_dir].at(edge_target).d_[kMin]) &&
           new_max_dist < kChMaxTravelTime.count() &&
@@ -177,10 +178,10 @@ void obtain_relevant_stops(timetable const& tt,
   };
   std::cout << "downsearch " << counter << std::endl;
   for (auto const m : meetpoints) {
-    std::cout << m << " " << dists[kForward][m].d_[kMin] << " "
+    /*std::cout << m << " " << dists[kForward][m].d_[kMin] << " "
               << dists[kForward][m].d_[kMax] << " "
               << dists[kReverse][m].d_[kMin] << dists[kReverse][m].d_[kMax]
-              << std::endl;
+              << std::endl;*/
     if (dists[kForward][m].d_[kMin] + dists[kReverse][m].d_[kMin] >
         min_max_dist) {
       continue;

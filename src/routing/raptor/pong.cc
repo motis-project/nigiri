@@ -277,6 +277,19 @@ routing_result pong(timetable const& tt,
                     tt.internal_interval().from_)
                     .count()};
 
+  auto stats = search_stats{};
+  auto relevant_stops = bitvec{};
+  if (raptor<SearchDir, Rt, Vias, search_mode::kOneToOne>::kUseCh) {
+    UTL_START_TIMING(ch);
+    relevant_stops.resize(tt.n_locations());
+    obtain_relevant_stops(tt, q, q.prf_idx_, relevant_stops);
+    UTL_STOP_TIMING(ch);
+
+    stats.ch_time_ = static_cast<std::uint64_t>(UTL_TIMING_MS(ch));
+    stats.ch_relevant_stops_ = relevant_stops.count();
+    stats.total_stops_ = tt.locations_.ids_.size();
+  }
+
   // ====
   // PING
   // ----
@@ -318,7 +331,8 @@ routing_result pong(timetable const& tt,
       q.require_bike_transport_,
       q.require_car_transport_,
       q.prf_idx_ == 2U,
-      q.transfer_time_settings_};
+      q.transfer_time_settings_,
+      relevant_stops};
 
   // ====
   // PONG
@@ -367,7 +381,8 @@ routing_result pong(timetable const& tt,
       q.require_bike_transport_,
       q.require_car_transport_,
       q.prf_idx_ == 2U,
-      q.transfer_time_settings_};
+      q.transfer_time_settings_,
+      relevant_stops};
 
   // ========
   // >> PLAY!
@@ -375,7 +390,7 @@ routing_result pong(timetable const& tt,
   auto starts = std::vector<start>{};
   auto result = routing_result{.journeys_ = &s_state.results_,
                                .interval_ = search_interval,
-                               .search_stats_ = {},
+                               .search_stats_ = stats,
                                .algo_stats_ = {}};
   auto start_time =
       kFwd ? search_interval.from_ : search_interval.to_ - duration_t{1};

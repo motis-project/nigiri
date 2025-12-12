@@ -74,6 +74,7 @@ struct raptor {
   using algo_stats_t = raptor_stats;
 
   static constexpr bool kUseLowerBounds = true;
+  static constexpr bool kUseCh = true;
   static constexpr auto const kFwd = (SearchDir == direction::kForward);
   static constexpr auto const kBwd = (SearchDir == direction::kBackward);
   static constexpr auto const kInvalid = kInvalidDelta<SearchDir>;
@@ -111,7 +112,8 @@ struct raptor {
       bool const require_bike_transport,
       bool const require_car_transport,
       bool const is_wheelchair,
-      transfer_time_settings const& tts)
+      transfer_time_settings const& tts,
+      bitvec& relevant_station_mark)
       : tt_{tt},
         rtt_{rtt},
         n_days_{tt_.internal_interval_days().size().count()},
@@ -133,7 +135,8 @@ struct raptor {
         require_bike_transport_{require_bike_transport},
         require_car_transport_{require_car_transport},
         is_wheelchair_{is_wheelchair},
-        transfer_time_settings_{tts} {
+        transfer_time_settings_{tts},
+        relevant_station_mark_{relevant_station_mark} {
     assert(Vias == via_stops_.size());
     reset_arrivals();
     // only used for intermodal queries (dist_to_dest != empty)
@@ -203,6 +206,10 @@ struct raptor {
       });
 
       auto any_marked = false;
+
+      if (kUseCh) {
+        state_.station_mark_ &= relevant_station_mark_;
+      }
       state_.station_mark_.for_each_set_bit([&](std::uint64_t const i) {
         for (auto const& r : tt_.location_routes_[location_idx_t{i}]) {
           any_marked = true;
@@ -1285,6 +1292,7 @@ private:
   bool require_car_transport_;
   bool is_wheelchair_;
   transfer_time_settings transfer_time_settings_;
+  bitvec const& relevant_station_mark_;
 };
 
 }  // namespace nigiri::routing
