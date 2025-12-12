@@ -18,6 +18,10 @@ void build_seated_trips(timetable& tt,
                         std::function<void(UtcTrip&&)> const& consumer) {
   [[maybe_unused]] auto const base = tt.internal_interval_days().from_;
 
+  assert(seated.expanded_.size() == seated.seated_in_.size());
+  assert(seated.expanded_.size() == seated.seated_out_.size());
+  assert(seated.remaining_rule_trip_.size() == seated.expanded_.data_.size());
+
   auto const shift = [](bitfield const& b, int const offset) {
     return offset > 0 ? b << static_cast<std::size_t>(offset)
                       : b >> static_cast<std::size_t>(-offset);
