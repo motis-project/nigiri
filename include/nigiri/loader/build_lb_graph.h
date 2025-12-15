@@ -37,6 +37,7 @@ struct departure {
 struct arrival {
   duration_t min_;
   duration_t max_;
+  delta first_dep_;
   delta last_dep_;
   hash_set<route_idx_t> routes_;
 };
@@ -154,11 +155,15 @@ void build_lb_graph(timetable& tt, profile_idx_t const prf_idx) {
         it->second.routes_.emplace(dep.r_);
       } else {
         arrivals.emplace_hint(it, dep.to_,
-                              arrival{dur, dur, dep.dep_, {dep.r_}});
+                              arrival{dur, dur, dep.dep_, dep.dep_, {dep.r_}}); // TODO overnight waiting time to arr
       }
     }
     departures.clear();
-    for (auto const& entry : arrivals) {
+    for (auto& entry : arrivals) {
+      ++entry.second.first_dep_.days_;
+      entry.second.max_ = std::max(
+        entry.second.max_,
+        (entry.second.first_dep_.as_duration() - entry.second.last_dep_.as_duration()));
       upsert_ch_footpath_edge(from_l, entry.first, entry.second.min_,
                               entry.second.max_, entry.second.routes_,
                               location_idx_t::invalid());
@@ -193,8 +198,8 @@ void build_lb_graph(timetable& tt, profile_idx_t const prf_idx) {
     auto max_dur =
         dep.min_dur_ +
         arr.max_dur_;  // TODO dwell time, slow/fast cross, one route set larger
-    // if (routes_merged.size() != routes[dep_idx].size() ||  // TODO ||
-    if (routes_merged.size() != routes[arr_idx].size()) {
+    if (routes_merged.size() != routes[dep_idx].size() ||  // TODO ||
+    routes_merged.size() != routes[arr_idx].size()) {
       utl::insert_sorted(transfers_union,
                          contracted);  // TODO use level because it will
                                        // automatically be sorted?
@@ -363,7 +368,7 @@ void build_lb_graph(timetable& tt, profile_idx_t const prf_idx) {
           tt.ch_levels_.at(location_id) > 0U) {
         continue;
       }
-      if (level > 0.97 * tt.n_locations()) {  // TODO
+      if (level > 0.90 * tt.n_locations()) {  // TODO
         tt.ch_levels_.at(location_id) = level;
         continue;
       }

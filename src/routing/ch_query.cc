@@ -84,6 +84,7 @@ void obtain_relevant_stops(timetable const& tt,
   init(q.start_, kForward);
   init(q.destination_, kReverse);
   auto min_max_dist = std::numeric_limits<ch_dist::dist_t>::max();
+  auto min_min_dist = std::numeric_limits<ch_dist::dist_t>::max();
   auto mode = kMax;
   auto meetpoints = std::vector<location_idx_t>{};
   auto counter = 0;
@@ -98,16 +99,23 @@ void obtain_relevant_stops(timetable const& tt,
         dists[l_dir].at(l.l_).d_[kMin] < l.d_[kMin]) {
       continue;
     }
-    // std::cout << "steop " << l.l_ << " " << tt.locations_.names_[l.l_].view()
-    // << " " << l.d_[kMax] << " "
-    //           << dists[other_dir][l.l_].d_[kMax] << " " << l_dir
-    //           << std::endl;
+    /* std::cout << "steop " << l.l_ << " " << tt.locations_.names_[l.l_].view()
+     << " min: " << l.d_[kMin] << " " << " max: " << l.d_[kMax] << " other:"
+               << dists[other_dir][l.l_].d_[kMax] << " " << l_dir << " l:" <<
+     tt.ch_levels_.at(l.l_)
+               << std::endl;*/
     if (dists[other_dir][l.l_].d_[kMax] !=
         std::numeric_limits<ch_dist::dist_t>::max()) {
-      if (l.d_[kMax] + dists[other_dir][l.l_].d_[kMax] < min_max_dist) {
-        min_max_dist = l.d_[kMax] + dists[other_dir][l.l_].d_[kMax];
+      if (dists[l_dir].at(l.l_).d_[kMax] + dists[other_dir][l.l_].d_[kMax] <
+          min_max_dist) {
+        min_max_dist =
+            dists[l_dir].at(l.l_).d_[kMax] + dists[other_dir][l.l_].d_[kMax];
+        min_min_dist =
+            dists[l_dir].at(l.l_).d_[kMin] + dists[other_dir][l.l_].d_[kMin];
         meetpoints.emplace_back(l.l_);
-      } else if (l.d_[kMin] + dists[other_dir][l.l_].d_[kMin] <= min_max_dist) {
+      } else if (dists[l_dir].at(l.l_).d_[kMin] +
+                     dists[other_dir][l.l_].d_[kMin] <=
+                 min_max_dist) {
         meetpoints.emplace_back(l.l_);
       }
     }
@@ -126,7 +134,9 @@ void obtain_relevant_stops(timetable const& tt,
         for (auto const& b : buffer) {
           pq.push(b);
         }
-        std::cout << "switching to min mode " << counter << " " << min_max_dist
+        std::cout << "switching to min mode " << counter << " "
+                  << "minmax: " << min_max_dist << " minmin: " << min_min_dist
+                  << " infty: " << std::numeric_limits<ch_dist::dist_t>::max()
                   << std::endl;
         mode = kMin;
         continue;
@@ -145,8 +155,10 @@ void obtain_relevant_stops(timetable const& tt,
       if (tt.ch_levels_.at(l.l_) > tt.ch_levels_.at(edge_target)) {
         continue;
       }
-      auto const new_max_dist = l.d_[kMax] + e.max_dur_.count();
-      auto const new_min_dist = l.d_[kMin] + e.min_dur_.count();
+      auto const new_max_dist =
+          dists[l_dir].at(l.l_).d_[kMax] + e.max_dur_.count();
+      auto const new_min_dist =
+          dists[l_dir].at(l.l_).d_[kMin] + e.min_dur_.count();
       // std::cout << "tar" << edge_target << " " << new_max_dist << " ld " <<
       //  l.d_[kMax] << " em " << e.max_dur_.count() << " " << new_min_dist <<
       //  std::endl;
@@ -235,6 +247,57 @@ void obtain_relevant_stops(timetable const& tt,
       }
     }
   }
+
+  // relevant_stops.one_out();
+  /*relevant_stops.zero_out();
+  for (auto l : {66733, 66707,
+    66707, 14037,
+    14037, 24022,
+    24022, 44946,
+    44946, 60390,
+    66733, 66707,
+    66707, 14037,
+    14037, 17360,
+    17360, 17346,
+    17346, 23630,
+    23630, 23631,
+    23631, 24051,
+    24051, 45331,
+    45331, 60392,
+    66731, 67390,
+    67390, 67386,
+    67386, 66705,
+    66705, 14037,
+    14037, 24022,
+    24022, 44946,
+    44946, 60390,
+    66731, 67390,
+    67390, 67386,
+    67386, 66705,
+    66705, 14037,
+    14037, 17360,
+    17360, 17346,
+    17346, 23630,
+    23630, 23631,
+    23631, 24051,
+    24051, 45331,
+    45331, 60392,
+    66733, 66707,
+    66707, 14038,
+    14038, 24022,
+    24022, 44946,
+    44946, 60390,
+    66733, 66707,
+    66707, 14038,
+    14038, 17360,
+    17360, 17370,
+    17370, 23630,
+    23630, 23631,
+    23631, 24051,
+    24051, 45331,
+    45331, 60392}) {
+    relevant_stops.set(static_cast<unsigned>(l));
+  }*/
   std::cout << "marked stops: " << relevant_stops.count() << "/"
             << relevant_stops.size() << std::endl;
 }
