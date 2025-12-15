@@ -88,13 +88,8 @@ TEST(routing, wheelchair_assistance) {
   tt.bwd_search_lb_graph_[kWheelchairProfile] =
       tt.bwd_search_lb_graph_[kDefaultProfile];
 
-  auto const find_loc = [&](std::string_view id) {
-    auto const idx = tt.find(location_id{id, source_idx_t{0U}});
-    EXPECT_TRUE(idx.has_value()) << id;
-    return idx.value_or(location_idx_t::invalid());
-  };
-  auto const B1 = find_loc("B1");
-  auto const B2 = find_loc("B2");
+  auto const B1 = tt.find(location_id{"B1", {}}).value();
+  auto const B2 = tt.find(location_id{"B2", {}}).value();
   for (auto const profile : {0U, 2U}) {
     tt.locations_.footpaths_out_[profile].resize(tt.n_locations());
     tt.locations_.footpaths_in_[profile].resize(tt.n_locations());
