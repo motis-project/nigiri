@@ -85,7 +85,8 @@ struct string_store {
     } else {
       auto next = idx_t{strings_.size()};
       strings_.emplace_back(s);
-      assert(cache_.emplace(next).second);
+      [[maybe_unused]] auto const inserted = cache_.emplace(next).second;
+      assert(inserted);
       assert(cache_.size() == strings_.size());
       return next;
     }
