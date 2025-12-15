@@ -272,6 +272,11 @@ TEST(rt, gtfs_rt_update) {
                                 sys_days{2019_y / May / 3} + 22h + 45min,
                                 sys_days{2019_y / May / 3} + 23h + 0min};
   auto const stop_ids = {"B", "C", "D"};
+  auto const find_loc = [&](std::string_view id) {
+    auto const idx = tt.find(location_id{id, source_idx_t{0U}});
+    EXPECT_TRUE(idx.has_value()) << id;
+    return idx.value_or(location_idx_t::invalid());
+  };
   auto i = 0U, j = 0U;
   auto fr = frun{tt, nullptr,
                  rt::gtfsrt_resolve_run(date::sys_days{2019_y / May / 4}, tt,
@@ -291,8 +296,7 @@ TEST(rt, gtfs_rt_update) {
     EXPECT_EQ(scheduled[j++], to.time(nigiri::event_type::kArr));
   }
   for (auto const [id, stop] : utl::zip(stop_ids, fr)) {
-    EXPECT_EQ(tt.locations_.get({id, source_idx_t{0U}}).l_,
-              stop.get_location().l_);
+    EXPECT_EQ(find_loc(id), stop.get_location_idx());
   }
 
   // Basic checks with rt_timetable!=nullptr.
@@ -308,8 +312,7 @@ TEST(rt, gtfs_rt_update) {
     EXPECT_EQ(scheduled[j++], to.time(nigiri::event_type::kArr));
   }
   for (auto const [id, stop] : utl::zip(stop_ids, fr)) {
-    EXPECT_EQ(tt.locations_.get({id, source_idx_t{0U}}).l_,
-              stop.get_location().l_);
+    EXPECT_EQ(find_loc(id), stop.get_location_idx());
   }
 
   // ** UPDATE 0: update first arrival, check propagation **
@@ -392,8 +395,7 @@ TEST(rt, gtfs_rt_update) {
   }
 
   for (auto const [id, stop] : utl::zip(stop_ids, fr)) {
-    EXPECT_EQ(tt.locations_.get({id, source_idx_t{0U}}).l_,
-              stop.get_location().l_);
+    EXPECT_EQ(find_loc(id), stop.get_location_idx());
   }
 
   // Ignore delays.

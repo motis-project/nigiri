@@ -108,7 +108,7 @@ TEST(routing, td_start_times) {
         for (auto const& s : it_range{from_it, to_it}) {
           ss << "      {time_at_start=" << s.time_at_start_
              << ", time_at_stop=" << s.time_at_stop_
-             << ", stop=" << tt.locations_.names_[s.stop_].view() << "}\n";
+             << ", stop=" << tt.get_default_name(s.stop_) << "}\n";
         }
       });
 

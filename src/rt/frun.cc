@@ -17,8 +17,8 @@ namespace nigiri::rt {
 
 constexpr auto const kUnknownProvider =
     provider{.id_ = string_idx_t::invalid(),
-             .name_ = string_idx_t::invalid(),
-             .url_ = string_idx_t::invalid(),
+             .name_ = kEmptyTranslation,
+             .url_ = kEmptyTranslation,
              .src_ = source_idx_t::invalid()};
 
 stop run_stop::get_stop() const {
@@ -38,11 +38,11 @@ stop run_stop::get_scheduled_stop() const {
              : rtt()->rt_transport_location_seq_[fr_->rt_][stop_idx_];
 }
 
-std::string_view run_stop::name() const {
+std::string_view run_stop::name(lang_t const& lang) const {
   auto const l = get_location_idx();
   auto const p = tt().locations_.parents_.at(l);
   auto const x = p == location_idx_t::invalid() ? l : p;
-  return tt().locations_.names_.at(x).view();
+  return tt().translate(lang, tt().locations_.names_.at(x));
 }
 
 std::string_view run_stop::id() const {
@@ -95,14 +95,9 @@ std::pair<date::sys_days, duration_t> run_stop::get_trip_start(
   }
 }
 
-std::string_view run_stop::track() const {
+std::string_view run_stop::track(lang_t const& lang) const {
   auto const l = get_location_idx();
-  return tt().locations_.platform_codes_.at(l).view();
-}
-
-location run_stop::get_location() const {
-  assert(fr_->size() > stop_idx_);
-  return location{*fr_->tt_, get_stop().location_idx()};
+  return tt().translate(lang, tt().locations_.platform_codes_.at(l));
 }
 
 geo::latlng run_stop::pos() const {
@@ -110,9 +105,15 @@ geo::latlng run_stop::pos() const {
   return fr_->tt_->locations_.coordinates_[get_stop().location_idx()];
 }
 
+loc run_stop::get_loc() const { return {tt(), get_location_idx()}; }
+
 location_idx_t run_stop::get_location_idx() const {
   assert(fr_->size() > stop_idx_);
   return get_stop().location_idx();
+}
+
+std::string_view run_stop::get_location_id() const {
+  return tt().locations_.ids_[get_location_idx()].view();
 }
 
 location_idx_t run_stop::get_scheduled_location_idx() const {
@@ -169,7 +170,7 @@ duration_t run_stop::delay(event_type const ev_type) const {
 
 timezone_idx_t run_stop::get_tz(event_type const ev_type) const {
   auto const location_tz =
-      tt().locations_.location_timezones_.at(get_location().l_);
+      tt().locations_.location_timezones_.at(get_location_idx());
   if (location_tz != timezone_idx_t::invalid()) {
     return location_tz;
   }
@@ -198,7 +199,7 @@ std::optional<std::string> run_stop::get_tz_name(
   if (tz_idx == timezone_idx_t::invalid()) {
     return std::nullopt;
   }
-  auto const& tz = fr_->tt_->locations_.timezones_.at(tz_idx);
+  auto const& tz = fr_->tt_->timezones_.at(tz_idx);
   auto const* date_tz = to_time_zone(tz);
   return date_tz == nullptr ? std::nullopt : std::optional{date_tz->name()};
 }
@@ -254,31 +255,41 @@ std::optional<route_type_t> run_stop::route_type(
              : std::optional{route_ids->route_id_type_.at(route_id_idx)};
 }
 
-std::string_view run_stop::route_short_name(event_type const ev_type) const {
+std::string_view run_stop::route_short_name(event_type const ev_type,
+                                            lang_t const& lang) const {
   auto const [route_ids, route_id_idx] = get_route(ev_type);
   return route_ids == nullptr
              ? "?"
-             : route_ids->route_id_short_names_.at(route_id_idx).view();
+             : tt().translate(
+                   lang, route_ids->route_id_short_names_.at(route_id_idx));
 }
 
-std::string_view run_stop::route_long_name(event_type const ev_type) const {
+std::string_view run_stop::route_long_name(event_type const ev_type,
+                                           lang_t const& lang) const {
   auto const [route_ids, route_id_idx] = get_route(ev_type);
   return route_ids == nullptr
              ? "?"
-             : route_ids->route_id_long_names_.at(route_id_idx).view();
+             : tt().translate(lang,
+                              route_ids->route_id_long_names_.at(route_id_idx));
 }
 
-std::string_view run_stop::trip_short_name(event_type const ev_type) const {
+std::string_view run_stop::trip_short_name(event_type const ev_type,
+                                           lang_t const& lang) const {
   if (fr_->is_scheduled()) {
-    return tt().trip_short_names_[get_trip_idx(ev_type)].view();
+    return tt().translate(lang, tt().trip_short_names_[get_trip_idx(ev_type)]);
   } else {
-    return rtt()->trip_short_name(tt(), fr_->rt_);
+    return utl::visit(
+        rtt()->trip_short_name(tt(), fr_->rt_),
+        [&](translation_idx_t const t) { return tt().translate(lang, t); },
+        [](std::string_view s) { return s; });
   }
 }
 
-std::string_view run_stop::display_name(event_type const ev_type) const {
+std::string_view run_stop::display_name(event_type const ev_type,
+                                        lang_t const& lang) const {
   if (fr_->is_scheduled()) {
-    return tt().trip_display_names_[get_trip_idx(ev_type)].view();
+    return tt().translate(lang,
+                          tt().trip_display_names_[get_trip_idx(ev_type)]);
   }
   auto const name = route_short_name(ev_type);
   return name.empty() ? trip_short_name(ev_type) : name;
@@ -303,35 +314,23 @@ provider const& run_stop::get_provider(event_type const ev_type) const {
   return kUnknownProvider;
 }
 
-std::string_view run_stop::direction(event_type const ev_type) const {
+std::string_view run_stop::direction(lang_t const& lang,
+                                     event_type const ev_type) const {
   if (fr_->is_scheduled()) {
     auto const direction_sections =
         tt().transport_section_directions_.at(fr_->t_.t_idx_);
-    auto direction = std::string_view{};
     if (!direction_sections.empty()) {
       auto const direction_idx =
           direction_sections.size() == 1U
               ? direction_sections.at(0)
               : direction_sections.at(section_idx(ev_type));
-      if (direction_idx != trip_direction_idx_t::invalid()) {
-        direction = tt().trip_directions_.at(direction_idx)
-                        .apply(utl::overloaded{
-                            [&](trip_direction_string_idx_t const i) {
-                              return tt().trip_direction_strings_.at(i).view();
-                            },
-                            [&](location_idx_t const i) {
-                              return tt().locations_.names_.at(i).view();
-                            }});
-      }
-    }
-    if (!direction.empty()) {
-      return direction;
+      return tt().translate(lang, direction_idx);
     }
   }
   if (rtt() != nullptr || fr_->is_scheduled()) {
     return run_stop{.fr_ = fr_,
                     .stop_idx_ = static_cast<stop_idx_t>(fr_->size() - 1U)}
-        .name();
+        .name(lang);
   }
   return "";
 }
@@ -723,12 +722,12 @@ trip_idx_t frun::trip_idx() const {
 void run_stop::print(std::ostream& out,
                      bool const first,
                      bool const last) const {
-  auto const& tz = tt().locations_.timezones_.at(
-      get_tz(last ? event_type::kArr : event_type::kDep));
+  auto const& tz =
+      tt().timezones_.at(get_tz(last ? event_type::kArr : event_type::kDep));
 
   // Print stop index, location name.
-  fmt::print(out, "  {:2}: {:7} {:.<48}", stop_idx_, get_location().id_,
-             name());
+  fmt::print(out, "  {:2}: {:7} {:.<48}", stop_idx_, get_location_id(),
+             name({}));
 
   // Print arrival (or whitespace if there's none).
   if (!first && stop_idx_ != fr_->stop_range_.from_) {

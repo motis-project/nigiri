@@ -85,12 +85,14 @@ struct string_store {
     } else {
       auto next = idx_t{strings_.size()};
       strings_.emplace_back(s);
-      cache_.emplace(next);
+      assert(cache_.emplace(next).second);
+      assert(cache_.size() == strings_.size());
       return next;
     }
   }
 
   std::optional<idx_t> find(std::string_view s) const {
+    assert(cache_.size() == strings_.size());
     auto const it = cache_.find(s);
     return it == cache_.end() ? std::nullopt : std::optional{*it};
   }

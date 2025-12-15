@@ -20,19 +20,25 @@ namespace {
 constexpr auto const test_files = R"(
 # agency.txt
 agency_id,agency_name,agency_url,agency_timezone
+
 # stops.txt
 stop_id,stop_name,stop_desc,stop_lat,stop_lon,stop_url,location_type,parent_station
 A,A,,0.0,1.0,,
 B,B,,2.0,3.0,,
 C,C,,4.0,5.0,,
+
 # routes.txt
 route_id,agency_id,route_short_name,route_long_name,route_desc,route_type
+
 # trips.txt
 route_id,service_id,trip_id,trip_headsign,block_id
+
 # stop_times.txt
 trip_id,arrival_time,departure_time,stop_id,stop_sequence,pickup_type,drop_off_type
+
 # calendar_dates.txt
 service_id,date,exception_type
+
 # transfers.txt
 from_stop_id,to_stop_id,transfer_type,min_transfer_time
 B,A,2,180
@@ -48,16 +54,17 @@ TEST(loader, build_footpaths) {
   tt.date_range_ = {date::sys_days{2024_y / March / 1},
                     date::sys_days{2024_y / March / 2}};
   loader::register_special_stations(tt);
-  loader::gtfs::load_timetable({}, source_idx_t{0},
+  loader::gtfs::load_timetable({.default_tz_ = "Europe/Berlin"},
+                               source_idx_t{0},
                                loader::mem_dir::read(test_files), tt);
   loader::finalize(tt);
 
   auto ss = std::stringstream{};
   for (auto const [i, x] : utl::enumerate(tt.locations_.footpaths_out_[0])) {
     if (!x.empty()) {
-      ss << location{tt, location_idx_t{i}} << "\n";
+      ss << loc{tt, location_idx_t{i}} << "\n";
       for (auto const y : x) {
-        ss << "  " << y.duration() << "->" << location{tt, y.target()} << "\n";
+        ss << "  " << y.duration() << "->" << loc{tt, y.target()} << "\n";
       }
     }
   }

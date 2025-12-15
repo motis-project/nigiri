@@ -46,10 +46,10 @@ tracks parse_track_rules(config const& c,
         track_at_station{.parent_station_ = parent,
                          .track_name_ = track_name_str},
         [&]() {
-          auto l = loader::location{tt, parent};
+          auto l = location{tt, parent};
           auto const id = fmt::format("T:{}:{}", l.id_, track_name_str);
           l.id_ = id;
-          l.name_ = generic_string{track_name_str, generic_string::non_owning};
+          l.name_ = tt.register_translation(track_name_str);
           l.type_ = location_type::kGeneratedTrack;
           l.parent_ = parent;
           auto const child = register_location(tt, l);

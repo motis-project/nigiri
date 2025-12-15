@@ -34,8 +34,8 @@ mem_dir test_files() {
      "(
 # agency.txt
 agency_name,agency_url,agency_timezone,agency_lang,agency_phone,agency_id
-invalid,https://test.com,Europe/London,DE,0800123456,INVALID_AGENCY
 test,https://test.com,Europe/Berlin,DE,0800123456,AGENCY_1
+invalid,https://test.com,Europe/London,DE,0800123456,INVALID_AGENCY
 
 # stops.txt
 stop_id,stop_name,stop_lat,stop_lon
@@ -817,7 +817,7 @@ TEST(rt, gtfs_rt_added) {
     EXPECT_EQ(location_idx_t{13}, fr[0].get_scheduled_stop().location_idx());
     EXPECT_FLOAT_EQ(0.05, fr[0].pos().lat());
     EXPECT_FLOAT_EQ(0.05, fr[0].pos().lng());
-    EXPECT_EQ("", fr[0].track());
+    EXPECT_EQ("", fr[0].track(std::nullopt));
     EXPECT_EQ("E", fr[0].id());
     EXPECT_EQ("AGENCY_1",
               tt.strings_.get(fr[0].get_provider(event_type::kDep).id_));
@@ -833,7 +833,7 @@ TEST(rt, gtfs_rt_added) {
         unixtime_t{date::sys_days{2023_y / August / 10} + 9_hours + 15_minutes},
         fr[0].time(event_type::kDep));
     EXPECT_EQ(duration_t{0}, fr[0].delay(event_type::kDep));
-    EXPECT_EQ("B", fr[0].direction(event_type::kDep));
+    EXPECT_EQ("B", fr[0].direction(std::nullopt, event_type::kDep));
     EXPECT_EQ(nigiri::clasz::kBus, fr[0].get_clasz(event_type::kDep));
     EXPECT_EQ(nigiri::clasz::kOther,
               fr[0].get_scheduled_clasz(event_type::kDep));

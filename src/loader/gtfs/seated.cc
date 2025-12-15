@@ -242,8 +242,7 @@ void build_seated_trips(timetable& tt,
                 fmt::join(copy.trips_ | sv::transform(dbg), "\n\t"),
                 fmt::join(copy.stop_seq_ |
                               sv::transform([&](stop::value_type const& s) {
-                                return nigiri::location{tt,
-                                                        stop{s}.location_idx()};
+                                return loc{tt, stop{s}.location_idx()};
                               }),
                           "\n\t"),
                 fmt::join(copy.utc_times_ | sv::transform(std::identity{}),
@@ -264,7 +263,7 @@ void build_seated_trips(timetable& tt,
         trace("adding trips={}, stops={}, times={}",
               curr.trips_ | sv::transform(dbg),
               curr.stop_seq_ | sv::transform([&](stop::value_type const& s) {
-                return nigiri::location{tt, stop{s}.location_idx()};
+                return nigiri::loc{tt, stop{s}.location_idx()};
               }),
               curr.utc_times_ | sv::transform(std::identity{}));
         consumer(std::move(curr));

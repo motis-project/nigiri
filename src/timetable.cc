@@ -15,12 +15,31 @@ std::string reverse(std::string s) {
 }
 
 void timetable::resolve() {
-  for (auto& tz : locations_.timezones_) {
+  for (auto& tz : timezones_) {
     if (holds_alternative<pair<string, void const*>>(tz)) {
       auto& [name, ptr] = tz.as<pair<string, void const*>>();
       ptr = date::locate_zone(name);
     }
   }
+}
+
+provider_idx_t timetable::get_provider_idx(std::string_view id,
+                                           source_idx_t const src) const {
+  auto const id_str_idx = strings_.find(id);
+  if (!id_str_idx.has_value()) {
+    return provider_idx_t::invalid();
+  }
+  auto const it = std::lower_bound(
+      begin(provider_id_to_idx_), end(provider_id_to_idx_), *id_str_idx,
+      [&](provider_idx_t const a, string_idx_t const b) {
+        auto const& p = providers_[a];
+        return std::tuple{p.src_, p.id_} < std::tuple{src, b};
+      });
+  if (it == end(provider_id_to_idx_) || providers_[*it].src_ != src ||
+      *id_str_idx != providers_[*it].id_) {
+    return provider_idx_t::invalid();
+  }
+  return *it;
 }
 
 std::ostream& operator<<(std::ostream& out, timetable const& tt) {

@@ -168,7 +168,7 @@ struct raptor {
     trace_upd(
         "adding start [fwd={}] {}: {}, v={} [current: best={}, round={} => "
         "best={}]\n",
-        kFwd, location{tt_, l}, t, v, to_unix(best_[to_idx(l)][v]),
+        kFwd, loc{tt_, l}, t, v, to_unix(best_[to_idx(l)][v]),
         to_unix(round_times_[0U][to_idx(l)][v]),
         get_best(t, to_unix(best_[to_idx(l)][v])));
     best_[to_idx(l)][v] =
@@ -288,7 +288,7 @@ struct raptor {
         if (dest_time != kInvalid) {
           trace("ADDING JOURNEY: start={}, dest={} @ {}, transfers={}\n",
                 start_time, delta_to_unix(base(), round_times_[k][i][Vias]),
-                location{tt_, location_idx_t{i}}, k - 1);
+                loc{tt_, location_idx_t{i}}, k - 1);
           auto const [optimal, it, dominated_by] = results.add(
               journey{.legs_ = {},
                       .start_time_ = start_time,
@@ -298,7 +298,7 @@ struct raptor {
           if (!optimal) {
             trace("  DOMINATED BY: start={}, dest={} @ {}, transfers={}\n",
                   dominated_by->start_time_, dominated_by->dest_time_,
-                  location{tt_, dominated_by->dest_}, dominated_by->transfers_);
+                  loc{tt_, dominated_by->dest_}, dominated_by->transfers_);
           }
         }
       }
@@ -441,8 +441,8 @@ private:
         trace(
             "  loc={}, v={}, tmp={}, is_dest={}, is_via={}, target_v={}, "
             "stay={}\n",
-            location{tt_, location_idx_t{i}}, v, to_unix(tmp_time), is_dest,
-            is_via, target_v, stay);
+            loc{tt_, location_idx_t{i}}, v, to_unix(tmp_time), is_dest, is_via,
+            target_v, stay);
 
         auto const transfer_time =
             (!is_intermodal_dest() && is_dest)
@@ -536,10 +536,10 @@ private:
               trace_upd(
                   "┊ ├k={} *** LB NO UPD: (from={}, tmp={}) --{}--> (to={}, "
                   "best={}) --> update => {}, LB={}, LB_AT_DEST={}, DEST={}\n",
-                  k, location{tt_, l_idx}, to_unix(tmp_[to_idx(l_idx)][v]),
+                  k, loc{tt_, l_idx}, to_unix(tmp_[to_idx(l_idx)][v]),
                   adjusted_transfer_time(transfer_time_settings_,
                                          fp.duration()),
-                  location{tt_, fp.target()}, best_[target][target_v],
+                  loc{tt_, fp.target()}, best_[target][target_v],
                   to_unix(fp_target_time), lower_bound,
                   to_unix(clamp(fp_target_time + dir(lower_bound))),
                   to_unix(time_at_dest_[k]));
@@ -549,9 +549,9 @@ private:
             trace_upd(
                 "┊ ├k={}   footpath: ({}, tmp={}) --{}--> ({}, best={}) --> "
                 "update => {}, v={}->{}, stay={}\n",
-                k, location{tt_, l_idx}, to_unix(tmp_[to_idx(l_idx)][v]),
+                k, loc{tt_, l_idx}, to_unix(tmp_[to_idx(l_idx)][v]),
                 adjusted_transfer_time(transfer_time_settings_, fp.duration()),
-                location{tt_, fp.target()}, to_unix(best_[target][target_v]),
+                loc{tt_, fp.target()}, to_unix(best_[target][target_v]),
                 to_unix(fp_target_time), v, target_v, stay);
 
             ++stats_.n_earliest_arrival_updated_by_footpath_;
@@ -565,10 +565,9 @@ private:
             trace(
                 "┊ ├k={}   NO FP UPDATE: {} [best={}] --{}--> {} "
                 "[best={}, time_at_dest={}]\n",
-                k, location{tt_, l_idx},
-                to_unix(best_[to_idx(l_idx)][target_v]),
+                k, loc{tt_, l_idx}, to_unix(best_[to_idx(l_idx)][target_v]),
                 adjusted_transfer_time(transfer_time_settings_, fp.duration()),
-                location{tt_, fp.target()}, to_unix(best_[target][target_v]),
+                loc{tt_, fp.target()}, to_unix(best_[target][target_v]),
                 to_unix(time_at_dest_[k]));
           }
         }
@@ -636,9 +635,9 @@ private:
                   "┊ ├k={} *** LB NO TD FP UPD: (from={}, tmp={}) --{}--> "
                   "(to={}, best={}) --> update => {}, LB={}, LB_AT_DEST={}, "
                   "DEST={}\n",
-                  k, location{tt_, l_idx}, to_unix(tmp_[to_idx(l_idx)][v]),
-                  fp.duration(), location{tt_, fp.target()},
-                  best_[target][target_v], fp_target_time, lower_bound,
+                  k, loc{tt_, l_idx}, to_unix(tmp_[to_idx(l_idx)][v]),
+                  fp.duration(), loc{tt_, fp.target()}, best_[target][target_v],
+                  fp_target_time, lower_bound,
                   to_unix(clamp(fp_target_time + dir(lower_bound))),
                   to_unix(time_at_dest_[k]));
               return utl::cflow::kContinue;
@@ -647,8 +646,8 @@ private:
             trace_upd(
                 "┊ ├k={}   td footpath: ({}, tmp={}) --{}--> ({}, best={}) --> "
                 "update => {}, v={}->{}, stay={}\n",
-                k, location{tt_, l_idx}, to_unix(tmp_[to_idx(l_idx)][v]),
-                fp.duration(), location{tt_, fp.target()},
+                k, loc{tt_, l_idx}, to_unix(tmp_[to_idx(l_idx)][v]),
+                fp.duration(), loc{tt_, fp.target()},
                 to_unix(best_[target][target_v]), to_unix(fp_target_time), v,
                 target_v, stay);
 
@@ -663,9 +662,9 @@ private:
             trace(
                 "┊ ├k={}   NO TD FP UPDATE: {} [best={}] --{}--> {} "
                 "[best={}, time_at_dest={}]\n",
-                k, location{tt_, l_idx}, best_[to_idx(l_idx)][v],
+                k, loc{tt_, l_idx}, best_[to_idx(l_idx)][v],
                 adjusted_transfer_time(transfer_time_settings_, fp.duration()),
-                location{tt_, fp.target()}, best_[target][v],
+                loc{tt_, fp.target()}, best_[target][v],
                 to_unix(time_at_dest_[k]));
           }
 
@@ -699,8 +698,8 @@ private:
           trace_upd(
               "┊ ├k={}   INTERMODAL FOOTPATH: ({}, tmp={}) --{}--> "
               "({}, best={}) --> update => {}, stay={}\n",
-              k, location{tt_, l}, to_unix(tmp_[to_idx(l)][Vias]),
-              dist_to_end_[i], location{tt_, location_idx_t{kIntermodalTarget}},
+              k, loc{tt_, l}, to_unix(tmp_[to_idx(l)][Vias]), dist_to_end_[i],
+              loc{tt_, location_idx_t{kIntermodalTarget}},
               to_unix(best_[kIntermodalTarget][Vias]), to_unix(end_time), stay);
 
           round_times_[k][kIntermodalTarget][Vias] = end_time;
@@ -729,7 +728,7 @@ private:
             trace(
                 "┊ │k={}  TD INTERMODAL FOOTPATH: location={}, "
                 "start_time={}, dist_to_end={} --> update to {}\n",
-                k, location{tt_, l}, to_unix(fp_start_time), duration,
+                k, loc{tt_, l}, to_unix(fp_start_time), duration,
                 to_unix(end_time));
           }
         }
@@ -807,7 +806,7 @@ private:
                   k, rtt_->trip_short_name(tt_, rt_t), rtt_->dbg(tt_, rt_t),
                   to_unix(by_transport), to_unix(current_best),
                   !is_better(by_transport, current_best) ? "NOT" : "",
-                  location{tt_, stp.location_idx()});
+                  loc{tt_, stp.location_idx()});
 
               ++stats_.n_earliest_arrival_updated_by_route_;
               tmp_[l_idx][target_v] =
@@ -839,7 +838,7 @@ private:
                     rtt_->dbg(tt_, rt_t), to_unix(by_transport),
                     to_unix(best_dest),
                     !is_better(by_transport, best_dest) ? "NOT" : "",
-                    location{tt_, stp.location_idx()});
+                    loc{tt_, stp.location_idx()});
 
                 ++stats_.n_earliest_arrival_updated_by_route_;
                 tmp_[l_idx][dest_v] =
@@ -903,7 +902,7 @@ private:
           trace(
               "┊ │k={} v={}  stop_idx={} {}: not marked, no et - "
               "skip\n",
-              k, v, stop_idx, location{tt_, location_idx_t{l_idx}});
+              k, v, stop_idx, loc{tt_, location_idx_t{l_idx}});
           continue;
         }
 
@@ -911,7 +910,7 @@ private:
             "┊ │k={} v={}(+{})  stop_idx={}, location={}, round_times={}, "
             "best={}, "
             "tmp={}\n",
-            k, v, v_offset[v], stop_idx, location{tt_, stp.location_idx()},
+            k, v, v_offset[v], stop_idx, loc{tt_, stp.location_idx()},
             to_unix(round_times_[k - 1][l_idx][v]), to_unix(best_[l_idx][v]),
             to_unix(tmp_[l_idx][v]));
 
@@ -981,7 +980,7 @@ private:
                 tt_.dbg(et[v].t_idx_), to_unix(by_transport),
                 to_unix(current_best[v]),
                 !is_better(by_transport, current_best[v]) ? "NOT" : "",
-                location{tt_, stp.location_idx()});
+                loc{tt_, stp.location_idx()});
 
             ++stats_.n_earliest_arrival_updated_by_route_;
             tmp_[l_idx][target_v] =
@@ -1001,12 +1000,12 @@ private:
                 "is_better(by_transport={}={}, time_at_dest_={}={})={}, "
                 "reachable={}, "
                 "is_better(lb={}={}, time_at_dest_={}={})={})!\n",
-                k, v, target_v, location{tt_, location_idx_t{l_idx}},
+                k, v, target_v, loc{tt_, location_idx_t{l_idx}},
                 tt_.transport_name(et[v].t_idx_), tt_.dbg(et[v].t_idx_),
                 to_unix(by_transport),
                 to_unix(round_times_[k - 1][l_idx][target_v]),
                 to_unix(best_[l_idx][target_v]), to_unix(tmp_[l_idx][target_v]),
-                to_unix(current_best[v]), location{tt_, location_idx_t{l_idx}},
+                to_unix(current_best[v]), loc{tt_, location_idx_t{l_idx}},
                 lb_[l_idx], to_unix(time_at_dest_[k]),
                 to_unix(clamp(by_transport + dir(lb_[l_idx]))), by_transport,
                 to_unix(by_transport), current_best[v],
@@ -1043,7 +1042,7 @@ private:
                   tt_.dbg(et[v].t_idx_), to_unix(by_transport),
                   to_unix(best_dest),
                   !is_better(by_transport, best_dest) ? "NOT" : "",
-                  location{tt_, stp.location_idx()});
+                  loc{tt_, stp.location_idx()});
 
               ++stats_.n_earliest_arrival_updated_by_route_;
               tmp_[l_idx][dest_v] = get_best(by_transport, tmp_[l_idx][dest_v]);
@@ -1129,8 +1128,7 @@ private:
 
     trace("┊ │k={}    et: current_best_at_stop={}, stop_idx={}, location={}\n",
           k, tt_.to_unixtime(day_at_stop, mam_at_stop), stop_idx,
-          location{tt_,
-                   stop{tt_.route_location_seq_[r][stop_idx]}.location_idx()});
+          loc{tt_, stop{tt_.route_location_seq_[r][stop_idx]}.location_idx()});
 
     auto const n_days_to_iterate = kMaxTravelTime / std::chrono::days{1} + 1U;
     for (auto i = day_idx_t::value_t{0U}; i != n_days_to_iterate; ++i) {

@@ -16,18 +16,20 @@
 namespace nigiri::loader {
 
 void register_special_stations(timetable& tt) {
+  tt.register_translation(std::string_view{""});
   for (auto const& name : special_stations_names) {
-    register_location(tt, location{name,
-                                   name,
-                                   "",
-                                   "",
-                                   {0.0, 0.0},
+    auto const name_translation = tt.register_translation(name);
+    register_location(tt, location{tt,
                                    source_idx_t::invalid(),
+                                   name,
+                                   name_translation,
+                                   kEmptyTranslation,
+                                   kEmptyTranslation,
+                                   {0.0, 0.0},
                                    location_type::kStation,
                                    location_idx_t::invalid(),
                                    timezone_idx_t::invalid(),
-                                   0_minutes,
-                                   tt});
+                                   0_minutes});
   }
   tt.location_routes_.resize(tt.n_locations());
   tt.bitfields_.emplace_back(bitfield{});  // bitfield_idx 0 = 000...00 bitfield
@@ -147,7 +149,6 @@ void correct_color_contrast(timetable& tt) {
 }
 
 void finalize(timetable& tt, finalize_options const opt) {
-  tt.strings_.cache_.clear();
   tt.location_routes_.resize(tt.n_locations());
 
   {
@@ -173,8 +174,8 @@ void finalize(timetable& tt, finalize_options const opt) {
 #endif
         begin(tt.provider_id_to_idx_), end(tt.provider_id_to_idx_),
         [&](provider_idx_t const a, provider_idx_t const b) {
-          return tt.strings_.get(tt.providers_[a].id_) <
-                 tt.strings_.get(tt.providers_[b].id_);
+          return std::tie(tt.providers_[a].src_, tt.providers_[a].id_) <
+                 std::tie(tt.providers_[b].src_, tt.providers_[b].id_);
         });
   }
   build_footpaths(tt, opt);

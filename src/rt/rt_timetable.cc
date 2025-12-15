@@ -1,6 +1,7 @@
 #include "nigiri/rt/rt_timetable.h"
 
 #include "utl/enumerate.h"
+#include "utl/overloaded.h"
 #include "utl/timer.h"
 
 #include "nigiri/loader/gtfs/route.h"
@@ -150,6 +151,16 @@ rt_transport_idx_t rt_timetable::add_rt_transport(
   return rt_transport_idx_t{rt_t_idx};
 }
 
+std::string_view rt_timetable::transport_name(timetable const& tt,
+                                              rt_transport_idx_t const t) const {
+  return std::visit(
+      utl::overloaded{[&](translation_idx_t const idx) {
+                        return tt.get_default_translation(idx);
+                      },
+                      [](std::string_view const s) { return s; }},
+      trip_short_name(tt, t));
+}
+
 void rt_timetable::update_lbs(timetable const& tt,
                               rt_transport_idx_t const rt_t,
                               stop_idx_t const stop_idx,
@@ -173,8 +184,8 @@ void rt_timetable::update_lbs(timetable const& tt,
   if (travel_time < duration_t{0}) {
     log(log_lvl::error, "nigiri.rt.update_time",
         "travel_time < 0: {} -> {}: dep={} - arr={}",
-        location{tt, stop{loc_seq[from_stop_idx]}.location_idx()},
-        location{tt, stop{loc_seq[to_stop_idx]}.location_idx()},
+        loc{tt, stop{loc_seq[from_stop_idx]}.location_idx()},
+        loc{tt, stop{loc_seq[to_stop_idx]}.location_idx()},
         event_time(rt_t, from_stop_idx, event_type::kDep),
         event_time(rt_t, to_stop_idx, event_type::kArr));
     return;

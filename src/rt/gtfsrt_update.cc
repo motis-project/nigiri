@@ -11,7 +11,6 @@
 
 #include "nigiri/loader/gtfs/stop_seq_number_encoding.h"
 #include "nigiri/get_otel_tracer.h"
-#include "nigiri/location.h"
 #include "nigiri/logging.h"
 #include "nigiri/lookup/get_transport.h"
 #include "nigiri/rt/frun.h"
@@ -523,9 +522,9 @@ void handle_vehicle_position(timetable const& tt,
     auto const app_dist_lng_deg_vp =
         geo::approx_distance_lng_degrees(vp_position);
     auto const stop_it = utl::find_if(location_seq, [&](auto const& stp) {
-      auto const loc = tt.locations_.get(stop{stp}.location_idx());
-      return geo::approx_squared_distance(loc.pos_, vp_position,
-                                          app_dist_lng_deg_vp) < 10;
+      return geo::approx_squared_distance(
+                 tt.locations_.coordinates_[stop{stp}.location_idx()],
+                 vp_position, app_dist_lng_deg_vp) < 10;
     });
     if (stop_it == end(location_seq)) {
       log(log_lvl::debug, "rt.gtfs.vehicle_update",

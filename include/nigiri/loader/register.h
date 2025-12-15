@@ -13,50 +13,37 @@ namespace nigiri::loader {
 
 extern gtfs::tz_map dummy_tz_map;
 
-struct translation {
-  translation(std::string_view language, std::string_view text);
-
-  std::string_view get_language() const;
-  void set_language(std::string_view);
-
-  std::string_view get_text() const;
-  void set_text(std::string_view);
-
-  cista::raw::generic_string language_;
-  cista::raw::generic_string text_;
-};
-
 struct attribute {
-  attribute(std::string_view code, std::vector<translation> translations);
+  attribute(timetable*, std::string_view code, translation_idx_t text);
 
   std::string_view get_code() const;
   void set_code(std::string_view);
 
-  std::vector<translation> get_translations() const;
-  void set_translations(std::vector<translation>);
+  translated_str_t get_text() const;
+  void set_text(translated_str_t);
 
-  attribute_idx_t idx_;
-  cista::raw::generic_string code_;
-  std::vector<translation> translations_;
+  generic_string code_;
+  translation_idx_t text_;
+  timetable* tt_{nullptr};
 };
 
 struct agency {
-  agency(source_idx_t,
+  agency(timetable&,
+         source_idx_t,
          std::string_view id,
-         std::string_view name,
-         std::string_view url,
+         translation_idx_t name,
+         translation_idx_t url,
          timezone_idx_t,
-         timetable&,
          gtfs::tz_map& = dummy_tz_map);
-  agency(timetable const&, provider_idx_t);
+  agency(timetable&, provider_idx_t);
 
   std::string_view get_id() const;
 
-  std::string_view get_name() const;
-  void set_name(std::string_view);
+  translated_str_t get_name() const;
+  void set_name(translated_str_t);
 
-  std::string_view get_url() const;
-  void set_url(std::string_view);
+  translated_str_t get_url() const;
+  void set_url(translated_str_t);
 
   std::optional<std::string_view> get_timezone() const;
   void set_timezone(std::string_view);
@@ -64,8 +51,8 @@ struct agency {
   source_idx_t src_;
 
   std::string_view id_;
-  cista::raw::generic_string name_;
-  cista::raw::generic_string url_;
+  translation_idx_t name_;
+  translation_idx_t url_;
   timezone_idx_t timezone_idx_;
 
   timetable* tt_{nullptr};
@@ -73,30 +60,30 @@ struct agency {
 };
 
 struct location {
-  location(std::string_view id,
-           std::string_view name,
-           std::string_view platform_code,
-           std::string_view desc,
-           geo::latlng pos,
+  location(timetable&,
            source_idx_t,
+           std::string_view id,
+           translation_idx_t name,
+           translation_idx_t platform_code,
+           translation_idx_t desc,
+           geo::latlng pos,
            location_type,
            location_idx_t parent,
            timezone_idx_t,
            duration_t transfer_time,
-           timetable&,
            gtfs::tz_map& = dummy_tz_map);
   location(timetable const&, location_idx_t);
 
   std::string_view get_id() const;
 
-  std::string_view get_name() const;
-  void set_name(std::string_view);
+  translated_str_t get_name() const;
+  void set_name(translated_str_t);
 
-  std::string_view get_platform_code() const;
-  void set_platform_code(std::string_view);
+  translated_str_t get_platform_code() const;
+  void set_platform_code(translated_str_t);
 
-  std::string_view get_description() const;
-  void set_description(std::string_view);
+  translated_str_t get_description() const;
+  void set_description(translated_str_t);
 
   geo::latlng get_pos() const;
   void set_pos(geo::latlng);
@@ -109,9 +96,9 @@ struct location {
 
   source_idx_t src_;
   std::string_view id_;
-  cista::raw::generic_string name_;
-  cista::raw::generic_string platform_code_;
-  cista::raw::generic_string description_;
+  translation_idx_t name_;
+  translation_idx_t platform_code_;
+  translation_idx_t description_;
   geo::latlng pos_;
   location_type type_;
   location_idx_t parent_;
@@ -123,23 +110,23 @@ struct location {
 };
 
 struct route {
-  route(timetable const&,
+  route(timetable&,
         source_idx_t,
         std::string_view id,
-        std::string_view short_name,
-        std::string_view long_name,
+        translation_idx_t short_name,
+        translation_idx_t long_name,
         route_type_t,
         route_color,
         provider_idx_t);
-  route(timetable const&, source_idx_t, route_id_idx_t);
+  route(timetable&, source_idx_t, route_id_idx_t);
 
   std::string_view get_id() const;
 
-  std::string_view get_short_name() const;
-  void set_short_name(std::string_view);
+  translated_str_t get_short_name() const;
+  void set_short_name(translated_str_t);
 
-  std::string_view get_long_name() const;
-  void set_long_name(std::string_view);
+  translated_str_t get_long_name() const;
+  void set_long_name(translated_str_t);
 
   std::uint16_t get_route_type() const;
   void set_route_type(std::uint16_t);
@@ -157,42 +144,42 @@ struct route {
 
   source_idx_t src_;
   std::string_view id_;
-  cista::raw::generic_string short_name_;
-  cista::raw::generic_string long_name_;
+  translation_idx_t short_name_;
+  translation_idx_t long_name_;
   route_type_t route_type_;
   route_color color_;
   clasz clasz_;
   provider_idx_t agency_;
 
-  timetable const& tt_;
+  timetable* tt_{nullptr};
 };
 
 struct trip {
-  trip(source_idx_t,
+  trip(timetable&,
+       source_idx_t,
        std::string_view id,
-       std::string_view headsign,
-       std::string_view short_name,
-       std::string_view display_name,
+       translation_idx_t headsign,
+       translation_idx_t short_name,
+       translation_idx_t display_name,
        std::string_view vehicle_type_name,
        std::string_view vehicle_type_short_name,
        direction_id_t,
        route_id_idx_t,
-       trip_debug,
-       timetable&);
+       trip_debug);
 
   std::string_view get_id() const;
 
-  std::string_view get_headsign() const;
-  void set_headsign(std::string_view);
+  translated_str_t get_headsign() const;
+  void set_headsign(translated_str_t);
 
-  std::string_view get_short_name() const;
-  void set_short_name(std::string_view);
+  translated_str_t get_short_name() const;
+  void set_short_name(translated_str_t);
 
   std::string_view get_vehicle_type_name() const;
   std::string_view get_vehicle_type_short_name() const;
 
-  std::string_view get_display_name() const;
-  void set_display_name(std::string_view);
+  translated_str_t get_display_name() const;
+  void set_display_name(translated_str_t);
 
   std::vector<attribute> get_attributes() const;
   void set_attributes(std::vector<attribute> const&);
@@ -201,9 +188,9 @@ struct trip {
 
   source_idx_t src_;
   std::string_view id_;
-  cista::raw::generic_string headsign_;
-  cista::raw::generic_string short_name_;
-  cista::raw::generic_string display_name_;
+  translation_idx_t headsign_;
+  translation_idx_t short_name_;
+  translation_idx_t display_name_;
   std::string_view vehicle_type_name_;
   std::string_view vehicle_type_short_name_;
   direction_id_t direction_;
