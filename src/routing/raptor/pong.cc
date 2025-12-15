@@ -258,8 +258,6 @@ routing_result pong(timetable const& tt,
 
   q.sanitize(tt);
 
-  auto const processing_start_time = std::chrono::steady_clock::now();
-
   auto const fastest_direct = get_fastest_direct(tt, q, SearchDir);
   auto const search_interval = std::visit(
       utl::overloaded{[](interval<unixtime_t> const start_interval) {
@@ -306,6 +304,8 @@ routing_result pong(timetable const& tt,
     }
   }
   trace_pong("\n");
+
+  auto const processing_start_time = std::chrono::steady_clock::now();
 
   auto ping_dist_to_dest = std::vector<std::uint16_t>{};
   auto ping_is_dest = bitvec{};
