@@ -276,13 +276,14 @@ leg 2: (B, B) [2019-05-01 08:15] -> (D, D) [2019-05-01 08:30]
                         time("2019-05-01 10:00 Europe/Berlin")},
               std::pair{direction::kBackward,
                         time("2019-05-01 10:30 Europe/Berlin")}}) {
-          auto const results = search(
-              tt, rtt,
-              routing::query{.start_time_ = start_time,
-                             .start_ = {{loc_idx(tt, "A"), 0_minutes, 0U}},
-                             .destination_ = {{loc_idx(tt, "D"), 0_minutes, 0U}},
-                             .via_stops_ = {{loc_idx(tt, "B"), 0_minutes}}},
-              dir);
+          auto const results =
+              search(tt, rtt,
+                     routing::query{
+                         .start_time_ = start_time,
+                         .start_ = {{loc_idx(tt, "A"), 0_minutes, 0U}},
+                         .destination_ = {{loc_idx(tt, "D"), 0_minutes, 0U}},
+                         .via_stops_ = {{loc_idx(tt, "B"), 0_minutes}}},
+                     dir);
 
           EXPECT_EQ(expected_A_D_via_B_0min, results_to_str(results, tt))
               << " rt trips: " << rt_trips;
@@ -316,13 +317,13 @@ leg 2: (B, B) [2019-05-01 08:15] -> (D, D) [2019-05-01 08:30]
        {std::pair{direction::kForward, time("2019-05-01 10:00 Europe/Berlin")},
         std::pair{direction::kBackward,
                   time("2019-05-01 10:30 Europe/Berlin")}}) {
-    auto const results =
-        search(tt, nullptr,
-               routing::query{.start_time_ = start_time,
-                              .start_ = {{loc_idx(tt, "A"), 0_minutes, 0U}},
-                              .destination_ = {{loc_idx(tt, "D"), 0_minutes, 0U}},
-                              .via_stops_ = {{loc_idx(tt, "B"), 3_minutes}}},
-               dir);
+    auto const results = search(
+        tt, nullptr,
+        routing::query{.start_time_ = start_time,
+                       .start_ = {{loc_idx(tt, "A"), 0_minutes, 0U}},
+                       .destination_ = {{loc_idx(tt, "D"), 0_minutes, 0U}},
+                       .via_stops_ = {{loc_idx(tt, "B"), 3_minutes}}},
+        dir);
 
     EXPECT_EQ(expected_A_D_via_B_3min, results_to_str(results, tt));
   }
@@ -358,13 +359,14 @@ leg 2: (B, B) [2019-05-01 08:30] -> (D, D) [2019-05-01 08:45]
                         time("2019-05-01 10:00 Europe/Berlin")},
               std::pair{direction::kBackward,
                         time("2019-05-01 10:45 Europe/Berlin")}}) {
-          auto const results = search(
-              tt, rtt,
-              routing::query{.start_time_ = start_time,
-                             .start_ = {{loc_idx(tt, "A"), 0_minutes, 0U}},
-                             .destination_ = {{loc_idx(tt, "D"), 0_minutes, 0U}},
-                             .via_stops_ = {{loc_idx(tt, "B"), 10_minutes}}},
-              dir);
+          auto const results =
+              search(tt, rtt,
+                     routing::query{
+                         .start_time_ = start_time,
+                         .start_ = {{loc_idx(tt, "A"), 0_minutes, 0U}},
+                         .destination_ = {{loc_idx(tt, "D"), 0_minutes, 0U}},
+                         .via_stops_ = {{loc_idx(tt, "B"), 10_minutes}}},
+                     dir);
 
           EXPECT_EQ(expected_A_D_via_B_10min, results_to_str(results, tt))
               << " rt trips: " << rt_trips;
@@ -394,13 +396,13 @@ leg 0: (A, A) [2019-05-01 08:00] -> (D, D) [2019-05-01 08:40]
        {std::pair{direction::kForward, time("2019-05-01 10:00 Europe/Berlin")},
         std::pair{direction::kBackward,
                   time("2019-05-01 10:40 Europe/Berlin")}}) {
-    auto const results =
-        search(tt, nullptr,
-               routing::query{.start_time_ = start_time,
-                              .start_ = {{loc_idx(tt, "A"), 0_minutes, 0U}},
-                              .destination_ = {{loc_idx(tt, "D"), 0_minutes, 0U}},
-                              .via_stops_ = {{loc_idx(tt, "C"), 0_minutes}}},
-               dir);
+    auto const results = search(
+        tt, nullptr,
+        routing::query{.start_time_ = start_time,
+                       .start_ = {{loc_idx(tt, "A"), 0_minutes, 0U}},
+                       .destination_ = {{loc_idx(tt, "D"), 0_minutes, 0U}},
+                       .via_stops_ = {{loc_idx(tt, "C"), 0_minutes}}},
+        dir);
 
     EXPECT_EQ(expected_A_D_via_C_0min, results_to_str(results, tt));
   }
@@ -432,13 +434,13 @@ leg 2: (C, C) [2019-05-01 08:37] -> (D, D) [2019-05-01 08:55]
        {std::pair{direction::kForward, time("2019-05-01 10:00 Europe/Berlin")},
         std::pair{direction::kBackward,
                   time("2019-05-01 10:55 Europe/Berlin")}}) {
-    auto const results =
-        search(tt, nullptr,
-               routing::query{.start_time_ = start_time,
-                              .start_ = {{loc_idx(tt, "A"), 0_minutes, 0U}},
-                              .destination_ = {{loc_idx(tt, "D"), 0_minutes, 0U}},
-                              .via_stops_ = {{loc_idx(tt, "C"), 10_minutes}}},
-               dir);
+    auto const results = search(
+        tt, nullptr,
+        routing::query{.start_time_ = start_time,
+                       .start_ = {{loc_idx(tt, "A"), 0_minutes, 0U}},
+                       .destination_ = {{loc_idx(tt, "D"), 0_minutes, 0U}},
+                       .via_stops_ = {{loc_idx(tt, "C"), 10_minutes}}},
+        dir);
 
     EXPECT_EQ(expected_A_D_via_C_10min, results_to_str(results, tt));
   }
@@ -468,13 +470,13 @@ TEST(routing, via_test_7_A_J_via_I_0m) {
        {std::pair{direction::kForward, time("2019-05-01 15:00 Europe/Berlin")},
         std::pair{direction::kBackward,
                   time("2019-05-01 15:30 Europe/Berlin")}}) {
-    auto const results =
-        search(tt, nullptr,
-               routing::query{.start_time_ = start_time,
-                              .start_ = {{loc_idx(tt, "A"), 0_minutes, 0U}},
-                              .destination_ = {{loc_idx(tt, "J"), 0_minutes, 0U}},
-                              .via_stops_ = {{loc_idx(tt, "I"), 0_minutes}}},
-               dir);
+    auto const results = search(
+        tt, nullptr,
+        routing::query{.start_time_ = start_time,
+                       .start_ = {{loc_idx(tt, "A"), 0_minutes, 0U}},
+                       .destination_ = {{loc_idx(tt, "J"), 0_minutes, 0U}},
+                       .via_stops_ = {{loc_idx(tt, "I"), 0_minutes}}},
+        dir);
 
     EXPECT_EQ(expected_A_J_via_I_1500_0min, results_to_str(results, tt));
   }
@@ -488,13 +490,13 @@ TEST(routing, via_test_8_A_J_via_I1_0m) {
        {std::pair{direction::kForward, time("2019-05-01 15:00 Europe/Berlin")},
         std::pair{direction::kBackward,
                   time("2019-05-01 15:30 Europe/Berlin")}}) {
-    auto const results =
-        search(tt, nullptr,
-               routing::query{.start_time_ = start_time,
-                              .start_ = {{loc_idx(tt, "A"), 0_minutes, 0U}},
-                              .destination_ = {{loc_idx(tt, "J"), 0_minutes, 0U}},
-                              .via_stops_ = {{loc_idx(tt, "I1"), 0_minutes}}},
-               dir);
+    auto const results = search(
+        tt, nullptr,
+        routing::query{.start_time_ = start_time,
+                       .start_ = {{loc_idx(tt, "A"), 0_minutes, 0U}},
+                       .destination_ = {{loc_idx(tt, "J"), 0_minutes, 0U}},
+                       .via_stops_ = {{loc_idx(tt, "I1"), 0_minutes}}},
+        dir);
 
     EXPECT_EQ(expected_A_J_via_I_1500_0min, results_to_str(results, tt));
   }
@@ -508,13 +510,13 @@ TEST(routing, via_test_9_A_J_via_I2_0m) {
        {std::pair{direction::kForward, time("2019-05-01 15:00 Europe/Berlin")},
         std::pair{direction::kBackward,
                   time("2019-05-01 15:30 Europe/Berlin")}}) {
-    auto const results =
-        search(tt, nullptr,
-               routing::query{.start_time_ = start_time,
-                              .start_ = {{loc_idx(tt, "A"), 0_minutes, 0U}},
-                              .destination_ = {{loc_idx(tt, "J"), 0_minutes, 0U}},
-                              .via_stops_ = {{loc_idx(tt, "I2"), 0_minutes}}},
-               dir);
+    auto const results = search(
+        tt, nullptr,
+        routing::query{.start_time_ = start_time,
+                       .start_ = {{loc_idx(tt, "A"), 0_minutes, 0U}},
+                       .destination_ = {{loc_idx(tt, "J"), 0_minutes, 0U}},
+                       .via_stops_ = {{loc_idx(tt, "I2"), 0_minutes}}},
+        dir);
 
     EXPECT_EQ(expected_A_J_via_I_1500_0min, results_to_str(results, tt));
   }
@@ -553,13 +555,13 @@ leg 2: (I2, I2) [2019-05-01 14:20] -> (J, J) [2019-05-01 14:40]
 )"sv;
 
   for (auto const& dir : {direction::kForward, direction::kBackward}) {
-    auto const results =
-        search(tt, nullptr,
-               routing::query{.start_time_ = tt.date_range_,
-                              .start_ = {{loc_idx(tt, "A"), 0_minutes, 0U}},
-                              .destination_ = {{loc_idx(tt, "J"), 0_minutes, 0U}},
-                              .via_stops_ = {{loc_idx(tt, "I"), 0_minutes}}},
-               dir);
+    auto const results = search(
+        tt, nullptr,
+        routing::query{.start_time_ = tt.date_range_,
+                       .start_ = {{loc_idx(tt, "A"), 0_minutes, 0U}},
+                       .destination_ = {{loc_idx(tt, "J"), 0_minutes, 0U}},
+                       .via_stops_ = {{loc_idx(tt, "I"), 0_minutes}}},
+        dir);
 
     EXPECT_EQ(expected_A_J_via_I_1600_0min, results_to_str(results, tt));
   }
@@ -591,13 +593,13 @@ leg 2: (I2, I2) [2019-05-01 14:20] -> (J, J) [2019-05-01 14:40]
        {std::pair{direction::kForward, time("2019-05-01 15:00 Europe/Berlin")},
         std::pair{direction::kBackward,
                   time("2019-05-01 16:40 Europe/Berlin")}}) {
-    auto const results =
-        search(tt, nullptr,
-               routing::query{.start_time_ = start_time,
-                              .start_ = {{loc_idx(tt, "A"), 0_minutes, 0U}},
-                              .destination_ = {{loc_idx(tt, "J"), 0_minutes, 0U}},
-                              .via_stops_ = {{loc_idx(tt, "I"), 10_minutes}}},
-               dir);
+    auto const results = search(
+        tt, nullptr,
+        routing::query{.start_time_ = start_time,
+                       .start_ = {{loc_idx(tt, "A"), 0_minutes, 0U}},
+                       .destination_ = {{loc_idx(tt, "J"), 0_minutes, 0U}},
+                       .via_stops_ = {{loc_idx(tt, "I"), 10_minutes}}},
+        dir);
 
     EXPECT_EQ(expected_A_J_via_I_1500_10min, results_to_str(results, tt));
   }
@@ -631,13 +633,13 @@ TEST(routing, via_test_12_A_J_via_K_0m) {
        {std::pair{direction::kForward, time("2019-05-01 15:00 Europe/Berlin")},
         std::pair{direction::kBackward,
                   time("2019-05-01 16:00 Europe/Berlin")}}) {
-    auto const results =
-        search(tt, nullptr,
-               routing::query{.start_time_ = start_time,
-                              .start_ = {{loc_idx(tt, "A"), 0_minutes, 0U}},
-                              .destination_ = {{loc_idx(tt, "J"), 0_minutes, 0U}},
-                              .via_stops_ = {{loc_idx(tt, "K"), 0_minutes}}},
-               dir);
+    auto const results = search(
+        tt, nullptr,
+        routing::query{.start_time_ = start_time,
+                       .start_ = {{loc_idx(tt, "A"), 0_minutes, 0U}},
+                       .destination_ = {{loc_idx(tt, "J"), 0_minutes, 0U}},
+                       .via_stops_ = {{loc_idx(tt, "K"), 0_minutes}}},
+        dir);
 
     EXPECT_EQ(expected_A_J_via_K_0min, results_to_str(results, tt));
   }
@@ -651,13 +653,13 @@ TEST(routing, via_test_13_A_J_via_K_5m) {
        {std::pair{direction::kForward, time("2019-05-01 15:00 Europe/Berlin")},
         std::pair{direction::kBackward,
                   time("2019-05-01 16:00 Europe/Berlin")}}) {
-    auto const results =
-        search(tt, nullptr,
-               routing::query{.start_time_ = start_time,
-                              .start_ = {{loc_idx(tt, "A"), 0_minutes, 0U}},
-                              .destination_ = {{loc_idx(tt, "J"), 0_minutes, 0U}},
-                              .via_stops_ = {{loc_idx(tt, "K"), 5_minutes}}},
-               dir);
+    auto const results = search(
+        tt, nullptr,
+        routing::query{.start_time_ = start_time,
+                       .start_ = {{loc_idx(tt, "A"), 0_minutes, 0U}},
+                       .destination_ = {{loc_idx(tt, "J"), 0_minutes, 0U}},
+                       .via_stops_ = {{loc_idx(tt, "K"), 5_minutes}}},
+        dir);
 
     EXPECT_EQ(expected_A_J_via_K_0min, results_to_str(results, tt));
   }
@@ -671,14 +673,14 @@ TEST(routing, via_test_14_A_J_via_I_0m_K_5m) {
        {std::pair{direction::kForward, time("2019-05-01 15:00 Europe/Berlin")},
         std::pair{direction::kBackward,
                   time("2019-05-01 16:00 Europe/Berlin")}}) {
-    auto const results =
-        search(tt, nullptr,
-               routing::query{.start_time_ = start_time,
-                              .start_ = {{loc_idx(tt, "A"), 0_minutes, 0U}},
-                              .destination_ = {{loc_idx(tt, "J"), 0_minutes, 0U}},
-                              .via_stops_ = {{loc_idx(tt, "I"), 0_minutes},
-                                             {loc_idx(tt, "K"), 5_minutes}}},
-               dir);
+    auto const results = search(
+        tt, nullptr,
+        routing::query{.start_time_ = start_time,
+                       .start_ = {{loc_idx(tt, "A"), 0_minutes, 0U}},
+                       .destination_ = {{loc_idx(tt, "J"), 0_minutes, 0U}},
+                       .via_stops_ = {{loc_idx(tt, "I"), 0_minutes},
+                                      {loc_idx(tt, "K"), 5_minutes}}},
+        dir);
 
     EXPECT_EQ(expected_A_J_via_K_0min, results_to_str(results, tt));
   }
@@ -715,13 +717,13 @@ TEST(routing, via_test_15_H_Q_via_N_0m) {
        {std::pair{direction::kForward, time("2019-05-01 11:00 Europe/Berlin")},
         std::pair{direction::kBackward,
                   time("2019-05-01 13:00 Europe/Berlin")}}) {
-    auto const results =
-        search(tt, nullptr,
-               routing::query{.start_time_ = start_time,
-                              .start_ = {{loc_idx(tt, "H"), 0_minutes, 0U}},
-                              .destination_ = {{loc_idx(tt, "Q"), 0_minutes, 0U}},
-                              .via_stops_ = {{loc_idx(tt, "N"), 0_minutes}}},
-               dir);
+    auto const results = search(
+        tt, nullptr,
+        routing::query{.start_time_ = start_time,
+                       .start_ = {{loc_idx(tt, "H"), 0_minutes, 0U}},
+                       .destination_ = {{loc_idx(tt, "Q"), 0_minutes, 0U}},
+                       .via_stops_ = {{loc_idx(tt, "N"), 0_minutes}}},
+        dir);
 
     EXPECT_EQ(expected_H_Q_via_N_0min, results_to_str(results, tt));
   }
@@ -753,13 +755,13 @@ leg 2: (C, C) [2019-05-01 08:55] -> (D, D) [2019-05-01 09:30]
        {std::pair{direction::kForward, time("2019-05-01 10:30 Europe/Berlin")},
         std::pair{direction::kBackward,
                   time("2019-05-01 11:30 Europe/Berlin")}}) {
-    auto const results =
-        search(tt, nullptr,
-               routing::query{.start_time_ = start_time,
-                              .start_ = {{loc_idx(tt, "A"), 0_minutes, 0U}},
-                              .destination_ = {{loc_idx(tt, "D"), 0_minutes, 0U}},
-                              .via_stops_ = {{loc_idx(tt, "C"), 5_minutes}}},
-               dir);
+    auto const results = search(
+        tt, nullptr,
+        routing::query{.start_time_ = start_time,
+                       .start_ = {{loc_idx(tt, "A"), 0_minutes, 0U}},
+                       .destination_ = {{loc_idx(tt, "D"), 0_minutes, 0U}},
+                       .via_stops_ = {{loc_idx(tt, "C"), 5_minutes}}},
+        dir);
 
     EXPECT_EQ(expected_A_D_via_C_5min, results_to_str(results, tt));
   }
@@ -812,14 +814,15 @@ TEST(routing, via_test_17_H_Q_via_N_0m_P_0m) {
                         time("2019-05-01 11:00 Europe/Berlin")},
               std::pair{direction::kBackward,
                         time("2019-05-01 13:00 Europe/Berlin")}}) {
-          auto const results = search(
-              tt, rtt,
-              routing::query{.start_time_ = start_time,
-                             .start_ = {{loc_idx(tt, "H"), 0_minutes, 0U}},
-                             .destination_ = {{loc_idx(tt, "Q"), 0_minutes, 0U}},
-                             .via_stops_ = {{loc_idx(tt, "N"), 0_minutes},
-                                            {loc_idx(tt, "P"), 0_minutes}}},
-              dir);
+          auto const results =
+              search(tt, rtt,
+                     routing::query{
+                         .start_time_ = start_time,
+                         .start_ = {{loc_idx(tt, "H"), 0_minutes, 0U}},
+                         .destination_ = {{loc_idx(tt, "Q"), 0_minutes, 0U}},
+                         .via_stops_ = {{loc_idx(tt, "N"), 0_minutes},
+                                        {loc_idx(tt, "P"), 0_minutes}}},
+                     dir);
 
           EXPECT_EQ(expected_H_Q_via_N_0min, results_to_str(results, tt))
               << " rt trips: " << rt_trips;
@@ -937,14 +940,14 @@ TEST(routing, via_test_21_H_Q_via_H_0m_N_0m) {
        {std::pair{direction::kForward, time("2019-05-01 11:00 Europe/Berlin")},
         std::pair{direction::kBackward,
                   time("2019-05-01 13:00 Europe/Berlin")}}) {
-    auto const results =
-        search(tt, nullptr,
-               routing::query{.start_time_ = start_time,
-                              .start_ = {{loc_idx(tt, "H"), 0_minutes, 0U}},
-                              .destination_ = {{loc_idx(tt, "Q"), 0_minutes, 0U}},
-                              .via_stops_ = {{loc_idx(tt, "H"), 0_minutes},
-                                             {loc_idx(tt, "N"), 0_minutes}}},
-               dir);
+    auto const results = search(
+        tt, nullptr,
+        routing::query{.start_time_ = start_time,
+                       .start_ = {{loc_idx(tt, "H"), 0_minutes, 0U}},
+                       .destination_ = {{loc_idx(tt, "Q"), 0_minutes, 0U}},
+                       .via_stops_ = {{loc_idx(tt, "H"), 0_minutes},
+                                      {loc_idx(tt, "N"), 0_minutes}}},
+        dir);
 
     EXPECT_EQ(expected_H_Q_via_N_0min, results_to_str(results, tt));
   }
@@ -964,11 +967,9 @@ TEST(routing, via_test_22_H_Q_via_H_0m_N_0m_Q_0m) {
         search(tt, nullptr,
                routing::query{.start_time_ = start_time,
                               .start_ = {{loc_idx(tt, "H"), 0_minutes, 0U}},
-                              .destination_ = {{loc_idx(tt, "Q"), 0_minutes, 0U}},
-                              .via_stops_ = {{loc_idx(tt, "H"), 0_minutes},
-                                             {loc_idx(tt, "N"), 0_minutes},
-                                             {loc_idx(tt, "Q"), 0_minutes}}},
-               dir);
+                              .destination_ = {{loc_idx(tt, "Q"), 0_minutes,
+0U}}, .via_stops_ = {{loc_idx(tt, "H"), 0_minutes}, {loc_idx(tt, "N"),
+0_minutes}, {loc_idx(tt, "Q"), 0_minutes}}}, dir);
 
     EXPECT_EQ(expected_H_Q_via_N_0min, results_to_str(results, tt));
   }
@@ -1002,14 +1003,14 @@ TEST(routing, via_test_23_M_Q_via_M_0m_O_0m) {
        {std::pair{direction::kForward, time("2019-05-01 11:00 Europe/Berlin")},
         std::pair{direction::kBackward,
                   time("2019-05-01 12:00 Europe/Berlin")}}) {
-    auto const results =
-        search(tt, nullptr,
-               routing::query{.start_time_ = start_time,
-                              .start_ = {{loc_idx(tt, "M"), 0_minutes, 0U}},
-                              .destination_ = {{loc_idx(tt, "Q"), 0_minutes, 0U}},
-                              .via_stops_ = {{loc_idx(tt, "M"), 0_minutes},
-                                             {loc_idx(tt, "O"), 0_minutes}}},
-               dir);
+    auto const results = search(
+        tt, nullptr,
+        routing::query{.start_time_ = start_time,
+                       .start_ = {{loc_idx(tt, "M"), 0_minutes, 0U}},
+                       .destination_ = {{loc_idx(tt, "Q"), 0_minutes, 0U}},
+                       .via_stops_ = {{loc_idx(tt, "M"), 0_minutes},
+                                      {loc_idx(tt, "O"), 0_minutes}}},
+        dir);
 
     EXPECT_EQ(expected_M_Q_via_M_0min_O_0min, results_to_str(results, tt));
   }
@@ -1024,14 +1025,14 @@ TEST(routing, via_test_24_M_Q_via_O_0m_Q_0m) {
        {std::pair{direction::kForward, time("2019-05-01 11:00 Europe/Berlin")},
         std::pair{direction::kBackward,
                   time("2019-05-01 12:00 Europe/Berlin")}}) {
-    auto const results =
-        search(tt, nullptr,
-               routing::query{.start_time_ = start_time,
-                              .start_ = {{loc_idx(tt, "M"), 0_minutes, 0U}},
-                              .destination_ = {{loc_idx(tt, "Q"), 0_minutes, 0U}},
-                              .via_stops_ = {{loc_idx(tt, "O"), 0_minutes},
-                                             {loc_idx(tt, "Q"), 0_minutes}}},
-               dir);
+    auto const results = search(
+        tt, nullptr,
+        routing::query{.start_time_ = start_time,
+                       .start_ = {{loc_idx(tt, "M"), 0_minutes, 0U}},
+                       .destination_ = {{loc_idx(tt, "Q"), 0_minutes, 0U}},
+                       .via_stops_ = {{loc_idx(tt, "O"), 0_minutes},
+                                      {loc_idx(tt, "Q"), 0_minutes}}},
+        dir);
 
     EXPECT_EQ(expected_M_Q_via_M_0min_O_0min, results_to_str(results, tt));
   }
@@ -1267,13 +1268,13 @@ leg 0: (M, M) [2019-05-01 09:00] -> (Q, Q) [2019-05-01 10:00]
        {std::pair{direction::kForward, time("2019-05-01 11:00 Europe/Berlin")},
         std::pair{direction::kBackward,
                   time("2019-05-01 12:00 Europe/Berlin")}}) {
-    auto const results =
-        search(tt, nullptr,
-               routing::query{.start_time_ = start_time,
-                              .start_ = {{loc_idx(tt, "M"), 0_minutes, 0U}},
-                              .destination_ = {{loc_idx(tt, "Q"), 0_minutes, 0U}},
-                              .via_stops_ = {{loc_idx(tt, "Q"), 10_minutes}}},
-               dir);
+    auto const results = search(
+        tt, nullptr,
+        routing::query{.start_time_ = start_time,
+                       .start_ = {{loc_idx(tt, "M"), 0_minutes, 0U}},
+                       .destination_ = {{loc_idx(tt, "Q"), 0_minutes, 0U}},
+                       .via_stops_ = {{loc_idx(tt, "Q"), 10_minutes}}},
+        dir);
 
     EXPECT_EQ(expected_M_Q_via_O_10min, results_to_str(results, tt));
   }
@@ -1306,15 +1307,15 @@ leg 1: (Q, Q) [2019-05-01 10:10] -> (END, END) [2019-05-01 10:25]
        {std::pair{direction::kForward, time("2019-05-01 11:00 Europe/Berlin")},
         std::pair{direction::kBackward,
                   time("2019-05-01 12:25 Europe/Berlin")}}) {
-    auto const results =
-        search(tt, nullptr,
-               routing::query{.start_time_ = start_time,
-                              .dest_match_mode_ =
-                                  routing::location_match_mode::kIntermodal,
-                              .start_ = {{loc_idx(tt, "M"), 0_minutes, 0U}},
-                              .destination_ = {{loc_idx(tt, "Q"), 15_minutes, 0U}},
-                              .via_stops_ = {{loc_idx(tt, "Q"), 10_minutes}}},
-               dir);
+    auto const results = search(
+        tt, nullptr,
+        routing::query{
+            .start_time_ = start_time,
+            .dest_match_mode_ = routing::location_match_mode::kIntermodal,
+            .start_ = {{loc_idx(tt, "M"), 0_minutes, 0U}},
+            .destination_ = {{loc_idx(tt, "Q"), 15_minutes, 0U}},
+            .via_stops_ = {{loc_idx(tt, "Q"), 10_minutes}}},
+        dir);
 
     auto results_str = results_to_str(results, tt);
     if (dir == direction::kBackward) {
@@ -1351,15 +1352,15 @@ leg 1: (Q, Q) [2019-05-01 10:00] -> (END, END) [2019-05-01 10:15]
        {std::pair{direction::kForward, time("2019-05-01 11:00 Europe/Berlin")},
         std::pair{direction::kBackward,
                   time("2019-05-01 12:15 Europe/Berlin")}}) {
-    auto const results =
-        search(tt, nullptr,
-               routing::query{.start_time_ = start_time,
-                              .dest_match_mode_ =
-                                  routing::location_match_mode::kIntermodal,
-                              .start_ = {{loc_idx(tt, "M"), 0_minutes, 0U}},
-                              .destination_ = {{loc_idx(tt, "Q"), 15_minutes, 0U}},
-                              .via_stops_ = {{loc_idx(tt, "Q"), 0_minutes}}},
-               dir);
+    auto const results = search(
+        tt, nullptr,
+        routing::query{
+            .start_time_ = start_time,
+            .dest_match_mode_ = routing::location_match_mode::kIntermodal,
+            .start_ = {{loc_idx(tt, "M"), 0_minutes, 0U}},
+            .destination_ = {{loc_idx(tt, "Q"), 15_minutes, 0U}},
+            .via_stops_ = {{loc_idx(tt, "Q"), 0_minutes}}},
+        dir);
 
     auto results_str = results_to_str(results, tt);
     if (dir == direction::kBackward) {

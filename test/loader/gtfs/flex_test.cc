@@ -115,12 +115,13 @@ location_group_id,location_group_name
 TEST(flex, simple) {
   constexpr auto const kArea = flex_area_idx_t{0};
 
-  auto const tt = loader::load({{.tag_ = "test",
-                           .path_ = kTimetable,
-                           .loader_config_ = {.default_tz_ = "Europe/Berlin"}}},
-                         {},
-                         {date::sys_days{2025_y / January / 1},
-                          date::sys_days{2025_y / December / 1}});
+  auto const tt =
+      loader::load({{.tag_ = "test",
+                     .path_ = kTimetable,
+                     .loader_config_ = {.default_tz_ = "Europe/Berlin"}}},
+                   {},
+                   {date::sys_days{2025_y / January / 1},
+                    date::sys_days{2025_y / December / 1}});
 
   auto const outside = geo::latlng{47.357516806408995, 9.446811993220308};
   auto const inside = geo::latlng{47.35780140178716, 9.440695867171229};

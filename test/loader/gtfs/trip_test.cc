@@ -29,12 +29,12 @@ TEST(gtfs, read_trips_example_data) {
   auto i18n = translator{.tt_ = tt};
 
   auto const config = loader_config{};
-  auto agencies = read_agencies(source_idx_t{}, tt, i18n, timezones,
-                                files.get_file(kAgencyFile).data(),
-                                "Europe/Berlin");
-  auto const routes = read_routes({}, tt, i18n, timezones, agencies,
-                                  files.get_file(kRoutesFile).data(),
-                                  "Europe/Berlin");
+  auto agencies =
+      read_agencies(source_idx_t{}, tt, i18n, timezones,
+                    files.get_file(kAgencyFile).data(), "Europe/Berlin");
+  auto const routes =
+      read_routes({}, tt, i18n, timezones, agencies,
+                  files.get_file(kRoutesFile).data(), "Europe/Berlin");
   auto const dates =
       read_calendar_date(files.get_file(kCalendarDatesFile).data());
   auto const calendar = read_calendar(files.get_file(kCalenderFile).data());
@@ -44,10 +44,10 @@ TEST(gtfs, read_trips_example_data) {
       shapes_storage{"example_shapes", cista::mmap::protection::WRITE};
   auto const shapes =
       parse_shapes(files.get_file(kShapesFile).data(), shapes_store);
-  auto const trip_data = read_trips(
-      source_idx_t{}, source_file_idx_t{}, tt, i18n, routes, services, shapes,
-      files.get_file(kTripsFile).data(), config.bikes_allowed_default_,
-      config.cars_allowed_default_);
+  auto const trip_data =
+      read_trips(source_idx_t{}, source_file_idx_t{}, tt, i18n, routes,
+                 services, shapes, files.get_file(kTripsFile).data(),
+                 config.bikes_allowed_default_, config.cars_allowed_default_);
 
   EXPECT_EQ(2U, trip_data.data_.size());
   EXPECT_NE(end(trip_data.trips_), trip_data.trips_.find("AWE1"));
@@ -67,12 +67,12 @@ TEST(gtfs, read_trips_berlin_data) {
   auto i18n = translator{.tt_ = tt};
 
   auto const config = loader_config{};
-  auto agencies = read_agencies(source_idx_t{0}, tt, i18n, timezones,
-                                files.get_file(kAgencyFile).data(),
-                                "Europe/Berlin");
-  auto const routes = read_routes({}, tt, i18n, timezones, agencies,
-                                  files.get_file(kRoutesFile).data(),
-                                  "Europe/Berlin");
+  auto agencies =
+      read_agencies(source_idx_t{0}, tt, i18n, timezones,
+                    files.get_file(kAgencyFile).data(), "Europe/Berlin");
+  auto const routes =
+      read_routes({}, tt, i18n, timezones, agencies,
+                  files.get_file(kRoutesFile).data(), "Europe/Berlin");
   auto const dates =
       read_calendar_date(files.get_file(kCalendarDatesFile).data());
   auto const calendar = read_calendar(files.get_file(kCalenderFile).data());
@@ -82,10 +82,10 @@ TEST(gtfs, read_trips_berlin_data) {
       shapes_storage{"berlin_shapes", cista::mmap::protection::WRITE};
   auto const shapes =
       parse_shapes(files.get_file(kShapesFile).data(), shapes_store);
-  auto const trip_data = read_trips(
-      source_idx_t{}, source_file_idx_t{}, tt, i18n, routes, services, shapes,
-      files.get_file(kTripsFile).data(), config.bikes_allowed_default_,
-      config.cars_allowed_default_);
+  auto const trip_data =
+      read_trips(source_idx_t{}, source_file_idx_t{}, tt, i18n, routes,
+                 services, shapes, files.get_file(kTripsFile).data(),
+                 config.bikes_allowed_default_, config.cars_allowed_default_);
 
   EXPECT_EQ(3U, trip_data.data_.size());
 
@@ -106,8 +106,7 @@ TEST(gtfs, read_trips_berlin_data) {
   EXPECT_NE(end(trip_data.trips_), trip_data.trips_.find("3"));
   auto const& trip3 = trip_data.data_[trip_data.trips_.at("3")];
   EXPECT_EQ("2", tt.route_ids_[source_idx_t{}].ids_.get(trip3.route_));
-  EXPECT_EQ("Golzow (PM), Schule",
-            tt.get_default_translation(trip3.headsign_));
+  EXPECT_EQ("Golzow (PM), Schule", tt.get_default_translation(trip3.headsign_));
   EXPECT_NE(shape_idx_t::invalid(), trip3.shape_idx_);
 }
 
