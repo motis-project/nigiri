@@ -105,6 +105,8 @@ struct record {
 };
 
 struct translation_key {
+  CISTA_FRIEND_COMPARABLE(translation_key)
+
   std::variant<generic_string /* original value */, record> record_;
   t table_;
   f field_;
