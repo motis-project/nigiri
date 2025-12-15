@@ -1302,18 +1302,18 @@ void load_timetable(loader_config const& config,
       }
 
       auto s = location{tt,
-                           src,
-                           stop->id_,
-                           tt.register_translation(stop->name_),
-                           tt.register_translation(stop->public_code_),
-                           kEmptyTranslation,
-                           stop->pos_,
-                           location_type::kStation,
-                           stop->parent_ != nullptr ? stop->parent_->location_
-                                                    : location_idx_t::invalid(),
-                           tz,
-                           2_minutes,
-                           tz_map};
+                        src,
+                        stop->id_,
+                        tt.register_translation(stop->name_),
+                        tt.register_translation(stop->public_code_),
+                        kEmptyTranslation,
+                        stop->pos_,
+                        location_type::kStation,
+                        stop->parent_ != nullptr ? stop->parent_->location_
+                                                 : location_idx_t::invalid(),
+                        tz,
+                        2_minutes,
+                        tz_map};
       if (process_location(r, s)) {
         stop->location_ = register_location(tt, s);
         if (stop->parent_ != nullptr) {

@@ -151,14 +151,13 @@ rt_transport_idx_t rt_timetable::add_rt_transport(
   return rt_transport_idx_t{rt_t_idx};
 }
 
-std::string_view rt_timetable::transport_name(timetable const& tt,
-                                              rt_transport_idx_t const t) const {
-  return std::visit(
-      utl::overloaded{[&](translation_idx_t const idx) {
-                        return tt.get_default_translation(idx);
-                      },
-                      [](std::string_view const s) { return s; }},
-      trip_short_name(tt, t));
+std::string_view rt_timetable::transport_name(
+    timetable const& tt, rt_transport_idx_t const t) const {
+  return std::visit(utl::overloaded{[&](translation_idx_t const idx) {
+                                      return tt.get_default_translation(idx);
+                                    },
+                                    [](std::string_view const s) { return s; }},
+                    trip_short_name(tt, t));
 }
 
 void rt_timetable::update_lbs(timetable const& tt,
