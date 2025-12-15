@@ -107,7 +107,17 @@ struct record {
 struct translation_key {
   CISTA_FRIEND_COMPARABLE(translation_key)
 
-  std::variant<generic_string /* original value */, record> record_;
+  using record_t = std::variant<generic_string /* original value */, record>;
+
+  cista::hash_t hash() const {
+    auto h = cista::BASE_HASH;
+    h = cista::hash_combine(h, cista::hashing<record_t>{}(record_));
+    h = cista::hash_combine(h, table_);
+    h = cista::hash_combine(h, field_);
+    return h;
+  }
+
+  record_t record_;
   t table_;
   f field_;
 };
