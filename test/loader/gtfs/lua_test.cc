@@ -2,6 +2,8 @@
 
 #include "nigiri/loader/gtfs/load_timetable.h"
 #include "nigiri/loader/init_finish.h"
+#include "nigiri/loader/load.h"
+
 #include "nigiri/rt/frun.h"
 #include "nigiri/rt/gtfsrt_resolve_run.h"
 
@@ -13,8 +15,7 @@ using namespace std::chrono_literals;
 
 namespace {
 
-mem_dir test_files() {
-  return mem_dir::read(R"(
+constexpr auto kTimetable = R"(
 # agency.txt
 agency_id,agency_name,agency_url,agency_timezone
 DB,Deutsche Bahn,https://deutschebahn.com,Europe/Paris
@@ -59,16 +60,9 @@ T_RE3,00:30:00,00:30:00,B,1,0,0
 T_RE3,00:45:00,00:45:00,C,2,0,0
 T_RE4,00:30:00,00:30:00,B,1,0,0
 T_RE4,00:45:00,00:45:00,C,2,0,0
-)");
-}
+)";
 
-}  // namespace
-
-TEST(gtfs, lua_test) {
-  timetable tt;
-  tt.date_range_ = {date::sys_days{2019_y / March / 25},
-                    date::sys_days{2019_y / November / 1}};
-  load_timetable({.user_script_ = R"(
+constexpr auto kUserScript = R"(
 function process_location(stop)
   local name = stop:get_name()
   if string.sub(name, -7) == ' Berlin' then
@@ -130,9 +124,18 @@ function process_trip(trip)
   end
   return trip:get_id() == 'T_RE1'
 end
-)"},
-                 source_idx_t{0}, test_files(), tt);
-  finalize(tt);
+)";
+
+}  // namespace
+
+TEST(gtfs, lua_test) {
+  auto tt = loader::load({{.tag_ = "test",
+                           .path_ = kTimetable,
+                           .loader_config_ = {.default_tz_ = "Europe/Berlin",
+                                              .user_script_ = kUserScript}}},
+                         {},
+                         {date::sys_days{2019_y / March / 25},
+                          date::sys_days{2019_y / November / 1}});
 
   auto const get_tz_name = [&](timezone_idx_t const tz) {
     return tt.timezones_[tz].apply(utl::overloaded{

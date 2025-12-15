@@ -31,11 +31,10 @@ namespace {
 
 mem_dir test_files() {
   return mem_dir::read(R"(
-     "(
 # agency.txt
 agency_name,agency_url,agency_timezone,agency_lang,agency_phone,agency_id
 test,https://test.com,Europe/Berlin,DE,0800123456,AGENCY_1
-invalid,https://test.com,Europe/London,DE,0800123456,INVALID_AGENCY
+invalid,https://test.com,Europe/Berlin,DE,0800123456,INVALID_AGENCY
 
 # stops.txt
 stop_id,stop_name,stop_lat,stop_lon

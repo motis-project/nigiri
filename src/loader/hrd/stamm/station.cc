@@ -188,12 +188,11 @@ location_map_t parse_stations(config const& c,
 
   for (auto& [eva, s] : stations) {
     auto const eva_int = to_idx(eva);
-    auto const id =
-        location_id{.id_ = fmt::format("{:07}", eva_int), .src_ = src};
+    auto const id = fmt::format("{:07}", eva_int);
     auto const transfer_time = duration_t{eva_int < 1000000 ? 2 : 5};
     auto const name_translation = tt.register_translation(s.name_);
     auto const idx = register_location(
-        tt, location{tt, src, id.id_, name_translation, kEmptyTranslation,
+        tt, location{tt, src, id, name_translation, kEmptyTranslation,
                      kEmptyTranslation, s.pos_, location_type::kStation,
                      location_idx_t::invalid(), st.get_tz(s.id_).first,
                      transfer_time, dummy_tz_map});
