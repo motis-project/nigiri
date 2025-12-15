@@ -963,13 +963,15 @@ TEST(routing, via_test_22_H_Q_via_H_0m_N_0m_Q_0m) {
        {std::pair{direction::kForward, time("2019-05-01 11:00 Europe/Berlin")},
         std::pair{direction::kBackward,
                   time("2019-05-01 13:00 Europe/Berlin")}}) {
-    auto const results =
-        search(tt, nullptr,
-               routing::query{.start_time_ = start_time,
-                              .start_ = {{loc_idx(tt, "H"), 0_minutes, 0U}},
-                              .destination_ = {{loc_idx(tt, "Q"), 0_minutes,
-0U}}, .via_stops_ = {{loc_idx(tt, "H"), 0_minutes}, {loc_idx(tt, "N"),
-0_minutes}, {loc_idx(tt, "Q"), 0_minutes}}}, dir);
+    auto const results = search(
+        tt, nullptr,
+        routing::query{.start_time_ = start_time,
+                       .start_ = {{loc_idx(tt, "H"), 0_minutes, 0U}},
+                       .destination_ = {{loc_idx(tt, "Q"), 0_minutes, 0U}},
+                       .via_stops_ = {{loc_idx(tt, "H"), 0_minutes},
+                                      {loc_idx(tt, "N"), 0_minutes},
+                                      {loc_idx(tt, "Q"), 0_minutes}}},
+        dir);
 
     EXPECT_EQ(expected_H_Q_via_N_0min, results_to_str(results, tt));
   }
