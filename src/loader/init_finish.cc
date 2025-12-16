@@ -16,7 +16,8 @@
 namespace nigiri::loader {
 
 void register_special_stations(timetable& tt) {
-  tt.register_translation(std::string_view{""});
+  tt.languages_.store("");  // enable kDefaultLang
+  tt.register_translation(std::string_view{""});  // enable kEmptyTranslation
   for (auto const& name : special_stations_names) {
     auto const name_translation = tt.register_translation(name);
     register_location(tt, location{tt,

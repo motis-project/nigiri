@@ -72,6 +72,8 @@ struct string_store {
   auto cista_members() { return std::tie(cache_, strings_); }
 
   std::string_view get(idx_t const x) const {
+    assert(cache_.size() == strings_.size());
+    assert(x < strings_.size());
     return x == idx_t::invalid() ? "" : strings_[x].view();
   }
 

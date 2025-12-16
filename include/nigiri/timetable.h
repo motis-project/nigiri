@@ -11,6 +11,7 @@
 #include "cista/reflection/printable.h"
 
 #include "utl/verify.h"
+#include "utl/visit.h"
 #include "utl/zip.h"
 
 #include "geo/box.h"
@@ -24,8 +25,6 @@
 #include "nigiri/string_store.h"
 #include "nigiri/td_footpath.h"
 #include "nigiri/types.h"
-
-#include "utl/visit.h"
 
 namespace nigiri {
 

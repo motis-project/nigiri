@@ -194,7 +194,7 @@ void handle_alert(date::sys_days const today,
   auto const to_localized_image =
       [&](transit_realtime::TranslatedImage_LocalizedImage const& x) {
         utl::verify(x.has_url() && x.has_media_type(),
-                    "GTFS RT LocatizedImage requires URL and media_type");
+                    "GTFS RT LocalizedImage requires URL and media_type");
         return localized_image{.url_ = s.store(x.url()),
                                .media_type_ = s.store(x.media_type()),
                                .language_ = x.has_language()

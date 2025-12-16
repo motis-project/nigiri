@@ -215,8 +215,7 @@ trip_data read_trips(source_idx_t const src,
     utl::csv_col<utl::cstr, UTL_NAME("route_id")> route_id_;
     utl::csv_col<utl::cstr, UTL_NAME("service_id")> service_id_;
     utl::csv_col<utl::cstr, UTL_NAME("trip_id")> trip_id_;
-    utl::csv_col<cista::raw::generic_string, UTL_NAME("trip_headsign")>
-        trip_headsign_;
+    utl::csv_col<generic_string, UTL_NAME("trip_headsign")> trip_headsign_;
     utl::csv_col<utl::cstr, UTL_NAME("trip_short_name")> trip_short_name_;
     utl::csv_col<utl::cstr, UTL_NAME("direction_id")> direction_id_;
     utl::csv_col<utl::cstr, UTL_NAME("block_id")> block_id_;
@@ -323,10 +322,10 @@ trip_data read_trips(source_idx_t const src,
                       .get();
 
         auto const gtfs_trp_idx = gtfs_trip_idx_t{ret.data_.size()};
-        ret.data_.emplace_back(route_id, traffic_days_it->second.get(), blk,
-                               t.trip_id_->to_str(), x.headsign_,
-                               trip_short_name, x.direction_, shape_idx,
-                               bikes_allowed, cars_allowed);
+        ret.data_.push_back(trip{route_id, traffic_days_it->second.get(), blk,
+                                 t.trip_id_->to_str(), x.headsign_,
+                                 trip_short_name, x.direction_, shape_idx,
+                                 bikes_allowed, cars_allowed});
         ret.data_.back().trip_idx_ = register_trip(tt, x);
         ret.trips_.emplace(t.trip_id_->to_str(), gtfs_trp_idx);
         if (blk != nullptr) {

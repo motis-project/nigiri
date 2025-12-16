@@ -428,7 +428,8 @@ void load_timetable(loader_config const& config,
                 tt.route_ids_[src].route_id_provider_[trp.route_];
             if (s.trips_.size() == 1U) {
               external_trip_ids.push_back(merged_trip);
-              if (trp.stop_headsigns_.empty()) {
+              if (trp.stop_headsigns_.empty() &&
+                  trp.headsign_ != kEmptyTranslation) {
                 section_directions.push_back(trp.headsign_);
               } else {
                 section_directions.insert(std::end(section_directions),

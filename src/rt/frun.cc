@@ -324,7 +324,9 @@ std::string_view run_stop::direction(lang_t const& lang,
           direction_sections.size() == 1U
               ? direction_sections.at(0)
               : direction_sections.at(section_idx(ev_type));
-      return tt().translate(lang, direction_idx);
+      if (direction_idx != kEmptyTranslation) {
+        return tt().translate(lang, direction_idx);
+      }
     }
   }
   if (rtt() != nullptr || fr_->is_scheduled()) {
