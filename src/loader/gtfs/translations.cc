@@ -111,7 +111,9 @@ std::optional<f> parse_field_name(std::string_view s) {
   }
 }
 
-translator read_translations(timetable& tt, std::string_view file_content) {
+translator read_translations(timetable& tt,
+                             std::string const& default_lang,
+                             std::string_view file_content) {
   utl::get_active_progress_tracker()->status("Parse Translations");
 
   struct translation_row {
@@ -164,7 +166,12 @@ translator read_translations(timetable& tt, std::string_view file_content) {
       });
 
   auto t = translator{.tt_ = tt};
-  for (auto const& [key, x] : translations) {
+  for (auto& [key, x] : translations) {
+    auto const unsorted = x;
+    utl::sort(x, [&](translation const& a, translation const& b) {
+      return (a.get_language() != default_lang) <
+             (b.get_language() != default_lang);
+    });
     t.i18n_.emplace(key, tt.register_translation(x));
   }
   return t;

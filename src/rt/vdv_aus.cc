@@ -415,7 +415,7 @@ void update_event(rt_timetable& rtt,
 }
 
 void monotonize(frun& fr, rt_timetable& rtt) {
-  vdv_trace("---monotonizing {}, stop_range: [{}, {}[\n", fr.name(),
+  vdv_trace("---monotonizing {}, stop_range: [{}, {}[\n", fr.name({}),
             fr.stop_range_.from_, fr.stop_range_.to_);
 
   auto upper_bound = unixtime_t::max();
@@ -484,7 +484,7 @@ void updater::update_run(rt_timetable& rtt,
     }
   };
 
-  vdv_trace("---updating {}, stop_range: [{}, {}[\n", fr.name(),
+  vdv_trace("---updating {}, stop_range: [{}, {}[\n", fr.name({}),
             fr.stop_range_.from_, fr.stop_range_.to_);
   for (auto i = stop_idx_t{0U}; i != fr.stop_range_.size(); ++i) {
     auto const rs = fr[i];

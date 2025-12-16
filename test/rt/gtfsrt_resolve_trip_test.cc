@@ -1,5 +1,7 @@
 #include "gtest/gtest.h"
 
+#include "utl/zip.h"
+
 #include "nigiri/loader/gtfs/files.h"
 #include "nigiri/loader/gtfs/load_timetable.h"
 #include "nigiri/loader/init_finish.h"
@@ -285,9 +287,9 @@ TEST(rt, gtfs_rt_update) {
   ASSERT_TRUE(fr.valid());
 
   EXPECT_EQ("RE 2", tt.transport_name(fr.t_.t_idx_));
-  EXPECT_EQ("", fr[0].trip_short_name(event_type::kDep));
-  EXPECT_EQ("RE 2", fr[0].route_short_name(event_type::kDep));
-  EXPECT_EQ("RE 2", fr[0].display_name(event_type::kDep));
+  EXPECT_EQ("", fr[0].trip_short_name(event_type::kDep, {}));
+  EXPECT_EQ("RE 2", fr[0].route_short_name(event_type::kDep, {}));
+  EXPECT_EQ("RE 2", fr[0].display_name(event_type::kDep, {}));
 
   for (auto const [from, to] : utl::pairwise(fr)) {
     EXPECT_EQ(scheduled[i++], from.scheduled_time(nigiri::event_type::kDep));
@@ -383,9 +385,9 @@ TEST(rt, gtfs_rt_update) {
 
   EXPECT_EQ("RE 2", rtt.transport_name(tt, fr.rt_));
   EXPECT_EQ("RE 2", tt.transport_name(fr.t_.t_idx_));
-  EXPECT_EQ("", fr[0].trip_short_name(event_type::kDep));
-  EXPECT_EQ("RE 2", fr[0].route_short_name(event_type::kDep));
-  EXPECT_EQ("RE 2", fr[0].display_name(event_type::kDep));
+  EXPECT_EQ("", fr[0].trip_short_name(event_type::kDep, {}));
+  EXPECT_EQ("RE 2", fr[0].route_short_name(event_type::kDep, {}));
+  EXPECT_EQ("RE 2", fr[0].display_name(event_type::kDep, {}));
 
   for (auto const [from, to] : utl::pairwise(fr)) {
     EXPECT_EQ(scheduled[i++], from.scheduled_time(nigiri::event_type::kDep));

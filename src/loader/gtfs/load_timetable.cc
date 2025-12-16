@@ -88,7 +88,9 @@ void load_timetable(loader_config const& config,
   auto const source_file_idx =
       tt.register_source_file((d.path() / kStopTimesFile).generic_string());
   auto timezones = tz_map{};
-  auto i18n = read_translations(tt, load(kTranslationsFile).data());
+  auto const feed_info = read_feed_info(load(kFeedInfoFile).data());
+  auto i18n = read_translations(tt, feed_info.default_lang_,
+                                load(kTranslationsFile).data());
   auto agencies =
       read_agencies(src, tt, i18n, timezones, load(kAgencyFile).data(),
                     config.default_tz_, user_script);
@@ -100,7 +102,6 @@ void load_timetable(loader_config const& config,
                   config.default_tz_, user_script);
   auto const calendar = read_calendar(load(kCalenderFile).data());
   auto const dates = read_calendar_date(load(kCalendarDatesFile).data());
-  auto const feed_info = read_feed_info(load(kFeedInfoFile).data());
   tt.src_end_date_.push_back(
       feed_info.feed_end_date_.value_or(date::sys_days::max()));
   auto const service = merge_traffic_days(

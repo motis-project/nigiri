@@ -3,16 +3,9 @@
 #include <compare>
 #include <filesystem>
 #include <optional>
-#include <ranges>
 #include <span>
-#include <type_traits>
 
 #include "cista/memory_holder.h"
-#include "cista/reflection/printable.h"
-
-#include "utl/verify.h"
-#include "utl/visit.h"
-#include "utl/zip.h"
 
 #include "geo/box.h"
 #include "geo/latlng.h"
@@ -20,7 +13,6 @@
 #include "nigiri/common/interval.h"
 #include "nigiri/fares.h"
 #include "nigiri/footpath.h"
-#include "nigiri/logging.h"
 #include "nigiri/stop.h"
 #include "nigiri/string_store.h"
 #include "nigiri/td_footpath.h"
@@ -115,203 +107,37 @@ struct timetable {
     basic_string<translation_idx_t> const& section_directions_;
   };
 
-  std::string_view get_default_name(location_idx_t const l) const {
-    return get_default_translation(locations_.names_[l]);
-  }
+  timezone_idx_t register_timezone(timezone tz);
 
-  timezone_idx_t register_timezone(timezone tz) {
-    auto const idx =
-        timezone_idx_t{static_cast<timezone_idx_t::value_t>(timezones_.size())};
-    timezones_.emplace_back(std::move(tz));
-    return idx;
-  }
+  std::string_view translate(lang_t const&, translation_idx_t) const;
+  translated_str_t get(translation_idx_t) const;
+  std::string_view get_default_translation(translation_idx_t) const;
+  std::string_view get_default_name(location_idx_t) const;
 
-  auto get_translation_view(translation_idx_t const t) const {
-    namespace sv = std::views;
-    return sv::zip(
-        translation_language_[t],
-        translations_[t] | sv::transform([](auto&& y) { return y.view(); }));
-  }
+  translation_idx_t register_translation(std::string const& s);
+  translation_idx_t register_translation(std::string_view s);
+  translation_idx_t register_translation(translated_str_t const& s);
 
-  translated_str_t get(translation_idx_t const t) const {
-    if (translations_[t].size() != 1U) {
-      auto ret = std::vector<translation>{};
-      ret.reserve(translations_[t].size());
-      for (auto const [lang, text] : get_translation_view(t)) {
-        ret.emplace_back(languages_.get(lang), text);
-      }
-      return ret;
-    } else {
-      return get_default_translation(t);
-    }
-  }
-
-  translation_idx_t register_translation(std::string const& s) {
-    return register_translation(std::string_view{s});
-  }
-
-  translation_idx_t register_translation(std::string_view s) {
-    auto idx = translations_.size();
-    translations_.emplace_back(std::initializer_list<std::string_view>{s});
-    translation_language_.emplace_back({kDefaultLang});
-    assert(translations_.size() == translation_language_.size());
-    return translation_idx_t{idx};
-  }
-
-  translation_idx_t register_translation(translated_str_t const& s) {
-    auto idx = translations_.size();
-    utl::visit(
-        s,
-        [&](std::vector<translation> const& x) {
-          using std::views::transform;
-          translations_.emplace_back(
-              x | transform([](translation const& t) { return t.get_text(); }));
-          translation_language_.emplace_back(
-              x | transform([&](translation const& t) {
-                return languages_.store(t.get_language());
-              }));
-        },
-        [&](std::string_view const& x) { register_translation(x); });
-    assert(idx == translations_.size() - 1);
-    assert(translations_.size() == translation_language_.size());
-    return translation_idx_t{idx};
-  }
-
-  std::string_view get_default_translation(translation_idx_t const t) const {
-    return t == translation_idx_t::invalid() ? "" : translations_[t][0].view();
-  }
-
-  std::string_view translate(lang_t const& lang,
-                             translation_idx_t const t) const {
-    if (!lang.has_value()) {
-      return get_default_translation(t);
-    }
-
-    using std::views::filter;
-    using std::views::transform;
-    for (auto const preferred_lang :
-         *lang  //
-             | transform([&](auto&& x) { return languages_.find(x); })  //
-             | filter([](auto&& x) { return x.has_value(); })) {
-      for (auto const [translation_lang, text] : get_translation_view(t)) {
-        if (translation_lang == preferred_lang) {
-          return text;
-        }
-      }
-    }
-
-    return get_default_translation(t);
-  }
-
-  std::optional<location_idx_t> find(location_id const& id) const {
-    auto const it = locations_.location_id_to_idx_.find(id);
-    return it == end(locations_.location_id_to_idx_)
-               ? std::nullopt
-               : std::optional{it->second};
-  }
+  std::optional<location_idx_t> find(location_id const& id) const;
 
   void resolve();
 
-  bitfield_idx_t register_bitfield(bitfield const& b) {
-    auto const idx = bitfield_idx_t{bitfields_.size()};
-    bitfields_.emplace_back(b);
-    return idx;
-  }
-
+  bitfield_idx_t register_bitfield(bitfield const& b);
   route_idx_t register_route(basic_string<stop::value_type> const& stop_seq,
                              basic_string<clasz> const& clasz_sections,
                              bitvec const& bikes_allowed_per_section,
-                             bitvec const& cars_allowed_per_section) {
-    assert(stop_seq.size() > 1U);
-    assert(!clasz_sections.empty());
-
-    auto const idx = route_location_seq_.size();
-
-    route_transport_ranges_.emplace_back(
-        transport_idx_t{transport_traffic_days_.size()},
-        transport_idx_t::invalid());
-    route_location_seq_.emplace_back(stop_seq);
-    route_section_clasz_.emplace_back(clasz_sections);
-    route_clasz_.emplace_back(clasz_sections[0]);
-
-    auto const bike_sections = bikes_allowed_per_section.size();
-    auto const sections_with_bikes_allowed = bikes_allowed_per_section.count();
-    auto const bikes_allowed_on_all_sections =
-        sections_with_bikes_allowed == bike_sections && bike_sections != 0;
-    auto const bikes_allowed_on_some_sections =
-        sections_with_bikes_allowed != 0U;
-    route_bikes_allowed_.resize(route_bikes_allowed_.size() + 2U);
-    route_bikes_allowed_.set(idx * 2, bikes_allowed_on_all_sections);
-    route_bikes_allowed_.set(idx * 2 + 1, bikes_allowed_on_some_sections);
-
-    route_bikes_allowed_per_section_.resize(idx + 1);
-    if (bikes_allowed_on_some_sections && !bikes_allowed_on_all_sections) {
-      auto bucket = route_bikes_allowed_per_section_[route_idx_t{idx}];
-      for (auto i = 0U; i < bikes_allowed_per_section.size(); ++i) {
-        bucket.push_back(bikes_allowed_per_section[i]);
-      }
-    }
-
-    auto const car_sections = cars_allowed_per_section.size();
-    auto const sections_with_cars_allowed = cars_allowed_per_section.count();
-    auto const cars_allowed_on_all_sections =
-        sections_with_cars_allowed == car_sections && car_sections != 0;
-    auto const cars_allowed_on_some_sections = sections_with_cars_allowed != 0U;
-    route_cars_allowed_.resize(route_cars_allowed_.size() + 2U);
-    route_cars_allowed_.set(idx * 2, cars_allowed_on_all_sections);
-    route_cars_allowed_.set(idx * 2 + 1, cars_allowed_on_some_sections);
-
-    route_cars_allowed_per_section_.resize(idx + 1);
-    if (cars_allowed_on_some_sections && !cars_allowed_on_all_sections) {
-      auto bucket = route_cars_allowed_per_section_[route_idx_t{idx}];
-      for (auto i = 0U; i < cars_allowed_per_section.size(); ++i) {
-        bucket.push_back(cars_allowed_per_section[i]);
-      }
-    }
-
-    return route_idx_t{idx};
-  }
+                             bitvec const& cars_allowed_per_section);
+  void finish_route();
 
   provider_idx_t get_provider_idx(std::string_view id, source_idx_t) const;
 
-  void finish_route() {
-    route_transport_ranges_.back().to_ =
-        transport_idx_t{transport_traffic_days_.size()};
-  }
+  merged_trips_idx_t register_merged_trip(basic_string<trip_idx_t> const&);
 
-  merged_trips_idx_t register_merged_trip(
-      basic_string<trip_idx_t> const& trip_ids) {
-    auto const idx = merged_trips_.size();
-    merged_trips_.emplace_back(trip_ids);
-    return merged_trips_idx_t{static_cast<merged_trips_idx_t::value_t>(idx)};
-  }
+  source_file_idx_t register_source_file(std::string_view path);
 
-  source_file_idx_t register_source_file(std::string_view path) {
-    auto const idx = source_file_idx_t{source_file_names_.size()};
-    source_file_names_.emplace_back(path);
-    return idx;
-  }
+  void add_transport(transport&& t);
 
-  void add_transport(transport&& t) {
-    transport_first_dep_offset_.emplace_back(t.first_dep_offset_);
-    transport_traffic_days_.emplace_back(t.bitfield_idx_);
-    transport_route_.emplace_back(t.route_idx_);
-    transport_to_trip_section_.emplace_back(t.external_trip_ids_);
-    transport_section_attributes_.emplace_back(t.section_attributes_);
-    transport_section_providers_.emplace_back(t.section_providers_);
-    transport_section_directions_.emplace_back(t.section_directions_);
-
-    assert(transport_traffic_days_.size() == transport_route_.size());
-    assert(transport_traffic_days_.size() == transport_to_trip_section_.size());
-    assert(transport_section_directions_.back().size() == 0U ||
-           transport_section_directions_.back().size() == 1U ||
-           transport_section_directions_.back().size() ==
-               route_location_seq_.at(transport_route_.back()).size() - 1U);
-  }
-
-  transport_idx_t next_transport_idx() const {
-    return transport_idx_t{transport_traffic_days_.size()};
-  }
+  transport_idx_t next_transport_idx() const;
 
   std::span<delta const> event_times_at_stop(route_idx_t const r,
                                              stop_idx_t const stop_idx,

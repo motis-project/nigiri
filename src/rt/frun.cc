@@ -7,6 +7,8 @@
 
 #include "utl/overloaded.h"
 #include "utl/verify.h"
+#include "utl/visit.h"
+#include "utl/zip.h"
 
 #include "nigiri/rt/gtfsrt_resolve_run.h"
 #include "nigiri/rt/rt_timetable.h"
@@ -291,8 +293,8 @@ std::string_view run_stop::display_name(event_type const ev_type,
     return tt().translate(lang,
                           tt().trip_display_names_[get_trip_idx(ev_type)]);
   }
-  auto const name = route_short_name(ev_type);
-  return name.empty() ? trip_short_name(ev_type) : name;
+  auto const name = route_short_name(ev_type, lang);
+  return name.empty() ? trip_short_name(ev_type, lang) : name;
 }
 
 stop_idx_t run_stop::section_idx(event_type const ev_type) const {
@@ -505,10 +507,11 @@ frun::frun(timetable const& tt, rt_timetable const* rtt, run r)
   }
 }
 
-std::string_view frun::name() const {
+std::string_view frun::name(lang_t const& lang) const {
   if (is_rt() && rtt_ != nullptr) {
     return operator[](0U).route_short_name(
-        stop_range_.from_ == size() - 1U ? event_type::kArr : event_type::kDep);
+        stop_range_.from_ == size() - 1U ? event_type::kArr : event_type::kDep,
+        lang);
   }
   if (is_scheduled()) {
     return tt_->transport_name(t_.t_idx_);
@@ -534,7 +537,7 @@ stop_idx_t frun::first_valid(stop_idx_t const from) const {
     }
   }
   log(log_lvl::error, "frun", "no first valid found: id={}, name={}, dbg={}",
-      fmt::streamed(id()), name(), fmt::streamed(dbg()));
+      fmt::streamed(id()), name({}), fmt::streamed(dbg()));
   return stop_range_.to_;
 }
 
@@ -548,7 +551,7 @@ stop_idx_t frun::last_valid() const {
     }
   }
   log(log_lvl::error, "frun", "no last valid found: id={}, name={}, dbg={}",
-      fmt::streamed(id()), name(), fmt::streamed(dbg()));
+      fmt::streamed(id()), name({}), fmt::streamed(dbg()));
   return stop_range_.to_;
 }
 
@@ -783,7 +786,7 @@ void run_stop::print(std::ostream& out,
           out << ", ";
         }
         out << "{name="
-            << display_name(last ? event_type::kArr : event_type::kDep)
+            << display_name(last ? event_type::kArr : event_type::kDep, {})
             << ", day=";
         date::to_stream(
             out, "%F",

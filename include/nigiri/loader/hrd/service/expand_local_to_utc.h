@@ -1,5 +1,7 @@
 #pragma once
 
+#include "utl/zip.h"
+
 #include "nigiri/loader/hrd/service/ref_service.h"
 #include "nigiri/loader/hrd/service/service.h"
 #include "nigiri/loader/hrd/stamm/timezone.h"

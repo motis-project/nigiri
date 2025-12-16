@@ -42,13 +42,10 @@ struct run_stop {
   std::string_view get_route_id(event_type) const;
   direction_id_t get_direction_id(event_type) const;
   std::optional<route_type_t> route_type(event_type) const;
-  std::string_view route_short_name(event_type,
-                                    lang_t const& = std::nullopt) const;
-  std::string_view route_long_name(event_type,
-                                   lang_t const& = std::nullopt) const;
-  std::string_view trip_short_name(event_type,
-                                   lang_t const& = std::nullopt) const;
-  std::string_view display_name(event_type, lang_t const& = std::nullopt) const;
+  std::string_view route_short_name(event_type, lang_t const&) const;
+  std::string_view route_long_name(event_type, lang_t const&) const;
+  std::string_view trip_short_name(event_type, lang_t const&) const;
+  std::string_view display_name(event_type, lang_t const&) const;
   run_stop get_last_trip_stop(event_type) const;
 
   unixtime_t scheduled_time(event_type) const;
@@ -134,7 +131,7 @@ struct frun : public run {
   };
   using const_iterator = iterator;
 
-  std::string_view name() const;
+  std::string_view name(lang_t const&) const;
   debug dbg() const;
 
   frun(timetable const&, rt_timetable const*, run);

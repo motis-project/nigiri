@@ -206,7 +206,7 @@ void read_stop_times(trip_data& trips,
           t->stop_headsigns_.resize(t->seq_numbers_.size(), t->headsign_);
           t->stop_headsigns_.back() = i18n.get(
               t::kStopTimes, f::kStopHeadsign, s.stop_headsign_->view(),
-              s.trip_id_->view(), s.stop_headsign_->view());
+              s.trip_id_->view(), s.stop_sequence_->view());
         }
 
         if (l == location_idx_t::invalid()) {

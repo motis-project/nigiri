@@ -134,6 +134,8 @@ struct translator {
   hash_map<std::string, translation_idx_t> untranslated_{};
 };
 
-translator read_translations(timetable&, std::string_view file_content);
+translator read_translations(timetable&,
+                             std::string const& default_lang,
+                             std::string_view file_content);
 
 }  // namespace nigiri::loader::gtfs

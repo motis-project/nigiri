@@ -7,6 +7,7 @@
 #include "utl/parallel_for.h"
 #include "utl/pool.h"
 #include "utl/progress_tracker.h"
+#include "utl/zip.h"
 
 #include "nigiri/common/day_list.h"
 #include "nigiri/common/linear_lower_bound.h"

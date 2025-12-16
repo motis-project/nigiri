@@ -7,6 +7,7 @@
 #include "utl/get_or_create.h"
 #include "utl/pairwise.h"
 #include "utl/pipes/accumulate.h"
+#include "utl/zip.h"
 
 #include "nigiri/loader/assistance.h"
 #include "nigiri/loader/gtfs/noon_offsets.h"
