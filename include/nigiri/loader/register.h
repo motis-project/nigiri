@@ -19,7 +19,8 @@ struct attribute {
   std::string_view get_code() const;
   void set_code(std::string_view);
 
-  translated_str_t get_text() const;
+  std::string_view get_text() const;
+  translated_str_t get_text_translations() const;
   void set_text(translated_str_t);
 
   generic_string code_;
@@ -39,10 +40,12 @@ struct agency {
 
   std::string_view get_id() const;
 
-  translated_str_t get_name() const;
+  std::string_view get_name() const;
+  translated_str_t get_name_translations() const;
   void set_name(translated_str_t);
 
-  translated_str_t get_url() const;
+  std::string_view get_url() const;
+  translated_str_t get_url_translations() const;
   void set_url(translated_str_t);
 
   std::optional<std::string_view> get_timezone() const;
@@ -76,13 +79,16 @@ struct location {
 
   std::string_view get_id() const;
 
-  translated_str_t get_name() const;
+  std::string_view get_name() const;
+  translated_str_t get_name_translations() const;
   void set_name(translated_str_t);
 
-  translated_str_t get_platform_code() const;
+  std::string_view get_platform_code() const;
+  translated_str_t get_platform_code_translations() const;
   void set_platform_code(translated_str_t);
 
-  translated_str_t get_description() const;
+  std::string_view get_description() const;
+  translated_str_t get_description_translations() const;
   void set_description(translated_str_t);
 
   geo::latlng get_pos() const;
@@ -122,10 +128,12 @@ struct route {
 
   std::string_view get_id() const;
 
-  translated_str_t get_short_name() const;
+  std::string_view get_short_name() const;
+  std::vector<translation> get_short_name_translations() const;
   void set_short_name(translated_str_t);
 
-  translated_str_t get_long_name() const;
+  std::string_view get_long_name() const;
+  translated_str_t get_long_name_translations() const;
   void set_long_name(translated_str_t);
 
   std::uint16_t get_route_type() const;
@@ -169,16 +177,19 @@ struct trip {
 
   std::string_view get_id() const;
 
-  translated_str_t get_headsign() const;
+  std::string_view get_headsign() const;
+  translated_str_t get_headsign_translations() const;
   void set_headsign(translated_str_t);
 
-  translated_str_t get_short_name() const;
+  std::string_view get_short_name() const;
+  translated_str_t get_short_name_translations() const;
   void set_short_name(translated_str_t);
 
   std::string_view get_vehicle_type_name() const;
   std::string_view get_vehicle_type_short_name() const;
 
-  translated_str_t get_display_name() const;
+  std::string_view get_display_name() const;
+  translated_str_t get_display_name_translations() const;
   void set_display_name(translated_str_t);
 
   std::vector<attribute> get_attributes() const;

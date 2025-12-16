@@ -27,7 +27,12 @@ attribute::attribute(timetable* tt,
 std::string_view attribute::get_code() const { return code_; }
 void attribute::set_code(std::string_view s) { code_.set_owning(s); }
 
-translated_str_t attribute::get_text() const { return tt_->get(text_); }
+std::string_view attribute::get_text() const {
+  return tt_->get_default_translation(text_);
+}
+translated_str_t attribute::get_text_translations() const {
+  return tt_->get(text_);
+}
 void attribute::set_text(translated_str_t t) {
   text_ = tt_->register_translation(t);
 }
@@ -60,12 +65,20 @@ agency::agency(timetable& tt, provider_idx_t const a)
 
 std::string_view agency::get_id() const { return id_; }
 
-translated_str_t agency::get_name() const { return tt_->get(name_); }
+std::string_view agency::get_name() const {
+  return tt_->get_default_translation(name_);
+}
+translated_str_t agency::get_name_translations() const {
+  return tt_->get(name_);
+}
 void agency::set_name(translated_str_t x) {
   name_ = tt_->register_translation(x);
 }
 
-translated_str_t agency::get_url() const { return tt_->get(url_); }
+std::string_view agency::get_url() const {
+  return tt_->get_default_translation(url_);
+}
+translated_str_t agency::get_url_translations() const { return tt_->get(url_); }
 void agency::set_url(translated_str_t x) {
   url_ = tt_->register_translation(x);
 }
@@ -121,19 +134,30 @@ location::location(timetable& tt,
 
 std::string_view location::get_id() const { return id_; }
 
-translated_str_t location::get_name() const { return tt_->get(name_); }
+std::string_view location::get_name() const {
+  return tt_->get_default_translation(name_);
+}
+translated_str_t location::get_name_translations() const {
+  return tt_->get(name_);
+}
 void location::set_name(translated_str_t x) {
   name_ = tt_->register_translation(x);
 }
 
-translated_str_t location::get_platform_code() const {
+std::string_view location::get_platform_code() const {
+  return tt_->get_default_translation(platform_code_);
+}
+translated_str_t location::get_platform_code_translations() const {
   return tt_->get(platform_code_);
 }
 void location::set_platform_code(translated_str_t x) {
   platform_code_ = tt_->register_translation(x);
 }
 
-translated_str_t location::get_description() const {
+std::string_view location::get_description() const {
+  return tt_->get_default_translation(description_);
+}
+translated_str_t location::get_description_translations() const {
   return tt_->get(description_);
 }
 void location::set_description(translated_str_t x) {
@@ -192,12 +216,22 @@ route::route(timetable& tt, source_idx_t const src, route_id_idx_t const r)
 
 std::string_view route::get_id() const { return id_; }
 
-translated_str_t route::get_short_name() const { return tt_->get(short_name_); }
+std::string_view route::get_short_name() const {
+  return tt_->get_default_translation(short_name_);
+}
+std::vector<translation> route::get_short_name_translations() const {
+  return std::get<std::vector<translation>>(tt_->get(short_name_));
+}
 void route::set_short_name(translated_str_t x) {
   short_name_ = tt_->register_translation(x);
 }
 
-translated_str_t route::get_long_name() const { return tt_->get(long_name_); }
+std::string_view route::get_long_name() const {
+  return tt_->get_default_translation(long_name_);
+}
+translated_str_t route::get_long_name_translations() const {
+  return tt_->get(long_name_);
+}
 void route::set_long_name(translated_str_t x) {
   long_name_ = tt_->register_translation(x);
 }
@@ -253,12 +287,22 @@ trip::trip(timetable& tt,
 
 std::string_view trip::get_id() const { return id_; }
 
-translated_str_t trip::get_headsign() const { return tt_->get(headsign_); }
+std::string_view trip::get_headsign() const {
+  return tt_->get_default_translation(headsign_);
+}
+translated_str_t trip::get_headsign_translations() const {
+  return tt_->get(headsign_);
+}
 void trip::set_headsign(translated_str_t x) {
   headsign_ = tt_->register_translation(x);
 }
 
-translated_str_t trip::get_short_name() const { return tt_->get(short_name_); }
+std::string_view trip::get_short_name() const {
+  return tt_->get_default_translation(short_name_);
+}
+translated_str_t trip::get_short_name_translations() const {
+  return tt_->get(short_name_);
+}
 void trip::set_short_name(translated_str_t x) {
   short_name_ = tt_->register_translation(x);
 }
@@ -271,7 +315,10 @@ std::string_view trip::get_vehicle_type_short_name() const {
   return vehicle_type_short_name_;
 }
 
-translated_str_t trip::get_display_name() const {
+std::string_view trip::get_display_name() const {
+  return tt_->get_default_translation(display_name_);
+}
+translated_str_t trip::get_display_name_translations() const {
   return tt_->get(display_name_);
 }
 void trip::set_display_name(translated_str_t x) {
@@ -326,14 +373,18 @@ script_runner::script_runner(std::string const& user_script)
       "get_code", &attribute::get_code,  //
       "set_code", &attribute::set_code,  //
       "get_text", &attribute::get_text,  //
-      "set_text", &attribute::set_text);
+      "get_text_translations", &attribute::get_text_translations,  //
+      "set_text", &attribute::set_text  //
+  );
 
   impl_->lua_.new_usertype<agency>(  //
       "agency",  //
       "get_id", &agency::get_id,  //
       "get_name", &agency::get_name,  //
+      "get_name_translations", &agency::get_name_translations,  //
       "set_name", &agency::set_name,  //
       "get_url", &agency::get_url,  //
+      "get_url_translations", &agency::get_url_translations,  //
       "set_url", &agency::set_url,  //
       "get_timezone", &agency::get_timezone,  //
       "set_timezone", &agency::set_timezone  //
@@ -343,10 +394,15 @@ script_runner::script_runner(std::string const& user_script)
       "location",  //
       "get_id", &location::get_id,  //
       "get_name", &location::get_name,  //
+      "get_name_translations", &location::get_name_translations,  //
       "set_name", &location::set_name,  //
       "get_platform_code", &location::get_platform_code,  //
+      "get_platform_code_translations",
+      &location::get_platform_code_translations,  //
       "set_platform_code", &location::set_platform_code,  //
       "get_description", &location::get_description,  //
+      "get_description_translations",
+      &location::get_description_translations,  //
       "set_description", &location::set_description,  //
       "get_pos", &location::get_pos,  //
       "set_pos", &location::set_pos,  //
@@ -360,8 +416,10 @@ script_runner::script_runner(std::string const& user_script)
       "route",  //
       "get_id", &route::get_id,  //
       "get_short_name", &route::get_short_name,  //
+      "get_short_name_translations", &route::get_short_name_translations,  //
       "set_short_name", &route::set_short_name,  //
       "get_long_name", &route::get_long_name,  //
+      "get_long_name_translations", &route::get_long_name_translations,  //
       "set_long_name", &route::set_long_name,  //
       "get_route_type", &route::get_route_type,  //
       "set_route_type", &route::set_route_type,  //
@@ -378,12 +436,16 @@ script_runner::script_runner(std::string const& user_script)
       "trip",  //
       "get_id", &trip::get_id,  //
       "get_headsign", &trip::get_headsign,  //
+      "get_headsign_translations", &trip::get_headsign_translations,  //
       "set_headsign", &trip::set_headsign,  //
       "get_short_name", &trip::get_short_name,  //
+      "get_short_name_translations", &trip::get_short_name_translations,  //
       "set_short_name", &trip::set_short_name,  //
       "get_vehicle_type_name", &trip::get_vehicle_type_name,  //
       "get_vehicle_type_short_name", &trip::get_vehicle_type_short_name,  //
       "get_display_name", &trip::get_display_name,  //
+      "get_display_name_translations",
+      &trip::get_display_name_translations,  //
       "set_display_name", &trip::set_display_name,  //
       "get_route", &trip::get_route  //
   );
