@@ -1,8 +1,11 @@
 #include "gtest/gtest.h"
 
+#include "utl/zip.h"
+
 #include "nigiri/loader/gtfs/load_timetable.h"
 #include "nigiri/loader/hrd/load_timetable.h"
 #include "nigiri/loader/init_finish.h"
+#include "nigiri/loader/load.h"
 #include "nigiri/flex.h"
 #include "nigiri/rt/create_rt_timetable.h"
 #include "nigiri/rt/gtfsrt_update.h"
@@ -112,11 +115,13 @@ location_group_id,location_group_name
 TEST(flex, simple) {
   constexpr auto const kArea = flex_area_idx_t{0};
 
-  auto tt = timetable{};
-  tt.date_range_ = {date::sys_days{2025_y / January / 1},
-                    date::sys_days{2025_y / December / 1}};
-  load_timetable({}, source_idx_t{0}, mem_dir::read(kTimetable), tt);
-  finalize(tt);
+  auto const tt =
+      loader::load({{.tag_ = "test",
+                     .path_ = kTimetable,
+                     .loader_config_ = {.default_tz_ = "Europe/Berlin"}}},
+                   {},
+                   {date::sys_days{2025_y / January / 1},
+                    date::sys_days{2025_y / December / 1}});
 
   auto const outside = geo::latlng{47.357516806408995, 9.446811993220308};
   auto const inside = geo::latlng{47.35780140178716, 9.440695867171229};
@@ -133,8 +138,9 @@ TEST(flex, simple) {
   ASSERT_EQ(1U, tt.flex_area_name_.size());
   EXPECT_FALSE(is_in_flex_area(tt, kArea, outside));
   EXPECT_TRUE(is_in_flex_area(tt, kArea, inside));
-  EXPECT_EQ("Publicar Appenzell", tt.flex_area_name_[kArea].view());
-  EXPECT_EQ("", tt.flex_area_desc_[kArea].view());
+  EXPECT_EQ("Publicar Appenzell",
+            tt.get_default_translation(tt.flex_area_name_[kArea]));
+  EXPECT_EQ("", tt.get_default_translation(tt.flex_area_desc_[kArea]));
 
   auto ss = std::stringstream{};
   for (auto const& t : tt.flex_area_transports_[kArea]) {
@@ -146,7 +152,8 @@ TEST(flex, simple) {
                   tt.flex_transport_stop_time_windows_[t])) {
       stop.apply(utl::overloaded{[&](flex_area_idx_t const area) {
                                    ss << "  AREA "
-                                      << tt.flex_area_name_[area].view();
+                                      << tt.get_default_translation(
+                                             tt.flex_area_name_[area]);
                                  },
                                  [](location_group_idx_t) {}});
       ss << ": " << window << "\n";

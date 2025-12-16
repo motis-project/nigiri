@@ -105,8 +105,7 @@ void add_start_times_at_stop(direction const search_dir,
         trace_start(
             "        => ADD START: time_at_start={}, time_at_stop={}, "
             "stop={}\n",
-            s.time_at_start_, s.time_at_stop_,
-            location{tt, starts.back().stop_});
+            s.time_at_start_, s.time_at_stop_, loc{tt, starts.back().stop_});
       } else {
         trace_start(
             "        skip: day={}, day_offset={}, date={}, active={}, "
@@ -133,7 +132,7 @@ void add_starts_in_interval(direction const search_dir,
   trace_start(
       "    add_starts_in_interval(interval={}, stop={}): {} "
       "routes\n",
-      iv, location{tt, l},  // NOLINT(clang-analyzer-core.CallAndMessage)
+      iv, loc{tt, l},  // NOLINT(clang-analyzer-core.CallAndMessage)
       tt.location_routes_.at(l).size());
 
   // Iterate routes visiting the location.
@@ -212,7 +211,7 @@ void add_starts_in_interval(direction const search_dir,
             "        => ADD RT START: time_at_start={}, time_at_stop={}, "
             "stop={}\n",
             inserted.time_at_start_, inserted.time_at_stop_,
-            location{tt, starts.back().stop_});
+            loc{tt, starts.back().stop_});
       }
     }
   }
@@ -332,7 +331,7 @@ void collect_destinations(timetable const& tt,
   }
 
   for (auto const& d : dest) {
-    trace_start("DEST METAS OF {}\n", location{tt, d.target_});
+    trace_start("DEST METAS OF {}\n", loc{tt, d.target_});
     for_each_meta(tt, match_mode, d.target_, [&](location_idx_t const l) {
       if (match_mode == location_match_mode::kIntermodal) {
         dist_to_dest[to_idx(l)] =
@@ -340,8 +339,7 @@ void collect_destinations(timetable const& tt,
       } else {
         is_dest.set(to_idx(l), true);
       }
-      trace_start("  DEST META: {}, duration={}\n", location{tt, l},
-                  d.duration_);
+      trace_start("  DEST META: {}, duration={}\n", loc{tt, l}, d.duration_);
     });
   }
 }
@@ -352,11 +350,11 @@ void collect_via_destinations(timetable const& tt,
   is_destination.resize(tt.n_locations());
   utl::fill(is_destination.blocks_, 0U);
 
-  trace_start("VIA METAS OF {}\n", location{tt, via});
+  trace_start("VIA METAS OF {}\n", loc{tt, via});
   for_each_meta(tt, location_match_mode::kEquivalent, via,
                 [&](location_idx_t const l) {
                   is_destination.set(to_idx(l), true);
-                  trace_start("  VIA META: {}\n", location{tt, l});
+                  trace_start("  VIA META: {}\n", loc{tt, l});
                 });
 }
 

@@ -72,6 +72,8 @@ struct string_store {
   auto cista_members() { return std::tie(cache_, strings_); }
 
   std::string_view get(idx_t const x) const {
+    assert(cache_.size() == strings_.size());
+    assert(x < strings_.size());
     return x == idx_t::invalid() ? "" : strings_[x].view();
   }
 
@@ -85,12 +87,15 @@ struct string_store {
     } else {
       auto next = idx_t{strings_.size()};
       strings_.emplace_back(s);
-      cache_.emplace(next);
+      [[maybe_unused]] auto const inserted = cache_.emplace(next).second;
+      assert(inserted);
+      assert(cache_.size() == strings_.size());
       return next;
     }
   }
 
   std::optional<idx_t> find(std::string_view s) const {
+    assert(cache_.size() == strings_.size());
     auto const it = cache_.find(s);
     return it == cache_.end() ? std::nullopt : std::optional{*it};
   }

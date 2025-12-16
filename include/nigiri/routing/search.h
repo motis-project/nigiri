@@ -119,15 +119,15 @@ struct search {
 
 #if defined(NIGIRI_TRACING)
       for (auto const& o : q_.start_) {
-        trace_upd("start {}: {}\n", location{tt_, o.target()}, o.duration());
+        trace_upd("start {}: {}\n", loc{tt_, o.target()}, o.duration());
       }
       for (auto const& o : q_.destination_) {
-        trace_upd("dest {}: {}\n", location{tt_, o.target()}, o.duration());
+        trace_upd("dest {}: {}\n", loc{tt_, o.target()}, o.duration());
       }
       for (auto const [l, lb] :
            utl::enumerate(state_.travel_time_lower_bound_)) {
         if (lb != std::numeric_limits<std::decay_t<decltype(lb)>>::max()) {
-          trace_upd("lb {}: {}\n", location{tt_, location_idx_t{l}}, lb);
+          trace_upd("lb {}: {}\n", loc{tt_, location_idx_t{l}}, lb);
         }
       }
 #endif
@@ -436,7 +436,7 @@ private:
           auto const start_time = from_it->time_at_start_;
           for (auto const& s : it_range{from_it, to_it}) {
             trace("init: time_at_start={}, time_at_stop={} at {}\n",
-                  s.time_at_start_, s.time_at_stop_, location{tt_, s.stop_});
+                  s.time_at_start_, s.time_at_stop_, loc{tt_, s.stop_});
             algo_.add_start(s.stop_, s.time_at_stop_);
           }
           trace("RUN ALGO\n");

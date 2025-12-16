@@ -54,7 +54,7 @@ enum class alert_severity : std::uint8_t {
 std::string_view to_str(alert_severity);
 std::ostream& operator<<(std::ostream&, alert_severity);
 
-struct translation {
+struct alert_translation {
   alert_str_idx_t text_;
   alert_str_idx_t language_;
 };
@@ -164,14 +164,14 @@ struct alerts {
 
   vecvec<alert_idx_t, interval<unixtime_t>> communication_period_;
   vecvec<alert_idx_t, interval<unixtime_t>> impact_period_;
-  vecvec<alert_idx_t, translation> cause_detail_;
-  vecvec<alert_idx_t, translation> effect_detail_;
-  vecvec<alert_idx_t, translation> url_;
-  vecvec<alert_idx_t, translation> header_text_;
-  vecvec<alert_idx_t, translation> description_text_;
-  vecvec<alert_idx_t, translation> tts_header_text_;
-  vecvec<alert_idx_t, translation> tts_description_text_;
-  vecvec<alert_idx_t, translation> image_alternative_text_;
+  vecvec<alert_idx_t, alert_translation> cause_detail_;
+  vecvec<alert_idx_t, alert_translation> effect_detail_;
+  vecvec<alert_idx_t, alert_translation> url_;
+  vecvec<alert_idx_t, alert_translation> header_text_;
+  vecvec<alert_idx_t, alert_translation> description_text_;
+  vecvec<alert_idx_t, alert_translation> tts_header_text_;
+  vecvec<alert_idx_t, alert_translation> tts_description_text_;
+  vecvec<alert_idx_t, alert_translation> image_alternative_text_;
   vecvec<alert_idx_t, localized_image> image_;
   vector_map<alert_idx_t, alert_cause> cause_;
   vector_map<alert_idx_t, alert_effect> effect_;

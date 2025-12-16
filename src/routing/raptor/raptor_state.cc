@@ -69,7 +69,7 @@ void raptor_state::print(timetable const& tt,
       continue;
     }
 
-    fmt::print("{:80}  ", location{tt, location_idx_t{l}});
+    fmt::print("{:80}  ", fmt::streamed(loc{tt, location_idx_t{l}}));
 
     fmt::print("tmp=");
     print_deltas(tmp[l]);

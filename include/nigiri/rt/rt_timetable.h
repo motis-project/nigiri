@@ -4,6 +4,7 @@
 
 #include <optional>
 #include <string_view>
+#include <variant>
 
 #include "nigiri/common/delta_t.h"
 #include "nigiri/common/interval.h"
@@ -129,27 +130,29 @@ struct rt_timetable {
     return rt_transport_stop_times_[rt_t][static_cast<unsigned>(ev_idx)];
   }
 
-  std::string_view transport_name(timetable const& tt,
-                                  rt_transport_idx_t const t) const {
-    return trip_short_name(tt, t);
-  }
-
-  std::string_view trip_short_name(timetable const& tt,
-                                   rt_transport_idx_t const t) const {
+  std::variant<translation_idx_t, std::string_view> trip_short_name(
+      timetable const& tt, rt_transport_idx_t const t) const {
     if (rt_transport_trip_short_names_[t].empty()) {
       return rt_transport_static_transport_[t].apply(utl::overloaded{
-          [&](transport const x) {
+          [&](transport const x)
+              -> std::variant<translation_idx_t, std::string_view> {
             auto const trip_idx =
                 tt.merged_trips_[tt.transport_to_trip_section_[x.t_idx_]
                                      .front()]
                     .front();
-            return tt.trip_display_names_[trip_idx].view();
+            return tt.trip_display_names_[trip_idx];
           },
-          [&](rt_add_trip_id_idx_t) { return std::string_view{"?"}; }});
+          [&](rt_add_trip_id_idx_t)
+              -> std::variant<translation_idx_t, std::string_view> {
+            return std::string_view{"?"};
+          }});
     } else {
       return rt_transport_trip_short_names_[t].view();
     }
   }
+
+  std::string_view transport_name(timetable const& tt,
+                                  rt_transport_idx_t const t) const;
 
   debug dbg(timetable const& tt, rt_transport_idx_t const t) const {
     return rt_transport_static_transport_[t].apply(

@@ -53,13 +53,13 @@ void journey::print(std::ostream& out,
   }
   out << "[" << departure_time() << ", " << arrival_time() << "]\n";
   out << "TRANSFERS: " << static_cast<int>(transfers_) << "\n";
-  out << "     FROM: " << location{tt, legs_.front().from_} << " ["
+  out << "     FROM: " << loc{tt, legs_.front().from_} << " ["
       << legs_.front().dep_time_ << "]\n";
-  out << "       TO: " << location{tt, legs_.back().to_} << " ["
+  out << "       TO: " << loc{tt, legs_.back().to_} << " ["
       << legs_.back().arr_time_ << "]\n";
   for (auto const [i, l] : utl::enumerate(legs_)) {
-    out << "leg " << i << ": " << location{tt, l.from_} << " [" << l.dep_time_
-        << "] -> " << location{tt, l.to_} << " [" << l.arr_time_ << "]\n";
+    out << "leg " << i << ": " << loc{tt, l.from_} << " [" << l.dep_time_
+        << "] -> " << loc{tt, l.to_} << " [" << l.arr_time_ << "]\n";
     l.print(out, tt, rtt, 1, debug);
   }
 }

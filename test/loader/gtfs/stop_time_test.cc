@@ -117,17 +117,19 @@ L001I01S1FES,08:31:00,,23,19,,0,0,7.473
   auto trips = trip_data{};
   trips.trips_.emplace("L001I01S1FES", gtfs_trip_idx_t{0U});
   trips.data_
-      .emplace_back(nullptr, nullptr, nullptr, "L001I01S1FES",
-                    trip_direction_idx_t{}, "", direction_id_t::invalid(),
-                    shape_idx_t::invalid(), false, false)
+      .emplace_back(route_id_idx_t::invalid(), nullptr, nullptr, "L001I01S1FES",
+                    kEmptyTranslation, kEmptyTranslation,
+                    direction_id_t::invalid(), shape_idx_t::invalid(), false,
+                    false)
       .trip_idx_ = {};
   auto tt = timetable{};
   tt.trip_debug_.emplace_back().emplace_back(trip_debug{});
+  auto i18n = translator{.tt_ = tt};
   auto stops = stops_map_t{};
   stops.emplace("6", location_idx_t{0});
   stops.emplace("48", location_idx_t{1});
   stops.emplace("23", location_idx_t{2});
-  read_stop_times(tt, trips, stops, {}, {}, {}, kStopTimes, true);
+  read_stop_times(trips, stops, {}, {}, {}, i18n, kStopTimes, true);
 
   EXPECT_TRUE(trips.data_[gtfs_trip_idx_t{0}].requires_interpolation_);
   EXPECT_EQ(interpolate_result::kOk,
@@ -153,17 +155,19 @@ L001I01S1FES,,08:31:00,23,19,,0,0,7.473
   auto trips = trip_data{};
   trips.trips_.emplace("L001I01S1FES", gtfs_trip_idx_t{0U});
   trips.data_
-      .emplace_back(nullptr, nullptr, nullptr, "L001I01S1FES",
-                    trip_direction_idx_t{}, "", direction_id_t::invalid(),
-                    shape_idx_t::invalid(), false, false)
+      .emplace_back(route_id_idx_t::invalid(), nullptr, nullptr, "L001I01S1FES",
+                    kEmptyTranslation, kEmptyTranslation,
+                    direction_id_t::invalid(), shape_idx_t::invalid(), false,
+                    false)
       .trip_idx_ = {};
   auto tt = timetable{};
   tt.trip_debug_.emplace_back().emplace_back(trip_debug{});
+  auto i18n = translator{.tt_ = tt};
   auto stops = stops_map_t{};
   stops.emplace("6", location_idx_t{0});
   stops.emplace("48", location_idx_t{1});
   stops.emplace("23", location_idx_t{2});
-  read_stop_times(tt, trips, stops, {}, {}, {}, kStopTimes, true);
+  read_stop_times(trips, stops, {}, {}, {}, i18n, kStopTimes, true);
 
   EXPECT_EQ(interpolate_result::kErrorFirstMissing,
             interpolate(trips.data_[gtfs_trip_idx_t{0}].event_times_));
@@ -180,17 +184,19 @@ L001I01S1FES,,,23,19,,0,0,7.473
   auto trips = trip_data{};
   trips.trips_.emplace("L001I01S1FES", gtfs_trip_idx_t{0U});
   trips.data_
-      .emplace_back(nullptr, nullptr, nullptr, "L001I01S1FES",
-                    trip_direction_idx_t{}, "", direction_id_t::invalid(),
-                    shape_idx_t::invalid(), false, false)
+      .emplace_back(route_id_idx_t::invalid(), nullptr, nullptr, "L001I01S1FES",
+                    kEmptyTranslation, kEmptyTranslation,
+                    direction_id_t::invalid(), shape_idx_t::invalid(), false,
+                    false)
       .trip_idx_ = {};
   auto tt = timetable{};
   tt.trip_debug_.emplace_back().emplace_back(trip_debug{});
+  auto i18n = translator{.tt_ = tt};
   auto stops = stops_map_t{};
   stops.emplace("6", location_idx_t{0});
   stops.emplace("48", location_idx_t{1});
   stops.emplace("23", location_idx_t{2});
-  read_stop_times(tt, trips, stops, {}, {}, {}, kStopTimes, true);
+  read_stop_times(trips, stops, {}, {}, {}, i18n, kStopTimes, true);
 
   EXPECT_EQ(interpolate_result::kErrorLastMissing,
             interpolate(trips.data_[gtfs_trip_idx_t{0}].event_times_));
@@ -203,13 +209,14 @@ TEST(gtfs, read_stop_times_example_data) {
   tt.date_range_ = interval{date::sys_days{July / 1 / 2006},
                             date::sys_days{August / 1 / 2006}};
   tz_map timezones;
+  auto i18n = translator{.tt_ = tt};
 
   auto const config = loader_config{};
   auto agencies =
-      read_agencies(source_idx_t{0}, tt, timezones,
+      read_agencies(source_idx_t{0}, tt, i18n, timezones,
                     files.get_file(kAgencyFile).data(), "Europe/Berlin");
   auto const routes =
-      read_routes({}, tt, timezones, agencies,
+      read_routes({}, tt, i18n, timezones, agencies,
                   files.get_file(kRoutesFile).data(), "Europe/Berlin");
   auto const dates =
       read_calendar_date(files.get_file(kCalendarDatesFile).data());
@@ -217,14 +224,14 @@ TEST(gtfs, read_stop_times_example_data) {
   auto const services =
       merge_traffic_days(tt.internal_interval_days(), calendar, dates);
   auto trip_data =
-      read_trips(source_idx_t{}, source_file_idx_t{}, tt, routes, services, {},
-                 files.get_file(kTripsFile).data(),
+      read_trips(source_idx_t{}, source_file_idx_t{}, tt, i18n, routes,
+                 services, {}, files.get_file(kTripsFile).data(),
                  config.bikes_allowed_default_, config.cars_allowed_default_);
-  auto const [stops, _] = read_stops(source_idx_t{0}, tt, timezones,
+  auto const [stops, _] = read_stops(source_idx_t{0}, tt, i18n, timezones,
                                      files.get_file(kStopFile).data(),
                                      files.get_file(kTransfersFile).data(), 0U);
 
-  read_stop_times(tt, trip_data, stops, {}, {}, {},
+  read_stop_times(trip_data, stops, {}, {}, {}, i18n,
                   files.get_file(kStopTimesFile).data(), true);
 
   for (auto& t : trip_data.data_) {

@@ -299,8 +299,9 @@ TEST(routing, start_times) {
         ss << "start_time=" << from_it->time_at_start_ << "\n";
         for (auto const& s : it_range{from_it, to_it}) {
           ss << "|  {time_at_start=" << s.time_at_start_
-             << ", time_at_stop=" << s.time_at_stop_
-             << ", stop=" << tt.locations_.names_[s.stop_].view() << "}\n";
+             << ", time_at_stop=" << s.time_at_stop_ << ", stop="
+             << tt.get_default_translation(tt.locations_.names_[s.stop_])
+             << "}\n";
         }
       });
 
@@ -384,8 +385,9 @@ TEST(routing, rt_start_times) {
           ss << "start_time=" << from_it->time_at_start_ << "\n";
           for (auto const& s : it_range{from_it, to_it}) {
             ss << "|  {time_at_start=" << s.time_at_start_
-               << ", time_at_stop=" << s.time_at_stop_
-               << ", stop=" << tt.locations_.names_[s.stop_].view() << "}\n";
+               << ", time_at_stop=" << s.time_at_stop_ << ", stop="
+               << tt.get_default_translation(tt.locations_.names_[s.stop_])
+               << "}\n";
           }
         });
     return ss.str();

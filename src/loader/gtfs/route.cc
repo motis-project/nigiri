@@ -14,6 +14,10 @@
 
 namespace nigiri::loader::gtfs {
 
+clasz to_clasz(route_type_t const route_type) {
+  return to_clasz(to_idx(route_type));
+}
+
 clasz to_clasz(std::uint16_t const route_type) {
   switch (route_type) {
     case 0 /* Tram, Streetcar, Light rail. Any light rail or street level system within a metropolitan area. */ :
@@ -136,6 +140,7 @@ clasz to_clasz(std::uint16_t const route_type) {
 
 route_map_t read_routes(source_idx_t const src,
                         timetable& tt,
+                        translator& i18n,
                         tz_map& timezones,
                         agency_map_t& agencies,
                         std::string_view file_content,
@@ -175,15 +180,16 @@ route_map_t read_routes(source_idx_t const src,
                   : utl::get_or_create(agencies, r.agency_id_->view(), [&]() {
                       log(log_lvl::error, "gtfs.route",
                           "agency {} not found, using UNKNOWN with default "
-                          "timezone",
-                          r.agency_id_->view());
+                          "timezone {}",
+                          r.agency_id_->view(), default_tz);
 
                       auto const id = r.agency_id_->view().empty()
                                           ? "UKN"
                                           : r.agency_id_->view();
                       return register_agency(
-                          tt, agency{src, id, "UNKNOWN_AGENCY", "",
-                                     get_tz_idx(tt, timezones, default_tz), tt,
+                          tt, agency{tt, src, id, kEmptyTranslation,
+                                     kEmptyTranslation,
+                                     get_tz_idx(tt, timezones, default_tz),
                                      timezones});
                     });
 
@@ -195,25 +201,19 @@ route_map_t read_routes(source_idx_t const src,
               tt,
               src,
               r.route_id_->view(),
-              r.route_short_name_->view(),
-              r.route_long_name_->view(),
+              i18n.get(t::kRoutes, f::kRouteShortName,
+                       r.route_short_name_->view(), r.route_id_->view()),
+              i18n.get(t::kRoutes, f::kRouteLongName,
+                       r.route_long_name_->view(), r.route_id_->view()),
               route_type_t{*r.route_type_},
               {.color_ = to_color(r.route_color_->view()),
                .text_color_ = to_color(r.route_text_color_->view())},
               a};
           if (process_route(user_script, x)) {
-            auto const route_id_idx = register_route(tt, x);
             map.emplace(r.route_id_->to_str(),
-                        std::make_unique<route>(
-                            route{.route_id_idx_ = route_id_idx,
-                                  .agency_ = a,
-                                  .id_ = std::string{x.id_},
-                                  .short_name_ = x.short_name_.str(),
-                                  .long_name_ = x.long_name_.str(),
-                                  .network_ = r.network_id_->to_str(),
-                                  .clasz_ = x.clasz_,
-                                  .color_ = x.color_.color_,
-                                  .text_color_ = x.color_.text_color_}));
+                        std::make_unique<route>(route{
+                            .route_id_idx_ = register_route(tt, x),
+                            .network_ = std::string{r.network_id_->view()}}));
           }
         });
   return map;

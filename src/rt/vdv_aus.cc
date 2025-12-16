@@ -40,7 +40,7 @@ constexpr auto const kAllowedTimeDiscrepancy = []() {
 constexpr auto const kCleanUpInterval = 12h;
 constexpr auto const kMatchRetention = 48h;
 
-// #define VDV_DEBUG
+#define VDV_DEBUG
 #ifdef VDV_DEBUG
 #define vdv_trace(...) fmt::print(__VA_ARGS__)
 #else
@@ -206,14 +206,14 @@ vector<updater::vdv_stop> updater::resolve_stops(pugi::xml_node const vdv_run,
           get(stop.node(), is_vdv(format_) ? "HaltID" : "StopPointRef")
               .child_value()};
       auto const l = [&]() {
-        auto const x = tt_.locations_.find({vdv_stop_id, src_idx_});
+        auto const x = tt_.find(location_id{vdv_stop_id, src_idx_});
         if (x.has_value()) {
           return x;
         } else if (auto const underscore_pos = vdv_stop_id.find('_');
                    underscore_pos != std::string_view::npos) {
           // Extra matching code for VRR SIRI. Remove after data is fixed.
-          return tt_.locations_.find(
-              {vdv_stop_id.substr(0, underscore_pos + 1U), src_idx_});
+          return tt_.find(location_id{
+              vdv_stop_id.substr(0, underscore_pos + 1U), src_idx_});
         } else {
           return x;
         }
@@ -224,12 +224,12 @@ vector<updater::vdv_stop> updater::resolve_stops(pugi::xml_node const vdv_run,
               .value()) {
         ++stats.unsupported_additional_stops_;
         vdv_trace("unsupported additional stop: [id: {}, name: {}]\n",
-                  vdv_stop_id, l.has_value() ? l->name_ : "unresolvable");
+                  vdv_stop_id, loc{tt_, l.value_or(location_idx_t::invalid())});
       }
 
       if (l.has_value()) {
         ++stats.resolved_stops_;
-        vdv_stops.emplace_back(l->l_, vdv_stop_id, stop.node(), format_);
+        vdv_stops.emplace_back(*l, vdv_stop_id, stop.node(), format_);
       } else {
         vdv_stops.emplace_back(location_idx_t::invalid(), vdv_stop_id,
                                stop.node(), format_);
@@ -403,10 +403,10 @@ void update_event(rt_timetable& rtt,
                   unixtime_t const new_time,
                   std::optional<duration_t>* delay_propagation = nullptr) {
   auto delay = new_time - rs.scheduled_time(et);
-  vdv_trace("update [stop_idx: {}, id: {}, name: {}] {}: {}{}{}\n",
-            rs.stop_idx_, rs.id(), rs.name(),
-            et == event_type::kArr ? "ARR" : "DEP", rs.scheduled_time(et),
-            delay.count() >= 0 ? "+" : "", delay.count());
+  vdv_trace("update [stop_idx: {}, loc={}] {}: {}{}{}\n", rs.stop_idx_,
+            rs.get_loc(), et == event_type::kArr ? "ARR" : "DEP",
+            rs.scheduled_time(et), delay.count() >= 0 ? "+" : "",
+            delay.count());
   rtt.update_time(rs.fr_->rt_, rs.stop_idx_, et, new_time);
   rtt.dispatch_delay(*rs.fr_, rs.stop_idx_, et, delay);
   if (delay_propagation != nullptr) {
@@ -415,7 +415,7 @@ void update_event(rt_timetable& rtt,
 }
 
 void monotonize(frun& fr, rt_timetable& rtt) {
-  vdv_trace("---monotonizing {}, stop_range: [{}, {}[\n", fr.name(),
+  vdv_trace("---monotonizing {}, stop_range: [{}, {}[\n", fr.name({}),
             fr.stop_range_.from_, fr.stop_range_.to_);
 
   auto upper_bound = unixtime_t::max();
@@ -466,10 +466,10 @@ void updater::update_run(rt_timetable& rtt,
   auto delay = std::optional<duration_t>{};
 
   auto const propagate_delay = [&](auto const& rs, event_type et) {
-    vdv_trace("propagate [stop_idx: {}, id: {}, name: {}] {}: {}{}{}\n",
-              rs.stop_idx_, rs.id(), rs.name(),
-              et == event_type::kArr ? "ARR" : "DEP", rs.scheduled_time(et),
-              delay->count() >= 0 ? "+" : "", delay->count());
+    vdv_trace("propagate [stop_idx: {}, loc: {}] {}: {}{}{}\n", rs.stop_idx_,
+              rs.get_loc(), et == event_type::kArr ? "ARR" : "DEP",
+              rs.scheduled_time(et), delay->count() >= 0 ? "+" : "",
+              delay->count());
     rtt.update_time(fr.rt_, rs.stop_idx_, et, rs.scheduled_time(et) + *delay);
     rtt.dispatch_delay(fr, rs.stop_idx_, et, *delay);
     ++stats.propagated_delays_;
@@ -480,14 +480,11 @@ void updater::update_run(rt_timetable& rtt,
   auto const print_skipped_stops = [&]() {
     for (auto const& s [[maybe_unused]] : skipped_stops) {
       ++stats.skipped_vdv_stops_;
-      vdv_trace("skipped vdv stop: [id: {}, name: {}]\n", s.id_,
-                s.l_ == location_idx_t::invalid()
-                    ? "unresolvable"
-                    : tt_.locations_.get(s.l_).name_);
+      vdv_trace("skipped vdv stop: {}\n", loc{tt_, s.l_});
     }
   };
 
-  vdv_trace("---updating {}, stop_range: [{}, {}[\n", fr.name(),
+  vdv_trace("---updating {}, stop_range: [{}, {}[\n", fr.name({}),
             fr.stop_range_.from_, fr.stop_range_.to_);
   for (auto i = stop_idx_t{0U}; i != fr.stop_range_.size(); ++i) {
     auto const rs = fr[i];
@@ -547,8 +544,8 @@ void updater::update_run(rt_timetable& rtt,
     }
     if (!matched_arr && !matched_dep && is_complete_run &&
         rs.stop_idx_ < vdv_stops.size()) {
-      vdv_trace("missing gtfs stop at stop_idx = {}: [id: {}, name: {}]\n",
-                rs.stop_idx_, rs.id(), rs.name());
+      vdv_trace("missing gtfs stop at stop_idx = {}: {}\n", rs.stop_idx_,
+                rs.get_loc());
     }
     if (delay) {
       if (rs.stop_idx_ != 0 && !matched_arr) {
@@ -562,9 +559,7 @@ void updater::update_run(rt_timetable& rtt,
 
   while (cursor != end(vdv_stops)) {
     vdv_trace("excess vdv stop: [id: {}, name: {}]\n", cursor->id_,
-              cursor->l_ == location_idx_t::invalid()
-                  ? "unresolvable"
-                  : tt_.locations_.get(cursor->l_).name_);
+              loc{tt_, cursor->l_});
     ++stats.excess_vdv_stops_;
     ++cursor;
   }

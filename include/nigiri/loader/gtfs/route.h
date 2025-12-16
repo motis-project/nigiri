@@ -5,6 +5,7 @@
 #include <string_view>
 
 #include "nigiri/loader/gtfs/agency.h"
+#include "nigiri/loader/gtfs/translations.h"
 #include "nigiri/loader/gtfs/tz_map.h"
 #include "nigiri/loader/register.h"
 #include "nigiri/types.h"
@@ -17,22 +18,17 @@ namespace nigiri::loader::gtfs {
 
 struct route {
   route_id_idx_t route_id_idx_;
-  provider_idx_t agency_;
-  std::string id_;
-  std::string short_name_;
-  std::string long_name_;
   std::string network_;
-  clasz clasz_;
-  color_t color_;
-  color_t text_color_;
 };
 
 using route_map_t = hash_map<std::string, std::unique_ptr<route>>;
 
-clasz to_clasz(std::uint16_t route_type);
+clasz to_clasz(std::uint16_t);
+clasz to_clasz(route_type_t);
 
 route_map_t read_routes(source_idx_t,
                         timetable&,
+                        translator&,
                         tz_map&,
                         agency_map_t&,
                         std::string_view file_content,

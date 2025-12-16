@@ -55,7 +55,7 @@ void dijkstra(timetable const& tt,
     for_each_meta(tt, q.dest_match_mode_, l, [&](location_idx_t const meta) {
       pq.push(label{meta, d});
       dists[to_idx(meta)] = std::min(d, dists[to_idx(meta)]);
-      trace("DIJKSTRA INIT @{}: {}\n", location{tt, meta}, duration);
+      trace("DIJKSTRA INIT @{}: {}\n", loc{tt, meta}, duration);
     });
   }
 

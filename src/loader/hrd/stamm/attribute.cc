@@ -36,7 +36,8 @@ attribute_map_t parse_attributes(config const& c,
 
     auto const idx = attribute_idx_t{tt.attributes_.size()};
     tt.attributes_.emplace_back(attribute{
-        .code_ = code.view(), .text_ = iso_8859_1_to_utf8(text.view())});
+        .code_ = code.view(),
+        .text_ = tt.register_translation(iso_8859_1_to_utf8(text.view()))});
     handle_map[code.to_str()] = idx;
   });
   return handle_map;

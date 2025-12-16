@@ -453,7 +453,7 @@ line_map_t get_lines(pugi::xml_document const& doc,
 // DESTINATION DISPLAYS
 // --------------------
 struct destination_display {
-  trip_direction_idx_t trip_direction_{trip_direction_idx_t::invalid()};
+  translation_idx_t trip_direction_{translation_idx_t::invalid()};
   std::string_view direction_;
 };
 using destination_display_map_t =
@@ -667,11 +667,18 @@ train_nr_map_t get_train_numbers(pugi::xml_document const& doc) {
 // =======
 // Notices
 // -------
-using notice_map_t = hash_map<std::string_view, std::unique_ptr<attribute>>;
+struct notice {
+  attribute_idx_t idx_{attribute_idx_t::invalid()};
+  std::string_view code_;
+  std::vector<translation> translations_;
+};
+
+using notice_map_t = hash_map<std::string_view, std::unique_ptr<notice>>;
 
 notice_map_t get_notices(pugi::xml_document const& doc) {
   auto notices = notice_map_t{};
-  notices.emplace("", uniq(attribute{"", {translation{"", ""}}}));
+  notices.emplace(
+      "", uniq(notice{.code_ = "", .translations_ = {translation{"", ""}}}));
   // DE-DELFI
   // ServiceFrame/journeyPatterns/ServiceJourneyPattern/StopPointInJourneyPattern/NoticeAssignment/Notice
   // CH-SKI
@@ -694,20 +701,21 @@ notice_map_t get_notices(pugi::xml_document const& doc) {
       translations.push_back(parse_text(alt));
     }
 
-    notices.emplace(
-        id(n), uniq(attribute{val(n, "ShortCode"), std::move(translations)}));
+    notices.emplace(id(n),
+                    uniq(notice{.code_ = val(n, "ShortCode"),
+                                .translations_ = std::move(translations)}));
   }
   return notices;
 }
 
-std::vector<attribute const*> get_notice_assignments(
-    lookup<notice_map_t> notices, pugi::xml_node n) {
+std::vector<notice const*> get_notice_assignments(lookup<notice_map_t> notices,
+                                                  pugi::xml_node n) {
   return utl::all(n.child("noticeAssignments").children("NoticeAssignment"))  //
          | utl::transform([&](pugi::xml_node const na) {
              return notices.find(ref(na, "NoticeRef"));
            })  //
          | utl::remove_if([](auto&& opt) { return !opt.has_value(); })  //
-         | utl::transform([](auto&& opt) -> attribute const* {
+         | utl::transform([](auto&& opt) -> notice const* {
              return opt.value()->get();
            })  //
          | utl::vec();
@@ -723,7 +731,7 @@ struct journey_pattern {
     destination_display const* destination_display_;
     bool in_allowed_;
     bool out_allowed_;
-    std::vector<attribute const*> notices_;
+    std::vector<notice const*> notices_;
   };
   line* line_;
   direction_id_t direction_;
@@ -1246,7 +1254,7 @@ void load_timetable(loader_config const& config,
        combis = hash_map<basic_string<attribute_idx_t>,
                          attribute_combination_idx_t>{},
        cache = basic_string<attribute_idx_t>{}](
-          std::vector<attribute const*> const& attributes) mutable {
+          std::vector<notice const*> const& attributes) mutable {
         cache.clear();
         for (auto const& a : attributes) {
           if (a->idx_ != attribute_idx_t::invalid()) {
@@ -1278,33 +1286,34 @@ void load_timetable(loader_config const& config,
     auto const tz = gtfs::get_tz_idx(tt, tz_map, im.tz_->name());
 
     for (auto& [id, o] : im.operators_) {
-      auto a = agency{src, id, o->name_, "", tz, tt, tz_map};
+      auto a = agency{
+          tt, src,   id, tt.register_translation(o->name_), kEmptyTranslation,
+          tz, tz_map};
       if (process_agency(r, a)) {
         o->provider_ = register_agency(tt, a);
       }
     }
 
     auto const add_stop = [&](stop* stop) {
-      auto const existing = tt.locations_.find(location_id{stop->id_, src});
+      auto const existing = tt.find(location_id{stop->id_, src});
       if (existing.has_value()) {
-        stop->location_ = existing->l_;
+        stop->location_ = *existing;
         return;
       }
 
-      auto s =
-          loader::location{stop->id_,
-                           stop->name_,
-                           stop->public_code_,
-                           "",
-                           stop->pos_,
-                           src,
-                           location_type::kStation,
-                           stop->parent_ != nullptr ? stop->parent_->location_
-                                                    : location_idx_t::invalid(),
-                           tz,
-                           2_minutes,
-                           tt,
-                           tz_map};
+      auto s = location{tt,
+                        src,
+                        stop->id_,
+                        tt.register_translation(stop->name_),
+                        tt.register_translation(stop->public_code_),
+                        kEmptyTranslation,
+                        stop->pos_,
+                        location_type::kStation,
+                        stop->parent_ != nullptr ? stop->parent_->location_
+                                                 : location_idx_t::invalid(),
+                        tz,
+                        2_minutes,
+                        tz_map};
       if (process_location(r, s)) {
         stop->location_ = register_location(tt, s);
         if (stop->parent_ != nullptr) {
@@ -1325,15 +1334,14 @@ void load_timetable(loader_config const& config,
     }
 
     for (auto& [id, dd] : im.destination_displays_) {
-      auto const idx = tt.trip_directions_.size();
-      tt.trip_directions_.emplace_back(
-          tt.register_trip_direction_string(dd->direction_));
-      dd->trip_direction_ = trip_direction_idx_t{idx};
+      dd->trip_direction_ = tt.register_translation(dd->direction_);
     }
 
     for (auto& [id, attr] : im.notices_) {
-      attr->idx_ = process_attribute(r, *attr) ? register_attribute(tt, *attr)
-                                               : attribute_idx_t::invalid();
+      auto x = attribute{&tt, attr->code_,
+                         tt.register_translation(attr->translations_)};
+      attr->idx_ = process_attribute(r, x) ? register_attribute(tt, x)
+                                           : attribute_idx_t::invalid();
     }
 
     for (auto& sj : im.service_journeys_) {
@@ -1355,8 +1363,8 @@ void load_timetable(loader_config const& config,
         auto rout = route{tt,
                           src,
                           id,
-                          line.name_,
-                          line.product_,
+                          tt.register_translation(line.name_),
+                          tt.register_translation(line.product_),
                           route_type_t{get_more_precise_route_type(
                               sj.route_type_, line.route_type_)},
                           line.color_,
@@ -1377,13 +1385,14 @@ void load_timetable(loader_config const& config,
       // Create and register trip.
       auto const short_name = fmt::to_string(sj.trip_nr_);
       auto t = trip{
+          tt,
           src,
           sj.id_,
-          tt.trip_direction(sj.get_journey_pattern()
-                                ->stop_points_.front()
-                                .destination_display_->trip_direction_),
-          short_name,
-          tt.route_ids_[src].route_id_short_names_[route_id].view(),
+          sj.get_journey_pattern()
+              ->stop_points_.front()
+              .destination_display_->trip_direction_,
+          tt.register_translation(short_name),
+          tt.route_ids_[src].route_id_short_names_[route_id],
           sj.vehicle_type_->name_,
           !sj.branding_ref_.empty() ? sj.branding_ref_
                                     : sj.vehicle_type_->short_name_,
@@ -1391,7 +1400,7 @@ void load_timetable(loader_config const& config,
           route_id,
           trip_debug{source_file_idx, static_cast<unsigned>(sj.dbg_offset_),
                      static_cast<unsigned>(sj.dbg_offset_)},
-          tt};
+      };
       auto const trip_idx =
           process_trip(r, t) ? register_trip(tt, t) : trip_idx_t::invalid();
       if (trip_idx == trip_idx_t::invalid()) {
@@ -1412,7 +1421,7 @@ void load_timetable(loader_config const& config,
                        ->stop_points_.front()
                        .destination_display_->trip_direction_;
           });
-      auto trip_direction = basic_string<trip_direction_idx_t>{};
+      auto trip_direction = basic_string<translation_idx_t>{};
       if (all_destinations_equal) {
         trip_direction = {sj.get_journey_pattern()
                               ->stop_points_.front()
@@ -1572,7 +1581,7 @@ void load_timetable(loader_config const& config,
           auto const trip_idx = sj_trips[sj_idx];
           return fmt::format(
               "({}, {})", tt.trip_id_strings_[tt.trip_ids_[trip_idx][0]].view(),
-              tt.trip_display_names_[trip_idx].view());
+              tt.get_default_translation(tt.trip_display_names_[trip_idx]));
         },
         [&](netex::utc_trip&& x) { add_expanded_trip(std::move(x)); });
   }
@@ -1588,7 +1597,7 @@ void load_timetable(loader_config const& config,
     auto section_providers = basic_string<provider_idx_t>{};
     auto route_colors = basic_string<route_color>{};
     auto external_trip_ids = basic_string<merged_trips_idx_t>{};
-    auto section_directions = basic_string<trip_direction_idx_t>{};
+    auto section_directions = basic_string<translation_idx_t>{};
     auto location_routes = mutable_fws_multimap<location_idx_t, route_idx_t>{};
     auto section_attributes = basic_string<attribute_combination_idx_t>{};
     for (auto const& [key, sub_routes] : route_services) {

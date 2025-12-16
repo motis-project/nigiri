@@ -97,11 +97,12 @@ void service_builder::write_services(source_idx_t const src) {
 
           auto const id = register_trip(
               tt_,
-              trip{src,
+              trip{tt_, src,
                    std::string_view{trip_id_buf_.data(), trip_id_buf_.size()},
-                   "", "", ref.display_name(tt_), "", "",
+                   kEmptyTranslation, kEmptyTranslation,
+                   tt_.register_translation(ref.display_name(tt_)), "", "",
                    direction_id_t::invalid(), route_id_idx_t::invalid(),
-                   ref.origin_.dbg_, tt_});
+                   ref.origin_.dbg_});
           tt_.trip_stop_seq_numbers_.emplace_back(
               std::initializer_list<stop_idx_t>{});
           tt_.trip_transport_ranges_[id].emplace_back(transport_range_t{
@@ -182,11 +183,11 @@ void service_builder::write_services(source_idx_t const src) {
                                    return sec.direction_.has_value();
                                  })) {
             section_directions_.clear();
-            utl::transform_to(s.sections(store_), section_directions_,
-                              [&](service::section const& sec) {
-                                return sec.direction_.value_or(
-                                    trip_direction_idx_t::invalid());
-                              });
+            utl::transform_to(
+                s.sections(store_), section_directions_,
+                [&](service::section const& sec) {
+                  return sec.direction_.value_or(kEmptyTranslation);
+                });
           } else {
             section_directions_.clear();
           }

@@ -7,6 +7,7 @@
 #include "utl/parallel_for.h"
 #include "utl/pool.h"
 #include "utl/progress_tracker.h"
+#include "utl/zip.h"
 
 #include "nigiri/common/day_list.h"
 #include "nigiri/common/linear_lower_bound.h"
@@ -66,10 +67,10 @@ struct expanded_transfer {
   void print(std::ostream& out, timetable const& tt) const {
     out << tt.dbg(transport_idx_to_)
         << ", name=" << tt.transport_name(transport_idx_to_) << ", to="
-        << location{tt, stop{tt.route_location_seq_
-                                 [tt.transport_route_[transport_idx_to_]]
-                                 [stop_idx_to_]}
-                            .location_idx()}
+        << loc{tt,
+               stop{tt.route_location_seq_
+                        [tt.transport_route_[transport_idx_to_]][stop_idx_to_]}
+                   .location_idx()}
         << ", days=" << tt.days(bf_) << ", day_offset=" << day_offset_;
   }
 

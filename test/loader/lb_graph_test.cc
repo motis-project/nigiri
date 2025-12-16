@@ -24,8 +24,9 @@ TEST(routing, lb_graph_distances_check) {
       continue;
     }
     for (auto const& fp : tt.fwd_search_lb_graph_.at(kDefaultProfile)[i]) {
-      distances[{std::string{location{tt, i}.name_},
-                 std::string{location{tt, fp.target()}.name_}}] = fp.duration();
+      distances[{std::string{tt.get_default_name(i)},
+                 std::string{tt.get_default_name(fp.target())}}] =
+          fp.duration();
     }
   }
 

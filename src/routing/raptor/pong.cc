@@ -289,7 +289,7 @@ routing_result pong(timetable const& tt,
            ping_lb);
   for (auto const [l, lb] : utl::enumerate(ping_lb)) {
     if (lb != std::numeric_limits<std::decay_t<decltype(lb)>>::max()) {
-      trace_pong("ping lb {}: {}", location{tt, location_idx_t{l}}, lb);
+      trace_pong("ping lb {}: {}", loc{tt, location_idx_t{l}}, lb);
     }
   }
   trace_pong("\n");
@@ -334,7 +334,7 @@ routing_result pong(timetable const& tt,
            pong_lb);
   for (auto const [l, lb] : utl::enumerate(pong_lb)) {
     if (lb != std::numeric_limits<std::decay_t<decltype(lb)>>::max()) {
-      trace_pong("pong lb {}: {}", location{tt, location_idx_t{l}}, lb);
+      trace_pong("pong lb {}: {}", loc{tt, location_idx_t{l}}, lb);
     }
   }
   trace_pong("\n");
@@ -417,7 +417,7 @@ routing_result pong(timetable const& tt,
     ping.next_start_time();
     for (auto const& s : starts) {
       trace_pong("--- PING START: {} at time_at_start={} time_at_stop={}",
-                 location{tt, s.stop_}, s.time_at_start_, s.time_at_stop_);
+                 loc{tt, s.stop_}, s.time_at_start_, s.time_at_stop_);
       ping.add_start(s.stop_, s.time_at_stop_);
     }
     auto const worst_time_at_dest =
@@ -459,7 +459,7 @@ routing_result pong(timetable const& tt,
       pong.next_start_time();
       for (auto const& s : starts) {
         trace_pong("---- PONG START: {} at time_at_start={} time_at_stop={}",
-                   location{tt, s.stop_}, s.time_at_start_, s.time_at_stop_);
+                   loc{tt, s.stop_}, s.time_at_start_, s.time_at_stop_);
         pong.add_start(s.stop_, s.time_at_stop_);
       }
       pong.execute(ping_j.dest_time_, ping_j.transfers_,

@@ -175,10 +175,15 @@ TEST(routing, td_footpath) {
   tt.bwd_search_lb_graph_[kWheelchairProfile] =
       tt.bwd_search_lb_graph_[kDefaultProfile];
 
-  auto const A = tt.locations_.get({"A", {}}).l_;
-  auto const C = tt.locations_.get({"C", {}}).l_;
-  auto const B1 = tt.locations_.get({"B1", {}}).l_;
-  auto const B2 = tt.locations_.get({"B2", {}}).l_;
+  auto const find_loc = [&](std::string_view id) {
+    auto const idx = tt.find(location_id{id, source_idx_t{0U}});
+    EXPECT_TRUE(idx.has_value()) << id;
+    return idx.value_or(location_idx_t::invalid());
+  };
+  auto const A = find_loc("A");
+  auto const C = find_loc("C");
+  auto const B1 = find_loc("B1");
+  auto const B2 = find_loc("B2");
 
   tt.locations_.footpaths_out_[kProfile].resize(tt.n_locations());
   tt.locations_.footpaths_in_[kProfile].resize(tt.n_locations());

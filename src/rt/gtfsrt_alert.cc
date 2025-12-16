@@ -92,10 +92,7 @@ void handle_alert(date::sys_days const today,
   auto any_resolved = false;
   stats.alert_total_informed_entities_ += a.informed_entity_size();
   for (auto const& x : a.informed_entity()) {
-    auto const stop = x.has_stop_id() ? tt.locations_.find({x.stop_id(), src})
-                                            .and_then([](location const& l) {
-                                              return std::optional{l.l_};
-                                            })
+    auto const stop = x.has_stop_id() ? tt.find(location_id{x.stop_id(), src})
                                             .value_or(location_idx_t::invalid())
                                       : location_idx_t::invalid();
 
@@ -188,16 +185,16 @@ void handle_alert(date::sys_days const today,
   auto const to_translation =
       [&](transit_realtime::TranslatedString_Translation const& x) {
         utl::verify(x.has_text(), "GTFS RT Translation requires text");
-        return translation{.text_ = s.store(x.text()),
-                           .language_ = x.has_language()
-                                            ? s.store(x.language())
-                                            : alert_str_idx_t::invalid()};
+        return alert_translation{.text_ = s.store(x.text()),
+                                 .language_ = x.has_language()
+                                                  ? s.store(x.language())
+                                                  : alert_str_idx_t::invalid()};
       };
 
   auto const to_localized_image =
       [&](transit_realtime::TranslatedImage_LocalizedImage const& x) {
         utl::verify(x.has_url() && x.has_media_type(),
-                    "GTFS RT LocatizedImage requires URL and media_type");
+                    "GTFS RT LocalizedImage requires URL and media_type");
         return localized_image{.url_ = s.store(x.url()),
                                .media_type_ = s.store(x.media_type()),
                                .language_ = x.has_language()
@@ -216,37 +213,42 @@ void handle_alert(date::sys_days const today,
   if (a.has_cause_detail()) {
     alerts.cause_detail_.emplace_back(translate(a.cause_detail()));
   } else {
-    alerts.cause_detail_.emplace_back(std::initializer_list<translation>{});
+    alerts.cause_detail_.emplace_back(
+        std::initializer_list<alert_translation>{});
   }
 
   if (a.has_effect_detail()) {
     alerts.effect_detail_.emplace_back(translate(a.effect_detail()));
   } else {
-    alerts.effect_detail_.emplace_back(std::initializer_list<translation>{});
+    alerts.effect_detail_.emplace_back(
+        std::initializer_list<alert_translation>{});
   }
 
   if (a.has_url()) {
     alerts.url_.emplace_back(translate(a.url()));
   } else {
-    alerts.url_.emplace_back(std::initializer_list<translation>{});
+    alerts.url_.emplace_back(std::initializer_list<alert_translation>{});
   }
 
   if (a.has_header_text()) {
     alerts.header_text_.emplace_back(translate(a.header_text()));
   } else {
-    alerts.header_text_.emplace_back(std::initializer_list<translation>{});
+    alerts.header_text_.emplace_back(
+        std::initializer_list<alert_translation>{});
   }
 
   if (a.has_description_text()) {
     alerts.description_text_.emplace_back(translate(a.description_text()));
   } else {
-    alerts.description_text_.emplace_back(std::initializer_list<translation>{});
+    alerts.description_text_.emplace_back(
+        std::initializer_list<alert_translation>{});
   }
 
   if (a.has_tts_header_text()) {
     alerts.tts_header_text_.emplace_back(translate(a.tts_header_text()));
   } else {
-    alerts.tts_header_text_.emplace_back(std::initializer_list<translation>{});
+    alerts.tts_header_text_.emplace_back(
+        std::initializer_list<alert_translation>{});
   }
 
   if (a.has_tts_description_text()) {
@@ -254,7 +256,7 @@ void handle_alert(date::sys_days const today,
         translate(a.tts_description_text()));
   } else {
     alerts.tts_description_text_.emplace_back(
-        std::initializer_list<translation>{});
+        std::initializer_list<alert_translation>{});
   }
 
   if (a.has_image_alternative_text()) {
@@ -262,7 +264,7 @@ void handle_alert(date::sys_days const today,
         translate(a.image_alternative_text()));
   } else {
     alerts.image_alternative_text_.emplace_back(
-        std::initializer_list<translation>{});
+        std::initializer_list<alert_translation>{});
   }
 
   if (a.has_image()) {
