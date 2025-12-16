@@ -36,7 +36,7 @@ struct mcraptor {
     location_idx_t fp_l_{};
     transport trip_id{};
 
-    float success_chance{};
+    double success_chance{};
     bool over_limit{};
 
     bool dominates(mcraptor_label const& l) const {
@@ -208,8 +208,8 @@ struct mcraptor {
     dest_bag_.add({.arr_t_ = get_best(d_worst_at_dest, kInvalid)}, 0);
 
 
-
-    for (auto k = 1U; k != end_k+1; ++k) {
+    //todo end_k + 1. Aber dann passt die größe der arrays nicht mehr. wird hier anderst gerechnet als im normalen raptor
+    for (auto k = 1U; k != end_k; ++k) {
 //      is_dest_.for_each_set_bit([&](std::uint64_t const i) {
 //        dest_bag_.add({.arr_t_ = get_best_time(i)}, k);
 //      });
@@ -519,21 +519,15 @@ private:
     labels.erase(labels.begin(), new_end);
   }
 
-  float delay_distribution_real(delta_t x, clasz c){
+  double delay_distribution_real(delta_t x, clasz c){
     int id = static_cast<int>(c);
     const std::vector<std::pair<int, double>> & delays = arr_dist_[id].empty() ? arr_dist_[static_cast<int>(clasz::kOther)] : arr_dist_[id];
-    auto it = std::lower_bound(delays.begin(), delays.end(), x,[](std::pair<int, double> pair, delta_t value){
-      return pair.first <= value;
-    });
-    --it;
-    if(it == delays.end()) {
-      it--;
-      return 1;
-    }
-    return (*it).second;
+
+    if (x < delays.back().first) return delays[x].second;
+    else return delays.back().second;
   }
 
-  const delta_t max_delay = delta_t{30};
+  const delta_t max_delay = delta_t{90};
   float delay_distribution_paper(delta_t x){
     auto xf = static_cast<float>(x);
     auto cancelation_probability = 0.95f;
@@ -546,13 +540,13 @@ private:
     return std::min(1.0f, gradient * static_cast<float>(x) + on_time_probability);
   }
 
-  float transferProbability(delta_t to, clasz c){
+  double transferProbability(delta_t to, clasz c){
     auto function = [&](auto x){return this->delay_distribution_real(x, c);};
     return function(to);
   }
 
   template <bool transfer=true>
-  float cum_prob(auto l, auto k, delta_t possible_start_t, clasz const c){
+  double cum_prob(auto l, auto k, delta_t possible_start_t, clasz const c){
     auto it = std::lower_bound(best_bag_[l].labels_.begin(), best_bag_[l].labels_.end(), possible_start_t, [](mcraptor_label a, delta_t t){
       return a.arr_t_ < t;
     });
@@ -565,14 +559,20 @@ private:
       result += counterprob * (transfer ? prob : 1) * it->success_chance;
       counterprob = counterprob * (1 - (transfer ? prob: transferProbability(std::numeric_limits<nigiri::delta_t>::max(), c)));
     }
+    if(result > 1){
+      std::cout << "größer: " << result << std::endl;
+      std::cout << "k: " << k << std::endl;
+      std::cout << "possible_start_t: " << possible_start_t << std::endl;
+      SetLastError(0);
+    }
     return result;
   }
 
-  float cum_success_chance(auto l, auto k, delta_t possible_start_t, clasz const c){
+  double cum_success_chance(auto l, auto k, delta_t possible_start_t, clasz const c){
     return cum_prob(l, k, possible_start_t, c);
   }
 
-  float cum_enter_probability(auto l, auto k, delta_t possible_start_t, clasz const c){
+  double cum_enter_probability(auto l, auto k, delta_t possible_start_t, clasz const c){
     //TODO ordentlich machen. Es werden hier nur ausfälle berücksichtigt. ist gemacht?
     return cum_prob<false>(l, k, possible_start_t, c);
   }

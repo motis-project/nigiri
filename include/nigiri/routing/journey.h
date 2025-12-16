@@ -47,7 +47,7 @@ struct journey {
         unixtime_t const tima_at_a,
         unixtime_t const time_at_b,
         T&& uses,
-        float const success_chance=0.0)
+        double const success_chance=0.0)
         : from_{d == direction::kForward ? a : b},
           to_{d == direction::kForward ? b : a},
           dep_time_{d == direction::kForward ? tima_at_a : time_at_b},
@@ -74,7 +74,7 @@ struct journey {
     location_idx_t from_, to_;
     unixtime_t dep_time_, arr_time_;
     std::variant<run_enter_exit, footpath, offset> uses_;
-    float success_chance{};
+    double success_chance{};
   };
 
   bool dominates(journey const& o) const {
@@ -110,7 +110,7 @@ struct journey {
   std::vector<leg> legs_{};
   unixtime_t start_time_{};
   unixtime_t dest_time_{};
-  float success_chance{};
+  double success_chance{};
   location_idx_t dest_{};
   std::uint8_t transfers_{0U};
 
