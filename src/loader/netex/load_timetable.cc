@@ -1095,12 +1095,13 @@ hash_map<key, bitfield> expand_local_to_utc(timetable const& tt,
 // ====
 // MAIN
 // ----
+bool has_gz_extension(fs::path const& x) {
+  return x.extension() == ".gz" || x.extension() == ".GZ";
+}
+
 bool is_xml_file(fs::path const& p) {
   auto const has_xml_extension = [](fs::path const& x) {
     return x.extension() == ".xml" || x.extension() == ".XML";
-  };
-  auto const has_gz_extension = [](fs::path const& x) {
-    return x.extension() == ".gz" || x.extension() == ".GZ";
   };
   return has_xml_extension(p) ||
          (has_gz_extension(p) && has_xml_extension(p.stem()));
@@ -1165,7 +1166,7 @@ std::optional<intermediate> get_intermediate(intermediate const& base,
 
     auto const opt = pugi::parse_default | pugi::parse_trim_pcdata;
     auto parse_result = pugi::xml_parse_result{};
-    if (path.extension() == ".gz") {
+    if (has_gz_extension(path)) {
       im.unzip_buf_ = gunzip({f.data().data(), f.size()});
       parse_result = doc.load_buffer_inplace(im.unzip_buf_.data(),
                                              im.unzip_buf_.size(), opt);
