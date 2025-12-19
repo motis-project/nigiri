@@ -31,7 +31,7 @@
 #include "nigiri/loader/gtfs/trip.h"
 #include "nigiri/loader/loader_interface.h"
 #include "nigiri/loader/netex/utc_trip.h"
-
+#include "nigiri/common/gunzip.h"
 #include "nigiri/shapes_storage.h"
 #include "nigiri/timetable.h"
 
@@ -140,6 +140,17 @@ std::string_view id(pugi::xml_node n) {
 
 geo::latlng get_pos(pugi::xml_node const x) {
   auto const loc = x.child("Location");
+  auto const gml_pos = val(loc, "gml:pos");
+  if (!gml_pos.empty()) {
+    auto s = utl::cstr{gml_pos};
+    auto ret = geo::latlng{};
+    utl::parse_fp(s, ret.lat_);
+    if (s) {
+      ++s;
+    }
+    utl::parse_fp(s, ret.lng_);
+    return ret;
+  }
   return geo::latlng{utl::parse<double>(val(loc, "Latitude")),
                      utl::parse<double>(val(loc, "Longitude"))};
 }
@@ -1084,8 +1095,16 @@ hash_map<key, bitfield> expand_local_to_utc(timetable const& tt,
 // ====
 // MAIN
 // ----
+bool has_gz_extension(fs::path const& x) {
+  return x.extension() == ".gz" || x.extension() == ".GZ";
+}
+
 bool is_xml_file(fs::path const& p) {
-  return p.extension() == ".xml" || p.extension() == ".XML";
+  auto const has_xml_extension = [](fs::path const& x) {
+    return x.extension() == ".xml" || x.extension() == ".XML";
+  };
+  return has_xml_extension(p) ||
+         (has_gz_extension(p) && has_xml_extension(p.stem()));
 }
 
 bool applicable(dir const& d) {
@@ -1116,6 +1135,7 @@ struct intermediate {
   }
 
   file f_;
+  std::string unzip_buf_;
   pugi::xml_document doc_;
   date::time_zone const* tz_;
   notice_map_t notices_;
@@ -1137,31 +1157,42 @@ struct intermediate {
 std::optional<intermediate> get_intermediate(intermediate const& base,
                                              timetable const& tt,
                                              dir const& d,
-                                             fs::path const& path) {
+                                             fs::path const& path,
+                                             std::string const& default_tz) {
   auto im = intermediate{};
   try {
     auto f = d.get_file(path);
     auto doc = pugi::xml_document{};
-    auto const result =
-        f.is_mutable()
-            ? doc.load_buffer_inplace(
-                  f.get_mutable(), f.size(),
-                  pugi::parse_default | pugi::parse_trim_pcdata)
-            : doc.load_buffer(f.data().data(), f.size(),
-                              pugi::parse_default | pugi::parse_trim_pcdata);
-    utl::verify(result, "Unable to parse XML buffer {}: {} at offset {}", path,
-                result.description(), result.offset);
 
-    im.tz_ = date::locate_zone(
-        utl::parse<int>(
-            doc.select_node(
-                   "//FrameDefaults/DefaultLocale/SummerTimeZoneOffset")
-                .node()
-                .child_value()) == 2
-            ? "CET"
-            : doc.select_node("//FrameDefaults/DefaultLocale/TimeZone")
+    auto const opt = pugi::parse_default | pugi::parse_trim_pcdata;
+    auto parse_result = pugi::xml_parse_result{};
+    if (has_gz_extension(path)) {
+      im.unzip_buf_ = gunzip({f.data().data(), f.size()});
+      parse_result = doc.load_buffer_inplace(im.unzip_buf_.data(),
+                                             im.unzip_buf_.size(), opt);
+    } else if (f.is_mutable()) {
+      parse_result = doc.load_buffer_inplace(f.get_mutable(), f.size(), opt);
+    } else {
+      parse_result = doc.load_buffer(f.data().data(), f.size(), opt);
+    }
+
+    utl::verify(parse_result, "Unable to parse XML buffer {}: {} at offset {}",
+                path, parse_result.description(), parse_result.offset);
+
+    try {
+      im.tz_ = date::locate_zone(
+          utl::parse<int>(
+              doc.select_node(
+                     "//FrameDefaults/DefaultLocale/SummerTimeZoneOffset")
                   .node()
-                  .child_value());
+                  .child_value()) == 2
+              ? "CET"
+              : doc.select_node("//FrameDefaults/DefaultLocale/TimeZone")
+                    .node()
+                    .child_value());
+    } catch (...) {
+      im.tz_ = date::locate_zone(default_tz);
+    }
     im.notices_ = get_notices(doc);
     im.authorities_ = get_authorities(doc);
     im.operators_ = get_operators(doc);
@@ -1467,7 +1498,7 @@ void load_timetable(loader_config const& config,
 
   auto base = intermediate{};
   auto const base_im = utl::to_vec(base_files, [&](fs::path const& path) {
-    auto im = get_intermediate(base, tt, d, path);
+    auto im = get_intermediate(base, tt, d, path, config.default_tz_);
     utl::verify(im.has_value(), "failed to parse base {}", path);
     add_to_tt(path, *im);
     base.steal(*im);
@@ -1482,7 +1513,7 @@ void load_timetable(loader_config const& config,
   utl::parallel_for(
       timetable_files,
       [&](fs::path const& path) {
-        auto im = get_intermediate(base, tt, d, path);
+        auto im = get_intermediate(base, tt, d, path, config.default_tz_);
         if (!im.has_value()) {
           return;
         }
