@@ -6,6 +6,8 @@
 #include <string_view>
 #include <variant>
 
+#include "utl/visit.h"
+
 #include "nigiri/common/delta_t.h"
 #include "nigiri/common/interval.h"
 #include "nigiri/rt/run.h"
@@ -149,6 +151,14 @@ struct rt_timetable {
     } else {
       return rt_transport_trip_short_names_[t].view();
     }
+  }
+
+  std::string_view default_trip_short_name(timetable const& tt,
+                                           rt_transport_idx_t const t) const {
+    return utl::visit(
+        trip_short_name(tt, t),
+        [&](translation_idx_t t) { return tt.get_default_translation(t); },
+        [](std::string_view s) { return s; });
   }
 
   std::string_view transport_name(timetable const& tt,

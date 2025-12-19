@@ -287,12 +287,6 @@ routing_result pong(timetable const& tt,
                           : (kFwd ? rtt->fwd_search_lb_graph_[q.prf_idx_]
                                   : rtt->bwd_search_lb_graph_[q.prf_idx_]),
            ping_lb);
-  for (auto const [l, lb] : utl::enumerate(ping_lb)) {
-    if (lb != std::numeric_limits<std::decay_t<decltype(lb)>>::max()) {
-      trace_pong("ping lb {}: {}", loc{tt, location_idx_t{l}}, lb);
-    }
-  }
-  trace_pong("\n");
 
   auto ping_dist_to_dest = std::vector<std::uint16_t>{};
   auto ping_is_dest = bitvec{};
@@ -332,17 +326,10 @@ routing_result pong(timetable const& tt,
                           : (kFwd ? rtt->bwd_search_lb_graph_[q.prf_idx_]
                                   : rtt->fwd_search_lb_graph_[q.prf_idx_]),
            pong_lb);
-  for (auto const [l, lb] : utl::enumerate(pong_lb)) {
-    if (lb != std::numeric_limits<std::decay_t<decltype(lb)>>::max()) {
-      trace_pong("pong lb {}: {}", loc{tt, location_idx_t{l}}, lb);
-    }
-  }
-  trace_pong("\n");
-  q.flip_dir();
 
   auto pong_dist_to_dest = std::vector<std::uint16_t>{};
   auto pong_is_dest = bitvec{};
-  collect_destinations(tt, q.start_, q.start_match_mode_, pong_is_dest,
+  collect_destinations(tt, q.destination_, q.dest_match_mode_, pong_is_dest,
                        pong_dist_to_dest);
 
   auto pong_is_via = std::array<bitvec, kMaxVias>{};
@@ -368,6 +355,8 @@ routing_result pong(timetable const& tt,
       q.require_car_transport_,
       q.prf_idx_ == 2U,
       q.transfer_time_settings_};
+
+  q.flip_dir();
 
   // ========
   // >> PLAY!

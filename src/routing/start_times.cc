@@ -1,12 +1,13 @@
 #include "nigiri/routing/start_times.h"
 
-#include "nigiri/for_each_meta.h"
-#include "nigiri/rt/rt_timetable.h"
-#include "nigiri/special_stations.h"
 #include "utl/enumerate.h"
 #include "utl/equal_ranges_linear.h"
 #include "utl/get_or_create.h"
 #include "utl/overloaded.h"
+
+#include "nigiri/for_each_meta.h"
+#include "nigiri/rt/rt_timetable.h"
+#include "nigiri/special_stations.h"
 
 namespace nigiri::routing {
 
