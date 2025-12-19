@@ -157,8 +157,8 @@ struct rt_timetable {
                                            rt_transport_idx_t const t) const {
     return utl::visit(
         trip_short_name(tt, t),
-        [&](translation_idx_t t) { return tt.get_default_translation(t); },
-        [](std::string_view s) { return s; });
+        [&](translation_idx_t x) { return tt.get_default_translation(t); },
+        [](std::string_view x) { return x; });
   }
 
   std::string_view transport_name(timetable const& tt,
