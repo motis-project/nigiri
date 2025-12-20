@@ -245,6 +245,7 @@ void get_starts(
     start_time_t const& start_time,
     std::vector<offset> const& start_offsets,
     hash_map<location_idx_t, std::vector<td_offset>> const& start_td_offsets,
+    std::vector<via_stop> const& via_stops,
     duration_t const max_start_offset,
     location_match_mode const mode,
     bool const use_start_footpaths,
@@ -253,7 +254,11 @@ void get_starts(
     profile_idx_t const prf_idx,
     transfer_time_settings const& tts) {
   auto shortest_start = hash_map<location_idx_t, duration_t>{};
-  auto const update = [&](location_idx_t const l, duration_t const d) {
+  auto const update = [&](location_idx_t const l, duration_t const offset) {
+    auto const d =
+        offset + (via_stops.empty() || via_stops.front().location_ != l
+                      ? 0_minutes
+                      : via_stops.front().stay_);
     auto& val = utl::get_or_create(shortest_start, l, [d]() { return d; });
     val = std::min(val, d);
   };
@@ -276,6 +281,7 @@ void get_starts(
   for (auto const& s : shortest_start) {
     auto const l = s.first;
     auto const o = s.second;
+
     std::visit(utl::overloaded{[&](interval<unixtime_t> const interval) {
                                  add_starts_in_interval(
                                      search_dir, tt, rtt, interval, l, o,

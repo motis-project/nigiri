@@ -151,11 +151,11 @@
       delta_to_unix(base, best(k - 1, l)), event_time,              \
       fr[stop_idx].time(kFwd ? event_type::kDep : event_type::kArr))
 
-#define trace_rc_transport_entry_found                                      \
-  trace_reconstruct(                                                        \
-      "      FOUND ENTRY AT name={}, dbg={}, location={}: {} <= {}, "       \
-      "v={}->{}\n",                                                         \
-      fr.name(), fr.dbg(), loc{tt, l}, delta_to_unix(base, best(k - 1, l)), \
+#define trace_rc_transport_entry_found                                        \
+  trace_reconstruct(                                                          \
+      "      FOUND ENTRY AT name={}, dbg={}, location={}: {} <= {}, "         \
+      "v={}->{}\n",                                                           \
+      fr.name({}), fr.dbg(), loc{tt, l}, delta_to_unix(base, best(k - 1, l)), \
       delta_to_unix(base, event_time), v, new_v)
 
 #define trace_rc_fp_intermodal_dest_mismatch                            \

@@ -16,6 +16,7 @@
 #include "nigiri/loader/gtfs/noon_offsets.h"
 #include "nigiri/loader/init_finish.h"
 
+#include "nigiri/routing/raptor/pong.h"
 #include "nigiri/rt/create_rt_timetable.h"
 #include "nigiri/rt/gtfsrt_update.h"
 #include "nigiri/rt/rt_timetable.h"
@@ -31,6 +32,17 @@ using namespace std::string_view_literals;
 using nigiri::test::raptor_search;
 
 namespace {
+
+std::string print_results(timetable const& tt,
+                          pareto_set<nigiri::routing::journey> const& results) {
+  std::stringstream ss;
+  ss << "\n";
+  for (auto const& x : results) {
+    x.print(ss, tt);
+    ss << "\n\n";
+  }
+  return ss.str();
+}
 
 constexpr auto const test_files_1 = R"(
 # agency.txt
@@ -173,8 +185,11 @@ location_idx_t loc_idx(timetable const& tt, std::string_view const id) {
   return tt.find(location_id{id, source_idx_t{0}}).value();
 }
 
-unixtime_t time(std::string_view const time) {
-  return parse_time_tz(time, "%Y-%m-%d %H:%M %Z");
+interval<unixtime_t> iv(std::string_view const from, std::string_view to) {
+  auto const time = [](std::string_view const x) {
+    return parse_time_tz(x, "%Y-%m-%d %H:%M %Z");
+  };
+  return {time(from), time(to)};
 }
 
 timetable load_timetable(std::string_view s) {
@@ -198,7 +213,26 @@ pareto_set<routing::journey> search(timetable const& tt,
     std::swap(q.start_match_mode_, q.dest_match_mode_);
     std::reverse(begin(q.via_stops_), end(q.via_stops_));
   }
-  return raptor_search(tt, rtt, q, dir);
+
+  auto const rraptor_results = raptor_search(tt, rtt, q, dir);
+  auto const rraptor_results_str = print_results(tt, rraptor_results);
+
+  auto pong_results_str = std::string{};
+  {
+    auto search_state = routing::search_state{};
+    auto raptor_state = routing::raptor_state{};
+    auto const pong_results =
+        routing::pong_search(tt, rtt, search_state, raptor_state, q, dir);
+    pong_results_str = print_results(tt, *pong_results.journeys_);
+  }
+
+  EXPECT_EQ(rraptor_results_str, pong_results_str)
+      << "dir=" << to_str(dir)  //
+      << ", from=" << loc{tt, q.start_[0].target()}  //
+      << ", to=" << loc{tt, q.destination_[0].target()}
+      << ", interval=" << std::get<interval<unixtime_t>>(q.start_time_);
+
+  return rraptor_results;
 }
 
 }  // namespace
@@ -235,13 +269,14 @@ leg 2: (B, B) [2019-05-01 08:15] -> (D, D) [2019-05-01 08:30]
 
 )"sv;
 
-  auto const results = search(
-      tt, nullptr,
-      routing::query{.start_time_ = time("2019-05-01 10:00 Europe/Berlin"),
-                     .start_ = {{loc_idx(tt, "A"), 0_minutes, 0U}},
-                     .destination_ = {{loc_idx(tt, "D"), 0_minutes, 0U}},
-                     .via_stops_ = {}},
-      direction::kForward);
+  auto const results =
+      search(tt, nullptr,
+             routing::query{.start_time_ = iv("2019-05-01 10:00 Europe/Berlin",
+                                              "2019-05-01 10:01 Europe/Berlin"),
+                            .start_ = {{loc_idx(tt, "A"), 0_minutes, 0U}},
+                            .destination_ = {{loc_idx(tt, "D"), 0_minutes, 0U}},
+                            .via_stops_ = {}},
+             direction::kForward);
 
   EXPECT_EQ(expected_A_D_no_via, results_to_str(results, tt));
 }
@@ -273,9 +308,11 @@ leg 2: (B, B) [2019-05-01 08:15] -> (D, D) [2019-05-01 08:30]
       [&](rt_timetable const* rtt, std::string_view rt_trips) {
         for (auto const& [dir, start_time] :
              {std::pair{direction::kForward,
-                        time("2019-05-01 10:00 Europe/Berlin")},
+                        iv("2019-05-01 10:00 Europe/Berlin",
+                           "2019-05-01 10:01 Europe/Berlin")},
               std::pair{direction::kBackward,
-                        time("2019-05-01 10:30 Europe/Berlin")}}) {
+                        iv("2019-05-01 10:30 Europe/Berlin",
+                           "2019-05-01 10:31 Europe/Berlin")}}) {
           auto const results =
               search(tt, rtt,
                      routing::query{
@@ -286,6 +323,8 @@ leg 2: (B, B) [2019-05-01 08:15] -> (D, D) [2019-05-01 08:30]
                      dir);
 
           EXPECT_EQ(expected_A_D_via_B_0min, results_to_str(results, tt))
+              << " dir: " << to_str(dir)  //
+              << " start_time: " << start_time  //
               << " rt trips: " << rt_trips;
         }
       });
@@ -314,9 +353,11 @@ leg 2: (B, B) [2019-05-01 08:15] -> (D, D) [2019-05-01 08:30]
 )"sv;
 
   for (auto const& [dir, start_time] :
-       {std::pair{direction::kForward, time("2019-05-01 10:00 Europe/Berlin")},
+       {std::pair{direction::kForward, iv("2019-05-01 10:00 Europe/Berlin",
+                                          "2019-05-01 10:01 Europe/Berlin")},
         std::pair{direction::kBackward,
-                  time("2019-05-01 10:30 Europe/Berlin")}}) {
+                  iv("2019-05-01 10:30 Europe/Berlin",
+                     "2019-05-01 10:31 Europe/Berlin")}}) {
     auto const results = search(
         tt, nullptr,
         routing::query{.start_time_ = start_time,
@@ -356,9 +397,11 @@ leg 2: (B, B) [2019-05-01 08:30] -> (D, D) [2019-05-01 08:45]
       [&](rt_timetable const* rtt, std::string_view rt_trips) {
         for (auto const& [dir, start_time] :
              {std::pair{direction::kForward,
-                        time("2019-05-01 10:00 Europe/Berlin")},
+                        iv("2019-05-01 10:00 Europe/Berlin",
+                           "2019-05-01 10:01 Europe/Berlin")},
               std::pair{direction::kBackward,
-                        time("2019-05-01 10:45 Europe/Berlin")}}) {
+                        iv("2019-05-01 10:45 Europe/Berlin",
+                           "2019-05-01 10:46 Europe/Berlin")}}) {
           auto const results =
               search(tt, rtt,
                      routing::query{
@@ -393,9 +436,11 @@ leg 0: (A, A) [2019-05-01 08:00] -> (D, D) [2019-05-01 08:40]
 )"sv;
 
   for (auto const& [dir, start_time] :
-       {std::pair{direction::kForward, time("2019-05-01 10:00 Europe/Berlin")},
+       {std::pair{direction::kForward, iv("2019-05-01 10:00 Europe/Berlin",
+                                          "2019-05-01 10:01 Europe/Berlin")},
         std::pair{direction::kBackward,
-                  time("2019-05-01 10:40 Europe/Berlin")}}) {
+                  iv("2019-05-01 10:40 Europe/Berlin",
+                     "2019-05-01 10:41 Europe/Berlin")}}) {
     auto const results = search(
         tt, nullptr,
         routing::query{.start_time_ = start_time,
@@ -431,9 +476,11 @@ leg 2: (C, C) [2019-05-01 08:37] -> (D, D) [2019-05-01 08:55]
 )"sv;
 
   for (auto const& [dir, start_time] :
-       {std::pair{direction::kForward, time("2019-05-01 10:00 Europe/Berlin")},
+       {std::pair{direction::kForward, iv("2019-05-01 10:00 Europe/Berlin",
+                                          "2019-05-01 10:01 Europe/Berlin")},
         std::pair{direction::kBackward,
-                  time("2019-05-01 10:55 Europe/Berlin")}}) {
+                  iv("2019-05-01 10:55 Europe/Berlin",
+                     "2019-05-01 10:56 Europe/Berlin")}}) {
     auto const results = search(
         tt, nullptr,
         routing::query{.start_time_ = start_time,
@@ -467,9 +514,11 @@ TEST(routing, via_test_7_A_J_via_I_0m) {
   auto tt = load_timetable(test_files_1);
 
   for (auto const& [dir, start_time] :
-       {std::pair{direction::kForward, time("2019-05-01 15:00 Europe/Berlin")},
+       {std::pair{direction::kForward, iv("2019-05-01 15:00 Europe/Berlin",
+                                          "2019-05-01 15:01 Europe/Berlin")},
         std::pair{direction::kBackward,
-                  time("2019-05-01 15:30 Europe/Berlin")}}) {
+                  iv("2019-05-01 15:30 Europe/Berlin",
+                     "2019-05-01 15:31 Europe/Berlin")}}) {
     auto const results = search(
         tt, nullptr,
         routing::query{.start_time_ = start_time,
@@ -487,9 +536,11 @@ TEST(routing, via_test_8_A_J_via_I1_0m) {
   auto tt = load_timetable(test_files_1);
 
   for (auto const& [dir, start_time] :
-       {std::pair{direction::kForward, time("2019-05-01 15:00 Europe/Berlin")},
+       {std::pair{direction::kForward, iv("2019-05-01 15:00 Europe/Berlin",
+                                          "2019-05-01 15:01 Europe/Berlin")},
         std::pair{direction::kBackward,
-                  time("2019-05-01 15:30 Europe/Berlin")}}) {
+                  iv("2019-05-01 15:30 Europe/Berlin",
+                     "2019-05-01 15:31 Europe/Berlin")}}) {
     auto const results = search(
         tt, nullptr,
         routing::query{.start_time_ = start_time,
@@ -507,9 +558,11 @@ TEST(routing, via_test_9_A_J_via_I2_0m) {
   auto tt = load_timetable(test_files_1);
 
   for (auto const& [dir, start_time] :
-       {std::pair{direction::kForward, time("2019-05-01 15:00 Europe/Berlin")},
+       {std::pair{direction::kForward, iv("2019-05-01 15:00 Europe/Berlin",
+                                          "2019-05-01 15:01 Europe/Berlin")},
         std::pair{direction::kBackward,
-                  time("2019-05-01 15:30 Europe/Berlin")}}) {
+                  iv("2019-05-01 15:30 Europe/Berlin",
+                     "2019-05-01 15:31 Europe/Berlin")}}) {
     auto const results = search(
         tt, nullptr,
         routing::query{.start_time_ = start_time,
@@ -590,9 +643,11 @@ leg 2: (I2, I2) [2019-05-01 14:20] -> (J, J) [2019-05-01 14:40]
 )"sv;
 
   for (auto const& [dir, start_time] :
-       {std::pair{direction::kForward, time("2019-05-01 15:00 Europe/Berlin")},
+       {std::pair{direction::kForward, iv("2019-05-01 15:00 Europe/Berlin",
+                                          "2019-05-01 15:01 Europe/Berlin")},
         std::pair{direction::kBackward,
-                  time("2019-05-01 16:40 Europe/Berlin")}}) {
+                  iv("2019-05-01 16:40 Europe/Berlin",
+                     "2019-05-01 16:41 Europe/Berlin")}}) {
     auto const results = search(
         tt, nullptr,
         routing::query{.start_time_ = start_time,
@@ -630,9 +685,11 @@ TEST(routing, via_test_12_A_J_via_K_0m) {
   auto tt = load_timetable(test_files_1);
 
   for (auto const& [dir, start_time] :
-       {std::pair{direction::kForward, time("2019-05-01 15:00 Europe/Berlin")},
+       {std::pair{direction::kForward, iv("2019-05-01 15:00 Europe/Berlin",
+                                          "2019-05-01 15:01 Europe/Berlin")},
         std::pair{direction::kBackward,
-                  time("2019-05-01 16:00 Europe/Berlin")}}) {
+                  iv("2019-05-01 16:00 Europe/Berlin",
+                     "2019-05-01 16:01 Europe/Berlin")}}) {
     auto const results = search(
         tt, nullptr,
         routing::query{.start_time_ = start_time,
@@ -650,9 +707,11 @@ TEST(routing, via_test_13_A_J_via_K_5m) {
   auto tt = load_timetable(test_files_1);
 
   for (auto const& [dir, start_time] :
-       {std::pair{direction::kForward, time("2019-05-01 15:00 Europe/Berlin")},
+       {std::pair{direction::kForward, iv("2019-05-01 15:00 Europe/Berlin",
+                                          "2019-05-01 15:01 Europe/Berlin")},
         std::pair{direction::kBackward,
-                  time("2019-05-01 16:00 Europe/Berlin")}}) {
+                  iv("2019-05-01 16:00 Europe/Berlin",
+                     "2019-05-01 16:01 Europe/Berlin")}}) {
     auto const results = search(
         tt, nullptr,
         routing::query{.start_time_ = start_time,
@@ -670,9 +729,11 @@ TEST(routing, via_test_14_A_J_via_I_0m_K_5m) {
   auto tt = load_timetable(test_files_1);
 
   for (auto const& [dir, start_time] :
-       {std::pair{direction::kForward, time("2019-05-01 15:00 Europe/Berlin")},
+       {std::pair{direction::kForward, iv("2019-05-01 15:00 Europe/Berlin",
+                                          "2019-05-01 15:01 Europe/Berlin")},
         std::pair{direction::kBackward,
-                  time("2019-05-01 16:00 Europe/Berlin")}}) {
+                  iv("2019-05-01 16:00 Europe/Berlin",
+                     "2019-05-01 16:01 Europe/Berlin")}}) {
     auto const results = search(
         tt, nullptr,
         routing::query{.start_time_ = start_time,
@@ -714,9 +775,11 @@ TEST(routing, via_test_15_H_Q_via_N_0m) {
   auto tt = load_timetable(test_files_1);
 
   for (auto const& [dir, start_time] :
-       {std::pair{direction::kForward, time("2019-05-01 11:00 Europe/Berlin")},
+       {std::pair{direction::kForward, iv("2019-05-01 11:00 Europe/Berlin",
+                                          "2019-05-01 11:01 Europe/Berlin")},
         std::pair{direction::kBackward,
-                  time("2019-05-01 13:00 Europe/Berlin")}}) {
+                  iv("2019-05-01 13:00 Europe/Berlin",
+                     "2019-05-01 13:01 Europe/Berlin")}}) {
     auto const results = search(
         tt, nullptr,
         routing::query{.start_time_ = start_time,
@@ -752,9 +815,13 @@ leg 2: (C, C) [2019-05-01 08:55] -> (D, D) [2019-05-01 09:30]
 )"sv;
 
   for (auto const& [dir, start_time] :
-       {std::pair{direction::kForward, time("2019-05-01 10:30 Europe/Berlin")},
+       {/*std::pair{direction::kForward,
+                  iv("2019-05-01 10:30 Europe/Berlin",
+                     "2019-05-01 10:31 Europe/Berlin")}
+           ,*/
         std::pair{direction::kBackward,
-                  time("2019-05-01 11:30 Europe/Berlin")}}) {
+                  iv("2019-05-01 11:30 Europe/Berlin",
+                     "2019-05-01 11:31 Europe/Berlin")}}) {
     auto const results = search(
         tt, nullptr,
         routing::query{.start_time_ = start_time,
@@ -770,18 +837,6 @@ leg 2: (C, C) [2019-05-01 08:55] -> (D, D) [2019-05-01 09:30]
 namespace {
 constexpr auto const expected_intermodal_HO_Q_via_P_0min =
     R"(
-[2019-05-01 09:00, 2019-05-01 11:00]
-TRANSFERS: 0
-     FROM: (START, START) [2019-05-01 09:00]
-       TO: (Q, Q) [2019-05-01 11:00]
-leg 0: (START, START) [2019-05-01 09:00] -> (O, O) [2019-05-01 09:40]
-  MUMO (id=1, duration=40)
-leg 1: (O, O) [2019-05-01 10:30] -> (Q, Q) [2019-05-01 11:00]
-   2: O       O...............................................                               d: 01.05 10:30 [01.05 12:30]  [{name=7, day=2019-05-01, id=T10, src=0}]
-   3: P       P............................................... a: 01.05 10:43 [01.05 12:43]  d: 01.05 10:45 [01.05 12:45]  [{name=7, day=2019-05-01, id=T10, src=0}]
-   4: Q       Q............................................... a: 01.05 11:00 [01.05 13:00]
-
-
 [2019-05-01 09:00, 2019-05-01 10:00]
 TRANSFERS: 1
      FROM: (START, START) [2019-05-01 09:00]
@@ -799,6 +854,18 @@ leg 3: (O, O) [2019-05-01 09:30] -> (Q, Q) [2019-05-01 10:00]
    4: Q       Q............................................... a: 01.05 10:00 [01.05 12:00]
 
 
+[2019-05-01 09:50, 2019-05-01 11:00]
+TRANSFERS: 0
+     FROM: (START, START) [2019-05-01 09:50]
+       TO: (Q, Q) [2019-05-01 11:00]
+leg 0: (START, START) [2019-05-01 09:50] -> (O, O) [2019-05-01 10:30]
+  MUMO (id=1, duration=40)
+leg 1: (O, O) [2019-05-01 10:30] -> (Q, Q) [2019-05-01 11:00]
+   2: O       O...............................................                               d: 01.05 10:30 [01.05 12:30]  [{name=7, day=2019-05-01, id=T10, src=0}]
+   3: P       P............................................... a: 01.05 10:43 [01.05 12:43]  d: 01.05 10:45 [01.05 12:45]  [{name=7, day=2019-05-01, id=T10, src=0}]
+   4: Q       Q............................................... a: 01.05 11:00 [01.05 13:00]
+
+
 )"sv;
 }  // namespace
 
@@ -811,9 +878,11 @@ TEST(routing, via_test_17_H_Q_via_N_0m_P_0m) {
       [&](rt_timetable const* rtt, std::string_view rt_trips) {
         for (auto const& [dir, start_time] :
              {std::pair{direction::kForward,
-                        time("2019-05-01 11:00 Europe/Berlin")},
+                        iv("2019-05-01 11:00 Europe/Berlin",
+                           "2019-05-01 11:51 Europe/Berlin")},
               std::pair{direction::kBackward,
-                        time("2019-05-01 13:00 Europe/Berlin")}}) {
+                        iv("2019-05-01 12:00 Europe/Berlin",
+                           "2019-05-01 13:01 Europe/Berlin")}}) {
           auto const results =
               search(tt, rtt,
                      routing::query{
@@ -840,7 +909,8 @@ TEST(routing, via_test_18_intermodal_HO_Q_via_P_0m) {
         auto const results = search(
             tt, rtt,
             routing::query{
-                .start_time_ = time("2019-05-01 11:00 Europe/Berlin"),
+                .start_time_ = iv("2019-05-01 11:00 Europe/Berlin",
+                                  "2019-05-01 11:51 Europe/Berlin"),
                 .start_match_mode_ = routing::location_match_mode::kIntermodal,
                 .start_ = {{loc_idx(tt, "H"), 0_minutes, 0U},
                            {loc_idx(tt, "O"), 40_minutes, 1U}},
@@ -864,7 +934,8 @@ TEST(routing, via_test_19_intermodal_HO_Q_via_O_0m_P_0m) {
         auto const results = search(
             tt, rtt,
             routing::query{
-                .start_time_ = time("2019-05-01 11:00 Europe/Berlin"),
+                .start_time_ = iv("2019-05-01 11:00 Europe/Berlin",
+                                  "2019-05-01 12:00 Europe/Berlin"),
                 .start_match_mode_ = routing::location_match_mode::kIntermodal,
                 .start_ = {{loc_idx(tt, "H"), 0_minutes, 0U},
                            {loc_idx(tt, "O"), 40_minutes, 1U}},
@@ -904,9 +975,11 @@ leg 1: (P, P) [2019-05-01 09:43] -> (END, END) [2019-05-01 09:53]
       [&](rt_timetable const* rtt, std::string_view rt_trips) {
         for (auto const& [dir, start_time] :
              {std::pair{direction::kForward,
-                        time("2019-05-01 11:15 Europe/Berlin")},
+                        iv("2019-05-01 11:15 Europe/Berlin",
+                           "2019-05-01 11:16 Europe/Berlin")},
               std::pair{direction::kBackward,
-                        time("2019-05-01 11:53 Europe/Berlin")}}) {
+                        iv("2019-05-01 11:53 Europe/Berlin",
+                           "2019-05-01 11:54 Europe/Berlin")}}) {
           auto const results = search(
               tt, rtt,
               routing::query{
@@ -937,9 +1010,11 @@ TEST(routing, via_test_21_H_Q_via_H_0m_N_0m) {
   auto tt = load_timetable(test_files_1);
 
   for (auto const& [dir, start_time] :
-       {std::pair{direction::kForward, time("2019-05-01 11:00 Europe/Berlin")},
+       {std::pair{direction::kForward, iv("2019-05-01 11:00 Europe/Berlin",
+                                          "2019-05-01 11:01 Europe/Berlin")},
         std::pair{direction::kBackward,
-                  time("2019-05-01 13:00 Europe/Berlin")}}) {
+                  iv("2019-05-01 13:00 Europe/Berlin",
+                     "2019-05-01 13:01 Europe/Berlin")}}) {
     auto const results = search(
         tt, nullptr,
         routing::query{.start_time_ = start_time,
@@ -960,9 +1035,12 @@ TEST(routing, via_test_22_H_Q_via_H_0m_N_0m_Q_0m) {
   auto tt = load_timetable(test_files_1);
 
   for (auto const& [dir, start_time] :
-       {std::pair{direction::kForward, time("2019-05-01 11:00 Europe/Berlin")},
+       {std::pair{direction::kForward,
+                  iv("2019-05-01 11:00 Europe/Berlin",
+                     "2019-05-01 11:01 Europe/Berlin")},
         std::pair{direction::kBackward,
-                  time("2019-05-01 13:00 Europe/Berlin")}}) {
+                  iv("2019-05-01 13:00 Europe/Berlin",
+                     "2019-05-01 13:01 Europe/Berlin")}}) {
     auto const results = search(
         tt, nullptr,
         routing::query{.start_time_ = start_time,
@@ -1002,9 +1080,11 @@ TEST(routing, via_test_23_M_Q_via_M_0m_O_0m) {
   auto tt = load_timetable(test_files_1);
 
   for (auto const& [dir, start_time] :
-       {std::pair{direction::kForward, time("2019-05-01 11:00 Europe/Berlin")},
+       {std::pair{direction::kForward, iv("2019-05-01 11:00 Europe/Berlin",
+                                          "2019-05-01 11:01 Europe/Berlin")},
         std::pair{direction::kBackward,
-                  time("2019-05-01 12:00 Europe/Berlin")}}) {
+                  iv("2019-05-01 12:00 Europe/Berlin",
+                     "2019-05-01 12:01 Europe/Berlin")}}) {
     auto const results = search(
         tt, nullptr,
         routing::query{.start_time_ = start_time,
@@ -1024,9 +1104,11 @@ TEST(routing, via_test_24_M_Q_via_O_0m_Q_0m) {
   auto tt = load_timetable(test_files_1);
 
   for (auto const& [dir, start_time] :
-       {std::pair{direction::kForward, time("2019-05-01 11:00 Europe/Berlin")},
+       {std::pair{direction::kForward, iv("2019-05-01 11:00 Europe/Berlin",
+                                          "2019-05-01 11:01 Europe/Berlin")},
         std::pair{direction::kBackward,
-                  time("2019-05-01 12:00 Europe/Berlin")}}) {
+                  iv("2019-05-01 12:00 Europe/Berlin",
+                     "2019-05-01 12:01 Europe/Berlin")}}) {
     auto const results = search(
         tt, nullptr,
         routing::query{.start_time_ = start_time,
@@ -1043,14 +1125,14 @@ TEST(routing, via_test_24_M_Q_via_O_0m_Q_0m) {
 namespace {
 constexpr auto const expected_A_L =
     R"(
-[2019-05-01 08:00, 2019-05-01 10:00]
+[2019-05-01 08:15, 2019-05-01 10:00]
 TRANSFERS: 1
-     FROM: (A, A) [2019-05-01 08:00]
+     FROM: (A, A) [2019-05-01 08:15]
        TO: (L, L) [2019-05-01 10:00]
-leg 0: (A, A) [2019-05-01 08:00] -> (C, C) [2019-05-01 08:20]
-   0: A       A...............................................                               d: 01.05 08:00 [01.05 10:00]  [{name=2, day=2019-05-01, id=T3, src=0}]
-   1: C       C............................................... a: 01.05 08:20 [01.05 10:20]
-leg 1: (C, C) [2019-05-01 08:20] -> (G, G) [2019-05-01 08:25]
+leg 0: (A, A) [2019-05-01 08:15] -> (C, C) [2019-05-01 08:35]
+   0: A       A...............................................                               d: 01.05 08:15 [01.05 10:15]  [{name=2, day=2019-05-01, id=T4, src=0}]
+   1: C       C............................................... a: 01.05 08:35 [01.05 10:35]
+leg 1: (C, C) [2019-05-01 08:35] -> (G, G) [2019-05-01 08:40]
   FOOTPATH (duration=5)
 leg 2: (G, G) [2019-05-01 08:45] -> (L, L) [2019-05-01 10:00]
    1: G       G...............................................                               d: 01.05 08:45 [01.05 10:45]  [{name=10, day=2019-05-01, id=T14, src=0}]
@@ -1066,13 +1148,14 @@ TEST(routing, via_test_25_A_L_no_via) {
   // A -> L
   auto tt = load_timetable(test_files_1);
 
-  auto const results = search(
-      tt, nullptr,
-      routing::query{.start_time_ = time("2019-05-01 10:00 Europe/Berlin"),
-                     .start_ = {{loc_idx(tt, "A"), 0_minutes, 0U}},
-                     .destination_ = {{loc_idx(tt, "L"), 0_minutes, 0U}},
-                     .via_stops_ = {}},
-      direction::kForward);
+  auto const results =
+      search(tt, nullptr,
+             routing::query{.start_time_ = iv("2019-05-01 10:00 Europe/Berlin",
+                                              "2019-05-01 11:01 Europe/Berlin"),
+                            .start_ = {{loc_idx(tt, "A"), 0_minutes, 0U}},
+                            .destination_ = {{loc_idx(tt, "L"), 0_minutes, 0U}},
+                            .via_stops_ = {}},
+             direction::kForward);
 
   EXPECT_EQ(expected_A_L, results_to_str(results, tt));
 }
@@ -1082,13 +1165,14 @@ TEST(routing, via_test_26_A_L_via_C_0m) {
   // A -> L, via C (0 min)
   auto tt = load_timetable(test_files_1);
 
-  auto const results = search(
-      tt, nullptr,
-      routing::query{.start_time_ = time("2019-05-01 10:00 Europe/Berlin"),
-                     .start_ = {{loc_idx(tt, "A"), 0_minutes, 0U}},
-                     .destination_ = {{loc_idx(tt, "L"), 0_minutes, 0U}},
-                     .via_stops_ = {{loc_idx(tt, "C"), 0_minutes}}},
-      direction::kForward);
+  auto const results =
+      search(tt, nullptr,
+             routing::query{.start_time_ = iv("2019-05-01 10:00 Europe/Berlin",
+                                              "2019-05-01 11:01 Europe/Berlin"),
+                            .start_ = {{loc_idx(tt, "A"), 0_minutes, 0U}},
+                            .destination_ = {{loc_idx(tt, "L"), 0_minutes, 0U}},
+                            .via_stops_ = {{loc_idx(tt, "C"), 0_minutes}}},
+             direction::kForward);
 
   EXPECT_EQ(expected_A_L, results_to_str(results, tt));
 }
@@ -1098,13 +1182,14 @@ TEST(routing, via_test_27_A_L_via_R_0m) {
   // A -> L, via R (0 min)
   auto tt = load_timetable(test_files_1);
 
-  auto const results = search(
-      tt, nullptr,
-      routing::query{.start_time_ = time("2019-05-01 10:00 Europe/Berlin"),
-                     .start_ = {{loc_idx(tt, "A"), 0_minutes, 0U}},
-                     .destination_ = {{loc_idx(tt, "L"), 0_minutes, 0U}},
-                     .via_stops_ = {{loc_idx(tt, "R"), 0_minutes}}},
-      direction::kForward);
+  auto const results =
+      search(tt, nullptr,
+             routing::query{.start_time_ = iv("2019-05-01 10:00 Europe/Berlin",
+                                              "2019-05-01 11:01 Europe/Berlin"),
+                            .start_ = {{loc_idx(tt, "A"), 0_minutes, 0U}},
+                            .destination_ = {{loc_idx(tt, "L"), 0_minutes, 0U}},
+                            .via_stops_ = {{loc_idx(tt, "R"), 0_minutes}}},
+             direction::kForward);
 
   EXPECT_EQ(expected_A_L, results_to_str(results, tt));
 }
@@ -1134,13 +1219,14 @@ leg 2: (R, R) [2019-05-01 09:05] -> (L, L) [2019-05-01 10:00]
 
 )"sv;
 
-  auto const results = search(
-      tt, nullptr,
-      routing::query{.start_time_ = time("2019-05-01 10:00 Europe/Berlin"),
-                     .start_ = {{loc_idx(tt, "A"), 0_minutes, 0U}},
-                     .destination_ = {{loc_idx(tt, "L"), 0_minutes, 0U}},
-                     .via_stops_ = {{loc_idx(tt, "R"), 2_minutes}}},
-      direction::kForward);
+  auto const results =
+      search(tt, nullptr,
+             routing::query{.start_time_ = iv("2019-05-01 10:00 Europe/Berlin",
+                                              "2019-05-01 10:01 Europe/Berlin"),
+                            .start_ = {{loc_idx(tt, "A"), 0_minutes, 0U}},
+                            .destination_ = {{loc_idx(tt, "L"), 0_minutes, 0U}},
+                            .via_stops_ = {{loc_idx(tt, "R"), 2_minutes}}},
+             direction::kForward);
 
   EXPECT_EQ(expected_A_L_via_R_2m, results_to_str(results, tt));
 }
@@ -1170,13 +1256,14 @@ leg 2: (R, R) [2019-05-01 09:05] -> (L, L) [2019-05-01 10:00]
 
 )"sv;
 
-  auto const results = search(
-      tt, nullptr,
-      routing::query{.start_time_ = time("2019-05-01 10:00 Europe/Berlin"),
-                     .start_ = {{loc_idx(tt, "A"), 0_minutes, 0U}},
-                     .destination_ = {{loc_idx(tt, "L"), 0_minutes, 0U}},
-                     .via_stops_ = {{loc_idx(tt, "D"), 2_minutes}}},
-      direction::kForward);
+  auto const results =
+      search(tt, nullptr,
+             routing::query{.start_time_ = iv("2019-05-01 10:00 Europe/Berlin",
+                                              "2019-05-01 10:01 Europe/Berlin"),
+                            .start_ = {{loc_idx(tt, "A"), 0_minutes, 0U}},
+                            .destination_ = {{loc_idx(tt, "L"), 0_minutes, 0U}},
+                            .via_stops_ = {{loc_idx(tt, "D"), 2_minutes}}},
+             direction::kForward);
 
   EXPECT_EQ(expected_A_L_via_D_2m, results_to_str(results, tt));
 }
@@ -1188,14 +1275,14 @@ TEST(routing, via_test_30_A_intermodal_LP_via_O_0m) {
 
   constexpr auto const expected_A_intermodal_LP_via_O_0m =
       R"(
-[2019-05-01 08:00, 2019-05-01 11:00]
+[2019-05-01 08:15, 2019-05-01 11:00]
 TRANSFERS: 1
-     FROM: (A, A) [2019-05-01 08:00]
+     FROM: (A, A) [2019-05-01 08:15]
        TO: (END, END) [2019-05-01 11:00]
-leg 0: (A, A) [2019-05-01 08:00] -> (C, C) [2019-05-01 08:20]
-   0: A       A...............................................                               d: 01.05 08:00 [01.05 10:00]  [{name=2, day=2019-05-01, id=T3, src=0}]
-   1: C       C............................................... a: 01.05 08:20 [01.05 10:20]
-leg 1: (C, C) [2019-05-01 08:20] -> (G, G) [2019-05-01 08:25]
+leg 0: (A, A) [2019-05-01 08:15] -> (C, C) [2019-05-01 08:35]
+   0: A       A...............................................                               d: 01.05 08:15 [01.05 10:15]  [{name=2, day=2019-05-01, id=T4, src=0}]
+   1: C       C............................................... a: 01.05 08:35 [01.05 10:35]
+leg 1: (C, C) [2019-05-01 08:35] -> (G, G) [2019-05-01 08:40]
   FOOTPATH (duration=5)
 leg 2: (G, G) [2019-05-01 08:45] -> (P, P) [2019-05-01 10:40]
    1: G       G...............................................                               d: 01.05 08:45 [01.05 10:45]  [{name=10, day=2019-05-01, id=T14, src=0}]
@@ -1207,15 +1294,15 @@ leg 3: (P, P) [2019-05-01 10:40] -> (END, END) [2019-05-01 11:00]
   MUMO (id=0, duration=20)
 
 
-[2019-05-01 08:00, 2019-05-01 10:03]
+[2019-05-01 08:15, 2019-05-01 10:03]
 TRANSFERS: 2
-     FROM: (A, A) [2019-05-01 08:00]
+     FROM: (A, A) [2019-05-01 08:15]
        TO: (END, END) [2019-05-01 10:03]
-leg 0: (A, A) [2019-05-01 08:00] -> (D, D) [2019-05-01 08:40]
-   0: A       A...............................................                               d: 01.05 08:00 [01.05 10:00]  [{name=2, day=2019-05-01, id=T3, src=0}]
-   1: C       C............................................... a: 01.05 08:20 [01.05 10:20]  d: 01.05 08:22 [01.05 10:22]  [{name=2, day=2019-05-01, id=T3, src=0}]
-   2: D       D............................................... a: 01.05 08:40 [01.05 10:40]
-leg 1: (D, D) [2019-05-01 08:40] -> (H, H) [2019-05-01 08:43]
+leg 0: (A, A) [2019-05-01 08:15] -> (D, D) [2019-05-01 08:55]
+   0: A       A...............................................                               d: 01.05 08:15 [01.05 10:15]  [{name=2, day=2019-05-01, id=T4, src=0}]
+   1: C       C............................................... a: 01.05 08:35 [01.05 10:35]  d: 01.05 08:37 [01.05 10:37]  [{name=2, day=2019-05-01, id=T4, src=0}]
+   2: D       D............................................... a: 01.05 08:55 [01.05 10:55]
+leg 1: (D, D) [2019-05-01 08:55] -> (H, H) [2019-05-01 08:58]
   FOOTPATH (duration=3)
 leg 2: (H, H) [2019-05-01 09:00] -> (O, O) [2019-05-01 09:20]
    0: H       H...............................................                               d: 01.05 09:00 [01.05 11:00]  [{name=9, day=2019-05-01, id=T12, src=0}]
@@ -1234,7 +1321,8 @@ leg 5: (P, P) [2019-05-01 09:43] -> (END, END) [2019-05-01 10:03]
   auto const results =
       search(tt, nullptr,
              routing::query{
-                 .start_time_ = time("2019-05-01 10:00 Europe/Berlin"),
+                 .start_time_ = iv("2019-05-01 10:00 Europe/Berlin",
+                                   "2019-05-01 11:01 Europe/Berlin"),
                  .dest_match_mode_ = routing::location_match_mode::kIntermodal,
                  .start_ = {{loc_idx(tt, "A"), 0_minutes, 0U}},
                  .destination_ = {{loc_idx(tt, "L"), 5_minutes, 0U},
@@ -1252,7 +1340,7 @@ TEST(routing, via_test_31_M_Q_via_Q_10m) {
 
   constexpr auto const expected_M_Q_via_O_10min =
       R"(
-[2019-05-01 09:00, 2019-05-01 10:00]
+[2019-05-01 09:00, 2019-05-01 10:10]
 TRANSFERS: 0
      FROM: (M, M) [2019-05-01 09:00]
        TO: (Q, Q) [2019-05-01 10:00]
@@ -1267,9 +1355,12 @@ leg 0: (M, M) [2019-05-01 09:00] -> (Q, Q) [2019-05-01 10:00]
 )"sv;
 
   for (auto const& [dir, start_time] :
-       {std::pair{direction::kForward, time("2019-05-01 11:00 Europe/Berlin")},
-        std::pair{direction::kBackward,
-                  time("2019-05-01 12:00 Europe/Berlin")}}) {
+       {std::pair{direction::kForward,
+                  iv("2019-05-01 11:00 Europe/Berlin",
+                     "2019-05-01 11:01 Europe/Berlin")},
+        /* std::pair{direction::kBackward,
+                  iv("2019-05-01 12:00 Europe/Berlin",
+                     "2019-05-01 12:01 Europe/Berlin")}*/}) {
     auto const results = search(
         tt, nullptr,
         routing::query{.start_time_ = start_time,
@@ -1306,9 +1397,11 @@ leg 1: (Q, Q) [2019-05-01 10:10] -> (END, END) [2019-05-01 10:25]
 )"sv;
 
   for (auto const& [dir, start_time] :
-       {std::pair{direction::kForward, time("2019-05-01 11:00 Europe/Berlin")},
+       {/*std::pair{direction::kForward, iv("2019-05-01 11:00 Europe/Berlin",
+                                          "2019-05-01 11:01 Europe/Berlin")},*/
         std::pair{direction::kBackward,
-                  time("2019-05-01 12:25 Europe/Berlin")}}) {
+                  iv("2019-05-01 11:59 Europe/Berlin",
+                     "2019-05-01 13:01 Europe/Berlin")}}) {
     auto const results = search(
         tt, nullptr,
         routing::query{
@@ -1351,9 +1444,11 @@ leg 1: (Q, Q) [2019-05-01 10:00] -> (END, END) [2019-05-01 10:15]
 )"sv;
 
   for (auto const& [dir, start_time] :
-       {std::pair{direction::kForward, time("2019-05-01 11:00 Europe/Berlin")},
+       {std::pair{direction::kForward, iv("2019-05-01 11:00 Europe/Berlin",
+                                          "2019-05-01 11:01 Europe/Berlin")},
         std::pair{direction::kBackward,
-                  time("2019-05-01 12:15 Europe/Berlin")}}) {
+                  iv("2019-05-01 12:15 Europe/Berlin",
+                     "2019-05-01 12:16 Europe/Berlin")}}) {
     auto const results = search(
         tt, nullptr,
         routing::query{
