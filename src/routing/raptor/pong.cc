@@ -287,12 +287,6 @@ routing_result pong(timetable const& tt,
                           : (kFwd ? rtt->fwd_search_lb_graph_[q.prf_idx_]
                                   : rtt->bwd_search_lb_graph_[q.prf_idx_]),
            ping_lb);
-  for (auto const [l, lb] : utl::enumerate(ping_lb)) {
-    if (lb != std::numeric_limits<std::decay_t<decltype(lb)>>::max()) {
-      trace_pong("ping lb {}: {}", loc{tt, location_idx_t{l}}, lb);
-    }
-  }
-  trace_pong("\n");
 
   auto ping_dist_to_dest = std::vector<std::uint16_t>{};
   auto ping_is_dest = bitvec{};
@@ -332,23 +326,14 @@ routing_result pong(timetable const& tt,
                           : (kFwd ? rtt->bwd_search_lb_graph_[q.prf_idx_]
                                   : rtt->fwd_search_lb_graph_[q.prf_idx_]),
            pong_lb);
-  for (auto const [l, lb] : utl::enumerate(pong_lb)) {
-    if (lb != std::numeric_limits<std::decay_t<decltype(lb)>>::max()) {
-      trace_pong("pong lb {}: {}", loc{tt, location_idx_t{l}}, lb);
-    }
-  }
-  trace_pong("\n");
-  q.flip_dir();
 
   auto pong_dist_to_dest = std::vector<std::uint16_t>{};
   auto pong_is_dest = bitvec{};
-  collect_destinations(tt, q.start_, q.start_match_mode_, pong_is_dest,
+  collect_destinations(tt, q.destination_, q.dest_match_mode_, pong_is_dest,
                        pong_dist_to_dest);
 
   auto pong_is_via = std::array<bitvec, kMaxVias>{};
-  auto reverse_via = q.via_stops_;
-  std::reverse(begin(reverse_via), end(reverse_via));
-  for (auto const [i, via] : utl::enumerate(reverse_via)) {
+  for (auto const [i, via] : utl::enumerate(q.via_stops_)) {
     collect_via_destinations(tt, via.location_, pong_is_via[i]);
   }
 
@@ -368,6 +353,8 @@ routing_result pong(timetable const& tt,
       q.require_car_transport_,
       q.prf_idx_ == 2U,
       q.transfer_time_settings_};
+
+  q.flip_dir();
 
   // ========
   // >> PLAY!
@@ -411,8 +398,9 @@ routing_result pong(timetable const& tt,
 
     starts.clear();
     get_starts(SearchDir, tt, rtt, start_time, q.start_, q.td_start_,
-               q.max_start_offset_, q.start_match_mode_, q.use_start_footpaths_,
-               starts, false, q.prf_idx_, q.transfer_time_settings_);
+               q.via_stops_, q.max_start_offset_, q.start_match_mode_,
+               q.use_start_footpaths_, starts, false, q.prf_idx_,
+               q.transfer_time_settings_);
     ping.reset_arrivals();
     ping.next_start_time();
     for (auto const& s : starts) {
@@ -453,7 +441,8 @@ routing_result pong(timetable const& tt,
 
       starts.clear();
       get_starts(flip(SearchDir), tt, rtt, ping_j.dest_time_, q.start_,
-                 q.td_start_, q.max_start_offset_, q.start_match_mode_,
+                 q.td_start_, q.via_stops_, q.max_start_offset_,
+                 q.start_match_mode_,
                  q.start_match_mode_ != location_match_mode::kIntermodal,
                  starts, false, q.prf_idx_, q.transfer_time_settings_);
       pong.next_start_time();

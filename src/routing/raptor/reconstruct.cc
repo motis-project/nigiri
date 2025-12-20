@@ -462,21 +462,17 @@ void reconstruct_journey_with_vias(timetable const& tt,
 
     auto const backup_v = v;
 
-    auto const is_final_leg = k == j.transfers_ + 1U;
     auto const is_intermodal =
         q.dest_match_mode_ == location_match_mode::kIntermodal;
     auto stay_l = 0_minutes;
     auto stay_fp_target = 0_minutes;
-    trace_reconstruct(
-        "  [check_fp] v={}, l={}, fp.target={}, final_leg={}, intermodal={}\n",
-        v, loc{tt, l}, loc{tt, fp.target()}, is_final_leg, is_intermodal);
+    trace_reconstruct("  [check_fp] v={}, l={}, fp.target={}, intermodal={}\n",
+                      v, loc{tt, l}, loc{tt, fp.target()}, is_intermodal);
     if (v != 0 && matches(tt, location_match_mode::kEquivalent,
                           q.via_stops_[v - 1].location_, l)) {
       --v;
       if (matches(tt, location_match_mode::kEquivalent, l, fp.target())) {
-        if (!is_final_leg) {
-          stay_fp_target = q.via_stops_[v].stay_;
-        }
+        stay_fp_target = q.via_stops_[v].stay_;
         trace_reconstruct(
             "  [check_fp]: fp start+target matches current via: v={}->{}, "
             "stay_target={}\n",
@@ -492,7 +488,7 @@ void reconstruct_journey_with_vias(timetable const& tt,
                           q.via_stops_[v - 1].location_, fp.target())) {
       --v;
       assert(stay_fp_target == 0_minutes);
-      if (!is_final_leg || is_intermodal) {
+      if (is_intermodal) {
         stay_fp_target = q.via_stops_[v].stay_;
       }
       trace_reconstruct(
