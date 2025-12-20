@@ -136,7 +136,7 @@ void correct_color_contrast(timetable& tt) {
     for (auto& colors : ids.route_id_colors_) {
       auto const ratio = contrast_ratio(colors.color_, colors.text_color_);
 
-      if (ratio < 4.5f) {
+      if (ratio < 3.0f) {
         constexpr auto white = color_t(0xFFFFFF);
         constexpr auto black = color_t(0x000000);
         auto const better = contrast_ratio(colors.color_, black) >
