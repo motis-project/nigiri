@@ -199,9 +199,15 @@ void obtain_relevant_stops(timetable const& tt,
       continue;
     }
     for (auto const dir : {kForward, kReverse}) {
-      pq.push(ch_label{m,
-                       {invert(dists[dir][m].d_[kMax]), 0},
-                       static_cast<std::uint8_t>(dir)});
+      auto const other_dir = dir ^ 1U;
+
+      pq.push(ch_label{
+          m,
+          {invert(std::min(static_cast<ch_dist::dist_t>(
+                               min_max_dist - dists[other_dir][m].d_[kMin]),
+                           dists[dir][m].d_[kMax])),
+           0},
+          static_cast<std::uint8_t>(dir)});
     }
   }
   std::cout << "starting pq" << std::endl;
@@ -213,7 +219,12 @@ void obtain_relevant_stops(timetable const& tt,
     if (dists[l.dir_][l.l_].d_[kMin] >= l_d_max) {
       continue;
     }
-    dists[l.dir_][l.l_].d_[kMin] = l_d_max;
+    std::cout << "down " << l.l_ << " " << tt.locations_.names_[l.l_].view()
+              << " min: " << dists[l.dir_][l.l_].d_[kMin] << " "
+              << " max: " << l_d_max
+              << " dir:" << (l.dir_ == kForward ? "fwd" : "bwd")
+              << "| l:" << tt.ch_levels_.at(l.l_) << std::endl;
+    dists[l.dir_][l.l_].d_[kMin] = l_d_max;  // TODO store in kMax instead?
     relevant_stops.set(l.l_.v_);
     auto const& graph = l.dir_ == kReverse ? tt.fwd_search_ch_graph_[prf_idx]
                                            : tt.bwd_search_ch_graph_[prf_idx];
@@ -240,8 +251,9 @@ void obtain_relevant_stops(timetable const& tt,
         }
         pq.push(ch_label{
             edge_target,
-            {static_cast<ch_dist::dist_t>(invert(
-                 static_cast<ch_dist::dist_t>(l_d_max - e.min_dur_.count()))),
+            {static_cast<ch_dist::dist_t>(invert(std::min(
+                 static_cast<ch_dist::dist_t>(l_d_max - e.min_dur_.count()),
+                 dists[l.dir_][edge_target].d_[kMax]))),
              static_cast<ch_dist::dist_t>(0)},
             static_cast<std::uint8_t>(l.dir_)});
       }
