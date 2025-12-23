@@ -40,7 +40,7 @@ constexpr auto const kAllowedTimeDiscrepancy = []() {
 constexpr auto const kCleanUpInterval = 12h;
 constexpr auto const kMatchRetention = 48h;
 
-#define VDV_DEBUG
+// #define VDV_DEBUG
 #ifdef VDV_DEBUG
 #define vdv_trace(...) fmt::print(__VA_ARGS__)
 #else

@@ -98,7 +98,7 @@ void handle_alert(date::sys_days const today,
 
     if (x.has_stop_id() && stop == location_idx_t::invalid()) {
       ++stats.alert_stop_not_found_;
-      log(log_lvl::error, "nigiri.gtfs.resolve.alert.stop",
+      log(log_lvl::debug, "nigiri.gtfs.resolve.alert.stop",
           "tag={}, stop_id={} not found", tag, x.stop_id());
       continue;
     }
@@ -122,7 +122,7 @@ void handle_alert(date::sys_days const today,
     } else if (x.has_route_id()) {  // 1) by route_id / direction_id -> stop_id
       if (x.has_direction_id() && !x.has_route_id()) {
         ++stats.alert_direction_without_route_;
-        log(log_lvl::error, "nigiri.gtfs.resolve.alert.route_id",
+        log(log_lvl::debug, "nigiri.gtfs.resolve.alert.route_id",
             "tag={}, direction without route: {}", tag, x.DebugString());
         continue;
       }
@@ -135,7 +135,7 @@ void handle_alert(date::sys_days const today,
                                  : direction_id_t::invalid();
       if (!route_id.has_value()) {
         ++stats.alert_route_id_not_found_;
-        log(log_lvl::error, "nigiri.gtfs.resolve.alert.route_id",
+        log(log_lvl::debug, "nigiri.gtfs.resolve.alert.route_id",
             "tag={}, route_id={} not found", tag, x.route_id());
         continue;
       }
@@ -147,7 +147,7 @@ void handle_alert(date::sys_days const today,
                               : provider_idx_t::invalid();
       if (agency == provider_idx_t::invalid()) {
         ++stats.alert_agency_id_not_found_;
-        log(log_lvl::error, "nigiri.gtfs.resolve.alert.agency_id",
+        log(log_lvl::debug, "nigiri.gtfs.resolve.alert.agency_id",
             "tag={}, agency_id={} not found", tag, x.agency_id());
         continue;
       }
@@ -155,7 +155,7 @@ void handle_alert(date::sys_days const today,
     } else if (x.has_route_type()) {  // 3) by route_type -> stop_id
       if (x.route_type() > 1702 || x.route_type() < 0) {
         ++stats.alert_invalid_route_type_;
-        log(log_lvl::error, "nigiri.gtfs.resolve.alert.route_type",
+        log(log_lvl::debug, "nigiri.gtfs.resolve.alert.route_type",
             "tag={}, route_type={} invalid", tag, x.route_type());
         continue;
       }
@@ -165,7 +165,7 @@ void handle_alert(date::sys_days const today,
       rtt.alerts_.location_.at(stop).push_back(alert_idx);
     } else {
       ++stats.alert_empty_selector_;
-      log(log_lvl::error, "nigiri.gtfs.resolve.alert.route_type",
+      log(log_lvl::debug, "nigiri.gtfs.resolve.alert.route_type",
           "tag={}, empty alert selector: {}", tag, x.DebugString());
       continue;
     }
