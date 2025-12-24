@@ -282,10 +282,14 @@ routing_result pong(timetable const& tt,
   // ----
   auto ping_lb = std::vector<std::uint16_t>{};
   dijkstra(tt, q,
-           rtt == nullptr ? (kFwd ? tt.fwd_search_lb_graph_[q.prf_idx_]
-                                  : tt.bwd_search_lb_graph_[q.prf_idx_])
-                          : (kFwd ? rtt->fwd_search_lb_graph_[q.prf_idx_]
-                                  : rtt->bwd_search_lb_graph_[q.prf_idx_]),
+           (kFwd ? tt.fwd_search_lb_graph_[q.prf_idx_]
+                 : tt.bwd_search_lb_graph_[q.prf_idx_]),
+           (rtt == nullptr ? nullptr
+                           : &(kFwd ? rtt->fwd_search_lb_graph_has_edges_
+                                    : rtt->bwd_search_lb_graph_has_edges_)),
+           (rtt == nullptr ? nullptr
+                           : &(kFwd ? rtt->fwd_search_lb_graph_
+                                    : rtt->bwd_search_lb_graph_)),
            ping_lb);
 
   auto ping_dist_to_dest = std::vector<std::uint16_t>{};
@@ -321,10 +325,14 @@ routing_result pong(timetable const& tt,
 
   auto pong_lb = std::vector<std::uint16_t>{};
   dijkstra(tt, q,
-           rtt == nullptr ? (kFwd ? tt.bwd_search_lb_graph_[q.prf_idx_]
-                                  : tt.fwd_search_lb_graph_[q.prf_idx_])
-                          : (kFwd ? rtt->bwd_search_lb_graph_[q.prf_idx_]
-                                  : rtt->fwd_search_lb_graph_[q.prf_idx_]),
+           (kFwd ? tt.bwd_search_lb_graph_[q.prf_idx_]
+                 : tt.fwd_search_lb_graph_[q.prf_idx_]),
+           (rtt == nullptr ? nullptr
+                           : &(kFwd ? rtt->bwd_search_lb_graph_has_edges_
+                                    : rtt->fwd_search_lb_graph_has_edges_)),
+           (rtt == nullptr ? nullptr
+                           : &(kFwd ? rtt->bwd_search_lb_graph_
+                                    : rtt->fwd_search_lb_graph_)),
            pong_lb);
 
   auto pong_dist_to_dest = std::vector<std::uint16_t>{};

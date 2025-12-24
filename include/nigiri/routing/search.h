@@ -107,13 +107,17 @@ struct search {
       auto lb_span = get_otel_tracer()->StartSpan("lower bounds");
       auto lb_scope = opentelemetry::trace::Scope{lb_span};
       UTL_START_TIMING(lb);
-      dijkstra(tt_, q_,
-               rtt_ == nullptr
-                   ? (kFwd ? tt_.fwd_search_lb_graph_[q_.prf_idx_]
-                           : tt_.bwd_search_lb_graph_[q_.prf_idx_])
-                   : (kFwd ? rtt_->fwd_search_lb_graph_[q_.prf_idx_]
-                           : rtt_->bwd_search_lb_graph_[q_.prf_idx_]),
-               state_.travel_time_lower_bound_);
+      dijkstra(
+          tt_, q_,
+          (kFwd ? tt_.fwd_search_lb_graph_[q_.prf_idx_]
+                : tt_.bwd_search_lb_graph_[q_.prf_idx_]),
+          (rtt_ == nullptr ? nullptr
+                           : &(kFwd ? rtt_->fwd_search_lb_graph_has_edges_
+                                    : rtt_->bwd_search_lb_graph_has_edges_)),
+          (rtt_ == nullptr ? nullptr
+                           : &(kFwd ? rtt_->fwd_search_lb_graph_
+                                    : rtt_->bwd_search_lb_graph_)),
+          state_.travel_time_lower_bound_);
       UTL_STOP_TIMING(lb);
       stats_.lb_time_ = static_cast<std::uint64_t>(UTL_TIMING_MS(lb));
 

@@ -160,20 +160,14 @@ std::string_view rt_timetable::transport_name(
                     trip_short_name(tt, t));
 }
 
-void rt_timetable::update_lbs(timetable const& tt,
-                              rt_transport_idx_t const rt_t,
-                              stop_idx_t const stop_idx,
-                              event_type const ev_type,
-                              std::array<paged_vecvec<location_idx_t, footpath>,
-                                         kNProfiles>& fwd_search_lb_graph,
-                              std::array<paged_vecvec<location_idx_t, footpath>,
-                                         kNProfiles>& bwd_search_lb_graph) {
-  auto const from_stop_idx = ev_type == event_type::kDep
-                                 ? stop_idx
-                                 : static_cast<stop_idx_t>(stop_idx - 1);
-  auto const to_stop_idx = ev_type == event_type::kDep
-                               ? static_cast<stop_idx_t>(stop_idx + 1U)
-                               : stop_idx;
+void rt_timetable::update_lbs(
+    timetable const& tt,
+    rt_transport_idx_t const rt_t,
+    stop_idx_t const stop_idx,
+    vector_map<location_idx_t, std::vector<footpath>>& tmp_fwd,
+    vector_map<location_idx_t, std::vector<footpath>>& tmp_bwd) {
+  auto const from_stop_idx = stop_idx;
+  auto const to_stop_idx = static_cast<stop_idx_t>(stop_idx + 1U);
 
   auto const travel_time =
       duration_t{event_time(rt_t, to_stop_idx, event_type::kArr) -
@@ -199,63 +193,83 @@ void rt_timetable::update_lbs(timetable const& tt,
     return;  // e.g. from one child to another within the same parent
   }
 
-  auto const update = [&](paged_vecvec<location_idx_t, footpath>& lbs,
-                          direction const dir) {
-    auto bucket = lbs.at(dir == direction::kForward ? from : to);
-    auto const target = dir == direction::kForward ? to : from;
+  auto const is_fastest = [](auto&& existing, footpath const& fp) {
     auto const it = utl::find_if(
-        bucket, [&](footpath const& fp) { return fp.target() == target; });
-    if (it == end(bucket)) {
-      bucket.push_back(footpath{target, travel_time});
-    } else if (it->duration() > travel_time) {
-      it->duration_ = static_cast<location_idx_t::value_t>(travel_time.count());
-    }
+        existing, [&](footpath const& x) { return x.target() == fp.target(); });
+    return std::pair{it, it == end(existing) || it->duration() > fp.duration()};
   };
 
-  for (auto& lbs : fwd_search_lb_graph) {
-    if (!lbs.empty()) {
-      update(lbs, direction::kBackward);
-    }
-  }
+  auto const update =
+      [&](vecvec<location_idx_t, footpath> const& tt_lbs,
+          bitvec_map<location_idx_t>& rtt_has_lbs,
+          vector_map<location_idx_t, std::vector<footpath>>& rtt_lbs,
+          direction const dir) {
+        auto const fwd = dir == direction::kForward;
+        auto const src = fwd ? to : from;  // lbs are backwards!
+        auto const tgt = fwd ? from : to;
+        auto const new_fp = footpath{tgt, travel_time};
 
-  for (auto& lbs : bwd_search_lb_graph) {
-    if (!lbs.empty()) {
-      update(lbs, direction::kForward);
-    }
-  }
+        if (!is_fastest(tt_lbs[src], new_fp).second) {
+          return;  // Static timetable has faster/eq. Nothing to do.
+        }
+
+        if (!rtt_has_lbs[src]) {
+          // There are no values stored in the real-time timetable. Push first.
+          rtt_lbs[src].push_back(new_fp);
+          rtt_has_lbs.set(src, true);
+          return;
+        }
+
+        // There are already values stored in the real-time timetable.
+        auto& lbs = rtt_lbs[src];
+        auto const [it, is_fastest_rt] = is_fastest(lbs, new_fp);
+        if (!is_fastest_rt) {
+          // The value stored in the rt_timetable is faster/eq. Nothing to do.
+          return;
+        }
+
+        if (it != end(lbs)) {
+          // The same target did exist already. Update existing.
+          it->duration_ = static_cast<location_idx_t::value_t>(
+              std::min(footpath::kMaxDuration, travel_time).count());
+        }
+
+        // The same target did not exist yet. Push new.
+        rtt_lbs[src].push_back(new_fp);
+      };
+
+  update(tt.fwd_search_lb_graph_[kDefaultProfile],
+         fwd_search_lb_graph_has_edges_, tmp_fwd, direction::kForward);
+  update(tt.bwd_search_lb_graph_[kDefaultProfile],
+         bwd_search_lb_graph_has_edges_, tmp_bwd, direction::kBackward);
 }
 
 void rt_timetable::update_lbs(timetable const& tt) {
   auto timer = utl::scoped_timer{"update_lbs"};
 
-  auto const copy = [](auto&& to, auto&& from) {
-    for (auto const [i, x] : utl::enumerate(from)) {
-      to[i].clear();
-      for (auto const y : x) {
-        to[i].emplace_back(y);
-      }
-    }
-  };
-
-  auto fwd_search_lb_graph =
-      std::array<paged_vecvec<location_idx_t, footpath>, kNProfiles>{};
-  auto bwd_search_lb_graph =
-      std::array<paged_vecvec<location_idx_t, footpath>, kNProfiles>{};
-
-  copy(fwd_search_lb_graph, tt.fwd_search_lb_graph_);
-  copy(bwd_search_lb_graph, tt.bwd_search_lb_graph_);
-
+  // --- UPDATE LBS ---
+  auto tmp_fwd_lbs = vector_map<location_idx_t, std::vector<footpath>>{};
+  auto tmp_bwd_lbs = vector_map<location_idx_t, std::vector<footpath>>{};
+  tmp_fwd_lbs.resize(tt.n_locations());
+  tmp_bwd_lbs.resize(tt.n_locations());
   for (auto rt_t = rt_transport_idx_t{0U}; rt_t != n_rt_transports(); ++rt_t) {
     auto const n_events = rt_transport_stop_times_[rt_t].size();
     auto const n_segments = static_cast<stop_idx_t>(n_events / 2U);
     for (auto i = stop_idx_t{0U}; i != n_segments; ++i) {
-      update_lbs(tt, rt_t, i, event_type::kDep, fwd_search_lb_graph,
-                 bwd_search_lb_graph);
+      update_lbs(tt, rt_t, i, tmp_fwd_lbs, tmp_bwd_lbs);
     }
   }
 
-  copy(fwd_search_lb_graph_, fwd_search_lb_graph);
-  copy(bwd_search_lb_graph_, bwd_search_lb_graph);
+  // --- COPY TO RT_TIMETABLE ---
+  auto const copy =
+      [&](vecvec<location_idx_t, footpath>& to,
+          vector_map<location_idx_t, std::vector<footpath>> const& from) {
+        for (auto l = location_idx_t{0U}; l != tt.n_locations(); ++l) {
+          to.emplace_back(from[l]);
+        }
+      };
+  copy(fwd_search_lb_graph_, tmp_fwd_lbs);
+  copy(bwd_search_lb_graph_, tmp_bwd_lbs);
 }
 
 void rt_timetable::cancel_run(rt::run const& r) {
