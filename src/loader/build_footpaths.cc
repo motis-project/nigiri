@@ -268,7 +268,10 @@ void connect_components(timetable& tt,
                   std::numeric_limits<routing::label::dist_t>::max());
         dd.dists_[node_idx] = 0U;
 
-        routing::dijkstra(c.graph_, dd.pq_, dd.dists_, max_footpath_length);
+        bitvec_map<location_idx_t> const* has_rt = nullptr;
+        vecvec<location_idx_t, footpath> const* rt = nullptr;
+        routing::dijkstra(c.graph_, has_rt, rt, dd.pq_, dd.dists_,
+                          max_footpath_length);
         for (auto const [target, duration] : utl::enumerate(dd.dists_)) {
           if (duration == kUnreachable || target == node_idx) {
             continue;

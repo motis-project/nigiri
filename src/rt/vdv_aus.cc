@@ -23,6 +23,7 @@
 #include "nigiri/types.h"
 
 using namespace std::chrono_literals;
+using namespace std::string_view_literals;
 
 namespace nigiri::rt::vdv_aus {
 
@@ -37,8 +38,8 @@ constexpr auto const kAllowedTimeDiscrepancy = []() {
   }
   return error - 1;
 }();  // minutes
-constexpr auto const kCleanUpInterval = 12h;
-constexpr auto const kMatchRetention = 48h;
+constexpr auto const kCleanUpInterval = 1h;
+constexpr auto const kMatchRetention = 8h;
 
 // #define VDV_DEBUG
 #ifdef VDV_DEBUG
@@ -46,6 +47,66 @@ constexpr auto const kMatchRetention = 48h;
 #else
 #define vdv_trace(...)
 #endif
+
+template <typename First, typename... Rest>
+auto children(pugi::xml_node const n, First f, Rest... r) {
+  if constexpr (sizeof...(Rest) == 0U) {
+    return n.children(f);
+  } else {
+    return children(n.child(f), r...);
+  }
+}
+
+template <typename First, typename... Rest>
+auto child(pugi::xml_node const n, First f, Rest... r) {
+  if constexpr (sizeof...(Rest) == 0U) {
+    return n.child(f);
+  } else {
+    return child(n.child(f), r...);
+  }
+}
+
+template <typename First, typename... Rest>
+auto val(pugi::xml_node const n, First f, Rest... r) {
+  if constexpr (sizeof...(Rest) == 0U) {
+    return std::string_view{n.child_value(f)};
+  } else {
+    return val(n.child(f), r...);
+  }
+}
+
+std::optional<bool> get_opt_bool(
+    pugi::xml_node const& node,
+    char const* key,
+    std::optional<bool> default_to = std::nullopt) {
+  auto const v = val(node, key);
+  return v.empty() ? default_to : std::optional{utl::parse<bool>(v)};
+}
+
+std::optional<std::string_view> get_opt_str(
+    pugi::xml_node const& node,
+    char const* key,
+    std::optional<std::string_view> default_to = std::nullopt) {
+  auto const v = val(node, key);
+  return v.empty() ? default_to : std::optional{std::string_view{v}};
+}
+
+template <typename... Formats>
+std::optional<unixtime_t> get_opt_time(pugi::xml_node const& node,
+                                       char const* str,
+                                       Formats... formats) {
+  return get_opt_str(node, str).and_then(
+      [&](std::string_view child_value) -> std::optional<unixtime_t> {
+        try {
+          return std::optional{parse_time(child_value, formats...)};
+        } catch (std::exception const& e) {
+          log(log_lvl::error, "vdv_update.get_opt_time",
+              "invalid time input {:?}.{:?} in {:?}: {} [{:?}]", node.name(),
+              str, child_value, e.what(), node.child_value(str));
+          return std::nullopt;
+        }
+      });
+}
 
 std::ostream& operator<<(std::ostream& out, statistics const& s) {
   out << "found runs: " << s.found_runs_ << " / " << s.total_runs_ << " ("
@@ -102,39 +163,6 @@ statistics const& updater::get_cumulative_stats() const {
 source_idx_t updater::get_src() const { return src_idx_; }
 updater::xml_format updater::get_format() const { return format_; }
 
-template <typename... Formats>
-std::optional<unixtime_t> get_opt_time(pugi::xml_node const& node,
-                                       char const* str,
-                                       Formats... formats) {
-  auto const xpath = node.select_node(str);
-  if (xpath != nullptr) {
-    try {
-      return parse_time(xpath.node().child_value(), formats...);
-    } catch (std::exception const& e) {
-      log(log_lvl::error, "vdv_update.get_opt_time",
-          "{}, invalid time input: {}", e.what(), xpath.node().child_value());
-    }
-  }
-  return std::nullopt;
-}
-
-std::optional<bool> get_opt_bool(
-    pugi::xml_node const& node,
-    char const* key,
-    std::optional<bool> default_to = std::nullopt) {
-  auto const xpath = node.select_node(key);
-  return xpath != nullptr ? utl::parse<bool>(xpath.node().child_value())
-                          : default_to;
-}
-
-std::optional<std::string_view> get_opt_str(
-    pugi::xml_node const& node,
-    char const* key,
-    std::optional<std::string_view> default_to = std::nullopt) {
-  auto const xpath = node.select_node(key);
-  return xpath != nullptr ? xpath.node().child_value() : default_to;
-}
-
 bool is_vdv(updater::xml_format const f) {
   return f == updater::xml_format::kVdv;
 }
@@ -184,57 +212,57 @@ std::optional<std::pair<unixtime_t, event_type>> updater::vdv_stop::get_event(
   }
 }
 
-pugi::xml_node get(pugi::xml_node const& node, char const* str) {
-  auto const xpath = node.select_node(str);
-  utl::verify(xpath != nullptr, "required xml node not found: {}", str);
-  return xpath.node();
-}
-
 vector<updater::vdv_stop> updater::resolve_stops(pugi::xml_node const vdv_run,
                                                  statistics& stats) {
   auto vdv_stops = vector<vdv_stop>{};
 
-  auto const vdv_stop_selectors = {"IstHalt"};
-  auto const siri_stop_stop_selectors = {"RecordedCalls/RecordedCall",
-                                         "EstimatedCalls/EstimatedCall"};
-  for (auto const stop_selector :
-       is_vdv(format_) ? vdv_stop_selectors : siri_stop_stop_selectors) {
-    for (auto const stop : vdv_run.select_nodes(stop_selector)) {
-      ++stats.total_stops_;
+  auto const add_stop = [&](pugi::xml_node const stop) {
+    ++stats.total_stops_;
 
-      auto const vdv_stop_id = std::string_view{
-          get(stop.node(), is_vdv(format_) ? "HaltID" : "StopPointRef")
-              .child_value()};
-      auto const l = [&]() {
-        auto const x = tt_.find(location_id{vdv_stop_id, src_idx_});
-        if (x.has_value()) {
-          return x;
-        } else if (auto const underscore_pos = vdv_stop_id.find('_');
-                   underscore_pos != std::string_view::npos) {
-          // Extra matching code for VRR SIRI. Remove after data is fixed.
-          return tt_.find(location_id{
-              vdv_stop_id.substr(0, underscore_pos + 1U), src_idx_});
-        } else {
-          return x;
-        }
-      }();
-
-      if (get_opt_bool(stop.node(),
-                       is_vdv(format_) ? "Zusatzhalt" : "ExtraCall", false)
-              .value()) {
-        ++stats.unsupported_additional_stops_;
-        vdv_trace("unsupported additional stop: [id: {}, name: {}]\n",
-                  vdv_stop_id, loc{tt_, l.value_or(location_idx_t::invalid())});
-      }
-
-      if (l.has_value()) {
-        ++stats.resolved_stops_;
-        vdv_stops.emplace_back(*l, vdv_stop_id, stop.node(), format_);
+    auto const vdv_stop_id = std::string_view{
+        stop.child_value(is_vdv(format_) ? "HaltID" : "StopPointRef")};
+    auto const l = [&]() {
+      auto const x = tt_.find(location_id{vdv_stop_id, src_idx_});
+      if (x.has_value()) {
+        return x;
+      } else if (auto const underscore_pos = vdv_stop_id.find('_');
+                 underscore_pos != std::string_view::npos) {
+        // Extra matching code for VRR SIRI. Remove after data is fixed.
+        return tt_.find(
+            location_id{vdv_stop_id.substr(0, underscore_pos + 1U), src_idx_});
       } else {
-        vdv_stops.emplace_back(location_idx_t::invalid(), vdv_stop_id,
-                               stop.node(), format_);
-        vdv_trace("unresolvable stop: {}\n", vdv_stop_id);
+        return x;
       }
+    }();
+
+    if (get_opt_bool(stop, is_vdv(format_) ? "Zusatzhalt" : "ExtraCall", false)
+            .value()) {
+      ++stats.unsupported_additional_stops_;
+      vdv_trace("unsupported additional stop: [id: {}, name: {}]\n",
+                vdv_stop_id, loc{tt_, l.value_or(location_idx_t::invalid())});
+    }
+
+    if (l.has_value()) {
+      ++stats.resolved_stops_;
+      vdv_stops.emplace_back(*l, vdv_stop_id, stop, format_);
+    } else {
+      vdv_stops.emplace_back(location_idx_t::invalid(), vdv_stop_id, stop,
+                             format_);
+      vdv_trace("unresolvable stop: {}\n", vdv_stop_id);
+    }
+  };
+
+  if (is_vdv(format_)) {
+    for (auto const stop : children(vdv_run, "IstHalt")) {
+      add_stop(stop);
+    }
+  } else {
+    for (auto const stop : children(vdv_run, "RecordedCalls", "RecordedCall")) {
+      add_stop(stop);
+    }
+    for (auto const stop :
+         children(vdv_run, "EstimatedCalls", "EstimatedCall")) {
+      add_stop(stop);
     }
   }
 
@@ -591,18 +619,24 @@ void updater::process_vdv_run(rt_timetable& rtt,
 
   auto vdv_stops = resolve_stops(vdv_run, stats);
 
-  auto const run_ref_selector =
-      format_ == xml_format::kVdv ? "./FahrtRef/FahrtID/FahrtBezeichner"
-      : format_ == xml_format::kSiri
-          ? "./FramedVehicleJourneyRef/DatedVehicleJourneyRef"
-          : "./DatedVehicleJourneyRef";
-  auto const operation_day_selector =
-      format_ == xml_format::kVdv    ? "./FahrtRef/FahrtID/Betriebstag"
-      : format_ == xml_format::kSiri ? "./FramedVehicleJourneyRef/DataFrameRef"
-                                     : "./DatedVehicleJourneyRef";
-  auto const vdv_run_id =
-      fmt::format("{}{}", get(vdv_run, run_ref_selector).child_value(),
-                  get(vdv_run, operation_day_selector).child_value());
+  auto const vdv_run_id = [&]() {
+    switch (format_) {
+      case xml_format::kVdv:
+        return fmt::format(
+            "{}{}",  //
+            val(vdv_run, "FahrtRef", "FahrtID", "FahrtBezeichner"),
+            val(vdv_run, "FahrtRef", "FahrtID", "Betriebstag"));
+
+      case xml_format::kSiri:
+        return fmt::format(
+            "{}{}",  //
+            val(vdv_run, "FramedVehicleJourneyRef", "DatedVehicleJourneyRef"),
+            val(vdv_run, "FramedVehicleJourneyRef", "DataFrameRef"));
+
+      case xml_format::kSiriJson: [[fallthrough]];
+      default: return fmt::to_string(val(vdv_run, "DatedVehicleJourneyRef"));
+    }
+  }();
 
   if (vdv_stops.empty()) {
     ++stats.runs_without_stops_;
@@ -664,19 +698,40 @@ statistics updater::update(rt_timetable& rtt, pugi::xml_document const& doc) {
   }
 
   auto stats = statistics{};
-  for (auto const& vdv_run : doc.select_nodes(
-           is_vdv(format_) ? "//IstFahrt" : "//EstimatedVehicleJourney")) {
-    if (*get_opt_bool(vdv_run.node(),
-                      is_vdv(format_) ? "Zusatzfahrt" : "ExtraJourney",
+
+  auto const process = [&](pugi::xml_node const vdv_run) {
+    if (*get_opt_bool(vdv_run, is_vdv(format_) ? "Zusatzfahrt" : "ExtraJourney",
                       false)) {
 #ifdef VDV_DEBUG
       vdv_trace("unsupported additional run:\n");
-      vdv_run.node().print(std::cout);
+      vdv_run.print(std::cout);
 #endif
       ++stats.unsupported_additional_runs_;
-      continue;
+      return;
     }
-    process_vdv_run(rtt, vdv_run.node(), stats);
+    process_vdv_run(rtt, vdv_run, stats);
+  };
+
+  switch (format_) {
+    case xml_format::kVdv:
+      for (auto const vdv_run : children(doc, "IstFahrt")) {
+        process(vdv_run);
+      }
+      for (auto const vdv_run :
+           children(doc, "DatenAbrufenAntwort", "AUSNachricht", "IstFahrt")) {
+        process(vdv_run);
+      }
+      break;
+
+    case xml_format::kSiri:
+    case xml_format::kSiriJson:
+    default:
+      for (auto const vdv_run : children(
+               doc, "Siri", "ServiceDelivery", "EstimatedTimetableDelivery",
+               "EstimatedJourneyVersionFrame", "EstimatedVehicleJourney")) {
+        process(vdv_run);
+      }
+      break;
   }
 
   cumulative_stats_ += stats;

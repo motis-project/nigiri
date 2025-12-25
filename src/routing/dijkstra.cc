@@ -9,6 +9,7 @@
 #include "nigiri/for_each_meta.h"
 #include "nigiri/routing/limits.h"
 #include "nigiri/routing/query.h"
+#include "nigiri/rt/rt_timetable.h"
 
 // #define NIGIRI_DIJKSTRA_TRACING
 
@@ -23,6 +24,8 @@ namespace nigiri::routing {
 void dijkstra(timetable const& tt,
               query const& q,
               vecvec<location_idx_t, footpath> const& lb_graph,
+              bitvec_map<location_idx_t> const* has_rt,
+              vecvec<location_idx_t, footpath> const* rt_lb_graph,
               std::vector<label::dist_t>& dists) {
   dists.resize(tt.n_locations());
   utl::fill(dists, std::numeric_limits<label::dist_t>::max());
@@ -59,7 +62,7 @@ void dijkstra(timetable const& tt,
     });
   }
 
-  dijkstra(lb_graph, pq, dists);
+  dijkstra(lb_graph, has_rt, rt_lb_graph, pq, dists);
 
   for (auto i = 0U; i != tt.n_locations(); ++i) {
     auto const lb = dists[i];
