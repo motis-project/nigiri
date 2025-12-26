@@ -533,12 +533,16 @@ struct timetable {
     duration_t min_dur_{std::numeric_limits<duration_t>::max()};
     duration_t max_dur_{std::numeric_limits<duration_t>::max()};
   };
-  std::array<paged_vecvec<location_idx_t, ch_edge_idx_t>, kNProfiles>
+  std::array<vecvec<location_idx_t, ch_edge_idx_t>, kNProfiles>
       fwd_search_ch_graph_;
-  std::array<paged_vecvec<location_idx_t, ch_edge_idx_t>, kNProfiles>
+  std::array<vecvec<location_idx_t, ch_edge_idx_t>, kNProfiles>
       bwd_search_ch_graph_;
   std::array<vector_map<ch_edge_idx_t, ch_edge>, kNProfiles> ch_graph_edges_;
-  std::array<vecvec<ch_edge_idx_t, location_idx_t>, kNProfiles> ch_graph_transfers_;
+  std::array<vecvec<ch_edge_idx_t, std::pair<ch_edge_idx_t, ch_edge_idx_t>>,
+             kNProfiles>
+      ch_graph_unpack_;
+  std::array<vecvec<ch_edge_idx_t, location_idx_t>, kNProfiles>
+      ch_graph_transfers_;
   vector_map<location_idx_t, std::uint32_t> ch_levels_;
 
   // profile name -> profile_idx_t

@@ -57,7 +57,11 @@ void build_lb_graph(timetable& tt, profile_idx_t const prf_idx) {
   std::vector<departure> departures;
   hash_map<std::pair<location_idx_t, location_idx_t>, ch_edge_idx_t> edges_map;
   vector_map<ch_edge_idx_t, std::vector<route_idx_t>> routes;
-  vector_map<ch_edge_idx_t, std::vector<location_idx_t>> transfers;
+  vector_map<ch_edge_idx_t,
+             std::vector<std::pair<ch_edge_idx_t, ch_edge_idx_t>>>
+      unpack;
+  vector_map<ch_edge_idx_t, std::vector<location_idx_t>>
+      transfers;  // TODO use bool and explicitly insert low level footpaths?
   vector_map<location_idx_t, std::vector<ch_edge_idx_t>> fwd_search_ch_graph;
   vector_map<location_idx_t, std::vector<ch_edge_idx_t>> bwd_search_ch_graph;
   ch_stats stats;
@@ -87,6 +91,7 @@ void build_lb_graph(timetable& tt, profile_idx_t const prf_idx) {
       fwd_search_ch_graph.at(from_l).push_back(edge_idx);
       bwd_search_ch_graph.at(to_l).push_back(edge_idx);
     }
+    unpack.emplace_back();
     transfers.emplace_back();
     routes.emplace_back();
     return edge_idx;
@@ -105,14 +110,16 @@ void build_lb_graph(timetable& tt, profile_idx_t const prf_idx) {
             shortcut.max_dur_ = max_dur;
             // TODO clear routes?
             routes.at(it->second).clear();
+            unpack.at(it->second).clear();
             transfers.at(it->second).clear();
             for (auto r : new_routes) {
               routes.at(it->second).push_back(r);  // TODO direct insertion?
             }
             std::sort(begin(routes.at(it->second)), end(routes.at(it->second)));
-            if (transfer != location_idx_t::invalid()) {
-              transfers.at(it->second).push_back(transfer);
-            }
+            unpack.at(it->second)
+                .push_back(
+                    {ch_edge_idx_t::invalid(), ch_edge_idx_t::invalid()});
+            transfers.at(it->second).push_back(transfer);
             stats.replacements_++;
           } else if (min_dur <= shortcut.max_dur_) {
             // update
@@ -123,10 +130,13 @@ void build_lb_graph(timetable& tt, profile_idx_t const prf_idx) {
               utl::insert_sorted(routes.at(it->second),
                                  r);  // TODO direct insertion?
             }
-            if (transfer != location_idx_t::invalid()) {
-              utl::insert_sorted(transfers.at(it->second), transfer);
-            }
+            unpack.at(it->second)
+                .push_back(
+                    {ch_edge_idx_t::invalid(), ch_edge_idx_t::invalid()});
+            transfers.at(it->second).push_back(transfer);
             stats.updates_++;
+          } else {
+            stats.skips_++;
           }
         } else {
           // insert
@@ -135,9 +145,9 @@ void build_lb_graph(timetable& tt, profile_idx_t const prf_idx) {
             routes.at(edge_idx).push_back(r);  // TODO direct insertion?
           }
           std::sort(begin(routes.at(edge_idx)), end(routes.at(edge_idx)));
-          if (transfer != location_idx_t::invalid()) {
-            transfers.at(edge_idx).push_back(transfer);
-          }
+          unpack.at(edge_idx).push_back(
+              {ch_edge_idx_t::invalid(), ch_edge_idx_t::invalid()});
+          transfers.at(edge_idx).push_back(transfer);
           stats.inserts_++;
         }
       };
@@ -154,16 +164,21 @@ void build_lb_graph(timetable& tt, profile_idx_t const prf_idx) {
         it->second.last_dep_ = dep.dep_;  // TODO overtaking connections
         it->second.routes_.emplace(dep.r_);
       } else {
-        arrivals.emplace_hint(it, dep.to_,
-                              arrival{dur, dur, dep.dep_, dep.dep_, {dep.r_}}); // TODO overnight waiting time to arr
+        arrivals.emplace_hint(
+            it, dep.to_,
+            arrival{dur,
+                    dur,
+                    dep.dep_,
+                    dep.dep_,
+                    {dep.r_}});  // TODO overnight waiting time to arr
       }
     }
     departures.clear();
     for (auto& entry : arrivals) {
       ++entry.second.first_dep_.days_;
-      entry.second.max_ = std::max(
-        entry.second.max_,
-        (entry.second.first_dep_.as_duration() - entry.second.last_dep_.as_duration()));
+      entry.second.max_ =
+          std::max(entry.second.max_, (entry.second.first_dep_.as_duration() -
+                                       entry.second.last_dep_.as_duration()));
       upsert_ch_footpath_edge(from_l, entry.first, entry.second.min_,
                               entry.second.max_, entry.second.routes_,
                               location_idx_t::invalid());
@@ -185,24 +200,21 @@ void build_lb_graph(timetable& tt, profile_idx_t const prf_idx) {
     auto const& arr = tt.ch_graph_edges_[prf_idx].at(arr_idx);
     auto& shortcut = tt.ch_graph_edges_[prf_idx].at(shortcut_idx);
 
-    std::vector<route_idx_t> routes_merged;
-    std::set_intersection(begin(routes[dep_idx]), end(routes[dep_idx]),
-                          begin(routes[arr_idx]), end(routes[arr_idx]),
-                          std::back_inserter(routes_merged));
+    auto routes_merged = std::vector<route_idx_t>{};
+    std::set_intersection(
+        begin(routes[dep_idx]), end(routes[dep_idx]), begin(routes[arr_idx]),
+        end(routes[arr_idx]),
+        std::back_inserter(routes_merged));  // TODO 0-size routes?
 
-    std::vector<location_idx_t> transfers_union;
-    std::set_union(begin(transfers[dep_idx]), end(transfers[dep_idx]),
-                   begin(transfers[arr_idx]), end(transfers[arr_idx]),
-                   std::back_inserter(transfers_union));
+    auto transfer = location_idx_t::invalid();
 
     auto max_dur =
         dep.min_dur_ +
         arr.max_dur_;  // TODO dwell time, slow/fast cross, one route set larger
-    if (routes_merged.size() != routes[dep_idx].size() ||  // TODO ||
-    routes_merged.size() != routes[arr_idx].size()) {
-      utl::insert_sorted(transfers_union,
-                         contracted);  // TODO use level because it will
-                                       // automatically be sorted?
+    // if (routes_merged.size() != routes[dep_idx].size() ||  // TODO ||
+    if (routes_merged.empty() ||
+        routes_merged.size() != routes[arr_idx].size()) {
+      transfer = contracted;
       routes_merged.clear();
       std::set_union(begin(routes[dep_idx]), end(routes[dep_idx]),
                      begin(routes[arr_idx]), end(routes[arr_idx]),
@@ -223,17 +235,15 @@ void build_lb_graph(timetable& tt, profile_idx_t const prf_idx) {
                 "overfl 0 max {} {} {} {}", dep.max_dur_, arr.max_dur_,
                 shortcut.max_dur_, shortcut_idx);
 
-    std::vector<route_idx_t> routes_new;
-    std::set_union(begin(routes_merged), end(routes_merged),
-                   begin(routes[shortcut_idx]), end(routes[shortcut_idx]),
-                   std::back_inserter(routes_new));  // TODO inplace
+    auto routes_new = std::vector<route_idx_t>{};
+    if (routes_merged.size() < 10 && !routes_merged.empty()) {
+      std::set_union(begin(routes_merged), end(routes_merged),
+                     begin(routes[shortcut_idx]), end(routes[shortcut_idx]),
+                     std::back_inserter(routes_new));  // TODO inplace
+    }
     routes[shortcut_idx] = std::move(routes_new);
-
-    std::vector<location_idx_t> transfers_new;
-    std::set_union(begin(transfers_union), end(transfers_union),
-                   begin(transfers[shortcut_idx]), end(transfers[shortcut_idx]),
-                   std::back_inserter(transfers_new));  // TODO inplace
-    transfers[shortcut_idx] = std::move(transfers_new);
+    unpack[shortcut_idx].push_back({arr_idx, dep_idx});
+    transfers[shortcut_idx].push_back(transfer);
   };
 
   auto const contract_ch_node =
@@ -273,6 +283,7 @@ void build_lb_graph(timetable& tt, profile_idx_t const prf_idx) {
                 shortcut.min_dur_ = duration_t::max();
                 shortcut.max_dur_ = duration_t::max();
                 routes.at(it->second).clear();
+                unpack.at(it->second).clear();
                 transfers.at(it->second).clear();
                 update_ch_shortcut(location_id, dep_idx, arr_idx, it->second);
               } else if (min_dur <= shortcut.max_dur_) {
@@ -368,7 +379,7 @@ void build_lb_graph(timetable& tt, profile_idx_t const prf_idx) {
           tt.ch_levels_.at(location_id) > 0U) {
         continue;
       }
-      if (level > 0.90 * tt.n_locations()) {  // TODO
+      if (level > 0.98 * tt.n_locations()) {  // TODO
         tt.ch_levels_.at(location_id) = level;
         continue;
       }
@@ -388,7 +399,7 @@ void build_lb_graph(timetable& tt, profile_idx_t const prf_idx) {
         std::cout << "edges: " << tt.ch_graph_edges_[prf_idx].size()
                   << " stations: " << tt.n_locations() << " transfers size: "
                   << std::accumulate(std::next(transfers.begin()),
-                                     transfers.end(), 0,
+                                     transfers.end(), 0U,
                                      [](auto const& a, auto const& b) {
                                        return a + b.size();
                                      })
@@ -405,11 +416,16 @@ void build_lb_graph(timetable& tt, profile_idx_t const prf_idx) {
                                    current_order);
     }
     std::cout << "persisting..." << std::endl;
+    for (auto const& u : unpack) {
+      tt.ch_graph_unpack_[prf_idx].emplace_back(std::move(u));
+    }
+    unpack.clear();
     auto transfer_count = 0U;
-    for (auto t : transfers) {
+    for (auto const& t : transfers) {
       transfer_count += t.size();
       tt.ch_graph_transfers_[prf_idx].emplace_back(std::move(t));
     }
+    transfers.clear();
     for (auto i = location_idx_t{0U}; i != tt.locations_.ids_.size(); ++i) {
       tt.fwd_search_ch_graph_[prf_idx].emplace_back(
           std::move(fwd_search_ch_graph[i]));

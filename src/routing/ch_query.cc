@@ -211,6 +211,10 @@ void obtain_relevant_stops(timetable const& tt,
     }
   }
   std::cout << "starting pq" << std::endl;
+  auto stack = std::vector<std::pair<ch_edge_idx_t, ch_dist::dist_t>>{};
+  auto visited = vector_map<ch_edge_idx_t, ch_dist::dist_t>{};
+  visited.resize(tt.ch_graph_edges_[prf_idx].size());
+
   while (!pq.empty()) {
     auto l = pq.top();
     auto const l_d_max = invert(l.d_[kMax]);
@@ -245,9 +249,50 @@ void obtain_relevant_stops(timetable const& tt,
                   << e.min_dur_.count() << std::endl;
         continue;
       }
-      if (min_dist_via_prev <= l_d_max) {  // todo stopping criterion, cutoff?
-        for (auto const mark : tt.ch_graph_transfers_[prf_idx].at(e_idx)) {
-          relevant_stops.set(mark.v_);
+      if (min_dist_via_prev <= l_d_max) {  // TODO stopping criterion, cutoff?
+        // TODO move to queue pop?, do not re-unpack edges
+        stack.push_back(
+            {e_idx,
+             std::min(
+                 static_cast<ch_dist::dist_t>(l_d_max - prev_label.d_[kMin]),
+                 static_cast<ch_dist::dist_t>(e.max_dur_.count()))});
+        while (!stack.empty()) {
+          auto [child_edge_idx, child_max_dur] = stack.back();
+          stack.pop_back();
+          if (visited.at(child_edge_idx) >= child_max_dur) {
+            continue;
+          }
+          visited[child_edge_idx] = child_max_dur;
+
+          for (auto const [unpack, transfer] :
+               utl::zip(tt.ch_graph_unpack_[prf_idx].at(child_edge_idx),
+                        tt.ch_graph_transfers_[prf_idx].at(child_edge_idx))) {
+            if (unpack.first == ch_edge_idx_t::invalid()) {
+              if (transfer != location_idx_t::invalid()) {
+                relevant_stops.set(transfer.v_);
+              }
+              continue;
+            }
+            auto const& arr = tt.ch_graph_edges_[prf_idx][unpack.first];
+            auto const& dep = tt.ch_graph_edges_[prf_idx][unpack.second];
+            auto const arr_max =
+                std::min(static_cast<ch_dist::dist_t>(child_max_dur -
+                                                      dep.min_dur_.count()),
+                         static_cast<ch_dist::dist_t>(arr.max_dur_.count()));
+            auto const dep_max =
+                std::min(static_cast<ch_dist::dist_t>(child_max_dur -
+                                                      arr.min_dur_.count()),
+                         static_cast<ch_dist::dist_t>(dep.max_dur_.count()));
+            if (arr.min_dur_.count() > arr_max ||
+                dep.min_dur_.count() > dep_max) {
+              continue;
+            }
+            if (transfer != location_idx_t::invalid()) {
+              relevant_stops.set(transfer.v_);
+            }
+            stack.push_back({unpack.first, arr_max});
+            stack.push_back({unpack.second, dep_max});
+          }
         }
         pq.push(ch_label{
             edge_target,
