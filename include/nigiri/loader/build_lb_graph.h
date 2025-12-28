@@ -8,6 +8,7 @@
 #include "utl/helpers/algorithm.h"
 #include "utl/insert_sorted.h"
 #include "utl/pairwise.h"
+#include "utl/pipes/avg.h"
 
 #include "nigiri/common/dial.h"
 #include "nigiri/for_each_meta.h"
@@ -26,19 +27,63 @@ static constexpr auto const kChMaxTravelTime =
 
 static constexpr auto const kEnableCh = true;
 
+struct tooth {
+  std::int16_t mam_;
+  duration_t travel_dur_;
+};
+
+struct saw {
+  std::vector<tooth> saw_;
+  duration_t max() {
+    auto max = saw_.front().mam_ + 24 * 60 - saw_.back().mam_ +
+               saw_.front().travel_dur_.count();
+    for (auto i = 1U; i < saw_.size(); ++i) {
+      max = std::max(
+          max, saw_[i].mam_ - saw_[i - 1].mam_ + saw_[i].travel_dur_.count());
+    }
+    return duration_t{max};
+  }
+  void simplify() {  // TODO insitu
+    auto tmp = std::vector<tooth>{};
+    auto last_duration_of_day = saw_.back().travel_dur_;
+    for (auto i = 0U; i < saw_.size(); ++i) {
+      if (saw_.back().mam_ + saw_.back().travel_dur_.count() - 24 * 60 <
+          saw_[i].mam_) {
+        break;
+      }
+      last_duration_of_day =
+          std::min(last_duration_of_day,
+                   duration_t{saw_[i].travel_dur_.count() + 24 * 60 -
+                              saw_.back().mam_ + saw_[i].mam_});
+    }
+    tmp.push_back({saw_.back().mam_, last_duration_of_day});
+
+    for (auto i = 1U; i < saw_.size(); ++i) {
+      auto j = saw_.size() - i - 1U;
+      if (tmp.back().mam_ - saw_[j].mam_ + tmp.back().travel_dur_.count() >
+          saw_[j].travel_dur_.count()) {
+        tmp.push_back(saw_[j]);
+      }
+    }
+    std::reverse(begin(tmp), end(tmp));
+    saw_ = std::move(tmp);
+  }
+};
+
 struct departure {
-  bool operator<(departure const& o) const { return dep_ < o.dep_; }
+  bool operator<(departure const& o) const { return dep_.mam_ < o.dep_.mam_; }
   location_idx_t to_;
   delta dep_;
   delta arr_;
   route_idx_t r_;
+  transport_idx_t t_;
 };
 
 struct arrival {
   duration_t min_;
-  duration_t max_;
-  delta first_dep_;
-  delta last_dep_;
+  std::vector<delta> deps_;
+  std::vector<duration_t> travel_durs_;
+  std::vector<bitfield_idx_t> traffic_days_;
   hash_set<route_idx_t> routes_;
 };
 
@@ -154,40 +199,80 @@ void build_lb_graph(timetable& tt, profile_idx_t const prf_idx) {
 
   auto const compute_initial_ch_edges = [&](location_idx_t const from_l) {
     std::sort(begin(departures), end(departures));
-    for (auto& dep : departures) {
+    for (auto const& dep : departures) {
       auto const dur = (dep.arr_ - dep.dep_).as_duration();
       if (auto const it = arrivals.find(dep.to_); it != end(arrivals)) {
         it->second.min_ = std::min(it->second.min_, dur);
-        it->second.max_ = std::max(
-            it->second.max_,
-            (dep.arr_.as_duration() - it->second.last_dep_.as_duration()));
-        it->second.last_dep_ = dep.dep_;  // TODO overtaking connections
+        it->second.deps_.push_back(dep.dep_);
+        it->second.travel_durs_.push_back(dur);
+        it->second.traffic_days_.push_back(tt.transport_traffic_days_[dep.t_]);
         it->second.routes_.emplace(dep.r_);
       } else {
         arrivals.emplace_hint(
             it, dep.to_,
             arrival{dur,
-                    dur,
-                    dep.dep_,
-                    dep.dep_,
+                    {dep.dep_},
+                    {dur},
+                    {tt.transport_traffic_days_[dep.t_]},
                     {dep.r_}});  // TODO overnight waiting time to arr
       }
     }
     departures.clear();
+    auto ignore_timetable_offset_mask = ~bitfield{};
+    for (auto i = 0U; i < kTimetableOffset.count(); ++i) {
+      ignore_timetable_offset_mask.set(i, false);
+    }
+    auto max_saw = saw{};
     for (auto& entry : arrivals) {
-      ++entry.second.first_dep_.days_;
-      entry.second.max_ =
-          std::max(entry.second.max_, (entry.second.first_dep_.as_duration() -
-                                       entry.second.last_dep_.as_duration()));
-      upsert_ch_footpath_edge(from_l, entry.first, entry.second.min_,
-                              entry.second.max_, entry.second.routes_,
+      auto const& e = entry.second;
+      for (auto i = 0UL; i < e.deps_.size(); ++i) {
+        max_saw.saw_.push_back(
+            {static_cast<std::int16_t>(e.deps_[i].mam_), e.travel_durs_[i]});
+      }
+      for (auto i = 0UL; i < e.deps_.size(); ++i) {
+
+        auto remaining_traffic_days =
+            tt.bitfields_.at(e.traffic_days_[i])
+            << static_cast<unsigned>(e.deps_[i].days());
+        remaining_traffic_days &= ignore_timetable_offset_mask;
+        auto day_offset = 0;
+        auto j = i;
+        while (true) {
+          if (j == 0) {
+            j = e.deps_.size() - 1;
+            ++day_offset;
+            if (day_offset > kTimetableOffset.count()) {
+              break;
+            }
+            remaining_traffic_days >>= 1U;
+            remaining_traffic_days.set(kTimetableOffset.count() - 1, false);
+          } else {
+            --j;
+          }
+
+          remaining_traffic_days &= ~tt.bitfields_.at(e.traffic_days_[j])
+                                    << static_cast<unsigned>(e.deps_[j].days());
+          if (remaining_traffic_days.none()) {
+            break;
+          }
+
+          auto const mam_diff =
+              e.deps_[i].mam_ - e.deps_[j].mam_ + day_offset * 24 * 60;
+          max_saw.saw_[j].travel_dur_ =
+              std::max(max_saw.saw_[j].travel_dur_,
+                       duration_t{e.travel_durs_[i].count() + mam_diff});
+        }
+      }
+      max_saw.simplify();
+      auto max = max_saw.max();
+      upsert_ch_footpath_edge(from_l, entry.first, e.min_, max, e.routes_,
                               location_idx_t::invalid());
       for (auto fp : tt.locations_.footpaths_out_[prf_idx].at(entry.first)) {
         upsert_ch_footpath_edge(  // TODO transfer?
-            from_l, fp.target(), entry.second.min_ + fp.duration(),
-            entry.second.max_ + fp.duration(), entry.second.routes_,
-            entry.first);
+            from_l, fp.target(), e.min_ + fp.duration(), max + fp.duration(),
+            e.routes_, entry.first);
       }
+      max_saw.saw_.clear();
     }
     arrivals.clear();
   };
@@ -354,6 +439,45 @@ void build_lb_graph(timetable& tt, profile_idx_t const prf_idx) {
         }
       };
 
+  auto const print_stats = [&]() {
+    std::cout << "num edges: " << tt.ch_graph_edges_[prf_idx].size()
+              << std::endl;
+    if (tt.ch_graph_edges_[prf_idx].size() > 0) {
+      auto min_max = duration_t::max();
+      auto max_max = duration_t::min();
+      auto sum_max = 0;
+      auto min_min = duration_t::max();
+      auto max_min = duration_t::min();
+      auto sum_min = 0;
+      for (auto const& e : tt.ch_graph_edges_[prf_idx]) {
+        if (e.max_dur_ > max_max) {
+          max_max = e.max_dur_;
+        }
+        if (e.max_dur_ < min_max) {
+          min_max = e.max_dur_;
+        }
+        sum_max += e.max_dur_.count();
+        if (e.min_dur_ > max_min) {
+          max_min = e.min_dur_;
+        }
+        if (e.min_dur_ < min_min) {
+          min_min = e.min_dur_;
+        }
+        sum_min += e.min_dur_.count();
+      }
+      std::cout << " min max: " << min_max << " max max: " << max_max
+                << " avg max: "
+                << static_cast<unsigned>(sum_max) /
+                       tt.ch_graph_edges_[prf_idx].size()
+                << "\n"
+                << " min min: " << min_min << " max min: " << max_min
+                << " avg min: "
+                << static_cast<unsigned>(sum_min) /
+                       tt.ch_graph_edges_[prf_idx].size()
+                << std::endl;
+    }
+  };
+
   auto const compute_ch = [&]() {
     std::cout << "original inserts: " << stats.inserts_
               << " replacements: " << stats.replacements_
@@ -442,33 +566,21 @@ void build_lb_graph(timetable& tt, profile_idx_t const prf_idx) {
               << " transfers: " << transfer_count << std::endl;
     std::cout << "num edges after contr: " << tt.ch_graph_edges_[prf_idx].size()
               << std::endl;
-    if (tt.ch_graph_edges_[prf_idx].size() > 0) {
-      std::cout
-          << "max max: "
-          << utl::max_element(tt.ch_graph_edges_[prf_idx],
-                              [](auto const& a, auto const& b) {
-                                return a.max_dur_ < b.max_dur_;
-                              })
-                 ->max_dur_
-          << " max min: "
-          << utl::max_element(tt.ch_graph_edges_[prf_idx],
-                              [](auto const& a, auto const& b) {
-                                return a.min_dur_ < b.min_dur_;
-                              })
-                 ->min_dur_
-          << " Lorem ipsum dolor sit amet, \n consetetur sadipscing elitr, \n "
-             "sed diam nonumy eirmod tempor invidunt \n ut labore et dolore "
-             "magna aliquyam erat, \n sed diam voluptua. At vero eos\n  et "
-             "accusam et justo duo dolores et ea rebum. Stet clita kasd\n  "
-             "gubergren, no sea takimata sanctus est Lorem ipsum dolor sit "
-             "amet. Lorem ipsum dolor\n  sit amet, consetetur sadipscing "
-             "elitr, sed \n diam nonumy eirmod tempor invidunt ut labore et "
-             "dolore magna aliquyam erat, sed diam voluptua. At vero eos et "
-             "accusam et justo duo dolores et ea rebum. Stet clita kasd "
-             "gubergren, no sea takimata sanctus est Lorem ipsum dolor sit "
-             "amet."
-          << std::endl;
-    }
+    print_stats();
+
+    std::cout
+        << " Lorem ipsum dolor sit amet, \n consetetur sadipscing elitr, \n "
+           "sed diam nonumy eirmod tempor invidunt \n ut labore et dolore "
+           "magna aliquyam erat, \n sed diam voluptua. At vero eos\n  et "
+           "accusam et justo duo dolores et ea rebum. Stet clita kasd\n  "
+           "gubergren, no sea takimata sanctus est Lorem ipsum dolor sit "
+           "amet. Lorem ipsum dolor\n  sit amet, consetetur sadipscing "
+           "elitr, sed \n diam nonumy eirmod tempor invidunt ut labore et "
+           "dolore magna aliquyam erat, sed diam voluptua. At vero eos et "
+           "accusam et justo duo dolores et ea rebum. Stet clita kasd "
+           "gubergren, no sea takimata sanctus est Lorem ipsum dolor sit "
+           "amet."
+        << std::endl;
   };
 
   auto const add_edges = [&](location_idx_t const l) {
@@ -513,7 +625,7 @@ void build_lb_graph(timetable& tt, profile_idx_t const prf_idx) {
           auto const from_time = tt.event_mam(t, from, event_type::kDep);
           auto const to_time = tt.event_mam(t, to, event_type::kArr);
           if (SearchDir == direction::kBackward && kEnableCh) {
-            departures.emplace_back(to_l, from_time, to_time, r);
+            departures.emplace_back(to_l, from_time, to_time, r, t);
           }
           min = std::min((to_time - from_time).as_duration(), min);
         }
@@ -556,23 +668,7 @@ void build_lb_graph(timetable& tt, profile_idx_t const prf_idx) {
     weights.clear();
   }
   if (SearchDir == direction::kBackward && kEnableCh) {
-    std::cout << "num edges: " << tt.ch_graph_edges_[prf_idx].size()
-              << std::endl;
-    if (tt.ch_graph_edges_[prf_idx].size() > 0) {
-      std::cout << "max max: "
-                << utl::max_element(tt.ch_graph_edges_[prf_idx],
-                                    [](auto const& a, auto const& b) {
-                                      return a.max_dur_ < b.max_dur_;
-                                    })
-                       ->max_dur_
-                << " max min: "
-                << utl::max_element(tt.ch_graph_edges_[prf_idx],
-                                    [](auto const& a, auto const& b) {
-                                      return a.min_dur_ < b.min_dur_;
-                                    })
-                       ->min_dur_
-                << std::endl;
-    }
+    print_stats();
     std::cout << "lb done." << std::endl;
     compute_ch();
 
