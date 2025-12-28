@@ -530,8 +530,8 @@ struct timetable {
   struct ch_edge {
     location_idx_t from_;
     location_idx_t to_;
-    duration_t min_dur_{std::numeric_limits<duration_t>::max()};
-    duration_t max_dur_{std::numeric_limits<duration_t>::max()};
+    duration_t min_dur_{duration_t::max()};
+    duration_t max_dur_{duration_t::max()};
   };
   std::array<vecvec<location_idx_t, ch_edge_idx_t>, kNProfiles>
       fwd_search_ch_graph_;

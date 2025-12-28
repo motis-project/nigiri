@@ -2,6 +2,7 @@
 
 #include <cstdint>
 #include <algorithm>
+#include <limits>
 #include <vector>
 
 #include "nigiri/loader/dir.h"
@@ -110,10 +111,16 @@ void build_lb_graph(timetable& tt, profile_idx_t const prf_idx) {
   vector_map<location_idx_t, std::vector<ch_edge_idx_t>> fwd_search_ch_graph;
   vector_map<location_idx_t, std::vector<ch_edge_idx_t>> bwd_search_ch_graph;
   ch_stats stats;
+  auto ignore_timetable_offset_mask = ~bitfield{};
+  for (auto i = 0U; i < kTimetableOffset.count(); ++i) {
+    ignore_timetable_offset_mask.set(i, false);
+  }
+  auto to_routes = bitvec{};
 
   if (SearchDir == direction::kBackward && kEnableCh) {
     fwd_search_ch_graph.resize(tt.n_locations());
     bwd_search_ch_graph.resize(tt.n_locations());
+    to_routes.resize((tt.n_routes()));
   }
 
   auto const update_weight = [&](location_idx_t const target,
@@ -123,6 +130,53 @@ void build_lb_graph(timetable& tt, profile_idx_t const prf_idx) {
     } else {
       weights.emplace_hint(it, target, d);
     }
+  };
+
+  auto const find_direct_trips = [&](location_idx_t const a,
+                                     location_idx_t const b) {
+    // TODO parent mode
+    for (auto const& r : tt.location_routes_[b]) {
+      to_routes.set(r.v_);
+    }
+
+    for (auto const& r : tt.location_routes_[a]) {
+      if ((prf_idx == kCarProfile && !tt.has_car_transport(r)) ||
+          (prf_idx == kBikeProfile && !tt.has_bike_transport(r))) {
+        continue;
+      }
+      if (!to_routes.test(r.v_)) {
+        continue;
+      }
+
+      auto const location_seq = tt.route_location_seq_[r];
+      auto from_stop_idx = std::numeric_limits<stop_idx_t>::max();
+      for (auto const [from, to] : utl::pairwise(interval{
+               stop_idx_t{0U}, static_cast<stop_idx_t>(location_seq.size())})) {
+        auto const from_l = stop{location_seq[from]}.location_idx();
+        auto const to_l = stop{location_seq[to]}.location_idx();
+
+        if (from_stop_idx == std::numeric_limits<stop_idx_t>::max() &&
+            from_l != a) {
+          continue;
+        }
+        if (from_l == a) {
+          from_stop_idx = from;
+        }
+        if (to_l != b) {
+          continue;
+        }
+
+        for (auto const t : tt.route_transport_ranges_[r]) {
+          auto const from_time =
+              tt.event_mam(t, from_stop_idx, event_type::kDep);
+          auto const to_time = tt.event_mam(t, to, event_type::kArr);
+          departures.emplace_back(to_l, from_time, to_time, r, t);
+        }
+
+        from_stop_idx = std::numeric_limits<stop_idx_t>::max();
+      }
+    }
+    to_routes.zero_out();
   };
 
   auto const insert_ch_edge = [&](location_idx_t const from_l,
@@ -153,6 +207,11 @@ void build_lb_graph(timetable& tt, profile_idx_t const prf_idx) {
             // replace
             shortcut.min_dur_ = min_dur;
             shortcut.max_dur_ = max_dur;
+            utl::verify(shortcut.max_dur_.count() > 2, "weird 0 max {} {} {}",
+                        max_dur, shortcut.max_dur_, it->second);
+            utl::verify(shortcut.max_dur_.count() < kChMaxTravelTime.count(),
+                        "overfl 0 max {} {} {}", max_dur, shortcut.max_dur_,
+                        it->second);
             // TODO clear routes?
             routes.at(it->second).clear();
             unpack.at(it->second).clear();
@@ -170,6 +229,11 @@ void build_lb_graph(timetable& tt, profile_idx_t const prf_idx) {
             // update
             shortcut.min_dur_ = std::min(shortcut.min_dur_, min_dur);
             shortcut.max_dur_ = std::min(shortcut.max_dur_, max_dur);
+            utl::verify(shortcut.max_dur_.count() > 2, "weird 0 max {} {} {}",
+                        max_dur, shortcut.max_dur_, it->second);
+            utl::verify(shortcut.max_dur_.count() < kChMaxTravelTime.count(),
+                        "overfl 0 max {} {} {}", max_dur, shortcut.max_dur_,
+                        it->second);
 
             for (auto r : new_routes) {
               utl::insert_sorted(routes.at(it->second),
@@ -197,7 +261,7 @@ void build_lb_graph(timetable& tt, profile_idx_t const prf_idx) {
         }
       };
 
-  auto const compute_initial_ch_edges = [&](location_idx_t const from_l) {
+  auto const assign_departures_to_arrivals = [&]() {
     std::sort(begin(departures), end(departures));
     for (auto const& dep : departures) {
       auto const dur = (dep.arr_ - dep.dep_).as_duration();
@@ -218,53 +282,58 @@ void build_lb_graph(timetable& tt, profile_idx_t const prf_idx) {
       }
     }
     departures.clear();
-    auto ignore_timetable_offset_mask = ~bitfield{};
-    for (auto i = 0U; i < kTimetableOffset.count(); ++i) {
-      ignore_timetable_offset_mask.set(i, false);
+  };
+
+  auto const arrivals_to_saw = [&](arrival const& e, saw& max_saw) {
+    for (auto i = 0UL; i < e.deps_.size(); ++i) {
+      max_saw.saw_.push_back(
+          {static_cast<std::int16_t>(e.deps_[i].mam_), e.travel_durs_[i]});
     }
+    for (auto i = 0UL; i < e.deps_.size(); ++i) {
+
+      auto remaining_traffic_days = tt.bitfields_.at(e.traffic_days_[i])
+                                    << static_cast<unsigned>(e.deps_[i].days());
+      remaining_traffic_days &= ignore_timetable_offset_mask;
+      auto day_offset = 0;
+      auto j = i;
+      while (true) {
+        if (j == 0) {
+          j = e.deps_.size() - 1;
+          ++day_offset;
+          if (day_offset > kTimetableOffset.count()) {
+            break;
+          }
+          remaining_traffic_days >>= 1U;
+          remaining_traffic_days.set(kTimetableOffset.count() - 1, false);
+        } else {
+          --j;
+        }
+
+        remaining_traffic_days &= ~tt.bitfields_.at(e.traffic_days_[j])
+                                  << static_cast<unsigned>(e.deps_[j].days());
+        if (remaining_traffic_days.none()) {
+          break;
+        }
+
+        auto const mam_diff =
+            e.deps_[i].mam_ - e.deps_[j].mam_ + day_offset * 24 * 60;
+        max_saw.saw_[j].travel_dur_ =
+            std::max(max_saw.saw_[j].travel_dur_,
+                     duration_t{e.travel_durs_[i].count() + mam_diff});
+      }
+    }
+    max_saw.simplify();
+  };
+
+  auto const compute_initial_ch_edges = [&](location_idx_t const from_l) {
+    assign_departures_to_arrivals();
+
     auto max_saw = saw{};
     for (auto& entry : arrivals) {
       auto const& e = entry.second;
-      for (auto i = 0UL; i < e.deps_.size(); ++i) {
-        max_saw.saw_.push_back(
-            {static_cast<std::int16_t>(e.deps_[i].mam_), e.travel_durs_[i]});
-      }
-      for (auto i = 0UL; i < e.deps_.size(); ++i) {
-
-        auto remaining_traffic_days =
-            tt.bitfields_.at(e.traffic_days_[i])
-            << static_cast<unsigned>(e.deps_[i].days());
-        remaining_traffic_days &= ignore_timetable_offset_mask;
-        auto day_offset = 0;
-        auto j = i;
-        while (true) {
-          if (j == 0) {
-            j = e.deps_.size() - 1;
-            ++day_offset;
-            if (day_offset > kTimetableOffset.count()) {
-              break;
-            }
-            remaining_traffic_days >>= 1U;
-            remaining_traffic_days.set(kTimetableOffset.count() - 1, false);
-          } else {
-            --j;
-          }
-
-          remaining_traffic_days &= ~tt.bitfields_.at(e.traffic_days_[j])
-                                    << static_cast<unsigned>(e.deps_[j].days());
-          if (remaining_traffic_days.none()) {
-            break;
-          }
-
-          auto const mam_diff =
-              e.deps_[i].mam_ - e.deps_[j].mam_ + day_offset * 24 * 60;
-          max_saw.saw_[j].travel_dur_ =
-              std::max(max_saw.saw_[j].travel_dur_,
-                       duration_t{e.travel_durs_[i].count() + mam_diff});
-        }
-      }
-      max_saw.simplify();
+      arrivals_to_saw(e, max_saw);
       auto max = max_saw.max();
+      // std::cout << "init max saw " << max << std::endl;
       upsert_ch_footpath_edge(from_l, entry.first, e.min_, max, e.routes_,
                               location_idx_t::invalid());
       for (auto fp : tt.locations_.footpaths_out_[prf_idx].at(entry.first)) {
@@ -285,50 +354,26 @@ void build_lb_graph(timetable& tt, profile_idx_t const prf_idx) {
     auto const& arr = tt.ch_graph_edges_[prf_idx].at(arr_idx);
     auto& shortcut = tt.ch_graph_edges_[prf_idx].at(shortcut_idx);
 
-    auto routes_merged = std::vector<route_idx_t>{};
-    std::set_intersection(
-        begin(routes[dep_idx]), end(routes[dep_idx]), begin(routes[arr_idx]),
-        end(routes[arr_idx]),
-        std::back_inserter(routes_merged));  // TODO 0-size routes?
+    utl::verify(shortcut.max_dur_.count() > 2, "pre weird 0 max {} {} {} {}",
+                dep.max_dur_, arr.max_dur_, shortcut.max_dur_, shortcut_idx);
 
-    auto transfer = location_idx_t::invalid();
-
-    auto max_dur =
-        dep.min_dur_ +
-        arr.max_dur_;  // TODO dwell time, slow/fast cross, one route set larger
-    // if (routes_merged.size() != routes[dep_idx].size() ||  // TODO ||
-    if (routes_merged.empty() ||
-        routes_merged.size() != routes[arr_idx].size()) {
-      transfer = contracted;
-      routes_merged.clear();
-      std::set_union(begin(routes[dep_idx]), end(routes[dep_idx]),
-                     begin(routes[arr_idx]), end(routes[arr_idx]),
-                     std::back_inserter(routes_merged));
-      max_dur = dep.max_dur_ + arr.max_dur_;
-    }
     shortcut.min_dur_ =
         std::min(dep.min_dur_ + arr.min_dur_, shortcut.min_dur_);
-    shortcut.max_dur_ = std::min(max_dur, shortcut.max_dur_);
-    /*utl::verify(shortcut.min_dur_.count() > 0, "weird 0 min {} {} {} {}",
-                dep.min_dur_, arr.min_dur_, shortcut.min_dur_, shortcut_idx);*/
+    shortcut.max_dur_ =
+        std::min(dep.max_dur_ + arr.max_dur_, shortcut.max_dur_);
+    utl::verify(shortcut.min_dur_.count() >= 0, "weird 0 min {} {} {} {}",
+                dep.min_dur_, arr.min_dur_, shortcut.min_dur_, shortcut_idx);
     utl::verify(shortcut.min_dur_.count() < kChMaxTravelTime.count(),
                 "overfl 0 min {} {} {} {}", dep.min_dur_, arr.min_dur_,
                 shortcut.min_dur_, shortcut_idx);
-    /*utl::verify(shortcut.max_dur_.count() > 0, "weird 0 max {} {} {} {}",
-                dep.max_dur_, arr.max_dur_, shortcut.max_dur_, shortcut_idx);*/
+    utl::verify(shortcut.max_dur_.count() > 2, "weird 0 max {} {} {} {}",
+                dep.max_dur_, arr.max_dur_, shortcut.max_dur_, shortcut_idx);
     utl::verify(shortcut.max_dur_.count() < kChMaxTravelTime.count(),
                 "overfl 0 max {} {} {} {}", dep.max_dur_, arr.max_dur_,
                 shortcut.max_dur_, shortcut_idx);
 
-    auto routes_new = std::vector<route_idx_t>{};
-    if (routes_merged.size() < 10 && !routes_merged.empty()) {
-      std::set_union(begin(routes_merged), end(routes_merged),
-                     begin(routes[shortcut_idx]), end(routes[shortcut_idx]),
-                     std::back_inserter(routes_new));  // TODO inplace
-    }
-    routes[shortcut_idx] = std::move(routes_new);
     unpack[shortcut_idx].push_back({arr_idx, dep_idx});
-    transfers[shortcut_idx].push_back(transfer);
+    transfers[shortcut_idx].push_back(contracted);
   };
 
   auto const contract_ch_node =
@@ -344,9 +389,7 @@ void build_lb_graph(timetable& tt, profile_idx_t const prf_idx) {
             continue;
           }
           for (auto arr_idx : arrs) {
-            auto const& dep = tt.ch_graph_edges_[prf_idx].at(dep_idx);
-            auto const& arr = tt.ch_graph_edges_[prf_idx].at(arr_idx);
-            auto const from = arr.from_;
+            auto const from = tt.ch_graph_edges_[prf_idx].at(arr_idx).from_;
             if (tt.ch_levels_.at(from) > 0U) {
               ++contract_stats.contracted_neighbors_;
               continue;
@@ -354,43 +397,67 @@ void build_lb_graph(timetable& tt, profile_idx_t const prf_idx) {
             if (from == to) {
               continue;
             }
+            auto edge_idx = ch_edge_idx_t::invalid();
             if (auto const it = edges_map.find({from, to});
                 it != end(edges_map)) {
-              auto& shortcut = tt.ch_graph_edges_[prf_idx].at(it->second);
-              auto const min_dur = dep.min_dur_ + arr.min_dur_;
-              auto const max_dur = dep.max_dur_ + arr.max_dur_;
-              if (max_dur < shortcut.min_dur_) {
-                // replace
-                ++contract_stats.replacements_;
-                if (dry_run) {
-                  continue;
-                }
-                shortcut.min_dur_ = duration_t::max();
-                shortcut.max_dur_ = duration_t::max();
-                routes.at(it->second).clear();
-                unpack.at(it->second).clear();
-                transfers.at(it->second).clear();
-                update_ch_shortcut(location_id, dep_idx, arr_idx, it->second);
-              } else if (min_dur <= shortcut.max_dur_) {
-                // update
-                ++contract_stats.updates_;
-                if (dry_run) {
-                  continue;
-                }
-                update_ch_shortcut(location_id, dep_idx, arr_idx, it->second);
-              } else {
-                ++contract_stats.skips_;
-              }
+              edge_idx = it->second;
             } else {
-              // insert
+              // insert TODO weigh differently in ordering?
               ++contract_stats.inserts_;
               if (dry_run) {
                 continue;
               }
-              auto const edge_idx = insert_ch_edge(from, to, duration_t::max(),
-                                                   duration_t::max(), true);
-              update_ch_shortcut(location_id, dep_idx, arr_idx, edge_idx);
+              find_direct_trips(from, to);
+              assign_departures_to_arrivals();
+              auto max_saw = saw{};
+              utl::verify(
+                  arrivals.size() <= 1,
+                  "more than one direct relation found between a and b");
+
+              if (arrivals.size() == 1) {
+                auto const& e = begin(arrivals)->second;
+                arrivals_to_saw(e, max_saw);
+                auto max = max_saw.max();
+                // std::cout << "max saw " << max << std::endl;
+                max_saw.saw_.clear();
+                arrivals.clear();
+                edge_idx = insert_ch_edge(from, to, e.min_, max, true);
+                unpack.at(edge_idx).push_back(
+                    {ch_edge_idx_t::invalid(), ch_edge_idx_t::invalid()});
+                transfers.at(edge_idx).push_back(location_idx_t::invalid());
+              } else {
+                arrivals.clear();
+                edge_idx = insert_ch_edge(from, to, duration_t::max(),
+                                          duration_t::max(), true);
+              }
               write_ahead_edges.push_back(edge_idx);
+            }
+            auto& shortcut = tt.ch_graph_edges_[prf_idx].at(edge_idx);
+            auto const& dep = tt.ch_graph_edges_[prf_idx].at(dep_idx);
+            auto const& arr = tt.ch_graph_edges_[prf_idx].at(arr_idx);
+            auto const min_dur = dep.min_dur_ + arr.min_dur_;
+            auto const max_dur = dep.max_dur_ + arr.max_dur_;
+            if (max_dur < shortcut.min_dur_) {
+              // replace
+              ++contract_stats.replacements_;
+              if (dry_run) {
+                continue;
+              }
+              shortcut.min_dur_ = duration_t::max();
+              shortcut.max_dur_ = duration_t::max();
+              routes.at(edge_idx).clear();
+              unpack.at(edge_idx).clear();
+              transfers.at(edge_idx).clear();
+              update_ch_shortcut(location_id, dep_idx, arr_idx, edge_idx);
+            } else if (min_dur <= shortcut.max_dur_) {
+              // update
+              ++contract_stats.updates_;
+              if (dry_run) {
+                continue;
+              }
+              update_ch_shortcut(location_id, dep_idx, arr_idx, edge_idx);
+            } else {
+              ++contract_stats.skips_;
             }
           }
         }
