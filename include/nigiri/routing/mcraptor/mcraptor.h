@@ -327,7 +327,7 @@ struct mcraptor {
     std::cout << std::endl;
   }
 
-  const bool should_print = true;
+  const bool should_print = false;
   void reconstruct(query const& q, journey& j) {
 //    std::cout << "done: " << std::endl;
 //    return;
@@ -596,7 +596,7 @@ private:
 
           et_label.arr_t_ = by_transport;
           if (!best_bag_[l_idx].dominates(et_label) &&
-              !dest_bag_.dominates(et_label, k) &&
+              //!dest_bag_.dominates(et_label, k) &&
               lb_[l_idx] != kUnreachable &&
               !dest_bag_.dominates({.arr_t_ = static_cast<delta_t>(by_transport + lb_[l_idx]), .trip_id = et_label.trip_id, .success_chance = et_label.success_chance}, k)) {
             if(!tmp_[l_idx].dominates(et_label)) {
@@ -706,8 +706,9 @@ private:
 
           new_label.arr_t_ = static_cast<delta_t>(new_label.arr_t_ + transfer_time);
 
-          if (!best_bag_[i].dominates(new_label) &&
-              !dest_bag_.dominates(new_label, k)) {
+          if (!best_bag_[i].dominates(new_label)
+              //&&!dest_bag_.dominates(new_label, k)
+              ) {
             if (lb_[i] == kUnreachable) {
               ++stats_.fp_update_prevented_by_lower_bound_;
               continue;
@@ -751,8 +752,9 @@ private:
               tmp_time + dir(adjusted_transfer_time(transfer_time_settings_,
                                                 fp.duration().count())));
 
-          if (!best_bag_[target].dominates(new_label) &&
-              !dest_bag_.dominates(new_label, k)) {
+          if (!best_bag_[target].dominates(new_label)
+              //&&!dest_bag_.dominates(new_label, k)
+              ) {
             auto const lower_bound = lb_[target];
 
             if (lower_bound == kUnreachable ||
