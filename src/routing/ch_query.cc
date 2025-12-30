@@ -1,11 +1,12 @@
-#include "nigiri/routing/ch_query.h"
 #include "utl/helpers/algorithm.h"
 #include "utl/insert_sorted.h"
 #include "utl/pairwise.h"
 
+#include "nigiri/loader/build_lb_graph.h"
 #include "nigiri/common/dial.h"
 #include "nigiri/for_each_meta.h"
 #include "nigiri/logging.h"
+#include "nigiri/routing/ch_query.h"
 #include "nigiri/routing/limits.h"
 #include "nigiri/td_footpath.h"
 
@@ -64,6 +65,18 @@ void obtain_relevant_stops(timetable const& tt,
   dists[1].resize(tt.n_locations());
 
   auto pq = dial<ch_label, ch_get_bucket>{kChMaxTravelTime.count()};
+
+  auto const mark_relevant_stop = [&](location_idx_t const parent) {
+    if (loader::kGroupParents && !relevant_stops.test(parent.v_)) {
+      for (auto const& c : tt.locations_.children_[parent]) {
+        relevant_stops.set(c.v_);
+        for (auto const& cc : tt.locations_.children_[c]) {
+          relevant_stops.set(cc.v_);
+        }
+      }
+    }
+    relevant_stops.set(parent.v_);
+  };
 
   auto const init = [&](std::vector<routing::offset> offsets,
                         std::uint8_t dir) {
@@ -229,7 +242,7 @@ void obtain_relevant_stops(timetable const& tt,
               << " dir:" << (l.dir_ == kForward ? "fwd" : "bwd")
               << "| l:" << tt.ch_levels_.at(l.l_) << std::endl;
     dists[l.dir_][l.l_].d_[kMin] = l_d_max;  // TODO store in kMax instead?
-    relevant_stops.set(l.l_.v_);
+    mark_relevant_stop(l.l_);
     auto const& graph = l.dir_ == kReverse ? tt.fwd_search_ch_graph_[prf_idx]
                                            : tt.bwd_search_ch_graph_[prf_idx];
 
@@ -269,7 +282,7 @@ void obtain_relevant_stops(timetable const& tt,
                         tt.ch_graph_transfers_[prf_idx].at(child_edge_idx))) {
             if (unpack.first == ch_edge_idx_t::invalid()) {
               if (transfer != location_idx_t::invalid()) {
-                relevant_stops.set(transfer.v_);
+                mark_relevant_stop(transfer);
               }
               continue;
             }
@@ -288,7 +301,7 @@ void obtain_relevant_stops(timetable const& tt,
               continue;
             }
             if (transfer != location_idx_t::invalid()) {
-              relevant_stops.set(transfer.v_);
+              mark_relevant_stop(transfer);
             }
             stack.push_back({unpack.first, arr_max});
             stack.push_back({unpack.second, dep_max});

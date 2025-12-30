@@ -27,6 +27,7 @@ static constexpr auto const kChMaxTravelTime =
     routing::kMaxTravelTime * 5;  // TODO
 
 static constexpr auto const kEnableCh = true;
+static constexpr auto const kGroupParents = true;
 
 struct tooth {
   std::int16_t mam_;
@@ -136,46 +137,70 @@ void build_lb_graph(timetable& tt, profile_idx_t const prf_idx) {
 
   auto const find_direct_trips = [&](location_idx_t const a,
                                      location_idx_t const b) {
-    // TODO parent mode
     for (auto const& r : tt.location_routes_[b]) {
       to_routes.set(r.v_);
     }
-
-    for (auto const& r : tt.location_routes_[a]) {
-      if ((prf_idx == kCarProfile && !tt.has_car_transport(r)) ||
-          (prf_idx == kBikeProfile && !tt.has_bike_transport(r))) {
-        continue;
+    if (kGroupParents) {
+      for (auto const& c : tt.locations_.children_[b]) {
+        for (auto const& r : tt.location_routes_[c]) {
+          to_routes.set(r.v_);
+        }
+        for (auto const& cc : tt.locations_.children_[c]) {
+          for (auto const& r : tt.location_routes_[cc]) {
+            to_routes.set(r.v_);
+          }
+        }
       }
-      if (!to_routes.test(r.v_)) {
-        continue;
-      }
-
-      auto const location_seq = tt.route_location_seq_[r];
-      auto from_stop_idx = std::numeric_limits<stop_idx_t>::max();
-      for (auto const [from, to] : utl::pairwise(interval{
-               stop_idx_t{0U}, static_cast<stop_idx_t>(location_seq.size())})) {
-        auto const from_l = stop{location_seq[from]}.location_idx();
-        auto const to_l = stop{location_seq[to]}.location_idx();
-
-        if (from_stop_idx == std::numeric_limits<stop_idx_t>::max() &&
-            from_l != a) {
+    }
+    auto const check_routes = [&](location_idx_t const aa) {
+      for (auto const& r : tt.location_routes_[aa]) {
+        if ((prf_idx == kCarProfile && !tt.has_car_transport(r)) ||
+            (prf_idx == kBikeProfile && !tt.has_bike_transport(r))) {
           continue;
         }
-        if (from_l == a) {
-          from_stop_idx = from;
-        }
-        if (to_l != b) {
+        if (!to_routes.test(r.v_)) {
           continue;
         }
 
-        for (auto const t : tt.route_transport_ranges_[r]) {
-          auto const from_time =
-              tt.event_mam(t, from_stop_idx, event_type::kDep);
-          auto const to_time = tt.event_mam(t, to, event_type::kArr);
-          departures.emplace_back(to_l, from_time, to_time, r, t);
-        }
+        auto const location_seq = tt.route_location_seq_[r];
+        auto from_stop_idx = std::numeric_limits<stop_idx_t>::max();
+        for (auto const [from, to] : utl::pairwise(
+                 interval{stop_idx_t{0U},
+                          static_cast<stop_idx_t>(location_seq.size())})) {
+          auto const from_l = stop{location_seq[from]}.location_idx();
+          auto const to_l = stop{location_seq[to]}.location_idx();
+          auto const to_parent = tt.locations_.get_root_idx(to_l);
 
-        from_stop_idx = std::numeric_limits<stop_idx_t>::max();
+          if (from_stop_idx == std::numeric_limits<stop_idx_t>::max() &&
+              from_l != aa) {
+            continue;
+          }
+          if (from_l == aa) {
+            from_stop_idx = from;
+          }
+          if (kGroupParents ? (to_parent != b) : (to_l != b)) {
+            continue;
+          }
+
+          for (auto const t : tt.route_transport_ranges_[r]) {
+            auto const from_time =
+                tt.event_mam(t, from_stop_idx, event_type::kDep);
+            auto const to_time = tt.event_mam(t, to, event_type::kArr);
+            departures.emplace_back(kGroupParents ? to_parent : to_l, from_time,
+                                    to_time, r, t);
+          }
+
+          from_stop_idx = std::numeric_limits<stop_idx_t>::max();
+        }
+      }
+    };
+    check_routes(a);
+    if (kGroupParents) {
+      for (auto const& c : tt.locations_.children_[a]) {
+        check_routes(c);
+        for (auto const& cc : tt.locations_.children_[c]) {
+          check_routes(cc);
+        }
       }
     }
     to_routes.zero_out();
@@ -343,10 +368,25 @@ void build_lb_graph(timetable& tt, profile_idx_t const prf_idx) {
       // if (i % 50 == 0) std::cout << "init max saw " << max << std::endl;
       upsert_ch_footpath_edge(from_l, entry.first, e.min_, max, e.routes_,
                               location_idx_t::invalid());
-      for (auto fp : tt.locations_.footpaths_out_[prf_idx].at(entry.first)) {
-        upsert_ch_footpath_edge(  // TODO transfer?
-            from_l, fp.target(), e.min_ + fp.duration(), max + fp.duration(),
-            e.routes_, entry.first);
+
+      auto const add_footpath_edges = [&](location_idx_t const via) {
+        for (auto fp : tt.locations_.footpaths_out_[prf_idx].at(via)) {
+
+          auto const target = tt.locations_.get_root_idx(fp.target());
+          upsert_ch_footpath_edge(  // TODO transfer?, low level shortcuts?
+              from_l, kGroupParents ? target : fp.target(),
+              e.min_ + fp.duration(), max + fp.duration(), e.routes_,
+              entry.first);
+        }
+      };
+      add_footpath_edges(entry.first);
+      if (kGroupParents) {
+        for (auto const& c : tt.locations_.children_[entry.first]) {
+          add_footpath_edges(c);
+          for (auto const& cc : tt.locations_.children_[c]) {
+            add_footpath_edges(cc);
+          }
+        }
       }
       max_saw.saw_.clear();
     }
@@ -486,18 +526,23 @@ void build_lb_graph(timetable& tt, profile_idx_t const prf_idx) {
         auto const edges =
             static_cast<std::int64_t>(fwd_search_ch_graph.at(l).size() +
                                       bwd_search_ch_graph.at(l).size());
+        if (edges == 0) {
+          return false;
+        }
         auto const order = static_cast<routing::label::dist_t>(std::clamp(
             10000L + contract_stats.contracted_neighbors_ +
                 contract_stats.inserts_ + contract_stats.bad_updates_ - edges -
                 contract_stats.good_updates_ - contract_stats.replacements_ -
                 contract_stats.skips_,
-            0L, 20000L));  // TODO include direct inserts, max dur and/or
-                           // transfers because depending on order, shortcuts
-                           // will be replaced?
+            0L, 20000L));  // TODO include direct inserts, max dur
+                           // and/or transfers because depending on
+                           // order, shortcuts will be replaced?
+
         if (current_order.at(l) != order) {
           pq.push(routing::label{l, order});
           current_order.at(l) = order;
         }
+        return true;
       };
 
   auto const update_neighbours_node_order =
@@ -577,12 +622,15 @@ void build_lb_graph(timetable& tt, profile_idx_t const prf_idx) {
     current_order.resize(tt.n_locations());
     auto write_ahead_edges = std::vector<ch_edge_idx_t>{};
     std::cout << "initial node ordering..." << std::endl;
+    auto empty_stops = 0U;
     for (auto l = location_idx_t{0}; l < tt.n_locations(); ++l) {
-      update_node_order(l, write_ahead_edges, pq, current_order);
+      if (!update_node_order(l, write_ahead_edges, pq, current_order)) {
+        ++empty_stops;
+      }
     }
     std::cout << "initial node ordering done" << std::endl;
     write_ahead_edges.clear();
-    auto level = 0U;
+    auto level = empty_stops;
     while (!pq.empty()) {
       auto const& label = pq.top();
       auto const location_id = label.l_;
@@ -606,7 +654,8 @@ void build_lb_graph(timetable& tt, profile_idx_t const prf_idx) {
                   << tt.locations_.names_[location_id].view() << " " << order
                   << std::endl;
         print_stats();
-        std::cout << "edges: " << tt.ch_graph_edges_[prf_idx].size()
+        std::cout << " empty stops: " << empty_stops
+                  << " edges: " << tt.ch_graph_edges_[prf_idx].size()
                   << " stations: " << tt.n_locations() << " transfers size: "
                   << std::accumulate(std::next(transfers.begin()),
                                      transfers.end(), 0U,
@@ -699,8 +748,9 @@ void build_lb_graph(timetable& tt, profile_idx_t const prf_idx) {
         auto const target_l =
             (SearchDir == direction::kForward ? from_l : to_l);
         auto const target = tt.locations_.get_root_idx(target_l);
-        if (target == parent_l &&
-            (SearchDir != direction::kBackward || !kEnableCh)) {
+        if (target == parent_l &&  // TODO multiple same-parent calls for max?
+            (SearchDir != direction::kBackward || !kEnableCh ||
+             kGroupParents)) {
           continue;
         }
 
@@ -709,7 +759,8 @@ void build_lb_graph(timetable& tt, profile_idx_t const prf_idx) {
           auto const from_time = tt.event_mam(t, from, event_type::kDep);
           auto const to_time = tt.event_mam(t, to, event_type::kArr);
           if (SearchDir == direction::kBackward && kEnableCh) {
-            departures.emplace_back(to_l, from_time, to_time, r, t);
+            departures.emplace_back(kGroupParents ? target : to_l, from_time,
+                                    to_time, r, t);
           }
           min = std::min(((to_time - from_time).as_duration()), min);
         }
@@ -718,7 +769,7 @@ void build_lb_graph(timetable& tt, profile_idx_t const prf_idx) {
         }
       }
     }
-    if (SearchDir == direction::kBackward && kEnableCh) {
+    if (SearchDir == direction::kBackward && kEnableCh && !kGroupParents) {
       compute_initial_ch_edges(l);
     }
   };
@@ -741,6 +792,10 @@ void build_lb_graph(timetable& tt, profile_idx_t const prf_idx) {
       }
     }
     add_edges(i);
+
+    if (SearchDir == direction::kBackward && kEnableCh && kGroupParents) {
+      compute_initial_ch_edges(i);
+    }
 
     for (auto const& [target, duration] : weights) {
       footpaths.emplace_back(footpath{target, duration});
