@@ -9,11 +9,11 @@
 [geo]
   url=git@github.com:motis-project/geo.git
   branch=master
-  commit=d862550fd867cd5435225b5f0998981ec4fc2ae3
+  commit=1450091a6ee2d541e91d26bf06157342ec0599f6
 [utl]
   url=git@github.com:motis-project/utl.git
   branch=master
-  commit=3d4d1f98aaf8532869361d901e010dac11763230
+  commit=3d6d0c626d124b8a1625be1c6cb6d5c76c140195
 [miniz]
   url=git@github.com:motis-project/miniz.git
   branch=master
@@ -40,8 +40,8 @@
   commit=d8136b9c6a62db6ce09900ecdeb82bb793096cbd
 [boost]
   url=git@github.com:motis-project/boost.git
-  branch=boost-1.86.0
-  commit=f0eca85b563887be8f26c4856c53d4e5080e6976
+  branch=boost-1.89.0
+  commit=77467bf580d98ea06716e2931cbe3b1f28e0cd37
 [oh]
   url=git@github.com:felixguendling/oh.git
   branch=master
