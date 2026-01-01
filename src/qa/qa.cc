@@ -131,7 +131,7 @@ double rate(pareto_set<nigiri::routing::journey> const& a,
           static_cast<double>(j.dest_time_.time_since_epoch().count()),
           static_cast<double>(j.transfers_));
     }
-    return jc_vec_;
+    return std::move(jc_vec_);
   };
   return rate(jc_from_ps(a), jc_from_ps(b));
 }
