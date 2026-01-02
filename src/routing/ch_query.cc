@@ -67,7 +67,7 @@ void obtain_relevant_stops(timetable const& tt,
   auto pq = dial<ch_label, ch_get_bucket>{kChMaxTravelTime.count()};
 
   auto const mark_relevant_stop = [&](location_idx_t const parent) {
-    if (loader::kGroupParents && !relevant_stops.test(parent.v_)) {
+    if (loader::kChGroupParents && !relevant_stops.test(parent.v_)) {
       for (auto const& c : tt.locations_.children_[parent]) {
         relevant_stops.set(c.v_);
         for (auto const& cc : tt.locations_.children_[c]) {

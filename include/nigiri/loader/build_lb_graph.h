@@ -27,7 +27,8 @@ static constexpr auto const kChMaxTravelTime =
     routing::kMaxTravelTime * 5;  // TODO
 
 static constexpr auto const kEnableCh = true;
-static constexpr auto const kGroupParents = true;
+static constexpr auto const kChGroupParents = true;
+static constexpr auto const kChAtomicFootpaths = true;
 
 struct tooth {
   std::int16_t mam_;
@@ -102,6 +103,7 @@ struct ch_stats {
 template <direction SearchDir>
 void build_lb_graph(timetable& tt, profile_idx_t const prf_idx) {
   hash_map<location_idx_t, duration_t> weights;
+  hash_map<location_idx_t, std::pair<duration_t, duration_t>> arrival_fps;
   hash_map<location_idx_t, arrival> arrivals;
   std::vector<departure> departures;
   hash_map<std::pair<location_idx_t, location_idx_t>, ch_edge_idx_t> edges_map;
@@ -140,7 +142,7 @@ void build_lb_graph(timetable& tt, profile_idx_t const prf_idx) {
     for (auto const& r : tt.location_routes_[b]) {
       to_routes.set(r.v_);
     }
-    if (kGroupParents) {
+    if (kChGroupParents) {
       for (auto const& c : tt.locations_.children_[b]) {
         for (auto const& r : tt.location_routes_[c]) {
           to_routes.set(r.v_);
@@ -178,7 +180,7 @@ void build_lb_graph(timetable& tt, profile_idx_t const prf_idx) {
           if (from_l == aa) {
             from_stop_idx = from;
           }
-          if (kGroupParents ? (to_parent != b) : (to_l != b)) {
+          if (kChGroupParents ? (to_parent != b) : (to_l != b)) {
             continue;
           }
 
@@ -186,8 +188,8 @@ void build_lb_graph(timetable& tt, profile_idx_t const prf_idx) {
             auto const from_time =
                 tt.event_mam(t, from_stop_idx, event_type::kDep);
             auto const to_time = tt.event_mam(t, to, event_type::kArr);
-            departures.emplace_back(kGroupParents ? to_parent : to_l, from_time,
-                                    to_time, r, t);
+            departures.emplace_back(kChGroupParents ? to_parent : to_l,
+                                    from_time, to_time, r, t);
           }
 
           from_stop_idx = std::numeric_limits<stop_idx_t>::max();
@@ -195,7 +197,7 @@ void build_lb_graph(timetable& tt, profile_idx_t const prf_idx) {
       }
     };
     check_routes(a);
-    if (kGroupParents) {
+    if (kChGroupParents) {
       for (auto const& c : tt.locations_.children_[a]) {
         check_routes(c);
         for (auto const& cc : tt.locations_.children_[c]) {
@@ -266,10 +268,13 @@ void build_lb_graph(timetable& tt, profile_idx_t const prf_idx) {
               utl::insert_sorted(routes.at(it->second),
                                  r);  // TODO direct insertion?
             }
-            unpack.at(it->second)
-                .push_back(
-                    {ch_edge_idx_t::invalid(), ch_edge_idx_t::invalid()});
-            transfers.at(it->second).push_back(transfer);
+            if (transfer != location_idx_t::invalid() ||
+                unpack.at(it->second).empty()) {
+              unpack.at(it->second)
+                  .push_back(
+                      {ch_edge_idx_t::invalid(), ch_edge_idx_t::invalid()});
+              transfers.at(it->second).push_back(transfer);
+            }
             if (max_dur < shortcut.max_dur_) {
               ++stats.good_updates_;
             } else {
@@ -357,6 +362,22 @@ void build_lb_graph(timetable& tt, profile_idx_t const prf_idx) {
     max_saw.simplify();
   };
 
+  auto const update_arrival_fps = [&](location_idx_t const via) {
+    for (auto fp : tt.locations_.footpaths_out_[prf_idx].at(via)) {
+      auto const target = kChGroupParents
+                              ? tt.locations_.get_root_idx(fp.target())
+                              : fp.target();
+
+      if (auto const it = arrival_fps.find(target); it != end(arrival_fps)) {
+        it->second.first = std::min(it->second.first, fp.duration());
+        it->second.second = std::max(it->second.second, fp.duration());
+      } else {
+        arrival_fps.emplace_hint(it, target,
+                                 std::pair{fp.duration(), fp.duration()});
+      }
+    }
+  };
+
   auto const compute_initial_ch_edges = [&](location_idx_t const from_l) {
     assign_departures_to_arrivals();
 
@@ -366,29 +387,34 @@ void build_lb_graph(timetable& tt, profile_idx_t const prf_idx) {
       arrivals_to_saw(e, max_saw);
       auto max = max_saw.max();
       // if (i % 50 == 0) std::cout << "init max saw " << max << std::endl;
-      upsert_ch_footpath_edge(from_l, entry.first, e.min_, max, e.routes_,
-                              location_idx_t::invalid());
 
-      auto const add_footpath_edges = [&](location_idx_t const via) {
-        for (auto fp : tt.locations_.footpaths_out_[prf_idx].at(via)) {
-
-          auto const target = tt.locations_.get_root_idx(fp.target());
-          upsert_ch_footpath_edge(  // TODO transfer?, low level shortcuts?
-              from_l, kGroupParents ? target : fp.target(),
-              e.min_ + fp.duration(), max + fp.duration(), e.routes_,
-              entry.first);
-        }
-      };
-      add_footpath_edges(entry.first);
-      if (kGroupParents) {
+      arrival_fps.emplace(entry.first, std::pair{0_minutes, 2_minutes});
+      update_arrival_fps(entry.first);
+      if (kChGroupParents) {  // TODO for atomic & grouped, add fps once at
+                              // from_l
         for (auto const& c : tt.locations_.children_[entry.first]) {
-          add_footpath_edges(c);
+          update_arrival_fps(c);
           for (auto const& cc : tt.locations_.children_[c]) {
-            add_footpath_edges(cc);
+            update_arrival_fps(cc);
           }
         }
       }
+      // std::cout << "arr fps " << arrival_fps.size() << std::endl;
+      for (auto const& [to_l, minmax_duration] : arrival_fps) {
+        if (kChAtomicFootpaths && to_l != entry.first) {
+          upsert_ch_footpath_edge(entry.first, to_l, minmax_duration.first,
+                                  minmax_duration.second, {},
+                                  location_idx_t::invalid());
+        } else {
+          upsert_ch_footpath_edge(
+              from_l, to_l, e.min_ + minmax_duration.first,
+              max + minmax_duration.second, e.routes_,
+              to_l == entry.first ? location_idx_t::invalid() : entry.first);
+        }
+      }
+
       max_saw.saw_.clear();
+      arrival_fps.clear();
     }
     arrivals.clear();
   };
@@ -409,7 +435,8 @@ void build_lb_graph(timetable& tt, profile_idx_t const prf_idx) {
     shortcut.max_dur_ =
         std::min(dep.max_dur_ + arr.max_dur_, shortcut.max_dur_);
     /*utl::verify(shortcut.min_dur_.count() >= 0, "weird 0 min {} {} {} {}",
-                dep.min_dur_, arr.min_dur_, shortcut.min_dur_, shortcut_idx);*/
+                dep.min_dur_, arr.min_dur_, shortcut.min_dur_,
+       shortcut_idx);*/
     utl::verify(shortcut.min_dur_.count() < kChMaxTravelTime.count(),
                 "overfl 0 min {} {} {} {}", dep.min_dur_, arr.min_dur_,
                 shortcut.min_dur_, shortcut_idx);
@@ -750,7 +777,7 @@ void build_lb_graph(timetable& tt, profile_idx_t const prf_idx) {
         auto const target = tt.locations_.get_root_idx(target_l);
         if (target == parent_l &&  // TODO multiple same-parent calls for max?
             (SearchDir != direction::kBackward || !kEnableCh ||
-             kGroupParents)) {
+             kChGroupParents)) {
           continue;
         }
 
@@ -759,7 +786,7 @@ void build_lb_graph(timetable& tt, profile_idx_t const prf_idx) {
           auto const from_time = tt.event_mam(t, from, event_type::kDep);
           auto const to_time = tt.event_mam(t, to, event_type::kArr);
           if (SearchDir == direction::kBackward && kEnableCh) {
-            departures.emplace_back(kGroupParents ? target : to_l, from_time,
+            departures.emplace_back(kChGroupParents ? target : to_l, from_time,
                                     to_time, r, t);
           }
           min = std::min(((to_time - from_time).as_duration()), min);
@@ -769,7 +796,7 @@ void build_lb_graph(timetable& tt, profile_idx_t const prf_idx) {
         }
       }
     }
-    if (SearchDir == direction::kBackward && kEnableCh && !kGroupParents) {
+    if (SearchDir == direction::kBackward && kEnableCh && !kChGroupParents) {
       compute_initial_ch_edges(l);
     }
   };
@@ -793,7 +820,7 @@ void build_lb_graph(timetable& tt, profile_idx_t const prf_idx) {
     }
     add_edges(i);
 
-    if (SearchDir == direction::kBackward && kEnableCh && kGroupParents) {
+    if (SearchDir == direction::kBackward && kEnableCh && kChGroupParents) {
       compute_initial_ch_edges(i);
     }
 
