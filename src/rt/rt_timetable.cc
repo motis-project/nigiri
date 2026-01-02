@@ -264,6 +264,7 @@ void rt_timetable::update_lbs(timetable const& tt) {
   auto const copy =
       [&](vecvec<location_idx_t, footpath>& to,
           vector_map<location_idx_t, std::vector<footpath>> const& from) {
+        to.clear();
         for (auto l = location_idx_t{0U}; l != tt.n_locations(); ++l) {
           to.emplace_back(from[l]);
         }
