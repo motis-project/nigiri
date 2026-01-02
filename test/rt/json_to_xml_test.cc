@@ -1,9 +1,20 @@
 #include "gtest/gtest.h"
 
+#include "nigiri/loader/load.h"
+#include "nigiri/resolve.h"
+#include "nigiri/rt/create_rt_timetable.h"
 #include "nigiri/rt/json_to_xml.h"
+#include "nigiri/rt/vdv_aus.h"
+
+#include "pugixml.hpp"
+
+#include "date/date.h"
 
 #include <sstream>
 
+using namespace date;
+using namespace std::chrono_literals;
+using namespace nigiri;
 using namespace nigiri::rt;
 
 constexpr auto kIn = R"(
@@ -200,9 +211,60 @@ auto const kExpected =
 </Siri>
 )";
 
+constexpr auto kGtfsTimetable = R"(
+# agency.txt
+
+# stops.txt
+stop_id,stop_name,stop_lat,stop_lon
+XCY,Chambéry - Bus Station,45.0,5.0
+NCY,Annecy - Bus Station,46.0,6.0
+GVA,Geneva - Airport Bus Station,46.2,6.1
+XGC,Geneva - Bus Station,46.3,6.2
+
+# calendar_dates.txt
+service_id,date,exception_type
+1,20251025,1
+
+# routes.txt
+route_id
+7621
+
+# trips.txt
+trip_id,service_id,route_id
+7621,1,7621
+
+# stop_times.txt
+trip_id,arrival_time,departure_time,stop_id,stop_sequence
+7621,03:00:00,03:00:00,XCY,1
+7621,03:45:00,03:50:00,NCY,2
+7621,04:40:00,04:45:00,GVA,3
+7621,05:00:00,05:00:00,XGC,4
+)";
+
 TEST(rt, json_to_xml) {
   auto doc = to_xml(kIn);
   auto oss = std::ostringstream{};
   doc.save(oss, "  ", pugi::format_default | pugi::format_no_declaration);
   EXPECT_EQ(kExpected, oss.str());
+
+  auto const base_day = date::sys_days{2025_y / October / 25};
+  auto tt = loader::load({{.tag_ = "test",
+                           .path_ = kGtfsTimetable,
+                           .loader_config_ = {.default_tz_ = "UTC"}}},
+                         {}, {base_day, date::sys_days{2025_y / October / 26}});
+
+  auto rtt = rt::create_rt_timetable(tt, base_day);
+  auto updater = rt::vdv_aus::updater{tt, source_idx_t{0},
+                                      rt::vdv_aus::updater::xml_format::kSiri};
+  updater.update(rtt, doc);
+
+  auto const fr_rt = resolve(tt, &rtt, "7621", "20251025");
+  ASSERT_EQ(4U, fr_rt.size());
+  EXPECT_TRUE(fr_rt.is_rt());
+  EXPECT_EQ(base_day + 3h + 1min, fr_rt[0].time(event_type::kDep));
+  EXPECT_EQ(base_day + 3h + 39min, fr_rt[1].time(event_type::kArr));
+  EXPECT_EQ(base_day + 3h + 52min, fr_rt[1].time(event_type::kDep));
+  EXPECT_EQ(base_day + 4h + 27min, fr_rt[2].time(event_type::kArr));
+  EXPECT_EQ(base_day + 4h + 44min, fr_rt[2].time(event_type::kDep));
+  EXPECT_EQ(base_day + 4h + 57min, fr_rt[3].time(event_type::kArr));
 }

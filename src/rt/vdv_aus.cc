@@ -179,13 +179,20 @@ updater::vdv_stop::vdv_stop(nigiri::location_idx_t const l,
       arr_{is_vdv(f)
                ? get_opt_time(n, "Ankunftszeit", "%FT%T")
                : get_opt_time(n, "AimedArrivalTime", "%FT%T%Ez", "%FT%TZ")},
-      rt_dep_{
-          is_vdv(f)
-              ? get_opt_time(n, "IstAbfahrtPrognose", "%FT%T")
-              : get_opt_time(n, "ExpectedDepartureTime", "%FT%T%Ez", "%FT%TZ")},
-      rt_arr_{is_vdv(f) ? get_opt_time(n, "IstAnkunftPrognose", "%FT%T")
+      rt_dep_{is_vdv(f) ? get_opt_time(n, "IstAbfahrtPrognose", "%FT%T")
                         : get_opt_time(
-                              n, "ExpectedArrivalTime", "%FT%T%Ez", "%FT%TZ")},
+                              n, "ExpectedDepartureTime", "%FT%T%Ez", "%FT%TZ")
+                              .or_else([&]() {
+                                return get_opt_time(n, "ActualDepartureTime",
+                                                    "%FT%T%Ez", "%FT%TZ");
+                              })},
+      rt_arr_{is_vdv(f)
+                  ? get_opt_time(n, "IstAnkunftPrognose", "%FT%T")
+                  : get_opt_time(n, "ExpectedArrivalTime", "%FT%T%Ez", "%FT%TZ")
+                        .or_else([&]() {
+                          return get_opt_time(n, "ActualArrivalTime",
+                                              "%FT%T%Ez", "%FT%TZ");
+                        })},
       in_forbidden_{is_vdv(f) ? *get_opt_bool(n, "Einsteigeverbot", false)
                               : *get_opt_str(n,
                                              "DepartureBoardingActivity",
@@ -717,6 +724,9 @@ statistics updater::update(rt_timetable& rtt, pugi::xml_document const& doc) {
       for (auto const vdv_run : children(doc, "IstFahrt")) {
         process(vdv_run);
       }
+      for (auto const vdv_run : children(doc, "AUSNachricht", "IstFahrt")) {
+        process(vdv_run);
+      }
       for (auto const vdv_run :
            children(doc, "DatenAbrufenAntwort", "AUSNachricht", "IstFahrt")) {
         process(vdv_run);
@@ -729,6 +739,11 @@ statistics updater::update(rt_timetable& rtt, pugi::xml_document const& doc) {
       for (auto const vdv_run : children(
                doc, "Siri", "ServiceDelivery", "EstimatedTimetableDelivery",
                "EstimatedJourneyVersionFrame", "EstimatedVehicleJourney")) {
+        process(vdv_run);
+      }
+      for (auto const vdv_run : children(doc, "Siri", "ServiceDelivery",
+                                         "EstimatedJourneyVersionFrame",
+                                         "EstimatedVehicleJourney")) {
         process(vdv_run);
       }
       break;
