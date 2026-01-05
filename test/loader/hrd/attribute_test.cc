@@ -11,12 +11,15 @@ TEST(hrd, parse_attributes_line) {
   constexpr auto const file_content = ",  0 260 10 Bus mit Fahrradanh\xE4nger#";
 
   for (auto const& c : configs) {
-    timetable tt{};
+    auto tt = timetable{};
     auto const attributes = parse_attributes(c, tt, file_content);
     auto const it = attributes.find(", ");
     ASSERT_NE(end(attributes), it);
-    EXPECT_EQ((attribute{.code_ = ", ", .text_ = "Bus mit Fahrradanhänger"}),
-              tt.attributes_.at(it->second));
+
+    auto const attr = tt.attributes_.at(it->second);
+    EXPECT_EQ(", ", attr.code_);
+    EXPECT_EQ("Bus mit Fahrradanhänger",
+              tt.get_default_translation(attr.text_));
   }
 }
 
@@ -29,8 +32,10 @@ TEST(hrd, parse_attributes_and_ignore_line) {
     auto attributes = parse_attributes(c, tt, file_content);
     auto const it = attributes.find("ZZ");
     ASSERT_NE(end(attributes), it);
-    EXPECT_EQ((attribute{.code_ = "ZZ", .text_ = "zusätzlicher Zug"}),
-              tt.attributes_.at(it->second));
+
+    auto const attr = tt.attributes_.at(it->second);
+    EXPECT_EQ("ZZ", attr.code_);
+    EXPECT_EQ("zusätzlicher Zug", tt.get_default_translation(attr.text_));
   }
 }
 

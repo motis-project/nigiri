@@ -327,7 +327,7 @@ timeframe_group_idx_t match_timeframe(timetable const& tt,
                                       transport_idx_t const t,
                                       unixtime_t const time) {
   auto const stop_tz = tt.locations_.location_timezones_.at(l);
-  auto const& tz = tt.locations_.timezones_.at(
+  auto const& tz = tt.timezones_.at(
       stop_tz == timezone_idx_t::invalid()
           ? tt.providers_[tt.transport_section_providers_.at(t).at(0)].tz_
           : stop_tz);
@@ -444,7 +444,7 @@ std::pair<source_idx_t, std::vector<fares::fare_leg_rule>> match_leg_rule(
           auto const b = static_cast<stop_idx_t>(ree.stop_range_.to_);
           for (auto i = a; i < b; ++i) {
             auto const stop_areas = get_areas(tt, fr[i].get_location_idx());
-            trace("areas of {}: {}", fr[i].get_location().name_,
+            trace("areas of {}: {}", fmt::streamed(fr[i].get_loc()),
                   stop_areas | std::views::transform([&](area_idx_t const x) {
                     return tt.strings_.get(tt.areas_[x].name_);
                   }));

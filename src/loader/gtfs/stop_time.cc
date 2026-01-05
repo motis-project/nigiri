@@ -33,12 +33,12 @@ void add_distance(auto& trip_data, double const distance) {
   }
 }
 
-void read_stop_times(timetable& tt,
-                     trip_data& trips,
+void read_stop_times(trip_data& trips,
                      stops_map_t const& stops,
                      flex_areas_t const& flex_areas,
                      booking_rules_t const& booking_rules,
                      location_groups_t const& location_groups,
+                     translator& i18n,
                      std::string_view file_content,
                      bool const store_distances) {
   struct csv_stop_time {
@@ -46,7 +46,7 @@ void read_stop_times(timetable& tt,
     utl::csv_col<utl::cstr, UTL_NAME("arrival_time")> arrival_time_;
     utl::csv_col<utl::cstr, UTL_NAME("departure_time")> departure_time_;
     utl::csv_col<utl::cstr, UTL_NAME("stop_id")> stop_id_;
-    utl::csv_col<std::uint16_t, UTL_NAME("stop_sequence")> stop_sequence_;
+    utl::csv_col<utl::cstr, UTL_NAME("stop_sequence")> stop_sequence_;
     utl::csv_col<utl::cstr, UTL_NAME("stop_headsign")> stop_headsign_;
     utl::csv_col<int, UTL_NAME("pickup_type")> pickup_type_;
     utl::csv_col<int, UTL_NAME("drop_off_type")> drop_off_type_;
@@ -65,7 +65,6 @@ void read_stop_times(timetable& tt,
   };
 
   auto line_number = 1U;
-  auto lookup_direction = cached_lookup(trips.directions_);
 
   // Parse GTFS Flex trip.
   auto const parse_flex_trip = [&](csv_stop_time const& s, trip* t,
@@ -199,16 +198,15 @@ void read_stop_times(timetable& tt,
         }
 
         // Store common attributes of regular trips and flex trips.
-        t->requires_sorting_ |= (!t->seq_numbers_.empty() &&
-                                 t->seq_numbers_.back() > *s.stop_sequence_);
-        t->seq_numbers_.push_back(*s.stop_sequence_);
+        auto const seq = utl::parse<std::uint16_t>(*s.stop_sequence_);
+        t->requires_sorting_ |=
+            (!t->seq_numbers_.empty() && t->seq_numbers_.back() > seq);
+        t->seq_numbers_.push_back(seq);
         if (!s.stop_headsign_->empty()) {
           t->stop_headsigns_.resize(t->seq_numbers_.size(), t->headsign_);
-          t->stop_headsigns_.back() =
-              lookup_direction(s.stop_headsign_->view(), [&]() {
-                return trips.get_or_create_direction(tt,
-                                                     s.stop_headsign_->view());
-              });
+          t->stop_headsigns_.back() = i18n.get(
+              t::kStopTimes, f::kStopHeadsign, s.stop_headsign_->view(),
+              s.trip_id_->view(), s.stop_sequence_->view());
         }
 
         if (l == location_idx_t::invalid()) {

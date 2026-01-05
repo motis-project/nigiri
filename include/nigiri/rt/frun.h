@@ -6,9 +6,9 @@
 #include "geo/latlng.h"
 
 #include "nigiri/common/interval.h"
-#include "nigiri/location.h"
 #include "nigiri/rt/run.h"
 #include "nigiri/stop.h"
+#include "nigiri/timetable.h"
 #include "nigiri/types.h"
 
 namespace nigiri {
@@ -24,26 +24,28 @@ struct frun;
 struct run_stop {
   stop get_stop() const;
   stop get_scheduled_stop() const;
-  location get_location() const;
   geo::latlng pos() const;
+  loc get_loc() const;
   location_idx_t get_location_idx() const;
+  std::string_view get_location_id() const;
   location_idx_t get_scheduled_location_idx() const;
-  std::string_view name() const;
-  std::string_view track() const;
+  std::string_view name(lang_t const&) const;
+  std::string_view track(lang_t const&) const;
   std::string_view id() const;
   std::pair<date::sys_days, duration_t> get_trip_start(event_type) const;
-
   provider_idx_t get_provider_idx(event_type) const;
   provider const& get_provider(event_type) const;
   trip_idx_t get_trip_idx(event_type) const;
   route_id_idx_t get_route_id_idx(event_type) const;
+  std::pair<timetable::route_ids const*, route_id_idx_t> get_route(
+      event_type) const;
   std::string_view get_route_id(event_type) const;
   direction_id_t get_direction_id(event_type) const;
   std::optional<route_type_t> route_type(event_type) const;
-  std::string_view route_short_name(event_type) const;
-  std::string_view route_long_name(event_type) const;
-  std::string_view trip_short_name(event_type) const;
-  std::string_view display_name(event_type) const;
+  std::string_view route_short_name(event_type, lang_t const&) const;
+  std::string_view route_long_name(event_type, lang_t const&) const;
+  std::string_view trip_short_name(event_type, lang_t const&) const;
+  std::string_view display_name(event_type, lang_t const&) const;
   run_stop get_last_trip_stop(event_type) const;
 
   unixtime_t scheduled_time(event_type) const;
@@ -52,9 +54,9 @@ struct run_stop {
   timezone_idx_t get_tz(event_type) const;
   std::optional<std::string> get_tz_name(event_type) const;
 
-  std::string_view line(event_type) const;
-  std::string_view scheduled_line(event_type) const;
-  std::string_view direction(event_type) const;
+  std::string_view direction(lang_t const&, event_type) const;
+
+  attribute_combination_idx_t get_attribute_combination(event_type) const;
 
   clasz get_clasz(event_type) const;
   clasz get_scheduled_clasz(event_type) const;
@@ -129,7 +131,7 @@ struct frun : public run {
   };
   using const_iterator = iterator;
 
-  std::string_view name() const;
+  std::string_view name(lang_t const&) const;
   debug dbg() const;
 
   frun(timetable const&, rt_timetable const*, run);

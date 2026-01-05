@@ -16,21 +16,25 @@
 namespace nigiri::loader {
 
 void register_special_stations(timetable& tt) {
+  tt.languages_.store("");  // enable kDefaultLang
+  tt.register_translation(std::string_view{""});  // enable kEmptyTranslation
   for (auto const& name : special_stations_names) {
-    register_location(tt, location{name,
-                                   name,
-                                   "",
-                                   "",
-                                   {0.0, 0.0},
+    auto const name_translation = tt.register_translation(name);
+    register_location(tt, location{tt,
                                    source_idx_t::invalid(),
+                                   name,
+                                   name_translation,
+                                   kEmptyTranslation,
+                                   kEmptyTranslation,
+                                   {0.0, 0.0},
                                    location_type::kStation,
                                    location_idx_t::invalid(),
                                    timezone_idx_t::invalid(),
-                                   0_minutes,
-                                   tt});
+                                   0_minutes});
   }
   tt.location_routes_.resize(tt.n_locations());
   tt.bitfields_.emplace_back(bitfield{});  // bitfield_idx 0 = 000...00 bitfield
+  tt.attribute_combinations_.add_back_sized(0U);  // combination 0 = empty
 }
 
 void build_location_tree(timetable& tt) {
@@ -98,8 +102,54 @@ void assign_importance(timetable& tt) {
   }
 }
 
+// Based on https://www.w3.org/TR/WCAG20/#relativeluminancedef
+float luminance(color_t color) {
+  constexpr auto max = static_cast<float>(std::numeric_limits<uint8_t>::max());
+  auto const r = (color.v_ >> 16 & 0xFF) / max;
+  auto const g = (color.v_ >> 8 & 0xFF) / max;
+  auto const b = (color.v_ & 0xFF) / max;
+
+  auto const color_lum = [](float channel) -> float {
+    return channel <= 0.03928f ? channel / 12.92f
+                               : std::pow((channel + 0.055f) / 1.055f, 2.4f);
+  };
+  auto const red_lum = color_lum(r);
+  auto const green_lum = color_lum(g);
+  auto const blue_lum = color_lum(b);
+
+  return 0.2126f * red_lum + 0.7152f * green_lum + 0.0722f * blue_lum;
+}
+
+// Based on contrast ratio formula from https://www.w3.org/TR/WCAG20/
+float contrast_ratio(color_t a, color_t b) {
+  auto const a_lum = luminance(a);
+  auto const b_lum = luminance(b);
+
+  auto const [lighter, darker] =
+      a_lum > b_lum ? std::tuple{a_lum, b_lum} : std::tuple{b_lum, a_lum};
+
+  return (lighter + 0.05f) / (darker + 0.05f);
+}
+
+void correct_color_contrast(timetable& tt) {
+  for (auto& ids : tt.route_ids_) {
+    for (auto& colors : ids.route_id_colors_) {
+      auto const ratio = contrast_ratio(colors.color_, colors.text_color_);
+
+      if (ratio < 3.0f) {
+        constexpr auto white = color_t(0xFFFFFF);
+        constexpr auto black = color_t(0x000000);
+        auto const better = contrast_ratio(colors.color_, black) >
+                                    contrast_ratio(colors.color_, white)
+                                ? black
+                                : white;
+        colors.text_color_ = better;
+      }
+    }
+  }
+}
+
 void finalize(timetable& tt, finalize_options const opt) {
-  tt.strings_.cache_.clear();
   tt.location_routes_.resize(tt.n_locations());
 
   {
@@ -125,8 +175,8 @@ void finalize(timetable& tt, finalize_options const opt) {
 #endif
         begin(tt.provider_id_to_idx_), end(tt.provider_id_to_idx_),
         [&](provider_idx_t const a, provider_idx_t const b) {
-          return tt.strings_.get(tt.providers_[a].id_) <
-                 tt.strings_.get(tt.providers_[b].id_);
+          return std::tie(tt.providers_[a].src_, tt.providers_[a].id_) <
+                 std::tie(tt.providers_[b].src_, tt.providers_[b].id_);
         });
   }
   build_footpaths(tt, opt);
@@ -135,6 +185,7 @@ void finalize(timetable& tt, finalize_options const opt) {
   build_location_tree(tt);
   assign_stops_to_flex_areas(tt);
   assign_importance(tt);
+  correct_color_contrast(tt);
 
   log(log_lvl::info, "nigiri.loader.finalize",
       "{} locations ({}% of idx space used)", tt.n_locations(),

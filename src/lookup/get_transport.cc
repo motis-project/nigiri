@@ -37,7 +37,7 @@ void for_each_schedule_transport(timetable const& tt,
       if (gtfs_local_day) {
         auto const provider =
             tt.providers_[tt.transport_section_providers_[t].front()];
-        auto const tz = tt.locations_.timezones_[provider.tz_];
+        auto const tz = tt.timezones_[provider.tz_];
         tz_offset = loader::gtfs::get_noon_offset(
             date::local_days{day},
             reinterpret_cast<date::time_zone const*>(

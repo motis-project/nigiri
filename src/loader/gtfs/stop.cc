@@ -16,6 +16,7 @@
 #include "utl/progress_tracker.h"
 #include "utl/to_vec.h"
 
+#include "nigiri/loader/gtfs/translations.h"
 #include "nigiri/loader/register.h"
 #include "nigiri/logging.h"
 #include "nigiri/timetable.h"
@@ -204,6 +205,7 @@ seated_transfers_map_t read_transfers(stop_map_t& stops,
 std::pair<stops_map_t, seated_transfers_map_t> read_stops(
     source_idx_t const src,
     timetable& tt,
+    translator& i18n,
     tz_map& timezones,
     std::string_view stops_file_content,
     std::string_view transfers_file_content,
@@ -301,18 +303,18 @@ std::pair<stops_map_t, seated_transfers_map_t> read_stops(
   auto transfers = read_transfers(stops, transfers_file_content);
   for (auto const& [id, s] : stops) {
     auto loc = location{
-        id,
-        s->name_,
-        s->platform_code_,
-        s->desc_,
-        s->coord_,
+        tt,
         src,
+        id,
+        i18n.get(t::kStops, f::kStopName, s->name_.view(), s->id_),
+        i18n.get(t::kStops, f::kPlatformCode, s->platform_code_, s->id_),
+        i18n.get(t::kStops, f::kStopDesc, s->desc_, s->id_),
+        s->coord_,
         s->parent_ == nullptr ? location_type::kStation : location_type::kTrack,
         location_idx_t::invalid(),
         s->timezone_.empty() ? timezone_idx_t::invalid()
                              : get_tz_idx(tt, timezones, s->timezone_),
         s->transfer_time_.value_or(2_minutes),
-        tt,
         timezones};
     if (process_location(r, loc)) {
       locations.emplace(id, s->location_ = register_location(tt, loc));

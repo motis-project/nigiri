@@ -31,11 +31,10 @@ namespace {
 
 mem_dir test_files() {
   return mem_dir::read(R"(
-     "(
 # agency.txt
 agency_name,agency_url,agency_timezone,agency_lang,agency_phone,agency_id
-invalid,https://test.com,Europe/London,DE,0800123456,INVALID_AGENCY
 test,https://test.com,Europe/Berlin,DE,0800123456,AGENCY_1
+invalid,https://test.com,Europe/Berlin,DE,0800123456,INVALID_AGENCY
 
 # stops.txt
 stop_id,stop_name,stop_lat,stop_lon
@@ -802,7 +801,7 @@ TEST(rt, gtfs_rt_added) {
     // fr.trip_idx()
     EXPECT_EQ("TRIP_ADDED", fr.id().id_);
     EXPECT_EQ(source_idx_t{0}, fr.id().src_);
-    EXPECT_EQ("Route 1", fr.name());
+    EXPECT_EQ("Route 1", fr.name({}));
     EXPECT_EQ("RT", fr.dbg().path_);
     EXPECT_EQ((std::pair{date::sys_days{2023_y / August / 10},
                          duration_t{9h + 15min}}),
@@ -817,15 +816,15 @@ TEST(rt, gtfs_rt_added) {
     EXPECT_EQ(location_idx_t{13}, fr[0].get_scheduled_stop().location_idx());
     EXPECT_FLOAT_EQ(0.05, fr[0].pos().lat());
     EXPECT_FLOAT_EQ(0.05, fr[0].pos().lng());
-    EXPECT_EQ("", fr[0].track());
+    EXPECT_EQ("", fr[0].track(std::nullopt));
     EXPECT_EQ("E", fr[0].id());
     EXPECT_EQ("AGENCY_1",
               tt.strings_.get(fr[0].get_provider(event_type::kDep).id_));
     // EXPECT_EQ("", fr[0].get_trip_idx());
     EXPECT_EQ("?", rtt.transport_name(tt, fr.rt_));
-    EXPECT_EQ("?", fr[0].trip_short_name(event_type::kDep));
-    EXPECT_EQ("Route 1", fr[0].route_short_name(event_type::kDep));
-    EXPECT_EQ("Route 1", fr[0].display_name(event_type::kDep));
+    EXPECT_EQ("?", fr[0].trip_short_name(event_type::kDep, {}));
+    EXPECT_EQ("Route 1", fr[0].route_short_name(event_type::kDep, {}));
+    EXPECT_EQ("Route 1", fr[0].display_name(event_type::kDep, {}));
     EXPECT_EQ(
         unixtime_t{date::sys_days{2023_y / August / 10} + 9_hours + 15_minutes},
         fr[0].scheduled_time(event_type::kDep));
@@ -833,16 +832,14 @@ TEST(rt, gtfs_rt_added) {
         unixtime_t{date::sys_days{2023_y / August / 10} + 9_hours + 15_minutes},
         fr[0].time(event_type::kDep));
     EXPECT_EQ(duration_t{0}, fr[0].delay(event_type::kDep));
-    EXPECT_EQ("", fr[0].line(event_type::kDep));
-    EXPECT_EQ("", fr[0].scheduled_line(event_type::kDep));
-    EXPECT_EQ("B", fr[0].direction(event_type::kDep));
+    EXPECT_EQ("B", fr[0].direction(std::nullopt, event_type::kDep));
     EXPECT_EQ(nigiri::clasz::kBus, fr[0].get_clasz(event_type::kDep));
     EXPECT_EQ(nigiri::clasz::kOther,
               fr[0].get_scheduled_clasz(event_type::kDep));
     EXPECT_EQ(false, fr[0].bikes_allowed(event_type::kDep));
     EXPECT_EQ(std::nullopt,
               to_str(fr[0].get_route_color(event_type::kDep).color_));
-    EXPECT_EQ(std::nullopt,
+    EXPECT_EQ("ffffff",
               to_str(fr[0].get_route_color(event_type::kDep).text_color_));
     EXPECT_EQ(false, fr[0].in_allowed_wheelchair());
     EXPECT_EQ(false, fr[0].out_allowed_wheelchair());
@@ -854,7 +851,7 @@ TEST(rt, gtfs_rt_added) {
     EXPECT_EQ(0, fr.size());
     EXPECT_EQ("", fr.id().id_);
     EXPECT_EQ(source_idx_t{0}, fr.id().src_);
-    EXPECT_EQ("", fr.name());
+    EXPECT_EQ("", fr.name({}));
     EXPECT_EQ("", fr.dbg().path_);
     // EXPECT_EQ(, fr.trip_idx());
     EXPECT_EQ(nigiri::clasz::kOther, fr.get_clasz());
@@ -1030,7 +1027,7 @@ TEST(rt, gtfs_rt_new_no_route) {
   auto const fr = rt::frun{tt, &rtt, r};
   EXPECT_EQ(fr.size(), 3);
   EXPECT_EQ(nigiri::clasz::kOther, fr.get_clasz());
-  EXPECT_EQ("New Route", fr[0].trip_short_name(event_type::kDep));
+  EXPECT_EQ("New Route", fr[0].trip_short_name(event_type::kDep, {}));
   EXPECT_EQ(string_idx_t::invalid(), fr[0].get_provider(event_type::kDep).id_);
   ASSERT_FALSE(fr.is_cancelled());
 }
@@ -1074,7 +1071,7 @@ TEST(rt, gtfs_rt_new_bare) {
   EXPECT_EQ(1, rtt.rt_transport_location_seq_.size());
   ASSERT_TRUE(r.valid());
   auto const fr = rt::frun{tt, &rtt, r};
-  EXPECT_EQ("?", fr.name());
+  EXPECT_EQ("?", fr.name({}));
   EXPECT_EQ(string_idx_t::invalid(), fr[0].get_provider(event_type::kDep).id_);
 }
 

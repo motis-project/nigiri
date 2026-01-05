@@ -29,7 +29,7 @@ unixtime_t parse_time(std::string_view s,
   }
 
   if constexpr (sizeof...(RestFormat) == 0U) {
-    throw utl::fail("unable to parse time {}", s);
+    throw utl::fail("unable to parse time {:?}", s);
   } else {
     return parse_time(s, rest...);
   }

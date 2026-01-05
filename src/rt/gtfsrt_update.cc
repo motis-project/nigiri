@@ -11,7 +11,6 @@
 
 #include "nigiri/loader/gtfs/stop_seq_number_encoding.h"
 #include "nigiri/get_otel_tracer.h"
-#include "nigiri/location.h"
 #include "nigiri/logging.h"
 #include "nigiri/lookup/get_transport.h"
 #include "nigiri/rt/frun.h"
@@ -214,7 +213,7 @@ bool add_rt_trip(source_idx_t const src,
       auto const it =
           tt.locations_.location_id_to_idx_.find({stu.stop_id(), src});
       if (it == end(tt.locations_.location_id_to_idx_)) {
-        log(log_lvl::error, "rt.gtfs.unsupported",
+        log(log_lvl::debug, "rt.gtfs.unsupported",
             "NEW/ADDED stop_id must be contained in stops.txt "
             "(src={}, trip_id={}, stop_id={}), skipping",
             src, tripUpdate.trip().trip_id(), stu.stop_id());
@@ -226,7 +225,7 @@ bool add_rt_trip(source_idx_t const src,
             geo::distance(tt.locations_.coordinates_.at(it->second), last_pos);
         if (dist_between_stops / std::max(time_between_stops, 1) / 60 >
             kMaxTransitSpeed) {
-          log(log_lvl::error, "rt.gtfs.invalid",
+          log(log_lvl::debug, "rt.gtfs.invalid",
               "NEW/ADDED trip is travelling too fast "
               "(src={}, trip_id={}, stop_id={}, dist={}, delta={}), skipping",
               src, tripUpdate.trip().trip_id(), stu.stop_id(),
@@ -523,9 +522,9 @@ void handle_vehicle_position(timetable const& tt,
     auto const app_dist_lng_deg_vp =
         geo::approx_distance_lng_degrees(vp_position);
     auto const stop_it = utl::find_if(location_seq, [&](auto const& stp) {
-      auto const loc = tt.locations_.get(stop{stp}.location_idx());
-      return geo::approx_squared_distance(loc.pos_, vp_position,
-                                          app_dist_lng_deg_vp) < 10;
+      return geo::approx_squared_distance(
+                 tt.locations_.coordinates_[stop{stp}.location_idx()],
+                 vp_position, app_dist_lng_deg_vp) < 10;
     });
     if (stop_it == end(location_seq)) {
       log(log_lvl::debug, "rt.gtfs.vehicle_update",
@@ -591,7 +590,7 @@ void handle_vehicle_position(timetable const& tt,
     ++stats.total_entities_success_;
   } catch (std::exception const& e) {
     ++stats.total_entities_fail_;
-    log(log_lvl::error, "rt.gtfs",
+    log(log_lvl::debug, "rt.gtfs",
         "GTFS-RT error (tag={}): time={}, entity={}, message={}, error={}", tag,
         date::format("%T", message_time), entity.id(),
         remove_nl(entity.DebugString()), e.what());
@@ -630,7 +629,7 @@ statistics gtfsrt_update_msg(timetable const& tt,
     auto const unsupported = [&](bool const is_set, char const* field,
                                  int& stat) {
       if (is_set) {
-        log(log_lvl::error, "rt.gtfs.unsupported",
+        log(log_lvl::debug, "rt.gtfs.unsupported",
             R"(ignoring unsupported "{}" field (tag={}, id={}))", field, tag,
             entity.id());
         ++stat;
@@ -648,22 +647,22 @@ statistics gtfsrt_update_msg(timetable const& tt,
     if (use_vehicle_position) {
       ++stats.total_vehicles_;
       if (!entity.has_vehicle()) {
-        log(log_lvl::error, "rt.gtfs.unsupported",
+        log(log_lvl::debug, "rt.gtfs.unsupported",
             R"(unsupported: no "vehicle_position" field (tag={}, id={}), skipping message)",
             tag, entity.id());
         ++stats.no_vehicle_position_;
       } else if (!entity.vehicle().has_position()) {
-        log(log_lvl::error, "rt.gtfs.unsupported",
+        log(log_lvl::debug, "rt.gtfs.unsupported",
             R"(unsupported: no "position" field in "vehicle_position" field (tag={}, id={}), skipping message)",
             tag, entity.id());
         ++stats.vehicle_position_without_position_;
       } else if (!entity.vehicle().has_trip()) {
-        log(log_lvl::error, "rt.gtfs.unsupported",
+        log(log_lvl::debug, "rt.gtfs.unsupported",
             R"(unsupported: no "trip" field in "vehicle_position" field (tag={}, id={}), skipping message)",
             tag, entity.id());
         ++stats.vehicle_position_without_trip_;
       } else if (!entity.vehicle().trip().has_trip_id()) {
-        log(log_lvl::error, "rt.gtfs.unsupported",
+        log(log_lvl::debug, "rt.gtfs.unsupported",
             R"(unsupported: no "trip_id" field in "trip" field (tag={}, id={}), skipping message)",
             tag, entity.id());
         ++stats.vehicle_position_trip_without_trip_id_;
@@ -675,25 +674,36 @@ statistics gtfsrt_update_msg(timetable const& tt,
     }
 
     if (!entity.has_trip_update()) {
-      log(log_lvl::error, "rt.gtfs.unsupported",
-          R"(unsupported: no "trip_update" field (tag={}, id={}), skipping message)",
-          tag, entity.id());
+      log(log_lvl::debug, "rt.gtfs.unsupported",
+          R"(unsupported: no "trip_update" field (tag={}, id={}, vehicle={}), skipping message)",
+          tag, entity.id(), entity.has_vehicle());
       ++stats.no_trip_update_;
       continue;
     }
 
     if (!entity.trip_update().has_trip()) {
-      log(log_lvl::error, "rt.gtfs.unsupported",
+      log(log_lvl::debug, "rt.gtfs.unsupported",
           R"(unsupported: no "trip" field in "trip_update" field (tag={}, id={}), skipping message)",
           tag, entity.id());
       ++stats.trip_update_without_trip_;
       continue;
     }
 
-    if (!entity.trip_update().trip().has_trip_id()) {
-      log(log_lvl::error, "rt.gtfs.unsupported",
-          R"(unsupported: no "trip_id" field in "trip_update.trip" (tag={}, id={}), skipping message)",
-          tag, entity.id());
+    if (!entity.trip_update().trip().has_trip_id() &&
+        !(entity.trip_update().trip().has_schedule_relationship() &&
+          (entity.trip_update().trip().schedule_relationship() ==
+               transit_realtime::
+                   TripDescriptor_ScheduleRelationship_SCHEDULED ||
+           entity.trip_update().trip().schedule_relationship() ==
+               transit_realtime::
+                   TripDescriptor_ScheduleRelationship_CANCELED) &&
+          entity.trip_update().trip().has_start_date() &&
+          entity.trip_update().trip().has_start_time() &&
+          entity.trip_update().trip().has_route_id() &&
+          entity.trip_update().trip().has_direction_id())) {
+      log(log_lvl::debug, "rt.gtfs.unsupported",
+          R"(unsupported: no "trip_id" field in "trip_update.trip" (tag={}, td={}), skipping message)",
+          tag, entity.trip_update().trip().DebugString());
       ++stats.unsupported_no_trip_id_;
       continue;
     }
@@ -705,7 +715,7 @@ statistics gtfsrt_update_msg(timetable const& tt,
     if (sr == gtfsrt::TripDescriptor_ScheduleRelationship_DUPLICATED &&
         (!entity.trip_update().has_trip_properties() ||
          !entity.trip_update().trip_properties().has_trip_id())) {
-      log(log_lvl::error, "rt.gtfs.unsupported",
+      log(log_lvl::debug, "rt.gtfs.unsupported",
           R"(unsupported: no "trip_properties.trip_id" field in "trip_update.trip" for DUPLICATED (tag={}, id={}), skipping message)",
           tag, entity.id());
       ++stats.unsupported_no_trip_id_;
@@ -717,7 +727,7 @@ statistics gtfsrt_update_msg(timetable const& tt,
 
     if (sr != gtfsrt::TripDescriptor_ScheduleRelationship_SCHEDULED &&
         sr != gtfsrt::TripDescriptor_ScheduleRelationship_CANCELED && !added) {
-      log(log_lvl::error, "rt.gtfs.unsupported",
+      log(log_lvl::debug, "rt.gtfs.unsupported",
           "unsupported schedule relationship {} (tag={}, id={}), skipping "
           "message",
           TripDescriptor_ScheduleRelationship_Name(sr), tag, entity.id());
@@ -785,7 +795,7 @@ statistics gtfsrt_update_msg(timetable const& tt,
       }
     } catch (std::exception const& e) {
       ++stats.total_entities_fail_;
-      log(log_lvl::error, "rt.gtfs",
+      log(log_lvl::debug, "rt.gtfs",
           "GTFS-RT error (tag={}): time={}, entity={}, message={}, error={}",
           tag, date::format("%T", message_time), entity.id(),
           remove_nl(entity.DebugString()), e.what());
@@ -795,8 +805,6 @@ statistics gtfsrt_update_msg(timetable const& tt,
                       {"message", remove_nl(entity.DebugString())}});
     }
   }
-
-  rtt.alerts_.strings_.cache_.clear();
 
   return stats;
 }
@@ -814,7 +822,7 @@ statistics gtfsrt_update_buf(timetable const& tt,
       msg.ParseFromArray(reinterpret_cast<void const*>(protobuf.data()),
                          static_cast<int>(protobuf.size()));
   if (!success) {
-    log(log_lvl::error, "rt.gtfs",
+    log(log_lvl::debug, "rt.gtfs",
         "GTFS-RT error (tag={}): unable to parse protobuf message: {}", tag,
         protobuf.substr(0, std::min(protobuf.size(), size_t{1000U})));
     return {.parser_error_ = true};

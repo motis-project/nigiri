@@ -2,6 +2,8 @@
 
 #include "nigiri/loader/gtfs/load_timetable.h"
 #include "nigiri/loader/init_finish.h"
+#include "nigiri/loader/load.h"
+
 #include "nigiri/rt/frun.h"
 #include "nigiri/rt/gtfsrt_resolve_run.h"
 
@@ -13,8 +15,7 @@ using namespace std::chrono_literals;
 
 namespace {
 
-mem_dir test_files() {
-  return mem_dir::read(R"(
+constexpr auto kTimetable = R"(
 # agency.txt
 agency_id,agency_name,agency_url,agency_timezone
 DB,Deutsche Bahn,https://deutschebahn.com,Europe/Paris
@@ -59,16 +60,9 @@ T_RE3,00:30:00,00:30:00,B,1,0,0
 T_RE3,00:45:00,00:45:00,C,2,0,0
 T_RE4,00:30:00,00:30:00,B,1,0,0
 T_RE4,00:45:00,00:45:00,C,2,0,0
-)");
-}
+)";
 
-}  // namespace
-
-TEST(gtfs, lua_test) {
-  timetable tt;
-  tt.date_range_ = {date::sys_days{2019_y / March / 25},
-                    date::sys_days{2019_y / November / 1}};
-  load_timetable({.user_script_ = R"(
+constexpr auto kUserScript = R"(
 function process_location(stop)
   local name = stop:get_name()
   if string.sub(name, -7) == ' Berlin' then
@@ -130,12 +124,21 @@ function process_trip(trip)
   end
   return trip:get_id() == 'T_RE1'
 end
-)"},
-                 source_idx_t{0}, test_files(), tt);
-  finalize(tt);
+)";
+
+}  // namespace
+
+TEST(gtfs, lua_test) {
+  auto tt = loader::load({{.tag_ = "test",
+                           .path_ = kTimetable,
+                           .loader_config_ = {.default_tz_ = "Europe/Berlin",
+                                              .user_script_ = kUserScript}}},
+                         {},
+                         {date::sys_days{2019_y / March / 25},
+                          date::sys_days{2019_y / November / 1}});
 
   auto const get_tz_name = [&](timezone_idx_t const tz) {
-    return tt.locations_.timezones_[tz].apply(utl::overloaded{
+    return tt.timezones_[tz].apply(utl::overloaded{
         [](pair<string, void const*> const& x) -> std::string_view {
           return x.first;
         },
@@ -145,23 +148,24 @@ end
   auto const p = tt.get_provider_idx("DB", {});
   ASSERT_NE(provider_idx_t::invalid(), p);
   auto const agency = tt.providers_[p];
-  EXPECT_EQ("Europe/Paris", tt.strings_.get(agency.url_));
   EXPECT_EQ("Europe/Berlin", get_tz_name(agency.tz_));
-  EXPECT_EQ("SNCF", tt.strings_.get(agency.name_));
+  EXPECT_EQ("SNCF", tt.get_default_translation(agency.name_));
+  EXPECT_EQ("Europe/Paris", tt.get_default_translation(agency.url_));
 
-  auto const a = tt.locations_.find({"A", {}});
+  auto const a = tt.find(location_id{"A", source_idx_t{}});
   ASSERT_TRUE(a.has_value());
-  EXPECT_EQ("A", a->name_);
+  EXPECT_EQ("A", tt.locations_.ids_[*a].view());
 
-  auto const b = tt.locations_.find({"B", {}});
+  auto const b = tt.find(location_id{"B", source_idx_t{}});
   ASSERT_TRUE(b.has_value());
-  EXPECT_EQ((geo::latlng{4.0, 1.0}), b->pos_);
-  EXPECT_EQ("j B YEAH", b->desc_);
-  EXPECT_EQ(100min, b->transfer_time_);
-  EXPECT_EQ("1A", b->platform_code_);
-  EXPECT_EQ("Europe/Berlin", get_tz_name(b->timezone_idx_));
-
-  std::cout << tt << "\n";
+  EXPECT_EQ((geo::latlng{4.0, 1.0}), tt.locations_.coordinates_[*b]);
+  EXPECT_EQ("j B YEAH",
+            tt.get_default_translation(tt.locations_.descriptions_[*b]));
+  EXPECT_EQ(100min, tt.locations_.transfer_time_[*b]);
+  EXPECT_EQ("1A",
+            tt.get_default_translation(tt.locations_.platform_codes_[*b]));
+  EXPECT_EQ("Europe/Berlin",
+            get_tz_name(tt.locations_.location_timezones_[*b]));
 
   {  // Renamed to "ICE 123".
     auto td = transit_realtime::TripDescriptor();
