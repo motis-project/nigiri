@@ -527,7 +527,7 @@ private:
     else return delays.back().second;
   }
 
-  const delta_t max_delay = delta_t{90};
+  const delta_t max_delay = delta_t{91};
   float delay_distribution_paper(delta_t x){
     auto xf = static_cast<float>(x);
     auto cancelation_probability = 0.95f;
@@ -545,36 +545,69 @@ private:
     return function(to);
   }
 
-  template <bool transfer=true>
-  double cum_prob(auto l, auto k, delta_t possible_start_t, clasz const c){
+  double cum_success_chance(auto l, auto k, delta_t possible_start_t, clasz const c){
     auto it = std::lower_bound(best_bag_[l].labels_.begin(), best_bag_[l].labels_.end(), possible_start_t, [](mcraptor_label a, delta_t t){
       return a.arr_t_ < t;
     });
 
-    auto result = (transfer ? transferProbability(it->arr_t_ - possible_start_t, c) : 1) * it->success_chance;
-    auto counterprob = 1 - (transfer ? transferProbability(it->arr_t_ - possible_start_t, c) : transferProbability(std::numeric_limits<nigiri::delta_t>::max(), c));
+    auto prob = transferProbability(it->arr_t_ - possible_start_t, c);
+    auto result = prob * it->success_chance;
+    auto a = (prob / transferProbability(std::numeric_limits<nigiri::delta_t>::max(), c));
+    auto b = k > 0 ? transferProbability(std::numeric_limits<nigiri::delta_t>::max(), tt_.route_clasz_[tt_.transport_route_[it->trip_id.t_idx_]]): 1;
+    auto counterprob = (1 - (a * (b)));
     ++it;
     for (; it != best_bag_[l].labels_.end(); ++it) {
-      auto prob = transferProbability(it->arr_t_ - possible_start_t, c);
-      result += counterprob * (transfer ? prob : 1) * it->success_chance;
-      counterprob = counterprob * (1 - (transfer ? prob: transferProbability(std::numeric_limits<nigiri::delta_t>::max(), c)));
+      prob = transferProbability(it->arr_t_ - possible_start_t, c);
+      result += counterprob * prob * it->success_chance;
+      a = (prob / transferProbability(std::numeric_limits<nigiri::delta_t>::max(), c));
+      b = transferProbability(std::numeric_limits<nigiri::delta_t>::max(), tt_.route_clasz_[tt_.transport_route_[it->trip_id.t_idx_]]);
+      counterprob = counterprob * (1 - (a * (b)));
     }
+    if(result > 1){
+      std::cout << "hier größer: " << result << std::endl;
+    }
+    return result;
+  }
+
+  double cum_enter_probability(auto l, auto k, delta_t possible_start_t, clasz const c){
+    //TODO ordentlich machen. Es werden hier nur ausfälle berücksichtigt. ist gemacht?
+    auto it = std::lower_bound(best_bag_[l].labels_.begin(), best_bag_[l].labels_.end(), possible_start_t, [](mcraptor_label a, delta_t t){
+      return a.arr_t_ < t;
+    });
+
+    auto result = it->success_chance;
+    auto counterprob = 1 - transferProbability(std::numeric_limits<nigiri::delta_t>::max(), tt_.route_clasz_[tt_.transport_route_[it->trip_id.t_idx_]]);
+    ++it;
+    for (; it != best_bag_[l].labels_.end(); ++it) {
+      result += counterprob * it->success_chance;
+      counterprob = counterprob * (1 - transferProbability(std::numeric_limits<nigiri::delta_t>::max(), tt_.route_clasz_[tt_.transport_route_[it->trip_id.t_idx_]]));
+    }
+
+
+
     if(result > 1){
       std::cout << "größer: " << result << std::endl;
       std::cout << "k: " << k << std::endl;
       std::cout << "possible_start_t: " << possible_start_t << std::endl;
       SetLastError(0);
+
+      auto it = std::lower_bound(best_bag_[l].labels_.begin(), best_bag_[l].labels_.end(), possible_start_t, [](mcraptor_label a, delta_t t){
+        return a.arr_t_ < t;
+      });
+
+      auto resultt = it->success_chance;
+      auto counterprobb = 1 - (transferProbability(std::numeric_limits<nigiri::delta_t>::max(), tt_.route_clasz_[tt_.transport_route_[it->trip_id.t_idx_]]));
+      std::cout << "result: " << resultt << " counterprob: " << counterprobb << " it " << it->success_chance << " trans " << transferProbability(it->arr_t_ - possible_start_t, c) << std::endl;
+
+      ++it;
+      for (; it != best_bag_[l].labels_.end(); ++it) {
+        auto prob = transferProbability(it->arr_t_ - possible_start_t, c);
+        resultt += counterprobb * it->success_chance;
+        counterprobb = counterprobb * (1 - transferProbability(std::numeric_limits<nigiri::delta_t>::max(), tt_.route_clasz_[tt_.transport_route_[it->trip_id.t_idx_]]));
+        std::cout << "result: " << resultt << " counterprob: " << counterprobb << " it " << it->success_chance << std::endl;
+      }
     }
     return result;
-  }
-
-  double cum_success_chance(auto l, auto k, delta_t possible_start_t, clasz const c){
-    return cum_prob(l, k, possible_start_t, c);
-  }
-
-  double cum_enter_probability(auto l, auto k, delta_t possible_start_t, clasz const c){
-    //TODO ordentlich machen. Es werden hier nur ausfälle berücksichtigt. ist gemacht?
-    return cum_prob<false>(l, k, possible_start_t, c);
   }
 
   bool update_route(unsigned const k, route_idx_t const r) {
