@@ -523,7 +523,7 @@ private:
     int id = static_cast<int>(c);
     const std::vector<std::pair<int, double>> & delays = arr_dist_[id].empty() ? arr_dist_[static_cast<int>(clasz::kOther)] : arr_dist_[id];
 
-    if (x < delays.back().first) return delays[x].second;
+    if (x < delays.back().first) return delays[x+5].second;
     else return delays.back().second;
   }
 
