@@ -1,5 +1,9 @@
 #include "nigiri/rt/vdv_aus.h"
 
+#include <fmt/ostream.h>
+#include <cstddef>
+#include <optional>
+#include <ranges>
 #include <sstream>
 #include <string>
 #include <string_view>
@@ -13,10 +17,12 @@
 
 #include "fmt/core.h"
 
+#include "nigiri/common/interval.h"
 #include "nigiri/common/mam_dist.h"
 #include "nigiri/common/parse_time.h"
 #include "nigiri/for_each_meta.h"
 #include "nigiri/rt/frun.h"
+#include "nigiri/rt/gtfsrt_resolve_run.h"
 #include "nigiri/rt/rt_timetable.h"
 #include "nigiri/rt/run.h"
 #include "nigiri/timetable.h"
@@ -151,8 +157,13 @@ statistics& statistics::operator+=(statistics const& o) {
 
 updater::updater(nigiri::timetable const& tt,
                  source_idx_t const src_idx,
-                 xml_format const format)
-    : tt_{tt}, src_idx_{src_idx}, format_{format} {}
+                 xml_format const format,
+                 bool match_on_framed_vehicle_journey_ref)
+    : tt_{tt},
+      src_idx_{src_idx},
+      format_{format},
+      match_on_framed_vehicle_journey_ref_{
+          match_on_framed_vehicle_journey_ref} {}
 
 void updater::reset_vdv_run_ids_() { matches_.clear(); }
 
@@ -300,14 +311,33 @@ struct candidate {
   std::uint32_t total_length_;
 };
 
-void updater::match_run(std::string_view vdv_run_id,
+void updater::match_run(updater::run_id vdv_run_id,
                         vector<vdv_stop> const& vdv_stops,
                         statistics& stats,
                         bool const is_complete_run) {
   ++stats.match_attempts_;
 
-  matches_[vdv_run_id] = match{};
+  auto vdv_run_id_string = vdv_run_id.full_;
+
+  matches_[vdv_run_id_string] = match{};
   auto candidates = std::vector<candidate>{};
+
+  if (match_on_framed_vehicle_journey_ref_) {
+    utl::verify(!vdv_run_id.run_.empty() && vdv_run_id.date_.has_value(),
+                "run id={} not framed vehicle journey ref", vdv_run_id_string);
+
+    auto td = transit_realtime::TripDescriptor{};
+    td.set_trip_id(vdv_run_id.run_);
+    td.set_start_date(*vdv_run_id.date_);
+
+    auto const [r, _] =
+        gtfsrt_resolve_run(date::sys_days{}, tt_, nullptr, src_idx_, td);
+    utl::verify(r.valid(), "run not found: trip_id={}, start_date={}",
+                vdv_run_id.run_, *vdv_run_id.date_);
+
+    matches_[vdv_run_id_string].runs_.emplace_back(r);
+    return;
+  }
 
   for (auto const& vdv_stop : vdv_stops) {
     if (vdv_stop.l_ == location_idx_t::invalid()) {
@@ -400,7 +430,8 @@ void updater::match_run(std::string_view vdv_run_id,
        vdv_stops.size() * kExactMatchScore * match_threshold)) {
     for (auto const& c : candidates) {
       if (is_match(c)) {
-        matches_[vdv_run_id].runs_.emplace_back(c.r_);
+        vdv_trace("match_run(vdv_run_id={})\n", vdv_run_id_string);
+        matches_[vdv_run_id_string].runs_.emplace_back(c.r_);
       } else {
         break;
       }
@@ -413,14 +444,15 @@ void updater::match_run(std::string_view vdv_run_id,
                        c.total_length_, tt_.dbg(c.r_.t_.t_idx_));
   };
 
-  if (matches_[vdv_run_id].runs_.empty()) {
-    vdv_trace("[vdv_aus] no match for {}, best candidate: {}\n", vdv_run_id,
+  if (matches_[vdv_run_id_string].runs_.empty()) {
+    vdv_trace("[vdv_aus] no match for {}, best candidate: {}\n",
+              vdv_run_id_string,
               candidates.empty() ? "none" : candidate_str(candidates.front()));
   } else {
     ++stats.matched_runs_;
-    if (matches_[vdv_run_id].runs_.size() > 1) {
+    if (matches_[vdv_run_id_string].runs_.size() > 1) {
       ++stats.multiple_matches_;
-      vdv_trace("[vdv_aus] multiple matches for {}:", vdv_run_id);
+      vdv_trace("[vdv_aus] multiple matches for {}:", vdv_run_id_string);
       for (auto const& c : candidates) {
         if (!is_match(c)) {
           break;
@@ -612,6 +644,50 @@ void updater::update_run(rt_timetable& rtt,
   }
 }
 
+std::optional<updater::run_id> updater::resolve_run_id(
+    pugi::xml_node const vdv_run) {
+  switch (format_) {
+    case xml_format::kVdv: {
+      auto run = val(vdv_run, "FahrtRef", "FahrtID", "FahrtBezeichner");
+      auto day = val(vdv_run, "FahrtRef", "FahrtID", "Betriebstag");
+
+      return run_id{
+          .full_ = fmt::format("{}{}", run, day),
+          .run_ = std::string{run},
+          .date_ = std::string{day},
+      };
+    }
+    case xml_format::kSiri: [[fallthrough]];
+    case xml_format::kSiriJson: [[fallthrough]];
+    default: {
+      auto dated_vehicle_journey_ref = child(vdv_run, "DatedVehicleJourneyRef");
+      if (!dated_vehicle_journey_ref.empty()) {
+        auto run = dated_vehicle_journey_ref.child_value();
+
+        return run_id{
+            .full_ = std::string{run},
+            .run_ = std::string{run},
+        };
+      }
+
+      auto framed_vehicle_journey_ref =
+          child(vdv_run, "FramedVehicleJourneyRef");
+      if (!framed_vehicle_journey_ref.empty()) {
+        auto run = val(framed_vehicle_journey_ref, "DatedVehicleJourneyRef");
+        auto day = val(framed_vehicle_journey_ref, "DataFrameRef");
+
+        return run_id{
+            .full_ = fmt::format("{}{}", run, day),
+            .run_ = std::string{run},
+            .date_ = std::string{day},
+        };
+      }
+
+      return std::optional<updater::run_id>{};
+    }
+  }
+};
+
 void updater::process_vdv_run(rt_timetable& rtt,
                               pugi::xml_node const vdv_run,
                               statistics& stats) {
@@ -625,52 +701,40 @@ void updater::process_vdv_run(rt_timetable& rtt,
   }
 
   auto vdv_stops = resolve_stops(vdv_run, stats);
-
-  auto const vdv_run_id = [&]() {
-    switch (format_) {
-      case xml_format::kVdv:
-        return fmt::format(
-            "{}{}",  //
-            val(vdv_run, "FahrtRef", "FahrtID", "FahrtBezeichner"),
-            val(vdv_run, "FahrtRef", "FahrtID", "Betriebstag"));
-
-      case xml_format::kSiri:
-        return fmt::format(
-            "{}{}",  //
-            val(vdv_run, "FramedVehicleJourneyRef", "DatedVehicleJourneyRef"),
-            val(vdv_run, "FramedVehicleJourneyRef", "DataFrameRef"));
-
-      case xml_format::kSiriJson: [[fallthrough]];
-      default: return fmt::to_string(val(vdv_run, "DatedVehicleJourneyRef"));
-    }
-  }();
-
-  if (vdv_stops.empty()) {
-    ++stats.runs_without_stops_;
-    vdv_trace("vdv run without stops: {}\n", vdv_run_id);
+  auto vdv_run_id = resolve_run_id(vdv_run);
+  if (!vdv_run_id.has_value()) {
+    vdv_trace("vdv run without id: {}\n", vdv_run.value());
     return;
   }
 
-  auto const seen_before = matches_.contains(vdv_run_id);
+  auto vdv_run_id_string = vdv_run_id->full_;
+
+  if (vdv_stops.empty()) {
+    ++stats.runs_without_stops_;
+    vdv_trace("vdv run without stops: {}\n", vdv_run_id_string);
+    return;
+  }
+
+  auto const seen_before = matches_.contains(vdv_run_id_string);
   if (!seen_before) {
     ++stats.unique_runs_;
     if (is_complete_run) {
-      match_run(vdv_run_id, vdv_stops, stats, is_complete_run);
+      match_run(*vdv_run_id, vdv_stops, stats, is_complete_run);
     } else {
       ++stats.incomplete_not_seen_before_;
-      match_run(vdv_run_id, vdv_stops, stats, is_complete_run);
-      matches_[vdv_run_id].only_saw_incomplete_ = true;
+      match_run(*vdv_run_id, vdv_stops, stats, is_complete_run);
+      matches_[vdv_run_id_string].only_saw_incomplete_ = true;
     }
   }
 
   if (seen_before && is_complete_run &&
-      matches_[vdv_run_id].only_saw_incomplete_) {
+      matches_[vdv_run_id_string].only_saw_incomplete_) {
     ++stats.complete_after_incomplete_;
-    match_run(vdv_run_id, vdv_stops, stats, is_complete_run);
-    matches_[vdv_run_id].only_saw_incomplete_ = false;
+    match_run(*vdv_run_id, vdv_stops, stats, is_complete_run);
+    matches_[vdv_run_id_string].only_saw_incomplete_ = false;
   }
 
-  auto const& runs = matches_[vdv_run_id].runs_;
+  auto const& runs = matches_[vdv_run_id_string].runs_;
   for (auto& r : runs) {
     auto const cancelled_run_selector =
         format_ == xml_format::kVdv ? "FaelltAus" : "Cancellation";
@@ -684,9 +748,148 @@ void updater::process_vdv_run(rt_timetable& rtt,
 
   stats.found_runs_ += runs.empty() ? 0U : 1U;
 
-  matches_[vdv_run_id].last_accessed_ =
+  matches_[vdv_run_id_string].last_accessed_ =
       std::chrono::time_point_cast<std::chrono::seconds>(
           std::chrono::system_clock::now());
+}
+
+unixtime_t sec_to_unixtime(std::uint64_t const s) {
+  return unixtime_t{std::chrono::duration_cast<unixtime_t::duration>(
+      std::chrono::seconds{s})};
+}
+
+void updater::affects_alerts(rt_timetable& rtt,
+                             pugi::xml_node const affects,
+                             alert_idx_t alert) {
+  auto& alerts = rtt.alerts_;
+
+  auto affected_runs =
+      children(affects, "VehicleJourneys", "AffectedVehicleJourney");
+  for (auto affected_run : affected_runs) {
+    auto const vdv_run_id = resolve_run_id(affected_run);
+    if (!vdv_run_id.has_value()) continue;
+
+    auto vdv_run_id_string = vdv_run_id->full_;
+
+    auto const seen_before = matches_.contains(vdv_run_id_string);
+    if (!seen_before) continue;
+
+    auto& runs = matches_[vdv_run_id_string].runs_;
+    for (auto& r : runs) {
+      auto fr = rt::frun(tt_, &rtt, r);
+
+      // NOTE: A realtime trip doesn't exist for cancelled trips, for example.
+      if (!fr.is_rt()) {
+        fr.rt_ = rtt.add_rt_transport(src_idx_, tt_, fr.t_);
+      }
+
+      alerts.rt_transport_[fr.rt_].push_back(
+          {location_idx_t::invalid(), alert});
+    }
+  }
+
+  auto affected_networks = children(affects, "Networks", "AffectedNetwork");
+
+  for (auto affected_network : affected_networks) {
+    auto affected_lines = children(affected_network, "AffectedLine");
+
+    for (auto affected_line : affected_lines) {
+      auto line = val(affected_line, "LineRef");
+
+      auto const route_id = tt_.route_ids_[src_idx_].ids_.find(line);
+      if (!route_id.has_value()) continue;
+
+      alerts.route_id_[src_idx_][*route_id].push_back(
+          {direction_id_t::invalid(), location_idx_t::invalid(), alert});
+    }
+  }
+
+  auto affected_stop_places =
+      children(affects, "StopPlaces", "AffectedStopPlace");
+
+  for (auto affected_stop_place : affected_stop_places) {
+    auto stop_place_ref = val(affected_stop_place, "StopPlaceRef");
+
+    auto stop = tt_.find(location_id{stop_place_ref, src_idx_})
+                    .value_or(location_idx_t::invalid());
+
+    if (stop == location_idx_t::invalid()) continue;
+
+    alerts.location_.at(stop).push_back(alert);
+  }
+}
+
+void updater::process_vdv_alert(rt_timetable& rtt,
+                                pugi::xml_node const vdv_alert) {
+  auto& alerts = rtt.alerts_;
+  auto affects = child(vdv_alert, "Affects");
+
+  auto const alert_idx = alert_idx_t{alerts.communication_period_.size()};
+
+  affects_alerts(rtt, affects, alert_idx);
+
+  auto& s = alerts.strings_;
+
+  auto const to_translation = [&](string const& x) {
+    return alert_translation{.text_ = s.store(x),
+                             .language_ = alert_str_idx_t::invalid()};
+  };
+
+  // TODO: Support multiple
+  auto validity_period = child(vdv_alert, "ValidityPeriod");
+
+  auto validity_period_start =
+      get_opt_time(validity_period, "StartTime", "%FT%T%Ez", "%FT%TZ")
+          .value_or(unixtime_t::min());
+
+  auto validity_period_end =
+      get_opt_time(validity_period, "EndTime", "%FT%T%Ez", "%FT%TZ")
+          .value_or(unixtime_t::max());
+
+  auto publication_window = child(vdv_alert, "PublicationWindow");
+  auto publication_window_start =
+      get_opt_time(publication_window, "StartTime", "%FT%T%Ez", "%FT%TZ")
+          .value_or(validity_period_start);
+
+  auto publication_window_end =
+      get_opt_time(publication_window, "EndTime", "%FT%T%Ez", "%FT%TZ")
+          .value_or(validity_period_end);
+
+  interval<unixtime_t> const validity_period_interval = {validity_period_start,
+                                                         validity_period_end};
+  interval<unixtime_t> const communication_period_interval = {
+      publication_window_start, publication_window_end};
+
+  alerts.communication_period_.emplace_back({communication_period_interval});
+  alerts.impact_period_.emplace_back({validity_period_interval});
+
+  alerts.cause_detail_.emplace_back(std::initializer_list<alert_translation>{});
+  alerts.effect_detail_.emplace_back(
+      std::initializer_list<alert_translation>{});
+
+  if (!vdv_alert.child("InfoLinks").empty()) {
+    alerts.url_.emplace_back({to_translation(val(vdv_alert, "InfoLinks"))});
+  } else {
+    alerts.url_.emplace_back(std::initializer_list<alert_translation>{});
+  }
+
+  auto summary = val(vdv_alert, "Summary");
+  alerts.header_text_.emplace_back({to_translation(summary)});
+
+  auto description = val(vdv_alert, "Description");
+  alerts.description_text_.emplace_back({to_translation(description)});
+
+  alerts.tts_header_text_.emplace_back(
+      std::initializer_list<alert_translation>{});
+  alerts.tts_description_text_.emplace_back(
+      std::initializer_list<alert_translation>{});
+  alerts.image_alternative_text_.emplace_back(
+      std::initializer_list<alert_translation>{});
+
+  alerts.image_.emplace_back(std::initializer_list<localized_image>{});
+  alerts.cause_.emplace_back(alert_cause::kUnknownCause);
+  alerts.effect_.emplace_back(alert_effect::kNoEffect);
+  alerts.severity_level_.emplace_back(alert_severity::kInfo);
 }
 
 void updater::clean_up() {
@@ -747,6 +950,12 @@ statistics updater::update(rt_timetable& rtt, pugi::xml_document const& doc) {
         process(vdv_run);
       }
       break;
+  }
+
+  for (auto const vdv_alert :
+       children(doc, "Siri", "ServiceDelivery", "SituationExchangeDelivery",
+                "Situations", "PtSituationElement")) {
+    process_vdv_alert(rtt, vdv_alert);
   }
 
   cumulative_stats_ += stats;

@@ -1,7 +1,11 @@
 #pragma once
 
 #include "nigiri/rt/run.h"
+#include "nigiri/rt/service_alert.h"
 #include "nigiri/types.h"
+
+#include <optional>
+#include <string>
 
 namespace pugi {
 class xml_document;
@@ -54,7 +58,8 @@ struct statistics {
 struct updater {
   enum class xml_format : std::uint8_t { kVdv, kSiri, kSiriJson, kNumFormats };
 
-  updater(timetable const&, source_idx_t, xml_format format = xml_format::kVdv);
+  updater(timetable const&, source_idx_t, xml_format format = xml_format::kVdv,
+          bool match_on_framed_vehicle_journey_ref = false);
 
   void reset_vdv_run_ids_();
 
@@ -67,9 +72,7 @@ struct updater {
 
 private:
   struct vdv_stop {
-    explicit vdv_stop(location_idx_t,
-                      std::string_view id,
-                      pugi::xml_node,
+    explicit vdv_stop(location_idx_t, std::string_view id, pugi::xml_node,
                       xml_format);
 
     std::optional<std::pair<unixtime_t, event_type>> get_event(
@@ -82,20 +85,26 @@ private:
         dep_canceled_;
   };
 
+  struct run_id {
+    std::string full_;
+    std::string run_;
+    std::optional<std::string> date_{};
+  };
+
+  std::optional<run_id> resolve_run_id(pugi::xml_node vdv_run);
   vector<vdv_stop> resolve_stops(pugi::xml_node vdv_run, statistics&);
 
-  void match_run(std::string_view vdv_run_id,
-                 vector<vdv_stop> const&,
-                 statistics&,
+  void match_run(run_id vdv_run_id, vector<vdv_stop> const&, statistics&,
                  bool is_complete_run);
 
-  void update_run(rt_timetable&,
-                  run const&,
-                  vector<vdv_stop> const&,
-                  bool is_complete_run,
-                  statistics&);
+  void update_run(rt_timetable&, run const&, vector<vdv_stop> const&,
+                  bool is_complete_run, statistics&);
+
+  void affects_alerts(rt_timetable&, pugi::xml_node const affects,
+                      nigiri::alert_idx_t alert);
 
   void process_vdv_run(rt_timetable&, pugi::xml_node vdv_run, statistics&);
+  void process_vdv_alert(rt_timetable&, pugi::xml_node vdv_alert);
 
   void clean_up();
 
@@ -115,6 +124,7 @@ private:
       std::chrono::time_point_cast<std::chrono::seconds>(
           std::chrono::system_clock::now())};
   xml_format format_;
+  bool match_on_framed_vehicle_journey_ref_;
 };
 
 }  // namespace nigiri::rt::vdv_aus
