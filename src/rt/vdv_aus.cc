@@ -156,13 +156,10 @@ statistics& statistics::operator+=(statistics const& o) {
 
 updater::updater(nigiri::timetable const& tt,
                  source_idx_t const src_idx,
-                 xml_format const format,
-                 bool match_on_framed_vehicle_journey_ref)
+                 xml_format const format)
     : tt_{tt},
       src_idx_{src_idx},
-      format_{format},
-      match_on_framed_vehicle_journey_ref_{
-          match_on_framed_vehicle_journey_ref} {}
+      format_{format} {}
 
 void updater::reset_vdv_run_ids_() { matches_.clear(); }
 

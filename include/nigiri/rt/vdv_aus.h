@@ -60,8 +60,7 @@ struct updater {
 
   updater(timetable const&,
           source_idx_t,
-          xml_format format = xml_format::kVdv,
-          bool match_on_framed_vehicle_journey_ref = false);
+          xml_format format = xml_format::kVdv);
 
   void reset_vdv_run_ids_();
 
