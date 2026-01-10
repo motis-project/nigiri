@@ -157,9 +157,7 @@ statistics& statistics::operator+=(statistics const& o) {
 updater::updater(nigiri::timetable const& tt,
                  source_idx_t const src_idx,
                  xml_format const format)
-    : tt_{tt},
-      src_idx_{src_idx},
-      format_{format} {}
+    : tt_{tt}, src_idx_{src_idx}, format_{format} {}
 
 void updater::reset_vdv_run_ids_() { matches_.clear(); }
 
@@ -432,8 +430,7 @@ void updater::match_run(run_id const& vdv_id,
   };
 
   if (matches_[vdv_run_id].runs_.empty()) {
-    vdv_trace("[vdv_aus] no match for {}, best candidate: {}\n",
-              vdv_run_id,
+    vdv_trace("[vdv_aus] no match for {}, best candidate: {}\n", vdv_run_id,
               candidates.empty() ? "none" : candidate_str(candidates.front()));
   } else {
     ++stats.matched_runs_;
@@ -736,11 +733,6 @@ void updater::process_vdv_run(rt_timetable& rtt,
   matches_[vdv_run_id].last_accessed_ =
       std::chrono::time_point_cast<std::chrono::seconds>(
           std::chrono::system_clock::now());
-}
-
-unixtime_t sec_to_unixtime(std::uint64_t const s) {
-  return unixtime_t{std::chrono::duration_cast<unixtime_t::duration>(
-      std::chrono::seconds{s})};
 }
 
 void updater::affects_alerts(rt_timetable& rtt,
