@@ -58,9 +58,7 @@ struct statistics {
 struct updater {
   enum class xml_format : std::uint8_t { kVdv, kSiri, kSiriJson, kNumFormats };
 
-  updater(timetable const&,
-          source_idx_t,
-          xml_format format = xml_format::kVdv);
+  updater(timetable const&, source_idx_t, xml_format format = xml_format::kVdv);
 
   void reset_vdv_run_ids_();
 
@@ -97,7 +95,7 @@ private:
   std::optional<run_id> resolve_run_id(pugi::xml_node vdv_run);
   vector<vdv_stop> resolve_stops(pugi::xml_node vdv_run, statistics&);
 
-  void match_run(run_id const& ,
+  void match_run(run_id const&,
                  vector<vdv_stop> const&,
                  statistics&,
                  bool is_complete_run);
@@ -108,10 +106,7 @@ private:
                   bool is_complete_run,
                   statistics&);
 
-  void affects_alerts(rt_timetable&,
-                      pugi::xml_node const affects,
-                      nigiri::alert_idx_t alert);
-
+  void affects_alerts(rt_timetable&, pugi::xml_node affects, alert_idx_t);
   void process_vdv_run(rt_timetable&, pugi::xml_node vdv_run, statistics&);
   void process_vdv_alert(rt_timetable&, pugi::xml_node vdv_alert);
 
