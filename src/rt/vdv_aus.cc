@@ -686,40 +686,40 @@ void updater::process_vdv_run(rt_timetable& rtt,
   }
 
   auto vdv_stops = resolve_stops(vdv_run, stats);
-  auto vdv_run_id = resolve_run_id(vdv_run);
-  if (!vdv_run_id.has_value()) {
+  auto id = resolve_run_id(vdv_run);
+  if (!id.has_value()) {
     vdv_trace("vdv run without id: {}\n", vdv_run.value());
     return;
   }
 
-  auto run_id = vdv_run_id->full_;
+  auto const& vdv_run_id = id->full_;
 
   if (vdv_stops.empty()) {
     ++stats.runs_without_stops_;
-    vdv_trace("vdv run without stops: {}\n", run_id);
+    vdv_trace("vdv run without stops: {}\n", vdv_run_id);
     return;
   }
 
-  auto const seen_before = matches_.contains(run_id);
+  auto const seen_before = matches_.contains(vdv_run_id);
   if (!seen_before) {
     ++stats.unique_runs_;
     if (is_complete_run) {
-      match_run(*vdv_run_id, vdv_stops, stats, is_complete_run);
+      match_run(*id, vdv_stops, stats, is_complete_run);
     } else {
       ++stats.incomplete_not_seen_before_;
-      match_run(*vdv_run_id, vdv_stops, stats, is_complete_run);
-      matches_[run_id].only_saw_incomplete_ = true;
+      match_run(*id, vdv_stops, stats, is_complete_run);
+      matches_[vdv_run_id].only_saw_incomplete_ = true;
     }
   }
 
   if (seen_before && is_complete_run &&
-      matches_[run_id].only_saw_incomplete_) {
+      matches_[vdv_run_id].only_saw_incomplete_) {
     ++stats.complete_after_incomplete_;
-    match_run(*vdv_run_id, vdv_stops, stats, is_complete_run);
-    matches_[run_id].only_saw_incomplete_ = false;
+    match_run(*id, vdv_stops, stats, is_complete_run);
+    matches_[vdv_run_id].only_saw_incomplete_ = false;
   }
 
-  auto const& runs = matches_[run_id].runs_;
+  auto const& runs = matches_[vdv_run_id].runs_;
   for (auto& r : runs) {
     auto const cancelled_run_selector =
         format_ == xml_format::kVdv ? "FaelltAus" : "Cancellation";
@@ -733,7 +733,7 @@ void updater::process_vdv_run(rt_timetable& rtt,
 
   stats.found_runs_ += runs.empty() ? 0U : 1U;
 
-  matches_[run_id].last_accessed_ =
+  matches_[vdv_run_id].last_accessed_ =
       std::chrono::time_point_cast<std::chrono::seconds>(
           std::chrono::system_clock::now());
 }
