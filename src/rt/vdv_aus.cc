@@ -302,15 +302,15 @@ struct candidate {
   std::uint32_t total_length_;
 };
 
-void updater::match_run(run_id vdv_run_id,
+void updater::match_run(run_id const& vdv_run_id,
                         vector<vdv_stop> const& vdv_stops,
                         statistics& stats,
                         bool const is_complete_run) {
   ++stats.match_attempts_;
 
-  auto vdv_run_id_string = vdv_run_id.full_;
+  auto const& run_id = vdv_run_id.full_;
 
-  matches_[vdv_run_id_string] = match{};
+  matches_[run_id] = match{};
   auto candidates = std::vector<candidate>{};
 
   if (!vdv_run_id.run_.empty() && vdv_run_id.date_.has_value()) {
@@ -321,7 +321,7 @@ void updater::match_run(run_id vdv_run_id,
     auto const [r, _] =
         gtfsrt_resolve_run(date::sys_days{}, tt_, nullptr, src_idx_, td);
     if (r.valid()) {
-      matches_[vdv_run_id_string].runs_.emplace_back(r);
+      matches_[run_id].runs_.emplace_back(r);
       return;
     }
   }
@@ -417,8 +417,8 @@ void updater::match_run(run_id vdv_run_id,
        vdv_stops.size() * kExactMatchScore * match_threshold)) {
     for (auto const& c : candidates) {
       if (is_match(c)) {
-        vdv_trace("match_run(vdv_run_id={})\n", vdv_run_id_string);
-        matches_[vdv_run_id_string].runs_.emplace_back(c.r_);
+        vdv_trace("match_run(vdv_run_id={})\n", run_id);
+        matches_[run_id].runs_.emplace_back(c.r_);
       } else {
         break;
       }
@@ -431,15 +431,15 @@ void updater::match_run(run_id vdv_run_id,
                        c.total_length_, tt_.dbg(c.r_.t_.t_idx_));
   };
 
-  if (matches_[vdv_run_id_string].runs_.empty()) {
+  if (matches_[run_id].runs_.empty()) {
     vdv_trace("[vdv_aus] no match for {}, best candidate: {}\n",
-              vdv_run_id_string,
+              run_id,
               candidates.empty() ? "none" : candidate_str(candidates.front()));
   } else {
     ++stats.matched_runs_;
-    if (matches_[vdv_run_id_string].runs_.size() > 1) {
+    if (matches_[run_id].runs_.size() > 1) {
       ++stats.multiple_matches_;
-      vdv_trace("[vdv_aus] multiple matches for {}:", vdv_run_id_string);
+      vdv_trace("[vdv_aus] multiple matches for {}:", run_id);
       for (auto const& c : candidates) {
         if (!is_match(c)) {
           break;
@@ -692,15 +692,15 @@ void updater::process_vdv_run(rt_timetable& rtt,
     return;
   }
 
-  auto vdv_run_id_string = vdv_run_id->full_;
+  auto run_id = vdv_run_id->full_;
 
   if (vdv_stops.empty()) {
     ++stats.runs_without_stops_;
-    vdv_trace("vdv run without stops: {}\n", vdv_run_id_string);
+    vdv_trace("vdv run without stops: {}\n", run_id);
     return;
   }
 
-  auto const seen_before = matches_.contains(vdv_run_id_string);
+  auto const seen_before = matches_.contains(run_id);
   if (!seen_before) {
     ++stats.unique_runs_;
     if (is_complete_run) {
@@ -708,18 +708,18 @@ void updater::process_vdv_run(rt_timetable& rtt,
     } else {
       ++stats.incomplete_not_seen_before_;
       match_run(*vdv_run_id, vdv_stops, stats, is_complete_run);
-      matches_[vdv_run_id_string].only_saw_incomplete_ = true;
+      matches_[run_id].only_saw_incomplete_ = true;
     }
   }
 
   if (seen_before && is_complete_run &&
-      matches_[vdv_run_id_string].only_saw_incomplete_) {
+      matches_[run_id].only_saw_incomplete_) {
     ++stats.complete_after_incomplete_;
     match_run(*vdv_run_id, vdv_stops, stats, is_complete_run);
-    matches_[vdv_run_id_string].only_saw_incomplete_ = false;
+    matches_[run_id].only_saw_incomplete_ = false;
   }
 
-  auto const& runs = matches_[vdv_run_id_string].runs_;
+  auto const& runs = matches_[run_id].runs_;
   for (auto& r : runs) {
     auto const cancelled_run_selector =
         format_ == xml_format::kVdv ? "FaelltAus" : "Cancellation";
@@ -733,7 +733,7 @@ void updater::process_vdv_run(rt_timetable& rtt,
 
   stats.found_runs_ += runs.empty() ? 0U : 1U;
 
-  matches_[vdv_run_id_string].last_accessed_ =
+  matches_[run_id].last_accessed_ =
       std::chrono::time_point_cast<std::chrono::seconds>(
           std::chrono::system_clock::now());
 }
@@ -753,13 +753,13 @@ void updater::affects_alerts(rt_timetable& rtt,
       continue;
     }
 
-    auto const vdv_run_id_string = vdv_run_id->full_;
-    auto const seen_before = matches_.contains(vdv_run_id_string);
+    auto const run_id = vdv_run_id->full_;
+    auto const seen_before = matches_.contains(run_id);
     if (!seen_before) {
       continue;
     }
 
-    for (auto const r : matches_[vdv_run_id_string].runs_) {
+    for (auto const r : matches_[run_id].runs_) {
       auto fr = frun{tt_, &rtt, r};
 
       // NOTE: A realtime trip doesn't exist for cancelled trips, for example.

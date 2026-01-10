@@ -97,7 +97,7 @@ private:
   std::optional<run_id> resolve_run_id(pugi::xml_node vdv_run);
   vector<vdv_stop> resolve_stops(pugi::xml_node vdv_run, statistics&);
 
-  void match_run(run_id vdv_run_id,
+  void match_run(run_id const& ,
                  vector<vdv_stop> const&,
                  statistics&,
                  bool is_complete_run);
