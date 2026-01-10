@@ -133,7 +133,6 @@ private:
       std::chrono::time_point_cast<std::chrono::seconds>(
           std::chrono::system_clock::now())};
   xml_format format_;
-  bool match_on_framed_vehicle_journey_ref_;
 };
 
 }  // namespace nigiri::rt::vdv_aus
