@@ -302,26 +302,26 @@ struct candidate {
   std::uint32_t total_length_;
 };
 
-void updater::match_run(run_id const& vdv_run_id,
+void updater::match_run(run_id const& vdv_id,
                         vector<vdv_stop> const& vdv_stops,
                         statistics& stats,
                         bool const is_complete_run) {
   ++stats.match_attempts_;
 
-  auto const& run_id = vdv_run_id.full_;
+  auto const& vdv_run_id = vdv_id.full_;
 
-  matches_[run_id] = match{};
+  matches_[vdv_run_id] = match{};
   auto candidates = std::vector<candidate>{};
 
-  if (!vdv_run_id.run_.empty() && vdv_run_id.date_.has_value()) {
+  if (!vdv_id.run_.empty() && vdv_id.date_.has_value()) {
     auto td = transit_realtime::TripDescriptor{};
-    td.set_trip_id(vdv_run_id.run_);
-    td.set_start_date(*vdv_run_id.date_);
+    td.set_trip_id(vdv_id.run_);
+    td.set_start_date(*vdv_id.date_);
 
     auto const [r, _] =
         gtfsrt_resolve_run(date::sys_days{}, tt_, nullptr, src_idx_, td);
     if (r.valid()) {
-      matches_[run_id].runs_.emplace_back(r);
+      matches_[vdv_run_id].runs_.emplace_back(r);
       return;
     }
   }
@@ -417,8 +417,8 @@ void updater::match_run(run_id const& vdv_run_id,
        vdv_stops.size() * kExactMatchScore * match_threshold)) {
     for (auto const& c : candidates) {
       if (is_match(c)) {
-        vdv_trace("match_run(vdv_run_id={})\n", run_id);
-        matches_[run_id].runs_.emplace_back(c.r_);
+        vdv_trace("match_run(vdv_run_id={})\n", vdv_run_id);
+        matches_[vdv_run_id].runs_.emplace_back(c.r_);
       } else {
         break;
       }
@@ -431,15 +431,15 @@ void updater::match_run(run_id const& vdv_run_id,
                        c.total_length_, tt_.dbg(c.r_.t_.t_idx_));
   };
 
-  if (matches_[run_id].runs_.empty()) {
+  if (matches_[vdv_run_id].runs_.empty()) {
     vdv_trace("[vdv_aus] no match for {}, best candidate: {}\n",
-              run_id,
+              vdv_run_id,
               candidates.empty() ? "none" : candidate_str(candidates.front()));
   } else {
     ++stats.matched_runs_;
-    if (matches_[run_id].runs_.size() > 1) {
+    if (matches_[vdv_run_id].runs_.size() > 1) {
       ++stats.multiple_matches_;
-      vdv_trace("[vdv_aus] multiple matches for {}:", run_id);
+      vdv_trace("[vdv_aus] multiple matches for {}:", vdv_run_id);
       for (auto const& c : candidates) {
         if (!is_match(c)) {
           break;
