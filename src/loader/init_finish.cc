@@ -137,8 +137,8 @@ void correct_color_contrast(timetable& tt) {
       auto const ratio = contrast_ratio(colors.color_, colors.text_color_);
 
       if (ratio < 3.0f) {
-        constexpr auto white = color_t(0xFFFFFF);
-        constexpr auto black = color_t(0x000000);
+        constexpr auto white = color_t(0xFFFFFFFF);
+        constexpr auto black = color_t(0xFF000000);
         auto const better = contrast_ratio(colors.color_, black) >
                                     contrast_ratio(colors.color_, white)
                                 ? black
