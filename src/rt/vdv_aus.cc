@@ -914,6 +914,10 @@ statistics updater::update(rt_timetable& rtt, pugi::xml_document const& doc) {
                                          "EstimatedVehicleJourney")) {
         process(vdv_run);
       }
+      for (auto const vdv_run : children(doc, "Siri", "ServiceDelivery",
+                                         "EstimatedVehicleJourney")) {
+        process(vdv_run);
+      }
       break;
   }
 
