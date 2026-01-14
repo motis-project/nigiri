@@ -13,7 +13,7 @@
 #include "nigiri/for_each_meta.h"
 #include "nigiri/get_otel_tracer.h"
 #include "nigiri/logging.h"
-#include "nigiri/routing/ch_query.h"
+#include "nigiri/routing/ch/ch_query.h"
 #include "nigiri/routing/dijkstra.h"
 #include "nigiri/routing/direct.h"
 #include "nigiri/routing/get_fastest_direct.h"

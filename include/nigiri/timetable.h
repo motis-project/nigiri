@@ -14,6 +14,7 @@
 #include "nigiri/common/interval.h"
 #include "nigiri/fares.h"
 #include "nigiri/footpath.h"
+#include "nigiri/routing/ch/ch_query.h"
 #include "nigiri/stop.h"
 #include "nigiri/string_store.h"
 #include "nigiri/td_footpath.h"
@@ -415,8 +416,6 @@ struct timetable {
   struct ch_edge {
     location_idx_t from_;
     location_idx_t to_;
-    u16_minutes min_dur_{u16_minutes::max()};
-    u16_minutes max_dur_{u16_minutes::max()};
   };
   std::array<vecvec<location_idx_t, ch_edge_idx_t>, kNProfiles>
       fwd_search_ch_graph_;
@@ -428,6 +427,9 @@ struct timetable {
       ch_graph_unpack_;
   std::array<vecvec<ch_edge_idx_t, location_idx_t>, kNProfiles>
       ch_graph_transfers_;
+  std::array<vecvec<ch_edge_idx_t, routing::tooth>, kNProfiles> ch_graph_min_;
+  std::array<vecvec<ch_edge_idx_t, routing::tooth>, kNProfiles> ch_graph_max_;
+  vector_map<bitfield_idx_t, bitfield> ch_traffic_days_;
   vector_map<location_idx_t, std::uint32_t> ch_levels_;
 
   // profile name -> profile_idx_t
