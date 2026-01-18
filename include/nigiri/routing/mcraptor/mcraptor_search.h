@@ -7,7 +7,7 @@
 namespace nigiri::routing {
 
 template <direction SearchDir>
-routing_result<raptor_stats> mcraptor_search(
+routing_result mcraptor_search(
     timetable const& tt,
     rt_timetable const* rtt,
     search_state& s_state,
@@ -15,9 +15,5 @@ routing_result<raptor_stats> mcraptor_search(
     query q,
     std::optional<std::chrono::seconds> timeout = std::nullopt,
     std::vector<std::vector<std::pair<int, double>>> arr_dist = {});
-
-bool results_are_equal(timetable const& tt,
-                       routing_result<raptor_stats> const& result_1,
-                       routing_result<raptor_stats> const& result_2);
 
 }  // namespace nigiri::routing

@@ -185,6 +185,12 @@ struct mcraptor {
       bag.labels_.clear();
       //bag.add({kInvalid});
     });
+    for (std::size_t i = 0; i < location_bags_.n_rows_; ++i) {
+      for (std::size_t j = 0; j < location_bags_.n_columns_; ++j) {
+        location_bags_(i, j).labels_.clear();
+      }
+    }
+    dest_bag_.labels_.clear();
     utl::fill(prev_round_station_mark_.blocks_, 0U);
     utl::fill(tmp_station_mark_.blocks_, 0U);
     utl::fill(station_mark_.blocks_, 0U);
@@ -284,7 +290,7 @@ struct mcraptor {
 
   void print_leg(journey::leg leg, auto indent){
     for(int i = 0; i<indent; ++i) std::cout <<"\t";
-    std::cout << location{tt_, leg.from_} << " id: " << leg.from_ << " ["<< leg.dep_time_ << "] TO: " << location{tt_, leg.to_} << " id: " << leg.to_ << " ["<< leg.arr_time_ << "] - " << leg.success_chance;
+    std::cout << loc{tt_, leg.from_} << " id: " << leg.from_ << " ["<< leg.dep_time_ << "] TO: " << loc{tt_, leg.to_} << " id: " << leg.to_ << " ["<< leg.arr_time_ << "] - " << leg.success_chance;
     leg.print(std::cout, tt_);
   }
 
@@ -454,7 +460,7 @@ struct mcraptor {
       }
       for (location_idx_t lo : locations) {
         std::stringstream stringstream;
-        stringstream << location{tt_, lo};
+        stringstream << loc{tt_, lo};
         auto string = stringstream.str() + " id: " + std::to_string(lo.v_);
         str_to_length(string, colum_width * 2);
         std::cout << string << "|";
