@@ -14,7 +14,6 @@
 #include "utl/to_vec.h"
 #include "utl/verify.h"
 
-#include "nigiri/logging.h"
 #include "wyhash.h"
 
 template <>
@@ -72,12 +71,12 @@ file fs_dir::get_file(std::filesystem::path const& p) const {
     mmap_content& operator=(mmap_content&&) = delete;
     mmap_content& operator=(mmap_content const&) = delete;
     explicit mmap_content(std::filesystem::path const& p)
-        : mmap_{p.string().c_str(), cista::mmap::protection::READ} {
-      log(log_lvl::info, "loader.fs_dir", "loaded {}: {} bytes",
-          p.generic_string(), mmap_.size());
-    }
+        : mmap_{p.string().c_str(), cista::mmap::protection::READ} {}
     ~mmap_content() final = default;
     std::string_view get() const final { return mmap_.view(); }
+    void* get_mutable() override { throw utl::fail("not mutable"); }
+    bool is_mutable() const override { return false; }
+    std::size_t size() const override { return mmap_.size(); }
     cista::mmap mmap_;
   };
   return file{(path_ / p).string(), std::make_unique<mmap_content>(path_ / p)};
@@ -139,13 +138,17 @@ struct zip_file_content final : public file::content {
     buf_.resize(get_stat(ar, file_idx).m_uncomp_size);
     auto const r =
         mz_zip_reader_extract_to_mem(ar, file_idx, buf_.data(), buf_.size(), 0);
-    utl::verify(r == MZ_TRUE, "cannot extract file {} from zip", p);
+    utl::verify(r == MZ_TRUE, "cannot extract file {} from zip: {}", p,
+                mz_zip_get_error_string(mz_zip_get_last_error(ar)));
   }
   zip_file_content(mz_zip_archive* ar, std::filesystem::path const& p)
       : zip_file_content{ar, p, get_file_idx(ar, p)} {}
   std::string_view get() const final {
     return {reinterpret_cast<char const*>(buf_.data()), buf_.size()};
   }
+  void* get_mutable() override { return reinterpret_cast<void*>(buf_.data()); }
+  bool is_mutable() const override { return true; }
+  std::size_t size() const override { return buf_.size(); }
   std::vector<std::uint8_t> buf_;
 };
 zip_file_content::~zip_file_content() = default;
@@ -270,6 +273,9 @@ file mem_dir::get_file(std::filesystem::path const& p) const {
   struct mem_file_content : public file::content {
     explicit mem_file_content(std::string const& b) : buf_{b} {}
     std::string_view get() const final { return buf_; }
+    void* get_mutable() override { throw utl::fail("not mutable"); }
+    bool is_mutable() const override { return false; }
+    std::size_t size() const override { return buf_.size(); }
     std::string const& buf_;
   };
   return file{p.string(),

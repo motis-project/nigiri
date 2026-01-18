@@ -3,6 +3,8 @@
 #include "nigiri/loader/gtfs/files.h"
 #include "nigiri/loader/gtfs/load_timetable.h"
 #include "nigiri/loader/init_finish.h"
+#include "nigiri/loader/load.h"
+
 #include "nigiri/rt/create_rt_timetable.h"
 #include "nigiri/rt/gtfsrt_update.h"
 #include "nigiri/rt/rt_timetable.h"
@@ -149,7 +151,7 @@ TEST(routing, clasz_filter_test) {
   {  // All available classes.
     auto const results = raptor_search(
         tt, nullptr, "A", "C", tt.date_range_, direction::kForward,
-        make_mask(clasz::kCoach, clasz::kRegionalFast, clasz::kAir));
+        make_mask(clasz::kBus, clasz::kRegionalFast, clasz::kAir));
 
     EXPECT_EQ(expected, to_string(tt, results));
   }
@@ -157,7 +159,7 @@ TEST(routing, clasz_filter_test) {
   {  // No plane - one transfer, 2h
     auto const results = raptor_search(
         tt, nullptr, "A", "C", tt.date_range_, direction::kForward,
-        make_mask(clasz::kCoach, clasz::kRegionalFast));
+        make_mask(clasz::kBus, clasz::kRegionalFast));
 
     EXPECT_EQ(expected_1, to_string(tt, results));
   }
@@ -191,7 +193,7 @@ TEST(routing, clasz_filter_test) {
   {  // All available classes.
     auto const results = raptor_search(
         tt, &rtt, "A", "C", tt.date_range_, direction::kForward,
-        make_mask(clasz::kCoach, clasz::kRegionalFast, clasz::kAir));
+        make_mask(clasz::kBus, clasz::kRegionalFast, clasz::kAir));
 
     EXPECT_EQ(expected_rt, to_string(tt, results));
   }
@@ -199,7 +201,7 @@ TEST(routing, clasz_filter_test) {
   {  // No plane - one transfer, 2h
     auto const results =
         raptor_search(tt, &rtt, "A", "C", tt.date_range_, direction::kForward,
-                      make_mask(clasz::kCoach, clasz::kRegionalFast));
+                      make_mask(clasz::kBus, clasz::kRegionalFast));
 
     EXPECT_EQ(expected_rt_1, to_string(tt, results));
   }

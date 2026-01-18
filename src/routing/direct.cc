@@ -28,29 +28,14 @@ void get_direct(timetable const& tt,
   auto const end_ev_type = fwd ? event_type::kArr : event_type::kDep;
   auto shortest_duration = duration_t::max();
 
-  auto const get_offset = [](direction const offset_dir, location_idx_t const l,
-                             std::vector<offset> const& offsets,
-                             td_offsets_t const& td_offsets,
-                             unixtime_t const t) -> std::optional<offset> {
-    {  // Try to find normal offset.
-      auto const it = utl::find_if(
-          offsets, [&](offset const& o) { return o.target() == l; });
-      if (it != end(offsets)) {
-        return *it;
-      }
+  auto const get_offset =
+      [](location_idx_t const l,
+         std::vector<offset> const& offsets) -> std::optional<offset> {
+    auto const it =
+        utl::find_if(offsets, [&](offset const& o) { return o.target() == l; });
+    if (it != end(offsets)) {
+      return *it;
     }
-
-    {  // Try to find td-offset.
-      auto const it = td_offsets.find(l);
-      if (it != end(td_offsets)) {
-        auto const d = get_td_duration(offset_dir, it->second, t);
-        if (d.has_value()) {
-          auto const& [duration, o] = *d;
-          return offset{l, duration, o.transport_mode_id_};
-        }
-      }
-    }
-
     return std::nullopt;
   };
 
@@ -60,9 +45,7 @@ void get_direct(timetable const& tt,
     if (q.start_match_mode_ == location_match_mode::kIntermodal) {
       auto const offset_leg_start = fwd ? l.from_ : l.to_;
       auto const offset_leg_start_time = start_time;
-      auto const start_offset =
-          get_offset(flip(search_dir), offset_leg_start, q.start_, q.td_start_,
-                     offset_leg_start_time);
+      auto const start_offset = get_offset(offset_leg_start, q.start_);
       if (!start_offset.has_value()) {
         return;
       }
@@ -84,9 +67,7 @@ void get_direct(timetable const& tt,
     if (q.dest_match_mode_ == location_match_mode::kIntermodal) {
       auto const offset_leg_start = fwd ? l.to_ : l.from_;
       auto const offset_leg_start_time = dest_time;
-      auto const dest_offset =
-          get_offset(search_dir, offset_leg_start, q.destination_, q.td_dest_,
-                     offset_leg_start_time);
+      auto const dest_offset = get_offset(offset_leg_start, q.destination_);
       if (!dest_offset.has_value()) {
         return;
       }
@@ -121,19 +102,21 @@ void get_direct(timetable const& tt,
 
   auto const checked = [&](journey::leg const& l) {
     auto const& ree = std::get<journey::run_enter_exit>(l.uses_);
+    auto const stop_range_without_arrival = interval<stop_idx_t>{
+        ree.stop_range_.from_,
+        static_cast<unsigned short>(ree.stop_range_.to_ - 1U)};
+    auto const fr = rt::frun{tt, rtt, ree.r_};
     if (q.require_bike_transport_) {
-      auto const fr = rt::frun{tt, rtt, ree.r_};
-      for (auto const stop_idx : ree.stop_range_) {
-        if (!fr[stop_idx].bikes_allowed()) {
+      for (auto const stop_idx : stop_range_without_arrival) {
+        if (!fr[stop_idx].bikes_allowed(event_type::kDep)) {
           return;
         }
       }
     }
 
     if (q.require_car_transport_) {
-      auto const fr = rt::frun{tt, rtt, ree.r_};
-      for (auto const stop_idx : ree.stop_range_) {
-        if (!fr[stop_idx].cars_allowed()) {
+      for (auto const stop_idx : stop_range_without_arrival) {
+        if (!fr[stop_idx].cars_allowed(event_type::kDep)) {
           return;
         }
       }
@@ -273,8 +256,7 @@ void get_direct(timetable const& tt,
     }
   };
 
-  trace_direct("direct from {} to {} in {}", location{tt, from},
-               location{tt, to}, time);
+  trace_direct("direct from {} to {} in {}", loc{tt, from}, loc{tt, to}, time);
   for_each_meta(
       tt, location_match_mode::kEquivalent, from, [&](location_idx_t const x) {
         for_each_meta(

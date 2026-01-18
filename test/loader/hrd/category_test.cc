@@ -20,7 +20,7 @@ s    4 C 0  S         0 N S-Bahn)";
     EXPECT_EQ((category{.name_ = "s",
                         .long_name_ = "S",
                         .output_rule_ = 0,
-                        .clasz_ = clasz::kMetro}),
+                        .clasz_ = clasz::kSuburban}),
               it->second);
   }
 }

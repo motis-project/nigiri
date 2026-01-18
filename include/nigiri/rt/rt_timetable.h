@@ -4,6 +4,9 @@
 
 #include <optional>
 #include <string_view>
+#include <variant>
+
+#include "utl/visit.h"
 
 #include "nigiri/common/delta_t.h"
 #include "nigiri/common/interval.h"
@@ -45,15 +48,14 @@ struct rt_timetable {
                                       std::span<delta_t> time_seq = {},
                                       std::string_view new_trip_id = {},
                                       std::string_view route_id = {},
-                                      std::string_view display_name = {},
+                                      direction_id_t = {},
+                                      std::string_view trip_short_name = {},
                                       delta_t = 0);
 
   delta_t unix_to_delta(unixtime_t const t) const {
     auto const d =
         (t - std::chrono::time_point_cast<unixtime_t::duration>(base_day_))
             .count();
-    assert(d >= std::numeric_limits<delta_t>::min());
-    assert(d <= std::numeric_limits<delta_t>::max());
     return clamp(d);
   }
 
@@ -67,6 +69,13 @@ struct rt_timetable {
     rt_transport_stop_times_[rt_t][static_cast<std::size_t>(ev_idx)] =
         unix_to_delta(new_time);
   }
+
+  void update_lbs(timetable const& tt,
+                  rt_transport_idx_t,
+                  stop_idx_t,
+                  vector_map<location_idx_t, std::vector<footpath>>&,
+                  vector_map<location_idx_t, std::vector<footpath>>&);
+  void update_lbs(timetable const& tt);
 
   void cancel_run(rt::run const&);
 
@@ -120,16 +129,37 @@ struct rt_timetable {
     return rt_transport_stop_times_[rt_t][static_cast<unsigned>(ev_idx)];
   }
 
-  std::string_view transport_name(timetable const& tt,
-                                  rt_transport_idx_t const t) const {
-    if (rt_transport_display_names_[t].empty()) {
+  std::variant<translation_idx_t, std::string_view> trip_short_name(
+      timetable const& tt, rt_transport_idx_t const t) const {
+    if (rt_transport_trip_short_names_[t].empty()) {
       return rt_transport_static_transport_[t].apply(utl::overloaded{
-          [&](transport const x) { return tt.transport_name(x.t_idx_); },
-          [&](rt_add_trip_id_idx_t) { return std::string_view{"?"}; }});
+          [&](transport const x)
+              -> std::variant<translation_idx_t, std::string_view> {
+            auto const trip_idx =
+                tt.merged_trips_[tt.transport_to_trip_section_[x.t_idx_]
+                                     .front()]
+                    .front();
+            return tt.trip_display_names_[trip_idx];
+          },
+          [&](rt_add_trip_id_idx_t)
+              -> std::variant<translation_idx_t, std::string_view> {
+            return std::string_view{"?"};
+          }});
     } else {
-      return rt_transport_display_names_[t].view();
+      return rt_transport_trip_short_names_[t].view();
     }
   }
+
+  std::string_view default_trip_short_name(timetable const& tt,
+                                           rt_transport_idx_t const t) const {
+    return utl::visit(
+        trip_short_name(tt, t),
+        [&](translation_idx_t x) { return tt.get_default_translation(x); },
+        [](std::string_view x) { return x; });
+  }
+
+  std::string_view transport_name(timetable const& tt,
+                                  rt_transport_idx_t const t) const;
 
   debug dbg(timetable const& tt, rt_transport_idx_t const t) const {
     return rt_transport_static_transport_[t].apply(
@@ -150,6 +180,16 @@ struct rt_timetable {
 
   std::uint32_t n_rt_transports() const noexcept {
     return rt_transport_src_.size();
+  }
+
+  bool has_car_transport(rt_transport_idx_t const r) const {
+    return rt_transport_cars_allowed_[to_idx(r) * 2U] ||
+           rt_transport_cars_allowed_[to_idx(r) * 2U + 1U];
+  }
+
+  bool has_bike_transport(rt_transport_idx_t const r) const {
+    return rt_transport_bikes_allowed_[to_idx(r) * 2U] ||
+           rt_transport_bikes_allowed_[to_idx(r) * 2U + 1U];
   }
 
   array<bitvec_map<location_idx_t>, kNProfiles> has_td_footpaths_out_;
@@ -176,19 +216,20 @@ struct rt_timetable {
   // only works for transport that existed in the static timetable
   hash_map<transport, rt_transport_idx_t> static_trip_lookup_;
 
-  // Lookup: additional trip index -> realtime transport
-  vector_map<rt_add_trip_id_idx_t, rt_transport_idx_t> additional_trips_lookup_;
-
   // RT transport -> static transport (not for additional trips)
   vector_map<rt_transport_idx_t, variant<transport, rt_add_trip_id_idx_t>>
       rt_transport_static_transport_;
 
-  string_store<rt_add_trip_id_idx_t> additional_trip_ids_;
+  struct additional_trips {
+    string_store<rt_add_trip_id_idx_t> ids_;
+    vector_map<rt_add_trip_id_idx_t, rt_transport_idx_t> transports_;
+  };
+  vector_map<source_idx_t, additional_trips> additional_trips_;
 
   vector_map<rt_transport_idx_t, source_idx_t> rt_transport_src_;
 
-  // RT trip ID index -> train number, if available (otherwise 0)
-  vector_map<rt_transport_idx_t, std::uint32_t> rt_transport_train_nr_;
+  bitvec_map<rt_transport_idx_t> rt_transport_direction_id_;
+  vector_map<rt_transport_idx_t, route_id_idx_t> rt_transport_route_id_;
 
   // RT transport -> direction for each section
   vecvec<trip_direction_string_idx_t, char> rt_transport_direction_strings_;
@@ -200,7 +241,7 @@ struct rt_timetable {
   vecvec<rt_transport_idx_t, stop::value_type> rt_transport_location_seq_;
 
   // RT trip index -> display name (empty if not changed)
-  vecvec<rt_transport_idx_t, char> rt_transport_display_names_;
+  vecvec<rt_transport_idx_t, char> rt_transport_trip_short_names_;
   vecvec<rt_transport_idx_t, char> rt_transport_line_;
 
   // RT transport -> vehicle clasz for each section
@@ -227,7 +268,11 @@ struct rt_timetable {
 
   change_callback_t change_callback_;
 
-  // TODO route colors?
+  // Lower bound graph extension.
+  bitvec_map<location_idx_t> fwd_search_lb_graph_has_edges_;
+  bitvec_map<location_idx_t> bwd_search_lb_graph_has_edges_;
+  vecvec<location_idx_t, footpath> fwd_search_lb_graph_;
+  vecvec<location_idx_t, footpath> bwd_search_lb_graph_;
 };
 
 }  // namespace nigiri

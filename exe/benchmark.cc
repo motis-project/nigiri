@@ -96,7 +96,7 @@ struct benchmark_result {
   }
 
   std::uint64_t q_idx_;
-  routing_result<raptor_stats> routing_result_;
+  routing_result routing_result_;
   pareto_set<journey> journeys_;
   std::chrono::milliseconds total_time_;
 };
@@ -224,9 +224,8 @@ void print_results(
 
   auto const visit_loc_idx = [&](location_idx_t const loc_idx) {
     std::stringstream ss;
-    ss << "loc_idx: " << loc_idx.v_ << ", name: "
-       << std::string_view{begin(tt.locations_.names_[loc_idx]),
-                           end(tt.locations_.names_[loc_idx])}
+    ss << "loc_idx: " << loc_idx.v_
+       << ", name: " << tt.get_default_name(loc_idx)
        << ", coord: " << tt.locations_.coordinates_[loc_idx];
     return ss.str();
   };

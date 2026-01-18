@@ -21,7 +21,9 @@
 #include "nigiri/routing/limits.h"
 #include "nigiri/routing/pareto_set.h"
 #include "nigiri/routing/query.h"
+#include "nigiri/routing/raptor/debug.h"
 #include "nigiri/routing/start_times.h"
+#include "nigiri/rt/rt_timetable.h"
 #include "nigiri/timetable.h"
 #include "nigiri/types.h"
 
@@ -61,18 +63,16 @@ struct search_stats {
   std::chrono::milliseconds execute_time_{0LL};
 };
 
-template <typename AlgoStats>
 struct routing_result {
   pareto_set<journey> const* journeys_{nullptr};
   interval<unixtime_t> interval_;
   search_stats search_stats_;
-  AlgoStats algo_stats_;
+  std::map<std::string, std::uint64_t> algo_stats_;
 };
 
 template <direction SearchDir, typename Algo>
 struct search {
   using algo_state_t = typename Algo::algo_state_t;
-  using algo_stats_t = typename Algo::algo_stats_t;
   static constexpr auto const kFwd = (SearchDir == direction::kForward);
   static constexpr auto const kBwd = (SearchDir == direction::kBackward);
 
@@ -109,24 +109,31 @@ struct search {
       auto lb_span = get_otel_tracer()->StartSpan("lower bounds");
       auto lb_scope = opentelemetry::trace::Scope{lb_span};
       UTL_START_TIMING(lb);
-      dijkstra(tt_, q_,
-               kFwd ? tt_.fwd_search_lb_graph_[q_.prf_idx_]
-                    : tt_.bwd_search_lb_graph_[q_.prf_idx_],
-               state_.travel_time_lower_bound_);
+      dijkstra(
+          tt_, q_,
+          (kFwd ? tt_.fwd_search_lb_graph_[q_.prf_idx_]
+                : tt_.bwd_search_lb_graph_[q_.prf_idx_]),
+          (rtt_ == nullptr ? nullptr
+                           : &(kFwd ? rtt_->fwd_search_lb_graph_has_edges_
+                                    : rtt_->bwd_search_lb_graph_has_edges_)),
+          (rtt_ == nullptr ? nullptr
+                           : &(kFwd ? rtt_->fwd_search_lb_graph_
+                                    : rtt_->bwd_search_lb_graph_)),
+          state_.travel_time_lower_bound_);
       UTL_STOP_TIMING(lb);
       stats_.lb_time_ = static_cast<std::uint64_t>(UTL_TIMING_MS(lb));
 
 #if defined(NIGIRI_TRACING)
       for (auto const& o : q_.start_) {
-        trace_upd("start {}: {}\n", location{tt_, o.target()}, o.duration());
+        trace_upd("start {}: {}\n", loc{tt_, o.target()}, o.duration());
       }
       for (auto const& o : q_.destination_) {
-        trace_upd("dest {}: {}\n", location{tt_, o.target()}, o.duration());
+        trace_upd("dest {}: {}\n", loc{tt_, o.target()}, o.duration());
       }
       for (auto const [l, lb] :
            utl::enumerate(state_.travel_time_lower_bound_)) {
         if (lb != std::numeric_limits<std::decay_t<decltype(lb)>>::max()) {
-          trace_upd("lb {}: {}\n", location{tt_, location_idx_t{l}}, lb);
+          trace_upd("lb {}: {}\n", loc{tt_, location_idx_t{l}}, lb);
         }
       }
 #endif
@@ -190,14 +197,15 @@ struct search {
     q_.sanitize(tt);
   }
 
-  routing_result<algo_stats_t> execute() {
+  routing_result execute() {
     auto span = get_otel_tracer()->StartSpan("search::execute");
     auto scope = opentelemetry::trace::Scope{span};
 
     state_.results_.clear();
 
     if (start_dest_overlap()) {
-      return {&state_.results_, search_interval_, stats_, algo_.get_stats()};
+      return {&state_.results_, search_interval_, stats_,
+              algo_.get_stats().to_map()};
     }
 
     auto const itv_est = interval_estimator<SearchDir>{tt_, q_};
@@ -228,12 +236,13 @@ struct search {
 
       search_interval();
 
-      if (is_ontrip() || n_results_in_interval() >= q_.min_connection_count_ ||
+      if (state_.results_.empty() || is_ontrip() ||
+          n_results_in_interval() >= q_.min_connection_count_ ||
           is_timeout_reached()) {
         trace(
-            "  finished: is_ontrip={}, "
-            "extend_earlier={}, extend_later={}, initial={}, interval={}, "
-            "timetable={}, number_of_results_in_interval={}, "
+            "  finished: is_ontrip={}, extend_earlier={}, extend_later={}, "
+            "initial={}, interval={}, timetable={}, "
+            "number_of_results_in_interval={}, results_with_+1_ontrip={}, "
             "timeout_reached={}\n",
             is_ontrip(), q_.extend_interval_earlier_, q_.extend_interval_later_,
             std::visit(
@@ -246,7 +255,7 @@ struct search {
                                 }},
                 q_.start_time_),
             search_interval_, tt_.external_interval(), n_results_in_interval(),
-            is_timeout_reached());
+            state_.results_.size(), is_timeout_reached());
         span->SetAttribute("nigiri.search.timeout_reached",
                            is_timeout_reached());
         break;
@@ -336,7 +345,8 @@ struct search {
       }
 
       utl::sort(state_.results_, [](journey const& a, journey const& b) {
-        return a.start_time_ < b.start_time_;
+        return std::tuple{a.start_time_, a.transfers_} <
+               std::tuple{b.start_time_, b.transfers_};
       });
     }
 
@@ -348,7 +358,7 @@ struct search {
     return {.journeys_ = &state_.results_,
             .interval_ = search_interval_,
             .search_stats_ = stats_,
-            .algo_stats_ = algo_.get_stats()};
+            .algo_stats_ = algo_.get_stats().to_map()};
   }
 
 private:
@@ -409,7 +419,7 @@ private:
                         bool const add_ontrip) {
     state_.starts_.reserve(500'000);
     get_starts(SearchDir, tt_, rtt_, start_interval, q_.start_, q_.td_start_,
-               q_.max_start_offset_, q_.start_match_mode_,
+               q_.via_stops_, q_.max_start_offset_, q_.start_match_mode_,
                q_.use_start_footpaths_, state_.starts_, add_ontrip, q_.prf_idx_,
                q_.transfer_time_settings_);
     std::sort(
@@ -437,9 +447,10 @@ private:
           auto const start_time = from_it->time_at_start_;
           for (auto const& s : it_range{from_it, to_it}) {
             trace("init: time_at_start={}, time_at_stop={} at {}\n",
-                  s.time_at_start_, s.time_at_stop_, location_idx_t{s.stop_});
+                  s.time_at_start_, s.time_at_stop_, loc{tt_, s.stop_});
             algo_.add_start(s.stop_, s.time_at_stop_);
           }
+          trace("RUN ALGO\n");
 
           /*
            * Upper bound: Search journeys faster than 'worst_time_at_dest'
@@ -453,7 +464,7 @@ private:
                         q_.prf_idx_, state_.results_);
 
           for (auto& j : state_.results_) {
-            if (j.legs_.empty() &&
+            if (j.legs_.empty() && !j.error_ &&
                 (is_ontrip() || search_interval_.contains(j.start_time_)) &&
                 j.travel_time() < fastest_direct_) {
               try {

@@ -134,9 +134,7 @@ double get_penalty(timetable const& tt,
                    location_idx_t const to) {
   auto weight = static_cast<double>(duration.count());
   if (matches(tt, location_match_mode::kEquivalent, from, to)) {
-    auto const l = from;
-    auto const p = tt.locations_.parents_[l];
-    auto const x = p == location_idx_t::invalid() ? l : p;
+    auto const x = tt.locations_.get_root_idx(from);
     weight -= (static_cast<double>(tt.locations_.location_importance_[x]) /
                tt.locations_.max_importance_) *
               3U;

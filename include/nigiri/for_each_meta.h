@@ -10,6 +10,21 @@ void for_each_meta(timetable const& tt,
                    location_match_mode const mode,
                    location_idx_t const l,
                    Fn&& fn) {
+  auto const handle_children = [&](auto const& loc) {
+    for (auto const& c : tt.locations_.children_.at(loc)) {
+      fn(c);
+      for (auto const& cc : tt.locations_.children_.at(c)) {
+        fn(cc);
+      }
+    }
+  };
+  auto const handle_equivalences = [&](auto const& loc) {
+    for (auto const& eq : tt.locations_.equivalences_.at(loc)) {
+      fn(eq);
+      handle_children(eq);
+    }
+  };
+
   if (mode == location_match_mode::kExact) {
     fn(l);
   } else if (mode == location_match_mode::kIntermodal) {
@@ -21,20 +36,12 @@ void for_each_meta(timetable const& tt,
     }
   } else if (mode == location_match_mode::kOnlyChildren) {
     fn(l);
-    for (auto const& c : tt.locations_.children_.at(l)) {
-      fn(c);
-    }
+    handle_children(l);
   } else if (mode == location_match_mode::kEquivalent) {
-    fn(l);
-    for (auto const& c : tt.locations_.children_.at(l)) {
-      fn(c);
-    }
-    for (auto const& eq : tt.locations_.equivalences_.at(l)) {
-      fn(eq);
-      for (auto const& c : tt.locations_.children_.at(eq)) {
-        fn(c);
-      }
-    }
+    auto const root = tt.locations_.get_root_idx(l);
+    fn(root);
+    handle_children(root);
+    handle_equivalences(l);
   }
 }
 

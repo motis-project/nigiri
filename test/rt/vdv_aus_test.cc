@@ -11,6 +11,7 @@
 #include "nigiri/rt/vdv_aus.h"
 #include "nigiri/special_stations.h"
 #include "nigiri/timetable.h"
+#include "nigiri/timetable_metrics.h"
 
 using namespace nigiri;
 using namespace nigiri::loader;
@@ -678,6 +679,10 @@ TEST(vdv_aus, tt_after_midnight_update_before_midnight) {
       {{transport_idx_t{0}, day_idx_t{14}}, {stop_idx_t{0}, stop_idx_t{2}}});
 
   EXPECT_TRUE(fr.is_rt());
+
+  EXPECT_EQ(
+      R"([{"idx":0,"firstDay":"2024-07-10","lastDay":"2024-07-10","noLocations":2,"noTrips":1,"transportsXDays":1}])",
+      to_str(get_metrics(tt), tt));
 }
 
 namespace {
@@ -1294,6 +1299,10 @@ TEST(vdv_aus, exact_match_1) {
   ASSERT_TRUE(fr.valid());
   ASSERT_TRUE(fr.is_rt());
   EXPECT_FALSE(fr.is_cancelled());
+
+  EXPECT_EQ(
+      R"([{"idx":0,"firstDay":"2024-08-14","lastDay":"2024-08-30","noLocations":41,"noTrips":1,"transportsXDays":13}])",
+      to_str(get_metrics(tt), tt));
 }
 
 TEST(vdv_aus, cancel_run) {

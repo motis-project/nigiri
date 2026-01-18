@@ -9,6 +9,7 @@
 #include "nigiri/loader/gtfs/loader.h"
 #include "nigiri/loader/hrd/loader.h"
 #include "nigiri/loader/init_finish.h"
+#include "nigiri/loader/netex/loader.h"
 #include "nigiri/timetable.h"
 
 namespace nigiri::loader {
@@ -20,6 +21,7 @@ std::vector<std::unique_ptr<loader_interface>> get_loaders() {
   loaders.emplace_back(std::make_unique<hrd::hrd_5_20_26_loader>());
   loaders.emplace_back(std::make_unique<hrd::hrd_5_20_39_loader>());
   loaders.emplace_back(std::make_unique<hrd::hrd_5_20_avv_loader>());
+  loaders.emplace_back(std::make_unique<netex::netex_loader>());
   return loaders;
 }
 
@@ -33,8 +35,9 @@ timetable load(std::vector<timetable_source> const& sources,
 
   auto tt = timetable{};
   tt.date_range_ = date_range;
+  tt.n_sources_ = static_cast<cista::base_t<source_idx_t>>(sources.size());
   register_special_stations(tt);
-
+  auto const progress_tracker = utl::get_active_progress_tracker();
   auto bitfields = hash_map<bitfield, bitfield_idx_t>{};
   for (auto const [idx, in] : utl::enumerate(sources)) {
     auto const& [tag, path, local_config] = in;
@@ -50,7 +53,6 @@ timetable load(std::vector<timetable_source> const& sources,
       if (!is_in_memory) {
         log(log_lvl::info, "loader.load", "loading {}", path);
       }
-      auto const progress_tracker = utl::get_active_progress_tracker();
       progress_tracker->context(std::string{tag});
       try {
         (*it)->load(local_config, src, *dir, tt, bitfields, a, shapes);
@@ -65,6 +67,7 @@ timetable load(std::vector<timetable_source> const& sources,
     }
   }
 
+  progress_tracker->status("Finalizing").out_bounds(98.F, 100.F).in_high(1);
   finalize(tt, finalize_opt);
 
   return tt;

@@ -1,12 +1,13 @@
 #include "nigiri/routing/start_times.h"
 
-#include "nigiri/for_each_meta.h"
-#include "nigiri/rt/rt_timetable.h"
-#include "nigiri/special_stations.h"
 #include "utl/enumerate.h"
 #include "utl/equal_ranges_linear.h"
 #include "utl/get_or_create.h"
 #include "utl/overloaded.h"
+
+#include "nigiri/for_each_meta.h"
+#include "nigiri/rt/rt_timetable.h"
+#include "nigiri/special_stations.h"
 
 namespace nigiri::routing {
 
@@ -105,8 +106,7 @@ void add_start_times_at_stop(direction const search_dir,
         trace_start(
             "        => ADD START: time_at_start={}, time_at_stop={}, "
             "stop={}\n",
-            s.time_at_start_, s.time_at_stop_,
-            location{tt, starts.back().stop_});
+            s.time_at_start_, s.time_at_stop_, loc{tt, starts.back().stop_});
       } else {
         trace_start(
             "        skip: day={}, day_offset={}, date={}, active={}, "
@@ -133,7 +133,7 @@ void add_starts_in_interval(direction const search_dir,
   trace_start(
       "    add_starts_in_interval(interval={}, stop={}): {} "
       "routes\n",
-      iv, location{tt, l},  // NOLINT(clang-analyzer-core.CallAndMessage)
+      iv, loc{tt, l},  // NOLINT(clang-analyzer-core.CallAndMessage)
       tt.location_routes_.at(l).size());
 
   // Iterate routes visiting the location.
@@ -212,7 +212,7 @@ void add_starts_in_interval(direction const search_dir,
             "        => ADD RT START: time_at_start={}, time_at_stop={}, "
             "stop={}\n",
             inserted.time_at_start_, inserted.time_at_stop_,
-            location{tt, starts.back().stop_});
+            loc{tt, starts.back().stop_});
       }
     }
   }
@@ -245,6 +245,7 @@ void get_starts(
     start_time_t const& start_time,
     std::vector<offset> const& start_offsets,
     hash_map<location_idx_t, std::vector<td_offset>> const& start_td_offsets,
+    std::vector<via_stop> const& via_stops,
     duration_t const max_start_offset,
     location_match_mode const mode,
     bool const use_start_footpaths,
@@ -253,7 +254,11 @@ void get_starts(
     profile_idx_t const prf_idx,
     transfer_time_settings const& tts) {
   auto shortest_start = hash_map<location_idx_t, duration_t>{};
-  auto const update = [&](location_idx_t const l, duration_t const d) {
+  auto const update = [&](location_idx_t const l, duration_t const offset) {
+    auto const d =
+        offset + (via_stops.empty() || via_stops.front().location_ != l
+                      ? 0_minutes
+                      : via_stops.front().stay_);
     auto& val = utl::get_or_create(shortest_start, l, [d]() { return d; });
     val = std::min(val, d);
   };
@@ -276,6 +281,7 @@ void get_starts(
   for (auto const& s : shortest_start) {
     auto const l = s.first;
     auto const o = s.second;
+
     std::visit(utl::overloaded{[&](interval<unixtime_t> const interval) {
                                  add_starts_in_interval(
                                      search_dir, tt, rtt, interval, l, o,
@@ -332,7 +338,7 @@ void collect_destinations(timetable const& tt,
   }
 
   for (auto const& d : dest) {
-    trace_start("DEST METAS OF {}\n", location{tt, d.target_});
+    trace_start("DEST METAS OF {}\n", loc{tt, d.target_});
     for_each_meta(tt, match_mode, d.target_, [&](location_idx_t const l) {
       if (match_mode == location_match_mode::kIntermodal) {
         dist_to_dest[to_idx(l)] =
@@ -340,8 +346,7 @@ void collect_destinations(timetable const& tt,
       } else {
         is_dest.set(to_idx(l), true);
       }
-      trace_start("  DEST META: {}, duration={}\n", location{tt, l},
-                  d.duration_);
+      trace_start("  DEST META: {}, duration={}\n", loc{tt, l}, d.duration_);
     });
   }
 }
@@ -352,11 +357,11 @@ void collect_via_destinations(timetable const& tt,
   is_destination.resize(tt.n_locations());
   utl::fill(is_destination.blocks_, 0U);
 
-  trace_start("VIA METAS OF {}\n", location{tt, via});
+  trace_start("VIA METAS OF {}\n", loc{tt, via});
   for_each_meta(tt, location_match_mode::kEquivalent, via,
                 [&](location_idx_t const l) {
                   is_destination.set(to_idx(l), true);
-                  trace_start("  VIA META: {}\n", location{tt, l});
+                  trace_start("  VIA META: {}\n", loc{tt, l});
                 });
 }
 

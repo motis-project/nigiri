@@ -8,10 +8,15 @@
 #include "utl/pipes/vec.h"
 #include "utl/progress_tracker.h"
 
+#include "nigiri/loader/register.h"
 #include "nigiri/logging.h"
 #include "nigiri/timetable.h"
 
 namespace nigiri::loader::gtfs {
+
+clasz to_clasz(route_type_t const route_type) {
+  return to_clasz(to_idx(route_type));
+}
 
 clasz to_clasz(std::uint16_t const route_type) {
   switch (route_type) {
@@ -26,16 +31,16 @@ clasz to_clasz(std::uint16_t const route_type) {
     case 4 /* Ferry. Used for short- and long-distance boat service. */:
       return clasz::kShip;
     case 5 /* Cable tram. Used for street-level rail cars where the cable runs beneath the vehicle, e.g., cable car in San Francisco. */ :
-      return clasz::kCableCar;
+      return clasz::kFunicular;
     case 6 /* Aerial lift, suspended cable car (e.g., gondola lift, aerial tramway). Cable transport where cabins, cars, gondolas or open chairs are suspended by means of one or more cables. */ :
-      return clasz::kAreaLift;
+      return clasz::kAerialLift;
     case 7 /* Funicular. Any rail system designed for steep inclines. */:
       return clasz::kFunicular;
     case 11 /* Trolleybus. Electric buses that draw power from overhead wires using poles. */ :
       return clasz::kBus;
     case 12 /* Monorail. Railway in which the track consists of a single rail or a beam. */ :
       return clasz::kOther;
-    case 100 /* Railway Service */: return clasz::kRegional;
+    case 100 /* Railway Service */: return clasz::kRegionalFast;
     case 101 /* High Speed Rail Service */: return clasz::kHighSpeed;
     case 102 /* Long Distance Trains */: return clasz::kLongDistance;
     case 103 /* Inter Regional Rail Service */: return clasz::kRegional;
@@ -44,14 +49,15 @@ clasz to_clasz(std::uint16_t const route_type) {
     case 106 /* Regional Rail Service */:
     case 107 /* Tourist Railway Service */:
     case 108 /* Rail Shuttle (Within Complex) */: return clasz::kRegional;
-    case 109 /* Suburban Railway */: return clasz::kMetro;
+    case 109 /* Suburban Railway */: return clasz::kSuburban;
     case 110 /* Replacement Rail Service */:
     case 111 /* Special Rail Service */:
     case 112 /* Lorry Transport Rail Service */:
     case 113 /* All Rail Services */: return clasz::kRegional;
     case 114 /* Cross-Country Rail Service */: return clasz::kLongDistance;
     case 115 /* Vehicle Transport Rail Service */:
-    case 116 /* Rack and Pinion Railway */:
+      return clasz::kRegional;  // TODO(felix) car allowed?
+    case 116 /* Rack and Pinion Railway */: return clasz::kFunicular;
     case 117 /* Additional Rail Service */: return clasz::kRegional;
     case 200 /* Coach Service */:
     case 201 /* International Coach Service */:
@@ -63,12 +69,12 @@ clasz to_clasz(std::uint16_t const route_type) {
     case 207 /* Tourist Coach Service */:
     case 208 /* Commuter Coach Service */:
     case 209 /* All Coach Services */: return clasz::kCoach;
-    case 400 /* Urban Railway Service */: return clasz::kSubway;
-    case 401 /* Metro Service */: return clasz::kMetro;
+    case 400 /* Urban Railway Service */:
+    case 401 /* Metro Service */:
     case 402 /* Underground Service */: return clasz::kSubway;
     case 403 /* Urban Railway Service */:
-    case 404 /* All Urban Railway Services */:
-    case 405 /* Monorail */: return clasz::kMetro;
+    case 404 /* All Urban Railway Services */: return clasz::kSuburban;
+    case 405 /* Monorail */: return clasz::kOther;
     case 700 /* Bus Service */:
     case 701 /* Regional Bus Service */:
     case 702 /* Express Bus Service */:
@@ -83,8 +89,8 @@ clasz to_clasz(std::uint16_t const route_type) {
     case 711 /* Shuttle Bus */:
     case 712 /* School Bus */:
     case 713 /* School and Public Service Bus */:
-    case 714 /* Rail Replacement Bus Service */:
-    case 715 /* Demand and Response Bus Service */:
+    case 714 /* Rail Replacement Bus Service */: return clasz::kBus;
+    case 715 /* Demand and Response Bus Service */: return clasz::kODM;
     case 716 /* All Bus Services */:
     case 800 /* Trolleybus Service */: return clasz::kBus;
     case 900 /* Tram Service */:
@@ -98,13 +104,13 @@ clasz to_clasz(std::uint16_t const route_type) {
     case 1100 /* Air Service */: return clasz::kAir;
     case 1200 /* Ferry Service */: return clasz::kShip;
     case 1300 /* Aerial Lift Service */:
-    case 1301 /* Telecabin Service */: return clasz::kAreaLift;
-    case 1302 /* Cable Car Service */: return clasz::kCableCar;
+    case 1301 /* Telecabin Service */: return clasz::kAerialLift;
+    case 1302 /* Cable Car Service */: return clasz::kAerialLift;
     case 1303 /* Elevator Service */: return clasz::kOther;
-    case 1304 /* Chair Lift Service */: return clasz::kAreaLift;
+    case 1304 /* Chair Lift Service */: return clasz::kAerialLift;
     case 1305 /* Drag Lift Service */: return clasz::kOther;
     case 1306 /* Small Telecabin Service */:
-    case 1307 /* All Telecabin Services */: return clasz::kAreaLift;
+    case 1307 /* All Telecabin Services */: return clasz::kAerialLift;
     case 1400 /* Funicular Service */: return clasz::kFunicular;
     case 1500 /* Taxi Service */:
     case 1501 /* Communal Taxi Service */:
@@ -113,7 +119,7 @@ clasz to_clasz(std::uint16_t const route_type) {
     case 1504 /* Bike Taxi Service */:
     case 1505 /* Licensed Taxi Service */:
     case 1506 /* Private Hire Service Vehicle */:
-    case 1507 /* All Taxi Services */:
+    case 1507 /* All Taxi Services */: return clasz::kODM;
     case 1700 /* Miscellaneous Service */:
     case 1702 /* Horse-drawn Carriage */: return clasz::kOther;
   }
@@ -132,26 +138,14 @@ clasz to_clasz(std::uint16_t const route_type) {
   return clasz::kOther;
 }
 
-color_t to_color(std::string_view const color_str) {
-  auto const is_hex = [](uint8_t c) {
-    return std::isdigit(c) != 0 || (c >= 'a' && c <= 'f') ||
-           (c >= 'A' && c <= 'F');
-  };
-
-  if (color_str.size() != 6 ||
-      !std::all_of(color_str.begin(), color_str.end(), is_hex)) {
-    return color_t{0};
-  }
-  return color_t{0xFF000000U | static_cast<std::uint32_t>(
-                                   std::strtol(color_str.data(), nullptr, 16))};
-}
-
 route_map_t read_routes(source_idx_t const src,
                         timetable& tt,
+                        translator& i18n,
                         tz_map& timezones,
                         agency_map_t& agencies,
                         std::string_view file_content,
-                        std::string_view default_tz) {
+                        std::string_view default_tz,
+                        script_runner const& user_script) {
   auto const timer = nigiri::scoped_timer{"read routes"};
 
   utl::verify(tt.route_ids_.size() == to_idx(src),
@@ -175,49 +169,54 @@ route_map_t read_routes(source_idx_t const src,
   progress_tracker->status("Parse Routes")
       .out_bounds(27.F, 29.F)
       .in_high(file_content.size());
-  return utl::line_range{utl::make_buf_reader(
-             file_content, progress_tracker->update_fn())}  //
-         | utl::csv<csv_route>()  //
-         |
-         utl::transform([&](csv_route const& r) {
-           auto const agency =
-               agencies.size() == 1U
-                   ? agencies.begin()->second
-                   : utl::get_or_create(agencies, r.agency_id_->view(), [&]() {
-                       log(log_lvl::error, "gtfs.route",
-                           "agency {} not found, using UNKNOWN with local "
-                           "timezone",
-                           r.agency_id_->view());
+  auto map = route_map_t{};
+  utl::line_range{
+      utl::make_buf_reader(file_content, progress_tracker->update_fn())}  //
+      | utl::csv<csv_route>()  //
+      | utl::for_each([&](csv_route const& r) {
+          auto const a =
+              agencies.size() == 1U
+                  ? agencies.begin()->second
+                  : utl::get_or_create(agencies, r.agency_id_->view(), [&]() {
+                      log(log_lvl::error, "gtfs.route",
+                          "agency {} not found, using UNKNOWN with default "
+                          "timezone {}",
+                          r.agency_id_->view(), default_tz);
 
-                       auto const id = r.agency_id_->view().empty()
-                                           ? "UKN"
-                                           : r.agency_id_->view();
-                       return tt.register_provider(
-                           {tt.strings_.store(id),
-                            tt.strings_.store("UNKNOWN_AGENCY"),
-                            tt.strings_.store(""),
-                            get_tz_idx(tt, timezones, default_tz), src});
-                     });
+                      auto const id = r.agency_id_->view().empty()
+                                          ? "UKN"
+                                          : r.agency_id_->view();
+                      return register_agency(
+                          tt, agency{tt, src, id, kEmptyTranslation,
+                                     kEmptyTranslation,
+                                     get_tz_idx(tt, timezones, default_tz),
+                                     timezones});
+                    });
 
-           auto const route_id_idx = tt.route_ids_[src].add(
-               r.route_id_->view(), r.route_short_name_->view(),
-               r.route_long_name_->view(), agency, *r.route_type_);
+          if (a == provider_idx_t::invalid()) {
+            return;  // agency has been blacklisted by user script
+          }
 
-           return std::pair{
-               r.route_id_->to_str(),
-               std::make_unique<route>(route{
-                   .route_id_idx_ = route_id_idx,
-                   .agency_ = agency,
-                   .id_ = r.route_id_->to_str(),
-                   .short_name_ = r.route_short_name_->to_str(),
-                   .long_name_ = r.route_long_name_->to_str(),
-                   .desc_ = r.route_desc_->to_str(),
-                   .network_ = r.network_id_->to_str(),
-                   .clasz_ = to_clasz(*r.route_type_),
-                   .color_ = to_color(r.route_color_->to_str()),
-                   .text_color_ = to_color(r.route_text_color_->to_str())})};
-         })  //
-         | utl::to<route_map_t>();
+          auto x = loader::route{
+              tt,
+              src,
+              r.route_id_->view(),
+              i18n.get(t::kRoutes, f::kRouteShortName,
+                       r.route_short_name_->view(), r.route_id_->view()),
+              i18n.get(t::kRoutes, f::kRouteLongName,
+                       r.route_long_name_->view(), r.route_id_->view()),
+              route_type_t{*r.route_type_},
+              {.color_ = to_color(r.route_color_->view()),
+               .text_color_ = to_color(r.route_text_color_->view())},
+              a};
+          if (process_route(user_script, x)) {
+            map.emplace(r.route_id_->to_str(),
+                        std::make_unique<route>(route{
+                            .route_id_idx_ = register_route(tt, x),
+                            .network_ = std::string{r.network_id_->view()}}));
+          }
+        });
+  return map;
 }
 
 }  // namespace nigiri::loader::gtfs

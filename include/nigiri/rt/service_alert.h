@@ -54,7 +54,7 @@ enum class alert_severity : std::uint8_t {
 std::string_view to_str(alert_severity);
 std::ostream& operator<<(std::ostream&, alert_severity);
 
-struct translation {
+struct alert_translation {
   alert_str_idx_t text_;
   alert_str_idx_t language_;
 };
@@ -83,27 +83,44 @@ struct alerts {
   using by_route = by_rt_transport;
   using by_route_type = by_rt_transport;
 
-  template <typename Fn>
-  void for_each_alert(timetable const& tt,
-                      source_idx_t const src,
-                      trip_idx_t const t,
-                      rt_transport_idx_t const rt_t,
-                      location_idx_t const l,
-                      Fn&& fn) const {
+  // fuzzy_stop parameter:
+  //   - true: alert.l_=invalid matches everything
+  //     => used for stop times
+  //   - false: alert.l_=invalid matches iff l=invalid
+  //     => used for itineraries
+  //     - leg (overall trip):
+  //         l == invalid => matches only not stop specific alerts
+  //         (addressing route/trip/agency)
+  //     - from/to/intermediateStop:
+  //         l != invalid => matches only concrete stop
+  hash_set<alert_idx_t> get_alerts(timetable const& tt,
+                                   source_idx_t const src,
+                                   trip_idx_t const t,
+                                   rt_transport_idx_t const rt_t,
+                                   location_idx_t const l,
+                                   bool const fuzzy_stop) const {
     auto const route_id_idx = tt.trip_route_id_[t];
     auto const route_type = tt.route_ids_[src].route_id_type_[route_id_idx];
     auto const agency = tt.route_ids_[src].route_id_provider_[route_id_idx];
     auto const direction = tt.trip_direction_id_.test(t);
     auto const parent =
         l == location_idx_t::invalid() ? l : tt.locations_.parents_[l];
+    auto const grandparent = parent == location_idx_t::invalid()
+                                 ? location_idx_t::invalid()
+                                 : tt.locations_.parents_[parent];
     auto const matches_location = [&](location_idx_t const x) {
-      return x == l || (parent != location_idx_t::invalid() && parent == x);
+      return (fuzzy_stop ? (x == location_idx_t::invalid() || x == l)
+                         : (x == l)) ||
+             (parent != location_idx_t::invalid() && parent == x) ||
+             (grandparent != location_idx_t::invalid() && grandparent == x);
     };
+
+    auto alerts = hash_set<alert_idx_t>{};
 
     if (rt_t != rt_transport_idx_t::invalid()) {
       for (auto const& a : rt_transport_[rt_t]) {
         if (matches_location(a.l_)) {
-          fn(a.alert_);
+          alerts.insert(a.alert_);
         }
       }
     }
@@ -112,7 +129,7 @@ struct alerts {
       if ((a.direction_ == direction_id_t::invalid() ||
            a.direction_ == direction) &&
           matches_location(a.l_)) {
-        fn(a.alert_);
+        alerts.insert(a.alert_);
       }
     }
 
@@ -120,20 +137,22 @@ struct alerts {
       if ((a.route_type_ == route_type_t::invalid() ||
            a.route_type_ == route_type) &&
           matches_location(a.l_)) {
-        fn(a.alert_);
+        alerts.insert(a.alert_);
       }
     }
 
     if (l != location_idx_t::invalid()) {
       for (auto const& a : location_[l]) {
-        fn(a);
+        alerts.insert(a);
       }
       if (parent != location_idx_t::invalid()) {
         for (auto const& a : location_[parent]) {
-          fn(a);
+          alerts.insert(a);
         }
       }
     }
+
+    return alerts;
   }
 
   paged_vecvec<rt_transport_idx_t, by_rt_transport> rt_transport_;
@@ -145,14 +164,14 @@ struct alerts {
 
   vecvec<alert_idx_t, interval<unixtime_t>> communication_period_;
   vecvec<alert_idx_t, interval<unixtime_t>> impact_period_;
-  vecvec<alert_idx_t, translation> cause_detail_;
-  vecvec<alert_idx_t, translation> effect_detail_;
-  vecvec<alert_idx_t, translation> url_;
-  vecvec<alert_idx_t, translation> header_text_;
-  vecvec<alert_idx_t, translation> description_text_;
-  vecvec<alert_idx_t, translation> tts_header_text_;
-  vecvec<alert_idx_t, translation> tts_description_text_;
-  vecvec<alert_idx_t, translation> image_alternative_text_;
+  vecvec<alert_idx_t, alert_translation> cause_detail_;
+  vecvec<alert_idx_t, alert_translation> effect_detail_;
+  vecvec<alert_idx_t, alert_translation> url_;
+  vecvec<alert_idx_t, alert_translation> header_text_;
+  vecvec<alert_idx_t, alert_translation> description_text_;
+  vecvec<alert_idx_t, alert_translation> tts_header_text_;
+  vecvec<alert_idx_t, alert_translation> tts_description_text_;
+  vecvec<alert_idx_t, alert_translation> image_alternative_text_;
   vecvec<alert_idx_t, localized_image> image_;
   vector_map<alert_idx_t, alert_cause> cause_;
   vector_map<alert_idx_t, alert_effect> effect_;

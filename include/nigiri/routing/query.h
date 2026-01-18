@@ -68,6 +68,7 @@ using start_time_t = std::variant<unixtime_t, interval<unixtime_t>>;
 using td_offsets_t = hash_map<location_idx_t, std::vector<routing::td_offset>>;
 
 struct query {
+  void flip_dir();
   void sanitize(timetable const&);
   bool operator==(query const& o) const;
 

@@ -76,6 +76,10 @@ struct interval {
 
   bool contains(T const t) const { return t >= from_ && t < to_; }
 
+  bool contains(interval const& o) const {
+    return from_ <= o.from_ && to_ >= o.to_;
+  }
+
   bool overlaps(interval const& o) const {
     return from_ < o.to_ && to_ > o.from_;
   }
@@ -106,7 +110,9 @@ struct interval {
     return r.end();
   }
 
-  auto size() const { return to_ - from_; }
+  auto size() const { return cista::to_idx(to_ - from_); }
+
+  bool empty() const { return to_ - from_ == 0U; }
 
   T operator[](std::size_t const i) const {
     assert(contains(from_ + static_cast<T>(i)));

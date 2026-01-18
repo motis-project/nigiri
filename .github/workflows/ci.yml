@@ -24,7 +24,7 @@ jobs:
         run: |
           find include src test \
             -type f -a \( -name "*.cc" -o -name "*.h" -o -name ".cuh" -o -name ".cu" \) \
-            -print0 | xargs -0 clang-format-18 -i
+            -print0 | xargs -0 clang-format-21 -i
 
       - name: Check for differences
         run: |
@@ -103,13 +103,6 @@ jobs:
 
   macos:
     runs-on: macos-latest
-    strategy:
-      fail-fast: false
-      matrix:
-        config:
-          - preset: macos-x86_64
-            tests: On
-          - preset: macos-arm64
     env:
       BUILDCACHE_COMPRESS: true
       BUILDCACHE_DIRECT_MODE: true
@@ -134,11 +127,11 @@ jobs:
         id: restore-buildcache
         with:
           path: ${{ github.workspace }}/.buildcache
-          key: buildcache-${{ matrix.config.preset }}-${{ hashFiles('.pkg') }}-${{ hashFiles('**/*.h') }}-${{ hashFiles('**/*.cc') }}
+          key: buildcache-macos-${{ hashFiles('.pkg') }}-${{ hashFiles('**/*.h') }}-${{ hashFiles('**/*.cc') }}
           restore-keys: |
-            buildcache-${{ matrix.config.preset }}-${{ hashFiles('.pkg') }}-${{ hashFiles('**/*.h') }}-
-            buildcache-${{ matrix.config.preset }}-${{ hashFiles('.pkg') }}-
-            buildcache-${{ matrix.config.preset }}-
+            buildcache-macos-${{ hashFiles('.pkg') }}-${{ hashFiles('**/*.h') }}-
+            buildcache-macos-${{ hashFiles('.pkg') }}-
+            buildcache-macos-
 
       - name: Dependencies Cache
         uses: actions/cache@v3
@@ -149,7 +142,7 @@ jobs:
 
       # ==== BUILD ====
       - name: CMake
-        run: cmake -G Ninja -S . -B build --preset=${{ matrix.config.preset }}
+        run: cmake -G Ninja -S . -B build --preset=macos-arm64
 
       - name: Build
         run: |
@@ -159,7 +152,6 @@ jobs:
 
       # ==== TESTS ====
       - name: Run Tests
-        if: matrix.config.tests == 'On'
         run: build/nigiri-test
 
       # ==== SAVE CACHE ====
@@ -186,7 +178,6 @@ jobs:
           - preset: linux-arm64-release
             artifact: linux-arm64
             emulator: qemu-aarch64-static
-          - preset: clang-tidy
           - preset: linux-sanitizer
           - preset: linux-debug
             emulator: valgrind --leak-check=full --error-exitcode=1

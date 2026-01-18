@@ -1,5 +1,7 @@
 #include "nigiri/loader/hrd/stamm/track.h"
 
+#include "nigiri/loader/register.h"
+
 #include "utl/get_or_create.h"
 
 #include "nigiri/loader/hrd/stamm/stamm.h"
@@ -47,10 +49,10 @@ tracks parse_track_rules(config const& c,
           auto l = location{tt, parent};
           auto const id = fmt::format("T:{}:{}", l.id_, track_name_str);
           l.id_ = id;
-          l.name_ = track_name_str;
+          l.name_ = tt.register_translation(track_name_str);
           l.type_ = location_type::kGeneratedTrack;
           l.parent_ = parent;
-          auto const child = tt.locations_.register_location(l);
+          auto const child = register_location(tt, l);
           tt.locations_.children_[parent].emplace_back(child);
           return child;
         });
