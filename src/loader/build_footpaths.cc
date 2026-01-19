@@ -410,8 +410,12 @@ void write_footpaths(timetable& tt) {
 }
 
 void build_footpaths(timetable& tt, finalize_options const opt) {
+  find_intra_route_duplicates(tt);
   add_links_to_and_between_children(tt);
   link_nearby_stations(tt);
+
+  // std::cout << "BEFORE: " << tt << "\n";
+
   if (opt.merge_dupes_intra_src_ || opt.merge_dupes_inter_src_) {
     for (auto l = location_idx_t{0U}; l != tt.n_locations(); ++l) {
       if (tt.locations_.src_[l] == source_idx_t{source_idx_t::invalid()}) {
@@ -430,6 +434,9 @@ void build_footpaths(timetable& tt, finalize_options const opt) {
       }
     }
   }
+
+  // std::cout << "AFTER: " << tt << "\n";
+
   connect_components(tt, opt.max_footpath_length_, opt.adjust_footpaths_);
   sort_footpaths(tt);
   write_footpaths(tt);

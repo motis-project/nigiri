@@ -239,6 +239,12 @@ struct timetable {
     return get_default_translation(trip_display_names_[trip_idx]);
   }
 
+  std::string_view trip_id(transport_idx_t const t) const {
+    auto const trip_idx =
+        merged_trips_[transport_to_trip_section_[t].front()].front();
+    return trip_id_strings_.at(trip_ids_[trip_idx].at(0)).view();
+  }
+
   debug dbg(transport_idx_t const t) const {
     auto const trip_idx =
         merged_trips_[transport_to_trip_section_[t].front()].front();
