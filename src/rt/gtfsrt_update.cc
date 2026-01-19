@@ -819,8 +819,7 @@ statistics gtfsrt_update_buf(timetable const& tt,
   msg.Clear();
 
   auto const success =
-      msg.ParseFromArray(reinterpret_cast<void const*>(protobuf.data()),
-                         static_cast<int>(protobuf.size()));
+      msg.ParseFromArray(protobuf.data(), static_cast<int>(protobuf.size()));
   if (!success) {
     log(log_lvl::debug, "rt.gtfs",
         "GTFS-RT error (tag={}): unable to parse protobuf message: {}", tag,
