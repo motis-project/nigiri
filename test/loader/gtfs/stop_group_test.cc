@@ -68,7 +68,8 @@ TEST(gtfs, stop_groups_equivalent_routing) {
 
   auto const src = source_idx_t{0};
   auto q = routing::query{
-      .start_time_ = sys_days{2020_y / January / 1} + 9h,
+      .start_time_ = interval<unixtime_t>{sys_days{2020_y / January / 1} + 0h,
+                                          sys_days{2020_y / January / 1} + 24h},
       .start_match_mode_ = routing::location_match_mode::kEquivalent,
       .dest_match_mode_ = routing::location_match_mode::kEquivalent,
       .use_start_footpaths_ = true,
