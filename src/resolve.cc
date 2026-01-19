@@ -8,6 +8,7 @@ namespace nigiri {
 
 frun resolve(timetable const& tt,
              rt_timetable const* rtt,
+             source_idx_t const src,
              std::string_view trip_id,
              std::string_view start_date,
              std::string_view start_time) {
@@ -19,7 +20,7 @@ frun resolve(timetable const& tt,
   if (!start_time.empty()) {
     td.set_start_time(start_time);
   }
-  auto const [r, _] = gtfsrt_resolve_run(date::sys_days{}, tt, rtt, {}, td);
+  auto const [r, _] = gtfsrt_resolve_run(date::sys_days{}, tt, rtt, src, td);
   utl::verify(r.valid(),
               "trip not found: trip_id={}, start_date={}, start_time={}",
               trip_id, start_date, start_time);

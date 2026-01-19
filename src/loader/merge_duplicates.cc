@@ -1,12 +1,16 @@
 #include "nigiri/loader/merge_duplicates.h"
 
+#include <ranges>
+
+#include "utl/pairwise.h"
 #include "utl/zip.h"
 
+#include "nigiri/common/day_list.h"
 #include "nigiri/for_each_meta.h"
+#include "nigiri/resolve.h"
 #include "nigiri/timetable.h"
 
 namespace nigiri::loader {
-
 unsigned get_delta(timetable const& tt,
                    route_idx_t const a_route,
                    route_idx_t const b_route,
@@ -43,55 +47,102 @@ bool merge(timetable& tt,
     return false;
   }
 
-  auto const merge_and_nullify = [&tt](transport_idx_t const x,
-                                       transport_idx_t const y) {
-    tt.transport_traffic_days_[x] = bitfield_idx_t{0U};  // disable transport x
+  tt.transport_traffic_days_[a] = tt.register_bitfield(bf_a & ~(bf_a & bf_b));
 
-    for (auto const merged_trips_idx_x : tt.transport_to_trip_section_[x]) {
-      for (auto const x_trp : tt.merged_trips_[merged_trips_idx_x]) {
-        for (auto& [t, range] : tt.trip_transport_ranges_[x_trp]) {
-          if (t == x) {
-            t = y;  // replace x with y in x's trip transport ranges
-          }
+  hash_set<trip_idx_t> b_trips;
+  for (auto const merged_trips_idx_b : tt.transport_to_trip_section_[b]) {
+    for (auto const b_trp : tt.merged_trips_[merged_trips_idx_b]) {
+      for (auto& [t, range] : tt.trip_transport_ranges_[b_trp]) {
+        if (t == b) {
+          b_trips.emplace(b_trp);
         }
       }
     }
-  };
+  }
 
-  auto const is_superset = [](bitfield const& x, bitfield const& y) {
-    return (x & y) == y;
-  };
-
-  if (is_superset(bf_b, bf_a)) {
-    merge_and_nullify(a, b);
-  } else if (is_superset(bf_a, bf_b)) {
-    merge_and_nullify(b, a);
-  } else {
-    tt.transport_traffic_days_[a] = tt.register_bitfield(bf_a & ~(bf_a & bf_b));
-
-    hash_set<trip_idx_t> b_trips;
-    for (auto const merged_trips_idx_b : tt.transport_to_trip_section_[b]) {
-      for (auto const b_trp : tt.merged_trips_[merged_trips_idx_b]) {
-        for (auto& [t, range] : tt.trip_transport_ranges_[b_trp]) {
-          if (t == b) {
-            b_trips.emplace(b_trp);
-          }
-        }
-      }
-    }
-
-    for (auto const b_trp : b_trips) {
-      tt.trip_transport_ranges_[b_trp].push_back(
-          transport_range_t{a, {0U, size}});
-    }
+  for (auto const b_trp : b_trips) {
+    tt.trip_transport_ranges_[b_trp].push_back(
+        transport_range_t{a, {0U, size}});
   }
 
   return true;
 }
 
+void find_intra_route_duplicates(timetable& tt) {
+  for (auto r = route_idx_t{0U}; r != tt.n_routes(); ++r) {
+    auto const transports = tt.route_transport_ranges_[r];
+    auto const min = [&]() {
+      auto min_dist = std::chrono::minutes::max();
+      for (auto const [a, b] : utl::pairwise(transports)) {
+        auto const time_a = tt.event_mam(r, a, 0U, event_type::kDep);
+        auto const time_b = tt.event_mam(r, b, 0U, event_type::kDep);
+        auto const diff = time_b.as_duration() - time_a.as_duration();
+        if (diff > std::chrono::minutes{5} && diff < min_dist) {
+          min_dist = diff;
+        }
+      }
+      return min_dist;
+    }();
+
+    for (auto a = begin(transports); a != end(transports); ++a) {
+      auto const time_a = tt.event_mam(r, *a, 0U, event_type::kDep);
+
+      auto init_b = a;
+      ++init_b;
+      for (auto b = init_b; b != end(transports); ++b) {
+        auto const time_b = tt.event_mam(r, *b, 0U, event_type::kDep);
+        assert(time_b > time_a);
+
+        auto const& bf_a = tt.bitfields_[tt.transport_traffic_days_[*a]];
+        auto const& bf_b = tt.bitfields_[tt.transport_traffic_days_[*b]];
+        auto const intersection = bf_a & bf_b;
+        if (intersection.none()) {
+          continue;
+        }
+
+        if ((time_b.as_duration() - time_a.as_duration()) >= min) {
+          break;
+        }
+
+        auto const delta = get_delta(tt, r, r, *a, *b);
+        auto const loc_seq = tt.route_location_seq_[r];
+
+        if (delta < loc_seq.size() * 2U) {
+          std::clog << "  " << tt.trip_id(*a)
+                    << " [name=" << tt.transport_name(*b) << "] vs "
+                    << tt.trip_id(*b) << " [nam e=" << tt.transport_name(*b)
+                    << "], time_a=" << time_a << ", time_b=" << time_b
+                    << ", MIN_DIST=" << min << ", FIRST_DIFF="
+                    << (time_b.as_duration() - time_a.as_duration())
+                    << ", DELTA=" << delta << ", days=" << tt.days(intersection)
+                    << "\n";
+        }
+      }
+    }
+  }
+}
+
 unsigned find_duplicates(timetable& tt,
                          location_idx_t const a,
                          location_idx_t const b) {
+  // http://localhost:5173/?tripId=20260115_13%3A07_de-DELFI_3064419662&motis=localhost%3A8080
+  auto const needle1 =
+      tt.find(location_id{"de:12060:900350694::1", source_idx_t{0U}});
+  utl::verify(needle1.has_value(), "location de-DELFI_3064419536 not found");
+
+  // http://localhost:5173/?tripId=20260115_13%3A07_de-VBB_283184597&motis=localhost%3A8080
+  auto const needle2 =
+      tt.find(location_id{"de:12060:900350354::1", source_idx_t{1U}});
+  utl::verify(needle2.has_value(), "location de-VBB_283183671 not found");
+
+  auto const fr1 =
+      resolve(tt, nullptr, source_idx_t{0}, "3064419662", "20260114", "13:07");
+  utl::verify(fr1.valid(), "3064419662 not found");
+
+  auto const fr2 =
+      resolve(tt, nullptr, source_idx_t{1}, "283184597", "20260114", "13:07");
+  utl::verify(fr2.valid(), "283184597 not found");
+
   auto merged = 0U;
   for (auto const a_route : tt.location_routes_[a]) {
     auto const first_stop_a_route =
@@ -129,6 +180,27 @@ unsigned find_duplicates(timetable& tt,
       auto const b_transport_range = tt.route_transport_ranges_[b_route];
       auto a_t = begin(a_transport_range), b_t = begin(b_transport_range);
 
+      auto const debug = (a_transport_range.contains(fr1.t_.t_idx_) &&
+                          b_transport_range.contains(fr2.t_.t_idx_)) ||
+                         (a_transport_range.contains(fr2.t_.t_idx_) &&
+                          b_transport_range.contains(fr1.t_.t_idx_));
+
+      auto const print_route = [&](route_idx_t const r,
+                                   interval<transport_idx_t> const& x) {
+        for (auto const t : x) {
+          std::clog << "  trip_id=" << tt.trip_id(t)
+                    << ", time=" << tt.event_mam(r, t, 0U, event_type::kDep)
+                    << ", name=" << tt.transport_name(t) << "\n";
+        }
+      };
+      if (debug) {
+        std::clog << "ROUTE " << a << " VS " << b << "\n";
+        std::clog << "ROUTE_A\n";
+        print_route(a_route, a_transport_range);
+        std::clog << "ROUTE_B\n";
+        print_route(b_route, b_transport_range);
+      }
+
       while (a_t != end(a_transport_range) && b_t != end(b_transport_range)) {
         if (*a_t == *b_t) {
           ++a_t;
@@ -140,18 +212,61 @@ unsigned find_duplicates(timetable& tt,
         auto const time_b = tt.event_mam(b_route, *b_t, 0U, event_type::kDep);
 
         if (time_a == time_b) {
-          if (get_delta(tt, a_route, b_route, *a_t, *b_t) < a_loc_seq.size()) {
+          auto const delta = get_delta(tt, a_route, b_route, *a_t, *b_t);
+          if (delta < a_loc_seq.size()) {
             if (merge(tt, static_cast<stop_idx_t>(a_loc_seq.size()), *a_t,
                       *b_t)) {
+              if (debug) {
+                std::clog << "MERGED " << tt.trip_id(*a_t)
+                          << " [name=" << tt.transport_name(*a_t) << "] vs "
+                          << tt.trip_id(*b_t)
+                          << " [name=" << tt.transport_name(*b_t)
+                          << "], delta=" << delta << ", time_a=" << time_a
+                          << ", time_b=" << time_b << "\n";
+              }
               ++merged;
             }
           }
           ++a_t;
           ++b_t;
         } else if (time_a < time_b) {
+          if (debug) {
+            std::clog << "TIME MISMATCH time_a < time_b " << tt.trip_id(*a_t)
+                      << " [name=" << tt.transport_name(*a_t) << "] vs "
+                      << tt.trip_id(*b_t)
+                      << " [name=" << tt.transport_name(*b_t)
+                      << "], time_a=" << time_a << ", time_b=" << time_b
+                      << "\n";
+          }
           ++a_t;
         } else /* time_a > time_b */ {
+          if (debug) {
+            std::clog << "TIME MISMATCH time_a > time_b " << tt.trip_id(*a_t)
+                      << " [name=" << tt.transport_name(*a_t) << "] vs "
+                      << tt.trip_id(*b_t)
+                      << " [name=" << tt.transport_name(*b_t)
+                      << "], time_a=" << time_a << ", time_b=" << time_b
+                      << "\n";
+          }
           ++b_t;
+        }
+      }
+
+      for (; a_t != end(a_transport_range); ++a_t) {
+        auto const time = tt.event_mam(a_route, *a_t, 0U, event_type::kDep);
+        if (debug) {
+          std::clog << "TIME MISMATCH OVERFLOW A: " << tt.trip_id(*a_t)
+                    << " [name=" << tt.transport_name(*a_t)
+                    << "], time=" << time << "\n";
+        }
+      }
+
+      for (; b_t != end(b_transport_range); ++b_t) {
+        auto const time = tt.event_mam(a_route, *a_t, 0U, event_type::kDep);
+        if (debug) {
+          std::clog << "TIME MISMATCH OVERFLOW B: " << tt.trip_id(*b_t)
+                    << " [name=" << tt.transport_name(*b_t)
+                    << "], time=" << time << "\n";
         }
       }
     }

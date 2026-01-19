@@ -55,7 +55,7 @@ trip_id,service_id,route_id
                            .loader_config_ = {.default_tz_ = "Europe/Berlin"}}},
                          {}, {date, date::sys_days{2025_y / December / 8}});
 
-  auto const fr = resolve(tt, nullptr, "101255-L001I01S1LAB", "20251207");
+  auto const fr = resolve(tt, nullptr, {}, "101255-L001I01S1LAB", "20251207");
   ASSERT_EQ(3U, fr.size());
   EXPECT_EQ(date + 5h + 20min, fr[0].time(event_type::kDep));
   EXPECT_EQ(date + 5h + 35min, fr[1].time(event_type::kArr));
@@ -98,7 +98,7 @@ L001I01S1FES,08:31:00,08:37:00,23,19,,0,0,7.473
                            .loader_config_ = {.default_tz_ = "Europe/Berlin"}}},
                          {}, {date, date::sys_days{2025_y / December / 8}});
 
-  auto const fr = resolve(tt, nullptr, "L001I01S1FES", "20251207");
+  auto const fr = resolve(tt, nullptr, {}, "L001I01S1FES", "20251207");
   ASSERT_EQ(3U, fr.size());
   EXPECT_EQ(date + 7h, fr[0].time(event_type::kDep));
   EXPECT_EQ(date + 7h + 16min, fr[1].time(event_type::kArr));

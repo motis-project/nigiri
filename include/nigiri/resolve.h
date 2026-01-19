@@ -8,6 +8,7 @@ namespace nigiri {
 
 rt::frun resolve(timetable const& tt,
                  rt_timetable const* rtt,
+                 source_idx_t,
                  std::string_view trip_id,
                  std::string_view start_date = "",
                  std::string_view start_time = "");
