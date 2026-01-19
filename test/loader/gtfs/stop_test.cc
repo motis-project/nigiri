@@ -2,6 +2,7 @@
 
 #include "nigiri/loader/gtfs/files.h"
 #include "nigiri/loader/gtfs/stop.h"
+#include "nigiri/loader/init_finish.h"
 #include "nigiri/timetable.h"
 
 #include "./test_data.h"
@@ -11,11 +12,14 @@ using namespace nigiri::loader;
 using namespace nigiri::loader::gtfs;
 
 TEST(gtfs, read_stations_example_data) {
-  timetable tt;
-  tz_map timezones;
+  auto tt = timetable{};
+  auto timezones = tz_map{};
+  auto i18n = translator{.tt_ = tt};
+
+  register_special_stations(tt);
 
   auto const files = example_files();
-  auto const [stops, _] = read_stops(source_idx_t{0}, tt, timezones,
+  auto const [stops, _] = read_stops(source_idx_t{0}, tt, i18n, timezones,
                                      files.get_file(kStopFile).data(),
                                      files.get_file(kTransfersFile).data(), 0U);
 
@@ -23,10 +27,10 @@ TEST(gtfs, read_stations_example_data) {
 
   auto const s1_it = stops.find("S1");
   ASSERT_NE(s1_it, end(stops));
-  EXPECT_EQ("Mission St. & Silver Ave.",
-            tt.locations_.names_.at(s1_it->second).view());
+  EXPECT_EQ("Mission St. & Silver Ave.", tt.get_default_name(s1_it->second));
   EXPECT_EQ("The stop is located at the southwest corner of the intersection.",
-            tt.locations_.descriptions_.at(s1_it->second).view());
+            tt.get_default_translation(
+                tt.locations_.descriptions_.at(s1_it->second)));
   EXPECT_FLOAT_EQ(37.728631, tt.locations_.coordinates_.at(s1_it->second).lat_);
   EXPECT_FLOAT_EQ(-122.431282,
                   tt.locations_.coordinates_.at(s1_it->second).lng_);
@@ -34,9 +38,10 @@ TEST(gtfs, read_stations_example_data) {
   auto const s6_it = stops.find("S6");
   ASSERT_NE(s6_it, end(stops));
   EXPECT_EQ("Mission St. & 15th St.",
-            tt.locations_.names_.at(s6_it->second).view());
+            tt.get_default_translation(tt.locations_.names_.at(s6_it->second)));
   EXPECT_EQ("The stop is located 10 feet north of Mission St.",
-            tt.locations_.descriptions_.at(s6_it->second).view());
+            tt.get_default_translation(
+                tt.locations_.descriptions_.at(s6_it->second)));
   EXPECT_FLOAT_EQ(37.766629, tt.locations_.coordinates_.at(s6_it->second).lat_);
   EXPECT_FLOAT_EQ(-122.419782,
                   tt.locations_.coordinates_.at(s6_it->second).lng_);
@@ -44,8 +49,9 @@ TEST(gtfs, read_stations_example_data) {
   auto const s8_it = stops.find("S8");
   ASSERT_NE(s8_it, end(stops));
   EXPECT_EQ("24th St. Mission Station",
-            tt.locations_.names_.at(s8_it->second).view());
-  EXPECT_EQ("", tt.locations_.descriptions_.at(s8_it->second).view());
+            tt.get_default_translation(tt.locations_.names_.at(s8_it->second)));
+  EXPECT_EQ("", tt.get_default_translation(
+                    tt.locations_.descriptions_.at(s8_it->second)));
   EXPECT_FLOAT_EQ(37.752240, tt.locations_.coordinates_.at(s8_it->second).lat_);
   EXPECT_FLOAT_EQ(-122.418450,
                   tt.locations_.coordinates_.at(s8_it->second).lng_);
@@ -56,11 +62,12 @@ TEST(gtfs, read_stations_example_data) {
 }
 
 TEST(gtfs, read_stations_berlin_data) {
-  timetable tt;
-  tz_map timezones;
+  auto tt = timetable{};
+  auto timezones = tz_map{};
+  auto i18n = translator{.tt_ = tt};
 
   auto const files = berlin_files();
-  auto const [stops, _] = read_stops(source_idx_t{0}, tt, timezones,
+  auto const [stops, _] = read_stops(source_idx_t{0}, tt, i18n, timezones,
                                      files.get_file(kStopFile).data(),
                                      files.get_file(kTransfersFile).data(), 0U);
 
@@ -68,7 +75,7 @@ TEST(gtfs, read_stations_berlin_data) {
 
   auto s0_it = stops.find("5100071");
   ASSERT_NE(s0_it, end(stops));
-  EXPECT_EQ("Zbaszynek", tt.locations_.names_.at(s0_it->second).view());
+  EXPECT_EQ("Zbaszynek", tt.get_default_name(s0_it->second));
   EXPECT_FLOAT_EQ(52.2425040,
                   tt.locations_.coordinates_.at(s0_it->second).lat_);
   EXPECT_FLOAT_EQ(15.8180870,
@@ -76,8 +83,7 @@ TEST(gtfs, read_stations_berlin_data) {
 
   auto s1_it = stops.find("9230005");
   ASSERT_NE(s1_it, end(stops));
-  EXPECT_EQ("S Potsdam Hauptbahnhof Nord",
-            tt.locations_.names_.at(s1_it->second).view());
+  EXPECT_EQ("S Potsdam Hauptbahnhof Nord", tt.get_default_name(s1_it->second));
   EXPECT_FLOAT_EQ(52.3927320,
                   tt.locations_.coordinates_.at(s1_it->second).lat_);
   EXPECT_FLOAT_EQ(13.0668480,
@@ -85,8 +91,7 @@ TEST(gtfs, read_stations_berlin_data) {
 
   auto s2_it = stops.find("9230006");
   ASSERT_NE(s2_it, end(stops));
-  EXPECT_EQ("Potsdam, Charlottenhof Bhf",
-            tt.locations_.names_.at(s2_it->second).view());
+  EXPECT_EQ("Potsdam, Charlottenhof Bhf", tt.get_default_name(s2_it->second));
   EXPECT_FLOAT_EQ(52.3930040,
                   tt.locations_.coordinates_.at(s2_it->second).lat_);
   EXPECT_FLOAT_EQ(13.0362980,

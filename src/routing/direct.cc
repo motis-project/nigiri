@@ -256,8 +256,7 @@ void get_direct(timetable const& tt,
     }
   };
 
-  trace_direct("direct from {} to {} in {}", location{tt, from},
-               location{tt, to}, time);
+  trace_direct("direct from {} to {} in {}", loc{tt, from}, loc{tt, to}, time);
   for_each_meta(
       tt, location_match_mode::kEquivalent, from, [&](location_idx_t const x) {
         for_each_meta(

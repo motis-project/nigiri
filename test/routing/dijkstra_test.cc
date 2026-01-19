@@ -115,7 +115,8 @@ TEST(routing, dijkstra) {
                         0_minutes, 0U}},
   };
   auto dists = std::vector<std::uint16_t>{};
-  dijkstra(tt, q_d1_c2, tt.fwd_search_lb_graph_[kDefaultProfile], dists);
+  dijkstra(tt, q_d1_c2, tt.fwd_search_lb_graph_[kDefaultProfile], nullptr,
+           nullptr, dists);
   EXPECT_EQ(60U, dists[d1_l.v_]);
 
   auto const d_l = tt.locations_.location_id_to_idx_.at({"D", src});
@@ -128,6 +129,7 @@ TEST(routing, dijkstra) {
                         0_minutes, 0U}},
   };
   dists = std::vector<std::uint16_t>{};
-  dijkstra(tt, q_d_c, tt.fwd_search_lb_graph_[kDefaultProfile], dists);
+  dijkstra(tt, q_d_c, tt.fwd_search_lb_graph_[kDefaultProfile], nullptr,
+           nullptr, dists);
   EXPECT_EQ(60U, dists[d_l.v_]);
 }

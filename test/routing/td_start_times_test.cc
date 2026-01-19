@@ -73,24 +73,24 @@ TEST(routing, td_start_times) {
   auto const A = tt.locations_.location_id_to_idx_.at(
       location_id{.id_ = "A", .src_ = src});
   auto starts = std::vector<start>{};
-  get_starts(
-      direction::kForward, tt, nullptr,
-      interval<unixtime_t>{sys_days{2020_y / March / 30},
-                           sys_days{2020_y / March / 31}},
-      {},
-      hash_map<location_idx_t, std::vector<td_offset>>{
-          {std::pair{A,
-                     std::vector<td_offset>{
-                         {.valid_from_ = sys_days{1970_y / January / 1},
-                          .duration_ = footpath::kMaxDuration,
-                          .transport_mode_id_ = 0U},
-                         {.valid_from_ = sys_days{2020_y / March / 30} + 10h,
-                          .duration_ = 10min,
-                          .transport_mode_id_ = 0U},
-                         {.valid_from_ = sys_days{2020_y / March / 30} + 12h,
-                          .duration_ = footpath::kMaxDuration,
-                          .transport_mode_id_ = 0U}}}}},
-      kMaxTravelTime, location_match_mode::kExact, false, starts, true, 0U, {});
+  get_starts(direction::kForward, tt, nullptr,
+             interval<unixtime_t>{sys_days{2020_y / March / 30},
+                                  sys_days{2020_y / March / 31}},
+             {},
+             hash_map<location_idx_t, std::vector<td_offset>>{{std::pair{
+                 A,
+                 std::vector<td_offset>{
+                     {.valid_from_ = sys_days{1970_y / January / 1},
+                      .duration_ = footpath::kMaxDuration,
+                      .transport_mode_id_ = 0U},
+                     {.valid_from_ = sys_days{2020_y / March / 30} + 10h,
+                      .duration_ = 10min,
+                      .transport_mode_id_ = 0U},
+                     {.valid_from_ = sys_days{2020_y / March / 30} + 12h,
+                      .duration_ = footpath::kMaxDuration,
+                      .transport_mode_id_ = 0U}}}}},
+             {}, kMaxTravelTime, location_match_mode::kExact, false, starts,
+             true, 0U, {});
   std::sort(begin(starts), end(starts),
             [](auto&& a, auto&& b) { return a > b; });
   starts.erase(std::unique(begin(starts), end(starts)), end(starts));
@@ -108,7 +108,7 @@ TEST(routing, td_start_times) {
         for (auto const& s : it_range{from_it, to_it}) {
           ss << "      {time_at_start=" << s.time_at_start_
              << ", time_at_stop=" << s.time_at_stop_
-             << ", stop=" << tt.locations_.names_[s.stop_].view() << "}\n";
+             << ", stop=" << tt.get_default_name(s.stop_) << "}\n";
         }
       });
 

@@ -1,7 +1,11 @@
 #pragma once
 
 #include "nigiri/rt/run.h"
+#include "nigiri/rt/service_alert.h"
 #include "nigiri/types.h"
+
+#include <optional>
+#include <string>
 
 namespace pugi {
 class xml_document;
@@ -82,9 +86,16 @@ private:
         dep_canceled_;
   };
 
+  struct run_id {
+    std::string full_;
+    std::string_view run_;
+    std::optional<std::string_view> date_{};
+  };
+
+  std::optional<run_id> resolve_run_id(pugi::xml_node vdv_run);
   vector<vdv_stop> resolve_stops(pugi::xml_node vdv_run, statistics&);
 
-  void match_run(std::string_view vdv_run_id,
+  void match_run(run_id const&,
                  vector<vdv_stop> const&,
                  statistics&,
                  bool is_complete_run);
@@ -95,7 +106,9 @@ private:
                   bool is_complete_run,
                   statistics&);
 
+  void affects_alerts(rt_timetable&, pugi::xml_node affects, alert_idx_t);
   void process_vdv_run(rt_timetable&, pugi::xml_node vdv_run, statistics&);
+  void process_vdv_alert(rt_timetable&, pugi::xml_node vdv_alert);
 
   void clean_up();
 

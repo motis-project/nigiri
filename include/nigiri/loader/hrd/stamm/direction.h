@@ -6,7 +6,7 @@
 
 namespace nigiri::loader::hrd {
 
-using direction_map_t = hash_map<string, trip_direction_string_idx_t>;
+using direction_map_t = hash_map<string, translation_idx_t>;
 
 direction_map_t parse_directions(config const&,
                                  timetable&,

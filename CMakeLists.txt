@@ -64,6 +64,9 @@ if ("${CMAKE_CXX_COMPILER_ID}" STREQUAL "Clang")
         -Wno-duplicate-enum
         -Wno-switch-default
         -Wno-ctad-maybe-unsupported
+        -Wno-nrvo
+        -Wno-thread-safety-negative
+        -Wno-unused-private-field
         -Werror)
 elseif ("${CMAKE_CXX_COMPILER_ID}" STREQUAL "AppleClang")
   set(nigiri-compile-options -Wall -Wextra -Werror)
@@ -104,6 +107,9 @@ target_link_libraries(
   sol2
   libluajit
   proj
+  PRIVATE
+  boost-iostreams
+  zlibstatic
 )
 target_compile_features(nigiri PUBLIC cxx_std_23)
 target_compile_options(nigiri PRIVATE ${nigiri-compile-options})
