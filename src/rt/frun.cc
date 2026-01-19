@@ -675,14 +675,12 @@ void frun::for_each_shape_point(
     }
     return absolute_range << stop_range_.from_;
   };
-  auto start_pos = (*this)[range.from_].pos();
-  callback(start_pos);
-  auto consume_pos = [&, last_pos = std::move(start_pos), changed = false](
-                         geo::latlng const& pos,
-                         bool const force_if_unchanged = false) mutable {
-    if (pos != last_pos || (force_if_unchanged && !changed)) {
+
+  auto empty_shape = true;
+  auto last_pos = std::optional<geo::latlng>{};
+  auto consume_pos = [&](geo::latlng const& pos) mutable {
+    if (!last_pos.has_value() || pos != *last_pos) {
       callback(pos);
-      changed = true;
     }
     last_pos = pos;
   };
@@ -693,17 +691,23 @@ void frun::for_each_shape_point(
       std::visit(utl::overloaded{[&](std::span<geo::latlng const> shape) {
                                    for (auto const& pos : shape) {
                                      consume_pos(pos);
+                                     empty_shape = false;
                                    }
                                  },
                                  [&](interval<stop_idx_t> relative_range) {
                                    for (auto const stop_idx : relative_range) {
                                      consume_pos((*this)[stop_idx].pos());
+                                     empty_shape = false;
                                    }
                                  }},
                  get_subshape(common_stops, trip_idx, subrange.from_));
     }
   });
-  consume_pos((*this)[static_cast<stop_idx_t>(range.to_ - 1)].pos(), true);
+
+  if (empty_shape) {
+    consume_pos((*this)[range.from_].pos());
+    consume_pos((*this)[static_cast<stop_idx_t>(range.to_ - 1)].pos());
+  }
 }
 
 trip_id frun::id() const {
