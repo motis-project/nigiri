@@ -720,6 +720,12 @@ private:
             it = ets.erase(it);
           }
         }
+      }else{
+        for(auto & et_label: ets){
+          auto const by_transport = time_at_stop(
+              r, et_label.trip_id, stop_idx, kFwd ? event_type::kArr : event_type::kDep);
+          et_label.arr_t_ = by_transport;
+        }
       }
 
       if (is_last || !stp.can_start<SearchDir>(false) || !prev_round_station_mark_[l_idx]) {
