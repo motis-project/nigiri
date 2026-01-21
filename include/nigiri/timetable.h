@@ -429,8 +429,10 @@ struct timetable {
       ch_graph_transfers_;
   std::array<vecvec<ch_edge_idx_t, routing::tooth>, kNProfiles> ch_graph_min_;
   std::array<vecvec<ch_edge_idx_t, routing::tooth>, kNProfiles> ch_graph_max_;
-  vector_map<bitfield_idx_t, bitfield> ch_traffic_days_;
-  vector_map<location_idx_t, std::uint32_t> ch_levels_;
+  std::array<vector_map<bitfield_idx_t, std::pair<bitfield, std::uint16_t>>,
+             kNProfiles>
+      ch_traffic_days_;
+  std::array<vector_map<location_idx_t, std::uint32_t>, kNProfiles> ch_levels_;
 
   // profile name -> profile_idx_t
   hash_map<string, profile_idx_t> profiles_;

@@ -23,7 +23,7 @@ enum class saw_type : std::uint8_t {
   kTrafficDaysPower
 };
 
-static constexpr auto const kChSawType = saw_type::kDay;
+static constexpr auto const kChSawType = saw_type::kTrafficDays;
 
 struct tooth {
   friend bool operator<(tooth const& a, tooth const& b) {
@@ -33,6 +33,16 @@ struct tooth {
     return remaining_travel_time > a.travel_dur_.count() ||
            (remaining_travel_time == a.travel_dur_.count() && mam_diff > 0);
   }
+  friend bool operator==(tooth const& a, tooth const& b) {
+    return a.mam_ == b.mam_ && a.travel_dur_ == b.travel_dur_ &&
+           a.traffic_days_ == b.traffic_days_;
+  }
+  friend std::ostream& operator<<(std::ostream& out, tooth const& a) {
+    out << "(" << a.mam_ << "," << a.travel_dur_ << "," << a.traffic_days_
+        << ")";
+    return out;
+  }
+
   std::int16_t mam_;
   u16_minutes travel_dur_;
   bitfield_idx_t traffic_days_;

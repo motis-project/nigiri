@@ -2,6 +2,7 @@
 
 #include <cstdint>
 #include "nigiri/routing/ch/ch_data.h"
+#include "nigiri/routing/limits.h"
 #include "nigiri/routing/query.h"
 #include "nigiri/types.h"
 
@@ -24,6 +25,92 @@ struct saw {
     return out;
   }
 
+  static std::uint16_t last_set_bit(bitfield const& t) {
+    assert(kMaxDays % t.bits_per_block == 0);
+    for (auto i = std::size_t{0U}; i != t.blocks_.size(); ++i) {
+      auto const j = t.blocks_.size() - i - 1;
+      if (t.blocks_[j] != 0U) {
+        for (auto bit = std::size_t{0U}; bit != t.bits_per_block; ++bit) {
+          if ((t.blocks_[j] & (cista::bitset<512>::block_t{1U}
+                               << (t.bits_per_block - bit - 1))) != 0U) {
+            return static_cast<std::uint16_t>(i * t.bits_per_block +
+                                              t.bits_per_block - bit - 1);
+          }
+        }
+      }
+    }
+    return 0U;
+  }
+
+  struct iterator {
+    using difference_type = size_t;
+    using value_type = tooth;
+    using reference = tooth const&;
+    using pointer = tooth const*;
+    using iterator_category = std::bidirectional_iterator_tag;
+
+    iterator& operator++() {
+      ++pos_;
+      if (pos_ >= s_.saw_.size()) {
+        --day_offset_;
+        pos_ = 0;
+      }
+      return *this;
+    }
+
+    iterator& operator--() {
+      if (pos_ == 0) {
+        ++day_offset_;
+        pos_ = s_.saw_.size();
+      }
+      --pos_;
+      return *this;
+    }
+
+    bool operator==(iterator const o) const {
+      return s_.saw_.begin() == o.s_.saw_.begin() && pos_ == o.pos_ &&
+             day_offset_ == o.day_offset_;
+    }
+
+    bool operator!=(iterator o) const { return !(*this == o); }
+
+    tooth const* operator->() const { return std::addressof(operator*()); }
+
+    tooth const& operator*() const { return s_.saw_[pos_]; }
+
+    saw<SawType> s_;
+    size_t pos_{};
+    std::int8_t day_offset_{};
+  };
+
+  iterator begin() const {
+    return iterator{saw<SawType>{saw_, traffic_days_}, {}, {}};
+  }
+
+  iterator end() const {
+    return iterator{saw<SawType>{saw_, traffic_days_},
+                    {},
+                    static_cast<std::int8_t>(saw_.empty() ? 0 : -1)};
+  }
+
+  iterator begin(saw<SawType> const& ms) { return ms.begin(); }
+  iterator end(saw<SawType> const& ms) { return ms.end(); }
+
+  std::reverse_iterator<iterator> rbegin() const {
+    return std::make_reverse_iterator(end());
+  }
+
+  std::reverse_iterator<iterator> rend() const {
+    return std::make_reverse_iterator(begin());
+  }
+
+  std::reverse_iterator<iterator> rbegin(saw<SawType> const& ms) {
+    return ms.rbegin();
+  }
+  std::reverse_iterator<iterator> rend(saw<SawType> const& ms) {
+    return ms.rend();
+  }
+
   bool less(saw<SawType> const& b, bool const exact_true = false) const {
     if (saw_.empty()) {
       return false;
@@ -40,32 +127,66 @@ struct saw {
       if (b_it.is_a()) {
         continue;
       }
-      // auto remaining_traffic_days = traffic_days.at(a.saw_[i].traffic_days_);
+      auto remaining_traffic_days =
+          SawType == saw_type::kDay
+              ? bitfield{}
+              : traffic_days_.at(b_it->traffic_days_).first;
+      auto day_offset = 0;
       //  remaining_traffic_days &= ignore_timetable_offset_mask; TODO reuse
       //  bitfields?
       //  TODO kTrafficDay
       auto a_it = b_it;
+      // std::cout << "b less " << std::endl;
       while (true) {
+        // std::cout << "a less " << std::endl;
         --a_it;
-        if (a_it.s_.day_offset_ > routing::kMaxTravelTime / 1_days) {
+        if (a_it.day_offset_ > routing::kMaxTravelTime / 1_days) {
           break;
         }
         if (!a_it.is_a()) {
           continue;  // TODO switch to proper a_it ?
         }
         auto const mam_diff =
-            a_it->mam_ - b_it->mam_ + a_it.s_.day_offset_ * 24 * 60;
+            a_it->mam_ - b_it->mam_ + a_it.day_offset_ * 24 * 60;
         auto const remaining_travel_time =
             static_cast<std::int16_t>(b_it->travel_dur_.count()) - mam_diff;
 
+        if constexpr (SawType != saw_type::kDay) {
+          if (remaining_travel_time < 0) {  // TODO min const lb
+            break;
+          }
+          if (day_offset != a_it.day_offset_) {
+            remaining_traffic_days.set(
+                traffic_days_.at(b_it->traffic_days_).second, false);
+            remaining_traffic_days <<= 1U;
+            day_offset = a_it.day_offset_;
+          }
+          if (exact_true &&
+              remaining_travel_time == a_it->travel_dur_.count() &&
+              mam_diff == 0) {  // TODO ugly
+            remaining_traffic_days &=
+                ~traffic_days_.at(a_it->traffic_days_).first;
+            if (remaining_traffic_days.none()) {
+              break;
+            }
+          }
+        }
+
         if (remaining_travel_time < a_it->travel_dur_.count() ||
             (remaining_travel_time == a_it->travel_dur_.count() &&
-             mam_diff == 0 &&
-             !exact_true)) {  // TODO exactly identical should not be a < b ?
+             mam_diff == 0 && !exact_true)) {
+          if constexpr (SawType != saw_type::kDay) {
+            if ((remaining_traffic_days &
+                 traffic_days_.at(a_it->traffic_days_).first)
+                    .none()) {
+              continue;
+            }
+          }
           return false;
         }
-        break;
-        // TODO traffic days
+        if constexpr (SawType == saw_type::kDay) {
+          break;
+        }
       }
     }
     return true;
@@ -91,9 +212,32 @@ struct saw {
     return !(a < b);
   }
 
+  friend bool operator==(saw<SawType> const& a, saw<SawType> const& b) {
+    if (a.saw_.size() != b.saw_.size()) {
+      return false;
+    }
+    for (auto i = 0U; i < a.saw_.size(); ++i) {
+      if (a.saw_[i].mam_ != b.saw_[i].mam_) {
+        return false;
+      }
+      if (a.saw_[i].travel_dur_ != b.saw_[i].travel_dur_) {
+        return false;
+      }
+      if (a.saw_[i].traffic_days_ != b.saw_[i].traffic_days_) {
+        return false;
+      }
+    }
+    return true;
+  }
+
+  friend bool operator!=(saw<SawType> const& a, saw<SawType> const& b) {
+    return !(a == b);
+  }
+
   friend std::ostream& operator<<(std::ostream& out, saw<SawType> const& a) {
     for (auto const& e : a.saw_) {
-      out << "(" << e.mam_ << "," << e.travel_dur_ << ")";
+      out << e << " " << a.traffic_days_.at(e.traffic_days_).first.count()
+          << " ";
     }
     return out;
   }
@@ -101,23 +245,72 @@ struct saw {
   u16_minutes max() const {
     // TODO ktrafficdays / simplify?
     if (saw_.empty()) {
-      return u16_minutes::max();
+      return u16_minutes{kMaxTravelTime.count()};
     }
     if (SawType == saw_type::kConstant) {
       return saw_[0].travel_dur_;
     }
-    auto max = saw_.back().mam_ + 24 * 60 - saw_.front().mam_ +
-               saw_.back().travel_dur_.count();
-    for (auto i = 1U; i < saw_.size(); ++i) {
-      max = std::max(max, saw_[i - 1].mam_ - saw_[i].mam_ +
-                              saw_[i - 1].travel_dur_.count());
+    auto max = 0;
+
+    auto const empty_tooth = std::vector<tooth>{};
+    auto const empty_saw = saw<kChSawType>{empty_tooth, traffic_days_};
+    auto const interleaved = interleaved_saws<SawType>{
+        *this, empty_saw};  // TODO impl single loop iterator
+
+    for (auto b_it = interleaved.begin(); b_it != interleaved.end(); ++b_it) {
+      auto remaining_traffic_days =
+          SawType == saw_type::kDay
+              ? bitfield{}
+              : traffic_days_.at(b_it->traffic_days_).first;
+      auto day_offset = 0;
+      auto a_it = b_it;
+      // std::cout << "b max " << std::endl;
+      while (true) {
+        // std::cout << "a max " << std::endl;
+        --a_it;
+
+        auto const mam_diff =
+            a_it->mam_ - b_it->mam_ + a_it.day_offset_ * 24 * 60;
+
+        if constexpr (SawType == saw_type::kDay) {
+          max = std::max(max, a_it->travel_dur_.count() + mam_diff);
+          break;
+        }
+        if (a_it.day_offset_ > routing::kMaxTravelTime / 1_days) {
+          break;
+        }
+        if (day_offset != a_it.day_offset_) {
+          remaining_traffic_days.set(
+              traffic_days_.at(b_it->traffic_days_).second, false);
+          remaining_traffic_days <<= 1U;
+          day_offset = a_it.day_offset_;
+        }
+        if ((remaining_traffic_days &
+             traffic_days_.at(a_it->traffic_days_)
+                 .first)  // TODO templ, check really needed?
+                .any()) {
+          max = std::max(max, a_it->travel_dur_.count() + mam_diff);
+          remaining_traffic_days &=
+              ~traffic_days_.at(a_it->traffic_days_).first;
+          if (remaining_traffic_days.none()) {
+            break;
+          }
+        }
+      }
+    }
+    if (max == 0) {
+      return u16_minutes{
+          kMaxTravelTime
+              .count()};  // TODO handle connections that only run on a single
+                          // occasion, but multiple times (depending on
+                          // proportion of loaded timetable -> kMax?)
     }
     return u16_minutes{max};
   }
 
   u16_minutes min() const {
     if (saw_.empty()) {
-      return u16_minutes::max();
+      return u16_minutes{kMaxTravelTime.count()};
     }
     auto min = saw_.front().travel_dur_.count();
     for (auto i = 1U; i < saw_.size(); ++i) {
@@ -136,7 +329,6 @@ struct saw {
       out.push_back({0, tmp, bitfield_idx_t::invalid()});
       return saw<SawType>{out, traffic_days_};
     }
-    // TODO ktrafficdays
     return saw<SawType>{out, traffic_days_};
   }
 
@@ -155,48 +347,57 @@ struct saw {
   }
 
   template <typename Iterator>
-  bool non_dominated(tooth const& t, Iterator begin, Iterator end) const {
+  bool non_dominated(tooth const& t,
+                     Iterator a_it,
+                     bool const not_normalized = false,
+                     bool const day_lookahead = routing::kMaxTravelTime /
+                                                1_days) const {
     auto remaining_traffic_days = SawType == saw_type::kDay
                                       ? bitfield{}
-                                      : traffic_days_.at(t.traffic_days_);
+                                      : traffic_days_.at(t.traffic_days_).first;
+    auto const last_set_bit = SawType == saw_type::kDay
+                                  ? 0U
+                                  : traffic_days_.at(t.traffic_days_).second;
+    auto day_offset = 0;
 
-    for (auto rev = begin; rev != end; ++rev) {
-      if constexpr (SawType != saw_type::kDay) {
-        remaining_traffic_days &= ~traffic_days_.at(rev->traffic_days_);
+    while (true) {
+      --a_it;
+      // std::cout << "nondom " << std::endl;
+      if (a_it.day_offset_ > day_lookahead) {
+        break;
       }
+      auto const mam_diff = a_it->mam_ - t.mam_ + a_it.day_offset_ * 24 * 60;
       auto const remaining_travel_time =
-          static_cast<std::int32_t>(t.travel_dur_.count()) - rev->mam_ + t.mam_;
+          static_cast<std::int16_t>(t.travel_dur_.count()) - mam_diff;
+
       if constexpr (SawType == saw_type::kDay) {
-        return remaining_travel_time < rev->travel_dur_.count();
+        if (remaining_travel_time >= a_it->travel_dur_.count()) {
+          return false;
+        }
+        if (!not_normalized) {
+          return true;
+        }
       }
-      if (remaining_travel_time < 0) {
-        return true;  // TOOO no need to always look till the end for
-                      // kTrafficDays?
+
+      if (remaining_travel_time < 0) {  // TODO min const lb
+        return true;
       }
-      if (remaining_traffic_days.none() &&
-          remaining_travel_time >= rev->travel_dur_.count()) {
-        return false;
+      if constexpr (SawType != saw_type::kDay) {
+        if (day_offset != a_it.day_offset_) {
+          remaining_traffic_days.set(last_set_bit, false);
+          remaining_traffic_days <<= 1U;
+          day_offset = a_it.day_offset_;
+        }
+        if (remaining_travel_time >= a_it->travel_dur_.count()) {
+          remaining_traffic_days &=
+              ~traffic_days_.at(a_it->traffic_days_).first;
+          if (remaining_traffic_days.none()) {
+            return false;
+          }
+        }
       }
     }
     return true;
-  }
-
-  tooth last_duration_of_day(interleaved_saws<SawType> interleaved) const {
-    auto const& last = *interleaved.begin();
-    auto last_duration_of_day = last.travel_dur_;
-    for (auto it = interleaved.rbegin(); it != interleaved.rend(); ++it) {
-      if (last.mam_ + static_cast<std::int32_t>(last.travel_dur_.count()) -
-              24 * 60 <
-          it->mam_) {
-        break;
-      }
-      last_duration_of_day =
-          std::min(last_duration_of_day,
-                   u16_minutes{it->travel_dur_.count() + 24 * 60 + it->mam_ -
-                               last.mam_});  // TODO traffic days
-    }
-    return {last.mam_, last_duration_of_day,
-            bitfield_idx_t::invalid()};  // TODO traffic days
   }
 
   saw<SawType> simplify(saw<SawType> const& other,
@@ -215,10 +416,13 @@ struct saw {
       return saw<SawType>{out, traffic_days_};
     }
     auto const interleaved = interleaved_saws<SawType>{*this, other};
-    out.push_back(last_duration_of_day(interleaved));
 
-    for (auto it = ++interleaved.begin(); it != interleaved.end(); ++it) {
-      if (non_dominated(*it, out.rbegin(), out.rend())) {
+    for (auto it = interleaved.begin(); it != interleaved.end(); ++it) {
+      // std::cout << "simpli " << std::endl;
+      if ((out.empty() && non_dominated(*it, it, true)) ||
+          (!out.empty() &&
+           non_dominated(*it, saw<kChSawType>{out, traffic_days_}.end(), false,
+                         0))) {  // TODO wraparound even when non empty?
         out.push_back(*it);
       }
     }
@@ -237,6 +441,7 @@ struct saw {
                      bitfield_idx_t::invalid()});
       return saw<SawType>{out, traffic_days_};
     }
+    auto const const_min_other = other.min();
     auto const empty_tooth = std::vector<tooth>{};
     auto const empty_saw = saw<kChSawType>{empty_tooth, traffic_days_};
     auto const loop_it = interleaved_saws<SawType>{
@@ -246,48 +451,97 @@ struct saw {
     auto it = loop_it.begin();
     auto o_it = o_loop_it.begin();
     while (it->mam_ + it->travel_dur_.count() >
-           o_it->mam_ + o_it.s_.day_offset_ * 24 * 60) {
+           o_it->mam_ + o_it.day_offset_ * 24 * 60) {
       --o_it;
     }
     for (; it != loop_it.end(); ++it) {
-      auto remaining_traffic_days = SawType == saw_type::kDay
-                                        ? bitfield{}
-                                        : traffic_days_.at(it->traffic_days_);
+      auto remaining_traffic_days =
+          SawType == saw_type::kDay ? bitfield{}
+                                    : traffic_days_.at(it->traffic_days_).first;
+      auto const last_set_bit =
+          SawType == saw_type::kDay
+              ? 0U
+              : traffic_days_.at(it->traffic_days_).second;
+      auto day_offset = 0;
+      auto travel_dur_extremum =
+          static_cast<int>(max ? 0U : u16_minutes::max().count());
       // remaining_traffic_days &= ignore_timetable_offset_mask; TODO reuse
       // bitfields?
-      while (true) {
-        if (it->mam_ + it->travel_dur_.count() <=
-            o_it->mam_ + o_it.s_.day_offset_ * 24 * 60) {
-          ++o_it;
-          continue;
-        }
-        --o_it;
-        if (SawType == saw_type::kDay) {
-          break;
-        }
-        if (!max &&
-            (remaining_traffic_days & traffic_days_.at(o_it->traffic_days_))
-                .any()) {
-          break;
-        }
-        remaining_traffic_days &= ~traffic_days_.at(o_it->traffic_days_);
-        if (max && remaining_traffic_days.none()) {
-          break;
-        }
-        if (o_it.s_.day_offset_ > routing::kMaxTravelTime / 1_days) {
-          break;
-        }
-        /*if (SawType != saw_type::kDay) {
-          remaining_traffic_days <<= 1U; // TODO day offset
-        }*/
+      // std::cout << "b concat " << std::endl;
+      while (it->mam_ + it->travel_dur_.count() <=
+             o_it->mam_ + o_it.day_offset_ * 24 * 60) {
+        ++o_it;
       }
-      auto const new_tooth = tooth{
-          it->mam_,
-          u16_minutes{o_it->mam_ - it->mam_ + o_it.s_.day_offset_ * 24 * 60 +
-                      o_it->travel_dur_.count()},
-          it->traffic_days_};
-      if (non_dominated(new_tooth, out.rbegin(), out.rend())) {
-        out.push_back(new_tooth);  // TODO wraparound
+      while (true) {
+        // std::cout << "a concat " << std::endl;
+
+        --o_it;
+        if constexpr (SawType == saw_type::kDay) {
+          travel_dur_extremum = o_it->mam_ - it->mam_ +
+                                o_it.day_offset_ * 24 * 60 +
+                                o_it->travel_dur_.count();
+          break;
+        }
+        if (day_offset != o_it.day_offset_) {
+          if (o_it.day_offset_ > routing::kMaxTravelTime / 1_days) {
+            break;
+          }
+          remaining_traffic_days.set(last_set_bit, false);
+          remaining_traffic_days <<= 1U;
+          day_offset = o_it.day_offset_;
+        }
+        if (!max) {
+          if (travel_dur_extremum < o_it->mam_ - it->mam_ +
+                                        o_it.day_offset_ * 24 * 60 +
+                                        const_min_other.count()) {
+            break;
+          }
+          if ((remaining_traffic_days &
+               traffic_days_.at(o_it->traffic_days_).first)  // TODO templ
+                  .any()) {
+            travel_dur_extremum =
+                std::min(travel_dur_extremum, o_it->mam_ - it->mam_ +
+                                                  o_it.day_offset_ * 24 * 60 +
+                                                  o_it->travel_dur_.count());
+          }
+        }
+        if (max) {
+          if ((remaining_traffic_days &
+               traffic_days_.at(o_it->traffic_days_).first)  // TODO templ
+                  .any()) {
+            travel_dur_extremum =
+                std::max(travel_dur_extremum, o_it->mam_ - it->mam_ +
+                                                  o_it.day_offset_ * 24 * 60 +
+                                                  o_it->travel_dur_.count());
+            remaining_traffic_days &=
+                ~traffic_days_.at(o_it->traffic_days_).first;
+            if (remaining_traffic_days.none()) {
+              break;
+            }
+          }
+        }
+      }
+      if ((max && travel_dur_extremum == 0U) ||
+          (!max && travel_dur_extremum == u16_minutes::max().count())) {
+        continue;
+      }
+      auto const new_tooth =
+          tooth{it->mam_, u16_minutes{travel_dur_extremum}, it->traffic_days_};
+      if (out.empty() ||
+          non_dominated(new_tooth, saw<kChSawType>{out, traffic_days_}.end(),
+                        false, 0)) {
+        out.push_back(new_tooth);
+      }
+    }
+    auto const wraparound_saw = saw<kChSawType>{out, traffic_days_};
+    for (auto w = wraparound_saw.begin(); w != wraparound_saw.end(); ++w) {
+      if (non_dominated(*w, w)) {
+        out.erase(
+            out.begin(),
+            out.begin() + static_cast<long>(
+                              w.pos_));  // TODO this is not sufficient for
+                                         // kTrafficDay, but also not necessary?
+        break;
       }
     }
     return saw<SawType>{out, traffic_days_};
@@ -311,31 +565,40 @@ struct saw {
       return saw<SawType>{out, traffic_days_};
     }
     auto const d = other.saw_[0].travel_dur_;
+    utl::verify(d.count() < 24 * 60, "concat_const more than 24h");
     if (SawType == saw_type::kConstant) {
       out.push_back({0, saw_[0].travel_dur_ + d, bitfield_idx_t::invalid()});
       return saw<SawType>{out, traffic_days_};
     }
     for (auto i = 0U; i < saw_.size(); ++i) {
+      auto traffic_days_idx = saw_[i].traffic_days_;
       auto mam = saw_[i].mam_;
       if (dir == kReverse) {
         mam -= d.count();
         if (mam < 0) {
           mam += 24 * 60;  // TODO traffic days
+          auto traffic_days = traffic_days_.at(traffic_days_idx).first >> 1U;
+          traffic_days.set(kTimetableOffset.count() - 1U, false);
+          traffic_days_.push_back(
+              {traffic_days,
+               traffic_days_.at(traffic_days_idx).second - 1U});  // TODO dedup
+          traffic_days_idx = bitfield_idx_t{traffic_days_.size() - 1};
         }
       }
-      out.push_back({mam, saw_[i].travel_dur_ + d, bitfield_idx_t::invalid()});
+      out.push_back({mam, saw_[i].travel_dur_ + d, traffic_days_idx});
     }
     return saw<SawType>{out, traffic_days_};
   }
 
   std::span<tooth const> const saw_;
-  vector_map<bitfield_idx_t, bitfield> const& traffic_days_;
+  vector_map<bitfield_idx_t, std::pair<bitfield, std::uint16_t>>& traffic_days_;
 };
 
 template <saw_type SawType>
 struct owning_saw {
   saw<SawType> to_saw(
-      vector_map<bitfield_idx_t, bitfield> const& traffic_days) const {
+      vector_map<bitfield_idx_t, std::pair<bitfield, std::uint16_t>>&
+          traffic_days) const {
     return saw<SawType>{saw_, traffic_days};
   }
   std::vector<tooth> saw_;
@@ -352,73 +615,82 @@ struct interleaved_saws {
     using pointer = tooth const*;
     using iterator_category = std::bidirectional_iterator_tag;
 
-    iterator& operator++() {
-      if (s_.pos_a_ == s_.saw_a_.saw_.size()) {
-        ++s_.pos_b_;
-      } else if (s_.pos_b_ == s_.saw_b_.saw_.size()) {
-        ++s_.pos_a_;
-      } else if (s_.saw_a_.saw_[s_.pos_a_].mam_ >=
-                 s_.saw_b_.saw_[s_.pos_b_].mam_) {
-        ++s_.pos_a_;
-      } else {
-        ++s_.pos_b_;
+    bool is_a() const {
+      if (pos_a_ == s_.saw_a_.saw_.size()) {
+        return false;
       }
-      if (s_.pos_a_ >= s_.saw_a_.saw_.size() &&
-          s_.pos_b_ >= s_.saw_b_.saw_.size()) {
-        --s_.day_offset_;
-        s_.pos_a_ = 0;
-        s_.pos_b_ = 0;
+      if (pos_b_ == s_.saw_b_.saw_.size()) {
+        return true;
+      }
+      if (s_.saw_a_.saw_[pos_a_].mam_ == s_.saw_b_.saw_[pos_b_].mam_) {
+        return s_.saw_a_.saw_[pos_a_].travel_dur_ <=
+               s_.saw_b_.saw_[pos_b_].travel_dur_;
+      }
+      return s_.saw_a_.saw_[pos_a_].mam_ > s_.saw_b_.saw_[pos_b_].mam_;
+    }
+
+    iterator& operator++() {  // TODO take into account travel dur if == mam?
+      if (is_a()) {
+        ++pos_a_;
+      } else {
+        ++pos_b_;
+      }
+      if (pos_a_ >= s_.saw_a_.saw_.size() && pos_b_ >= s_.saw_b_.saw_.size()) {
+        --day_offset_;
+        pos_a_ = 0;
+        pos_b_ = 0;
       }
       return *this;
     }
 
     iterator& operator--() {
-      if (s_.pos_a_ == 0 && s_.pos_b_ == 0) {
-        ++s_.day_offset_;
-        s_.pos_a_ = s_.saw_a_.saw_.size();
-        s_.pos_b_ = s_.saw_b_.saw_.size();
+      if (pos_a_ == 0 && pos_b_ == 0) {
+        ++day_offset_;
+        pos_a_ = s_.saw_a_.saw_.size();
+        pos_b_ = s_.saw_b_.saw_.size();
       }
-      if (s_.pos_a_ == 0) {
-        --s_.pos_b_;
-      } else if (s_.pos_b_ == 0) {
-        --s_.pos_a_;
-      } else if (s_.saw_a_.saw_[s_.pos_a_ - 1].mam_ <
-                 s_.saw_b_.saw_[s_.pos_b_ - 1].mam_) {
-        --s_.pos_a_;
+      if (pos_a_ == 0) {
+        --pos_b_;
+      } else if (pos_b_ == 0) {
+        --pos_a_;
+      } else if (s_.saw_a_.saw_[pos_a_ - 1].mam_ ==
+                 s_.saw_b_.saw_[pos_b_ - 1].mam_) {
+        if (s_.saw_a_.saw_[pos_a_].travel_dur_ >
+            s_.saw_b_.saw_[pos_b_].travel_dur_) {
+          --pos_a_;
+        } else {
+          --pos_b_;
+        }
+      } else if (s_.saw_a_.saw_[pos_a_ - 1].mam_ <
+                 s_.saw_b_.saw_[pos_b_ - 1].mam_) {
+        --pos_a_;
       } else {
-        --s_.pos_b_;
+        --pos_b_;
       }
       return *this;
     }
 
     bool operator==(iterator const o) const {
-      return &s_.saw_a_ == &o.s_.saw_a_ && &s_.saw_b_ == &o.s_.saw_b_ &&
-             s_.pos_a_ == o.s_.pos_a_ && s_.pos_b_ == o.s_.pos_b_ &&
-             s_.day_offset_ == o.s_.day_offset_;
+      return s_.saw_a_.begin() == o.s_.saw_a_.begin() &&
+             s_.saw_b_.begin() == o.s_.saw_b_.begin() && pos_a_ == o.pos_a_ &&
+             pos_b_ == o.pos_b_ && day_offset_ == o.day_offset_;
     }
 
     bool operator!=(iterator o) const { return !(*this == o); }
 
     tooth const* operator->() const { return std::addressof(operator*()); }
 
-    bool is_a() const {
-      if (s_.pos_a_ == s_.saw_a_.saw_.size()) {
-        return false;
-      }
-      if (s_.pos_b_ == s_.saw_b_.saw_.size()) {
-        return true;
-      }
-      return s_.saw_a_.saw_[s_.pos_a_].mam_ >= s_.saw_b_.saw_[s_.pos_b_].mam_;
-    }
-
     tooth const& operator*() const {
       if (is_a()) {
-        return s_.saw_a_.saw_[s_.pos_a_];
+        return s_.saw_a_.saw_[pos_a_];
       }
-      return s_.saw_b_.saw_[s_.pos_b_];
+      return s_.saw_b_.saw_[pos_b_];
     }
 
     interleaved_saws<SawType> s_;
+    size_t pos_a_{};
+    size_t pos_b_{};
+    std::int8_t day_offset_{};
   };
 
   iterator begin() const {
@@ -426,7 +698,11 @@ struct interleaved_saws {
   }
 
   iterator end() const {
-    return iterator{interleaved_saws<SawType>{saw_a_, saw_b_, {}, {}, -1}};
+    return iterator{interleaved_saws<SawType>{saw_a_, saw_b_},
+                    {},
+                    {},
+                    static_cast<std::int8_t>(
+                        saw_a_.saw_.empty() && saw_b_.saw_.empty() ? 0 : -1)};
   }
 
   iterator begin(interleaved_saws<SawType> const& ms) { return ms.begin(); }
@@ -449,9 +725,6 @@ struct interleaved_saws {
 
   saw<SawType> const& saw_a_;
   saw<SawType> const& saw_b_;
-  size_t pos_a_{};
-  size_t pos_b_{};
-  std::int8_t day_offset_{};
 };
 
 struct ch_label {

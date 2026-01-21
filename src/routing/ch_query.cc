@@ -1,6 +1,7 @@
 #include "utl/helpers/algorithm.h"
 #include "utl/insert_sorted.h"
 #include "utl/pairwise.h"
+#include "utl/verify.h"
 #include "utl/zip.h"
 
 #include "nigiri/loader/build_lb_graph.h"
@@ -41,6 +42,7 @@ void obtain_relevant_stops(timetable const& tt,
   dists[1].resize(tt.n_locations());
 
   auto pq = dial<ch_label, ch_get_bucket>{kChMaxTravelTime.count()};
+  auto ch_traffic_days = tt.ch_traffic_days_[prf_idx];  // TODO avoid copy
 
   auto const mark_relevant_stop = [&](location_idx_t const parent) {
     if (loader::kChGroupParents && !relevant_stops.test(parent.v_)) {
@@ -69,7 +71,8 @@ void obtain_relevant_stops(timetable const& tt,
       auto const e = tt.ch_graph_edges_[prf_idx].at(e_idx);
       auto const edge_target = l_dir == kForward ? e.to_ : e.from_;
       std::cout << "const_dist1" << const_dist << std::endl;
-      if (tt.ch_levels_.at(l) > tt.ch_levels_.at(edge_target)) {
+      if (tt.ch_levels_[prf_idx].at(l) >
+          tt.ch_levels_[prf_idx].at(edge_target)) {
         continue;
       }
       if (const_dist != u16_minutes::max()) {
@@ -77,83 +80,83 @@ void obtain_relevant_stops(timetable const& tt,
         auto const d = owning_saw<saw_type::kConstant>{
             saw<saw_type::kConstant>::of(const_dist), {}};
 
-        saw<kChSawType>{tt.ch_graph_max_[prf_idx].at(e_idx),
-                        tt.ch_traffic_days_}
-            .concat_const(other_dir, d.to_saw(tt.ch_traffic_days_),
-                          new_max_dist);
+        saw<kChSawType>{tt.ch_graph_max_[prf_idx].at(e_idx), ch_traffic_days}
+            .concat_const(other_dir, d.to_saw(ch_traffic_days), new_max_dist);
 
-        saw<kChSawType>{tt.ch_graph_min_[prf_idx].at(e_idx),
-                        tt.ch_traffic_days_}
-            .concat_const(other_dir, d.to_saw(tt.ch_traffic_days_),
-                          new_min_dist);
+        saw<kChSawType>{tt.ch_graph_min_[prf_idx].at(e_idx), ch_traffic_days}
+            .concat_const(other_dir, d.to_saw(ch_traffic_days), new_min_dist);
       } else {
         dists[l_dir]
             .at(l)
             .d_[kMax]
-            .to_saw(tt.ch_traffic_days_)
+            .to_saw(ch_traffic_days)
             .concat(l_dir,
                     saw<kChSawType>{tt.ch_graph_max_[prf_idx].at(e_idx),
-                                    tt.ch_traffic_days_},
+                                    ch_traffic_days},
                     true, new_max_dist);
         dists[l_dir]
             .at(l)
             .d_[kMin]
-            .to_saw(tt.ch_traffic_days_)
+            .to_saw(ch_traffic_days)
             .concat(l_dir,
                     saw<kChSawType>{tt.ch_graph_min_[prf_idx].at(e_idx),
-                                    tt.ch_traffic_days_},
+                                    ch_traffic_days},
                     false, new_min_dist);
       }
       // std::cout << "tar" << edge_target << " " << new_max_dist << " ld " <<
       //  l.d_[kMax] << " em " << e.max_dur_.count() << " " << new_min_dist <<
       //  std::endl;
-      auto const max_true =
-          saw<kChSawType>{new_max_dist, tt.ch_traffic_days_}.leq(
-              dists[l_dir].at(edge_target).d_[kMax].to_saw(tt.ch_traffic_days_),
-              true);
-      auto const min_true =
-          saw<kChSawType>{new_min_dist, tt.ch_traffic_days_}.leq(
-              dists[l_dir].at(edge_target).d_[kMin].to_saw(tt.ch_traffic_days_),
-              true);
-      if (max_true || min_true) {
-        saw<kChSawType>{new_max_dist, tt.ch_traffic_days_}.simplify(
-            dists[l_dir][edge_target].d_[kMax].to_saw(tt.ch_traffic_days_),
-            tmp_saw);
-        std::cout
-            << "push pq" << edge_target << " " << max_true << " " << min_true
-            << " new: " << saw<kChSawType>{new_max_dist, tt.ch_traffic_days_}
-            << std::endl
-            << " old: "
-            << dists[l_dir].at(edge_target).d_[kMax].to_saw(tt.ch_traffic_days_)
-            << std::endl
-            << "simpl:" << saw<kChSawType>{tmp_saw, tt.ch_traffic_days_}
-            << std::endl;
-        std::swap(dists[l_dir][edge_target].d_[kMax].saw_, tmp_saw);
-        tmp_saw.clear();
-        saw<kChSawType>{new_min_dist, tt.ch_traffic_days_}.simplify(
-            dists[l_dir][edge_target].d_[kMin].to_saw(tt.ch_traffic_days_),
-            tmp_saw);
-        std::swap(dists[l_dir][edge_target].d_[kMin].saw_, tmp_saw);
-        tmp_saw.clear();
 
-        auto const const_max = dists[l_dir][edge_target]
-                                   .d_[kMax]
-                                   .to_saw(tt.ch_traffic_days_)
-                                   .max();
-        auto const const_min = dists[l_dir][edge_target]
-                                   .d_[kMin]
-                                   .to_saw(tt.ch_traffic_days_)
-                                   .min();
-        utl::verify(const_max.count() < kChMaxTravelTime.count() &&
-                        const_min.count() < kChMaxTravelTime.count(),
-                    "extra weird {} {}", const_max, const_min);
+      /*auto const max_true = saw<kChSawType>{new_max_dist,
+      ch_traffic_days}.leq(
+          dists[l_dir].at(edge_target).d_[kMax].to_saw(ch_traffic_days), true);
+      auto const min_true = saw<kChSawType>{new_min_dist, ch_traffic_days}.leq(
+          dists[l_dir].at(edge_target).d_[kMin].to_saw(ch_traffic_days), true);
+      if (max_true || min_true) {*/
+      saw<kChSawType>{new_max_dist, ch_traffic_days}.simplify(
+          dists[l_dir][edge_target].d_[kMax].to_saw(ch_traffic_days), tmp_saw);
+      std::cout << "push pq" << edge_target << " " << 0 << " " << 0
+                << " new: " << saw<kChSawType>{new_max_dist, ch_traffic_days}
+                << std::endl
+                << " old: "
+                << dists[l_dir].at(edge_target).d_[kMax].to_saw(ch_traffic_days)
+                << std::endl
+                << "simpl:" << saw<kChSawType>{tmp_saw, ch_traffic_days}
+                << std::endl;
 
-        pq.push(ch_label{edge_target,
-                         {const_max.count(), const_min.count()},
-                         static_cast<std::uint8_t>(l_dir)});
-      }
       new_max_dist.clear();
+      if (dists[l_dir].at(edge_target).d_[kMax].to_saw(ch_traffic_days) ==
+          saw<kChSawType>{tmp_saw, ch_traffic_days}) {
+        new_min_dist.clear();
+        tmp_saw.clear();
+        continue;
+      }
+      std::swap(dists[l_dir][edge_target].d_[kMax].saw_, tmp_saw);
+      tmp_saw.clear();
+
+      saw<kChSawType>{new_min_dist, ch_traffic_days}.simplify(
+          dists[l_dir][edge_target].d_[kMin].to_saw(ch_traffic_days), tmp_saw);
       new_min_dist.clear();
+      if (dists[l_dir].at(edge_target).d_[kMin].to_saw(ch_traffic_days) ==
+          saw<kChSawType>{tmp_saw, ch_traffic_days}) {
+        tmp_saw.clear();
+        continue;
+      }
+      std::swap(dists[l_dir][edge_target].d_[kMin].saw_, tmp_saw);
+      tmp_saw.clear();
+
+      auto const const_max =
+          dists[l_dir][edge_target].d_[kMax].to_saw(ch_traffic_days).max();
+      auto const const_min =
+          dists[l_dir][edge_target].d_[kMin].to_saw(ch_traffic_days).min();
+      utl::verify(const_max.count() < kChMaxTravelTime.count() &&
+                      const_min.count() < kChMaxTravelTime.count(),
+                  "extra weird {} {}", const_max, const_min);
+
+      pq.push(ch_label{edge_target,
+                       {const_max.count(), const_min.count()},
+                       static_cast<std::uint8_t>(l_dir)});
+      //}
     }
   };
 
@@ -185,37 +188,30 @@ void obtain_relevant_stops(timetable const& tt,
     auto const l_dir = l.dir_ % kModeOffset;
     auto const other_dir = l_dir ^ 1U;
 
-    if (dists[l_dir]
-                .at(l.l_)
-                .d_[kMax]
-                .to_saw(tt.ch_traffic_days_)
-                .max()
-                .count() < l.d_[kMax] &&  // TODO extrema
-        dists[l_dir]
-                .at(l.l_)
-                .d_[kMin]
-                .to_saw(tt.ch_traffic_days_)
-                .min()
-                .count() < l.d_[kMin]) {  // TODO nonce?
+    if (dists[l_dir].at(l.l_).d_[kMax].to_saw(ch_traffic_days).max().count() <
+            l.d_[kMax] &&  // TODO extrema
+        dists[l_dir].at(l.l_).d_[kMin].to_saw(ch_traffic_days).min().count() <
+            l.d_[kMin]) {  // TODO nonce?
       continue;
     }
-    std::cout
-        << "steop " << l.l_  // << " " << tt.locations_.names_[l.l_]..view()
-        << " min: " << l.d_[kMin] << " " << " max: " << l.d_[kMax] << " other:"
-        << dists[other_dir][l.l_].d_[kMax].to_saw(tt.ch_traffic_days_).max()
-        << " " << l_dir << " l:" << tt.ch_levels_.at(l.l_) << std::endl;
+    std::cout << "steop "
+              << l.l_  // << " " << tt.locations_.names_[l.l_]..view()
+              << " min: " << l.d_[kMin] << " " << " max: " << l.d_[kMax]
+              << " other:"
+              << dists[other_dir][l.l_].d_[kMax].to_saw(ch_traffic_days).max()
+              << " " << l_dir << " l:" << tt.ch_levels_[prf_idx].at(l.l_)
+              << std::endl;
     if (!dists[other_dir][l.l_].d_[kMax].saw_.empty()) {
       auto max_concat =
           dists[l_dir]
               .at(l.l_)
               .d_[kMax]
-              .to_saw(tt.ch_traffic_days_)
-              .concat(
-                  l_dir,
-                  dists[other_dir][l.l_].d_[kMax].to_saw(tt.ch_traffic_days_),
-                  true, tmp_saw);
-      if (max_concat <= saw<kChSawType>{min_max_dist, tt.ch_traffic_days_}) {
-        max_concat.simplify(saw<kChSawType>{min_max_dist, tt.ch_traffic_days_},
+              .to_saw(ch_traffic_days)
+              .concat(l_dir,
+                      dists[other_dir][l.l_].d_[kMax].to_saw(ch_traffic_days),
+                      true, tmp_saw);
+      if (max_concat <= saw<kChSawType>{min_max_dist, ch_traffic_days}) {
+        max_concat.simplify(saw<kChSawType>{min_max_dist, ch_traffic_days},
                             new_max_dist);
         std::swap(min_max_dist, new_max_dist);
         new_max_dist.clear();
@@ -224,23 +220,23 @@ void obtain_relevant_stops(timetable const& tt,
                  dists[l_dir]
                      .at(l.l_)
                      .d_[kMin]
-                     .to_saw(tt.ch_traffic_days_)
+                     .to_saw(ch_traffic_days)
                      .concat(l_dir,
                              dists[other_dir][l.l_].d_[kMin].to_saw(
-                                 tt.ch_traffic_days_),
+                                 ch_traffic_days),
                              false, tmp_saw) <=
-                 saw<kChSawType>{min_max_dist, tt.ch_traffic_days_}) {
+                 saw<kChSawType>{min_max_dist, ch_traffic_days}) {
         meetpoints.emplace_back(l.l_);
       }
       std::cout << "mp found "
-                << saw<kChSawType>{min_max_dist, tt.ch_traffic_days_}.max()
+                << saw<kChSawType>{min_max_dist, ch_traffic_days}.max()
                 << std::endl;
 
       tmp_saw.clear();
     }
     // std::cout << "mmd" << min_max_dist << std::endl;
-    if (dists[l_dir].at(l.l_).d_[mode].to_saw(tt.ch_traffic_days_) >
-        saw<kChSawType>{min_max_dist, tt.ch_traffic_days_}) {
+    if (dists[l_dir].at(l.l_).d_[mode].to_saw(ch_traffic_days) >
+        saw<kChSawType>{min_max_dist, ch_traffic_days}) {
       if (mode == kMax) {
         auto buffer = std::vector<ch_label>{};
         while (!pq.empty()) {
@@ -256,7 +252,7 @@ void obtain_relevant_stops(timetable const& tt,
         }
         std::cout << "switching to min mode " << counter << " "
                   << "minmax: "
-                  << saw<kChSawType>{min_max_dist, tt.ch_traffic_days_}.max()
+                  << saw<kChSawType>{min_max_dist, ch_traffic_days}.max()
                   << " infty: " << std::numeric_limits<ch_label::dist_t>::max()
                   << std::endl;
         mode = kMin;
@@ -277,18 +273,17 @@ void obtain_relevant_stops(timetable const& tt,
   auto nonce_map = vector_map<location_idx_t, std::uint32_t>{};
   nonce_map.resize(tt.n_locations());
   auto const const_min_max_dist =
-      saw<kChSawType>{min_max_dist, tt.ch_traffic_days_}.max();
+      saw<kChSawType>{min_max_dist, ch_traffic_days}.max();
   std::cout << "downsearch " << counter << " " << meetpoints.size()
             << std::endl;
   for (auto const m : meetpoints) {
     dists[kForward][m]
         .d_[kMin]
-        .to_saw(tt.ch_traffic_days_)
-        .concat(dists[kReverse][m].d_[kMin].to_saw(tt.ch_traffic_days_), false,
+        .to_saw(ch_traffic_days)
+        .concat(dists[kReverse][m].d_[kMin].to_saw(ch_traffic_days), false,
                 tmp_saw);
-    std::cout << "mp filter "
-              << saw<kChSawType>{tmp_saw, tt.ch_traffic_days_}.min() << " "
-              << saw<kChSawType>{min_max_dist, tt.ch_traffic_days_}.max()
+    std::cout << "mp filter " << saw<kChSawType>{tmp_saw, ch_traffic_days}.min()
+              << " " << saw<kChSawType>{min_max_dist, ch_traffic_days}.max()
               << std::endl;
     for (auto const& e : tmp_saw) {
       std::cout << e.mam_ << " " << e.travel_dur_ << std::endl;
@@ -297,8 +292,8 @@ void obtain_relevant_stops(timetable const& tt,
     for (auto const& e : tmp_saw) {
       std::cout << e.mam_ << " " << e.travel_dur_ << std::endl;
     }
-    if (saw<kChSawType>{tmp_saw, tt.ch_traffic_days_} >
-        saw<kChSawType>{min_max_dist, tt.ch_traffic_days_}) {
+    if (saw<kChSawType>{tmp_saw, ch_traffic_days} >
+        saw<kChSawType>{min_max_dist, ch_traffic_days}) {
       tmp_saw.clear();
       continue;
     }
@@ -306,18 +301,18 @@ void obtain_relevant_stops(timetable const& tt,
     for (auto const dir : {kForward, kReverse}) {
       auto const other_dir = dir ^ 1U;
 
-      saw<kChSawType>{min_max_dist, tt.ch_traffic_days_}.simplify(
-          dists[dir][m].d_[kMax].to_saw(tt.ch_traffic_days_), tmp_saw);
+      saw<kChSawType>{min_max_dist, ch_traffic_days}.simplify(
+          dists[dir][m].d_[kMax].to_saw(ch_traffic_days), tmp_saw);
       std::swap(dists[dir][m].d_[kMax].saw_, tmp_saw);
       tmp_saw.clear();
       auto const d = std::min(
           static_cast<ch_label::dist_t>(const_min_max_dist.count() -
                                         dists[other_dir][m]
                                             .d_[kMin]
-                                            .to_saw(tt.ch_traffic_days_)
+                                            .to_saw(ch_traffic_days)
                                             .min()
                                             .count()),
-          dists[dir][m].d_[kMax].to_saw(tt.ch_traffic_days_).max().count());
+          dists[dir][m].d_[kMax].to_saw(ch_traffic_days).max().count());
       pq.push(ch_label{m, {invert(d), 1}, static_cast<std::uint8_t>(dir)});
       std::cout << "added mp " << d << std::endl;
     }
@@ -338,12 +333,12 @@ void obtain_relevant_stops(timetable const& tt,
     std::cout << "down " << l.l_
               << " "  // << tt.locations_.names_[l.l_].view()
                       // << " min: " << dists[l.dir_][l.l_].d_[kMin] << " "
-              << " max: " << l_d_max
+              << " max: " << l_d_max << " nonce: " << l.d_[kMin]
               << " dir:" << (l.dir_ == kForward ? "fwd" : "bwd")
-              << "| l:" << tt.ch_levels_.at(l.l_) << std::endl;
+              << "| l:" << tt.ch_levels_[prf_idx].at(l.l_) << std::endl;
     nonce_map.at(l.l_) = l.d_[kMin];
-    saw<kChSawType>{min_max_dist, tt.ch_traffic_days_}.simplify(
-        dists[l.dir_][l.l_].d_[kMax].to_saw(tt.ch_traffic_days_), tmp_saw);
+    saw<kChSawType>{min_max_dist, ch_traffic_days}.simplify(
+        dists[l.dir_][l.l_].d_[kMax].to_saw(ch_traffic_days), tmp_saw);
     std::swap(dists[l.dir_][l.l_].d_[kMax].saw_,
               tmp_saw);  // TODO min with l_d_max-e.min_dur
     tmp_saw.clear();
@@ -354,7 +349,7 @@ void obtain_relevant_stops(timetable const& tt,
     for (auto const& e_idx : graph[l.l_]) {
       auto const e = tt.ch_graph_edges_[prf_idx][e_idx];
       auto const edge_target = l.dir_ == kReverse ? e.to_ : e.from_;
-      if (tt.ch_levels_[l.l_] < tt.ch_levels_[edge_target]) {
+      if (tt.ch_levels_[prf_idx][l.l_] < tt.ch_levels_[prf_idx][edge_target]) {
         continue;
       }
       auto const& prev_label = dists[l.dir_][edge_target];
@@ -362,12 +357,12 @@ void obtain_relevant_stops(timetable const& tt,
         continue;
       }
       prev_label.d_[kMin]
-          .to_saw(tt.ch_traffic_days_)
+          .to_saw(ch_traffic_days)
           .concat(l.dir_,
                   saw<kChSawType>{tt.ch_graph_min_[prf_idx].at(e_idx),
-                                  tt.ch_traffic_days_},
+                                  ch_traffic_days},
                   false, tmp_saw);
-      auto min_dist_via_prev = saw<kChSawType>{tmp_saw, tt.ch_traffic_days_};
+      auto min_dist_via_prev = saw<kChSawType>{tmp_saw, ch_traffic_days};
       if (min_dist_via_prev.max().count() >=
           kChMaxTravelTime.count()) {  // TODO expensive
         std::cout << "weird" << min_dist_via_prev.max().count() << " "
@@ -375,22 +370,22 @@ void obtain_relevant_stops(timetable const& tt,
         tmp_saw.clear();
         continue;
       }
-      if (min_dist_via_prev <=
-              dists[l.dir_][l.l_].d_[kMax].to_saw(tt.ch_traffic_days_) &&
-          min_dist_via_prev.min().count() <=
-              l_d_max) {  // TODO l_d_max cheat, stopping criterion, cutoff?
+      auto min_dist_via_prev_const = min_dist_via_prev.min().count();
+      if (min_dist_via_prev_const <= l_d_max &&
+          min_dist_via_prev.leq(
+              dists[l.dir_][l.l_].d_[kMax].to_saw(ch_traffic_days),
+              true)) {  // TODO l_d_max cheat, stopping criterion, cutoff?
         // TODO move to queue pop?
         stack.push_back(
-            {e_idx, std::min(static_cast<ch_label::dist_t>(
-                                 l_d_max - prev_label.d_[kMin]
-                                               .to_saw(tt.ch_traffic_days_)
-                                               .min()
-                                               .count()),
-                             static_cast<ch_label::dist_t>(saw<kChSawType>{
-                                 tt.ch_graph_max_[prf_idx].at(e_idx),
-                                 tt.ch_traffic_days_}
-                                                               .max()
-                                                               .count()))});
+            {e_idx,
+             std::min(
+                 static_cast<ch_label::dist_t>(
+                     l_d_max -
+                     prev_label.d_[kMin].to_saw(ch_traffic_days).min().count()),
+                 static_cast<ch_label::dist_t>(saw<kChSawType>{
+                     tt.ch_graph_max_[prf_idx].at(e_idx), ch_traffic_days}
+                                                   .max()
+                                                   .count()))});
         while (!stack.empty()) {
           auto [child_edge_idx, child_max_dur] = stack.back();
           stack.pop_back();
@@ -400,7 +395,7 @@ void obtain_relevant_stops(timetable const& tt,
           visited[child_edge_idx] = child_max_dur;
           auto const child_max_dur_saw = saw<kChSawType>{
               tt.ch_graph_max_[prf_idx].at(child_edge_idx),
-              tt.ch_traffic_days_};  // TODO at least min with min_max_dur?
+              ch_traffic_days};  // TODO at least min with min_max_dur?
 
           for (auto const [unpack, transfer] :
                utl::zip(tt.ch_graph_unpack_[prf_idx].at(child_edge_idx),
@@ -411,27 +406,24 @@ void obtain_relevant_stops(timetable const& tt,
               }
               continue;
             }
-            auto const arr_min_saw =
-                saw<kChSawType>{tt.ch_graph_min_[prf_idx].at(unpack.first),
-                                tt.ch_traffic_days_};
-            auto const dep_min_saw =
-                saw<kChSawType>{tt.ch_graph_min_[prf_idx].at(unpack.second),
-                                tt.ch_traffic_days_};
+            auto const arr_min_saw = saw<kChSawType>{
+                tt.ch_graph_min_[prf_idx].at(unpack.first), ch_traffic_days};
+            auto const dep_min_saw = saw<kChSawType>{
+                tt.ch_graph_min_[prf_idx].at(unpack.second), ch_traffic_days};
             auto const arr_min = arr_min_saw.min().count();
             auto const dep_min = dep_min_saw.min().count();
-            auto const arr_max =
-                std::min(static_cast<ch_label::dist_t>(child_max_dur - dep_min),
-                         static_cast<ch_label::dist_t>(saw<kChSawType>{
-                             tt.ch_graph_max_[prf_idx].at(unpack.first),
-                             tt.ch_traffic_days_}
-                                                           .max()
-                                                           .count()));
+            auto const arr_max = std::min(
+                static_cast<ch_label::dist_t>(child_max_dur - dep_min),
+                static_cast<ch_label::dist_t>(saw<kChSawType>{
+                    tt.ch_graph_max_[prf_idx].at(unpack.first), ch_traffic_days}
+                                                  .max()
+                                                  .count()));
             auto const dep_max =
                 std::min(static_cast<ch_label::dist_t>(
                              child_max_dur - arr_min),  // TODO deconcat?
                          static_cast<ch_label::dist_t>(saw<kChSawType>{
                              tt.ch_graph_max_[prf_idx].at(unpack.second),
-                             tt.ch_traffic_days_}
+                             ch_traffic_days}
                                                            .max()
                                                            .count()));
 
@@ -447,23 +439,29 @@ void obtain_relevant_stops(timetable const& tt,
             stack.push_back({unpack.second, dep_max});
           }
         }
-        pq.push(ch_label{
-            edge_target,
-            {static_cast<ch_label::dist_t>(invert(std::min(
-                 static_cast<ch_label::dist_t>(
-                     l_d_max -
-                     saw<kChSawType>{tt.ch_graph_min_[prf_idx].at(e_idx),
-                                     tt.ch_traffic_days_}  // TODO deconcat?
-                         .min()
-                         .count()),
-                 dists[l.dir_][edge_target]
-                     .d_[kMax]
-                     .to_saw(tt.ch_traffic_days_)
-                     .max()
-                     .count()))),
-             static_cast<ch_label::dist_t>(nonce_map[l.l_] +
-                                           1)},  // TODO is this correct?
-            static_cast<std::uint8_t>(l.dir_)});
+        auto const x = saw<kChSawType>{tt.ch_graph_min_[prf_idx].at(e_idx),
+                                       ch_traffic_days}  // TODO deconcat?
+                           .min();
+        utl::verify(x != u16_minutes::max(), "min is infty");
+        std::cout << "diff " << x << " ld " << l_d_max << " em "
+                  << dists[l.dir_][edge_target]
+                         .d_[kMax]
+                         .to_saw(ch_traffic_days)
+                         .max()
+                         .count()
+                  << std::endl;
+        auto const diff = l_d_max - x.count();
+        pq.push(ch_label{edge_target,
+                         {static_cast<ch_label::dist_t>(invert(
+                              std::min(static_cast<ch_label::dist_t>(diff),
+                                       dists[l.dir_][edge_target]
+                                           .d_[kMax]
+                                           .to_saw(ch_traffic_days)
+                                           .max()
+                                           .count()))),
+                          static_cast<ch_label::dist_t>(
+                              nonce_map[l.l_] + 1)},  // TODO is this correct?
+                         static_cast<std::uint8_t>(l.dir_)});
       }
       tmp_saw.clear();
     }
