@@ -582,7 +582,7 @@ private:
         dest_bag_.labels_.begin(),
         dest_bag_.labels_.end(),
         [&](const std::pair<unsigned, mcraptor_label>& pair) {
-          if (pair.first == k && possible_start_t <= pair.second.arr_t_ && pair.second.arr_t_ != kInvalid) {
+          if (pair.first == k && pair.first > 0 && possible_start_t <= pair.second.arr_t_ && pair.second.arr_t_ != kInvalid) {
             labels.push_back(pair.second);
           }
         }
