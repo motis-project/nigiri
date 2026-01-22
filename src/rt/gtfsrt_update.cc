@@ -153,7 +153,7 @@ delay_propagation update_event(timetable const& tt,
     rtt.update_time(r.rt_, stop_idx, ev_type, lower_bounded_new_time);
     rtt.dispatch_delay(r, stop_idx, ev_type,
                        lower_bounded_new_time - static_time);
-    return {lower_bounded_new_time, new_time - static_time};
+    return {lower_bounded_new_time, lower_bounded_new_time - static_time};
   }
 }
 
