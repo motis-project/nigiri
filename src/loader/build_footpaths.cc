@@ -430,7 +430,7 @@ void build_footpaths(timetable& tt, finalize_options const opt) {
           continue;
         }
 
-        find_duplicates(tt, l, e);
+        merge_duplicates(tt, l, e);
       }
     }
   }

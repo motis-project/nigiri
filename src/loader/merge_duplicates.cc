@@ -11,6 +11,7 @@
 #include "nigiri/timetable.h"
 
 namespace nigiri::loader {
+
 unsigned get_delta(timetable const& tt,
                    route_idx_t const a_route,
                    route_idx_t const b_route,
@@ -68,22 +69,12 @@ bool merge(timetable& tt,
   return true;
 }
 
-void find_intra_route_duplicates(timetable& tt) {
+void find_intra_route_duplicates(timetable& tt,
+                                 merge_threshold_t const& clasz_threshold) {
   for (auto r = route_idx_t{0U}; r != tt.n_routes(); ++r) {
+    auto const threshold =
+        clasz_threshold[static_cast<unsigned>(tt.route_clasz_[r])];
     auto const transports = tt.route_transport_ranges_[r];
-    auto const min = [&]() {
-      auto min_dist = std::chrono::minutes::max();
-      for (auto const [a, b] : utl::pairwise(transports)) {
-        auto const time_a = tt.event_mam(r, a, 0U, event_type::kDep);
-        auto const time_b = tt.event_mam(r, b, 0U, event_type::kDep);
-        auto const diff = time_b.as_duration() - time_a.as_duration();
-        if (diff > std::chrono::minutes{5} && diff < min_dist) {
-          min_dist = diff;
-        }
-      }
-      return min_dist;
-    }();
-
     for (auto a = begin(transports); a != end(transports); ++a) {
       auto const time_a = tt.event_mam(r, *a, 0U, event_type::kDep);
 
@@ -100,19 +91,19 @@ void find_intra_route_duplicates(timetable& tt) {
           continue;
         }
 
-        if ((time_b.as_duration() - time_a.as_duration()) >= min) {
+        if ((time_b.as_duration() - time_a.as_duration()) >= threshold) {
           break;
         }
 
         auto const delta = get_delta(tt, r, r, *a, *b);
         auto const loc_seq = tt.route_location_seq_[r];
 
-        if (delta < loc_seq.size() * 2U) {
+        if (delta < loc_seq.size() * threshold) {
           std::clog << "  " << tt.trip_id(*a)
                     << " [name=" << tt.transport_name(*b) << "] vs "
                     << tt.trip_id(*b) << " [nam e=" << tt.transport_name(*b)
                     << "], time_a=" << time_a << ", time_b=" << time_b
-                    << ", MIN_DIST=" << min << ", FIRST_DIFF="
+                    << ", MIN_DIST=" << threshold << ", FIRST_DIFF="
                     << (time_b.as_duration() - time_a.as_duration())
                     << ", DELTA=" << delta << ", days=" << tt.days(intersection)
                     << "\n";
@@ -122,9 +113,9 @@ void find_intra_route_duplicates(timetable& tt) {
   }
 }
 
-unsigned find_duplicates(timetable& tt,
-                         location_idx_t const a,
-                         location_idx_t const b) {
+unsigned merge_duplicates(timetable& tt,
+                          location_idx_t const a,
+                          location_idx_t const b) {
   // http://localhost:5173/?tripId=20260115_13%3A07_de-DELFI_3064419662&motis=localhost%3A8080
   auto const needle1 =
       tt.find(location_id{"de:12060:900350694::1", source_idx_t{0U}});
