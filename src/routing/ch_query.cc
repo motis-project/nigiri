@@ -42,7 +42,8 @@ void obtain_relevant_stops(timetable const& tt,
   dists[1].resize(tt.n_locations());
 
   auto pq = dial<ch_label, ch_get_bucket>{kChMaxTravelTime.count()};
-  auto ch_traffic_days = tt.ch_traffic_days_[prf_idx];  // TODO avoid copy
+  auto ch_traffic_days =
+      traffic_days{tt.ch_traffic_days_[prf_idx], {}};  // TODO avoid copy
 
   auto const mark_relevant_stop = [&](location_idx_t const parent) {
     if (loader::kChGroupParents && !relevant_stops.test(parent.v_)) {
@@ -114,7 +115,9 @@ void obtain_relevant_stops(timetable const& tt,
           dists[l_dir].at(edge_target).d_[kMin].to_saw(ch_traffic_days), true);
       if (max_true || min_true) {*/
       saw<kChSawType>{new_max_dist, ch_traffic_days}.simplify(
-          dists[l_dir][edge_target].d_[kMax].to_saw(ch_traffic_days), tmp_saw);
+          dists[l_dir][edge_target].d_[kMax].to_saw(ch_traffic_days),
+          tmp_saw);  // TODO move to leq again? or detect within simplify if not
+      // equal (new bitfields created etc)
       std::cout << "push pq" << edge_target << " " << 0 << " " << 0
                 << " new: " << saw<kChSawType>{new_max_dist, ch_traffic_days}
                 << std::endl
@@ -123,28 +126,28 @@ void obtain_relevant_stops(timetable const& tt,
                 << std::endl
                 << "simpl:" << saw<kChSawType>{tmp_saw, ch_traffic_days}
                 << std::endl;
-
       new_max_dist.clear();
-      if (dists[l_dir].at(edge_target).d_[kMax].to_saw(ch_traffic_days) ==
-          saw<kChSawType>{tmp_saw, ch_traffic_days}) {
-        new_min_dist.clear();
-        tmp_saw.clear();
-        continue;
-      }
-      std::swap(dists[l_dir][edge_target].d_[kMax].saw_, tmp_saw);
-      tmp_saw.clear();
 
+      auto max_leq = false;
+      auto min_leq = false;
+      if (dists[l_dir].at(edge_target).d_[kMax].to_saw(ch_traffic_days) !=
+          saw<kChSawType>{tmp_saw, ch_traffic_days}) {
+        std::swap(dists[l_dir][edge_target].d_[kMax].saw_, tmp_saw);
+        max_leq = true;
+      }
+      tmp_saw.clear();
       saw<kChSawType>{new_min_dist, ch_traffic_days}.simplify(
           dists[l_dir][edge_target].d_[kMin].to_saw(ch_traffic_days), tmp_saw);
       new_min_dist.clear();
-      if (dists[l_dir].at(edge_target).d_[kMin].to_saw(ch_traffic_days) ==
+      if (dists[l_dir].at(edge_target).d_[kMin].to_saw(ch_traffic_days) !=
           saw<kChSawType>{tmp_saw, ch_traffic_days}) {
-        tmp_saw.clear();
+        std::swap(dists[l_dir][edge_target].d_[kMin].saw_, tmp_saw);
+        min_leq = true;
+      }
+      tmp_saw.clear();
+      if (!min_leq && !max_leq) {
         continue;
       }
-      std::swap(dists[l_dir][edge_target].d_[kMin].saw_, tmp_saw);
-      tmp_saw.clear();
-
       auto const const_max =
           dists[l_dir][edge_target].d_[kMax].to_saw(ch_traffic_days).max();
       auto const const_min =

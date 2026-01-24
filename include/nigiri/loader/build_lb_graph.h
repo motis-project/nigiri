@@ -34,7 +34,8 @@ static constexpr auto const kChMaxTravelTime =
 
 static constexpr auto const kEnableCh = true;
 static constexpr auto const kChGroupParents = true;
-static constexpr auto const kChAtomicFootpaths = false;
+static constexpr auto const kChAtomicFootpaths =
+    false;  // TODO automatic const concat
 
 struct departure {
   bool operator<(departure const& o) const {
@@ -82,8 +83,7 @@ void build_lb_graph(timetable& tt, profile_idx_t const prf_idx) {
       transfers;  // TODO use bool and explicitly insert low level footpaths?
   vector_map<ch_edge_idx_t, std::vector<tooth>> edge_min;
   vector_map<ch_edge_idx_t, std::vector<tooth>> edge_max;
-  vector_map<bitfield_idx_t, std::pair<bitfield, std::uint16_t>> traffic_days;
-  hash_map<bitfield, bitfield_idx_t> bitfield_indices;
+  traffic_days traffic_days;
   vector_map<location_idx_t, std::vector<ch_edge_idx_t>> fwd_search_ch_graph;
   vector_map<location_idx_t, std::vector<ch_edge_idx_t>> bwd_search_ch_graph;
   ch_stats stats;
@@ -255,11 +255,11 @@ void build_lb_graph(timetable& tt, profile_idx_t const prf_idx) {
         shortcut_idx);*/
         auto const const_min =
             saw<kChSawType>{edge_min.at(shortcut_idx), traffic_days}.min();
-        if (const_min.count() > kChMaxTravelTime.count()) {
+        if (const_min.count() >= kChMaxTravelTime.count()) {
           std::cout << saw<kChSawType>{edge_min.at(shortcut_idx), traffic_days}
                     << std::endl;
         }
-        utl::verify(const_min.count() <= kChMaxTravelTime.count(),
+        utl::verify(const_min.count() < kChMaxTravelTime.count(),
                     "overfl 0 min {} {} {} {}", const_min, shortcut_idx,
                     min_dur.size(), edge_min.at(shortcut_idx).size());
         auto const const_max =
@@ -270,7 +270,10 @@ void build_lb_graph(timetable& tt, profile_idx_t const prf_idx) {
         }
         utl::verify(const_max.count() >= 2, "weird 0 max {} {}", const_max,
                     shortcut_idx);
-
+        if (const_max.count() >= kChMaxTravelTime.count()) {
+          std::cout << saw<kChSawType>{edge_max.at(shortcut_idx), traffic_days}
+                    << std::endl;
+        }
         utl::verify(const_max.count() < kChMaxTravelTime.count(),
                     "overfl 0 max {} {}", const_max, shortcut_idx);
       };
@@ -338,24 +341,21 @@ void build_lb_graph(timetable& tt, profile_idx_t const prf_idx) {
         remaining_traffic_days.set(
             last_set_bit - j, false);  // TODO do in one go with first 5 days?
       }
-      auto const traffic_days_idx =
-          utl::get_or_create(bitfield_indices, remaining_traffic_days, [&]() {
-            auto const r = bitfield_idx_t{traffic_days.size()};
-            traffic_days.emplace_back(remaining_traffic_days,
-                                      last_set_bit - e.deps_[i].days());
-            return r;
-          });
+      auto const traffic_days_idx = traffic_days.get_or_create(
+          remaining_traffic_days,
+          static_cast<std::uint16_t>(last_set_bit - e.deps_[i].days()));
       auto const new_tooth = tooth{static_cast<std::int16_t>(e.deps_[i].mam_),
                                    e.travel_durs_[i], traffic_days_idx};
       min_saw_tmp.push_back(new_tooth);
       max_saw_tmp.push_back(new_tooth);
     }
 
-    if constexpr (kChSawType != saw_type::kTrafficDays) {
+    if constexpr (kChSawType == saw_type::kDay ||
+                  kChSawType == saw_type::kConstant) {
       auto const s = saw<saw_type::kTrafficDays>{max_saw_tmp, traffic_days};
       for (auto b_it = s.begin(); b_it != s.end(); ++b_it) {
         auto remaining_traffic_days =
-            traffic_days.at(b_it->traffic_days_).first;
+            traffic_days.bitfields_.at(b_it->traffic_days_).first;
         auto day_offset = 0;
         auto a_it = b_it;
         while (true) {
@@ -370,7 +370,8 @@ void build_lb_graph(timetable& tt, profile_idx_t const prf_idx) {
             day_offset = a_it.day_offset_;
           }
 
-          remaining_traffic_days &= ~traffic_days.at(a_it->traffic_days_).first;
+          remaining_traffic_days &=
+              ~traffic_days.bitfields_.at(a_it->traffic_days_).first;
           if (remaining_traffic_days.none()) {
             break;
           }
@@ -624,7 +625,7 @@ void build_lb_graph(timetable& tt, profile_idx_t const prf_idx) {
               << " skips: " << stats.skips_
               << " good updates: " << stats.good_updates_
               << " bad updates: " << stats.bad_updates_
-              << " traffic bitfields: " << traffic_days.size() << "/"
+              << " traffic bitfields: " << traffic_days.bitfields_.size() << "/"
               << tt.transport_traffic_days_.size() << std::endl;
   };
   auto const print_edge_stats = [&]() {
@@ -752,10 +753,11 @@ void build_lb_graph(timetable& tt, profile_idx_t const prf_idx) {
       tt.ch_graph_max_[prf_idx].emplace_back(std::move(e));
     }
     edge_max.clear();
-    for (auto const& e : traffic_days) {
+    for (auto const& e : traffic_days.bitfields_) {
       tt.ch_traffic_days_[prf_idx].emplace_back(std::move(e));
     }
-    traffic_days.clear();
+    traffic_days.bitfields_.clear();
+    traffic_days.bitfield_indices_.clear();
     for (auto i = location_idx_t{0U}; i != tt.locations_.ids_.size(); ++i) {
       tt.fwd_search_ch_graph_[prf_idx].emplace_back(
           std::move(fwd_search_ch_graph[i]));
