@@ -142,6 +142,9 @@ struct saw {
       if (b_it.is_a()) {
         continue;
       }
+      if (b_it->travel_dur_ >= kChMaxEdgeTime) {
+        continue;
+      }
       auto remaining_traffic_days =
           SawType == saw_type::kDay
               ? bitfield{}
@@ -382,14 +385,17 @@ struct saw {
           static_cast<std::int16_t>(t.travel_dur_.count()) - mam_diff;
 
       if constexpr (SawType == saw_type::kDay) {
-        if (remaining_travel_time >= a_it->travel_dur_.count()) {
+        if (remaining_travel_time >= a_it->travel_dur_.count() &&
+            a_it->travel_dur_.count() < kChMaxEdgeTime.count()) {
           return false;
         }
         if (!not_normalized) {
           return true;
         }
       }
-
+      if (a_it->travel_dur_.count() >= kChMaxEdgeTime.count()) {
+        continue;
+      }
       if (remaining_travel_time < 0) {  // TODO min const lb
         break;
       }
@@ -488,7 +494,9 @@ struct saw {
       return saw<SawType>{out, traffic_days_};
     }
     if constexpr (SawType == saw_type::kConstant) {
-      out.push_back({0, saw_[0].travel_dur_ + other.saw_[0].travel_dur_,
+      out.push_back({0,
+                     std::min(saw_[0].travel_dur_ + other.saw_[0].travel_dur_,
+                              kChMaxEdgeTime),
                      bitfield_idx_t::invalid()});
       return saw<SawType>{out, traffic_days_};
     }
@@ -518,11 +526,12 @@ struct saw {
               ? 0U
               : traffic_days_.bitfields_.at(it->traffic_days_).second;
       auto day_offset = 0;
-      auto travel_dur_extremum =
-          static_cast<int>(max ? 0U : u16_minutes::max().count());
+      auto travel_dur_extremum = max ? u16_minutes{0U} : u16_minutes::max();
       // remaining_traffic_days &= ignore_timetable_offset_mask; TODO reuse
       // bitfields?
       // std::cout << "b concat " << std::endl;
+
+      // TODO detect necessary day offset right away and skip loop?
       while (it->mam_ + it->travel_dur_.count() <=
              o_it->mam_ + o_it.day_offset_ * 24 * 60) {
         ++o_it;
@@ -532,9 +541,10 @@ struct saw {
 
         --o_it;
         if constexpr (SawType == saw_type::kDay) {
-          travel_dur_extremum = o_it->mam_ - it->mam_ +
-                                o_it.day_offset_ * 24 * 60 +
-                                o_it->travel_dur_.count();
+          travel_dur_extremum = std::min(
+              u16_minutes{o_it->mam_ - it->mam_ + o_it.day_offset_ * 24 * 60 +
+                          o_it->travel_dur_.count()},
+              kChMaxEdgeTime);
           break;
         }
         if (day_offset != o_it.day_offset_) {
@@ -542,13 +552,16 @@ struct saw {
             break;
           }
           remaining_traffic_days.set(last_set_bit, false);
-          remaining_traffic_days <<= 1U;
+          remaining_traffic_days <<= o_it.day_offset_ - day_offset;
           day_offset = o_it.day_offset_;
         }
 
-        auto const new_travel_dur = o_it->mam_ - it->mam_ +
-                                    o_it.day_offset_ * 24 * 60 +
-                                    o_it->travel_dur_.count();
+        // TODO special case kChMaxEdge time -> remove?
+        auto const new_travel_dur = std::min(
+            u16_minutes{o_it->mam_ - it->mam_ + o_it.day_offset_ * 24 * 60 +
+                        o_it->travel_dur_.count()},
+            kChMaxEdgeTime);
+
         auto conjunction =
             remaining_traffic_days &
             traffic_days_.bitfields_.at(o_it->traffic_days_).first;
@@ -557,8 +570,7 @@ struct saw {
           if (conjunction.any()) {
             conjunction >>=
                 o_it.day_offset_;  // TODO better shift o_it bitfields?
-            auto new_tooth =
-                tooth{it->mam_, u16_minutes{new_travel_dur}, it->traffic_days_};
+            auto new_tooth = tooth{it->mam_, new_travel_dur, it->traffic_days_};
             if (out.empty() ||
                 non_dominated(new_tooth, saw<SawType>{out, traffic_days_}.end(),
                               &conjunction, false,
@@ -577,9 +589,9 @@ struct saw {
           }
         } else {
           if (!max) {  // TODO templ
-            if (travel_dur_extremum < o_it->mam_ - it->mam_ +
-                                          o_it.day_offset_ * 24 * 60 +
-                                          const_min_other) {
+            if (travel_dur_extremum <
+                u16_minutes{o_it->mam_ - it->mam_ + o_it.day_offset_ * 24 * 60 +
+                            const_min_other}) {
               break;
             }
 
@@ -598,17 +610,20 @@ struct saw {
               if (remaining_traffic_days.none()) {
                 break;
               }
+              if (travel_dur_extremum >= kChMaxEdgeTime) {
+                break;
+              }
             }
           }
         }
       }
       if constexpr (SawType != saw_type::kTrafficDaysPower) {
-        if ((max && travel_dur_extremum == 0U) ||
-            (!max && travel_dur_extremum == u16_minutes::max().count())) {
+        if ((max && travel_dur_extremum == u16_minutes{0U}) ||
+            (!max && travel_dur_extremum == u16_minutes::max())) {
           continue;
         }
-        auto const new_tooth = tooth{it->mam_, u16_minutes{travel_dur_extremum},
-                                     it->traffic_days_};
+        auto const new_tooth =
+            tooth{it->mam_, travel_dur_extremum, it->traffic_days_};
         auto td = traffic_days_.bitfields_.at(it->traffic_days_).first;
         if (out.empty() ||
             non_dominated(new_tooth, saw<SawType>{out, traffic_days_}.end(),
@@ -653,7 +668,8 @@ struct saw {
     auto const d = other.saw_[0].travel_dur_;
     utl::verify(d.count() < 24 * 60, "concat_const more than 24h");
     if (SawType == saw_type::kConstant) {
-      out.push_back({0, saw_[0].travel_dur_ + d, bitfield_idx_t::invalid()});
+      out.push_back({0, std::min(saw_[0].travel_dur_ + d, kChMaxEdgeTime),
+                     bitfield_idx_t::invalid()});
       return saw<SawType>{out, traffic_days_};
     }
     for (auto i = 0U; i < saw_.size(); ++i) {
@@ -671,7 +687,8 @@ struct saw {
               traffic_days_.bitfields_.at(traffic_days_idx).second - 1U);
         }
       }
-      out.push_back({mam, saw_[i].travel_dur_ + d, traffic_days_idx});
+      out.push_back({mam, std::min(saw_[i].travel_dur_ + d, kChMaxEdgeTime),
+                     traffic_days_idx});
     }
     return saw<SawType>{out, traffic_days_};
   }

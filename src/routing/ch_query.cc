@@ -71,7 +71,7 @@ void obtain_relevant_stops(timetable const& tt,
     for (auto const& e_idx : graph.at(l)) {
       auto const e = tt.ch_graph_edges_[prf_idx].at(e_idx);
       auto const edge_target = l_dir == kForward ? e.to_ : e.from_;
-      std::cout << "const_dist1" << const_dist << std::endl;
+      //std::cout << "const_dist1" << const_dist << std::endl;
       if (tt.ch_levels_[prf_idx].at(l) >
           tt.ch_levels_[prf_idx].at(edge_target)) {
         continue;
@@ -118,14 +118,14 @@ void obtain_relevant_stops(timetable const& tt,
           dists[l_dir][edge_target].d_[kMax].to_saw(ch_traffic_days),
           tmp_saw);  // TODO move to leq again? or detect within simplify if not
       // equal (new bitfields created etc)
-      std::cout << "push pq" << edge_target << " " << 0 << " " << 0
+      /*std::cout << "push pq" << edge_target << " " << 0 << " " << 0
                 << " new: " << saw<kChSawType>{new_max_dist, ch_traffic_days}
                 << std::endl
                 << " old: "
                 << dists[l_dir].at(edge_target).d_[kMax].to_saw(ch_traffic_days)
                 << std::endl
                 << "simpl:" << saw<kChSawType>{tmp_saw, ch_traffic_days}
-                << std::endl;
+                << std::endl;*/
       new_max_dist.clear();
 
       auto max_leq = false;
@@ -197,13 +197,13 @@ void obtain_relevant_stops(timetable const& tt,
             l.d_[kMin]) {  // TODO nonce?
       continue;
     }
-    std::cout << "steop "
+    /*std::cout << "steop "
               << l.l_  // << " " << tt.locations_.names_[l.l_]..view()
               << " min: " << l.d_[kMin] << " " << " max: " << l.d_[kMax]
               << " other:"
               << dists[other_dir][l.l_].d_[kMax].to_saw(ch_traffic_days).max()
               << " " << l_dir << " l:" << tt.ch_levels_[prf_idx].at(l.l_)
-              << std::endl;
+              << std::endl;*/
     if (!dists[other_dir][l.l_].d_[kMax].saw_.empty()) {
       auto max_concat =
           dists[l_dir]
