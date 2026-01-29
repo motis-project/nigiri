@@ -131,12 +131,8 @@ run_stop run_stop::get_first_trip_stop(event_type const ev_type) const {
   auto const trip = get_trip_idx(ev_type);
   auto copy = *this;
 
-  while (copy.stop_idx_ > 0U && copy.get_trip_idx(event_type::kDep) == trip) {
+  while (copy.stop_idx_ > 0U && copy.get_trip_idx(event_type::kArr) == trip) {
     --copy.stop_idx_;
-  }
-
-  if (copy.get_trip_idx(event_type::kDep) != trip) {
-    ++copy.stop_idx_;
   }
 
   return copy;
