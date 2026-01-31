@@ -81,7 +81,7 @@ endif ()
 
 
 # --- LIB ---
-file(GLOB_RECURSE nigiri-files src/*.cc)
+file(GLOB_RECURSE nigiri-files CONFIGURE_DEPENDS src/*.cc)
 add_library(nigiri ${nigiri-files})
 target_include_directories(nigiri PUBLIC include)
 target_link_libraries(
@@ -120,6 +120,12 @@ file(GLOB_RECURSE nigiri-benchmark-files exe/benchmark.cc)
 add_executable(nigiri-benchmark ${nigiri-benchmark-files})
 target_link_libraries(nigiri-benchmark PRIVATE nigiri boost-program_options ianatzdb-res)
 target_compile_features(nigiri-benchmark PUBLIC cxx_std_23)
+
+# --- TB SINGLE ---
+file(GLOB_RECURSE nigiri-single-files exe/sngl.cc)
+add_executable(nigiri-single ${nigiri-single-files})
+target_link_libraries(nigiri-single PRIVATE nigiri boost-program_options ianatzdb-res)
+target_compile_features(nigiri-single PUBLIC cxx_std_23)
 
 # --- QA ---
 file(GLOB_RECURSE nigiri-qa-files exe/qa.cc)

@@ -12,6 +12,9 @@
 // the position of the query day in the day offset
 #define QUERY_DAY_SHIFT 5
 
+// the penalty a for a transfer in astar routing (hopefully okay to place here)
+#define ASTAR_TRANSFER_PENALTY 2 // 2 minutes to transfer might be realistic (hopefully)
+
 namespace nigiri::routing::tb {
 
 constexpr auto const kTBMaxTravelTimeDays = 3U;

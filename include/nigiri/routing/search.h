@@ -127,7 +127,7 @@ struct search {
       for (auto const [l, lb] :
            utl::enumerate(state_.travel_time_lower_bound_)) {
         if (lb != std::numeric_limits<std::decay_t<decltype(lb)>>::max()) {
-          trace_upd("lb {}: {}\n", location{tt_, location_idx_t{l}}, lb);
+          trace_upd("lb {}: {} Index: {}\n", location{tt_, location_idx_t{l}}, lb, l);
         }
       }
 #endif
@@ -229,6 +229,7 @@ struct search {
       if (state_.results_.empty() || is_ontrip() ||
           n_results_in_interval() >= q_.min_connection_count_ ||
           is_timeout_reached()) {
+
         trace(
             "  finished: is_ontrip={}, extend_earlier={}, extend_later={}, "
             "initial={}, interval={}, timetable={}, "
