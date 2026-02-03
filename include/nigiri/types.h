@@ -420,6 +420,10 @@ enum class location_type : std::uint8_t {
 
 enum class event_type { kArr, kDep };
 
+inline std::string_view to_str(event_type const d) {
+  return d == event_type::kArr ? "ARR" : "DEP";
+}
+
 enum class direction {
   kForward,
   kBackward  // start = final arrival, destination = journey departure
