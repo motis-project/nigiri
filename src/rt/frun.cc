@@ -123,6 +123,21 @@ location_idx_t run_stop::get_scheduled_location_idx() const {
   return get_scheduled_stop().location_idx();
 }
 
+run_stop run_stop::get_first_trip_stop(event_type const ev_type) const {
+  if (!fr_->is_scheduled()) {
+    return run_stop{fr_, stop_idx_t{0U}};
+  }
+
+  auto const trip = get_trip_idx(ev_type);
+  auto copy = *this;
+
+  while (copy.stop_idx_ > 0U && copy.get_trip_idx(event_type::kArr) == trip) {
+    --copy.stop_idx_;
+  }
+
+  return copy;
+}
+
 run_stop run_stop::get_last_trip_stop(event_type const ev_type) const {
   auto const end = fr_->size();
   if (!fr_->is_scheduled()) {
