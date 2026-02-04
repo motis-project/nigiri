@@ -213,11 +213,10 @@ void obtain_relevant_stops(timetable const& tt,
               .concat(l_dir,
                       dists[other_dir][l.l_].d_[kMax].to_saw(ch_traffic_days),
                       true, tmp_saw);
-      if (max_concat <= saw<kChSawType>{min_max_dist, ch_traffic_days}) {
-        max_concat.simplify(saw<kChSawType>{min_max_dist, ch_traffic_days},
-                            new_max_dist);
+      max_concat.simplify(saw<kChSawType>{min_max_dist, ch_traffic_days},
+                          new_max_dist);
+      if (saw<kChSawType>{new_max_dist, ch_traffic_days} != saw<kChSawType>{min_max_dist, ch_traffic_days}) {
         std::swap(min_max_dist, new_max_dist);
-        new_max_dist.clear();
         meetpoints.emplace_back(l.l_);
       } else if (tmp_saw.clear();
                  dists[l_dir]
@@ -232,9 +231,10 @@ void obtain_relevant_stops(timetable const& tt,
         meetpoints.emplace_back(l.l_);
       }
       std::cout << "mp found "
-                << saw<kChSawType>{min_max_dist, ch_traffic_days}.max()
-                << std::endl;
-
+      << saw<kChSawType>{min_max_dist, ch_traffic_days}.max()
+      << std::endl;
+      
+      new_max_dist.clear();
       tmp_saw.clear();
     }
     // std::cout << "mmd" << min_max_dist << std::endl;
@@ -342,6 +342,13 @@ void obtain_relevant_stops(timetable const& tt,
     nonce_map.at(l.l_) = l.d_[kMin];
     saw<kChSawType>{min_max_dist, ch_traffic_days}.simplify(
         dists[l.dir_][l.l_].d_[kMax].to_saw(ch_traffic_days), tmp_saw);
+    if (saw<kChSawType>{tmp_saw, ch_traffic_days} ==
+        dists[l.dir_][l.l_].d_[kMax].to_saw(
+            ch_traffic_days)) {  // TODO improve leq pre-pq-push?
+      mark_relevant_stop(l.l_);
+      tmp_saw.clear();
+      continue;
+    }
     std::swap(dists[l.dir_][l.l_].d_[kMax].saw_,
               tmp_saw);  // TODO min with l_d_max-e.min_dur
     tmp_saw.clear();

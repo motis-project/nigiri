@@ -272,9 +272,7 @@ TEST(ch, saw_traffic_days_power_test) {
     auto expected = std::vector<tooth>{
         {1001U, u16_minutes{1450}, bitfield_idx_t{2}},
         {1001U, u16_minutes{2886}, bitfield_idx_t{3}},
-        {1000U, u16_minutes{1447},
-         bitfield_idx_t{4}},  // TODO could it happen that same mam entries are
-                              // inserted in wrong order for disjunct bitfields?
+        {1000U, u16_minutes{1447}, bitfield_idx_t{4}},
     };
 
     EXPECT_EQ(td.bitfields_.at(bitfield_idx_t{2}).first.count(), 1);

@@ -24,16 +24,17 @@ enum class saw_type : std::uint8_t {
 };
 
 static constexpr auto const kChSawType = saw_type::kTrafficDaysPower;
-static constexpr auto const kChMaxEdgeTime = u16_minutes{routing::kMaxTravelTime.count()};  // TODO
+static constexpr auto const kChMaxEdgeTime =
+    u16_minutes{routing::kMaxTravelTime.count()};  // TODO
 
 struct tooth {
-  friend bool operator<(tooth const& a, tooth const& b) {
-    auto const mam_diff = a.mam_ - b.mam_;
-    auto const remaining_travel_time =
-        static_cast<std::int32_t>(b.travel_dur_.count()) - mam_diff;
-    return remaining_travel_time > a.travel_dur_.count() ||
-           (remaining_travel_time == a.travel_dur_.count() && mam_diff > 0);
+  bool operator<(tooth const& o) const {
+    if (mam_ == o.mam_) {
+      return travel_dur_ < o.travel_dur_;
+    }
+    return mam_ > o.mam_;
   }
+
   friend bool operator==(tooth const& a, tooth const& b) {
     return a.mam_ == b.mam_ && a.travel_dur_ == b.travel_dur_ &&
            a.traffic_days_ == b.traffic_days_;
@@ -42,6 +43,14 @@ struct tooth {
     out << "(" << a.mam_ << "," << a.travel_dur_ << "," << a.traffic_days_
         << ")";
     return out;
+  }
+
+  bool dominates(tooth const& a) {
+    auto const mam_diff = a.mam_ - mam_;
+    auto const remaining_travel_time =
+        static_cast<std::int32_t>(travel_dur_.count()) - mam_diff;
+    return remaining_travel_time > a.travel_dur_.count() ||
+           (remaining_travel_time == a.travel_dur_.count() && mam_diff > 0);
   }
 
   std::int16_t mam_;

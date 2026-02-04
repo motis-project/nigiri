@@ -1,10 +1,12 @@
 #pragma once
 
+#include <cstddef>
 #include <cstdint>
 #include "nigiri/routing/ch/ch_data.h"
 #include "nigiri/routing/limits.h"
 #include "nigiri/routing/query.h"
 #include "nigiri/types.h"
+#include <algorithm>
 #include <limits>
 #include "utl/get_or_create.h"
 
@@ -73,6 +75,15 @@ struct saw {
       return *this;
     }
 
+    iterator& operator+=(std::size_t offset) {
+      if (!s_.saw_.empty()) {
+        auto const tmp = pos_ + offset;
+        pos_ += tmp % s_.saw_.size();
+        day_offset_ -= tmp / s_.saw_.size();
+      }
+      return *this;
+    }
+
     iterator& operator--() {
       if (pos_ == 0) {
         ++day_offset_;
@@ -93,7 +104,7 @@ struct saw {
 
     tooth const& operator*() const { return s_.saw_[pos_]; }
 
-    saw<SawType> s_;
+    saw<SawType> s_{};
     size_t pos_{};
     std::int8_t day_offset_{};
   };
@@ -252,8 +263,9 @@ struct saw {
   friend std::ostream& operator<<(std::ostream& out, saw<SawType> const& a) {
     for (auto const& e : a.saw_) {
       out << e << " "
-          << a.traffic_days_.bitfields_.at(e.traffic_days_).first.count() << " "
-          << a.traffic_days_.bitfields_.at(e.traffic_days_).first << "\n";
+          << a.traffic_days_.bitfields_.at(e.traffic_days_).first.count()
+          << " ";
+      // << a.traffic_days_.bitfields_.at(e.traffic_days_).first << "\n";
     }
     return out;
   }
@@ -516,6 +528,7 @@ struct saw {
            o_it->mam_ + o_it.day_offset_ * 24 * 60) {
       --o_it;
     }
+    auto last_out_mam_idx = 0U;
     for (; it != loop_it.end(); ++it) {
       auto remaining_traffic_days =
           SawType == saw_type::kDay
@@ -552,7 +565,8 @@ struct saw {
             break;
           }
           remaining_traffic_days.set(last_set_bit, false);
-          remaining_traffic_days <<= o_it.day_offset_ - day_offset;
+          remaining_traffic_days <<=
+              o_it.day_offset_ - day_offset;  // TODO is this correct?
           day_offset = o_it.day_offset_;
         }
 
@@ -571,11 +585,10 @@ struct saw {
             conjunction >>=
                 o_it.day_offset_;  // TODO better shift o_it bitfields?
             auto new_tooth = tooth{it->mam_, new_travel_dur, it->traffic_days_};
-            if (out.empty() ||
-                non_dominated(new_tooth, saw<SawType>{out, traffic_days_}.end(),
-                              &conjunction, false,
-                              0)) {  // TODO no need to check dom with
-              // previously inserted ones from same a it
+            auto last_out_mam = saw<SawType>{out, traffic_days_}.begin();
+            last_out_mam += last_out_mam_idx;
+            if (out.empty() || non_dominated(new_tooth, last_out_mam,
+                                             &conjunction, false, 0)) {
               new_tooth.traffic_days_ = traffic_days_.get_or_create(
                   conjunction,
                   traffic_days_.bitfields_.at(it->traffic_days_).second);
@@ -617,7 +630,35 @@ struct saw {
           }
         }
       }
-      if constexpr (SawType != saw_type::kTrafficDaysPower) {
+      if constexpr (SawType == saw_type::kTrafficDaysPower) {
+        auto next_it = it;
+        ++next_it;
+        if (next_it == loop_it.end() ||
+            next_it->mam_ != out.back().mam_) {  // TODO ugly
+          std::sort(out.begin() + last_out_mam_idx, out.end());
+          auto const remaining_it = std::remove_if(
+              out.begin() + last_out_mam_idx, out.end(), [&](auto const& e) {
+                auto const idx = &e - &*out.begin();
+                if (idx == 0U) {
+                  return false;
+                }
+                auto& prev = out.at(idx - 1U);
+                if (prev.travel_dur_ == e.travel_dur_) {
+                  prev.traffic_days_ = traffic_days_.get_or_create(
+                      traffic_days_.bitfields_.at(prev.traffic_days_).first |
+                          traffic_days_.bitfields_.at(e.traffic_days_).first,
+                      std::max(
+                          traffic_days_.bitfields_.at(prev.traffic_days_)
+                              .second,
+                          traffic_days_.bitfields_.at(e.traffic_days_).second));
+                  return true;
+                }
+                return false;
+              });
+          out.erase(remaining_it, out.end());
+          last_out_mam_idx = out.size();
+        }
+      } else {
         if ((max && travel_dur_extremum == u16_minutes{0U}) ||
             (!max && travel_dur_extremum == u16_minutes::max())) {
           continue;
