@@ -418,6 +418,7 @@ struct line {
   hash_map<route_key, route_id_idx_t> routes_{};
   std::string_view id_;
   std::string_view name_;
+  std::string_view short_name_;
   std::string_view product_;
   authority const* authority_;
   operätor const* operator_;
@@ -433,6 +434,7 @@ line_map_t get_lines(pugi::xml_document const& doc,
   lines.emplace("", uniq(line{
                         .id_ = "",
                         .name_ = "",
+                        .short_name_ = "",
                         .product_ = "",
                         .authority_ = authorities.at(std::string_view{}).get(),
                         .operator_ = operators.at(std::string_view{}).get(),
@@ -447,6 +449,7 @@ line_map_t get_lines(pugi::xml_document const& doc,
         uniq(line{
             .id_ = id(n),
             .name_ = val(n, "Name"),
+            .short_name_ = val(n, "ShortName"),
             .product_ = products.at(ref(n, "TypeOfProductCategoryRef")),
             .authority_ = authorities.at(ref(n, "AuthorityRef")).get(),
             .operator_ =
@@ -1391,15 +1394,18 @@ void load_timetable(loader_config const& config,
       if (route_it == end(line.routes_)) {
         auto const id =
             fmt::format("{}-{}-{}", line.id_, op->id_, sj.route_type_);
-        auto rout = route{tt,
-                          src,
-                          id,
-                          tt.register_translation(line.name_),
-                          tt.register_translation(line.product_),
-                          route_type_t{get_more_precise_route_type(
-                              sj.route_type_, line.route_type_)},
-                          line.color_,
-                          op->provider_};
+        auto rout =
+            route{tt,
+                  src,
+                  id,
+                  tt.register_translation(
+                      line.short_name_.empty() ? line.name_ : line.short_name_),
+                  tt.register_translation(
+                      line.product_.empty() ? line.name_ : line.product_),
+                  route_type_t{get_more_precise_route_type(sj.route_type_,
+                                                           line.route_type_)},
+                  line.color_,
+                  op->provider_};
         route_id = line.routes_
                        .emplace_hint(
                            route_it, line::route_key{sj.route_type_, op},
@@ -1474,7 +1480,7 @@ void load_timetable(loader_config const& config,
         attr.pop_back();
       }
 
-      [[maybe_unused]] auto const sj_idx = sj_ids.store(sj.id_);
+      auto const sj_idx = sj_ids.store(sj.id_);
       assert(sj_idx == sj_utc_trips.size());
       assert(sj_idx == sj_trips.size());
       sj_trips.push_back(trip_idx);
