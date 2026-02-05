@@ -647,8 +647,8 @@ struct saw {
       if constexpr (SawType == saw_type::kTrafficDaysPower) {
         auto next_it = it;
         ++next_it;
-        if (next_it == loop_it.end() ||
-            next_it->mam_ != out.back().mam_) {  // TODO ugly
+        if (!out.empty() && (next_it == loop_it.end() ||
+                             next_it->mam_ != out.back().mam_)) {  // TODO ugly
           std::sort(out.begin() + last_out_mam_idx, out.end());
           auto const remaining_it = std::remove_if(
               out.begin() + last_out_mam_idx, out.end(), [&](auto const& e) {

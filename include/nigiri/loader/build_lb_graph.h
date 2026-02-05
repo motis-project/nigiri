@@ -538,18 +538,16 @@ void build_lb_graph(timetable& tt, profile_idx_t const prf_idx) {
           }
           auto min_saw = std::vector<tooth>{};  // TODO reuse alloc
           auto max_saw = std::vector<tooth>{};
-          if (found_direct) {
-            assign_departures_to_arrivals();
-
-            utl::verify(arrivals.size() <= 1,
+          assign_departures_to_arrivals();
+          if (!arrivals.empty()) {
+            utl::verify(arrivals.size() == 1,
                         "more than one direct relation found between a and b");
             auto const& e = begin(arrivals)->second;
             arrivals_to_saw(e, min_saw, max_saw);
+            arrivals.clear();
             std::cout << "max saw "
                       << saw<kChSawType>{max_saw, traffic_days}.max()
                       << std::endl;
-          } else {
-            departures.clear();
           }
           edge_idx = insert_ch_edge(from, to, std::move(min_saw),
                                     std::move(max_saw), true);
@@ -557,7 +555,6 @@ void build_lb_graph(timetable& tt, profile_idx_t const prf_idx) {
             unpack.at(edge_idx).push_back(
                 {ch_edge_idx_t::invalid(), ch_edge_idx_t::invalid()});
             transfers.at(edge_idx).push_back(location_idx_t::invalid());
-            arrivals.clear();
           }
           write_ahead_edges.push_back(edge_idx);
         }
