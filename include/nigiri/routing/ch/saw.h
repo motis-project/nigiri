@@ -278,7 +278,7 @@ struct saw {
       out << e << " "
           << (e.traffic_days_ != bitfield_idx_t::invalid()
                   ? a.traffic_days_.bitfields_.at(e.traffic_days_).first.count()
-                  : -1)
+                  : 0U)
           << " ";
       // << a.traffic_days_.bitfields_.at(e.traffic_days_).first << "\n";
     }
@@ -579,8 +579,8 @@ struct saw {
             break;
           }
           remaining_traffic_days.set(last_set_bit, false);
-          remaining_traffic_days <<=
-              o_it.day_offset_ - day_offset;  // TODO is this correct?
+          remaining_traffic_days <<= static_cast<std::size_t>(
+              o_it.day_offset_ - day_offset);  // TODO is this correct?
           day_offset = o_it.day_offset_;
         }
 
@@ -596,8 +596,8 @@ struct saw {
 
         if constexpr (SawType == saw_type::kTrafficDaysPower) {
           if (conjunction.any()) {
-            conjunction >>=
-                o_it.day_offset_;  // TODO better shift o_it bitfields?
+            conjunction >>= static_cast<std::size_t>(
+                o_it.day_offset_);  // TODO better shift o_it bitfields?
             auto new_tooth = tooth{it->mam_, new_travel_dur, it->traffic_days_};
             auto last_out_mam = saw<SawType>{out, traffic_days_}.begin();
             last_out_mam += last_out_mam_idx;
@@ -652,7 +652,7 @@ struct saw {
           std::sort(out.begin() + last_out_mam_idx, out.end());
           auto const remaining_it = std::remove_if(
               out.begin() + last_out_mam_idx, out.end(), [&](auto const& e) {
-                auto const idx = &e - &*out.begin();
+                auto const idx = static_cast<unsigned>(&e - &*out.begin());
                 if (idx == 0U) {
                   return false;
                 }
@@ -670,7 +670,7 @@ struct saw {
                 return false;
               });
           out.erase(remaining_it, out.end());
-          last_out_mam_idx = out.size();
+          last_out_mam_idx = static_cast<unsigned>(out.size());
         }
       } else {
         if ((max && travel_dur_extremum == u16_minutes{0U}) ||
@@ -812,8 +812,8 @@ struct interleaved_saws {
         --pos_a_;
       } else if (s_.saw_a_.saw_[pos_a_ - 1].mam_ ==
                  s_.saw_b_.saw_[pos_b_ - 1].mam_) {
-        if (s_.saw_a_.saw_[pos_a_].travel_dur_ >
-            s_.saw_b_.saw_[pos_b_].travel_dur_) {
+        if (s_.saw_a_.saw_[pos_a_ - 1].travel_dur_ >
+            s_.saw_b_.saw_[pos_b_ - 1].travel_dur_) {
           --pos_a_;
         } else {
           --pos_b_;
