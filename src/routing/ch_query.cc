@@ -169,9 +169,11 @@ void obtain_relevant_stops(timetable const& tt,
       for_each_meta(
           tt, dir == kForward ? q.start_match_mode_ : q.dest_match_mode_,
           start.target_, [&](location_idx_t const x) {
-            relevant_stops.set(
-                x.v_);  // TODO only mark locations actually on shortest paths?
-            follow_edges(x, dir, start.duration());
+            auto const d =
+                static_cast<ch_label::dist_t>(start.duration().count());
+            dists[dir].at(x).d_[kMax] = owning_saw<kChSawType>{saw<saw_type::kConstant>::of(start.duration()), {}};
+            dists[dir].at(x).d_[kMin] = owning_saw<kChSawType>{saw<saw_type::kConstant>::of(start.duration()), {}};
+            pq.push(ch_label{x, {d, d}, dir});
             std::cout << "input" << x << " " << start.duration() << " "
                       << (dir == kForward ? "fw" : "bw") << std::endl;
           });

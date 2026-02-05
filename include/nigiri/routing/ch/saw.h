@@ -38,7 +38,8 @@ struct saw {
   static std::vector<tooth> of(duration_t const d) {
     utl::verify(SawType == saw_type::kConstant, "of not impl");
     auto out = std::vector<tooth>{};
-    out.push_back({0, d, bitfield_idx_t::invalid()});
+    out.push_back({std::numeric_limits<std::int16_t>::max(), d,
+                   bitfield_idx_t::invalid()});
     return out;
   }
 
@@ -137,6 +138,17 @@ struct saw {
     return ms.rend();
   }
 
+  bool is_constant() const {
+    if constexpr (SawType == saw_type::kConstant) {
+      return true;
+    }
+    if (saw_.size() == 1 &&
+        saw_[0].mam_ == std::numeric_limits<std::int16_t>::max()) {
+      return true;
+    }
+    return false;
+  }
+
   bool less(saw<SawType> const& b, bool const exact_true = false) const {
     if (saw_.empty()) {
       return false;
@@ -144,8 +156,9 @@ struct saw {
     if (b.saw_.empty()) {
       return true;
     }
-    if constexpr (SawType == saw_type::kConstant) {
-      return saw_[0].travel_dur_ < b.saw_[0].travel_dur_;
+    if (is_constant() || b.is_constant()) {
+      // TODO exact_true ?
+      return min() < b.min();
     }
     auto const interleaved = interleaved_saws<SawType>{*this, b};
 
@@ -263,7 +276,9 @@ struct saw {
   friend std::ostream& operator<<(std::ostream& out, saw<SawType> const& a) {
     for (auto const& e : a.saw_) {
       out << e << " "
-          << a.traffic_days_.bitfields_.at(e.traffic_days_).first.count()
+          << (e.traffic_days_ != bitfield_idx_t::invalid()
+                  ? a.traffic_days_.bitfields_.at(e.traffic_days_).first.count()
+                  : -1)
           << " ";
       // << a.traffic_days_.bitfields_.at(e.traffic_days_).first << "\n";
     }
@@ -274,7 +289,7 @@ struct saw {
     if (saw_.empty()) {
       return u16_minutes{kMaxTravelTime.count()};
     }
-    if (SawType == saw_type::kConstant) {
+    if (is_constant()) {
       return saw_[0].travel_dur_;
     }
     auto max = 0;
@@ -353,7 +368,8 @@ struct saw {
     if (to == saw_type::kConstant) {
       auto tmp = saw<SawType>{out, traffic_days_}.max();
       out.clear();
-      out.push_back({0, tmp, bitfield_idx_t::invalid()});
+      out.push_back({std::numeric_limits<std::int16_t>::max(), tmp,
+                     bitfield_idx_t::invalid()});
       return saw<SawType>{out, traffic_days_};
     }
     return saw<SawType>{out, traffic_days_};
@@ -366,10 +382,10 @@ struct saw {
     if (to == saw_type::kConstant) {
       auto tmp = saw<SawType>{out, traffic_days_}.min();
       out.clear();
-      out.push_back({0, tmp, bitfield_idx_t::invalid()});
+      out.push_back({std::numeric_limits<std::int16_t>::max(), tmp,
+                     bitfield_idx_t::invalid()});
       return saw<SawType>{out, traffic_days_};
     }
-    // TODO ktrafficdays
     return saw<SawType>{out, traffic_days_};
   }
 
@@ -443,13 +459,10 @@ struct saw {
     if (saw_.empty() && other.saw_.empty()) {
       return saw<SawType>{out, traffic_days_};
     }
-    if constexpr (SawType == saw_type::kConstant) {
-      out.push_back(
-          {0,
-           std::min(saw_.empty() ? u16_minutes::max() : saw_[0].travel_dur_,
-                    other.saw_.empty() ? u16_minutes::max()
-                                       : other.saw_[0].travel_dur_),
-           bitfield_idx_t::invalid()});
+    if (is_constant() || other.is_constant()) {
+      // TODO horizontally cut tooths?
+      out.push_back({std::numeric_limits<std::int16_t>::max(),
+                     std::min(min(), other.min()), bitfield_idx_t::invalid()});
       return saw<SawType>{out, traffic_days_};
     }
     auto const interleaved = interleaved_saws<SawType>{*this, other};
@@ -505,12 +518,13 @@ struct saw {
     if (saw_.empty() || other.saw_.empty()) {
       return saw<SawType>{out, traffic_days_};
     }
-    if constexpr (SawType == saw_type::kConstant) {
-      out.push_back({0,
-                     std::min(saw_[0].travel_dur_ + other.saw_[0].travel_dur_,
-                              kChMaxEdgeTime),
-                     bitfield_idx_t::invalid()});
-      return saw<SawType>{out, traffic_days_};
+    if (other.is_constant()) {
+      return concat_const(
+          kForward, saw<saw_type::kConstant>{other.saw_, traffic_days_}, out);
+    }
+    if (is_constant()) {
+      return other.concat_const(
+          kReverse, saw<saw_type::kConstant>{saw_, traffic_days_}, out);
     }
     auto const_min_other = 0;
     if (SawType == saw_type::kTrafficDays && !max) {  // TODO constexpr
@@ -708,8 +722,9 @@ struct saw {
     }
     auto const d = other.saw_[0].travel_dur_;
     utl::verify(d.count() < 24 * 60, "concat_const more than 24h");
-    if (SawType == saw_type::kConstant) {
-      out.push_back({0, std::min(saw_[0].travel_dur_ + d, kChMaxEdgeTime),
+    if (is_constant()) {
+      out.push_back({std::numeric_limits<std::int16_t>::max(),
+                     std::min(saw_[0].travel_dur_ + d, kChMaxEdgeTime),
                      bitfield_idx_t::invalid()});
       return saw<SawType>{out, traffic_days_};
     }

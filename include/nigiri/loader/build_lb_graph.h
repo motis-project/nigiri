@@ -34,8 +34,7 @@ static constexpr auto const kChMaxTravelTime =
 
 static constexpr auto const kEnableCh = true;
 static constexpr auto const kChGroupParents = true;
-static constexpr auto const kChAtomicFootpaths =
-    false;  // TODO automatic const concat
+static constexpr auto const kChAtomicFootpaths = true;
 
 struct departure {
   bool operator<(departure const& o) const {

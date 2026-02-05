@@ -18,6 +18,8 @@ using namespace std::chrono_literals;
 using namespace std::string_view_literals;
 using namespace nigiri::routing;
 
+// TODO test automatic const, same mam concat
+
 TEST(ch, saw_traffic_days_test) {
   auto tt = timetable{};
 
