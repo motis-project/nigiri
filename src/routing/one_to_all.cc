@@ -62,7 +62,7 @@ raptor_state one_to_all(timetable const& tt,
 
   auto state = raptor_state{};
 
-  auto is_dest = bitvec(tt.n_locations());  // Keep footpath time for each stop
+  auto is_dest = bitvec{tt.n_locations()};  // Keep footpath time for each stop
   auto is_via = std::array<bitvec, kMaxVias>{};
   auto dist_to_dest = std::vector<std::uint16_t>{};
   auto lb = std::vector<std::uint16_t>(tt.n_locations(), 0U);
