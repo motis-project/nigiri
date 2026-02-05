@@ -312,10 +312,6 @@ void assign_bounding_boxes(timetable const& tt,
       });
     }
 
-    if (is_trivial) {
-      segment_bboxes.clear();
-    }
-
     shapes_data.route_bboxes_.emplace_back(std::move(bounding_box));
     shapes_data.route_segment_bboxes_.emplace_back(std::move(segment_bboxes));
   }
