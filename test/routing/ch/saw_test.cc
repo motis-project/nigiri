@@ -234,6 +234,15 @@ TEST(ch, saw_traffic_days_power_test) {
     for (auto i = 0U; i < expected.size(); ++i) {
       EXPECT_EQ(expected[i], tmp[i]);
     }
+
+    auto tmp2 = std::vector<tooth>{};
+    saw<nigiri::routing::saw_type::kTrafficDaysPower>{tmp, td}.simplify(s2.to_saw(td), tmp2);
+    EXPECT_TRUE(tmp2 == tmp);
+
+    tmp2.clear();
+    auto tmp3 = std::vector<tooth>{};
+    saw<nigiri::routing::saw_type::kTrafficDaysPower>{tmp, td}.simplify(saw<nigiri::routing::saw_type::kTrafficDaysPower>{tmp3, td}, tmp2);
+    EXPECT_TRUE(tmp2 == tmp);
   }
 
   {
@@ -365,5 +374,22 @@ TEST(ch, saw_traffic_days_power_test) {
     EXPECT_TRUE(td.bitfields_.at(bitfield_idx_t{2}).first.test(7));
     EXPECT_FALSE(td.bitfields_.at(bitfield_idx_t{2}).first.test(8));
     EXPECT_EQ(td.bitfields_.at(bitfield_idx_t{2}).second, 7);
+  }
+
+  {
+    auto td = nigiri::routing::traffic_days{};
+
+    auto const s3 = owning_saw<routing::saw_type::kTrafficDaysPower>{
+      {{1001U, u16_minutes{10}, bitfield_idx_t{0}},
+       {1000U, u16_minutes{5}, bitfield_idx_t{1}},
+       {1000U, u16_minutes{5}, bitfield_idx_t{0}},
+       {1000U, u16_minutes{5}, bitfield_idx_t{1}},
+       {999U, u16_minutes{10}, bitfield_idx_t{1}}},
+      u16_minutes{0}};
+
+    ASSERT_FALSE(s1.to_saw(td) == s2.to_saw(td));
+    ASSERT_TRUE(s1.to_saw(td) != s2.to_saw(td));
+    ASSERT_TRUE(s1.to_saw(td) == s3.to_saw(td));
+    ASSERT_FALSE(s1.to_saw(td) != s3.to_saw(td));
   }
 }
