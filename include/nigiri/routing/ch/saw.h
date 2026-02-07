@@ -179,7 +179,7 @@ struct saw {
       while (true) {
         // std::cout << "a less " << std::endl;
         --a_it;
-        if (a_it.day_offset_ > routing::kMaxTravelTime / 1_days) {
+        if (a_it.day_offset_ > kChMaxEdgeTime / kChDay) {
           break;
         }
         if (!a_it.is_a()) {
@@ -252,27 +252,19 @@ struct saw {
   }
 
   friend bool operator==(saw<SawType> const& a, saw<SawType> const& b) {
-    auto const thresh = 3;
-    if (a.saw_.empty() || b.saw_.empty()) {
+    if (a.saw_.size() != b.saw_.size()) {
       return false;
     }
-    auto diff = a.saw_.size() > b.saw_.size() ? a.saw_.size() - b.saw_.size()
-                                              : a.saw_.size() - b.saw_.size();
-    if (diff > thresh) {
-      return false;
-    }
-    // TODO awful
-    auto const interleaved = interleaved_saws<SawType>{a, b};
-
-    auto last_a = !interleaved.begin().is_a();
-    for (auto it = interleaved.begin(); it != interleaved.end(); ++it) {
-      if (it.is_a() && last_a) {
-        ++diff;
-        if (diff > thresh) {
-          return false;
-        }
+    for (auto i = 0U; i < a.saw_.size(); ++i) {
+      if (a.saw_[i].mam_ != b.saw_[i].mam_) {
+        return false;
       }
-      last_a = it.is_a();
+      if (a.saw_[i].travel_dur_ != b.saw_[i].travel_dur_) {
+        return false;
+      }
+      if (a.saw_[i].traffic_days_ != b.saw_[i].traffic_days_) {
+        return false;
+      }
     }
     return true;
   }
@@ -406,8 +398,7 @@ struct saw {
                      Iterator a_it,
                      bitfield* remaining_traffic_days,
                      bool const not_normalized = false,
-                     bool const day_lookahead = routing::kMaxTravelTime /
-                                                1_days) const {
+                     bool const day_lookahead = kChMaxEdgeTime / kChDay) const {
     auto const lsb =
         SawType == saw_type::kDay
             ? 0U
@@ -424,17 +415,20 @@ struct saw {
       auto const mam_diff = a_it->mam_ - t.mam_ + a_it.day_offset_ * 24 * 60;
       auto const remaining_travel_time =
           static_cast<std::int16_t>(t.travel_dur_.count()) - mam_diff;
+      auto const is_infty_and_not_same_mam =
+          a_it->travel_dur_.count() >= kChMaxEdgeTime.count() &&
+          remaining_travel_time < kChMaxEdgeTime.count();
 
       if constexpr (SawType == saw_type::kDay) {
         if (remaining_travel_time >= a_it->travel_dur_.count() &&
-            a_it->travel_dur_.count() < kChMaxEdgeTime.count()) {
+            !is_infty_and_not_same_mam) {
           return false;
         }
         if (!not_normalized) {
           return true;
         }
       }
-      if (a_it->travel_dur_.count() >= kChMaxEdgeTime.count()) {
+      if (is_infty_and_not_same_mam) {
         continue;
       }
       if (remaining_travel_time < 0) {  // TODO min const lb
@@ -597,7 +591,7 @@ struct saw {
           break;
         }
         if (day_offset != o_it.day_offset_) {
-          if (o_it.day_offset_ > routing::kMaxTravelTime / 1_days) {
+          if (o_it.day_offset_ > kChMaxWaitingTime / kChDay) {
             break;
           }
           auto const diff =
