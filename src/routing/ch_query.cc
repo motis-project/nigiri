@@ -62,7 +62,7 @@ void obtain_relevant_stops(timetable const& tt,
   auto new_max_dist = std::vector<tooth>{};
   auto new_min_dist = std::vector<tooth>{};
   auto tmp_saw = std::vector<tooth>{};
-  auto mode = kMin;
+  //auto mode = kMin;
 
   auto const follow_edges = [&](location_idx_t const l, unsigned const l_dir,
                                 u16_minutes const const_dist,
@@ -274,8 +274,9 @@ void obtain_relevant_stops(timetable const& tt,
       tmp_saw.clear();
     }
     // std::cout << "mmd" << min_max_dist << std::endl;
-    if (dists[l_dir].at(l.l_).d_[mode].to_saw(ch_traffic_days) >
-        saw<kChSawType>{min_max_dist, ch_traffic_days}) {
+    if (l.d_[kMin] > saw<kChSawType>{min_max_dist, ch_traffic_days}.max().count()) {
+    // && dists[l_dir].at(l.l_).d_[mode].to_saw(ch_traffic_days) >
+    //    saw<kChSawType>{min_max_dist, ch_traffic_days}) {
       /*if (mode == kMax) {
         auto buffer = std::vector<ch_label>{};
         while (!pq.empty()) {
