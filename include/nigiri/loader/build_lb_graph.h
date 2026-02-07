@@ -35,6 +35,8 @@ static constexpr auto const kChMaxTravelTime =
 static constexpr auto const kEnableCh = true;
 static constexpr auto const kChGroupParents = true;
 static constexpr auto const kChAtomicFootpaths = true;
+static constexpr auto const kChMaxLevelFraction = 0.999;
+static constexpr auto const kChMaxNodeOrderUpdateFraction = 0.99;
 
 struct departure {
   bool operator<(departure const& o) const {
@@ -737,7 +739,7 @@ void build_lb_graph(timetable& tt, profile_idx_t const prf_idx) {
           tt.ch_levels_[prf_idx].at(location_id) > 0U) {
         continue;
       }
-      if (level > 0.990 * tt.n_locations()) {  // TODO
+      if (level > kChMaxLevelFraction * tt.n_locations()) {  // TODO
         tt.ch_levels_[prf_idx].at(location_id) = level;
         continue;
       }
@@ -770,8 +772,10 @@ void build_lb_graph(timetable& tt, profile_idx_t const prf_idx) {
             .push_back(e_idx);
       }
       write_ahead_edges.clear();
-      update_neighbours_node_order(location_id, write_ahead_edges, pq,
-                                   current_order);
+      if (level <= kChMaxNodeOrderUpdateFraction * tt.n_locations()) {
+        update_neighbours_node_order(location_id, write_ahead_edges, pq,
+                                     current_order);
+      }
     }
     std::cout << "persisting..." << std::endl;
     print_edge_stats();
