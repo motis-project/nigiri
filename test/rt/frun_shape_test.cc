@@ -716,7 +716,6 @@ TEST(
           plot_point);
 
       EXPECT_EQ((geo::polyline{
-                    {2.0F, 2.0F},
                     {2.5F, 2.5F},
                     {3.0F, 3.0F},
                 }),
@@ -786,10 +785,8 @@ TEST(
           plot_point);
 
       EXPECT_EQ((geo::polyline{
-                    {2.0F, 2.0F},
                     {2.5F, 2.5F},
                     {3.625F, 3.625F},
-                    {3.0F, 3.0F},
                 }),
                 leg_shape);
     }
