@@ -8,6 +8,11 @@ namespace nigiri {
 
 struct stop {
   using value_type = location_idx_t::value_t;
+  static constexpr auto const kTotalBits = 8 * sizeof(value_type);
+  static constexpr auto const kLocationBits = 28U;
+  static constexpr auto const kMaxLocation =
+      std::numeric_limits<location_idx_t::value_t>::max() >>
+      (kTotalBits - kLocationBits);
 
   stop(location_idx_t::value_t const val) {
     std::memcpy(this, &val, sizeof(value_type));
@@ -24,7 +29,12 @@ struct stop {
         in_allowed_wheelchair_{in_allowed_wheelchair ? 1U : 0U},
         out_allowed_wheelchair_{out_allowed_wheelchair ? 1U : 0U} {}
 
-  location_idx_t location_idx() const { return location_idx_t{location_}; }
+  location_idx_t location_idx() const {
+    auto const location_idx = location_ != kMaxLocation
+                                  ? location_idx_t{location_}
+                                  : location_idx_t::invalid();
+    return location_idx;
+  }
   bool in_allowed_wheelchair() const { return in_allowed_wheelchair_ != 0U; }
   bool out_allowed_wheelchair() const { return out_allowed_wheelchair_ != 0U; }
   bool in_allowed() const { return in_allowed_ != 0U; }
@@ -72,7 +82,7 @@ struct stop {
 
   friend auto operator<=>(stop const&, stop const&) = default;
 
-  location_idx_t::value_t location_ : 28;
+  location_idx_t::value_t location_ : kLocationBits;
   location_idx_t::value_t in_allowed_ : 1;
   location_idx_t::value_t out_allowed_ : 1;
   location_idx_t::value_t in_allowed_wheelchair_ : 1;
