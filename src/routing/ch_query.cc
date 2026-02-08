@@ -182,6 +182,11 @@ void obtain_relevant_stops(timetable const& tt,
     }
   };
 
+  for (auto i =location_idx_t{0U}; i<tt.n_locations();++i) {
+std::cout << i  << " " << tt.get_default_translation(tt.locations_.names_.at(i))
+ << " l:" << tt.ch_levels_[prf_idx].at(i) << std::endl;
+  }
+
   auto const init = [&](std::vector<routing::offset> offsets,
                         std::uint8_t dir) {
     for (auto const& start : offsets) {  // TODO correct offsets
@@ -229,16 +234,16 @@ void obtain_relevant_stops(timetable const& tt,
       continue;
     }*/
     std::cout << "steop "
-              << l.l_  // << " " << tt.locations_.names_[l.l_]..view()
+              << l.l_  << " " << tt.get_default_translation(tt.locations_.names_.at(l.l_))
               << " nonce: " << l.d_[kMin] << " " << " max: " << l.d_[kMax]
               << " other:"
               << dists[other_dir][l.l_].d_[kMax].to_saw(ch_traffic_days).max()
               << " " << l_dir << " l:" << tt.ch_levels_[prf_idx].at(l.l_)
               << std::endl;
-    std::cout << "max " << dists[l_dir][l.l_].d_[kMax].to_saw(ch_traffic_days)
+    /*std::cout << "max " << dists[l_dir][l.l_].d_[kMax].to_saw(ch_traffic_days)
               << std::endl;
     std::cout << "max " << dists[l_dir][l.l_].d_[kMin].to_saw(ch_traffic_days)
-              << std::endl;
+              << std::endl;*/
     if (!dists[other_dir][l.l_].d_[kMax].saw_.empty()) {
       auto max_concat =
           dists[l_dir]
@@ -378,7 +383,7 @@ void obtain_relevant_stops(timetable const& tt,
       continue;
     }
     std::cout << "down " << l.l_
-              << " "  // << tt.locations_.names_[l.l_].view()
+              << " "  << tt.get_default_translation(tt.locations_.names_.at(l.l_))
                       // << " min: " << dists[l.dir_][l.l_].d_[kMin] << " "
               << " max: " << l_d_max << " nonce: " << l.d_[kMin]
               << " dir:" << (l.dir_ == kForward ? "fwd" : "bwd")
@@ -386,13 +391,13 @@ void obtain_relevant_stops(timetable const& tt,
     nonce_map.at(l.l_) = l.d_[kMin];
     saw<kChSawType>{min_max_dist, ch_traffic_days}.simplify(
         dists[l.dir_][l.l_].d_[kMax].to_saw(ch_traffic_days), tmp_saw);
-    if (saw<kChSawType>{tmp_saw, ch_traffic_days} ==
+    /*if (saw<kChSawType>{tmp_saw, ch_traffic_days} ==
         dists[l.dir_][l.l_].d_[kMax].to_saw(
             ch_traffic_days)) {  // TODO improve leq pre-pq-push?
       mark_relevant_stop(l.l_);
       tmp_saw.clear();
       continue;
-    }
+    }*/
     std::swap(dists[l.dir_][l.l_].d_[kMax].saw_,
               tmp_saw);  // TODO min with l_d_max-e.min_dur
     tmp_saw.clear();
@@ -490,6 +495,7 @@ void obtain_relevant_stops(timetable const& tt,
               continue;  // TODO count occurs
             }
             if (transfer != location_idx_t::invalid()) {
+              std::cout << "transfer " << tt.get_default_translation(tt.locations_.names_.at(l.l_)) << std::endl;
               mark_relevant_stop(transfer);
             }
             stack.push_back({unpack.first, arr_max});
