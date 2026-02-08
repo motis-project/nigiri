@@ -480,7 +480,8 @@ destination_display_map_t get_destination_displays(
            "//ServiceFrame/destinationDisplays/DestinationDisplay")) {
     auto const n = display.node();
     destination_displays.emplace(
-        id(n), uniq(destination_display{.direction_ = val(n, "FrontText")}));
+        id(n), uniq(destination_display{.direction_ = val(n, "FrontText") ||
+                                                      val(n, "Name")}));
   }
   return destination_displays;
 }
@@ -967,11 +968,13 @@ std::vector<service_journey> get_service_journeys(
         // CH-SKI
         auto const arr = call.child("Arrival");
         auto const dep = call.child("Departure");
+        auto const dest_ref = ref(call, "DestinationDisplayRef");
         jp.stop_points_.push_back({
             .stop_ = stop_assignments.at(ref(call, "ScheduledStopPointRef")),
             .destination_display_ =
-                destination_displays.at(ref(call, "DestinationDisplayRef"))
-                    .get(),
+                dest_ref.empty() && !jp.stop_points_.empty()
+                    ? jp.stop_points_.back().destination_display_
+                    : destination_displays.at(dest_ref).get(),
             .in_allowed_ = is_true_or_empty(val(dep, "ForBoarding")),
             .out_allowed_ = is_true_or_empty(val(arr, "ForAlighting")),
             .notices_ = utl::merge(notice_assignments,
@@ -1526,15 +1529,6 @@ void load_timetable(loader_config const& config,
         add_to_tt(path, *im);
       },
       pt->update_fn());
-
-  fmt::println(std::clog, "GLOBAL JOURNEY MEETINGS");
-  for (auto const& [from, to] : global_journey_meetings) {
-    fmt::println(std::clog, "from={}, to={}", from,
-                 to | std::views::transform([](journey_meeting const& x) {
-                   return x.to_journey_id_;
-                 }));
-  }
-  fmt::println(std::clog, "----");
 
   auto route_services =
       hash_map<gtfs::route_key_t, std::vector<std::vector<utc_trip>>,
