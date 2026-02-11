@@ -35,7 +35,7 @@ static constexpr auto const kChMaxTravelTime =
 static constexpr auto const kEnableCh = true;
 static constexpr auto const kChGroupParents = true;
 static constexpr auto const kChAtomicFootpaths = true;
-static constexpr auto const kChMaxLevelFraction = 0.999;
+static constexpr auto const kChMaxLevelFraction = 1.0;
 static constexpr auto const kChMaxNodeOrderUpdateFraction = 0.99;
 
 struct departure {
@@ -550,9 +550,9 @@ void build_lb_graph(timetable& tt, profile_idx_t const prf_idx) {
                 auto const& e = begin(arrivals)->second;
                 arrivals_to_saw(e, min_saw, max_saw);
                 arrivals.clear();
-                std::cout << "max saw "
+                /*std::cout << "max saw "
                           << saw<kChSawType>{max_saw, traffic_days}.max()
-                          << std::endl;
+                          << std::endl;*/
               }
               edge_idx = insert_ch_edge(from, to, std::move(min_saw),
                                         std::move(max_saw), true);
@@ -631,6 +631,7 @@ void build_lb_graph(timetable& tt, profile_idx_t const prf_idx) {
                            // order, shortcuts will be replaced?
                            // do not subtract direct_inserts because big
                            // junctions will win
+                           // special weight for stops without transfers?
 
         if (current_order.at(l) != order) {
           pq.push(routing::label{l, order});
@@ -746,15 +747,37 @@ void build_lb_graph(timetable& tt, profile_idx_t const prf_idx) {
       ++level;
       contract_ch_node(location_id, write_ahead_edges, stats);
       tt.ch_levels_[prf_idx].at(location_id) = level;
+      for (auto const e_idx : write_ahead_edges) {
+        fwd_search_ch_graph.at(tt.ch_graph_edges_[prf_idx].at(e_idx).from_)
+            .push_back(e_idx);
+        bwd_search_ch_graph.at(tt.ch_graph_edges_[prf_idx].at(e_idx).to_)
+            .push_back(e_idx);
+      }
+      write_ahead_edges.clear();
       if (level % 100 == 0) {
-        std::cout << level << " " << fwd_search_ch_graph.at(location_id).size()
-                  << " " << bwd_search_ch_graph.at(location_id).size() << " "
-                  << location_id
-                  << " "
-                     // << tt.locations_.names_[location_id].view() <<
-                     " "
-                  << order << std::endl;
+        std::cout
+            << level << " "
+            << utl::count_if(
+                   fwd_search_ch_graph.at(location_id),
+                   [&](auto const& e) {
+                     return tt.ch_levels_[prf_idx].at(
+                                tt.ch_graph_edges_[prf_idx].at(e).to_) == 0;
+                   })
+            << "/" << fwd_search_ch_graph.at(location_id).size() << " "
+            << utl::count_if(
+                   bwd_search_ch_graph.at(location_id),
+                   [&](auto const& e) {
+                     return tt.ch_levels_[prf_idx].at(
+                                tt.ch_graph_edges_[prf_idx].at(e).from_) == 0;
+                   })
+            << "/" << bwd_search_ch_graph.at(location_id).size() << " "
+            << location_id << " "
+            << tt.get_default_translation(tt.locations_.names_.at(location_id))
+            << " " << order << std::endl;
         print_stats();
+        if (level % 1000 == 0) {
+          print_edge_stats();
+        }
         std::cout << " empty stops: " << empty_stops
                   << " edges: " << tt.ch_graph_edges_[prf_idx].size()
                   << " stations: " << tt.n_locations() << " transfers size: "
@@ -765,13 +788,6 @@ void build_lb_graph(timetable& tt, profile_idx_t const prf_idx) {
                                      })
                   << std::endl;
       }
-      for (auto const e_idx : write_ahead_edges) {
-        fwd_search_ch_graph.at(tt.ch_graph_edges_[prf_idx].at(e_idx).from_)
-            .push_back(e_idx);
-        bwd_search_ch_graph.at(tt.ch_graph_edges_[prf_idx].at(e_idx).to_)
-            .push_back(e_idx);
-      }
-      write_ahead_edges.clear();
       if (level <= kChMaxNodeOrderUpdateFraction * tt.n_locations()) {
         update_neighbours_node_order(location_id, write_ahead_edges, pq,
                                      current_order);
