@@ -43,9 +43,8 @@ void run_raptor(raptor<SearchDir, Rt, kVias, search_mode::kOneToAll>&& algo,
   // It will not find journeys with the same duration
   constexpr auto const kEpsilon = duration_t{1};
   auto const worst_time_at_dest =
-      start_time +
-      (SearchDir == direction::kForward ? 1 : -1) * (q.max_travel_time_) +
-      kEpsilon;
+      start_time + (SearchDir == direction::kForward ? 1 : -1) *
+                       (q.max_travel_time_ + kEpsilon);
 
   algo.execute(start_time, q.max_transfers_, worst_time_at_dest, q.prf_idx_,
                results);
@@ -63,7 +62,7 @@ raptor_state one_to_all(timetable const& tt,
 
   auto state = raptor_state{};
 
-  auto is_dest = bitvec::max(tt.n_locations());
+  auto is_dest = bitvec{tt.n_locations()};  // Keep footpath time for each stop
   auto is_via = std::array<bitvec, kMaxVias>{};
   auto dist_to_dest = std::vector<std::uint16_t>{};
   auto lb = std::vector<std::uint16_t>(tt.n_locations(), 0U);

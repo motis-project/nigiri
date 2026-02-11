@@ -153,7 +153,7 @@ delay_propagation update_event(timetable const& tt,
     rtt.update_time(r.rt_, stop_idx, ev_type, lower_bounded_new_time);
     rtt.dispatch_delay(r, stop_idx, ev_type,
                        lower_bounded_new_time - static_time);
-    return {lower_bounded_new_time, new_time - static_time};
+    return {lower_bounded_new_time, lower_bounded_new_time - static_time};
   }
 }
 
@@ -819,8 +819,7 @@ statistics gtfsrt_update_buf(timetable const& tt,
   msg.Clear();
 
   auto const success =
-      msg.ParseFromArray(reinterpret_cast<void const*>(protobuf.data()),
-                         static_cast<int>(protobuf.size()));
+      msg.ParseFromArray(protobuf.data(), static_cast<int>(protobuf.size()));
   if (!success) {
     log(log_lvl::debug, "rt.gtfs",
         "GTFS-RT error (tag={}): unable to parse protobuf message: {}", tag,

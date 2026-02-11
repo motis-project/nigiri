@@ -418,6 +418,7 @@ struct line {
   hash_map<route_key, route_id_idx_t> routes_{};
   std::string_view id_;
   std::string_view name_;
+  std::string_view short_name_;
   std::string_view product_;
   authority const* authority_;
   operätor const* operator_;
@@ -433,6 +434,7 @@ line_map_t get_lines(pugi::xml_document const& doc,
   lines.emplace("", uniq(line{
                         .id_ = "",
                         .name_ = "",
+                        .short_name_ = "",
                         .product_ = "",
                         .authority_ = authorities.at(std::string_view{}).get(),
                         .operator_ = operators.at(std::string_view{}).get(),
@@ -447,6 +449,7 @@ line_map_t get_lines(pugi::xml_document const& doc,
         uniq(line{
             .id_ = id(n),
             .name_ = val(n, "Name"),
+            .short_name_ = val(n, "ShortName"),
             .product_ = products.at(ref(n, "TypeOfProductCategoryRef")),
             .authority_ = authorities.at(ref(n, "AuthorityRef")).get(),
             .operator_ =
@@ -477,7 +480,8 @@ destination_display_map_t get_destination_displays(
            "//ServiceFrame/destinationDisplays/DestinationDisplay")) {
     auto const n = display.node();
     destination_displays.emplace(
-        id(n), uniq(destination_display{.direction_ = val(n, "FrontText")}));
+        id(n), uniq(destination_display{.direction_ = val(n, "FrontText") ||
+                                                      val(n, "Name")}));
   }
   return destination_displays;
 }
@@ -964,11 +968,13 @@ std::vector<service_journey> get_service_journeys(
         // CH-SKI
         auto const arr = call.child("Arrival");
         auto const dep = call.child("Departure");
+        auto const dest_ref = ref(call, "DestinationDisplayRef");
         jp.stop_points_.push_back({
             .stop_ = stop_assignments.at(ref(call, "ScheduledStopPointRef")),
             .destination_display_ =
-                destination_displays.at(ref(call, "DestinationDisplayRef"))
-                    .get(),
+                dest_ref.empty() && !jp.stop_points_.empty()
+                    ? jp.stop_points_.back().destination_display_
+                    : destination_displays.at(dest_ref).get(),
             .in_allowed_ = is_true_or_empty(val(dep, "ForBoarding")),
             .out_allowed_ = is_true_or_empty(val(arr, "ForAlighting")),
             .notices_ = utl::merge(notice_assignments,
@@ -1391,15 +1397,18 @@ void load_timetable(loader_config const& config,
       if (route_it == end(line.routes_)) {
         auto const id =
             fmt::format("{}-{}-{}", line.id_, op->id_, sj.route_type_);
-        auto rout = route{tt,
-                          src,
-                          id,
-                          tt.register_translation(line.name_),
-                          tt.register_translation(line.product_),
-                          route_type_t{get_more_precise_route_type(
-                              sj.route_type_, line.route_type_)},
-                          line.color_,
-                          op->provider_};
+        auto rout =
+            route{tt,
+                  src,
+                  id,
+                  tt.register_translation(
+                      line.short_name_.empty() ? line.name_ : line.short_name_),
+                  tt.register_translation(
+                      line.product_.empty() ? line.name_ : line.product_),
+                  route_type_t{get_more_precise_route_type(sj.route_type_,
+                                                           line.route_type_)},
+                  line.color_,
+                  op->provider_};
         route_id = line.routes_
                        .emplace_hint(
                            route_it, line::route_key{sj.route_type_, op},
@@ -1474,7 +1483,7 @@ void load_timetable(loader_config const& config,
         attr.pop_back();
       }
 
-      [[maybe_unused]] auto const sj_idx = sj_ids.store(sj.id_);
+      auto const sj_idx = sj_ids.store(sj.id_);
       assert(sj_idx == sj_utc_trips.size());
       assert(sj_idx == sj_trips.size());
       sj_trips.push_back(trip_idx);
@@ -1520,15 +1529,6 @@ void load_timetable(loader_config const& config,
         add_to_tt(path, *im);
       },
       pt->update_fn());
-
-  fmt::println(std::clog, "GLOBAL JOURNEY MEETINGS");
-  for (auto const& [from, to] : global_journey_meetings) {
-    fmt::println(std::clog, "from={}, to={}", from,
-                 to | std::views::transform([](journey_meeting const& x) {
-                   return x.to_journey_id_;
-                 }));
-  }
-  fmt::println(std::clog, "----");
 
   auto route_services =
       hash_map<gtfs::route_key_t, std::vector<std::vector<utc_trip>>,

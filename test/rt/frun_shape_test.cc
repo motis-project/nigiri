@@ -220,6 +220,8 @@ TRIP_14,13:15:00,13:15:00,W,3,0,0,
 
 )"sv;
 
+constexpr auto const kDefaultFootpathDuration = 2_minutes;
+
 TEST(
     rt,
     frun_for_each_shape_point_when_shapes_are_provided_then_process_all_subshapes) {
@@ -849,7 +851,8 @@ TEST(
       auto const q = routing::query{
           .start_time_ = start_time,
           .start_ = to_offsets("A"),
-          .max_travel_time_ = 4_hours,
+          .max_travel_time_ =
+              4_hours + kDefaultFootpathDuration,  // Exact limit
       };
       auto state = nigiri::routing::one_to_all<kSearchDir>(tt, nullptr, q);
 
@@ -870,7 +873,9 @@ TEST(
       auto const q = routing::query{
           .start_time_ = start_time,
           .start_ = to_offsets("A"),
-          .max_travel_time_ = 4_hours,
+          .max_travel_time_ =
+              4_hours + 4_minutes +
+              kDefaultFootpathDuration,  // Exact limit - 1 minute
       };
       auto state = nigiri::routing::one_to_all<kSearchDir>(tt, &rtt, q);
 
@@ -884,16 +889,19 @@ TEST(
         auto const stats_s = get_fastest_one_to_all_offsets(
             tt, state, kSearchDir, to_location_idx("S"), start_time,
             q.max_transfers_);
-        ASSERT_EQ(stats_s.duration_, delta_t{140});
+        ASSERT_EQ(stats_s.duration_,
+                  delta_t{140 + kDefaultFootpathDuration.count()});
         ASSERT_EQ(stats_s.k_, 2U);
         auto const stats_w = get_fastest_one_to_all_offsets(
             tt, state, kSearchDir, to_location_idx("W"), start_time,
             q.max_transfers_);
-        ASSERT_EQ(stats_w.duration_, delta_t{200});
+        ASSERT_EQ(stats_w.duration_,
+                  delta_t{200 + kDefaultFootpathDuration.count()});
         ASSERT_EQ(stats_w.k_, 2U);
         auto const stats_s_direct = get_fastest_one_to_all_offsets(
             tt, state, kSearchDir, to_location_idx("S"), start_time, 0);
-        ASSERT_EQ(stats_s_direct.duration_, delta_t{185});
+        ASSERT_EQ(stats_s_direct.duration_,
+                  delta_t{185 + kDefaultFootpathDuration.count()});
         ASSERT_EQ(stats_s_direct.k_, 1U);
       }
     }
@@ -920,7 +928,8 @@ TEST(
     auto const stats_b = get_fastest_one_to_all_offsets(
         tt, state, kSearchDir, to_location_idx("B"), start_time,
         q.max_transfers_);
-    ASSERT_EQ(stats_b.duration_, delta_t{-150});
+    ASSERT_EQ(stats_b.duration_,
+              delta_t{-150 - kDefaultFootpathDuration.count()});
   }
   // One-to-All forwards with nontrivial offsets at F
   {
@@ -943,7 +952,8 @@ TEST(
     auto const stats_s = get_fastest_one_to_all_offsets(
         tt, state, kSearchDir, to_location_idx("S"), start_time,
         q.max_transfers_);
-    EXPECT_EQ(stats_s.duration_, delta_t{80});
+    EXPECT_EQ(stats_s.duration_,
+              delta_t{80 + kDefaultFootpathDuration.count()});
   }
   // One-to-All backwards with nontrivial offsets at S
   {
@@ -955,6 +965,9 @@ TEST(
     auto const q = routing::query{
         .start_time_ = start_time,
         .start_ = {{to_location_idx("S"), 10_minutes, 0U}},
+        .max_travel_time_ =
+            110_minutes +
+            kDefaultFootpathDuration,  // Exact limit for backward search
     };
     auto state = nigiri::routing::one_to_all<kSearchDir>(tt, &rtt, q);
 
@@ -966,7 +979,8 @@ TEST(
     auto const stats_f = get_fastest_one_to_all_offsets(
         tt, state, kSearchDir, to_location_idx("F"), start_time,
         q.max_transfers_);
-    EXPECT_EQ(stats_f.duration_, delta_t{-110});
+    EXPECT_EQ(stats_f.duration_,
+              delta_t{-110 - kDefaultFootpathDuration.count()});
   }
   // Loading statistics
   {
