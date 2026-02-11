@@ -707,7 +707,8 @@ struct saw {
         }
       }
     }
-    auto const wraparound_saw = saw<SawType>{out, traffic_days_};
+    auto const out_tmp = out; // TODO avoid copy
+    auto const wraparound_saw = saw<SawType>{out_tmp, traffic_days_};
     auto const remaining_it =
         std::remove_if(out.begin(), out.end(), [&](tooth const& e) {
           auto td = traffic_days_.bitfields_.at(e.traffic_days_).first;
@@ -718,7 +719,7 @@ struct saw {
         });
     out.erase(remaining_it,
               out.end());  // TODO is this really necessary? power traffic day
-                           // subtract? delete markers instead?
+                           // subtract? delete markers instead?*/
 
     return saw<SawType>{out, traffic_days_};
   }

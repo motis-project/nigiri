@@ -62,7 +62,7 @@ void obtain_relevant_stops(timetable const& tt,
   auto new_max_dist = std::vector<tooth>{};
   auto new_min_dist = std::vector<tooth>{};
   auto tmp_saw = std::vector<tooth>{};
-  //auto mode = kMin;
+  // auto mode = kMin;
 
   auto const follow_edges = [&](location_idx_t const l, unsigned const l_dir,
                                 u16_minutes const const_dist,
@@ -182,9 +182,10 @@ void obtain_relevant_stops(timetable const& tt,
     }
   };
 
-  for (auto i =location_idx_t{0U}; i<tt.n_locations();++i) {
-std::cout << i  << " " << tt.get_default_translation(tt.locations_.names_.at(i))
- << " l:" << tt.ch_levels_[prf_idx].at(i) << std::endl;
+  for (auto i = location_idx_t{0U}; i < tt.n_locations(); ++i) {
+    std::cout << i << " "
+              << tt.get_default_translation(tt.locations_.names_.at(i))
+              << " l:" << tt.ch_levels_[prf_idx].at(i) << std::endl;
   }
 
   auto const init = [&](std::vector<routing::offset> offsets,
@@ -233,8 +234,8 @@ std::cout << i  << " " << tt.get_default_translation(tt.locations_.names_.at(i))
             l.d_[kMin]) {  // TODO nonce?
       continue;
     }*/
-    std::cout << "steop "
-              << l.l_  << " " << tt.get_default_translation(tt.locations_.names_.at(l.l_))
+    std::cout << "steop " << l.l_ << " "
+              << tt.get_default_translation(tt.locations_.names_.at(l.l_))
               << " nonce: " << l.d_[kMin] << " " << " max: " << l.d_[kMax]
               << " other:"
               << dists[other_dir][l.l_].d_[kMax].to_saw(ch_traffic_days).max()
@@ -279,9 +280,10 @@ std::cout << i  << " " << tt.get_default_translation(tt.locations_.names_.at(i))
       tmp_saw.clear();
     }
     // std::cout << "mmd" << min_max_dist << std::endl;
-    if (l.d_[kMin] > saw<kChSawType>{min_max_dist, ch_traffic_days}.max().count()) {
-    // && dists[l_dir].at(l.l_).d_[mode].to_saw(ch_traffic_days) >
-    //    saw<kChSawType>{min_max_dist, ch_traffic_days}) {
+    if (l.d_[kMin] >
+        saw<kChSawType>{min_max_dist, ch_traffic_days}.max().count()) {
+      // && dists[l_dir].at(l.l_).d_[mode].to_saw(ch_traffic_days) >
+      //    saw<kChSawType>{min_max_dist, ch_traffic_days}) {
       /*if (mode == kMax) {
         auto buffer = std::vector<ch_label>{};
         while (!pq.empty()) {
@@ -331,21 +333,25 @@ std::cout << i  << " " << tt.get_default_translation(tt.locations_.names_.at(i))
         .to_saw(ch_traffic_days)
         .concat(dists[kReverse][m].d_[kMin].to_saw(ch_traffic_days), false,
                 tmp_saw);
-    std::cout << "mp filter " << saw<kChSawType>{tmp_saw, ch_traffic_days}.min()
-              << " " << saw<kChSawType>{min_max_dist, ch_traffic_days}.max()
+    std::cout << "mp filter "
+              << tt.get_default_translation(tt.locations_.names_.at(m)) << " "
+              << saw<kChSawType>{tmp_saw, ch_traffic_days}.min() << " "
+              << saw<kChSawType>{min_max_dist, ch_traffic_days}.max()
               << std::endl;
-    for (auto const& e : tmp_saw) {
-      std::cout << e.mam_ << " " << e.travel_dur_ << std::endl;
-    }
-    std::cout << "min_max <" << std::endl;
-    for (auto const& e : tmp_saw) {
-      std::cout << e.mam_ << " " << e.travel_dur_ << std::endl;
-    }
     if (saw<kChSawType>{tmp_saw, ch_traffic_days} >
-        saw<kChSawType>{min_max_dist, ch_traffic_days}) {
+            saw<kChSawType>{min_max_dist, ch_traffic_days} ||
+        saw<kChSawType>{tmp_saw, ch_traffic_days}.min() >
+            saw<kChSawType>{min_max_dist, ch_traffic_days}
+                .max()) {  // TODO werid
       tmp_saw.clear();
       continue;
     }
+    std::cout << "taken" << std::endl;
+    std::cout << "concat " << saw<kChSawType>{tmp_saw, ch_traffic_days}
+              << std::endl;
+    std::cout << "min_max" << saw<kChSawType>{min_max_dist, ch_traffic_days}
+              << std::endl;
+
     tmp_saw.clear();
     for (auto const dir : {kForward, kReverse}) {
       auto const other_dir = dir ^ 1U;
@@ -382,9 +388,9 @@ std::cout << i  << " " << tt.get_default_translation(tt.locations_.names_.at(i))
     if (l.d_[kMin] <= nonce_map.at(l.l_)) {
       continue;
     }
-    std::cout << "down " << l.l_
-              << " "  << tt.get_default_translation(tt.locations_.names_.at(l.l_))
-                      // << " min: " << dists[l.dir_][l.l_].d_[kMin] << " "
+    std::cout << "down " << l.l_ << " "
+              << tt.get_default_translation(tt.locations_.names_.at(l.l_))
+              // << " min: " << dists[l.dir_][l.l_].d_[kMin] << " "
               << " max: " << l_d_max << " nonce: " << l.d_[kMin]
               << " dir:" << (l.dir_ == kForward ? "fwd" : "bwd")
               << "| l:" << tt.ch_levels_[prf_idx].at(l.l_) << std::endl;
@@ -406,7 +412,7 @@ std::cout << i  << " " << tt.get_default_translation(tt.locations_.names_.at(i))
                                            : tt.bwd_search_ch_graph_[prf_idx];
 
     for (auto const& e_idx : graph[l.l_]) {
-      std::cout << "edge" << e_idx << std::endl;
+      // std::cout << "edge" << e_idx << std::endl;
       auto const e = tt.ch_graph_edges_[prf_idx][e_idx];
       auto const edge_target = l.dir_ == kReverse ? e.to_ : e.from_;
       if (tt.ch_levels_[prf_idx][l.l_] < tt.ch_levels_[prf_idx][edge_target]) {
@@ -495,7 +501,17 @@ std::cout << i  << " " << tt.get_default_translation(tt.locations_.names_.at(i))
               continue;  // TODO count occurs
             }
             if (transfer != location_idx_t::invalid()) {
-              std::cout << "transfer " << tt.get_default_translation(tt.locations_.names_.at(l.l_)) << std::endl;
+              std::cout
+                  << "ft"
+                  << tt.get_default_translation(tt.locations_.names_.at(
+                         tt.ch_graph_edges_[prf_idx][child_edge_idx].from_))
+                  << " -> "
+                  << tt.get_default_translation(tt.locations_.names_.at(
+                         tt.ch_graph_edges_[prf_idx][child_edge_idx].to_))
+                  << " transfer "
+                  << tt.get_default_translation(
+                         tt.locations_.names_.at(transfer))
+                  << std::endl;
               mark_relevant_stop(transfer);
             }
             stack.push_back({unpack.first, arr_max});
