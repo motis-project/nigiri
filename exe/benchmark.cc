@@ -11,6 +11,7 @@
 #include "nigiri/logging.h"
 #include "nigiri/qa/qa.h"
 #include "nigiri/query_generator/generator.h"
+#include "nigiri/routing/mcraptor/mcraptor_search.h"
 #include "nigiri/routing/raptor/raptor.h"
 #include "nigiri/routing/raptor_search.h"
 #include "nigiri/routing/search.h"
@@ -23,6 +24,10 @@
 
 using namespace nigiri;
 using namespace nigiri::routing;
+
+enum benchmark_algorithm{
+  raptor, mc_raptor,
+};
 
 std::vector<std::string> tokenize(std::string_view const& str,
                                   char delimiter,
@@ -134,10 +139,35 @@ nigiri::pareto_set<nigiri::routing::journey> raptor_search(
                .journeys_);
 }
 
+routing_result run_algorithm(
+    timetable const& tt,
+    rt_timetable const* rtt,
+    search_state& s_state,
+    raptor_state& r_state,
+    query q,
+    benchmark_algorithm const algorithm,
+    direction search_dir) {
+  switch (algorithm) {
+    case benchmark_algorithm::raptor:
+      return routing::raptor_search(tt, rtt,
+                                    s_state, r_state, q,
+                                    search_dir);
+
+    case benchmark_algorithm::mc_raptor:
+      return routing::mcraptor_search(tt, rtt,
+                                      s_state, r_state, q,
+                                      search_dir);
+
+    default:
+      return {};
+  }
+}
+
 void process_queries(
     std::vector<nigiri::query_generation::start_dest_query> const& queries,
     std::vector<benchmark_result>& results,
-    nigiri::timetable const& tt) {
+    nigiri::timetable const& tt,
+    benchmark_algorithm const algorithm) {
   results.reserve(queries.size());
   std::mutex mutex;
   {
@@ -154,9 +184,13 @@ void process_queries(
         queries.size(), [&](auto& query_state, auto const q_idx) {
           try {
             auto const total_time_start = std::chrono::steady_clock::now();
-            auto const result = routing::raptor_search(
-                tt, nullptr, query_state.ss_, query_state.rs_,
-                queries[q_idx].q_, direction::kForward);
+            auto const result = run_algorithm(tt,
+                                              nullptr,
+                                              query_state.ss_,
+                                              query_state.rs_,
+                                              queries[q_idx].q_,
+                                              algorithm,
+                                              direction::kForward);
             auto const total_time_stop = std::chrono::steady_clock::now();
             auto const guard = std::lock_guard{mutex};
             results.emplace_back(benchmark_result{
@@ -333,6 +367,14 @@ int main(int argc, char* argv[]) {
   auto seed = std::int64_t{-1};
   auto min_transfer_time = duration_t::rep{};
   auto qa_path = std::filesystem::path{};
+  auto const algorithm = benchmark_algorithm::raptor;
+
+  if (algorithm == benchmark_algorithm::mc_raptor) {
+    start_mode_str = std::string{"station"};
+    dest_mode_str = std::string{"station"};
+  }
+  auto const set_start_mode_to_station = start_mode_str == std::string{"station"};
+  auto const set_dest_mode_to_station = dest_mode_str == std::string{"station"};
 
   bpo::options_description desc("Allowed options");
   desc.add_options()("help,h", "produce this help message")  //
@@ -421,6 +463,13 @@ int main(int argc, char* argv[]) {
   std::cout << "loading timetable...\n";
   auto tt = *nigiri::timetable::read(tt_path);
   tt.resolve();
+
+  if (set_start_mode_to_station && start_mode_str != std::string{"station"}) {
+    start_mode_str = std::string{"station"};
+  }
+  if (set_dest_mode_to_station && dest_mode_str != std::string{"station"}) {
+    dest_mode_str = std::string{"station"};
+  }
 
   gs.interval_size_ = duration_t{interval_size};
 
@@ -523,7 +572,7 @@ int main(int argc, char* argv[]) {
   generate_queries(queries, n_queries, tt, gs, seed);
 
   auto results = std::vector<benchmark_result>{};
-  process_queries(queries, results, tt);
+  process_queries(queries, results, tt, algorithm);
 
   print_results(queries, results, tt, gs, tt_path);
 
