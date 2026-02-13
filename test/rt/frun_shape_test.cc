@@ -716,6 +716,7 @@ TEST(
           plot_point);
 
       EXPECT_EQ((geo::polyline{
+                    {2.0F, 2.0F},
                     {2.5F, 2.5F},
                     {3.0F, 3.0F},
                 }),
@@ -785,8 +786,10 @@ TEST(
           plot_point);
 
       EXPECT_EQ((geo::polyline{
+                    {2.0F, 2.0F},
                     {2.5F, 2.5F},
                     {3.625F, 3.625F},
+                    {3.0F, 3.0F},
                 }),
                 leg_shape);
     }
@@ -832,8 +835,6 @@ TEST(
       // Ensure the correct route is used
       EXPECT_EQ((geo::make_box({{-1.0, -1.0}, {1.0, 1.0}})),
                 shapes_data.get_bounding_box(r));
-      // On 1st trip
-      // ASSERT_FALSE(shapes_data.get_bounding_box(r, 0).has_value());
     }
   }
 

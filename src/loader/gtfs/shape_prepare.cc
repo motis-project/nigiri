@@ -276,8 +276,6 @@ void assign_bounding_boxes(timetable const& tt,
       }
     }
 
-    auto is_trivial = true;
-
     for (auto const transport_idx : tt.route_transport_ranges_[r]) {
       auto const frun = rt::frun{tt, nullptr,
                                  rt::run{.t_ = transport{transport_idx},
@@ -307,7 +305,6 @@ void assign_bounding_boxes(timetable const& tt,
             segment_bboxes.at(i + cista::to_idx(absolute_range.from_))
                 .extend(bbox);
           }
-          is_trivial = false;
         }
       });
     }
