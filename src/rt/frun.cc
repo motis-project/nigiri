@@ -670,7 +670,7 @@ void frun::for_each_shape_point(
   auto last_pos = std::optional<geo::latlng>{};
   auto consumed = 0U;
   auto consume_pos = [&](geo::latlng const& pos,
-                         bool const force_if_unchanged = false) mutable {
+                         bool const force_if_unchanged = false) {
     if (force_if_unchanged || !last_pos.has_value() || pos != *last_pos) {
       callback(pos);
       ++consumed;
@@ -707,7 +707,7 @@ void frun::for_each_shape_point(
       });
   if (consumed == 0U) {
     consume_pos((*this)[range.from_].pos());
-    consume_pos((*this)[static_cast<stop_idx_t>(range.to_ - 1)].pos());
+    consume_pos((*this)[static_cast<stop_idx_t>(range.to_ - 1)].pos(), true);
   } else if (consumed == 1U) {
     consume_pos((*this)[static_cast<stop_idx_t>(range.to_ - 1)].pos(), true);
   }
