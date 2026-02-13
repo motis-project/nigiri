@@ -828,14 +828,13 @@ TEST(
       EXPECT_EQ((geo::make_box({{6.0, 2.0}, {7.0, 3.0}})), *test_bbox);
     }
     // Do not insert bounding boxes if sequential trip has no segment bounding
-    // boxes
+    // boxes -- changed: now all bounding boxes are stored so that they can
+    // be overriden
     {
       auto const r = route_idx_t{4U};
       // Ensure the correct route is used
       EXPECT_EQ((geo::make_box({{-1.0, -1.0}, {1.0, 1.0}})),
                 shapes_data.get_bounding_box(r));
-      // On 1st trip
-      ASSERT_FALSE(shapes_data.get_bounding_box(r, 0).has_value());
     }
   }
 

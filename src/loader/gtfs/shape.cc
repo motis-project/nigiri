@@ -44,6 +44,7 @@ shape_loader_state parse_shapes(std::string_view const data,
             shapes.emplace_back_empty();
             states.distances_.emplace_back();
             seq.emplace_back();
+            shapes_data.shape_sources_.emplace_back(shape_source::kTimetable);
             return idx;
           });
           auto polyline = shapes[shape_idx];

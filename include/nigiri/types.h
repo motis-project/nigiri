@@ -453,6 +453,12 @@ using via_offset_t = std::uint8_t;
 template <typename T>
 using basic_string = std::basic_string<T, cista::char_traits<T>>;
 
+enum class shape_source : std::uint8_t {
+  kNone = 0,
+  kTimetable = 1,
+  kRouted = 2
+};
+
 }  // namespace nigiri
 
 #include <iomanip>
