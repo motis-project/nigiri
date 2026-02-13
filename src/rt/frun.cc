@@ -708,6 +708,8 @@ void frun::for_each_shape_point(
   if (consumed == 0U) {
     consume_pos((*this)[range.from_].pos());
     consume_pos((*this)[static_cast<stop_idx_t>(range.to_ - 1)].pos());
+  } else if (consumed == 1U) {
+    consume_pos((*this)[static_cast<stop_idx_t>(range.to_ - 1)].pos(), true);
   }
 }
 
