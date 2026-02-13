@@ -251,6 +251,8 @@ struct timetable {
 
   friend std::ostream& operator<<(std::ostream&, timetable const&);
 
+  void merge(timetable const&);
+
   void write(cista::memory_holder&) const;
   void write(std::filesystem::path const&) const;
   static cista::wrapped<timetable> read(std::filesystem::path const&);
