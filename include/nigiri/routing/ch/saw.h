@@ -174,59 +174,22 @@ struct saw {
           SawType == saw_type::kDay
               ? bitfield{}
               : traffic_days_.bitfields_.at(b_it->traffic_days_).first;
-      auto day_offset = 0;
-      auto a_it = b_it;
+      auto a_it = begin();
+      a_it += b_it.pos_a_;
       // std::cout << "b less " << std::endl;
-      while (true) {
-        // std::cout << "a less " << std::endl;
-        --a_it;
-        if (a_it.day_offset_ > kChMaxEdgeTime / kChDay) {
-          break;
-        }
-        if (!a_it.is_a()) {
-          continue;  // TODO switch to proper a_it ?
-        }
-        auto const mam_diff =
-            a_it->mam_ - b_it->mam_ + a_it.day_offset_ * 24 * 60;
-        auto const remaining_travel_time =
-            static_cast<std::int16_t>(b_it->travel_dur_.count()) - mam_diff;
-
-        if constexpr (SawType != saw_type::kDay) {
-          if (remaining_travel_time < 0) {  // TODO min const lb
-            break;
+      std::cout << exact_true << std::endl;
+      if constexpr (SawType != saw_type::kDay) {
+        if (!exact_true) {
+          --a_it;
+          while (b_it->mam_ == a_it->mam_ &&
+                 b_it->travel_dur_ == a_it->travel_dur_) {
+            --a_it;
           }
-          if (day_offset != a_it.day_offset_) {
-            remaining_traffic_days.set(
-                traffic_days_.bitfields_.at(b_it->traffic_days_).second, false);
-            remaining_traffic_days <<= 1U;
-            day_offset = a_it.day_offset_;
-          }
-          if (exact_true &&
-              remaining_travel_time == a_it->travel_dur_.count() &&
-              mam_diff == 0) {  // TODO ugly
-            remaining_traffic_days &=
-                ~traffic_days_.bitfields_.at(a_it->traffic_days_).first;
-            if (remaining_traffic_days.none()) {
-              break;
-            }
-          }
+          ++a_it;
         }
-
-        if (remaining_travel_time < a_it->travel_dur_.count() ||
-            (remaining_travel_time == a_it->travel_dur_.count() &&
-             mam_diff == 0 && !exact_true)) {
-          if constexpr (SawType != saw_type::kDay) {
-            if ((remaining_traffic_days &
-                 traffic_days_.bitfields_.at(a_it->traffic_days_).first)
-                    .none()) {
-              continue;
-            }
-          }
-          return {false, a_it.pos_a_, b_it.pos_b_}; // TODO need to loook further for non power saws?
-        }
-        if constexpr (SawType == saw_type::kDay) {
-          break;
-        }
+      }
+      if (non_dominated(*b_it, a_it, &remaining_traffic_days)) {
+        return {false, a_it.pos_, b_it.pos_b_};
       }
     }
     return {true, 0U, 0U};
@@ -532,6 +495,8 @@ struct saw {
           day_offset = a_it.day_offset_;
         }
         if (remaining_travel_time >= a_it->travel_dur_.count()) {
+          // TODO need to check conjunction? otherwise bit eating can set as
+          // dominated?
           *remaining_traffic_days &=
               ~traffic_days_.bitfields_.at(a_it->traffic_days_).first;
           auto remaining_count = remaining_traffic_days->count();
@@ -597,7 +562,7 @@ struct saw {
         --it;
       }
       if ((non_dominated(*that, interleaved.begin(), &remaining_traffic_days,
-                         true)) &&
+                         true)) &&  // TODO only look at other?
           (out.empty() ||
            non_dominated(*that, saw<SawType>{out, traffic_days_}.end(),
                          &remaining_traffic_days, false, 0))) {

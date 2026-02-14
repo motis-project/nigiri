@@ -60,7 +60,7 @@ TEST(ch, saw_traffic_days_test) {
 
   EXPECT_FALSE(s1.to_saw(td) < s2.to_saw(td));
   EXPECT_FALSE(s2.to_saw(td) > s1.to_saw(td));
-  EXPECT_FALSE(s1.to_saw(td).less(s2.to_saw(td), true));
+  EXPECT_TRUE(s1.to_saw(td).less(s2.to_saw(td), true));
   EXPECT_TRUE(s1.to_saw(td) <= s2.to_saw(td));
   EXPECT_TRUE(s1.to_saw(td).leq(s2.to_saw(td), true));
 
@@ -133,6 +133,11 @@ TEST(ch, saw_traffic_days_test) {
     for (auto i = 0U; i < expected.size(); ++i) {
       EXPECT_EQ(expected[i], tmp[i]);
     }
+
+    EXPECT_TRUE(s1.to_saw(td).less(
+        saw<nigiri::routing::saw_type::kTrafficDays>{tmp, td}));
+    EXPECT_TRUE(s2.to_saw(td).less(
+        saw<nigiri::routing::saw_type::kTrafficDays>{tmp, td}));
   }
 
   {
@@ -146,6 +151,11 @@ TEST(ch, saw_traffic_days_test) {
     for (auto i = 0U; i < expected.size(); ++i) {
       EXPECT_EQ(expected[i], tmp[i]);
     }
+
+    EXPECT_TRUE(s1.to_saw(td).less(
+        saw<nigiri::routing::saw_type::kTrafficDays>{tmp, td}));
+    EXPECT_TRUE(s2.to_saw(td).less(
+        saw<nigiri::routing::saw_type::kTrafficDays>{tmp, td}));
   }
 
   {
@@ -190,6 +200,11 @@ TEST(ch, saw_traffic_days_test) {
     for (auto i = 0U; i < expected.size(); ++i) {
       EXPECT_EQ(expected[i], tmp[i]);
     }
+
+    EXPECT_TRUE(s3.to_saw(td1).less(
+        saw<nigiri::routing::saw_type::kTrafficDays>{tmp, td1}));
+    EXPECT_TRUE(s4.to_saw(td1).less(
+        saw<nigiri::routing::saw_type::kTrafficDays>{tmp, td1}));
   }
 
   {
@@ -257,7 +272,7 @@ TEST(ch, saw_traffic_days_power_test) {
     EXPECT_FALSE(s1.to_saw(td).leq(s1.to_saw(td), true));
 
     EXPECT_FALSE(s1.to_saw(td) < s2.to_saw(td));
-    EXPECT_FALSE(s1.to_saw(td).less(s2.to_saw(td), true));
+    EXPECT_TRUE(s1.to_saw(td).less(s2.to_saw(td), true));
     EXPECT_TRUE(s1.to_saw(td) <= s2.to_saw(td));
     EXPECT_TRUE(s1.to_saw(td).leq(s2.to_saw(td), true));
 
@@ -348,6 +363,11 @@ TEST(ch, saw_traffic_days_power_test) {
     for (auto i = 0U; i < expected.size(); ++i) {
       EXPECT_EQ(expected[i], tmp[i]);
     }
+
+    EXPECT_TRUE(s1.to_saw(td).less(
+        saw<nigiri::routing::saw_type::kTrafficDaysPower>{tmp, td}));
+    EXPECT_TRUE(s2.to_saw(td).less(
+        saw<nigiri::routing::saw_type::kTrafficDaysPower>{tmp, td}));
   }
 
   {
@@ -379,6 +399,11 @@ TEST(ch, saw_traffic_days_power_test) {
     for (auto i = 0U; i < expected.size(); ++i) {
       EXPECT_EQ(expected[i], tmp[i]);
     }
+
+    EXPECT_TRUE(s1.to_saw(td).less(
+        saw<nigiri::routing::saw_type::kTrafficDaysPower>{tmp, td}));
+    EXPECT_TRUE(s2.to_saw(td).less(
+        saw<nigiri::routing::saw_type::kTrafficDaysPower>{tmp, td}));
   }
 
   {
@@ -425,6 +450,11 @@ TEST(ch, saw_traffic_days_power_test) {
     for (auto i = 0U; i < expected.size(); ++i) {
       EXPECT_EQ(expected[i], tmp[i]);
     }
+
+    EXPECT_TRUE(s3.to_saw(td).less(
+        saw<nigiri::routing::saw_type::kTrafficDaysPower>{tmp, td}));
+    EXPECT_TRUE(s4.to_saw(td).less(
+        saw<nigiri::routing::saw_type::kTrafficDaysPower>{tmp, td}));
   }
 
   {
