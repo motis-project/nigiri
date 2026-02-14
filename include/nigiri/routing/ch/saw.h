@@ -149,16 +149,17 @@ struct saw {
     return false;
   }
 
-  bool less(saw<SawType> const& b, bool const exact_true = false) const {
+  std::tuple<bool, size_t, size_t> _less(saw<SawType> const& b,
+                                         bool const exact_true = false) const {
     if (saw_.empty()) {
-      return false;
+      return {false, 0U, 0U};
     }
     if (b.saw_.empty()) {
-      return true;
+      return {true, 0U, 0U};
     }
     if (is_constant() || b.is_constant()) {
       // TODO exact_true ?
-      return min() < b.min();
+      return {min() < b.min(), 0U, 0U};
     }
     auto const interleaved = interleaved_saws<SawType>{*this, b};
 
@@ -221,23 +222,34 @@ struct saw {
               continue;
             }
           }
-          return false;
+          return {false, a_it.pos_a_, b_it.pos_b_}; // TODO need to loook further for non power saws?
         }
         if constexpr (SawType == saw_type::kDay) {
           break;
         }
       }
     }
-    return true;
+    return {true, 0U, 0U};
+  }
+
+  bool less(saw<SawType> const& b, bool const exact_true = false) const {
+    return std::get<0>(_less(b, exact_true));
   }
 
   friend bool operator<(saw<SawType> const& a, saw<SawType> const& b) {
-    auto const r = a.less(b);
+    auto const r = a._less(b);
     auto const rr = a.max() < b.min();
     auto const rrr = a.min() > b.max();
-    utl::verify((!rr || r) && (!rrr || !r), "less error {} {} {} {} {}", r,
-                a.min(), a.max(), b.min(), b.max());
-    return r;
+    if (!((!rr || std::get<0>(r)) && (!rrr || !std::get<0>(r)))) {
+      std::cout << "less error" << a.saw_[std::get<1>(r)] << " "
+                << b.saw_[std::get<2>(r)] << std::endl;
+      std::cout << a << std::endl;
+      std::cout << b << std::endl;
+      throw utl::fail("less error {} {} {} {} {}", r, a.min(), a.max(), b.min(),
+                      b.max());
+    }
+
+    return std::get<0>(r);
   }
 
   friend bool operator>(saw<SawType> const& a, saw<SawType> const& b) {
@@ -294,14 +306,15 @@ struct saw {
     return out;
   }
 
-  u16_minutes max() const {
+  std::pair<u16_minutes, size_t> _max() const {
     if (saw_.empty()) {
-      return u16_minutes{kMaxTravelTime.count()};
+      return {u16_minutes{kMaxTravelTime.count()}, 0U};
     }
     if (is_constant()) {
-      return saw_[0].travel_dur_;
+      return {saw_[0].travel_dur_, 0U};
     }
     auto max = 0;
+    auto max_tooth = size_t{};
 
     auto const empty_tooth = std::vector<tooth>{};
     auto const empty_saw = saw<SawType>{empty_tooth, traffic_days_};
@@ -325,6 +338,7 @@ struct saw {
 
         if constexpr (SawType == saw_type::kDay) {
           max = std::max(max, a_it->travel_dur_.count() + mam_diff);
+          max_tooth = a_it.pos_a_;
           break;
         }
         if (a_it.day_offset_ > kChMaxEdgeTime / kChDay) {
@@ -341,6 +355,7 @@ struct saw {
                  .first)  // TODO templ, check really needed?
                 .any()) {
           max = std::max(max, a_it->travel_dur_.count() + mam_diff);
+          max_tooth = a_it.pos_a_;
           remaining_traffic_days &=
               ~traffic_days_.bitfields_.at(a_it->traffic_days_).first;
           if (remaining_traffic_days.none()) {
@@ -350,14 +365,15 @@ struct saw {
       }
     }
     if (max == 0) {
-      return u16_minutes{
-          kMaxTravelTime
-              .count()};  // TODO handle connections that only run on a single
-                          // occasion, but multiple times (depending on
-                          // proportion of loaded timetable -> kMax?)
+      return {u16_minutes{kMaxTravelTime.count()},
+              max_tooth};  // TODO handle connections that only run on a single
+                           // occasion, but multiple times (depending on
+                           // proportion of loaded timetable -> kMax?)
     }
-    return u16_minutes{max};
+    return {u16_minutes{max}, max_tooth};
   }
+
+  u16_minutes max() const { return _max().first; }
 
   std::pair<u16_minutes, u16_minutes> min_max_waiting_time() const {
     if (saw_.empty()) {
@@ -796,14 +812,15 @@ struct saw {
                            // subtract? delete markers instead?*/
 
     auto const s = saw<SawType>{out, traffic_days_};
-    auto const max_a = this->max();
-    auto const max_b = other.max();
+    auto const max_a = this->_max();
+    auto const max_b = other._max();
 
-    auto const s_m = s.max();
+    auto const s_m = s._max();
 
-    if (s_m > max_a + max_b && s_m < kChMaxEdgeTime) {
-      std::cout << "concat max err " << s_m << " " << this->max() << " "
-                << other.max() << std::endl;
+    if (s_m.first > max_a.first + max_b.first && s_m.first < kChMaxEdgeTime) {
+      std::cout << "concat max err " << s_m.first << " " << out[s_m.second]
+                << " " << max_a.first << " " << saw_[max_a.second] << " "
+                << max_b.first << other.saw_[max_a.second] << std::endl;
       std::cout << s << std::endl;
       std::cout << *this << std::endl;
       std::cout << other << std::endl;
@@ -817,12 +834,13 @@ struct saw {
     auto const mmwt = other.min_max_waiting_time();
     auto const mtd_a = max_travel_dur();
     auto const mtd_b = other.max_travel_dur();
-    if (s.min() > max_a + max_b || s.min() > this->min() + max_b ||
-        s.min() > max_a + mmwt.second + other.min()) {
+    if (s.min() > max_a.first + max_b.first ||
+        s.min() > this->min() + max_b.first ||
+        s.min() > max_a.first + mmwt.second + other.min()) {
       std::cout << "concat min err " << s.min() << " " << this->min() << " "
                 << other.min() << " " << mtd_a << " " << mtd_b << " "
-                << mmwt.first << " " << mmwt.second << " " << max_a << " "
-                << max_b << std::endl;
+                << mmwt.first << " " << mmwt.second << " " << max_a.first << " "
+                << max_b.first << std::endl;
 
       std::cout << s << std::endl;
       std::cout << *this << std::endl;
