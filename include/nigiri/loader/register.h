@@ -156,7 +156,6 @@ struct route {
   translation_idx_t long_name_;
   route_type_t route_type_;
   route_color color_;
-  clasz clasz_;
   provider_idx_t agency_;
 
   timetable* tt_{nullptr};

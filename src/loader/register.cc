@@ -200,7 +200,6 @@ route::route(timetable& tt,
       long_name_{long_name},
       route_type_{route_type},
       color_{color},
-      clasz_{gtfs::to_clasz(to_idx(route_type))},
       agency_{agency},
       tt_{&tt} {}
 
@@ -253,8 +252,28 @@ void route::set_text_color(std::uint32_t const x) {
   color_.text_color_ = color_t{x};
 }
 
-clasz route::get_clasz() const { return clasz_; }
-void route::set_clasz(clasz const x) { clasz_ = x; }
+clasz route::get_clasz() const { return gtfs::to_clasz(to_idx(route_type_)); }
+void route::set_clasz(clasz const x) {
+  switch (x) {
+    case clasz::kAir: route_type_ = route_type_t{1100}; return;
+    case clasz::kHighSpeed: route_type_ = route_type_t{101}; return;
+    case clasz::kLongDistance: route_type_ = route_type_t{102}; return;
+    case clasz::kCoach: route_type_ = route_type_t{200}; return;
+    case clasz::kNight: route_type_ = route_type_t{105}; return;
+    case clasz::kRegionalFast: route_type_ = route_type_t{100}; return;
+    case clasz::kRegional: route_type_ = route_type_t{103}; return;
+    case clasz::kSuburban: route_type_ = route_type_t{109}; return;
+    case clasz::kSubway: route_type_ = route_type_t{402}; return;
+    case clasz::kTram: route_type_ = route_type_t{900}; return;
+    case clasz::kBus: route_type_ = route_type_t{700}; return;
+    case clasz::kShip: route_type_ = route_type_t{1000}; return;
+    case clasz::kODM: route_type_ = route_type_t{1500}; return;
+    case clasz::kFunicular: route_type_ = route_type_t{1400}; return;
+    case clasz::kAerialLift: route_type_ = route_type_t{1300}; return;
+    case clasz::kOther:
+    default: route_type_ = route_type_t{1700}; return;
+  }
+}
 
 agency route::get_agency() const { return agency{*tt_, agency_}; }
 

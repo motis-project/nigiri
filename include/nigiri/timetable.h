@@ -115,9 +115,9 @@ struct timetable {
   std::string_view get_default_translation(translation_idx_t) const;
   std::string_view get_default_name(location_idx_t) const;
 
-  translation_idx_t register_translation(std::string const& s);
-  translation_idx_t register_translation(std::string_view s);
-  translation_idx_t register_translation(translated_str_t const& s);
+  translation_idx_t register_translation(std::string const&);
+  translation_idx_t register_translation(std::string_view);
+  translation_idx_t register_translation(translated_str_t const&);
 
   std::optional<location_idx_t> find(location_id const& id) const;
 
