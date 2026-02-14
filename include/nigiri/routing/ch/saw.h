@@ -232,7 +232,12 @@ struct saw {
   }
 
   friend bool operator<(saw<SawType> const& a, saw<SawType> const& b) {
-    return a.less(b);
+    auto const r = a.less(b);
+    auto const rr = a.max() < b.min();
+    auto const rrr = a.min() > b.max();
+    utl::verify((!rr || r) && (!rrr || !r), "less error {} {} {} {} {}", r,
+                a.min(), a.max(), b.min(), b.max());
+    return r;
   }
 
   friend bool operator>(saw<SawType> const& a, saw<SawType> const& b) {
@@ -322,7 +327,7 @@ struct saw {
           max = std::max(max, a_it->travel_dur_.count() + mam_diff);
           break;
         }
-        if (a_it.day_offset_ > routing::kMaxTravelTime / 1_days) {
+        if (a_it.day_offset_ > kChMaxEdgeTime / kChDay) {
           break;
         }
         if (day_offset != a_it.day_offset_) {
@@ -350,6 +355,74 @@ struct saw {
               .count()};  // TODO handle connections that only run on a single
                           // occasion, but multiple times (depending on
                           // proportion of loaded timetable -> kMax?)
+    }
+    return u16_minutes{max};
+  }
+
+  std::pair<u16_minutes, u16_minutes> min_max_waiting_time() const {
+    if (saw_.empty()) {
+      return {u16_minutes{kMaxTravelTime.count()},
+              u16_minutes{kMaxTravelTime.count()}};
+    }
+    if (is_constant()) {
+      return {u16_minutes{0}, u16_minutes{0}};
+    }
+    auto min = static_cast<int>(kChMaxWaitingTime.count());
+    auto max = 0;
+
+    auto const empty_tooth = std::vector<tooth>{};
+    auto const empty_saw = saw<SawType>{empty_tooth, traffic_days_};
+    auto const interleaved = interleaved_saws<SawType>{
+        *this, empty_saw};  // TODO impl single loop iterator
+
+    for (auto b_it = interleaved.begin(); b_it != interleaved.end(); ++b_it) {
+      auto remaining_traffic_days =
+          SawType == saw_type::kDay
+              ? bitfield{}
+              : traffic_days_.bitfields_.at(b_it->traffic_days_).first;
+      auto day_offset = 0;
+      auto a_it = b_it;
+      // std::cout << "b max " << std::endl;
+      while (true) {
+        // std::cout << "a max " << std::endl;
+        --a_it;
+
+        auto const mam_diff =
+            a_it->mam_ - b_it->mam_ + a_it.day_offset_ * 24 * 60;
+
+        if constexpr (SawType == saw_type::kDay) {
+          min = std::min(min, mam_diff);
+          max = std::max(max, mam_diff);
+          break;
+        }
+        if (a_it.day_offset_ > routing::kMaxTravelTime / 1_days) {
+          break;
+        }
+        if (day_offset != a_it.day_offset_) {
+          remaining_traffic_days.set(
+              traffic_days_.bitfields_.at(b_it->traffic_days_).second, false);
+          remaining_traffic_days <<= 1U;
+          day_offset = a_it.day_offset_;
+        }
+        if ((remaining_traffic_days &
+             traffic_days_.bitfields_.at(a_it->traffic_days_)
+                 .first)  // TODO templ, check really needed?
+                .any()) {
+          min = std::min(min, mam_diff);
+          max = std::max(max, mam_diff);
+        }
+      }
+    }
+    return {u16_minutes{min}, u16_minutes{max}};
+  }
+
+  u16_minutes max_travel_dur() const {
+    if (saw_.empty()) {
+      return u16_minutes{kMaxTravelTime.count()};
+    }
+    auto max = saw_.front().travel_dur_.count();
+    for (auto i = 1U; i < saw_.size(); ++i) {
+      max = std::max(max, saw_[i].travel_dur_.count());
     }
     return u16_minutes{max};
   }
@@ -408,7 +481,6 @@ struct saw {
 
     while (true) {
       --a_it;
-      // std::cout << "nondom " << std::endl;
       if (a_it.day_offset_ > day_lookahead) {
         break;
       }
@@ -621,11 +693,13 @@ struct saw {
             auto new_tooth = tooth{it->mam_, new_travel_dur, it->traffic_days_};
             auto last_out_mam = saw<SawType>{out, traffic_days_}.begin();
             last_out_mam += last_out_mam_idx;
+
             if (out.empty() || non_dominated(new_tooth, last_out_mam,
                                              &conjunction, false, 0)) {
               new_tooth.traffic_days_ = traffic_days_.get_or_create(
                   conjunction,
                   last_set_bit(conjunction));  // TODO avoid recalc
+
               out.push_back(std::move(new_tooth));
             }
             remaining_traffic_days &=
@@ -707,7 +781,7 @@ struct saw {
         }
       }
     }
-    auto const out_tmp = out; // TODO avoid copy
+    auto const out_tmp = out;  // TODO avoid copy
     auto const wraparound_saw = saw<SawType>{out_tmp, traffic_days_};
     auto const remaining_it =
         std::remove_if(out.begin(), out.end(), [&](tooth const& e) {
@@ -721,7 +795,42 @@ struct saw {
               out.end());  // TODO is this really necessary? power traffic day
                            // subtract? delete markers instead?*/
 
-    return saw<SawType>{out, traffic_days_};
+    auto const s = saw<SawType>{out, traffic_days_};
+    auto const max_a = this->max();
+    auto const max_b = other.max();
+
+    auto const s_m = s.max();
+
+    if (s_m > max_a + max_b && s_m < kChMaxEdgeTime) {
+      std::cout << "concat max err " << s_m << " " << this->max() << " "
+                << other.max() << std::endl;
+      std::cout << s << std::endl;
+      std::cout << *this << std::endl;
+      std::cout << other << std::endl;
+      /*for (auto const& e : s.saw_) {
+    for (auto a = this->begin(); a != this->end(); ++a) {
+     // if (e.mam_ == )
+    }
+      }*/
+      utl::fail("concat max error");
+    }
+    auto const mmwt = other.min_max_waiting_time();
+    auto const mtd_a = max_travel_dur();
+    auto const mtd_b = other.max_travel_dur();
+    if (s.min() > max_a + max_b || s.min() > this->min() + max_b ||
+        s.min() > max_a + mmwt.second + other.min()) {
+      std::cout << "concat min err " << s.min() << " " << this->min() << " "
+                << other.min() << " " << mtd_a << " " << mtd_b << " "
+                << mmwt.first << " " << mmwt.second << " " << max_a << " "
+                << max_b << std::endl;
+
+      std::cout << s << std::endl;
+      std::cout << *this << std::endl;
+      std::cout << other << std::endl;
+      utl::fail("concat min error");
+    }
+
+    return s;
   }
 
   saw<SawType> concat(unsigned const dir,

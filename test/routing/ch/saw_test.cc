@@ -53,11 +53,13 @@ TEST(ch, saw_traffic_days_test) {
   EXPECT_TRUE(td.bitfields_.at(bitfield_idx_t{0}).first.test(9));
 
   EXPECT_FALSE(s1.to_saw(td) < s1.to_saw(td));
+  EXPECT_FALSE(s1.to_saw(td) > s1.to_saw(td));
   EXPECT_TRUE(s1.to_saw(td).less(s1.to_saw(td), true));
   EXPECT_TRUE(s1.to_saw(td) <= s1.to_saw(td));
   EXPECT_FALSE(s1.to_saw(td).leq(s1.to_saw(td), true));
 
   EXPECT_FALSE(s1.to_saw(td) < s2.to_saw(td));
+  EXPECT_FALSE(s2.to_saw(td) > s1.to_saw(td));
   EXPECT_FALSE(s1.to_saw(td).less(s2.to_saw(td), true));
   EXPECT_TRUE(s1.to_saw(td) <= s2.to_saw(td));
   EXPECT_TRUE(s1.to_saw(td).leq(s2.to_saw(td), true));
@@ -140,6 +142,50 @@ TEST(ch, saw_traffic_days_test) {
     auto expected =
         std::vector<tooth>{{1001U, u16_minutes{1450}, bitfield_idx_t{0}},
                            {1000U, u16_minutes{1447}, bitfield_idx_t{1}}};
+    ASSERT_EQ(tmp.size(), expected.size());
+    for (auto i = 0U; i < expected.size(); ++i) {
+      EXPECT_EQ(expected[i], tmp[i]);
+    }
+  }
+
+  {
+    auto const s3 = owning_saw<routing::saw_type::kTrafficDays>{
+        {{1001U, u16_minutes{250}, bitfield_idx_t{0}},
+         {1000U, u16_minutes{50}, bitfield_idx_t{2}},
+         {1000U, u16_minutes{100}, bitfield_idx_t{3}},
+         {1000U, u16_minutes{100}, bitfield_idx_t{4}},
+         {1000U, u16_minutes{200}, bitfield_idx_t{5}},
+         {999U, u16_minutes{10}, bitfield_idx_t{1}}},
+        u16_minutes{0}};
+    auto const s4 = owning_saw<routing::saw_type::kTrafficDays>{
+        {{1300U, u16_minutes{10}, bitfield_idx_t{0}},
+         {1300U, u16_minutes{10}, bitfield_idx_t{5}},
+         {1160U, u16_minutes{60}, bitfield_idx_t{4}},
+         {1150U, u16_minutes{50}, bitfield_idx_t{3}},
+         {1090U, u16_minutes{110}, bitfield_idx_t{2}},
+         {1009U, u16_minutes{10}, bitfield_idx_t{1}}},
+        u16_minutes{0}};
+
+    auto tmp = std::vector<tooth>{};
+    auto td1 = nigiri::routing::traffic_days{};
+    td1.get_or_create(bitfield{"000001100100000"}, 9);
+    td1.get_or_create(bitfield{"000000110000000"}, 8);
+    td1.get_or_create(bitfield{"000010001000000"}, 10);
+    td1.get_or_create(bitfield{"000100010000000"}, 11);
+    td1.get_or_create(bitfield{"001000100000000"}, 12);
+    td1.get_or_create(bitfield{"010001000000000"}, 13);
+
+    s3.to_saw(td1).concat(s4.to_saw(td1), false, tmp);
+
+    auto expected = std::vector<tooth>{
+        {1001U, u16_minutes{309}, bitfield_idx_t{0}},
+        {1000U, u16_minutes{200}, bitfield_idx_t{2}},
+        {1000U, u16_minutes{200}, bitfield_idx_t{3}},
+        {1000U, u16_minutes{220}, bitfield_idx_t{4}},
+        {1000U, u16_minutes{310}, bitfield_idx_t{5}},
+        {999U, u16_minutes{20}, bitfield_idx_t{1}},
+    };
+
     ASSERT_EQ(tmp.size(), expected.size());
     for (auto i = 0U; i < expected.size(); ++i) {
       EXPECT_EQ(expected[i], tmp[i]);
@@ -236,12 +282,14 @@ TEST(ch, saw_traffic_days_power_test) {
     }
 
     auto tmp2 = std::vector<tooth>{};
-    saw<nigiri::routing::saw_type::kTrafficDaysPower>{tmp, td}.simplify(s2.to_saw(td), tmp2);
+    saw<nigiri::routing::saw_type::kTrafficDaysPower>{tmp, td}.simplify(
+        s2.to_saw(td), tmp2);
     EXPECT_TRUE(tmp2 == tmp);
 
     tmp2.clear();
     auto tmp3 = std::vector<tooth>{};
-    saw<nigiri::routing::saw_type::kTrafficDaysPower>{tmp, td}.simplify(saw<nigiri::routing::saw_type::kTrafficDaysPower>{tmp3, td}, tmp2);
+    saw<nigiri::routing::saw_type::kTrafficDaysPower>{tmp, td}.simplify(
+        saw<nigiri::routing::saw_type::kTrafficDaysPower>{tmp3, td}, tmp2);
     EXPECT_TRUE(tmp2 == tmp);
   }
 
@@ -282,7 +330,8 @@ TEST(ch, saw_traffic_days_power_test) {
 
     auto expected = std::vector<tooth>{
         {1001U, u16_minutes{1450}, bitfield_idx_t{2}},
-        //{1001U, u16_minutes{2886}, bitfield_idx_t{3}}, TODO dominated due to last bit eating
+        //{1001U, u16_minutes{2886}, bitfield_idx_t{3}}, TODO dominated due to
+        // last bit eating
         {1000U, u16_minutes{1447}, bitfield_idx_t{4}},
     };
 
@@ -312,9 +361,7 @@ TEST(ch, saw_traffic_days_power_test) {
     auto expected = std::vector<tooth>{
         {1001U, u16_minutes{1450}, bitfield_idx_t{2}},
         //{1001U, u16_minutes{2886}, bitfield_idx_t{3}}, // TODO idem
-        {1000U, u16_minutes{1447},
-         bitfield_idx_t{4}},  // TODO could it happen that same mam entries are
-                              // inserted in wrong order for disjunct bitfields?
+        {1000U, u16_minutes{1447}, bitfield_idx_t{4}},
     };
 
     EXPECT_EQ(td.bitfields_.at(bitfield_idx_t{2}).first.count(), 1);
@@ -327,6 +374,52 @@ TEST(ch, saw_traffic_days_power_test) {
 
     EXPECT_EQ(td.bitfields_.at(bitfield_idx_t{4}).first.count(), 1);
     EXPECT_TRUE(td.bitfields_.at(bitfield_idx_t{4}).first.test(7));
+
+    ASSERT_EQ(tmp.size(), expected.size());
+    for (auto i = 0U; i < expected.size(); ++i) {
+      EXPECT_EQ(expected[i], tmp[i]);
+    }
+  }
+
+  {
+    auto const s3 = owning_saw<routing::saw_type::kTrafficDaysPower>{
+        {{1001U, u16_minutes{250}, bitfield_idx_t{0}},
+         {1000U, u16_minutes{50}, bitfield_idx_t{2}},
+         {1000U, u16_minutes{100}, bitfield_idx_t{3}},
+         {1000U, u16_minutes{100}, bitfield_idx_t{4}},
+         {1000U, u16_minutes{200}, bitfield_idx_t{5}},
+         {999U, u16_minutes{10}, bitfield_idx_t{1}}},
+        u16_minutes{0}};
+    auto const s4 = owning_saw<routing::saw_type::kTrafficDaysPower>{
+        {{1300U, u16_minutes{10}, bitfield_idx_t{1}},
+         {1300U, u16_minutes{10}, bitfield_idx_t{5}},
+         {1160U, u16_minutes{60}, bitfield_idx_t{4}},
+         {1150U, u16_minutes{50}, bitfield_idx_t{3}},
+         {1090U, u16_minutes{110}, bitfield_idx_t{2}},
+         {1009U, u16_minutes{10}, bitfield_idx_t{1}}},
+        u16_minutes{0}};
+
+    auto tmp = std::vector<tooth>{};
+    auto td = nigiri::routing::traffic_days{};
+    td.get_or_create(bitfield{"000001100100000"}, 9);
+    td.get_or_create(bitfield{"000000110000000"}, 8);
+    td.get_or_create(bitfield{"000010001000000"}, 10);
+    td.get_or_create(bitfield{"000100010000000"}, 11);
+    td.get_or_create(bitfield{"001000100000000"}, 12);
+    td.get_or_create(bitfield{"010001000000000"}, 13);
+    td.get_or_create(bitfield{"000110011000000"}, 11);
+    td.get_or_create(bitfield{"010000000000000"}, 13);
+    td.get_or_create(bitfield{"000001100000000"}, 9);
+
+    s3.to_saw(td).concat(s4.to_saw(td), false, tmp);
+
+    auto expected = std::vector<tooth>{
+        {1001U, u16_minutes{309}, bitfield_idx_t{8}},
+        {1000U, u16_minutes{200}, bitfield_idx_t{6}},
+        {1000U, u16_minutes{220}, bitfield_idx_t{4}},
+        {1000U, u16_minutes{310}, bitfield_idx_t{7}},
+        {999U, u16_minutes{20}, bitfield_idx_t{1}},
+    };
 
     ASSERT_EQ(tmp.size(), expected.size());
     for (auto i = 0U; i < expected.size(); ++i) {
@@ -380,12 +473,12 @@ TEST(ch, saw_traffic_days_power_test) {
     auto td = nigiri::routing::traffic_days{};
 
     auto const s3 = owning_saw<routing::saw_type::kTrafficDaysPower>{
-      {{1001U, u16_minutes{10}, bitfield_idx_t{0}},
-       {1000U, u16_minutes{5}, bitfield_idx_t{1}},
-       {1000U, u16_minutes{5}, bitfield_idx_t{0}},
-       {1000U, u16_minutes{5}, bitfield_idx_t{1}},
-       {999U, u16_minutes{10}, bitfield_idx_t{1}}},
-      u16_minutes{0}};
+        {{1001U, u16_minutes{10}, bitfield_idx_t{0}},
+         {1000U, u16_minutes{5}, bitfield_idx_t{1}},
+         {1000U, u16_minutes{5}, bitfield_idx_t{0}},
+         {1000U, u16_minutes{5}, bitfield_idx_t{1}},
+         {999U, u16_minutes{10}, bitfield_idx_t{1}}},
+        u16_minutes{0}};
 
     ASSERT_FALSE(s1.to_saw(td) == s2.to_saw(td));
     ASSERT_TRUE(s1.to_saw(td) != s2.to_saw(td));
