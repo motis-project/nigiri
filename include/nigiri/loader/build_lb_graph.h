@@ -366,7 +366,7 @@ void build_lb_graph(timetable& tt, profile_idx_t const prf_idx) {
         remaining_traffic_days.set(
             last_set_bit - j, false);  // TODO do in one go with first 5 days?
       }
-      lsb = std::max(lsb, last_set_bit-e.deps_[i].days());
+      lsb = std::max(lsb, last_set_bit - e.deps_[i].days());
       auto const traffic_days_idx = traffic_days.get_or_create(
           remaining_traffic_days,
           static_cast<std::uint16_t>(last_set_bit - e.deps_[i].days()));
@@ -416,8 +416,7 @@ void build_lb_graph(timetable& tt, profile_idx_t const prf_idx) {
 
       auto const s_min = saw<kChSawType>{min_saw_tmp, traffic_days};
       s_min.set_last_set_bit(min_saw_tmp, static_cast<std::uint16_t>(lsb));
-      s_min.min(
-          min_saw, kChSawType);  // TODO refactor trafficdays simplify
+      s_min.min(min_saw, kChSawType);  // TODO refactor trafficdays simplify
 
       auto const s_max = saw<kChSawType>{max_saw_tmp, traffic_days};
       s_min.set_last_set_bit(max_saw_tmp, static_cast<std::uint16_t>(lsb));
@@ -688,9 +687,11 @@ void build_lb_graph(timetable& tt, profile_idx_t const prf_idx) {
       auto min_max = u16_minutes::max();
       auto max_max = u16_minutes::min();
       auto sum_max = 0;
+      auto sum_max_len = 0;
       auto min_min = u16_minutes::max();
       auto max_min = u16_minutes::min();
       auto sum_min = 0;
+      auto sum_min_len = 0;
       for (auto i = ch_edge_idx_t{0}; i < tt.ch_graph_edges_[prf_idx].size();
            ++i) {
         auto tmp = saw<kChSawType>{edge_max.at(i), traffic_days}.max();
@@ -701,6 +702,7 @@ void build_lb_graph(timetable& tt, profile_idx_t const prf_idx) {
           min_max = tmp;
         }
         sum_max += tmp.count();
+        sum_max_len += saw<kChSawType>{edge_max.at(i), traffic_days}.size();
         tmp = saw<kChSawType>{edge_min.at(i), traffic_days}.min();
         if (tmp > max_min) {
           max_min = tmp;
@@ -709,15 +711,22 @@ void build_lb_graph(timetable& tt, profile_idx_t const prf_idx) {
           min_min = tmp;
         }
         sum_min += tmp.count();
+        sum_min_len += saw<kChSawType>{edge_min.at(i), traffic_days}.size();
       }
       std::cout << " min max: " << min_max << " max max: " << max_max
                 << " avg max: "
                 << static_cast<unsigned>(sum_max) /
                        tt.ch_graph_edges_[prf_idx].size()
+                << " avg max len: "
+                << static_cast<unsigned>(sum_max_len) /
+                       tt.ch_graph_edges_[prf_idx].size()
                 << "\n"
                 << " min min: " << min_min << " max min: " << max_min
                 << " avg min: "
                 << static_cast<unsigned>(sum_min) /
+                       tt.ch_graph_edges_[prf_idx].size()
+                << " avg min len: "
+                << static_cast<unsigned>(sum_min_len) /
                        tt.ch_graph_edges_[prf_idx].size()
                 << std::endl;
     }
@@ -763,6 +772,9 @@ void build_lb_graph(timetable& tt, profile_idx_t const prf_idx) {
             .push_back(e_idx);
       }
       write_ahead_edges.clear();
+      std::cout << tt.get_default_translation(
+                       tt.locations_.names_.at(location_id))
+                << std::endl;
       if (level % 100 == 0) {
         std::cout
             << level << " "
