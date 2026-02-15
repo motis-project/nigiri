@@ -360,6 +360,90 @@ struct script_runner::impl {
   sol::protected_function process_trip_;
 };
 
+constexpr std::pair<std::string_view, int> kGTFSRouteTypes[] = {
+    {"RAILWAY", 100},
+    {"HIGH_SPEED_RAIL", 101},
+    {"LONG_DISTANCE_TRAINS", 102},
+    {"INTER_REGIONAL_RAIL", 103},
+    {"CAR_TRANSPORT_RAIL", 104},
+    {"SLEEPER_RAIL", 105},
+    {"REGIONAL_RAIL", 106},
+    {"TOURIST_RAILWAY", 107},
+    {"RAIL_SHUTTLE_WITHIN_COMPLEX", 108},
+    {"SUBURBAN_RAILWAY", 109},
+    {"REPLACEMENT_RAIL", 110},
+    {"SPECIAL_RAIL", 111},
+    {"LORRY_TRANSPORT_RAIL", 112},
+    {"ALL_RAILS", 113},
+    {"CROSS_COUNTRY_RAIL", 114},
+    {"VEHICLE_TRANSPORT_RAIL", 115},
+    {"RACK_AND_PINION_RAILWAY", 116},
+    {"ADDITIONAL_RAIL", 117},
+    {"COACH", 200},
+    {"INTERNATIONAL_COACH", 201},
+    {"NATIONAL_COACH", 202},
+    {"SHUTTLE_COACH", 203},
+    {"REGIONAL_COACH", 204},
+    {"SPECIAL_COACH", 205},
+    {"SIGHTSEEING_COACH", 206},
+    {"TOURIST_COACH", 207},
+    {"COMMUTER_COACH", 208},
+    {"ALL_COACHS", 209},
+    {"URBAN_RAILWAY", 400},
+    {"METRO", 401},
+    {"UNDERGROUND", 402},
+    {"URBAN_RAILWAY_2", 403},
+    {"ALL_URBAN_RAILWAYS", 404},
+    {"MONORAIL", 405},
+    {"BUS", 700},
+    {"REGIONAL_BUS", 701},
+    {"EXPRESS_BUS", 702},
+    {"STOPPING_BUS", 703},
+    {"LOCAL_BUS", 704},
+    {"NIGHT_BUS", 705},
+    {"POST_BUS", 706},
+    {"SPECIAL_NEEDS_BUS", 707},
+    {"MOBILITY_BUS", 708},
+    {"MOBILITY_BUS_FOR_REGISTERED_DISABLED", 709},
+    {"SIGHTSEEING_BUS", 710},
+    {"SHUTTLE_BUS", 711},
+    {"SCHOOL_BUS", 712},
+    {"SCHOOL_AND_PUBLIC_BUS", 713},
+    {"RAIL_REPLACEMENT_BUS", 714},
+    {"DEMAND_AND_RESPONSE_BUS", 715},
+    {"ALL_BUSS", 716},
+    {"TROLLEYBUS", 800},
+    {"TRAM", 900},
+    {"CITY_TRAM", 901},
+    {"LOCAL_TRAM", 902},
+    {"REGIONAL_TRAM", 903},
+    {"SIGHTSEEING_TRAM", 904},
+    {"SHUTTLE_TRAM", 905},
+    {"ALL_TRAMS", 906},
+    {"WATER_TRANSPORT", 1000},
+    {"AIR", 1100},
+    {"FERRY", 1200},
+    {"AERIAL_LIFT", 1300},
+    {"TELECABIN", 1301},
+    {"CABLE_CAR", 1302},
+    {"ELEVATOR", 1303},
+    {"CHAIR_LIFT", 1304},
+    {"DRAG_LIFT", 1305},
+    {"SMALL_TELECABIN", 1306},
+    {"ALL_TELECABINS", 1307},
+    {"FUNICULAR", 1400},
+    {"TAXI", 1500},
+    {"COMMUNAL_TAXI", 1501},
+    {"WATER_TAXI", 1502},
+    {"RAIL_TAXI", 1503},
+    {"BIKE_TAXI", 1504},
+    {"LICENSED_TAXI", 1505},
+    {"PRIVATE_HIRE_VEHICLE", 1506},
+    {"ALL_TAXIS", 1507},
+    {"MISCELLANEOUS", 1700},
+    {"HORSE_DRAWN_CARRIAGE", 1702},
+};
+
 script_runner::script_runner() = default;
 
 script_runner::script_runner(std::string const& user_script)
@@ -371,6 +455,10 @@ script_runner::script_runner(std::string const& user_script)
   impl_->lua_.open_libraries(sol::lib::base, sol::lib::string,
                              sol::lib::package);
   impl_->lua_.script(user_script);
+
+  for (auto const& [name, route_type] : kGTFSRouteTypes) {
+    impl_->lua_.globals()[name] = route_type;
+  }
 
   impl_->lua_.new_usertype<geo::latlng>(
       "latlng",  //
