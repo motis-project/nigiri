@@ -353,6 +353,10 @@ void build_lb_graph(timetable& tt, profile_idx_t const prf_idx) {
                                    std::vector<tooth>& max_saw) {
     auto min_saw_tmp = std::vector<tooth>{};
     auto max_saw_tmp = std::vector<tooth>{};
+    saw<kChSawType>{min_saw_tmp, traffic_days}.init_metadata(min_saw_tmp, 0);
+    saw<kChSawType>{max_saw_tmp, traffic_days}.init_metadata(max_saw_tmp, 0);
+
+    auto lsb = 0;
     for (auto i = 0UL; i < e.deps_.size(); ++i) {
       auto remaining_traffic_days = tt.bitfields_.at(e.traffic_days_[i])
                                     << static_cast<unsigned>(e.deps_[i].days());
@@ -362,6 +366,7 @@ void build_lb_graph(timetable& tt, profile_idx_t const prf_idx) {
         remaining_traffic_days.set(
             last_set_bit - j, false);  // TODO do in one go with first 5 days?
       }
+      lsb = std::max(lsb, last_set_bit-e.deps_[i].days());
       auto const traffic_days_idx = traffic_days.get_or_create(
           remaining_traffic_days,
           static_cast<std::uint16_t>(last_set_bit - e.deps_[i].days()));
@@ -409,10 +414,14 @@ void build_lb_graph(timetable& tt, profile_idx_t const prf_idx) {
       saw<saw_type::kDay>{max_saw_tmp, traffic_days}.max(max_saw, kChSawType);
     } else {
 
-      saw<kChSawType>{min_saw_tmp, traffic_days}.min(
+      auto const s_min = saw<kChSawType>{min_saw_tmp, traffic_days};
+      s_min.set_last_set_bit(min_saw_tmp, static_cast<std::uint16_t>(lsb));
+      s_min.min(
           min_saw, kChSawType);  // TODO refactor trafficdays simplify
 
-      saw<kChSawType>{max_saw_tmp, traffic_days}.max(max_saw, kChSawType);
+      auto const s_max = saw<kChSawType>{max_saw_tmp, traffic_days};
+      s_min.set_last_set_bit(max_saw_tmp, static_cast<std::uint16_t>(lsb));
+      s_max.max(max_saw, kChSawType);
     }
   };
 
@@ -670,7 +679,7 @@ void build_lb_graph(timetable& tt, profile_idx_t const prf_idx) {
               << " good updates: " << stats.good_updates_
               << " bad updates: " << stats.bad_updates_
               << " traffic bitfields: " << traffic_days.bitfields_.size() << "/"
-              << tt.transport_traffic_days_.size() << std::endl;
+              << tt.bitfields_.size() << std::endl;
   };
   auto const print_edge_stats = [&]() {
     std::cout << "num edges: " << tt.ch_graph_edges_[prf_idx].size()
