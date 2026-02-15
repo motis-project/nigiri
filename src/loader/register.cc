@@ -193,7 +193,8 @@ route::route(timetable& tt,
              translation_idx_t long_name,
              route_type_t const route_type,
              route_color const color,
-             provider_idx_t const agency)
+             provider_idx_t const agency,
+             category_idx_t const category)
     : src_{src},
       id_{id},
       short_name_{short_name},
@@ -201,6 +202,7 @@ route::route(timetable& tt,
       route_type_{route_type},
       color_{color},
       agency_{agency},
+      category_{category},
       tt_{&tt} {}
 
 route::route(timetable& tt, source_idx_t const src, route_id_idx_t const r)
@@ -211,6 +213,7 @@ route::route(timetable& tt, source_idx_t const src, route_id_idx_t const r)
       route_type_{tt.route_ids_[src].route_id_type_[r]},
       color_{tt.route_ids_[src].route_id_colors_[r]},
       agency_{tt.route_ids_[src].route_id_provider_[r]},
+      category_{tt.route_ids_[src].route_id_category_[r]},
       tt_{&tt} {}
 
 std::string_view route::get_id() const { return id_; }
@@ -704,6 +707,7 @@ location_idx_t register_location(timetable& tt, location const& l) {
 route_id_idx_t register_route(timetable& tt, route const& r) {
   auto& route_id = tt.route_ids_[r.src_];
   auto const idx = route_id.ids_.store(r.id_);
+  route_id.route_id_category_.emplace_back(r.category_);
   route_id.route_id_short_names_.emplace_back(r.short_name_);
   route_id.route_id_long_names_.emplace_back(r.long_name_);
   route_id.route_id_colors_.emplace_back(r.color_);

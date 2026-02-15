@@ -293,8 +293,12 @@ struct timetable {
   // Trip -> route name
   vector_map<trip_idx_t, route_id_idx_t> trip_route_id_;
 
+  // Categories
+  vector_map<category_idx_t, category> categories_;
+
   // External route id
   struct route_ids {
+    vector_map<route_id_idx_t, category_idx_t> route_id_category_;
     vector_map<route_id_idx_t, translation_idx_t> route_id_short_names_;
     vector_map<route_id_idx_t, translation_idx_t> route_id_long_names_;
     vector_map<route_id_idx_t, route_type_t> route_id_type_;
