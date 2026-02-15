@@ -543,6 +543,54 @@ TEST(ch, saw_traffic_days_power_test) {
 
   {
     auto const s3 = owning_saw<routing::saw_type::kTrafficDaysPower>{
+        {metadata_tooth(12U),
+         metadata_tooth(0U),
+         metadata_tooth(0U),
+         {930U, u16_minutes{1}, bitfield_idx_t{0}},
+         {920U, u16_minutes{1}, bitfield_idx_t{1}},
+         {885U, u16_minutes{1}, bitfield_idx_t{0}},
+         {40U, u16_minutes{1}, bitfield_idx_t{0}}},
+        u16_minutes{0}};
+    auto const s4 = owning_saw<routing::saw_type::kTrafficDaysPower>{
+        {metadata_tooth(12U),
+         metadata_tooth(0U),
+         metadata_tooth(0U),
+         {931U, u16_minutes{7}, bitfield_idx_t{0}},
+         {921U, u16_minutes{7}, bitfield_idx_t{1}},
+         {886U, u16_minutes{7}, bitfield_idx_t{0}},
+         {41U, u16_minutes{7}, bitfield_idx_t{0}}},
+        u16_minutes{0}};
+
+    auto tmp = std::vector<tooth>{};
+    auto td = nigiri::routing::traffic_days{};
+    td.get_or_create(bitfield{"000001111100000"}, 9);
+    td.get_or_create(bitfield{"001110000000000"}, 12);
+    
+    s3.to_saw(td).concat(s4.to_saw(td), false, tmp);
+
+    auto expected = std::vector<tooth>{
+        metadata_tooth(12U),
+        metadata_tooth(0U),
+        metadata_tooth(0U),
+        {930U, u16_minutes{8}, bitfield_idx_t{0}},
+         {920U, u16_minutes{8}, bitfield_idx_t{1}},
+         {885U, u16_minutes{8}, bitfield_idx_t{0}},
+         {40U, u16_minutes{8}, bitfield_idx_t{0}},
+    };
+
+    ASSERT_EQ(tmp.size(), expected.size());
+    for (auto i = 0U; i < expected.size(); ++i) {
+      EXPECT_EQ(expected[i], tmp[i]);
+    }
+
+    EXPECT_TRUE(s3.to_saw(td).less(
+        saw<nigiri::routing::saw_type::kTrafficDaysPower>{tmp, td}));
+    EXPECT_TRUE(s4.to_saw(td).less(
+        saw<nigiri::routing::saw_type::kTrafficDaysPower>{tmp, td}));
+  }
+
+  {
+    auto const s3 = owning_saw<routing::saw_type::kTrafficDaysPower>{
         {metadata_tooth(9U),
          metadata_tooth(0U),
          metadata_tooth(0U),

@@ -780,7 +780,7 @@ struct saw {
           auto const remaining_it = std::remove_if(
               out.begin() + last_out_mam_idx, out.end(), [&](auto const& e) {
                 auto const idx = static_cast<unsigned>(&e - &*out.begin());
-                if (idx == 0U) {
+                if (idx == last_out_mam_idx) { // TODO change range +1 instead
                   return false;
                 }
                 auto& prev = out.at(idx - 1U);
