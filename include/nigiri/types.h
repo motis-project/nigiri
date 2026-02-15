@@ -174,6 +174,7 @@ using shape_offset_idx_t =
     cista::strong<std::uint32_t, struct _shape_offset_idx>;
 using trip_idx_t = cista::strong<std::uint32_t, struct _trip_idx>;
 using route_id_idx_t = cista::strong<std::uint32_t, struct _route_id_idx>;
+using category_idx_t = cista::strong<std::uint32_t, struct _category_idx>;
 using trip_id_idx_t = cista::strong<std::uint32_t, struct _trip_id_str_idx>;
 using transport_idx_t = cista::strong<std::uint32_t, struct _transport_idx>;
 using source_idx_t = cista::strong<std::uint16_t, struct _source_idx>;
@@ -235,6 +236,12 @@ using flex_stop_seq_idx_t =
     cista::strong<std::uint32_t, struct _flex_stop_seq_idx>;
 
 using transport_range_t = pair<transport_idx_t, interval<stop_idx_t>>;
+
+struct category {
+  string_idx_t id_;
+  translation_idx_t name_;
+  translation_idx_t short_name_;
+};
 
 struct translation {
   translation() = default;

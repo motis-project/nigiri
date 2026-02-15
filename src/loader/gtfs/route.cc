@@ -208,7 +208,8 @@ route_map_t read_routes(source_idx_t const src,
               route_type_t{*r.route_type_},
               {.color_ = to_color(r.route_color_->view()),
                .text_color_ = to_color(r.route_text_color_->view())},
-              a};
+              a,
+              category_idx_t::invalid()};
           if (process_route(user_script, x)) {
             map.emplace(r.route_id_->to_str(),
                         std::make_unique<route>(route{

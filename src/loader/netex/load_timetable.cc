@@ -138,6 +138,21 @@ std::string_view id(pugi::xml_node n) {
   return str == nullptr ? std::string_view{} : std::string_view{str};
 }
 
+translation parse_text(pugi::xml_node const n, char const* tag = "Text") {
+  auto const text = n.child(tag);
+  return {text.attribute("lang").as_string(), text.child_value()};
+}
+
+std::vector<translation> get_translations(pugi::xml_node const n,
+                                          char const* tag = "Text") {
+  auto translations = std::vector<translation>{parse_text(n, tag)};
+  for (auto const alt :
+       n.child("alternativeTexts").children("AlternativeText")) {
+    translations.push_back(parse_text(alt));
+  }
+  return translations;
+}
+
 geo::latlng get_pos(pugi::xml_node const x) {
   auto const loc = x.child("Location");
   auto const gml_pos = val(loc, "gml:pos");
@@ -394,15 +409,26 @@ vehicle_type_map_t get_vehicle_types(pugi::xml_document const& doc) {
 // ========
 // PRODUCTS
 // --------
-using product_map_t = hash_map<std::string_view, std::string_view>;
+struct category {
+  category_idx_t category_idx_{category_idx_t::invalid()};
+  std::string_view id_{};
+  std::string_view short_name_{};
+  translated_str_t name_{};
+};
+using categories_map_t = hash_map<std::string_view, std::unique_ptr<category>>;
 
-product_map_t get_products(pugi::xml_document const& doc) {
-  auto products = product_map_t{};
-  products.emplace("", "");
+categories_map_t get_categories(pugi::xml_document const& doc) {
+  auto products = categories_map_t{};
+  products.emplace("", uniq(category{}));
   for (auto const v : doc.select_nodes("//ResourceFrame/typesOfValue/ValueSet/"
                                        "values/TypeOfProductCategory")) {
     auto const n = v.node();
-    products.emplace(id(n), val(n, "ShortName"));
+    products.emplace(id(n), uniq(category{
+                                .category_idx_ = category_idx_t::invalid(),
+                                .id_ = id(n),
+                                .short_name_ = val(n, "ShortName"),
+                                .name_ = get_translations(n, "Name"),
+                            }));
   }
   return products;
 }
@@ -419,7 +445,7 @@ struct line {
   std::string_view id_;
   std::string_view name_;
   std::string_view short_name_;
-  std::string_view product_;
+  category const* category_;
   authority const* authority_;
   operätor const* operator_;
   std::uint16_t route_type_;
@@ -429,13 +455,13 @@ using line_map_t = hash_map<std::string_view, std::unique_ptr<line>>;
 line_map_t get_lines(pugi::xml_document const& doc,
                      lookup<authority_map_t> const& authorities,
                      lookup<operator_map_t> const& operators,
-                     lookup<product_map_t> const& products) {
+                     lookup<categories_map_t> const& categories) {
   auto lines = line_map_t{};
   lines.emplace("", uniq(line{
                         .id_ = "",
                         .name_ = "",
                         .short_name_ = "",
-                        .product_ = "",
+                        .category_ = categories.at(std::string_view{}).get(),
                         .authority_ = authorities.at(std::string_view{}).get(),
                         .operator_ = operators.at(std::string_view{}).get(),
                         .route_type_ = {},
@@ -450,7 +476,8 @@ line_map_t get_lines(pugi::xml_document const& doc,
             .id_ = id(n),
             .name_ = val(n, "Name"),
             .short_name_ = val(n, "ShortName"),
-            .product_ = products.at(ref(n, "TypeOfProductCategoryRef")),
+            .category_ =
+                categories.at(ref(n, "TypeOfProductCategoryRef")).get(),
             .authority_ = authorities.at(ref(n, "AuthorityRef")).get(),
             .operator_ =
                 operators.at(ref(n.child("additionalOperators"), "OperatorRef"))
@@ -703,22 +730,10 @@ notice_map_t get_notices(pugi::xml_document const& doc) {
     if (!is_true_or_empty(val(n, "CanBeAdvertised"))) {
       continue;
     }
-
-    auto const parse_text = [](pugi::xml_node const notice) {
-      auto const text = notice.child("Text");
-      return translation{text.attribute("lang").as_string(),
-                         text.child_value()};
-    };
-
-    auto translations = std::vector<translation>{parse_text(n)};
-    for (auto const alt :
-         n.child("alternativeTexts").children("AlternativeText")) {
-      translations.push_back(parse_text(alt));
-    }
-
-    notices.emplace(id(n),
-                    uniq(notice{.code_ = val(n, "ShortCode"),
-                                .translations_ = std::move(translations)}));
+    notices.emplace(id(n), uniq(notice{
+                               .code_ = val(n, "ShortCode"),
+                               .translations_ = get_translations(n),
+                           }));
   }
   return notices;
 }
@@ -1134,7 +1149,7 @@ struct intermediate {
     merge(day_type_assignments_, o.day_type_assignments_);
     merge(stop_assignments_, o.stop_assignments_);
     merge(destination_displays_, o.destination_displays_);
-    merge(products_, o.products_);
+    merge(categories_, o.categories_);
     merge(lines_, o.lines_);
     merge(authorities_, o.authorities_);
     merge(operators_, o.operators_);
@@ -1153,7 +1168,7 @@ struct intermediate {
   stop_assignment_map_t stop_assignments_;
   destination_display_map_t destination_displays_;
   journey_meeting_map_t journey_meetings_;
-  product_map_t products_;
+  categories_map_t categories_;
   line_map_t lines_;
   authority_map_t authorities_;
   operator_map_t operators_;
@@ -1203,10 +1218,10 @@ std::optional<intermediate> get_intermediate(intermediate const& base,
     im.authorities_ = get_authorities(doc);
     im.operators_ = get_operators(doc);
     im.stops_ = get_stops(doc);
-    im.products_ = get_products(doc);
+    im.categories_ = get_categories(doc);
     im.lines_ = get_lines(doc, {base.authorities_, im.authorities_},
                           {base.operators_, im.operators_},
-                          {base.products_, im.products_});
+                          {base.categories_, im.categories_});
     im.destination_displays_ = get_destination_displays(doc);
     im.stop_assignments_ = get_stop_assignments(doc, {base.stops_, im.stops_});
     im.journey_patterns_ = get_journey_patterns(
@@ -1381,6 +1396,15 @@ void load_timetable(loader_config const& config,
                                            : attribute_idx_t::invalid();
     }
 
+    for (auto& [id, cat] : im.categories_) {
+      cat->category_idx_ = category_idx_t{tt.categories_.size()};
+      tt.categories_.push_back(nigiri::category{
+          .id_ = tt.strings_.store(id),
+          .name_ = tt.register_translation(cat->name_),
+          .short_name_ = tt.register_translation(cat->short_name_),
+      });
+    }
+
     for (auto& sj : im.service_journeys_) {
       auto const& jp = *sj.get_journey_pattern();
 
@@ -1403,12 +1427,14 @@ void load_timetable(loader_config const& config,
                   id,
                   tt.register_translation(
                       line.short_name_.empty() ? line.name_ : line.short_name_),
-                  tt.register_translation(
-                      line.product_.empty() ? line.name_ : line.product_),
+                  tt.register_translation(line.category_ == nullptr
+                                              ? line.name_
+                                              : line.category_->short_name_),
                   route_type_t{get_more_precise_route_type(sj.route_type_,
                                                            line.route_type_)},
                   line.color_,
-                  op->provider_};
+                  op->provider_,
+                  line.category_->category_idx_};
         route_id = line.routes_
                        .emplace_hint(
                            route_it, line::route_key{sj.route_type_, op},
