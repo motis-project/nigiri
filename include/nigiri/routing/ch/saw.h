@@ -191,7 +191,8 @@ struct saw {
         if (!exact_true) {
           --a_it;
           while (b_it->mam_ == a_it->mam_ &&
-                 b_it->travel_dur_ == a_it->travel_dur_) {
+                 b_it->travel_dur_ == a_it->travel_dur_ &&
+                 b_it.day_offset_ == a_it.day_offset_) {
             --a_it;
           }
           ++a_it;
@@ -224,16 +225,16 @@ struct saw {
 
   friend bool operator<(saw<SawType> const& a, saw<SawType> const& b) {
     auto const r = a._less(b);
-    auto const rr = a.max() < b.min();
+    /*auto const rr = a.max() < b.min();
     auto const rrr = a.min() > b.max();
     if (!((!rr || std::get<0>(r)) && (!rrr || !std::get<0>(r)))) {
       std::cout << "less error" << a.saw_[std::get<1>(r)] << " "
                 << b.saw_[std::get<2>(r)] << std::endl;
       std::cout << a << std::endl;
       std::cout << b << std::endl;
-      throw utl::fail("less error {} {} {} {} {}", r, a.min(), a.max(), b.min(),
+      *throwutl::fail("less error {} {} {} {} {}", r, a.min(), a.max(), b.min(),
                       b.max());
-    }
+    }*/
 
     return std::get<0>(r);
   }
@@ -780,7 +781,7 @@ struct saw {
           auto const remaining_it = std::remove_if(
               out.begin() + last_out_mam_idx, out.end(), [&](auto const& e) {
                 auto const idx = static_cast<unsigned>(&e - &*out.begin());
-                if (idx == last_out_mam_idx) { // TODO change range +1 instead
+                if (idx == last_out_mam_idx) {  // TODO change range +1 instead
                   return false;
                 }
                 auto& prev = out.at(idx - 1U);
@@ -834,6 +835,7 @@ struct saw {
     }
 
     auto const s = saw<SawType>{out, traffic_days_};
+    return s;
     auto const max_a = this->_max();
     auto const max_b = other._max();
 
