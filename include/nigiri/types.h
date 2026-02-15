@@ -239,8 +239,8 @@ using transport_range_t = pair<transport_idx_t, interval<stop_idx_t>>;
 
 struct category {
   string_idx_t id_;
-  translation_idx_t short_name_;
   translation_idx_t name_;
+  translation_idx_t short_name_;
 };
 
 struct translation {
