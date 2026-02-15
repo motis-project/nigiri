@@ -124,6 +124,11 @@ delay_propagation update_delay(timetable const& tt,
   auto const lower_bounded_new_time = min.has_value()
                                           ? std::max(*min, static_time + delay)
                                           : static_time + delay;
+  fmt::println(
+      "D: scheduled={}, stop_idx={}, ev={}, delay={}, min={}, lb={}, stop={}",
+      static_time, stop_idx, to_str(ev_type), delay,
+      min.value_or(unixtime_t::min()), lower_bounded_new_time,
+      frun{tt, &rtt, r}[stop_idx - r.stop_range_.from_].get_loc());
   rtt.update_time(r.rt_, stop_idx, ev_type, lower_bounded_new_time);
   rtt.dispatch_delay(r, stop_idx, ev_type,
                      lower_bounded_new_time - static_time);
@@ -150,6 +155,12 @@ delay_propagation update_event(timetable const& tt,
         r.is_scheduled() ? tt.event_time(r.t_, stop_idx, ev_type) : new_time;
     auto const lower_bounded_new_time =
         pred_time.has_value() ? std::max(*pred_time, new_time) : new_time;
+    fmt::println(
+        "T: scheduled={}, stop_idx={}, ev={}, static={}, new_time={}, lb={}, "
+        "stop={}",
+        static_time, stop_idx, to_str(ev_type), static_time, new_time,
+        lower_bounded_new_time,
+        frun{tt, &rtt, r}[stop_idx - r.stop_range_.from_].get_loc());
     rtt.update_time(r.rt_, stop_idx, ev_type, lower_bounded_new_time);
     rtt.dispatch_delay(r, stop_idx, ev_type,
                        lower_bounded_new_time - static_time);
@@ -469,6 +480,15 @@ bool update_run(source_idx_t const src,
       auto const static_time = r.is_scheduled()
                                    ? tt.event_time(r.t_, stop, ev_type)
                                    : curr_unix_time;
+
+      fmt::println(
+          "F: scheduled={}, stop_idx={}, ev={}, min={}, lb={}, "
+          "stop={}",
+          tt.event_time(r.t_, stop, ev_type), stop, to_str(ev_type),
+          unixtime_t{rtt.base_day_ + std::chrono::minutes{pred_time}},
+          unixtime_t{rtt.base_day_ + std::chrono::minutes{curr}},
+          frun{tt, &rtt, r}[stop - r.stop_range_.from_].get_loc());
+
       rtt.dispatch_delay(r, stop, ev_type, curr_unix_time - static_time);
     }
     pred_time = curr;
@@ -776,8 +796,9 @@ statistics gtfsrt_update_msg(timetable const& tt,
       }
 
       if (!is_resolved_static) {
-        log(log_lvl::debug, "rt.gtfs.resolve", "could not resolve (tag={}) {}",
-            tag, remove_nl(td.DebugString()));
+        // log(log_lvl::debug, "rt.gtfs.resolve", "could not resolve (tag={})
+        // {}",
+        //     tag, remove_nl(td.DebugString()));
         span->AddEvent(
             "unresolved trip",
             {
