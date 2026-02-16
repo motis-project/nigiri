@@ -451,7 +451,7 @@ struct saw {
   saw<SawType> max(std::vector<tooth>& out,
                    saw_type to = SawType) const {  // TODO insitu
     utl::verify(out.empty(), "out not empty");
-    simplify(saw<SawType>{{}, traffic_days_}, out);
+    simplify(saw<SawType>{{}, traffic_days_}, true, out);
     if (to == saw_type::kConstant) {
       auto tmp = saw<SawType>{out, traffic_days_}.max();
       out.clear();
@@ -465,7 +465,7 @@ struct saw {
   saw<SawType> min(std::vector<tooth>& out,
                    saw_type to = SawType) const {  // TODO insitu
     utl::verify(out.empty(), "out not empty");
-    simplify(saw<SawType>{{}, traffic_days_}, out);
+    simplify(saw<SawType>{{}, traffic_days_}, false, out);
     if (to == saw_type::kConstant) {
       auto tmp = saw<SawType>{out, traffic_days_}.min();
       out.clear();
@@ -577,15 +577,26 @@ struct saw {
   }
 
   saw<SawType> simplify(saw<SawType> const& other,
+                        bool const max,
                         std::vector<tooth>& out) const {
     utl::verify(out.empty(), "out not empty");
     if (saw_.empty() && other.saw_.empty()) {
       return saw<SawType>{out, traffic_days_};
     }
     if (is_constant() || other.is_constant()) {
+      auto const a_min = min();
+      auto const b_min = other.min();
+      if (!max || (is_constant() && other.is_constant()) ||
+          (is_constant() && a_min <= b_min) ||
+          (other.is_constant() && b_min <= a_min)) {
+        out.push_back({std::numeric_limits<std::int16_t>::max(),
+                       std::min(a_min, b_min), bitfield_idx_t::invalid()});
+      } else {
+        out.push_back({std::numeric_limits<std::int16_t>::max(),
+                       std::max(a_min, b_min), bitfield_idx_t::invalid()});
+      }
       // TODO horizontally cut tooths?
-      out.push_back({std::numeric_limits<std::int16_t>::max(),
-                     std::min(min(), other.min()), bitfield_idx_t::invalid()});
+
       return saw<SawType>{out, traffic_days_};
     }
     auto const lsb = std::max(get_last_set_bit(), other.get_last_set_bit());
@@ -668,6 +679,10 @@ struct saw {
           SawType == saw_type::kDay
               ? bitfield{}
               : traffic_days_.bitfields_.at(it->traffic_days_).first;
+
+      for (auto i = lsb; i < get_last_set_bit(); ++i) {
+        remaining_traffic_days.set(i + 1, false);
+      }
 
       auto day_offset = 0;
       auto travel_dur_extremum = max ? u16_minutes{0U} : u16_minutes::max();

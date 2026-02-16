@@ -256,11 +256,11 @@ void build_lb_graph(timetable& tt, profile_idx_t const prf_idx) {
 
           auto new_min_dur = std::vector<tooth>{};
           saw<kChSawType>{min_dur, traffic_days}.simplify(
-              saw<kChSawType>{edge_min.at(shortcut_idx), traffic_days},
+              saw<kChSawType>{edge_min.at(shortcut_idx), traffic_days}, false,
               new_min_dur);
           auto new_max_dur = std::vector<tooth>{};
           saw<kChSawType>{max_dur, traffic_days}.simplify(
-              saw<kChSawType>{edge_max.at(shortcut_idx), traffic_days},
+              saw<kChSawType>{edge_max.at(shortcut_idx), traffic_days}, true,
               new_max_dur);
           edge_min.at(shortcut_idx) = std::move(new_min_dur);
           edge_max.at(shortcut_idx) = std::move(new_max_dur);
@@ -462,7 +462,10 @@ void build_lb_graph(timetable& tt, profile_idx_t const prf_idx) {
         }
       }
       // std::cout << "arr fps " << arrival_fps.size() << std::endl;
+      // TODO take into account PT directs
       for (auto const& [to_l, minmax_duration] : arrival_fps) {
+        std::cout << "fp mm " << minmax_duration.first << " "
+                  << minmax_duration.second << std::endl;
         if (kChAtomicFootpaths && to_l != entry.first) {
           upsert_ch_footpath_edge(
               entry.first, to_l,

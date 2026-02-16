@@ -120,7 +120,7 @@ void obtain_relevant_stops(timetable const& tt,
           dists[l_dir].at(edge_target).d_[kMin].to_saw(ch_traffic_days), true);
       if (max_true || min_true) {*/
       saw<kChSawType>{new_max_dist, ch_traffic_days}.simplify(
-          dists[l_dir][edge_target].d_[kMax].to_saw(ch_traffic_days),
+          dists[l_dir][edge_target].d_[kMax].to_saw(ch_traffic_days), true,
           tmp_saw);  // TODO move to leq again? or detect within simplify if not
       // equal (new bitfields created etc)
       /*std::cout << "push pq" << edge_target << " " << 0 << " " << 0
@@ -144,7 +144,8 @@ void obtain_relevant_stops(timetable const& tt,
       new_max_dist.clear();
       tmp_saw.clear();
       saw<kChSawType>{new_min_dist, ch_traffic_days}.simplify(
-          dists[l_dir][edge_target].d_[kMin].to_saw(ch_traffic_days), tmp_saw);
+          dists[l_dir][edge_target].d_[kMin].to_saw(ch_traffic_days), false,
+          tmp_saw);
       new_min_dist.clear();
       saw<kChSawType>{tmp_saw, ch_traffic_days}.min(
           new_min_dist);  // TODO should not be necessary
@@ -173,6 +174,12 @@ void obtain_relevant_stops(timetable const& tt,
       auto const const_min_edge =
           saw<kChSawType>{tt.ch_graph_min_[prf_idx].at(e_idx), ch_traffic_days}
               .min();
+      if (dist[kMax] + const_min_edge.count() >= kChMaxTravelTime.count()) {
+
+        std::cout << "extra extra weird " << dist[kMax] << " "
+                  << const_min_edge.count() << std::endl;
+        continue;
+      }
       pq.push(ch_label{
           edge_target,
           {static_cast<ch_label::dist_t>(dist[kMax] + const_min_edge.count()),
@@ -254,7 +261,7 @@ void obtain_relevant_stops(timetable const& tt,
               .concat(l_dir,
                       dists[other_dir][l.l_].d_[kMax].to_saw(ch_traffic_days),
                       true, tmp_saw);
-      max_concat.simplify(saw<kChSawType>{min_max_dist, ch_traffic_days},
+      max_concat.simplify(saw<kChSawType>{min_max_dist, ch_traffic_days}, true,
                           new_max_dist);
       if (saw<kChSawType>{new_max_dist, ch_traffic_days} !=
           saw<kChSawType>{min_max_dist, ch_traffic_days}) {
@@ -280,10 +287,8 @@ void obtain_relevant_stops(timetable const& tt,
       tmp_saw.clear();
     }
     // std::cout << "mmd" << min_max_dist << std::endl;
-    if (l.d_[kMin] >
-        saw<kChSawType>{min_max_dist, ch_traffic_days}.max().count()) {
-      // && dists[l_dir].at(l.l_).d_[mode].to_saw(ch_traffic_days) >
-      //    saw<kChSawType>{min_max_dist, ch_traffic_days}) {
+    if (dists[l_dir].at(l.l_).d_[kMin].to_saw(ch_traffic_days) >
+        saw<kChSawType>{min_max_dist, ch_traffic_days}) {
       /*if (mode == kMax) {
         auto buffer = std::vector<ch_label>{};
         while (!pq.empty()) {
@@ -357,7 +362,7 @@ void obtain_relevant_stops(timetable const& tt,
       auto const other_dir = dir ^ 1U;
 
       saw<kChSawType>{min_max_dist, ch_traffic_days}.simplify(
-          dists[dir][m].d_[kMax].to_saw(ch_traffic_days), tmp_saw);
+          dists[dir][m].d_[kMax].to_saw(ch_traffic_days), true, tmp_saw);
       std::swap(dists[dir][m].d_[kMax].saw_, tmp_saw);
       tmp_saw.clear();
       auto const d = std::min(
@@ -396,7 +401,7 @@ void obtain_relevant_stops(timetable const& tt,
               << "| l:" << tt.ch_levels_[prf_idx].at(l.l_) << std::endl;
     nonce_map.at(l.l_) = l.d_[kMin];
     saw<kChSawType>{min_max_dist, ch_traffic_days}.simplify(
-        dists[l.dir_][l.l_].d_[kMax].to_saw(ch_traffic_days), tmp_saw);
+        dists[l.dir_][l.l_].d_[kMax].to_saw(ch_traffic_days), true, tmp_saw);
     /*if (saw<kChSawType>{tmp_saw, ch_traffic_days} ==
         dists[l.dir_][l.l_].d_[kMax].to_saw(
             ch_traffic_days)) {  // TODO improve leq pre-pq-push?
