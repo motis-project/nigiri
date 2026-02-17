@@ -1,13 +1,10 @@
-#include "../nigiri/include/nigiri/routing/mcraptor/mcraptor_search.h"
-
-#include <string>
+#include "nigiri/routing/mcraptor/mcraptor_search.h"
+#include "nigiri/routing/mcraptor/mcraptor.h"
 #include <utility>
 #include "date/date.h"
 #include "utl/to_vec.h"
-#include "nigiri/routing/mcraptor/mcraptor.h"
 
-
-namespace nigiri::routing {
+namespace nigiri::routing::da {
 
 template <direction SearchDir>
 routing_result mcraptor_search(
@@ -18,25 +15,33 @@ routing_result mcraptor_search(
     query q,
     std::optional<std::chrono::seconds> const timeout,
     std::vector<std::vector<std::pair<int, double>>> arr_dist) {
-//  if (rtt != nullptr) {
-//    return {};
-//  }
+  //  if (rtt != nullptr) {
+  //    return {};
+  //  }
 
   using algo_t = mcraptor<SearchDir>;
-  return search<SearchDir, algo_t>{
-      tt, rtt, s_state,r_state, std::move(q), timeout, arr_dist}
-        .execute();
+  r_state.arr_dist_ = std::move(arr_dist);
+  return search<SearchDir, algo_t>{tt,           rtt,     s_state, r_state,
+                                   std::move(q), timeout}
+      .execute();
 }
 
-
 template routing_result mcraptor_search<direction::kForward>(
-    timetable const&, rt_timetable const*, search_state&, raptor_state&,
-    query, std::optional<std::chrono::seconds>,
+    timetable const&,
+    rt_timetable const*,
+    search_state&,
+    raptor_state&,
+    query,
+    std::optional<std::chrono::seconds>,
     std::vector<std::vector<std::pair<int, double>>> arr_dist);
 
 template routing_result mcraptor_search<direction::kBackward>(
-    timetable const&, rt_timetable const*, search_state&, raptor_state&,
-    query, std::optional<std::chrono::seconds>,
+    timetable const&,
+    rt_timetable const*,
+    search_state&,
+    raptor_state&,
+    query,
+    std::optional<std::chrono::seconds>,
     std::vector<std::vector<std::pair<int, double>>> arr_dist);
 
 }  // namespace nigiri::routing

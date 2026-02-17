@@ -160,8 +160,7 @@ struct search {
         require_bikes_allowed,
         require_cars_allowed,
         q_.prf_idx_ == 2U,
-        tts,
-        arr_dist_};
+        tts};
   }
 
   search(timetable const& tt,
@@ -169,8 +168,7 @@ struct search {
          search_state& s,
          algo_state_t& algo_state,
          query q,
-         std::optional<std::chrono::seconds> timeout = std::nullopt,
-         std::vector<std::vector<std::pair<int, double>>> arr_dist = {})
+         std::optional<std::chrono::seconds> timeout = std::nullopt)
       : tt_{tt},
         rtt_{rtt},
         state_{s},
@@ -190,8 +188,7 @@ struct search {
                    q_.require_car_transport_,
                    q_.transfer_time_settings_,
                    algo_state)},
-        timeout_(timeout),
-        arr_dist_(arr_dist){
+        timeout_(timeout) {
     utl::sort(q_.start_);
     utl::sort(q_.destination_);
     q_.sanitize(tt);
@@ -314,13 +311,13 @@ struct search {
     }
 
     if (is_pretrip()) {
-//      utl::erase_if(state_.results_, [&](journey const& j) {
-//        return !search_interval_.contains(j.start_time_) ||
-//               j.travel_time() >= fastest_direct_ ||
-//               j.travel_time() > q_.max_travel_time_;
-//      });
+      //      utl::erase_if(state_.results_, [&](journey const& j) {
+      //        return !search_interval_.contains(j.start_time_) ||
+      //               j.travel_time() >= fastest_direct_ ||
+      //               j.travel_time() > q_.max_travel_time_;
+      //      });
 
-      if (false) {//if (q_.slow_direct_) {
+      if (false) {  // if (q_.slow_direct_) {
         auto direct = std::vector<journey>{};
         auto done = hash_set<std::pair<location_idx_t, location_idx_t>>{};
         for (auto const& j : state_.results_) {
@@ -493,7 +490,6 @@ private:
   duration_t fastest_direct_;
   Algo algo_;
   std::optional<std::chrono::seconds> timeout_;
-  std::vector<std::vector<std::pair<int, double>>> arr_dist_;
 };
 
 }  // namespace nigiri::routing

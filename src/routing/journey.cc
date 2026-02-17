@@ -14,28 +14,28 @@ void journey::leg::print(std::ostream& out,
                          rt_timetable const* rtt,
                          unsigned const n_indent,
                          bool const) const {
-  std::visit(
-      utl::overloaded{
-          [&](run_enter_exit const& t) {
-            auto const fr = rt::frun{tt, rtt, t.r_};
-            //for (auto i = t.stop_range_.from_; i != t.stop_range_.to_; ++i) {
-              if (!fr[0].is_cancelled()) {
-                fr[0].print(out, 0 == t.stop_range_.from_,
-                            0 == t.stop_range_.to_ - 1U);
-//                out << "\n";
-              }
-            //}
-          },
-          [&](footpath const x) {
-            indent(out, n_indent);
-            out << "FOOTPATH (duration=" << x.duration().count() << ")";
-          },
-          [&](offset const x) {
-            indent(out, n_indent);
-            out << "MUMO (id=" << x.transport_mode_id_
-                << ", duration=" << x.duration().count() << ")\n";
-          }},
-      uses_);
+  std::visit(utl::overloaded{
+                 [&](run_enter_exit const& t) {
+                   auto const fr = rt::frun{tt, rtt, t.r_};
+                   // for (auto i = t.stop_range_.from_; i != t.stop_range_.to_;
+                   // ++i) {
+                   if (!fr[0].is_cancelled()) {
+                     fr[0].print(out, 0 == t.stop_range_.from_,
+                                 0 == t.stop_range_.to_ - 1U);
+                     //                out << "\n";
+                   }
+                   //}
+                 },
+                 [&](footpath const x) {
+                   indent(out, n_indent);
+                   out << "FOOTPATH (duration=" << x.duration().count() << ")";
+                 },
+                 [&](offset const x) {
+                   indent(out, n_indent);
+                   out << "MUMO (id=" << x.transport_mode_id_
+                       << ", duration=" << x.duration().count() << ")\n";
+                 }},
+             uses_);
 }
 
 void journey::print(std::ostream& out,

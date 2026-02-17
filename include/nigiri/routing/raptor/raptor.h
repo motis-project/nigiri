@@ -35,8 +35,7 @@ struct raptor_stats {
          fp_update_prevented_by_lower_bound_},
         {"route_update_prevented_by_lower_bound",
          route_update_prevented_by_lower_bound_},
-        {"n_rounds",
-         n_rounds},
+        {"n_rounds", n_rounds},
         {"n_rounds_to_percantage" + std::to_string(percantage),
          n_rounds_to_percantage},
     };
@@ -120,8 +119,7 @@ struct raptor {
       bool const require_bike_transport,
       bool const require_car_transport,
       bool const is_wheelchair,
-      transfer_time_settings const& tts,
-      std::vector<std::vector<std::pair<int, double>>> const& arr_dist = {})
+      transfer_time_settings const& tts)
       : tt_{tt},
         rtt_{rtt},
         n_days_{tt_.internal_interval_days().size().count()},

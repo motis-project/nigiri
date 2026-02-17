@@ -4,7 +4,7 @@
 #include "nigiri/routing/search.h"
 #include "nigiri/timetable.h"
 
-namespace nigiri::routing {
+namespace nigiri::routing::da {
 
 template <direction SearchDir>
 routing_result mcraptor_search(
