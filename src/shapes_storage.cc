@@ -16,16 +16,17 @@ namespace fs = std::filesystem;
 namespace nigiri {
 
 shapes_storage::shapes_storage(std::filesystem::path path,
-                               cista::mmap::protection const mode)
+                               cista::mmap::protection const mode,
+                               bool keep_shape_data)
     : mode_{mode},
       p_{[&]() {
         fs::create_directories(path);
         return std::move(path);
       }()},
       data_{mm_paged_vecvec_helper<shape_idx_t, geo::latlng>::data_t{
-                mm_vec<geo::latlng>{mm("shapes_data.bin")}},
+                mm_vec<geo::latlng>{mm("shapes_data.bin", keep_shape_data)}},
             mm_vec<cista::page<std::uint64_t, std::uint32_t>>{
-                mm("shapes_idx.bin")}},
+                mm("shapes_idx.bin", keep_shape_data)}},
       offsets_{mm_vec<shape_offset_t>{mm("shape_offsets_data.bin")},
                mm_vec<std::uint64_t>{mm("shape_offsets_idx.bin")}},
       trip_offset_indices_{mm("shape_trip_offsets.bin")},
@@ -33,10 +34,15 @@ shapes_storage::shapes_storage(std::filesystem::path path,
       route_segment_bboxes_{
           mm_vec<geo::box>{mm("shape_route_segment_bboxes_data.bin")},
           mm_vec<std::uint64_t>{mm("shape_route_segment_bboxes_idx.bin")}},
-      shape_sources_{mm("shape_sources.bin")} {}
+      shape_sources_{mm("shape_sources.bin", keep_shape_data)} {}
 
-cista::mmap shapes_storage::mm(char const* file) {
-  return cista::mmap{(p_ / file).generic_string().c_str(), mode_};
+cista::mmap shapes_storage::mm(char const* file, bool const keep) {
+  auto const p = (p_ / file);
+  return cista::mmap{
+      p.generic_string().c_str(),
+      keep && mode_ == cista::mmap::protection::WRITE && fs::exists(p)
+          ? cista::mmap::protection::MODIFY
+          : mode_};
 }
 
 std::tuple<std::span<geo::latlng const>, shape_idx_t, shape_offset_idx_t>

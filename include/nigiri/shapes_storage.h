@@ -15,9 +15,11 @@
 namespace nigiri {
 
 struct shapes_storage {
-  shapes_storage(std::filesystem::path, cista::mmap::protection);
+  shapes_storage(std::filesystem::path,
+                 cista::mmap::protection,
+                 bool keep_shape_data = false);
 
-  cista::mmap mm(char const* file);
+  cista::mmap mm(char const* file, bool keep = false);
 
   std::span<geo::latlng const> get_shape(shape_idx_t) const;
   std::span<geo::latlng const> get_shape(trip_idx_t) const;
