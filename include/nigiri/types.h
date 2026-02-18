@@ -1,7 +1,7 @@
 #pragma once
 
-#include <chrono>
 #include <cassert>
+#include <chrono>
 #include <cinttypes>
 #include <variant>
 
