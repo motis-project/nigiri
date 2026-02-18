@@ -14,4 +14,5 @@ routing_result raptor_search(
     query q,
     direction search_dir,
     std::optional<std::chrono::seconds> timeout = std::nullopt);
+
 }  // namespace nigiri::routing

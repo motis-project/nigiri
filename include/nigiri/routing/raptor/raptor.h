@@ -16,8 +16,6 @@
 #include "nigiri/timetable.h"
 #include "nigiri/types.h"
 
-#include "boost/function.hpp"
-
 namespace nigiri::routing {
 
 struct raptor_stats {
@@ -35,9 +33,6 @@ struct raptor_stats {
          fp_update_prevented_by_lower_bound_},
         {"route_update_prevented_by_lower_bound",
          route_update_prevented_by_lower_bound_},
-        {"n_rounds", n_rounds},
-        {"n_rounds_to_percantage" + std::to_string(percantage),
-         n_rounds_to_percantage},
     };
   }
 
@@ -66,9 +61,6 @@ struct raptor_stats {
   std::uint64_t n_earliest_arrival_updated_by_footpath_{0ULL};
   std::uint64_t fp_update_prevented_by_lower_bound_{0ULL};
   std::uint64_t route_update_prevented_by_lower_bound_{0ULL};
-  std::uint64_t n_rounds{0ULL};
-  std::uint64_t n_rounds_to_percantage{0ULL};
-  std::float_t percantage{0.95};
 };
 
 enum class search_mode { kOneToOne, kOneToAll };

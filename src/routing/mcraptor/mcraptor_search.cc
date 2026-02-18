@@ -19,7 +19,7 @@ routing_result mcraptor_search(
   //    return {};
   //  }
 
-  using algo_t = mcraptor<SearchDir>;
+  using algo_t = mcraptor<>;
   r_state.arr_dist_ = std::move(arr_dist);
   return search<SearchDir, algo_t>{tt,           rtt,     s_state, r_state,
                                    std::move(q), timeout}

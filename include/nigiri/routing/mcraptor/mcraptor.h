@@ -9,8 +9,7 @@
 
 namespace nigiri::routing::da {
 
-template <direction SearchDir = direction::kForward,
-          bool Rt = false,
+template <bool Rt = false,
           via_offset_t Vias = 0>
 struct mcraptor {
   using algo_state_t = raptor_state;
@@ -18,10 +17,10 @@ struct mcraptor {
 
   static constexpr bool kUseLowerBounds = true;
 
-  static constexpr auto const kFwd = SearchDir == direction::kForward;
+  static constexpr auto const kFwd = false;
   static constexpr auto const kUnreachable =
       std::numeric_limits<std::uint16_t>::max();
-  static constexpr auto const kInvalid = kInvalidDelta<SearchDir>;
+  static constexpr auto const kInvalid = kInvalidDelta<direction::kBackward>;
 
   static bool is_better(auto a, auto b) { return kFwd ? a < b : a > b; }
   static bool is_better_or_eq(auto a, auto b) { return kFwd ? a <= b : a >= b; }
@@ -203,8 +202,6 @@ struct mcraptor {
     dest_bag_.add({.t_ = get_best(d_worst_at_dest, kInvalid)}, 0);
 
     for (auto k = 1U; k != end_k; ++k) {
-      stats_.n_rounds = k;
-
       auto any_marked = false;
       prev_round_station_mark_.for_each_set_bit([&](std::uint64_t const i) {
         for (auto const& r : tt_.location_routes_[location_idx_t{i}]) {
@@ -247,12 +244,6 @@ struct mcraptor {
       std::swap(prev_round_station_mark_, station_mark_);
       utl::fill(tmp_station_mark_.blocks_, 0U);
       utl::fill(station_mark_.blocks_, 0U);
-
-      for (auto const& [_, label] : dest_bag_.labels_) {
-        if (stats_.n_rounds_to_percantage == 0 &&
-            label.success_chance >= stats_.percantage)
-          stats_.n_rounds_to_percantage = k;
-      }
     }
 
     for (std::pair<unsigned, mcraptor_label> pair : dest_bag_.labels_) {
@@ -315,7 +306,7 @@ struct mcraptor {
 
     std::vector<mcraptor_label> labels = {};
     std::vector<pair<std::size_t, location_idx_t>> ls{};
-    get_labels_after_dest_bag(j.transfers_ + 1,
+    get_labels_after_dest_bag(j.transfers_ + 1U,
                               possible_start_t, labels);
     ls.push_back({labels.size(), j.dest_});
 
@@ -331,7 +322,7 @@ struct mcraptor {
     while (true) {
       auto k = j.transfers_ + 1 - i;
       auto it = ls.begin();
-      for (int index = 0; index < labels.size(); ++index) {
+      for (unsigned int index = 0; index < labels.size(); ++index) {
         mcraptor_label const& label = labels[index];
         if (index >= it->first) ++it;
         auto l = it->second;
@@ -390,14 +381,14 @@ struct mcraptor {
     }
   }
 
-  int colum_width = 20;
+  unsigned int colum_width = 20;
   void reconstruct_station_based(query const& q, journey& j) {
     std::vector<journey::leg> trips;
     auto l = j.dest_;
     delta_t possible_start_t = unix_to_delta(base(), j.dest_time_);
 
     std::vector<mcraptor_label> labels = {};
-    get_labels_after_dest_bag(j.transfers_ + 1,
+    get_labels_after_dest_bag(j.transfers_ + 1U,
                               possible_start_t, labels);
     if (should_print)
       std::cout << "Gesamtwahrscheinlichkeit: " << j.success_chance
@@ -424,16 +415,14 @@ struct mcraptor {
       for (journey::leg leg : trips) {
         auto from_i =
             std::find_if(locations.begin(), locations.end(),
-                         [&](location_idx_t l) { return l == leg.from_; }) -
-            locations.begin();
-        if (from_i == locations.size()) {
+                         [&](location_idx_t l) { return l == leg.from_; });
+        if (from_i == locations.end()) {
           locations.push_back(leg.from_);
         }
         auto to_i =
             std::find_if(locations.begin(), locations.end(),
-                         [&](location_idx_t l) { return l == leg.to_; }) -
-            locations.begin();
-        if (to_i == locations.size()) {
+                         [&](location_idx_t l) { return l == leg.to_; });
+        if (to_i == locations.end()) {
           locations.push_back(leg.to_);
         }
       }
@@ -473,7 +462,7 @@ struct mcraptor {
 
   void print_unixtime(auto t, bool left) {
     if (left) {
-      for (int j = 0; j < colum_width; ++j) {
+      for (unsigned int j = 0; j < colum_width; ++j) {
         std::cout << " ";
       }
     }
@@ -483,7 +472,7 @@ struct mcraptor {
     str_to_length<true>(str, colum_width);
     std::cout << str;
     if (!left) {
-      for (int j = 0; j < colum_width; ++j) {
+      for (unsigned int j = 0; j < colum_width; ++j) {
         std::cout << " ";
       }
     }
@@ -492,7 +481,7 @@ struct mcraptor {
 
   void print_column_spaces(int n) {
     for (int i = 0; i < n; ++i) {
-      for (int j = 0; j < colum_width * 2; ++j) {
+      for (unsigned int j = 0; j < colum_width * 2; ++j) {
         std::cout << " ";
       }
       std::cout << "|";
@@ -581,7 +570,7 @@ private:
                                  std::vector<mcraptor_label>& labels) {
     std::for_each(dest_bag_.labels_.begin(), dest_bag_.labels_.end(),
                   [&](std::pair<unsigned, mcraptor_label> const& pair) {
-                    if (pair.first == k && pair.first > 0 &&
+                    if (pair.first == k && pair.first > 0U &&
                         possible_start_t <= pair.second.t_ &&
                         pair.second.t_ != kInvalid) {
                       labels.push_back(pair.second);
@@ -681,7 +670,7 @@ private:
       auto const l_idx = cista::to_idx(stp.location_idx());
       auto const is_last = i == stop_seq.size() - 1U;
 
-      if (!ets.empty() && stp.can_finish<SearchDir>(false)) {
+      if (!ets.empty() && stp.can_finish<direction::kBackward>(false)) {
         auto it = ets.begin();
         while (it != ets.end()) {
           auto& et_label = (*it);
@@ -719,7 +708,7 @@ private:
         }
       }
 
-      if (is_last || !stp.can_start<SearchDir>(false) ||
+      if (is_last || !stp.can_start<direction::kBackward>(false) ||
           !prev_round_station_mark_[l_idx]) {
         continue;
       }
@@ -967,7 +956,7 @@ private:
     }
 
     auto const fp_leg =
-        journey::leg{SearchDir,
+        journey::leg{direction::kBackward,
                      fp_l_idx,
                      l,
                      delta_to_unix(base(), trip_arr_fp_dep_time),
@@ -976,7 +965,7 @@ private:
                      label.success_chance};
 
     auto const transport_leg = journey::leg{
-        SearchDir,
+        direction::kBackward,
         trip_l_idx,
         fp_l_idx,
         delta_to_unix(base(), trip_dep_time),
