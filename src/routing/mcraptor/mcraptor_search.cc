@@ -1,3 +1,7 @@
+/*
+* This file is based on the mcraptor from PumarPap https://github.com/motis-project/nigiri/pull/183
+*/
+
 #include "nigiri/routing/mcraptor/mcraptor_search.h"
 #include "nigiri/routing/mcraptor/mcraptor.h"
 #include <utility>

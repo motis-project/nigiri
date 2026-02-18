@@ -1,3 +1,7 @@
+/*
+* This file is based on the mcraptor from PumarPap https://github.com/motis-project/nigiri/pull/183
+*/
+
 #pragma once
 
 #include "nigiri/routing/raptor/raptor.h"
