@@ -53,7 +53,7 @@ struct journey {
           dep_time_{d == direction::kForward ? tima_at_a : time_at_b},
           arr_time_{d == direction::kForward ? time_at_b : tima_at_a},
           uses_{std::forward<T>(uses)},
-          success_chance{success_chance}{}
+          success_chance{success_chance} {}
 
     void print(std::ostream&,
                timetable const&,

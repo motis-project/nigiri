@@ -21,8 +21,8 @@ routing_result mcraptor_search(
 
   using algo_t = mcraptor<>;
   r_state.arr_dist_ = std::move(arr_dist);
-  return search<SearchDir, algo_t>{tt,           rtt,     s_state, r_state,
-                                   std::move(q), timeout}
+  return search<SearchDir, algo_t>{tt,      rtt,          s_state,
+                                   r_state, std::move(q), timeout}
       .execute();
 }
 
@@ -44,4 +44,4 @@ template routing_result mcraptor_search<direction::kBackward>(
     std::optional<std::chrono::seconds>,
     std::vector<std::vector<std::pair<int, double>>> arr_dist);
 
-}  // namespace nigiri::routing
+}  // namespace nigiri::routing::da

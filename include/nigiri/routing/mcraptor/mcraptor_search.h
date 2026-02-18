@@ -16,4 +16,4 @@ routing_result mcraptor_search(
     std::optional<std::chrono::seconds> timeout = std::nullopt,
     std::vector<std::vector<std::pair<int, double>>> arr_dist = {});
 
-}  // namespace nigiri::routing
+}  // namespace nigiri::routing::da

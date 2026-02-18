@@ -9,8 +9,7 @@
 
 namespace nigiri::routing::da {
 
-template <bool Rt = false,
-          via_offset_t Vias = 0>
+template <bool Rt = false, via_offset_t Vias = 0>
 struct mcraptor {
   using algo_state_t = raptor_state;
   using algo_stats_t = raptor_stats;
@@ -103,22 +102,21 @@ struct mcraptor {
 
   static auto dir(auto a) { return (kFwd ? 1 : -1) * a; }
 
-  mcraptor(
-      timetable const& tt,
-      rt_timetable const*,
-      raptor_state& state,
-      bitvec& is_dest,
-      std::array<bitvec, kMaxVias>&,
-      std::vector<std::uint16_t>&,
-      hash_map<location_idx_t, std::vector<td_offset>> const&,
-      std::vector<std::uint16_t>& lb,
-      std::vector<via_stop> const&,
-      day_idx_t const base,
-      clasz_mask_t const,
-      bool const,
-      bool const,
-      bool const,
-      transfer_time_settings const& tts)
+  mcraptor(timetable const& tt,
+           rt_timetable const*,
+           raptor_state& state,
+           bitvec& is_dest,
+           std::array<bitvec, kMaxVias>&,
+           std::vector<std::uint16_t>&,
+           hash_map<location_idx_t, std::vector<td_offset>> const&,
+           std::vector<std::uint16_t>& lb,
+           std::vector<via_stop> const&,
+           day_idx_t const base,
+           clasz_mask_t const,
+           bool const,
+           bool const,
+           bool const,
+           transfer_time_settings const& tts)
       : tt_{tt},
         n_days_{tt_.internal_interval_days().size().count()},
         n_locations_{tt_.n_locations()},
@@ -128,7 +126,7 @@ struct mcraptor {
         lb_{lb},
         base_{base},
         transfer_time_settings_{tts},
-        arr_dist_{state.arr_dist_}{
+        arr_dist_{state.arr_dist_} {
 
     prev_round_station_mark_.resize(n_locations_);
     tmp_station_mark_.resize(n_locations_);
@@ -306,8 +304,7 @@ struct mcraptor {
 
     std::vector<mcraptor_label> labels = {};
     std::vector<pair<std::size_t, location_idx_t>> ls{};
-    get_labels_after_dest_bag(j.transfers_ + 1U,
-                              possible_start_t, labels);
+    get_labels_after_dest_bag(j.transfers_ + 1U, possible_start_t, labels);
     ls.push_back({labels.size(), j.dest_});
 
     std::unordered_map<location_idx_t, delta_t> arrivals{};
@@ -388,8 +385,7 @@ struct mcraptor {
     delta_t possible_start_t = unix_to_delta(base(), j.dest_time_);
 
     std::vector<mcraptor_label> labels = {};
-    get_labels_after_dest_bag(j.transfers_ + 1U,
-                              possible_start_t, labels);
+    get_labels_after_dest_bag(j.transfers_ + 1U, possible_start_t, labels);
     if (should_print)
       std::cout << "Gesamtwahrscheinlichkeit: " << j.success_chance
                 << " Umstiege: " << static_cast<int>(j.transfers_) << std::endl;
@@ -636,8 +632,7 @@ private:
     return result;
   }
 
-  double cum_enter_probability(auto l,
-                               delta_t possible_start_t) {
+  double cum_enter_probability(auto l, delta_t possible_start_t) {
     auto it = std::lower_bound(
         best_bag_[l].labels_.begin(), best_bag_[l].labels_.end(),
         possible_start_t, [](mcraptor_label a, delta_t t) { return a.t_ < t; });
@@ -780,14 +775,12 @@ private:
         if (pair.first == 0 || pair.first >= k || pair.second.fp_l_ != i)
           continue;
         auto tmp_label = pair.second;
-        tmp_label.success_chance = cum_enter_probability(
-            i, tmp_label.t_);
+        tmp_label.success_chance = cum_enter_probability(i, tmp_label.t_);
         dest_bag_.add(tmp_label, k);
       }
       for (mcraptor_label tmp_label : location_bags_[i][k].labels_) {
         if (tmp_label.t_ == kInvalid) continue;
-        tmp_label.success_chance = cum_enter_probability(
-            i, tmp_label.t_);
+        tmp_label.success_chance = cum_enter_probability(i, tmp_label.t_);
         dest_bag_.add(tmp_label, k);
       }
     });
@@ -1124,4 +1117,4 @@ private:
   std::vector<std::vector<std::pair<int, double>>> const& arr_dist_;
 };
 
-}  // namespace nigiri::routing
+}  // namespace nigiri::routing::da
