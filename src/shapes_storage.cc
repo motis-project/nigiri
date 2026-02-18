@@ -56,7 +56,7 @@ get_shape(shapes_storage const& storage, trip_idx_t const trip_idx) {
     return {};
   }
   auto const [shape_idx, offset_idx] = storage.trip_offset_indices_[trip_idx];
-  assert((shape_idx == shape_idx_t::invalid()) ==
+  assert((shape_idx == scoped_shape_idx_t::invalid()) ==
          (offset_idx == shape_offset_idx_t::invalid()));
   if (offset_idx == shape_offset_idx_t::invalid()) {
     return {};
