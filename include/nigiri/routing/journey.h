@@ -80,13 +80,10 @@ struct journey {
   bool dominates(journey const& o) const {
     if (start_time_ <= dest_time_) {
       return transfers_ <= o.transfers_ && start_time_ >= o.start_time_ &&
-             dest_time_ <= o.dest_time_ && success_chance >= o.success_chance;
+             dest_time_ <= o.dest_time_;
     } else {
-      //      return transfers_ <= o.transfers_ && start_time_ <= o.start_time_
-      //      &&
-      //             dest_time_ >= o.dest_time_ && success_chance >=
-      //             o.success_chance;
-      return false;
+      return transfers_ <= o.transfers_ && start_time_ <= o.start_time_ &&
+             dest_time_ >= o.dest_time_ && success_chance >= o.success_chance;
     }
   }
 
@@ -115,7 +112,6 @@ struct journey {
   double success_chance{};
   location_idx_t dest_{};
   std::uint8_t transfers_{0U};
-
   bool error_{false};
 };
 

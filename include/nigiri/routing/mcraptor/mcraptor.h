@@ -106,19 +106,19 @@ struct mcraptor {
 
   mcraptor(
       timetable const& tt,
-      rt_timetable const* rtt,
+      rt_timetable const*,
       raptor_state& state,
       bitvec& is_dest,
-      std::array<bitvec, kMaxVias>& is_via,
-      std::vector<std::uint16_t>& dist_to_dest,
-      hash_map<location_idx_t, std::vector<td_offset>> const& td_dist_to_dest,
+      std::array<bitvec, kMaxVias>&,
+      std::vector<std::uint16_t>&,
+      hash_map<location_idx_t, std::vector<td_offset>> const&,
       std::vector<std::uint16_t>& lb,
-      std::vector<via_stop> const& via_stops,
+      std::vector<via_stop> const&,
       day_idx_t const base,
-      clasz_mask_t const allowed_claszes,
-      bool const require_bike_transport,
-      bool const require_car_transport,
-      bool const is_wheelchair,
+      clasz_mask_t const,
+      bool const,
+      bool const,
+      bool const,
       transfer_time_settings const& tts)
       : tt_{tt},
         n_days_{tt_.internal_interval_days().size().count()},
@@ -281,7 +281,7 @@ struct mcraptor {
   void reconstruct_leg(
       query const& q, journey& j, auto i, auto l, mcraptor_label label) {
     auto k = j.transfers_ + 1 - i;
-    auto [fp_leg, transport_leg] = get_legs(k, l, q.prf_idx_, label);
+    auto [fp_leg, transport_leg] = get_legs(l, q.prf_idx_, label);
     auto next_l = kFwd ? transport_leg.from_ : transport_leg.to_;
     auto possible_start_t = unix_to_delta(base(), transport_leg.arr_time_);
     if (i != 0 &&
@@ -315,8 +315,8 @@ struct mcraptor {
 
     std::vector<mcraptor_label> labels = {};
     std::vector<pair<std::size_t, location_idx_t>> ls{};
-    get_labels_after_dest_bag(cista::to_idx(j.dest_), j.transfers_ + 1,
-                              possible_start_t, labels, 1);
+    get_labels_after_dest_bag(j.transfers_ + 1,
+                              possible_start_t, labels);
     ls.push_back({labels.size(), j.dest_});
 
     std::unordered_map<location_idx_t, delta_t> arrivals{};
@@ -335,7 +335,7 @@ struct mcraptor {
         mcraptor_label const& label = labels[index];
         if (index >= it->first) ++it;
         auto l = it->second;
-        auto [fp_leg, transport_leg] = get_legs(k, l, q.prf_idx_, label);
+        auto [fp_leg, transport_leg] = get_legs(l, q.prf_idx_, label);
         auto const& next_l = kFwd ? transport_leg.from_ : transport_leg.to_;
         possible_start_t = unix_to_delta(base(), transport_leg.arr_time_);
         if (i != 0 && (fp_leg.from_ != fp_leg.to_ ||
@@ -368,7 +368,7 @@ struct mcraptor {
                                      mcraptor_label const& label,
                                      auto& trips) {
     auto k = j.transfers_ + 1 - i;
-    auto const& [fp_leg, transport_leg] = get_legs(k, l, q.prf_idx_, label);
+    auto const& [fp_leg, transport_leg] = get_legs(l, q.prf_idx_, label);
     auto const& next_l = kFwd ? transport_leg.from_ : transport_leg.to_;
     auto possible_start_t = unix_to_delta(base(), transport_leg.arr_time_);
     if (i != 0 &&
@@ -397,8 +397,8 @@ struct mcraptor {
     delta_t possible_start_t = unix_to_delta(base(), j.dest_time_);
 
     std::vector<mcraptor_label> labels = {};
-    get_labels_after_dest_bag(cista::to_idx(l), j.transfers_ + 1,
-                              possible_start_t, labels, 1);
+    get_labels_after_dest_bag(j.transfers_ + 1,
+                              possible_start_t, labels);
     if (should_print)
       std::cout << "Gesamtwahrscheinlichkeit: " << j.success_chance
                 << " Umstiege: " << static_cast<int>(j.transfers_) << std::endl;
@@ -464,7 +464,9 @@ struct mcraptor {
 
   template <bool cut_front = false>
   void str_to_length(std::string& str, auto length) {
-    for (int i = 0; str.length() < length; ++i) str += " ";
+    while (str.length() < length) {
+      str += " ";
+    }
     str = !cut_front ? str.substr(0, length)
                      : str.substr(str.length() - length, str.length());
   }
@@ -574,11 +576,9 @@ private:
     labels.erase(labels.begin() + start_index, new_end);
   }
 
-  void get_labels_after_dest_bag(auto l,
-                                 auto k,
+  void get_labels_after_dest_bag(auto k,
                                  delta_t possible_start_t,
-                                 std::vector<mcraptor_label>& labels,
-                                 int ik) {
+                                 std::vector<mcraptor_label>& labels) {
     std::for_each(dest_bag_.labels_.begin(), dest_bag_.labels_.end(),
                   [&](std::pair<unsigned, mcraptor_label> const& pair) {
                     if (pair.first == k && pair.first > 0 &&
@@ -648,9 +648,7 @@ private:
   }
 
   double cum_enter_probability(auto l,
-                               auto k,
-                               delta_t possible_start_t,
-                               clasz const c) {
+                               delta_t possible_start_t) {
     auto it = std::lower_bound(
         best_bag_[l].labels_.begin(), best_bag_[l].labels_.end(),
         possible_start_t, [](mcraptor_label a, delta_t t) { return a.t_ < t; });
@@ -676,7 +674,7 @@ private:
     auto stop_seq = tt_.route_location_seq_[r];
     auto any_marked = false;
     auto ets = std::vector<mcraptor_label>{};
-    for (int i = 0; i != stop_seq.size(); ++i) {
+    for (unsigned int i = 0; i != stop_seq.size(); ++i) {
       auto const stop_idx =
           static_cast<stop_idx_t>(kFwd ? i : stop_seq.size() - i - 1U);
       auto const stp = stop{stop_seq[stop_idx]};
@@ -735,7 +733,7 @@ private:
         auto start = prev_round_bag.labels_[0].t_;
         delta_t end;
         auto old_size = ets.size();
-        for (int j = 0; j < prev_round_bag.labels_.size(); ++j) {
+        for (unsigned int j = 0; j < prev_round_bag.labels_.size(); ++j) {
           if (std::any_of(
                   ets.begin(), ets.end(), [&](mcraptor_label label_of_vector) {
                     return label_of_vector.dominates(prev_round_bag.labels_[j]);
@@ -794,15 +792,13 @@ private:
           continue;
         auto tmp_label = pair.second;
         tmp_label.success_chance = cum_enter_probability(
-            i, k, tmp_label.t_,
-            tt_.route_clasz_[tt_.transport_route_[tmp_label.trip_id.t_idx_]]);
+            i, tmp_label.t_);
         dest_bag_.add(tmp_label, k);
       }
       for (mcraptor_label tmp_label : location_bags_[i][k].labels_) {
         if (tmp_label.t_ == kInvalid) continue;
         tmp_label.success_chance = cum_enter_probability(
-            i, k, tmp_label.t_,
-            tt_.route_clasz_[tt_.transport_route_[tmp_label.trip_id.t_idx_]]);
+            i, tmp_label.t_);
         dest_bag_.add(tmp_label, k);
       }
     });
@@ -915,8 +911,7 @@ private:
     });
   }
 
-  std::tuple<journey::leg, journey::leg> get_legs(unsigned const k,
-                                                  auto const l,
+  std::tuple<journey::leg, journey::leg> get_legs(auto const l,
                                                   auto const prf_idx,
                                                   mcraptor_label label) {
     auto const& trip_l_idx = label.trip_l_;

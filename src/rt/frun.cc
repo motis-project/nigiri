@@ -730,43 +730,43 @@ void run_stop::print(std::ostream& out,
   auto const& tz =
       tt().timezones_.at(get_tz(last ? event_type::kArr : event_type::kDep));
 
-  //  // Print stop index, location name.
-  //  fmt::print(out, "  {:2}: {:7} {:.<48}", stop_idx_, get_location_id(),
-  //             name({}));
-  //
-  //  // Print arrival (or whitespace if there's none).
-  //  if (!first && stop_idx_ != fr_->stop_range_.from_) {
-  //    auto const scheduled = scheduled_time(event_type::kArr);
-  //    auto const rt = time(event_type::kArr);
-  //    fmt::print(out, "{}a: {} [{}]", (out_allowed() ? ' ' : '-'),
-  //               date::format("%d.%m %R", scheduled),
-  //               date::format("%d.%m %R", to_local_time(tz, scheduled)));
-  //    if (fr_->is_rt() && rtt() != nullptr) {  // RT if available.
-  //      fmt::print(out, "  RT {} [{}]", date::format("%d.%m %R", rt),
-  //                 date::format("%d.%m %R", to_local_time(tz, rt)));
-  //    }
-  //  } else if (fr_->is_rt() && rtt() != nullptr) {
-  //    // Skipped w/ RT info.
-  //    fmt::print(out, "                            ");
-  //    fmt::print(out, "                               ");
-  //  } else {
-  //    // Skipped w/o RT info.
-  //    fmt::print(out, "                             ");
-  //  }
-  //
-  //  // Print departure (or whitespace if there's none).
-  //  if (!last && stop_idx_ != fr_->stop_range_.to_ - 1U) {
-  //    fmt::print(out, " ");
-  //    auto const scheduled = scheduled_time(event_type::kDep);
-  //    auto const rt = time(event_type::kDep);
-  //    fmt::print(out, "{}d: {} [{}]", (in_allowed() ? ' ' : '-'),
-  //               date::format("%d.%m %R", scheduled),
-  //               date::format("%d.%m %R", to_local_time(tz, scheduled)));
-  //    if (fr_->is_rt() && rtt() != nullptr) {  // RT if available.
-  //      fmt::print(out, "  RT {} [{}]", date::format("%d.%m %R", rt),
-  //                 date::format("%d.%m %R", to_local_time(tz, rt)));
-  //    }
-  //  }
+  // Print stop index, location name.
+  fmt::print(out, "  {:2}: {:7} {:.<48}", stop_idx_, get_location_id(),
+             name({}));
+
+  // Print arrival (or whitespace if there's none).
+  if (!first && stop_idx_ != fr_->stop_range_.from_) {
+    auto const scheduled = scheduled_time(event_type::kArr);
+    auto const rt = time(event_type::kArr);
+    fmt::print(out, "{}a: {} [{}]", (out_allowed() ? ' ' : '-'),
+               date::format("%d.%m %R", scheduled),
+               date::format("%d.%m %R", to_local_time(tz, scheduled)));
+    if (fr_->is_rt() && rtt() != nullptr) {  // RT if available.
+      fmt::print(out, "  RT {} [{}]", date::format("%d.%m %R", rt),
+                 date::format("%d.%m %R", to_local_time(tz, rt)));
+    }
+  } else if (fr_->is_rt() && rtt() != nullptr) {
+    // Skipped w/ RT info.
+    fmt::print(out, "                            ");
+    fmt::print(out, "                               ");
+  } else {
+    // Skipped w/o RT info.
+    fmt::print(out, "                             ");
+  }
+
+  // Print departure (or whitespace if there's none).
+  if (!last && stop_idx_ != fr_->stop_range_.to_ - 1U) {
+    fmt::print(out, " ");
+    auto const scheduled = scheduled_time(event_type::kDep);
+    auto const rt = time(event_type::kDep);
+    fmt::print(out, "{}d: {} [{}]", (in_allowed() ? ' ' : '-'),
+               date::format("%d.%m %R", scheduled),
+               date::format("%d.%m %R", to_local_time(tz, scheduled)));
+    if (fr_->is_rt() && rtt() != nullptr) {  // RT if available.
+      fmt::print(out, "  RT {} [{}]", date::format("%d.%m %R", rt),
+                 date::format("%d.%m %R", to_local_time(tz, rt)));
+    }
+  }
 
   // Print trip info.
   if (fr_->is_scheduled() && !last && stop_idx_ != fr_->stop_range_.to_ - 1U) {

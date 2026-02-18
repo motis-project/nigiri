@@ -27,8 +27,6 @@
 #include "nigiri/timetable.h"
 #include "nigiri/types.h"
 
-#include "boost/function.hpp"
-
 namespace nigiri::routing {
 
 struct search_state {
@@ -307,17 +305,16 @@ struct search {
       search_interval_ = new_interval;
 
       ++stats_.interval_extensions_;
-      break;
     }
 
     if (is_pretrip()) {
-      //      utl::erase_if(state_.results_, [&](journey const& j) {
-      //        return !search_interval_.contains(j.start_time_) ||
-      //               j.travel_time() >= fastest_direct_ ||
-      //               j.travel_time() > q_.max_travel_time_;
-      //      });
+      utl::erase_if(state_.results_, [&](journey const& j) {
+        return !search_interval_.contains(j.start_time_) ||
+               j.travel_time() >= fastest_direct_ ||
+               j.travel_time() > q_.max_travel_time_;
+      });
 
-      if (false) {  // if (q_.slow_direct_) {
+      if (q_.slow_direct_) {
         auto direct = std::vector<journey>{};
         auto done = hash_set<std::pair<location_idx_t, location_idx_t>>{};
         for (auto const& j : state_.results_) {
