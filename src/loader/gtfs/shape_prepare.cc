@@ -164,7 +164,8 @@ void process_task(timetable const& tt,
                   shape_loader_state const& shape_states,
                   relative_shape_idx_t const i,
                   task& t) {
-  auto const shape = shapes_data.get_shape(shape_states.get_shape_idx(i));
+  auto const shape =
+      shapes_data.get_shape(shape_states.get_scoped_shape_idx(i));
   auto const& shape_distances = shape_states.distances_[i];
   for (auto& x : t) {
     auto& r = x.result_;
@@ -228,7 +229,8 @@ void assign_shape_offsets(shapes_storage& shapes_data,
     auto const shape_idx = trip.shape_idx_;
     if (shape_idx == shape_idx_t::invalid()) {
       shapes_data.add_trip_shape_offsets(
-          trip_idx, cista::pair{shape_idx, shape_offset_idx_t::invalid()});
+          trip_idx, cista::pair{scoped_shape_idx_t::invalid(),
+                                shape_offset_idx_t::invalid()});
     } else {
       auto const task = tasks[states.get_relative_idx(shape_idx)];
       auto const x = std::ranges::lower_bound(
@@ -238,11 +240,13 @@ void assign_shape_offsets(shapes_storage& shapes_data,
       if (x != end(task) &&
           x->result_.shape_offset_idx_ != shape_offset_idx_t::invalid()) {
         shapes_data.add_trip_shape_offsets(
-            trip_idx, cista::pair{shape_idx, x->result_.shape_offset_idx_});
+            trip_idx, cista::pair{to_scoped_shape_idx(shape_idx,
+                                                      shape_source::kTimetable),
+                                  x->result_.shape_offset_idx_});
       } else {
         shapes_data.add_trip_shape_offsets(
-            trip_idx,
-            cista::pair{shape_idx_t::invalid(), shape_offset_idx_t::invalid()});
+            trip_idx, cista::pair{scoped_shape_idx_t::invalid(),
+                                  shape_offset_idx_t::invalid()});
       }
     }
   }
@@ -283,12 +287,14 @@ void assign_bounding_boxes(timetable const& tt,
                                          .rt_ = rt_transport_idx_t::invalid()}};
       frun.for_each_trip([&](trip_idx_t const trip_idx,
                              interval<stop_idx_t> const absolute_range) {
-        auto const [shape_idx, offset_idx] =
+        auto const [scoped_shape_idx, offset_idx] =
             shapes_data.trip_offset_indices_[trip_idx];
-        if (shape_idx == shape_idx_t::invalid() ||
+        if (scoped_shape_idx == scoped_shape_idx_t::invalid() ||
+            get_shape_source(scoped_shape_idx) != shape_source::kTimetable ||
             offset_idx == shape_offset_idx_t::invalid()) {
           return;
         }
+        auto const shape_idx = get_local_shape_idx(scoped_shape_idx);
         auto const& task = tasks[shape_states.get_relative_idx(shape_idx)];
         auto const it = utl::find_if(task, [&](stop_seq_dist const& s) {
           return s.result_.shape_offset_idx_ == offset_idx;
