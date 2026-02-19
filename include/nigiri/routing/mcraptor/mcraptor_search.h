@@ -1,6 +1,7 @@
 /*
-* This file is based on the mcraptor from PumarPap https://github.com/motis-project/nigiri/pull/183
-*/
+ * This file is based on the mcraptor from PumarPap
+ * https://github.com/motis-project/nigiri/pull/183
+ */
 
 #pragma once
 

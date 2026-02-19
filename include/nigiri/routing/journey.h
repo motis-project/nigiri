@@ -83,7 +83,7 @@ struct journey {
              dest_time_ <= o.dest_time_;
     } else {
       return transfers_ <= o.transfers_ && start_time_ <= o.start_time_ &&
-             dest_time_ >= o.dest_time_ && success_chance >= o.success_chance;
+             dest_time_ >= o.dest_time_ && success_chance_ >= o.success_chance_;
     }
   }
 
@@ -109,7 +109,7 @@ struct journey {
   std::vector<leg> legs_{};
   unixtime_t start_time_{};
   unixtime_t dest_time_{};
-  double success_chance{};
+  double success_chance_{};
   location_idx_t dest_{};
   std::uint8_t transfers_{0U};
   bool error_{false};

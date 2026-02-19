@@ -1,6 +1,7 @@
 /*
-* This file is based on the mcraptor from PumarPap https://github.com/motis-project/nigiri/pull/183
-*/
+ * This file is based on the mcraptor from PumarPap
+ * https://github.com/motis-project/nigiri/pull/183
+ */
 
 #pragma once
 
@@ -255,7 +256,7 @@ struct mcraptor {
             journey{.legs_ = {},
                     .start_time_ = start_time,
                     .dest_time_ = delta_to_unix(base(), label.t_),
-                    .success_chance = label.success_chance,
+                    .success_chance_ = label.success_chance,
                     .dest_ = location_idx_t{label.fp_l_},
                     .transfers_ = static_cast<std::uint8_t>(pair.first - 1)});
       }
@@ -391,7 +392,7 @@ struct mcraptor {
     std::vector<mcraptor_label> labels = {};
     get_labels_after_dest_bag(j.transfers_ + 1U, possible_start_t, labels);
     if (should_print)
-      std::cout << "Gesamtwahrscheinlichkeit: " << j.success_chance
+      std::cout << "Gesamtwahrscheinlichkeit: " << j.success_chance_
                 << " Umstiege: " << static_cast<int>(j.transfers_) << std::endl;
 
     for (auto label : labels) {
@@ -613,7 +614,7 @@ private:
         possible_start_t, [](mcraptor_label a, delta_t t) { return a.t_ < t; });
 
     auto prob = transferProbability(it->t_ - possible_start_t, c);
-    auto result = prob * it->success_chance;
+    auto result = prob * it->success_chance_;
     auto a = (prob / transferProbability(
                          std::numeric_limits<nigiri::delta_t>::max(), c));
     auto b =
@@ -625,7 +626,7 @@ private:
     ++it;
     for (; it != best_bag_[l].labels_.end(); ++it) {
       prob = transferProbability(it->t_ - possible_start_t, c);
-      result += counterprob * prob * it->success_chance;
+      result += counterprob * prob * it->success_chance_;
       a = (prob /
            transferProbability(std::numeric_limits<nigiri::delta_t>::max(), c));
       b = transferProbability(
@@ -641,14 +642,14 @@ private:
         best_bag_[l].labels_.begin(), best_bag_[l].labels_.end(),
         possible_start_t, [](mcraptor_label a, delta_t t) { return a.t_ < t; });
 
-    auto result = it->success_chance;
+    auto result = it->success_chance_;
     auto counterprob =
         1 - transferProbability(
                 std::numeric_limits<nigiri::delta_t>::max(),
                 tt_.route_clasz_[tt_.transport_route_[it->trip_id.t_idx_]]);
     ++it;
     for (; it != best_bag_[l].labels_.end(); ++it) {
-      result += counterprob * it->success_chance;
+      result += counterprob * it->success_chance_;
       counterprob =
           counterprob *
           (1 - transferProbability(
@@ -683,13 +684,13 @@ private:
               !dest_bag_.dominates(
                   {.t_ = static_cast<delta_t>(by_transport + lb_[l_idx]),
                    .trip_id = et_label.trip_id,
-                   .success_chance = et_label.success_chance},
+                   .success_chance = et_label.success_chance_},
                   k)) {
             if (!tmp_[l_idx].dominates(et_label)) {
               ++stats_.n_earliest_arrival_updated_by_route_;
               tmp_[l_idx].add({by_transport, et_label.trip_l_,
                                stp.location_idx(), et_label.trip_id,
-                               et_label.success_chance, et_label.over_limit});
+                               et_label.success_chance_, et_label.over_limit});
               tmp_station_mark_.set(l_idx, true);
               any_marked = true;
             }
@@ -754,13 +755,13 @@ private:
           auto it = ets.begin();
           while (it + 1 != ets.end()) {
             if (it->t_ != (it + 1)->t_) {
-              if (it->success_chance > (it + 1)->success_chance) {
+              if (it->success_chance_ > (it + 1)->success_chance_) {
                 it = ets.erase(it + 1) - 1;
               } else {
                 ++it;
               }
             } else {
-              if (it->success_chance > (it + 1)->success_chance) {
+              if (it->success_chance_ > (it + 1)->success_chance_) {
                 it = ets.erase(it + 1) - 1;
               } else {
                 it = ets.erase(it);
