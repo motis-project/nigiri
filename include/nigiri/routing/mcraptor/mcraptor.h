@@ -268,7 +268,7 @@ struct mcraptor {
     std::cout << loc{tt_, leg.from_} << " id: " << leg.from_ << " ["
               << leg.dep_time_ << "] TO: " << loc{tt_, leg.to_}
               << " id: " << leg.to_ << " [" << leg.arr_time_ << "] - "
-              << leg.success_chance;
+              << leg.success_chance_;
     leg.print(std::cout, tt_);
   }
 
