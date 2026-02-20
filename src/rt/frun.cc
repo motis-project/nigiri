@@ -661,7 +661,7 @@ void frun::for_each_shape_point(
       auto const [shape, shape_idx] = shapes_data->get_shape_with_idx(
           trip_idx, absolute_range << absolute_trip_offset);
       if (!shape.empty()) {
-        current_shape_source = shapes_data->shape_sources_[shape_idx];
+        current_shape_source = get_shape_source(shape_idx);
         return shape;
       }
     }

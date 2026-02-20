@@ -120,7 +120,9 @@ TEST(shape, single_trip_with_shape) {
   // Testing shape 'Last', used by 'Trip 3' (index == 2)
   {
     auto const shape_by_trip_idx = shapes_data.get_shape(trip_idx_t{2});
-    auto const shape_by_shape_idx = shapes_data.get_shape(shape_idx_t{3});
+    auto const shape_by_shape_idx = shapes_data.get_shape(
+        (to_scoped_shape_idx(shape_idx_t{3}, shape_source::kTimetable)));
+    auto const scoped_shape_idx = shapes_data.get_shape_idx(trip_idx_t{2});
 
     auto const expected_shape = geo::polyline{
         {4.0, 5.0}, {5.5, 2.5}, {5.5, 3.0}, {6.0, 3.0},
@@ -128,27 +130,32 @@ TEST(shape, single_trip_with_shape) {
     };
     EXPECT_EQ(expected_shape, shape_by_trip_idx);
     EXPECT_EQ(expected_shape, shape_by_shape_idx);
+    EXPECT_EQ(shape_source::kTimetable, get_shape_source(scoped_shape_idx));
+    EXPECT_EQ(shape_idx_t{3}, get_local_shape_idx(scoped_shape_idx));
+    EXPECT_EQ(expected_shape, shapes_data.get_shape(scoped_shape_idx));
   }
 
   // Testing trip without shape, i.e. 'Trip 4' (index == 3)
   {
     auto const shape_by_trip_idx = shapes_data.get_shape(trip_idx_t{3});
     auto const shape_by_shape_idx =
-        shapes_data.get_shape(shape_idx_t::invalid());
+        shapes_data.get_shape(scoped_shape_idx_t::invalid());
+    auto const scoped_shape_idx = shapes_data.get_shape_idx(trip_idx_t{3});
 
     EXPECT_TRUE(shape_by_trip_idx.empty());
     EXPECT_TRUE(shape_by_shape_idx.empty());
+    EXPECT_EQ(scoped_shape_idx, scoped_shape_idx_t::invalid());
   }
 
   // Testing out of bounds
   {
     auto const shape_by_huge_trip_idx = shapes_data.get_shape(trip_idx_t{999});
-    auto const shape_by_huge_shape_idx =
-        shapes_data.get_shape(shape_idx_t{999});
+    auto const shape_by_huge_shape_idx = shapes_data.get_shape(
+        (to_scoped_shape_idx(shape_idx_t{999}, shape_source::kTimetable)));
     auto const shape_by_invalid_trip_idx =
         shapes_data.get_shape(trip_idx_t::invalid());
     auto const shape_by_invalid_shape_idx =
-        shapes_data.get_shape(shape_idx_t::invalid());
+        shapes_data.get_shape(scoped_shape_idx_t::invalid());
 
     EXPECT_TRUE(shape_by_huge_trip_idx.empty());
     EXPECT_TRUE(shape_by_huge_shape_idx.empty());

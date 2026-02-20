@@ -1,5 +1,6 @@
 #pragma once
 
+#include <cassert>
 #include <chrono>
 #include <cinttypes>
 #include <variant>
@@ -169,6 +170,8 @@ using route_idx_t = cista::strong<std::uint32_t, struct _route_idx>;
 using section_idx_t = cista::strong<std::uint32_t, struct _section_idx>;
 using section_db_idx_t = cista::strong<std::uint32_t, struct _section_db_idx>;
 using shape_idx_t = cista::strong<std::uint32_t, struct _shape_idx>;
+using scoped_shape_idx_t =
+    cista::strong<std::uint32_t, struct _scoped_shape_idx>;
 using shape_offset_t = cista::strong<std::uint32_t, struct _shape_offset>;
 using shape_offset_idx_t =
     cista::strong<std::uint32_t, struct _shape_offset_idx>;
@@ -458,6 +461,35 @@ enum class shape_source : std::uint8_t {
   kTimetable = 1,
   kRouted = 2
 };
+
+constexpr auto const kShapeSourceBit = std::uint32_t{1U} << 31U;
+constexpr auto const kShapeIndexMask = kShapeSourceBit - 1U;
+
+inline shape_source get_shape_source(scoped_shape_idx_t const idx) {
+  if (idx == scoped_shape_idx_t::invalid()) {
+    return shape_source::kNone;
+  }
+  return (to_idx(idx) & kShapeSourceBit) != 0U ? shape_source::kRouted
+                                               : shape_source::kTimetable;
+}
+
+inline shape_idx_t get_local_shape_idx(scoped_shape_idx_t const idx) {
+  return idx == scoped_shape_idx_t::invalid()
+             ? shape_idx_t::invalid()
+             : shape_idx_t{to_idx(idx) & kShapeIndexMask};
+}
+
+inline scoped_shape_idx_t to_scoped_shape_idx(shape_idx_t const local_idx,
+                                              shape_source const source) {
+  if (local_idx == shape_idx_t::invalid() || source == shape_source::kNone) {
+    return scoped_shape_idx_t::invalid();
+  }
+  auto const local = to_idx(local_idx);
+  assert((local & kShapeSourceBit) == 0U);
+  return scoped_shape_idx_t{
+      local |
+      (source == shape_source::kRouted ? kShapeSourceBit : std::uint32_t{0U})};
+}
 
 }  // namespace nigiri
 

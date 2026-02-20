@@ -17,24 +17,28 @@ namespace nigiri {
 
 shapes_storage::shapes_storage(std::filesystem::path path,
                                cista::mmap::protection const mode,
-                               bool keep_shape_data)
+                               bool const keep_routed_shape_data)
     : mode_{mode},
       p_{[&]() {
         fs::create_directories(path);
         return std::move(path);
       }()},
       data_{mm_paged_vecvec_helper<shape_idx_t, geo::latlng>::data_t{
-                mm_vec<geo::latlng>{mm("shapes_data.bin", keep_shape_data)}},
+                mm_vec<geo::latlng>{mm("shapes_data.bin")}},
             mm_vec<cista::page<std::uint64_t, std::uint32_t>>{
-                mm("shapes_idx.bin", keep_shape_data)}},
+                mm("shapes_idx.bin")}},
+      routed_data_{mm_paged_vecvec_helper<shape_idx_t, geo::latlng>::data_t{
+                       mm_vec<geo::latlng>{mm("routed_shapes_data.bin",
+                                              keep_routed_shape_data)}},
+                   mm_vec<cista::page<std::uint64_t, std::uint32_t>>{
+                       mm("routed_shapes_idx.bin", keep_routed_shape_data)}},
       offsets_{mm_vec<shape_offset_t>{mm("shape_offsets_data.bin")},
                mm_vec<std::uint64_t>{mm("shape_offsets_idx.bin")}},
       trip_offset_indices_{mm("shape_trip_offsets.bin")},
       route_bboxes_{mm("shape_route_bboxes.bin")},
       route_segment_bboxes_{
           mm_vec<geo::box>{mm("shape_route_segment_bboxes_data.bin")},
-          mm_vec<std::uint64_t>{mm("shape_route_segment_bboxes_idx.bin")}},
-      shape_sources_{mm("shape_sources.bin", keep_shape_data)} {}
+          mm_vec<std::uint64_t>{mm("shape_route_segment_bboxes_idx.bin")}} {}
 
 cista::mmap shapes_storage::mm(char const* file, bool const keep) {
   auto const p = (p_ / file);
@@ -45,14 +49,14 @@ cista::mmap shapes_storage::mm(char const* file, bool const keep) {
           : mode_};
 }
 
-std::tuple<std::span<geo::latlng const>, shape_idx_t, shape_offset_idx_t>
+std::tuple<std::span<geo::latlng const>, scoped_shape_idx_t, shape_offset_idx_t>
 get_shape(shapes_storage const& storage, trip_idx_t const trip_idx) {
   if (trip_idx == trip_idx_t::invalid() ||
       trip_idx >= storage.trip_offset_indices_.size()) {
     return {};
   }
   auto const [shape_idx, offset_idx] = storage.trip_offset_indices_[trip_idx];
-  assert((shape_idx == shape_idx_t::invalid()) ==
+  assert((shape_idx == scoped_shape_idx_t::invalid()) ==
          (offset_idx == shape_offset_idx_t::invalid()));
   if (offset_idx == shape_offset_idx_t::invalid()) {
     return {};
@@ -60,14 +64,33 @@ get_shape(shapes_storage const& storage, trip_idx_t const trip_idx) {
   return std::tuple{storage.get_shape(shape_idx), shape_idx, offset_idx};
 }
 
-std::span<geo::latlng const> shapes_storage::get_shape(
-    shape_idx_t const shape_idx) const {
+std::span<geo::latlng const> get_shape_from_data(
+    mm_paged_vecvec<shape_idx_t, geo::latlng> const& data,
+    shape_idx_t const shape_idx) {
   if (shape_idx == shape_idx_t::invalid() ||
-      static_cast<std::size_t>(to_idx(shape_idx)) > data_.size()) {
+      static_cast<std::size_t>(to_idx(shape_idx)) >= data.size()) {
     return {};
   }
-  auto const shape = data_[shape_idx];
+  auto const shape = data[shape_idx];
   return {begin(shape), end(shape)};
+}
+
+std::span<geo::latlng const> shapes_storage::get_shape(
+    scoped_shape_idx_t const shape_idx) const {
+  if (shape_idx == scoped_shape_idx_t::invalid()) {
+    return {};
+  }
+
+  auto const local_shape_idx = get_local_shape_idx(shape_idx);
+  switch (get_shape_source(shape_idx)) {
+    case shape_source::kTimetable:
+      return get_shape_from_data(data_, local_shape_idx);
+    case shape_source::kRouted:
+      return get_shape_from_data(routed_data_, local_shape_idx);
+    case shape_source::kNone: return {};
+  }
+
+  return {};
 }
 
 std::span<geo::latlng const> shapes_storage::get_shape(
@@ -98,24 +121,25 @@ std::span<geo::latlng const> shapes_storage::get_shape(
   return get_subshape(*this, shape, offset_idx, range);
 }
 
-std::pair<std::span<geo::latlng const>, shape_idx_t>
+std::pair<std::span<geo::latlng const>, scoped_shape_idx_t>
 shapes_storage::get_shape_with_idx(trip_idx_t const trip_idx) const {
   auto const [shape, shape_idx, _] = nigiri::get_shape(*this, trip_idx);
   return std::pair{shape, shape_idx};
 }
 
-std::pair<std::span<geo::latlng const>, shape_idx_t>
+std::pair<std::span<geo::latlng const>, scoped_shape_idx_t>
 shapes_storage::get_shape_with_idx(trip_idx_t const trip_idx,
                                    interval<stop_idx_t> const& range) const {
   auto const [shape, shape_idx, offset_idx] =
       nigiri::get_shape(*this, trip_idx);
   if (shape.empty()) {
-    return std::pair{shape, shape_idx_t::invalid()};
+    return std::pair{shape, scoped_shape_idx_t::invalid()};
   }
   return std::pair{get_subshape(*this, shape, offset_idx, range), shape_idx};
 }
 
-shape_idx_t shapes_storage::get_shape_idx(trip_idx_t const trip_idx) const {
+scoped_shape_idx_t shapes_storage::get_shape_idx(
+    trip_idx_t const trip_idx) const {
   if (trip_idx == trip_idx_t::invalid() ||
       trip_idx >= trip_offset_indices_.size()) {
     return {};
@@ -133,7 +157,7 @@ shape_offset_idx_t shapes_storage::add_offsets(
 
 void shapes_storage::add_trip_shape_offsets(
     [[maybe_unused]] trip_idx_t const trip_idx,
-    cista::pair<shape_idx_t, shape_offset_idx_t> const& offset_idx) {
+    cista::pair<scoped_shape_idx_t, shape_offset_idx_t> const& offset_idx) {
   assert(trip_idx == trip_offset_indices_.size());
   trip_offset_indices_.emplace_back(offset_idx);
 }
@@ -153,15 +177,6 @@ std::optional<geo::box> shapes_storage::get_bounding_box(
   auto const& bboxes = route_segment_bboxes_[route_idx];
   return segment < bboxes.size() ? bboxes[segment]
                                  : std::optional<geo::box>{std::nullopt};
-}
-
-shape_source shapes_storage::get_shape_source(
-    shape_idx_t const shape_idx) const {
-  if (shape_idx == shape_idx_t::invalid() ||
-      static_cast<std::size_t>(to_idx(shape_idx)) >= shape_sources_.size()) {
-    return shape_source::kNone;
-  }
-  return shape_sources_[shape_idx];
 }
 
 }  // namespace nigiri
