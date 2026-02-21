@@ -385,7 +385,7 @@ enum class clasz : std::uint8_t {
   kLongDistance = 2,
   kCoach = 3,
   kNight = 4,
-  kRegionalFast = 5,
+  kRideSharing = 5,
   kRegional = 6,
   kSuburban = 7,
   kSubway = 8,
@@ -404,10 +404,10 @@ constexpr auto const kNumClasses =
 
 constexpr std::string_view to_str(clasz const c) {
   constexpr auto const clasz_str =
-      std::array{"AIR",    "HIGHSPEED",     "LONG_DISTANCE", "COACH",
-                 "NIGHT",  "REGIONAL_FAST", "REGIONAL",      "SUBURBAN",
-                 "SUBWAY", "TRAM",          "BUS",           "SHIP",
-                 "ODM",    "FUNICULAR",     "AERIAL_LIFT",   "OTHER"};
+      std::array{"AIR",    "HIGHSPEED",    "LONG_DISTANCE", "COACH",
+                 "NIGHT",  "RIDE_SHARING", "REGIONAL",      "SUBURBAN",
+                 "SUBWAY", "TRAM",         "BUS",           "SHIP",
+                 "ODM",    "FUNICULAR",    "AERIAL_LIFT",   "OTHER"};
   return clasz_str[static_cast<unsigned>(c)];
 }
 
