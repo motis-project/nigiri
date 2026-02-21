@@ -25,7 +25,7 @@ clasz to_clasz(std::uint16_t const route_type) {
     case 1 /* Subway, Metro. Any underground rail system within a metropolitan area. */ :
       return clasz::kSubway;
     case 2 /* Rail. Used for intercity or long-distance travel. */:
-      return clasz::kRegionalFast;
+      return clasz::kRegional;
     case 3 /* Bus. Used for short- and long-distance bus routes. */:
       return clasz::kBus;
     case 4 /* Ferry. Used for short- and long-distance boat service. */:
@@ -40,7 +40,7 @@ clasz to_clasz(std::uint16_t const route_type) {
       return clasz::kBus;
     case 12 /* Monorail. Railway in which the track consists of a single rail or a beam. */ :
       return clasz::kOther;
-    case 100 /* Railway Service */: return clasz::kRegionalFast;
+    case 100 /* Railway Service */: return clasz::kRegional;
     case 101 /* High Speed Rail Service */: return clasz::kHighSpeed;
     case 102 /* Long Distance Trains */: return clasz::kLongDistance;
     case 103 /* Inter Regional Rail Service */: return clasz::kRegional;
@@ -120,6 +120,7 @@ clasz to_clasz(std::uint16_t const route_type) {
     case 1505 /* Licensed Taxi Service */:
     case 1506 /* Private Hire Service Vehicle */:
     case 1507 /* All Taxi Services */: return clasz::kODM;
+    case 1551 /* Ride Sharing */: return clasz::kRideSharing;
     case 1700 /* Miscellaneous Service */:
     case 1702 /* Horse-drawn Carriage */: return clasz::kOther;
   }

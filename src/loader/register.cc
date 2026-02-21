@@ -260,7 +260,7 @@ void route::set_clasz(clasz const x) {
     case clasz::kLongDistance: route_type_ = route_type_t{102}; return;
     case clasz::kCoach: route_type_ = route_type_t{200}; return;
     case clasz::kNight: route_type_ = route_type_t{105}; return;
-    case clasz::kRegionalFast: route_type_ = route_type_t{100}; return;
+    case clasz::kRideSharing: route_type_ = route_type_t{1551}; return;
     case clasz::kRegional: route_type_ = route_type_t{103}; return;
     case clasz::kSuburban: route_type_ = route_type_t{109}; return;
     case clasz::kSubway: route_type_ = route_type_t{402}; return;
