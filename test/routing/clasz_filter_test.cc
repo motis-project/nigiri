@@ -193,7 +193,7 @@ TEST(routing, clasz_filter_test) {
   {  // All available classes.
     auto const results =
         raptor_search(tt, &rtt, "A", "C", tt.date_range_, direction::kForward,
-                      make_mask(clasz::kBus, clasz::kRideSharing, clasz::kAir));
+                      make_mask(clasz::kBus, clasz::kRegional, clasz::kAir));
 
     EXPECT_EQ(expected_rt, to_string(tt, results));
   }
@@ -201,7 +201,7 @@ TEST(routing, clasz_filter_test) {
   {  // No plane - one transfer, 2h
     auto const results =
         raptor_search(tt, &rtt, "A", "C", tt.date_range_, direction::kForward,
-                      make_mask(clasz::kBus, clasz::kRideSharing));
+                      make_mask(clasz::kBus, clasz::kRegional));
 
     EXPECT_EQ(expected_rt_1, to_string(tt, results));
   }
