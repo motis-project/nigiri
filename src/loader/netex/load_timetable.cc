@@ -1450,8 +1450,8 @@ void load_timetable(loader_config const& config,
       tt.trip_stop_seq_numbers_.add_back_sized(0U);
       if (shapes_data != nullptr) {
         shapes_data->add_trip_shape_offsets(
-            trip_idx,
-            cista::pair{shape_idx_t::invalid(), shape_offset_idx_t::invalid()});
+            trip_idx, cista::pair{scoped_shape_idx_t::invalid(),
+                                  shape_offset_idx_t::invalid()});
       }
 
       auto const all_destinations_equal = utl::all_of(

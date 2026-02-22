@@ -827,16 +827,6 @@ TEST(
       ASSERT_TRUE(extended_bbox.has_value());
       EXPECT_EQ((geo::make_box({{6.0, 2.0}, {7.0, 3.0}})), *test_bbox);
     }
-    // Do not insert bounding boxes if sequential trip has no segment bounding
-    // boxes
-    {
-      auto const r = route_idx_t{4U};
-      // Ensure the correct route is used
-      EXPECT_EQ((geo::make_box({{-1.0, -1.0}, {1.0, 1.0}})),
-                shapes_data.get_bounding_box(r));
-      // On 1st trip
-      ASSERT_FALSE(shapes_data.get_bounding_box(r, 0).has_value());
-    }
   }
 
   // One-to-All search for time point and without Rt

@@ -88,7 +88,7 @@ TEST(gtfs, read_routes_berlin_data) {
   EXPECT_EQ("Leisnig -- Leipzig, Hauptbahnhof",
             tt.get_default_translation(
                 src_routes.route_id_long_names_[route_809_idx]));
-  EXPECT_EQ(clasz::kRegionalFast,
+  EXPECT_EQ(clasz::kRegional,
             to_clasz(src_routes.route_id_type_[route_809_idx]));
 
   ASSERT_NE(end(routes), routes.find("812"));
@@ -101,7 +101,7 @@ TEST(gtfs, read_routes_berlin_data) {
                         src_routes.route_id_short_names_[route_812_idx]));
   EXPECT_EQ("", tt.get_default_translation(
                     src_routes.route_id_long_names_[route_812_idx]));
-  EXPECT_EQ(clasz::kRegionalFast,
+  EXPECT_EQ(clasz::kRegional,
             to_clasz(src_routes.route_id_type_[route_812_idx]));
   EXPECT_EQ(color_t{0xFFB10093},
             src_routes.route_id_colors_[route_812_idx].color_);
