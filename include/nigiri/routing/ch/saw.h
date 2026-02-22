@@ -193,7 +193,7 @@ struct saw {
     }
     if (is_constant() || b.is_constant()) {
       // TODO exact_true ?
-      return {min() < b.min(), 0U, 0U};
+      return {max() < b.min(), 0U, 0U};
     }
     auto const lsb = std::max(get_last_set_bit(), b.get_last_set_bit());
     auto const interleaved = interleaved_saws<SawType>{*this, b};
@@ -215,18 +215,16 @@ struct saw {
       a_it += b_it.pos_a_ - kSawMetadataOffset;
 
       // std::cout << "b less " << std::endl;
-      if constexpr (SawType != saw_type::kDay) {
-        if (!exact_true) {
+      if (!exact_true) {
+        --a_it;
+        while (b_it->mam_ == a_it->mam_ &&
+               b_it->travel_dur_ == a_it->travel_dur_ &&
+               b_it.day_offset_ ==
+                   a_it.day_offset_) {  // TODO return false immediately?
+                                        // (power saw)
           --a_it;
-          while (b_it->mam_ == a_it->mam_ &&
-                 b_it->travel_dur_ == a_it->travel_dur_ &&
-                 b_it.day_offset_ ==
-                     a_it.day_offset_) {  // TODO return false immediately?
-                                          // (power saw)
-            --a_it;
-          }
-          ++a_it;
         }
+        ++a_it;
       }
       // std::cout << "dom a: " << *a_it << " " << *b_it << std::endl;
       auto const r = _non_dominated(*b_it, a_it, &remaining_traffic_days, lsb);
@@ -875,7 +873,9 @@ struct saw {
         }
         auto const new_tooth =
             tooth{it->mam_, travel_dur_extremum, it->traffic_days_};
-        auto td = traffic_days_.bitfields_.at(it->traffic_days_).first;
+        auto td = SawType == saw_type::kDay
+                      ? bitfield{}
+                      : traffic_days_.bitfields_.at(it->traffic_days_).first;
         auto oe = saw<SawType>{out, traffic_days_}.end();
         if (out.size() <= kSawMetadataOffset ||
             non_dominated(new_tooth, oe, &td, lsb, false, 0)) {
@@ -891,7 +891,9 @@ struct saw {
       auto wraparound_saw_begin = saw<SawType>{out_tmp, traffic_days_}.begin();
       auto const remaining_it = std::remove_if(
           out.begin() + kSawMetadataOffset, out.end(), [&](tooth const& e) {
-            auto td = traffic_days_.bitfields_.at(e.traffic_days_).first;
+            auto td = SawType == saw_type::kDay
+                          ? bitfield{}
+                          : traffic_days_.bitfields_.at(e.traffic_days_).first;
             if (non_dominated(e, wraparound_saw_begin, &td, lsb)) {
               return false;
             }
@@ -976,12 +978,14 @@ struct saw {
         mam -= d.count();
         if (mam < 0) {
           mam += 24 * 60;
-          auto traffic_days =
-              traffic_days_.bitfields_.at(traffic_days_idx).first >> 1U;
-          traffic_days.set(kTimetableOffset.count() - 1U, false);
-          traffic_days_idx = traffic_days_.get_or_create(
-              traffic_days,
-              traffic_days_.bitfields_.at(traffic_days_idx).second - 1U);
+          if (SawType != saw_type::kDay) {
+            auto traffic_days =
+                traffic_days_.bitfields_.at(traffic_days_idx).first >> 1U;
+            traffic_days.set(kTimetableOffset.count() - 1U, false);
+            traffic_days_idx = traffic_days_.get_or_create(
+                traffic_days,
+                traffic_days_.bitfields_.at(traffic_days_idx).second - 1U);
+          }
         }
       }
       out.push_back({mam, std::min(saw_[i].travel_dur_ + d, kChMaxEdgeTime),
