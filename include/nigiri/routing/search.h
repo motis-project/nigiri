@@ -432,6 +432,7 @@ private:
                 q_.extend_interval_later_))) {
             stats_.n_events_skipped_by_early_termination_ +=
                 it_range{from_it, to_it}.size();
+            // TODO set page cursor accordingly
             return;
           }
 
