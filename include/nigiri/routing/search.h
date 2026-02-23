@@ -437,17 +437,15 @@ private:
           return a.time_at_start_ == b.time_at_start_;
         },
         [&](auto&& from_it, auto&& to_it) {
-          if constexpr (Algo::kAllowEarlyTermination) {
-            if (q_.min_connection_count_ > 0 &&
-                n_results_in_interval() >= q_.min_connection_count_ &&
-                ((kFwd && q_.extend_interval_earlier_ &&
-                  !q_.extend_interval_later_) ||
-                 (kBwd && !q_.extend_interval_earlier_ &&
-                  q_.extend_interval_later_))) {
-              stats_.n_events_skipped_by_early_termination_ +=
-                  it_range{from_it, to_it}.size();
-              return;
-            }
+          if (q_.min_connection_count_ > 0 &&
+              n_results_in_interval() >= q_.min_connection_count_ &&
+              ((kFwd && q_.extend_interval_earlier_ &&
+                !q_.extend_interval_later_) ||
+               (kBwd && !q_.extend_interval_earlier_ &&
+                q_.extend_interval_later_))) {
+            stats_.n_events_skipped_by_early_termination_ +=
+                it_range{from_it, to_it}.size();
+            return;
           }
 
           algo_.next_start_time();
