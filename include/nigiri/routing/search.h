@@ -52,6 +52,8 @@ struct search_stats {
         {"fastest_direct", fastest_direct_},
         {"interval_extensions", interval_extensions_},
         {"execute_time", execute_time_.count()},
+        {"n_events_skipped_by_early_termination",
+         n_events_skipped_by_early_termination_},
     };
   }
 
@@ -59,6 +61,7 @@ struct search_stats {
   std::uint64_t fastest_direct_{0ULL};
   std::uint64_t interval_extensions_{0ULL};
   std::chrono::milliseconds execute_time_{0LL};
+  std::uint64_t n_events_skipped_by_early_termination_{0ULL};
 };
 
 struct routing_result {
@@ -121,20 +124,18 @@ struct search {
       UTL_STOP_TIMING(lb);
       stats_.lb_time_ = static_cast<std::uint64_t>(UTL_TIMING_MS(lb));
 
-#if defined(NIGIRI_TRACING)
       for (auto const& o : q_.start_) {
-        trace_upd("start {}: {}\n", loc{tt_, o.target()}, o.duration());
+        fmt::println("start {}: {}\n", loc{tt_, o.target()}, o.duration());
       }
       for (auto const& o : q_.destination_) {
-        trace_upd("dest {}: {}\n", loc{tt_, o.target()}, o.duration());
+        fmt::println("dest {}: {}\n", loc{tt_, o.target()}, o.duration());
       }
       for (auto const [l, lb] :
            utl::enumerate(state_.travel_time_lower_bound_)) {
         if (lb != std::numeric_limits<std::decay_t<decltype(lb)>>::max()) {
-          trace_upd("lb {}: {}\n", loc{tt_, location_idx_t{l}}, lb);
+          fmt::println("lb {}: {}\n", loc{tt_, location_idx_t{l}}, lb);
         }
       }
-#endif
     }
 
     return Algo{
@@ -436,6 +437,19 @@ private:
           return a.time_at_start_ == b.time_at_start_;
         },
         [&](auto&& from_it, auto&& to_it) {
+          if constexpr (Algo::kAllowEarlyTermination) {
+            if (q_.min_connection_count_ > 0 &&
+                n_results_in_interval() >= q_.min_connection_count_ &&
+                ((kFwd && q_.extend_interval_earlier_ &&
+                  !q_.extend_interval_later_) ||
+                 (kBwd && !q_.extend_interval_earlier_ &&
+                  q_.extend_interval_later_))) {
+              stats_.n_events_skipped_by_early_termination_ +=
+                  it_range{from_it, to_it}.size();
+              return;
+            }
+          }
+
           algo_.next_start_time();
           auto const start_time = from_it->time_at_start_;
           for (auto const& s : it_range{from_it, to_it}) {
