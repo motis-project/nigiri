@@ -328,8 +328,8 @@ void obtain_relevant_stops(timetable const& tt,
     return static_cast<ch_label::dist_t>(kChMaxTravelTime.count() - d);
   };
 
-  auto const const_min_max_dist =
-      saw<kChSawType>{min_max_dist, ch_traffic_days}.max();
+  auto const const_min_max_dist = static_cast<int>(
+      saw<kChSawType>{min_max_dist, ch_traffic_days}.max().count());
   std::cout << "downsearch " << counter << " " << meetpoints.size()
             << std::endl;
   for (auto const m : meetpoints) {
@@ -366,12 +366,13 @@ void obtain_relevant_stops(timetable const& tt,
       std::swap(dists[dir][m].d_[kMax].saw_, tmp_saw);
       tmp_saw.clear();
       auto const d = std::min(
-          static_cast<ch_label::dist_t>(const_min_max_dist.count() -
-                                        dists[other_dir][m]
-                                            .d_[kMin]
-                                            .to_saw(ch_traffic_days)
-                                            .min()
-                                            .count()),
+          static_cast<ch_label::dist_t>(std::max(
+              const_min_max_dist - static_cast<int>(dists[other_dir][m]
+                                                        .d_[kMin]
+                                                        .to_saw(ch_traffic_days)
+                                                        .min()
+                                                        .count()),
+              0)),
           dists[dir][m].d_[kMax].to_saw(ch_traffic_days).max().count());
       pq.push(ch_label{
           m,
@@ -427,6 +428,13 @@ void obtain_relevant_stops(timetable const& tt,
       if (prev_label.d_[kMin].saw_.empty()) {
         continue;
       }
+      std::cout << "down edge " << l_d_max << " "
+                << tt.get_default_translation(tt.locations_.names_.at(
+                       tt.ch_graph_edges_[prf_idx][e_idx].from_))
+                << " -> "
+                << tt.get_default_translation(tt.locations_.names_.at(
+                       tt.ch_graph_edges_[prf_idx][e_idx].to_))
+                << std::endl;
       prev_label.d_[kMin]
           .to_saw(ch_traffic_days)
           .concat(l.dir_,
@@ -450,16 +458,20 @@ void obtain_relevant_stops(timetable const& tt,
         stack.push_back(
             {e_idx,
              std::min(
-                 static_cast<ch_label::dist_t>(
-                     l_d_max -
-                     prev_label.d_[kMin].to_saw(ch_traffic_days).min().count()),
+                 static_cast<ch_label::dist_t>(std::max(
+                     l_d_max - static_cast<int>(prev_label.d_[kMin]
+                                                    .to_saw(ch_traffic_days)
+                                                    .min()
+                                                    .count()),
+                     0)),
                  static_cast<ch_label::dist_t>(saw<kChSawType>{
                      tt.ch_graph_max_[prf_idx].at(e_idx), ch_traffic_days}
                                                    .max()
                                                    .count()))});
         while (!stack.empty()) {
           auto [child_edge_idx, child_max_dur] = stack.back();
-          std::cout << "stack " << child_edge_idx << std::endl;
+          std::cout << "stack " << child_edge_idx << " cmd: " << child_max_dur
+                    << std::endl;
           stack.pop_back();
           if (visited.at(child_edge_idx) >=
               child_max_dur) {  // TODO use pq ordered by child_max_dur?
@@ -486,28 +498,26 @@ void obtain_relevant_stops(timetable const& tt,
             auto const arr_min = arr_min_saw.min().count();
             auto const dep_min = dep_min_saw.min().count();
             auto const arr_max = std::min(
-                static_cast<ch_label::dist_t>(child_max_dur - dep_min),
+                static_cast<ch_label::dist_t>(std::max(
+                    static_cast<int>(child_max_dur) - static_cast<int>(dep_min),
+                    0)),
                 static_cast<ch_label::dist_t>(saw<kChSawType>{
                     tt.ch_graph_max_[prf_idx].at(unpack.first), ch_traffic_days}
                                                   .max()
                                                   .count()));
-            auto const dep_max =
-                std::min(static_cast<ch_label::dist_t>(
-                             child_max_dur - arr_min),  // TODO deconcat?
-                         static_cast<ch_label::dist_t>(saw<kChSawType>{
-                             tt.ch_graph_max_[prf_idx].at(unpack.second),
-                             ch_traffic_days}
-                                                           .max()
-                                                           .count()));
+            auto const dep_max = std::min(
+                static_cast<ch_label::dist_t>(std::max(
+                    static_cast<int>(child_max_dur) - static_cast<int>(arr_min),
+                    0)),  // TODO deconcat?
+                static_cast<ch_label::dist_t>(
+                    saw<kChSawType>{tt.ch_graph_max_[prf_idx].at(unpack.second),
+                                    ch_traffic_days}
+                        .max()
+                        .count()));
 
-            if (arr_min_saw > child_max_dur_saw ||
-                dep_min_saw > child_max_dur_saw || arr_min > arr_max ||
-                dep_min > dep_max) {
-              continue;  // TODO count occurs
-            }
             if (transfer != location_idx_t::invalid()) {
               std::cout
-                  << "ft"
+                  << "ft ldmax" << l_d_max << " "
                   << tt.get_default_translation(tt.locations_.names_.at(
                          tt.ch_graph_edges_[prf_idx][child_edge_idx].from_))
                   << " -> "
@@ -516,7 +526,16 @@ void obtain_relevant_stops(timetable const& tt,
                   << " transfer "
                   << tt.get_default_translation(
                          tt.locations_.names_.at(transfer))
-                  << std::endl;
+                  << " arr: " << arr_min << " " << arr_max << " "
+                  << " dep: " << dep_min << " " << dep_max << std::endl;
+            }
+            if (arr_min_saw > child_max_dur_saw ||
+                dep_min_saw > child_max_dur_saw || arr_min > arr_max ||
+                dep_min > dep_max) {
+              std::cout << "skip" << std::endl;
+              continue;  // TODO count occurs
+            }
+            if (transfer != location_idx_t::invalid()) {
               mark_relevant_stop(transfer);
             }
             stack.push_back({unpack.first, arr_max});
@@ -536,7 +555,7 @@ void obtain_relevant_stops(timetable const& tt,
                          .max()
                          .count()
                   << std::endl;
-        auto const diff = l_d_max - x.count();
+        auto const diff = std::max(l_d_max - static_cast<int>(x.count()), 0);
         pq.push(ch_label{
             edge_target,
             {static_cast<ch_label::dist_t>(
