@@ -408,9 +408,11 @@ void build_lb_graph(timetable& tt, profile_idx_t const prf_idx) {
           }
           auto const mam_diff =
               b_it->mam_ - a_it->mam_ + a_it.day_offset_ * -24 * 60;
-          max_saw_tmp[a_it.pos_].travel_dur_ = std::max(
-              max_saw_tmp[a_it.pos_].travel_dur_,
-              u16_minutes{e.travel_durs_[b_it.pos_].count() + mam_diff});
+          max_saw_tmp[a_it.pos_].travel_dur_ = std::min(
+              std::max(
+                  max_saw_tmp[a_it.pos_].travel_dur_,
+                  u16_minutes{e.travel_durs_[b_it.pos_].count() + mam_diff}),
+              kChMaxEdgeTime);
         }
       }
       saw<saw_type::kDay>{min_saw_tmp, traffic_days}.min(
