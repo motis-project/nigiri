@@ -297,6 +297,7 @@ struct timetable {
   struct route_ids {
     vector_map<route_id_idx_t, translation_idx_t> route_id_short_names_;
     vector_map<route_id_idx_t, translation_idx_t> route_id_long_names_;
+    vector_map<route_id_idx_t, translation_idx_t> rotue_id_url_;
     vector_map<route_id_idx_t, route_type_t> route_id_type_;
     vector_map<route_id_idx_t, provider_idx_t> route_id_provider_;
     vector_map<route_id_idx_t, route_color> route_id_colors_;

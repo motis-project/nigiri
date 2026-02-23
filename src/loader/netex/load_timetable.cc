@@ -1405,6 +1405,7 @@ void load_timetable(loader_config const& config,
                       line.short_name_.empty() ? line.name_ : line.short_name_),
                   tt.register_translation(
                       line.product_.empty() ? line.name_ : line.product_),
+                  kEmptyTranslation,
                   route_type_t{get_more_precise_route_type(sj.route_type_,
                                                            line.route_type_)},
                   line.color_,
