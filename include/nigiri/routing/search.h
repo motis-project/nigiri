@@ -123,19 +123,6 @@ struct search {
           state_.travel_time_lower_bound_);
       UTL_STOP_TIMING(lb);
       stats_.lb_time_ = static_cast<std::uint64_t>(UTL_TIMING_MS(lb));
-
-      for (auto const& o : q_.start_) {
-        fmt::println("start {}: {}\n", loc{tt_, o.target()}, o.duration());
-      }
-      for (auto const& o : q_.destination_) {
-        fmt::println("dest {}: {}\n", loc{tt_, o.target()}, o.duration());
-      }
-      for (auto const [l, lb] :
-           utl::enumerate(state_.travel_time_lower_bound_)) {
-        if (lb != std::numeric_limits<std::decay_t<decltype(lb)>>::max()) {
-          fmt::println("lb {}: {}\n", loc{tt_, location_idx_t{l}}, lb);
-        }
-      }
     }
 
     return Algo{
