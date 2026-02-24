@@ -219,19 +219,19 @@ void build_lb_graph(timetable& tt, profile_idx_t const prf_idx) {
       [&](std::vector<tooth> const min_dur, std::vector<tooth> const max_dur,
           ch_edge_idx_t const shortcut_idx, ch_stats& contract_stats,
           bool const dry_run) {
-        {
+        /*{
           auto const const_max =
               saw<kChSawType>{edge_max.at(shortcut_idx), traffic_days}.max();
           utl::verify(const_max.count() >= 2, "pre weird 0 max {} {}",
                       const_max, shortcut_idx);
-        }
+        }*/
 
         if (saw<kChSawType>{max_dur, traffic_days}.less(
                 saw<kChSawType>{edge_min.at(shortcut_idx), traffic_days},
                 true)) {  // TODO kMaxTravelDays case?, cheat exact_true=true so
                           // that direct can dominate
           // replace
-          std::cout << "repl" << std::endl;
+          //std::cout << "repl" << std::endl;
           ++contract_stats.replacements_;
           if (dry_run) {
             return false;
@@ -245,7 +245,7 @@ void build_lb_graph(timetable& tt, profile_idx_t const prf_idx) {
                        saw<kChSawType>{edge_max.at(shortcut_idx), traffic_days},
                        true)) {  // TODO cheat (?) exact_false
 
-          std::cout << "upd" << std::endl;
+          //std::cout << "upd" << std::endl;
           // std::cout << "max prev " <<
           // saw<kChSawType>{edge_max.at(shortcut_idx), traffic_days} <<
           // std::endl; std::cout << "min tent " << saw<kChSawType>{min_dur,
@@ -274,7 +274,7 @@ void build_lb_graph(timetable& tt, profile_idx_t const prf_idx) {
           edge_min.at(shortcut_idx) = std::move(new_min_dur);
           edge_max.at(shortcut_idx) = std::move(new_max_dur);
         } else {
-          std::cout << "skip" << std::endl;
+          //std::cout << "skip" << std::endl;
           ++contract_stats.skips_;
           return false;
         }
@@ -282,7 +282,7 @@ void build_lb_graph(timetable& tt, profile_idx_t const prf_idx) {
         /*utl::verify(shortcut.min_dur_.count() >= 0, "weird 0 min {} {} {} {}",
         dep.min_dur_, arr.min_dur_, shortcut.min_dur_,
         shortcut_idx);*/
-        auto const const_min =
+        /*auto const const_min =
             saw<kChSawType>{edge_min.at(shortcut_idx), traffic_days}.min();
         if (const_min.count() >= kChMaxTravelTime.count()) {
           std::cout << saw<kChSawType>{edge_min.at(shortcut_idx), traffic_days}
@@ -304,7 +304,7 @@ void build_lb_graph(timetable& tt, profile_idx_t const prf_idx) {
                     << std::endl;
         }
         utl::verify(const_max.count() < kChMaxTravelTime.count(),
-                    "overfl 0 max {} {}", const_max, shortcut_idx);
+                    "overfl 0 max {} {}", const_max, shortcut_idx);*/
         return true;
       };
 
@@ -627,7 +627,7 @@ void build_lb_graph(timetable& tt, profile_idx_t const prf_idx) {
                   << max_dur.size() << " "
                   << saw<kChSawType>{max_dur, traffic_days}.max() << std::endl;
             }
-            if (!dry_run) {
+            if (!dry_run && false) {
               std::cout
                   << "via: " << location_id << " "
                   << tt.get_default_translation(
@@ -769,7 +769,8 @@ void build_lb_graph(timetable& tt, profile_idx_t const prf_idx) {
                 << " avg max: "
                 << static_cast<unsigned>(sum_max) /
                        tt.ch_graph_edges_[prf_idx].size()
-                << " avg max len: "
+                << " total max tooths: " << static_cast<unsigned>(sum_max_len)
+                << " avg max tooths: "
                 << static_cast<unsigned>(sum_max_len) /
                        tt.ch_graph_edges_[prf_idx].size()
                 << "\n"
@@ -777,7 +778,8 @@ void build_lb_graph(timetable& tt, profile_idx_t const prf_idx) {
                 << " avg min: "
                 << static_cast<unsigned>(sum_min) /
                        tt.ch_graph_edges_[prf_idx].size()
-                << " avg min len: "
+                << " total min tooths: " << static_cast<unsigned>(sum_min_len)
+                << " avg min tooths: "
                 << static_cast<unsigned>(sum_min_len) /
                        tt.ch_graph_edges_[prf_idx].size()
                 << std::endl;

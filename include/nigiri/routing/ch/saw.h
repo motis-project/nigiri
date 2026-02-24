@@ -18,6 +18,8 @@ namespace nigiri::routing {
 
 static constexpr auto const kSawMetadataOffset = 3U;
 static constexpr auto const kSawFieldLastSetBit = 0U;
+static constexpr auto const kSawFieldMin = 1U;
+static constexpr auto const kSawFieldMax = 2U;
 
 struct traffic_days {
   vector_map<bitfield_idx_t, std::pair<bitfield, std::uint16_t>> bitfields_;
@@ -231,8 +233,9 @@ struct saw {
       // std::cout << "dom a: " << *a_it << " " << *b_it << std::endl;
       auto const r = _non_dominated(*b_it, a_it, &remaining_traffic_days, lsb);
       if (std::get<0>(r)) {
-        std::cout << "nondom ct:" << std::get<1>(r) << " fsb:" << std::get<2>(r)
-                  << " lsb:" << std::get<3>(r) << std::endl;
+        /*std::cout << "nondom ct:" << std::get<1>(r) << " fsb:" <<
+           std::get<2>(r)
+                  << " lsb:" << std::get<3>(r) << std::endl;*/
         return {false, a_it.pos_, b_it.pos_b_};
       }
     }
@@ -241,12 +244,12 @@ struct saw {
 
   bool less(saw<SawType> const& b, bool const exact_true = false) const {
     auto const r = _less(b, exact_true);
-    std::cout << "less " << std::get<0>(r) << " ";
+    /*std::cout << "less " << std::get<0>(r) << " ";
     if (saw_.size() > 0 && b.saw_.size() > 0) {
       print_tooth(std::cout, saw_[std::get<1>(r)], traffic_days_);
       print_tooth(std::cout, b.saw_[std::get<2>(r)], b.traffic_days_);
     }
-    std::cout << std::endl;
+    std::cout << std::endl;*/
     // std::cout << *this << std::endl;
     // std::cout << b << std::endl;
     /*
@@ -339,6 +342,9 @@ struct saw {
     if (is_constant()) {
       return {saw_[0].travel_dur_, 0U};
     }
+    if (saw_[kSawFieldMax].travel_dur_ != u16_minutes::max()) {
+      return {saw_[kSawFieldMax].travel_dur_, 0U};
+    }
     auto max = 0;
     auto max_tooth = size_t{};
 
@@ -392,9 +398,9 @@ struct saw {
     }
     if (max == 0) {
       return {u16_minutes{kMaxTravelTime.count()},
-              max_tooth};  // TODO handle connections that only run on a single
-                           // occasion, but multiple times (depending on
-                           // proportion of loaded timetable -> kMax?)
+              max_tooth};  // TODO handle connections that only run on a
+                           // single occasion, but multiple times (depending
+                           // on proportion of loaded timetable -> kMax?)
     }
     return {u16_minutes{max}, max_tooth};
   }
@@ -478,6 +484,9 @@ struct saw {
     }
     if (is_constant()) {
       return saw_.front().travel_dur_;
+    }
+    if (saw_[kSawFieldMin].travel_dur_ != u16_minutes::max()) {
+      return saw_[kSawFieldMin].travel_dur_;
     }
     auto min = saw_[kSawMetadataOffset].travel_dur_.count();
     for (auto i = kSawMetadataOffset + 1U; i < saw_.size(); ++i) {
@@ -615,11 +624,11 @@ struct saw {
                    bitfield_idx_t::invalid(), ch_edge_idx_t::invalid(),
                    transport_idx_t::invalid(), ch_edge_idx_t::invalid(),
                    transport_idx_t::invalid()});
-    out.push_back({std::numeric_limits<std::int16_t>::max(), u16_minutes{},
+    out.push_back({std::numeric_limits<std::int16_t>::max(), u16_minutes::max(),
                    bitfield_idx_t::invalid(), ch_edge_idx_t::invalid(),
                    transport_idx_t::invalid(), ch_edge_idx_t::invalid(),
                    transport_idx_t::invalid()});
-    out.push_back({std::numeric_limits<std::int16_t>::max(), u16_minutes{},
+    out.push_back({std::numeric_limits<std::int16_t>::max(), u16_minutes::max(),
                    bitfield_idx_t::invalid(), ch_edge_idx_t::invalid(),
                    transport_idx_t::invalid(), ch_edge_idx_t::invalid(),
                    transport_idx_t::invalid()});
@@ -703,7 +712,11 @@ struct saw {
         out.push_back(std::move(new_tooth));
       }
     }
-    return saw<SawType>{out, traffic_days_};
+    auto const s = saw<SawType>{out, traffic_days_};
+    out[kSawFieldMin].travel_dur_ =
+        u16_minutes{s.min()};  // TODO calc on the fly during simplify
+    out[kSawFieldMax].travel_dur_ = u16_minutes{s.max()};
+    return s;
   }
 
   saw<SawType> concat(saw<SawType> const& other,

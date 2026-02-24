@@ -165,8 +165,8 @@ void obtain_relevant_stops(timetable const& tt,
       new_min_dist.clear();
       tmp_saw.clear();
       if (!min_leq && !max_leq) {
-        std::cout << "skip " << e.from_ << " " << e.to_ << " " << edge_target
-                  << std::endl;
+        /*std::cout << "skip " << e.from_ << " " << e.to_ << " " << edge_target
+                  << std::endl;*/
         continue;
       }
       auto const const_max =
@@ -508,8 +508,8 @@ void obtain_relevant_stops(timetable const& tt,
         while (!queue.empty()) {
           auto [child_edge_idx, child_max_dur, child_max, child_end] =
               queue.front();
-          std::cout << "stack " << child_edge_idx << " cmd: " << child_max_dur
-                    << std::endl;
+          /*std::cout << "stack " << child_edge_idx << " cmd: " << child_max_dur
+                    << std::endl;*/
           queue.pop();
           if (!kToothUnpackMode &&
               visited.at(child_edge_idx) >=
