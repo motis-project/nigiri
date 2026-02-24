@@ -159,6 +159,7 @@ route_map_t read_routes(source_idx_t const src,
     utl::csv_col<utl::cstr, UTL_NAME("agency_id")> agency_id_;
     utl::csv_col<utl::cstr, UTL_NAME("route_short_name")> route_short_name_;
     utl::csv_col<utl::cstr, UTL_NAME("route_long_name")> route_long_name_;
+    utl::csv_col<utl::cstr, UTL_NAME("route_url")> route_url_;
     utl::csv_col<utl::cstr, UTL_NAME("route_desc")> route_desc_;
     utl::csv_col<std::uint16_t, UTL_NAME("route_type")> route_type_;
     utl::csv_col<utl::cstr, UTL_NAME("route_color")> route_color_;
@@ -206,6 +207,8 @@ route_map_t read_routes(source_idx_t const src,
                        r.route_short_name_->view(), r.route_id_->view()),
               i18n.get(t::kRoutes, f::kRouteLongName,
                        r.route_long_name_->view(), r.route_id_->view()),
+              i18n.get(t::kRoutes, f::kRouteURL, r.route_url_->view(),
+                       r.route_id_->view()),
               route_type_t{*r.route_type_},
               {.color_ = to_color(r.route_color_->view()),
                .text_color_ = to_color(r.route_text_color_->view())},

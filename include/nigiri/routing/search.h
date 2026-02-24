@@ -56,6 +56,10 @@ struct search_stats {
         {"fastest_direct", fastest_direct_},
         {"interval_extensions", interval_extensions_},
         {"execute_time", execute_time_.count()},
+        {"n_events_skipped_by_early_termination",
+         n_events_skipped_by_early_termination_},
+        {"search_interval_reduction_by_early_termination",
+         search_interval_reduction_by_early_termination_.count()},
     };
   }
 
@@ -66,6 +70,8 @@ struct search_stats {
   std::uint64_t fastest_direct_{0ULL};
   std::uint64_t interval_extensions_{0ULL};
   std::chrono::milliseconds execute_time_{0LL};
+  std::uint64_t n_events_skipped_by_early_termination_{0ULL};
+  std::chrono::minutes search_interval_reduction_by_early_termination_{0LL};
 };
 
 struct routing_result {
@@ -450,12 +456,19 @@ private:
     auto span = get_otel_tracer()->StartSpan("search::search_interval");
     auto scope = opentelemetry::trace::Scope{span};
 
+    auto early_termination = false;
     utl::equal_ranges_linear(
         state_.starts_,
         [](start const& a, start const& b) {
           return a.time_at_start_ == b.time_at_start_;
         },
         [&](auto&& from_it, auto&& to_it) {
+          if (early_termination) {
+            stats_.n_events_skipped_by_early_termination_ +=
+                it_range{from_it, to_it}.size();
+            return;
+          }
+
           algo_.next_start_time();
           auto const start_time = from_it->time_at_start_;
           for (auto const& s : it_range{from_it, to_it}) {
@@ -494,6 +507,23 @@ private:
                       fmt::format("reconstruct failed: {}", e.what())}});
               }
             }
+          }
+
+          if (q_.min_connection_count_ > 0 &&
+              n_results_in_interval() >= q_.min_connection_count_ &&
+              ((kFwd && q_.extend_interval_earlier_ &&
+                !q_.extend_interval_later_) ||
+               (kBwd && !q_.extend_interval_earlier_ &&
+                q_.extend_interval_later_))) {
+            early_termination = true;
+            auto const start_size = search_interval_.size();
+            if constexpr (kFwd) {
+              search_interval_.from_ = start_time;
+            } else {
+              search_interval_.to_ = start_time + duration_t{1};
+            }
+            stats_.search_interval_reduction_by_early_termination_ =
+                std::chrono::abs(start_size - search_interval_.size());
           }
         });
   }

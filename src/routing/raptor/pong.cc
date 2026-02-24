@@ -3,6 +3,7 @@
 #include <ranges>
 
 #include "utl/sorted_diff.h"
+#include "utl/timing.h"
 
 #include "nigiri/routing/get_earliest_transport.h"
 #include "nigiri/rt/frun.h"
@@ -258,6 +259,8 @@ routing_result pong(timetable const& tt,
 
   q.sanitize(tt);
 
+  auto const processing_start_time = std::chrono::steady_clock::now();
+
   auto const fastest_direct = get_fastest_direct(tt, q, SearchDir);
   auto const search_interval = std::visit(
       utl::overloaded{[](interval<unixtime_t> const start_interval) {
@@ -291,6 +294,7 @@ routing_result pong(timetable const& tt,
   // ====
   // PING
   // ----
+  UTL_START_TIMING(ping_lb);
   auto ping_lb = std::vector<std::uint16_t>{};
   dijkstra(tt, q,
            (kFwd ? tt.fwd_search_lb_graph_[q.prf_idx_]
@@ -302,8 +306,7 @@ routing_result pong(timetable const& tt,
                            : &(kFwd ? rtt->fwd_search_lb_graph_
                                     : rtt->bwd_search_lb_graph_)),
            ping_lb);
-
-  auto const processing_start_time = std::chrono::steady_clock::now();
+  UTL_STOP_TIMING(ping_lb);
 
   auto ping_dist_to_dest = std::vector<std::uint16_t>{};
   auto ping_is_dest = bitvec{};
@@ -337,6 +340,7 @@ routing_result pong(timetable const& tt,
   // ----
   q.flip_dir();
 
+  UTL_START_TIMING(pong_lb);
   auto pong_lb = std::vector<std::uint16_t>{};
   dijkstra(tt, q,
            (kFwd ? tt.bwd_search_lb_graph_[q.prf_idx_]
@@ -348,6 +352,7 @@ routing_result pong(timetable const& tt,
                            : &(kFwd ? rtt->bwd_search_lb_graph_
                                     : rtt->fwd_search_lb_graph_)),
            pong_lb);
+  UTL_STOP_TIMING(pong_lb);
 
   auto pong_dist_to_dest = std::vector<std::uint16_t>{};
   auto pong_is_dest = bitvec{};
@@ -383,6 +388,8 @@ routing_result pong(timetable const& tt,
   // >> PLAY!
   // --------
   auto starts = std::vector<start>{};
+  stats.lb_time_ = static_cast<std::uint64_t>(UTL_TIMING_MS(ping_lb)) +
+                   static_cast<std::uint64_t>(UTL_TIMING_MS(pong_lb));
   auto result = routing_result{.journeys_ = &s_state.results_,
                                .interval_ = search_interval,
                                .search_stats_ = stats,
