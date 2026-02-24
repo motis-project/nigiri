@@ -736,7 +736,7 @@ struct saw {
     if (is_constant()) {
       return other.concat_const(kReverse,
                                 saw<saw_type::kConstant>{saw_, traffic_days_},
-                                start, end, out);
+                                end, start, out);
     }
     auto const_min_other = 0;
     if (SawType == saw_type::kTrafficDays && !max) {  // TODO constexpr

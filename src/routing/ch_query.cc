@@ -510,12 +510,11 @@ void obtain_relevant_stops(timetable const& tt,
               queue.front();
           std::cout << "stack " << child_edge_idx << " cmd: " << child_max_dur
                     << std::endl;
+
           queue.pop();
-          if ((!kToothUnpackMode &&
-               visited.at(child_edge_idx) >= child_max_dur) ||
-              (kToothUnpackMode &&
-               visited.at(child_edge_idx) ==
-                   child_max_dur)) {  // TODO use pq ordered by child_max_dur?
+          if (!kToothUnpackMode &&
+              visited.at(child_edge_idx) >=
+                  child_max_dur) {  // TODO use pq ordered by child_max_dur?
             continue;
           }
           visited[child_edge_idx] = child_max_dur;
@@ -528,15 +527,46 @@ void obtain_relevant_stops(timetable const& tt,
 
             auto const tooth =
                 child_max
-                    ? tt.ch_graph_max_[prf_idx].at(child_edge_idx)[tooth_idx]
-                    : tt.ch_graph_min_[prf_idx].at(
-                          child_edge_idx)[tooth_idx];  // TODO avoid copy
-            if (tooth.start_ !=
-                ch_edge_idx_t::invalid()) {  // TODO non-atomic: set edge_idx
-                                             // for PT edge so that transfer is
-                                             // taken into account
+                    ? tt.ch_graph_max_[prf_idx].at(child_edge_idx).at(tooth_idx)
+                    : tt.ch_graph_min_[prf_idx]
+                          .at(child_edge_idx)
+                          .at(tooth_idx);  // TODO avoid copy
+            if (tooth.start_ != ch_edge_idx_t::invalid()) {
               mark_relevant_stop(
                   tt.ch_graph_edges_[prf_idx].at(tooth.start_).to_);
+              std::cout
+                  << "ft ldmax" << l_d_max << " "
+                  << tt.ch_graph_edges_[prf_idx][child_edge_idx].from_ << " l:"
+                  << tt.ch_levels_[prf_idx].at(
+                         tt.ch_graph_edges_[prf_idx][child_edge_idx].from_)
+                  << " "
+                  << tt.get_default_translation(tt.locations_.names_.at(
+                         tt.ch_graph_edges_[prf_idx][child_edge_idx].from_))
+                  << " -> " << tt.ch_graph_edges_[prf_idx][child_edge_idx].to_
+                  << " l:"
+                  << tt.ch_levels_[prf_idx].at(
+                         tt.ch_graph_edges_[prf_idx][child_edge_idx].to_)
+                  << " "
+                  << tt.get_default_translation(tt.locations_.names_.at(
+                         tt.ch_graph_edges_[prf_idx][child_edge_idx].to_))
+                  << " transfer a "
+                  << tt.ch_graph_edges_[prf_idx].at(tooth.start_).to_ << " l:"
+                  << tt.ch_levels_[prf_idx].at(
+                         tt.ch_graph_edges_[prf_idx].at(tooth.start_).to_)
+                  << " "
+                  << tt.get_default_translation(tt.locations_.names_.at(
+                         tt.ch_graph_edges_[prf_idx].at(tooth.start_).to_))
+                  << " transfer b "
+                  << tt.ch_graph_edges_[prf_idx].at(tooth.end_).from_ << " l:"
+                  << tt.ch_levels_[prf_idx].at(
+                         tt.ch_graph_edges_[prf_idx].at(tooth.end_).from_)
+                  << " "
+                  << tt.get_default_translation(tt.locations_.names_.at(
+                         tt.ch_graph_edges_[prf_idx].at(tooth.end_).from_))
+                  << std::endl;
+              std::cout << "stack push " << tooth.start_ << " "
+                        << tooth.start_idx_ << " " << tooth.end_ << " "
+                        << tooth.end_idx_ << std::endl;
               queue.push({tooth.start_, tooth.start_idx_, child_max, false});
               if (tooth.end_ != ch_edge_idx_t::invalid()) {
                 queue.push({tooth.end_, tooth.end_idx_, child_max, true});
