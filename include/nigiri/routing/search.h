@@ -62,7 +62,7 @@ struct search_stats {
   std::uint64_t interval_extensions_{0ULL};
   std::chrono::milliseconds execute_time_{0LL};
   std::uint64_t n_events_skipped_by_early_termination_{0ULL};
-  std::chrono::minutes search_interval_skipped_by_early_termination_{0LL};
+  std::chrono::minutes search_interval_reduction_by_early_termination_{0LL};
 };
 
 struct routing_result {
@@ -500,7 +500,7 @@ private:
             } else {
               search_interval_.to_ = start_time + duration_t{1};
             }
-            stats_.search_interval_skipped_by_early_termination_ =
+            stats_.search_interval_reduction_by_early_termination_ =
                 start_size - search_interval_.size();
           }
         });
