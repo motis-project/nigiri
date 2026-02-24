@@ -54,6 +54,8 @@ struct search_stats {
         {"execute_time", execute_time_.count()},
         {"n_events_skipped_by_early_termination",
          n_events_skipped_by_early_termination_},
+        {"search_interval_reduction_by_early_termination",
+         search_interval_reduction_by_early_termination_.count()},
     };
   }
 
@@ -501,7 +503,7 @@ private:
               search_interval_.to_ = start_time + duration_t{1};
             }
             stats_.search_interval_reduction_by_early_termination_ =
-                start_size - search_interval_.size();
+                std::chrono::abs(start_size - search_interval_.size());
           }
         });
   }
