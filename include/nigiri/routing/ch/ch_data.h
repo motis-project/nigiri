@@ -1,7 +1,9 @@
 #pragma once
 
+#include <cstdint>
 #include "nigiri/routing/query.h"
 #include "nigiri/types.h"
+#include <limits>
 
 namespace nigiri {
 struct timetable;
@@ -23,12 +25,12 @@ enum class saw_type : std::uint8_t {
   kTrafficDaysPower
 };
 
-static constexpr auto const kChSawType = saw_type::kDay;
+static constexpr auto const kChSawType = saw_type::kTrafficDaysPower;
 static constexpr auto const kChMaxEdgeTime =
     u16_minutes{routing::kMaxTravelTime.count()};  // TODO
 static constexpr auto const kChMaxWaitingTime =
     u16_minutes{1440};  // TODO one day should be sufficient, but this
-                                  // prolonged avg times?
+                        // prolonged avg times?
 static constexpr auto const kChDay = u16_minutes{1440};  // TODO
 
 struct tooth {
@@ -60,6 +62,12 @@ struct tooth {
   std::int16_t mam_;
   u16_minutes travel_dur_;
   bitfield_idx_t traffic_days_;
+  ch_edge_idx_t start_{ch_edge_idx_t::invalid()};
+  transport_idx_t start_transport_{transport_idx_t::invalid()};
+  ch_edge_idx_t end_{ch_edge_idx_t::invalid()};
+  transport_idx_t end_transport_{transport_idx_t::invalid()};
+  std::uint16_t start_idx_{std::numeric_limits<std::uint16_t>::max()};
+  std::uint16_t end_idx_{std::numeric_limits<std::uint16_t>::max()};
 };
 
 }  // namespace nigiri::routing

@@ -21,8 +21,13 @@ using namespace nigiri::routing;
 // TODO test automatic const, same mam concat
 
 tooth metadata_tooth(std::uint16_t const val) {
-  return {std::numeric_limits<std::int16_t>::max(), u16_minutes{val},
-          bitfield_idx_t::invalid()};
+  return {std::numeric_limits<std::int16_t>::max(),
+          u16_minutes{val},
+          bitfield_idx_t::invalid(),
+          ch_edge_idx_t::invalid(),
+          transport_idx_t::invalid(),
+          ch_edge_idx_t::invalid(),
+          transport_idx_t::invalid()};
 }
 
 TEST(ch, saw_day_test) {
@@ -113,7 +118,8 @@ TEST(ch, saw_day_test) {
 
   {
     auto tmp = std::vector<tooth>{};
-    s1.to_saw(td).concat(s2.to_saw(td), true, tmp);
+    s1.to_saw(td).concat(s2.to_saw(td), ch_edge_idx_t::invalid(),
+                         ch_edge_idx_t::invalid(), true, tmp);
 
     auto expected = std::vector<tooth>{
         metadata_tooth(0U),
@@ -133,7 +139,8 @@ TEST(ch, saw_day_test) {
 
   {
     auto tmp = std::vector<tooth>{};
-    s1.to_saw(td).concat(s2.to_saw(td), false, tmp);
+    s1.to_saw(td).concat(s2.to_saw(td), ch_edge_idx_t::invalid(),
+                         ch_edge_idx_t::invalid(), false, tmp);
 
     auto expected = std::vector<tooth>{
         metadata_tooth(0U),
@@ -173,7 +180,8 @@ TEST(ch, saw_day_test) {
 
     auto tmp = std::vector<tooth>{};
 
-    s3.to_saw(td).concat(s4.to_saw(td), false, tmp);
+    s3.to_saw(td).concat(s4.to_saw(td), ch_edge_idx_t::invalid(),
+                         ch_edge_idx_t::invalid(), false, tmp);
 
     auto expected = std::vector<tooth>{
         metadata_tooth(0U),
@@ -199,7 +207,9 @@ TEST(ch, saw_day_test) {
     auto const s3 = owning_saw<routing::saw_type::kConstant>{
         saw<nigiri::routing::saw_type::kConstant>::of(duration_t{1000}),
         u16_minutes{0}};
-    s2.to_saw(td).concat_const(kReverse, s3.to_saw(td), tmp);
+    s2.to_saw(td).concat_const(kReverse, s3.to_saw(td),
+                               ch_edge_idx_t::invalid(),
+                               ch_edge_idx_t::invalid(), tmp);
 
     auto expected = std::vector<tooth>{
         metadata_tooth(0U),
@@ -322,8 +332,7 @@ TEST(ch, saw_traffic_days_test) {
       auto tmp = std::vector<tooth>{};
       s1.to_saw(td).simplify(s3.to_saw(td), false, tmp);
 
-      auto expected =
-          std::vector<tooth>{metadata_tooth(3U)};
+      auto expected = std::vector<tooth>{metadata_tooth(3U)};
       ASSERT_EQ(tmp.size(), expected.size());
       for (auto i = 0U; i < expected.size(); ++i) {
         EXPECT_EQ(expected[i], tmp[i]);
@@ -333,8 +342,7 @@ TEST(ch, saw_traffic_days_test) {
       auto tmp = std::vector<tooth>{};
       s1.to_saw(td).simplify(s3.to_saw(td), true, tmp);
 
-      auto expected =
-          std::vector<tooth>{metadata_tooth(3U)};
+      auto expected = std::vector<tooth>{metadata_tooth(3U)};
       ASSERT_EQ(tmp.size(), expected.size());
       for (auto i = 0U; i < expected.size(); ++i) {
         EXPECT_EQ(expected[i], tmp[i]);
@@ -344,8 +352,7 @@ TEST(ch, saw_traffic_days_test) {
       auto tmp = std::vector<tooth>{};
       s1.to_saw(td).simplify(s4.to_saw(td), false, tmp);
 
-      auto expected =
-          std::vector<tooth>{metadata_tooth(5U)};
+      auto expected = std::vector<tooth>{metadata_tooth(5U)};
       ASSERT_EQ(tmp.size(), expected.size());
       for (auto i = 0U; i < expected.size(); ++i) {
         EXPECT_EQ(expected[i], tmp[i]);
@@ -355,8 +362,7 @@ TEST(ch, saw_traffic_days_test) {
       auto tmp = std::vector<tooth>{};
       s1.to_saw(td).simplify(s4.to_saw(td), true, tmp);
 
-      auto expected =
-          std::vector<tooth>{metadata_tooth(20U)};
+      auto expected = std::vector<tooth>{metadata_tooth(20U)};
       ASSERT_EQ(tmp.size(), expected.size());
       for (auto i = 0U; i < expected.size(); ++i) {
         EXPECT_EQ(expected[i], tmp[i]);
@@ -366,8 +372,7 @@ TEST(ch, saw_traffic_days_test) {
       auto tmp = std::vector<tooth>{};
       s1.to_saw(td).simplify(s5.to_saw(td), false, tmp);
 
-      auto expected =
-          std::vector<tooth>{metadata_tooth(5U)};
+      auto expected = std::vector<tooth>{metadata_tooth(5U)};
       ASSERT_EQ(tmp.size(), expected.size());
       for (auto i = 0U; i < expected.size(); ++i) {
         EXPECT_EQ(expected[i], tmp[i]);
@@ -377,8 +382,7 @@ TEST(ch, saw_traffic_days_test) {
       auto tmp = std::vector<tooth>{};
       s1.to_saw(td).simplify(s5.to_saw(td), true, tmp);
 
-      auto expected =
-      std::vector<tooth>{metadata_tooth(3000U)};
+      auto expected = std::vector<tooth>{metadata_tooth(3000U)};
       ASSERT_EQ(tmp.size(), expected.size());
       for (auto i = 0U; i < expected.size(); ++i) {
         EXPECT_EQ(expected[i], tmp[i]);
@@ -429,7 +433,8 @@ TEST(ch, saw_traffic_days_test) {
 
   {
     auto tmp = std::vector<tooth>{};
-    s1.to_saw(td).concat(s2.to_saw(td), true, tmp);
+    s1.to_saw(td).concat(s2.to_saw(td), ch_edge_idx_t::invalid(),
+                         ch_edge_idx_t::invalid(), true, tmp);
 
     auto expected = std::vector<tooth>{
         metadata_tooth(9U),
@@ -450,7 +455,8 @@ TEST(ch, saw_traffic_days_test) {
 
   {
     auto tmp = std::vector<tooth>{};
-    s1.to_saw(td).concat(s2.to_saw(td), false, tmp);
+    s1.to_saw(td).concat(s2.to_saw(td), ch_edge_idx_t::invalid(),
+                         ch_edge_idx_t::invalid(), false, tmp);
 
     auto expected =
         std::vector<tooth>{metadata_tooth(9U),
@@ -502,7 +508,8 @@ TEST(ch, saw_traffic_days_test) {
     td1.get_or_create(bitfield{"001000100000000"}, 12);
     td1.get_or_create(bitfield{"010001000000000"}, 13);
 
-    s3.to_saw(td1).concat(s4.to_saw(td1), false, tmp);
+    s3.to_saw(td1).concat(s4.to_saw(td1), ch_edge_idx_t::invalid(),
+                          ch_edge_idx_t::invalid(), false, tmp);
 
     auto expected = std::vector<tooth>{
         metadata_tooth(13U),
@@ -545,7 +552,9 @@ TEST(ch, saw_traffic_days_test) {
     traffic_days_1.bitfields_.emplace_back(bitfield{"001000000100000"}, 12);
 
     auto tmp = std::vector<tooth>{};
-    s3.to_saw(traffic_days_1).concat(s4.to_saw(traffic_days_1), true, tmp);
+    s3.to_saw(traffic_days_1)
+        .concat(s4.to_saw(traffic_days_1), ch_edge_idx_t::invalid(),
+                ch_edge_idx_t::invalid(), true, tmp);
 
     EXPECT_EQ(tmp.size(), 0);
   }
@@ -555,7 +564,9 @@ TEST(ch, saw_traffic_days_test) {
     auto const s3 = owning_saw<routing::saw_type::kConstant>{
         saw<nigiri::routing::saw_type::kConstant>::of(duration_t{1000}),
         u16_minutes{0}};
-    s2.to_saw(td).concat_const(kReverse, s3.to_saw(td), tmp);
+    s2.to_saw(td).concat_const(kReverse, s3.to_saw(td),
+                               ch_edge_idx_t::invalid(),
+                               ch_edge_idx_t::invalid(), tmp);
 
     auto expected =
         std::vector<tooth>{metadata_tooth(9U),
@@ -688,7 +699,8 @@ TEST(ch, saw_traffic_days_power_test) {
     td.get_or_create(bitfield{"000001100100000"}, 9);
     td.get_or_create(bitfield{"000000110000000"}, 8);
 
-    s1.to_saw(td).concat(s2.to_saw(td), true, tmp);
+    s1.to_saw(td).concat(s2.to_saw(td), ch_edge_idx_t::invalid(),
+                         ch_edge_idx_t::invalid(), true, tmp);
 
     auto expected = std::vector<tooth>{
         metadata_tooth(9U),
@@ -726,7 +738,8 @@ TEST(ch, saw_traffic_days_power_test) {
     td.get_or_create(bitfield{"000001100100000"}, 9);
     td.get_or_create(bitfield{"000000110000000"}, 8);
 
-    s1.to_saw(td).concat(s2.to_saw(td), false, tmp);
+    s1.to_saw(td).concat(s2.to_saw(td), ch_edge_idx_t::invalid(),
+                         ch_edge_idx_t::invalid(), false, tmp);
 
     auto expected = std::vector<tooth>{
         metadata_tooth(9U),
@@ -793,7 +806,8 @@ TEST(ch, saw_traffic_days_power_test) {
     td.get_or_create(bitfield{"010000000000000"}, 13);
     td.get_or_create(bitfield{"000001100000000"}, 9);
 
-    s3.to_saw(td).concat(s4.to_saw(td), false, tmp);
+    s3.to_saw(td).concat(s4.to_saw(td), ch_edge_idx_t::invalid(),
+                         ch_edge_idx_t::invalid(), false, tmp);
 
     auto expected = std::vector<tooth>{
         metadata_tooth(13U),
@@ -844,7 +858,8 @@ TEST(ch, saw_traffic_days_power_test) {
 
     std::cout << "932 test " << std::endl;
 
-    s3.to_saw(td).concat(s4.to_saw(td), false, tmp);
+    s3.to_saw(td).concat(s4.to_saw(td), ch_edge_idx_t::invalid(),
+                         ch_edge_idx_t::invalid(), false, tmp);
     std::cout << "932 end " << std::endl;
 
     auto expected = std::vector<tooth>{
@@ -886,7 +901,8 @@ TEST(ch, saw_traffic_days_power_test) {
     td.bitfields_.emplace_back(bitfield{"001000000100000"}, 12);
 
     auto tmp = std::vector<tooth>{};
-    s3.to_saw(td).concat(s4.to_saw(td), true, tmp);
+    s3.to_saw(td).concat(s4.to_saw(td), ch_edge_idx_t::invalid(),
+                         ch_edge_idx_t::invalid(), true, tmp);
 
     ASSERT_EQ(tmp.size(), 0);
   }
@@ -900,7 +916,9 @@ TEST(ch, saw_traffic_days_power_test) {
     auto const s3 = owning_saw<routing::saw_type::kConstant>{
         saw<nigiri::routing::saw_type::kConstant>::of(duration_t{1000}),
         u16_minutes{0}};
-    s2.to_saw(td).concat_const(kReverse, s3.to_saw(td), tmp);
+    s2.to_saw(td).concat_const(kReverse, s3.to_saw(td),
+                               ch_edge_idx_t::invalid(),
+                               ch_edge_idx_t::invalid(), tmp);
 
     auto expected =
         std::vector<tooth>{metadata_tooth(9U),

@@ -18,11 +18,13 @@
 #include "nigiri/types.h"
 #include <algorithm>
 #include <limits>
+#include <queue>
 #include <vector>
 
 namespace nigiri::routing {
 
 static constexpr auto const kChMaxTravelTime = kMaxTravelTime * 5;  // TODO
+static constexpr auto const kToothUnpackMode = true;
 
 void obtain_relevant_stops(timetable const& tt,
                            routing::query const& q,
@@ -87,10 +89,14 @@ void obtain_relevant_stops(timetable const& tt,
             saw<saw_type::kConstant>::of(const_dist), {}};
 
         saw<kChSawType>{tt.ch_graph_max_[prf_idx].at(e_idx), ch_traffic_days}
-            .concat_const(other_dir, d.to_saw(ch_traffic_days), new_max_dist);
+            .concat_const(other_dir, d.to_saw(ch_traffic_days),
+                          ch_edge_idx_t::invalid(), ch_edge_idx_t::invalid(),
+                          new_max_dist);
 
         saw<kChSawType>{tt.ch_graph_min_[prf_idx].at(e_idx), ch_traffic_days}
-            .concat_const(other_dir, d.to_saw(ch_traffic_days), new_min_dist);
+            .concat_const(other_dir, d.to_saw(ch_traffic_days),
+                          ch_edge_idx_t::invalid(), ch_edge_idx_t::invalid(),
+                          new_min_dist);
       } else {
         dists[l_dir]
             .at(l)
@@ -99,7 +105,8 @@ void obtain_relevant_stops(timetable const& tt,
             .concat(l_dir,
                     saw<kChSawType>{tt.ch_graph_max_[prf_idx].at(e_idx),
                                     ch_traffic_days},
-                    true, new_max_dist);
+                    ch_edge_idx_t::invalid(), ch_edge_idx_t::invalid(), true,
+                    new_max_dist);
         dists[l_dir]
             .at(l)
             .d_[kMin]
@@ -107,7 +114,8 @@ void obtain_relevant_stops(timetable const& tt,
             .concat(l_dir,
                     saw<kChSawType>{tt.ch_graph_min_[prf_idx].at(e_idx),
                                     ch_traffic_days},
-                    false, new_min_dist);
+                    ch_edge_idx_t::invalid(), ch_edge_idx_t::invalid(), false,
+                    new_min_dist);
       }
       // std::cout << "tar" << edge_target << " " << new_max_dist << " ld " <<
       //  l.d_[kMax] << " em " << e.max_dur_.count() << " " << new_min_dist <<
@@ -260,7 +268,8 @@ void obtain_relevant_stops(timetable const& tt,
               .to_saw(ch_traffic_days)
               .concat(l_dir,
                       dists[other_dir][l.l_].d_[kMax].to_saw(ch_traffic_days),
-                      true, tmp_saw);
+                      ch_edge_idx_t::invalid(), ch_edge_idx_t::invalid(), true,
+                      tmp_saw);
       max_concat.simplify(saw<kChSawType>{min_max_dist, ch_traffic_days}, true,
                           new_max_dist);
       if (saw<kChSawType>{new_max_dist, ch_traffic_days} !=
@@ -275,6 +284,7 @@ void obtain_relevant_stops(timetable const& tt,
                      .concat(l_dir,
                              dists[other_dir][l.l_].d_[kMin].to_saw(
                                  ch_traffic_days),
+                             ch_edge_idx_t::invalid(), ch_edge_idx_t::invalid(),
                              false, tmp_saw) <=
                  saw<kChSawType>{min_max_dist, ch_traffic_days}) {
         meetpoints.emplace_back(l.l_);
@@ -336,7 +346,8 @@ void obtain_relevant_stops(timetable const& tt,
     dists[kForward][m]
         .d_[kMin]
         .to_saw(ch_traffic_days)
-        .concat(dists[kReverse][m].d_[kMin].to_saw(ch_traffic_days), false,
+        .concat(dists[kReverse][m].d_[kMin].to_saw(ch_traffic_days),
+                ch_edge_idx_t::invalid(), ch_edge_idx_t::invalid(), false,
                 tmp_saw);
     std::cout << "mp filter "
               << tt.get_default_translation(tt.locations_.names_.at(m)) << " "
@@ -382,7 +393,8 @@ void obtain_relevant_stops(timetable const& tt,
     }
   }
   std::cout << "starting pq" << std::endl;
-  auto stack = std::vector<std::pair<ch_edge_idx_t, ch_label::dist_t>>{};
+  auto queue =
+      std::queue<std::tuple<ch_edge_idx_t, ch_label::dist_t, bool, bool>>{};
   auto visited = vector_map<ch_edge_idx_t, ch_label::dist_t>{};
   visited.resize(tt.ch_graph_edges_[prf_idx].size());
 
@@ -440,7 +452,8 @@ void obtain_relevant_stops(timetable const& tt,
           .concat(l.dir_,
                   saw<kChSawType>{tt.ch_graph_min_[prf_idx].at(e_idx),
                                   ch_traffic_days},
-                  false, tmp_saw);
+                  ch_edge_idx_t::invalid(), ch_edge_idx_t::invalid(), false,
+                  tmp_saw);
       auto min_dist_via_prev = saw<kChSawType>{tmp_saw, ch_traffic_days};
       if (min_dist_via_prev.max().count() >=
           kChMaxTravelTime.count()) {  // TODO expensive
@@ -454,94 +467,147 @@ void obtain_relevant_stops(timetable const& tt,
           min_dist_via_prev.leq(
               dists[l.dir_][l.l_].d_[kMax].to_saw(ch_traffic_days),
               true)) {  // TODO l_d_max cheat, stopping criterion, cutoff?
-        // TODO move to queue pop?
-        stack.push_back(
-            {e_idx,
-             std::min(
-                 static_cast<ch_label::dist_t>(std::max(
-                     l_d_max - static_cast<int>(prev_label.d_[kMin]
-                                                    .to_saw(ch_traffic_days)
-                                                    .min()
-                                                    .count()),
-                     0)),
-                 static_cast<ch_label::dist_t>(saw<kChSawType>{
-                     tt.ch_graph_max_[prf_idx].at(e_idx), ch_traffic_days}
-                                                   .max()
-                                                   .count()))});
-        while (!stack.empty()) {
-          auto [child_edge_idx, child_max_dur] = stack.back();
+        // TODO move to pq pop?
+
+        if (kToothUnpackMode) {
+          auto max = false;
+          for (auto const& saw :
+               {saw<kChSawType>{tt.ch_graph_min_[prf_idx].at(e_idx),
+                                ch_traffic_days},
+                saw<kChSawType>{tt.ch_graph_max_[prf_idx].at(e_idx),
+                                ch_traffic_days}}) {
+            for (auto it = saw.begin(); it != saw.end(); ++it) {
+              if (it->start_ != ch_edge_idx_t::invalid()) {
+                mark_relevant_stop(
+                    tt.ch_graph_edges_[prf_idx].at(it->start_).to_);
+                queue.push({it->start_, it->start_idx_, max, false});
+                if (it->end_ != ch_edge_idx_t::invalid()) {
+                  queue.push({it->end_, it->end_idx_, max, true});
+                }
+              }
+            }
+            max = true;
+          }
+        } else {
+          queue.push(
+              {e_idx,
+               std::min(
+                   static_cast<ch_label::dist_t>(std::max(
+                       l_d_max - static_cast<int>(prev_label.d_[kMin]
+                                                      .to_saw(ch_traffic_days)
+                                                      .min()
+                                                      .count()),
+                       0)),
+                   static_cast<ch_label::dist_t>(saw<kChSawType>{
+                       tt.ch_graph_max_[prf_idx].at(e_idx), ch_traffic_days}
+                                                     .max()
+                                                     .count())),
+               false, false});
+        }
+
+        while (!queue.empty()) {
+          auto [child_edge_idx, child_max_dur, child_max, child_end] =
+              queue.front();
           std::cout << "stack " << child_edge_idx << " cmd: " << child_max_dur
                     << std::endl;
-          stack.pop_back();
-          if (visited.at(child_edge_idx) >=
-              child_max_dur) {  // TODO use pq ordered by child_max_dur?
+          queue.pop();
+          if (!kToothUnpackMode &&
+              visited.at(child_edge_idx) >=
+                  child_max_dur) {  // TODO use pq ordered by child_max_dur?
             continue;
           }
-          visited[child_edge_idx] = child_max_dur;
+          if (kToothUnpackMode) {
+            visited[child_edge_idx] = child_max_dur;
+          }
           auto const child_max_dur_saw = saw<kChSawType>{
               tt.ch_graph_max_[prf_idx].at(child_edge_idx),
               ch_traffic_days};  // TODO at least min with min_max_dur?
 
-          for (auto const [unpack, transfer] :
-               utl::zip(tt.ch_graph_unpack_[prf_idx].at(child_edge_idx),
-                        tt.ch_graph_transfers_[prf_idx].at(child_edge_idx))) {
-            if (unpack.first == ch_edge_idx_t::invalid()) {
+          if (kToothUnpackMode) {
+            auto const tooth_idx = child_max_dur;  // TODO cleanup
+
+            auto const tooth =
+                child_max
+                    ? tt.ch_graph_max_[prf_idx].at(child_edge_idx)[tooth_idx]
+                    : tt.ch_graph_min_[prf_idx].at(
+                          child_edge_idx)[tooth_idx];  // TODO avoid copy
+            if (tooth.start_ !=
+                ch_edge_idx_t::invalid()) {  // TODO non-atomic: set edge_idx
+                                             // for PT edge so that transfer is
+                                             // taken into account
+              mark_relevant_stop(
+                  tt.ch_graph_edges_[prf_idx].at(tooth.start_).to_);
+              queue.push({tooth.start_, tooth.start_idx_, child_max, false});
+              if (tooth.end_ != ch_edge_idx_t::invalid()) {
+                queue.push({tooth.end_, tooth.end_idx_, child_max, true});
+              }
+            }
+
+          } else {
+            for (auto const [unpack, transfer] :
+                 utl::zip(tt.ch_graph_unpack_[prf_idx].at(child_edge_idx),
+                          tt.ch_graph_transfers_[prf_idx].at(child_edge_idx))) {
+              if (unpack.second == ch_edge_idx_t::invalid()) {
+                if (transfer != location_idx_t::invalid()) {
+                  mark_relevant_stop(transfer);
+                }
+                continue;
+              }
+              auto const arr_min_saw = saw<kChSawType>{
+                  tt.ch_graph_min_[prf_idx].at(unpack.first), ch_traffic_days};
+              auto const dep_min_saw = saw<kChSawType>{
+                  tt.ch_graph_min_[prf_idx].at(unpack.second), ch_traffic_days};
+              auto const arr_min = arr_min_saw.min().count();
+              auto const dep_min = dep_min_saw.min().count();
+              auto const arr_max =
+                  std::min(static_cast<ch_label::dist_t>(
+                               std::max(static_cast<int>(child_max_dur) -
+                                            static_cast<int>(dep_min),
+                                        0)),
+                           static_cast<ch_label::dist_t>(saw<kChSawType>{
+                               tt.ch_graph_max_[prf_idx].at(unpack.first),
+                               ch_traffic_days}
+                                                             .max()
+                                                             .count()));
+              auto const dep_max =
+                  std::min(static_cast<ch_label::dist_t>(
+                               std::max(static_cast<int>(child_max_dur) -
+                                            static_cast<int>(arr_min),
+                                        0)),  // TODO deconcat?
+                           static_cast<ch_label::dist_t>(saw<kChSawType>{
+                               tt.ch_graph_max_[prf_idx].at(unpack.second),
+                               ch_traffic_days}
+                                                             .max()
+                                                             .count()));
+
+              if (transfer != location_idx_t::invalid()) {
+                std::cout
+                    << "ft ldmax" << l_d_max << " "
+                    << tt.get_default_translation(tt.locations_.names_.at(
+                           tt.ch_graph_edges_[prf_idx][child_edge_idx].from_))
+                    << " -> "
+                    << tt.get_default_translation(tt.locations_.names_.at(
+                           tt.ch_graph_edges_[prf_idx][child_edge_idx].to_))
+                    << " transfer "
+                    << tt.get_default_translation(
+                           tt.locations_.names_.at(transfer))
+                    << " arr: " << arr_min << " " << arr_max << " "
+                    << " dep: " << dep_min << " " << dep_max << std::endl;
+              }
+              if (arr_min_saw > child_max_dur_saw ||
+                  dep_min_saw > child_max_dur_saw || arr_min > arr_max ||
+                  dep_min > dep_max) {
+                std::cout << "skip" << std::endl;
+                continue;  // TODO count occurs
+              }
               if (transfer != location_idx_t::invalid()) {
                 mark_relevant_stop(transfer);
               }
-              continue;
+              queue.push({unpack.first, arr_max, false, false});
+              queue.push({unpack.second, dep_max, false, false});
+              std::cout << "stack push " << unpack.first << " " << unpack.second
+                        << std::endl;
             }
-            auto const arr_min_saw = saw<kChSawType>{
-                tt.ch_graph_min_[prf_idx].at(unpack.first), ch_traffic_days};
-            auto const dep_min_saw = saw<kChSawType>{
-                tt.ch_graph_min_[prf_idx].at(unpack.second), ch_traffic_days};
-            auto const arr_min = arr_min_saw.min().count();
-            auto const dep_min = dep_min_saw.min().count();
-            auto const arr_max = std::min(
-                static_cast<ch_label::dist_t>(std::max(
-                    static_cast<int>(child_max_dur) - static_cast<int>(dep_min),
-                    0)),
-                static_cast<ch_label::dist_t>(saw<kChSawType>{
-                    tt.ch_graph_max_[prf_idx].at(unpack.first), ch_traffic_days}
-                                                  .max()
-                                                  .count()));
-            auto const dep_max = std::min(
-                static_cast<ch_label::dist_t>(std::max(
-                    static_cast<int>(child_max_dur) - static_cast<int>(arr_min),
-                    0)),  // TODO deconcat?
-                static_cast<ch_label::dist_t>(
-                    saw<kChSawType>{tt.ch_graph_max_[prf_idx].at(unpack.second),
-                                    ch_traffic_days}
-                        .max()
-                        .count()));
-
-            if (transfer != location_idx_t::invalid()) {
-              std::cout
-                  << "ft ldmax" << l_d_max << " "
-                  << tt.get_default_translation(tt.locations_.names_.at(
-                         tt.ch_graph_edges_[prf_idx][child_edge_idx].from_))
-                  << " -> "
-                  << tt.get_default_translation(tt.locations_.names_.at(
-                         tt.ch_graph_edges_[prf_idx][child_edge_idx].to_))
-                  << " transfer "
-                  << tt.get_default_translation(
-                         tt.locations_.names_.at(transfer))
-                  << " arr: " << arr_min << " " << arr_max << " "
-                  << " dep: " << dep_min << " " << dep_max << std::endl;
-            }
-            if (arr_min_saw > child_max_dur_saw ||
-                dep_min_saw > child_max_dur_saw || arr_min > arr_max ||
-                dep_min > dep_max) {
-              std::cout << "skip" << std::endl;
-              continue;  // TODO count occurs
-            }
-            if (transfer != location_idx_t::invalid()) {
-              mark_relevant_stop(transfer);
-            }
-            stack.push_back({unpack.first, arr_max});
-            stack.push_back({unpack.second, dep_max});
-            std::cout << "stack push " << unpack.first << " " << unpack.second
-                      << std::endl;
           }
         }
         auto const x = saw<kChSawType>{tt.ch_graph_min_[prf_idx].at(e_idx),
