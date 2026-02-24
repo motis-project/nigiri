@@ -228,7 +228,7 @@ void obtain_relevant_stops(timetable const& tt,
   init(q.start_, kForward);
   init(q.destination_, kReverse);
   auto min_max_dist = std::vector<tooth>{};
-  auto meetpoints = std::vector<location_idx_t>{};
+  auto meetpoints = hash_set<location_idx_t>{};  // TODO other way of dedup?
   auto counter = 0;
 
   while (!pq.empty()) {
@@ -275,7 +275,7 @@ void obtain_relevant_stops(timetable const& tt,
       if (saw<kChSawType>{new_max_dist, ch_traffic_days} !=
           saw<kChSawType>{min_max_dist, ch_traffic_days}) {
         std::swap(min_max_dist, new_max_dist);
-        meetpoints.emplace_back(l.l_);
+        meetpoints.emplace(l.l_);
       } else if (tmp_saw.clear();
                  dists[l_dir]
                      .at(l.l_)
@@ -287,7 +287,7 @@ void obtain_relevant_stops(timetable const& tt,
                              ch_edge_idx_t::invalid(), ch_edge_idx_t::invalid(),
                              false, tmp_saw) <=
                  saw<kChSawType>{min_max_dist, ch_traffic_days}) {
-        meetpoints.emplace_back(l.l_);
+        meetpoints.emplace(l.l_);
       }
       std::cout << "mp found "
                 << saw<kChSawType>{min_max_dist, ch_traffic_days}.max()
@@ -349,7 +349,7 @@ void obtain_relevant_stops(timetable const& tt,
         .concat(dists[kReverse][m].d_[kMin].to_saw(ch_traffic_days),
                 ch_edge_idx_t::invalid(), ch_edge_idx_t::invalid(), false,
                 tmp_saw);
-    std::cout << "mp filter "
+    std::cout << "mp filter " << m << " "
               << tt.get_default_translation(tt.locations_.names_.at(m)) << " "
               << saw<kChSawType>{tmp_saw, ch_traffic_days}.min() << " "
               << saw<kChSawType>{min_max_dist, ch_traffic_days}.max()
