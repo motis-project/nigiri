@@ -935,10 +935,12 @@ struct saw {
     if (out.size() <= kSawMetadataOffset) {
       out.clear();  // TODO ugly
     } else {
-      auto const out_tmp = out;  // TODO avoid copy
-      auto wraparound_saw_begin = saw<SawType>{out_tmp, traffic_days_}.begin();
+      auto wraparound_saw_begin = saw<SawType>{out, traffic_days_}.begin();
       auto const remaining_it = std::remove_if(
-          out.begin() + kSawMetadataOffset, out.end(), [&](tooth const& e) {
+          out.begin() + kSawMetadataOffset, out.end(),
+          [&](tooth const& e) {  // kaboom – relies on tooth only containing
+                                 // primitive types which stay in place and can
+                                 // be read after move!
             auto td = SawType == saw_type::kDay
                           ? bitfield{}
                           : traffic_days_.bitfields_.at(e.traffic_days_).first;
