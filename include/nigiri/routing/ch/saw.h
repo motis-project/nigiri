@@ -620,6 +620,7 @@ struct saw {
   }
 
   void init_metadata(std::vector<tooth>& out, std::uint16_t lsb) const {
+    utl::verify(out.empty(), "out not empty");
     out.push_back({std::numeric_limits<std::int16_t>::max(), u16_minutes{lsb},
                    bitfield_idx_t::invalid(), ch_edge_idx_t::invalid(),
                    transport_idx_t::invalid(), ch_edge_idx_t::invalid(),
