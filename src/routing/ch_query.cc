@@ -508,17 +508,17 @@ void obtain_relevant_stops(timetable const& tt,
         while (!queue.empty()) {
           auto [child_edge_idx, child_max_dur, child_max, child_end] =
               queue.front();
-          /*std::cout << "stack " << child_edge_idx << " cmd: " << child_max_dur
-                    << std::endl;*/
+          std::cout << "stack " << child_edge_idx << " cmd: " << child_max_dur
+                    << std::endl;
           queue.pop();
-          if (!kToothUnpackMode &&
-              visited.at(child_edge_idx) >=
-                  child_max_dur) {  // TODO use pq ordered by child_max_dur?
+          if ((!kToothUnpackMode &&
+               visited.at(child_edge_idx) >= child_max_dur) ||
+              (kToothUnpackMode &&
+               visited.at(child_edge_idx) ==
+                   child_max_dur)) {  // TODO use pq ordered by child_max_dur?
             continue;
           }
-          if (kToothUnpackMode) {
-            visited[child_edge_idx] = child_max_dur;
-          }
+          visited[child_edge_idx] = child_max_dur;
           auto const child_max_dur_saw = saw<kChSawType>{
               tt.ch_graph_max_[prf_idx].at(child_edge_idx),
               ch_traffic_days};  // TODO at least min with min_max_dur?
